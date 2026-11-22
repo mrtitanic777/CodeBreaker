@@ -30,9 +30,10 @@
 ****************************************************************************/
 
 
-extern bool     RegTreeFrlFree( void );
-extern void     BurnRegTree( reg_tree *tree );
-extern void     BurnNameTree( reg_tree *tree );
-extern void     RegTreeInit( void );
-extern void     BuildNameTree( conflict_node *conf );
-extern void     BuildRegTree( conflict_node *conf );
+#pragma once
+extern bool     RegTreeFrlFree( BackRun& back );
+extern void     BurnRegTree( BackRun& back, reg_tree *tree );
+extern void     BurnNameTree( BackRun& back, reg_tree *tree );
+extern void     RegTreeInit( BackRun& back );
+extern void     BuildNameTree( BackRun& back, conflict_node *conf );
+extern void     BuildRegTree( BackRun& back, conflict_node *conf );

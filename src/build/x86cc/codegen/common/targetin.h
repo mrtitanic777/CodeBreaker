@@ -30,19 +30,20 @@
 ****************************************************************************/
 
 
-extern void             GenProlog( void );
-extern void             GenEpilog( void );
-extern void             AddCacheRegs( void );
-extern void             InitStackDepth( block * );
+#pragma once
+extern void             GenProlog( BackRun& back );
+extern void             GenEpilog( BackRun& back );
+extern void             AddCacheRegs( BackRun& back );
+extern void             InitStackDepth( BackRun& back, block * );
 extern int              AskDisplaySize( level_depth level );
 extern type_length      PushSize( type_length );
-extern void             PushLocals( void );
-extern void             SetTempLocation( name *, type_length );
-extern type_length      TempLocation( name * );
-extern bool             TempAllocBefore( void *, void * );
-extern unsigned         DepthAlign( unsigned );
-extern void             GenCallLabel( pointer );
-extern void             GenLabelReturn( void );
-extern void             GenObjCode( instruction * );
+extern void             PushLocals( BackRun& back );
+extern void             SetTempLocation( BackRun& back, name *, type_length );
+extern type_length      TempLocation( BackRun& back, name * );
+extern bool             TempAllocBefore( BackRun& back, void *, void * );
+extern unsigned         DepthAlign( BackRun& back, unsigned );
+extern void             GenCallLabel( BackRun& back, pointer );
+extern void             GenLabelReturn( BackRun& back );
+extern void             GenObjCode( BackRun& back, instruction * );
 
-extern bool             DoVerify( vertype kind, instruction *ins );
+extern bool             DoVerify( BackRun& back, vertype kind, instruction *ins );

@@ -28,5 +28,6 @@
 *
 ****************************************************************************/
 
-extern  void    MakeMovAddrConsts( void );
-extern  void    KillMovAddrConsts( void );
+#pragma once
+extern  void    MakeMovAddrConsts( BackRun& back );
+extern  void    KillMovAddrConsts( BackRun& back );

@@ -34,9 +34,9 @@
 #ifndef DWMEM_H_INCLUDED
 #define DWMEM_H_INCLUDED
 
-extern char     *DW_Strdup( dw_client __cli, const char *__str );
-extern void     *DW_FreeLink( dw_client __cli, void *__node );
-extern void     DW_FreeChain( dw_client __cli, void *__chain );
+extern char     *DW_Strdup( BackRun& back, dw_client __cli, const char *__str );
+extern void     *DW_FreeLink( BackRun& back, dw_client __cli, void *__node );
+extern void     DW_FreeChain( BackRun& back, dw_client __cli, void *__chain );
 extern void     *DW_ReverseChain( void *__chain );
 
 #endif

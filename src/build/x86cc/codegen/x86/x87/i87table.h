@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 extern const opcode_entry   Cmp87[];
 extern const opcode_entry   Un87[];
 extern const opcode_entry   Un87Func[];

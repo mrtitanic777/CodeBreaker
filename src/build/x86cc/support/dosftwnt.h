@@ -11,5 +11,6 @@
 ****************************************************************************/
 
 
+#pragma once
 extern void __MakeDOSDT( FILETIME *NT_stamp, unsigned short *d, unsigned short *t );
 extern void __FromDOSDT( unsigned short d, unsigned short t, FILETIME *NT_stamp );

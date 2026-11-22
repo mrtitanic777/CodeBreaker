@@ -30,4 +30,5 @@
 ****************************************************************************/
 
 
-extern void    SetBranches( void );
+#pragma once
+extern void    SetBranches( BackRun& back );

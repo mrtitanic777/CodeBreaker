@@ -41,31 +41,29 @@
 #include "objout.h"
 #include "x86data.h"
 #include "x86dbsup.h"
+#include "backrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct X86dbsupState {
-    temp_buff *CurrBuff;
-};
+/* (struct X86dbsupState: x86dbsup_state.h) */
 
 }  // namespace
 
-static inline X86dbsupState& x86dbsup_state() { return cbrun_part<X86dbsupState>(); }
 
 
-void    BuffStart( temp_buff *temp, uint def )
+void    BuffStart( BackRun& back, temp_buff *temp, uint def )
 /********************************************/
 {
-    x86dbsup_state().CurrBuff = temp;
+    back.x86dbsup.CurrBuff = temp;
     temp->buff[1] = def;
     temp->index = 2;
     temp->fix_idx = 0;
 }
 
 
-void    BuffEnd( segment_id segid )
+void    BuffEnd( BackRun& back, segment_id segid )
 /*********************************/
 {
     byte                *buff;
@@ -75,175 +73,175 @@ void    BuffEnd( segment_id segid )
     uint                last;
     uint                size;
 
-    ptr_type = TypeAddress( TY_LONG_POINTER );
+    ptr_type = TypeAddress( back, TY_LONG_POINTER );
     PUSH_OP( segid );
-        x86dbsup_state().CurrBuff->buff[0] = x86dbsup_state().CurrBuff->index;
-        buff = x86dbsup_state().CurrBuff->buff;
+        back.x86dbsup.CurrBuff->buff[0] = back.x86dbsup.CurrBuff->index;
+        buff = back.x86dbsup.CurrBuff->buff;
         last = 0;
-        for( i = 0; i < x86dbsup_state().CurrBuff->fix_idx; ++i ) {
-            size = x86dbsup_state().CurrBuff->fix[i].pos - last;
-            last = x86dbsup_state().CurrBuff->fix[i].pos;
-            DataBytes( size, buff );
+        for( i = 0; i < back.x86dbsup.CurrBuff->fix_idx; ++i ) {
+            size = back.x86dbsup.CurrBuff->fix[i].pos - last;
+            last = back.x86dbsup.CurrBuff->fix[i].pos;
+            DataBytes( back, size, buff );
             buff += size;
-            switch( x86dbsup_state().CurrBuff->fix[i].type ) {
+            switch( back.x86dbsup.CurrBuff->fix[i].type ) {
             case FIX_SYMBOL:
-                FEPtr( static_cast<cg_sym_handle>(x86dbsup_state().CurrBuff->fix[i].p), ptr_type, 0 );
+                FEPtr( back, static_cast<cg_sym_handle>(back.x86dbsup.CurrBuff->fix[i].p), ptr_type, 0 );
                 last += 2 + WORD_SIZE;
                 buff += 2 + WORD_SIZE;
                 break;
             case FIX_BACKHANDLE:
-                DoBigBckPtr( static_cast<back_handle>(x86dbsup_state().CurrBuff->fix[i].p), *(offset *)buff );
+                DoBigBckPtr( back, static_cast<back_handle>(back.x86dbsup.CurrBuff->fix[i].p), *(offset *)buff );
                 last += 2 + WORD_SIZE;
                 buff += 2 + WORD_SIZE;
                 break;
             case FIX_FORWARD:
-                dpatch = static_cast<dbg_patch *>(x86dbsup_state().CurrBuff->fix[i].p);
+                dpatch = static_cast<dbg_patch *>(back.x86dbsup.CurrBuff->fix[i].p);
                 dpatch->segid = segid;
-                dpatch->offset = AskLocation();
+                dpatch->offset = AskLocation(back);
                 break;
             }
         }
-        DataBytes( x86dbsup_state().CurrBuff->index - last, buff );
+        DataBytes( back, back.x86dbsup.CurrBuff->index - last, buff );
     POP_OP();
 }
 
 
-uint    BuffLoc( void )
+uint    BuffLoc( BackRun& back )
 /*********************/
 {
-    return( x86dbsup_state().CurrBuff->index );
+    return( back.x86dbsup.CurrBuff->index );
 }
 
 
-void    BuffPatch( byte val, uint loc )
+void    BuffPatch( BackRun& back, byte val, uint loc )
 /*************************************/
 {
-    x86dbsup_state().CurrBuff->buff[loc] = val;
+    back.x86dbsup.CurrBuff->buff[loc] = val;
 }
 
 
-void    BuffByte( byte b )
+void    BuffByte( BackRun& back, byte b )
 /************************/
 {
-    if( x86dbsup_state().CurrBuff->index < DB_BUFF_SIZE ) {
-        x86dbsup_state().CurrBuff->buff[x86dbsup_state().CurrBuff->index++] = b;
-        if( x86dbsup_state().CurrBuff->index >= DB_BUFF_SIZE ) {
+    if( back.x86dbsup.CurrBuff->index < DB_BUFF_SIZE ) {
+        back.x86dbsup.CurrBuff->buff[back.x86dbsup.CurrBuff->index++] = b;
+        if( back.x86dbsup.CurrBuff->index >= DB_BUFF_SIZE ) {
             _Zoiks( ZOIKS_005 );
         }
     }
 }
 
 
-void    BuffWord( uint w )
+void    BuffWord( BackRun& back, uint w )
 /************************/
 {
-    BuffByte( w & 0xff );
-    BuffByte( w >> 8 );
+    BuffByte( back, w & 0xff );
+    BuffByte( back, w >> 8 );
 }
 
 
-void    BuffDWord( uint_32 w )
+void    BuffDWord( BackRun& back, uint_32 w )
 /****************************/
 {
-    BuffWord( w & 0xffff );
-    BuffWord( w >> 16 );
+    BuffWord( back, w & 0xffff );
+    BuffWord( back, w >> 16 );
 }
 
 
-void    BuffOffset( offset w )
+void    BuffOffset( BackRun& back, offset w )
 /****************************/
 {
 #if _TARG_INTEGER == 16
-    BuffWord( w );
+    BuffWord( back, w );
 #else
-    BuffDWord( w );
+    BuffDWord( back, w );
 #endif
 }
 
 
-void    BuffValue( uint_32 val, uint class_ )
+void    BuffValue( BackRun& back, uint_32 val, uint class_ )
 /******************************************/
 {
     switch( class_ ) {
     case 0:
-        BuffByte( val );
+        BuffByte( back, val );
         break;
     case 1:
-        BuffWord( val );
+        BuffWord( back, val );
         break;
     case 2:
-        BuffWord( val & 0xffff );
-        BuffWord( val >> 16 );
+        BuffWord( back, val & 0xffff );
+        BuffWord( back, val >> 16 );
         break;
     }
 }
 
 
-void    BuffRelocatable( pointer ptr, fixup_kind type, offset off )
+void    BuffRelocatable( BackRun& back, pointer ptr, fixup_kind type, offset off )
 /*****************************************************************/
 {
-    x86dbsup_state().CurrBuff->fix[x86dbsup_state().CurrBuff->fix_idx].pos = x86dbsup_state().CurrBuff->index;
-    x86dbsup_state().CurrBuff->fix[x86dbsup_state().CurrBuff->fix_idx].p = ptr;
-    x86dbsup_state().CurrBuff->fix[x86dbsup_state().CurrBuff->fix_idx].type = type;
+    back.x86dbsup.CurrBuff->fix[back.x86dbsup.CurrBuff->fix_idx].pos = back.x86dbsup.CurrBuff->index;
+    back.x86dbsup.CurrBuff->fix[back.x86dbsup.CurrBuff->fix_idx].p = ptr;
+    back.x86dbsup.CurrBuff->fix[back.x86dbsup.CurrBuff->fix_idx].type = type;
     if( type == FIX_FORWARD ) {
-        BuffWord( 0 );
+        BuffWord( back, 0 );
     } else {
-        BuffOffset( off );
-        x86dbsup_state().CurrBuff->index += 2;
+        BuffOffset( back, off );
+        back.x86dbsup.CurrBuff->index += 2;
     }
-    x86dbsup_state().CurrBuff->fix_idx++;
+    back.x86dbsup.CurrBuff->fix_idx++;
 }
 
 
-void    BuffBack( pointer back, int off )
+void    BuffBack( BackRun& back, pointer back_handle, int off )
 /***************************************/
 {
-    BuffRelocatable( back, FIX_BACKHANDLE, off );
+    BuffRelocatable( back, back_handle, FIX_BACKHANDLE, off );
 }
 
 
-void    BuffAddr( pointer sym )
+void    BuffAddr( BackRun& back, pointer sym )
 /*****************************/
 {
-    BuffRelocatable( sym, FIX_SYMBOL, 0 );
+    BuffRelocatable( back, sym, FIX_SYMBOL, 0 );
 }
 
 
-void    BuffForward( dbg_patch *dpatch )
+void    BuffForward( BackRun& back, dbg_patch *dpatch )
 /**************************************/
 {
-    BuffRelocatable( dpatch, FIX_FORWARD, 0 );
+    BuffRelocatable( back, dpatch, FIX_FORWARD, 0 );
 }
 
 
-void    BuffWSLString( const char *str )
+void    BuffWSLString( BackRun& back, const char *str )
 /**************************************/
 {
     while( *str != NULLCHAR ) {
-        BuffByte( *str );
+        BuffByte( back, *str );
         ++str;
     }
 }
 
 
-void    BuffString( uint len, const char *str )
+void    BuffString( BackRun& back, uint len, const char *str )
 /*********************************************/
 {
     while( len > 0 ) {
-        BuffByte( *str );
+        BuffByte( back, *str );
         ++str;
         --len;
     }
 }
 
 
-void    BuffIndex( uint tipe )
+void    BuffIndex( BackRun& back, uint tipe )
 /****************************/
 {
     if( tipe < 0x80 ) {
-        BuffByte( tipe );
+        BuffByte( back, tipe );
     } else {
-        BuffByte( 0x80 | (tipe >> 8) );
-        BuffByte( tipe & 0xff );
+        BuffByte( back, 0x80 | (tipe >> 8) );
+        BuffByte( back, tipe & 0xff );
     }
 }

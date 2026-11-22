@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define CV_MAX_REC 256
 #if _TARGET & _TARG_8086
     #define CVSIZE 16  // 16:16 compiler
@@ -215,6 +216,5 @@ struct CvdbgState {
     segment_id CVSyms;
     segment_id CVTypes;
 };
-inline CvdbgState& cvdbg_state() { return cbrun_part<CvdbgState>(); }
 
 #endif

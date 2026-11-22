@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define _NT_ATTRIBUTES_MASK  (FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_READONLY \
                                 | FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_ARCHIVE)
 #define _DOS_ATTRIBUTES_MASK (_A_SYSTEM | _A_HIDDEN | _A_RDONLY | _A_SUBDIR | _A_ARCH)

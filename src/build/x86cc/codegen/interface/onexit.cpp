@@ -39,27 +39,28 @@
 #include "onexit.h"
 #include "qtimer.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct OnexitState {
-    bool volatile BrkFlag;
-    bool OnExitFlag = true;
-};
+/* (struct OnexitState: onexit_state.h) */
 
 }  // namespace
 
-static inline OnexitState& onexit_state() { return cbrun_part<OnexitState>(); }
 
+
+/* A signal handler is called with nothing but the signal and so cannot name a run: the interrupt it notes belongs to the process (the
+ * one variable of the compiler that does), and the run that asks for a break (TBreak) takes it. */
+static volatile sig_atomic_t Interrupted;
 
 static void SigIntFunc( int sig_num )
-/****************************/
+/***********************************/
 {
     /* unused parameters */ (void)sig_num;
 
-    onexit_state().BrkFlag = true;
+    Interrupted = 1;
 }
 
 
@@ -70,49 +71,51 @@ static void BrkInit( void )
 }
 
 
-static void BrkFini( void )
+static void BrkFini( BackRun& back )
 /******************/
 {
 }
 
 
-static void InitOnExit( void )
+static void InitOnExit( BackRun& back )
 /*********************/
 {
-    if( onexit_state().OnExitFlag ) {
+    if( back.onexit.OnExitFlag ) {
         BrkInit();
         GrabTimer();
-        atexit( BrkFini );
-        atexit( ReleTimer );
-        onexit_state().OnExitFlag = false;
+        back.onexit.OnExitFlag = false;
     }
 }
 
 
-bool TBreak( void )
+bool TBreak( BackRun& back )
 /*****************/
 {
     int         brk;
 
-    InitOnExit();
-    brk = onexit_state().BrkFlag;
-    onexit_state().BrkFlag = 0;
+    InitOnExit(back);
+    if( Interrupted ) {
+        Interrupted = 0;
+        back.onexit.BrkFlag = true;
+    }
+    brk = back.onexit.BrkFlag;
+    back.onexit.BrkFlag = 0;
     return( brk != 0 );
 }
 
 
-void CauseTBreak( void )
+void CauseTBreak( BackRun& back )
 /**********************/
 {
-    onexit_state().BrkFlag = true;
+    back.onexit.BrkFlag = true;
 }
 
 
-void FatalError( const char *str )
+void FatalError( BackRun& back, const char *str )
 /********************************/
 {
-     ReleTimer();
-     BrkFini();
-     ScratchObj();
-     FEMessage( FEMSG_FATAL, (pointer)str );
+     ReleTimer(back);
+     BrkFini(back);
+     ScratchObj(back);
+     FEMessage( *back.front, FEMSG_FATAL, (pointer)str );
 }

@@ -151,12 +151,12 @@ extern int      GetInsString( asm_token, char * );
 
 #endif
 
-extern int      OperandSize( OPNDTYPE opnd );
+extern int      OperandSize( AsmRun& assembler, OPNDTYPE opnd );
 extern bool     InRange( unsigned long val, unsigned bytes );
-extern bool     cpu_directive( asm_token );
-extern bool     AsmParse( token_buffer *tokbuf, const char *curline );
-extern bool     NextArrayElement( token_buffer *tokbuf, bool *next );
-extern bool     data_init( token_buffer *tokbuf, token_idx, token_idx );
-extern bool     match_phase_1( void );
+extern bool     cpu_directive( AsmRun& assembler, asm_token );
+extern bool     AsmParse( AsmRun& assembler, token_buffer *tokbuf, const char *curline );
+extern bool     NextArrayElement( AsmRun& assembler, token_buffer *tokbuf, bool *next );
+extern bool     data_init( AsmRun& assembler, token_buffer *tokbuf, token_idx, token_idx );
+extern bool     match_phase_1( AsmRun& assembler );
 
 #endif

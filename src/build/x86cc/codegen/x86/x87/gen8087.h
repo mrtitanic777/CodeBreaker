@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef enum {
         OP_STK0,        /*  - must be 0. See FPReloc. */
         OP_STK1,        /*  - must be 1 */

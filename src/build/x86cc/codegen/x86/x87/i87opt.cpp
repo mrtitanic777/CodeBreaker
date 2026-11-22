@@ -54,9 +54,10 @@
 #include "bldins.h"
 #include "liveinfo.h"
 #include "x86regn.h"
+#include "backrun.hpp"
 
 
-void    FPParms( void )
+void    FPParms( BackRun& back )
 /**************************
  * Find sequences like
  *          PARM_DEF         => ST(0),
@@ -70,22 +71,22 @@ void    FPParms( void )
     instruction *next;
     int         i;
 
-    if( data_state().CurrProc->label == data_state().HeadBlock->label ) {
+    if( back.data.CurrProc->label == back.data.HeadBlock->label ) {
         for( i = MAX_8087_REG + 1; i-- > 0; ) {
-            i87data_state().Parm8087[i] = NULL;
+            back.i87data.Parm8087[i] = NULL;
         }
         i = 0;
-        for( ins = data_state().HeadBlock->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
+        for( ins = back.data.HeadBlock->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( ins->head.opcode == OP_PARM_DEF ) {
                 if( FPRegNum( ins->result ) == 0 ) {
                     next = ins->head.next;
                     if( next->head.opcode == OP_BLOCK
                      || (instruction *)ins->operands[2] != next /* not associated*/
                      || (instruction *)next->operands[2] != ins ) {
-                        i87data_state().Parm8087[i] = (name *)data_state().CurrProc; /* klude - means parm ignored*/
+                        back.i87data.Parm8087[i] = (name *)back.data.CurrProc; /* klude - means parm ignored*/
                     } else {
-                        i87data_state().Parm8087[i] = next->result;
-                        DoNothing( next );
+                        back.i87data.Parm8087[i] = next->result;
+                        DoNothing( back, next );
                         ins = next;
                     }
                     ++i;
@@ -95,7 +96,7 @@ void    FPParms( void )
     }
 }
 
-static  bool    CanPushImmed( pn parm, int *num_parms )
+static  bool    CanPushImmed( BackRun& back, pn parm, int *num_parms )
 /******************************************************
  * find out if we can "push" floating point parameters onto the 8087
  * stack immediately as they are calculated, or if we must delay
@@ -116,12 +117,12 @@ static  bool    CanPushImmed( pn parm, int *num_parms )
                     if( _OpIsCall( next->head.opcode ) )
                         return( false );
                     if( _OpIsIFunc( next->head.opcode ) ) {
-                        if( FPStkReq( next ) != 0 ) {
+                        if( FPStkReq( back, next ) != 0 ) {
                             return( false );
                         }
                     }
                 }
-                if( _BLOCK( next ) != data_state().CurrBlock ) {
+                if( _BLOCK( next ) != back.data.CurrBlock ) {
                     return( false );
                 }
             }
@@ -139,7 +140,7 @@ static  void    Pushes( instruction *ins )
 }
 
 
-static  int     FPPushImmed( pn parm )
+static  int     FPPushImmed( BackRun& back, pn parm )
 /*************************************
  * Push the list of floating point parameters onto the 8087 stack,
  * immediately following the definition of each parameter.  (Just set
@@ -158,11 +159,11 @@ static  int     FPPushImmed( pn parm )
                 if( addr->format != NF_INS ) {
                     _Zoiks( ZOIKS_043 );
                 }
-                addr->u.i.ins->result = AllocRegName( HW_ST0 );
+                addr->u.i.ins->result = AllocRegName( back, HW_ST0 );
                 Pushes( addr->u.i.ins );
                 parm->ins = addr->u.i.ins;
                 addr->format = NF_ADDR; /* so instruction doesn't get freed! */
-                BGDone( addr );
+                BGDone( back, addr );
                 ++parms;
             }
         }
@@ -170,33 +171,33 @@ static  int     FPPushImmed( pn parm )
     return( parms );
 }
 
-static  instruction     *PushDelayed( instruction *ins, an addr, call_state *state )
+static  instruction     *PushDelayed( BackRun& back, instruction *ins, an addr, call_state *state )
 /***********************************************************************************
  * Put the parm "addr" into a temporary, and then add a "push" just
  * before the call instruction.
  */
 {
-    ins->result = BGNewTemp( addr->tipe );
+    ins->result = BGNewTemp( back, addr->tipe );
     if( addr->flags & FL_ADDR_CROSSED_BLOCKS ) {
         ins->result->v.usage |= USE_IN_ANOTHER_BLOCK;
     }
-    ins = MakeMove( ins->result, AllocRegName( HW_ST0 ), TypeClass( addr->tipe ) );
+    ins = MakeMove( back, ins->result, AllocRegName( back, HW_ST0 ), TypeClass( back, addr->tipe ) );
     Pushes( ins );
-    AddIns( ins );
+    AddIns( back, ins );
     addr->format = NF_ADDR; /* so instruction doesn't get freed! */
-    BGDone( addr );
+    BGDone( back, addr );
 #if _TARGET & _TARG_8086
     /* unused parameters */ (void)state;
 #else
     if( state->attr & ROUTINE_STACK_RESERVE ) {
-        ReserveStack( state, ins, addr->tipe->length );
+        ReserveStack( back, state, ins, addr->tipe->length );
     }
 #endif
     return( ins );
 }
 
 
-static bool PushDelayedIfStackOperand( instruction *ins, pn parm, call_state *state )
+static bool PushDelayedIfStackOperand( BackRun& back, instruction *ins, pn parm, call_state *state )
 /************************************************************************************
  * Delay the "push" of a floating point parameter if any of its
  * operands are 8087 stack operands.
@@ -209,7 +210,7 @@ static bool PushDelayedIfStackOperand( instruction *ins, pn parm, call_state *st
     ins = addr->u.i.ins;
     for( i = ins->num_operands; i-- > 0; ) {
         if( FPIsStack( ins->operands[i] ) ) {
-            parm->ins = PushDelayed( ins, addr, state );
+            parm->ins = PushDelayed( back, ins, addr, state );
 //            CGFree( parm );
             return( true );
         }
@@ -218,7 +219,7 @@ static bool PushDelayedIfStackOperand( instruction *ins, pn parm, call_state *st
 }
 
 
-static bool PushDelayedIfRedefinition( instruction *ins, pn parm, call_state *state )
+static bool PushDelayedIfRedefinition( BackRun& back, instruction *ins, pn parm, call_state *state )
 /************************************************************************************
  * Delay the "push" of a floating point parameter if any of its
  * operands are  redefined between the calculation of the parm and the
@@ -233,16 +234,16 @@ static bool PushDelayedIfRedefinition( instruction *ins, pn parm, call_state *st
         for( ; next->head.opcode != OP_BLOCK; next = next->head.next ) {
             for( i = ins->num_operands; i-- > 0; ) {
                 if( _IsReDefinedBy( next, ins->operands[i] ) ) {
-                    parm->ins = PushDelayed( ins, parm->name, state );
+                    parm->ins = PushDelayed( back, ins, parm->name, state );
 //                    CGFree( parm );
                     return( true );
                 }
             }
         }
-        if( _BLOCK( next ) == data_state().CurrBlock )
+        if( _BLOCK( next ) == back.data.CurrBlock )
             break;
         if( _BLOCK( next )->next_block == NULL ) {
-            next = data_state().CurrBlock->ins.head.next;
+            next = back.data.CurrBlock->ins.head.next;
         } else {
             next = _BLOCK( next )->next_block->ins.head.next;
         }
@@ -268,7 +269,7 @@ static  void    UseInOther( name *op )
     }
 }
 
-static  int     FPPushDelay( pn parm, call_state *state )
+static  int     FPPushDelay( BackRun& back, pn parm, call_state *state )
 /********************************************************
  * For each parm, move it into a temp, and "push" the temp onto the
  * 8087 stack just before the call instruction.  If the calculation of
@@ -293,9 +294,9 @@ static  int     FPPushDelay( pn parm, call_state *state )
                     _Zoiks( ZOIKS_043 );
                 }
                 ins = addr->u.i.ins;
-                if( PushDelayedIfStackOperand( ins, parm, state ) )
+                if( PushDelayedIfStackOperand( back, ins, parm, state ) )
                     continue;
-                if( PushDelayedIfRedefinition( ins, parm, state ) )
+                if( PushDelayedIfRedefinition( back, ins, parm, state ) )
                     continue;
                 /*
                  * we can push it just before the CALL
@@ -306,19 +307,19 @@ static  int     FPPushDelay( pn parm, call_state *state )
                         UseInOther( ins->operands[1] );
                     }
                 }
-                new_ins = MakeNary( ins->head.opcode, ins->operands[0],
-                                    ins->operands[1], AllocRegName( HW_ST0 ),
+                new_ins = MakeNary( back, ins->head.opcode, ins->operands[0],
+                                    ins->operands[1], AllocRegName( back, HW_ST0 ),
                                     ins->type_class, ins->base_type_class,
                                     ins->num_operands );
                 Pushes( new_ins );
                 new_ins->num_operands = ins->num_operands;
-                AddIns( new_ins );
+                AddIns( back, new_ins );
 #if _TARGET & _TARG_80386
                 if( state->attr & ROUTINE_STACK_RESERVE ) {
-                    ReserveStack( state, new_ins, addr->tipe->length );
+                    ReserveStack( back, state, new_ins, addr->tipe->length );
                 }
 #endif
-                BGDone( addr ); /* so ins DOES get freed*/
+                BGDone( back, addr ); /* so ins DOES get freed*/
                 parm->ins = new_ins;
             }
         }
@@ -326,7 +327,7 @@ static  int     FPPushDelay( pn parm, call_state *state )
     return( parms );
 }
 
-void    FPPushParms( pn parm, call_state *state )
+void    FPPushParms( BackRun& back, pn parm, call_state *state )
 /**********************************************************
  * "push" parameters onto the 8087 stack.  If parameters can be pushed
  * as soon as they are calculated, do that (FPPushImmed), otherwise we
@@ -339,13 +340,13 @@ void    FPPushParms( pn parm, call_state *state )
 
     if( _FPULevel( FPU_87 ) ) {
         parms = 0;
-        if( CanPushImmed( parm, &parms )
-          && parms < i87data_state().Max87Stk
+        if( CanPushImmed( back, parm, &parms )
+          && parms < back.i87data.Max87Stk
           && (state->attr & ROUTINE_STACK_RESERVE) == 0 ) {
-            parms = FPPushImmed( parm );
+            parms = FPPushImmed( back, parm );
         } else {
             if( parms != 0 ) {
-                parms = FPPushDelay( parm, state );
+                parms = FPPushDelay( back, parm, state );
             }
         }
         SetFPParmsUsed( state, parms );
@@ -359,7 +360,7 @@ _OE(                         PRESERVE, V_NO,           RG_,          G_FSINCOS, 
 
 #define _OTHER( x ) ( (x) == OP_SIN ? OP_COS : OP_SIN )
 
-static  bool    FSinCos( instruction *ins1 )
+static  bool    FSinCos( BackRun& back, instruction *ins1 )
 /********************************************
  * find the FSINCOS sequence
  */
@@ -418,10 +419,10 @@ static  bool    FSinCos( instruction *ins1 )
     }
     ins2->u.gen_table = FSINCOS;
     if( ins2->head.opcode != OP_SIN ) {
-        PrefFXCH( ins3, 1 );
+        PrefFXCH( back, ins3, 1 );
     }
-    FreeIns( ins3 );
-    FreeIns( ins4 );
+    FreeIns( back, ins3 );
+    FreeIns( back, ins4 );
     return( true );
 }
 
@@ -438,7 +439,7 @@ static  instruction     *Next87Ins( instruction *ins )
     return( ins );
 }
 
-static instruction *BackUpAndFree( instruction *ins, instruction *junk1,
+static instruction *BackUpAndFree( BackRun& back, instruction *ins, instruction *junk1,
                                         instruction *junk2 )
 /**********************************************************/
 {
@@ -446,15 +447,15 @@ static instruction *BackUpAndFree( instruction *ins, instruction *junk1,
 
     ret = ins->head.prev;
     if( junk1 != NULL )
-        FreeIns( junk1 );
+        FreeIns( back, junk1 );
     if( junk2 != NULL )
-        FreeIns( junk2 );
+        FreeIns( back, junk2 );
     if( ret->head.opcode == OP_BLOCK )
         ret = ret->head.next;
     return( ret );
 }
 
-static  void    MoveThrough( name *from, name *to, instruction *from_ins,
+static  void    MoveThrough( BackRun& back, name *from, name *to, instruction *from_ins,
                              instruction *to_ins, name *reg,
                              type_class_def type_class )
 /****************************************************
@@ -465,17 +466,17 @@ static  void    MoveThrough( name *from, name *to, instruction *from_ins,
     bool        dummy;
     instruction *new_ins;
 
-    new_ins = MakeMove( from, reg, type_class );
-    new_ins->u.gen_table = FindGenEntry( new_ins, &dummy );
+    new_ins = MakeMove( back, from, reg, type_class );
+    new_ins->u.gen_table = FindGenEntry( back, new_ins, &dummy );
     DupSeg( from_ins, new_ins );
-    PrefixIns( to_ins, new_ins );
-    new_ins = MakeMove( reg, to, type_class );
+    PrefixIns( back, to_ins, new_ins );
+    new_ins = MakeMove( back, reg, to, type_class );
     DupSeg( to_ins, new_ins );
-    new_ins->u.gen_table = FindGenEntry( new_ins, &dummy );
-    PrefixIns( to_ins, new_ins );
+    new_ins->u.gen_table = FindGenEntry( back, new_ins, &dummy );
+    PrefixIns( back, to_ins, new_ins );
 }
 
-static  instruction    *To86Move( instruction *ins, instruction *next )
+static  instruction    *To86Move( BackRun& back, instruction *ins, instruction *next )
 /**********************************************************************
  * Turn a move which uses the 8087 (FLD X, FSTP Y) into a move using
  * the 8086 using an available 8086 register.
@@ -486,55 +487,55 @@ static  instruction    *To86Move( instruction *ins, instruction *next )
     instruction         *ret;
 
     ret = ins->head.next;
-    for( regs = RegSetList(RL_MOVE); ; ++regs ) {
+    for( regs = RegSetList(back, RL_MOVE); ; ++regs ) {
         if( HW_CEqual( *regs, HW_EMPTY ) )
             return( ret );
         if( HW_Ovlap( *regs, next->head.live.regs ) )
             continue;
         if( HW_Ovlap( *regs, ins->head.live.regs ) )
             continue;
-        reg = AllocRegName( *regs );
+        reg = AllocRegName( back, *regs );
         break;
     }
     if( next->result->n.type_class == FS ) {
 #if _TARGET & _TARG_8086
-        if( data_state().OptForSize > 50 )
+        if( back.data.OptForSize > 50 )
             return( ret );
-        MoveThrough( LowPart( ins->operands[0], U2 ),
-                     LowPart( next->result, U2 ), ins, next, reg, U2 );
-        MoveThrough( HighPart( ins->operands[0], U2 ),
-                     HighPart( next->result, U2 ), ins, next, reg, U2 );
+        MoveThrough( back, LowPart( back, ins->operands[0], U2 ),
+                     LowPart( back, next->result, U2 ), ins, next, reg, U2 );
+        MoveThrough( back, HighPart( back, ins->operands[0], U2 ),
+                     HighPart( back, next->result, U2 ), ins, next, reg, U2 );
 #else
-        MoveThrough( ins->operands[0], next->result, ins, next, reg, U4 );
+        MoveThrough( back, ins->operands[0], next->result, ins, next, reg, U4 );
 #endif
     } else {
-        if( data_state().OptForSize > 50 )
+        if( back.data.OptForSize > 50 )
             return( ret );
 #if _TARGET & _TARG_8086
-        MoveThrough( LowPart( LowPart( ins->operands[0], U4 ), U2 ),
-                     LowPart( LowPart( next->result      , U4 ), U2 ),
+        MoveThrough( back, LowPart( back, LowPart( back, ins->operands[0], U4 ), U2 ),
+                     LowPart( back, LowPart( back, next->result      , U4 ), U2 ),
                      ins, next, reg, U2 );
-        MoveThrough( HighPart( LowPart( ins->operands[0], U4 ), U2 ),
-                     HighPart( LowPart( next->result      , U4 ), U2 ),
+        MoveThrough( back, HighPart( back, LowPart( back, ins->operands[0], U4 ), U2 ),
+                     HighPart( back, LowPart( back, next->result      , U4 ), U2 ),
                      ins, next, reg, U2 );
-        MoveThrough( LowPart( HighPart( ins->operands[0], U4 ), U2 ),
-                     LowPart( HighPart( next->result      , U4 ), U2 ),
+        MoveThrough( back, LowPart( back, HighPart( back, ins->operands[0], U4 ), U2 ),
+                     LowPart( back, HighPart( back, next->result      , U4 ), U2 ),
                      ins, next, reg, U2 );
-        MoveThrough( HighPart( HighPart( ins->operands[0], U4 ), U2 ),
-                     HighPart( HighPart( next->result      , U4 ), U2 ),
+        MoveThrough( back, HighPart( back, HighPart( back, ins->operands[0], U4 ), U2 ),
+                     HighPart( back, HighPart( back, next->result      , U4 ), U2 ),
                      ins, next, reg, U2 );
 #else
-        MoveThrough( LowPart( ins->operands[0], U4 ),
-                     LowPart( next->result, U4 ), ins, next, reg, U4 );
-        MoveThrough( HighPart( ins->operands[0], U4 ),
-                     HighPart( next->result, U4 ), ins, next, reg, U4 );
+        MoveThrough( back, LowPart( back, ins->operands[0], U4 ),
+                     LowPart( back, next->result, U4 ), ins, next, reg, U4 );
+        MoveThrough( back, HighPart( back, ins->operands[0], U4 ),
+                     HighPart( back, next->result, U4 ), ins, next, reg, U4 );
 #endif
     }
-    return( BackUpAndFree( ins, ins, next ) );
+    return( BackUpAndFree( back, ins, ins, next ) );
 }
 
 
-static  bool    RedundantStore( instruction *ins )
+static  bool    RedundantStore( BackRun& back, instruction *ins )
 /************************************************/
 {
     instruction         *next;
@@ -545,7 +546,7 @@ static  bool    RedundantStore( instruction *ins )
                 return( true );
             }
         }
-        if( InsOrderDependant( ins, next ) ) {
+        if( InsOrderDependant( back, ins, next ) ) {
             return( false );
         }
     }
@@ -553,7 +554,7 @@ static  bool    RedundantStore( instruction *ins )
 }
 
 
-static  instruction    *Opt87Sequence( instruction *ins, bool *again )
+static  instruction    *Opt87Sequence( BackRun& back, instruction *ins, bool *again )
 /*********************************************************************
  * Look for silly 8087 sequences and fix them up.
  */
@@ -573,9 +574,9 @@ static  instruction    *Opt87Sequence( instruction *ins, bool *again )
             /*
              * FLD ST, FSTP X ===> FST X
              */
-            FreeIns( ins );
+            FreeIns( back, ins );
             if( FPResultNotNeeded( next ) ) {
-                ret = BackUpAndFree( ins, next, NULL );
+                ret = BackUpAndFree( back, ins, next, NULL );
             } else {
                 ret = next;
                 NoPop( next );
@@ -587,10 +588,10 @@ static  instruction    *Opt87Sequence( instruction *ins, bool *again )
              */
             st_reg = FPRegNum( next->result );
             if( st_reg == 0 ) {
-                ret = BackUpAndFree( ins, ins, next );
+                ret = BackUpAndFree( back, ins, ins, next );
             } else {
-                next->result = ST( st_reg - 1 );
-                FreeIns( ins );
+                next->result = ST( back, st_reg - 1 );
+                FreeIns( back, ins );
                 ret = next;
                 NoPop( next );
             }
@@ -601,16 +602,16 @@ static  instruction    *Opt87Sequence( instruction *ins, bool *again )
              */
             st_reg = FPRegNum( next->operands[0] );
             if( st_reg == 0 ) {
-                ret = BackUpAndFree( ins, ins, next );
+                ret = BackUpAndFree( back, ins, ins, next );
             } else {
-                next->operands[0] = ST( st_reg - 1 );
+                next->operands[0] = ST( back, st_reg - 1 );
                 NoPopRBin( next );
-                FreeIns( ins );
+                FreeIns( back, ins );
                 ret = next;
             }
             *again = true;
         } else if( G( next ) == G_FXCH && FPRegNum( next->result ) == 1 ) {
-            FreeIns( next );
+            FreeIns( back, next );
             *again = true;
             ret = ins;
         }
@@ -626,14 +627,14 @@ static  instruction    *Opt87Sequence( instruction *ins, bool *again )
                 /*
                  * FLD X, FxxP ST(1) ==> Fxx X
                  */
-                next->result = ST( 0 );
+                next->result = ST( back, 0 );
                 next->operands[0] = ins->operands[0];
                 if( ins->num_operands > OpcodeNumOperands( ins )
                   && next->num_operands <= OpcodeNumOperands( next ) ) {
                     next->operands[next->num_operands] = ins->operands[OpcodeNumOperands( ins )];
                     next->num_operands++;
                 }
-                FreeIns( ins );
+                FreeIns( back, ins );
                 NoPopBin( next );
                 *again = true;
                 ret = next;
@@ -645,7 +646,7 @@ static  instruction    *Opt87Sequence( instruction *ins, bool *again )
                 /*
                  * FLD X, FLD X ==> FLD X, FLD ST(0)
                  */
-                next->operands[0] = ST( 0 );
+                next->operands[0] = ST( back, 0 );
                 ToRFld( next );
                 *again = true;
                 ret = next;
@@ -657,18 +658,18 @@ static  instruction    *Opt87Sequence( instruction *ins, bool *again )
                 if( third == next )
                     return( ret );
                 if( G( third ) == G_FXCH && FPRegNum( third->result ) == 1 ) {
-                    FreeIns( third );
+                    FreeIns( back, third );
                     if( FPRegNum( next->operands[0] ) != 0 ) {
                         ins->head.next->head.prev = ins->head.prev;
                         ins->head.prev->head.next = ins->head.next;
-                        SuffixIns( next, ins );
+                        SuffixIns( back, next, ins );
                         if( G( ins ) == G_RFLD ) {
                             st_reg = FPRegNum( ins->operands[0] );
-                            ins->operands[0] = ST( st_reg + 1 );
+                            ins->operands[0] = ST( back, st_reg + 1 );
                         }
                         if( G( next ) == G_RFLD ) {
                             st_reg = FPRegNum( next->operands[0] );
-                            next->operands[0] = ST( st_reg - 1 );
+                            next->operands[0] = ST( back, st_reg - 1 );
                         }
                         ret = next;
                     } else {
@@ -680,14 +681,14 @@ static  instruction    *Opt87Sequence( instruction *ins, bool *again )
         } else if( G( ins ) == G_MFLD ) {
             if( G( next ) == G_MFST ) {
                 if( ins->operands[0]->n.type_class == next->result->n.type_class ) {
-                    ret = To86Move( ins, next );
+                    ret = To86Move( back, ins, next );
                 }
             } else if( G( next ) == G_MRFBIN || G( next ) == G_MNFBIN ) {
                 if( ins->operands[0] == next->operands[0] ) {
                     /*
                      * FLD X, FOP X ==> FLD X, FOP ST
                      */
-                    next->operands[0] = ST( 0 );
+                    next->operands[0] = ST( back, 0 );
                     DelSeg( next );
                     NoMemBin( next );
                     *again = true;
@@ -703,9 +704,9 @@ static  instruction    *Opt87Sequence( instruction *ins, bool *again )
             /*
              * FSTP X, FLD X ==> FST X
              */
-            FreeIns( next );
+            FreeIns( back, next );
             if( FPResultNotNeeded( ins ) ) {
-                ret = BackUpAndFree( ins, ins, NULL );
+                ret = BackUpAndFree( back, ins, ins, NULL );
             } else {
                 ret = ins;
                 NoPop( ins );
@@ -716,7 +717,7 @@ static  instruction    *Opt87Sequence( instruction *ins, bool *again )
             /*
              * FSTP ST(i), FLD ST(i-1) ==> FST ST(i)
              */
-            FreeIns( next );
+            FreeIns( back, next );
             NoPop( ins );
             *again = true;
             ret = ins;
@@ -727,8 +728,8 @@ static  instruction    *Opt87Sequence( instruction *ins, bool *again )
              * FXCH ST(i) FXCH ST(i) => nothing
              */
             if( FPRegNum( ins->result ) == FPRegNum( next->result ) ) {
-                FreeIns( next );
-                next = BackUpAndFree( ins, ins, NULL );
+                FreeIns( back, next );
+                next = BackUpAndFree( back, ins, ins, NULL );
                 *again = true;
                 ret = next;
             }
@@ -738,7 +739,7 @@ static  instruction    *Opt87Sequence( instruction *ins, bool *again )
                     /*
                      * FXCH ST(i), FopP ST(i),ST -> FopRP ST(i),ST
                      */
-                    FreeIns( ins );
+                    FreeIns( back, ins );
                     ReverseFPGen( next );
                     *again = true;
                     ret = next;
@@ -750,18 +751,18 @@ static  instruction    *Opt87Sequence( instruction *ins, bool *again )
             /*
              * FST X, FLD X => FST X, FLD ST
              */
-            next->operands[0] = ST( 0 );
+            next->operands[0] = ST( back, 0 );
             ToRFld( next );
             *again = true;
             ret = ins;
-        } else if( RedundantStore( ins ) ) {
-            ret = BackUpAndFree( ins, ins, NULL );
+        } else if( RedundantStore( back, ins ) ) {
+            ret = BackUpAndFree( back, ins, ins, NULL );
             *again = true;
         }
     } else if( G( ins ) == G_RNFBIN || G( ins ) == G_RRFBIN ) {
         if( G( next ) == G_RFST && next->result == ins->operands[0] ) {
             ToPopBin( ins );
-            FreeIns( next );
+            FreeIns( back, next );
             *again = true;
             ret = ins;
         }
@@ -769,7 +770,7 @@ static  instruction    *Opt87Sequence( instruction *ins, bool *again )
     return( ret );
 }
 
-static void    Opt8087( void )
+static void    Opt8087( BackRun& back )
 /*****************************
  * Look for silly 8087 sequences and change them into better ones.
  */
@@ -780,7 +781,7 @@ static void    Opt8087( void )
     bool        again;
     instruction *next;
 
-    for( blk = data_state().HeadBlock; blk != NULL; ) {
+    for( blk = back.data.HeadBlock; blk != NULL; ) {
         i = 0;
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             ins->sequence = ++i;
@@ -789,15 +790,15 @@ static void    Opt8087( void )
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
             next = ins->head.next;
             if( _GenIs8087( G( ins ) ) ) {
-                if( !FSinCos( ins ) ) {
-                    next = Opt87Sequence( ins, &again );
+                if( !FSinCos( back, ins ) ) {
+                    next = Opt87Sequence( back, ins, &again );
                 }
             }
         }
         if( !again ) {
             for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
                 if( FPResultNotNeeded( ins ) ) {
-                    ins->result = ST( 0 );
+                    ins->result = ST( back, 0 );
                     ToRFstp( ins );
                 }
             }
@@ -807,20 +808,20 @@ static void    Opt8087( void )
 }
 
 
-void    FPOptimize( void )
+void    FPOptimize( BackRun& back )
 /*****************************
  * Fix up the 8087 instructions.  The instructions so far
  */
 {
     if( _FPULevel( FPU_87 ) ) {
         if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-            Opt8087();
+            Opt8087(back);
         }
-        Wait8087();
+        Wait8087(back);
     }
 }
 
-bool    FPDivIsADog( type_class_def type_class )
+bool    FPDivIsADog( BackRun& back, type_class_def type_class )
 /**********************************************/
 {
 

@@ -41,9 +41,10 @@
 #include "optmkins.h"
 #include "optins.h"
 #include "memsydep.h"
+#include "backrun.hpp"
 
 
-static  void    PullQueue( void )
+static  void    PullQueue( BackRun& back )
 /*******************************/
 {
     label_handle    lbl;
@@ -56,23 +57,23 @@ static  void    PullQueue( void )
   optbegin
     for( ;; ) {
         PLBlip();
-        OptPull();
-        if( optdata_state().FirstIns == NULL )
+        OptPull(back);
+        if( back.optdata.FirstIns == NULL )
             break;
-        if( _Class( optdata_state().FirstIns ) == OC_LABEL ) {
-            if( UniqueLabel( _Label( optdata_state().FirstIns ) ) ) {
+        if( _Class( back.optdata.FirstIns ) == OC_LABEL ) {
+            if( UniqueLabel( back, _Label( back.optdata.FirstIns ) ) ) {
                 /*
                  * take off extra byte added when the ins went into queue
                  */
-                optdata_state().FirstIns->oc.oc_header.objlen--;
+                back.optdata.FirstIns->oc.oc_header.objlen--;
             }
             /*
              * We want to order the alias list so that the labels with
              * symbols dump out first. They might be FE_COMMON labels.
              */
             be_lbls = NULL;
-            owner = &_Label( optdata_state().FirstIns );
-            for( lbl = _Label( optdata_state().FirstIns ); lbl != NULL; lbl = next ) {
+            owner = &_Label( back.optdata.FirstIns );
+            for( lbl = _Label( back.optdata.FirstIns ); lbl != NULL; lbl = next ) {
                 next = lbl->alias;
                 if( lbl->lbl.sym != NULL ) {
                     *owner = lbl;
@@ -85,26 +86,26 @@ static  void    PullQueue( void )
             *owner = be_lbls;
         }
         for( ;; ) {
-            next_ins = NextIns( optdata_state().FirstIns );
+            next_ins = NextIns( back, back.optdata.FirstIns );
             if( next_ins != NULL && _Class( next_ins ) == OC_LABEL ) {
-                OutputOC( &optdata_state().FirstIns->oc, &next_ins->oc );
+                OutputOC( back, &back.optdata.FirstIns->oc, &next_ins->oc );
             } else {
-                OutputOC( &optdata_state().FirstIns->oc, NULL );
+                OutputOC( back, &back.optdata.FirstIns->oc, NULL );
             }
-            cl = _Class( optdata_state().FirstIns );
+            cl = _Class( back.optdata.FirstIns );
             if( cl != OC_LABEL )
                 break;
-            lbl = _Label( optdata_state().FirstIns );
+            lbl = _Label( back.optdata.FirstIns );
             lbl->ins = NULL;
             next = lbl->alias;
             if( next == NULL )
                 break;
             lbl->alias = NULL;
-            TryScrapLabel( lbl );
-            _Label( optdata_state().FirstIns ) = next;
+            TryScrapLabel( back, lbl );
+            _Label( back.optdata.FirstIns ) = next;
         }
-        DelInstr( optdata_state().FirstIns );
-        FreePendingDeletes();
+        DelInstr( back, back.optdata.FirstIns );
+        FreePendingDeletes(back);
         /*
          * Head of queue must be immediately after an unconditional control
          * flow instruction since things may be bypassing the control
@@ -112,7 +113,7 @@ static  void    PullQueue( void )
          */
         if( _TransferClass( cl ) )
             break;
-        if( optdata_state().FirstIns == NULL ) {
+        if( back.optdata.FirstIns == NULL ) {
             break;
         }
     }
@@ -120,7 +121,7 @@ static  void    PullQueue( void )
 }
 
 
-static  bool    LDone( any_oc *oc )
+static  bool    LDone( BackRun& back, any_oc *oc )
 /*********************************/
 {
     label_handle    lbl;
@@ -133,52 +134,52 @@ static  bool    LDone( any_oc *oc )
     if( !_TstStatus( lbl, CODELABEL ) )
         optreturn( false );
     _SetStatus( lbl, DYINGLABEL );
-    TryScrapLabel( lbl );
+    TryScrapLabel( back, lbl );
     optreturn( true );
 }
 
-void    InputOC( any_oc *oc )
+void    InputOC( BackRun& back, any_oc *oc )
 /***************************/
 {
     oc_class        cl;
 
   optbegin
     PSBlip();
-    if( !LDone( oc ) ) {
+    if( !LDone( back, oc ) ) {
         if( OC_BASE_CLASS( oc->oc_header.class_ ) != OC_INFO
          && OC_BASE_CLASS( oc->oc_header.class_ ) != OC_LABEL ) {
-            cl = PrevClass( NULL );
+            cl = PrevClass( back, NULL );
             if( _TransferClass( cl ) ) {
                 optreturnvoid; /*dead code*/
             }
         }
-        while( optdata_state().QCount >= Q_MAX ) {
-            PullQueue();
+        while( back.optdata.QCount >= Q_MAX ) {
+            PullQueue(back);
         }
-        AddInstr( NewInstr( oc ), optdata_state().LastIns );
-        switch( _Class( optdata_state().LastIns ) ) {
+        AddInstr( back, NewInstr( back, oc ), back.optdata.LastIns );
+        switch( _Class( back.optdata.LastIns ) ) {
         case OC_LABEL:
-            if( _TstStatus( _Label( optdata_state().LastIns ), UNIQUE ) ) {
+            if( _TstStatus( _Label( back.optdata.LastIns ), UNIQUE ) ) {
                 /*
                  * Unique labels might need an addition byte of spacing
                  */
-                optdata_state().LastIns->oc.oc_header.objlen++;
+                back.optdata.LastIns->oc.oc_header.objlen++;
             }
             /* fall through */
         case OC_LREF:
         case OC_JCOND:
         case OC_JMP:
         case OC_CALL:
-            _ClrStatus( _Label( optdata_state().LastIns ), DYINGLABEL );
+            _ClrStatus( _Label( back.optdata.LastIns ), DYINGLABEL );
             break;
         }
-        OptPush();
+        OptPush(back);
     }
   optend
 }
 
 
-bool    ShrinkQueue( pointer_uint size )
+bool    ShrinkQueue( BackRun& back, pointer_uint size )
 /**************************************/
 {
     pointer_uint    freed;
@@ -190,28 +191,28 @@ bool    ShrinkQueue( pointer_uint size )
     for( ;; ) {
         if( freed >= need )
             break;
-        if( optdata_state().QCount <= Q_MIN )
+        if( back.optdata.QCount <= Q_MIN )
             break;
-        freed += MemInUse();
-        PullQueue();
-        freed -= MemInUse();
+        freed += MemInUse(back);
+        PullQueue(back);
+        freed -= MemInUse(back);
     }
     optreturn( freed >= need );
 }
 
 
-void    InitQueue( void )
+void    InitQueue( BackRun& back )
 /***********************/
 {
   optbegin
-    optdata_state().QCount = 0;
-    optdata_state().FirstIns = NULL;
-    optdata_state().LastIns = NULL;
-    optdata_state().RetList = NULL;
-    optdata_state().NoRetList = NULL;
-    optdata_state().PendingDeletes = NULL;
-    optdata_state().Handles = NULL;
-    InitFrl( &optdata_state().InstrFrl );
+    back.optdata.QCount = 0;
+    back.optdata.FirstIns = NULL;
+    back.optdata.LastIns = NULL;
+    back.optdata.RetList = NULL;
+    back.optdata.NoRetList = NULL;
+    back.optdata.PendingDeletes = NULL;
+    back.optdata.Handles = NULL;
+    InitFrl( &back.optdata.InstrFrl );
 #if( OPTIONS & SAVINGS )
     Savings = 0;
 #endif
@@ -219,47 +220,47 @@ void    InitQueue( void )
 }
 
 
-void    EmptyQueue( void )
+void    EmptyQueue( BackRun& back )
 /************************/
 {
   optbegin
-    while( optdata_state().QCount != 0 ) {
-        PullQueue();
+    while( back.optdata.QCount != 0 ) {
+        PullQueue(back);
     }
   optend
 }
 
-void    FlushQueue( void )
+void    FlushQueue( BackRun& back )
 /************************/
 {
   optbegin
-    PUSH_OP( AskCodeSeg() );
-        EmptyQueue();
+    PUSH_OP( AskCodeSeg(back) );
+        EmptyQueue(back);
     POP_OP();
   optend
 }
 
-void    FiniQueue( void )
+void    FiniQueue( BackRun& back )
 /***********************/
 {
   optbegin
-    PUSH_OP( AskCodeSeg() );
-        EmptyQueue();
+    PUSH_OP( AskCodeSeg(back) );
+        EmptyQueue(back);
         _DumpSavings();
     POP_OP();
   optend
 }
 
 
-void    AbortQueue( void )
+void    AbortQueue( BackRun& back )
 /************************/
 {
     ins_entry   *next;
 
   optbegin
-    for( ; optdata_state().FirstIns != NULL; optdata_state().FirstIns = next ) {
-        next = optdata_state().FirstIns->ins.next;
-        FreeInstr( optdata_state().FirstIns );
+    for( ; back.optdata.FirstIns != NULL; back.optdata.FirstIns = next ) {
+        next = back.optdata.FirstIns->ins.next;
+        FreeInstr( back, back.optdata.FirstIns );
     }
   optend
 }

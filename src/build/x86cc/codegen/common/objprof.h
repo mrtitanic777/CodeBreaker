@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
-extern void             StartBlockProfiling( block *blk );
+#pragma once
+extern void             StartBlockProfiling( BackRun& back, block *blk );
 extern void             EndBlockProfiling( void );
-extern segment_id       GenProfileData( char *fe_name, label_handle *data, label_handle *stack );
+extern segment_id       GenProfileData( BackRun& back, char *fe_name, label_handle *data, label_handle *stack );

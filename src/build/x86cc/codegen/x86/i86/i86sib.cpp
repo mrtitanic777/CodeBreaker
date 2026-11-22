@@ -34,7 +34,7 @@
 #include "regset.h"
 #include "generate.h"
 
-void    BuildIndex( void )
+void    BuildIndex( BackRun& back )
 /************************/
 {
 }

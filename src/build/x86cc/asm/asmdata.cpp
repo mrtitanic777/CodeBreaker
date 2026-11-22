@@ -41,6 +41,7 @@
 #endif
 
 #include "clibext.h"
+#include "asmrun.hpp"
 
 
 #if defined( _STANDALONE_ )
@@ -53,24 +54,25 @@ static bool             first_init;
 
 #endif
 
-static token_idx dup_array( asm_sym_handle sym, asm_sym_handle struct_sym, token_buffer *tokbuf, token_idx start_pos, unsigned no_of_bytes );
+static token_idx dup_array( AsmRun& assembler, asm_sym_handle sym, asm_sym_handle struct_sym, token_buffer *tokbuf, token_idx start_pos, unsigned no_of_bytes );
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
+}  // namespace
 struct AsmdataState {
     bool More_Array_Element = false;
     unsigned Last_Element_Size;
 };
+namespace {
 
 }  // namespace
 
-static inline AsmdataState& asmdata_state() { return cbrun_part<AsmdataState>(); }
 
 
 /* data initialization stuff */
 
-static void output_float( token_buffer *tokbuf, token_idx index, unsigned no_of_bytes, bool negative )
+static void output_float( AsmRun& assembler, token_buffer *tokbuf, token_idx index, unsigned no_of_bytes, bool negative )
 /****************************************************************************************************/
 {
     double              double_value;
@@ -80,7 +82,7 @@ static void output_float( token_buffer *tokbuf, token_idx index, unsigned no_of_
     TB_LD               tbyte;
 
     if( no_of_bytes == BYTE_10 ) {
-        char_ptr = (char *)strtotb( tokbuf->tokens[index].string_ptr, &tbyte, negative );
+        char_ptr = (char *)strtotb( assembler, tokbuf->tokens[index].string_ptr, &tbyte, negative );
     } else {
         double_value = strtod( tokbuf->tokens[index].string_ptr, NULL );
         if( negative )
@@ -160,7 +162,7 @@ static bool check_override( token_buffer *tokbuf, token_idx *i )
 }
 #endif
 
-static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, token_buffer *tokbuf, token_idx start_pos, unsigned no_of_bytes )
+static token_idx array_element( AsmRun& assembler, asm_sym_handle sym, asm_sym_handle struct_sym, token_buffer *tokbuf, token_idx start_pos, unsigned no_of_bytes )
 /***********************************************************************************************************************************
  * - parse an array and initialize the number;
  * - call by dup_array() only;
@@ -199,7 +201,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
         case TC_QUESTION_MARK:
             if( cur_pos != start_pos ) {
                 if( tokbuf->tokens[cur_pos - 1].class_ != TC_COMMA ) {
-                    AsmError( EXPECTING_COMMA );
+                    AsmError( *assembler.front, EXPECTING_COMMA );
                     return( INVALID_IDX );
                 }
             }
@@ -235,7 +237,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
                 negative = true;
                 break;
             default:
-                AsmError( EXPECTING_NUMBER );
+                AsmError( *assembler.front, EXPECTING_NUMBER );
                 return( INVALID_IDX );
             }
             break;
@@ -249,7 +251,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
 
             if( tokbuf->tokens[cur_pos+1].class_ == TC_RES_ID
               && tokbuf->tokens[cur_pos+1].u.token == T_DUP ) {
-                cur_pos = dup_array( sym, struct_sym, tokbuf, cur_pos, no_of_bytes );
+                cur_pos = dup_array( assembler, sym, struct_sym, tokbuf, cur_pos, no_of_bytes );
                 if( ISINVALID_IDX( cur_pos ) )
                     return( INVALID_IDX );
                 break;
@@ -267,12 +269,12 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
                         break;
                     /* fall through */
                 default:
-                    AsmError( EXPECTING_COMMA );
+                    AsmError( *assembler.front, EXPECTING_COMMA );
                     return( INVALID_IDX );
                 }
             }
             if( tokbuf->tokens[cur_pos].class_ == TC_FLOAT ) {
-                output_float( tokbuf, cur_pos, no_of_bytes, negative );
+                output_float( assembler, tokbuf, cur_pos, no_of_bytes, negative );
                 negative = false;
                 break;
             }
@@ -303,7 +305,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
 #endif
             if( cur_pos != start_pos ) {
                 if( tokbuf->tokens[cur_pos - 1].class_ == TC_COMMA ) {
-                    AsmError( EXPECTING_NUMBER );
+                    AsmError( *assembler.front, EXPECTING_NUMBER );
                     return( INVALID_IDX );
                     /********SHOULD WE DO IT THIS WAY?*********
                     for( count = 0; count < no_of_bytes; count++ ) {
@@ -312,12 +314,12 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
                     ******************************************/
                 }
             } else {
-                AsmError( EXPECTING_NUMBER );
+                AsmError( *assembler.front, EXPECTING_NUMBER );
                 return( INVALID_IDX );
             }
             if( cur_pos == ( tokbuf->count - 1 ) ) {
-                asmdata_state().More_Array_Element = true;
-                asmdata_state().Last_Element_Size = no_of_bytes;
+                assembler.asmdata->More_Array_Element = true;
+                assembler.asmdata->Last_Element_Size = no_of_bytes;
             }
             break;
         case TC_STRING:
@@ -338,7 +340,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
 #endif
             if( no_of_bytes != 1 ) {
                 if( (unsigned)tokbuf->tokens[cur_pos].u.value > no_of_bytes ) {
-                    AsmError( INITIALIZER_OUT_OF_RANGE );
+                    AsmError( *assembler.front, INITIALIZER_OUT_OF_RANGE );
                     return( INVALID_IDX );
                 }
             }
@@ -413,7 +415,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
             }
 #endif
 
-            init_sym = AsmLookup( tokbuf->tokens[cur_pos].string_ptr );
+            init_sym = AsmLookup( assembler, tokbuf->tokens[cur_pos].string_ptr );
 
             if( init_sym == NULL )
                 return( INVALID_IDX );
@@ -438,13 +440,13 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
                         break;
                     }
 #endif
-                    AsmError( OFFSET_TOO_SMALL ); // fixme
+                    AsmError( *assembler.front, OFFSET_TOO_SMALL ); // fixme
                     return( INVALID_IDX );
                 case 2:
                     fixup_type = FIX_OFF16;
                     break;
                 case 4:
-                    if( asmdefs_state().Code->use32 ) {
+                    if( assembler.asmdefs.Code->use32 ) {
                         fixup_type = FIX_OFF32;
                     } else {
                         fixup_type = FIX_PTR16;
@@ -453,10 +455,10 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
                 case 6:
                     // fixme -- this needs work .... check USE32, etc
                     fixup_type = FIX_PTR32;
-                    asmdefs_state().Code->info.opnd_type[OPND1] = OP_J48;
+                    assembler.asmdefs.Code->info.opnd_type[OPND1] = OP_J48;
                     break;
                 default:
-                    AsmError( NOT_IMPLEMENTED );
+                    AsmError( *assembler.front, NOT_IMPLEMENTED );
                     return( INVALID_IDX );
                 }
 #if defined( _STANDALONE_ )
@@ -464,10 +466,10 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
             }
             find_frame( init_sym );
 #endif
-            fixup = AddFixup( init_sym, fixup_type, OPTJ_NONE );
+            fixup = AddFixup( assembler, init_sym, fixup_type, OPTJ_NONE );
             //          if( fixup == NULL ) return( INVALID_IDX );
             // fixme
-            asmfixup_state().InsFixups[OPND1] = fixup;
+            assembler.asmfixup.InsFixups[OPND1] = fixup;
             data += fixup->u_offset;
 
             for( cur_pos++;
@@ -488,7 +490,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
 #endif
                 case TC_MINUS:
                     if( tokbuf->tokens[cur_pos+1].class_ != TC_NUM ) {
-                        AsmError( EXPECTING_NUMBER );
+                        AsmError( *assembler.front, EXPECTING_NUMBER );
                         return( INVALID_IDX );
                     }
                     tokbuf->tokens[cur_pos+1].u.value = -tokbuf->tokens[cur_pos+1].u.value;
@@ -548,7 +550,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
                 tokbuf->tokens[cur_pos].u.token == T_SEG ) {
                 // see asmins.h about T_SEG
                 if( no_of_bytes < 2 ) {
-                    AsmError( OFFSET_TOO_SMALL );
+                    AsmError( *assembler.front, OFFSET_TOO_SMALL );
                     return( INVALID_IDX );
                 }
             }
@@ -570,14 +572,14 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
 #endif
             if( cur_pos + 1 < tokbuf->count ) {
                 if( tokbuf->tokens[++cur_pos].class_ == TC_ID ) {
-                    init_sym = AsmLookup( tokbuf->tokens[cur_pos].string_ptr );
+                    init_sym = AsmLookup( assembler, tokbuf->tokens[cur_pos].string_ptr );
                     if( init_sym == NULL )
                         return( INVALID_IDX );
 
                     if( tokbuf->tokens[seg_off_operator_loc].u.token == T_OFFSET
                       || tokbuf->tokens[seg_off_operator_loc].u.token == T_OFFSET32 ) {
                         if( init_sym->state == SYM_STACK ) {
-                            AsmError( CANNOT_OFFSET_AUTO );
+                            AsmError( *assembler.front, CANNOT_OFFSET_AUTO );
                             return( INVALID_IDX );
 #if defined( _STANDALONE_ )
                         } else if( init_sym->state == SYM_GRP ) {
@@ -587,7 +589,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
                         }
                         switch( no_of_bytes ) {
                         case 1:
-                            AsmError( OFFSET_TOO_SMALL ); // fixme
+                            AsmError( *assembler.front, OFFSET_TOO_SMALL ); // fixme
                             return( INVALID_IDX );
                         case 2:
                             fixup_type = FIX_OFF16;
@@ -601,12 +603,12 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
 #endif
                             break;
                         default:
-                            AsmError( NOT_IMPLEMENTED );
+                            AsmError( *assembler.front, NOT_IMPLEMENTED );
                             return( INVALID_IDX );
                         }
                     } else if( tokbuf->tokens[seg_off_operator_loc].u.token == T_SEG ) {
                         if( init_sym->state == SYM_STACK ) {
-                            AsmError( CANNOT_SEG_AUTO );
+                            AsmError( *assembler.front, CANNOT_SEG_AUTO );
                         }
                         fixup_type = FIX_SEG;
                     }
@@ -624,8 +626,8 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
 #if defined( _STANDALONE_ )
                         find_frame( init_sym );
 #endif
-                        fixup = AddFixup( init_sym, fixup_type, OPTJ_NONE );
-                        asmfixup_state().InsFixups[OPND1] = fixup;
+                        fixup = AddFixup( assembler, init_sym, fixup_type, OPTJ_NONE );
+                        assembler.asmfixup.InsFixups[OPND1] = fixup;
                         if( tokbuf->tokens[seg_off_operator_loc].u.token == T_OFFSET
                           || tokbuf->tokens[seg_off_operator_loc].u.token == T_OFFSET32 ) {
                             data += fixup->u_offset;
@@ -650,7 +652,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
                         break;
 #endif
                     default:
-                        AsmError( SYNTAX_ERROR );
+                        AsmError( *assembler.front, SYNTAX_ERROR );
                         return( INVALID_IDX );
                     }
                     for( cur_pos++;
@@ -670,7 +672,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
 #endif
                         case TC_MINUS:
                             if( tokbuf->tokens[cur_pos+1].class_ != TC_NUM ) {
-                                AsmError( EXPECTING_NUMBER );
+                                AsmError( *assembler.front, EXPECTING_NUMBER );
                                 return( INVALID_IDX );
                             }
                             tokbuf->tokens[cur_pos+1].u.value = -tokbuf->tokens[cur_pos+1].u.value;
@@ -702,7 +704,7 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
                     }
 #endif
                 } else {
-                    AsmError( SYNTAX_ERROR );
+                    AsmError( *assembler.front, SYNTAX_ERROR );
                     return( INVALID_IDX );
                 }
             }
@@ -714,14 +716,14 @@ static token_idx array_element( asm_sym_handle sym, asm_sym_handle struct_sym, t
         case TC_CL_BRACKET:
             return( cur_pos );
         default:
-            AsmError( EXPECTING_NUMBER );
+            AsmError( *assembler.front, EXPECTING_NUMBER );
             return( INVALID_IDX );
         }
     }
     return( cur_pos );
 }
 
-static token_idx dup_array( asm_sym_handle sym, asm_sym_handle struct_sym, token_buffer *tokbuf, token_idx start_pos, unsigned no_of_bytes )
+static token_idx dup_array( AsmRun& assembler, asm_sym_handle sym, asm_sym_handle struct_sym, token_buffer *tokbuf, token_idx start_pos, unsigned no_of_bytes )
 /*******************************************************************************************************************************
  * parse array with DUP operator;
  */
@@ -733,12 +735,12 @@ static token_idx dup_array( asm_sym_handle sym, asm_sym_handle struct_sym, token
     bool                was_first;
 #endif
 
-    ExpandTheWorld( tokbuf, start_pos, false, true );
+    ExpandTheWorld( assembler, tokbuf, start_pos, false, true );
     for( cur_pos = start_pos; cur_pos + 2 < tokbuf->count; ) {
         if(( tokbuf->tokens[cur_pos + 1].class_ == TC_RES_ID )
           && ( tokbuf->tokens[cur_pos + 1].u.token == T_DUP )) {
             if( tokbuf->tokens[cur_pos].class_ != TC_NUM ) {
-                AsmError( SYNTAX_ERROR );
+                AsmError( *assembler.front, SYNTAX_ERROR );
                 return( INVALID_IDX );
             }
             count = tokbuf->tokens[cur_pos].u.value;
@@ -748,7 +750,7 @@ static token_idx dup_array( asm_sym_handle sym, asm_sym_handle struct_sym, token
 #endif
             cur_pos += 2;
             if( tokbuf->tokens[cur_pos].class_ != TC_OP_BRACKET ) {
-                AsmError( SYNTAX_ERROR );
+                AsmError( *assembler.front, SYNTAX_ERROR );
                 return( INVALID_IDX );
             }
 
@@ -776,17 +778,17 @@ static token_idx dup_array( asm_sym_handle sym, asm_sym_handle struct_sym, token
 #if defined( _STANDALONE_ )
                 first_init = was_first;
 #endif
-                returned_pos = array_element( sym, struct_sym, tokbuf, cur_pos, no_of_bytes );
+                returned_pos = array_element( assembler, sym, struct_sym, tokbuf, cur_pos, no_of_bytes );
                 if( ISINVALID_IDX( returned_pos ) ) {
                     return( INVALID_IDX );
                 }
             }
             if( tokbuf->tokens[returned_pos].class_ != TC_CL_BRACKET ) {
-                AsmError( BRACKET_EXPECTED );
+                AsmError( *assembler.front, BRACKET_EXPECTED );
                 return( INVALID_IDX );
             }
         } else {
-            returned_pos = array_element( sym, struct_sym, tokbuf, cur_pos, no_of_bytes );
+            returned_pos = array_element( assembler, sym, struct_sym, tokbuf, cur_pos, no_of_bytes );
             if( ISINVALID_IDX( returned_pos ) )
                 return( INVALID_IDX );
             if( tokbuf->tokens[returned_pos].class_ != TC_CL_BRACKET ) {
@@ -802,10 +804,10 @@ static token_idx dup_array( asm_sym_handle sym, asm_sym_handle struct_sym, token
         first_init = false;
 #endif
     }
-    return( array_element( sym, struct_sym, tokbuf, cur_pos, no_of_bytes ) );
+    return( array_element( assembler, sym, struct_sym, tokbuf, cur_pos, no_of_bytes ) );
 }
 
-bool data_init( token_buffer *tokbuf, token_idx sym_loc, token_idx initializer_loc )
+bool data_init( AsmRun& assembler, token_buffer *tokbuf, token_idx sym_loc, token_idx initializer_loc )
 /***********************************************************************************
  * parse data initialization assembly line;
  */
@@ -823,7 +825,7 @@ bool data_init( token_buffer *tokbuf, token_idx sym_loc, token_idx initializer_l
 #endif
 
     if( ISVALID_IDX( sym_loc ) ) {
-        sym = AsmLookup( tokbuf->tokens[sym_loc].string_ptr );
+        sym = AsmLookup( assembler, tokbuf->tokens[sym_loc].string_ptr );
         if( sym == NULL ) {
             return( RC_ERROR );
         }
@@ -888,11 +890,11 @@ bool data_init( token_buffer *tokbuf, token_idx sym_loc, token_idx initializer_l
         no_of_bytes = BYTE_6;
         break;
     default:
-        AsmError( INVALID_LABEL_DEFINITION );
+        AsmError( *assembler.front, INVALID_LABEL_DEFINITION );
         return( RC_ERROR );
     }
     if( tokbuf->tokens[initializer_loc + 1].class_ == TC_FINAL ) {
-        AsmError( SYNTAX_ERROR );
+        AsmError( *assembler.front, SYNTAX_ERROR );
         return( RC_ERROR );
     }
 
@@ -918,8 +920,8 @@ bool data_init( token_buffer *tokbuf, token_idx sym_loc, token_idx initializer_l
     }
 #endif
 
-    if( asmdata_state().More_Array_Element ) {
-        asmdata_state().More_Array_Element = false;
+    if( assembler.asmdata->More_Array_Element ) {
+        assembler.asmdata->More_Array_Element = false;
     } else if( ISVALID_IDX( sym_loc ) ) {
 #if defined( _STANDALONE_ )
         /* defining a field in a structure */
@@ -961,35 +963,39 @@ bool data_init( token_buffer *tokbuf, token_idx sym_loc, token_idx initializer_l
 #else
         if( sym->state != SYM_UNDEFINED ) {
             // redefine label
-            AsmError( SYMBOL_ALREADY_DEFINED );
+            AsmError( *assembler.front, SYMBOL_ALREADY_DEFINED );
             return( RC_ERROR );
         }
 #endif
         sym->state = SYM_INTERNAL;
         sym->mem_type = mem_type;
-        BackPatch( sym );
+        BackPatch( assembler, sym );
     }
 #if defined( _STANDALONE_ )
     if( label_dir )
         return( RC_OK );
 #endif
-    if( ISINVALID_IDX( dup_array( sym, struct_sym, tokbuf, initializer_loc + 1, no_of_bytes ) ) ) {
+    if( ISINVALID_IDX( dup_array( assembler, sym, struct_sym, tokbuf, initializer_loc + 1, no_of_bytes ) ) ) {
         return( RC_ERROR );
     }
     return( RC_OK );
 }
 
-bool NextArrayElement( token_buffer *tokbuf, bool *next )
+bool NextArrayElement( AsmRun& assembler, token_buffer *tokbuf, bool *next )
 {
     token_idx   rc;
 
     *next = false;
-    if( asmdata_state().More_Array_Element ) {
-        asmdata_state().More_Array_Element = false;
-        rc = dup_array( NULL, NULL, tokbuf, 0, asmdata_state().Last_Element_Size );
+    if( assembler.asmdata->More_Array_Element ) {
+        assembler.asmdata->More_Array_Element = false;
+        rc = dup_array( assembler, NULL, NULL, tokbuf, 0, assembler.asmdata->Last_Element_Size );
         if( ISINVALID_IDX( rc ) )
             return( RC_ERROR );
         *next = true;
     }
     return( RC_OK );
 }
+
+/* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
+AsmdataState* asmdata_make() { return new AsmdataState(); }
+void asmdata_free(AsmdataState* part) { delete part; }

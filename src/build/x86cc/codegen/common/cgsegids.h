@@ -30,5 +30,6 @@
 ****************************************************************************/
 
 
+#pragma once
 #define BACKSEGS        ((segment_id)32767)
 #define UNDEFSEG        ((segment_id)-1)

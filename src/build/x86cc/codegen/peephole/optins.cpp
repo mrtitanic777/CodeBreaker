@@ -41,9 +41,10 @@
 #include "optpull.h"
 #include "optpush.h"
 #include "optrel.h"
+#include "backrun.hpp"
 
 
-static  ins_entry       *Redirect( ins_entry *, ins_entry * );
+static  ins_entry       *Redirect( BackRun& back, ins_entry *, ins_entry * );
 
 
 static  bool    LineLabel( ins_entry *label )
@@ -60,36 +61,36 @@ static  bool    LineLabel( ins_entry *label )
 }
 
 
-static  bool    CompressLabels( ins_entry *label )
+static  bool    CompressLabels( BackRun& back, ins_entry *label )
 /************************************************/
 {
     ins_entry   *other_label;
     bool        lbl_unique;
 
   optbegin
-    lbl_unique = UniqueLabel( _Label( label ) );
+    lbl_unique = UniqueLabel( back, _Label( label ) );
     for( ;; ) {
-        if( PrevClass( label ) != OC_LABEL )
+        if( PrevClass( back, label ) != OC_LABEL )
             break;
-        other_label = PrevIns( label );
-        if( lbl_unique && UniqueLabel( _Label( other_label ) ) )
+        other_label = PrevIns( back, label );
+        if( lbl_unique && UniqueLabel( back, _Label( other_label ) ) )
             break;
         if( LineLabel( label ) && LineLabel( other_label ) )
             break;
-        AliasLabels( other_label, label );
+        AliasLabels( back, other_label, label );
         if( _Class( label ) == OC_DEAD ) {
             optreturn( false );
         }
     }
     for( ;; ) {
-        if( NextClass( label ) != OC_LABEL )
+        if( NextClass( back, label ) != OC_LABEL )
             break;
-        other_label = NextIns( label );
-        if( lbl_unique && UniqueLabel( _Label( other_label ) ) )
+        other_label = NextIns( back, label );
+        if( lbl_unique && UniqueLabel( back, _Label( other_label ) ) )
             break;
         if( LineLabel( label ) && LineLabel( other_label ) )
             break;
-        AliasLabels( other_label, label );
+        AliasLabels( back, other_label, label );
         if( _Class( label ) == OC_DEAD ) {
             optreturn( false );
         }
@@ -98,7 +99,7 @@ static  bool    CompressLabels( ins_entry *label )
 }
 
 
-static  bool    UnTangle1( ins_entry *jmp, ins_entry **instr )
+static  bool    UnTangle1( BackRun& back, ins_entry *jmp, ins_entry **instr )
 /************************************************************/
 {
     ins_entry   *c_jmp;
@@ -111,12 +112,12 @@ static  bool    UnTangle1( ins_entry *jmp, ins_entry **instr )
         return( false );
     if( _Label( jmp ) == _Label( *instr ) ) {
         /* jump next*/
-        *instr = DelInstr( jmp );
+        *instr = DelInstr( back, jmp );
         return( true );
     }
     if( cl != OC_JMP )
         return( false );
-    c_jmp = PrevIns( jmp );
+    c_jmp = PrevIns( back, jmp );
     if( c_jmp == NULL )
         return( false );
     if( _Class( c_jmp ) != OC_JCOND )
@@ -130,20 +131,20 @@ static  bool    UnTangle1( ins_entry *jmp, ins_entry **instr )
         _JmpCond( c_jmp ) = ReverseCondition( _JmpCond( c_jmp ) );
         cl = _ClassInfo( jmp );
         _ClassInfo( jmp ) = static_cast<oc_class>(OC_DEAD_JMP);    /* to stop dead code removal*/
-        ChgLblRef( c_jmp, _Label( jmp ) );
+        ChgLblRef( back, c_jmp, _Label( jmp ) );
         _ClassInfo( jmp ) = cl;
-        *instr = DelInstr( jmp );
+        *instr = DelInstr( back, jmp );
         return( true );
     } else if( _Label( c_jmp ) == _Label( jmp ) ) {
         /* conditional jump followed by a jump to the same label*/
-        DelInstr( c_jmp );
+        DelInstr( back, c_jmp );
         return( true );
     }
     return( false );
 }
 
 
-static  bool    UnTangle2( ins_entry *jmp, ins_entry **instr )
+static  bool    UnTangle2( BackRun& back, ins_entry *jmp, ins_entry **instr )
 /************************************************************/
 {
     oc_class    cl;
@@ -156,7 +157,7 @@ static  bool    UnTangle2( ins_entry *jmp, ins_entry **instr )
     cl = _Class( jmp );
     if( cl == OC_RET ) {
         /* label followed by a return*/
-        return( RetAftrLbl( jmp ) );
+        return( RetAftrLbl( back, jmp ) );
     }
     if( cl != OC_JMP )
         return( false );
@@ -171,10 +172,10 @@ static  bool    UnTangle2( ins_entry *jmp, ins_entry **instr )
     if( _Label( jmp ) == _Label( *instr ) )
         return( false );
     /* jump to jump*/
-    *instr = Redirect( *instr, jmp );
+    *instr = Redirect( back, *instr, jmp );
     if( *instr == NULL )
         return( false );
-    cl = PrevClass( *instr );
+    cl = PrevClass( back, *instr );
     if( !_TransferClass( cl ) )
         return( true );
     /* dead code*/
@@ -187,14 +188,14 @@ static  bool    UnTangle2( ins_entry *jmp, ins_entry **instr )
         if( _Class( ins ) == OC_INFO ) {
             ins = ins->ins.next;
         } else {
-            ins = DelInstr( ins );
+            ins = DelInstr( back, ins );
         }
     }
     *instr = ins;
     return( true );
 }
 
-ins_entry       *Untangle( ins_entry *instr )
+ins_entry       *Untangle( BackRun& back, ins_entry *instr )
 /*******************************************/
 {
     ins_entry   *jmp;
@@ -206,19 +207,19 @@ ins_entry       *Untangle( ins_entry *instr )
             break;
         if( _Class( instr ) != OC_LABEL )
             break;
-        if( !CompressLabels( instr ) )
+        if( !CompressLabels( back, instr ) )
             break;
         change = false;
-        jmp = PrevIns( instr );
-        change |= UnTangle1( jmp, &instr );
+        jmp = PrevIns( back, instr );
+        change |= UnTangle1( back, jmp, &instr );
         if( instr == NULL )
             break;
         if( _Class( instr ) != OC_LABEL )
             break;
-        if( !CompressLabels( instr ) )
+        if( !CompressLabels( back, instr ) )
             break;
-        jmp = NextIns( instr );
-        change |= UnTangle2( jmp, &instr );
+        jmp = NextIns( back, instr );
+        change |= UnTangle2( back, jmp, &instr );
         if( !change ) {
             break;
         }
@@ -227,7 +228,7 @@ ins_entry       *Untangle( ins_entry *instr )
 }
 
 
-static  ins_entry       *Redirect( ins_entry *l_ins, ins_entry *j_ins )
+static  ins_entry       *Redirect( BackRun& back, ins_entry *l_ins, ins_entry *j_ins )
 /*********************************************************************/
 // Redirect all refs to l_ins to the target of j_ins
 {
@@ -239,82 +240,82 @@ static  ins_entry       *Redirect( ins_entry *l_ins, ins_entry *j_ins )
   optbegin
     new_lbl = _Label( j_ins );
     new_ins = new_lbl->ins;
-    if( UniqueLabel( _Label( l_ins ) ) && UniqueLabel( new_lbl ) ) {
+    if( UniqueLabel( back, _Label( l_ins ) ) && UniqueLabel( back, new_lbl ) ) {
         optreturn( NULL );
     }
     for( ref = _Label( l_ins )->refs; ref != NULL; ref = next ) {
         next = _LblRef( ref );
-        ChgLblRef( ref, new_lbl );
+        ChgLblRef( back, ref, new_lbl );
     }
     if( new_ins != NULL && _Class( new_ins ) != OC_DEAD ) {
-        Untangle( new_ins );
+        Untangle( back, new_ins );
     }
     if( _Class( l_ins ) == OC_DEAD ) {
         /* got deleted*/
-        optreturn( ValidIns( l_ins ) );
+        optreturn( ValidIns( back, l_ins ) );
     }
     if( new_ins == NULL
      || _Class( new_ins ) == OC_DEAD
      || _ChkAttr( l_ins, OC_ATTR_SHORT )
      || _TstStatus( _Label( l_ins ), REDIRECTION ) ) {
-         optreturn( NextIns( l_ins ) );
+         optreturn( NextIns( back, l_ins ) );
     } else {
-         optreturn(  AliasLabels( l_ins, new_lbl->ins ) );
+         optreturn(  AliasLabels( back, l_ins, new_lbl->ins ) );
     }
 }
 
 
-void    OptPush( void )
+void    OptPush( BackRun& back )
 /*********************/
 {
     ins_entry   *ins;
 
   optbegin
-    ins = optdata_state().LastIns;
+    ins = back.optdata.LastIns;
     for( ;; ) {
-        optdata_state().InsDelete = false;
+        back.optdata.InsDelete = false;
         switch( _Class( ins ) ) {
         case OC_INFO:
-            MultiLineNums( ins );
+            MultiLineNums( back, ins );
             break;
         case OC_LABEL:
-            Untangle( ins );
-            if( !optdata_state().InsDelete ) {
-                TraceCommon( ins );
+            Untangle( back, ins );
+            if( !back.optdata.InsDelete ) {
+                TraceCommon( back, ins );
             }
             break;
         case OC_CALL:
             if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-                CallRet( ins );
+                CallRet( back, ins );
             }
             break;
         case OC_JMP:
-            Untangle( PrevIns( ins ) );
-            if( !optdata_state().InsDelete ) {
-                ComCode( ins );
-                JmpRet( ins );
+            Untangle( back, PrevIns( back, ins ) );
+            if( !back.optdata.InsDelete ) {
+                ComCode( back, ins );
+                JmpRet( back, ins );
             }
             break;
         case OC_RET:
             if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-                RetAftrLbl( ins );
-                RetAftrCall( ins );
+                RetAftrLbl( back, ins );
+                RetAftrCall( back, ins );
             }
-            if( !optdata_state().InsDelete ) {
-                ComTail( optdata_state().RetList, ins );
+            if( !back.optdata.InsDelete ) {
+                ComTail( back, back.optdata.RetList, ins );
             }
             break;
         case OC_NORET:
-            if( !optdata_state().InsDelete ) {
-                ComTail( optdata_state().NoRetList, ins );
+            if( !back.optdata.InsDelete ) {
+                ComTail( back, back.optdata.NoRetList, ins );
             }
             break;
         }
-        if( !optdata_state().InsDelete )
+        if( !back.optdata.InsDelete )
             break;      /* nothing happened*/
-        FreePendingDeletes();
+        FreePendingDeletes(back);
         /* find the last interesting queue entry and try some more*/
-        ins = optdata_state().LastIns;
+        ins = back.optdata.LastIns;
         for( ;; ) {
             if( ins == NULL )
                 optreturnvoid;
@@ -327,37 +328,37 @@ void    OptPush( void )
 }
 
 
-void    OptPull( void )
+void    OptPull( BackRun& back )
 /*********************/
 {
     oc_class    ins_class;
 
   optbegin
     for( ;; ) {
-        optdata_state().InsDelete = false;
-        ins_class = _Class( optdata_state().FirstIns );
+        back.optdata.InsDelete = false;
+        ins_class = _Class( back.optdata.FirstIns );
         switch( ins_class ) {
         case OC_LABEL:
-            Untangle( optdata_state().FirstIns );
-            if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) && !optdata_state().InsDelete ) {
-                CloneCode( _Label( optdata_state().FirstIns ) );
+            Untangle( back, back.optdata.FirstIns );
+            if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) && !back.optdata.InsDelete ) {
+                CloneCode( back, _Label( back.optdata.FirstIns ) );
             }
             break;
         case OC_CALL:
             if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-                CallRet( optdata_state().FirstIns );
+                CallRet( back, back.optdata.FirstIns );
             }
             break;
         case OC_JMP:
             if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-                IsolatedCode( optdata_state().FirstIns );
-                if( !optdata_state().InsDelete ) {
-                    StraightenCode( optdata_state().FirstIns );
-                    JmpRet( optdata_state().FirstIns );
-                    if( !optdata_state().InsDelete ) {
-                        CheckStraightenCode( NextIns( optdata_state().FirstIns ) );
-                        if( !optdata_state().InsDelete ) {
-                            CloneCode( _Label( optdata_state().FirstIns ) );
+                IsolatedCode( back, back.optdata.FirstIns );
+                if( !back.optdata.InsDelete ) {
+                    StraightenCode( back, back.optdata.FirstIns );
+                    JmpRet( back, back.optdata.FirstIns );
+                    if( !back.optdata.InsDelete ) {
+                        CheckStraightenCode( back, NextIns( back, back.optdata.FirstIns ) );
+                        if( !back.optdata.InsDelete ) {
+                            CloneCode( back, _Label( back.optdata.FirstIns ) );
                         }
                     }
                 }
@@ -365,45 +366,45 @@ void    OptPull( void )
             break;
         case OC_JMPI:
             if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-                IsolatedCode( optdata_state().FirstIns );
-                if( !optdata_state().InsDelete ) {
-                    CheckStraightenCode( NextIns( optdata_state().FirstIns ) );
+                IsolatedCode( back, back.optdata.FirstIns );
+                if( !back.optdata.InsDelete ) {
+                    CheckStraightenCode( back, NextIns( back, back.optdata.FirstIns ) );
                 }
             }
             break;
         case OC_JCOND:
-            Untangle( NextIns( optdata_state().FirstIns ) );
+            Untangle( back, NextIns( back, back.optdata.FirstIns ) );
             break;
         case OC_RET:
         case OC_NORET:
             if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-                IsolatedCode( optdata_state().FirstIns );
-                if( !optdata_state().InsDelete ) {
-                    CheckStraightenCode( NextIns( optdata_state().FirstIns ) );
+                IsolatedCode( back, back.optdata.FirstIns );
+                if( !back.optdata.InsDelete ) {
+                    CheckStraightenCode( back, NextIns( back, back.optdata.FirstIns ) );
                 }
             }
             break;
         }
-        FreePendingDeletes();
-        if( optdata_state().FirstIns == NULL )
+        FreePendingDeletes(back);
+        if( back.optdata.FirstIns == NULL )
             optreturnvoid;
-        if( !optdata_state().InsDelete ) {
+        if( !back.optdata.InsDelete ) {
             break;
         }
     }
     switch( ins_class ) {
     case OC_LREF:
     case OC_CALL:
-        _SetStatus( _Label( optdata_state().FirstIns ), KEEPLABEL );
+        _SetStatus( _Label( back.optdata.FirstIns ), KEEPLABEL );
         break;
     case OC_JCOND:
     case OC_JMP:
 #if( OPTIONS & SHORT_JUMPS )
-        if( !_ChkAttr( optdata_state().FirstIns, OC_ATTR_FAR ) ) {
-            SetBranches();
+        if( !_ChkAttr( back.optdata.FirstIns, OC_ATTR_FAR ) ) {
+            SetBranches(back);
         }
 #endif
-        _SetStatus( _Label( optdata_state().FirstIns ), KEEPLABEL );
+        _SetStatus( _Label( back.optdata.FirstIns ), KEEPLABEL );
         break;
     }
   optend

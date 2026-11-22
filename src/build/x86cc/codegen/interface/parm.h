@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 extern hw_reg_set       ParmInLineReg( parm_state *state );
-extern type_length      ParmMem( type_length length, type_length alignment, call_state *state );
-extern const type_def   *QParmType( cg_sym_handle func, cg_sym_handle parm, const type_def *tipe );
+extern type_length      ParmMem( BackRun& back, type_length length, type_length alignment, call_state *state );
+extern const type_def   *QParmType( BackRun& back, cg_sym_handle func, cg_sym_handle parm, const type_def *tipe );

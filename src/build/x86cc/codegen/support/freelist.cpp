@@ -36,6 +36,7 @@
 #include "cgmem.h"
 #include "data.h"
 #include "freelist.h"
+#include "backrun.hpp"
 
 
 void    InitFrl( pointer **head )
@@ -45,17 +46,17 @@ void    InitFrl( pointer **head )
 }
 
 
-pointer AllocFrl( pointer **head, size_t size )
+pointer AllocFrl( BackRun& back, pointer **head, size_t size )
 /*********************************************/
 {
     pointer     new_frl;
 
     if( *head == NULL ) {
-        new_frl = CGAlloc( size );
+        new_frl = CGAlloc( back, size );
    } else {
         new_frl = *head;
         *head = static_cast<pointer *>(**head);
-        data_state().FrlSize -= size;
+        back.data.FrlSize -= size;
     }
 #ifdef DEVBUILD
     memset( new_frl, 0xda, size );
@@ -65,19 +66,19 @@ pointer AllocFrl( pointer **head, size_t size )
 }
 
 
-void    FrlFreeSize( pointer **head, pointer *what, size_t size )
+void    FrlFreeSize( BackRun& back, pointer **head, pointer *what, size_t size )
 /***************************************************************/
 {
 #ifdef DEVBUILD
     memset( what, 0xdf, size );
 #endif
-    data_state().FrlSize += size;
+    back.data.FrlSize += size;
     *what = *head;
     *head = what;
 }
 
 
-bool    FrlFreeAll( pointer **head, size_t size )
+bool    FrlFreeAll( BackRun& back, pointer **head, size_t size )
 /***********************************************/
 {
     pointer     *next;
@@ -86,8 +87,8 @@ bool    FrlFreeAll( pointer **head, size_t size )
         return( false );
     for( ; *head != NULL; *head = next ) {
         next = static_cast<pointer *>(**head);
-        CGFree( *head );
-        data_state().FrlSize -= size;
+        CGFree( back, *head );
+        back.data.FrlSize -= size;
     }
     return( true );
 }

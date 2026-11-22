@@ -38,9 +38,10 @@
 #include "optins.h"
 #include "optpull.h"
 #include "optpush.h"
+#include "backrun.hpp"
 
 
-ins_entry       *ValidIns( ins_entry *instr )
+ins_entry       *ValidIns( BackRun& back, ins_entry *instr )
 /*******************************************/
 {
   optbegin
@@ -55,12 +56,12 @@ ins_entry       *ValidIns( ins_entry *instr )
 }
 
 
-ins_entry       *PrevIns( ins_entry *instr )
+ins_entry       *PrevIns( BackRun& back, ins_entry *instr )
 /******************************************/
 {
   optbegin
     if( instr == NULL ) {
-        instr = optdata_state().LastIns;
+        instr = back.optdata.LastIns;
     } else if( _Class( instr ) == OC_DEAD ) {
         instr = NULL;
     } else {
@@ -77,13 +78,13 @@ ins_entry       *PrevIns( ins_entry *instr )
 }
 
 
-oc_class        PrevClass( ins_entry *instr )
+oc_class        PrevClass( BackRun& back, ins_entry *instr )
 /*******************************************/
 {
     oc_class    class_;
 
   optbegin
-    instr = PrevIns( instr );
+    instr = PrevIns( back, instr );
     if( instr != NULL ) {
         class_ = _Class( instr );
     } else {
@@ -93,12 +94,12 @@ oc_class        PrevClass( ins_entry *instr )
 }
 
 
-ins_entry       *NextIns( ins_entry *instr )
+ins_entry       *NextIns( BackRun& back, ins_entry *instr )
 /******************************************/
 {
   optbegin
     if( instr == NULL ) {
-        instr = optdata_state().FirstIns;
+        instr = back.optdata.FirstIns;
     } else if( _Class( instr ) == OC_DEAD ) {
         instr = NULL;
     } else {
@@ -115,13 +116,13 @@ ins_entry       *NextIns( ins_entry *instr )
 }
 
 
-oc_class        NextClass( ins_entry *instr )
+oc_class        NextClass( BackRun& back, ins_entry *instr )
 /*******************************************/
 {
     oc_class    class_;
 
   optbegin
-    instr = NextIns( instr );
+    instr = NextIns( back, instr );
     if( instr != NULL ) {
         class_ = _Class( instr );
     } else {
@@ -131,37 +132,37 @@ oc_class        NextClass( ins_entry *instr )
 }
 
 
-void    AddInstr( ins_entry *instr, ins_entry *insert )
+void    AddInstr( BackRun& back, ins_entry *instr, ins_entry *insert )
 /*****************************************************/
 {
   optbegin
-    InsertQueue( instr, insert );
+    InsertQueue( back, instr, insert );
     switch( _Class( instr ) ) {
     case OC_LABEL:
         _ValidLbl( _Label( instr ) );
-        AddLblDef( instr );
+        AddLblDef( back, instr );
         break;
     case OC_LREF:
     case OC_CALL:
     case OC_JCOND:
     case OC_JMP:
         _ValidLbl( _Label( instr ) );
-        AddLblRef( instr );
+        AddLblRef( back, instr );
         break;
     case OC_RET:
-        _LblRef( instr ) = optdata_state().RetList;
-        optdata_state().RetList = instr;
+        _LblRef( instr ) = back.optdata.RetList;
+        back.optdata.RetList = instr;
         break;
     case OC_NORET:
-        _LblRef( instr ) = optdata_state().NoRetList;
-        optdata_state().NoRetList = instr;
+        _LblRef( instr ) = back.optdata.NoRetList;
+        back.optdata.NoRetList = instr;
         break;
     }
   optend
 }
 
 
-void    DelRef( ins_entry **owner, ins_entry *instr )
+void    DelRef( BackRun& back, ins_entry **owner, ins_entry *instr )
 /***************************************************/
 {
     ins_entry   *curr;
@@ -178,38 +179,38 @@ void    DelRef( ins_entry **owner, ins_entry *instr )
 }
 
 
-void    UnLinkInstr( ins_entry *old )
+void    UnLinkInstr( BackRun& back, ins_entry *old )
 /***********************************/
 {
   optbegin
-    optdata_state().InsDelete = true;
-    DeleteQueue( old );
-    old->ins.prev = optdata_state().PendingDeletes;
-    optdata_state().PendingDeletes = old;
+    back.optdata.InsDelete = true;
+    DeleteQueue( back, old );
+    old->ins.prev = back.optdata.PendingDeletes;
+    back.optdata.PendingDeletes = old;
   optend
 }
 
 
-static  ins_entry *DelInstr_Helper( ins_entry *old )
+static  ins_entry *DelInstr_Helper( BackRun& back, ins_entry *old )
 /**************************************************/
 {
     ins_entry   *next;
 
-    UnLinkInstr( old );
+    UnLinkInstr( back, old );
     switch( _Class( old ) ) {
     case OC_LABEL:
         if( _Label( old ) != NULL ) {
             _ValidLbl( _Label( old ) );
         }
-        DelLblDef( old );
-        next = ValidIns( old->ins.next );
-        switch( PrevClass( next ) ) {
+        DelLblDef( back, old );
+        next = ValidIns( back, old->ins.next );
+        switch( PrevClass( back, next ) ) {
         case OC_JMP:
         case OC_JMPI:
-            IsolatedCode( PrevIns( next ) );
+            IsolatedCode( back, PrevIns( back, next ) );
             break;
         case OC_JCOND:
-            Untangle( _Label( PrevIns( next ) )->ins );
+            Untangle( back, _Label( PrevIns( back, next ) )->ins );
             break;
         }
         break;
@@ -218,17 +219,17 @@ static  ins_entry *DelInstr_Helper( ins_entry *old )
     case OC_JCOND:
     case OC_JMP:
         _ValidLbl( _Label( old ) );
-        DelLblRef( old );
+        DelLblRef( back, old );
         break;
     case OC_RET:
-        DelRef( &optdata_state().RetList, old );
+        DelRef( back, &back.optdata.RetList, old );
         break;
     case OC_NORET:
-        DelRef( &optdata_state().NoRetList, old );
+        DelRef( back, &back.optdata.NoRetList, old );
         break;
     }
     _ResetClass( old, OC_DEAD );
-    next = ValidIns( old->ins.next );
+    next = ValidIns( back, old->ins.next );
     for( ;; ) {
         if( next == NULL )
             return( NULL );
@@ -238,30 +239,30 @@ static  ins_entry *DelInstr_Helper( ins_entry *old )
     }
     if( next->ins.prev == NULL )
         return( next );
-    MultiLineNums( next->ins.prev );
+    MultiLineNums( back, next->ins.prev );
     return( next );
 }
 
 
-ins_entry       *DelInstr( ins_entry *old )
+ins_entry       *DelInstr( BackRun& back, ins_entry *old )
 /*****************************************/
 {
     if( _Class( old ) != OC_DEAD ) {
-        return static_cast<ins_entry *>(( SafeRecurseCG( (func_sr)DelInstr_Helper, old ) ));
+        return static_cast<ins_entry *>(( SafeRecurseCG( back, (func_sr)DelInstr_Helper, old ) ));
     }
-    return( ValidIns( old->ins.next ) );
+    return( ValidIns( back, old->ins.next ) );
 }
 
 
-void    FreePendingDeletes( void )
+void    FreePendingDeletes( BackRun& back )
 /********************************/
 {
     ins_entry   *next;
 
   optbegin
-    for( ; optdata_state().PendingDeletes != NULL; optdata_state().PendingDeletes = next ) {
-        next = optdata_state().PendingDeletes->ins.prev;
-        FreeInstr( optdata_state().PendingDeletes );
+    for( ; back.optdata.PendingDeletes != NULL; back.optdata.PendingDeletes = next ) {
+        next = back.optdata.PendingDeletes->ins.prev;
+        FreeInstr( back, back.optdata.PendingDeletes );
     }
   optend
 }

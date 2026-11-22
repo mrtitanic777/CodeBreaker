@@ -29,10 +29,11 @@
 ****************************************************************************/
 
 
-extern void             PrefixInsRenum( instruction *ins, instruction *pref, bool renum );
-extern void             PrefixIns( instruction *ins, instruction *pref );
-extern void             SuffixIns( instruction *ins, instruction *suff );
-extern void             ReplIns( instruction *ins, instruction *new_ );
-extern instruction_id   Renumber( void );
-extern void             ClearInsBits( instruction_flags mask );
+#pragma once
+extern void             PrefixInsRenum( BackRun& back, instruction *ins, instruction *pref, bool renum );
+extern void             PrefixIns( BackRun& back, instruction *ins, instruction *pref );
+extern void             SuffixIns( BackRun& back, instruction *ins, instruction *suff );
+extern void             ReplIns( BackRun& back, instruction *ins, instruction *new_ );
+extern instruction_id   Renumber( BackRun& back );
+extern void             ClearInsBits( BackRun& back, instruction_flags mask );
 extern block            *InsBlock( instruction *ins );

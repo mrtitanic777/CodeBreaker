@@ -31,6 +31,7 @@
 
 
 /* segment identifiers */
+#pragma once
 enum  segments {
         SEG_NULL = 0,           /* unknown segment (for type checks only) */
         SEG_CODE = 1,           /* code segment */

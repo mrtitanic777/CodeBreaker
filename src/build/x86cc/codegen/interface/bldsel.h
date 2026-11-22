@@ -30,11 +30,12 @@
 ****************************************************************************/
 
 
-extern sel_handle   BGSelInit( void );
-extern void         BGSelCase( sel_handle s_node, label_handle label, const signed_64 *value );
-extern void         BGSelRange( sel_handle s_node, const signed_64 *lo, const signed_64 *hi, label_handle label );
+#pragma once
+extern sel_handle   BGSelInit( BackRun& back );
+extern void         BGSelCase( BackRun& back, sel_handle s_node, label_handle label, const signed_64 *value );
+extern void         BGSelRange( BackRun& back, sel_handle s_node, const signed_64 *lo, const signed_64 *hi, label_handle label );
 extern void         BGSelOther( sel_handle s_node, label_handle other );
-extern void         BGSelect( sel_handle s_node, an node, cg_switch_type allowed );
-extern int          SelCompare( const signed_64 *lo1, const signed_64 *lo2 );
-extern cg_type      SelType( const unsigned_64 *value_range );
-extern void         FreeTable( tbl_control *table );
+extern void         BGSelect( BackRun& back, sel_handle s_node, an node, cg_switch_type allowed );
+extern int          SelCompare( BackRun& back, const signed_64 *lo1, const signed_64 *lo2 );
+extern cg_type      SelType( BackRun& back, const unsigned_64 *value_range );
+extern void         FreeTable( BackRun& back, tbl_control *table );

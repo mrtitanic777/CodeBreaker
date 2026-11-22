@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define _BETAVER            1
 #define _OWURL              "https://github.com/open-watcom/open-watcom-v2#readme"
 

@@ -37,6 +37,7 @@
 /* % Type constants */
 /* % */
 
+#pragma once
 #define WT_NAME                 0x10
 #define NAME_SCALAR             0x00
 #define NAME_SCOPE              0x01

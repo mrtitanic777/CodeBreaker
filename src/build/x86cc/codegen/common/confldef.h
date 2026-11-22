@@ -31,6 +31,7 @@
 
 
 /* aligned */
+#pragma once
 #define MAX_SAVE                0xFFFFFFFF
 #define DEL_CONFLICT_SAVE       10
 

@@ -30,4 +30,5 @@
 ****************************************************************************/
 
 
-extern void     PropIndexes( block *blk );
+#pragma once
+extern void     PropIndexes( BackRun& back, block *blk );

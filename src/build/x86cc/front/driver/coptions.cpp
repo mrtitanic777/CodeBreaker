@@ -54,6 +54,7 @@
 #include "cmdlnsys.h"
 #include "toggles.h"
 #include "feprotos.h"
+#include "frontrun.hpp"
 
 
 #ifdef DEVBUILD
@@ -65,16 +66,17 @@
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
+}  // namespace
 struct CoptionsState {
     const char *switch_start = "";
 };
+namespace {
 
 }  // namespace
 
-static inline CoptionsState& coptions_state() { return cbrun_part<CoptionsState>(); }
 
 
-static void BadCmdLine( int error_code )
+static void BadCmdLine( FrontRun& front, int error_code )
 /***************************************
  * SIGNAL CMD-LINE ERROR
  */
@@ -82,46 +84,46 @@ static void BadCmdLine( int error_code )
     char        buffer[128];
     size_t      len;
 
-    for( CmdScanChar(); !CmdScanSwEnd(); CmdScanChar() ) {
+    for( CmdScanChar(front); !CmdScanSwEnd(front); CmdScanChar(front) ) {
         ;
     }
-    len = CmdScanAddr() - coptions_state().switch_start;
+    len = CmdScanAddr(front) - front.coptions->switch_start;
     if( len > sizeof( buffer ) - 1 )
         len = sizeof( buffer ) - 1;
-    strncpy( buffer, coptions_state().switch_start, len );
+    strncpy( buffer, front.coptions->switch_start, len );
     buffer[len] = '\0';
-    CErr2p( static_cast<msg_codes>(error_code), buffer );
+    CErr2p( front, static_cast<msg_codes>(error_code), buffer );
 }
 
 // BAD CHAR DETECTED
-void BadCmdLineChar( void )
+void BadCmdLineChar( FrontRun& front )
 {
-    BadCmdLine( ERR_INVALID_OPTION );
+    BadCmdLine( front, ERR_INVALID_OPTION );
 }
 // BAD ID DETECTED
-void BadCmdLineId( void )
+void BadCmdLineId( FrontRun& front )
 {
-    BadCmdLine( ERR_INVALID_OPTION );
+    BadCmdLine( front, ERR_INVALID_OPTION );
 }
 // BAD NUMBER DETECTED
-void BadCmdLineNumber( void )
+void BadCmdLineNumber( FrontRun& front )
 {
-    BadCmdLine( ERR_INVALID_OPTION );
+    BadCmdLine( front, ERR_INVALID_OPTION );
 }
 // BAD PATH DETECTED
-void BadCmdLinePath( void )
+void BadCmdLinePath( FrontRun& front )
 {
-    BadCmdLine( ERR_INVALID_OPTION );
+    BadCmdLine( front, ERR_INVALID_OPTION );
 }
 // BAD FILE DETECTED
-void BadCmdLineFile( void )
+void BadCmdLineFile( FrontRun& front )
 {
-    BadCmdLine( ERR_INVALID_OPTION );
+    BadCmdLine( front, ERR_INVALID_OPTION );
 }
 // BAD TEXT DETECTED
-void BadCmdLineOption( void )
+void BadCmdLineOption( FrontRun& front )
 {
-    BadCmdLine( ERR_INVALID_OPTION );
+    BadCmdLine( front, ERR_INVALID_OPTION );
 }
 
 static bool debugOptionAfterOptOption( OPT_STORAGE *data )
@@ -134,7 +136,7 @@ static bool debugOptionAfterOptOption( OPT_STORAGE *data )
     return( false );
 }
 
-char *SetStringOption( char **o, OPT_STRING **h )
+char *SetStringOption( FrontRun& front, char **o, OPT_STRING **h )
 /***********************************************/
 {
     OPT_STRING *s;
@@ -144,12 +146,12 @@ char *SetStringOption( char **o, OPT_STRING **h )
     p = NULL;
     if( s != NULL ) {
         if( s->data[0] != '\0' ) {
-            p = CMemStrdup( s->data );
+            p = CMemStrdup( front, s->data );
         }
-        OPT_CLEAN_STRING( h );
+        OPT_CLEAN_STRING( front, h );
     }
     if( o != NULL ) {
-        CMemFree( *o );
+        CMemFree( front, *o );
         *o = p;
     }
     return( p );
@@ -189,34 +191,34 @@ static void checkOENumber( unsigned *p )
     /* unused parameters */ (void)p;
 }
 
-static bool checkSTD( unsigned *value )
+static bool checkSTD( FrontRun& front, unsigned *value )
 {
     cstd_ver    cstd;
 
     cstd = STD_NONE;
     *value = 0;
-    CmdRecogEquals();
-    while( !CmdScanSwEnd() ) {
-        if( CmdRecogChar( 'c' ) ) {
-            if( CmdRecogChar( '8' ) && CmdRecogChar( '9' ) ) {
+    CmdRecogEquals(front);
+    while( !CmdScanSwEnd(front) ) {
+        if( CmdRecogChar( front, 'c' ) ) {
+            if( CmdRecogChar( front, '8' ) && CmdRecogChar( front, '9' ) ) {
                 cstd = STD_C89;
-            } else if( CmdRecogChar( '9' ) && CmdRecogChar( '9' ) ) {
+            } else if( CmdRecogChar( front, '9' ) && CmdRecogChar( front, '9' ) ) {
                 cstd = STD_C99;
-            } else if( CmdRecogChar( '1' ) ) {
-                if( CmdRecogChar( '1' ) ) {
+            } else if( CmdRecogChar( front, '1' ) ) {
+                if( CmdRecogChar( front, '1' ) ) {
                     cstd = STD_C11;
-                } else if( CmdRecogChar( '7' ) ) {
+                } else if( CmdRecogChar( front, '7' ) ) {
                     cstd = STD_C17;
                 } else {
-                    BadCmdLineChar();
+                    BadCmdLineChar(front);
                 }
-            } else if( CmdRecogChar( '2' ) && CmdRecogChar( '3' ) ) {
+            } else if( CmdRecogChar( front, '2' ) && CmdRecogChar( front, '3' ) ) {
                 cstd = STD_C23;
             } else {
-                BadCmdLineChar();
+                BadCmdLineChar(front);
             }
         } else {
-            BadCmdLineChar();
+            BadCmdLineChar(front);
         }
     }
     if( cstd != STD_NONE ) {
@@ -236,29 +238,29 @@ static void checkErrorLimit( unsigned *p )
     /* unused parameters */ (void)p;
 }
 
-static bool scanDefine( OPT_STRING **p )
+static bool scanDefine( FrontRun& front, OPT_STRING **p )
 {
     /* unused parameters */ (void)p;
 
-    CmdScanLineInit( Define_UserMacro( CmdScanAddr(), cvars_state().CompFlags.extended_defines ) );
-    coptions_state().switch_start = CmdScanAddr();
+    CmdScanLineInit( front, Define_UserMacro( front, CmdScanAddr(front), front.cvars.CompFlags.extended_defines ) );
+    front.coptions->switch_start = CmdScanAddr(front);
     return( true );
 }
 
-static bool scanDefinePlus( OPT_STRING **p )
+static bool scanDefinePlus( FrontRun& front, OPT_STRING **p )
 {
     /* unused parameters */ (void)p;
 
-    if( CmdScanSwEnd() ) {
-        cvars_state().CompFlags.extended_defines = true;
+    if( CmdScanSwEnd(front) ) {
+        front.cvars.CompFlags.extended_defines = true;
     } else {
-        CmdScanLineInit( Define_UserMacro( CmdScanAddr(), true ) );
-        coptions_state().switch_start = CmdScanAddr();
+        CmdScanLineInit( front, Define_UserMacro( front, CmdScanAddr(front), true ) );
+        front.coptions->switch_start = CmdScanAddr(front);
     }
     return( true );
 }
 
-static bool scanUndefine( OPT_STRING **p )
+static bool scanUndefine( FrontRun& front, OPT_STRING **p )
 {
     const char  *name;
     size_t      len;
@@ -266,18 +268,18 @@ static bool scanUndefine( OPT_STRING **p )
 
     /* unused parameters */ (void)p;
 
-    len = CmdScanId( &name );
-    mname = ToStringDup( name, len );
-    AddUndefMacro( mname );
-    CMemFree( mname );
+    len = CmdScanId( front, &name );
+    mname = ToStringDup( front, name, len );
+    AddUndefMacro( front, mname );
+    CMemFree( front, mname );
     return( true );
 }
 
-static void handleOptionEQ( OPT_STORAGE *data, bool value )
+static void handleOptionEQ( FrontRun& front, OPT_STORAGE *data, bool value )
 {
     /* unused parameters */ (void)data;
 
-    cvars_state().CompFlags.eq_switch_used = value;
+    front.cvars.CompFlags.eq_switch_used = value;
 }
 
 static unsigned verifyWarnLevel( unsigned level )
@@ -310,26 +312,26 @@ static void checkPPWidth( unsigned *p )
     *p = verifyPPWidth( *p );
 }
 
-static void setMessageStatus( OPT_STRING *s, bool state )
+static void setMessageStatus( FrontRun& front, OPT_STRING *s, bool state )
 {
     msg_codes   msgnum;
 
     while( s != NULL ) {
         if( GetMsgNum( s->data, &msgnum ) ) {
-            WarnEnableDisable( state, msgnum );
+            WarnEnableDisable( front, state, msgnum );
         }
         s = s->next;
     }
 }
 
-void DefSwitchMacro( const char *str )
+void DefSwitchMacro( FrontRun& front, const char *str )
 {
     char buff[64];
 
-    PreDefine_Macro( strcpy( strcpy( buff, "__SW_" ) + 5, str ) - 5 );
+    PreDefine_Macro( front, strcpy( strcpy( buff, "__SW_" ) + 5, str ) - 5 );
 }
 
-static void AddIncList( const char *path_list )
+static void AddIncList( FrontRun& front, const char *path_list )
 {
     size_t      old_len;
     size_t      len;
@@ -339,14 +341,14 @@ static void AddIncList( const char *path_list )
     if( path_list != NULL
       && *path_list != '\0' ) {
         len = strlen( path_list );
-        old_list = cvars_state().IncPathList;
+        old_list = front.cvars.IncPathList;
         old_len = strlen( old_list );
-        cvars_state().IncPathList = static_cast<char *>(CMemAlloc( old_len + 1 + len + 1 ));
-        strcpy( cvars_state().IncPathList, old_list );
-        CMemFree( old_list );
-        p = cvars_state().IncPathList + old_len;
+        front.cvars.IncPathList = static_cast<char *>(CMemAlloc( front, old_len + 1 + len + 1 ));
+        strcpy( front.cvars.IncPathList, old_list );
+        CMemFree( front, old_list );
+        p = front.cvars.IncPathList + old_len;
         while( *path_list != '\0' ) {
-            if( p != cvars_state().IncPathList )
+            if( p != front.cvars.IncPathList )
                 *p++ = PATH_LIST_SEP;
             path_list = GetPathElement( path_list, NULL, &p );
         }
@@ -354,36 +356,36 @@ static void AddIncList( const char *path_list )
     }
 }
 
-static void SetCharacterEncoding( OPT_STORAGE *data )
+static void SetCharacterEncoding( FrontRun& front, OPT_STORAGE *data )
 {
-    cvars_state().CompFlags.jis_to_unicode = false;
+    front.cvars.CompFlags.jis_to_unicode = false;
 
     switch( data->char_set ) {
     case OPT_ENUM_char_set_zku:
-        LoadUnicodeTable( data->zku_value );
+        LoadUnicodeTable( front, data->zku_value );
         break;
     case OPT_ENUM_char_set_zk0u:
-        cvars_state().CompFlags.jis_to_unicode = true;
+        front.cvars.CompFlags.jis_to_unicode = true;
         /* fall through */
     case OPT_ENUM_char_set_zk0:
-        cvars_state().CompFlags.use_double_byte = true;
-        SetDBChar( 0 );
+        front.cvars.CompFlags.use_double_byte = true;
+        SetDBChar( front, 0 );
         break;
     case OPT_ENUM_char_set_zk1:
-        cvars_state().CompFlags.use_double_byte = true;
-        SetDBChar( 1 );
+        front.cvars.CompFlags.use_double_byte = true;
+        SetDBChar( front, 1 );
         break;
     case OPT_ENUM_char_set_zk2:
-        cvars_state().CompFlags.use_double_byte = true;
-        SetDBChar( 2 );
+        front.cvars.CompFlags.use_double_byte = true;
+        SetDBChar( front, 2 );
         break;
     case OPT_ENUM_char_set_zk3:
-        cvars_state().CompFlags.use_double_byte = true;
-        SetDBChar( 3 );
+        front.cvars.CompFlags.use_double_byte = true;
+        SetDBChar( front, 3 );
         break;
     case OPT_ENUM_char_set_zkl:
-        cvars_state().CompFlags.use_double_byte = true;
-        SetDBChar( -1 );
+        front.cvars.CompFlags.use_double_byte = true;
+        SetDBChar( front, -1 );
         break;
     case OPT_ENUM_char_set_default:
         break;
@@ -393,31 +395,31 @@ static void SetCharacterEncoding( OPT_STORAGE *data )
     }
 }
 
-void SetTargetName( char **target_name, const char *name )
+void SetTargetName( FrontRun& front, char **target_name, const char *name )
 /********************************************************/
 {
     if( *target_name != NULL ) {
-        CMemFree( *target_name );
+        CMemFree( front, *target_name );
     }
-    *target_name = CMemStrdup( name );
+    *target_name = CMemStrdup( front, name );
 }
 
-void SetTargetNameBT( char **target_name, OPT_STRING **bt_value )
+void SetTargetNameBT( FrontRun& front, char **target_name, OPT_STRING **bt_value )
 /***************************************************************/
 {
     char            *p;
     int             c;
 
     if( *target_name != NULL ) {
-        CMemFree( *target_name );
+        CMemFree( front, *target_name );
     }
-    *target_name = p = SetStringOption( NULL, bt_value );
+    *target_name = p = SetStringOption( front, NULL, bt_value );
     while( (c = *(unsigned char *)p) != '\0' ) {
         *p++ = (char)toupper( c );
     }
 }
 
-static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
+static void AnalyseAnyTargetOptions( FrontRun& front, OPT_STORAGE *data )
 /******************************************************/
 {
     /*
@@ -425,17 +427,17 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
      */
     if( data->q
       || data->zq ) {
-        cvars_state().CompFlags.quiet_mode = true;
+        front.cvars.CompFlags.quiet_mode = true;
     }
     switch( data->warn_level ) {
     case OPT_ENUM_warn_level_w:
-        cvars_state().WngLevel = data->w_value;
+        front.cvars.WngLevel = data->w_value;
         break;
     case OPT_ENUM_warn_level_wx:
-        cvars_state().WngLevel = WLEVEL_WX;
+        front.cvars.WngLevel = WLEVEL_WX;
         break;
     case OPT_ENUM_warn_level_default:
-        cvars_state().WngLevel = WLEVEL_DEFAULT;
+        front.cvars.WngLevel = WLEVEL_DEFAULT;
         break;
     default:
         DbgNever();
@@ -443,11 +445,11 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     }
     switch( data->file_83 ) {
     case OPT_ENUM_file_83_fx:
-        cvars_state().CompFlags.check_truncated_fnames = false;
+        front.cvars.CompFlags.check_truncated_fnames = false;
         break;
     case OPT_ENUM_file_83_ft:
     case OPT_ENUM_file_83_default:
-        cvars_state().CompFlags.check_truncated_fnames = true;
+        front.cvars.CompFlags.check_truncated_fnames = true;
         break;
     default:
         DbgNever();
@@ -455,18 +457,18 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     }
     switch( data->opt_level ) {
     case OPT_ENUM_opt_level_ox:  /* -ox => -obmiler -s */
-        cvars_state().GenSwitches &= ~CGSW_GEN_NO_OPTIMIZATION;
-        cvars_state().GenSwitches |= CGSW_GEN_BRANCH_PREDICTION;  // -ob
-        cvars_state().GenSwitches |= CGSW_GEN_I_MATH_INLINE;      // -om
+        front.cvars.GenSwitches &= ~CGSW_GEN_NO_OPTIMIZATION;
+        front.cvars.GenSwitches |= CGSW_GEN_BRANCH_PREDICTION;  // -ob
+        front.cvars.GenSwitches |= CGSW_GEN_I_MATH_INLINE;      // -om
         data->oi = true;                            // -oi
-        cvars_state().GenSwitches |= CGSW_GEN_LOOP_OPTIMIZATION;  // -ol
-        cvars_state().Inline_Threshold = 20;                      // -oe=20
+        front.cvars.GenSwitches |= CGSW_GEN_LOOP_OPTIMIZATION;  // -ol
+        front.cvars.Inline_Threshold = 20;                      // -oe=20
         TOGGLE( inline ) = true;                    // ...
-        cvars_state().GenSwitches |= CGSW_GEN_INS_SCHEDULING;     // -or
+        front.cvars.GenSwitches |= CGSW_GEN_INS_SCHEDULING;     // -or
         TOGGLE( check_stack ) = false;              // -s
         break;
     case OPT_ENUM_opt_level_od:
-        cvars_state().GenSwitches |= CGSW_GEN_NO_OPTIMIZATION;
+        front.cvars.GenSwitches |= CGSW_GEN_NO_OPTIMIZATION;
         break;
     case OPT_ENUM_opt_level_default:
         break;
@@ -476,15 +478,15 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     }
     switch( data->opt_size_time ) {
     case OPT_ENUM_opt_size_time_ot:
-        cvars_state().OptSize = 0;
-        cvars_state().GenSwitches &= ~CGSW_GEN_NO_OPTIMIZATION;
+        front.cvars.OptSize = 0;
+        front.cvars.GenSwitches &= ~CGSW_GEN_NO_OPTIMIZATION;
         break;
     case OPT_ENUM_opt_size_time_os:
-        cvars_state().OptSize = 100;
-        cvars_state().GenSwitches &= ~CGSW_GEN_NO_OPTIMIZATION;
+        front.cvars.OptSize = 100;
+        front.cvars.GenSwitches &= ~CGSW_GEN_NO_OPTIMIZATION;
         break;
     case OPT_ENUM_opt_size_time_default:
-        cvars_state().OptSize = 50;
+        front.cvars.OptSize = 50;
         break;
     default:
         DbgNever();
@@ -492,11 +494,11 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     }
     switch( data->cstd ) {
     case OPT_ENUM_cstd_za99:
-        cvars_state().CompVars.cstd = STD_C99;
+        front.cvars.CompVars.cstd = STD_C99;
         break;
     case OPT_ENUM_cstd_zastd:
         if( data->zastd_value != STD_NONE )
-            cvars_state().CompVars.cstd = static_cast<cstd_ver>(data->zastd_value);
+            front.cvars.CompVars.cstd = static_cast<cstd_ver>(data->zastd_value);
         break;
     case OPT_ENUM_cstd_default:
         break;
@@ -506,17 +508,17 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     }
     switch( data->iso ) {
     case OPT_ENUM_iso_zA:
-        cvars_state().CompFlags.strict_ANSI = true;
+        front.cvars.CompFlags.strict_ANSI = true;
         /* fall through */
     case OPT_ENUM_iso_za:
-        cvars_state().CompFlags.extensions_enabled = false;
-        cvars_state().CompFlags.non_iso_compliant_names_enabled = false;
-        cvars_state().CompFlags.unique_functions = true;
+        front.cvars.CompFlags.extensions_enabled = false;
+        front.cvars.CompFlags.non_iso_compliant_names_enabled = false;
+        front.cvars.CompFlags.unique_functions = true;
         break;
     case OPT_ENUM_iso_ze:
     case OPT_ENUM_iso_default:
-        cvars_state().CompFlags.extensions_enabled = true;
-        cvars_state().CompFlags.non_iso_compliant_names_enabled = true;
+        front.cvars.CompFlags.extensions_enabled = true;
+        front.cvars.CompFlags.non_iso_compliant_names_enabled = true;
         break;
     default:
         DbgNever();
@@ -525,38 +527,38 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     // following must precede processing of data->oe
     switch( data->debug_info ) {
     case OPT_ENUM_debug_info_d9:
-        cvars_state().CompFlags.use_full_codegen_od = true;
+        front.cvars.CompFlags.use_full_codegen_od = true;
         break;
     case OPT_ENUM_debug_info_d3:
-        cvars_state().GenSwitches |= CGSW_GEN_DBG_NUMBERS | CGSW_GEN_DBG_TYPES | CGSW_GEN_DBG_LOCALS;
-        cvars_state().CompFlags.dump_types_with_names = true;
+        front.cvars.GenSwitches |= CGSW_GEN_DBG_NUMBERS | CGSW_GEN_DBG_TYPES | CGSW_GEN_DBG_LOCALS;
+        front.cvars.CompFlags.dump_types_with_names = true;
         if( debugOptionAfterOptOption( data ) ) {
-            cvars_state().GenSwitches |= CGSW_GEN_NO_OPTIMIZATION;
+            front.cvars.GenSwitches |= CGSW_GEN_NO_OPTIMIZATION;
 //            data->oe = false;
 //            TOGGLE( inline ) = false;
         }
-        cvars_state().GenSwitches |= CGSW_GEN_NO_OPTIMIZATION;
+        front.cvars.GenSwitches |= CGSW_GEN_NO_OPTIMIZATION;
         data->oi = false;
         break;
     case OPT_ENUM_debug_info_d2_tilde:
-        cvars_state().CompFlags.no_debug_type_names = true;
+        front.cvars.CompFlags.no_debug_type_names = true;
         /* fall through */
     case OPT_ENUM_debug_info_d2:
-        cvars_state().GenSwitches |= CGSW_GEN_DBG_NUMBERS | CGSW_GEN_DBG_TYPES | CGSW_GEN_DBG_LOCALS;
+        front.cvars.GenSwitches |= CGSW_GEN_DBG_NUMBERS | CGSW_GEN_DBG_TYPES | CGSW_GEN_DBG_LOCALS;
         if( debugOptionAfterOptOption( data ) ) {
 //            data->oe = false;
 //            TOGGLE( inline ) = false;
 //            data->oi = false;
         }
-        cvars_state().GenSwitches |= CGSW_GEN_NO_OPTIMIZATION;
+        front.cvars.GenSwitches |= CGSW_GEN_NO_OPTIMIZATION;
         data->oi = false;
         break;
     case OPT_ENUM_debug_info_d1_plus:
-        cvars_state().GenSwitches |= CGSW_GEN_DBG_NUMBERS | CGSW_GEN_DBG_TYPES | CGSW_GEN_DBG_LOCALS;
-        cvars_state().CompFlags.debug_info_some = true;
+        front.cvars.GenSwitches |= CGSW_GEN_DBG_NUMBERS | CGSW_GEN_DBG_TYPES | CGSW_GEN_DBG_LOCALS;
+        front.cvars.CompFlags.debug_info_some = true;
         break;
     case OPT_ENUM_debug_info_d1:
-        cvars_state().GenSwitches |= CGSW_GEN_DBG_NUMBERS;
+        front.cvars.GenSwitches |= CGSW_GEN_DBG_NUMBERS;
         break;
     case OPT_ENUM_debug_info_d0:
         break;
@@ -569,12 +571,12 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
 
     switch( data->enum_size ) {
     case OPT_ENUM_enum_size_ei:
-        cvars_state().CompFlags.make_enums_an_int = true;
-        cvars_state().CompFlags.original_enum_setting = true;
+        front.cvars.CompFlags.make_enums_an_int = true;
+        front.cvars.CompFlags.original_enum_setting = true;
         break;
     case OPT_ENUM_enum_size_em:
-        cvars_state().CompFlags.make_enums_an_int = false;
-        cvars_state().CompFlags.original_enum_setting = false;
+        front.cvars.CompFlags.make_enums_an_int = false;
+        front.cvars.CompFlags.original_enum_setting = false;
         break;
     case OPT_ENUM_enum_size_default:
         /* default set in CmdSysInit() */
@@ -585,108 +587,108 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     }
 
     if( data->aa ) {
-        cvars_state().CompFlags.auto_agg_inits = true;
+        front.cvars.CompFlags.auto_agg_inits = true;
     }
     if( data->ad ) {
-        SetStringOption( &cvars_state().DependFileName, &(data->ad_value) );
-        cvars_state().CompFlags.generate_auto_depend = true;
+        SetStringOption( front, &front.cvars.DependFileName, &(data->ad_value) );
+        front.cvars.CompFlags.generate_auto_depend = true;
     }
     if( data->adbs ) {
-        cvars_state().DependForceSlash = '\\';
+        front.cvars.DependForceSlash = '\\';
     }
     if( data->add ) {
-        SetStringOption( &cvars_state().SrcDepName, &(data->add_value) );
-        cvars_state().CompFlags.generate_auto_depend = true;
+        SetStringOption( front, &front.cvars.SrcDepName, &(data->add_value) );
+        front.cvars.CompFlags.generate_auto_depend = true;
     }
     if( data->adfs ) {
-        cvars_state().DependForceSlash = '/';
+        front.cvars.DependForceSlash = '/';
     }
     if( data->adhp ) {
-        SetStringOption( &cvars_state().DependHeaderPath, &(data->adhp_value) );
-        cvars_state().CompFlags.generate_auto_depend = true;
+        SetStringOption( front, &front.cvars.DependHeaderPath, &(data->adhp_value) );
+        front.cvars.CompFlags.generate_auto_depend = true;
     }
     if( data->adt ) {
-        SetStringOption( &cvars_state().DependTarget, &(data->adt_value) );
-        cvars_state().CompFlags.generate_auto_depend = true;
+        SetStringOption( front, &front.cvars.DependTarget, &(data->adt_value) );
+        front.cvars.CompFlags.generate_auto_depend = true;
     }
     if( data->ai ) {
-        cvars_state().CompFlags.no_check_inits = true;
+        front.cvars.CompFlags.no_check_inits = true;
     }
     if( data->aq ) {
-        cvars_state().CompFlags.no_check_qualifiers = true;
+        front.cvars.CompFlags.no_check_qualifiers = true;
     }
     if( data->bc ) {
-        cvars_state().CompFlags.bc_switch_used = true;
+        front.cvars.CompFlags.bc_switch_used = true;
     }
     if( data->bd ) {
-        cvars_state().CompFlags.bd_switch_used = true;
-        cvars_state().GenSwitches |= CGSW_GEN_DLL_RESIDENT_CODE;
+        front.cvars.CompFlags.bd_switch_used = true;
+        front.cvars.GenSwitches |= CGSW_GEN_DLL_RESIDENT_CODE;
     }
     if( data->bg ) {
-        cvars_state().CompFlags.bg_switch_used = true;
+        front.cvars.CompFlags.bg_switch_used = true;
     }
     if( data->bm ) {
-        cvars_state().CompFlags.bm_switch_used = true;
+        front.cvars.CompFlags.bm_switch_used = true;
     }
     if( data->bw ) {
-        cvars_state().CompFlags.bw_switch_used = true;
+        front.cvars.CompFlags.bw_switch_used = true;
     }
     if( data->db ) {
-        cvars_state().CompFlags.emit_browser_info = true;
+        front.cvars.CompFlags.emit_browser_info = true;
     }
     if( data->e ) {
-        cvars_state().ErrLimit = data->e_value;
+        front.cvars.ErrLimit = data->e_value;
     }
     if( data->ef ) {
-        cvars_state().CompFlags.ef_switch_used = true;
+        front.cvars.CompFlags.ef_switch_used = true;
     }
     if( data->en ) {
-        cvars_state().CompFlags.emit_names = true;
+        front.cvars.CompFlags.emit_names = true;
     }
     if( data->ep ) {
-        cvars_state().CompFlags.ep_switch_used = true;
-        cvars_state().ProEpiDataSize = data->ep_value;
+        front.cvars.CompFlags.ep_switch_used = true;
+        front.cvars.ProEpiDataSize = data->ep_value;
     }
     if( data->fh || data->fhq ) {
         if( data->fhq ) {
-            cvars_state().CompFlags.no_pch_warnings = true;
+            front.cvars.CompFlags.no_pch_warnings = true;
         }
         if( data->fh && ( !data->fhq || data->fh_timestamp > data->fhq_timestamp ) ) {
-            SetStringOption( &cvars_state().PCH_FileName, &(data->fh_value) );
-            OPT_CLEAN_STRING( &(data->fhq_value) );
+            SetStringOption( front, &front.cvars.PCH_FileName, &(data->fh_value) );
+            OPT_CLEAN_STRING( front, &(data->fhq_value) );
         } else if( data->fhq && ( !data->fh || data->fhq_timestamp > data->fh_timestamp ) ) {
-            SetStringOption( &cvars_state().PCH_FileName, &(data->fhq_value) );
-            OPT_CLEAN_STRING( &(data->fh_value) );
+            SetStringOption( front, &front.cvars.PCH_FileName, &(data->fhq_value) );
+            OPT_CLEAN_STRING( front, &(data->fh_value) );
         }
     }
     if( data->fi ) {
-        SetStringOption( &cvars_state().ForceInclude, &(data->fi_value) );
+        SetStringOption( front, &front.cvars.ForceInclude, &(data->fi_value) );
     }
     if( data->fip ) {
-        SetStringOption( &cvars_state().ForcePreInclude, &(data->fip_value) );
+        SetStringOption( front, &front.cvars.ForcePreInclude, &(data->fip_value) );
     }
     if( data->fo ) {
-        SetStringOption( &cvars_state().ObjectFileName, &(data->fo_value) );
-        cvars_state().CompFlags.cpp_output_to_file = true;    /* in case '-p' option */
+        SetStringOption( front, &front.cvars.ObjectFileName, &(data->fo_value) );
+        front.cvars.CompFlags.cpp_output_to_file = true;    /* in case '-p' option */
     }
     if( data->fr ) {
-        SetStringOption( &cvars_state().ErrorFileName, &(data->fr_value) );
+        SetStringOption( front, &front.cvars.ErrorFileName, &(data->fr_value) );
     }
     if( data->fti ) {
-        cvars_state().CompFlags.track_includes = true;
+        front.cvars.CompFlags.track_includes = true;
     }
     if( data->i ) {
         OPT_STRING *s;
         reverseList( &(data->i_value) );
         for( s = data->i_value; s != NULL; s = s->next ) {
             if( s->data[0] != '\0' ) {
-                AddIncList( s->data );
+                AddIncList( front, s->data );
             }
         }
     }
     if( data->j ) {
-        SetSignedChar();
-        cvars_state().CompFlags.signed_char = true;
+        SetSignedChar(front);
+        front.cvars.CompFlags.signed_char = true;
     }
 #ifdef DEVBUILD
     if( data->lc ) {
@@ -694,147 +696,147 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
     }
 #endif
     if( data->oa ) {
-        cvars_state().GenSwitches |= CGSW_GEN_RELAX_ALIAS;
+        front.cvars.GenSwitches |= CGSW_GEN_RELAX_ALIAS;
     }
     if( data->ob ) {
-        cvars_state().GenSwitches |= CGSW_GEN_BRANCH_PREDICTION;
+        front.cvars.GenSwitches |= CGSW_GEN_BRANCH_PREDICTION;
     }
     // following must follow processing of debug options
     if( data->oe ) {
-        cvars_state().Inline_Threshold = data->oe_value;
+        front.cvars.Inline_Threshold = data->oe_value;
         TOGGLE( inline ) = true;
     }
     if( data->oh ) {
-        cvars_state().GenSwitches |= CGSW_GEN_SUPER_OPTIMAL;
+        front.cvars.GenSwitches |= CGSW_GEN_SUPER_OPTIMAL;
     }
     if( data->oi ) {
-        cvars_state().CompFlags.inline_functions = true;
+        front.cvars.CompFlags.inline_functions = true;
     }
     if( data->ok ) {
-        cvars_state().GenSwitches |= CGSW_GEN_FLOW_REG_SAVES;
+        front.cvars.GenSwitches |= CGSW_GEN_FLOW_REG_SAVES;
     }
     if( data->ol ) {
-        cvars_state().GenSwitches |= CGSW_GEN_LOOP_OPTIMIZATION;
+        front.cvars.GenSwitches |= CGSW_GEN_LOOP_OPTIMIZATION;
     }
     if( data->ol_plus ) {
-        cvars_state().GenSwitches |= CGSW_GEN_LOOP_OPTIMIZATION | CGSW_GEN_LOOP_UNROLLING;
+        front.cvars.GenSwitches |= CGSW_GEN_LOOP_OPTIMIZATION | CGSW_GEN_LOOP_UNROLLING;
     }
     if( data->on ) {
-        cvars_state().GenSwitches |= CGSW_GEN_FP_UNSTABLE_OPTIMIZATION;
+        front.cvars.GenSwitches |= CGSW_GEN_FP_UNSTABLE_OPTIMIZATION;
     }
     if( data->oo ) {
-        cvars_state().GenSwitches &= ~CGSW_GEN_MEMORY_LOW_FAILS;
+        front.cvars.GenSwitches &= ~CGSW_GEN_MEMORY_LOW_FAILS;
     }
     if( data->or_ ) {
-        cvars_state().GenSwitches |= CGSW_GEN_INS_SCHEDULING;
+        front.cvars.GenSwitches |= CGSW_GEN_INS_SCHEDULING;
     }
     if( data->ou ) {
-        cvars_state().CompFlags.unique_functions = true;
+        front.cvars.CompFlags.unique_functions = true;
     }
     if( data->oz ) {
-        cvars_state().GenSwitches |= CGSW_GEN_NULL_DEREF_OK;
+        front.cvars.GenSwitches |= CGSW_GEN_NULL_DEREF_OK;
     }
     if( data->p ) {
-        cvars_state().CompFlags.cpp_mode = true;
+        front.cvars.CompFlags.cpp_mode = true;
     }
     if( data->p_sharp ) {
-        cvars_state().PreProcChar = (char)data->p_sharp_value;
+        front.cvars.PreProcChar = (char)data->p_sharp_value;
     }
     if( data->pil ) {
-        cvars_state().CompFlags.cpp_ignore_line = true;
+        front.cvars.CompFlags.cpp_ignore_line = true;
     }
     if( data->pl ) {
-        cvars_state().CompFlags.cpp_mode = true;
-        cvars_state().CompFlags.cpp_line_wanted = true;
+        front.cvars.CompFlags.cpp_mode = true;
+        front.cvars.CompFlags.cpp_line_wanted = true;
     }
     if( data->pc ) {
-        cvars_state().CompFlags.cpp_mode = true;
-        cvars_state().CompFlags.cpp_keep_comments = true;
+        front.cvars.CompFlags.cpp_mode = true;
+        front.cvars.CompFlags.cpp_keep_comments = true;
     }
     if( data->pw ) {
-        cvars_state().CompFlags.cpp_mode = true;
-        SetPPWidth( data->pw_value );
+        front.cvars.CompFlags.cpp_mode = true;
+        SetPPWidth( front, data->pw_value );
     } else {
         /*
          * #line directives get screwed by wrapped lines but we don't want
          * to interfere with a user's setting of the width
          */
         if( data->pl ) {
-            SetPPWidth( 0 );
+            SetPPWidth( front, 0 );
         }
     }
-    if( cvars_state().CompFlags.cpp_mode ) {
-        cvars_state().CompFlags.cpp_output = true;
-        cvars_state().CompFlags.quiet_mode = true;
+    if( front.cvars.CompFlags.cpp_mode ) {
+        front.cvars.CompFlags.cpp_output = true;
+        front.cvars.CompFlags.quiet_mode = true;
     }
     if( data->pm ) {
-        cvars_state().CompFlags.cpp_dump_macros = true;
-        cvars_state().CompFlags.quiet_mode = true;
+        front.cvars.CompFlags.cpp_dump_macros = true;
+        front.cvars.CompFlags.quiet_mode = true;
     }
     if( data->rod ) {
         OPT_STRING *s;
         for( s = data->rod_value; s != NULL; s = s->next ) {
-            SrcFileReadOnlyDir( s->data );
+            SrcFileReadOnlyDir( front, s->data );
         }
     }
     if( data->s ) {
         TOGGLE( check_stack ) = false;
     }
     if( data->v ) {
-        cvars_state().CompFlags.dump_prototypes = true;
+        front.cvars.CompFlags.dump_prototypes = true;
     }
     if( data->wcd ) {
-        setMessageStatus( data->wcd_value, false );
+        setMessageStatus( front, data->wcd_value, false );
     }
     if( data->wce ) {
-        setMessageStatus( data->wce_value, true );
+        setMessageStatus( front, data->wce_value, true );
     }
     if( data->we ) {
-        cvars_state().CompFlags.warnings_cause_bad_exit = true;
+        front.cvars.CompFlags.warnings_cause_bad_exit = true;
     }
     if( data->wpx ) {
-        cvars_state().Check_global_prototype = true;
+        front.cvars.Check_global_prototype = true;
     }
     if( data->x ) {
-        cvars_state().CompFlags.cpp_ignore_env = true;
+        front.cvars.CompFlags.cpp_ignore_env = true;
     }
     if( data->xbsa ) {
-        cvars_state().CompFlags.unaligned_segs = true;
+        front.cvars.CompFlags.unaligned_segs = true;
     }
     if( data->xx ) {
-        cvars_state().CompFlags.ignore_default_dirs = true;
+        front.cvars.CompFlags.ignore_default_dirs = true;
     }
     if( data->zam ) {
-        cvars_state().CompFlags.non_iso_compliant_names_enabled = false;
+        front.cvars.CompFlags.non_iso_compliant_names_enabled = false;
     }
     if( data->zev ) {
-        cvars_state().CompFlags.unix_ext = true;
+        front.cvars.CompFlags.unix_ext = true;
     }
     if( data->zg ) {
-        cvars_state().CompFlags.generate_prototypes = true;
-        cvars_state().CompFlags.dump_prototypes = true;
+        front.cvars.CompFlags.generate_prototypes = true;
+        front.cvars.CompFlags.dump_prototypes = true;
     }
     if( data->zl ) {
-        cvars_state().CompFlags.emit_library_names = false;
+        front.cvars.CompFlags.emit_library_names = false;
     }
     if( data->zld ) {
-        cvars_state().CompFlags.emit_dependencies = false;
+        front.cvars.CompFlags.emit_dependencies = false;
     }
     if( data->zlf ) {
-        cvars_state().CompFlags.emit_all_default_libs = true;
+        front.cvars.CompFlags.emit_all_default_libs = true;
     }
     if( data->zls ) {
-        cvars_state().CompFlags.emit_targimp_symbols = false;
+        front.cvars.CompFlags.emit_targimp_symbols = false;
     }
     if( data->zp ) {
-        cvars_state().PackAmount = data->zp_value;
-        cvars_state().GblPackAmount = cvars_state().PackAmount;
+        front.cvars.PackAmount = data->zp_value;
+        front.cvars.GblPackAmount = front.cvars.PackAmount;
     }
     if( data->zpw ) {
-        cvars_state().CompFlags.slack_byte_warning = true;
+        front.cvars.CompFlags.slack_byte_warning = true;
     }
     if( data->zs ) {
-        cvars_state().CompFlags.check_syntax = true;
+        front.cvars.CompFlags.check_syntax = true;
     }
 #ifdef DEVBUILD
     if( data->tp ) {
@@ -849,26 +851,26 @@ static void AnalyseAnyTargetOptions( OPT_STORAGE *data )
         CompFlags.extra_stats_wanted = true;
     }
 #endif
-    SetCharacterEncoding( data );
-    CBanner();
+    SetCharacterEncoding( front, data );
+    CBanner(front);
 }
 
-bool MergeIncludeFromEnv( const char *env )
+bool MergeIncludeFromEnv( FrontRun& front, const char *env )
 /*****************************************/
 {
     const char  *env_value;
 
-    if( cvars_state().CompFlags.cpp_ignore_env )
+    if( front.cvars.CompFlags.cpp_ignore_env )
         return( false );
-    env_value = FEGetEnv( env );
+    env_value = FEGetEnv( front, env );
     if( env_value != NULL ) {
-        AddIncList( env_value );
+        AddIncList( front, env_value );
         return( true );
     }
     return( false );
 }
 
-static char *ReadIndirectFile( const char *fname )
+static char *ReadIndirectFile( FrontRun& front, const char *fname )
 {
     char        *env;
     char        *str;
@@ -877,15 +879,15 @@ static char *ReadIndirectFile( const char *fname )
     char        ch;
 
     env = NULL;
-    fp = fopen( fname, "rb" );
+    fp = front.held->fopen( fname, "rb" );
     if( fp != NULL ) {
         fseek( fp, 0, SEEK_END );
         len = (size_t)ftell( fp );
-        env = static_cast<char *>(CMemAlloc( len + 1 ));
+        env = static_cast<char *>(CMemAlloc( front, len + 1 ));
         rewind( fp );
         len = fread( env, 1, len, fp );
         env[len] = '\0';
-        fclose( fp );
+        front.held->fclose( fp );
         /*
          * zip through characters changing \r, \n etc into ' '
          */
@@ -908,7 +910,7 @@ static char *ReadIndirectFile( const char *fname )
 
 #include "cmdlnprs.gc"
 
-static void ProcOptions( OPT_STORAGE *data, const char *str )
+static void ProcOptions( FrontRun& front, OPT_STORAGE *data, const char *str )
 {
 #define MAX_NESTING 32
     int         level;
@@ -921,67 +923,67 @@ static void ProcOptions( OPT_STORAGE *data, const char *str )
 
     if( str != NULL ) {
         level = -1;
-        CmdScanLineInit( str );
+        CmdScanLineInit( front, str );
         for( ;; ) {
-            CmdScanSkipWhiteSpace();
-            ch = CmdScanChar();
+            CmdScanSkipWhiteSpace(front);
+            ch = CmdScanChar(front);
             if( ch == '@' ) {
-                coptions_state().switch_start = CmdScanAddr() - 1;
-                CmdScanSkipWhiteSpace();
+                front.coptions->switch_start = CmdScanAddr(front) - 1;
+                CmdScanSkipWhiteSpace(front);
                 fname = NULL;
-                if( OPT_GET_FILE( &fname ) ) {
+                if( OPT_GET_FILE( front, &fname ) ) {
                     penv = NULL;
                     level++;
                     if( level < MAX_NESTING ) {
                         ptr = NULL;
-                        penv = FEGetEnv( fname->data );
+                        penv = FEGetEnv( front, fname->data );
                         if( penv == NULL ) {
-                            ptr = ReadIndirectFile( fname->data );
+                            ptr = ReadIndirectFile( front, fname->data );
                             penv = ptr;
                         }
                         if( penv != NULL ) {
-                            save[level] = CmdScanLineInit( penv );
+                            save[level] = CmdScanLineInit( front, penv );
                             buffers[level] = ptr;
                         }
                     }
                     if( penv == NULL ) {
                         level--;
                     }
-                    OPT_CLEAN_STRING( &fname );
+                    OPT_CLEAN_STRING( front, &fname );
                 }
                 continue;
             }
             if( ch == '\0' ) {
                 if( level < 0 )
                     break;
-                CMemFree( buffers[level] );
-                CmdScanLineInit( save[level] );
+                CMemFree( front, buffers[level] );
+                CmdScanLineInit( front, save[level] );
                 level--;
                 continue;
             }
             if( CmdScanSwitchChar( ch ) ) {
-                coptions_state().switch_start = CmdScanAddr() - 1;
-                if( OPT_PROCESS( data ) ) {
+                front.coptions->switch_start = CmdScanAddr(front) - 1;
+                if( OPT_PROCESS( front, data ) ) {
                     /*
                      * incorrect option
                      */
-                    CBanner();
-                    BadCmdLineOption();
+                    CBanner(front);
+                    BadCmdLineOption(front);
                 }
             } else {  /* collect  file name */
-                CmdScanUngetChar();
-                coptions_state().switch_start = CmdScanAddr();
+                CmdScanUngetChar(front);
+                front.coptions->switch_start = CmdScanAddr(front);
                 fname = NULL;
-                if( OPT_GET_FILE( &fname ) ) {
-                    if( cvars_state().WholeFName != NULL ) {
+                if( OPT_GET_FILE( front, &fname ) ) {
+                    if( front.cvars.WholeFName != NULL ) {
                         /*
                          * more than one file to compile ?
                          */
-                        CBanner();
-                        CErr1( ERR_CAN_ONLY_COMPILE_ONE_FILE );
+                        CBanner(front);
+                        CErr1( front, ERR_CAN_ONLY_COMPILE_ONE_FILE );
                     }
-                    SetStringOption( &cvars_state().WholeFName, &fname );
-                    OPT_CLEAN_STRING( &fname );
+                    SetStringOption( front, &front.cvars.WholeFName, &fname );
+                    OPT_CLEAN_STRING( front, &fname );
                 }
             }
         }
@@ -989,32 +991,32 @@ static void ProcOptions( OPT_STORAGE *data, const char *str )
 #undef MAX_NESTING
 }
 
-void GenCOptions( char **cmdline )
+void GenCOptions( FrontRun& front, char **cmdline )
 {
     OPT_STORAGE data;
 
     /*
      * Add precision warning but disabled by default
      */
-    WarnEnableDisable( false, ERR_LOSE_PRECISION );
+    WarnEnableDisable( front, false, ERR_LOSE_PRECISION );
     /*
      * Warning about non-prototype declarations is disabled by default
      * because Windows and OS/2 API headers use it
      */
-    WarnEnableDisable( false, ERR_OBSOLETE_FUNC_DECL );
+    WarnEnableDisable( front, false, ERR_OBSOLETE_FUNC_DECL );
     /*
      * Warning about pointer truncation during cast is disabled by
      * default because it would cause too many build breaks right now
      * by correctly diagnosing broken code.
      */
-    WarnEnableDisable( false, ERR_CAST_POINTER_TRUNCATION );
-    InitModInfo();
-    CmdSysInit();
+    WarnEnableDisable( front, false, ERR_CAST_POINTER_TRUNCATION );
+    InitModInfo(front);
+    CmdSysInit(front);
     OPT_INIT( &data );
 #if _CPU == 8086
-    ProcOptions( &data, FEGetEnv( "WCC" ) );
+    ProcOptions( front, &data, FEGetEnv( front, "WCC" ) );
 #elif _CPU == 386
-    ProcOptions( &data, FEGetEnv( "WCC386" ) );
+    ProcOptions( front, &data, FEGetEnv( front, "WCC386" ) );
 #elif _CPU == _AXP
     ProcOptions( &data, FEGetEnv( "WCCAXP" ) );
 #elif _CPU == _PPC
@@ -1027,17 +1029,21 @@ void GenCOptions( char **cmdline )
     #error Compiler environment variable not_ configured
 #endif
     for( ;*cmdline != NULL; ++cmdline ) {
-        ProcOptions( &data, *cmdline );
+        ProcOptions( front, &data, *cmdline );
     }
-    if( cvars_state().CompFlags.cpp_mode ) {
-        cvars_state().CompFlags.cpp_output = true;
-        cvars_state().CompFlags.quiet_mode = true;
+    if( front.cvars.CompFlags.cpp_mode ) {
+        front.cvars.CompFlags.cpp_output = true;
+        front.cvars.CompFlags.quiet_mode = true;
     }
     /*
      * print banner if -zq not specified
      */
-    AnalyseAnyTargetOptions( &data );
-    CmdSysAnalyse( &data );
-    OPT_FINI( &data );
-    MiscMacroDefs();
+    AnalyseAnyTargetOptions( front, &data );
+    CmdSysAnalyse( front, &data );
+    OPT_FINI( front, &data );
+    MiscMacroDefs(front);
 }
+
+/* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
+CoptionsState* coptions_make() { return new CoptionsState(); }
+void coptions_free(CoptionsState* part) { delete part; }

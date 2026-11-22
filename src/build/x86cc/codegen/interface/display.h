@@ -30,14 +30,15 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "offset.h"
 
-extern name             *MakeDisplay( name *op, level_depth level );
-extern void             BigGoto( level_depth level );
-extern void             BigLabel( void );
-extern bool             AskIsFrameIndex( name *op );
-extern abspatch_handle  *NextFramePatch( void );
-extern void             PatchBigLabels( offset lc );
-extern an               PassProcParm( an rtn );
-extern void             SaveDisplay( opcode_defs opcode );
-extern void             SetDisplay( name *temp );
+extern name             *MakeDisplay( BackRun& back, name *op, level_depth level );
+extern void             BigGoto( BackRun& back, level_depth level );
+extern void             BigLabel( BackRun& back );
+extern bool             AskIsFrameIndex( BackRun& back, name *op );
+extern abspatch_handle  *NextFramePatch( BackRun& back );
+extern void             PatchBigLabels( BackRun& back, offset lc );
+extern an               PassProcParm( BackRun& back, an rtn );
+extern void             SaveDisplay( BackRun& back, opcode_defs opcode );
+extern void             SetDisplay( BackRun& back, name *temp );

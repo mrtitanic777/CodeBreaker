@@ -36,9 +36,9 @@
 
 typedef struct carve_t_s *carve_t;
 
-extern carve_t  DW_CarveCreate( dw_client, size_t, size_t );
-extern void     DW_CarveDestroy( dw_client, carve_t );
-extern void     *DW_CarveAlloc( dw_client, carve_t );
+extern carve_t  DW_CarveCreate( BackRun& back, dw_client, size_t, size_t );
+extern void     DW_CarveDestroy( BackRun& back, dw_client, carve_t );
+extern void     *DW_CarveAlloc( BackRun& back, dw_client, carve_t );
 extern void     DW_CarveFree( carve_t, void * );
 extern void     *DW_CarveFreeLink( carve_t, void * );
 extern void     DW_CarveFreeChain( carve_t, void * );

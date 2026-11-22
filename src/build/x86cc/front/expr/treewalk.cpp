@@ -30,36 +30,34 @@
 
 
 #include "cvars.h"
+#include "frontrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct TreewalkState {
-    unsigned NodeTimeStamp;
-};
+/* (struct TreewalkState: treewalk_state.h) */
 
 }  // namespace
 
-static inline TreewalkState& treewalk_state() { return cbrun_part<TreewalkState>(); }
 
 
-int WalkExprTree( TREEPTR p,
-                void (*operand)( TREEPTR ),
-                void (*prefix_operator)( TREEPTR ),
-                void (*infix_operator)( TREEPTR ),
-                void (*postfix_operator)( TREEPTR ) )
+int WalkExprTree( FrontRun& front, TREEPTR p,
+                void (*operand)( FrontRun&, TREEPTR ),
+                void (*prefix_operator)( FrontRun&, TREEPTR ),
+                void (*infix_operator)( FrontRun&, TREEPTR ),
+                void (*postfix_operator)( FrontRun&, TREEPTR ) )
 {
     TREEPTR     parent;
     TREEPTR     temp;
 
-    treewalk_state().NodeTimeStamp = 0;
+    front.treewalk.NodeTimeStamp = 0;
     parent = NULL;
     for( ;; ) {
         for( ;; ) {
             if( p->left == 0 && p->right == 0 ) break;
-            ++treewalk_state().NodeTimeStamp;
-            (*prefix_operator)( p );
+            ++front.treewalk.NodeTimeStamp;
+            (*prefix_operator)( front, p );
             if( p->left == 0 ) break;
             temp = p;
             p = p->left;
@@ -68,16 +66,16 @@ int WalkExprTree( TREEPTR p,
             parent = temp;
         }
         if( parent == NULL ) {
-            ++treewalk_state().NodeTimeStamp;
-            (*prefix_operator)( p );
+            ++front.treewalk.NodeTimeStamp;
+            (*prefix_operator)( front, p );
         } else if( p->right == NULL ) {
-            ++treewalk_state().NodeTimeStamp;
-            (*operand)( p );
+            ++front.treewalk.NodeTimeStamp;
+            (*operand)( front, p );
             goto move_up_to_parent;
         }
         for( ;; ) {
-            ++treewalk_state().NodeTimeStamp;
-            (*infix_operator)( p );     /* - perform infix operation */
+            ++front.treewalk.NodeTimeStamp;
+            (*infix_operator)( front, p );     /* - perform infix operation */
             if( p->right != NULL ) {    /* - if present */
                 temp = p;
                 p = p->right;           /* - - get right */
@@ -86,8 +84,8 @@ int WalkExprTree( TREEPTR p,
                 break;                  /* - - get out to visit right */
             }                           /* - endif */
 do_postfix_call:
-            ++treewalk_state().NodeTimeStamp;
-            (*postfix_operator)( p );   /* perform postfix operation */
+            ++front.treewalk.NodeTimeStamp;
+            (*postfix_operator)( front, p );   /* perform postfix operation */
             if( parent == NULL )        /* quit if at root node */
                 return( 0 );
 move_up_to_parent:
@@ -109,7 +107,7 @@ move_up_to_parent:
     }
 }
 
-void NoOp( TREEPTR node )
+void NoOp( FrontRun& front, TREEPTR node )
 {
     /* unused parameters */ (void)node;
 }

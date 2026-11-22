@@ -41,85 +41,85 @@ extern "C" {
 // Standard Command-Line Parsing Routines
 
 void OPT_CLEAN_NUMBER           // CLEAN UP NUMBERS
-    ( OPT_NUMBER **h )          // - list
+    ( FrontRun& front, OPT_NUMBER **h )          // - list
 ;
 void OPT_CLEAN_STRING           // CLEAN UP STRINGS
-    ( OPT_STRING **h )          // - list
+    ( FrontRun& front, OPT_STRING **h )          // - list
 ;
-bool OPT_END( void )            // DETECT END OF CHAIN
+bool OPT_END( FrontRun& front )            // DETECT END OF CHAIN
 ;
 bool OPT_GET_ID                 // PARSE: ID
-    ( OPT_STRING **p )          // - target
+    ( FrontRun& front, OPT_STRING **p )          // - target
 ;
 bool OPT_GET_ID_OPT             // PARSE: OPTIONAL ID
-    ( OPT_STRING **p )          // - target
+    ( FrontRun& front, OPT_STRING **p )          // - target
 ;
 int OPT_GET_LOWER               // GET CHAR IN LOWERCASE
-    ( void )
+    ( FrontRun& front )
 ;
 bool OPT_GET_NUMBER             // PARSE: #
-    ( unsigned *p )             // - target
+    ( FrontRun& front, unsigned *p )             // - target
 ;
 bool OPT_GET_NUMBER_DEFAULT(    // PARSE: OPTIONAL # WITH A DEFAULT VALUE
-    unsigned *p,                // - target
+    FrontRun& front, unsigned *p,                // - target
     unsigned default_value )    // - default value
 ;
 bool OPT_GET_NUMBER_MULTIPLE    // PARSE: OPTION #
-    ( OPT_NUMBER **h )          // - target
+    ( FrontRun& front, OPT_NUMBER **h )          // - target
 ;
 bool OPT_GET_PATH               // PARSE: PATH
-    ( OPT_STRING **p )          // - target
+    ( FrontRun& front, OPT_STRING **p )          // - target
 ;
 bool OPT_GET_PATH_OPT           // PARSE: OPTIONAL PATH
-    ( OPT_STRING **p )          // - target
+    ( FrontRun& front, OPT_STRING **p )          // - target
 ;
 bool OPT_GET_FILE               // PARSE: FILE
-    ( OPT_STRING **p )          // - target
+    ( FrontRun& front, OPT_STRING **p )          // - target
 ;
 bool OPT_GET_FILE_OPT           // PARSE: OPTIONAL FILE
-    ( OPT_STRING **p )          // - target
+    ( FrontRun& front, OPT_STRING **p )          // - target
 ;
 bool OPT_GET_CHAR               // PARSE: CHAR
-    ( int *c )                  // - target
+    ( FrontRun& front, int *c )                  // - target
 ;
 bool OPT_GET_CHAR_OPT           // PARSE: OPTIONAL CHAR
-    ( int *c )                  // - target
+    ( FrontRun& front, int *c )                  // - target
 ;
 bool OPT_GET_OPTION             // PARSE: OPTION TEXT
-    ( OPT_STRING **p )          // - target
+    ( FrontRun& front, OPT_STRING **p )          // - target
 ;
 bool OPT_RECOG                  // RECOGNIZE CHAR
-    ( int c )                   // - to be recog'ed
+    ( FrontRun& front, int c )                   // - to be recog'ed
 ;
 bool OPT_RERECOG                // RE-RECOGNIZE LAST CHAR
-    ( int c )                   // - to be recog'ed
+    ( FrontRun& front, int c )                   // - to be recog'ed
 ;
 bool OPT_RECOG_LOWER            // RECOGNIZE LOWERCASE CHAR
-    ( int c )                   // - to be recog'ed
+    ( FrontRun& front, int c )                   // - to be recog'ed
 ;
 void OPT_UNGET                  // UNGET A CHARACTER
-    ( void )
+    ( FrontRun& front )
 ;
 
 // The following are required to be supplied by the front end
 
 void BadCmdLineChar             // BAD CHAR DETECTED
-    ( void )
+    ( FrontRun& front )
 ;
 void BadCmdLineId               // BAD ID DETECTED
-    ( void )
+    ( FrontRun& front )
 ;
 void BadCmdLineNumber           // BAD NUMBER DETECTED
-    ( void )
+    ( FrontRun& front )
 ;
 void BadCmdLinePath             // BAD PATH DETECTED
-    ( void )
+    ( FrontRun& front )
 ;
 void BadCmdLineFile             // BAD FILE DETECTED
-    ( void )
+    ( FrontRun& front )
 ;
 void BadCmdLineOption           // BAD TEXT DETECTED
-    ( void )
+    ( FrontRun& front )
 ;
 
 #ifdef __cplusplus

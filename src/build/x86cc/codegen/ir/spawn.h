@@ -29,5 +29,6 @@
 ****************************************************************************/
 
 
-extern  void            Suicide( void );
-extern  int             Spawn(void (*)( void ));
+#pragma once
+extern  void            Suicide( BackRun& back );
+extern  int             Spawn(BackRun& back, void (*)( BackRun& ));

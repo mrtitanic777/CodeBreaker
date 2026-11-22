@@ -37,6 +37,7 @@
 #if _INTEL_CPU
 
 #include "target.h"
+#include "frontrun.hpp"
 
 static char const * const AsmErrMsgs[] = {
     #define pick(c,e,j)         e,
@@ -44,9 +45,9 @@ static char const * const AsmErrMsgs[] = {
     #undef pick
 };
 
-void AsmError( unsigned msg_number )
+void AsmError( FrontRun& front, unsigned msg_number )
 {
-    CErr2p( ERR_ASSEMBLER_ERROR, AsmErrMsgs[msg_number] );
+    CErr2p( front, ERR_ASSEMBLER_ERROR, AsmErrMsgs[msg_number] );
 }
 
 #else /* _RISC_CPU */

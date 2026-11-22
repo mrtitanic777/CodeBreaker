@@ -45,32 +45,30 @@
 #include "dbsupp.h"
 #include "wvsupp.h"
 #include "i64.h"
+#include "backrun.hpp"
 
 
 #define MAX_TYPE_SIZE   (1024 * 16)
 
-static  void            NewType( temp_buff *temp, uint ty_def );
-static  void            EndType( bool check_too_big );
+static  void            NewType( BackRun& back, temp_buff *temp, uint ty_def );
+static  void            EndType( BackRun& back, bool check_too_big );
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct WvtypesState {
-    dbg_patch CueInfoOffset;
-};
+/* (struct WvtypesState: wvtypes_state.h) */
 
 }  // namespace
 
-static inline WvtypesState& wvtypes_state() { return cbrun_part<WvtypesState>(); }
 
 
-static  byte    GetScalar( cg_type tipe ) {
+static  byte    GetScalar( BackRun& back, cg_type tipe ) {
 /*****************************************/
 
     byte            scalar;
     const type_def  *tipe_addr;
 
-    tipe_addr = TypeAddress( tipe );
+    tipe_addr = TypeAddress( back, tipe );
     if( tipe_addr->refno == TY_DEFAULT ) {
         return( SCALAR_VOID );
     }
@@ -114,179 +112,179 @@ static  uint    SignedSizeClass64( signed_64 val )
     return( class_ );
 }
 
-void    WVSrcCueLoc( void  )
+void    WVSrcCueLoc( BackRun& back  )
 /**************************/
 // Leave a dword to be back patched with the offset of line info
 {
     temp_buff   temp;
 
-    BuffStart( &temp, WT_NAME + NAME_CUEINFO );
-    BuffForward( &wvtypes_state().CueInfoOffset ); /* does a  0 word */
-    BuffWord( 0 ); /* another 0 word */
-    EndType( false );
+    BuffStart( back, &temp, WT_NAME + NAME_CUEINFO );
+    BuffForward( back, &back.wvtypes.CueInfoOffset ); /* does a  0 word */
+    BuffWord( back, 0 ); /* another 0 word */
+    EndType( back, false );
 }
 
-void    WVTypesEof( void )
+void    WVTypesEof( BackRun& back )
 /************************/
 // Leave Eof indicator for types
 {
     temp_buff   temp;
 
-    BuffStart( &temp, WT_NAME + NAME_EOF );
-    EndType( false );
+    BuffStart( back, &temp, WT_NAME + NAME_EOF );
+    EndType( back, false );
 }
 
-dbg_type        WVFtnType( const char *name, dbg_ftn_type tipe )
+dbg_type        WVFtnType( BackRun& back, const char *name, dbg_ftn_type tipe )
 /**************************************************************/
 {
     temp_buff   temp;
 
-    NewType( &temp, WT_NAME + NAME_SCALAR );
-    BuffByte( tipe );
-    BuffWSLString( name );
-    EndType( true );
-    return( data_state().TypeIdx );
+    NewType( back, &temp, WT_NAME + NAME_SCALAR );
+    BuffByte( back, tipe );
+    BuffWSLString( back, name );
+    EndType( back, true );
+    return( back.data.TypeIdx );
 }
 
 
-dbg_type        WVScalar( const char *name, cg_type tipe )
+dbg_type        WVScalar( BackRun& back, const char *name, cg_type tipe )
 /********************************************************/
 {
     temp_buff   temp;
 
-    NewType( &temp, WT_NAME + NAME_SCALAR );
-    BuffByte( GetScalar( tipe ) );
-    BuffWSLString( name );
-    EndType( true );
-    return( data_state().TypeIdx );
+    NewType( back, &temp, WT_NAME + NAME_SCALAR );
+    BuffByte( back, GetScalar( back, tipe ) );
+    BuffWSLString( back, name );
+    EndType( back, true );
+    return( back.data.TypeIdx );
 }
 
 
-dbg_type        WVScope( const char *name )
+dbg_type        WVScope( BackRun& back, const char *name )
 /*****************************************/
 {
     temp_buff   temp;
 
-    NewType( &temp, WT_NAME + NAME_SCOPE );
-    BuffWSLString( name );
-    EndType( true );
-    return( data_state().TypeIdx );
+    NewType( back, &temp, WT_NAME + NAME_SCOPE );
+    BuffWSLString( back, name );
+    EndType( back, true );
+    return( back.data.TypeIdx );
 }
 
 
-void    WVDumpName( dbg_name name, dbg_type tipe )
+void    WVDumpName( BackRun& back, dbg_name name, dbg_type tipe )
 /************************************************/
 {
     temp_buff   temp;
 
-    NewType( &temp, WT_NAME + NAME_NAME );
-    name->refno = data_state().TypeIdx;
+    NewType( back, &temp, WT_NAME + NAME_NAME );
+    name->refno = back.data.TypeIdx;
     if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
-        BuffIndex( name->scope );
+        BuffIndex( back, name->scope );
         if( tipe == DBG_FWD_TYPE ) {
-            BuffForward( &name->dpatch );
+            BuffForward( back, &name->dpatch );
         } else {
-            BuffIndex( tipe );
+            BuffIndex( back, tipe );
         }
-        BuffString( name->len, name->name );
+        BuffString( back, name->len, name->name );
     }
-    EndType( true );
+    EndType( back, true );
 }
 
-void WVBackRefType( dbg_name name, dbg_type tipe )
+void WVBackRefType( BackRun& back, dbg_name name, dbg_type tipe )
 /************************************************/
 {
     offset      here;
 
     PUSH_OP( name->dpatch.segid );
-        here = AskLocation();
-        SetLocation( name->dpatch.offset );
-        DataShort( 0x80 | (tipe >> 8) | (tipe << 8) );
-        SetLocation( here );
+        here = AskLocation(back);
+        SetLocation( back, name->dpatch.offset );
+        DataShort( back, 0x80 | (tipe >> 8) | (tipe << 8) );
+        SetLocation( back, here );
     POP_OP();
 }
 
-dbg_type        WVCharBlock( uint_32 len )
+dbg_type        WVCharBlock( BackRun& back, uint_32 len )
 /****************************************/
 {
     temp_buff   temp;
     int         class_;
 
     class_ = SignedSizeClass( len );
-    NewType( &temp, WT_CHAR_BLOCK + NAME_CHAR_BYTE + class_ );
-    BuffValue( len, class_ );
-    EndType( true );
-    return( data_state().TypeIdx );
+    NewType( back, &temp, WT_CHAR_BLOCK + NAME_CHAR_BYTE + class_ );
+    BuffValue( back, len, class_ );
+    EndType( back, true );
+    return( back.data.TypeIdx );
 }
 
-dbg_type    WVIndCharBlock( back_handle len, cg_type len_type, int off )
+dbg_type    WVIndCharBlock( BackRun& back, back_handle len, cg_type len_type, int off )
 /**********************************************************************/
 {
     temp_buff   temp;
 
-    NewType( &temp, WT_CHAR_BLOCK + NAME_CHAR_IND );
-    BuffByte( GetScalar( len_type ) );
-    BuffBack( len, off );
-    EndType( true );
-    return( data_state().TypeIdx );
+    NewType( back, &temp, WT_CHAR_BLOCK + NAME_CHAR_IND );
+    BuffByte( back, GetScalar( back, len_type ) );
+    BuffBack( back, len, off );
+    EndType( back, true );
+    return( back.data.TypeIdx );
 }
 
-dbg_type        WVLocCharBlock( dbg_loc loc, cg_type len_type )
+dbg_type        WVLocCharBlock( BackRun& back, dbg_loc loc, cg_type len_type )
 /*************************************************************/
 {
     temp_buff   temp;
 
-    NewType( &temp, WT_CHAR_BLOCK + NAME_CHAR_LOC );
-    BuffByte( GetScalar( len_type ) );
-    LocDump( LocDupl( loc ) );
-    EndType( true );
-    return( data_state().TypeIdx );
+    NewType( back, &temp, WT_CHAR_BLOCK + NAME_CHAR_LOC );
+    BuffByte( back, GetScalar( back, len_type ) );
+    LocDump( back, LocDupl( loc ) );
+    EndType( back, true );
+    return( back.data.TypeIdx );
 }
 
 
-dbg_type    WVFtnArray( back_handle dims, cg_type lo_bound_tipe, cg_type num_elems_tipe, int off, dbg_type base )
+dbg_type    WVFtnArray( BackRun& back, back_handle dims, cg_type lo_bound_tipe, cg_type num_elems_tipe, int off, dbg_type base )
 /***************************************************************************************************************/
 {
     temp_buff   temp;
 
-    NewType( &temp, WT_ARRAY + FORTRAN_TYPE );
-    BuffByte( GetScalar( lo_bound_tipe ) );
-    BuffByte( GetScalar( num_elems_tipe ) );
-    BuffBack( dims, off );
-    BuffIndex( base );
-    EndType( true );
-    return( data_state().TypeIdx );
+    NewType( back, &temp, WT_ARRAY + FORTRAN_TYPE );
+    BuffByte( back, GetScalar( back, lo_bound_tipe ) );
+    BuffByte( back, GetScalar( back, num_elems_tipe ) );
+    BuffBack( back, dims, off );
+    BuffIndex( back, base );
+    EndType( back, true );
+    return( back.data.TypeIdx );
 }
 
 
-dbg_type        WVArray( dbg_type idx, dbg_type base )
+dbg_type        WVArray( BackRun& back, dbg_type idx, dbg_type base )
 /****************************************************/
 {
     temp_buff   temp;
 
-    NewType( &temp, WT_ARRAY + ARRAY_TYPE );
-    BuffIndex( idx );
-    BuffIndex( base );
-    EndType( true );
-    return( data_state().TypeIdx );
+    NewType( back, &temp, WT_ARRAY + ARRAY_TYPE );
+    BuffIndex( back, idx );
+    BuffIndex( back, base );
+    EndType( back, true );
+    return( back.data.TypeIdx );
 }
 
 
-dbg_type        WVIntArray( uint_32 hi, dbg_type base )
+dbg_type        WVIntArray( BackRun& back, uint_32 hi, dbg_type base )
 /*****************************************************/
 {
     uint        class_;
     temp_buff   temp;
 
     class_ = SignedSizeClass( hi );
-    NewType( &temp, WT_ARRAY + ARRAY_BYTE + class_ );
-    BuffValue( hi, class_ );
-    BuffIndex( base );
-    EndType( true );
-    return( data_state().TypeIdx );
+    NewType( back, &temp, WT_ARRAY + ARRAY_BYTE + class_ );
+    BuffValue( back, hi, class_ );
+    BuffIndex( back, base );
+    EndType( back, true );
+    return( back.data.TypeIdx );
 }
 
-dbg_type    WVSubRange( int_32 lo, int_32 hi, dbg_type base )
+dbg_type    WVSubRange( BackRun& back, int_32 lo, int_32 hi, dbg_type base )
 /***********************************************************/
 {
     uint        class_lo;
@@ -298,12 +296,12 @@ dbg_type    WVSubRange( int_32 lo, int_32 hi, dbg_type base )
     if( class_lo > class_hi ) {
        class_hi = class_lo;
     }
-    NewType( &temp, WT_SUBRANGE + RANGE_BYTE + class_hi );
-    BuffValue( lo, class_hi );
-    BuffValue( hi, class_hi );
-    BuffIndex( base );
-    EndType( true );
-    return( data_state().TypeIdx );
+    NewType( back, &temp, WT_SUBRANGE + RANGE_BYTE + class_hi );
+    BuffValue( back, lo, class_hi );
+    BuffValue( back, hi, class_hi );
+    BuffIndex( back, base );
+    EndType( back, true );
+    return( back.data.TypeIdx );
 }
 
 #if 0
@@ -327,7 +325,7 @@ static  void    ReverseDims( dbg_array ar )
 }
 #endif
 
-dbg_type    WVEndArray( dbg_array ar )
+dbg_type    WVEndArray( BackRun& back, dbg_array ar )
 /************************************/
 {
     dim_any   *dim;
@@ -339,61 +337,61 @@ dbg_type    WVEndArray( dbg_array ar )
         ar->list = dim->next;
         switch( dim->kind ) {
         case DIM_CON:
-            sub = WVSubRange( dim->u.con.lo, dim->u.con.hi, dim->u.con.idx );
-            ret = WVArray( sub, ar->base );
+            sub = WVSubRange( back, dim->u.con.lo, dim->u.con.hi, dim->u.con.idx );
+            ret = WVArray( back, sub, ar->base );
             ar->base = ret;
             break;
         case DIM_VAR:
-            ret = WVFtnArray( dim->u.var.dims, dim->u.var.lo_bound_tipe,
+            ret = WVFtnArray( back, dim->u.var.dims, dim->u.var.lo_bound_tipe,
                      dim->u.var.num_elems_tipe, dim->u.var.off, ar->base );
             ar->base = ret;
             break;
 
         }
-        CGFree( dim  );
+        CGFree( back, dim  );
     }
     return( ret );
 }
 
-static  dbg_type        DbgPtr( cg_type ptr_type, dbg_type base, int adjust,
+static  dbg_type        DbgPtr( BackRun& back, cg_type ptr_type, dbg_type base, int adjust,
                                 dbg_loc loc_segment ) {
 /***************************************************************************/
 
     temp_buff   temp;
 
-    switch( TypeAddress( ptr_type )->refno ) {
+    switch( TypeAddress( back, ptr_type )->refno ) {
     case TY_NEAR_POINTER:
     case TY_NEAR_CODE_PTR:
-        NewType( &temp, WT_POINTER + POINTER_NEAR + adjust );
+        NewType( back, &temp, WT_POINTER + POINTER_NEAR + adjust );
         break;
     default:
-        NewType( &temp, WT_POINTER + POINTER_FAR + adjust );
+        NewType( back, &temp, WT_POINTER + POINTER_FAR + adjust );
     }
-    BuffIndex( base );
+    BuffIndex( back, base );
     if( loc_segment != NULL ) {
-        LocDump( LocDupl( loc_segment ) );
+        LocDump( back, LocDupl( loc_segment ) );
     }
-    EndType( true );
-    return( data_state().TypeIdx );
+    EndType( back, true );
+    return( back.data.TypeIdx );
 }
 
 
-dbg_type        WVDereference( cg_type ptr_type, dbg_type base )
+dbg_type        WVDereference( BackRun& back, cg_type ptr_type, dbg_type base )
 /**************************************************************/
 {
-    return( DbgPtr( ptr_type, base, DEREF_NEAR - POINTER_NEAR, NULL ) );
+    return( DbgPtr( back, ptr_type, base, DEREF_NEAR - POINTER_NEAR, NULL ) );
 }
 
-dbg_type        WVPtr( cg_type ptr_type, dbg_type base )
+dbg_type        WVPtr( BackRun& back, cg_type ptr_type, dbg_type base )
 /******************************************************/
 {
-    return( DbgPtr( ptr_type, base, 0, NULL ) );
+    return( DbgPtr( back, ptr_type, base, 0, NULL ) );
 }
 
-dbg_type    WVBasedPtr( cg_type ptr_type, dbg_type base, dbg_loc loc_segment )
+dbg_type    WVBasedPtr( BackRun& back, cg_type ptr_type, dbg_type base, dbg_loc loc_segment )
 /****************************************************************************/
 {
-    return( DbgPtr( ptr_type, base, 0, loc_segment ) );
+    return( DbgPtr( back, ptr_type, base, 0, loc_segment ) );
 }
 
 static  void    AddField( field_any **owner, field_any *field )
@@ -446,17 +444,17 @@ static  void    SortFields( dbg_struct st )
 }
 
 
-dbg_type        WVEndStruct( dbg_struct st )
+dbg_type        WVEndStruct( BackRun& back, dbg_struct st )
 /******************************************/
 {
     field_any   *field;
     uint        class_;
     temp_buff   temp;
 
-    NewType( &temp, WT_STRUCTURE + STRUCT_LIST );
-    BuffWord( st->num );
-    BuffDWord( st->size );
-    EndType( true );
+    NewType( back, &temp, WT_STRUCTURE + STRUCT_LIST );
+    BuffWord( back, st->num );
+    BuffDWord( back, st->size );
+    EndType( back, true );
     SortFields( st );
     for( ;; ) {
         field = st->list;
@@ -464,24 +462,24 @@ dbg_type        WVEndStruct( dbg_struct st )
             break;
         switch( field->entry.field_type ) {
         case FIELD_INHERIT:
-            BuffStart( &temp, WT_STRUCTURE + STRUCT_INHERIT );
-            LocDump( field->bclass.u.adjustor );
-            BuffIndex( field->bclass.base );
+            BuffStart( back, &temp, WT_STRUCTURE + STRUCT_INHERIT );
+            LocDump( back, field->bclass.u.adjustor );
+            BuffIndex( back, field->bclass.base );
             break;
         case FIELD_LOC:
             if( field->member.b_len == 0 ) {
-                BuffStart( &temp, WT_STRUCTURE + STRUCT_F_LOC );
-                BuffByte( field->member.attr );
-                LocDump( field->member.u.loc );
+                BuffStart( back, &temp, WT_STRUCTURE + STRUCT_F_LOC );
+                BuffByte( back, field->member.attr );
+                LocDump( back, field->member.u.loc );
             } else {
-                BuffStart( &temp, WT_STRUCTURE + STRUCT_BF_LOC );
-                BuffByte( field->member.attr );
-                LocDump( field->member.u.loc );
-                BuffByte( field->member.b_strt );
-                BuffByte( field->member.b_len );
+                BuffStart( back, &temp, WT_STRUCTURE + STRUCT_BF_LOC );
+                BuffByte( back, field->member.attr );
+                LocDump( back, field->member.u.loc );
+                BuffByte( back, field->member.b_strt );
+                BuffByte( back, field->member.b_len );
             }
-            BuffIndex( field->member.base );
-            BuffString( field->member.len, field->member.name );
+            BuffIndex( back, field->member.base );
+            BuffString( back, field->member.len, field->member.name );
             break;
         case FIELD_OFFSET:
             if( field->member.u.off <= 0x00ff ) {
@@ -492,16 +490,16 @@ dbg_type        WVEndStruct( dbg_struct st )
                 class_ = 2;
             }
             if( field->member.b_len == 0 ) {
-                BuffStart( &temp, WT_STRUCTURE + STRUCT_F_BYTE + class_ );
-                BuffValue( field->member.u.off, class_ );
+                BuffStart( back, &temp, WT_STRUCTURE + STRUCT_F_BYTE + class_ );
+                BuffValue( back, field->member.u.off, class_ );
             } else {
-                BuffStart( &temp, WT_STRUCTURE + STRUCT_BF_BYTE + class_ );
-                BuffValue( field->member.u.off, class_ );
-                BuffByte( field->member.b_strt );
-                BuffByte( field->member.b_len );
+                BuffStart( back, &temp, WT_STRUCTURE + STRUCT_BF_BYTE + class_ );
+                BuffValue( back, field->member.u.off, class_ );
+                BuffByte( back, field->member.b_strt );
+                BuffByte( back, field->member.b_len );
             }
-            BuffIndex( field->member.base );
-            BuffString( field->member.len, field->member.name );
+            BuffIndex( back, field->member.base );
+            BuffString( back, field->member.len, field->member.name );
             break;
         case FIELD_METHOD:
             break;
@@ -512,15 +510,15 @@ dbg_type        WVEndStruct( dbg_struct st )
         default:
             break;
         }
-        EndType( false );
+        EndType( back, false );
         st->list = field->entry.next;
-        CGFree( field  );
+        CGFree( back, field  );
     }
-    return( data_state().TypeIdx );
+    return( back.data.TypeIdx );
 }
 
 
-dbg_type        WVEndEnum( dbg_enum en )
+dbg_type        WVEndEnum( BackRun& back, dbg_enum en )
 /**************************************/
 {
     const_entry *cons;
@@ -528,33 +526,33 @@ dbg_type        WVEndEnum( dbg_enum en )
     temp_buff   temp;
     signed_64   val;
 
-    NewType( &temp, WT_ENUMERATED + ENUM_LIST );
-    BuffWord( en->num );
-    BuffByte( GetScalar( en->tipe ) );
-    EndType( true );
+    NewType( back, &temp, WT_ENUMERATED + ENUM_LIST );
+    BuffWord( back, en->num );
+    BuffByte( back, GetScalar( back, en->tipe ) );
+    EndType( back, true );
     for( ;; ) {
         cons = en->list;
         if( cons == NULL )
             break;
         val = cons->val;
         class_ = SignedSizeClass64( val );
-        BuffStart( &temp, WT_ENUMERATED + ENUM_BYTE + class_ );
+        BuffStart( back, &temp, WT_ENUMERATED + ENUM_BYTE + class_ );
         if( class_ == 3 ) {
-            BuffValue( U64Low( val ), 2 );
-            BuffValue( U64High( val ), 2 );
+            BuffValue( back, U64Low( val ), 2 );
+            BuffValue( back, U64High( val ), 2 );
         } else {
-            BuffValue( U64Low( val ), class_ );
+            BuffValue( back, U64Low( val ), class_ );
         }
-        BuffString( cons->len, cons->name );
-        EndType( false );
+        BuffString( back, cons->len, cons->name );
+        EndType( back, false );
         en->list = cons->next;
-        CGFree( cons );
+        CGFree( back, cons );
     }
-    return( data_state().TypeIdx );
+    return( back.data.TypeIdx );
 }
 
 
-dbg_type        WVEndProc( dbg_proc pr )
+dbg_type        WVEndProc( BackRun& back, dbg_proc pr )
 /**************************************/
 {
     parm_entry  *parm;
@@ -562,68 +560,68 @@ dbg_type        WVEndProc( dbg_proc pr )
     dbg_type    proc_type;
 
     if( pr->call == TY_NEAR_CODE_PTR ) {
-        NewType( &temp, WT_PROCEDURE + PROC_NEAR );
+        NewType( back, &temp, WT_PROCEDURE + PROC_NEAR );
     } else {
-        NewType( &temp, WT_PROCEDURE + PROC_FAR );
+        NewType( back, &temp, WT_PROCEDURE + PROC_FAR );
     }
-    proc_type = data_state().TypeIdx;
-    BuffIndex( pr->ret );
-    BuffByte( pr->num );
+    proc_type = back.data.TypeIdx;
+    BuffIndex( back, pr->ret );
+    BuffByte( back, pr->num );
     for( ;; ) {
         parm = pr->list;
         if( parm == NULL )
             break;
-        if( BuffLoc() > DB_BUFF_SIZE - 4 ) {
+        if( BuffLoc(back) > DB_BUFF_SIZE - 4 ) {
             /* record is getting too big - split it up */
-            EndType( true );
-            NewType( &temp, WT_PROCEDURE + PROC_EXT_PARM_LIST );
+            EndType( back, true );
+            NewType( back, &temp, WT_PROCEDURE + PROC_EXT_PARM_LIST );
         }
-        BuffIndex( parm->tipe );
+        BuffIndex( back, parm->tipe );
         pr->list = parm->next;
-        CGFree( parm );
+        CGFree( back, parm );
     }
-    EndType( false );
+    EndType( back, false );
     return( proc_type );
 }
 
 
-static  void    NewType( temp_buff *temp, uint ty_def ) {
+static  void    NewType( BackRun& back, temp_buff *temp, uint ty_def ) {
 /*******************************************************/
 
-    ++data_state().TypeIdx;
-    BuffStart( temp, ty_def );
+    ++back.data.TypeIdx;
+    BuffStart( back, temp, ty_def );
 }
 
 
-static  void    EndType( bool check_too_big ) {
+static  void    EndType( BackRun& back, bool check_too_big ) {
 /*********************************************/
 
 
     if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
         if( check_too_big )
-            ChkDbgSegSize( MAX_TYPE_SIZE, true );
-        BuffEnd( data_state().DbgTypes );
+            ChkDbgSegSize( back, MAX_TYPE_SIZE, true );
+        BuffEnd( back, back.data.DbgTypes );
     }
 }
 
-static void DmpFileInfo( void )
+static void DmpFileInfo( BackRun& back )
 /*****************************/
 {
     fname_lst   *lst;
     uint_16     index;
 
-    DataShort( dbsyms_state().DBFiles.count );
+    DataShort( back, back.dbsyms.DBFiles.count );
     index = 0;
-    for( lst = dbsyms_state().DBFiles.lst; lst != NULL; lst = lst->next ) {
-        DataShort( index );
+    for( lst = back.dbsyms.DBFiles.lst; lst != NULL; lst = lst->next ) {
+        DataShort( back, index );
         index += lst->len;
     }
-    for( lst = dbsyms_state().DBFiles.lst; lst != NULL; lst = lst->next ) {
-        DataBytes( lst->len, lst->fname );
+    for( lst = back.dbsyms.DBFiles.lst; lst != NULL; lst = lst->next ) {
+        DataBytes( back, lst->len, lst->fname );
     }
 }
 
-void WVDmpCueInfo( long_offset where )
+void WVDmpCueInfo( BackRun& back, long_offset where )
 /************************************/
 // Assume here is offset from first dbgtype segment to here
 // and we are in our segement for writing
@@ -635,21 +633,21 @@ void WVDmpCueInfo( long_offset where )
     offset      here;
 
 
-    PUSH_OP( wvtypes_state().CueInfoOffset.segid );
-        here = AskLocation();
-        SetLocation( wvtypes_state().CueInfoOffset.offset );
-        DataLong( where );  // current location in DbgTypes segment
-        SetLocation( here );
+    PUSH_OP( back.wvtypes.CueInfoOffset.segid );
+        here = AskLocation(back);
+        SetLocation( back, back.wvtypes.CueInfoOffset.offset );
+        DataLong( back, where );  // current location in DbgTypes segment
+        SetLocation( back, here );
     POP_OP();
-    ctl = &dbsyms_state().LineInfo;
+    ctl = &back.dbsyms.LineInfo;
     blk = ctl->head;
-    DataShort( ctl->count );  // number of entries
+    DataShort( back, ctl->count );  // number of entries
     if( ctl->count > 0 ) {
         curr = &ctl->start[0];
-        DataShort( curr->cue );
-        DataShort( curr->fno );
-        DataShort( curr->line );
-        DataShort( curr->col );
+        DataShort( back, curr->cue );
+        DataShort( back, curr->fno );
+        DataShort( back, curr->line );
+        DataShort( back, curr->col );
     }
     while( blk != NULL ) {
         curr = &blk->info[0];
@@ -659,13 +657,13 @@ void WVDmpCueInfo( long_offset where )
             end = &blk->info[CUES_PER_BLK];
         }
         while( curr != end ) {
-            DataShort( curr->cue );
-            DataShort( curr->fno );
-            DataShort( curr->line );
-            DataShort( curr->col );
+            DataShort( back, curr->cue );
+            DataShort( back, curr->fno );
+            DataShort( back, curr->line );
+            DataShort( back, curr->col );
             ++curr;
         }
         blk = blk->next;
     }
-    DmpFileInfo();
+    DmpFileInfo(back);
 }

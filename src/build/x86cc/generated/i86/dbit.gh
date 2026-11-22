@@ -52,15 +52,15 @@ typedef struct dom_bit_set {
 
 #define _DBitInit( set, val ) _DBitSet( set, val, val, val, val, val, val, val, val )
 
-#define _DBitIter( routine, set ) { \
-			(routine)( (set)._0 ); \
-			(routine)( (set)._1 ); \
-			(routine)( (set)._2 ); \
-			(routine)( (set)._3 ); \
-			(routine)( (set)._4 ); \
-			(routine)( (set)._5 ); \
-			(routine)( (set)._6 ); \
-			(routine)( (set)._7 ); \
+#define _DBitIter( run, routine, set ) { \
+			(routine)( run, (set)._0 ); \
+			(routine)( run, (set)._1 ); \
+			(routine)( run, (set)._2 ); \
+			(routine)( run, (set)._3 ); \
+			(routine)( run, (set)._4 ); \
+			(routine)( run, (set)._5 ); \
+			(routine)( run, (set)._6 ); \
+			(routine)( run, (set)._7 ); \
 		}
 
 #define _DBitOverlap( a, b ) ( \

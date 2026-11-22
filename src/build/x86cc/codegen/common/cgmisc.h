@@ -35,7 +35,7 @@
 
 #include "cgapi.h"
 
-extern bool _CGAPI TBreak( void );
-extern void _CGAPI CauseTBreak( void );
+extern bool _CGAPI TBreak( BackRun& back );
+extern void _CGAPI CauseTBreak( BackRun& back );
 
 #endif

@@ -51,6 +51,7 @@
 #include "confldef.h"
 #include "liveinfo.h"
 #include "_x86half.h"
+#include "backrun.hpp"
 
 
 bool    IndexOverlaps( instruction *ins, opcnt i )
@@ -76,7 +77,7 @@ bool    IndexOverlaps( instruction *ins, opcnt i )
 #endif
 
 
-instruction     *rSPLITOP( instruction *ins )
+instruction     *rSPLITOP( BackRun& back, instruction *ins )
 /*******************************************/
 {
     instruction *new_ins;
@@ -84,51 +85,51 @@ instruction     *rSPLITOP( instruction *ins )
     name        *temp;
 
     if( IndexOverlaps( ins, 0 ) || IndexOverlaps( ins, 1 ) ) {
-        temp = AllocTemp( LONG_WORD );
+        temp = AllocTemp( back, LONG_WORD );
         HalfType( ins );
-        new_ins = MakeBinary( ins->head.opcode,
-                        LowPart( ins->operands[0], WD ),
-                        LowPart( ins->operands[1], WD ),
-                        LowPart( temp,             WD ),
+        new_ins = MakeBinary( back, ins->head.opcode,
+                        LowPart( back, ins->operands[0], WD ),
+                        LowPart( back, ins->operands[1], WD ),
+                        LowPart( back, temp,             WD ),
                         WD );
-        ins2 = MakeBinary( ins->head.opcode,
-                        HighPart( ins->operands[0], WD ),
-                        HighPart( ins->operands[1], WD ),
-                        HighPart( temp,             WD ),
+        ins2 = MakeBinary( back, ins->head.opcode,
+                        HighPart( back, ins->operands[0], WD ),
+                        HighPart( back, ins->operands[1], WD ),
+                        HighPart( back, temp,             WD ),
                         WD );
         if( ins->head.opcode == OP_ADD ) {
             ins2->head.opcode = OP_EXT_ADD;
         } else if( ins->head.opcode == OP_SUB ) {
             ins2->head.opcode = OP_EXT_SUB;
         }
-        ins2->table = CodeTable( ins2 );
+        ins2->table = CodeTable( back, ins2 );
         new_ins->table = ins2->table;
-        DupSegOp( ins, new_ins, 0 );
-        DupSegOp( ins, ins2, 0 );
-        DupSegOp( ins, new_ins, 1 );
-        DupSegOp( ins, ins2, 1 );
+        DupSegOp( back, ins, new_ins, 0 );
+        DupSegOp( back, ins, ins2, 0 );
+        DupSegOp( back, ins, new_ins, 1 );
+        DupSegOp( back, ins, ins2, 1 );
         ins->operands[0] = temp;
         ins->operands[1] = temp;
-        PrefixIns( ins, new_ins );
-        PrefixIns( ins, ins2 );
-        ins2 = MakeMove( LowPart( temp, WD ), LowPart( ins->result, WD ), WD );
-        DupSegRes( ins, ins2 );
-        PrefixIns( ins, ins2 );
-        ins2 = MakeMove( HighPart( temp, WD ),
-                          HighPart( ins->result, WD ), WD );
-        DupSegRes( ins, ins2 );
-        ReplIns( ins, ins2 );
+        PrefixIns( back, ins, new_ins );
+        PrefixIns( back, ins, ins2 );
+        ins2 = MakeMove( back, LowPart( back, temp, WD ), LowPart( back, ins->result, WD ), WD );
+        DupSegRes( back, ins, ins2 );
+        PrefixIns( back, ins, ins2 );
+        ins2 = MakeMove( back, HighPart( back, temp, WD ),
+                          HighPart( back, ins->result, WD ), WD );
+        DupSegRes( back, ins, ins2 );
+        ReplIns( back, ins, ins2 );
     } else {
         HalfType( ins );
-        new_ins = MakeBinary( ins->head.opcode,
-                        LowPart( ins->operands[0], ins->type_class ),
-                        LowPart( ins->operands[1], ins->type_class ),
-                        LowPart( ins->result,      ins->type_class ),
+        new_ins = MakeBinary( back, ins->head.opcode,
+                        LowPart( back, ins->operands[0], ins->type_class ),
+                        LowPart( back, ins->operands[1], ins->type_class ),
+                        LowPart( back, ins->result,      ins->type_class ),
                         ins->type_class );
         DupSeg( ins, new_ins );
-        ins->operands[0] = HighPart( ins->operands[0], ins->type_class );
-        ins->operands[1] = HighPart( ins->operands[1], ins->type_class );
-        ins->result = HighPart( ins->result, ins->type_class );
+        ins->operands[0] = HighPart( back, ins->operands[0], ins->type_class );
+        ins->operands[1] = HighPart( back, ins->operands[1], ins->type_class );
+        ins->result = HighPart( back, ins->result, ins->type_class );
         if( ins->head.opcode == OP_ADD ) {
             ins->head.opcode = OP_EXT_ADD;
         } else if( ins->head.opcode == OP_SUB ) {
@@ -137,60 +138,60 @@ instruction     *rSPLITOP( instruction *ins )
 /* Assign fake reduce table (from OP_EXT) to new_ins; default reduce table
    can generate INC and DEC which'll not set condition codes
  */
-        ins->table = CodeTable( ins );
+        ins->table = CodeTable( back, ins );
         new_ins->table = ins->table;
 
-        PrefixIns( ins, new_ins );
+        PrefixIns( back, ins, new_ins );
     }
     new_ins->ins_flags |= INS_CC_USED;
     return( new_ins );
 }
 
 
-instruction     *rSPLITMOVE( instruction *ins )
+instruction     *rSPLITMOVE( BackRun& back, instruction *ins )
 /*********************************************/
 {
     instruction *new_ins;
     instruction *ins2;
     name        *temp;
 
-    CnvOpToInt( ins, 0 );
+    CnvOpToInt( back, ins, 0 );
     if( IndexOverlaps( ins, 0 ) ) {
-        temp = AllocTemp( LONG_WORD );
-        new_ins = MakeMove( LowPart( ins->operands[0], WD ), LowPart( temp, WD ), WD );
-        ins2 = MakeMove( HighPart( ins->operands[0], WD ), HighPart( temp, WD ), WD );
-        DupSegOp( ins, new_ins, 0 );
-        DupSegOp( ins, ins2, 0 );
+        temp = AllocTemp( back, LONG_WORD );
+        new_ins = MakeMove( back, LowPart( back, ins->operands[0], WD ), LowPart( back, temp, WD ), WD );
+        ins2 = MakeMove( back, HighPart( back, ins->operands[0], WD ), HighPart( back, temp, WD ), WD );
+        DupSegOp( back, ins, new_ins, 0 );
+        DupSegOp( back, ins, ins2, 0 );
         ins->operands[0] = temp;
-        PrefixIns( ins, new_ins );
-        PrefixIns( ins, ins2 );
-        ins2 = MakeMove( LowPart( temp, WD ), LowPart( ins->result, WD ), WD );
-        DupSegRes( ins, ins2 );
-        PrefixIns( ins, ins2 );
-        ins2 = MakeMove( HighPart( temp, WD ), HighPart( ins->result, WD ), WD );
-        ReplIns( ins, ins2 );
+        PrefixIns( back, ins, new_ins );
+        PrefixIns( back, ins, ins2 );
+        ins2 = MakeMove( back, LowPart( back, temp, WD ), LowPart( back, ins->result, WD ), WD );
+        DupSegRes( back, ins, ins2 );
+        PrefixIns( back, ins, ins2 );
+        ins2 = MakeMove( back, HighPart( back, temp, WD ), HighPart( back, ins->result, WD ), WD );
+        ReplIns( back, ins, ins2 );
     } else {
         HalfType( ins );
-        new_ins = MakeMove( LowPart( ins->operands[0], ins->type_class ),
-                             LowPart( ins->result, ins->type_class ),
+        new_ins = MakeMove( back, LowPart( back, ins->operands[0], ins->type_class ),
+                             LowPart( back, ins->result, ins->type_class ),
                              ins->type_class );
         DupSeg( ins, new_ins );
-        ins->operands[0] = HighPart( ins->operands[0], ins->type_class );
-        ins->result = HighPart( ins->result, ins->type_class );
+        ins->operands[0] = HighPart( back, ins->operands[0], ins->type_class );
+        ins->result = HighPart( back, ins->result, ins->type_class );
         if( new_ins->result->n.class_ == N_REGISTER
          && ins->operands[0]->n.class_ == N_REGISTER
          && HW_Ovlap( new_ins->result->r.reg, ins->operands[0]->r.reg ) ) {
-            SuffixIns( ins, new_ins );
+            SuffixIns( back, ins, new_ins );
             new_ins = ins;
         } else {
-            PrefixIns( ins, new_ins );
+            PrefixIns( back, ins, new_ins );
         }
     }
     return( new_ins );
 }
 
 
-instruction     *rSPLITNEG( instruction *ins )
+instruction     *rSPLITNEG( BackRun& back, instruction *ins )
 /********************************************/
 {
     name        *hi_res;
@@ -202,27 +203,27 @@ instruction     *rSPLITNEG( instruction *ins )
     instruction *subtract;
 
     HalfType( ins );
-    hi_res = HighPart( ins->result, ins->type_class );
-    hi_src = HighPart( ins->operands[0], ins->type_class );
-    lo_res = LowPart( ins->result, ins->type_class );
-    lo_src = LowPart( ins->operands[0], ins->type_class );
-    hi_ins = MakeUnary( OP_NEGATE, hi_src, hi_res, ins->type_class );
-    lo_ins = MakeUnary( OP_NEGATE, lo_src, lo_res, ins->type_class );
+    hi_res = HighPart( back, ins->result, ins->type_class );
+    hi_src = HighPart( back, ins->operands[0], ins->type_class );
+    lo_res = LowPart( back, ins->result, ins->type_class );
+    lo_src = LowPart( back, ins->operands[0], ins->type_class );
+    hi_ins = MakeUnary( back, OP_NEGATE, hi_src, hi_res, ins->type_class );
+    lo_ins = MakeUnary( back, OP_NEGATE, lo_src, lo_res, ins->type_class );
     lo_ins->ins_flags |= INS_CC_USED;
-    subtract = MakeBinary( OP_EXT_SUB, hi_res, AllocIntConst( 0 ), hi_res, ins->type_class );
-    DupSegRes( ins, subtract );
+    subtract = MakeBinary( back, OP_EXT_SUB, hi_res, AllocIntConst( back, 0 ), hi_res, ins->type_class );
+    DupSegRes( back, ins, subtract );
     DupSeg( ins, hi_ins );
     DupSeg( ins, lo_ins );
-    PrefixIns( ins, hi_ins );
+    PrefixIns( back, ins, hi_ins );
     ins->operands[0] = ins->result;
-    ins->operands[1] = AllocIntConst( 0 );
-    PrefixIns( ins, lo_ins );
-    ReplIns( ins, subtract );
-    UpdateLive( hi_ins, subtract );
+    ins->operands[1] = AllocIntConst( back, 0 );
+    PrefixIns( back, ins, lo_ins );
+    ReplIns( back, ins, subtract );
+    UpdateLive( back, hi_ins, subtract );
     return( hi_ins );
 }
 
-instruction     *rSPLITCMP( instruction *ins )
+instruction     *rSPLITCMP( BackRun& back, instruction *ins )
 /********************************************/
 {
     name                *left;
@@ -243,62 +244,62 @@ instruction     *rSPLITCMP( instruction *ins )
     false_idx = _FalseIndex( ins );
     switch( ins->head.opcode ) {
     case OP_BIT_TEST_TRUE:
-        high = MakeCondition( ins->head.opcode,
-                        HighPart( left, high_type_class ),
-                        HighPart( right, high_type_class ),
+        high = MakeCondition( back, ins->head.opcode,
+                        HighPart( back, left, high_type_class ),
+                        HighPart( back, right, high_type_class ),
                         true_idx, NO_JUMP,
                         WD );
-        low = MakeCondition( ins->head.opcode,
-                        LowPart( left, low_type_class ),
-                        LowPart( right, low_type_class ),
+        low = MakeCondition( back, ins->head.opcode,
+                        LowPart( back, left, low_type_class ),
+                        LowPart( back, right, low_type_class ),
                         true_idx, false_idx,
                         WD );
         not_equal = NULL;
         break;
     case OP_BIT_TEST_FALSE:
-        high = MakeCondition( OP_BIT_TEST_TRUE,
-                        HighPart( left, high_type_class ),
-                        HighPart( right, high_type_class ),
+        high = MakeCondition( back, OP_BIT_TEST_TRUE,
+                        HighPart( back, left, high_type_class ),
+                        HighPart( back, right, high_type_class ),
                         false_idx, NO_JUMP,
                         WD );
-        low = MakeCondition( ins->head.opcode,
-                        LowPart( left, low_type_class ),
-                        LowPart( right, low_type_class ),
+        low = MakeCondition( back, ins->head.opcode,
+                        LowPart( back, left, low_type_class ),
+                        LowPart( back, right, low_type_class ),
                         true_idx, false_idx,
                         WD );
         not_equal = NULL;
         break;
     case OP_CMP_EQUAL:
-        high = MakeCondition( OP_CMP_NOT_EQUAL,
-                        HighPart( left, high_type_class ),
-                        HighPart( right, high_type_class ),
+        high = MakeCondition( back, OP_CMP_NOT_EQUAL,
+                        HighPart( back, left, high_type_class ),
+                        HighPart( back, right, high_type_class ),
                         false_idx, NO_JUMP,
                         WD );
-        low = MakeCondition( ins->head.opcode,
-                        LowPart( left, low_type_class ),
-                        LowPart( right, low_type_class ),
+        low = MakeCondition( back, ins->head.opcode,
+                        LowPart( back, left, low_type_class ),
+                        LowPart( back, right, low_type_class ),
                         true_idx, false_idx,
                         WD );
         not_equal = NULL;
         break;
     case OP_CMP_NOT_EQUAL:
-        high = MakeCondition( OP_CMP_NOT_EQUAL,
-                        HighPart( left, high_type_class ),
-                        HighPart( right, high_type_class ),
+        high = MakeCondition( back, OP_CMP_NOT_EQUAL,
+                        HighPart( back, left, high_type_class ),
+                        HighPart( back, right, high_type_class ),
                         true_idx, NO_JUMP,
                         WD );
-        low = MakeCondition( ins->head.opcode,
-                        LowPart( left, low_type_class ),
-                        LowPart( right, low_type_class ),
+        low = MakeCondition( back, ins->head.opcode,
+                        LowPart( back, left, low_type_class ),
+                        LowPart( back, right, low_type_class ),
                         true_idx, false_idx,
                         WD );
         not_equal = NULL;
         break;
     case OP_CMP_LESS:
     case OP_CMP_LESS_EQUAL:
-        not_equal = MakeCondition( OP_CMP_NOT_EQUAL,
-                        HighPart( left, high_type_class ),
-                        HighPart( right, high_type_class ),
+        not_equal = MakeCondition( back, OP_CMP_NOT_EQUAL,
+                        HighPart( back, left, high_type_class ),
+                        HighPart( back, right, high_type_class ),
                         false_idx, NO_JUMP,
                         high_type_class );
         if( high_type_class == WD
@@ -307,22 +308,22 @@ instruction     *rSPLITCMP( instruction *ins )
           && HIGH_WORD( right ) == 0 ) {
             high = NULL;
         } else {
-            high = MakeCondition( OP_CMP_LESS,
+            high = MakeCondition( back, OP_CMP_LESS,
                         not_equal->operands[0], not_equal->operands[1],
                         true_idx, NO_JUMP,
                         high_type_class );
         }
-        low = MakeCondition( ins->head.opcode,
-                        LowPart( left, low_type_class ),
-                        LowPart( right, low_type_class ),
+        low = MakeCondition( back, ins->head.opcode,
+                        LowPart( back, left, low_type_class ),
+                        LowPart( back, right, low_type_class ),
                         true_idx, false_idx,
                         low_type_class );
         break;
     case OP_CMP_GREATER_EQUAL:
     case OP_CMP_GREATER:
-        not_equal = MakeCondition( OP_CMP_NOT_EQUAL,
-                        HighPart( left, high_type_class ),
-                        HighPart( right, high_type_class ),
+        not_equal = MakeCondition( back, OP_CMP_NOT_EQUAL,
+                        HighPart( back, left, high_type_class ),
+                        HighPart( back, right, high_type_class ),
                         false_idx, NO_JUMP,
                         high_type_class );
         if( high_type_class == WD
@@ -332,14 +333,14 @@ instruction     *rSPLITCMP( instruction *ins )
             _SetBlockIndex( not_equal, true_idx, NO_JUMP );
             high = NULL;
         } else {
-            high = MakeCondition( OP_CMP_GREATER,
+            high = MakeCondition( back, OP_CMP_GREATER,
                         not_equal->operands[0], not_equal->operands[1],
                         true_idx, NO_JUMP,
                         high_type_class );
         }
-        low = MakeCondition( ins->head.opcode,
-                        LowPart( left, low_type_class ),
-                        LowPart( right, low_type_class ),
+        low = MakeCondition( back, ins->head.opcode,
+                        LowPart( back, left, low_type_class ),
+                        LowPart( back, right, low_type_class ),
                         true_idx, false_idx,
                         low_type_class );
         break;
@@ -355,16 +356,16 @@ instruction     *rSPLITCMP( instruction *ins )
  * logical faults in other places.
  */
         DupSeg( ins, high );
-        PrefixIns( ins, high );
+        PrefixIns( back, ins, high );
     } else {
         high = not_equal;              /* for return value*/
     }
     if( not_equal != NULL ) {
         DupSeg( ins, not_equal );
-        PrefixIns( ins, not_equal );
+        PrefixIns( back, ins, not_equal );
     }
     DupSeg( ins, low );
-    ReplIns( ins, low );
+    ReplIns( back, ins, low );
     return( high );
 }
 

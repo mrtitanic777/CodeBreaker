@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
-extern void     InitPPexpn( void );
-extern void     FiniPPexpn( void );
-extern bool     PpConstExpr( void );
+#pragma once
+extern void     InitPPexpn( FrontRun& front );
+extern void     FiniPPexpn( FrontRun& front );
+extern bool     PpConstExpr( FrontRun& front );

@@ -33,12 +33,13 @@
 ****************************************************************************/
 
 
-extern void     FixBlockIds( void );
-extern block    *DupBlock( block *blk );
+#pragma once
+extern void     FixBlockIds( BackRun& back );
+extern block    *DupBlock( BackRun& back, block *blk );
 extern void     DumpLoop( block *loop );
 extern block    *AddBlocks( block *insertion_point, block *block_list );
 extern void     RemoveIns( instruction *ins );
-extern bool     CanHoist( block *head );
-extern void     HoistCondition( block *head );
+extern bool     CanHoist( BackRun& back, block *head );
+extern void     HoistCondition( BackRun& back, block *head );
 extern bool     Hoisted( block *head, instruction *compare );
-extern bool     UnRoll( void );
+extern bool     UnRoll( BackRun& back );

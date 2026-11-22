@@ -11,4 +11,5 @@
 ****************************************************************************/
 
 
+#pragma once
 extern char     *GetPathElement( const char *path_list, const char *end, char **path );

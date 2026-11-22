@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
-extern ins_entry    *Untangle( ins_entry *instr );
-extern void         OptPush( void );
-extern void         OptPull( void );
+#pragma once
+extern ins_entry    *Untangle( BackRun& back, ins_entry *instr );
+extern void         OptPush( BackRun& back );
+extern void         OptPull( BackRun& back );

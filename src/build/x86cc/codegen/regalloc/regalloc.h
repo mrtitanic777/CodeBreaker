@@ -29,11 +29,12 @@
 ****************************************************************************/
 
 
-extern void             NullConflicts( var_usage off );
-extern bool_maybe       CheckIndecies( instruction *ins, hw_reg_set reg, hw_reg_set except, name *op );
-extern bool             AssignARegister( conflict_node *conf, hw_reg_set reg );
-extern conflict_node    *InMemory( conflict_node *conf );
-extern conflict_node    *GiveRegister( conflict_node *conf, bool needs_one );
-extern void             ReConstFold( void );
-extern bool             RegAlloc( bool keep_on_truckin );
-extern bool             IsUncacheableMemory( name *opnd );
+#pragma once
+extern void             NullConflicts( BackRun& back, var_usage off );
+extern bool_maybe       CheckIndecies( BackRun& back, instruction *ins, hw_reg_set reg, hw_reg_set except, name *op );
+extern bool             AssignARegister( BackRun& back, conflict_node *conf, hw_reg_set reg );
+extern conflict_node    *InMemory( BackRun& back, conflict_node *conf );
+extern conflict_node    *GiveRegister( BackRun& back, conflict_node *conf, bool needs_one );
+extern void             ReConstFold( BackRun& back );
+extern bool             RegAlloc( BackRun& back, bool keep_on_truckin );
+extern bool             IsUncacheableMemory( BackRun& back, name *opnd );

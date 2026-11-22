@@ -44,13 +44,14 @@
 #include "procdef.h"
 #include "makeblk.h"
 #include "typemap.h"
+#include "backrun.hpp"
 
 
-patch_handle    BGNewPatch( void )
+patch_handle    BGNewPatch( BackRun& back )
 {
     patch_handle    patch;
 
-    patch = static_cast<patch_handle>(CGAlloc( sizeof( patch_info ) ));
+    patch = static_cast<patch_handle>(CGAlloc( back, sizeof( patch_info ) ));
     patch->in_tree = false;
     patch->patched = false;
 #ifdef DEVBUILD
@@ -60,7 +61,7 @@ patch_handle    BGNewPatch( void )
     return( patch );
 }
 
-an      TNPatch( tn node )
+an      TNPatch( BackRun& back, tn node )
 {
     patch_handle        patch;
     an                  addr;
@@ -68,29 +69,29 @@ an      TNPatch( tn node )
 
     patch = (patch_handle)node->u.handle;
     patch->in_tree = false;
-    type_class = TypeClass( node->tipe );
-    addr = AddrName( AllocTemp( type_class ), node->tipe );
-    patch->u.ins = MakeMove( NULL, addr->u.n.name, type_class );
+    type_class = TypeClass( back, node->tipe );
+    addr = AddrName( back, AllocTemp( back, type_class ), node->tipe );
+    patch->u.ins = MakeMove( back, NULL, addr->u.n.name, type_class );
     patch->u.ins->num_operands = 0;
-    AddIns( patch->u.ins );
+    AddIns( back, patch->u.ins );
     return( addr );
 }
 
-cg_name BGPatchNode( patch_handle patch, const type_def *tipe )
+cg_name BGPatchNode( BackRun& back, patch_handle patch, const type_def *tipe )
 {
     patch->patched = true;
     patch->in_tree = true;
-    patch->u.node = TGPatch( patch, tipe );
+    patch->u.node = TGPatch( back, patch, tipe );
     return( patch->u.node );
 }
 
-void    BGPatchInteger( patch_handle patch, int_32 value )
+void    BGPatchInteger( BackRun& back, patch_handle patch, int_32 value )
 {
     tn                  node;
     name                *c;
 
     if( patch->patched ) {
-        c = AllocS32Const( value );
+        c = AllocS32Const( back, value );
         if( patch->in_tree ) {
             node = patch->u.node;
             node->class_ = TN_CONS;
@@ -102,7 +103,7 @@ void    BGPatchInteger( patch_handle patch, int_32 value )
     }
 }
 
-void    BGFiniPatch( patch_handle patch )
+void    BGFiniPatch( BackRun& back, patch_handle patch )
 {
-    CGFree( patch );
+    CGFree( back, patch );
 }

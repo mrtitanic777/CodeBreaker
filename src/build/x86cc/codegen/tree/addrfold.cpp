@@ -47,9 +47,10 @@
 #include "makeblk.h"
 #include "typemap.h"
 #include "bldins.h"
+#include "backrun.hpp"
 
 
-static  void    LoadTempInt( an addr );
+static  void    LoadTempInt( BackRun& back, an addr );
 
 typedef enum {
         /* actions which require further actions*/
@@ -145,7 +146,7 @@ static const byte   Idx[] = {
         5         /* CL_TEMP_OFFSET */
 };
 
-name    *Points( an addr, const type_def *tipe )
+name    *Points( BackRun& back, an addr, const type_def *tipe )
 /**********************************************/
 {
     type_class_def      type_class;
@@ -153,11 +154,11 @@ name    *Points( an addr, const type_def *tipe )
     name                *result;
     i_flags             flags;
 
-    CheckPointer( addr );
+    CheckPointer( back, addr );
     if( addr->format != NF_ADDR && addr->format != NF_CONS ) {
         _Zoiks( ZOIKS_024 );
     }
-    type_class = TypeClass( tipe );
+    type_class = TypeClass( back, tipe );
     size = tipe->length;
     if( addr->u.n.base != NULL ) {
         flags = X_FAKE_BASE;
@@ -171,7 +172,7 @@ name    *Points( an addr, const type_def *tipe )
         flags |= X_CONSTANT;
     }
     if( addr->u.n.alignment != 0 ) {
-        flags |= AlignmentToFlags( addr->u.n.alignment );
+        flags |= AlignmentToFlags( back, addr->u.n.alignment );
     }
     switch( addr->class_ ) {
     case CL_ADDR_GLOBAL:
@@ -180,7 +181,7 @@ name    *Points( an addr, const type_def *tipe )
           && addr->u.n.name->n.size == size ) {
             result = addr->u.n.name;
         } else {
-            result = SAllocMemory( addr->u.n.name->v.symbol,
+            result = SAllocMemory( back, addr->u.n.name->v.symbol,
                                    addr->u.n.offset,
                                    addr->u.n.name->m.memory_type,
                                    type_class, size );
@@ -197,31 +198,31 @@ name    *Points( an addr, const type_def *tipe )
           && addr->u.n.name->n.size == size ) {
             result = addr->u.n.name;
         } else {
-            result = STempOffset( addr->u.n.name, addr->u.n.offset, type_class, size );
+            result = STempOffset( back, addr->u.n.name, addr->u.n.offset, type_class, size );
         }
         break;
     case CL_POINTER:
-        result = ScaleIndex( addr->u.n.index, addr->u.n.base, addr->u.n.offset, type_class, size, SCALE_NONE, flags );
+        result = ScaleIndex( back, addr->u.n.index, addr->u.n.base, addr->u.n.offset, type_class, size, SCALE_NONE, flags );
         break;
     case CL_GLOBAL_INDEX:
     case CL_TEMP_INDEX:
-        result = ScaleIndex( addr->u.n.index, addr->u.n.name, addr->u.n.offset, type_class, size, SCALE_NONE, flags & ~X_FAKE_BASE );
+        result = ScaleIndex( back, addr->u.n.index, addr->u.n.name, addr->u.n.offset, type_class, size, SCALE_NONE, flags & ~X_FAKE_BASE );
         break;
     case CL_TEMP_OFFSET:
-        result = ScaleIndex( addr->u.n.name, addr->u.n.base, addr->u.n.offset, type_class, size, SCALE_NONE, flags );
+        result = ScaleIndex( back, addr->u.n.name, addr->u.n.base, addr->u.n.offset, type_class, size, SCALE_NONE, flags );
         break;
     case CL_CONS2:
 #if WORD_SIZE != 2
     case CL_CONS4:
 #endif
-        addr->u.n.name = AllocIntConst( addr->u.n.offset );
+        addr->u.n.name = AllocIntConst( back, addr->u.n.offset );
         addr->class_ = CL_VALUE;
-        LoadTempInt( addr );
-        result = ScaleIndex( addr->u.n.name, addr->u.n.base, 0, type_class, size, SCALE_NONE, flags );
+        LoadTempInt( back, addr );
+        result = ScaleIndex( back, addr->u.n.name, addr->u.n.base, 0, type_class, size, SCALE_NONE, flags );
         break;
     default:
-        LoadTempInt( addr );
-        result = ScaleIndex( addr->u.n.name, addr->u.n.base, 0, type_class, size, SCALE_NONE, flags );
+        LoadTempInt( back, addr );
+        result = ScaleIndex( back, addr->u.n.name, addr->u.n.base, 0, type_class, size, SCALE_NONE, flags );
         break;
     }
     if( addr->flags & FL_VOLATILE ) {
@@ -238,12 +239,12 @@ name    *Points( an addr, const type_def *tipe )
 }
 
 
-an      AddrName( name *op, const type_def *tipe )
+an      AddrName( BackRun& back, name *op, const type_def *tipe )
 /************************************************/
 {
     an  addr;
 
-    addr = NewAddrName();
+    addr = NewAddrName(back);
     addr->tipe = tipe;
     addr->u.n.name = op;
     if( op->n.class_ == N_CONSTANT && op->c.const_type == CONS_ABSOLUTE ) {
@@ -296,10 +297,10 @@ static  void    FixIndexClass( an addr ) {
 }
 
 
-static  void    LoadTempInt( an addr ) {
+static  void    LoadTempInt( BackRun& back, an addr ) {
 /**************************************/
 
-    addr->u.n.name = LoadTemp( addr->u.n.name, TypeClass( addr->tipe ) );
+    addr->u.n.name = LoadTemp( back, addr->u.n.name, TypeClass( back, addr->tipe ) );
     addr->u.n.index = NULL;
     addr->u.n.offset = 0;
     if( addr->class_ == CL_VALUE ) {
@@ -308,7 +309,7 @@ static  void    LoadTempInt( an addr ) {
 }
 
 
-static  void    AddIndex( an addr, name *index, name *addend ) {
+static  void    AddIndex( BackRun& back, an addr, name *index, name *addend ) {
 /**************************************************************/
 
     instruction         *ins;
@@ -317,24 +318,24 @@ static  void    AddIndex( an addr, name *index, name *addend ) {
     type_class = index->n.type_class;
     if( type_class == XX )
         type_class = addend->n.type_class; /* if index is a const ! */
-    ins = MakeBinary( OP_ADD, index, addend, AllocTemp( type_class ), type_class );
+    ins = MakeBinary( back, OP_ADD, index, addend, AllocTemp( back, type_class ), type_class );
     index = ins->result;
-    AddIns( ins );
+    AddIns( back, ins );
     addr->u.n.index = index;
 }
 
 
-bool    CypAddrPlus( an l_addr, an r_addr, const type_def *tipe )
+bool    CypAddrPlus( BackRun& back, an l_addr, an r_addr, const type_def *tipe )
 /***************************************************************/
 {
     mode_action action;
 
     if( tipe->refno == TY_HUGE_POINTER )
         return( false );
-    CheckPointer( l_addr );
+    CheckPointer( back, l_addr );
     if( l_addr->format == NF_NAME )
         return( false );
-    CheckPointer( r_addr );
+    CheckPointer( back, r_addr );
     if( r_addr->format == NF_NAME )
         return( false );
     action = AddTable[Idx[r_addr->class_]][Idx[l_addr->class_]];
@@ -374,7 +375,7 @@ static        bool    AddToTypeLength( type_length x, type_length y ) {
 }
 
 
-an      AddrPlus( an l_addr, an r_addr, const type_def *tipe )
+an      AddrPlus( BackRun& back, an l_addr, an r_addr, const type_def *tipe )
 /************************************************************/
 
 /*       Returns NULL if code needs to be generated*/
@@ -382,8 +383,8 @@ an      AddrPlus( an l_addr, an r_addr, const type_def *tipe )
     mode_action action;
     an          addr;
 
-    CheckPointer( l_addr );
-    CheckPointer( r_addr );
+    CheckPointer( back, l_addr );
+    CheckPointer( back, r_addr );
     if( !AddToTypeLength( l_addr->u.n.offset, r_addr->u.n.offset ) )
         return( NULL );
     if( l_addr->format == NF_NAME )
@@ -392,48 +393,48 @@ an      AddrPlus( an l_addr, an r_addr, const type_def *tipe )
         return( NULL );
     if( tipe->refno == TY_HUGE_POINTER )
         return( NULL );
-    addr = NewAddrName();
+    addr = NewAddrName(back);
     for( ;; ) {
         action = AddTable[Idx[r_addr->class_]][Idx[l_addr->class_]];
         switch( action ) {
         case UNEXPECTED:
-            AddrFree( addr );
+            AddrFree( back, addr );
             return( NULL );
         case TEMP_L:
-            LoadTempInt( l_addr );
+            LoadTempInt( back, l_addr );
             break;
         case TEMP_R:
-            LoadTempInt( r_addr );
+            LoadTempInt( back, r_addr );
             break;
 #if WORD_SIZE == 2
         case SHRNK_L:
-            Convert( l_addr, I2 );
+            Convert( back, l_addr, I2 );
             l_addr->class_ = CL_TEMP_OFFSET;
             break;
         case SHRNK_R:
-            Convert( r_addr, I2 );
+            Convert( back, r_addr, I2 );
             r_addr->class_ = CL_TEMP_OFFSET;
             break;
 #endif
         case XPAND_L:
-            Convert( l_addr, I4 );
+            Convert( back, l_addr, I4 );
             l_addr->class_ = CL_VALUE4;
             break;
         case XPAND_R:
-            Convert( r_addr, I4 );
+            Convert( back, r_addr, I4 );
             r_addr->class_ = CL_VALUE4;
             break;
 #if WORD_SIZE == 2
         case XP_LC:
             r_addr->u.n.offset += l_addr->u.n.offset;
             l_addr->u.n.offset = 0;
-            Convert( l_addr, I4 );
+            Convert( back, l_addr, I4 );
             l_addr->class_ = CL_VALUE4;
             break;
         case XP_RC:
             l_addr->u.n.offset += r_addr->u.n.offset;
             r_addr->u.n.offset = 0;
-            Convert( r_addr, I4 );
+            Convert( back, r_addr, I4 );
             r_addr->class_ = CL_VALUE4;
             break;
 #endif
@@ -459,49 +460,49 @@ an      AddrPlus( an l_addr, an r_addr, const type_def *tipe )
             break;
         case ADD_LI:
             if( PointLess( l_addr, r_addr ) ) {
-                AddrFree( addr );
+                AddrFree( back, addr );
                 return( NULL );
             }
             MoveAddress( l_addr, addr );
             addr->u.n.offset += r_addr->u.n.offset;
-            AddIndex( addr, l_addr->u.n.index, r_addr->u.n.name );
+            AddIndex( back, addr, l_addr->u.n.index, r_addr->u.n.name );
             break;
         case ADD_RI:
             if( PointLess( l_addr, r_addr ) ) {
-                AddrFree( addr );
+                AddrFree( back, addr );
                 return( NULL );
             }
             MoveAddress( r_addr, addr );
             addr->u.n.offset += l_addr->u.n.offset;
-            AddIndex( addr, r_addr->u.n.index, l_addr->u.n.name );
+            AddIndex( back, addr, r_addr->u.n.index, l_addr->u.n.name );
             break;
         case ADD_I:
             if( PointLess( l_addr, r_addr ) ) {
-                AddrFree( addr );
+                AddrFree( back, addr );
                 return( NULL );
             }
             addr->u.n.offset = l_addr->u.n.offset + r_addr->u.n.offset;
             addr->class_ = CL_TEMP_OFFSET;
-            AddIndex( addr, l_addr->u.n.name, r_addr->u.n.name );
+            AddIndex( back, addr, l_addr->u.n.name, r_addr->u.n.name );
             addr->u.n.name = addr->u.n.index;
             addr->u.n.index = NULL;
             break;
         case CODE:
-            AddrFree( addr );
+            AddrFree( back, addr );
             return( NULL );
         }
         if( _HaveMode( action ) ) {
             break;
         }
     }
-    BGDone( l_addr );
-    BGDone( r_addr );
+    BGDone( back, l_addr );
+    BGDone( back, r_addr );
     addr->tipe = tipe;
     return( addr );
 }
 
 
-static  bool    ShiftConst( an r_addr ) {
+static  bool    ShiftConst( BackRun& back, an r_addr ) {
 /***************************************/
 
     if( r_addr->format != NF_CONS )
@@ -521,19 +522,19 @@ static  bool    ShiftConst( an r_addr ) {
 }
 
 
-bool    CypAddrShift( an l_addr, an r_addr, const type_def *tipe )
+bool    CypAddrShift( BackRun& back, an l_addr, an r_addr, const type_def *tipe )
 /****************************************************************/
 {
     /* unused parameters */ (void)tipe;
 
-    CheckPointer( l_addr );
+    CheckPointer( back, l_addr );
     if( l_addr->format == NF_NAME )
         return( false );
     if( l_addr->class_ != CL_TEMP_OFFSET )
         return( false );
     if( l_addr->u.n.offset == 0 )
         return( false );
-    if( !ShiftConst( r_addr ) )
+    if( !ShiftConst( back, r_addr ) )
         return( false );
     return( true );
 }
@@ -557,7 +558,7 @@ static  bool    ShiftToTypeLength( type_length x, uint_16 y )
 }
 
 
-an      AddrShift( an l_addr, an r_addr, const type_def *tipe )
+an      AddrShift( BackRun& back, an l_addr, an r_addr, const type_def *tipe )
 /*************************************************************/
 
 /*       Returns NULL if code needs to be generated*/
@@ -568,9 +569,9 @@ an      AddrShift( an l_addr, an r_addr, const type_def *tipe )
     type_class_def      type_class;
 
     addr = NULL;
-    if( !ShiftConst( r_addr ) )
+    if( !ShiftConst( back, r_addr ) )
         return( NULL );
-    CheckPointer( l_addr );
+    CheckPointer( back, l_addr );
     if( l_addr->format == NF_NAME )
         return( NULL );
     if( l_addr->class_ != CL_TEMP_OFFSET )
@@ -580,28 +581,28 @@ an      AddrShift( an l_addr, an r_addr, const type_def *tipe )
     rv = r_addr->u.n.offset;
     if( !ShiftToTypeLength( l_addr->u.n.offset, rv ) )
         return( NULL );
-    addr = NewAddrName();
+    addr = NewAddrName(back);
     addr->u.n.offset = l_addr->u.n.offset << rv;  /* new constant after shift*/
-    type_class = TypeClass( tipe );
-    ins = MakeBinary( OP_LSHIFT, l_addr->u.n.name,
-            AllocIntConst( rv ), AllocTemp( type_class ), type_class );
+    type_class = TypeClass( back, tipe );
+    ins = MakeBinary( back, OP_LSHIFT, l_addr->u.n.name,
+            AllocIntConst( back, rv ), AllocTemp( back, type_class ), type_class );
     addr->u.n.name = ins->result;
-    AddIns( ins );
+    AddIns( back, ins );
     addr->class_ = CL_TEMP_OFFSET;
-    BGDone( l_addr );
-    BGDone( r_addr );
+    BGDone( back, l_addr );
+    BGDone( back, r_addr );
     addr->tipe = tipe;
     return( addr );
 }
 
 
-name    *GetValue( an addr, name *suggest )
+name    *GetValue( BackRun& back, an addr, name *suggest )
 /*****************************************/
 {
     name        *op = NULL;
     instruction *ins;
 
-    InsToAddr( addr );
+    InsToAddr( back, addr );
     if( addr->format == NF_CONS || addr->format == NF_NAME ) {
         op = addr->u.n.name;
     } else if( addr->format == NF_ADDR ) {
@@ -612,36 +613,36 @@ name    *GetValue( an addr, name *suggest )
             break;
         case CL_TEMP_OFFSET:
             if( addr->u.n.offset != 0 ) {
-                op = MaybeTemp( suggest, addr->u.n.name->n.type_class );
-                ins = MakeBinary( OP_ADD, addr->u.n.name,
-                                    AllocS32Const( addr->u.n.offset ),
-                                    op, TypeClass( addr->tipe ) );
+                op = MaybeTemp( back, suggest, addr->u.n.name->n.type_class );
+                ins = MakeBinary( back, OP_ADD, addr->u.n.name,
+                                    AllocS32Const( back, addr->u.n.offset ),
+                                    op, TypeClass( back, addr->tipe ) );
                 if( addr->flags & FL_ADDR_DEMOTED )
                     ins->ins_flags |= INS_DEMOTED;
-                AddIns( ins );
+                AddIns( back, ins );
             } else {
                 op = addr->u.n.name;
             }
             break;
         case CL_ADDR_GLOBAL:
-            op = AllocMemory( addr->u.n.name->v.symbol,
+            op = AllocMemory( back, addr->u.n.name->v.symbol,
                      addr->u.n.offset, addr->u.n.name->m.memory_type, XX );
-            op = LoadAddress( op, suggest, addr->tipe );
+            op = LoadAddress( back, op, suggest, addr->tipe );
             break;
         case CL_ADDR_TEMP:
-            op = TempOffset( addr->u.n.name, addr->u.n.offset, XX );
-            op = LoadAddress( op, suggest, addr->tipe );
+            op = TempOffset( back, addr->u.n.name, addr->u.n.offset, XX );
+            op = LoadAddress( back, op, suggest, addr->tipe );
             break;
         case CL_GLOBAL_INDEX:
         case CL_TEMP_INDEX:
-            op = AllocIndex( addr->u.n.index, addr->u.n.name,
+            op = AllocIndex( back, addr->u.n.index, addr->u.n.name,
                                 addr->u.n.offset, XX );
-            op = LoadAddress( op, suggest, addr->tipe );
+            op = LoadAddress( back, op, suggest, addr->tipe );
             break;
         case CL_POINTER:
-            op = AllocIndex( addr->u.n.index, addr->u.n.name,
+            op = AllocIndex( back, addr->u.n.index, addr->u.n.name,
                                 addr->u.n.offset, XX );
-            op = LoadAddress( op, suggest, addr->tipe );
+            op = LoadAddress( back, op, suggest, addr->tipe );
             break;
         default:
             break;

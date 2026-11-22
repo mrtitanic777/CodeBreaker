@@ -34,15 +34,16 @@
 #include "coderep.h"
 #include "data.h"
 #include "multiply.h"
+#include "backrun.hpp"
 
 
-int     MulCost( uint_32 num )
+int     MulCost( BackRun& back, uint_32 num )
 /****************************/
 {
     int         cost;
 
     /* When optimizing for size, MUL/IMUL is always preferred. */
-    if( data_state().OptForSize > 50 )
+    if( back.data.OptForSize > 50 )
         return( 1 );
     /* Note that in the following, the cost given for multiplication
      * is less than the number of cycles it takes to execute, to give slight
@@ -74,7 +75,7 @@ int     MulCost( uint_32 num )
     return( cost );
 }
 
-int     AddCost( void )
+int     AddCost( BackRun& back )
 /*********************/
 {
     int     cost;
@@ -89,13 +90,13 @@ int     AddCost( void )
     return( cost );
 }
 
-int     SubCost( void )
+int     SubCost( BackRun& back )
 /*********************/
 {
-    return( AddCost() );
+    return( AddCost(back) );
 }
 
-int     ShiftCost( int count )
+int     ShiftCost( BackRun& back, int count )
 /****************************/
 {
     int     cost;

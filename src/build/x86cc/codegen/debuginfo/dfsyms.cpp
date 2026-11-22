@@ -54,45 +54,27 @@
 #include "felang.h"
 #include "cgprotos.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
 #define DWARF_CU_REC_NO_PCLO_PCHI   1
 
 #define MAX_LANG    (sizeof( LangNames ) / sizeof( LangNames[0] ))
 
-typedef struct {
-    segment_id  segid;
-    long_offset offset;
-} big_patch_handle;
 
-typedef struct {
-    back_handle  bck;
-    int_32       disp;
-} loc_range;
 
-struct dwarf_lang_map {
-     dw_langnum dwarf_lang;
-     const char *name;
-};
+
+
+
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct DfsymsFileState {
-    short CurrFNo;
-    bool CcuDef;
-    back_handle Pc_High;
-    back_handle Pc_Low;
-    back_handle Comp_High;
-    back_handle ARange;
-    sect_info DwarfSegs[DW_DEBUG_MAX];
-    big_patch_handle UnitSize[1];
-};
+/* (struct DfsymsFileState: dfsyms_state.h) */
 
 }  // namespace
 
-static inline DfsymsFileState& dfsyms_file_state() { return cbrun_part<DfsymsFileState>(); }
 
 
 static const struct dwarf_lang_map LangNames[] = {
@@ -101,106 +83,106 @@ static const struct dwarf_lang_map LangNames[] = {
     {DW_LANG_Fortran77,     FE_LANG_FORTRAN  },
 };
 
-static void CLIWrite( dw_sectnum sect, const void *block, size_t size )
+static void CLIWrite( BackRun& back, dw_sectnum sect, const void *block, size_t size )
 /*********************************************************************/
 {
     sect_info           *curr;
 //    long_offset         off;
 
-    curr = &dfsyms_file_state().DwarfSegs[sect];
+    curr = &back.dfsyms_file.DwarfSegs[sect];
     PUSH_OP( curr->segid );
 //        off = AskBigLocation();
-        DataBytes( size, block );
+        DataBytes( back, size, block );
     POP_OP();
 }
 
-static dw_out_offset CLITell( dw_sectnum sect )
+static dw_out_offset CLITell( BackRun& back, dw_sectnum sect )
 /*********************************************/
 {
     sect_info           *curr;
     long_offset         off;
 
-    curr = &dfsyms_file_state().DwarfSegs[sect];
+    curr = &back.dfsyms_file.DwarfSegs[sect];
     PUSH_OP( curr->segid );
-        off = AskBigLocation();
+        off = AskBigLocation(back);
     POP_OP();
     return( off );
 }
 
-static void CLISeek( dw_sectnum sect, dw_out_offset offset, int type )
+static void CLISeek( BackRun& back, dw_sectnum sect, dw_out_offset offset, int type )
 /********************************************************************/
 {
     sect_info           *curr;
     dw_out_offset       new_offset;
 
-    curr = &dfsyms_file_state().DwarfSegs[sect];
+    curr = &back.dfsyms_file.DwarfSegs[sect];
     PUSH_OP( curr->segid );
         new_offset = offset;
         switch( type ) {
         case DW_SEEK_CUR:
-            new_offset = AskBigLocation() + offset;
+            new_offset = AskBigLocation(back) + offset;
             break;
         case DW_SEEK_SET:
             break;
         case DW_SEEK_END:
-            new_offset = AskBigMaxSize() + offset;
+            new_offset = AskBigMaxSize(back) + offset;
             break;
         }
-        SetBigLocation( new_offset );
+        SetBigLocation( back, new_offset );
     POP_OP();
 }
 
-static void DoReloc( dw_sym_handle sym, dw_addr_offset disp )
+static void DoReloc( BackRun& back, dw_sym_handle sym, dw_addr_offset disp )
 /***********************************************************/
 {
     const type_def      *ptr_type;
 
-    ptr_type = TypeAddress( TY_NEAR_POINTER );
-    FEPtr( (cg_sym_handle)sym, ptr_type, disp );
+    ptr_type = TypeAddress( back, TY_NEAR_POINTER );
+    FEPtr( back, (cg_sym_handle)sym, ptr_type, disp );
 }
 
 
-static void DoSegReloc( dw_sym_handle sym )
+static void DoSegReloc( BackRun& back, dw_sym_handle sym )
 /*****************************************/
 {
-    FEPtrBase( (cg_sym_handle)sym );
+    FEPtrBase( back, (cg_sym_handle)sym );
 }
 
-static void DoLblReloc( back_handle bck, int disp )
+static void DoLblReloc( BackRun& back, back_handle bck, int disp )
 /*************************************************/
 {
     const type_def  *ptr_type;
     segment_id      segid;
 
-    segid = AskSegID( bck, CG_BACK );
-    ptr_type = TypeAddress( TY_NEAR_POINTER );
-    BackPtr( bck, segid, disp, ptr_type );
+    segid = AskSegID( back, bck, CG_BACK );
+    ptr_type = TypeAddress( back, TY_NEAR_POINTER );
+    BackPtr( back, bck, segid, disp, ptr_type );
 }
 
-static void DoSegLblReloc( back_handle bck )
+static void DoSegLblReloc( BackRun& back, back_handle bck )
 /******************************************/
 {
     segment_id      segid;
 
-    segid = AskSegID( bck, CG_BACK );
-    BackPtrBase( bck, segid );
+    segid = AskSegID( back, bck, CG_BACK );
+    BackPtrBase( back, bck, segid );
 }
 
-static void DoSectOffset( dw_sectnum sect )
+static void DoSectOffset( BackRun& back, dw_sectnum sect )
 /*****************************************/
 {
     back_handle bck;
     long        pos;
     segment_id  segid;
 
-    pos = CLITell( sect );
-    bck = dfsyms_file_state().DwarfSegs[sect].bck;
-    segid = dfsyms_file_state().DwarfSegs[sect].segid;
-    BackPtrBigOffset( bck, segid, pos );
+    pos = CLITell( back, sect );
+    bck = back.dfsyms_file.DwarfSegs[sect].bck;
+    segid = back.dfsyms_file.DwarfSegs[sect].segid;
+    BackPtrBigOffset( back, bck, segid, pos );
 
 }
 
-static void CLIReloc( dw_sectnum sect, dw_reloc_type reloc_type, ... )
+static void CLIReloc( BackRun& back, dw_sectnum sect, dw_reloc_type reloc_type, ... )
 /********************************************************************/
 {
     static uint_32 const    zero  = 0;
@@ -214,66 +196,66 @@ static void CLIReloc( dw_sectnum sect, dw_reloc_type reloc_type, ... )
 //    long_offset             off;
 
     va_start( args, reloc_type );
-    curr = &dfsyms_file_state().DwarfSegs[sect];
+    curr = &back.dfsyms_file.DwarfSegs[sect];
     PUSH_OP( curr->segid );
 //        off = AskBigLocation();
         switch( reloc_type ) {
         case DW_W_LOW_PC:
-            if( dfsyms_file_state().Pc_Low != NULL ) {
-                DoLblReloc( dfsyms_file_state().Pc_Low, 0 );
+            if( back.dfsyms_file.Pc_Low != NULL ) {
+                DoLblReloc( back, back.dfsyms_file.Pc_Low, 0 );
             } else {
-                Zoiks( ZOIKS_107 ); /* No Low PC */
+                Zoiks( back, ZOIKS_107 ); /* No Low PC */
             }
             break;
         case DW_W_HIGH_PC:
-            if( dfsyms_file_state().Pc_High != NULL ) {
-                DoLblReloc( dfsyms_file_state().Pc_High, 0 );
+            if( back.dfsyms_file.Pc_High != NULL ) {
+                DoLblReloc( back, back.dfsyms_file.Pc_High, 0 );
             } else {
-                Zoiks( ZOIKS_107 ); /* No High PC */
+                Zoiks( back, ZOIKS_107 ); /* No High PC */
             }
             break;
         case DW_W_STATIC:
             sym = va_arg( args, dw_sym_handle );
-            DoReloc( sym, 0  );
+            DoReloc( back, sym, 0  );
             break;
         case DW_W_LABEL:
             bck = va_arg( args, dw_sym_handle );
-            DoLblReloc( (back_handle)bck, 0 );
+            DoLblReloc( back, (back_handle)bck, 0 );
             break;
         case DW_W_SEGMENT:
             sym = va_arg( args, dw_sym_handle );
-            DoSegReloc( sym );
+            DoSegReloc( back, sym );
             break;
         case DW_W_LABEL_SEG:
             bck = va_arg( args, dw_sym_handle );
-            DoSegLblReloc( (back_handle)bck );
+            DoSegLblReloc( back, (back_handle)bck );
             break;
         case DW_W_LOC_RANGE:
             low =  va_arg( args, loc_range* );
             high = va_arg( args, loc_range* );
-            DoLblReloc( low->bck, low->disp );
-            DoLblReloc( high->bck, high->disp );
+            DoLblReloc( back, low->bck, low->disp );
+            DoLblReloc( back, high->bck, high->disp );
             break;
         case DW_W_DEFAULT_FUNCTION:
             break;
         case DW_W_ARANGE_ADDR:
-            DoLblReloc( dfsyms_file_state().ARange, 0 );
+            DoLblReloc( back, back.dfsyms_file.ARange, 0 );
     #if (_TARGET & _TARG_8086)
-            DoSegLblReloc( dfsyms_file_state().ARange );
+            DoSegLblReloc( back, back.dfsyms_file.ARange );
     #elif (_TARGET & _TARG_80386)
             if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) ) {
-                DoSegLblReloc( dfsyms_file_state().ARange );
+                DoSegLblReloc( back, back.dfsyms_file.ARange );
             }
     #endif
             break;
         case DW_W_UNIT_SIZE:
-            dfsyms_file_state().UnitSize->segid = curr->segid;
-            dfsyms_file_state().UnitSize->offset =  AskBigLocation();
-            DataBytes( sizeof( zero ), &zero );
+            back.dfsyms_file.UnitSize->segid = curr->segid;
+            back.dfsyms_file.UnitSize->offset =  AskBigLocation(back);
+            DataBytes( back, sizeof( zero ), &zero );
             break;
         case DW_W_SECTION_POS:
             sect_no = static_cast<dw_sectnum>( va_arg( args, int ) );   /* (an enum passed through ... arrives as int) */
-            DoSectOffset( sect_no );
+            DoSectOffset( back, sect_no );
             break;
         case DW_W_EXT_REF:
           {
@@ -281,12 +263,12 @@ static void CLIReloc( dw_sectnum sect, dw_reloc_type reloc_type, ... )
 
             sym = va_arg( args, dw_sym_handle );
             disp = va_arg( args, dw_addr_offset );
-            DoReloc( sym, disp );
+            DoReloc( back, sym, disp );
 //          DFFEPtrRef( (cg_sym_handle)sym, disp );
             break;
           }
         default:
-            Zoiks( ZOIKS_107 ); /* Unknown reloc */
+            Zoiks( back, ZOIKS_107 ); /* Unknown reloc */
             break;
         }
     POP_OP();
@@ -294,47 +276,47 @@ static void CLIReloc( dw_sectnum sect, dw_reloc_type reloc_type, ... )
 }
 
 
-static void *CLIAlloc( size_t size )
+static void *CLIAlloc( BackRun& back, size_t size )
 {
     void        *p;
 
-    p = CGAlloc( size );
+    p = CGAlloc( back, size );
     return( p );
 }
 
 
-static void CLIFree( void *p )
+static void CLIFree( BackRun& back, void *p )
 {
-    CGFree( p );
+    CGFree( back, p );
 }
 
-static back_handle  MakeLabel( void )
+static back_handle  MakeLabel( BackRun& back )
 {
     back_handle bck;
 
-    bck = BENewBack( NULL );
-    bck->segid = AskOP();
+    bck = BENewBack( back, NULL );
+    bck->segid = AskOP(back);
     return( bck );
 }
 
-void    DFInitDbgInfo( void )
+void    DFInitDbgInfo( BackRun& back )
 /****************************
  * called after ObjInit
  */
 {
-    dfsyms_file_state().CurrFNo = 0;
-    dfsyms_file_state().CcuDef = false;
-    dfsyms_state().Client = NULL;
+    back.dfsyms_file.CurrFNo = 0;
+    back.dfsyms_file.CcuDef = false;
+    back.dfsyms.Client = NULL;
 }
 
-static dw_langnum SetDwarfLang( void )
+static dw_langnum SetDwarfLang( BackRun& back )
 {
     dw_langnum  ret;
     const char  *name;
     int         index;
 
     ret = DW_LANG_C89;
-    name = (const char *)FEAuxInfo( NULL, FEINF_SOURCE_LANGUAGE );
+    name = (const char *)FEAuxInfo( *back.front, NULL, FEINF_SOURCE_LANGUAGE );
     for( index = 0; index < MAX_LANG; ++index ) {
         if( strcmp( name, LangNames[index].name ) == 0 ) {
             ret = LangNames[index].dwarf_lang;
@@ -344,67 +326,67 @@ static dw_langnum SetDwarfLang( void )
     return( ret );
 }
 
-static  void    InitSegBck( void )
+static  void    InitSegBck( BackRun& back )
 /********************************/
 {
     dw_sectnum  i;
     segment_id  old_segid;
     back_handle bck;
 
-    old_segid = AskOP();
+    old_segid = AskOP(back);
     for( i = static_cast<dw_sectnum>(0); i < DW_DEBUG_MAX; ++i ) {
-        SetOP( dfsyms_file_state().DwarfSegs[i].segid );
-        bck = MakeLabel();
-        bck->segid = dfsyms_file_state().DwarfSegs[i].segid;
-        dfsyms_file_state().DwarfSegs[i].bck = bck;
-        DataLabel( bck->lbl );
+        SetOP( back, back.dfsyms_file.DwarfSegs[i].segid );
+        bck = MakeLabel(back);
+        bck->segid = back.dfsyms_file.DwarfSegs[i].segid;
+        back.dfsyms_file.DwarfSegs[i].bck = bck;
+        DataLabel( back, bck->lbl );
     }
-    SetOP( old_segid );
+    SetOP( back, old_segid );
 }
 
-static  void    InitLineSegBck( void )
+static  void    InitLineSegBck( BackRun& back )
 /************************************/
 {
     back_handle bck;
 
-    PUSH_OP( dfsyms_file_state().DwarfSegs[DW_DEBUG_LINE].segid );
-        bck = MakeLabel();
-        bck->segid = dfsyms_file_state().DwarfSegs[DW_DEBUG_LINE].segid;
-        dfsyms_file_state().DwarfSegs[DW_DEBUG_LINE].bck = bck;
-        DataLabel( bck->lbl );
+    PUSH_OP( back.dfsyms_file.DwarfSegs[DW_DEBUG_LINE].segid );
+        bck = MakeLabel(back);
+        bck->segid = back.dfsyms_file.DwarfSegs[DW_DEBUG_LINE].segid;
+        back.dfsyms_file.DwarfSegs[DW_DEBUG_LINE].bck = bck;
+        DataLabel( back, bck->lbl );
     POP_OP();
 }
 
-static  void    FiniSegBck( void )
+static  void    FiniSegBck( BackRun& back )
 /********************************/
 {
     int         i;
     back_handle bck;
 
     for( i = 0; i < DW_DEBUG_MAX; ++i ) {
-        bck = dfsyms_file_state().DwarfSegs[i].bck;
-        BEFreeBack( bck );
+        bck = back.dfsyms_file.DwarfSegs[i].bck;
+        BEFreeBack( back, bck );
     }
 }
 
-static  void    FiniLineSegBck( void )
+static  void    FiniLineSegBck( BackRun& back )
 /************************************/
 {
     back_handle bck;
 
-    bck = dfsyms_file_state().DwarfSegs[DW_DEBUG_LINE].bck;
-    BEFreeBack( bck );
+    bck = back.dfsyms_file.DwarfSegs[DW_DEBUG_LINE].bck;
+    BEFreeBack( back, bck );
 }
 
-static int InitCU( dw_cu_info *cu )
+static int InitCU( BackRun& back, dw_cu_info *cu )
 {
     const type_def  *tipe_addr;
 
-    cu->source_filename = static_cast<const char *>(FEAuxInfo( NULL, FEINF_SOURCE_NAME ));
+    cu->source_filename = static_cast<const char *>(FEAuxInfo( *back.front, NULL, FEINF_SOURCE_NAME ));
     cu->directory = "";
     cu->inc_list = NULL;
     cu->inc_list_len = 0;
-    tipe_addr = TypeAddress( TY_NEAR_POINTER );
+    tipe_addr = TypeAddress( back, TY_NEAR_POINTER );
     cu->offset_size = tipe_addr->length;
 #if (_TARGET & _TARG_8086)
     cu->segment_size = 2;
@@ -413,7 +395,7 @@ static int InitCU( dw_cu_info *cu )
 #else
     cu->segment_size = 0;
 #endif
-    switch( GetMemModel() ) {
+    switch( GetMemModel(back) ) {
     case 'h':
         cu->model = DW_MEM_MODEL_huge;
         break;
@@ -439,7 +421,7 @@ static int InitCU( dw_cu_info *cu )
     return( 0 );
 }
 
-void    DFSymRange( cg_sym_handle sym, offset size )
+void    DFSymRange( BackRun& back, cg_sym_handle sym, offset size )
 /***************************************************
  * I don't see what this is good for. The aranges for any
  * comdat symbols will be taken care of by DFSegRange().
@@ -451,12 +433,12 @@ void    DFSymRange( cg_sym_handle sym, offset size )
 {
     if( _IsModel( CGSW_GEN_DBG_LOCALS )
       || _IsModel( CGSW_GEN_DBG_TYPES ) ) {
-        dfsyms_file_state().ARange = FEBack( sym );
-        DWAddress( dfsyms_state().Client, size );
+        back.dfsyms_file.ARange = FEBack( *back.front, sym );
+        DWAddress( back, back.dfsyms.Client, size );
     }
 }
 
-void    DFSegRange( void )
+void    DFSegRange( BackRun& back )
 /*************************
  * do arange for the current segment
  */
@@ -467,21 +449,21 @@ void    DFSegRange( void )
 
     if( _IsModel( CGSW_GEN_DBG_LOCALS )
       || _IsModel( CGSW_GEN_DBG_TYPES ) ) {
-        size = AskMaxSize();
+        size = AskMaxSize(back);
         if( size > 0 ) {
-            bck = MakeLabel();
-            off = AskLocation();
-            SetLocation( 0 );
-            DataLabel( bck->lbl );
-            SetLocation( off );
-            dfsyms_file_state().ARange = bck;
-            DWAddress( dfsyms_state().Client, size );
-            BEFreeBack( bck );
+            bck = MakeLabel(back);
+            off = AskLocation(back);
+            SetLocation( back, 0 );
+            DataLabel( back, bck->lbl );
+            SetLocation( back, off );
+            back.dfsyms_file.ARange = bck;
+            DWAddress( back, back.dfsyms.Client, size );
+            BEFreeBack( back, bck );
         }
     }
 }
 
-void    DFBegCCU( segment_id code_segid, dw_sym_handle dbg_pch )
+void    DFBegCCU( BackRun& back, segment_id code_segid, dw_sym_handle dbg_pch )
 /***************************************************************
  * Call when codeseg has been defined
  */
@@ -497,13 +479,13 @@ void    DFBegCCU( segment_id code_segid, dw_sym_handle dbg_pch )
       && _IsntModel( CGSW_GEN_DBG_TYPES ) ) {
         return;
     }
-    if( dfsyms_file_state().CcuDef ) {
-        InitCU( &cu );
+    if( back.dfsyms_file.CcuDef ) {
+        InitCU( back, &cu );
         cu.dbg_pch = dbg_pch;
         cu.flags = DW_CU_FLAG_NONE;
 #if defined( DWARF_CU_REC_NO_PCLO_PCHI ) || (_TARGET & _TARG_8086)
-        dfsyms_file_state().Pc_Low = NULL;
-        dfsyms_file_state().Pc_High = NULL;
+        back.dfsyms_file.Pc_Low = NULL;
+        back.dfsyms_file.Pc_High = NULL;
         bck = NULL;
 #else
     #if (_TARGET & _TARG_80386)
@@ -531,13 +513,13 @@ void    DFBegCCU( segment_id code_segid, dw_sym_handle dbg_pch )
         }
     #endif
 #endif
-        dfsyms_file_state().Comp_High = dfsyms_file_state().Pc_High;
-        DWBeginCompileUnit( dfsyms_state().Client, &cu );
+        back.dfsyms_file.Comp_High = back.dfsyms_file.Pc_High;
+        DWBeginCompileUnit( back, back.dfsyms.Client, &cu );
         if( cu.flags & DW_CU_FLAG_CONTIGUOUS ) {
-            BEFreeBack( bck );
+            BEFreeBack( back, bck );
         }
     } else {
-        dfsyms_file_state().CcuDef = true;
+        back.dfsyms_file.CcuDef = true;
     }
 }
 
@@ -555,7 +537,7 @@ static const char *SetDwarfProducer( void )
     return( name );
 }
 
-void    DFObjInitDbgInfo( void )
+void    DFObjInitDbgInfo( BackRun& back )
 /*******************************
  * called by objinit to init segments and dwarf writing library
  */
@@ -581,52 +563,52 @@ void    DFObjInitDbgInfo( void )
     info.compiler_options = DW_CM_DEBUGGER;
     info.abbrev_sym = 0;
     info.producer_name = SetDwarfProducer();
-    info.language = SetDwarfLang();
+    info.language = SetDwarfLang(back);
     if( setjmp( info.exception_handler ) == 0 ) {
         info.funcs = cli_funcs;
-        InitSegBck(); // start each seg with a ref label
+        InitSegBck(back); // start each seg with a ref label
         if( _IsModel( CGSW_GEN_DBG_PREDEF ) ) {
-            abbrev_sym = static_cast<cg_sym_handle>(FEAuxInfo( NULL, FEINF_DBG_PREDEF_SYM ));
+            abbrev_sym = static_cast<cg_sym_handle>(FEAuxInfo( *back.front, NULL, FEINF_DBG_PREDEF_SYM ));
             info.abbrev_sym = (dw_sym_handle)abbrev_sym;
-            attr = FEAttr( abbrev_sym );
+            attr = FEAttr( *back.front, abbrev_sym );
             if( (attr & FE_IMPORT) ) {
                 info.compiler_options |= DW_CM_ABBREV_PRE;
             } else {
                 back_handle bck;
 
                 info.compiler_options |= DW_CM_ABBREV_GEN;
-                bck = FEBack( abbrev_sym ); // dump out export label
-                bck->segid = dfsyms_file_state().DwarfSegs[DW_DEBUG_ABBREV].segid;
-                PUSH_OP( dfsyms_file_state().DwarfSegs[DW_DEBUG_ABBREV].segid );
-                    DataLabel( bck->lbl );
+                bck = FEBack( *back.front, abbrev_sym ); // dump out export label
+                bck->segid = back.dfsyms_file.DwarfSegs[DW_DEBUG_ABBREV].segid;
+                PUSH_OP( back.dfsyms_file.DwarfSegs[DW_DEBUG_ABBREV].segid );
+                    DataLabel( back, bck->lbl );
                 POP_OP();
             }
         }
-        debug_pch = static_cast<cg_sym_handle>(FEAuxInfo( NULL, FEINF_DBG_PCH_SYM ));
+        debug_pch = static_cast<cg_sym_handle>(FEAuxInfo( *back.front, NULL, FEINF_DBG_PCH_SYM ));
         if( debug_pch != NULL ) {
-            attr = FEAttr( debug_pch );
+            attr = FEAttr( *back.front, debug_pch );
             if( (attr & FE_IMPORT) == 0 ) {
                 back_handle bck;
 
-                bck = FEBack( debug_pch );
-                bck->segid = dfsyms_file_state().DwarfSegs[DW_DEBUG_INFO].segid;
-                PUSH_OP( dfsyms_file_state().DwarfSegs[DW_DEBUG_INFO].segid );
-                    DataLabel( bck->lbl );
+                bck = FEBack( *back.front, debug_pch );
+                bck->segid = back.dfsyms_file.DwarfSegs[DW_DEBUG_INFO].segid;
+                PUSH_OP( back.dfsyms_file.DwarfSegs[DW_DEBUG_INFO].segid );
+                    DataLabel( back, bck->lbl );
                 POP_OP();
                 debug_pch = NULL;
             }
         }
-        dfsyms_state().Client = DWInit( &info );
-        if( dfsyms_state().Client == NULL ) {
-            Zoiks( ZOIKS_107 ); /* Bad */
+        back.dfsyms.Client = DWInit( back, &info );
+        if( back.dfsyms.Client == NULL ) {
+            Zoiks( back, ZOIKS_107 ); /* Bad */
         }
-        DFBegCCU( AskCodeSeg(), (dw_sym_handle)debug_pch );
+        DFBegCCU( back, AskCodeSeg(back), (dw_sym_handle)debug_pch );
     } else {
-        Zoiks( ZOIKS_107 ); /* Big Error */
+        Zoiks( back, ZOIKS_107 ); /* Big Error */
     }
 }
 
-void    DFObjLineInitDbgInfo( void )
+void    DFObjLineInitDbgInfo( BackRun& back )
 /***********************************
  * called by objinit to init segments and dwarf writing library
  */
@@ -646,15 +628,15 @@ void    DFObjLineInitDbgInfo( void )
     info.compiler_options = DW_CM_DEBUGGER;
     info.abbrev_sym = 0;
     info.producer_name = SetDwarfProducer();
-    info.language = SetDwarfLang();
+    info.language = SetDwarfLang(back);
     if( setjmp( info.exception_handler ) == 0 ) {
         info.funcs = cli_funcs;
-        InitLineSegBck(); // start each seg with a ref label
-        dfsyms_state().Client = DWInit( &info );
-        if( dfsyms_state().Client == NULL ) {
-            Zoiks( ZOIKS_107 ); /* Bad */
+        InitLineSegBck(back); // start each seg with a ref label
+        back.dfsyms.Client = DWInit( back, &info );
+        if( back.dfsyms.Client == NULL ) {
+            Zoiks( back, ZOIKS_107 ); /* Bad */
         }
-        InitCU( &cu );
+        InitCU( back, &cu );
         cu.dbg_pch = NULL;
 #if defined( DWARF_CU_REC_NO_PCLO_PCHI ) || (_TARGET & _TARG_8086)
         cu.flags = DW_CU_FLAG_NONE;
@@ -663,22 +645,22 @@ void    DFObjLineInitDbgInfo( void )
 #else
         cu.flags = DW_CU_FLAG_CONTIGUOUS;
 #endif
-        DWInitDebugLine( dfsyms_state().Client, &cu );
+        DWInitDebugLine( back, back.dfsyms.Client, &cu );
     } else {
-        Zoiks( ZOIKS_107 ); /* Big Error */
+        Zoiks( back, ZOIKS_107 ); /* Big Error */
     }
 }
 
 
-pointer _CGAPI DFClient( void )
+pointer _CGAPI DFClient( BackRun& back )
 /******************************
  * return the client handle
  */
 {
-    return( dfsyms_state().Client );
+    return( back.dfsyms.Client );
 }
 
-void _CGAPI DFDwarfLocal( pointer client, pointer locid, pointer sym )
+void _CGAPI DFDwarfLocal( BackRun& back, pointer client, pointer locid, pointer sym )
 /*********************************************************************
  * TODO: maybe this should be some sort of call back
  * add to location expr where local sym is
@@ -687,9 +669,9 @@ void _CGAPI DFDwarfLocal( pointer client, pointer locid, pointer sym )
     name        *tmp;
     type_length offset;
 
-    tmp = DeAlias( AllocUserTemp( sym, XX ) );
-    offset = NewBase( tmp );
-    DWLocOp( static_cast<dw_client>(client), static_cast<dw_loc_id>(locid), DW_LOC_fbreg, offset );
+    tmp = DeAlias( AllocUserTemp( back, sym, XX ) );
+    offset = NewBase( back, tmp );
+    DWLocOp( back, static_cast<dw_client>(client), static_cast<dw_loc_id>(locid), DW_LOC_fbreg, offset );
 }
 
 void    DFFiniDbgInfo( void )
@@ -697,7 +679,7 @@ void    DFFiniDbgInfo( void )
 }
 
 
-void    DFObjFiniDbgInfo( offset codesize )
+void    DFObjFiniDbgInfo( BackRun& back, offset codesize )
 /*****************************************/
 {
     offset          here;
@@ -705,78 +687,78 @@ void    DFObjFiniDbgInfo( offset codesize )
 
     if( _IsModel( CGSW_GEN_DBG_LOCALS )
       || _IsModel( CGSW_GEN_DBG_TYPES ) ) {
-        bck = dfsyms_file_state().Comp_High;
+        bck = back.dfsyms_file.Comp_High;
         if( bck != NULL ) {
-            PUSH_OP( AskCodeSeg() );
-                OutLabel( bck->lbl );
+            PUSH_OP( AskCodeSeg(back) );
+                OutLabel( back, bck->lbl );
             POP_OP();
-            BEFreeBack( bck );
-            dfsyms_file_state().Comp_High = NULL;
+            BEFreeBack( back, bck );
+            back.dfsyms_file.Comp_High = NULL;
         }
-        DWEndCompileUnit( dfsyms_state().Client );
-        DWFini( dfsyms_state().Client );
-        PUSH_OP( dfsyms_file_state().UnitSize->segid );
-            here = AskLocation();
-            SetLocation( dfsyms_file_state().UnitSize->offset );
-            DataLong( codesize );
-            SetLocation( here );
+        DWEndCompileUnit( back, back.dfsyms.Client );
+        DWFini( back, back.dfsyms.Client );
+        PUSH_OP( back.dfsyms_file.UnitSize->segid );
+            here = AskLocation(back);
+            SetLocation( back, back.dfsyms_file.UnitSize->offset );
+            DataLong( back, codesize );
+            SetLocation( back, here );
         POP_OP();
-        FiniSegBck();
+        FiniSegBck(back);
     }
 }
 
-void    DFObjLineFiniDbgInfo( void )
+void    DFObjLineFiniDbgInfo( BackRun& back )
 /**********************************/
 {
-    DWFiniDebugLine( dfsyms_state().Client );
-    DWFini( dfsyms_state().Client );
-    FiniLineSegBck();
+    DWFiniDebugLine( back, back.dfsyms.Client );
+    DWFini( back, back.dfsyms.Client );
+    FiniLineSegBck(back);
 }
 
-void     DFLineNum( cue_state *state, offset lc )
+void     DFLineNum( BackRun& back, cue_state *state, offset lc )
 /***********************************************/
 {
     const char  *fname;
 
-    if( NeedBaseSet() ) {
+    if( NeedBaseSet(back) ) {
         back_handle bck;
 
-        bck = MakeLabel();
-        OutLabel( bck->lbl );
-        DWLineAddr( dfsyms_state().Client, (dw_sym_handle)bck, lc );
+        bck = MakeLabel(back);
+        OutLabel( back, bck->lbl );
+        DWLineAddr( back, back.dfsyms.Client, (dw_sym_handle)bck, lc );
 #if (_TARGET & _TARG_8086)
-        DWLineSeg( dfsyms_state().Client, (dw_sym_handle)bck );
+        DWLineSeg( back, back.dfsyms.Client, (dw_sym_handle)bck );
 #elif (_TARGET & _TARG_80386)
         if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) ) {
-            DWLineSeg( dfsyms_state().Client, (dw_sym_handle)bck );
+            DWLineSeg( back, back.dfsyms.Client, (dw_sym_handle)bck );
         }
 #endif
-        BEFreeBack( bck );
+        BEFreeBack( back, bck );
     }
-    if( state->fno != dfsyms_file_state().CurrFNo ) {
-        fname = SrcFNoFind( state->fno );
-        DWSetFile( dfsyms_state().Client, fname );
-        dfsyms_file_state().CurrFNo = state->fno;
+    if( state->fno != back.dfsyms_file.CurrFNo ) {
+        fname = SrcFNoFind( back, state->fno );
+        DWSetFile( back, back.dfsyms.Client, fname );
+        back.dfsyms_file.CurrFNo = state->fno;
     }
-    DWLineNum( dfsyms_state().Client, DW_LN_STMT, state->line, state->col, lc );
+    DWLineNum( back, back.dfsyms.Client, DW_LN_STMT, state->line, state->col, lc );
 }
 
 
 #if _TARGET_INTEL
-static  dw_loc_handle   SegLoc( cg_sym_handle sym )
+static  dw_loc_handle   SegLoc( BackRun& back, cg_sym_handle sym )
 /*************************************************/
 {
     dw_loc_id       locid;
     dw_loc_handle   df_loc;
 
-    locid = DWLocInit( dfsyms_state().Client );
-    DWLocSegment( dfsyms_state().Client, locid, (dw_sym_handle)sym );
-    df_loc = DWLocFini( dfsyms_state().Client, locid );
+    locid = DWLocInit( back, back.dfsyms.Client );
+    DWLocSegment( back, back.dfsyms.Client, locid, (dw_sym_handle)sym );
+    df_loc = DWLocFini( back, back.dfsyms.Client, locid );
     return( df_loc );
 }
 #endif
 
-void    DFGenStatic( cg_sym_handle sym, dbg_loc loc )
+void    DFGenStatic( BackRun& back, cg_sym_handle sym, dbg_loc loc )
 /***************************************************/
 {
     dw_flags        flags;
@@ -787,64 +769,64 @@ void    DFGenStatic( cg_sym_handle sym, dbg_loc loc )
     dw_handle       obj;
     dbg_type        dbtype;
 
-    attr = FEAttr( sym );
+    attr = FEAttr( *back.front, sym );
     if( attr & FE_GLOBAL ) {
         flags = DW_FLAG_GLOBAL;
     } else {
         flags = DW_FLAG_NONE;
     }
-    name = FEName( sym );
+    name = FEName( *back.front, sym );
     dw_segloc = NULL;
 #if (_TARGET & _TARG_8086)
     if( attr & FE_STATIC ) {
-        dw_segloc = SegLoc( sym );
+        dw_segloc = SegLoc( back, sym );
     }
 #elif (_TARGET & _TARG_80386)
     if( attr & FE_STATIC ) {
         if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) ) {
-            dw_segloc = SegLoc( sym );
+            dw_segloc = SegLoc( back, sym );
         }
     }
 #endif
-    dbtype = FEDbgType( sym ); /* causes name side effects */
-    dw_loc = DBGLoc2DF( loc );
-    obj = DWVariable( dfsyms_state().Client, dbtype, dw_loc, 0, dw_segloc, name, 0, flags );
+    dbtype = FEDbgType( *back.front, sym ); /* causes name side effects */
+    dw_loc = DBGLoc2DF( back, loc );
+    obj = DWVariable( back, back.dfsyms.Client, dbtype, dw_loc, 0, dw_segloc, name, 0, flags );
     if( attr &  FE_GLOBAL ) {
-        name = FEName( sym );
-        DWPubname( dfsyms_state().Client, obj, name );
+        name = FEName( *back.front, sym );
+        DWPubname( back, back.dfsyms.Client, obj, name );
     }
     if( dw_loc != NULL ) {
-        DWLocTrash( dfsyms_state().Client, dw_loc );
+        DWLocTrash( back, back.dfsyms.Client, dw_loc );
     }
 #if _TARGET_INTEL
     if( dw_segloc != NULL ) {
-        DWLocTrash( dfsyms_state().Client, dw_segloc );
+        DWLocTrash( back, back.dfsyms.Client, dw_segloc );
     }
 #endif
 }
 
-void    DFTypedef( const char *nm, dbg_type tipe )
+void    DFTypedef( BackRun& back, const char *nm, dbg_type tipe )
 /*************************************************
  * emit a user typedef
  */
 {
-     DWTypedef( dfsyms_state().Client, tipe, nm, 0, static_cast<dw_flags>(0) );
+     DWTypedef( back, back.dfsyms.Client, tipe, nm, 0, static_cast<dw_flags>(0) );
 }
 
-static  void    GenRetSym( dbg_loc loc, dbg_type tipe )
+static  void    GenRetSym( BackRun& back, dbg_loc loc, dbg_type tipe )
 /*****************************************************/
 {
     dw_loc_handle   dw_loc;
 
-    dw_loc = DBGLoc2DF( loc );
+    dw_loc = DBGLoc2DF( back, loc );
     if( dw_loc != NULL ) {
-        DWVariable( dfsyms_state().Client, tipe, dw_loc,
+        DWVariable( back, back.dfsyms.Client, tipe, dw_loc,
                    0, NULL, ".return", 0, DW_FLAG_ARTIFICIAL );
-        DWLocTrash( dfsyms_state().Client, dw_loc );
+        DWLocTrash( back, back.dfsyms.Client, dw_loc );
     }
 }
 
-static void    SymParm( cg_sym_handle sym, dw_loc_handle loc, dw_loc_handle entry )
+static void    SymParm( BackRun& back, cg_sym_handle sym, dw_loc_handle loc, dw_loc_handle entry )
 /*********************************************************************************/
 {
 //    fe_attr         attr;
@@ -853,10 +835,10 @@ static void    SymParm( cg_sym_handle sym, dw_loc_handle loc, dw_loc_handle entr
     dbg_type        dbtype;
 
 //    attr = FEAttr( sym );
-    dbtype = FEDbgType( sym ); /* causes FEName side effects */
-    name = FEName( sym );
+    dbtype = FEDbgType( *back.front, sym ); /* causes FEName side effects */
+    name = FEName( *back.front, sym );
 //    obj = DWFormalParameter( Client, dbtype, loc, entry,  name, DW_DEFAULT_NONE );
-    DWFormalParameter( dfsyms_state().Client, dbtype, loc, entry,  name, DW_DEFAULT_NONE );
+    DWFormalParameter( back, back.dfsyms.Client, dbtype, loc, entry,  name, DW_DEFAULT_NONE );
 }
 
 /*
@@ -864,7 +846,7 @@ static void    SymParm( cg_sym_handle sym, dw_loc_handle loc, dw_loc_handle entr
  */
 
 #if _TARGET_INTEL
-static dw_loc_handle  RetLoc( uint_32 ret_offset )
+static dw_loc_handle  RetLoc( BackRun& back, uint_32 ret_offset )
 /*************************************************
  * make a loc for return address
  */
@@ -872,13 +854,13 @@ static dw_loc_handle  RetLoc( uint_32 ret_offset )
     dw_loc_id       locid;
     dw_loc_handle   df_loc;
 
-    locid = DWLocInit( dfsyms_state().Client );
-    DWLocOp( dfsyms_state().Client, locid, DW_LOC_fbreg, ret_offset );
-    df_loc = DWLocFini( dfsyms_state().Client, locid );
+    locid = DWLocInit( back, back.dfsyms.Client );
+    DWLocOp( back, back.dfsyms.Client, locid, DW_LOC_fbreg, ret_offset );
+    df_loc = DWLocFini( back, back.dfsyms.Client, locid );
     return( df_loc );
 }
 
-static dw_loc_handle  FrameLoc( void )
+static dw_loc_handle  FrameLoc( BackRun& back )
 /*
  * make a loc for frame address
  */
@@ -887,22 +869,22 @@ static dw_loc_handle  FrameLoc( void )
     dw_loc_id       locid;
     dw_loc_handle   df_loc;
 
-    locid = DWLocInit( dfsyms_state().Client );
-    dsp = DFDisplayReg();
-    DWLocReg( dfsyms_state().Client, locid, dsp );
-    df_loc = DWLocFini( dfsyms_state().Client, locid );
+    locid = DWLocInit( back, back.dfsyms.Client );
+    dsp = DFDisplayReg(back);
+    DWLocReg( back, back.dfsyms.Client, locid, dsp );
+    df_loc = DWLocFini( back, back.dfsyms.Client, locid );
     return( df_loc );
 }
 #endif
-static dw_loc_id StkLoc( uint_32 stk_offset, dw_loc_id locid )
+static dw_loc_id StkLoc( BackRun& back, uint_32 stk_offset, dw_loc_id locid )
 /*************************************************************
  * make a loc for stack  address
  */
 {
     uint            stk;
 
-    stk = DFStkReg();
-    DWLocOp( dfsyms_state().Client, locid, DW_LOC_breg, stk, stk_offset );
+    stk = DFStkReg(back);
+    DWLocOp( back, back.dfsyms.Client, locid, DW_LOC_breg, stk, stk_offset );
     return( locid );
 }
 
@@ -923,18 +905,18 @@ static  dbg_local *UnLinkLoc( dbg_local **owner, cg_sym_handle sym )
 }
 
 
-static  void GenParmLoc( dbg_local *parm, dbg_local **locals )
+static  void GenParmLoc( BackRun& back, dbg_local *parm, dbg_local **locals )
 {
     dbg_local      *alt;
     dw_loc_handle   dw_loc;
     dw_loc_handle   dw_entry;
     dw_loc_id       df_locid;
 
-    df_locid = DWLocInit( dfsyms_state().Client );
+    df_locid = DWLocInit( back, back.dfsyms.Client );
     if( parm->loc->class_ == LOC_CONST_4 ) {
-        df_locid = StkLoc( parm->loc->u.val, df_locid );
+        df_locid = StkLoc( back, parm->loc->u.val, df_locid );
     } else {
-        df_locid = DBGLoc2DFCont( parm->loc, df_locid );
+        df_locid = DBGLoc2DFCont( back, parm->loc, df_locid );
     }
     alt = UnLinkLoc( locals, static_cast<cg_sym_handle>(parm->sym) );
     if( alt != NULL ) {
@@ -951,23 +933,23 @@ static  void GenParmLoc( dbg_local *parm, dbg_local **locals )
                 alt_lnk = &alt_loc->next;
             }
             *alt_lnk = NULL;   // don't use base
-            df_locid = DBGLoc2DFCont( alt->loc, df_locid );
+            df_locid = DBGLoc2DFCont( back, alt->loc, df_locid );
             *alt_lnk = alt_loc;
         }
-        dw_loc = DBGLoc2DF( alt->loc );
-        DBLocFini( alt->loc );
-        CGFree( alt );
+        dw_loc = DBGLoc2DF( back, alt->loc );
+        DBLocFini( back, alt->loc );
+        CGFree( back, alt );
     } else {
-        dw_loc = DBGLoc2DF( NULL );
+        dw_loc = DBGLoc2DF( back, NULL );
     }
-    dw_entry = DWLocFini( dfsyms_state().Client, df_locid );
-    SymParm( static_cast<cg_sym_handle>(parm->sym), dw_loc, dw_entry );
-    DWLocTrash( dfsyms_state().Client, dw_loc );
-    DWLocTrash( dfsyms_state().Client, dw_entry );
+    dw_entry = DWLocFini( back, back.dfsyms.Client, df_locid );
+    SymParm( back, static_cast<cg_sym_handle>(parm->sym), dw_loc, dw_entry );
+    DWLocTrash( back, back.dfsyms.Client, dw_loc );
+    DWLocTrash( back, back.dfsyms.Client, dw_entry );
 }
 
 
-static  void    DumpLocals( dbg_local *local )
+static  void    DumpLocals( BackRun& back, dbg_local *local )
 /********************************************/
 {
     dbg_local   *next;
@@ -977,22 +959,22 @@ static  void    DumpLocals( dbg_local *local )
         next = local->link;
         switch( local->kind ) {
         case DBG_SYM_VAR:
-            DFGenStatic( static_cast<cg_sym_handle>(local->sym), local->loc );
-            DBLocFini( local->loc );
+            DFGenStatic( back, static_cast<cg_sym_handle>(local->sym), local->loc );
+            DBLocFini( back, local->loc );
             break;
         case DBG_SYM_TYPE:
-            tipe = FEDbgType( static_cast<cg_sym_handle>(local->sym) );
+            tipe = FEDbgType( *back.front, static_cast<cg_sym_handle>(local->sym) );
             break;
         case DBG_SYM_TYPEDEF:
-            tipe = FEDbgType( static_cast<cg_sym_handle>(local->sym) );
-            DFTypedef( FEName( static_cast<cg_sym_handle>(local->sym) ), tipe );
+            tipe = FEDbgType( *back.front, static_cast<cg_sym_handle>(local->sym) );
+            DFTypedef( back, FEName( *back.front, static_cast<cg_sym_handle>(local->sym) ), tipe );
             break;
         }
-        CGFree( local );
+        CGFree( back, local );
     }
 }
 
-void    DFProEnd( dbg_rtn *rtn, offset lc )
+void    DFProEnd( BackRun& back, dbg_rtn *rtn, offset lc )
 /*****************************************/
 {
     cg_sym_handle       sym;
@@ -1010,8 +992,8 @@ void    DFProEnd( dbg_rtn *rtn, offset lc )
 
     /* unused parameters */ (void)lc;
 
-    sym = AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) );
-    tipe = FEDbgRetType( sym );
+    sym = AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) );
+    tipe = FEDbgRetType( *back.front, sym );
     flags = DW_FLAG_NONE;
 #if _TARGET_INTEL
     if( (call_class_target)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL ) {
@@ -1022,8 +1004,8 @@ void    DFProEnd( dbg_rtn *rtn, offset lc )
   #endif
     }
 #endif
-    attr = FEAttr( sym );
-    name = FEName( sym );
+    attr = FEAttr( *back.front, sym );
+    name = FEName( *back.front, sym );
     if( attr & FE_GLOBAL ) {
         flags |= DW_FLAG_GLOBAL;
     } else {
@@ -1033,7 +1015,7 @@ void    DFProEnd( dbg_rtn *rtn, offset lc )
         flags |= DW_FLAG_ARTIFICIAL;
     }
     flags |= DW_FLAG_PROTOTYPED;
-    access = static_cast<sym_access *>(FEAuxInfo( sym, FEINF_DBG_SYM_ACCESS ));
+    access = static_cast<sym_access *>(FEAuxInfo( *back.front, sym, FEINF_DBG_SYM_ACCESS ));
     if( access != NULL ) {
         if( *access == SYM_ACC_PUBLIC ) {
             flags |= DW_FLAG_PUBLIC;
@@ -1043,79 +1025,79 @@ void    DFProEnd( dbg_rtn *rtn, offset lc )
             flags |= DW_FLAG_PRIVATE;
         }
     }
-    DBLocFini( rtn->obj_loc );
+    DBLocFini( back, rtn->obj_loc );
 #if (_TARGET & _TARG_8086)
-    dw_retloc = RetLoc( rtn->ret_offset );
-    dw_frameloc = FrameLoc();
-    dw_segloc = SegLoc( sym );
+    dw_retloc = RetLoc( back, rtn->ret_offset );
+    dw_frameloc = FrameLoc(back);
+    dw_segloc = SegLoc( back, sym );
 #elif (_TARGET & _TARG_80386)
-    dw_retloc = RetLoc( rtn->ret_offset );
-    dw_frameloc = FrameLoc();
-    dw_segloc = ( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) ) ? SegLoc( sym ) : NULL;
+    dw_retloc = RetLoc( back, rtn->ret_offset );
+    dw_frameloc = FrameLoc(back);
+    dw_segloc = ( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) ) ? SegLoc( back, sym ) : NULL;
 #else
     dw_retloc = NULL;
     dw_frameloc = NULL;
     dw_segloc = NULL;
 #endif
-    rtn->end_lbl = MakeLabel();
-    dfsyms_file_state().Pc_Low  = FEBack( sym );
-    dfsyms_file_state().Pc_High = rtn->end_lbl;
-    obj = DWBeginSubroutine( dfsyms_state().Client, 0, tipe, dw_retloc,
+    rtn->end_lbl = MakeLabel(back);
+    back.dfsyms_file.Pc_Low  = FEBack( *back.front, sym );
+    back.dfsyms_file.Pc_High = rtn->end_lbl;
+    obj = DWBeginSubroutine( back, back.dfsyms.Client, 0, tipe, dw_retloc,
                      dw_frameloc, NULL, rtn->obj_type,
                      dw_segloc, name, rtn->pro_size, flags );
     if( attr &  FE_GLOBAL ) {
         if( rtn->obj_type != DBG_NIL_TYPE ) {
-            name = static_cast<const char *>(FEAuxInfo( sym, FEINF_CLASS_APPENDED_NAME ));
+            name = static_cast<const char *>(FEAuxInfo( *back.front, sym, FEINF_CLASS_APPENDED_NAME ));
         } else {
-            name = FEName( sym );
+            name = FEName( *back.front, sym );
         }
-        DWPubname( dfsyms_state().Client, obj, name );
+        DWPubname( back, back.dfsyms.Client, obj, name );
     }
 #if _TARGET_INTEL
     if( dw_retloc != NULL ) {
-        DWLocTrash( dfsyms_state().Client, dw_retloc );
+        DWLocTrash( back, back.dfsyms.Client, dw_retloc );
     }
     if( dw_frameloc != NULL ) {
-        DWLocTrash( dfsyms_state().Client, dw_frameloc );
+        DWLocTrash( back, back.dfsyms.Client, dw_frameloc );
     }
     if( dw_segloc != NULL ) {
-        DWLocTrash( dfsyms_state().Client, dw_segloc );
+        DWLocTrash( back, back.dfsyms.Client, dw_segloc );
     }
 #endif
     for( parm = rtn->parms; parm != NULL; parm = next ) {
         next = parm->link;
         if( parm->sym != NULL ) {
-            GenParmLoc( parm, &rtn->rtn_blk->locals );
+            GenParmLoc( back, parm, &rtn->rtn_blk->locals );
         }
-        DBLocFini( parm->loc );
-        CGFree( parm );
+        DBLocFini( back, parm->loc );
+        CGFree( back, parm );
     }
     if( rtn->return_loc != NULL ) {
-        GenRetSym( rtn->return_loc, tipe );
-        DBLocFini( rtn->return_loc );
+        GenRetSym( back, rtn->return_loc, tipe );
+        DBLocFini( back, rtn->return_loc );
     }
-    DFBlkBeg( rtn->rtn_blk, lc );
+    DFBlkBeg( back, rtn->rtn_blk, lc );
 //   DumpLocals( rtn->blk->locals );
 }
 
-void    DFBlkBeg( dbg_block *blk, offset lc )
+void    DFBlkBeg( BackRun& back, dbg_block *blk, offset lc )
 /*******************************************/
 {
     back_handle bck;
 
     /* unused parameters */ (void)lc;
 
-    bck = MakeLabel();
-    blk->end_lbl = MakeLabel();
-    OutLabel( bck->lbl );
-    dfsyms_file_state().Pc_Low  = bck;
-    dfsyms_file_state().Pc_High = blk->end_lbl;
-    DWBeginLexicalBlock( dfsyms_state().Client, NULL, NULL );
-    BEFreeBack( bck );
-    DumpLocals( blk->locals );
+    bck = MakeLabel(back);
+    blk->end_lbl = MakeLabel(back);
+    OutLabel( back, bck->lbl );
+    back.dfsyms_file.Pc_Low  = bck;
+    back.dfsyms_file.Pc_High = blk->end_lbl;
+    DWBeginLexicalBlock( back, back.dfsyms.Client, NULL, NULL );
+    BEFreeBack( back, bck );
+    DumpLocals( back, blk->locals );
 }
 
-void    DFBlkEnd( dbg_block *blk, offset lc )
+void    DFBlkEnd( BackRun& back, dbg_block *blk, offset lc )
 /*******************************************/
 {
     back_handle bck;
@@ -1123,18 +1105,18 @@ void    DFBlkEnd( dbg_block *blk, offset lc )
     /* unused parameters */ (void)lc;
 
     bck = blk->end_lbl;
-    OutLabel( bck->lbl );
-    BEFreeBack( bck );
-    DWEndLexicalBlock( dfsyms_state().Client );
+    OutLabel( back, bck->lbl );
+    BEFreeBack( back, bck );
+    DWEndLexicalBlock( back, back.dfsyms.Client );
 }
 
-void    DFEpiBeg( dbg_rtn *rtn, offset lc )
+void    DFEpiBeg( BackRun& back, dbg_rtn *rtn, offset lc )
 /*****************************************/
 {
-    DFBlkEnd( rtn->rtn_blk, lc );
+    DFBlkEnd( back, rtn->rtn_blk, lc );
 }
 
-void    DFRtnEnd( dbg_rtn *rtn, offset lc )
+void    DFRtnEnd( BackRun& back, dbg_rtn *rtn, offset lc )
 /*****************************************/
 {
     back_handle bck;
@@ -1142,14 +1124,14 @@ void    DFRtnEnd( dbg_rtn *rtn, offset lc )
     /* unused parameters */ (void)lc;
 
     bck = rtn->end_lbl;
-    OutLabel( bck->lbl );
-    BEFreeBack( bck );
-    DWEndSubroutine( dfsyms_state().Client );
+    OutLabel( back, bck->lbl );
+    BEFreeBack( back, bck );
+    DWEndSubroutine( back, back.dfsyms.Client );
 }
 
-void    DFSetSection( dw_sectnum sect, back_handle bck, segment_id segid )
+void    DFSetSection( BackRun& back, dw_sectnum sect, back_handle bck, segment_id segid )
 /************************************************************************/
 {
-    dfsyms_file_state().DwarfSegs[sect].segid = segid;
-    dfsyms_file_state().DwarfSegs[sect].bck = bck;
+    back.dfsyms_file.DwarfSegs[sect].segid = segid;
+    back.dfsyms_file.DwarfSegs[sect].bck = bck;
 }

@@ -40,22 +40,19 @@
 #include "namelist.h"
 #include "conflict.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct ConflictVarsState {
-    pointer *ConfFrl;
-    pointer *ConfAliasVarsFrl;
-};
+/* (struct ConflictVarsState: conflict_state.h) */
 
 }  // namespace
 
-static inline ConflictVarsState& conflict_vars_state() { return cbrun_part<ConflictVarsState>(); }
 
 
-conflict_node   *AddConflictNode( name *opnd )
+conflict_node   *AddConflictNode( BackRun& back, name *opnd )
 /********************************************/
 {
     conflict_node       *new_cn;
@@ -65,9 +62,9 @@ conflict_node   *AddConflictNode( name *opnd )
 
     if( opnd->n.class_ == N_TEMP )
         opnd = DeAlias( opnd );
-    new_cn = static_cast<conflict_node *>(AllocFrl( &conflict_vars_state().ConfFrl, sizeof( conflict_node ) ));
+    new_cn = static_cast<conflict_node *>(AllocFrl( back, &back.conflict_vars.ConfFrl, sizeof( conflict_node ) ));
     new_cn->name           = opnd;
-    new_cn->next_conflict  = data_state().ConfList;
+    new_cn->next_conflict  = back.data.ConfList;
     new_cn->next_for_name  = opnd->v.conflict;
     _GBitInit( new_cn->id.out_of_block, EMPTY );
     _LBitInit( new_cn->id.within_block, EMPTY );
@@ -97,19 +94,19 @@ conflict_node   *AddConflictNode( name *opnd )
         }
     } else {
         if( opnd->m.memory_type == CG_FE ) {
-            attr = FEAttr( static_cast<cg_sym_handle>(opnd->v.symbol) );
+            attr = FEAttr( *back.front, static_cast<cg_sym_handle>(opnd->v.symbol) );
             if( (attr & FE_CONSTANT) || ( ( (attr & (FE_GLOBAL | FE_VISIBLE)) == 0 ) && _IsModel( CGSW_GEN_RELAX_ALIAS ) ) ) {
                 _SetTrue( new_cn, CST_OK_ACROSS_CALLS );
             }
         }
         opnd->v.conflict = new_cn;
     }
-    data_state().ConfList = new_cn;
+    back.data.ConfList = new_cn;
     return( new_cn );
 }
 
 
-static  conflict_node   *AddOne( name *opnd, block *blk )
+static  conflict_node   *AddOne( BackRun& back, name *opnd, block *blk )
 /*******************************************************/
 {
     if( opnd->v.usage & USE_MEMORY ) {
@@ -126,18 +123,18 @@ static  conflict_node   *AddOne( name *opnd, block *blk )
         }
         return( NULL );
     }
-    return( AddConflictNode( opnd ) );
+    return( AddConflictNode( back, opnd ) );
 }
 
 
-static  conflict_node   *FindConf( name *opnd, block *blk, instruction *ins )
+static  conflict_node   *FindConf( BackRun& back, name *opnd, block *blk, instruction *ins )
 /***************************************************************************/
 {
     conflict_node *conf;
 
     conf = opnd->v.conflict;
     if( conf == NULL )
-        return( AddOne( opnd, blk ) );
+        return( AddOne( back, opnd, blk ) );
     if( conf->start_block == NULL )
         return( conf ); /* not filled in yet */
     for( ; conf != NULL; conf = conf->next_for_name ) {                                    /* find the right one */
@@ -157,11 +154,11 @@ static  conflict_node   *FindConf( name *opnd, block *blk, instruction *ins )
             return( conf );
         }
     }
-    return( AddOne( opnd, blk ) );
+    return( AddOne( back, opnd, blk ) );
 }
 
 
-conflict_node   *FindConflictNode( name *opnd, block *blk, instruction *ins )
+conflict_node   *FindConflictNode( BackRun& back, name *opnd, block *blk, instruction *ins )
 /***************************************************************************/
 {
     conflict_node       *conf;
@@ -175,7 +172,7 @@ conflict_node   *FindConflictNode( name *opnd, block *blk, instruction *ins )
         return( NULL );
     }
     _INS_NOT_BLOCK( ins );
-    conf = FindConf( opnd, blk, ins );
+    conf = FindConf( back, opnd, blk, ins );
     if( conf == NULL )
         return( NULL );
     if( conf->start_block == NULL ) {
@@ -208,14 +205,14 @@ conflict_node   *FindConflictNode( name *opnd, block *blk, instruction *ins )
 }
 
 
-void    MarkSegment( instruction *ins, name *opnd )
+void    MarkSegment( BackRun& back, instruction *ins, name *opnd )
 /*************************************************/
 {
-    MarkPossible( ins, opnd, SegIndex() );
+    MarkPossible( back, ins, opnd, SegIndex() );
 }
 
 
-conflict_node   *NameConflict( instruction *ins, name *opnd )
+conflict_node   *NameConflict( BackRun& back, instruction *ins, name *opnd )
 /***********************************************************/
 {
     conflict_node       *conf;
@@ -260,13 +257,13 @@ static  possible_for_alias *FindPossibleForAlias( conflict_node *conf, name *opn
  * (new variable), create new entry and assign RL_NUMBER_OF_SETS
  * (no restictions yet) to it.
  */
-static  possible_for_alias *MakePossibleForAlias( conflict_node *conf, name *opnd )
+static  possible_for_alias *MakePossibleForAlias( BackRun& back, conflict_node *conf, name *opnd )
 {
     possible_for_alias   *aposs;
 
     aposs = FindPossibleForAlias( conf, opnd );
     if( aposs == NULL ) {
-        aposs = static_cast<possible_for_alias *>(AllocFrl( &conflict_vars_state().ConfAliasVarsFrl, sizeof( possible_for_alias ) ));
+        aposs = static_cast<possible_for_alias *>(AllocFrl( back, &back.conflict_vars.ConfAliasVarsFrl, sizeof( possible_for_alias ) ));
         aposs->next     = conf->possible_for_alias_list;
         aposs->temp     = opnd;
         aposs->possible = RL_NUMBER_OF_SETS;
@@ -302,16 +299,16 @@ reg_set_index   GetPossibleForTemp( conflict_node *conf, name *temp )
 }
 
 
-void    MarkPossible( instruction *ins, name *opnd, reg_set_index regs_idx )
+void    MarkPossible( BackRun& back, instruction *ins, name *opnd, reg_set_index regs_idx )
 /**************************************************************************/
 {
     conflict_node       *conf;
     possible_for_alias  *aposs;
 
-    conf = NameConflict( ins, opnd );
+    conf = NameConflict( back, ins, opnd );
     if( conf != NULL ) {
         if( opnd->n.class_ == N_TEMP && ( opnd->t.temp_flags & ALIAS ) ) {
-            aposs = MakePossibleForAlias( conf, opnd );
+            aposs = MakePossibleForAlias( back, conf, opnd );
             aposs->possible = RegIntersect( static_cast<reg_set_index>(aposs->possible), regs_idx );
         } else {
             conf->possible = RegIntersect( static_cast<reg_set_index>(conf->possible), regs_idx );
@@ -320,7 +317,7 @@ void    MarkPossible( instruction *ins, name *opnd, reg_set_index regs_idx )
 }
 
 
-reg_set_index   MarkIndex( instruction *ins, name *opnd, bool is_temp_index )
+reg_set_index   MarkIndex( BackRun& back, instruction *ins, name *opnd, bool is_temp_index )
 /***************************************************************************/
 {
     conflict_node       *conf;
@@ -328,12 +325,12 @@ reg_set_index   MarkIndex( instruction *ins, name *opnd, bool is_temp_index )
     type_class_def      type_class;
     possible_for_alias  *aposs;
 
-    conf = NameConflict( ins, opnd );
+    conf = NameConflict( back, ins, opnd );
     if( conf == NULL )
         return( RL_ );
     type_class = opnd->n.type_class;
     if( opnd->n.class_ == N_TEMP && ( opnd->t.temp_flags & ALIAS ) ) {
-        aposs = MakePossibleForAlias( conf, opnd );
+        aposs = MakePossibleForAlias( back, conf, opnd );
         possible = IndexIntersect( static_cast<reg_set_index>(aposs->possible), type_class, is_temp_index );
         aposs->possible = possible;
     } else {
@@ -346,28 +343,28 @@ reg_set_index   MarkIndex( instruction *ins, name *opnd, bool is_temp_index )
 /*
  * Free list of "possible" records for aliased temp vars
  */
-void    FreePossibleForAlias( conflict_node *conf )
+void    FreePossibleForAlias( BackRun& back, conflict_node *conf )
 {
     possible_for_alias  *aposs, *next;
 
     for( aposs = conf->possible_for_alias_list; aposs != NULL; aposs = next ) {
         next = aposs->next;
-        FrlFreeSize( &conflict_vars_state().ConfAliasVarsFrl, (pointer *)aposs, sizeof( possible_for_alias ) );
+        FrlFreeSize( back, &back.conflict_vars.ConfAliasVarsFrl, (pointer *)aposs, sizeof( possible_for_alias ) );
     }
     conf->possible_for_alias_list = NULL;
 }
 
 
-void    FreeConflicts( void )
+void    FreeConflicts( BackRun& back )
 /***************************/
 {
-    while( data_state().ConfList != NULL ) {
-        FreeAConflict( data_state().ConfList );
+    while( back.data.ConfList != NULL ) {
+        FreeAConflict( back, back.data.ConfList );
     }
 }
 
 
-void    FreeAConflict( conflict_node *conf )
+void    FreeAConflict( BackRun& back, conflict_node *conf )
 /******************************************/
 {
     name                *opnd;
@@ -399,9 +396,9 @@ void    FreeAConflict( conflict_node *conf )
         }
         prev->next_for_name = conf->next_for_name;
     }
-    prev = data_state().ConfList;
+    prev = back.data.ConfList;
     if( prev == conf ) {
-        data_state().ConfList = conf->next_conflict;
+        back.data.ConfList = conf->next_conflict;
     } else {
         while( prev->next_conflict != conf ) {
             prev = prev->next_conflict;
@@ -418,26 +415,26 @@ void    FreeAConflict( conflict_node *conf )
             opnd->t.u.blk_id = conf->start_block->blk_id;
         }
     }
-    FreePossibleForAlias( conf );
-    FrlFreeSize( &conflict_vars_state().ConfFrl, (pointer *)conf, sizeof( conflict_node ) );
+    FreePossibleForAlias( back, conf );
+    FrlFreeSize( back, &back.conflict_vars.ConfFrl, (pointer *)conf, sizeof( conflict_node ) );
 }
 
 
-void    InitConflict( void )
+void    InitConflict( BackRun& back )
 /**************************/
 {
-    InitFrl( &conflict_vars_state().ConfFrl );
-    InitFrl( &conflict_vars_state().ConfAliasVarsFrl );
-    data_state().ConfList = NULL;
+    InitFrl( &back.conflict_vars.ConfFrl );
+    InitFrl( &back.conflict_vars.ConfAliasVarsFrl );
+    back.data.ConfList = NULL;
 }
 
 
-bool    ConfFrlFree( void )
+bool    ConfFrlFree( BackRun& back )
 /*************************/
 {
     bool    ret;
 
-    ret  = FrlFreeAll( &conflict_vars_state().ConfFrl, sizeof( conflict_node ) );
-    ret |= FrlFreeAll( &conflict_vars_state().ConfAliasVarsFrl, sizeof( possible_for_alias ) );
+    ret  = FrlFreeAll( back, &back.conflict_vars.ConfFrl, sizeof( conflict_node ) );
+    ret |= FrlFreeAll( back, &back.conflict_vars.ConfAliasVarsFrl, sizeof( possible_for_alias ) );
     return( ret );
 }

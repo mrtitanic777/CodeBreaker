@@ -35,14 +35,15 @@
 #include <string.h>
 #include "watcom.h"
 #include "cfloati.h"
+#include "backrun.hpp"
 
-static  int     Adder( int a, int b )
+static  int     Adder( BackRun& back, int a, int b )
 /***********************************/
 {
     return( a + b );
 }
 
-static  int     Suber( int a, int b )
+static  int     Suber( BackRun& back, int a, int b )
 /***********************************/
 {
     return( a - b );
@@ -92,7 +93,7 @@ static  int     Min( int a, int b )
     return( a );
 }
 
-static  cfloat  *CSSum( cfhandle h, cfloat *f1, cfloat *f2, int (*arith)( int, int ) )
+static  cfloat  *CSSum( BackRun& back, cfhandle h, cfloat *f1, cfloat *f2, int (*arith)( BackRun&, int, int ) )
 /************************************************************************************/
 {
     int         carry;
@@ -114,7 +115,7 @@ static  cfloat  *CSSum( cfhandle h, cfloat *f1, cfloat *f2, int (*arith)( int, i
     farright = Min( f1right, f2right );
     length = farleft - farright + 1;           /* result length + extra digit*/
     pos = farright + 1;
-    result = CFAlloc( h, length );
+    result = CFAlloc( back, h, length );
     result->exp = farleft + 1;
     result->len = length;
     carry = 0;
@@ -126,7 +127,7 @@ static  cfloat  *CSSum( cfhandle h, cfloat *f1, cfloat *f2, int (*arith)( int, i
         }
         if( pos > f2right
           && pos <= f2left ) {
-            carry = arith( carry, CFAccess( f2, f2left - pos ) );
+            carry = arith( back, carry, CFAccess( f2, f2left - pos ) );
         }
         if( carry < 0 ) {
             CFDeposit( result, length, carry + 10 );
@@ -151,7 +152,7 @@ static  cfloat  *CSSum( cfhandle h, cfloat *f1, cfloat *f2, int (*arith)( int, i
 }
 
 
-cfloat  *CFAdd( cfhandle h, cfloat *f1, cfloat *f2 )
+cfloat  *CFAdd( BackRun& back, cfhandle h, cfloat *f1, cfloat *f2 )
 /**************************************************/
 {
     int         ord;
@@ -159,30 +160,30 @@ cfloat  *CFAdd( cfhandle h, cfloat *f1, cfloat *f2 )
     switch( f1->sign + 3 * f2->sign ) {
     case -4:
     case  4:
-        return( CSSum( h, f1, f2, &Adder ) );
+        return( CSSum( back, h, f1, f2, &Adder ) );
     case -3:                 /* f1 is zero*/
     case  3:
-        return( CFCopy( h, f2 ) );
+        return( CFCopy( back, h, f2 ) );
     case -2:                 /* different signs*/
     case  2:                 /* different signs*/
         ord = CFOrder( f1, f2 );
         if( ord < 0 ) {
-            return( CSSum( h, f2, f1, &Suber ) );   /* | f1 | < | f2 | */
+            return( CSSum( back, h, f2, f1, &Suber ) );   /* | f1 | < | f2 | */
         }
         if( ord > 0 ) {
-            return( CSSum( h, f1, f2, &Suber ) );   /* | f1 | > | f2 | */
+            return( CSSum( back, h, f1, f2, &Suber ) );   /* | f1 | > | f2 | */
         }
-        return( CFAlloc( h, 1 ) );                  /* | f1 | = | f2 | */
+        return( CFAlloc( back, h, 1 ) );                  /* | f1 | = | f2 | */
     case -1:                 /* f2 is zero*/
     case  1:                 /* f2 is zero*/
-        return( CFCopy( h, f1 ) );
+        return( CFCopy( back, h, f1 ) );
     case  0:
-        return( CFAlloc( h, 1 ) );
+        return( CFAlloc( back, h, 1 ) );
     }
     return( NULL ); // shut up compiler
 }
 
-cfloat  *CFSub( cfhandle h, cfloat *f1, cfloat *f2 )
+cfloat  *CFSub( BackRun& back, cfhandle h, cfloat *f1, cfloat *f2 )
 /**************************************************/
 {
     cfloat      *result;
@@ -193,27 +194,27 @@ cfloat  *CFSub( cfhandle h, cfloat *f1, cfloat *f2 )
     case  4:
         ord = CFOrder( f1, f2 );
         if( ord < 0 ) {
-            result = CSSum( h, f2, f1, &Suber );    /* | f1 | < | f2 | */
+            result = CSSum( back, h, f2, f1, &Suber );    /* | f1 | < | f2 | */
             CFNegate( result );
             return( result );
         }
         if( ord > 0 ) {
-            return( CSSum( h, f1, f2, &Suber ) );   /* | f1 | > | f2 | */
+            return( CSSum( back, h, f1, f2, &Suber ) );   /* | f1 | > | f2 | */
         }
-        return( CFAlloc( h, 1 ) );                  /* | f1 | = | f2 | */
+        return( CFAlloc( back, h, 1 ) );                  /* | f1 | = | f2 | */
     case -3:                 /* f1 is zero*/
     case  3:                 /* f1 is zero*/
-        result = CFCopy( h, f2 );
+        result = CFCopy( back, h, f2 );
         CFNegate( result );
         return( result );
     case -2:                 /* different signs*/
     case  2:                 /* different signs*/
-        return( CSSum( h, f1, f2, &Adder ) );
+        return( CSSum( back, h, f1, f2, &Adder ) );
     case -1:                 /* f2 is zero*/
     case  1:                 /* f2 is zero*/
-        return( CFCopy( h, f1 ) );
+        return( CFCopy( back, h, f1 ) );
     case  0:
-        return( CFAlloc( h, 1 ) );
+        return( CFAlloc( back, h, 1 ) );
     }
     return( NULL ); // shut up compiler
 }

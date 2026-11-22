@@ -55,7 +55,6 @@ struct ClibintState {
     int _argc;
 #endif
 };
-inline ClibintState& clibint_state() { return cbrun_part<ClibintState>(); }
 
 #if defined( __WATCOMC__ )
 

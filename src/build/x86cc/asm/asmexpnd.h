@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #if defined( _STANDALONE_ )
 
 extern bool ExpandAllConsts( token_buffer *tokbuf, token_idx start_pos, bool early_only );
@@ -45,4 +46,4 @@ extern bool ExpandTheConstant( token_buffer *tokbuf, token_idx start_pos, bool e
 
 #endif
 
-extern bool ExpandTheWorld( token_buffer *tokbuf, token_idx start_pos, bool early_only, bool flag_msg );
+extern bool ExpandTheWorld( AsmRun& assembler, token_buffer *tokbuf, token_idx start_pos, bool early_only, bool flag_msg );

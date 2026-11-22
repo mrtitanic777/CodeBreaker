@@ -34,6 +34,7 @@
 /* aligned */
 /*        Structures to hold object information */
 
+#pragma once
 #include "offset.h"
 
 typedef enum {

@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define CV_OMF_SIG          0x00000001
 #define CV_ALIGN            4
 #define CV_FIRST_USER_TYPE  0x1000

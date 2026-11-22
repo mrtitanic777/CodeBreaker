@@ -29,4 +29,5 @@
 ****************************************************************************/
 
 
-extern instruction      *rMAKECALL( instruction *ins );
+#pragma once
+extern instruction      *rMAKECALL( BackRun& back, instruction *ins );

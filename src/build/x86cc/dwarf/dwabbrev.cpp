@@ -37,11 +37,13 @@
 #include "dwdecl.h"
 
 #include "dwabinfo.gh"
+#include "backrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
+}  // namespace
 struct DwabbrevState {
     const struct {
         abbrev_code                 bit;
@@ -63,10 +65,10 @@ struct DwabbrevState {
         { AB_VTABLE_LOC,            { DW_AT_vtable_elem_location, DW_FORM_block1 } }
     };
 };
+namespace {
 
 }  // namespace
 
-static inline DwabbrevState& dwabbrev_state() { return cbrun_part<DwabbrevState>(); }
 
 
 /*
@@ -96,7 +98,7 @@ static uint mapFromWToX( abbrev_code abbrev )
     return( result + abbrevInfo[index].bit_index );
 }
 
-unsigned DW_MarkAbbrevAsUsed( dw_client cli, abbrev_code *abbrev )
+unsigned DW_MarkAbbrevAsUsed( BackRun& back, dw_client cli, abbrev_code *abbrev )
 {
     uint                        index;
     uint                        code;
@@ -139,7 +141,7 @@ unsigned DW_MarkAbbrevAsUsed( dw_client cli, abbrev_code *abbrev )
         };
         CLIWrite( cli, DW_DEBUG_ABBREV, sibling_attr, sizeof( sibling_attr ) );
     } else {
-        CLIWriteU8( cli, DW_DEBUG_ABBREV, DW_CHILDREN_no );
+        CLIWriteU8( back, cli, DW_DEBUG_ABBREV, DW_CHILDREN_no );
     }
 
     /* AT_decl_file and AT_decl_line must occur here */
@@ -153,9 +155,9 @@ unsigned DW_MarkAbbrevAsUsed( dw_client cli, abbrev_code *abbrev )
     }
 
     /* now emit the extra attributes */
-    for( i = 0; i < sizeof( dwabbrev_state().bitEncodings ) / sizeof( dwabbrev_state().bitEncodings[0] ); ++i ) {
-        if( *abbrev & dwabbrev_state().bitEncodings[i].bit ) {
-            CLIWrite( cli, DW_DEBUG_ABBREV, dwabbrev_state().bitEncodings[i].data, sizeof( dwabbrev_state().bitEncodings[0].data ) );
+    for( i = 0; i < sizeof( back.dwabbrev->bitEncodings ) / sizeof( back.dwabbrev->bitEncodings[0] ); ++i ) {
+        if( *abbrev & back.dwabbrev->bitEncodings[i].bit ) {
+            CLIWrite( cli, DW_DEBUG_ABBREV, back.dwabbrev->bitEncodings[i].data, sizeof( back.dwabbrev->bitEncodings[0].data ) );
         }
     }
 
@@ -190,7 +192,7 @@ unsigned DW_MarkAbbrevAsUsed( dw_client cli, abbrev_code *abbrev )
     }
 
     /* and the zero terminators */
-    CLISectionWriteZeros( cli, DW_DEBUG_ABBREV, 2 );
+    CLISectionWriteZeros( back, cli, DW_DEBUG_ABBREV, 2 );
     return( code );
 }
 
@@ -201,13 +203,13 @@ void DW_InitDebugAbbrev( dw_client cli )
 }
 
 
-void DW_FiniDebugAbbrev( dw_client cli )
+void DW_FiniDebugAbbrev( BackRun& back, dw_client cli )
 {
     /* the zero terminator */
-    CLISectionWriteZeros( cli, DW_DEBUG_ABBREV, 1 );
+    CLISectionWriteZeros( back, cli, DW_DEBUG_ABBREV, 1 );
 }
 
-void  DW_GenAllAbbrev( dw_client  cli )
+void  DW_GenAllAbbrev( BackRun& back, dw_client  cli )
 {
     abbrev_code                 abbrev;
     uint_32                     mask;
@@ -239,7 +241,11 @@ void  DW_GenAllAbbrev( dw_client  cli )
                 mask_bit >>= 1;
             }
             abbrev |= (index+1);
-            DW_MarkAbbrevAsUsed( cli, &abbrev );
+            DW_MarkAbbrevAsUsed( back, cli, &abbrev );
         }
     }
 }
+
+/* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
+DwabbrevState* dwabbrev_make() { return new DwabbrevState(); }
+void dwabbrev_free(DwabbrevState* part) { delete part; }

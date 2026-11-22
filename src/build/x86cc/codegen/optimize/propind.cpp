@@ -42,6 +42,7 @@
 #include "namelist.h"
 #include "unroll.h"
 #include "optimize.h"
+#include "backrun.hpp"
 
 
 static  byte    OpRefs( name *op, name *ref ) {
@@ -78,7 +79,7 @@ static  byte    NumRefs( instruction *ins, name *op ) {
     return( refs );
 }
 
-static  bool    Adjusted( name **pop, name *res, int_32 c )
+static  bool    Adjusted( BackRun& back, name **pop, name *res, int_32 c )
 /*********************************************************/
 {
     name        *op;
@@ -86,7 +87,7 @@ static  bool    Adjusted( name **pop, name *res, int_32 c )
     op = *pop;
     if( op->n.class_ == N_INDEXED ) {
         if( SameThing( op->i.index, res ) ) {
-            *pop = ScaleIndex( op->i.index, op->i.base, op->i.constant + c,
+            *pop = ScaleIndex( back, op->i.index, op->i.base, op->i.constant + c,
                 op->n.type_class, op->n.size, op->i.scale, op->i.index_flags );
             return( true );
         }
@@ -95,7 +96,7 @@ static  bool    Adjusted( name **pop, name *res, int_32 c )
 }
 
 
-static  bool    AdjustIndex( instruction *ins, name *res, int_32 c )
+static  bool    AdjustIndex( BackRun& back, instruction *ins, name *res, int_32 c )
 /*******************************************************************
     If any operands or results of ins refer to res in an index, adjust the
     constant by the given amount and return true.
@@ -106,12 +107,12 @@ static  bool    AdjustIndex( instruction *ins, name *res, int_32 c )
     if( NumRefs( ins, res ) != 1 )
         return( false );
     for( i = 0; i < ins->num_operands; i++ ) {
-        if( Adjusted( &ins->operands[i], res, c ) ) {
+        if( Adjusted( back, &ins->operands[i], res, c ) ) {
             return( true );
         }
     }
     if( ins->result != NULL ) {
-        if( Adjusted( &ins->result, res, c ) ) {
+        if( Adjusted( back, &ins->result, res, c ) ) {
             return( true );
         }
     }
@@ -119,7 +120,7 @@ static  bool    AdjustIndex( instruction *ins, name *res, int_32 c )
 }
 
 
-static  bool    DoProp( block *blk ) {
+static  bool    DoProp( BackRun& back, block *blk ) {
 /*************************************
     Propagate constants used in ADD or SUB instructions into
     indexes.
@@ -163,10 +164,10 @@ static  bool    DoProp( block *blk ) {
                 for( next = ins->head.next; next->head.opcode != OP_BLOCK; next = next->head.next ) {
                     if( _IsReDefinedBy( next, ins->result ) )
                         break;
-                    if( AdjustIndex( next, ins->result, op->c.lo.u.int_value ) ) {
+                    if( AdjustIndex( back, next, ins->result, op->c.lo.u.int_value ) ) {
                         RemoveIns( ins );
-                        SuffixIns( next, ins );
-                        PeepOptBlock( blk, false );
+                        SuffixIns( back, next, ins );
+                        PeepOptBlock( back, blk, false );
                         return( true );
                     }
                     if( NumRefs( next, ins->result ) != 0 ) {
@@ -179,9 +180,9 @@ static  bool    DoProp( block *blk ) {
     return( false );
 }
 
-void            PropIndexes( block *blk ) {
+void            PropIndexes( BackRun& back, block *blk ) {
 /******************************************
     See above.
 */
-    while( DoProp( blk ) );
+    while( DoProp( back, blk ) );
 }

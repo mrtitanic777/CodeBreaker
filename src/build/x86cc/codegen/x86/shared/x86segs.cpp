@@ -47,6 +47,7 @@
 #include "x86segs.h"
 #include "regalloc.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
 void    InitSegment( void ) {
@@ -59,7 +60,7 @@ void    FiniSegment( void ) {
 }
 
 
-hw_reg_set      CalcSegment( cg_sym_handle sym, cg_class class_ ) {
+hw_reg_set      CalcSegment( BackRun& back, cg_sym_handle sym, cg_class class_ ) {
 /*********************************************************************/
 
     fe_attr     attr;
@@ -72,22 +73,22 @@ hw_reg_set      CalcSegment( cg_sym_handle sym, cg_class class_ ) {
         return( HW_CS );
     }
     if( class_ == CG_FE ) {
-        attr = FEAttr( sym );
+        attr = FEAttr( *back.front, sym );
     } else {
         attr = static_cast<fe_attr>(EMPTY);
     }
-    segid = AskSegID( sym, class_ );
-    reg = static_cast<hw_reg_set *>(FEAuxInfo( (pointer)(pointer_uint)segid, FEINF_PEGGED_REGISTER ));
+    segid = AskSegID( back, sym, class_ );
+    reg = static_cast<hw_reg_set *>(FEAuxInfo( *back.front, (pointer)(pointer_uint)segid, FEINF_PEGGED_REGISTER ));
     if( reg != NULL && !HW_CEqual( *reg, HW_EMPTY ) ) {
         if( HW_COvlap( *reg, HW_SEGS ) )
             return( *reg );
-        FEMessage( FEMSG_BAD_PEG_REG, AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) ) );
+        FEMessage( *back.front, FEMSG_BAD_PEG_REG, AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) ) );
     }
     if( class_ == CG_FE && (attr & FE_PROC) && (attr & FE_DLLIMPORT) == 0 ) {
 #if _TARGET & _TARG_80386
         if( _IsTargetModel( CGSW_X86_FLAT_MODEL ) )
             return( HW_CS ); /* all have same CS */
-        if( AskCodeSeg() == segid ) {
+        if( AskCodeSeg(back) == segid ) {
             return( HW_CS );
         }
 #endif
@@ -95,13 +96,13 @@ hw_reg_set      CalcSegment( cg_sym_handle sym, cg_class class_ ) {
         if( _IsTargetModel( CGSW_X86_FLAT_MODEL )
           && _IsntTargetModel( CGSW_X86_FLOATING_DS ) )
             return(HW_DS);
-        if( AskCodeSeg() == segid ) {
+        if( AskCodeSeg(back) == segid ) {
             /* COMDAT's might be allocated by some other module */
             if( attr & FE_COMMON )
                 return( HW_EMPTY );
             return( HW_CS );
         }
-        if( AskSegIsPrivate( segid ) )
+        if( AskSegIsPrivate( back, segid ) )
             return( HW_EMPTY );
         if( _IsntTargetModel( CGSW_X86_FLOATING_DS ) )
             return( HW_DS );
@@ -113,7 +114,7 @@ hw_reg_set      CalcSegment( cg_sym_handle sym, cg_class class_ ) {
 }
 
 
-name    *AddrConst( name *value, segment_id segid, constant_type_class const_type )
+name    *AddrConst( BackRun& back, name *value, segment_id segid, constant_type_class const_type )
 /*********************************************************************************/
 {
     hw_reg_set  reg;
@@ -122,41 +123,41 @@ name    *AddrConst( name *value, segment_id segid, constant_type_class const_typ
     case CONS_SEGMENT:
         HW_CAsgn( reg, HW_EMPTY );
         if( value != NULL ) {
-            reg = CalcSegment( static_cast<cg_sym_handle>(value->v.symbol), value->m.memory_type );
+            reg = CalcSegment( back, static_cast<cg_sym_handle>(value->v.symbol), value->m.memory_type );
         }
         if( HW_CEqual( reg, HW_EMPTY ) ) {
-            return( AllocAddrConst( value, segid, const_type, U2 ) );
+            return( AllocAddrConst( back, value, segid, const_type, U2 ) );
         } else {
-            return( AllocRegName( reg ) );
+            return( AllocRegName( back, reg ) );
         }
     case CONS_OFFSET:
-        return( AllocAddrConst( value, segid, const_type, WD ) );
+        return( AllocAddrConst( back, value, segid, const_type, WD ) );
     case CONS_ADDRESS:
-        return( AllocAddrConst( value, segid, const_type, CP ) );
+        return( AllocAddrConst( back, value, segid, const_type, CP ) );
     default:
         _Zoiks( ZOIKS_115 );
         return( NULL );
     }
 }
 
-bool    SegIsCS( name *op ) {
+bool    SegIsCS( BackRun& back, name *op ) {
 /*************************************/
 
     hw_reg_set  segreg;
 
-    segreg = CalcSegment( static_cast<cg_sym_handle>(op->v.symbol), op->m.memory_type );
+    segreg = CalcSegment( back, static_cast<cg_sym_handle>(op->v.symbol), op->m.memory_type );
     if( HW_CEqual( segreg, HW_CS ) )
         return( true );
     return( false );
 }
 
 
-bool    SegIsSS( name *op ) {
+bool    SegIsSS( BackRun& back, name *op ) {
 /*************************************/
 
     hw_reg_set  segreg;
 
-    segreg = CalcSegment( static_cast<cg_sym_handle>(op->v.symbol), op->m.memory_type );
+    segreg = CalcSegment( back, static_cast<cg_sym_handle>(op->v.symbol), op->m.memory_type );
     if( HW_CEqual( segreg, HW_SS ) )
         return( true );
     if( HW_CEqual( segreg, HW_DS )
@@ -167,33 +168,33 @@ bool    SegIsSS( name *op ) {
 }
 
 
-name    *GetSegment( name *op ) {
+name    *GetSegment( BackRun& back, name *op ) {
 /*****************************************/
 
     hw_reg_set  reg;
     segment_id  segid;
 
-    reg = CalcSegment( static_cast<cg_sym_handle>(op->v.symbol), op->m.memory_type );
+    reg = CalcSegment( back, static_cast<cg_sym_handle>(op->v.symbol), op->m.memory_type );
     if( !HW_CEqual( reg, HW_EMPTY ) )
-        return( AllocRegName( reg ) );
-    segid = AskSegID( op->v.symbol, op->m.memory_type );
-    if( AskSegIsNear( segid ) )
-        return( AddrConst( NULL, AskBackSeg(), CONS_SEGMENT ) );
-    return( AddrConst( op, segid, CONS_SEGMENT ) );
+        return( AllocRegName( back, reg ) );
+    segid = AskSegID( back, op->v.symbol, op->m.memory_type );
+    if( AskSegIsNear( back, segid ) )
+        return( AddrConst( back, NULL, AskBackSeg(back), CONS_SEGMENT ) );
+    return( AddrConst( back, op, segid, CONS_SEGMENT ) );
 }
 
-name    *NearSegment( void ) {
+name    *NearSegment( BackRun& back ) {
 /******************************/
 
     if( _IsntTargetModel( CGSW_X86_FLOATING_DS ) )
-        return( AllocRegName( HW_DS ) );
+        return( AllocRegName( back, HW_DS ) );
     if( _IsTargetModel( CGSW_X86_FLOATING_SS ) )
-        return( AddrConst( NULL, AskBackSeg(), CONS_SEGMENT ) );/*means DGROUP*/
-    return( AllocRegName( HW_SS ) );
+        return( AddrConst( back, NULL, AskBackSeg(back), CONS_SEGMENT ) );/*means DGROUP*/
+    return( AllocRegName( back, HW_SS ) );
 }
 
 
-name    *SegName( name *op ) {
+name    *SegName( BackRun& back, name *op ) {
 /**************************************/
 
     name        *idx;
@@ -202,38 +203,38 @@ name    *SegName( name *op ) {
     if( op->n.class_ == N_REGISTER ) {
         tmp = op->r.reg;
         HW_COnlyOn( tmp, HW_DS_ES_SS_CS );
-        return( AllocRegName( tmp ) );
+        return( AllocRegName( back, tmp ) );
     }
     if( op->n.class_ == N_TEMP )
-        return( AllocRegName( HW_SS ) );
+        return( AllocRegName( back, HW_SS ) );
     if( op->n.class_ == N_MEMORY )
-        return( GetSegment( op ) );
+        return( GetSegment( back, op ) );
     if( op->n.class_ == N_INDEXED ) {
         idx = op->i.index;
         if( op->i.base != NULL && idx->n.type_class != PT ) {
             // even though it's based - huge arrays cannot assume segment
             // of base is same as segment of the huge pointer - BBB Sept 14, 1995
-            return( SegName( op->i.base ) );
+            return( SegName( back, op->i.base ) );
         }
         if( idx->n.class_ == N_REGISTER ) {
             if( HW_CEqual( idx->r.reg, HW_xSP )
              || HW_CEqual( idx->r.reg, HW_xBP ) ) {
-                return( AllocRegName( HW_SS ) );
+                return( AllocRegName( back, HW_SS ) );
             } else {
                 _Zoiks( ZOIKS_022 );
                 return( op );
             }
         } else if( idx->n.type_class == CP || idx->n.type_class == PT ) {
-            return( SegmentPart( idx ) );
+            return( SegmentPart( back, idx ) );
         } else {
-            return( NearSegment() );
+            return( NearSegment(back) );
         }
     }
     return( op );
 }
 
 
-cg_type NamePtrType( name *op ) {
+cg_type NamePtrType( BackRun& back, name *op ) {
 /*************************************/
 
     cg_sym_handle sym;
@@ -241,9 +242,9 @@ cg_type NamePtrType( name *op ) {
     if( op->n.class_ == N_MEMORY ) {
         if( op->m.memory_type == CG_FE || op->m.memory_type == CG_BACK ) {
             sym = static_cast<cg_sym_handle>(op->v.symbol);
-            if( AskNameIsCode( sym, op->m.memory_type ) ) {
+            if( AskNameIsCode( back, sym, op->m.memory_type ) ) {
                 if( op->m.memory_type == CG_FE ) {
-                    if( FEAttr( sym ) & FE_PROC ) {
+                    if( FEAttr( *back.front, sym ) & FE_PROC ) {
                         if( (call_class_target)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL )
                             return( TY_LONG_CODE_PTR );
                         return( TY_NEAR_CODE_PTR );
@@ -253,10 +254,10 @@ cg_type NamePtrType( name *op ) {
                 } else {
                     return( TY_HUGE_POINTER );
                 }
-            } else if( AskSegIsPrivate( AskSegID( sym, op->m.memory_type ) )
+            } else if( AskSegIsPrivate( back, AskSegID( back, sym, op->m.memory_type ) )
               || _IsTargetModel( CGSW_X86_FLOATING_DS ) ) {
                 if( op->m.memory_type == CG_FE &&
-                    ( FEAttr( sym ) & FE_ONESEG ) ) {
+                    ( FEAttr( *back.front, sym ) & FE_ONESEG ) ) {
                     return( TY_POINTER );
                 } else {
                     return( TY_HUGE_POINTER );
@@ -286,7 +287,7 @@ cg_type NamePtrType( name *op ) {
 }
 
 
-  bool    SegOver( name *op ) {
+  bool    SegOver( BackRun& back, name *op ) {
 /*************************************/
 
     segment_id  segid;
@@ -296,7 +297,7 @@ cg_type NamePtrType( name *op ) {
           && op->i.index->n.size != WORD_SIZE )
             return( true );
         if( op->i.base != NULL )
-            return( SegOver( op->i.base ) );
+            return( SegOver( back, op->i.base ) );
         if( _IsTargetModel( CGSW_X86_FLOATING_DS ) ) {
             return( true );
         }
@@ -305,11 +306,11 @@ cg_type NamePtrType( name *op ) {
         case CG_FE:
         case CG_BACK:
         case CG_LBL:
-            segid = AskSegID( op->v.symbol, op->m.memory_type );
-            if( AskSegIsPrivate( segid ) ) {
+            segid = AskSegID( back, op->v.symbol, op->m.memory_type );
+            if( AskSegIsPrivate( back, segid ) ) {
                 return( true );
             }
-            if( segid == AskCodeSeg()
+            if( segid == AskCodeSeg(back)
               && _IsntTargetModel( CGSW_X86_FLAT_MODEL ) ) {
                 return( true );
             }
@@ -328,7 +329,7 @@ cg_type NamePtrType( name *op ) {
 }
 
 
-bool    LoadAToMove( instruction *ins ) {
+bool    LoadAToMove( BackRun& back, instruction *ins ) {
 /***********************************************/
 
     segment_id  segid;
@@ -342,19 +343,19 @@ bool    LoadAToMove( instruction *ins ) {
     if( op->n.class_ != N_MEMORY )
         return( false );
     ins->head.opcode = OP_MOV;
-    segid = AskSegID( op->v.symbol, op->m.memory_type );
-    if( AskSegIsNear( segid ) ) {
-        segid = AskBackSeg();
+    segid = AskSegID( back, op->v.symbol, op->m.memory_type );
+    if( AskSegIsNear( back, segid ) ) {
+        segid = AskBackSeg(back);
     }
     if( ins->type_class == WD || ins->type_class == SW ) {
-        ins->operands[0] = AddrConst( op, segid, CONS_OFFSET );
+        ins->operands[0] = AddrConst( back, op, segid, CONS_OFFSET );
     } else { /* must be a far pointer */
-        ins->operands[0] = AddrConst( op, segid, CONS_ADDRESS );
+        ins->operands[0] = AddrConst( back, op, segid, CONS_ADDRESS );
     }
     return( true );
 }
 
-bool                     IsUncacheableMemory( name *opnd )
+bool                     IsUncacheableMemory( BackRun& back, name *opnd )
 /*
     Return true if we don't want to cache the global piece of memory
     represented by opnd in a register - this could be dangerous if the
@@ -367,7 +368,7 @@ bool                     IsUncacheableMemory( name *opnd )
 
     if( opnd->n.class_ != N_MEMORY )
         return( false );
-    segreg = CalcSegment( static_cast<cg_sym_handle>(opnd->v.symbol), opnd->m.memory_type );
+    segreg = CalcSegment( back, static_cast<cg_sym_handle>(opnd->v.symbol), opnd->m.memory_type );
     if( HW_CEqual( segreg, HW_SS )
       && _IsntTargetModel( CGSW_X86_FLOATING_SS ) )
         return( false );

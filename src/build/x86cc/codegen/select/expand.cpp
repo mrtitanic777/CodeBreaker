@@ -49,9 +49,10 @@
 #include "cgaux.h"
 #include "bgcall.h"
 #include "targetin.h"
+#include "backrun.hpp"
 
 
-static instruction  *DoReduce( instruction *ins, const opcode_entry *try_, bool has_index )
+static instruction  *DoReduce( BackRun& back, instruction *ins, const opcode_entry *try_, bool has_index )
 /****************************************************************************************/
 {
     const hw_reg_set    *zap;
@@ -60,14 +61,14 @@ static instruction  *DoReduce( instruction *ins, const opcode_entry *try_, bool 
     if( try_->generate == G_NO )
         return( ins );
     if( try_->generate >= FIRST_REDUCT )
-        return( Reduce( ins ) );
+        return( Reduce( back, ins ) );
     zap_all = ins->zap->reg;
-    for( zap = RegSetList(RegList[try_->reg_set].zap); !HW_CEqual( *zap, HW_EMPTY ); ++zap ) {
+    for( zap = RegSetList(back, RegList[try_->reg_set].zap); !HW_CEqual( *zap, HW_EMPTY ); ++zap ) {
         HW_TurnOn( zap_all, *zap );
     }
-    ins->zap = (register_name *)AllocRegName( zap_all );
+    ins->zap = (register_name *)AllocRegName( back, zap_all );
     if( has_index || ins->num_operands > OpcodeNumOperands( ins ) ) {
-        ins = NeedIndex( ins );
+        ins = NeedIndex( back, ins );
     } else {
         ins->u2.index_needs = RL_;
     }
@@ -75,7 +76,7 @@ static instruction  *DoReduce( instruction *ins, const opcode_entry *try_, bool 
 }
 
 
-static  bool    VerifyRegs( instruction *ins, operand_types ops )
+static  bool    VerifyRegs( BackRun& back, instruction *ins, operand_types ops )
 /***************************************************************/
 {
 #define _Any( ops, mul )        ( ( ops & (ANY*mul) ) == (ANY*mul) )
@@ -103,7 +104,7 @@ static  bool    VerifyRegs( instruction *ins, operand_types ops )
             result_index = need->result;
         } else if( !_Any( try_->op_type, RESULT_MUL ) ) {
             regs = name->r.reg;
-            for( possible = RegSetList(need->result); ; ++possible ) {
+            for( possible = RegSetList(back, need->result); ; ++possible ) {
                 if( HW_CEqual( *possible, HW_EMPTY ) )
                     return( false );
                 if( HW_Equal( *possible, regs ) ) {
@@ -123,7 +124,7 @@ static  bool    VerifyRegs( instruction *ins, operand_types ops )
             left_index = need->left;
         } else if( !_Any( try_->op_type, OP1_MUL ) ) {
             regs = name->r.reg;
-            for( possible = RegSetList(need->left); ; ++possible ) {
+            for( possible = RegSetList(back, need->left); ; ++possible ) {
                 if( HW_CEqual( *possible, HW_EMPTY ) )
                     return( false );
                 if( HW_Equal( *possible, regs ) ) {
@@ -143,7 +144,7 @@ static  bool    VerifyRegs( instruction *ins, operand_types ops )
             right_index = need->right;
         } else if( !_Any( try_->op_type, OP2_MUL ) ) {
             regs = name->r.reg;
-            for( possible = RegSetList(need->right); ; ++possible ) {
+            for( possible = RegSetList(back, need->right); ; ++possible ) {
                 if( HW_CEqual( *possible, HW_EMPTY ) )
                     return( false );
                 if( HW_Equal( *possible, regs ) ) {
@@ -155,15 +156,15 @@ static  bool    VerifyRegs( instruction *ins, operand_types ops )
     if( try_->generate < FIRST_REDUCT ) {
         special_index = SpecialPossible( ins );
         if( special_index != RL_ ) {
-            MarkPossible( ins, ins->result, special_index );
+            MarkPossible( back, ins, ins->result, special_index );
         } else if( result_index != RL_ ) {
-            MarkPossible( ins, ins->result, result_index );
+            MarkPossible( back, ins, ins->result, result_index );
         }
         if( left_index != RL_ ) {
-            MarkPossible( ins, ins->operands[0], left_index );
+            MarkPossible( back, ins, ins->operands[0], left_index );
         }
         if( right_index != RL_ ) {
-            MarkPossible( ins, ins->operands[1], right_index );
+            MarkPossible( back, ins, ins->operands[1], right_index );
         }
     }
     return( true );
@@ -284,7 +285,7 @@ static  operand_types   ClassifyOps( instruction *ins, bool *has_index )
 }
 
 
-const opcode_entry  *FindGenEntry( instruction *ins, bool *has_index )
+const opcode_entry  *FindGenEntry( BackRun& back, instruction *ins, bool *has_index )
 /********************************************************************/
 {
     const opcode_entry  *try_;
@@ -294,7 +295,7 @@ const opcode_entry  *FindGenEntry( instruction *ins, bool *has_index )
     ins->head.state = INS_READY;
     try_ = ins->table;
     if( try_ == NULL ) {
-        try_ = CodeTable( ins );
+        try_ = CodeTable( back, ins );
         ins->table = try_;
     }
     if( try_ == NULL )
@@ -305,7 +306,7 @@ const opcode_entry  *FindGenEntry( instruction *ins, bool *has_index )
             continue;
         verify = try_->verify;
         if( verify != V_NO ) {
-            if( !DoVerify( verify & ~NOT_VOLATILE, ins ) )
+            if( !DoVerify( back, verify & ~NOT_VOLATILE, ins ) )
                 continue;
             if( (verify & NOT_VOLATILE) && VolatileIns( ins ) ) {
                 continue;
@@ -313,12 +314,12 @@ const opcode_entry  *FindGenEntry( instruction *ins, bool *has_index )
         }
         ins->u.gen_table = try_;
         if( try_->reg_set != RG_ ) {
-            if( !VerifyRegs( ins, ops ) ) {
+            if( !VerifyRegs( back, ins, ops ) ) {
                 continue;
             }
         }
         if( ins->head.opcode == OP_CALL_INDIRECT ) {
-            MarkPossible(ins, ins->operands[CALL_OP_ADDR], CallIPossible(ins));
+            MarkPossible(back, ins, ins->operands[CALL_OP_ADDR], CallIPossible(ins));
         }
         break;
     }
@@ -326,7 +327,7 @@ const opcode_entry  *FindGenEntry( instruction *ins, bool *has_index )
 }
 
 
-void    FixGenEntry( instruction *ins )
+void    FixGenEntry( BackRun& back, instruction *ins )
 /*************************************/
 {
 /* update the instruction to reflect new instruction needs*/
@@ -335,7 +336,7 @@ void    FixGenEntry( instruction *ins )
     bool                dummy;
 
     old = ins->u.gen_table;
-    FindGenEntry( ins, &dummy );
+    FindGenEntry( back, ins, &dummy );
     if( G( ins ) >= FIRST_REDUCT ) {
         ins->u.gen_table = old;
     }
@@ -343,37 +344,37 @@ void    FixGenEntry( instruction *ins )
 }
 
 
-instruction     *PostExpandIns( instruction *ins )
+instruction     *PostExpandIns( BackRun& back, instruction *ins )
 /************************************************/
 {
     const opcode_entry  *try_;
     bool                dummy;
 
-    try_ = FindGenEntry( ins, &dummy );
+    try_ = FindGenEntry( back, ins, &dummy );
     if( try_ == NULL )
         return( ins );
     if( try_->generate == G_NO )
         return( ins );
     if( try_->generate >= FIRST_REDUCT )
-        return( Reduce( ins ) );
+        return( Reduce( back, ins ) );
     return( ins );
 }
 
 
-instruction     *ExpandIns( instruction *ins )
+instruction     *ExpandIns( BackRun& back, instruction *ins )
 /********************************************/
 {
     const opcode_entry  *try_;
     bool                has_index;
 
-    try_ = FindGenEntry( ins, &has_index );
+    try_ = FindGenEntry( back, ins, &has_index );
     if( try_ == NULL )
         return( ins );
-    return( DoReduce( ins, try_, has_index ) );
+    return( DoReduce( back, ins, try_, has_index ) );
 }
 
 
-int     ExpandOps( bool keep_on_truckin )
+int     ExpandOps( BackRun& back, bool keep_on_truckin )
 /***************************************/
 {
     block       *blk;
@@ -381,15 +382,15 @@ int     ExpandOps( bool keep_on_truckin )
     int         unknowns;
 
     unknowns = 0;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         EXBlip();
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ) {
             if( !keep_on_truckin && _MemLow ) {
                 return( -1 );
             }
-            ins = ExpandIns( ins );
+            ins = ExpandIns( back, ins );
             if( ins->head.state == INS_NEEDS_WORK ) {
-                ins = ExpandIns( ins );
+                ins = ExpandIns( back, ins );
             } else {
                 if( ins->head.state == OPERANDS_NEED_WORK ) {
                     ++unknowns;

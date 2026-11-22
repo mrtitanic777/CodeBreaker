@@ -31,7 +31,8 @@
 ****************************************************************************/
 
 
-typedef bool (*flood_func)( block *, void * );
+#pragma once
+typedef bool (*flood_func)( BackRun&, block *, void * );
 
-extern void     FloodForward( block *blk, flood_func func, void *parm );
-extern void     FloodBackwards( block *start, flood_func func, void *parm );
+extern void     FloodForward( BackRun& back, block *blk, flood_func func, void *parm );
+extern void     FloodBackwards( BackRun& back, block *start, flood_func func, void *parm );

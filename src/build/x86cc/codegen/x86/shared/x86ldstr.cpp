@@ -49,23 +49,18 @@
 #include "generate.h"
 #include "inssched.h"
 #include "liveinfo.h"
+#include "backrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct X86ldstrState {
-    bool PreferSize;
-    const hw_reg_set *RoverByte;
-    const hw_reg_set *RoverWord;
-    const hw_reg_set *RoverDouble;
-};
+/* (struct X86ldstrState: x86ldstr_state.h) */
 
 }  // namespace
 
-static inline X86ldstrState& x86ldstr_state() { return cbrun_part<X86ldstrState>(); }
 
-static  name    **Enregister( instruction *ins )
+static  name    **Enregister( BackRun& back, instruction *ins )
 /***********************************************
  * Try to find an operand that's useful to enregister. For MOV's this
  * is a constant whose result is a N_MEMORY, N_INDEXED, or N_TEMP with a
@@ -105,7 +100,7 @@ static  name    **Enregister( instruction *ins )
     /*
      * only RISCify CMPs, TESTs, and MOVs when optimizing for size
      */
-    if( x86ldstr_state().PreferSize && !_OpIsCondition( ins->head.opcode ) )
+    if( back.x86ldstr.PreferSize && !_OpIsCondition( ins->head.opcode ) )
         return( NULL );
     for( i = ins->num_operands; i-- > 0; ) {
         switch( ins->operands[i]->n.class_ ) {
@@ -131,7 +126,7 @@ static  name    **Enregister( instruction *ins )
 }
 
 
-static const hw_reg_set *FindRegister( instruction *ins )
+static const hw_reg_set *FindRegister( BackRun& back, instruction *ins )
 /********************************************************
  * Find a register of the appropriate type for the instruction.
  * Note we use rover pointers for each of the classes so that the
@@ -148,19 +143,19 @@ static const hw_reg_set *FindRegister( instruction *ins )
     switch( ins->type_class ) {
     case U1:
     case I1:
-        start = RegSetList(RL_BYTE);
-        rover_ptr = &x86ldstr_state().RoverByte;
+        start = RegSetList(back, RL_BYTE);
+        rover_ptr = &back.x86ldstr.RoverByte;
         break;
     case U2:
     case I2:
-        start = RegSetList(RL_WORD);
-        rover_ptr = &x86ldstr_state().RoverWord;
+        start = RegSetList(back, RL_WORD);
+        rover_ptr = &back.x86ldstr.RoverWord;
         break;
 #if _TARGET & _TARG_80386
     case U4:
     case I4:
-        start = RegSetList(RL_DOUBLE);
-        rover_ptr = &x86ldstr_state().RoverDouble;
+        start = RegSetList(back, RL_DOUBLE);
+        rover_ptr = &back.x86ldstr.RoverDouble;
         break;
 #endif
     default:
@@ -180,7 +175,7 @@ static const hw_reg_set *FindRegister( instruction *ins )
      * When optimizing for size, disable rover pointers and
      * reuse registers to decrease number of push'es in function prologue
      */
-    if( x86ldstr_state().PreferSize ) {
+    if( back.x86ldstr.PreferSize ) {
         regs = start;
     }
     first = regs;
@@ -204,7 +199,7 @@ static const hw_reg_set *FindRegister( instruction *ins )
         /*
          * only use _AX when optimizing for size
          */
-        if( x86ldstr_state().PreferSize ) {
+        if( back.x86ldstr.PreferSize ) {
             return( NULL );
         }
     }
@@ -212,7 +207,7 @@ static const hw_reg_set *FindRegister( instruction *ins )
 }
 
 
-static  instruction     *MakeGeneratable( instruction *ins )
+static  instruction     *MakeGeneratable( BackRun& back, instruction *ins )
 /***********************************************************
  * Make sure the instruction is generatable. We might have a couple of
  * optmization reductions to work through.
@@ -225,7 +220,7 @@ static  instruction     *MakeGeneratable( instruction *ins )
     for( ;; ) {
         next = ins->head.next;
         prev = ins->head.prev;
-        ins = PostExpandIns( ins );
+        ins = PostExpandIns( back, ins );
         if( next != ins->head.next || prev != ins->head.prev ) {
             _Zoiks( ZOIKS_073 );
         }
@@ -238,7 +233,7 @@ static  instruction     *MakeGeneratable( instruction *ins )
 }
 
 
-static  bool    LoadStoreIns( instruction *ins )
+static  bool    LoadStoreIns( BackRun& back, instruction *ins )
 /***********************************************
  * RISCify one instruction. See LdStAlloc for details.
  */
@@ -251,38 +246,38 @@ static  bool    LoadStoreIns( instruction *ins )
 
     if( !DoesSomething( ins ) )
         return( false );
-    op_ptr = Enregister( ins );
+    op_ptr = Enregister( back, ins );
     if( op_ptr == NULL )
         return( false );
-    hw_reg = FindRegister( ins );
+    hw_reg = FindRegister( back, ins );
     if( hw_reg == NULL )
         return( false );
-    reg = AllocRegName( *hw_reg );
+    reg = AllocRegName( back, *hw_reg );
     op = *op_ptr;
     if( op == ins->result ) {
-        new_ins = MakeMove( reg, op, ins->type_class );
-        MoveSegRes( ins, new_ins );
+        new_ins = MakeMove( back, reg, op, ins->type_class );
+        MoveSegRes( back, ins, new_ins );
         ins->result = reg;
-        SuffixIns( ins, new_ins );
-        MakeGeneratable( new_ins );
+        SuffixIns( back, ins, new_ins );
+        MakeGeneratable( back, new_ins );
     }
     if( op_ptr != &ins->result ) {
-        new_ins = MakeMove( op, reg, ins->type_class );
-        MoveSegOp( ins, new_ins, 0 );
+        new_ins = MakeMove( back, op, reg, ins->type_class );
+        MoveSegOp( back, ins, new_ins, 0 );
         *op_ptr = reg;
-        PrefixIns( ins, new_ins );
-        MakeGeneratable( new_ins );
+        PrefixIns( back, ins, new_ins );
+        MakeGeneratable( back, new_ins );
     }
-    ins = MakeGeneratable( ins );
+    ins = MakeGeneratable( back, ins );
     ins->ins_flags |= INS_RISCIFIED;
     return( true );
 }
 
 #if _TARGET & _TARG_8086
-static  bool    FixMem16Moves( void ) { return( false ); }
-static  void    CompressMem16Moves( void ) {}
+static  bool    FixMem16Moves( BackRun& back ) { return( false ); }
+static  void    CompressMem16Moves( BackRun& back ) {}
 #else
-static  bool    SplitMem16Move( instruction *ins )
+static  bool    SplitMem16Move( BackRun& back, instruction *ins )
 /*************************************************
  * Return true if we can split the 16-bit move
  * instruction given into two one-byte moves.
@@ -305,8 +300,8 @@ static  bool    SplitMem16Move( instruction *ins )
             return( false );
         }
     }
-    new_h = MakeMove( HighPart( ins->operands[0], U1 ), HighPart( ins->result, U1 ), U1 );
-    new_l = MakeMove( LowPart( ins->operands[0], U1 ), LowPart( ins->result, U1 ), U1 );
+    new_h = MakeMove( back, HighPart( back, ins->operands[0], U1 ), HighPart( back, ins->result, U1 ), U1 );
+    new_l = MakeMove( back, LowPart( back, ins->operands[0], U1 ), LowPart( back, ins->result, U1 ), U1 );
     /*
      * this is cheesy - so that we can recover in case we were unable to
      * schedule, we stuff a pointer to the second instruction in one of the
@@ -316,16 +311,16 @@ static  bool    SplitMem16Move( instruction *ins )
     new_l->operands[1] = static_cast<name *>((void *)new_h);
     new_l->ins_flags |= INS_SPLIT;
     new_h->ins_flags |= INS_SPLIT;
-    SuffixIns( ins, new_l );
-    SuffixIns( ins, new_h );
-    FreeIns( ins );
+    SuffixIns( back, ins, new_l );
+    SuffixIns( back, ins, new_h );
+    FreeIns( back, ins );
 
-    new_h = MakeGeneratable( new_h );
-    new_l = MakeGeneratable( new_l );
+    new_h = MakeGeneratable( back, new_h );
+    new_l = MakeGeneratable( back, new_l );
     return( true );
 }
 
-static  void    RestoreMem16Move( instruction *ins )
+static  void    RestoreMem16Move( BackRun& back, instruction *ins )
 /***************************************************
  * Put a 16-bit move back together in case we were
  * unable to schedule the one-byte moves into being
@@ -348,13 +343,13 @@ static  void    RestoreMem16Move( instruction *ins )
         full = HW_EMPTY;
         HW_TurnOn( full, other->result->r.reg );
         HW_TurnOn( full, ins->result->r.reg );
-        ins->result = AllocRegName( full );
+        ins->result = AllocRegName( back, full );
         ins->type_class = U2;
-        FreeIns( other );
+        FreeIns( back, other );
     }
 }
 
-static  bool    FixMem16Moves( void )
+static  bool    FixMem16Moves( BackRun& back )
 /************************************
  * Look for 16-bit mem moves and turn them into two 1-byte
  * mem moves, so as to escape the dreaded size override. If
@@ -368,21 +363,21 @@ static  bool    FixMem16Moves( void )
     bool        changed;
     instruction *next;
 
-    if( data_state().OptForSize > 0 )
+    if( back.data.OptForSize > 0 )
         return( false );
     if( !_CPULevel( CPU_586 ) )
         return( false );
     changed = false;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
             next = ins->head.next;      /* list is shifting underneath us */
-            if( ins->head.opcode == OP_MOV && data_state().TypeClassSize[ins->type_class] == 2 ) {
+            if( ins->head.opcode == OP_MOV && back.data.TypeClassSize[ins->type_class] == 2 ) {
                 switch( ins->operands[0]->n.class_ ) {
                 case N_MEMORY:
                 case N_INDEXED:
                 case N_TEMP:
                     if( ins->ins_flags & INS_SPLIT ) {
-                        changed |= SplitMem16Move( ins );
+                        changed |= SplitMem16Move( back, ins );
                     }
                 default:
                     break;
@@ -393,7 +388,7 @@ static  bool    FixMem16Moves( void )
     return( changed );
 }
 
-static  void    CompressMem16Moves( void )
+static  void    CompressMem16Moves( BackRun& back )
 /****************************************/
 {
     block       *blk;
@@ -401,16 +396,16 @@ static  void    CompressMem16Moves( void )
 
     if( !_CPULevel( CPU_586 ) )
         return;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-            RestoreMem16Move( ins );
+            RestoreMem16Move( back, ins );
         }
     }
 }
 #endif
 
 
-bool    LdStAlloc( void )
+bool    LdStAlloc( BackRun& back )
 /*******************************
  * Look for non-move operations with memory operands and change them
  * into RISC style load/store instructions. This helps on the 486 and
@@ -427,20 +422,20 @@ bool    LdStAlloc( void )
     instruction *next;
     bool        changed;
 
-    x86ldstr_state().RoverByte = NULL;
-    x86ldstr_state().RoverWord = NULL;
-    x86ldstr_state().RoverDouble = NULL;
+    back.x86ldstr.RoverByte = NULL;
+    back.x86ldstr.RoverWord = NULL;
+    back.x86ldstr.RoverDouble = NULL;
     /*
      * 2006-04-25 RomanT:
      * Run RISCifier for all modes, but sometimes (depending on CPU and
      * optimization) prefer shorter non-RISC version of instructions.
      */
-    x86ldstr_state().PreferSize = false;
-    if( data_state().OptForSize > 50 ) {
-        x86ldstr_state().PreferSize = true;
+    back.x86ldstr.PreferSize = false;
+    if( back.data.OptForSize > 50 ) {
+        back.x86ldstr.PreferSize = true;
     }
     if( !_CPULevel( CPU_486 ) ) {
-        x86ldstr_state().PreferSize = true;
+        back.x86ldstr.PreferSize = true;
     }
 
 #if 0  /* You can optionally disable riscifer when optimizing for size */
@@ -449,16 +444,16 @@ bool    LdStAlloc( void )
 #endif
 
     changed = false;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
             next = ins->head.next;      /* list is shifting underneath us */
-            if( LoadStoreIns( ins ) ) {
-                UpdateLive( blk->ins.head.next, blk->ins.head.prev );
+            if( LoadStoreIns( back, ins ) ) {
+                UpdateLive( back, blk->ins.head.next, blk->ins.head.prev );
                 changed = true;
             }
         }
     }
-    changed |= FixMem16Moves();
+    changed |= FixMem16Moves(back);
     return( changed );
 }
 
@@ -537,7 +532,7 @@ static bool     CanCompressResult( instruction *ins,
     return( true );
 }
 
-static void     CompressIns( instruction *ins )
+static void     CompressIns( BackRun& back, instruction *ins )
 /**************************************************
  * See if a RISCified instruction 'ins' is still in CISCifyable form and
  * do it to it.
@@ -561,7 +556,7 @@ static void     CompressIns( instruction *ins )
         /*
          * If size preferable then push must be compacted
          */
-        if( x86ldstr_state().PreferSize )
+        if( back.x86ldstr.PreferSize )
             break;
         /*
          * It's better to use a register for PUSH/POP on a 486
@@ -594,12 +589,12 @@ static void     CompressIns( instruction *ins )
          */
         if( prev->head.opcode == OP_XOR
             && prev_op0 == prev->operands[1]
-            && ( data_state().TypeClassSize[prev->type_class] == 1
+            && ( back.data.TypeClassSize[prev->type_class] == 1
 #if _TARGET & _TARG_8086  /* Does not work right on 386 - temps becomes 32-bit much later. Todo. */
-                || ( data_state().TypeClassSize[prev->type_class] == 2 && ins->result && ins->result->n.class_ == N_TEMP )
+                || ( back.data.TypeClassSize[prev->type_class] == 2 && ins->result && ins->result->n.class_ == N_TEMP )
 #endif
             ) ) {
-            prev_op0 = AllocIntConst( 0 );  /* fake "MOV RESULT, 0" */
+            prev_op0 = AllocIntConst( back, 0 );  /* fake "MOV RESULT, 0" */
         } else {
             prev = NULL;
         }
@@ -638,21 +633,21 @@ static void     CompressIns( instruction *ins )
     } else {
         return;
     }
-    if( !ChangeIns( ins, replacement, preplace, CHANGE_GEN | CHANGE_ALL ) )
+    if( !ChangeIns( back, ins, replacement, preplace, CHANGE_GEN | CHANGE_ALL ) )
         return;
     if( presult != NULL ) {
         DupSeg( next, ins );
-        FreeIns( next );
+        FreeIns( back, next );
     }
     if( popnd != NULL ) {
         DupSeg( prev, ins );
-        FreeIns( prev );
+        FreeIns( back, prev );
     }
-    UpdateLive( ins->head.prev, ins );
+    UpdateLive( back, ins->head.prev, ins );
 }
 
 
-void    LdStCompress( void )
+void    LdStCompress( BackRun& back )
 /**********************************
  * Compress any load/store sequences generated by LdStAlloc back
  * into memory ops if no optimizations made use of them.
@@ -664,11 +659,11 @@ void    LdStCompress( void )
     /*
      * Note: LdStAlloc() must be called first to set PreferSize variable
      */
-    CompressMem16Moves();
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    CompressMem16Moves(back);
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-            CompressIns( ins );
+            CompressIns( back, ins );
         }
     }
-    DeadInstructions();
+    DeadInstructions(back);
 }

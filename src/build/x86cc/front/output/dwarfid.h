@@ -30,4 +30,5 @@
 
 
 
+#pragma once
 #define DWARF_PRODUCER_ID   "C"

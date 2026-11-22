@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "coff.h"
 
 #include "pushpck1.h"
@@ -57,6 +58,6 @@ typedef struct coff_section_info {
     coff_offset         alignment_padding;
 } coff_section_info;
 
-extern void COFFFileEmit( owl_file_handle );
+extern void COFFFileEmit( BackRun& back, owl_file_handle );
 
 #include "poppck.h"

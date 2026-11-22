@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #if defined( __WATCOMC__ ) && !defined( _COMDEF_H_INCLUDED )
  #include <_comdef.h>
 #endif

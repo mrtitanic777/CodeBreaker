@@ -59,6 +59,6 @@ uint GetTickCnt( void )
 void GrabTimer( void )
 {
 }
-void ReleTimer( void )
+void ReleTimer( BackRun& back )
 {
 }

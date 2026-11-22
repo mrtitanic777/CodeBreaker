@@ -31,63 +31,64 @@
 
 
 #include "cvars.h"
+#include "frontrun.hpp"
 
 
-void InitStats( void )
+void InitStats( FrontRun& front )
 {
-    cvars_state().CompFlags.stats_printed = false;
-    cvars_state().CompFlags.extra_stats_wanted = false;
-    cvars_state().SrcLineCount = 0;
-    cvars_state().IncLineCount = 0;
-    cvars_state().WngCount = 0;
-    cvars_state().ErrCount = 0;
-    cvars_state().GblSymCount = 0;
-    cvars_state().LclSymCount = 0;
-    cvars_state().MacroCount = 0;
-    cvars_state().MacroSize = 0;
-    cvars_state().EnumCount = 0;
-    cvars_state().TagCount = 0;
-    cvars_state().FieldCount = 0;
-    cvars_state().TypeCount = 0;
-    cvars_state().TmpSymCount = 0;
-    cvars_state().LitPoolSize = 0;
-    cvars_state().LitCount = 0;
+    front.cvars.CompFlags.stats_printed = false;
+    front.cvars.CompFlags.extra_stats_wanted = false;
+    front.cvars.SrcLineCount = 0;
+    front.cvars.IncLineCount = 0;
+    front.cvars.WngCount = 0;
+    front.cvars.ErrCount = 0;
+    front.cvars.GblSymCount = 0;
+    front.cvars.LclSymCount = 0;
+    front.cvars.MacroCount = 0;
+    front.cvars.MacroSize = 0;
+    front.cvars.EnumCount = 0;
+    front.cvars.TagCount = 0;
+    front.cvars.FieldCount = 0;
+    front.cvars.TypeCount = 0;
+    front.cvars.TmpSymCount = 0;
+    front.cvars.LitPoolSize = 0;
+    front.cvars.LitCount = 0;
     /*
      * still useful for internal debugging
      */
-    cvars_state().FuncCount = 0;
+    front.cvars.FuncCount = 0;
 }
 
-void PrintStats( void )
+void PrintStats( FrontRun& front )
 {
     FCB         *nest_fcb;
     char        *fname;
     char        msgbuf[MAX_MSG_LEN];
     int         len;
 
-    if( !cvars_state().CompFlags.stats_printed ) {
+    if( !front.cvars.CompFlags.stats_printed ) {
         len = 0;
-        fname = cvars_state().WholeFName;
+        fname = front.cvars.WholeFName;
         if( fname == NULL )
             fname = const_cast<char *>("");
         len += sprintf( &msgbuf[len], "%s: ", fname );
-        if( cvars_state().SrcLineCount == 0 ) {
-            nest_fcb = cvars_state().SrcFiles;
+        if( front.cvars.SrcLineCount == 0 ) {
+            nest_fcb = front.cvars.SrcFiles;
             if( nest_fcb != NULL ) {
                 while( nest_fcb->prev_file != NULL ) {
-                    cvars_state().IncLineCount += nest_fcb->src_line_cnt;
+                    front.cvars.IncLineCount += nest_fcb->src_line_cnt;
                     nest_fcb = nest_fcb->prev_file;
                 }
-                cvars_state().SrcLineCount = nest_fcb->src_line_cnt;
+                front.cvars.SrcLineCount = nest_fcb->src_line_cnt;
             }
         }
-        len += sprintf( &msgbuf[len], "%u lines, ", cvars_state().SrcLineCount );
-        if( cvars_state().IncLineCount != 0 ) {
-            len += sprintf( &msgbuf[len], "included %u, ", cvars_state().IncLineCount );
+        len += sprintf( &msgbuf[len], "%u lines, ", front.cvars.SrcLineCount );
+        if( front.cvars.IncLineCount != 0 ) {
+            len += sprintf( &msgbuf[len], "included %u, ", front.cvars.IncLineCount );
         }
-        len += sprintf( &msgbuf[len], "%u warnings, ", cvars_state().WngCount );
-        len += sprintf( &msgbuf[len], "%u errors", cvars_state().ErrCount );
-        BannerMsg( msgbuf );
-        cvars_state().CompFlags.stats_printed = true;
+        len += sprintf( &msgbuf[len], "%u warnings, ", front.cvars.WngCount );
+        len += sprintf( &msgbuf[len], "%u errors", front.cvars.ErrCount );
+        BannerMsg( front, msgbuf );
+        front.cvars.CompFlags.stats_printed = true;
     }
 }

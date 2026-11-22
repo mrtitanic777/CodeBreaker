@@ -36,12 +36,13 @@
 #include "memout.h"
 #include "cgsrtlst.h"
 #include "memmgt.h"
+#include "backrun.hpp"
 
 
 #define _NEXT( list, offset ) (*((void **)((char *)list + offset)))
 
-static  void            ShellSort( void **array, unsigned length,
-                                   bool (*before)(void *,void *) );
+static  void            ShellSort( BackRun& back, void **array, unsigned length,
+                                   bool (*before)(BackRun&, void *,void *) );
 
 static  void    *BuildList( void **array, unsigned next_offset, unsigned length )
 /*******************************************************************************/
@@ -61,9 +62,9 @@ static  void    *BuildList( void **array, unsigned next_offset, unsigned length 
 }
 
 
-static  void            *MergeList( void *list1, void *list2,
+static  void            *MergeList( BackRun& back, void *list1, void *list2,
                                    unsigned next_offset,
-                                   bool (*before)(void *,void *) ) {
+                                   bool (*before)(BackRun&, void *,void *) ) {
 /***************************************************************/
 
     void        *list;
@@ -73,7 +74,7 @@ static  void            *MergeList( void *list1, void *list2,
     list = NULL;
     owner = &list;
     while( list1 != NULL && list2 != NULL ) {
-        if( (*before)( list1, list2 ) ) {
+        if( (*before)( back, list1, list2 ) ) {
             *owner = list1;
             owner = &_NEXT( list1, next_offset );
             next = _NEXT( list1, next_offset );
@@ -96,8 +97,8 @@ static  void            *MergeList( void *list1, void *list2,
 }
 
 
-static  void            *DoSortList( void *list, unsigned next_offset,
-                                  bool (*before)(void *,void *),
+static  void            *DoSortList( BackRun& back, void *list, unsigned next_offset,
+                                  bool (*before)(BackRun&, void *,void *),
                                   unsigned length ) {
 /**************************************************************************/
 
@@ -109,7 +110,7 @@ static  void            *DoSortList( void *list, unsigned next_offset,
 
     if( list == NULL )
         return( NULL );
-    array = static_cast<void **>(CGAlloc( length * sizeof( void * ) ));
+    array = static_cast<void **>(CGAlloc( back, length * sizeof( void * ) ));
     if( array == NULL ) {
         mid = length / 2;
         if( mid == 0 )
@@ -118,9 +119,9 @@ static  void            *DoSortList( void *list, unsigned next_offset,
         for( i = mid; i > 0; --i ) {
             list2 = _NEXT( list2, next_offset );
         }
-        list = DoSortList( list, next_offset, before, mid );
-        list2 = DoSortList( list2, next_offset, before, length - mid );
-        list = MergeList( list, list2, next_offset, before );
+        list = DoSortList( back, list, next_offset, before, mid );
+        list2 = DoSortList( back, list2, next_offset, before, length - mid );
+        list = MergeList( back, list, list2, next_offset, before );
     } else {
         list2 = list;
         parray = array;
@@ -128,15 +129,15 @@ static  void            *DoSortList( void *list, unsigned next_offset,
             *parray++ = list2;
             list2 = _NEXT( list2, next_offset );
         }
-        ShellSort( array, length, before );
+        ShellSort( back, array, length, before );
         list = BuildList( array, next_offset, length );
-        CGFree( array );
+        CGFree( back, array );
     }
     return( list );
 }
 
-static  void            ShellSort( void **array, unsigned length,
-                                   bool (*before)(void *,void *) ) {
+static  void            ShellSort( BackRun& back, void **array, unsigned length,
+                                   bool (*before)(BackRun&, void *,void *) ) {
 /****************************************************************/
 
 
@@ -154,7 +155,7 @@ static  void            ShellSort( void **array, unsigned length,
         do {
             swap = false;
             for( i=0; i<(length-gap); ++i ) {
-                if( (*before)( array[i + gap], array[i] ) ) {
+                if( (*before)( back, array[i + gap], array[i] ) ) {
                     t = array[i];
                     array[i] = array[i + gap];
                     array[i + gap] = t;
@@ -166,7 +167,7 @@ static  void            ShellSort( void **array, unsigned length,
 }
 
 
-void *SortList( void *list, unsigned next_offset, bool (*before)(void *,void *) )
+void *SortList( BackRun& back, void *list, unsigned next_offset, bool (*before)(BackRun&, void *,void *) )
 /*******************************************************************************/
 {
     void                *list2;
@@ -178,9 +179,9 @@ void *SortList( void *list, unsigned next_offset, bool (*before)(void *,void *) 
         ++length;
     }
     if( length > 1 ) {
-        old_memout = SetMemOut( MO_OK );
-        list = DoSortList( list, next_offset, before, length );
-        SetMemOut( old_memout );
+        old_memout = SetMemOut( back, MO_OK );
+        list = DoSortList( back, list, next_offset, before, length );
+        SetMemOut( back, old_memout );
     }
     return( list );
 }

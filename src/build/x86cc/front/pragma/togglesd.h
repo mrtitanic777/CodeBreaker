@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define TOGGLEDBG(x)        PragmaDbgToggles.tog_##x
 #define TOGGLEDBG_STK(x)    HeadDbgToggles_tog_##x
 

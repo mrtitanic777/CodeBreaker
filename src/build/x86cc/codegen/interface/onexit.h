@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
-extern bool TBreak( void );
-extern void CauseTBreak( void );
-extern void FatalError( const char *str );
+#pragma once
+extern bool TBreak( BackRun& back );
+extern void CauseTBreak( BackRun& back );
+extern void FatalError( BackRun& back, const char *str );

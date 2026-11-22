@@ -30,13 +30,14 @@
 ****************************************************************************/
 
 
-extern void     CMemInit( void );
-extern void     CMemFini( void );
-extern void     *CPermAlloc( size_t );
-extern void     *CMemAlloc( size_t );
-extern char     *ToStringDup( const char *buf, size_t len );
-extern char     *CMemStrdup( const char *str );
-extern void     *CMemRealloc( void *loc, size_t size );
-extern void     CMemFree( void * );
-extern void     *FEmalloc( size_t );
-extern void     FEfree( void * );
+#pragma once
+extern void     CMemInit( FrontRun& front );
+extern void     CMemFini( FrontRun& front );
+extern void     *CPermAlloc( FrontRun& front, size_t );
+extern void     *CMemAlloc( FrontRun& front, size_t );
+extern char     *ToStringDup( FrontRun& front, const char *buf, size_t len );
+extern char     *CMemStrdup( FrontRun& front, const char *str );
+extern void     *CMemRealloc( FrontRun& front, void *loc, size_t size );
+extern void     CMemFree( FrontRun& front, void * );
+extern void     *FEmalloc( FrontRun& front, size_t );
+extern void     FEfree( FrontRun& front, void * );

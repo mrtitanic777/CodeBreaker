@@ -45,13 +45,13 @@
 extern "C" {
 #endif
 
-extern void     *MemAlloc( NSSTD( size_t ) );
-extern void     *MemAllocSafe( NSSTD( size_t ) );
+extern void     *MemAlloc( FrontRun& front, NSSTD( size_t ) );
+extern void     *MemAllocSafe( FrontRun& front, NSSTD( size_t ) );
 extern char     *MemStrdup( const char * );
-extern char     *MemStrdupSafe( const char * );
+extern char     *MemStrdupSafe( FrontRun& front, const char * );
 extern void     *MemRealloc( void *, NSSTD( size_t ) );
 extern void     *MemReallocSafe( void *, NSSTD( size_t ) );
-extern void     MemFree( void * );
+extern void     MemFree( FrontRun& front, void * );
 
 #ifdef __cplusplus
 }

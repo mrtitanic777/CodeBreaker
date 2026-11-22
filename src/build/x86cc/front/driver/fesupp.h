@@ -43,8 +43,8 @@
 
 // MACRO DEFINITIONS
 
-#define _MemoryAllocate( size )     CMemAlloc( size )
-#define _MemoryFree( ptr )          CMemFree( ptr )
+#define _MemoryAllocate( size )     CMemAlloc( front, size )
+#define _MemoryFree( ptr )          CMemFree( front, ptr )
 #define _MemoryFreePtr( ptr )       CMemFreePtr( ptr )
 //#define _MemoryDeferredFree( ptr )  CMemDeferredFree( ptr )
 #define _FatalAbort( msg )          CFatal( msg )

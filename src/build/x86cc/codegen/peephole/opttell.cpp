@@ -38,9 +38,10 @@
 #include "object.h"
 #include "opttell.h"
 #include "encode.h"
+#include "backrun.hpp"
 
 
-void    TellOptimizerByPassed( void )
+void    TellOptimizerByPassed( BackRun& back )
 /***********************************/
 /* tell the optimizer we're going around it so it won't flush while we're*/
 /* in the object file generator and zap our static variables*/
@@ -49,14 +50,14 @@ void    TellOptimizerByPassed( void )
 }
 
 
-void    TellByPassOver( void )
+void    TellByPassOver( BackRun& back )
 /****************************/
 {
   optend
 }
 
 
-void    TellAddress( label_handle lbl, offset addr )
+void    TellAddress( BackRun& back, label_handle lbl, offset addr )
 /**************************************************/
 {
   optbegin
@@ -66,7 +67,7 @@ void    TellAddress( label_handle lbl, offset addr )
 }
 
 
-void    TellDonePatches( label_handle lbl )
+void    TellDonePatches( BackRun& back, label_handle lbl )
 /*****************************************/
 {
   optbegin
@@ -76,7 +77,7 @@ void    TellDonePatches( label_handle lbl )
 }
 
 
-void    TellReachedLabel( label_handle lbl )
+void    TellReachedLabel( BackRun& back, label_handle lbl )
 /******************************************/
 {
   optbegin
@@ -92,7 +93,7 @@ void    TellProcLabel( label_handle lbl )
     _SetStatus( lbl, PROCEDURE );
 }
 
-void    TellCommonLabel( label_handle lbl, import_handle imphdl )
+void    TellCommonLabel( BackRun& back, label_handle lbl, import_handle imphdl )
 /***************************************************************/
 {
   optbegin
@@ -103,7 +104,7 @@ void    TellCommonLabel( label_handle lbl, import_handle imphdl )
 }
 
 
-void    TellKeepLabel( label_handle lbl )
+void    TellKeepLabel( BackRun& back, label_handle lbl )
 /***************************************/
 {
   optbegin
@@ -113,7 +114,7 @@ void    TellKeepLabel( label_handle lbl )
 }
 
 
-void    TellNoSymbol( label_handle lbl )
+void    TellNoSymbol( BackRun& back, label_handle lbl )
 /**************************************/
 {
   optbegin
@@ -121,19 +122,19 @@ void    TellNoSymbol( label_handle lbl )
         _ValidLbl( lbl );
         lbl->lbl.sym = NULL;
         if( _TstStatus( lbl, CODELABEL ) ) {
-            GenKillLabel( lbl );
+            GenKillLabel( back, lbl );
         }
     }
   optend
 }
 
-static  void    ReallyScrapLabel( label_handle lbl )
+static  void    ReallyScrapLabel( BackRun& back, label_handle lbl )
 /**************************************************/
 {
     label_handle *owner;
 
   optbegin
-    owner = &optdata_state().Handles;
+    owner = &back.optdata.Handles;
     for( ;; ) {
         if( *owner == NULL )
             optreturnvoid;
@@ -142,24 +143,24 @@ static  void    ReallyScrapLabel( label_handle lbl )
         owner = &(*owner)->lbl.link;
     }
     *owner = lbl->lbl.link;
-    CGFree( lbl );
+    CGFree( back, lbl );
   optend
 }
 
 
-void    TellScrapLabel( label_handle lbl )
+void    TellScrapLabel( BackRun& back, label_handle lbl )
 /****************************************/
 {
   optbegin
     /* data labels in the code segment can't get freed until the end */
     if( _TstStatus( lbl, CODELABEL ) ) {
-        ReallyScrapLabel( lbl );
+        ReallyScrapLabel( back, lbl );
     }
   optend
 }
 
 
-void    TellCondemnedLabel( label_handle lbl )
+void    TellCondemnedLabel( BackRun& back, label_handle lbl )
 /********************************************/
 {
   optbegin
@@ -169,7 +170,7 @@ void    TellCondemnedLabel( label_handle lbl )
 }
 
 
-static  label_handle    NextCondemned( label_handle lbl )
+static  label_handle    NextCondemned( BackRun& back, label_handle lbl )
 /*******************************************************/
 {
   optbegin
@@ -186,46 +187,46 @@ static  label_handle    NextCondemned( label_handle lbl )
 }
 
 
-void    TellBeginExecutions( void )
+void    TellBeginExecutions( BackRun& back )
 /*********************************/
 {
     label_handle    dead;
 
   optbegin
     for( ;; ) {
-        dead = NextCondemned( optdata_state().Handles );
+        dead = NextCondemned( back, back.optdata.Handles );
         if( dead == NULL )
             break;
-        GenKillLabel( dead );
+        GenKillLabel( back, dead );
     }
   optend
 }
 
 
-void    TellFreeAllLabels( void )
+void    TellFreeAllLabels( BackRun& back )
 /*******************************/
 {
     bool        unfreed;
 
   optbegin
     unfreed = false;
-    while( optdata_state().Handles != NULL ) {
+    while( back.optdata.Handles != NULL ) {
 #ifndef PRODUCTION
-        if( _TstStatus( optdata_state().Handles, CODELABEL )
-         && optdata_state().Handles->lbl.sym == NULL
-         && !_TstStatus( optdata_state().Handles, REDIRECTION )
+        if( _TstStatus( back.optdata.Handles, CODELABEL )
+         && back.optdata.Handles->lbl.sym == NULL
+         && !_TstStatus( back.optdata.Handles, REDIRECTION )
          && !unfreed ) {
             _Zoiks( ZOIKS_001 );
             unfreed = true;
         }
 #endif
-        ReallyScrapLabel( optdata_state().Handles );
+        ReallyScrapLabel( back, back.optdata.Handles );
     }
   optend
 }
 
 
-void    TellUnreachLabels( void )
+void    TellUnreachLabels( BackRun& back )
 /********************************
     Mark all the labels that have come out of the control flow queue as
     unreachable by a short jump.
@@ -234,7 +235,7 @@ void    TellUnreachLabels( void )
     label_handle    lbl;
 
   optbegin
-    for( lbl = optdata_state().Handles; lbl != NULL; lbl = lbl->lbl.link ) {
+    for( lbl = back.optdata.Handles; lbl != NULL; lbl = lbl->lbl.link ) {
         if( lbl->lbl.address != ADDR_UNKNOWN ) {
             _SetStatus( lbl, UNREACHABLE );
         }
@@ -242,17 +243,17 @@ void    TellUnreachLabels( void )
   optend
 }
 
-void    KillLblRedirects( void )
+void    KillLblRedirects( BackRun& back )
 /******************************/
 {
     label_handle    lbl;
 
   optbegin
 #if  OPTIONS & SHORT_JUMPS
-    for( lbl = optdata_state().Handles; lbl != NULL; lbl = lbl->lbl.link ) {
+    for( lbl = back.optdata.Handles; lbl != NULL; lbl = lbl->lbl.link ) {
         lbl->redirect = NULL;
     }
 #endif
-    TellUnreachLabels();        // a little too conservative - stop gap
+    TellUnreachLabels(back);        // a little too conservative - stop gap
   optend
 }

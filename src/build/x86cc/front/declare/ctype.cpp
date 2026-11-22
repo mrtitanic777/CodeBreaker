@@ -32,19 +32,20 @@
 
 #include "cvars.h"
 #include "i64.h"
+#include "frontrun.hpp"
 
 
-static TYPEPTR StructDecl(DATA_TYPE,bool);
+static TYPEPTR StructDecl(FrontRun& front, DATA_TYPE,bool);
 //static TYPEPTR ComplexDecl(int,bool);
-static void      SetPlainCharType( DATA_TYPE char_type );
-static void CheckBitfieldType( TYPEPTR typ );
+static void      SetPlainCharType( FrontRun& front, DATA_TYPE char_type );
+static void CheckBitfieldType( FrontRun& front, TYPEPTR typ );
 
 #if _CPU == 386
 #define _CHECK_SIZE( s )
 #else
 #define _CHECK_SIZE( s ) \
         if( (s) > 0xffff ) {\
-            CErr1( ERR_MAX_STRUCT_SIZE_IS_64K );\
+            CErr1( front, ERR_MAX_STRUCT_SIZE_IS_64K );\
         }
 #endif
 
@@ -58,68 +59,47 @@ static unsigned char  const CTypeSizes[] = {
 };
 
 
-typedef enum {
-    M_NONE          = 0,
-    M_CHAR          = 0x0001,
-    M_INT           = 0x0002,
-    M_SHORT         = 0x0004,
-    M_LONG          = 0x0008,
-    M_SIGNED        = 0x0010,
-    M_UNSIGNED      = 0x0020,
-    M_FLOAT         = 0x0040,
-    M_DOUBLE        = 0x0080,
-    M_LONG_LONG     = 0x0100,
-    M_VOID          = 0x0200,
-    M_COMPLEX       = 0x0400,
-    M_IMAGINARY     = 0x0800,
-    M_BOOL          = 0x1000,
-} type_mask;
+
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct CtypeState {
-    TYPEPTR CTypeHash[DATA_TYPE_SIZE];
-    TYPEPTR PtrTypeHash[DATA_TYPE_SIZE];
-    FIELDPTR FieldHash[ID_HASH_SIZE];
-    field_level_stype GetFields_struct_level = 0;
-};
+/* (struct CtypeState: ctype_state.h) */
 
 }  // namespace
 
-static inline CtypeState& ctype_state() { return cbrun_part<CtypeState>(); }
 
-void InitTypeHashTables( void )
+void InitTypeHashTables( FrontRun& front )
 {
     parm_hash_idx   hash1;
     id_hash_idx     hash2;
     DATA_TYPE       base_type;
 
     for( hash1 = 0; hash1 <= MAX_PARM_LIST_HASH_SIZE; hash1++ ) {
-        cvars_state().FuncTypeHead[hash1] = NULL;
+        front.cvars.FuncTypeHead[hash1] = NULL;
     }
     for( base_type = static_cast<DATA_TYPE>(0); base_type < DATA_TYPE_SIZE; ++base_type ) {
-        ctype_state().CTypeHash[base_type] = NULL;
-        ctype_state().PtrTypeHash[base_type] = NULL;
+        front.ctype.CTypeHash[base_type] = NULL;
+        front.ctype.PtrTypeHash[base_type] = NULL;
     }
     for( hash2 = 0; hash2 < ID_HASH_SIZE; hash2++ ) {
-        cvars_state().TagHash[hash2] = NULL;
-        ctype_state().FieldHash[hash2] = NULL;
+        front.cvars.TagHash[hash2] = NULL;
+        front.ctype.FieldHash[hash2] = NULL;
     }
-    cvars_state().TagHash[ID_HASH_SIZE] = NULL;
+    front.cvars.TagHash[ID_HASH_SIZE] = NULL;
 }
 
-void CTypeInit( void )
+void CTypeInit( FrontRun& front )
 {
     DATA_TYPE   base_type;
 
-    cvars_state().TypeHead = NULL;
-    cvars_state().TagCount = 0;
-    cvars_state().FieldCount = 0;
-    cvars_state().EnumCount = 0;
-    InitTypeHashTables();
+    front.cvars.TypeHead = NULL;
+    front.cvars.TagCount = 0;
+    front.cvars.FieldCount = 0;
+    front.cvars.EnumCount = 0;
+    InitTypeHashTables(front);
     for( base_type = static_cast<DATA_TYPE>(0); base_type < DATA_TYPE_SIZE; ++base_type ) {
-        cvars_state().CTypeCounts[base_type] = 0;
+        front.cvars.CTypeCounts[base_type] = 0;
 #if 0
         if ( base_type == TYP_FCOMPLEX || base_type == TYP_DCOMPLEX || base_type == TYP_LDCOMPLEX ) {
             BaseTypes[base_type] = ComplexDecl( TYP_STRUCT, false );
@@ -127,71 +107,71 @@ void CTypeInit( void )
         } else {
 #endif
             if( CTypeSizes[base_type] != 0 || base_type == TYP_VOID || base_type == TYP_DOT_DOT_DOT ) {
-                cvars_state().BaseTypes[base_type] = TypeNode( base_type, NULL );
+                front.cvars.BaseTypes[base_type] = TypeNode( front, base_type, NULL );
             } else {
-                cvars_state().BaseTypes[base_type] = NULL;
+                front.cvars.BaseTypes[base_type] = NULL;
             }
 #if 0
         }
 #endif
     }
-    SetPlainCharType( TYP_UCHAR );
-    cvars_state().StringArrayType = NULL;
-    cvars_state().VoidParmList[0] = cvars_state().BaseTypes[TYP_VOID];
-    cvars_state().VoidParmList[1] = NULL;
+    SetPlainCharType( front, TYP_UCHAR );
+    front.cvars.StringArrayType = NULL;
+    front.cvars.VoidParmList[0] = front.cvars.BaseTypes[TYP_VOID];
+    front.cvars.VoidParmList[1] = NULL;
 }
 
 
-TYPEPTR GetType( DATA_TYPE base_type )
+TYPEPTR GetType( FrontRun& front, DATA_TYPE base_type )
 {
     TYPEPTR     typ;
 
-    typ = cvars_state().BaseTypes[base_type];
+    typ = front.cvars.BaseTypes[base_type];
     if( typ == NULL ) {
-        typ = TypeNode( base_type, NULL );
+        typ = TypeNode( front, base_type, NULL );
     }
     return( typ );
 }
 
-void WalkFuncTypeList( void (*func)(TYPEPTR,int) )
+void WalkFuncTypeList( FrontRun& front, void (*func)(FrontRun&, TYPEPTR,int) )
 {
     TYPEPTR         typ;
     parm_hash_idx   hash;
 
     for( hash = 0; hash <= MAX_PARM_LIST_HASH_SIZE; hash++ ) {
-        for( typ = cvars_state().FuncTypeHead[hash]; typ != NULL; typ = typ->next_type ) {
-            func( typ, hash );
+        for( typ = front.cvars.FuncTypeHead[hash]; typ != NULL; typ = typ->next_type ) {
+            func( front, typ, hash );
         }
     }
 }
 
-void WalkTypeList( void (*func)(TYPEPTR) )
+void WalkTypeList( FrontRun& front, void (*func)(FrontRun&, TYPEPTR) )
 {
     TYPEPTR     typ;
     DATA_TYPE   base_type;
 
     for( base_type = static_cast<DATA_TYPE>(0); base_type < DATA_TYPE_SIZE; ++base_type ) {
-        for( typ = ctype_state().CTypeHash[base_type]; typ != NULL; typ = typ->next_type ) {
-            func( typ );
+        for( typ = front.ctype.CTypeHash[base_type]; typ != NULL; typ = typ->next_type ) {
+            func( front, typ );
         }
     }
     for( base_type = static_cast<DATA_TYPE>(0); base_type < DATA_TYPE_SIZE; ++base_type ) {
-        for( typ = ctype_state().PtrTypeHash[base_type]; typ != NULL; typ = typ->next_type ) {
-            func( typ );
+        for( typ = front.ctype.PtrTypeHash[base_type]; typ != NULL; typ = typ->next_type ) {
+            func( front, typ );
         }
     }
 }
 
-static TYPEPTR DupType( TYPEPTR typ, enum type_state flags, bool force_duplicate )
+static TYPEPTR DupType( FrontRun& front, TYPEPTR typ, enum type_state flags, bool force_duplicate )
 {
     TYPEPTR     newtype;
     TYPEPTR     next;
 
     if( !force_duplicate ) {
         if( typ->decl_type == TYP_POINTER ) {
-            next = ctype_state().PtrTypeHash[typ->object->decl_type];
+            next = front.ctype.PtrTypeHash[typ->object->decl_type];
         } else {
-            next = ctype_state().CTypeHash[typ->decl_type];
+            next = front.ctype.CTypeHash[typ->decl_type];
         }
         for( ; next != NULL; next = next->next_type ) {
             if( next->decl_type == typ->decl_type
@@ -202,7 +182,7 @@ static TYPEPTR DupType( TYPEPTR typ, enum type_state flags, bool force_duplicate
             }
         }
     }
-    newtype = TypeNode( typ->decl_type, typ->object );
+    newtype = TypeNode( front, typ->decl_type, typ->object );
     next = newtype->next_type;
     memcpy( newtype, typ, sizeof( TYPEDEFN ) );
     newtype->next_type = next;
@@ -210,24 +190,24 @@ static TYPEPTR DupType( TYPEPTR typ, enum type_state flags, bool force_duplicate
     return( newtype );
 }
 
-static void SetPlainCharType( DATA_TYPE char_type )
+static void SetPlainCharType( FrontRun& front, DATA_TYPE char_type )
 {
     TYPEPTR     typ;
 
-    typ = TypeNode( char_type, NULL );
+    typ = TypeNode( front, char_type, NULL );
     typ->type_flags = TF2_TYP_PLAIN_CHAR;
-    cvars_state().BaseTypes[TYP_PLAIN_CHAR] = typ;
-    cvars_state().StringType = PtrNode( typ, FLAG_NONE, SEG_DATA );
-    cvars_state().ConstCharType =  typ;
+    front.cvars.BaseTypes[TYP_PLAIN_CHAR] = typ;
+    front.cvars.StringType = PtrNode( front, typ, FLAG_NONE, SEG_DATA );
+    front.cvars.ConstCharType =  typ;
 }
 
-void SetSignedChar( void )
+void SetSignedChar( FrontRun& front )
 {
-    SetPlainCharType( TYP_CHAR );
+    SetPlainCharType( front, TYP_CHAR );
 }
 
 
-type_modifiers TypeQualifier( void )
+type_modifiers TypeQualifier( FrontRun& front )
 {
     type_modifiers   flags;
     type_modifiers   bit;
@@ -235,7 +215,7 @@ type_modifiers TypeQualifier( void )
     flags = static_cast<type_modifiers>(0);
     bit = static_cast<type_modifiers>(0);
     for( ;; ) {
-        switch( cvars_state().CurToken ) {
+        switch( front.cvars.CurToken ) {
         case T_CONST:
             bit = FLAG_CONST;
             break;
@@ -253,14 +233,14 @@ type_modifiers TypeQualifier( void )
             return( flags );
         }
         if( (flags & bit)
-          && ( cvars_state().CompVars.cstd < STD_C99 ) )
-            CErr1( ERR_REPEATED_MODIFIER );
+          && ( front.cvars.CompVars.cstd < STD_C99 ) )
+            CErr1( front, ERR_REPEATED_MODIFIER );
         flags |= bit;
-        NextToken();
+        NextToken(front);
     }
 }
 
-static TYPEPTR GetScalarType( bool *plain_int, type_mask bmask, type_modifiers flags )
+static TYPEPTR GetScalarType( FrontRun& front, bool *plain_int, type_mask bmask, type_modifiers flags )
 {
     DATA_TYPE   data_type;
     TYPEPTR     typ;
@@ -321,7 +301,7 @@ static TYPEPTR GetScalarType( bool *plain_int, type_mask bmask, type_modifiers f
         data_type = TYP_FLOAT;
         break;
     case M_LONG | M_DOUBLE:
-        if( cvars_state().CompFlags.use_long_double ) {
+        if( front.cvars.CompFlags.use_long_double ) {
             data_type = TYP_LONG_DOUBLE;
             break;
         }
@@ -333,7 +313,7 @@ static TYPEPTR GetScalarType( bool *plain_int, type_mask bmask, type_modifiers f
         data_type = TYP_FCOMPLEX;
         break;
     case M_COMPLEX | M_LONG | M_DOUBLE:
-        if( cvars_state().CompFlags.use_long_double ) {
+        if( front.cvars.CompFlags.use_long_double ) {
             data_type = TYP_LDCOMPLEX;
             break;
         }
@@ -345,7 +325,7 @@ static TYPEPTR GetScalarType( bool *plain_int, type_mask bmask, type_modifiers f
         data_type = TYP_FIMAGINARY;
         break;
     case M_IMAGINARY | M_LONG | M_DOUBLE:
-        if( cvars_state().CompFlags.use_long_double ) {
+        if( front.cvars.CompFlags.use_long_double ) {
             data_type = TYP_LDIMAGINARY;
             break;
         }
@@ -354,30 +334,30 @@ static TYPEPTR GetScalarType( bool *plain_int, type_mask bmask, type_modifiers f
         data_type = TYP_DIMAGINARY;
         break;
     default:
-        CErr1( ERR_INV_TYPE );
+        CErr1( front, ERR_INV_TYPE );
         data_type = TYP_INT;
         break;
     }
-    typ = GetType( data_type );
+    typ = GetType( front, data_type );
     if( flags & FLAG_SEGMENT )
-        typ = DupType( typ, TF2_TYP_SEGMENT, false );
+        typ = DupType( front, typ, TF2_TYP_SEGMENT, false );
 
     return( typ );
 }
 
 
-static void AdvanceToken( void )
+static void AdvanceToken( FrontRun& front )
 {
-    if( cvars_state().CurToken == T_SAVED_ID ) {
-        CMemFree( cvars_state().SavedId );
-        cvars_state().SavedId = NULL;
-        cvars_state().CurToken = cvars_state().LAToken;
+    if( front.cvars.CurToken == T_SAVED_ID ) {
+        CMemFree( front, front.cvars.SavedId );
+        front.cvars.SavedId = NULL;
+        front.cvars.CurToken = front.cvars.LAToken;
     } else {
-        NextToken();
+        NextToken(front);
     }
 }
 
-static void DeclSpecifiers( bool *plain_int, decl_info *info )
+static void DeclSpecifiers( FrontRun& front, bool *plain_int, decl_info *info )
 {
     TYPEPTR             typ;
     type_mask           bmask;
@@ -405,7 +385,7 @@ static void DeclSpecifiers( bool *plain_int, decl_info *info )
     for(;;) {
         stg_class = SC_NONE;
         bit = M_NONE;
-        switch( cvars_state().CurToken ) {
+        switch( front.cvars.CurToken ) {
         case T_CHAR:
             bit = M_CHAR;
             break;
@@ -467,7 +447,7 @@ static void DeclSpecifiers( bool *plain_int, decl_info *info )
             break;
         case T__PACKED:
             if( packed )
-                CErr1( ERR_REPEATED_MODIFIER );
+                CErr1( front, ERR_REPEATED_MODIFIER );
             packed = true;
             break;
         case T_EXTERN:
@@ -487,20 +467,20 @@ static void DeclSpecifiers( bool *plain_int, decl_info *info )
             break;
         case T_STRUCT:
             if( typ != NULL )
-                CErr1( ERR_INV_TYPE );
-            typ = StructDecl( TYP_STRUCT, packed );
+                CErr1( front, ERR_INV_TYPE );
+            typ = StructDecl( front, TYP_STRUCT, packed );
             packed = false;
             continue;
         case T_UNION:
             if( typ != NULL )
-                CErr1( ERR_INV_TYPE );
-            typ = StructDecl( TYP_UNION, packed );
+                CErr1( front, ERR_INV_TYPE );
+            typ = StructDecl( front, TYP_UNION, packed );
             packed = false;
             continue;
         case T_ENUM:
             if( typ != NULL )
-                CErr1( ERR_INV_TYPE );
-            typ = EnumDecl( flags );
+                CErr1( front, ERR_INV_TYPE );
+            typ = EnumDecl( front, flags );
             continue;
         case T___SEGMENT:
             bit = M_UNSIGNED | M_SHORT;
@@ -508,11 +488,11 @@ static void DeclSpecifiers( bool *plain_int, decl_info *info )
             break;
 
         case T___DECLSPEC:
-            AdvanceToken();                   // declspec( dllimport naked )
-            MustRecog( T_LEFT_PAREN );
-            while( cvars_state().CurToken != T_RIGHT_PAREN ) {
+            AdvanceToken(front);                   // declspec( dllimport naked )
+            MustRecog( front, T_LEFT_PAREN );
+            while( front.cvars.CurToken != T_RIGHT_PAREN ) {
                 modifier = static_cast<type_modifiers>(0);
-                switch( cvars_state().CurToken ) {
+                switch( front.cvars.CurToken ) {
                 case T___WATCALL:
                     modifier = FLAG_WATCALL;
                     break;
@@ -545,57 +525,57 @@ static void DeclSpecifiers( bool *plain_int, decl_info *info )
                 case T_ID:
                     decl = DECLSPEC_NONE;
                     if( info->stg == SC_NONE ) {
-                        CErr1( ERR_INVALID_DECLARATOR );
+                        CErr1( front, ERR_INVALID_DECLARATOR );
                         break;
                     }
-                    if( strcmp( cvars_state().Buffer, "dllimport" ) == 0 ) {
+                    if( strcmp( front.cvars.Buffer, "dllimport" ) == 0 ) {
                         decl = DECLSPEC_DLLIMPORT;
-                    } else if( strcmp( cvars_state().Buffer, "overridable" ) == 0 ) {
+                    } else if( strcmp( front.cvars.Buffer, "overridable" ) == 0 ) {
                         decl = DECLSPEC_DLLIMPORT;
-                    } else if( strcmp( cvars_state().Buffer, "dllexport" ) == 0 ) {
+                    } else if( strcmp( front.cvars.Buffer, "dllexport" ) == 0 ) {
                         decl = DECLSPEC_DLLEXPORT;
-                    } else if( strcmp( cvars_state().Buffer, "thread" ) == 0 ) {
+                    } else if( strcmp( front.cvars.Buffer, "thread" ) == 0 ) {
                         decl = DECLSPEC_THREAD;
-                    } else if( strcmp( cvars_state().Buffer, "naked" ) == 0 ) {
+                    } else if( strcmp( front.cvars.Buffer, "naked" ) == 0 ) {
                         if( info->naked ) {
-                            CErr1( ERR_INVALID_DECLSPEC );
+                            CErr1( front, ERR_INVALID_DECLSPEC );
                         } else {
                             info->naked = true;
                         }
-                    } else if( strcmp( cvars_state().Buffer, "aborts" ) == 0
-                      || strcmp( cvars_state().Buffer, "__aborts" ) == 0 ) {
+                    } else if( strcmp( front.cvars.Buffer, "aborts" ) == 0
+                      || strcmp( front.cvars.Buffer, "__aborts" ) == 0 ) {
                         modifier = FLAG_ABORTS;
-                    } else if( strcmp( cvars_state().Buffer, "noreturn" ) == 0
-                      || strcmp( cvars_state().Buffer, "__noreturn" ) == 0
-                      || strcmp( cvars_state().Buffer, "_Noreturn" ) == 0 ) {
+                    } else if( strcmp( front.cvars.Buffer, "noreturn" ) == 0
+                      || strcmp( front.cvars.Buffer, "__noreturn" ) == 0
+                      || strcmp( front.cvars.Buffer, "_Noreturn" ) == 0 ) {
                         modifier = FLAG_NORETURN;
-                    } else if( strcmp( cvars_state().Buffer, "farss" ) == 0 ) {
+                    } else if( strcmp( front.cvars.Buffer, "farss" ) == 0 ) {
                         modifier = FLAG_FARSS;
                     } else {
-                        CErr1( ERR_INVALID_DECLSPEC );
+                        CErr1( front, ERR_INVALID_DECLSPEC );
                     }
                     if( decl != DECLSPEC_NONE ) {
                         if( info->decl == DECLSPEC_NONE ) {
                             info->decl = decl;
                         } else {
-                            CErr1( ERR_INVALID_DECLSPEC );
+                            CErr1( front, ERR_INVALID_DECLSPEC );
                         }
                     }
                     break;
                 default:
-                    CErr1( ERR_INVALID_DECLSPEC );
+                    CErr1( front, ERR_INVALID_DECLSPEC );
                     goto done;
                 }
                 if( modifier & MASK_LANGUAGES ) {
                     if( info->decl_mod & MASK_LANGUAGES ) {
-                        CErr1( ERR_INVALID_DECLSPEC );
+                        CErr1( front, ERR_INVALID_DECLSPEC );
                     } else {
                         info->decl_mod |= modifier;
                     }
                 }
                 if( modifier & FLAG_ABORTS ) {
                     if( info->decl_mod & FLAG_ABORTS ) {
-                        CErr1( ERR_INVALID_DECLSPEC );
+                        CErr1( front, ERR_INVALID_DECLSPEC );
                     } else {
                         info->decl_mod |= modifier;
                     }
@@ -605,15 +585,15 @@ static void DeclSpecifiers( bool *plain_int, decl_info *info )
                 }
                 if( modifier & FLAG_FARSS ) {
                     if( info->decl_mod & FLAG_FARSS ) {
-                        CErr1( ERR_INVALID_DECLSPEC );
+                        CErr1( front, ERR_INVALID_DECLSPEC );
                     } else {
                         info->decl_mod |= modifier;
                     }
                 }
-                NextToken();
+                NextToken(front);
             }
          done:
-            MustRecog( T_RIGHT_PAREN );
+            MustRecog( front, T_RIGHT_PAREN );
             continue;
         case T_SAVED_ID:
         case T_ID:
@@ -623,28 +603,28 @@ static void DeclSpecifiers( bool *plain_int, decl_info *info )
              * lookup id in symbol table
              * if valid type identifier then OK
              */
-            if( cvars_state().CurToken == T_ID ) {
-                sym_handle = SymLookTypedef( CalcHashID( cvars_state().Buffer ), cvars_state().Buffer, &sym );
+            if( front.cvars.CurToken == T_ID ) {
+                sym_handle = SymLookTypedef( front, CalcHashID( front.cvars.Buffer ), front.cvars.Buffer, &sym );
             } else {    /* T_SAVED_ID */
-                sym_handle = SymLookTypedef( CalcHashID( cvars_state().SavedId ), cvars_state().SavedId, &sym );
+                sym_handle = SymLookTypedef( front, CalcHashID( front.cvars.SavedId ), front.cvars.SavedId, &sym );
             }
             if( sym_handle == SYM_NULL )
                 goto got_specifier;
             if( sym.attribs.stg_class != SC_TYPEDEF )
                 goto got_specifier;
-            if( cvars_state().SymLevel != 0 && flags == 0 ) {
-                if( cvars_state().CurToken == T_ID ) {
-                    LookAhead();
-                    if( cvars_state().LAToken == T_COLON ) {
+            if( front.cvars.SymLevel != 0 && flags == 0 ) {
+                if( front.cvars.CurToken == T_ID ) {
+                    LookAhead(front);
+                    if( front.cvars.LAToken == T_COLON ) {
                         goto got_specifier;
                     }
                 }
             }
-            ++cvars_state().SymTypedef;
+            ++front.cvars.SymTypedef;
             typ = sym.sym_type;
-            SymGet( &sym, sym_handle );  // get rest of sym from nutty sym table
+            SymGet( front, &sym, sym_handle );  // get rest of sym from nutty sym table
             if( flags & sym.mods ) {
-                CErr1( ERR_INV_TYPE );
+                CErr1( front, ERR_INV_TYPE );
             }
             flags |= sym.mods;
             if( sym.mods & FLAG_BASED ) {
@@ -654,20 +634,20 @@ static void DeclSpecifiers( bool *plain_int, decl_info *info )
                 if( info->decl == DECLSPEC_NONE ) {
                     info->decl = static_cast<declspec_class>(sym.attribs.declspec);
                 } else {
-                    CErr1( ERR_INVALID_DECLSPEC );
+                    CErr1( front, ERR_INVALID_DECLSPEC );
                 }
             }
             if( sym.attribs.naked ) {
                 if( info->naked ) {
-                    CErr1( ERR_INVALID_DECLSPEC );
+                    CErr1( front, ERR_INVALID_DECLSPEC );
                 } else {
                     info->naked = true;
                 }
             }
-            AdvanceToken();
+            AdvanceToken(front);
             continue;
         default:
-            modifier = TypeQualifier();
+            modifier = TypeQualifier(front);
             if( modifier ) {
                 flags |= modifier;
                 continue;
@@ -678,7 +658,7 @@ static void DeclSpecifiers( bool *plain_int, decl_info *info )
             if( info->stg == SC_NONE )
                 break;       // don't want any stg class
             if( specified_stg_class != SC_NONE ) {
-                CErr1( ERR_TOO_MANY_STORAGE_CLASS_SPECIFIERS );
+                CErr1( front, ERR_TOO_MANY_STORAGE_CLASS_SPECIFIERS );
             }
             specified_stg_class = stg_class;
         }
@@ -688,11 +668,11 @@ static void DeclSpecifiers( bool *plain_int, decl_info *info )
                 bmask &= ~M_LONG;
                 bit = M_LONG_LONG;
             } else {
-                CErr1( ERR_INV_TYPE );
+                CErr1( front, ERR_INV_TYPE );
             }
         }
         bmask |= bit;
-        NextToken();
+        NextToken(front);
     }
 got_specifier:
     info->stg = specified_stg_class;
@@ -702,81 +682,81 @@ got_specifier:
          * or an ID that was a typedef name
          */
         if( bmask != M_NONE ) {
-            CErr1( ERR_INV_TYPE );  // picked up an int
+            CErr1( front, ERR_INV_TYPE );  // picked up an int
         }
     } else {
         if( flags != FLAG_NONE || bmask != M_NONE ) {  // not just id hanging there
-            typ = GetScalarType( plain_int, bmask, flags );
+            typ = GetScalarType( front, plain_int, bmask, flags );
         }
     }
     info->typ = typ;
     info->mod = flags;
 }
 
-void TypeSpecifier( decl_info *info )
+void TypeSpecifier( FrontRun& front, decl_info *info )
 {
     bool                plain_int;
 
     info->stg = SC_NONE;      // indicate don't want any storage class specifiers
-    DeclSpecifiers( &plain_int, info );
+    DeclSpecifiers( front, &plain_int, info );
 }
 
-static void GetFieldTypeSpecifier( bool *plain_int, decl_info *info )
+static void GetFieldTypeSpecifier( FrontRun& front, bool *plain_int, decl_info *info )
 {
 
     info->stg = SC_NONE;      // indicate don't want any storage class specifiers
-    DeclSpecifiers( plain_int, info );
+    DeclSpecifiers( front, plain_int, info );
 }
 
-void FullDeclSpecifier( decl_info *info )
+void FullDeclSpecifier( FrontRun& front, decl_info *info )
 {
     bool        plain_int;
 
     info->stg = SC_FORWARD;    // indicate want storage class specifiers
-    DeclSpecifiers( &plain_int, info );
+    DeclSpecifiers( front, &plain_int, info );
 }
 
-TYPEPTR TypeDefault( void )
+TYPEPTR TypeDefault( FrontRun& front )
 {
-    return( GetType( TYP_INT ) );
+    return( GetType( front, TYP_INT ) );
 }
 
 
-static TAGPTR NewTag( id_hash_idx hash, const char *name )
+static TAGPTR NewTag( FrontRun& front, id_hash_idx hash, const char *name )
 {
     TAGPTR      tag;
 
-    tag = (TAGPTR)CPermAlloc( sizeof( TAGDEFN ) + strlen( name ) );
-    tag->level = (id_level_type)cvars_state().SymLevel;
+    tag = (TAGPTR)CPermAlloc( front, sizeof( TAGDEFN ) + strlen( name ) );
+    tag->level = (id_level_type)front.cvars.SymLevel;
     tag->hash = hash;
-    tag->next_tag = cvars_state().TagHash[hash];
-    cvars_state().TagHash[hash] = tag;
+    tag->next_tag = front.cvars.TagHash[hash];
+    front.cvars.TagHash[hash] = tag;
     strcpy( tag->name, name );
-    ++cvars_state().TagCount;
+    ++front.cvars.TagCount;
     return( tag );
 }
 
 
-TAGPTR NullTag( void )
+TAGPTR NullTag( FrontRun& front )
 {
-    return( NewTag( ID_HASH_SIZE, "" ) );
+    return( NewTag( front, ID_HASH_SIZE, "" ) );
 }
 
 
-TAGPTR VfyNewTag( TAGPTR tag, DATA_TYPE tag_type )
+TAGPTR VfyNewTag( FrontRun& front, TAGPTR tag, DATA_TYPE tag_type )
 {
     if( tag->sym_type != NULL ) {               /* tag already exists */
         if( !CheckEqSymLevel( tag ) ) {
-            tag = NewTag( tag->hash, tag->name );
+            tag = NewTag( front, tag->hash, tag->name );
         } else if( tag->size != 0 || tag->sym_type->decl_type != tag_type ) {
-            CErr2p( ERR_DUPLICATE_TAG, tag->name );
+            CErr2p( front, ERR_DUPLICATE_TAG, tag->name );
         }
     }
     return( tag );
 }
 
 
-static FIELDPTR NewField( FIELDPTR new_field, TYPEPTR decl )
+static FIELDPTR NewField( FrontRun& front, FIELDPTR new_field, TYPEPTR decl )
 {
     FIELDPTR    field;
     FIELDPTR    prev_field;
@@ -784,7 +764,7 @@ static FIELDPTR NewField( FIELDPTR new_field, TYPEPTR decl )
     TAGPTR      tag;
     id_hash_idx hash;
 
-    ++cvars_state().FieldCount;
+    ++front.cvars.FieldCount;
     typ = new_field->field_type;
     if( typ != NULL ) {
         SKIP_TYPEDEFS( typ );
@@ -794,27 +774,27 @@ static FIELDPTR NewField( FIELDPTR new_field, TYPEPTR decl )
          * allow nameless structs and unions
          */
         if( (typ->decl_type != TYP_STRUCT && typ->decl_type != TYP_UNION)
-          || !cvars_state().CompFlags.extensions_enabled ) {
-            CErr1( ERR_INVALID_DECLARATOR );
+          || !front.cvars.CompFlags.extensions_enabled ) {
+            CErr1( front, ERR_INVALID_DECLARATOR );
         }
     }
     if( typ == decl ) {
-        CErr1( ERR_STRUCT_OR_UNION_INSIDE_ITSELF );
-    } else if( SizeOfArg( typ ) == 0 ) {   /* was TypeSize(typ) */
+        CErr1( front, ERR_STRUCT_OR_UNION_INSIDE_ITSELF );
+    } else if( SizeOfArg( front, typ ) == 0 ) {   /* was TypeSize(typ) */
         /*
          * can't have an array of incomplete type
          */
         if( typ->decl_type == TYP_ARRAY
-          && ( SizeOfArg( typ->object ) == 0 || !cvars_state().CompFlags.extensions_enabled )
+          && ( SizeOfArg( front, typ->object ) == 0 || !front.cvars.CompFlags.extensions_enabled )
           || typ->decl_type != TYP_ARRAY ) {
-            CErr2p( ERR_INCOMPLETE_TYPE, new_field->name );
+            CErr2p( front, ERR_INCOMPLETE_TYPE, new_field->name );
         }
     }
     tag = decl->u.tag;
     hash = CalcHashID( new_field->name );
     new_field->hash = hash;
     if( new_field->name[0] != '\0' ) {  /* only check non-empty names */
-        for( field = ctype_state().FieldHash[hash]; field != NULL; field = field->next_field_same_hash ) {
+        for( field = front.ctype.FieldHash[hash]; field != NULL; field = field->next_field_same_hash ) {
             /*
              * fields were added at the front of the hash linked list --
              * may as well stop if the level isn't the same anymore
@@ -822,19 +802,19 @@ static FIELDPTR NewField( FIELDPTR new_field, TYPEPTR decl )
             if( field->level != new_field->level )
                 break;
             if( strcmp( field->name, new_field->name ) == 0 ) {
-                CErr2p( ERR_DUPLICATE_FIELD_NAME, field->name );
+                CErr2p( front, ERR_DUPLICATE_FIELD_NAME, field->name );
             }
         }
-        new_field->next_field_same_hash = ctype_state().FieldHash[hash];
-        ctype_state().FieldHash[hash] = new_field;
+        new_field->next_field_same_hash = front.ctype.FieldHash[hash];
+        front.ctype.FieldHash[hash] = new_field;
     }
     if( tag->u.field_list == NULL ) {
         tag->u.field_list = new_field;
     } else {
         prev_field = tag->u1.last_field;
         prev_field->next_field = new_field;
-        if( SizeOfArg( prev_field->field_type ) == 0 ) {
-            CErr2p( ERR_INCOMPLETE_TYPE, prev_field->name );
+        if( SizeOfArg( front, prev_field->field_type ) == 0 ) {
+            CErr2p( front, ERR_INCOMPLETE_TYPE, prev_field->name );
         }
     }
     tag->u1.last_field = new_field;
@@ -842,13 +822,13 @@ static FIELDPTR NewField( FIELDPTR new_field, TYPEPTR decl )
 }
 
 
-static TYPEPTR EnumFieldType( TYPEPTR ftyp, bool plain_int,
+static TYPEPTR EnumFieldType( FrontRun& front, TYPEPTR ftyp, bool plain_int,
                     bitfield_width bits_start, bitfield_width bits_width )
 {
     TYPEPTR     typ;
     DATA_TYPE   data_type;
 
-    typ = TypeNode( TYP_FIELD, NULL );
+    typ = TypeNode( front, TYP_FIELD, NULL );
     typ->u.f.field_start = bits_start;
     typ->u.f.field_width = bits_width;
     if( plain_int ) {
@@ -875,7 +855,7 @@ static TYPEPTR EnumFieldType( TYPEPTR ftyp, bool plain_int,
 }
 
 
-align_type GetTypeAlignment( TYPEPTR typ )
+align_type GetTypeAlignment( FrontRun& front, TYPEPTR typ )
 {
     align_type  size;
 
@@ -890,20 +870,20 @@ align_type GetTypeAlignment( TYPEPTR typ )
         }
 #endif
     } else {
-        size = (align_type)TypeSize( typ );
+        size = (align_type)TypeSize( front, typ );
     }
     return( size );
 }
 
 
-static target_size FieldAlign( target_size next_offset, FIELDPTR field, align_type *worst_alignment )
+static target_size FieldAlign( FrontRun& front, target_size next_offset, FIELDPTR field, align_type *worst_alignment )
 {
     align_type  pack_adjustment;
     align_type  align;
     target_size old_offset;
 
-    pack_adjustment = cvars_state().PackAmount;
-    align = GetTypeAlignment( field->field_type );
+    pack_adjustment = front.cvars.PackAmount;
+    align = GetTypeAlignment( front, field->field_type );
     if( align > pack_adjustment ) { // can't be any bigger than pack( x )
         align = pack_adjustment;
     }
@@ -913,8 +893,8 @@ static target_size FieldAlign( target_size next_offset, FIELDPTR field, align_ty
     if( align != 1 ) {
         old_offset = next_offset;
         next_offset = _RoundUp( next_offset, align );
-        if( cvars_state().CompFlags.slack_byte_warning && (next_offset - old_offset) ) {
-            CWarn2( ERR_SLACK_ADDED, (unsigned)( next_offset - old_offset ) );
+        if( front.cvars.CompFlags.slack_byte_warning && (next_offset - old_offset) ) {
+            CWarn2( front, ERR_SLACK_ADDED, (unsigned)( next_offset - old_offset ) );
         }
     }
     field->offset = next_offset;
@@ -949,7 +929,7 @@ static DATA_TYPE UnQualifiedType( TYPEPTR typ )
     return( TYP_UNDEFINED );
 }
 
-static void ClearFieldHashTable( TAGPTR tag )
+static void ClearFieldHashTable( FrontRun& front, TAGPTR tag )
 /********************************************
  * clear the hash table of all fields that were just defined
  * in the struct with tag tag
@@ -961,12 +941,12 @@ static void ClearFieldHashTable( TAGPTR tag )
 
     for( field = tag->u.field_list; field != NULL; field = field->next_field ) {
         prev_field = NULL;
-        hash_field = ctype_state().FieldHash[field->hash];
+        hash_field = front.ctype.FieldHash[field->hash];
         if( hash_field == field ) {
             /*
              * first entry: easy kick out
              */
-            ctype_state().FieldHash[field->hash] = field->next_field_same_hash;
+            front.ctype.FieldHash[field->hash] = field->next_field_same_hash;
         } else {
             while( hash_field != NULL ) {
                 /*
@@ -983,14 +963,14 @@ static void ClearFieldHashTable( TAGPTR tag )
     }
 }
 
-static bool CheckAdjModsTypeNode( type_modifiers old_mod, type_modifiers decl_mod )
+static bool CheckAdjModsTypeNode( FrontRun& front, type_modifiers old_mod, type_modifiers decl_mod )
 {
     bool        adjust;
 
     adjust = false;
     if( (decl_mod & MASK_LANGUAGES) && (old_mod & MASK_LANGUAGES) != (decl_mod & MASK_LANGUAGES) ) {
         if( old_mod & MASK_LANGUAGES ) {
-            CErr1( ERR_INVALID_DECLSPEC );
+            CErr1( front, ERR_INVALID_DECLSPEC );
         } else {
             adjust = true;
         }
@@ -1007,26 +987,26 @@ static bool CheckAdjModsTypeNode( type_modifiers old_mod, type_modifiers decl_mo
     return( adjust );
 }
 
-void AdjModsTypeNode( TYPEPTR *ptyp, type_modifiers decl_mod, SYMPTR sym )
+void AdjModsTypeNode( FrontRun& front, TYPEPTR *ptyp, type_modifiers decl_mod, SYMPTR sym )
 {
     if( decl_mod ) {
         TYPEPTR     typ;
 
         if( sym != NULL ) {
-            if( CheckAdjModsTypeNode( sym->mods, decl_mod ) ) {
+            if( CheckAdjModsTypeNode( front, sym->mods, decl_mod ) ) {
                 sym->mods |= decl_mod;
             }
         }
         typ = *ptyp;
         if( typ->decl_type == TYP_FUNCTION ) {
-            if( CheckAdjModsTypeNode( typ->u.fn.decl_flags, decl_mod ) ) {
-                *ptyp = FuncNode( typ->object, typ->u.fn.decl_flags | decl_mod, typ->u.fn.parms );
+            if( CheckAdjModsTypeNode( front, typ->u.fn.decl_flags, decl_mod ) ) {
+                *ptyp = FuncNode( front, typ->object, typ->u.fn.decl_flags | decl_mod, typ->u.fn.parms );
             }
         }
     }
 }
 
-static target_size GetFields( TYPEPTR decl )
+static target_size GetFields( FrontRun& front, TYPEPTR decl )
 {
     target_size         start;
     TYPEPTR             typ;
@@ -1045,7 +1025,7 @@ static target_size GetFields( TYPEPTR decl )
     decl_info           info;
     const_val           cval;
 
-    ctype_state().GetFields_struct_level++;
+    front.ctype.GetFields_struct_level++;
     prev_unqualified_type = TYP_VOID;   /* so it doesn't match 1st time */
     start = 0;
     worst_alignment = 1;
@@ -1057,32 +1037,32 @@ static target_size GetFields( TYPEPTR decl )
     struct_size = start;
     next_offset = start;
     for(;;) {
-        if( cvars_state().CurToken == T_SEMI_COLON && cvars_state().CompFlags.extensions_enabled ) {
-            NextToken();
-            if( cvars_state().CurToken == T_RIGHT_BRACE )
+        if( front.cvars.CurToken == T_SEMI_COLON && front.cvars.CompFlags.extensions_enabled ) {
+            NextToken(front);
+            if( front.cvars.CurToken == T_RIGHT_BRACE )
                 break;
             continue;
         }
-        GetFieldTypeSpecifier( &plain_int, &info );
+        GetFieldTypeSpecifier( front, &plain_int, &info );
         typ = info.typ;
         state = DECL_STATE_NONE;
         if( typ == NULL ) {
             state |= DECL_STATE_NOTYPE;
-            CErr2p( ERR_MISSING_DATA_TYPE, cvars_state().Buffer );
-            typ = TypeDefault();
-            if( cvars_state().CurToken == T_ID ) {
-                NextToken();
+            CErr2p( front, ERR_MISSING_DATA_TYPE, front.cvars.Buffer );
+            typ = TypeDefault(front);
+            if( front.cvars.CurToken == T_ID ) {
+                NextToken(front);
             }
         }
         unqualified_type = UnQualifiedType( typ );
         if( decl->decl_type == TYP_UNION ) {
-            bits_total = TypeSize( typ ) * CHAR_BIT;
+            bits_total = TypeSize( front, typ ) * CHAR_BIT;
         } else if( bits_available == bits_total ) {
-            bits_total = TypeSize( typ ) * CHAR_BIT;
+            bits_total = TypeSize( front, typ ) * CHAR_BIT;
             bits_available = bits_total;
         } else if( unqualified_type != prev_unqualified_type ) {
             next_offset += bits_total / CHAR_BIT;
-            bits_total = TypeSize( typ ) * CHAR_BIT;
+            bits_total = TypeSize( front, typ ) * CHAR_BIT;
             bits_available = bits_total;
         }
         prev_unqualified_type = unqualified_type;
@@ -1092,37 +1072,37 @@ static target_size GetFields( TYPEPTR decl )
                 bits_available = bits_total;
             }
             field = NULL;
-            if( cvars_state().CurToken != T_COLON ) {
-                field = FieldDecl( typ, info.mod, state );
-                field->level = ctype_state().GetFields_struct_level;
-                AdjModsTypeNode( &field->field_type, info.decl_mod, NULL );
-                field = NewField( field, decl );
+            if( front.cvars.CurToken != T_COLON ) {
+                field = FieldDecl( front, typ, info.mod, state );
+                field->level = front.ctype.GetFields_struct_level;
+                AdjModsTypeNode( front, &field->field_type, info.decl_mod, NULL );
+                field = NewField( front, field, decl );
             }
-            if( cvars_state().CurToken == T_COLON ) {
+            if( front.cvars.CurToken == T_COLON ) {
                 if( field != NULL ) {
-                    next_offset = FieldAlign( next_offset, field, &worst_alignment );
+                    next_offset = FieldAlign( front, next_offset, field, &worst_alignment );
                 }
-                CheckBitfieldType( typ );
-                NextToken();
-                ConstExprAndType( &cval );
+                CheckBitfieldType( front, typ );
+                NextToken(front);
+                ConstExprAndType( front, &cval );
                 bits_width = bits_total;
                 if( bits_width > TARGET_BITFIELD * CHAR_BIT )
                     bits_width = TARGET_BITFIELD * CHAR_BIT;
                 if( U64isZero( cval.value )
                   && field != NULL ) {
-                    CErr1( ERR_WIDTH_0 );
+                    CErr1( front, ERR_WIDTH_0 );
                     bits_width = 0;
                 } else if( I64isNeg( cval.value ) ) {
-                    CErr1( ERR_WIDTH_NEGATIVE );
+                    CErr1( front, ERR_WIDTH_NEGATIVE );
                     bits_width = 0;
                 } else if( U64CmpU32( cval.value, bits_width ) > 0 ) {
-                    CErr1( ERR_FIELD_TOO_WIDE );
+                    CErr1( front, ERR_FIELD_TOO_WIDE );
                     bits_width = TARGET_BITFIELD * CHAR_BIT;
                 } else {
                     bits_width = U64Low( cval.value );
                 }
                 if( bits_width > bits_available || bits_width == 0 ) {
-                    scalar_size = TypeSize( typ );
+                    scalar_size = TypeSize( front, typ );
                     if( bits_available != bits_total ) {
                         /*
                          * some bits have been used; abandon this unit
@@ -1139,7 +1119,7 @@ static target_size GetFields( TYPEPTR decl )
                 }
                 if( field != NULL ) {
                     field->offset = next_offset;
-                    field->field_type = EnumFieldType( typ, plain_int,
+                    field->field_type = EnumFieldType( front, typ, plain_int,
                               (bitfield_width)( bits_total - bits_available ),
                               (bitfield_width)bits_width );
                 }
@@ -1148,24 +1128,24 @@ static target_size GetFields( TYPEPTR decl )
                 if( bits_available != bits_total ) { //changed from bit field to non
                     next_offset += bits_total / CHAR_BIT;
                     field->offset = next_offset;
-                    bits_total = TypeSize( typ ) * CHAR_BIT;
+                    bits_total = TypeSize( front, typ ) * CHAR_BIT;
                     bits_available = bits_total;
                 }
-                next_offset = FieldAlign( next_offset, field, &worst_alignment );
-                next_offset += SizeOfArg( field->field_type );
+                next_offset = FieldAlign( front, next_offset, field, &worst_alignment );
+                next_offset += SizeOfArg( front, field->field_type );
             }
             if( next_offset > struct_size )
                 struct_size = next_offset;
-            if( cvars_state().CurToken != T_COMMA )
+            if( front.cvars.CurToken != T_COMMA )
                 break;
-            NextToken();
+            NextToken(front);
         }
-        if( cvars_state().CurToken == T_RIGHT_BRACE ) {
-            CWarn1( ERR_MISSING_LAST_SEMICOLON );
+        if( front.cvars.CurToken == T_RIGHT_BRACE ) {
+            CWarn1( front, ERR_MISSING_LAST_SEMICOLON );
         } else {
-            MustRecog( T_SEMI_COLON );
+            MustRecog( front, T_SEMI_COLON );
         }
-        if( cvars_state().CurToken == T_RIGHT_BRACE ) {
+        if( front.cvars.CurToken == T_RIGHT_BRACE ) {
             break;
         }
     }
@@ -1175,77 +1155,77 @@ static target_size GetFields( TYPEPTR decl )
             struct_size = next_offset;
         }
     }
-    ClearFieldHashTable( decl->u.tag );
+    ClearFieldHashTable( front, decl->u.tag );
     decl->u.tag->alignment = worst_alignment;
     struct_size = _RoundUp( struct_size, worst_alignment );
     _CHECK_SIZE( struct_size );
-    NextToken();
-    ctype_state().GetFields_struct_level--;
+    NextToken(front);
+    front.ctype.GetFields_struct_level--;
     return( struct_size );
 }
 
 
-static TYPEPTR StructDecl( DATA_TYPE decl_typ, bool packed )
+static TYPEPTR StructDecl( FrontRun& front, DATA_TYPE decl_typ, bool packed )
 {
     TYPEPTR     typ;
     TAGPTR      tag;
     align_type  saved_packamount;
 
-    saved_packamount = cvars_state().PackAmount;
+    saved_packamount = front.cvars.PackAmount;
     if( packed )
-        cvars_state().PackAmount = 1;
-    NextToken();
-    if( cvars_state().CurToken == T_LEFT_BRACE ) {
-        tag = NullTag();
-        NextToken();
+        front.cvars.PackAmount = 1;
+    NextToken(front);
+    if( front.cvars.CurToken == T_LEFT_BRACE ) {
+        tag = NullTag(front);
+        NextToken(front);
     } else {
         for(;;) {
-            if( cvars_state().CurToken == T_ID )
+            if( front.cvars.CurToken == T_ID )
                 break;
-            if( cvars_state().CurToken == T_LEFT_BRACE )
+            if( front.cvars.CurToken == T_LEFT_BRACE )
                 break;
-            if( cvars_state().CurToken == T_EOF )
+            if( front.cvars.CurToken == T_EOF )
                 break;
-            ExpectStructUnionTag();
-            NextToken();
+            ExpectStructUnionTag(front);
+            NextToken(front);
         }
-        if( cvars_state().CurToken == T_ID ) {        /* structure or union tag */
-            tag = TagLookup( cvars_state().Buffer );
-            NextToken();
+        if( front.cvars.CurToken == T_ID ) {        /* structure or union tag */
+            tag = TagLookup( front, front.cvars.Buffer );
+            NextToken(front);
         } else {
-            tag = NullTag();
+            tag = NullTag(front);
         }
-        if( cvars_state().CurToken != T_LEFT_BRACE ) {
-            if( cvars_state().CurToken == T_SEMI_COLON ) {
+        if( front.cvars.CurToken != T_LEFT_BRACE ) {
+            if( front.cvars.CurToken == T_SEMI_COLON ) {
                 if( !CheckEqSymLevel( tag ) ) {
-                    tag = NewTag( tag->hash, tag->name );
+                    tag = NewTag( front, tag->hash, tag->name );
                 }
             }
             typ = tag->sym_type;
             if( typ == NULL ) {
-                typ = TypeNode( decl_typ, NULL );
+                typ = TypeNode( front, decl_typ, NULL );
             } else {
                 if( typ->decl_type != decl_typ ) {
-                    CErr2p( ERR_DUPLICATE_TAG, tag->name );
+                    CErr2p( front, ERR_DUPLICATE_TAG, tag->name );
                 }
             }
             tag->sym_type = typ;
             typ->u.tag = tag;
-            cvars_state().PackAmount = saved_packamount;
+            front.cvars.PackAmount = saved_packamount;
             return( typ );
         }
-        NextToken();
-        tag = VfyNewTag( tag, decl_typ );
+        NextToken(front);
+        tag = VfyNewTag( front, tag, decl_typ );
     }
     typ = tag->sym_type;
     if( typ == NULL ) {
-        typ = TypeNode( decl_typ, NULL );
+        typ = TypeNode( front, decl_typ, NULL );
         tag->sym_type = typ;
     }
     typ->u.tag = tag;
     tag->u.field_list = NULL;
-    tag->size = GetFields( typ );
-    cvars_state().PackAmount = saved_packamount;
+    tag->size = GetFields( front, typ );
+    front.cvars.PackAmount = saved_packamount;
     return( typ );
 }
 
@@ -1352,13 +1332,13 @@ static TYPEPTR ComplexDecl( DATA_TYPE decl_typ, bool packed )
 }
 #endif
 
-static void CheckBitfieldType( TYPEPTR typ )
+static void CheckBitfieldType( FrontRun& front, TYPEPTR typ )
 {
     /*
      * skip typedefs
      */
     SKIP_TYPEDEFS( typ );
-    if( cvars_state().CompFlags.extensions_enabled ) {
+    if( front.cvars.CompFlags.extensions_enabled ) {
         /*
          * go into enum base
          */
@@ -1366,8 +1346,8 @@ static void CheckBitfieldType( TYPEPTR typ )
     }
     switch( typ->decl_type ) {
     case TYP_BOOL:
-        if( !cvars_state().CompFlags.extensions_enabled
-          && ( cvars_state().CompVars.cstd < STD_C99 ) ) {
+        if( !front.cvars.CompFlags.extensions_enabled
+          && ( front.cvars.CompVars.cstd < STD_C99 ) ) {
             break;
         }
         /* fall through */
@@ -1385,135 +1365,135 @@ static void CheckBitfieldType( TYPEPTR typ )
     case TYP_ULONG:
     case TYP_LONG64:
     case TYP_ULONG64:
-        if( cvars_state().CompFlags.extensions_enabled ) {
+        if( front.cvars.CompFlags.extensions_enabled ) {
             return;
         }
         break;
     default:
         break;
     }
-    CErr1( ERR_INVALID_TYPE_FOR_FIELD );
+    CErr1( front, ERR_INVALID_TYPE_FOR_FIELD );
 }
 
 
-void VfyNewSym( id_hash_idx hash, const char *name )
+void VfyNewSym( FrontRun& front, id_hash_idx hash, const char *name )
 {
     SYM_HANDLE  sym_handle;
     SYM_ENTRY   sym;
     ENUMPTR     ep;
 
-    ep = EnumLookup( hash, name );
+    ep = EnumLookup( front, hash, name );
     if( ep != NULL && CheckEqSymLevel( ep->parent ) ) {
-        SetDiagEnum( ep );
-        CErr2p( ERR_SYM_ALREADY_DEFINED, name );
-        SetDiagPop();
+        SetDiagEnum( front, ep );
+        CErr2p( front, ERR_SYM_ALREADY_DEFINED, name );
+        SetDiagPop(front);
     }
-    sym_handle = SymLook( hash, name );
+    sym_handle = SymLook( front, hash, name );
     if( sym_handle != SYM_NULL ) {
-        SymGet( &sym, sym_handle );
+        SymGet( front, &sym, sym_handle );
         if( CheckEqSymLevel( &sym ) ) {
-            SetDiagSymbol( &sym, sym_handle );
-            CErr2p( ERR_SYM_ALREADY_DEFINED, name );
-            SetDiagPop();
+            SetDiagSymbol( front, &sym, sym_handle );
+            CErr2p( front, ERR_SYM_ALREADY_DEFINED, name );
+            SetDiagPop(front);
         }
     }
 }
 
 
-TAGPTR TagLookup( const char *name )
+TAGPTR TagLookup( FrontRun& front, const char *name )
 {
     TAGPTR      tag;
     id_hash_idx hash;
 
     hash = CalcHashID( name );
-    for( tag = cvars_state().TagHash[hash]; tag != NULL; tag = tag->next_tag ) {
+    for( tag = front.cvars.TagHash[hash]; tag != NULL; tag = tag->next_tag ) {
         if( strcmp( name, tag->name ) == 0 ) {
             return( tag );
         }
     }
-    return( NewTag( hash, name ) );
+    return( NewTag( front, hash, name ) );
 }
 
-void FreeTags( void )
+void FreeTags( FrontRun& front )
 {
     TAGPTR          tag;
     id_hash_idx     hash;
 
     for( hash = 0; hash <= ID_HASH_SIZE; hash++ ) {
-        for( ; (tag = cvars_state().TagHash[hash]) != NULL; ) {
+        for( ; (tag = front.cvars.TagHash[hash]) != NULL; ) {
             if( CheckLtSymLevel( tag ) )
                 break;
-            cvars_state().TagHash[hash] = tag->next_tag;
-            tag->next_tag = cvars_state().DeadTags;
-            cvars_state().DeadTags = tag;
+            front.cvars.TagHash[hash] = tag->next_tag;
+            tag->next_tag = front.cvars.DeadTags;
+            front.cvars.DeadTags = tag;
         }
     }
 }
 
-void WalkTagList( void (*func)(TAGPTR) )
+void WalkTagList( FrontRun& front, void (*func)(FrontRun&, TAGPTR) )
 {
     TAGPTR          tag;
     id_hash_idx     hash;
 
     for( hash = 0; hash <= ID_HASH_SIZE; hash++ ) {
-        for( tag = cvars_state().TagHash[hash]; tag != NULL; tag = tag->next_tag ) {
-            func( tag );
+        for( tag = front.cvars.TagHash[hash]; tag != NULL; tag = tag->next_tag ) {
+            func( front, tag );
         }
     }
 }
 
-void AddTypeHash( TYPEPTR typ )
+void AddTypeHash( FrontRun& front, TYPEPTR typ )
 {
     if( typ->decl_type == TYP_POINTER ) {
         if( typ->object != NULL ) {
-            typ->next_type = ctype_state().PtrTypeHash[typ->object->decl_type];
-            ctype_state().PtrTypeHash[typ->object->decl_type] = typ;
+            typ->next_type = front.ctype.PtrTypeHash[typ->object->decl_type];
+            front.ctype.PtrTypeHash[typ->object->decl_type] = typ;
         }
     } else if( typ->decl_type == TYP_FUNCTION ) {
         typ->next_type = NULL;
     } else {
-        typ->next_type = ctype_state().CTypeHash[typ->decl_type];
-        ctype_state().CTypeHash[typ->decl_type] = typ;
+        typ->next_type = front.ctype.CTypeHash[typ->decl_type];
+        front.ctype.CTypeHash[typ->decl_type] = typ;
     }
 }
 
-void AddPtrTypeHash( TYPEPTR typ )
+void AddPtrTypeHash( FrontRun& front, TYPEPTR typ )
 {
-    typ->next_type = ctype_state().PtrTypeHash[typ->object->decl_type];
-    ctype_state().PtrTypeHash[typ->object->decl_type] = typ;
+    typ->next_type = front.ctype.PtrTypeHash[typ->object->decl_type];
+    front.ctype.PtrTypeHash[typ->object->decl_type] = typ;
 }
 
-TYPEPTR TypeNode( DATA_TYPE type_spec, TYPEPTR the_object )
+TYPEPTR TypeNode( FrontRun& front, DATA_TYPE type_spec, TYPEPTR the_object )
 {
     TYPEPTR     typ;
 
-    typ = (TYPEPTR)CPermAlloc( sizeof( TYPEDEFN ) );
+    typ = (TYPEPTR)CPermAlloc( front, sizeof( TYPEDEFN ) );
     typ->decl_type = type_spec;
     typ->object = the_object;
     typ->u.tag = NULL;
-    AddTypeHash( typ );
-    ++cvars_state().TypeCount;
-    ++cvars_state().CTypeCounts[type_spec];
+    AddTypeHash( front, typ );
+    ++front.cvars.TypeCount;
+    ++front.cvars.CTypeCounts[type_spec];
     return( typ );
 }
 
-TYPEPTR ArrayNode( TYPEPTR the_object )
+TYPEPTR ArrayNode( FrontRun& front, TYPEPTR the_object )
 {
     TYPEPTR     typ;
 
-    typ = TypeNode( TYP_ARRAY, the_object );
-    typ->u.array = static_cast<array_info *>(CPermAlloc( sizeof( array_info ) ));
+    typ = TypeNode( front, TYP_ARRAY, the_object );
+    typ->u.array = static_cast<array_info *>(CPermAlloc( front, sizeof( array_info ) ));
     return( typ );
 }
 
 
-static TYPEPTR MkPtrNode( TYPEPTR typ, type_modifiers flags,
+static TYPEPTR MkPtrNode( FrontRun& front, TYPEPTR typ, type_modifiers flags,
     segment_id segid, SYM_HANDLE base, BASED_KIND based_kind )
 {
     TYPEPTR     ptrtyp;
 
     if( typ != NULL ) {
-        ptrtyp = ctype_state().PtrTypeHash[typ->decl_type];
+        ptrtyp = front.ctype.PtrTypeHash[typ->decl_type];
         for( ; ptrtyp != NULL; ptrtyp = ptrtyp->next_type ) {
             if( ptrtyp->decl_type == TYP_POINTER &&
                 ptrtyp->object == typ &&
@@ -1525,7 +1505,7 @@ static TYPEPTR MkPtrNode( TYPEPTR typ, type_modifiers flags,
             }
         }
     }
-    ptrtyp = TypeNode( TYP_POINTER, typ );
+    ptrtyp = TypeNode( front, TYP_POINTER, typ );
     ptrtyp->u.p.decl_flags = flags;
     ptrtyp->u.p.segid = segid;
     ptrtyp->u.p.based_sym = base;
@@ -1533,14 +1513,14 @@ static TYPEPTR MkPtrNode( TYPEPTR typ, type_modifiers flags,
     return( ptrtyp );
 }
 
-TYPEPTR PtrNode( TYPEPTR typ, type_modifiers flags, segment_id segid )
+TYPEPTR PtrNode( FrontRun& front, TYPEPTR typ, type_modifiers flags, segment_id segid )
 {
-    return( MkPtrNode( typ, flags, segid, SYM_NULL, BASED_NONE ) );
+    return( MkPtrNode( front, typ, flags, segid, SYM_NULL, BASED_NONE ) );
 }
 
-TYPEPTR BPtrNode( TYPEPTR typ, type_modifiers flags, segment_id segid, SYM_HANDLE base, BASED_KIND kind )
+TYPEPTR BPtrNode( FrontRun& front, TYPEPTR typ, type_modifiers flags, segment_id segid, SYM_HANDLE base, BASED_KIND kind )
 {
-    return( MkPtrNode( typ, flags, segid, base, kind ) );
+    return( MkPtrNode( front, typ, flags, segid, base, kind ) );
 }
 
 static parm_hash_idx FuncHeadIndex( TYPEPTR *parm_types )
@@ -1558,14 +1538,14 @@ static parm_hash_idx FuncHeadIndex( TYPEPTR *parm_types )
     return( hash );
 }
 
-TYPEPTR FuncNode( TYPEPTR return_typ, type_modifiers flag, TYPEPTR *parm_types )
+TYPEPTR FuncNode( FrontRun& front, TYPEPTR return_typ, type_modifiers flag, TYPEPTR *parm_types )
 {
     TYPEPTR         typ;
     parm_hash_idx   hash;
 
     hash = FuncHeadIndex( parm_types );
     if( return_typ != NULL ) {
-        for( typ = cvars_state().FuncTypeHead[hash]; typ != NULL; typ = typ->next_type ) {
+        for( typ = front.cvars.FuncTypeHead[hash]; typ != NULL; typ = typ->next_type ) {
             if( typ->object == return_typ &&
                 typ->u.fn.decl_flags == flag &&
                 typ->u.fn.parms == parm_types ) {
@@ -1573,20 +1553,20 @@ TYPEPTR FuncNode( TYPEPTR return_typ, type_modifiers flag, TYPEPTR *parm_types )
             }
         }
     }
-    typ = TypeNode( TYP_FUNCTION, return_typ );
+    typ = TypeNode( front, TYP_FUNCTION, return_typ );
     typ->u.fn.decl_flags = flag;
     typ->u.fn.parms = parm_types;
-    typ->next_type = cvars_state().FuncTypeHead[hash];
-    cvars_state().FuncTypeHead[hash] = typ;
+    typ->next_type = front.cvars.FuncTypeHead[hash];
+    front.cvars.FuncTypeHead[hash] = typ;
     return( typ );
 }
 
-target_size TypeSize( TYPEPTR typ )
+target_size TypeSize( FrontRun& front, TYPEPTR typ )
 {
-    return( TypeSizeEx( typ, NULL ) );
+    return( TypeSizeEx( front, typ, NULL ) );
 }
 
-target_size TypeSizeEx( TYPEPTR typ, bitfield_width *pFieldWidth )
+target_size TypeSizeEx( FrontRun& front, TYPEPTR typ, bitfield_width *pFieldWidth )
 {
     target_size size;
 
@@ -1620,7 +1600,7 @@ target_size TypeSizeEx( TYPEPTR typ, bitfield_width *pFieldWidth )
         size = CTypeSizes[typ->decl_type];
         break;
     case TYP_VOID:
-        if( cvars_state().CompFlags.unix_ext ) {
+        if( front.cvars.CompFlags.unix_ext ) {
             size = 1;
         } else {
             size = 0;
@@ -1635,9 +1615,9 @@ target_size TypeSizeEx( TYPEPTR typ, bitfield_width *pFieldWidth )
             typ = typ->object;
             SKIP_TYPEDEFS( typ );
             if( typ->decl_type == TYP_FUNCTION ) {
-                size = cvars_state().CodePtrSize;
+                size = front.cvars.CodePtrSize;
             } else {
-                size = cvars_state().DataPtrSize;
+                size = front.cvars.DataPtrSize;
             }
         }
         break;
@@ -1651,7 +1631,7 @@ target_size TypeSizeEx( TYPEPTR typ, bitfield_width *pFieldWidth )
              * structure has a zero length array as last field
              */
             typ = typ->object;  /* point to TYP_ARRAY entry */
-            size += SizeOfArg( typ );
+            size += SizeOfArg( front, typ );
         }
         break;
     case TYP_UNION:
@@ -1677,7 +1657,7 @@ target_size TypeSizeEx( TYPEPTR typ, bitfield_width *pFieldWidth )
  * requested size if 'exact' is true, or the next larger type will be
  * returned (eg. 64-bit integer if 6 byte size is requested).
  */
-TYPEPTR GetIntTypeBySize( target_size size, bool sign, bool exact )
+TYPEPTR GetIntTypeBySize( FrontRun& front, target_size size, bool sign, bool exact )
 {
     static const DATA_TYPE  s_types[] = { TYP_CHAR, TYP_SHORT, TYP_INT, TYP_LONG, TYP_LONG64 };
     static const DATA_TYPE  u_types[] = { TYP_UCHAR, TYP_USHORT, TYP_UINT, TYP_ULONG, TYP_ULONG64 };
@@ -1698,7 +1678,7 @@ TYPEPTR GetIntTypeBySize( target_size size, bool sign, bool exact )
         for( i = 0; i < ARRAY_SIZE( s_types ); ++i ) {
             type_id = type_list[i];
             if( size == CTypeSizes[type_id] || !exact && ( size < CTypeSizes[type_id] ) ) {
-                typ = GetType( type_id );
+                typ = GetType( front, type_id );
                 assert( typ );
                 break;
             }

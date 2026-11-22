@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #if defined(__UNIX__)
  #define DIR_SEP                '/'
  #define PATH_LIST_SEP          ':'

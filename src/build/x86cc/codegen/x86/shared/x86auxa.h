@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define FLOATING_FIXUP_BYTE     0xFF
 
 #define BYTE_SEQ_SYM    void *

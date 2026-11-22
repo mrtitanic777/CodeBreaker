@@ -30,9 +30,10 @@
 ****************************************************************************/
 
 
-extern void         CnvOpToInt( instruction *, opcnt );
+#pragma once
+extern void         CnvOpToInt( BackRun& back, instruction *, opcnt );
 extern bool         IndexOverlaps( instruction *ins, opcnt i );
-extern name         *OpAdjusted( name *, int, type_class_def );
-extern name         *IntEquivalent( name * );
-extern name         *Int64Equivalent( name * );
+extern name         *OpAdjusted( BackRun& back, name *, int, type_class_def );
+extern name         *IntEquivalent( BackRun& back, name * );
+extern name         *Int64Equivalent( BackRun& back, name * );
 

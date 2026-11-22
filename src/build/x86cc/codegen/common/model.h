@@ -44,25 +44,24 @@ struct ModelState {
     cg_target_switches SaveTargetModel;
     proc_revision CGProcessorVersion;
 };
-inline ModelState& model_state() { return cbrun_part<ModelState>(); }
 
 #endif
 
-#define _IsModel( mdl )         ( ( model_state().Model & (mdl) ) != 0 )
-#define _IsntModel( mdl )       ( ( model_state().Model & (mdl) ) == 0 )
+#define _IsModel( mdl )         ( ( back.model.Model & (mdl) ) != 0 )
+#define _IsntModel( mdl )       ( ( back.model.Model & (mdl) ) == 0 )
 
-#define _IsTargetModel( mdl )   ( ( model_state().TargetModel & (mdl) ) != 0 )
-#define _IsntTargetModel( mdl ) ( ( model_state().TargetModel & (mdl) ) == 0 )
+#define _IsTargetModel( mdl )   ( ( back.model.TargetModel & (mdl) ) != 0 )
+#define _IsntTargetModel( mdl ) ( ( back.model.TargetModel & (mdl) ) == 0 )
 
 #ifdef GET_CPU
-    #define _CPULevel( v )  ( GET_CPU( model_state().CGProcessorVersion ) >= (v) )
+    #define _CPULevel( v )  ( GET_CPU( back.model.CGProcessorVersion ) >= (v) )
 #else
-    #define _CPULevel( v )  ( model_state().CGProcessorVersion >= (v) )
+    #define _CPULevel( v )  ( back.model.CGProcessorVersion >= (v) )
 #endif
 
 #ifdef GET_FPU
-    #define _FPULevel( v )  ((GET_FPU(model_state().CGProcessorVersion) & ~FPU_EMU) >= (v) )
-    #define _IsEmulation()  ((model_state().CGProcessorVersion & FPU_EMU) != 0)
+    #define _FPULevel( v )  ((GET_FPU(back.model.CGProcessorVersion) & ~FPU_EMU) >= (v) )
+    #define _IsEmulation()  ((back.model.CGProcessorVersion & FPU_EMU) != 0)
 #else
     #define _FPULevel( v )  0
 #endif

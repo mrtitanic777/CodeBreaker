@@ -39,6 +39,7 @@
 #include "browsio.h"
 #include "dwarfid.h"
 #include "jmpbuf.h"
+#include "frontrun.hpp"
 
 
 #define C_DWARF_BUFSIZE 4096
@@ -97,6 +98,7 @@ static Elf32_Shdr const section_header_index0 = {
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
+}  // namespace
 struct BrowsioState {
     uint_32 relocValues[DW_W_MAX];
     C_DW_SECTION dw_sections[DW_DEBUG_MAX];
@@ -157,10 +159,10 @@ struct BrowsioState {
         0
     };
 };
+namespace {
 
 }  // namespace
 
-static inline BrowsioState& browsio_state() { return cbrun_part<BrowsioState>(); }
 
 
 static void CFatal( const char *msg )
@@ -197,7 +199,7 @@ static const dw_sectnum inSect[] = {
 
 #define SECTION_COUNT   ARRAY_SIZE( inSect )
 
-static int createBrowseFile( FILE *browseFile )
+static int createBrowseFile( FrontRun& front, FILE *browseFile )
 {
     char            *ptr;
     size_t          bufsize;
@@ -209,38 +211,38 @@ static int createBrowseFile( FILE *browseFile )
     /*
      * calculate sections data size
      */
-    browsio_state().elf_header.e_shoff = sizeof( Elf32_Ehdr ) + sizeof( browsio_state().string_table );
+    front.browsio->elf_header.e_shoff = sizeof( Elf32_Ehdr ) + sizeof( front.browsio->string_table );
     for( fileNum = 0; fileNum < SECTION_COUNT; fileNum++ ) {
-        browsio_state().elf_header.e_shoff += browsio_state().dw_sections[inSect[fileNum]].length;
+        front.browsio->elf_header.e_shoff += front.browsio->dw_sections[inSect[fileNum]].length;
     }
     /*
      * write elf header
      */
-    mywrite( browseFile, &browsio_state().elf_header, sizeof( browsio_state().elf_header ) );
+    mywrite( browseFile, &front.browsio->elf_header, sizeof( front.browsio->elf_header ) );
     /*
      * write string table
      */
-    mywrite( browseFile, browsio_state().string_table, sizeof( browsio_state().string_table ) );
+    mywrite( browseFile, front.browsio->string_table, sizeof( front.browsio->string_table ) );
     /*
      * calculate each of the sections, tracking offset
      * write each of the sections
      */
-    sectionOffset[0] = sizeof( browsio_state().elf_header ) + sizeof( browsio_state().string_table );
+    sectionOffset[0] = sizeof( front.browsio->elf_header ) + sizeof( front.browsio->string_table );
     for( fileNum = 0; fileNum < SECTION_COUNT; fileNum++ ) {
         if( fileNum > 0 )
-            sectionOffset[fileNum] = sectionOffset[fileNum - 1] + browsio_state().dw_sections[inSect[fileNum - 1]].length;
+            sectionOffset[fileNum] = sectionOffset[fileNum - 1] + front.browsio->dw_sections[inSect[fileNum - 1]].length;
         bufsize = C_DWARF_BUFSIZE;
         bufnum = 0;
-        for( sectionSize = browsio_state().dw_sections[inSect[fileNum]].length; sectionSize > 0; sectionSize -= bufsize ) {
+        for( sectionSize = front.browsio->dw_sections[inSect[fileNum]].length; sectionSize > 0; sectionSize -= bufsize ) {
             if( bufsize > sectionSize )
                 bufsize = sectionSize;
-            ptr = browsio_state().dw_sections[inSect[fileNum]].bufptrs[bufnum];
+            ptr = front.browsio->dw_sections[inSect[fileNum]].bufptrs[bufnum];
             mywrite( browseFile, ptr, bufsize );
-            CMemFree( ptr );
+            CMemFree( front, ptr );
             ++bufnum;
         }
-        if( browsio_state().dw_sections[inSect[fileNum]].bufptrs != NULL ) {
-            CMemFree( browsio_state().dw_sections[inSect[fileNum]].bufptrs );
+        if( front.browsio->dw_sections[inSect[fileNum]].bufptrs != NULL ) {
+            CMemFree( front, front.browsio->dw_sections[inSect[fileNum]].bufptrs );
         }
     }
     /*
@@ -250,22 +252,23 @@ static int createBrowseFile( FILE *browseFile )
     /*
      * write section_header_string_table
      */
-    mywrite( browseFile, &browsio_state().section_header_string_table, sizeof( browsio_state().section_header_string_table ) );
+    mywrite( browseFile, &front.browsio->section_header_string_table, sizeof( front.browsio->section_header_string_table ) );
     /*
      * write rest of section headers
      */
     for( fileNum = 0; fileNum < SECTION_COUNT; fileNum++ ) {
-        browsio_state().section_header_template.sh_name     = browsio_state().string_table_offsets[fileNum];
-        browsio_state().section_header_template.sh_offset   = sectionOffset[fileNum];
-        browsio_state().section_header_template.sh_size     = browsio_state().dw_sections[inSect[fileNum]].length;
-        mywrite( browseFile, &browsio_state().section_header_template, sizeof( browsio_state().section_header_template ) );
+        front.browsio->section_header_template.sh_name     = front.browsio->string_table_offsets[fileNum];
+        front.browsio->section_header_template.sh_offset   = sectionOffset[fileNum];
+        front.browsio->section_header_template.sh_size     = front.browsio->dw_sections[inSect[fileNum]].length;
+        mywrite( browseFile, &front.browsio->section_header_template, sizeof( front.browsio->section_header_template ) );
     }
     return( 0 );
 }
 
-static void dw_write( dw_sectnum sect, const void *block, size_t len )
+static void dw_write( BackRun& back, dw_sectnum sect, const void *block, size_t len )
 /********************************************************************/
 {
+    FrontRun& front = front_of( back );
     unsigned            bufnum;
     unsigned            endbufnum;
     char                **newbufptrs;
@@ -282,27 +285,27 @@ static void dw_write( dw_sectnum sect, const void *block, size_t len )
 //        printf( "%02x ", (int)((char *)block)[i] );
 //    }
 #endif
-    bufnum = browsio_state().dw_sections[sect].offset / C_DWARF_BUFSIZE;
-    endbufnum = ( browsio_state().dw_sections[sect].offset + len ) / C_DWARF_BUFSIZE;
-    if( endbufnum >= browsio_state().dw_sections[sect].bufcount ) {
-        newbufptrs = (char **)CMemAlloc( ( endbufnum + 1 ) * sizeof( char * ) );
-        if( browsio_state().dw_sections[sect].bufptrs != NULL ) {
-            memcpy( newbufptrs, browsio_state().dw_sections[sect].bufptrs, browsio_state().dw_sections[sect].bufcount * sizeof( char * ) );
-            CMemFree( browsio_state().dw_sections[sect].bufptrs );
+    bufnum = front.browsio->dw_sections[sect].offset / C_DWARF_BUFSIZE;
+    endbufnum = ( front.browsio->dw_sections[sect].offset + len ) / C_DWARF_BUFSIZE;
+    if( endbufnum >= front.browsio->dw_sections[sect].bufcount ) {
+        newbufptrs = (char **)CMemAlloc( front, ( endbufnum + 1 ) * sizeof( char * ) );
+        if( front.browsio->dw_sections[sect].bufptrs != NULL ) {
+            memcpy( newbufptrs, front.browsio->dw_sections[sect].bufptrs, front.browsio->dw_sections[sect].bufcount * sizeof( char * ) );
+            CMemFree( front, front.browsio->dw_sections[sect].bufptrs );
         }
-        browsio_state().dw_sections[sect].bufptrs = newbufptrs;
-        browsio_state().dw_sections[sect].bufcount = endbufnum + 1;
+        front.browsio->dw_sections[sect].bufptrs = newbufptrs;
+        front.browsio->dw_sections[sect].bufcount = endbufnum + 1;
     }
-    bufsize = C_DWARF_BUFSIZE - ( browsio_state().dw_sections[sect].offset % C_DWARF_BUFSIZE );
-    browsio_state().dw_sections[sect].offset += len;
-    if( browsio_state().dw_sections[sect].length < browsio_state().dw_sections[sect].offset ) {
-        browsio_state().dw_sections[sect].length = browsio_state().dw_sections[sect].offset;
+    bufsize = C_DWARF_BUFSIZE - ( front.browsio->dw_sections[sect].offset % C_DWARF_BUFSIZE );
+    front.browsio->dw_sections[sect].offset += len;
+    if( front.browsio->dw_sections[sect].length < front.browsio->dw_sections[sect].offset ) {
+        front.browsio->dw_sections[sect].length = front.browsio->dw_sections[sect].offset;
     }
     while( len != 0 ) {
-        bufptr = browsio_state().dw_sections[sect].bufptrs[bufnum];
+        bufptr = front.browsio->dw_sections[sect].bufptrs[bufnum];
         if( bufptr == NULL ) {
-            bufptr = (char *)CMemAlloc( C_DWARF_BUFSIZE );
-            browsio_state().dw_sections[sect].bufptrs[bufnum] = bufptr;
+            bufptr = (char *)CMemAlloc( front, C_DWARF_BUFSIZE );
+            front.browsio->dw_sections[sect].bufptrs[bufnum] = bufptr;
         }
         bufptr += C_DWARF_BUFSIZE - bufsize;
         if( bufsize > len  )
@@ -315,20 +318,22 @@ static void dw_write( dw_sectnum sect, const void *block, size_t len )
     }
 }
 
-static dw_out_offset dw_tell( dw_sectnum sect )
+static dw_out_offset dw_tell( BackRun& back, dw_sectnum sect )
 /*********************************************/
 {
+    FrontRun& front = front_of( back );
 #ifdef __DD__
     printf( "DW_TELL (%d:%lu): %lu\n", sect,
         (unsigned long)dw_sections[sect].length,
         (unsigned long)dw_sections[sect].offset );
 #endif
-    return( browsio_state().dw_sections[sect].offset );
+    return( front.browsio->dw_sections[sect].offset );
 }
 
-static void dw_reloc( dw_sectnum sect, dw_reloc_type reloc_type, ... )
+static void dw_reloc( BackRun& back, dw_sectnum sect, dw_reloc_type reloc_type, ... )
 /********************************************************************/
 {
+    FrontRun& front = front_of( back );
     va_list         args;
     dw_targ_addr    targ_data;
     dw_targ_seg     seg_data;
@@ -343,30 +348,30 @@ static void dw_reloc( dw_sectnum sect, dw_reloc_type reloc_type, ... )
     case DW_W_ARANGE_ADDR:
     case DW_W_LOW_PC:
         u32_data = 0;   /* NOTE: assumes little-endian byte order */
-        dw_write( sect, &u32_data, TARGET_NEAR_POINTER );
+        dw_write( back, sect, &u32_data, TARGET_NEAR_POINTER );
         break;
     case DW_W_HIGH_PC:
         u32_data = 1;   /* NOTE: assumes little-endian byte order */
-        dw_write( sect, &u32_data, TARGET_NEAR_POINTER );
+        dw_write( back, sect, &u32_data, TARGET_NEAR_POINTER );
         break;
     case DW_W_UNIT_SIZE:
         u32_data = 1;
-        dw_write( sect, &u32_data, sizeof( u32_data ) );
+        dw_write( back, sect, &u32_data, sizeof( u32_data ) );
         break;
     case DW_W_STATIC:
         sym = va_arg( args, SYMPTR );
         targ_data = 0;
-        dw_write( sect, &targ_data, sizeof( targ_data ) );
+        dw_write( back, sect, &targ_data, sizeof( targ_data ) );
         break;
     case DW_W_SEGMENT:
         sym = va_arg( args, SYMPTR );
-        seg_data = SymSegId( sym );
-        dw_write( sect, &seg_data, sizeof( seg_data ) );
+        seg_data = SymSegId( front, sym );
+        dw_write( back, sect, &seg_data, sizeof( seg_data ) );
         break;
     case DW_W_SECTION_POS:
         sect_no = static_cast<dw_sectnum>( va_arg( args, int ) );   /* (an enum passed through ... arrives as int) */
-        u32_data = dw_tell( sect_no );
-        dw_write( sect, &u32_data, sizeof( u32_data ) );
+        u32_data = dw_tell( back, sect_no );
+        dw_write( back, sect, &u32_data, sizeof( u32_data ) );
         break;
     default:
         break;
@@ -374,9 +379,10 @@ static void dw_reloc( dw_sectnum sect, dw_reloc_type reloc_type, ... )
     va_end( args );
 }
 
-static void dw_seek( dw_sectnum sect, dw_out_offset offset, int mode )
+static void dw_seek( BackRun& back, dw_sectnum sect, dw_out_offset offset, int mode )
 /********************************************************************/
 {
+    FrontRun& front = front_of( back );
     dw_out_offset new_offset;
 
     new_offset = offset;
@@ -384,10 +390,10 @@ static void dw_seek( dw_sectnum sect, dw_out_offset offset, int mode )
     case DW_SEEK_SET:
         break;
     case DW_SEEK_CUR:
-        new_offset = browsio_state().dw_sections[sect].offset + offset;
+        new_offset = front.browsio->dw_sections[sect].offset + offset;
         break;
     case DW_SEEK_END:
-        new_offset = browsio_state().dw_sections[sect].length + offset;
+        new_offset = front.browsio->dw_sections[sect].length + offset;
         break;
     }
 #ifdef __DD__
@@ -395,31 +401,33 @@ static void dw_seek( dw_sectnum sect, dw_out_offset offset, int mode )
         (unsigned long)dw_sections[sect].length,
         (unsigned long)new_offset );
 #endif
-    if( browsio_state().dw_sections[sect].offset != new_offset ) {
-        browsio_state().dw_sections[sect].offset = new_offset;
-        if( browsio_state().dw_sections[sect].length < browsio_state().dw_sections[sect].offset ) {
-            browsio_state().dw_sections[sect].length = browsio_state().dw_sections[sect].offset;
+    if( front.browsio->dw_sections[sect].offset != new_offset ) {
+        front.browsio->dw_sections[sect].offset = new_offset;
+        if( front.browsio->dw_sections[sect].length < front.browsio->dw_sections[sect].offset ) {
+            front.browsio->dw_sections[sect].length = front.browsio->dw_sections[sect].offset;
         }
     }
 }
 
-static void *dw_alloc( size_t size )
+static void *dw_alloc( BackRun& back, size_t size )
 /**********************************/
 {
+    FrontRun& front = front_of( back );
     char        *p;
 
-    p = static_cast<char *>(CMemAlloc( size ));
+    p = static_cast<char *>(CMemAlloc( front, size ));
     memset( p, 0xA5, size );
     return( p );
 }
 
-static void dw_free( void *ptr )
+static void dw_free( BackRun& back, void *ptr )
 /******************************/
 {
-    CMemFree( ptr );
+    FrontRun& front = front_of( back );
+    CMemFree( front, ptr );
 }
 
-dw_client DwarfInit( void )
+dw_client DwarfInit( FrontRun& front )
 /*************************/
 {
     dw_client       client;
@@ -439,28 +447,28 @@ dw_client DwarfInit( void )
     };
 
     for( sect = static_cast<dw_sectnum>(0); sect < DW_DEBUG_MAX; ++sect ) {
-        browsio_state().dw_sections[sect].bufcount  = 0;
-        browsio_state().dw_sections[sect].bufptrs   = NULL;
-        browsio_state().dw_sections[sect].offset    = 0;
-        browsio_state().dw_sections[sect].length    = 0;
+        front.browsio->dw_sections[sect].bufcount  = 0;
+        front.browsio->dw_sections[sect].bufptrs   = NULL;
+        front.browsio->dw_sections[sect].offset    = 0;
+        front.browsio->dw_sections[sect].length    = 0;
     }
-    info.big_endian = ( (cvars_state().GenSwitches & CGSW_GEN_OBJ_ENDIAN_BIG) != 0 );
+    info.big_endian = ( (front.cvars.GenSwitches & CGSW_GEN_OBJ_ENDIAN_BIG) != 0 );
     info.language = DW_LANG_C89;
     info.compiler_options = DW_CM_BROWSER;
     info.producer_name = DWARF_PRODUCER_ID " V1";
-    memcpy( JMPBUF_PTR( info.exception_handler ), cvars_state().Environment, sizeof( jmp_buf ) );
+    memcpy( JMPBUF_PTR( info.exception_handler ), front.cvars.Environment, sizeof( jmp_buf ) );
     info.funcs = cli_funcs;
     info.abbrev_sym = NULL;
 
-    browsio_state().relocValues[DW_W_LOW_PC] = 0x0;
-    browsio_state().relocValues[DW_W_HIGH_PC] = 0x1;
-    browsio_state().relocValues[DW_W_UNIT_SIZE] = 0x1;
+    front.browsio->relocValues[DW_W_LOW_PC] = 0x0;
+    front.browsio->relocValues[DW_W_HIGH_PC] = 0x1;
+    front.browsio->relocValues[DW_W_UNIT_SIZE] = 0x1;
 
-    client = DWInit( &info );
+    client = DWInit( *front.back, &info );
     if( client == NULL ) {
         CFatal( "dwarf: error in DWInit()" );
     }
-    fname = FNameFullPath( cvars_state().FNames );
+    fname = FNameFullPath( front, front.cvars.FNames );
     incsize = 0;
     inclist = NULL;
 #if 0
@@ -492,26 +500,30 @@ dw_client DwarfInit( void )
     cu.inc_list        = inclist;
     cu.inc_list_len    = incsize;
     cu.dbg_pch         = NULL;
-    DWBeginCompileUnit( client, &cu );
-    CMemFree( inclist );
-    DWDeclFile( client, fname );
+    DWBeginCompileUnit( *front.back, client, &cu );
+    CMemFree( front, inclist );
+    DWDeclFile( *front.back, client, fname );
     return( client );
 }
 
-void DwarfFini( dw_client client )
+void DwarfFini( FrontRun& front, dw_client client )
 /********************************/
 {
     FILE    *out_file;
 
-    DWEndCompileUnit( client );
-    DWFini( client );
+    DWEndCompileUnit( *front.back, client );
+    DWFini( *front.back, client );
 
-    out_file = OpenBrowseFile();
+    out_file = OpenBrowseFile(front);
     if( out_file != NULL ) {
         /*
          * concatenate files
          */
-        createBrowseFile( out_file );
-        fclose( out_file );
+        createBrowseFile( front, out_file );
+        front.held->fclose( out_file );
     }
 }
+
+/* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
+BrowsioState* browsio_make() { return new BrowsioState(); }
+void browsio_free(BrowsioState* part) { delete part; }

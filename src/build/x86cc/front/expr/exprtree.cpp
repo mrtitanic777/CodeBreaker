@@ -31,32 +31,30 @@
 
 
 #include "cvars.h"
+#include "frontrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct ExprtreeState {
-    TREEPTR ExprNodeList;
-};
+/* (struct ExprtreeState: exprtree_state.h) */
 
 }  // namespace
 
-static inline ExprtreeState& exprtree_state() { return cbrun_part<ExprtreeState>(); }
 
 
-void InitExprTree( void )
+void InitExprTree( FrontRun& front )
 {
-    exprtree_state().ExprNodeList = NULL;
+    front.exprtree.ExprNodeList = NULL;
 }
 
-static void AllocMoreExprNodes( void )
+static void AllocMoreExprNodes( FrontRun& front )
 {
     TREEPTR     node;
     int         i;
 
-    node = (TREEPTR)CMemAlloc( 500 * sizeof( EXPRNODE ) );
-    exprtree_state().ExprNodeList = node;
+    node = (TREEPTR)CMemAlloc( front, 500 * sizeof( EXPRNODE ) );
+    front.exprtree.ExprNodeList = node;
     for( i = 0; i < (500 - 1); i++ ) {
         node->left = node + 1;
         ++node;
@@ -64,55 +62,55 @@ static void AllocMoreExprNodes( void )
     node->left = NULL;
 }
 
-TREEPTR ExprNode( TREEPTR left, opr_code opcode, TREEPTR right )
+TREEPTR ExprNode( FrontRun& front, TREEPTR left, opr_code opcode, TREEPTR right )
 {
     TREEPTR     node;
 
-    if( exprtree_state().ExprNodeList == NULL ) {
-        AllocMoreExprNodes();
+    if( front.exprtree.ExprNodeList == NULL ) {
+        AllocMoreExprNodes(front);
     }
-    node = exprtree_state().ExprNodeList;
-    exprtree_state().ExprNodeList = node->left;
+    node = front.exprtree.ExprNodeList;
+    front.exprtree.ExprNodeList = node->left;
     node->left = left;
     node->right = right;
     node->op.opr = opcode;
     node->op.flags = OPFLAG_NONE;
     node->visit = false;
     node->checked = false;
-    ++cvars_state().NodeCount;
+    ++front.cvars.NodeCount;
     return( node );
 }
 
-TREEPTR LeafNode( opr_code opr )
+TREEPTR LeafNode( FrontRun& front, opr_code opr )
 {
-    return( ExprNode( NULL, opr, NULL ) );
+    return( ExprNode( front, NULL, opr, NULL ) );
 }
 
-void FreeExprNode( TREEPTR node )
+void FreeExprNode( FrontRun& front, TREEPTR node )
 {
     SWITCHPTR   sw;
     CASEPTR     cse;
 
     if( node != NULL ) {
         if( node->op.opr == OPR_PUSHFLOAT ) {
-            CMemFree( node->op.u2.float_value );
+            CMemFree( front, node->op.u2.float_value );
         } else if( node->op.opr == OPR_SWITCH ) {
             sw = node->op.u2.switch_info;
             for( ; (cse = sw->case_list) != NULL; ) {
                 sw->case_list = cse->next_case;
-                CMemFree( cse );
+                CMemFree( front, cse );
             }
-            CMemFree( sw );
+            CMemFree( front, sw );
         } else if ( node->op.opr == OPR_CALL ) {
-            CheckCallNode( node );
+            CheckCallNode( front, node );
         }
-        --cvars_state().NodeCount;
-        node->left = exprtree_state().ExprNodeList;
-        exprtree_state().ExprNodeList = node;
+        --front.cvars.NodeCount;
+        node->left = front.exprtree.ExprNodeList;
+        front.exprtree.ExprNodeList = node;
     }
 }
 
-void FreeExprTree( TREEPTR root )
+void FreeExprTree( FrontRun& front, TREEPTR root )
 {
     TREEPTR     subtree;
     TREEPTR     node;
@@ -127,6 +125,6 @@ void FreeExprTree( TREEPTR root )
         }
         node = root;
         root = root->left;
-        FreeExprNode( node );
+        FreeExprNode( front, node );
     }
 }

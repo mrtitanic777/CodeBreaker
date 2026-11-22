@@ -31,18 +31,19 @@
 ****************************************************************************/
 
 
-extern  void    TellOptimizerByPassed( void );
-extern  void    TellByPassOver( void );
-extern  void    TellAddress( label_handle lbl, offset addr );
-extern  void    TellDonePatches( label_handle lbl );
-extern  void    TellReachedLabel( label_handle lbl );
+#pragma once
+extern  void    TellOptimizerByPassed( BackRun& back );
+extern  void    TellByPassOver( BackRun& back );
+extern  void    TellAddress( BackRun& back, label_handle lbl, offset addr );
+extern  void    TellDonePatches( BackRun& back, label_handle lbl );
+extern  void    TellReachedLabel( BackRun& back, label_handle lbl );
 extern  void    TellProcLabel( label_handle lbl );
-extern  void    TellCommonLabel( label_handle lbl, import_handle imphdl );
-extern  void    TellKeepLabel( label_handle lbl );
-extern  void    TellNoSymbol( label_handle lbl );
-extern  void    TellScrapLabel( label_handle lbl );
-extern  void    TellCondemnedLabel( label_handle lbl );
-extern  void    TellBeginExecutions( void );
-extern  void    TellFreeAllLabels( void );
-extern  void    TellUnreachLabels( void );
-extern  void    KillLblRedirects( void );
+extern  void    TellCommonLabel( BackRun& back, label_handle lbl, import_handle imphdl );
+extern  void    TellKeepLabel( BackRun& back, label_handle lbl );
+extern  void    TellNoSymbol( BackRun& back, label_handle lbl );
+extern  void    TellScrapLabel( BackRun& back, label_handle lbl );
+extern  void    TellCondemnedLabel( BackRun& back, label_handle lbl );
+extern  void    TellBeginExecutions( BackRun& back );
+extern  void    TellFreeAllLabels( BackRun& back );
+extern  void    TellUnreachLabels( BackRun& back );
+extern  void    KillLblRedirects( BackRun& back );

@@ -38,6 +38,7 @@
 #include "i87table.h"
 #include "x86table.h"
 #include "opctable.h"
+#include "backrun.hpp"
 
 
 static const opcode_entry    Add1[] = {
@@ -1643,7 +1644,7 @@ static const opcode_entry * const FPOpcodeList[] = {
     #undef pick
 };
 
-const opcode_entry      *OpcodeTable( table_def i )
+const opcode_entry      *OpcodeTable( BackRun& back, table_def i )
 /**************************************************
     return the address of the appropriate generate table given an index "i"
 */

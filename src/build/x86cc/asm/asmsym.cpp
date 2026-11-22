@@ -43,6 +43,7 @@
 #endif
 
 #include "clibext.h"
+#include "asmrun.hpp"
 
 
 #if defined( _STANDALONE_ )
@@ -62,13 +63,14 @@ static char             const dots[] = " . . . . . . . . . . . . . . . .";
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
+}  // namespace
 struct AsmsymState {
     asm_sym_handle AsmSymHead;
 };
+namespace {
 
 }  // namespace
 
-static inline AsmsymState& asmsym_state() { return cbrun_part<AsmsymState>(); }
 
 
 static unsigned short const CvtTable[] = {
@@ -79,7 +81,7 @@ static unsigned short const CvtTable[] = {
 
 #endif
 
-static char *InitAsmSym( asm_sym_handle sym, const char *name )
+static char *InitAsmSym( AsmRun& assembler, asm_sym_handle sym, const char *name )
 /*************************************************************/
 {
 #if !defined( _STANDALONE_ )
@@ -104,22 +106,22 @@ static char *InitAsmSym( asm_sym_handle sym, const char *name )
     sym->state = SYM_UNDEFINED;
     sym->mem_type = MT_EMPTY;
 #else
-    sym->name = MemStrdupSafe( name );
+    sym->name = MemStrdupSafe( *assembler.front, name );
     sym->next = NULL;
     sym->fixup = NULL;
     sym->addr = 0;
-    handle = AsmQuerySymbol( sym->name );
-    sym->state = AsmQueryState( handle );
+    handle = AsmQuerySymbol( *assembler.front, sym->name );
+    sym->state = AsmQueryState( *assembler.front, handle );
     if( sym->state == SYM_UNDEFINED ) {
         sym->mem_type = MT_EMPTY;
     } else {
-        sym->mem_type = static_cast<memtype>(CvtTable[ AsmQueryType( handle ) ]);
+        sym->mem_type = static_cast<memtype>(CvtTable[ AsmQueryType( *assembler.front, handle ) ]);
     }
 #endif
     return( sym->name );
 }
 
-static asm_sym_handle AllocASym( const char *name )
+static asm_sym_handle AllocASym( AsmRun& assembler, const char *name )
 /*************************************************/
 {
     asm_sym_handle  sym;
@@ -127,10 +129,10 @@ static asm_sym_handle AllocASym( const char *name )
 #if defined( _STANDALONE_ )
     sym = MemAllocSafe( sizeof( dir_node ) );
 #else
-    sym = static_cast<asm_sym_handle>(MemAllocSafe( sizeof( *sym ) ));
+    sym = static_cast<asm_sym_handle>(MemAllocSafe( *assembler.front, sizeof( *sym ) ));
 #endif
-    if( InitAsmSym( sym, name ) == NULL ) {
-        MemFree( sym );
+    if( InitAsmSym( assembler, sym, name ) == NULL ) {
+        MemFree( *assembler.front, sym );
         return( NULL );
     }
 #if defined( _STANDALONE_ )
@@ -142,7 +144,7 @@ static asm_sym_handle AllocASym( const char *name )
     return( sym );
 }
 
-static asm_sym_handle *AsmFind( const char *name )
+static asm_sym_handle *AsmFind( AsmRun& assembler, const char *name )
 /*************************************************
  * find a symbol in the symbol table, return NULL if not found
  */
@@ -152,7 +154,7 @@ static asm_sym_handle *AsmFind( const char *name )
 #if defined( _STANDALONE_ )
     sym = &sym_table[hashpjw( name )];
 #else
-    sym = &asmsym_state().AsmSymHead;
+    sym = &assembler.asmsym->AsmSymHead;
 #endif
     for( ; *sym != NULL; sym = &((*sym)->next) ) {
 #if defined( _STANDALONE_ )
@@ -223,7 +225,7 @@ static bool AddLocalLabel( asm_sym_handle sym )
 }
 #endif
 
-asm_sym_handle AsmLookup( const char *name )
+asm_sym_handle AsmLookup( AsmRun& assembler, const char *name )
 /******************************************/
 {
     asm_sym_handle  *sym_ptr;
@@ -233,7 +235,7 @@ asm_sym_handle AsmLookup( const char *name )
 #endif
 
     if( strlen( name ) > MAX_ID_LEN ) {
-        AsmError( LABEL_TOO_LONG );
+        AsmError( *assembler.front, LABEL_TOO_LONG );
         return NULL;
     }
 #if defined( _STANDALONE_ )
@@ -268,7 +270,7 @@ asm_sym_handle AsmLookup( const char *name )
         }
     }
 #endif
-    sym_ptr = AsmFind( name );
+    sym_ptr = AsmFind( assembler, name );
     sym = *sym_ptr;
     if( sym != NULL ) {
 #if defined( _STANDALONE_ )
@@ -279,7 +281,7 @@ asm_sym_handle AsmLookup( const char *name )
         return( sym );
     }
 
-    sym = AllocASym( name );
+    sym = AllocASym( assembler, name );
     if( sym != NULL ) {
         sym->next = *sym_ptr;
         *sym_ptr = sym;
@@ -293,15 +295,15 @@ asm_sym_handle AsmLookup( const char *name )
             return( sym );
         }
 #else
-        sym->addr = asminlin_state().AsmCodeAddress;
+        sym->addr = assembler.asminlin->AsmCodeAddress;
 #endif
     } else {
-        AsmError( NO_MEMORY );
+        AsmError( *assembler.front, NO_MEMORY );
     }
     return( sym );
 }
 
-void FreeASym( asm_sym_handle sym )
+void FreeASym( AsmRun& assembler, asm_sym_handle sym )
 /*********************************/
 {
 #if defined( _STANDALONE_ )
@@ -313,8 +315,8 @@ void FreeASym( asm_sym_handle sym )
         MemFree( fixup );
     }
 #endif
-    MemFree( sym->name );
-    MemFree( sym );
+    MemFree( *assembler.front, sym->name );
+    MemFree( *assembler.front, sym );
 }
 
 #if defined( _STANDALONE_ )
@@ -576,7 +578,7 @@ void AsmSymInit( void )
 #endif
 }
 
-void AsmSymFini( void )
+void AsmSymFini( AsmRun& assembler )
 /*********************/
 {
     asm_sym_handle  sym;
@@ -601,9 +603,9 @@ void AsmSymFini( void )
     myassert( AsmSymCount == 0 );
 
 #else
-    for( ; (sym = asmsym_state().AsmSymHead) != NULL; ) {
-        asmsym_state().AsmSymHead = sym->next;
-        FreeASym( sym );
+    for( ; (sym = assembler.asmsym->AsmSymHead) != NULL; ) {
+        assembler.asmsym->AsmSymHead = sym->next;
+        FreeASym( assembler, sym );
     }
 #endif
 }
@@ -997,3 +999,7 @@ void DumpASym( void )
 #endif
 
 #endif
+
+/* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
+AsmsymState* asmsym_make() { return new AsmsymState(); }
+void asmsym_free(AsmsymState* part) { delete part; }

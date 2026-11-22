@@ -35,6 +35,7 @@
 #include <stddef.h>
 #include "watcom.h"
 #include "cfloati.h"
+#include "backrun.hpp"
 
 #define DOUBLE_DIGITS   17
 #define FRLSIZE         (CFLOAT_SIZE + DOUBLE_DIGITS)
@@ -51,7 +52,7 @@ void    CFInit( cfhandle h )
 }
 
 
-cfloat  *CFAlloc( cfhandle h, size_t size )
+cfloat  *CFAlloc( BackRun& back, cfhandle h, size_t size )
 /*****************************************/
 {
     cfloat      *result;
@@ -65,11 +66,11 @@ cfloat  *CFAlloc( cfhandle h, size_t size )
             result = static_cast<cfloat *>(h->head);
             h->head = NEXT_BLOCK( result );
         } else {
-            result = static_cast<cfloat *>(h->alloc( size ));
+            result = static_cast<cfloat *>(h->alloc( back, size ));
         }
     } else {
         size += CFLOAT_SIZE;
-        result = static_cast<cfloat *>(h->alloc( size ));
+        result = static_cast<cfloat *>(h->alloc( back, size ));
     }
     /*
      * Init result to 0 (zero)
@@ -84,33 +85,33 @@ cfloat  *CFAlloc( cfhandle h, size_t size )
 }
 
 
-void    CFFree( cfhandle h, cfloat *f )
+void    CFFree( BackRun& back, cfhandle h, cfloat *f )
 /*************************************/
 {
     if( f->alloc == FRLSIZE ) {
         NEXT_BLOCK( f ) = h->head;
         h->head = f;
     } else {
-        h->free( f );
+        h->free( back, f );
     }
 }
 
-void    CFFini( cfhandle h )
+void    CFFini( BackRun& back, cfhandle h )
 /**************************/
 {
     void    *ptr;
 
     while( (ptr = h->head) != NULL ) {
         h->head = NEXT_BLOCK( ptr );
-        h->free( ptr );
+        h->free( back, ptr );
     }
 }
 
-bool CFFrlFree( cfhandle h )
+bool CFFrlFree( BackRun& back, cfhandle h )
 /**************************/
 {
     if( h->head != NULL ) {
-        CFFini( h );
+        CFFini( back, h );
         return( true );
     }
     return( false );

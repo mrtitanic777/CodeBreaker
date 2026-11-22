@@ -1,12 +1,12 @@
-bool OPT_PROCESS( OPT_STORAGE *data )
+bool OPT_PROCESS( FrontRun& front, OPT_STORAGE *data )
 {
-    switch( OPT_GET_LOWER() ) {
+    switch( OPT_GET_LOWER(front) ) {
     case 'z':
-	if( OPT_RECOG( 'A' ) ) {
-	    if( OPT_RECOG_LOWER( 's' ) ) {
-		if( OPT_RECOG_LOWER( 't' ) ) {
-		    if( OPT_RECOG_LOWER( 'd' ) ) {
-			if( checkSTD( &(data->zastd_value) ) ) {
+	if( OPT_RECOG( front, 'A' ) ) {
+	    if( OPT_RECOG_LOWER( front, 's' ) ) {
+		if( OPT_RECOG_LOWER( front, 't' ) ) {
+		    if( OPT_RECOG_LOWER( front, 'd' ) ) {
+			if( checkSTD( front, &(data->zastd_value) ) ) {
 			    data->cstd = OPT_ENUM_cstd_zastd;
 			}
 			return( false );
@@ -15,25 +15,25 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 		}
 		return( true );
 	    }
-	    if( OPT_RECOG_LOWER( '9' ) ) {
-		if( OPT_RECOG_LOWER( '9' ) ) {
+	    if( OPT_RECOG_LOWER( front, '9' ) ) {
+		if( OPT_RECOG_LOWER( front, '9' ) ) {
 		    data->cstd = OPT_ENUM_cstd_za99;
 		    return( false );
 		}
 		return( true );
 	    }
-	    if( OPT_RECOG_LOWER( 'm' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'm' ) ) {
 		data->zam = true;
 		return( false );
 	    }
 	    data->iso = OPT_ENUM_iso_zA;
 	    return( false );
 	}
-	if( OPT_RECOG( 'a' ) ) {
-	    if( OPT_RECOG_LOWER( 's' ) ) {
-		if( OPT_RECOG_LOWER( 't' ) ) {
-		    if( OPT_RECOG_LOWER( 'd' ) ) {
-			if( checkSTD( &(data->zastd_value) ) ) {
+	if( OPT_RECOG( front, 'a' ) ) {
+	    if( OPT_RECOG_LOWER( front, 's' ) ) {
+		if( OPT_RECOG_LOWER( front, 't' ) ) {
+		    if( OPT_RECOG_LOWER( front, 'd' ) ) {
+			if( checkSTD( front, &(data->zastd_value) ) ) {
 			    data->cstd = OPT_ENUM_cstd_zastd;
 			}
 			return( false );
@@ -42,55 +42,55 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 		}
 		return( true );
 	    }
-	    if( OPT_RECOG_LOWER( '9' ) ) {
-		if( OPT_RECOG_LOWER( '9' ) ) {
+	    if( OPT_RECOG_LOWER( front, '9' ) ) {
+		if( OPT_RECOG_LOWER( front, '9' ) ) {
 		    data->cstd = OPT_ENUM_cstd_za99;
 		    return( false );
 		}
 		return( true );
 	    }
-	    if( OPT_RECOG_LOWER( 'm' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'm' ) ) {
 		data->zam = true;
 		return( false );
 	    }
 	    data->iso = OPT_ENUM_iso_za;
 	    return( false );
 	}
-	switch( OPT_GET_LOWER() ) {
+	switch( OPT_GET_LOWER(front) ) {
 	case 'r':
-	    if( OPT_RECOG_LOWER( 'o' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'o' ) ) {
 		data->fp_rounding = OPT_ENUM_fp_rounding_zro;
 		return( false );
 	    }
-	    if( OPT_RECOG_LOWER( 'i' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'i' ) ) {
 		data->fp_rounding = OPT_ENUM_fp_rounding_zri;
 		return( false );
 	    }
 	    return( true );
 	case 'f':
-	    if( OPT_RECOG_LOWER( 'w' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'w' ) ) {
 		data->zfw = true;
 		return( false );
 	    }
-	    if( OPT_RECOG_LOWER( 'f' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'f' ) ) {
 		data->fs_peg = OPT_ENUM_fs_peg_zff;
 		return( false );
 	    }
-	    if( OPT_RECOG_LOWER( 'p' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'p' ) ) {
 		data->fs_peg = OPT_ENUM_fs_peg_zfp;
 		return( false );
 	    }
 	    return( true );
 	case 'd':
-	    if( OPT_RECOG_LOWER( 'f' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'f' ) ) {
 		data->ds_peg = OPT_ENUM_ds_peg_zdf;
 		return( false );
 	    }
-	    if( OPT_RECOG_LOWER( 'p' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'p' ) ) {
 		data->ds_peg = OPT_ENUM_ds_peg_zdp;
 		return( false );
 	    }
-	    if( OPT_RECOG_LOWER( 'l' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'l' ) ) {
 		data->zdl = true;
 		return( false );
 	    }
@@ -99,25 +99,25 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 	    data->zc = true;
 	    return( false );
 	case 'e':
-	    if( OPT_RECOG_LOWER( 'v' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'v' ) ) {
 		data->zev = true;
 		return( false );
 	    }
 	    data->iso = OPT_ENUM_iso_ze;
 	    return( false );
 	case 'g':
-	    if( OPT_RECOG_LOWER( 'f' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'f' ) ) {
 		data->gs_peg = OPT_ENUM_gs_peg_zgf;
 		return( false );
 	    }
-	    if( OPT_RECOG_LOWER( 'p' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'p' ) ) {
 		data->gs_peg = OPT_ENUM_gs_peg_zgp;
 		return( false );
 	    }
 	    data->zg = true;
 	    return( false );
 	case 'k':
-	    switch( OPT_GET_LOWER() ) {
+	    switch( OPT_GET_LOWER(front) ) {
 	    case '1':
 		data->char_set = OPT_ENUM_char_set_zk1;
 		return( false );
@@ -128,7 +128,7 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 		data->char_set = OPT_ENUM_char_set_zk3;
 		return( false );
 	    case '0':
-		if( OPT_RECOG_LOWER( 'u' ) ) {
+		if( OPT_RECOG_LOWER( front, 'u' ) ) {
 		    data->char_set = OPT_ENUM_char_set_zk0u;
 		    return( false );
 		}
@@ -138,28 +138,28 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 		data->char_set = OPT_ENUM_char_set_zkl;
 		return( false );
 	    case 'u':
-		if( OPT_RECOG_LOWER( '8' ) ) {
+		if( OPT_RECOG_LOWER( front, '8' ) ) {
 		    data->char_set = OPT_ENUM_char_set_zku8;
 		    return( false );
 		}
-		if( OPT_GET_NUMBER( &(data->zku_value) ) ) {
+		if( OPT_GET_NUMBER( front, &(data->zku_value) ) ) {
 		    data->char_set = OPT_ENUM_char_set_zku;
 		}
 		return( false );
 	    }
-	    OPT_UNGET();
+	    OPT_UNGET(front);
 	    data->char_set = OPT_ENUM_char_set_zk0;
 	    return( false );
 	case 'l':
-	    if( OPT_RECOG_LOWER( 'd' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'd' ) ) {
 		data->zld = true;
 		return( false );
 	    }
-	    if( OPT_RECOG_LOWER( 'f' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'f' ) ) {
 		data->zlf = true;
 		return( false );
 	    }
-	    if( OPT_RECOG_LOWER( 's' ) ) {
+	    if( OPT_RECOG_LOWER( front, 's' ) ) {
 		data->zls = true;
 		return( false );
 	    }
@@ -169,11 +169,11 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 	    data->zm = true;
 	    return( false );
 	case 'p':
-	    if( OPT_RECOG_LOWER( 'w' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'w' ) ) {
 		data->zpw = true;
 		return( false );
 	    }
-	    if( OPT_GET_NUMBER( &(data->zp_value) ) ) {
+	    if( OPT_GET_NUMBER( front, &(data->zp_value) ) ) {
 		checkPacking( &(data->zp_value) );
 		data->zp = true;
 	    }
@@ -185,7 +185,7 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 	    data->zs = true;
 	    return( false );
 	case 't':
-	    if( OPT_GET_NUMBER_DEFAULT( &(data->zt_value ), 256 ) ) {
+	    if( OPT_GET_NUMBER_DEFAULT( front, &(data->zt_value ), 256 ) ) {
 		checkDataThreshold( &(data->zt_value) );
 		data->zt = true;
 	    }
@@ -200,11 +200,11 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 	    data->zz = true;
 	    return( false );
 	}
-	OPT_UNGET();
+	OPT_UNGET(front);
 	return( true );
     case 'o':
 	do {
-	    switch( OPT_GET_LOWER() ) {
+	    switch( OPT_GET_LOWER(front) ) {
 	    case 'a':
 		data->oa = true;
 		continue;
@@ -219,13 +219,13 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 		data->opt_level = OPT_ENUM_opt_level_od;
 		continue;
 	    case 'e':
-		if( OPT_GET_NUMBER_DEFAULT( &(data->oe_value ), 20 ) ) {
+		if( OPT_GET_NUMBER_DEFAULT( front, &(data->oe_value ), 20 ) ) {
 		    checkOENumber( &(data->oe_value) );
 		    data->oe = true;
 		}
 		continue;
 	    case 'f':
-		if( OPT_RECOG_LOWER( '+' ) ) {
+		if( OPT_RECOG_LOWER( front, '+' ) ) {
 		    data->of_plus = true;
 		    continue;
 		}
@@ -241,7 +241,7 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 		data->ok = true;
 		continue;
 	    case 'l':
-		if( OPT_RECOG_LOWER( '+' ) ) {
+		if( OPT_RECOG_LOWER( front, '+' ) ) {
 		    data->ol_plus = true;
 		    continue;
 		}
@@ -281,37 +281,37 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 		data->oz = true;
 		continue;
 	    }
-	    OPT_UNGET();
+	    OPT_UNGET(front);
 	    break;
-	} while( ! OPT_END() );
+	} while( ! OPT_END(front) );
 	return( false );
     case 'n':
-	switch( OPT_GET_LOWER() ) {
+	switch( OPT_GET_LOWER(front) ) {
 	case 'c':
-	    if( OPT_GET_ID( &(data->nc_value) ) ) {
+	    if( OPT_GET_ID( front, &(data->nc_value) ) ) {
 		data->nc = true;
 	    }
 	    return( false );
 	case 'd':
-	    if( OPT_GET_ID( &(data->nd_value) ) ) {
+	    if( OPT_GET_ID( front, &(data->nd_value) ) ) {
 		data->nd = true;
 	    }
 	    return( false );
 	case 'm':
-	    if( OPT_GET_FILE( &(data->nm_value) ) ) {
+	    if( OPT_GET_FILE( front, &(data->nm_value) ) ) {
 		data->nm = true;
 	    }
 	    return( false );
 	case 't':
-	    if( OPT_GET_ID( &(data->nt_value) ) ) {
+	    if( OPT_GET_ID( front, &(data->nt_value) ) ) {
 		data->nt = true;
 	    }
 	    return( false );
 	}
-	OPT_UNGET();
+	OPT_UNGET(front);
 	return( true );
     case 'm':
-	switch( OPT_GET_LOWER() ) {
+	switch( OPT_GET_LOWER(front) ) {
 	case 'c':
 	    data->mem_model = OPT_ENUM_mem_model_mc;
 	    return( false );
@@ -328,24 +328,24 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 	    data->mem_model = OPT_ENUM_mem_model_ms;
 	    return( false );
 	}
-	OPT_UNGET();
+	OPT_UNGET(front);
 	return( true );
     case 'f':
-	switch( OPT_GET_LOWER() ) {
+	switch( OPT_GET_LOWER(front) ) {
 	case 'l':
-	    if( OPT_RECOG_LOWER( 'd' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'd' ) ) {
 		data->fld = true;
 		return( false );
 	    }
 	    return( true );
 	case 'p':
-	    switch( OPT_GET_LOWER() ) {
+	    switch( OPT_GET_LOWER(front) ) {
 	    case 'c':
 		data->intel_fpu_model = OPT_ENUM_intel_fpu_model_fpc;
 		return( false );
 	    case 'i':
-		if( OPT_RECOG_LOWER( '8' ) ) {
-		    if( OPT_RECOG_LOWER( '7' ) ) {
+		if( OPT_RECOG_LOWER( front, '8' ) ) {
+		    if( OPT_RECOG_LOWER( front, '7' ) ) {
 			data->intel_fpu_model = OPT_ENUM_intel_fpu_model_fpi87;
 			return( false );
 		    }
@@ -354,8 +354,8 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 		data->intel_fpu_model = OPT_ENUM_intel_fpu_model_fpi;
 		return( false );
 	    case '2':
-		if( OPT_RECOG_LOWER( '8' ) ) {
-		    if( OPT_RECOG_LOWER( '7' ) ) {
+		if( OPT_RECOG_LOWER( front, '8' ) ) {
+		    if( OPT_RECOG_LOWER( front, '7' ) ) {
 			data->intel_fpu_level = OPT_ENUM_intel_fpu_level_fp2;
 			return( false );
 		    }
@@ -364,8 +364,8 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 		data->intel_fpu_level = OPT_ENUM_intel_fpu_level_fp2;
 		return( false );
 	    case '3':
-		if( OPT_RECOG_LOWER( '8' ) ) {
-		    if( OPT_RECOG_LOWER( '7' ) ) {
+		if( OPT_RECOG_LOWER( front, '8' ) ) {
+		    if( OPT_RECOG_LOWER( front, '7' ) ) {
 			data->intel_fpu_level = OPT_ENUM_intel_fpu_level_fp3;
 			return( false );
 		    }
@@ -386,44 +386,44 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 		data->fpd = true;
 		return( false );
 	    }
-	    OPT_UNGET();
+	    OPT_UNGET(front);
 	    return( true );
 	case 'h':
-	    if( OPT_RECOG_LOWER( 'q' ) ) {
-		if( OPT_GET_FILE_OPT( &(data->fhq_value) ) ) {
+	    if( OPT_RECOG_LOWER( front, 'q' ) ) {
+		if( OPT_GET_FILE_OPT( front, &(data->fhq_value) ) ) {
 		    data->fhq_timestamp = ++(data->timestamp);
 		    data->fhq = true;
 		}
 		return( false );
 	    }
-	    if( OPT_GET_FILE_OPT( &(data->fh_value) ) ) {
+	    if( OPT_GET_FILE_OPT( front, &(data->fh_value) ) ) {
 		data->fh_timestamp = ++(data->timestamp);
 		data->fh = true;
 	    }
 	    return( false );
 	case 'i':
-	    if( OPT_RECOG_LOWER( 'p' ) ) {
-		if( OPT_GET_FILE_OPT( &(data->fip_value) ) ) {
+	    if( OPT_RECOG_LOWER( front, 'p' ) ) {
+		if( OPT_GET_FILE_OPT( front, &(data->fip_value) ) ) {
 		    data->fip = true;
 		}
 		return( false );
 	    }
-	    if( OPT_GET_FILE( &(data->fi_value) ) ) {
+	    if( OPT_GET_FILE( front, &(data->fi_value) ) ) {
 		data->fi = true;
 	    }
 	    return( false );
 	case 'o':
-	    if( OPT_GET_FILE_OPT( &(data->fo_value) ) ) {
+	    if( OPT_GET_FILE_OPT( front, &(data->fo_value) ) ) {
 		data->fo = true;
 	    }
 	    return( false );
 	case 'r':
-	    if( OPT_GET_FILE_OPT( &(data->fr_value) ) ) {
+	    if( OPT_GET_FILE_OPT( front, &(data->fr_value) ) ) {
 		data->fr = true;
 	    }
 	    return( false );
 	case 't':
-	    if( OPT_RECOG_LOWER( 'i' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'i' ) ) {
 		data->fti = true;
 		return( false );
 	    }
@@ -433,10 +433,10 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 	    data->file_83 = OPT_ENUM_file_83_fx;
 	    return( false );
 	}
-	OPT_UNGET();
+	OPT_UNGET(front);
 	return( true );
     case 'b':
-	switch( OPT_GET_LOWER() ) {
+	switch( OPT_GET_LOWER(front) ) {
 	case 'c':
 	    data->bc = true;
 	    return( false );
@@ -453,7 +453,7 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 	    data->br = true;
 	    return( false );
 	case 't':
-	    if( OPT_GET_ID_OPT( &(data->bt_value) ) ) {
+	    if( OPT_GET_ID_OPT( front, &(data->bt_value) ) ) {
 		data->bt = true;
 	    }
 	    return( false );
@@ -461,48 +461,48 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 	    data->bw = true;
 	    return( false );
 	}
-	OPT_UNGET();
+	OPT_UNGET(front);
 	return( true );
     case 'a':
-	switch( OPT_GET_LOWER() ) {
+	switch( OPT_GET_LOWER(front) ) {
 	case 'a':
 	    data->aa = true;
 	    return( false );
 	case 'd':
-	    switch( OPT_GET_LOWER() ) {
+	    switch( OPT_GET_LOWER(front) ) {
 	    case 'h':
-		if( OPT_RECOG_LOWER( 'p' ) ) {
-		    if( OPT_GET_FILE_OPT( &(data->adhp_value) ) ) {
+		if( OPT_RECOG_LOWER( front, 'p' ) ) {
+		    if( OPT_GET_FILE_OPT( front, &(data->adhp_value) ) ) {
 			data->adhp = true;
 		    }
 		    return( false );
 		}
 		return( true );
 	    case 'f':
-		if( OPT_RECOG_LOWER( 's' ) ) {
+		if( OPT_RECOG_LOWER( front, 's' ) ) {
 		    data->adfs = true;
 		    return( false );
 		}
 		return( true );
 	    case 'b':
-		if( OPT_RECOG_LOWER( 's' ) ) {
+		if( OPT_RECOG_LOWER( front, 's' ) ) {
 		    data->adbs = true;
 		    return( false );
 		}
 		return( true );
 	    case 'd':
-		if( OPT_GET_FILE_OPT( &(data->add_value) ) ) {
+		if( OPT_GET_FILE_OPT( front, &(data->add_value) ) ) {
 		    data->add = true;
 		}
 		return( false );
 	    case 't':
-		if( OPT_GET_FILE_OPT( &(data->adt_value) ) ) {
+		if( OPT_GET_FILE_OPT( front, &(data->adt_value) ) ) {
 		    data->adt = true;
 		}
 		return( false );
 	    }
-	    OPT_UNGET();
-	    if( OPT_GET_FILE_OPT( &(data->ad_value) ) ) {
+	    OPT_UNGET(front);
+	    if( OPT_GET_FILE_OPT( front, &(data->ad_value) ) ) {
 		data->ad = true;
 	    }
 	    return( false );
@@ -513,63 +513,63 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 	    data->aq = true;
 	    return( false );
 	}
-	OPT_UNGET();
+	OPT_UNGET(front);
 	return( true );
     case '?':
 	data->_question = true;
 	return( false );
     case '3':
-	if( OPT_RECOG_LOWER( 'r' ) ) {
+	if( OPT_RECOG_LOWER( front, 'r' ) ) {
 	    data->arch_386 = OPT_ENUM_arch_386__3r;
 	    return( false );
 	}
-	if( OPT_RECOG_LOWER( 's' ) ) {
+	if( OPT_RECOG_LOWER( front, 's' ) ) {
 	    data->arch_386 = OPT_ENUM_arch_386__3s;
 	    return( false );
 	}
 	data->arch_386 = OPT_ENUM_arch_386__3r;
 	return( false );
     case '4':
-	if( OPT_RECOG_LOWER( 'r' ) ) {
+	if( OPT_RECOG_LOWER( front, 'r' ) ) {
 	    data->arch_386 = OPT_ENUM_arch_386__4r;
 	    return( false );
 	}
-	if( OPT_RECOG_LOWER( 's' ) ) {
+	if( OPT_RECOG_LOWER( front, 's' ) ) {
 	    data->arch_386 = OPT_ENUM_arch_386__4s;
 	    return( false );
 	}
 	data->arch_386 = OPT_ENUM_arch_386__4r;
 	return( false );
     case '5':
-	if( OPT_RECOG_LOWER( 'r' ) ) {
+	if( OPT_RECOG_LOWER( front, 'r' ) ) {
 	    data->arch_386 = OPT_ENUM_arch_386__5r;
 	    return( false );
 	}
-	if( OPT_RECOG_LOWER( 's' ) ) {
+	if( OPT_RECOG_LOWER( front, 's' ) ) {
 	    data->arch_386 = OPT_ENUM_arch_386__5s;
 	    return( false );
 	}
 	data->arch_386 = OPT_ENUM_arch_386__5r;
 	return( false );
     case '6':
-	if( OPT_RECOG_LOWER( 'r' ) ) {
+	if( OPT_RECOG_LOWER( front, 'r' ) ) {
 	    data->arch_386 = OPT_ENUM_arch_386__6r;
 	    return( false );
 	}
-	if( OPT_RECOG_LOWER( 's' ) ) {
+	if( OPT_RECOG_LOWER( front, 's' ) ) {
 	    data->arch_386 = OPT_ENUM_arch_386__6s;
 	    return( false );
 	}
 	data->arch_386 = OPT_ENUM_arch_386__6r;
 	return( false );
     case 'd':
-	switch( OPT_GET_LOWER() ) {
+	switch( OPT_GET_LOWER(front) ) {
 	case '0':
 	    data->debug_info_timestamp = ++(data->timestamp);
 	    data->debug_info = OPT_ENUM_debug_info_d0;
 	    return( false );
 	case '1':
-	    if( OPT_RECOG_LOWER( '+' ) ) {
+	    if( OPT_RECOG_LOWER( front, '+' ) ) {
 		data->debug_info_timestamp = ++(data->timestamp);
 		data->debug_info = OPT_ENUM_debug_info_d1_plus;
 		return( false );
@@ -578,7 +578,7 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 	    data->debug_info = OPT_ENUM_debug_info_d1;
 	    return( false );
 	case '2':
-	    if( OPT_RECOG_LOWER( '~' ) ) {
+	    if( OPT_RECOG_LOWER( front, '~' ) ) {
 		data->debug_info_timestamp = ++(data->timestamp);
 		data->debug_info = OPT_ENUM_debug_info_d2_tilde;
 		return( false );
@@ -595,46 +595,46 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 	    data->debug_info = OPT_ENUM_debug_info_d9;
 	    return( false );
 	case '+':
-	    if( scanDefinePlus( &(data->d_plus_value) ) ) {
+	    if( scanDefinePlus( front, &(data->d_plus_value) ) ) {
 		data->d_plus = true;
 	    }
 	    return( false );
 	case 'b':
-	    if( OPT_END() ) {
+	    if( OPT_END(front) ) {
 		data->db = true;
 		return( false );
 	    }
 	    break;
 	}
-	OPT_UNGET();
-	if( scanDefine( &(data->d_value) ) ) {
+	OPT_UNGET(front);
+	if( scanDefine( front, &(data->d_value) ) ) {
 	    data->d = true;
 	}
 	return( false );
     case 'e':
-	switch( OPT_GET_LOWER() ) {
+	switch( OPT_GET_LOWER(front) ) {
 	case 's':
-	    if( OPT_RECOG_LOWER( 'p' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'p' ) ) {
 		data->esp = true;
 		return( false );
 	    }
 	    return( true );
 	case 'o':
-	    if( OPT_RECOG_LOWER( 'c' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'c' ) ) {
 		data->eoc = true;
 		return( false );
 	    }
-	    if( OPT_RECOG_LOWER( 'e' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'e' ) ) {
 		data->eoe = true;
 		return( false );
 	    }
-	    if( OPT_RECOG_LOWER( 'o' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'o' ) ) {
 		data->eoo = true;
 		return( false );
 	    }
 	    return( true );
 	case 'c':
-	    switch( OPT_GET_LOWER() ) {
+	    switch( OPT_GET_LOWER(front) ) {
 	    case 'c':
 		data->intel_call_conv = OPT_ENUM_intel_call_conv_ecc;
 		return( false );
@@ -660,7 +660,7 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 		data->intel_call_conv = OPT_ENUM_intel_call_conv_ecw;
 		return( false );
 	    }
-	    OPT_UNGET();
+	    OPT_UNGET(front);
 	    data->ec = true;
 	    return( false );
 	case 'e':
@@ -679,21 +679,21 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 	    data->en = true;
 	    return( false );
 	case 'p':
-	    if( OPT_GET_NUMBER_DEFAULT( &(data->ep_value ), 0 ) ) {
+	    if( OPT_GET_NUMBER_DEFAULT( front, &(data->ep_value ), 0 ) ) {
 		checkPrologSize( &(data->ep_value) );
 		data->ep = true;
 	    }
 	    return( false );
 	case 'q':
 	    data->eq = true;
-	    handleOptionEQ( data, true );
+	    handleOptionEQ( front, data, true );
 	    return( false );
 	case 't':
-	    if( OPT_RECOG_LOWER( '0' ) ) {
+	    if( OPT_RECOG_LOWER( front, '0' ) ) {
 		data->et0 = true;
 		return( false );
 	    }
-	    if( OPT_RECOG_LOWER( 'p' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'p' ) ) {
 		data->etp = true;
 		return( false );
 	    }
@@ -703,42 +703,42 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 	    data->ez = true;
 	    return( false );
 	}
-	OPT_UNGET();
-	if( OPT_GET_NUMBER_DEFAULT( &(data->e_value ), 20 ) ) {
+	OPT_UNGET(front);
+	if( OPT_GET_NUMBER_DEFAULT( front, &(data->e_value ), 20 ) ) {
 	    checkErrorLimit( &(data->e_value) );
 	    data->e = true;
 	}
 	return( false );
     case 'g':
-	if( OPT_GET_ID( &(data->g_value) ) ) {
+	if( OPT_GET_ID( front, &(data->g_value) ) ) {
 	    data->g = true;
 	}
 	return( false );
     case 'h':
-	if( OPT_RECOG_LOWER( 'c' ) ) {
+	if( OPT_RECOG_LOWER( front, 'c' ) ) {
 	    data->dbg_output = OPT_ENUM_dbg_output_hc;
 	    return( false );
 	}
-	if( OPT_RECOG_LOWER( 'd' ) ) {
-	    if( OPT_RECOG_LOWER( 'a' ) ) {
+	if( OPT_RECOG_LOWER( front, 'd' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'a' ) ) {
 		data->dbg_output = OPT_ENUM_dbg_output_hda;
 		return( false );
 	    }
-	    if( OPT_RECOG_LOWER( 'g' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'g' ) ) {
 		data->dbg_output = OPT_ENUM_dbg_output_hdg;
 		return( false );
 	    }
 	    data->dbg_output = OPT_ENUM_dbg_output_hd;
 	    return( false );
 	}
-	if( OPT_RECOG_LOWER( 'w' ) ) {
+	if( OPT_RECOG_LOWER( front, 'w' ) ) {
 	    data->dbg_output = OPT_ENUM_dbg_output_hw;
 	    return( false );
 	}
 	data->_question = true;
 	return( false );
     case 'i':
-	if( OPT_GET_PATH( &(data->i_value) ) ) {
+	if( OPT_GET_PATH( front, &(data->i_value) ) ) {
 	    data->i = true;
 	}
 	return( false );
@@ -746,21 +746,21 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 	data->j = true;
 	return( false );
     case 'p':
-	if( OPT_RECOG_LOWER( 'i' ) ) {
-	    if( OPT_RECOG_LOWER( 'l' ) ) {
+	if( OPT_RECOG_LOWER( front, 'i' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'l' ) ) {
 		data->pil = true;
 		return( false );
 	    }
 	    return( true );
 	}
-	if( OPT_RECOG_LOWER( 'm' ) ) {
+	if( OPT_RECOG_LOWER( front, 'm' ) ) {
 	    data->pm = true;
 	    return( false );
 	}
 	do {
-	    switch( OPT_GET_LOWER() ) {
+	    switch( OPT_GET_LOWER(front) ) {
 	    case '#':
-		if( OPT_GET_CHAR( &(data->p_sharp_value) ) ) {
+		if( OPT_GET_CHAR( front, &(data->p_sharp_value) ) ) {
 		    data->p_sharp = true;
 		}
 		continue;
@@ -771,60 +771,60 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 		data->pc = true;
 		continue;
 	    case 'w':
-		if( OPT_GET_NUMBER( &(data->pw_value) ) ) {
+		if( OPT_GET_NUMBER( front, &(data->pw_value) ) ) {
 		    checkPPWidth( &(data->pw_value) );
 		    data->pw = true;
 		}
 		continue;
 	    }
-	    OPT_UNGET();
+	    OPT_UNGET(front);
 	    break;
-	} while( ! OPT_END() );
+	} while( ! OPT_END(front) );
 	data->p = true;
 	return( false );
     case 'q':
 	data->q = true;
 	return( false );
     case 'r':
-	if( OPT_RECOG_LOWER( 'o' ) ) {
-	    if( OPT_RECOG_LOWER( 'd' ) ) {
-		if( OPT_GET_PATH( &(data->rod_value) ) ) {
+	if( OPT_RECOG_LOWER( front, 'o' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'd' ) ) {
+		if( OPT_GET_PATH( front, &(data->rod_value) ) ) {
 		    data->rod = true;
 		}
 		return( false );
 	    }
 	    return( true );
 	}
-	if( OPT_RECOG_LOWER( 'e' ) ) {
+	if( OPT_RECOG_LOWER( front, 'e' ) ) {
 	    data->re = true;
 	    return( false );
 	}
-	if( OPT_RECOG_LOWER( 'i' ) ) {
+	if( OPT_RECOG_LOWER( front, 'i' ) ) {
 	    data->ri = true;
 	    return( false );
 	}
 	data->r = true;
 	return( false );
     case 's':
-	if( OPT_RECOG_LOWER( 'g' ) ) {
+	if( OPT_RECOG_LOWER( front, 'g' ) ) {
 	    data->sg = true;
 	    return( false );
 	}
-	if( OPT_RECOG_LOWER( 't' ) ) {
+	if( OPT_RECOG_LOWER( front, 't' ) ) {
 	    data->st = true;
 	    return( false );
 	}
 	data->s = true;
 	return( false );
     case 'u':
-	if( scanUndefine( &(data->u_value) ) ) {
+	if( scanUndefine( front, &(data->u_value) ) ) {
 	    data->u = true;
 	}
 	return( false );
     case 'v':
-	if( OPT_RECOG_LOWER( 'c' ) ) {
-	    if( OPT_RECOG_LOWER( 'a' ) ) {
-		if( OPT_RECOG_LOWER( 'p' ) ) {
+	if( OPT_RECOG_LOWER( front, 'c' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'a' ) ) {
+		if( OPT_RECOG_LOWER( front, 'p' ) ) {
 		    data->vcap = true;
 		    return( false );
 		}
@@ -835,22 +835,22 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 	data->v = true;
 	return( false );
     case 'w':
-	switch( OPT_GET_LOWER() ) {
+	switch( OPT_GET_LOWER(front) ) {
 	case 'p':
-	    if( OPT_RECOG_LOWER( 'x' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'x' ) ) {
 		data->wpx = true;
 		return( false );
 	    }
 	    return( true );
 	case 'c':
-	    if( OPT_RECOG_LOWER( 'd' ) ) {
-		if( OPT_GET_ID( &(data->wcd_value) ) ) {
+	    if( OPT_RECOG_LOWER( front, 'd' ) ) {
+		if( OPT_GET_ID( front, &(data->wcd_value) ) ) {
 		    data->wcd = true;
 		}
 		return( false );
 	    }
-	    if( OPT_RECOG_LOWER( 'e' ) ) {
-		if( OPT_GET_ID( &(data->wce_value) ) ) {
+	    if( OPT_RECOG_LOWER( front, 'e' ) ) {
+		if( OPT_GET_ID( front, &(data->wce_value) ) ) {
 		    data->wce = true;
 		}
 		return( false );
@@ -863,16 +863,16 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 	    data->warn_level = OPT_ENUM_warn_level_wx;
 	    return( false );
 	}
-	OPT_UNGET();
-	if( OPT_GET_NUMBER( &(data->w_value) ) ) {
+	OPT_UNGET(front);
+	if( OPT_GET_NUMBER( front, &(data->w_value) ) ) {
 	    checkWarnLevel( &(data->w_value) );
 	    data->warn_level = OPT_ENUM_warn_level_w;
 	}
 	return( false );
     case 'x':
-	if( OPT_RECOG_LOWER( 'b' ) ) {
-	    if( OPT_RECOG_LOWER( 's' ) ) {
-		if( OPT_RECOG_LOWER( 'a' ) ) {
+	if( OPT_RECOG_LOWER( front, 'b' ) ) {
+	    if( OPT_RECOG_LOWER( front, 's' ) ) {
+		if( OPT_RECOG_LOWER( front, 'a' ) ) {
 		    data->xbsa = true;
 		    return( false );
 		}
@@ -880,21 +880,21 @@ bool OPT_PROCESS( OPT_STORAGE *data )
 	    }
 	    return( true );
 	}
-	if( OPT_RECOG_LOWER( 'g' ) ) {
-	    if( OPT_RECOG_LOWER( 'v' ) ) {
+	if( OPT_RECOG_LOWER( front, 'g' ) ) {
+	    if( OPT_RECOG_LOWER( front, 'v' ) ) {
 		data->xgv = true;
 		return( false );
 	    }
 	    return( true );
 	}
-	if( OPT_RECOG_LOWER( 'x' ) ) {
+	if( OPT_RECOG_LOWER( front, 'x' ) ) {
 	    data->xx = true;
 	    return( false );
 	}
 	data->x = true;
 	return( false );
     }
-    OPT_UNGET();
+    OPT_UNGET(front);
     return( true );
 }
 void OPT_INIT( OPT_STORAGE *data )
@@ -927,29 +927,29 @@ void OPT_INIT( OPT_STORAGE *data )
     data->arch_386 = OPT_ENUM_arch_386_default;
     data->arch_i86 = OPT_ENUM_arch_i86_default;
 }
-void OPT_FINI( OPT_STORAGE *data )
+void OPT_FINI( FrontRun& front, OPT_STORAGE *data )
 {
-    OPT_CLEAN_STRING( &(data->wce_value) );
-    OPT_CLEAN_STRING( &(data->wcd_value) );
-    OPT_CLEAN_STRING( &(data->u_value) );
-    OPT_CLEAN_STRING( &(data->rod_value) );
-    OPT_CLEAN_STRING( &(data->nt_value) );
-    OPT_CLEAN_STRING( &(data->nm_value) );
-    OPT_CLEAN_STRING( &(data->nd_value) );
-    OPT_CLEAN_STRING( &(data->nc_value) );
-    OPT_CLEAN_STRING( &(data->i_value) );
-    OPT_CLEAN_STRING( &(data->g_value) );
-    OPT_CLEAN_STRING( &(data->fr_value) );
-    OPT_CLEAN_STRING( &(data->fo_value) );
-    OPT_CLEAN_STRING( &(data->fip_value) );
-    OPT_CLEAN_STRING( &(data->fi_value) );
-    OPT_CLEAN_STRING( &(data->fhq_value) );
-    OPT_CLEAN_STRING( &(data->fh_value) );
-    OPT_CLEAN_STRING( &(data->d_value) );
-    OPT_CLEAN_STRING( &(data->d_plus_value) );
-    OPT_CLEAN_STRING( &(data->bt_value) );
-    OPT_CLEAN_STRING( &(data->adt_value) );
-    OPT_CLEAN_STRING( &(data->adhp_value) );
-    OPT_CLEAN_STRING( &(data->add_value) );
-    OPT_CLEAN_STRING( &(data->ad_value) );
+    OPT_CLEAN_STRING( front, &(data->wce_value) );
+    OPT_CLEAN_STRING( front, &(data->wcd_value) );
+    OPT_CLEAN_STRING( front, &(data->u_value) );
+    OPT_CLEAN_STRING( front, &(data->rod_value) );
+    OPT_CLEAN_STRING( front, &(data->nt_value) );
+    OPT_CLEAN_STRING( front, &(data->nm_value) );
+    OPT_CLEAN_STRING( front, &(data->nd_value) );
+    OPT_CLEAN_STRING( front, &(data->nc_value) );
+    OPT_CLEAN_STRING( front, &(data->i_value) );
+    OPT_CLEAN_STRING( front, &(data->g_value) );
+    OPT_CLEAN_STRING( front, &(data->fr_value) );
+    OPT_CLEAN_STRING( front, &(data->fo_value) );
+    OPT_CLEAN_STRING( front, &(data->fip_value) );
+    OPT_CLEAN_STRING( front, &(data->fi_value) );
+    OPT_CLEAN_STRING( front, &(data->fhq_value) );
+    OPT_CLEAN_STRING( front, &(data->fh_value) );
+    OPT_CLEAN_STRING( front, &(data->d_value) );
+    OPT_CLEAN_STRING( front, &(data->d_plus_value) );
+    OPT_CLEAN_STRING( front, &(data->bt_value) );
+    OPT_CLEAN_STRING( front, &(data->adt_value) );
+    OPT_CLEAN_STRING( front, &(data->adhp_value) );
+    OPT_CLEAN_STRING( front, &(data->add_value) );
+    OPT_CLEAN_STRING( front, &(data->ad_value) );
 }

@@ -30,4 +30,5 @@
 ****************************************************************************/
 
 
-extern instruction      *rMAKEFNEG( instruction * );
+#pragma once
+extern instruction      *rMAKEFNEG( BackRun& back, instruction * );

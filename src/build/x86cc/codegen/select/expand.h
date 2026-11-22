@@ -29,9 +29,10 @@
 ****************************************************************************/
 
 
-extern const opcode_entry   *FindGenEntry( instruction *ins, bool *has_index );
-extern void                 FixGenEntry( instruction *ins );
-extern instruction          *PostExpandIns( instruction *ins );
-extern instruction          *ExpandIns( instruction *ins );
-extern int                  ExpandOps( bool keep_on_truckin );
+#pragma once
+extern const opcode_entry   *FindGenEntry( BackRun& back, instruction *ins, bool *has_index );
+extern void                 FixGenEntry( BackRun& back, instruction *ins );
+extern instruction          *PostExpandIns( BackRun& back, instruction *ins );
+extern instruction          *ExpandIns( BackRun& back, instruction *ins );
+extern int                  ExpandOps( BackRun& back, bool keep_on_truckin );
 extern reg_set_index        SpecialPossible( instruction *ins );

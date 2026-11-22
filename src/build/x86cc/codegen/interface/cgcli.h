@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "cgapi.h"
 
 extern bool     _CGAPI BELoad( const char * );

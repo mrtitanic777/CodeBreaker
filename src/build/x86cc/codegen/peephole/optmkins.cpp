@@ -38,9 +38,10 @@
 #include "encode.h"
 #include "optutil.h"
 #include "optmkins.h"
+#include "backrun.hpp"
 
 
-ins_entry       *NewInstr( any_oc *oc )
+ins_entry       *NewInstr( BackRun& back, any_oc *oc )
 /*************************************/
 {
     ins_entry   *instr;
@@ -49,9 +50,9 @@ ins_entry       *NewInstr( any_oc *oc )
   optbegin
     len = oc->oc_header.reclen + sizeof( ins_link );
     if( len <= OCENTRY_SIZE ) {
-        instr = static_cast<ins_entry *>(AllocFrl( &optdata_state().InstrFrl, OCENTRY_SIZE ));
+        instr = static_cast<ins_entry *>(AllocFrl( back, &back.optdata.InstrFrl, OCENTRY_SIZE ));
     } else {
-        instr = static_cast<ins_entry *>(CGAlloc( len ));
+        instr = static_cast<ins_entry *>(CGAlloc( back, len ));
     }
     instr->ins.prev = NULL;
     instr->ins.next = NULL;
@@ -60,54 +61,54 @@ ins_entry       *NewInstr( any_oc *oc )
 }
 
 
-void    FreeInstr( ins_entry *instr )
+void    FreeInstr( BackRun& back, ins_entry *instr )
 /***********************************/
 {
     oc_length   len;
 
     len = instr->oc.oc_header.reclen + sizeof( ins_link );
     if( len <= OCENTRY_SIZE ) {
-        FrlFreeSize( &optdata_state().InstrFrl, (pointer *)instr, OCENTRY_SIZE );
+        FrlFreeSize( back, &back.optdata.InstrFrl, (pointer *)instr, OCENTRY_SIZE );
     } else {
-        CGFree( instr );
+        CGFree( back, instr );
     }
 }
 
 
-bool    InstrFrlFree( void )
+bool    InstrFrlFree( BackRun& back )
 /**************************/
 {
-    return( FrlFreeAll( &optdata_state().InstrFrl, OCENTRY_SIZE ) );
+    return( FrlFreeAll( back, &back.optdata.InstrFrl, OCENTRY_SIZE ) );
 }
 
 
-label_handle AddNewLabel( ins_entry *new_ins, obj_length align )
+label_handle AddNewLabel( BackRun& back, ins_entry *new_ins, obj_length align )
 /**************************************************************/
 {
     label_handle    lbl;
     any_oc          oc;
 
   optbegin
-    if( NextClass( new_ins ) == OC_LABEL )
-        optreturn( _Label( NextIns( new_ins ) ) );
+    if( NextClass( back, new_ins ) == OC_LABEL )
+        optreturn( _Label( NextIns( back, new_ins ) ) );
     if( new_ins != NULL && _Class( new_ins ) == OC_LABEL )
         optreturn( _Label( new_ins ) );
     oc.oc_handle.hdr.class_ = OC_LABEL;
     oc.oc_handle.hdr.reclen = sizeof( oc_handle );
     oc.oc_handle.hdr.objlen = align;
-    lbl = AskForNewLabel();
+    lbl = AskForNewLabel(back);
     oc.oc_handle.ref = NULL;
     oc.oc_handle.handle = lbl;
 #if _TARGET_RISC
     oc.oc_handle.line = 0;
 #endif
-    AddInstr( NewInstr( &oc ), new_ins );
+    AddInstr( back, NewInstr( back, &oc ), new_ins );
     _SetStatus( lbl, DYINGLABEL );
   optreturn( lbl );
 }
 
 
-void    AddNewJump( ins_entry *new_ins, label_handle lbl )
+void    AddNewJump( BackRun& back, ins_entry *new_ins, label_handle lbl )
 /********************************************************/
 {
     any_oc     oc;
@@ -115,12 +116,12 @@ void    AddNewJump( ins_entry *new_ins, label_handle lbl )
   optbegin
     oc.oc_handle.hdr.class_ = OC_JMP;
     oc.oc_handle.hdr.reclen = sizeof( oc_handle );
-    oc.oc_handle.hdr.objlen = OptInsSize( OC_JMP, OC_DEST_NEAR );
+    oc.oc_handle.hdr.objlen = OptInsSize( back, OC_JMP, OC_DEST_NEAR );
     oc.oc_handle.ref = NULL;
     oc.oc_handle.handle = lbl;
 #if _TARGET_RISC
     oc.oc_handle.line = 0;
 #endif
-    AddInstr( NewInstr( &oc ), new_ins );
+    AddInstr( back, NewInstr( back, &oc ), new_ins );
   optend
 }

@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef enum {
     OPT_REDIRECT,
     OPT_RETAFTCALL,

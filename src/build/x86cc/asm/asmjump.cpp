@@ -38,9 +38,10 @@
   #include "asminput.h"
 #endif
 #include "asmjump.h"
+#include "asmrun.hpp"
 
 /* prototypes */
-bool ptr_operator( memtype mem_type, bool fix_mem_type );
+bool ptr_operator( AsmRun& assembler, memtype mem_type, bool fix_mem_type );
 
 #if defined( _STANDALONE_ )
 
@@ -190,7 +191,7 @@ static void FarCallToNear( token_buffer *tokbuf )
 }
 #endif
 
-bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
+bool jmp( AsmRun& assembler, token_buffer *tokbuf, expr_list *opndx, int *flags )
 /*
   determine the displacement of jmp;
 */
@@ -210,18 +211,18 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
 
 #endif
     *flags = 0;
-    asmdefs_state().Code->data[asmdefs_state().Opnd_Count] = opndx->value;
+    assembler.asmdefs.Code->data[assembler.asmdefs.Opnd_Count] = opndx->value;
     sym = opndx->sym;
     if( sym == NULL ) {
-        if( asmdefs_state().Code->info.token == T_CALL ) {
-            asmdefs_state().Code->info.token = T_CALLF;
-        } else if( asmdefs_state().Code->info.token == T_JMP ) {
-            asmdefs_state().Code->info.token = T_JMPF;
+        if( assembler.asmdefs.Code->info.token == T_CALL ) {
+            assembler.asmdefs.Code->info.token = T_CALLF;
+        } else if( assembler.asmdefs.Code->info.token == T_JMP ) {
+            assembler.asmdefs.Code->info.token = T_JMPF;
         }
-        if( asmdefs_state().Code->data[asmdefs_state().Opnd_Count] > USHRT_MAX ) {
-            asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I32;
+        if( assembler.asmdefs.Code->data[assembler.asmdefs.Opnd_Count] > USHRT_MAX ) {
+            assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I32;
         } else {
-            asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I16;
+            assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I16;
         }
         return( RC_OK );
     }
@@ -241,8 +242,8 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
     }
 #endif
 
-    if( !asmdefs_state().Code->mem_type_fixed ) {
-        asmdefs_state().Code->mem_type = MT_EMPTY;
+    if( !assembler.asmdefs.Code->mem_type_fixed ) {
+        assembler.asmdefs.Code->mem_type = MT_EMPTY;
     }
     fixup_option = OPTJ_NONE;
     fixup_type = FIX_RELOFF8;
@@ -251,12 +252,12 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
 #if defined( _STANDALONE_ )
     case SYM_PROC:
 #endif
-        if(  ( asmdefs_state().Code->mem_type == MT_EMPTY || asmdefs_state().Code->mem_type == MT_SHORT
-                || asmdefs_state().Code->mem_type == MT_NEAR )
+        if(  ( assembler.asmdefs.Code->mem_type == MT_EMPTY || assembler.asmdefs.Code->mem_type == MT_SHORT
+                || assembler.asmdefs.Code->mem_type == MT_NEAR )
             && sym->mem_type != MT_WORD
             && sym->mem_type != MT_DWORD
             && sym->mem_type != MT_FWORD
-            && !IS_JMPCALLF( asmdefs_state().Code->info.token ) ) {
+            && !IS_JMPCALLF( assembler.asmdefs.Code->info.token ) ) {
 #if defined( _STANDALONE_ )
             if( ( Code->info.token == T_CALL )
                 && ( Code->mem_type == MT_EMPTY )
@@ -269,16 +270,16 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
 #else
             addr = sym->addr;
 #endif
-            addr -= ( asminlin_state().AsmCodeAddress + 2 );  // calculate the displacement
-            addr += asmdefs_state().Code->data[asmdefs_state().Opnd_Count];
-            switch( asmdefs_state().Code->info.token ) {
+            addr -= ( assembler.asminlin->AsmCodeAddress + 2 );  // calculate the displacement
+            addr += assembler.asmdefs.Code->data[assembler.asmdefs.Opnd_Count];
+            switch( assembler.asmdefs.Code->info.token ) {
             case T_JCXZ:
             case T_LOOPW:
             case T_LOOPEW:
             case T_LOOPZW:
             case T_LOOPNEW:
             case T_LOOPNZW:
-                if( asmdefs_state().Code->use32 ) {
+                if( assembler.asmdefs.Code->use32 ) {
                     // 1 extra byte for OPNSIZ
                     addr--;
                 }
@@ -289,29 +290,29 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
             case T_LOOPZD:
             case T_LOOPNED:
             case T_LOOPNZD:
-                if( !asmdefs_state().Code->use32 ) {
+                if( !assembler.asmdefs.Code->use32 ) {
                     // 1 extra byte for OPNSIZ
                     addr--;
                 }
                 break;
             }
-            if( asmdefs_state().Code->info.token == T_CALL && asmdefs_state().Code->mem_type == MT_EMPTY ) {
-                asmdefs_state().Code->mem_type = MT_NEAR;
+            if( assembler.asmdefs.Code->info.token == T_CALL && assembler.asmdefs.Code->mem_type == MT_EMPTY ) {
+                assembler.asmdefs.Code->mem_type = MT_NEAR;
             }
-            if( asmdefs_state().Code->mem_type != MT_NEAR && asmdefs_state().Code->info.token != T_CALL
+            if( assembler.asmdefs.Code->mem_type != MT_NEAR && assembler.asmdefs.Code->info.token != T_CALL
                 && ( addr >= SCHAR_MIN && addr <= SCHAR_MAX ) ) {
-                asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I8;
+                assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I8;
             } else {
                 /* near jmp */
-                if( asmdefs_state().Code->use32 ) {
-                    asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I32;
+                if( assembler.asmdefs.Code->use32 ) {
+                    assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I32;
                     addr -= 3; // 32 bit displacement
                 } else {
-                    asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I16;
+                    assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I16;
                     addr -= 1; // 16 bit displacement
                 }
-                if( IS_JMP( asmdefs_state().Code->info.token ) ) {
-                    switch( asmdefs_state().Code->info.token ) {
+                if( IS_JMP( assembler.asmdefs.Code->info.token ) ) {
+                    switch( assembler.asmdefs.Code->info.token ) {
                     case T_JMP:
                     case T_JMPF:
                     case T_JCXZ:
@@ -326,9 +327,9 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
             }
 
             /* store the displacement */
-            asmdefs_state().Code->data[asmdefs_state().Opnd_Count] = addr;
+            assembler.asmdefs.Code->data[assembler.asmdefs.Opnd_Count] = addr;
 
-            switch( asmdefs_state().Code->info.token ) {
+            switch( assembler.asmdefs.Code->info.token ) {
             case T_JCXZ:
             case T_JECXZ:
             case T_LOOP:
@@ -349,23 +350,23 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
 #if defined( _STANDALONE_ )
                 if( !PhaseError && (Code->info.opnd_type[Opnd_Count] != OP_I8) ) {
 #else
-                if( (asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] != OP_I8) ) {
+                if( (assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] != OP_I8) ) {
 #endif
-                    AsmError( JUMP_OUT_OF_RANGE );
+                    AsmError( *assembler.front, JUMP_OUT_OF_RANGE );
                     return( RC_ERROR );
                 }
-                asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I8;
+                assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I8;
                 break;
             }
 
-            if( (asmdefs_state().Code->info.cpu & P_CPU_MASK) < P_386 && IS_JMP( asmdefs_state().Code->info.token ) ) {
+            if( (assembler.asmdefs.Code->info.cpu & P_CPU_MASK) < P_386 && IS_JMP( assembler.asmdefs.Code->info.token ) ) {
                 /* look into jump extension */
-                switch( asmdefs_state().Code->info.token ) {
+                switch( assembler.asmdefs.Code->info.token ) {
                 case T_JMP:
                 case T_JMPF:
                     break;
                 default:
-                    if( asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] != OP_I8 ) {
+                    if( assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] != OP_I8 ) {
 #if defined( _STANDALONE_ )
                         if( Code->mem_type == MT_EMPTY ) {
                             jumpExtend( tokbuf, 0 );
@@ -376,7 +377,7 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
                             return( RC_ERROR );
                         }
 #else
-                        AsmError( JUMP_OUT_OF_RANGE );
+                        AsmError( *assembler.front, JUMP_OUT_OF_RANGE );
                         return( RC_ERROR );
 #endif
                     }
@@ -389,18 +390,18 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
     case SYM_EXTERNAL:
 
         /* forward ref, or external symbol */
-        if( asmdefs_state().Code->mem_type == MT_EMPTY && sym->mem_type != MT_EMPTY ) {
+        if( assembler.asmdefs.Code->mem_type == MT_EMPTY && sym->mem_type != MT_EMPTY ) {
             switch( sym->mem_type ) {
             case MT_FAR:
-                if( asmdefs_state().Code->info.token == T_CALL ) {
-                    asmdefs_state().Code->info.token = T_CALLF;
-                } else if( asmdefs_state().Code->info.token == T_JMP ) {
-                    asmdefs_state().Code->info.token = T_JMPF;
+                if( assembler.asmdefs.Code->info.token == T_CALL ) {
+                    assembler.asmdefs.Code->info.token = T_CALLF;
+                } else if( assembler.asmdefs.Code->info.token == T_JMP ) {
+                    assembler.asmdefs.Code->info.token = T_JMPF;
                 }
                 // fall through
             case MT_SHORT:
             case MT_NEAR:
-                asmdefs_state().Code->mem_type = sym->mem_type;
+                assembler.asmdefs.Code->mem_type = sym->mem_type;
                 break;
 #if defined( _STANDALONE_ )
             case MT_PROC:
@@ -417,28 +418,28 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
                 break;
 #endif
             case MT_FWORD:
-                if( ptr_operator( MT_FWORD, true ) )
+                if( ptr_operator( assembler, MT_FWORD, true ) )
                     return( RC_ERROR );
                 break;
             default:
-                asmdefs_state().Code->mem_type = sym->mem_type;
+                assembler.asmdefs.Code->mem_type = sym->mem_type;
             }
         }
-        if( asmdefs_state().Code->mem_type == MT_FAR ) {
-            if( asmdefs_state().Code->info.token == T_CALL ) {
-                asmdefs_state().Code->info.token = T_CALLF;
-            } else if( asmdefs_state().Code->info.token == T_JMP ) {
-                asmdefs_state().Code->info.token = T_JMPF;
+        if( assembler.asmdefs.Code->mem_type == MT_FAR ) {
+            if( assembler.asmdefs.Code->info.token == T_CALL ) {
+                assembler.asmdefs.Code->info.token = T_CALLF;
+            } else if( assembler.asmdefs.Code->info.token == T_JMP ) {
+                assembler.asmdefs.Code->info.token = T_JMPF;
             }
         }
-        switch( asmdefs_state().Code->info.token ) {
+        switch( assembler.asmdefs.Code->info.token ) {
         case T_CALLF:
         case T_JMPF:
-            switch( asmdefs_state().Code->mem_type ) {
+            switch( assembler.asmdefs.Code->mem_type ) {
             case MT_SHORT:
             case MT_NEAR:
-                if( asmdefs_state().Opnd_Count == OPND1 && asmdefs_state().Code->mem_type_fixed ) {
-                    AsmError( CANNOT_USE_SHORT_OR_NEAR );
+                if( assembler.asmdefs.Opnd_Count == OPND1 && assembler.asmdefs.Code->mem_type_fixed ) {
+                    AsmError( *assembler.front, CANNOT_USE_SHORT_OR_NEAR );
                     return( RC_ERROR );
                 }
                 /* fall through */
@@ -448,21 +449,21 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
                 SET_OPSIZ( Code, SymIs32( sym ));
                 find_frame( sym );
 #endif
-                if( asmdefs_state().Opnd_Count == OPND2 ) {
-                    if( IS_OPSIZ_32( asmdefs_state().Code ) ) {
+                if( assembler.asmdefs.Opnd_Count == OPND2 ) {
+                    if( IS_OPSIZ_32( assembler.asmdefs.Code ) ) {
                         fixup_type = FIX_OFF32;
-                        asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I32;
+                        assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I32;
                     } else {
                         fixup_type = FIX_OFF16;
-                        asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I16;
+                        assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I16;
                     }
                 } else {
-                    if( IS_OPSIZ_32( asmdefs_state().Code ) ) {
+                    if( IS_OPSIZ_32( assembler.asmdefs.Code ) ) {
                         fixup_type = FIX_PTR32;
-                        asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_J48;
+                        assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_J48;
                     } else {
                         fixup_type = FIX_PTR16;
-                        asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_J32;
+                        assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_J32;
                     }
                 }
                 break;
@@ -472,7 +473,7 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
             case MT_SBYTE:
             case MT_SWORD:
 #endif
-                AsmError( INVALID_SIZE );
+                AsmError( *assembler.front, INVALID_SIZE );
                 return( RC_ERROR );
             case MT_DWORD:
             case MT_FWORD:
@@ -484,39 +485,39 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
             case MT_QWORD:
             case MT_TBYTE:
             case MT_OWORD:
-                AsmError( INVALID_SIZE );
+                AsmError( *assembler.front, INVALID_SIZE );
                 return( RC_ERROR );
             }
             break;
         case T_CALL:
-            if( asmdefs_state().Code->mem_type == MT_SHORT ) {
-                AsmError( CANNOT_USE_SHORT_WITH_CALL );
+            if( assembler.asmdefs.Code->mem_type == MT_SHORT ) {
+                AsmError( *assembler.front, CANNOT_USE_SHORT_WITH_CALL );
                 return( RC_ERROR );
-            } else if( asmdefs_state().Code->mem_type == MT_EMPTY ) {
+            } else if( assembler.asmdefs.Code->mem_type == MT_EMPTY ) {
 #if defined( _STANDALONE_ )
                 fixup_option = OPTJ_CALL;
 #else
                 fixup_option = OPTJ_NONE;
 #endif
-                if( asmdefs_state().Code->use32 ) {
+                if( assembler.asmdefs.Code->use32 ) {
                     fixup_type = FIX_RELOFF32;
-                    asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I32;
+                    assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I32;
                 } else {
                     fixup_type = FIX_RELOFF16;
-                    asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I16;
+                    assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I16;
                 }
                 break;
             }
             /* fall through */
         case T_JMP:
-            switch( asmdefs_state().Code->mem_type ) {
+            switch( assembler.asmdefs.Code->mem_type ) {
             case MT_SHORT:
                 fixup_option = OPTJ_EXPLICIT;
                 fixup_type = FIX_RELOFF8;
-                asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I8;
+                assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I8;
                 break;
             case MT_FAR:
-                AsmError( SYNTAX_ERROR );
+                AsmError( *assembler.front, SYNTAX_ERROR );
                 break;
             case MT_EMPTY:
                 // forward reference
@@ -528,23 +529,23 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
                 fixup_type = FIX_RELOFF8;
                 Code->info.opnd_type[Opnd_Count] = OP_I8;
 #else
-                if( asmdefs_state().Code->use32 ) {
+                if( assembler.asmdefs.Code->use32 ) {
                     fixup_type = FIX_RELOFF32;
-                    asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I32;
+                    assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I32;
                 } else {
                     fixup_type = FIX_RELOFF16;
-                    asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I16;
+                    assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I16;
                 }
 #endif
                 break;
             case MT_NEAR:
                 fixup_option = OPTJ_EXPLICIT;
-                if( asmdefs_state().Code->use32 ) {
+                if( assembler.asmdefs.Code->use32 ) {
                     fixup_type = FIX_RELOFF32;
-                    asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I32;
+                    assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I32;
                 } else {
                     fixup_type = FIX_RELOFF16;
-                    asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I16;
+                    assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I16;
                 }
                 break;
             case MT_DWORD:
@@ -563,7 +564,7 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
             case MT_QWORD:
             case MT_TBYTE:
             case MT_OWORD:
-                AsmError( INVALID_SIZE );
+                AsmError( *assembler.front, INVALID_SIZE );
                 return( RC_ERROR );
             }
 //            check_assume( sym, PREFIX_EMPTY );
@@ -591,23 +592,23 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
                 ( Code->mem_type != MT_SHORT ) &&
                 ( (Options.mode & MODE_IDEAL) == 0 ) ) {
 #else
-            if( ( asmdefs_state().Code->mem_type != MT_EMPTY ) &&
-                ( asmdefs_state().Code->mem_type != MT_SHORT ) ) {
+            if( ( assembler.asmdefs.Code->mem_type != MT_EMPTY ) &&
+                ( assembler.asmdefs.Code->mem_type != MT_SHORT ) ) {
 #endif
-                AsmError( ONLY_SHORT_DISPLACEMENT_IS_ALLOWED );
+                AsmError( *assembler.front, ONLY_SHORT_DISPLACEMENT_IS_ALLOWED );
                 return( RC_ERROR );
             }
-            asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I8;
+            assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I8;
             fixup_option = OPTJ_EXPLICIT;
             fixup_type = FIX_RELOFF8;
             break;
         default:
-            if( (asmdefs_state().Code->info.cpu & P_CPU_MASK) >= P_386 ) {
-                switch( asmdefs_state().Code->mem_type ) {
+            if( (assembler.asmdefs.Code->info.cpu & P_CPU_MASK) >= P_386 ) {
+                switch( assembler.asmdefs.Code->mem_type ) {
                 case MT_SHORT:
                     fixup_option = OPTJ_EXPLICIT;
                     fixup_type = FIX_RELOFF8;
-                    asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I8;
+                    assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I8;
                     break;
                 case MT_EMPTY:
                     // forward reference
@@ -621,12 +622,12 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
 #endif
                 case MT_NEAR:
                     fixup_option = OPTJ_EXPLICIT;
-                    if( asmdefs_state().Code->use32 ) {
+                    if( assembler.asmdefs.Code->use32 ) {
                         fixup_type = FIX_RELOFF32;
-                        asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I32;
+                        assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I32;
                     } else {
                         fixup_type = FIX_RELOFF16;
-                        asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I16;
+                        assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I16;
                     }
                     break;
                 case MT_FAR:
@@ -636,13 +637,13 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
                     return( RC_OK );
 #endif
                 default:
-                    AsmError( ONLY_SHORT_AND_NEAR_DISPLACEMENT_IS_ALLOWED );
+                    AsmError( *assembler.front, ONLY_SHORT_AND_NEAR_DISPLACEMENT_IS_ALLOWED );
                     return( RC_ERROR );
                 }
             } else {
                 // the only mode in 8086, 80186, 80286 is
                 // Jxx SHORT
-                switch( asmdefs_state().Code->mem_type ) {
+                switch( assembler.asmdefs.Code->mem_type ) {
                 case MT_EMPTY:
 #if defined( _STANDALONE_ )
                     fixup_option = OPTJ_EXTEND;
@@ -653,24 +654,24 @@ bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags )
                 case MT_SHORT:
                     fixup_option = OPTJ_EXPLICIT;
                     fixup_type = FIX_RELOFF8;
-                    asmdefs_state().Code->info.opnd_type[asmdefs_state().Opnd_Count] = OP_I8;
+                    assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I8;
                     break;
                 default:
-                    AsmError( ONLY_SHORT_DISPLACEMENT_IS_ALLOWED );
+                    AsmError( *assembler.front, ONLY_SHORT_DISPLACEMENT_IS_ALLOWED );
                     return( RC_ERROR );
                 }
             }
         }
-        AddFixup( sym, fixup_type, fixup_option );
+        AddFixup( assembler, sym, fixup_type, fixup_option );
         break;
     default: /* SYM_STACK */
-        AsmError( NO_JUMP_TO_AUTO );
+        AsmError( *assembler.front, NO_JUMP_TO_AUTO );
         return( RC_ERROR );
     }
     return( RC_OK );
 }
 
-bool ptr_operator( memtype mem_type, bool fix_mem_type )
+bool ptr_operator( AsmRun& assembler, memtype mem_type, bool fix_mem_type )
 /******************************************************/
 /*
   determine what should be done with SHORT, NEAR, FAR, BYTE, WORD, DWORD, PTR
@@ -682,38 +683,38 @@ bool ptr_operator( memtype mem_type, bool fix_mem_type )
      * operator will be called again with PTR, then we set the opsiz, etc.
      */
 
-    if( asmdefs_state().Code->info.token == T_LEA )
+    if( assembler.asmdefs.Code->info.token == T_LEA )
         return( RC_OK );
-    if( asmdefs_state().Code->info.token == T_SMSW )
+    if( assembler.asmdefs.Code->info.token == T_SMSW )
         return( RC_OK );
     if( mem_type == MT_PTR ) {
         /* finish deciding what type to make the inst NOW
          * ie: decide size overrides etc.
          */
-        if( asmdefs_state().Code->use32 && MEM_TYPE( asmdefs_state().Code->mem_type, WORD ) ) {
+        if( assembler.asmdefs.Code->use32 && MEM_TYPE( assembler.asmdefs.Code->mem_type, WORD ) ) {
             // if we are in use32 mode, we have to add OPSIZ prefix for
             // most of the 386 instructions ( except MOVSX and MOVZX )
             // when we find WORD PTR
 
-            if( !IS_BRANCH( asmdefs_state().Code->info.token ) ) {
-                if( asmdefs_state().Code->info.opnd_type[OPND1] == OP_MMX ) {
+            if( !IS_BRANCH( assembler.asmdefs.Code->info.token ) ) {
+                if( assembler.asmdefs.Code->info.opnd_type[OPND1] == OP_MMX ) {
                 /* JBS 2001/02/19
                 no WORD operands for MMX instructions, only 64-bit or 128-bit
                 so no WORD override needed
                     */
                 } else {
-                    switch( asmdefs_state().Code->info.token ) {
+                    switch( assembler.asmdefs.Code->info.token ) {
                     case T_MOVSX:
                     case T_MOVZX:
                         break;
                     default:
-                        SET_OPSIZ_ON( asmdefs_state().Code );
+                        SET_OPSIZ_ON( assembler.asmdefs.Code );
                         break;
                     }
                 }
             }
 
-        } else if( !asmdefs_state().Code->use32 && MEM_TYPE( asmdefs_state().Code->mem_type, DWORD ) ) {
+        } else if( !assembler.asmdefs.Code->use32 && MEM_TYPE( assembler.asmdefs.Code->mem_type, DWORD ) ) {
 
             /* if we are not in use32 mode, we have to add OPSIZ
              * when we find DWORD PTR
@@ -723,15 +724,15 @@ bool ptr_operator( memtype mem_type, bool fix_mem_type )
              *          asmins.h, and then putting F_32 or F_16 to append
              *      opsize bytes when necessary ?
              */
-            if( !IS_BRANCH( asmdefs_state().Code->info.token ) ) {
+            if( !IS_BRANCH( assembler.asmdefs.Code->info.token ) ) {
 
-                if( asmdefs_state().Code->info.opnd_type[OPND1] == OP_MMX ) {
+                if( assembler.asmdefs.Code->info.opnd_type[OPND1] == OP_MMX ) {
                     /* JBS 2001/02/19
                        no WORD operands for MMX instructions, only 64-bit or 128-bit
                        so no DWORD override needed
                      */
                 } else {
-                    switch( asmdefs_state().Code->info.token ) {
+                    switch( assembler.asmdefs.Code->info.token ) {
                     case T_LDS:
                     case T_LES:
                     case T_LFS:
@@ -741,24 +742,24 @@ bool ptr_operator( memtype mem_type, bool fix_mem_type )
                         break;
                     default:
                         // OPSIZ prefix
-                        SET_OPSIZ_ON( asmdefs_state().Code );
+                        SET_OPSIZ_ON( assembler.asmdefs.Code );
                     }
                 }
             }
         }
     } else {
-        if( ( mem_type != MT_EMPTY ) && !asmdefs_state().Code->mem_type_fixed ) {
+        if( ( mem_type != MT_EMPTY ) && !assembler.asmdefs.Code->mem_type_fixed ) {
 #if defined( _STANDALONE_ )
             if( mem_type != MT_STRUCT ) {
 #endif
-                asmdefs_state().Code->mem_type = mem_type;
+                assembler.asmdefs.Code->mem_type = mem_type;
                 if( fix_mem_type ) {
-                    asmdefs_state().Code->mem_type_fixed = true;
+                    assembler.asmdefs.Code->mem_type_fixed = true;
                     if( mem_type == MT_FAR ) {
-                        if( asmdefs_state().Code->info.token == T_CALL ) {
-                            asmdefs_state().Code->info.token = T_CALLF;
-                        } else if( asmdefs_state().Code->info.token == T_JMP ) {
-                            asmdefs_state().Code->info.token = T_JMPF;
+                        if( assembler.asmdefs.Code->info.token == T_CALL ) {
+                            assembler.asmdefs.Code->info.token = T_CALLF;
+                        } else if( assembler.asmdefs.Code->info.token == T_JMP ) {
+                            assembler.asmdefs.Code->info.token = T_JMPF;
                         }
                     }
                 }

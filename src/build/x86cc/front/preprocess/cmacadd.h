@@ -33,24 +33,24 @@
 #ifndef _CMACADD_H
 #define _CMACADD_H
 
-extern void         *PermMemAlloc( size_t amount );
-extern void         InitMacroSegments( void );
-extern void         FreeMacroSegments( void );
-extern MEPTR        CreateMEntry( const char *, size_t len );
-extern MEPTR        MacroDefine( size_t len, macro_flags mflags );
+extern void         *PermMemAlloc( FrontRun& front, size_t amount );
+extern void         InitMacroSegments( FrontRun& front );
+extern void         FreeMacroSegments( FrontRun& front );
+extern MEPTR        CreateMEntry( FrontRun& front, const char *, size_t len );
+extern MEPTR        MacroDefine( FrontRun& front, size_t len, macro_flags mflags );
 extern bool         MacroCompare( MEPTR, MEPTR );
-extern MEPTR        MacroLookup( const char * );
+extern MEPTR        MacroLookup( FrontRun& front, const char * );
 
 void MacroSegmentAddChar(       // MacroSegment: ADD A CHARACTER
-    size_t *mlen,               // - data length
+    FrontRun& front, size_t *mlen,               // - data length
     char chr )                  // - character to be added
 ;
 void MacroSegmentAddToken(      // MacroSegment: ADD A TOKEN
-    size_t *mlen,               // - data length
+    FrontRun& front, size_t *mlen,               // - data length
     TOKEN token )               // - token to be added
 ;
 void MacroSegmentAddMem(        // MacroSegment: ADD A SEQUENCE OF BYTES
-    size_t *mlen,               // - data length
+    FrontRun& front, size_t *mlen,               // - data length
     const char *buff,           // - bytes to be added
     size_t len )                // - number of bytes
 ;

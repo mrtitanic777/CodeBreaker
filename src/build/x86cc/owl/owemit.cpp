@@ -32,6 +32,7 @@
 
 #include "owlpriv.h"
 #include "owreloc.h"
+#include "backrun.hpp"
 
 void OWLENTRY OWLEmitLabel( owl_section_handle section, owl_symbol_handle symbol, owl_sym_type type, owl_sym_linkage linkage ) {
 //******************************************************************************************************************************
@@ -68,7 +69,7 @@ void OWLENTRY OWLWeakExt( owl_file_handle file, owl_symbol_handle wk_sym, owl_sy
     }
 }
 
-void OWLENTRY OWLEmitData( owl_section_handle section, const char *buffer, size_t size )
+void OWLENTRY OWLEmitData( BackRun& back, owl_section_handle section, const char *buffer, size_t size )
 //**************************************************************************************
 {
     _Log(( section->file, "OWLEmitData( %x, %x, %lx )\n", section, buffer, (unsigned long)size ));
@@ -77,7 +78,7 @@ void OWLENTRY OWLEmitData( owl_section_handle section, const char *buffer, size_
         section->size = section->location;
     }
     if( section->buffer != NULL ) {
-        OWLBufferWrite( section->buffer, buffer, size );
+        OWLBufferWrite( back, section->buffer, buffer, size );
         // assert( section->size == OWLBufferSize( section->buffer ) );
     }
 }
@@ -95,12 +96,12 @@ static void addReloc( owl_section_handle section, owl_reloc_info *reloc ) {
     }
 }
 
-static void doNewReloc( owl_section_handle section, owl_symbol_handle sym, owl_offset offset, owl_reloc_type type ) {
+static void doNewReloc( BackRun& back, owl_section_handle section, owl_symbol_handle sym, owl_offset offset, owl_reloc_type type ) {
 //*******************************************************************************************************************
 
     owl_reloc_info      *reloc;
 
-    reloc = static_cast<owl_reloc_info *>(_ClientAlloc( section->file, sizeof( owl_reloc_info ) ));
+    reloc = static_cast<owl_reloc_info *>(_ClientAlloc( back, section->file, sizeof( owl_reloc_info ) ));
     reloc->symbol = sym;
     reloc->type = type;
     reloc->location = offset;
@@ -109,7 +110,7 @@ static void doNewReloc( owl_section_handle section, owl_symbol_handle sym, owl_o
     section->num_relocs += 1;
 }
 
-void OWLENTRY OWLEmitReloc( owl_section_handle section, owl_offset offset, owl_symbol_handle sym, owl_reloc_type type ) {
+void OWLENTRY OWLEmitReloc( BackRun& back, owl_section_handle section, owl_offset offset, owl_symbol_handle sym, owl_reloc_type type ) {
 //***********************************************************************************************************************
 
     _Log(( section->file, "OWLEmitReloc( %x, %x, %x, %x )\n",
@@ -119,10 +120,10 @@ void OWLENTRY OWLEmitReloc( owl_section_handle section, owl_offset offset, owl_s
         // to get rid of them right here.
         return;
     }
-    doNewReloc( section, sym, offset, type );
+    doNewReloc( back, section, sym, offset, type );
 }
 
-void OWLENTRY OWLEmitMetaReloc( owl_section_handle section, owl_offset offset, void *data, owl_reloc_type type ) {
+void OWLENTRY OWLEmitMetaReloc( BackRun& back, owl_section_handle section, owl_offset offset, void *data, owl_reloc_type type ) {
 //****************************************************************************************************************
 
     owl_section_handle  target;
@@ -130,10 +131,10 @@ void OWLENTRY OWLEmitMetaReloc( owl_section_handle section, owl_offset offset, v
     target = (owl_section_handle)data;
     _Log(( section->file, "OWLEmitMetaReloc( %x, %x, %x, %x )\n",
                 section, offset, target, type ));
-    doNewReloc( section, target->sym, offset, type );
+    doNewReloc( back, section, target->sym, offset, type );
 }
 
-void OWLENTRY OWLEmitRelocAddend( owl_section_handle section, owl_reloc_type type, owl_offset addend ) {
+void OWLENTRY OWLEmitRelocAddend( BackRun& back, owl_section_handle section, owl_reloc_type type, owl_offset addend ) {
 //******************************************************************************************************
 
     uint_32             bit_mask;
@@ -144,17 +145,17 @@ void OWLENTRY OWLEmitRelocAddend( owl_section_handle section, owl_reloc_type typ
                 section, type, addend ));
     OWLTellData( section, section->location, (char *)&data, sizeof( data ) );
     reloc.type = type;
-    bit_mask = OWLRelocBitMask( section->file, &reloc );
+    bit_mask = OWLRelocBitMask( back, section->file, &reloc );
     data = (data&~bit_mask)|(((addend&bit_mask)+(data&bit_mask))&bit_mask);
-    OWLEmitData( section, (char *)&data, sizeof( data ) );
+    OWLEmitData( back, section, (char *)&data, sizeof( data ) );
 }
 
-void OWLENTRY OWLEmitImport( owl_file_handle file, const char *name ) {
+void OWLENTRY OWLEmitImport( BackRun& back, owl_file_handle file, const char *name ) {
 //*********************************************************************
 
     owl_symbol_handle   sym;
 
-    sym = OWLSymbolInit( file, name );
+    sym = OWLSymbolInit( back, file, name );
     OWLSymbolDefine( file->symbol_table, sym, NULL, 0, OWL_TYPE_OBJECT, OWL_SYM_UNDEFINED );
 }
 

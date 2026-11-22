@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #if _TARGET_INTEL
 #define MAX_COST        0x7FFFFFFF
 #else
@@ -38,12 +39,12 @@
 
 typedef int_32          cost_val;
 
-extern cost_val         IfCost( sel_handle s_node, uint_32 );
-extern name             *ScanCall( tbl_control *, name *, type_class_def );
-extern cost_val         JumpCost( sel_handle s_node );
-extern cost_val         ScanCost( sel_handle s_node );
-extern tbl_control      *MakeScanTab( sel_handle s_node, cg_type value_type, cg_type real_type );
-extern tbl_control      *MakeJmpTab( sel_handle s_node );
-extern name             *SelIdx( tbl_control *, an );
-extern const type_def   *SelNodeType( an, bool );
-extern void             MkSelOp( name *idx, type_class_def type_class );
+extern cost_val         IfCost( BackRun& back, sel_handle s_node, uint_32 );
+extern name             *ScanCall( BackRun& back, tbl_control *, name *, type_class_def );
+extern cost_val         JumpCost( BackRun& back, sel_handle s_node );
+extern cost_val         ScanCost( BackRun& back, sel_handle s_node );
+extern tbl_control      *MakeScanTab( BackRun& back, sel_handle s_node, cg_type value_type, cg_type real_type );
+extern tbl_control      *MakeJmpTab( BackRun& back, sel_handle s_node );
+extern name             *SelIdx( BackRun& back, tbl_control *, an );
+extern const type_def   *SelNodeType( BackRun& back, an, bool );
+extern void             MkSelOp( BackRun& back, name *idx, type_class_def type_class );

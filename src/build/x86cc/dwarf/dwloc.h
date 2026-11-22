@@ -34,13 +34,13 @@
 #ifndef DWLOC_H_INCLUDED
 #define DWLOC_H_INCLUDED
 
-extern void         DW_InitDebugLoc( dw_client );
-extern void         DW_FiniDebugLoc( dw_client );
+extern void         DW_InitDebugLoc( BackRun& back, dw_client );
+extern void         DW_FiniDebugLoc( BackRun& back, dw_client );
 extern int          DW_IsLocExpr( dw_client, dw_loc_handle );
-extern uint_32      DW_EmitLocExpr( dw_client, dw_sectnum, size_t, dw_loc_handle );
-extern void         DW_EmitLocExprNull( dw_client, dw_sectnum, size_t );
-extern uint_32      DW_EmitLoc( dw_client, dw_sectnum, dw_loc_handle );
-extern uint_32      DW_EmitLocList( dw_client, dw_sectnum, dw_loc_handle );
-extern uint_32      DW_EmitLocNull( dw_client cli, dw_sectnum sect );
+extern uint_32      DW_EmitLocExpr( BackRun& back, dw_client, dw_sectnum, size_t, dw_loc_handle );
+extern void         DW_EmitLocExprNull( BackRun& back, dw_client, dw_sectnum, size_t );
+extern uint_32      DW_EmitLoc( BackRun& back, dw_client, dw_sectnum, dw_loc_handle );
+extern uint_32      DW_EmitLocList( BackRun& back, dw_client, dw_sectnum, dw_loc_handle );
+extern uint_32      DW_EmitLocNull( BackRun& back, dw_client cli, dw_sectnum sect );
 
 #endif

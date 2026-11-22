@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define IsConstLeaf(opnd)   (opnd->op.opr==OPR_PUSHINT||opnd->op.opr==OPR_PUSHFLOAT)
 
 typedef enum ops {
@@ -196,17 +197,17 @@ typedef struct  sym_list_heads {
     SYM_HANDLE               sym_head;
 } SYM_LIST_HEADS;
 
-extern TREEPTR  LeafNode(opr_code);
-extern TREEPTR  ExprNode(TREEPTR,opr_code,TREEPTR);
-extern TREEPTR  ErrorNode(TREEPTR);
-extern void     FreeExprNode(TREEPTR);
-extern void     FreeExprTree(TREEPTR);
-extern void     InitExprTree(void);
-extern void     NoOp(TREEPTR);
-extern int      WalkExprTree( TREEPTR,
-                    void (*operand)(TREEPTR),
-                    void (*prefix_operator)(TREEPTR),
-                    void (*infix_operator)(TREEPTR),
-                    void (*postfix_operator)(TREEPTR) );
-extern void     CastConstValue(TREEPTR,DATA_TYPE);
-extern void     MakeBinaryFloat(TREEPTR);
+extern TREEPTR  LeafNode(FrontRun& front, opr_code);
+extern TREEPTR  ExprNode(FrontRun& front, TREEPTR,opr_code,TREEPTR);
+extern TREEPTR  ErrorNode(FrontRun& front, TREEPTR);
+extern void     FreeExprNode(FrontRun& front, TREEPTR);
+extern void     FreeExprTree(FrontRun& front, TREEPTR);
+extern void     InitExprTree(FrontRun& front);
+extern void     NoOp(FrontRun& front, TREEPTR);
+extern int      WalkExprTree( FrontRun& front, TREEPTR,
+                    void (*operand)(FrontRun&, TREEPTR),
+                    void (*prefix_operator)(FrontRun&, TREEPTR),
+                    void (*infix_operator)(FrontRun&, TREEPTR),
+                    void (*postfix_operator)(FrontRun&, TREEPTR) );
+extern void     CastConstValue(FrontRun& front, TREEPTR,DATA_TYPE);
+extern void     MakeBinaryFloat(FrontRun& front, TREEPTR);

@@ -30,5 +30,6 @@
 ****************************************************************************/
 
 
+#pragma once
 extern  bool    Overlaps( name *result, name *op );
 extern  bool    CondOverlaps( name *result, name *ccop );

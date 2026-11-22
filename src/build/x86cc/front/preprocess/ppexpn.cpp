@@ -38,6 +38,7 @@
 #include "ppexpn.h"
 #include "cgdefs.h"
 #include "feprotos.h"
+#include "frontrun.hpp"
 
 
 #define I64isNegPP(a)       I64isNeg((a).u.sval)
@@ -84,35 +85,15 @@
 #define Stack_forall( hdr, i ) \
     for( i = hdr; i != NULL; i = *((void **)i) )
 
-typedef struct ppvalue {
-    union {
-        unsigned_64     uval;
-        signed_64       sval;
-    } u;
-    bool        no_sign;
-} ppvalue;
 
-typedef struct loc_info {
-    int         pos;        // incremented when token read
-    source_loc  locn;       // token location in source file
-} loc_info;
 
-typedef struct operand_stack {
-    struct operand_stack *next;
-    ppvalue     value;
-    loc_info    loc;
-} PPEXPN_OPERAND_STACK;     // stack to store operands
 
-typedef struct operator_stack {
-    struct operator_stack *next;
-    TOKEN       token;
-    loc_info    loc;
-    int         prec;
-} PPEXPN_OPERATOR_STACK;    // stack to store operators
 
-typedef struct stack {
-    struct stack    *next;
-} STACK;
+     // stack to store operands
+
+    // stack to store operators
+
+
 
 
 /* include _ctokens.h for the precedence values */
@@ -158,65 +139,59 @@ static void *StackPop( void *hdr )
     return( e );
 }
 
-static bool CStart( void );
-static bool CRightParen( void );
-static bool CLeftParen( void );
-static bool CConditional( void );
-static bool CLogicalOr( void );
-static bool CLogicalAnd( void );
-static bool COr( void );
-static bool CXOr( void );
-static bool CAnd( void );
-static bool CEquality( void );
-static bool CRelational( void );
-static bool CShift( void );
-static bool CAdditive( void );
-static bool CMultiplicative( void );
-static bool CUnary( void );
+static bool CStart( FrontRun& front );
+static bool CRightParen( FrontRun& front );
+static bool CLeftParen( FrontRun& front );
+static bool CConditional( FrontRun& front );
+static bool CLogicalOr( FrontRun& front );
+static bool CLogicalAnd( FrontRun& front );
+static bool COr( FrontRun& front );
+static bool CXOr( FrontRun& front );
+static bool CAnd( FrontRun& front );
+static bool CEquality( FrontRun& front );
+static bool CRelational( FrontRun& front );
+static bool CShift( FrontRun& front );
+static bool CAdditive( FrontRun& front );
+static bool CMultiplicative( FrontRun& front );
+static bool CUnary( FrontRun& front );
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct PpexpnState {
-    PPEXPN_OPERAND_STACK *HeadOperand = NULL;
-    PPEXPN_OPERATOR_STACK *HeadOperator = NULL;
-    int Pos = 0;   // position of CurToken in parsing
-    TOKEN PpNextToken_prev_token;
-};
+/* (struct PpexpnState: ppexpn_state.h) */
 
 }  // namespace
 
-static inline PpexpnState& ppexpn_state() { return cbrun_part<PpexpnState>(); }
 
-static void PushOperator( TOKEN token, loc_info *loc, int prec )
+static void PushOperator( FrontRun& front, TOKEN token, loc_info *loc, int prec )
 /**************************************************************/
 {
     PPEXPN_OPERATOR_STACK *stack_entry;
 
-    stack_entry = (PPEXPN_OPERATOR_STACK *)CMemAlloc( sizeof( PPEXPN_OPERATOR_STACK ) );
+    stack_entry = (PPEXPN_OPERATOR_STACK *)CMemAlloc( front, sizeof( PPEXPN_OPERATOR_STACK ) );
     stack_entry->token = token;
     stack_entry->loc = *loc;
     stack_entry->prec = prec;
-    StackPush( &ppexpn_state().HeadOperator, stack_entry );
+    StackPush( &front.ppexpn.HeadOperator, stack_entry );
 }
 
-static void PushCurToken( int prec )
+static void PushCurToken( FrontRun& front, int prec )
 /**********************************/
 {
     loc_info loc;
 
-    loc.locn = cvars_state().SrcFileLoc;
-    loc.pos = ppexpn_state().Pos;
-    PushOperator( cvars_state().CurToken, &loc, prec );
+    loc.locn = front.cvars.SrcFileLoc;
+    loc.pos = front.ppexpn.Pos;
+    PushOperator( front, front.cvars.CurToken, &loc, prec );
 }
 
 
-static bool PopOperator( TOKEN *token, loc_info *loc )
+static bool PopOperator( FrontRun& front, TOKEN *token, loc_info *loc )
 /****************************************************/
 {
     PPEXPN_OPERATOR_STACK *stack_entry;
 
-    stack_entry = static_cast<PPEXPN_OPERATOR_STACK *>(StackPop( &ppexpn_state().HeadOperator ));
+    stack_entry = static_cast<PPEXPN_OPERATOR_STACK *>(StackPop( &front.ppexpn.HeadOperator ));
     if( stack_entry != NULL ) {
         if( token != NULL ) {
             *token = stack_entry->token;
@@ -224,18 +199,18 @@ static bool PopOperator( TOKEN *token, loc_info *loc )
         if( loc != NULL ) {
             *loc = stack_entry->loc;
         }
-        CMemFree( stack_entry );
+        CMemFree( front, stack_entry );
         return( true );
     }
     return( false );
 }
 
-static bool TopOperator( TOKEN *token, int *prec )
+static bool TopOperator( FrontRun& front, TOKEN *token, int *prec )
 /************************************************/
 {
     PPEXPN_OPERATOR_STACK *stack_entry;
 
-    stack_entry = static_cast<PPEXPN_OPERATOR_STACK *>(StackPop( &ppexpn_state().HeadOperator ));
+    stack_entry = static_cast<PPEXPN_OPERATOR_STACK *>(StackPop( &front.ppexpn.HeadOperator ));
     if( stack_entry != NULL ) {
         if( token != NULL ) {
             *token = stack_entry->token;
@@ -243,39 +218,39 @@ static bool TopOperator( TOKEN *token, int *prec )
         if( prec != NULL ) {
             *prec = stack_entry->prec;
         }
-        StackPush( &ppexpn_state().HeadOperator, stack_entry );
+        StackPush( &front.ppexpn.HeadOperator, stack_entry );
         return( true );
     }
     return( false );
 }
 
-static void PushOperand( ppvalue p, loc_info *loc )
+static void PushOperand( FrontRun& front, ppvalue p, loc_info *loc )
 /*************************************************/
 {
     PPEXPN_OPERAND_STACK *stack_entry;
 
-    stack_entry = (PPEXPN_OPERAND_STACK *)CMemAlloc( sizeof( PPEXPN_OPERAND_STACK ) );
+    stack_entry = (PPEXPN_OPERAND_STACK *)CMemAlloc( front, sizeof( PPEXPN_OPERAND_STACK ) );
     stack_entry->value = p;
     stack_entry->loc = *loc;
-    StackPush( &ppexpn_state().HeadOperand, stack_entry );
+    StackPush( &front.ppexpn.HeadOperand, stack_entry );
 }
 
-static void PushOperandCurLocation( ppvalue p )
+static void PushOperandCurLocation( FrontRun& front, ppvalue p )
 /*********************************************/
 {
     loc_info loc;
 
-    loc.locn = cvars_state().SrcFileLoc;
-    loc.pos = ppexpn_state().Pos;
-    PushOperand( p, &loc );
+    loc.locn = front.cvars.SrcFileLoc;
+    loc.pos = front.ppexpn.Pos;
+    PushOperand( front, p, &loc );
 }
 
-static bool PopOperand( ppvalue *p, loc_info *loc )
+static bool PopOperand( FrontRun& front, ppvalue *p, loc_info *loc )
 /*************************************************/
 {
     PPEXPN_OPERAND_STACK *stack_entry;
 
-    stack_entry = static_cast<PPEXPN_OPERAND_STACK *>(StackPop( &ppexpn_state().HeadOperand ));
+    stack_entry = static_cast<PPEXPN_OPERAND_STACK *>(StackPop( &front.ppexpn.HeadOperand ));
     if( stack_entry != NULL ) {
         if( p != NULL ) {
             *p = stack_entry->value;
@@ -283,54 +258,54 @@ static bool PopOperand( ppvalue *p, loc_info *loc )
         if( loc != NULL ) {
             *loc = stack_entry->loc;
         }
-        CMemFree( stack_entry );
+        CMemFree( front, stack_entry );
         return( true );
     }
     return( false );
 }
 
-static bool CheckToken( TOKEN prev_token )
+static bool CheckToken( FrontRun& front, TOKEN prev_token )
 /****************************************/
 {
     if( IS_OPERAND( prev_token )
-      && IS_OPERAND( cvars_state().CurToken ) ) {
-        CErr1( ERR_CONSECUTIVE_OPERANDS );  // can't have 2 operands in a row
+      && IS_OPERAND( front.cvars.CurToken ) ) {
+        CErr1( front, ERR_CONSECUTIVE_OPERANDS );  // can't have 2 operands in a row
         return( true );
     }
-    if( ( cvars_state().CurToken == T_PLUS )
-      || ( cvars_state().CurToken == T_MINUS ) ) {
+    if( ( front.cvars.CurToken == T_PLUS )
+      || ( front.cvars.CurToken == T_MINUS ) ) {
         if( ( prev_token != T_RIGHT_PAREN )
           && ( !IS_OPERAND( prev_token )
           || prev_token == T_START ) ) {
-            if( cvars_state().CurToken == T_PLUS ) {
-                cvars_state().CurToken = T_UNARY_PLUS;
+            if( front.cvars.CurToken == T_PLUS ) {
+                front.cvars.CurToken = T_UNARY_PLUS;
             } else {
-                cvars_state().CurToken = T_UNARY_MINUS;
+                front.cvars.CurToken = T_UNARY_MINUS;
             }
         }
     }
     return( false );
 }
 
-static bool PpNextToken( void )
+static bool PpNextToken( FrontRun& front )
 /******************************
  * scan the next token and check for errors
  */
 {
 
-    ppexpn_state().PpNextToken_prev_token = cvars_state().CurToken;
-    NextToken();
-    ppexpn_state().Pos++;
-    return( CheckToken( ppexpn_state().PpNextToken_prev_token ) );
+    front.ppexpn.PpNextToken_prev_token = front.cvars.CurToken;
+    NextToken(front);
+    front.ppexpn.Pos++;
+    return( CheckToken( front, front.ppexpn.PpNextToken_prev_token ) );
 }
 
-static void unexpectedCurToken( void )
+static void unexpectedCurToken( FrontRun& front )
 /************************************/
 {
-    CErr2p( ERR_UNEXPECTED_IN_CONSTANT_EXPRESSION, TokenString[cvars_state().CurToken] );
+    CErr2p( front, ERR_UNEXPECTED_IN_CONSTANT_EXPRESSION, TokenString[front.cvars.CurToken] );
 }
 
-static double SafeAtof( char *p )
+static double SafeAtof( FrontRun& front, char *p )
 /*******************************/
 {
     double r;
@@ -340,15 +315,15 @@ static double SafeAtof( char *p )
     if( errno ) {
         if( r == 0
           && errno == ERANGE ) {
-            CErr1( ERR_FLOATING_CONSTANT_UNDERFLOW );
+            CErr1( front, ERR_FLOATING_CONSTANT_UNDERFLOW );
         } else {
-            CErr1( ERR_FLOATING_CONSTANT_OVERFLOW );
+            CErr1( front, ERR_FLOATING_CONSTANT_OVERFLOW );
         }
     }
     return( r );
 }
 
-static bool COperand( void )
+static bool COperand( FrontRun& front )
 /**************************/
 {
     ppvalue p;
@@ -358,39 +333,39 @@ static bool COperand( void )
 
     done = false;
     p.no_sign = false;
-    switch( cvars_state().CurToken ) {
+    switch( front.cvars.CurToken ) {
     case T_ID:
-        loc.locn = cvars_state().SrcFileLoc; // need this to store result
-        loc.pos = ppexpn_state().Pos;
-        ppexpn_state().Pos++;
-        if( IS_PPOPERATOR_DEFINED( cvars_state().Buffer ) ) {
+        loc.locn = front.cvars.SrcFileLoc; // need this to store result
+        loc.pos = front.ppexpn.Pos;
+        front.ppexpn.Pos++;
+        if( IS_PPOPERATOR_DEFINED( front.cvars.Buffer ) ) {
             ppctl_t old_ppctl;
 
-            old_ppctl = cvars_state().PPControl;
+            old_ppctl = front.cvars.PPControl;
             PPCTL_DISABLE_MACROS();
-            NextToken();        // Don't error check: can have T_ID T_ID here
-            if( cvars_state().CurToken == T_LEFT_PAREN ) {
-                left_loc = cvars_state().SrcFileLoc;
-                NextToken();    // no need to error check or advance Pos
-                cvars_state().PPControl = old_ppctl;
-                Set64ValU32PP( p, MacroLookup( cvars_state().Buffer ) != NULL );
-                NextToken();    // no need to error check or advance Pos
-                if( cvars_state().CurToken != T_RIGHT_PAREN ) {
-                    SetErrLoc( &left_loc );
-                    CErr1( ERR_UNMATCHED_LEFT_PAREN );
+            NextToken(front);        // Don't error check: can have T_ID T_ID here
+            if( front.cvars.CurToken == T_LEFT_PAREN ) {
+                left_loc = front.cvars.SrcFileLoc;
+                NextToken(front);    // no need to error check or advance Pos
+                front.cvars.PPControl = old_ppctl;
+                Set64ValU32PP( p, MacroLookup( front, front.cvars.Buffer ) != NULL );
+                NextToken(front);    // no need to error check or advance Pos
+                if( front.cvars.CurToken != T_RIGHT_PAREN ) {
+                    SetErrLoc( front, &left_loc );
+                    CErr1( front, ERR_UNMATCHED_LEFT_PAREN );
                     done = true;
                 }
             } else {
-                cvars_state().PPControl = old_ppctl;
-                Set64ValU32PP( p, MacroLookup( cvars_state().Buffer ) != NULL );
+                front.cvars.PPControl = old_ppctl;
+                Set64ValU32PP( p, MacroLookup( front, front.cvars.Buffer ) != NULL );
             }
         } else {
-            CWarn2p( ERR_UNDEFD_MACRO_IS_ZERO, cvars_state().Buffer );
+            CWarn2p( front, ERR_UNDEFD_MACRO_IS_ZERO, front.cvars.Buffer );
             Set64ValZeroPP( p );
         }
         if( !done ) {
-            PushOperand( p, &loc );
-            done = PpNextToken();
+            PushOperand( front, p, &loc );
+            done = PpNextToken(front);
         }
         break;
 #if 0
@@ -402,13 +377,13 @@ static bool COperand( void )
         break;
 #endif
     case T_CONSTANT:
-        switch( cvars_state().ConstType ) {
+        switch( front.cvars.ConstType ) {
         case TYP_FLOAT:
         case TYP_DOUBLE:
         case TYP_LONG_DOUBLE:
-            CErr1( ERR_EXPR_MUST_BE_INTEGRAL );
+            CErr1( front, ERR_EXPR_MUST_BE_INTEGRAL );
             done = true;
-            p.u.sval.u._64[0] = (long long)SafeAtof( cvars_state().Buffer );
+            p.u.sval.u._64[0] = (long long)SafeAtof( front, front.cvars.Buffer );
             // add long double support if available
             break;
         case TYP_WCHAR:
@@ -420,39 +395,39 @@ static bool COperand( void )
             p.no_sign = true;
             /* fall through */
         default:
-            p.u.uval = cvars_state().Constant64;
+            p.u.uval = front.cvars.Constant64;
             break;
         }
         if( !done ) {
-            PushOperandCurLocation( p );
-            done = PpNextToken();
+            PushOperandCurLocation( front, p );
+            done = PpNextToken(front);
         }
         break;
     default:
-        CErr2p( ERR_UNDEFD_MACRO_IS_ZERO, cvars_state().Buffer );
+        CErr2p( front, ERR_UNDEFD_MACRO_IS_ZERO, front.cvars.Buffer );
         Set64ValZeroPP( p );
-        PushOperandCurLocation( p );
-        done = PpNextToken();
+        PushOperandCurLocation( front, p );
+        done = PpNextToken(front);
     }
     return( done );
 }
 
-static void CErrCheckpoint( unsigned *save )
+static void CErrCheckpoint( FrontRun& front, unsigned *save )
 /******************************************/
 {
-    *save = cvars_state().ErrCount;
+    *save = front.cvars.ErrCount;
 }
 
-static bool CErrOccurred( unsigned *previous_state )
+static bool CErrOccurred( FrontRun& front, unsigned *previous_state )
 /**************************************************/
 {
-    if( *previous_state != cvars_state().ErrCount ) {
+    if( *previous_state != front.cvars.ErrCount ) {
         return( true );
     }
     return( false );
 }
 
-static bool CRightParen( void )
+static bool CRightParen( FrontRun& front )
 /******************************
  * reduce extra )
  */
@@ -461,14 +436,14 @@ static bool CRightParen( void )
     loc_info right_info;
 
     // as ) doesn't get pushed for (expr), this must be an unmatched )
-    if( PopOperator( &right_paren, &right_info ) ) {
-        SetErrLoc( &right_info.locn );
-        CErr1( ERR_UNMATCHED_RIGHT_PAREN );
+    if( PopOperator( front, &right_paren, &right_info ) ) {
+        SetErrLoc( front, &right_info.locn );
+        CErr1( front, ERR_UNMATCHED_RIGHT_PAREN );
     }
     return( false );
 }
 
-static bool CLeftParen( void )
+static bool CLeftParen( FrontRun& front )
 /*****************************
  * reduce (expr)
  */
@@ -478,25 +453,25 @@ static bool CLeftParen( void )
     loc_info e1_info;
     ppvalue e1;
 
-    PopOperator( &left_paren, &left_info );
-    if( cvars_state().CurToken != T_RIGHT_PAREN ) {   // expect ) as current token
-        SetErrLoc( &left_info.locn );
-        CErr1( ERR_UNMATCHED_LEFT_PAREN );
+    PopOperator( front, &left_paren, &left_info );
+    if( front.cvars.CurToken != T_RIGHT_PAREN ) {   // expect ) as current token
+        SetErrLoc( front, &left_info.locn );
+        CErr1( front, ERR_UNMATCHED_LEFT_PAREN );
         return( true );
     }
-    if( PopOperand( &e1, &e1_info ) ) {
-        if( ( e1_info.pos < ppexpn_state().Pos )
+    if( PopOperand( front, &e1, &e1_info ) ) {
+        if( ( e1_info.pos < front.ppexpn.Pos )
           && ( e1_info.pos > left_info.pos ) ) {
-            PushOperand( e1, &e1_info );
-            return( PpNextToken() );
+            PushOperand( front, e1, &e1_info );
+            return( PpNextToken(front) );
         }
     }
-    SetErrLoc( &left_info.locn );
-    CErr1( ERR_EMPTY_PAREN );
+    SetErrLoc( front, &left_info.locn );
+    CErr1( front, ERR_EMPTY_PAREN );
     return( true );
 }
 
-static bool CConditional( void )
+static bool CConditional( FrontRun& front )
 /*******************************
  * reduce an a?b:c expression
  */
@@ -512,44 +487,44 @@ static bool CConditional( void )
     TOKEN op1;
     TOKEN op2;
 
-    PopOperator( &op2, &op2_info );
+    PopOperator( front, &op2, &op2_info );
     if( op2 != T_COLON ) {
         if( ( op2 != T_QUESTION
           && op2 != T_START )
-          || cvars_state().CurToken == T_NULL ) {
-            SetErrLoc( &op2_info.locn );
-            CErr1( ERR_CONDITIONAL_MISSING_COLON );
+          || front.cvars.CurToken == T_NULL ) {
+            SetErrLoc( front, &op2_info.locn );
+            CErr1( front, ERR_CONDITIONAL_MISSING_COLON );
             return( true );
         } else {
-            PushOperator( op2, &op2_info, Prec[op2] );
-            PushCurToken( Prec[cvars_state().CurToken] );
-            return( PpNextToken() );
+            PushOperator( front, op2, &op2_info, Prec[op2] );
+            PushCurToken( front, Prec[front.cvars.CurToken] );
+            return( PpNextToken(front) );
         }
     }
     // always something to pop next, even if its T_START
-    PopOperator( &op1, &op1_info );
+    PopOperator( front, &op1, &op1_info );
     if( op1 != T_QUESTION ) {
         if( ( op1 != T_COLON
           && op1 != T_START )
-          || ( cvars_state().CurToken == T_NULL ) ) {
-            SetErrLoc( &op1_info.locn );
-            CErr1( ERR_CONDITIONAL_MISSING_QUESTION );
+          || ( front.cvars.CurToken == T_NULL ) ) {
+            SetErrLoc( front, &op1_info.locn );
+            CErr1( front, ERR_CONDITIONAL_MISSING_QUESTION );
             return( true );
         }
     }
     if( op2 != T_COLON
       || op1 != T_QUESTION ) {
-        PushOperator( op1, &op1_info, Prec[op1] );
-        PushOperator( op2, &op2_info, Prec[op2] );
-        PushCurToken( Prec[cvars_state().CurToken] );
-        return( PpNextToken() );
+        PushOperator( front, op1, &op1_info, Prec[op1] );
+        PushOperator( front, op2, &op2_info, Prec[op2] );
+        PushCurToken( front, Prec[front.cvars.CurToken] );
+        return( PpNextToken(front) );
     }
-    if( PopOperand( &e3, &e3_info )
+    if( PopOperand( front, &e3, &e3_info )
       && ( e3_info.pos > op2_info.pos ) ) {
-        if( PopOperand( &e2, &e2_info )
+        if( PopOperand( front, &e2, &e2_info )
           && ( e2_info.pos < op2_info.pos )
           && ( e2_info.pos > op1_info.pos ) ) {
-            if( PopOperand( &e1, &e1_info )
+            if( PopOperand( front, &e1, &e1_info )
               && ( e1_info.pos < op1_info.pos ) ) {
                 if( U64isntZeroPP( e1 ) ) {
                     e1.u.sval = e2.u.sval;
@@ -557,24 +532,24 @@ static bool CConditional( void )
                     e1.u.sval = e3.u.sval;
                 }
                 e1.no_sign = e2.no_sign || e3.no_sign;
-                PushOperand( e1, &e1_info );
+                PushOperand( front, e1, &e1_info );
                 return( false );
             } else {
-                SetErrLoc( &op1_info.locn );    // missing a in a?b:c
-                CErr1( ERR_CONDITIONAL_MISSING_FIRST_OPERAND );
+                SetErrLoc( front, &op1_info.locn );    // missing a in a?b:c
+                CErr1( front, ERR_CONDITIONAL_MISSING_FIRST_OPERAND );
             }
         } else {
-            SetErrLoc( &op1_info.locn );        // missing b in a?b:c
-            CErr1( ERR_CONDITIONAL_MISSING_SECOND_OPERAND );
+            SetErrLoc( front, &op1_info.locn );        // missing b in a?b:c
+            CErr1( front, ERR_CONDITIONAL_MISSING_SECOND_OPERAND );
         }
     } else {
-        SetErrLoc( &op2_info.locn );            // missing c in a?b:c
-        CErr1( ERR_CONDITIONAL_MISSING_THIRD_OPERAND );
+        SetErrLoc( front, &op2_info.locn );            // missing c in a?b:c
+        CErr1( front, ERR_CONDITIONAL_MISSING_THIRD_OPERAND );
     }
     return( true );
 }
 
-static bool Binary( TOKEN *token, ppvalue *e1, ppvalue *e2, loc_info *loc )
+static bool Binary( FrontRun& front, TOKEN *token, ppvalue *e1, ppvalue *e2, loc_info *loc )
 /**************************************************************************
  * pop binary operator and two operands, error check
  */
@@ -583,24 +558,24 @@ static bool Binary( TOKEN *token, ppvalue *e1, ppvalue *e2, loc_info *loc )
     loc_info e2_info;
 
 
-    PopOperator( token, loc );
-    if( PopOperand( e2, &e2_info )
+    PopOperator( front, token, loc );
+    if( PopOperand( front, e2, &e2_info )
       && ( e2_info.pos > loc->pos ) ) {
-        if( PopOperand( e1, &e1_info )
+        if( PopOperand( front, e1, &e1_info )
           && ( e1_info.pos < loc->pos ) ) {
             return( true );
         } else {
-            SetErrLoc( &loc->locn );
-            CErr2p( ERR_BINARY_MISSING_LEFT_OPERAND, TokenString[*token] );
+            SetErrLoc( front, &loc->locn );
+            CErr2p( front, ERR_BINARY_MISSING_LEFT_OPERAND, TokenString[*token] );
         }
     } else {
-        SetErrLoc( &loc->locn );
-        CErr2p( ERR_BINARY_MISSING_RIGHT_OPERAND, TokenString[*token] );
+        SetErrLoc( front, &loc->locn );
+        CErr2p( front, ERR_BINARY_MISSING_RIGHT_OPERAND, TokenString[*token] );
     }
     return( false );
 }
 
-static bool CLogicalOr( void )
+static bool CLogicalOr( FrontRun& front )
 /*****************************
  * reduce a || b
  */
@@ -610,16 +585,16 @@ static bool CLogicalOr( void )
     loc_info loc;
     TOKEN token;
 
-    if( Binary( &token, &e1, &e2, &loc ) ) {
+    if( Binary( front, &token, &e1, &e2, &loc ) ) {
         Set64ValU32PP( e1, U64isntZeroPP( e1 ) || U64isntZeroPP( e2 ) );
         e1.no_sign = false;
-        PushOperand( e1, &loc );
+        PushOperand( front, e1, &loc );
         return( false );
     }
     return( true );
 }
 
-static bool CLogicalAnd( void )
+static bool CLogicalAnd( FrontRun& front )
 /******************************
  * reduce a && b
  */
@@ -629,16 +604,16 @@ static bool CLogicalAnd( void )
     loc_info loc;
     TOKEN token;
 
-    if( Binary( &token, &e1, &e2, &loc ) ) {
+    if( Binary( front, &token, &e1, &e2, &loc ) ) {
         Set64ValU32PP( e1, U64isntZeroPP( e1 ) && U64isntZeroPP( e2 ) );
         e1.no_sign = false;
-        PushOperand( e1, &loc );
+        PushOperand( front, e1, &loc );
         return( false );
     }
     return( true );
 }
 
-static bool COr( void )
+static bool COr( FrontRun& front )
 /**********************
  * reduce a|b
  */
@@ -648,16 +623,16 @@ static bool COr( void )
     loc_info loc;
     TOKEN token;
 
-    if( Binary( &token, &e1, &e2, &loc ) ) {
+    if( Binary( front, &token, &e1, &e2, &loc ) ) {
         U64OrEqPP( e1, e2 );
         e1.no_sign |= e2.no_sign;
-        PushOperand( e1, &loc );
+        PushOperand( front, e1, &loc );
         return( false );
     }
     return( true );
 }
 
-static bool CXOr( void )
+static bool CXOr( FrontRun& front )
 /***********************
  * reduce a^b
  */
@@ -667,16 +642,16 @@ static bool CXOr( void )
     loc_info loc;
     TOKEN token;
 
-    if( Binary( &token, &e1, &e2, &loc ) ) {
+    if( Binary( front, &token, &e1, &e2, &loc ) ) {
         U64XorEqPP( e1, e2 );
         e1.no_sign |= e2.no_sign;
-        PushOperand( e1, &loc );
+        PushOperand( front, e1, &loc );
         return( false );
     }
     return( true );
 }
 
-static bool CAnd( void )
+static bool CAnd( FrontRun& front )
 /***********************
  * reduce a&b
  */
@@ -686,16 +661,16 @@ static bool CAnd( void )
     loc_info loc;
     TOKEN token;
 
-    if( Binary( &token, &e1, &e2, &loc ) ) {
+    if( Binary( front, &token, &e1, &e2, &loc ) ) {
         U64AndEqPP( e1, e2 );
         e1.no_sign |= e2.no_sign;
-        PushOperand( e1, &loc );
+        PushOperand( front, e1, &loc );
         return( false );
     }
     return( true );
 }
 
-static bool CEquality( void )
+static bool CEquality( FrontRun& front )
 /****************************
  * reduce a == b or a != b
  */
@@ -706,17 +681,17 @@ static bool CEquality( void )
     TOKEN token;
     bool eq;
 
-    if( Binary( &token, &e1, &e2, &loc ) ) {
+    if( Binary( front, &token, &e1, &e2, &loc ) ) {
         eq = U64isEqPP( e1, e2 );
         Set64ValU32PP( e1, ( token == T_EQ ) ? eq : !eq );
         e1.no_sign = false;
-        PushOperand( e1, &loc );
+        PushOperand( front, e1, &loc );
         return( false );
     }
     return( true );
 }
 
-static bool CRelational( void )
+static bool CRelational( FrontRun& front )
 /******************************
  * reduce a<b, a>b, a<=b, or a>=b
  */
@@ -727,7 +702,7 @@ static bool CRelational( void )
     TOKEN token;
     int cmp;
 
-    if( Binary( &token, &e1, &e2, &loc ) ) {
+    if( Binary( front, &token, &e1, &e2, &loc ) ) {
         if( e1.no_sign
           || e2.no_sign ) {
             cmp = U64CmpPP( e1, e2 );
@@ -750,13 +725,13 @@ static bool CRelational( void )
         DbgDefault( "Default in CRelational\n" );
         }
         e1.no_sign = false;
-        PushOperand( e1, &loc );
+        PushOperand( front, e1, &loc );
         return( false );
     }
     return( true );
 }
 
-static bool CShift( void )
+static bool CShift( FrontRun& front )
 /*************************
  * reduce a<<b or a>>b
  */
@@ -766,7 +741,7 @@ static bool CShift( void )
     loc_info loc;
     TOKEN token;
 
-    if( Binary( &token, &e1, &e2, &loc ) ) {
+    if( Binary( front, &token, &e1, &e2, &loc ) ) {
         switch( token ) {
         case T_RSHIFT:
             if( U64CmpU32PP( e2, 64 ) >= 0 ) {
@@ -792,13 +767,13 @@ static bool CShift( void )
             break;
         DbgDefault( "Default in CShift\n" );
         }
-        PushOperand( e1, &loc );
+        PushOperand( front, e1, &loc );
         return( false );
     }
     return( true );
 }
 
-static bool CAdditive( void )
+static bool CAdditive( FrontRun& front )
 /****************************
  * reduce a+b or a-b
  */
@@ -808,7 +783,7 @@ static bool CAdditive( void )
     loc_info loc;
     TOKEN token;
 
-    if( Binary( &token, &e1, &e2, &loc ) ) {
+    if( Binary( front, &token, &e1, &e2, &loc ) ) {
         switch( token ) {
         case T_PLUS:
             U64AddEqPP( e1, e2 );
@@ -820,14 +795,14 @@ static bool CAdditive( void )
             break;
         DbgDefault( "Default in CAdditive\n" );
         }
-        PushOperand( e1, &loc );
+        PushOperand( front, e1, &loc );
         return( false );
     }
     return( true );
 }
 
 
-static bool CMultiplicative( void )
+static bool CMultiplicative( FrontRun& front )
 /**********************************
  * reduce a/b or a*b
  */
@@ -838,7 +813,7 @@ static bool CMultiplicative( void )
     TOKEN token;
     ppvalue unused;
 
-    if( Binary( &token, &e1, &e2, &loc ) ) {
+    if( Binary( front, &token, &e1, &e2, &loc ) ) {
         switch( token ) {
         case T_TIMES:
             U64MulEqPP( e1, e2 );
@@ -866,13 +841,13 @@ static bool CMultiplicative( void )
         DbgDefault( "Default in CMultiplicative\n" );
         }
         e1.no_sign |= e2.no_sign;
-        PushOperand( e1, &loc );
+        PushOperand( front, e1, &loc );
         return( false );
     }
     return( true );
 }
 
-static bool CUnary( void )
+static bool CUnary( FrontRun& front )
 /*************************
  * reduce +a or -a or !a or ~a
  */
@@ -882,8 +857,8 @@ static bool CUnary( void )
     loc_info operand_info;
     TOKEN top;
 
-    PopOperator( &top, &operator_info );
-    if( PopOperand( &p, &operand_info )
+    PopOperator( front, &top, &operator_info );
+    if( PopOperand( front, &p, &operand_info )
       && ( operator_info.pos < operand_info.pos ) ) {
         switch( top ) {
         case T_UNARY_PLUS:
@@ -902,23 +877,23 @@ static bool CUnary( void )
             break;
         DbgDefault( "Default in CUnary\n" );
         }
-        PushOperand( p, &operator_info );
+        PushOperand( front, p, &operator_info );
     } else {
-        SetErrLoc( &operator_info.locn );
-        CErr2p( ERR_UNARY_OPERATOR_MISSING_OPERAND, TokenString[top] );
+        SetErrLoc( front, &operator_info.locn );
+        CErr2p( front, ERR_UNARY_OPERATOR_MISSING_OPERAND, TokenString[top] );
         return( true );
     }
     return( false );
 }
 
-static bool CStart( void )
+static bool CStart( FrontRun& front )
 /************************/
 {
     TOKEN top;
 
-    PopOperator( &top, NULL );
-    if( cvars_state().CurToken != T_NULL ) {
-        unexpectedCurToken();
+    PopOperator( front, &top, NULL );
+    if( front.cvars.CurToken != T_NULL ) {
+        unexpectedCurToken(front);
     }
     return( true );
 }
@@ -981,7 +956,7 @@ TOKEN Process_Pragma( bool internal )
 }
 #endif
 
-static bool ( *const CExpr[] )(void) = { // table of functions to reduce expressions
+static bool ( *const CExpr[] )(FrontRun&) = { // table of functions to reduce expressions
     CStart,             /* Level 0 */
     CRightParen,        /* Level 1 */
     CLeftParen,         /* Level 2 */
@@ -1000,7 +975,7 @@ static bool ( *const CExpr[] )(void) = { // table of functions to reduce express
     CUnary              /* Level 15 */
 };
 
-static void PrecedenceParse( ppvalue *p )
+static void PrecedenceParse( FrontRun& front, ppvalue *p )
 /****************************************
  * main precedence parse algorithm
  */
@@ -1015,89 +990,89 @@ static void PrecedenceParse( ppvalue *p )
 
     Set64ValZeroPP( *p );  // default value 0
 
-    if( cvars_state().CurToken == T_NULL ) {
-        unexpectedCurToken();
+    if( front.cvars.CurToken == T_NULL ) {
+        unexpectedCurToken(front);
         return;
     }
-    CErrCheckpoint( &error_info );
+    CErrCheckpoint( front, &error_info );
     prec_operator = 0;
-    ppexpn_state().Pos = 0;
-    loc.locn = cvars_state().SrcFileLoc;
-    loc.pos = ppexpn_state().Pos;
-    PushOperator( T_START, &loc, Prec[T_START] ); // problem because T_START is not a ppvalue
-    ppexpn_state().Pos++;
-    CheckToken( T_START ); // check for initial unary + or -
+    front.ppexpn.Pos = 0;
+    loc.locn = front.cvars.SrcFileLoc;
+    loc.pos = front.ppexpn.Pos;
+    PushOperator( front, T_START, &loc, Prec[T_START] ); // problem because T_START is not a ppvalue
+    front.ppexpn.Pos++;
+    CheckToken( front, T_START ); // check for initial unary + or -
     prec_operator = 0;
     done = false;
     while( !done ) {
-        if( IS_OPERAND( cvars_state().CurToken ) ) {
-            done = COperand(); // get operand and read next token
-        } else if( cvars_state().CurToken == T_LEFT_PAREN ) {
-            PushCurToken( Prec[T_LEFT_PAREN] ); // always push left paren
-            done = PpNextToken();
+        if( IS_OPERAND( front.cvars.CurToken ) ) {
+            done = COperand(front); // get operand and read next token
+        } else if( front.cvars.CurToken == T_LEFT_PAREN ) {
+            PushCurToken( front, Prec[T_LEFT_PAREN] ); // always push left paren
+            done = PpNextToken(front);
         } else {
-            TopOperator( &top, &prec_operator );
-            if( cvars_state().CurToken < LAST_TOKEN_PREC ) {
-                prec_token = Prec[cvars_state().CurToken];
+            TopOperator( front, &top, &prec_operator );
+            if( front.cvars.CurToken < LAST_TOKEN_PREC ) {
+                prec_token = Prec[front.cvars.CurToken];
                 if( prec_token < prec_operator
                   || ( ( prec_token == prec_operator )
                   && ( prec_token != PREC_UNARY ) ) ) {
-                    done = CExpr[prec_operator](); // reduce
+                    done = CExpr[prec_operator](front); // reduce
                 } else {
-                    PushCurToken( prec_token ); // shift
-                    done = PpNextToken();
+                    PushCurToken( front, prec_token ); // shift
+                    done = PpNextToken(front);
                 }
             } else {
-                unexpectedCurToken();
+                unexpectedCurToken(front);
                 done = true;
             }
         }
     }
-    if( !CErrOccurred( &error_info ) ) {
-        PopOperand( p, NULL );
-        if( PopOperand( &empty, &loc ) ) {
-            SetErrLoc( &loc.locn );
-            CErr1( ERR_EXTRA_OPERAND );
+    if( !CErrOccurred( front, &error_info ) ) {
+        PopOperand( front, p, NULL );
+        if( PopOperand( front, &empty, &loc ) ) {
+            SetErrLoc( front, &loc.locn );
+            CErr1( front, ERR_EXTRA_OPERAND );
         }
     }
-    if( CErrOccurred( &error_info ) ) {
+    if( CErrOccurred( front, &error_info ) ) {
         // scan until EOL (T_NULL) to avoid multiple messages
-        while( cvars_state().CurToken != T_NULL ) {
-            NextToken();
+        while( front.cvars.CurToken != T_NULL ) {
+            NextToken(front);
         }
     }
     // empty stacks
-    while( PopOperand( NULL, NULL ) ); // free stack
-    while( PopOperator( NULL, NULL ) ); // free stack
+    while( PopOperand( front, NULL, NULL ) ); // free stack
+    while( PopOperator( front, NULL, NULL ) ); // free stack
 }
 
-bool PpConstExpr( void )
+bool PpConstExpr( FrontRun& front )
 /***********************
  * Entry into ppexpn module
  */
 {
     ppvalue val;
 
-    PrecedenceParse( &val );
+    PrecedenceParse( front, &val );
     return( U64isntZeroPP( val ) );
 }
 
-void InitPPexpn( void )
+void InitPPexpn( FrontRun& front )
 /*********************/
 {
-    ppexpn_state().HeadOperand = NULL;
-    ppexpn_state().HeadOperator = NULL;
+    front.ppexpn.HeadOperand = NULL;
+    front.ppexpn.HeadOperator = NULL;
 }
 
-void FiniPPexpn( void )
+void FiniPPexpn( FrontRun& front )
 /*********************/
 {
-    if( ppexpn_state().HeadOperand != NULL ) {
-        CMemFree( ppexpn_state().HeadOperand );
-        ppexpn_state().HeadOperand = NULL;
+    if( front.ppexpn.HeadOperand != NULL ) {
+        CMemFree( front, front.ppexpn.HeadOperand );
+        front.ppexpn.HeadOperand = NULL;
     }
-    if( ppexpn_state().HeadOperator != NULL ) {
-        CMemFree( ppexpn_state().HeadOperator );
-        ppexpn_state().HeadOperator = NULL;
+    if( front.ppexpn.HeadOperator != NULL ) {
+        CMemFree( front, front.ppexpn.HeadOperator );
+        front.ppexpn.HeadOperator = NULL;
     }
 }

@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "tabledef.h"
 
 extern const table_def OpTable[];

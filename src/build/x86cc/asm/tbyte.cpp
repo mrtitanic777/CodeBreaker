@@ -43,6 +43,7 @@
 #include "watcom.h"
 
 #include "clibext.h"
+#include "asmrun.hpp"
 
 
 #ifdef _M_I86
@@ -79,6 +80,7 @@ typedef struct {
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
+}  // namespace
 struct TbyteState {
     ELD tab_plus_exp[MAX_EXP_INDEX] = {
         { { CONSTU32( 0x00000000 ), CONSTU32( 0x00000000 ), CONSTU32( 0xA0000000 ) }, 0x4002 }, // 1e1L
@@ -111,10 +113,10 @@ struct TbyteState {
         { { CONSTU32( 0x2DE37E46 ), CONSTU32( 0xD2CE9FDE ), CONSTU32( 0xA6DD04C8 ) }, 0x0AD8 }  // 1e-4096L
     };
 };
+namespace {
 
 }  // namespace
 
-static inline TbyteState& tbyte_state() { return cbrun_part<TbyteState>(); }
 
 
 static int cmp_u96_max( u96 *x )
@@ -336,7 +338,7 @@ static int multiply(ELD *op1, ELD *op2, ELD *res)
     return 0;
 }
 
-static int TB_create(u96 *value, long exponent, TB_LD *ld)
+static int TB_create(AsmRun& assembler, u96 *value, long exponent, TB_LD *ld)
 /**************************************************
     create tbyte/long double from u96 value and
     decimal exponent, round result
@@ -348,9 +350,9 @@ static int TB_create(u96 *value, long exponent, TB_LD *ld)
 
     if( exponent < 0 ) {
         exponent = -exponent;
-        tabExp = tbyte_state().tab_minus_exp;
+        tabExp = assembler.tbyte->tab_minus_exp;
     } else {
-        tabExp = tbyte_state().tab_plus_exp;
+        tabExp = assembler.tbyte->tab_plus_exp;
     }
     U96LD(value, &res);
     for( i = 0; i < MAX_EXP_INDEX; i++) {
@@ -377,7 +379,7 @@ static int TB_create(u96 *value, long exponent, TB_LD *ld)
     return 0;
 }
 
-TB_LD * strtotb( const char *p, TB_LD * ld, bool negative )
+TB_LD * strtotb( AsmRun& assembler, const char *p, TB_LD * ld, bool negative )
 /**********************************************************
  * convert string into tbyte/long double
  * set result sign
@@ -482,7 +484,11 @@ TB_LD * strtotb( const char *p, TB_LD * ld, bool negative )
         }
     }
     exp_value += exponent;
-    TB_create(&value, exp_value, ld);
+    TB_create(assembler, &value, exp_value, ld);
     SET_SIGN(ld, sign);
     return ld;
 }
+
+/* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
+TbyteState* tbyte_make() { return new TbyteState(); }
+void tbyte_free(TbyteState* part) { delete part; }

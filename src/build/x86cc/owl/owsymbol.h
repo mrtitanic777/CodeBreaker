@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef struct owl_symbol_info  owl_symbol_info;
 typedef uint_32                 owl_symbol_index;
 
@@ -92,10 +93,10 @@ struct owl_symbol_info {
     owl_sym_flags       flags;
 };
 
-extern owl_symbol_table *       OWLENTRY OWLSymbolTableInit( owl_file_handle file );
-extern void                     OWLENTRY OWLSymbolTableFini( owl_symbol_table *table );
+extern owl_symbol_table *       OWLENTRY OWLSymbolTableInit( BackRun& back, owl_file_handle file );
+extern void                     OWLENTRY OWLSymbolTableFini( BackRun& back, owl_symbol_table *table );
 
-extern owl_symbol_handle        OWLENTRY OWLSymbolInit( owl_file_handle file, const char *name );
+extern owl_symbol_handle        OWLENTRY OWLSymbolInit( BackRun& back, owl_file_handle file, const char *name );
 extern void                     OWLENTRY OWLSymbolFini( owl_symbol_handle );
 
 extern void                     OWLENTRY OWLSymbolDefine( owl_symbol_table *table,

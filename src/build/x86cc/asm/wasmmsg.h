@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define MAX_MESSAGE_SIZE    128
 
 #if defined( _STANDALONE_ )

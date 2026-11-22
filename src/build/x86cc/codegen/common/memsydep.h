@@ -30,13 +30,14 @@
 ****************************************************************************/
 
 
-extern pointer          CgMemAlloc( size_t );
-extern void             CgMemFree( pointer );
+#pragma once
+extern pointer          CgMemAlloc( BackRun& back, size_t );
+extern void             CgMemFree( BackRun& back, pointer );
 extern void             MemInit( void );
-extern void             MemFini( void );
+extern void             MemFini( BackRun& back );
 extern void             MemCoalesce( void );
-extern pointer_uint     MemInUse( void );
-extern pointer_uint     MemSize( void );
+extern pointer_uint     MemInUse( BackRun& back );
+extern pointer_uint     MemSize( BackRun& back );
 
 #define _SysAlloc       CgMemAlloc
 #define _SysFree        CgMemFree

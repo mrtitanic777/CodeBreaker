@@ -36,84 +36,85 @@
 #include "dwmem.h"
 #include "dwloc.h"
 #include "dwinfo.h"
+#include "backrun.hpp"
 
 
-void DW_InfoReloc( dw_client cli, uint reloc_type )
+void DW_InfoReloc( BackRun& back, dw_client cli, uint reloc_type )
 {
     CLIReloc2( cli, DW_DEBUG_INFO, static_cast<dw_reloc_type>(reloc_type) );
 }
 
 
-void DW_Info8( dw_client cli, uint_8 value )
+void DW_Info8( BackRun& back, dw_client cli, uint_8 value )
 {
-    CLIWriteU8( cli, DW_DEBUG_INFO, value );
+    CLIWriteU8( back, cli, DW_DEBUG_INFO, value );
 }
 
 
-void DW_Info16( dw_client cli, uint_16 value )
+void DW_Info16( BackRun& back, dw_client cli, uint_16 value )
 {
-    CLIWriteU16( cli, DW_DEBUG_INFO, value );
+    CLIWriteU16( back, cli, DW_DEBUG_INFO, value );
 }
 
 
-void DW_Info32( dw_client cli, uint_32 value )
+void DW_Info32( BackRun& back, dw_client cli, uint_32 value )
 {
-    CLIWriteU32( cli, DW_DEBUG_INFO, value );
+    CLIWriteU32( back, cli, DW_DEBUG_INFO, value );
 }
 
 
-void DW_InfoSLEB128( dw_client cli, dw_sconst value )
+void DW_InfoSLEB128( BackRun& back, dw_client cli, dw_sconst value )
 {
-    CLIWriteSLEB128( cli, DW_DEBUG_INFO, value );
+    CLIWriteSLEB128( back, cli, DW_DEBUG_INFO, value );
 }
 
 
-void DW_InfoULEB128( dw_client cli, dw_uconst value )
+void DW_InfoULEB128( BackRun& back, dw_client cli, dw_uconst value )
 {
-    CLIWriteULEB128( cli, DW_DEBUG_INFO, value );
+    CLIWriteULEB128( back, cli, DW_DEBUG_INFO, value );
 }
 
 
-void DW_InfoBytes( dw_client cli, const void *buf, size_t size )
+void DW_InfoBytes( BackRun& back, dw_client cli, const void *buf, size_t size )
 {
     CLIWrite( cli, DW_DEBUG_INFO, buf, size );
 }
 
 
-void DW_InfoString( dw_client cli, const char *str )
+void DW_InfoString( BackRun& back, dw_client cli, const char *str )
 {
-    CLIWriteString( cli, DW_DEBUG_INFO, str );
+    CLIWriteString( back, cli, DW_DEBUG_INFO, str );
 }
 
-void DW_InfoEmitLocExprNull( dw_client cli, size_t size )
+void DW_InfoEmitLocExprNull( BackRun& back, dw_client cli, size_t size )
 {
-    DW_EmitLocExprNull( cli, DW_DEBUG_INFO, size );
+    DW_EmitLocExprNull( back, cli, DW_DEBUG_INFO, size );
 }
 
-uint_32 DW_InfoEmitLocExpr( dw_client cli, size_t size, dw_loc_handle loc )
+uint_32 DW_InfoEmitLocExpr( BackRun& back, dw_client cli, size_t size, dw_loc_handle loc )
 {
-    return( DW_EmitLocExpr( cli, DW_DEBUG_INFO, size, loc ) );
+    return( DW_EmitLocExpr( back, cli, DW_DEBUG_INFO, size, loc ) );
 }
 
-void DW_InfoHandleWriteOffset( dw_client cli, dw_handle hdl )
+void DW_InfoHandleWriteOffset( BackRun& back, dw_client cli, dw_handle hdl )
 {
-    DW_HandleWriteOffset( cli, hdl, DW_DEBUG_INFO );
+    DW_HandleWriteOffset( back, cli, hdl, DW_DEBUG_INFO );
 }
 
-void DW_InfoHandleReference( dw_client cli, dw_handle hdl )
+void DW_InfoHandleReference( BackRun& back, dw_client cli, dw_handle hdl )
 {
     if( cli->compiler_options & DW_CM_BROWSER ) {
-        DWReference( cli, cli->decl.line, cli->decl.column, hdl );
+        DWReference( back, cli, cli->decl.line, cli->decl.column, hdl );
     }
-    DW_InfoHandleWriteOffset( cli, hdl );
+    DW_InfoHandleWriteOffset( back, cli, hdl );
 }
 
 
-void DW_InitDebugInfo( dw_client cli )
+void DW_InitDebugInfo( BackRun& back, dw_client cli )
 {
     /* leave room for the length field */
-    CLIWriteU32( cli, DW_DEBUG_INFO, 0 );   /* section size */
-    CLIWriteU16( cli, DW_DEBUG_INFO, 2 );   /* section version */
+    CLIWriteU32( back, cli, DW_DEBUG_INFO, 0 );   /* section size */
+    CLIWriteU16( back, cli, DW_DEBUG_INFO, 2 );   /* section version */
     /* abbrev start */
     if( cli->compiler_options & DW_CM_ABBREV_PRE ) {
         CLIReloc4( cli, DW_DEBUG_INFO, DW_W_EXT_REF, cli->abbrev_sym, 0 );
@@ -122,12 +123,12 @@ void DW_InitDebugInfo( dw_client cli )
         CLIReloc3( cli, DW_DEBUG_INFO, DW_W_SECTION_POS, DW_DEBUG_ABBREV );
         CLISectionSeekEnd( cli, DW_DEBUG_ABBREV );
     }
-    CLIWriteU8( cli, DW_DEBUG_INFO, cli->offset_size );
+    CLIWriteU8( back, cli, DW_DEBUG_INFO, cli->offset_size );
 }
 
 
-void DW_FiniDebugInfo( dw_client cli )
+void DW_FiniDebugInfo( BackRun& back, dw_client cli )
 {
     /* backpatch the section length */
-    CLISectionSetSize( cli, DW_DEBUG_INFO );
+    CLISectionSetSize( back, cli, DW_DEBUG_INFO );
 }

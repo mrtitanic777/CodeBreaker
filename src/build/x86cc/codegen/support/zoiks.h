@@ -30,9 +30,10 @@
 ****************************************************************************/
 
 
-extern void Zoiks(int);
+#pragma once
+extern void Zoiks(BackRun& back, int);
 
-#define _Zoiks(x)      Zoiks(x)
+#define _Zoiks(x)      Zoiks(back, x)
 #define _NYI()      Zoiks( 12345 );
 
 #include "interrs.h"

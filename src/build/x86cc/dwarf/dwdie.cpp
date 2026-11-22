@@ -39,6 +39,7 @@
 #include "dwrefer.h"
 #include "dwcliuti.h"
 #include "dwdie.h"
+#include "backrun.hpp"
 
 
 void DW_InitDIE( dw_client cli )
@@ -55,7 +56,7 @@ void DW_FiniDIE( dw_client cli )
 }
 
 
-void DW_StartChildren( dw_client cli )
+void DW_StartChildren( BackRun& back, dw_client cli )
 {
     die_tree        *new_;
 
@@ -69,7 +70,7 @@ void DW_StartChildren( dw_client cli )
 }
 
 
-static void doTheSiblingThing( dw_client cli )
+static void doTheSiblingThing( BackRun& back, dw_client cli )
 {
     dw_sect_offs    sibling;
     dw_sect_offs    offset;
@@ -79,39 +80,39 @@ static void doTheSiblingThing( dw_client cli )
         /* relocate previous sibling */
         offset = InfoSectionOffset( cli );
         CLISectionSeekOffset( cli, DW_DEBUG_INFO, sibling );
-        DW_Info32( cli, offset );
+        DW_Info32( back, cli, offset );
         CLISectionSeekEnd( cli, DW_DEBUG_INFO );
     }
 }
 
 
-void DW_EndChildren( dw_client cli )
+void DW_EndChildren( BackRun& back, dw_client cli )
 {
-    doTheSiblingThing( cli );
+    doTheSiblingThing( back, cli );
 
     /* move up a level in the tree */
-    cli->die.tree = static_cast<die_tree *>(DW_FreeLink( cli, cli->die.tree ));
-    CLISectionWriteZeros( cli, DW_DEBUG_INFO, 1 );
+    cli->die.tree = static_cast<die_tree *>(DW_FreeLink( back, cli, cli->die.tree ));
+    CLISectionWriteZeros( back, cli, DW_DEBUG_INFO, 1 );
 }
 
 
-void DW_StartDIE( dw_client cli, abbrev_code abbrev )
+void DW_StartDIE( BackRun& back, dw_client cli, abbrev_code abbrev )
 {
     int         haskids;
     unsigned    abbrevnum;
 
-    doTheSiblingThing( cli );
+    doTheSiblingThing( back, cli );
 
     if( abbrev & AB_START_REF ) {
-        DW_StartRef( cli );
+        DW_StartRef( back, cli );
     }
 
     haskids = (abbrev & AB_SIBLING) != 0;       // ab_sibling in "always on"
     abbrev &= ~AB_ALWAYS;                       // class of attributes
 
     /* emit the abbreviation for this DIE */
-    abbrevnum = DW_MarkAbbrevAsUsed( cli, &abbrev );
-    DW_InfoULEB128( cli, abbrevnum );
+    abbrevnum = DW_MarkAbbrevAsUsed( back, cli, &abbrev );
+    DW_InfoULEB128( back, cli, abbrevnum );
 
     /* AT_sibling reference */
     if( haskids ) {
@@ -124,7 +125,7 @@ void DW_StartDIE( dw_client cli, abbrev_code abbrev )
 
     /* AT_decl_* */
     if( abbrev & AB_DECL ) {
-        DW_EmitDecl( cli );
+        DW_EmitDecl( back, cli );
     }
 }
 

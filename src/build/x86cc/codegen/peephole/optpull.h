@@ -31,10 +31,11 @@
 ****************************************************************************/
 
 
-extern bool         FindShort( ins_entry *ins, ins_entry *end );
-extern void         CloneCode( label_handle lbl );
-extern ins_entry    *IsolatedCode( ins_entry *instr );
-extern bool         StraightenCode( ins_entry *jump );
-extern void         CheckStraightenCode( ins_entry *lbl_ins );
-extern void         CallRet( ins_entry *instr );
-extern void         JmpRet( ins_entry *instr );
+#pragma once
+extern bool         FindShort( BackRun& back, ins_entry *ins, ins_entry *end );
+extern void         CloneCode( BackRun& back, label_handle lbl );
+extern ins_entry    *IsolatedCode( BackRun& back, ins_entry *instr );
+extern bool         StraightenCode( BackRun& back, ins_entry *jump );
+extern void         CheckStraightenCode( BackRun& back, ins_entry *lbl_ins );
+extern void         CallRet( BackRun& back, ins_entry *instr );
+extern void         JmpRet( BackRun& back, ins_entry *instr );

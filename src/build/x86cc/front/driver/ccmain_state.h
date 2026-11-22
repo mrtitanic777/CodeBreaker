@@ -1,4 +1,4 @@
-/* ccmain_state.h -- variables of one file of the compiler that other files read, kept for the run (run/cbrun.hpp) */
+/* ccmain_state.h -- the variables of ccmain.cpp for one run of the compiler: the run holds them as a member (see the run header) */
 #pragma once
 #include "cvars.h"
 #include <stdarg.h>
@@ -19,8 +19,12 @@
 #include "clibint.h"
 #include "clibext.h"
 
-/* the variables of ccmain_state.h, one set for each run of the compiler (run/cbrun.hpp) */
 struct CcmainState {
-    bool PrintWhiteSpace;   // also refered from cmac2.c
+    bool IsStdIn;
+    bool IsNullDev;
+    char *FNameBuf = NULL;
+    unsigned CppColumn = 0;
+    unsigned CppWidth = 0;
+    unsigned CommentChar = '\0';
+    bool CppFirstChar = false;
 };
-inline CcmainState& ccmain_state() { return cbrun_part<CcmainState>(); }

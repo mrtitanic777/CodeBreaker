@@ -52,9 +52,10 @@
 #include "unroll.h"
 #include "revcond.h"
 #include "dumpio.h"
+#include "backrun.hpp"
 
 
-#define Assert( x )     { if( !(x) ) Zoiks( ZOIKS_113 ); }
+#define Assert( x )     { if( !(x) ) Zoiks( back, ZOIKS_113 ); }
 
 typedef struct loop_condition {
     byte        opcode;
@@ -69,7 +70,7 @@ typedef struct loop_condition {
 } loop_condition;
 
 
-void    FixBlockIds( void )
+void    FixBlockIds( BackRun& back )
 /**************************
  * Fix up the blk_id field of temps.
  */
@@ -78,7 +79,7 @@ void    FixBlockIds( void )
     block       *blk;
     name        *temp;
 
-    for( temp = data_state().Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
+    for( temp = back.data.Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
         if( temp->t.u.blk_id == BLK_ID_NONE ) {
             temp->t.temp_flags |= VISITED;
         } else {
@@ -86,8 +87,8 @@ void    FixBlockIds( void )
         }
     }
     blk_id = 1;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
-        for( temp = data_state().Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
+        for( temp = back.data.Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
             if( temp->t.temp_flags & VISITED )
                 continue;
             if( temp->t.u.blk_id != blk->blk_id )
@@ -98,12 +99,12 @@ void    FixBlockIds( void )
         blk->blk_id = blk_id;
         blk_id++;
     }
-    for( temp = data_state().Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
+    for( temp = back.data.Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
         temp->t.temp_flags &= ~VISITED;
     }
 }
 
-block   *DupBlock( block *blk )
+block   *DupBlock( BackRun& back, block *blk )
 /******************************
  * Create a copy of the given block and all the instructions in it.
  * This copy is not linked in anywhere. It has room for as many edges
@@ -113,13 +114,13 @@ block   *DupBlock( block *blk )
 {
     block       *copy;
 
-    copy = MakeBlockInit( blk->targets );
+    copy = MakeBlockInit( back, blk->targets );
     _SetBlkAttr( copy, blk->class_ );
     _MarkBlkAttrClr( copy, BLK_LOOP_HEADER | BLK_ITERATIONS_KNOWN );
-    copy->label = AskForNewLabel();
+    copy->label = AskForNewLabel(back);
     copy->depth = blk->depth;
     copy->gen_blk_id = blk->gen_blk_id;
-    DupInstrs( (instruction *)&copy->ins, blk->ins.head.next, blk->ins.head.prev, NULL, 0 );
+    DupInstrs( back, (instruction *)&copy->ins, blk->ins.head.next, blk->ins.head.prev, NULL, 0 );
     return( copy );
 }
 
@@ -140,7 +141,7 @@ typedef struct  loop_abstract {
     block       *tail;
 } loop_abstract;
 
-static  block   *DupLoop( block *tail, loop_abstract *loop )
+static  block   *DupLoop( BackRun& back, block *tail, loop_abstract *loop )
 /***********************************************************
  * Make a copy of the given loop and return a pointer to its head.
  * The blocks in the new loop will be linked together via blk->next_block,
@@ -167,7 +168,7 @@ static  block   *DupLoop( block *tail, loop_abstract *loop )
     for( blk = tail; blk != NULL; blk = blk->u.loop ) {
         if( _IsBlkAttr( blk, BLK_IGNORE ) )
             continue;
-        copy = DupBlock( blk );
+        copy = DupBlock( back, blk );
         COPY_PTR( blk ) = copy;
         COPY_PTR( copy ) = blk;
         if( prev != NULL ) {
@@ -194,7 +195,7 @@ static  block   *DupLoop( block *tail, loop_abstract *loop )
      * edge in the corresponding block to the same block if it is in the
      * loop, otherwise we use the copy of the block.
      */
-    old_header = loopopts_state().Head;
+    old_header = back.loopopts.Head;
     for( blk = tail; blk != NULL; blk = blk->u.loop ) {
         if( _IsBlkAttr( blk, BLK_IGNORE ) )
             continue;
@@ -279,7 +280,7 @@ static  void    UnMarkHeaderEdges( block *loop )
 #define MAX_CODE_SIZE   0x20
 #define UNROLL_MAX      0x20
 
-static int_32   UnrollCount( block *loop_tail, bool *clean, bool *complete )
+static int_32   UnrollCount( BackRun& back, block *loop_tail, bool *clean, bool *complete )
 /***************************************************************************
  * Figure out how many times we want to unroll the given loop.
  */
@@ -293,11 +294,11 @@ static int_32   UnrollCount( block *loop_tail, bool *clean, bool *complete )
      */
     *complete = false;
     *clean = false;
-    unroll_count = loopopts_state().Head->unroll_count;
+    unroll_count = back.loopopts.Head->unroll_count;
     if( unroll_count == 0 ) {
         if( _IsntModel( CGSW_GEN_LOOP_UNROLLING ) )
             return( 0 );
-        if( data_state().OptForSize > 0 )
+        if( back.data.OptForSize > 0 )
             return( false );
         num_ins = 0;
         for( blk = loop_tail; blk != NULL; blk = blk->u.loop ) {
@@ -305,14 +306,14 @@ static int_32   UnrollCount( block *loop_tail, bool *clean, bool *complete )
                 return( 0 );
             num_ins += CountIns( blk );
         }
-        if( _IsBlkAttr( loopopts_state().Head, BLK_ITERATIONS_KNOWN ) ) {
+        if( _IsBlkAttr( back.loopopts.Head, BLK_ITERATIONS_KNOWN ) ) {
             for( unroll_count = MAX_CODE_SIZE / num_ins; unroll_count > 0; --unroll_count ) {
-                if( loopopts_state().Head->iterations % ( unroll_count + 1 ) == 0 ) {
+                if( back.loopopts.Head->iterations % ( unroll_count + 1 ) == 0 ) {
                     break;
                 }
             }
-            if( unroll_count >= ( loopopts_state().Head->iterations - 1 ) ) {
-                unroll_count = loopopts_state().Head->iterations - 1;
+            if( unroll_count >= ( back.loopopts.Head->iterations - 1 ) ) {
+                unroll_count = back.loopopts.Head->iterations - 1;
                 *complete = true;
             }
         } else {
@@ -465,7 +466,7 @@ static  void    ChainTwoLoops( loop_abstract *first, loop_abstract *last )
     last->head->u.loop = first->tail;
 }
 
-static  block   *DoUnroll( block *tail, int_32 reps, bool replace_vars )
+static  block   *DoUnroll( BackRun& back, block *tail, int_32 reps, bool replace_vars )
 /***********************************************************************
  * Unroll the given loop (this is the tail block, and loop is connected
  * through blk->u.loop to the head, in which blk->u.loop == NULL) reps
@@ -490,7 +491,7 @@ static  block   *DoUnroll( block *tail, int_32 reps, bool replace_vars )
     /*
      * allocate an array of these abstract loop thingies
      */
-    new_loops = static_cast<loop_abstract *>(CGAlloc( size ));
+    new_loops = static_cast<loop_abstract *>(CGAlloc( back, size ));
     first = &new_loops[0];
     last = &new_loops[reps - 1];
     /*
@@ -498,14 +499,14 @@ static  block   *DoUnroll( block *tail, int_32 reps, bool replace_vars )
      */
     for( i = 0; i < reps; i++ ) {
         curr = &new_loops[i];
-        DupLoop( tail, curr );
+        DupLoop( back, tail, curr );
     }
     /*
      * want last copy to jump to original loop - we do it here because
      * the last copy is going to get linked (via blk->u.loop) into the
      * entire loop after the next pass over the array of copies
      */
-    RedirectHeaderEdges( last->tail, loopopts_state().Head );
+    RedirectHeaderEdges( last->tail, back.loopopts.Head );
     /*
      * also, we make the original loop jump to the first of the duplicates
      */
@@ -531,14 +532,14 @@ static  block   *DoUnroll( block *tail, int_32 reps, bool replace_vars )
     first->head->u.loop = tail;
 
     next_block = last->tail;
-    CGFree( new_loops );
+    CGFree( back, new_loops );
     /*
      * and return the tail of the new super-loop
      */
     return( next_block );
 }
 
-static  bool    TractableCond( loop_condition *cond )
+static  bool    TractableCond( BackRun& back, loop_condition *cond )
 /****************************************************
  * To be a nice conditional exit (one we can munge) we need a comparison
  * between an induction variable and a loop-invariant expression. If these
@@ -560,22 +561,22 @@ static  bool    TractableCond( loop_condition *cond )
     blk = cond->compare_block;
     ok = false;
 //    exit_true = false;
-    MarkInvariants();
-    if( !InvariantOp( ins->operands[1] ) ) {
+    MarkInvariants(back);
+    if( !InvariantOp( back, ins->operands[1] ) ) {
         n = ins->operands[0];
         ins->operands[0] = ins->operands[1];
         ins->operands[1] = n;
         RevCond( ins );
     }
-    if( InvariantOp( ins->operands[1] ) ) {
-        tmp = FindIndVar( ins->operands[0] );
+    if( InvariantOp( back, ins->operands[1] ) ) {
+        tmp = FindIndVar( back, ins->operands[0] );
         if( tmp != NULL ) {
             cond->induction = tmp;
             cond->invariant = ins->operands[1];
             ok = true;
         }
     }
-    UnMarkInvariants();
+    UnMarkInvariants(back);
     if( !ok )
         return( false );
     if( _IsV( cond->induction, IV_DEAD ) )
@@ -629,7 +630,7 @@ static  bool    TractableCond( loop_condition *cond )
         ok = false;
         break;
     default:
-        Zoiks( ZOIKS_113 );
+        Zoiks( back, ZOIKS_113 );
     }
     return( ok );
 }
@@ -670,7 +671,7 @@ void    RemoveIns( instruction *ins )
     ins->head.prev = NULL;
 }
 
-static  block   *MakeNonConditional( block *blki, block_edge *edgei )
+static  block   *MakeNonConditional( BackRun& back, block *blki, block_edge *edgei )
 /*******************************************************************
  * If blki is conditional, create a new block which is
  * in between the conditional block and the head of the
@@ -683,9 +684,9 @@ static  block   *MakeNonConditional( block *blki, block_edge *edgei )
     block_edge  *edge;
 
     if( _IsBlkAttr( blki, BLK_CONDITIONAL ) ) {
-        blk = MakeBlockInit( 1 );
+        blk = MakeBlockInit( back, 1 );
         _SetBlkAttr( blk, BLK_JUMP | BLK_IN_LOOP );
-        blk->label = AskForNewLabel();
+        blk->label = AskForNewLabel(back);
         blk->gen_blk_id = blki->gen_blk_id;
         blk->next_block = blki->next_block;
         if( blk->next_block != NULL ) {
@@ -693,20 +694,20 @@ static  block   *MakeNonConditional( block *blki, block_edge *edgei )
         }
         blk->prev_block = blki;
         blki->next_block = blk;
-        blk->loop_head = loopopts_state().Head;
+        blk->loop_head = back.loopopts.Head;
         edge = &blk->edge[0];
         edge->flags = BEF_DEST_IS_BLOCK;
         edge->source->targets++;
         PointEdge( edge, edgei->destination.u.blk );
         MoveEdge( edgei, blk );
-        UnMarkLoop();
-        MarkLoop();
+        UnMarkLoop(back);
+        MarkLoop(back);
         return( blk );
     }
     return( blki );
 }
 
-static  int     ExitEdges( block *head )
+static  int     ExitEdges( BackRun& back, block *head )
 /***************************************
  * Return the number of edges in the loop with the given head which
  * exit the loop.
@@ -716,7 +717,7 @@ static  int     ExitEdges( block *head )
     block       *blk;
 
     count = 0;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( blk->loop_head == head
           || blk == head ) {
             if( _IsBlkAttr( blk, BLK_LOOP_EXIT ) ) {
@@ -727,7 +728,7 @@ static  int     ExitEdges( block *head )
     return( count );
 }
 
-bool    CanHoist( block *head )
+bool    CanHoist( BackRun& back, block *head )
 /******************************
  * Figure out if we can hoist the condition of a loop to the top of
  * the loop. Basically, we can do this as long as there are no
@@ -748,7 +749,7 @@ bool    CanHoist( block *head )
 
     for( curr = head; curr != NULL; ) {
         if( _IsBlkAttr( curr, BLK_LOOP_EXIT ) )
-            return( ExitEdges( head ) == 1 );
+            return( ExitEdges( back, head ) == 1 );
         if( curr->targets > 1 )
             break;
         curr = curr->edge[0].destination.u.blk;
@@ -759,7 +760,7 @@ bool    CanHoist( block *head )
     return( false );
 }
 
-void    HoistCondition( block *head )
+void    HoistCondition( BackRun& back, block *head )
 /************************************
  * We want to knock stuff off the top of a loop until the condition
  * which controls exit from the loop is the first statement in the
@@ -776,7 +777,7 @@ void    HoistCondition( block *head )
 
     for( edge = head->input_edges; edge != NULL; edge = edge->next_source ) {
         if( edge->source->targets > 1 ) {
-            MakeNonConditional( edge->source, edge );
+            MakeNonConditional( back, edge->source, edge );
         }
     }
 
@@ -784,20 +785,20 @@ void    HoistCondition( block *head )
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
             if( _OpIsCondition( ins->head.opcode ) ) {
                 RemoveIns( ins );
-                SuffixIns( head->ins.head.prev, ins );
+                SuffixIns( back, head->ins.head.prev, ins );
                 return;
             }
             for( edge = head->input_edges; edge != NULL; edge = edge->next_source ) {
-                DupIns( edge->source->ins.head.prev, ins, NULL, 0 );
+                DupIns( back, edge->source->ins.head.prev, ins, NULL, 0 );
             }
             next = ins->head.next;
-            FreeIns( ins );
+            FreeIns( back, ins );
         }
     }
     /*
      * should never reach here because we must have a conditional statement
      */
-    Zoiks( ZOIKS_113 );
+    Zoiks( back, ZOIKS_113 );
 }
 
 #if 0
@@ -857,16 +858,16 @@ void    HoistCondition( block **head, block *prehead )
 }
 #endif
 
-static  void    MarkLoopHeader( block *loop, block *header )
+static  void    MarkLoopHeader( BackRun& back, block *loop, block *header )
 /***********************************************************
  * Mark the entire loop as having header as it's loop_head.
  */
 {
     for( ; loop != NULL; loop = loop->u.loop ) {
         if( _IsBlkAttr( loop, BLK_LOOP_HEADER ) ) {
-            loop->loop_head = loopopts_state().PreHead->loop_head;
-            if( _IsBlkAttr( loopopts_state().PreHead, BLK_LOOP_HEADER ) ) {
-                loop->loop_head = loopopts_state().PreHead;
+            loop->loop_head = back.loopopts.PreHead->loop_head;
+            if( _IsBlkAttr( back.loopopts.PreHead, BLK_LOOP_HEADER ) ) {
+                loop->loop_head = back.loopopts.PreHead;
             }
             break;
         }
@@ -952,7 +953,7 @@ static  void    MarkLoopHeader( block *loop, block *header )
  *   +---------------------------+
  */
 
-static  void    MakeWorldGoAround( block *loop, loop_abstract *cleanup_copy, loop_condition *cond, int_32 reps )
+static  void    MakeWorldGoAround( BackRun& back, block *loop, loop_abstract *cleanup_copy, loop_condition *cond, int_32 reps )
 /***************************************************************************************************************
  * This functions lays out the code as given above, creating and linking in condition
  * blocks as needed. It then sorts the blocks into the given order, to make sure that nothing
@@ -969,26 +970,26 @@ static  void    MakeWorldGoAround( block *loop, loop_abstract *cleanup_copy, loo
     block_edge          *edge;
 
     comp_type_class = cond->compare_ins->type_class;
-    temp = AllocTemp( comp_type_class );
-    modifier = AllocS32Const( -1 * reps * cond->induction->plus );
-    add = MakeBinary( OP_ADD, cond->invariant, modifier, temp, comp_type_class );
-    SuffixPreHeader( add );
+    temp = AllocTemp( back, comp_type_class );
+    modifier = AllocS32Const( back, -1 * reps * cond->induction->plus );
+    add = MakeBinary( back, OP_ADD, cond->invariant, modifier, temp, comp_type_class );
+    SuffixPreHeader( back, add );
     /*
      * add a piece of code to check and make sure n and ( n - reps ) have the same sign
      */
     if( !cond->complete
       && Signed[comp_type_class] != comp_type_class ) {
-        new_blk = MakeBlockInit( 2 );
+        new_blk = MakeBlockInit( back, 2 );
         _SetBlkAttr( new_blk, BLK_CONDITIONAL );
-        new_blk->label = AskForNewLabel();
-        new_blk->loop_head = loopopts_state().PreHead->loop_head;
-        new_blk->gen_blk_id = loopopts_state().PreHead->gen_blk_id;
-        temp = AllocTemp( comp_type_class );
-        ins = MakeBinary( OP_XOR, add->result, cond->invariant, temp, comp_type_class );
-        SuffixIns( new_blk->ins.head.prev, ins );
-        high_bit = 1 << ( ( 8 * data_state().TypeClassSize[comp_type_class] ) - 1 );
-        ins = MakeCondition( OP_BIT_TEST_TRUE, temp, AllocS32Const( high_bit ), 0, 1, comp_type_class );
-        SuffixIns( new_blk->ins.head.prev, ins );
+        new_blk->label = AskForNewLabel(back);
+        new_blk->loop_head = back.loopopts.PreHead->loop_head;
+        new_blk->gen_blk_id = back.loopopts.PreHead->gen_blk_id;
+        temp = AllocTemp( back, comp_type_class );
+        ins = MakeBinary( back, OP_XOR, add->result, cond->invariant, temp, comp_type_class );
+        SuffixIns( back, new_blk->ins.head.prev, ins );
+        high_bit = 1 << ( ( 8 * back.data.TypeClassSize[comp_type_class] ) - 1 );
+        ins = MakeCondition( back, OP_BIT_TEST_TRUE, temp, AllocS32Const( back, high_bit ), 0, 1, comp_type_class );
+        SuffixIns( back, new_blk->ins.head.prev, ins );
         edge = &new_blk->edge[0];
         edge->flags = BEF_DEST_IS_BLOCK;
         edge->source->targets++;
@@ -997,14 +998,14 @@ static  void    MakeWorldGoAround( block *loop, loop_abstract *cleanup_copy, loo
         edge->flags = BEF_DEST_IS_BLOCK;
         edge->source->targets++;
         PointEdge( edge, loop->loop_head );
-        MoveEdge( &loopopts_state().PreHead->edge[0], new_blk );
-        AddBlocks( loopopts_state().PreHead, new_blk );
+        MoveEdge( &back.loopopts.PreHead->edge[0], new_blk );
+        AddBlocks( back.loopopts.PreHead, new_blk );
     }
     /*
      * now munge Head so that it looks more like we want it to, and make a copy which we can
      * then attach to our blk
      */
-    ins = loopopts_state().Head->ins.head.prev;
+    ins = back.loopopts.Head->ins.head.prev;
     ins->head.opcode = static_cast<opcode_defs>(cond->opcode);
     ins->operands[0] = cond->induction->name;
     ins->operands[1] = add->result;
@@ -1013,47 +1014,47 @@ static  void    MakeWorldGoAround( block *loop, loop_abstract *cleanup_copy, loo
         /*
          * we have completely unrolled the loop - so behead it
          */
-        MarkHeaderEdges( loop, loopopts_state().Head );
+        MarkHeaderEdges( loop, back.loopopts.Head );
         RedirectHeaderEdges( loop, cond->exit_edge );
-        edge = &loopopts_state().Head->edge[0];
+        edge = &back.loopopts.Head->edge[0];
         if( !_IsBlkAttr( edge->destination.u.blk, BLK_IN_LOOP ) ) {
-            edge = &loopopts_state().Head->edge[1];
+            edge = &back.loopopts.Head->edge[1];
         }
-        FreeIns( ins );
-        MakeJumpBlock( loopopts_state().Head, edge );
-        MarkLoopHeader( loop, loopopts_state().Head->loop_head );
-        _MarkBlkAttrClr( loopopts_state().Head, BLK_LOOP_HEADER | BLK_ITERATIONS_KNOWN );
+        FreeIns( back, ins );
+        MakeJumpBlock( back.loopopts.Head, edge );
+        MarkLoopHeader( back, loop, back.loopopts.Head->loop_head );
+        _MarkBlkAttrClr( back.loopopts.Head, BLK_LOOP_HEADER | BLK_ITERATIONS_KNOWN );
     } else {
-        MoveEdge( &loopopts_state().Head->edge[0], cond->loop_edge );
+        MoveEdge( &back.loopopts.Head->edge[0], cond->loop_edge );
         if( cond->clean ) {
-            MoveEdge( &loopopts_state().Head->edge[1], cond->exit_edge );
+            MoveEdge( &back.loopopts.Head->edge[1], cond->exit_edge );
         } else {
-            MoveEdge( &loopopts_state().Head->edge[1], cleanup_copy->head );
+            MoveEdge( &back.loopopts.Head->edge[1], cleanup_copy->head );
         }
         if( _IsBlkAttr( loop, BLK_JUMP ) ) {
-            if( loop->edge[0].destination.u.blk == loopopts_state().Head ) {
+            if( loop->edge[0].destination.u.blk == back.loopopts.Head ) {
                 block   *blk;
 
-                _MarkBlkAttrClr( loopopts_state().Head, BLK_LOOP_HEADER );
-                blk = DupBlock( loopopts_state().Head );
+                _MarkBlkAttrClr( back.loopopts.Head, BLK_LOOP_HEADER );
+                blk = DupBlock( back, back.loopopts.Head );
                 AddBlocks( loop, blk );
                 MoveEdge( &loop->edge[0], blk );
                 edge = &blk->edge[0];
                 edge->flags = BEF_DEST_IS_BLOCK;
                 edge->source->targets++;
-                PointEdge( edge, loopopts_state().Head->edge[0].destination.u.blk );
+                PointEdge( edge, back.loopopts.Head->edge[0].destination.u.blk );
                 edge = &blk->edge[1];
                 edge->flags = BEF_DEST_IS_BLOCK;
                 edge->source->targets++;
-                PointEdge( edge, loopopts_state().Head->edge[1].destination.u.blk );
+                PointEdge( edge, back.loopopts.Head->edge[1].destination.u.blk );
                 blk->u.loop = loop;
                 for( ;; ) {
-                    if( loop->u.loop == loopopts_state().Head ) {
+                    if( loop->u.loop == back.loopopts.Head ) {
                         loop->u.loop = NULL;
                         _MarkBlkAttrSet( loop, BLK_LOOP_HEADER );
-                        loop->loop_head = loopopts_state().Head->loop_head;
-                        MarkLoopHeader( blk, loop );
-                        loopopts_state().Head = loop;
+                        loop->loop_head = back.loopopts.Head->loop_head;
+                        MarkLoopHeader( back, blk, loop );
+                        back.loopopts.Head = loop;
                         break;
                     }
                     loop = loop->u.loop;
@@ -1085,7 +1086,7 @@ bool    Hoisted( block *head, instruction *compare )
     return( false );
 }
 
-bool    UnRoll( void )
+bool    UnRoll( BackRun& back )
 /*********************
  * Unroll the given loop n times.
  */
@@ -1096,35 +1097,35 @@ bool    UnRoll( void )
     bool                one_cond;
     loop_abstract       cleanup_copy;
 
-    if( _IsBlkAttr( loopopts_state().Head, BLK_DONT_UNROLL ) )
+    if( _IsBlkAttr( back.loopopts.Head, BLK_DONT_UNROLL ) )
         return( false );
-    unroll_count = UnrollCount( loopopts_state().Loop, &cond.clean, &cond.complete );
+    unroll_count = UnrollCount( back, back.loopopts.Loop, &cond.clean, &cond.complete );
     if( unroll_count <= 0 )
         return( false );
-    AnalyseLoop( NULL, &one_cond, &cond.compare_ins, &cond.compare_block );
+    AnalyseLoop( back, NULL, &one_cond, &cond.compare_ins, &cond.compare_block );
     if( one_cond
-      && Hoisted( loopopts_state().Head, cond.compare_ins )
-      && TractableCond( &cond ) ) {
-        MarkHeaderEdges( loopopts_state().Loop, loopopts_state().Head );
-        DupLoop( loopopts_state().Loop, &cleanup_copy );
+      && Hoisted( back.loopopts.Head, cond.compare_ins )
+      && TractableCond( back, &cond ) ) {
+        MarkHeaderEdges( back.loopopts.Loop, back.loopopts.Head );
+        DupLoop( back, back.loopopts.Loop, &cleanup_copy );
         RedirectHeaderEdges( cleanup_copy.tail, cleanup_copy.head );
         _MarkBlkAttrSet( cleanup_copy.head, BLK_LOOP_HEADER | BLK_DONT_UNROLL );
-        MarkLoopHeader( cleanup_copy.tail, cleanup_copy.head );
-        _MarkBlkAttrSet( loopopts_state().Head, BLK_IGNORE );
-        last = DoUnroll( loopopts_state().Loop, unroll_count, false );
-        _MarkBlkAttrClr( loopopts_state().Head, BLK_IGNORE );
-        MarkLoopHeader( last, loopopts_state().Head );
-        MakeWorldGoAround( last, &cleanup_copy, &cond, unroll_count );
-        cleanup_copy.head->loop_head = loopopts_state().Head->loop_head;
+        MarkLoopHeader( back, cleanup_copy.tail, cleanup_copy.head );
+        _MarkBlkAttrSet( back.loopopts.Head, BLK_IGNORE );
+        last = DoUnroll( back, back.loopopts.Loop, unroll_count, false );
+        _MarkBlkAttrClr( back.loopopts.Head, BLK_IGNORE );
+        MarkLoopHeader( back, last, back.loopopts.Head );
+        MakeWorldGoAround( back, last, &cleanup_copy, &cond, unroll_count );
+        cleanup_copy.head->loop_head = back.loopopts.Head->loop_head;
         AddBlocks( last, cleanup_copy.head );
         UnMarkHeaderEdges( last );
 //        MoveDownLoop( cond_blk );
-    } else if( loopopts_state().Head->unroll_count > 0 ) {
-        last = DoUnroll( loopopts_state().Loop, loopopts_state().Head->unroll_count, false );
-        MarkLoopHeader( last, loopopts_state().Head );
+    } else if( back.loopopts.Head->unroll_count > 0 ) {
+        last = DoUnroll( back, back.loopopts.Loop, back.loopopts.Head->unroll_count, false );
+        MarkLoopHeader( back, last, back.loopopts.Head );
     }
-    _MarkBlkAttrSet( loopopts_state().Head, BLK_DONT_UNROLL );
-    FixBlockIds();
-    ClearCopyPtrs( loopopts_state().Loop );
+    _MarkBlkAttrSet( back.loopopts.Head, BLK_DONT_UNROLL );
+    FixBlockIds(back);
+    ClearCopyPtrs( back.loopopts.Loop );
     return( true );
 }

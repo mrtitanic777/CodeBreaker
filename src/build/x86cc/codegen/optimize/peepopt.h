@@ -29,5 +29,6 @@
 ****************************************************************************/
 
 
-extern bool PeepOptBlock( block *blk, bool after_reg_alloc );
-extern bool PeepOpt( block *start, block *(*func)(block *, void *parm), void *parm, bool after_reg_alloc );
+#pragma once
+extern bool PeepOptBlock( BackRun& back, block *blk, bool after_reg_alloc );
+extern bool PeepOpt( BackRun& back, block *start, block *(*func)(BackRun&, block *, void *parm), void *parm, bool after_reg_alloc );

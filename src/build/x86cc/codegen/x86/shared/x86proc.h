@@ -37,13 +37,12 @@
 struct X86procState {
     type_length StackDepth;
 };
-inline X86procState& x86proc_state() { return cbrun_part<X86procState>(); }
 
 #endif
 
-extern bool         CanZapBP( void );
-extern void         DoRTCall( rt_class rtindex, bool pop );
-extern void         AdjustStackDepth( instruction *ins );
-extern void         AdjustStackDepthDirect( int adjust );
-extern bool         BaseIsSP( name *op );
-extern bool         EpilogIsLeaveOnly( void );
+extern bool         CanZapBP( BackRun& back );
+extern void         DoRTCall( BackRun& back, rt_class rtindex, bool pop );
+extern void         AdjustStackDepth( BackRun& back, instruction *ins );
+extern void         AdjustStackDepthDirect( BackRun& back, int adjust );
+extern bool         BaseIsSP( BackRun& back, name *op );
+extern bool         EpilogIsLeaveOnly( BackRun& back );

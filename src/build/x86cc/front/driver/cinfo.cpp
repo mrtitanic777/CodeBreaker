@@ -43,6 +43,7 @@
 #include "cfeinfo.h"
 
 #include "clibext.h"
+#include "frontrun.hpp"
 
 
 #define FIRST_USER_SEGMENT      10000
@@ -102,6 +103,7 @@ static const spc_info InitFiniSegs[][3] = {
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
+}  // namespace
 struct CinfoState {
     seg_name Predefined_Segs[4] = {
         { "_CODE",      SEG_CODE,       SYM_NULL },
@@ -114,15 +116,15 @@ struct CinfoState {
     segment_id import_segid = SEG_NULL;   /* next segment # for import sym */
     segment_id import_near_segid = SEG_NULL;   /* data seg # for -nd option */
 };
+namespace {
 
 }  // namespace
 
-static inline CinfoState& cinfo_state() { return cbrun_part<CinfoState>(); }
 
 
-void AssignSeg( SYMPTR sym )
+void AssignSeg( FrontRun& front, SYMPTR sym )
 {
-    SetFarHuge( sym, true );
+    SetFarHuge( front, sym, true );
     if( (sym->attribs.stg_class == SC_AUTO)
       || (sym->attribs.stg_class == SC_REGISTER)
       || (sym->attribs.stg_class == SC_TYPEDEF) ) {
@@ -133,23 +135,23 @@ void AssignSeg( SYMPTR sym )
     } else if( sym->attribs.stg_class != SC_EXTERN ) {  /* if not imported */
         if( (sym->flags & SYM_INITIALIZED) == 0 ) {
             if( sym->u.var.segid == SEG_NULL ) {
-                SetSegment( sym );
+                SetSegment( front, sym );
             }
             if( sym->u.var.segid == SEG_DATA ) {
                 sym->u.var.segid = SEG_BSS;
-                cvars_state().CompFlags.bss_segment_used = true;
+                front.cvars.CompFlags.bss_segment_used = true;
             }
-            SetSegAlign( sym );
+            SetSegAlign( front, sym );
         }
     } else if( sym->mods & (FLAG_FAR | FLAG_HUGE) ) {
-        sym->u.var.segid = cinfo_state().import_segid--;
-    } else if( (cinfo_state().import_near_segid != SEG_NULL) && (sym->mods & FLAG_NEAR) ) {  // imported and near
-        sym->u.var.segid = cinfo_state().import_near_segid;
+        sym->u.var.segid = front.cinfo->import_segid--;
+    } else if( (front.cinfo->import_near_segid != SEG_NULL) && (sym->mods & FLAG_NEAR) ) {  // imported and near
+        sym->u.var.segid = front.cinfo->import_near_segid;
     }
 }
 
 
-void SetFarHuge( SYMPTR sym, bool report )
+void SetFarHuge( FrontRun& front, SYMPTR sym, bool report )
 {
 #if _INTEL_CPU
     TYPEPTR             typ;
@@ -168,8 +170,8 @@ void SetFarHuge( SYMPTR sym, bool report )
         sym->mods |= FLAG_FAR;
     }
   #endif
-    size = SizeOfArg( sym->sym_type );
-    if( cvars_state().TargetSwitches & CGSW_X86_BIG_DATA ) {
+    size = SizeOfArg( front, sym->sym_type );
+    if( front.cvars.TargetSwitches & CGSW_X86_BIG_DATA ) {
         attrib = sym->mods;
         if( (attrib & MASK_ALL_MEM_MODELS) == 0 ) {
             if( size == 0 ) {   /* unspecified array size */
@@ -179,9 +181,9 @@ void SetFarHuge( SYMPTR sym, bool report )
                         attrib |= FLAG_FAR;
                     }
                 }
-            } else if( size > cvars_state().DataThreshold ) {
+            } else if( size > front.cvars.DataThreshold ) {
                 attrib |= FLAG_FAR;
-            } else if( cvars_state().CompFlags.strings_in_code_segment && (sym->mods & FLAG_CONST) ) {
+            } else if( front.cvars.CompFlags.strings_in_code_segment && (sym->mods & FLAG_CONST) ) {
                 attrib |= FLAG_FAR;
             }
   #if _CPU == 8086
@@ -195,9 +197,9 @@ void SetFarHuge( SYMPTR sym, bool report )
     }
   #if _CPU == 8086
    if( report && size > 0x10000 && (sym->mods & FLAG_HUGE) == 0 ) {
-        SetErrLoc( &sym->src_loc );
-        CErr1( ERR_VAR_TOO_LARGE );
-        InitErrLoc();
+        SetErrLoc( front, &sym->src_loc );
+        CErr1( front, ERR_VAR_TOO_LARGE );
+        InitErrLoc(front);
    }
   #endif
 #else /* _RISC_CPU */
@@ -207,7 +209,7 @@ void SetFarHuge( SYMPTR sym, bool report )
 #endif
 }
 
-static fe_attr FESymAttr( SYMPTR sym )
+static fe_attr FESymAttr( FrontRun& front, SYMPTR sym )
 /************************************/
 {
     fe_attr         attr;
@@ -230,9 +232,9 @@ static fe_attr FESymAttr( SYMPTR sym )
     }
     if( sym->flags & SYM_FUNCTION ) {
         attr |= FE_PROC | FE_STATIC;
-        if( VarFunc( sym ) )
+        if( VarFunc( front, sym ) )
             attr |= FE_VARARGS;
-        if( cvars_state().CompFlags.unique_functions ) {
+        if( front.cvars.CompFlags.unique_functions ) {
             if( (attr & FE_GLOBAL) || (sym->flags & SYM_ADDR_TAKEN) ) {
                 attr |= FE_UNIQUE;
             }
@@ -251,7 +253,7 @@ static fe_attr FESymAttr( SYMPTR sym )
     }
     switch( sym->attribs.declspec ) {
     case DECLSPEC_DLLIMPORT:
-        if( (attr & FE_IMPORT) || cvars_state().CompFlags.rent ) {
+        if( (attr & FE_IMPORT) || front.cvars.CompFlags.rent ) {
             attr |= FE_DLLIMPORT;
         }
         break;
@@ -274,33 +276,33 @@ static fe_attr FESymAttr( SYMPTR sym )
 }
 
 
-void    FEGenProc( CGSYM_HANDLE hdl, call_handle call )
+void    FEGenProc( FrontRun& front, CGSYM_HANDLE hdl, call_handle call )
 /*****************************************************/
 {
     SYM_HANDLE      sym_handle = (SYM_HANDLE)hdl;
 
     /* unused parameters */ (void)call;
 
-    GenInLineFunc( sym_handle );
+    GenInLineFunc( front, sym_handle );
 }
 
 
-fe_attr FEAttr( CGSYM_HANDLE cgsym_handle )
+fe_attr FEAttr( FrontRun& front, CGSYM_HANDLE cgsym_handle )
 /*****************************************/
 {
     SYM_HANDLE sym_handle = (SYM_HANDLE)cgsym_handle;
 
-    return( FESymAttr( SymGetPtr( sym_handle ) ) );
+    return( FESymAttr( front, SymGetPtr( front, sym_handle ) ) );
 }
 
-segment_id SymSegId( SYMPTR sym )
+segment_id SymSegId( FrontRun& front, SYMPTR sym )
 {
     fe_attr     attr;
 
-    attr = FESymAttr( sym );
+    attr = FESymAttr( front, sym );
     if( attr & FE_PROC )
         return( SEG_CODE );
-    if( !cvars_state().CompFlags.rent ) {
+    if( !front.cvars.CompFlags.rent ) {
         if( attr & FE_CONSTANT ) {
             return( SEG_CONST2 );
         }
@@ -309,14 +311,14 @@ segment_id SymSegId( SYMPTR sym )
 }
 
 
-void SetSegment( SYMPTR sym )
+void SetSegment( FrontRun& front, SYMPTR sym )
 {
     segment_list        *seg;
     target_size         size;
 
 #if _INTEL_CPU
   #if _CPU == 8086
-    if( (sym->mods & FLAG_FAR) && cvars_state().CompFlags.zc_switch_used ) {
+    if( (sym->mods & FLAG_FAR) && front.cvars.CompFlags.zc_switch_used ) {
         if( CONSTANT( sym->mods )
           || (sym->attribs.stg_class == SC_STATIC && (sym->flags & SYM_TEMP)) ) {
             sym->u.var.segid = SEG_CODE;
@@ -324,9 +326,9 @@ void SetSegment( SYMPTR sym )
         }
     }
   #else /* _CPU == 386 */
-    if( !cvars_state().CompFlags.rent ) {
-        if( (sym->mods & FLAG_FAR) || (cvars_state().TargetSwitches & CGSW_X86_FLAT_MODEL) ) {
-           if( CONSTANT( sym->mods ) && cvars_state().CompFlags.zc_switch_used ) {
+    if( !front.cvars.CompFlags.rent ) {
+        if( (sym->mods & FLAG_FAR) || (front.cvars.TargetSwitches & CGSW_X86_FLAT_MODEL) ) {
+           if( CONSTANT( sym->mods ) && front.cvars.CompFlags.zc_switch_used ) {
                 sym->u.var.segid = SEG_CODE;
                 return;
            }
@@ -339,35 +341,35 @@ void SetSegment( SYMPTR sym )
   #endif
 #endif
     if( sym->mods & (FLAG_FAR | FLAG_HUGE) ) {
-        size = SizeOfArg( sym->sym_type );
+        size = SizeOfArg( front, sym->sym_type );
         seg = NULL;
 #if _CPU == 8086
         if( size < 0x10000 ) {
-            for( seg = cvars_state().SegListHead; seg != NULL; seg = seg->next_segment ) {
+            for( seg = front.cvars.SegListHead; seg != NULL; seg = seg->next_segment ) {
                 if( seg->size_left >= size ) {
                     break;
                 }
             }
         }
 #else
-        seg = cvars_state().SegListHead;
+        seg = front.cvars.SegListHead;
 #endif
         if( seg == NULL ) {
-            if( cvars_state().SegListHead == NULL ) {
-                cvars_state().SegListHead = static_cast<segment_list *>(CMemAlloc( sizeof( segment_list ) ));
-                seg = cvars_state().SegListHead;
+            if( front.cvars.SegListHead == NULL ) {
+                front.cvars.SegListHead = static_cast<segment_list *>(CMemAlloc( front, sizeof( segment_list ) ));
+                seg = front.cvars.SegListHead;
             } else {
-                for( seg = cvars_state().SegListHead; seg->next_segment; ) {
+                for( seg = front.cvars.SegListHead; seg->next_segment; ) {
                     seg = seg->next_segment;
                 }
-                seg->next_segment = static_cast<struct segment_list *>(CMemAlloc( sizeof( segment_list ) ));
+                seg->next_segment = static_cast<struct segment_list *>(CMemAlloc( front, sizeof( segment_list ) ));
                 seg = seg->next_segment;
             }
-            seg->segid = cvars_state().SegmentNum++;
+            seg->segid = front.cvars.SegmentNum++;
 #if _CPU == 8086
             if( size > 0xFFFF ) {
                 while( size > 0x0FFFF ) {       /* while >= 64K */
-                    ++cvars_state().SegmentNum;
+                    ++front.cvars.SegmentNum;
                     size -= 0x10000;
                 }
                 seg->size_left = 0;
@@ -380,23 +382,23 @@ void SetSegment( SYMPTR sym )
         }
         sym->u.var.segid = seg->segid;
     } else {
-        sym->u.var.segid = SymSegId( sym );
+        sym->u.var.segid = SymSegId( front, sym );
     }
 }
 
-static user_seg *AllocUserSeg( const char *segname, const char *class_name, seg_type segtype )
+static user_seg *AllocUserSeg( FrontRun& front, const char *segname, const char *class_name, seg_type segtype )
 {
     user_seg    *useg;
 
-    useg = static_cast<user_seg *>(CMemAlloc( sizeof( user_seg ) ));
+    useg = static_cast<user_seg *>(CMemAlloc( front, sizeof( user_seg ) ));
     useg->next = NULL;
-    useg->name = CMemStrdup( segname );
+    useg->name = CMemStrdup( front, segname );
     useg->class_name = NULL;
     useg->segtype = segtype;
     if( class_name != NULL ) {
-        useg->class_name = CMemStrdup( class_name );
+        useg->class_name = CMemStrdup( front, class_name );
     }
-    useg->segid = cinfo_state().userSegId++;
+    useg->segid = front.cinfo->userSegId++;
     return( useg );
 }
 
@@ -416,7 +418,7 @@ static const spc_info *InitFiniLookup( const char *name )
 }
 
 
-static segment_id AddSeg( const char *segname, const char *class_name, int segtype )
+static segment_id AddSeg( FrontRun& front, const char *segname, const char *class_name, int segtype )
 {
     int             i;
     user_seg        *useg;
@@ -426,9 +428,9 @@ static segment_id AddSeg( const char *segname, const char *class_name, int segty
     const char      *p;
 #endif
 
-    for( i = 0; i < ARRAY_SIZE( cinfo_state().Predefined_Segs ); i++ ) {
-        if( strcmp( segname, cinfo_state().Predefined_Segs[i].name ) == 0 ) {
-            return( cinfo_state().Predefined_Segs[i].segid );
+    for( i = 0; i < ARRAY_SIZE( front.cinfo->Predefined_Segs ); i++ ) {
+        if( strcmp( segname, front.cinfo->Predefined_Segs[i].name ) == 0 ) {
+            return( front.cinfo->Predefined_Segs[i].segid );
         }
     }
 #if _INTEL_CPU
@@ -439,12 +441,12 @@ static segment_id AddSeg( const char *segname, const char *class_name, int segty
             const char  *p1;
             size_t      len;
 
-            p1 = SkipUnderscorePrefix( segname );
+            p1 = SkipUnderscorePrefix( front, segname );
             if( p1 == NULL ) {
                 /*
                  * error missing underscore prefix
                  */
-                PragRegNameErr( segname );
+                PragRegNameErr( front, segname );
                 p1 = segname;
             }
             len = 0;
@@ -452,18 +454,18 @@ static segment_id AddSeg( const char *segname, const char *class_name, int segty
                 buffer[len++] = *p1++;
             }
             buffer[len] = '\0';
-            reg = PragRegName( buffer );
+            reg = PragRegName( front, buffer );
             segname = p + 1;
             break;
         }
     }
 #endif
-    for( lnk = &cinfo_state().userSegments; (useg = *lnk) != NULL; lnk = &useg->next ) {
+    for( lnk = &front.cinfo->userSegments; (useg = *lnk) != NULL; lnk = &useg->next ) {
         if( strcmp( segname, useg->name ) == 0 ) {
             return( useg->segid ); /* was return( segment ) */
         }
     }
-    useg = AllocUserSeg( segname, class_name, static_cast<seg_type>(segtype) );
+    useg = AllocUserSeg( front, segname, class_name, static_cast<seg_type>(segtype) );
     useg->next = *lnk;
 #if _INTEL_CPU
     useg->pegged_register = reg;
@@ -473,7 +475,7 @@ static segment_id AddSeg( const char *segname, const char *class_name, int segty
 }
 
 
-segment_id AddSegName( const char *segname, const char *class_name, int segtype )
+segment_id AddSegName( FrontRun& front, const char *segname, const char *class_name, int segtype )
 {
     const spc_info  *initfini;
     segment_id      segid;
@@ -482,37 +484,37 @@ segment_id AddSegName( const char *segname, const char *class_name, int segtype 
     initfini = InitFiniLookup( segname );
     if( initfini != NULL ) {
         for( i = 0; i < ARRAY_SIZE( InitFiniSegs[0] ); i++ ) {
-            AddSeg( initfini[i].name, initfini[i].class_name, initfini[i].segtype );
+            AddSeg( front, initfini[i].name, initfini[i].class_name, initfini[i].segtype );
         }
     }
-    segid = AddSeg( segname, class_name, segtype );
+    segid = AddSeg( front, segname, class_name, segtype );
     return( segid );
 }
 
 
-segment_id DefThreadSeg( void )
+segment_id DefThreadSeg( FrontRun& front )
 {
     segment_id  segid;
 
-    segid = AddSegName( TS_SEG_TLS, "DATA", SEGTYPE_INITFINI );
+    segid = AddSegName( front, TS_SEG_TLS, "DATA", SEGTYPE_INITFINI );
     return( segid );
 }
 
 
-void SetFuncSegment( SYMPTR sym, segment_id segid )
+void SetFuncSegment( FrontRun& front, SYMPTR sym, segment_id segid )
 {
     user_seg    *useg;
 
-    for( useg = cinfo_state().userSegments; useg != NULL; useg = useg->next ) {
+    for( useg = front.cinfo->userSegments; useg != NULL; useg = useg->next ) {
         if( useg->segid == segid ) {
-            sym->seginfo = LkSegName( useg->name, "CODE" );
+            sym->seginfo = LkSegName( front, useg->name, "CODE" );
             break;
         }
     }
 }
 
 
-char *SegClassName( segment_id segid )
+char *SegClassName( FrontRun& front, segment_id segid )
 {
     user_seg        *useg;
     textsegment     *tseg;
@@ -520,9 +522,9 @@ char *SegClassName( segment_id segid )
     size_t          len;
 
     if( segid == SEG_CODE ) {
-        return( cvars_state().CodeClassName );
+        return( front.cvars.CodeClassName );
     }
-    for( useg = cinfo_state().userSegments; useg != NULL; useg = useg->next ) {
+    for( useg = front.cinfo->userSegments; useg != NULL; useg = useg->next ) {
         if( useg->segid == segid && useg->class_name != NULL ) {
             classname = useg->class_name;
             if( classname[0] == '\0' ) {
@@ -542,7 +544,7 @@ char *SegClassName( segment_id segid )
             return( classname );
         }
     }
-    for( tseg = cvars_state().TextSegList; tseg != NULL; tseg = tseg->next ) {
+    for( tseg = front.cvars.TextSegList; tseg != NULL; tseg = tseg->next ) {
         if( tseg->segid == segid )  {
             /*
              * class name appears after the segment name
@@ -552,44 +554,44 @@ char *SegClassName( segment_id segid )
              * if class name not specified, then use the default
              */
             if( *classname == '\0' )
-                classname = cvars_state().CodeClassName;
+                classname = front.cvars.CodeClassName;
             return( classname );
         }
     }
-    if( cvars_state().DataSegName != NULL && *cvars_state().DataSegName != '\0' ) {
+    if( front.cvars.DataSegName != NULL && *front.cvars.DataSegName != '\0' ) {
         return const_cast<char *>(( "FAR_DATA" ));
     }
     return( NULL );
 }
 
 
-void SetSegSymHandle( SYM_HANDLE sym_handle, segment_id segid )
+void SetSegSymHandle( FrontRun& front, SYM_HANDLE sym_handle, segment_id segid )
 {
     int     i;
 
-    for( i = 0; i < ARRAY_SIZE( cinfo_state().Predefined_Segs ); i++ ) {
-        if( cinfo_state().Predefined_Segs[i].segid == segid ) {
-            cinfo_state().Predefined_Segs[i].sym_handle = sym_handle;
+    for( i = 0; i < ARRAY_SIZE( front.cinfo->Predefined_Segs ); i++ ) {
+        if( front.cinfo->Predefined_Segs[i].segid == segid ) {
+            front.cinfo->Predefined_Segs[i].sym_handle = sym_handle;
             break;
         }
     }
 }
 
 
-SYM_HANDLE SegSymHandle( segment_id segid )
+SYM_HANDLE SegSymHandle( FrontRun& front, segment_id segid )
 {
     int             i;
     user_seg        *useg;
 
-    for( i = 0; i < ARRAY_SIZE( cinfo_state().Predefined_Segs ); i++ ) {
-        if( cinfo_state().Predefined_Segs[i].segid == segid ) {
-            return( cinfo_state().Predefined_Segs[i].sym_handle );
+    for( i = 0; i < ARRAY_SIZE( front.cinfo->Predefined_Segs ); i++ ) {
+        if( front.cinfo->Predefined_Segs[i].segid == segid ) {
+            return( front.cinfo->Predefined_Segs[i].sym_handle );
         }
     }
-    for( useg = cinfo_state().userSegments; useg != NULL; useg = useg->next ) {
+    for( useg = front.cinfo->userSegments; useg != NULL; useg = useg->next ) {
         if( useg->segid == segid ) {
             if( useg->sym_handle == SYM_NULL ) {
-                useg->sym_handle = SegSymbol( useg->name, SEG_NULL );
+                useg->sym_handle = SegSymbol( front, useg->name, SEG_NULL );
             }
             return( useg->sym_handle );
         }
@@ -598,11 +600,11 @@ SYM_HANDLE SegSymHandle( segment_id segid )
 }
 
 #if _INTEL_CPU
-hw_reg_set *SegPeggedReg( segment_id segid )
+hw_reg_set *SegPeggedReg( FrontRun& front, segment_id segid )
 {
     user_seg    *useg;
 
-    for( useg = cinfo_state().userSegments; useg != NULL; useg = useg->next ) {
+    for( useg = front.cinfo->userSegments; useg != NULL; useg = useg->next ) {
         if( useg->segid == segid ) {
             return( &useg->pegged_register );
         }
@@ -611,19 +613,19 @@ hw_reg_set *SegPeggedReg( segment_id segid )
 }
 #endif
 
-static align_type SegAlign( align_type suggested )
+static align_type SegAlign( FrontRun& front, align_type suggested )
 /************************************************/
 {
     align_type     align;
 
     align = suggested;
-    if( cvars_state().CompFlags.unaligned_segs ) {
+    if( front.cvars.CompFlags.unaligned_segs ) {
         align = 1;
     }
     return( align );
 }
 
-void    SetSegs( void )
+void    SetSegs( FrontRun& front )
 /*********************/
 {
     segment_id      segid;
@@ -633,36 +635,36 @@ void    SetSegs( void )
     const char      *module_name;
     align_type      optsize_segalign;
 
-    cvars_state().CompFlags.low_on_memory_printed = false;
-    optsize_segalign = ( cvars_state().OptSize == 0 ) ? (align_type)BETypeLength( TY_INTEGER ) : 1;
+    front.cvars.CompFlags.low_on_memory_printed = false;
+    optsize_segalign = ( front.cvars.OptSize == 0 ) ? (align_type)BETypeLength( *front.back, TY_INTEGER ) : 1;
 
-    if( *cvars_state().TextSegName == '\0' ) {
-        BEDefSeg( SEG_CODE, GLOBAL | INIT | EXEC, TS_SEG_CODE, SegAlign( optsize_segalign ) );
+    if( *front.cvars.TextSegName == '\0' ) {
+        BEDefSeg( *front.back, SEG_CODE, GLOBAL | INIT | EXEC, TS_SEG_CODE, SegAlign( front, optsize_segalign ) );
     } else {
-        BEDefSeg( SEG_CODE, GLOBAL | INIT | EXEC | GIVEN_NAME, cvars_state().TextSegName, SegAlign( optsize_segalign ) );
+        BEDefSeg( *front.back, SEG_CODE, GLOBAL | INIT | EXEC | GIVEN_NAME, front.cvars.TextSegName, SegAlign( front, optsize_segalign ) );
     }
-    BEDefSeg( SEG_CONST, BACK|INIT|ROM, TS_SEG_CONST, SegAlign( cvars_state().SegAlignment[SEG_CONST] ) );
-    BEDefSeg( SEG_CONST2, INIT | ROM, TS_SEG_CONST2, SegAlign( cvars_state().SegAlignment[SEG_CONST2] ) );
-    BEDefSeg( SEG_DATA,  GLOBAL | INIT, TS_SEG_DATA, SegAlign( cvars_state().SegAlignment[SEG_DATA] ) );
-    if( cvars_state().CompFlags.ec_switch_used ) {
-        BEDefSeg( SEG_YIB,      GLOBAL | INIT,  TS_SEG_YIB, 2 );
-        BEDefSeg( SEG_YI,       GLOBAL | INIT,  TS_SEG_YI,  2 );
-        BEDefSeg( SEG_YIE,      GLOBAL | INIT,  TS_SEG_YIE, 2 );
+    BEDefSeg( *front.back, SEG_CONST, BACK|INIT|ROM, TS_SEG_CONST, SegAlign( front, front.cvars.SegAlignment[SEG_CONST] ) );
+    BEDefSeg( *front.back, SEG_CONST2, INIT | ROM, TS_SEG_CONST2, SegAlign( front, front.cvars.SegAlignment[SEG_CONST2] ) );
+    BEDefSeg( *front.back, SEG_DATA,  GLOBAL | INIT, TS_SEG_DATA, SegAlign( front, front.cvars.SegAlignment[SEG_DATA] ) );
+    if( front.cvars.CompFlags.ec_switch_used ) {
+        BEDefSeg( *front.back, SEG_YIB,      GLOBAL | INIT,  TS_SEG_YIB, 2 );
+        BEDefSeg( *front.back, SEG_YI,       GLOBAL | INIT,  TS_SEG_YI,  2 );
+        BEDefSeg( *front.back, SEG_YIE,      GLOBAL | INIT,  TS_SEG_YIE, 2 );
     }
-    if( cvars_state().CompFlags.bss_segment_used ) {
-        BEDefSeg( SEG_BSS, GLOBAL, TS_SEG_BSS, SegAlign( cvars_state().SegAlignment[SEG_BSS] ) );
+    if( front.cvars.CompFlags.bss_segment_used ) {
+        BEDefSeg( *front.back, SEG_BSS, GLOBAL, TS_SEG_BSS, SegAlign( front, front.cvars.SegAlignment[SEG_BSS] ) );
     }
-    if( cvars_state().CompFlags.far_strings ) {
-        cvars_state().FarStringSegId = cvars_state().SegmentNum++;
+    if( front.cvars.CompFlags.far_strings ) {
+        front.cvars.FarStringSegId = front.cvars.SegmentNum++;
     }
-    module_name = FEModuleName();
-    name = static_cast<char *>(CMemAlloc( strlen( module_name ) + 10 + sizeof( "_DATA" ) ));
-    for( segid = FIRST_PRIVATE_SEGMENT; segid < cvars_state().SegmentNum; ++segid ) {
+    module_name = FEModuleName(front);
+    name = static_cast<char *>(CMemAlloc( front, strlen( module_name ) + 10 + sizeof( "_DATA" ) ));
+    for( segid = FIRST_PRIVATE_SEGMENT; segid < front.cvars.SegmentNum; ++segid ) {
         sprintf( name, "%s%d_DATA", module_name, segid );
-        BEDefSeg( segid, INIT | PRIVATE, name, SegAlign( 16 ) );
+        BEDefSeg( *front.back, segid, INIT | PRIVATE, name, SegAlign( front, 16 ) );
     }
-    CMemFree( name );
-    for( useg = cinfo_state().userSegments; useg != NULL ; useg = useg->next ) {
+    CMemFree( front, name );
+    for( useg = front.cinfo->userSegments; useg != NULL ; useg = useg->next ) {
         segid = useg->segid;
         switch( useg->segtype ) {
 #if 0
@@ -671,26 +673,26 @@ void    SetSegs( void )
             break;
 #endif
         case SEGTYPE_DATA:  /* created through #pragma data_seg */
-            BEDefSeg( segid, INIT | GLOBAL, useg->name, SegAlign( TARGET_INT ) );
+            BEDefSeg( *front.back, segid, INIT | GLOBAL, useg->name, SegAlign( front, TARGET_INT ) );
             break;
         case SEGTYPE_BASED:
-            BEDefSeg( segid, INIT | PRIVATE | GLOBAL, useg->name, SegAlign( TARGET_INT ) );
+            BEDefSeg( *front.back, segid, INIT | PRIVATE | GLOBAL, useg->name, SegAlign( front, TARGET_INT ) );
             break;
         case SEGTYPE_INITFINI:
-            BEDefSeg( segid, INIT | GLOBAL, useg->name, SegAlign( 1 ) );
+            BEDefSeg( *front.back, segid, INIT | GLOBAL, useg->name, SegAlign( front, 1 ) );
             break;
         case SEGTYPE_INITFINITR:
-            BEDefSeg( segid, INIT | GLOBAL| THREAD_LOCAL, useg->name, SegAlign( 1 ) );
+            BEDefSeg( *front.back, segid, INIT | GLOBAL| THREAD_LOCAL, useg->name, SegAlign( front, 1 ) );
             break;
         }
     }
-    for( tseg = cvars_state().TextSegList; tseg != NULL; tseg = tseg->next ) {
-        tseg->segid = ++cvars_state().SegmentNum;
-        BEDefSeg( tseg->segid,  GLOBAL | INIT | EXEC | GIVEN_NAME, tseg->segname, SegAlign( optsize_segalign ) );
+    for( tseg = front.cvars.TextSegList; tseg != NULL; tseg = tseg->next ) {
+        tseg->segid = ++front.cvars.SegmentNum;
+        BEDefSeg( *front.back, tseg->segid,  GLOBAL | INIT | EXEC | GIVEN_NAME, tseg->segname, SegAlign( front, optsize_segalign ) );
     }
 }
 
-void EmitSegLabels( void )
+void EmitSegLabels( FrontRun& front )
 {
     segment_id          segid;
     user_seg            *useg;
@@ -698,49 +700,49 @@ void EmitSegLabels( void )
     SYM_ENTRY           sym;
 
     segid = FIRST_USER_SEGMENT;
-    for( useg = cinfo_state().userSegments; useg != NULL; useg = useg->next ) {
+    for( useg = front.cinfo->userSegments; useg != NULL; useg = useg->next ) {
         if( useg->sym_handle != SYM_NULL ) {
-            SymGet( &sym, useg->sym_handle );
-            bck = BENewBack( (CGSYM_HANDLE)useg->sym_handle );
+            SymGet( front, &sym, useg->sym_handle );
+            bck = BENewBack( *front.back, (CGSYM_HANDLE)useg->sym_handle );
             sym.u1.backinfo = bck;
-            SymReplace( &sym, useg->sym_handle );
-            BESetSeg( segid );
-            DGLabel( bck );
+            SymReplace( front, &sym, useg->sym_handle );
+            BESetSeg( *front.back, segid );
+            DGLabel( *front.back, bck );
         }
         ++segid;
     }
 }
 
 
-void FiniSegLabels( void )
+void FiniSegLabels( FrontRun& front )
 {
     user_seg        *useg;
     SYM_ENTRY       sym;
 
-    for( useg = cinfo_state().userSegments; useg != NULL; useg = useg->next ) {
+    for( useg = front.cinfo->userSegments; useg != NULL; useg = useg->next ) {
         if( useg->sym_handle != SYM_NULL ) {
-            SymGet( &sym, useg->sym_handle );
-            BEFiniBack( sym.u1.backinfo );
+            SymGet( front, &sym, useg->sym_handle );
+            BEFiniBack( *front.back, sym.u1.backinfo );
         }
     }
 }
 
 
-void FiniSegBacks( void )
+void FiniSegBacks( FrontRun& front )
 {
     user_seg        *useg;
     SYM_ENTRY       sym;
 
-    for( useg = cinfo_state().userSegments; useg != NULL; useg = useg->next ) {
+    for( useg = front.cinfo->userSegments; useg != NULL; useg = useg->next ) {
         if( useg->sym_handle != SYM_NULL ) {
-            SymGet( &sym, useg->sym_handle );
-            BEFreeBack( sym.u1.backinfo );
+            SymGet( front, &sym, useg->sym_handle );
+            BEFreeBack( *front.back, sym.u1.backinfo );
         }
     }
 }
 
 
-const char *FEName( CGSYM_HANDLE cgsym_handle )
+const char *FEName( FrontRun& front, CGSYM_HANDLE cgsym_handle )
 /********** return unmangled names ***********/
 {
     SYM_HANDLE  sym_handle;
@@ -749,12 +751,12 @@ const char *FEName( CGSYM_HANDLE cgsym_handle )
     sym_handle = (SYM_HANDLE)cgsym_handle;
     if( sym_handle == SYM_NULL )
         return( "*** NULL ***" );
-    sym = SymGetPtr( sym_handle );
+    sym = SymGetPtr( front, sym_handle );
     return( sym->name );
 }
 
 
-void FEMessage( fe_msg femsg, CGPOINTER parm )
+void FEMessage( FrontRun& front, fe_msg femsg, CGPOINTER parm )
 /********************************************/
 {
     char    msgtxt[80];
@@ -765,88 +767,88 @@ void FEMessage( fe_msg femsg, CGPOINTER parm )
         {
             SYM_ENTRY   *sym;
 
-            sym = SymGetPtr( (SYM_HANDLE)parm );
-            SetErrLoc( &sym->src_loc );
-            CWarn2p( ERR_SYMBOL_NAME_TOO_LONG, sym->name );
-            InitErrLoc();
+            sym = SymGetPtr( front, (SYM_HANDLE)parm );
+            SetErrLoc( front, &sym->src_loc );
+            CWarn2p( front, ERR_SYMBOL_NAME_TOO_LONG, sym->name );
+            InitErrLoc(front);
         }
         break;
     case FEMSG_BLIP:
-        if( cvars_state().GlobalCompFlags.ide_console_output ) {
-            if( !cvars_state().CompFlags.quiet_mode ) {
-                ConBlip();
+        if( front.cvars.GlobalCompFlags.ide_console_output ) {
+            if( !front.cvars.CompFlags.quiet_mode ) {
+                ConBlip(front);
             }
         }
         break;
     case FEMSG_INFO:
     case FEMSG_INFO_FILE:
     case FEMSG_INFO_PROC:
-        if( cvars_state().GlobalCompFlags.ide_console_output ) {
-            if( !cvars_state().CompFlags.quiet_mode ) {
-                NoteMsg( static_cast<const char *>(parm) );
+        if( front.cvars.GlobalCompFlags.ide_console_output ) {
+            if( !front.cvars.CompFlags.quiet_mode ) {
+                NoteMsg( front, static_cast<const char *>(parm) );
             }
         }
         break;
     case FEMSG_CODE_SIZE:
-        if( cvars_state().GlobalCompFlags.ide_console_output ) {
-            if( !cvars_state().CompFlags.quiet_mode ) {
-                CGetMsg( msgtxt, PHRASE_CODE_SIZE );
+        if( front.cvars.GlobalCompFlags.ide_console_output ) {
+            if( !front.cvars.CompFlags.quiet_mode ) {
+                CGetMsg( front, msgtxt, PHRASE_CODE_SIZE );
                 sprintf( msgbuf, "%s: %u", msgtxt, (unsigned)(pointer_uint)parm );
-                NoteMsg( msgbuf );
+                NoteMsg( front, msgbuf );
             }
         }
         break;
     case FEMSG_DATA_SIZE:
         break;
     case FEMSG_ERROR:
-        CErr2p( ERR_INTERNAL_ERROR_MSG, static_cast<const char *>(parm) );
+        CErr2p( front, ERR_INTERNAL_ERROR_MSG, static_cast<const char *>(parm) );
         break;
     case FEMSG_FATAL:
-        CErr2p( ERR_FATAL_ERROR, static_cast<const char *>(parm) );
-        CloseFiles();       /* get rid of temp file */
-        MyExit( 1 );        /* exit to DOS do not pass GO */
+        CErr2p( front, ERR_FATAL_ERROR, static_cast<const char *>(parm) );
+        CloseFiles(front);       /* get rid of temp file */
+        MyExit( front, 1 );        /* exit to DOS do not pass GO */
         break;
     case FEMSG_BAD_PARM_REGISTER:
         /*
          * this will be issued after a call to CGInitCall or CGProcDecl
          */
-        CErr2( ERR_BAD_PARM_REGISTER, (int)(pointer_uint)parm );
+        CErr2( front, ERR_BAD_PARM_REGISTER, (int)(pointer_uint)parm );
         break;
     case FEMSG_BAD_RETURN_REGISTER:
-        CErr2p( ERR_BAD_RETURN_REGISTER, FEName( (CGSYM_HANDLE)parm ) );
+        CErr2p( front, ERR_BAD_RETURN_REGISTER, FEName( front, (CGSYM_HANDLE)parm ) );
         break;
     case FEMSG_SCHEDULER_DIED:
     case FEMSG_REGALLOC_DIED:
     case FEMSG_SCOREBOARD_DIED:
-        if( (cvars_state().GenSwitches & CGSW_GEN_NO_OPTIMIZATION) == 0 ) {
-            if( cvars_state().LastFuncOutOfMem != parm ) {
-                CInfoMsg( INFO_NOT_ENOUGH_MEMORY_TO_FULLY_OPTIMIZE, FEName( (CGSYM_HANDLE)parm ) );
-                cvars_state().LastFuncOutOfMem = parm;
+        if( (front.cvars.GenSwitches & CGSW_GEN_NO_OPTIMIZATION) == 0 ) {
+            if( front.cvars.LastFuncOutOfMem != parm ) {
+                CInfoMsg( front, INFO_NOT_ENOUGH_MEMORY_TO_FULLY_OPTIMIZE, FEName( front, (CGSYM_HANDLE)parm ) );
+                front.cvars.LastFuncOutOfMem = parm;
             }
         }
         break;
     case FEMSG_PEEPHOLE_FLUSHED:
-        if( (cvars_state().GenSwitches & CGSW_GEN_NO_OPTIMIZATION) == 0 ) {
-            if( !cvars_state().CompFlags.low_on_memory_printed ) {
-                CInfoMsg( INFO_NOT_ENOUGH_MEMORY_TO_MAINTAIN_PEEPHOLE);
-                cvars_state().CompFlags.low_on_memory_printed = true;
+        if( (front.cvars.GenSwitches & CGSW_GEN_NO_OPTIMIZATION) == 0 ) {
+            if( !front.cvars.CompFlags.low_on_memory_printed ) {
+                CInfoMsg( front, INFO_NOT_ENOUGH_MEMORY_TO_MAINTAIN_PEEPHOLE);
+                front.cvars.CompFlags.low_on_memory_printed = true;
             }
         }
         break;
     case FEMSG_BACK_END_ERROR:
-        CErr2( ERR_BACK_END_ERROR, (int)(pointer_uint)parm );
+        CErr2( front, ERR_BACK_END_ERROR, (int)(pointer_uint)parm );
         break;
     case FEMSG_BAD_SAVE:
-        CErr2p( ERR_BAD_SAVE, FEName( (CGSYM_HANDLE)parm ) );
+        CErr2p( front, ERR_BAD_SAVE, FEName( front, (CGSYM_HANDLE)parm ) );
         break;
     case FEMSG_BAD_LINKAGE:
-        CErr2p( ERR_BAD_LINKAGE, FEName( (CGSYM_HANDLE)parm ) );
+        CErr2p( front, ERR_BAD_LINKAGE, FEName( front, (CGSYM_HANDLE)parm ) );
         break;
     case FEMSG_NO_SEG_REGS:
-        CErr2p( ERR_NO_SEG_REGS, FEName( (CGSYM_HANDLE)parm ) );
+        CErr2p( front, ERR_NO_SEG_REGS, FEName( front, (CGSYM_HANDLE)parm ) );
         break;
     case FEMSG_BAD_PEG_REG:
-        CErr2p( ERR_BAD_PEG_REG, FEName( (CGSYM_HANDLE)parm ) );
+        CErr2p( front, ERR_BAD_PEG_REG, FEName( front, (CGSYM_HANDLE)parm ) );
         break;
     default:
         break;
@@ -854,12 +856,12 @@ void FEMessage( fe_msg femsg, CGPOINTER parm )
 }
 
 
-const char *FEModuleName( void )
+const char *FEModuleName( FrontRun& front )
 /******************************/
 {
-    if( cvars_state().ModuleName != NULL && cvars_state().ModuleName[0] != '\0' )
-        return( cvars_state().ModuleName );
-    return( cvars_state().SrcFName );
+    if( front.cvars.ModuleName != NULL && front.cvars.ModuleName[0] != '\0' )
+        return( front.cvars.ModuleName );
+    return( front.cvars.SrcFName );
 }
 
 
@@ -870,14 +872,14 @@ int FETrue( void )
 }
 
 
-segment_id FESegID( CGSYM_HANDLE cgsym_handle )
+segment_id FESegID( FrontRun& front, CGSYM_HANDLE cgsym_handle )
 /*********************************************/
 {
     SYM_HANDLE  sym_handle = (SYM_HANDLE)cgsym_handle;
     segment_id  segid;
     SYMPTR      sym;
 
-    sym = SymGetPtr( sym_handle );
+    sym = SymGetPtr( front, sym_handle );
 #if _CPU == 370
     {
         segid = SymSegId( sym );
@@ -886,7 +888,7 @@ segment_id FESegID( CGSYM_HANDLE cgsym_handle )
     {
         fe_attr     attr;
 
-        attr = FESymAttr( sym );
+        attr = FESymAttr( front, sym );
         if( attr & FE_PROC ) {
             /*
              * in large code models, should return different segment #
@@ -897,9 +899,9 @@ segment_id FESegID( CGSYM_HANDLE cgsym_handle )
                 segid = sym->seginfo->segid;
     #if _INTEL_CPU
             } else if( attr & FE_IMPORT ) {
-                if( (sym->mods & FLAG_FAR) || (cvars_state().TargetSwitches & CGSW_X86_BIG_CODE) ) {
+                if( (sym->mods & FLAG_FAR) || (front.cvars.TargetSwitches & CGSW_X86_BIG_CODE) ) {
                     if( sym->flags & SYM_ADDR_TAKEN ) {
-                        segid = cinfo_state().import_segid--;
+                        segid = front.cinfo->import_segid--;
                     }
                 }
     #endif
@@ -917,7 +919,7 @@ segment_id FESegID( CGSYM_HANDLE cgsym_handle )
 }
 
 
-BACK_HANDLE FEBack( CGSYM_HANDLE cgsym_handle )
+BACK_HANDLE FEBack( FrontRun& front, CGSYM_HANDLE cgsym_handle )
 /*********************************************/
 {
     SYM_HANDLE          sym_handle = (SYM_HANDLE)cgsym_handle;
@@ -925,13 +927,13 @@ BACK_HANDLE FEBack( CGSYM_HANDLE cgsym_handle )
     SYMPTR              symptr;
     SYM_ENTRY           sym;
 
-    symptr = SymGetPtr( sym_handle );
+    symptr = SymGetPtr( front, sym_handle );
     bck = symptr->u1.backinfo;
     if( bck == NULL ) {
-        bck = BENewBack( (CGSYM_HANDLE)sym_handle );
-        SymGet( &sym, sym_handle );
+        bck = BENewBack( *front.back, (CGSYM_HANDLE)sym_handle );
+        SymGet( front, &sym, sym_handle );
         sym.u1.backinfo = bck;
-        SymReplace( &sym, sym_handle );
+        SymReplace( front, &sym, sym_handle );
     }
     return( bck );
 }
@@ -976,7 +978,7 @@ cg_type FEParmType( CGSYM_HANDLE func, CGSYM_HANDLE parm, cg_type tipe )
     }
 }
 #else
-cg_type FEParmType( CGSYM_HANDLE func, CGSYM_HANDLE parm, cg_type tipe )
+cg_type FEParmType( FrontRun& front, CGSYM_HANDLE func, CGSYM_HANDLE parm, cg_type tipe )
 /**********************************************************************/
 {
 #if _CPU == 386
@@ -996,7 +998,7 @@ cg_type FEParmType( CGSYM_HANDLE func, CGSYM_HANDLE parm, cg_type tipe )
     case TY_UINT_1:
 #if _CPU == 386
         if( sym_handle != SYM_NULL ) {
-            sym = SymGetPtr( sym_handle );
+            sym = SymGetPtr( front, sym_handle );
             if( sym->mods & FLAG_FAR16 ) {
                 return( TY_INT_2 );
             }
@@ -1009,61 +1011,65 @@ cg_type FEParmType( CGSYM_HANDLE func, CGSYM_HANDLE parm, cg_type tipe )
 #endif
 
 
-int FEStackChk( CGSYM_HANDLE cgsym_handle )
+int FEStackChk( FrontRun& front, CGSYM_HANDLE cgsym_handle )
 /*****************************************/
 {
     SYM_HANDLE  sym_handle = (SYM_HANDLE)cgsym_handle;
     SYMPTR      sym;
 
-    sym = SymGetPtr( sym_handle );
+    sym = SymGetPtr( front, sym_handle );
     return( (sym->flags & SYM_CHECK_STACK) != 0 );
 }
 
-void SegInit( void )
+void SegInit( FrontRun& front )
 {
     segment_id  segid;
 
-    cinfo_state().userSegments = NULL;
-    cinfo_state().userSegId = FIRST_USER_SEGMENT;
+    front.cinfo->userSegments = NULL;
+    front.cinfo->userSegId = FIRST_USER_SEGMENT;
     for( segid = 0; segid < FIRST_PRIVATE_SEGMENT; segid++ ) {
-        cvars_state().SegAlignment[segid] = TARGET_INT;
+        front.cvars.SegAlignment[segid] = TARGET_INT;
     }
 }
 
-void SegFini( void )
+void SegFini( FrontRun& front )
 {
     user_seg    *useg;
 
-    while( (useg = cinfo_state().userSegments) != NULL ) {
-        cinfo_state().userSegments = useg->next;
-        CMemFree( useg );
+    while( (useg = front.cinfo->userSegments) != NULL ) {
+        front.cinfo->userSegments = useg->next;
+        CMemFree( front, useg );
     }
 }
 
-void SetSegAlign( SYMPTR sym )
+void SetSegAlign( FrontRun& front, SYMPTR sym )
 {
     align_type          align;
     segment_id          segid;
 
     segid = sym->u.var.segid;
-    if( segid < FIRST_PRIVATE_SEGMENT && cvars_state().OptSize == 0 ) {
-        align = GetTypeAlignment( sym->sym_type );
-        if( cvars_state().SegAlignment[segid] < align ) {
-            cvars_state().SegAlignment[segid] = align;
+    if( segid < FIRST_PRIVATE_SEGMENT && front.cvars.OptSize == 0 ) {
+        align = GetTypeAlignment( front, sym->sym_type );
+        if( front.cvars.SegAlignment[segid] < align ) {
+            front.cvars.SegAlignment[segid] = align;
         }
     }
 }
 
-void ImportNearSegIdInit( void )
+void ImportNearSegIdInit( FrontRun& front )
 {
-    cinfo_state().import_near_segid = -1;
+    front.cinfo->import_near_segid = -1;
 }
 
-void ImportSegIdInit( void )
+void ImportSegIdInit( FrontRun& front )
 {
-    if( cinfo_state().import_near_segid != SEG_NULL ) {
-        cinfo_state().import_segid = cinfo_state().import_near_segid - 1;
+    if( front.cinfo->import_near_segid != SEG_NULL ) {
+        front.cinfo->import_segid = front.cinfo->import_near_segid - 1;
     } else {
-        cinfo_state().import_segid = -1;
+        front.cinfo->import_segid = -1;
     }
 }
+
+/* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
+CinfoState* cinfo_make() { return new CinfoState(); }
+void cinfo_free(CinfoState* part) { delete part; }

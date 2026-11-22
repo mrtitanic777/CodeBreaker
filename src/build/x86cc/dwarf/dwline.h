@@ -47,8 +47,8 @@ typedef struct dw_include_stack {
 } dw_include_stack;
 
 
-extern void     DW_InitDebugLine( dw_client cli, const char *, const char *, size_t );
-extern void     DW_FiniDebugLine( dw_client cli );
-extern uint     DW_GetFileNumber( dw_client cli, const char * );
+extern void     DW_InitDebugLine( BackRun& back, dw_client cli, const char *, const char *, size_t );
+extern void     DW_FiniDebugLine( BackRun& back, dw_client cli );
+extern uint     DW_GetFileNumber( BackRun& back, dw_client cli, const char * );
 
 #endif

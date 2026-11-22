@@ -48,48 +48,26 @@
 #ifdef DEVBUILD
 #include "togglesd.h"
 #endif
+#include "frontrun.hpp"
 
 
-#define PushCGName(name)        cvars_state().ValueStack[index++] = (TREEPTR)name
-#define PopCGName()             (cg_name)cvars_state().ValueStack[--index]
+#define PushCGName(name)        front.cvars.ValueStack[index++] = (TREEPTR)name
+#define PopCGName()             (cg_name)front.cvars.ValueStack[--index]
 
-typedef struct local_vars {
-    struct local_vars   *next;
-    SYM_HANDLE          sym_list;
-} local_vars;
+
 
 #ifdef __SEH__
-typedef struct  try_table_back_handles {
-    struct try_table_back_handles   *next;
-    BACK_HANDLE                     back_handle;
-} try_table_back_handles;
+
 #endif
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct CgenState {
-    local_vars *LocalVarList;
-    label_handle *CGLabelHandles;
-    TREEPTR FirstNode;
-    TREEPTR LastNode;
-    OPNODE *FuncNodePtr;
-    int Refno;
-    temp_handle SSVar;
-    SYM_HANDLE Saved_CurFunc;
-    int InLineDepth;
-#ifdef __SEH__
-    int TryRefno;
-#endif
-#ifdef __SEH__
-    try_table_back_handles *TryTableBackHandles;
-#endif
-};
+/* (struct CgenState: cgen_state.h) */
 
 }  // namespace
 
-static inline CgenState& cgen_state() { return cbrun_part<CgenState>(); }
 
 
 struct func_save {
@@ -149,50 +127,50 @@ static int heap_size( struct heap_stat *stat )
 }
 #endif
 
-static void DefineLabels( OPNODE *node )
+static void DefineLabels( FrontRun& front, OPNODE *node )
 {
     LABEL_INDEX i;
 
-    cvars_state().LabelIndex = node->u2.label_count;
-    if( cvars_state().LabelIndex != 0 ) {
-        cgen_state().CGLabelHandles = (label_handle *)CMemAlloc( ( cvars_state().LabelIndex + 1 ) * sizeof( label_handle ) );
-        for( i = 1; i <= cvars_state().LabelIndex; i++ ) {
-            cgen_state().CGLabelHandles[i] = BENewLabel();
+    front.cvars.LabelIndex = node->u2.label_count;
+    if( front.cvars.LabelIndex != 0 ) {
+        front.cgen.CGLabelHandles = (label_handle *)CMemAlloc( front, ( front.cvars.LabelIndex + 1 ) * sizeof( label_handle ) );
+        for( i = 1; i <= front.cvars.LabelIndex; i++ ) {
+            front.cgen.CGLabelHandles[i] = BENewLabel(*front.back);
         }
     }
 }
 
-static local_vars *ReleaseVars( SYM_HANDLE sym_list, local_vars *local_var_list )
+static local_vars *ReleaseVars( FrontRun& front, SYM_HANDLE sym_list, local_vars *local_var_list )
 {
     local_vars  *local_entry;
 
-    local_entry = (local_vars *)CMemAlloc( sizeof( local_vars ) );
+    local_entry = (local_vars *)CMemAlloc( front, sizeof( local_vars ) );
     local_entry->next = local_var_list;
     local_entry->sym_list = sym_list;
     return( local_entry );
 }
 
-static void FreeSymBackInfo( SYMPTR sym, SYM_HANDLE sym_handle )
+static void FreeSymBackInfo( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
 {
     if( sym->u1.backinfo != NULL ) {
-        BEFiniBack( sym->u1.backinfo );
-        BEFreeBack( sym->u1.backinfo );
+        BEFiniBack( *front.back, sym->u1.backinfo );
+        BEFreeBack( *front.back, sym->u1.backinfo );
         sym->u1.backinfo = NULL;
-        SymReplace( sym, sym_handle );
+        SymReplace( front, sym, sym_handle );
     }
 }
 
-static void FreeLocalVars( SYM_HANDLE sym_list )
+static void FreeLocalVars( FrontRun& front, SYM_HANDLE sym_list )
 {
     SYM_HANDLE          sym_handle;
     SYM_ENTRY           sym;
 
     for( sym_handle = sym_list; sym_handle != SYM_NULL; sym_handle = sym.handle) {
-        SymGet( &sym, sym_handle );
+        SymGet( front, &sym, sym_handle );
         if( sym.attribs.stg_class != SC_EXTERN ) {
             if( (sym.flags & SYM_FUNC_RETURN_VAR) == 0 ) {
                 if( sym.sym_type->decl_type != TYP_VOID ) {
-                    FreeSymBackInfo( &sym, sym_handle );
+                    FreeSymBackInfo( front, &sym, sym_handle );
                 }
             }
         }
@@ -200,132 +178,132 @@ static void FreeLocalVars( SYM_HANDLE sym_list )
 }
 
 
-static void RelLocalVars( local_vars *local_var_list )
+static void RelLocalVars( FrontRun& front, local_vars *local_var_list )
 {
     local_vars  *local_entry;
 
     while( (local_entry = local_var_list) != NULL ) {
         local_var_list = local_entry->next;
-        FreeLocalVars( local_entry->sym_list );
-        CMemFree( local_entry );
+        FreeLocalVars( front, local_entry->sym_list );
+        CMemFree( front, local_entry );
     }
 }
 
-static cg_type ReturnType( cg_type type )
+static cg_type ReturnType( FrontRun& front, cg_type type )
 {
-    if( cvars_state().CompFlags.returns_promoted && (cgen_state().InLineDepth == 0) ) {
-        type = FEParmType( NULL, NULL, type );
+    if( front.cvars.CompFlags.returns_promoted && (front.cgen.InLineDepth == 0) ) {
+        type = FEParmType( front, NULL, NULL, type );
     }
     return( type );
 }
 
 #ifdef __SEH__
-static void FreeTrySymBackInfo( void )
+static void FreeTrySymBackInfo( FrontRun& front )
 {
     SYM_ENTRY   sym;
 
-    SymGet( &sym, cvars_state().TrySymHandle );
-    FreeSymBackInfo( &sym, cvars_state().TrySymHandle );
+    SymGet( front, &sym, front.cvars.TrySymHandle );
+    FreeSymBackInfo( front, &sym, front.cvars.TrySymHandle );
 }
 
-static void FreeTryTableBackHandles( void )
+static void FreeTryTableBackHandles( FrontRun& front )
 {
     try_table_back_handles  *try_backinfo;
 
-    for( ; (try_backinfo = cgen_state().TryTableBackHandles) != NULL; ) {
-        cgen_state().TryTableBackHandles = try_backinfo->next;
-        BEFreeBack( try_backinfo->back_handle );
-        CMemFree( try_backinfo );
+    for( ; (try_backinfo = front.cgen.TryTableBackHandles) != NULL; ) {
+        front.cgen.TryTableBackHandles = try_backinfo->next;
+        BEFreeBack( *front.back, try_backinfo->back_handle );
+        CMemFree( front, try_backinfo );
     }
 }
 
-static void CallTryRtn( SYM_HANDLE try_rtn, cg_name parm )
+static void CallTryRtn( FrontRun& front, SYM_HANDLE try_rtn, cg_name parm )
 {
     call_handle call;
 
-    call = CGInitCall( CGFEName( (CGSYM_HANDLE)try_rtn, TY_POINTER ), TY_INTEGER, (CGSYM_HANDLE)try_rtn );
-    CGAddParm( call, parm, TY_POINTER );
-    CGDone( CGCall( call ) );
+    call = CGInitCall( *front.back, CGFEName( *front.back, (CGSYM_HANDLE)try_rtn, TY_POINTER ), TY_INTEGER, (CGSYM_HANDLE)try_rtn );
+    CGAddParm( *front.back, call, parm, TY_POINTER );
+    CGDone( *front.back, CGCall( call ) );
 }
 
-static void CallTryInit( void )
+static void CallTryInit( FrontRun& front )
 {
-    CallTryRtn( cvars_state().SymTryInit, CGFEName( (CGSYM_HANDLE)cvars_state().TrySymHandle, TY_POINTER ) );
+    CallTryRtn( front, front.cvars.SymTryInit, CGFEName( *front.back, (CGSYM_HANDLE)front.cvars.TrySymHandle, TY_POINTER ) );
 }
 
-static cg_name TryFieldAddr( unsigned offset )
+static cg_name TryFieldAddr( FrontRun& front, unsigned offset )
 {
     cg_name     name;
 
-    name = CGFEName( (CGSYM_HANDLE)cvars_state().TrySymHandle, static_cast<cg_type>(cgen_state().TryRefno) );
-    name = CGBinary( O_PLUS, name, CGInteger( offset, TY_UNSIGNED ), TY_POINTER );
+    name = CGFEName( *front.back, (CGSYM_HANDLE)front.cvars.TrySymHandle, static_cast<cg_type>(front.cgen.TryRefno) );
+    name = CGBinary( *front.back, O_PLUS, name, CGInteger( *front.back, offset, TY_UNSIGNED ), TY_POINTER );
     name = CGVolatile( name );
     return( name );
 }
 
-static void CallTryFini( void )
+static void CallTryFini( FrontRun& front )
 {
     cg_name     name;
 
-    name = TryFieldAddr( FLD_next );
-    name = CGUnary( O_POINTS, name, TY_POINTER );
-    CallTryRtn( cvars_state().SymTryFini, name );
+    name = TryFieldAddr( front, FLD_next );
+    name = CGUnary( *front.back, O_POINTS, name, TY_POINTER );
+    CallTryRtn( front, front.cvars.SymTryFini, name );
 }
 #endif
 
-static void EndFunction( OPNODE *node )
+static void EndFunction( FrontRun& front, OPNODE *node )
 {
     LABEL_INDEX i;
     cg_name     name;
     cg_type     dtype;
     SYM_ENTRY   sym;
 
-    if( cvars_state().LabelIndex != 0 ) {
-        for( i = 1; i <= cvars_state().LabelIndex; i++ ) {
-            BEFiniLabel( cgen_state().CGLabelHandles[i] );
+    if( front.cvars.LabelIndex != 0 ) {
+        for( i = 1; i <= front.cvars.LabelIndex; i++ ) {
+            BEFiniLabel( *front.back, front.cgen.CGLabelHandles[i] );
         }
-        CMemFree( cgen_state().CGLabelHandles );     // free labels for the function
-        cgen_state().CGLabelHandles = NULL;
+        CMemFree( front, front.cgen.CGLabelHandles );     // free labels for the function
+        front.cgen.CGLabelHandles = NULL;
     }
 #ifdef __SEH__
-    if( cgen_state().FuncNodePtr->u2.func.flags & FUNC_USES_SEH ) {
-        CallTryFini();          // generate call to __TryFini
-        FreeTrySymBackInfo();
+    if( front.cgen.FuncNodePtr->u2.func.flags & FUNC_USES_SEH ) {
+        CallTryFini(front);          // generate call to __TryFini
+        FreeTrySymBackInfo(front);
     }
 #endif
     if( node->u2.sym_handle == SYM_NULL ) {
-        dtype = CGenType( cvars_state().CurFunc->sym_type->object );
-        CGReturn( NULL, dtype );
+        dtype = CGenType( front, front.cvars.CurFunc->sym_type->object );
+        CGReturn( *front.back, NULL, dtype );
     } else {                            // return value
-        SymGet( &sym, node->u2.sym_handle );
-        dtype = CGenType( sym.sym_type );
-        name = CGTempName( sym.u1.return_var, dtype );
-        name = CGUnary( O_POINTS, name, dtype );
-        CGReturn( name, ReturnType( dtype ) );
+        SymGet( front, &sym, node->u2.sym_handle );
+        dtype = CGenType( front, sym.sym_type );
+        name = CGTempName( *front.back, sym.u1.return_var, dtype );
+        name = CGUnary( *front.back, O_POINTS, name, dtype );
+        CGReturn( *front.back, name, ReturnType( front, dtype ) );
     }
-    FreeLocalVars( cvars_state().CurFunc->u.func.parms );
-    FreeLocalVars( cvars_state().CurFunc->u.func.locals );
-    if( cgen_state().InLineDepth == 0 ) {
-        RelLocalVars( cgen_state().LocalVarList );
+    FreeLocalVars( front, front.cvars.CurFunc->u.func.parms );
+    FreeLocalVars( front, front.cvars.CurFunc->u.func.locals );
+    if( front.cgen.InLineDepth == 0 ) {
+        RelLocalVars( front, front.cgen.LocalVarList );
     }
-    if( cvars_state().GenSwitches & CGSW_GEN_DBG_LOCALS ) {
-        if( cgen_state().InLineDepth != 0 ) {
-            DBEndBlock();
+    if( front.cvars.GenSwitches & CGSW_GEN_DBG_LOCALS ) {
+        if( front.cgen.InLineDepth != 0 ) {
+            DBEndBlock(*front.back);
         }
     }
-    cgen_state().FuncNodePtr->u2.func.flags &= ~FUNC_INUSE;
+    front.cgen.FuncNodePtr->u2.func.flags &= ~FUNC_INUSE;
 }
 
-static void ReturnExpression( OPNODE *node, cg_name expr )
+static void ReturnExpression( FrontRun& front, OPNODE *node, cg_name expr )
 {
     cg_name     name;
     cg_type     dtype;
     SYM_ENTRY   sym;
 
-    SymGet( &sym, node->u2.sym_handle );
-    dtype = CGenType( sym.sym_type );
-    name = CGTempName( sym.u1.return_var, dtype );
-    CGDone( CGAssign( name, expr, dtype ) );
+    SymGet( front, &sym, node->u2.sym_handle );
+    dtype = CGenType( front, sym.sym_type );
+    name = CGTempName( *front.back, sym.u1.return_var, dtype );
+    CGDone( *front.back, CGAssign( *front.back, name, expr, dtype ) );
 }
 
 static cg_type DataPointerType( OPNODE *node )
@@ -353,9 +331,9 @@ static cg_type DataPointerType( OPNODE *node )
 #endif
 }
 
-static cg_name ForceVolatileFloat( cg_name name, TYPEPTR typ )
+static cg_name ForceVolatileFloat( FrontRun& front, cg_name name, TYPEPTR typ )
 {
-    if( cvars_state().CompFlags.op_switch_used ) {
+    if( front.cvars.CompFlags.op_switch_used ) {
         if( typ->decl_type == TYP_FLOAT || typ->decl_type == TYP_DOUBLE || typ->decl_type == TYP_LONG_DOUBLE ) {
             name = CGVolatile( name );
         }
@@ -364,7 +342,7 @@ static cg_name ForceVolatileFloat( cg_name name, TYPEPTR typ )
 }
 
 
-static cg_name PushSymSeg( OPNODE *node )
+static cg_name PushSymSeg( FrontRun& front, OPNODE *node )
 {
     cg_name     segname;
 //    SYMPTR      sym;
@@ -372,92 +350,92 @@ static cg_name PushSymSeg( OPNODE *node )
 
     sym_handle = node->u2.sym_handle;
     if( sym_handle == SYM_NULL ) {
-        segname = CGInteger( 0, TY_UNSIGNED );
+        segname = CGInteger( *front.back, 0, TY_UNSIGNED );
     } else {
-        if( sym_handle == cvars_state().Sym_CS ) {
-            segname = CGFEName( (CGSYM_HANDLE)cvars_state().CurFuncHandle, TY_LONG_CODE_PTR );
-        } else if( sym_handle == cvars_state().Sym_SS ) {
-            if( cgen_state().SSVar == NULL ) {
-                cgen_state().SSVar = CGTemp( TY_UINT_2 );
+        if( sym_handle == front.cvars.Sym_CS ) {
+            segname = CGFEName( *front.back, (CGSYM_HANDLE)front.cvars.CurFuncHandle, TY_LONG_CODE_PTR );
+        } else if( sym_handle == front.cvars.Sym_SS ) {
+            if( front.cgen.SSVar == NULL ) {
+                front.cgen.SSVar = CGTemp( *front.back, TY_UINT_2 );
             }
-            segname = CGTempName( cgen_state().SSVar, TY_UINT_2 );
+            segname = CGTempName( *front.back, front.cgen.SSVar, TY_UINT_2 );
         } else {
 //            sym = SymGetPtr( sym_handle );
-            segname = CGFEName( (CGSYM_HANDLE)sym_handle, TY_UINT_2 );
+            segname = CGFEName( *front.back, (CGSYM_HANDLE)sym_handle, TY_UINT_2 );
         }
     }
     return( segname );
 }
 
 #ifdef __SEH__
-static cg_name TryExceptionInfoAddr( void )
+static cg_name TryExceptionInfoAddr( FrontRun& front )
 {
     cg_name     name;
 
-    name = TryFieldAddr( FLD_exception_info );
+    name = TryFieldAddr( front, FLD_exception_info );
 //    name = CGUnary( O_POINTS, name, TY_POINTER );
 //    name = CGUnary( O_POINTS, name, TY_POINTER );
     return( name );
 }
 
-static void SetTryTable( BACK_HANDLE except_table )
+static void SetTryTable( FrontRun& front, BACK_HANDLE except_table )
 {
     cg_name     name;
     cg_name     table;
 
-    name = TryFieldAddr( FLD_scope_table );
-    table = CGBackName( except_table, TY_POINTER );
-    CGDone( CGAssign( name, table, TY_POINTER ) );
+    name = TryFieldAddr( front, FLD_scope_table );
+    table = CGBackName( *front.back, except_table, TY_POINTER );
+    CGDone( *front.back, CGAssign( *front.back, name, table, TY_POINTER ) );
 }
 
-static void SetTryScope( tryindex_t scope )
+static void SetTryScope( FrontRun& front, tryindex_t scope )
 {
     cg_name     name;
 
-    name = TryFieldAddr( FLD_scope_index );
-    CGDone( CGAssign( name, CGInteger( scope, TY_UINT_1 ), TY_UINT_1 ) );
+    name = TryFieldAddr( front, FLD_scope_index );
+    CGDone( *front.back, CGAssign( *front.back, name, CGInteger( *front.back, scope, TY_UINT_1 ), TY_UINT_1 ) );
 }
 
-static void EndFinally( void )
+static void EndFinally( FrontRun& front )
 {
     cg_name      name;
     cg_name      func;
     LABEL_HANDLE label_handle;
     call_handle  call;
 
-    label_handle = BENewLabel();
-    name = TryFieldAddr( FLD_unwindflag );
-    name = CGUnary( O_POINTS, name, TY_UINT_1 );
-    name = CGCompare( O_EQ, name, CGInteger( 0, TY_UINT_1 ), TY_UINT_1 );
-    CGControl( O_IF_TRUE, name, label_handle );
-    func = CGFEName( (CGSYM_HANDLE)cvars_state().SymFinally, TY_CODE_PTR );
-    call = CGInitCall( func, TY_INTEGER, (CGSYM_HANDLE)cvars_state().SymFinally );
-    CGDone( CGCall( call ) );
-    CGControl( O_LABEL, NULL, label_handle );
-    BEFiniLabel( label_handle );
+    label_handle = BENewLabel(*front.back);
+    name = TryFieldAddr( front, FLD_unwindflag );
+    name = CGUnary( *front.back, O_POINTS, name, TY_UINT_1 );
+    name = CGCompare( *front.back, O_EQ, name, CGInteger( *front.back, 0, TY_UINT_1 ), TY_UINT_1 );
+    CGControl( *front.back, O_IF_TRUE, name, label_handle );
+    func = CGFEName( *front.back, (CGSYM_HANDLE)front.cvars.SymFinally, TY_CODE_PTR );
+    call = CGInitCall( *front.back, func, TY_INTEGER, (CGSYM_HANDLE)front.cvars.SymFinally );
+    CGDone( *front.back, CGCall( call ) );
+    CGControl( *front.back, O_LABEL, NULL, label_handle );
+    BEFiniLabel( *front.back, label_handle );
 }
 
-static cg_name TryAbnormalTermination( void )
+static cg_name TryAbnormalTermination( FrontRun& front )
 {
     cg_name      name;
 
-    name = TryFieldAddr( FLD_unwindflag );
-    name = CGUnary( O_POINTS, name, TY_UINT_1 );
+    name = TryFieldAddr( front, FLD_unwindflag );
+    name = CGUnary( *front.back, O_POINTS, name, TY_UINT_1 );
     return( name );
 }
 
-static void CallTryUnwind( tryindex_t scope_index )
+static void CallTryUnwind( FrontRun& front, tryindex_t scope_index )
 {
     call_handle call;
     cg_name     parm;
 
-    call = CGInitCall( CGFEName( (CGSYM_HANDLE)cvars_state().SymTryUnwind, TY_POINTER ), TY_INTEGER, (CGSYM_HANDLE)cvars_state().SymTryUnwind );
-    parm = CGInteger( scope_index, TY_UINT_1 );
-    CGAddParm( call, parm, TY_INTEGER );
-    CGDone( CGCall( call ) );
+    call = CGInitCall( *front.back, CGFEName( *front.back, (CGSYM_HANDLE)front.cvars.SymTryUnwind, TY_POINTER ), TY_INTEGER, (CGSYM_HANDLE)front.cvars.SymTryUnwind );
+    parm = CGInteger( *front.back, scope_index, TY_UINT_1 );
+    CGAddParm( *front.back, call, parm, TY_INTEGER );
+    CGDone( *front.back, CGCall( call ) );
 }
 
-static void GenerateTryBlock( TREEPTR tree )
+static void GenerateTryBlock( FrontRun& front, TREEPTR tree )
 {
     TREEPTR     stmt;
     tryindex_t  try_index;
@@ -477,7 +455,7 @@ static void GenerateTryBlock( TREEPTR tree )
             break;
         case OPR_EXCEPT:
         case OPR_FINALLY:
-            cvars_state().ValueStack[try_index] = stmt;
+            front.cvars.ValueStack[try_index] = stmt;
             break;
         default:
             break;
@@ -489,27 +467,27 @@ static void GenerateTryBlock( TREEPTR tree )
         BACK_HANDLE             except_table;
         try_table_back_handles  *try_backinfo;
 
-        old_segid = BESetSeg( SEG_DATA );
-        except_table = BENewBack( NULL );
-        try_backinfo = (try_table_back_handles *)CMemAlloc( sizeof( try_table_back_handles ) );
+        old_segid = BESetSeg( *front.back, SEG_DATA );
+        except_table = BENewBack( *front.back, NULL );
+        try_backinfo = (try_table_back_handles *)CMemAlloc( front, sizeof( try_table_back_handles ) );
         try_backinfo->back_handle = except_table;
-        try_backinfo->next = cgen_state().TryTableBackHandles;
-        cgen_state().TryTableBackHandles = try_backinfo;
-        DGLabel( except_table );
+        try_backinfo->next = front.cgen.TryTableBackHandles;
+        front.cgen.TryTableBackHandles = try_backinfo;
+        DGLabel( *front.back, except_table );
         for( try_index = 0; try_index <= max_try_index; try_index++ ) {
-            stmt = cvars_state().ValueStack[try_index];
-            DGInteger( stmt->op.u2.st.parent_scope, TY_UINT_1 );  // parent index
+            stmt = front.cvars.ValueStack[try_index];
+            DGInteger( *front.back, stmt->op.u2.st.parent_scope, TY_UINT_1 );  // parent index
             if( stmt->op.opr == OPR_EXCEPT ) {
-                DGInteger( 0, TY_UINT_1 );
+                DGInteger( *front.back, 0, TY_UINT_1 );
             } else {
-                DGInteger( 1, TY_UINT_1 );
+                DGInteger( *front.back, 1, TY_UINT_1 );
             }
-            except_label = FEBack( (CGSYM_HANDLE)stmt->op.u2.st.u.try_sym_handle );
-            DGBackPtr( except_label, FESegID( (CGSYM_HANDLE)cvars_state().CurFuncHandle ), 0, TY_CODE_PTR );
+            except_label = FEBack( front, (CGSYM_HANDLE)stmt->op.u2.st.u.try_sym_handle );
+            DGBackPtr( *front.back, except_label, FESegID( front, (CGSYM_HANDLE)front.cvars.CurFuncHandle ), 0, TY_CODE_PTR );
         }
-        BESetSeg( old_segid );
-        SetTryTable( except_table );
-        BEFiniBack( except_table );
+        BESetSeg( *front.back, old_segid );
+        SetTryTable( front, except_table );
+        BEFiniBack( *front.back, except_table );
     }
 }
 #endif  /* __SEH__ */
@@ -571,24 +549,24 @@ static cg_type CodePtrType( type_modifiers flags )
 #endif
 }
 
-static cg_name PushSym( OPNODE *node )
+static cg_name PushSym( FrontRun& front, OPNODE *node )
 {
     cg_name     name;
     cg_type     dtype;
     TYPEPTR     typ;
     SYM_ENTRY   sym;
 
-    SymGet( &sym, node->u2.sym_handle );
+    SymGet( front, &sym, node->u2.sym_handle );
     typ = sym.sym_type;
     if( sym.flags & SYM_FUNCTION ) {
         dtype = CodePtrType( sym.mods );
     } else {
-        dtype = CGenType( typ );
+        dtype = CGenType( front, typ );
     }
     if( sym.flags & SYM_FUNC_RETURN_VAR ) {
-        name = CGTempName( sym.u1.return_var, dtype );
+        name = CGTempName( *front.back, sym.u1.return_var, dtype );
     } else {
-        name = CGFEName( (CGSYM_HANDLE)node->u2.sym_handle, dtype );
+        name = CGFEName( *front.back, (CGSYM_HANDLE)node->u2.sym_handle, dtype );
     }
     if( node->flags & OPFLAG_UNALIGNED ) {
         name = CGAttr( name, CG_SYM_UNALIGNED );
@@ -596,30 +574,30 @@ static cg_name PushSym( OPNODE *node )
     if( node->flags & OPFLAG_VOLATILE ) {
         name = CGVolatile( name );
     } else {
-        name = ForceVolatileFloat( name, typ );
+        name = ForceVolatileFloat( front, name, typ );
     }
-    name = CGUnary( O_POINTS, name, dtype );
+    name = CGUnary( *front.back, O_POINTS, name, dtype );
     return( name );
 }
 
-static cg_name PushSymAddr( OPNODE *node )
+static cg_name PushSymAddr( FrontRun& front, OPNODE *node )
 {
     cg_name     name;
     cg_type     dtype;
     SYM_ENTRY   sym;
     TYPEPTR     typ;
 
-    SymGet( &sym, node->u2.sym_handle );
+    SymGet( front, &sym, node->u2.sym_handle );
     typ = sym.sym_type;
     if( sym.flags & SYM_FUNCTION ) {
         dtype = CodePtrType( sym.mods );
     } else {
-        dtype = CGenType( typ );
+        dtype = CGenType( front, typ );
     }
     if( sym.flags & SYM_FUNC_RETURN_VAR ) {
-        name = CGTempName( sym.u1.return_var, dtype );
+        name = CGTempName( *front.back, sym.u1.return_var, dtype );
     } else {
-        name = CGFEName( (CGSYM_HANDLE)node->u2.sym_handle, dtype );
+        name = CGFEName( *front.back, (CGSYM_HANDLE)node->u2.sym_handle, dtype );
 #if 0
         if( (sym.mods & FLAG_VOLATILE)
           || (sym.flags & SYM_USED_IN_PRAGMA) ) {
@@ -633,7 +611,7 @@ static cg_name PushSymAddr( OPNODE *node )
     return( name );
 }
 
-static cg_name PushRValue( OPNODE *node, cg_name name )
+static cg_name PushRValue( FrontRun& front, OPNODE *node, cg_name name )
 {
     TYPEPTR     typ;
 
@@ -642,9 +620,9 @@ static cg_name PushRValue( OPNODE *node, cg_name name )
         if( node->flags & OPFLAG_VOLATILE ) {
             name = CGVolatile( name );
         } else {
-            name = ForceVolatileFloat( name, typ );
+            name = ForceVolatileFloat( front, name, typ );
         }
-        name = CGUnary( O_POINTS, name, CGenType( typ ) );
+        name = CGUnary( *front.back, O_POINTS, name, CGenType( front, typ ) );
     } else {
 #if 0
         if( node->flags & OPFLAG_VOLATILE ) {
@@ -655,7 +633,7 @@ static cg_name PushRValue( OPNODE *node, cg_name name )
     return( name );
 }
 
-static cg_name DotOperator( cg_name op1, OPNODE *node, cg_name op2 )
+static cg_name DotOperator( FrontRun& front, cg_name op1, OPNODE *node, cg_name op2 )
 {
     TYPEPTR     typ;
     cg_name     name;
@@ -665,7 +643,7 @@ static cg_name DotOperator( cg_name op1, OPNODE *node, cg_name op2 )
      * node->u2.result_type is the type of the data
      * for the O_PLUS we want a pointer type
      */
-    name = CGBinary( O_PLUS, op1, op2, DataPointerType( node ) );
+    name = CGBinary( *front.back, O_PLUS, op1, op2, DataPointerType( node ) );
     typ = node->u2.result_type;
     if( typ->decl_type == TYP_FIELD || typ->decl_type == TYP_UFIELD ) {
         if( typ->u.f.field_type == TYP_BOOL ) {
@@ -673,15 +651,15 @@ static cg_name DotOperator( cg_name op1, OPNODE *node, cg_name op2 )
         } else {
             width = typ->u.f.field_width;
         }
-        name = CGBitMask( name, typ->u.f.field_start, width, CGenType( typ ) );
+        name = CGBitMask( *front.back, name, typ->u.f.field_start, width, CGenType( front, typ ) );
     }
     if( node->flags & OPFLAG_UNALIGNED ) {
         name = CGAttr( name, CG_SYM_UNALIGNED );
     }
-    return( PushRValue( node, name ) );
+    return( PushRValue( front, node, name ) );
 }
 
-static cg_name ArrowOperator( cg_name op1, OPNODE *node, cg_name op2 )
+static cg_name ArrowOperator( FrontRun& front, cg_name op1, OPNODE *node, cg_name op2 )
 {
     /*
      * node->u2.result_type is the type of the data
@@ -689,17 +667,17 @@ static cg_name ArrowOperator( cg_name op1, OPNODE *node, cg_name op2 )
      */
 #if _CPU == 386
     if( Far16Pointer( node->flags ) ) {
-        op1 = CGUnary( O_PTR_TO_NATIVE, op1, TY_POINTER );
+        op1 = CGUnary( *front.back, O_PTR_TO_NATIVE, op1, TY_POINTER );
     }
 #endif
     /*
      *  rvalue has already been done on left side of tree
      */
 //    op1 = CGUnary( O_POINTS, op1, DataPointerType( node ) );
-    return( DotOperator( op1, node, op2 ) );
+    return( DotOperator( front, op1, node, op2 ) );
 }
 
-static cg_name IndexOperator( cg_name op1, OPNODE *node, cg_name op2 )
+static cg_name IndexOperator( FrontRun& front, cg_name op1, OPNODE *node, cg_name op2 )
 {
     int         element_size;
     cg_type     index_type;
@@ -711,10 +689,10 @@ static cg_name IndexOperator( cg_name op1, OPNODE *node, cg_name op2 )
      */
 #if _CPU == 386
     if( Far16Pointer( node->flags ) ) {
-        op1 = CGUnary( O_PTR_TO_NATIVE, op1, TY_POINTER );
+        op1 = CGUnary( *front.back, O_PTR_TO_NATIVE, op1, TY_POINTER );
     }
 #endif
-    element_size = SizeOfArg( node->u2.result_type );
+    element_size = SizeOfArg( front, node->u2.result_type );
     if( element_size != 1 ) {
         index_type = TY_INTEGER;
 #if _CPU == 8086
@@ -723,24 +701,24 @@ static cg_name IndexOperator( cg_name op1, OPNODE *node, cg_name op2 )
             index_type = TY_INT_4;
         }
 #endif
-        op2 = CGBinary( O_TIMES, op2,
-                CGInteger( element_size, TY_INTEGER ), index_type );
+        op2 = CGBinary( *front.back, O_TIMES, op2,
+                CGInteger( *front.back, element_size, TY_INTEGER ), index_type );
     }
-    op1 = CGBinary( O_PLUS, op1, op2, DataPointerType( node ) );
+    op1 = CGBinary( *front.back, O_PLUS, op1, op2, DataPointerType( node ) );
     if( node->flags & OPFLAG_UNALIGNED ) {
         op1 = CGAttr( op1, CG_SYM_UNALIGNED );
     }
-    return( PushRValue( node, op1 ) );
+    return( PushRValue( front, node, op1 ) );
 }
 
-static cg_name DoAddSub( cg_name op1, OPNODE *node, cg_name op2 )
+static cg_name DoAddSub( FrontRun& front, cg_name op1, OPNODE *node, cg_name op2 )
 {
     cg_name     name;
     TYPEPTR     typ;
 
     typ = node->u2.result_type;
     SKIP_TYPEDEFS( typ );
-    name = CGBinary( CGOperator[node->opr], op1, op2, CGenType( typ ) );
+    name = CGBinary( *front.back, CGOperator[node->opr], op1, op2, CGenType( front, typ ) );
 #if 0
     if( typ->decl_type == TYP_POINTER ) {
         if( typ->u.p.decl_flags & FLAG_VOLATILE ) {
@@ -750,7 +728,7 @@ static cg_name DoAddSub( cg_name op1, OPNODE *node, cg_name op2 )
 #endif
     return( name );
 }
-static cg_name PushConstant( OPNODE *node )
+static cg_name PushConstant( FrontRun& front, OPNODE *node )
 {
     cg_name     name;
     cg_type     dtype;
@@ -767,14 +745,14 @@ static cg_name PushConstant( OPNODE *node )
     case TYP_UINT:
     case TYP_LONG:
     case TYP_ULONG:
-        name = CGInteger( node->u2.ulong_value, dtype );
+        name = CGInteger( *front.back, node->u2.ulong_value, dtype );
         break;
     case TYP_POINTER:
-        name = CGInteger( node->u2.ulong_value, DataPointerType( node ) );
+        name = CGInteger( *front.back, node->u2.ulong_value, DataPointerType( node ) );
         break;
     case TYP_LONG64:
     case TYP_ULONG64:
-        name = CGInt64( node->u2.ulong64_value, dtype );
+        name = CGInt64( *front.back, node->u2.ulong64_value, dtype );
         break;
     case TYP_FLOAT:
     case TYP_DOUBLE:
@@ -786,9 +764,9 @@ static cg_name PushConstant( OPNODE *node )
         if( flt->len != 0 ) {                   // if still in string form
             flt_string = flt->string;
         } else {                                // else in binary form
-            flt_string = ftoa( flt );
+            flt_string = ftoa( front, flt );
         }
-        name = CGFloat( flt_string, dtype );
+        name = CGFloat( *front.back, flt_string, dtype );
         break;
     default:
         assert( 0 );
@@ -798,100 +776,100 @@ static cg_name PushConstant( OPNODE *node )
     return( name );
 }
 
-target_size EmitBytes( STR_HANDLE strlit )
+target_size EmitBytes( FrontRun& front, STR_HANDLE strlit )
 {
-    DGBytes( strlit->length, strlit->literal );
+    DGBytes( *front.back, strlit->length, strlit->literal );
     return( strlit->length );
 }
 
 
-static segment_id StringSegment( STR_HANDLE strlit )
+static segment_id StringSegment( FrontRun& front, STR_HANDLE strlit )
 {
 #if _INTEL_CPU
     if( strlit->flags & STRLIT_FAR )
-        return( cvars_state().FarStringSegId );
+        return( front.cvars.FarStringSegId );
 #endif
     if( strlit->flags & STRLIT_CONST )
         return( SEG_CODE );
     return( SEG_CONST );
 }
 
-static void EmitLiteral( STR_HANDLE strlit )
+static void EmitLiteral( FrontRun& front, STR_HANDLE strlit )
 {
     segment_id  old_segid;
 
-    old_segid = BESetSeg( StringSegment( strlit ) );
+    old_segid = BESetSeg( *front.back, StringSegment( front, strlit ) );
     if( strlit->flags & STRLIT_WIDE ) {
-        DGAlign( TARGET_SHORT );    /* NT requires word aligned wide strings */
+        DGAlign( *front.back, TARGET_SHORT );    /* NT requires word aligned wide strings */
     }
-    DGLabel( strlit->back_handle );
-    EmitBytes( strlit );
-    BESetSeg( old_segid );
+    DGLabel( *front.back, strlit->back_handle );
+    EmitBytes( front, strlit );
+    BESetSeg( *front.back, old_segid );
 }
 
 
-static void Emit1String( STR_HANDLE str_handle )
+static void Emit1String( FrontRun& front, STR_HANDLE str_handle )
 {
     if( str_handle->back_handle == NULL ) {
-        str_handle->back_handle = BENewBack( NULL );
+        str_handle->back_handle = BENewBack( *front.back, NULL );
         if( (str_handle->flags & STRLIT_CONST) == 0 ) {
-            EmitLiteral( str_handle );
+            EmitLiteral( front, str_handle );
         }
     }
 }
 
-static cg_name PushString( OPNODE *node )
+static cg_name PushString( FrontRun& front, OPNODE *node )
 {
     STR_HANDLE      string;
 
     string = node->u2.string_handle;
-    Emit1String( string );
-    return( CGBackName( string->back_handle, TY_UINT_1 ) );
+    Emit1String( front, string );
+    return( CGBackName( *front.back, string->back_handle, TY_UINT_1 ) );
 }
 
-static void FreeStrings( void )
+static void FreeStrings( FrontRun& front )
 {
     STR_HANDLE      strlit;
     STR_HANDLE      strlit_next;
     str_hash_idx    hash;
 
     for( hash = 0; hash < STRING_HASH_SIZE; hash++ ) {
-        for( strlit = cvars_state().StringHash[hash]; strlit != NULL; strlit = strlit_next ) {
+        for( strlit = front.cvars.StringHash[hash]; strlit != NULL; strlit = strlit_next ) {
             strlit_next = strlit->next_string;
             if( strlit->back_handle != NULL ) {
-                BEFiniBack( strlit->back_handle );
-                BEFreeBack( strlit->back_handle );
+                BEFiniBack( *front.back, strlit->back_handle );
+                BEFreeBack( *front.back, strlit->back_handle );
                 strlit->back_handle = NULL;
             }
-            FreeLiteral( strlit );
+            FreeLiteral( front, strlit );
         }
-        cvars_state().StringHash[hash] = NULL;
+        front.cvars.StringHash[hash] = NULL;
     }
 }
 
-static void DumpCS_Strings( STR_HANDLE strlit )
+static void DumpCS_Strings( FrontRun& front, STR_HANDLE strlit )
 {
     for( ; strlit != NULL; strlit = strlit->next_string ) {
         if( (strlit->flags & STRLIT_CONST) && strlit->ref_count != 0 ) {
-            strlit->back_handle = BENewBack( NULL );
-            EmitLiteral( strlit );
+            strlit->back_handle = BENewBack( *front.back, NULL );
+            EmitLiteral( front, strlit );
         }
     }
 }
 
 
-static void EmitCS_Strings( void )
+static void EmitCS_Strings( FrontRun& front )
 {
     str_hash_idx    hash;
 
-    if( cvars_state().CompFlags.strings_in_code_segment ) {
+    if( front.cvars.CompFlags.strings_in_code_segment ) {
         for( hash = STRING_HASH_SIZE; hash-- > 0; ) {
-            DumpCS_Strings( cvars_state().StringHash[hash] );
+            DumpCS_Strings( front, front.cvars.StringHash[hash] );
         }
     }
 }
 
-static cg_name DoIndirection( OPNODE *node, cg_name name )
+static cg_name DoIndirection( FrontRun& front, OPNODE *node, cg_name name )
 {
     TYPEPTR     typ;
 
@@ -906,7 +884,7 @@ static cg_name DoIndirection( OPNODE *node, cg_name name )
          * thunk routine expects 16:16 pointers!
          */
         if( ( typ->object != NULL ) && ( typ->object->decl_type != TYP_FUNCTION ) ) {
-            name = CGUnary( O_PTR_TO_NATIVE, name, TY_POINTER );
+            name = CGUnary( *front.back, O_PTR_TO_NATIVE, name, TY_POINTER );
         }
     }
 #endif
@@ -917,18 +895,18 @@ static cg_name DoIndirection( OPNODE *node, cg_name name )
         if( node->flags & OPFLAG_VOLATILE ) {
             name = CGVolatile( name );
         }
-        name = CGUnary( O_POINTS, name, CGenType( typ->object ) );
+        name = CGUnary( *front.back, O_POINTS, name, CGenType( front, typ->object ) );
     }
     return( name );
 }
 
-static cg_name ConvertPointer( OPNODE *node, cg_name name )
+static cg_name ConvertPointer( FrontRun& front, OPNODE *node, cg_name name )
 {
 #if _CPU == 386
     if( FAR16_PTRCLASS( node->u2.sp.old_ptrclass ) ) {
-        name = CGUnary( O_PTR_TO_NATIVE, name, TY_POINTER );
+        name = CGUnary( *front.back, O_PTR_TO_NATIVE, name, TY_POINTER );
     } else if( FAR16_PTRCLASS( node->u2.sp.new_ptrclass ) ) {
-        name = CGUnary( O_PTR_TO_FOREIGN, name, TY_POINTER );
+        name = CGUnary( *front.back, O_PTR_TO_FOREIGN, name, TY_POINTER );
     }
 #else
     /* unused parameters */ (void)node;
@@ -936,46 +914,46 @@ static cg_name ConvertPointer( OPNODE *node, cg_name name )
     return( name );
 }
 
-static call_handle InitFuncCall( OPNODE *node )
+static call_handle InitFuncCall( FrontRun& front, OPNODE *node )
 {
     cg_name     name;
     cg_type     dtype;
     TYPEPTR     typ;
     SYMPTR      sym;
 
-    sym = SymGetPtr( node->u2.sym_handle );
+    sym = SymGetPtr( front, node->u2.sym_handle );
     typ = sym->sym_type;
-    dtype = CGenType( typ );
-    name = CGFEName( (CGSYM_HANDLE)node->u2.sym_handle, dtype );
+    dtype = CGenType( front, typ );
+    name = CGFEName( *front.back, (CGSYM_HANDLE)node->u2.sym_handle, dtype );
 //    dtype = FESymType( sym );
     SKIP_TYPEDEFS( typ );
-    return( CGInitCall( name, CGenType( typ->object ), (CGSYM_HANDLE)node->u2.sym_handle ) );
+    return( CGInitCall( *front.back, name, CGenType( front, typ->object ), (CGSYM_HANDLE)node->u2.sym_handle ) );
 }
 
-static call_handle InitIndFuncCall( OPNODE *node, cg_name name )
+static call_handle InitIndFuncCall( FrontRun& front, OPNODE *node, cg_name name )
 {
     TYPEPTR     typ;
     SYMPTR      sym;
 
-    sym = SymGetPtr( node->u2.sym_handle );
+    sym = SymGetPtr( front, node->u2.sym_handle );
     typ = sym->sym_type;
     SKIP_TYPEDEFS( typ );
-    return( CGInitCall( name, CGenType( typ->object ), (CGSYM_HANDLE)node->u2.sym_handle ) );
+    return( CGInitCall( *front.back, name, CGenType( front, typ->object ), (CGSYM_HANDLE)node->u2.sym_handle ) );
 }
 
-static void DoSwitch( OPNODE *node, cg_name name )
+static void DoSwitch( FrontRun& front, OPNODE *node, cg_name name )
 {
     sel_handle  table;
     SWITCHPTR   sw;
     CASEPTR     ce;
 
-    table = CGSelInit();
+    table = CGSelInit(*front.back);
     sw = node->u2.switch_info;
     for( ce = sw->case_list; ce != NULL; ce = ce->next_case ) {
-        CGSelCase( table, cgen_state().CGLabelHandles[ce->label], ce->value );
+        CGSelCase( *front.back, table, front.cgen.CGLabelHandles[ce->label], ce->value );
     }
-    CGSelOther( table, cgen_state().CGLabelHandles[sw->default_label] );
-    CGSelect( table, name );
+    CGSelOther( table, front.cgen.CGLabelHandles[sw->default_label] );
+    CGSelect( *front.back, table, name );
 }
 
 static bool IsStruct( TYPEPTR typ )
@@ -992,36 +970,36 @@ static bool IsStruct( TYPEPTR typ )
     return( false );
 }
 
-static void ThreadNode( TREEPTR node )
+static void ThreadNode( FrontRun& front, TREEPTR node )
 {
-    if( cgen_state().FirstNode == NULL )
-        cgen_state().FirstNode = node;
-    if( cgen_state().LastNode != NULL )
-        cgen_state().LastNode->u.thread = node;
-    cgen_state().LastNode = node;
+    if( front.cgen.FirstNode == NULL )
+        front.cgen.FirstNode = node;
+    if( front.cgen.LastNode != NULL )
+        front.cgen.LastNode->u.thread = node;
+    front.cgen.LastNode = node;
 }
 
-static TREEPTR LinearizeTree( TREEPTR tree )
+static TREEPTR LinearizeTree( FrontRun& front, TREEPTR tree )
 {
-    cgen_state().FirstNode = NULL;
-    cgen_state().LastNode = NULL;
-    WalkExprTree( tree, ThreadNode, NoOp, NoOp, ThreadNode );
-    cgen_state().LastNode->u.thread = NULL;
-    return( cgen_state().FirstNode );
-}
-
-
-void EmitInit( void )
-{
-    cvars_state().SegListHead = NULL;
-    ImportSegIdInit();
-    cgen_state().Refno = TY_FIRST_FREE;
+    front.cgen.FirstNode = NULL;
+    front.cgen.LastNode = NULL;
+    WalkExprTree( front, tree, ThreadNode, NoOp, NoOp, ThreadNode );
+    front.cgen.LastNode->u.thread = NULL;
+    return( front.cgen.FirstNode );
 }
 
 
-static int NewRefno( void )
+void EmitInit( FrontRun& front )
 {
-    return( cgen_state().Refno++ );
+    front.cvars.SegListHead = NULL;
+    ImportSegIdInit(front);
+    front.cgen.Refno = TY_FIRST_FREE;
+}
+
+
+static int NewRefno( FrontRun& front )
+{
+    return( front.cgen.Refno++ );
 }
 
 
@@ -1029,50 +1007,50 @@ void EmitAbort( void )
 {
 }
 
-static void EmitSym( SYMPTR sym, SYM_HANDLE sym_handle )
+static void EmitSym( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
 {
     TYPEPTR             typ;
     segment_id          segid;
     target_size         size;
 
     typ = sym->sym_type;
-    if( (cvars_state().GenSwitches & CGSW_GEN_DBG_TYPES) && (sym->attribs.stg_class == SC_TYPEDEF) ) {
+    if( (front.cvars.GenSwitches & CGSW_GEN_DBG_TYPES) && (sym->attribs.stg_class == SC_TYPEDEF) ) {
         if( typ->decl_type != TYP_TYPEDEF ) {
-            DBEndName( DBBegName( sym->name, DBG_NIL_TYPE ), DBType( typ ) );
+            DBEndName( *front.back, DBBegName( *front.back, sym->name, DBG_NIL_TYPE ), DBType( front, typ ) );
         }
     }
     SKIP_TYPEDEFS( typ );
-    CGenType( typ );    /* create refno for ARRAY type, etc */
+    CGenType( front, typ );    /* create refno for ARRAY type, etc */
     if( sym->attribs.stg_class != SC_EXTERN &&  /* if not imported */
         sym->attribs.stg_class != SC_TYPEDEF ) {
         if( ( sym->flags & SYM_FUNCTION ) == 0 ) {
             segid = sym->u.var.segid;
             if( (sym->flags & SYM_INITIALIZED) == 0 || segid == SEG_BSS) {
-                BESetSeg( segid );
-                AlignIt( typ );
-                DGLabel( FEBack( (CGSYM_HANDLE)sym_handle ) );
+                BESetSeg( *front.back, segid );
+                AlignIt( front, typ );
+                DGLabel( *front.back, FEBack( front, (CGSYM_HANDLE)sym_handle ) );
                 /*
                  * initialize all bytes to 0
                  * if size > 64k, have to break it into chunks of 64k
                  */
-                size = SizeOfArg( typ );
+                size = SizeOfArg( front, typ );
                 if( segid == SEG_BSS ) {
-                    DGUBytes( size );
+                    DGUBytes( *front.back, size );
                 } else {
 #if _CPU == 8086
                     while( size >= 0x10000 ) {
-                        EmitZeros( 0x10000 );
+                        EmitZeros( front, 0x10000 );
                         size -= 0x10000;
                         if( size == 0 )
                             break;
                         if( segid != SEG_CONST && segid != SEG_DATA ) {
                             ++segid;
-                            BESetSeg( segid );
+                            BESetSeg( *front.back, segid );
                         }
                     }
 #endif
                     if( size != 0 ) {
-                        EmitZeros( size );
+                        EmitZeros( front, size );
                     }
                 }
             }
@@ -1080,7 +1058,7 @@ static void EmitSym( SYMPTR sym, SYM_HANDLE sym_handle )
     }
 }
 
-static void CDoAutoDecl( SYM_HANDLE sym_handle )
+static void CDoAutoDecl( FrontRun& front, SYM_HANDLE sym_handle )
 {
     TYPEPTR             typ;
     cg_type             dtype;
@@ -1089,20 +1067,20 @@ static void CDoAutoDecl( SYM_HANDLE sym_handle )
     SYM_ENTRY           sym;
 
     for( ; sym_handle != SYM_NULL; sym_handle = sym.handle ) {
-        SymGet( &sym, sym_handle );
+        SymGet( front, &sym, sym_handle );
         emit_debug_info = false;
         emit_extra_info = false;
-        if( cvars_state().GenSwitches & CGSW_GEN_NO_OPTIMIZATION )
+        if( front.cvars.GenSwitches & CGSW_GEN_NO_OPTIMIZATION )
             emit_debug_info = true;
         if( sym.attribs.stg_class == SC_STATIC ) {
             emit_debug_info = false;
             if( (sym.flags & SYM_EMITTED) == 0 ) {
                 if( sym.sym_type->decl_type != TYP_VOID ) {
-                    EmitSym( &sym, sym_handle );
+                    EmitSym( front, &sym, sym_handle );
                     emit_debug_info = true;
-                    SymGet( &sym, sym_handle );
+                    SymGet( front, &sym, sym_handle );
                     sym.flags |= SYM_EMITTED;
-                    SymReplace( &sym, sym_handle );
+                    SymReplace( front, &sym, sym_handle );
                 }
             }
         } else if( sym.attribs.stg_class != SC_EXTERN &&
@@ -1124,23 +1102,23 @@ static void CDoAutoDecl( SYM_HANDLE sym_handle )
             default:
                 break;
             }
-            dtype = CGenType( typ );
+            dtype = CGenType( front, typ );
             if( sym.flags & SYM_FUNC_RETURN_VAR ) {
-                sym.u1.return_var = CGTemp( dtype );
-                SymReplace( &sym, sym_handle );
+                sym.u1.return_var = CGTemp( *front.back, dtype );
+                SymReplace( front, &sym, sym_handle );
             } else {
-                CGAutoDecl( (CGSYM_HANDLE)sym_handle, dtype );
+                CGAutoDecl( *front.back, (CGSYM_HANDLE)sym_handle, dtype );
             }
         }
 #if _CPU != 370
-        if( ! cvars_state().CompFlags.debug_info_some )
+        if( ! front.cvars.CompFlags.debug_info_some )
             emit_extra_info = false;
 #endif
         if( emit_debug_info || emit_extra_info ) {
-            if( cgen_state().Saved_CurFunc == SYM_NULL ) {  /* if we are not inlining */
-                if( cvars_state().GenSwitches & CGSW_GEN_DBG_LOCALS ) {
+            if( front.cgen.Saved_CurFunc == SYM_NULL ) {  /* if we are not inlining */
+                if( front.cvars.GenSwitches & CGSW_GEN_DBG_LOCALS ) {
                     if( (sym.flags & SYM_TEMP) == 0 ) {
-                        DBLocalSym( (CGSYM_HANDLE)sym_handle, TY_DEFAULT );
+                        DBLocalSym( *front.back, (CGSYM_HANDLE)sym_handle, TY_DEFAULT );
                     }
                 }
             }
@@ -1149,138 +1127,138 @@ static void CDoAutoDecl( SYM_HANDLE sym_handle )
 }
 
 
-static void CDoParmDecl( SYMPTR sym, SYM_HANDLE sym_handle )
+static void CDoParmDecl( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
 {
     TYPEPTR typ;
     cg_type dtype;
 
     typ = sym->sym_type;
     SKIP_TYPEDEFS( typ );
-    dtype = CGenType( typ );
-    CGParmDecl( (CGSYM_HANDLE)sym_handle, dtype );
+    dtype = CGenType( front, typ );
+    CGParmDecl( *front.back, (CGSYM_HANDLE)sym_handle, dtype );
 #if _CPU == 386
-    if( (cvars_state().GenSwitches & CGSW_GEN_NO_OPTIMIZATION)
-      || (!cvars_state().CompFlags.register_conventions && cvars_state().CompFlags.debug_info_some) ) {
+    if( (front.cvars.GenSwitches & CGSW_GEN_NO_OPTIMIZATION)
+      || (!front.cvars.CompFlags.register_conventions && front.cvars.CompFlags.debug_info_some) ) {
 #else
-    if( cvars_state().GenSwitches & CGSW_GEN_NO_OPTIMIZATION ) {
+    if( front.cvars.GenSwitches & CGSW_GEN_NO_OPTIMIZATION ) {
 #endif
-        if( cvars_state().GenSwitches & CGSW_GEN_DBG_LOCALS ) {
-            DBLocalSym( (CGSYM_HANDLE)sym_handle, TY_DEFAULT );
+        if( front.cvars.GenSwitches & CGSW_GEN_DBG_LOCALS ) {
+            DBLocalSym( *front.back, (CGSYM_HANDLE)sym_handle, TY_DEFAULT );
         }
     }
 }
 
 #ifndef REVERSE
-static void ParmReverse( SYM_HANDLE sym_handle )
+static void ParmReverse( FrontRun& front, SYM_HANDLE sym_handle )
 {
     SYMPTR      sym;
 
-    sym = SymGetPtr( sym_handle );
+    sym = SymGetPtr( front, sym_handle );
     if( sym->handle ) {
-        ParmReverse( sym->handle );
-        sym = SymGetPtr( sym_handle );
+        ParmReverse( front, sym->handle );
+        sym = SymGetPtr( front, sym_handle );
     }
-    CDoParmDecl( sym, sym_handle );
+    CDoParmDecl( front, sym, sym_handle );
 }
 #endif
 
-static bool DoFuncDefn( SYM_HANDLE funcsym_handle )
+static bool DoFuncDefn( FrontRun& front, SYM_HANDLE funcsym_handle )
 {
     bool        parms_reversed;
     SYM_HANDLE  sym_handle;
     cg_type     ret_type;
 
-    cgen_state().SSVar = NULL;
-    cvars_state().CurFunc = &cvars_state().CurFuncSym;
-    SymGet( cvars_state().CurFunc, funcsym_handle );
-    cvars_state().CurFuncHandle = funcsym_handle;
+    front.cgen.SSVar = NULL;
+    front.cvars.CurFunc = &front.cvars.CurFuncSym;
+    SymGet( front, front.cvars.CurFunc, funcsym_handle );
+    front.cvars.CurFuncHandle = funcsym_handle;
 #if _INTEL_CPU
-    if( ! cvars_state().CompFlags.zu_switch_used ) {
-        if( cvars_state().CurFunc->mods & FLAG_FARSS ) {      /* function use far stack */
-            cvars_state().TargetSwitches |= CGSW_X86_FLOATING_SS;
+    if( ! front.cvars.CompFlags.zu_switch_used ) {
+        if( front.cvars.CurFunc->mods & FLAG_FARSS ) {      /* function use far stack */
+            front.cvars.TargetSwitches |= CGSW_X86_FLOATING_SS;
         } else {
-            cvars_state().TargetSwitches &= ~ CGSW_X86_FLOATING_SS;
+            front.cvars.TargetSwitches &= ~ CGSW_X86_FLOATING_SS;
         }
     }
 #endif
-    ret_type = ReturnType( CGenType( cvars_state().CurFunc->sym_type->object ) );
-    CGProcDecl( (CGSYM_HANDLE)funcsym_handle, ret_type );
+    ret_type = ReturnType( front, CGenType( front, front.cvars.CurFunc->sym_type->object ) );
+    CGProcDecl( *front.back, (CGSYM_HANDLE)funcsym_handle, ret_type );
 #if _CPU == 386
-    if( cvars_state().TargetSwitches & CGSW_X86_P5_PROFILING ) {
+    if( front.cvars.TargetSwitches & CGSW_X86_P5_PROFILING ) {
         const char *fn_name;
         size_t     len;
         segment_id old_segid;
 
-        fn_name = FEName( (CGSYM_HANDLE)funcsym_handle );
+        fn_name = FEName( front, (CGSYM_HANDLE)funcsym_handle );
         len = strlen( fn_name ) + 1;
-        old_segid = BESetSeg( cvars_state().FunctionProfileSegId );
-        cvars_state().FunctionProfileBlock = BENewBack( NULL );
-        DGLabel( cvars_state().FunctionProfileBlock );
-        DGInteger( 0,   TY_INTEGER );
-        DGInteger( (unsigned)-1,  TY_INTEGER );
-        DGInteger( 0,   TY_INTEGER );
-        DGInteger( 0,   TY_INTEGER );
-        DGBytes( len, fn_name );
+        old_segid = BESetSeg( *front.back, front.cvars.FunctionProfileSegId );
+        front.cvars.FunctionProfileBlock = BENewBack( *front.back, NULL );
+        DGLabel( *front.back, front.cvars.FunctionProfileBlock );
+        DGInteger( *front.back, 0,   TY_INTEGER );
+        DGInteger( *front.back, (unsigned)-1,  TY_INTEGER );
+        DGInteger( *front.back, 0,   TY_INTEGER );
+        DGInteger( *front.back, 0,   TY_INTEGER );
+        DGBytes( *front.back, len, fn_name );
         len &= 0x03;
         if( len ) {
-            DGIBytes( 4 - len, 0 );
+            DGIBytes( *front.back, 4 - len, 0 );
         }
-        BESetSeg( old_segid );
+        BESetSeg( *front.back, old_segid );
     }
 #endif
-    if( cvars_state().GenSwitches & CGSW_GEN_DBG_LOCALS ) {
-        if( cgen_state().InLineDepth == 0 ) {
-            DBModSym( (CGSYM_HANDLE)cvars_state().CurFuncHandle, TY_DEFAULT );
+    if( front.cvars.GenSwitches & CGSW_GEN_DBG_LOCALS ) {
+        if( front.cgen.InLineDepth == 0 ) {
+            DBModSym( *front.back, (CGSYM_HANDLE)front.cvars.CurFuncHandle, TY_DEFAULT );
         } else {
-            DBBegBlock();
+            DBBegBlock(*front.back);
         }
     }
     parms_reversed = false;
-    if( cvars_state().CurFunc->u.func.parms != SYM_NULL ) {
+    if( front.cvars.CurFunc->u.func.parms != SYM_NULL ) {
         SYMPTR              psym;
 #ifndef REVERSE
         aux_info            *inf;
         SYM_ENTRY           sym;
 
-        inf = FindInfo( &sym, cvars_state().CurFuncHandle );
+        inf = FindInfo( front, &sym, front.cvars.CurFuncHandle );
         if( inf->cclass & FECALL_GEN_REVERSE_PARMS ) {
-            ParmReverse( cvars_state().CurFunc->u.func.parms );
+            ParmReverse( front, front.cvars.CurFunc->u.func.parms );
             parms_reversed = true;
         } else {
 #endif
-            for( sym_handle = cvars_state().CurFunc->u.func.parms; sym_handle != SYM_NULL; sym_handle = psym->handle ) {
-                psym = SymGetPtr( sym_handle );
+            for( sym_handle = front.cvars.CurFunc->u.func.parms; sym_handle != SYM_NULL; sym_handle = psym->handle ) {
+                psym = SymGetPtr( front, sym_handle );
                 if( psym->sym_type->decl_type == TYP_DOT_DOT_DOT )
                     break;
-                CDoParmDecl( psym, sym_handle );
+                CDoParmDecl( front, psym, sym_handle );
             }
 #ifndef REVERSE
         }
 #endif
     }
-    CGLastParm();
-    CDoAutoDecl( cvars_state().CurFunc->u.func.locals );
+    CGLastParm(*front.back);
+    CDoAutoDecl( front, front.cvars.CurFunc->u.func.locals );
 #ifdef __SEH__
-    if( cgen_state().FuncNodePtr->u2.func.flags & FUNC_USES_SEH ) {
-        CGAutoDecl( (CGSYM_HANDLE)cvars_state().TrySymHandle, static_cast<cg_type>(cgen_state().TryRefno) );
-        CallTryInit();                  // generate call to __TryInit
+    if( front.cgen.FuncNodePtr->u2.func.flags & FUNC_USES_SEH ) {
+        CGAutoDecl( *front.back, (CGSYM_HANDLE)front.cvars.TrySymHandle, static_cast<cg_type>(front.cgen.TryRefno) );
+        CallTryInit(front);                  // generate call to __TryInit
     }
 #endif
     return( parms_reversed );
 }
 
-static void StartFunction( OPNODE *node )
+static void StartFunction( FrontRun& front, OPNODE *node )
 {
-    cgen_state().FuncNodePtr = node;
-    if( cgen_state().InLineDepth == 0 ) {
-        cgen_state().LocalVarList = NULL;
+    front.cgen.FuncNodePtr = node;
+    if( front.cgen.InLineDepth == 0 ) {
+        front.cgen.LocalVarList = NULL;
     }
 
-    cgen_state().FuncNodePtr->u2.func.flags |= FUNC_INUSE;
-    DoFuncDefn( node->u2.func.sym_handle );
+    front.cgen.FuncNodePtr->u2.func.flags |= FUNC_INUSE;
+    DoFuncDefn( front, node->u2.func.sym_handle );
 }
 
-static void EmitNodes( TREEPTR tree )
+static void EmitNodes( FrontRun& front, TREEPTR tree )
 {
     cg_name     op1;
     cg_name     op2;
@@ -1294,25 +1272,25 @@ static void EmitNodes( TREEPTR tree )
         node = &tree->op;
         switch( node->opr ) {
         case OPR_FUNCTION:              // start of function
-            StartFunction( node );
+            StartFunction( front, node );
             break;
         case OPR_NEWBLOCK:              // start of new block { vars; }
-            DBBegBlock();
-            CDoAutoDecl( node->u2.sym_handle );
+            DBBegBlock(*front.back);
+            CDoAutoDecl( front, node->u2.sym_handle );
             break;
         case OPR_ENDBLOCK:              // end of new block { vars; }
-            DBEndBlock();
-            cgen_state().LocalVarList = ReleaseVars( node->u2.sym_handle, cgen_state().LocalVarList );
+            DBEndBlock(*front.back);
+            front.cgen.LocalVarList = ReleaseVars( front, node->u2.sym_handle, front.cgen.LocalVarList );
             break;
         case OPR_LABELCOUNT:            // number of labels used in function
-            DefineLabels( node );
+            DefineLabels( front, node );
             break;
         case OPR_RETURN:                // return( expression );
             op1 = PopCGName();          // - get expression
-            ReturnExpression( node, op1 );
+            ReturnExpression( front, node, op1 );
             break;
         case OPR_FUNCEND:               // end of function
-            EndFunction( node );
+            EndFunction( front, node );
             break;
         case OPR_EQUALS:                // =
             op2 = PopCGName();          // get right opnd
@@ -1321,10 +1299,10 @@ static void EmitNodes( TREEPTR tree )
                  op1 = CGVolatile( op1 );
             }
             if( IsStruct( node->u2.result_type ) ) {
-                op1 = CGLVAssign( op1, op2, CGenType( node->u2.result_type ) );
-                op1 = PushRValue( node, op1 );
+                op1 = CGLVAssign( *front.back, op1, op2, CGenType( front, node->u2.result_type ) );
+                op1 = PushRValue( front, node, op1 );
             } else {
-                op1 = CGAssign( op1, op2, CGenType( node->u2.result_type ) );
+                op1 = CGAssign( *front.back, op1, op2, CGenType( front, node->u2.result_type ) );
             }
             PushCGName( op1 );
             break;
@@ -1332,7 +1310,7 @@ static void EmitNodes( TREEPTR tree )
         case OPR_SUB:                   // -
             op2 = PopCGName();
             op1 = PopCGName();
-            PushCGName( DoAddSub( op1, node, op2 ) );
+            PushCGName( DoAddSub( front, op1, node, op2 ) );
             break;
         case OPR_MUL:                   // *
         case OPR_DIV:                   // /
@@ -1344,8 +1322,8 @@ static void EmitNodes( TREEPTR tree )
         case OPR_LSHIFT:                // <<
             op2 = PopCGName();
             op1 = PopCGName();
-            PushCGName( CGBinary( CGOperator[node->opr], op1, op2,
-                                    CGenType( node->u2.result_type ) ) );
+            PushCGName( CGBinary( *front.back, CGOperator[node->opr], op1, op2,
+                                    CGenType( front, node->u2.result_type ) ) );
             break;
         case OPR_COMMA:                 // expr , expr
           {
@@ -1353,9 +1331,9 @@ static void EmitNodes( TREEPTR tree )
             op2 = PopCGName();
             op1 = PopCGName();
             dtype =  IsStruct( node->u2.result_type ) ?
-                   DataPointerType( node ) : CGenType( node->u2.result_type );
-            op1 = CGBinary( O_COMMA, op1, op2, dtype );
-            PushCGName( PushRValue( node, op1 ) );
+                   DataPointerType( node ) : CGenType( front, node->u2.result_type );
+            op1 = CGBinary( *front.back, O_COMMA, op1, op2, dtype );
+            PushCGName( PushRValue( front, node, op1 ) );
           } break;
         case OPR_PLUS_EQUAL:
         case OPR_MINUS_EQUAL:
@@ -1372,28 +1350,28 @@ static void EmitNodes( TREEPTR tree )
             if( node->flags & OPFLAG_VOLATILE ) { // is lvalue volatile
                  op1 = CGVolatile( op1 );
             }
-            PushCGName( CGPreGets( CGOperator[node->opr], op1, op2,
-                                    CGenType( node->u2.result_type ) ) );
+            PushCGName( CGPreGets( *front.back, CGOperator[node->opr], op1, op2,
+                                    CGenType( front, node->u2.result_type ) ) );
             break;
         case OPR_NEG:                   // negate
             op1 = PopCGName();
-            PushCGName( CGUnary( O_UMINUS, op1,
-                                    CGenType( node->u2.result_type ) ) );
+            PushCGName( CGUnary( *front.back, O_UMINUS, op1,
+                                    CGenType( front, node->u2.result_type ) ) );
             break;
         case OPR_CMP:                   // compare
             op2 = PopCGName();
             op1 = PopCGName();
-            PushCGName( CGCompare( CC2CGOp[node->u1.cc], op1, op2,
-                                    CGenType( node->u2.compare_type ) ) );
+            PushCGName( CGCompare( *front.back, CC2CGOp[node->u1.cc], op1, op2,
+                                    CGenType( front, node->u2.compare_type ) ) );
             break;
         case OPR_COM:                   // ~
             op1 = PopCGName();
-            PushCGName( CGUnary( O_COMPLEMENT, op1,
-                                    CGenType( node->u2.result_type ) ) );
+            PushCGName( CGUnary( *front.back, O_COMPLEMENT, op1,
+                                    CGenType( front, node->u2.result_type ) ) );
             break;
         case OPR_NOT:                   // !
             op1 = PopCGName();
-            PushCGName( CGFlow( O_FLOW_NOT, op1, NULL ) );
+            PushCGName( CGFlow( *front.back, O_FLOW_NOT, op1, NULL ) );
             break;
         case OPR_QUESTION:             // ?
           {
@@ -1403,10 +1381,10 @@ static void EmitNodes( TREEPTR tree )
             op1 = PopCGName();          // true_part
             expr = PopCGName();         // test expr
             dtype =  IsStruct( node->u2.result_type ) ?
-                   DataPointerType( node ) : CGenType( node->u2.result_type );
-            op1 = CGChoose( expr, op1, op2, dtype );
+                   DataPointerType( node ) : CGenType( front, node->u2.result_type );
+            op1 = CGChoose( *front.back, expr, op1, op2, dtype );
 
-            PushCGName( PushRValue( node, op1 ) );
+            PushCGName( PushRValue( front, node, op1 ) );
           } break;
         case OPR_COLON:                 // :
             /*
@@ -1417,11 +1395,11 @@ static void EmitNodes( TREEPTR tree )
         case OPR_AND_AND:               // &&
             op2 = PopCGName();
             op1 = PopCGName();
-            PushCGName( CGFlow( CGOperator[node->opr], op1, op2 ) );
+            PushCGName( CGFlow( *front.back, CGOperator[node->opr], op1, op2 ) );
             break;
         case OPR_POINTS:                // *ptr
             op1 = PopCGName();
-            PushCGName( DoIndirection( node, op1 ) );
+            PushCGName( DoIndirection( front, node, op1 ) );
             break;
         case OPR_POSTINC:               // lvalue++
         case OPR_POSTDEC:               // lvalue--
@@ -1430,24 +1408,24 @@ static void EmitNodes( TREEPTR tree )
             if( node->flags & OPFLAG_VOLATILE ) { // is lvalue volatile
                  op1 = CGVolatile( op1 );
             }
-            PushCGName( CGPostGets( CGOperator[node->opr], op1, op2,
-                                    CGenType( node->u2.result_type ) ) );
+            PushCGName( CGPostGets( *front.back, CGOperator[node->opr], op1, op2,
+                                    CGenType( front, node->u2.result_type ) ) );
             break;
         case OPR_PUSHSYM:               // push sym_handle
-            PushCGName( PushSym( node ) );
+            PushCGName( PushSym( front, node ) );
             break;
         case OPR_PUSHADDR:              // push address of sym_handle
-            PushCGName( PushSymAddr( node ) );
+            PushCGName( PushSymAddr( front, node ) );
             break;
         case OPR_PUSHINT:               // push integer constant
         case OPR_PUSHFLOAT:             // push floating-point constant
-            PushCGName( PushConstant( node ) );
+            PushCGName( PushConstant( front, node ) );
             break;
         case OPR_PUSHSTRING:            // push address of string literal
-            PushCGName( PushString( node ) );
+            PushCGName( PushString( front, node ) );
             break;
         case OPR_PUSHSEG:               // push seg of sym
-            PushCGName( PushSymSeg( node ) );
+            PushCGName( PushSymSeg( front, node ) );
             break;
         case OPR_DUPE:               // push seg of sym
          {
@@ -1456,59 +1434,59 @@ static void EmitNodes( TREEPTR tree )
             cg_name     left;
 
             op1 = PopCGName();      // - get expression
-            temp_name = CGTemp( TY_LONG_POINTER );
-            name = CGTempName( temp_name, TY_LONG_POINTER );
-            left = CGAssign( name, op1, TY_LONG_POINTER );
-            name = CGTempName( temp_name, TY_LONG_POINTER );
-            left = CGEval( left );  // force order - temp_name used on both sides
+            temp_name = CGTemp( *front.back, TY_LONG_POINTER );
+            name = CGTempName( *front.back, temp_name, TY_LONG_POINTER );
+            left = CGAssign( *front.back, name, op1, TY_LONG_POINTER );
+            name = CGTempName( *front.back, temp_name, TY_LONG_POINTER );
+            left = CGEval( *front.back, left );  // force order - temp_name used on both sides
             PushCGName( left );
-            name = CGUnary( O_POINTS, name, TY_LONG_POINTER );
-            PushCGName( CGUnary( O_POINTS, name, TY_LONG_POINTER ) );
+            name = CGUnary( *front.back, O_POINTS, name, TY_LONG_POINTER );
+            PushCGName( CGUnary( *front.back, O_POINTS, name, TY_LONG_POINTER ) );
           } break;
         case OPR_CONVERT:
             if( node->u2.result_type->decl_type != TYP_VOID ) {
                 op1 = PopCGName();      // - get expression
-                PushCGName( CGUnary( O_CONVERT, op1, CGenType( node->u2.result_type )) );
+                PushCGName( CGUnary( *front.back, O_CONVERT, op1, CGenType( front, node->u2.result_type )) );
             }
             break;
         case OPR_CONVERT_PTR:           // convert pointer
             op1 = PopCGName();          // - get expression
-            PushCGName( ConvertPointer( node, op1 ) );
+            PushCGName( ConvertPointer( front, node, op1 ) );
             break;
         case OPR_CONVERT_SEG:           // convert pointer to segment
           {
             cg_name     name;
 
             op1 = PopCGName();          // - get expression
-            name = CGUnary( O_CONVERT, op1, TY_LONG_POINTER );
-            name = CGUnary( O_CONVERT, name, TY_UINT_4 );
-            name = CGBinary( O_RSHIFT, name,
-                             CGInteger( 16, TY_UNSIGNED ), TY_UINT_4 );
+            name = CGUnary( *front.back, O_CONVERT, op1, TY_LONG_POINTER );
+            name = CGUnary( *front.back, O_CONVERT, name, TY_UINT_4 );
+            name = CGBinary( *front.back, O_RSHIFT, name,
+                             CGInteger( *front.back, 16, TY_UNSIGNED ), TY_UINT_4 );
             PushCGName( name );
           } break;
         case OPR_MATHFUNC:              // intrinsic math func with 1 parm
             op1 = PopCGName();          // - get expression
-            PushCGName( CGUnary( static_cast<cg_op>(node->u1.mathfunc), op1, TY_DOUBLE ) );
+            PushCGName( CGUnary( *front.back, static_cast<cg_op>(node->u1.mathfunc), op1, TY_DOUBLE ) );
             break;
         case OPR_MATHFUNC2:             // intrinsic math func with 2 parms
             op2 = PopCGName();          // - get expression
             op1 = PopCGName();          // - get expression
-            PushCGName( CGBinary( static_cast<cg_op>(node->u1.mathfunc), op1, op2, TY_DOUBLE ) );
+            PushCGName( CGBinary( *front.back, static_cast<cg_op>(node->u1.mathfunc), op1, op2, TY_DOUBLE ) );
             break;
         case OPR_DOT:                   // sym.field
             op2 = PopCGName();          // - get offset of field
             op1 = PopCGName();          // - get address of sym
-            PushCGName( DotOperator( op1, node, op2 ) );
+            PushCGName( DotOperator( front, op1, node, op2 ) );
             break;
         case OPR_ARROW:                 // ptr->field
             op2 = PopCGName();          // - get offset of field
             op1 = PopCGName();          // - get pointer
-            PushCGName( ArrowOperator( op1, node, op2 ) );
+            PushCGName( ArrowOperator( front, op1, node, op2 ) );
             break;
         case OPR_INDEX:                 // array[index]
             op2 = PopCGName();          // - get index
             op1 = PopCGName();          // - get address of array
-            PushCGName( IndexOperator( op1, node, op2 ) );
+            PushCGName( IndexOperator( front, op1, node, op2 ) );
             break;
         case OPR_ADDROF:                // & expr
         case OPR_NOP:                   // nop
@@ -1516,76 +1494,76 @@ static void EmitNodes( TREEPTR tree )
         case OPR_FARPTR:                // segment :> offset
             op2 = PopCGName();          // - get offset
             op1 = PopCGName();          // - get segment
-            PushCGName( CGBinary( O_CONVERT, op2, op1, TY_LONG_POINTER ) );
+            PushCGName( CGBinary( *front.back, O_CONVERT, op2, op1, TY_LONG_POINTER ) );
             break;
         case OPR_FUNCNAME:              // function name
-            PushCGName( InitFuncCall( node ) ); // - push call_handle
+            PushCGName( InitFuncCall( front, node ) ); // - push call_handle
             break;
         case OPR_CALL_INDIRECT:         // indirect function call
             op1 = PopCGName();                          // - get name
-            PushCGName( InitIndFuncCall( node, op1 ) ); // - push call_handle
+            PushCGName( InitIndFuncCall( front, node, op1 ) ); // - push call_handle
             break;
         case OPR_CALL:                  // function call
             call = PopCGName();         // - get call_handle
             op1 = CGCall( call );
             if( node->flags & OPFLAG_RVALUE ) {
-                op1 = CGUnary( O_POINTS, op1, CGenType( node->u2.result_type ) );
+                op1 = CGUnary( *front.back, O_POINTS, op1, CGenType( front, node->u2.result_type ) );
             }
             PushCGName( op1 );
             break;
         case OPR_PARM:                  // function parm
             op1 = PopCGName();          // - get parm
             call = PopCGName();         // - get call_handle
-            CGAddParm( call, op1, CGenType( node->u2.result_type ) );
+            CGAddParm( *front.back, call, op1, CGenType( front, node->u2.result_type ) );
             PushCGName( call );
             break;
         case OPR_LABEL:                 // label
-            CGControl( O_LABEL, NULL, cgen_state().CGLabelHandles[node->u2.label_index] );
+            CGControl( *front.back, O_LABEL, NULL, front.cgen.CGLabelHandles[node->u2.label_index] );
             break;
         case OPR_CASE:                  // case label
             if( node->u2.case_info->gen_label ) {
-                CGControl( O_LABEL, NULL, cgen_state().CGLabelHandles[node->u2.case_info->label] );
+                CGControl( *front.back, O_LABEL, NULL, front.cgen.CGLabelHandles[node->u2.case_info->label] );
             }
             break;
         case OPR_JUMP:                  // jump
-            CGControl( O_GOTO, NULL, cgen_state().CGLabelHandles[node->u2.label_index] );
+            CGControl( *front.back, O_GOTO, NULL, front.cgen.CGLabelHandles[node->u2.label_index] );
             break;
         case OPR_JUMPTRUE:              // jump if true
             op1 = PopCGName();
-            CGControl( O_IF_TRUE, op1, cgen_state().CGLabelHandles[node->u2.label_index] );
+            CGControl( *front.back, O_IF_TRUE, op1, front.cgen.CGLabelHandles[node->u2.label_index] );
             break;
         case OPR_JUMPFALSE:             // jump if false
             op1 = PopCGName();
-            CGControl( O_IF_FALSE, op1, cgen_state().CGLabelHandles[node->u2.label_index] );
+            CGControl( *front.back, O_IF_FALSE, op1, front.cgen.CGLabelHandles[node->u2.label_index] );
             break;
         case OPR_SWITCH:                // switch
             op1 = PopCGName();
-            DoSwitch( node, op1 );
+            DoSwitch( front, node, op1 );
             break;
 #ifdef __SEH__
         case OPR_TRY:                   // start of try block
-            SetTryScope( node->u2.st.parent_scope );
+            SetTryScope( front, node->u2.st.parent_scope );
             break;
         case OPR_EXCEPT:
         case OPR_FINALLY:
-            CGBigLabel( FEBack( (CGSYM_HANDLE)node->u2.sym_handle ) );
+            CGBigLabel( *front.back, FEBack( front, (CGSYM_HANDLE)node->u2.sym_handle ) );
             break;
         case OPR_END_FINALLY:
-            EndFinally();
+            EndFinally(front);
             break;
         case OPR_UNWIND:
-            CallTryUnwind( node->u2.st.u.try_index );
+            CallTryUnwind( front, node->u2.st.u.try_index );
             break;
         case OPR_EXCEPT_CODE:
-            op1 = TryExceptionInfoAddr();
-            op1 = CGUnary( O_POINTS, op1, TY_POINTER );
-            PushCGName( CGUnary( O_POINTS, op1, TY_INTEGER ) );
+            op1 = TryExceptionInfoAddr(front);
+            op1 = CGUnary( *front.back, O_POINTS, op1, TY_POINTER );
+            PushCGName( CGUnary( *front.back, O_POINTS, op1, TY_INTEGER ) );
             break;
         case OPR_EXCEPT_INFO:
-            PushCGName( TryExceptionInfoAddr() );
+            PushCGName( TryExceptionInfoAddr(front) );
             break;
         case OPR_ABNORMAL_TERMINATION:
-            PushCGName( TryAbnormalTermination() );
+            PushCGName( TryAbnormalTermination(front) );
             break;
 #endif
 #if _RISC_CPU
@@ -1604,40 +1582,40 @@ static void EmitNodes( TREEPTR tree )
              char        msgbuf[MAX_MSG_LEN];
 
              sprintf( msgbuf, "opr=%d not handled\n", node->opr );
-             DebugMsg( msgbuf );
+             DebugMsg( front, msgbuf );
            }
             break;
         }
     }
     if( index > 0 ) {
-        CGDone( PopCGName() );
+        CGDone( *front.back, PopCGName() );
     }
 }
 
-static TREEPTR GenOptimizedCode( TREEPTR tree )
+static TREEPTR GenOptimizedCode( FrontRun& front, TREEPTR tree )
 {
     unroll_type unroll_count;
 
     unroll_count = 0;
     for( ; tree != NULL; tree = tree->left ) {
-        if( tree->op.u2.src_loc.line != cvars_state().SrcLoc.line || tree->op.u2.src_loc.fno != cvars_state().SrcLoc.fno ) {
-            if( cgen_state().Saved_CurFunc == SYM_NULL ) {
+        if( tree->op.u2.src_loc.line != front.cvars.SrcLoc.line || tree->op.u2.src_loc.fno != front.cvars.SrcLoc.fno ) {
+            if( front.cgen.Saved_CurFunc == SYM_NULL ) {
                 FNAMEPTR    flist;
 
-                flist = FileIndexToFName( tree->op.u2.src_loc.fno );
+                flist = FileIndexToFName( front, tree->op.u2.src_loc.fno );
                 if( flist->index_db == DBFILE_INVALID ) {
                     char *fullpath;
 
-                    fullpath = FNameFullPath( flist );
-                    flist->index_db = DBSrcFile( fullpath );
+                    fullpath = FNameFullPath( front, flist );
+                    flist->index_db = DBSrcFile( *front.back, fullpath );
                 }
-                DBSrcCue( flist->index_db, tree->op.u2.src_loc.line, 1 );
+                DBSrcCue( *front.back, flist->index_db, tree->op.u2.src_loc.line, 1 );
             }
-            cvars_state().SrcLoc = tree->op.u2.src_loc;
+            front.cvars.SrcLoc = tree->op.u2.src_loc;
         }
         if( tree->op.u1.unroll_count != unroll_count ) {
             unroll_count = tree->op.u1.unroll_count;
-            BEUnrollCount( unroll_count );
+            BEUnrollCount( *front.back, unroll_count );
         }
         /*
          * eliminate functions that are always inlined or not used
@@ -1647,7 +1625,7 @@ static TREEPTR GenOptimizedCode( TREEPTR tree )
 
             right = tree->right;
             if ( ( right->op.u2.func.flags & FUNC_USED ) == 0 ) {
-                if( cgen_state().InLineDepth == 0 ) {
+                if( front.cgen.InLineDepth == 0 ) {
                     while( tree->right->op.opr != OPR_FUNCEND ) {
                         tree = tree->left;
                     }
@@ -1655,11 +1633,11 @@ static TREEPTR GenOptimizedCode( TREEPTR tree )
                 }
             }
         }
-        EmitNodes( LinearizeTree( tree->right ) );
+        EmitNodes( front, LinearizeTree( front, tree->right ) );
 #ifdef __SEH__
         if( tree->right->op.opr == OPR_FUNCTION ) {     // if start of func
-            if( cgen_state().FuncNodePtr->u2.func.flags & FUNC_USES_SEH ) {
-                GenerateTryBlock( tree->left );
+            if( front.cgen.FuncNodePtr->u2.func.flags & FUNC_USES_SEH ) {
+                GenerateTryBlock( front, tree->left );
             }
         }
 #endif
@@ -1670,60 +1648,60 @@ static TREEPTR GenOptimizedCode( TREEPTR tree )
     return( tree );
 }
 
-static void DoInLineFunction( TREEPTR tree )
+static void DoInLineFunction( FrontRun& front, TREEPTR tree )
 /*******************************************
  * Push some state info and use InLineDepth for turning some stuff off
  */
 {
     struct func_save    save;
 
-    ++cgen_state().InLineDepth;
-    save.func = cvars_state().CurFunc;
-    save.func_handle = cvars_state().CurFuncHandle;
-    save.funcnode = cgen_state().FuncNodePtr;
-    save.cglabel_handles = cgen_state().CGLabelHandles;
-    save.labelindex = cvars_state().LabelIndex;
-    cvars_state().CurFuncHandle = SYM_NULL;
-    cgen_state().FuncNodePtr = NULL;
-    cgen_state().CGLabelHandles = NULL;
-    cvars_state().LabelIndex = 0;
-    GenOptimizedCode( tree );
-    cvars_state().CurFunc = save.func;
-    SymGet( cvars_state().CurFunc, save.func_handle );  // must be done before changing CurFuncHandle
-    cvars_state().CurFuncHandle = save.func_handle;
-    cgen_state().FuncNodePtr = save.funcnode;
-    cgen_state().CGLabelHandles = save.cglabel_handles;
-    cvars_state().LabelIndex = save.labelindex;
-    --cgen_state().InLineDepth;
+    ++front.cgen.InLineDepth;
+    save.func = front.cvars.CurFunc;
+    save.func_handle = front.cvars.CurFuncHandle;
+    save.funcnode = front.cgen.FuncNodePtr;
+    save.cglabel_handles = front.cgen.CGLabelHandles;
+    save.labelindex = front.cvars.LabelIndex;
+    front.cvars.CurFuncHandle = SYM_NULL;
+    front.cgen.FuncNodePtr = NULL;
+    front.cgen.CGLabelHandles = NULL;
+    front.cvars.LabelIndex = 0;
+    GenOptimizedCode( front, tree );
+    front.cvars.CurFunc = save.func;
+    SymGet( front, front.cvars.CurFunc, save.func_handle );  // must be done before changing CurFuncHandle
+    front.cvars.CurFuncHandle = save.func_handle;
+    front.cgen.FuncNodePtr = save.funcnode;
+    front.cgen.CGLabelHandles = save.cglabel_handles;
+    front.cvars.LabelIndex = save.labelindex;
+    --front.cgen.InLineDepth;
 }
 
-static TREEPTR FindFuncStmtTree( SYM_HANDLE sym_handle )
+static TREEPTR FindFuncStmtTree( FrontRun& front, SYM_HANDLE sym_handle )
 {
     SYMPTR      symptr;
 
-    symptr = SymGetPtr( sym_handle );
+    symptr = SymGetPtr( front, sym_handle );
     return( symptr->u.func.start_of_func );
 }
 
-void GenInLineFunc( SYM_HANDLE sym_handle )
+void GenInLineFunc( FrontRun& front, SYM_HANDLE sym_handle )
 {
     TREEPTR     tree;
 
-    tree = FindFuncStmtTree(sym_handle);
+    tree = FindFuncStmtTree(front, sym_handle);
     if( tree != NULL ) {
-        DoInLineFunction( tree );
+        DoInLineFunction( front, tree );
     }
 }
 
-bool IsInLineFunc( SYM_HANDLE sym_handle )
+bool IsInLineFunc( FrontRun& front, SYM_HANDLE sym_handle )
 {
     bool        ret;
     TREEPTR     tree;
     TREEPTR     right;
 
     ret = false;
-    if( cgen_state().InLineDepth < MAX_INLINE_DEPTH ) {
-        tree = FindFuncStmtTree(sym_handle);
+    if( front.cgen.InLineDepth < MAX_INLINE_DEPTH ) {
+        tree = FindFuncStmtTree(front, sym_handle);
         if( tree != NULL ) {
            right = tree->right;
            if( (right->op.u2.func.flags & FUNC_INUSE) == 0 ) {
@@ -1734,7 +1712,7 @@ bool IsInLineFunc( SYM_HANDLE sym_handle )
     return( ret );
 }
 
-static int ScanFunction( TREEPTR tree, int inline_depth )
+static int ScanFunction( FrontRun& front, TREEPTR tree, int inline_depth )
 /********************************************************
  * This function recursively checks if a function is really used and
  * needs to be emitted.
@@ -1776,9 +1754,9 @@ static int ScanFunction( TREEPTR tree, int inline_depth )
     f->flags |= FUNC_INUSE;
     marked = 0;
     for( ; tree != NULL; tree = tree->left ) {
-        for( right = LinearizeTree( tree->right ); right != NULL; right = right->u.thread ) {
+        for( right = LinearizeTree( front, tree->right ); right != NULL; right = right->u.thread ) {
             if( right->op.opr == OPR_FUNCNAME ) {
-                marked += ScanFunction( FindFuncStmtTree( right->op.u2.sym_handle ), inline_depth );
+                marked += ScanFunction( front, FindFuncStmtTree( front, right->op.u2.sym_handle ), inline_depth );
             }
         }
         if( tree->right->op.opr == OPR_FUNCEND ) {
@@ -1789,7 +1767,7 @@ static int ScanFunction( TREEPTR tree, int inline_depth )
     return( marked );
 }
 
-static void PruneFunctions( void )
+static void PruneFunctions( FrontRun& front )
 /*********************************
  * This function scans the source file tree for functions. Any non-static
  * function or static function whose address is taken is scanned for
@@ -1802,9 +1780,9 @@ static void PruneFunctions( void )
     int         marked;
 
     marked = 0;
-    for( tree = cvars_state().FirstStmt; tree != NULL; tree = tree->left ) {
+    for( tree = front.cvars.FirstStmt; tree != NULL; tree = tree->left ) {
         if( tree->right->op.opr == OPR_FUNCTION ) {
-            SymGet( &sym, tree->right->op.u2.func.sym_handle );
+            SymGet( front, &sym, tree->right->op.u2.func.sym_handle );
             if( sym.attribs.stg_class != SC_STATIC || ( sym.flags & SYM_ADDR_TAKEN ) ) {
                 tree->right->op.u2.func.flags |= FUNC_MARKED | FUNC_USED;
                 marked++;
@@ -1813,42 +1791,42 @@ static void PruneFunctions( void )
     }
     while( marked ) {
         marked = 0;
-        for( tree = cvars_state().FirstStmt; tree != NULL; tree = tree->left ) {
+        for( tree = front.cvars.FirstStmt; tree != NULL; tree = tree->left ) {
             if( tree->right->op.opr == OPR_FUNCTION ) {
                 if (tree->right->op.u2.func.flags & FUNC_MARKED) {
                     tree->right->op.u2.func.flags &= ~FUNC_MARKED;
-                    marked += ScanFunction( tree, -1 );
+                    marked += ScanFunction( front, tree, -1 );
                 }
             }
         }
     }
 }
 
-static void GenModuleCode( void )
+static void GenModuleCode( FrontRun& front )
 {
     TREEPTR     tree;
 
-    cgen_state().InLineDepth = 0;
+    front.cgen.InLineDepth = 0;
 //    InLineFuncStack = NULL;
-    for( tree = cvars_state().FirstStmt; tree != NULL; tree = tree->left ) {
-        tree = GenOptimizedCode( tree );
+    for( tree = front.cvars.FirstStmt; tree != NULL; tree = tree->left ) {
+        tree = GenOptimizedCode( front, tree );
     }
 }
 
-static void NoCodeGenDLL( void )
+static void NoCodeGenDLL( FrontRun& front )
 {
-    FEMessage( FEMSG_FATAL, const_cast<pointer>(static_cast<const void *>("Unable to load code generator DLL")) );
+    FEMessage( front, FEMSG_FATAL, const_cast<pointer>(static_cast<const void *>("Unable to load code generator DLL")) );
 }
 
-static void EmitSyms( void )
+static void EmitSyms( FrontRun& front )
 {
     SYM_HANDLE          sym_handle;
     SYM_ENTRY           sym;
 
-    for( sym_handle = cvars_state().GlobalSym; sym_handle != SYM_NULL; sym_handle = sym.handle ) {
-        SymGet( &sym, sym_handle );
-        EmitSym( &sym, sym_handle );
-        if( (cvars_state().GenSwitches & CGSW_GEN_DBG_LOCALS )
+    for( sym_handle = front.cvars.GlobalSym; sym_handle != SYM_NULL; sym_handle = sym.handle ) {
+        SymGet( front, &sym, sym_handle );
+        EmitSym( front, &sym, sym_handle );
+        if( (front.cvars.GenSwitches & CGSW_GEN_DBG_LOCALS )
           && ( sym.sym_type->decl_type != TYP_FUNCTION )
           && ( (sym.flags & SYM_TEMP) == 0 )
           && ( sym.attribs.stg_class != SC_TYPEDEF ) ) {
@@ -1857,69 +1835,69 @@ static void EmitSyms( void )
                 DBModSym( (CGSYM_HANDLE)sym_handle, TY_DEFAULT );
             }
 #else
-            DBModSym( (CGSYM_HANDLE)sym_handle, TY_DEFAULT );
+            DBModSym( *front.back, (CGSYM_HANDLE)sym_handle, TY_DEFAULT );
 #endif
         }
     }
 }
 
 
-static void FreeGblVars( SYM_HANDLE sym_handle )
+static void FreeGblVars( FrontRun& front, SYM_HANDLE sym_handle )
 {
     SYMPTR      sym;
 
     for( ; sym_handle != SYM_NULL; sym_handle = sym->handle ) {
-        sym = SymGetPtr( sym_handle );
+        sym = SymGetPtr( front, sym_handle );
         if( sym->u1.backinfo != NULL ) {
 //            BEFiniBack( sym->u1.backinfo );
-            BEFreeBack( sym->u1.backinfo );
+            BEFreeBack( *front.back, sym->u1.backinfo );
         }
     }
 }
 
-static void RelExtVars( SYM_HANDLE sym_handle )
+static void RelExtVars( FrontRun& front, SYM_HANDLE sym_handle )
 {
     SYMPTR      sym;
 
     for( ; sym_handle != SYM_NULL; sym_handle = sym->handle ) {
-        sym = SymGetPtr( sym_handle );
+        sym = SymGetPtr( front, sym_handle );
         if( (sym->flags & SYM_FUNC_RETURN_VAR) == 0 ) {
             if( sym->attribs.stg_class == SC_EXTERN
               || sym->attribs.stg_class == SC_STATIC
               || sym->sym_type->decl_type == TYP_VOID ) {
                 if( sym->u1.backinfo != NULL ) {
-                    BEFreeBack( sym->u1.backinfo );
+                    BEFreeBack( *front.back, sym->u1.backinfo );
                 }
             }
         }
     }
 }
 
-static void FreeExtVars( void )
+static void FreeExtVars( FrontRun& front )
 {
     SYM_LIST_HEADS   *sym_list_head;
     SYM_LIST_HEADS   *next_sym_list_head;
 
-    for( sym_list_head = cvars_state().SymListHeads; sym_list_head != NULL; sym_list_head = next_sym_list_head ) {
-        RelExtVars( sym_list_head->sym_head );
+    for( sym_list_head = front.cvars.SymListHeads; sym_list_head != NULL; sym_list_head = next_sym_list_head ) {
+        RelExtVars( front, sym_list_head->sym_head );
         next_sym_list_head = sym_list_head->next;
-        CMemFree( sym_list_head );
+        CMemFree( front, sym_list_head );
     }
 }
 
-void DoCompile( void )
+void DoCompile( FrontRun& front )
 {
     jmp_buf         *old_env;
     jmp_buf         env;
     cg_init_info    cg_info;
 
-    old_env = cvars_state().Environment;
+    old_env = front.cvars.Environment;
     if( setjmp( env ) == 0 ) {
-        cvars_state().Environment = JMPBUF_PTR( env );
+        front.cvars.Environment = JMPBUF_PTR( env );
         if( BELoad( NULL ) ) {
 #if _INTEL_CPU
-            if( ! cvars_state().CompFlags.zu_switch_used ) {
-                cvars_state().TargetSwitches &= ~ CGSW_X86_FLOATING_SS;
+            if( ! front.cvars.CompFlags.zu_switch_used ) {
+                front.cvars.TargetSwitches &= ~ CGSW_X86_FLOATING_SS;
             }
 #endif
 #ifdef DEVBUILD
@@ -1927,61 +1905,61 @@ void DoCompile( void )
                 GenSwitches |= CGSW_GEN_ECHO_API_CALLS;
             }
 #endif
-            if( cvars_state().CompFlags.rent ) {
-                cvars_state().GenSwitches |= CGSW_GEN_POSITION_INDEPENDANT;
+            if( front.cvars.CompFlags.rent ) {
+                front.cvars.GenSwitches |= CGSW_GEN_POSITION_INDEPENDANT;
             }
-            cg_info = BEInit( cvars_state().GenSwitches, cvars_state().TargetSwitches, cvars_state().OptSize, static_cast<proc_revision>(cvars_state().ProcRevision) );
+            cg_info = BEInit( *front.back, front.cvars.GenSwitches, front.cvars.TargetSwitches, front.cvars.OptSize, static_cast<proc_revision>(front.cvars.ProcRevision) );
             if( cg_info.revision != 0 || cg_info.target != 0 ) {
 #if _CPU == 386
-                if( cvars_state().TargetSwitches & (CGSW_X86_P5_PROFILING | CGSW_X86_NEW_P5_PROFILING) ) {
-                    cvars_state().FunctionProfileSegId = AddSegName( TS_SEG_TI, "DATA", SEGTYPE_INITFINI );
+                if( front.cvars.TargetSwitches & (CGSW_X86_P5_PROFILING | CGSW_X86_NEW_P5_PROFILING) ) {
+                    front.cvars.FunctionProfileSegId = AddSegName( front, TS_SEG_TI, "DATA", SEGTYPE_INITFINI );
                 }
 #endif
-                SetSegs();
-                BEStart();
-                EmitSegLabels();
-                if( cvars_state().GenSwitches & CGSW_GEN_DBG_TYPES )
-                    EmitDBType();
-                EmitSyms();
-                EmitCS_Strings();
-                cvars_state().SrcLoc.line = 0;
-                cvars_state().SrcLoc.column = 0;
-                cvars_state().SrcLoc.fno = 0;
-                EmitDataQuads();
-                FreeDataQuads();
+                SetSegs(front);
+                BEStart(*front.back);
+                EmitSegLabels(front);
+                if( front.cvars.GenSwitches & CGSW_GEN_DBG_TYPES )
+                    EmitDBType(front);
+                EmitSyms(front);
+                EmitCS_Strings(front);
+                front.cvars.SrcLoc.line = 0;
+                front.cvars.SrcLoc.column = 0;
+                front.cvars.SrcLoc.fno = 0;
+                EmitDataQuads(front);
+                FreeDataQuads(front);
 #ifdef __SEH__
-                cgen_state().TryRefno = NewRefno();
-                BEDefType( static_cast<cg_type>(cgen_state().TryRefno), 1, TRY_BLOCK_SIZE );
-                cgen_state().TryTableBackHandles = NULL;
+                front.cgen.TryRefno = NewRefno(front);
+                BEDefType( *front.back, static_cast<cg_type>(front.cgen.TryRefno), 1, TRY_BLOCK_SIZE );
+                front.cgen.TryTableBackHandles = NULL;
 #endif
-                PruneFunctions();
-                GenModuleCode();
-                FreeStrings();
-                FiniSegLabels();
-                if( cvars_state().ErrCount != 0 ) {
-                    BEAbort();
+                PruneFunctions(front);
+                GenModuleCode(front);
+                FreeStrings(front);
+                FiniSegLabels(front);
+                if( front.cvars.ErrCount != 0 ) {
+                    BEAbort(*front.back);
                 }
-                BEStop();
-                FiniSegBacks();
-                FreeGblVars( cvars_state().GlobalSym );
-                FreeGblVars( cvars_state().SpecialSyms );
-                FreeExtVars();
+                BEStop(*front.back);
+                FiniSegBacks(front);
+                FreeGblVars( front, front.cvars.GlobalSym );
+                FreeGblVars( front, front.cvars.SpecialSyms );
+                FreeExtVars(front);
 #ifdef __SEH__
-                FreeTryTableBackHandles();
+                FreeTryTableBackHandles(front);
 #endif
-                BEFini();
+                BEFini(*front.back);
                 BEUnload();
-                SegFini();
+                SegFini(front);
             }
         } else {
-            NoCodeGenDLL();
+            NoCodeGenDLL(front);
         }
     }
-    cvars_state().Environment = old_env;
+    front.cvars.Environment = old_env;
 }
 
 
-cg_type CGenType( TYPEPTR typ )
+cg_type CGenType( FrontRun& front, TYPEPTR typ )
 {
     cg_type         dtype;
     type_modifiers  flags;
@@ -1999,13 +1977,13 @@ cg_type CGenType( TYPEPTR typ )
             /*
              * structure has a zero length array as last field
              */
-            dtype = static_cast<cg_type>(NewRefno());
-            align = GetTypeAlignment( typ );
-            BEDefType( dtype, align, TypeSize(typ) );
+            dtype = static_cast<cg_type>(NewRefno(front));
+            align = GetTypeAlignment( front, typ );
+            BEDefType( *front.back, dtype, align, TypeSize(front, typ) );
         } else if( typ->u.tag->refno == 0 ) {
-            dtype = static_cast<cg_type>(NewRefno());
-            align = GetTypeAlignment( typ );
-            BEDefType( dtype, align, TypeSize(typ) );
+            dtype = static_cast<cg_type>(NewRefno(front));
+            align = GetTypeAlignment( front, typ );
+            BEDefType( *front.back, dtype, align, TypeSize(front, typ) );
             typ->u.tag->refno = dtype;
         } else {
             dtype = static_cast<cg_type>(typ->u.tag->refno);
@@ -2013,9 +1991,9 @@ cg_type CGenType( TYPEPTR typ )
         break;
     case TYP_ARRAY:
         if( typ->u.array->refno == 0 ) {
-            dtype = static_cast<cg_type>(NewRefno());
-            align = GetTypeAlignment( typ );
-            BEDefType( dtype, align, SizeOfArg( typ ) );
+            dtype = static_cast<cg_type>(NewRefno(front));
+            align = GetTypeAlignment( front, typ );
+            BEDefType( *front.back, dtype, align, SizeOfArg( front, typ ) );
             typ->u.array->refno = dtype;
         }
         dtype = static_cast<cg_type>(typ->u.array->refno);
@@ -2067,9 +2045,9 @@ cg_type PtrType( TYPEPTR typ, type_modifiers flags )
 }
 
 
-void EmitStrPtr( STR_HANDLE str_handle, cg_type pointer_type )
+void EmitStrPtr( FrontRun& front, STR_HANDLE str_handle, cg_type pointer_type )
 {
     str_handle->ref_count++;
-    Emit1String( str_handle );
-    DGBackPtr( str_handle->back_handle, StringSegment( str_handle ), 0, pointer_type );
+    Emit1String( front, str_handle );
+    DGBackPtr( *front.back, str_handle->back_handle, StringSegment( front, str_handle ), 0, pointer_type );
 }

@@ -32,6 +32,7 @@
 
 /*        NB entries up until OK must match typclass.wif */
 
+#pragma once
 typedef enum {
     #define PICK(e,name,op,class_,left,right,result) e,
     #define PICK1(e,name,op,class_,left,right,result) __FP80BIT(PICK(e,name,op,class_,left,right,result),)

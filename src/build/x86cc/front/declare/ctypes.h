@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "cgstd.h"
 #include <stddef.h>
 #include "cg.h"
@@ -520,16 +521,16 @@ typedef enum ppctl_t {
     PPCTL_NORMAL            = 0x00  // expand macros, treat <eol> as white space, diagnose lexical problems
 } ppctl_t;
 
-#define PPCTL_ENABLE_ASM()          cvars_state().PPControl |= PPCTL_ASM
+#define PPCTL_ENABLE_ASM()          front.cvars.PPControl |= PPCTL_ASM
 #define PPCTL_DISABLE_ASM()         PPControl &= ~PPCTL_ASM
-#define PPCTL_ENABLE_EOL()          cvars_state().PPControl |= PPCTL_EOL
-#define PPCTL_DISABLE_EOL()         cvars_state().PPControl &= ~PPCTL_EOL
-#define PPCTL_ENABLE_MACROS()       cvars_state().PPControl &= ~PPCTL_NO_EXPAND
-#define PPCTL_DISABLE_MACROS()      cvars_state().PPControl |= PPCTL_NO_EXPAND
-#define PPCTL_ENABLE_LEX_ERRORS()   cvars_state().PPControl &= ~PPCTL_NO_LEX_ERRORS
-#define PPCTL_DISABLE_LEX_ERRORS()  cvars_state().PPControl |= PPCTL_NO_LEX_ERRORS
+#define PPCTL_ENABLE_EOL()          front.cvars.PPControl |= PPCTL_EOL
+#define PPCTL_DISABLE_EOL()         front.cvars.PPControl &= ~PPCTL_EOL
+#define PPCTL_ENABLE_MACROS()       front.cvars.PPControl &= ~PPCTL_NO_EXPAND
+#define PPCTL_DISABLE_MACROS()      front.cvars.PPControl |= PPCTL_NO_EXPAND
+#define PPCTL_ENABLE_LEX_ERRORS()   front.cvars.PPControl &= ~PPCTL_NO_LEX_ERRORS
+#define PPCTL_DISABLE_LEX_ERRORS()  front.cvars.PPControl |= PPCTL_NO_LEX_ERRORS
 
-#define IS_PPCTL_NORMAL()           ((cvars_state().PPControl & (PPCTL_EOL | PPCTL_NO_EXPAND)) == 0)
+#define IS_PPCTL_NORMAL()           ((front.cvars.PPControl & (PPCTL_EOL | PPCTL_NO_EXPAND)) == 0)
 
 typedef struct comp_flags {
     bool label_dropped                       : 1;
@@ -713,7 +714,7 @@ typedef struct call_list {
     source_loc          src_loc;
 } call_list;
 
-extern void     WalkTypeList( void (*func)(TYPEPTR) );
-extern void     WalkFuncTypeList( void (*func)(TYPEPTR,int) );
-extern XREFPTR  NewXref( XREFPTR );
-extern void     WalkTagList( void (*func)(TAGPTR) );
+extern void     WalkTypeList( FrontRun& front, void (*func)(FrontRun&, TYPEPTR) );
+extern void     WalkFuncTypeList( FrontRun& front, void (*func)(FrontRun&, TYPEPTR,int) );
+extern XREFPTR  NewXref( FrontRun& front, XREFPTR );
+extern void     WalkTagList( FrontRun& front, void (*func)(FrontRun&, TAGPTR) );

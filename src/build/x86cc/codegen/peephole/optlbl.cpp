@@ -34,9 +34,10 @@
 #include "_cgstd.h"
 #include "optwif.h"
 #include "optutil.h"
+#include "backrun.hpp"
 
 
-void    AddLblDef( ins_entry *instr )
+void    AddLblDef( BackRun& back, ins_entry *instr )
 /***********************************/
 {
     label_handle    lbl;
@@ -56,7 +57,7 @@ void    AddLblDef( ins_entry *instr )
 }
 
 
-void    DelLblDef( ins_entry *instr )
+void    DelLblDef( BackRun& back, ins_entry *instr )
 /***********************************/
 {
     label_handle    lbl;
@@ -71,12 +72,12 @@ void    DelLblDef( ins_entry *instr )
         optreturnvoid;
     if( _TstStatus( lbl, REDIRECTION ) )
         optreturnvoid;
-    ScrapCodeLabel( lbl );
+    ScrapCodeLabel( back, lbl );
   optend
 }
 
 
-void    AddLblRef( ins_entry *instr )
+void    AddLblRef( BackRun& back, ins_entry *instr )
 /***********************************/
 {
     label_handle    lbl;
@@ -93,20 +94,20 @@ void    AddLblRef( ins_entry *instr )
 }
 
 
-void    DelLblRef( ins_entry *instr )
+void    DelLblRef( BackRun& back, ins_entry *instr )
 /***********************************/
 {
     label_handle    old_lbl;
 
   optbegin
     old_lbl = _Label( instr );
-    DelRef( &old_lbl->refs, instr );
-    TryScrapLabel( old_lbl );
+    DelRef( back, &old_lbl->refs, instr );
+    TryScrapLabel( back, old_lbl );
   optend
 }
 
 
-void    ChgLblRef( ins_entry *instr, label_handle new_lbl )
+void    ChgLblRef( BackRun& back, ins_entry *instr, label_handle new_lbl )
 /*********************************************************/
 {
     ins_entry       **owner;
@@ -127,13 +128,13 @@ void    ChgLblRef( ins_entry *instr, label_handle new_lbl )
         _LblRef( curr ) = new_lbl->refs;
         new_lbl->refs = curr;
         _Label( curr ) = new_lbl;
-        TryScrapLabel( old_lbl );
+        TryScrapLabel( back, old_lbl );
     }
   optend
 }
 
 
-bool    UniqueLabel( label_handle lbl )
+bool    UniqueLabel( BackRun& back, label_handle lbl )
 /**************************************
         Does the label have any alias which is a UNIQUE label?
 */
@@ -148,7 +149,7 @@ bool    UniqueLabel( label_handle lbl )
 }
 
 
-ins_entry       *AliasLabels( ins_entry *old_ins, ins_entry *new_ins )
+ins_entry       *AliasLabels( BackRun& back, ins_entry *old_ins, ins_entry *new_ins )
 /********************************************************************/
 {
     label_handle    old_lbl;
@@ -202,13 +203,13 @@ ins_entry       *AliasLabels( ins_entry *old_ins, ins_entry *new_ins )
         }
         new_lbl->alias = old_lbl;
         _Label( old_ins ) = NULL;
-        old_ins = DelInstr( old_ins );
+        old_ins = DelInstr( back, old_ins );
     }
     optreturn( old_ins );
 }
 
 
-static  void    KillDeadLabels( ins_entry *instr )
+static  void    KillDeadLabels( BackRun& back, ins_entry *instr )
 /************************************************/
 {
     label_handle    curr;
@@ -227,22 +228,22 @@ static  void    KillDeadLabels( ins_entry *instr )
             *owner = curr->alias;
             if( curr->redirect != NULL ) {
                 _ClrStatus( curr->redirect, REDIRECTION );
-                TryScrapLabel( curr->redirect );
+                TryScrapLabel( back, curr->redirect );
                 curr->redirect = NULL;
             }
-            ScrapCodeLabel( curr );
+            ScrapCodeLabel( back, curr );
         } else {
             owner = &curr->alias;
         }
     }
     if( _Label( instr ) == NULL ) {
-        DelInstr( instr );
+        DelInstr( back, instr );
     }
   optend
 }
 
 
-void    ScrapCodeLabel( label_handle lbl )
+void    ScrapCodeLabel( BackRun& back, label_handle lbl )
 /****************************************/
 {
     label_handle    *owner;
@@ -250,7 +251,7 @@ void    ScrapCodeLabel( label_handle lbl )
     bool            code;
 
   optbegin
-    owner = &optdata_state().Handles;
+    owner = &back.optdata.Handles;
     for( ;; ) {
         if( *owner == NULL )
             optreturnvoid;
@@ -261,28 +262,28 @@ void    ScrapCodeLabel( label_handle lbl )
     *owner = lbl->lbl.link;
     redir = lbl->redirect;
     code = _TstStatus( lbl, CODELABEL );
-    CGFree( lbl );
+    CGFree( back, lbl );
     if( !code )
         optreturnvoid;
     if( redir == NULL )
         optreturnvoid;
     _ClrStatus( redir, REDIRECTION );
-    TryScrapLabel( redir );
+    TryScrapLabel( back, redir );
   optend
 }
 
 
-void    TryScrapLabel( label_handle old_lbl )
+void    TryScrapLabel( BackRun& back, label_handle old_lbl )
 /*******************************************/
 {
   optbegin
     if( old_lbl->refs != NULL )
         optreturnvoid;
     if( old_lbl->ins != NULL ) {
-        KillDeadLabels( old_lbl->ins );
+        KillDeadLabels( back, old_lbl->ins );
     } else if( _TstStatus( old_lbl, DYINGLABEL )
          && !_TstStatus( old_lbl, REDIRECTION | KEEPLABEL ) ) {
-        ScrapCodeLabel( old_lbl );
+        ScrapCodeLabel( back, old_lbl );
     }
   optend
 }

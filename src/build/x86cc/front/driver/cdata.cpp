@@ -31,205 +31,205 @@
 ****************************************************************************/
 
 
-#define global
 #include "cvars.h"
 #include "i64.h"
 #include "cmacadd.h"
+#include "frontrun.hpp"
 
 
-void InitGlobalVars( void )
+void InitGlobalVars( FrontRun& front )
 {
-    cvars_state().PCH_Start               = NULL;     /* start of precompiled memory block */
-    cvars_state().PCH_End                 = NULL;     /* end of precompiled memory block */
-    cvars_state().PCH_Macros              = NULL;     /* macros loaded from pre-compiled header */
-    cvars_state().PCH_FileName            = NULL;     /* name to use for pre-compiled header */
-    cvars_state().IncFileList             = NULL;     /* list of primary include files for PCH */
-    cvars_state().PCH_SymArray            = NULL;     /* array of symbol table pointers from PCH */
-    cvars_state().PCH_MaxSymHandle        = 0;        /* number of symbols in PCH_SymArray */
-    cvars_state().DebugFlag               = 0;
-    cvars_state().CurToken                = T_NULL;
-    cvars_state().BadTokenInfo            = ERR_NONE;
-    cvars_state().TokenLen                = 0;
-    cvars_state().TokenLoc.line           = 0;
-    cvars_state().TokenLoc.column         = 0;
-    cvars_state().TokenLoc.fno            = 0;
-    cvars_state().SrcFileLoc.line         = 0;
-    cvars_state().SrcFileLoc.column       = 0;
-    cvars_state().SrcFileLoc.fno          = 0;
-    cvars_state().CommentLoc.line         = 0;
-    cvars_state().CommentLoc.column       = 0;
-    cvars_state().CommentLoc.fno          = 0;
-    cvars_state().CurrChar                = 0;
-    cvars_state().ConstType               = static_cast<DATA_TYPE>(0);
-    cvars_state().MainSrcFile             = NULL;     /* primary source file being compiled */
-    cvars_state().SrcFiles                = NULL;
-    cvars_state().SrcFName                = NULL;     /* source file name without suffix */
-    cvars_state().DefFName                = NULL;     /* .def file name (prototypes) */
-    cvars_state().WholeFName              = NULL;     /* whole file name with suffix */
-    cvars_state().ForceInclude            = NULL;
-    cvars_state().ForcePreInclude         = NULL;
+    front.cvars.PCH_Start               = NULL;     /* start of precompiled memory block */
+    front.cvars.PCH_End                 = NULL;     /* end of precompiled memory block */
+    front.cvars.PCH_Macros              = NULL;     /* macros loaded from pre-compiled header */
+    front.cvars.PCH_FileName            = NULL;     /* name to use for pre-compiled header */
+    front.cvars.IncFileList             = NULL;     /* list of primary include files for PCH */
+    front.cvars.PCH_SymArray            = NULL;     /* array of symbol table pointers from PCH */
+    front.cvars.PCH_MaxSymHandle        = 0;        /* number of symbols in PCH_SymArray */
+    front.cvars.DebugFlag               = 0;
+    front.cvars.CurToken                = T_NULL;
+    front.cvars.BadTokenInfo            = ERR_NONE;
+    front.cvars.TokenLen                = 0;
+    front.cvars.TokenLoc.line           = 0;
+    front.cvars.TokenLoc.column         = 0;
+    front.cvars.TokenLoc.fno            = 0;
+    front.cvars.SrcFileLoc.line         = 0;
+    front.cvars.SrcFileLoc.column       = 0;
+    front.cvars.SrcFileLoc.fno          = 0;
+    front.cvars.CommentLoc.line         = 0;
+    front.cvars.CommentLoc.column       = 0;
+    front.cvars.CommentLoc.fno          = 0;
+    front.cvars.CurrChar                = 0;
+    front.cvars.ConstType               = static_cast<DATA_TYPE>(0);
+    front.cvars.MainSrcFile             = NULL;     /* primary source file being compiled */
+    front.cvars.SrcFiles                = NULL;
+    front.cvars.SrcFName                = NULL;     /* source file name without suffix */
+    front.cvars.DefFName                = NULL;     /* .def file name (prototypes) */
+    front.cvars.WholeFName              = NULL;     /* whole file name with suffix */
+    front.cvars.ForceInclude            = NULL;
+    front.cvars.ForcePreInclude         = NULL;
 #if _CPU == 370
     AuxName                 = NULL;
 #endif
-    cvars_state().FNames                  = NULL;     /* list of file names processed */
-    cvars_state().ErrFile                 = NULL;     /* error file */
-    cvars_state().DefFile                 = NULL;     /* output for func prototypes */
-    cvars_state().CppFile                 = NULL;     /* output for preprocessor */
-    cvars_state().CppStack                = NULL;     /* #if structure control stack */
-    cvars_state().IncPathList             = NULL;     /* list of path names to try for include files */
-    cvars_state().SrcLoc.line             = 0;
-    cvars_state().SrcLoc.column           = 0;
-    cvars_state().SrcLoc.fno              = 0;
-    cvars_state().SrcLineCount            = 0;        /* # of lines in primary source file */
-    cvars_state().IncLineCount            = 0;        /* # of lines in all included files  */
-    cvars_state().ErrCount                = 0;        /* total # of errors encountered     */
-    cvars_state().WngCount                = 0;        /* total # of warnings encountered   */
-    cvars_state().WngLevel                = 0;        /* warning severity level */
-    cvars_state().TypeCount               = 0;        /* total # of type nodes allocated   */
-    cvars_state().GblSymCount             = 0;        /* total # of global symbols */
-    cvars_state().LclSymCount             = 0;        /* total # of local and temporary symbols */
-    cvars_state().FuncCount               = 0;        /* total # of functions defined in module */
-    cvars_state().SizeOfCount             = 0;        /* # of nested sizeof() expressions  */
-    cvars_state().SymLevel                = 0;        /* current lex level (# of nested {) */
-    cvars_state().SavedId                 = NULL;     /* saved id when doing look ahead */
-    cvars_state().SavedTokenLoc.line      = 0;        /* value of TokenLine when id saved */
-    cvars_state().SavedTokenLoc.column    = 0;        /* value of TokenColumn when id saved */
-    cvars_state().SavedTokenLoc.fno       = 0;        /* value of TokenFno when id saved */
-    cvars_state().LAToken                 = T_NULL;   /* look ahead token */
-    cvars_state().LabelHead               = NULL;     /* list of all labels defined in function */
-    cvars_state().TagHead                 = NULL;     /* list of all struct, union, enum tags */
-    cvars_state().DeadTags                = NULL;     /* list of all tags that are out of scope */
-    cvars_state().CurFunc                 = NULL;     /* current function being worked on */
-    cvars_state().ParmList                = NULL;     /* list of parms for function */
-    cvars_state().GlobalSym               = SYM_NULL; /* global symbol table list head */
+    front.cvars.FNames                  = NULL;     /* list of file names processed */
+    front.cvars.ErrFile                 = NULL;     /* error file */
+    front.cvars.DefFile                 = NULL;     /* output for func prototypes */
+    front.cvars.CppFile                 = NULL;     /* output for preprocessor */
+    front.cvars.CppStack                = NULL;     /* #if structure control stack */
+    front.cvars.IncPathList             = NULL;     /* list of path names to try for include files */
+    front.cvars.SrcLoc.line             = 0;
+    front.cvars.SrcLoc.column           = 0;
+    front.cvars.SrcLoc.fno              = 0;
+    front.cvars.SrcLineCount            = 0;        /* # of lines in primary source file */
+    front.cvars.IncLineCount            = 0;        /* # of lines in all included files  */
+    front.cvars.ErrCount                = 0;        /* total # of errors encountered     */
+    front.cvars.WngCount                = 0;        /* total # of warnings encountered   */
+    front.cvars.WngLevel                = 0;        /* warning severity level */
+    front.cvars.TypeCount               = 0;        /* total # of type nodes allocated   */
+    front.cvars.GblSymCount             = 0;        /* total # of global symbols */
+    front.cvars.LclSymCount             = 0;        /* total # of local and temporary symbols */
+    front.cvars.FuncCount               = 0;        /* total # of functions defined in module */
+    front.cvars.SizeOfCount             = 0;        /* # of nested sizeof() expressions  */
+    front.cvars.SymLevel                = 0;        /* current lex level (# of nested {) */
+    front.cvars.SavedId                 = NULL;     /* saved id when doing look ahead */
+    front.cvars.SavedTokenLoc.line      = 0;        /* value of TokenLine when id saved */
+    front.cvars.SavedTokenLoc.column    = 0;        /* value of TokenColumn when id saved */
+    front.cvars.SavedTokenLoc.fno       = 0;        /* value of TokenFno when id saved */
+    front.cvars.LAToken                 = T_NULL;   /* look ahead token */
+    front.cvars.LabelHead               = NULL;     /* list of all labels defined in function */
+    front.cvars.TagHead                 = NULL;     /* list of all struct, union, enum tags */
+    front.cvars.DeadTags                = NULL;     /* list of all tags that are out of scope */
+    front.cvars.CurFunc                 = NULL;     /* current function being worked on */
+    front.cvars.ParmList                = NULL;     /* list of parms for function */
+    front.cvars.GlobalSym               = SYM_NULL; /* global symbol table list head */
 #if _CPU == 386
-    cvars_state().SymSTOD                 = SYM_NULL; /* builtin symbol for 'rep stosd' */
-    cvars_state().SymSTOSB                = SYM_NULL; /* builtin symbol for '__STOSB' */
-    cvars_state().SymSTOSD                = SYM_NULL; /* builtin symbol for '__STOSD' */
+    front.cvars.SymSTOD                 = SYM_NULL; /* builtin symbol for 'rep stosd' */
+    front.cvars.SymSTOSB                = SYM_NULL; /* builtin symbol for '__STOSB' */
+    front.cvars.SymSTOSD                = SYM_NULL; /* builtin symbol for '__STOSD' */
 #endif
 #ifdef __SEH__
-    cvars_state().SymTryInit              = SYM_NULL; /* builtin symbol for '__TryInit' */
-    cvars_state().SymTryFini              = SYM_NULL; /* builtin symbol for '__TryFini' */
-    cvars_state().SymExcept               = SYM_NULL; /* builtin symbol for '__Except' */
-    cvars_state().SymFinally              = SYM_NULL; /* builtin symbol for '__Finally' */
-    cvars_state().SymTryUnwind            = SYM_NULL; /* builtin symbol for '__TryUnwind' */
-    cvars_state().TrySymHandle            = SYM_NULL; /* builtin symbol for local try block */
-    cvars_state().TryScope                = 0;        /* current scope of _try blocks */
-    cvars_state().TryCount                = 0;        /* current number of _try blocks */
+    front.cvars.SymTryInit              = SYM_NULL; /* builtin symbol for '__TryInit' */
+    front.cvars.SymTryFini              = SYM_NULL; /* builtin symbol for '__TryFini' */
+    front.cvars.SymExcept               = SYM_NULL; /* builtin symbol for '__Except' */
+    front.cvars.SymFinally              = SYM_NULL; /* builtin symbol for '__Finally' */
+    front.cvars.SymTryUnwind            = SYM_NULL; /* builtin symbol for '__TryUnwind' */
+    front.cvars.TrySymHandle            = SYM_NULL; /* builtin symbol for local try block */
+    front.cvars.TryScope                = 0;        /* current scope of _try blocks */
+    front.cvars.TryCount                = 0;        /* current number of _try blocks */
 #endif
-    cvars_state().SymSTOW                 = SYM_NULL; /* builtin symbol for 'rep stosw' */
-    cvars_state().SymSTOWB                = SYM_NULL; /* builtin symbol for 'rep stosw, stosb' */
-    cvars_state().SymMIN                  = SYM_NULL; /* builtin symbol for 'min(a,b)' */
-    cvars_state().SymMAX                  = SYM_NULL; /* builtin symbol for 'max(a,b)' */
-    cvars_state().SymMEMCMP               = SYM_NULL; /* builtin symbol for 'memcmp' func */
-    cvars_state().SpecialSyms             = SYM_NULL; /* builtin symbols (thread linked) */
-    cvars_state().CharSymHandle           = SYM_NULL; /* sym handle for "char" typedef */
-    cvars_state().Sym_CS                  = SYM_NULL; /* sym handle for __segname("_CODE") ie. CS */
-    cvars_state().Sym_SS                  = SYM_NULL; /* sym handle for __segname("_STACK")ie. SS */
-    cvars_state().SymCover                = SYM_NULL; /* sym handle for '__COVERAGE' */
-    cvars_state().SymDFAbbr               = SYM_NULL; /* sym handle for '__DFABBREV' */
-    cvars_state().SymChipBug              = SYM_NULL; /* sym handle for '__chipbug' */
-    cvars_state().ErrSym                  = NULL;
+    front.cvars.SymSTOW                 = SYM_NULL; /* builtin symbol for 'rep stosw' */
+    front.cvars.SymSTOWB                = SYM_NULL; /* builtin symbol for 'rep stosw, stosb' */
+    front.cvars.SymMIN                  = SYM_NULL; /* builtin symbol for 'min(a,b)' */
+    front.cvars.SymMAX                  = SYM_NULL; /* builtin symbol for 'max(a,b)' */
+    front.cvars.SymMEMCMP               = SYM_NULL; /* builtin symbol for 'memcmp' func */
+    front.cvars.SpecialSyms             = SYM_NULL; /* builtin symbols (thread linked) */
+    front.cvars.CharSymHandle           = SYM_NULL; /* sym handle for "char" typedef */
+    front.cvars.Sym_CS                  = SYM_NULL; /* sym handle for __segname("_CODE") ie. CS */
+    front.cvars.Sym_SS                  = SYM_NULL; /* sym handle for __segname("_STACK")ie. SS */
+    front.cvars.SymCover                = SYM_NULL; /* sym handle for '__COVERAGE' */
+    front.cvars.SymDFAbbr               = SYM_NULL; /* sym handle for '__DFABBREV' */
+    front.cvars.SymChipBug              = SYM_NULL; /* sym handle for '__chipbug' */
+    front.cvars.ErrSym                  = NULL;
 
 #if _CPU == 386
-    cvars_state().FunctionProfileBlock    = NULL;     /* handle for profiling data block */
-    cvars_state().FunctionProfileSegId    = SEG_NULL; /* segment for profiling data block */
+    front.cvars.FunctionProfileBlock    = NULL;     /* handle for profiling data block */
+    front.cvars.FunctionProfileSegId    = SEG_NULL; /* segment for profiling data block */
 #endif
 
-    cvars_state().MacroDepth              = 0;
-    cvars_state().HashTab                 = NULL;
+    front.cvars.MacroDepth              = 0;
+    front.cvars.HashTab                 = NULL;
 
-    cvars_state().GenSwitches             = static_cast<cg_switches>(0);        /* target independant switches for code generator */
-    cvars_state().TargetSwitches          = static_cast<cg_target_switches>(0);        /* target specific code generator switches */
+    front.cvars.GenSwitches             = static_cast<cg_switches>(0);        /* target independant switches for code generator */
+    front.cvars.TargetSwitches          = static_cast<cg_target_switches>(0);        /* target specific code generator switches */
 
-    cvars_state().ProcRevision            = 0;        /* processor revision for c.g. */
-    cvars_state().GenCodeGroup            = NULL;     /* pointer to code group name */
-    cvars_state().ProEpiDataSize          = 0;        /* data to be alloc'd for pro/epi hook */
-    cvars_state().ErrLimit                = 0;
+    front.cvars.ProcRevision            = 0;        /* processor revision for c.g. */
+    front.cvars.GenCodeGroup            = NULL;     /* pointer to code group name */
+    front.cvars.ProEpiDataSize          = 0;        /* data to be alloc'd for pro/epi hook */
+    front.cvars.ErrLimit                = 0;
 
-    cvars_state().Inline_Threshold        = 0;        /* -oe=num for function inlining */
+    front.cvars.Inline_Threshold        = 0;        /* -oe=num for function inlining */
 
-    cvars_state().DataPtrSize             = 0;
-    cvars_state().CodePtrSize             = 0;
-    cvars_state().DeadCode                = 0;        /* non-zero => next stmt is unreachable */
-    cvars_state().TmpSymCount             = 0;
-    cvars_state().LitCount                = 0;
-    cvars_state().LitPoolSize             = 0;
-    cvars_state().MacroSize               = 0;
-    cvars_state().SegmentNum              = 0;        /* next PRIVATE segment number to use */
-    cvars_state().FarStringSegId          = SEG_NULL;
+    front.cvars.DataPtrSize             = 0;
+    front.cvars.CodePtrSize             = 0;
+    front.cvars.DeadCode                = 0;        /* non-zero => next stmt is unreachable */
+    front.cvars.TmpSymCount             = 0;
+    front.cvars.LitCount                = 0;
+    front.cvars.LitPoolSize             = 0;
+    front.cvars.MacroSize               = 0;
+    front.cvars.SegmentNum              = 0;        /* next PRIVATE segment number to use */
+    front.cvars.FarStringSegId          = SEG_NULL;
 
-    cvars_state().Environment             = NULL;     /* var for Suicide() */
+    front.cvars.Environment             = NULL;     /* var for Suicide() */
 
 
     /* The following 3 arrays are also used by CGEN for saving _try block info */
-    cvars_state().ExprLevel               = 0;
+    front.cvars.ExprLevel               = 0;
 
-    cvars_state().SegListHead             = NULL;
+    front.cvars.SegListHead             = NULL;
 
-    cvars_state().ScopeStruct             = 0;
-    cvars_state().ScopeUnion              = 0;
-    cvars_state().ScopeEnum               = 0;
+    front.cvars.ScopeStruct             = 0;
+    front.cvars.ScopeUnion              = 0;
+    front.cvars.ScopeEnum               = 0;
 
-    cvars_state().B_Int_1                 = 0;
-    cvars_state().B_UInt_1                = 0;
-    cvars_state().B_Short                 = 0;
-    cvars_state().B_UShort                = 0;
-    cvars_state().B_Int                   = 0;
-    cvars_state().B_UInt                  = 0;
-    cvars_state().B_Int32                 = 0;
-    cvars_state().B_UInt32                = 0;
-    cvars_state().B_Int64                 = 0;
-    cvars_state().B_UInt64                = 0;
-    cvars_state().B_Bool                  = 0;
+    front.cvars.B_Int_1                 = 0;
+    front.cvars.B_UInt_1                = 0;
+    front.cvars.B_Short                 = 0;
+    front.cvars.B_UShort                = 0;
+    front.cvars.B_Int                   = 0;
+    front.cvars.B_UInt                  = 0;
+    front.cvars.B_Int32                 = 0;
+    front.cvars.B_UInt32                = 0;
+    front.cvars.B_Int64                 = 0;
+    front.cvars.B_UInt64                = 0;
+    front.cvars.B_Bool                  = 0;
 
-    cvars_state().OptSize                 = 0;        /* 100 => make pgm small as possible */
-    cvars_state().LoopDepth               = 0;        /* current nesting of loop constructs */
-    cvars_state().HeadLibs                = NULL;     /* list of library search records */
-    cvars_state().AliasHead               = NULL;     /* list of symbol alias records */
-    cvars_state().CurFuncHandle           = SYM_NULL; /* sym_handle for current function */
-    cvars_state().LastFuncOutOfMem        = NULL;     /* cinfo: */
-    cvars_state().HashFreeList            = NULL;     /* list of available hash entries */
+    front.cvars.OptSize                 = 0;        /* 100 => make pgm small as possible */
+    front.cvars.LoopDepth               = 0;        /* current nesting of loop constructs */
+    front.cvars.HeadLibs                = NULL;     /* list of library search records */
+    front.cvars.AliasHead               = NULL;     /* list of symbol alias records */
+    front.cvars.CurFuncHandle           = SYM_NULL; /* sym_handle for current function */
+    front.cvars.LastFuncOutOfMem        = NULL;     /* cinfo: */
+    front.cvars.HashFreeList            = NULL;     /* list of available hash entries */
 
-    cvars_state().SymBufSegNum            = 0;        /* segment # containing buffer */
+    front.cvars.SymBufSegNum            = 0;        /* segment # containing buffer */
 
-    cvars_state().StringType              = NULL;     /* "unsigned char *" for use by literals */
-    cvars_state().ConstCharType           = NULL;     /* "const char" type */
-    cvars_state().StringArrayType         = NULL;     /* "unsigned char []" used by literals */
-    cvars_state().NestedParms             = NULL;
+    front.cvars.StringType              = NULL;     /* "unsigned char *" for use by literals */
+    front.cvars.ConstCharType           = NULL;     /* "const char" type */
+    front.cvars.StringArrayType         = NULL;     /* "unsigned char []" used by literals */
+    front.cvars.NestedParms             = NULL;
 
-    cvars_state().TextSegName             = NULL;     /* name of the text segment */
-    cvars_state().DataSegName             = NULL;     /* name of the data segment */
-    cvars_state().CodeClassName           = NULL;     /* name of the code class */
-    cvars_state().ModuleName              = NULL;     /* name of module */
-    cvars_state().ObjectFileName          = NULL;     /* name of object file */
-    cvars_state().DependFileName          = NULL;     /* Name of make style auto depend file */
-    cvars_state().DependHeaderPath        = NULL;     /* If no path is part of an included file, use this */
-    cvars_state().DependForceSlash        = 0;
-    cvars_state().PackAmount              = 0;        /* current packing alignment */
-    cvars_state().GblPackAmount           = 0;        /* packing alignment given on command line */
-    cvars_state().Column                  = 0;        /* skip to Column when reading */
-    cvars_state().Trunc                   = 0;        /* stop at Trunc when reading  */
-    cvars_state().PrevProtoType           = NULL;     /* prev func prototype */
+    front.cvars.TextSegName             = NULL;     /* name of the text segment */
+    front.cvars.DataSegName             = NULL;     /* name of the data segment */
+    front.cvars.CodeClassName           = NULL;     /* name of the code class */
+    front.cvars.ModuleName              = NULL;     /* name of module */
+    front.cvars.ObjectFileName          = NULL;     /* name of object file */
+    front.cvars.DependFileName          = NULL;     /* Name of make style auto depend file */
+    front.cvars.DependHeaderPath        = NULL;     /* If no path is part of an included file, use this */
+    front.cvars.DependForceSlash        = 0;
+    front.cvars.PackAmount              = 0;        /* current packing alignment */
+    front.cvars.GblPackAmount           = 0;        /* packing alignment given on command line */
+    front.cvars.Column                  = 0;        /* skip to Column when reading */
+    front.cvars.Trunc                   = 0;        /* stop at Trunc when reading  */
+    front.cvars.PrevProtoType           = NULL;     /* prev func prototype */
 
-    cvars_state().TargetSystem            = TS_OTHER;
-    cvars_state().DefDataSegment          = SEG_NULL; /* #pragma data_seg("segname","class") */
-    cvars_state().DefCodeSegment          = NULL;     /* #pragma code_seg("seg","c") */
+    front.cvars.TargetSystem            = TS_OTHER;
+    front.cvars.DefDataSegment          = SEG_NULL; /* #pragma data_seg("segname","class") */
+    front.cvars.DefCodeSegment          = NULL;     /* #pragma code_seg("seg","c") */
 
-    cvars_state().UnrollCount             = 0;        /* #pragma unroll(#); */
-    cvars_state().InitialMacroFlags       = MFLAG_NONE;
-    cvars_state().Stack87                 = 0;
-    cvars_state().ErrorFileName           = NULL;
+    front.cvars.UnrollCount             = 0;        /* #pragma unroll(#); */
+    front.cvars.InitialMacroFlags       = MFLAG_NONE;
+    front.cvars.Stack87                 = 0;
+    front.cvars.ErrorFileName           = NULL;
 
-    cvars_state().UndefNames              = NULL;
-    cvars_state().Check_global_prototype  = 0;
+    front.cvars.UndefNames              = NULL;
+    front.cvars.Check_global_prototype  = 0;
 
-    memset( &cvars_state().CompFlags, 0, sizeof( cvars_state().CompFlags ) );
-    memset( &cvars_state().CompVars, 0, sizeof( cvars_state().CompVars ) );
+    memset( &front.cvars.CompFlags, 0, sizeof( front.cvars.CompFlags ) );
+    memset( &front.cvars.CompVars, 0, sizeof( front.cvars.CompVars ) );
 
-    Set64ValZero( cvars_state().Constant64 );
+    Set64ValZero( front.cvars.Constant64 );
 
-    InitMacroSegments();                /* initialize pointer to list of macro segments */
-    InitStmt();
-    InitErrLoc();
+    InitMacroSegments(front);                /* initialize pointer to list of macro segments */
+    InitStmt(front);
+    InitErrLoc(front);
 }

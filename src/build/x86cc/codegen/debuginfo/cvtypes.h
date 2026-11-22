@@ -31,26 +31,27 @@
 
 
 /* CV interface */
+#pragma once
 extern  dbg_type        CVFtnType( const char *name, dbg_ftn_type tipe );
-extern  dbg_type        CVScalar( const char *name, cg_type tipe );
+extern  dbg_type        CVScalar( BackRun& back, const char *name, cg_type tipe );
 extern  dbg_type        CVScope( const char *name );
-extern  void            CVDumpName( dbg_name name, dbg_type tipe );
-extern  void            CVBackRefType( dbg_name name, dbg_type tipe );
-extern  dbg_type        CVCharBlock( uint_32 len );
-extern  dbg_type        CVIndCharBlock( back_handle len, cg_type len_type, int off );
-extern  dbg_type        CVLocCharBlock( dbg_loc loc, cg_type len_type );
-extern  dbg_type        CVFtnArray( back_handle dims, cg_type lo_bound_tipe, cg_type num_elems_tipe, int off, dbg_type base );
-extern  dbg_type        CVArray( dbg_type idx, dbg_type base );
-extern  dbg_type        CVIntArray( uint_32 hi, dbg_type base );
-extern  dbg_type        CVEndArray( dbg_array ar );
-extern  dbg_type        CVArraySize( offset size, uint_32 hi, dbg_type base );
-extern  dbg_type        CVSubRange( int_32 lo, int_32 hi, dbg_type base );
-extern  dbg_type        CVDereference( cg_type ptr_type, dbg_type base );
-extern  dbg_type        CVPtr( cg_type ptr_type, dbg_type base );
-extern  dbg_type        CVBasedPtr( cg_type ptr_type, dbg_type base, dbg_loc loc_segment );
-extern  dbg_type        CVEndStruct( dbg_struct st );
-extern  dbg_type        CVEndEnum( dbg_enum en );
-extern  dbg_type        CVEndProc( dbg_proc pr );
+extern  void            CVDumpName( BackRun& back, dbg_name name, dbg_type tipe );
+extern  void            CVBackRefType( BackRun& back, dbg_name name, dbg_type tipe );
+extern  dbg_type        CVCharBlock( BackRun& back, uint_32 len );
+extern  dbg_type        CVIndCharBlock( BackRun& back, back_handle len, cg_type len_type, int off );
+extern  dbg_type        CVLocCharBlock( BackRun& back, dbg_loc loc, cg_type len_type );
+extern  dbg_type        CVFtnArray( BackRun& back, back_handle dims, cg_type lo_bound_tipe, cg_type num_elems_tipe, int off, dbg_type base );
+extern  dbg_type        CVArray( BackRun& back, dbg_type idx, dbg_type base );
+extern  dbg_type        CVIntArray( BackRun& back, uint_32 hi, dbg_type base );
+extern  dbg_type        CVEndArray( BackRun& back, dbg_array ar );
+extern  dbg_type        CVArraySize( BackRun& back, offset size, uint_32 hi, dbg_type base );
+extern  dbg_type        CVSubRange( BackRun& back, int_32 lo, int_32 hi, dbg_type base );
+extern  dbg_type        CVDereference( BackRun& back, cg_type ptr_type, dbg_type base );
+extern  dbg_type        CVPtr( BackRun& back, cg_type ptr_type, dbg_type base );
+extern  dbg_type        CVBasedPtr( BackRun& back, cg_type ptr_type, dbg_type base, dbg_loc loc_segment );
+extern  dbg_type        CVEndStruct( BackRun& back, dbg_struct st );
+extern  dbg_type        CVEndEnum( BackRun& back, dbg_enum en );
+extern  dbg_type        CVEndProc( BackRun& back, dbg_proc pr );
 
 extern  void            CVPutStr( cv_out *, const char * );
 extern  void            CVPutINum( cv_out *out, int_32 num );

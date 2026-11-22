@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define SRC_BUF_SIZE            4096
 
 typedef struct fcb_struct {                 /* file control block structure */

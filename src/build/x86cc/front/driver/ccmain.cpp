@@ -49,6 +49,7 @@
 
 #include "clibint.h"
 #include "clibext.h"
+#include "frontrun.hpp"
 
 
 #if defined(__UNIX__)
@@ -77,75 +78,66 @@
 #define NULLDEV_NAME    "nulldev"
 
 
-void FrontEndInit( bool reuse )
+void FrontEndInit( FrontRun& front, bool reuse )
 /******************************
  * Do the once only things
  ******************************/
 {
-    cvars_state().GlobalCompFlags.cc_reuse = reuse;
-    cvars_state().GlobalCompFlags.cc_first_use = true;
-    cvars_state().GlobalCompFlags.ignore_environment = false;
-    cvars_state().GlobalCompFlags.ignore_current_dir = false;
-    cvars_state().GlobalCompFlags.ide_cmd_line_has_files = false;
-    cvars_state().GlobalCompFlags.ide_console_output = false;
-    cvars_state().GlobalCompFlags.progress_messages = false;
+    front.cvars.GlobalCompFlags.cc_reuse = reuse;
+    front.cvars.GlobalCompFlags.cc_first_use = true;
+    front.cvars.GlobalCompFlags.ignore_environment = false;
+    front.cvars.GlobalCompFlags.ignore_current_dir = false;
+    front.cvars.GlobalCompFlags.ide_cmd_line_has_files = false;
+    front.cvars.GlobalCompFlags.ide_console_output = false;
+    front.cvars.GlobalCompFlags.progress_messages = false;
 //    GlobalCompFlags.dll_active = false;
 }
 
-void FrontEndFini( void )
+void FrontEndFini( FrontRun& front )
 /************************
  * Fini the once only
  ************************/
 {
-    cvars_state().GlobalCompFlags.cc_reuse = false;
-    cvars_state().GlobalCompFlags.cc_first_use = true;
+    front.cvars.GlobalCompFlags.cc_reuse = false;
+    front.cvars.GlobalCompFlags.cc_first_use = true;
 }
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct CcmainState {
-    bool IsStdIn;
-    bool IsNullDev;
-    char *FNameBuf = NULL;
-    unsigned CppColumn = 0;
-    unsigned CppWidth = 0;
-    unsigned CommentChar = '\0';
-    bool CppFirstChar = false;
-};
+/* (struct CcmainState: ccmain_state.h) */
 
 }  // namespace
 
-static inline CcmainState& ccmain_state() { return cbrun_part<CcmainState>(); }
 
-static void initGlobals( void )
+static void initGlobals( FrontRun& front )
 {
-    InitStats();
-    ccmain_state().IsStdIn = false;
-    ccmain_state().IsNullDev = false;
-    cvars_state().FNames = NULL;
-    cvars_state().RDirNames = NULL;
-    cvars_state().IAliasNames = NULL;
-    cvars_state().SrcFiles = NULL;
-    cvars_state().ErrFile = NULL;
-    cvars_state().DefFile = NULL;
-    cvars_state().CppFile = NULL;
-    cvars_state().DepFile = NULL;
-    cvars_state().IncPathList = static_cast<char *>(CMemAlloc( 1 ));
-    cvars_state().SegmentNum = FIRST_PRIVATE_SEGMENT;
-    InitBuffer( BUF_SIZE );
-    InitTokenBuf( BUF_SIZE );
-    ccmain_state().FNameBuf = static_cast<char *>(CMemAlloc( _MAX_PATH ));
-    InitIncFile();
-    InitErrLoc();
+    InitStats(front);
+    front.ccmain.IsStdIn = false;
+    front.ccmain.IsNullDev = false;
+    front.cvars.FNames = NULL;
+    front.cvars.RDirNames = NULL;
+    front.cvars.IAliasNames = NULL;
+    front.cvars.SrcFiles = NULL;
+    front.cvars.ErrFile = NULL;
+    front.cvars.DefFile = NULL;
+    front.cvars.CppFile = NULL;
+    front.cvars.DepFile = NULL;
+    front.cvars.IncPathList = static_cast<char *>(CMemAlloc( front, 1 ));
+    front.cvars.SegmentNum = FIRST_PRIVATE_SEGMENT;
+    InitBuffer( front, BUF_SIZE );
+    InitTokenBuf( front, BUF_SIZE );
+    front.ccmain.FNameBuf = static_cast<char *>(CMemAlloc( front, _MAX_PATH ));
+    InitIncFile(front);
+    InitErrLoc(front);
 }
 
-static void finiGlobals( void )
+static void finiGlobals( FrontRun& front )
 {
-    FiniBuffer();
+    FiniBuffer(front);
 }
 
-static bool ParseCmdLine( char **cmdline )
+static bool ParseCmdLine( FrontRun& front, char **cmdline )
 {
     char        *cmd;
 
@@ -156,23 +148,23 @@ static bool ParseCmdLine( char **cmdline )
     while( *cmd == ' ' )
         ++cmd;
     if( *cmd == '?' || *cmd == '\0' ) {
-        CUsage();
+        CUsage(front);
         return( false );
     }
-    GenCOptions( cmdline );
+    GenCOptions( front, cmdline );
     return( true );
 }
 
-static void OpenDepFile( void )
+static void OpenDepFile( FrontRun& front )
 {
     char        *name;
 
-    if( cvars_state().CompFlags.generate_auto_depend ) {
-        name = DepFileName();
+    if( front.cvars.CompFlags.generate_auto_depend ) {
+        name = DepFileName(front);
         if( name != NULL ) {
-            cvars_state().DepFile = fopen( name, "w" );
-            if( cvars_state().DepFile != NULL ) {
-                setvbuf( cvars_state().DepFile, static_cast<char *>(CPermAlloc( 1024 )), _IOFBF, 1024 );
+            front.cvars.DepFile = front.held->fopen( name, "w" );
+            if( front.cvars.DepFile != NULL ) {
+                setvbuf( front.cvars.DepFile, static_cast<char *>(CPermAlloc( front, 1024 )), _IOFBF, 1024 );
             }
         }
     }
@@ -193,15 +185,15 @@ char *ForceSlash( char *name, char slash )
     return( save );
 }
 
-FNAMEPTR NextDependency( FNAMEPTR curr )
+FNAMEPTR NextDependency( FrontRun& front, FNAMEPTR curr )
 {
     if( curr == NULL ) {
-        curr = cvars_state().FNames;
+        curr = front.cvars.FNames;
     } else {
         curr = curr->next;
     }
     for( ; curr != NULL; curr = curr->next ) {
-        if( curr->rwflag && !SrcFileInRDir( curr ) ) {
+        if( curr->rwflag && !SrcFileInRDir( front, curr ) ) {
             break;
         }
     }
@@ -209,27 +201,27 @@ FNAMEPTR NextDependency( FNAMEPTR curr )
 }
 
 
-static void DelErrFile(void)
+static void DelErrFile(FrontRun& front)
 {
     char        *name;
 
-    name = ErrFileName();
+    name = ErrFileName(front);
     if( name != NULL ) {
         remove( name );
     }
 }
 
-static void DelDepFile( void )
+static void DelDepFile( FrontRun& front )
 {
     char        *name;
 
-    name = DepFileName();
+    name = DepFileName(front);
     if( name != NULL ) {
         remove( name );
     }
 }
 
-static char *createFileName( const char *template_, const char *ext, bool forceext )
+static char *createFileName( FrontRun& front, const char *template_, const char *ext, bool forceext )
 {
     pgroup2     pg;
     bool        use_defaults;
@@ -237,7 +229,7 @@ static char *createFileName( const char *template_, const char *ext, bool forcee
 
     use_defaults = ( template_ == NULL );
     if( use_defaults )
-        template_ = cvars_state().WholeFName;
+        template_ = front.cvars.WholeFName;
     _splitpath2( template_, pg.buffer, &pg.drive, &pg.dir, &pg.fname, &pg.ext );
     if( use_defaults ) {
         /*
@@ -251,49 +243,49 @@ static char *createFileName( const char *template_, const char *ext, bool forcee
     }
     module_name = pg.fname;
     if( module_name[0] == '\0' || module_name[0] == '*' ) {
-        module_name = FEModuleName();
+        module_name = FEModuleName(front);
     }
-    _makepath( ccmain_state().FNameBuf, pg.drive, pg.dir, module_name, ext );
-    return( ccmain_state().FNameBuf );
+    _makepath( front.ccmain.FNameBuf, pg.drive, pg.dir, module_name, ext );
+    return( front.ccmain.FNameBuf );
 }
 
-static void DumpDepFile( void )
+static void DumpDepFile( FrontRun& front )
 {
     FNAMEPTR    curr;
 
-    OpenDepFile();
-    if( cvars_state().DepFile != NULL ) {
-        curr = NextDependency( NULL );
+    OpenDepFile(front);
+    if( front.cvars.DepFile != NULL ) {
+        curr = NextDependency( front, NULL );
         if( curr != NULL ) {
-            fprintf( cvars_state().DepFile, "%s :", ForceSlash( createFileName( cvars_state().DependTarget, OBJ_EXT, false ), cvars_state().DependForceSlash ) );
-            fprintf( cvars_state().DepFile, " %s", ForceSlash( GetSourceDepName(), cvars_state().DependForceSlash ) );
-            for( curr = NextDependency( curr ); curr != NULL; curr = NextDependency( curr ) ) {
-                fprintf( cvars_state().DepFile, " %s", ForceSlash( curr->name, cvars_state().DependForceSlash ) );
+            fprintf( front.cvars.DepFile, "%s :", ForceSlash( createFileName( front, front.cvars.DependTarget, OBJ_EXT, false ), front.cvars.DependForceSlash ) );
+            fprintf( front.cvars.DepFile, " %s", ForceSlash( GetSourceDepName(front), front.cvars.DependForceSlash ) );
+            for( curr = NextDependency( front, curr ); curr != NULL; curr = NextDependency( front, curr ) ) {
+                fprintf( front.cvars.DepFile, " %s", ForceSlash( curr->name, front.cvars.DependForceSlash ) );
             }
-            fprintf( cvars_state().DepFile, "\n" );
+            fprintf( front.cvars.DepFile, "\n" );
         }
-        fclose( cvars_state().DepFile );
-        cvars_state().DepFile = NULL;
+        front.held->fclose( front.cvars.DepFile );
+        front.cvars.DepFile = NULL;
     } else {
-        DelDepFile();
+        DelDepFile(front);
     }
 }
 
-static IALIASPTR AddIAlias( const char *alias_name, const char *real_name, bool is_lib )
+static IALIASPTR AddIAlias( FrontRun& front, const char *alias_name, const char *real_name, bool is_lib )
 {
     size_t      alias_len;
     size_t      real_len;
     IALIASPTR   alias, old_alias;
     IALIASPTR   *lnk;
 
-    for( lnk = &cvars_state().IAliasNames; (old_alias = *lnk) != NULL; lnk = &old_alias->next ) {
+    for( lnk = &front.cvars.IAliasNames; (old_alias = *lnk) != NULL; lnk = &old_alias->next ) {
         if( ( old_alias->is_lib == is_lib ) && !FNAMECMPSTR( alias_name, old_alias->alias_name ) ) {
             break;
         }
     }
     alias_len = strlen( alias_name ) + 1;
     real_len = strlen( real_name ) + 1;
-    alias = static_cast<IALIASPTR>(CMemAlloc( offsetof( ialias_list, alias_name ) + alias_len + real_len ));
+    alias = static_cast<IALIASPTR>(CMemAlloc( front, offsetof( ialias_list, alias_name ) + alias_len + real_len ));
     alias->next = NULL;
     alias->is_lib = is_lib;
     alias->real_name = alias->alias_name + alias_len;
@@ -305,28 +297,28 @@ static IALIASPTR AddIAlias( const char *alias_name, const char *real_name, bool 
          * Replace old alias if it exists
          */
         alias->next = old_alias->next;
-        CMemFree( old_alias );
+        CMemFree( front, old_alias );
     }
 
     return( alias );
 }
 
-static void FreeIAlias( void )
+static void FreeIAlias( FrontRun& front )
 {
     IALIASPTR   aliaslist;
 
-    while( (aliaslist = cvars_state().IAliasNames) != NULL ) {
-        cvars_state().IAliasNames = aliaslist->next;
-        CMemFree( aliaslist );
+    while( (aliaslist = front.cvars.IAliasNames) != NULL ) {
+        front.cvars.IAliasNames = aliaslist->next;
+        CMemFree( front, aliaslist );
     }
-    cvars_state().IAliasNames = NULL;
+    front.cvars.IAliasNames = NULL;
 }
 
-static const char *IncludeAlias( const char *filename, bool is_lib )
+static const char *IncludeAlias( FrontRun& front, const char *filename, bool is_lib )
 {
     IALIASPTR   alias;
 
-    for( alias = cvars_state().IAliasNames; alias != NULL; alias = alias->next ) {
+    for( alias = front.cvars.IAliasNames; alias != NULL; alias = alias->next ) {
         if( ( alias->is_lib == is_lib ) && !FNAMECMPSTR( filename, alias->alias_name ) ) {
             return( alias->real_name );
         }
@@ -334,27 +326,27 @@ static const char *IncludeAlias( const char *filename, bool is_lib )
     return( filename );
 }
 
-void PrtfFilenameErr( const char *filename, src_file_type typ, bool print_error )
+void PrtfFilenameErr( FrontRun& front, const char *filename, src_file_type typ, bool print_error )
 {
     /* unused parameters */ (void)typ;
 
     if( print_error ) {
-        CErr2p( ERR_CANT_OPEN_FILE, filename );
+        CErr2p( front, ERR_CANT_OPEN_FILE, filename );
     }
 }
 
-static bool openForcePreInclude( void )
+static bool openForcePreInclude( FrontRun& front )
 {
     bool    ok;
 
-    ok = OpenSrcFile( cvars_state().ForcePreInclude, FT_HEADER_PRE );
+    ok = OpenSrcFile( front, front.cvars.ForcePreInclude, FT_HEADER_PRE );
     if( !ok )
-        PrtfFilenameErr( cvars_state().ForcePreInclude, FT_HEADER_PRE, false );
+        PrtfFilenameErr( front, front.cvars.ForcePreInclude, FT_HEADER_PRE, false );
     return( ok );
 }
 
 
-static void MakePgmName( void )
+static void MakePgmName( FrontRun& front )
 /******************************
  * open the primary source file, and return pointer to root file name
  */
@@ -367,230 +359,230 @@ static void MakePgmName( void )
      * if stdin a "." then replace with "stdin" don't whack ".c"
      * If no module name make the same as fname
      */
-    if( cvars_state().WholeFName[0] == '.' && cvars_state().WholeFName[1] == '\0' ) {
-        ccmain_state().IsStdIn = true;
-        ccmain_state().IsNullDev = false;
-        CMemFree( cvars_state().WholeFName );
-        cvars_state().WholeFName = static_cast<char *>(CMemAlloc( sizeof( STDIN_NAME ) ));
-        strcpy( cvars_state().WholeFName, STDIN_NAME );
-        pg.fname = cvars_state().WholeFName;
-    } else if( FNAMECMPSTR( cvars_state().WholeFName, NULLDEV ) == 0 ) {
-        ccmain_state().IsNullDev = true;
-        ccmain_state().IsStdIn = false;
-        CMemFree( cvars_state().WholeFName );
-        cvars_state().WholeFName = static_cast<char *>(CMemAlloc( sizeof( NULLDEV_NAME ) ));
-        strcpy( cvars_state().WholeFName, NULLDEV_NAME );
-        pg.fname = cvars_state().WholeFName;
+    if( front.cvars.WholeFName[0] == '.' && front.cvars.WholeFName[1] == '\0' ) {
+        front.ccmain.IsStdIn = true;
+        front.ccmain.IsNullDev = false;
+        CMemFree( front, front.cvars.WholeFName );
+        front.cvars.WholeFName = static_cast<char *>(CMemAlloc( front, sizeof( STDIN_NAME ) ));
+        strcpy( front.cvars.WholeFName, STDIN_NAME );
+        pg.fname = front.cvars.WholeFName;
+    } else if( FNAMECMPSTR( front.cvars.WholeFName, NULLDEV ) == 0 ) {
+        front.ccmain.IsNullDev = true;
+        front.ccmain.IsStdIn = false;
+        CMemFree( front, front.cvars.WholeFName );
+        front.cvars.WholeFName = static_cast<char *>(CMemAlloc( front, sizeof( NULLDEV_NAME ) ));
+        strcpy( front.cvars.WholeFName, NULLDEV_NAME );
+        pg.fname = front.cvars.WholeFName;
     } else {
-        _splitpath2( cvars_state().WholeFName, pg.buffer, &pg.drive, &pg.dir, &pg.fname, &pg.ext );
+        _splitpath2( front.cvars.WholeFName, pg.buffer, &pg.drive, &pg.dir, &pg.fname, &pg.ext );
         if( pg.ext[0] == '\0' ) { // no extension
-            len = strlen( cvars_state().WholeFName );
-            cvars_state().WholeFName = static_cast<char *>(CMemRealloc( cvars_state().WholeFName, len + 1 + ( sizeof( C_EXT ) - 1 ) + 1 ));
-            strcat( cvars_state().WholeFName + len, "." C_EXT );
+            len = strlen( front.cvars.WholeFName );
+            front.cvars.WholeFName = static_cast<char *>(CMemRealloc( front, front.cvars.WholeFName, len + 1 + ( sizeof( C_EXT ) - 1 ) + 1 ));
+            strcat( front.cvars.WholeFName + len, "." C_EXT );
         }
     }
-    cvars_state().SrcFName = CMemStrdup( pg.fname );
+    front.cvars.SrcFName = CMemStrdup( front, pg.fname );
 }
 
-static void CantOpenFile( const char *name )
+static void CantOpenFile( FrontRun& front, const char *name )
 {
     char    msgtxt[80];
     char    msgbuf[MAX_MSG_LEN];
 
-    CGetMsg( msgtxt, ERR_CANT_OPEN_FILE );
+    CGetMsg( front, msgtxt, ERR_CANT_OPEN_FILE );
     sprintf( msgbuf, msgtxt, name );
-    ConsErrMsgVerbatim( msgbuf );
+    ConsErrMsgVerbatim( front, msgbuf );
 }
 
 
-void SetPPWidth( unsigned width )
+void SetPPWidth( FrontRun& front, unsigned width )
 {
-    ccmain_state().CppWidth = width - 1;
+    front.ccmain.CppWidth = width - 1;
 }
 
-static void CppPutc( int ch )
+static void CppPutc( FrontRun& front, int ch )
 {
     int     rc;
 
-    if( ccmain_state().CppFirstChar ) {
-        ccmain_state().CppFirstChar = false;
+    if( front.ccmain.CppFirstChar ) {
+        front.ccmain.CppFirstChar = false;
         if( ch == '\n' ) {
             return;
         }
     }
     if( ch == '\n' ) {
-        ccmain_state().CppColumn = 0;
-        rc = fputc( '\n', cvars_state().CppFile );
-    } else if( ccmain_state().CppColumn >= ccmain_state().CppWidth ) {
-        ccmain_state().CppColumn = 1;
-        if( ccmain_state().CommentChar == '\0' ) {
-            if( (rc = fputc( '\\', cvars_state().CppFile )) != EOF ) {
-                rc = fputc( '\n', cvars_state().CppFile );
+        front.ccmain.CppColumn = 0;
+        rc = fputc( '\n', front.cvars.CppFile );
+    } else if( front.ccmain.CppColumn >= front.ccmain.CppWidth ) {
+        front.ccmain.CppColumn = 1;
+        if( front.ccmain.CommentChar == '\0' ) {
+            if( (rc = fputc( '\\', front.cvars.CppFile )) != EOF ) {
+                rc = fputc( '\n', front.cvars.CppFile );
             }
-        } else if( (rc = fputc( '\n', cvars_state().CppFile )) != EOF ) {
-            if( ccmain_state().CommentChar == '/' ) {
-                ccmain_state().CppColumn += 2;
-                if( (rc = fputc( '/', cvars_state().CppFile )) != EOF ) {
-                    rc = fputc( '/', cvars_state().CppFile );
+        } else if( (rc = fputc( '\n', front.cvars.CppFile )) != EOF ) {
+            if( front.ccmain.CommentChar == '/' ) {
+                front.ccmain.CppColumn += 2;
+                if( (rc = fputc( '/', front.cvars.CppFile )) != EOF ) {
+                    rc = fputc( '/', front.cvars.CppFile );
                 }
             }
         }
         if( rc != EOF ) {
-            rc = fputc( ch, cvars_state().CppFile );
+            rc = fputc( ch, front.cvars.CppFile );
         }
     } else {
-        ++ccmain_state().CppColumn;
-        rc = fputc( ch, cvars_state().CppFile );
+        ++front.ccmain.CppColumn;
+        rc = fputc( ch, front.cvars.CppFile );
     }
     if( rc == EOF ) {
-        CloseFiles();       /* get rid of temp file */
-        MyExit( 1 );        /* exit */
+        CloseFiles(front);       /* get rid of temp file */
+        MyExit( front, 1 );        /* exit */
     }
 }
 
-void CppComment( int ch )
+void CppComment( FrontRun& front, int ch )
 {
-    if( cvars_state().CompFlags.cpp_keep_comments && CppPrinting() && cvars_state().CompFlags.cpp_output ) {
+    if( front.cvars.CompFlags.cpp_keep_comments && CppPrinting(front) && front.cvars.CompFlags.cpp_output ) {
         if( ch != '\0' ) {
-            if( ccmain_state().CppColumn + 2 >= ccmain_state().CppWidth )
-                CppPutc( '\n' );
-            CppPutc( '/' );
-            CppPutc( ch );
-        } else if( ccmain_state().CommentChar == '*' ) {
-            if( ccmain_state().CppColumn + 2 >= ccmain_state().CppWidth )
-                CppPutc( '\n' );
-            CppPutc( '*' );
-            CppPutc( '/' );
+            if( front.ccmain.CppColumn + 2 >= front.ccmain.CppWidth )
+                CppPutc( front, '\n' );
+            CppPutc( front, '/' );
+            CppPutc( front, ch );
+        } else if( front.ccmain.CommentChar == '*' ) {
+            if( front.ccmain.CppColumn + 2 >= front.ccmain.CppWidth )
+                CppPutc( front, '\n' );
+            CppPutc( front, '*' );
+            CppPutc( front, '/' );
 //        } else if( CommentChar == '/' ) {
 //            CppPutc( '\n' );
         }
-        ccmain_state().CommentChar = ch;
+        front.ccmain.CommentChar = ch;
     }
 }
 
-void CppPuts( const char *s )
+void CppPuts( FrontRun& front, const char *s )
 {
     while( *s != '\0' ) {
-        CppPutc( *s++ );
+        CppPutc( front, *s++ );
     }
 }
 
-void CppPutsQuoted( const char *s )
+void CppPutsQuoted( FrontRun& front, const char *s )
 {
-    CppPutc( '"' );
+    CppPutc( front, '"' );
     while( *s != '\0' ) {
-        CppPutc( *s++ );
+        CppPutc( front, *s++ );
     }
-    CppPutc( '"' );
+    CppPutc( front, '"' );
 }
 
-static void OpenCppFile( void )
+static void OpenCppFile( FrontRun& front )
 {
     char  *name = NULL;
 
-    if( cvars_state().CompFlags.cpp_output_to_file ) {
-        name = CppFileName();
-        cvars_state().CppFile = fopen( name, "w" );
+    if( front.cvars.CompFlags.cpp_output_to_file ) {
+        name = CppFileName(front);
+        front.cvars.CppFile = front.held->fopen( name, "w" );
     } else {
-        cvars_state().CppFile = stdout;
+        front.cvars.CppFile = stdout;
     }
-    ccmain_state().CppColumn = 0;
-    ccmain_state().CppFirstChar = true;
-    if( cvars_state().CppFile == NULL ) {
-        CantOpenFile( name );
-        MyExit( 1 );
+    front.ccmain.CppColumn = 0;
+    front.ccmain.CppFirstChar = true;
+    if( front.cvars.CppFile == NULL ) {
+        CantOpenFile( front, name );
+        MyExit( front, 1 );
     } else {
-        if( ccmain_state().CppWidth == 0 ) {
-            ccmain_state().CppWidth = ~0U;
+        if( front.ccmain.CppWidth == 0 ) {
+            front.ccmain.CppWidth = ~0U;
         }
-        if( cvars_state().CppFile != stdout ) {     /* (stdout outlives this run: it must not keep a buffer of the run's memory) */
-            setvbuf( cvars_state().CppFile, static_cast<char *>(CPermAlloc( 4096 )), _IOFBF, 4096 );
+        if( front.cvars.CppFile != stdout ) {     /* (stdout outlives this run: it must not keep a buffer of the run's memory) */
+            setvbuf( front.cvars.CppFile, static_cast<char *>(CPermAlloc( front, 4096 )), _IOFBF, 4096 );
         }
     }
 }
 
-char *GetSourceDepName( void )
+char *GetSourceDepName( FrontRun& front )
 {
     pgroup2     pg;
 
-    _splitpath2( cvars_state().WholeFName, pg.buffer, NULL, NULL, NULL, &pg.ext );
-    return( createFileName( cvars_state().SrcDepName, pg.ext, false ) );
+    _splitpath2( front.cvars.WholeFName, pg.buffer, NULL, NULL, NULL, &pg.ext );
+    return( createFileName( front, front.cvars.SrcDepName, pg.ext, false ) );
 }
 
 
-char *ObjFileName( void )
+char *ObjFileName( FrontRun& front )
 {
-    return( createFileName( cvars_state().ObjectFileName, OBJ_EXT, false ) );
+    return( createFileName( front, front.cvars.ObjectFileName, OBJ_EXT, false ) );
 }
 
-char *CppFileName( void )
+char *CppFileName( FrontRun& front )
 {
-    return( createFileName( cvars_state().ObjectFileName, CPP_EXT, false ) );
+    return( createFileName( front, front.cvars.ObjectFileName, CPP_EXT, false ) );
 }
 
-char *DepFileName( void )
+char *DepFileName( FrontRun& front )
 {
-    return( createFileName( cvars_state().DependFileName, DEP_EXT, false ) );
+    return( createFileName( front, front.cvars.DependFileName, DEP_EXT, false ) );
 }
 
-char *ErrFileName( void )
+char *ErrFileName( FrontRun& front )
 {
-    if( cvars_state().ErrorFileName == NULL )
+    if( front.cvars.ErrorFileName == NULL )
         return( NULL );
-    return( createFileName( cvars_state().ErrorFileName, ERR_EXT, false ) );
+    return( createFileName( front, front.cvars.ErrorFileName, ERR_EXT, false ) );
 }
 
-void CppPrtChar( int c )
+void CppPrtChar( FrontRun& front, int c )
 {
-    if( CppPrinting() && cvars_state().CompFlags.cpp_output ) {
-        CppPutc( c );
+    if( CppPrinting(front) && front.cvars.CompFlags.cpp_output ) {
+        CppPutc( front, c );
     }
 }
 
-void OpenDefFile( void )
+void OpenDefFile( FrontRun& front )
 {
     pgroup2     pg;
     char        name[_MAX_PATH];
 
-    if( cvars_state().DefFName == NULL ) {
-        _splitpath2( cvars_state().SrcFName, pg.buffer, NULL, NULL, &pg.fname, NULL );
+    if( front.cvars.DefFName == NULL ) {
+        _splitpath2( front.cvars.SrcFName, pg.buffer, NULL, NULL, &pg.fname, NULL );
         _makepath( name, NULL, NULL, pg.fname, DEF_EXT );
-        cvars_state().DefFile = fopen( name, "w" );
+        front.cvars.DefFile = front.held->fopen( name, "w" );
     } else {
-        cvars_state().DefFile = fopen( cvars_state().DefFName, "w" );
+        front.cvars.DefFile = front.held->fopen( front.cvars.DefFName, "w" );
     }
-    if( cvars_state().DefFile != NULL ) {
-        setvbuf( cvars_state().DefFile, static_cast<char *>(CPermAlloc( 1024 )), _IOFBF, 1024 );
+    if( front.cvars.DefFile != NULL ) {
+        setvbuf( front.cvars.DefFile, static_cast<char *>(CPermAlloc( front, 1024 )), _IOFBF, 1024 );
     }
 }
 
-FILE *OpenBrowseFile( void )
+FILE *OpenBrowseFile( FrontRun& front )
 {
     pgroup2     pg;
     char        name[_MAX_PATH];
     FILE        *mbr_file;
 
-    if( cvars_state().CompFlags.cpp_output_to_file ) {
-        strcpy( name, createFileName( cvars_state().ObjectFileName, MBR_EXT, true ) );
+    if( front.cvars.CompFlags.cpp_output_to_file ) {
+        strcpy( name, createFileName( front, front.cvars.ObjectFileName, MBR_EXT, true ) );
     } else {
-        _splitpath2( cvars_state().SrcFName, pg.buffer, NULL, NULL, &pg.fname, NULL );
+        _splitpath2( front.cvars.SrcFName, pg.buffer, NULL, NULL, &pg.fname, NULL );
         _makepath( name, NULL, NULL, pg.fname, MBR_EXT );
     }
-    mbr_file = fopen( name, "wb" );
+    mbr_file = front.held->fopen( name, "wb" );
     if( mbr_file == NULL ) {
-        CantOpenFile( name );
+        CantOpenFile( front, name );
     }
     return( mbr_file );
 }
 
-void CloseSrcFile( FCB *fcb )
+void CloseSrcFile( FrontRun& front, FCB *fcb )
 {
     if( fcb->fp != NULL && fcb->fp != stdin )
-        fclose( fcb->fp );
-    CloseFCB( fcb );
+        front.held->fclose( fcb->fp );
+    CloseFCB( front, fcb );
 }
 
-static bool FreeSrcFP( void )
+static bool FreeSrcFP( FrontRun& front )
 /***************************/
 {
     FCB     *fcb;
@@ -598,7 +590,7 @@ static bool FreeSrcFP( void )
     bool    ret;
 
     ret = false;
-    for( fcb = cvars_state().SrcFiles; fcb != NULL; fcb = nextfcb ) {
+    for( fcb = front.cvars.SrcFiles; fcb != NULL; fcb = nextfcb ) {
         nextfcb = fcb->prev_file;
         if( nextfcb == NULL || nextfcb->fp == NULL ) {
             break;
@@ -607,7 +599,7 @@ static bool FreeSrcFP( void )
     if( fcb != NULL && fcb->fp != NULL ) {
         fcb->rseekpos = ftell( fcb->fp );
         if( fcb->fp != NULL && fcb->fp != stdin )
-            fclose( fcb->fp );
+            front.held->fclose( fcb->fp );
         fcb->fp = NULL;
         ret = true;
     }
@@ -615,14 +607,14 @@ static bool FreeSrcFP( void )
 }
 
 
-static FNAMEPTR FindFlist( char const *filename )
+static FNAMEPTR FindFlist( FrontRun& front, char const *filename )
 /************************************************
  * find a flist
  */
 {
     FNAMEPTR    flist;
 
-    for( flist = cvars_state().FNames; flist != NULL; flist = flist->next ) {
+    for( flist = front.cvars.FNames; flist != NULL; flist = flist->next ) {
         if( FNAMECMPSTR( filename, flist->name ) == 0 ) {
             break;
         }
@@ -630,7 +622,7 @@ static FNAMEPTR FindFlist( char const *filename )
     return( flist );
 }
 
-static bool IsFNameOnce( char const *filename )
+static bool IsFNameOnce( FrontRun& front, char const *filename )
 {
     FNAMEPTR    flist;
     char        fullfilename[_MAX_PATH];
@@ -639,7 +631,7 @@ static bool IsFNameOnce( char const *filename )
     fullpath = SrcFullPath( filename, fullfilename, sizeof( fullfilename ) );
     if( fullpath == NULL )
         return( false );
-    for( flist = cvars_state().FNames; flist != NULL; flist = flist->next ) {
+    for( flist = front.cvars.FNames; flist != NULL; flist = flist->next ) {
         if( flist->fullpath != NULL ) {
             if( FNAMECMPSTR( fullpath, flist->fullpath ) == 0 ) {
                 break;
@@ -651,7 +643,7 @@ static bool IsFNameOnce( char const *filename )
     return( flist->once );
 }
 
-static bool TryOpen( const char *path, pgroup2 *ff, src_file_type typ )
+static bool TryOpen( FrontRun& front, const char *path, pgroup2 *ff, src_file_type typ )
 {
     FILE        *fp;
     char        filename[_MAX_PATH];
@@ -673,13 +665,13 @@ static bool TryOpen( const char *path, pgroup2 *ff, src_file_type typ )
     }
     strcpy( p, ff->dir );
     _makepath( filename, ( fd.drive[0] == '\0' ) ? ff->drive : fd.drive, fd.dir, ff->fname, ff->ext );
-    if( IsFNameOnce( filename ) ) {
+    if( IsFNameOnce( front, filename ) ) {
         return( true );
     }
-    for( ; (fp = fopen( filename, "rb" )) == NULL; ) {
+    for( ; (fp = front.held->fopen( filename, "rb" )) == NULL; ) {
         if( errno != ENOMEM && errno != ENFILE && errno != EMFILE )
             break;
-        if( !FreeSrcFP() ) {        // try closing an include file
+        if( !FreeSrcFP(front) ) {        // try closing an include file
             break;
         }
     }
@@ -694,20 +686,20 @@ static bool TryOpen( const char *path, pgroup2 *ff, src_file_type typ )
         }
     }
 #endif
-    if( OpenFCB( fp, filename, typ ) ) {
-        if( cvars_state().CompFlags.cpp_mode ) {
-            if( cvars_state().CppFile == NULL )
-                OpenCppFile();
-            CppEmitPoundLine( 1, filename, true );
-            ccmain_state().CppFirstChar = true;
+    if( OpenFCB( front, fp, filename, typ ) ) {
+        if( front.cvars.CompFlags.cpp_mode ) {
+            if( front.cvars.CppFile == NULL )
+                OpenCppFile(front);
+            CppEmitPoundLine( front, 1, filename, true );
+            front.ccmain.CppFirstChar = true;
         }
         return( true );
     }
-    fclose( fp );
+    front.held->fclose( fp );
     return( false );
 }
 
-FNAMEPTR AddFlist( char const *filename )
+FNAMEPTR AddFlist( FrontRun& front, char const *filename )
 {
     FNAMEPTR    flist;
     FNAMEPTR    *lnk;
@@ -717,20 +709,20 @@ FNAMEPTR AddFlist( char const *filename )
     struct stat statbuf;
 
     index = 0;
-    for( lnk = &cvars_state().FNames; (flist = *lnk) != NULL; lnk = &flist->next ) {
+    for( lnk = &front.cvars.FNames; (flist = *lnk) != NULL; lnk = &flist->next ) {
         if( FNAMECMPSTR( filename, flist->name ) == 0 )
             break;
         index++;
     }
     if( flist == NULL ) {
         len1 = strlen( filename ) + 1;
-        if( HAS_PATH( filename ) || cvars_state().DependHeaderPath == NULL ) {
+        if( HAS_PATH( filename ) || front.cvars.DependHeaderPath == NULL ) {
             len2 = 0;
-            flist = (FNAMEPTR)CMemAlloc( offsetof( fname_list, name ) + len1 );
+            flist = (FNAMEPTR)CMemAlloc( front, offsetof( fname_list, name ) + len1 );
         } else {
-            len2 = strlen( cvars_state().DependHeaderPath );
-            flist = (FNAMEPTR)CMemAlloc( offsetof( fname_list, name ) + len2 + len1 );
-            strcpy( flist->name, cvars_state().DependHeaderPath );
+            len2 = strlen( front.cvars.DependHeaderPath );
+            flist = (FNAMEPTR)CMemAlloc( front, offsetof( fname_list, name ) + len2 + len1 );
+            strcpy( flist->name, front.cvars.DependHeaderPath );
         }
         strcpy( flist->name + len2, filename );
         *lnk = flist;
@@ -748,11 +740,11 @@ FNAMEPTR AddFlist( char const *filename )
     return( flist );
 }
 
-FNAMEPTR FileIndexToFName( unsigned file_index )
+FNAMEPTR FileIndexToFName( FrontRun& front, unsigned file_index )
 {
     FNAMEPTR    flist;
 
-    for( flist = cvars_state().FNames; flist != NULL; flist = flist->next ) {
+    for( flist = front.cvars.FNames; flist != NULL; flist = flist->next ) {
         if( flist->index == file_index ) {
             break;
         }
@@ -760,7 +752,7 @@ FNAMEPTR FileIndexToFName( unsigned file_index )
     return( flist );
 }
 
-char *FNameFullPath( FNAMEPTR flist )
+char *FNameFullPath( FrontRun& front, FNAMEPTR flist )
 {
     char   fullbuff[2 * _MAX_PATH];
     char   *fullpath;
@@ -768,7 +760,7 @@ char *FNameFullPath( FNAMEPTR flist )
     if( flist->fullpath == NULL ) {
         fullpath = SrcFullPath( flist->name, fullbuff, sizeof( fullbuff ) );
         if( fullpath != NULL ) {
-            fullpath = CMemStrdup( fullpath );
+            fullpath = CMemStrdup( front, fullpath );
             flist->fullpath = fullpath;
         } else {
             fullpath = flist->name;
@@ -779,80 +771,80 @@ char *FNameFullPath( FNAMEPTR flist )
     return( fullpath );
 }
 
-char *FileIndexToCorrectName( unsigned file_index )
+char *FileIndexToCorrectName( FrontRun& front, unsigned file_index )
 {
     FNAMEPTR    flist;
     char        *name;
 
-    if( NULL == (flist = FileIndexToFName( file_index )) )
+    if( NULL == (flist = FileIndexToFName( front, file_index )) )
         return( NULL );
-    if( cvars_state().CompFlags.ef_switch_used ) {
-        name = FNameFullPath( flist );
+    if( front.cvars.CompFlags.ef_switch_used ) {
+        name = FNameFullPath( front, flist );
     } else {
         name = flist->name;
     }
     return( name );
 }
 
-void FreeFNames( void )
+void FreeFNames( FrontRun& front )
 {
     FNAMEPTR    flist;
 
-    while( (flist = cvars_state().FNames) != NULL ) {
-        cvars_state().FNames = flist->next;
+    while( (flist = front.cvars.FNames) != NULL ) {
+        front.cvars.FNames = flist->next;
         if( flist->fullpath != NULL ) {
-            CMemFree( flist->fullpath );
+            CMemFree( front, flist->fullpath );
         }
-        CMemFree( flist );
+        CMemFree( front, flist );
     }
 }
 
-void AddIncFile( INCFILE *ifile )
+void AddIncFile( FrontRun& front, INCFILE *ifile )
 {
     INCFILE     *ifilep;
 
     ifile->nextfile = NULL;
-    if( cvars_state().IncFileList == NULL ) {
-        cvars_state().IncFileList = ifile;
+    if( front.cvars.IncFileList == NULL ) {
+        front.cvars.IncFileList = ifile;
     } else {
-        ifilep = cvars_state().IncFileList;
+        ifilep = front.cvars.IncFileList;
         while( ifilep->nextfile != NULL )
             ifilep = ifilep->nextfile;
         ifilep->nextfile = ifile;
     }
 }
 
-void AddIncFileList( const char *filename )
+void AddIncFileList( FrontRun& front, const char *filename )
 {
     INCFILE     *ifile;
 
-    ifile = (INCFILE *)CMemAlloc( offsetof( INCFILE, filename ) + strlen( filename ) + 1 );
+    ifile = (INCFILE *)CMemAlloc( front, offsetof( INCFILE, filename ) + strlen( filename ) + 1 );
     strcpy( ifile->filename, filename );
-    AddIncFile( ifile );
+    AddIncFile( front, ifile );
 }
 
-void FreeIncFileList( void )
+void FreeIncFileList( FrontRun& front )
 {
     INCFILE *ilist;
 
-    while( (ilist = cvars_state().IncFileList) != NULL ) {
-        cvars_state().IncFileList = ilist->nextfile;
-        CMemFree( ilist );
+    while( (ilist = front.cvars.IncFileList) != NULL ) {
+        front.cvars.IncFileList = ilist->nextfile;
+        CMemFree( front, ilist );
     }
 }
 
-static RDIRPTR AddRDir( const char *path )
+static RDIRPTR AddRDir( FrontRun& front, const char *path )
 {
     RDIRPTR     dirlist;
     RDIRPTR     *lnk;
 
-    for( lnk = &cvars_state().RDirNames; (dirlist = *lnk) != NULL; lnk = &dirlist->next ) {
+    for( lnk = &front.cvars.RDirNames; (dirlist = *lnk) != NULL; lnk = &dirlist->next ) {
         if( stricmp( path, dirlist->name ) == 0 ) {
             break;
         }
     }
     if( dirlist == NULL ) {
-        dirlist = (RDIRPTR)CMemAlloc( offsetof( rdir_list, name ) + strlen( path ) + 1 );
+        dirlist = (RDIRPTR)CMemAlloc( front, offsetof( rdir_list, name ) + strlen( path ) + 1 );
         dirlist->next = NULL;
         strcpy( dirlist->name, path );
         *lnk = dirlist;
@@ -860,17 +852,17 @@ static RDIRPTR AddRDir( const char *path )
     return( dirlist );
 }
 
-void FreeRDir( void )
+void FreeRDir( FrontRun& front )
 {
     RDIRPTR    dirlist;
 
-    while( (dirlist = cvars_state().RDirNames) != NULL ) {
-        cvars_state().RDirNames = dirlist->next;
-        CMemFree( dirlist );
+    while( (dirlist = front.cvars.RDirNames) != NULL ) {
+        front.cvars.RDirNames = dirlist->next;
+        CMemFree( front, dirlist );
     }
 }
 
-void SrcFileReadOnlyDir( char const *dirs )
+void SrcFileReadOnlyDir( FrontRun& front, char const *dirs )
 /******************************************
  * add dir to ro set
  */
@@ -884,19 +876,19 @@ void SrcFileReadOnlyDir( char const *dirs )
         dirs = GetPathElement( dirs, NULL, &p );
         *p = '\0';
         full = SrcFullPath( path, buff, sizeof( buff ) );
-        AddRDir( full );
+        AddRDir( front, full );
     }
 }
 
-bool SrcFileInRDir( FNAMEPTR flist )
+bool SrcFileInRDir( FrontRun& front, FNAMEPTR flist )
 {
     RDIRPTR     dirlist;
     bool        read_only;      // - true ==> file is in read-only directory
     char        *fullpath;      // - full path
 
     read_only = false;
-    fullpath = FNameFullPath( flist );
-    for( dirlist = cvars_state().RDirNames; dirlist != NULL; dirlist = dirlist->next ) {
+    fullpath = FNameFullPath( front, flist );
+    for( dirlist = front.cvars.RDirNames; dirlist != NULL; dirlist = dirlist->next ) {
         if( strnicmp( dirlist->name, fullpath, strlen( dirlist->name ) ) == 0 ) {
             read_only = true;
             break;
@@ -905,237 +897,237 @@ bool SrcFileInRDir( FNAMEPTR flist )
     return( read_only );
 }
 
-void SrcFileReadOnlyFile( char const *file )
+void SrcFileReadOnlyFile( FrontRun& front, char const *file )
 {
     FNAMEPTR    flist;
 
     if( file == NULL ) {
-        flist = cvars_state().SrcFiles->src_flist;
+        flist = front.cvars.SrcFiles->src_flist;
     } else {
-        flist= FindFlist( file );
+        flist= FindFlist( front, file );
     }
     if( flist  != NULL ) {
         flist->rwflag = false;
     }
 }
 
-void SrcFileIncludeAlias( const char *alias_name, const char *real_name, bool is_lib )
+void SrcFileIncludeAlias( FrontRun& front, const char *alias_name, const char *real_name, bool is_lib )
 {
-    AddIAlias( alias_name, real_name, is_lib );
+    AddIAlias( front, alias_name, real_name, is_lib );
 }
 
-void SetSrcFNameOnce( void )
+void SetSrcFNameOnce( FrontRun& front )
 {
-    cvars_state().SrcFiles->src_flist->once = true;
+    front.cvars.SrcFiles->src_flist->once = true;
 }
 
-static void ParseInit( void )
+static void ParseInit( FrontRun& front )
 {
     const char  *force;
 
-    ScanInit();
-    CTypeInit();
-    MacroInit();
-    SymInit();
-    SpcSymInit();
-    StringInit();
-    InitDataQuads();
-    ExprInit();
-    StmtInit();
-    SegInit();
-    force = FEGetEnv( "FORCE" );
+    ScanInit(front);
+    CTypeInit(front);
+    MacroInit(front);
+    SymInit(front);
+    SpcSymInit(front);
+    StringInit(front);
+    InitDataQuads(front);
+    ExprInit(front);
+    StmtInit(front);
+    SegInit(front);
+    force = FEGetEnv( front, "FORCE" );
     if( force != NULL ) {
-        cvars_state().ForceInclude = CMemStrdup( force );
+        front.cvars.ForceInclude = CMemStrdup( front, force );
     }
-    cvars_state().ForcePreInclude = CMemStrdup( "_preincl.h" );
+    front.cvars.ForcePreInclude = CMemStrdup( front, "_preincl.h" );
 }
 
-static bool OpenPgmFile( void )
+static bool OpenPgmFile( FrontRun& front )
 {
-    if( ccmain_state().IsStdIn ) {
-        if( OpenFCB( stdin, STDIN_NAME, FT_SRC ) ) {
-            if( cvars_state().CompFlags.cpp_mode ) {
-                if( cvars_state().CppFile == NULL )
-                    OpenCppFile();
-                CppEmitPoundLine( 1, STDIN_NAME, true );
-                ccmain_state().CppFirstChar = true;
+    if( front.ccmain.IsStdIn ) {
+        if( OpenFCB( front, stdin, STDIN_NAME, FT_SRC ) ) {
+            if( front.cvars.CompFlags.cpp_mode ) {
+                if( front.cvars.CppFile == NULL )
+                    OpenCppFile(front);
+                CppEmitPoundLine( front, 1, STDIN_NAME, true );
+                front.ccmain.CppFirstChar = true;
             }
-            cvars_state().MainSrcFile = cvars_state().SrcFiles;
+            front.cvars.MainSrcFile = front.cvars.SrcFiles;
             return( true );
         }
         return( false );
     }
-    if( ccmain_state().IsNullDev ) {
-        if( OpenFCB( NULL, NULLDEV_NAME, FT_SRC ) ) {
-            if( cvars_state().CompFlags.cpp_mode ) {
-                if( cvars_state().CppFile == NULL )
-                    OpenCppFile();
-                CppEmitPoundLine( 1, NULLDEV_NAME, true );
-                ccmain_state().CppFirstChar = true;
+    if( front.ccmain.IsNullDev ) {
+        if( OpenFCB( front, NULL, NULLDEV_NAME, FT_SRC ) ) {
+            if( front.cvars.CompFlags.cpp_mode ) {
+                if( front.cvars.CppFile == NULL )
+                    OpenCppFile(front);
+                CppEmitPoundLine( front, 1, NULLDEV_NAME, true );
+                front.ccmain.CppFirstChar = true;
             }
-            cvars_state().MainSrcFile = cvars_state().SrcFiles;
+            front.cvars.MainSrcFile = front.cvars.SrcFiles;
             return( true );
         }
         return( false );
     }
-    if( !OpenSrcFile( cvars_state().WholeFName, FT_SRC ) ) {
-        CantOpenFile( cvars_state().WholeFName );
-        CSuicide();
+    if( !OpenSrcFile( front, front.cvars.WholeFName, FT_SRC ) ) {
+        CantOpenFile( front, front.cvars.WholeFName );
+        CSuicide(front);
         return( false );
     }
 #if _CPU == 370
     SrcFiles->column = Column;
     SrcFiles->trunc = Trunc;
 #endif
-    cvars_state().MainSrcFile = cvars_state().SrcFiles;
+    front.cvars.MainSrcFile = front.cvars.SrcFiles;
     return( true );
 }
 
 
-static void Parse( void )
+static void Parse( FrontRun& front )
 {
-    EmitInit();
+    EmitInit(front);
     /*
      * The first token in a file should be #include if a user wants to
      * use pre-compiled headers. The following call to NextToken() to
      * get the very first token of the file will load the pre-compiled
      * header if the user requested such and it is a #include directive.
      */
-    if( cvars_state().ForceInclude != NULL ) {
-        if( !OpenSrcFile( cvars_state().ForceInclude, FT_HEADER_FORCED ) ) {
-            PrtfFilenameErr( cvars_state().ForceInclude, FT_HEADER_FORCED, true );
+    if( front.cvars.ForceInclude != NULL ) {
+        if( !OpenSrcFile( front, front.cvars.ForceInclude, FT_HEADER_FORCED ) ) {
+            PrtfFilenameErr( front, front.cvars.ForceInclude, FT_HEADER_FORCED, true );
         }
     }
-    if( cvars_state().ForcePreInclude != NULL ) {
-        openForcePreInclude();
+    if( front.cvars.ForcePreInclude != NULL ) {
+        openForcePreInclude(front);
     }
-    cvars_state().CompFlags.ok_to_use_precompiled_hdr = true;
-    NextToken();
+    front.cvars.CompFlags.ok_to_use_precompiled_hdr = true;
+    NextToken(front);
     /*
      * If we didn't get a #include with the above call to NextToken()
      * it's too late to use pre-compiled header now.
      */
-    cvars_state().CompFlags.ok_to_use_precompiled_hdr = false;
-    ParsePgm();
-    if( cvars_state().DefFile != NULL ) {
-        fclose( cvars_state().DefFile );
-        cvars_state().DefFile = NULL;
+    front.cvars.CompFlags.ok_to_use_precompiled_hdr = false;
+    ParsePgm(front);
+    if( front.cvars.DefFile != NULL ) {
+        front.held->fclose( front.cvars.DefFile );
+        front.cvars.DefFile = NULL;
     }
-    CheckCallParms();
-    EndBlock();     /* end of block 0 */
-    MacroFini();
+    CheckCallParms(front);
+    EndBlock(front);     /* end of block 0 */
+    MacroFini(front);
 }
 
-static void CPP_Parse( void )
+static void CPP_Parse( FrontRun& front )
 {
-    if( cvars_state().ForceInclude != NULL ) {
-        CppPrtChar( '\n' );
-        if( !OpenSrcFile( cvars_state().ForceInclude, FT_HEADER_FORCED ) ) {
-            PrtfFilenameErr( cvars_state().ForceInclude, FT_HEADER_FORCED, true );
+    if( front.cvars.ForceInclude != NULL ) {
+        CppPrtChar( front, '\n' );
+        if( !OpenSrcFile( front, front.cvars.ForceInclude, FT_HEADER_FORCED ) ) {
+            PrtfFilenameErr( front, front.cvars.ForceInclude, FT_HEADER_FORCED, true );
         }
     }
-    cvars_state().CurToken = T_NULL;
-    while( cvars_state().CurToken != T_EOF ) {
-        cvars_state().CurToken = GetNextToken();
-        CppPrtToken( cvars_state().CurToken );
+    front.cvars.CurToken = T_NULL;
+    while( front.cvars.CurToken != T_EOF ) {
+        front.cvars.CurToken = GetNextToken(front);
+        CppPrtToken( front, front.cvars.CurToken );
     }
-    MacroFini();
+    MacroFini(front);
 }
 
-static void DoCCompile( char **cmdline )
+static void DoCCompile( FrontRun& front, char **cmdline )
 /**************************************/
 {
     jmp_buf     env;
 
-    cvars_state().Environment = JMPBUF_PTR( env );
+    front.cvars.Environment = JMPBUF_PTR( env );
     if( setjmp( env ) ) {           /* if fatal error has occurred */
         EmitAbort();                /* abort code generator */
-        CPragmaFini();
-        CloseFiles();
-        FreeFNames();
-        FreeRDir();
-        FreeIAlias();
-        cvars_state().ErrCount = 1;
-        MyExit( 1 );
+        CPragmaFini(front);
+        CloseFiles(front);
+        FreeFNames(front);
+        FreeRDir(front);
+        FreeIAlias(front);
+        front.cvars.ErrCount = 1;
+        MyExit( front, 1 );
     }
-    ParseInit();
-    if( ParseCmdLine( cmdline ) ) {
-        if( cvars_state().CompFlags.cpp_dump_macros ) {
-            if( cvars_state().CppFile == NULL )
-                OpenCppFile();
-            DumpAllMacros();
-            MacroFini();
-        } else if( cvars_state().WholeFName == NULL ) {
-            CErr1( ERR_FILENAME_REQUIRED );
+    ParseInit(front);
+    if( ParseCmdLine( front, cmdline ) ) {
+        if( front.cvars.CompFlags.cpp_dump_macros ) {
+            if( front.cvars.CppFile == NULL )
+                OpenCppFile(front);
+            DumpAllMacros(front);
+            MacroFini(front);
+        } else if( front.cvars.WholeFName == NULL ) {
+            CErr1( front, ERR_FILENAME_REQUIRED );
             return;
         } else {
-            MakePgmName();
-            DelErrFile();               /* delete old error file */
-            CPragmaInit();              /* memory model is known now */
+            MakePgmName(front);
+            DelErrFile(front);               /* delete old error file */
+            CPragmaInit(front);              /* memory model is known now */
 #if _CPU == 370
             ParseAuxFile();
 #endif
-            if( cvars_state().CompFlags.cpp_mode ) {
-                cvars_state().PrintWhiteSpace = true;
-                if( cvars_state().ForcePreInclude != NULL ) {
-                    if( cvars_state().CppFile == NULL )
-                        OpenCppFile();
-                    cvars_state().CompFlags.cpp_output = false;
-                    if( openForcePreInclude() ) {
-                        cvars_state().CurToken = T_NULL;
-                        while( cvars_state().CurToken != T_EOF ) {
-                            cvars_state().CurToken = GetNextToken();
+            if( front.cvars.CompFlags.cpp_mode ) {
+                front.cvars.PrintWhiteSpace = true;
+                if( front.cvars.ForcePreInclude != NULL ) {
+                    if( front.cvars.CppFile == NULL )
+                        OpenCppFile(front);
+                    front.cvars.CompFlags.cpp_output = false;
+                    if( openForcePreInclude(front) ) {
+                        front.cvars.CurToken = T_NULL;
+                        while( front.cvars.CurToken != T_EOF ) {
+                            front.cvars.CurToken = GetNextToken(front);
                         }
                     }
-                    cvars_state().CompFlags.cpp_output = true;
+                    front.cvars.CompFlags.cpp_output = true;
                 }
-                OpenPgmFile();
-                CPP_Parse();
-                if( !cvars_state().CompFlags.quiet_mode ) {
-                    PrintStats();
+                OpenPgmFile(front);
+                CPP_Parse(front);
+                if( !front.cvars.CompFlags.quiet_mode ) {
+                    PrintStats(front);
                 }
-                if( cvars_state().CompFlags.warnings_cause_bad_exit ) {
-                    cvars_state().ErrCount += cvars_state().WngCount;
+                if( front.cvars.CompFlags.warnings_cause_bad_exit ) {
+                    front.cvars.ErrCount += front.cvars.WngCount;
                 }
             } else {
-                OpenPgmFile();
-                MacroAddComp(); // Add any compile time only macros
-                Parse();
-                if( !cvars_state().CompFlags.quiet_mode ) {
-                    PrintStats();
+                OpenPgmFile(front);
+                MacroAddComp(front); // Add any compile time only macros
+                Parse(front);
+                if( !front.cvars.CompFlags.quiet_mode ) {
+                    PrintStats(front);
                 }
-                if( cvars_state().CompFlags.warnings_cause_bad_exit ) {
-                    cvars_state().ErrCount += cvars_state().WngCount;
+                if( front.cvars.CompFlags.warnings_cause_bad_exit ) {
+                    front.cvars.ErrCount += front.cvars.WngCount;
                 }
-                if( ( cvars_state().ErrCount == 0 ) && ( !cvars_state().CompFlags.check_syntax ) ) {
-                    if( cvars_state().CompFlags.emit_browser_info ) {
-                        DwarfBrowseEmit();
+                if( ( front.cvars.ErrCount == 0 ) && ( !front.cvars.CompFlags.check_syntax ) ) {
+                    if( front.cvars.CompFlags.emit_browser_info ) {
+                        DwarfBrowseEmit(front);
                     }
-                    FreeMacroSegments();
-                    DoCompile();
+                    FreeMacroSegments(front);
+                    DoCompile(front);
                 } else {
-                    FreeMacroSegments();
+                    FreeMacroSegments(front);
                 }
             }
-            if( cvars_state().ErrCount == 0 ) {
-                DumpDepFile();
+            if( front.cvars.ErrCount == 0 ) {
+                DumpDepFile(front);
             } else {
-                DelDepFile();
+                DelDepFile(front);
             }
-            SymFini();
-            CPragmaFini();
+            SymFini(front);
+            CPragmaFini(front);
         }
     } else {
-        cvars_state().ErrCount = 1;
+        front.cvars.ErrCount = 1;
     }
-    CloseFiles();
-    FreeFNames();
-    FreeRDir();
-    FreeIAlias();
-    FreeIncFileList();
+    CloseFiles(front);
+    FreeFNames(front);
+    FreeRDir(front);
+    FreeIAlias(front);
+    FreeIncFileList(front);
 }
 
-static bool try_open_file( const char *path, pgroup2 *fp, pgroup2 *fa, src_file_type typ )
+static bool try_open_file( FrontRun& front, const char *path, pgroup2 *fp, pgroup2 *fa, src_file_type typ )
 {
     bool    ok;
     char    save_chr_fname;
@@ -1144,7 +1136,7 @@ static bool try_open_file( const char *path, pgroup2 *fp, pgroup2 *fa, src_file_
     /*
      * try to open regular name
      */
-    ok = TryOpen( path, fp, typ );
+    ok = TryOpen( front, path, fp, typ );
     if( ok ) {
         return( ok );
     }
@@ -1152,12 +1144,12 @@ static bool try_open_file( const char *path, pgroup2 *fp, pgroup2 *fa, src_file_
         /*
          * try to open alias name if defined
          */
-        ok = TryOpen( path, fa, typ );
+        ok = TryOpen( front, path, fa, typ );
         if( ok ) {
             return( ok );
         }
     }
-    if( cvars_state().CompFlags.check_truncated_fnames ) {
+    if( front.cvars.CompFlags.check_truncated_fnames ) {
         save_chr_fname = '\0';
         if( strlen( fp->fname ) > 8 ) {
             save_chr_fname = fp->fname[8];
@@ -1172,7 +1164,7 @@ static bool try_open_file( const char *path, pgroup2 *fp, pgroup2 *fa, src_file_
             /*
              * try to open truncated name if enabled
              */
-            ok = TryOpen( path, fp, typ );
+            ok = TryOpen( front, path, fp, typ );
             if( !ok ) {
                 if( save_chr_fname != '\0' ) {
                     fp->fname[8] = save_chr_fname;
@@ -1186,7 +1178,7 @@ static bool try_open_file( const char *path, pgroup2 *fp, pgroup2 *fa, src_file_
     return( ok );
 }
 
-static bool doOpenSrcFile( pgroup2 *fp, pgroup2 *fa, src_file_type typ )
+static bool doOpenSrcFile( FrontRun& front, pgroup2 *fp, pgroup2 *fa, src_file_type typ )
 {
     char        *s;
     char        *p;
@@ -1196,10 +1188,10 @@ static bool doOpenSrcFile( pgroup2 *fp, pgroup2 *fa, src_file_type typ )
     pgroup2     fd;
 
     if( typ == FT_SRC ) {
-        if( try_open_file( "", fp, NULL, typ ) )
+        if( try_open_file( front, "", fp, NULL, typ ) )
             return( true );
-        if( !cvars_state().CompFlags.ignore_default_dirs ) {
-            if( try_open_file( C_PATH, fp, NULL, typ ) ) {
+        if( !front.cvars.CompFlags.ignore_default_dirs ) {
+            if( try_open_file( front, C_PATH, fp, NULL, typ ) ) {
                 return( true );
             }
         }
@@ -1210,7 +1202,7 @@ static bool doOpenSrcFile( pgroup2 *fp, pgroup2 *fa, src_file_type typ )
          * try absolute path
          * if drive letter given or path from root given
          */
-        if( try_open_file( "", fp, fa, typ ) ) {
+        if( try_open_file( front, "", fp, fa, typ ) ) {
             return( true );
         }
     } else {
@@ -1220,39 +1212,39 @@ static bool doOpenSrcFile( pgroup2 *fp, pgroup2 *fa, src_file_type typ )
             break;
         case FT_HEADER:
         case FT_HEADER_FORCED:
-            if( cvars_state().CompFlags.ignore_default_dirs ) {
+            if( front.cvars.CompFlags.ignore_default_dirs ) {
                 try_[0] = '\0';
                 /*
                  * physical file name must be used, not logical
                  */
-                _splitpath2( cvars_state().SrcFiles->src_flist->name, fd.buffer, &fd.drive, &fd.dir, NULL, NULL );
+                _splitpath2( front.cvars.SrcFiles->src_flist->name, fd.buffer, &fd.drive, &fd.dir, NULL, NULL );
                 _makepath( try_, fd.drive, fd.dir, NULL, NULL );
-                if( try_open_file( try_, fp, fa, typ ) ) {
+                if( try_open_file( front, try_, fp, fa, typ ) ) {
                     return( true );
                 }
             } else {
                 /*
                  * try current directory
                  */
-                if( !cvars_state().GlobalCompFlags.ignore_current_dir ) {
-                    if( try_open_file( "", fp, fa, typ ) ) {
+                if( !front.cvars.GlobalCompFlags.ignore_current_dir ) {
+                    if( try_open_file( front, "", fp, fa, typ ) ) {
                         return( true );
                     }
                 }
-                for( fcb = cvars_state().SrcFiles; fcb!= NULL; fcb = fcb->prev_file ) {
+                for( fcb = front.cvars.SrcFiles; fcb!= NULL; fcb = fcb->prev_file ) {
                     /*
                      * physical file name must be used, not logical
                      */
                     _splitpath2( fcb->src_flist->name, fd.buffer, &fd.drive, &fd.dir, NULL, NULL );
                     _makepath( try_, fd.drive, fd.dir, NULL, NULL );
-                    if( try_open_file( try_, fp, fa, typ ) ) {
+                    if( try_open_file( front, try_, fp, fa, typ ) ) {
                         return( true );
                     }
                 }
             }
             break;
         }
-        s = cvars_state().IncPathList;
+        s = front.cvars.IncPathList;
         while( (c = *s) != '\0' ) {
             p = fd.buffer;
             do {
@@ -1268,7 +1260,7 @@ static bool doOpenSrcFile( pgroup2 *fp, pgroup2 *fa, src_file_type typ )
                 }
             }
             *p = '\0';
-            if( try_open_file( fd.buffer, fp, fa, typ ) ) {
+            if( try_open_file( front, fd.buffer, fp, fa, typ ) ) {
                 return( true );
             }
         }
@@ -1278,11 +1270,11 @@ static bool doOpenSrcFile( pgroup2 *fp, pgroup2 *fa, src_file_type typ )
             break;
         case FT_HEADER:
         case FT_HEADER_FORCED:
-            if( !cvars_state().CompFlags.ignore_default_dirs ) {
+            if( !front.cvars.CompFlags.ignore_default_dirs ) {
                 /*
                  * try current ../h directory
                  */
-                if( try_open_file( H_PATH, fp, fa, typ ) ) {
+                if( try_open_file( front, H_PATH, fp, fa, typ ) ) {
                     return( true );
                 }
             }
@@ -1308,7 +1300,7 @@ static void normalizeSep( char *dir )
     }
 }
 
-bool OpenSrcFile( const char *filename, src_file_type typ )
+bool OpenSrcFile( FrontRun& front, const char *filename, src_file_type typ )
 {
     const char  *alias_filename;
     pgroup2     fp;
@@ -1328,7 +1320,7 @@ bool OpenSrcFile( const char *filename, src_file_type typ )
         /*
          * See if there's an alias for this filename
          */
-        alias_filename = IncludeAlias( filename, ( typ == FT_LIBRARY || typ == FT_HEADER_PRE ) );
+        alias_filename = IncludeAlias( front, filename, ( typ == FT_LIBRARY || typ == FT_HEADER_PRE ) );
         if( alias_filename != NULL ) {
             _splitpath2( alias_filename, fa.buffer, &fa.drive, &fa.dir, &fa.fname, &fa.ext );
             normalizeSep( fa.dir );
@@ -1336,121 +1328,121 @@ bool OpenSrcFile( const char *filename, src_file_type typ )
         }
         break;
     }
-    return( doOpenSrcFile( &fp, fap, typ ) );
+    return( doOpenSrcFile( front, &fp, fap, typ ) );
 }
 
 
-void CppEmitPoundLine( unsigned line_num, const char *filename, bool newline )
+void CppEmitPoundLine( FrontRun& front, unsigned line_num, const char *filename, bool newline )
 {
     char    buf[30];
     char    c;
 
-    if( cvars_state().CompFlags.cpp_line_wanted && CppPrinting() && cvars_state().CompFlags.cpp_output ) {
+    if( front.cvars.CompFlags.cpp_line_wanted && CppPrinting(front) && front.cvars.CompFlags.cpp_output ) {
         sprintf( buf, "#line %u \"", line_num );
-        CppPuts( buf );
+        CppPuts( front, buf );
         while( (c = *filename++) != '\0' ) {
             if( c == '\\' )
                 c = '/';
-            CppPutc( c );
+            CppPutc( front, c );
         }
-        CppPutc( '"' );
+        CppPutc( front, '"' );
         if( newline ) {
-            CppPutc( '\n' );
+            CppPutc( front, '\n' );
         }
     }
 }
 
-bool CppPrinting( void )
+bool CppPrinting( FrontRun& front )
 {
-    return( cvars_state().SkipLevel == cvars_state().NestLevel );
+    return( front.cvars.SkipLevel == front.cvars.NestLevel );
 }
 
-void CppPrtToken( TOKEN token )
+void CppPrtToken( FrontRun& front, TOKEN token )
 {
-    if( CppPrinting() && cvars_state().CompFlags.cpp_output ) {
+    if( CppPrinting(front) && front.cvars.CompFlags.cpp_output ) {
         switch( token ) {
         case T_BAD_CHAR:
         case T_BAD_TOKEN:
         case T_ID:
         case T_CONSTANT:
-            CppPuts( cvars_state().Buffer );
+            CppPuts( front, front.cvars.Buffer );
             break;
         case T_STRING:
-            if( cvars_state().CompFlags.wide_char_string )
-                CppPutc( 'L' );
-            CppPutsQuoted( cvars_state().Buffer );
+            if( front.cvars.CompFlags.wide_char_string )
+                CppPutc( front, 'L' );
+            CppPutsQuoted( front, front.cvars.Buffer );
             break;
         case T_EOF:
         case T_NULL:
             break;
         case T_WHITE_SPACE:
-            if( cvars_state().PrintWhiteSpace || cvars_state().CompFlags.in_pragma ) {
-                CppPuts( TokenString[token] );
+            if( front.cvars.PrintWhiteSpace || front.cvars.CompFlags.in_pragma ) {
+                CppPuts( front, TokenString[token] );
             } else {
-                cvars_state().PrintWhiteSpace = true; //Toggle
+                front.cvars.PrintWhiteSpace = true; //Toggle
             }
             break;
         default:
-            CppPuts( TokenString[token] );
+            CppPuts( front, TokenString[token] );
         }
     }
 }
 
 
-TOKEN GetNextToken( void )
+TOKEN GetNextToken( FrontRun& front )
 {
     TOKEN   token;
 
-    if( cvars_state().MacroPtr != NULL ) {
-        token = GetMacroToken();
+    if( front.cvars.MacroPtr != NULL ) {
+        token = GetMacroToken(front);
     } else {
-        while( cvars_state().CurrChar != LCHR_EOF ) {
-            if( (scan_state().CharSet[cvars_state().CurrChar] & C_WS) == 0 )
+        while( front.cvars.CurrChar != LCHR_EOF ) {
+            if( (front.scan.CharSet[front.cvars.CurrChar] & C_WS) == 0 )
                 break;
-            if( cvars_state().CurrChar != '\r' )
-                CppPrtChar( cvars_state().CurrChar );
-            cvars_state().NextChar();
+            if( front.cvars.CurrChar != '\r' )
+                CppPrtChar( front, front.cvars.CurrChar );
+            front.cvars.NextChar(front);
         }
-        token = ScanToken();
+        token = ScanToken(front);
     }
     return( token );
 }
 
-void CloseFiles( void )
+void CloseFiles( FrontRun& front )
 {
-    if( cvars_state().CppFile != NULL ) {
-        fflush( cvars_state().CppFile );
-        if( ferror( cvars_state().CppFile ) ) {
+    if( front.cvars.CppFile != NULL ) {
+        fflush( front.cvars.CppFile );
+        if( ferror( front.cvars.CppFile ) ) {
             char    msgtxt[80];
             char    msgbuf[MAX_MSG_LEN];
 
             /*
              * issue message
              */
-            CGetMsg( msgtxt, ERR_FATAL_ERROR );
+            CGetMsg( front, msgtxt, ERR_FATAL_ERROR );
             sprintf( msgbuf, msgtxt, strerror( errno ) );
-            NoteMsg( msgbuf );
+            NoteMsg( front, msgbuf );
         }
-        if( cvars_state().CppFile != stdout ) {     /* (stdout is the program's, and stays open after this run) */
-            fclose( cvars_state().CppFile );
+        if( front.cvars.CppFile != stdout ) {     /* (stdout is the program's, and stays open after this run) */
+            front.held->fclose( front.cvars.CppFile );
         }
-        cvars_state().CppFile = NULL;
+        front.cvars.CppFile = NULL;
     }
-    if( cvars_state().ErrFile != NULL ) {
-        fclose( cvars_state().ErrFile );
-        cvars_state().ErrFile = NULL;
-        if( ! cvars_state().CompFlags.errfile_written ) {
-            DelErrFile();
+    if( front.cvars.ErrFile != NULL ) {
+        front.held->fclose( front.cvars.ErrFile );
+        front.cvars.ErrFile = NULL;
+        if( ! front.cvars.CompFlags.errfile_written ) {
+            DelErrFile(front);
         }
     }
-    if( cvars_state().DefFile != NULL ) {
-        fclose( cvars_state().DefFile );
-        cvars_state().DefFile = NULL;
+    if( front.cvars.DefFile != NULL ) {
+        front.held->fclose( front.cvars.DefFile );
+        front.cvars.DefFile = NULL;
     }
 }
 
 
-bool FrontEnd( char **cmdline )
+bool FrontEnd( FrontRun& front, char **cmdline )
 {
 #if defined(__WATCOMC__) && defined( _M_IX86 )
     /*
@@ -1460,16 +1452,16 @@ bool FrontEnd( char **cmdline )
     _8087 = 0;
 #endif
 
-    InitGlobalVars();
-    CMemInit();
-    InitMsg();
+    InitGlobalVars(front);
+    CMemInit(front);
+    InitMsg(front);
     InitPurge();
-    initGlobals();
-    DoCCompile( cmdline );
-    finiGlobals();
-    PurgeMemory();
-    FiniMsg();
-    CMemFini();
-    cvars_state().GlobalCompFlags.cc_first_use = false;
-    return( cvars_state().ErrCount != 0 );
+    initGlobals(front);
+    DoCCompile( front, cmdline );
+    finiGlobals(front);
+    PurgeMemory(front);
+    FiniMsg(front);
+    CMemFini(front);
+    front.cvars.GlobalCompFlags.cc_first_use = false;
+    return( front.cvars.ErrCount != 0 );
 }

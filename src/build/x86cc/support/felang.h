@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define FE_LANG_C       "c"
 #define FE_LANG_CPP     "cpp"
 #define FE_LANG_FORTRAN "fortran"

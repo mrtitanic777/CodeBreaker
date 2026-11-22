@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef enum {
     #define RG( a,b,c,d,e,f ) f
     #include "rg.h"

@@ -29,8 +29,9 @@
 ****************************************************************************/
 
 
+#pragma once
 extern bool    SameThing( name *x, name *y );
-extern void    DeadTemps( void );
-extern void    AxeDeadCode( void );
-extern void    DeadInstructions( void );
-extern void    PushPostOps( void );
+extern void    DeadTemps( BackRun& back );
+extern void    AxeDeadCode( BackRun& back );
+extern void    DeadInstructions( BackRun& back );
+extern void    PushPostOps( BackRun& back );

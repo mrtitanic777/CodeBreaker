@@ -30,8 +30,9 @@
 ****************************************************************************/
 
 
+#pragma once
 #define Q_MIN   10              /*  so that we always get the really ugly stuff */
 #define Q_MAX   ((unsigned)-1)  /*  infinite */
 
-extern  void    InsertQueue( ins_entry *old, ins_entry *new_ );
-extern  void    DeleteQueue( ins_entry *old );
+extern  void    InsertQueue( BackRun& back, ins_entry *old, ins_entry *new_ );
+extern  void    DeleteQueue( BackRun& back, ins_entry *old );

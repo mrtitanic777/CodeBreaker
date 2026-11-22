@@ -33,6 +33,7 @@
 // Define character sets:
 // ======================
 
+#pragma once
 #define _ASCII  0
 #define _EBCDIC 1
 #define _KANJI  2

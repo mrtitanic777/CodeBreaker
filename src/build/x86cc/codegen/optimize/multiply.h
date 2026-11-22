@@ -30,9 +30,10 @@
 ****************************************************************************/
 
 
-extern int      SubCost( void );
-extern int      AddCost( void );
-extern int      MulCost( uint_32 );
-extern int      ShiftCost( int );
+#pragma once
+extern int      SubCost( BackRun& back );
+extern int      AddCost( BackRun& back );
+extern int      MulCost( BackRun& back, uint_32 );
+extern int      ShiftCost( BackRun& back, int );
 
-extern void     MulToShiftAdd( void );
+extern void     MulToShiftAdd( BackRun& back );

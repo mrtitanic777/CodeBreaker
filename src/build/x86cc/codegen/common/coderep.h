@@ -33,6 +33,7 @@
 
 /*       Internal code representation */
 
+#pragma once
 #include "hwreg.h"
 #include "_cg.h"
 #include "bckdef.h"

@@ -31,12 +31,13 @@
 ****************************************************************************/
 
 
-extern void     InitStackMap( void );
+#pragma once
+extern void     InitStackMap( BackRun& back );
 extern void     PropLocal( name *temp );
-extern void     AssignOtherLocals( void );
-extern void     ParmPropagate( void );
-extern void     AllocALocal( name *name );
-extern void     FiniStackMap( void );
-extern void     AssgnMoreTemps( block_id blk_id );
-extern void     CountTempRefs( void );
-extern void     AssignTemps( void );
+extern void     AssignOtherLocals( BackRun& back );
+extern void     ParmPropagate( BackRun& back );
+extern void     AllocALocal( BackRun& back, name *name );
+extern void     FiniStackMap( BackRun& back );
+extern void     AssgnMoreTemps( BackRun& back, block_id blk_id );
+extern void     CountTempRefs( BackRun& back );
+extern void     AssignTemps( BackRun& back );

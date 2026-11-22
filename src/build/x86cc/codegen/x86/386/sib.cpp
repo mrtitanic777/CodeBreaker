@@ -37,6 +37,7 @@
 #include "sib.h"
 #include "generate.h"
 #include "liveinfo.h"
+#include "backrun.hpp"
 
 
 typedef enum {
@@ -45,7 +46,7 @@ typedef enum {
     MODIFIES_REG        = 2,
 } mod_info;
 
-static  bool    InsIsCandidate( instruction *ins )
+static  bool    InsIsCandidate( BackRun& back, instruction *ins )
 /************************************************/
 {
     name    *reg;
@@ -59,13 +60,13 @@ static  bool    InsIsCandidate( instruction *ins )
         return( false );
     if( ins->operands[0]->n.class_ != N_REGISTER )
         return( false );
-    if( !IsIndexReg( reg->r.reg, WD, 0 ) )
+    if( !IsIndexReg( back, reg->r.reg, WD, 0 ) )
         return( false );
     return( true );
 }
 
 
-void    BuildIndex( void )
+void    BuildIndex( BackRun& back )
 /********************************/
 {
     block       *blk;
@@ -73,13 +74,13 @@ void    BuildIndex( void )
     instruction *next;
     bool        change;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         do {
             change = false;
             for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
                 next = ins->head.next;
-                if( InsIsCandidate( ins ) && FoldIntoIndex( ins ) ) {
-                    UpdateLive( blk->ins.head.next, blk->ins.head.prev );
+                if( InsIsCandidate( back, ins ) && FoldIntoIndex( back, ins ) ) {
+                    UpdateLive( back, blk->ins.head.next, blk->ins.head.prev );
                     change = true;
                 }
             }

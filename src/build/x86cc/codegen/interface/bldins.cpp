@@ -52,84 +52,81 @@
 #include "types.h"
 #include "i64.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct BldinsState {
-    const type_def *LastCmpType;
-    uint_32 UnrollValue = 0;
-};
+/* (struct BldinsState: bldins_state.h) */
 
 }  // namespace
 
-static inline BldinsState& bldins_state() { return cbrun_part<BldinsState>(); }
 
 
-an      BGVarargsBasePtr( const type_def *tipe )
+an      BGVarargsBasePtr( BackRun& back, const type_def *tipe )
 /**********************************************/
 {
     an                  addr;
 
-    addr = RegName( VarargsHomePtr(), tipe );
+    addr = RegName( back, VarargsHomePtr(back), tipe );
     return( addr );
 }
 
-an      BGStackValue( const type_def *tipe )
+an      BGStackValue( BackRun& back, const type_def *tipe )
 /******************************************/
 {
     an                  addr;
 
-    addr = RegName( StackReg(), tipe );
+    addr = RegName( back, StackReg(), tipe );
     return( addr );
 }
 
-an      BGInteger( int_32 value, const type_def *tipe )
+an      BGInteger( BackRun& back, int_32 value, const type_def *tipe )
 /*****************************************************/
 {
     float_handle    cf;
 
     if( tipe->attr & TYPE_SIGNED ) {
-        cf = CFCnvI32F( &cfloat_state().cgh, value );
+        cf = CFCnvI32F( back, &back.cfloat.cgh, value );
     } else {
-        cf = CFCnvU32F( &cfloat_state().cgh, value );
+        cf = CFCnvU32F( back, &back.cfloat.cgh, value );
     }
-    return( MakeConst( cf, tipe ) );
+    return( MakeConst( back, cf, tipe ) );
 }
 
-an      BGInt64( signed_64 value, const type_def *tipe )
+an      BGInt64( BackRun& back, signed_64 value, const type_def *tipe )
 /******************************************************/
 {
     name   *cname;
 
     if( tipe->attr & TYPE_SIGNED ) {
-        cname = AllocS64Const( U64Low( value ), U64High( value ) );
+        cname = AllocS64Const( back, U64Low( value ), U64High( value ) );
     } else {
-        cname = AllocU64Const( U64Low( value ), U64High( value ) );
+        cname = AllocU64Const( back, U64Low( value ), U64High( value ) );
     }
-    return( AddrName( cname, tipe ) );
+    return( AddrName( back, cname, tipe ) );
 }
 
-an  BGFloat( const char *value, const type_def *tipe )
+an  BGFloat( BackRun& back, const char *value, const type_def *tipe )
 /****************************************************/
 {
-    return( MakeConst( CFCnvSF( &cfloat_state().cgh, value ), tipe ) );
+    return( MakeConst( back, CFCnvSF( back, &back.cfloat.cgh, value ), tipe ) );
 }
 
 
-an      BGName( cg_class cl, pointer sym, const type_def *tipe )
+an      BGName( BackRun& back, cg_class cl, pointer sym, const type_def *tipe )
 /**************************************************************/
 {
-    return( MakeAddrName( cl, static_cast<cg_sym_handle>(sym), tipe ) );
+    return( MakeAddrName( back, cl, static_cast<cg_sym_handle>(sym), tipe ) );
 }
 
 
-an      BGTempName( name *temp, const type_def *tipe )
+an      BGTempName( BackRun& back, name *temp, const type_def *tipe )
 /****************************************************/
 {
     temp->v.usage |= USE_IN_ANOTHER_BLOCK;
-    return( MakeTypeTempAddr( temp, tipe ) );
+    return( MakeTypeTempAddr( back, temp, tipe ) );
 }
 
 
@@ -151,19 +148,19 @@ bool    FiniLabel( label_handle lbl, block *blk )
     return( false );
 }
 
-void    BGFiniLabel( label_handle lbl )
+void    BGFiniLabel( BackRun& back, label_handle lbl )
 /*************************************/
 {
     block       *blk;
 
-    if( data_state().HaveCurrBlock && FiniLabel( lbl, data_state().CurrBlock ) )
+    if( back.data.HaveCurrBlock && FiniLabel( lbl, back.data.CurrBlock ) )
         return;
-    for( blk = data_state().BlockList; blk != NULL; blk = blk->prev_block ) {
+    for( blk = back.data.BlockList; blk != NULL; blk = blk->prev_block ) {
         if( FiniLabel( lbl, blk ) ) {
             return;
         }
     }
-    GenKillLabel( lbl );
+    GenKillLabel( back, lbl );
 }
 
 
@@ -186,25 +183,25 @@ bool    NeedConvert( const type_def *from, const type_def *to )
 }
 
 
-static  an Unary( cg_op opcode, an left, const type_def *tipe )
+static  an Unary( BackRun& back, cg_op opcode, an left, const type_def *tipe )
 /*************************************************************/
 {
     instruction *ins;
     an          res;
 
-    ins = MakeNary( (opcode_defs)opcode, GenIns( left ), NULL, NULL, TypeClass( tipe ), TypeClass( left->tipe ), 1 );
-    res = InsName( ins, tipe );
-    AddIns( ins );
-    BGDone( left );
+    ins = MakeNary( back, (opcode_defs)opcode, GenIns( back, left ), NULL, NULL, TypeClass( back, tipe ), TypeClass( back, left->tipe ), 1 );
+    res = InsName( back, ins, tipe );
+    AddIns( back, ins );
+    BGDone( back, left );
     return( res );
 }
 
 
-static  an      CnvRnd( an name, const type_def *tipe, cg_op opcode )
+static  an      CnvRnd( BackRun& back, an name, const type_def *tipe, cg_op opcode )
 /*******************************************************************/
 {
     if( NeedConvert( name->tipe, tipe ) ) {
-        name = Unary( opcode, name, tipe );
+        name = Unary( back, opcode, name, tipe );
     } else if( name->tipe != tipe ) {
         AddrDemote( name ); /* it's not quite the right type */
     }
@@ -213,12 +210,12 @@ static  an      CnvRnd( an name, const type_def *tipe, cg_op opcode )
 }
 
 
-name        *BGNewTemp( const type_def *tipe )
+name        *BGNewTemp( BackRun& back, const type_def *tipe )
 /********************************************/
 {
     name        *temp;
 
-    temp = AllocTemp( TypeClass( tipe ) );
+    temp = AllocTemp( back, TypeClass( back, tipe ) );
     if( temp->n.size == 0 ) {
         temp->n.size = tipe->length;
     }
@@ -226,58 +223,58 @@ name        *BGNewTemp( const type_def *tipe )
 }
 
 
-name        *BGGlobalTemp( const type_def *tipe )
+name        *BGGlobalTemp( BackRun& back, const type_def *tipe )
 /***********************************************/
 {
     name        *temp;
 
-    temp = BGNewTemp( tipe );
+    temp = BGNewTemp( back, tipe );
     temp->v.usage |= USE_IN_ANOTHER_BLOCK;
     return( temp );
 }
 
 
-static  an      FlowOut( an node, const type_def *tipe ) {
+static  an      FlowOut( BackRun& back, an node, const type_def *tipe ) {
 /********************************************************/
 
     name                *temp;
     label_handle        lbl;
 
-    lbl = AskForNewLabel();
-    temp = BGGlobalTemp( tipe );
-    AddIns( MakeMove( AllocIntConst( FETrue() ), temp, temp->n.type_class ) );
-    *(node->u.b.t) = data_state().CurrBlock->label;
-    GenBlock( BLK_JUMP, 1 );
-    AddTarget( lbl, false );
-    EnLink( AskForNewLabel() );
-    data_state().CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
-    AddIns( MakeMove( AllocIntConst( 0 ), temp, temp->n.type_class ) );
-    *(node->u.b.f) = data_state().CurrBlock->label;
-    GenBlock( BLK_JUMP, 1 );
-    AddTarget( lbl, false );
-    EnLink( lbl );
-    data_state().CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
-    NamesCrossBlocks();
-    AddrFree( node );
-    return( AddrName( temp, tipe ) );
+    lbl = AskForNewLabel(back);
+    temp = BGGlobalTemp( back, tipe );
+    AddIns( back, MakeMove( back, AllocIntConst( back, FETrue() ), temp, temp->n.type_class ) );
+    *(node->u.b.t) = back.data.CurrBlock->label;
+    GenBlock( back, BLK_JUMP, 1 );
+    AddTarget( back, lbl, false );
+    EnLink( back, AskForNewLabel(back) );
+    back.data.CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
+    AddIns( back, MakeMove( back, AllocIntConst( back, 0 ), temp, temp->n.type_class ) );
+    *(node->u.b.f) = back.data.CurrBlock->label;
+    GenBlock( back, BLK_JUMP, 1 );
+    AddTarget( back, lbl, false );
+    EnLink( back, lbl );
+    back.data.CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
+    NamesCrossBlocks(back);
+    AddrFree( back, node );
+    return( AddrName( back, temp, tipe ) );
 }
 
 
-an      Arithmetic( an name, const type_def *tipe )
+an      Arithmetic( BackRun& back, an name, const type_def *tipe )
 /*************************************************/
 {
     if( name->format == NF_BOOL ) {
-        if( (tipe->attr & TYPE_FLOAT) != 0 || ( tipe->length > data_state().TypeInteger->length ) ) {
-            name = FlowOut( name, data_state().TypeInteger );
-            name = Unary( O_CONVERT, name, tipe );
+        if( (tipe->attr & TYPE_FLOAT) != 0 || ( tipe->length > back.data.TypeInteger->length ) ) {
+            name = FlowOut( back, name, back.data.TypeInteger );
+            name = Unary( back, O_CONVERT, name, tipe );
         } else {
-            name = FlowOut( name, tipe );
+            name = FlowOut( back, name, tipe );
         }
     }
     return( name );
 }
 
-an      BGCompare( cg_op opcode, an left, an rite, label_handle entry, const type_def *tipe )
+an      BGCompare( BackRun& back, cg_op opcode, an left, an rite, label_handle entry, const type_def *tipe )
 /***************************************************************************************/
 {
     an                  new_an;
@@ -285,45 +282,45 @@ an      BGCompare( cg_op opcode, an left, an rite, label_handle entry, const typ
     name                *newleft;
     name                *newrite;
 
-    bldins_state().LastCmpType = tipe;
-    newleft = GenIns( left );
-    newrite = GenIns( rite );
-    BGDone( left );
-    BGDone( rite );
-    NamesCrossBlocks();
-    ins = MakeCondition( (opcode_defs)opcode, newleft, newrite, 0, 1, TypeClass( tipe ) );
-    AddIns( ins );
-    GenBlock( BLK_CONDITIONAL, 2 );
-    AddTarget( NULL, false );
-    AddTarget( NULL, false );
-    new_an = NewBoolNode();
+    back.bldins.LastCmpType = tipe;
+    newleft = GenIns( back, left );
+    newrite = GenIns( back, rite );
+    BGDone( back, left );
+    BGDone( back, rite );
+    NamesCrossBlocks(back);
+    ins = MakeCondition( back, (opcode_defs)opcode, newleft, newrite, 0, 1, TypeClass( back, tipe ) );
+    AddIns( back, ins );
+    GenBlock( back, BLK_CONDITIONAL, 2 );
+    AddTarget( back, NULL, false );
+    AddTarget( back, NULL, false );
+    new_an = NewBoolNode(back);
     new_an->u.b.e = entry;
-    new_an->u.b.t = &data_state().CurrBlock->edge[0].destination.u.lbl;
-    new_an->u.b.f = &data_state().CurrBlock->edge[1].destination.u.lbl;
-    EnLink( AskForNewLabel() );
-    data_state().CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
+    new_an->u.b.t = &back.data.CurrBlock->edge[0].destination.u.lbl;
+    new_an->u.b.f = &back.data.CurrBlock->edge[1].destination.u.lbl;
+    EnLink( back, AskForNewLabel(back) );
+    back.data.CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
     return( new_an );
 }
 
 
-an      Boolean( an node, label_handle entry )
+an      Boolean( BackRun& back, an node, label_handle entry )
 /********************************************/
 {
     if( node->format != NF_BOOL ) {
-        node = BGCompare( O_NE, node, BGInteger( 0, node->tipe ), entry, node->tipe );
+        node = BGCompare( back, O_NE, node, BGInteger( back, 0, node->tipe ), entry, node->tipe );
     }
     return( node );
 }
 
 
-label_handle BGGetEntry( void )
+label_handle BGGetEntry( BackRun& back )
 /*****************************/
 {
-    return( data_state().CurrBlock->label );
+    return( back.data.CurrBlock->label );
 }
 
 
-void    BG3WayControl( an node, label_handle lt, label_handle eq, label_handle gt )
+void    BG3WayControl( BackRun& back, an node, label_handle lt, label_handle eq, label_handle gt )
 /*********************************************************************************/
 {
     instruction         *ins;
@@ -331,80 +328,80 @@ void    BG3WayControl( an node, label_handle lt, label_handle eq, label_handle g
     label_handle        lbl;
     type_class_def      type_class;
 
-    node = Arithmetic( node, node->tipe );
-    type_class = TypeClass( node->tipe );
-    NamesCrossBlocks();
-    op = GenIns( node );
-    BGDone( node );
+    node = Arithmetic( back, node, node->tipe );
+    type_class = TypeClass( back, node->tipe );
+    NamesCrossBlocks(back);
+    op = GenIns( back, node );
+    BGDone( back, node );
     ins = NULL;
 #if _TARGET & _TARG_80386
     if( type_class == FS ) {
-        ins = MakeCondition( OP_BIT_TEST_FALSE, op, AllocS32Const( 0x7FFFFFFFL ), 0, 1, SW );
+        ins = MakeCondition( back, OP_BIT_TEST_FALSE, op, AllocS32Const( back, 0x7FFFFFFFL ), 0, 1, SW );
     }
 #endif
     if( ins == NULL ) {
-        ins = MakeCondition( OP_CMP_EQUAL, op, AllocIntConst( 0 ), 0, 1, type_class );
+        ins = MakeCondition( back, OP_CMP_EQUAL, op, AllocIntConst( back, 0 ), 0, 1, type_class );
     }
-    AddIns( ins );
-    GenBlock( BLK_CONDITIONAL, 2 );
-    AddTarget( eq, false );
-    lbl = AskForNewLabel();
-    AddTarget( lbl, false );
+    AddIns( back, ins );
+    GenBlock( back, BLK_CONDITIONAL, 2 );
+    AddTarget( back, eq, false );
+    lbl = AskForNewLabel(back);
+    AddTarget( back, lbl, false );
 
-    EnLink( lbl );
-    data_state().CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
+    EnLink( back, lbl );
+    back.data.CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
 #if _TARGET & _TARG_80386
     if( type_class == FS ) {
         type_class = SW;
     }
 #endif
-    ins = MakeCondition( OP_CMP_LESS, op, AllocIntConst( 0 ), 0, 1, type_class );
-    AddIns( ins );
-    GenBlock( BLK_CONDITIONAL, 2 );
-    AddTarget( lt, false );
-    AddTarget( gt, false );
-    Generate( false );
-    data_state().HaveCurrBlock = false;
+    ins = MakeCondition( back, OP_CMP_LESS, op, AllocIntConst( back, 0 ), 0, 1, type_class );
+    AddIns( back, ins );
+    GenBlock( back, BLK_CONDITIONAL, 2 );
+    AddTarget( back, lt, false );
+    AddTarget( back, gt, false );
+    Generate( back, false );
+    back.data.HaveCurrBlock = false;
 }
 
 
-void    BGControl( cg_op opcode, an expr, label_handle lbl )
+void    BGControl( BackRun& back, cg_op opcode, an expr, label_handle lbl )
 /**********************************************************/
 {
-    BGGenCtrl( opcode, expr, lbl, false );
+    BGGenCtrl( back, opcode, expr, lbl, false );
 }
 
 
-void    BGGenCtrl( cg_op opcode, an expr, label_handle lbl, bool gen )
+void    BGGenCtrl( BackRun& back, cg_op opcode, an expr, label_handle lbl, bool gen )
 /********************************************************************/
 {
     switch( opcode ) {
     case O_LABEL:
-        if( data_state().HaveCurrBlock ) {
-            GenBlock( BLK_JUMP, 1 );  /* block with 1 target*/
-            AddTarget( lbl, false );
+        if( back.data.HaveCurrBlock ) {
+            GenBlock( back, BLK_JUMP, 1 );  /* block with 1 target*/
+            AddTarget( back, lbl, false );
             if( gen ) {
-                Generate( false );
+                Generate( back, false );
             }
         }
-        EnLink( lbl );
-        data_state().CurrBlock->unroll_count = bldins_state().UnrollValue;
-        data_state().HaveCurrBlock = true;
+        EnLink( back, lbl );
+        back.data.CurrBlock->unroll_count = back.bldins.UnrollValue;
+        back.data.HaveCurrBlock = true;
         break;
     case O_GOTO:
-        if( data_state().HaveCurrBlock ) {
-            GenBlock( BLK_JUMP, 1 );
-            AddTarget( lbl, false );
+        if( back.data.HaveCurrBlock ) {
+            GenBlock( back, BLK_JUMP, 1 );
+            AddTarget( back, lbl, false );
             if( gen ) {
-                Generate( false );
+                Generate( back, false );
             }
         }
-        data_state().HaveCurrBlock = false;
+        back.data.HaveCurrBlock = false;
         break;
     case O_INVOKE_LABEL:
-        if( data_state().HaveCurrBlock ) {
-            GenBlock( BLK_CALL_LABEL, 1 );
-            AddTarget( lbl, false );
+        if( back.data.HaveCurrBlock ) {
+            GenBlock( back, BLK_CALL_LABEL, 1 );
+            AddTarget( back, lbl, false );
 #if 0
             Need to make sure that next_block != NULL when we generate the
             code for a CALL_LABEL block - see comments in GenObject
@@ -413,34 +410,34 @@ void    BGGenCtrl( cg_op opcode, an expr, label_handle lbl, bool gen )
                 Generate( false );
             }
 #endif
-            EnLink( AskForNewLabel() );
-            data_state().CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
+            EnLink( back, AskForNewLabel(back) );
+            back.data.CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
         }
         break;
     case O_LABEL_RETURN:
-        if( data_state().HaveCurrBlock ) {
-            AddIns( MakeNop() );
-            GenBlock( BLK_LABEL_RETURN, 0 );
+        if( back.data.HaveCurrBlock ) {
+            AddIns( back, MakeNop(back) );
+            GenBlock( back, BLK_LABEL_RETURN, 0 );
             if( gen ) {
-                Generate( false );
+                Generate( back, false );
             }
         }
-        data_state().HaveCurrBlock = false;
+        back.data.HaveCurrBlock = false;
         break;
     case O_IF_TRUE:
-        *(expr->u.b.f) = data_state().CurrBlock->label;
+        *(expr->u.b.f) = back.data.CurrBlock->label;
         *(expr->u.b.t) = lbl;
-        AddrFree( expr );
+        AddrFree( back, expr );
         if( gen ) {
-            Generate( false );
+            Generate( back, false );
         }
         break;
     case O_IF_FALSE:
-        *(expr->u.b.t) = data_state().CurrBlock->label;
+        *(expr->u.b.t) = back.data.CurrBlock->label;
         *(expr->u.b.f) = lbl;
-        AddrFree( expr );
+        AddrFree( back, expr );
         if( gen ) {
-            Generate( false );
+            Generate( back, false );
         }
         break;
     default:
@@ -449,45 +446,45 @@ void    BGGenCtrl( cg_op opcode, an expr, label_handle lbl, bool gen )
 }
 
 
-void    BGBigLabel( back_handle bck )
+void    BGBigLabel( BackRun& back, back_handle bck )
 /***********************************/
 {
-    if( data_state().HaveCurrBlock ) {
-        GenBlock( BLK_JUMP, 1 );  /* block with 1 target*/
-        AddTarget( bck->lbl, false );
-        Generate( false );
+    if( back.data.HaveCurrBlock ) {
+        GenBlock( back, BLK_JUMP, 1 );  /* block with 1 target*/
+        AddTarget( back, bck->lbl, false );
+        Generate( back, false );
     }
-    EnLink( bck->lbl );
-    _MarkBlkAttrSet( data_state().CurrBlock, BLK_BIG_LABEL );
-    data_state().HaveCurrBlock = true;
-    BigLabel();
+    EnLink( back, bck->lbl );
+    _MarkBlkAttrSet( back.data.CurrBlock, BLK_BIG_LABEL );
+    back.data.HaveCurrBlock = true;
+    BigLabel(back);
 }
 
 
-void    BGBigGoto( label_handle lbl, level_depth level )
+void    BGBigGoto( BackRun& back, label_handle lbl, level_depth level )
 /******************************************************/
 {
-    GenBlock( BLK_BIG_JUMP, 1 ); // No longer supported!
-    AddTarget( lbl, false );
-    BigGoto( level );
-    Generate( false );
-    EnLink( AskForNewLabel() );
-    data_state().CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
+    GenBlock( back, BLK_BIG_JUMP, 1 ); // No longer supported!
+    AddTarget( back, lbl, false );
+    BigGoto( back, level );
+    Generate( back, false );
+    EnLink( back, AskForNewLabel(back) );
+    back.data.CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
 }
 
 
-uint_32 BGUnrollCount( uint_32 unroll_count )
+uint_32 BGUnrollCount( BackRun& back, uint_32 unroll_count )
 /*******************************************/
 {
     uint_32     old_value;
 
-    old_value = bldins_state().UnrollValue;
-    bldins_state().UnrollValue = unroll_count;
+    old_value = back.bldins.UnrollValue;
+    back.bldins.UnrollValue = unroll_count;
     return( old_value );
 }
 
 
-an      BGUnary( cg_op opcode, an left, const type_def *tipe )
+an      BGUnary( BackRun& back, cg_op opcode, an left, const type_def *tipe )
 /************************************************************/
 {
     an          new_an;
@@ -495,20 +492,20 @@ an      BGUnary( cg_op opcode, an left, const type_def *tipe )
     new_an = NULL;
     switch( opcode ) {
     case O_POINTS:
-        new_an = MakePoints( left, tipe );
+        new_an = MakePoints( back, left, tipe );
         break;
     case O_CONVERT:
         if( tipe == left->tipe || !NeedPtrConvert( left, tipe ) ) {
             new_an = left;
         } else {
-            new_an = CnvRnd( left, tipe, O_CONVERT );
+            new_an = CnvRnd( back, left, tipe, O_CONVERT );
         }
         break;
     case O_ROUND:
         if( tipe == left->tipe ) {
             new_an = left;
         } else {
-            new_an = CnvRnd( left, tipe, O_ROUND );
+            new_an = CnvRnd( back, left, tipe, O_ROUND );
         }
         break;
 #if _TARGET_RISC
@@ -529,23 +526,23 @@ an      BGUnary( cg_op opcode, an left, const type_def *tipe )
         break;
     }
     if( new_an == NULL ) {
-        new_an = Unary( opcode, left, tipe );
+        new_an = Unary( back, opcode, left, tipe );
     }
     new_an->tipe = tipe;
     return( new_an );
 }
 
 
-static  an      CheckType( an op, const type_def *tipe ) {
+static  an      CheckType( BackRun& back, an op, const type_def *tipe ) {
 /********************************************************/
 
     if( op->format != NF_ADDR )
         return( op );
-    return( BGUnary( O_CONVERT, op, tipe ) );
+    return( BGUnary( back, O_CONVERT, op, tipe ) );
 }
 
 
-an      BGBinary( cg_op opcode, an left, an rite, const type_def *tipe, bool fold_addr )
+an      BGBinary( BackRun& back, cg_op opcode, an left, an rite, const type_def *tipe, bool fold_addr )
 /**********************************************************************************/
 {
     an          result;
@@ -558,21 +555,21 @@ an      BGBinary( cg_op opcode, an left, an rite, const type_def *tipe, bool fol
        && (rite->tipe->attr & (TYPE_POINTER | TYPE_FLOAT)) == 0 ) {
         /* Special case for pointer +- int. Don't convert! */
     } else {
-        left = CheckType( left, tipe );
-        rite = CheckType( rite, tipe );
+        left = CheckType( back, left, tipe );
+        rite = CheckType( back, rite, tipe );
     }
     switch( opcode ) {
     case O_PLUS:
         if( fold_addr ) {
-            if( TGIsAddress() || CypAddrPlus( left, rite, tipe ) ) {
-                result = AddrPlus( left, rite, tipe );
+            if( TGIsAddress(back) || CypAddrPlus( back, left, rite, tipe ) ) {
+                result = AddrPlus( back, left, rite, tipe );
             }
         }
         break;
     case O_LSHIFT:
         if( fold_addr ) {
-            if( TGIsAddress() || CypAddrShift( left, rite, tipe ) ) {
-                result = AddrShift( left, rite, tipe );
+            if( TGIsAddress(back) || CypAddrShift( back, left, rite, tipe ) ) {
+                result = AddrShift( back, left, rite, tipe );
             }
         }
         break;
@@ -580,19 +577,19 @@ an      BGBinary( cg_op opcode, an left, an rite, const type_def *tipe, bool fol
         break;
     }
     if( result == NULL ) {
-        left = CheckType( left, tipe );
-        ins = MakeBinary( (opcode_defs)opcode, GenIns( left ), GenIns( rite ), NULL, TypeClass( tipe ) );
-        result = InsName( ins, tipe );
-        AddIns( ins );
-        BGDone( left );
-        BGDone( rite );
+        left = CheckType( back, left, tipe );
+        ins = MakeBinary( back, (opcode_defs)opcode, GenIns( back, left ), GenIns( back, rite ), NULL, TypeClass( back, tipe ) );
+        result = InsName( back, ins, tipe );
+        AddIns( back, ins );
+        BGDone( back, left );
+        BGDone( back, rite );
     }
     result->tipe = tipe;
     return( result );
 }
 
 
-an      BGOpGets( cg_op opcode, an left, an rite, const type_def *tipe, const type_def *optipe )
+an      BGOpGets( BackRun& back, cg_op opcode, an left, an rite, const type_def *tipe, const type_def *optipe )
 /**********************************************************************************************/
 {
     an                  result;
@@ -603,39 +600,39 @@ an      BGOpGets( cg_op opcode, an left, an rite, const type_def *tipe, const ty
     name                *left_name;
     instruction         *ins;
 
-    leftp = MakePoints( left, tipe );
-    left_name = GenIns( leftp );
-    type_class = TypeClass( tipe );
-    op_type_class = TypeClass( optipe );
+    leftp = MakePoints( back, left, tipe );
+    left_name = GenIns( back, leftp );
+    type_class = TypeClass( back, tipe );
+    op_type_class = TypeClass( back, optipe );
     if( NeedConvert( tipe, optipe ) ) {
-        temp = AllocTemp( op_type_class );
-        ins = MakeConvert( left_name, temp, op_type_class, type_class );
-        AddIns( ins );
-        AddIns( MakeBinary( (opcode_defs)opcode, temp, GenIns( rite ), temp, op_type_class ) );
-        ins = MakeConvert( temp, left_name, type_class, op_type_class );
-        AddIns( ins );
+        temp = AllocTemp( back, op_type_class );
+        ins = MakeConvert( back, left_name, temp, op_type_class, type_class );
+        AddIns( back, ins );
+        AddIns( back, MakeBinary( back, (opcode_defs)opcode, temp, GenIns( back, rite ), temp, op_type_class ) );
+        ins = MakeConvert( back, temp, left_name, type_class, op_type_class );
+        AddIns( back, ins );
     } else {
-        ins = MakeBinary( (opcode_defs)opcode, left_name, GenIns( rite ), left_name, op_type_class );
+        ins = MakeBinary( back, (opcode_defs)opcode, left_name, GenIns( back, rite ), left_name, op_type_class );
         if( tipe != optipe ) {
             ins->ins_flags |= INS_DEMOTED; /* its not quite the right type */
         }
-        AddIns( ins );
+        AddIns( back, ins );
     }
-    result = AddrName( left_name, tipe );
-    BGDone( rite );
-    BGDone( leftp );
+    result = AddrName( back, left_name, tipe );
+    BGDone( back, rite );
+    BGDone( back, leftp );
     return( result );
 }
 
 
-an      BGConvert( an left, const type_def *tipe )
+an      BGConvert( BackRun& back, an left, const type_def *tipe )
 /************************************************/
 {
     an          new_an;
     type_attr   left_attr;
 
     left_attr = left->tipe->attr;
-    new_an = BGUnary( O_CONVERT, left, tipe );
+    new_an = BGUnary( back, O_CONVERT, left, tipe );
     if( left_attr & TYPE_CODE ) {
         FixCodePtr( new_an ); /*% kludge for code pointer conversions*/
     }
@@ -643,7 +640,7 @@ an      BGConvert( an left, const type_def *tipe )
 }
 
 
-an      BGFlow( cg_op opcode, an left, an rite )
+an      BGFlow( BackRun& back, cg_op opcode, an left, an rite )
 /**********************************************/
 {
     an                  new_an = NULL;
@@ -658,29 +655,29 @@ an      BGFlow( cg_op opcode, an left, an rite )
         switch( opcode ) {
         case O_FLOW_AND:
             *(left->u.b.t) = rite->u.b.e;
-            *(left->u.b.f) = data_state().CurrBlock->label;
-            *(rite->u.b.f) = data_state().CurrBlock->label;
-            GenBlock( BLK_JUMP, 1 );
-            AddTarget( NULL, false );
-            left->u.b.f = &data_state().CurrBlock->edge[0].destination.u.lbl;
+            *(left->u.b.f) = back.data.CurrBlock->label;
+            *(rite->u.b.f) = back.data.CurrBlock->label;
+            GenBlock( back, BLK_JUMP, 1 );
+            AddTarget( back, NULL, false );
+            left->u.b.f = &back.data.CurrBlock->edge[0].destination.u.lbl;
             left->u.b.t = rite->u.b.t;
             new_an = left;
-            AddrFree( rite );
-            EnLink( AskForNewLabel() );
-            data_state().CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
+            AddrFree( back, rite );
+            EnLink( back, AskForNewLabel(back) );
+            back.data.CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
             break;
         case O_FLOW_OR:
             *(left->u.b.f) = rite->u.b.e;
-            *(left->u.b.t) = data_state().CurrBlock->label;
-            *(rite->u.b.t) = data_state().CurrBlock->label;
-            GenBlock( BLK_JUMP, 1 );
-            AddTarget( NULL, false );
-            left->u.b.t = &data_state().CurrBlock->edge[0].destination.u.lbl;
+            *(left->u.b.t) = back.data.CurrBlock->label;
+            *(rite->u.b.t) = back.data.CurrBlock->label;
+            GenBlock( back, BLK_JUMP, 1 );
+            AddTarget( back, NULL, false );
+            left->u.b.t = &back.data.CurrBlock->edge[0].destination.u.lbl;
             left->u.b.f = rite->u.b.f;
             new_an = left;
-            AddrFree( rite );
-            EnLink( AskForNewLabel() );
-            data_state().CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
+            AddrFree( back, rite );
+            EnLink( back, AskForNewLabel(back) );
+            back.data.CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
             break;
         default:
             break;
@@ -690,70 +687,70 @@ an      BGFlow( cg_op opcode, an left, an rite )
 }
 
 
-an      BGAssign( an dst, an src, const type_def *tipe )
+an      BGAssign( BackRun& back, an dst, an src, const type_def *tipe )
 /******************************************************/
 {
     an          res;
 
-    res = MakeGets( dst, src, tipe );
+    res = MakeGets( back, dst, src, tipe );
     res->tipe = tipe;
     return( res );
 }
 
 
-an      BGCopy( an node )
+an      BGCopy( BackRun& back, an node )
 /***********************/
 {
-    return( AddrCopy( node ) );
+    return( AddrCopy( back, node ) );
 }
 
 
-an      BGDuplicate( an node )
+an      BGDuplicate( BackRun& back, an node )
 /****************************/
 {
-    return( AddrDuplicate( node ) );
+    return( AddrDuplicate( back, node ) );
 }
 
 
-void    BGDone( an node )
+void    BGDone( BackRun& back, an node )
 /***********************/
 {
     if( node->format == NF_BOOL ) {
-        FlowOff( node );
+        FlowOff( back, node );
     }
-    AddrFree( node );
+    AddrFree( back, node );
 }
 
 
-void    BGTrash( an node )
+void    BGTrash( BackRun& back, an node )
 /************************/
 {
-    BGDone( node );
+    BGDone( back, node );
 }
 
 
-void    FlowOff( an name )
+void    FlowOff( BackRun& back, an name )
 /************************/
 {
-    *(name->u.b.t) = data_state().CurrBlock->label;
-    *(name->u.b.f) = data_state().CurrBlock->label;
-    NamesCrossBlocks();
+    *(name->u.b.t) = back.data.CurrBlock->label;
+    *(name->u.b.f) = back.data.CurrBlock->label;
+    NamesCrossBlocks(back);
 }
 
 
-void    BGStartBlock( void )
+void    BGStartBlock( BackRun& back )
 /**************************/
 {
     label_handle    lbl;
 
     if( _MemLow ) { /* break the block here and generate code*/
-        lbl = AskForNewLabel();
-        GenBlock( BLK_JUMP, 1 );
-        AddTarget( lbl, false );
-        Generate( false );
-        EnLink( lbl );
-        data_state().CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
+        lbl = AskForNewLabel(back);
+        GenBlock( back, BLK_JUMP, 1 );
+        AddTarget( back, lbl, false );
+        Generate( back, false );
+        EnLink( back, lbl );
+        back.data.CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
     } else { /* check if the block is getting too big*/
-        BlkTooBig();
+        BlkTooBig(back);
     }
 }

@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define         SEGMENTED       0x01
 #define         SHORT_JUMPS     0x02
 #define         SPEED           0x04

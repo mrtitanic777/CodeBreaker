@@ -31,19 +31,20 @@
 ****************************************************************************/
 
 
-extern  void    BuffStart( temp_buff *temp, uint def );
-extern  void    BuffEnd( segment_id segid );
-extern  uint    BuffLoc( void );
-extern  void    BuffPatch( byte val, uint loc );
-extern  void    BuffByte( byte b );
-extern  void    BuffWord( uint w );
-extern  void    BuffDWord( uint_32 w );
-extern  void    BuffOffset( offset w );
-extern  void    BuffValue( uint_32 val, uint class_ );
-extern  void    BuffRelocatable( pointer ptr, fixup_kind type, offset off );
-extern  void    BuffBack( pointer back, int off );
-extern  void    BuffAddr( pointer sym );
-extern  void    BuffForward( dbg_patch *dpatch );
-extern  void    BuffWSLString( const char *str );
-extern  void    BuffString( uint len, const char *str );
-extern  void    BuffIndex( uint tipe );
+#pragma once
+extern  void    BuffStart( BackRun& back, temp_buff *temp, uint def );
+extern  void    BuffEnd( BackRun& back, segment_id segid );
+extern  uint    BuffLoc( BackRun& back );
+extern  void    BuffPatch( BackRun& back, byte val, uint loc );
+extern  void    BuffByte( BackRun& back, byte b );
+extern  void    BuffWord( BackRun& back, uint w );
+extern  void    BuffDWord( BackRun& back, uint_32 w );
+extern  void    BuffOffset( BackRun& back, offset w );
+extern  void    BuffValue( BackRun& back, uint_32 val, uint class_ );
+extern  void    BuffRelocatable( BackRun& back, pointer ptr, fixup_kind type, offset off );
+extern  void    BuffBack( BackRun& back, pointer back_handle, int off );
+extern  void    BuffAddr( BackRun& back, pointer sym );
+extern  void    BuffForward( BackRun& back, dbg_patch *dpatch );
+extern  void    BuffWSLString( BackRun& back, const char *str );
+extern  void    BuffString( BackRun& back, uint len, const char *str );
+extern  void    BuffIndex( BackRun& back, uint tipe );

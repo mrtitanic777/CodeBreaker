@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define HW_xAX      HW_AX
 #define HW_xBX      HW_BX
 #define HW_xCX      HW_CX

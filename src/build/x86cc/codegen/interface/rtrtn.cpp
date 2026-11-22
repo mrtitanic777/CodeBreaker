@@ -36,21 +36,18 @@
 #include "zoiks.h"
 #include "data.h"
 #include "rtrtn.h"
+#include "backrun.hpp"
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct RtrtnState {
-    import_handle RTHdls[RTSIZE];
-    label_handle RTLbls[RTSIZE];
-};
+/* (struct RtrtnState: rtrtn_state.h) */
 
 }  // namespace
 
-static inline RtrtnState& rtrtn_state() { return cbrun_part<RtrtnState>(); }
 
 
-rt_class    LookupRoutine( instruction *ins )
+rt_class    LookupRoutine( BackRun& back, instruction *ins )
 /*******************************************/
 {
     const rtn_info  *rtn;
@@ -75,53 +72,53 @@ rt_class    LookupRoutine( instruction *ins )
 }
 
 
-void    InitRT( void )
+void    InitRT( BackRun& back )
 /********************/
 {
     rt_class    rtindex;
 
     for( rtindex = static_cast<rt_class>(0); rtindex < RTSIZE; ++rtindex ) {
-        rtrtn_state().RTHdls[rtindex] = NOT_IMPORTED;
-        rtrtn_state().RTLbls[rtindex] = NULL;
+        back.rtrtn.RTHdls[rtindex] = NOT_IMPORTED;
+        back.rtrtn.RTLbls[rtindex] = NULL;
     }
 }
 
 
-import_handle   AskRTHandle( rt_class rtindex )
+import_handle   AskRTHandle( BackRun& back, rt_class rtindex )
 /*********************************************/
 {
-    return( rtrtn_state().RTHdls[rtindex] );
+    return( back.rtrtn.RTHdls[rtindex] );
 }
 
 
-void    TellRTHandle( rt_class rtindex, import_handle imphdl )
+void    TellRTHandle( BackRun& back, rt_class rtindex, import_handle imphdl )
 /************************************************************/
 {
-    rtrtn_state().RTHdls[rtindex] = imphdl;
+    back.rtrtn.RTHdls[rtindex] = imphdl;
 }
 
 
-label_handle RTLabel( rt_class rtindex )
+label_handle RTLabel( BackRun& back, rt_class rtindex )
 /**************************************/
 {
     label_handle    lbl;
 
-    lbl = rtrtn_state().RTLbls[rtindex];
+    lbl = back.rtrtn.RTLbls[rtindex];
     if( lbl == NULL ) {
-        lbl = AskForRTLabel( rtindex );
-        rtrtn_state().RTLbls[rtindex] = lbl;
+        lbl = AskForRTLabel( back, rtindex );
+        back.rtrtn.RTLbls[rtindex] = lbl;
     }
     return( lbl );
 }
 
 
-rt_class    FindRTLabel( label_handle lbl )
+rt_class    FindRTLabel( BackRun& back, label_handle lbl )
 /*****************************************/
 {
     rt_class    rtindex;
 
     for( rtindex = static_cast<rt_class>(0); rtindex < RTSIZE; ++rtindex ) {
-        if( rtrtn_state().RTLbls[rtindex] == lbl ) {
+        if( back.rtrtn.RTLbls[rtindex] == lbl ) {
             break;
         }
     }

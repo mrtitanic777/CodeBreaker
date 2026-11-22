@@ -39,14 +39,13 @@
 struct AsmfixupState {
     asmfixup *InsFixups[OPND_MAX];
 };
-inline AsmfixupState& asmfixup_state() { return cbrun_part<AsmfixupState>(); }
 #include "asminlin.h"
-extern asmfixup     *AddFixup( asm_sym_handle sym, fixup_types fixup_type, fixup_options fixup_option );
+extern asmfixup     *AddFixup( AsmRun& assembler, asm_sym_handle sym, fixup_types fixup_type, fixup_options fixup_option );
 extern void         add_frame( void );
-extern bool         BackPatch( asm_sym_handle sym );
-extern void         mark_fixupp( OPNDTYPE determinant, operand_idx index );
+extern bool         BackPatch( AsmRun& assembler, asm_sym_handle sym );
+extern void         mark_fixupp( AsmRun& assembler, OPNDTYPE determinant, operand_idx index );
 extern bool         store_fixup( operand_idx index );
 
-extern bool         AddFPPatchAndFixups( fp_patches patch );
+extern bool         AddFPPatchAndFixups( AsmRun& assembler, fp_patches patch );
 
 #endif

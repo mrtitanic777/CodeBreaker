@@ -48,6 +48,7 @@
 #include "clibext.h"
 
 #endif
+#include "asmrun.hpp"
 
 #if defined( _STANDALONE_ )
 
@@ -721,7 +722,7 @@ static void dbg_output( token_buffer *tokbuf )
 #endif
 #endif
 
-void AsmByte( unsigned char byte )
+void AsmByte( AsmRun& assembler, unsigned char byte )
 /*********************************
  * Write a byte to the object file
  */
@@ -742,8 +743,8 @@ void AsmByte( unsigned char byte )
     }
     PassTotal++;
 #else
-    if( asminlin_state().AsmCodeAddress <= asminlin_state().AsmCodeLimit ) {
-        asminlin_state().AsmCodeBuffer[asminlin_state().AsmCodeAddress++] = byte;
+    if( assembler.asminlin->AsmCodeAddress <= assembler.asminlin->AsmCodeLimit ) {
+        assembler.asminlin->AsmCodeBuffer[assembler.asminlin->AsmCodeAddress++] = byte;
     }
 #endif
 }
@@ -810,22 +811,22 @@ void AsmLine( const char *string )
 
 #else
 
-void AsmLine( const char *string, bool use_emu )
+void AsmLine( AsmRun& assembler, const char *string, bool use_emu )
 /**********************************************/
 {
     enum fpe        old_floating_point;
     token_buffer    tokbuf;
 
-    old_floating_point = static_cast<enum fpe>(asmglob_state().SWData.fpt);
+    old_floating_point = static_cast<enum fpe>(assembler.asmglob.SWData.fpt);
     if( old_floating_point != NO_FP_ALLOWED ) {
-        asmglob_state().SWData.fpt = ( use_emu ) ? DO_FP_EMULATION : NO_FP_EMULATION;
+        assembler.asmglob.SWData.fpt = ( use_emu ) ? DO_FP_EMULATION : NO_FP_EMULATION;
     }
-    if( !AsmScan( &tokbuf, string ) ) {
+    if( !AsmScan( assembler, &tokbuf, string ) ) {
         if( tokbuf.count > 0 ) {
-            AsmParse( &tokbuf, string );
+            AsmParse( assembler, &tokbuf, string );
         }
     }
-    asmglob_state().SWData.fpt = old_floating_point;
+    assembler.asmglob.SWData.fpt = old_floating_point;
 }
 
 #endif

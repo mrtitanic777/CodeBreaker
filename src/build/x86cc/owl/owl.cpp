@@ -31,21 +31,22 @@
 
 
 #include "owlpriv.h"
+#include "backrun.hpp"
 
-extern owl_handle OWLENTRY OWLInit( owl_client_funcs *funcs, owl_cpu cpu ) {
+extern owl_handle OWLENTRY OWLInit( BackRun& back, owl_client_funcs *funcs, owl_cpu cpu ) {
 //**************************************************************************
 
     owl_handle  h;
 
-    h = (owl_handle)(funcs->alloc( sizeof( owl_info ) ));
+    h = (owl_handle)(funcs->alloc( back, sizeof( owl_info ) ));
     h->client_funcs = *funcs;
     h->cpu = cpu;
     h->files = NULL;
     return( h );
 }
 
-extern void OWLENTRY OWLFini( owl_handle handle ) {
+extern void OWLENTRY OWLFini( BackRun& back, owl_handle handle ) {
 //*************************************************
 
-    handle->client_funcs.free( handle );
+    handle->client_funcs.free( back, handle );
 }

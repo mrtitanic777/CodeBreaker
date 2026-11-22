@@ -34,7 +34,7 @@
 #ifndef DWNAME_H_INCLUDED
 #define DWNAME_H_INCLUDED
 
-extern void     DW_InitDebugPubnames( dw_client );
-extern void     DW_FiniDebugPubnames( dw_client );
+extern void     DW_InitDebugPubnames( BackRun& back, dw_client );
+extern void     DW_FiniDebugPubnames( BackRun& back, dw_client );
 
 #endif

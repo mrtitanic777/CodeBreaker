@@ -31,11 +31,12 @@
 
 
 #include "cvars.h"
+#include "frontrun.hpp"
 
 
-extern  void    FreeFNames( void );
-extern  void    FreeRDir( void );
-extern  void    SymsPurge( void );
+extern  void    FreeFNames( FrontRun& front );
+extern  void    FreeRDir( FrontRun& front );
+extern  void    SymsPurge( FrontRun& front );
 
 
 void InitPurge( void )
@@ -44,25 +45,25 @@ void InitPurge( void )
 }
 
 
-static void Purge( char **ptr )
+static void Purge( FrontRun& front, char **ptr )
 {
     if( *ptr != NULL ) {
-        CMemFree( *ptr );
+        CMemFree( front, *ptr );
         *ptr = NULL;
     }
 }
 
-void PurgeMemory( void )
+void PurgeMemory( FrontRun& front )
 /**********************/
 {
 //    MacroPurge();
-    SymsPurge();        /* calls TypesPurge */
-    FreeFNames();
-    FreeRDir();
-    SrcPurge();
-    SwitchPurge();
-    Purge( &cvars_state().IncPathList );
+    SymsPurge(front);        /* calls TypesPurge */
+    FreeFNames(front);
+    FreeRDir(front);
+    SrcPurge(front);
+    SwitchPurge(front);
+    Purge( front, &front.cvars.IncPathList );
 //    Purge( &ErrSym );               /* ErrSym is in CPermArea */
-    Purge( &cvars_state().SavedId );
-    FreePreCompiledHeader();
+    Purge( front, &front.cvars.SavedId );
+    FreePreCompiledHeader(front);
 }

@@ -38,6 +38,7 @@
 #include "dwcarve.h"
 #include "dwcliuti.h"
 #include "dwhandle.h"
+#include "backrun.hpp"
 
 
 /* number of elements in a block; should be a power of 2 */
@@ -87,7 +88,7 @@ static void dbgDefineHandle( dw_handle h )
 #define dbgDefineHandle( h )
 #endif
 
-void DW_InitHandles( dw_client cli )
+void DW_InitHandles( BackRun& back, dw_client cli )
 {
     int     i;
 
@@ -98,13 +99,13 @@ void DW_InitHandles( dw_client cli )
         cli->handles.block_head[i] = 0;
         cli->handles.block_tail[i] = &cli->handles.block_head[i];
     }
-    cli->handles.extra_carver = DW_CarveCreate( cli, sizeof( handle_extra ), 32 );
-    cli->handles.chain_carver = DW_CarveCreate( cli, sizeof( reloc_chain ), 16 );
+    cli->handles.extra_carver = DW_CarveCreate( back, cli, sizeof( handle_extra ), 32 );
+    cli->handles.chain_carver = DW_CarveCreate( back, cli, sizeof( reloc_chain ), 16 );
     initDbgHandle();
 }
 
 
-void DW_FiniHandles( dw_client cli )
+void DW_FiniHandles( BackRun& back, dw_client cli )
 {
     handle_blk      *cur;
     handle_blk      *next;
@@ -114,12 +115,12 @@ void DW_FiniHandles( dw_client cli )
         next = cur->next[0];
         CLIFree( cli, cur );
     }
-    DW_CarveDestroy( cli, cli->handles.extra_carver );
-    DW_CarveDestroy( cli, cli->handles.chain_carver );
+    DW_CarveDestroy( back, cli, cli->handles.extra_carver );
+    DW_CarveDestroy( back, cli, cli->handles.chain_carver );
 }
 
 
-static handle_blk *newBlock( dw_client cli )
+static handle_blk *newBlock( BackRun& back, dw_client cli )
 {
     handle_blk      *new_hdl;
     int             height;
@@ -151,7 +152,7 @@ static handle_blk *newBlock( dw_client cli )
 }
 
 
-dw_handle DW_NewHandle( dw_client cli )
+dw_handle DW_NewHandle( BackRun& back, dw_client cli )
 {
     uint_32         elm_num;
     dw_handle       new_hdl;
@@ -161,7 +162,7 @@ dw_handle DW_NewHandle( dw_client cli )
         if( elm_num >= BLOCK_SIZE * ( 1UL << ( 8 * sizeof( dw_index_t ) ) ) ) {
             _Abort( ABORT_TOO_MANY_HANDLES );
         }
-        newBlock( cli );
+        newBlock( back, cli );
     }
     ++cli->handles.num_handles;
     ++cli->handles.forward;
@@ -211,11 +212,11 @@ handle_common *DW_GetCommon( dw_client cli, dw_handle hdl )
 }
 
 
-handle_extra *DW_CreateExtra( dw_client cli, dw_handle hdl )
+handle_extra *DW_CreateExtra( BackRun& back, dw_client cli, dw_handle hdl )
 {
     handle_extra    *new_hdl;
 
-    new_hdl = static_cast<handle_extra *>(DW_CarveAlloc( cli, cli->handles.extra_carver ));
+    new_hdl = static_cast<handle_extra *>(DW_CarveAlloc( back, cli, cli->handles.extra_carver ));
     new_hdl->base.handle = hdl;
     new_hdl->base.next = cli->handles.extra_list;
     cli->handles.extra_list = new_hdl;
@@ -252,13 +253,13 @@ handle_extra *DW_GetExtra( dw_client cli, dw_handle hdl )
 }
 
 
-void DW_HandleReference( dw_client cli, dw_handle hdl, dw_sectnum sect )
+void DW_HandleReference( BackRun& back, dw_client cli, dw_handle hdl, dw_sectnum sect )
 {
-    DW_HandleWriteOffset( cli, hdl, sect );
+    DW_HandleWriteOffset( back, cli, hdl, sect );
 }
 
 
-void DW_HandleWriteOffset( dw_client cli, dw_handle hdl, dw_sectnum sect )
+void DW_HandleWriteOffset( BackRun& back, dw_client cli, dw_handle hdl, dw_sectnum sect )
 // always do a write so I know if the
 // handle got updated
 {
@@ -270,17 +271,17 @@ void DW_HandleWriteOffset( dw_client cli, dw_handle hdl, dw_sectnum sect )
     offset = GET_HANDLE_LOCATION( c );
     if( IS_FORWARD_LOCATION( c ) ) {
         /* add forward reference */
-        chain = static_cast<reloc_chain *>(DW_CarveAlloc( cli, cli->handles.chain_carver ));
+        chain = static_cast<reloc_chain *>(DW_CarveAlloc( back, cli, cli->handles.chain_carver ));
         chain->section = sect;
         chain->offset = CLISectionAbs( cli, sect );
         chain->next = c->reloc.u.chain;
         c->reloc.u.chain = chain;
     }
-    CLIWriteU32( cli, sect, offset );
+    CLIWriteU32( back, cli, sect, offset );
 }
 
 
-void DW_SetHandleLocation( dw_client cli, dw_handle hdl )
+void DW_SetHandleLocation( BackRun& back, dw_client cli, dw_handle hdl )
 {
     handle_common   *c;
     reloc_chain     *cur;
@@ -301,7 +302,7 @@ void DW_SetHandleLocation( dw_client cli, dw_handle hdl )
         for( ; cur != NULL; cur = static_cast<reloc_chain *>(DW_CarveFreeLink( cli->handles.chain_carver, cur )) ) {
             used[cur->section] = 1;
             CLISectionSeekAbs( cli, cur->section, cur->offset );
-            CLIWriteU32( cli, cur->section, offset );
+            CLIWriteU32( back, cli, cur->section, offset );
         }
         for( sect = static_cast<dw_sectnum>(0); sect < DW_DEBUG_MAX; ++sect ) {
             if( used[sect] ) {
@@ -320,27 +321,27 @@ dw_sect_offs DWENTRY DWGetHandleLocation( dw_client cli, dw_handle hdl )
     return( GET_HANDLE_LOCATION( c ) );
 }
 
-dw_handle DW_LabelNewHandle( dw_client cli )
+dw_handle DW_LabelNewHandle( BackRun& back, dw_client cli )
 {
     dw_handle       new_hdl;
 
-    new_hdl = DW_NewHandle( cli );
+    new_hdl = DW_NewHandle( back, cli );
     SET_HANDLE_LOCATION( DW_GetCommon( cli, new_hdl ), InfoSectionOffset( cli ) );
     dbgDefineHandle( new_hdl );
     --cli->handles.forward;
     return( new_hdl );
 }
 
-dw_handle DW_GetHandle( dw_client cli )
+dw_handle DW_GetHandle( BackRun& back, dw_client cli )
 {
     dw_handle       new_hdl;
 
     if( cli->defset == 0 ) {
-        new_hdl = DW_LabelNewHandle( cli );
+        new_hdl = DW_LabelNewHandle( back, cli );
     } else {
         new_hdl = cli->defset;
         cli->defset = 0;
-        DW_SetHandleLocation( cli, new_hdl );
+        DW_SetHandleLocation( back, cli, new_hdl );
     }
     return( new_hdl );
 }

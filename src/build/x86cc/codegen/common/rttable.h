@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef struct rtn_info {
     const char      *name;
     opcode_defs     opcode;

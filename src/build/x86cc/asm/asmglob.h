@@ -107,7 +107,6 @@ struct AsmglobState {
     sw_data SWData;
 #endif
 };
-inline AsmglobState& asmglob_state() { return cbrun_part<AsmglobState>(); }
 
 #if defined( _STANDALONE_ )
 

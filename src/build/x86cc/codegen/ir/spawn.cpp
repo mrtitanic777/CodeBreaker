@@ -33,40 +33,38 @@
 #include <setjmp.h>
 #include "jmpbuf.h"
 #include "spawn.h"
+#include "backrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct SpawnState {
-    jmp_buf *SpawnStack;
-};
+/* (struct SpawnState: spawn_state.h) */
 
 }  // namespace
 
-static inline SpawnState& spawn_state() { return cbrun_part<SpawnState>(); }
 
 
-int     Spawn( void (*fn)( void ) )
+int     Spawn( BackRun& back, void (*fn)( BackRun& ) )
 //=================================
 {
     jmp_buf     *save_env;
     jmp_buf     env;
     int         status;
 
-    save_env = spawn_state().SpawnStack;
-    spawn_state().SpawnStack = JMPBUF_PTR( env );
+    save_env = back.spawn.SpawnStack;
+    back.spawn.SpawnStack = JMPBUF_PTR( env );
     status = setjmp( env );
     if( status == 0 ) {
-        (*fn)();
+        (*fn)(back);
     }
-    spawn_state().SpawnStack = save_env;
+    back.spawn.SpawnStack = save_env;
     return( status );
 }
 
 
-void    Suicide( void )
+void    Suicide( BackRun& back )
 //=====================
 {
-    longjmp( *spawn_state().SpawnStack, 1 );
+    longjmp( *back.spawn.SpawnStack, 1 );
 }

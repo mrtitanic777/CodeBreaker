@@ -34,6 +34,7 @@
 #include <errno.h>
 #include "wio.h"
 #include "scan.h"
+#include "frontrun.hpp"
 
 
 #define MAX_INC_DEPTH   255
@@ -42,10 +43,7 @@
  * the following table is used to map three character sequences
  * beginning with ?? followed by 'tri' into the single character 'new'
  */
-struct tri_graph {
-    char        tri;
-    char        new_;
-};
+
 
 
 static const unsigned char  notFilled[] = { '\n', '\0' };
@@ -54,37 +52,18 @@ static const unsigned char  notFilled[] = { '\n', '\0' };
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct CgetchState {
-    struct tri_graph TriGraphs[10] = {
-        { '=', '#' },
-        { '(', '[' },
-        { '/', '\\'},
-        { ')', ']' },
-        { '\'','^' },
-        { '<', '{' },
-        { '!', '|' },
-        { '>', '}' },
-        { '-', '~' },
-        { '\0','\0'}
-    };
-    int LastChar;
-    int Blank1Count;
-    int Blank2Count;
-    int Tab1Count;
-    int IncFileDepth;
-};
+/* (struct CgetchState: cgetch_state.h) */
 
 }  // namespace
 
-static inline CgetchState& cgetch_state() { return cbrun_part<CgetchState>(); }
 
 
-void InitIncFile( void )
+void InitIncFile( FrontRun& front )
 {
-    cgetch_state().IncFileDepth = MAX_INC_DEPTH;
+    front.cgetch.IncFileDepth = MAX_INC_DEPTH;
 }
 
-static bool ReadBuffer( FCB *fcb )
+static bool ReadBuffer( FrontRun& front, FCB *fcb )
 {
     size_t      read_amount;
 
@@ -92,7 +71,7 @@ static bool ReadBuffer( FCB *fcb )
         /*
          * null device or in-memory buffer
          */
-        CloseSrcFile( fcb );
+        CloseSrcFile( front, fcb );
         return( true );
     }
     if( fcb->src_end == notFilled + 1 ) {
@@ -100,18 +79,18 @@ static bool ReadBuffer( FCB *fcb )
          * no data read yet
          */
         if( fcb->typ == FT_HEADER_FORCED ) {
-            cvars_state().InitialMacroFlags = MFLAG_NONE;
-            if( cvars_state().PCH_FileName != NULL && cvars_state().CompFlags.make_precompiled_header == 0 ) {
-                if( cvars_state().CompFlags.ok_to_use_precompiled_hdr ) {
-                    cvars_state().CompFlags.use_precompiled_header = true;
+            front.cvars.InitialMacroFlags = MFLAG_NONE;
+            if( front.cvars.PCH_FileName != NULL && front.cvars.CompFlags.make_precompiled_header == 0 ) {
+                if( front.cvars.CompFlags.ok_to_use_precompiled_hdr ) {
+                    front.cvars.CompFlags.use_precompiled_header = true;
                 }
             }
-            if( cvars_state().CompFlags.use_precompiled_header ) {
-                InitBuildPreCompiledHeader();
+            if( front.cvars.CompFlags.use_precompiled_header ) {
+                InitBuildPreCompiledHeader(front);
             }
-            if( cvars_state().CompFlags.use_precompiled_header ) {
-                cvars_state().CompFlags.use_precompiled_header = false;
-                if( UsePreCompiledHeader( fcb->src_name ) ) {
+            if( front.cvars.CompFlags.use_precompiled_header ) {
+                front.cvars.CompFlags.use_precompiled_header = false;
+                if( UsePreCompiledHeader( front, fcb->src_name ) ) {
                     return( true );
                 }
             }
@@ -121,7 +100,7 @@ static bool ReadBuffer( FCB *fcb )
      * if end of file was read already then close file and no other reading from file
      */
     if( fcb->eof ) {
-        CloseSrcFile( fcb );
+        CloseSrcFile( front, fcb );
         return( true );
     }
     /* copy last byte to begining of next data */
@@ -148,8 +127,8 @@ static bool ReadBuffer( FCB *fcb )
      * check for file read error
      */
     if( ferror( fcb->fp ) ) {
-        CErr3p( ERR_IO_ERR, fcb->src_name, strerror( errno ) );
-        CloseSrcFile( fcb );
+        CErr3p( front, ERR_IO_ERR, fcb->src_name, strerror( errno ) );
+        CloseSrcFile( front, fcb );
         return( true );
     }
     /*
@@ -177,7 +156,7 @@ static bool ReadBuffer( FCB *fcb )
         return( false );
     }
     if( read_amount == 0 ) {
-        CloseSrcFile( fcb );
+        CloseSrcFile( front, fcb );
         return( true );
     }
     /*
@@ -188,103 +167,103 @@ static bool ReadBuffer( FCB *fcb )
 }
 
 
-int GetNextChar( void )
+int GetNextChar( FrontRun& front )
 {
     int c;
 
-    c = *cvars_state().SrcFiles->src_ptr++;
-    if(( scan_state().CharSet[c] & C_EX ) == 0 ) {
+    c = *front.cvars.SrcFiles->src_ptr++;
+    if(( front.scan.CharSet[c] & C_EX ) == 0 ) {
 //        SrcFiles->column++;
-        cvars_state().CurrChar = c;
+        front.cvars.CurrChar = c;
         return( c );
     }
-    return( cvars_state().GetCharCheck( c ) );
+    return( front.cvars.GetCharCheck( front, c ) );
 }
 
-static int getCharAfterOneQuestion( void )
+static int getCharAfterOneQuestion( FrontRun& front )
 {
     int c;
 
     /*
      * column for 'LastChar' has not been set yet
      */
-    cvars_state().NextChar = GetNextChar;
-    c = cgetch_state().LastChar;
+    front.cvars.NextChar = GetNextChar;
+    c = front.cgetch.LastChar;
     if( c == '?' ) {
 //        SrcFiles->column++;
-        cvars_state().CurrChar = c;
+        front.cvars.CurrChar = c;
         return( c );
     }
-    return( cvars_state().GetCharCheck( c ) );
+    return( front.cvars.GetCharCheck( front, c ) );
 }
 
-static int getCharAfterTwoQuestion( void )
+static int getCharAfterTwoQuestion( FrontRun& front )
 {
 //    SrcFiles->column++;
-    cvars_state().CurrChar = '?';
-    cvars_state().NextChar = getCharAfterOneQuestion;
-    return( cvars_state().CurrChar );
+    front.cvars.CurrChar = '?';
+    front.cvars.NextChar = getCharAfterOneQuestion;
+    return( front.cvars.CurrChar );
 }
 
-int getCharAfterBackSlash( void )
+int getCharAfterBackSlash( FrontRun& front )
 {
-    if( cgetch_state().Blank1Count != 0 ) {
-        --cgetch_state().Blank1Count;
-        return( cvars_state().CurrChar = ' ' );
+    if( front.cgetch.Blank1Count != 0 ) {
+        --front.cgetch.Blank1Count;
+        return( front.cvars.CurrChar = ' ' );
     }
-    if( cgetch_state().Tab1Count != 0 ) {
-        --cgetch_state().Tab1Count;
-        return( cvars_state().CurrChar = '\t' );
+    if( front.cgetch.Tab1Count != 0 ) {
+        --front.cgetch.Tab1Count;
+        return( front.cvars.CurrChar = '\t' );
     }
-    if( cgetch_state().Blank2Count != 0 ) {
-        --cgetch_state().Blank2Count;
-        return( cvars_state().CurrChar = ' ' );
+    if( front.cgetch.Blank2Count != 0 ) {
+        --front.cgetch.Blank2Count;
+        return( front.cvars.CurrChar = ' ' );
     }
-    cvars_state().NextChar = GetNextChar;
-    return( cvars_state().GetCharCheck( cgetch_state().LastChar ) );
+    front.cvars.NextChar = GetNextChar;
+    return( front.cvars.GetCharCheck( front, front.cgetch.LastChar ) );
 }
 
-static int getTestCharFromFile( void )
+static int getTestCharFromFile( FrontRun& front )
 {
     int c;
 
-    for( ; (c = *cvars_state().SrcFiles->src_ptr++) == '\0'; ) {
+    for( ; (c = *front.cvars.SrcFiles->src_ptr++) == '\0'; ) {
         /*
          * check to make sure the NUL character we just found is at the
          * end of the buffer, and not an embedded NUL character in the
          * source file.
          */
-        if( cvars_state().SrcFiles->src_ptr != cvars_state().SrcFiles->src_end + 1 )
+        if( front.cvars.SrcFiles->src_ptr != front.cvars.SrcFiles->src_end + 1 )
             break;
-        if( ReadBuffer( cvars_state().SrcFiles ) ) {
-            return( cvars_state().CurrChar );
+        if( ReadBuffer( front, front.cvars.SrcFiles ) ) {
+            return( front.cvars.CurrChar );
         }
     }
     return( c );
 }
 
-static int getSecondMultiByte( void )
+static int getSecondMultiByte( FrontRun& front )
 {
     int c;
 
-    c = getTestCharFromFile();
+    c = getTestCharFromFile(front);
     /*
      * should we do this for a multi-byte char?
      */
-    cvars_state().NextChar = GetNextChar;
-    cvars_state().CurrChar = c;
+    front.cvars.NextChar = GetNextChar;
+    front.cvars.CurrChar = c;
     return( c );
 }
 
-static char translateTriGraph( char c )
+static char translateTriGraph( FrontRun& front, char c )
 {
     struct tri_graph *p;
 
-    for( p = cgetch_state().TriGraphs; p->tri != '\0'; ++p ) {
+    for( p = front.cgetch.TriGraphs; p->tri != '\0'; ++p ) {
         if( c == p->tri ) {
-            if( cvars_state().CompFlags.extensions_enabled ) {
-                if( cvars_state().SkipLevel == cvars_state().NestLevel ) {
-                    cvars_state().CompFlags.trigraph_alert = true;
+            if( front.cvars.CompFlags.extensions_enabled ) {
+                if( front.cvars.SkipLevel == front.cvars.NestLevel ) {
+                    front.cvars.CompFlags.trigraph_alert = true;
                 }
             }
             return( p->new_ );
@@ -293,87 +272,87 @@ static char translateTriGraph( char c )
     return( c );
 }
 
-static int tryBackSlashNewLine( void )
+static int tryBackSlashNewLine( FrontRun& front )
 {
     int nc;
 
     /*
      * CurrChar is '\\' and SrcFiles->column is up to date
      */
-    cgetch_state().Blank1Count = 0;
-    cgetch_state().Blank2Count = 0;
-    cgetch_state().Tab1Count = 0;
-    nc = getTestCharFromFile();
-    if( cvars_state().CompFlags.extensions_enabled ) {
+    front.cgetch.Blank1Count = 0;
+    front.cgetch.Blank2Count = 0;
+    front.cgetch.Tab1Count = 0;
+    nc = getTestCharFromFile(front);
+    if( front.cvars.CompFlags.extensions_enabled ) {
         while( nc == ' ' ) {
-            ++cgetch_state().Blank1Count;
-            nc = getTestCharFromFile();
+            ++front.cgetch.Blank1Count;
+            nc = getTestCharFromFile(front);
         }
         while( nc == '\t' ) {
-            ++cgetch_state().Tab1Count;
-            nc = getTestCharFromFile();
+            ++front.cgetch.Tab1Count;
+            nc = getTestCharFromFile(front);
         }
         while( nc == ' ' ) {
-            ++cgetch_state().Blank2Count;
-            nc = getTestCharFromFile();
+            ++front.cgetch.Blank2Count;
+            nc = getTestCharFromFile(front);
         }
     }
     if( nc == '\r' ) {
-        nc = getTestCharFromFile();
+        nc = getTestCharFromFile(front);
     }
     if( nc == '\n' ) {
-        if( cvars_state().CompFlags.scanning_cpp_comment && cvars_state().SkipLevel == cvars_state().NestLevel ) {
-            CWarn1( ERR_SPLICE_IN_CPP_COMMENT );
+        if( front.cvars.CompFlags.scanning_cpp_comment && front.cvars.SkipLevel == front.cvars.NestLevel ) {
+            CWarn1( front, ERR_SPLICE_IN_CPP_COMMENT );
         }
-        if( cvars_state().CompFlags.cpp_mode ) {
-            if( cvars_state().CompFlags.in_pragma ) {
-                CppPrtChar( '\\' );
-                CppPrtChar( '\n' );
-            } else if( cvars_state().CompFlags.cpp_line_wanted ) {
-                CppPrtChar( '\n' );
+        if( front.cvars.CompFlags.cpp_mode ) {
+            if( front.cvars.CompFlags.in_pragma ) {
+                CppPrtChar( front, '\\' );
+                CppPrtChar( front, '\n' );
+            } else if( front.cvars.CompFlags.cpp_line_wanted ) {
+                CppPrtChar( front, '\n' );
             }
         }
-        NewLineStartPos( cvars_state().SrcFiles );
-        cvars_state().SrcFileLoc = cvars_state().SrcFiles->src_loc;
+        NewLineStartPos( front.cvars.SrcFiles );
+        front.cvars.SrcFileLoc = front.cvars.SrcFiles->src_loc;
 //        SrcFiles->column = 0;
-        return( GetNextChar() );
+        return( GetNextChar(front) );
     }
-    cgetch_state().LastChar = nc;
-    cvars_state().NextChar = getCharAfterBackSlash;
+    front.cgetch.LastChar = nc;
+    front.cvars.NextChar = getCharAfterBackSlash;
     return( '\\' );
 }
 
-static int tryTrigraphAgain( void )
+static int tryTrigraphAgain( FrontRun& front )
 {
     int c;
     int xc;
 
 //    SrcFiles->column++;
-    c = getTestCharFromFile();
+    c = getTestCharFromFile(front);
     if( c != '?' ) {
-        xc = translateTriGraph( c );
+        xc = translateTriGraph( front, c );
         if( c != xc ) {
 //            SrcFiles->column += 2;
-            cvars_state().CurrChar = xc;
-            cvars_state().NextChar = GetNextChar;
+            front.cvars.CurrChar = xc;
+            front.cvars.NextChar = GetNextChar;
             if( xc == '\\' ) {
-                return( tryBackSlashNewLine() );
+                return( tryBackSlashNewLine(front) );
             }
             return( xc );
         }
-        cgetch_state().LastChar = c;
-        cvars_state().CurrChar = '?';
-        cvars_state().NextChar = getCharAfterTwoQuestion;
+        front.cgetch.LastChar = c;
+        front.cvars.CurrChar = '?';
+        front.cvars.NextChar = getCharAfterTwoQuestion;
         return( '?' );
     }
-    cvars_state().CurrChar = c;
+    front.cvars.CurrChar = c;
     /*
      * leave NextChar set here because it could still be a trigraph
      */
     return( c );
 }
 
-int GetCharCheckFile( int c )
+int GetCharCheckFile( FrontRun& front, int c )
 {
     int xc;
     int nc;
@@ -390,16 +369,16 @@ int GetCharCheckFile( int c )
              * end of the buffer, and not an embedded NUL character in the
              * source file.
              */
-            cvars_state().CurrChar = '\0';
-            if( cvars_state().SrcFiles->no_eol ) {
-                cvars_state().CurrChar = '\n';
+            front.cvars.CurrChar = '\0';
+            if( front.cvars.SrcFiles->no_eol ) {
+                front.cvars.CurrChar = '\n';
             }
-            if( cvars_state().SrcFiles->src_ptr == cvars_state().SrcFiles->src_end + 1 ) {
-                if( !ReadBuffer( cvars_state().SrcFiles ) ) {
-                    return( GetNextChar() );
+            if( front.cvars.SrcFiles->src_ptr == front.cvars.SrcFiles->src_end + 1 ) {
+                if( !ReadBuffer( front, front.cvars.SrcFiles ) ) {
+                    return( GetNextChar(front) );
                 }
             }
-            return( cvars_state().CurrChar );
+            return( front.cvars.CurrChar );
         case '\n':
 //            NewLineStartPos( SrcFiles );
 //            SrcFiles->column = 0;
@@ -410,147 +389,147 @@ int GetCharCheckFile( int c )
             break;
         case '\\':
 //            SrcFiles->column++;
-            cvars_state().CurrChar = c;
-            return( tryBackSlashNewLine() );
+            front.cvars.CurrChar = c;
+            return( tryBackSlashNewLine(front) );
         case '\r':
             break;
         default:
 //            SrcFiles->column++;
-            if( c > 0x7f && (scan_state().CharSet[c] & C_DB) ) {
+            if( c > 0x7f && (front.scan.CharSet[c] & C_DB) ) {
                 /*
                  * we should not process the second byte through
                  * normal channels since its value is meaningless
                  * out of context
                  */
-                cvars_state().NextChar = getSecondMultiByte;
+                front.cvars.NextChar = getSecondMultiByte;
             }
             break;
         }
-        cvars_state().CurrChar = c;
+        front.cvars.CurrChar = c;
         return( c );
     }
     /*
      * we have one '?'
      */
 //    SrcFiles->column++;
-    nc = getTestCharFromFile();
+    nc = getTestCharFromFile(front);
     if( nc != '?' ) {
-        cgetch_state().LastChar = nc;
-        cvars_state().CurrChar = c;
-        cvars_state().NextChar = getCharAfterOneQuestion;
+        front.cgetch.LastChar = nc;
+        front.cvars.CurrChar = c;
+        front.cvars.NextChar = getCharAfterOneQuestion;
         return( c );
     }
     /*
      * we have two '?'s
      */
-    nnc = getTestCharFromFile();
-    xc = translateTriGraph( nnc );
+    nnc = getTestCharFromFile(front);
+    xc = translateTriGraph( front, nnc );
     if( nnc != xc ) {
 //        SrcFiles->column += 2;
-        cvars_state().CurrChar = xc;
+        front.cvars.CurrChar = xc;
         if( xc == '\\' ) {
-            return( tryBackSlashNewLine() );
+            return( tryBackSlashNewLine(front) );
         }
         return( xc );
     }
-    cgetch_state().LastChar = nnc;
-    cvars_state().CurrChar = c;
+    front.cgetch.LastChar = nnc;
+    front.cvars.CurrChar = c;
     if( nnc == '?' ) {
         /*
          * the next char after this may be a valid trigraph!
          */
-        cvars_state().NextChar = tryTrigraphAgain;
+        front.cvars.NextChar = tryTrigraphAgain;
         return( c );
     }
-    cvars_state().NextChar = getCharAfterTwoQuestion;
+    front.cvars.NextChar = getCharAfterTwoQuestion;
     return( c );
 }
 
-static int regetUngotCharAfterOneQuestion( void )
+static int regetUngotCharAfterOneQuestion( FrontRun& front )
 {
     int c;
 
     /*
      * column for 'LastChar' has been set
      */
-    cvars_state().NextChar = GetNextChar;
-    c = cgetch_state().LastChar;
-    cvars_state().CurrChar = c;
+    front.cvars.NextChar = GetNextChar;
+    c = front.cgetch.LastChar;
+    front.cvars.CurrChar = c;
     return( c );
 }
 
-static int regetUngotCharAfterTwoQuestion( void )
+static int regetUngotCharAfterTwoQuestion( FrontRun& front )
 {
     int c;
 
-    cvars_state().NextChar = regetUngotCharAfterOneQuestion;
+    front.cvars.NextChar = regetUngotCharAfterOneQuestion;
     c = '?';
-    cvars_state().CurrChar = c;
+    front.cvars.CurrChar = c;
     return( c );
 }
 
-static int restartDetectOneQuestion( void )
+static int restartDetectOneQuestion( FrontRun& front )
 {
     int c;
 
-    cvars_state().NextChar = regetUngotCharAfterOneQuestion;
+    front.cvars.NextChar = regetUngotCharAfterOneQuestion;
     c = '?';
-    cvars_state().CurrChar = c;
+    front.cvars.CurrChar = c;
     return( c );
 }
 
-static int restartDetectTwoQuestion( void )
+static int restartDetectTwoQuestion( FrontRun& front )
 {
     int c;
 
-    cvars_state().NextChar = regetUngotCharAfterTwoQuestion;
+    front.cvars.NextChar = regetUngotCharAfterTwoQuestion;
     c = '?';
-    cvars_state().CurrChar = c;
+    front.cvars.CurrChar = c;
     return( c );
 }
 
-static int restartBackSlashWhiteSpace( void )
+static int restartBackSlashWhiteSpace( FrontRun& front )
 {
     int c;
 
-    cvars_state().NextChar = getCharAfterBackSlash;
+    front.cvars.NextChar = getCharAfterBackSlash;
     c = '\\';
-    cvars_state().CurrChar = c;
+    front.cvars.CurrChar = c;
     return( c );
 }
 
-void GetNextCharUndo( int c )
+void GetNextCharUndo( FrontRun& front, int c )
 {
-    if( cvars_state().NextChar == GetNextChar ) {
+    if( front.cvars.NextChar == GetNextChar ) {
         /*
          * will return 'LastChar' and reset back to 'GetNextChar'
          */
-        cvars_state().NextChar = regetUngotCharAfterOneQuestion;
-        cgetch_state().LastChar = c;
+        front.cvars.NextChar = regetUngotCharAfterOneQuestion;
+        front.cgetch.LastChar = c;
         return;
     }
-    if( cvars_state().NextChar == getCharAfterOneQuestion ) {
+    if( front.cvars.NextChar == getCharAfterOneQuestion ) {
         /*
          * LastChar already has character saved in it
          * c should be '?'
          */
-        cvars_state().NextChar = restartDetectOneQuestion;
+        front.cvars.NextChar = restartDetectOneQuestion;
         return;
     }
-    if( cvars_state().NextChar == getCharAfterTwoQuestion ) {
+    if( front.cvars.NextChar == getCharAfterTwoQuestion ) {
         /*
          * LastChar already has character saved in it
          * c should be '?'
          */
-        cvars_state().NextChar = restartDetectTwoQuestion;
+        front.cvars.NextChar = restartDetectTwoQuestion;
         return;
     }
-    if( cvars_state().NextChar == getCharAfterBackSlash ) {
+    if( front.cvars.NextChar == getCharAfterBackSlash ) {
         /*
          * LastChar already has character saved in it
          * c should be '\\'
          */
-        cvars_state().NextChar = restartBackSlashWhiteSpace;
+        front.cvars.NextChar = restartBackSlashWhiteSpace;
         return;
     }
 #ifdef FDEBUG
@@ -558,91 +537,91 @@ void GetNextCharUndo( int c )
 #endif
 }
 
-static bool FCB_Alloc( FILE *fp, const char *filename, src_file_type typ )
+static bool FCB_Alloc( FrontRun& front, FILE *fp, const char *filename, src_file_type typ )
 {
     FCB             *fcb;
     unsigned char   *src_buffer;
     FNAMEPTR        flist;
 
-    --cgetch_state().IncFileDepth;
-    fcb = (FCB *)CMemAlloc( sizeof( FCB ) );
-    src_buffer = static_cast<unsigned char *>(FEmalloc( SRC_BUF_SIZE + 3 ));
+    --front.cgetch.IncFileDepth;
+    fcb = (FCB *)CMemAlloc( front, sizeof( FCB ) );
+    src_buffer = static_cast<unsigned char *>(FEmalloc( front, SRC_BUF_SIZE + 3 ));
     if( fcb != NULL ) {
         src_buffer[0] = '\n';
         src_buffer[1] = '\0';
         fcb->src_buf = src_buffer;
         fcb->src_ptr = fcb->src_end = src_buffer + 1;
-        flist = AddFlist( filename );
-        FNameFullPath( flist );
+        flist = AddFlist( front, filename );
+        FNameFullPath( front, flist );
         fcb->src_name = flist->name;
         fcb->src_line_cnt = 0;
         fcb->src_loc.line = 0;
         fcb->src_loc.column = 0;
         fcb->src_loc.fno = flist->index;
-        cvars_state().SrcFileLoc = fcb->src_loc;
+        front.cvars.SrcFileLoc = fcb->src_loc;
         fcb->src_flist = flist;
         fcb->fp = fp;
-        fcb->prev_file = cvars_state().SrcFiles;
-        fcb->prev_currchar = cvars_state().CurrChar;
+        fcb->prev_file = front.cvars.SrcFiles;
+        fcb->prev_currchar = front.cvars.CurrChar;
 #if _CPU == 370
         fcb->column = 0;     /* init colum, trunc info */
         fcb->trunc = 0;
         fcb->prevcount = 0;
 #endif
-        if( cvars_state().SrcFiles != NULL ) {
-            if( cvars_state().SrcFiles == cvars_state().MainSrcFile ) {
+        if( front.cvars.SrcFiles != NULL ) {
+            if( front.cvars.SrcFiles == front.cvars.MainSrcFile ) {
                 /*
                  * remember name of included file
                  */
-                AddIncFileList( filename );
+                AddIncFileList( front, filename );
             }
         }
         fcb->rseekpos = 0;
         fcb->typ = typ;
         fcb->no_eol = false;
         fcb->eof = false;
-        cvars_state().SrcFiles = fcb;
-        cvars_state().CurrChar = '\n';    /* set next character to newline */
+        front.cvars.SrcFiles = fcb;
+        front.cvars.CurrChar = '\n';    /* set next character to newline */
         return( true );
     }
     return( false );
 }
 
-static void FCB_Free( FCB *fcb )
+static void FCB_Free( FrontRun& front, FCB *fcb )
 {
-    ++cgetch_state().IncFileDepth;
-    FEfree( fcb->src_buf );
-    CMemFree( fcb );
+    ++front.cgetch.IncFileDepth;
+    FEfree( front, fcb->src_buf );
+    CMemFree( front, fcb );
 }
 
-bool OpenFCB( FILE *fp, const char *filename, src_file_type typ )
+bool OpenFCB( FrontRun& front, FILE *fp, const char *filename, src_file_type typ )
 {
-    if( cgetch_state().IncFileDepth == 0 ) {
-        CErr2( ERR_INCDEPTH, MAX_INC_DEPTH );
-        CSuicide();
+    if( front.cgetch.IncFileDepth == 0 ) {
+        CErr2( front, ERR_INCDEPTH, MAX_INC_DEPTH );
+        CSuicide(front);
         return( false );
     }
-    if( cvars_state().CompFlags.track_includes ) {
+    if( front.cvars.CompFlags.track_includes ) {
         /*
          * Don't track the top level file (any semi-intelligent user should
          * have no trouble tracking *that* down)
          */
-        if( cgetch_state().IncFileDepth < MAX_INC_DEPTH ) {
-            CInfoMsg( INFO_INCLUDING_FILE, filename );
+        if( front.cgetch.IncFileDepth < MAX_INC_DEPTH ) {
+            CInfoMsg( front, INFO_INCLUDING_FILE, filename );
         }
     }
 
-    if( FCB_Alloc( fp, filename, typ ) ) {
+    if( FCB_Alloc( front, fp, filename, typ ) ) {
         return( true );
     }
-    CErr1( ERR_OUT_OF_MEMORY );
+    CErr1( front, ERR_OUT_OF_MEMORY );
     return( false );
 }
 
-void CloseFCB( FCB *fcb )
+void CloseFCB( FrontRun& front, FCB *fcb )
 {
-    if( cvars_state().CompFlags.scanning_comment ) {
-        CErr2( ERR_INCOMPLETE_COMMENT, cvars_state().CommentLoc.line );
+    if( front.cvars.CompFlags.scanning_comment ) {
+        CErr2( front, ERR_INCOMPLETE_COMMENT, front.cvars.CommentLoc.line );
     }
     if( fcb->no_eol ) {
         source_loc  err_loc;
@@ -650,49 +629,49 @@ void CloseFCB( FCB *fcb )
         err_loc.line = fcb->src_line_cnt - 1;
         err_loc.column = fcb->src_loc.column;
         err_loc.fno = fcb->src_flist->index;
-        SetErrLoc( &err_loc );
-        CWarn1( ERR_NO_EOL_BEFORE_EOF );
-        InitErrLoc();
+        SetErrLoc( front, &err_loc );
+        CWarn1( front, ERR_NO_EOL_BEFORE_EOF );
+        InitErrLoc(front);
     }
-    cvars_state().SrcFiles = fcb->prev_file;
-    cvars_state().CurrChar = fcb->prev_currchar;
-    if( cvars_state().SrcFiles != NULL ) {
-        if( cvars_state().SrcFiles->fp == NULL ) {
+    front.cvars.SrcFiles = fcb->prev_file;
+    front.cvars.CurrChar = fcb->prev_currchar;
+    if( front.cvars.SrcFiles != NULL ) {
+        if( front.cvars.SrcFiles->fp == NULL ) {
             /*
              * physical file name must be used, not logical
              */
-            cvars_state().SrcFiles->fp = fopen( cvars_state().SrcFiles->src_flist->name, "rb" );
-            fseek( cvars_state().SrcFiles->fp, cvars_state().SrcFiles->rseekpos, SEEK_SET );
+            front.cvars.SrcFiles->fp = front.held->fopen( front.cvars.SrcFiles->src_flist->name, "rb" );
+            fseek( front.cvars.SrcFiles->fp, front.cvars.SrcFiles->rseekpos, SEEK_SET );
         }
-        cvars_state().SrcFileLoc = cvars_state().SrcFiles->src_loc;
-        cvars_state().IncLineCount += fcb->src_line_cnt;
-        if( cvars_state().SrcFiles == cvars_state().MainSrcFile ) {
-            if( cvars_state().CompFlags.make_precompiled_header ) {
-                cvars_state().CompFlags.make_precompiled_header = false;
-                if( cvars_state().ErrCount == 0 ) {
-                    BuildPreCompiledHeader( cvars_state().PCH_FileName );
+        front.cvars.SrcFileLoc = front.cvars.SrcFiles->src_loc;
+        front.cvars.IncLineCount += fcb->src_line_cnt;
+        if( front.cvars.SrcFiles == front.cvars.MainSrcFile ) {
+            if( front.cvars.CompFlags.make_precompiled_header ) {
+                front.cvars.CompFlags.make_precompiled_header = false;
+                if( front.cvars.ErrCount == 0 ) {
+                    BuildPreCompiledHeader( front, front.cvars.PCH_FileName );
                 }
             }
         }
-        if( cvars_state().CompFlags.cpp_mode ) {
-            CppEmitPoundLine( cvars_state().SrcFiles->src_loc.line, cvars_state().SrcFiles->src_name, true );
+        if( front.cvars.CompFlags.cpp_mode ) {
+            CppEmitPoundLine( front, front.cvars.SrcFiles->src_loc.line, front.cvars.SrcFiles->src_name, true );
         }
     } else {
-        cvars_state().SrcLineCount = fcb->src_line_cnt;
-        cvars_state().CurrChar = LCHR_EOF;
+        front.cvars.SrcLineCount = fcb->src_line_cnt;
+        front.cvars.CurrChar = LCHR_EOF;
     }
-    FCB_Free( fcb );
+    FCB_Free( front, fcb );
 }
 
-void SrcPurge( void )
+void SrcPurge( FrontRun& front )
 /*******************/
 {
     FCB *fcb;
 
-    while( (fcb = cvars_state().SrcFiles) != NULL ) {
-        cvars_state().SrcFiles = fcb->prev_file;
+    while( (fcb = front.cvars.SrcFiles) != NULL ) {
+        front.cvars.SrcFiles = fcb->prev_file;
         if( fcb->fp != NULL && fcb->fp != stdin )
-            fclose( fcb->fp );
-        FCB_Free( fcb );
+            front.held->fclose( fcb->fp );
+        FCB_Free( front, fcb );
     }
 }

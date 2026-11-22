@@ -38,6 +38,7 @@
 #include "nullprop.h"
 #include "conflict.h"
 #include "loadstor.h"
+#include "backrun.hpp"
 
 
 /*
@@ -49,19 +50,19 @@
 #define BLK_CONTAINS_CALL   BLK_LOOP_EXIT /* borrow. Only used during loop opts */
 
 
-static  bool    SameConf( name *op, instruction *ins, conflict_node *conf )
+static  bool    SameConf( BackRun& back, name *op, instruction *ins, conflict_node *conf )
 /*************************************************************************/
 {
     if( op->n.class_ == N_INDEXED ) {
-        if( NameConflict( ins, op->i.index ) == conf )
+        if( NameConflict( back, ins, op->i.index ) == conf )
             return( true );
         if( HasTrueBase( op ) ) {
-            if( NameConflict( ins, op->i.base ) == conf ) {
+            if( NameConflict( back, ins, op->i.base ) == conf ) {
                 return( true );
             }
         }
     } else {
-        if( NameConflict( ins, op ) == conf ) {
+        if( NameConflict( back, ins, op ) == conf ) {
             return( true );
         }
     }
@@ -69,7 +70,7 @@ static  bool    SameConf( name *op, instruction *ins, conflict_node *conf )
 }
 
 
-static  void    CheckRefs( conflict_node *conf, block *blk )
+static  void    CheckRefs( BackRun& back, conflict_node *conf, block *blk )
 /***********************************************************
  * mark block if it contains a reference to conf.
  * Also mark as BLK_CONTAINS_CALL if it does
@@ -84,13 +85,13 @@ static  void    CheckRefs( conflict_node *conf, block *blk )
     }
     for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
         for( i = ins->num_operands; i-- > 0; ) {
-            if( SameConf( ins->operands[i], ins, conf ) ) {
+            if( SameConf( back, ins->operands[i], ins, conf ) ) {
                 _MarkBlkMarked( blk );
                 return;
             }
         }
         if( ins->result != NULL ) {
-            if( SameConf( ins->result, ins, conf ) ) {
+            if( SameConf( back, ins->result, ins, conf ) ) {
                 _MarkBlkMarked( blk );
                 return;
             }
@@ -104,7 +105,7 @@ static  void    CheckRefs( conflict_node *conf, block *blk )
 }
 
 
-static  void    LoadStoreIfCall( global_bit_set *id )
+static  void    LoadStoreIfCall( BackRun& back, global_bit_set *id )
 /****************************************************
  * Turn on bits for need_load/need_store for conflict id in all blocks
  * which have a call but no real reference to id.  This is sort of
@@ -119,7 +120,7 @@ static  void    LoadStoreIfCall( global_bit_set *id )
     block               *blk;
     data_flow_def       *flow;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( _IsBlkAttr( blk, BLK_CONTAINS_CALL )
           && !_IsBlkMarked( blk ) ) {
             flow = blk->dataflow;
@@ -131,7 +132,7 @@ static  void    LoadStoreIfCall( global_bit_set *id )
 }
 
 
-static  void    TurnOffLoadStoreBits( global_bit_set *id )
+static  void    TurnOffLoadStoreBits( BackRun& back, global_bit_set *id )
 /*********************************************************
  * If a block has need_load and need_store but never really references
  * id, we can get rid of the load/store.
@@ -140,7 +141,7 @@ static  void    TurnOffLoadStoreBits( global_bit_set *id )
     block               *blk;
     data_flow_def       *flow;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( !_IsBlkMarked( blk ) ) {
             flow = blk->dataflow;
             if( _GBitOverlap( flow->need_load, *id )
@@ -196,7 +197,7 @@ static  void    PropagateLoadStoreBits( block *start, global_bit_set *id )
 }
 
 
-static  void    CalculateLoadStore( conflict_node *conf )
+static  void    CalculateLoadStore( BackRun& back, conflict_node *conf )
 /********************************************************
  * If we are going to cache a global variable in a register, we have a
  * few problems, which are resolved in this routine.  If a subroutine
@@ -222,7 +223,7 @@ static  void    CalculateLoadStore( conflict_node *conf )
     data_flow_def       *flow;
 
     _GBitAssign( id, conf->id.out_of_block );
-    blk = data_state().HeadBlock;
+    blk = back.data.HeadBlock;
     if( blk != NULL ) {
         _MarkBlkAllAttrClr( BLK_CONTAINS_CALL | BLK_BLOCK_MARKED | BLK_BLOCK_VISITED );
         _MarkBlkAttrSet( blk, BLK_BIG_LABEL );
@@ -242,7 +243,7 @@ static  void    CalculateLoadStore( conflict_node *conf )
          */
         while( blk != NULL ) {
             flow = blk->dataflow;
-            CheckRefs( conf, blk );
+            CheckRefs( back, conf, blk );
             if( _GBitOverlap( flow->in, id ) && _IsBlkAttr( blk, BLK_BIG_LABEL ) ) {
                 _GBitTurnOn( flow->need_load, id );
             } else {
@@ -274,12 +275,12 @@ static  void    CalculateLoadStore( conflict_node *conf )
             _GBitTurnOn( flow->need_load, id );
             _GBitTurnOn( flow->need_store, id );
         }
-        LoadStoreIfCall( &id );
+        LoadStoreIfCall( back, &id );
         PropagateLoadStoreBits( conf->start_block, &id );
-        TurnOffLoadStoreBits( &id );
-        if( NameIsConstant( conf->name ) ) {
+        TurnOffLoadStoreBits( back, &id );
+        if( NameIsConstant( back, conf->name ) ) {
             id = conf->id.out_of_block;
-            for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+            for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
                 flow = blk->dataflow;
                 _GBitTurnOff( flow->need_store, id );
             }
@@ -291,12 +292,12 @@ static  void    CalculateLoadStore( conflict_node *conf )
 }
 
 
-void    CalcLoadStore( conflict_node *conf )
+void    CalcLoadStore( BackRun& back, conflict_node *conf )
 /*******************************************
  * see below
  */
 {
-    if( !data_state().BlockByBlock ) {
-        CalculateLoadStore( conf );
+    if( !back.data.BlockByBlock ) {
+        CalculateLoadStore( back, conf );
     }
 }

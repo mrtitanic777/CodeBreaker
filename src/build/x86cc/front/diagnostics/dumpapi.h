@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #ifdef DEVBUILD
 
 extern void         DumpEnumTable( void );

@@ -38,22 +38,23 @@
 #include "makeins.h"
 #include "namelist.h"
 #include "insutil.h"
+#include "backrun.hpp"
 
 
-void    MakeMovAddrConsts( void )
+void    MakeMovAddrConsts( BackRun& back )
 /*******************************/
 {
     block       *blk;
     instruction *ins;
     name        *op;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( ins->head.opcode == OP_LA ) {
                 op = ins->operands[0];
                 if( op->n.class_ == N_TEMP ) {
                     op->v.usage |= USE_IN_ANOTHER_BLOCK;
-                    op = AllocAddrConst( op, 0, CONS_TEMP_ADDR, ins->type_class );
+                    op = AllocAddrConst( back, op, 0, CONS_TEMP_ADDR, ins->type_class );
                     ins->head.opcode = OP_MOV;
                     ins->operands[0] = op;
                 }
@@ -63,7 +64,7 @@ void    MakeMovAddrConsts( void )
 }
 
 
-void    KillMovAddrConsts( void )
+void    KillMovAddrConsts( BackRun& back )
 /*******************************/
 {
     block               *blk;
@@ -74,16 +75,16 @@ void    KillMovAddrConsts( void )
     type_class_def      type_class;
     opcnt               i;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = ins->num_operands; i-- > 0; ) {
                 op = ins->operands[i];
                 if( op->n.class_ == N_CONSTANT && op->c.const_type == CONS_TEMP_ADDR ) {
                     type_class = _OpClass( ins );
-                    new_op = AllocTemp( type_class );
-                    new_ins = MakeUnary( OP_LA, op->c.u.op, new_op, type_class );
+                    new_op = AllocTemp( back, type_class );
+                    new_ins = MakeUnary( back, OP_LA, op->c.u.op, new_op, type_class );
                     ins->operands[i] = new_op;
-                    PrefixIns( ins, new_ins );
+                    PrefixIns( back, ins, new_ins );
                 }
             }
         }

@@ -157,33 +157,33 @@ typedef void *owl_client_file;
 
 // if you add a field, update owl@copyClientFuncs
 typedef struct {
-    int                 (*write)( owl_client_file, const char *, size_t );
+    int                 (*write)( BackRun&, owl_client_file, const char *, size_t );
     long                (*tell)( owl_client_file );
     int                 (*seek)( owl_client_file, long, int );
-    void *              (*alloc)( size_t );
-    void                (*free)( void * );
+    void *              (*alloc)( BackRun&, size_t );
+    void                (*free)( BackRun&, void * );
 } owl_client_funcs;
 
-extern owl_handle OWLENTRY OWLInit( owl_client_funcs *funcs, owl_cpu cpu );
-extern void OWLENTRY OWLFini( owl_handle handle );
+extern owl_handle OWLENTRY OWLInit( BackRun& back, owl_client_funcs *funcs, owl_cpu cpu );
+extern void OWLENTRY OWLFini( BackRun& back, owl_handle handle );
 extern void OWLENTRY OWLComdatDep( owl_section_handle section, owl_section_handle dep );
 
-extern owl_file_handle OWLENTRY OWLFileInit( owl_handle handle, const char *name, owl_client_file file, owl_format format, owl_file_type type );
-extern void OWLENTRY OWLFileSymbol( owl_file_handle file, const char *name );
-extern void OWLENTRY OWLFileFini( owl_file_handle file );
+extern owl_file_handle OWLENTRY OWLFileInit( BackRun& back, owl_handle handle, const char *name, owl_client_file file, owl_format format, owl_file_type type );
+extern void OWLENTRY OWLFileSymbol( BackRun& back, owl_file_handle file, const char *name );
+extern void OWLENTRY OWLFileFini( BackRun& back, owl_file_handle file );
 
-extern owl_section_handle OWLENTRY OWLSectionInit( owl_file_handle file, const char *name, owl_section_type type, owl_alignment align );
+extern owl_section_handle OWLENTRY OWLSectionInit( BackRun& back, owl_file_handle file, const char *name, owl_section_type type, owl_alignment align );
 extern void OWLENTRY OWLSectionFini( owl_section_handle section );
 
-extern owl_symbol_handle OWLENTRY OWLSymbolInit( owl_file_handle file, const char *name );
+extern owl_symbol_handle OWLENTRY OWLSymbolInit( BackRun& back, owl_file_handle file, const char *name );
 extern void OWLENTRY OWLSymbolFini( owl_symbol_handle );
 
 extern void OWLENTRY OWLEmitLabel( owl_section_handle section, owl_symbol_handle sym, owl_sym_type type, owl_sym_linkage linkage );
-extern void OWLENTRY OWLEmitData( owl_section_handle section, const char *buffer, size_t size );
-extern void OWLENTRY OWLEmitReloc( owl_section_handle section, owl_offset offset, owl_symbol_handle sym, owl_reloc_type type );
-extern void OWLENTRY OWLEmitMetaReloc( owl_section_handle section, owl_offset offset, void *data, owl_reloc_type type );
-extern void OWLENTRY OWLEmitRelocAddend( owl_section_handle section, owl_reloc_type type, owl_offset addend );
-extern void OWLENTRY OWLEmitImport( owl_file_handle file, const char *name );
+extern void OWLENTRY OWLEmitData( BackRun& back, owl_section_handle section, const char *buffer, size_t size );
+extern void OWLENTRY OWLEmitReloc( BackRun& back, owl_section_handle section, owl_offset offset, owl_symbol_handle sym, owl_reloc_type type );
+extern void OWLENTRY OWLEmitMetaReloc( BackRun& back, owl_section_handle section, owl_offset offset, void *data, owl_reloc_type type );
+extern void OWLENTRY OWLEmitRelocAddend( BackRun& back, owl_section_handle section, owl_reloc_type type, owl_offset addend );
+extern void OWLENTRY OWLEmitImport( BackRun& back, owl_file_handle file, const char *name );
 extern void OWLENTRY OWLEmitExport( owl_file_handle file, owl_symbol_handle sym );
 
 #define OWLTellOffset OWLTellLocation

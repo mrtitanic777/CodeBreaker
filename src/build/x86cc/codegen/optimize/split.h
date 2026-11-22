@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define _IsSigned( type )       (Unsigned[type] != type)
 
 extern const type_class_def     Unsigned[];
@@ -37,21 +38,21 @@ extern const type_class_def     Signed[];
 extern const type_class_def     DoubleClass[];
 extern const type_class_def     HalfClass[];
 
-extern instruction *(* const ReduceTab[])( instruction * );
+extern instruction *(* const ReduceTab[])( BackRun&, instruction * );
 
-extern hw_reg_set       Op1Reg( instruction *ins );
-extern hw_reg_set       ResultReg( instruction *ins );
-extern hw_reg_set       ZapReg( instruction *ins );
-extern instruction      *MoveConst( uint_32 value, name *result, type_class_def type_class );
-extern instruction      *Reduce( instruction *ins );
-extern instruction      *SplitUnary( instruction *ins );
+extern hw_reg_set       Op1Reg( BackRun& back, instruction *ins );
+extern hw_reg_set       ResultReg( BackRun& back, instruction *ins );
+extern hw_reg_set       ZapReg( BackRun& back, instruction *ins );
+extern instruction      *MoveConst( BackRun& back, uint_32 value, name *result, type_class_def type_class );
+extern instruction      *Reduce( BackRun& back, instruction *ins );
+extern instruction      *SplitUnary( BackRun& back, instruction *ins );
 extern void             CheckCC( instruction *ins, instruction *new_ins );
 
 extern void             HalfType( instruction *ins );
 extern void             ChangeType( instruction *ins, type_class_def type_class );
-extern name             *LowPart( name *tosplit, type_class_def type_class );
-extern name             *HighPart( name *tosplit, type_class_def type_class );
-extern name             *OffsetPart( name *tosplit );
-extern name             *SegmentPart( name *tosplit );
+extern name             *LowPart( BackRun& back, name *tosplit, type_class_def type_class );
+extern name             *HighPart( BackRun& back, name *tosplit, type_class_def type_class );
+extern name             *OffsetPart( BackRun& back, name *tosplit );
+extern name             *SegmentPart( BackRun& back, name *tosplit );
 
 extern bool             UnChangeable( instruction *ins );

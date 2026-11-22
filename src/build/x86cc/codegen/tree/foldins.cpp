@@ -50,9 +50,10 @@
 #include "bldins.h"
 #include "treeprot.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
-bool     IsTrickyPointerConv( instruction *ins )
+bool     IsTrickyPointerConv( BackRun& back, instruction *ins )
 /******************************************************
     Is "ins" a near (based) to far pointer conversion that has
     to be carefully converted with taking segments into account?
@@ -62,7 +63,7 @@ bool     IsTrickyPointerConv( instruction *ins )
     if( (ins->head.opcode == OP_CONVERT)
       && _IsPointer( ins->type_class ) ) {
         if( ins->base_type_class == U2
-          && data_state().TypeClassSize[ins->type_class] > WORD_SIZE ) {
+          && back.data.TypeClassSize[ins->type_class] > WORD_SIZE ) {
             return( true );
         }
     }
@@ -105,25 +106,25 @@ static bool ActiveCompare( instruction *ins ) {
 }
 
 
-static  instruction *KillCompare( instruction *ins, name *result ) {
+static  instruction *KillCompare( BackRun& back, instruction *ins, name *result ) {
 /******************************************************************/
 
     instruction *new_ins;
 
     if( ins->result != NULL ) {
-        new_ins = MakeMove( result, ins->result, ins->result->n.type_class );
+        new_ins = MakeMove( back, result, ins->result, ins->result->n.type_class );
         DupSeg( ins, new_ins );
         SetCSEBits( ins, new_ins );
-        ReplIns( ins, new_ins );
+        ReplIns( back, ins, new_ins );
     } else {
         new_ins = ins;
-        DoNothing( ins );
+        DoNothing( back, ins );
     }
     return( new_ins );
 }
 
 
-static  instruction *CmpRelocZero( instruction *ins, opcnt c, opcnt r )
+static  instruction *CmpRelocZero( BackRun& back, instruction *ins, opcnt c, opcnt r )
 /*********************************************************************/
 {
     name        *cons;
@@ -141,7 +142,7 @@ static  instruction *CmpRelocZero( instruction *ins, opcnt c, opcnt r )
         return( NULL );
     rel = ins->operands[r];
     if( rel->c.const_type == CONS_OFFSET
-      && !AskSegIsNear( (segment_id)rel->c.lo.u.int_value ) )
+      && !AskSegIsNear( back, (segment_id)rel->c.lo.u.int_value ) )
         return( NULL );
     switch( ins->head.opcode ) {
     case OP_BIT_TEST_FALSE:
@@ -168,17 +169,17 @@ static  instruction *CmpRelocZero( instruction *ins, opcnt c, opcnt r )
     } else {
         _SetBlockIndex( ins, _FalseIndex(ins), _FalseIndex(ins) );
     }
-    return( KillCompare( ins, AllocIntConst( truth ? FETrue() : 0 ) ) );
+    return( KillCompare( back, ins, AllocIntConst( back, truth ? FETrue() : 0 ) ) );
 }
 
-static  instruction *StraightLine( instruction *ins, tn fold, bool is_true )
+static  instruction *StraightLine( BackRun& back, instruction *ins, tn fold, bool is_true )
 /***************************************************************************
     See if we can turn a comparison into a straight line piece of code.
 */
 {
     name        *result;
 
-    result = TGetName( fold );
+    result = TGetName( back, fold );
     if( result == NULL )
         return( NULL );
     if( result->n.class_ != N_CONSTANT )
@@ -192,10 +193,10 @@ static  instruction *StraightLine( instruction *ins, tn fold, bool is_true )
     } else {
         _SetBlockIndex( ins, _FalseIndex(ins), _FalseIndex(ins) );
     }
-    return( KillCompare( ins, result ) );
+    return( KillCompare( back, ins, result ) );
 }
 
-static  instruction    *FoldAbsolute( instruction *ins ) {
+static  instruction    *FoldAbsolute( BackRun& back, instruction *ins ) {
 /*********************************************************
     See below.
 */
@@ -213,68 +214,68 @@ static  instruction    *FoldAbsolute( instruction *ins ) {
     name            *new_const;
     float_handle    cf_value;
 
-    tipe = TypeOfTypeClass( ins->type_class );
-    left_tipe = TypeOfTypeClass( _OpClass( ins ) );
+    tipe = TypeOfTypeClass( back, ins->type_class );
+    left_tipe = TypeOfTypeClass( back, _OpClass( ins ) );
     num_operands = OpcodeNumOperands( ins );
     left = NULL;
     rite = NULL;
     if( num_operands != 0 ) {
-        left = TName( ins->operands[0], left_tipe );
+        left = TName( back, ins->operands[0], left_tipe );
         if( num_operands > 1 ) {
             if( ins->operands[1]->n.type_class == XX ) {
                 rite_tipe = tipe;
             } else {
-                rite_tipe = TypeOfTypeClass( ins->operands[1]->n.type_class );
+                rite_tipe = TypeOfTypeClass( back, ins->operands[1]->n.type_class );
             }
-            rite = TName( ins->operands[1], rite_tipe );
+            rite = TName( back, ins->operands[1], rite_tipe );
         }
     }
     fold = NULL;
     switch( ins->head.opcode ) {
     case OP_ADD:
-        fold = FoldPlus( static_cast<tn>(left), static_cast<tn>(rite), tipe );
+        fold = FoldPlus( back, static_cast<tn>(left), static_cast<tn>(rite), tipe );
         break;
     case OP_SUB:
-        fold = FoldMinus( static_cast<tn>(left), static_cast<tn>(rite), tipe );
+        fold = FoldMinus( back, static_cast<tn>(left), static_cast<tn>(rite), tipe );
         break;
     case OP_MUL:
-        fold = FoldTimes( static_cast<tn>(left), static_cast<tn>(rite), tipe );
+        fold = FoldTimes( back, static_cast<tn>(left), static_cast<tn>(rite), tipe );
         break;
     case OP_DIV:
-        fold = FoldDiv( static_cast<tn>(left), static_cast<tn>(rite), tipe );
+        fold = FoldDiv( back, static_cast<tn>(left), static_cast<tn>(rite), tipe );
         break;
     case OP_MOD:
-        fold = FoldMod( static_cast<tn>(left), static_cast<tn>(rite), tipe );
+        fold = FoldMod( back, static_cast<tn>(left), static_cast<tn>(rite), tipe );
         break;
     case OP_AND:
-        fold = FoldAnd( static_cast<tn>(left), static_cast<tn>(rite), tipe );
+        fold = FoldAnd( back, static_cast<tn>(left), static_cast<tn>(rite), tipe );
         break;
     case OP_OR:
-        fold = FoldOr( static_cast<tn>(left), static_cast<tn>(rite), tipe );
+        fold = FoldOr( back, static_cast<tn>(left), static_cast<tn>(rite), tipe );
         break;
     case OP_XOR:
-        fold = FoldXor( static_cast<tn>(left), static_cast<tn>(rite), tipe );
+        fold = FoldXor( back, static_cast<tn>(left), static_cast<tn>(rite), tipe );
         break;
     case OP_RSHIFT:
-        fold = FoldRShift( static_cast<tn>(left), static_cast<tn>(rite), tipe );
+        fold = FoldRShift( back, static_cast<tn>(left), static_cast<tn>(rite), tipe );
         break;
     case OP_LSHIFT:
-        fold = FoldLShift( static_cast<tn>(left), static_cast<tn>(rite), tipe );
+        fold = FoldLShift( back, static_cast<tn>(left), static_cast<tn>(rite), tipe );
         break;
     case OP_NEGATE:
-        fold = FoldUMinus( static_cast<tn>(left), tipe );
+        fold = FoldUMinus( back, static_cast<tn>(left), tipe );
         break;
     case OP_COMPLEMENT:
-        fold = Fold1sComp( static_cast<tn>(left), tipe );
+        fold = Fold1sComp( back, static_cast<tn>(left), tipe );
         break;
     case OP_CONVERT:
         /* look out for CNV PT U2 t1 type instructions; if sizeof( PT ) is greater */
         /* than sizeof( U2 ), we don't want to fold or we'll screw up based pointers */
-        if( IsTrickyPointerConv( ins ) )
+        if( IsTrickyPointerConv( back, ins ) )
             return( NULL );
         /* fall through */
     case OP_ROUND:
-        fold = FoldCnvRnd( (cg_op)ins->head.opcode, static_cast<tn>(left), tipe );
+        fold = FoldCnvRnd( back, (cg_op)ins->head.opcode, static_cast<tn>(left), tipe );
         break;
     case OP_CMP_EQUAL:
     case OP_CMP_NOT_EQUAL:
@@ -283,25 +284,25 @@ static  instruction    *FoldAbsolute( instruction *ins ) {
     case OP_CMP_LESS:
     case OP_CMP_GREATER_EQUAL:
         if( ActiveCompare( ins ) ) {
-            fold = FoldCompare( (cg_op)ins->head.opcode, static_cast<tn>(left), static_cast<tn>(rite), tipe );
+            fold = FoldCompare( back, (cg_op)ins->head.opcode, static_cast<tn>(left), static_cast<tn>(rite), tipe );
             if( fold != NULL ) {
-                return( StraightLine( ins, fold, true ) );
+                return( StraightLine( back, ins, fold, true ) );
             }
         }
         break;
     case OP_BIT_TEST_TRUE:
         if( ActiveCompare( ins ) ) {
-            fold = FoldAnd( static_cast<tn>(left), static_cast<tn>(rite), tipe );
+            fold = FoldAnd( back, static_cast<tn>(left), static_cast<tn>(rite), tipe );
             if( fold != NULL ) {
-                return( StraightLine( ins, fold, true ) );
+                return( StraightLine( back, ins, fold, true ) );
             }
         }
         break;
     case OP_BIT_TEST_FALSE:
         if( ActiveCompare( ins ) ) {
-            fold = FoldAnd( static_cast<tn>(left), static_cast<tn>(rite), tipe );
+            fold = FoldAnd( back, static_cast<tn>(left), static_cast<tn>(rite), tipe );
             if( fold != NULL ) {
-                return( StraightLine( ins, fold, false ) );
+                return( StraightLine( back, ins, fold, false ) );
             }
         }
         break;
@@ -311,30 +312,30 @@ static  instruction    *FoldAbsolute( instruction *ins ) {
     }
     if( fold != NULL ) {
         fold_tipe = fold->tipe;
-        result = TGetName( fold );
+        result = TGetName( back, fold );
         if( result != NULL
           && !NeedConvert( fold_tipe, tipe ) ) {
             ins->table = NULL;
             /* look out for scary DIV U4 EDX:EAX, c1 -> t1 type instructions */
             if( result->n.class_ != N_CONSTANT
-              && result->n.size != data_state().TypeClassSize[ins->type_class] )
+              && result->n.size != back.data.TypeClassSize[ins->type_class] )
                 return( NULL );
             /* look out for scary MUL U4 EDX:EAX, c1 -> t1 type instructions */
             if( result->n.class_ != N_CONSTANT
-              && ins->result->n.size != data_state().TypeClassSize[ins->type_class] )
+              && ins->result->n.size != back.data.TypeClassSize[ins->type_class] )
                 return( NULL );
-            new_ins = MakeMove( result, ins->result, ins->type_class );
+            new_ins = MakeMove( back, result, ins->result, ins->type_class );
             SetCSEBits( ins, new_ins );
             DupSeg( ins, new_ins );
-            ReplIns( ins, new_ins );
+            ReplIns( back, ins, new_ins );
             return( new_ins );
         }
     } else {
         if( left != NULL ) {
-            TGetName( static_cast<tn>(left) );
+            TGetName( back, static_cast<tn>(left) );
         }
         if( rite != NULL ) {
-            TGetName( static_cast<tn>(rite) );
+            TGetName( back, static_cast<tn>(rite) );
         }
     }
     switch( ins->head.opcode ) {
@@ -342,13 +343,13 @@ static  instruction    *FoldAbsolute( instruction *ins ) {
         /* change sub t1, k -> add t1, -k */
         if( ins->operands[1]->n.class_ == N_CONSTANT
           && ins->operands[1]->c.const_type == CONS_ABSOLUTE ) {
-            cf_value = OkToNegate( ins->operands[1]->c.u.cfval, tipe );
+            cf_value = OkToNegate( back, ins->operands[1]->c.u.cfval, tipe );
             if( cf_value != NULL ) {
-                new_const = AllocConst( cf_value );
-                new_ins = MakeBinary( OP_ADD, ins->operands[0], new_const, ins->result, ins->type_class );
+                new_const = AllocConst( back, cf_value );
+                new_ins = MakeBinary( back, OP_ADD, ins->operands[0], new_const, ins->result, ins->type_class );
                 SetCSEBits( ins, new_ins );
                 DupSeg( ins, new_ins );
-                ReplIns( ins, new_ins );
+                ReplIns( back, ins, new_ins );
                 return( new_ins );
             }
         }
@@ -374,7 +375,7 @@ static  instruction    *FoldAbsolute( instruction *ins ) {
     return( NULL );
 }
 
-instruction    *FoldIns( instruction *ins ) {
+instruction    *FoldIns( BackRun& back, instruction *ins ) {
 /****************************************************
     See if we can do any constant folding on instruction "ins". This is
     done by building an expression tree to represent "ins", and then
@@ -392,7 +393,7 @@ instruction    *FoldIns( instruction *ins ) {
     for( i = ins->num_operands; i-- > 0; ) {
         if( ins->operands[i]->n.class_ == N_CONSTANT ) {
             if( ins->operands[i]->c.const_type == CONS_ABSOLUTE ) {
-                return( FoldAbsolute( ins ) );
+                return( FoldAbsolute( back, ins ) );
             }
             have_const = true;
         }
@@ -401,12 +402,12 @@ instruction    *FoldIns( instruction *ins ) {
         i = OpcodeNumOperands( ins );
         if( i > 1 ) {
             if( RelocConst( ins->operands[1] ) ) {
-                return( CmpRelocZero( ins, 0, 1 ) );
+                return( CmpRelocZero( back, ins, 0, 1 ) );
             }
         }
         if( i > 0 ) {
             if( RelocConst( ins->operands[0] ) ) {
-                return( CmpRelocZero( ins, 1, 0 ) );
+                return( CmpRelocZero( back, ins, 1, 0 ) );
             }
         }
     }
@@ -414,7 +415,7 @@ instruction    *FoldIns( instruction *ins ) {
 }
 
 
-bool    ConstFold( block *root ) {
+bool    ConstFold( BackRun& back, block *root ) {
 /****************************************
     For each instruction in the program, see if we can do some constant
     folding that wasn't caught in the tree phase. This will come from
@@ -432,7 +433,7 @@ bool    ConstFold( block *root ) {
     for( ;; ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
             next = ins->head.next;
-            if( FoldIns( ins ) != NULL ) {
+            if( FoldIns( back, ins ) != NULL ) {
                 change = true;
             }
         }

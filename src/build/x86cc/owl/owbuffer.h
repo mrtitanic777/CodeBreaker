@@ -30,14 +30,15 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef struct owl_buffer       *owl_buffer_handle;
 
-extern owl_buffer_handle        OWLENTRY OWLBufferInit( owl_file_handle file );
-extern void                     OWLENTRY OWLBufferFini( owl_buffer_handle buffer );
+extern owl_buffer_handle        OWLENTRY OWLBufferInit( BackRun& back, owl_file_handle file );
+extern void                     OWLENTRY OWLBufferFini( BackRun& back, owl_buffer_handle buffer );
 
-extern void                     OWLENTRY OWLBufferWrite( owl_buffer_handle buffer, const char *src, size_t size );
+extern void                     OWLENTRY OWLBufferWrite( BackRun& back, owl_buffer_handle buffer, const char *src, size_t size );
 extern void                     OWLENTRY OWLBufferRead( owl_buffer_handle buffer, owl_offset addr, char *dest, size_t size );
-extern void                     OWLENTRY OWLBufferEmit( owl_buffer_handle buffer );
+extern void                     OWLENTRY OWLBufferEmit( BackRun& back, owl_buffer_handle buffer );
 extern owl_offset               OWLENTRY OWLBufferTell( owl_buffer_handle buffer );
 extern void                     OWLENTRY OWLBufferSeek( owl_buffer_handle buffer, owl_offset location );
 extern owl_offset               OWLENTRY OWLBufferSize( owl_buffer_handle buffer );

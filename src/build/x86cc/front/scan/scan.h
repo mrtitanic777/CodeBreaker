@@ -33,6 +33,7 @@
 
 /* special "logical" characters that represent special states */
 
+#pragma once
 enum {
     LCHR_EOF            = 0x0100,       /* last char in program source */
 #ifdef CHAR_MACRO
@@ -189,9 +190,8 @@ struct ScanState {
 #endif
     };
 };
-inline ScanState& scan_state() { return cbrun_part<ScanState>(); }
 
 #endif
 
-extern int              EncodeWchar( int c );
+extern int              EncodeWchar( FrontRun& front, int c );
 extern int              IndexLower( int c );

@@ -33,6 +33,7 @@
 
 #include "owlpriv.h"
 #include "owreloc.h"
+#include "backrun.hpp"
 
 static void addFile( owl_handle handle, owl_file_handle file ) {
 //**************************************************************
@@ -65,40 +66,40 @@ static void deleteFile( owl_handle handle, owl_file_handle file ) {
     assert( 0 );
 }
 
-void OWLENTRY OWLFileSymbol( owl_file_handle file, const char *name ) {
+void OWLENTRY OWLFileSymbol( BackRun& back, owl_file_handle file, const char *name ) {
 //*********************************************************************
 
     owl_symbol_handle sym;
 
     assert( name != NULL );
-    sym = OWLSymbolInit( file, name );
+    sym = OWLSymbolInit( back, file, name );
     OWLSymbolDefine( file->symbol_table, sym, NULL, 0, OWL_TYPE_FILE, OWL_SYM_GLOBAL );
     sym->x.file = file;
 }
 
-owl_file_handle OWLENTRY OWLFileInit( owl_handle handle, const char *name, owl_client_file client_handle, owl_format format, owl_file_type type ) {
+owl_file_handle OWLENTRY OWLFileInit( BackRun& back, owl_handle handle, const char *name, owl_client_file client_handle, owl_format format, owl_file_type type ) {
 //*************************************************************************************************************************************************
 
     owl_file_handle     file;
 
-    file = static_cast<owl_file_handle>(handle->client_funcs.alloc( sizeof( *file ) ));
+    file = static_cast<owl_file_handle>(handle->client_funcs.alloc( back, sizeof( *file ) ));
     file->info = handle;
     file->format = format;
     file->client_handle = client_handle;
     file->log = NULL;
     file->type = type;
-    file->string_table = OWLStringInit( file );
-    file->symbol_table = OWLSymbolTableInit( file );
+    file->string_table = OWLStringInit( back, file );
+    file->symbol_table = OWLSymbolTableInit( back, file );
     file->sections = NULL;
     file->next_index = 0;
     file->name = NULL;
     addFile( handle, file );
-    OWLFileSymbol( file, name );
-    file->name = OWLStringAdd( file->string_table, name );
+    OWLFileSymbol( back, file, name );
+    file->name = OWLStringAdd( back, file->string_table, name );
     return( file );
 }
 
-static void doReloc( owl_section_handle section, owl_reloc_info *reloc ) {
+static void doReloc( BackRun& back, owl_section_handle section, owl_reloc_info *reloc ) {
 //************************************************************************
 
     owl_offset          displacement;
@@ -107,7 +108,7 @@ static void doReloc( owl_section_handle section, owl_reloc_info *reloc ) {
     unsigned_32         bit_mask;
 
     displacement = OWLRelocTargetDisp( section, reloc->location, reloc->symbol->offset );
-    bit_mask = OWLRelocBitMask( section->file, reloc );
+    bit_mask = OWLRelocBitMask( back, section->file, reloc );
     // OWLBufferPatch( section->buffer, reloc->location, displacement, bitMask );
     old_loc = OWLBufferTell( section->buffer );
     OWLBufferSeek( section->buffer, reloc->location );
@@ -119,15 +120,15 @@ static void doReloc( owl_section_handle section, owl_reloc_info *reloc ) {
         displacement += reloc->location;
     }
     data = (data&~bit_mask)|(((displacement&bit_mask)+(data&bit_mask))&bit_mask);
-    OWLBufferWrite( section->buffer, (char *)&data, 4 );
+    OWLBufferWrite( back, section->buffer, (char *)&data, 4 );
     OWLBufferSeek( section->buffer, old_loc );
-    _ClientFree( section->file, reloc );
+    _ClientFree( back, section->file, reloc );
     section->num_relocs -= 1;
 }
 
 #define _SymIsDefined( s )              ( (s)->section != NULL )
 
-static void resolveRelativeRelocs( owl_file_handle file ) {
+static void resolveRelativeRelocs( BackRun& back, owl_file_handle file ) {
 //*********************************************************
 
     owl_section_handle  curr;
@@ -145,7 +146,7 @@ static void resolveRelativeRelocs( owl_file_handle file ) {
             if( symbol->section == curr && OWLRelocIsRelative( file, reloc ) ) {
                 // so we have a relocation to a reloc which is in this section
                 *last = reloc->next;
-                doReloc( curr, reloc );
+                doReloc( back, curr, reloc );
                 reloc = *last;
             } else {
                 symbol->num_relocs += 1;
@@ -159,7 +160,7 @@ static void resolveRelativeRelocs( owl_file_handle file ) {
 #define INT_BUFFER_LEN  20
 #define RADIX           16  /* anything up to 16 (not 0) */
 
-static void makeUniqueName( owl_file_handle file, owl_symbol_handle sym, unsigned index ) {
+static void makeUniqueName( BackRun& back, owl_file_handle file, owl_symbol_handle sym, unsigned index ) {
 //*****************************************************************************************
 
     char                buffer[ INT_BUFFER_LEN ];
@@ -173,10 +174,10 @@ static void makeUniqueName( owl_file_handle file, owl_symbol_handle sym, unsigne
     } while( index != 0 );
     *ptr-- = '$';
     *ptr = 'L';
-    sym->name = OWLStringAdd( file->string_table, ptr );
+    sym->name = OWLStringAdd( back, file->string_table, ptr );
 }
 
-static void resolveLabelNames( owl_file_handle file ) {
+static void resolveLabelNames( BackRun& back, owl_file_handle file ) {
 //*****************************************************
 
     owl_symbol_handle   sym;
@@ -198,7 +199,7 @@ static void resolveLabelNames( owl_file_handle file ) {
                     file->symbol_table->num_local_symbols--;
                 }
             } else {
-                makeUniqueName( file, sym, index++ );
+                makeUniqueName( back, file, sym, index++ );
             }
         }
     }
@@ -232,7 +233,7 @@ static void redoSectionIndices( owl_file_handle file ) {
     file->next_index = index;
 }
 
-static void resolveComdefSymbols( owl_file_handle file ) {
+static void resolveComdefSymbols( BackRun& back, owl_file_handle file ) {
 //********************************************************
 // Want to run through the list of sections and turn any unitialized
 // section with only one label at location 0 (and no relocs within it)
@@ -258,7 +259,7 @@ static void resolveComdefSymbols( owl_file_handle file ) {
                 file->symbol_table->num_local_symbols--;
             }
             curr->sym->flags |= OWL_SYM_DEAD;           // section sym no longer needed
-            OWLSectionFree( curr );
+            OWLSectionFree( back, curr );
             // if sym was null then client made section which shouldn't exist...
             // this is a bit of a hack, but compilers do this because of i86obj cruft
             if( sym != NULL ) {
@@ -272,26 +273,26 @@ static void resolveComdefSymbols( owl_file_handle file ) {
     redoSectionIndices( file );
 }
 
-void OWLENTRY OWLFileFini( owl_file_handle file ) {
+void OWLENTRY OWLFileFini( BackRun& back, owl_file_handle file ) {
 //*************************************************
 
     owl_section_handle  curr;
     owl_section_handle  next;
 
-    resolveRelativeRelocs( file );
-    resolveLabelNames( file );
-    resolveComdefSymbols( file );
+    resolveRelativeRelocs( back, file );
+    resolveLabelNames( back, file );
+    resolveComdefSymbols( back, file );
     if( file->format == OWL_FORMAT_COFF ) {
-        COFFFileEmit( file );
+        COFFFileEmit( back, file );
     } else {
-        ELFFileEmit( file );
+        ELFFileEmit( back, file );
     }
     for( curr = file->sections; curr != NULL; curr = next ) {
         next = curr->next;
-        OWLSectionFree( curr );
+        OWLSectionFree( back, curr );
     }
-    OWLSymbolTableFini( file->symbol_table );
-    OWLStringFini( file->string_table );
+    OWLSymbolTableFini( back, file->symbol_table );
+    OWLStringFini( back, file->string_table );
     deleteFile( file->info, file );
-    _ClientFree( file, file );
+    _ClientFree( back, file, file );
 }

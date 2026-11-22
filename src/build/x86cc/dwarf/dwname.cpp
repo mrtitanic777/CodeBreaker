@@ -39,29 +39,30 @@
 #include "dwcliuti.h"
 #include "dwhandle.h"
 #include "dwname.h"
+#include "backrun.hpp"
 
 
-void DWENTRY DWPubname( dw_client cli, dw_handle hdl, const char *name )
+void DWENTRY DWPubname( BackRun& back, dw_client cli, dw_handle hdl, const char *name )
 {
-    DW_HandleReference( cli, hdl, DW_DEBUG_PUBNAMES );
-    CLIWriteString( cli, DW_DEBUG_PUBNAMES, name );
+    DW_HandleReference( back, cli, hdl, DW_DEBUG_PUBNAMES );
+    CLIWriteString( back, cli, DW_DEBUG_PUBNAMES, name );
 }
 
 
-void DW_InitDebugPubnames( dw_client cli )
+void DW_InitDebugPubnames( BackRun& back, dw_client cli )
 {
     /* write the set header */
-    CLIWriteU32( cli, DW_DEBUG_PUBNAMES, 0 );   /* section size */
-    CLIWriteU16( cli, DW_DEBUG_PUBNAMES, 2 );   /* section version */
+    CLIWriteU32( back, cli, DW_DEBUG_PUBNAMES, 0 );   /* section size */
+    CLIWriteU16( back, cli, DW_DEBUG_PUBNAMES, 2 );   /* section version */
     CLIReloc3( cli, DW_DEBUG_PUBNAMES, DW_W_SECTION_POS, DW_DEBUG_INFO );
     CLIReloc2( cli, DW_DEBUG_PUBNAMES, DW_W_UNIT_SIZE );
 }
 
 
-void DW_FiniDebugPubnames( dw_client cli )
+void DW_FiniDebugPubnames( BackRun& back, dw_client cli )
 {
     /* write the terminator */
-    CLISectionWriteZeros( cli, DW_DEBUG_PUBNAMES, sizeof( uint_32 ) );
+    CLISectionWriteZeros( back, cli, DW_DEBUG_PUBNAMES, sizeof( uint_32 ) );
     /* backpatch the section length */
-    CLISectionSetSize( cli, DW_DEBUG_PUBNAMES );
+    CLISectionSetSize( back, cli, DW_DEBUG_PUBNAMES );
 }

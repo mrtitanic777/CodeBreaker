@@ -112,14 +112,13 @@ struct AsmdefsState {
     asm_code *Code = &Code_Info;
     operand_idx Opnd_Count;
 };
-inline AsmdefsState& asmdefs_state() { return cbrun_part<AsmdefsState>(); }
 extern bool             Modend;         // end of module is reached
 extern bool             Use32;          // if 32-bit code is use
 
-extern void             AsmByte( unsigned char );
+extern void             AsmByte( AsmRun& assembler, unsigned char );
 extern void             SetFinalToken( token_buffer *tokbuf, token_idx i );
-extern bool             AsmScan( token_buffer *tokbuf, const char * );
-extern void             RadixSet( unsigned );
+extern bool             AsmScan( AsmRun& assembler, token_buffer *tokbuf, const char * );
+extern void             RadixSet( AsmRun& assembler, unsigned );
 
 #if defined( _STANDALONE_ )
 
@@ -128,8 +127,8 @@ extern void             AsmDataByte( unsigned char );
 
 #else
 
-#define AsmCodeByte( c )    AsmByte( c )
-#define AsmDataByte( c )    AsmByte( c )
+#define AsmCodeByte( c )    AsmByte( assembler, c )
+#define AsmDataByte( c )    AsmByte( assembler, c )
 
 #endif
 

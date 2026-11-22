@@ -36,6 +36,7 @@
 #include "i64.h"
 
 #include "mngless.h"
+#include "frontrun.hpp"
 
 #define CHR     TYP_CHAR
 #define UCH     TYP_UCHAR
@@ -484,7 +485,7 @@ DATA_TYPE DataTypeOf( TYPEPTR typ )
     return( data_type );
 }
 
-static pointer_class PointerClass( TYPEPTR typ )
+static pointer_class PointerClass( FrontRun& front, TYPEPTR typ )
 /***********************************************
  * 0 - near data
  * 1 - based data
@@ -521,11 +522,11 @@ static pointer_class PointerClass( TYPEPTR typ )
 #if _INTEL_CPU
     } else {
         if( typ->decl_type == TYP_FUNCTION ) {
-            if( cvars_state().TargetSwitches & CGSW_X86_BIG_CODE ) {
+            if( front.cvars.TargetSwitches & CGSW_X86_BIG_CODE ) {
                 ptrclass = PTRCLS_FAR;
             }
         } else {
-            if( cvars_state().TargetSwitches & CGSW_X86_BIG_DATA ) {
+            if( front.cvars.TargetSwitches & CGSW_X86_BIG_DATA ) {
                 ptrclass = PTRCLS_FAR;
             }
         }
@@ -536,14 +537,14 @@ static pointer_class PointerClass( TYPEPTR typ )
     return( ptrclass );
 }
 
-pointer_class ExprTypeClass( TYPEPTR typ )
+pointer_class ExprTypeClass( FrontRun& front, TYPEPTR typ )
 {
     TYPEPTR     savtyp;
 
     savtyp = typ;
     SKIP_TYPEDEFS( typ );
     if( typ->decl_type == TYP_POINTER ) {
-        return( PointerClass( savtyp ) );
+        return( PointerClass( front, savtyp ) );
     }
     return( PTRCLS_NOT );           // indicate not a pointer type
 }
@@ -719,7 +720,7 @@ static int ReverseRelOp( int opr )
 }
 
 
-static TREEPTR BaseConv( TYPEPTR typ1, TREEPTR op2 )
+static TREEPTR BaseConv( FrontRun& front, TYPEPTR typ1, TREEPTR op2 )
 {
     TYPEPTR         typ2;
 #if _INTEL_CPU
@@ -745,17 +746,17 @@ static TREEPTR BaseConv( TYPEPTR typ1, TREEPTR op2 )
         if( typ2_flags & FLAG_BASED ) {
             if( (typ1_flags & MASK_ALL_MEM_MODELS) == FLAG_NONE ) {
                 if( typ1->object->decl_type == TYP_FUNCTION ) {
-                    if( cvars_state().TargetSwitches & CGSW_X86_BIG_CODE ) {
+                    if( front.cvars.TargetSwitches & CGSW_X86_BIG_CODE ) {
                         typ1_flags = FLAG_FAR;
                     }
                 } else {
-                    if( cvars_state().TargetSwitches & CGSW_X86_BIG_DATA ) {
+                    if( front.cvars.TargetSwitches & CGSW_X86_BIG_DATA ) {
                         typ1_flags = FLAG_FAR;
                     }
                 }
             }
             if( (typ1_flags & FLAG_FAR) ) {
-                op2 = BasedPtrNode( typ2, op2 );
+                op2 = BasedPtrNode( front, typ2, op2 );
             }
         }
 #endif
@@ -766,13 +767,13 @@ static TREEPTR BaseConv( TYPEPTR typ1, TREEPTR op2 )
          * However, in flat model this conversion isn't done, we pretend
          * that segments don't exist.
          */
-        if( TypeSize( typ1 ) > TypeSize( typ2 ) ) {
+        if( TypeSize( front, typ1 ) > TypeSize( front, typ2 ) ) {
 #if _CPU == 386
-            if( (cvars_state().TargetSwitches & CGSW_X86_FLAT_MODEL) == 0 && (typ2_flags & FLAG_BASED) ) {
+            if( (front.cvars.TargetSwitches & CGSW_X86_FLAT_MODEL) == 0 && (typ2_flags & FLAG_BASED) ) {
 #else
             if( typ2_flags & FLAG_BASED ) {
 #endif
-                op2 = BasedPtrNode( typ2, op2 );
+                op2 = BasedPtrNode( front, typ2, op2 );
 //                op2 = CnvOp( op2, PtrNode( typ2->object, FLAG_FAR, SEG_NULL ), true );
             }
         }
@@ -781,21 +782,21 @@ static TREEPTR BaseConv( TYPEPTR typ1, TREEPTR op2 )
          * If we're converting an arithmetic type to a pointer, first convert
          * it to appropriately sized integer to correctly extend/truncate.
          */
-        if( TypeSize( typ1 ) != TypeSize( typ2 ) ) {
-            op2 = CnvOp( op2, GetIntTypeBySize( TypeSize( typ1 ), false, false ), true );
+        if( TypeSize( front, typ1 ) != TypeSize( front, typ2 ) ) {
+            op2 = CnvOp( front, op2, GetIntTypeBySize( front, TypeSize( front, typ1 ), false, false ), true );
         }
     }
     return( op2 );
 }
 
 
-static TREEPTR BoolConv( TYPEPTR typ, TREEPTR tree )
+static TREEPTR BoolConv( FrontRun& front, TYPEPTR typ, TREEPTR tree )
 /***************************************************
  * Convert a scalar to boolean
  */
 {
     if( tree->op.opr == OPR_ERROR ) {
-        return( ErrorNode( tree ) );
+        return( ErrorNode( front, tree ) );
     }
     SKIP_TYPEDEFS( typ );
     /*
@@ -803,11 +804,11 @@ static TREEPTR BoolConv( TYPEPTR typ, TREEPTR tree )
      * also need to be converted unless they're constants.
      */
     if( DataTypeOf( typ ) == TYP_BOOL && TypeOf( tree ) != typ ) {
-        tree = ExprNode( tree, OPR_QUESTION, ExprNode( IntLeaf( 1 ), OPR_COLON, IntLeaf( 0 ) ) );
-        typ = GetType( TYP_BOOL );
+        tree = ExprNode( front, tree, OPR_QUESTION, ExprNode( front, IntLeaf( front, 1 ), OPR_COLON, IntLeaf( front, 0 ) ) );
+        typ = GetType( front, TYP_BOOL );
         tree->op.u2.result_type = typ;
         tree->u.expr_type = typ;
-        FoldExprTree( tree );
+        FoldExprTree( front, tree );
     }
     return( tree );
 }
@@ -840,7 +841,7 @@ static bool IsInt( DATA_TYPE op )
 }
 
 
-TREEPTR RelOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
+TREEPTR RelOp( FrontRun& front, TREEPTR op1, TOKEN opr, TREEPTR op2 )
 {
     TYPEPTR         typ1;
     TYPEPTR         typ2;
@@ -849,23 +850,23 @@ TREEPTR RelOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
     TREEPTR         tree;
     cmp_result      cmp_cc;
 
-    FoldExprTree( op1 );   // Needed for meaning less compare
-    FoldExprTree( op2 );
-    op1 = RValue( op1 );
-    op2 = RValue( op2 );
+    FoldExprTree( front, op1 );   // Needed for meaning less compare
+    FoldExprTree( front, op2 );
+    op1 = RValue( front, op1 );
+    op2 = RValue( front, op2 );
     if( op1->op.opr == OPR_ERROR ) {
-        FreeExprTree( op2 );
+        FreeExprTree( front, op2 );
         return( op1 );
     }
     if( op2->op.opr == OPR_ERROR ) {
-        FreeExprTree( op1 );
+        FreeExprTree( front, op1 );
         return( op2 );
     }
     typ1 = TypeOf( op1 );
     typ2 = TypeOf( op2 );
     if( typ1->decl_type == TYP_POINTER && typ2->decl_type == TYP_POINTER ) {
-        op2 = BaseConv( typ1, op2 );
-        op1 = BaseConv( typ2, op1 );
+        op2 = BaseConv( front, typ1, op2 );
+        op1 = BaseConv( front, typ2, op1 );
         typ1 = TypeOf( op1 );
         typ2 = TypeOf( op2 );
     }
@@ -886,19 +887,19 @@ TREEPTR RelOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
         }
         if( cmp_cc != CMP_VOID ) {
             if( cmp_cc == CMP_COMPLEX ) {
-                CWarn1( ERR_COMPARE_UNSIGNED_VS_ZERO );
+                CWarn1( front, ERR_COMPARE_UNSIGNED_VS_ZERO );
             } else {
                 int res = ( cmp_cc == CMP_TRUE );
 
-                CWarn2( ERR_COMPARE_ALWAYS, res );
+                CWarn2( front, ERR_COMPARE_ALWAYS, res );
             }
         }
     }
     if( op1_type == TYP_VOID || op2_type == TYP_VOID ) {
         ;           /* do nothing, since error has already been given */
     } else if( op1_type == TYP_POINTER && op2_type == TYP_POINTER ) {
-         CompatiblePtrType( typ1, typ2, opr );
-         if( TypeSize( typ2 ) > TypeSize( typ1 ) ) {
+         CompatiblePtrType( front, typ1, typ2, opr );
+         if( TypeSize( front, typ2 ) > TypeSize( front, typ1 ) ) {
              /*
               * Make sure near pointer is converted to far if necessary
               */
@@ -910,28 +911,28 @@ TREEPTR RelOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
          * ok to compare pointer with constant 0
          */
         if( opr != T_EQ && opr != T_NE ) {
-            CWarn1( ERR_POINTER_TYPE_MISMATCH );
-        } else if( !CheckZero( op1 ) && !CheckZero( op2 ) ) {
-            CWarn1( ERR_NON_ZERO_CONST );
+            CWarn1( front, ERR_POINTER_TYPE_MISMATCH );
+        } else if( !CheckZero( front, op1 ) && !CheckZero( front, op2 ) ) {
+            CWarn1( front, ERR_NON_ZERO_CONST );
         }
         if( op2_type == TYP_POINTER ) {
             cmp_type = typ2;
         }
     } else if( op1_type == TYP_STRUCT || op1_type == TYP_UNION
       || op2_type == TYP_STRUCT || op2_type == TYP_UNION ) {
-        CErr1( ERR_INVALID_RELOP_FOR_STRUCT_OR_UNION );
+        CErr1( front, ERR_INVALID_RELOP_FOR_STRUCT_OR_UNION );
         result_type = ERR;
     } else {
         result_type = BinExprTypeDT( op1_type, op2_type );
         if( result_type == ERR ) {
-            CErr1( ERR_TYPE_MISMATCH );
+            CErr1( front, ERR_TYPE_MISMATCH );
         } else {
-            cmp_type = GetType( result_type );
+            cmp_type = GetType( front, result_type );
         }
     }
-    tree = ExprNode( op1, OPR_CMP, op2 );
+    tree = ExprNode( front, op1, OPR_CMP, op2 );
     if( result_type == ERR ) {
-        tree = ErrorNode( tree );
+        tree = ErrorNode( front, tree );
     } else {
         switch( opr ) {
         case T_EQ:
@@ -958,58 +959,58 @@ TREEPTR RelOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
             break;
         }
         tree->op.u2.compare_type = cmp_type;
-        tree->u.expr_type = GetType( TYP_INT );
+        tree->u.expr_type = GetType( front, TYP_INT );
     }
     return( tree );
 }
 
 
-TREEPTR FlowOp( TREEPTR op1, opr_code opr, TREEPTR op2 )
+TREEPTR FlowOp( FrontRun& front, TREEPTR op1, opr_code opr, TREEPTR op2 )
 {
     TREEPTR     tree;
 
     if( op1->op.opr == OPR_ERROR ) {
-        FreeExprTree( op2 );
+        FreeExprTree( front, op2 );
         return( op1 );
     }
     if( op2->op.opr == OPR_ERROR ) {
-        FreeExprTree( op1 );
+        FreeExprTree( front, op1 );
         return( op2 );
     }
     if( op1->op.opr == OPR_PUSHINT ) {
         if( opr == OPR_OR_OR ) {
-            if( CheckZeroConstant( op1 ) ) {
-                FreeExprNode( op1 );
+            if( CheckZeroConstant( front, op1 ) ) {
+                FreeExprNode( front, op1 );
                 return( op2 );
             }
         } else {        // OPR_AND_AND
-            if( !CheckZeroConstant( op1 ) ) {
-                FreeExprNode( op1 );
+            if( !CheckZeroConstant( front, op1 ) ) {
+                FreeExprNode( front, op1 );
                 return( op2 );
             }
         }
     }
     if( op2->op.opr == OPR_PUSHINT ) {
         if( opr == OPR_OR_OR ) {
-            if( CheckZeroConstant( op2 ) ) {
-                FreeExprNode( op2 );
+            if( CheckZeroConstant( front, op2 ) ) {
+                FreeExprNode( front, op2 );
                 return( op1 );
             }
         } else {        // OPR_AND_AND
-            if( !CheckZeroConstant( op2 ) ) {
-                FreeExprNode( op2 );
+            if( !CheckZeroConstant( front, op2 ) ) {
+                FreeExprNode( front, op2 );
                 return( op1 );
             }
         }
     }
-    tree = ExprNode( op1, opr, op2 );
-    tree->u.expr_type = GetType( TYP_INT );
-    tree->op.u2.label_index = NextLabel();
+    tree = ExprNode( front, op1, opr, op2 );
+    tree->u.expr_type = GetType( front, TYP_INT );
+    tree->op.u2.label_index = NextLabel(front);
     return( tree );
 }
 
 
-static TREEPTR MulByConst( TREEPTR opnd, target_ssize amount )
+static TREEPTR MulByConst( FrontRun& front, TREEPTR opnd, target_ssize amount )
 {
     TREEPTR     tree;
 
@@ -1050,33 +1051,33 @@ static TREEPTR MulByConst( TREEPTR opnd, target_ssize amount )
 #endif
     case TYP_LONG:
     case TYP_ULONG:
-        tree = ExprNode( opnd, OPR_MUL, LongLeaf( amount ) );
-        tree->u.expr_type = GetType( TYP_LONG );
+        tree = ExprNode( front, opnd, OPR_MUL, LongLeaf( front, amount ) );
+        tree->u.expr_type = GetType( front, TYP_LONG );
         break;
     case TYP_INT:
     case TYP_UINT:
     default:
-        tree = ExprNode( opnd, OPR_MUL, IntLeaf( amount ) );
-        tree->u.expr_type = GetType( TYP_INT );
+        tree = ExprNode( front, opnd, OPR_MUL, IntLeaf( front, amount ) );
+        tree->u.expr_type = GetType( front, TYP_INT );
     }
     tree->op.u2.result_type = tree->u.expr_type;
     return( tree );
 }
 
 
-static TREEPTR PtrSubtract( TREEPTR result, target_ssize size, DATA_TYPE result_type)
+static TREEPTR PtrSubtract( FrontRun& front, TREEPTR result, target_ssize size, DATA_TYPE result_type)
 {
     int             shift_count;
     target_ssize    n;
     TREEPTR         tree;
     TYPEPTR         typ;
 
-    typ = GetType( result_type );
+    typ = GetType( front, result_type );
     result->u.expr_type = typ;
     result->op.u2.result_type = typ;
     for( n = 2, shift_count = 1; shift_count < 8; ++shift_count ) {
         if( n == size ) {
-            tree = ExprNode( result, OPR_RSHIFT, IntLeaf( shift_count ) );
+            tree = ExprNode( front, result, OPR_RSHIFT, IntLeaf( front, shift_count ) );
             tree->u.expr_type = typ;
             tree->op.u2.result_type = typ;
             return( tree );
@@ -1084,18 +1085,18 @@ static TREEPTR PtrSubtract( TREEPTR result, target_ssize size, DATA_TYPE result_
         n *= 2;
     }
     if( result_type == INT ) {
-        tree = ExprNode( result, OPR_DIV, IntLeaf( size ) );
-        tree->u.expr_type = GetType( TYP_INT );
+        tree = ExprNode( front, result, OPR_DIV, IntLeaf( front, size ) );
+        tree->u.expr_type = GetType( front, TYP_INT );
     } else {
-        tree = ExprNode( result, OPR_DIV, LongLeaf( size ) );
-        tree->u.expr_type = GetType( TYP_LONG );
+        tree = ExprNode( front, result, OPR_DIV, LongLeaf( front, size ) );
+        tree->u.expr_type = GetType( front, TYP_LONG );
     }
     tree->op.u2.result_type = tree->u.expr_type;
     return( tree );
 }
 
 
-TREEPTR LCastAdj( TREEPTR tree )
+TREEPTR LCastAdj( FrontRun& front, TREEPTR tree )
 /*******************************
  * Remove the OPR_CONVERT for lcast so it looks like an LVALUE
  */
@@ -1108,8 +1109,8 @@ TREEPTR LCastAdj( TREEPTR tree )
     tree->right = NULL;
     typ = tree->u.expr_type;
     opnd->u.expr_type = typ;
-    FreeExprTree( tree );
-    CWarn1( ERR_LVALUE_CAST );
+    FreeExprTree( front, tree );
+    CWarn1( front, ERR_LVALUE_CAST );
     opnd->op.flags &= ~OPFLAG_RVALUE;
     if( opnd->op.opr == OPR_PUSHSYM ) {
         opnd->op.opr = OPR_PUSHADDR;
@@ -1118,23 +1119,23 @@ TREEPTR LCastAdj( TREEPTR tree )
          * fix up fred's screw ball pointer op
          */
         modifiers = FlagOps( opnd->op.flags );
-        opnd->op.u2.result_type = PtrNode( typ, modifiers, SEG_DATA );
+        opnd->op.u2.result_type = PtrNode( front, typ, modifiers, SEG_DATA );
     }
     return( opnd );
 }
 
 
-static TYPEPTR PtrofSym( SYM_HANDLE sym_handle, TYPEPTR typ )
+static TYPEPTR PtrofSym( FrontRun& front, SYM_HANDLE sym_handle, TYPEPTR typ )
 {
     SYM_ENTRY   sym;
 
-    SymGet( &sym, sym_handle );
-    typ = PtrNode( typ, sym.mods, SEG_DATA );
+    SymGet( front, &sym, sym_handle );
+    typ = PtrNode( front, typ, sym.mods, SEG_DATA );
     return( typ );
 }
 
 
-static TREEPTR ArrayPlusConst( TREEPTR op1, TREEPTR op2 )
+static TREEPTR ArrayPlusConst( FrontRun& front, TREEPTR op1, TREEPTR op2 )
 {
     TREEPTR     result;
     TYPEPTR     typ;
@@ -1145,9 +1146,9 @@ static TREEPTR ArrayPlusConst( TREEPTR op1, TREEPTR op2 )
             SKIP_TYPEDEFS( typ );
             if( typ->decl_type == TYP_ARRAY ) {
 
-                op2->op.u2.long_value *= SizeOfArg( typ->object );
-                typ = PtrofSym( op1->op.u2.sym_handle, typ->object );
-                result = ExprNode( op1, OPR_ADD, op2 );
+                op2->op.u2.long_value *= SizeOfArg( front, typ->object );
+                typ = PtrofSym( front, op1->op.u2.sym_handle, typ->object );
+                result = ExprNode( front, op1, OPR_ADD, op2 );
                 result->u.expr_type = typ;
                 result->op.u2.result_type = typ;
                 return( result );
@@ -1158,7 +1159,7 @@ static TREEPTR ArrayPlusConst( TREEPTR op1, TREEPTR op2 )
 }
 
 
-static TREEPTR ArrayMinusConst( TREEPTR op1, TREEPTR op2 )
+static TREEPTR ArrayMinusConst( FrontRun& front, TREEPTR op1, TREEPTR op2 )
 {
     TREEPTR     result;
     TYPEPTR     typ;
@@ -1169,9 +1170,9 @@ static TREEPTR ArrayMinusConst( TREEPTR op1, TREEPTR op2 )
             SKIP_TYPEDEFS( typ );
             if( typ->decl_type == TYP_ARRAY ) {
                 op2->op.u2.long_value =
-                        (- op2->op.u2.long_value) * SizeOfArg( typ->object );
-                typ = PtrofSym( op1->op.u2.sym_handle, typ->object );
-                result = ExprNode( op1, OPR_ADD, op2 );
+                        (- op2->op.u2.long_value) * SizeOfArg( front, typ->object );
+                typ = PtrofSym( front, op1->op.u2.sym_handle, typ->object );
+                result = ExprNode( front, op1, OPR_ADD, op2 );
                 result->u.expr_type = typ;
                 result->op.u2.result_type = typ;
                 return( result );
@@ -1182,7 +1183,7 @@ static TREEPTR ArrayMinusConst( TREEPTR op1, TREEPTR op2 )
 }
 
 
-static bool LValue( TREEPTR op1 )
+static bool LValue( FrontRun& front, TREEPTR op1 )
 {
     TYPEPTR     typ;
 
@@ -1191,22 +1192,22 @@ static bool LValue( TREEPTR op1 )
     if( IsLValue( op1 ) ) {
         typ = TypeOf( op1 );
         if( typ->decl_type != TYP_ARRAY ) {
-            if( TypeSize( typ ) == 0 ) {
-                CErr1( ERR_INCOMPLETE_EXPR_TYPE );
+            if( TypeSize( front, typ ) == 0 ) {
+                CErr1( front, ERR_INCOMPLETE_EXPR_TYPE );
             }
             if( op1->op.flags & OPFLAG_LVALUE_CAST ) {
                 op1->op.flags &= ~(OPFLAG_LVALUE_CAST | OPFLAG_RVALUE);
-                CWarn1( ERR_LVALUE_CAST );
+                CWarn1( front, ERR_LVALUE_CAST );
             }
             return( true );
         }
     }
-    CErr1( ERR_MUST_BE_LVALUE );
+    CErr1( front, ERR_MUST_BE_LVALUE );
     return( false );
 }
 
 
-TREEPTR AddOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
+TREEPTR AddOp( FrontRun& front, TREEPTR op1, TOKEN opr, TREEPTR op2 )
 {
     DATA_TYPE           op1_type, op2_type, result_type;
     TYPEPTR             op1_tp, op2_tp;
@@ -1216,7 +1217,7 @@ TREEPTR AddOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
     TREEPTR             tree;
 
     if( op1->op.opr == OPR_ERROR ) {
-        FreeExprTree( op2 );
+        FreeExprTree( front, op2 );
         return( op1 );
     }
     switch( opr ) {
@@ -1225,36 +1226,36 @@ TREEPTR AddOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
     case T_MINUS_EQUAL:
     case T_MINUS_MINUS:
         if( ( op1->op.opr == OPR_CONVERT || op1->op.opr == OPR_CONVERT_PTR )
-          && cvars_state().CompFlags.extensions_enabled ) {
-            op1 = LCastAdj( op1 );
+          && front.cvars.CompFlags.extensions_enabled ) {
+            op1 = LCastAdj( front, op1 );
         }
-        LValue( op1 );
+        LValue( front, op1 );
         break;
     case T_MINUS:
-        result = ArrayMinusConst( op1, op2 );
+        result = ArrayMinusConst( front, op1, op2 );
         if( result != NULL )
             return( result );
-        op1 = RValue( op1 );
+        op1 = RValue( front, op1 );
         break;
     case T_PLUS:
-        result = ArrayPlusConst( op1, op2 );    // check for array + const
+        result = ArrayPlusConst( front, op1, op2 );    // check for array + const
         if( result != NULL )
             return( result );
-        result = ArrayPlusConst( op2, op1 );    // check for const + array
+        result = ArrayPlusConst( front, op2, op1 );    // check for const + array
         if( result != NULL ) {
             return( result );
         }
         /* fall through */
     default:
-        op1 = RValue( op1 );
+        op1 = RValue( front, op1 );
     }
-    op2 = RValue( op2 );
+    op2 = RValue( front, op2 );
     if( op1->op.opr == OPR_ERROR ) {
-        FreeExprTree( op2 );
+        FreeExprTree( front, op2 );
         return( op1 );
     }
     if( op2->op.opr == OPR_ERROR ) {
-        FreeExprTree( op1 );
+        FreeExprTree( front, op1 );
         return( op2 );
     }
     op1_tp = TypeOf( op1 );
@@ -1278,7 +1279,7 @@ TREEPTR AddOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
         case T_PLUS_EQUAL:
         case T_MINUS_EQUAL:
             if( op1_type == TYP_POINTER && op2_type >= TYP_FLOAT ) {
-                CErr1( ERR_EXPR_MUST_BE_INTEGRAL );
+                CErr1( front, ERR_EXPR_MUST_BE_INTEGRAL );
             }
             result_type = op1_type;
             break;
@@ -1288,7 +1289,7 @@ TREEPTR AddOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
                 /*
                  * make sure both pointers are same type
                  */
-                CompatiblePtrType( op1_tp, op2_tp, opr );
+                CompatiblePtrType( front, op1_tp, op2_tp, opr );
 #if _INTEL_CPU
                 if(( op1_tp->u.p.decl_flags & FLAG_HUGE ) ||
                    ( op2_tp->u.p.decl_flags & FLAG_HUGE ) ) {
@@ -1304,47 +1305,47 @@ TREEPTR AddOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
         }
     }
     if( result_type == ERR ) {
-        CErr1( ERR_EXPR_MUST_BE_SCALAR );
+        CErr1( front, ERR_EXPR_MUST_BE_SCALAR );
         result_type = INT;
     }
     if( op1_type == PTR ) {
         res_type = TypeOf( op1 );
-        size = SizeOfArg( res_type->object );
+        size = SizeOfArg( front, res_type->object );
         if( size == 0 ) {
-            CErr1( ERR_CANT_USE_VOID );
+            CErr1( front, ERR_CANT_USE_VOID );
             size = 1;
         }
         /*
          * subtraction of 2 pointers
          */
         if( (result_type == INT) || (result_type == LNG) ) {
-            res_type = GetType( result_type );
+            res_type = GetType( front, result_type );
         }
         if( size != 1 ) {
             /*
              * subtraction of 2 pointers
              */
             if( (result_type == INT) || (result_type == LNG) ) {
-                result = ExprNode( op1, TokenToOperator( opr ), op2 );
-                return( PtrSubtract( result, size, result_type ) );
+                result = ExprNode( front, op1, TokenToOperator( opr ), op2 );
+                return( PtrSubtract( front, result, size, result_type ) );
 #if _INTEL_CPU
             } else if( (op1_tp->u.p.decl_flags & FLAG_HUGE)
               || IsHugeData() ) {
                 if( (op2_type != LNG) && (op2_type != ULN) ) {
-                    op2 = CnvOp( op2, GetType( TYP_LONG ), true );
+                    op2 = CnvOp( front, op2, GetType( front, TYP_LONG ), true );
                 }
 #endif
             }
-            op2 = MulByConst( op2, size );
+            op2 = MulByConst( front, op2, size );
         }
     } else if( op2_type == PTR ) {      /* &&  op1_type != PTR */
         if( opr == T_PLUS_EQUAL || opr == T_MINUS_EQUAL || opr == T_MINUS ) {
-            CErr2p( ERR_RIGHT_OPERAND_IS_A_POINTER, TokenString[opr] );
+            CErr2p( front, ERR_RIGHT_OPERAND_IS_A_POINTER, TokenString[opr] );
         }
         res_type = TypeOf( op2 );
-        size = SizeOfArg( res_type->object );
+        size = SizeOfArg( front, res_type->object );
         if( size == 0 ) {
-            CErr1( ERR_CANT_USE_VOID );
+            CErr1( front, ERR_CANT_USE_VOID );
             size = 1;
         }
         if( size != 1 ) {
@@ -1352,37 +1353,37 @@ TREEPTR AddOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
             if( (op2_tp->u.p.decl_flags & FLAG_HUGE)
               || IsHugeData() ) {
                 if( (op1_type != LNG ) && (op1_type != ULN) ) {
-                    op2 = CnvOp( op2, GetType( TYP_LONG ), true );
+                    op2 = CnvOp( front, op2, GetType( front, TYP_LONG ), true );
                 }
             }
 #endif
-            op1 = MulByConst( op1, size );
+            op1 = MulByConst( front, op1, size );
         }
     } else {
-        res_type = GetType( result_type );
+        res_type = GetType( front, result_type );
         op1 = Convert( op1, op1_type, result_type );
         op2 = Convert( op2, op2_type, result_type );
     }
-    tree = ExprNode( op1, TokenToOperator( opr ), op2 );
+    tree = ExprNode( front, op1, TokenToOperator( opr ), op2 );
     tree->u.expr_type = res_type;
     tree->op.u2.result_type = res_type;
     return( tree );
 }
 
 
-TREEPTR BinOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
+TREEPTR BinOp( FrontRun& front, TREEPTR op1, TOKEN opr, TREEPTR op2 )
 {
     DATA_TYPE      op1_type, op2_type, result_type;
     TREEPTR        tree;
     TYPEPTR        typ;
 
     if( op1->op.opr == OPR_ERROR ) {
-        FreeExprTree( op2 );
+        FreeExprTree( front, op2 );
         return( op1 );
     }
-    op2 = RValue( op2 );
+    op2 = RValue( front, op2 );
     if( op2->op.opr == OPR_ERROR ) {
-        FreeExprTree( op1 );
+        FreeExprTree( front, op1 );
         return( op2 );
     }
     typ = TypeOf( op1 );
@@ -1396,14 +1397,14 @@ TREEPTR BinOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
     } else {
         result_type = BinExprTypeDT( op1_type, op2_type );
         if( opr == T_PERCENT && result_type >= TYP_FLOAT ) {
-            CErr1( ERR_EXPR_MUST_BE_INTEGRAL );
+            CErr1( front, ERR_EXPR_MUST_BE_INTEGRAL );
         }
         if( result_type < INT ) {
             result_type = INT;
         }
     }
     if( result_type == ERR ) {
-        CErr1( ERR_EXPR_MUST_BE_ARITHMETIC );
+        CErr1( front, ERR_EXPR_MUST_BE_ARITHMETIC );
         result_type = INT;
     }
     switch( opr ) {
@@ -1412,8 +1413,8 @@ TREEPTR BinOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
         /*
          * if op2 is a constant, check to see if constant truncated
          */
-        if( CheckAssignRange( typ, op2 ) ) {
-            CWarn1( ERR_CONSTANT_TOO_BIG );
+        if( CheckAssignRange( front, typ, op2 ) ) {
+            CWarn1( front, ERR_CONSTANT_TOO_BIG );
         }
         /* fall through */
     case T_AND_EQUAL:
@@ -1425,7 +1426,7 @@ TREEPTR BinOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
          */
         result_type = static_cast<DATA_TYPE>(IntResult[op1_type][op2_type]);
         if( result_type == ERR ) {
-            CErr1( ERR_EXPR_MUST_BE_INTEGRAL );
+            CErr1( front, ERR_EXPR_MUST_BE_INTEGRAL );
         }
         /* fall through */
     case T_TIMES_EQUAL:
@@ -1435,52 +1436,52 @@ TREEPTR BinOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
     default:
         op1 = Convert( op1, op1_type, result_type );
         op2 = Convert( op2, op2_type, result_type );
-        typ = GetType( result_type );
+        typ = GetType( front, result_type );
     }
-    tree = ExprNode( op1, TokenToOperator( opr ), op2 );
+    tree = ExprNode( front, op1, TokenToOperator( opr ), op2 );
     if( result_type == ERR ) {
-        tree = ErrorNode( tree );
+        tree = ErrorNode( front, tree );
     } else {
-        tree->u.expr_type = GetType( result_type );
+        tree->u.expr_type = GetType( front, result_type );
         tree->op.u2.result_type = typ;
     }
     return( tree );
 }
 
 
-static void SetSymAssigned( TREEPTR opnd )
+static void SetSymAssigned( FrontRun& front, TREEPTR opnd )
 {
     SYM_ENTRY   sym;
 
     while( opnd->op.opr == OPR_DOT || opnd->op.opr == OPR_INDEX )
         opnd = opnd->left;
     if( opnd->op.opr == OPR_PUSHADDR ) {
-        SymGet( &sym, opnd->op.u2.sym_handle );
+        SymGet( front, &sym, opnd->op.u2.sym_handle );
         if( sym.level != 0 ) {
             if( (sym.flags & SYM_ASSIGNED) == 0 ) {
                 sym.flags |= SYM_ASSIGNED;
-                SymReplace( &sym, opnd->op.u2.sym_handle );
+                SymReplace( front, &sym, opnd->op.u2.sym_handle );
             }
         }
     }
 }
 
 
-TREEPTR InitAsgn( TYPEPTR typ, TREEPTR op2 )
+TREEPTR InitAsgn( FrontRun& front, TYPEPTR typ, TREEPTR op2 )
 {
     if( op2->op.opr == OPR_ERROR ) {
         return( op2 );
     }
-    op2 = RValue( op2 );
-    op2 = BoolConv( typ, op2 );
-    if( !cvars_state().CompFlags.no_check_inits ) {   // else fuck em
-        CheckParmAssign( typ, op2, 0, true );
+    op2 = RValue( front, op2 );
+    op2 = BoolConv( front, typ, op2 );
+    if( !front.cvars.CompFlags.no_check_inits ) {   // else fuck em
+        CheckParmAssign( front, typ, op2, 0, true );
     }
     return( op2 );
 }
 
 
-TREEPTR AsgnOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
+TREEPTR AsgnOp( FrontRun& front, TREEPTR op1, TOKEN opr, TREEPTR op2 )
 {
     TYPEPTR         typ;
     pointer_class   op1_ptrclass;
@@ -1488,101 +1489,101 @@ TREEPTR AsgnOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
     int             isLValue;
 
     if( op1->op.opr == OPR_ERROR ) {
-        FreeExprTree( op2 );
+        FreeExprTree( front, op2 );
         return( op1 );
     }
     if( op2->op.opr == OPR_ERROR ) {
-        FreeExprTree( op1 );
+        FreeExprTree( front, op1 );
         return( op2 );
     }
     if( op1->op.flags & OPFLAG_LVALUE_CAST ) {
-        if( cvars_state().CompFlags.extensions_enabled ) {
+        if( front.cvars.CompFlags.extensions_enabled ) {
             op1->op.flags &= ~(OPFLAG_LVALUE_CAST | OPFLAG_RVALUE);
             if( op1->op.opr == OPR_PUSHSYM ) {
                 op1->op.opr = OPR_PUSHADDR;
             }
-            CWarn1( ERR_LVALUE_CAST );
+            CWarn1( front, ERR_LVALUE_CAST );
         } else {
-            CErr1( ERR_CANT_TAKE_ADDR_OF_RVALUE );
+            CErr1( front, ERR_CANT_TAKE_ADDR_OF_RVALUE );
         }
     }
     if( ( op1->op.opr == OPR_CONVERT || op1->op.opr == OPR_CONVERT_PTR )
-      && cvars_state().CompFlags.extensions_enabled ) {
-        op1 = LCastAdj( op1 );
+      && front.cvars.CompFlags.extensions_enabled ) {
+        op1 = LCastAdj( front, op1 );
     }
-    isLValue = LValue( op1 );
+    isLValue = LValue( front, op1 );
     if( isLValue ) {
         op_flags volatile_flag;
 
         volatile_flag = op1->op.flags & OPFLAG_VOLATILE;
         if( opr != T_EQUAL && opr != T_ASSIGN_LAST ) {
             if( opr == T_PLUS_EQUAL || opr == T_MINUS_EQUAL ) {
-                op1 = AddOp( op1, opr, op2 );
+                op1 = AddOp( front, op1, opr, op2 );
             } else {
-                op1 = BinOp( op1, opr, op2 );
+                op1 = BinOp( front, op1, opr, op2 );
             }
             op1->op.flags |= volatile_flag;
             return( op1 );
         }
-        SetSymAssigned( op1 );
+        SetSymAssigned( front, op1 );
         typ = TypeOf( op1 );
-        op2 = RValue( op2 );
-        CheckParmAssign( typ, op2, 0, true );
-        op2 = BaseConv( typ, op2 );
-        op2 = BoolConv( typ, op2 );
+        op2 = RValue( front, op2 );
+        CheckParmAssign( front, typ, op2, 0, true );
+        op2 = BaseConv( front, typ, op2 );
+        op2 = BoolConv( front, typ, op2 );
         if( opr == T_ASSIGN_LAST )
             opr = T_EQUAL;
-        op1_ptrclass = ExprTypeClass( typ );
-        op2_ptrclass = ExprTypeClass( op2->u.expr_type );
+        op1_ptrclass = ExprTypeClass( front, typ );
+        op2_ptrclass = ExprTypeClass( front, op2->u.expr_type );
         if( op1_ptrclass != op2_ptrclass ) {
             if( FAR16_PTRCLASS( op1_ptrclass ) || FAR16_PTRCLASS( op2_ptrclass ) ) {
                 /*
                  * if far16 pointer
                  */
-                op2 = ExprNode( NULL, OPR_CONVERT_PTR, op2 );
+                op2 = ExprNode( front, NULL, OPR_CONVERT_PTR, op2 );
                 op2->op.u2.sp.old_ptrclass = op2_ptrclass;
                 op2->op.u2.sp.new_ptrclass = op1_ptrclass;
             } else {
-                op2 = ExprNode( NULL, OPR_CONVERT, op2 );
+                op2 = ExprNode( front, NULL, OPR_CONVERT, op2 );
                 op2->op.u2.result_type = typ;
             }
             op2->u.expr_type = typ;
         }
-        op1 = ExprNode( op1, TokenToOperator( opr ), op2 );
+        op1 = ExprNode( front, op1, TokenToOperator( opr ), op2 );
         op1->op.flags |= volatile_flag;
         op1->u.expr_type = typ;
         op1->op.u2.result_type = typ;
     } else {
-        FreeExprTree( op2 );
+        FreeExprTree( front, op2 );
     }
     return( op1 );
 }
 
 
-void CheckConst( TREEPTR opnd )
+void CheckConst( FrontRun& front, TREEPTR opnd )
 {
     if( opnd->op.opr != OPR_ERROR ) {
         if( opnd->op.flags & OPFLAG_CONST ) {
-            CErr1( ERR_CANNOT_MODIFY_CONST );
+            CErr1( front, ERR_CANNOT_MODIFY_CONST );
         }
     }
 }
 
 
-TREEPTR IntOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
+TREEPTR IntOp( FrontRun& front, TREEPTR op1, TOKEN opr, TREEPTR op2 )
 {
     DATA_TYPE  op1_type, op2_type, result_type;
 
     if( op1->op.opr == OPR_ERROR ) {
-        FreeExprTree( op2 );
+        FreeExprTree( front, op2 );
         return( op1 );
     }
     if( op2->op.opr == OPR_ERROR ) {
-        FreeExprTree( op1 );
+        FreeExprTree( front, op1 );
         return( op2 );
     }
-    op1 = RValue( op1 );
-    op2 = RValue( op2 );
+    op1 = RValue( front, op1 );
+    op2 = RValue( front, op2 );
     op1_type = DataTypeOf( TypeOf( op1 ) );
     op2_type = DataTypeOf( TypeOf( op2 ) );
     if( op1_type == TYP_VOID || op2_type == TYP_VOID ) {
@@ -1593,36 +1594,36 @@ TREEPTR IntOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
         result_type = static_cast<DATA_TYPE>(IntResult[op1_type][op2_type]);
     }
     if( result_type == ERR ) {
-        CErr1( ERR_EXPR_MUST_BE_INTEGRAL );
+        CErr1( front, ERR_EXPR_MUST_BE_INTEGRAL );
         result_type = INT;
     }
     op1 = Convert( op1, op1_type, result_type );
     op2 = Convert( op2, op2_type, result_type );
-    op1 = ExprNode( op1, TokenToOperator( opr ), op2 );
+    op1 = ExprNode( front, op1, TokenToOperator( opr ), op2 );
     if( result_type == ERR ) {
-        op1 = ErrorNode( op1 );
+        op1 = ErrorNode( front, op1 );
     } else {
-        op1->u.expr_type = GetType( result_type );
+        op1->u.expr_type = GetType( front, result_type );
         op1->op.u2.result_type = op1->u.expr_type;
     }
     return( op1 );
 }
 
 
-TREEPTR ShiftOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
+TREEPTR ShiftOp( FrontRun& front, TREEPTR op1, TOKEN opr, TREEPTR op2 )
 {
     DATA_TYPE   op1_type, op2_type, result_type;
 
     if( op1->op.opr == OPR_ERROR ) {
-        FreeExprTree( op2 );
+        FreeExprTree( front, op2 );
         return( op1 );
     }
     if( op2->op.opr == OPR_ERROR ) {
-        FreeExprTree( op1 );
+        FreeExprTree( front, op1 );
         return( op2 );
     }
-    op1 = RValue( op1 );
-    op2 = RValue( op2 );
+    op1 = RValue( front, op1 );
+    op2 = RValue( front, op2 );
     op1_type = DataTypeOf( TypeOf( op1 ) );
     op2_type = DataTypeOf( TypeOf( op2 ) );
     if( op1_type == TYP_VOID || op2_type == TYP_VOID ) {
@@ -1634,16 +1635,16 @@ TREEPTR ShiftOp( TREEPTR op1, TOKEN opr, TREEPTR op2 )
             result_type = ERR;
         }
         if( result_type == ERR || op2_type > UL8 ) {
-            CErr1( ERR_EXPR_MUST_BE_INTEGRAL );
+            CErr1( front, ERR_EXPR_MUST_BE_INTEGRAL );
             result_type = INT;
         }
     }
     op1 = Convert( op1, op1_type, result_type );
-    op1 = ExprNode( op1, TokenToOperator( opr ), op2 );
+    op1 = ExprNode( front, op1, TokenToOperator( opr ), op2 );
     if( result_type == ERR ) {
-        op1 = ErrorNode( op1 );
+        op1 = ErrorNode( front, op1 );
     } else {
-        op1->u.expr_type = GetType( result_type );
+        op1->u.expr_type = GetType( front, result_type );
         op1->op.u2.result_type = op1->u.expr_type;
     }
     return( op1 );
@@ -1662,7 +1663,7 @@ bool IsFuncPtr( TYPEPTR typ )
     return( true );
 }
 
-bool IsPtrConvSafe( TREEPTR src, TYPEPTR newtyp, TYPEPTR oldtyp )
+bool IsPtrConvSafe( FrontRun& front, TREEPTR src, TYPEPTR newtyp, TYPEPTR oldtyp )
 /****************************************************************
  * Check if pointer conversion is losing high (segment) bits.
  * A special dispensation is made for null pointer conversions; if the
@@ -1685,8 +1686,8 @@ bool IsPtrConvSafe( TREEPTR src, TYPEPTR newtyp, TYPEPTR oldtyp )
     /*
      * If new type isn't smaller than old, assume conversion is safe.
      */
-    if( TypeSize( newtyp ) < TypeSize( oldtyp ) ) {
-        is_safe = CheckZero( src );
+    if( TypeSize( front, newtyp ) < TypeSize( front, oldtyp ) ) {
+        is_safe = CheckZero( front, src );
         /*
          * Determine target pointer base.
          */
@@ -1733,7 +1734,7 @@ bool IsPtrConvSafe( TREEPTR src, TYPEPTR newtyp, TYPEPTR oldtyp )
     return( is_safe );
 }
 
-TREEPTR CnvOp( TREEPTR opnd, TYPEPTR newtyp, bool cast_op )
+TREEPTR CnvOp( FrontRun& front, TREEPTR opnd, TYPEPTR newtyp, bool cast_op )
 {
     TYPEPTR             typ;
     enum  conv_types    cnv;
@@ -1752,40 +1753,40 @@ TREEPTR CnvOp( TREEPTR opnd, TYPEPTR newtyp, bool cast_op )
         }
     }
     flags = OPFLAG_NONE;
-    if( cast_op && cvars_state().CompFlags.extensions_enabled ) {
+    if( cast_op && front.cvars.CompFlags.extensions_enabled ) {
         if( IsLValue( opnd ) ) {
             flags |= OPFLAG_LVALUE_CAST;
         }
     }
     opnd_type = opnd->u.expr_type->decl_type;
     if( IS_PPCTL_NORMAL() ) {
-        opnd = RValue( opnd );
+        opnd = RValue( front, opnd );
     }
     typ = TypeOf( opnd );
-    SetDiagType2( newtyp, typ );
+    SetDiagType2( front, newtyp, typ );
     if( newtyp->decl_type > TYP_POINTER ) {
         if( newtyp->decl_type == TYP_VOID ) {
-            opnd = ExprNode( NULL, OPR_CONVERT, opnd );
+            opnd = ExprNode( front, NULL, OPR_CONVERT, opnd );
             opnd->u.expr_type = newtyp;
             opnd->op.u2.result_type = newtyp;
             if( cast_op ) {
-                cvars_state().CompFlags.meaningless_stmt = false;
+                front.cvars.CompFlags.meaningless_stmt = false;
             }
         } else if( newtyp->decl_type == TYP_ENUM ) {
             if( typ->decl_type == TYP_POINTER ) {
-                CWarn1( ERR_POINTER_TYPE_MISMATCH );
+                CWarn1( front, ERR_POINTER_TYPE_MISMATCH );
             }
             newtyp = newtyp->object;
             goto convert;
         } else {
             if( cast_op ) {
-                CErr1( ERR_MUST_BE_SCALAR_TYPE );
-                SetDiagPop();
-                return( ErrorNode( opnd ) );
+                CErr1( front, ERR_MUST_BE_SCALAR_TYPE );
+                SetDiagPop(front);
+                return( ErrorNode( front, opnd ) );
             } else if( typ != newtyp ) {
-                CErr1( ERR_TYPE_MISMATCH );
-                SetDiagPop();
-                return( ErrorNode( opnd ) );
+                CErr1( front, ERR_TYPE_MISMATCH );
+                SetDiagPop(front);
+                return( ErrorNode( front, opnd ) );
             }
         }
     } else if( typ->decl_type != TYP_VOID ) {
@@ -1793,43 +1794,43 @@ convert:                                /* moved here */
         cnv = CnvTable[DataTypeOf( typ )]
                       [DataTypeOf( newtyp )];
         if( cnv == CER ) {
-            CErr1( ERR_INVALID_CONVERSION );
-            SetDiagPop();
-            return( ErrorNode( opnd ) );
+            CErr1( front, ERR_INVALID_CONVERSION );
+            SetDiagPop(front);
+            return( ErrorNode( front, opnd ) );
         } else if( cnv != NIL ) {
             if( cnv == P2P ) {
                 if( (typ->u.p.decl_flags & MASK_ALL_MEM_MODELS)
                   != (newtyp->u.p.decl_flags & MASK_ALL_MEM_MODELS)
                   || ( opnd_type == TYP_ARRAY ) ) {
-                    if( !IsPtrConvSafe( opnd, newtyp, typ ) ) {
+                    if( !IsPtrConvSafe( front, opnd, newtyp, typ ) ) {
                         if( cast_op ) {
-                            CWarn1( ERR_CAST_POINTER_TRUNCATION );
+                            CWarn1( front, ERR_CAST_POINTER_TRUNCATION );
                         } else {
-                            CWarn1( ERR_POINTER_TRUNCATION );
+                            CWarn1( front, ERR_POINTER_TRUNCATION );
                         }
                     }
                     if( !cast_op ) {
                         if( (typ->u.p.decl_flags & FLAG_BASED) &&
                             (newtyp->u.p.decl_flags & FLAG_FAR) ) {
-                            opnd = BasedPtrNode( typ, opnd );
+                            opnd = BasedPtrNode( front, typ, opnd );
                             opnd->u.expr_type = newtyp;
                             opnd->op.u2.result_type = newtyp;
-                            SetDiagPop();
+                            SetDiagPop(front);
                             return( opnd );
                         }
                         cast_op = true;        /* force a convert */
                     }
                 } else if( IsFuncPtr( typ ) || IsFuncPtr( newtyp ) ) {
                     cast_op = true;    /* force a convert */
-                } else if( TypeSize( typ ) != TypeSize( newtyp ) ) {
+                } else if( TypeSize( front, typ ) != TypeSize( front, newtyp ) ) {
                     cast_op = true;    /* force a convert */
                 } else if( typ->decl_type != TYP_POINTER || newtyp->decl_type != TYP_POINTER ) {
                     cast_op = true;    /* force a convert */
                 } else if( opr == OPR_PUSHADDR && opnd->op.opr == OPR_ADDROF ) {
                     opnd->u.expr_type = newtyp;
-                    SetDiagPop();
+                    SetDiagPop(front);
                     return( opnd );
-                } else if( cast_op && cvars_state().CompFlags.extensions_enabled ) {
+                } else if( cast_op && front.cvars.CompFlags.extensions_enabled ) {
                     /*
                      * We know the following:
                      * - it is a cast operation
@@ -1852,46 +1853,46 @@ convert:                                /* moved here */
                             opnd->u.expr_type = newtyp;
                             opnd->op.opr = opr;
                             opnd->op.flags |= OPFLAG_LVALUE_CAST;
-                            SetDiagPop();
+                            SetDiagPop(front);
                             return( opnd );
                         }
                     }
                 }
             }
-            if( !cast_op && cnv == P2A && TypeSize( typ ) > TypeSize( newtyp ) ) {
-                CWarn1( ERR_POINTER_TRUNCATION );
+            if( !cast_op && cnv == P2A && TypeSize( front, typ ) > TypeSize( front, newtyp ) ) {
+                CWarn1( front, ERR_POINTER_TRUNCATION );
             }
             if( cnv == P2A || cnv == A2P ) {
-                if( TypeSize( typ ) != TypeSize( newtyp ) ) {
+                if( TypeSize( front, typ ) != TypeSize( front, newtyp ) ) {
                     /*
                      * Conversion to/from a pointer may need special treatment
                      */
-                    opnd = BaseConv( newtyp, opnd );
+                    opnd = BaseConv( front, newtyp, opnd );
                 }
             }
             if( cnv == S2B ) {
                 /*
                  * Conversion to _Bool needs special treatment
                  */
-                opnd = BoolConv( newtyp, opnd );
+                opnd = BoolConv( front, newtyp, opnd );
             }
             if( cast_op || cnv != P2P ) {
 /* convert: moved */
                 if( IsConstLeaf( opnd ) ) {
-                    CastConstNode( opnd, newtyp );
+                    CastConstNode( front, opnd, newtyp );
                     opnd->u.expr_type = newtyp;
                 } else {
                     pointer_class     new_ptrclass;
                     pointer_class     old_ptrclass;
 
-                    new_ptrclass = ExprTypeClass( newtyp );
-                    old_ptrclass = ExprTypeClass( typ );
+                    new_ptrclass = ExprTypeClass( front, newtyp );
+                    old_ptrclass = ExprTypeClass( front, typ );
                     if( new_ptrclass != old_ptrclass
                       && ( FAR16_PTRCLASS( new_ptrclass ) || FAR16_PTRCLASS( old_ptrclass ) ) ) {
                         /*
                          * foreign pointers
                          */
-                        opnd = ExprNode( NULL, OPR_CONVERT_PTR, opnd );
+                        opnd = ExprNode( front, NULL, OPR_CONVERT_PTR, opnd );
                         opnd->op.u2.sp.old_ptrclass = old_ptrclass;
                         opnd->op.u2.sp.new_ptrclass = new_ptrclass;
 #if _CPU == 8086
@@ -1899,33 +1900,33 @@ convert:                                /* moved here */
                         /*
                          * getting segment value of pointer
                          */
-                        opnd = BasedPtrNode( typ, opnd );
-                        opnd = ExprNode( NULL, OPR_CONVERT_SEG, opnd );
+                        opnd = BasedPtrNode( front, typ, opnd );
+                        opnd = ExprNode( front, NULL, OPR_CONVERT_SEG, opnd );
                         opnd->op.u2.result_type = newtyp;
 #endif
                     } else {
-                        opnd = ExprNode( NULL, OPR_CONVERT, opnd );
+                        opnd = ExprNode( front, NULL, OPR_CONVERT, opnd );
                         opnd->op.u2.result_type = newtyp;
                     }
                     opnd->u.expr_type = newtyp;
                 }
             }
         } else if( IsConstLeaf( opnd ) ) {
-            CastConstValue( opnd, newtyp->decl_type );
+            CastConstValue( front, opnd, newtyp->decl_type );
             opnd->u.expr_type = newtyp;
         } else if( opnd->u.expr_type != newtyp ) {
-            opnd = ExprNode( NULL, OPR_CONVERT, opnd );
+            opnd = ExprNode( front, NULL, OPR_CONVERT, opnd );
             opnd->u.expr_type = newtyp;
             opnd->op.u2.result_type = newtyp;
         } else { // NIL convert
             opnd->op.flags |= flags;
         }
     }
-    SetDiagPop();
+    SetDiagPop(front);
     return( opnd );
 }
 
-TREEPTR FixupAss( TREEPTR opnd, TYPEPTR newtyp )
+TREEPTR FixupAss( FrontRun& front, TREEPTR opnd, TYPEPTR newtyp )
 /***********************************************
  * Fix up assignments - used for passing function arguments and also
  * return values. Fixes up based pointers and other x86 weirdnesses.
@@ -1944,8 +1945,8 @@ TREEPTR FixupAss( TREEPTR opnd, TYPEPTR newtyp )
      * skip typedefs, go into enum base
      */
     typ = SkipTypeFluff( opnd->u.expr_type );
-    opnd = BaseConv( newtyp, opnd );
-    opnd = BoolConv( newtyp, opnd );
+    opnd = BaseConv( front, newtyp, opnd );
+    opnd = BoolConv( front, newtyp, opnd );
     /*
      * skip typedefs, go into enum base
      */
@@ -1962,25 +1963,25 @@ TREEPTR FixupAss( TREEPTR opnd, TYPEPTR newtyp )
         pointer_class     new_ptrclass;
         pointer_class     old_ptrclass;
 
-        new_ptrclass = ExprTypeClass( newtyp );
-        old_ptrclass = ExprTypeClass( typ );
+        new_ptrclass = ExprTypeClass( front, newtyp );
+        old_ptrclass = ExprTypeClass( front, typ );
         if( new_ptrclass != old_ptrclass
           && ( FAR16_PTRCLASS( new_ptrclass ) || FAR16_PTRCLASS( old_ptrclass ) ) ) {
             /*
              * if far16 pointer
              */
-            opnd = ExprNode( NULL, OPR_CONVERT_PTR, opnd );
+            opnd = ExprNode( front, NULL, OPR_CONVERT_PTR, opnd );
             opnd->op.u2.sp.old_ptrclass = old_ptrclass;
             opnd->op.u2.sp.new_ptrclass = new_ptrclass;
         } else {
-            opnd = ExprNode( NULL, OPR_CONVERT, opnd );
+            opnd = ExprNode( front, NULL, OPR_CONVERT, opnd );
             opnd->op.u2.result_type = newtyp;
         }
     } else {
         if( IsConstLeaf( opnd ) ) {
-            CastConstValue( opnd, newtyp->decl_type );
+            CastConstValue( front, opnd, newtyp->decl_type );
         } else {
-            opnd = ExprNode( NULL, OPR_CONVERT, opnd );
+            opnd = ExprNode( front, NULL, OPR_CONVERT, opnd );
             opnd->op.u2.result_type = newtyp;
         }
     }
@@ -1988,21 +1989,21 @@ TREEPTR FixupAss( TREEPTR opnd, TYPEPTR newtyp )
     return( opnd );
 }
 
-TREEPTR UMinus( TREEPTR opnd )
+TREEPTR UMinus( FrontRun& front, TREEPTR opnd )
 {
 //    FLOATVAL        *flt;
     DATA_TYPE       t;
 
-    opnd = RValue( opnd );
+    opnd = RValue( front, opnd );
     if( opnd->op.opr != OPR_ERROR ) {
         t = DataTypeOf( TypeOf( opnd ) );
         if( t != TYP_VOID ) {
             if( t >= TYP_POINTER ) {
-                CErr1( ERR_EXPR_MUST_BE_ARITHMETIC );
-                opnd = ErrorNode( opnd );
+                CErr1( front, ERR_EXPR_MUST_BE_ARITHMETIC );
+                opnd = ErrorNode( front, opnd );
             } else {
-                opnd = ExprNode( NULL, OPR_NEG, opnd );
-                opnd->u.expr_type = GetType( static_cast<DATA_TYPE>(SubResult[t][t]) );
+                opnd = ExprNode( front, NULL, OPR_NEG, opnd );
+                opnd->u.expr_type = GetType( front, static_cast<DATA_TYPE>(SubResult[t][t]) );
                 opnd->op.u2.result_type = opnd->u.expr_type;
             }
         }
@@ -2065,23 +2066,23 @@ TREEPTR UMinus( TREEPTR opnd )
 }
 
 
-TREEPTR UComplement( TREEPTR opnd )
+TREEPTR UComplement( FrontRun& front, TREEPTR opnd )
 {
     DATA_TYPE   t;
     TYPEPTR     typ;
 
-    opnd = RValue( opnd );
+    opnd = RValue( front, opnd );
     if( opnd->op.opr != OPR_ERROR ) {
         typ = opnd->u.expr_type;
         SKIP_TYPEDEFS( typ );
         t = DataTypeOf( typ );
         if( t != TYP_VOID ) {
             if( t >= TYP_FLOAT ) {
-                CErr1( ERR_EXPR_MUST_BE_INTEGRAL );
-                opnd = ErrorNode( opnd );
+                CErr1( front, ERR_EXPR_MUST_BE_INTEGRAL );
+                opnd = ErrorNode( front, opnd );
             } else {
-                opnd = ExprNode( NULL, OPR_COM, opnd );
-                opnd->u.expr_type = GetType( static_cast<DATA_TYPE>(SubResult[t][t]) );
+                opnd = ExprNode( front, NULL, OPR_COM, opnd );
+                opnd->u.expr_type = GetType( front, static_cast<DATA_TYPE>(SubResult[t][t]) );
                 opnd->op.u2.result_type = opnd->u.expr_type;
             }
         }
@@ -2133,7 +2134,7 @@ TREEPTR UComplement( TREEPTR opnd )
 }
 
 
-static TYPEPTR MergedType( TYPEPTR typ1, TYPEPTR typ2 )
+static TYPEPTR MergedType( FrontRun& front, TYPEPTR typ1, TYPEPTR typ2 )
 /******************************************************
  * (type huge *) : (type *)            -> (type huge *)
  * (type *) : (type huge *)            -> (type huge *)
@@ -2161,13 +2162,13 @@ static TYPEPTR MergedType( TYPEPTR typ1, TYPEPTR typ2 )
         new_flags |= FLAG_NEAR;
     }
     if( typ1->u.p.decl_flags != typ2->u.p.decl_flags ) {
-        typ = PtrNode( typ1->object, new_flags, typ1->u.p.segid );
+        typ = PtrNode( front, typ1->object, new_flags, typ1->u.p.segid );
     }
     return( typ );
 }
 
 
-TYPEPTR TernType( TREEPTR true_part, TREEPTR false_part )
+TYPEPTR TernType( FrontRun& front, TREEPTR true_part, TREEPTR false_part )
 /*******************************************************/
 {
     TYPEPTR          typ1;
@@ -2187,34 +2188,34 @@ TYPEPTR TernType( TREEPTR true_part, TREEPTR false_part )
     dtype1 = DataTypeOf( typ1 );
     dtype2 = DataTypeOf( typ2 );
     if( dtype1 == TYP_POINTER && false_part->op.opr == OPR_PUSHINT ) {
-        if( !CheckZeroConstant( false_part ) ) {
-            CWarn1( ERR_NONPORTABLE_PTR_CONV );
+        if( !CheckZeroConstant( front, false_part ) ) {
+            CWarn1( front, ERR_NONPORTABLE_PTR_CONV );
         }
-        return( MergedType( typ1, typ2 ) ); /* merge near/far/const etc. */
+        return( MergedType( front, typ1, typ2 ) ); /* merge near/far/const etc. */
     }
     if( dtype2 == TYP_POINTER && true_part->op.opr == OPR_PUSHINT ) {
-        if( !CheckZeroConstant( true_part ) ) {
-            CWarn1( ERR_NONPORTABLE_PTR_CONV );
+        if( !CheckZeroConstant( front, true_part ) ) {
+            CWarn1( front, ERR_NONPORTABLE_PTR_CONV );
         }
-        return( MergedType( typ2, typ1 ) ); /* merge near/far/const etc. */
+        return( MergedType( front, typ2, typ1 ) ); /* merge near/far/const etc. */
     }
     /*
      * (arithmetic type) : (arithmetic type)    -> (promoted arithmetic type)
      */
     if( (dtype1 <= TYP_LONG_DOUBLE) && (dtype2 <= TYP_LONG_DOUBLE) ) {
-        return( GetType( static_cast<DATA_TYPE>(SubResult[dtype1][dtype2]) ) );
+        return( GetType( front, static_cast<DATA_TYPE>(SubResult[dtype1][dtype2]) ) );
     }
-    CheckTernary( typ1, typ2 );
+    CheckTernary( front, typ1, typ2 );
     if( dtype1 == TYP_POINTER && dtype2 == TYP_POINTER ) {
         /*
          * (void *) : (anything *)              -> (void *)
          */
         if( typ1->object->decl_type == TYP_VOID ) {
-            return( MergedType( typ1, typ2 ) );
+            return( MergedType( front, typ1, typ2 ) );
         } else if( typ2->object->decl_type == TYP_VOID ) {
-            return( MergedType( typ2, typ1 ) );
+            return( MergedType( front, typ2, typ1 ) );
         } else {
-            return( MergedType( typ1, typ2 ) );
+            return( MergedType( front, typ1, typ2 ) );
         }
     }
     return( typ1 );

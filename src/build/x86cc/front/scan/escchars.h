@@ -33,6 +33,7 @@
 
 /*  escape codes to be used when recognized by scanner */
 
+#pragma once
 #define ESCAPE_a        0x07
 #define ESCAPE_b        0x08
 #define ESCAPE_f        0x0C
@@ -41,7 +42,7 @@
 #define ESCAPE_t        0x09
 #define ESCAPE_v        0x0B
 
-typedef int     (*escinp_fn)( void );
-typedef void    (*escout_fn)( int );
+typedef int     (*escinp_fn)( FrontRun& );
+typedef void    (*escout_fn)( FrontRun&, int );
 
-extern int      ESCChar( escinp_fn, escout_fn, msg_codes * );
+extern int      ESCChar( FrontRun& front, escinp_fn, escout_fn, msg_codes * );

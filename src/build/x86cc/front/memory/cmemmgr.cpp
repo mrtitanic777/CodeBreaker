@@ -34,6 +34,7 @@
 #include "cgdefs.h"
 #include "feprotos.h"
 #include "roundmac.h"
+#include "frontrun.hpp"
 
 
 /*
@@ -70,23 +71,11 @@
 
 #define PERM_BLK_END    (0 | ALLOC_FLAG)
 
-enum cmem_kind {
-    CMEM_PERM,
-    CMEM_MEM,
-    CMEM_NONE,
-};
 
-typedef struct  mem_block {
-    size_t              size;   /* length of stg */
-    struct mem_block    *prev;  /* pointer to previous free memory block */
-    struct mem_block    *next;  /* pointer to next     free memory block */
-} MCB;
 
-typedef struct mem_blk {
-    struct mem_blk      *next;
-    char                *ptr;   // old permanent area block pointer
-    size_t              size;   // old permanent area block size
-} mem_blk;
+
+
+
 
 /*
  *  variables used:
@@ -103,53 +92,46 @@ typedef struct mem_blk {
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct CmemmgrState {
-    char *PermPtr;   /* first free byte in permanent area block */
-    size_t PermSize;   /* total size of permanent area block */
-    size_t PermAvail;   /* # of bytes available in permanent area block */
-    MCB CFreeList;
-    mem_blk *Blks;
-};
+/* (struct CmemmgrState: cmemmgr_state.h) */
 
 }  // namespace
 
-static inline CmemmgrState& cmemmgr_state() { return cbrun_part<CmemmgrState>(); }
 
 
-static void InitPermArea( void )
+static void InitPermArea( FrontRun& front )
 /******************************/
 {
-    cmemmgr_state().Blks = NULL;
-    cmemmgr_state().PermAvail = 0;
-    cmemmgr_state().PermPtr = NULL;
-    cmemmgr_state().PermSize = 0;
+    front.cmemmgr.Blks = NULL;
+    front.cmemmgr.PermAvail = 0;
+    front.cmemmgr.PermPtr = NULL;
+    front.cmemmgr.PermSize = 0;
 }
 
-static void FiniPermArea( void )
+static void FiniPermArea( FrontRun& front )
 /******************************/
 {
     mem_blk *curr;
     mem_blk *next;
 
-    for( curr = cmemmgr_state().Blks; curr != NULL; curr = next ) {
+    for( curr = front.cmemmgr.Blks; curr != NULL; curr = next ) {
         next = curr->next;
-        free( curr );
+        front.held->free( curr );
     }
-    cmemmgr_state().Blks = NULL;
+    front.cmemmgr.Blks = NULL;
 }
 
-static void addMCBtoFreeList( MCB *mcb )
+static void addMCBtoFreeList( FrontRun& front, MCB *mcb )
 /**************************************/
 {
     MCB     *mcb_prev;
     MCB     *mcb_next;
 
     mcb->size &= ~ALLOC_FLAG;
-    mcb_prev = &cmemmgr_state().CFreeList;
+    mcb_prev = &front.cmemmgr.CFreeList;
     for( ;; ) {         /* insert in sorted order */
         mcb_next = mcb_prev;
         mcb_prev = mcb_prev->prev;
-        if( mcb_prev == &cmemmgr_state().CFreeList )
+        if( mcb_prev == &front.cmemmgr.CFreeList )
             break;
         if( mcb_prev < mcb ) {
             break;
@@ -173,44 +155,44 @@ static void removeMCBfromFreeList( MCB *mcb )
     mcb_next->prev = mcb_prev;
 }
 
-static void AllocPermArea( void )
+static void AllocPermArea( FrontRun& front )
 /*******************************/
 {
-    for( cmemmgr_state().PermSize = MAX_PERM_SIZE; cmemmgr_state().PermSize != 0; cmemmgr_state().PermSize -= 0x20 ) {
+    for( front.cmemmgr.PermSize = MAX_PERM_SIZE; front.cmemmgr.PermSize != 0; front.cmemmgr.PermSize -= 0x20 ) {
         mem_blk *blk;
-        blk = static_cast<mem_blk *>(calloc( 1, BLK_SIZE( cmemmgr_state().PermSize + sizeof( blk->size ) ) ));
+        blk = static_cast<mem_blk *>(front.held->calloc( 1, BLK_SIZE( front.cmemmgr.PermSize + sizeof( blk->size ) ) ));
         if( blk != NULL ) {
-            blk->next = cmemmgr_state().Blks;
-            cmemmgr_state().Blks = blk;
-            blk->ptr = cmemmgr_state().PermPtr;
-            blk->size = cmemmgr_state().PermSize;
-            ((MCB *)BLK_DATA( blk, cmemmgr_state().PermSize ))->size = PERM_BLK_END;    /* null length tag */
-            cmemmgr_state().PermPtr = BLK_DATA( blk, 0 );
-            cmemmgr_state().PermAvail = cmemmgr_state().PermSize;
+            blk->next = front.cmemmgr.Blks;
+            front.cmemmgr.Blks = blk;
+            blk->ptr = front.cmemmgr.PermPtr;
+            blk->size = front.cmemmgr.PermSize;
+            ((MCB *)BLK_DATA( blk, front.cmemmgr.PermSize ))->size = PERM_BLK_END;    /* null length tag */
+            front.cmemmgr.PermPtr = BLK_DATA( blk, 0 );
+            front.cmemmgr.PermAvail = front.cmemmgr.PermSize;
             return;
         }
     }
-    cmemmgr_state().PermPtr = NULL;
-    cmemmgr_state().PermAvail = cmemmgr_state().PermSize = 0;
+    front.cmemmgr.PermPtr = NULL;
+    front.cmemmgr.PermAvail = front.cmemmgr.PermSize = 0;
 }
 
 
-void CMemInit( void )
+void CMemInit( FrontRun& front )
 /*******************/
 {
-    InitPermArea();
-    cmemmgr_state().CFreeList.size = 0;
-    cmemmgr_state().CFreeList.next = &cmemmgr_state().CFreeList;
-    cmemmgr_state().CFreeList.prev = &cmemmgr_state().CFreeList;
+    InitPermArea(front);
+    front.cmemmgr.CFreeList.size = 0;
+    front.cmemmgr.CFreeList.next = &front.cmemmgr.CFreeList;
+    front.cmemmgr.CFreeList.prev = &front.cmemmgr.CFreeList;
 }
 
-void CMemFini( void )
+void CMemFini( FrontRun& front )
 /*******************/
 {
-    cmemmgr_state().CFreeList.size = 0;
-    cmemmgr_state().CFreeList.next = &cmemmgr_state().CFreeList;
-    cmemmgr_state().CFreeList.prev = &cmemmgr_state().CFreeList;
-    FiniPermArea();
+    front.cmemmgr.CFreeList.size = 0;
+    front.cmemmgr.CFreeList.next = &front.cmemmgr.CFreeList;
+    front.cmemmgr.CFreeList.prev = &front.cmemmgr.CFreeList;
+    FiniPermArea(front);
 }
 
 static void Ccoalesce( MCB *mcb1 )
@@ -234,7 +216,7 @@ static void Ccoalesce( MCB *mcb1 )
     }
 }
 
-static void *CFastAlloc( size_t size )
+static void *CFastAlloc( FrontRun& front, size_t size )
 /************************************/
 {
     size_t      mcb_size;
@@ -247,7 +229,7 @@ static void *CFastAlloc( size_t size )
     /*
      * search free list before getting memory from permanent area
      */
-    for( mcb = cmemmgr_state().CFreeList.prev; mcb != &cmemmgr_state().CFreeList; mcb = mcb->prev ) {
+    for( mcb = front.cmemmgr.CFreeList.prev; mcb != &front.cmemmgr.CFreeList; mcb = mcb->prev ) {
         Ccoalesce( mcb );
         if( mcb->size >= mcb_size ) {
             if( mcb->size - mcb_size > MCB_SIZE( 0 ) ) {
@@ -264,27 +246,27 @@ static void *CFastAlloc( size_t size )
             return( MCB_DATA( mcb, 0 ) );
         }
     }
-    if( mcb_size > cmemmgr_state().PermAvail )
+    if( mcb_size > front.cmemmgr.PermAvail )
         return( NULL );
-    cmemmgr_state().PermAvail -= mcb_size;
-    mcb = (MCB *)( cmemmgr_state().PermPtr + cmemmgr_state().PermAvail );
+    front.cmemmgr.PermAvail -= mcb_size;
+    mcb = (MCB *)( front.cmemmgr.PermPtr + front.cmemmgr.PermAvail );
     mcb->size = mcb_size | ALLOC_FLAG;
     return( MCB_DATA( mcb, 0 ) );
 }
 
 
-void *CMemAlloc( size_t size )
+void *CMemAlloc( FrontRun& front, size_t size )
 /****************************/
 {
     void    *p;
 
-    p = CFastAlloc( size );
+    p = CFastAlloc( front, size );
     if( p == NULL ) {
-        AllocPermArea();            /* allocate another permanent area block */
-        p = CFastAlloc( size );
+        AllocPermArea(front);            /* allocate another permanent area block */
+        p = CFastAlloc( front, size );
         if( p == NULL ) {
-            CErr1( ERR_OUT_OF_MEMORY );
-            CSuicide();
+            CErr1( front, ERR_OUT_OF_MEMORY );
+            CSuicide(front);
         }
     }
     /*
@@ -295,12 +277,12 @@ void *CMemAlloc( size_t size )
     return( memset( p, 0, size ) );
 }
 
-char *ToStringDup( const char *buf, size_t len )
+char *ToStringDup( FrontRun& front, const char *buf, size_t len )
 /**********************************************/
 {
     char    *str;
 
-    str = static_cast<char *>(CMemAlloc( len + 1 ));
+    str = static_cast<char *>(CMemAlloc( front, len + 1 ));
     if( str != NULL ) {
         memcpy( str, buf, len );
         str[len] = '\0';
@@ -308,16 +290,16 @@ char *ToStringDup( const char *buf, size_t len )
     return( str );
 }
 
-char *CMemStrdup( const char *buf )
+char *CMemStrdup( FrontRun& front, const char *buf )
 /*********************************/
 {
     if( buf != NULL ) {
-        return( strcpy( static_cast<char *>(CMemAlloc( strlen( buf ) + 1 )), buf ) );
+        return( strcpy( static_cast<char *>(CMemAlloc( front, strlen( buf ) + 1 )), buf ) );
     }
     return( NULL );
 }
 
-void *CMemRealloc( void *old_p, size_t size )
+void *CMemRealloc( FrontRun& front, void *old_p, size_t size )
 /*******************************************/
 {
     void            *p;
@@ -325,14 +307,14 @@ void *CMemRealloc( void *old_p, size_t size )
     MCB             *mcb;
 
     if( old_p == NULL )
-        return( CMemAlloc( size ) );
+        return( CMemAlloc( front, size ) );
 
     mcb = MCB_FROM_C( old_p );
     old_size = ((mcb)->size & ~ALLOC_FLAG) - MCB_SIZE( 0 );
     if( size > old_size ) {
-        p = CMemAlloc( size );
+        p = CMemAlloc( front, size );
         memcpy( p, old_p, old_size );
-        CMemFree( old_p );
+        CMemFree( front, old_p );
     } else {
         /*
          * the current block is big enough -- nothing to do (very lazy realloc)
@@ -342,16 +324,16 @@ void *CMemRealloc( void *old_p, size_t size )
     return( p );
 }
 
-static enum cmem_kind CMemKind( const char *p )
+static enum cmem_kind CMemKind( FrontRun& front, const char *p )
 /*********************************************/
 {
     char            *ptr;
     size_t          size;
     mem_blk         *blk;
 
-    ptr = cmemmgr_state().PermPtr;
-    size = cmemmgr_state().PermSize;
-    for( blk = cmemmgr_state().Blks; blk != NULL; blk = blk->next ) {
+    ptr = front.cmemmgr.PermPtr;
+    size = front.cmemmgr.PermSize;
+    for( blk = front.cmemmgr.Blks; blk != NULL; blk = blk->next ) {
         if( p > (char *)blk ) {
             /*
              * check if permanent memory (from beginning of block)
@@ -372,7 +354,7 @@ static enum cmem_kind CMemKind( const char *p )
     return( CMEM_NONE );
 }
 
-void CMemFree( void *p )
+void CMemFree( FrontRun& front, void *p )
 /**********************/
 {
     MCB         *mcb;
@@ -382,20 +364,20 @@ void CMemFree( void *p )
      *
      * ignore precompiled header memory block
      */
-    if( p != NULL && ( cvars_state().PCH_Start == NULL || (char *)p < cvars_state().PCH_Start || (char *)p >= cvars_state().PCH_End ) ) {
-        if( CMemKind( static_cast<const char *>(p) ) == CMEM_MEM ) {
+    if( p != NULL && ( front.cvars.PCH_Start == NULL || (char *)p < front.cvars.PCH_Start || (char *)p >= front.cvars.PCH_End ) ) {
+        if( CMemKind( front, static_cast<const char *>(p) ) == CMEM_MEM ) {
             mcb = MCB_FROM_C( p );
-            if( (char *)mcb == cmemmgr_state().PermPtr + cmemmgr_state().PermAvail ) {
-                cmemmgr_state().PermAvail += mcb->size & ~ALLOC_FLAG;
+            if( (char *)mcb == front.cmemmgr.PermPtr + front.cmemmgr.PermAvail ) {
+                front.cmemmgr.PermAvail += mcb->size & ~ALLOC_FLAG;
                 mcb = MCB_NEXT( mcb );
                 if( (mcb->size & ALLOC_FLAG) == 0 ) {
-                    if( (char *)mcb == cmemmgr_state().PermPtr + cmemmgr_state().PermAvail ) {
-                        cmemmgr_state().PermAvail += mcb->size;
+                    if( (char *)mcb == front.cmemmgr.PermPtr + front.cmemmgr.PermAvail ) {
+                        front.cmemmgr.PermAvail += mcb->size;
                         removeMCBfromFreeList( mcb );
                     }
                 }
             } else {
-                addMCBtoFreeList( mcb );
+                addMCBtoFreeList( front, mcb );
                 Ccoalesce( mcb );
             }
         }
@@ -403,50 +385,50 @@ void CMemFree( void *p )
 }
 
 
-void *CPermAlloc( size_t size )
+void *CPermAlloc( FrontRun& front, size_t size )
 /*****************************/
 {
     void    *p;
 
     size = _RoundUp( size, MEM_ALIGN );
-    if( size > cmemmgr_state().PermAvail ) {
+    if( size > front.cmemmgr.PermAvail ) {
         if( size <= MAX_PERM_SIZE ) {
             /*
              * allocate another permanent area block
              */
-            AllocPermArea();
+            AllocPermArea(front);
         }
-        if( size > cmemmgr_state().PermAvail ) {
-            CErr1( ERR_OUT_OF_MEMORY );
-            CSuicide();
+        if( size > front.cmemmgr.PermAvail ) {
+            CErr1( front, ERR_OUT_OF_MEMORY );
+            CSuicide(front);
         }
     }
-    cmemmgr_state().PermAvail -= size;
-    p = cmemmgr_state().PermPtr;
-    cmemmgr_state().PermPtr += size;
+    front.cmemmgr.PermAvail -= size;
+    p = front.cmemmgr.PermPtr;
+    front.cmemmgr.PermPtr += size;
     return( memset( p, 0, size ) );
 }
 
 
-void *FEmalloc( size_t size )
+void *FEmalloc( FrontRun& front, size_t size )
 /***************************/
 {
     void    *p;
 
-    p = calloc( 1, size );   /* (zeroed: see run/cbrun.hpp) */
+    p = front.held->calloc( 1, size );   /* (zeroed: see run/cbrun.hpp) */
     if( p == NULL ) {
-        CErr1( ERR_OUT_OF_MEMORY );
-        CSuicide();
+        CErr1( front, ERR_OUT_OF_MEMORY );
+        CSuicide(front);
     }
     return( p );
 }
 
 
-void FEfree( void *p )
+void FEfree( FrontRun& front, void *p )
 /********************/
 {
     if( p != NULL ) {
-        free( p );
+        front.held->free( p );
     }
 }
 

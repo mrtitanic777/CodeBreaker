@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #if defined( __WATCOMC__ ) && ( __WATCOMC__ < 1300 )
     /* fix for OW 1.9 */
     #include <share.h>

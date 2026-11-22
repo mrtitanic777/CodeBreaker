@@ -58,6 +58,7 @@
 #include "liveinfo.h"
 #include "cachecon.h"
 #include "regtree.h"
+#include "backrun.hpp"
 
 
 enum allocation_state {
@@ -93,7 +94,7 @@ static  bool    ContainedIn( name *name1, name *name2 )
 }
 
 
-static hw_reg_set   SearchTree( reg_tree *tree, name *opnd, hw_reg_set reg )
+static hw_reg_set   SearchTree( BackRun& back, reg_tree *tree, name *opnd, hw_reg_set reg )
 /*****************************************************************
     Given a register "reg", and a reg_tree "tree", return the
     appropriate piece of "reg" to be associated with name "opnd".
@@ -103,23 +104,23 @@ static hw_reg_set   SearchTree( reg_tree *tree, name *opnd, hw_reg_set reg )
         return( reg );
     }
     if( opnd->v.offset < tree->offset + ( tree->size / 2 ) ) {
-        return( SearchTree( tree->lo, opnd, LowOffsetReg( reg ) ) );
+        return( SearchTree( back, tree->lo, opnd, LowOffsetReg( back, reg ) ) );
     } else {
-        return( SearchTree( tree->hi, opnd, HighOffsetReg( reg ) ) );
+        return( SearchTree( back, tree->hi, opnd, HighOffsetReg( back, reg ) ) );
     }
 }
 
 
-static  name    *FindReg( reg_tree *tree, name *opnd, name *reg )
+static  name    *FindReg( BackRun& back, reg_tree *tree, name *opnd, name *reg )
 /******************************************************************
     see SearchTree
 */
 {
-    return( AllocRegName( SearchTree( tree, opnd, reg->r.reg ) ) );
+    return( AllocRegName( back, SearchTree( back, tree, opnd, reg->r.reg ) ) );
 }
 
 
-static name *ReplIndex( instruction *ins, reg_tree *tree, name *x, name *reg )
+static name *ReplIndex( BackRun& back, instruction *ins, reg_tree *tree, name *x, name *reg )
 /*****************************************************************
     Replace the index field of "x" with register "reg" in instruction "ins".
 */
@@ -127,15 +128,15 @@ static name *ReplIndex( instruction *ins, reg_tree *tree, name *x, name *reg )
     name        *new_x;
 
     ins->u2.index_needs = RL_;
-    reg = FindReg( tree, x->i.index, reg );
-    new_x = ScaleIndex(reg, x->i.base, x->i.constant,
+    reg = FindReg( back, tree, x->i.index, reg );
+    new_x = ScaleIndex(back, reg, x->i.base, x->i.constant,
                         x->n.type_class, x->n.size, x->i.scale,
                         x->i.index_flags );
     return( new_x );
 }
 
 
-static  void    AssignMoreBits( void )
+static  void    AssignMoreBits( BackRun& back )
 /*************************************
     Run through the list of conflicts and turn off the CONFLICT_ON_HOLD
     bit.  This is on for conflicts that needed an id bit but didn't get
@@ -145,14 +146,14 @@ static  void    AssignMoreBits( void )
 {
     conflict_node       *conf;
 
-    for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
+    for( conf = back.data.ConfList; conf != NULL; conf = conf->next_conflict ) {
         _SetFalse( conf, CST_CONFLICT_ON_HOLD );
     }
-    if( MoreConflicts() ) {
-        MakeLiveInfo();
-        AxeDeadCode();
+    if( MoreConflicts(back) ) {
+        MakeLiveInfo(back);
+        AxeDeadCode(back);
     } else {
-        LiveInfoUpdate();
+        LiveInfoUpdate(back);
     }
 }
 
@@ -176,7 +177,7 @@ static  void    InitAChoice( name *temp )
 #endif
 
 
-static  void    InitChoices( void )
+static  void    InitChoices( BackRun& back )
 /**********************************
     Set the possible register choices of all conflicts/temps to be
     RL_NUMBER_OF_SETS meaning there are no restrictions as yet.  This
@@ -196,9 +197,9 @@ static  void    InitChoices( void )
     opcnt               i;
 #endif
 
-    for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
+    for( conf = back.data.ConfList; conf != NULL; conf = conf->next_conflict ) {
         conf->possible = RL_NUMBER_OF_SETS;
-        FreePossibleForAlias( conf );  /* 2007-07-10 RomanT */
+        FreePossibleForAlias( back, conf );  /* 2007-07-10 RomanT */
     }
 #if 0 /* 2007-07-10 RomanT -- This method is not used anymore */
     if( BlockByBlock ) {
@@ -270,7 +271,7 @@ static  void    ReAlias( reg_tree *tree )
 }
 
 
-static  bool    SplitConflicts( void )
+static  bool    SplitConflicts( BackRun& back )
 /*************************************
     Build a name tree for each conflict, and then if the top of the tree
     has no restrictions on which registers it can have, its name mustn't
@@ -285,8 +286,8 @@ static  bool    SplitConflicts( void )
     bool                change;
 
     change = false;
-    for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
-        BuildNameTree( conf );
+    for( conf = back.data.ConfList; conf != NULL; conf = conf->next_conflict ) {
+        BuildNameTree( back, conf );
         if( conf->tree != NULL && conf->tree->idx == RL_NUMBER_OF_SETS ) {
             change = true;
             ReAlias( conf->tree );
@@ -297,14 +298,14 @@ static  bool    SplitConflicts( void )
                 conf->tree->alt->v.usage |= USE_MEMORY;
             }
         }
-        BurnNameTree( conf->tree );
+        BurnNameTree( back, conf->tree );
         conf->tree = NULL;
     }
     return( change );
 }
 
 
-void    NullConflicts( var_usage off )
+void    NullConflicts( BackRun& back, var_usage off )
 /***********************************************
     Turn off the usage attributes for each temporary, and null the
     conflict field.  This is called in preparation for calling
@@ -317,7 +318,7 @@ void    NullConflicts( var_usage off )
 {
     name        *temp;
 
-    for( temp = data_state().Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
+    for( temp = back.data.Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
         temp->v.conflict = NULL;
         temp->v.usage &= (USE_IN_ANOTHER_BLOCK | USE_MEMORY | USE_ADDRESS | VAR_VOLATILE | NEEDS_MEMORY | HAS_MEMORY);
         if( (temp->v.usage & (USE_MEMORY | USE_ADDRESS | VAR_VOLATILE | NEEDS_MEMORY)) == 0 ) {
@@ -328,7 +329,7 @@ void    NullConflicts( var_usage off )
 }
 
 
-static  bool  FixInstructions( conflict_node *conf, reg_tree *tree,
+static  bool  FixInstructions( BackRun& back, conflict_node *conf, reg_tree *tree,
                                hw_reg_set reg, bool need_live_update )
 /***********************************************************************
     Run the the instruction list assigning register "reg" to conflict
@@ -342,7 +343,7 @@ static  bool  FixInstructions( conflict_node *conf, reg_tree *tree,
 #include "savcache.h"
 #undef _InRegAssgn
 
-    reg_name = AllocRegName( reg );
+    reg_name = AllocRegName( back, reg );
     if( (conf->name->v.usage & USE_IN_ANOTHER_BLOCK)
       && (conf->name->v.usage & (NEEDS_MEMORY | USE_ADDRESS)) ) {
         conf->name->v.usage |= USE_MEMORY;
@@ -359,7 +360,7 @@ static  bool  FixInstructions( conflict_node *conf, reg_tree *tree,
     if( _LBitEmpty( conf->id.within_block ) && _GBitEmpty( conf->id.out_of_block ) ) {
         /* update live info since the conflict had no id.*/
         if( need_live_update ) {
-            LiveInfoUpdate();
+            LiveInfoUpdate(back);
             return( false );
         } else {
             return( true );
@@ -413,7 +414,7 @@ static  void    BitOff( conflict_node *conf )
 }
 
 
-static int_32   CountRegMoves( conflict_node *conf,
+static int_32   CountRegMoves( BackRun& back, conflict_node *conf,
                                hw_reg_set reg, reg_tree *tree,
                                int levels )
 /********************************************
@@ -443,10 +444,10 @@ static int_32   CountRegMoves( conflict_node *conf,
 
     if( tree == NULL )
         return( 0 );
-    reg_name = AllocRegName( reg );
+    reg_name = AllocRegName( back, reg );
     count = 0;
     if( tree->temp != NULL ) {
-        idx = IsIndexReg( reg, tree->temp->n.type_class, false );
+        idx = IsIndexReg( back, reg, tree->temp->n.type_class, false );
     } else {
         idx = false;
     }
@@ -531,8 +532,8 @@ static int_32   CountRegMoves( conflict_node *conf,
 #if ( _TARGET & _TARG_370 ) == 0
     if( _IsModel( CGSW_GEN_SUPER_OPTIMAL ) ) {
 #endif
-        count += CountRegMoves( conf, HighOffsetReg( reg ), tree->hi, levels );
-        count += CountRegMoves( conf, LowOffsetReg( reg ), tree->lo, levels );
+        count += CountRegMoves( back, conf, HighOffsetReg( back, reg ), tree->hi, levels );
+        count += CountRegMoves( back, conf, LowOffsetReg( back, reg ), tree->lo, levels );
 #if ( _TARGET & _TARG_370 ) == 0
     }
 #endif
@@ -550,13 +551,13 @@ static int_32   CountRegMoves( conflict_node *conf,
 
         hw_reg_set      saved_regs;
 
-        saved_regs = MustSaveRegs();
+        saved_regs = MustSaveRegs(back);
         if( !HW_Ovlap( saved_regs, reg ) )
             count += 2;
         count <<= levels;
         if( count != 0 || levels == 0 )
             return( count );
-        for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+        for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
             for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
                 if( ins->head.opcode == OP_MOV ) {
                     other_opnd = NULL;
@@ -573,11 +574,11 @@ static int_32   CountRegMoves( conflict_node *conf,
                     case N_CONSTANT:
                         break;
                     default:
-                        other_conf = FindConflictNode( other_opnd, blk, ins );
+                        other_conf = FindConflictNode( back, other_opnd, blk, ins );
                         if( other_conf != NULL ) {
                             reg_name = tree->temp;
                             tree->temp = other_conf->name;
-                            count = CountRegMoves( other_conf, reg, tree, levels-1 );
+                            count = CountRegMoves( back, other_conf, reg, tree, levels-1 );
                             tree->temp = reg_name;
                             return( count );
                         }
@@ -604,7 +605,7 @@ static  bool    UnaryOpGetsReg( instruction *ins, hw_reg_set reg, name *op )
 }
 
 
-static  bool    StealsSeg( instruction *ins,
+static  bool    StealsSeg( BackRun& back, instruction *ins,
                            hw_reg_set reg, hw_reg_set except,
                            name *actual_op )
 /***************************************************************
@@ -618,12 +619,12 @@ static  bool    StealsSeg( instruction *ins,
     if( ins->num_operands <= OpcodeNumOperands( ins ) )
         return( false );
     op = ins->operands[ins->num_operands - 1];
-    new_conf = NameConflict( ins, op );
+    new_conf = NameConflict( back, ins, op );
     if( new_conf == NULL )
         return( false );
     if( ( op == actual_op ) && IsSegReg( reg ) )
         return( false );
-    index_needs = RegSetList(SegIndex());
+    index_needs = RegSetList(back, SegIndex());
     if( HW_CEqual( *index_needs, HW_EMPTY ) )
         return( false );
     for( ;; ) {
@@ -638,7 +639,7 @@ static  bool    StealsSeg( instruction *ins,
 }
 
 
-static bool StealsIdx( instruction *ins, hw_reg_set except, name *actual_op )
+static bool StealsIdx( BackRun& back, instruction *ins, hw_reg_set except, name *actual_op )
 /****************************************************************
     Does precluding the set of regiseters "except" from operands of
     "ins" make it impossible to generate an indexed addressing mode?
@@ -654,7 +655,7 @@ static bool StealsIdx( instruction *ins, hw_reg_set except, name *actual_op )
     for( i = ins->num_operands; i-- > 0; ) {
         op = ins->operands[i];
         if( op->n.class_ == N_INDEXED ) {
-            new_conf = NameConflict( ins, op->i.index ); // oops
+            new_conf = NameConflict( back, ins, op->i.index ); // oops
             if( new_conf == NULL || actual_op == op->i.index ) {
                 return( false );
             }
@@ -663,13 +664,13 @@ static bool StealsIdx( instruction *ins, hw_reg_set except, name *actual_op )
     if( ins->result != NULL ) {
         op = ins->result;
         if( op->n.class_ == N_INDEXED ) {
-            new_conf = NameConflict( ins, op->i.index ); // oops
+            new_conf = NameConflict( back, ins, op->i.index ); // oops
             if( new_conf == NULL || actual_op == op->i.index )
                 return( false );
             is_result = true;
         }
     }
-    index_needs = RegSetList(ins->u2.index_needs);
+    index_needs = RegSetList(back, ins->u2.index_needs);
     if( HW_CEqual( *index_needs, HW_EMPTY ) )
         return( false );
     for( ;; ) {
@@ -689,22 +690,22 @@ static bool StealsIdx( instruction *ins, hw_reg_set except, name *actual_op )
 }
 
 
-bool_maybe  CheckIndecies( instruction *ins, hw_reg_set reg, hw_reg_set except, name *op )
+bool_maybe  CheckIndecies( BackRun& back, instruction *ins, hw_reg_set reg, hw_reg_set except, name *op )
 /*****************************************************************************************
     Used by TooGreedy
 */
 {
     HW_TurnOn( except, ins->head.live.regs );
     HW_TurnOn( except, reg );
-    if( StealsIdx( ins, except, op ) )
+    if( StealsIdx( back, ins, except, op ) )
         return( MB_MAYBE );
-    if( StealsSeg( ins, reg, except, op ) )
+    if( StealsSeg( back, ins, reg, except, op ) )
         return( MB_MAYBE );
     return( MB_FALSE );
 }
 
 
-static  bool_maybe TooGreedy( conflict_node *conf, hw_reg_set reg, name *op )
+static  bool_maybe TooGreedy( BackRun& back, conflict_node *conf, hw_reg_set reg, name *op )
 /****************************************************************************
     This routine decides whether giving register "reg" to conflict
     "conf" would be too greedy.  Too greedy means that it would use the
@@ -741,14 +742,14 @@ static  bool_maybe TooGreedy( conflict_node *conf, hw_reg_set reg, name *op )
         } else {
             needs = ins->u.gen_table->reg_set;
         }
-        ins_needs = RegSetList(RegList[needs].need);
+        ins_needs = RegSetList(back, RegList[needs].need);
         if( HW_CEqual( *ins_needs, HW_EMPTY ) || _Is( conf, CST_NEVER_TOO_GREEDY ) || UnaryOpGetsReg( ins, reg, op ) ) {
-            rc = CheckIndecies( ins, reg, HW_EMPTY, op );
+            rc = CheckIndecies( back, ins, reg, HW_EMPTY, op );
         } else { /* can the instruction and indecies still get needed regs?*/
             rc = MB_TRUE;
             for( ;; ) {
                 if( !HW_Ovlap( *ins_needs, ins->head.live.regs ) && !HW_Ovlap( reg, *ins_needs ) ) {
-                    rc = CheckIndecies( ins, reg, *ins_needs, op );
+                    rc = CheckIndecies( back, ins, reg, *ins_needs, op );
                     if( rc == MB_FALSE ) {
                         break;
                     }
@@ -772,7 +773,7 @@ static  bool_maybe TooGreedy( conflict_node *conf, hw_reg_set reg, name *op )
 }
 
 
-static  void    CheckIndexZap( conflict_node *conf, block *blk, instruction *ins )
+static  void    CheckIndexZap( BackRun& back, conflict_node *conf, block *blk, instruction *ins )
 /***********************************************************************************
     If the given instruction uses the name for conf as an index in the result,
     then mark the conflict as conflicting with anything in the instructions
@@ -783,14 +784,14 @@ static  void    CheckIndexZap( conflict_node *conf, block *blk, instruction *ins
 
     dst = ins->result;
     if( dst != NULL && dst->n.class_ == N_INDEXED ) {
-        if( FindConflictNode( dst->i.index, blk, ins ) == conf ) {
+        if( FindConflictNode( back, dst->i.index, blk, ins ) == conf ) {
             HW_TurnOn( conf->with.regs, ins->zap->reg );
         }
     }
 }
 
 
-static  void    NeighboursUse( conflict_node *conf )
+static  void    NeighboursUse( BackRun& back, conflict_node *conf )
 /*****************************************************
     Calculate which conflicts "conf" could not share the same register
     with by running through the live range of the conflict and checking
@@ -831,18 +832,18 @@ static  void    NeighboursUse( conflict_node *conf )
 
                 dst = ins->result;
                 if( dst != NULL ) {
-                    NowDead( dst, FindConflictNode( dst, blk, ins ), &no_conflict, blk );
+                    NowDead( dst, FindConflictNode( back, dst, blk, ins ), &no_conflict, blk );
                 }
                 if( ins->head.opcode != OP_MOV ) {
                     if( dst == conf->name ) {
                         _NameSetInit( no_conflict );
                     }
                 } else if( ins->operands[0] == conf->name ) {
-                    NowAlive( dst, FindConflictNode( dst, blk, ins ), &no_conflict, blk );
+                    NowAlive( dst, FindConflictNode( back, dst, blk, ins ), &no_conflict, blk );
                 } else if( dst == conf->name ) {
                     _NameSetInit( no_conflict );
                     definition = ins->operands[0];
-                    NowAlive( definition, FindConflictNode( definition, blk, ins ), &no_conflict, blk );
+                    NowAlive( definition, FindConflictNode( back, definition, blk, ins ), &no_conflict, blk );
                 }
                 /* it only conflicts if temp is live across result/zap*/
                 if( ins != last ) {
@@ -860,11 +861,11 @@ static  void    NeighboursUse( conflict_node *conf )
                         // with anything in the zap set         BBB - Nov, 1994
                         if( ( _LBitOverlap( conf->id.within_block, ins->head.live.within_block ) )
                           || ( _GBitOverlap( conf->id.out_of_block, ins->head.live.out_of_block ) ) ) {
-                            CheckIndexZap( conf, blk, ins );
+                            CheckIndexZap( back, conf, blk, ins );
                         }
                     }
                 } else {
-                    CheckIndexZap( conf, blk, ins );
+                    CheckIndexZap( back, conf, blk, ins );
                 }
             }
             if( _GBitOverlap( ins->head.live.out_of_block, conf->id.out_of_block )
@@ -885,7 +886,7 @@ static  void    NeighboursUse( conflict_node *conf )
             } else if( ins->head.opcode == OP_BLOCK ) {
                 _LBitInit( conf->with.within_block, EMPTY );
                 if( blk->next_block == NULL ) {
-                    Zoiks( ZOIKS_141 );
+                    Zoiks( back, ZOIKS_141 );
                     break;
                 }
                 blk = blk->next_block;
@@ -922,7 +923,7 @@ static  void    NeighboursUse( conflict_node *conf )
 }
 
 
-static hw_reg_set   GiveBestReg( conflict_node *conf, reg_tree *tree,
+static hw_reg_set   GiveBestReg( BackRun& back, conflict_node *conf, reg_tree *tree,
                                      hw_reg_set except, bool needs_one )
 /*************************************************************************
     Give the best possible register to conflict "conf", (whose tree is
@@ -947,7 +948,7 @@ static hw_reg_set   GiveBestReg( conflict_node *conf, reg_tree *tree,
     bool        all_true;
     bool        failed;
 
-    NeighboursUse( conf );
+    NeighboursUse( back, conf );
     if( tree == NULL ) {
         HW_CAsgn( given, HW_EMPTY );
     } else if( tree->regs == NULL ) {
@@ -959,7 +960,7 @@ static hw_reg_set   GiveBestReg( conflict_node *conf, reg_tree *tree,
         HW_CAsgn( gave_hi, HW_EMPTY );
         HW_CAsgn( gave_lo, HW_EMPTY );
         if( tree->hi != NULL ) {
-            gave_hi = GiveBestReg( conf, tree->hi, except, needs_one );
+            gave_hi = GiveBestReg( back, conf, tree->hi, except, needs_one );
             if( HW_CEqual( gave_hi, HW_EMPTY ) ) {
                 failed = true;
             }
@@ -967,7 +968,7 @@ static hw_reg_set   GiveBestReg( conflict_node *conf, reg_tree *tree,
         if( tree->lo != NULL ) {
             given = except;
             HW_TurnOn( given, gave_hi );
-            gave_lo = GiveBestReg( conf, tree->lo, given, needs_one );
+            gave_lo = GiveBestReg( back, conf, tree->lo, given, needs_one );
             if( HW_CEqual( gave_lo, HW_EMPTY ) ) {
                 failed = true;
             }
@@ -978,8 +979,8 @@ static hw_reg_set   GiveBestReg( conflict_node *conf, reg_tree *tree,
             given = gave_hi;
             HW_TurnOn( given, gave_lo );
         }
-        HW_TurnOn( data_state().GivenRegisters, gave_hi );
-        HW_TurnOn( data_state().GivenRegisters, gave_lo );
+        HW_TurnOn( back.data.GivenRegisters, gave_hi );
+        HW_TurnOn( back.data.GivenRegisters, gave_lo );
     } else {
         best = HW_EMPTY;
         best_saves = -1;
@@ -988,13 +989,13 @@ static hw_reg_set   GiveBestReg( conflict_node *conf, reg_tree *tree,
             reg = *possible;
             if( !HW_Ovlap( reg, conf->with.regs )
               && !HW_Ovlap( reg, except ) ) {
-                greed = TooGreedy( conf, reg, tree->temp );
+                greed = TooGreedy( back, conf, reg, tree->temp );
                 if( greed == MB_FALSE ) {
-                    saves = CountRegMoves( conf, reg, conf->tree, 3 );
+                    saves = CountRegMoves( back, conf, reg, conf->tree, 3 );
                     if( ( saves > best_saves )
                      || ( saves == best_saves
-                       && HW_Subset( data_state().GivenRegisters, reg )
-                       && !HW_Subset( data_state().GivenRegisters, best ) ) ) {
+                       && HW_Subset( back.data.GivenRegisters, reg )
+                       && !HW_Subset( back.data.GivenRegisters, best ) ) ) {
                         best = reg;
                         best_saves = saves;
                     }
@@ -1016,10 +1017,10 @@ static hw_reg_set   GiveBestReg( conflict_node *conf, reg_tree *tree,
                 _SetFalse( conf, CST_NEEDS_SEGMENT );
             }
             HW_CAsgn( given, HW_EMPTY );
-        } else if( needs_one || WorthProlog( conf, best ) ) {
-            FixInstructions( conf, tree, best, true );
+        } else if( needs_one || WorthProlog( back, conf, best ) ) {
+            FixInstructions( back, conf, tree, best, true );
             given = best;
-            HW_TurnOn( data_state().GivenRegisters, given );
+            HW_TurnOn( back.data.GivenRegisters, given );
         } else {
             HW_CAsgn( given, HW_EMPTY );
         }
@@ -1031,7 +1032,7 @@ static hw_reg_set   GiveBestReg( conflict_node *conf, reg_tree *tree,
 }
 
 
-bool    AssignARegister( conflict_node *conf, hw_reg_set reg )
+bool    AssignARegister( BackRun& back, conflict_node *conf, hw_reg_set reg )
 /***********************************************************************
     Used to assign register "reg" to conflict "conf", before we've
     started the true register allocator.  (used by I87REG.C)
@@ -1039,16 +1040,16 @@ bool    AssignARegister( conflict_node *conf, hw_reg_set reg )
 {
     bool        need_live_update;
 
-    BuildRegTree( conf );
-    need_live_update = FixInstructions( conf, conf->tree, reg, false );
+    BuildRegTree( back, conf );
+    need_live_update = FixInstructions( back, conf, conf->tree, reg, false );
     BitOff( conf );
-    BurnRegTree( conf->tree );
-    FreeAConflict( conf );
+    BurnRegTree( back, conf->tree );
+    FreeAConflict( back, conf );
     return( need_live_update );
 }
 
 
-static  void    PutInMemory( conflict_node *conf )
+static  void    PutInMemory( BackRun& back, conflict_node *conf )
 /***************************************************
     Put "conf" into memory.  Also if the conflict is only used by one
     instruction, its useless, so we zap that instruction to not get
@@ -1066,7 +1067,7 @@ static  void    PutInMemory( conflict_node *conf )
     opnd = conf->name;
     if( opnd->n.class_ == N_TEMP ) {
         if( opnd->t.temp_flags & CONST_TEMP ) {
-            MemConstTemp( conf );
+            MemConstTemp( back, conf );
         } else {
             for( ;; ) {
                 opnd->v.usage |= NEEDS_MEMORY | USE_MEMORY;
@@ -1092,7 +1093,7 @@ static  void    PutInMemory( conflict_node *conf )
                 break;
             if( ins->head.opcode == OP_BLOCK ) {
                 if( blk->next_block == NULL ) {
-                    Zoiks( ZOIKS_141 );
+                    Zoiks( back, ZOIKS_141 );
                     break;
                 }
                 blk = blk->next_block;
@@ -1103,14 +1104,14 @@ static  void    PutInMemory( conflict_node *conf )
             _LBitTurnOff( ins->head.live.within_block, conf->id.within_block );
         }
         if( first == last && conf->name->n.class_ == N_TEMP
-          && (conf->name->v.usage & USE_ADDRESS) == 0 && !SideEffect( first ) ) {
-            DoNothing( first );
+          && (conf->name->v.usage & USE_ADDRESS) == 0 && !SideEffect( back, first ) ) {
+            DoNothing( back, first );
         }
     }
 }
 
 
-conflict_node   *InMemory( conflict_node *conf )
+conflict_node   *InMemory( BackRun& back, conflict_node *conf )
 /*********************************************************
     Put conflict "conf" and all other conflicts associated with the same
     name as "conf" into memory.  Sorry charlie, no register.
@@ -1124,19 +1125,19 @@ conflict_node   *InMemory( conflict_node *conf )
     for( conf_list = conf->name->v.conflict; conf_list != NULL; conf_list = next ) {
         next = conf_list->next_for_name;
         if( conf != conf_list ) {
-            PutInMemory( conf_list );
+            PutInMemory( back, conf_list );
             next = conf_list->next_for_name;
-            FreeAConflict( conf_list );
+            FreeAConflict( back, conf_list );
         }
     }
-    PutInMemory( conf );
+    PutInMemory( back, conf );
     next = conf->next_conflict;
-    FreeAConflict( conf );
+    FreeAConflict( back, conf );
     return( next );
 }
 
 
-conflict_node   *GiveRegister( conflict_node *conf, bool needs_one )
+conflict_node   *GiveRegister( BackRun& back, conflict_node *conf, bool needs_one )
 /**********************************************************************
     Give a register to conflict "conf", if at all possible.  The
     NEEDS_INDEX and NEEDS_SEGMENT stuff is just saying that if we tried
@@ -1161,19 +1162,19 @@ conflict_node   *GiveRegister( conflict_node *conf, bool needs_one )
     hw_reg_set          given;
 
     GRBlip();
-    BuildRegTree( conf );
+    BuildRegTree( back, conf );
     tree = conf->tree;
     if( _Is( conf, CST_INDEX_SPLIT | CST_SEGMENT_SPLIT ) ) {
         needs_one = true;
     }
-    given = GiveBestReg( conf, tree, data_state().CurrProc->state.unalterable, needs_one );
+    given = GiveBestReg( back, conf, tree, back.data.CurrProc->state.unalterable, needs_one );
     if( tree != NULL && ( tree->hi != NULL || tree->lo != NULL ) ) {
-        LiveInfoUpdate(); /* the live info is FAR to conservative. */
+        LiveInfoUpdate(back); /* the live info is FAR to conservative. */
     }
     if( !HW_CEqual( given, HW_EMPTY ) ) {
         next_valid = conf->next_conflict;
         BitOff( conf );
-        FreeAConflict( conf );
+        FreeAConflict( back, conf );
     } else {
         if( _Is( conf, CST_NEEDS_INDEX ) ) {
             _SetTrue( conf, CST_NEEDS_INDEX_SPLIT );
@@ -1183,17 +1184,17 @@ conflict_node   *GiveRegister( conflict_node *conf, bool needs_one )
             _SetFalse( conf, CST_NEEDS_SEGMENT );
         }
         if( _Isnt( conf, CST_NEEDS_SEGMENT_SPLIT | CST_NEEDS_INDEX_SPLIT ) ) {
-            next_valid = InMemory( conf );
+            next_valid = InMemory( back, conf );
         } else {
             next_valid = conf->next_conflict;
         }
     }
-    BurnRegTree( tree );
+    BurnRegTree( back, tree );
     return( next_valid );
 }
 
 
-static bool         ConfBefore( void *c1, void *c2 )
+static bool         ConfBefore( BackRun& back, void *c1, void *c2 )
 /*********************************************************
     used by SortConflicts
 */
@@ -1202,16 +1203,16 @@ static bool         ConfBefore( void *c1, void *c2 )
 }
 
 
-static  void    SortConflicts( void )
+static  void    SortConflicts( BackRun& back )
 /************************************
     Sort the conflicts in order of descending savings.
 */
 {
-    data_state().ConfList = static_cast<conflict_node *>(SortList( data_state().ConfList, offsetof( conflict_node, next_conflict ), ConfBefore ));
+    back.data.ConfList = static_cast<conflict_node *>(SortList( back, back.data.ConfList, offsetof( conflict_node, next_conflict ), ConfBefore ));
 }
 
 
-static  enum allocation_state    AssignConflicts( void )
+static  enum allocation_state    AssignConflicts( BackRun& back )
 /*******************************************************
     Run through the conflict list and calculate the savings associated
     with giving a register to each one.  Sort the list in order of
@@ -1225,14 +1226,14 @@ static  enum allocation_state    AssignConflicts( void )
     name                        *opnd;
     bool                        only_const_temps;
 
-    for( conf = data_state().ConfList; conf != NULL; conf = next ) {
+    for( conf = back.data.ConfList; conf != NULL; conf = next ) {
         next = conf->next_conflict;
         if( conf->start_block == NULL ) {
-            FreeAConflict( conf );
+            FreeAConflict( back, conf );
         } else {
             if( _Isnt( conf, CST_SAVINGS_CALCULATED ) ) {
                 conf->available = 1; /* FOR NOW for CalcSavings' benifit */
-                CalcSavings( conf );
+                CalcSavings( back, conf );
                 if( _Isnt( conf, CST_CONFLICT_ON_HOLD ) ) {
                     _SetTrue( conf, CST_SAVINGS_CALCULATED );
                     _SetTrue( conf, CST_SAVINGS_JUST_CALCULATED );
@@ -1241,11 +1242,11 @@ static  enum allocation_state    AssignConflicts( void )
             _SetFalse( conf, CST_NEEDS_INDEX_SPLIT | CST_NEEDS_SEGMENT_SPLIT );
         }
     }
-    ConstSavings();
+    ConstSavings(back);
 
-    SortConflicts();
+    SortConflicts(back);
     state = ALLOC_BITS;
-    conf = data_state().ConfList;
+    conf = back.data.ConfList;
     if( conf == NULL )
         return( state );
     opnd = conf->name;
@@ -1265,10 +1266,10 @@ static  enum allocation_state    AssignConflicts( void )
             */
             if( !only_const_temps && opnd->n.class_ == N_TEMP && (opnd->t.temp_flags & CONST_TEMP) )
                 return( ALLOC_CONST_TEMP );
-            if( conf->savings == 0 || IsUncacheableMemory( conf->name ) ) {
-                next = InMemory( conf );
+            if( conf->savings == 0 || IsUncacheableMemory( back, conf->name ) ) {
+                next = InMemory( back, conf );
             } else {
-                next = GiveRegister( conf, false );
+                next = GiveRegister( back, conf, false );
             }
             if( opnd->v.conflict == conf ) { /* if it didn't get processed */
                 state = ALLOC_DONE;
@@ -1279,7 +1280,7 @@ static  enum allocation_state    AssignConflicts( void )
 }
 
 
-void    ReConstFold( void )
+void    ReConstFold( BackRun& back )
 /**********************************
     Call FoldIns on each instruction in case we propagated a constant
     into an instruction leaving something which looks like C op C -> T,
@@ -1291,16 +1292,16 @@ void    ReConstFold( void )
     instruction                 *next;
     block                       *blk;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
             next = ins->head.next;
-            FoldIns( ins );
+            FoldIns( back, ins );
         }
     }
 }
 
 
-bool    RegAlloc( bool keep_on_truckin )
+bool    RegAlloc( BackRun& back, bool keep_on_truckin )
 /*************************************************
     Allocate registers to variables while expanding instructions.
     Instructions are expanded until they correspond 1 to 1 with machine
@@ -1318,47 +1319,47 @@ bool    RegAlloc( bool keep_on_truckin )
     int unknowns;
     enum allocation_state       last;
 
-    HW_CAsgn( data_state().GivenRegisters, HW_EMPTY );
-    if( !data_state().BlockByBlock ) {
-        InitChoices();
-        unknowns = ExpandOps( keep_on_truckin );
+    HW_CAsgn( back.data.GivenRegisters, HW_EMPTY );
+    if( !back.data.BlockByBlock ) {
+        InitChoices(back);
+        unknowns = ExpandOps( back, keep_on_truckin );
         if( unknowns <= 0 )
             return( unknowns == 0 );
-        if( SplitConflicts() ) {
-            FreeConflicts();
-            NullConflicts( static_cast<var_usage>(EMPTY) );
-            data_state().HaveLiveInfo = false;
+        if( SplitConflicts(back) ) {
+            FreeConflicts(back);
+            NullConflicts( back, static_cast<var_usage>(EMPTY) );
+            back.data.HaveLiveInfo = false;
             if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-                DeadInstructions();
-                FindReferences();
-                PropagateMoves();
+                DeadInstructions(back);
+                FindReferences(back);
+                PropagateMoves(back);
                 PropRegsOne();
-                ReConstFold();
+                ReConstFold(back);
             }
-            FindReferences();
-            MakeConflicts();
-            MakeLiveInfo();
-            data_state().HaveLiveInfo = true;
-            AxeDeadCode();
+            FindReferences(back);
+            MakeConflicts(back);
+            MakeLiveInfo(back);
+            back.data.HaveLiveInfo = true;
+            AxeDeadCode(back);
         }
     }
     last = ALLOC_DONE;
     for( ;; ) {
-        InitChoices();
-        unknowns = ExpandOps( keep_on_truckin );
+        InitChoices(back);
+        unknowns = ExpandOps( back, keep_on_truckin );
         if( unknowns <= 0 )
             break;
-        FixChoices();
+        FixChoices(back);
         if( last == ALLOC_CONST_TEMP ) {
             /* Ran into the first CONST_TEMP conflict.
                need to do a RegInsDead again in case some of the
                temps aren't used anymore */
-            RegInsDead();
+            RegInsDead(back);
         }
-        last = AssignConflicts();
+        last = AssignConflicts(back);
         if( last == ALLOC_BITS ) {
             /* ran out of bits */
-            AssignMoreBits();
+            AssignMoreBits(back);
         }
     }
     return( unknowns == 0 );

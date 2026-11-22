@@ -31,7 +31,8 @@
 
 
 /*  These are the cache definitions needed by <regsave> */
-        name            *opnd;
+        #pragma once
+name            *opnd;
         block           *blk;
         instruction     *ins;
         instruction     *temp_ins;

@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef enum {
     #define _F_(id,units,unit_stall,opnd_stall) id,
     #include "f.h"

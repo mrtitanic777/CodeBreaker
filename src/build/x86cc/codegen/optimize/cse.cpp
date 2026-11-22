@@ -59,6 +59,7 @@
 #include "varusage.h"
 #include "edge.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
 /*
@@ -76,45 +77,37 @@
 #define _INSLINK( ins )   (*(instruction **)&(ins)->u1.cse_link)
 #define _NAMELINK( op )   (*(instruction **)&(op)->v.conflict)
 
-typedef enum {
-        ALL_LIVE,
-        OP_DIES,
-        RESULT_DIES
-} who_dies;
+
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct CseState {
-    instruction *ExprHeads[LAST_CSE_OP + 1];
-    bool LeaveIndVars;
-};
+/* (struct CseState: cse_state.h) */
 
 }  // namespace
 
-static inline CseState& cse_state() { return cbrun_part<CseState>(); }
 
 
-static  void    ReCalcAddrTaken( void )
+static  void    ReCalcAddrTaken( BackRun& back )
 /*************************************/
 {
     name        *temp;
 
-    for( temp = data_state().Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
+    for( temp = back.data.Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
         if( temp->v.usage & VAR_VOLATILE )
             continue;
         if( temp->v.symbol != NULL
-          && (FEAttr( static_cast<cg_sym_handle>(temp->v.symbol) ) & FE_ADDR_TAKEN) )
+          && (FEAttr( *back.front, static_cast<cg_sym_handle>(temp->v.symbol) ) & FE_ADDR_TAKEN) )
             continue;
         if( temp->t.temp_flags & STACK_PARM )   /* See DoParmDecl() */
             continue;
         temp->v.usage &= ~USE_ADDRESS;
     }
-    FindReferences();
+    FindReferences(back);
 }
 
 
-static  bool    LoadAddr( void )
+static  bool    LoadAddr( BackRun& back )
 /*******************************
  * Propagate load address instructions by replacing them with moves of
  * "relocatable constants".
@@ -129,16 +122,16 @@ static  bool    LoadAddr( void )
     bool        change;
 
     change = false;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-            change |= LoadAToMove( ins );
+            change |= LoadAToMove( back, ins );
         }
     }
     return( change );
 }
 
 
-static  bool    FindDefnBlocks( block *blk, instruction *cond, opcnt i )
+static  bool    FindDefnBlocks( BackRun& back, block *blk, instruction *cond, opcnt i )
 /**********************************************************************/
 {
     block_edge  *edge;
@@ -178,12 +171,12 @@ static  bool    FindDefnBlocks( block *blk, instruction *cond, opcnt i )
                     break;
                 }
             }
-            new_cond = NewIns( 2 );
+            new_cond = NewIns( back, 2 );
             Copy( cond, new_cond, INS_SIZE );
             new_cond->head.prev = new_cond;
             new_cond->head.next = new_cond;
             new_cond->operands[i] = prev->operands[0];
-            new_ins = FoldIns( new_cond );
+            new_ins = FoldIns( back, new_cond );
             if( new_ins == NULL ) {
                 new_ins = new_cond;
             }
@@ -195,13 +188,13 @@ static  bool    FindDefnBlocks( block *blk, instruction *cond, opcnt i )
                         RemoveInputEdge( jump_edge );
                         PointEdge( jump_edge, new_dest_blk );
                         if( input->depth < blk->depth ) {
-                            MoveHead( blk, new_dest_blk );
+                            MoveHead( back, blk, new_dest_blk );
                         }
                         change = true;
                     }
                 }
             }
-            FreeIns( new_ins );
+            FreeIns( back, new_ins );
             break;
         }
     }
@@ -209,7 +202,7 @@ static  bool    FindDefnBlocks( block *blk, instruction *cond, opcnt i )
 }
 
 
-static  bool    StretchABlock( block *blk )
+static  bool    StretchABlock( BackRun& back, block *blk )
 /******************************************
  * see StretchEdges
  */
@@ -233,11 +226,11 @@ static  bool    StretchABlock( block *blk )
         return( false );
     if( IsVolatile( ins->operands[i] ) )
         return( false );
-    return( FindDefnBlocks( blk, ins, i ) );
+    return( FindDefnBlocks( back, blk, ins, i ) );
 }
 
 
-static  bool    StretchEdges( void )
+static  bool    StretchEdges( BackRun& back )
 /***********************************
  *
  * Try to detect code like:
@@ -252,8 +245,8 @@ static  bool    StretchEdges( void )
     bool        change;
 
     change = false;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
-        if( StretchABlock( blk ) ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
+        if( StretchABlock( back, blk ) ) {
             change = true;
         }
     }
@@ -380,7 +373,7 @@ static  void    TreeBits( block *root )
 }
 
 
-static  void    FindPartition( void )
+static  void    FindPartition( BackRun& back )
 /************************************
  * Partition the flow graph into trees, with root indicated by
  * BLK_BLOCK_VISITED.  Nodes of the tree (except root) may have only one
@@ -394,7 +387,7 @@ static  void    FindPartition( void )
     block_edge  *edge;
     block_num   i;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( _IsBlkAttr( blk, BLK_BIG_LABEL )
           || blk->inputs != 1 ) {
             _MarkBlkVisited( blk );
@@ -402,7 +395,7 @@ static  void    FindPartition( void )
         blk->u.partition = blk;
         _BLKBITS( blk ) = EMPTY;
     }
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         edge = &blk->edge[0];
         for( i = blk->targets; i > 0; --i ) {
             if( edge->flags & BEF_DEST_IS_BLOCK ) {
@@ -417,7 +410,7 @@ static  void    FindPartition( void )
             ++edge;
         }
     }
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( _IsBlkVisited( blk ) ) {
             TreeBits( blk );
         }
@@ -501,28 +494,28 @@ static  instruction *WhichIsAncestor( instruction *ins1, instruction *ins2 )
 }
 
 
-static  void    CleanPartition( void )
+static  void    CleanPartition( BackRun& back )
 /*************************************
  * Turn of all the bits we turned on in FindPartition.
  */
 {
     block       *blk;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         _MarkBlkUnVisited( blk );
         blk->u.partition = NULL;
     }
 }
 
 
-static bool CanCrossBlocks( instruction *ins1, instruction *ins2, name *op )
+static bool CanCrossBlocks( BackRun& back, instruction *ins1, instruction *ins2, name *op )
 /***************************************************************************
  * If we're generating a partial routine, we cannot cause an
  * existing N_TEMP to cross blocks, due to an assumption
  * in ForceTempsMemory.
  */
 {
-    if( !data_state().BlockByBlock )
+    if( !back.data.BlockByBlock )
         return( true );
     if( op->n.class_ != N_TEMP )
         return( true );
@@ -551,7 +544,7 @@ static  void    UseInOther( instruction *ins1, instruction *ins2, name *op )
 }
 
 
-static  bool    UnOpsLiveFrom( instruction *first, instruction *last )
+static  bool    UnOpsLiveFrom( BackRun& back, instruction *first, instruction *last )
 /*********************************************************************
  * Do the operand and result of "first" live until instruction "last"?
  */
@@ -574,7 +567,7 @@ static  bool    UnOpsLiveFrom( instruction *first, instruction *last )
 }
 
 
-static  who_dies BinOpsLiveFrom( instruction *first,
+static  who_dies BinOpsLiveFrom( BackRun& back, instruction *first,
                                 instruction *last,
                                 name *op1, name *op2, name *result )
 /*******************************************************************
@@ -621,7 +614,7 @@ static  who_dies BinOpsLiveFrom( instruction *first,
     return( ALL_LIVE );
 }
 
-static  bool            HoistLooksGood( instruction *target, instruction *orig )
+static  bool            HoistLooksGood( BackRun& back, instruction *target, instruction *orig )
 /*******************************************************************************
  * Does it look like a good idea to hoist a busy expression from the original
  * instruction to the hoist point. Currently, this is not a good idea if we
@@ -632,7 +625,7 @@ static  bool            HoistLooksGood( instruction *target, instruction *orig )
     block               *target_blk;
     block               *blk;
 
-    if( data_state().OptForSize > 50 )
+    if( back.data.OptForSize > 50 )
         return( true );
     target_blk = InsBlock( target );
     blk = InsBlock( orig );
@@ -653,7 +646,7 @@ static  bool            HoistLooksGood( instruction *target, instruction *orig )
 }
 
 
-static  instruction     *ProcessExpr( instruction *ins1, instruction *ins2, bool signed_matters )
+static  instruction     *ProcessExpr( BackRun& back, instruction *ins1, instruction *ins2, bool signed_matters )
 /************************************************************************************************
  * Given two instruction "ins1" and "ins2" in the same partition, first
  * find out if they have the same operands, and if they do, determine
@@ -706,59 +699,59 @@ static  instruction     *ProcessExpr( instruction *ins1, instruction *ins2, bool
     }
     if( first == ins1 ) { /* or used to be ins2*/
         if( (ins1->ins_flags & INS_DEFINES_OWN_OPERAND) == 0 ) {
-            killed = BinOpsLiveFrom( ins1, ins2, ins1->operands[0], ins1->operands[i], ins1->result );
+            killed = BinOpsLiveFrom( back, ins1, ins2, ins1->operands[0], ins1->operands[i], ins1->result );
             if( killed != OP_DIES ) {
                 type_class = ins1->result->n.type_class;
                 if( killed == RESULT_DIES
-                  || !CanCrossBlocks( ins1, ins2, ins1->result ) ) {
-                    temp = AllocTemp( type_class );
-                    new_ins = MakeMove( temp, ins1->result, type_class );
+                  || !CanCrossBlocks( back, ins1, ins2, ins1->result ) ) {
+                    temp = AllocTemp( back, type_class );
+                    new_ins = MakeMove( back, temp, ins1->result, type_class );
                     ins1->result = temp;
-                    SuffixIns( ins1, new_ins );
+                    SuffixIns( back, ins1, new_ins );
                     SetCSEBits( ins1, new_ins );
                     FPNotStack( temp );
                 }
-                new_ins = MakeMove( ins1->result, ins2->result, type_class );
+                new_ins = MakeMove( back, ins1->result, ins2->result, type_class );
                 UseInOther( ins1, ins2, ins1->result );
                 dead_or_new_ins = ins2;
                 SetCSEBits( ins2, new_ins );
-                SuffixIns( ins2, new_ins );
+                SuffixIns( back, ins2, new_ins );
                 FPNotStack( ins1->result );
             }
         }
     } else if( first != NULL ) { /* we calculated a hoist point*/
         if( ins1->operands[0]->n.class_ != N_INDEXED
           && ins1->operands[i]->n.class_ != N_INDEXED
-          && Hoistable( ins1, NULL )
-          && BinOpsLiveFrom( first->head.next, ins1, ins1->operands[0], ins1->operands[i], NULL ) == ALL_LIVE
-          && BinOpsLiveFrom( first->head.next, ins2, ins2->operands[0], ins2->operands[i], NULL ) == ALL_LIVE
-          && HoistLooksGood( first, ins1 )
-          && HoistLooksGood( first, ins2 ) ) {
+          && Hoistable( back, ins1, NULL )
+          && BinOpsLiveFrom( back, first->head.next, ins1, ins1->operands[0], ins1->operands[i], NULL ) == ALL_LIVE
+          && BinOpsLiveFrom( back, first->head.next, ins2, ins2->operands[0], ins2->operands[i], NULL ) == ALL_LIVE
+          && HoistLooksGood( back, first, ins1 )
+          && HoistLooksGood( back, first, ins2 ) ) {
             type_class = ins1->type_class;
-            temp = AllocTemp( type_class );
+            temp = AllocTemp( back, type_class );
             temp->t.temp_flags |= CROSSES_BLOCKS;
             if( _OpIsBinary( ins1->head.opcode ) ) {
-                new_ins = MakeBinary( ins1->head.opcode, ins1->operands[0], ins1->operands[1], temp, type_class );
+                new_ins = MakeBinary( back, ins1->head.opcode, ins1->operands[0], ins1->operands[1], temp, type_class );
             } else {
-                new_ins = MakeUnary( ins1->head.opcode, ins1->operands[0], temp, type_class );
+                new_ins = MakeUnary( back, ins1->head.opcode, ins1->operands[0], temp, type_class );
             }
             new_ins->base_type_class = ins1->base_type_class;
             dead_or_new_ins = new_ins;
             SetCSEBits( first, new_ins );
-            SuffixIns( first, new_ins );
-            new_ins = MakeMove( temp, ins1->result, type_class );
+            SuffixIns( back, first, new_ins );
+            new_ins = MakeMove( back, temp, ins1->result, type_class );
             SetCSEBits( ins1, new_ins );
-            SuffixIns( ins1, new_ins );
-            new_ins = MakeMove( temp, ins2->result, type_class );
+            SuffixIns( back, ins1, new_ins );
+            new_ins = MakeMove( back, temp, ins2->result, type_class );
             SetCSEBits( ins2, new_ins );
-            SuffixIns( ins2, new_ins );
+            SuffixIns( back, ins2, new_ins );
         }
     }
     return( dead_or_new_ins );
 }
 
 
-static  bool    OkToInvert( name *div )
+static  bool    OkToInvert( BackRun& back, name *div )
 /**************************************
  * Is it OK to compute the reciprical of 'div'? Either it must
  * be exactly representable (a integer power of two) or the user
@@ -783,7 +776,7 @@ static  bool    OkToInvert( name *div )
 }
 
 
-static  bool    ProcessDivide( instruction *ins1, instruction *ins2 )
+static  bool    ProcessDivide( BackRun& back, instruction *ins1, instruction *ins2 )
 /********************************************************************
  * Given two instruction "ins1" and "ins2" in the same partition, first
  * find out if they have the same divisor, and if they do, determine
@@ -801,7 +794,7 @@ static  bool    ProcessDivide( instruction *ins1, instruction *ins2 )
 
     if( ins1->type_class != ins2->type_class )
         return( false );
-    if( !FPDivIsADog( ins1->type_class ) )
+    if( !FPDivIsADog( back, ins1->type_class ) )
         return( false );
     if( ins1->operands[1] != ins2->operands[1] )
         return( false );
@@ -812,17 +805,17 @@ static  bool    ProcessDivide( instruction *ins1, instruction *ins2 )
     }
     if( first == ins1 ) {
         divisor = ins1->operands[1];
-        if( !OkToInvert( divisor ) )
+        if( !OkToInvert( back, divisor ) )
             return( false );
         if( _IsntReDefinedBy( ins1, divisor ) ) {
-            killed = BinOpsLiveFrom( ins1, ins2, divisor, divisor, NULL );
+            killed = BinOpsLiveFrom( back, ins1, ins2, divisor, divisor, NULL );
             if( killed != OP_DIES ) {
-                temp = AllocTemp( ins1->type_class );
-                new_ins = MakeBinary( OP_DIV, AllocIntConst( 1 ),
+                temp = AllocTemp( back, ins1->type_class );
+                new_ins = MakeBinary( back, OP_DIV, AllocIntConst( back, 1 ),
                                      divisor, temp, ins1->type_class );
                 UseInOther( ins1, ins2, temp );
                 SetCSEBits( ins1, new_ins );
-                PrefixIns( ins1, new_ins );
+                PrefixIns( back, ins1, new_ins );
                 FPNotStack( temp );
                 ins1->operands[1] = temp;
                 ins2->operands[1] = temp;
@@ -848,7 +841,7 @@ static  void    DeleteFromList( instruction **owner,
     *owner = new_;
 }
 
-static  bool    DoOneOpcode( opcode_defs opcode )
+static  bool    DoOneOpcode( BackRun& back, opcode_defs opcode )
 /************************************************
  * Here we check all instructions with opcode "opcode" against all
  * others with the same opcode, and if we process a common
@@ -882,31 +875,31 @@ static  bool    DoOneOpcode( opcode_defs opcode )
         signed_matters = true;
         break;
     }
-    for( ins1 = cse_state().ExprHeads[opcode]; ins1 != NULL; ins1 = next1 ) {
+    for( ins1 = back.cse.ExprHeads[opcode]; ins1 != NULL; ins1 = next1 ) {
         next1 = _INSLINK( ins1 );
         for( ins2 = next1; ins2 != NULL; ins2 = next2 ) {
             next2 = _INSLINK( ins2 );
-            which_ins = ProcessExpr( ins1, ins2, signed_matters );
+            which_ins = ProcessExpr( back, ins1, ins2, signed_matters );
             if( which_ins != NULL ) {
                 change = true;
                 if( which_ins == ins1 ) {
-                    DeleteFromList( &cse_state().ExprHeads[opcode], ins1, next1 );
-                    FreeIns( ins1 );
+                    DeleteFromList( &back.cse.ExprHeads[opcode], ins1, next1 );
+                    FreeIns( back, ins1 );
                     break;
                 } else if( which_ins == ins2 ) {
-                    DeleteFromList( &cse_state().ExprHeads[opcode], ins2, next2 );
-                    FreeIns( ins2 );
+                    DeleteFromList( &back.cse.ExprHeads[opcode], ins2, next2 );
+                    FreeIns( back, ins2 );
                     if( ins2 == next1 ) {
                         next1 = ins1;
                         break;
                     }
                 } else { /* hoisted code from ins1 & ins2 to which_ins*/
-                    DeleteFromList( &cse_state().ExprHeads[opcode], ins1, next1 );
-                    DeleteFromList( &cse_state().ExprHeads[opcode], ins2, next2 );
-                    FreeIns( ins1 );
-                    FreeIns( ins2 );
-                    _INSLINK( which_ins ) = cse_state().ExprHeads[opcode];
-                    cse_state().ExprHeads[opcode] = which_ins;
+                    DeleteFromList( &back.cse.ExprHeads[opcode], ins1, next1 );
+                    DeleteFromList( &back.cse.ExprHeads[opcode], ins2, next2 );
+                    FreeIns( back, ins1 );
+                    FreeIns( back, ins2 );
+                    _INSLINK( which_ins ) = back.cse.ExprHeads[opcode];
+                    back.cse.ExprHeads[opcode] = which_ins;
                     next1 = which_ins;
                     break;
                 }
@@ -917,7 +910,7 @@ static  bool    DoOneOpcode( opcode_defs opcode )
 }
 
 
-static  bool    DoDivides( void )
+static  bool    DoDivides( BackRun& back )
 /*******************************/
 {
     bool        change;
@@ -927,14 +920,14 @@ static  bool    DoDivides( void )
     instruction *next2;
 
     change = false;
-    for( ins1 = cse_state().ExprHeads[OP_DIV]; ins1 != NULL; ins1 = next1 ) {
+    for( ins1 = back.cse.ExprHeads[OP_DIV]; ins1 != NULL; ins1 = next1 ) {
         next1 = _INSLINK( ins1 );
         for( ins2 = next1; ins2 != NULL; ins2 = next2 ) {
             next2 = _INSLINK( ins2 );
-            if( ProcessDivide( ins1, ins2 ) ) {
-                DeleteFromList( &cse_state().ExprHeads[OP_DIV], ins1, next1 );
-                DeleteFromList( &cse_state().ExprHeads[OP_DIV], ins2, next2 );
-                next1 = cse_state().ExprHeads[OP_DIV];
+            if( ProcessDivide( back, ins1, ins2 ) ) {
+                DeleteFromList( &back.cse.ExprHeads[OP_DIV], ins1, next1 );
+                DeleteFromList( &back.cse.ExprHeads[OP_DIV], ins2, next2 );
+                next1 = back.cse.ExprHeads[OP_DIV];
                 change = true;
                 break;
             }
@@ -965,7 +958,7 @@ static  void    CleanTableEntries( block *root )
 }
 
 
-static  bool    DoArithOps( block *root )
+static  bool    DoArithOps( BackRun& back, block *root )
 /****************************************
  * Given a partition whose root is "root", do common subexpressions and
  * very busy expressions on arithmetic operators. The approach is fairly
@@ -982,14 +975,14 @@ static  bool    DoArithOps( block *root )
     opcnt       i;
 
     for( opcode = FIRST_CSE_OP; opcode <= LAST_CSE_OP; ++opcode ) {
-        cse_state().ExprHeads[opcode] = NULL;
+        back.cse.ExprHeads[opcode] = NULL;
     }
     blk = root;
     for( ;; ) {
         for( ins = blk->ins.head.next; (opcode = ins->head.opcode) != OP_BLOCK; ins = ins->head.next ) {
             i = ( _OpIsBinary( opcode ) ) ? 1 : 0;
             if( _OpIsCSE( opcode )
-              && !( cse_state().LeaveIndVars && Inducable( blk, ins ) )
+              && !( back.cse.LeaveIndVars && Inducable( blk, ins ) )
               && ins->operands[0]->n.class_ != N_REGISTER
               && ins->operands[i]->n.class_ != N_REGISTER
               && ins->result->n.class_ != N_REGISTER
@@ -1003,8 +996,8 @@ static  bool    DoArithOps( block *root )
                         ins->ins_flags |= INS_DEFINES_OWN_OPERAND;
                     }
                 }
-                _INSLINK( ins ) = cse_state().ExprHeads[opcode];
-                cse_state().ExprHeads[opcode] = ins;
+                _INSLINK( ins ) = back.cse.ExprHeads[opcode];
+                back.cse.ExprHeads[opcode] = ins;
             }
         }
         blk = blk->u.partition;
@@ -1014,18 +1007,18 @@ static  bool    DoArithOps( block *root )
     }
     change = false;
     for( opcode = FIRST_CSE_OP; opcode <= LAST_CSE_OP; ++opcode ) {
-        if( DoOneOpcode( opcode ) ) {
+        if( DoOneOpcode( back, opcode ) ) {
             change = true;
         }
     }
-    if( DoDivides() )
+    if( DoDivides(back) )
         change = true;
     CleanTableEntries( root );
     return( change );
 }
 
 
-static  bool    PropagateExprs( void )
+static  bool    PropagateExprs( BackRun& back )
 /*************************************
  * Do common subexpression and very busy expressions, for each
  * "partition".
@@ -1035,17 +1028,17 @@ static  bool    PropagateExprs( void )
     block       *blk;
 
     change = false;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         SXBlip();
         if( _IsBlkVisited( blk ) ) {
-            change |= DoArithOps( blk );
+            change |= DoArithOps( back, blk );
         }
     }
     return( change );
 }
 
 
-static bool FixOneStructRet( instruction *call )
+static bool FixOneStructRet( BackRun& back, instruction *call )
 /***********************************************
  * Fix one structured return copy.
  */
@@ -1079,12 +1072,12 @@ static bool FixOneStructRet( instruction *call )
     if( res->n.class_ != N_TEMP )
         return( false );
     call->result = res;
-    mova->operands[0] = AllocAddrConst( res, 0, CONS_TEMP_ADDR, mova->type_class );
-    FreeIns( movr );
+    mova->operands[0] = AllocAddrConst( back, res, 0, CONS_TEMP_ADDR, mova->type_class );
+    FreeIns( back, movr );
     return( true );
 }
 
-static  bool    FixStructRet( block *root )
+static  bool    FixStructRet( BackRun& back, block *root )
 /******************************************
  * search for code that looks like
  *
@@ -1112,7 +1105,7 @@ static  bool    FixStructRet( block *root )
                 if( ins->result != NULL
                   && ins->result->n.class_ == N_TEMP
                   && (ins->flags.u.call_flags & CALL_RETURNS_STRUCT)
-                  && FixOneStructRet( ins ) ) {
+                  && FixOneStructRet( back, ins ) ) {
                     change = true;
                 }
                 ins->flags.u.call_flags &= ~CALL_RETURNS_STRUCT;
@@ -1126,7 +1119,7 @@ static  bool    FixStructRet( block *root )
     return( change );
 }
 
-static  block   *NextBlock( block *blk, void *parm )
+static  block   *NextBlock( BackRun& back, block *blk, void *parm )
 /**************************************************/
 {
     if( blk->u.partition == (block *)parm )
@@ -1149,7 +1142,7 @@ static  bool    isMoveIns( instruction *ins )
 }
 
 
-static  bool    CanLinkMove( instruction *ins )
+static  bool    CanLinkMove( BackRun& back, instruction *ins )
 /**********************************************
  * Is "ins" suitable for copy propagation?
  */
@@ -1172,9 +1165,9 @@ static  bool    CanLinkMove( instruction *ins )
         return( false );
     if( _IsReDefinedBy( ins, ins->operands[0] ) )
         return( false );
-    if( FPIsConvert( ins ) )
+    if( FPIsConvert( back, ins ) )
         return( false );
-    if( IsTrickyPointerConv( ins ) )
+    if( IsTrickyPointerConv( back, ins ) )
         return( false );
     return( true );
 }
@@ -1213,7 +1206,7 @@ static void RemoveLink( instruction *ins, name *link )
     }
 }
 
-static  bool    LinkableMove( instruction *ins )
+static  bool    LinkableMove( BackRun& back, instruction *ins )
 /***********************************************
  * Determine if ins is ok to link into the list of
  * moves associated with it's result.
@@ -1221,7 +1214,7 @@ static  bool    LinkableMove( instruction *ins )
 {
     if( !isMoveIns( ins ) )
         return( false );
-    if( !CanLinkMove( ins ) )
+    if( !CanLinkMove( back, ins ) )
         return( false );
     if( ins->operands[0]->n.class_ == N_MEMORY )
         return( false );
@@ -1229,13 +1222,13 @@ static  bool    LinkableMove( instruction *ins )
         return( false );
     if( ins->operands[0]->n.class_ == N_CONSTANT ) {
         if( ins->operands[0]->c.const_type == CONS_ABSOLUTE ) {
-            ins->operands[0] = AllocConst( CnvCFToType( ins->operands[0]->c.u.cfval, TypeOfTypeClass( ins->type_class ) ) );
+            ins->operands[0] = AllocConst( back, CnvCFToType( back, ins->operands[0]->c.u.cfval, TypeOfTypeClass( back, ins->type_class ) ) );
         }
     }
     return( true );
 }
 
-static  void    LinkMoves( block *root )
+static  void    LinkMoves( BackRun& back, block *root )
 /***************************************
  * Link together all move instructions in partion defined by "root" using
  * a field in ins->result as the head of the list.
@@ -1247,7 +1240,7 @@ static  void    LinkMoves( block *root )
     blk = root;
     for( ;; ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-            if( LinkableMove( ins ) ) {
+            if( LinkableMove( back, ins ) ) {
                 CreateLink( ins, ins->result );
             }
         }
@@ -1259,7 +1252,7 @@ static  void    LinkMoves( block *root )
 }
 
 
-static  void    LinkMemMoves( block *root )
+static  void    LinkMemMoves( BackRun& back, block *root )
 /******************************************
  * Link together all move instructions in partion defined by "root" using
  * a field in ins->operands[0] as the head of the list.
@@ -1273,7 +1266,7 @@ static  void    LinkMemMoves( block *root )
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( !isMoveIns( ins ) )
                 continue;
-            if( !CanLinkMove( ins ) )
+            if( !CanLinkMove( back, ins ) )
                 continue;
             if( ins->operands[0]->n.class_ != N_MEMORY
               && ins->operands[0]->n.class_ != N_INDEXED )
@@ -1337,7 +1330,7 @@ static  void    CleanMoves( block *root )
 }
 
 
-static  bool    PropOpnd( instruction *ins, name **op,
+static  bool    PropOpnd( BackRun& back, instruction *ins, name **op,
                           instruction *definition, bool backward,
                           bool is_opnd )
 /****************************************************************
@@ -1357,7 +1350,7 @@ static  bool    PropOpnd( instruction *ins, name **op,
     change = false;
     for( ; definition != NULL; definition = _INSLINK( definition ) ) {
         if( WhichIsAncestor( definition, ins ) == definition
-          && UnOpsLiveFrom( definition, ins ) ) {
+          && UnOpsLiveFrom( back, definition, ins ) ) {
             defop = definition->operands[0];
             defres = definition->result;
             if( backward ) {
@@ -1365,8 +1358,8 @@ static  bool    PropOpnd( instruction *ins, name **op,
                   && defres->n.class_ == N_TEMP
                   && is_opnd ) {
                     if( ( _IsFloating( definition->type_class ) == _IsFloating( _OpClass( ins ) ) )
-                      && CanCrossBlocks( definition, ins, defres )
-                      && !FPStackOp( defres ) ) {
+                      && CanCrossBlocks( back, definition, ins, defres )
+                      && !FPStackOp( back, defres ) ) {
                         UseInOther( definition, ins, defres );
                         *op = defres;
                         change = true;
@@ -1377,8 +1370,8 @@ static  bool    PropOpnd( instruction *ins, name **op,
                     if( defres->n.class_ != N_INDEXED
                       && is_opnd ) {
                         if( ( _IsFloating( definition->type_class ) == _IsFloating( _OpClass( ins ) ) )
-                          && CanCrossBlocks( definition, ins, defop )
-                          && !FPStackOp( defop ) ) {
+                          && CanCrossBlocks( back, definition, ins, defop )
+                          && !FPStackOp( back, defop ) ) {
                             UseInOther( definition, ins, defop );
                             *op = defop;
                             change = true;
@@ -1388,9 +1381,9 @@ static  bool    PropOpnd( instruction *ins, name **op,
                   && definition->result->n.class_ == N_TEMP ) {
                     if( defop->n.class_ == N_TEMP
                       && defop->n.type_class == opnd->i.index->n.type_class
-                      && CanCrossBlocks( definition, ins, defop ) ) {
+                      && CanCrossBlocks( back, definition, ins, defop ) ) {
                         UseInOther( definition, ins, defop );
-                        *op = ScaleIndex( defop, opnd->i.base,
+                        *op = ScaleIndex( back, defop, opnd->i.base,
                                         opnd->i.constant,
                                         opnd->n.type_class, opnd->n.size,
                                         opnd->i.scale, opnd->i.index_flags );
@@ -1419,29 +1412,29 @@ static  bool    PropOpnd( instruction *ins, name **op,
                         case CONS_HIGH_ADDR:
                             break;
                         case CONS_SEGMENT:
-                            Zoiks( ZOIKS_086 );
+                            Zoiks( back, ZOIKS_086 );
                             break;
                         default:
-                            Zoiks( ZOIKS_105 );
+                            Zoiks( back, ZOIKS_105 );
                             break;
                         }
                         if( base != NULL ) {
                             switch( base->n.class_ ) {
                             case N_TEMP:
-                                *op = STempOffset( base,
+                                *op = STempOffset( back, base,
                                                 disp,
                                                 opnd->n.type_class,
                                                 opnd->n.size );
                                 break;
                             case N_MEMORY:
-                                *op = SAllocMemory( base->v.symbol,
+                                *op = SAllocMemory( back, base->v.symbol,
                                             base->v.offset + disp,
                                             base->m.memory_type,
                                             opnd->n.type_class,
                                             opnd->n.size );
                                 break;
                             default:
-                                Zoiks( ZOIKS_087 );
+                                Zoiks( back, ZOIKS_087 );
                                 break;
                             }
                             change = true;
@@ -1455,7 +1448,7 @@ static  bool    PropOpnd( instruction *ins, name **op,
 }
 
 
-static  bool    PropMoves( block *root, bool backward )
+static  bool    PropMoves( BackRun& back, block *root, bool backward )
 /******************************************************
  * For each operand of each instruction in partition "root", see if
  * there is a move preceeding it whose operand could be used instead.
@@ -1489,7 +1482,7 @@ static  bool    PropMoves( block *root, bool backward )
                         case N_CONSTANT:
                             break;
                         default:
-                            change |= PropOpnd( ins, &ins->operands[i], _NAMELINK( idx ), backward, true );
+                            change |= PropOpnd( back, ins, &ins->operands[i], _NAMELINK( idx ), backward, true );
                             break;
                         }
                         break;
@@ -1497,7 +1490,7 @@ static  bool    PropMoves( block *root, bool backward )
                     case N_REGISTER:
                         break;
                     default:
-                        change |= PropOpnd( ins, &ins->operands[i], _NAMELINK( ins->operands[i] ), backward, true );
+                        change |= PropOpnd( back, ins, &ins->operands[i], _NAMELINK( ins->operands[i] ), backward, true );
                         break;
                     }
                 }
@@ -1506,8 +1499,8 @@ static  bool    PropMoves( block *root, bool backward )
                         idx = ins->result->i.index;
                         if( idx->n.class_ != N_REGISTER ) {
                             RemoveLink( ins, ins->result );
-                            change |= PropOpnd( ins, &ins->result, _NAMELINK( idx ), backward, false );
-                            if( LinkableMove( ins ) ) {
+                            change |= PropOpnd( back, ins, &ins->result, _NAMELINK( idx ), backward, false );
+                            if( LinkableMove( back, ins ) ) {
                                 CreateLink( ins, ins->result );
                             }
                         }
@@ -1524,7 +1517,7 @@ static  bool    PropMoves( block *root, bool backward )
 }
 
 
-static  bool    DoPropagateMoves( void )
+static  bool    DoPropagateMoves( BackRun& back )
 /***************************************
  * First link all moves in a partion together with a special field in
  * the symbol table of ins->result being used to store the head of the
@@ -1542,31 +1535,31 @@ static  bool    DoPropagateMoves( void )
     block       *blk;
 
     change = false;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         SXBlip();
         if( _IsBlkVisited( blk ) ) {
             do {
                 block_changed = false;
-                if( FixStructRet( blk ) ) {
+                if( FixStructRet( back, blk ) ) {
                     block_changed = true;
                     change = true;
                 }
-                if( PeepOpt( blk, NextBlock, blk, false ) ) {
+                if( PeepOpt( back, blk, NextBlock, blk, false ) ) {
                     block_changed = true;
                     change = true;
                 }
-                if( ConstFold( blk ) ) {
+                if( ConstFold( back, blk ) ) {
                     block_changed = true;
                     change = true;
                 }
-                LinkMoves( blk );
-                if( PropMoves( blk, false ) ) {
+                LinkMoves( back, blk );
+                if( PropMoves( back, blk, false ) ) {
                     block_changed = true;
                     change = true;
                 }
                 CleanMoves( blk );
-                LinkMemMoves( blk );
-                if( PropMoves( blk, true ) ) {
+                LinkMemMoves( back, blk );
+                if( PropMoves( back, blk, true ) ) {
                     block_changed = true;
                     change = true;
                 }
@@ -1577,7 +1570,7 @@ static  bool    DoPropagateMoves( void )
     return( change );
 }
 
-bool    PropagateMoves( void )
+bool    PropagateMoves( BackRun& back )
 /*****************************
  * Do copy propagation.
  */
@@ -1585,16 +1578,16 @@ bool    PropagateMoves( void )
     bool        change;
 
     change = false;
-    FindPartition();
-    while( DoPropagateMoves() ) {
+    FindPartition(back);
+    while( DoPropagateMoves(back) ) {
         change = true;
     }
-    CleanPartition();
+    CleanPartition(back);
     return( change );
 }
 
 
-bool    CommonSex( bool leave_indvars_alone )
+bool    CommonSex( BackRun& back, bool leave_indvars_alone )
 /****************************************************
  * Do COMMON SubEXpression and related optimizations.
  */
@@ -1604,42 +1597,42 @@ bool    CommonSex( bool leave_indvars_alone )
     bool        anychange;
 
     loops_killed = false;
-    cse_state().LeaveIndVars = leave_indvars_alone;
-    FindPartition();
-    anychange = LoadAddr();
+    back.cse.LeaveIndVars = leave_indvars_alone;
+    FindPartition(back);
+    anychange = LoadAddr(back);
     if( PropRegsOne() )
         anychange = true;
     for( ;; ) {
-        ReCalcAddrTaken();
+        ReCalcAddrTaken(back);
         change = false;
-        if( DoPropagateMoves() )
+        if( DoPropagateMoves(back) )
             change = true;
-        if( StretchEdges() ) {
-            change = true;
-            loops_killed = true;
-            CleanPartition();
-            FindPartition();
-        }
-        if( DeadBlocks() ) {
+        if( StretchEdges(back) ) {
             change = true;
             loops_killed = true;
-            CleanPartition();
-            FindPartition();
+            CleanPartition(back);
+            FindPartition(back);
         }
-        if( PropagateExprs() )
+        if( DeadBlocks(back) ) {
+            change = true;
+            loops_killed = true;
+            CleanPartition(back);
+            FindPartition(back);
+        }
+        if( PropagateExprs(back) )
             change = true;
         if( change )
-            InsDead();
+            InsDead(back);
         if( change ) {
             anychange = true;
         } else {
             break;
         }
     }
-    CleanPartition();
+    CleanPartition(back);
     if( loops_killed ) {
-        BlockTrim();
-        MakeFlowGraph();
+        BlockTrim(back);
+        MakeFlowGraph(back);
     }
     return( anychange );
 }

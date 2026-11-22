@@ -37,25 +37,24 @@
 struct DfsymsState {
     dw_client Client;
 };
-inline DfsymsState& dfsyms_state() { return cbrun_part<DfsymsState>(); }
 
 #endif
 
-extern  void    DFInitDbgInfo( void );
+extern  void    DFInitDbgInfo( BackRun& back );
 extern  void    DFFiniDbgInfo( void );
-extern  void    DFObjInitDbgInfo( void );
-extern  void    DFObjFiniDbgInfo( offset );
-extern  void    DFObjLineInitDbgInfo( void );
-extern  void    DFObjLineFiniDbgInfo( void );
-extern  void    DFGenStatic( cg_sym_handle sym, dbg_loc loc );
-extern  void    DFTypedef( const char *nm, dbg_type tipe );
-extern  void    DFProEnd( dbg_rtn *rtn, offset lc );
-extern  void    DFBlkBeg( dbg_block *blk, offset lc );
-extern  void    DFBlkEnd( dbg_block *blk, offset lc );
-extern  void    DFEpiBeg( dbg_rtn *rtn, offset lc );
-extern  void    DFRtnEnd( dbg_rtn *rtn, offset lc );
-extern  void    DFBegCCU( segment_id code_segid, dw_sym_handle dbg_pch );
-extern  void    DFLineNum( cue_state *, offset );
-extern  void    DFSegRange( void );
-extern  void    DFSymRange( cg_sym_handle, offset );
-extern  void    DFSetSection( dw_sectnum  sect, back_handle bck, segment_id segid );
+extern  void    DFObjInitDbgInfo( BackRun& back );
+extern  void    DFObjFiniDbgInfo( BackRun& back, offset );
+extern  void    DFObjLineInitDbgInfo( BackRun& back );
+extern  void    DFObjLineFiniDbgInfo( BackRun& back );
+extern  void    DFGenStatic( BackRun& back, cg_sym_handle sym, dbg_loc loc );
+extern  void    DFTypedef( BackRun& back, const char *nm, dbg_type tipe );
+extern  void    DFProEnd( BackRun& back, dbg_rtn *rtn, offset lc );
+extern  void    DFBlkBeg( BackRun& back, dbg_block *blk, offset lc );
+extern  void    DFBlkEnd( BackRun& back, dbg_block *blk, offset lc );
+extern  void    DFEpiBeg( BackRun& back, dbg_rtn *rtn, offset lc );
+extern  void    DFRtnEnd( BackRun& back, dbg_rtn *rtn, offset lc );
+extern  void    DFBegCCU( BackRun& back, segment_id code_segid, dw_sym_handle dbg_pch );
+extern  void    DFLineNum( BackRun& back, cue_state *, offset );
+extern  void    DFSegRange( BackRun& back );
+extern  void    DFSymRange( BackRun& back, cg_sym_handle, offset );
+extern  void    DFSetSection( BackRun& back, dw_sectnum  sect, back_handle bck, segment_id segid );

@@ -34,7 +34,7 @@
 #ifndef DWARANGE_H_INCLUDED
 #define DWARANGE_H_INCLUDED
 
-extern void     DW_InitDebugAranges( dw_client );
-extern void     DW_FiniDebugAranges( dw_client );
+extern void     DW_InitDebugAranges( BackRun& back, dw_client );
+extern void     DW_FiniDebugAranges( BackRun& back, dw_client );
 
 #endif

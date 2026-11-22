@@ -36,6 +36,7 @@
 #include "dwcliuti.h"
 #include "dwutils.h"
 #include "dwmem.h"
+#include "backrun.hpp"
 
 /*
     We use these delayed_ref structures to avoid emitting sequences such
@@ -52,7 +53,7 @@ struct delayed_ref {
 };
 
 
-static void emitDelayed( dw_client cli )
+static void emitDelayed( BackRun& back, dw_client cli )
 {
     struct delayed_ref          *cur;
     uint_8                      buf[1 + MAX_LEB128];
@@ -74,7 +75,7 @@ static void emitDelayed( dw_client cli )
 }
 
 
-void DW_StartRef( dw_client cli )
+void DW_StartRef( BackRun& back, dw_client cli )
 {
     struct delayed_ref          *new_;
 
@@ -82,7 +83,7 @@ void DW_StartRef( dw_client cli )
         We just stack up the StartRef until we find that we have to actually
         emit it.
     */
-    new_ = static_cast<struct delayed_ref *>(DW_CarveAlloc( cli, cli->references.delay_carver ));
+    new_ = static_cast<struct delayed_ref *>(DW_CarveAlloc( back, cli, cli->references.delay_carver ));
     new_->next = cli->references.delayed;
     cli->references.delayed = new_;
     new_->offset = InfoSectionOffset( cli );
@@ -91,7 +92,7 @@ void DW_StartRef( dw_client cli )
 }
 
 
-void DW_EndRef( dw_client cli )
+void DW_EndRef( BackRun& back, dw_client cli )
 {
     struct delayed_ref  *this_;
 
@@ -105,13 +106,13 @@ void DW_EndRef( dw_client cli )
       && this_->scope == cli->references.scope ) {
         cli->references.delayed = static_cast<struct delayed_ref *>(DW_CarveFreeLink( cli->references.delay_carver, this_ ));
     } else {
-        CLIWriteU8( cli, DW_DEBUG_REF, REF_END_SCOPE );
+        CLIWriteU8( back, cli, DW_DEBUG_REF, REF_END_SCOPE );
     }
 }
 
 
 
-void DWENTRY DWReference( dw_client cli, dw_linenum line, dw_column column, dw_handle dependant )
+void DWENTRY DWReference( BackRun& back, dw_client cli, dw_linenum line, dw_column column, dw_handle dependant )
 {
     dw_linenum_delta            line_delta;
     dw_column_delta             column_delta;
@@ -122,7 +123,7 @@ void DWENTRY DWReference( dw_client cli, dw_linenum line, dw_column column, dw_h
         We actually have a reference for this scope, so emit all the
         delayed REF_START_REFS.
     */
-    emitDelayed( cli );
+    emitDelayed( back, cli );
 
     line_delta = line - cli->references.line;
     cli->references.line = line;
@@ -150,7 +151,7 @@ void DWENTRY DWReference( dw_client cli, dw_linenum line, dw_column column, dw_h
         && column_delta < REF_COLUMN_RANGE );
     *end++ = REF_CODE_BASE + line_delta * REF_COLUMN_RANGE + column_delta;
     CLIWrite( cli, DW_DEBUG_REF, buf, end - buf );
-    DW_HandleReference( cli, dependant, DW_DEBUG_REF );
+    DW_HandleReference( back, cli, dependant, DW_DEBUG_REF );
 }
 
 
@@ -160,23 +161,23 @@ void DW_SetReferenceFile( dw_client cli, uint file )
 }
 
 
-void DW_InitReferences( dw_client cli )
+void DW_InitReferences( BackRun& back, dw_client cli )
 {
     cli->references.line = 1;
     cli->references.column = 1;
     cli->references.delayed = NULL;
-    cli->references.delay_carver = DW_CarveCreate( cli, sizeof( struct delayed_ref ), 16 );
+    cli->references.delay_carver = DW_CarveCreate( back, cli, sizeof( struct delayed_ref ), 16 );
     cli->references.scope = 0;
     cli->references.delayed_file = 0;
 
-    CLIWriteU32( cli, DW_DEBUG_REF, 0 );
+    CLIWriteU32( back, cli, DW_DEBUG_REF, 0 );
 }
 
 
-void DW_FiniReferences( dw_client cli )
+void DW_FiniReferences( BackRun& back, dw_client cli )
 {
     /* backpatch the section length */
-    CLISectionSetSize( cli, DW_DEBUG_REF );
+    CLISectionSetSize( back, cli, DW_DEBUG_REF );
 
-    DW_CarveDestroy( cli, cli->references.delay_carver );
+    DW_CarveDestroy( back, cli, cli->references.delay_carver );
 }

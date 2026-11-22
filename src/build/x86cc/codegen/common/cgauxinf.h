@@ -29,11 +29,12 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "cgaux.h"
 
-#define FindAuxInfoSym(s,r) FEAuxInfo(FEAuxInfo(s,FEINF_AUX_LOOKUP),r)
+#define FindAuxInfoSym(s,r) FEAuxInfo(*back.front, FEAuxInfo(*back.front, s,FEINF_AUX_LOOKUP),r)
 
-extern  pointer FindAuxInfo( name *, aux_class );
+extern  pointer FindAuxInfo( BackRun& back, name *, aux_class );
 #if _TARGET_INTEL
-extern  pointer BEAuxInfo( pointer, aux_class );
+extern  pointer BEAuxInfo( BackRun& back, pointer, aux_class );
 #endif

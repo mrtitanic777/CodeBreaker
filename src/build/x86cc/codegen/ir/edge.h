@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef struct edge_entry {
     struct edge_entry   *next;
     block_edge          *edge;
@@ -39,12 +40,12 @@ typedef struct edge_stack {
     edge_entry          *top;
 } edge_stack;
 
-extern edge_stack   *EdgeStackInit( void );
-extern void         EdgeStackFini( edge_stack * );
+extern edge_stack   *EdgeStackInit( BackRun& back );
+extern void         EdgeStackFini( BackRun& back, edge_stack * );
 extern bool         EdgeStackEmpty( edge_stack * );
-extern void         EdgeStackPush( edge_stack *, block_edge * );
-extern block_edge   *EdgeStackPop( edge_stack * );
+extern void         EdgeStackPush( BackRun& back, edge_stack *, block_edge * );
+extern block_edge   *EdgeStackPop( BackRun& back, edge_stack * );
 extern void         PointEdge( block_edge *edge, block *new_dest );
 extern void         RemoveEdge( block_edge *edge );
 extern void         MoveEdge( block_edge *edge, block *new_dest );
-extern block        *SplitBlock( block *blk, instruction *ins );
+extern block        *SplitBlock( BackRun& back, block *blk, instruction *ins );

@@ -57,6 +57,7 @@ struct  try_block {
 
 */
 
+#pragma once
 #if ( _CPU != 8086 )
 
 /*

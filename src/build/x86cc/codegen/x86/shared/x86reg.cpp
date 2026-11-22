@@ -43,11 +43,12 @@
 #include "makeblk.h"
 #include "bldcall.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
 #define _NPX( x ) (((x) & ROUTINE_NO_8087_RETURNS) == 0)
 
-type_class_def  CallState( aux_handle aux, const type_def *tipe, call_state *state )
+type_class_def  CallState( BackRun& back, aux_handle aux, const type_def *tipe, call_state *state )
 /**********************************************************************************/
 {
     call_class          cclass;
@@ -60,8 +61,8 @@ type_class_def  CallState( aux_handle aux, const type_def *tipe, call_state *sta
     hw_reg_set          *pregs;
     hw_reg_set          tmp;
 
-    state->unalterable = FixedRegs();
-    pregs = static_cast<hw_reg_set *>(FEAuxInfo( aux, FEINF_SAVE_REGS ));
+    state->unalterable = FixedRegs(back);
+    pregs = static_cast<hw_reg_set *>(FEAuxInfo( *back.front, aux, FEINF_SAVE_REGS ));
     HW_CAsgn( state->modify, HW_FULL );
     HW_TurnOff( state->modify, *pregs );
     HW_CTurnOff( state->modify, HW_UNUSED );
@@ -70,11 +71,11 @@ type_class_def  CallState( aux_handle aux, const type_def *tipe, call_state *sta
     HW_TurnOff( tmp, StackReg() );
     HW_CTurnOff( tmp, HW_xBP ); /* should be able to call routine which modifies [E]BP */
     if( HW_Ovlap( state->unalterable, tmp ) ) {
-        FEMessage( FEMSG_BAD_SAVE, aux );
+        FEMessage( *back.front, FEMSG_BAD_SAVE, aux );
     }
     state->attr = ROUTINE_REMOVES_PARMS;
-    cclass = (call_class)(pointer_uint)FEAuxInfo( aux, FEINF_CALL_CLASS );
-    cclass_target = (call_class_target)(pointer_uint)FEAuxInfo( aux, FEINF_CALL_CLASS_TARGET );
+    cclass = (call_class)(pointer_uint)FEAuxInfo( *back.front, aux, FEINF_CALL_CLASS );
+    cclass_target = (call_class_target)(pointer_uint)FEAuxInfo( *back.front, aux, FEINF_CALL_CLASS_TARGET );
     if( cclass_target & FECALL_X86_INTERRUPT ) {
         state->attr |= ROUTINE_INTERRUPT;
     } else if( cclass_target & FECALL_X86_FAR_CALL ) {
@@ -131,43 +132,43 @@ type_class_def  CallState( aux_handle aux, const type_def *tipe, call_state *sta
     if( cclass_target & FECALL_X86_NEEDS_BP_CHAIN ) {
         state->attr |= ROUTINE_NEEDS_BP_CHAIN;
     }
-    if( state == &data_state().CurrProc->state ) {
+    if( state == &back.data.CurrProc->state ) {
         if( cclass_target & (FECALL_X86_GENERATE_STACK_FRAME | FECALL_X86_PROLOG_HOOKS | FECALL_X86_EPILOG_HOOKS) ) {
-            data_state().CurrProc->prolog_state |= PST_PROLOG_FAT;
+            back.data.CurrProc->prolog_state |= PST_PROLOG_FAT;
             state->attr |= ROUTINE_NEEDS_PROLOG;
         }
         if( cclass_target & FECALL_X86_PROLOG_HOOKS ) {
-            data_state().CurrProc->prolog_state |= PST_PROLOG_HOOKS;
+            back.data.CurrProc->prolog_state |= PST_PROLOG_HOOKS;
         }
         if( cclass_target & FECALL_X86_EPILOG_HOOKS ) {
-            data_state().CurrProc->prolog_state |= PST_EPILOG_HOOKS;
+            back.data.CurrProc->prolog_state |= PST_EPILOG_HOOKS;
         }
         if( cclass_target & FECALL_X86_PROLOG_FAT_WINDOWS ) {
-            data_state().CurrProc->prolog_state |= PST_PROLOG_FAT;
+            back.data.CurrProc->prolog_state |= PST_PROLOG_FAT;
         }
         if( cclass_target & FECALL_X86_EMIT_FUNCTION_NAME ) {
-            data_state().CurrProc->prolog_state |= PST_FUNCTION_NAME;
+            back.data.CurrProc->prolog_state |= PST_FUNCTION_NAME;
         }
         if( cclass_target & FECALL_X86_THUNK_PROLOG ) {
-            data_state().CurrProc->prolog_state |= PST_PROLOG_THUNK;
+            back.data.CurrProc->prolog_state |= PST_PROLOG_THUNK;
         }
         if( cclass_target & FECALL_X86_GROW_STACK ) {
-            data_state().CurrProc->prolog_state |= PST_GROW_STACK;
+            back.data.CurrProc->prolog_state |= PST_GROW_STACK;
         }
         if( cclass_target & FECALL_X86_TOUCH_STACK ) {
-            data_state().CurrProc->prolog_state |= PST_TOUCH_STACK;
+            back.data.CurrProc->prolog_state |= PST_TOUCH_STACK;
         }
         if( cclass_target & FECALL_X86_LOAD_RDOSDEV_ON_ENTRY ) {
-            data_state().CurrProc->prolog_state |= PST_PROLOG_RDOSDEV;
+            back.data.CurrProc->prolog_state |= PST_PROLOG_RDOSDEV;
         }
     }
-    type_class = ReturnTypeClass( tipe, state->attr );
+    type_class = ReturnTypeClass( back, tipe, state->attr );
     i = 0;
     parm_dst = &parms[0];
-    for( parm_src = static_cast<hw_reg_set *>(FEAuxInfo( aux, FEINF_PARM_REGS )); !HW_CEqual( *parm_src, HW_EMPTY ); ++parm_src ) {
+    for( parm_src = static_cast<hw_reg_set *>(FEAuxInfo( *back.front, aux, FEINF_PARM_REGS )); !HW_CEqual( *parm_src, HW_EMPTY ); ++parm_src ) {
         *parm_dst = *parm_src;
         if( HW_Ovlap( *parm_dst, state->unalterable ) ) {
-            FEMessage( FEMSG_BAD_SAVE, aux );
+            FEMessage( *back.front, FEMSG_BAD_SAVE, aux );
         }
         HW_CTurnOff( *parm_dst, HW_UNUSED );
         parm_dst++;
@@ -175,40 +176,40 @@ type_class_def  CallState( aux_handle aux, const type_def *tipe, call_state *sta
     }
     *parm_dst = *parm_src;
     i++;
-    state->parm.table = static_cast<hw_reg_set *>(CGAlloc( i*sizeof( hw_reg_set ) ));
+    state->parm.table = static_cast<hw_reg_set *>(CGAlloc( back, i*sizeof( hw_reg_set ) ));
     Copy( parms, state->parm.table, i * sizeof( hw_reg_set ) );
     HW_CAsgn( state->parm.used, HW_EMPTY );
     state->parm.curr_entry = state->parm.table;
     state->parm.offset  = 0;
-    if( tipe == data_state().TypeNone ) {
+    if( tipe == back.data.TypeNone ) {
         HW_CAsgn( state->return_reg, HW_EMPTY );
     } else if( type_class == XX ) {
         if( cclass_target & FECALL_X86_SPECIAL_STRUCT_RETURN ) {
-            pregs = static_cast<hw_reg_set *>(FEAuxInfo( aux, FEINF_STRETURN_REG ));
+            pregs = static_cast<hw_reg_set *>(FEAuxInfo( *back.front, aux, FEINF_STRETURN_REG ));
             state->return_reg = *pregs;
             state->attr |= ROUTINE_HAS_SPECIAL_RETURN;
         } else {
             state->return_reg = StructReg();
         }
         if( (state->attr & ROUTINE_ALLOCS_RETURN) == 0 ) {
-            tmp = ReturnReg( WD, false );
+            tmp = ReturnReg( back, WD, false );
             HW_TurnOn( state->modify, tmp );
         }
     } else {
         if( cclass_target & FECALL_X86_SPECIAL_RETURN ) {
-            pregs = static_cast<hw_reg_set *>(FEAuxInfo( aux, FEINF_RETURN_REG ));
+            pregs = static_cast<hw_reg_set *>(FEAuxInfo( *back.front, aux, FEINF_RETURN_REG ));
             state->return_reg = *pregs;
             state->attr |= ROUTINE_HAS_SPECIAL_RETURN;
         } else {
-            state->return_reg = ReturnReg( type_class, _NPX( state->attr ) );
+            state->return_reg = ReturnReg( back, type_class, _NPX( state->attr ) );
         }
     }
-    UpdateReturn( state, tipe, type_class, aux );
+    UpdateReturn( back, state, tipe, type_class, aux );
     return( type_class );
 }
 
 
-void    UpdateReturn( call_state *state, const type_def *tipe, type_class_def type_class, aux_handle aux )
+void    UpdateReturn( BackRun& back, call_state *state, const type_def *tipe, type_class_def type_class, aux_handle aux )
 /********************************************************************************************************/
 {
     hw_reg_set  normal;
@@ -220,14 +221,14 @@ void    UpdateReturn( call_state *state, const type_def *tipe, type_class_def ty
     } else {
         HW_CTurnOff( state->return_reg, HW_FLTS );
     }
-    if( tipe == data_state().TypeNone ) {
+    if( tipe == back.data.TypeNone ) {
         if( HW_CEqual( state->return_reg, HW_EMPTY ) )
             return;
-        FEMessage( FEMSG_BAD_RETURN_REGISTER, aux );
+        FEMessage( *back.front, FEMSG_BAD_RETURN_REGISTER, aux );
         HW_CAsgn( state->return_reg, HW_EMPTY );
         state->attr &= ~ROUTINE_HAS_SPECIAL_RETURN;
     } else if( type_class == XX ) {
-        normal = ReturnReg( WD, _NPX( state->attr ) );
+        normal = ReturnReg( back, WD, _NPX( state->attr ) );
         if( HW_Equal( state->return_reg, normal ) )
             return;
         if( HW_CEqual( state->return_reg, HW_EMPTY ) )
@@ -235,28 +236,28 @@ void    UpdateReturn( call_state *state, const type_def *tipe, type_class_def ty
 //        if( !HW_Ovlap( state->return_reg, state->unalterable )
 //          && IsRegClass( state->return_reg, WD ) )
 //            return;
-        if( IsRegClass( state->return_reg, WD ) )
+        if( IsRegClass( back, state->return_reg, WD ) )
             return;
-        FEMessage( FEMSG_BAD_RETURN_REGISTER, aux );
+        FEMessage( *back.front, FEMSG_BAD_RETURN_REGISTER, aux );
         state->return_reg = normal;
         state->attr &= ~ROUTINE_HAS_SPECIAL_RETURN;
     } else {
-        normal = ReturnReg( type_class, _NPX( state->attr ) );
+        normal = ReturnReg( back, type_class, _NPX( state->attr ) );
         if( HW_Equal( state->return_reg, normal ) )
             return;
 //        if( !HW_Ovlap( state->return_reg, state->unalterable )
 //          && IsRegClass( state->return_reg, type_class ) )
 //            return;
-        if( IsRegClass( state->return_reg, type_class ) )
+        if( IsRegClass( back, state->return_reg, type_class ) )
             return;
-        FEMessage( FEMSG_BAD_RETURN_REGISTER, aux );
+        FEMessage( *back.front, FEMSG_BAD_RETURN_REGISTER, aux );
         state->return_reg = normal;
         state->attr &= ~ROUTINE_HAS_SPECIAL_RETURN;
     }
 }
 
 
-hw_reg_set      CallZap( call_state *state )
+hw_reg_set      CallZap( BackRun& back, call_state *state )
 /******************************************/
 {
     hw_reg_set  zap;
@@ -267,49 +268,49 @@ hw_reg_set      CallZap( call_state *state )
         HW_TurnOn( zap, state->parm.used );
         HW_TurnOn( zap, state->return_reg );
         zap = FullReg( zap );
-        tmp = ReturnReg( WD, _NPX( state->attr ) );
+        tmp = ReturnReg( back, WD, _NPX( state->attr ) );
         HW_TurnOn( zap, tmp );
     }
     return( zap );
 }
 
 
-hw_reg_set      MustSaveRegs( void )
+hw_reg_set      MustSaveRegs( BackRun& back )
 /**********************************/
 {
     hw_reg_set  save;
     hw_reg_set  tmp;
 
     HW_CAsgn( save, HW_FULL );
-    HW_TurnOff( save, data_state().CurrProc->state.modify );
+    HW_TurnOff( save, back.data.CurrProc->state.modify );
     HW_CTurnOff( save, HW_UNUSED );
-    if( data_state().CurrProc->state.attr & ROUTINE_MODIFY_EXACT ) {
-        HW_TurnOff( save, data_state().CurrProc->state.return_reg );
+    if( back.data.CurrProc->state.attr & ROUTINE_MODIFY_EXACT ) {
+        HW_TurnOff( save, back.data.CurrProc->state.return_reg );
     } else {
-        tmp = data_state().CurrProc->state.parm.used;
-        HW_TurnOn( tmp, data_state().CurrProc->state.return_reg );
+        tmp = back.data.CurrProc->state.parm.used;
+        HW_TurnOn( tmp, back.data.CurrProc->state.return_reg );
         tmp = FullReg( tmp );
         HW_TurnOff( save, tmp );
     }
     tmp = StackReg();
     HW_TurnOff( save, tmp );
-    if( HW_CEqual( data_state().CurrProc->state.return_reg, HW_EMPTY ) ) {
-        tmp = ReturnReg( WD, _NPX( data_state().CurrProc->state.attr ) );
+    if( HW_CEqual( back.data.CurrProc->state.return_reg, HW_EMPTY ) ) {
+        tmp = ReturnReg( back, WD, _NPX( back.data.CurrProc->state.attr ) );
         HW_TurnOff( save, tmp );
     }
-    tmp = data_state().CurrProc->state.unalterable;
-    HW_TurnOff( tmp, DisplayReg() );
+    tmp = back.data.CurrProc->state.unalterable;
+    HW_TurnOff( tmp, DisplayReg(back) );
     HW_TurnOff( tmp, StackReg() );
     HW_TurnOff( save, tmp );
     return( save );
 }
 
-hw_reg_set      SaveRegs( void )
+hw_reg_set      SaveRegs( BackRun& back )
 /******************************/
 {
     hw_reg_set  save;
-    save = MustSaveRegs();
-    HW_OnlyOn( save, data_state().CurrProc->state.used );
+    save = MustSaveRegs(back);
+    HW_OnlyOn( save, back.data.CurrProc->state.used );
     return( save );
 }
 

@@ -31,5 +31,6 @@
 ****************************************************************************/
 
 
-extern dw_client    DwarfInit( void );
-extern void         DwarfFini( dw_client client );
+#pragma once
+extern dw_client    DwarfInit( FrontRun& front );
+extern void         DwarfFini( FrontRun& front, dw_client client );

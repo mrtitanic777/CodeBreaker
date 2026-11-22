@@ -36,9 +36,10 @@
 #include "zoiks.h"
 #include "inssegs.h"
 #include "fixindex.h"
+#include "backrun.hpp"
 
 
-static bool SegMemLoc( name *op )
+static bool SegMemLoc( BackRun& back, name *op )
 /********************************
  * Return true if the operand COULD be the one associated with the segment
  */
@@ -52,7 +53,7 @@ static bool SegMemLoc( name *op )
          * kluge for TLS stuff - want to be able to put fs: override on
          * the __tls_array runtime label
          */
-        if( AskIfRTLabel( static_cast<label_handle>(op->v.symbol) ) )
+        if( AskIfRTLabel( back, static_cast<label_handle>(op->v.symbol) ) )
             return( true );
         /*
          * made by Addressable
@@ -69,7 +70,7 @@ static bool SegMemLoc( name *op )
 }
 
 
-static  void    MoveSeg( instruction *ins, instruction *new_ins,
+static  void    MoveSeg( BackRun& back, instruction *ins, instruction *new_ins,
                          name *op, bool save_old )
 /**************************************************/
 {
@@ -79,7 +80,7 @@ static  void    MoveSeg( instruction *ins, instruction *new_ins,
         return;
     if( ins->num_operands <= OpcodeNumOperands( ins ) )
         return;
-    if( !SegMemLoc( op ) )
+    if( !SegMemLoc( back, op ) )
         return;
     DupSeg( ins, new_ins );
     if( save_old )
@@ -118,42 +119,42 @@ void    DupSeg( instruction *ins, instruction *new_ins )
 }
 
 
-void    DupSegOp( instruction *ins, instruction *new_ins, opcnt i )
+void    DupSegOp( BackRun& back, instruction *ins, instruction *new_ins, opcnt i )
 /*****************************************************************/
 {
-    MoveSeg( ins, new_ins, new_ins->operands[i], true );
+    MoveSeg( back, ins, new_ins, new_ins->operands[i], true );
 }
 
 
-void    DupSegRes( instruction *ins, instruction *new_ins )
+void    DupSegRes( BackRun& back, instruction *ins, instruction *new_ins )
 /*********************************************************/
 {
-    MoveSeg( ins, new_ins, new_ins->result, true );
+    MoveSeg( back, ins, new_ins, new_ins->result, true );
 }
 
 
-void    MoveSegOp( instruction *ins, instruction *new_ins, opcnt i )
+void    MoveSegOp( BackRun& back, instruction *ins, instruction *new_ins, opcnt i )
 /******************************************************************/
 {
-    MoveSeg( ins, new_ins, new_ins->operands[i], false );
+    MoveSeg( back, ins, new_ins, new_ins->operands[i], false );
 }
 
 
-void    MoveSegRes( instruction *ins, instruction *new_ins )
+void    MoveSegRes( BackRun& back, instruction *ins, instruction *new_ins )
 /**********************************************************/
 {
-    MoveSeg( ins, new_ins, new_ins->result, false );
+    MoveSeg( back, ins, new_ins, new_ins->result, false );
 }
 
 
-void    DelSegRes( instruction *ins )
+void    DelSegRes( BackRun& back, instruction *ins )
 /***********************************/
 {
     opcnt   i;
 
     if( ins->num_operands <= OpcodeNumOperands( ins ) )
         return;
-    if( !SegMemLoc( ins->result ) )
+    if( !SegMemLoc( back, ins->result ) )
         return;
     for( i = ins->num_operands; i-- > 0; ) {
         if( ins->result == ins->operands[i] ) {
@@ -164,14 +165,14 @@ void    DelSegRes( instruction *ins )
 }
 
 
-void    DelSegOp( instruction *ins, opcnt i )
+void    DelSegOp( BackRun& back, instruction *ins, opcnt i )
 /*******************************************/
 {
     opcnt   j;
 
     if( ins->num_operands <= OpcodeNumOperands( ins ) )
         return;
-    if( !SegMemLoc( ins->operands[i] ) )
+    if( !SegMemLoc( back, ins->operands[i] ) )
         return;
     if( ins->result == ins->operands[i] )
         return;

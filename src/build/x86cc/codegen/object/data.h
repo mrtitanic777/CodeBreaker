@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "model.h"
 #include "addrname.h"
 #include "regset.h"
@@ -82,6 +83,5 @@ struct DataState {
     bool HaveCurrBlock;
     type_length TypeClassSize[XX + 1];
 };
-inline DataState& data_state() { return cbrun_part<DataState>(); }
 
 #endif

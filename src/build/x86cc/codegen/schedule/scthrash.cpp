@@ -44,9 +44,10 @@
 #include "confldef.h"
 #include "liveinfo.h"
 #include "split.h"
+#include "backrun.hpp"
 
 
-static  name    *FindPiece( hw_reg_set opnd, hw_reg_set frm, hw_reg_set to )
+static  name    *FindPiece( BackRun& back, hw_reg_set opnd, hw_reg_set frm, hw_reg_set to )
 /***************************************************************************
  * Find the right piece "to_piece" of "to" such that "x" is to "to" as "opnd"
  * is to "frm". Eg: for 386, if opnd = AH, frm = EAX, to = EDX, then x = DH
@@ -61,22 +62,22 @@ static  name    *FindPiece( hw_reg_set opnd, hw_reg_set frm, hw_reg_set to )
     HW_Asgn( frm_piece, frm );
     for( ;; ) {
         if( HW_Equal( frm_piece, opnd ) ) {
-            piece = AllocRegName( to_piece );
+            piece = AllocRegName( back, to_piece );
             if( piece->r.reg_index == -1 ) {
                 return( NULL );
             }
         }
         if( HW_CEqual( to_piece, HW_EMPTY ) )
             return( NULL );
-        tmp = LowReg( frm_piece );
+        tmp = LowReg( back, frm_piece );
         if( HW_Subset( opnd, tmp ) ) {
             frm_piece = tmp;
-            to_piece = LowReg( to_piece );
+            to_piece = LowReg( back, to_piece );
         } else {
-            tmp = HighReg( frm_piece );
+            tmp = HighReg( back, frm_piece );
             if( HW_Subset( opnd, tmp ) ) {
                 frm_piece = tmp;
-                to_piece = HighReg( to_piece );
+                to_piece = HighReg( back, to_piece );
             } else {
                 return( NULL );
             }
@@ -85,7 +86,7 @@ static  name    *FindPiece( hw_reg_set opnd, hw_reg_set frm, hw_reg_set to )
 }
 
 
-static  bool    CanChange( instruction **pins,
+static  bool    CanChange( BackRun& back, instruction **pins,
                            name *frm, name *to, instruction *new_ins )
 /********************************************************************/
 {
@@ -100,7 +101,7 @@ static  bool    CanChange( instruction **pins,
     if( ins->head.opcode == OP_CONVERT
      && ins->operands[0]->n.class_ == N_REGISTER
      && HW_Ovlap( frm->r.reg, ins->operands[0]->r.reg ) ) {
-        opnd = FindPiece( ins->operands[0]->r.reg, frm->r.reg, to->r.reg );
+        opnd = FindPiece( back, ins->operands[0]->r.reg, frm->r.reg, to->r.reg );
         if( opnd == NULL )
             return( false );
         ins->operands[0] = opnd;
@@ -129,9 +130,9 @@ static  bool    CanChange( instruction **pins,
                             temp_index = true;
                         }
                     }
-                    if( !IndexRegOk( to->r.reg, temp_index ) )
+                    if( !IndexRegOk( back, to->r.reg, temp_index ) )
                         return( false );
-                    new_ins->operands[i] = ScaleIndex( to, opnd->i.base,
+                    new_ins->operands[i] = ScaleIndex( back, to, opnd->i.base,
                                                          opnd->i.constant,
                                                          opnd->n.type_class,
                                                          opnd->n.size,
@@ -146,31 +147,31 @@ static  bool    CanChange( instruction **pins,
         }
     }
     new_ins->result = to;
-    try_ = FindGenEntry( new_ins, &has_index );
+    try_ = FindGenEntry( back, new_ins, &has_index );
     if( try_ == NULL )
         return( false );
     if( try_->generate >= G_UNKNOWN )
         return( false );
-    ReplIns( ins, new_ins );
+    ReplIns( back, ins, new_ins );
     *pins = new_ins;
     return( true );
 }
 
 
-static  bool    CantChange( instruction **pins, name *frm, name *to )
+static  bool    CantChange( BackRun& back, instruction **pins, name *frm, name *to )
 /*******************************************************************/
 {
     instruction         *new_ins;
     opcnt               num_operands;
 
     num_operands = (*pins)->num_operands;
-    new_ins = NewIns( num_operands );
+    new_ins = NewIns( back, num_operands );
     Copy( *pins, new_ins, offsetof( instruction, operands ) + num_operands * sizeof( name * ) );
-    if( CanChange( pins, frm, to, new_ins ) )
+    if( CanChange( back, pins, frm, to, new_ins ) )
         return( false );
     new_ins->head.next = new_ins;
     new_ins->head.prev = new_ins;
-    FreeIns( new_ins );
+    FreeIns( back, new_ins );
     return( true );
 }
 
@@ -212,7 +213,7 @@ static  bool    UsedIn( name *op, name *reg )
 }
 
 
-static  bool    ThrashDown( instruction *ins )
+static  bool    ThrashDown( BackRun& back, instruction *ins )
 /*********************************************
  * We have a move instruction of the form
  *           MOV Y ==> Z
@@ -270,21 +271,21 @@ static  bool    ThrashDown( instruction *ins )
         }
     }
     if( HW_Ovlap( oth_ins->head.live.regs, Z->r.reg ) ) {
-        if( !ChangeIns(oth_ins,Z,&oth_ins->result,CHANGE_GEN) )
+        if( !ChangeIns(back, oth_ins,Z,&oth_ins->result,CHANGE_GEN) )
             return(false);
-        FreeIns( ins );
+        FreeIns( back, ins );
     } else {
-        if( CantChange( &oth_ins, Y, Z ) )
+        if( CantChange( back, &oth_ins, Y, Z ) )
             return( false );
         ins->head.prev->head.next = ins->head.next;
         ins->head.next->head.prev = ins->head.prev;
-        PrefixIns( oth_ins, ins );
+        PrefixIns( back, oth_ins, ins );
     }
     return( true );
 }
 
 
-static  bool    ThrashUp( instruction *ins )
+static  bool    ThrashUp( BackRun& back, instruction *ins )
 /*******************************************
  * OK, if there is an instruction of the form
  *           OP(?Z,?Z) ==> Z
@@ -350,18 +351,18 @@ static  bool    ThrashUp( instruction *ins )
             return( false );
         }
     }
-    if( CantChange( &oth_ins, Z, Y ) ) {
+    if( CantChange( back, &oth_ins, Z, Y ) ) {
         return( false );
     }
-    FreeIns( thrsh_ins );
+    FreeIns( back, thrsh_ins );
     ins->head.prev->head.next = ins->head.next;
     ins->head.next->head.prev = ins->head.prev;
-    SuffixIns( oth_ins, ins );
+    SuffixIns( back, oth_ins, ins );
     return( true );
 }
 
 
-bool    RegThrash( block *blk )
+bool    RegThrash( BackRun& back, block *blk )
 /*****************************/
 {
     instruction *ins;
@@ -374,8 +375,8 @@ bool    RegThrash( block *blk )
          && ins->operands[0]->n.class_ == N_REGISTER
          && !HW_Ovlap( ins->head.next->head.live.regs, ins->operands[0]->r.reg )
          && ins->result->n.class_ == N_REGISTER ) {
-            if( ThrashDown( ins ) || ThrashUp( ins ) ) {
-                UpdateLive( blk->ins.head.next, blk->ins.head.prev );
+            if( ThrashDown( back, ins ) || ThrashUp( back, ins ) ) {
+                UpdateLive( back, blk->ins.head.next, blk->ins.head.prev );
                 return( true );
             }
         }

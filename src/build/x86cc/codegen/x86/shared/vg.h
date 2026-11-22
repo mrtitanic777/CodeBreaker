@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define G_GROUP1        G_RC
 #define G_GROUP2        G_WORDR1
 #define G_GROUP3        G_R1

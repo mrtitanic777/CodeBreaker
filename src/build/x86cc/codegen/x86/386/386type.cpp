@@ -33,6 +33,7 @@
 #include "_cgstd.h"
 #include "types.h"
 #include "model.h"
+#include "backrun.hpp"
 
 
 /*                      refno           length  attributes */
@@ -45,30 +46,30 @@ const type_def THugeP  = { TY_HUGE_POINTER,   6,      TYPE_POINTER };
 const type_def TLongP  = { TY_LONG_POINTER,   6,      TYPE_POINTER };
 const type_def TNearP  = { TY_NEAR_POINTER,   4,      TYPE_POINTER };
 
-void    TargTypeInit( void )
+void    TargTypeInit( BackRun& back )
 /**************************/
 {
-    TypeAlias( TY_UNSIGNED, TY_UINT_4 );
-    TypeAlias( TY_INTEGER, TY_INT_4 );
+    TypeAlias( back, TY_UNSIGNED, TY_UINT_4 );
+    TypeAlias( back, TY_INTEGER, TY_INT_4 );
 
-    types_state().PTInteger = TypeAddress( TY_INT_4 );
-    types_state().PTUnsigned = TypeAddress( TY_UINT_4 );
+    back.types.PTInteger = TypeAddress( back, TY_INT_4 );
+    back.types.PTUnsigned = TypeAddress( back, TY_UINT_4 );
 
     if( _IsTargetModel( CGSW_X86_BIG_CODE ) ) {
-        TypeAlias( TY_CODE_PTR, TY_LONG_CODE_PTR );
-        types_state().PTCodePointer = TypeAddress( TY_LONG_CODE_PTR );
+        TypeAlias( back, TY_CODE_PTR, TY_LONG_CODE_PTR );
+        back.types.PTCodePointer = TypeAddress( back, TY_LONG_CODE_PTR );
     } else {
-        TypeAlias( TY_CODE_PTR, TY_NEAR_CODE_PTR );
-        types_state().PTCodePointer = TypeAddress( TY_NEAR_CODE_PTR );
+        TypeAlias( back, TY_CODE_PTR, TY_NEAR_CODE_PTR );
+        back.types.PTCodePointer = TypeAddress( back, TY_NEAR_CODE_PTR );
     }
     if( _IsTargetModel( CGSW_X86_BIG_DATA ) ) {
-        TypeAlias( TY_POINTER, TY_LONG_POINTER );
-        types_state().PTPointer = TypeAddress( TY_LONG_POINTER );
+        TypeAlias( back, TY_POINTER, TY_LONG_POINTER );
+        back.types.PTPointer = TypeAddress( back, TY_LONG_POINTER );
     } else {
-        TypeAlias( TY_POINTER, TY_NEAR_POINTER );
-        types_state().PTPointer = TypeAddress( TY_NEAR_POINTER );
+        TypeAlias( back, TY_POINTER, TY_NEAR_POINTER );
+        back.types.PTPointer = TypeAddress( back, TY_NEAR_POINTER );
     }
-    TypeAlias( TY_NEAR_INTEGER, TY_INT_4 );
-    TypeAlias( TY_LONG_INTEGER, TY_INT_4 );
-    TypeAlias( TY_HUGE_INTEGER, TY_INT_4 );
+    TypeAlias( back, TY_NEAR_INTEGER, TY_INT_4 );
+    TypeAlias( back, TY_LONG_INTEGER, TY_INT_4 );
+    TypeAlias( back, TY_HUGE_INTEGER, TY_INT_4 );
 }

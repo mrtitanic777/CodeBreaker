@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
+#pragma once
 extern cg_type  PtrType( TYPEPTR typ, type_modifiers flags );
-extern cg_type  CGenType( TYPEPTR typ );
-extern void     EmitStrPtr(STR_HANDLE,cg_type);
+extern cg_type  CGenType( FrontRun& front, TYPEPTR typ );
+extern void     EmitStrPtr(FrontRun& front, STR_HANDLE,cg_type);

@@ -38,8 +38,8 @@
 
 
 extern abbrev_code  DW_TypeCode( dw_client, dw_handle );
-extern void         DW_EmitAccessFlags( dw_client, dw_flags );
-extern void         DW_EmitTypeRef( dw_client, dw_handle );
-extern void         DW_WriteAddressClass( dw_client, dw_flags );
+extern void         DW_EmitAccessFlags( BackRun& back, dw_client, dw_flags );
+extern void         DW_EmitTypeRef( BackRun& back, dw_client, dw_handle );
+extern void         DW_WriteAddressClass( BackRun& back, dw_client, dw_flags );
 
 #endif

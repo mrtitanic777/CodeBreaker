@@ -37,18 +37,15 @@
 #include "cgswitch.h"
 #include "cgprotos.h"
 #include "i64.h"
+#include "frontrun.hpp"
 
 
-extern  void    InitDebugTypes( void );         /* from pchdr.c */
+extern  void    InitDebugTypes( FrontRun& front );         /* from pchdr.c */
 
-typedef enum
-{   DC_RETURN           = 0x01,         // this is a return type
-    DC_DEFINE           = 0x02,         // generate definition
-    DC_DEFAULT          = 0x00          // default behaviour
-} DC_CONTROL;
 
-static dw_handle dwarfType( TYPEPTR, DC_CONTROL );
-static void dwarfEmitVariables( SYM_HANDLE sym_handle );
+
+static dw_handle dwarfType( FrontRun& front, TYPEPTR, DC_CONTROL );
+static void dwarfEmitVariables( FrontRun& front, SYM_HANDLE sym_handle );
 
 static void type_update( TYPEPTR typ, int mask, dw_handle dh )
 /************************************************************/
@@ -59,19 +56,13 @@ static void type_update( TYPEPTR typ, int mask, dw_handle dh )
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct DwarfState {
-    dw_client Client;
-    dw_loc_handle dummyLoc;
-    source_loc CurLoc;
-    unsigned dwarfFile_Current_File_Index = ~0U;
-};
+/* (struct DwarfState: dwarf_state.h) */
 
 }  // namespace
 
-static inline DwarfState& dwarf_state() { return cbrun_part<DwarfState>(); }
 
 
-static void dwarfFile( unsigned filenum )
+static void dwarfFile( FrontRun& front, unsigned filenum )
 /***************************************/
 {
     FNAMEPTR    flist;
@@ -80,29 +71,29 @@ static void dwarfFile( unsigned filenum )
     /*
      * if current file changed, call DWDeclFile
      */
-    if( filenum != dwarf_state().dwarfFile_Current_File_Index ) {
-        flist = FileIndexToFName(filenum);
-        fname = FNameFullPath( flist );
-        DWDeclFile( dwarf_state().Client, fname );
-        dwarf_state().dwarfFile_Current_File_Index = filenum;
+    if( filenum != front.dwarf.dwarfFile_Current_File_Index ) {
+        flist = FileIndexToFName(front, filenum);
+        fname = FNameFullPath( front, flist );
+        DWDeclFile( *front.back, front.dwarf.Client, fname );
+        front.dwarf.dwarfFile_Current_File_Index = filenum;
     }
 }
 
-static void dwarfLocation( source_loc *src_loc )
+static void dwarfLocation( FrontRun& front, source_loc *src_loc )
 /**********************************************/
 {
-    dwarfFile( src_loc->fno );
-    DWDeclPos( dwarf_state().Client, src_loc->line, 0 );
+    dwarfFile( front, src_loc->fno );
+    DWDeclPos( front.dwarf.Client, src_loc->line, 0 );
 }
 
-static void dwarfReference( dw_handle dh, source_loc *src_loc )
+static void dwarfReference( FrontRun& front, dw_handle dh, source_loc *src_loc )
 /*************************************************************/
 {
-    dwarfFile( src_loc->fno );
-    DWReference( dwarf_state().Client, src_loc->line, 0, dh );
+    dwarfFile( front, src_loc->fno );
+    DWReference( *front.back, front.dwarf.Client, src_loc->line, 0, dh );
 }
 
-static void dwarfStructInfo( TAGPTR tag )
+static void dwarfStructInfo( FrontRun& front, TAGPTR tag )
 /***************************************/
 {
     dw_handle   dh;
@@ -115,44 +106,44 @@ static void dwarfStructInfo( TAGPTR tag )
         xref = field->xref;
         typ = field->field_type;
         if( typ->decl_type == TYP_FIELD || typ->decl_type == TYP_UFIELD ) {
-            fld_dh = dwarfType( GetType( typ->u.f.field_type ), DC_DEFAULT );
+            fld_dh = dwarfType( front, GetType( front, typ->u.f.field_type ), DC_DEFAULT );
             if( xref != NULL ) {    //stupid struct { int x; int y[] ) = init thing
                 /*
                  * Also watch for side effects with the DWDeclPos and a dwtype
                  */
-                dwarfLocation( &xref->src_loc );
+                dwarfLocation( front, &xref->src_loc );
             }
-            dh = DWAddBitField( dwarf_state().Client,
+            dh = DWAddBitField( *front.back, front.dwarf.Client,
                         fld_dh,
-                        dwarf_state().dummyLoc,
-                        TypeSize( typ ),
+                        front.dwarf.dummyLoc,
+                        TypeSize( front, typ ),
                         typ->u.f.field_start,
                         typ->u.f.field_width,
                         field->name,
                         DW_FLAG_PUBLIC );
         } else {
-            fld_dh =  dwarfType( typ, DC_DEFAULT );
+            fld_dh =  dwarfType( front, typ, DC_DEFAULT );
             xref = field->xref;     // re-get in case the struct was freed during recursion
             if( xref != NULL ) {    //stupid struct { int x; int y[] ) = init thing
-                dwarfLocation( &xref->src_loc );
+                dwarfLocation( front, &xref->src_loc );
             }
-            dh = DWAddField( dwarf_state().Client,
+            dh = DWAddField( *front.back, front.dwarf.Client,
                         fld_dh,
-                        dwarf_state().dummyLoc,
+                        front.dwarf.dummyLoc,
                         field->name,
                         DW_FLAG_PUBLIC );
         }
         if( xref != NULL ) {
             for( ; (xref = xref->next_xref) != NULL; ) {
-                dwarfReference( dh, &xref->src_loc );
+                dwarfReference( front, dh, &xref->src_loc );
             }
-            FreeXrefs( field->xref );
+            FreeXrefs( front, field->xref );
             field->xref = NULL;
         }
     }
 }
 
-static dw_handle dwarfStructUnion( TYPEPTR typ, DC_CONTROL control )
+static dw_handle dwarfStructUnion( FrontRun& front, TYPEPTR typ, DC_CONTROL control )
 /******************************************************************/
 {
     dw_handle   dh;
@@ -166,9 +157,9 @@ static dw_handle dwarfStructUnion( TYPEPTR typ, DC_CONTROL control )
         dh = typ->u1.dwarf_type;
     } else {
         if( typ->decl_type == TYP_STRUCT ) {
-            dh = DWStruct( dwarf_state().Client, DW_ST_STRUCT );
+            dh = DWStruct( *front.back, front.dwarf.Client, DW_ST_STRUCT );
         } else {
-            dh = DWStruct( dwarf_state().Client, DW_ST_UNION );
+            dh = DWStruct( *front.back, front.dwarf.Client, DW_ST_UNION );
         }
         type_update( typ, TF2_DWARF_FWD, dh );
     }
@@ -181,16 +172,16 @@ static dw_handle dwarfStructUnion( TYPEPTR typ, DC_CONTROL control )
             name = tag->name;
         }
         defined = (tag->size != 0);
-        DWBeginStruct( dwarf_state().Client,
+        DWBeginStruct( *front.back, front.dwarf.Client,
                        dh,
                        tag->size,
                        name,
                        0,
                        (defined ? DW_FLAG_NONE : DW_FLAG_DECLARATION ) );
         if( defined ) {
-            dwarfStructInfo( tag );
+            dwarfStructInfo( front, tag );
         }
-        DWEndStruct( dwarf_state().Client );
+        DWEndStruct( *front.back, front.dwarf.Client );
     }
     return( dh );
 }
@@ -210,43 +201,43 @@ static ENUMPTR ReverseEnums( ENUMPTR esym )    /* reverse order of enums */
     return( prev_enum );
 }
 
-static dw_handle dwarfEnum( TYPEPTR typ )
+static dw_handle dwarfEnum( FrontRun& front, TYPEPTR typ )
 /***************************************/
 {
     dw_handle   dh;
     ENUMPTR     esym;
     ENUMPTR     enum_list;
 
-    dh = DWBeginEnumeration( dwarf_state().Client,
-                             TypeSize( typ->object ),
+    dh = DWBeginEnumeration( *front.back, front.dwarf.Client,
+                             TypeSize( front, typ->object ),
                              typ->u.tag->name,
                              0,
                              static_cast<dw_flags>(0) );
     enum_list = ReverseEnums( typ->u.tag->u.enum_list );
     for( esym = enum_list; esym != NULL; esym = esym->thread ) {
-        DWAddEnumerationConstant( dwarf_state().Client, U64Low( esym->value ), esym->name );
+        DWAddEnumerationConstant( *front.back, front.dwarf.Client, U64Low( esym->value ), esym->name );
     }
     ReverseEnums( enum_list );
-    DWEndEnumeration( dwarf_state().Client );
+    DWEndEnumeration( *front.back, front.dwarf.Client );
     type_update( typ, TF2_DWARF_DEF, dh );
     return( dh );
 }
 
-static dw_handle dwarfTypeArray( TYPEPTR typ )
+static dw_handle dwarfTypeArray( FrontRun& front, TYPEPTR typ )
 /********************************************/
 {
     dw_handle           dh;
 
     if( typ->type_flags & TF2_DWARF )
         return( typ->u1.dwarf_type );
-    dh = DWSimpleArray( dwarf_state().Client,
-                dwarfType( typ->object, DC_DEFAULT ),
+    dh = DWSimpleArray( *front.back, front.dwarf.Client,
+                dwarfType( front, typ->object, DC_DEFAULT ),
                 typ->u.array->dimension );
     type_update( typ, TF2_DWARF_DEF, dh );
     return( dh );
 }
 
-static dw_handle dwarfTypeFunction( TYPEPTR typ, char *name )
+static dw_handle dwarfTypeFunction( FrontRun& front, TYPEPTR typ, char *name )
 /***********************************************************/
 {
     dw_handle   dh;
@@ -254,8 +245,8 @@ static dw_handle dwarfTypeFunction( TYPEPTR typ, char *name )
 
     if( typ->type_flags & TF2_DWARF )
         return( typ->u1.dwarf_type );
-    dh = dwarfType( typ->object, DC_RETURN );
-    dh = DWBeginSubroutineType( dwarf_state().Client,
+    dh = dwarfType( front, typ->object, DC_RETURN );
+    dh = DWBeginSubroutineType( *front.back, front.dwarf.Client,
                                 dh,
                                 name,
                                 0,
@@ -264,17 +255,17 @@ static dw_handle dwarfTypeFunction( TYPEPTR typ, char *name )
     if( typ->u.fn.parms != NULL ) {
         for( parm_types = typ->u.fn.parms; (typ = *parm_types) != NULL; ++parm_types ) {
             if( typ->decl_type == TYP_DOT_DOT_DOT ) {
-                DWAddEllipsisToSubroutineType( dwarf_state().Client );
+                DWAddEllipsisToSubroutineType( *front.back, front.dwarf.Client );
             } else {
-                DWAddParmToSubroutineType( dwarf_state().Client,
-                                       dwarfType( typ, DC_DEFAULT ),
-                                       dwarf_state().dummyLoc,
-                                       dwarf_state().dummyLoc,
+                DWAddParmToSubroutineType( *front.back, front.dwarf.Client,
+                                       dwarfType( front, typ, DC_DEFAULT ),
+                                       front.dwarf.dummyLoc,
+                                       front.dwarf.dummyLoc,
                                        NULL );
             }
         }
     }
-    DWEndSubroutineType( dwarf_state().Client );
+    DWEndSubroutineType( *front.back, front.dwarf.Client );
     return( dh );
 }
 
@@ -315,7 +306,7 @@ uint dwarfTypeModifier( type_modifiers decl_flags )
 }
 #endif
 
-static dw_handle dwarfType( TYPEPTR typ, DC_CONTROL control )
+static dw_handle dwarfType( FrontRun& front, TYPEPTR typ, DC_CONTROL control )
 /***********************************************************/
 {
     dw_handle   dh = 0;
@@ -328,77 +319,77 @@ static dw_handle dwarfType( TYPEPTR typ, DC_CONTROL control )
 
     switch( typ->decl_type ) {
     case TYP_BOOL:
-        dh = DWFundamental( dwarf_state().Client, "_Bool", DW_FT_UNSIGNED_CHAR, TypeSize( typ ) );
+        dh = DWFundamental( *front.back, front.dwarf.Client, "_Bool", DW_FT_UNSIGNED_CHAR, TypeSize( front, typ ) );
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     case TYP_CHAR:
-        dh = DWFundamental( dwarf_state().Client, "char", DW_FT_SIGNED_CHAR, TypeSize( typ ) );
+        dh = DWFundamental( *front.back, front.dwarf.Client, "char", DW_FT_SIGNED_CHAR, TypeSize( front, typ ) );
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     case TYP_UCHAR:
-        dh = DWFundamental( dwarf_state().Client, "unsigned char", DW_FT_UNSIGNED_CHAR, TypeSize( typ ) );
+        dh = DWFundamental( *front.back, front.dwarf.Client, "unsigned char", DW_FT_UNSIGNED_CHAR, TypeSize( front, typ ) );
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     case TYP_WCHAR:
-        dh = DWFundamental( dwarf_state().Client, "wchar_t", DW_FT_UNSIGNED_CHAR, TypeSize( typ ) );
+        dh = DWFundamental( *front.back, front.dwarf.Client, "wchar_t", DW_FT_UNSIGNED_CHAR, TypeSize( front, typ ) );
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     case TYP_SHORT:
-        dh = DWFundamental( dwarf_state().Client, "signed short", DW_FT_SIGNED, TypeSize( typ ) );
+        dh = DWFundamental( *front.back, front.dwarf.Client, "signed short", DW_FT_SIGNED, TypeSize( front, typ ) );
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     case TYP_USHORT:
-        dh = DWFundamental( dwarf_state().Client, "unsigned short", DW_FT_UNSIGNED, TypeSize( typ ) );
+        dh = DWFundamental( *front.back, front.dwarf.Client, "unsigned short", DW_FT_UNSIGNED, TypeSize( front, typ ) );
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     case TYP_INT:
-        dh = DWFundamental( dwarf_state().Client, "signed int", DW_FT_SIGNED, TypeSize( typ ) );
+        dh = DWFundamental( *front.back, front.dwarf.Client, "signed int", DW_FT_SIGNED, TypeSize( front, typ ) );
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     case TYP_UINT:
-        dh = DWFundamental( dwarf_state().Client, "unsigned int", DW_FT_UNSIGNED, TypeSize( typ ) );
+        dh = DWFundamental( *front.back, front.dwarf.Client, "unsigned int", DW_FT_UNSIGNED, TypeSize( front, typ ) );
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     case TYP_LONG:
-        dh = DWFundamental( dwarf_state().Client, "signed long", DW_FT_SIGNED, TypeSize( typ ) );
+        dh = DWFundamental( *front.back, front.dwarf.Client, "signed long", DW_FT_SIGNED, TypeSize( front, typ ) );
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     case TYP_ULONG:
-        dh = DWFundamental( dwarf_state().Client, "unsigned long", DW_FT_UNSIGNED, TypeSize( typ ) );
+        dh = DWFundamental( *front.back, front.dwarf.Client, "unsigned long", DW_FT_UNSIGNED, TypeSize( front, typ ) );
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     case TYP_LONG64:
-        dh = DWFundamental( dwarf_state().Client, "__int64", DW_FT_UNSIGNED, TypeSize( typ ) );
+        dh = DWFundamental( *front.back, front.dwarf.Client, "__int64", DW_FT_UNSIGNED, TypeSize( front, typ ) );
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     case TYP_ULONG64:
-        dh = DWFundamental( dwarf_state().Client, "unsigned __int64", DW_FT_UNSIGNED, TypeSize( typ ) );
+        dh = DWFundamental( *front.back, front.dwarf.Client, "unsigned __int64", DW_FT_UNSIGNED, TypeSize( front, typ ) );
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     case TYP_FLOAT:
-        dh = DWFundamental( dwarf_state().Client, "float", DW_FT_FLOAT, TypeSize( typ ) );
+        dh = DWFundamental( *front.back, front.dwarf.Client, "float", DW_FT_FLOAT, TypeSize( front, typ ) );
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     case TYP_DOUBLE:
-        dh = DWFundamental( dwarf_state().Client, "double", DW_FT_FLOAT, TypeSize( typ ) );
+        dh = DWFundamental( *front.back, front.dwarf.Client, "double", DW_FT_FLOAT, TypeSize( front, typ ) );
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     case TYP_LONG_DOUBLE:
-        dh = DWFundamental( dwarf_state().Client, "long double", DW_FT_FLOAT, TypeSize( typ ) );
+        dh = DWFundamental( *front.back, front.dwarf.Client, "long double", DW_FT_FLOAT, TypeSize( front, typ ) );
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     case TYP_ENUM:
-        dh = dwarfEnum( typ );
+        dh = dwarfEnum( front, typ );
         break;
     case TYP_POINTER:
-        dh = DWPointer( dwarf_state().Client, dwarfType( typ->object, DC_DEFAULT ), static_cast<dw_flags>(0) );
+        dh = DWPointer( *front.back, front.dwarf.Client, dwarfType( front, typ->object, DC_DEFAULT ), static_cast<dw_flags>(0) );
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     case TYP_TYPEDEF:
-        dh = dwarfType( typ->object, DC_DEFAULT );
-        sym = SymGetPtr( typ->u.typedefn );
-        dwarfLocation( &sym->src_loc );
-        dh = DWTypedef( dwarf_state().Client,
+        dh = dwarfType( front, typ->object, DC_DEFAULT );
+        sym = SymGetPtr( front, typ->u.typedefn );
+        dwarfLocation( front, &sym->src_loc );
+        dh = DWTypedef( *front.back, front.dwarf.Client,
                         dh,
                         sym->name,
                         0,
@@ -407,16 +398,16 @@ static dw_handle dwarfType( TYPEPTR typ, DC_CONTROL control )
         break;
     case TYP_STRUCT:
     case TYP_UNION:
-        dh = dwarfStructUnion( typ, DC_DEFAULT );
+        dh = dwarfStructUnion( front, typ, DC_DEFAULT );
         break;
     case TYP_FUNCTION:
-        dh = dwarfTypeFunction( typ, NULL );
+        dh = dwarfTypeFunction( front, typ, NULL );
         break;
     case TYP_ARRAY:
-        dh = dwarfTypeArray( typ );
+        dh = dwarfTypeArray( front, typ );
         break;
     case TYP_VOID:
-        dh = DWFundamental( dwarf_state().Client, "void", DW_FT_UNSIGNED, 0 );
+        dh = DWFundamental( *front.back, front.dwarf.Client, "void", DW_FT_UNSIGNED, 0 );
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     default:
@@ -435,7 +426,7 @@ static dw_handle dwarfType( TYPEPTR typ, DC_CONTROL control )
     return( dh );
 }
 
-static void dwarfFunctionDefine( SYMPTR func_sym )
+static void dwarfFunctionDefine( FrontRun& front, SYMPTR func_sym )
 /************************************************/
 {
     TYPEPTR     typ;
@@ -460,38 +451,38 @@ static void dwarfFunctionDefine( SYMPTR func_sym )
     if( func_sym->attribs.stg_class == SC_STATIC ) {
         flags |= DW_FLAG_SUB_STATIC;
     }
-    return_dh = dwarfType( typ->object, DC_RETURN );
+    return_dh = dwarfType( front, typ->object, DC_RETURN );
     func_dh = func_sym->dwarf_handle;
     if( func_dh != 0 ) {    // was forward ref'd
-        DWHandleSet( dwarf_state().Client, func_dh );
+        DWHandleSet( front.dwarf.Client, func_dh );
     }
-    dwarfLocation( &func_sym->src_loc );
-    func_dh = DWBeginSubroutine( dwarf_state().Client,
+    dwarfLocation( front, &func_sym->src_loc );
+    func_dh = DWBeginSubroutine( *front.back, front.dwarf.Client,
                    call_type,
                    return_dh,
-                   dwarf_state().dummyLoc,
-                   dwarf_state().dummyLoc,
-                   dwarf_state().dummyLoc,
+                   front.dwarf.dummyLoc,
+                   front.dwarf.dummyLoc,
+                   front.dwarf.dummyLoc,
                    0,
-                   dwarf_state().dummyLoc,
+                   front.dwarf.dummyLoc,
                    func_sym->name,
                    0,
                    flags );
     func_sym->dwarf_handle = func_dh;
     for( sym_handle = func_sym->u.func.parms; sym_handle != SYM_NULL; sym_handle = sym->handle ) {
-        sym = SymGetPtr( sym_handle );
-        dh = DWFormalParameter( dwarf_state().Client,
-                        dwarfType( sym->sym_type, DC_DEFAULT ),
+        sym = SymGetPtr( front, sym_handle );
+        dh = DWFormalParameter( *front.back, front.dwarf.Client,
+                        dwarfType( front, sym->sym_type, DC_DEFAULT ),
                         NULL,
                         NULL,
                         sym->name,
                         DW_DEFAULT_NONE );
         sym->dwarf_handle = dh;
     }
-    dwarfEmitVariables( func_sym->u.func.locals );
+    dwarfEmitVariables( front, func_sym->u.func.locals );
 }
 
-static dw_handle dwarfFunctionDecl( SYMPTR func_sym )
+static dw_handle dwarfFunctionDecl( FrontRun& front, SYMPTR func_sym )
 /***************************************************/
 {
     TYPEPTR     typ;
@@ -513,24 +504,24 @@ static dw_handle dwarfFunctionDecl( SYMPTR func_sym )
     if( func_sym->attribs.stg_class == SC_STATIC ) {
         flags |= DW_FLAG_SUB_STATIC;
     }
-    return_dh = dwarfType( typ->object, DC_RETURN );
-    dwarfLocation( &func_sym->src_loc );
-    func_dh = DWBeginSubroutine( dwarf_state().Client,
+    return_dh = dwarfType( front, typ->object, DC_RETURN );
+    dwarfLocation( front, &func_sym->src_loc );
+    func_dh = DWBeginSubroutine( *front.back, front.dwarf.Client,
                    call_type,
                    return_dh,
-                   dwarf_state().dummyLoc,
-                   dwarf_state().dummyLoc,
-                   dwarf_state().dummyLoc,
+                   front.dwarf.dummyLoc,
+                   front.dwarf.dummyLoc,
+                   front.dwarf.dummyLoc,
                    0,
-                   dwarf_state().dummyLoc,
+                   front.dwarf.dummyLoc,
                    func_sym->name,
                    0,
                    flags );
-   DWEndSubroutine( dwarf_state().Client );
+   DWEndSubroutine( *front.back, front.dwarf.Client );
    return( func_dh );
 }
 
-static dw_handle dwarfVariable( SYMPTR sym )
+static dw_handle dwarfVariable( FrontRun& front, SYMPTR sym )
 /******************************************/
 {
     dw_handle   dh;
@@ -540,13 +531,13 @@ static dw_handle dwarfVariable( SYMPTR sym )
     if( sym->attribs.stg_class == SC_NONE ) {
         flags = DW_FLAG_GLOBAL;
     }
-    dh = dwarfType( sym->sym_type, DC_DEFAULT );
-    dwarfLocation( &sym->src_loc );
-    dh = DWVariable( dwarf_state().Client,
+    dh = dwarfType( front, sym->sym_type, DC_DEFAULT );
+    dwarfLocation( front, &sym->src_loc );
+    dh = DWVariable( *front.back, front.dwarf.Client,
                 dh,
-                dwarf_state().dummyLoc,
+                front.dwarf.dummyLoc,
                 0,
-                dwarf_state().dummyLoc,
+                front.dwarf.dummyLoc,
                 sym->name,
                 0,
                 flags );
@@ -554,7 +545,7 @@ static dw_handle dwarfVariable( SYMPTR sym )
 }
 
 
-static void dwarfEmitVariables( SYM_HANDLE sym_handle )
+static void dwarfEmitVariables( FrontRun& front, SYM_HANDLE sym_handle )
 /*****************************************************/
 {
     SYMPTR      sym;
@@ -562,20 +553,20 @@ static void dwarfEmitVariables( SYM_HANDLE sym_handle )
     dw_handle   dh;
 
     for( ; sym_handle != SYM_NULL; sym_handle = sym->handle ) {
-        sym = SymGetPtr( sym_handle );
+        sym = SymGetPtr( front, sym_handle );
         if( (sym->flags & SYM_TEMP) == 0 ) {
             typ = sym->sym_type;
             dh = 0;
             if( sym->flags & SYM_FUNCTION ) {
                 if( (sym->flags & SYM_DEFINED) == 0 ) {
-                    dh = dwarfFunctionDecl( sym );
+                    dh = dwarfFunctionDecl( front, sym );
                 }
 //                printf( "func: %s", sym->name );
             } else if( sym->attribs.stg_class == SC_TYPEDEF ) {
-                dh = dwarfType( typ, DC_DEFAULT );
+                dh = dwarfType( front, typ, DC_DEFAULT );
 //                printf( "typedef: %s", sym->name );
             } else {
-                dh = dwarfVariable( sym );
+                dh = dwarfVariable( front, sym );
 //                printf( "var:: %s", sym->name );
             }
             sym->dwarf_handle = dh;
@@ -584,39 +575,39 @@ static void dwarfEmitVariables( SYM_HANDLE sym_handle )
     }
 }
 
-static void dwarfDumpNode( TREEPTR node )
+static void dwarfDumpNode( FrontRun& front, TREEPTR node )
 /***************************************/
 {
     SYMPTR      sym;
 
     switch( node->op.opr ) {
     case OPR_FUNCTION:          // start of function
-        sym = SymGetPtr( node->op.u2.func.sym_handle );
-        dwarfFunctionDefine( sym );
+        sym = SymGetPtr( front, node->op.u2.func.sym_handle );
+        dwarfFunctionDefine( front, sym );
         break;
     case OPR_FUNCEND:           // end of function
-        DWEndSubroutine( dwarf_state().Client );
+        DWEndSubroutine( *front.back, front.dwarf.Client );
         break;
     case OPR_NEWBLOCK:          // start of new block { vars; }
-        DWBeginLexicalBlock( dwarf_state().Client, NULL, NULL );
-        dwarfEmitVariables( node->op.u2.sym_handle );
+        DWBeginLexicalBlock( *front.back, front.dwarf.Client, NULL, NULL );
+        dwarfEmitVariables( front, node->op.u2.sym_handle );
         break;
     case OPR_ENDBLOCK:          // end of new block { vars; }
-        DWEndLexicalBlock( dwarf_state().Client );
+        DWEndLexicalBlock( *front.back, front.dwarf.Client );
         break;
     case OPR_PUSHSYM:           // push sym_handle
     case OPR_PUSHADDR:          // push address of sym_handle
     case OPR_FUNCNAME:          // function name
-        sym = SymGetPtr( node->op.u2.sym_handle );
+        sym = SymGetPtr( front, node->op.u2.sym_handle );
         if( (sym->flags & SYM_TEMP) == 0 ) {
             dw_handle   dh;
 
             dh = sym->dwarf_handle;
             if( dh == 0 ) {     // forward ref
-                dh = DWHandle( dwarf_state().Client, DW_ST_NONE );
+                dh = DWHandle( *front.back, front.dwarf.Client, DW_ST_NONE );
                 sym->dwarf_handle = dh;
             }
-            dwarfReference( dh, &dwarf_state().CurLoc );
+            dwarfReference( front, dh, &front.dwarf.CurLoc );
         }
         break;
     default:
@@ -625,24 +616,24 @@ static void dwarfDumpNode( TREEPTR node )
 }
 
 
-static void dwarfEmitFunctions( void )
+static void dwarfEmitFunctions( FrontRun& front )
 /************************************/
 {
     TREEPTR     tree;
 
-    for( tree = cvars_state().FirstStmt; tree != NULL; tree = tree->left ) {
-        dwarf_state().CurLoc = tree->op.u2.src_loc;
-        WalkExprTree( tree->right, dwarfDumpNode, NoOp, NoOp, dwarfDumpNode );
+    for( tree = front.cvars.FirstStmt; tree != NULL; tree = tree->left ) {
+        front.dwarf.CurLoc = tree->op.u2.src_loc;
+        WalkExprTree( front, tree->right, dwarfDumpNode, NoOp, NoOp, dwarfDumpNode );
     }
 }
 
-static void SetDwarfType( TYPEPTR typ )
+static void SetDwarfType( FrontRun& front, TYPEPTR typ )
 {
     typ->type_flags &= ~TF2_DWARF;
     typ->u1.dwarf_type = 0;
 }
 
-static void SetFuncDwarfType( TYPEPTR typ, int index )
+static void SetFuncDwarfType( FrontRun& front, TYPEPTR typ, int index )
 {
     /* unused parameters */ (void)index;
 
@@ -650,42 +641,42 @@ static void SetFuncDwarfType( TYPEPTR typ, int index )
     typ->u1.dwarf_type = 0;
 }
 
-static void EmitAType( TYPEPTR typ )
+static void EmitAType( FrontRun& front, TYPEPTR typ )
 {
-    dwarfType( typ, DC_DEFAULT );
+    dwarfType( front, typ, DC_DEFAULT );
 }
 
-static void dwarfInitTypes( void )
+static void dwarfInitTypes( FrontRun& front )
 /********************************/
 {
-    WalkTypeList( SetDwarfType );
-    WalkFuncTypeList( SetFuncDwarfType );
+    WalkTypeList( front, SetDwarfType );
+    WalkFuncTypeList( front, SetFuncDwarfType );
 }
 
-static void dwarfEmit( void )
+static void dwarfEmit( FrontRun& front )
 /***************************/
 {
     DATA_TYPE   i;
 
-    dwarfInitTypes();
+    dwarfInitTypes(front);
     for( i = static_cast<DATA_TYPE>(0); i < DATA_TYPE_BOOL_TO_LONG_DOUBLE; i++ ) {
-        dwarfType( GetType( i ), DC_DEFAULT );
+        dwarfType( front, GetType( front, i ), DC_DEFAULT );
     }
-    WalkTypeList( EmitAType );
-    dwarfEmitVariables( cvars_state().GlobalSym );
-    dwarfEmitFunctions();
-    InitDebugTypes();
+    WalkTypeList( front, EmitAType );
+    dwarfEmitVariables( front, front.cvars.GlobalSym );
+    dwarfEmitFunctions(front);
+    InitDebugTypes(front);
 }
 
-extern void DwarfBrowseEmit( void )
+extern void DwarfBrowseEmit( FrontRun& front )
 /*********************************/
 {
-    dwarf_state().Client = DwarfInit();
-    dwarf_state().dummyLoc = DWLocFini( dwarf_state().Client, DWLocInit( dwarf_state().Client ) );
-    dwarf_state().CurLoc.fno = 0;
-    dwarf_state().CurLoc.line = 0;
-    dwarf_state().CurLoc.column = 0;
-    dwarfEmit();
-    DWLocTrash( dwarf_state().Client, dwarf_state().dummyLoc );
-    DwarfFini( dwarf_state().Client );
+    front.dwarf.Client = DwarfInit(front);
+    front.dwarf.dummyLoc = DWLocFini( *front.back, front.dwarf.Client, DWLocInit( *front.back, front.dwarf.Client ) );
+    front.dwarf.CurLoc.fno = 0;
+    front.dwarf.CurLoc.line = 0;
+    front.dwarf.CurLoc.column = 0;
+    dwarfEmit(front);
+    DWLocTrash( *front.back, front.dwarf.Client, front.dwarf.dummyLoc );
+    DwarfFini( front, front.dwarf.Client );
 }

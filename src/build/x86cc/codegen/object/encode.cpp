@@ -43,6 +43,7 @@
 #include "dumpio.h"
 #include "insutil.h"
 #include "score.h"
+#include "backrun.hpp"
 
 
 static  label_handle    LocateLabel( instruction *ins, cond_dst_idx dest_idx )
@@ -74,14 +75,14 @@ void    CodeLabelLinenum( label_handle label, unsigned align, cg_linenum line )
 }
 #endif
 
-void    CodeLabel( label_handle label, unsigned align )
+void    CodeLabel( BackRun& back, label_handle label, unsigned align )
 /********************************************************
     Drop label into the queue
 */
 {
-    if( data_state().OptForSize > 50 || align == 0 )
+    if( back.data.OptForSize > 50 || align == 0 )
         align = 1;
-    CodeHandle( OC_LABEL, align - 1, label );
+    CodeHandle( back, OC_LABEL, align - 1, label );
 #if _TARGET_RISC
 #ifdef DEVBUILD
     if( _IsTargetModel( CGSW_RISC_ASM_OUTPUT ) ) {
@@ -94,7 +95,7 @@ void    CodeLabel( label_handle label, unsigned align )
 #endif
 }
 
-void    CodeLineNumber( cg_linenum line, bool label_line )
+void    CodeLineNumber( BackRun& back, cg_linenum line, bool label_line )
 /*********************************************************
     Dump a line number into the queue
 */
@@ -116,12 +117,12 @@ void    CodeLineNumber( cg_linenum line, bool label_line )
         }
 #endif
 #endif
-        InputOC( &oc );
+        InputOC( back, &oc );
     }
 }
 
 
-void    CodeHandle( oc_class class_, obj_length len, label_handle handle )
+void    CodeHandle( BackRun& back, oc_class class_, obj_length len, label_handle handle )
 /************************************************************************
     Dump a label reference to "handle" of class "class" (LREF or LABEL)
     into the queue.  Len is the code space taken.
@@ -137,10 +138,10 @@ void    CodeHandle( oc_class class_, obj_length len, label_handle handle )
 #if _TARGET_RISC
     oc.oc_handle.line = 0;
 #endif
-    InputOC( &oc );
+    InputOC( back, &oc );
 }
 
-static  void    DoCondJump( instruction *cond )
+static  void    DoCondJump( BackRun& back, instruction *cond )
 /************************************************
     Generate a conditional branch
 */
@@ -179,9 +180,9 @@ static  void    DoCondJump( instruction *cond )
         }
 #endif
         oc.oc_jcond.hdr.reclen = sizeof( oc_jcond );
-        oc.oc_jcond.hdr.objlen = OptInsSize( OC_JCOND, OC_DEST_NEAR );
+        oc.oc_jcond.hdr.objlen = OptInsSize( back, OC_JCOND, OC_DEST_NEAR );
         oc.oc_jcond.ref = NULL;
-        oc.oc_jcond.cond = CondCode( cond );
+        oc.oc_jcond.cond = CondCode( back, cond );
         oc.oc_jcond.handle = dest_true;
 #if _TARGET_RISC
         assert( cond->operands[0]->n.class_ == N_REGISTER );
@@ -192,7 +193,7 @@ static  void    DoCondJump( instruction *cond )
             oc.oc_jcond.index2 = NO_INDEX;
         }
 #endif
-        InputOC( &oc );
+        InputOC( back, &oc );
 #if _TARGET_RISC
 #ifdef DEVBUILD
         if( _IsTargetModel( CGSW_RISC_ASM_OUTPUT ) ) {
@@ -204,11 +205,11 @@ static  void    DoCondJump( instruction *cond )
 #endif
     }
     if( dest_false != dest_next && dest_false != NULL ) {
-        GenJumpLabel( dest_false );
+        GenJumpLabel( back, dest_false );
     }
 }
 
-void    GenCondJump( instruction *cond )
+void    GenCondJump( BackRun& back, instruction *cond )
 /*************************************************
     Given conditional "cond", generate the correct jcc or setcc instruction
 */
@@ -220,22 +221,22 @@ void    GenCondJump( instruction *cond )
             /* conditional jump not required - both branches go to same place*/
             dest = LocateLabel( cond, _FalseIndex( cond ) );
             if( dest != NULL ) {
-                GenJumpLabel( dest );
+                GenJumpLabel( back, dest );
             }
         } else {
-            DoCondJump( cond );
+            DoCondJump( back, cond );
         }
     } else {
-        GenSetCC( cond );
+        GenSetCC( back, cond );
     }
 }
 
-void    GenJumpLabel( label_handle label )
+void    GenJumpLabel( BackRun& back, label_handle label )
 /*******************************************
     generate an unconditional jump to "label"
 */
 {
-    CodeHandle( OC_JMP, OptInsSize( OC_JMP, OC_DEST_NEAR ), label );
+    CodeHandle( back, OC_JMP, OptInsSize( back, OC_JMP, OC_DEST_NEAR ), label );
 #if _TARGET_RISC
 #ifdef DEVBUILD
     if( _IsTargetModel( CGSW_RISC_ASM_OUTPUT ) ) {
@@ -247,13 +248,13 @@ void    GenJumpLabel( label_handle label )
 #endif
 }
 
-void    GenKillLabel( label_handle label )
+void    GenKillLabel( BackRun& back, label_handle label )
 /**********************************************
     indicate that "label" won't be used again after the OC_LDONE comes
     out of the queue.
 */
 {
-    PUSH_OP( AskCodeSeg() );
-        CodeHandle( static_cast<oc_class>(OC_LDONE), 0, label );
+    PUSH_OP( AskCodeSeg(back) );
+        CodeHandle( back, static_cast<oc_class>(OC_LDONE), 0, label );
     POP_OP();
 }

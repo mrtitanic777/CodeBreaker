@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define TYPE_MTOKEN     unsigned char
 #define SIZE_MTOKEN     sizeof(TYPE_MTOKEN)
 #define GET_MTOKEN(p)   (*(TYPE_MTOKEN *)(p))

@@ -33,90 +33,88 @@
 #include "objout.h"
 #include "x86obj.h"
 #include "x86emit.h"
+#include "backrun.hpp"
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct X86objState {
-    const x86_obj_emitter *Emitter = &X86OmfEmitter;
-};
+/* (struct X86objState: x86obj_state.h) */
 
 }  // namespace
 
-static inline X86objState& x86obj_state() { return cbrun_part<X86objState>(); }
 
 
-static void selectObjEmitter( void )
+static void selectObjEmitter( BackRun& back )
 {
 #if _TARGET & _TARG_80386
     if( _IsModel( CGSW_GEN_OBJ_OWL ) ) {
-        x86obj_state().Emitter = &X86OwlEmitter;
+        back.x86obj.Emitter = &X86OwlEmitter;
     } else
 #endif
     {
-        x86obj_state().Emitter = &X86OmfEmitter;
+        back.x86obj.Emitter = &X86OmfEmitter;
     }
 }
 
-void InitSegDefs( void ) { selectObjEmitter(); x86obj_state().Emitter->init_seg_defs(); }
-bool FreeObjCache( void ) { return( x86obj_state().Emitter->free_obj_cache() ); }
-segment_id AskOP( void ) { return( x86obj_state().Emitter->ask_op() ); }
-segment_id ChangeOP( segment_id s ) { return( x86obj_state().Emitter->change_op( s ) ); }
-void SetOP( segment_id s ) { x86obj_state().Emitter->set_op( s ); }
-void DefSegment( segment_id s, seg_attr a, const char *n, uint l, bool u ) { x86obj_state().Emitter->def_segment( s, a, n, l, u ); }
-void DoEmptyQueue( void ) { x86obj_state().Emitter->empty_queue(); }
-char GetMemModel( void ) { return( x86obj_state().Emitter->get_mem_model() ); }
-segment_id DbgSegDef( const char *n, const char *c, int m ) { return( x86obj_state().Emitter->dbg_seg_def( n, c, m ) ); }
-void ObjInit( void ) { x86obj_state().Emitter->obj_init(); }
-offset AskLocation( void ) { return( x86obj_state().Emitter->ask_location() ); }
-void ChkDbgSegSize( offset m, bool t ) { x86obj_state().Emitter->check_dbg_size( m, t ); }
-bool UseImportForm( fe_attr a ) { return( x86obj_state().Emitter->use_import_form( a ) ); }
-bool AskSegIsNear( segment_id s ) { return( x86obj_state().Emitter->seg_is_near( s ) ); }
-bool AskSegIsBlank( segment_id s ) { return( x86obj_state().Emitter->seg_is_blank( s ) ); }
-bool AskSegIsPrivate( segment_id s ) { return( x86obj_state().Emitter->seg_is_private( s ) ); }
-bool AskSegIsROM( segment_id s ) { return( x86obj_state().Emitter->seg_is_rom( s ) ); }
-segment_id AskBackSeg( void ) { return( x86obj_state().Emitter->ask_back_seg() ); }
-segment_id AskCodeSeg( void ) { return( x86obj_state().Emitter->ask_code_seg() ); }
-bool HaveCodeSeg( void ) { return( x86obj_state().Emitter->have_code_seg() ); }
-segment_id AskAltCodeSeg( void ) { return( x86obj_state().Emitter->ask_alt_code_seg() ); }
-segment_id AskCode16Seg( void ) { return( x86obj_state().Emitter->ask_code16_seg() ); }
-void OutSelect( bool s ) { x86obj_state().Emitter->out_select( s ); }
-void SetUpObj( bool d ) { x86obj_state().Emitter->set_up_obj( d ); }
-void FlushOP( segment_id s ) { x86obj_state().Emitter->flush_op( s ); }
-void ObjFini( void ) { x86obj_state().Emitter->obj_fini(); }
-void OutDLLExport( uint w, cg_sym_handle s ) { x86obj_state().Emitter->out_dll_export( w, s ); }
-void OutLabel( label_handle l ) { x86obj_state().Emitter->out_label( l ); }
-void AbsPatch( abspatch_handle p, offset l ) { x86obj_state().Emitter->abs_patch( p, l ); }
-void *InitPatches( void ) { return( x86obj_state().Emitter->init_patches() ); }
-void SetBigLocation( long_offset l ) { x86obj_state().Emitter->set_big_location( l ); }
-void IncLocation( offset l ) { x86obj_state().Emitter->inc_location( l ); }
-void SetLocation( offset l ) { x86obj_state().Emitter->set_location( l ); }
-void OutFPPatch( fp_patches p ) { x86obj_state().Emitter->out_fp_patch( p ); }
-void OutPatch( label_handle l, patch_attr a ) { x86obj_state().Emitter->out_patch( l, a ); }
-abs_patch *NewAbsPatch( void ) { return( x86obj_state().Emitter->new_abs_patch() ); }
-void OutDataByte( byte v ) { x86obj_state().Emitter->out_data_byte( v ); }
-void OutDataShort( uint_16 v ) { x86obj_state().Emitter->out_data_short( v ); }
-void OutDataLong( uint_32 v ) { x86obj_state().Emitter->out_data_long( v ); }
-void OutAbsPatch( abs_patch *p, patch_attr a ) { x86obj_state().Emitter->out_abs_patch( p, a ); }
-void OutReloc( segment_id s, fix_class c, bool r ) { x86obj_state().Emitter->out_reloc( s, c, r ); }
-void OutSpecialCommon( import_handle h, fix_class c, bool r ) { x86obj_state().Emitter->out_special_common( h, c, r ); }
-void OutImport( cg_sym_handle s, fix_class c, bool r ) { x86obj_state().Emitter->out_import( s, c, r ); }
-void OutRTImportRel( rt_class i, fix_class c, bool r ) { x86obj_state().Emitter->out_rt_import_rel( i, c, r ); }
-void OutRTImport( rt_class i, fix_class c ) { x86obj_state().Emitter->out_rt_import( i, c ); }
-void OutBckExport( const char *n, bool e ) { x86obj_state().Emitter->out_bck_export( n, e ); }
-void OutBckImport( const char *n, back_handle b, fix_class c ) { x86obj_state().Emitter->out_bck_import( n, b, c ); }
-void OutLineNum( cg_linenum l, bool b ) { x86obj_state().Emitter->out_line_num( l, b ); }
-unsigned SavePendingLine( unsigned l ) { return( x86obj_state().Emitter->save_pending_line( l ) ); }
-void OutDBytes( unsigned l, const byte *s ) { x86obj_state().Emitter->out_bytes( l, s ); }
-void OutIBytes( byte p, offset l ) { x86obj_state().Emitter->out_iterated( p, l ); }
-bool NeedBaseSet( void ) { return( x86obj_state().Emitter->need_base_set() ); }
-offset AskMaxSize( void ) { return( x86obj_state().Emitter->ask_max_size() ); }
-long_offset AskBigLocation( void ) { return( x86obj_state().Emitter->ask_big_location() ); }
-long_offset AskBigMaxSize( void ) { return( x86obj_state().Emitter->ask_big_max_size() ); }
-void TellObjNewLabel( cg_sym_handle l ) { x86obj_state().Emitter->tell_new_label( l ); }
-void TellObjNewProc( cg_sym_handle p ) { x86obj_state().Emitter->tell_new_proc( p ); }
-void TellObjVirtFuncRef( void *c ) { x86obj_state().Emitter->tell_virt_func_ref( c ); }
-segment_id AskSegID( pointer h, cg_class c ) { return( x86obj_state().Emitter->ask_seg_id( h, c ) ); }
-bool AskNameIsCode( pointer h, cg_class c ) { return( x86obj_state().Emitter->name_is_code( h, c ) ); }
-bool AskNameIsROM( pointer h, cg_class c ) { return( x86obj_state().Emitter->name_is_rom( h, c ) ); }
-bool SymIsExported( cg_sym_handle s ) { return( x86obj_state().Emitter->sym_is_exported( s ) ); }
+void InitSegDefs( BackRun& back ) { selectObjEmitter(back); back.x86obj.Emitter->init_seg_defs(back); }
+bool FreeObjCache( BackRun& back ) { return( back.x86obj.Emitter->free_obj_cache(back) ); }
+segment_id AskOP( BackRun& back ) { return( back.x86obj.Emitter->ask_op(back) ); }
+segment_id ChangeOP( BackRun& back, segment_id s ) { return( back.x86obj.Emitter->change_op( back, s ) ); }
+void SetOP( BackRun& back, segment_id s ) { back.x86obj.Emitter->set_op( back, s ); }
+void DefSegment( BackRun& back, segment_id s, seg_attr a, const char *n, uint l, bool u ) { back.x86obj.Emitter->def_segment( back, s, a, n, l, u ); }
+void DoEmptyQueue( BackRun& back ) { back.x86obj.Emitter->empty_queue(back); }
+char GetMemModel( BackRun& back ) { return( back.x86obj.Emitter->get_mem_model(back) ); }
+segment_id DbgSegDef( BackRun& back, const char *n, const char *c, int m ) { return( back.x86obj.Emitter->dbg_seg_def( back, n, c, m ) ); }
+void ObjInit( BackRun& back ) { back.x86obj.Emitter->obj_init(back); }
+offset AskLocation( BackRun& back ) { return( back.x86obj.Emitter->ask_location(back) ); }
+void ChkDbgSegSize( BackRun& back, offset m, bool t ) { back.x86obj.Emitter->check_dbg_size( back, m, t ); }
+bool UseImportForm( BackRun& back, fe_attr a ) { return( back.x86obj.Emitter->use_import_form( back, a ) ); }
+bool AskSegIsNear( BackRun& back, segment_id s ) { return( back.x86obj.Emitter->seg_is_near( back, s ) ); }
+bool AskSegIsBlank( BackRun& back, segment_id s ) { return( back.x86obj.Emitter->seg_is_blank( back, s ) ); }
+bool AskSegIsPrivate( BackRun& back, segment_id s ) { return( back.x86obj.Emitter->seg_is_private( back, s ) ); }
+bool AskSegIsROM( BackRun& back, segment_id s ) { return( back.x86obj.Emitter->seg_is_rom( back, s ) ); }
+segment_id AskBackSeg( BackRun& back ) { return( back.x86obj.Emitter->ask_back_seg(back) ); }
+segment_id AskCodeSeg( BackRun& back ) { return( back.x86obj.Emitter->ask_code_seg(back) ); }
+bool HaveCodeSeg( BackRun& back ) { return( back.x86obj.Emitter->have_code_seg(back) ); }
+segment_id AskAltCodeSeg( BackRun& back ) { return( back.x86obj.Emitter->ask_alt_code_seg(back) ); }
+segment_id AskCode16Seg( BackRun& back ) { return( back.x86obj.Emitter->ask_code16_seg(back) ); }
+void OutSelect( BackRun& back, bool s ) { back.x86obj.Emitter->out_select( back, s ); }
+void SetUpObj( BackRun& back, bool d ) { back.x86obj.Emitter->set_up_obj( back, d ); }
+void FlushOP( BackRun& back, segment_id s ) { back.x86obj.Emitter->flush_op( back, s ); }
+void ObjFini( BackRun& back ) { back.x86obj.Emitter->obj_fini(back); }
+void OutDLLExport( BackRun& back, uint w, cg_sym_handle s ) { back.x86obj.Emitter->out_dll_export( back, w, s ); }
+void OutLabel( BackRun& back, label_handle l ) { back.x86obj.Emitter->out_label( back, l ); }
+void AbsPatch( BackRun& back, abspatch_handle p, offset l ) { back.x86obj.Emitter->abs_patch( back, p, l ); }
+void *InitPatches( BackRun& back ) { return( back.x86obj.Emitter->init_patches(back) ); }
+void SetBigLocation( BackRun& back, long_offset l ) { back.x86obj.Emitter->set_big_location( back, l ); }
+void IncLocation( BackRun& back, offset l ) { back.x86obj.Emitter->inc_location( back, l ); }
+void SetLocation( BackRun& back, offset l ) { back.x86obj.Emitter->set_location( back, l ); }
+void OutFPPatch( BackRun& back, fp_patches p ) { back.x86obj.Emitter->out_fp_patch( back, p ); }
+void OutPatch( BackRun& back, label_handle l, patch_attr a ) { back.x86obj.Emitter->out_patch( back, l, a ); }
+abs_patch *NewAbsPatch( BackRun& back ) { return( back.x86obj.Emitter->new_abs_patch(back) ); }
+void OutDataByte( BackRun& back, byte v ) { back.x86obj.Emitter->out_data_byte( back, v ); }
+void OutDataShort( BackRun& back, uint_16 v ) { back.x86obj.Emitter->out_data_short( back, v ); }
+void OutDataLong( BackRun& back, uint_32 v ) { back.x86obj.Emitter->out_data_long( back, v ); }
+void OutAbsPatch( BackRun& back, abs_patch *p, patch_attr a ) { back.x86obj.Emitter->out_abs_patch( back, p, a ); }
+void OutReloc( BackRun& back, segment_id s, fix_class c, bool r ) { back.x86obj.Emitter->out_reloc( back, s, c, r ); }
+void OutSpecialCommon( BackRun& back, import_handle h, fix_class c, bool r ) { back.x86obj.Emitter->out_special_common( back, h, c, r ); }
+void OutImport( BackRun& back, cg_sym_handle s, fix_class c, bool r ) { back.x86obj.Emitter->out_import( back, s, c, r ); }
+void OutRTImportRel( BackRun& back, rt_class i, fix_class c, bool r ) { back.x86obj.Emitter->out_rt_import_rel( back, i, c, r ); }
+void OutRTImport( BackRun& back, rt_class i, fix_class c ) { back.x86obj.Emitter->out_rt_import( back, i, c ); }
+void OutBckExport( BackRun& back, const char *n, bool e ) { back.x86obj.Emitter->out_bck_export( back, n, e ); }
+void OutBckImport( BackRun& back, const char *n, back_handle b, fix_class c ) { back.x86obj.Emitter->out_bck_import( back, n, b, c ); }
+void OutLineNum( BackRun& back, cg_linenum l, bool b ) { back.x86obj.Emitter->out_line_num( back, l, b ); }
+unsigned SavePendingLine( BackRun& back, unsigned l ) { return( back.x86obj.Emitter->save_pending_line( back, l ) ); }
+void OutDBytes( BackRun& back, unsigned l, const byte *s ) { back.x86obj.Emitter->out_bytes( back, l, s ); }
+void OutIBytes( BackRun& back, byte p, offset l ) { back.x86obj.Emitter->out_iterated( back, p, l ); }
+bool NeedBaseSet( BackRun& back ) { return( back.x86obj.Emitter->need_base_set(back) ); }
+offset AskMaxSize( BackRun& back ) { return( back.x86obj.Emitter->ask_max_size(back) ); }
+long_offset AskBigLocation( BackRun& back ) { return( back.x86obj.Emitter->ask_big_location(back) ); }
+long_offset AskBigMaxSize( BackRun& back ) { return( back.x86obj.Emitter->ask_big_max_size(back) ); }
+void TellObjNewLabel( BackRun& back, cg_sym_handle l ) { back.x86obj.Emitter->tell_new_label( back, l ); }
+void TellObjNewProc( BackRun& back, cg_sym_handle p ) { back.x86obj.Emitter->tell_new_proc( back, p ); }
+void TellObjVirtFuncRef( BackRun& back, void *c ) { back.x86obj.Emitter->tell_virt_func_ref( back, c ); }
+segment_id AskSegID( BackRun& back, pointer h, cg_class c ) { return( back.x86obj.Emitter->ask_seg_id( back, h, c ) ); }
+bool AskNameIsCode( BackRun& back, pointer h, cg_class c ) { return( back.x86obj.Emitter->name_is_code( back, h, c ) ); }
+bool AskNameIsROM( BackRun& back, pointer h, cg_class c ) { return( back.x86obj.Emitter->name_is_rom( back, h, c ) ); }
+bool SymIsExported( BackRun& back, cg_sym_handle s ) { return( back.x86obj.Emitter->sym_is_exported( back, s ) ); }

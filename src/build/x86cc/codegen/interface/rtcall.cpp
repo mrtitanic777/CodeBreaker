@@ -44,15 +44,16 @@
 #include "inssegs.h"
 #include "generate.h"
 #include "liveinfo.h"
+#include "backrun.hpp"
 
 
 #if _TARGET & _TARG_AXP
     #define _ParmReg( x )       FirstReg( x )
 #else
-    #define _ParmReg( x )       FirstReg( x )
+    #define _ParmReg( x )       FirstReg( back, x )
 #endif
 
-instruction     *rMAKECALL( instruction *ins )
+instruction     *rMAKECALL( BackRun& back, instruction *ins )
 /*********************************************
     Using the table RTInfo[], do all the necessary stuff to turn
     instruction "ins" into a call to a runtime support routine.  Move
@@ -72,26 +73,26 @@ instruction     *rMAKECALL( instruction *ins )
     rt_class            rtindex;
 
     if( !_IsConvert( ins ) ) {
-        rtindex = LookupRoutine( ins );
+        rtindex = LookupRoutine( back, ins );
     } else { /* look it up again in case we ran out of memory during expansion*/
-        rtindex = LookupConvertRoutine( ins );
+        rtindex = LookupConvertRoutine( back, ins );
     }
     info = &RTInfo[rtindex];
     regs = _ParmReg( info->left );
     all_regs = regs;
-    left_ins = MakeMove( ins->operands[0], AllocRegName( regs ),
+    left_ins = MakeMove( back, ins->operands[0], AllocRegName( back, regs ),
                           info->operand_class );
     ins->operands[0] = left_ins->result;
-    MoveSegOp( ins, left_ins, 0 );
-    PrefixIns( ins, left_ins );
+    MoveSegOp( back, ins, left_ins, 0 );
+    PrefixIns( back, ins, left_ins );
     regs = _ParmReg( info->right );
     if( !HW_CEqual( regs, HW_EMPTY ) ) {
-        new_ins = MakeMove( ins->operands[1], AllocRegName( regs ),
+        new_ins = MakeMove( back, ins->operands[1], AllocRegName( back, regs ),
                                 info->operand_class );
         ins->operands[1] = new_ins->result;
-        MoveSegOp( ins, new_ins, 0 );
+        MoveSegOp( back, ins, new_ins, 0 );
         HW_TurnOn( all_regs, regs );
-        PrefixIns( ins, new_ins );
+        PrefixIns( back, ins, new_ins );
     }
 #if _TARGET & _TARG_370
     tmp = RAReg();
@@ -100,18 +101,18 @@ instruction     *rMAKECALL( instruction *ins )
     HW_TurnOn( all_regs, tmp );
 #elif _TARGET & _TARG_80386
     {
-    tmp = ReturnReg( WD, false );
+    tmp = ReturnReg( back, WD, false );
     HW_TurnOn( all_regs, tmp );
     }
 #endif
-    reg_name = AllocRegName( all_regs );
-    lbl = RTLabel( rtindex );
-    new_ins = NewIns( 3 );
+    reg_name = AllocRegName( back, all_regs );
+    lbl = RTLabel( back, rtindex );
+    new_ins = NewIns( back, 3 );
     new_ins->head.opcode = OP_CALL;
     new_ins->type_class = ins->type_class;
     new_ins->operands[CALL_OP_USED] = reg_name;
     new_ins->operands[CALL_OP_USED2] = reg_name;
-    new_ins->operands[CALL_OP_ADDR] = AllocMemory( lbl, 0, CG_LBL, ins->type_class );
+    new_ins->operands[CALL_OP_ADDR] = AllocMemory( back, lbl, 0, CG_LBL, ins->type_class );
     new_ins->result = NULL;
     new_ins->num_operands = 2;         /* special case for OP_CALL*/
 #if _TARGET & _TARG_AXP
@@ -120,31 +121,31 @@ instruction     *rMAKECALL( instruction *ins )
     HW_CTurnOff( all_regs, HW_UNUSED );
     HW_TurnOn( all_regs, ReturnAddrReg() );
 #endif
-    new_ins->zap = (register_name *)AllocRegName( all_regs );   /* all parm regs could be zapped*/
+    new_ins->zap = (register_name *)AllocRegName( back, all_regs );   /* all parm regs could be zapped*/
     last_ins = new_ins;
     if( ins->result == NULL || _OpIsCondition( ins->head.opcode ) ) {
         /* comparison, still need conditional jumps*/
-        ins->operands[0] = AllocIntConst( 0 );
-        ins->operands[1] = AllocIntConst( 1 );
+        ins->operands[0] = AllocIntConst( back, 0 );
+        ins->operands[1] = AllocIntConst( back, 1 );
         DelSeg( ins );
-        DoNothing( ins );               /* just conditional jumps for ins*/
-        PrefixIns( ins, new_ins );
+        DoNothing( back, ins );               /* just conditional jumps for ins*/
+        PrefixIns( back, ins, new_ins );
         new_ins->ins_flags |= INS_CC_USED;
         last_ins = ins;
     } else {
         regs = _ParmReg( info->result );
         tmp = regs;
         HW_TurnOn( tmp, new_ins->zap->reg );
-        new_ins->zap = (register_name *)AllocRegName( tmp );
-        reg_name = AllocRegName( regs );
+        new_ins->zap = (register_name *)AllocRegName( back, tmp );
+        reg_name = AllocRegName( back, regs );
         new_ins->result = reg_name;
-        last_ins = MakeMove( reg_name, ins->result, ins->type_class );
+        last_ins = MakeMove( back, reg_name, ins->result, ins->type_class );
         ins->result = last_ins->operands[0];
-        MoveSegRes( ins, last_ins );
-        SuffixIns( ins, last_ins );
-        ReplIns( ins, new_ins );
+        MoveSegRes( back, ins, last_ins );
+        SuffixIns( back, ins, last_ins );
+        ReplIns( back, ins, new_ins );
     }
     FixCallIns( new_ins );
-    UpdateLive( left_ins, last_ins );
+    UpdateLive( back, left_ins, last_ins );
     return( left_ins );
 }

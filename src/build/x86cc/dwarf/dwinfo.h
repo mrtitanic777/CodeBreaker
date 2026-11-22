@@ -34,20 +34,20 @@
 #ifndef DWINFO_H_INCLUDED
 #define DWINFO_H_INCLUDED
 
-extern void         DW_InitDebugInfo( dw_client );
-extern void         DW_FiniDebugInfo( dw_client );
+extern void         DW_InitDebugInfo( BackRun& back, dw_client );
+extern void         DW_FiniDebugInfo( BackRun& back, dw_client );
 
-extern void         DW_InfoReloc( dw_client, uint );
-extern void         DW_Info8( dw_client, uint_8 );
-extern void         DW_Info16( dw_client, uint_16 );
-extern void         DW_Info32( dw_client, uint_32 );
-extern void         DW_InfoSLEB128( dw_client, dw_sconst );
-extern void         DW_InfoULEB128( dw_client, dw_uconst );
-extern void         DW_InfoBytes( dw_client, const void *, size_t );
-extern void         DW_InfoString( dw_client, const char * );
-extern uint_32      DW_InfoEmitLocExpr( dw_client, size_t, dw_loc_handle );
-extern void         DW_InfoEmitLocExprNull( dw_client, size_t );
-extern void         DW_InfoHandleWriteOffset( dw_client cli, dw_handle hdl );
-extern void         DW_InfoHandleReference( dw_client cli, dw_handle hdl );
+extern void         DW_InfoReloc( BackRun& back, dw_client, uint );
+extern void         DW_Info8( BackRun& back, dw_client, uint_8 );
+extern void         DW_Info16( BackRun& back, dw_client, uint_16 );
+extern void         DW_Info32( BackRun& back, dw_client, uint_32 );
+extern void         DW_InfoSLEB128( BackRun& back, dw_client, dw_sconst );
+extern void         DW_InfoULEB128( BackRun& back, dw_client, dw_uconst );
+extern void         DW_InfoBytes( BackRun& back, dw_client, const void *, size_t );
+extern void         DW_InfoString( BackRun& back, dw_client, const char * );
+extern uint_32      DW_InfoEmitLocExpr( BackRun& back, dw_client, size_t, dw_loc_handle );
+extern void         DW_InfoEmitLocExprNull( BackRun& back, dw_client, size_t );
+extern void         DW_InfoHandleWriteOffset( BackRun& back, dw_client cli, dw_handle hdl );
+extern void         DW_InfoHandleReference( BackRun& back, dw_client cli, dw_handle hdl );
 
 #endif

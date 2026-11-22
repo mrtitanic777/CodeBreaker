@@ -35,6 +35,7 @@
 #include "dwpriv.h"
 #include "dwmem.h"
 #include "dwcarve.h"
+#include "backrun.hpp"
 
 
 typedef struct blk blk_t;
@@ -55,7 +56,7 @@ struct carve_t_s {
 
 
 static void newBlk(
-    dw_client cli,
+    BackRun& back, dw_client cli,
     carve_t cv )
 {
     blk_t           *newblk;
@@ -68,7 +69,7 @@ static void newBlk(
 
 
 carve_t DW_CarveCreate(
-    dw_client                   cli,
+    BackRun& back, dw_client                   cli,
     size_t                      elm_size,
     size_t                      blk_size )
 {
@@ -81,22 +82,22 @@ carve_t DW_CarveCreate(
     cv->blk_top = blk_size * elm_size;
     cv->blk_list = NULL;
     cv->free_list = NULL;
-    newBlk( cli, cv );
+    newBlk( back, cli, cv );
     return( cv );
 }
 
 
 void DW_CarveDestroy(
-    dw_client                   cli,
+    BackRun& back, dw_client                   cli,
     carve_t                     cv )
 {
-    DW_FreeChain( cli, cv->blk_list );
+    DW_FreeChain( back, cli, cv->blk_list );
     CLIFree( cli, cv );
 }
 
 
 void *DW_CarveAlloc(
-    dw_client cli,
+    BackRun& back, dw_client cli,
     carve_t cv )
 {
     void            **new_;
@@ -107,7 +108,7 @@ void *DW_CarveAlloc(
         return( new_ );
     }
     if( cv->top_elm == cv->blk_list->data ) {
-        newBlk( cli, cv );
+        newBlk( back, cli, cv );
     }
     cv->top_elm -= cv->elm_size;
     return( cv->top_elm );

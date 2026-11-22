@@ -51,103 +51,104 @@
 #include "x86obj.h"
 #include "x86data.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
-static void DoLblPtr( label_handle lbl, segment_id segid, fix_class class_, offset plus );
+static void DoLblPtr( BackRun& back, label_handle lbl, segment_id segid, fix_class class_, offset plus );
 
 
-void    DataAlign( uint_32 align )
+void    DataAlign( BackRun& back, uint_32 align )
 /********************************/
 {
     offset      curr_loc;
     uint        modulus;
 
-    curr_loc = AskLocation();
+    curr_loc = AskLocation(back);
     modulus = curr_loc % align;
     if( modulus != 0 ) {
-        if( !AskSegIsBlank( AskOP() ) ) {
-            IterBytes( (offset)( align - modulus ), 0 );
+        if( !AskSegIsBlank( back, AskOP(back) ) ) {
+            IterBytes( back, (offset)( align - modulus ), 0 );
         } else {
-            IncLocation( align - modulus );
+            IncLocation( back, align - modulus );
         }
     }
 }
 
-void    DataBytes( unsigned len, const void *src )
+void    DataBytes( BackRun& back, unsigned len, const void *src )
 /************************************************/
 {
     if( len != 0 ) {
-        TellOptimizerByPassed();
-        SetUpObj( true );
-        OutDBytes( len, static_cast<const byte *>(src) );
-        TellByPassOver();
+        TellOptimizerByPassed(back);
+        SetUpObj( back, true );
+        OutDBytes( back, len, static_cast<const byte *>(src) );
+        TellByPassOver(back);
     }
 }
 
 
-void    DataShort( uint_16 val )
+void    DataShort( BackRun& back, uint_16 val )
 /******************************/
 {
-    TellOptimizerByPassed();
-    SetUpObj( true );
-    OutDataShort( val );
-    TellByPassOver();
+    TellOptimizerByPassed(back);
+    SetUpObj( back, true );
+    OutDataShort( back, val );
+    TellByPassOver(back);
 }
 
-void    DataLong( uint_32 val )
+void    DataLong( BackRun& back, uint_32 val )
 /*****************************/
 {
-    TellOptimizerByPassed();
-    SetUpObj( true );
-    OutDataLong( val );
-    TellByPassOver();
+    TellOptimizerByPassed(back);
+    SetUpObj( back, true );
+    OutDataLong( back, val );
+    TellByPassOver(back);
 }
 
 
-void    IterBytes( offset len, byte pat )
+void    IterBytes( BackRun& back, offset len, byte pat )
 /***************************************/
 {
-    TellOptimizerByPassed();
-    SetUpObj( true );
-    OutIBytes( pat, len );
-    TellByPassOver();
+    TellOptimizerByPassed(back);
+    SetUpObj( back, true );
+    OutIBytes( back, pat, len );
+    TellByPassOver(back);
 }
 
 
-void    DoBigBckPtr( back_handle bck, offset off )
+void    DoBigBckPtr( BackRun& back, back_handle bck, offset off )
 /*************************************************
  * Careful! Make sure a DGLabel has been done first!
  */
 {
-    TellOptimizerByPassed();
-    DoLblPtr( bck->lbl, bck->segid, F_PTR, off );
-    TellByPassOver();
+    TellOptimizerByPassed(back);
+    DoLblPtr( back, bck->lbl, bck->segid, F_PTR, off );
+    TellByPassOver(back);
 }
 
-static void     DoLblPtr( label_handle lbl, segment_id segid, fix_class class_, offset plus )
+static void     DoLblPtr( BackRun& back, label_handle lbl, segment_id segid, fix_class class_, offset plus )
 /******************************************************************************************/
 {
-    SetUpObj( true );
-    TellKeepLabel( lbl );
-    OutReloc( segid, class_, false );
-    OutLblPatch( lbl, class_, plus );
+    SetUpObj( back, true );
+    TellKeepLabel( back, lbl );
+    OutReloc( back, segid, class_, false );
+    OutLblPatch( back, lbl, class_, plus );
 }
 
 
-void    DoBigLblPtr( cg_sym_handle sym )
+void    DoBigLblPtr( BackRun& back, cg_sym_handle sym )
 /**************************************/
 {
-    TellOptimizerByPassed();
-    DoLblPtr( FEBack( sym )->lbl, FESegID( sym ), F_PTR, 0 );
-    TellByPassOver();
+    TellOptimizerByPassed(back);
+    DoLblPtr( back, FEBack( *back.front, sym )->lbl, FESegID( *back.front, sym ), F_PTR, 0 );
+    TellByPassOver(back);
 }
 
 
-static  void    DoImpPtr( cg_sym_handle sym, fix_class class_, offset plus )
+static  void    DoImpPtr( BackRun& back, cg_sym_handle sym, fix_class class_, offset plus )
 /*************************************************************************/
 {
-    SetUpObj( true );
-    OutImport( sym, class_, false );
+    SetUpObj( back, true );
+    OutImport( back, sym, class_, false );
     if( F_CLASS( class_ ) == F_BASE ) {
         _OutFarSeg( 0 );
     } else {
@@ -158,13 +159,13 @@ static  void    DoImpPtr( cg_sym_handle sym, fix_class class_, offset plus )
     }
 }
 
-void    BackImpPtr( const char *nm, back_handle bck, offset plus )
+void    BackImpPtr( BackRun& back, const char *nm, back_handle bck, offset plus )
 /****************************************************************/
 {
     fix_class const class_ = F_OFFSET;
 
-    SetUpObj( true );
-    OutBckImport( nm, bck, class_ );
+    SetUpObj( back, true );
+    OutBckImport( back, nm, bck, class_ );
     if( class_ == F_BASE ) {
         _OutFarSeg( 0 );
     } else {
@@ -175,21 +176,21 @@ void    BackImpPtr( const char *nm, back_handle bck, offset plus )
     }
 }
 
-void    OutLblPatch( label_handle lbl, fix_class class_, offset plus )
+void    OutLblPatch( BackRun& back, label_handle lbl, fix_class class_, offset plus )
 /*******************************************************************/
 {
     offset      val;
 
-    val = AskAddress( lbl );
+    val = AskAddress( back, lbl );
     if( val == ADDR_UNKNOWN ) {
-        OutPatch( lbl, ADD_PATCH | _OFFSET_PATCH );
+        OutPatch( back, lbl, ADD_PATCH | _OFFSET_PATCH );
         val = 0;
     }
     if( F_CLASS( class_ ) == F_BASE ) {
         _OutFarSeg( 0 );
     } else {
         if( F_CLASS( class_ ) == F_BIG_OFFSET ) {
-            OutDataLong( val + plus );
+            OutDataLong( back, val + plus );
         } else {
             _OutFarOff( val + plus );
         }
@@ -200,14 +201,14 @@ void    OutLblPatch( label_handle lbl, fix_class class_, offset plus )
 }
 
 
-void    FEPtr( cg_sym_handle sym, const type_def *tipe, offset plus )
+void    FEPtr( BackRun& back, cg_sym_handle sym, const type_def *tipe, offset plus )
 /*******************************************************************/
 {
     fe_attr     attr;
     fix_class   class_;
 
-    TellOptimizerByPassed();
-    attr = FEAttr( sym );
+    TellOptimizerByPassed(back);
+    attr = FEAttr( *back.front, sym );
     if( (attr & FE_PROC)
       && _IsTargetModel( CGSW_X86_WINDOWS )
       && ((call_class_target)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL) ) {
@@ -222,74 +223,74 @@ void    FEPtr( cg_sym_handle sym, const type_def *tipe, offset plus )
       && (tipe->attr & TYPE_CODE) ) {
         class_ |= F_ALT_DLLIMP;
     }
-    if( UseImportForm( attr ) ) {
-        DoImpPtr( sym, class_, plus );
+    if( UseImportForm( back, attr ) ) {
+        DoImpPtr( back, sym, class_, plus );
     } else {
-        DoLblPtr( FEBack( sym )->lbl, FESegID( sym ), class_, plus );
+        DoLblPtr( back, FEBack( *back.front, sym )->lbl, FESegID( *back.front, sym ), class_, plus );
     }
-    TellByPassOver();
+    TellByPassOver(back);
 }
 
-void    FEPtrBaseOffset( cg_sym_handle sym,  offset plus )
+void    FEPtrBaseOffset( BackRun& back, cg_sym_handle sym,  offset plus )
 /********************************************************/
 {
     fe_attr     attr;
 
-    TellOptimizerByPassed();
-    attr = FEAttr( sym );
-    if( UseImportForm( attr ) ) {
-        DoImpPtr( sym, F_PTR, plus );
+    TellOptimizerByPassed(back);
+    attr = FEAttr( *back.front, sym );
+    if( UseImportForm( back, attr ) ) {
+        DoImpPtr( back, sym, F_PTR, plus );
     } else {
-        DoLblPtr( FEBack( sym )->lbl, FESegID( sym ), F_PTR, plus );
+        DoLblPtr( back, FEBack( *back.front, sym )->lbl, FESegID( *back.front, sym ), F_PTR, plus );
     }
-    TellByPassOver();
+    TellByPassOver(back);
 }
 
-void    FEPtrBase( cg_sym_handle sym )
+void    FEPtrBase( BackRun& back, cg_sym_handle sym )
 /************************************/
 {
     fe_attr     attr;
 
-    TellOptimizerByPassed();
-    attr = FEAttr( sym );
-    if( UseImportForm( attr ) ) {
-        DoImpPtr( sym, F_BASE, 0 );
+    TellOptimizerByPassed(back);
+    attr = FEAttr( *back.front, sym );
+    if( UseImportForm( back, attr ) ) {
+        DoImpPtr( back, sym, F_BASE, 0 );
     } else {
-        DoLblPtr( FEBack( sym )->lbl, FESegID( sym ), F_BASE, 0 );
+        DoLblPtr( back, FEBack( *back.front, sym )->lbl, FESegID( *back.front, sym ), F_BASE, 0 );
     }
-    TellByPassOver();
+    TellByPassOver(back);
 }
 
 
-void    BackPtr( back_handle bck, segment_id segid, offset plus, const type_def *tipe )
+void    BackPtr( BackRun& back, back_handle bck, segment_id segid, offset plus, const type_def *tipe )
 /*************************************************************************************/
 {
-    TellOptimizerByPassed();
+    TellOptimizerByPassed(back);
     if( tipe->length != WORD_SIZE ) {
-        DoLblPtr( bck->lbl, segid, F_PTR, plus );
+        DoLblPtr( back, bck->lbl, segid, F_PTR, plus );
     } else {
-        DoLblPtr( bck->lbl, segid, F_OFFSET, plus );
+        DoLblPtr( back, bck->lbl, segid, F_OFFSET, plus );
     }
-    TellByPassOver();
+    TellByPassOver(back);
 }
 
-void    BackPtrBigOffset( back_handle bck, segment_id segid, offset plus )
+void    BackPtrBigOffset( BackRun& back, back_handle bck, segment_id segid, offset plus )
 /************************************************************************/
 {
-    TellOptimizerByPassed();
-    DoLblPtr( bck->lbl, segid, F_BIG_OFFSET, plus );
-    TellByPassOver();
+    TellOptimizerByPassed(back);
+    DoLblPtr( back, bck->lbl, segid, F_BIG_OFFSET, plus );
+    TellByPassOver(back);
 }
 
-void    BackPtrBase( back_handle bck, segment_id segid )
+void    BackPtrBase( BackRun& back, back_handle bck, segment_id segid )
 /******************************************************/
 {
-    TellOptimizerByPassed();
-    DoLblPtr( bck->lbl, segid, F_BASE, 0 );
-    TellByPassOver();
+    TellOptimizerByPassed(back);
+    DoLblPtr( back, bck->lbl, segid, F_BASE, 0 );
+    TellByPassOver(back);
 }
 
-static  cg_class ConstDataClass( void )
+static  cg_class ConstDataClass( BackRun& back )
 /*************************************/
 {
     if( _IsTargetModel( CGSW_X86_CONST_IN_CODE ) ) {
@@ -301,7 +302,7 @@ static  cg_class ConstDataClass( void )
     }
 }
 
-name    *GenConstData( const void *buffer, type_class_def type_class )
+name    *GenConstData( BackRun& back, const void *buffer, type_class_def type_class )
 /********************************************************************/
 {
     segment_id          segid;
@@ -310,57 +311,57 @@ name    *GenConstData( const void *buffer, type_class_def type_class )
     label_handle        label;
     type_length         size;
 
-    TellOptimizerByPassed();
-    cgclass = ConstDataClass();
-    size = data_state().TypeClassSize[type_class];
-    label = AskForLabel( NULL );
+    TellOptimizerByPassed(back);
+    cgclass = ConstDataClass(back);
+    size = back.data.TypeClassSize[type_class];
+    label = AskForLabel( back, NULL );
     if( cgclass == CG_CLB ) {
-        segid = AskCodeSeg();
+        segid = AskCodeSeg(back);
     } else {
-        segid = AskBackSeg();
+        segid = AskBackSeg(back);
     }
     PUSH_OP( segid );
-        SetUpObj( true );
+        SetUpObj( back, true );
         if( cgclass == CG_CLB ) {
-            GenSelEntry( true );
-            CodeLabel( label, size );
-            CodeBytes( buffer, size );
-            GenSelEntry( false );
+            GenSelEntry( back, true );
+            CodeLabel( back, label, size );
+            CodeBytes( back, buffer, size );
+            GenSelEntry( back, false );
         } else {
-            DataAlign( size );
-            OutLabel( label );
-            DataBytes( size, buffer );
+            DataAlign( back, size );
+            OutLabel( back, label );
+            DataBytes( back, size, buffer );
         }
     POP_OP();
-    TellByPassOver();
-    result = AllocMemory( label, 0, cgclass, type_class );
+    TellByPassOver(back);
+    result = AllocMemory( back, label, 0, cgclass, type_class );
     result->v.usage |= USE_IN_ANOTHER_BLOCK;
     return( result );
 }
 
-name    *GenFloat( name *cons, type_class_def type_class )
+name    *GenFloat( BackRun& back, name *cons, type_class_def type_class )
 /********************************************************/
 {
     constant_defn       *floatval;
     name                *result;
 
-    floatval = GetFloat( cons, type_class );
+    floatval = GetFloat( back, cons, type_class );
     if( floatval->label == NULL ) {
-        result = GenConstData( &floatval->buffer, type_class );
+        result = GenConstData( back, &floatval->buffer, type_class );
         floatval->label = result->v.symbol;
     } else {
-        result = AllocMemory( floatval->label, 0, ConstDataClass(), type_class );
+        result = AllocMemory( back, floatval->label, 0, ConstDataClass(back), type_class );
     }
     return( result );
 }
 
 
-void    DataLabel( label_handle lbl )
+void    DataLabel( BackRun& back, label_handle lbl )
 /***********************************/
 {
-    TellObjNewLabel( AskForLblSym( lbl ) );
-    TellOptimizerByPassed();
-    SetUpObj( true );
-    OutLabel( lbl );
-    TellByPassOver();
+    TellObjNewLabel( back, AskForLblSym( back, lbl ) );
+    TellOptimizerByPassed(back);
+    SetUpObj( back, true );
+    OutLabel( back, lbl );
+    TellByPassOver(back);
 }

@@ -32,15 +32,16 @@
 
 
 // defined in cmdlnXXX.c for target/architecture
-extern void CmdSysInit( void );
+#pragma once
+extern void CmdSysInit( FrontRun& front );
 extern void CmdSysFini( void );
 extern char *CmdSysEnvVar( void );
-extern void CmdSysSetMaxOptimization( void );
-extern void CmdSysAnalyse( OPT_STORAGE * );
+extern void CmdSysSetMaxOptimization( FrontRun& front );
+extern void CmdSysAnalyse( FrontRun& front, OPT_STORAGE * );
 
 // defined in coptions.c
-extern char *SetStringOption( char **, OPT_STRING ** );
-extern void SetTargetName( char **, const char * );
-extern void SetTargetNameBT( char **target_name, OPT_STRING **bt_value );
-extern bool MergeIncludeFromEnv( const char * );
-extern void DefSwitchMacro( const char * );
+extern char *SetStringOption( FrontRun& front, char **, OPT_STRING ** );
+extern void SetTargetName( FrontRun& front, char **, const char * );
+extern void SetTargetNameBT( FrontRun& front, char **target_name, OPT_STRING **bt_value );
+extern bool MergeIncludeFromEnv( FrontRun& front, const char * );
+extern void DefSwitchMacro( FrontRun& front, const char * );

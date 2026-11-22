@@ -47,37 +47,33 @@
 #include "feprotos.h"
 
 #include "clibext.h"
+#include "frontrun.hpp"
 
 
-#define IDEFN(x)        ideentry_state().IdeCbs->x
+#define IDEFN(x)        front.ideentry.IdeCbs->x
 
 //static   IDEInitInfo   Info;
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct IdeentryState {
-    IDECBHdl IdeHdl;   // - handle for this instantiation
-    IDECallBacks *IdeCbs;   // - call backs into IDE
-    jmp_buf *FatalEnv;
-};
+/* (struct IdeentryState: ideentry_state.h) */
 
 }  // namespace
 
-static inline IdeentryState& ideentry_state() { return cbrun_part<IdeentryState>(); }
 
-void ConBlip( void )
+void ConBlip( FrontRun& front )
 /*******************
  * C compiler do a blip to console
  */
 {
-    IDEFN( PrintWithCRLF )( ideentry_state().IdeHdl, "." );
+    IDEFN( PrintWithCRLF )( front.ideentry.IdeHdl, "." );
     /*
      * we are ignoring return for now
      */
 }
 
-void ConsErrMsg( cmsg_info *cinfo )
+void ConsErrMsg( FrontRun& front, cmsg_info *cinfo )
 /**********************************
  * C compiler call back to do a  console print to stderr
  */
@@ -106,13 +102,13 @@ void ConsErrMsg( cmsg_info *cinfo )
     if( cinfo->line != 0 ) {
         IdeMsgSetSrcLine( &info, cinfo->line );
     }
-    IDEFN( PrintWithInfo )( ideentry_state().IdeHdl, &info );
+    IDEFN( PrintWithInfo )( front.ideentry.IdeHdl, &info );
     /*
      * we are ignoring return for now
      */
 }
 
-void ConsErrMsgVerbatim( char const *line )
+void ConsErrMsgVerbatim( FrontRun& front, char const *line )
 /******************************************
  * C compiler call back to a console print to stderr
  */
@@ -120,13 +116,13 @@ void ConsErrMsgVerbatim( char const *line )
     IDEMsgInfo info;
 
     IdeMsgInit( &info, IDEMSGSEV_ERROR, line );
-    IDEFN( PrintWithInfo )( ideentry_state().IdeHdl, &info );
+    IDEFN( PrintWithInfo )( front.ideentry.IdeHdl, &info );
     /*
      * we are ignoring return for now
      */
 }
 
-void BannerMsg( char const  *line )
+void BannerMsg( FrontRun& front, char const  *line )
 /**********************************
  * C compiler call back to print a banner type msg
  */
@@ -134,13 +130,13 @@ void BannerMsg( char const  *line )
     IDEMsgInfo info;
 
     IdeMsgInit( &info, IDEMSGSEV_BANNER, line );
-    IDEFN( PrintWithInfo )( ideentry_state().IdeHdl, &info );
+    IDEFN( PrintWithInfo )( front.ideentry.IdeHdl, &info );
     /*
      * we are ignoring return for now
      */
 }
 
-void DebugMsg( char const  *line )
+void DebugMsg( FrontRun& front, char const  *line )
 /**********************************
  * C compiler call back to print a banner type msg
  */
@@ -148,13 +144,13 @@ void DebugMsg( char const  *line )
     IDEMsgInfo info;
 
     IdeMsgInit( &info, IDEMSGSEV_DEBUG, line );
-    IDEFN( PrintWithInfo )( ideentry_state().IdeHdl, &info );
+    IDEFN( PrintWithInfo )( front.ideentry.IdeHdl, &info );
     /*
      * we are ignoring return for now
      */
 }
 
-void NoteMsg( char const  *line )
+void NoteMsg( FrontRun& front, char const  *line )
 /**********************************
  * C compiler call back to print a banner type msg
  */
@@ -162,13 +158,13 @@ void NoteMsg( char const  *line )
     IDEMsgInfo info;
 
     IdeMsgInit( &info, IDEMSGSEV_NOTE_MSG, line );
-    IDEFN( PrintWithInfo )( ideentry_state().IdeHdl, &info );
+    IDEFN( PrintWithInfo )( front.ideentry.IdeHdl, &info );
     /*
      * we are ignoring return for now
      */
 }
 
-const char *FEGetEnv( char const *name )
+const char *FEGetEnv( FrontRun& front, char const *name )
 /***************************************
  * get enviorment variable
  */
@@ -176,8 +172,8 @@ const char *FEGetEnv( char const *name )
     const char *ret;
 
     ret = NULL;
-    if( !cvars_state().GlobalCompFlags.ignore_environment ) {
-        if( IDEFN( GetInfo )( ideentry_state().IdeHdl, IDE_GET_ENV_VAR, (IDEGetInfoWParam)name, (IDEGetInfoLParam)&ret ) ) {
+    if( !front.cvars.GlobalCompFlags.ignore_environment ) {
+        if( IDEFN( GetInfo )( front.ideentry.IdeHdl, IDE_GET_ENV_VAR, (IDEGetInfoWParam)name, (IDEGetInfoLParam)&ret ) ) {
             ret = NULL;
         }
     }
@@ -185,10 +181,10 @@ const char *FEGetEnv( char const *name )
 }
 
 
-void MyExit( int ret )
+void MyExit( FrontRun& front, int ret )
 /********************/
 {
-    longjmp( *ideentry_state().FatalEnv, ret );
+    longjmp( *front.ideentry.FatalEnv, ret );
 }
 
 // IDE INTERFACE
@@ -215,14 +211,17 @@ IDEBool IDEAPI IDEInitDLL
 /************************
  * DLL INITIALIZATION
  ************************/
-    ideentry_state().IdeHdl = idehdl;
-    ideentry_state().IdeCbs = idecbs;
-    *dllhdl = NULL;
+    RunSet* run = cbrun_begin( static_cast<RunSet*>( *dllhdl ) );   // (the run the host kept from its last compile, or a new one: the handle the host passes to the other entry points)
+    FrontRun& front = *run->front;
+
+    front.ideentry.IdeHdl = idehdl;
+    front.ideentry.IdeCbs = idecbs;
+    *dllhdl = run;
 #if HEAP_CHK == 1
     HeapUsedHi = 0;
     HeapFreeHi = 0;
 #endif
-    FrontEndInit( true );
+    FrontEndInit( front, true );
     return( false );
 }
 
@@ -241,9 +240,18 @@ void IDEAPI IDEFiniDLL( IDEDllHdl hdl )
  * DLL COMPLETION
  */
 {
-    /* unused parameters */ (void)hdl;
+    RunSet* run = static_cast<RunSet*>( hdl );
 
-    FrontEndFini();
+    FrontEndFini( *run->front );
+    cbrun_end( run );   // (the run is the host's still: its next compile starts with it)
+}
+
+void IDEAPI IDEFreeRun( IDEDllHdl hdl )
+/**************************************
+ * the host has no more compiles
+ */
+{
+    cbrun_free( static_cast<RunSet*>( hdl ) );
 }
 
 #if HEAP_CHK == 1
@@ -301,17 +309,17 @@ static int heap_size( struct heap_stat *stat )
 }
 #endif
 
-static void getFrontEndArgv( char **argv, char *infile, char *outfile )
+static void getFrontEndArgv( FrontRun& front, char **argv, char *infile, char *outfile )
 {
     char    *p;
 
-    if( !cvars_state().GlobalCompFlags.ide_cmd_line_has_files ) {
+    if( !front.cvars.GlobalCompFlags.ide_cmd_line_has_files ) {
         infile[0] = '\0';
-        IDEFN( GetInfo )( ideentry_state().IdeHdl, IDE_GET_SOURCE_FILE, (IDEGetInfoWParam)NULL, (IDEGetInfoLParam)infile );
+        IDEFN( GetInfo )( front.ideentry.IdeHdl, IDE_GET_SOURCE_FILE, (IDEGetInfoWParam)NULL, (IDEGetInfoLParam)infile );
         *argv++ = infile;
         outfile[0] = '\0';
         p = outfile + 4;
-        if( !IDEFN( GetInfo )( ideentry_state().IdeHdl, IDE_GET_TARGET_FILE, (IDEGetInfoWParam)NULL, (IDEGetInfoLParam)p ) ) {
+        if( !IDEFN( GetInfo )( front.ideentry.IdeHdl, IDE_GET_TARGET_FILE, (IDEGetInfoWParam)NULL, (IDEGetInfoLParam)p ) ) {
             outfile[0] = '-';
             outfile[1] = 'f';
             outfile[2] = 'o';
@@ -337,22 +345,22 @@ int IDEAPI IDERunYourSelf       // COMPILE A PROGRAM
     char        *argv[4];
     int         ret;
 
-    /* unused parameters */ (void)hdl;
+    FrontRun& front = *static_cast<RunSet*>( hdl )->front;
 
-    TBreak();   // clear any pending IDEStopRunning's
+    TBreak(*front.back);   // clear any pending IDEStopRunning's
     *fatal_error = false;
-    ideentry_state().FatalEnv = JMPBUF_PTR( env );
+    front.ideentry.FatalEnv = JMPBUF_PTR( env );
     /*
      * initialize argv array
      */
     argv[0] = (char *)opts;
     argv[1] = NULL;
-    getFrontEndArgv( argv + 1, infile, outfile );
+    getFrontEndArgv( front, argv + 1, infile, outfile );
     if( setjmp( env ) != 0 ) {  /* if fatal error has occurred */
         *fatal_error = true;
         ret = true;
     } else {
-        ret = FrontEnd( argv );
+        ret = FrontEnd( front, argv );
     }
 #if HEAP_CHK  == 1
     heap_check();
@@ -423,9 +431,9 @@ int IDEAPI IDERunYourSelfArgv   // COMPILE A PROGRAM
 }
 #endif
 
-void IDEAPI IDEStopRunning( void )
+void IDEAPI IDEStopRunning( IDEDllHdl hdl )
 {
-    CauseTBreak();
+    CauseTBreak( *static_cast<RunSet*>( hdl )->back );
 }
 
 #if 0
@@ -444,26 +452,26 @@ IDEBool IDEAPI IDEProvideHelp   // PROVIDE HELP INFORMATION
 IDEBool IDEAPI IDEPassInitInfo( IDEDllHdl hdl, IDEInitInfo *info )
 /****************************************************************/
 {
-    /* unused parameters */ (void)hdl;
+    FrontRun& front = *static_cast<RunSet*>( hdl )->front;
 
 //    DbgVerify( hdl == CompInfo.dll_handle, "PassInitInfo -- handle mismatch" );
     if( info->ver < 2 ) {
         return( true );
     }
     if( info->ignore_env ) {
-        cvars_state().GlobalCompFlags.ignore_environment = true;
-        cvars_state().GlobalCompFlags.ignore_current_dir = true;
+        front.cvars.GlobalCompFlags.ignore_environment = true;
+        front.cvars.GlobalCompFlags.ignore_current_dir = true;
     }
     if( info->cmd_line_has_files ) {
-        cvars_state().GlobalCompFlags.ide_cmd_line_has_files = true;
+        front.cvars.GlobalCompFlags.ide_cmd_line_has_files = true;
     }
     if( info->ver > 2 ) {
         if( info->console_output ) {
-            cvars_state().GlobalCompFlags.ide_console_output = true;
+            front.cvars.GlobalCompFlags.ide_console_output = true;
         }
         if( info->ver > 3 ) {
             if( info->progress_messages ) {
-                cvars_state().GlobalCompFlags.progress_messages = true;
+                front.cvars.GlobalCompFlags.progress_messages = true;
             }
         }
     }

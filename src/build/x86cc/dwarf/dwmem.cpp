@@ -35,7 +35,7 @@
 #include "dwmem.h"
 
 char *DW_Strdup(
-    dw_client cli,
+    BackRun& back, dw_client cli,
     const char *str )
 {
     size_t          len;
@@ -48,7 +48,7 @@ char *DW_Strdup(
 
 
 void *DW_FreeLink(
-    dw_client cli,
+    BackRun& back, dw_client cli,
     void *node )
 {
     void            *next;
@@ -60,7 +60,7 @@ void *DW_FreeLink(
 
 
 void DW_FreeChain(
-    dw_client cli,
+    BackRun& back, dw_client cli,
     void *list )
 {
     void            *cur;

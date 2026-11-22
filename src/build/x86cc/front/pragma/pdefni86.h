@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define NC '\0'
 
 extern hw_reg_set const DefaultVarParms[] = {

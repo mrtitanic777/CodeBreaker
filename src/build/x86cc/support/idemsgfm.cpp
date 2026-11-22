@@ -34,17 +34,15 @@
 #include <stdio.h>
 
 #include "idedll.h"
+#include "supportrun.hpp"
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct IdemsgfmState {
-    char contextual_file[ 144 ];   // name of contextual file
-};
+/* (struct IdemsgfmState: idemsgfm_state.h) */
 
 }  // namespace
 
-static inline IdemsgfmState& idemsgfm_state() { return cbrun_part<IdemsgfmState>(); }
 
 
 #define TEXT_SEVERITY_WARNING   "Warning!"
@@ -280,7 +278,7 @@ void IdeMsgFormat               // FORMAT A MESSAGE
 
 
 void IdeMsgStartDll             // START OF FORMATING FOR A DLL (EACH TIME)
-    ( void )
+    ( SupportRun& support )
 {
-    idemsgfm_state().contextual_file[0] = '\0';
+    support.idemsgfm.contextual_file[0] = '\0';
 }

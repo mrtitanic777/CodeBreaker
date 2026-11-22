@@ -42,18 +42,16 @@
 #include "blktrim.h"
 #include "dumpio.h"
 #include "trecurse.h"
+#include "backrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct TrecurseState {
-    name *ReturnValue;
-};
+/* (struct TrecurseState: trecurse_state.h) */
 
 }  // namespace
 
-static inline TrecurseState& trecurse_state() { return cbrun_part<TrecurseState>(); }
 
 
 #define _TR_LINK( x )   x->u1.parm_list
@@ -112,7 +110,7 @@ static bool SafeOp( name *op, bool write )
     }
 }
 
-static bool CheckReturn( instruction *ins )
+static bool CheckReturn( BackRun& back, instruction *ins )
 /******************************************
  * Check to see if the given instruction, which writes to
  * ReturnValue, receives it's value, unmodified, from the
@@ -131,7 +129,7 @@ static bool CheckReturn( instruction *ins )
      * the way down we know the first call we will hit will be the one
      * we are thinking of eliminating
      */
-    value = trecurse_state().ReturnValue;
+    value = back.trecurse.ReturnValue;
     while( ins->head.opcode != OP_CALL ) {
         if( ins->result == value ) {
             if( ins->head.opcode != OP_MOV )
@@ -143,11 +141,11 @@ static bool CheckReturn( instruction *ins )
          */
         ins = FindPreviousIns( ins );
     }
-    return( value == trecurse_state().ReturnValue );
+    return( value == back.trecurse.ReturnValue );
 }
 
 
-static void DoOneParm( instruction *parm_ins, instruction *decl_ins, instruction *callins )
+static void DoOneParm( BackRun& back, instruction *parm_ins, instruction *decl_ins, instruction *callins )
 /********************************************************************
  * Replace the parm_ins with a convert and a move designed to set up
  * the parms into the appropriate temps so we can simply jump to the
@@ -164,14 +162,14 @@ static void DoOneParm( instruction *parm_ins, instruction *decl_ins, instruction
     src = parm_ins->operands[0];
     src_type_class = src->n.type_class;
     dst_type_class = decl_ins->result->n.type_class;
-    tmp = AllocTemp( dst_type_class );
-    first = MakeConvert( src, tmp, dst_type_class, src_type_class );
-    second = MakeMove( tmp, decl_ins->result, dst_type_class );
-    ReplIns( parm_ins, first );
-    PrefixIns( callins, second );
+    tmp = AllocTemp( back, dst_type_class );
+    first = MakeConvert( back, src, tmp, dst_type_class, src_type_class );
+    second = MakeMove( back, tmp, decl_ins->result, dst_type_class );
+    ReplIns( back, parm_ins, first );
+    PrefixIns( back, callins, second );
 }
 
-static void DoTrans( block *blk, instruction *call_ins )
+static void DoTrans( BackRun& back, block *blk, instruction *call_ins )
 /*******************************************************
  * Transform a recursive call into a jump to the
  * start of our function.
@@ -184,10 +182,10 @@ static void DoTrans( block *blk, instruction *call_ins )
     block_num   i;
     block_edge  *edge;
 
-    decl_ins = _PROC_LINK( data_state().CurrProc );
+    decl_ins = _PROC_LINK( back.data.CurrProc );
     for( ins = _TR_LINK( call_ins ); ins != NULL; ins = next ) {
         next = _TR_LINK( ins );
-        DoOneParm( ins, decl_ins, call_ins );
+        DoOneParm( back, ins, decl_ins, call_ins );
         decl_ins = _TR_LINK( decl_ins );
     }
     /*
@@ -195,12 +193,12 @@ static void DoTrans( block *blk, instruction *call_ins )
      */
     for( ins = call_ins; ins->head.opcode != OP_BLOCK; ins = next ) {
         next = ins->head.next;
-        FreeIns( ins );
+        FreeIns( back, ins );
     }
     /*
      * make blk jump to the block after the prologue
      */
-    target = data_state().HeadBlock->edge[0].destination.u.blk;
+    target = back.data.HeadBlock->edge[0].destination.u.blk;
     _MarkBlkAttrClr( blk, BLK_CONDITIONAL | BLK_RETURN | BLK_SELECT );
     _MarkBlkAttrSet( blk, BLK_JUMP );
     /*
@@ -218,7 +216,7 @@ static void DoTrans( block *blk, instruction *call_ins )
     PointEdge( edge, target );
 }
 
-static bool SafePath( instruction *ins )
+static bool SafePath( BackRun& back, instruction *ins )
 /***************************************
  * Return true if the path from the given ins (not OP_BLOCK)
  * to the end of the block is safe to ignore for purposes of
@@ -228,7 +226,7 @@ static bool SafePath( instruction *ins )
     opcnt       i;
 
     for( ; ins->head.opcode != OP_BLOCK ; ins = ins->head.next ) {
-        if( SideEffect( ins ) )
+        if( SideEffect( back, ins ) )
             return( false );
         if( _OpIsCall( ins->head.opcode ) )
             return( false );
@@ -237,13 +235,13 @@ static bool SafePath( instruction *ins )
                 return( false );
             }
         }
-        if( ins->result == trecurse_state().ReturnValue ) {
+        if( ins->result == back.trecurse.ReturnValue ) {
             /*
              * check to see if this value we are writing into the
              * return register is the value returned from the
              * recursive call we are eliminating - if so continue
              */
-            if( CheckReturn( ins ) ) {
+            if( CheckReturn( back, ins ) ) {
                 continue;
             }
         }
@@ -254,7 +252,7 @@ static bool SafePath( instruction *ins )
     return( true );
 }
 
-static block *SafeBlock( block *blk )
+static block *SafeBlock( BackRun& back, block *blk )
 /************************************
  * Return blk if the given block, and all reachable blocks,
  * are safe to ignore for purposes of eliminating tail recursion,
@@ -270,11 +268,11 @@ static block *SafeBlock( block *blk )
         return( NULL );
     _MarkBlkMarked( blk );
     safe = NULL;
-    if( SafePath( blk->ins.head.next ) ) {
+    if( SafePath( back, blk->ins.head.next ) ) {
         safe = blk;
         for( i = 0; i < blk->targets; i++ ) {
             dest = blk->edge[i].destination.u.blk;
-            if( SafeRecurseCG( (func_sr)SafeBlock, dest ) == NULL ) {
+            if( SafeRecurseCG( back, (func_sr)SafeBlock, dest ) == NULL ) {
                 safe = NULL;
                 break;
             }
@@ -301,7 +299,7 @@ static bool ScaryOperand( name *var )
     return( false );
 }
 
-static bool ScaryConditions( void )
+static bool ScaryConditions( BackRun& back )
 /**********************************
  * Traverse the current function and return
  * true if there are any conditions present which
@@ -314,7 +312,7 @@ static bool ScaryConditions( void )
     instruction *ins;
     opcnt       i;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = 0; i < ins->num_operands; i++ ) {
                 if( ScaryOperand( ins->operands[i] ) ) {
@@ -329,7 +327,7 @@ static bool ScaryConditions( void )
     return( false );
 }
 
-static bool     OkayToTransCall( block *blk, instruction *call_ins )
+static bool     OkayToTransCall( BackRun& back, block *blk, instruction *call_ins )
 /*******************************************************************
  * Check to see if it is okay to turn this call instruction
  * into a jump to eliminate tail recursion.  To see if this
@@ -345,7 +343,7 @@ static bool     OkayToTransCall( block *blk, instruction *call_ins )
     instruction     *ins;
     bool            ok;
 
-    label = AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) );
+    label = AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) );
     if( call_ins->operands[CALL_OP_ADDR]->v.symbol != label ) {
         return( false );
     }
@@ -353,7 +351,7 @@ static bool     OkayToTransCall( block *blk, instruction *call_ins )
      * check to make sure length of parm lists are the same
      */
     parm = _TR_LINK( call_ins );
-    for( ins = _PROC_LINK( data_state().CurrProc ); ins != NULL; ins = _TR_LINK( ins ) ) {
+    for( ins = _PROC_LINK( back.data.CurrProc ); ins != NULL; ins = _TR_LINK( ins ) ) {
         if( parm == NULL )
             return( false );
         parm = _TR_LINK( parm );
@@ -365,7 +363,7 @@ static bool     OkayToTransCall( block *blk, instruction *call_ins )
      * call ins to the return block
      */
     ok = false;
-    trecurse_state().ReturnValue = call_ins->result;
+    back.trecurse.ReturnValue = call_ins->result;
     _MarkBlkMarked( blk );
     /*
      * if the call is in the return block, then there are no
@@ -375,11 +373,11 @@ static bool     OkayToTransCall( block *blk, instruction *call_ins )
      * (besides - certain codegen stuff needs a RET block)
      */
     if( !_IsBlkAttr( blk, BLK_RETURN )
-      && SafePath( call_ins->head.next ) ) {
+      && SafePath( back, call_ins->head.next ) ) {
         ok = true;
         for( i = 0; i < blk->targets; i++ ) {
             dest = blk->edge[i].destination.u.blk;
-            if( SafeBlock( dest ) == NULL ) {
+            if( SafeBlock( back, dest ) == NULL ) {
                 ok = false;
                 break;
             }
@@ -405,7 +403,7 @@ void     TRAddParm( instruction *call_ins, instruction *parm_ins )
     _TR_LINK( call_ins ) = static_cast<struct instruction *>((void *)parm_ins);
 }
 
-void     TRDeclareParm( instruction *parm_ins )
+void     TRDeclareParm( BackRun& back, instruction *parm_ins )
 /*****************************************************
  * Declare another parm for the current procedure. This parm
  * is added to a linked list hanging off of CurrProc.
@@ -413,11 +411,11 @@ void     TRDeclareParm( instruction *parm_ins )
 {
     if( parm_ins == NULL )
         return;
-    _TR_LINK( parm_ins ) = static_cast<struct instruction *>((void *)_PROC_LINK( data_state().CurrProc ));
-    _PROC_LINK( data_state().CurrProc ) = static_cast<instruction *>((void *)parm_ins);
+    _TR_LINK( parm_ins ) = static_cast<struct instruction *>((void *)_PROC_LINK( back.data.CurrProc ));
+    _PROC_LINK( back.data.CurrProc ) = static_cast<instruction *>((void *)parm_ins);
 }
 
-bool     TailRecursion( void )
+bool     TailRecursion( BackRun& back )
 /************************************
  * Eliminate any tail recursion. We assume that, for any call in
  * the function, we have a linked list of the parameters to that
@@ -439,13 +437,13 @@ bool     TailRecursion( void )
 
     changed = false;
     if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION )
-      && !ScaryConditions()
-      && !data_state().BlockByBlock ) {
-        for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+      && !ScaryConditions(back)
+      && !back.data.BlockByBlock ) {
+        for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
             for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
                 if( ins->head.opcode == OP_CALL ) {
-                    if( OkayToTransCall( blk, ins ) ) {
-                        DoTrans( blk, ins );
+                    if( OkayToTransCall( back, blk, ins ) ) {
+                        DoTrans( back, blk, ins );
                         changed = true;
                         break;
                     }
@@ -456,12 +454,12 @@ bool     TailRecursion( void )
     /*
      * now reset our links and flags
      */
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             _TR_LINK( ins ) = NULL;
         }
     }
-    for( ins = _PROC_LINK( data_state().CurrProc ); ins != NULL; ins = next ) {
+    for( ins = _PROC_LINK( back.data.CurrProc ); ins != NULL; ins = next ) {
         next = _TR_LINK( ins );
         _TR_LINK( ins ) = NULL;
     }

@@ -36,7 +36,7 @@
 #include "maptypes.h"
 
 
-type_class_def MapIntReturn( cg_type type )
+type_class_def MapIntReturn( BackRun& back, cg_type type )
 /*****************************************/
 {
     switch( type ) {
@@ -53,7 +53,7 @@ type_class_def MapIntReturn( cg_type type )
 }
 
 
-type_class_def MapPointer( cg_type type )
+type_class_def MapPointer( BackRun& back, cg_type type )
 /***********************************************
     return the internal type associated with
     pointer type given. This varies depending upon

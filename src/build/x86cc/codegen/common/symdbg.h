@@ -34,6 +34,7 @@
 /* % */
 /* % Location expresions */
 /* % */
+#pragma once
 #define LOC_BP_OFFSET       0x10
 #define BP_BYTE             0x00
 #define BP_WORD             0x01

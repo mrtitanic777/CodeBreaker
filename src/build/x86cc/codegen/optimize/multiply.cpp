@@ -38,6 +38,7 @@
 #include "insutil.h"
 #include "utils.h"
 #include "multiply.h"
+#include "backrun.hpp"
 
 
 #define MAXOPS  20
@@ -57,16 +58,17 @@ typedef struct op {
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
+}  // namespace
 struct MultiplyState {
     op Ops[MAXOPS];
 };
+namespace {
 
 }  // namespace
 
-static inline MultiplyState& multiply_state() { return cbrun_part<MultiplyState>(); }
 
 
-static  int     Factor( uint_32 num, int *cost )
+static  int     Factor( BackRun& back, uint_32 num, int *cost )
 /**********************************************/
 {
     int         shlcnt;
@@ -107,16 +109,16 @@ static  int     Factor( uint_32 num, int *cost )
 
                     if( --i < 0 )
                         return( MAXOPS );
-                    multiply_state().Ops[i].op = test == pow2 - 1 ? DO_SUB : DO_ADD;
+                    back.multiply->Ops[i].op = test == pow2 - 1 ? DO_SUB : DO_ADD;
 
                     if( --i < 0 )
                         return( MAXOPS );
-                    multiply_state().Ops[i].op = DO_SHL;
-                    multiply_state().Ops[i].cnt= shlcnt;
+                    back.multiply->Ops[i].op = DO_SHL;
+                    back.multiply->Ops[i].cnt= shlcnt;
 
                     if( --i < 0 )
                         return( MAXOPS );
-                    multiply_state().Ops[i].op = DO_XFR;
+                    back.multiply->Ops[i].op = DO_XFR;
                     break;
                 }
             }
@@ -134,8 +136,8 @@ static  int     Factor( uint_32 num, int *cost )
         if( shlcnt != 0 ) {
             if( --i < 0 )
                 return( MAXOPS );
-            multiply_state().Ops[i].op = DO_SHL;
-            multiply_state().Ops[i].cnt= shlcnt;
+            back.multiply->Ops[i].op = DO_SHL;
+            back.multiply->Ops[i].cnt= shlcnt;
         }
         if( num == 1 )
             break;
@@ -143,11 +145,11 @@ static  int     Factor( uint_32 num, int *cost )
             return( MAXOPS );
         shlcnt = 0;
         if( (num & 3) == 1 ) {
-            multiply_state().Ops[i].op = DO_ADD;
+            back.multiply->Ops[i].op = DO_ADD;
             num >>= 1;
             shlcnt = 1;
         } else {
-            multiply_state().Ops[i].op = DO_SUB;
+            back.multiply->Ops[i].op = DO_SUB;
             ++num;
         }
     }
@@ -155,15 +157,15 @@ static  int     Factor( uint_32 num, int *cost )
      * Now estimate the cost of the alternate instruction sequence.
      */
     for( j = i; j < MAXOPS; ++j ) {
-        switch( multiply_state().Ops[j].op ) {
+        switch( back.multiply->Ops[j].op ) {
         case DO_SHL:
-            *cost += ShiftCost( multiply_state().Ops[j].cnt );
+            *cost += ShiftCost( back, back.multiply->Ops[j].cnt );
             break;
         case DO_ADD:
-            *cost += AddCost();
+            *cost += AddCost(back);
             break;
         case DO_SUB:
-            *cost += SubCost();
+            *cost += SubCost(back);
             break;
         default:
             *cost += 1;
@@ -180,7 +182,7 @@ static  int     Factor( uint_32 num, int *cost )
     return( i );
 }
 
-static  instruction     *CheckMul( instruction *ins )
+static  instruction     *CheckMul( BackRun& back, instruction *ins )
 /***************************************************/
 {
     int_32              rhs;
@@ -199,46 +201,46 @@ static  instruction     *CheckMul( instruction *ins )
         rhs = -rhs;
         neg = true;
     }
-    i = Factor( rhs, &cost );
-    if( MulCost( rhs ) <= cost )
+    i = Factor( back, rhs, &cost );
+    if( MulCost( back, rhs ) <= cost )
         return( ins );
     if( i == MAXOPS )
         return( ins );
-    orig = AllocTemp( type_class );
-    new_ins = MakeMove( ins->operands[0], orig, type_class );
-    PrefixIns( ins, new_ins );
-    temp = AllocTemp( type_class );
-    new_ins = MakeMove( orig, temp, type_class );
-    PrefixIns( ins, new_ins );
+    orig = AllocTemp( back, type_class );
+    new_ins = MakeMove( back, ins->operands[0], orig, type_class );
+    PrefixIns( back, ins, new_ins );
+    temp = AllocTemp( back, type_class );
+    new_ins = MakeMove( back, orig, temp, type_class );
+    PrefixIns( back, ins, new_ins );
     for( ; i < MAXOPS; ++i ) {
-        switch( multiply_state().Ops[i].op ) {
+        switch( back.multiply->Ops[i].op ) {
         case DO_XFR:
-            new_ins = MakeUnary( OP_MOV, temp, orig, type_class );
+            new_ins = MakeUnary( back, OP_MOV, temp, orig, type_class );
             break;
         case DO_ADD:
-            new_ins = MakeBinary( OP_ADD, temp, orig, temp, type_class );
+            new_ins = MakeBinary( back, OP_ADD, temp, orig, temp, type_class );
             break;
         case DO_SUB:
-            new_ins = MakeBinary( OP_SUB, temp, orig, temp, type_class );
+            new_ins = MakeBinary( back, OP_SUB, temp, orig, temp, type_class );
             break;
         case DO_SHL:
-            new_ins = MakeBinary( OP_LSHIFT, temp, AllocIntConst( multiply_state().Ops[i].cnt ), temp, type_class );
+            new_ins = MakeBinary( back, OP_LSHIFT, temp, AllocIntConst( back, back.multiply->Ops[i].cnt ), temp, type_class );
             break;
         }
-        PrefixIns( ins, new_ins );
+        PrefixIns( back, ins, new_ins );
     }
     if( neg ) {
-        new_ins = MakeUnary( OP_NEGATE, temp, ins->result, type_class );
+        new_ins = MakeUnary( back, OP_NEGATE, temp, ins->result, type_class );
     } else {
-        new_ins = MakeMove( temp, ins->result, type_class );
+        new_ins = MakeMove( back, temp, ins->result, type_class );
     }
-    PrefixIns( ins, new_ins );
-    FreeIns( ins );
+    PrefixIns( back, ins, new_ins );
+    FreeIns( back, ins );
     return( new_ins );
 }
 
 
-void    MulToShiftAdd( void )
+void    MulToShiftAdd( BackRun& back )
 /***************************/
 {
     block       *blk;
@@ -246,7 +248,7 @@ void    MulToShiftAdd( void )
     instruction *next;
     name        *op;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( ins->head.opcode != OP_MUL )
                 continue;
@@ -269,7 +271,7 @@ void    MulToShiftAdd( void )
                     continue;
                 if( op->c.const_type != CONS_ABSOLUTE )
                     continue;
-                next = CheckMul( ins );
+                next = CheckMul( back, ins );
                 if( next == ins )
                     ins->operands[1] = op; /*nothing happened*/
                 ins = next;
@@ -277,3 +279,7 @@ void    MulToShiftAdd( void )
         }
     }
 }
+
+/* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
+MultiplyState* multiply_make() { return new MultiplyState(); }
+void multiply_free(MultiplyState* part) { delete part; }

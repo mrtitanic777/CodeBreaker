@@ -43,16 +43,17 @@
 #include "cvsyms.h"
 #include "objout.h"
 #include "x86obj.h"
+#include "backrun.hpp"
 
 
-void    CVDefSegs( void )
+void    CVDefSegs( BackRun& back )
 /***********************/
 {
     if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
-        cvdbg_state().CVSyms = DbgSegDef( "$$SYMBOLS", "DEBSYM", SEG_COMB_PRIVATE+SEG_USE_32 );
+        back.cvdbg.CVSyms = DbgSegDef( back, "$$SYMBOLS", "DEBSYM", SEG_COMB_PRIVATE+SEG_USE_32 );
     }
     if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
-        cvdbg_state().CVTypes = DbgSegDef( "$$TYPES", "DEBTYP", SEG_COMB_PRIVATE+SEG_USE_32 );
+        back.cvdbg.CVTypes = DbgSegDef( back, "$$TYPES", "DEBTYP", SEG_COMB_PRIVATE+SEG_USE_32 );
     }
 }
 

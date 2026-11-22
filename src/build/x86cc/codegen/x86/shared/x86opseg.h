@@ -38,6 +38,5 @@
 struct X86opsegState {
     zero_page_scheme ZPageType;
 };
-inline X86opsegState& x86opseg_state() { return cbrun_part<X86opsegState>(); }
 
 #endif

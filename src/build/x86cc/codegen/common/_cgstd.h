@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "cgstd.h"
 #include "watcom.h"
 #include "typedef.h"

@@ -49,6 +49,7 @@
   #define   __TGT_SYS   __TGT_SYS_X86
 #endif
 #include "langenv.h"
+#include "backrun.hpp"
 
 #define SPEC_PREFIX             ".PREFIX_DATA."
 #define PIC_RW_PREFIX           "__rw_"
@@ -163,7 +164,7 @@ static char *xtoa( char *p, unsigned x )
     return( ++p );
 }
 
-static int GetExtName( cg_sym_handle sym, char *buffer, int max_len )
+static int GetExtName( BackRun& back, cg_sym_handle sym, char *buffer, int max_len )
 /*******************************************************************/
 {
     const char           *src;
@@ -178,7 +179,7 @@ static int GetExtName( cg_sym_handle sym, char *buffer, int max_len )
     int                  dst_len;
     const char           *pattern;
 
-    pattern = FEExtName( sym, EXTN_PATTERN );
+    pattern = FEExtName( *back.front, sym, EXTN_PATTERN );
     c = '\0';
     base_len = 0;
     prefix = pattern;
@@ -211,7 +212,7 @@ static int GetExtName( cg_sym_handle sym, char *buffer, int max_len )
         if( *src == '#' ) {
             unsigned    size;
 
-            size = (unsigned)(pointer_uint)FEExtName( sym, EXTN_PRMSIZE );
+            size = (unsigned)(pointer_uint)FEExtName( *back.front, sym, EXTN_PRMSIZE );
             if( size != (unsigned)-1 ) {
                 *(dst++) = '@';
                 dst = xtoa( dst, size );
@@ -233,7 +234,7 @@ static int GetExtName( cg_sym_handle sym, char *buffer, int max_len )
             // alias
             src = pattern;
         } else {
-            src = FEExtName( sym, EXTN_BASENAME );
+            src = FEExtName( *back.front, sym, EXTN_BASENAME );
             base_len = strlen( src );
         }
         // shift sufix to the end of buffer
@@ -243,7 +244,7 @@ static int GetExtName( cg_sym_handle sym, char *buffer, int max_len )
         // copy + truncate base symbol name
         len = copyBaseName( c, dst_basename, dst_len, src, base_len );
         if( len < 0 ) {
-            FEMessage( FEMSG_SYMBOL_TOO_LONG, sym );
+            FEMessage( *back.front, FEMSG_SYMBOL_TOO_LONG, sym );
         } else {
             // shift sufix to the end of symbol name
             memcpy( dst_basename + len, tmp_suffix, sufix_len + 1 );
@@ -255,7 +256,7 @@ static int GetExtName( cg_sym_handle sym, char *buffer, int max_len )
     return( 0 );
 }
 
-void    DoOutObjectName( cg_sym_handle sym, outputter_fn *outputter,
+void    DoOutObjectName( BackRun& back, cg_sym_handle sym, outputter_fn *outputter,
                             outputter_data data, import_kind kind )
 /*******************************************************************/
 {
@@ -271,7 +272,7 @@ void    DoOutObjectName( cg_sym_handle sym, outputter_fn *outputter,
         dst = CopyStrEnd( SPEC_PREFIX, dst );
         break;
     case DLLIMPORT:
-        p = FEExtName( sym, EXTN_IMPPREFIX );
+        p = FEExtName( *back.front, sym, EXTN_IMPPREFIX );
         if( p == NULL )
             p = "";
         pref_len = strlen( p );
@@ -284,6 +285,6 @@ void    DoOutObjectName( cg_sym_handle sym, outputter_fn *outputter,
     default:
         pref_len = 0;
     }
-    GetExtName( sym, dst, TS_MAX_OBJNAME - 1 - pref_len );
-    outputter( buffer, data );
+    GetExtName( back, sym, dst, TS_MAX_OBJNAME - 1 - pref_len );
+    outputter( back, buffer, data );
 }

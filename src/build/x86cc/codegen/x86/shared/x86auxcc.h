@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef enum {
     FECALL_X86_NONE                     = 0,
     FECALL_X86_SPECIAL_RETURN           = 0x00000001,

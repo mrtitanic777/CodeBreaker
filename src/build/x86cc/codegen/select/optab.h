@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
-extern const opcode_entry   *CodeTable( instruction *ins );
-extern void                 DoNothing( instruction *ins );
+#pragma once
+extern const opcode_entry   *CodeTable( BackRun& back, instruction *ins );
+extern void                 DoNothing( BackRun& back, instruction *ins );
 extern bool                 DoesSomething( instruction *ins );

@@ -31,19 +31,20 @@
 ****************************************************************************/
 
 
-extern void     DoCall( label_handle lbl, bool imported, bool big, bool pop );
-extern void     GenCall( instruction *ins );
-extern void     GenCallIndirect( instruction *ins );
-extern void     GenCallRegister( instruction *ins );
-extern void     GenSelEntry( bool starts );
-extern void     Gen1ByteValue( byte value );
-extern void     Gen2ByteValue( uint_16 value );
-extern void     Gen4ByteValue( uint_32 value );
-extern void     Gen8ByteValue( unsigned_64 *value );
-extern void     GenCodePtr( pointer label );
-extern void     GenJmpMemory( instruction *ins );
-extern void     GenJmpRegister( instruction *ins );
-extern void     EyeCatchBytes( const void *src, byte_seq_len len );
-extern void     GenReturn( int pop, bool is_long );
-extern void     GenIRET( void );
-extern void     CodeBytes( const void *src, byte_seq_len len );
+#pragma once
+extern void     DoCall( BackRun& back, label_handle lbl, bool imported, bool big, bool pop );
+extern void     GenCall( BackRun& back, instruction *ins );
+extern void     GenCallIndirect( BackRun& back, instruction *ins );
+extern void     GenCallRegister( BackRun& back, instruction *ins );
+extern void     GenSelEntry( BackRun& back, bool starts );
+extern void     Gen1ByteValue( BackRun& back, byte value );
+extern void     Gen2ByteValue( BackRun& back, uint_16 value );
+extern void     Gen4ByteValue( BackRun& back, uint_32 value );
+extern void     Gen8ByteValue( BackRun& back, unsigned_64 *value );
+extern void     GenCodePtr( BackRun& back, pointer label );
+extern void     GenJmpMemory( BackRun& back, instruction *ins );
+extern void     GenJmpRegister( BackRun& back, instruction *ins );
+extern void     EyeCatchBytes( BackRun& back, const void *src, byte_seq_len len );
+extern void     GenReturn( BackRun& back, int pop, bool is_long );
+extern void     GenIRET( BackRun& back );
+extern void     CodeBytes( BackRun& back, const void *src, byte_seq_len len );

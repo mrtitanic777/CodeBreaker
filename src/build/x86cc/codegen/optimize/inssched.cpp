@@ -50,6 +50,7 @@
 #include "blktrim.h"
 #include "generate.h"
 #include "memmgt.h"
+#include "backrun.hpp"
 
 
 #define DEPS_IN_BLOCK    20
@@ -70,39 +71,40 @@ typedef enum {
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
+}  // namespace
 struct InsschedFileState {
     pointer *DepFrl;
     dep_list_block *CurrDepBlock;
     block *SBlock;
 };
+namespace {
 
 }  // namespace
 
-static inline InsschedFileState& inssched_file_state() { return cbrun_part<InsschedFileState>(); }
 
 
-bool    SchedFrlFree( void )
+bool    SchedFrlFree( BackRun& back )
 /***********************************
  * Free the instruction schedulers dependancy link lists.
  */
 {
-    return( FrlFreeAll( &inssched_file_state().DepFrl, sizeof( dep_list_block ) ) );
+    return( FrlFreeAll( back, &back.inssched_file->DepFrl, sizeof( dep_list_block ) ) );
 }
 
-static dep_list_entry *AllocDep( void )
+static dep_list_entry *AllocDep( BackRun& back )
 /**************************************
  * Allocate one dependancy link structure.
  */
 {
     dep_list_block  *new_dlb;
 
-    if( inssched_file_state().CurrDepBlock == NULL || inssched_file_state().CurrDepBlock->used >= DEPS_IN_BLOCK ) {
-        new_dlb = static_cast<dep_list_block *>(AllocFrl( &inssched_file_state().DepFrl, sizeof( dep_list_block ) ));
-        new_dlb->next = inssched_file_state().CurrDepBlock;
+    if( back.inssched_file->CurrDepBlock == NULL || back.inssched_file->CurrDepBlock->used >= DEPS_IN_BLOCK ) {
+        new_dlb = static_cast<dep_list_block *>(AllocFrl( back, &back.inssched_file->DepFrl, sizeof( dep_list_block ) ));
+        new_dlb->next = back.inssched_file->CurrDepBlock;
         new_dlb->used = 0;
-        inssched_file_state().CurrDepBlock = new_dlb;
+        back.inssched_file->CurrDepBlock = new_dlb;
     }
-    return( &inssched_file_state().CurrDepBlock->entries[inssched_file_state().CurrDepBlock->used++] );
+    return( &back.inssched_file->CurrDepBlock->entries[back.inssched_file->CurrDepBlock->used++] );
 }
 
 
@@ -138,7 +140,7 @@ static unsigned InsStallable( instruction *ins )
     return( stallable );
 }
 
-static void InitDag( void )
+static void InitDag( BackRun& back )
 /**************************
  * Allocate the data dependancy dag list, and initialize the fields
  * in it.
@@ -149,7 +151,7 @@ static void InitDag( void )
     instruction *ins;
 
     head = NULL;
-    for( ins = inssched_file_state().SBlock->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
+    for( ins = back.inssched_file->SBlock->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
         ins->ins_flags &= ~INS_INDEX_ADJUST;
         switch( ins->head.opcode ) {
         case OP_ADD:
@@ -171,7 +173,7 @@ static void InitDag( void )
             }
             break;
         }
-        dag = static_cast<data_dag *>(CGAlloc( sizeof( data_dag ) ));
+        dag = static_cast<data_dag *>(CGAlloc( back, sizeof( data_dag ) ));
         dag->ins = ins;
         dag->height = 0;
         dag->anc_count = 0;
@@ -181,7 +183,7 @@ static void InitDag( void )
         dag->prev = head;
         head = dag;
     }
-    inssched_state().DataDag = head;
+    back.inssched.DataDag = head;
 }
 
 static bool StackOp( instruction *ins )
@@ -221,14 +223,14 @@ static bool StackOp( instruction *ins )
 }
 
 
-static  bool    ReallyDefinedBy( instruction *ins_i, instruction *ins_j,
+static  bool    ReallyDefinedBy( BackRun& back, instruction *ins_i, instruction *ins_j,
                                  name *op, bool ins_linked )
 /**********************************************************************/
 {
     bool_maybe  redefd;
     instruction *ins;
 
-    redefd = ReDefinedBy( ins_i, op );
+    redefd = ReDefinedBy( back, ins_i, op );
     if( redefd == MB_FALSE )
         return( false );
     if( redefd == MB_TRUE )
@@ -251,7 +253,7 @@ static  bool    ReallyDefinedBy( instruction *ins_i, instruction *ins_j,
     return( false );
 }
 
-static bool OkToSlide( instruction *ins, name *op )
+static bool OkToSlide( BackRun& back, instruction *ins, name *op )
 /**************************************************
  * Is it OK to slide an INDEX_ADJUST instruction past an index name?
  */
@@ -266,7 +268,7 @@ static bool OkToSlide( instruction *ins, name *op )
         return( true );
     if( op->i.constant != 0 )
         return( true );
-    if( data_state().OptForSize >= 50 )
+    if( back.data.OptForSize >= 50 )
         return( false );
 #if  _TARGET_INTEL
     /*
@@ -282,7 +284,7 @@ static bool OkToSlide( instruction *ins, name *op )
     return( true );
 }
 
-static bool HiddenDependancy( instruction *ins, name *op )
+static bool HiddenDependancy( BackRun& back, instruction *ins, name *op )
 /*********************************************************
  * Look out for cheesy hidden dependencies. These can come
  * about, for instance, when two instructions modify
@@ -292,7 +294,7 @@ static bool HiddenDependancy( instruction *ins, name *op )
     opcnt       i;
     hw_reg_set  full;
 
-    if( FPStackIns( ins ) )
+    if( FPStackIns( back, ins ) )
         return( false );
     if( op->n.class_ != N_REGISTER )
         return( false );
@@ -310,7 +312,7 @@ static bool HiddenDependancy( instruction *ins, name *op )
     return( false );
 }
 
-static dep_type CheckOneOp( instruction *ins_i, instruction *ins_j,
+static dep_type CheckOneOp( BackRun& back, instruction *ins_i, instruction *ins_j,
                         name *op, bool ins_linked )
 /******************************************************************
  * Check one op for redefinition
@@ -320,28 +322,28 @@ static dep_type CheckOneOp( instruction *ins_i, instruction *ins_j,
         if( ins_linked
             && (ins_i->ins_flags & INS_INDEX_ADJUST)
             && HW_Ovlap( ins_i->result->r.reg, op->i.index->r.reg )
-            && OkToSlide( ins_j, op ) ) {
+            && OkToSlide( back, ins_j, op ) ) {
             return(DEP_NONE);
         }
         if( _IsReDefinedBy( ins_i, op->i.index ) ) {
             return( DEP_INDEX );
         }
     }
-    if( ReallyDefinedBy( ins_i, ins_j, op, ins_linked ) ) {
-        if( !FPStackReg( op ) )
+    if( ReallyDefinedBy( back, ins_i, ins_j, op, ins_linked ) ) {
+        if( !FPStackReg( back, op ) )
             return( DEP_OP );
         if( ins_i->sequence == ins_j->sequence ) {
             return( DEP_OP );
         }
     }
-    if( HiddenDependancy( ins_i, op ) ) {
+    if( HiddenDependancy( back, ins_i, op ) ) {
         return( DEP_OP );
     }
     return( DEP_NONE );
 }
 
 
-static dep_type DataDependant( instruction *ins_i,
+static dep_type DataDependant( BackRun& back, instruction *ins_i,
                                instruction *ins_j, bool ins_linked )
 /************************************************************************
  * Does instruction i redefine any of the operands or result of
@@ -358,13 +360,13 @@ static dep_type DataDependant( instruction *ins_i,
          */
         if( k == 0 && ins_j->head.opcode == OP_LA && ins_j->operands[0]->n.class_ != N_INDEXED )
             continue;
-        ret = CheckOneOp( ins_i, ins_j, ins_j->operands[k], ins_linked );
+        ret = CheckOneOp( back, ins_i, ins_j, ins_j->operands[k], ins_linked );
         if( ret != DEP_NONE ) {
             return( ret );
         }
     }
     if( ins_j->result != NULL ) {
-        ret = CheckOneOp( ins_i, ins_j, ins_j->result, ins_linked );
+        ret = CheckOneOp( back, ins_i, ins_j, ins_j->result, ins_linked );
         if( ret != DEP_NONE ) {
             return( ret );
         }
@@ -381,7 +383,7 @@ static dep_type DataDependant( instruction *ins_i,
             if( _OpIsCall( ins_j->head.opcode ) )
                 break;
             if( ins_j->head.opcode == OP_NOP && ins_j->result != NULL ) {
-                ret = DataDependant( ins_i, ins_j, ins_linked );
+                ret = DataDependant( back, ins_i, ins_j, ins_linked );
                 if( ret != DEP_NONE ) {
                     break;
                 }
@@ -437,7 +439,7 @@ static bool ImplicitDependancy( instruction *imp, instruction *ins )
 }
 
 
-bool InsOrderDependant( instruction *ins_i, instruction *ins_j )
+bool InsOrderDependant( BackRun& back, instruction *ins_i, instruction *ins_j )
 /**************************************************************/
 {
     if( ins_j->head.opcode == OP_NOP && ins_j->result == NULL && !DoesSomething( ins_j ) )
@@ -449,14 +451,14 @@ bool InsOrderDependant( instruction *ins_i, instruction *ins_j )
           && ins_j->result != NULL
           && _IsVisibleToCall( ins_i, ins_j->result, false ) )
             return( true );
-        if( FPStackIns( ins_j ) ) {
+        if( FPStackIns( back, ins_j ) ) {
             return( true );
         }
     }
     if( StackOp( ins_i ) && StackOp( ins_j ) )
         return( true );
-    if( FPStackIns( ins_i ) ) {
-        if( FPStackIns( ins_j ) ) {
+    if( FPStackIns( back, ins_i ) ) {
+        if( FPStackIns( back, ins_j ) ) {
             if( ins_i->sequence == ins_j->sequence )
                 return( true );
             if( FPInsIntroduced( ins_j ) )
@@ -469,9 +471,9 @@ bool InsOrderDependant( instruction *ins_i, instruction *ins_j )
             return( true );
         }
     }
-    if( DataDependant( ins_i, ins_j, true ) != DEP_NONE )
+    if( DataDependant( back, ins_i, ins_j, true ) != DEP_NONE )
         return( true );
-    if( DataDependant( ins_j, ins_i, true ) != DEP_NONE )
+    if( DataDependant( back, ins_j, ins_i, true ) != DEP_NONE )
         return( true );
     if( ImplicitDependancy( ins_i, ins_j ) )
         return( true );
@@ -522,20 +524,20 @@ static  bool    InsUsesCC( instruction *ins )
     return( false );
 }
 
-static void BuildLink( data_dag *i, data_dag *j )
+static void BuildLink( BackRun& back, data_dag *i, data_dag *j )
 /************************************************
  * Added a data dependancy link between instructions i and j.
  */
 {
     dep_list_entry  *dep;
 
-    dep = AllocDep();
+    dep = AllocDep(back);
     dep->next = i->deps;
     i->deps = dep;
     dep->dep = j;
 }
 
-static void BuildDag( void )
+static void BuildDag( BackRun& back )
 /***************************
  * Build the data dependancy DAG. Note that this sucker is an N**2 algorithm
  * on the size of the basic block, so blocks had better not be too big.
@@ -547,7 +549,7 @@ static void BuildDag( void )
     bool        link_all;
     bool        used_cc;
 
-    for( dag_i = inssched_state().DataDag; dag_i != NULL; dag_i = dag_i->prev ) {
+    for( dag_i = back.inssched.DataDag; dag_i != NULL; dag_i = dag_i->prev ) {
         used_cc = (dag_i->ins->ins_flags & INS_CC_USED) != 0;
         link_all = false;
         link_multi = false;
@@ -576,12 +578,12 @@ static void BuildDag( void )
         }
         for( dag_j = dag_i->prev; dag_j != NULL; dag_j = dag_j->prev ) {
             if( link_all ) {
-                BuildLink( dag_i, dag_j );
-            } else if( InsOrderDependant( dag_i->ins, dag_j->ins ) ) {
-                BuildLink( dag_i, dag_j );
+                BuildLink( back, dag_i, dag_j );
+            } else if( InsOrderDependant( back, dag_i->ins, dag_j->ins ) ) {
+                BuildLink( back, dag_i, dag_j );
             } else if( link_multi && MultiIns( dag_j->ins ) ) {
                 link_multi = false;
-                BuildLink( dag_i, dag_j );
+                BuildLink( back, dag_i, dag_j );
             } else if( used_cc &&
                     (dag_j->ins->u.gen_table->op_type&MASK_CC) != PRESERVE ) {
                 /*
@@ -595,7 +597,7 @@ static void BuildDag( void )
                  * we can not allow any instruction that modifies the flags
                  * to be scheduled after it.
                  */
-                BuildLink( dag_i, dag_j );
+                BuildLink( back, dag_i, dag_j );
             } else if( (dag_i->ins->u.gen_table->op_type&MASK_CC) != PRESERVE
                     && InsUsesCC( dag_j->ins ) ) {
                 /*
@@ -609,13 +611,13 @@ static void BuildDag( void )
                  * 2 so that 3 never gets scheduled between 1 and 2 as it
                  * will affect the flags
                  */
-                BuildLink( dag_i, dag_j );
+                BuildLink( back, dag_i, dag_j );
             }
         }
     }
 }
 
-static void *AnnointADag( data_dag *dag )
+static void *AnnointADag( BackRun& back, data_dag *dag )
 /****************************************
  * Find out how many ancestors an instruction has, and what the longest
  * amount of time it will take to execute all the instructions this one
@@ -632,33 +634,33 @@ static void *AnnointADag( data_dag *dag )
         pred = dep->dep;
         pred->anc_count++;
         if( !pred->visited )
-            SafeRecurseCG( (func_sr)AnnointADag, pred );
+            SafeRecurseCG( back, (func_sr)AnnointADag, pred );
         if( max_cycle_count < pred->height ) {
             max_cycle_count = pred->height;
         }
     }
-    dag->height = max_cycle_count + FUEntry( dag->ins )->opnd_stall;
+    dag->height = max_cycle_count + FUEntry( back, dag->ins )->opnd_stall;
     /*
      * return a pointer to satisfy SafeRecurseCG
      */
     return( NULL );
 }
 
-static void AnnointDag( void )
+static void AnnointDag( BackRun& back )
 /*****************************
  * Add additional information to data dependancy DAG.
  */
 {
     data_dag    *dag;
 
-    for( dag = inssched_state().DataDag; dag != NULL; dag = dag->prev ) {
+    for( dag = back.inssched.DataDag; dag != NULL; dag = dag->prev ) {
         if( !dag->visited ) {
-            AnnointADag( dag );
+            AnnointADag( back, dag );
         }
     }
 }
 
-static int StallCost( instruction *ins, instruction *top )
+static int StallCost( BackRun& back, instruction *ins, instruction *top )
 /*********************************************************
  * If instruction 'ins' were placed before instruction 'top', how long
  * would instructions following 'ins' have to wait before they could
@@ -687,12 +689,12 @@ static int StallCost( instruction *ins, instruction *top )
         return( -1 );
     if( top == NULL )
         return( 0 );
-    if( FPFreeIns( ins ) )
+    if( FPFreeIns( back, ins ) )
         return( -1 );
     last = top;
-    while( FPFreeIns( top ) )
+    while( FPFreeIns( back, top ) )
         top = top->head.next;
-    entry = FUEntry( ins );
+    entry = FUEntry( back, ins );
     avail_fu = entry->good_fu;
     unit_stall = entry->unit_stall;
     opnd_stall = entry->opnd_stall;
@@ -701,7 +703,7 @@ static int StallCost( instruction *ins, instruction *top )
     for( ; unit_stall > 0 || opnd_stall > 0; ) {
         if( opnd_stall > 0 ) {
             --opnd_stall;
-            switch( DataDependant( ins, curr, false ) ) {
+            switch( DataDependant( back, ins, curr, false ) ) {
             case DEP_OP:
                 return( opnd_stall * 2 );
             case DEP_INDEX:
@@ -719,7 +721,7 @@ static int StallCost( instruction *ins, instruction *top )
         }
         if( unit_stall > 0 ) {
             --unit_stall;
-            entry = FUEntry( curr );
+            entry = FUEntry( back, curr );
             fu_overlap = avail_fu & entry->good_fu;
             if( fu_overlap != 0 ) {
                 /*
@@ -741,7 +743,7 @@ static int StallCost( instruction *ins, instruction *top )
 }
 
 
-static scale_typ ScaleAdjust( name *op, hw_reg_set reg )
+static scale_typ ScaleAdjust( BackRun& back, name *op, hw_reg_set reg )
 /*******************************************************
  * Figure out if we have to adjust this operand, and what the
  * scale factor is.
@@ -755,16 +757,16 @@ static scale_typ ScaleAdjust( name *op, hw_reg_set reg )
     if( !HW_Ovlap( idx_reg, reg ) )
         return( SCALE_INVALID );
     if( (op->i.index_flags & X_HIGH_BASE)
-      && HW_Ovlap( HighReg( idx_reg ), reg )
+      && HW_Ovlap( HighReg( back, idx_reg ), reg )
       || (op->i.index_flags & X_LOW_BASE)
-      && HW_Ovlap( LowReg( idx_reg ), reg ) ) {
+      && HW_Ovlap( LowReg( back, idx_reg ), reg ) ) {
         return( SCALE_NONE );
     }
     return( op->i.scale );
 }
 
 
-static void FixIndexAdjust( instruction *adj, bool forward )
+static void FixIndexAdjust( BackRun& back, instruction *adj, bool forward )
 /***********************************************************
  * 'adj' is an index adjust instruction. We must run forward/backward
  * through the block looking for uses of the register as an index and
@@ -815,9 +817,9 @@ static void FixIndexAdjust( instruction *adj, bool forward )
         }
         for( i = chk->num_operands; i-- > 0; ) {
             op = chk->operands[i];
-            scale_adj = ScaleAdjust( op, reg );
+            scale_adj = ScaleAdjust( back, op, reg );
             if( scale_adj != SCALE_INVALID ) {
-                chk->operands[i] = ScaleIndex( op->i.index, op->i.base,
+                chk->operands[i] = ScaleIndex( back, op->i.index, op->i.base,
                               op->i.constant + (bias << scale_adj),
                               op->n.type_class, op->n.size,
                               op->i.scale, op->i.index_flags );
@@ -825,9 +827,9 @@ static void FixIndexAdjust( instruction *adj, bool forward )
         }
         op = chk->result;
         if( op != NULL ) {
-            scale_adj = ScaleAdjust( op, reg );
+            scale_adj = ScaleAdjust( back, op, reg );
             if( scale_adj != SCALE_INVALID ) {
-                chk->result = ScaleIndex( op->i.index, op->i.base,
+                chk->result = ScaleIndex( back, op->i.index, op->i.base,
                               op->i.constant + (bias << scale_adj),
                               op->n.type_class, op->n.size,
                               op->i.scale, op->i.index_flags );
@@ -837,7 +839,7 @@ static void FixIndexAdjust( instruction *adj, bool forward )
 }
 
 
-static void ScheduleIns( void )
+static void ScheduleIns( BackRun& back )
 /******************************
  * Rearrange the instructions in a block according to the data dependancy
  * DAG for maximum overlap of the instruction pipeline. The block is built
@@ -880,7 +882,7 @@ static void ScheduleIns( void )
      * get initial 'ready' list
      */
     ready = NULL;
-    for( curr = inssched_state().DataDag; curr != NULL; curr = curr->prev ) {
+    for( curr = back.inssched.DataDag; curr != NULL; curr = curr->prev ) {
         curr->visited = false;
         if( curr->anc_count == 0 ) {
             curr->ready = ready;
@@ -889,12 +891,12 @@ static void ScheduleIns( void )
     }
     last_seq = 0;
     top = NULL;
-    stk_depth = FPStackExit( inssched_file_state().SBlock );
+    stk_depth = FPStackExit( back, back.inssched_file->SBlock );
     /*
      * so we can dump!
      */
-    inssched_file_state().SBlock->ins.head.next = (instruction *)&inssched_file_state().SBlock->ins;
-    inssched_file_state().SBlock->ins.head.prev = (instruction *)&inssched_file_state().SBlock->ins;
+    back.inssched_file->SBlock->ins.head.next = (instruction *)&back.inssched_file->SBlock->ins;
+    back.inssched_file->SBlock->ins.head.prev = (instruction *)&back.inssched_file->SBlock->ins;
     while( ready != NULL ) {
         /*
          * find best instruction to schedule
@@ -905,14 +907,14 @@ static void ScheduleIns( void )
         for( curr = ready; curr != NULL; curr = curr->ready ) {
             if( curr->visited )
                 continue;
-            stk_over = FPStkOver( curr->ins, stk_depth );
+            stk_over = FPStkOver( back, curr->ins, stk_depth );
             if( stk_over == 0 ) {
                 fp_stack_just_squeeks_by = curr;
                 continue;
             } else if( stk_over > 0 ) {
                 continue;
             }
-            curr_cost = StallCost( curr->ins, top );
+            curr_cost = StallCost( back, curr->ins, top );
 #define MARK_BEST {best = curr; best_cost = curr_cost; }
             if( best == NULL || curr_cost < best_cost ) {
                 MARK_BEST;
@@ -921,7 +923,7 @@ static void ScheduleIns( void )
                     MARK_BEST;
                 } else if( curr->height == best->height ) {
                     if( (curr->ins->ins_flags & INS_INDEX_ADJUST)
-                        && DataDependant( curr->ins, best->ins, false ) ) {
+                        && DataDependant( back, curr->ins, best->ins, false ) ) {
                         /*
                          * drop in a INDEX_ADJUST as soon as it doesn't
                          * hurt, otherwise we end up putting it too close
@@ -973,13 +975,13 @@ static void ScheduleIns( void )
             top->head.prev = best->ins;
             top = best->ins;
         }
-        if( FPStackIns( top ) ) {
+        if( FPStackIns( back, top ) ) {
             last_seq = top->sequence;
         }
         if( top->ins_flags & INS_INDEX_ADJUST ) {
-            FixIndexAdjust( top, true );
+            FixIndexAdjust( back, top, true );
         }
-        FPCalcStk( best->ins, &stk_depth );
+        FPCalcStk( back, best->ins, &stk_depth );
         best->scheduled = true;
         /*
          * really delete any virtually deleted dags
@@ -1003,10 +1005,10 @@ static void ScheduleIns( void )
             }
         }
     }
-    inssched_file_state().SBlock->ins.head.next = top;
-    inssched_file_state().SBlock->ins.head.prev = top->head.prev;
-    top->head.prev->head.next = (instruction *)&inssched_file_state().SBlock->ins;
-    top->head.prev = (instruction *)&inssched_file_state().SBlock->ins;
+    back.inssched_file->SBlock->ins.head.next = top;
+    back.inssched_file->SBlock->ins.head.prev = top->head.prev;
+    top->head.prev->head.next = (instruction *)&back.inssched_file->SBlock->ins;
+    top->head.prev = (instruction *)&back.inssched_file->SBlock->ins;
     /*
      * We have to run backwards through the block, adjusting all
      * the index offsets that were scheduled before their corresponding
@@ -1014,14 +1016,14 @@ static void ScheduleIns( void )
      * adjustment being moved before the use of the index register was
      * handled when we scheduled the INS_INDEX_ADJUST instruction.
      */
-    for( top = inssched_file_state().SBlock->ins.head.prev; top->head.opcode != OP_BLOCK; top = top->head.prev ) {
+    for( top = back.inssched_file->SBlock->ins.head.prev; top->head.opcode != OP_BLOCK; top = top->head.prev ) {
         if( top->ins_flags & INS_INDEX_ADJUST ) {
-            FixIndexAdjust( top, false );
+            FixIndexAdjust( back, top, false );
         }
     }
 }
 
-static  void    FreeDataDag( void )
+static  void    FreeDataDag( BackRun& back )
 /**********************************
  * Free all the memory allocated for the data dependancy DAG.
  */
@@ -1031,48 +1033,48 @@ static  void    FreeDataDag( void )
     data_dag            *dag;
     data_dag            *prev;
 
-    for( dag = inssched_state().DataDag; dag != NULL; dag = prev ) {
+    for( dag = back.inssched.DataDag; dag != NULL; dag = prev ) {
         prev = dag->prev;
-        CGFree( dag );
+        CGFree( back, dag );
     }
-    inssched_state().DataDag = NULL;
-    for( dep = inssched_file_state().CurrDepBlock; dep != NULL; dep = next ) {
+    back.inssched.DataDag = NULL;
+    for( dep = back.inssched_file->CurrDepBlock; dep != NULL; dep = next ) {
         next = dep->next;
-        FrlFreeSize( &inssched_file_state().DepFrl, (pointer *)dep, sizeof( dep_list_block ) );
+        FrlFreeSize( back, &back.inssched_file->DepFrl, (pointer *)dep, sizeof( dep_list_block ) );
     }
-    inssched_file_state().CurrDepBlock = NULL;
+    back.inssched_file->CurrDepBlock = NULL;
 }
 
-static  void    SchedBlock( void )
+static  void    SchedBlock( BackRun& back )
 /*********************************
  * Reorder one block for maximum parallelism.
  */
 {
     unsigned    num_instrs;
 
-    num_instrs = CountIns( inssched_file_state().SBlock );
+    num_instrs = CountIns( back.inssched_file->SBlock );
     if( num_instrs > 2 ) {
-        InitDag();
-        FPPreSched( inssched_file_state().SBlock );
-        BuildDag();
-        AnnointDag();
+        InitDag(back);
+        FPPreSched( back, back.inssched_file->SBlock );
+        BuildDag(back);
+        AnnointDag(back);
         /*
          * We're well and truly screwed if we run out of memory during
          * ScheduleIns or FPPostSched
          */
-        SetMemOut( MO_FATAL );
-        ScheduleIns();
+        SetMemOut( back, MO_FATAL );
+        ScheduleIns(back);
         /*
          * We don't need the DAG anymore, so free it here to make it less
          * likely that we'll run out of memory when doing the FPPostSched
          */
-        FreeDataDag();
-        FPPostSched( inssched_file_state().SBlock );
-        SetMemOut( MO_SUICIDE );
+        FreeDataDag(back);
+        FPPostSched( back, back.inssched_file->SBlock );
+        SetMemOut( back, MO_SUICIDE );
     }
 }
 
-void    Schedule( void )
+void    Schedule( BackRun& back )
 /***********************
  * Reorder the instructions in a routine for maximum overlap of the
  * instruction pipeline.
@@ -1082,19 +1084,23 @@ void    Schedule( void )
     bool                first_time;
 
     first_time = true;
-    InitFrl( &inssched_file_state().DepFrl );
-    old_memout = SetMemOut( MO_SUICIDE );
-    for( inssched_file_state().SBlock = data_state().HeadBlock; inssched_file_state().SBlock != NULL; inssched_file_state().SBlock = inssched_file_state().SBlock->next_block ) {
-        if( Spawn( &SchedBlock ) != 0 ) {
+    InitFrl( &back.inssched_file->DepFrl );
+    old_memout = SetMemOut( back, MO_SUICIDE );
+    for( back.inssched_file->SBlock = back.data.HeadBlock; back.inssched_file->SBlock != NULL; back.inssched_file->SBlock = back.inssched_file->SBlock->next_block ) {
+        if( Spawn( back, &SchedBlock ) != 0 ) {
             if( first_time ) {
-                FEMessageCurrProc( FEMSG_SCHEDULER_DIED );
+                FEMessageCurrProc( back, FEMSG_SCHEDULER_DIED );
                 first_time = false;
             }
-            FreeDataDag();
+            FreeDataDag(back);
         }
     }
-    SchedFrlFree();
-    SetMemOut( old_memout );
-    Renumber();
-    ClearInsBits( INS_INDEX_ADJUST );
+    SchedFrlFree(back);
+    SetMemOut( back, old_memout );
+    Renumber(back);
+    ClearInsBits( back, INS_INDEX_ADJUST );
 }
+
+/* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
+InsschedFileState* inssched_file_make() { return new InsschedFileState(); }
+void inssched_file_free(InsschedFileState* part) { delete part; }

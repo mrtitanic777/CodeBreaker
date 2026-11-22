@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef enum {
     ZOIKS_000,  /*    these aren't too bad */
     ZOIKS_001,  /*  unfreed code labels */

@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
+#pragma once
 extern void CmdlParamsInit( void );
 extern void FreeForceInclude( void );
 extern void DelErrFile( void );

@@ -38,6 +38,7 @@
 #include "optimize.h"
 #include "fpu.h"
 #include "x87.h"
+#include "backrun.hpp"
 
 
 static  bool    OpsCollide( name *op_87, name *op_86 ) {
@@ -109,7 +110,7 @@ static  bool    NeedWait( name *op, name *res, instruction *ins_86 ) {
 }
 
 
-void    Wait8087( void )
+void    Wait8087( BackRun& back )
 /**********************/
 {
     block       *blk;
@@ -128,7 +129,7 @@ void    Wait8087( void )
       && _IsntTargetModel( CGSW_X86_GEN_FWAIT_386 ) )
         return;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         last_fpins = NULL;
         past_jump = false;
         for( ins = blk->ins.head.next; ; ins = ins->head.next ) {
@@ -164,7 +165,7 @@ void    Wait8087( void )
                         last_non_fpins = ins;
                         if( last_fpins != NULL
                           && NeedWait( last_fpop, last_fpres, ins ) ) {
-                            PrefixIns( ins, MakeWait() );
+                            PrefixIns( back, ins, MakeWait(back) );
                             last_fpins = NULL;
                         }
                     }
@@ -173,16 +174,16 @@ void    Wait8087( void )
             if( ins->head.opcode == OP_BLOCK )
                 break;
             if( last_fpins != NULL && CallNeedsWait( last_fpop, last_fpres ) ) {
-                PrefixIns( ins, MakeWait() );
+                PrefixIns( back, ins, MakeWait(back) );
                 last_fpins = NULL;
             }
         }
         if( last_fpins != NULL
           && ( ( last_fpres != NULL ) || ( last_fpop != NULL ) ) ) {
             if( last_non_fpins != NULL ) {
-                SuffixIns( last_non_fpins, MakeWait() );
+                SuffixIns( back, last_non_fpins, MakeWait(back) );
             } else {
-                SuffixIns( last_fpins, MakeWait() );
+                SuffixIns( back, last_fpins, MakeWait(back) );
             }
         }
     }

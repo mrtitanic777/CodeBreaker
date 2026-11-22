@@ -40,29 +40,30 @@
 #include "namelist.h"
 #include "insutil.h"
 #include "x86tls.h"
+#include "backrun.hpp"
 
 
-static  name    *RTMemRef( rt_class rtindex )
+static  name    *RTMemRef( BackRun& back, rt_class rtindex )
 /********************************************
     create a memory_name to reference the given runtime label.
 */
 {
     label_handle    lbl;
 
-    lbl = RTLabel( rtindex );
-    return( AllocMemory( lbl, 0, CG_LBL, WD ) );
+    lbl = RTLabel( back, rtindex );
+    return( AllocMemory( back, lbl, 0, CG_LBL, WD ) );
 }
 
-static  void    AddSegOverride( instruction *ins, hw_reg_set reg )
+static  void    AddSegOverride( BackRun& back, instruction *ins, hw_reg_set reg )
 /****************************************************************/
 {
     name                *reg_name;
 
-    reg_name = AllocRegName( reg );
+    reg_name = AllocRegName( back, reg );
     ins->operands[ins->num_operands++] = reg_name;
 }
 
-static  name    *GetNTTLSDataRef( instruction *ins, name *op, type_class_def type_class )
+static  name    *GetNTTLSDataRef( BackRun& back, instruction *ins, name *op, type_class_def type_class )
 /****************************************************************************************
     Emit instructions to load allow a reference to op (a piece of
     TLS data) and return the resulting index name.
@@ -77,51 +78,51 @@ static  name    *GetNTTLSDataRef( instruction *ins, name *op, type_class_def typ
     name                *result_index;
     instruction         *new_ins;
 
-    tls_index = RTMemRef( RT_TLS_INDEX );
-    tls_array = RTMemRef( RT_TLS_ARRAY );
-    t1 = AllocTemp( WD );
-    t2 = AllocTemp( WD );
-    t3 = AllocTemp( WD );
-    new_ins = MakeMove( tls_array, t1, WD );
-    AddSegOverride( new_ins, HW_FS );
-    PrefixIns( ins, new_ins );
-    new_ins = MakeMove( tls_index, t2, WD );
-    PrefixIns( ins, new_ins );
-    new_ins = MakeBinary( OP_MUL, t2, AllocS32Const( 4 ), t2, WD );
-    PrefixIns( ins, new_ins );
-    new_ins = MakeBinary( OP_ADD, t1, t2, t1, WD );
-    PrefixIns( ins, new_ins );
-    temp_index = AllocIndex( t1, NULL, 0, WD );
-    new_ins = MakeMove( temp_index, t3, WD );
-    PrefixIns( ins, new_ins );
-    result_index = ScaleIndex( t3, op, op->v.offset, type_class, data_state().TypeClassSize[type_class], SCALE_NONE, static_cast<i_flags>(0) );
+    tls_index = RTMemRef( back, RT_TLS_INDEX );
+    tls_array = RTMemRef( back, RT_TLS_ARRAY );
+    t1 = AllocTemp( back, WD );
+    t2 = AllocTemp( back, WD );
+    t3 = AllocTemp( back, WD );
+    new_ins = MakeMove( back, tls_array, t1, WD );
+    AddSegOverride( back, new_ins, HW_FS );
+    PrefixIns( back, ins, new_ins );
+    new_ins = MakeMove( back, tls_index, t2, WD );
+    PrefixIns( back, ins, new_ins );
+    new_ins = MakeBinary( back, OP_MUL, t2, AllocS32Const( back, 4 ), t2, WD );
+    PrefixIns( back, ins, new_ins );
+    new_ins = MakeBinary( back, OP_ADD, t1, t2, t1, WD );
+    PrefixIns( back, ins, new_ins );
+    temp_index = AllocIndex( back, t1, NULL, 0, WD );
+    new_ins = MakeMove( back, temp_index, t3, WD );
+    PrefixIns( back, ins, new_ins );
+    result_index = ScaleIndex( back, t3, op, op->v.offset, type_class, back.data.TypeClassSize[type_class], SCALE_NONE, static_cast<i_flags>(0) );
     return( result_index );
 }
 
-static  void    DropCall( instruction *ins, name *temp )
+static  void    DropCall( BackRun& back, instruction *ins, name *temp )
 /******************************************************/
 {
     name                *eax_name;
     name                *null_name;
     instruction         *new_ins;
 
-    null_name = AllocRegName( HW_EMPTY );
-    eax_name = AllocRegName( HW_EAX );
-    new_ins = NewIns( 3 );
+    null_name = AllocRegName( back, HW_EMPTY );
+    eax_name = AllocRegName( back, HW_EAX );
+    new_ins = NewIns( back, 3 );
     new_ins->head.opcode = OP_CALL;
     new_ins->type_class = WD;
     new_ins->operands[CALL_OP_USED] = null_name;
     new_ins->operands[CALL_OP_USED2] = null_name;
-    new_ins->operands[CALL_OP_ADDR] = RTMemRef( RT_TLS_REGION );
+    new_ins->operands[CALL_OP_ADDR] = RTMemRef( back, RT_TLS_REGION );
     new_ins->result = eax_name;
     new_ins->zap = &eax_name->r;
     new_ins->num_operands = 2;         /* special case for OP_CALL*/
-    PrefixIns( ins, new_ins );
-    new_ins = MakeMove( eax_name, temp, WD );
-    PrefixIns( ins, new_ins );
+    PrefixIns( back, ins, new_ins );
+    new_ins = MakeMove( back, eax_name, temp, WD );
+    PrefixIns( back, ins, new_ins );
 }
 
-static  name    *GetGenericTLSDataRef( instruction *ins, name *op, type_class_def type_class )
+static  name    *GetGenericTLSDataRef( BackRun& back, instruction *ins, name *op, type_class_def type_class )
 /********************************************************************************************/
 {
     name                *tls;
@@ -130,40 +131,40 @@ static  name    *GetGenericTLSDataRef( instruction *ins, name *op, type_class_de
     instruction         *new_ins;
 
 
-    tls = data_state().CurrProc->targ.tls_index;
+    tls = back.data.CurrProc->targ.tls_index;
     if( tls == NULL ) {
-        tls = AllocTemp( WD );
-        data_state().CurrProc->targ.tls_index = tls;
-        if( !data_state().BlockByBlock ) {
+        tls = AllocTemp( back, WD );
+        back.data.CurrProc->targ.tls_index = tls;
+        if( !back.data.BlockByBlock ) {
             /* 2007-06-28 RomanT
              * Grrr... DropCall() inserts new ins _before_ old one, screwing
              * startup sequence. So keep call in first block, but make it
              * before next instruction of last one  (== after last one).
              */
-            DropCall( data_state().HeadBlock->ins.head.prev->head.next, tls );
+            DropCall( back, back.data.HeadBlock->ins.head.prev->head.next, tls );
         }
     }
-    if( data_state().BlockByBlock ) {
-        DropCall( ins, tls );
+    if( back.data.BlockByBlock ) {
+        DropCall( back, ins, tls );
     }
-    temp = AllocTemp( WD );
-    new_ins = MakeMove( tls, temp, WD );
-    PrefixIns( ins, new_ins );
-    result_index = ScaleIndex( temp, op, op->v.offset, type_class, data_state().TypeClassSize[type_class], SCALE_NONE, static_cast<i_flags>(0) );
+    temp = AllocTemp( back, WD );
+    new_ins = MakeMove( back, tls, temp, WD );
+    PrefixIns( back, ins, new_ins );
+    result_index = ScaleIndex( back, temp, op, op->v.offset, type_class, back.data.TypeClassSize[type_class], SCALE_NONE, static_cast<i_flags>(0) );
     return( result_index );
 }
 
-static  name    *GetTLSDataRef( instruction *ins, name *op, type_class_def type_class )
+static  name    *GetTLSDataRef( BackRun& back, instruction *ins, name *op, type_class_def type_class )
 /*************************************************************************************/
 {
     if( _IsTargetModel( CGSW_X86_GENERIC_TLS ) ) {
-        return( GetNTTLSDataRef( ins, op, type_class ) );
+        return( GetNTTLSDataRef( back, ins, op, type_class ) );
     } else {
-        return( GetGenericTLSDataRef( ins, op, type_class ) );
+        return( GetGenericTLSDataRef( back, ins, op, type_class ) );
     }
 }
 
-static  void    ExpandTlsOp( instruction *ins, name **pop )
+static  void    ExpandTlsOp( BackRun& back, instruction *ins, name **pop )
 /**********************************************************
     If *pop is a ref to a piece of thread-local data, replace
     it by a ref to an index [t1] and prepend the magic sequence
@@ -189,9 +190,9 @@ static  void    ExpandTlsOp( instruction *ins, name **pop )
     switch( op->n.class_ ) {
     case N_MEMORY:
         if( op->m.memory_type == CG_FE ) {
-            attr = FEAttr( static_cast<cg_sym_handle>(op->v.symbol) );
+            attr = FEAttr( *back.front, static_cast<cg_sym_handle>(op->v.symbol) );
             if( ( attr & FE_THREAD_DATA ) != 0 ) {
-                *pop = GetTLSDataRef( ins, op, _OpClass(ins) );
+                *pop = GetTLSDataRef( back, ins, op, _OpClass(ins) );
             }
         }
         break;
@@ -201,36 +202,36 @@ static  void    ExpandTlsOp( instruction *ins, name **pop )
             base = op->i.base;
             if( base->n.class_ != N_MEMORY || base->m.memory_type != CG_FE )
                 break;
-            attr = FEAttr( static_cast<cg_sym_handle>(base->v.symbol) );
+            attr = FEAttr( *back.front, static_cast<cg_sym_handle>(base->v.symbol) );
             if( ( attr & FE_THREAD_DATA ) == 0 )
                 break;
-            tls_data = GetTLSDataRef( ins, base, _OpClass(ins) );
-            temp = AllocTemp( WD );
-            new_ins = MakeUnary( OP_LA, tls_data, temp, WD );
-            PrefixIns( ins, new_ins );
+            tls_data = GetTLSDataRef( back, ins, base, _OpClass(ins) );
+            temp = AllocTemp( back, WD );
+            new_ins = MakeUnary( back, OP_LA, tls_data, temp, WD );
+            PrefixIns( back, ins, new_ins );
             index = op->i.index;
             if( op->i.scale != SCALE_NONE ) {
                 const int_32 values[] = { 1, 2, 4, 8, 16 };
                 if( op->i.scale > SCALE_16 )
                     _Zoiks( ZOIKS_134 );
-                index = AllocTemp( WD );
-                new_ins = MakeBinary( OP_MUL, op->i.index,
-                                AllocS32Const( values[op->i.scale] ),
+                index = AllocTemp( back, WD );
+                new_ins = MakeBinary( back, OP_MUL, op->i.index,
+                                AllocS32Const( back, values[op->i.scale] ),
                                 index, WD );
-                PrefixIns( ins, new_ins );
+                PrefixIns( back, ins, new_ins );
             }
-            new_ins = MakeBinary( OP_ADD, temp, index, temp, WD );
-            PrefixIns( ins, new_ins );
-            *pop = ScaleIndex( temp, NULL, 0,
+            new_ins = MakeBinary( back, OP_ADD, temp, index, temp, WD );
+            PrefixIns( back, ins, new_ins );
+            *pop = ScaleIndex( back, temp, NULL, 0,
                             _OpClass(ins),
-                            data_state().TypeClassSize[_OpClass(ins)],
+                            back.data.TypeClassSize[_OpClass(ins)],
                             SCALE_NONE, static_cast<i_flags>(0) );
         }
         break;
     }
 }
 
-void    ExpandThreadDataRef( instruction *ins )
+void    ExpandThreadDataRef( BackRun& back, instruction *ins )
 /******************************************************
     Expand any references to thread-local data into the
     appropriate magical sequence of instructions.  Note
@@ -244,9 +245,9 @@ void    ExpandThreadDataRef( instruction *ins )
     opcnt       i;
 
     for( i = 0; i < ins->num_operands; i++ ) {
-        ExpandTlsOp( ins, &ins->operands[i] );
+        ExpandTlsOp( back, ins, &ins->operands[i] );
     }
     if( ins->result != NULL ) {
-        ExpandTlsOp( ins, &ins->result );
+        ExpandTlsOp( back, ins, &ins->result );
     }
 }

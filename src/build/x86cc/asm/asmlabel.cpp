@@ -39,6 +39,7 @@
 #include "asmstruc.h"
 #include "queues.h"
 #endif
+#include "asmrun.hpp"
 
 #if defined( _STANDALONE_ )
 
@@ -71,7 +72,7 @@ bool IsLabelStruct( const char *name )
 }
 #endif
 
-bool MakeLabel( token_buffer *tokbuf, token_idx i, memtype mem_type )
+bool MakeLabel( AsmRun& assembler, token_buffer *tokbuf, token_idx i, memtype mem_type )
 /*******************************************************************/
 {
     asm_sym_handle  sym;
@@ -166,19 +167,19 @@ bool MakeLabel( token_buffer *tokbuf, token_idx i, memtype mem_type )
         PhaseError = true;
     }
 #else
-    sym = AsmLookup( symbol_name );
+    sym = AsmLookup( assembler, symbol_name );
     if( sym == NULL )
         return( RC_ERROR );
     if( sym->state != SYM_UNDEFINED ) {
-        AsmError( SYMBOL_ALREADY_DEFINED );
+        AsmError( *assembler.front, SYMBOL_ALREADY_DEFINED );
         return( RC_ERROR );
     }
     sym->state = SYM_INTERNAL;
-    sym->addr = asminlin_state().AsmCodeAddress;
+    sym->addr = assembler.asminlin->AsmCodeAddress;
     //  it should define label type ?????
     sym->mem_type = mem_type;  // fixme ??
 #endif
-    BackPatch( sym );
+    BackPatch( assembler, sym );
     return( RC_OK );
 }
 

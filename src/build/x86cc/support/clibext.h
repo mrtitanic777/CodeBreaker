@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #ifdef __WATCOMC__
  #if defined( BOOTSTRAP )
   #if defined( TESTBOOT )
@@ -252,15 +253,15 @@
 
  #elif defined( _MSC_VER )
 
-    extern int      setenv( const char *name, const char *newvalue, int overwrite );
-    extern int      unsetenv( const char *name );
+    extern int      setenv( SupportRun& support, const char *name, const char *newvalue, int overwrite );
+    extern int      unsetenv( SupportRun& support, const char *name );
     extern unsigned sleep( unsigned );
 
-    extern DIR              *opendir( const char *dirname );
+    extern DIR              *opendir( SupportRun& support, const char *dirname );
     extern struct dirent    *readdir( DIR *dirp );
-    extern int              closedir( DIR *dirp );
+    extern int              closedir( SupportRun& support, DIR *dirp );
 
-    extern int      getopt( int argc, char * const argv[], const char *optstring );
+    extern int      getopt( SupportRun& support, int argc, char * const argv[], const char *optstring );
     /* Globals used and set by getopt() */
 
     extern int      fnmatch( const char *__pattern, const char *__string, int __flags );
@@ -269,9 +270,9 @@
  #endif
 
     extern void     _splitpath2( const char *inp, char *outp, char **drive, char **dir, char **fn, char **ext );
-    extern int      _bgetcmd( char *buffer, int len );
-    extern char     *_cmdname( char *name );
-    extern char     *get_dllname( char *buf, int len );
+    extern int      _bgetcmd( SupportRun& support, char *buffer, int len );
+    extern char     *_cmdname( SupportRun& support, char *name );
+    extern char     *get_dllname( SupportRun& support, char *buf, int len );
 
  #ifdef __cplusplus
 }
@@ -301,7 +302,6 @@ struct ClibextState {
     int opterr = 1;   /* error output control flag */
 #endif
 };
-inline ClibextState& clibext_state() { return cbrun_part<ClibextState>(); }
 
 #endif
 

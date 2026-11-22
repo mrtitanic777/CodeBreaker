@@ -31,18 +31,19 @@
 
 
 #include "cvars.h"
+#include "frontrun.hpp"
 
 
-void CUsage( void )
+void CUsage( FrontRun& front )
 {
     char const  *p;
 
-    CBanner();
-    if( !cvars_state().CompFlags.quiet_mode ) {
-        NoteMsg( "" );
+    CBanner(front);
+    if( !front.cvars.CompFlags.quiet_mode ) {
+        NoteMsg( front, "" );
     }
-    for( p = UsageText(); *p != '\0'; ) {
-        NoteMsg( p );
+    for( p = UsageText(front); *p != '\0'; ) {
+        NoteMsg( front, p );
         while( *p++ != '\0' ) ;
     }
 }

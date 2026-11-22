@@ -39,6 +39,7 @@
 #include "makeblk.h"
 #include "insutil.h"
 #include "unroll.h"
+#include "backrun.hpp"
 
 
 void    PointEdge( block_edge *edge, block *new_dest )
@@ -94,7 +95,7 @@ void    MoveEdge( block_edge *edge, block *new_dest )
     PointEdge( edge, new_dest );
 }
 
-block   *SplitBlock( block *blk, instruction *ins )
+block   *SplitBlock( BackRun& back, block *blk, instruction *ins )
 /**************************************************
  * Split a block in two before the given instruction. The first block
  * will simply jump to the second block, which will receive all the
@@ -108,7 +109,7 @@ block   *SplitBlock( block *blk, instruction *ins )
     block_num   targets;
 
     targets = blk->targets;
-    new_blk = MakeBlockCopy( targets, blk, targets );
+    new_blk = MakeBlockCopy( back, targets, blk, targets );
     new_blk->next_block = blk->next_block;
     new_blk->prev_block = blk;
     blk->next_block = new_blk;
@@ -130,18 +131,18 @@ block   *SplitBlock( block *blk, instruction *ins )
     for( ; ins->head.opcode != OP_BLOCK; ins = next ) {
         next = ins->head.next;
         RemoveIns( ins );
-        SuffixIns( new_blk->ins.head.prev, ins );
+        SuffixIns( back, new_blk->ins.head.prev, ins );
     }
-    FixBlockIds();
+    FixBlockIds(back);
     return( new_blk );
 }
 
-edge_stack      *EdgeStackInit( void )
+edge_stack      *EdgeStackInit( BackRun& back )
 /************************************/
 {
     edge_stack          *stk;
 
-    stk = static_cast<edge_stack *>(CGAlloc( sizeof( edge_stack ) ));
+    stk = static_cast<edge_stack *>(CGAlloc( back, sizeof( edge_stack ) ));
     stk->top = NULL;
     return( stk );
 }
@@ -152,18 +153,18 @@ bool            EdgeStackEmpty( edge_stack *stk )
     return( stk->top == NULL );
 }
 
-void            EdgeStackPush( edge_stack *stk, block_edge *edge )
+void            EdgeStackPush( BackRun& back, edge_stack *stk, block_edge *edge )
 /****************************************************************/
 {
     edge_entry          *new_entry;
 
-    new_entry = static_cast<edge_entry *>(CGAlloc( sizeof( edge_entry ) ));
+    new_entry = static_cast<edge_entry *>(CGAlloc( back, sizeof( edge_entry ) ));
     new_entry->edge = edge;
     new_entry->next = stk->top;
     stk->top = new_entry;
 }
 
-block_edge      *EdgeStackPop( edge_stack *stk )
+block_edge      *EdgeStackPop( BackRun& back, edge_stack *stk )
 /**********************************************/
 {
     edge_entry          *top;
@@ -173,17 +174,17 @@ block_edge      *EdgeStackPop( edge_stack *stk )
         top = stk->top;
         edge = top->edge;
         stk->top = top->next;
-        CGFree( top );
+        CGFree( back, top );
         return( edge );
     }
     return( NULL );
 }
 
-void            EdgeStackFini( edge_stack *stk )
+void            EdgeStackFini( BackRun& back, edge_stack *stk )
 /**********************************************/
 {
     while( !EdgeStackEmpty( stk ) ) {
-        EdgeStackPop( stk );
+        EdgeStackPop( back, stk );
     }
-    CGFree( stk );
+    CGFree( back, stk );
 }

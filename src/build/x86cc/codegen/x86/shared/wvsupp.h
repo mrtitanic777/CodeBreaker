@@ -31,4 +31,5 @@
 ****************************************************************************/
 
 
-extern  void    LocDump( dbg_loc loc );
+#pragma once
+extern  void    LocDump( BackRun& back, dbg_loc loc );

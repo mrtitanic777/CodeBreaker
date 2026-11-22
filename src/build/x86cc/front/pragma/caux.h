@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
-extern aux_entry    *AuxLookup( const char * );
-extern void         PragmaAuxInit( void );
-extern void         PragmaAuxFini( void );
+#pragma once
+extern aux_entry    *AuxLookup( FrontRun& front, const char * );
+extern void         PragmaAuxInit( FrontRun& front );
+extern void         PragmaAuxFini( FrontRun& front );

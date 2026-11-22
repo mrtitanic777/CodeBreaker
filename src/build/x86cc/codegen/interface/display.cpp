@@ -43,6 +43,7 @@
 #include "namelist.h"
 #include "makeblk.h"
 #include "rgtbl.h"
+#include "backrun.hpp"
 
 
 typedef struct frame_patch {
@@ -50,136 +51,136 @@ typedef struct frame_patch {
         abspatch_handle         patch;
 } frame_patch;
 
-static  name    *DisplayField( level_depth level )
+static  name    *DisplayField( BackRun& back, level_depth level )
 /************************************************/
 {
     name        *reg;
 
-    reg = AllocRegName( DisplayReg() );
-    return( AllocIndex( reg, NULL, (-2) * level, reg->n.type_class ) );
+    reg = AllocRegName( back, DisplayReg(back) );
+    return( AllocIndex( back, reg, NULL, (-2) * level, reg->n.type_class ) );
 }
 
 
-name    *MakeDisplay( name *op, level_depth level )
+name    *MakeDisplay( BackRun& back, name *op, level_depth level )
 /*************************************************/
 {
     name        *temp;
     name        *reg;
 
-    reg = AllocRegName( DisplayReg() );
-    temp = AllocTemp( U2 );
-    AddIns( MakeMove( DisplayField( level ), temp, reg->n.type_class ) );
-    op = AllocIndex( temp, NULL, op->t.location, op->n.type_class );
+    reg = AllocRegName( back, DisplayReg(back) );
+    temp = AllocTemp( back, U2 );
+    AddIns( back, MakeMove( back, DisplayField( back, level ), temp, reg->n.type_class ) );
+    op = AllocIndex( back, temp, NULL, op->t.location, op->n.type_class );
     return( op );
 }
 
 
-void    BigGoto( level_depth level )
+void    BigGoto( BackRun& back, level_depth level )
 /**********************************/
 {
     name        *reg;
 
     if( level != 0 ) {
-        reg = AllocRegName( DisplayReg() );
-        AddIns( MakeMove( DisplayField( level ), reg, reg->n.type_class ) );
+        reg = AllocRegName( back, DisplayReg(back) );
+        AddIns( back, MakeMove( back, DisplayField( back, level ), reg, reg->n.type_class ) );
     }
 }
 
 
-void    BigLabel( void )
+void    BigLabel( BackRun& back )
 /**********************/
 {
     instruction *ins;
     name        *bp;
     name        *sp;
 
-    if( data_state().CurrProc->lex_level > 0 ) {
-        bp = AllocRegName( DisplayReg() );
-        sp = AllocRegName( StackReg() );
-        ins = MakeUnary( OP_LA,
-                          AllocIndex( bp, NULL, -1, bp->n.type_class ),
+    if( back.data.CurrProc->lex_level > 0 ) {
+        bp = AllocRegName( back, DisplayReg(back) );
+        sp = AllocRegName( back, StackReg() );
+        ins = MakeUnary( back, OP_LA,
+                          AllocIndex( back, bp, NULL, -1, bp->n.type_class ),
                           sp, sp->n.type_class );
     } else {
-        ins = MakeNop();
+        ins = MakeNop(back);
     }
-    ins->zap = (register_name *)AllocRegName( AllCacheRegs() );
+    ins->zap = (register_name *)AllocRegName( back, AllCacheRegs(back) );
     ins->flags.u.nop_flags |= NOP_ZAP_INFO;
-    AddIns( ins );
+    AddIns( back, ins );
 }
 
-bool    AskIsFrameIndex( name *op )
+bool    AskIsFrameIndex( BackRun& back, name *op )
 /*********************************/
 {
     name        *bp;
 
-    bp = AllocRegName( DisplayReg() );
-    return( op == AllocIndex( bp, NULL, -1, bp->n.type_class ) );
+    bp = AllocRegName( back, DisplayReg(back) );
+    return( op == AllocIndex( back, bp, NULL, -1, bp->n.type_class ) );
 }
 
 
-abspatch_handle *NextFramePatch( void )
+abspatch_handle *NextFramePatch( BackRun& back )
 /*************************************/
 {
     frame_patch *temp;
 
-    temp = static_cast<frame_patch *>(CGAlloc( sizeof( frame_patch ) ));
-    temp->next = static_cast<struct frame_patch *>(data_state().CurrProc->frame_index);
-    data_state().CurrProc->frame_index = temp;
+    temp = static_cast<frame_patch *>(CGAlloc( back, sizeof( frame_patch ) ));
+    temp->next = static_cast<struct frame_patch *>(back.data.CurrProc->frame_index);
+    back.data.CurrProc->frame_index = temp;
     return( &temp->patch );
 }
 
 
-void    PatchBigLabels( offset lc )
+void    PatchBigLabels( BackRun& back, offset lc )
 /*********************************/
 {
     frame_patch *frame;
     frame_patch *next;
 
-    for( frame = static_cast<frame_patch *>(data_state().CurrProc->frame_index); frame != NULL; frame = next ) {
+    for( frame = static_cast<frame_patch *>(back.data.CurrProc->frame_index); frame != NULL; frame = next ) {
         next = frame->next;
-        AbsPatch( frame->patch, lc );
-        CGFree( frame );
+        AbsPatch( back, frame->patch, lc );
+        CGFree( back, frame );
     }
-    data_state().CurrProc->frame_index = NULL;
+    back.data.CurrProc->frame_index = NULL;
 }
 
 
-an      PassProcParm( an rtn )
+an      PassProcParm( BackRun& back, an rtn )
 /****************************/
 {
     name        *op;
     name        *reg;
 
-    op = AllocTemp( XX );
-    op->n.size = data_state().TypePtr->length + SizeDisplayReg();
-    reg = AllocRegName( DisplayReg() );
-    AddIns( MakeMove( GenIns( rtn ),
-            TempOffset( op, 0, data_state().ClassPointer ),
-            data_state().ClassPointer ) );
-    AddIns( MakeMove( reg, TempOffset( op, data_state().TypePtr->length,
+    op = AllocTemp( back, XX );
+    op->n.size = back.data.TypePtr->length + SizeDisplayReg();
+    reg = AllocRegName( back, DisplayReg(back) );
+    AddIns( back, MakeMove( back, GenIns( back, rtn ),
+            TempOffset( back, op, 0, back.data.ClassPointer ),
+            back.data.ClassPointer ) );
+    AddIns( back, MakeMove( back, reg, TempOffset( back, op, back.data.TypePtr->length,
                                        reg->n.type_class ),
                       reg->n.type_class ) );
-    return( AddrName( op, data_state().TypeProcParm ) );
+    return( AddrName( back, op, back.data.TypeProcParm ) );
 }
 
 
-void    SaveDisplay( opcode_defs opcode )
+void    SaveDisplay( BackRun& back, opcode_defs opcode )
 /***************************************/
 {
     name        *reg;
 
-    reg = AllocRegName( DisplayReg() );
-    AddIns( MakeUnary( opcode, reg, NULL, reg->n.type_class ) );
+    reg = AllocRegName( back, DisplayReg(back) );
+    AddIns( back, MakeUnary( back, opcode, reg, NULL, reg->n.type_class ) );
 }
 
 
-void    SetDisplay( name *temp )
+void    SetDisplay( BackRun& back, name *temp )
 /******************************/
 {
     name        *reg;
 
-    reg = AllocRegName( DisplayReg() );
-    AddIns( MakeMove( TempOffset( temp, data_state().TypePtr->length,
+    reg = AllocRegName( back, DisplayReg(back) );
+    AddIns( back, MakeMove( back, TempOffset( back, temp, back.data.TypePtr->length,
                                   reg->n.type_class ),
                       reg, reg->n.type_class ) );
 }

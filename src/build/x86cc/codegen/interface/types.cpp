@@ -35,41 +35,24 @@
 #include "cgmem.h"
 #include "data.h"
 #include "types.h"
+#include "backrun.hpp"
 
-typedef enum {
-    TYPE_DEFINITION,
-    TYPE_ALIAS
-} type_class;
 
-typedef struct alias {
-    const struct type_def   *tptr;
-    cg_type                 refno;
-} alias;
 
-typedef struct type_alloc {
-    union {
-        struct alias        alias;
-        struct type_def     type_def;
-    } u;
-} type_alloc;
 
-typedef struct type_list {
-    type_alloc          tipe;
-    struct type_list    *link;
-    type_class          format;
-} type_list;
+
+
+
+
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct TypesFileState {
-    type_list *TypeList;
-};
+/* (struct TypesFileState: types_state.h) */
 
 }  // namespace
 
-static inline TypesFileState& types_file_state() { return cbrun_part<TypesFileState>(); }
 
 
 /*                              refno           length  attributes */
@@ -90,7 +73,7 @@ static const type_def TBool       = {  TY_BOOLEAN,      0,      static_cast<type
 static const type_def TNull       = {  TY_DEFAULT,      0,      static_cast<type_attr>(0) };
 static const type_def TPascal     = {  TY_PROC_PARM,    4,      static_cast<type_attr>(0) };
 
-const type_def  *TypeAddress( cg_type tipe )
+const type_def  *TypeAddress( BackRun& back, cg_type tipe )
 /*******************************************
     given a type refno, "tipe" which is known to the front end, return a
     pointer to the appropriate "type_def".
@@ -139,15 +122,15 @@ const type_def  *TypeAddress( cg_type tipe )
     case TY_PROC_PARM:
         return( &TPascal );
     case TY_INTEGER:
-        return( types_state().PTInteger );
+        return( back.types.PTInteger );
     case TY_UNSIGNED:
-        return( types_state().PTUnsigned );
+        return( back.types.PTUnsigned );
     case TY_POINTER:
-        return( types_state().PTPointer );
+        return( back.types.PTPointer );
     case TY_CODE_PTR:
-        return( types_state().PTCodePointer );
+        return( back.types.PTCodePointer );
     default:
-        for( list = types_file_state().TypeList; list != NULL; list = list->link ) {
+        for( list = back.types_file.TypeList; list != NULL; list = list->link ) {
             if( list->format == TYPE_DEFINITION ) {
                 if( list->tipe.u.type_def.refno == tipe ) {
                     return( &list->tipe.u.type_def );
@@ -163,19 +146,19 @@ const type_def  *TypeAddress( cg_type tipe )
 }
 
 
-type_length     TypeLength( cg_type tipe )
+type_length     TypeLength( BackRun& back, cg_type tipe )
 /*****************************************
     Return the size of a given type "tipe".
 */
 {
     const type_def  *t;
 
-    t = TypeAddress( tipe );
+    t = TypeAddress( back, tipe );
     return( t->length );
 }
 
 
-const type_def  *TypeAlias( cg_type define, cg_type existing )
+const type_def  *TypeAlias( BackRun& back, cg_type define, cg_type existing )
 /*************************************************************
     cause refno "define" to become an alias for existing type "existing"
 */
@@ -183,12 +166,12 @@ const type_def  *TypeAlias( cg_type define, cg_type existing )
     const type_def  *t;
     type_list       *list;
 
-    t = TypeAddress( existing );
+    t = TypeAddress( back, existing );
     if( t->refno == TY_DEFAULT )
         return( t );
-    list = static_cast<type_list *>(CGAlloc( sizeof( type_list ) ));
-    list->link = types_file_state().TypeList;
-    types_file_state().TypeList = list;
+    list = static_cast<type_list *>(CGAlloc( back, sizeof( type_list ) ));
+    list->link = back.types_file.TypeList;
+    back.types_file.TypeList = list;
     list->format = TYPE_ALIAS;
     list->tipe.u.alias.refno = define;
     list->tipe.u.alias.tptr  = t;
@@ -196,7 +179,7 @@ const type_def  *TypeAlias( cg_type define, cg_type existing )
 }
 
 
-const type_def  *TypeDef( cg_type refno, type_length length, type_length align )
+const type_def  *TypeDef( BackRun& back, cg_type refno, type_length length, type_length align )
 /*******************************************************************************
     Define a structure/array type which will have handle "refno".  The
     type will occupy "length" bytes of storage.
@@ -206,9 +189,9 @@ const type_def  *TypeDef( cg_type refno, type_length length, type_length align )
 
     /* unused parameters */ (void)align;
 
-    list = static_cast<type_list *>(CGAlloc( sizeof( type_list ) ));
-    list->link = types_file_state().TypeList;
-    types_file_state().TypeList = list;
+    list = static_cast<type_list *>(CGAlloc( back, sizeof( type_list ) ));
+    list->link = back.types_file.TypeList;
+    back.types_file.TypeList = list;
     list->format = TYPE_DEFINITION;
     list->tipe.u.type_def.refno  =  refno;
     list->tipe.u.type_def.length = length;
@@ -220,7 +203,7 @@ const type_def  *TypeDef( cg_type refno, type_length length, type_length align )
 }
 
 
-void    TypeFini( void )
+void    TypeFini( BackRun& back )
 /***********************
     Finish up the typeing stuff
 */
@@ -228,26 +211,26 @@ void    TypeFini( void )
     type_list   *type;
     type_list   *next;
 
-    for( type = types_file_state().TypeList; type != NULL; type = next ) {
+    for( type = back.types_file.TypeList; type != NULL; type = next ) {
         next = type->link;
-        CGFree( type );
+        CGFree( back, type );
     }
 }
 
-void    TypeInit( void )
+void    TypeInit( BackRun& back )
 /**********************/
 {
-    types_file_state().TypeList = NULL;
+    back.types_file.TypeList = NULL;
 
-    TargTypeInit();
-    data_state().TypeProcParm = TypeAddress( TY_PROC_PARM );
-    data_state().TypeInteger = TypeAddress( TY_INTEGER );
-    data_state().TypeHugeInteger = TypeAddress( TY_HUGE_INTEGER );
-    data_state().TypeLongInteger = TypeAddress( TY_LONG_INTEGER );
-    data_state().TypeLongLongInteger = TypeAddress( TY_INT_8 );   // should be something else perhaps?
-    data_state().TypeNearInteger = TypeAddress( TY_NEAR_INTEGER );
-    data_state().TypeUnsigned = TypeAddress( TY_UNSIGNED );
-    data_state().TypeBoolean = TypeAddress( TY_BOOLEAN );
-    data_state().TypeNone = TypeAddress( TY_DEFAULT );
-    data_state().TypePtr = TypeAddress( TY_POINTER );
+    TargTypeInit(back);
+    back.data.TypeProcParm = TypeAddress( back, TY_PROC_PARM );
+    back.data.TypeInteger = TypeAddress( back, TY_INTEGER );
+    back.data.TypeHugeInteger = TypeAddress( back, TY_HUGE_INTEGER );
+    back.data.TypeLongInteger = TypeAddress( back, TY_LONG_INTEGER );
+    back.data.TypeLongLongInteger = TypeAddress( back, TY_INT_8 );   // should be something else perhaps?
+    back.data.TypeNearInteger = TypeAddress( back, TY_NEAR_INTEGER );
+    back.data.TypeUnsigned = TypeAddress( back, TY_UNSIGNED );
+    back.data.TypeBoolean = TypeAddress( back, TY_BOOLEAN );
+    back.data.TypeNone = TypeAddress( back, TY_DEFAULT );
+    back.data.TypePtr = TypeAddress( back, TY_POINTER );
 }

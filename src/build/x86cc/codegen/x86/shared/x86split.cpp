@@ -60,9 +60,10 @@
 #include "_x86rtrn.h"
 #include "_x86half.h"
 #include "i64.h"
+#include "backrun.hpp"
 
 
-instruction *(* const ReduceTab[])( instruction * ) = {
+instruction *(* const ReduceTab[])( BackRun&, instruction * ) = {
     #define _R_( x, f )     f
     #include "r.h"
     #undef _R_
@@ -75,7 +76,7 @@ bool    UnChangeable( instruction *ins )
     return( IsString( ins->table ) );
 }
 
-instruction      *rSAVEFACE( instruction *ins )
+instruction      *rSAVEFACE( BackRun& back, instruction *ins )
 /*********************************************/
 {
     instruction         *new_ins;
@@ -84,12 +85,12 @@ instruction      *rSAVEFACE( instruction *ins )
      * we have a EDX:EAX op 1 or DX:AX op 1 here which the constant
      * folder was not able to catch, because of the weird regs
      */
-    new_ins = MakeMove( AllocRegName( HW_xAX ), ins->result, ins->type_class );
-    ReplIns( ins, new_ins );
+    new_ins = MakeMove( back, AllocRegName( back, HW_xAX ), ins->result, ins->type_class );
+    ReplIns( back, ins, new_ins );
     return( new_ins );
 }
 
-instruction      *rMULSAVEFACE( instruction *ins )
+instruction      *rMULSAVEFACE( BackRun& back, instruction *ins )
 /************************************************/
 {
     instruction         *new_ins;
@@ -98,12 +99,12 @@ instruction      *rMULSAVEFACE( instruction *ins )
      * we have a r1 mul 1 -> DX:AX here which the constant
      * folder was not able to catch, because of the weird regs
      */
-    new_ins = MakeMove( ins->operands[0], AllocRegName( HW_xAX ), ins->type_class );
-    ReplIns( ins, new_ins );
+    new_ins = MakeMove( back, ins->operands[0], AllocRegName( back, HW_xAX ), ins->type_class );
+    ReplIns( back, ins, new_ins );
     return( new_ins );
 }
 
-instruction      *rMAKECYPMUL( instruction *ins )
+instruction      *rMAKECYPMUL( BackRun& back, instruction *ins )
 /***********************************************/
 {
     HalfType( ins );
@@ -111,54 +112,54 @@ instruction      *rMAKECYPMUL( instruction *ins )
 }
 
 
-instruction      *rSEG_SEG( instruction *ins )
+instruction      *rSEG_SEG( BackRun& back, instruction *ins )
 /********************************************/
 {
     instruction         *new_ins;
     name                *name1;
 
-    name1 = AllocTemp( U2 );
-    new_ins = MakeMove( ins->operands[0], name1, U2 );
+    name1 = AllocTemp( back, U2 );
+    new_ins = MakeMove( back, ins->operands[0], name1, U2 );
     ins->operands[0] = name1;
-    PrefixIns( ins, new_ins );
-    MarkPossible( ins, name1, RL_WORD );
+    PrefixIns( back, ins, new_ins );
+    MarkPossible( back, ins, name1, RL_WORD );
     ins->u.gen_table = NULL;
-    GiveRegister( NameConflict( ins, name1 ), true );
+    GiveRegister( back, NameConflict( back, ins, name1 ), true );
     return( new_ins );
 }
 
 
-instruction      *rOP2CL( instruction *ins )
+instruction      *rOP2CL( BackRun& back, instruction *ins )
 /******************************************/
 {
     instruction         *new_ins;
     name                *name1;
 
-    name1 = AllocRegName( HW_CL );
-    new_ins = MakeConvert( ins->operands[1], name1, U1, ins->operands[1]->n.type_class );
+    name1 = AllocRegName( back, HW_CL );
+    new_ins = MakeConvert( back, ins->operands[1], name1, U1, ins->operands[1]->n.type_class );
     ins->operands[1] = name1;
-    MoveSegOp( ins, new_ins, 0 );
-    PrefixIns( ins, new_ins );
+    MoveSegOp( back, ins, new_ins, 0 );
+    PrefixIns( back, ins, new_ins );
     return( new_ins );
 }
 
 
-instruction      *rOP2CX( instruction *ins )
+instruction      *rOP2CX( BackRun& back, instruction *ins )
 /******************************************/
 {
     instruction         *new_ins;
     name                *name1;
 
-    name1 = AllocRegName( HW_CX );
-    new_ins = MakeConvert( ins->operands[1], name1, U2, ins->operands[1]->n.type_class );
+    name1 = AllocRegName( back, HW_CX );
+    new_ins = MakeConvert( back, ins->operands[1], name1, U2, ins->operands[1]->n.type_class );
     ins->operands[1] = name1;
-    MoveSegOp( ins, new_ins, 0 );
-    PrefixIns( ins, new_ins );
+    MoveSegOp( back, ins, new_ins, 0 );
+    PrefixIns( back, ins, new_ins );
     return( new_ins );
 }
 
 
-instruction      *rMULREGISTER( instruction *ins )
+instruction      *rMULREGISTER( BackRun& back, instruction *ins )
 /************************************************/
 {
     instruction         *new_ins;
@@ -166,23 +167,23 @@ instruction      *rMULREGISTER( instruction *ins )
     name                *name1;
     name                *name2;
 
-    name1 = AllocRegName( Op1Reg( ins ) );
-    new_ins = MakeMove( ins->operands[0], name1, ins->type_class );
+    name1 = AllocRegName( back, Op1Reg( back, ins ) );
+    new_ins = MakeMove( back, ins->operands[0], name1, ins->type_class );
     ins->operands[0] = name1;
-    MoveSegOp( ins, new_ins, 0 );
-    PrefixIns( ins, new_ins );
-    name2 = AllocRegName( ResultReg( ins ) );
-    ins2 = MakeUnary( OP_MOV, name1, ins->result, ins->type_class );
+    MoveSegOp( back, ins, new_ins, 0 );
+    PrefixIns( back, ins, new_ins );
+    name2 = AllocRegName( back, ResultReg( back, ins ) );
+    ins2 = MakeUnary( back, OP_MOV, name1, ins->result, ins->type_class );
     ins2->base_type_class = DoubleClass[ins->type_class];
     ins->result = name2;
-    ins->zap = &AllocRegName( ZapReg( ins ) )->r;
-    MoveSegRes( ins, ins2 );
-    SuffixIns( ins, ins2 );
+    ins->zap = &AllocRegName( back, ZapReg( back, ins ) )->r;
+    MoveSegRes( back, ins, ins2 );
+    SuffixIns( back, ins, ins2 );
     return( new_ins );
 }
 
 
-instruction      *rDIVREGISTER( instruction *ins )
+instruction      *rDIVREGISTER( BackRun& back, instruction *ins )
 /************************************************/
 {
     instruction         *new_ins;
@@ -190,39 +191,39 @@ instruction      *rDIVREGISTER( instruction *ins )
     name                *name1;
     name                *name2;
 
-    name1 = AllocRegName( Op1Reg( ins ) );
-    new_ins = MakeConvert( ins->operands[0], name1, DoubleClass[ins->type_class], ins->type_class );
+    name1 = AllocRegName( back, Op1Reg( back, ins ) );
+    new_ins = MakeConvert( back, ins->operands[0], name1, DoubleClass[ins->type_class], ins->type_class );
     ins->operands[0] = name1;
-    MoveSegOp( ins, new_ins, 0 );
-    PrefixIns( ins, new_ins );
-    name2 = AllocRegName( ResultReg( ins ) );
-    ins2 = MakeMove( name2, ins->result, ins->type_class );
+    MoveSegOp( back, ins, new_ins, 0 );
+    PrefixIns( back, ins, new_ins );
+    name2 = AllocRegName( back, ResultReg( back, ins ) );
+    ins2 = MakeMove( back, name2, ins->result, ins->type_class );
     ins->result = name2;
-    ins->zap = &AllocRegName( ZapReg( ins ) )->r;
-    MoveSegRes( ins, ins2 );
-    SuffixIns( ins, ins2 );
+    ins->zap = &AllocRegName( back, ZapReg( back, ins ) )->r;
+    MoveSegRes( back, ins, ins2 );
+    SuffixIns( back, ins, ins2 );
     return( new_ins );
 }
 
-name    *IntEquivalent( name *name )
+name    *IntEquivalent( BackRun& back, name *name )
 /**********************************/
 {
     constant_defn       *floatval;
 
-    floatval = GetFloat( name, FS );
-    return( AllocConst( CFCnvU32F( &cfloat_state().cgh, _TargetBigInt( U64LowLE( floatval->buffer.u64 ) ) ) ) );
+    floatval = GetFloat( back, name, FS );
+    return( AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, _TargetBigInt( U64LowLE( floatval->buffer.u64 ) ) ) ) );
 }
 
-name    *Int64Equivalent( name *name )
+name    *Int64Equivalent( BackRun& back, name *name )
 /************************************/
 {
     constant_defn       *floatval;
 
-    floatval = GetFloat( name, FD );
-    return( AllocU64Const( U64LowLE( floatval->buffer.u64 ), U64HighLE( floatval->buffer.u64 ) ) );
+    floatval = GetFloat( back, name, FD );
+    return( AllocU64Const( back, U64LowLE( floatval->buffer.u64 ), U64HighLE( floatval->buffer.u64 ) ) );
 }
 
-instruction      *rFSCONSCMP( instruction *ins )
+instruction      *rFSCONSCMP( BackRun& back, instruction *ins )
 /**********************************************/
 {
     name                *name1;
@@ -234,13 +235,13 @@ instruction      *rFSCONSCMP( instruction *ins )
         ChangeType( ins, U4 );
         RevCond( ins );
     }
-    ins->operands[1] = IntEquivalent( name1 );
+    ins->operands[1] = IntEquivalent( back, name1 );
     ins->table = NULL;
     return( ins );
 }
 
 
-instruction      *rHIGHLOWMOVE( instruction *ins )
+instruction      *rHIGHLOWMOVE( BackRun& back, instruction *ins )
 /************************************************/
 {
     instruction         *new_ins;
@@ -248,11 +249,11 @@ instruction      *rHIGHLOWMOVE( instruction *ins )
     /*
      * for moving constants such as 0xabcdabcd
      */
-    new_ins = MakeMove( LowPart( ins->result, U2 ), HighPart( ins->result, U2 ), U2 );
-    ins->result = LowPart( ins->result, U2 );
+    new_ins = MakeMove( back, LowPart( back, ins->result, U2 ), HighPart( back, ins->result, U2 ), U2 );
+    ins->result = LowPart( back, ins->result, U2 );
     ChangeType( ins, U2 );
-    DupSegRes( ins, new_ins );
-    SuffixIns( ins, new_ins );
+    DupSegRes( back, ins, new_ins );
+    SuffixIns( back, ins, new_ins );
     return( ins );
 }
 
@@ -264,7 +265,7 @@ instruction      *rHIGHLOWMOVE( instruction *ins )
     #define     MOV_SIZE        5
 #endif
 
-bool UseRepForm( unsigned size )
+bool UseRepForm( BackRun& back, unsigned size )
 /*************************************
  * Do we want to use "rep movs{w|d}", or string out multiple "movs{w|d}"
  */
@@ -281,7 +282,7 @@ bool UseRepForm( unsigned size )
      */
     if( count > 10 )
         return( true );
-    if( data_state().OptForSize > 50 ) {
+    if( back.data.OptForSize > 50 ) {
         switch( size % WORD_SIZE ) {
         case 0: extra = 0;      break;
         case 1: extra = 1;      break;
@@ -320,12 +321,12 @@ bool UseRepForm( unsigned size )
     return( rep_startup + (count * rep_iter) + 4 < movs_cost * count );
 }
 
-static  bool    CanLoadStringOps( instruction *ins )
+static  bool    CanLoadStringOps( BackRun& back, instruction *ins )
 /**************************************************/
 {
     hw_reg_set  needs;
 
-    if( UseRepForm( ins->operands[0]->n.size ) ) {
+    if( UseRepForm( back, ins->operands[0]->n.size ) ) {
         needs = HW_xCX;
     } else {
         HW_CAsgn( needs, HW_EMPTY );
@@ -341,7 +342,7 @@ static  bool    CanLoadStringOps( instruction *ins )
     return( !HW_Ovlap( needs, ins->head.live.regs ) );
 }
 
-static name *FakeIndex( name *op, hw_reg_set index )
+static name *FakeIndex( BackRun& back, name *op, hw_reg_set index )
 /**************************************************/
 {
     name                *base;
@@ -355,15 +356,15 @@ static name *FakeIndex( name *op, hw_reg_set index )
         base = NULL;
         flags = static_cast<i_flags>(EMPTY);
     }
-    return( ScaleIndex( AllocRegName( index ), base, 0, op->n.type_class, op->n.size, SCALE_NONE, flags ) );
+    return( ScaleIndex( back, AllocRegName( back, index ), base, 0, op->n.type_class, op->n.size, SCALE_NONE, flags ) );
 }
 
-static  bool    SegmentFloats( name *op )
+static  bool    SegmentFloats( BackRun& back, name *op )
 /***************************************/
 {
     name        *segname;
 
-    segname = SegName( op );
+    segname = SegName( back, op );
     if( segname->n.class_ != N_REGISTER )
         return( true );
     if( HW_COvlap( segname->r.reg, HW_DS ) )
@@ -373,7 +374,7 @@ static  bool    SegmentFloats( name *op )
     return( true );
 }
 
-static  instruction     *LoadStringOps( instruction *ins,
+static  instruction     *LoadStringOps( BackRun& back, instruction *ins,
                                         name **op1, name **op2 )
 /**************************************************************/
 {
@@ -389,18 +390,18 @@ static  instruction     *LoadStringOps( instruction *ins,
     bool                es_needs_save;
 
     if( ins->head.opcode == OP_MOV
-      && !UseRepForm( (*op1)->n.size ) ) {
+      && !UseRepForm( back, (*op1)->n.size ) ) {
         load_len = NULL;
         HW_CAsgn( new_op1, HW_EMPTY );
     } else {
         if( ( (*op1)->n.size & (WORD_SIZE - 1) ) == 0
-          || ( data_state().OptForSize <= 50
+          || ( back.data.OptForSize <= 50
           && ins->head.opcode == OP_MOV ) ) {
-            load_len = MoveConst( (*op1)->n.size / WORD_SIZE, AllocRegName( HW_xCX ), WD );
-            PrefixIns( ins, load_len );
+            load_len = MoveConst( back, (*op1)->n.size / WORD_SIZE, AllocRegName( back, HW_xCX ), WD );
+            PrefixIns( back, ins, load_len );
         } else {
-            load_len = MoveConst( (*op1)->n.size, AllocRegName( HW_xCX ), WD );
-            PrefixIns( ins, load_len );
+            load_len = MoveConst( back, (*op1)->n.size, AllocRegName( back, HW_xCX ), WD );
+            PrefixIns( back, ins, load_len );
         }
         new_op1 = HW_xCX;
     }
@@ -410,77 +411,77 @@ static  instruction     *LoadStringOps( instruction *ins,
     if( ins->num_operands > OpcodeNumOperands( ins ) ) {
         if( (*op1)->n.class_ == N_INDEXED
           || (*op1)->n.class_ == N_MEMORY ) {
-            load_op1 = MakeUnary( OP_LA, *op2, AllocRegName( HW_ES_xDI ), LP );
-            PrefixIns( ins, load_op1 );
-            load_op2 = MakeUnary( OP_LA, *op1, AllocRegName( HW_xSI ), WD );
-            PrefixIns( ins, load_op2 );
-            load_op2 = MakeMove( ins->operands[ins->num_operands - 1], AllocRegName( HW_DS ), U2 );
-            PrefixIns( ins, load_op2 );
-            es_needs_save = SegmentFloats( *op2 );
+            load_op1 = MakeUnary( back, OP_LA, *op2, AllocRegName( back, HW_ES_xDI ), LP );
+            PrefixIns( back, ins, load_op1 );
+            load_op2 = MakeUnary( back, OP_LA, *op1, AllocRegName( back, HW_xSI ), WD );
+            PrefixIns( back, ins, load_op2 );
+            load_op2 = MakeMove( back, ins->operands[ins->num_operands - 1], AllocRegName( back, HW_DS ), U2 );
+            PrefixIns( back, ins, load_op2 );
+            es_needs_save = SegmentFloats( back, *op2 );
             ds_needs_save = true;
         } else {
-            load_op1 = MakeMove( ins->operands[ins->num_operands - 1], AllocRegName( HW_ES ), U2 );
-            PrefixIns( ins, load_op1 );
-            load_op2 = MakeUnary( OP_LA, *op2, AllocRegName( HW_xDI ), WD );
-            PrefixIns( ins, load_op2 );
-            load_op2 = MakeUnary( OP_LA, *op1, AllocRegName( HW_DS_xSI ), LP );
-            PrefixIns( ins, load_op2 );
-            ds_needs_save = SegmentFloats( *op1 );
+            load_op1 = MakeMove( back, ins->operands[ins->num_operands - 1], AllocRegName( back, HW_ES ), U2 );
+            PrefixIns( back, ins, load_op1 );
+            load_op2 = MakeUnary( back, OP_LA, *op2, AllocRegName( back, HW_xDI ), WD );
+            PrefixIns( back, ins, load_op2 );
+            load_op2 = MakeUnary( back, OP_LA, *op1, AllocRegName( back, HW_DS_xSI ), LP );
+            PrefixIns( back, ins, load_op2 );
+            ds_needs_save = SegmentFloats( back, *op1 );
             es_needs_save = true;
         }
         DelSeg( ins );
     } else if( _IsTargetModel( CGSW_X86_FLAT_MODEL )
-      && !SegmentFloats( *op1 )
-      && !SegmentFloats( *op2 ) ) {
-        load_op1 = MakeUnary( OP_LA, *op2, AllocRegName( HW_xDI ), WD );
-        PrefixIns( ins, load_op1 );
-        load_op2 = MakeUnary( OP_LA, *op1, AllocRegName( HW_xSI ), WD );
-        PrefixIns( ins, load_op2 );
+      && !SegmentFloats( back, *op1 )
+      && !SegmentFloats( back, *op2 ) ) {
+        load_op1 = MakeUnary( back, OP_LA, *op2, AllocRegName( back, HW_xDI ), WD );
+        PrefixIns( back, ins, load_op1 );
+        load_op2 = MakeUnary( back, OP_LA, *op1, AllocRegName( back, HW_xSI ), WD );
+        PrefixIns( back, ins, load_op2 );
         ds_needs_save = es_needs_save = false;
     } else {
-        load_op1 = MakeUnary( OP_LA, *op2, AllocRegName( HW_ES_xDI ), LP );
-        PrefixIns( ins, load_op1 );
-        load_op2 = MakeUnary( OP_LA, *op1, AllocRegName( HW_DS_xSI ), LP );
-        PrefixIns( ins, load_op2 );
-        ds_needs_save = SegmentFloats( *op1 );
-        es_needs_save = SegmentFloats( *op2 );
+        load_op1 = MakeUnary( back, OP_LA, *op2, AllocRegName( back, HW_ES_xDI ), LP );
+        PrefixIns( back, ins, load_op1 );
+        load_op2 = MakeUnary( back, OP_LA, *op1, AllocRegName( back, HW_DS_xSI ), LP );
+        PrefixIns( back, ins, load_op2 );
+        ds_needs_save = SegmentFloats( back, *op1 );
+        es_needs_save = SegmentFloats( back, *op2 );
     }
     if( _IsntTargetModel( CGSW_X86_FLOATING_DS )
       && ds_needs_save ) {
         /*
          * restore DS
          */
-        ds_reg = AllocRegName( HW_DS );
-        pop = MakeUnary( OP_POP, NULL, ds_reg, U2 );
+        ds_reg = AllocRegName( back, HW_DS );
+        pop = MakeUnary( back, OP_POP, NULL, ds_reg, U2 );
         pop->num_operands = 0;
-        SuffixIns( ins, pop );
-        PrefixIns( load_op2, MakeUnary( OP_PUSH, ds_reg, NULL, U2 ) );
+        SuffixIns( back, ins, pop );
+        PrefixIns( back, load_op2, MakeUnary( back, OP_PUSH, ds_reg, NULL, U2 ) );
     }
     if( _IsntTargetModel( CGSW_X86_FLOATING_ES )
       && es_needs_save ) {
         /*
          * restore ES
          */
-        es_reg = AllocRegName( HW_ES );
-        pop = MakeUnary( OP_POP, NULL, es_reg, U2 );
+        es_reg = AllocRegName( back, HW_ES );
+        pop = MakeUnary( back, OP_POP, NULL, es_reg, U2 );
         pop->num_operands = 0;
-        SuffixIns( ins, pop );
-        PrefixIns( load_op1, MakeUnary( OP_PUSH, es_reg, NULL, U2 ) );
+        SuffixIns( back, ins, pop );
+        PrefixIns( back, load_op1, MakeUnary( back, OP_PUSH, es_reg, NULL, U2 ) );
         load_op1 = load_op1->head.prev;
     }
     HW_CTurnOn( new_op1, HW_DS_xSI );
     HW_CTurnOn( new_op1, HW_ES_xDI );
     ins->table = GetString();
     ins->head.state = INS_NEEDS_WORK;
-    *op1 = FakeIndex( ins->operands[0], new_op1 );
+    *op1 = FakeIndex( back, ins->operands[0], new_op1 );
     ins->operands[1] = ins->operands[0];
     HW_CTurnOff( new_op1, HW_SS );
     HW_CTurnOff( new_op1, HW_xSP );
     HW_CTurnOff( new_op1, HW_ES );
     HW_CTurnOff( new_op1, HW_DS );
-    ins->zap = &AllocRegName( new_op1 )->r;
+    ins->zap = &AllocRegName( back, new_op1 )->r;
     if( ins->head.opcode == OP_MOV ) {
-        ins->result = FakeIndex( ins->result, HW_ES_xDI );
+        ins->result = FakeIndex( back, ins->result, HW_ES_xDI );
     } else {
         ins->result = NULL;
     }
@@ -489,69 +490,69 @@ static  instruction     *LoadStringOps( instruction *ins,
     } else {
         first_ins = load_op1;
     }
-    UpdateLive( first_ins, ins );
+    UpdateLive( back, first_ins, ins );
     return( first_ins );
 }
 
 
-instruction      *rMAKESTRCMP( instruction *ins )
+instruction      *rMAKESTRCMP( BackRun& back, instruction *ins )
 /***********************************************/
 {
-    return( LoadStringOps( ins, &ins->operands[0], &ins->operands[1] ) );
+    return( LoadStringOps( back, ins, &ins->operands[0], &ins->operands[1] ) );
 }
 
 
-instruction      *rMAKESTRMOVE( instruction *ins )
+instruction      *rMAKESTRMOVE( BackRun& back, instruction *ins )
 /************************************************/
 {
-    return( LoadStringOps( ins, &ins->operands[0], &ins->result ) );
+    return( LoadStringOps( back, ins, &ins->operands[0], &ins->result ) );
 }
 
 
-instruction      *rMAYBSTRMOVE( instruction *ins )
+instruction      *rMAYBSTRMOVE( BackRun& back, instruction *ins )
 /************************************************/
 {
-    if( CanLoadStringOps( ins ) ) {
-        return( LoadStringOps( ins, &ins->operands[0], &ins->result ) );
+    if( CanLoadStringOps( back, ins ) ) {
+        return( LoadStringOps( back, ins, &ins->operands[0], &ins->result ) );
     } else {
-        return( rSPLIT8( ins ) );
+        return( rSPLIT8( back, ins ) );
     }
 }
 
 
-instruction      *rEXT_PUSHC( instruction *ins )
+instruction      *rEXT_PUSHC( BackRun& back, instruction *ins )
 /**********************************************/
 {
-    CnvOpToInt( ins, 0 );
+    CnvOpToInt( back, ins, 0 );
     ChangeType( ins, WD );
     return( ins );
 }
 
 
-instruction      *rMOVELOW( instruction *ins )
+instruction      *rMOVELOW( BackRun& back, instruction *ins )
 /*********************************************
  * e.g. convert U2==>U1
  */
 {
     ins->head.opcode = OP_MOV;
-    ins->operands[0] = LowPart( ins->operands[0], ins->type_class );
+    ins->operands[0] = LowPart( back, ins->operands[0], ins->type_class );
     ins->table = NULL;
     return( ins );
 }
 
 
-instruction      *rSPLITUNARY( instruction *ins )
+instruction      *rSPLITUNARY( BackRun& back, instruction *ins )
 /***********************************************/
 {
     instruction         *new_ins;
 
-    CnvOpToInt( ins, 0 );
-    new_ins = SplitUnary( ins );
+    CnvOpToInt( back, ins, 0 );
+    new_ins = SplitUnary( back, ins );
     return( new_ins );
 }
 
 
-instruction      *rMOVRESMEM( instruction *ins )
+instruction      *rMOVRESMEM( BackRun& back, instruction *ins )
 /**********************************************/
 {
     instruction         *new_ins;
@@ -560,23 +561,23 @@ instruction      *rMOVRESMEM( instruction *ins )
     type_class_def      type_class;
 
     type_class = ins->type_class;
-    name_flt = AllocTemp( type_class );
+    name_flt = AllocTemp( back, type_class );
     if( type_class == FD
       || type_class == FL ) {
         name_int = name_flt;
     } else {
-        name_int = TempOffset( name_flt, 0, U4 );
+        name_int = TempOffset( back, name_flt, 0, U4 );
     }
     name_flt->v.usage |= USE_MEMORY | NEEDS_MEMORY;
-    new_ins = MakeMove( name_int, ins->result, name_int->n.type_class);
+    new_ins = MakeMove( back, name_int, ins->result, name_int->n.type_class);
     ins->result = name_flt;
-    MoveSegRes( ins, new_ins );
-    SuffixIns( ins, new_ins );
+    MoveSegRes( back, ins, new_ins );
+    SuffixIns( back, ins, new_ins );
     return( ins );
 }
 
 
-instruction      *rMOVOP1MEM( instruction *ins )
+instruction      *rMOVOP1MEM( BackRun& back, instruction *ins )
 /**********************************************/
 {
     instruction         *new_ins;
@@ -585,39 +586,39 @@ instruction      *rMOVOP1MEM( instruction *ins )
     type_class_def      type_class;
 
     type_class = ins->type_class;
-    name_flt = AllocTemp( type_class );
+    name_flt = AllocTemp( back, type_class );
     if( type_class == FD
       || type_class == FL ) {
         name_int = name_flt;
     } else {
-        name_int = TempOffset( name_flt, 0, U4 );
+        name_int = TempOffset( back, name_flt, 0, U4 );
     }
     name_flt->v.usage |= USE_MEMORY | NEEDS_MEMORY;
-    new_ins = MakeMove( ins->operands[0], name_int, name_int->n.type_class);
+    new_ins = MakeMove( back, ins->operands[0], name_int, name_int->n.type_class);
     ins->operands[0] = name_flt;
-    MoveSegOp( ins, new_ins, 0 );
-    PrefixIns( ins, new_ins );
+    MoveSegOp( back, ins, new_ins, 0 );
+    PrefixIns( back, ins, new_ins );
     return( new_ins );
 }
 
 
-instruction      *rOP1CMEM( instruction *ins )
+instruction      *rOP1CMEM( BackRun& back, instruction *ins )
 /********************************************/
 {
-    ins->operands[0] = Addressable( ins->operands[0], ins->type_class );
+    ins->operands[0] = Addressable( back, ins->operands[0], ins->type_class );
     return( ins );
 }
 
 
-instruction      *rOP2CMEM( instruction *ins )
+instruction      *rOP2CMEM( BackRun& back, instruction *ins )
 /********************************************/
 {
-    ins->operands[1] = Addressable( ins->operands[1], ins->type_class );
+    ins->operands[1] = Addressable( back, ins->operands[1], ins->type_class );
     return( ins );
 }
 
 
-instruction      *rU_TEST( instruction *ins )
+instruction      *rU_TEST( BackRun& back, instruction *ins )
 /*******************************************/
 {
     instruction         *new_ins;
@@ -627,81 +628,81 @@ instruction      *rU_TEST( instruction *ins )
 
     ChangeType( ins, U2 );
     name1 = ins->operands[0];
-    name2 = AllocTemp( U2 );
-    new_ins = MakeMove( HighPart( name1, U2 ), name2, U2 );
-    ins2 = MakeBinary( OP_OR, name2, LowPart( name1, U2 ), name2, U2 );
+    name2 = AllocTemp( back, U2 );
+    new_ins = MakeMove( back, HighPart( back, name1, U2 ), name2, U2 );
+    ins2 = MakeBinary( back, OP_OR, name2, LowPart( back, name1, U2 ), name2, U2 );
     ins->operands[0] = name2;
     DupSeg( ins, new_ins );
     DupSeg( ins, ins2 );
     DelSeg( ins );
-    PrefixIns( ins, new_ins );
-    PrefixIns( ins, ins2 );
+    PrefixIns( back, ins, new_ins );
+    PrefixIns( back, ins, ins2 );
     return( new_ins );
 }
 
 
-instruction      *rCPSUB( instruction *ins )
+instruction      *rCPSUB( BackRun& back, instruction *ins )
 /******************************************/
 {
     instruction         *new_ins;
 
-    new_ins = MakeBinary( OP_SUB, OffsetPart( ins->operands[0] ),
-                           OffsetPart( ins->operands[1] ),
+    new_ins = MakeBinary( back, OP_SUB, OffsetPart( back, ins->operands[0] ),
+                           OffsetPart( back, ins->operands[1] ),
                            ins->result, SW );
     DupSeg( ins, new_ins );
-    ReplIns( ins, new_ins );
+    ReplIns( back, ins, new_ins );
     return( new_ins );
 }
 
 
-instruction      *rPTSUB( instruction *ins )
+instruction      *rPTSUB( BackRun& back, instruction *ins )
 /******************************************/
 {
     instruction         *new_ins;
 
     ChangeType( ins, PT );
-    new_ins = rMAKECALL( ins );
+    new_ins = rMAKECALL( back, ins );
     return( new_ins );
 }
 
 
-instruction      *rEXTPT( instruction *ins )
+instruction      *rEXTPT( BackRun& back, instruction *ins )
 /******************************************/
 {
     instruction         *new_ins;
     name                *name1;
 
     if( ins->ins_flags & INS_CODE_POINTER ) {
-        name1 = AllocRegName( HW_CS );
+        name1 = AllocRegName( back, HW_CS );
     } else {
-        name1 = NearSegment();
+        name1 = NearSegment(back);
     }
-    new_ins = MakeMove( name1, SegmentPart( ins->result ), U2 );
+    new_ins = MakeMove( back, name1, SegmentPart( back, ins->result ), U2 );
     ins->head.opcode = OP_MOV;
     ins->type_class = WD;
-    ins->result = OffsetPart( ins->result );
+    ins->result = OffsetPart( back, ins->result );
     ins->table = NULL;
-    DupSegRes( ins, new_ins );
-    PrefixIns( ins, new_ins );
+    DupSegRes( back, ins, new_ins );
+    PrefixIns( back, ins, new_ins );
     return( new_ins );
 }
 
 
-instruction     *rMAKEU4CONS( instruction *ins )
+instruction     *rMAKEU4CONS( BackRun& back, instruction *ins )
 /**********************************************/
 {
     ChangeType( ins, U4 );
-    ins->operands[0] = IntEquivalent( ins->operands[0] );
+    ins->operands[0] = IntEquivalent( back, ins->operands[0] );
     return( ins );
 }
 
 
-instruction      *rCHPPT( instruction *ins )
+instruction      *rCHPPT( BackRun& back, instruction *ins )
 /******************************************/
 {
     ins->head.opcode = OP_MOV;
     ChangeType( ins, WD );
-    ins->operands[0] = OffsetPart( ins->operands[0] );
+    ins->operands[0] = OffsetPart( back, ins->operands[0] );
     return( ins );
 }
 
@@ -710,31 +711,31 @@ instruction      *rCHPPT( instruction *ins )
  * NB: The following two routines are intended for 386 only
  */
 
-instruction      *rMOVPTI8( instruction *ins )
+instruction      *rMOVPTI8( BackRun& back, instruction *ins )
 /********************************************/
 {
     instruction         *new_ins;
     instruction         *ins2;
 
-    new_ins = MakeMove( OffsetPart( ins->operands[0] ), LowPart( ins->result, U4 ), U4 );
-    ins2    = MakeConvert( SegmentPart( ins->operands[0] ), HighPart( ins->result, U4 ), U4, U2 );
-    DupSegRes( ins, ins2 );
-    SuffixIns( ins, ins2 );
-    ReplIns( ins, new_ins );
+    new_ins = MakeMove( back, OffsetPart( back, ins->operands[0] ), LowPart( back, ins->result, U4 ), U4 );
+    ins2    = MakeConvert( back, SegmentPart( back, ins->operands[0] ), HighPart( back, ins->result, U4 ), U4, U2 );
+    DupSegRes( back, ins, ins2 );
+    SuffixIns( back, ins, ins2 );
+    ReplIns( back, ins, new_ins );
     return( new_ins );
 }
 
-instruction      *rMOVI8PT( instruction *ins )
+instruction      *rMOVI8PT( BackRun& back, instruction *ins )
 /********************************************/
 {
     instruction         *new_ins;
     instruction         *ins2;
 
-    new_ins = MakeMove( LowPart( ins->operands[0], U4 ), OffsetPart( ins->result ), U4 );
-    ins2    = MakeMove( HighPart( ins->operands[0], U2 ), SegmentPart( ins->result ), U2 );
-    DupSegRes( ins, ins2 );
-    SuffixIns( ins, ins2 );
-    ReplIns( ins, new_ins );
+    new_ins = MakeMove( back, LowPart( back, ins->operands[0], U4 ), OffsetPart( back, ins->result ), U4 );
+    ins2    = MakeMove( back, HighPart( back, ins->operands[0], U2 ), SegmentPart( back, ins->result ), U2 );
+    DupSegRes( back, ins, ins2 );
+    SuffixIns( back, ins, ins2 );
+    ReplIns( back, ins, new_ins );
     return( new_ins );
 }
 
@@ -753,7 +754,7 @@ void    CheckCC( instruction *ins, instruction *new_ins )
 }
 
 
-static  instruction     *SplitPush( instruction *ins, type_length size )
+static  instruction     *SplitPush( BackRun& back, instruction *ins, type_length size )
 /**********************************************************************/
 {
     instruction         *new_ins;
@@ -768,40 +769,40 @@ static  instruction     *SplitPush( instruction *ins, type_length size )
         size -= WORD_SIZE;
         switch( op->n.class_ ) {
         case N_MEMORY:
-            new_op = AllocMemory( op->v.symbol, op->v.offset + size,
+            new_op = AllocMemory( back, op->v.symbol, op->v.offset + size,
                                   op->m.memory_type, WD );
             break;
         case N_TEMP:
-            new_op = TempOffset( op, size, WD );
+            new_op = TempOffset( back, op, size, WD );
             new_op->t.temp_flags |= CG_INTRODUCED;
             break;
         case N_INDEXED:
-            new_op = ScaleIndex( op->i.index, op->i.base,
+            new_op = ScaleIndex( back, op->i.index, op->i.base,
                               op->i.constant + size, WD, 0,
                               op->i.scale, op->i.index_flags );
             break;
         default:
-            Zoiks( ZOIKS_051 );
+            Zoiks( back, ZOIKS_051 );
             break;
         }
-        new_ins = MakeUnary( OP_PUSH, new_op, NULL, WD );
+        new_ins = MakeUnary( back, OP_PUSH, new_op, NULL, WD );
         if( size == 0 )
             break;
         if( first_ins == NULL ) {
             first_ins = new_ins;
         }
         DupSeg( ins, new_ins );
-        PrefixIns( ins, new_ins );
+        PrefixIns( back, ins, new_ins );
     }
     DupSeg( ins, new_ins );
-    ReplIns( ins, new_ins );
+    ReplIns( back, ins, new_ins );
     if( first_ins == NULL )
         return( new_ins );
     return( first_ins );
 }
 
 
-instruction     *rDOLONGPUSH( instruction *ins )
+instruction     *rDOLONGPUSH( BackRun& back, instruction *ins )
 /**********************************************/
 {
     name        *sp;
@@ -815,41 +816,41 @@ instruction     *rDOLONGPUSH( instruction *ins )
 
     size = ins->operands[0]->n.size;
     if( size <= 4 * WORD_SIZE ) {
-        return( SplitPush( ins, size ) );
+        return( SplitPush( back, ins, size ) );
     } else {
         HW_CAsgn( hw_ss_sp, HW_SS );
         HW_CTurnOn( hw_ss_sp, HW_xSP );
-        sp = AllocRegName( HW_xSP );
+        sp = AllocRegName( back, HW_xSP );
         if( _IsTargetModel( CGSW_X86_FLOATING_SS ) ) {
-            temp = AllocTemp( CP );
-            temp_ins = MakeMove( AllocRegName( hw_ss_sp ), temp, CP );
+            temp = AllocTemp( back, CP );
+            temp_ins = MakeMove( back, AllocRegName( back, hw_ss_sp ), temp, CP );
         } else {
-            temp = AllocTemp( WD );
-            temp_ins = MakeMove( sp, temp, WD );
+            temp = AllocTemp( back, WD );
+            temp_ins = MakeMove( back, sp, temp, WD );
         }
-        at_sp = AllocIndex( temp, NULL, 0, XX );
+        at_sp = AllocIndex( back, temp, NULL, 0, XX );
         at_sp->n.size = size;
-        move = MakeMove( ins->operands[0], at_sp, XX );
-        ReplIns( ins, move );
-        ins = LoadStringOps( move, &move->operands[0], &move->result );
+        move = MakeMove( back, ins->operands[0], at_sp, XX );
+        ReplIns( back, ins, move );
+        ins = LoadStringOps( back, move, &move->operands[0], &move->result );
         /*
          * % mov CX,const will be the first if it's there so try for SUB SP,CX
          */
-        sub_sp = MakeBinary( OP_SUB, sp, AllocIntConst( _RoundUp( size, WORD_SIZE ) ), sp, WD );
+        sub_sp = MakeBinary( back, OP_SUB, sp, AllocIntConst( back, _RoundUp( size, WORD_SIZE ) ), sp, WD );
         if( ins->result != NULL
           && HW_CEqual( ins->result->r.reg, HW_xCX ) ) {
-            SuffixIns( ins, sub_sp );
+            SuffixIns( back, ins, sub_sp );
         } else {
-            PrefixIns( ins, sub_sp );
+            PrefixIns( back, ins, sub_sp );
             ins = sub_sp;
         }
-        SuffixIns( sub_sp, temp_ins );
+        SuffixIns( back, sub_sp, temp_ins );
     }
     return( ins );
 }
 
 
-name    *OpAdjusted( name *op, int bias, type_class_def type_class )
+name    *OpAdjusted( BackRun& back, name *op, int bias, type_class_def type_class )
 /*******************************************************************
  * Return a new op of type 'type' which is offset from the old op by the
  * amount specified by 'bias'.
@@ -859,40 +860,40 @@ name    *OpAdjusted( name *op, int bias, type_class_def type_class )
 
     switch( op->n.class_ ) {
     case N_MEMORY:
-        new_op = AllocMemory( op->v.symbol, op->v.offset + bias, op->m.memory_type, type_class );
+        new_op = AllocMemory( back, op->v.symbol, op->v.offset + bias, op->m.memory_type, type_class );
         break;
     case N_TEMP:
-        new_op = TempOffset( op, bias, type_class );
+        new_op = TempOffset( back, op, bias, type_class );
         new_op->t.temp_flags |= CG_INTRODUCED;
         break;
     case N_INDEXED:
-        new_op = ScaleIndex( op->i.index, op->i.base,
+        new_op = ScaleIndex( back, op->i.index, op->i.base,
                           op->i.constant + bias, SW, 0,
                           op->i.scale, op->i.index_flags );
         break;
     default:
-        Zoiks( ZOIKS_051 );
+        Zoiks( back, ZOIKS_051 );
         break;
     }
     return( new_op );
 }
 
 
-instruction     *rFLIPSIGN( instruction *ins )
+instruction     *rFLIPSIGN( BackRun& back, instruction *ins )
 /********************************************/
 {
     instruction         *new_ins;
     name                *new_op;
 
-    new_op = OpAdjusted( ins->operands[0], ins->operands[0]->n.size - 1, U1 );
-    new_ins = MakeBinary( OP_XOR, new_op, AllocIntConst( 0x80 ), new_op, U1 );
-    DupSegRes( ins, new_ins );
-    ReplIns( ins, new_ins );
+    new_op = OpAdjusted( back, ins->operands[0], ins->operands[0]->n.size - 1, U1 );
+    new_ins = MakeBinary( back, OP_XOR, new_op, AllocIntConst( back, 0x80 ), new_op, U1 );
+    DupSegRes( back, ins, new_ins );
+    ReplIns( back, ins, new_ins );
     return( new_ins );
 }
 
 
-instruction     *rTEMP2CONST( instruction *ins )
+instruction     *rTEMP2CONST( BackRun& back, instruction *ins )
 /**********************************************/
 {
     opcnt       i;
@@ -904,7 +905,7 @@ instruction     *rTEMP2CONST( instruction *ins )
      * unable to move conflict edges and they will point to nowhere.
      * Instead, new_ins instruction must be created and ReplIns()'ed.
      */
-    new_ins = NewIns( ins->num_operands );
+    new_ins = NewIns( back, ins->num_operands );
     /*
      * copy instruction without operands
      */
@@ -917,12 +918,12 @@ instruction     *rTEMP2CONST( instruction *ins )
             new_ins->operands[i] = op;
         }
     }
-    ReplIns( ins, new_ins );
+    ReplIns( back, ins, new_ins );
     return ( new_ins );
 }
 
 
-void    CnvOpToInt( instruction * ins, opcnt op )
+void    CnvOpToInt( BackRun& back, instruction * ins, opcnt op )
 /***********************************************/
 {
     name                *name1;
@@ -931,7 +932,7 @@ void    CnvOpToInt( instruction * ins, opcnt op )
     case FS:
         name1 = ins->operands[op];
         if( name1->n.class_ == N_CONSTANT ) {
-            ins->operands[op] = IntEquivalent( name1 );
+            ins->operands[op] = IntEquivalent( back, name1 );
         }
         break;
 #if _TARGET & _TARG_80386
@@ -943,7 +944,7 @@ void    CnvOpToInt( instruction * ins, opcnt op )
     case FD:
         name1 = ins->operands[op];
         if( name1->n.class_ == N_CONSTANT ) {
-            ins->operands[op] = Int64Equivalent( name1 );
+            ins->operands[op] = Int64Equivalent( back, name1 );
         }
         break;
 #endif
@@ -953,7 +954,7 @@ void    CnvOpToInt( instruction * ins, opcnt op )
 }
 
 
-instruction     *rCMPCP( instruction *ins )
+instruction     *rCMPCP( BackRun& back, instruction *ins )
 /*****************************************/
 {
     assert( ins->type_class == CP );
@@ -962,10 +963,10 @@ instruction     *rCMPCP( instruction *ins )
     if( ins->head.opcode == OP_CMP_EQUAL
       || ins->head.opcode == OP_CMP_NOT_EQUAL ) {
         if( _IsTargetModel( CGSW_X86_NULL_SELECTOR_BAD ) ) {
-            ins->operands[0] = HighPart( ins->operands[0], U2 );
+            ins->operands[0] = HighPart( back, ins->operands[0], U2 );
             ChangeType( ins, U2 );
             return( ins );
         }
     }
-    return( rMAKEU4( ins ) );
+    return( rMAKEU4( back, ins ) );
 }

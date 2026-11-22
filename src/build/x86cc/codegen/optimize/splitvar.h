@@ -31,5 +31,6 @@
 ****************************************************************************/
 
 
-extern bool    RepOp( name **pop, name *of, name *with );
-extern void    SplitVars( void );
+#pragma once
+extern bool    RepOp( BackRun& back, name **pop, name *of, name *with );
+extern void    SplitVars( BackRun& back );

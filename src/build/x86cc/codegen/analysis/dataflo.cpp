@@ -43,24 +43,22 @@
 #include "regsave.h"
 #include "varusage.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
-static  void            PropagateConflicts( void );
+static  void            PropagateConflicts( BackRun& back );
 static  void            LiveAnalysis( block *tail, global_bit_set memory_bits );
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct DatafloState {
-    bool MoreUseInOtherTemps;
-};
+/* (struct DatafloState: dataflo_state.h) */
 
 }  // namespace
 
-static inline DatafloState& dataflo_state() { return cbrun_part<DatafloState>(); }
 
 
-static  void    AddTempSave( name *op, block *blk )
+static  void    AddTempSave( BackRun& back, name *op, block *blk )
 /*************************************************/
 {
     conflict_node *conf;
@@ -74,11 +72,11 @@ static  void    AddTempSave( name *op, block *blk )
     conf = op->v.conflict;
     if( conf == NULL )
         return;
-    conf->savings += Weight( 1, blk );
+    conf->savings += Weight( back, 1, blk );
 }
 
 
-static  bool    AllocBefore( void *n1, void *n2 )
+static  bool    AllocBefore( BackRun& back, void *n1, void *n2 )
 /***********************************************/
 {
     name    *t1 = static_cast<name *>(n1);
@@ -104,7 +102,7 @@ static  bool    AllocBefore( void *n1, void *n2 )
 }
 
 
-static  void    RoughSortTemps( void )
+static  void    RoughSortTemps( BackRun& back )
 /*************************************
 
     Do a real rough sort on the templist by savings in case
@@ -118,31 +116,31 @@ static  void    RoughSortTemps( void )
     instruction         *ins;
     opcnt               i;
 
-    for( opnd = data_state().Names[N_TEMP]; opnd != NULL; opnd = opnd->n.next_name ) {
+    for( opnd = back.data.Names[N_TEMP]; opnd != NULL; opnd = opnd->n.next_name ) {
         if( ( opnd->v.usage & (USE_MEMORY | USE_ADDRESS) ) ) {
             opnd->v.usage |= NEEDS_MEMORY | USE_MEMORY;
         } else if( opnd->v.usage & USE_IN_ANOTHER_BLOCK ) {
             actual_name = DeAlias( opnd );
             if( actual_name->v.conflict == NULL ) {
-                AddConflictNode( actual_name );
+                AddConflictNode( back, actual_name );
             }
         }
     }
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = 0; i < ins->num_operands; ++i ) {
-                AddTempSave( ins->operands[i], blk );
+                AddTempSave( back, ins->operands[i], blk );
             }
             if( ins->result != NULL ) {
-                AddTempSave( ins->result, blk );
+                AddTempSave( back, ins->result, blk );
             }
         }
     }
-    data_state().Names[N_TEMP] = static_cast<name *>(SortList( data_state().Names[N_TEMP], offsetof( name, n.next_name ), AllocBefore ));
+    back.data.Names[N_TEMP] = static_cast<name *>(SortList( back, back.data.Names[N_TEMP], offsetof( name, n.next_name ), AllocBefore ));
 }
 
 
-static  global_bit_set AssignGlobalBits( name_class_def class_,
+static  global_bit_set AssignGlobalBits( BackRun& back, name_class_def class_,
                              global_bit_set *bit, bool first_time )
 /*****************************************************************/
 {
@@ -153,12 +151,12 @@ static  global_bit_set AssignGlobalBits( name_class_def class_,
 
     if( class_ == N_TEMP ) {
         _GBitInit( all_used, EMPTY );
-        if( !dataflo_state().MoreUseInOtherTemps )
+        if( !back.dataflo.MoreUseInOtherTemps )
             return( all_used );
-        dataflo_state().MoreUseInOtherTemps = false;
+        back.dataflo.MoreUseInOtherTemps = false;
     }
     _GBitInit( all_used, EMPTY );
-    for( opnd = data_state().Names[class_]; opnd != NULL; opnd = opnd->n.next_name ) {
+    for( opnd = back.data.Names[class_]; opnd != NULL; opnd = opnd->n.next_name ) {
         if( ( opnd->v.usage & (USE_MEMORY | USE_ADDRESS) ) ) {
             opnd->v.usage |= NEEDS_MEMORY | USE_MEMORY;
         } else if( opnd->v.usage & USE_IN_ANOTHER_BLOCK ) {
@@ -171,7 +169,7 @@ static  global_bit_set AssignGlobalBits( name_class_def class_,
             } else {
                 conf = actual_name->v.conflict;
                 if( conf == NULL && first_time ) {
-                    conf = AddConflictNode( actual_name );
+                    conf = AddConflictNode( back, actual_name );
                 }
                 if( conf != NULL && _Isnt( conf, CST_CONFLICT_ON_HOLD ) && _GBitEmpty( conf->id.out_of_block ) ) {
                     _GBitAssign( conf->id.out_of_block, *bit );
@@ -179,7 +177,7 @@ static  global_bit_set AssignGlobalBits( name_class_def class_,
                     _GBitNext( bit );
                     if( _GBitEmpty( conf->id.out_of_block ) ) {
                         _SetTrue( conf, CST_CONFLICT_ON_HOLD );
-                        dataflo_state().MoreUseInOtherTemps = true;
+                        back.dataflo.MoreUseInOtherTemps = true;
                     }
                 }
             }
@@ -189,17 +187,17 @@ static  global_bit_set AssignGlobalBits( name_class_def class_,
 }
 
 
-static  void    CheckGlobals( void )
+static  void    CheckGlobals( BackRun& back )
 /**********************************/
 {
     name        *op;
 
 #define FORCE_MEM (USE_MEMORY|USE_ADDRESS)
     if( _IsntModel( CGSW_GEN_RELAX_ALIAS ) ) {
-        for( op = data_state().Names[N_MEMORY]; op != NULL; op = op->n.next_name ) {
+        for( op = back.data.Names[N_MEMORY]; op != NULL; op = op->n.next_name ) {
             if( op->m.memory_type == CG_FE ) {
                 if( ( op->v.usage & FORCE_MEM ) != FORCE_MEM ) {
-                    if( FEAttr( static_cast<cg_sym_handle>(op->v.symbol) ) & ( FE_VISIBLE | FE_GLOBAL ) ) {
+                    if( FEAttr( *back.front, static_cast<cg_sym_handle>(op->v.symbol) ) & ( FE_VISIBLE | FE_GLOBAL ) ) {
                         op->v.usage |= FORCE_MEM;
                     }
                 }
@@ -209,33 +207,33 @@ static  void    CheckGlobals( void )
 }
 
 
-void    MakeConflicts( void )
+void    MakeConflicts( BackRun& back )
 /***************************/
 {
     global_bit_set     bit;
 
-    CheckGlobals();
-    dataflo_state().MoreUseInOtherTemps = true;
+    CheckGlobals(back);
+    back.dataflo.MoreUseInOtherTemps = true;
     _GBitFirst( bit );
-    if( !data_state().BlockByBlock ) {
-        RoughSortTemps();
+    if( !back.data.BlockByBlock ) {
+        RoughSortTemps(back);
     }
-    AssignGlobalBits( N_TEMP, &bit, true );
-    data_state().MemoryBits = AssignGlobalBits( N_MEMORY, &bit, true );
-    PropagateConflicts();
+    AssignGlobalBits( back, N_TEMP, &bit, true );
+    back.data.MemoryBits = AssignGlobalBits( back, N_MEMORY, &bit, true );
+    PropagateConflicts(back);
 }
 
 
-bool    MoreConflicts( void )
+bool    MoreConflicts( BackRun& back )
 /***************************/
 {
     global_bit_set     bit;
 
     _GBitFirst( bit );
-    _GBitInit( data_state().MemoryBits, EMPTY );
-    bit = AssignGlobalBits( N_TEMP, &bit, false );
+    _GBitInit( back.data.MemoryBits, EMPTY );
+    bit = AssignGlobalBits( back, N_TEMP, &bit, false );
     if( !_GBitEmpty( bit ) ) {
-        PropagateConflicts();
+        PropagateConflicts(back);
         return( true );
     } else {
         return( false );
@@ -243,7 +241,7 @@ bool    MoreConflicts( void )
 }
 
 
-static  void    PropagateConflicts( void )
+static  void    PropagateConflicts( BackRun& back )
 /****************************************/
 {
     block       *blk;
@@ -252,26 +250,26 @@ static  void    PropagateConflicts( void )
     /*   bits.*/
     /*   (When we run out of bits, everything } else { is forced to memory)*/
 
-    FindReferences();
-    if( !data_state().BlockByBlock ) {
-        LiveAnalysis( data_state().HeadBlock, data_state().MemoryBits );
+    FindReferences(back);
+    if( !back.data.BlockByBlock ) {
+        LiveAnalysis( back.data.HeadBlock, back.data.MemoryBits );
     }
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
-        SetInOut( blk );
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
+        SetInOut( back, blk );
     }
 }
 
 
-void    SetInOut( block *blk )
+void    SetInOut( BackRun& back, block *blk )
 /****************************/
 {
-    if( data_state().BlockByBlock ) {
+    if( back.data.BlockByBlock ) {
         blk->dataflow->in  = blk->dataflow->use;
         _GBitTurnOn( blk->dataflow->in, blk->dataflow->def );
         _GBitAssign( blk->dataflow->out, blk->dataflow->in );
     }
     if( _IsBlkAttr( blk, BLK_RETURN ) ) {
-        HW_TurnOn( blk->ins.head.live.regs, data_state().CurrProc->state.return_reg );
+        HW_TurnOn( blk->ins.head.live.regs, back.data.CurrProc->state.return_reg );
     }
     _LBitInit( blk->ins.head.live.within_block, EMPTY );
     _GBitAssign( blk->ins.head.live.out_of_block, blk->dataflow->out );

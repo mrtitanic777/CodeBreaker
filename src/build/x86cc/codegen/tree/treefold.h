@@ -29,30 +29,31 @@
 *
 ****************************************************************************/
 
+#pragma once
 extern  int             GetLog2( uint_32 value );
-extern  tn              FoldTimes( tn left, tn rite, const type_def *tipe );
-extern  float_handle    OkToNegate( float_handle value, const type_def *tipe );
-extern  tn      FoldMinus( tn left, tn rite, const type_def *tipe );
-extern  tn      FoldPlus( tn left, tn rite, const type_def *tipe );
-extern  tn      FoldPow( tn left, tn rite, const type_def *tipe );
-extern  tn      FoldAnd( tn left, tn rite, const type_def *tipe );
-extern  tn      FoldOr( tn left, tn rite, const type_def *tipe );
-extern  tn      FoldXor( tn left, tn rite, const type_def *tipe );
-extern  tn      FoldRShift( tn left, tn rite, const type_def *tipe );
-extern  tn      FoldLShift( tn left, tn rite, const type_def *tipe );
-extern  tn      FoldDiv( tn left, tn rite, const type_def *tipe );
-extern  tn      FoldMod( tn left, tn rite, const type_def *tipe );
-extern  tn      Fold1sComp( tn left, const type_def *tipe );
-extern  tn      FoldUMinus( tn left, const type_def *tipe );
-extern  tn      FoldSqrt( tn left, const type_def *tipe );
-extern  tn      FoldLog( cg_op opcode, tn left, const type_def *tipe );
-extern  tn      FoldFlAnd( tn left, tn rite );
-extern  tn      FoldFlOr( tn left, tn rite );
-extern  tn      FoldFlNot( tn left );
-extern  tn      FoldBitCompare( cg_op opcode, tn left, tn rite );
-extern  float_handle CnvCFToType( float_handle cf, const type_def *tipe );
-extern  tn      FoldCompare( cg_op opcode, tn left, tn rite, const type_def *tipe );
-extern  tn      FoldPostGetsCompare( cg_op opcode, tn left, tn rite, const type_def *tipe );
-extern  an      FoldConsCompare( cg_op opcode, tn left, tn rite, const type_def *tipe );
-extern  bool    FoldIfTrue( tn left, label_handle lbl );
-extern  bool    FoldIfFalse( tn left, label_handle lbl );
+extern  tn              FoldTimes( BackRun& back, tn left, tn rite, const type_def *tipe );
+extern  float_handle    OkToNegate( BackRun& back, float_handle value, const type_def *tipe );
+extern  tn      FoldMinus( BackRun& back, tn left, tn rite, const type_def *tipe );
+extern  tn      FoldPlus( BackRun& back, tn left, tn rite, const type_def *tipe );
+extern  tn      FoldPow( BackRun& back, tn left, tn rite, const type_def *tipe );
+extern  tn      FoldAnd( BackRun& back, tn left, tn rite, const type_def *tipe );
+extern  tn      FoldOr( BackRun& back, tn left, tn rite, const type_def *tipe );
+extern  tn      FoldXor( BackRun& back, tn left, tn rite, const type_def *tipe );
+extern  tn      FoldRShift( BackRun& back, tn left, tn rite, const type_def *tipe );
+extern  tn      FoldLShift( BackRun& back, tn left, tn rite, const type_def *tipe );
+extern  tn      FoldDiv( BackRun& back, tn left, tn rite, const type_def *tipe );
+extern  tn      FoldMod( BackRun& back, tn left, tn rite, const type_def *tipe );
+extern  tn      Fold1sComp( BackRun& back, tn left, const type_def *tipe );
+extern  tn      FoldUMinus( BackRun& back, tn left, const type_def *tipe );
+extern  tn      FoldSqrt( BackRun& back, tn left, const type_def *tipe );
+extern  tn      FoldLog( BackRun& back, cg_op opcode, tn left, const type_def *tipe );
+extern  tn      FoldFlAnd( BackRun& back, tn left, tn rite );
+extern  tn      FoldFlOr( BackRun& back, tn left, tn rite );
+extern  tn      FoldFlNot( BackRun& back, tn left );
+extern  tn      FoldBitCompare( BackRun& back, cg_op opcode, tn left, tn rite );
+extern  float_handle CnvCFToType( BackRun& back, float_handle cf, const type_def *tipe );
+extern  tn      FoldCompare( BackRun& back, cg_op opcode, tn left, tn rite, const type_def *tipe );
+extern  tn      FoldPostGetsCompare( BackRun& back, cg_op opcode, tn left, tn rite, const type_def *tipe );
+extern  an      FoldConsCompare( BackRun& back, cg_op opcode, tn left, tn rite, const type_def *tipe );
+extern  bool    FoldIfTrue( BackRun& back, tn left, label_handle lbl );
+extern  bool    FoldIfFalse( BackRun& back, tn left, label_handle lbl );

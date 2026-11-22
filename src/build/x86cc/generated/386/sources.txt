@@ -288,3 +288,7 @@ owl/owsect.cpp
 owl/owstring.cpp
 owl/owsymbol.cpp
 run/cbrun.cpp
+front/driver/frontrun.cpp
+codegen/common/backrun.cpp
+asm/asmrun.cpp
+support/supportrun.cpp

@@ -30,4 +30,5 @@
 ****************************************************************************/
 
 
-extern  void    *SortList( void *list, unsigned next_offset, bool(* before)(void *,void *) );
+#pragma once
+extern  void    *SortList( BackRun& back, void *list, unsigned next_offset, bool(* before)(BackRun&, void *,void *) );

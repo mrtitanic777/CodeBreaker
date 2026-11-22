@@ -37,22 +37,23 @@
 #include "cgprotos.h"
 #include "feprotos.h"
 #include "cgen.h"
+#include "frontrun.hpp"
 
 #define ZEROS_BLOCK_SIZE    (8 * 1024)
 
-void EmitZeros( target_size amount )
+void EmitZeros( FrontRun& front, target_size amount )
 {
     for( ; amount > ZEROS_BLOCK_SIZE; amount -= ZEROS_BLOCK_SIZE ) {
-        DGIBytes( ZEROS_BLOCK_SIZE, 0 );
+        DGIBytes( *front.back, ZEROS_BLOCK_SIZE, 0 );
     }
-    DGIBytes( amount, 0 );
+    DGIBytes( *front.back, amount, 0 );
 }
 
-void AlignIt( TYPEPTR typ )
+void AlignIt( FrontRun& front, TYPEPTR typ )
 {
 #if _INTEL_CPU
-    if( cvars_state().OptSize == 0 ) {        /* optimize for time */
-        DGAlign( GetTypeAlignment( typ ) );
+    if( front.cvars.OptSize == 0 ) {        /* optimize for time */
+        DGAlign( *front.back, GetTypeAlignment( front, typ ) );
     }
 #else /* _RISC_CPU */
     align_type  align;
@@ -64,7 +65,7 @@ void AlignIt( TYPEPTR typ )
 #endif
 }
 
-target_size GetDQuadPointerSize( enum quad_flags dq_flags )
+target_size GetDQuadPointerSize( FrontRun& front, enum quad_flags dq_flags )
 {
     target_size         size;
 
@@ -77,11 +78,11 @@ target_size GetDQuadPointerSize( enum quad_flags dq_flags )
     } else if( dq_flags & Q_FAR_POINTER ) {
         size = TARGET_FAR_POINTER;
     } else if( dq_flags & Q_CODE_POINTER ) {
-        if( cvars_state().TargetSwitches & CGSW_X86_BIG_CODE ) {
+        if( front.cvars.TargetSwitches & CGSW_X86_BIG_CODE ) {
             size = TARGET_FAR_POINTER;
         }
     } else {
-        if( cvars_state().TargetSwitches & CGSW_X86_BIG_DATA ) {
+        if( front.cvars.TargetSwitches & CGSW_X86_BIG_DATA ) {
             size = TARGET_FAR_POINTER;
         }
     }
@@ -111,17 +112,13 @@ static cg_type GetDQuadPointerCGType( enum quad_flags dq_flags )
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct CgendataState {
-    segment_id EmitDQuad_segid = SEG_NULL;
-    target_size EmitDQuad_size = 0;
-};
+/* (struct CgendataState: cgendata_state.h) */
 
 }  // namespace
 
-static inline CgendataState& cgendata_state() { return cbrun_part<CgendataState>(); }
 
 
-static void EmitDQuad( DATA_QUAD *dq )
+static void EmitDQuad( FrontRun& front, DATA_QUAD *dq )
 {
     cg_type             data_type;
     target_size         amount;
@@ -129,64 +126,64 @@ static void EmitDQuad( DATA_QUAD *dq )
 
 
 #if _CPU == 8086
-    if( cgendata_state().EmitDQuad_size >= 0x10000 ) {
-        if( cgendata_state().EmitDQuad_segid != SEG_CONST && cgendata_state().EmitDQuad_segid != SEG_DATA ) {
-            ++cgendata_state().EmitDQuad_segid;
-            BESetSeg( cgendata_state().EmitDQuad_segid );
-            cgendata_state().EmitDQuad_size -= 0x10000;
+    if( front.cgendata.EmitDQuad_size >= 0x10000 ) {
+        if( front.cgendata.EmitDQuad_segid != SEG_CONST && front.cgendata.EmitDQuad_segid != SEG_DATA ) {
+            ++front.cgendata.EmitDQuad_segid;
+            BESetSeg( *front.back, front.cgendata.EmitDQuad_segid );
+            front.cgendata.EmitDQuad_size -= 0x10000;
         }
     }
 #endif
     switch( dq->type ) {
     case QDT_STATIC:
-        SymGet( &sym, dq->u.var.sym_handle );
-        cgendata_state().EmitDQuad_segid = sym.u.var.segid;
-        BESetSeg( cgendata_state().EmitDQuad_segid );
-        AlignIt( sym.sym_type );
-        DGLabel( FEBack( (CGSYM_HANDLE)dq->u.var.sym_handle ) );
-        cgendata_state().EmitDQuad_size = 0;
+        SymGet( front, &sym, dq->u.var.sym_handle );
+        front.cgendata.EmitDQuad_segid = sym.u.var.segid;
+        BESetSeg( *front.back, front.cgendata.EmitDQuad_segid );
+        AlignIt( front, sym.sym_type );
+        DGLabel( *front.back, FEBack( front, (CGSYM_HANDLE)dq->u.var.sym_handle ) );
+        front.cgendata.EmitDQuad_size = 0;
         break;
     case QDT_CHAR:
     case QDT_UCHAR:
     case QDT_BOOL:
-        DGInteger( dq->u_long_value1, TY_UINT_1 );
-        cgendata_state().EmitDQuad_size += sizeof( char );
+        DGInteger( *front.back, dq->u_long_value1, TY_UINT_1 );
+        front.cgendata.EmitDQuad_size += sizeof( char );
         if( dq->flags & Q_2_INTS_IN_ONE ) {
-            DGInteger( dq->u_long_value2, TY_UINT_1 );
-            cgendata_state().EmitDQuad_size += sizeof( char );
+            DGInteger( *front.back, dq->u_long_value2, TY_UINT_1 );
+            front.cgendata.EmitDQuad_size += sizeof( char );
         }
         break;
     case QDT_SHORT:
     case QDT_USHORT:
-        DGInteger( dq->u_long_value1, TY_UINT_2 );
-        cgendata_state().EmitDQuad_size += TARGET_SHORT;
+        DGInteger( *front.back, dq->u_long_value1, TY_UINT_2 );
+        front.cgendata.EmitDQuad_size += TARGET_SHORT;
         if( dq->flags & Q_2_INTS_IN_ONE ) {
-            DGInteger( dq->u_long_value2, TY_UINT_2 );
-            cgendata_state().EmitDQuad_size += TARGET_SHORT;
+            DGInteger( *front.back, dq->u_long_value2, TY_UINT_2 );
+            front.cgendata.EmitDQuad_size += TARGET_SHORT;
         }
         break;
     case QDT_INT:
     case QDT_UINT:
-        DGInteger( dq->u_long_value1, TY_INTEGER );
-        cgendata_state().EmitDQuad_size += TARGET_INT;
+        DGInteger( *front.back, dq->u_long_value1, TY_INTEGER );
+        front.cgendata.EmitDQuad_size += TARGET_INT;
         if( dq->flags & Q_2_INTS_IN_ONE ) {
-            DGInteger( dq->u_long_value2, TY_INTEGER );
-            cgendata_state().EmitDQuad_size += TARGET_INT;
+            DGInteger( *front.back, dq->u_long_value2, TY_INTEGER );
+            front.cgendata.EmitDQuad_size += TARGET_INT;
         }
         break;
     case QDT_LONG:
     case QDT_ULONG:
-        DGInteger( dq->u_long_value1, TY_UINT_4 );
-        cgendata_state().EmitDQuad_size += TARGET_LONG;
+        DGInteger( *front.back, dq->u_long_value1, TY_UINT_4 );
+        front.cgendata.EmitDQuad_size += TARGET_LONG;
         if( dq->flags & Q_2_INTS_IN_ONE ) {
-            DGInteger( dq->u_long_value2, TY_UINT_4 );
-            cgendata_state().EmitDQuad_size += TARGET_LONG;
+            DGInteger( *front.back, dq->u_long_value2, TY_UINT_4 );
+            front.cgendata.EmitDQuad_size += TARGET_LONG;
         }
         break;
     case QDT_LONG64:
     case QDT_ULONG64:
-        DGInteger64( dq->u.long64, TY_UINT_8 );
-        cgendata_state().EmitDQuad_size += TARGET_LONG64;
+        DGInteger64( *front.back, dq->u.long64, TY_UINT_8 );
+        front.cgendata.EmitDQuad_size += TARGET_LONG64;
         break;
 
     case QDT_FLOAT:
@@ -205,79 +202,79 @@ static void EmitDQuad( DATA_QUAD *dq )
             local_dq.u_long_value1 = dq->u_long_value1;
             local_dq.u_long_value2 = dq->u_long_value2;
             float_value = (float)local_dq.u.double_value;
-            DGBytes( TARGET_FLOAT, (char *)&float_value );
+            DGBytes( *front.back, TARGET_FLOAT, (char *)&float_value );
         }
-        cgendata_state().EmitDQuad_size += TARGET_FLOAT;
+        front.cgendata.EmitDQuad_size += TARGET_FLOAT;
         break;
     case QDT_DOUBLE:
     case QDT_DIMAGINARY:
 //        ftoa( dq->u.double_value, Buffer );
 //        DGFloat( Buffer, TY_DOUBLE );
-        DGBytes( TARGET_DOUBLE, (char *)&dq->u.double_value );
-        cgendata_state().EmitDQuad_size += TARGET_DOUBLE;
+        DGBytes( *front.back, TARGET_DOUBLE, (char *)&dq->u.double_value );
+        front.cgendata.EmitDQuad_size += TARGET_DOUBLE;
         break;
     case QDT_LONG_DOUBLE:
     case QDT_LDIMAGINARY:
-        DGBytes( TARGET_LDOUBLE, (char *)&dq->u.long_double_value );
-        cgendata_state().EmitDQuad_size += TARGET_LDOUBLE;
+        DGBytes( *front.back, TARGET_LDOUBLE, (char *)&dq->u.long_double_value );
+        front.cgendata.EmitDQuad_size += TARGET_LDOUBLE;
         break;
     case QDT_STRING:
         data_type = GetDQuadPointerCGType( dq->flags );
-        EmitStrPtr( dq->u.string_leaf, data_type );
-        cgendata_state().EmitDQuad_size += GetDQuadPointerSize( dq->flags );
+        EmitStrPtr( front, dq->u.string_leaf, data_type );
+        front.cgendata.EmitDQuad_size += GetDQuadPointerSize( front, dq->flags );
         break;
     case QDT_POINTER:
     case QDT_ID:
         data_type = GetDQuadPointerCGType( dq->flags );
         if( dq->u.var.sym_handle == SYM_NULL ) {
-            DGInteger( dq->u.var.offset, data_type );
+            DGInteger( *front.back, dq->u.var.offset, data_type );
 #if _INTEL_CPU
         } else if( dq->flags & Q_SEGMENT ) {    /* CodeBreaker: the selector of the symbol's segment */
-            DGFEPtrBase( (CGSYM_HANDLE)dq->u.var.sym_handle );
+            DGFEPtrBase( *front.back, (CGSYM_HANDLE)dq->u.var.sym_handle );
 #endif
         } else {
-            DGFEPtr( (CGSYM_HANDLE)dq->u.var.sym_handle, data_type, dq->u.var.offset );
+            DGFEPtr( *front.back, (CGSYM_HANDLE)dq->u.var.sym_handle, data_type, dq->u.var.offset );
         }
-        cgendata_state().EmitDQuad_size += GetDQuadPointerSize( dq->flags );
+        front.cgendata.EmitDQuad_size += GetDQuadPointerSize( front, dq->flags );
         break;
     case QDT_CONST:                       /* array of characters */
-        cgendata_state().EmitDQuad_size += EmitBytes( dq->u.string_leaf );
+        front.cgendata.EmitDQuad_size += EmitBytes( front, dq->u.string_leaf );
         break;
     case QDT_CONSTANT:
 #if _CPU == 8086
         for( amount = dq->u_size; amount != 0; ) {
-            if( amount + cgendata_state().EmitDQuad_size >= 0x00010000 ) {
-                EmitZeros( 0x10000 - cgendata_state().EmitDQuad_size );
-                amount -= ( 0x10000 - cgendata_state().EmitDQuad_size );
-                cgendata_state().EmitDQuad_size = 0;
-                if( cgendata_state().EmitDQuad_segid != SEG_CONST && cgendata_state().EmitDQuad_segid != SEG_DATA ) {
-                    ++cgendata_state().EmitDQuad_segid;
-                    BESetSeg( cgendata_state().EmitDQuad_segid );
+            if( amount + front.cgendata.EmitDQuad_size >= 0x00010000 ) {
+                EmitZeros( front, 0x10000 - front.cgendata.EmitDQuad_size );
+                amount -= ( 0x10000 - front.cgendata.EmitDQuad_size );
+                front.cgendata.EmitDQuad_size = 0;
+                if( front.cgendata.EmitDQuad_segid != SEG_CONST && front.cgendata.EmitDQuad_segid != SEG_DATA ) {
+                    ++front.cgendata.EmitDQuad_segid;
+                    BESetSeg( *front.back, front.cgendata.EmitDQuad_segid );
                 }
             } else {
-                EmitZeros( amount );
-                cgendata_state().EmitDQuad_size += amount;
+                EmitZeros( front, amount );
+                front.cgendata.EmitDQuad_size += amount;
                 amount = 0;
             }
         }
 #else
         amount = dq->u_size;
-        EmitZeros( amount );
-        cgendata_state().EmitDQuad_size += amount;
+        EmitZeros( front, amount );
+        front.cgendata.EmitDQuad_size += amount;
 #endif
         break;
     }
 }
 
 
-void EmitDataQuads( void )
+void EmitDataQuads( FrontRun& front )
 {
     DATA_QUAD   *dq;
 
-    if( StartDataQuadAccess() != NULL ) {
-        for( ; (dq = NextDataQuad()) != NULL; ) {
+    if( StartDataQuadAccess(front) != NULL ) {
+        for( ; (dq = NextDataQuad(front)) != NULL; ) {
             do {
-                EmitDQuad( dq );
+                EmitDQuad( front, dq );
             } while( (dq->flags & Q_REPEATED_DATA) && (dq->u_rpt_count)-- > 1 );
         }
     }

@@ -30,29 +30,30 @@
 ****************************************************************************/
 
 
-extern  dbg_type        DFFtnType( const char *name, dbg_ftn_type tipe );
-extern  dbg_type        DFScalar( const char *name, cg_type tipe );
+#pragma once
+extern  dbg_type        DFFtnType( BackRun& back, const char *name, dbg_ftn_type tipe );
+extern  dbg_type        DFScalar( BackRun& back, const char *name, cg_type tipe );
 extern  dbg_type        DFScope( const char *name );
 extern  char const      *DFScopeName( dbg_type scope );
-extern  void            DFDumpName( dbg_name name, dbg_type tipe );
-extern  void            DFBackRefType( dbg_name name, dbg_type tipe );
-extern  dbg_type        DFCharBlock( uint_32 len );
-extern  dbg_type        DFCharBlockNamed( const char *name, uint_32 len );
-extern  dbg_type        DFIndCharBlock( back_handle len, cg_type len_type, int off );
-extern  dbg_type        DFLocCharBlock( dbg_loc loc, cg_type len_type );
-extern  dbg_type        DFFtnArray( back_handle dims, cg_type lo_bound_tipe, cg_type num_elems_tipe, int off, dbg_type base );
-extern  dbg_type        DFArray( dbg_type idx, dbg_type base );
-extern  dbg_type        DFIntArray( uint_32 hi, dbg_type base );
-extern  dbg_type        DFEndArray( dbg_array ar );
+extern  void            DFDumpName( BackRun& back, dbg_name name, dbg_type tipe );
+extern  void            DFBackRefType( BackRun& back, dbg_name name, dbg_type tipe );
+extern  dbg_type        DFCharBlock( BackRun& back, uint_32 len );
+extern  dbg_type        DFCharBlockNamed( BackRun& back, const char *name, uint_32 len );
+extern  dbg_type        DFIndCharBlock( BackRun& back, back_handle len, cg_type len_type, int off );
+extern  dbg_type        DFLocCharBlock( BackRun& back, dbg_loc loc, cg_type len_type );
+extern  dbg_type        DFFtnArray( BackRun& back, back_handle dims, cg_type lo_bound_tipe, cg_type num_elems_tipe, int off, dbg_type base );
+extern  dbg_type        DFArray( BackRun& back, dbg_type idx, dbg_type base );
+extern  dbg_type        DFIntArray( BackRun& back, uint_32 hi, dbg_type base );
+extern  dbg_type        DFEndArray( BackRun& back, dbg_array ar );
 extern  dbg_type        DFSubRange( int_32 lo, int_32 hi, dbg_type base );
-extern  dbg_type        DFDereference( cg_type ptr_type, dbg_type base );
-extern  dbg_type        DFPtr( cg_type ptr_type, dbg_type base );
-extern  dbg_type        DFBasedPtr( cg_type ptr_type, dbg_type base, dbg_loc loc_segment );
-extern  void            DFBegStruct( dbg_struct st );
-extern  dbg_type        DFEndStruct( dbg_struct st );
-extern  dbg_type        DFEndEnum( dbg_enum en );
-extern  dbg_type        DFEndProc( dbg_proc pr );
-extern  dw_loc_id       DBGLoc2DFCont( dbg_loc loc, dw_loc_id df_locid );
-extern  dw_loc_handle   DBGLocBase2DF( dbg_loc loc_seg );
-extern  dw_loc_handle   DBGLoc2DF( dbg_loc loc );
+extern  dbg_type        DFDereference( BackRun& back, cg_type ptr_type, dbg_type base );
+extern  dbg_type        DFPtr( BackRun& back, cg_type ptr_type, dbg_type base );
+extern  dbg_type        DFBasedPtr( BackRun& back, cg_type ptr_type, dbg_type base, dbg_loc loc_segment );
+extern  void            DFBegStruct( BackRun& back, dbg_struct st );
+extern  dbg_type        DFEndStruct( BackRun& back, dbg_struct st );
+extern  dbg_type        DFEndEnum( BackRun& back, dbg_enum en );
+extern  dbg_type        DFEndProc( BackRun& back, dbg_proc pr );
+extern  dw_loc_id       DBGLoc2DFCont( BackRun& back, dbg_loc loc, dw_loc_id df_locid );
+extern  dw_loc_handle   DBGLocBase2DF( BackRun& back, dbg_loc loc_seg );
+extern  dw_loc_handle   DBGLoc2DF( BackRun& back, dbg_loc loc );
 

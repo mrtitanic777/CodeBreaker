@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "gen8087.h"
 
 
@@ -43,6 +44,5 @@ struct I87dataState {
     bool Used87;
     int Max87Stk;
 };
-inline I87dataState& i87data_state() { return cbrun_part<I87dataState>(); }
 
 #endif

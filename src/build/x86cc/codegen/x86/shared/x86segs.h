@@ -31,11 +31,12 @@
 ****************************************************************************/
 
 
-extern hw_reg_set   CalcSegment( cg_sym_handle sym, cg_class class_ );
-extern name         *AddrConst( name *value, segment_id segid, constant_type_class const_type );
-extern bool         SegIsCS( name *op );
-extern bool         SegIsSS( name *op );
-extern name         *GetSegment( name *op );
-extern name         *NearSegment( void );
-extern name         *SegName( name *op );
-extern bool         SegOver( name *op );
+#pragma once
+extern hw_reg_set   CalcSegment( BackRun& back, cg_sym_handle sym, cg_class class_ );
+extern name         *AddrConst( BackRun& back, name *value, segment_id segid, constant_type_class const_type );
+extern bool         SegIsCS( BackRun& back, name *op );
+extern bool         SegIsSS( BackRun& back, name *op );
+extern name         *GetSegment( BackRun& back, name *op );
+extern name         *NearSegment( BackRun& back );
+extern name         *SegName( BackRun& back, name *op );
+extern bool         SegOver( BackRun& back, name *op );

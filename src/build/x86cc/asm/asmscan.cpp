@@ -36,6 +36,7 @@
 #include "directiv.h"
 #endif
 #include <ctype.h>
+#include "asmrun.hpp"
 
 
 typedef union {
@@ -56,13 +57,14 @@ bool                    EnumDirective;
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
+}  // namespace
 struct AsmscanState {
     unsigned radix_base = 10;
 };
+namespace {
 
 }  // namespace
 
-static inline AsmscanState& asmscan_state() { return cbrun_part<AsmscanState>(); }
 
 
 static bool get_float( asm_tok *tok, const char **input, char **output )
@@ -136,7 +138,7 @@ static void array_mul_add( unsigned char *buf, unsigned base, const char *dig, u
     }
 }
 
-static bool get_string( asm_tok *tok, const char **input, char **output )
+static bool get_string( AsmRun& assembler, asm_tok *tok, const char **input, char **output )
 /***********************************************************************/
 {
     char    symbol_o;
@@ -201,7 +203,7 @@ static bool get_string( asm_tok *tok, const char **input, char **output )
             }
         } else if( **input == '\0' || **input == '\n' ) {
             *(*output)++ = '\0';
-            AsmError( SYNTAX_ERROR );
+            AsmError( *assembler.front, SYNTAX_ERROR );
             return( RC_ERROR );
         }
         *(*output)++ = *(*input)++;
@@ -211,7 +213,7 @@ static bool get_string( asm_tok *tok, const char **input, char **output )
     return( RC_OK );
 }
 
-static bool get_number( asm_tok *tok, const char **input, char **output, bool base10 )
+static bool get_number( AsmRun& assembler, asm_tok *tok, const char **input, char **output, bool base10 )
 /************************************************************************************/
 {
     const char          *ptr;
@@ -260,7 +262,7 @@ static bool get_number( asm_tok *tok, const char **input, char **output, bool ba
             /*
              * process only a-fA-F characters, 0-9 are already processed
              */
-            if( base != 16 && asmscan_state().radix_base != 16 ) {
+            if( base != 16 && assembler.asmscan->radix_base != 16 ) {
                 if( c == 'b' ) {
                     if( base == 0 && OK_NUM( BINARY ) ) {
                         c2 = ((unsigned char *)ptr)[1];
@@ -307,7 +309,7 @@ static bool get_number( asm_tok *tok, const char **input, char **output, bool ba
     }
     if( digits_seen == 0 ) {
         if( !first_char_0 ) {
-            return( get_string( tok, input, output ) );
+            return( get_string( assembler, tok, input, output ) );
         }
         digits_seen |= 1;
         first_char_0 = false;
@@ -323,7 +325,7 @@ static bool get_number( asm_tok *tok, const char **input, char **output, bool ba
         if( base10 ) {
             base = 10;
         } else {
-            base = asmscan_state().radix_base;
+            base = assembler.asmscan->radix_base;
         }
     }
     switch( base ) {
@@ -363,7 +365,7 @@ static bool get_number( asm_tok *tok, const char **input, char **output, bool ba
     return( RC_OK );
 } /* get_number */
 
-static bool get_id_in_backquotes( asm_tok *tok, const char **input, char **output )
+static bool get_id_in_backquotes( AsmRun& assembler, asm_tok *tok, const char **input, char **output )
 /*********************************************************************************/
 {
     tok->string_ptr = *output;
@@ -375,7 +377,7 @@ static bool get_id_in_backquotes( asm_tok *tok, const char **input, char **outpu
     for( ; **input != '`'; ) {
         *(*output)++ = *(*input)++;
         if( **input == '\0' || **input == ';' ) {
-            AsmError( SYNTAX_ERROR );
+            AsmError( *assembler.front, SYNTAX_ERROR );
             return( RC_ERROR );
         }
     }
@@ -585,7 +587,7 @@ static bool get_comment( asm_tok *tok, const char **input, char **output )
 
 #endif
 
-static bool get_special_symbol( asm_tok *tok, const char **input, char **output )
+static bool get_special_symbol( AsmRun& assembler, asm_tok *tok, const char **input, char **output )
 /*******************************************************************************/
 {
     char        symbol;
@@ -665,7 +667,7 @@ static bool get_special_symbol( asm_tok *tok, const char **input, char **output 
         /* anything we don't recognise we will consider a string,
          * delimited by space characters, commas, newlines or nulls
          */
-        return( get_string( tok, input, output ) );
+        return( get_string( assembler, tok, input, output ) );
     }
     tok->class_ = cls;
     *(*output)++ = *(*input)++;
@@ -715,7 +717,7 @@ void SetFinalToken( token_buffer *tokbuf, token_idx count )
     tokbuf->count = count;
 }
 
-bool AsmScan( token_buffer *tokbuf, const char *string )
+bool AsmScan( AsmRun& assembler, token_buffer *tokbuf, const char *string )
 /*******************************************************
  * - perform syntax checking on scan line;
  * - pass back tokens for later use;
@@ -789,29 +791,33 @@ bool AsmScan( token_buffer *tokbuf, const char *string )
             }
 #endif
         } else if( isdigit( c ) ) {
-            if( get_number( tok + i, &ptr, &output_ptr, base10 ) ) {
+            if( get_number( assembler, tok + i, &ptr, &output_ptr, base10 ) ) {
                 SetFinalToken( tokbuf, i + 1 );
                 return( RC_ERROR );
             }
         } else if( c == '`' ) {
-            if( get_id_in_backquotes( tok + i, &ptr, &output_ptr ) ) {
+            if( get_id_in_backquotes( assembler, tok + i, &ptr, &output_ptr ) ) {
                 SetFinalToken( tokbuf, i + 1 );
                 return( RC_ERROR );
             }
         } else {
-            if( get_special_symbol( tok + i, &ptr, &output_ptr ) ) {
+            if( get_special_symbol( assembler, tok + i, &ptr, &output_ptr ) ) {
                 SetFinalToken( tokbuf, i + 1 );
                 return( RC_ERROR );
             }
         }
         i++;
     }
-    AsmError( TOO_MANY_TOKENS );
+    AsmError( *assembler.front, TOO_MANY_TOKENS );
     SetFinalToken( tokbuf, i );
     return( RC_ERROR );
 }
 
-void RadixSet( unsigned new_base )
+void RadixSet( AsmRun& assembler, unsigned new_base )
 {
-    asmscan_state().radix_base = new_base;
+    assembler.asmscan->radix_base = new_base;
 }
+
+/* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
+AsmscanState* asmscan_make() { return new AsmscanState(); }
+void asmscan_free(AsmscanState* part) { delete part; }

@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
-extern void    CalcMemLimit( void );
-extern void    FlushOpt( void );
-extern void    BlowAwayFreeLists( void );
+#pragma once
+extern void    CalcMemLimit( BackRun& back );
+extern void    FlushOpt( BackRun& back );
+extern void    BlowAwayFreeLists( BackRun& back );

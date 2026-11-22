@@ -31,14 +31,15 @@
 
 
 #include "owlpriv.h"
+#include "backrun.hpp"
 
-owl_symbol_handle OWLENTRY OWLSymbolInit( owl_file_handle file, const char *name ) {
+owl_symbol_handle OWLENTRY OWLSymbolInit( BackRun& back, owl_file_handle file, const char *name ) {
 //**********************************************************************************
     owl_symbol_handle   handle;
     owl_symbol_table    *table;
 
     table = file->symbol_table;
-    handle = static_cast<owl_symbol_handle>(_ClientAlloc( table->file, sizeof( owl_symbol_info ) ));
+    handle = static_cast<owl_symbol_handle>(_ClientAlloc( back, table->file, sizeof( owl_symbol_info ) ));
     handle->section = NULL;
     handle->index = 0;
     handle->comdat = 0;
@@ -48,7 +49,7 @@ owl_symbol_handle OWLENTRY OWLSymbolInit( owl_file_handle file, const char *name
     handle->num_relocs = 0;
     handle->name = NULL;
     if( name != NULL ) {
-        handle->name = OWLStringAdd( table->file->string_table, name );
+        handle->name = OWLStringAdd( back, table->file->string_table, name );
     }
     handle->flags = static_cast<owl_sym_flags>(0);
     handle->x.func = NULL;
@@ -85,12 +86,12 @@ owl_symbol_index OWLENTRY OWLSymbolIndex( owl_symbol_handle symbol ) {
     return( symbol->index );
 }
 
-owl_symbol_table * OWLENTRY OWLSymbolTableInit( owl_file_handle file ) {
+owl_symbol_table * OWLENTRY OWLSymbolTableInit( BackRun& back, owl_file_handle file ) {
 //**********************************************************************
 
     owl_symbol_table    *table;
 
-    table = static_cast<owl_symbol_table *>(_ClientAlloc( file, sizeof( owl_symbol_table ) ));
+    table = static_cast<owl_symbol_table *>(_ClientAlloc( back, file, sizeof( owl_symbol_table ) ));
     table->file = file;
     table->num_global_symbols = 0;
     table->num_local_symbols = 0;
@@ -99,7 +100,7 @@ owl_symbol_table * OWLENTRY OWLSymbolTableInit( owl_file_handle file ) {
     return( table );
 }
 
-void OWLENTRY OWLSymbolTableFini( owl_symbol_table *table ) {
+void OWLENTRY OWLSymbolTableFini( BackRun& back, owl_symbol_table *table ) {
 //***********************************************************
 
     owl_symbol_handle   curr;
@@ -119,9 +120,9 @@ void OWLENTRY OWLSymbolTableFini( owl_symbol_table *table ) {
 
                     for( currf = info->head; currf != NULL; currf = nextf ) {
                         nextf = currf->next;
-                        _ClientFree( table->file, currf );
+                        _ClientFree( back, table->file, currf );
                     }
-                    _ClientFree( table->file, info );
+                    _ClientFree( back, table->file, info );
                 }
             }
             break;
@@ -130,7 +131,7 @@ void OWLENTRY OWLSymbolTableFini( owl_symbol_table *table ) {
         case OWL_TYPE_OBJECT:
             break;
         }
-        _ClientFree( table->file, curr );
+        _ClientFree( back, table->file, curr );
     }
-    _ClientFree( table->file, table );
+    _ClientFree( back, table->file, table );
 }

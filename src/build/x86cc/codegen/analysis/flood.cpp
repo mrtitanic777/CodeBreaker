@@ -38,6 +38,7 @@
 #include "stackcg.h"
 #include "nullprop.h"
 #include "flood.h"
+#include "backrun.hpp"
 
 
 typedef struct stupid_struct_so_I_can_use_safe_recurse {
@@ -46,7 +47,7 @@ typedef struct stupid_struct_so_I_can_use_safe_recurse {
     void        *parm;
 } flood_parms;
 
-static void *doFloodForward( flood_parms *fp )
+static void *doFloodForward( BackRun& back, flood_parms *fp )
 {
     block       *next;
     block_num   i;
@@ -57,16 +58,16 @@ static void *doFloodForward( flood_parms *fp )
         next = fp->blk->edge[i].destination.u.blk;
         if( _IsBlkVisited( next ) )
             continue;
-        if( !fp->func( next, fp->parm ) )
+        if( !fp->func( back, next, fp->parm ) )
             break;
         _MarkBlkVisited( next );
         new_parms.blk = next;
-        SafeRecurseCG( (func_sr)doFloodForward, &new_parms );
+        SafeRecurseCG( back, (func_sr)doFloodForward, &new_parms );
     }
     return NULL;
 }
 
-void FloodForward( block *blk, flood_func func, void *parm )
+void FloodForward( BackRun& back, block *blk, flood_func func, void *parm )
 {
     flood_parms parms;
 
@@ -74,10 +75,10 @@ void FloodForward( block *blk, flood_func func, void *parm )
     parms.blk = blk;
     parms.func = func;
     parms.parm = parm;
-    doFloodForward( &parms );
+    doFloodForward( back, &parms );
 }
 
-static void *doFloodBackward( flood_parms *fp )
+static void *doFloodBackward( BackRun& back, flood_parms *fp )
 {
     block       *next;
     block_edge  *edge;
@@ -88,16 +89,16 @@ static void *doFloodBackward( flood_parms *fp )
         next = edge->source;
         if( _IsBlkVisited( next ) )
             continue;
-        if( !fp->func( next, fp->parm ) )
+        if( !fp->func( back, next, fp->parm ) )
             break;
         _MarkBlkVisited( next );
         new_parms.blk = next;
-        SafeRecurseCG( (func_sr)doFloodBackward, &new_parms );
+        SafeRecurseCG( back, (func_sr)doFloodBackward, &new_parms );
     }
     return NULL;
 }
 
-void FloodBackwards( block *start, flood_func func, void *parm )
+void FloodBackwards( BackRun& back, block *start, flood_func func, void *parm )
 /************************************************************************
     Flood backwards in the flow graph, calling the given function for each
     block as it is visited
@@ -109,5 +110,5 @@ void FloodBackwards( block *start, flood_func func, void *parm )
     parms.blk = start;
     parms.func = func;
     parms.parm = parm;
-    doFloodBackward( &parms );
+    doFloodBackward( back, &parms );
 }

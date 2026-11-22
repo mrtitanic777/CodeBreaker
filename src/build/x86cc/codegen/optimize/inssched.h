@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef struct FU_entry {
     unsigned short      good_fu;
     byte                unit_stall;
@@ -61,11 +62,10 @@ typedef struct dep_list_entry {
 struct InsschedState {
     data_dag *DataDag;   /* global for dump routines */
 };
-inline InsschedState& inssched_state() { return cbrun_part<InsschedState>(); }
 
 #endif
 
-extern const FU_entry   *FUEntry( instruction *ins );
-extern void             Schedule( void );
-extern bool             SchedFrlFree( void );
-extern bool             InsOrderDependant( instruction *ins_i, instruction *ins_j );
+extern const FU_entry   *FUEntry( BackRun& back, instruction *ins );
+extern void             Schedule( BackRun& back );
+extern bool             SchedFrlFree( BackRun& back );
+extern bool             InsOrderDependant( BackRun& back, instruction *ins_i, instruction *ins_j );

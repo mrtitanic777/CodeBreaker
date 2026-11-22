@@ -30,14 +30,15 @@
 ****************************************************************************/
 
 
+#pragma once
 #define ABBREV_NAME  "___DFABBREV"
 
-extern void     DFDefSegs( void );
-extern void     DFAbbrevRef( void );
-extern void     DFAbbrevDef( void );
-extern void     DFOutReg( dw_loc_id locid, name *reg );
-extern void     DFOutRegInd( dw_loc_id locid, name *reg );
-extern uint     DFStkReg( void );
+extern void     DFDefSegs( BackRun& back );
+extern void     DFAbbrevRef( BackRun& back );
+extern void     DFAbbrevDef( BackRun& back );
+extern void     DFOutReg( BackRun& back, dw_loc_id locid, name *reg );
+extern void     DFOutRegInd( BackRun& back, dw_loc_id locid, name *reg );
+extern uint     DFStkReg( BackRun& back );
 #if _TARGET_INTEL
-extern uint     DFDisplayReg( void );
+extern uint     DFDisplayReg( BackRun& back );
 #endif

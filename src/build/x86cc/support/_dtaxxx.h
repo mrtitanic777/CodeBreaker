@@ -40,6 +40,7 @@
  * respect this limit
  */
 
+#pragma once
 #if defined( __DOS__ ) && defined( __WATCOM_LFN__ )
 
 #include "pushpck1.h"

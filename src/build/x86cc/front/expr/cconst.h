@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #ifndef _CPU
     #error _CPU macro not_ defined
 #endif
@@ -55,12 +56,12 @@
 #define PPOPERATOR_PRAGMA           "_Pragma"
 
 #define IS_PPOPERATOR_DEFINED(s)    (strcmp(s, PPOPERATOR_DEFINED) == 0)
-#define IS_PPOPERATOR_PRAGMA(s,l)   ((cvars_state().CompFlags.extensions_enabled || cvars_state().CompVars.cstd > STD_C89) \
+#define IS_PPOPERATOR_PRAGMA(s,l)   ((front.cvars.CompFlags.extensions_enabled || front.cvars.CompVars.cstd > STD_C89) \
                                     && l == LENLIT(PPOPERATOR_PRAGMA) \
                                     && strcmp(s, PPOPERATOR_PRAGMA) == 0)
 
 #define ARRAY_SIZE(x)               (sizeof( x ) / sizeof( *x ))
 
-#define IsHugeData()                ((cvars_state().TargetSwitches & (CGSW_X86_BIG_DATA | CGSW_X86_CHEAP_POINTER)) == CGSW_X86_BIG_DATA)
+#define IsHugeData()                ((front.cvars.TargetSwitches & (CGSW_X86_BIG_DATA | CGSW_X86_CHEAP_POINTER)) == CGSW_X86_BIG_DATA)
 
 #define DOS_EOF_CHAR                0x1A

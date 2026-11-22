@@ -31,4 +31,5 @@
 ****************************************************************************/
 
 
-extern void    MakeFlowGraph( void );
+#pragma once
+extern void    MakeFlowGraph( BackRun& back );

@@ -34,6 +34,7 @@
 #include <limits.h>
 #include "i64.h"
 #include "roundmac.h"
+#include "frontrun.hpp"
 
 
 #define DATA_QUAD_SEG_SIZE_DEF  _32K
@@ -71,17 +72,18 @@ typedef struct data_quad_list {
 } DATA_QUAD_LIST;
 
 
-static DATA_QUAD_LIST   *NewDataQuad( void );
-static bool             CharArray( TYPEPTR typ );
-static bool             WCharArray( TYPEPTR typ );
-static void             InitCharArray( TYPEPTR typ );
-static void             InitWCharArray( TYPEPTR typ );
-static void             StoreFloat( DATA_TYPE dtype, target_size size );
-static void             StoreInt64( TYPEPTR typ );
+static DATA_QUAD_LIST   *NewDataQuad( FrontRun& front );
+static bool             CharArray( FrontRun& front, TYPEPTR typ );
+static bool             WCharArray( FrontRun& front, TYPEPTR typ );
+static void             InitCharArray( FrontRun& front, TYPEPTR typ );
+static void             InitWCharArray( FrontRun& front, TYPEPTR typ );
+static void             StoreFloat( FrontRun& front, DATA_TYPE dtype, target_size size );
+static void             StoreInt64( FrontRun& front, TYPEPTR typ );
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
+}  // namespace
 struct CdinitState {
     DATA_QUAD_LIST *DataQuadSegs[DATA_QUAD_SEG_MAX];   /* segments for data quads */
     DATA_QUAD_LIST *CurDataQuad;
@@ -91,93 +93,93 @@ struct CdinitState {
     DATA_QUAD_LIST *StoreIValue_LastCurDataQuad;
     bool DesignatedInit_new_field = true;
 };
+namespace {
 
 }  // namespace
 
-static inline CdinitState& cdinit_state() { return cbrun_part<CdinitState>(); }
 
-bool DataQuadsAvailable( void )
+bool DataQuadsAvailable( FrontRun& front )
 {
-    DATA_QUAD_LIST  *dql = cdinit_state().DataQuadSegs[0];
+    DATA_QUAD_LIST  *dql = front.cdinit->DataQuadSegs[0];
 
     return( dql != NULL && dql->next != NULL );
 }
 
-void InitDataQuads( void )
+void InitDataQuads( FrontRun& front )
 {
-    cdinit_state().DataQuadIndex = DATA_QUAD_PER_SEG;
-    cdinit_state().DataQuadSegIndex = -1;
-    memset( cdinit_state().DataQuadSegs, 0, sizeof( cdinit_state().DataQuadSegs ) );
+    front.cdinit->DataQuadIndex = DATA_QUAD_PER_SEG;
+    front.cdinit->DataQuadSegIndex = -1;
+    memset( front.cdinit->DataQuadSegs, 0, sizeof( front.cdinit->DataQuadSegs ) );
     /*
      * put a guard at the start
      */
-    cdinit_state().CurDataQuad = NewDataQuad();
-    cdinit_state().CurDataQuad->prev = NULL;
-    cdinit_state().CurDataQuad->next = NULL;
-    cdinit_state().CurDataQuad->size = 0;
+    front.cdinit->CurDataQuad = NewDataQuad(front);
+    front.cdinit->CurDataQuad->prev = NULL;
+    front.cdinit->CurDataQuad->next = NULL;
+    front.cdinit->CurDataQuad->size = 0;
 }
 
-void FreeDataQuads( void )
+void FreeDataQuads( FrontRun& front )
 {
     unsigned    i;
 
     for( i = 0; i < DATA_QUAD_SEG_MAX; i++ ) {
-        if( cdinit_state().DataQuadSegs[i] == NULL )
+        if( front.cdinit->DataQuadSegs[i] == NULL )
             break;
-        FEfree( cdinit_state().DataQuadSegs[i] );
-        cdinit_state().DataQuadSegs[i] = NULL;
+        FEfree( front, front.cdinit->DataQuadSegs[i] );
+        front.cdinit->DataQuadSegs[i] = NULL;
     }
 }
 
-void *StartDataQuadAccess( void )
+void *StartDataQuadAccess( FrontRun& front )
 {
     void    *cur_dqp;
 
-    if( DataQuadsAvailable() ) {
-        cur_dqp = cdinit_state().CurDataQuad;
-        cdinit_state().CurDataQuad = cdinit_state().DataQuadSegs[0]->next;
+    if( DataQuadsAvailable(front) ) {
+        cur_dqp = front.cdinit->CurDataQuad;
+        front.cdinit->CurDataQuad = front.cdinit->DataQuadSegs[0]->next;
         return( cur_dqp );  /* indicate data quads exist */
     }
     return( NULL );         /* indicate no data quads */
 }
 
-void EndDataQuadAccess( void *p )
+void EndDataQuadAccess( FrontRun& front, void *p )
 {
-    cdinit_state().CurDataQuad = static_cast<DATA_QUAD_LIST *>(p);
+    front.cdinit->CurDataQuad = static_cast<DATA_QUAD_LIST *>(p);
 }
 
-DATA_QUAD *NextDataQuad( void )
+DATA_QUAD *NextDataQuad( FrontRun& front )
 {
     DATA_QUAD   *dq_ptr;
 
-    if( cdinit_state().CurDataQuad == NULL )
+    if( front.cdinit->CurDataQuad == NULL )
         return( NULL );
-    dq_ptr = &cdinit_state().CurDataQuad->dq;
-    cdinit_state().CurDataQuad = cdinit_state().CurDataQuad->next;
+    dq_ptr = &front.cdinit->CurDataQuad->dq;
+    front.cdinit->CurDataQuad = front.cdinit->CurDataQuad->next;
     return( dq_ptr );
 }
 
-static DATA_QUAD_LIST *NewDataQuad( void )
+static DATA_QUAD_LIST *NewDataQuad( FrontRun& front )
 {
     DATA_QUAD_LIST          *dql;
 
-    if( cdinit_state().DataQuadIndex >= (DATA_QUAD_PER_SEG - 1) ) {
-        if( cdinit_state().DataQuadSegIndex == DATA_QUAD_SEG_MAX ) {
-            CErr1( ERR_INTERNAL_LIMIT_EXCEEDED );
-            CSuicide();
+    if( front.cdinit->DataQuadIndex >= (DATA_QUAD_PER_SEG - 1) ) {
+        if( front.cdinit->DataQuadSegIndex == DATA_QUAD_SEG_MAX ) {
+            CErr1( front, ERR_INTERNAL_LIMIT_EXCEEDED );
+            CSuicide(front);
         }
-        ++cdinit_state().DataQuadSegIndex;
-        cdinit_state().DataQuadIndex = 0;
-        cdinit_state().NewDataQuad_DataQuadPtr = static_cast<DATA_QUAD_LIST *>(FEmalloc( DATA_QUAD_SEG_SIZE ));
-        cdinit_state().DataQuadSegs[cdinit_state().DataQuadSegIndex] = cdinit_state().NewDataQuad_DataQuadPtr;
+        ++front.cdinit->DataQuadSegIndex;
+        front.cdinit->DataQuadIndex = 0;
+        front.cdinit->NewDataQuad_DataQuadPtr = static_cast<DATA_QUAD_LIST *>(FEmalloc( front, DATA_QUAD_SEG_SIZE ));
+        front.cdinit->DataQuadSegs[front.cdinit->DataQuadSegIndex] = front.cdinit->NewDataQuad_DataQuadPtr;
     }
-    dql = cdinit_state().NewDataQuad_DataQuadPtr;
-    ++cdinit_state().DataQuadIndex;
-    ++cdinit_state().NewDataQuad_DataQuadPtr;
+    dql = front.cdinit->NewDataQuad_DataQuadPtr;
+    ++front.cdinit->DataQuadIndex;
+    ++front.cdinit->NewDataQuad_DataQuadPtr;
     return( dql );
 }
 
-static void SplitDataQuad( DATA_QUAD_LIST *dql, target_size size )
+static void SplitDataQuad( FrontRun& front, DATA_QUAD_LIST *dql, target_size size )
 /*****************************************************************
  * splits the dataquad pointed to by dql so that the current one
  * will have size "size" and the new one "oldsize - size"
@@ -188,7 +190,7 @@ static void SplitDataQuad( DATA_QUAD_LIST *dql, target_size size )
     DATA_QUAD       *dq;
     target_size     oldsize;
 
-    ndql = NewDataQuad();
+    ndql = NewDataQuad(front);
     ndql->next = dql->next;
     ndql->prev = dql;
     dql->next = ndql;
@@ -228,8 +230,8 @@ static void SplitDataQuad( DATA_QUAD_LIST *dql, target_size size )
         /*
          * can't happen !
          */
-        CErr2p( ERR_FATAL_ERROR, "Bad initializer quad" );
-        CSuicide();
+        CErr2p( front, ERR_FATAL_ERROR, "Bad initializer quad" );
+        CSuicide(front);
     }
 }
 
@@ -241,12 +243,12 @@ static void DeleteDataQuad( DATA_QUAD_LIST *dql )
     }
 }
 
-static void GenDataQuad( DATA_QUAD *dq, target_size size )
+static void GenDataQuad( FrontRun& front, DATA_QUAD *dq, target_size size )
 {
     DATA_QUAD_LIST  *dql;
     target_size     cursize;
 
-    dql = cdinit_state().CurDataQuad->next;
+    dql = front.cdinit->CurDataQuad->next;
     if( dql != NULL ) {
         /*
          * overwrite the current dataquad
@@ -264,20 +266,20 @@ static void GenDataQuad( DATA_QUAD *dq, target_size size )
          * cursize - size bytes.
          */
         if( size < cursize ) {
-            SplitDataQuad( dql, dql->size - ( cursize - size ) );
+            SplitDataQuad( front, dql, dql->size - ( cursize - size ) );
         }
     } else {
-        dql = NewDataQuad();
-        cdinit_state().CurDataQuad->next = dql;
-        dql->prev = cdinit_state().CurDataQuad;
+        dql = NewDataQuad(front);
+        front.cdinit->CurDataQuad->next = dql;
+        dql->prev = front.cdinit->CurDataQuad;
         dql->next = NULL;
     }
     dql->size = size;
     memcpy( &dql->dq, dq, sizeof( DATA_QUAD ) );
-    cdinit_state().CurDataQuad = dql;
+    front.cdinit->CurDataQuad = dql;
 }
 
-static void ZeroBytes( target_size n )
+static void ZeroBytes( FrontRun& front, target_size n )
 {
     DATA_QUAD   dq;
 
@@ -286,14 +288,14 @@ static void ZeroBytes( target_size n )
     dq.type = QDT_CONSTANT;
     dq.flags = Q_DATA;
     dq.u_size = n;
-    GenDataQuad( &dq, n );
+    GenDataQuad( front, &dq, n );
 }
 
-static void RelSeekBytes( target_ssize n )
+static void RelSeekBytes( FrontRun& front, target_ssize n )
 {
     DATA_QUAD_LIST  *dql;
 
-    dql = cdinit_state().CurDataQuad;
+    dql = front.cdinit->CurDataQuad;
     while( n < 0 && n <= -(target_ssize)dql->size ) {
         n += dql->size;
         dql = dql->prev;
@@ -306,18 +308,18 @@ static void RelSeekBytes( target_ssize n )
      * now -dql->size < n <= 0 or dql->next == NULL
      */
     if( n < 0 ) {
-        SplitDataQuad( dql, dql->size + n );
+        SplitDataQuad( front, dql, dql->size + n );
     }
-    cdinit_state().CurDataQuad = dql;
+    front.cdinit->CurDataQuad = dql;
     if( n > 0 ) {
         /*
          * dql->next == NULL
          */
-        ZeroBytes( n );
+        ZeroBytes( front, n );
     }
 }
 
-static void StoreIValue( DATA_TYPE dtype, int value, target_size size )
+static void StoreIValue( FrontRun& front, DATA_TYPE dtype, int value, target_size size )
 {
     DATA_QUAD_LIST          *dql;
     DATA_QUAD               *dq_ptr;
@@ -326,14 +328,14 @@ static void StoreIValue( DATA_TYPE dtype, int value, target_size size )
     dq.flags = static_cast<enum quad_flags>(0);
     dq.type = static_cast<enum quad_type>(0);
     dq_ptr = &dq;
-    if( cdinit_state().StoreIValue_LastCurDataQuad == cdinit_state().CurDataQuad ) {
-        dq_ptr = &cdinit_state().CurDataQuad->dq;
+    if( front.cdinit->StoreIValue_LastCurDataQuad == front.cdinit->CurDataQuad ) {
+        dq_ptr = &front.cdinit->CurDataQuad->dq;
     }
     if( (DATA_TYPE)dq_ptr->type == dtype
       && dq_ptr->flags == (Q_DATA | Q_REPEATED_DATA)
       && dq_ptr->u_long_value1 == value ) {
         dq_ptr->u_rpt_count++;                  /* increment repeat count */
-        cdinit_state().CurDataQuad->size += size;
+        front.cdinit->CurDataQuad->size += size;
     } else if( (DATA_TYPE)dq_ptr->type == dtype
       && dq_ptr->flags == Q_DATA ) {
         if( dq_ptr->u_long_value1 == value ) {
@@ -343,24 +345,24 @@ static void StoreIValue( DATA_TYPE dtype, int value, target_size size )
             dq_ptr->flags |= Q_2_INTS_IN_ONE;
             dq_ptr->u_long_value2 = value;
         }
-        cdinit_state().CurDataQuad->size += size;
+        front.cdinit->CurDataQuad->size += size;
     } else {
         dq.type = (enum quad_type)dtype;
         dq.flags = Q_DATA;
         dq.u_long_value1 = value;
         if( value != 0 )
-            cvars_state().CompFlags.non_zero_data = true;
-        GenDataQuad( &dq, size );
-        cdinit_state().StoreIValue_LastCurDataQuad = cdinit_state().CurDataQuad;
+            front.cvars.CompFlags.non_zero_data = true;
+        GenDataQuad( front, &dq, size );
+        front.cdinit->StoreIValue_LastCurDataQuad = front.cdinit->CurDataQuad;
         return;
     }
     /*
      * if the next dataquad is non-empty we'll have to delete it
      */
-    dql = cdinit_state().CurDataQuad->next;
+    dql = front.cdinit->CurDataQuad->next;
     if( dql != NULL ) {
         if( dql->size > size ) {
-            SplitDataQuad( dql, size );
+            SplitDataQuad( front, dql, size );
         }
         /*
          * no need to "free" the next one, just remove it from the list
@@ -369,18 +371,18 @@ static void StoreIValue( DATA_TYPE dtype, int value, target_size size )
     }
 }
 
-static void StoreIValue64( DATA_TYPE dtype, int64 value )
+static void StoreIValue64( FrontRun& front, DATA_TYPE dtype, int64 value )
 {
     DATA_QUAD           dq;
 
     dq.type = (enum quad_type)dtype;
     dq.flags = Q_DATA;
     dq.u.long64 = value;
-    cvars_state().CompFlags.non_zero_data = true;
-    GenDataQuad( &dq, TARGET_LONG64 );
+    front.cvars.CompFlags.non_zero_data = true;
+    GenDataQuad( front, &dq, TARGET_LONG64 );
 }
 
-static void AddrFold( TREEPTR tree, addrfold_info *info )
+static void AddrFold( FrontRun& front, TREEPTR tree, addrfold_info *info )
 /********************************************************
  * Assume tree has been const folded
  */
@@ -394,7 +396,7 @@ static void AddrFold( TREEPTR tree, addrfold_info *info )
         info->state = IS_ADDR;
         info->offset = tree->op.u2.long_value;
         if( info->offset != 0 )
-            cvars_state().CompFlags.non_zero_data = true;
+            front.cvars.CompFlags.non_zero_data = true;
         break;
     case OPR_PUSHFLOAT:
         info->state = IS_ADDR;
@@ -413,7 +415,7 @@ static void AddrFold( TREEPTR tree, addrfold_info *info )
 #endif
         }
         if( info->offset != 0 )
-            cvars_state().CompFlags.non_zero_data = true;
+            front.cvars.CompFlags.non_zero_data = true;
         break;
     case OPR_PUSHSTRING:
         info->state = IS_ADDR;
@@ -424,7 +426,7 @@ static void AddrFold( TREEPTR tree, addrfold_info *info )
         info->is_str = true;
         info->u.str_h = tree->op.u2.string_handle;
         tree->op.u2.string_handle->ref_count++;
-        cvars_state().CompFlags.non_zero_data = true;
+        front.cvars.CompFlags.non_zero_data = true;
         break;
     case OPR_PUSHADDR:
         info->state = IS_ADDR;
@@ -435,19 +437,19 @@ static void AddrFold( TREEPTR tree, addrfold_info *info )
         }
         info->addr_set = true;
         info->is_str = false;
-        SymGet( &sym, tree->op.u2.sym_handle );
+        SymGet( front, &sym, tree->op.u2.sym_handle );
         info->u.sym_h = tree->op.u2.sym_handle;
-        cvars_state().CompFlags.non_zero_data = true;
+        front.cvars.CompFlags.non_zero_data = true;
         if( sym.attribs.stg_class == SC_AUTO ) {
             info->is_error = true;
         }
         break;
     case OPR_INDEX:
         if( tree->right->op.opr == OPR_PUSHINT ) {
-            AddrFold( tree->left, info );
+            AddrFold( front, tree->left, info );
             offset = tree->right->op.u2.long_value;
         } else if( tree->left->op.opr == OPR_PUSHINT ) {
-            AddrFold( tree->right, info );
+            AddrFold( front, tree->right, info );
             offset = tree->left->op.u2.long_value;
         } else {
             info->is_error = true;
@@ -455,7 +457,7 @@ static void AddrFold( TREEPTR tree, addrfold_info *info )
         if( info->state == IS_VALUE ) { // must be foldable
             info->is_error = true;
         }
-        info->offset += offset * SizeOfArg( tree->u.expr_type );
+        info->offset += offset * SizeOfArg( front, tree->u.expr_type );
         if( tree->op.flags & OPFLAG_RVALUE ) {
             info->state = IS_VALUE;
         }
@@ -463,14 +465,14 @@ static void AddrFold( TREEPTR tree, addrfold_info *info )
     case OPR_ADD:
     case OPR_SUB:
         if( tree->right->op.opr == OPR_PUSHINT ) {
-            AddrFold( tree->left, info );
+            AddrFold( front, tree->left, info );
             if( tree->op.opr == OPR_ADD ) {
                 info->offset = info->offset + tree->right->op.u2.long_value;
             } else {
                 info->offset = info->offset - tree->right->op.u2.long_value;
             }
         } else if( tree->left->op.opr == OPR_PUSHINT ) {
-            AddrFold( tree->right, info );
+            AddrFold( front, tree->right, info );
             if( tree->op.opr == OPR_ADD ) {
                 info->offset = tree->left->op.u2.long_value + info->offset;
             } else {
@@ -484,12 +486,12 @@ static void AddrFold( TREEPTR tree, addrfold_info *info )
         }
         break;
     case OPR_ADDROF:
-        AddrFold( tree->right, info );
+        AddrFold( front, tree->right, info );
         info->state = IS_ADDR;
-        cvars_state().CompFlags.non_zero_data = true;
+        front.cvars.CompFlags.non_zero_data = true;
         break;
     case OPR_ARROW:
-        AddrFold( tree->left, info );
+        AddrFold( front, tree->left, info );
         if( info->state == IS_VALUE ) { // must be foldable
             info->is_error = true;
         }
@@ -499,7 +501,7 @@ static void AddrFold( TREEPTR tree, addrfold_info *info )
         }
         break;
     case OPR_POINTS:
-        AddrFold( tree->left, info );
+        AddrFold( front, tree->left, info );
         if( info->state == IS_VALUE ) { // must be foldable
             info->is_error = true;
         }
@@ -508,16 +510,16 @@ static void AddrFold( TREEPTR tree, addrfold_info *info )
         }
         break;
     case OPR_DOT:
-        AddrFold( tree->left, info );
+        AddrFold( front, tree->left, info );
         info->offset += tree->right->op.u2.long_value;
-        cvars_state().CompFlags.non_zero_data = true;
+        front.cvars.CompFlags.non_zero_data = true;
         if( tree->op.flags & OPFLAG_RVALUE ) {
             info->state = IS_VALUE;
         }
         break;
     case OPR_CONVERT:   // should check for pointer to smaller
     case OPR_CONVERT_PTR:
-        AddrFold( tree->right, info );
+        AddrFold( front, tree->right, info );
         break;
     case OPR_ERROR:     // error has already been issued
         break;
@@ -527,7 +529,7 @@ static void AddrFold( TREEPTR tree, addrfold_info *info )
     }
 }
 
-static void StorePointer( TYPEPTR typ, target_size size )
+static void StorePointer( FrontRun& front, TYPEPTR typ, target_size size )
 {
     TREEPTR             tree;
     TYPEPTR             typ2;
@@ -545,7 +547,7 @@ static void StorePointer( TYPEPTR typ, target_size size )
             SKIP_TYPEDEFS( typ2 );
             if( typ2->decl_type == TYP_FUNCTION ) {
                 dq.flags |= Q_CODE_POINTER;
-            } else if( TypeSize( typ ) == TARGET_FAR_POINTER ) {
+            } else if( TypeSize( front, typ ) == TARGET_FAR_POINTER ) {
                 dq.flags |= Q_FAR_POINTER;
             }
         }
@@ -560,11 +562,11 @@ static void StorePointer( TYPEPTR typ, target_size size )
      * `(__segment)&sym` -- the selector the loader fills in (a segment fixup), as the
      * original's data holds it
      */
-    if( (typ->type_flags & TF2_TYP_SEGMENT) && cvars_state().CurToken != T_RIGHT_BRACE ) {
+    if( (typ->type_flags & TF2_TYP_SEGMENT) && front.cvars.CurToken != T_RIGHT_BRACE ) {
         TREEPTR     opnd;
 
-        tree = AddrExpr();
-        tree = InitAsgn( typ, tree );
+        tree = AddrExpr(front);
+        tree = InitAsgn( front, typ, tree );
         for( opnd = tree; opnd->op.opr == OPR_CONVERT || opnd->op.opr == OPR_CONVERT_SEG; ) {
             if( opnd->op.opr == OPR_CONVERT_SEG ) {
                 opnd = opnd->right;
@@ -579,12 +581,12 @@ static void StorePointer( TYPEPTR typ, target_size size )
             info.state = IS_VALUE;
             info.is_str = false;
             info.is_error = false;
-            AddrFold( opnd, &info );
+            AddrFold( front, opnd, &info );
             if( !info.is_error && !info.is_str && info.state != IS_VALUE && info.u.sym_h != SYM_NULL ) {
                 dq.flags |= Q_SEGMENT;
                 dq.u.var.sym_handle = info.u.sym_h;
-                GenDataQuad( &dq, size );
-                FreeExprTree( tree );
+                GenDataQuad( front, &dq, size );
+                FreeExprTree( front, tree );
                 return;
             }
         }
@@ -597,28 +599,28 @@ static void StorePointer( TYPEPTR typ, target_size size )
         info.state = IS_VALUE;
         info.is_str = false;
         info.is_error = false;
-        AddrFold( tree, &info );
+        AddrFold( front, tree, &info );
         if( info.u.sym_h != SYM_NULL || info.is_error || info.is_str ) {
             if( tree->op.opr != OPR_ERROR ) {
-                CErr1( ERR_NOT_A_CONSTANT_EXPR );
+                CErr1( front, ERR_NOT_A_CONSTANT_EXPR );
             }
         } else {
-            StoreIValue( typ->decl_type, info.offset, size );
+            StoreIValue( front, typ->decl_type, info.offset, size );
         }
-        FreeExprTree( tree );
+        FreeExprTree( front, tree );
         return;
     }
 #endif
-    if( cvars_state().CurToken != T_RIGHT_BRACE ) {
-        tree = AddrExpr();
-        tree = InitAsgn( typ, tree ); // as if we are assigning
+    if( front.cvars.CurToken != T_RIGHT_BRACE ) {
+        tree = AddrExpr(front);
+        tree = InitAsgn( front, typ, tree ); // as if we are assigning
         info.offset = 0;
         info.u.sym_h = SYM_NULL;
         info.addr_set = false;
         info.state = IS_VALUE;
         info.is_str = false;
         info.is_error = false;
-        AddrFold( tree, &info );
+        AddrFold( front, tree, &info );
         if( info.state == IS_VALUE ) { // must be foldable  into addr+offset
             info.is_error = true;
         }
@@ -629,7 +631,7 @@ static void StorePointer( TYPEPTR typ, target_size size )
         }
         if( info.is_error ) {
             if( tree->op.opr != OPR_ERROR ) {
-                CErr1( ERR_NOT_A_CONSTANT_EXPR );
+                CErr1( front, ERR_NOT_A_CONSTANT_EXPR );
             }
         } else {
             if( info.is_str ) {
@@ -640,29 +642,29 @@ static void StorePointer( TYPEPTR typ, target_size size )
                 dq.u.var.offset = info.offset;
             }
         }
-        FreeExprTree( tree );
+        FreeExprTree( front, tree );
     }
     if( typ->decl_type == TYP_POINTER ) {
-        GenDataQuad( &dq, size );
+        GenDataQuad( front, &dq, size );
     } else if( dq.type == QDT_STRING ) {
-        if( TypeSize( typ ) != cvars_state().DataPtrSize
-          || cvars_state().CompFlags.strict_ANSI ) {
-            CErr1( ERR_INVALID_INITIALIZER );
+        if( TypeSize( front, typ ) != front.cvars.DataPtrSize
+          || front.cvars.CompFlags.strict_ANSI ) {
+            CErr1( front, ERR_INVALID_INITIALIZER );
         }
-        GenDataQuad( &dq, size );
+        GenDataQuad( front, &dq, size );
     } else { /* dq.type == QDT_ID */
         if( dq.u.var.sym_handle != SYM_NULL ) {
-            if( TypeSize( typ ) != cvars_state().DataPtrSize ) {
-                CErr1( ERR_INVALID_INITIALIZER );
+            if( TypeSize( front, typ ) != front.cvars.DataPtrSize ) {
+                CErr1( front, ERR_INVALID_INITIALIZER );
             }
-            GenDataQuad( &dq, size );
+            GenDataQuad( front, &dq, size );
         } else {
-            StoreIValue( typ->decl_type, dq.u.var.offset, size );
+            StoreIValue( front, typ->decl_type, dq.u.var.offset, size );
         }
     }
 }
 
-static void StoreInt64( TYPEPTR typ )
+static void StoreInt64( FrontRun& front, TYPEPTR typ )
 {
     TREEPTR     tree;
     DATA_QUAD   dq;
@@ -670,32 +672,32 @@ static void StoreInt64( TYPEPTR typ )
     dq.type = (enum quad_type)typ->decl_type;
     dq.flags = Q_DATA;
     Set64ValZero( dq.u.long64 );
-    if( cvars_state().CurToken != T_RIGHT_BRACE ) {
-        tree = SingleExpr();
-        tree = InitAsgn( typ, tree ); // as if we are assigning
+    if( front.cvars.CurToken != T_RIGHT_BRACE ) {
+        tree = SingleExpr(front);
+        tree = InitAsgn( front, typ, tree ); // as if we are assigning
         if( IsConstLeaf( tree ) ) {
-            CastConstValue( tree, typ->decl_type );
+            CastConstValue( front, tree, typ->decl_type );
             dq.u.long64 = tree->op.u2.ulong64_value;
         } else {
-            CErr1( ERR_NOT_A_CONSTANT_EXPR );
+            CErr1( front, ERR_NOT_A_CONSTANT_EXPR );
         }
-        FreeExprTree( tree );
-        cvars_state().CompFlags.non_zero_data = true;
+        FreeExprTree( front, tree );
+        front.cvars.CompFlags.non_zero_data = true;
     }
-    GenDataQuad( &dq, TARGET_LONG64 );
+    GenDataQuad( front, &dq, TARGET_LONG64 );
 }
 
-static void LoadBitField( uint64 *val64 )
+static void LoadBitField( FrontRun& front, uint64 *val64 )
 {
     DATA_QUAD           *dqp;
 
     Set64ValZero( *val64 );
-    if( cdinit_state().CurDataQuad->next == NULL )
+    if( front.cdinit->CurDataQuad->next == NULL )
         return;
-    dqp = &cdinit_state().CurDataQuad->next->dq;
+    dqp = &front.cdinit->CurDataQuad->next->dq;
     if( dqp->type == QDT_CONSTANT )
         return;
-    if( cdinit_state().CurDataQuad->next->size == TARGET_LONG64 ) {
+    if( front.cdinit->CurDataQuad->next->size == TARGET_LONG64 ) {
         *val64 = dqp->u.long64;
     } else {
         U64Low( *val64 ) = dqp->u.ulong_values[0];
@@ -716,7 +718,7 @@ static void ResetBitField( uint64 *val64, unsigned start, unsigned width )
     U64NotAndEq( *val64, mask );
 }
 
-static void InitBitField( FIELDPTR field )
+static void InitBitField( FrontRun& front, FIELDPTR field )
 {
     TYPEPTR             typ;
     target_size         size;
@@ -727,43 +729,43 @@ static void InitBitField( FIELDPTR field )
     DATA_TYPE           dtype;
     unsigned            width;
 
-    token = cvars_state().CurToken;
-    if( cvars_state().CurToken == T_LEFT_BRACE )
-        NextToken();
+    token = front.cvars.CurToken;
+    if( front.cvars.CurToken == T_LEFT_BRACE )
+        NextToken(front);
     typ = field->field_type;
-    size = SizeOfArg( typ );
+    size = SizeOfArg( front, typ );
     dtype = typ->u.f.field_type;
     is64bit = ( dtype == TYP_LONG64 || dtype == TYP_ULONG64 );
-    LoadBitField( &value64 );
+    LoadBitField( front, &value64 );
     if( typ->u.f.field_type == TYP_BOOL ) {
         width = 1;
     } else {
         width = typ->u.f.field_width;
     }
     ResetBitField( &value64, typ->u.f.field_start, width );
-    if( cvars_state().CurToken != T_RIGHT_BRACE ) {
-        if( ConstExprAndType( &bit_value ) ) {
+    if( front.cvars.CurToken != T_RIGHT_BRACE ) {
+        if( ConstExprAndType( front, &bit_value ) ) {
             if( CheckAssignBits( &bit_value.value, width, true ) ) {
-                CWarn1( ERR_CONSTANT_TOO_BIG );
+                CWarn1( front, ERR_CONSTANT_TOO_BIG );
             }
             U64ShiftLEq( &bit_value.value, typ->u.f.field_start );
             U64OrEq( value64, bit_value.value );
         }
     }
     if( is64bit ) {
-        StoreIValue64( dtype, value64 );
+        StoreIValue64( front, dtype, value64 );
     } else {
-        StoreIValue( dtype, U64Low( value64 ), size );
+        StoreIValue( front, dtype, U64Low( value64 ), size );
     }
     if( token == T_LEFT_BRACE ) {
-        if( cvars_state().CurToken == T_COMMA )
-            NextToken();
-        MustRecog( T_RIGHT_BRACE );
+        if( front.cvars.CurToken == T_COMMA )
+            NextToken(front);
+        MustRecog( front, T_RIGHT_BRACE );
     }
 }
 
 
-static void *DesignatedInit( TYPEPTR typ, TYPEPTR ctyp, void *field )
+static void *DesignatedInit( FrontRun& front, TYPEPTR typ, TYPEPTR ctyp, void *field )
 /********************************************************************
  * Detects a C99 designated initializer
  *
@@ -776,61 +778,61 @@ static void *DesignatedInit( TYPEPTR typ, TYPEPTR ctyp, void *field )
     TREEPTR         tree;
     target_size     offs;
 
-    if( !cvars_state().CompFlags.extensions_enabled
-      && ( cvars_state().CompVars.cstd < STD_C99 ) ) {
+    if( !front.cvars.CompFlags.extensions_enabled
+      && ( front.cvars.CompVars.cstd < STD_C99 ) ) {
         return( field );
     }
 
-    if( cvars_state().CurToken != T_LEFT_BRACKET
-      && cvars_state().CurToken != T_DOT ) {
-        cdinit_state().DesignatedInit_new_field = true;
+    if( front.cvars.CurToken != T_LEFT_BRACKET
+      && front.cvars.CurToken != T_DOT ) {
+        front.cdinit->DesignatedInit_new_field = true;
         return( field );
     }
     /*
      * if designator refers to outer type: back out
      */
     if( typ != ctyp
-      && cdinit_state().DesignatedInit_new_field )
+      && front.cdinit->DesignatedInit_new_field )
         return( NULL );
 
-    cdinit_state().DesignatedInit_new_field = false;
+    front.cdinit->DesignatedInit_new_field = false;
     if( typ->decl_type == TYP_ARRAY ) {
-        if( cvars_state().CurToken != T_LEFT_BRACKET )
+        if( front.cvars.CurToken != T_LEFT_BRACKET )
             return( NULL );
-        NextToken();
-        tree = SingleExpr();
+        NextToken(front);
+        tree = SingleExpr(front);
         if( IsConstLeaf( tree ) ) {
-            CastConstValue( tree, typ->decl_type );
+            CastConstValue( front, tree, typ->decl_type );
             *(target_size *)field = tree->op.u2.ulong_value;
         } else {
-            CErr1( ERR_NOT_A_CONSTANT_EXPR );
+            CErr1( front, ERR_NOT_A_CONSTANT_EXPR );
         }
-        FreeExprTree( tree );
-        MustRecog( T_RIGHT_BRACKET );
+        FreeExprTree( front, tree );
+        MustRecog( front, T_RIGHT_BRACKET );
     } else {
-        if( cvars_state().CurToken != T_DOT )
+        if( front.cvars.CurToken != T_DOT )
             return( NULL );
-        NextToken();
-        if( cvars_state().CurToken != T_ID ) {
-            CErr1( ERR_EXPECTING_ID );
+        NextToken(front);
+        if( front.cvars.CurToken != T_ID ) {
+            CErr1( front, ERR_EXPECTING_ID );
         }
         offs = 0;
-        field = SearchFields( &typ, &offs, cvars_state().Buffer );
+        field = SearchFields( &typ, &offs, front.cvars.Buffer );
         if( field == NULL ) {
-            CErr3p( ERR_NAME_NOT_FOUND_IN_STRUCT, cvars_state().Buffer, typ->u.tag->name );
+            CErr3p( front, ERR_NAME_NOT_FOUND_IN_STRUCT, front.cvars.Buffer, typ->u.tag->name );
         }
-        NextToken();
+        NextToken(front);
     }
 
-    if( cvars_state().CurToken != T_LEFT_BRACKET
-      && cvars_state().CurToken != T_DOT ) {
-        cdinit_state().DesignatedInit_new_field = true;
-        MustRecog( T_EQUAL );
+    if( front.cvars.CurToken != T_LEFT_BRACKET
+      && front.cvars.CurToken != T_DOT ) {
+        front.cdinit->DesignatedInit_new_field = true;
+        MustRecog( front, T_EQUAL );
     }
     return( field );
 }
 
-static bool DesignatedInSubAggregate( DATA_TYPE decl_type )
+static bool DesignatedInSubAggregate( FrontRun& front, DATA_TYPE decl_type )
 {
     switch( decl_type ) {
     case TYP_ARRAY:
@@ -843,13 +845,13 @@ static bool DesignatedInSubAggregate( DATA_TYPE decl_type )
          * A subaggregate can be stopped by a designated initializer.
          * in that case the comma was already eaten...
          */
-        return( cvars_state().CurToken == T_DOT || cvars_state().CurToken == T_LEFT_BRACKET );
+        return( front.cvars.CurToken == T_DOT || front.cvars.CurToken == T_LEFT_BRACKET );
     default:
         return( false );
     }
 }
 
-static void InitArray( TYPEPTR typ, TYPEPTR ctyp )
+static void InitArray( FrontRun& front, TYPEPTR typ, TYPEPTR ctyp )
 {
     target_size n;
     target_size m;
@@ -857,22 +859,22 @@ static void InitArray( TYPEPTR typ, TYPEPTR ctyp )
     target_size array_size;
     target_size elem_size;
 
-    array_size = TypeSize( typ );
+    array_size = TypeSize( front, typ );
     n = 0;
     pm = &m;
     for( ;; ) {
         m = n;
-        pm = static_cast<target_size *>(DesignatedInit( typ, ctyp, pm ));
+        pm = static_cast<target_size *>(DesignatedInit( front, typ, ctyp, pm ));
         if( pm == NULL )
             break;
         if( m != n ) {
-            elem_size = SizeOfArg( typ->object );
+            elem_size = SizeOfArg( front, typ->object );
             if( typ->u.array->unspecified_dim
               && m > array_size ) {
-                RelSeekBytes( ( array_size - n ) * elem_size );
-                ZeroBytes( ( m - array_size ) * elem_size );
+                RelSeekBytes( front, ( array_size - n ) * elem_size );
+                ZeroBytes( front, ( m - array_size ) * elem_size );
             } else {
-                RelSeekBytes( ( m - n ) * elem_size );
+                RelSeekBytes( front, ( m - n ) * elem_size );
             }
             n = m;
         }
@@ -884,23 +886,23 @@ static void InitArray( TYPEPTR typ, TYPEPTR ctyp )
             /*
              * clear out the new element just in case
              */
-            elem_size = SizeOfArg( typ->object );
-            ZeroBytes( elem_size );
-            RelSeekBytes( -(target_ssize)elem_size );
+            elem_size = SizeOfArg( front, typ->object );
+            ZeroBytes( front, elem_size );
+            RelSeekBytes( front, -(target_ssize)elem_size );
         }
-        InitSymData( typ->object, ctyp, 1 );
-        if( cvars_state().CurToken == T_EOF )
+        InitSymData( front, typ->object, ctyp, 1 );
+        if( front.cvars.CurToken == T_EOF )
             break;
-        if( cvars_state().CurToken == T_RIGHT_BRACE )
+        if( front.cvars.CurToken == T_RIGHT_BRACE )
             break;
-        if( DesignatedInSubAggregate( typ->object->decl_type ) )
+        if( DesignatedInSubAggregate( front, typ->object->decl_type ) )
             continue;
         if( n < array_size
           || typ == ctyp
           || typ->u.array->unspecified_dim ) {
-            MustRecog( T_COMMA );
+            MustRecog( front, T_COMMA );
         }
-        if( cvars_state().CurToken == T_RIGHT_BRACE ) {
+        if( front.cvars.CurToken == T_RIGHT_BRACE ) {
             break;
         }
     }
@@ -908,11 +910,11 @@ static void InitArray( TYPEPTR typ, TYPEPTR ctyp )
         typ->u.array->dimension = array_size;
     }
     if( array_size > n ) {
-        RelSeekBytes( ( array_size - n ) * SizeOfArg( typ->object ) );
+        RelSeekBytes( front, ( array_size - n ) * SizeOfArg( front, typ->object ) );
     }
 }
 
-static void InitStructUnion( TYPEPTR typ, TYPEPTR ctyp, FIELDPTR field )
+static void InitStructUnion( FrontRun& front, TYPEPTR typ, TYPEPTR ctyp, FIELDPTR field )
 /***********************************************************************
  * Initialize struct or union fields
  * Detects a C99 designated initializer for fields
@@ -928,27 +930,27 @@ static void InitStructUnion( TYPEPTR typ, TYPEPTR ctyp, FIELDPTR field )
     n = typ->u.tag->size;
     offset = 0;
     for( ;; ) {
-        field = static_cast<FIELDPTR>(DesignatedInit( typ, ctyp, field ));
+        field = static_cast<FIELDPTR>(DesignatedInit( front, typ, ctyp, field ));
         if( field == NULL )
             break;
         /*
          * The first field might not start at offset 0
          */
         if( field->offset != offset ) {
-            RelSeekBytes( field->offset - offset );
+            RelSeekBytes( front, field->offset - offset );
         }
         ftyp = field->field_type;
-        offset = field->offset + SizeOfArg( ftyp );
+        offset = field->offset + SizeOfArg( front, ftyp );
         if( ftyp->decl_type == TYP_FIELD
           || ftyp->decl_type == TYP_UFIELD ) {
-            InitBitField( field );
+            InitBitField( front, field );
         } else {
-            InitSymData( ftyp, ctyp, 1 );
+            InitSymData( front, ftyp, ctyp, 1 );
         }
         field = field->next_field;
         if( typ->decl_type == TYP_UNION ) {
             if( offset < n ) {
-                ZeroBytes( n - offset );    /* pad the rest */
+                ZeroBytes( front, n - offset );    /* pad the rest */
             }
             offset = n;
             /*
@@ -956,29 +958,29 @@ static void InitStructUnion( TYPEPTR typ, TYPEPTR ctyp, FIELDPTR field )
              */
             field = NULL;
         }
-        if( cvars_state().CurToken == T_EOF )
+        if( front.cvars.CurToken == T_EOF )
             break;
-        if( cvars_state().CurToken == T_RIGHT_BRACE )
+        if( front.cvars.CurToken == T_RIGHT_BRACE )
             break;
-        if( DesignatedInSubAggregate( ftyp->decl_type ) )
+        if( DesignatedInSubAggregate( front, ftyp->decl_type ) )
             continue;
         if( field != NULL
           || typ == ctyp ) {
-            MustRecog( T_COMMA );
+            MustRecog( front, T_COMMA );
         }
-        if( cvars_state().CurToken == T_RIGHT_BRACE ) {
+        if( front.cvars.CurToken == T_RIGHT_BRACE ) {
             break;
         }
     }
-    RelSeekBytes( n - offset );
+    RelSeekBytes( front, n - offset );
 }
 
-static void InitStruct( TYPEPTR typ, TYPEPTR ctyp )
+static void InitStruct( FrontRun& front, TYPEPTR typ, TYPEPTR ctyp )
 {
-    InitStructUnion( typ, ctyp, typ->u.tag->u.field_list );
+    InitStructUnion( front, typ, ctyp, typ->u.tag->u.field_list );
 }
 
-static void InitUnion( TYPEPTR typ, TYPEPTR ctyp )
+static void InitUnion( FrontRun& front, TYPEPTR typ, TYPEPTR ctyp )
 {
     FIELDPTR            field;
     TYPEPTR             ftyp;
@@ -997,38 +999,38 @@ static void InitUnion( TYPEPTR typ, TYPEPTR ctyp )
             break;
         }
     }
-    InitStructUnion( typ, ctyp, field );
+    InitStructUnion( front, typ, ctyp, field );
 }
 
-void InitSymData( TYPEPTR typ, TYPEPTR ctyp, int level )
+void InitSymData( FrontRun& front, TYPEPTR typ, TYPEPTR ctyp, int level )
 {
     TOKEN           token;
     target_size     size;
 
-    token = cvars_state().CurToken;
-    if( cvars_state().CurToken == T_LEFT_BRACE ) {
-        NextToken();
-        if( cvars_state().CurToken == T_RIGHT_BRACE
-          || cvars_state().CurToken == T_COMMA ) {
-            CErr1( ERR_EMPTY_INITIALIZER_LIST );
+    token = front.cvars.CurToken;
+    if( front.cvars.CurToken == T_LEFT_BRACE ) {
+        NextToken(front);
+        if( front.cvars.CurToken == T_RIGHT_BRACE
+          || front.cvars.CurToken == T_COMMA ) {
+            CErr1( front, ERR_EMPTY_INITIALIZER_LIST );
         }
     }
     /*
      * skip typedefs, go into enum base
      */
     typ = SkipTypeFluff( typ );
-    size = SizeOfArg( typ );
+    size = SizeOfArg( front, typ );
     switch( typ->decl_type ) {
     case TYP_ARRAY:
-        if( CharArray( typ->object ) ) {
-            InitCharArray( typ );
-        } else if( WCharArray( typ->object ) ) {
-            InitWCharArray( typ );
+        if( CharArray( front, typ->object ) ) {
+            InitCharArray( front, typ );
+        } else if( WCharArray( front, typ->object ) ) {
+            InitWCharArray( front, typ );
         } else {
             if( token == T_LEFT_BRACE ) {
                 ctyp = typ;
             } else if( level == 0 ) {
-                CErr1( ERR_NEED_BRACES );
+                CErr1( front, ERR_NEED_BRACES );
             }
             if( typ == ctyp ) {
                 /*
@@ -1038,10 +1040,10 @@ void InitSymData( TYPEPTR typ, TYPEPTR ctyp, int level )
                  * overlapping fields caused by designated
                  * initializers will make life very difficult
                  */
-                ZeroBytes( size );
-                RelSeekBytes( -(target_ssize)size );
+                ZeroBytes( front, size );
+                RelSeekBytes( front, -(target_ssize)size );
             }
-            InitArray( typ, ctyp );
+            InitArray( front, typ, ctyp );
         }
         break;
     case TYP_FCOMPLEX:
@@ -1051,7 +1053,7 @@ void InitSymData( TYPEPTR typ, TYPEPTR ctyp, int level )
         if( token == T_LEFT_BRACE ) {
             ctyp = typ;
         } else if( level == 0 ) {
-            CErr1( ERR_NEED_BRACES );
+            CErr1( front, ERR_NEED_BRACES );
         }
         if( typ == ctyp ) {
             /*
@@ -1060,18 +1062,18 @@ void InitSymData( TYPEPTR typ, TYPEPTR ctyp, int level )
              * zero out all fields; otherwise overlapping fields caused
              * by designated initializers will make life very difficult
              */
-            ZeroBytes( size );
-            RelSeekBytes( -(target_ssize)size );
+            ZeroBytes( front, size );
+            RelSeekBytes( front, -(target_ssize)size );
         }
-        InitStruct( typ, ctyp );
+        InitStruct( front, typ, ctyp );
         break;
     case TYP_UNION:
         if( token == T_LEFT_BRACE ) {
             ctyp = typ;
         } else if( level == 0 ) {
-            CErr1( ERR_NEED_BRACES );
+            CErr1( front, ERR_NEED_BRACES );
         }
-        InitUnion( typ, ctyp );
+        InitUnion( front, typ, ctyp );
         break;
     case TYP_CHAR:
     case TYP_UCHAR:
@@ -1083,50 +1085,50 @@ void InitSymData( TYPEPTR typ, TYPEPTR ctyp, int level )
     case TYP_LONG:
     case TYP_ULONG:
     case TYP_POINTER:
-        StorePointer( typ, size );
+        StorePointer( front, typ, size );
         break;
     case TYP_LONG64:
     case TYP_ULONG64:
-        StoreInt64( typ );
+        StoreInt64( front, typ );
         break;
     case TYP_FLOAT:
     case TYP_DOUBLE:
     case TYP_FIMAGINARY:
     case TYP_DIMAGINARY:
-        StoreFloat( typ->decl_type, size );
+        StoreFloat( front, typ->decl_type, size );
         break;
     case TYP_LONG_DOUBLE:
     case TYP_LDIMAGINARY:
 //        StoreFloat( typ->decl_type, size );
-        StoreFloat( TYP_DOUBLE, size );
+        StoreFloat( front, TYP_DOUBLE, size );
         break;
     default:
         break;
     }
     if( token == T_LEFT_BRACE ) {
-        if( cvars_state().CurToken == T_COMMA ) {
-            NextToken();
+        if( front.cvars.CurToken == T_COMMA ) {
+            NextToken(front);
         }
-        if( cvars_state().CurToken != T_RIGHT_BRACE ) {
-            CErr1( ERR_TOO_MANY_INITS );
+        if( front.cvars.CurToken != T_RIGHT_BRACE ) {
+            CErr1( front, ERR_TOO_MANY_INITS );
         }
-        while( cvars_state().CurToken != T_RIGHT_BRACE ) {
-            if( cvars_state().CurToken == T_EOF )
+        while( front.cvars.CurToken != T_RIGHT_BRACE ) {
+            if( front.cvars.CurToken == T_EOF )
                 break;
-            if( cvars_state().CurToken == T_SEMI_COLON )
+            if( front.cvars.CurToken == T_SEMI_COLON )
                 break;
-            if( cvars_state().CurToken == T_LEFT_BRACE )
+            if( front.cvars.CurToken == T_LEFT_BRACE )
                 break;
-            NextToken();
+            NextToken(front);
         }
-        MustRecog( T_RIGHT_BRACE );
+        MustRecog( front, T_RIGHT_BRACE );
     }
 }
 
 
-static bool CharArray( TYPEPTR typ )
+static bool CharArray( FrontRun& front, TYPEPTR typ )
 {
-    if( cvars_state().CurToken == T_STRING ) {
+    if( front.cvars.CurToken == T_STRING ) {
         SKIP_TYPEDEFS( typ );
         if( typ->decl_type == TYP_CHAR
           || typ->decl_type == TYP_UCHAR ) {
@@ -1137,9 +1139,9 @@ static bool CharArray( TYPEPTR typ )
 }
 
 
-static bool WCharArray( TYPEPTR typ )
+static bool WCharArray( FrontRun& front, TYPEPTR typ )
 {
-    if( cvars_state().CurToken == T_STRING ) {
+    if( front.cvars.CurToken == T_STRING ) {
         SKIP_TYPEDEFS( typ );
         if( typ->decl_type == TYP_SHORT
           || typ->decl_type == TYP_USHORT ) {
@@ -1149,7 +1151,7 @@ static bool WCharArray( TYPEPTR typ )
     return( false );
 }
 
-static void InitCharArray( TYPEPTR typ )
+static void InitCharArray( FrontRun& front, TYPEPTR typ )
 /***************************************
  * This function handles the initialization of statements like:
  * char  name[4] = "abcd";
@@ -1160,16 +1162,16 @@ static void InitCharArray( TYPEPTR typ )
     target_size         size;
     DATA_QUAD           dq;
 
-    str_lit = GetLiteral();
-    if( cvars_state().CompFlags.wide_char_string )
-        CErr1( ERR_TYPE_MISMATCH );
+    str_lit = GetLiteral(front);
+    if( front.cvars.CompFlags.wide_char_string )
+        CErr1( front, ERR_TYPE_MISMATCH );
     len = str_lit->length;
     if( typ->u.array->unspecified_dim )
         typ->u.array->dimension = len;
     size = typ->u.array->dimension;
     if( len > size ) {
         if( ( len - size ) > 1 ) {
-            CWarn1( ERR_LIT_TOO_LONG );
+            CWarn1( front, ERR_LIT_TOO_LONG );
         }
         /*
          * chop the string
@@ -1180,15 +1182,15 @@ static void InitCharArray( TYPEPTR typ )
     dq.type = QDT_CONST;
     dq.flags = Q_DATA;
     dq.u.string_leaf = str_lit;
-    GenDataQuad( &dq, len );
+    GenDataQuad( front, &dq, len );
     if( size > len ) {                  /* if array > len of literal */
-        ZeroBytes( size - len );
+        ZeroBytes( front, size - len );
     }
-    cvars_state().CompFlags.non_zero_data = true;
+    front.cvars.CompFlags.non_zero_data = true;
 }
 
 
-static void InitWCharArray( TYPEPTR typ )
+static void InitWCharArray( FrontRun& front, TYPEPTR typ )
 /****************************************
  * This function handles the initialization of statements like:
  * wchar_t  name[5] = L"abcd";
@@ -1204,9 +1206,9 @@ static void InitWCharArray( TYPEPTR typ )
 
     dq.type = QDT_SHORT;
     dq.flags = Q_DATA;
-    str_lit = GetLiteral();
-    if( !cvars_state().CompFlags.wide_char_string )
-        CErr1( ERR_TYPE_MISMATCH );
+    str_lit = GetLiteral(front);
+    if( !front.cvars.CompFlags.wide_char_string )
+        CErr1( front, ERR_TYPE_MISMATCH );
     len = str_lit->length / sizeof( unsigned short );
     if( typ->u.array->unspecified_dim ) {
         typ->u.array->dimension = len;
@@ -1214,7 +1216,7 @@ static void InitWCharArray( TYPEPTR typ )
     size = typ->u.array->dimension;
     if( len > size ) {
         if( ( len - size ) > 1 ) {
-            CWarn1( ERR_LIT_TOO_LONG );
+            CWarn1( front, ERR_LIT_TOO_LONG );
         }
         len = size;
     }
@@ -1222,18 +1224,18 @@ static void InitWCharArray( TYPEPTR typ )
     for( i = 0; i < len; ++i ) {
         value = *pwc++;
         if( value != 0 )
-            cvars_state().CompFlags.non_zero_data = true;
+            front.cvars.CompFlags.non_zero_data = true;
         dq.u_long_value1 = value;
-        GenDataQuad( &dq, TARGET_WCHAR );
+        GenDataQuad( front, &dq, TARGET_WCHAR );
     }
     if( i < size ) {
-        ZeroBytes( ( size - i ) * sizeof( unsigned short ) );
+        ZeroBytes( front, ( size - i ) * sizeof( unsigned short ) );
     }
-    FreeLiteral( str_lit );
+    FreeLiteral( front, str_lit );
 }
 
 
-static void StoreFloat( DATA_TYPE dtype, target_size size )
+static void StoreFloat( FrontRun& front, DATA_TYPE dtype, target_size size )
 {
     TREEPTR     tree;
     DATA_QUAD   dq;
@@ -1241,10 +1243,10 @@ static void StoreFloat( DATA_TYPE dtype, target_size size )
     dq.type = (enum quad_type)dtype;
     dq.flags = Q_DATA;
     dq.u.double_value = 0.0;
-    if( cvars_state().CurToken != T_RIGHT_BRACE ) {
-        tree = SingleExpr();
+    if( front.cvars.CurToken != T_RIGHT_BRACE ) {
+        tree = SingleExpr(front);
         if( IsConstLeaf( tree ) ) {
-            CastConstValue( tree, dtype );
+            CastConstValue( front, tree, dtype );
 #ifdef _LONG_DOUBLE_
             {
                 long_double ld;
@@ -1256,17 +1258,17 @@ static void StoreFloat( DATA_TYPE dtype, target_size size )
             dq.u.double_value = tree->op.u2.float_value->ld.u.value;
 #endif
         } else {
-            CErr1( ERR_NOT_A_CONSTANT_EXPR );
+            CErr1( front, ERR_NOT_A_CONSTANT_EXPR );
         }
-        FreeExprTree( tree );
+        FreeExprTree( front, tree );
         if( dq.u.double_value != 0.0 ) {
-            cvars_state().CompFlags.non_zero_data = true;
+            front.cvars.CompFlags.non_zero_data = true;
         }
     }
-    GenDataQuad( &dq, size );
+    GenDataQuad( front, &dq, size );
 }
 
-static void GenStaticDataQuad( SYM_HANDLE sym_handle )
+static void GenStaticDataQuad( FrontRun& front, SYM_HANDLE sym_handle )
 {
     DATA_QUAD       dq;
 
@@ -1274,17 +1276,17 @@ static void GenStaticDataQuad( SYM_HANDLE sym_handle )
     dq.flags = Q_DATA;
     dq.u.var.sym_handle = sym_handle;
     dq.u.var.offset = 0;
-    GenDataQuad( &dq, 0 );
+    GenDataQuad( front, &dq, 0 );
 }
 
-void StaticInit( SYMPTR sym, SYM_HANDLE sym_handle )
+void StaticInit( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
 {
     TYPEPTR             typ;
     TYPEPTR             struct_typ;
     TYPEPTR             last_array;
 
-    GenStaticDataQuad( sym_handle );
-    cvars_state().CompFlags.non_zero_data = false;
+    GenStaticDataQuad( front, sym_handle );
+    front.cvars.CompFlags.non_zero_data = false;
     struct_typ = NULL;
     last_array = NULL;
     typ = sym->sym_type;
@@ -1336,14 +1338,14 @@ void StaticInit( SYMPTR sym, SYM_HANDLE sym_handle )
             /*
              * Array was not inside struct
              */
-            sym->sym_type = ArrayNode( typ->object );
+            sym->sym_type = ArrayNode( front, typ->object );
             sym->sym_type->u.array->unspecified_dim = true;
         } else {
             typ = sym->sym_type;
             /*
              * Create new structure type
              */
-            sym->sym_type = TypeNode( TYP_STRUCT, ArrayNode( last_array->object ) );
+            sym->sym_type = TypeNode( front, TYP_STRUCT, ArrayNode( front, last_array->object ) );
             sym->sym_type->u.tag = struct_typ->u.tag;
             struct_typ = sym->sym_type;
             /*
@@ -1353,7 +1355,7 @@ void StaticInit( SYMPTR sym, SYM_HANDLE sym_handle )
                 SKIP_TYPEDEFS( typ );
                 if( typ->decl_type != TYP_ARRAY )
                     break;
-                sym->sym_type = ArrayNode( sym->sym_type );
+                sym->sym_type = ArrayNode( front, sym->sym_type );
                 sym->sym_type->u.array->unspecified_dim = true;
                 typ = typ->object;
             }
@@ -1362,9 +1364,9 @@ void StaticInit( SYMPTR sym, SYM_HANDLE sym_handle )
     } else {
         struct_typ = NULL;
     }
-    SymReplace( sym, sym_handle );
-    InitSymData( sym->sym_type, sym->sym_type, 0 );
-    SymGet( sym, sym_handle );
+    SymReplace( front, sym, sym_handle );
+    InitSymData( front, sym->sym_type, sym->sym_type, 0 );
+    SymGet( front, sym, sym_handle );
     if( struct_typ != NULL ) {
         /*
          * Structure contains an unspecified length array as last field
@@ -1374,43 +1376,43 @@ void StaticInit( SYMPTR sym, SYM_HANDLE sym_handle )
         typ->u.array->dimension = 0;    /* Reset back to 0 */
     }
     if( sym->u.var.segid == SEG_NULL ) {
-        SetFarHuge( sym, false );
-        SetSegment( sym );
-        SetSegAlign( sym );
+        SetFarHuge( front, sym, false );
+        SetSegment( front, sym );
+        SetSegAlign( front, sym );
     }
 }
 
-static void AssignAggregate( TREEPTR lvalue, TREEPTR rvalue, TYPEPTR typ )
+static void AssignAggregate( FrontRun& front, TREEPTR lvalue, TREEPTR rvalue, TYPEPTR typ )
 {
     TREEPTR tree;
 
-    tree = ExprNode( lvalue, OPR_EQUALS, rvalue );
+    tree = ExprNode( front, lvalue, OPR_EQUALS, rvalue );
     tree->right->op.opr = OPR_PUSHSYM;
     tree->u.expr_type = typ;
     tree->op.u2.result_type = typ;
-    AddStmt( tree );
+    AddStmt( front, tree );
 }
 
-static void AggregateVarDeclEquals( SYMPTR sym, SYM_HANDLE sym_handle )
+static void AggregateVarDeclEquals( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
 {
     SYM_HANDLE  sym2_handle;
     SYM_ENTRY   sym2;
 
-    sym2_handle = MakeNewDotSym( &sym2, 'X', sym->sym_type, SC_STATIC );
+    sym2_handle = MakeNewDotSym( front, &sym2, 'X', sym->sym_type, SC_STATIC );
     sym2.flags |= SYM_INITIALIZED;
-    cvars_state().CompFlags.initializing_data = true;
-    StaticInit( &sym2, sym2_handle );
-    cvars_state().CompFlags.initializing_data = false;
-    SymReplace( &sym2, sym2_handle );
+    front.cvars.CompFlags.initializing_data = true;
+    StaticInit( front, &sym2, sym2_handle );
+    front.cvars.CompFlags.initializing_data = false;
+    SymReplace( front, &sym2, sym2_handle );
     /*
      * StaticInit will change sym2.sym_type if it is an incomplete array type
      */
     sym->sym_type = sym2.sym_type;
-    AssignAggregate( VarLeaf( sym, sym_handle ),
-                     VarLeaf( &sym2, sym2_handle ), sym->sym_type );
+    AssignAggregate( front, VarLeaf( front, sym, sym_handle ),
+                     VarLeaf( front, &sym2, sym2_handle ), sym->sym_type );
 }
 
-static void InitStructField( SYMPTR sym, SYM_HANDLE sym_handle, target_size base, FIELDPTR field, TREEPTR value )
+static void InitStructField( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle, target_size base, FIELDPTR field, TREEPTR value )
 {
     TREEPTR     opnd;
     TYPEPTR     typ;
@@ -1423,25 +1425,25 @@ static void InitStructField( SYMPTR sym, SYM_HANDLE sym_handle, target_size base
         typ = ufield->field_type;
         SKIP_TYPEDEFS( typ );
     }
-    opnd = VarLeaf( sym, sym_handle );
-    opnd = ExprNode( opnd, OPR_DOT, UIntLeaf( base + field->offset ) );
+    opnd = VarLeaf( front, sym, sym_handle );
+    opnd = ExprNode( front, opnd, OPR_DOT, UIntLeaf( front, base + field->offset ) );
     opnd->u.expr_type = typ;
     opnd->op.u2.result_type = typ;
-    AddStmt( AsgnOp( opnd, T_ASSIGN_LAST, value ) );
+    AddStmt( front, AsgnOp( front, opnd, T_ASSIGN_LAST, value ) );
 }
 
-static void InitStructUnionVarZero( SYMPTR sym, SYM_HANDLE sym_handle, int index, TYPEPTR typ )
+static void InitStructUnionVarZero( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle, int index, TYPEPTR typ )
 {
     FIELDPTR    field;
     target_size base;
 
-    base = index * SizeOfArg( typ );
+    base = index * SizeOfArg( front, typ );
     for( field = typ->u.tag->u.field_list; field != NULL; field = field->next_field ) {
-        InitStructField( sym, sym_handle, base, field, IntLeaf( 0 ) );
+        InitStructField( front, sym, sym_handle, base, field, IntLeaf( front, 0 ) );
     }
 }
 
-static void InitStructUnionVar( SYMPTR sym, SYM_HANDLE sym_handle, int index, TYPEPTR typ )
+static void InitStructUnionVar( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle, int index, TYPEPTR typ )
 {
     TREEPTR     value;
     FIELDPTR    field;
@@ -1450,35 +1452,35 @@ static void InitStructUnionVar( SYMPTR sym, SYM_HANDLE sym_handle, int index, TY
     TOKEN       token;
     target_size base;
 
-    base = index * SizeOfArg( typ );
+    base = index * SizeOfArg( front, typ );
     last_field = typ->u.tag->u.field_list;
     for( field = typ->u.tag->u.field_list; field != NULL; field = field->next_field ) {
-        new_field = static_cast<FIELDPTR>(DesignatedInit( typ, typ, field ));
+        new_field = static_cast<FIELDPTR>(DesignatedInit( front, typ, typ, field ));
         if( new_field != NULL ) {
             for( field = last_field->next_field; field != NULL; field = field->next_field ) {
                  if( field->offset >= new_field->offset  )
                      break;
-                 InitStructField( sym, sym_handle, base, field, IntLeaf( 0 ) );
+                 InitStructField( front, sym, sym_handle, base, field, IntLeaf( front, 0 ) );
             }
             field = new_field;
         }
-        token = cvars_state().CurToken;
+        token = front.cvars.CurToken;
         if( token == T_LEFT_BRACE ) // allow {}, and extra {expr}..}
-            NextToken();
-        if( cvars_state().CurToken == T_RIGHT_BRACE ) {
-            value = IntLeaf( 0 );
+            NextToken(front);
+        if( front.cvars.CurToken == T_RIGHT_BRACE ) {
+            value = IntLeaf( front, 0 );
         } else {
-            value = CommaExpr();
+            value = CommaExpr(front);
         }
-        InitStructField( sym, sym_handle, base, field, value );
+        InitStructField( front, sym, sym_handle, base, field, value );
         if( last_field->offset < field->offset )
             last_field = field;
         if( token == T_LEFT_BRACE )
-            MustRecog( T_RIGHT_BRACE );
-        if( cvars_state().CurToken == T_EOF )
+            MustRecog( front, T_RIGHT_BRACE );
+        if( front.cvars.CurToken == T_EOF )
             break;
-        if( cvars_state().CurToken != T_RIGHT_BRACE ) {
-            MustRecog( T_COMMA );
+        if( front.cvars.CurToken != T_RIGHT_BRACE ) {
+            MustRecog( front, T_COMMA );
         }
         if( field->next_field == NULL ) {
             break;
@@ -1534,18 +1536,18 @@ static bool SimpleStruct( TYPEPTR typ )
     return( true );
 }
 
-static void InitArraySimpleVar( SYMPTR sym, SYM_HANDLE sym_handle, TYPEPTR typ, int index, TREEPTR value )
+static void InitArraySimpleVar( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle, TYPEPTR typ, int index, TREEPTR value )
 {
     TREEPTR     opnd;
 
-    opnd = VarLeaf( sym, sym_handle );
-    opnd = ExprNode( opnd, OPR_INDEX, IntLeaf( index ) );
+    opnd = VarLeaf( front, sym, sym_handle );
+    opnd = ExprNode( front, opnd, OPR_INDEX, IntLeaf( front, index ) );
     opnd->u.expr_type = typ;
     opnd->op.u2.result_type = typ;
-    AddStmt( AsgnOp( opnd, T_ASSIGN_LAST, value ) );
+    AddStmt( front, AsgnOp( front, opnd, T_ASSIGN_LAST, value ) );
 }
 
-static void InitArrayVar( SYMPTR sym, SYM_HANDLE sym_handle, TYPEPTR typ )
+static void InitArrayVar( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle, TYPEPTR typ )
 {
     target_size i;
     target_size n;
@@ -1580,73 +1582,73 @@ static void InitArrayVar( SYMPTR sym, SYM_HANDLE sym_handle, TYPEPTR typ )
         /*
          * skip over T_LEFT_BRACE
          */
-        NextToken();
-        if( CharArray( typ->object ) ) {
-            sym2_handle = MakeNewDotSym( &sym2, 'X', typ, SC_STATIC );
+        NextToken(front);
+        if( CharArray( front, typ->object ) ) {
+            sym2_handle = MakeNewDotSym( front, &sym2, 'X', typ, SC_STATIC );
             sym2.flags |= SYM_INITIALIZED;
             if( sym2.u.var.segid == SEG_NULL ) {
-                SetFarHuge( &sym2, false );
-                SetSegment( &sym2 );
-                SetSegAlign( &sym2 );
+                SetFarHuge( front, &sym2, false );
+                SetSegment( front, &sym2 );
+                SetSegAlign( front, &sym2 );
             }
-            SymReplace( &sym2, sym2_handle );
-            GenStaticDataQuad( sym2_handle );
-            InitCharArray( typ );
-            AssignAggregate( VarLeaf( sym, sym_handle ),
-                             VarLeaf( &sym2, sym2_handle ), typ );
-        } else if( WCharArray( typ->object ) ) {
-            sym2_handle = MakeNewDotSym( &sym2, 'X', typ, SC_STATIC );
+            SymReplace( front, &sym2, sym2_handle );
+            GenStaticDataQuad( front, sym2_handle );
+            InitCharArray( front, typ );
+            AssignAggregate( front, VarLeaf( front, sym, sym_handle ),
+                             VarLeaf( front, &sym2, sym2_handle ), typ );
+        } else if( WCharArray( front, typ->object ) ) {
+            sym2_handle = MakeNewDotSym( front, &sym2, 'X', typ, SC_STATIC );
             sym2.flags |= SYM_INITIALIZED;
             if( sym2.u.var.segid == SEG_NULL ) {
-                SetFarHuge( &sym2, false );
-                SetSegment( &sym2 );
-                SetSegAlign( &sym2 );
+                SetFarHuge( front, &sym2, false );
+                SetSegment( front, &sym2 );
+                SetSegAlign( front, &sym2 );
             }
-            SymReplace( &sym2, sym2_handle );
-            GenStaticDataQuad( sym2_handle );
-            InitWCharArray( typ );
-            AssignAggregate( VarLeaf( sym, sym_handle ),
-                             VarLeaf( &sym2, sym2_handle ), typ );
+            SymReplace( front, &sym2, sym2_handle );
+            GenStaticDataQuad( front, sym2_handle );
+            InitWCharArray( front, typ );
+            AssignAggregate( front, VarLeaf( front, sym, sym_handle ),
+                             VarLeaf( front, &sym2, sym2_handle ), typ );
         } else {
             n = typ->u.array->dimension;
             dim = 0;
             i = 0;
             for( ;; ) {     // accept some C++ { {1},.. }
-                if( DesignatedInit( typ, sym->sym_type, &i ) != NULL ) {
+                if( DesignatedInit( front, typ, sym->sym_type, &i ) != NULL ) {
                     for( j = dim; j < i; j++ ) {
-                        InitArraySimpleVar( sym, sym_handle, typ2, j, IntLeaf( 0 ) );
+                        InitArraySimpleVar( front, sym, sym_handle, typ2, j, IntLeaf( front, 0 ) );
                     }
                 }
-                token = cvars_state().CurToken;
+                token = front.cvars.CurToken;
                 if( token == T_LEFT_BRACE )
-                    NextToken();
-                InitArraySimpleVar( sym, sym_handle, typ2, i, CommaExpr() );
+                    NextToken(front);
+                InitArraySimpleVar( front, sym, sym_handle, typ2, i, CommaExpr(front) );
                 if( token == T_LEFT_BRACE )
-                    MustRecog( T_RIGHT_BRACE );
+                    MustRecog( front, T_RIGHT_BRACE );
                 ++i;
                 if( dim < i )
                     dim = i;
-                if( cvars_state().CurToken == T_EOF )
+                if( front.cvars.CurToken == T_EOF )
                     break;
-                if( cvars_state().CurToken == T_RIGHT_BRACE )
+                if( front.cvars.CurToken == T_RIGHT_BRACE )
                     break;
-                MustRecog( T_COMMA );
-                if( cvars_state().CurToken == T_RIGHT_BRACE )
+                MustRecog( front, T_COMMA );
+                if( front.cvars.CurToken == T_RIGHT_BRACE )
                     break;
                 if( n
                   && i >= n ) {
-                    CErr1( ERR_TOO_MANY_INITS );
+                    CErr1( front, ERR_TOO_MANY_INITS );
                 }
             }
             if( typ->u.array->unspecified_dim ) {
                 typ->u.array->dimension = dim;
             } else {
                 for( i = dim; i < n; i++ ) {
-                    InitArraySimpleVar( sym, sym_handle, typ2, i, IntLeaf( 0 ) );
+                    InitArraySimpleVar( front, sym, sym_handle, typ2, i, IntLeaf( front, 0 ) );
                 }
             }
         }
-        MustRecog( T_RIGHT_BRACE );
+        MustRecog( front, T_RIGHT_BRACE );
         break;
     case TYP_FCOMPLEX:
     case TYP_DCOMPLEX:
@@ -1657,107 +1659,111 @@ static void InitArrayVar( SYMPTR sym, SYM_HANDLE sym_handle, TYPEPTR typ )
             /*
              * skip over T_LEFT_BRACE
              */
-            NextToken();
+            NextToken(front);
             n = typ->u.array->dimension;
             dim = 0;
             i = 0;
             for( ;; ) {
-                if( DesignatedInit( typ, typ, &i ) != NULL ) {
+                if( DesignatedInit( front, typ, typ, &i ) != NULL ) {
                     for( j = dim; j < i; j++ ) {
-                        InitStructUnionVarZero( sym, sym_handle, j, typ2 );
+                        InitStructUnionVarZero( front, sym, sym_handle, j, typ2 );
                     }
                 }
-                token = cvars_state().CurToken;
+                token = front.cvars.CurToken;
                 if( token == T_LEFT_BRACE ) {
-                    NextToken();
+                    NextToken(front);
                 }
-                InitStructUnionVar( sym, sym_handle, i, typ2 );
+                InitStructUnionVar( front, sym, sym_handle, i, typ2 );
                 if( token == T_LEFT_BRACE ) {
-                    MustRecog( T_RIGHT_BRACE );
+                    MustRecog( front, T_RIGHT_BRACE );
                 }
                 ++i;
                 if( dim < i )
                     dim = i;
-                if( cvars_state().CurToken == T_EOF )
+                if( front.cvars.CurToken == T_EOF )
                     break;
-                if( cvars_state().CurToken == T_RIGHT_BRACE )
+                if( front.cvars.CurToken == T_RIGHT_BRACE )
                     break;
-                MustRecog( T_COMMA );
-                if( cvars_state().CurToken == T_RIGHT_BRACE )
+                MustRecog( front, T_COMMA );
+                if( front.cvars.CurToken == T_RIGHT_BRACE )
                     break;
                 if( n
                   && i >= n ) {
-                    CErr1( ERR_TOO_MANY_INITS );
+                    CErr1( front, ERR_TOO_MANY_INITS );
                 }
             }
             if( typ->u.array->unspecified_dim ) {
                 typ->u.array->dimension = dim;
             } else {
                 for( i = dim; i < n; i++ ) { // mop up
-                    InitStructUnionVarZero( sym, sym_handle, i, typ2 );
+                    InitStructUnionVarZero( front, sym, sym_handle, i, typ2 );
                 }
             }
             /*
              * skip over T_RIGHT_BRACE
              */
-            NextToken();
+            NextToken(front);
             break;
         }
         /* fall through */
     default:
-        AggregateVarDeclEquals( sym, sym_handle );
+        AggregateVarDeclEquals( front, sym, sym_handle );
         break;
     }
 }
 
-void VarDeclEquals( SYMPTR sym, SYM_HANDLE sym_handle )
+void VarDeclEquals( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
 {
     TYPEPTR     typ;
 
-    if( cvars_state().SymLevel == 0
+    if( front.cvars.SymLevel == 0
       || sym->attribs.stg_class == SC_STATIC ) {
         if( sym->flags & SYM_INITIALIZED ) {
-            CErrSymName( ERR_VAR_ALREADY_INITIALIZED, sym, sym_handle );
+            CErrSymName( front, ERR_VAR_ALREADY_INITIALIZED, sym, sym_handle );
         }
         sym->flags |= SYM_INITIALIZED;
-        cvars_state().CompFlags.initializing_data = true;
-        StaticInit( sym, sym_handle );
-        cvars_state().CompFlags.initializing_data = false;
+        front.cvars.CompFlags.initializing_data = true;
+        StaticInit( front, sym, sym_handle );
+        front.cvars.CompFlags.initializing_data = false;
     } else {
-        SymReplace( sym, sym_handle );
-        cvars_state().SrcLoc = cvars_state().TokenLoc;
+        SymReplace( front, sym, sym_handle );
+        front.cvars.SrcLoc = front.cvars.TokenLoc;
         typ = sym->sym_type;
         SKIP_TYPEDEFS( typ );
         /*
          * check for { before checking for array, struct or union
          */
-        if( cvars_state().CurToken != T_LEFT_BRACE
+        if( front.cvars.CurToken != T_LEFT_BRACE
           && typ->decl_type != TYP_ARRAY ) {
-            AddStmt( AsgnOp( VarLeaf( sym, sym_handle ), T_ASSIGN_LAST, CommaExpr() ) );
+            AddStmt( front, AsgnOp( front, VarLeaf( front, sym, sym_handle ), T_ASSIGN_LAST, CommaExpr(front) ) );
             sym->flags |= SYM_ASSIGNED;
         } else if( typ->decl_type == TYP_ARRAY ) {
-            if( cvars_state().CurToken == T_LEFT_BRACE
-              && cvars_state().CompFlags.auto_agg_inits ) {
-                InitArrayVar( sym, sym_handle, typ );
+            if( front.cvars.CurToken == T_LEFT_BRACE
+              && front.cvars.CompFlags.auto_agg_inits ) {
+                InitArrayVar( front, sym, sym_handle, typ );
             } else {
-                AggregateVarDeclEquals( sym, sym_handle );
+                AggregateVarDeclEquals( front, sym, sym_handle );
             }
         } else if( typ->decl_type == TYP_STRUCT
           || typ->decl_type == TYP_UNION ) {
-            if( cvars_state().CurToken == T_LEFT_BRACE
-              && cvars_state().CompFlags.auto_agg_inits
+            if( front.cvars.CurToken == T_LEFT_BRACE
+              && front.cvars.CompFlags.auto_agg_inits
               && SimpleStruct( typ ) ) {
-                NextToken();    /* skip T_LEFT_BRACE */
-                InitStructUnionVar( sym, sym_handle, 0, typ );
-                NextToken();    /* skip T_RIGHT_BRACE */
+                NextToken(front);    /* skip T_LEFT_BRACE */
+                InitStructUnionVar( front, sym, sym_handle, 0, typ );
+                NextToken(front);    /* skip T_RIGHT_BRACE */
             } else {
-                AggregateVarDeclEquals( sym, sym_handle );
+                AggregateVarDeclEquals( front, sym, sym_handle );
             }
         } else {
-            NextToken();
-            AddStmt( AsgnOp( VarLeaf( sym, sym_handle ), T_ASSIGN_LAST, CommaExpr() ) );
+            NextToken(front);
+            AddStmt( front, AsgnOp( front, VarLeaf( front, sym, sym_handle ), T_ASSIGN_LAST, CommaExpr(front) ) );
             sym->flags |= SYM_ASSIGNED;
-            MustRecog( T_RIGHT_BRACE );
+            MustRecog( front, T_RIGHT_BRACE );
         }
     }
 }
+
+/* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
+CdinitState* cdinit_make() { return new CdinitState(); }
+void cdinit_free(CdinitState* part) { delete part; }

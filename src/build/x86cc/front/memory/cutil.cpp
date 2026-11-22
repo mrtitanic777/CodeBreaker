@@ -31,117 +31,118 @@
 
 
 #include "cvars.h"
+#include "frontrun.hpp"
 
 
-void MustRecog( TOKEN this_token )
+void MustRecog( FrontRun& front, TOKEN this_token )
 {
-    if( ExpectingToken( this_token ) ) {
-        NextToken();
+    if( ExpectingToken( front, this_token ) ) {
+        NextToken(front);
     } else {
 /*      if( CurToken != T_LEFT_BRACE && CurToken != T_RIGHT_BRACE */
-        if( cvars_state().CurToken != T_EOF ) {
-            if( cvars_state().CurToken == T_SEMI_COLON ) {
+        if( front.cvars.CurToken != T_EOF ) {
+            if( front.cvars.CurToken == T_SEMI_COLON ) {
                 switch( this_token ) {
                 case T_RIGHT_BRACKET:
                 case T_RIGHT_PAREN:
                     break;
                 default:
-                    NextToken();
+                    NextToken(front);
                     break;
                 }
             } else if( this_token != T_SEMI_COLON ) {
-                NextToken();
+                NextToken(front);
             }
         }
     }
 }
 
-static const char *NameOfCurToken( void )
+static const char *NameOfCurToken( FrontRun& front )
 {
     const char  *token;
 
-    switch( cvars_state().CurToken ) {
+    switch( front.cvars.CurToken ) {
     case T_BAD_CHAR:
-        cvars_state().Buffer[1] = '\0';
+        front.cvars.Buffer[1] = '\0';
         /* fall through */
     case T_ID:
     case T_STRING:
     case T_CONSTANT:
     case T_BAD_TOKEN:
-        token = cvars_state().Buffer;
+        token = front.cvars.Buffer;
         break;
     default:
-        token = TokenString[cvars_state().CurToken];
+        token = TokenString[front.cvars.CurToken];
     }
     return( token );
 }
 
-void Expecting( const char *a_token )
+void Expecting( FrontRun& front, const char *a_token )
 {
-    CErr3p( ERR_EXPECTING_BUT_FOUND, a_token, NameOfCurToken() );
+    CErr3p( front, ERR_EXPECTING_BUT_FOUND, a_token, NameOfCurToken(front) );
 }
 
-bool ExpectingToken( TOKEN token )
+bool ExpectingToken( FrontRun& front, TOKEN token )
 {
-    if( cvars_state().CurToken == token ) {
+    if( front.cvars.CurToken == token ) {
         return( true );
     }
-    CErr3p( ERR_EXPECTING_BUT_FOUND, TokenString[token], NameOfCurToken() );
+    CErr3p( front, ERR_EXPECTING_BUT_FOUND, TokenString[token], NameOfCurToken(front) );
     return( false );
 }
 
-void ExpectingAfter( TOKEN token, TOKEN after_token )
+void ExpectingAfter( FrontRun& front, TOKEN token, TOKEN after_token )
 {
-    CErr4p( ERR_EXPECTING_AFTER_BUT_FOUND, TokenString[token], TokenString[after_token], NameOfCurToken() );
+    CErr4p( front, ERR_EXPECTING_AFTER_BUT_FOUND, TokenString[token], TokenString[after_token], NameOfCurToken(front) );
 }
 
 
-void ExpectEndOfLine( void )
+void ExpectEndOfLine( FrontRun& front )
 {
-    CErr2p( ERR_EXPECTING_END_OF_LINE_BUT_FOUND, NameOfCurToken() );
+    CErr2p( front, ERR_EXPECTING_END_OF_LINE_BUT_FOUND, NameOfCurToken(front) );
 }
 
-void ExpectIdentifier( void )
+void ExpectIdentifier( FrontRun& front )
 {
-    CErr2p( ERR_EXPECTING_IDENTIFIER_BUT_FOUND, NameOfCurToken() );
+    CErr2p( front, ERR_EXPECTING_IDENTIFIER_BUT_FOUND, NameOfCurToken(front) );
 }
 
-bool ExpectingConstant( void )
+bool ExpectingConstant( FrontRun& front )
 {
-    if( cvars_state().CurToken == T_CONSTANT ) {
+    if( front.cvars.CurToken == T_CONSTANT ) {
         return( true );
     }
-    CErr2p( ERR_EXPECTING_CONSTANT_BUT_FOUND, NameOfCurToken() );
+    CErr2p( front, ERR_EXPECTING_CONSTANT_BUT_FOUND, NameOfCurToken(front) );
     return( false );
 }
 
-void ExpectString( void )
+void ExpectString( FrontRun& front )
 {
-    CErr2p( ERR_EXPECTING_STRING_BUT_FOUND, NameOfCurToken() );
+    CErr2p( front, ERR_EXPECTING_STRING_BUT_FOUND, NameOfCurToken(front) );
 }
 
-void ExpectStructUnionTag( void )
+void ExpectStructUnionTag( FrontRun& front )
 {
-    CErr2p( ERR_EXPECTING_STRUCT_UNION_TAG_BUT_FOUND, NameOfCurToken() );
+    CErr2p( front, ERR_EXPECTING_STRUCT_UNION_TAG_BUT_FOUND, NameOfCurToken(front) );
 }
 
 
-SYM_NAMEPTR SymName( SYMPTR sym, SYM_HANDLE sym_handle )
+SYM_NAMEPTR SymName( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
 {
     SYM_HASHPTR hsym;
 
-    if( sym_handle == cvars_state().CharSymHandle )
+    if( sym_handle == front.cvars.CharSymHandle )
         return( "char" );
     if( sym->name != NULL )
         return( sym->name );
-    hsym = cvars_state().HashTab[sym->u1.hash];
+    hsym = front.cvars.HashTab[sym->u1.hash];
     while( hsym->handle != sym_handle )
         hsym = hsym->next_sym;
     return( hsym->name );
 }
 
 
-void CErrSymName( int err, SYMPTR sym, SYM_HANDLE sym_handle )
+void CErrSymName( FrontRun& front, int err, SYMPTR sym, SYM_HANDLE sym_handle )
 {
-    CErr2p( static_cast<msg_codes>(err), SymName( sym, sym_handle ) );
+    CErr2p( front, static_cast<msg_codes>(err), SymName( front, sym, sym_handle ) );
 }

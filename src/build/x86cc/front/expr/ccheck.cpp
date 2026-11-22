@@ -34,6 +34,7 @@
 #include "cgswitch.h"
 #include "i64.h"
 #include "cfeinfo.h"
+#include "frontrun.hpp"
 
 
 /*
@@ -100,7 +101,7 @@ static cmp_type const   CompTable[DATA_TYPE_SIZE][DATA_TYPE_SIZE] = {
 };
 
 
-void ParmCountMismatch( void )
+void ParmCountMismatch( FrontRun& front )
 /*****************************
  * A call with another number of arguments than the function's definition or prototype says:
  * an error, but under -zmsc a warning, as Microsoft C 8 gives (C4020) -- the same source is
@@ -108,15 +109,15 @@ void ParmCountMismatch( void )
  */
 {
 #if _CPU == 8086
-    if( cvars_state().TargetSwitches & CGSW_X86_MSC8 ) {
-        CWarn1( ERR_PARM_COUNT_WARNING );
+    if( front.cvars.TargetSwitches & CGSW_X86_MSC8 ) {
+        CWarn1( front, ERR_PARM_COUNT_WARNING );
         return;
     }
 #endif
-    CErr1( ERR_PARM_COUNT_MISMATCH );
+    CErr1( front, ERR_PARM_COUNT_MISMATCH );
 }
 
-static cmp_type InUnion( TYPEPTR typ1, TYPEPTR typ2, bool reversed )
+static cmp_type InUnion( FrontRun& front, TYPEPTR typ1, TYPEPTR typ2, bool reversed )
 {
     FIELDPTR    field;
 
@@ -125,11 +126,11 @@ static cmp_type InUnion( TYPEPTR typ1, TYPEPTR typ2, bool reversed )
         return( NO );
     for( field = typ1->u.tag->u.field_list; field != NULL; field = field->next_field ) {
         if( reversed ) {
-            if( CheckIdenticalType( typ2, field->field_type ) ) {
+            if( CheckIdenticalType( front, typ2, field->field_type ) ) {
                 return( OK );
             }
         } else {
-            if( CheckIdenticalType( field->field_type, typ2 ) ) {
+            if( CheckIdenticalType( front, field->field_type, typ2 ) ) {
                 return( OK );
             }
         }
@@ -137,7 +138,7 @@ static cmp_type InUnion( TYPEPTR typ1, TYPEPTR typ2, bool reversed )
     return( NO );
 }
 
-static bool CheckParmPromotion( TYPEPTR typ )
+static bool CheckParmPromotion( FrontRun& front, TYPEPTR typ )
 {
     SKIP_TYPEDEFS( typ );
     switch( typ->decl_type ) {
@@ -145,13 +146,13 @@ static bool CheckParmPromotion( TYPEPTR typ )
     case TYP_CHAR:
     case TYP_UCHAR:
     case TYP_SHORT:
-        if( cvars_state().CompFlags.strict_ANSI ) {
+        if( front.cvars.CompFlags.strict_ANSI ) {
             return( false );
         }
         break;
     case TYP_USHORT:
 #if TARGET_SHORT != TARGET_INT
-        if( cvars_state().CompFlags.strict_ANSI )  {
+        if( front.cvars.CompFlags.strict_ANSI )  {
             return( false );
         }
 #endif
@@ -171,7 +172,7 @@ TYPEPTR  SkipTypeFluff( TYPEPTR typ )
     return( typ );
 }
 
-static cmp_type CompatibleStructs( TAGPTR tag1, TAGPTR tag2 )
+static cmp_type CompatibleStructs( FrontRun& front, TAGPTR tag1, TAGPTR tag2 )
 {
     FIELDPTR    field1;
     FIELDPTR    field2;
@@ -195,10 +196,10 @@ static cmp_type CompatibleStructs( TAGPTR tag1, TAGPTR tag2 )
         SKIP_TYPEDEFS( typ1 );
         typ2 = field2->field_type;
         SKIP_TYPEDEFS( typ2 );
-        if( !CheckIdenticalType( typ1, typ2 ) ) {
+        if( !CheckIdenticalType( front, typ1, typ2 ) ) {
             if( ( typ1->decl_type == TYP_STRUCT && typ2->decl_type == TYP_STRUCT )
               || ( typ1->decl_type == TYP_UNION && typ2->decl_type == TYP_UNION ) ) {
-                if( CompatibleStructs( typ1->u.tag, typ2->u.tag ) != OK ) {
+                if( CompatibleStructs( front, typ1->u.tag, typ2->u.tag ) != OK ) {
                     return( NO );
                 }
             } else {
@@ -217,7 +218,7 @@ static cmp_type CompatibleStructs( TAGPTR tag1, TAGPTR tag2 )
     return( OK );
 }
 
-static typecheck_err CheckCompatibleFunctionParms( TYPEPTR typ1, TYPEPTR typ2, bool topLevelCheck )
+static typecheck_err CheckCompatibleFunctionParms( FrontRun& front, TYPEPTR typ1, TYPEPTR typ2, bool topLevelCheck )
 {
     TYPEPTR         *plist1;
     TYPEPTR         *plist2;
@@ -239,9 +240,9 @@ static typecheck_err CheckCompatibleFunctionParms( TYPEPTR typ1, TYPEPTR typ2, b
                 if( p1->decl_type == TYP_DOT_DOT_DOT ) {
                     break;
                 }
-                if( !CheckParmPromotion( p1 ) ) {
+                if( !CheckParmPromotion( front, p1 ) ) {
                     if( topLevelCheck ) {
-                        CErr2( ERR_PARM_TYPE_MISMATCH, parm_num );
+                        CErr2( front, ERR_PARM_TYPE_MISMATCH, parm_num );
                     }
                     rc = TCE_TYPE_MISMATCH;
                 }
@@ -253,11 +254,11 @@ static typecheck_err CheckCompatibleFunctionParms( TYPEPTR typ1, TYPEPTR typ2, b
                   || p2->decl_type == TYP_DOT_DOT_DOT ) {
                     break;
                 }
-                if( !CheckIdenticalType( p1, p2 ) ) {
+                if( !CheckIdenticalType( front, p1, p2 ) ) {
                     if( topLevelCheck ) {
-                        SetDiagType2( p1, p2 );
-                        CErr2( ERR_PARM_TYPE_MISMATCH, parm_num );
-                        SetDiagPop();
+                        SetDiagType2( front, p1, p2 );
+                        CErr2( front, ERR_PARM_TYPE_MISMATCH, parm_num );
+                        SetDiagPop(front);
                     }
                     rc = TCE_TYPE_MISMATCH;
                 }
@@ -271,7 +272,7 @@ static typecheck_err CheckCompatibleFunctionParms( TYPEPTR typ1, TYPEPTR typ2, b
             if( p1 != NULL
               || p2 != NULL ) {
                 if( topLevelCheck ) {
-                    ParmCountMismatch();
+                    ParmCountMismatch(front);
                 }
                 rc = TCE_PARM_COUNT_MISMATCH;
             }
@@ -280,22 +281,22 @@ static typecheck_err CheckCompatibleFunctionParms( TYPEPTR typ1, TYPEPTR typ2, b
     return( rc );
 }
 
-bool CheckCompatibleLanguage( type_modifiers typ1, type_modifiers typ2 )
+bool CheckCompatibleLanguage( FrontRun& front, type_modifiers typ1, type_modifiers typ2 )
 {
     typ1 &= MASK_LANGUAGES;
     typ2 &= MASK_LANGUAGES;
     if( typ1 == typ2 ) {
         return( true );
     } else if( typ1 == 0 ) {
-        return( callinfo_state().DftCallConv == GetLangInfo( typ2 ) );
+        return( front.callinfo.DftCallConv == GetLangInfo( front, typ2 ) );
     } else if( typ2 == 0 ) {
-        return( callinfo_state().DftCallConv == GetLangInfo( typ1 ) );
+        return( front.callinfo.DftCallConv == GetLangInfo( front, typ1 ) );
     } else  {
         return( false );
     }
 }
 
-static cmp_type DoCompatibleType( TYPEPTR typ1, TYPEPTR typ2, int ptr_indir_level )
+static cmp_type DoCompatibleType( FrontRun& front, TYPEPTR typ1, TYPEPTR typ2, int ptr_indir_level )
 {
     cmp_type         ret_val;
     type_modifiers   typ1_flags, typ2_flags;
@@ -337,7 +338,7 @@ static cmp_type DoCompatibleType( TYPEPTR typ1, TYPEPTR typ2, int ptr_indir_leve
             if( (typ1_flags & MASK_ALL_MEM_MODELS) != (typ2_flags & MASK_ALL_MEM_MODELS) ) {
                 if( ( (typ1_flags & MASK_ALL_MEM_MODELS) != FLAG_NONE    // if same as mem model ok
                   && (typ2_flags & MASK_ALL_MEM_MODELS) != FLAG_NONE )
-                  || TypeSize( typ1 ) != TypeSize( typ2 ) ) {
+                  || TypeSize( front, typ1 ) != TypeSize( front, typ2 ) ) {
                     return( NO );
                 }
             }
@@ -356,7 +357,7 @@ static cmp_type DoCompatibleType( TYPEPTR typ1, TYPEPTR typ2, int ptr_indir_leve
                  * allow  void ** with any ** (but warn about it)
                  */
                 if( ( ptr_indir_level == 1 )
-                  || !cvars_state().CompFlags.strict_ANSI ) {
+                  || !front.cvars.CompFlags.strict_ANSI ) {
                     if( ptr_indir_level > 1 ) {
                         ret_val = PM;
                     }
@@ -390,11 +391,11 @@ static cmp_type DoCompatibleType( TYPEPTR typ1, TYPEPTR typ2, int ptr_indir_leve
         if( typ1->decl_type == TYP_FUNCTION ) {
             typ1_flags = typ1->u.fn.decl_flags;
             typ2_flags = typ2->u.fn.decl_flags;
-            if( !CheckCompatibleLanguage( typ1_flags, typ2_flags ) ) {
+            if( !CheckCompatibleLanguage( front, typ1_flags, typ2_flags ) ) {
                 ret_val = NO;
-            } else if( CheckCompatibleFunctionParms( typ1, typ2, false ) != TCE_OK ) {
+            } else if( CheckCompatibleFunctionParms( front, typ1, typ2, false ) != TCE_OK ) {
                 ret_val = NO;
-            } else if( !CheckIdenticalType( typ1->object, typ2->object ) ) {
+            } else if( !CheckIdenticalType( front, typ1->object, typ2->object ) ) {
                 ret_val = NO;
             }
         } else if( typ1->decl_type == TYP_STRUCT
@@ -408,8 +409,8 @@ static cmp_type DoCompatibleType( TYPEPTR typ1, TYPEPTR typ2, int ptr_indir_leve
                  * Types are not the same
                  * if extensions are enabled, then we can do a compatible struct test
                  */
-                if( cvars_state().CompFlags.extensions_enabled ) {
-                    if( CompatibleStructs( typ1->u.tag, typ2->u.tag ) != OK ) {
+                if( front.cvars.CompFlags.extensions_enabled ) {
+                    if( CompatibleStructs( front, typ1->u.tag, typ2->u.tag ) != OK ) {
                         if( ptr_indir_level > 0 ) {
                             if( ret_val != PW ) {
                                 ret_val = PM;
@@ -432,14 +433,14 @@ static cmp_type DoCompatibleType( TYPEPTR typ1, TYPEPTR typ2, int ptr_indir_leve
         }
     } else if( typ1->decl_type == TYP_UNION
       && ptr_indir_level > 0 ) {
-        if( InUnion( typ1, typ2, false ) != OK ) {
+        if( InUnion( front, typ1, typ2, false ) != OK ) {
             ret_val = NO;
         } else {
             ret_val = PM;
         }
     } else if( typ2->decl_type == TYP_UNION
       && ptr_indir_level > 0 ) {
-        if( InUnion( typ2, typ1, true ) != OK ) {
+        if( InUnion( front, typ2, typ1, true ) != OK ) {
             ret_val = NO;
         } else {
             ret_val = PM;
@@ -447,20 +448,20 @@ static cmp_type DoCompatibleType( TYPEPTR typ1, TYPEPTR typ2, int ptr_indir_leve
     } else if( typ1->decl_type == TYP_ARRAY ) {
         TYPEPTR     typ = typ1->object;
 
-        if( !CheckIdenticalType( typ, typ2 ) ) {
+        if( !CheckIdenticalType( front, typ, typ2 ) ) {
             ret_val = NO;
             SKIP_ARRAYS( typ );
-            if( CheckIdenticalType( typ, typ2 ) ) {
+            if( CheckIdenticalType( front, typ, typ2 ) ) {
                 ret_val = PM;
             }
         }
     } else if( typ2->decl_type == TYP_ARRAY ) {
         TYPEPTR     typ = typ2->object;
 
-        if( !CheckIdenticalType( typ, typ1 ) ) {
+        if( !CheckIdenticalType( front, typ, typ1 ) ) {
             ret_val = NO;
             SKIP_ARRAYS( typ );
-            if( CheckIdenticalType( typ, typ1 ) ) {
+            if( CheckIdenticalType( front, typ, typ1 ) ) {
                 ret_val = PM;
             }
         }
@@ -499,7 +500,7 @@ static cmp_type DoCompatibleType( TYPEPTR typ1, TYPEPTR typ2, int ptr_indir_leve
 
 #define SUBNOT( a, b, on )  ( ( (a&on)|(b&on) )^(a&on) )
 
-static cmp_type CompatibleType( TYPEPTR typ1, TYPEPTR typ2, bool assignment, bool null_ptr  )
+static cmp_type CompatibleType( FrontRun& front, TYPEPTR typ1, TYPEPTR typ2, bool assignment, bool null_ptr  )
 {
     cmp_type         ret_val;
     cmp_type         ret_pq;
@@ -540,7 +541,7 @@ static cmp_type CompatibleType( TYPEPTR typ1, TYPEPTR typ2, bool assignment, boo
                 } else if( subnot & FLAG_UNALIGNED ) {
                     align_type align1;
 
-                    align1 = GetTypeAlignment( typ1->object );
+                    align1 = GetTypeAlignment( front, typ1->object );
                     if( align1 > 1 ) {
                         ret_pq = PQ;
                     }
@@ -549,8 +550,8 @@ static cmp_type CompatibleType( TYPEPTR typ1, TYPEPTR typ2, bool assignment, boo
             if( (typ1_flags & MASK_ALL_MEM_MODELS) != (typ2_flags & MASK_ALL_MEM_MODELS) ) {
                 target_size size1, size2;
 
-                size1 = TypeSize( typ1 );
-                size2 = TypeSize( typ2 );
+                size1 = TypeSize( front, typ1 );
+                size2 = TypeSize( front, typ2 );
                 if( size1 < size2 ) {
                    ret_pq = PT;
                 } else if( size1 > size2 ) {
@@ -562,43 +563,43 @@ static cmp_type CompatibleType( TYPEPTR typ1, TYPEPTR typ2, bool assignment, boo
         typ2 = typ2->object;
         ++ptr_indir_level;
     }
-    ret_val = DoCompatibleType( typ1, typ2, ptr_indir_level );
+    ret_val = DoCompatibleType( front, typ1, typ2, ptr_indir_level );
     if( ret_val == OK ) {
         ret_val = ret_pq;
     }
     return( ret_val );
 }
 
-void CompatiblePtrType( TYPEPTR typ1, TYPEPTR typ2, TOKEN opr )
+void CompatiblePtrType( FrontRun& front, TYPEPTR typ1, TYPEPTR typ2, TOKEN opr )
 {
-    SetDiagType3( typ1, typ2, opr ); /* Called with source, target. */
-    switch( CompatibleType( typ1, typ2, false, false ) ) {
+    SetDiagType3( front, typ1, typ2, opr ); /* Called with source, target. */
+    switch( CompatibleType( front, typ1, typ2, false, false ) ) {
     case PT:
     case PX:
         break;
     case PQ:
-        if( !cvars_state().CompFlags.no_check_qualifiers ) { // else fuck em
-            CWarn1( ERR_QUALIFIER_MISMATCH );
+        if( !front.cvars.CompFlags.no_check_qualifiers ) { // else fuck em
+            CWarn1( front, ERR_QUALIFIER_MISMATCH );
         }
         break;
     case PM:
     case NO:
-        CWarn1( ERR_POINTER_TYPE_MISMATCH );
+        CWarn1( front, ERR_POINTER_TYPE_MISMATCH );
         break;
     case PS:
-        CWarn1( ERR_SIGN_MISMATCH );
+        CWarn1( front, ERR_SIGN_MISMATCH );
         break;
     case PW:
-        CWarn1( ERR_INCONSISTENT_INDIRECTION_LEVEL );
+        CWarn1( front, ERR_INCONSISTENT_INDIRECTION_LEVEL );
         break;
     case PC:
-        CWarn1( ERR_PCTYPE_MISMATCH );
+        CWarn1( front, ERR_PCTYPE_MISMATCH );
         break;
     case OK:
     case AC:
         break;
     }
-    SetDiagPop();
+    SetDiagPop(front);
 }
 
 static TREEPTR reverse_parms_tree( TREEPTR parm )
@@ -616,7 +617,7 @@ static TREEPTR reverse_parms_tree( TREEPTR parm )
     return( prev );
 }
 
-static void CompareParms( TYPEPTR *master, TREEPTR parms, bool reverse )
+static void CompareParms( FrontRun& front, TYPEPTR *master, TREEPTR parms, bool reverse )
 {
     TYPEPTR     typ1;
     int         parm_num;
@@ -637,14 +638,14 @@ static void CompareParms( TYPEPTR *master, TREEPTR parms, bool reverse )
          * TODO is crap needed or has it been done
          */
         if( typ1->decl_type == TYP_FUNCTION ) {
-            typ1 = PtrNode( typ1, FLAG_NONE, SEG_CODE );
+            typ1 = PtrNode( front, typ1, FLAG_NONE, SEG_CODE );
         } else if( typ1->decl_type == TYP_ARRAY ) {
-            typ1 = PtrNode( typ1->object, FLAG_WAS_ARRAY, SEG_DATA );
+            typ1 = PtrNode( front, typ1->object, FLAG_WAS_ARRAY, SEG_DATA );
         }
         /*
          * check compatibility of parms
          */
-        CheckParmAssign( typ1, parm, parm_num, false );
+        CheckParmAssign( front, typ1, parm, parm_num, false );
         typ1 = *master++;
         if( typ1 != NULL
           && typ1->decl_type == TYP_DOT_DOT_DOT ) {
@@ -659,13 +660,13 @@ static void CompareParms( TYPEPTR *master, TREEPTR parms, bool reverse )
         /*
          * can allow wrong number of parms with -3s option
          */
-        if( !cvars_state().CompFlags.register_conventions ) {
-            CWarn1( ERR_PARM_COUNT_WARNING );
+        if( !front.cvars.CompFlags.register_conventions ) {
+            CWarn1( front, ERR_PARM_COUNT_WARNING );
         } else {
-            ParmCountMismatch();
+            ParmCountMismatch(front);
         }
 #else
-        ParmCountMismatch();
+        ParmCountMismatch(front);
 #endif
     }
     if( reverse ) {
@@ -673,7 +674,7 @@ static void CompareParms( TYPEPTR *master, TREEPTR parms, bool reverse )
     }
 }
 
-void CheckCallParms( void )
+void CheckCallParms( FrontRun& front )
 /**************************
  * Check parameters of function that were called before a prototype was seen
  */
@@ -681,7 +682,7 @@ void CheckCallParms( void )
     call_list   *nextcall;
     call_list   *next;
 
-    for( nextcall = cvars_state().CallNodeList; nextcall != NULL; nextcall = next ) {
+    for( nextcall = front.cvars.CallNodeList; nextcall != NULL; nextcall = next ) {
         TREEPTR     callnode;
         TREEPTR     callsite;
         SYM_ENTRY   sym;
@@ -691,12 +692,12 @@ void CheckCallParms( void )
         callnode = nextcall->callnode;
         if( callnode != NULL ) {
             callsite = callnode->left;      // point to OPR_FUNCNAME node
-            SymGet( &sym, callsite->op.u2.sym_handle );
+            SymGet( front, &sym, callsite->op.u2.sym_handle );
             typ = sym.sym_type;
             SKIP_TYPEDEFS( typ );
             if( (sym.flags & SYM_TEMP) == 0 )
-                SetDiagSymbol( &sym, callsite->op.u2.sym_handle );
-            SetErrLoc( &nextcall->src_loc );
+                SetDiagSymbol( front, &sym, callsite->op.u2.sym_handle );
+            SetErrLoc( front, &nextcall->src_loc );
             if( typ->u.fn.parms == NULL
               && callnode->right == NULL ) {
                 /*
@@ -711,7 +712,7 @@ void CheckCallParms( void )
                  * ...
                  */
             } else if( typ->u.fn.parms != NULL ) {
-                CompareParms( typ->u.fn.parms, callnode->right, ParmsToBeReversed( sym.mods, NULL ) );
+                CompareParms( front, typ->u.fn.parms, callnode->right, ParmsToBeReversed( sym.mods, NULL ) );
             } else {
                 /*
                  * Unprototyped function called. Note that for indirect calls, there
@@ -719,33 +720,33 @@ void CheckCallParms( void )
                  * is hence limited.
                  */
                 if( sym.flags & SYM_TEMP ) {
-                    CWarn1( ERR_NONPROTO_FUNC_CALLED_INDIRECT );
+                    CWarn1( front, ERR_NONPROTO_FUNC_CALLED_INDIRECT );
                 } else {
-                    CWarn2p( ERR_NONPROTO_FUNC_CALLED, SymName( &sym, callsite->op.u2.sym_handle ) );
+                    CWarn2p( front, ERR_NONPROTO_FUNC_CALLED, SymName( front, &sym, callsite->op.u2.sym_handle ) );
                 }
             }
-            InitErrLoc();
+            InitErrLoc(front);
             if( (sym.flags & SYM_TEMP) == 0 ) {
-                SetDiagPop();
+                SetDiagPop(front);
             }
         }
-        CMemFree( nextcall );
+        CMemFree( front, nextcall );
     }
 }
 
-bool CheckZeroConstant( TREEPTR tree )
+bool CheckZeroConstant( FrontRun& front, TREEPTR tree )
 {
-    uint64  val64 = LongValue64( tree );
+    uint64  val64 = LongValue64( front, tree );
 
     return( U64isZero( val64 ) );
 }
 
-bool CheckZero( TREEPTR tree )
+bool CheckZero( FrontRun& front, TREEPTR tree )
 {
     bool    rc = false;
 
     if( tree->op.opr == OPR_PUSHINT ) {
-        uint64  val64 = LongValue64( tree );
+        uint64  val64 = LongValue64( front, tree );
 
         rc = U64isZero( val64 );
     }
@@ -794,7 +795,7 @@ bool CheckAssignBits( uint64 *val, unsigned width, bool mask )
     return( overflow );
 }
 
-bool CheckAssignRange( TYPEPTR typ1, TREEPTR opnd2 )
+bool CheckAssignRange( FrontRun& front, TYPEPTR typ1, TREEPTR opnd2 )
 /*************************************************************
  * check if value of opnd2 fit into target type of typ1
  *
@@ -825,7 +826,7 @@ bool CheckAssignRange( TYPEPTR typ1, TREEPTR opnd2 )
             width = 1;
             break;
         default:
-            width = TypeSize( typ1 ) * CHAR_BIT;
+            width = TypeSize( front, typ1 ) * CHAR_BIT;
             if( width >= 64 )
                 return( false );
             break;
@@ -865,7 +866,7 @@ static bool IsPointer( TYPEPTR typ )
     return( typ->decl_type == TYP_POINTER );
 }
 
-void CheckParmAssign( TYPEPTR typ1, TREEPTR opnd2, int parm_num, bool asgn_check )
+void CheckParmAssign( FrontRun& front, TYPEPTR typ1, TREEPTR opnd2, int parm_num, bool asgn_check )
 {
     TYPEPTR        typ2;
 
@@ -875,155 +876,155 @@ void CheckParmAssign( TYPEPTR typ1, TREEPTR opnd2, int parm_num, bool asgn_check
      * Fold RHS expression so that we can properly check for null
      * pointers or out of range constants
      */
-    FoldExprTree( opnd2 );
+    FoldExprTree( front, opnd2 );
     typ2 = opnd2->u.expr_type;
 
-    SetDiagType2( typ1, typ2 );
-    switch( CompatibleType( typ1, typ2, true, CheckZero( opnd2 ) ) ) {
+    SetDiagType2( front, typ1, typ2 );
+    switch( CompatibleType( front, typ1, typ2, true, CheckZero( front, opnd2 ) ) ) {
     case NO:
         if( parm_num ) {
-            CErr2( ERR_PARM_TYPE_MISMATCH, parm_num );
+            CErr2( front, ERR_PARM_TYPE_MISMATCH, parm_num );
         } else {
-            CErr1( ERR_TYPE_MISMATCH );
+            CErr1( front, ERR_TYPE_MISMATCH );
         }
         break;
     case PT:
         if( asgn_check ) {
-            if( !IsPtrConvSafe( opnd2, typ1, typ2 ) ) {
-                CWarnP1( parm_num, ERR_POINTER_TRUNCATION );
+            if( !IsPtrConvSafe( front, opnd2, typ1, typ2 ) ) {
+                CWarnP1( front, parm_num, ERR_POINTER_TRUNCATION );
             }
         } else if( parm_num ) {
-            CErr2( ERR_PARM_TYPE_MISMATCH, parm_num );
+            CErr2( front, ERR_PARM_TYPE_MISMATCH, parm_num );
         } else {
-            CErr1( ERR_TYPE_MISMATCH );
+            CErr1( front, ERR_TYPE_MISMATCH );
         }
         break;
     case PX:
         if( asgn_check ) {
             if( IsPtrtoFunc( typ1 ) ) {
                 if( parm_num ) {
-                    CErr2( ERR_PARM_POINTER_TYPE_MISMATCH, parm_num );
+                    CErr2( front, ERR_PARM_POINTER_TYPE_MISMATCH, parm_num );
                 } else {
-                    CWarn1( ERR_POINTER_TYPE_MISMATCH );
+                    CWarn1( front, ERR_POINTER_TYPE_MISMATCH );
                 }
             }
         } else if( parm_num ) {
-            CErr2( ERR_PARM_TYPE_MISMATCH, parm_num );
+            CErr2( front, ERR_PARM_TYPE_MISMATCH, parm_num );
         } else {
-            CErr1( ERR_TYPE_MISMATCH );
+            CErr1( front, ERR_TYPE_MISMATCH );
         }
         break;
     case PQ:
-        if( !cvars_state().CompFlags.no_check_qualifiers ) {
+        if( !front.cvars.CompFlags.no_check_qualifiers ) {
             if( parm_num ) {
-                CWarn2( ERR_PARM_QUALIFIER_MISMATCH, parm_num );
+                CWarn2( front, ERR_PARM_QUALIFIER_MISMATCH, parm_num );
             } else {
-                CWarn1( ERR_QUALIFIER_MISMATCH );
+                CWarn1( front, ERR_QUALIFIER_MISMATCH );
             }
         }
         break;
     case PM:
         if( parm_num ) {
-            CErr2( ERR_PARM_POINTER_TYPE_MISMATCH, parm_num );
+            CErr2( front, ERR_PARM_POINTER_TYPE_MISMATCH, parm_num );
         } else {
-            CWarn1( ERR_POINTER_TYPE_MISMATCH );
+            CWarn1( front, ERR_POINTER_TYPE_MISMATCH );
         }
         break;
     case PS:
         if( parm_num ) {
-            CWarn2( ERR_PARM_SIGN_MISMATCH, parm_num );
+            CWarn2( front, ERR_PARM_SIGN_MISMATCH, parm_num );
         } else {
-            CWarn1( ERR_SIGN_MISMATCH );
+            CWarn1( front, ERR_SIGN_MISMATCH );
         }
         break;
     case PW:
         if( parm_num ) {
-            CWarn2( ERR_PARM_INCONSISTENT_INDIRECTION_LEVEL, parm_num );
+            CWarn2( front, ERR_PARM_INCONSISTENT_INDIRECTION_LEVEL, parm_num );
         } else {
-            CWarn1( ERR_INCONSISTENT_INDIRECTION_LEVEL );
+            CWarn1( front, ERR_INCONSISTENT_INDIRECTION_LEVEL );
         }
         break;
     case PC:
         if( asgn_check ) {  /* Allow only "... *p = int 0";  */
             if( IsPointer( typ1 )
               && opnd2->op.opr == OPR_PUSHINT ) {
-                if( !CheckZeroConstant( opnd2 ) ) {
-                    CWarnP1( parm_num, ERR_NONPORTABLE_PTR_CONV );
+                if( !CheckZeroConstant( front, opnd2 ) ) {
+                    CWarnP1( front, parm_num, ERR_NONPORTABLE_PTR_CONV );
                 }
             } else {
-                CWarnP1( parm_num, ERR_PCTYPE_MISMATCH );
+                CWarnP1( front, parm_num, ERR_PCTYPE_MISMATCH );
             }
         } else if( parm_num ) {
-            CErr2( ERR_PARM_TYPE_MISMATCH, parm_num );
+            CErr2( front, ERR_PARM_TYPE_MISMATCH, parm_num );
         } else {
-            CErr1( ERR_TYPE_MISMATCH );
+            CErr1( front, ERR_TYPE_MISMATCH );
         }
         break;
     case AC:
         if( asgn_check ) {
             bitfield_width  fsize_1 = 0, fsize_2 = 0;
 
-            if( TypeSizeEx( typ2, &fsize_2 ) > TypeSizeEx( typ1, &fsize_1 ) ) {
-                CWarnP1( parm_num, ERR_LOSE_PRECISION );
+            if( TypeSizeEx( front, typ2, &fsize_2 ) > TypeSizeEx( front, typ1, &fsize_1 ) ) {
+                CWarnP1( front, parm_num, ERR_LOSE_PRECISION );
             }
             if( fsize_2 > fsize_1 ) {
-                CWarnP1( parm_num, ERR_LOSE_PRECISION );
+                CWarnP1( front, parm_num, ERR_LOSE_PRECISION );
             }
         } else {
             if( parm_num ) {
-                CErr2( ERR_PARM_TYPE_MISMATCH, parm_num );
+                CErr2( front, ERR_PARM_TYPE_MISMATCH, parm_num );
             } else {
-                CErr1( ERR_TYPE_MISMATCH );
+                CErr1( front, ERR_TYPE_MISMATCH );
             }
             break;
         }
     case OK:
         if( asgn_check ) {
-            if( CheckAssignRange( typ1, opnd2 ) ) {
-                CWarnP1( parm_num, ERR_CONSTANT_TOO_BIG );
+            if( CheckAssignRange( front, typ1, opnd2 ) ) {
+                CWarnP1( front, parm_num, ERR_CONSTANT_TOO_BIG );
             }
         }
         break;
     }
-    SetDiagPop();
+    SetDiagPop(front);
 }
 
-void CheckTernary( TYPEPTR typ1, TYPEPTR typ2 )
+void CheckTernary( FrontRun& front, TYPEPTR typ1, TYPEPTR typ2 )
 {
-    SetDiagType3( typ1, typ2, T_QUESTION );
-    switch( CompatibleType( typ1, typ2, false, false ) ) {
+    SetDiagType3( front, typ1, typ2, T_QUESTION );
+    switch( CompatibleType( front, typ1, typ2, false, false ) ) {
     case NO:
-        CErr1( ERR_TYPE_MISMATCH );
+        CErr1( front, ERR_TYPE_MISMATCH );
         break;
     case PT:
     case PX:
-        CWarn1( ERR_POINTER_TRUNCATION );
+        CWarn1( front, ERR_POINTER_TRUNCATION );
         break;
     case PQ:
-        if( !cvars_state().CompFlags.no_check_qualifiers ) {
-            CWarn1( ERR_QUALIFIER_MISMATCH );
+        if( !front.cvars.CompFlags.no_check_qualifiers ) {
+            CWarn1( front, ERR_QUALIFIER_MISMATCH );
         }
         break;
     case PM:
-        CWarn1( ERR_POINTER_TYPE_MISMATCH );
+        CWarn1( front, ERR_POINTER_TYPE_MISMATCH );
         break;
     case PS:
-        CWarn1( ERR_SIGN_MISMATCH );
+        CWarn1( front, ERR_SIGN_MISMATCH );
         break;
     case PW:
-        CWarn1( ERR_INCONSISTENT_INDIRECTION_LEVEL );
+        CWarn1( front, ERR_INCONSISTENT_INDIRECTION_LEVEL );
         break;
     case PC:
-        CWarn1( ERR_PCTYPE_MISMATCH );
+        CWarn1( front, ERR_PCTYPE_MISMATCH );
         break;
     case OK:
     case AC:
         break;
     }
-    SetDiagPop();
+    SetDiagPop(front);
 }
 
-void CheckRetType( TREEPTR tree )
+void CheckRetType( FrontRun& front, TREEPTR tree )
 {
     TYPEPTR     ret_type;
     TYPEPTR     func_type;
@@ -1031,22 +1032,22 @@ void CheckRetType( TREEPTR tree )
     if( tree->op.opr == OPR_ERROR )
         return;
     ret_type = TypeOf( tree );
-    func_type = cvars_state().CurFunc->sym_type->object;
+    func_type = front.cvars.CurFunc->sym_type->object;
     if( func_type->decl_type == TYP_VOID ) {
-        CErr2p( ERR_NOT_EXPECTING_RETURN_VALUE, cvars_state().CurFunc->name );
+        CErr2p( front, ERR_NOT_EXPECTING_RETURN_VALUE, front.cvars.CurFunc->name );
     } else if( ret_type->decl_type == TYP_POINTER ) {
         if( ret_type->u.p.segid == SEG_STACK ) {
-            CWarn1( ERR_RET_ADDR_OF_AUTO );
+            CWarn1( front, ERR_RET_ADDR_OF_AUTO );
         }
     }
     /*
      * check that the types are compatible
      */
-    CheckParmAssign( func_type, tree, 0, true );
+    CheckParmAssign( front, func_type, tree, 0, true );
 }
 
 
-static typecheck_err TypeCheck( TYPEPTR typ1, TYPEPTR typ2, SYMPTR sym )
+static typecheck_err TypeCheck( FrontRun& front, TYPEPTR typ1, TYPEPTR typ2, SYMPTR sym )
 {
     int                 pointer_type;
     type_modifiers      ptr_mask;
@@ -1058,7 +1059,7 @@ static typecheck_err TypeCheck( TYPEPTR typ1, TYPEPTR typ2, SYMPTR sym )
      * "char *s" and "char s[]" differs only by FLAG_WAS_ARRAY, ignore it too
      */
 #if _INTEL_CPU
-    if( cvars_state().TargetSwitches & CGSW_X86_BIG_DATA ) {
+    if( front.cvars.TargetSwitches & CGSW_X86_BIG_DATA ) {
         ptr_mask = ~(FLAG_FAR  | FLAG_WAS_ARRAY | MASK_LANGUAGES);
     } else {
         ptr_mask = ~(FLAG_NEAR | FLAG_WAS_ARRAY | MASK_LANGUAGES);
@@ -1090,10 +1091,10 @@ static typecheck_err TypeCheck( TYPEPTR typ1, TYPEPTR typ2, SYMPTR sym )
                  * - Bart Oldeman, 2002/10/24
                  */
                 if( typ1->decl_type == TYP_ARRAY ) {
-                    return( TypeCheck( typ1->object, typ2, sym ) );
+                    return( TypeCheck( front, typ1->object, typ2, sym ) );
                 }
                 if( typ2->decl_type == TYP_ARRAY ) {
-                    return( TypeCheck( typ1, typ2->object, sym ) );
+                    return( TypeCheck( front, typ1, typ2->object, sym ) );
                 }
             }
             break;
@@ -1104,10 +1105,10 @@ static typecheck_err TypeCheck( TYPEPTR typ1, TYPEPTR typ2, SYMPTR sym )
                 break;
             }
         }
-        if( TypeSize( typ1 ) != TypeSize( typ2 ) ) {
-            if( TypeSize( typ1 ) == 0 ) {
+        if( TypeSize( front, typ1 ) != TypeSize( front, typ2 ) ) {
+            if( TypeSize( front, typ1 ) == 0 ) {
                 retcode = TCE_TYPE2_HAS_MORE_INFO;
-            } else if( TypeSize( typ2 ) == 0 ) {
+            } else if( TypeSize( front, typ2 ) == 0 ) {
                 retcode = TCE_OK;
             } else {
                 break;
@@ -1131,7 +1132,7 @@ static typecheck_err TypeCheck( TYPEPTR typ1, TYPEPTR typ2, SYMPTR sym )
             break;
         }
         if( typ1->decl_type == TYP_FUNCTION ) {
-            retcode = CheckCompatibleFunctionParms( typ1, typ2, false );
+            retcode = CheckCompatibleFunctionParms( front, typ1, typ2, false );
             if( retcode != TCE_OK )
                 return( retcode );
             if( typ1->object == NULL
@@ -1153,18 +1154,18 @@ static typecheck_err TypeCheck( TYPEPTR typ1, TYPEPTR typ2, SYMPTR sym )
     return( TCE_OK );                /* indicate types are identical */
 }
 
-bool CheckIdenticalType( TYPEPTR typ1, TYPEPTR typ2 )
+bool CheckIdenticalType( FrontRun& front, TYPEPTR typ1, TYPEPTR typ2 )
 {
     typecheck_err   rc;
 
-    rc = TypeCheck( typ1, typ2, NULL );
+    rc = TypeCheck( front, typ1, typ2, NULL );
     return( ( rc == TCE_OK ) || ( rc == TCE_TYPE2_HAS_MORE_INFO ) );
 }
 
 
-bool VerifyType( TYPEPTR new_, TYPEPTR old, SYMPTR sym )
+bool VerifyType( FrontRun& front, TYPEPTR new_, TYPEPTR old, SYMPTR sym )
 {
-    switch( TypeCheck( new_, old, sym ) ) {
+    switch( TypeCheck( front, new_, old, sym ) ) {
     case TCE_TYPE2_HAS_MORE_INFO:
         /*
          * new= void *, old= something *
@@ -1173,7 +1174,7 @@ bool VerifyType( TYPEPTR new_, TYPEPTR old, SYMPTR sym )
         return( true );
     case TCE_TYPE_MISMATCH:
     case TCE_PARM_COUNT_MISMATCH:
-        CErr2p( ERR_TYPE_DOES_NOT_AGREE, sym->name );
+        CErr2p( front, ERR_TYPE_DOES_NOT_AGREE, sym->name );
     default:
         break;
     }
@@ -1181,7 +1182,7 @@ bool VerifyType( TYPEPTR new_, TYPEPTR old, SYMPTR sym )
 }
 
 
-bool CheckCompatibleFunction( TYPEPTR typ1, TYPEPTR typ2, bool topLevelCheck )
+bool CheckCompatibleFunction( FrontRun& front, TYPEPTR typ1, TYPEPTR typ2, bool topLevelCheck )
 {
-    return( CheckCompatibleFunctionParms( typ1, typ2, topLevelCheck ) == TCE_OK );
+    return( CheckCompatibleFunctionParms( front, typ1, typ2, topLevelCheck ) == TCE_OK );
 }

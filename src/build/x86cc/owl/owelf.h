@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef struct elf_special_section {
     owl_string_handle   name;
     owl_offset          length;
@@ -47,4 +48,4 @@ typedef struct elf_section_info {
     owl_offset          pad_amount;             // number of bytes of padding (if any)
 } elf_section_info;
 
-extern  void    ELFFileEmit( owl_file_handle );
+extern  void    ELFFileEmit( BackRun& back, owl_file_handle );

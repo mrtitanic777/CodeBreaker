@@ -52,6 +52,7 @@
 
 /*  Beginning of any escape sequence */
 
+#pragma once
 #define ESC     0x6b    /*  NOT the same as the 8086/8 ESCape instruction */
 
 typedef enum {

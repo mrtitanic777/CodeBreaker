@@ -38,16 +38,17 @@
 #include "cmdlnprs.gh"          // required generated file
 #include "cmdlnprs.h"
 #include "memfuncs.h"
+#include "frontrun.hpp"
 
 
 static void addString           // STORE A STRING
-    ( OPT_STRING **h            // - addr[ storage ]
+    ( FrontRun& front, OPT_STRING **h            // - addr[ storage ]
     , char const *s             // - string
     , size_t len )              // - length
 {
     OPT_STRING *value;
 
-    value = static_cast<opt_string *>(MemAllocSafe( sizeof( *value ) + len ));
+    value = static_cast<opt_string *>(MemAllocSafe( front, sizeof( *value ) + len ));
     strncpy( value->data, s, len );
     value->data[len] = '\0';
     value->next = *h;
@@ -56,12 +57,12 @@ static void addString           // STORE A STRING
 
 
 static void addNumber           // STORE A NUMBER
-    ( OPT_NUMBER **h            // - addr[ storage ]
+    ( FrontRun& front, OPT_NUMBER **h            // - addr[ storage ]
     , unsigned number )         // - number
 {
     OPT_NUMBER *value;
 
-    value = static_cast<opt_number *>(MemAllocSafe( sizeof( *value ) ));
+    value = static_cast<opt_number *>(MemAllocSafe( front, sizeof( *value ) ));
     value->number = number;
     value->next = *h;
     *h = value;
@@ -69,19 +70,19 @@ static void addNumber           // STORE A NUMBER
 
 
 static bool scanOffNumber       // SCAN A NUMBER
-    ( unsigned *pvalue )        // - target
+    ( FrontRun& front, unsigned *pvalue )        // - target
 {
     bool number_scanned;
     unsigned value;
     int c;
 
-    CmdRecogEquals();
+    CmdRecogEquals(front);
     number_scanned = false;
     value = 0;
     for(;;) {
-        c = CmdScanLowerChar();
+        c = CmdScanLowerChar(front);
         if( !isdigit( c ) ) {
-            CmdScanUngetChar();
+            CmdScanUngetChar(front);
             break;
         }
         value *= 10;
@@ -115,95 +116,95 @@ static void UnEscape        // REMOVE QUOTES ESCAPING FROM A STRING
 
 
 void OPT_CLEAN_NUMBER           // CLEAN UP NUMBERS
-    ( OPT_NUMBER **h )          // - list
+    ( FrontRun& front, OPT_NUMBER **h )          // - list
 {
     OPT_NUMBER *s;
 
     while( (s = *h) != NULL ) {
         *h = s->next;
-        MemFree( s );
+        MemFree( front, s );
     }
 }
 
 
 void OPT_CLEAN_STRING           // CLEAN UP STRINGS
-    ( OPT_STRING **h )          // - list
+    ( FrontRun& front, OPT_STRING **h )          // - list
 {
     OPT_STRING *s;
 
     while( (s = *h) != NULL ) {
         *h = s->next;
-        MemFree( s );
+        MemFree( front, s );
     }
 }
 
 
 bool OPT_GET_ID                 // PARSE: ID
-    ( OPT_STRING **p )          // - target
+    ( FrontRun& front, OPT_STRING **p )          // - target
 {
     size_t len;
     char const *id;
 
-    CmdRecogEquals();
-    len = CmdScanId( &id );
+    CmdRecogEquals(front);
+    len = CmdScanId( front, &id );
     if( len > 0 ) {
-        addString( p, id, len );
+        addString( front, p, id, len );
         return( true );
     }
-    BadCmdLineId();
+    BadCmdLineId(front);
     return( false );
 }
 
 bool OPT_GET_ID_OPT             // PARSE: OPTIONAL ID
-    ( OPT_STRING **p )          // - target
+    ( FrontRun& front, OPT_STRING **p )          // - target
 {
-    if( CmdRecogEquals() || !CmdScanSwEnd() ) {
-        return( OPT_GET_ID( p ) );
+    if( CmdRecogEquals(front) || !CmdScanSwEnd(front) ) {
+        return( OPT_GET_ID( front, p ) );
     }
     return( true );
 }
 
 
 int OPT_GET_LOWER               // GET CHAR IN LOWERCASE
-    ( void )
+    ( FrontRun& front )
 {
-    return( CmdScanLowerChar() );
+    return( CmdScanLowerChar(front) );
 }
 
 
 bool OPT_GET_NUMBER             // PARSE: #
-    ( unsigned *p )             // - target
+    ( FrontRun& front, unsigned *p )             // - target
 {
     unsigned value;
 
-    if( scanOffNumber( &value ) ) {
+    if( scanOffNumber( front, &value ) ) {
         *p = value;
         return( true );
     }
-    BadCmdLineNumber();
+    BadCmdLineNumber(front);
     return( false );
 }
 
 
 bool OPT_GET_NUMBER_MULTIPLE    // PARSE: OPTION #
-    ( OPT_NUMBER **h )          // - target
+    ( FrontRun& front, OPT_NUMBER **h )          // - target
 {
     unsigned value;
 
-    if( scanOffNumber( &value ) ) {
-        addNumber( h, value );
+    if( scanOffNumber( front, &value ) ) {
+        addNumber( front, h, value );
         return( true );
     }
-    BadCmdLineNumber();
+    BadCmdLineNumber(front);
     return( false );
 }
 
 bool OPT_GET_NUMBER_DEFAULT
-    ( unsigned *p, unsigned default_value )
+    ( FrontRun& front, unsigned *p, unsigned default_value )
 {
     unsigned value;
 
-    if( scanOffNumber( &value ) ) {
+    if( scanOffNumber( front, &value ) ) {
         *p = value;
     } else {
         *p = default_value;
@@ -213,43 +214,43 @@ bool OPT_GET_NUMBER_DEFAULT
 
 
 bool OPT_GET_FILE               // PARSE: FILE NAME
-    ( OPT_STRING **p )          // - target
+    ( FrontRun& front, OPT_STRING **p )          // - target
 {
     size_t len;
     char const *fname;
     bool quoted;
 
-    CmdRecogEquals();
-    len = CmdScanFilename( &fname, &quoted );
+    CmdRecogEquals(front);
+    len = CmdScanFilename( front, &fname, &quoted );
     if( len > 0 ) {
-        addString( p, fname, len );
+        addString( front, p, fname, len );
         if( quoted ) {
             UnEscape( (*p)->data );
         }
         return( true );
     }
-    BadCmdLineFile();
+    BadCmdLineFile(front);
     return( false );
 }
 
 bool OPT_GET_FILE_OPT           // PARSE: OPTIONAL FILE NAME
-    ( OPT_STRING **p )          // - target
+    ( FrontRun& front, OPT_STRING **p )          // - target
 {
     size_t len;
     char const *fname;
     bool quoted;
 
     // handle leading option char specially
-    if( CmdRecogEquals() || !CmdScanSwEnd() ) {
+    if( CmdRecogEquals(front) || !CmdScanSwEnd(front) ) {
         // specified an '=' so accept -this-is-a-file-name.fil or /tmp/ack.tmp
-        len = CmdScanFilename( &fname, &quoted );
+        len = CmdScanFilename( front, &fname, &quoted );
         if( len > 0 ) {
-            addString( p, fname, len );
+            addString( front, p, fname, len );
             if( quoted ) {
                 UnEscape( (*p)->data );
             }
         } else {
-            OPT_CLEAN_STRING( p );
+            OPT_CLEAN_STRING( front, p );
         }
     }
     return( true );
@@ -257,44 +258,44 @@ bool OPT_GET_FILE_OPT           // PARSE: OPTIONAL FILE NAME
 
 
 bool OPT_GET_PATH               // PARSE: PATH
-    ( OPT_STRING **p )          // - target
+    ( FrontRun& front, OPT_STRING **p )          // - target
 {
     size_t len;
     char const *path;
     bool quoted;
 
 //    CmdPathDelim();
-    CmdRecogEquals();
-    len = CmdScanFilename( &path, &quoted );
+    CmdRecogEquals(front);
+    len = CmdScanFilename( front, &path, &quoted );
     if( len > 0 ) {
-        addString( p, path, len );
+        addString( front, p, path, len );
         if( quoted ) {
             UnEscape( (*p)->data );
         }
         return( true );
     }
-    BadCmdLinePath();
+    BadCmdLinePath(front);
     return( false );
 }
 
 bool OPT_GET_PATH_OPT           // PARSE: OPTIONAL PATH
-    ( OPT_STRING **p )          // - target
+    ( FrontRun& front, OPT_STRING **p )          // - target
 {
     size_t len;
     char const *fname;
     bool quoted;
 
 //    if( CmdPathDelim() || !CmdScanSwEnd() ) {
-    if( CmdRecogEquals() || !CmdScanSwEnd() ) {
+    if( CmdRecogEquals(front) || !CmdScanSwEnd(front) ) {
         // specified an '=' so accept -this-is-a-path-name.fil or /tmp/ack.tmp
-        len = CmdScanFilename( &fname, &quoted );
+        len = CmdScanFilename( front, &fname, &quoted );
         if( len > 0 ) {
-            addString( p, fname, len );
+            addString( front, p, fname, len );
             if( quoted ) {
                 UnEscape( (*p)->data );
             }
         } else {
-            OPT_CLEAN_STRING( p );
+            OPT_CLEAN_STRING( front, p );
         }
     }
     return( true );
@@ -302,80 +303,80 @@ bool OPT_GET_PATH_OPT           // PARSE: OPTIONAL PATH
 
 
 bool OPT_GET_OPTION             // PARSE: OPTION TEXT
-    ( OPT_STRING **p )          // - target
+    ( FrontRun& front, OPT_STRING **p )          // - target
 {
     size_t len;
     char const *option;
     bool quoted;
 
-    CmdRecogEquals();
-    len = CmdScanOption( &option, &quoted );
+    CmdRecogEquals(front);
+    len = CmdScanOption( front, &option, &quoted );
     if( len > 0 ) {
-        addString( p, option, len );
+        addString( front, p, option, len );
         if( quoted ) {
             UnEscape( (*p)->data );
         }
         return( true );
     }
-    BadCmdLineOption();
+    BadCmdLineOption(front);
     return( false );
 }
 
 
 bool OPT_GET_CHAR               // PARSE: CHAR
-    ( int *p )                  // - target
+    ( FrontRun& front, int *p )                  // - target
 {
     int c;
 
-    if( !CmdScanSwEnd() ) {
-        CmdRecogEquals();
-        if( !CmdScanSwEnd() ) {
-            c = CmdScanChar();
+    if( !CmdScanSwEnd(front) ) {
+        CmdRecogEquals(front);
+        if( !CmdScanSwEnd(front) ) {
+            c = CmdScanChar(front);
             if( isprint( c ) ) {
                 *p = c;
                 return( true );
             }
         }
     }
-    BadCmdLineChar();
+    BadCmdLineChar(front);
     return( false );
 }
 
 bool OPT_GET_CHAR_OPT           // PARSE: OPTIONAL CHAR
-    ( int *p )                  // - target
+    ( FrontRun& front, int *p )                  // - target
 {
-    if( CmdRecogEquals() || !CmdScanSwEnd() ) {
-        return OPT_GET_CHAR( p );
+    if( CmdRecogEquals(front) || !CmdScanSwEnd(front) ) {
+        return OPT_GET_CHAR( front, p );
     }
     return( true );
 }
 
 
 bool OPT_RECOG                  // RECOGNIZE CHAR
-    ( int c )                   // - to be recog'ed
+    ( FrontRun& front, int c )                   // - to be recog'ed
 {
-    return( CmdRecogChar( c ) );
+    return( CmdRecogChar( front, c ) );
 }
 
 bool OPT_RERECOG                // RE-RECOGNIZE LAST CHAR
-    ( int c )                   // - to be recog'ed
+    ( FrontRun& front, int c )                   // - to be recog'ed
 {
-    return( CmdReRecogChar( c ) );
+    return( CmdReRecogChar( front, c ) );
 }
 
 bool OPT_RECOG_LOWER            // RECOGNIZE LOWERCASE CHAR
-    ( int c )                   // - to be recog'ed
+    ( FrontRun& front, int c )                   // - to be recog'ed
 {
-    return( CmdRecogLowerChar( c ) );
+    return( CmdRecogLowerChar( front, c ) );
 }
 
 void OPT_UNGET                  // UNGET A CHARACTER
-    ( void )
+    ( FrontRun& front )
 {
-    CmdScanUngetChar();
+    CmdScanUngetChar(front);
 }
 
-bool OPT_END( void )            // DETECT END OF CHAIN
+bool OPT_END( FrontRun& front )            // DETECT END OF CHAIN
 {
-    return( CmdScanSwEnd() );
+    return( CmdScanSwEnd(front) );
 }

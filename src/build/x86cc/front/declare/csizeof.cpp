@@ -31,17 +31,18 @@
 
 
 #include "cvars.h"
+#include "frontrun.hpp"
 
-target_size SizeOfArg( TYPEPTR typ )
+target_size SizeOfArg( FrontRun& front, TYPEPTR typ )
 {
     target_size size;
 
     SKIP_TYPEDEFS( typ );
-    size = TypeSize( typ );
+    size = TypeSize( front, typ );
     while( typ->decl_type == TYP_ARRAY ) {
         typ = typ->object;
         SKIP_TYPEDEFS( typ );
-        size *= TypeSize( typ );
+        size *= TypeSize( front, typ );
     }
     return( size );
 }

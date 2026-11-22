@@ -45,19 +45,16 @@
 #include "insutil.h"
 #include "optab.h"
 #include "cachecon.h"
+#include "backrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct CacheconState {
-    block *Head;
-    block *(*Next)(block*);
-};
+/* (struct CacheconState: cachecon_state.h) */
 
 }  // namespace
 
-static inline CacheconState& cachecon_state() { return cbrun_part<CacheconState>(); }
 
 
 static  opcnt   CountOps( instruction *ins, name *cons )
@@ -93,7 +90,7 @@ static  opcnt   CountOps( instruction *ins, name *cons )
 }
 
 
-static  type_class_def  FindMaxClass( name *cons, int *prefs )
+static  type_class_def  FindMaxClass( BackRun& back, name *cons, int *prefs )
 /*************************************************************
 
     Run through the instructions and find the maximimum class of
@@ -108,7 +105,7 @@ static  type_class_def  FindMaxClass( name *cons, int *prefs )
 
     type_class = -1;
     *prefs = 0;
-    for( blk = cachecon_state().Head; blk != NULL; blk = cachecon_state().Next( blk ) ) {
+    for( blk = back.cachecon.Head; blk != NULL; blk = back.cachecon.Next( back, blk ) ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             num_operands = CountOps( ins, cons );
             for( i = 0; i < num_operands; ++i ) {
@@ -129,7 +126,7 @@ static  type_class_def  FindMaxClass( name *cons, int *prefs )
 }
 
 
-static  bool    ReplaceConst( name *cons, name *temp, type_class_def tmp_class )
+static  bool    ReplaceConst( BackRun& back, name *cons, name *temp, type_class_def tmp_class )
 /*******************************************************************************
 
      Replace all occurences of "cons" with "temp".  As a hack, we
@@ -150,7 +147,7 @@ static  bool    ReplaceConst( name *cons, name *temp, type_class_def tmp_class )
 #endif
 
     change = false;
-    for( blk = cachecon_state().Head; blk != NULL; blk = cachecon_state().Next( blk ) ) {
+    for( blk = back.cachecon.Head; blk != NULL; blk = back.cachecon.Next( back, blk ) ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             type_class = Unsigned[_OpClass( ins )];
             num_operands = CountOps( ins, cons );
@@ -162,7 +159,7 @@ static  bool    ReplaceConst( name *cons, name *temp, type_class_def tmp_class )
 #if ( _TARGET & _TARG_AXP ) == 0 && ( _TARG_MEMORY & _TARG_LOW_FIRST )
                     } else {
                         if( _IsIntegral( type_class ) && _IsIntegral( tmp_class ) ) {
-                            ins->operands[i] = TempOffset( temp, 0, type_class );
+                            ins->operands[i] = TempOffset( back, temp, 0, type_class );
                             change = true;
                         }
 #endif
@@ -175,7 +172,7 @@ static  bool    ReplaceConst( name *cons, name *temp, type_class_def tmp_class )
 }
 
 
-void    ConstToTemp( block *pre, block *head, block*(*next)(block*) )
+void    ConstToTemp( BackRun& back, block *pre, block *head, block*(*next)(BackRun&, block*) )
 /********************************************************************
 
     Turn constant referneces into temp references so that they can
@@ -187,27 +184,27 @@ void    ConstToTemp( block *pre, block *head, block*(*next)(block*) )
     type_class_def      type_class;
     int                 num_refs;
 
-    cachecon_state().Head = head;
-    cachecon_state().Next = next;
-    for( cons = data_state().Names[N_CONSTANT]; cons != NULL; cons = cons->n.next_name ) {
+    back.cachecon.Head = head;
+    back.cachecon.Next = next;
+    for( cons = back.data.Names[N_CONSTANT]; cons != NULL; cons = cons->n.next_name ) {
         if( cons->c.const_type == CONS_TEMP_ADDR )
             continue;
-        type_class = FindMaxClass( cons, &num_refs );
+        type_class = FindMaxClass( back, cons, &num_refs );
         if( type_class == XX )
             continue;
-        if( head == data_state().HeadBlock && num_refs < 2 )
+        if( head == back.data.HeadBlock && num_refs < 2 )
             continue;
-        temp = AllocTemp( type_class );
+        temp = AllocTemp( back, type_class );
         temp->t.temp_flags |= CONST_TEMP;
         temp->v.symbol = cons;
-        if( !ReplaceConst( cons, temp, type_class ) )
+        if( !ReplaceConst( back, cons, temp, type_class ) )
             continue;
         temp->v.usage |= USE_IN_ANOTHER_BLOCK;
-        SuffixIns( pre->ins.head.prev, MakeMove( cons, temp, type_class ) );
+        SuffixIns( back, pre->ins.head.prev, MakeMove( back, cons, temp, type_class ) );
     }
 }
 
-void            MemConstTemp( conflict_node *conf )
+void            MemConstTemp( BackRun& back, conflict_node *conf )
 /**************************************************
 
     We've decided to put a CONST_TEMP into memory. Go through the
@@ -225,7 +222,7 @@ void            MemConstTemp( conflict_node *conf )
 
     temp = conf->name;
     other = NULL;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = 0; i < ins->num_operands; ++i ) {
                 if( ins->operands[i]->n.class_ != N_TEMP )
@@ -235,7 +232,7 @@ void            MemConstTemp( conflict_node *conf )
                 ins->head.state = INS_NEEDS_WORK;
                 ins->operands[i] = static_cast<name *>(ins->operands[i]->v.symbol);
                 if( ins->head.opcode == OP_CONVERT ) {
-                    ins = DoConversion( ins );
+                    ins = DoConversion( back, ins );
                 }
             }
             if( ins->result != NULL && ins->result->n.class_ == N_TEMP ) {
@@ -244,10 +241,10 @@ void            MemConstTemp( conflict_node *conf )
                     ins->head.opcode = OP_NOP;
                     ins->num_operands = 0;
                     ins->result = NULL;
-                    DoNothing( ins );
+                    DoNothing( back, ins );
                 }
             }
-            folded = FoldIns( ins );
+            folded = FoldIns( back, ins );
             if( folded != NULL ) {
                 ins = folded;
             }
@@ -259,7 +256,7 @@ void            MemConstTemp( conflict_node *conf )
         return;
     if( other->v.conflict == NULL )
         return;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = 0; i < ins->num_operands; ++i ) {
                 if( ins->operands[i]->n.class_ != N_TEMP )
@@ -270,5 +267,5 @@ void            MemConstTemp( conflict_node *conf )
             }
         }
     }
-    SafeRecurseCG( (func_sr)InMemory, other->v.conflict );
+    SafeRecurseCG( back, (func_sr)InMemory, other->v.conflict );
 }

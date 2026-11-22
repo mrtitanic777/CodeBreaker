@@ -33,56 +33,57 @@
 
 #include "_cgstd.h"
 #include "optwif.h"
+#include "backrun.hpp"
 
 
-void    InsertQueue( ins_entry *old_ins, ins_entry *new_ins )
+void    InsertQueue( BackRun& back, ins_entry *old_ins, ins_entry *new_ins )
 /***********************************************************/
 {
   optbegin
-    if( optdata_state().FirstIns == NULL ) {
-        optdata_state().FirstIns = old_ins;
-        optdata_state().LastIns = old_ins;
-        optdata_state().FirstIns->ins.prev = NULL;
-        optdata_state().FirstIns->ins.next = NULL;
+    if( back.optdata.FirstIns == NULL ) {
+        back.optdata.FirstIns = old_ins;
+        back.optdata.LastIns = old_ins;
+        back.optdata.FirstIns->ins.prev = NULL;
+        back.optdata.FirstIns->ins.next = NULL;
     } else if( new_ins == NULL ) {
-        optdata_state().FirstIns->ins.prev = old_ins;
-        old_ins->ins.next = optdata_state().FirstIns;
+        back.optdata.FirstIns->ins.prev = old_ins;
+        old_ins->ins.next = back.optdata.FirstIns;
         old_ins->ins.prev = NULL;
-        optdata_state().FirstIns = old_ins;
-    } else if( new_ins == optdata_state().LastIns ) {
-        optdata_state().LastIns->ins.next = old_ins;
+        back.optdata.FirstIns = old_ins;
+    } else if( new_ins == back.optdata.LastIns ) {
+        back.optdata.LastIns->ins.next = old_ins;
         old_ins->ins.next = NULL;
-        old_ins->ins.prev = optdata_state().LastIns;
-        optdata_state().LastIns = old_ins;
+        old_ins->ins.prev = back.optdata.LastIns;
+        back.optdata.LastIns = old_ins;
     } else {
         old_ins->ins.next = new_ins->ins.next;
         old_ins->ins.prev = new_ins;
         new_ins->ins.next->ins.prev = old_ins;
         new_ins->ins.next = old_ins;
     }
-    ++optdata_state().QCount;
+    ++back.optdata.QCount;
   optend
 }
 
 
-void    DeleteQueue( ins_entry *old_ins )
+void    DeleteQueue( BackRun& back, ins_entry *old_ins )
 /***************************************/
 {
   optbegin
-    if( old_ins == optdata_state().FirstIns ) {
-        optdata_state().FirstIns = optdata_state().FirstIns->ins.next;
-        if( optdata_state().FirstIns != NULL ) {
-            optdata_state().FirstIns->ins.prev = NULL;
+    if( old_ins == back.optdata.FirstIns ) {
+        back.optdata.FirstIns = back.optdata.FirstIns->ins.next;
+        if( back.optdata.FirstIns != NULL ) {
+            back.optdata.FirstIns->ins.prev = NULL;
         } else {
-            optdata_state().LastIns = NULL;
+            back.optdata.LastIns = NULL;
         }
-    } else if( old_ins == optdata_state().LastIns ) {
-        optdata_state().LastIns = optdata_state().LastIns->ins.prev;
-        optdata_state().LastIns->ins.next = NULL;
+    } else if( old_ins == back.optdata.LastIns ) {
+        back.optdata.LastIns = back.optdata.LastIns->ins.prev;
+        back.optdata.LastIns->ins.next = NULL;
     } else {
         old_ins->ins.next->ins.prev = old_ins->ins.prev;
         old_ins->ins.prev->ins.next = old_ins->ins.next;
     }
-    --optdata_state().QCount;
+    --back.optdata.QCount;
   optend
 }

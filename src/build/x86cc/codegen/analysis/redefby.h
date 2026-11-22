@@ -30,12 +30,13 @@
 ****************************************************************************/
 
 
-#define _IsReDefinedBy(a,b)     (ReDefinedBy(a,b) != MB_FALSE)
-#define _IsntReDefinedBy(a,b)   (ReDefinedBy(a,b) == MB_FALSE)
-#define _IsVisibleToCall(a,b,c) (VisibleToCall(a,b,c) != MB_FALSE)
+#pragma once
+#define _IsReDefinedBy(a,b)     (ReDefinedBy(back, a,b) != MB_FALSE)
+#define _IsntReDefinedBy(a,b)   (ReDefinedBy(back, a,b) == MB_FALSE)
+#define _IsVisibleToCall(a,b,c) (VisibleToCall(back, a,b,c) != MB_FALSE)
 
 extern bool         TempsOverlap( name *name1, name *name2 );
-extern bool         NameIsConstant( name *op );
-extern bool_maybe   VisibleToCall( instruction *ins, name *op, bool modifies );
-extern bool_maybe   ReDefinedBy( instruction *ins, name *op );
+extern bool         NameIsConstant( BackRun& back, name *op );
+extern bool_maybe   VisibleToCall( BackRun& back, instruction *ins, name *op, bool modifies );
+extern bool_maybe   ReDefinedBy( BackRun& back, instruction *ins, name *op );
 extern bool         IsVolatile( name *op );

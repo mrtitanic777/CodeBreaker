@@ -37,6 +37,7 @@
 #include "procdef.h"
 #include "typemap.h"
 #include "maptypes.h"
+#include "backrun.hpp"
 
 
 static const cg_type  Types[] = {
@@ -48,14 +49,14 @@ static const cg_type  Types[] = {
 };
 
 
-const type_def  *TypeOfTypeClass( type_class_def type_class )
+const type_def  *TypeOfTypeClass( BackRun& back, type_class_def type_class )
 /***********************************************************/
 {
-    return( TypeAddress( Types[type_class] ) );
+    return( TypeAddress( back, Types[type_class] ) );
 }
 
 
-type_class_def  ReturnTypeClass( const type_def *tipe, call_attributes attr )
+type_class_def  ReturnTypeClass( BackRun& back, const type_def *tipe, call_attributes attr )
 /***************************************************************************/
 {
     switch( tipe->refno ) {
@@ -67,13 +68,13 @@ type_class_def  ReturnTypeClass( const type_def *tipe, call_attributes attr )
     case TY_UINT_4:
     case TY_INT_8:
     case TY_UINT_8:
-        return( MapIntReturn( tipe->refno ) );
+        return( MapIntReturn( back, tipe->refno ) );
     case TY_NEAR_POINTER:
     case TY_NEAR_CODE_PTR:
     case TY_HUGE_POINTER:
     case TY_LONG_CODE_PTR:
     case TY_LONG_POINTER:
-        return( MapPointer( tipe->refno ) );
+        return( MapPointer( back, tipe->refno ) );
     case TY_SINGLE:
     case TY_DOUBLE:
     case TY_LONG_DOUBLE:
@@ -84,7 +85,7 @@ type_class_def  ReturnTypeClass( const type_def *tipe, call_attributes attr )
 }
 
 
-type_class_def  TypeClass( const type_def *tipe )
+type_class_def  TypeClass( BackRun& back, const type_def *tipe )
 /***********************************************/
 {
     switch( tipe->refno ) {
@@ -105,6 +106,6 @@ type_class_def  TypeClass( const type_def *tipe )
     case TY_UINT_8:
         return( U8 );
     default:
-        return( ReturnTypeClass( tipe, static_cast<call_attributes>(EMPTY) ) );
+        return( ReturnTypeClass( back, tipe, static_cast<call_attributes>(EMPTY) ) );
     }
 }

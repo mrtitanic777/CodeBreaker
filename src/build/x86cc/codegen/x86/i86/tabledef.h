@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef enum {
     #define pick(enum,opcode,fpopcode)  enum,
     #include "_tables.h"

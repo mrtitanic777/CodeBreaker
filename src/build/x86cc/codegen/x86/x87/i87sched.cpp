@@ -48,6 +48,7 @@
 #include "fixindex.h"
 #include "revcond.h"
 #include "x86regn.h"
+#include "backrun.hpp"
 
 
 static const opcode_entry    RFST[1] = {
@@ -90,14 +91,10 @@ _OE(                         PRESERVE, V_NO,           RG_,          G_RNFBINP, 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct I87schedFileState {
-    block *Entry;
-    block *Exit;
-};
+/* (struct I87schedFileState: i87sched_state.h) */
 
 }  // namespace
 
-static inline I87schedFileState& i87sched_file_state() { return cbrun_part<I87schedFileState>(); }
 
 /*
  * global variables
@@ -116,7 +113,7 @@ static  int     InsMaxDepth( instruction *ins )
     return( ins->stk_exit );
 }
 
-static  fp_attr FPAttr( instruction *ins )
+static  fp_attr FPAttr( BackRun& back, instruction *ins )
 /****************************************/
 {
     if( _OpIsCall( ins->head.opcode ) && ins->result != NULL ) {
@@ -169,7 +166,7 @@ static  fp_attr FPAttr( instruction *ins )
         return static_cast<fp_attr>(( NEEDS_ST0+EXCHANGES ));
     case G_FSINCOS:
     default:
-        Zoiks( ZOIKS_075 );
+        Zoiks( back, ZOIKS_075 );
         return( NEEDS_NOTHING );
     }
 }
@@ -193,7 +190,7 @@ static const opcode_entry    *RegAction( instruction *ins )
 }
 
 
-static  void    PopVirtualStack( instruction *ins )
+static  void    PopVirtualStack( BackRun& back, instruction *ins )
 /*************************************************/
 {
     virtual_st_locn     virtual_locn;
@@ -205,21 +202,21 @@ static  void    PopVirtualStack( instruction *ins )
 }
 
 
-static  actual_st_locn  *ActualStackOwner( actual_st_locn actual_locn )
+static  actual_st_locn  *ActualStackOwner( BackRun& back, actual_st_locn actual_locn )
 /*********************************************************************/
 {
     int                 i;
     virtual_st_locn     virtual_locn;
     temp_entry          *temp;
 
-    for( i = 0; i < i87sched_state().MaxSeq; ++i ) {
+    for( i = 0; i < back.i87sched.MaxSeq; ++i ) {
         for( virtual_locn = VIRTUAL_0; virtual_locn < VIRTUAL_NONE; virtual_locn++ ) {
             if( RegSTLoc( i, virtual_locn ) == actual_locn ) {
                 return( &RegSTLoc( i, virtual_locn ) );
             }
         }
     }
-    for( temp = i87sched_state().TempList; temp != NULL; temp = temp->next ) {
+    for( temp = back.i87sched.TempList; temp != NULL; temp = temp->next ) {
         if( temp->actual_locn == actual_locn ) {
             return( &temp->actual_locn );
         }
@@ -228,16 +225,16 @@ static  actual_st_locn  *ActualStackOwner( actual_st_locn actual_locn )
 }
 
 
-static  void    PrefixExchange( instruction *ins, actual_st_locn actual_locn )
+static  void    PrefixExchange( BackRun& back, instruction *ins, actual_st_locn actual_locn )
 /****************************************************************************/
 {
     if( actual_locn != ACTUAL_0 ) {
-        PrefFXCH( ins, actual_locn );
+        PrefFXCH( back, ins, actual_locn );
     }
 }
 
 
-static  void    GetToTopOfStack( instruction *ins, virtual_st_locn virtual_locn )
+static  void    GetToTopOfStack( BackRun& back, instruction *ins, virtual_st_locn virtual_locn )
 /*******************************************************************************/
 {
     actual_st_locn  actual_locn;
@@ -246,9 +243,9 @@ static  void    GetToTopOfStack( instruction *ins, virtual_st_locn virtual_locn 
     actual_locn = InsSTLoc( ins, virtual_locn );
     if( actual_locn == ACTUAL_0 )
         return;
-    actual_top_owner = ActualStackOwner( ACTUAL_0 );
+    actual_top_owner = ActualStackOwner( back, ACTUAL_0 );
     if( actual_top_owner != NULL ) {
-        PrefixExchange( ins, actual_locn );
+        PrefixExchange( back, ins, actual_locn );
         InsSTLoc( ins, virtual_locn ) = ACTUAL_0;
         *actual_top_owner = actual_locn;
         return;
@@ -257,28 +254,28 @@ static  void    GetToTopOfStack( instruction *ins, virtual_st_locn virtual_locn 
 }
 
 
-static  fp_attr ResultToReg( instruction *ins, temp_entry *temp, fp_attr attr )
+static  fp_attr ResultToReg( BackRun& back, instruction *ins, temp_entry *temp, fp_attr attr )
 /*****************************************************************************/
 {
     if( ins == temp->first && !temp->whole_block ) {
-        DoNothing( ins );
+        DoNothing( back, ins );
         temp->actual_locn = InsSTLoc( ins, VIRTUAL_0 );
-        PopVirtualStack( ins );
+        PopVirtualStack( back, ins );
         attr &= ~POPS;
     } else {
-        GetToTopOfStack( ins, VIRTUAL_0 );
+        GetToTopOfStack( back, ins, VIRTUAL_0 );
         if( G( ins ) == G_MFST ) {
             ins->u.gen_table = RFST;
         } else {
             ins->u.gen_table = RFSTNP;
         }
-        ins->result = ST( temp->actual_locn );
+        ins->result = ST( back, temp->actual_locn );
     }
     return( attr );
 }
 
 
-static  void    PushVirtualStack( instruction *ins )
+static  void    PushVirtualStack( BackRun& back, instruction *ins )
 /**************************************************/
 {
     virtual_st_locn     virtual_locn;
@@ -290,21 +287,21 @@ static  void    PushVirtualStack( instruction *ins )
 }
 
 
-static  void    DecrementAll( void )
+static  void    DecrementAll( BackRun& back )
 /**********************************/
 {
     int                 i;
     virtual_st_locn     virtual_locn;
     temp_entry          *temp;
 
-    for( i = 0; i < i87sched_state().MaxSeq; ++i ) {
+    for( i = 0; i < back.i87sched.MaxSeq; ++i ) {
         for( virtual_locn = VIRTUAL_0; virtual_locn < VIRTUAL_NONE - 1; virtual_locn++ ) {
             if( RegSTLoc( i, virtual_locn ) != ACTUAL_NONE ) {
                 --RegSTLoc( i, virtual_locn );
             }
         }
     }
-    for( temp = i87sched_state().TempList; temp != NULL; temp = temp->next ) {
+    for( temp = back.i87sched.TempList; temp != NULL; temp = temp->next ) {
         if( temp->actual_locn != ACTUAL_NONE ) {
             temp->actual_locn--;
         }
@@ -312,29 +309,29 @@ static  void    DecrementAll( void )
 }
 
 
-static  void    PopStack( instruction *ins )
+static  void    PopStack( BackRun& back, instruction *ins )
 /******************************************/
 {
-    PopVirtualStack( ins );
-    DecrementAll();
+    PopVirtualStack( back, ins );
+    DecrementAll(back);
 }
 
 
-static  void    IncrementAll( void )
+static  void    IncrementAll( BackRun& back )
 /**********************************/
 {
     int                 i;
     virtual_st_locn     virtual_locn;
     temp_entry          *temp;
 
-    for( i = 0; i < i87sched_state().MaxSeq; ++i ) {
+    for( i = 0; i < back.i87sched.MaxSeq; ++i ) {
         for( virtual_locn = VIRTUAL_0; virtual_locn < VIRTUAL_NONE - 1; virtual_locn++ ) {
             if( RegSTLoc( i, virtual_locn ) != ACTUAL_NONE ) {
                 ++RegSTLoc( i, virtual_locn );
             }
         }
     }
-    for( temp = i87sched_state().TempList; temp != NULL; temp = temp->next ) {
+    for( temp = back.i87sched.TempList; temp != NULL; temp = temp->next ) {
         if( temp->actual_locn != ACTUAL_NONE ) {
             temp->actual_locn++;
         }
@@ -342,40 +339,40 @@ static  void    IncrementAll( void )
 }
 
 
-static  void    PushStack( instruction *ins )
+static  void    PushStack( BackRun& back, instruction *ins )
 /*******************************************/
 {
-    IncrementAll();
-    PushVirtualStack( ins );
+    IncrementAll(back);
+    PushVirtualStack( back, ins );
 }
 
 
-static instruction *OpToReg( instruction *ins, temp_entry *temp, fp_attr attr )
+static instruction *OpToReg( BackRun& back, instruction *ins, temp_entry *temp, fp_attr attr )
 /*****************************************************************************/
 {
     if( ins == temp->last && !temp->whole_block ) {
         switch( G( ins ) ) {
         case G_MFLD:
-            PushVirtualStack( ins );
+            PushVirtualStack( back, ins );
             InsSTLoc( ins, VIRTUAL_0 ) = temp->actual_locn;
-            DoNothing( ins );
+            DoNothing( back, ins );
             break;
         case G_MCOMP:
 //            if( temp->actual_locn != ACTUAL_1 ) _Zoiks( ZOIKS_076 );
-            ins->operands[0] = ST( ACTUAL_1 );
-            ins->operands[1] = ST( ACTUAL_0 );
+            ins->operands[0] = ST( back, ACTUAL_1 );
+            ins->operands[1] = ST( back, ACTUAL_0 );
             if( temp->actual_locn != ACTUAL_1 ) {
                 actual_st_locn  *actual_locn_owner;
 
-                actual_locn_owner = ActualStackOwner( ACTUAL_1 );
+                actual_locn_owner = ActualStackOwner( back, ACTUAL_1 );
                 *actual_locn_owner = temp->actual_locn;
-                PrefFXCH( ins, ACTUAL_1 );
-                PrefFXCH( ins, temp->actual_locn );
+                PrefFXCH( back, ins, ACTUAL_1 );
+                PrefFXCH( back, ins, temp->actual_locn );
                 RevCond( ins );
             }
             ins->u.gen_table = FCOMPP;
-            PopStack( ins );
-            PopStack( ins );
+            PopStack( back, ins );
+            PopStack( back, ins );
             break;
         case G_MNFBIN:
         case G_MRFBIN:
@@ -384,39 +381,39 @@ static instruction *OpToReg( instruction *ins, temp_entry *temp, fp_attr attr )
             } else {
                 ins->u.gen_table = RRFBINP;
             }
-            ins->operands[0] = ST( temp->actual_locn );
+            ins->operands[0] = ST( back, temp->actual_locn );
             ins->result = ins->operands[0];
-            ins->operands[1] = ST( ACTUAL_0 );
+            ins->operands[1] = ST( back, ACTUAL_0 );
             InsSTLoc( ins, VIRTUAL_0 ) = temp->actual_locn;
-            DecrementAll();
+            DecrementAll(back);
             break;
         }
         temp->actual_locn = ACTUAL_NONE;
     } else {
         if( ( ins == temp->first ) && !temp->defined && !temp->whole_block ) {
-            PrefFLDOp( ins, OP_MEM, temp->actual_op );
-            IncrementAll();
+            PrefFLDOp( back, ins, OP_MEM, temp->actual_op );
+            IncrementAll(back);
             temp->actual_locn = ACTUAL_0;
             if( G( ins ) == G_MFLD ) {
 //                PushStack( ins );
-                ins->operands[0] = ST( ACTUAL_0 );
+                ins->operands[0] = ST( back, ACTUAL_0 );
             } else {
-                GetToTopOfStack( ins, VIRTUAL_0 );
-                ins->operands[0] = ST( temp->actual_locn );
+                GetToTopOfStack( back, ins, VIRTUAL_0 );
+                ins->operands[0] = ST( back, temp->actual_locn );
             }
         } else {
-            ins->operands[0] = ST( temp->actual_locn );
+            ins->operands[0] = ST( back, temp->actual_locn );
 //            if( attr & PUSHES ) {
 //                PushStack( ins );
 //            }
         }
         if( attr & PUSHES ) {
-            PushStack( ins );
+            PushStack( back, ins );
         } else if( attr & POPS2 ) {
-            PopStack( ins );
-            PopStack( ins );
+            PopStack( back, ins );
+            PopStack( back, ins );
         } else if( attr & POPS ) {
-            PopStack( ins );
+            PopStack( back, ins );
         }
         ins->u.gen_table = RegAction( ins );
     }
@@ -424,14 +421,14 @@ static instruction *OpToReg( instruction *ins, temp_entry *temp, fp_attr attr )
 }
 
 
-static  void    SetResultSTReg( instruction *ins, virtual_st_locn virtual_locn )
+static  void    SetResultSTReg( BackRun& back, instruction *ins, virtual_st_locn virtual_locn )
 /******************************************************************************/
 {
-    ins->result = ST( InsSTLoc( ins, virtual_locn ) );
+    ins->result = ST( back, InsSTLoc( ins, virtual_locn ) );
     ins->operands[0] = ins->result;
 }
 
-static  instruction     *FComppKluge( instruction *ins )
+static  instruction     *FComppKluge( BackRun& back, instruction *ins )
 /******************************************************/
 {
     actual_st_locn  actual_0;
@@ -441,32 +438,32 @@ static  instruction     *FComppKluge( instruction *ins )
 
     actual_0 = InsSTLoc( ins, VIRTUAL_0 );
     actual_1 = InsSTLoc( ins, VIRTUAL_1 );
-    owner_0 = ActualStackOwner( ACTUAL_0 );
-    owner_1 = ActualStackOwner( ACTUAL_1 );
+    owner_0 = ActualStackOwner( back, ACTUAL_0 );
+    owner_1 = ActualStackOwner( back, ACTUAL_1 );
     if( actual_0 == ACTUAL_0 ) {
         if( actual_1 == ACTUAL_1 ) {    // actual_0=0 actual_1=1
             return( ins );
         } else {                        // actual_0=0 actual_1=n
-            PrefFXCH( ins, ACTUAL_1 );
-            PrefFXCH( ins, actual_1 );
-            PrefFXCH( ins, ACTUAL_1 );
+            PrefFXCH( back, ins, ACTUAL_1 );
+            PrefFXCH( back, ins, actual_1 );
+            PrefFXCH( back, ins, ACTUAL_1 );
             *owner_1 = actual_1;
         }
     } else if( actual_1 == ACTUAL_0 ) {
         if( actual_0 == ACTUAL_1 ) {    // actual_0=1 actual_1=0
-            PrefFXCH( ins, ACTUAL_1 );
+            PrefFXCH( back, ins, ACTUAL_1 );
         } else {                        // actual_0=n actual_1=0
-            PrefFXCH( ins, ACTUAL_1 );
-            PrefFXCH( ins, actual_0 );
+            PrefFXCH( back, ins, ACTUAL_1 );
+            PrefFXCH( back, ins, actual_0 );
             *owner_1 = actual_0;
         }
     } else if( actual_1 == ACTUAL_1 ) { // actual_1=1 actual_0=n
-        PrefFXCH( ins, actual_0 );
+        PrefFXCH( back, ins, actual_0 );
         *owner_0 = actual_0;
     } else {                            // actual_0=1,n actual_1=n
-        PrefFXCH( ins, actual_1 );
-        PrefFXCH( ins, ACTUAL_1 );
-        PrefFXCH( ins, actual_0 );
+        PrefFXCH( back, ins, actual_1 );
+        PrefFXCH( back, ins, ACTUAL_1 );
+        PrefFXCH( back, ins, actual_0 );
         *owner_0 = actual_1;
         *owner_1 = actual_0;
     }
@@ -475,7 +472,7 @@ static  instruction     *FComppKluge( instruction *ins )
     return( ins );
 }
 
-static  instruction     *GetST0andST1( instruction *ins )
+static  instruction     *GetST0andST1( BackRun& back, instruction *ins )
 /*******************************************************/
 {
     actual_st_locn  actual_0;
@@ -487,59 +484,59 @@ static  instruction     *GetST0andST1( instruction *ins )
         if( actual_1 == ACTUAL_1 ) {    // actual_0=0 actual_1=1
             return( ins );
         } else {                        // actual_0=0 actual_1=n
-            PrefFLDOp( ins, OP_STKI, ST( actual_1 ) );
-            PrefFXCH( ins, ACTUAL_1 );
-            return( SuffFSTPRes( ins, ST( actual_1 ), RES_STKI ) );
+            PrefFLDOp( back, ins, OP_STKI, ST( back, actual_1 ) );
+            PrefFXCH( back, ins, ACTUAL_1 );
+            return( SuffFSTPRes( back, ins, ST( back, actual_1 ), RES_STKI ) );
         }
     } else if( actual_1 == ACTUAL_0 ) {
         if( actual_0 == ACTUAL_1 ) {    // actual_0=1 actual_1=0
-            GetToTopOfStack( ins, VIRTUAL_0 );
+            GetToTopOfStack( back, ins, VIRTUAL_0 );
             return( ins );
         } else {                        // actual_0=n actual_1=0
             InsSTLoc( ins, VIRTUAL_1 ) = actual_0;
-            PrefFLDOp( ins, OP_STKI, ST( actual_0 ) );
-            return( SuffFSTPRes( ins, ST( actual_0 ), RES_STKI ) );
+            PrefFLDOp( back, ins, OP_STKI, ST( back, actual_0 ) );
+            return( SuffFSTPRes( back, ins, ST( back, actual_0 ), RES_STKI ) );
         }
     } else if( actual_1 == ACTUAL_1 ) { // actual_1=1 actual_0=n
-        GetToTopOfStack( ins, VIRTUAL_0 );
+        GetToTopOfStack( back, ins, VIRTUAL_0 );
         return( ins );
     } else {                            // actual_0=1,n actual_1=n
-        GetToTopOfStack( ins, VIRTUAL_1 );
+        GetToTopOfStack( back, ins, VIRTUAL_1 );
         InsSTLoc( ins, VIRTUAL_1 ) = actual_0;
-        PrefFLDOp( ins, OP_STKI, ST( actual_0 ) );
-        return( SuffFSTPRes( ins, ST( actual_0 ), RES_STKI ) );
+        PrefFLDOp( back, ins, OP_STKI, ST( back, actual_0 ) );
+        return( SuffFSTPRes( back, ins, ST( back, actual_0 ), RES_STKI ) );
     }
 }
 
 
-static  void    InitStackLocations( void )
+static  void    InitStackLocations( BackRun& back )
 /****************************************/
 {
     temp_entry          *temp;
     int                 i;
     virtual_st_locn     virtual_locn;
 
-    i87sched_state().STLocations = static_cast<st_seq *>(CGAlloc( i87sched_state().MaxSeq * sizeof( *i87sched_state().STLocations ) ));
-    for( i = 0; i < i87sched_state().MaxSeq; ++i ) {
+    back.i87sched.STLocations = static_cast<st_seq *>(CGAlloc( back, back.i87sched.MaxSeq * sizeof( *back.i87sched.STLocations ) ));
+    for( i = 0; i < back.i87sched.MaxSeq; ++i ) {
         for( virtual_locn = VIRTUAL_0; virtual_locn < VIRTUAL_NONE; virtual_locn++ ) {
             RegSTLoc( i, virtual_locn ) = ACTUAL_NONE;
         }
     }
-    for( temp = i87sched_state().TempList; temp != NULL; temp = temp->next ) {
+    for( temp = back.i87sched.TempList; temp != NULL; temp = temp->next ) {
         temp->actual_locn = ACTUAL_NONE;
     }
 }
 
 
-static  void    FiniStackLocations( void )
+static  void    FiniStackLocations( BackRun& back )
 /****************************************/
 {
-    CGFree( i87sched_state().STLocations );
-    i87sched_state().STLocations = NULL;
+    CGFree( back, back.i87sched.STLocations );
+    back.i87sched.STLocations = NULL;
 }
 
 
-static  temp_entry  *LookupTempEntry( name *op )
+static  temp_entry  *LookupTempEntry( BackRun& back, name *op )
 /**********************************************/
 {
     temp_entry  *temp;
@@ -548,7 +545,7 @@ static  temp_entry  *LookupTempEntry( name *op )
         return( NULL );
     if( op->n.class_ == N_TEMP )
         op = DeAlias( op );
-    for( temp = i87sched_state().TempList; temp != NULL; temp = temp->next ) {
+    for( temp = back.i87sched.TempList; temp != NULL; temp = temp->next ) {
         if( temp->op == op ) {
             return( temp );
         }
@@ -557,16 +554,16 @@ static  temp_entry  *LookupTempEntry( name *op )
 }
 
 
-static  temp_entry      *AddTempEntry( name *op )
+static  temp_entry      *AddTempEntry( BackRun& back, name *op )
 /***********************************************/
 {
     temp_entry  *temp;
 
-    temp = LookupTempEntry( op );
+    temp = LookupTempEntry( back, op );
     if( temp == NULL ) {
-        temp = static_cast<temp_entry *>(CGAlloc( sizeof( *temp ) ));
-        temp->next = i87sched_state().TempList;
-        i87sched_state().TempList = temp;
+        temp = static_cast<temp_entry *>(CGAlloc( back, sizeof( *temp ) ));
+        temp->next = back.i87sched.TempList;
+        back.i87sched.TempList = temp;
         temp->actual_op = op;
         if( op->n.class_ == N_TEMP )
             op = DeAlias( op );
@@ -586,12 +583,12 @@ static  temp_entry      *AddTempEntry( name *op )
 }
 
 
-static  void    DefUseTemp( name *op, instruction *ins, bool defined )
+static  void    DefUseTemp( BackRun& back, name *op, instruction *ins, bool defined )
 /********************************************************************/
 {
     temp_entry *temp;
 
-    temp = AddTempEntry( op );
+    temp = AddTempEntry( back, op );
     if( op->v.offset != temp->actual_op->v.offset ||
         op->n.size != temp->actual_op->n.size ) {
         temp->killed = true;
@@ -607,17 +604,17 @@ static  void    DefUseTemp( name *op, instruction *ins, bool defined )
 }
 
 
-static  void            KillTempEntry( name *op )
+static  void            KillTempEntry( BackRun& back, name *op )
 /***********************************************/
 {
     temp_entry  *temp;
 
-    temp = AddTempEntry( op );
+    temp = AddTempEntry( back, op );
     temp->killed = true;
 }
 
 
-static  void    CheckTemp( instruction *ins, name *op, bool defined )
+static  void    CheckTemp( BackRun& back, instruction *ins, name *op, bool defined )
 /*******************************************************************/
 {
     if( op->n.class_ == N_MEMORY ) {
@@ -630,56 +627,56 @@ static  void    CheckTemp( instruction *ins, name *op, bool defined )
     if( op->v.usage & USE_ADDRESS )
         return;
     if( !_GenIs8087( G( ins ) ) ) {
-        KillTempEntry( op );
+        KillTempEntry( back, op );
     } else {
-        DefUseTemp( op, ins, defined );
+        DefUseTemp( back, op, ins, defined );
     }
 }
 
 
-static  bool Better( void *t1, void *t2 )
+static  bool Better( BackRun& back, void *t1, void *t2 )
 /***************************************/
 {
     return( ((temp_entry *)t1)->savings > ((temp_entry *)t2)->savings );
 }
 
 
-static void    InitTempEntries( block *blk )
+static void    InitTempEntries( BackRun& back, block *blk )
 /******************************************/
 {
     instruction *ins;
     opcnt       i;
 
-    i87sched_state().TempList = NULL;
+    back.i87sched.TempList = NULL;
     for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
         if( ins->ins_flags & FP_INS_INTRODUCED )
             continue;
         for( i = 0; i < ins->num_operands; ++i ) {
-            CheckTemp( ins, ins->operands[i], false );
+            CheckTemp( back, ins, ins->operands[i], false );
         }
         if( ins->result != NULL ) {
-            CheckTemp( ins, ins->result, true );
+            CheckTemp( back, ins, ins->result, true );
         }
     }
-    i87sched_state().TempList = static_cast<temp_entry *>(SortList( i87sched_state().TempList, offsetof( temp_entry, next ), Better ));
+    back.i87sched.TempList = static_cast<temp_entry *>(SortList( back, back.i87sched.TempList, offsetof( temp_entry, next ), Better ));
 }
 
 
-static void    FiniTempEntries( void )
+static void    FiniTempEntries( BackRun& back )
 /************************************/
 {
     temp_entry  *temp;
     temp_entry  *next;
 
-    for( temp = i87sched_state().TempList; temp != NULL; temp = next ) {
+    for( temp = back.i87sched.TempList; temp != NULL; temp = next ) {
         next = temp->next;
-        CGFree( temp );
+        CGFree( back, temp );
     }
-    i87sched_state().TempList = NULL;
+    back.i87sched.TempList = NULL;
 }
 
 
-static  bool    StackBetween( instruction *first, instruction *last, int inc )
+static  bool    StackBetween( BackRun& back, instruction *first, instruction *last, int inc )
 /****************************************************************************/
 {
     instruction *ins;
@@ -687,7 +684,7 @@ static  bool    StackBetween( instruction *first, instruction *last, int inc )
 
     enough = true;
     for( ins = first; ins != last; ins = ins->head.next ) {
-        if( ins->fp.u.stk_depth >= ( i87data_state().Max87Stk - 1 ) || _OpIsCall( ins->head.opcode ) ) {
+        if( ins->fp.u.stk_depth >= ( back.i87data.Max87Stk - 1 ) || _OpIsCall( ins->head.opcode ) ) {
             enough = false;
         }
         ins->fp.u.stk_depth += inc;
@@ -696,14 +693,14 @@ static  bool    StackBetween( instruction *first, instruction *last, int inc )
 }
 
 
-static  void    KillRelatedTemps( name *op )
+static  void    KillRelatedTemps( BackRun& back, name *op )
 /******************************************/
 {
     temp_entry  *temp;
 
     if( op->n.class_ != N_MEMORY )
         return;
-    for( temp = i87sched_state().TempList; temp != NULL; temp = temp->next ) {
+    for( temp = back.i87sched.TempList; temp != NULL; temp = temp->next ) {
         if( temp->op->n.class_ == N_MEMORY &&
             temp->op->v.symbol == op->v.symbol ) {
             temp->killed = true;
@@ -711,7 +708,7 @@ static  void    KillRelatedTemps( name *op )
     }
 }
 
-static  bool    OKToCache( temp_entry *temp ) {
+static  bool    OKToCache( BackRun& back, temp_entry *temp ) {
 /*********************************************/
 
     instruction         *ins;
@@ -729,63 +726,63 @@ static  bool    OKToCache( temp_entry *temp ) {
             return( false );
         }
     }
-    return( _BLOCK( ins ) == i87sched_file_state().Entry );
+    return( _BLOCK( ins ) == back.i87sched_file.Entry );
 }
 
-static  void    CacheTemps( block *blk )
+static  void    CacheTemps( BackRun& back, block *blk )
 /**************************************/
 {
     temp_entry *temp, **owner;
     block_edge  *exit_edge = NULL;
 
-    i87sched_file_state().Entry = NULL;
-    i87sched_file_state().Exit = NULL;
+    back.i87sched_file.Entry = NULL;
+    back.i87sched_file.Exit = NULL;
     if( _IsBlkAttr( blk, BLK_LOOP_HEADER ) && blk->inputs == 2 && blk->targets == 2 ) {
         if( blk->edge[0].destination.u.blk == blk ) {
-            i87sched_file_state().Exit = blk->edge[1].destination.u.blk;
+            back.i87sched_file.Exit = blk->edge[1].destination.u.blk;
             exit_edge = &blk->edge[1];
         } else if( blk->edge[1].destination.u.blk == blk ) {
-            i87sched_file_state().Exit = blk->edge[0].destination.u.blk;
+            back.i87sched_file.Exit = blk->edge[0].destination.u.blk;
             exit_edge = &blk->edge[0];
         } else {
-            i87sched_file_state().Exit = NULL;
+            back.i87sched_file.Exit = NULL;
         }
-        if( i87sched_file_state().Exit != NULL ) {
+        if( back.i87sched_file.Exit != NULL ) {
             if( blk->input_edges->source == blk ) {
-                i87sched_file_state().Entry = blk->input_edges->next_source->source;
+                back.i87sched_file.Entry = blk->input_edges->next_source->source;
             } else if( blk->input_edges->next_source->source == blk ) {
-                i87sched_file_state().Entry = blk->input_edges->source;
+                back.i87sched_file.Entry = blk->input_edges->source;
             } else {
-                i87sched_file_state().Entry = NULL;
-                i87sched_file_state().Exit = NULL;
+                back.i87sched_file.Entry = NULL;
+                back.i87sched_file.Exit = NULL;
             }
         }
-        if( i87sched_file_state().Entry != NULL ) {
-            if( _IsBlkAttr( i87sched_file_state().Entry, BLK_JUMP ) ) {
-                if( i87sched_file_state().Exit->inputs != 1 ) {
-                    i87sched_file_state().Exit = AddPreBlock( i87sched_file_state().Exit );
-                    MoveEdge( exit_edge, i87sched_file_state().Exit );
+        if( back.i87sched_file.Entry != NULL ) {
+            if( _IsBlkAttr( back.i87sched_file.Entry, BLK_JUMP ) ) {
+                if( back.i87sched_file.Exit->inputs != 1 ) {
+                    back.i87sched_file.Exit = AddPreBlock( back, back.i87sched_file.Exit );
+                    MoveEdge( exit_edge, back.i87sched_file.Exit );
                 }
             }
         }
     }
-    for( temp = i87sched_state().TempList; temp != NULL; temp = temp->next ) {
+    for( temp = back.i87sched.TempList; temp != NULL; temp = temp->next ) {
         if( temp->killed )
             continue;
-        if( !OKToCache( temp ) ) {
+        if( !OKToCache( back, temp ) ) {
             temp->killed = true;
         }
     }
-    for( temp = i87sched_state().TempList; temp != NULL; temp = temp->next ) {
+    for( temp = back.i87sched.TempList; temp != NULL; temp = temp->next ) {
         if( temp->killed ) {
-            KillRelatedTemps( temp->op );
+            KillRelatedTemps( back, temp->op );
         }
     }
-    for( temp = i87sched_state().TempList; temp != NULL; temp = temp->next ) {
+    for( temp = back.i87sched.TempList; temp != NULL; temp = temp->next ) {
         if( temp->killed )
             continue;
         if( temp->op->v.usage & USE_IN_ANOTHER_BLOCK ) {
-            if( i87sched_file_state().Entry != NULL ) {
+            if( back.i87sched_file.Entry != NULL ) {
                 temp->first = blk->ins.head.next;
                 temp->last = blk->ins.head.prev;
                 temp->whole_block = true;
@@ -808,12 +805,12 @@ static  void    CacheTemps( block *blk )
                 continue;
             }
         }
-        if( StackBetween( temp->first, temp->last, 0 ) ) {
-            StackBetween( temp->first, temp->last, 1 );
+        if( StackBetween( back, temp->first, temp->last, 0 ) ) {
+            StackBetween( back, temp->first, temp->last, 1 );
             temp->cached = true;
         }
     }
-    owner = &i87sched_state().TempList;
+    owner = &back.i87sched.TempList;
     for( ;; ) {
         temp = *owner;
         if( temp == NULL )
@@ -822,25 +819,25 @@ static  void    CacheTemps( block *blk )
             owner = &temp->next;
         } else {
             *owner = temp->next;
-            CGFree( temp );
+            CGFree( back, temp );
         }
     }
 }
 
 
-static  void    FiniGlobalTemps( void )
+static  void    FiniGlobalTemps( BackRun& back )
 /*************************************/
 {
     temp_entry  *temp;
     instruction *ins;
 
-    for( temp = i87sched_state().TempList; temp != NULL; temp = temp->next ) {
+    for( temp = back.i87sched.TempList; temp != NULL; temp = temp->next ) {
         if( temp->whole_block ) {
-            ins = (instruction *)&i87sched_file_state().Exit->ins;
+            ins = (instruction *)&back.i87sched_file.Exit->ins;
             if( temp->defined ) {
-                SuffFSTPRes( ins, temp->actual_op, RES_MEM );
+                SuffFSTPRes( back, ins, temp->actual_op, RES_MEM );
             } else {
-                SuffFSTPRes( ins, temp->actual_op, RES_MEM_THROWAWAY );
+                SuffFSTPRes( back, ins, temp->actual_op, RES_MEM_THROWAWAY );
             }
             ins->head.next->ins_flags |= FP_INS_INTRODUCED;
         }
@@ -848,7 +845,7 @@ static  void    FiniGlobalTemps( void )
 }
 
 
-static  void    InitGlobalTemps( void )
+static  void    InitGlobalTemps( BackRun& back )
 /*************************************/
 {
     temp_entry      *temp;
@@ -856,20 +853,20 @@ static  void    InitGlobalTemps( void )
     actual_st_locn  actual_locn;
 
     actual_locn = ACTUAL_0;
-    for( temp = i87sched_state().TempList; temp != NULL; temp = temp->next ) {
+    for( temp = back.i87sched.TempList; temp != NULL; temp = temp->next ) {
         if( temp->whole_block ) {
             actual_locn++;
         }
     }
-    for( temp = i87sched_state().TempList; temp != NULL; temp = temp->next ) {
+    for( temp = back.i87sched.TempList; temp != NULL; temp = temp->next ) {
         if( temp->whole_block ) {
-            for( ins = i87sched_file_state().Entry->ins.head.prev; ins->head.opcode == OP_NOP; ins = ins->head.prev ) {
+            for( ins = back.i87sched_file.Entry->ins.head.prev; ins->head.opcode == OP_NOP; ins = ins->head.prev ) {
                 if( ins->flags.u.nop_flags & NOP_ZAP_INFO ) {
                     break;
                 }
             }
             ins = ins->head.next;
-            PrefFLDOp( ins, OP_MEM, temp->actual_op );
+            PrefFLDOp( back, ins, OP_MEM, temp->actual_op );
             ins->head.prev->ins_flags |= FP_INS_INTRODUCED;
             temp->actual_locn = --actual_locn;
         }
@@ -877,7 +874,7 @@ static  void    InitGlobalTemps( void )
 }
 
 
-static  void    XchForCall( instruction *ins, int i )
+static  void    XchForCall( BackRun& back, instruction *ins, int i )
 /***************************************************/
 {
     actual_st_locn  *actual_i_owner;
@@ -886,29 +883,29 @@ static  void    XchForCall( instruction *ins, int i )
     if( i <= 0 )
         return;
     if( InsSTLoc( ins, VIRTUAL_0 + i ) != ACTUAL_0 + i ) {
-        GetToTopOfStack( ins, static_cast<virtual_st_locn>(VIRTUAL_0 + i) );
+        GetToTopOfStack( back, ins, static_cast<virtual_st_locn>(VIRTUAL_0 + i) );
         if( InsSTLoc( ins, VIRTUAL_0 + i ) != ACTUAL_0 + i ) {
-            PrefixExchange( ins, static_cast<actual_st_locn>(ACTUAL_0 + i) );
-            actual_i_owner = ActualStackOwner( static_cast<actual_st_locn>(ACTUAL_0 + i) );
-            actual_0_owner = ActualStackOwner( ACTUAL_0 );
+            PrefixExchange( back, ins, static_cast<actual_st_locn>(ACTUAL_0 + i) );
+            actual_i_owner = ActualStackOwner( back, static_cast<actual_st_locn>(ACTUAL_0 + i) );
+            actual_0_owner = ActualStackOwner( back, ACTUAL_0 );
             *actual_i_owner = ACTUAL_0;
             *actual_0_owner = static_cast<actual_st_locn>(ACTUAL_0 + i);
         }
     }
-    XchForCall( ins, i - 1 );
+    XchForCall( back, ins, i - 1 );
 }
 
 
-static  void    ReOrderForCall( instruction *ins )
+static  void    ReOrderForCall( BackRun& back, instruction *ins )
 /************************************************/
 {
     int         i;
     int         count;
 
     count = CountFPRegs( ins->operands[CALL_OP_USED]->r.reg );
-    XchForCall( ins, count - 1 );
+    XchForCall( back, ins, count - 1 );
     for( i = 0; i < count; ++i ) {
-        PopStack( ins );
+        PopStack( back, ins );
     }
 }
 
@@ -922,7 +919,7 @@ bool    FPInsIntroduced( instruction *ins )
 }
 
 
-bool    FPFreeIns( instruction *ins )
+bool    FPFreeIns( BackRun& back, instruction *ins )
 /**********************************************
  * Return true if "ins" is going to be vaporized by the cacheing
  * algorithm in FPPostSched.
@@ -930,7 +927,7 @@ bool    FPFreeIns( instruction *ins )
 {
     temp_entry  *temp;
 
-    for( temp = i87sched_state().TempList; temp != NULL; temp = temp->next ) {
+    for( temp = back.i87sched.TempList; temp != NULL; temp = temp->next ) {
         if( temp->whole_block ) {
             if( G( ins ) == G_MFST &&
                 temp->actual_op == ins->result ) {
@@ -945,7 +942,7 @@ bool    FPFreeIns( instruction *ins )
     return( false );
 }
 
-int     FPStkOver( instruction *ins, int stk_depth )
+int     FPStkOver( BackRun& back, instruction *ins, int stk_depth )
 /***********************************************************
  * Return >= 0 if scheduling "ins" could get us into a spot that
  * we cannot get out of with the amount of stack left. What this
@@ -963,17 +960,17 @@ int     FPStkOver( instruction *ins, int stk_depth )
     int         max_depth;
 
     max_depth = 0;
-    for( i = ins->sequence + 1; i < i87sched_state().MaxSeq; ++i ) {
-        depth = i87sched_state().SeqMaxDepth[i] - i87sched_state().SeqCurDepth[i];
+    for( i = ins->sequence + 1; i < back.i87sched.MaxSeq; ++i ) {
+        depth = back.i87sched.SeqMaxDepth[i] - back.i87sched.SeqCurDepth[i];
         if( depth > max_depth ) {
             max_depth = depth;
         }
     }
-    return( i87sched_state().SeqMaxDepth[ins->sequence] - i87sched_state().SeqCurDepth[ins->sequence] + max_depth + stk_depth - i87data_state().Max87Stk );
+    return( back.i87sched.SeqMaxDepth[ins->sequence] - back.i87sched.SeqCurDepth[ins->sequence] + max_depth + stk_depth - back.i87data.Max87Stk );
 }
 
 
-void    FPCalcStk( instruction *ins, int *pdepth )
+void    FPCalcStk( BackRun& back, instruction *ins, int *pdepth )
 /*********************************************************
  * Set pdepth to the stack level before "ins" executes.  Also,
  * recalculate the stk_entry, stk_exit. s.stk_depth
@@ -983,10 +980,10 @@ void    FPCalcStk( instruction *ins, int *pdepth )
 {
     int         affect;
 
-    if( FPStackIns( ins ) )
-        i87sched_state().SeqMaxDepth[ins->sequence] = ins->u2.stk_max;
+    if( FPStackIns( back, ins ) )
+        back.i87sched.SeqMaxDepth[ins->sequence] = ins->u2.stk_max;
     affect = ins->stk_entry - ins->stk_exit;
-    i87sched_state().SeqCurDepth[ins->sequence] += affect;
+    back.i87sched.SeqCurDepth[ins->sequence] += affect;
     ins->stk_exit = *pdepth;
     ins->stk_entry = *pdepth + affect;
     ins->fp.u.stk_depth = *pdepth + ins->fp.u.stk_extra;
@@ -995,7 +992,7 @@ void    FPCalcStk( instruction *ins, int *pdepth )
     *pdepth += affect;
 }
 
-int     FPStackExit( block *blk )
+int     FPStackExit( BackRun& back, block *blk )
 /******************************************
  * Return the depth of the FPU stack upon exit from this
  * block. This is the stk_exit from the last FPU
@@ -1005,7 +1002,7 @@ int     FPStackExit( block *blk )
     instruction *curr;
 
     for( curr = blk->ins.head.prev; curr->head.opcode != OP_BLOCK; curr = curr->head.prev ) {
-        if( FPStackIns( curr ) ) {
+        if( FPStackIns( back, curr ) ) {
             return( curr->stk_exit );
         }
     }
@@ -1017,7 +1014,7 @@ int     FPStackExit( block *blk )
  */
 #define SEQ_INIT_VALUE  0xff
 
-void    FPPreSched( block *blk )
+void    FPPreSched( BackRun& back, block *blk )
 /******************************/
 {
     temp_entry  *temp;
@@ -1025,34 +1022,34 @@ void    FPPreSched( block *blk )
     int         i;
     int         depth;
 
-    i87sched_state().MaxSeq = 0;
+    back.i87sched.MaxSeq = 0;
     for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-        if( ins->sequence > i87sched_state().MaxSeq ) {
-            i87sched_state().MaxSeq = ins->sequence;
+        if( ins->sequence > back.i87sched.MaxSeq ) {
+            back.i87sched.MaxSeq = ins->sequence;
         }
     }
-    ++i87sched_state().MaxSeq;
-    InitTempEntries( blk );
-    CacheTemps( blk );
-    for( temp = i87sched_state().TempList; temp != NULL; temp = temp->next ) {
-        StackBetween( temp->first, temp->last, -1 );
+    ++back.i87sched.MaxSeq;
+    InitTempEntries( back, blk );
+    CacheTemps( back, blk );
+    for( temp = back.i87sched.TempList; temp != NULL; temp = temp->next ) {
+        StackBetween( back, temp->first, temp->last, -1 );
     }
-    i87sched_state().SeqCurDepth = static_cast<byte *>(CGAlloc( i87sched_state().MaxSeq * sizeof( *i87sched_state().SeqCurDepth ) ));
-    i87sched_state().SeqMaxDepth = static_cast<byte *>(CGAlloc( i87sched_state().MaxSeq * sizeof( *i87sched_state().SeqMaxDepth ) ));
-    for( i = 0; i < i87sched_state().MaxSeq; ++i ) {
-        i87sched_state().SeqCurDepth[i] = SEQ_INIT_VALUE;
-        i87sched_state().SeqMaxDepth[i] = 0;
+    back.i87sched.SeqCurDepth = static_cast<byte *>(CGAlloc( back, back.i87sched.MaxSeq * sizeof( *back.i87sched.SeqCurDepth ) ));
+    back.i87sched.SeqMaxDepth = static_cast<byte *>(CGAlloc( back, back.i87sched.MaxSeq * sizeof( *back.i87sched.SeqMaxDepth ) ));
+    for( i = 0; i < back.i87sched.MaxSeq; ++i ) {
+        back.i87sched.SeqCurDepth[i] = SEQ_INIT_VALUE;
+        back.i87sched.SeqMaxDepth[i] = 0;
     }
     for( ins = blk->ins.head.prev; ins->head.opcode != OP_BLOCK; ins = ins->head.prev ) {
-        if( i87sched_state().SeqCurDepth[ins->sequence] == SEQ_INIT_VALUE ) {
-            if( FPStackIns( ins ) ) {
-                i87sched_state().SeqCurDepth[ins->sequence] = ins->stk_exit;
+        if( back.i87sched.SeqCurDepth[ins->sequence] == SEQ_INIT_VALUE ) {
+            if( FPStackIns( back, ins ) ) {
+                back.i87sched.SeqCurDepth[ins->sequence] = ins->stk_exit;
             }
         }
     }
-    for( i = 0; i < i87sched_state().MaxSeq; ++i ) {
-        if( i87sched_state().SeqCurDepth[i] == SEQ_INIT_VALUE ) {
-            i87sched_state().SeqCurDepth[i] = 0;
+    for( i = 0; i < back.i87sched.MaxSeq; ++i ) {
+        if( back.i87sched.SeqCurDepth[i] == SEQ_INIT_VALUE ) {
+            back.i87sched.SeqCurDepth[i] = 0;
         }
     }
     for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
@@ -1064,17 +1061,17 @@ void    FPPreSched( block *blk )
          * consider the two sequences "pow a, b -> c" and "pow d, e -> f" before
          * RegAlloc et all and how we would schedule these with -fpr.
          */
-        ins->fp.u.stk_extra = FPStkReq( ins );
+        ins->fp.u.stk_extra = FPStkReq( back, ins );
         depth = InsMaxDepth( ins ) + ins->fp.u.stk_extra;
-        ins->u2.stk_max = i87sched_state().SeqMaxDepth[ins->sequence];
-        if( depth > i87sched_state().SeqMaxDepth[ins->sequence] ) {
-            i87sched_state().SeqMaxDepth[ins->sequence] = depth;
+        ins->u2.stk_max = back.i87sched.SeqMaxDepth[ins->sequence];
+        if( depth > back.i87sched.SeqMaxDepth[ins->sequence] ) {
+            back.i87sched.SeqMaxDepth[ins->sequence] = depth;
         }
     }
 }
 
 
-void    FPPostSched( block *blk )
+void    FPPostSched( BackRun& back, block *blk )
 /*******************************/
 {
     fp_attr         attr;
@@ -1082,57 +1079,57 @@ void    FPPostSched( block *blk )
     instruction     *next;
     temp_entry      *temp;
 
-    CGFree( i87sched_state().SeqCurDepth );
-    CGFree( i87sched_state().SeqMaxDepth );
-    FiniTempEntries();
-    InitStackLocations();
-    InitTempEntries( blk );
-    CacheTemps( blk );
-    InitGlobalTemps();
+    CGFree( back, back.i87sched.SeqCurDepth );
+    CGFree( back, back.i87sched.SeqMaxDepth );
+    FiniTempEntries(back);
+    InitStackLocations(back);
+    InitTempEntries( back, blk );
+    CacheTemps( back, blk );
+    InitGlobalTemps(back);
     for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next->head.next ) {
         next = ins;
         if( (ins->ins_flags & FP_INS_INTRODUCED) == 0 ) {
-            attr = FPAttr( ins );
-            temp = LookupTempEntry( ins->result );
+            attr = FPAttr( back, ins );
+            temp = LookupTempEntry( back, ins->result );
             if( attr & NEEDS_ST0 && temp == NULL ) {
-                GetToTopOfStack( ins, VIRTUAL_0 );
+                GetToTopOfStack( back, ins, VIRTUAL_0 );
             } else if( attr & NEEDS_ST0_ST1 ) {
                 if( attr & POPS2 ) {
                     /*
                      * the dreaded FCOMPP
                      */
-                    next = FComppKluge( ins );
+                    next = FComppKluge( back, ins );
                 } else {
-                    next = GetST0andST1( ins );
+                    next = GetST0andST1( back, ins );
                 }
             } else if( attr & POPS_ALL ) {
-                ReOrderForCall( ins );
+                ReOrderForCall( back, ins );
             }
             if( temp != NULL ) {
-                attr = ResultToReg( ins, temp, attr );
+                attr = ResultToReg( back, ins, temp, attr );
             } else if( attr & SETS_ST1 ) {
-                SetResultSTReg( ins, VIRTUAL_1 );
+                SetResultSTReg( back, ins, VIRTUAL_1 );
             } else if( attr & EXCHANGES ) {
                 /*
                  * ??? what is in ins->result ???
                  * ??? virtual or actual      ???
                  */
-                SetResultSTReg( ins, (virtual_st_locn)FPRegNum( ins->result ) );
+                SetResultSTReg( back, ins, (virtual_st_locn)FPRegNum( ins->result ) );
             }
-            temp = LookupTempEntry( ins->operands[0] );
+            temp = LookupTempEntry( back, ins->operands[0] );
             if( temp != NULL ) {
-                next = OpToReg( ins, temp, attr );
+                next = OpToReg( back, ins, temp, attr );
             } else if( attr & PUSHES ) {
-                PushStack( ins );
+                PushStack( back, ins );
             } else if( attr & POPS2 ) {
-                PopStack( ins );
-                PopStack( ins );
+                PopStack( back, ins );
+                PopStack( back, ins );
             } else if( attr & POPS ) {
-                PopStack( ins );
+                PopStack( back, ins );
             }
         }
     }
-    FiniGlobalTemps();
-    FiniStackLocations();
-    FiniTempEntries();
+    FiniGlobalTemps(back);
+    FiniStackLocations(back);
+    FiniTempEntries(back);
 }

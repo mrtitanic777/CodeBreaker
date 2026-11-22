@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #include <sys/types.h>
 #include "watcom.h"
 #include "bool.h"
@@ -53,8 +54,8 @@ extern "C" {
 typedef struct cfloat STRUCT_cfloat( 1 ) cfloat;
 
 typedef struct cfstruct {
-    void            *(*alloc)( size_t );
-    void            (*free)( void * );
+    void            *(*alloc)( BackRun&, size_t );
+    void            (*free)( BackRun&, void * );
     void            *head;
 } cfstruct;
 
@@ -72,16 +73,16 @@ typedef union flt {
 
 extern  void        CFCnvTarget( cfloat *f, flt *buffer, int class_ );
 extern  char        *CFCnvFS( cfloat *f, char *buffer, int maxlen );
-extern  cfloat      *CFCnvSF( cfhandle h, const char *str );
-extern  cfloat      *CFCopy( cfhandle h, cfloat *f );
-extern  cfloat      *CFTrunc( cfhandle h, cfloat *f );
-extern  cfloat      *CFRound( cfhandle h, cfloat *f );
-extern  cfloat      *CFCnvI32F( cfhandle h, signed_32 data );
-extern  cfloat      *CFCnvU32F( cfhandle h, unsigned_32 data );
-extern  cfloat      *CFCnvU64F( cfhandle h, unsigned_32 lo32, unsigned_32 hi32 );
-extern  cfloat      *CFCnvI64F( cfhandle h, unsigned_32 lo32, unsigned_32 hi32 );
-extern  cfloat      *CFCnvIF( cfhandle h, int data );
-extern  cfloat      *CFCnvUF( cfhandle h, uint data );
+extern  cfloat      *CFCnvSF( BackRun& back, cfhandle h, const char *str );
+extern  cfloat      *CFCopy( BackRun& back, cfhandle h, cfloat *f );
+extern  cfloat      *CFTrunc( BackRun& back, cfhandle h, cfloat *f );
+extern  cfloat      *CFRound( BackRun& back, cfhandle h, cfloat *f );
+extern  cfloat      *CFCnvI32F( BackRun& back, cfhandle h, signed_32 data );
+extern  cfloat      *CFCnvU32F( BackRun& back, cfhandle h, unsigned_32 data );
+extern  cfloat      *CFCnvU64F( BackRun& back, cfhandle h, unsigned_32 lo32, unsigned_32 hi32 );
+extern  cfloat      *CFCnvI64F( BackRun& back, cfhandle h, unsigned_32 lo32, unsigned_32 hi32 );
+extern  cfloat      *CFCnvIF( BackRun& back, cfhandle h, int data );
+extern  cfloat      *CFCnvUF( BackRun& back, cfhandle h, uint data );
 
 extern  bool        CFIsI8( cfloat *f );
 extern  bool        CFIsI16( cfloat *f );
@@ -105,22 +106,22 @@ extern  signed_32   CFCnvF32( cfloat *f );
 extern  signed_64   CFCnvF64( cfloat *f );
 extern  double      CFToF( cfloat *f );
 
-extern  cfloat      *CFAlloc( cfhandle h, size_t );
-extern  void        CFFree( cfhandle h, cfloat *f );
-extern  bool        CFFrlFree( cfhandle h );
+extern  cfloat      *CFAlloc( BackRun& back, cfhandle h, size_t );
+extern  void        CFFree( BackRun& back, cfhandle h, cfloat *f );
+extern  bool        CFFrlFree( BackRun& back, cfhandle h );
 
-extern  cfloat      *CFMul( cfhandle h, cfloat *f1, cfloat *f2 );
-extern  cfloat      *CFDiv( cfhandle h, cfloat *f1, cfloat *f2 );
-extern  cfloat      *CFInverse( cfhandle h, cfloat *f );
-extern  cfloat      *CFAdd( cfhandle h, cfloat *f1, cfloat *f2 );
-extern  cfloat      *CFSub( cfhandle h, cfloat *f1, cfloat *f2 );
+extern  cfloat      *CFMul( BackRun& back, cfhandle h, cfloat *f1, cfloat *f2 );
+extern  cfloat      *CFDiv( BackRun& back, cfhandle h, cfloat *f1, cfloat *f2 );
+extern  cfloat      *CFInverse( BackRun& back, cfhandle h, cfloat *f );
+extern  cfloat      *CFAdd( BackRun& back, cfhandle h, cfloat *f1, cfloat *f2 );
+extern  cfloat      *CFSub( BackRun& back, cfhandle h, cfloat *f1, cfloat *f2 );
 extern  void        CFNegate( cfloat *f );
 extern  int         CFCompare( cfloat *f1, cfloat *f2 );
 extern  int         CFTest( cfloat *f );
 extern  int         CFExp( cfloat *f );
 
 extern  void        CFInit( cfhandle h );
-extern  void        CFFini( cfhandle h );
+extern  void        CFFini( BackRun& back, cfhandle h );
 
 #ifdef __cplusplus
 };

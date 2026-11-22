@@ -30,4 +30,5 @@
 ****************************************************************************/
 
 
-extern void     CalcLoadStore( conflict_node *conf );
+#pragma once
+extern void     CalcLoadStore( BackRun& back, conflict_node *conf );

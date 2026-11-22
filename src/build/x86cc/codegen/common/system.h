@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #if defined( __BIG_ENDIAN__ )
 
 extern uint_16          TargetShort( uint_16 );

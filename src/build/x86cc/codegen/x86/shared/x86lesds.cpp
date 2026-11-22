@@ -39,6 +39,7 @@
 #include "insdead.h"
 #include "optab.h"
 #include "generate.h"
+#include "backrun.hpp"
 
 
 static const opcode_entry LDSES[1] = {
@@ -47,7 +48,7 @@ _OE(                           NO_CC,  V_NO,           RG_,          G_LDSES,   
 };
 
 
-static  bool    AdjacentMem( name *s, name *r, type_class_def type_class )
+static  bool    AdjacentMem( BackRun& back, name *s, name *r, type_class_def type_class )
 /************************************************************************/
 {
     name        *base_s;
@@ -56,7 +57,7 @@ static  bool    AdjacentMem( name *s, name *r, type_class_def type_class )
     int         locn_r;
     int         stride;
 
-    stride = data_state().TypeClassSize[type_class];
+    stride = back.data.TypeClassSize[type_class];
     if( s->n.class_ != r->n.class_ )
         return( false );
     if( s->n.class_ == N_MEMORY ) {
@@ -109,7 +110,7 @@ static bool     MemMove( instruction *ins )
 }
 
 
-static bool     OptMemMove( instruction *ins, instruction *next )
+static bool     OptMemMove( BackRun& back, instruction *ins, instruction *next )
 /***************************************************************/
 {
     uint_32         shift;
@@ -125,7 +126,7 @@ static bool     OptMemMove( instruction *ins, instruction *next )
              ins->operands[0]->c.const_type == CONS_ABSOLUTE &&
             next->operands[0]->n.class_ == N_CONSTANT &&
             next->operands[0]->c.const_type == CONS_ABSOLUTE ) {
-            switch( data_state().TypeClassSize[ins->type_class] ) {
+            switch( back.data.TypeClassSize[ins->type_class] ) {
             case 1:
                 shift = 8;
                 result_type_class = U2;
@@ -148,11 +149,11 @@ static bool     OptMemMove( instruction *ins, instruction *next )
             }
             if( shift ) {
                 result = NULL;
-                if( AdjacentMem( ins->result, next->result, ins->type_class ) ) {
+                if( AdjacentMem( back, ins->result, next->result, ins->type_class ) ) {
                     hi =  ins->operands[0]->c.lo.u.int_value;
                     lo = next->operands[0]->c.lo.u.int_value;
                     result = next->result;
-                } else if( AdjacentMem( next->result, ins->result, ins->type_class ) ) {
+                } else if( AdjacentMem( back, next->result, ins->result, ins->type_class ) ) {
                     lo =  ins->operands[0]->c.lo.u.int_value;
                     hi = next->operands[0]->c.lo.u.int_value;
                     result = ins->result;
@@ -162,10 +163,10 @@ static bool     OptMemMove( instruction *ins, instruction *next )
                 lo &= ( ( 1 << shift ) - 1 );
                 hi &= ( ( 1 << shift ) - 1 );
                 result_const = lo | ( hi << shift );
-                ins->operands[0] = AllocS32Const( result_const );
+                ins->operands[0] = AllocS32Const( back, result_const );
                 ins->type_class = result_type_class;
                 ins->result = result;
-                DoNothing( next );
+                DoNothing( back, next );
                 return( true );
             }
         }
@@ -203,7 +204,7 @@ static bool isOpConstant( name *op )
 }
 
 
-static bool OptPushDWORDConstant( instruction *ins, instruction *next )
+static bool OptPushDWORDConstant( BackRun& back, instruction *ins, instruction *next )
 /*********************************************************************/
 {
     name    *opi;
@@ -236,18 +237,18 @@ static bool OptPushDWORDConstant( instruction *ins, instruction *next )
             return( false );
         }
     }
-    DoNothing( ins );
+    DoNothing( back, ins );
     next->type_class = I4;
     return( true );
 }
 
 
-static bool OptPushDWORDMemory( instruction *ins, instruction *next )
+static bool OptPushDWORDMemory( BackRun& back, instruction *ins, instruction *next )
 /*******************************************************************/
 {
     assert( isPushX2( ins ) && isPushX2( next ) );
-    if( AdjacentMem( ins->operands[0], next->operands[0], U2 ) ) {
-        DoNothing( ins );
+    if( AdjacentMem( back, ins->operands[0], next->operands[0], U2 ) ) {
+        DoNothing( back, ins );
         next->type_class = I4;
         return( true );
     }
@@ -280,14 +281,14 @@ static  bool    IsLDSES( instruction *ins, instruction *next )
 }
 
 
-static  void    CheckLDSES( instruction *seg, instruction *reg, bool seg_first )
+static  void    CheckLDSES( BackRun& back, instruction *seg, instruction *reg, bool seg_first )
 /******************************************************************************/
 {
     hw_reg_set  tmp;
 
     if( !HW_COvlap( seg->result->r.reg, HW_DS_ES_SS_FS_GS ) )
         return;
-    if( !AdjacentMem( seg->operands[0], reg->operands[0], U2 ) )
+    if( !AdjacentMem( back, seg->operands[0], reg->operands[0], U2 ) )
         return;
     if( seg->operands[0]->n.class_ == N_INDEXED ) {
         /*
@@ -309,12 +310,12 @@ static  void    CheckLDSES( instruction *seg, instruction *reg, bool seg_first )
     reg->u.gen_table = LDSES;
     tmp = reg->result->r.reg;
     HW_TurnOn( tmp, seg->result->r.reg );
-    reg->result = AllocRegName( tmp );
-    DoNothing( seg );
+    reg->result = AllocRegName( back, tmp );
+    DoNothing( back, seg );
 }
 
 
-void    OptSegs( void )
+void    OptSegs( BackRun& back )
 /*********************/
 {
     block       *blk;
@@ -325,14 +326,14 @@ void    OptSegs( void )
 
     do {
         redo = false;
-        for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+        for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
             for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
                 next = ins->head.next;
                 if( NotByteMove( ins ) && NotByteMove( next ) ) {
                     if( IsLDSES( ins, next ) ) {
-                        CheckLDSES( next, ins, false );
+                        CheckLDSES( back, next, ins, false );
                     } else if( IsLDSES( next, ins ) ) {
-                        CheckLDSES( ins, next, true );
+                        CheckLDSES( back, ins, next, true );
                     }
                 }
                 if( MemMove( ins )  && !VolatileIns( ins )
@@ -340,7 +341,7 @@ void    OptSegs( void )
                     /*
                      * look for adjacent byte/word moves and combine them
                      */
-                    if( OptMemMove( ins, next ) ) {
+                    if( OptMemMove( back, ins, next ) ) {
                         /*
                          * tell ourselves to go around again in case
                          * we combined four byte moves into two word
@@ -357,7 +358,7 @@ void    OptSegs( void )
                             break;
                         }
                         tmp = next->head.next;
-                        FreeIns( next );
+                        FreeIns( back, next );
                         next = tmp;
                     }
                 }
@@ -397,18 +398,18 @@ void    OptSegs( void )
                          */
                         next->type_class = next->type_class == I1 ? I2 : U2;
                         next->result->r.reg = full_reg;
-                        next->operands[1] = AllocIntConst( next->operands[1]->c.lo.u.int_value & 0xFF );
-                        DoNothing(ins);
+                        next->operands[1] = AllocIntConst( back, next->operands[1]->c.lo.u.int_value & 0xFF );
+                        DoNothing(back, ins);
                     }
                 }
                 if( _CPULevel( CPU_386 ) ) {
                     if( isPushX2( ins ) && isPushX2( next ) ) {
-                        if( OptPushDWORDConstant( ins, next ) ) {
+                        if( OptPushDWORDConstant( back, ins, next ) ) {
                             /*
                              * 'next' was not a OP_BLOCK if we optimized it
                              */
                             next = next->head.next;
-                        } else if( OptPushDWORDMemory( ins, next ) ) {
+                        } else if( OptPushDWORDMemory( back, ins, next ) ) {
                             next = next->head.next;
                         }
                     }

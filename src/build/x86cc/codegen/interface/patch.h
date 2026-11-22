@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #if 0
 extern void DeadBeef();
 #pragma aux DeadBeef = 0xDE 0xAD 0xBE 0xEF;
@@ -56,9 +57,9 @@ typedef struct patch_info {
     bool        patched;        // has someone made a node out of us yet?
 } patch_info;
 
-extern  patch_handle    BGNewPatch( void );
-extern  cg_name         BGPatchNode( patch_handle patch, const type_def *tipe );
-extern  void            BGPatchInteger( patch_handle patch, int_32 value );
-extern  void            BGFiniPatch( patch_handle patch );
-extern  an              TNPatch( tn node );
-extern  tn              TGPatch( patch_handle patch, const type_def *tipe );
+extern  patch_handle    BGNewPatch( BackRun& back );
+extern  cg_name         BGPatchNode( BackRun& back, patch_handle patch, const type_def *tipe );
+extern  void            BGPatchInteger( BackRun& back, patch_handle patch, int_32 value );
+extern  void            BGFiniPatch( BackRun& back, patch_handle patch );
+extern  an              TNPatch( BackRun& back, tn node );
+extern  tn              TGPatch( BackRun& back, patch_handle patch, const type_def *tipe );

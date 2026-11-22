@@ -35,17 +35,18 @@
 #include "optwif.h"
 #include "objout.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
-static  label_handle DoAskForLabel( cg_sym_handle sym )
+static  label_handle DoAskForLabel( BackRun& back, cg_sym_handle sym )
 /**************************************************/
 {
     label_handle    new_lbl;
 
   optbegin
-    new_lbl = static_cast<label_handle>(CGAlloc( sizeof( code_lbl ) ));
-    new_lbl->lbl.link    = optdata_state().Handles;
-    optdata_state().Handles = new_lbl;
+    new_lbl = static_cast<label_handle>(CGAlloc( back, sizeof( code_lbl ) ));
+    new_lbl->lbl.link    = back.optdata.Handles;
+    back.optdata.Handles = new_lbl;
     new_lbl->lbl.sym     = sym;
     new_lbl->lbl.address = ADDR_UNKNOWN;
     new_lbl->lbl.patches = NULL;
@@ -70,13 +71,13 @@ static  label_handle DoAskForLabel( cg_sym_handle sym )
 }
 
 
-label_handle AskForNewLabel( void )
+label_handle AskForNewLabel( BackRun& back )
 /*********************************/
 {
     label_handle    new_lbl;
 
   optbegin
-    new_lbl = DoAskForLabel( NULL );
+    new_lbl = DoAskForLabel( back, NULL );
     /* the DYINGLABEL bit will cause unused labels to be scrapped*/
     /* without the LDONE travelling through the optimizer queue*/
     new_lbl->lbl.status = CODELABEL | DYINGLABEL;
@@ -84,28 +85,28 @@ label_handle AskForNewLabel( void )
 }
 
 
-label_handle AskForRTLabel( rt_class rtindex )
+label_handle AskForRTLabel( BackRun& back, rt_class rtindex )
 /********************************************/
 {
     label_handle    new_lbl;
 
   optbegin
-    new_lbl = DoAskForLabel( RTIDX2SYM( rtindex ) );
+    new_lbl = DoAskForLabel( back, RTIDX2SYM( rtindex ) );
     _SetStatus( new_lbl, RUNTIME );
     optreturn( new_lbl );
 }
 
 
-label_handle AskForLabel( cg_sym_handle sym )
+label_handle AskForLabel( BackRun& back, cg_sym_handle sym )
 /*******************************************/
 {
     label_handle    new_lbl;
     fe_attr         attr;
 
   optbegin
-    new_lbl = DoAskForLabel( sym );
+    new_lbl = DoAskForLabel( back, sym );
     if( sym != NULL ) {
-        attr = FEAttr( sym );
+        attr = FEAttr( *back.front, sym );
         if( attr & FE_UNIQUE ) {
             _SetStatus( new_lbl, UNIQUE );
         }
@@ -114,7 +115,7 @@ label_handle AskForLabel( cg_sym_handle sym )
 }
 
 
-bool    AskIfReachedLabel( label_handle lbl )
+bool    AskIfReachedLabel( BackRun& back, label_handle lbl )
 /*******************************************/
 {
   optbegin
@@ -123,7 +124,7 @@ bool    AskIfReachedLabel( label_handle lbl )
 }
 
 
-bool    AskIfRTLabel( label_handle lbl )
+bool    AskIfRTLabel( BackRun& back, label_handle lbl )
 /**************************************/
 {
   optbegin
@@ -132,7 +133,7 @@ bool    AskIfRTLabel( label_handle lbl )
 }
 
 
-bool    AskIfUniqueLabel( label_handle lbl )
+bool    AskIfUniqueLabel( BackRun& back, label_handle lbl )
 /******************************************/
 {
   optbegin
@@ -141,7 +142,7 @@ bool    AskIfUniqueLabel( label_handle lbl )
 }
 
 
-bool    AskIfCommonLabel( label_handle lbl )
+bool    AskIfCommonLabel( BackRun& back, label_handle lbl )
 /******************************************/
 {
   optbegin
@@ -150,7 +151,7 @@ bool    AskIfCommonLabel( label_handle lbl )
 }
 
 
-offset  AskAddress( label_handle lbl )
+offset  AskAddress( BackRun& back, label_handle lbl )
 /************************************/
 {
   optbegin
@@ -159,19 +160,19 @@ offset  AskAddress( label_handle lbl )
 }
 
 
-pointer AskLblPatches( label_handle lbl )
+pointer AskLblPatches( BackRun& back, label_handle lbl )
 /***************************************/
 {
   optbegin
     _ValidLbl( lbl );
     if( lbl->lbl.patches == NULL ) {
-        lbl->lbl.patches = static_cast<obj_patch *>(InitPatches());
+        lbl->lbl.patches = static_cast<obj_patch *>(InitPatches(back));
     }
     optreturn( lbl->lbl.patches );
 }
 
 
-cg_sym_handle   AskForLblSym( label_handle lbl )
+cg_sym_handle   AskForLblSym( BackRun& back, label_handle lbl )
 /**********************************************/
 {
   optbegin

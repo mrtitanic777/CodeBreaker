@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define BY_C_FRONT_END
 #include "watcom.h"
 #include "cgstd.h"
@@ -82,7 +83,6 @@ struct PragdefnState {
     aux_info STOSBInfo;
 #endif
 };
-inline PragdefnState& pragdefn_state() { return cbrun_part<PragdefnState>(); }
 
 #endif
 

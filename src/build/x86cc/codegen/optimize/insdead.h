@@ -29,8 +29,9 @@
 ****************************************************************************/
 
 
+#pragma once
 extern bool     VolatileIns(instruction *ins);
-extern bool     SideEffect(instruction* ins);
-extern bool     InsDead( void );
-extern bool     RegInsDead( void );
-extern bool     LoopInsDead( void );
+extern bool     SideEffect(BackRun& back, instruction* ins);
+extern bool     InsDead( BackRun& back );
+extern bool     RegInsDead( BackRun& back );
+extern bool     LoopInsDead( BackRun& back );

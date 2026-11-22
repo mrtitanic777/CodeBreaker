@@ -35,6 +35,7 @@
 #include <stddef.h>
 #include "cfloati.h"
 #include "i64.h"
+#include "backrun.hpp"
 
 
 #define _HiBitOn( x )   (((x) & 0x80000000) != 0)
@@ -316,36 +317,36 @@ static void     DoConvert( cfloat *f, const char *str )
 }
 
 
-cfloat  *CFCnvSF( cfhandle h, const char *str )
+cfloat  *CFCnvSF( BackRun& back, cfhandle h, const char *str )
 /*********************************************/
 {
     cfloat      *result;
 
-    result = CFAlloc( h, strlen( str ) );
+    result = CFAlloc( back, h, strlen( str ) );
     DoConvert( result, str );
     return( result );
 }
 
-cfloat  *CFCopy( cfhandle h, cfloat *f )
+cfloat  *CFCopy( BackRun& back, cfhandle h, cfloat *f )
 /**************************************/
 {
     cfloat      *result;
 
-    result = CFAlloc( h, f->len );
+    result = CFAlloc( back, h, f->len );
     memcpy( result, f, CFLOAT_SIZE + f->len );
     return( result );
 }
 
-cfloat  *CFTrunc( cfhandle h, cfloat *f )
+cfloat  *CFTrunc( BackRun& back, cfhandle h, cfloat *f )
 /***************************************/
 {
     cfloat      *result;
     int         len;
 
     if( f->exp <= 0 )
-        return( CFAlloc( h, 1 ) );
+        return( CFAlloc( back, h, 1 ) );
     len = f->exp;
-    result = CFCopy( h, f );
+    result = CFCopy( back, h, f );
     if( result->len <= len )
         return( result );
     result->len = len;
@@ -353,7 +354,7 @@ cfloat  *CFTrunc( cfhandle h, cfloat *f )
     return( result );
 }
 
-cfloat  *CFRound( cfhandle h, cfloat *f )
+cfloat  *CFRound( BackRun& back, cfhandle h, cfloat *f )
 /***************************************/
 {
     cfloat      *trim;
@@ -362,26 +363,26 @@ cfloat  *CFRound( cfhandle h, cfloat *f )
     int         len;
 
     if( f->exp < 0 )
-        return( CFAlloc( h, 1 ) );
+        return( CFAlloc( back, h, 1 ) );
     len = f->exp;
     if( f->len <= len )
-        return( CFCopy( h, f ) );
-    trim = CFTrunc( h, f );
+        return( CFCopy( back, h, f ) );
+    trim = CFTrunc( back, h, f );
     if( f->mant[len] < '5' )
         return( trim );
     if( f->sign < 0
       && f->len == ( len + 1 ) )
         return( trim );
-    addto = CFAlloc( h, 1 );
+    addto = CFAlloc( back, h, 1 );
     addto->sign = f->sign;
     addto->mant[0] = '1';
-    result = CFAdd( h, trim, addto );
-    CFFree( h, trim );
-    CFFree( h, addto );
+    result = CFAdd( back, h, trim, addto );
+    CFFree( back, h, trim );
+    CFFree( back, h, addto );
     return( result );
 }
 
-static cfloat   *CFCnvLongToF( cfhandle h, signed_32 data, bool is_signed )
+static cfloat   *CFCnvLongToF( BackRun& back, cfhandle h, signed_32 data, bool is_signed )
 /*************************************************************************/
 {
     cfloat              *result;
@@ -392,13 +393,13 @@ static cfloat   *CFCnvLongToF( cfhandle h, signed_32 data, bool is_signed )
     char                mant[I32DIGITS + 1];
 
     if( data == 0 )
-        return( CFAlloc( h, 0 ) );
+        return( CFAlloc( back, h, 0 ) );
     if( is_signed
       && -data == data ) {
         /*
          * Aha! It's  -MaxNegI32
          */
-        result = CFCopy( h, (cfloat *)&MaxNegI32 );
+        result = CFCopy( back, h, (cfloat *)&MaxNegI32 );
         return( result );
     }
     sign = 1;
@@ -416,9 +417,9 @@ static cfloat   *CFCnvLongToF( cfhandle h, signed_32 data, bool is_signed )
         ++len;
     }
     if( len > I16DIGITS ) {
-        result = CFAlloc( h, I32DIGITS );
+        result = CFAlloc( back, h, I32DIGITS );
     } else {
-        result = CFAlloc( h, I16DIGITS );
+        result = CFAlloc( back, h, I16DIGITS );
     }
     memcpy( result->mant, digit, len + 1 );
     result->sign = sign;
@@ -431,19 +432,19 @@ static cfloat   *CFCnvLongToF( cfhandle h, signed_32 data, bool is_signed )
     return( result );
 }
 
-cfloat  *CFCnvI32F( cfhandle h, signed_32 data )
+cfloat  *CFCnvI32F( BackRun& back, cfhandle h, signed_32 data )
 /**********************************************/
 {
-    return( CFCnvLongToF( h, data, true ) );
+    return( CFCnvLongToF( back, h, data, true ) );
 }
 
-cfloat  *CFCnvU32F( cfhandle h, unsigned_32 data )
+cfloat  *CFCnvU32F( BackRun& back, cfhandle h, unsigned_32 data )
 /************************************************/
 {
-    return( CFCnvLongToF( h, data, false ) );
+    return( CFCnvLongToF( back, h, data, false ) );
 }
 
-cfloat  *CFCnvU64F( cfhandle h, unsigned_32 lo32, unsigned_32 hi32 )
+cfloat  *CFCnvU64F( BackRun& back, cfhandle h, unsigned_32 lo32, unsigned_32 hi32 )
 /******************************************************************/
 {
     cfloat      *temp;
@@ -451,17 +452,17 @@ cfloat  *CFCnvU64F( cfhandle h, unsigned_32 lo32, unsigned_32 hi32 )
     cfloat      *hi;
     cfloat      *result;
 
-    lo = CFCnvU32F( h, lo32 );
-    hi = CFCnvU32F( h, hi32 );
-    temp = CFMul( h, hi, (cfloat *)&High64Mult );
-    result = CFAdd( h, temp, lo );
-    CFFree( h, lo );
-    CFFree( h, hi );
-    CFFree( h, temp );
+    lo = CFCnvU32F( back, h, lo32 );
+    hi = CFCnvU32F( back, h, hi32 );
+    temp = CFMul( back, h, hi, (cfloat *)&High64Mult );
+    result = CFAdd( back, h, temp, lo );
+    CFFree( back, h, lo );
+    CFFree( back, h, hi );
+    CFFree( back, h, temp );
     return( result );
 }
 
-cfloat  *CFCnvI64F( cfhandle h, unsigned_32 lo32, unsigned_32 hi32 )
+cfloat  *CFCnvI64F( BackRun& back, cfhandle h, unsigned_32 lo32, unsigned_32 hi32 )
 /******************************************************************/
 {
     bool        neg;
@@ -480,24 +481,24 @@ cfloat  *CFCnvI64F( cfhandle h, unsigned_32 lo32, unsigned_32 hi32 )
             hi32++;
         }
     }
-    result = CFCnvU64F( h, lo32, hi32 );
+    result = CFCnvU64F( back, h, lo32, hi32 );
     if( neg ) {
         result->sign = -1;
     }
     return( result );
 }
 
-cfloat  *CFCnvIF( cfhandle h, int data )
+cfloat  *CFCnvIF( BackRun& back, cfhandle h, int data )
 /**************************************/
 {
-    return( CFCnvLongToF( h, data, true ) );
+    return( CFCnvLongToF( back, h, data, true ) );
 }
 
 
-cfloat  *CFCnvUF( cfhandle h, uint data )
+cfloat  *CFCnvUF( BackRun& back, cfhandle h, uint data )
 /***************************************/
 {
-    return( CFCnvLongToF( h, data, false ) );
+    return( CFCnvLongToF( back, h, data, false ) );
 }
 
 static bool     CFIsIntType( cfloat *f, cfloat *maxval )

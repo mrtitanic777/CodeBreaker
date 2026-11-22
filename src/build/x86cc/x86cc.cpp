@@ -24,9 +24,8 @@ extern "C" {
     IDEBool IDEAPI p##IDEPassInitInfo(IDEDllHdl hdl, IDEInitInfo* info);                                                 \
     void IDEAPI p##IDEFiniDLL(IDEDllHdl hdl);                                                                            \
     int IDEAPI p##IDERunYourSelf(IDEDllHdl hdl, const char* opts, IDEBool* fatalerr);                                    \
-    void p##IdeMsgFormat(IDECBHdl hdl, const IDEMsgInfo* info, char* buffer, size_t len, IDEMsgInfoFn displayer);       \
-    void p##CBRunBegin(void);                                                                                          \
-    void p##CBRunEnd(void);
+    void p##IdeMsgFormat(IDECBHdl hdl, const IDEMsgInfo* info, char* buffer, size_t len, IDEMsgInfoFn displayer);   \
+    void IDEAPI p##IDEFreeRun(IDEDllHdl hdl);
 CB_WCC_ENTRIES(wcci86_)
 CB_WCC_ENTRIES(wcc386_)
 }
@@ -51,41 +50,52 @@ struct Entries {
     void(IDEAPI* fini)(IDEDllHdl);
     int(IDEAPI* run)(IDEDllHdl, const char*, IDEBool*);
     void (*format)(IDECBHdl, const IDEMsgInfo*, char*, size_t, IDEMsgInfoFn);
-    void (*begin_run)();   // run/cbrun.hpp: the compiler's state for one run, made new here and destroyed by end_run
-    void (*end_run)();
+    void(IDEAPI* free_run)(IDEDllHdl);   // frees the run the compiler gave back at the end of a compile
+    mutable IDEDllHdl spare = nullptr;   // the run of the last compile: new again, for the next (IDEInitDLL takes it)
 };
 
 const Entries& entries(Target t) {
     static const Entries i86{&wcci86_IDEInitDLL, &wcci86_IDEPassInitInfo, &wcci86_IDEFiniDLL, &wcci86_IDERunYourSelf,
-                             &wcci86_IdeMsgFormat, &wcci86_CBRunBegin, &wcci86_CBRunEnd};
+                             &wcci86_IdeMsgFormat, &wcci86_IDEFreeRun};
     static const Entries i386{&wcc386_IDEInitDLL, &wcc386_IDEPassInitInfo, &wcc386_IDEFiniDLL, &wcc386_IDERunYourSelf,
-                              &wcc386_IdeMsgFormat, &wcc386_CBRunBegin, &wcc386_CBRunEnd};
+                              &wcc386_IdeMsgFormat, &wcc386_IDEFreeRun};
+    // (the runs kept go with the program)
+    static const struct Free {
+        const Entries& a;
+        const Entries& b;
+        ~Free() {
+            for (const Entries* e : {&a, &b})
+                if (e->spare != nullptr) e->free_run(e->spare);
+        }
+    } freer{i86, i386};
+    (void)freer;
     return t == Target::i86 ? i86 : i386;
 }
 
-// What one run gathers, and the environment it sees. The driver passes no handle of its own to IDEInitDLL (idedrv.c:
-// NULL), so the callbacks find the run here (one at a time: the lock).
+// What one run gathers, and the environment it sees. The host's handle (IDECBHdl) is this: the compiler hands it back in every
+// callback.
 struct Host {
     Run run;
     std::map<std::string, std::string> environment;
     std::string held;   // the value GetInfo hands back (it must outlive the call)
     const Entries* entries = nullptr;
 };
-Host* current = nullptr;
+Host& host_of(IDECBHdl hdl) { return *static_cast<Host*>(hdl); }
 
-IDEBool IDEAPI print_message(IDECBHdl, const char* message) {
-    current->run.err += message;
-    current->run.err += '\n';
+IDEBool IDEAPI print_message(IDECBHdl hdl, const char* message) {
+    Host& h = host_of(hdl);
+    h.run.err += message;
+    h.run.err += '\n';
     return false;
 }
 
-IDEBool IDEAPI print_with_crlf(IDECBHdl, const char* message) {
-    current->run.err += message;
+IDEBool IDEAPI print_with_crlf(IDECBHdl hdl, const char* message) {
+    host_of(hdl).run.err += message;
     return false;
 }
 
 IDEBool IDEAPI print_with_info(IDECBHdl hdl, IDEMsgInfo* info) {
-    Host& h = *current;
+    Host& h = host_of(hdl);
     char text[512];
     h.entries->format(hdl, info, text, sizeof(text), &print_with_info);
     switch (info->severity) {   // as the driver: banner, debug and plain notes on stdout; the rest on stderr
@@ -99,9 +109,9 @@ IDEBool IDEAPI print_with_info(IDECBHdl hdl, IDEMsgInfo* info) {
 
 IDEBool IDEAPI progress_message(IDECBHdl, const char*) { return false; }
 
-IDEBool IDEAPI get_info(IDECBHdl, IDEInfoType type, IDEGetInfoWParam extra, IDEGetInfoLParam lparam) {
+IDEBool IDEAPI get_info(IDECBHdl hdl, IDEInfoType type, IDEGetInfoWParam extra, IDEGetInfoLParam lparam) {
     if (type != IDE_GET_ENV_VAR) return true;
-    Host& h = *current;
+    Host& h = host_of(hdl);
     const std::string name = reinterpret_cast<const char*>(extra);
     std::optional<std::string> value;
     for (const auto& [k, v] : h.environment) {
@@ -139,10 +149,6 @@ Run compile(Target target, const std::vector<std::string>& args, const stdfs::pa
     Host host;
     host.environment = environment;
     host.entries = &entries(target);
-    current = &host;
-    struct Clear {
-        ~Clear() { current = nullptr; }
-    } clear;
 
     IDECallBacks callbacks{};
     callbacks.PrintMessage = &print_message;
@@ -154,30 +160,29 @@ Run compile(Target target, const std::vector<std::string>& args, const stdfs::pa
     // the command line the program would have after its own name (maindrv.c: _bgetcmd)
     const std::string command = process::command_line(args);
 
-    // the compiler's state (every variable that was a global or a static of it) is new for this run and gone at its end
-    host.entries->begin_run();
-    struct EndRun {
-        void (*end)();
-        ~EndRun() { end(); }
-    } end_run{host.entries->end_run};
-
     clear_stack();   // (what a compile reads from a frame it never wrote is zero, as on a new process's stack)
 
     const WorkingFolder in(folder);   // (the compiler opens its files relative to the process's)
-    IDEDllHdl dll = nullptr;
-    if (host.entries->init(nullptr, &callbacks, &dll)) throw Error("x86cc: the compiler would not start");
+    IDEDllHdl dll = host.entries->spare;   // (the run kept from the last compile, if there was one)
+    // (the compiler's state, every variable that was a global or a static of it, is made new by IDEInitDLL: the handle it returns
+    // names it, and IDEFiniDLL frees it)
+    if (host.entries->init(&host, &callbacks, &dll)) throw Error("x86cc: the compiler would not start");
+    struct Fini {
+        void (IDEAPI* fini)(IDEDllHdl);
+        IDEDllHdl hdl;
+        ~Fini() { if (hdl != nullptr) fini(hdl); }
+    } fini{host.entries->fini, dll};
+    host.entries->spare = dll;   // (IDEFiniDLL gives the run back new: it is the next compile's)
     IDEInitInfo info{};
     info.ver = IDE_CUR_INFO_VER;   // as the driver passes it (idedrv.c), its output never a console here
     info.ignore_env = 0;
     info.cmd_line_has_files = 1;
     info.console_output = 0;
-    if (host.entries->pass_info(dll, &info)) {
-        host.entries->fini(dll);
-        throw Error("x86cc: the compiler refused its settings");
-    }
+    if (host.entries->pass_info(dll, &info)) throw Error("x86cc: the compiler refused its settings");
     IDEBool fatal = 0;
     const int runcode = host.entries->run(dll, command.c_str(), &fatal);
     host.entries->fini(dll);
+    fini.hdl = nullptr;
     host.run.exit_code = (fatal || runcode != 0) ? 1 : 0;   // maindrv.c: EXIT_SUCCESS only for IDEDRV_SUCCESS
     return std::move(host.run);
 }

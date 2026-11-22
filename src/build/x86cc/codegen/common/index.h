@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
-extern void         MergeIndex( void );
-extern instruction  *NeedIndex( instruction * );
-extern bool         IndexOkay( instruction *, name * );
+#pragma once
+extern void         MergeIndex( BackRun& back );
+extern instruction  *NeedIndex( BackRun& back, instruction * );
+extern bool         IndexOkay( BackRun& back, instruction *, name * );

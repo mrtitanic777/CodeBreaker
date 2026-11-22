@@ -42,6 +42,7 @@
 #include "clibext.h"
 
 #endif
+#include "asmrun.hpp"
 
 
 #if defined( _STANDALONE_ )
@@ -650,14 +651,14 @@ bool ExpandTheConstant( token_buffer *tokbuf, token_idx start_pos, bool early_on
 
 #else
 
-bool ExpandTheWorld( token_buffer *tokbuf, token_idx start_pos, bool early_only, bool flag_msg )
+bool ExpandTheWorld( AsmRun& assembler, token_buffer *tokbuf, token_idx start_pos, bool early_only, bool flag_msg )
 /**********************************************************************************************/
 {
     token_idx   val;
 
     /* unused parameters */ (void)early_only;
 
-    val = EvalExpr( tokbuf, start_pos, tokbuf->count, flag_msg );
+    val = EvalExpr( assembler, tokbuf, start_pos, tokbuf->count, flag_msg );
     if( ISINVALID_IDX( val ) )
         return( RC_ERROR );
     tokbuf->count = val;

@@ -39,9 +39,9 @@
     #include "asinline.h"
 #endif
 
-extern void         AsmSysInit( unsigned char * );
-extern void         AsmSysFini( void );
+extern void         AsmSysInit( FrontRun& front, unsigned char * );
+extern void         AsmSysFini( FrontRun& front );
 extern char const   *AsmSysDefineByte( void );
-extern void         AsmSysLine( const char * );
+extern void         AsmSysLine( FrontRun& front, const char * );
 
 #endif

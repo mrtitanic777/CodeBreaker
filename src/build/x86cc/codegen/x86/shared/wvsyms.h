@@ -29,12 +29,13 @@
 ****************************************************************************/
 
 
-extern  void    WVInitDbgInfo( void );
+#pragma once
+extern  void    WVInitDbgInfo( BackRun& back );
 extern  void    WVFiniDbgInfo( void );
-extern  void    WVObjInitDbgInfo( void );
+extern  void    WVObjInitDbgInfo( BackRun& back );
 extern  void    WVObjFiniDbgInfo( void );
-extern  void    WVGenStatic( cg_sym_handle sym, dbg_loc loc );
-extern  void    WVObjectPtr( cg_type ptr_type );
-extern  void    WVSetBase( void );
-extern  void    WVBlkEnd( dbg_block *blk, offset lc );
-extern  void    WVRtnEnd( dbg_rtn *rtn, offset lc );
+extern  void    WVGenStatic( BackRun& back, cg_sym_handle sym, dbg_loc loc );
+extern  void    WVObjectPtr( BackRun& back, cg_type ptr_type );
+extern  void    WVSetBase( BackRun& back );
+extern  void    WVBlkEnd( BackRun& back, dbg_block *blk, offset lc );
+extern  void    WVRtnEnd( BackRun& back, dbg_rtn *rtn, offset lc );

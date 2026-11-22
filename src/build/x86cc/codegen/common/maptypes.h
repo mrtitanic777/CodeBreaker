@@ -30,8 +30,9 @@
 ****************************************************************************/
 
 
-extern type_class_def   MapPointer( cg_type );
-extern type_class_def   MapIntReturn( cg_type );
+#pragma once
+extern type_class_def   MapPointer( BackRun& back, cg_type );
+extern type_class_def   MapIntReturn( BackRun& back, cg_type );
 extern type_class_def   MapFloat( cg_type, call_attributes );
 extern type_class_def   MapStruct( type_length, call_attributes );
 

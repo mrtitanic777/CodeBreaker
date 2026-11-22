@@ -33,24 +33,25 @@
 #include <stddef.h>
 #include "cmemmgr.h"
 #include "memfuncs.h"
+#include "frontrun.hpp"
 
 
-void *MemAlloc( size_t amount )
+void *MemAlloc( FrontRun& front, size_t amount )
 {
-    return( CMemAlloc( amount ) );
+    return( CMemAlloc( front, amount ) );
 }
 
-void *MemAllocSafe( size_t amount )
+void *MemAllocSafe( FrontRun& front, size_t amount )
 {
-    return( CMemAlloc( amount ) );
+    return( CMemAlloc( front, amount ) );
 }
 
-char *MemStrdupSafe( const char *str )
+char *MemStrdupSafe( FrontRun& front, const char *str )
 {
-    return( CMemStrdup( str ) );
+    return( CMemStrdup( front, str ) );
 }
 
-void MemFree( void *ptr )
+void MemFree( FrontRun& front, void *ptr )
 {
-    CMemFree( ptr );
+    CMemFree( front, ptr );
 }

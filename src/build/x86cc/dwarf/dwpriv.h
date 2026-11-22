@@ -46,14 +46,14 @@
 #include "dwcarve.h"
 #include "dwhandle.h"
 
-#define CLIReloc2( x, __s, __i )       (x)->funcs.cli_reloc( __s, __i )
-#define CLIReloc3( x, __s, __i, __v )  (x)->funcs.cli_reloc( __s, __i, __v )
-#define CLIReloc4( x, __s, __i, __v1, __v2 ) (x)->funcs.cli_reloc( __s, __i, __v1, __v2 )
-#define CLIWrite( x, __s,  __b, __l )  (x)->funcs.cli_write( __s, __b, __l )
-#define CLISeek( x, __s, __o, __t )    (x)->funcs.cli_seek( __s, __o, __t )
-#define CLITell( x, __s )              (x)->funcs.cli_tell( __s )
-#define CLIAlloc( x, __size )          (x)->funcs.cli_alloc( __size )
-#define CLIFree( x, __ptr )            (x)->funcs.cli_free( __ptr )
+#define CLIReloc2( x, __s, __i )       (x)->funcs.cli_reloc( back, __s, __i )
+#define CLIReloc3( x, __s, __i, __v )  (x)->funcs.cli_reloc( back, __s, __i, __v )
+#define CLIReloc4( x, __s, __i, __v1, __v2 ) (x)->funcs.cli_reloc( back, __s, __i, __v1, __v2 )
+#define CLIWrite( x, __s,  __b, __l )  (x)->funcs.cli_write( back, __s, __b, __l )
+#define CLISeek( x, __s, __o, __t )    (x)->funcs.cli_seek( back, __s, __o, __t )
+#define CLITell( x, __s )              (x)->funcs.cli_tell( back, __s )
+#define CLIAlloc( x, __size )          (x)->funcs.cli_alloc( back, __size )
+#define CLIFree( x, __ptr )            (x)->funcs.cli_free( back, __ptr )
 
 #define GET_FLAG_PTR_TYPE(f)    ((uint_8)(((f) & DW_FLAG_PTR_TYPE_MASK) >> DW_FLAG_PTR_TYPE_SHIFT))
 #define GET_FLAG_INLINE(f)      ((uint_8)(((f) & DW_FLAG_INLINE_MASK) >> DW_FLAG_INLINE_SHIFT))

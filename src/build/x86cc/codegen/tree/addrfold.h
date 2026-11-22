@@ -29,12 +29,13 @@
 *
 ****************************************************************************/
 
-extern  name    *Points( an addr, const type_def *tipe );
-extern  an      AddrName( name *op, const type_def *tipe );
-extern  bool    CypAddrPlus( an l_addr, an r_addr, const type_def *tipe );
-extern  an      AddrPlus( an l_addr, an r_addr, const type_def *tipe );
-extern  bool    CypAddrShift( an l_addr, an r_addr, const type_def *tipe );
-extern  an      AddrShift( an l_addr, an r_addr, const type_def *tipe );
-extern  name    *GetValue( an addr, name *suggest );
+#pragma once
+extern  name    *Points( BackRun& back, an addr, const type_def *tipe );
+extern  an      AddrName( BackRun& back, name *op, const type_def *tipe );
+extern  bool    CypAddrPlus( BackRun& back, an l_addr, an r_addr, const type_def *tipe );
+extern  an      AddrPlus( BackRun& back, an l_addr, an r_addr, const type_def *tipe );
+extern  bool    CypAddrShift( BackRun& back, an l_addr, an r_addr, const type_def *tipe );
+extern  an      AddrShift( BackRun& back, an l_addr, an r_addr, const type_def *tipe );
+extern  name    *GetValue( BackRun& back, an addr, name *suggest );
 extern  name    *AddrToName( an addr );
 

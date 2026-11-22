@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef uint_32     cue_idx;
 
 typedef struct cue_state{
@@ -80,31 +81,30 @@ struct DbsymsState {
     cue_ctl LineInfo;
     fname_ctl DBFiles;
 };
-inline DbsymsState& dbsyms_state() { return cbrun_part<DbsymsState>(); }
 
 #endif
 
-extern  const char  *SrcFNoFind( uint fno );
-extern  bool        CueFind( cue_idx cue, cue_state *ret );
-extern  cue_idx     CueAdd( int fno, int line, int col );
+extern  const char  *SrcFNoFind( BackRun& back, uint fno );
+extern  bool        CueFind( BackRun& back, cue_idx cue, cue_state *ret );
+extern  cue_idx     CueAdd( BackRun& back, int fno, int line, int col );
 extern  void        CueMap( cue_ctl *ctl, cue_state *base );
-extern  void        InitDbgInfo( void );
-extern  void        FiniDbgInfo( void );
+extern  void        InitDbgInfo( BackRun& back );
+extern  void        FiniDbgInfo( BackRun& back );
 extern  void        DBAllocReg( name *reg, name *temp );
-extern  dbg_block   *DoDBBegBlock( int fast_codegen );
-extern  void        DoDBEndBlock( int fast_codegen );
-extern  void        DbgSetBase( void );
-extern  void        DbgParmLoc( name *parm, cg_sym_handle sym );
-extern  void        DbgRetLoc( void );
-extern  void        DbgRetOffset( type_length offset );
-extern  void        EmitDbgInfo( instruction *ins );
-extern  void        EmitRtnBeg( void );
-extern  void        EmitRtnEnd( void );
-extern  void        EmitProEnd( void );
-extern  void        EmitEpiBeg( void );
-extern  void        DbgRtnBeg( dbg_rtn *rtn,  offset lc );
-extern  void        DbgRtnEnd( dbg_rtn *rtn, offset lc );
-extern  void        DbgProEnd( dbg_rtn *rtn, offset lc );
-extern  void        DbgEpiBeg( dbg_rtn *rtn, offset lc );
-extern  void        DbgBlkBeg( dbg_block *blk, offset lc );
-extern  void        DbgBlkEnd( dbg_block *blk, offset lc );
+extern  dbg_block   *DoDBBegBlock( BackRun& back, int fast_codegen );
+extern  void        DoDBEndBlock( BackRun& back, int fast_codegen );
+extern  void        DbgSetBase( BackRun& back );
+extern  void        DbgParmLoc( BackRun& back, name *parm, cg_sym_handle sym );
+extern  void        DbgRetLoc( BackRun& back );
+extern  void        DbgRetOffset( BackRun& back, type_length offset );
+extern  void        EmitDbgInfo( BackRun& back, instruction *ins );
+extern  void        EmitRtnBeg( BackRun& back );
+extern  void        EmitRtnEnd( BackRun& back );
+extern  void        EmitProEnd( BackRun& back );
+extern  void        EmitEpiBeg( BackRun& back );
+extern  void        DbgRtnBeg( BackRun& back, dbg_rtn *rtn,  offset lc );
+extern  void        DbgRtnEnd( BackRun& back, dbg_rtn *rtn, offset lc );
+extern  void        DbgProEnd( BackRun& back, dbg_rtn *rtn, offset lc );
+extern  void        DbgEpiBeg( BackRun& back, dbg_rtn *rtn, offset lc );
+extern  void        DbgBlkBeg( BackRun& back, dbg_block *blk, offset lc );
+extern  void        DbgBlkEnd( BackRun& back, dbg_block *blk, offset lc );

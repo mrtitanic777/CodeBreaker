@@ -40,6 +40,7 @@
 #include "rgtbl.h"
 #include "sib.h"
 #include "fixindex.h"
+#include "backrun.hpp"
 
 
 typedef struct sib_info {
@@ -53,7 +54,7 @@ typedef struct sib_info {
 } sib_info;
 
 
-bool FoldIntoIndex( instruction *ins )
+bool FoldIntoIndex( BackRun& back, instruction *ins )
 /************************************/
 {
     name        *cons;
@@ -92,7 +93,7 @@ bool FoldIntoIndex( instruction *ins )
             /*
              * found ADD R1,c => R1
              */
-            if( data_state().TypeClassSize[ins->type_class] != WORD_SIZE )
+            if( back.data.TypeClassSize[ins->type_class] != WORD_SIZE )
                 return( false );
             cons_add = true;
             HW_CAsgn( base_reg, HW_EMPTY );
@@ -109,7 +110,7 @@ bool FoldIntoIndex( instruction *ins )
                 /*
                  *      found ADD R1,R1 => R1  <==> SHL R1,1 => R1
                  */
-                cons = AllocIntConst( 1 );
+                cons = AllocIntConst( back, 1 );
                 HW_CAsgn( base_reg, HW_EMPTY );
             }
         }
@@ -178,7 +179,7 @@ bool FoldIntoIndex( instruction *ins )
                         break;
 
                     HW_TurnOn( tmp, other_reg );
-                    sib.reg = AllocRegName( tmp );
+                    sib.reg = AllocRegName( back, tmp );
                     tmp = Low64Reg( tmp );
                     if( sib.flags & X_LOW_BASE ) {
                         if( HW_Equal( tmp, other_reg ) ) {
@@ -210,31 +211,31 @@ bool FoldIntoIndex( instruction *ins )
                 HW_TurnOn( tmp, other_reg );
                 HW_TurnOn( tmp, base_reg );
             }
-            sib.reg = AllocRegName( tmp );
+            sib.reg = AllocRegName( back, tmp );
             sib.flags |= X_HIGH_BASE;
         }
-        curr_sib = static_cast<sib_info *>(CGAlloc( sizeof( sib_info ) ));
+        curr_sib = static_cast<sib_info *>(CGAlloc( back, sizeof( sib_info ) ));
         Copy( &sib, curr_sib, sizeof( sib_info ) );
         curr_sib->next = sib_head;
         sib_head = curr_sib;
     } while( !dies && !modifies );
     if( dies && curr_sib != NULL ) {
         for( curr_sib = sib_head; curr_sib != NULL; curr_sib = curr_sib->next ) {
-            new_x = ScaleIndex( curr_sib->reg, curr_sib->index->i.base,
+            new_x = ScaleIndex( back, curr_sib->reg, curr_sib->index->i.base,
                                 curr_sib->index->i.constant + curr_sib->offset,
                                 curr_sib->index->n.type_class,
                                 curr_sib->index->n.size, curr_sib->scale,
                                 curr_sib->flags );
             ReplaceOperand( curr_sib->ins, curr_sib->index, new_x );
         }
-        FreeIns( ins );
+        FreeIns( back, ins );
     } else {
         dies = false;
     }
     while( sib_head != NULL ) {
         curr_sib = sib_head;
         sib_head = sib_head->next;
-        CGFree( curr_sib );
+        CGFree( back, curr_sib );
     }
     return( dies );
 }

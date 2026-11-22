@@ -79,6 +79,7 @@ essentially no worst case performance scenario.
 #include "onexit.h"
 #include "memsydep.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 #define ALLOCATED       1
 
@@ -106,7 +107,7 @@ essentially no worst case performance scenario.
 
 typedef pointer_uint    tag;
 
-static pointer          MemFromSys( size_t );
+static pointer          MemFromSys( BackRun& back, size_t );
 
 #ifdef MEMORY_STATS
 static pointer_uint     PeakAlloc = 0;
@@ -143,6 +144,7 @@ typedef struct blk_hdr {
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
+}  // namespace
 struct CgmemmgrState {
     pointer_uint AllocSize = 0;
     pointer_uint MemorySize;
@@ -151,10 +153,10 @@ struct CgmemmgrState {
     frl *_FreeList[MAX_CLASS + 1];
     unsigned _ClassSizes[MAX_CLASS + 1];
 };
+namespace {
 
 }  // namespace
 
-static inline CgmemmgrState& cgmemmgr_state() { return cbrun_part<CgmemmgrState>(); }
 
 
 #if  defined( __DOS__ ) || defined( __QNX__ )
@@ -183,7 +185,7 @@ static int myatoi( const char *p )
 }
 
 
-static  void    CalcMemSize( void )
+static  void    CalcMemSize( BackRun& back )
 /*********************************/
 {
     bool            max_size_queried;
@@ -193,12 +195,12 @@ static  void    CalcMemSize( void )
     char            buff[80];
     const char      *envvar;
 
-    cgmemmgr_state().Initialized = 2;
+    back.cgmemmgr->Initialized = 2;
     size_requested = 0;
     size_queried = false;
     max_size_queried = false;
 
-    envvar = FEGetEnv( "WCGMEMORY" );
+    envvar = FEGetEnv( *back.front, "WCGMEMORY" );
     if( envvar != NULL ) {
         if( envvar[0] == '?' && envvar[1] == '\0' ) {
             max_size_queried = true;
@@ -259,9 +261,9 @@ static  void    CalcMemSize( void )
         GlobalMemoryStatus( &info );
         memory_available = info.dwAvailVirtual;
         if( size_requested != 0 ) {
-            cgmemmgr_state().MemorySize = size_requested;
+            back.cgmemmgr->MemorySize = size_requested;
         } else {
-            cgmemmgr_state().MemorySize = memory_available;
+            back.cgmemmgr->MemorySize = memory_available;
         }
     }
 #elif defined( __OS2__ )
@@ -296,26 +298,26 @@ static  void    CalcMemSize( void )
 #endif
     if( max_size_queried || size_queried ) {
         sprintf( buff, "Maximum WCGMEMORY=%d\n", (int)( memory_available / _1K ) );
-        FEMessage( FEMSG_INFO, buff );
+        FEMessage( *back.front, FEMSG_INFO, buff );
     }
 }
 
-static  void    memInit( void )
+static  void    memInit( BackRun& back )
 /*****************************/
 {
-    if( cgmemmgr_state().Initialized == 0 ) {
+    if( back.cgmemmgr->Initialized == 0 ) {
         int i;
 
         for( i = 0; i <= MAX_CLASS; ++i ) {
-            cgmemmgr_state()._FreeList[i]   = NULL;
-            cgmemmgr_state()._ClassSizes[i] = 1 << ( MIN_SIZE + i );
+            back.cgmemmgr->_FreeList[i]   = NULL;
+            back.cgmemmgr->_ClassSizes[i] = 1 << ( MIN_SIZE + i );
         }
 
-        cgmemmgr_state().Initialized = 1;
-        cgmemmgr_state().AllocSize   = 0;
-        cgmemmgr_state()._Blks       = NULL;
+        back.cgmemmgr->Initialized = 1;
+        back.cgmemmgr->AllocSize   = 0;
+        back.cgmemmgr->_Blks       = NULL;
 #if !defined( __QNX__ )
-        CalcMemSize();
+        CalcMemSize(back);
 #endif
     }
 }
@@ -346,40 +348,40 @@ static int SizeToClass( size_t amount )
 }
 
 
-static unsigned ClassToSize( int mem_class )
+static unsigned ClassToSize( BackRun& back, int mem_class )
 /******************************************/
 {
-    return( cgmemmgr_state()._ClassSizes[mem_class] );
+    return( back.cgmemmgr->_ClassSizes[mem_class] );
 }
 
 
-static pointer  GetFromFrl( size_t amount, int frl_class )
+static pointer  GetFromFrl( BackRun& back, size_t amount, int frl_class )
 /********************************************************/
 {
     frl     *free;
 
     /* unused parameters */ (void)amount;
 
-    free = cgmemmgr_state()._FreeList[frl_class];
+    free = back.cgmemmgr->_FreeList[frl_class];
     if( free != NULL ) {
 #ifdef DEVBUILD
         assert( (free->length & ALLOCATED) == 0 );
 #endif
         free->length |= ALLOCATED;
-        cgmemmgr_state()._FreeList[frl_class] = free->link;
+        back.cgmemmgr->_FreeList[frl_class] = free->link;
         return( free );
     }
     return( NULL );
 }
 
 
-static pointer  GetFromBlk( size_t amount )
+static pointer  GetFromBlk( BackRun& back, size_t amount )
 /*****************************************/
 {
     mem_blk     *block;
     tag         *alloc;
 
-    for( block = cgmemmgr_state()._Blks; block != NULL; block = block->next ) {
+    for( block = back.cgmemmgr->_Blks; block != NULL; block = block->next ) {
         if( block->free >= amount ) {
             alloc = (tag *)( (char *)block + block->size - block->free );
 #ifdef DEVBUILD
@@ -390,40 +392,40 @@ static pointer  GetFromBlk( size_t amount )
             return( ++alloc );
         }
     }
-    if( MemFromSys( 0 ) == NULL)    // Grab one empty block
+    if( MemFromSys( back, 0 ) == NULL)    // Grab one empty block
         return( NULL );
-    return( GetFromBlk( amount ) ); // We know this will now succeed
+    return( GetFromBlk( back, amount ) ); // We know this will now succeed
 }
 
 
-pointer  CgMemAlloc( size_t amount )
+pointer  CgMemAlloc( BackRun& back, size_t amount )
 /**********************************/
 {
     char        *chunk;
     int         mem_class;
 
-    if( cgmemmgr_state().Initialized == 0 )
-        memInit();
+    if( back.cgmemmgr->Initialized == 0 )
+        memInit(back);
     if( amount == 0 )
         return( NULL );
     amount = _RoundUp( amount + TAG_SIZE, MEM_WORD_SIZE );
     if( amount > MAX_ALLOC ) {
-        return( MemFromSys( amount ) );
+        return( MemFromSys( back, amount ) );
     }
 
     if( amount < MIN_ALLOC )
         amount = MIN_ALLOC;
 
     mem_class = SizeToClass( amount );
-    chunk = static_cast<char *>(GetFromFrl( amount, mem_class ));
+    chunk = static_cast<char *>(GetFromFrl( back, amount, mem_class ));
     if( chunk != NULL )
         return( chunk + TAG_SIZE );
 
-    return( GetFromBlk( ClassToSize( mem_class ) ) );
+    return( GetFromBlk( back, ClassToSize( back, mem_class ) ) );
 }
 
 
-void     CgMemFree( pointer p )
+void     CgMemFree( BackRun& back, pointer p )
 /*****************************/
 {
     frl     *free;
@@ -452,8 +454,8 @@ void     CgMemFree( pointer p )
 #endif
     } else {
         mem_class  = SizeToClass( length );
-        free->link = cgmemmgr_state()._FreeList[mem_class];
-        cgmemmgr_state()._FreeList[mem_class] = free;
+        free->link = back.cgmemmgr->_FreeList[mem_class];
+        back.cgmemmgr->_FreeList[mem_class] = free;
     }
 }
 
@@ -464,32 +466,32 @@ void     MemCoalesce( void )
 }
 
 
-pointer_uint     MemInUse( void )
+pointer_uint     MemInUse( BackRun& back )
 /*******************************/
 {
-    if( cgmemmgr_state().Initialized == 0 )
-        memInit();
-    return( cgmemmgr_state().AllocSize );
+    if( back.cgmemmgr->Initialized == 0 )
+        memInit(back);
+    return( back.cgmemmgr->AllocSize );
 }
 
 
-pointer_uint     MemSize( void )
+pointer_uint     MemSize( BackRun& back )
 /******************************/
 {
-    switch( cgmemmgr_state().Initialized ) {
+    switch( back.cgmemmgr->Initialized ) {
     case 0:
-        memInit();
+        memInit(back);
 #if defined( __QNX__ )
         /* fall through */
     case 1:
         CalcMemSize();
 #endif
     }
-    return( cgmemmgr_state().MemorySize );
+    return( back.cgmemmgr->MemorySize );
 }
 
 
-static  pointer MemFromSys( size_t amount )
+static  pointer MemFromSys( BackRun& back, size_t amount )
 /*****************************************/
 {
     pointer     ptr;
@@ -504,9 +506,9 @@ static  pointer MemFromSys( size_t amount )
     /*
      * Need to clear memory for later assert() calls, and a compile reads what it never wrote as zero (run/cbrun.hpp)
      */
-    ptr = calloc( 1, size );
+    ptr = back.held->calloc( 1, size );
     if( ptr != NULL ) {
-        cgmemmgr_state().AllocSize += size;
+        back.cgmemmgr->AllocSize += size;
 #ifdef MEMORY_STATS
         if( AllocSize > PeakAlloc )
             PeakAlloc = AllocSize;
@@ -519,8 +521,8 @@ static  pointer MemFromSys( size_t amount )
          * small chunks. If the initial large allocation is freed,
          * it will also be reused for small blocks.
          */
-        blk->next = cgmemmgr_state()._Blks;
-        cgmemmgr_state()._Blks = blk;
+        blk->next = back.cgmemmgr->_Blks;
+        back.cgmemmgr->_Blks = blk;
         blk->free = size - amount - sizeof( mem_blk );
         blk->size = size;
         if( amount ) {
@@ -539,22 +541,22 @@ static  pointer MemFromSys( size_t amount )
 }
 
 
-static  void MemToSys( mem_blk *what )
+static  void MemToSys( BackRun& back, mem_blk *what )
 /************************************/
 {
-    free( what );
+    back.held->free( what );
 }
 
 
-void MemFini( void )
+void MemFini( BackRun& back )
 /******************/
 {
     mem_blk     *curr;
     mem_blk     *next;
 
-    for( curr = cgmemmgr_state()._Blks; curr != NULL; curr = next ) {
+    for( curr = back.cgmemmgr->_Blks; curr != NULL; curr = next ) {
         next = curr->next;
-        MemToSys( curr );
+        MemToSys( back, curr );
     }
 #ifdef MEMORY_STATS
     {
@@ -565,5 +567,9 @@ void MemFini( void )
         PeakAlloc = 0;
     }
 #endif
-    cgmemmgr_state().Initialized = 0;
+    back.cgmemmgr->Initialized = 0;
 }
+
+/* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
+CgmemmgrState* cgmemmgr_make() { return new CgmemmgrState(); }
+void cgmemmgr_free(CgmemmgrState* part) { delete part; }

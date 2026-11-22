@@ -30,5 +30,6 @@
 ****************************************************************************/
 
 
-extern tn       FoldCnvRnd( cg_op opcode, tn name, const type_def *to_tipe );
-extern void     TGDemote( tn name, const type_def *tipe );
+#pragma once
+extern tn       FoldCnvRnd( BackRun& back, cg_op opcode, tn name, const type_def *to_tipe );
+extern void     TGDemote( BackRun& back, tn name, const type_def *tipe );

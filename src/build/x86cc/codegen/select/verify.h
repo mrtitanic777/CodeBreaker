@@ -30,4 +30,5 @@
 ****************************************************************************/
 
 
-extern bool    OtherVerify( vertype kind, instruction *ins, name *op1, name *op2, name *result );
+#pragma once
+extern bool    OtherVerify( BackRun& back, vertype kind, instruction *ins, name *op1, name *op2, name *result );

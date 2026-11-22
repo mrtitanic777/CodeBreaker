@@ -30,10 +30,11 @@
 ****************************************************************************/
 
 
-extern bool                 VarFunc( SYMPTR );
+#pragma once
+extern bool                 VarFunc( FrontRun& front, SYMPTR );
 extern bool                 VarParm( SYMPTR );
-extern aux_info             *FindInfo( SYMPTR, SYM_HANDLE );
-extern bool                 FunctionAborts( SYMPTR, SYM_HANDLE );
+extern aux_info             *FindInfo( FrontRun& front, SYMPTR, SYM_HANDLE );
+extern bool                 FunctionAborts( FrontRun& front, SYMPTR, SYM_HANDLE );
 extern bool                 ParmsToBeReversed( type_modifiers, aux_info * );
-extern aux_info             *GetLangInfo( type_modifiers flags );
+extern aux_info             *GetLangInfo( FrontRun& front, type_modifiers flags );
 extern char                 *SrcFullPath( char const *, char *, size_t );

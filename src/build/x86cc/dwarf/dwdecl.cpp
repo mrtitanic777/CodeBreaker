@@ -36,11 +36,12 @@
 #include "dwinfo.h"
 #include "dwdecl.h"
 #include "dwrefer.h"
+#include "backrun.hpp"
 
 
-void DWENTRY DWDeclFile( dw_client cli, const char *name )
+void DWENTRY DWDeclFile( BackRun& back, dw_client cli, const char *name )
 {
-    cli->decl.file = DW_GetFileNumber( cli, name );
+    cli->decl.file = DW_GetFileNumber( back, cli, name );
     cli->decl.changed = 1;
     DW_SetReferenceFile( cli, cli->decl.file );
 }
@@ -61,15 +62,15 @@ abbrev_code DW_CheckDecl( dw_client cli, abbrev_code abbrev )
     return( 0 );
 }
 
-void DW_EmitDecl( dw_client cli )
+void DW_EmitDecl( BackRun& back, dw_client cli )
 {
     if( cli->decl.changed ) {
         /* AT_decl_file */
-        DW_InfoULEB128( cli, cli->decl.file );
+        DW_InfoULEB128( back, cli, cli->decl.file );
         /* AT_decl_line */
-        DW_InfoULEB128( cli, cli->decl.line );
+        DW_InfoULEB128( back, cli, cli->decl.line );
         /* AT_decl_column */
-        DW_InfoULEB128( cli, cli->decl.column );
+        DW_InfoULEB128( back, cli, cli->decl.column );
         cli->decl.changed = 0;
     }
 }

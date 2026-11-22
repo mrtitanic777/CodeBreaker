@@ -46,8 +46,8 @@ typedef struct _IntlData {
 extern "C" {
 #endif
 
-extern IntlData     *LoadInternationalData( const char *file_prefix );
-extern void         FreeInternationalData( IntlData *handle );
+extern IntlData     *LoadInternationalData( FrontRun& front, const char *file_prefix );
+extern void         FreeInternationalData( FrontRun& front, IntlData *handle );
 
 #ifdef __cplusplus
 }

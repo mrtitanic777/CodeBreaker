@@ -41,6 +41,7 @@
 #include "nullprop.h"
 #include "insutil.h"
 #include "blktrim.h"
+#include "backrun.hpp"
 
 
 static  instruction     *FindOneCond( block *blk )
@@ -61,7 +62,7 @@ static  instruction     *FindOneCond( block *blk )
 }
 
 
-static  void    MarkReachableBlocks( void )
+static  void    MarkReachableBlocks( BackRun& back )
 /******************************************
  * Written NON-Recursively for a very good reason. (stack blew up)
  */
@@ -73,7 +74,7 @@ static  void    MarkReachableBlocks( void )
 
     do {
         change = false;
-        for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+        for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
             if( _IsBlkVisited( blk )
               || _IsBlkAttr( blk, BLK_BIG_LABEL | BLK_SELECT ) ) {
                 _MarkBlkVisited( blk );
@@ -104,12 +105,12 @@ int     CountIns( block *blk )
 }
 
 
-static  bool    FindBlock( block *blk )
+static  bool    FindBlock( BackRun& back, block *blk )
 /*************************************/
 {
     block       *curr;
 
-    for( curr = data_state().HeadBlock; curr != NULL; curr = curr->next_block ) {
+    for( curr = back.data.HeadBlock; curr != NULL; curr = curr->next_block ) {
         if( curr == blk ) {
             return( true );
         }
@@ -118,7 +119,7 @@ static  bool    FindBlock( block *blk )
 }
 
 
-void    RemoveBlock( block *blk )
+void    RemoveBlock( BackRun& back, block *blk )
 /*******************************/
 {
     block_num   i;
@@ -137,7 +138,7 @@ void    RemoveBlock( block *blk )
         /*
          * block may have already been removed by dead code removal
          */
-        if( FindBlock( blk->edge[i].destination.u.blk ) ) {
+        if( FindBlock( back, blk->edge[i].destination.u.blk ) ) {
             RemoveInputEdge( &blk->edge[i] );
         }
     }
@@ -149,7 +150,7 @@ void    RemoveBlock( block *blk )
         if( next_ins->head.line_num != 0 ) {
             last_line = next_ins->head.line_num;
         }
-        FreeIns( next_ins );
+        FreeIns( back, next_ins );
     }
     /*
      * Move the last line number from the block being deleted to the head
@@ -164,7 +165,7 @@ void    RemoveBlock( block *blk )
         next = blk->next_block;
     } else {
         next = NULL;
-        for( chk = data_state().HeadBlock; chk != NULL; chk = chk->next_block ) {
+        for( chk = back.data.HeadBlock; chk != NULL; chk = chk->next_block ) {
             if( (chk != blk)
               && (chk->gen_blk_id > blk->gen_blk_id)
               && (next == NULL
@@ -177,20 +178,20 @@ void    RemoveBlock( block *blk )
       && next->ins.head.line_num == 0 ) {
         next->ins.head.line_num = last_line;
     }
-    if( data_state().HeadBlock == blk ) {
-        data_state().HeadBlock = blk->next_block;
+    if( back.data.HeadBlock == blk ) {
+        back.data.HeadBlock = blk->next_block;
     }
-    if( data_state().BlockList == blk ) {
-        data_state().BlockList = blk->prev_block;
-        if( data_state().BlockList == NULL ) {
-            data_state().BlockList = data_state().HeadBlock;
+    if( back.data.BlockList == blk ) {
+        back.data.BlockList = blk->prev_block;
+        if( back.data.BlockList == NULL ) {
+            back.data.BlockList = back.data.HeadBlock;
         }
     }
-    TellScrapLabel( blk->label );
+    TellScrapLabel( back, blk->label );
     if( blk->dataflow != NULL ) {
-        CGFree( blk->dataflow );
+        CGFree( back, blk->dataflow );
     }
-    FreeABlock( blk );
+    FreeABlock( back, blk );
 }
 
 
@@ -216,7 +217,7 @@ void    RemoveInputEdge( block_edge *edge )
 }
 
 
-void    MoveHead( block *old, block *new_ )
+void    MoveHead( BackRun& back, block *old, block *new_ )
 /*****************************************
  * We're eliminating a loop header, so move it the the new
  * block and point all loop_head pointers to the new block.
@@ -226,7 +227,7 @@ void    MoveHead( block *old, block *new_ )
 
     if( !_IsBlkAttr( old, BLK_LOOP_HEADER ) )
         return;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( blk->loop_head == old ) {
             blk->loop_head = new_;
         }
@@ -242,7 +243,7 @@ void    MoveHead( block *old, block *new_ )
 }
 
 
-static  bool    Retarget( block *blk )
+static  bool    Retarget( BackRun& back, block *blk )
 /************************************/
 {
     block_edge  *edge;
@@ -266,14 +267,14 @@ static  bool    Retarget( block *blk )
         }
     }
     if( success ) {
-        MoveHead( blk, target );
-        RemoveBlock( blk );
+        MoveHead( back, blk, target );
+        RemoveBlock( back, blk );
     }
     return( success );
 }
 
 
-static  void    JoinBlocks( block *jump, block *target )
+static  void    JoinBlocks( BackRun& back, block *jump, block *target )
 /******************************************************/
 {
     block_edge          *edge;
@@ -317,7 +318,7 @@ static  void    JoinBlocks( block *jump, block *target )
             if( target->ins.head.next->head.line_num == 0 ) {
                 target->ins.head.next->head.line_num = nop->head.line_num;
             }
-            FreeIns( nop );
+            FreeIns( back, nop );
         }
     }
 
@@ -338,12 +339,12 @@ static  void    JoinBlocks( block *jump, block *target )
 
     jump->inputs = 0;
     jump->targets = 0;
-    MoveHead( jump, target );
-    RemoveBlock( jump );
+    MoveHead( back, jump, target );
+    RemoveBlock( back, jump );
 }
 
 
-static  bool    SameTarget( block *blk )
+static  bool    SameTarget( BackRun& back, block *blk )
 /**************************************/
 {
     instruction *ins;
@@ -362,12 +363,12 @@ static  bool    SameTarget( block *blk )
     while( !_OpIsCondition( ins->head.opcode ) ) {
         ins = ins->head.prev;
     }
-    FreeIns( ins );
+    FreeIns( back, ins );
     return( true );
 }
 
 
-static  bool    DoBlockTrim( void )
+static  bool    DoBlockTrim( BackRun& back )
 /*********************************/
 {
     block       *blk;
@@ -382,18 +383,18 @@ static  bool    DoBlockTrim( void )
     any_change = false;
     do {
         change = false;
-        MarkReachableBlocks();
-        for( blk = data_state().HeadBlock->next_block; blk != NULL; blk = next ) {
+        MarkReachableBlocks(back);
+        for( blk = back.data.HeadBlock->next_block; blk != NULL; blk = next ) {
             next = blk->next_block;
             if( !_IsBlkVisited( blk )
               && !_IsBlkAttr( blk, BLK_UNKNOWN_DESTINATION ) ) {
                 while( blk->input_edges != NULL ) {
                     RemoveInputEdge( blk->input_edges );
                 }
-                RemoveBlock( blk );
+                RemoveBlock( back, blk );
                 change = true;
             } else if( _IsBlkAttr( blk, BLK_CONDITIONAL ) ) {
-                if( SameTarget( blk ) ) {
+                if( SameTarget( back, blk ) ) {
                     _MarkBlkAttrClr( blk, BLK_CONDITIONAL );
                     _MarkBlkAttrSet( blk, BLK_JUMP );
                     change = true;
@@ -409,14 +410,14 @@ static  bool    DoBlockTrim( void )
                     }
                     if( ins->head.opcode == OP_BLOCK ) { /* was an empty block*/
                         if( !_IsBlkAttr( blk, BLK_BIG_LABEL ) ) {
-                            change |= Retarget( blk );
+                            change |= Retarget( back, blk );
                         }
                     } else if( target->inputs == 1
                       && !_IsBlkAttr( target, BLK_BIG_LABEL )
                       && ( CountIns( blk ) + CountIns( target ) ) <= INS_PER_BLOCK ) {
                         if( !_IsBlkAttr( blk, BLK_RETURNED_TO | BLK_BIG_LABEL )
                           && !_IsBlkAttr( target, BLK_CALL_LABEL ) ) {
-                            JoinBlocks( blk, target );
+                            JoinBlocks( back, blk, target );
                             change = true;
                         }
                     }
@@ -425,18 +426,18 @@ static  bool    DoBlockTrim( void )
         }
         _MarkBlkAllUnVisited();
         if( change ) {
-            data_state().BlocksUnTrimmed = false;
+            back.data.BlocksUnTrimmed = false;
             any_change = true;
         }
     } while( change );
     blk_id = 1;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         blk->blk_id = blk_id++;
     }
     return( any_change );
 }
 
-void KillCondBlk( block *blk, instruction *ins, cond_dst_idx dest_idx )
+void KillCondBlk( BackRun& back, block *blk, instruction *ins, cond_dst_idx dest_idx )
 /**********************************************************************
  * Assume blk is a conditional with compare ins
  * Make dest the destination and delete the unused edge
@@ -456,10 +457,10 @@ void KillCondBlk( block *blk, instruction *ins, cond_dst_idx dest_idx )
     edge->flags = blk->edge[dest_idx].flags;
     edge->source = blk;
     PointEdge( edge, dest_blk );
-    FreeIns( ins );
+    FreeIns( back, ins );
 }
 
-bool    DeadBlocks( void )
+bool    DeadBlocks( BackRun& back )
 /************************/
 {
     block           *blk;
@@ -468,7 +469,7 @@ bool    DeadBlocks( void )
     bool            change;
 
     change = false;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( _IsBlkAttr( blk, BLK_CONDITIONAL ) ) {
             ins = FindOneCond( blk );
             if( ins == NULL )
@@ -478,26 +479,26 @@ bool    DeadBlocks( void )
             dest_idx = _TrueIndex( ins );
             if( dest_idx != _FalseIndex( ins ) )
                 continue;
-            KillCondBlk( blk, ins, dest_idx );
+            KillCondBlk( back, blk, ins, dest_idx );
             change = true;
         }
     }
     if( change ) {
-        BlockTrim();
+        BlockTrim(back);
         return( true );
     }
     return( false );
 }
 
 
-bool    BlockTrim( void )
+bool    BlockTrim( BackRun& back )
 /***********************/
 {
     bool    change = false;
 
-    if( ( data_state().CurrProc->state.attr & ROUTINE_WANTS_DEBUGGING ) == 0 ) {
-        change = DoBlockTrim();
-        Renumber();
+    if( ( back.data.CurrProc->state.attr & ROUTINE_WANTS_DEBUGGING ) == 0 ) {
+        change = DoBlockTrim(back);
+        Renumber(back);
     }
     return( change );
 }

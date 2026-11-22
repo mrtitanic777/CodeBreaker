@@ -40,6 +40,7 @@
 #include "insutil.h"
 #include "inssegs.h"
 #include "_split.h"
+#include "backrun.hpp"
 
 
 static const opcode_entry    ctable_C2TO1[] = {
@@ -380,7 +381,7 @@ CU4,   CI4,   CU4,   FPOK,  FPOK,   FPOK,   C7U8_D, FPOK,   __x__,  __x__, FPOK,
 CU4,   CI4,   CU4,   FPOK,  FPOK,   FPOK,   C7U8_L, FPOK,   __x__,  __x__, FPOK,   FPOK,   FPOK,   /* FL */
 };
 
-static  conv_method     AskHow( type_class_def fr, type_class_def to )
+static  conv_method     AskHow( BackRun& back, type_class_def fr, type_class_def to )
 /*********************************************************************
     return the conversion method required to convert from "fr" to "to"
 */
@@ -395,7 +396,7 @@ static  conv_method     AskHow( type_class_def fr, type_class_def to )
     }
 }
 
-bool    CvtOk( type_class_def fr, type_class_def to )
+bool    CvtOk( BackRun& back, type_class_def fr, type_class_def to )
 /************************************************************
     return true if a conversion from "fr" to "to" can be done
 */
@@ -404,30 +405,30 @@ bool    CvtOk( type_class_def fr, type_class_def to )
         return( false );
     if( to == XX )
         return( false );
-    if( AskHow( fr, to ) != BAD )
+    if( AskHow( back, fr, to ) != BAD )
         return( true );
     return( false );
 }
 
-static instruction *doConversion( instruction *ins, type_class_def type_class )
+static instruction *doConversion( BackRun& back, instruction *ins, type_class_def type_class )
 /*****************************************************************************/
 {
     name            *temp;
     instruction     *new_ins;
 
-    temp = AllocTemp( type_class );
-    new_ins = MakeUnary( ins->head.opcode, ins->operands[0], temp, type_class );
+    temp = AllocTemp( back, type_class );
+    new_ins = MakeUnary( back, ins->head.opcode, ins->operands[0], temp, type_class );
     new_ins->base_type_class = ins->base_type_class;
     new_ins->type_class = type_class;
     ins->base_type_class = type_class;
     ins->table = NULL;
     ins->operands[0] = temp;
-    MoveSegOp( ins, new_ins, 0 );
-    PrefixIns( ins, new_ins );
+    MoveSegOp( back, ins, new_ins, 0 );
+    PrefixIns( back, ins, new_ins );
     return( new_ins );
 }
 
-instruction     *rDOCVT( instruction *ins )
+instruction     *rDOCVT( BackRun& back, instruction *ins )
 /**************************************************
     decide how to accomplish the conversion, then
     either point the instruction at a new generate
@@ -452,10 +453,10 @@ instruction     *rDOCVT( instruction *ins )
        || !HW_CEqual( dst->r.reg, HW_DX_AX ) ) ) { /* U2div */
         how = OK;
     } else {
-        how = AskHow( ins->base_type_class, ins->type_class );
+        how = AskHow( back, ins->base_type_class, ins->type_class );
     }
     if( how < OK ) {
-        new_ins = doConversion( ins, (type_class_def)how );
+        new_ins = doConversion( back, ins, (type_class_def)how );
     } else if( how == FPOK ) {
         ins->head.opcode = OP_MOV;
         ins->table = NULL;
@@ -472,9 +473,9 @@ instruction     *rDOCVT( instruction *ins )
 //        RoutineNum = RTRoutineTable[how - ( BAD + 1 )];
         new_ins = ins;
     } else {
-        new_ins = MakeMove( src, dst, ins->type_class );
+        new_ins = MakeMove( back, src, dst, ins->type_class );
         DupSeg(ins,new_ins);
-        ReplIns( ins, new_ins );
+        ReplIns( back, ins, new_ins );
         if( how != OK ) {
             _Zoiks( ZOIKS_092 );
         }
@@ -482,17 +483,17 @@ instruction     *rDOCVT( instruction *ins )
     return( new_ins );
 }
 
-instruction     *DoConversion( instruction *ins )
+instruction     *DoConversion( BackRun& back, instruction *ins )
 /***********************************************/
 {
-    return( rDOCVT( ins ) );
+    return( rDOCVT( back, ins ) );
 }
 
-rt_class    LookupConvertRoutine( instruction *ins )
+rt_class    LookupConvertRoutine( BackRun& back, instruction *ins )
 /**************************************************/
 {
     conv_method how;
 
-    how = AskHow( ins->base_type_class, ins->type_class );
+    how = AskHow( back, ins->base_type_class, ins->type_class );
     return( RTRoutineTable[how - ( BAD + 1 )] );
 }

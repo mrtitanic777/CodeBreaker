@@ -11,6 +11,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef struct pgroup2 {
     char    *drive;
     char    *dir;

@@ -31,8 +31,9 @@
 ****************************************************************************/
 
 
-extern dbg_loc          LocReg( dbg_loc loc, name *reg );
-extern dbg_loc          LocParm( dbg_loc loc, name *tmp );
+#pragma once
+extern dbg_loc          LocReg( BackRun& back, dbg_loc loc, name *reg );
+extern dbg_loc          LocParm( BackRun& back, dbg_loc loc, name *tmp );
 extern dbg_loc          LocDupl( dbg_loc loc );
 extern offset           LocSimpField( dbg_loc loc );
 extern cg_sym_handle    LocSimpStatic( dbg_loc loc );

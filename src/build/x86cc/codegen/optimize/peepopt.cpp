@@ -49,60 +49,58 @@
 #include "insdead.h"
 #include "optimize.h"
 #include "inssched.h"
+#include "backrun.hpp"
 
 
 #define OP2VAL( ins ) ( (ins)->operands[1]->c.lo.u.int_value )
 
-typedef bool    (ONE_OP)(instruction *,instruction *);
-typedef bool    (TWO_OP)(instruction *,instruction *);
-typedef bool    (THREE_OP)(instruction *,instruction *);
+
+
+
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct PeepoptState {
-    bool AfterRegAlloc;
-};
+/* (struct PeepoptState: peepopt_state.h) */
 
 }  // namespace
 
-static inline PeepoptState& peepopt_state() { return cbrun_part<PeepoptState>(); }
 
 
-static  bool    InsChangeable( instruction *ins, name *new_op, name **op )
+static  bool    InsChangeable( BackRun& back, instruction *ins, name *new_op, name **op )
 /************************************************************************/
 {
-    if( peepopt_state().AfterRegAlloc ) {
-        return( ChangeIns( ins, new_op, op, CHANGE_GEN | CHANGE_CHECK ) );
+    if( back.peepopt.AfterRegAlloc ) {
+        return( ChangeIns( back, ins, new_op, op, CHANGE_GEN | CHANGE_CHECK ) );
     }
     return( true );
 }
 
-static  void    InsReset( instruction *ins )
+static  void    InsReset( BackRun& back, instruction *ins )
 /******************************************/
 {
-    if( peepopt_state().AfterRegAlloc ) {
-        ResetGenEntry( ins );
+    if( back.peepopt.AfterRegAlloc ) {
+        ResetGenEntry( back, ins );
     }
 }
 
-static  bool    MergeTwo( instruction *a, instruction *b, int_32 value )
+static  bool    MergeTwo( BackRun& back, instruction *a, instruction *b, int_32 value )
 /**********************************************************************/
 {
     name        *cons;
     name        *old_res_a;
     name        *old_res_b;
 
-    cons = AllocS32Const( value );
+    cons = AllocS32Const( back, value );
     if( a->result == b->result ) {
         /*
          * A op X -> A     A op f(X,Y) -> A
          * A op Y -> A
          */
-        if( InsChangeable( a, cons, &a->operands[1] ) ) {
+        if( InsChangeable( back, a, cons, &a->operands[1] ) ) {
             a->operands[1] = cons;
-            ResetGenEntry( a );
-            FreeIns( b );
+            ResetGenEntry( back, a );
+            FreeIns( back, b );
             return( true );
         }
     } else if( a->operands[0] == b->operands[0] ) {
@@ -122,25 +120,25 @@ static  bool    MergeTwo( instruction *a, instruction *b, int_32 value )
         instruction *ins;
 
         for( ins = a->head.next; ins != b; ins = ins->head.next ) {
-            if( InsOrderDependant( ins, b ) )
+            if( InsOrderDependant( back, ins, b ) )
                 return( false );
             if( ins->head.opcode == OP_BLOCK ) {
-                Zoiks( ZOIKS_111 );
+                Zoiks( back, ZOIKS_111 );
             }
         }
 
-        if( InsChangeable( a, b->result, &a->result ) &&
-            InsChangeable( b, a->operands[0], &b->result ) ) {
+        if( InsChangeable( back, a, b->result, &a->result ) &&
+            InsChangeable( back, b, a->operands[0], &b->result ) ) {
             old_res_a = a->result;
             old_res_b = b->result;
             a->result = b->result;
             b->result = a->operands[0];
-            if( InsChangeable( a, cons, &a->operands[1] ) &&
-                InsChangeable( b, a->operands[1], &b->operands[1] ) ) {
+            if( InsChangeable( back, a, cons, &a->operands[1] ) &&
+                InsChangeable( back, b, a->operands[1], &b->operands[1] ) ) {
                 b->operands[1] = a->operands[1];
                 a->operands[1] = cons;
-                ResetGenEntry( a );
-                ResetGenEntry( b );
+                ResetGenEntry( back, a );
+                ResetGenEntry( back, b );
                 return( true );
             } else {
                 /*
@@ -155,11 +153,11 @@ static  bool    MergeTwo( instruction *a, instruction *b, int_32 value )
          * A op X -> B     A op X      -> B
          * B op Y -> C     A op f(X,Y) -> C
          */
-        if( InsChangeable( b, a->operands[0], &b->operands[0] ) &&
-            InsChangeable( b, cons, &b->operands[1] ) ) {
+        if( InsChangeable( back, b, a->operands[0], &b->operands[0] ) &&
+            InsChangeable( back, b, cons, &b->operands[1] ) ) {
             b->operands[0] = a->operands[0];
             b->operands[1] = cons;
-            ResetGenEntry( b );
+            ResetGenEntry( back, b );
             return( true );
         }
     }
@@ -167,39 +165,39 @@ static  bool    MergeTwo( instruction *a, instruction *b, int_32 value )
 }
 
 static  ONE_OP  DoAdd;
-static  bool    DoAdd( instruction *a, instruction *b )
+static  bool    DoAdd( BackRun& back, instruction *a, instruction *b )
 /*****************************************************/
 {
-    return( MergeTwo( a, b, OP2VAL( a ) + OP2VAL( b ) ) );
+    return( MergeTwo( back, a, b, OP2VAL( a ) + OP2VAL( b ) ) );
 }
 
 
 static  ONE_OP  DoMul;
-static  bool    DoMul( instruction *a, instruction *b )
+static  bool    DoMul( BackRun& back, instruction *a, instruction *b )
 /*****************************************************/
 {
-    return( MergeTwo( a,b, OP2VAL( a ) * OP2VAL( b ) ) );
+    return( MergeTwo( back, a,b, OP2VAL( a ) * OP2VAL( b ) ) );
 }
 
 
 static  ONE_OP  DoAnd;
-static  bool    DoAnd( instruction *a, instruction *b )
+static  bool    DoAnd( BackRun& back, instruction *a, instruction *b )
 /*****************************************************/
 {
-    return( MergeTwo( a,b, OP2VAL( a ) & OP2VAL( b ) ) );
+    return( MergeTwo( back, a,b, OP2VAL( a ) & OP2VAL( b ) ) );
 }
 
 
 static  ONE_OP  DoOr;
-static  bool    DoOr( instruction *a, instruction *b )
+static  bool    DoOr( BackRun& back, instruction *a, instruction *b )
 /****************************************************/
 {
-    return( MergeTwo( a,b, OP2VAL( a ) | OP2VAL( b ) ) );
+    return( MergeTwo( back, a,b, OP2VAL( a ) | OP2VAL( b ) ) );
 }
 
 
 static TWO_OP AndOr;
-static bool AndOr( instruction *and_ins, instruction *or_ins )
+static bool AndOr( BackRun& back, instruction *and_ins, instruction *or_ins )
 /************************************************************/
 {
     int_32      new_and;
@@ -212,17 +210,17 @@ static bool AndOr( instruction *and_ins, instruction *or_ins )
     new_and = OP2VAL( and_ins ) & ~OP2VAL( or_ins );
     if( new_and == OP2VAL( and_ins ) )
         return( false );
-    mask = AllocS32Const( new_and );
-    if( !InsChangeable( and_ins, mask, &and_ins->operands[1] ) )
+    mask = AllocS32Const( back, new_and );
+    if( !InsChangeable( back, and_ins, mask, &and_ins->operands[1] ) )
         return( false );
     and_ins->operands[1] = mask;
-    InsReset( and_ins );
+    InsReset( back, and_ins );
     return( true );
 }
 
 
 static TWO_OP OrAnd;
-static bool OrAnd( instruction *or_ins, instruction *and_ins )
+static bool OrAnd( BackRun& back, instruction *or_ins, instruction *and_ins )
 /************************************************************/
 {
     int_32      new_or;
@@ -237,29 +235,29 @@ static bool OrAnd( instruction *or_ins, instruction *and_ins )
     or_ = OP2VAL( or_ins );
     and_ = OP2VAL( and_ins );
     if( ( and_ & or_ ) == and_ ) { // the AND bits are a subset of the OR bits
-        or_ins->operands[0] = AllocS32Const( and_ );
+        or_ins->operands[0] = AllocS32Const( back, and_ );
         or_ins->num_operands = 1;
         or_ins->head.opcode = OP_MOV;
         or_ins->table = NULL;
-        InsReset( or_ins );
-        FreeIns( and_ins );
+        InsReset( back, or_ins );
+        FreeIns( back, and_ins );
         return( true );
     } else {
         new_or = or_ & and_;
         if( new_or == OP2VAL( or_ins ) )
             return( false );
-        mask = AllocS32Const( new_or );
-        if( !InsChangeable( or_ins, mask, &or_ins->operands[1] ) )
+        mask = AllocS32Const( back, new_or );
+        if( !InsChangeable( back, or_ins, mask, &or_ins->operands[1] ) )
             return( false );
         or_ins->operands[1] = mask;
-        InsReset( or_ins );
+        InsReset( back, or_ins );
         return( true );
     }
 }
 
 
 static THREE_OP OrAndOr;
-static bool OrAndOr( instruction *a, instruction *b )
+static bool OrAndOr( BackRun& back, instruction *a, instruction *b )
 /***************************************************/
 {
     int_32      and_val;
@@ -270,14 +268,14 @@ static bool OrAndOr( instruction *a, instruction *b )
     a->head.opcode = OP_AND;
     b->head.opcode = OP_OR;
     and_val = OP2VAL( a ) & OP2VAL( b );
-    mask = AllocS32Const( and_val );
-    if( InsChangeable( a, b->operands[1], &a->operands[1] ) &&
-        InsChangeable( b, mask, &b->operands[1] ) ) {
+    mask = AllocS32Const( back, and_val );
+    if( InsChangeable( back, a, b->operands[1], &a->operands[1] ) &&
+        InsChangeable( back, b, mask, &b->operands[1] ) ) {
         a->operands[1] = b->operands[1];
         b->operands[1] = mask;
         a->table = b->table = NULL;
-        InsReset( a );
-        InsReset( b );
+        InsReset( back, a );
+        InsReset( back, b );
         return( true );
     }
     /*
@@ -290,7 +288,7 @@ static bool OrAndOr( instruction *a, instruction *b )
 
 
 static THREE_OP AndOrAnd;
-static bool AndOrAnd( instruction *a, instruction *b )
+static bool AndOrAnd( BackRun& back, instruction *a, instruction *b )
 /****************************************************/
 {
     int_32      or_val;
@@ -301,14 +299,14 @@ static bool AndOrAnd( instruction *a, instruction *b )
     a->head.opcode = OP_OR;
     b->head.opcode = OP_AND;
     or_val = OP2VAL( a ) | OP2VAL( b );
-    mask = AllocS32Const( or_val );
-    if( InsChangeable( a, b->operands[1], &a->operands[1] ) &&
-        InsChangeable( b, mask, &b->operands[1] ) ) {
+    mask = AllocS32Const( back, or_val );
+    if( InsChangeable( back, a, b->operands[1], &a->operands[1] ) &&
+        InsChangeable( back, b, mask, &b->operands[1] ) ) {
         a->operands[1] = b->operands[1];
         b->operands[1] = mask;
         a->table = b->table = NULL;
-        InsReset( a );
-        InsReset( b );
+        InsReset( back, a );
+        InsReset( back, b );
         return( true );
     }
     /*
@@ -320,24 +318,24 @@ static bool AndOrAnd( instruction *a, instruction *b )
 }
 
 
-static  bool    DoRShift( instruction *a, instruction *b )
+static  bool    DoRShift( BackRun& back, instruction *a, instruction *b )
 /********************************************************/
 {
     if( a->type_class != b->type_class )
         return( false );
-    return( DoAdd( a, b ) );
+    return( DoAdd( back, a, b ) );
 }
 
 
-static  bool    DoLShift( instruction *a, instruction *b )
+static  bool    DoLShift( BackRun& back, instruction *a, instruction *b )
 /********************************************************/
 {
-    return( DoAdd( a, b ) );
+    return( DoAdd( back, a, b ) );
 }
 
 
 static TWO_OP LRShift;
-static bool LRShift( instruction *a, instruction *b )
+static bool LRShift( BackRun& back, instruction *a, instruction *b )
 /***************************************************/
 {
     /* unused parameters */ (void)a; (void)b;
@@ -347,7 +345,7 @@ static bool LRShift( instruction *a, instruction *b )
 
 
 static TWO_OP RLShift;
-static bool RLShift( instruction *a, instruction *b )
+static bool RLShift( BackRun& back, instruction *a, instruction *b )
 /***************************************************/
 {
     /* unused parameters */ (void)a; (void)b;
@@ -357,7 +355,7 @@ static bool RLShift( instruction *a, instruction *b )
 
 
 static THREE_OP Nop3;
-static bool Nop3( instruction *a, instruction *b )
+static bool Nop3( BackRun& back, instruction *a, instruction *b )
 /************************************************/
 {
     /* unused parameters */ (void)a; (void)b;
@@ -400,7 +398,7 @@ static bool OpConst( instruction *ins )
 }
 
 
-static  instruction     *FindInsPair( instruction *ins,
+static  instruction     *FindInsPair( BackRun& back, instruction *ins,
                                      instruction **stopper,
                                      bool *pchange, opcode_defs opcode,
                                      opcode_defs opcode2,
@@ -413,12 +411,12 @@ static  instruction     *FindInsPair( instruction *ins,
         *stopper = NULL;
     for( next = ins->head.next; next->head.opcode != OP_BLOCK; next = next->head.next ) {
         if( next->head.opcode == opcode && SameOpWithConst( ins, next ) ) {
-            if( oprtn( ins, next ) ) {
+            if( oprtn( back, ins, next ) ) {
                 *pchange = true;
                 return( ins );
             }
         }
-        if( InsOrderDependant( ins, next ) ) {
+        if( InsOrderDependant( back, ins, next ) ) {
             if( stopper != NULL && next->head.opcode == opcode2 &&
                 SameOpWithConst( ins, next ) ) {
                 *stopper = next;
@@ -430,7 +428,7 @@ static  instruction     *FindInsPair( instruction *ins,
 }
 
 
-static instruction *FindInsTriple( instruction *ins, bool *pchange,
+static instruction *FindInsTriple( BackRun& back, instruction *ins, bool *pchange,
                                    opcode_defs opcode1, opcode_defs opcode2,
                                    ONE_OP *op1rtn, ONE_OP *op2rtn,
                                    TWO_OP *op12rtn, THREE_OP *op121rtn )
@@ -442,24 +440,24 @@ static instruction *FindInsTriple( instruction *ins, bool *pchange,
     instruction *next;
 
     change = false;
-    next = FindInsPair( ins, &ins2, &change, opcode1, opcode2, op1rtn );
+    next = FindInsPair( back, ins, &ins2, &change, opcode1, opcode2, op1rtn );
     if( change ) {
         *pchange = true;
         return( next );
     } else if( ins2 != NULL ) {
-        FindInsPair( ins2, &ins3, &change, opcode2, opcode1, op2rtn );
+        FindInsPair( back, ins2, &ins3, &change, opcode2, opcode1, op2rtn );
         if( change ) {
             *pchange = true;
             return( ins );
         }
         if( ins3 == NULL ) {
-            if( op12rtn( ins, ins2 ) ) {
+            if( op12rtn( back, ins, ins2 ) ) {
                 *pchange = true;
                 return( ins );
             }
             return( next );
         }
-        if( op121rtn( ins, ins2 ) ) {
+        if( op121rtn( back, ins, ins2 ) ) {
             *pchange = true;
             return( ins );
         }
@@ -469,61 +467,61 @@ static instruction *FindInsTriple( instruction *ins, bool *pchange,
 }
 
 
-static instruction *AddOpt( instruction *ins, bool *pchange )
+static instruction *AddOpt( BackRun& back, instruction *ins, bool *pchange )
 /***********************************************************/
 {
-    return( FindInsPair( ins, NULL, pchange, OP_ADD, OP_NOP, DoAdd ) );
+    return( FindInsPair( back, ins, NULL, pchange, OP_ADD, OP_NOP, DoAdd ) );
 }
 
-static instruction *SubOpt( instruction *ins, bool *pchange )
+static instruction *SubOpt( BackRun& back, instruction *ins, bool *pchange )
 /***********************************************************/
 {
     /*
      * DoAdd will work fine for subtracts
      */
-    return( FindInsPair( ins, NULL, pchange, OP_SUB, OP_NOP, DoAdd ) );
+    return( FindInsPair( back, ins, NULL, pchange, OP_SUB, OP_NOP, DoAdd ) );
 }
 
 
-static instruction *MulOpt( instruction *ins, bool *pchange )
+static instruction *MulOpt( BackRun& back, instruction *ins, bool *pchange )
 /***********************************************************/
 {
-    return( FindInsPair( ins, NULL, pchange, OP_MUL, OP_NOP, DoMul ) );
+    return( FindInsPair( back, ins, NULL, pchange, OP_MUL, OP_NOP, DoMul ) );
 }
 
 
-static instruction *OrOpt( instruction *ins, bool *pchange )
+static instruction *OrOpt( BackRun& back, instruction *ins, bool *pchange )
 /**********************************************************/
 {
-    return( FindInsTriple( ins, pchange, OP_OR, OP_AND,
+    return( FindInsTriple( back, ins, pchange, OP_OR, OP_AND,
                            DoOr, DoAnd, OrAnd, OrAndOr ) );
 }
 
 
-static instruction *AndOpt( instruction *ins, bool *pchange )
+static instruction *AndOpt( BackRun& back, instruction *ins, bool *pchange )
 /***********************************************************/
 {
-    return( FindInsTriple( ins, pchange, OP_AND, OP_OR,
+    return( FindInsTriple( back, ins, pchange, OP_AND, OP_OR,
                            DoAnd, DoOr, AndOr, AndOrAnd ) );
 }
 
 
-static instruction *LShiftOpt( instruction *ins, bool *pchange )
+static instruction *LShiftOpt( BackRun& back, instruction *ins, bool *pchange )
 /**************************************************************/
 {
-    return( FindInsTriple( ins, pchange, OP_LSHIFT, OP_RSHIFT,
+    return( FindInsTriple( back, ins, pchange, OP_LSHIFT, OP_RSHIFT,
                            DoLShift, DoRShift, LRShift, Nop3 ) );
 }
 
 
-static instruction *RShiftOpt( instruction *ins, bool *pchange )
+static instruction *RShiftOpt( BackRun& back, instruction *ins, bool *pchange )
 /**************************************************************/
 {
-    return( FindInsTriple( ins, pchange, OP_RSHIFT, OP_LSHIFT,
+    return( FindInsTriple( back, ins, pchange, OP_RSHIFT, OP_LSHIFT,
                            DoRShift, DoLShift, RLShift, Nop3 ) );
 }
 
-static bool DoArithmeticOps( instruction *ins, bool *change, instruction **n )
+static bool DoArithmeticOps( BackRun& back, instruction *ins, bool *change, instruction **n )
 /****************************************************************************/
 {
     instruction *next;
@@ -534,25 +532,25 @@ static bool DoArithmeticOps( instruction *ins, bool *change, instruction **n )
         return( false );
     switch( ins->head.opcode ) {
     case OP_ADD:
-        next = AddOpt( ins, change );
+        next = AddOpt( back, ins, change );
         break;
     case OP_SUB:
-        next = SubOpt( ins, change );
+        next = SubOpt( back, ins, change );
         break;
     case OP_MUL:
-        next = MulOpt( ins, change );
+        next = MulOpt( back, ins, change );
         break;
     case OP_AND:
-        next = AndOpt( ins, change );
+        next = AndOpt( back, ins, change );
         break;
     case OP_OR:
-        next = OrOpt( ins, change );
+        next = OrOpt( back, ins, change );
         break;
     case OP_LSHIFT:
-        next = LShiftOpt( ins, change );
+        next = LShiftOpt( back, ins, change );
         break;
     case OP_RSHIFT:
-        next = RShiftOpt( ins, change );
+        next = RShiftOpt( back, ins, change );
         break;
     default:
         return( false );
@@ -561,7 +559,7 @@ static bool DoArithmeticOps( instruction *ins, bool *change, instruction **n )
     return( true );
 }
 
-static bool DoConversionOps( instruction *ins, bool *change, instruction **n )
+static bool DoConversionOps( BackRun& back, instruction *ins, bool *change, instruction **n )
 /****************************************************************************/
 {
     instruction *next;
@@ -630,7 +628,7 @@ static bool DoConversionOps( instruction *ins, bool *change, instruction **n )
     return( false );
 }
 
-static bool ReferencedBy( instruction *ins, name *op )
+static bool ReferencedBy( BackRun& back, instruction *ins, name *op )
 /******************************************************/
 {
     opcnt       i;
@@ -659,7 +657,7 @@ static bool ReferencedBy( instruction *ins, name *op )
     return( false );
 }
 
-static bool DoMemWrites( instruction *ins, bool *change, instruction **n )
+static bool DoMemWrites( BackRun& back, instruction *ins, bool *change, instruction **n )
 /************************************************************************/
 {
     instruction *next;
@@ -674,15 +672,15 @@ static bool DoMemWrites( instruction *ins, bool *change, instruction **n )
             /* fall down */
         case N_INDEXED:
         case N_MEMORY:
-            if( SideEffect( ins ) )
+            if( SideEffect( back, ins ) )
                 return( false );
             for( next = ins->head.next; next->head.opcode != OP_BLOCK; next = next->head.next ) {
-                if( ReferencedBy( next, ins->result ) )
+                if( ReferencedBy( back, next, ins->result ) )
                     break;
                 if( _IsReDefinedBy( next, ins->result ) ) {
                     if( next->result == ins->result ) {
                         *change = true;
-                        FreeIns( ins );
+                        FreeIns( back, ins );
                         return( true );
                     }
                     break;
@@ -693,7 +691,7 @@ static bool DoMemWrites( instruction *ins, bool *change, instruction **n )
     return( false );
 }
 
-bool PeepOptBlock( block *blk, bool after_reg_alloc )
+bool PeepOptBlock( BackRun& back, block *blk, bool after_reg_alloc )
 /***************************************************/
 {
     instruction *ins;
@@ -701,31 +699,31 @@ bool PeepOptBlock( block *blk, bool after_reg_alloc )
     bool        change;
 
     change = false;
-    peepopt_state().AfterRegAlloc = after_reg_alloc;
+    back.peepopt.AfterRegAlloc = after_reg_alloc;
     for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
         next = ins->head.next;
         if( VolatileIns( ins ) )
             continue;
-        if( DoArithmeticOps( ins, &change, &next ) )
+        if( DoArithmeticOps( back, ins, &change, &next ) )
             continue;
-        if( DoConversionOps( ins, &change, &next ) )
+        if( DoConversionOps( back, ins, &change, &next ) )
             continue;
-        if( DoMemWrites( ins, &change, &next ) ) {
+        if( DoMemWrites( back, ins, &change, &next ) ) {
             continue;
         }
     }
     return( change );
 }
 
-bool PeepOpt( block *start, block *(*func)(block *, void *parm), void *parm, bool after_reg_alloc )
+bool PeepOpt( BackRun& back, block *start, block *(*func)(BackRun&, block *, void *parm), void *parm, bool after_reg_alloc )
 /*************************************************************************************************/
 {
     block       *blk;
     bool        change;
 
     change = false;
-    for( blk = start; blk != NULL; blk = func( blk, parm ) ) {
-        change |= PeepOptBlock( blk, after_reg_alloc );
+    for( blk = start; blk != NULL; blk = func( back, blk, parm ) ) {
+        change |= PeepOptBlock( back, blk, after_reg_alloc );
     }
     return( change );
 }

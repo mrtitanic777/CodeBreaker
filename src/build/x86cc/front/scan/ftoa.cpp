@@ -33,22 +33,20 @@
 #include <stdio.h>
 #include <ctype.h>
 #include "cvars.h"
+#include "frontrun.hpp"
 
 #define MAX_DIGIT 21
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct FtoaState {
-    char buf[80];
-};
+/* (struct FtoaState: ftoa_state.h) */
 
 }  // namespace
 
-static inline FtoaState& ftoa_state() { return cbrun_part<FtoaState>(); }
 
 
-char *ftoa( FLOATVAL *flt )
+char *ftoa( FrontRun& front, FLOATVAL *flt )
 {
 #ifdef __WATCOMC__
     CVT_INFO    cvt;
@@ -71,7 +69,7 @@ char *ftoa( FLOATVAL *flt )
         cvt.decimal_place--;
     sprintf( buf, "%c%c.%sE%+1d", ( cvt.sign ) ? '-' : '+', *mant, mant + 1, cvt.decimal_place );
 #else
-    sprintf( ftoa_state().buf, "%.19e", flt->ld.u.value );
+    sprintf( front.ftoa.buf, "%.19e", flt->ld.u.value );
 #endif
-    return( ftoa_state().buf );
+    return( front.ftoa.buf );
 }

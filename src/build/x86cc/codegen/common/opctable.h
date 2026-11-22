@@ -31,7 +31,8 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "optable.h"
 
-extern const opcode_entry   *OpcodeTable( table_def i );
+extern const opcode_entry   *OpcodeTable( BackRun& back, table_def i );
 extern bool                 IsNop( const opcode_entry *e );

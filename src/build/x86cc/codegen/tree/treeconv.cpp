@@ -42,9 +42,10 @@
 #include "makeaddr.h"
 #include "procdef.h"
 #include "typemap.h"
+#include "backrun.hpp"
 
 
-static  bool    DemoteTree( tn name, const type_def *tipe, bool just_test ) {
+static  bool    DemoteTree( BackRun& back, tn name, const type_def *tipe, bool just_test ) {
 /***************************************************************************/
 
     const type_def  *frum;
@@ -54,7 +55,7 @@ static  bool    DemoteTree( tn name, const type_def *tipe, bool just_test ) {
     frum = name->tipe;
     can_demote = false;
     demote_this_node = false;
-    if( TypeClass( frum ) <= I4 ) {
+    if( TypeClass( back, frum ) <= I4 ) {
         switch( name->class_ ) {
         case TN_UNARY: /* go left*/
             switch( name->u1.t.op ) {
@@ -62,7 +63,7 @@ static  bool    DemoteTree( tn name, const type_def *tipe, bool just_test ) {
             case O_COMPLEMENT:
             case O_CONVERT:
             case O_ROUND:
-                can_demote = DemoteTree( name->u.left, tipe, just_test );
+                can_demote = DemoteTree( back, name->u.left, tipe, just_test );
                 demote_this_node = true;
                 break;
             case O_POINTS:
@@ -99,19 +100,19 @@ static  bool    DemoteTree( tn name, const type_def *tipe, bool just_test ) {
                     break;
                 if( name->u1.t.rite->tipe->refno == TY_HUGE_POINTER )
                     break;
-                can_demote = DemoteTree( name->u.left, tipe, just_test );
+                can_demote = DemoteTree( back, name->u.left, tipe, just_test );
                 if( can_demote ) {
-                    can_demote = DemoteTree( name->u1.t.rite, tipe, just_test );
+                    can_demote = DemoteTree( back, name->u1.t.rite, tipe, just_test );
                 }
                 demote_this_node = true;
                 break;
             }
             break;
         case TN_COMMA:
-            can_demote = DemoteTree( name->u1.t.rite, tipe, just_test );
+            can_demote = DemoteTree( back, name->u1.t.rite, tipe, just_test );
             break;
         case TN_SIDE_EFFECT:
-            can_demote = DemoteTree( name->u.left, tipe, just_test );
+            can_demote = DemoteTree( back, name->u.left, tipe, just_test );
             break;
         case TN_FLOW_OUT:
         case TN_CONS:
@@ -128,16 +129,16 @@ static  bool    DemoteTree( tn name, const type_def *tipe, bool just_test ) {
 }
 
 
-void    TGDemote( tn name, const type_def *tipe )
+void    TGDemote( BackRun& back, tn name, const type_def *tipe )
 /***********************************************/
 {
-    if( DemoteTree( name, tipe, true ) ) {
-        DemoteTree( name, tipe, false );
+    if( DemoteTree( back, name, tipe, true ) ) {
+        DemoteTree( back, name, tipe, false );
     }
 }
 
 
-tn      FoldCnvRnd( cg_op opcode, tn name, const type_def *to_tipe )
+tn      FoldCnvRnd( BackRun& back, cg_op opcode, tn name, const type_def *to_tipe )
 /**************************************************************/
 {
     tn              new_tn;
@@ -146,39 +147,39 @@ tn      FoldCnvRnd( cg_op opcode, tn name, const type_def *to_tipe )
 
     if( name->class_ == TN_CONS ) {
         if( name->tipe->refno == TY_DEFAULT ) {
-            cf = CFCopy( &cfloat_state().cgh, name->u.name->c.u.cfval );
+            cf = CFCopy( back, &back.cfloat.cgh, name->u.name->c.u.cfval );
         } else {
-            cf = CnvCFToType( name->u.name->c.u.cfval, name->tipe );
+            cf = CnvCFToType( back, name->u.name->c.u.cfval, name->tipe );
         }
         if( to_tipe->attr & TYPE_FLOAT ) {
-            new_tn = TGConst( cf, to_tipe );
+            new_tn = TGConst( back, cf, to_tipe );
         } else if( opcode == O_CONVERT ) {
             junk = cf;
-            cf = CFTrunc( &cfloat_state().cgh, cf );
-            CFFree( &cfloat_state().cgh, junk );
+            cf = CFTrunc( back, &back.cfloat.cgh, cf );
+            CFFree( back, &back.cfloat.cgh, junk );
             if( to_tipe->refno != TY_DEFAULT ) {
                 junk = cf;
-                cf = CnvCFToType( cf, to_tipe );
-                CFFree( &cfloat_state().cgh, junk );
+                cf = CnvCFToType( back, cf, to_tipe );
+                CFFree( back, &back.cfloat.cgh, junk );
             }
-            new_tn = TGConst( cf, to_tipe );
+            new_tn = TGConst( back, cf, to_tipe );
         } else if( opcode == O_ROUND ) {
             junk = cf;
-            cf = CFRound( &cfloat_state().cgh, cf );
-            CFFree( &cfloat_state().cgh, junk );
+            cf = CFRound( back, &back.cfloat.cgh, cf );
+            CFFree( back, &back.cfloat.cgh, junk );
             if( to_tipe->refno != TY_DEFAULT ) {
                 junk = cf;
-                cf = CnvCFToType( cf, to_tipe );
-                CFFree( &cfloat_state().cgh, junk );
+                cf = CnvCFToType( back, cf, to_tipe );
+                CFFree( back, &back.cfloat.cgh, junk );
             }
-            new_tn = TGConst( cf, to_tipe );
+            new_tn = TGConst( back, cf, to_tipe );
         } else {
             new_tn = NULL;
-            Zoiks( ZOIKS_078 ); /* Not supposed to get here, ever */
+            Zoiks( back, ZOIKS_078 ); /* Not supposed to get here, ever */
         }
-        BurnTree( name );
+        BurnTree( back, name );
     } else {
-        TGDemote( name, to_tipe );
+        TGDemote( back, name, to_tipe );
         new_tn = NULL;
     }
     return( new_tn );

@@ -33,13 +33,14 @@
 #include "cvars.h"
 #include "pdefn2.h"
 #include "caux.h"
+#include "frontrun.hpp"
 
 
-aux_entry *AuxLookup( const char *name )
+aux_entry *AuxLookup( FrontRun& front, const char *name )
 {
     aux_entry   *ent;
 
-    for( ent = pragdefn_state().AuxList; ent != NULL; ent = ent->next ) {
+    for( ent = front.pragdefn.AuxList; ent != NULL; ent = ent->next ) {
         if( strcmp( ent->name, name ) == 0 ) {
             break;
         }
@@ -48,14 +49,14 @@ aux_entry *AuxLookup( const char *name )
 }
 
 
-static void FreeAuxInfo( aux_info *info )
+static void FreeAuxInfo( FrontRun& front, aux_info *info )
 {
     if( info->code != NULL ) {
-        CMemFree( info->code );
+        CMemFree( front, info->code );
         info->code = NULL;
     }
-    if( !IsAuxParmsBuiltIn( info->parms ) ) {
-        CMemFree( info->parms );
+    if( !IsAuxParmsBuiltIn( front, info->parms ) ) {
+        CMemFree( front, info->parms );
         info->parms = NULL;
     }
 #if _CPU == 370
@@ -67,12 +68,12 @@ static void FreeAuxInfo( aux_info *info )
     }
 #endif
     if( info->objname != NULL ) {
-        CMemFree( info->objname );
+        CMemFree( front, info->objname );
         info->objname = NULL;
     }
 }
 
-void PragmaAuxInit( void )
+void PragmaAuxInit( FrontRun& front )
 {
     CdeclInfo   = WatcallInfo;
     PascalInfo  = WatcallInfo;
@@ -83,43 +84,43 @@ void PragmaAuxInit( void )
     FastcallInfo= WatcallInfo;
 
 #if _INTEL_CPU
-    AuxInfoInit( cvars_state().CompFlags.use_stdcall_at_number );
+    AuxInfoInit( front, front.cvars.CompFlags.use_stdcall_at_number );
 #endif
 
-    SetDefaultAuxInfo();
+    SetDefaultAuxInfo(front);
 }
 
-void PragmaAuxFini( void )
+void PragmaAuxFini( FrontRun& front )
 {
     void    *junk;
 
-    while( pragdefn_state().AuxList != NULL ) {
-        junk = pragdefn_state().AuxList;
-        if( pragdefn_state().AuxList->info != NULL ) {
-            if( pragdefn_state().AuxList->info->use > 1 ) {
-                pragdefn_state().AuxList->info->use--;
+    while( front.pragdefn.AuxList != NULL ) {
+        junk = front.pragdefn.AuxList;
+        if( front.pragdefn.AuxList->info != NULL ) {
+            if( front.pragdefn.AuxList->info->use > 1 ) {
+                front.pragdefn.AuxList->info->use--;
             } else {
-                FreeAuxInfo( pragdefn_state().AuxList->info );
-                if( !IsAuxInfoBuiltIn( pragdefn_state().AuxList->info ) ) {
-                    CMemFree( pragdefn_state().AuxList->info );
+                FreeAuxInfo( front, front.pragdefn.AuxList->info );
+                if( !IsAuxInfoBuiltIn( front, front.pragdefn.AuxList->info ) ) {
+                    CMemFree( front, front.pragdefn.AuxList->info );
                 }
             }
         }
-        pragdefn_state().AuxList = pragdefn_state().AuxList->next;
-        CMemFree( junk );
+        front.pragdefn.AuxList = front.pragdefn.AuxList->next;
+        CMemFree( front, junk );
     }
 
-    FreeAuxInfo( &DefaultInfo );
-    FreeAuxInfo( &WatcallInfo );
-    FreeAuxInfo( &CdeclInfo );
-    FreeAuxInfo( &PascalInfo );
-    FreeAuxInfo( &SyscallInfo );
-    FreeAuxInfo( &OptlinkInfo );
-    FreeAuxInfo( &FortranInfo );
-    FreeAuxInfo( &StdcallInfo );
-    FreeAuxInfo( &FastcallInfo );
+    FreeAuxInfo( front, &DefaultInfo );
+    FreeAuxInfo( front, &WatcallInfo );
+    FreeAuxInfo( front, &CdeclInfo );
+    FreeAuxInfo( front, &PascalInfo );
+    FreeAuxInfo( front, &SyscallInfo );
+    FreeAuxInfo( front, &OptlinkInfo );
+    FreeAuxInfo( front, &FortranInfo );
+    FreeAuxInfo( front, &StdcallInfo );
+    FreeAuxInfo( front, &FastcallInfo );
 #if _CPU == 386
-    FreeAuxInfo( &Far16CdeclInfo );
-    FreeAuxInfo( &Far16PascalInfo );
+    FreeAuxInfo( front, &Far16CdeclInfo );
+    FreeAuxInfo( front, &Far16PascalInfo );
 #endif
 }

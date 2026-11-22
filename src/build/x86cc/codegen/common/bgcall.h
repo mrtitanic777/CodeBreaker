@@ -30,15 +30,16 @@
 ****************************************************************************/
 
 
-extern an               BGCall( cn call, bool use_return, bool aux_inline );
-extern void             BGProcDecl( cg_sym_handle sym, const type_def *tipe );
-extern name             *StReturn( an retval, const type_def *tipe, instruction **pins );
+#pragma once
+extern an               BGCall( BackRun& back, cn call, bool use_return, bool aux_inline );
+extern void             BGProcDecl( BackRun& back, cg_sym_handle sym, const type_def *tipe );
+extern name             *StReturn( BackRun& back, an retval, const type_def *tipe, instruction **pins );
 extern reg_set_index    CallIPossible( instruction *ins );
-extern void             InitTargProc( void );
-extern void             SaveToTargProc( void );
-extern void             RestoreFromTargProc( void );
-extern void             PushInSameBlock( instruction *ins );
-extern instruction      *PushOneParm( instruction *ins, name *curr, type_class_def type_class, type_length offset, call_state *state );
+extern void             InitTargProc( BackRun& back );
+extern void             SaveToTargProc( BackRun& back );
+extern void             RestoreFromTargProc( BackRun& back );
+extern void             PushInSameBlock( BackRun& back, instruction *ins );
+extern instruction      *PushOneParm( BackRun& back, instruction *ins, name *curr, type_class_def type_class, type_length offset, call_state *state );
 extern void             PreCall( cn call );
 extern void             PostCall( cn call );
-extern const type_def   *PassParmType( cg_sym_handle func, const type_def *tipe );
+extern const type_def   *PassParmType( BackRun& back, cg_sym_handle func, const type_def *tipe );

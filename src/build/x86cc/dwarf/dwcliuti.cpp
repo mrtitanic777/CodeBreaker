@@ -33,9 +33,10 @@
 #include "dwpriv.h"
 #include "dwutils.h"
 #include "dwcliuti.h"
+#include "backrun.hpp"
 
 
-void CLIWriteSLEB128( dw_client cli, dw_sectnum sect, dw_sconst value )
+void CLIWriteSLEB128( BackRun& back, dw_client cli, dw_sectnum sect, dw_sconst value )
 {
     uint_8              buf[MAX_LEB128];
 
@@ -43,25 +44,25 @@ void CLIWriteSLEB128( dw_client cli, dw_sectnum sect, dw_sconst value )
 }
 
 
-void CLIWriteULEB128( dw_client cli, dw_sectnum sect, dw_uconst value )
+void CLIWriteULEB128( BackRun& back, dw_client cli, dw_sectnum sect, dw_uconst value )
 {
     uint_8              buf[MAX_LEB128];
 
     CLIWrite( cli, sect, buf, WriteULEB128( buf, value ) - buf );
 }
 
-void CLISectionSetSize( dw_client cli, dw_sectnum sect )
+void CLISectionSetSize( BackRun& back, dw_client cli, dw_sectnum sect )
 /* backpatch the section length */
 {
     dw_sect_offs    size;
 
     size = CLISectionOffset( cli, sect ) - sizeof( size );
     CLISectionSeekOffset( cli, sect, 0 );
-    CLIWriteU32( cli, sect, size );
+    CLIWriteU32( back, cli, sect, size );
     CLISectionSeekEnd( cli, sect );
 }
 
-void CLISectionWriteZeros( dw_client cli, dw_sectnum sect, size_t len )
+void CLISectionWriteZeros( BackRun& back, dw_client cli, dw_sectnum sect, size_t len )
 {
     // the zeros array length must be big enought for all calls, now 16 bytes is OK
     static const uint_8     zeros[16] = { 0 };
@@ -69,7 +70,7 @@ void CLISectionWriteZeros( dw_client cli, dw_sectnum sect, size_t len )
     CLIWrite( cli, sect, zeros, len );
 }
 
-void CLIWriteU8( dw_client cli, dw_sectnum sect, uint_8 data )
+void CLIWriteU8( BackRun& back, dw_client cli, dw_sectnum sect, uint_8 data )
 {
     CLIWrite( cli, sect, &data, sizeof( data ) );
 }
@@ -92,7 +93,7 @@ void BufWriteU32( dw_client cli, void *buf, uint_32 data )
     }
 }
 
-void CLIWriteU16( dw_client cli, dw_sectnum sect, uint_16 data )
+void CLIWriteU16( BackRun& back, dw_client cli, dw_sectnum sect, uint_16 data )
 {
     char            buf[sizeof( uint_16 )];
 
@@ -104,7 +105,7 @@ void CLIWriteU16( dw_client cli, dw_sectnum sect, uint_16 data )
     CLIWrite( cli, sect, buf, sizeof( buf ) );
 }
 
-void CLIWriteU32( dw_client cli, dw_sectnum sect, uint_32 data )
+void CLIWriteU32( BackRun& back, dw_client cli, dw_sectnum sect, uint_32 data )
 {
     char            buf[sizeof( uint_32 )];
 
@@ -116,7 +117,7 @@ void CLIWriteU32( dw_client cli, dw_sectnum sect, uint_32 data )
     CLIWrite( cli, sect, buf, sizeof( buf ) );
 }
 
-void CLIWriteString( dw_client cli, dw_sectnum sect, const char *str )
+void CLIWriteString( BackRun& back, dw_client cli, dw_sectnum sect, const char *str )
 {
     CLIWrite( cli, sect, str, strlen( str ) + 1 );
 }

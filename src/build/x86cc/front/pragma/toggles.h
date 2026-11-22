@@ -30,7 +30,8 @@
 ****************************************************************************/
 
 
-#define TOGGLE(x)           toggles_state().PragmaToggles.tog_##x
+#pragma once
+#define TOGGLE(x)           front.toggles.PragmaToggles.tog_##x
 #define TOGGLE_STK(x)       HeadToggles_tog_##x
 
 typedef struct pragma_toggles {
@@ -47,6 +48,5 @@ typedef struct pragma_toggles {
 struct TogglesState {
     pragma_toggles PragmaToggles;
 };
-inline TogglesState& toggles_state() { return cbrun_part<TogglesState>(); }
 
 #endif

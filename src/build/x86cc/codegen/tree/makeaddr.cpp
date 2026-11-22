@@ -48,18 +48,16 @@
 #include "temps.h"
 #include "bldins.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct MakeaddrState {
-    pointer *AddrNameFrl;
-};
+/* (struct MakeaddrState: makeaddr_state.h) */
 
 }  // namespace
 
-static inline MakeaddrState& makeaddr_state() { return cbrun_part<MakeaddrState>(); }
 
 
 static  void    CopyAddr( an src, an dst )
@@ -73,14 +71,14 @@ static  void    CopyAddr( an src, an dst )
 }
 
 
-an      NewAddrName( void )
+an      NewAddrName( BackRun& back )
 /*************************/
 {
     an  addr;
 
-    addr = static_cast<an>(AllocFrl( &makeaddr_state().AddrNameFrl, sizeof( address_name ) ));
-    addr->link = data_state().AddrList;
-    data_state().AddrList = addr;
+    addr = static_cast<an>(AllocFrl( back, &back.makeaddr.AddrNameFrl, sizeof( address_name ) ));
+    addr->link = back.data.AddrList;
+    back.data.AddrList = addr;
     addr->tipe = NULL;
     addr->u.n.index = NULL;
     addr->u.n.offset = 0;
@@ -93,12 +91,12 @@ an      NewAddrName( void )
 }
 
 
-an      NewBoolNode( void )
+an      NewBoolNode( BackRun& back )
 /*************************/
 {
     an  addr;
 
-    addr = static_cast<an>(AllocFrl( &makeaddr_state().AddrNameFrl, sizeof( address_name ) ));
+    addr = static_cast<an>(AllocFrl( back, &back.makeaddr.AddrNameFrl, sizeof( address_name ) ));
     addr->tipe = NULL;
     addr->format = NF_BOOL;
     addr->flags = static_cast<addr_flags>(0);
@@ -106,46 +104,46 @@ an      NewBoolNode( void )
 }
 
 
-an      MakeTypeTempAddr( name *op, const type_def *tipe )
+an      MakeTypeTempAddr( BackRun& back, name *op, const type_def *tipe )
 /********************************************************/
 {
     an          addr;
 
-    addr = NewAddrName();
+    addr = NewAddrName(back);
     addr->tipe = tipe;
     addr->u.n.name = op;
     addr->class_ = CL_ADDR_TEMP;
     return( addr );
 }
 
-an      MakeTempAddr( name *op )
+an      MakeTempAddr( BackRun& back, name *op )
 /******************************/
 {
-    return( MakeTypeTempAddr( op, TypeAddress( TY_NEAR_POINTER ) ) );
+    return( MakeTypeTempAddr( back, op, TypeAddress( back, TY_NEAR_POINTER ) ) );
 }
 
-void    InitMakeAddr( void )
+void    InitMakeAddr( BackRun& back )
 /**************************/
 {
-    InitFrl( &makeaddr_state().AddrNameFrl );
-    data_state().AddrList = NULL;
+    InitFrl( &back.makeaddr.AddrNameFrl );
+    back.data.AddrList = NULL;
 }
 
 
-name    *GenIns( an addr )
+name    *GenIns( BackRun& back, an addr )
 /************************/
 {
-    return( GetValue( addr, NULL ) );
+    return( GetValue( back, addr, NULL ) );
 }
 
 
-void    AddrFree( an node )
+void    AddrFree( BackRun& back, an node )
 /*************************/
 {
     an  *owner;
 
     if( node->format != NF_BOOL ) {
-        owner = &data_state().AddrList;
+        owner = &back.data.AddrList;
         for( ;; ) {
             if( *owner == node ) {
                 *owner = node->link;
@@ -154,14 +152,14 @@ void    AddrFree( an node )
             owner = &(*owner)->link;
         }
         if( node->format == NF_INS ) {
-            FreeIns( node->u.i.ins );
+            FreeIns( back, node->u.i.ins );
         }
     }
-    FrlFreeSize( &makeaddr_state().AddrNameFrl, (pointer *)node, sizeof( address_name ) );
+    FrlFreeSize( back, &back.makeaddr.AddrNameFrl, (pointer *)node, sizeof( address_name ) );
 }
 
 
-void    InsToAddr( an addr )
+void    InsToAddr( BackRun& back, an addr )
 /**************************/
 {
     an          new_an;
@@ -169,18 +167,18 @@ void    InsToAddr( an addr )
 
     if( addr->format == NF_INS ) {
         ins = addr->u.i.ins;
-        ins->result = BGNewTemp( addr->tipe );
-        new_an = AddrName( ins->result, addr->tipe );
+        ins->result = BGNewTemp( back, addr->tipe );
+        new_an = AddrName( back, ins->result, addr->tipe );
         new_an->flags = addr->flags;
         new_an->u.n.base = addr->u.i.base;
         new_an->u.n.alignment = addr->u.i.alignment;
         CopyAddr( new_an, addr );
-        AddrFree( new_an );
+        AddrFree( back, new_an );
     }
 }
 
 
-void    NamesCrossBlocks( void )
+void    NamesCrossBlocks( BackRun& back )
 /******************************/
 {
     an          addr;
@@ -191,19 +189,19 @@ void    NamesCrossBlocks( void )
     /*
      * Careful. The list shifts under our feet.
      */
-    for( addr = data_state().AddrList; addr != NULL; addr = next ) {
+    for( addr = back.data.AddrList; addr != NULL; addr = next ) {
         next = addr->link;
         if( addr->flags & FL_ADDR_OK_ACROSS_BLOCKS ) {
             addr->flags |= FL_ADDR_CROSSED_BLOCKS;
         } else if( addr->format == NF_INS ) {
-            InsToAddr( addr );
+            InsToAddr( back, addr );
             addr->u.n.name->v.usage |= USE_IN_ANOTHER_BLOCK;
         } else if( addr->format != NF_CONS
              && addr->format != NF_BOOL
              && ( addr->format != NF_ADDR
                 || ( addr->class_ != CL_ADDR_GLOBAL
                   && addr->class_ != CL_ADDR_TEMP ) ) ) {
-            temp = GenIns( addr );
+            temp = GenIns( back, addr );
             if( temp->n.class_ == N_TEMP ) {
                 temp->v.usage |= USE_IN_ANOTHER_BLOCK;
             } else if( temp->n.class_ == N_INDEXED ) {
@@ -212,46 +210,46 @@ void    NamesCrossBlocks( void )
                         |= USE_IN_ANOTHER_BLOCK;
                 }
             }
-            new_an = AddrName( temp, addr->tipe );
+            new_an = AddrName( back, temp, addr->tipe );
             CopyAddr( new_an, addr );
-            AddrFree( new_an );
+            AddrFree( back, new_an );
         }
     }
 }
 
 
-bool    AddrFrlFree( void )
+bool    AddrFrlFree( BackRun& back )
 /*************************/
 {
-    return( FrlFreeAll( &makeaddr_state().AddrNameFrl, sizeof( address_name ) ) );
+    return( FrlFreeAll( back, &back.makeaddr.AddrNameFrl, sizeof( address_name ) ) );
 }
 
 
-static  name    *Display( cg_sym_handle symbol, level_depth level )
+static  name    *Display( BackRun& back, cg_sym_handle symbol, level_depth level )
 /*****************************************************************/
 {
     proc_def    *old_currproc;
     name        *old_names;
     name        *op;
 
-    old_currproc = data_state().CurrProc;
-    old_names = data_state().Names[N_TEMP];
-    while( level != data_state().CurrProc->lex_level ) {
-        data_state().CurrProc = data_state().CurrProc->next_proc;
+    old_currproc = back.data.CurrProc;
+    old_names = back.data.Names[N_TEMP];
+    while( level != back.data.CurrProc->lex_level ) {
+        back.data.CurrProc = back.data.CurrProc->next_proc;
     }
-    data_state().Names[N_TEMP] = data_state().CurrProc->names[N_TEMP];
-    for( op = data_state().Names[N_TEMP]; op->v.symbol != symbol; ) {
+    back.data.Names[N_TEMP] = back.data.CurrProc->names[N_TEMP];
+    for( op = back.data.Names[N_TEMP]; op->v.symbol != symbol; ) {
         op = op->n.next_name;
     }
     op->v.usage |= ( NEEDS_MEMORY | USE_MEMORY | USE_IN_ANOTHER_BLOCK);
-    AllocALocal( op );
-    data_state().CurrProc = old_currproc;
-    data_state().Names[N_TEMP] = old_names;
-    return( MakeDisplay( op, level ) );
+    AllocALocal( back, op );
+    back.data.CurrProc = old_currproc;
+    back.data.Names[N_TEMP] = old_names;
+    return( MakeDisplay( back, op, level ) );
 }
 
 
-an      MakeGets( an dst, an src, const type_def *tipe )
+an      MakeGets( BackRun& back, an dst, an src, const type_def *tipe )
 /******************************************************/
 {
     name                *dst_name;
@@ -260,109 +258,109 @@ an      MakeGets( an dst, an src, const type_def *tipe )
     type_class_def      type_class;
     name                *temp;
 
-    InsToAddr( dst );
-    dst_name = Points( dst, tipe );
+    InsToAddr( back, dst );
+    dst_name = Points( back, dst, tipe );
     ins = src->u.i.ins;
-    if( src->format == NF_INS && data_state().CurrBlock->ins.head.prev == ins ) {
+    if( src->format == NF_INS && back.data.CurrBlock->ins.head.prev == ins ) {
         ins->result = dst_name;
         src->format = NF_ADDR;  /* so instruction doesn't get freed! */
     } else {
-        src_name = GetValue( src, dst_name );
+        src_name = GetValue( back, src, dst_name );
         if( src_name != dst_name ||
          (( src_name->n.class_ == N_MEMORY ) && ( src_name->v.usage & VAR_VOLATILE )) ) {
-            type_class = TypeClass( tipe );
-            src_name = GenIns( src );
+            type_class = TypeClass( back, tipe );
+            src_name = GenIns( back, src );
             if( dst_name->n.class_ == N_INDEXED &&
              (dst_name->i.index_flags & X_VOLATILE) == 0 ) {
                 /*
                  * don't give him back an indexed name - it extends the life of
                  * a pointer
                  */
-                temp = SAllocTemp( dst_name->n.type_class, dst_name->n.size );
-                AddIns( MakeMove( src_name, dst_name, type_class ) );
-                AddIns( MakeMove( dst_name, temp, type_class ) );
+                temp = SAllocTemp( back, dst_name->n.type_class, dst_name->n.size );
+                AddIns( back, MakeMove( back, src_name, dst_name, type_class ) );
+                AddIns( back, MakeMove( back, dst_name, temp, type_class ) );
                 dst_name = temp;
             } else {
-                AddIns( MakeMove( src_name, dst_name, type_class ) );
+                AddIns( back, MakeMove( back, src_name, dst_name, type_class ) );
             }
         }
     }
-    BGDone( src );
-    BGDone( dst );
-    return( AddrName( dst_name, tipe ) );
+    BGDone( back, src );
+    BGDone( back, dst );
+    return( AddrName( back, dst_name, tipe ) );
 }
 
 
-an      MakeConst( float_handle cf, const type_def *tipe )
+an      MakeConst( BackRun& back, float_handle cf, const type_def *tipe )
 /********************************************************/
 {
-    return( AddrName( AllocConst( cf ), tipe ) );
+    return( AddrName( back, AllocConst( back, cf ), tipe ) );
 }
 
 
-an      MakePoints( an name, const type_def *tipe )
+an      MakePoints( BackRun& back, an name, const type_def *tipe )
 /*************************************************/
 {
     an  new_an;
 
-    new_an = AddrName( Points( name, tipe ), tipe );
-    BGDone( name );
+    new_an = AddrName( back, Points( back, name, tipe ), tipe );
+    BGDone( back, name );
     return( new_an );
 }
 
-an      RegName( hw_reg_set reg, const type_def *tipe )
+an      RegName( BackRun& back, hw_reg_set reg, const type_def *tipe )
 /*****************************************************/
 {
     an  addr;
 
-    addr = NewAddrName();
+    addr = NewAddrName(back);
     addr->format = NF_NAME;
     addr->tipe = tipe;
-    addr->u.n.name = AllocRegName( reg );
+    addr->u.n.name = AllocRegName( back, reg );
     return( addr );
 }
 
-an      InsName( instruction *ins, const type_def *tipe )
+an      InsName( BackRun& back, instruction *ins, const type_def *tipe )
 /*******************************************************/
 {
     an  addr;
 
-    addr = NewAddrName();
+    addr = NewAddrName(back);
     addr->u.i.ins = ins;
     addr->tipe = tipe;
     addr->format = NF_INS;
     return( addr );
 }
 
-name    *LoadTemp( name *temp, type_class_def type_class )
+name    *LoadTemp( BackRun& back, name *temp, type_class_def type_class )
 /********************************************************/
 {
     instruction *ins;
 
-    ins = MakeMove( temp, AllocTemp( type_class ), type_class );
+    ins = MakeMove( back, temp, AllocTemp( back, type_class ), type_class );
     temp = ins->result;
-    AddIns( ins );
+    AddIns( back, ins );
     return( temp );
 }
 
 
-static  name    *Temporary( name *temp, const type_def *tipe )
+static  name    *Temporary( BackRun& back, name *temp, const type_def *tipe )
 /************************************************************/
 {
     if( temp->n.class_ != N_TEMP ) {
-        temp = LoadTemp( temp, TypeClass( tipe ) /*temp->n.type_class*/ );
+        temp = LoadTemp( back, temp, TypeClass( back, tipe ) /*temp->n.type_class*/ );
     }
     return( temp );
 }
 
 
-an      AddrEval( an addr )
+an      AddrEval( BackRun& back, an addr )
 /*************************/
 {
     an  new_an;
 
-    new_an = AddrName( Temporary( GenIns( addr ), addr->tipe ), addr->tipe );
-    AddrFree( addr );
+    new_an = AddrName( back, Temporary( back, GenIns( back, addr ), addr->tipe ), addr->tipe );
+    AddrFree( back, addr );
     return( new_an );
 }
 
@@ -378,23 +376,23 @@ void    MoveAddress(  an src,  an  dest )
 }
 
 
-void    Convert( an addr, type_class_def type_class )
+void    Convert( BackRun& back, an addr, type_class_def type_class )
 /***************************************************/
 {
     instruction *ins;
 
     if( addr->u.n.offset != 0 ) {
-        ins = MakeBinary( OP_ADD, addr->u.n.name,
-                                AllocIntConst( addr->u.n.offset ),
-                                AllocTemp( addr->u.n.name->n.type_class ),
-                                TypeClass( addr->tipe ) );
+        ins = MakeBinary( back, OP_ADD, addr->u.n.name,
+                                AllocIntConst( back, addr->u.n.offset ),
+                                AllocTemp( back, addr->u.n.name->n.type_class ),
+                                TypeClass( back, addr->tipe ) );
         addr->u.n.name = ins->result;
-        AddIns( ins );
+        AddIns( back, ins );
     }
-    ins = MakeUnary( OP_CONVERT, addr->u.n.name, AllocTemp( type_class ), type_class );
+    ins = MakeUnary( back, OP_CONVERT, addr->u.n.name, AllocTemp( back, type_class ), type_class );
     addr->u.n.name = ins->result;
     addr->u.n.offset = 0;
-    AddIns( ins );
+    AddIns( back, ins );
 }
 
 
@@ -409,19 +407,19 @@ bool    PointLess( an l_addr, an r_addr )
 }
 
 
-an      AddrToIns( an addr )
+an      AddrToIns( BackRun& back, an addr )
 /**************************/
 {
     instruction *ins;
     an          new_an;
 
     if( addr->format != NF_INS ) {
-        ins = MakeMove( GenIns( addr ), NULL, TypeClass( addr->tipe ) );
-        new_an = InsName( ins, addr->tipe );
+        ins = MakeMove( back, GenIns( back, addr ), NULL, TypeClass( back, addr->tipe ) );
+        new_an = InsName( back, ins, addr->tipe );
         new_an->flags = addr->flags;
         new_an->u.n.alignment = addr->u.n.alignment;
-        BGDone( addr );
-        AddIns( ins );
+        BGDone( back, addr );
+        AddIns( back, ins );
     } else {
         new_an = addr;
     }
@@ -429,35 +427,35 @@ an      AddrToIns( an addr )
 }
 
 
-an      AddrDuplicate( an node )
+an      AddrDuplicate( BackRun& back, an node )
 /******************************/
 {
     an          new_an;
     name        *op;
 
-    InsToAddr( node );
-    op = GenIns( node );
-    new_an = AddrName( op, node->tipe );
+    InsToAddr( back, node );
+    op = GenIns( back, node );
+    new_an = AddrName( back, op, node->tipe );
     CopyAddr( new_an, node );
     return( new_an );
 }
 
-an      AddrCopy( an node )
+an      AddrCopy( BackRun& back, an node )
 /*************************/
 {
     an  new_an;
 
-    InsToAddr( node );
-    new_an = NewAddrName();
+    InsToAddr( back, node );
+    new_an = NewAddrName(back);
     CopyAddr( node, new_an );
     return( new_an );
 }
 
 
-an      AddrSave( an node )
+an      AddrSave( BackRun& back, an node )
 /*************************/
 {
-    InsToAddr( node );
+    InsToAddr( back, node );
     return( node );
 }
 
@@ -472,22 +470,22 @@ void    AddrDemote( an node )
 }
 
 
-name    *MaybeTemp( name *op, type_class_def type_class )
+name    *MaybeTemp( BackRun& back, name *op, type_class_def type_class )
 /*******************************************************/
 {
     if( op == NULL ) {
-        op = AllocTemp( type_class );
+        op = AllocTemp( back, type_class );
     }
     return( op );
 }
 
 
-void    CheckPointer( an addr )
+void    CheckPointer( BackRun& back, an addr )
 /*****************************/
 {
-    InsToAddr( addr );
+    InsToAddr( back, addr );
     if( addr->format == NF_NAME && ( addr->tipe->attr & TYPE_POINTER ) ) {
-        addr->u.n.index = Temporary( addr->u.n.name, addr->tipe );
+        addr->u.n.index = Temporary( back, addr->u.n.name, addr->tipe );
         addr->u.n.name = NULL;
         addr->u.n.offset = 0;
         addr->class_ = CL_POINTER;
@@ -523,7 +521,7 @@ bool    NeedPtrConvert( an addr, const type_def *tipe )
 }
 
 
-name    *LoadAddress( name *op, name *suggest, const type_def *type_ptr )
+name    *LoadAddress( BackRun& back, name *op, name *suggest, const type_def *type_ptr )
 /***********************************************************************/
 {
     name                *new_addr;
@@ -532,9 +530,9 @@ name    *LoadAddress( name *op, name *suggest, const type_def *type_ptr )
     if( op->n.class_ == N_INDEXED && !HasTrueBase( op ) ) {
         if( op->i.constant != 0 ) {
             type_class = op->i.index->n.type_class;
-            new_addr = MaybeTemp( suggest, type_class );
-            AddIns( MakeBinary( OP_ADD, op->i.index,
-                         AllocS32Const( op->i.constant ),
+            new_addr = MaybeTemp( back, suggest, type_class );
+            AddIns( back, MakeBinary( back, OP_ADD, op->i.index,
+                         AllocS32Const( back, op->i.constant ),
                          new_addr, type_class ) );
         } else {
             new_addr = op->i.index;
@@ -549,14 +547,14 @@ name    *LoadAddress( name *op, name *suggest, const type_def *type_ptr )
                 type_class = CP;
             }
         }
-        new_addr = MaybeTemp( suggest, type_class );
-        AddIns( MakeUnary( OP_LA, op, new_addr, type_class ) );
+        new_addr = MaybeTemp( back, suggest, type_class );
+        AddIns( back, MakeUnary( back, OP_LA, op, new_addr, type_class ) );
     }
     return( new_addr );
 }
 
 
-an      MakeAddrName( cg_class class_, cg_sym_handle sym, const type_def *tipe )
+an      MakeAddrName( BackRun& back, cg_class class_, cg_sym_handle sym, const type_def *tipe )
 /*****************************************************************************/
 {
     an          addr;
@@ -564,16 +562,16 @@ an      MakeAddrName( cg_class class_, cg_sym_handle sym, const type_def *tipe )
     level_depth level;
     name        *op;
 
-    addr = NewAddrName();
+    addr = NewAddrName(back);
     if( class_ != CG_FE ) {
-        op = SAllocMemory( sym, 0, class_, TypeClass( tipe ), tipe->length );
+        op = SAllocMemory( back, sym, 0, class_, TypeClass( back, tipe ), tipe->length );
         addr->u.n.name = op;
         addr->class_ = CL_ADDR_GLOBAL;
     } else {
-        attr = FEAttr( sym );
+        attr = FEAttr( *back.front, sym );
         level = FELexLevel( sym );
         if( attr & FE_STATIC ) {
-            op = SAllocMemory( sym, 0, class_, TypeClass(tipe), tipe->length );
+            op = SAllocMemory( back, sym, 0, class_, TypeClass(back, tipe), tipe->length );
             if( ( attr & FE_MEMORY ) != EMPTY ) {
                 op->v.usage |= NEEDS_MEMORY | USE_MEMORY;
             }
@@ -588,12 +586,12 @@ an      MakeAddrName( cg_class class_, cg_sym_handle sym, const type_def *tipe )
             if( attr & FE_CONSTANT ) {
                 op->v.usage |= VAR_CONSTANT;
             }
-        } else if( level != data_state().CurrProc->lex_level ) {
-            op = Display( sym, level );
+        } else if( level != back.data.CurrProc->lex_level ) {
+            op = Display( back, sym, level );
             addr->u.n.name = op;
             addr->format = NF_NAME;
         } else {
-            op = SAllocUserTemp( sym, TypeClass( tipe ), tipe->length );
+            op = SAllocUserTemp( back, sym, TypeClass( back, tipe ), tipe->length );
             if( attr & FE_MEMORY ) {
                 op->v.usage |= NEEDS_MEMORY | USE_MEMORY;
             }
@@ -608,6 +606,6 @@ an      MakeAddrName( cg_class class_, cg_sym_handle sym, const type_def *tipe )
             }
         }
     }
-    addr->tipe = TypeAddress( NamePtrType( op ) );
+    addr->tipe = TypeAddress( back, NamePtrType( back, op ) );
     return( addr );
 }

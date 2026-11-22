@@ -39,19 +39,16 @@
 #include "rgtbl.h"
 #include "conflict.h"
 #include "regtree.h"
+#include "backrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct RegtreeState {
-    pointer *RegFrl;
-    pointer *TreeFrl;
-};
+/* (struct RegtreeState: regtree_state.h) */
 
 }  // namespace
 
-static inline RegtreeState& regtree_state() { return cbrun_part<RegtreeState>(); }
 
 
 #if _TARGET_INTEL
@@ -72,31 +69,31 @@ static bool HasSegRegs( reg_tree *tree )
 #endif
 
 
-static  reg_tree        *AllocRegTree( void )
+static  reg_tree        *AllocRegTree( BackRun& back )
 /*******************************************/
 {
     reg_tree    *tree;
 
-    tree = static_cast<reg_tree *>(AllocFrl( &regtree_state().TreeFrl, sizeof( reg_tree ) ));
+    tree = static_cast<reg_tree *>(AllocFrl( back, &back.regtree.TreeFrl, sizeof( reg_tree ) ));
     return( tree );
 }
 
 
-static  void    FreeRegTree( reg_tree *tree )
+static  void    FreeRegTree( BackRun& back, reg_tree *tree )
 /*******************************************/
 {
-    FrlFreeSize( &regtree_state().TreeFrl, (pointer *)tree, sizeof( reg_tree ) );
+    FrlFreeSize( back, &back.regtree.TreeFrl, (pointer *)tree, sizeof( reg_tree ) );
 }
 
 
-static  hw_reg_set      *AllocRegSet( void )
+static  hw_reg_set      *AllocRegSet( BackRun& back )
 /******************************************/
 {
     int         i;
     hw_reg_set  *regs;
     hw_reg_set  *curr;
 
-    regs = static_cast<hw_reg_set *>(AllocFrl( &regtree_state().RegFrl, REGSET_SIZE ));
+    regs = static_cast<hw_reg_set *>(AllocFrl( back, &back.regtree.RegFrl, REGSET_SIZE ));
     for( curr = regs, i = REG_COUNT; i > 0; --i, ++curr ) {
         HW_CAsgn( *curr, HW_EMPTY );
     }
@@ -104,25 +101,25 @@ static  hw_reg_set      *AllocRegSet( void )
 }
 
 
-static  void    FreeRegSet( hw_reg_set *regs )
+static  void    FreeRegSet( BackRun& back, hw_reg_set *regs )
 /********************************************/
 {
-    FrlFreeSize( &regtree_state().RegFrl, (pointer *)regs, REGSET_SIZE );
+    FrlFreeSize( back, &back.regtree.RegFrl, (pointer *)regs, REGSET_SIZE );
 }
 
 
-bool    RegTreeFrlFree( void )
+bool    RegTreeFrlFree( BackRun& back )
 /****************************/
 {
     bool        freed;
 
-    freed = FrlFreeAll( &regtree_state().TreeFrl, sizeof( reg_tree ) );
-    freed |= FrlFreeAll( &regtree_state().RegFrl, REGSET_SIZE );
+    freed = FrlFreeAll( back, &back.regtree.TreeFrl, sizeof( reg_tree ) );
+    freed |= FrlFreeAll( back, &back.regtree.RegFrl, REGSET_SIZE );
     return( freed );
 }
 
 
-static  void    CheckBigPointer( reg_tree *tree )
+static  void    CheckBigPointer( BackRun& back, reg_tree *tree )
 /***********************************************/
 {
 #if _TARGET_INTEL
@@ -137,12 +134,12 @@ static  void    CheckBigPointer( reg_tree *tree )
 
     if( tree->lo != NULL && HasSegRegs( tree->lo ) ) {
         tree->lo->idx = RL_NUMBER_OF_SETS;
-        FreeRegSet( tree->lo->regs );
+        FreeRegSet( back, tree->lo->regs );
         tree->lo->regs = NULL;
     }
     if( tree->hi != NULL && tree->hi->idx == RL_WORD && HasSegRegs( tree ) ) {
         tree->hi->idx = RL_NUMBER_OF_SETS;
-        FreeRegSet( tree->hi->regs );
+        FreeRegSet( back, tree->hi->regs );
         tree->hi->regs = NULL;
     }
 #else
@@ -151,12 +148,12 @@ static  void    CheckBigPointer( reg_tree *tree )
 }
 
 
-static  reg_tree        *NewTree( void )
+static  reg_tree        *NewTree( BackRun& back )
 /**************************************/
 {
     reg_tree    *tree;
 
-    tree = AllocRegTree();
+    tree = AllocRegTree(back);
     tree->alt = NULL;
     tree->lo = NULL;
     tree->hi = NULL;
@@ -168,19 +165,19 @@ static  reg_tree        *NewTree( void )
 }
 
 
-static  void    BuildPossible( reg_tree *tree )
+static  void    BuildPossible( BackRun& back, reg_tree *tree )
 /*********************************************/
 {
     const hw_reg_set    *src;
     hw_reg_set          *dst;
 
     if( tree != NULL ) {
-        BuildPossible( tree->lo );
-        BuildPossible( tree->hi );
+        BuildPossible( back, tree->lo );
+        BuildPossible( back, tree->hi );
         if( tree->idx != RL_NUMBER_OF_SETS ) {
-            tree->regs = AllocRegSet();
+            tree->regs = AllocRegSet(back);
             dst = tree->regs;
-            for( src = RegSetList(tree->idx); !HW_CEqual( *src, HW_EMPTY ); ++src ) {
+            for( src = RegSetList(back, tree->idx); !HW_CEqual( *src, HW_EMPTY ); ++src ) {
                 *dst++ = *src;
             }
             *dst = *src;
@@ -194,24 +191,24 @@ static  void    BuildPossible( reg_tree *tree )
 }
 
 
-static  void    SimpleTree( conflict_node *conf )
+static  void    SimpleTree( BackRun& back, conflict_node *conf )
 /***********************************************/
 {
     reg_tree    *tree;
     name        *temp;
 
-    tree = NewTree();
+    tree = NewTree(back);
     temp = conf->name;
     tree->temp = temp;
     tree->size = temp->n.size;
     tree->offset = temp->v.offset;
     tree->idx = conf->possible;
-    BuildPossible( tree );
+    BuildPossible( back, tree );
     conf->tree = tree;
 }
 
 
-static  reg_tree        *BuildTree( name *alias, name *master,
+static  reg_tree        *BuildTree( BackRun& back, name *alias, name *master,
                                     type_length offset, type_length size,
                                     conflict_node *conf )
 /************************************************************************/
@@ -224,7 +221,7 @@ static  reg_tree        *BuildTree( name *alias, name *master,
     type_length hisize;
     type_length midpoint;
 
-    tree = NewTree();
+    tree = NewTree(back);
     tree->offset = offset;
     tree->size = size;
     if( alias != NULL ) {
@@ -263,19 +260,19 @@ static  reg_tree        *BuildTree( name *alias, name *master,
         temp = master->t.alias;
         while( temp != master ) {
             if( !have_lo && temp->v.offset == offset && temp->n.size == losize ) {
-                tree->lo = BuildTree( temp, master, offset, losize, conf );
+                tree->lo = BuildTree( back, temp, master, offset, losize, conf );
                 have_lo = true;
             } else if( !have_hi && temp->v.offset == midpoint && temp->n.size == hisize ) {
-                tree->hi = BuildTree( temp, master, midpoint, hisize, conf );
+                tree->hi = BuildTree( back, temp, master, midpoint, hisize, conf );
                 have_hi = true;
             }
             temp = temp->t.alias;
         }
         if( !have_lo ) {
-            tree->lo = BuildTree( NULL, master, offset, losize, conf );
+            tree->lo = BuildTree( back, NULL, master, offset, losize, conf );
         }
         if( !have_hi ) {
-            tree->hi = BuildTree( NULL, master, midpoint, hisize, conf );
+            tree->hi = BuildTree( back, NULL, master, midpoint, hisize, conf );
         }
         if( tree->hi->has_name ) {
             tree->has_name = true;
@@ -288,43 +285,43 @@ static  reg_tree        *BuildTree( name *alias, name *master,
 }
 
 
-void    BurnRegTree( reg_tree *tree )
+void    BurnRegTree( BackRun& back, reg_tree *tree )
 /***********************************/
 {
     if( tree != NULL ) {
-        BurnRegTree( tree->lo );
-        BurnRegTree( tree->hi );
+        BurnRegTree( back, tree->lo );
+        BurnRegTree( back, tree->hi );
         if( tree->regs != NULL ) {
-            FreeRegSet( tree->regs );
+            FreeRegSet( back, tree->regs );
         }
-        FreeRegTree( tree );
+        FreeRegTree( back, tree );
     }
 }
 
 
-static  void    TrimTree( reg_tree *tree )
+static  void    TrimTree( BackRun& back, reg_tree *tree )
 /****************************************/
 {
     if( tree->lo != NULL ) {
         if( !tree->lo->has_name ) {
-            BurnRegTree( tree->lo );
+            BurnRegTree( back, tree->lo );
             tree->lo = NULL;
         } else {
-            TrimTree( tree->lo );
+            TrimTree( back, tree->lo );
         }
     }
     if( tree->hi != NULL ) {
         if( !tree->hi->has_name ) {
-            BurnRegTree( tree->hi );
+            BurnRegTree( back, tree->hi );
             tree->hi = NULL;
         } else {
-            TrimTree( tree->hi );
+            TrimTree( back, tree->hi );
         }
     }
 }
 
 
-static  reg_tree        *CheckTree( reg_tree *tree )
+static  reg_tree        *CheckTree( BackRun& back, reg_tree *tree )
 /**************************************************/
 {
     name        *alias;
@@ -335,7 +332,7 @@ static  reg_tree        *CheckTree( reg_tree *tree )
     for( ;; ) {
         temp = temp->t.alias;
         if( ( temp->t.temp_flags & VISITED ) == 0 ) {
-            BurnRegTree( tree );
+            BurnRegTree( back, tree );
             tree = NULL;
             break;
         }
@@ -372,9 +369,9 @@ static  void    CompressSets( reg_tree *tree )
 }
 
 
-static  bool    PartIntersect( reg_tree *part,
+static  bool    PartIntersect( BackRun& back, reg_tree *part,
                                reg_tree *whole,
-                               hw_reg_set (*rtn)( hw_reg_set ) )
+                               hw_reg_set (*rtn)( BackRun&, hw_reg_set ) )
 /****************************************************************/
 {
     bool        change;
@@ -391,12 +388,12 @@ static  bool    PartIntersect( reg_tree *part,
 
             /* build a register for part consisting of the Hi/Lo parts of whole*/
 
-            part->regs = AllocRegSet();
+            part->regs = AllocRegSet(back);
             part->idx = RL_;
             src = whole->regs;
             dst = part->regs;
             for( i = REG_COUNT; i > 0; --i ) {
-                *dst++ = rtn( *src++ );
+                *dst++ = rtn( back, *src++ );
             }
         }
 
@@ -405,7 +402,7 @@ static  bool    PartIntersect( reg_tree *part,
         src = whole->regs;
         for( i = REG_COUNT; i > 0; --i ) {
             if( !HW_CEqual( *src, HW_EMPTY ) ) {
-                curr = rtn( *src );
+                curr = rtn( back, *src );
                 if( !HW_CEqual( curr, HW_EMPTY ) ) {
                     dst = part->regs;
                     for( j = REG_COUNT; j > 0; --j ) {
@@ -435,7 +432,7 @@ static  bool    PartIntersect( reg_tree *part,
                 dst = whole->regs;
                 for( j = REG_COUNT; j > 0; --j ) {
                     if( !HW_CEqual( *dst, HW_EMPTY ) ) {
-                        tmp = rtn( *dst );
+                        tmp = rtn( back, *dst );
                         if( HW_Equal( curr, tmp ) ) {
                             break;
                         }
@@ -455,40 +452,40 @@ static  bool    PartIntersect( reg_tree *part,
 }
 
 
-static  bool    Intersect( reg_tree *tree )
+static  bool    Intersect( BackRun& back, reg_tree *tree )
 /*****************************************/
 {
     bool        change;
 
     change = false;
     if( tree->hi != NULL ) {
-        change |= PartIntersect( tree->hi, tree, &HighOffsetReg );
-        change |= Intersect( tree->hi );
+        change |= PartIntersect( back, tree->hi, tree, &HighOffsetReg );
+        change |= Intersect( back, tree->hi );
     }
     if( tree->lo != NULL ) {
-        change |= PartIntersect( tree->lo, tree, &LowOffsetReg );
-        change |= Intersect( tree->lo );
+        change |= PartIntersect( back, tree->lo, tree, &LowOffsetReg );
+        change |= Intersect( back, tree->lo );
     }
     return( change );
 }
 
 
-void    BurnNameTree( reg_tree *tree )
+void    BurnNameTree( BackRun& back, reg_tree *tree )
 /************************************/
 {
-    BurnRegTree( tree );
+    BurnRegTree( back, tree );
 }
 
 
-void    RegTreeInit( void )
+void    RegTreeInit( BackRun& back )
 /*************************/
 {
-    InitFrl( &regtree_state().RegFrl );
-    InitFrl( &regtree_state().TreeFrl );
+    InitFrl( &back.regtree.RegFrl );
+    InitFrl( &back.regtree.TreeFrl );
 }
 
 
-void    BuildNameTree( conflict_node *conf )
+void    BuildNameTree( BackRun& back, conflict_node *conf )
 /******************************************/
 {
     name        *temp;
@@ -496,10 +493,10 @@ void    BuildNameTree( conflict_node *conf )
 
     temp = conf->name;
     if( temp->n.class_ == N_TEMP && temp->t.alias != temp ) {
-        tree = BuildTree( temp, temp, temp->v.offset, temp->n.size, conf );
-        tree = CheckTree( tree );
+        tree = BuildTree( back, temp, temp, temp->v.offset, temp->n.size, conf );
+        tree = CheckTree( back, tree );
         if( tree != NULL ) {
-            TrimTree( tree );
+            TrimTree( back, tree );
         }
     } else {
         tree = NULL;
@@ -508,7 +505,7 @@ void    BuildNameTree( conflict_node *conf )
 }
 
 
-void    BuildRegTree( conflict_node *conf )
+void    BuildRegTree( BackRun& back, conflict_node *conf )
 /*****************************************/
 {
     name        *temp;
@@ -516,18 +513,18 @@ void    BuildRegTree( conflict_node *conf )
 
     temp = conf->name;
     if( temp->n.class_ == N_TEMP && temp->t.alias != temp ) {
-        tree = BuildTree( temp, temp, temp->v.offset, temp->n.size, conf );
-        tree = CheckTree( tree );
+        tree = BuildTree( back, temp, temp, temp->v.offset, temp->n.size, conf );
+        tree = CheckTree( back, tree );
         if( tree != NULL ) {
-            BuildPossible( tree );
-            TrimTree( tree );
-            CheckBigPointer( tree );
-            while( Intersect( tree ) ) {
+            BuildPossible( back, tree );
+            TrimTree( back, tree );
+            CheckBigPointer( back, tree );
+            while( Intersect( back, tree ) ) {
             }
             CompressSets( tree );
         }
         conf->tree = tree;
     } else {
-        SimpleTree( conf );
+        SimpleTree( back, conf );
     }
 }

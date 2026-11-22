@@ -31,26 +31,27 @@
 ****************************************************************************/
 
 
+#pragma once
 extern void             FPSetStack( name * );
 extern void             FPNotStack( name * );
-extern void             FPPushParms( pn, call_state * );
-extern bool             FPDivIsADog( type_class_def type_class );
-extern bool             FPStackOp( name * );
-extern bool             FPIsConvert( instruction * );
-extern type_class_def   FPInsClass( instruction * );
+extern void             FPPushParms( BackRun& back, pn, call_state * );
+extern bool             FPDivIsADog( BackRun& back, type_class_def type_class );
+extern bool             FPStackOp( BackRun& back, name * );
+extern bool             FPIsConvert( BackRun& back, instruction * );
+extern type_class_def   FPInsClass( BackRun& back, instruction * );
 extern bool             FPIsStack( name * );
-extern void             FPInit( void );
-extern void             FPExpand( void );
-extern void             FPOptimize( void );
-extern void             FPRegAlloc( void );
-extern void             FPParms( void );
-extern bool             FPSideEffect( instruction * );
-extern bool             FPStackIns( instruction * );
-extern bool             FPStackReg( name * );
+extern void             FPInit( BackRun& back );
+extern void             FPExpand( BackRun& back );
+extern void             FPOptimize( BackRun& back );
+extern void             FPRegAlloc( BackRun& back );
+extern void             FPParms( BackRun& back );
+extern bool             FPSideEffect( BackRun& back, instruction * );
+extern bool             FPStackIns( BackRun& back, instruction * );
+extern bool             FPStackReg( BackRun& back, name * );
 extern bool             FPInsIntroduced( instruction * );
-extern bool             FPFreeIns( instruction * );
-extern int              FPStackExit( block * );
-extern int              FPStkOver( instruction *, int );
-extern void             FPCalcStk( instruction *, int * );
-extern void             FPPostSched( block * );
-extern void             FPPreSched( block * );
+extern bool             FPFreeIns( BackRun& back, instruction * );
+extern int              FPStackExit( BackRun& back, block * );
+extern int              FPStkOver( BackRun& back, instruction *, int );
+extern void             FPCalcStk( BackRun& back, instruction *, int * );
+extern void             FPPostSched( BackRun& back, block * );
+extern void             FPPreSched( BackRun& back, block * );

@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 CGSW_X86_EZ_OMF                  = 0x00000001,  /* Generate EZ-OMF objects */
 CGSW_X86_BIG_DATA                = 0x00000002,  /* Data pointers are far */
 CGSW_X86_BIG_CODE                = 0x00000004,  /* Code pointers are far */

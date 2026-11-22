@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 static unsigned keyword_hash( const char *name, const unsigned char *weights, size_t len )
 {
     unsigned        hash;

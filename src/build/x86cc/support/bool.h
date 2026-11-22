@@ -34,3 +34,4 @@
 /*
  * C++ port: the compilers' flags are C++'s bool. (OpenWatcom's own was an unsigned char under C.)
  */
+#pragma once

@@ -30,4 +30,5 @@
 ****************************************************************************/
 
 
-extern  type_length     AdjustBase( void );
+#pragma once
+extern  type_length     AdjustBase( BackRun& back );

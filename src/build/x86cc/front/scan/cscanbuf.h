@@ -11,10 +11,11 @@
 ****************************************************************************/
 
 
-extern void     WriteBufferChar( int c );
-extern void     WriteBufferNullChar( void );
-extern int      WriteBufferCharNextChar( int c );
-extern void     WriteBufferString( const char *s );
-extern void     WriteBufferEscStr( const char **src, bool quote );
-extern void     InitBuffer( size_t size );
-extern void     FiniBuffer( void );
+#pragma once
+extern void     WriteBufferChar( FrontRun& front, int c );
+extern void     WriteBufferNullChar( FrontRun& front );
+extern int      WriteBufferCharNextChar( FrontRun& front, int c );
+extern void     WriteBufferString( FrontRun& front, const char *s );
+extern void     WriteBufferEscStr( FrontRun& front, const char **src, bool quote );
+extern void     InitBuffer( FrontRun& front, size_t size );
+extern void     FiniBuffer( FrontRun& front );

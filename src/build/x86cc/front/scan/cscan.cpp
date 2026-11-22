@@ -39,11 +39,12 @@
 #include "unicode.h"
 #include "cmacadd.h"
 #include "cscanbuf.h"
+#include "frontrun.hpp"
 
 
-#define diagnose_lex_error()    ((cvars_state().SkipLevel == cvars_state().NestLevel) && (cvars_state().PPControl & PPCTL_NO_LEX_ERRORS) == 0)
+#define diagnose_lex_error()    ((front.cvars.SkipLevel == front.cvars.NestLevel) && (front.cvars.PPControl & PPCTL_NO_LEX_ERRORS) == 0)
 
-#define HEXBIN(c)               ((scan_state().CharSet[c] & C_HX) ? HEX2BIN((c)) : DEC2BIN((c)))
+#define HEXBIN(c)               ((front.scan.CharSet[c] & C_HX) ? HEX2BIN((c)) : DEC2BIN((c)))
 #define OCTAL(c)                ((c) >= '0' && (c) <= '7')
 
 enum scan_class {
@@ -113,65 +114,74 @@ void NewLineStartPos( FCB *srcfile )
     srcfile->src_loc.column = 0;
 }
 
-#define pick(e,p) static TOKEN p( void );
+#define pick(e,p) static TOKEN p( FrontRun& front );
 #include "_scnclas.h"
 #undef pick
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct CscanState {
-    FCB rescan_fcb;
-    unsigned char ClassTable[LCHR_MAX];
-    TOKEN (*ScanFunc[14])( void ) = {
+/* (struct CscanState: cscan_state.h) */
+
+}  // namespace
+
+/* (the routines for each class of character: the run starts with these) */
+void cscan_start( FrontRun& front )
+{
+    TOKEN (* const initial[14])( FrontRun& ) = {
     #define pick(e,p) p,
     #include "_scnclas.h"
     #undef pick
     };
-};
+
+    for( int i = 0; i < 14; ++i ) {
+        front.cscan.ScanFunc[i] = initial[i];
+    }
+}
+
+namespace {
 
 }  // namespace
 
-static inline CscanState& cscan_state() { return cbrun_part<CscanState>(); }
 
-void ReScanInit( const char *ptr )
+void ReScanInit( FrontRun& front, const char *ptr )
 /********************************/
 {
-    cscan_state().rescan_fcb.src_ptr = (const unsigned char *)ptr;
+    front.cscan.rescan_fcb.src_ptr = (const unsigned char *)ptr;
 }
 
-const char *ReScanPos( void )
+const char *ReScanPos( FrontRun& front )
 /***************************/
 {
-    return( (const char *)cscan_state().rescan_fcb.src_ptr );
+    return( (const char *)front.cscan.rescan_fcb.src_ptr );
 }
 
-static int reScanGetNextChar( void )
+static int reScanGetNextChar( FrontRun& front )
 /**********************************/
 {
-    cvars_state().CurrChar = *cscan_state().rescan_fcb.src_ptr++;
-    if( cvars_state().CurrChar == '\0' ) {
-        cvars_state().CompFlags.rescan_buffer_done = true;
+    front.cvars.CurrChar = *front.cscan.rescan_fcb.src_ptr++;
+    if( front.cvars.CurrChar == '\0' ) {
+        front.cvars.CompFlags.rescan_buffer_done = true;
     }
-    return( cvars_state().CurrChar );
+    return( front.cvars.CurrChar );
 }
 
-static int reScanGetCharCheck( int c )
+static int reScanGetCharCheck( FrontRun& front, int c )
 /************************************/
 {
     if( c == '\0' ) {
-        cvars_state().CompFlags.rescan_buffer_done = true;
+        front.cvars.CompFlags.rescan_buffer_done = true;
     }
     return( c );
 }
 
-static void reScanGetNextCharUndo( int c )
+static void reScanGetNextCharUndo( FrontRun& front, int c )
 /****************************************/
 {
     /* unused parameters */ (void)c;
 
-    cscan_state().rescan_fcb.src_ptr--;
-    cvars_state().CompFlags.rescan_buffer_done = false;
+    front.cscan.rescan_fcb.src_ptr--;
+    front.cvars.CompFlags.rescan_buffer_done = false;
 }
 
 static unsigned hashpjw( const char *s, size_t len )
@@ -228,7 +238,7 @@ str_hash_idx CalcStringHash( STR_HANDLE lit )
     return( (str_hash_idx)( hashpjw( lit->literal, lit->length ) % STRING_HASH_SIZE ) );
 }
 
-TOKEN KwLookup( const char *buf, size_t len )
+TOKEN KwLookup( FrontRun& front, const char *buf, size_t len )
 /*******************************************/
 {
     const char  *keyword;
@@ -241,22 +251,22 @@ TOKEN KwLookup( const char *buf, size_t len )
     switch( token ) {
     case T__BOOL:
     case T_INLINE:
-        if( cvars_state().CompVars.cstd < STD_C99
-          && !cvars_state().CompFlags.extensions_enabled )
+        if( front.cvars.CompVars.cstd < STD_C99
+          && !front.cvars.CompFlags.extensions_enabled )
             return( T_ID );
         break;
     case T__COMPLEX:
     case T_RESTRICT:
     case T__IMAGINARY:
     case T___OW_IMAGINARY_UNIT:
-        if( cvars_state().CompVars.cstd < STD_C99 ) {
+        if( front.cvars.CompVars.cstd < STD_C99 ) {
             return( T_ID );
         }
         break;
     case T__NORETURN:
-        if( cvars_state().CompVars.cstd >= STD_C23
-          || cvars_state().CompVars.cstd < STD_C11
-          && !cvars_state().CompFlags.extensions_enabled )
+        if( front.cvars.CompVars.cstd >= STD_C23
+          || front.cvars.CompVars.cstd < STD_C11
+          && !front.cvars.CompFlags.extensions_enabled )
             return( T_ID );
         break;
     }
@@ -272,47 +282,47 @@ TOKEN KwLookup( const char *buf, size_t len )
     return( T_ID );
 }
 
-static int getIDName( int c )
+static int getIDName( FrontRun& front, int c )
 /***************************/
 {
-    while( scan_state().CharSet[c] & (C_AL | C_DI) ) {
-        while( scan_state().CharSet[c] & (C_AL | C_DI) ) {
-            WriteBufferChar( c );
-            c = *cvars_state().SrcFiles->src_ptr++;
+    while( front.scan.CharSet[c] & (C_AL | C_DI) ) {
+        while( front.scan.CharSet[c] & (C_AL | C_DI) ) {
+            WriteBufferChar( front, c );
+            c = *front.cvars.SrcFiles->src_ptr++;
         }
-        if( (scan_state().CharSet[c] & C_EX) == 0 )
+        if( (front.scan.CharSet[c] & C_EX) == 0 )
             break;
-        c = cvars_state().GetCharCheck( c );
+        c = front.cvars.GetCharCheck( front, c );
     }
-    cvars_state().CurrChar = c;
+    front.cvars.CurrChar = c;
     return( c );
 }
 
-static TOKEN doScanName( void )
+static TOKEN doScanName( FrontRun& front )
 /*****************************/
 {
     TOKEN       token;
     MEPTR       mentry;
 
-    getIDName( cvars_state().CurrChar );
-    WriteBufferNullChar();
-    if( cvars_state().CompFlags.doing_macro_expansion
-      || (cvars_state().PPControl & PPCTL_NO_EXPAND) ) {
+    getIDName( front, front.cvars.CurrChar );
+    WriteBufferNullChar(front);
+    if( front.cvars.CompFlags.doing_macro_expansion
+      || (front.cvars.PPControl & PPCTL_NO_EXPAND) ) {
         return( T_ID );
     }
-    mentry = MacroLookup( cvars_state().Buffer );
+    mentry = MacroLookup( front, front.cvars.Buffer );
     if( mentry == NULL ) {
-        if( IS_PPOPERATOR_PRAGMA( cvars_state().Buffer, cvars_state().TokenLen ) ) {
-            token = Process_Pragma();
+        if( IS_PPOPERATOR_PRAGMA( front.cvars.Buffer, front.cvars.TokenLen ) ) {
+            token = Process_Pragma(front);
         } else {
-            token = KwLookup( cvars_state().Buffer, cvars_state().TokenLen );
+            token = KwLookup( front, front.cvars.Buffer, front.cvars.TokenLen );
         }
     } else {
         /*
          * this is a macro
          */
         if( MacroIsSpecial( mentry ) ) {
-            return( SpecialMacro( mentry ) );
+            return( SpecialMacro( front, mentry ) );
         }
         mentry->macro_flags |= MFLAG_REFERENCED;
         /*
@@ -320,16 +330,16 @@ static TOKEN doScanName( void )
          * then this is not a macro
          */
         if( MacroWithParenthesis( mentry ) ) {
-            SkipAhead();
-            if( cvars_state().CurrChar != '(' ) {
-                if( cvars_state().CompFlags.cpp_mode ) {
-                    InsertToken( T_WHITE_SPACE, " " );
+            SkipAhead(front);
+            if( front.cvars.CurrChar != '(' ) {
+                if( front.cvars.CompFlags.cpp_mode ) {
+                    InsertToken( front, T_WHITE_SPACE, " " );
                     token = T_ID;
                 } else {
-                    if( IS_PPOPERATOR_PRAGMA( cvars_state().Buffer, cvars_state().TokenLen ) ) {
-                        token = Process_Pragma();
+                    if( IS_PPOPERATOR_PRAGMA( front.cvars.Buffer, front.cvars.TokenLen ) ) {
+                        token = Process_Pragma(front);
                     } else {
-                        token = KwLookup( cvars_state().Buffer, cvars_state().TokenLen );
+                        token = KwLookup( front, front.cvars.Buffer, front.cvars.TokenLen );
                     }
                 }
                 return( token );
@@ -338,8 +348,8 @@ static TOKEN doScanName( void )
         /*
          * start macro expansion
          */
-        DoMacroExpansion( mentry );
-        token = GetMacroToken();
+        DoMacroExpansion( front, mentry );
+        token = GetMacroToken(front);
 #if 0
         if( MacroPtr != NULL ) {
             SavedCurrChar = CurrChar;
@@ -353,16 +363,16 @@ static TOKEN doScanName( void )
     return( token );
 }
 
-static TOKEN ScanName( void )
+static TOKEN ScanName( FrontRun& front )
 /***************************/
 {
-    cvars_state().Buffer[0] = cvars_state().CurrChar;
-    cvars_state().TokenLen = 1;
-    cvars_state().NextChar();
-    return( doScanName() );
+    front.cvars.Buffer[0] = front.cvars.CurrChar;
+    front.cvars.TokenLen = 1;
+    front.cvars.NextChar(front);
+    return( doScanName(front) );
 }
 
-static TOKEN doScanDotSomething( int c )
+static TOKEN doScanDotSomething( FrontRun& front, int c )
 /***************************************
  * on entry TokenLen = 1
  *
@@ -374,99 +384,99 @@ static TOKEN doScanDotSomething( int c )
 
     token = T_DOT;
     if( c == '.' ) {
-        c = cvars_state().NextChar();
+        c = front.cvars.NextChar(front);
         if( c == '.' ) {
-            cvars_state().Buffer[cvars_state().TokenLen++] = '.';
-            cvars_state().Buffer[cvars_state().TokenLen++] = '.';
-            cvars_state().NextChar();
+            front.cvars.Buffer[front.cvars.TokenLen++] = '.';
+            front.cvars.Buffer[front.cvars.TokenLen++] = '.';
+            front.cvars.NextChar(front);
             token = T_DOT_DOT_DOT;
         } else {
-            cvars_state().CurrChar = '.';
-            cvars_state().UnGetChar( c );
+            front.cvars.CurrChar = '.';
+            front.cvars.UnGetChar( front, c );
         }
     }
-    cvars_state().Buffer[cvars_state().TokenLen] = '\0';
+    front.cvars.Buffer[front.cvars.TokenLen] = '\0';
     return( token );
 }
 
-static TOKEN doScanFloat( bool hex )
+static TOKEN doScanFloat( FrontRun& front, bool hex )
 /**********************************/
 {
     int             c;
     TOKEN           token;
     charset_flags   flags;
 
-    cvars_state().BadTokenInfo = ERR_NONE;
-    c = cvars_state().CurrChar;
+    front.cvars.BadTokenInfo = ERR_NONE;
+    c = front.cvars.CurrChar;
     if( c == '.' ) {
         flags = ( hex ) ? C_HX | C_DI : C_DI;
-        c = WriteBufferCharNextChar( c );
-        while( scan_state().CharSet[c] & flags ) {
-            c = WriteBufferCharNextChar( c );
+        c = WriteBufferCharNextChar( front, c );
+        while( front.scan.CharSet[c] & flags ) {
+            c = WriteBufferCharNextChar( front, c );
         }
-        if( cvars_state().TokenLen == 1 ) {   /* .? */
-            return( doScanDotSomething( c ) );
+        if( front.cvars.TokenLen == 1 ) {   /* .? */
+            return( doScanDotSomething( front, c ) );
         }
     }
     token = T_CONSTANT;
     if( ONE_CASE_EQUAL( c, 'E' )
       || hex && ONE_CASE_EQUAL( c, 'P' ) ) {
-        c = WriteBufferCharNextChar( c );
+        c = WriteBufferCharNextChar( front, c );
         if( c == '+'
           || c == '-' ) {
-            c = WriteBufferCharNextChar( c );
+            c = WriteBufferCharNextChar( front, c );
         }
-        if( (scan_state().CharSet[c] & C_DI) == 0 ) {
+        if( (front.scan.CharSet[c] & C_DI) == 0 ) {
             token = T_BAD_TOKEN;
-            cvars_state().BadTokenInfo = ERR_INVALID_FLOATING_POINT_CONSTANT;
+            front.cvars.BadTokenInfo = ERR_INVALID_FLOATING_POINT_CONSTANT;
         }
-        while( scan_state().CharSet[c] & C_DI ) {
-            c = WriteBufferCharNextChar( c );
+        while( front.scan.CharSet[c] & C_DI ) {
+            c = WriteBufferCharNextChar( front, c );
         }
     }
     if( ONE_CASE_EQUAL( c, 'F' ) ) {
-        WriteBufferCharNextChar( c );
-        cvars_state().ConstType = TYP_FLOAT;
+        WriteBufferCharNextChar( front, c );
+        front.cvars.ConstType = TYP_FLOAT;
     } else if( ONE_CASE_EQUAL( c, 'L' ) ) {
-        WriteBufferCharNextChar( c );
-        if( cvars_state().CompFlags.use_long_double ) {
-            cvars_state().ConstType = TYP_LONG_DOUBLE;
+        WriteBufferCharNextChar( front, c );
+        if( front.cvars.CompFlags.use_long_double ) {
+            front.cvars.ConstType = TYP_LONG_DOUBLE;
         } else {
-            cvars_state().ConstType = TYP_DOUBLE;
+            front.cvars.ConstType = TYP_DOUBLE;
         }
     } else {
-        cvars_state().ConstType = TYP_DOUBLE;
+        front.cvars.ConstType = TYP_DOUBLE;
     }
-    WriteBufferNullChar();
+    WriteBufferNullChar(front);
     return( token );
 }
 
-static TOKEN doScanAsm( void )
+static TOKEN doScanAsm( FrontRun& front )
 /****************************/
 {
-    cvars_state().BadTokenInfo = ERR_NONE;
-    cvars_state().NextChar();
-    while( getIDName( cvars_state().CurrChar ) == '.' ) {
-        WriteBufferCharNextChar( '.' );
+    front.cvars.BadTokenInfo = ERR_NONE;
+    front.cvars.NextChar(front);
+    while( getIDName( front, front.cvars.CurrChar ) == '.' ) {
+        WriteBufferCharNextChar( front, '.' );
     }
-    WriteBufferNullChar();
+    WriteBufferNullChar(front);
     return( T_ID );
 }
 
-static TOKEN ScanDot( void )
+static TOKEN ScanDot( FrontRun& front )
 /**************************/
 {
-    if( cvars_state().PPControl & PPCTL_ASM ) {
-        cvars_state().Buffer[0] = '.';
-        cvars_state().TokenLen = 1;
-        return( doScanAsm() );
+    if( front.cvars.PPControl & PPCTL_ASM ) {
+        front.cvars.Buffer[0] = '.';
+        front.cvars.TokenLen = 1;
+        return( doScanAsm(front) );
     } else {
-        cvars_state().TokenLen = 0;
-        return( doScanFloat( false ) );
+        front.cvars.TokenLen = 0;
+        return( doScanFloat( front, false ) );
     }
 }
 
-static TOKEN doScanPPNumber( void )
+static TOKEN doScanPPNumber( FrontRun& front )
 /**********************************
  *
  * 3.1.8 pp-number (C99 §6.4.8 adds 'p'/'P')
@@ -488,16 +498,16 @@ static TOKEN doScanPPNumber( void )
     c = 0;
     for( ;; ) {
         prevc = c;
-        c = cvars_state().NextChar();
-        if( (scan_state().CharSet[c] & (C_AL | C_DI))
+        c = front.cvars.NextChar(front);
+        if( (front.scan.CharSet[c] & (C_AL | C_DI))
           || c == '.' ) {
-            WriteBufferChar( c );
+            WriteBufferChar( front, c );
         } else if( ( ONE_CASE_EQUAL( prevc, 'E' )
-          || ( cvars_state().CompVars.cstd > STD_C89 )
+          || ( front.cvars.CompVars.cstd > STD_C89 )
           && ONE_CASE_EQUAL( prevc, 'P' ) )
           && ( c == '+' || c == '-' ) ) {
-            WriteBufferChar( c );
-            if( cvars_state().CompFlags.extensions_enabled ) {
+            WriteBufferChar( front, c );
+            if( front.cvars.CompFlags.extensions_enabled ) {
                 /*
                  * concession to existing practice...
                  *  #define A2 0x02
@@ -509,48 +519,48 @@ static TOKEN doScanPPNumber( void )
                  * advance to next
                  */
                 prevc = c;
-                c = cvars_state().NextChar();
-                if( (scan_state().CharSet[c] & C_DI) == 0 ) {
+                c = front.cvars.NextChar(front);
+                if( (front.scan.CharSet[c] & C_DI) == 0 ) {
                     /*
                      * allow e+<digit>
                      */
                     break;
                 }
-                WriteBufferChar( c );
+                WriteBufferChar( front, c );
             }
         } else {
             break;
         }
     }
-    WriteBufferNullChar();
+    WriteBufferNullChar(front);
     return( T_PPNUMBER );
 }
 
-static TOKEN ScanPPDigit( void )
+static TOKEN ScanPPDigit( FrontRun& front )
 /******************************/
 {
-    cvars_state().Buffer[0] = cvars_state().CurrChar;
-    cvars_state().TokenLen = 1;
-    return( doScanPPNumber() );
+    front.cvars.Buffer[0] = front.cvars.CurrChar;
+    front.cvars.TokenLen = 1;
+    return( doScanPPNumber(front) );
 }
 
-static TOKEN ScanPPDot( void )
+static TOKEN ScanPPDot( FrontRun& front )
 /****************************/
 {
     int         c;
 
-    cvars_state().Buffer[0] = '.';
-    cvars_state().TokenLen = 1;
-    c = cvars_state().NextChar();
-    if( scan_state().CharSet[c] & C_DI ) {
-        cvars_state().Buffer[cvars_state().TokenLen++] = c;
-        return( doScanPPNumber() );
+    front.cvars.Buffer[0] = '.';
+    front.cvars.TokenLen = 1;
+    c = front.cvars.NextChar(front);
+    if( front.scan.CharSet[c] & C_DI ) {
+        front.cvars.Buffer[front.cvars.TokenLen++] = c;
+        return( doScanPPNumber(front) );
     } else {
-        return( doScanDotSomething( c ) );
+        return( doScanDotSomething( front, c ) );
     }
 }
 
-static TOKEN doScanNum( void )
+static TOKEN doScanNum( FrontRun& front )
 /****************************/
 {
     int             c;
@@ -572,78 +582,78 @@ static TOKEN doScanNum( void )
         SUFF_MASK = SUFF_8 | SUFF_16 | SUFF_L | SUFF_LL,
     } suffix;
 
-    cvars_state().ConstType = TYP_UNDEFINED;
-    cvars_state().BadTokenInfo = ERR_NONE;
+    front.cvars.ConstType = TYP_UNDEFINED;
+    front.cvars.BadTokenInfo = ERR_NONE;
     overflow = false;
     usuffix = true;
-    Set64ValZero( cvars_state().Constant64 );
-    if( cvars_state().CurrChar == '0' ) {
-        c = cvars_state().NextChar();
+    Set64ValZero( front.cvars.Constant64 );
+    if( front.cvars.CurrChar == '0' ) {
+        c = front.cvars.NextChar(front);
         if( ONE_CASE_EQUAL( c, 'X' ) ) {
             bad_token_type = ERR_INVALID_HEX_CONSTANT;
-            c = WriteBufferCharNextChar( c );
-            while( scan_state().CharSet[c] & (C_HX | C_DI) ) {
-                c = WriteBufferCharNextChar( c );
+            c = WriteBufferCharNextChar( front, c );
+            while( front.scan.CharSet[c] & (C_HX | C_DI) ) {
+                c = WriteBufferCharNextChar( front, c );
             }
 
-            if( cvars_state().CompVars.cstd > STD_C89 ) {
+            if( front.cvars.CompVars.cstd > STD_C89 ) {
                 if( c == '.'
                   || ONE_CASE_EQUAL( c, 'P' ) ) {
-                    return( doScanFloat( true ) );
+                    return( doScanFloat( front, true ) );
                 }
             }
 
-            if( cvars_state().TokenLen == 2 ) {
+            if( front.cvars.TokenLen == 2 ) {
                 /*
                  * just collected a 0x
                  */
-                cvars_state().BadTokenInfo = ERR_INVALID_HEX_CONSTANT;
+                front.cvars.BadTokenInfo = ERR_INVALID_HEX_CONSTANT;
                 if( diagnose_lex_error() ) {
-                    CErr1( ERR_INVALID_HEX_CONSTANT );
+                    CErr1( front, ERR_INVALID_HEX_CONSTANT );
                 }
             } else {
                 /*
                  * skip 0x thing
                  */
-                curr = cvars_state().Buffer + 2;
-                len = cvars_state().TokenLen - 2;
+                curr = front.cvars.Buffer + 2;
+                len = front.cvars.TokenLen - 2;
                 while( len-- > 0 ) {
                     unsigned char   ch;
 
                     ch = *(unsigned char *)curr++;
-                    if( U64Cnv16( &cvars_state().Constant64, HEXBIN( ch ) ) ) {
+                    if( U64Cnv16( &front.cvars.Constant64, HEXBIN( ch ) ) ) {
                         overflow = true;
                     }
                 }
             }
         } else if( ONE_CASE_EQUAL( c, 'B' )
-          && ( cvars_state().CompFlags.extensions_enabled
-          || ( cvars_state().CompVars.cstd >= STD_C23 ) ) ) {
+          && ( front.cvars.CompFlags.extensions_enabled
+          || ( front.cvars.CompVars.cstd >= STD_C23 ) ) ) {
             bad_token_type = ERR_INVALID_BINARY_CONSTANT;
-            c = WriteBufferCharNextChar( c );
+            c = WriteBufferCharNextChar( front, c );
             while( c == '0' || c == '1' ) {
-                c = WriteBufferCharNextChar( c );
+                c = WriteBufferCharNextChar( front, c );
             }
 
-            if( cvars_state().TokenLen == 2 ) {
+            if( front.cvars.TokenLen == 2 ) {
                 /*
                  * just collected a 0b
                  */
-                cvars_state().BadTokenInfo = ERR_INVALID_BINARY_CONSTANT;
+                front.cvars.BadTokenInfo = ERR_INVALID_BINARY_CONSTANT;
                 if( diagnose_lex_error() ) {
-                    CErr1( ERR_INVALID_BINARY_CONSTANT );
+                    CErr1( front, ERR_INVALID_BINARY_CONSTANT );
                 }
             } else {
                 /*
                  * skip the 0b start of the binary number
                  */
-                curr = cvars_state().Buffer + 2;
-                len = cvars_state().TokenLen - 2;
+                curr = front.cvars.Buffer + 2;
+                len = front.cvars.TokenLen - 2;
                 while( len-- > 0 ) {
                     unsigned char   ch;
 
                     ch = *(unsigned char *)curr++;
-                    if( U64Cnv2( &cvars_state().Constant64, DEC2BIN( ch ) ) ) {
+                    if( U64Cnv2( &front.cvars.Constant64, DEC2BIN( ch ) ) ) {
                         overflow = true;
                     }
                 }
@@ -660,30 +670,30 @@ static TOKEN doScanNum( void )
              * since the argument may be used in with # or ##.
              */
             digit89 = false;
-            while( scan_state().CharSet[c] & C_DI ) {
+            while( front.scan.CharSet[c] & C_DI ) {
                 digit89 |= ( c > '7' );
-                c = WriteBufferCharNextChar( c );
+                c = WriteBufferCharNextChar( front, c );
             }
             if( c == '.'
               || ONE_CASE_EQUAL( c, 'E' ) ) {
-                return( doScanFloat( false ) );
+                return( doScanFloat( front, false ) );
             }
             if( digit89 ) {
                 /*
                  * if digit 8 or 9 somewhere
                  */
-                cvars_state().BadTokenInfo = ERR_INVALID_OCTAL_CONSTANT;
+                front.cvars.BadTokenInfo = ERR_INVALID_OCTAL_CONSTANT;
                 if( diagnose_lex_error() ) {
-                    CErr1( ERR_INVALID_OCTAL_CONSTANT );
+                    CErr1( front, ERR_INVALID_OCTAL_CONSTANT );
                 }
             } else {
-                curr = cvars_state().Buffer;
-                len = cvars_state().TokenLen;
+                curr = front.cvars.Buffer;
+                len = front.cvars.TokenLen;
                 while( len-- > 0 ) {
                     unsigned char   ch;
 
                     ch = *(unsigned char *)curr++;
-                    if( U64Cnv8( &cvars_state().Constant64, DEC2BIN( ch ) ) ) {
+                    if( U64Cnv8( &front.cvars.Constant64, DEC2BIN( ch ) ) ) {
                         overflow = true;
                     }
                 }
@@ -695,21 +705,21 @@ static TOKEN doScanNum( void )
          */
         bad_token_type = ERR_INVALID_CONSTANT;
         usuffix = false;
-        c = cvars_state().NextChar();
-        while( scan_state().CharSet[c] & C_DI ) {
-            c = WriteBufferCharNextChar( c );
+        c = front.cvars.NextChar(front);
+        while( front.scan.CharSet[c] & C_DI ) {
+            c = WriteBufferCharNextChar( front, c );
         }
         if( c == '.'
           || ONE_CASE_EQUAL( c, 'E' ) ) {
-            return( doScanFloat( false ) );
+            return( doScanFloat( front, false ) );
         }
-        curr = cvars_state().Buffer;
-        len = cvars_state().TokenLen;
+        curr = front.cvars.Buffer;
+        len = front.cvars.TokenLen;
         while( len-- > 0 ) {
             unsigned char   ch;
 
             ch = *(unsigned char *)curr++;
-            if( U64Cnv10( &cvars_state().Constant64, DEC2BIN( ch ) ) ) {
+            if( U64Cnv10( &front.cvars.Constant64, DEC2BIN( ch ) ) ) {
                 overflow = true;
             }
         }
@@ -720,51 +730,51 @@ static TOKEN doScanNum( void )
     suffix = SUFF_NONE;
     if( ONE_CASE_EQUAL( c, 'U' ) ) {
         suffix |= SUFF_U;
-        c = WriteBufferCharNextChar( c );
+        c = WriteBufferCharNextChar( front, c );
     }
     if( ONE_CASE_EQUAL( c, 'L' ) ) {
-        c = WriteBufferCharNextChar( c );
+        c = WriteBufferCharNextChar( front, c );
         if( ONE_CASE_EQUAL( c, 'L' ) ) {
             suffix |= SUFF_LL;
-            c = WriteBufferCharNextChar( c );
+            c = WriteBufferCharNextChar( front, c );
         } else {
             suffix |= SUFF_L;
         }
         if( ONE_CASE_EQUAL( c, 'U' ) ) {
             suffix |= SUFF_U;
-            c = WriteBufferCharNextChar( c );
+            c = WriteBufferCharNextChar( front, c );
         }
     } else if( ONE_CASE_EQUAL( c, 'I' ) ) {
-        c = WriteBufferCharNextChar( c );
+        c = WriteBufferCharNextChar( front, c );
         if( c == '6' ) {
-            c = WriteBufferCharNextChar( c );
+            c = WriteBufferCharNextChar( front, c );
             if( c == '4' ) {
                 suffix |= SUFF_LL | SUFF_MS;
-                c = WriteBufferCharNextChar( c );
+                c = WriteBufferCharNextChar( front, c );
             } else if( diagnose_lex_error() ) {
-                CErr1( ERR_INVALID_CONSTANT );
+                CErr1( front, ERR_INVALID_CONSTANT );
             }
         } else if( c == '3' ) {
-            c = WriteBufferCharNextChar( c );
+            c = WriteBufferCharNextChar( front, c );
             if( c == '2' ) {
                 suffix |= SUFF_L | SUFF_MS;
-                c = WriteBufferCharNextChar( c );
+                c = WriteBufferCharNextChar( front, c );
             } else if( diagnose_lex_error() ) {
-                CErr1( ERR_INVALID_CONSTANT );
+                CErr1( front, ERR_INVALID_CONSTANT );
             }
         } else if( c == '1' ) {
-            c = WriteBufferCharNextChar( c );
+            c = WriteBufferCharNextChar( front, c );
             if( c == '6' ) {
                 suffix |= SUFF_16 | SUFF_MS;
-                c = WriteBufferCharNextChar( c );
+                c = WriteBufferCharNextChar( front, c );
             } else if( diagnose_lex_error() ) {
-                CErr1( ERR_INVALID_CONSTANT );
+                CErr1( front, ERR_INVALID_CONSTANT );
             }
         } else if( c == '8' ) {
             suffix |= SUFF_8 | SUFF_MS;
-            c = WriteBufferCharNextChar( c );
+            c = WriteBufferCharNextChar( front, c );
         } else if( diagnose_lex_error() ) {
-            CErr1( ERR_INVALID_CONSTANT );
+            CErr1( front, ERR_INVALID_CONSTANT );
         }
     }
     /*
@@ -777,42 +787,42 @@ static TOKEN doScanNum( void )
     case SUFF_8:
     case SUFF_16:
         if( ssuffix ) {
-            if( U64CmpU32( cvars_state().Constant64, TARGET_INT_MAX ) <= 0 ) {
-                cvars_state().ConstType = TYP_INT;
+            if( U64CmpU32( front.cvars.Constant64, TARGET_INT_MAX ) <= 0 ) {
+                front.cvars.ConstType = TYP_INT;
                 break;
             }
         }
         if( usuffix ) {
-            if( U64CmpU32( cvars_state().Constant64, TARGET_UINT_MAX ) <= 0 ) {
-                cvars_state().ConstType = TYP_UINT;
+            if( U64CmpU32( front.cvars.Constant64, TARGET_UINT_MAX ) <= 0 ) {
+                front.cvars.ConstType = TYP_UINT;
                 break;
             }
         }
         /* fall through */
     case SUFF_L:
         if( ssuffix ) {
-            if( U64CmpU32( cvars_state().Constant64, TARGET_LONG_MAX ) <= 0 ) {
-                cvars_state().ConstType = TYP_LONG;
+            if( U64CmpU32( front.cvars.Constant64, TARGET_LONG_MAX ) <= 0 ) {
+                front.cvars.ConstType = TYP_LONG;
                 break;
             }
         }
         if( usuffix ) {
-            if( U64CmpU32( cvars_state().Constant64, TARGET_ULONG_MAX ) <= 0 ) {
-                cvars_state().ConstType = TYP_ULONG;
+            if( U64CmpU32( front.cvars.Constant64, TARGET_ULONG_MAX ) <= 0 ) {
+                front.cvars.ConstType = TYP_ULONG;
                 break;
             }
         }
         /* fall through */
     case SUFF_LL:
         if( ssuffix ) {
-            if( cvars_state().Constant64.u.sign.v == 0 ) {
-                cvars_state().ConstType = TYP_LONG64;
+            if( front.cvars.Constant64.u.sign.v == 0 ) {
+                front.cvars.ConstType = TYP_LONG64;
                 break;
             }
         }
         if( usuffix ) {
-            cvars_state().ConstType = TYP_ULONG64;
-        } else if( cvars_state().ConstType == TYP_UNDEFINED ) {
+            front.cvars.ConstType = TYP_ULONG64;
+        } else if( front.cvars.ConstType == TYP_UNDEFINED ) {
             /*
              * C99 say that signed long long decimal number is undefined type
              * if it cannot be represented by any standard or extended signed type
@@ -821,47 +831,47 @@ static TOKEN doScanNum( void )
              * We report this issue at Warning level 1 and setup it as
              * unsigned long long type
              */
-            cvars_state().ConstType = TYP_ULONG64;
+            front.cvars.ConstType = TYP_ULONG64;
             if( diagnose_lex_error() ) {
-                CWarn1( ERR_INT_IS_UNSIGNED );
+                CWarn1( front, ERR_INT_IS_UNSIGNED );
             }
         }
         break;
     }
 
     token = T_CONSTANT;
-    if( scan_state().CharSet[c] & (C_AL | C_DI) ) {
+    if( front.scan.CharSet[c] & (C_AL | C_DI) ) {
         token = T_BAD_TOKEN;
-        while( scan_state().CharSet[c] & (C_AL | C_DI) ) {
-            c = WriteBufferCharNextChar( c );
+        while( front.scan.CharSet[c] & (C_AL | C_DI) ) {
+            c = WriteBufferCharNextChar( front, c );
         }
     }
-    WriteBufferNullChar();
+    WriteBufferNullChar(front);
     if( overflow ) {
-        cvars_state().BadTokenInfo = ERR_CONSTANT_TOO_BIG;
+        front.cvars.BadTokenInfo = ERR_CONSTANT_TOO_BIG;
         if( diagnose_lex_error() ) {
-            CWarn1( ERR_CONSTANT_TOO_BIG );
+            CWarn1( front, ERR_CONSTANT_TOO_BIG );
         }
     }
     if( token == T_BAD_TOKEN ) {
-        cvars_state().BadTokenInfo = bad_token_type;
+        front.cvars.BadTokenInfo = bad_token_type;
     }
     return( token );
 }
 
-static TOKEN ScanNum( void )
+static TOKEN ScanNum( FrontRun& front )
 /**************************/
 {
-    cvars_state().Buffer[0] = cvars_state().CurrChar;
-    cvars_state().TokenLen = 1;
-    if( cvars_state().PPControl & PPCTL_ASM ) {
-        return( doScanAsm() );
+    front.cvars.Buffer[0] = front.cvars.CurrChar;
+    front.cvars.TokenLen = 1;
+    if( front.cvars.PPControl & PPCTL_ASM ) {
+        return( doScanAsm(front) );
     } else {
-        return( doScanNum() );
+        return( doScanNum(front) );
     }
 }
 
-static TOKEN ScanDelim1( void )
+static TOKEN ScanDelim1( FrontRun& front )
 /******************************
  * TokenLen is alway lower then BUF_SIZE that
  * direct access to Buffer array is used
@@ -869,11 +879,11 @@ static TOKEN ScanDelim1( void )
 {
     TOKEN       token;
 
-    token = static_cast<TOKEN>(TokValue[cvars_state().CurrChar]);
-    cvars_state().Buffer[0] = cvars_state().CurrChar;
-    cvars_state().Buffer[1] = '\0';
-    cvars_state().TokenLen = 1;
-    cvars_state().NextChar();
+    token = static_cast<TOKEN>(TokValue[front.cvars.CurrChar]);
+    front.cvars.Buffer[0] = front.cvars.CurrChar;
+    front.cvars.Buffer[1] = '\0';
+    front.cvars.TokenLen = 1;
+    front.cvars.NextChar(front);
     return( token );
 }
 
@@ -1020,7 +1030,7 @@ static bool checkDelim2( TOKEN *token, TOKEN last )
     return( true );
 }
 
-static TOKEN ScanDelim2( void )
+static TOKEN ScanDelim2( FrontRun& front )
 /******************************
  * TokenLen is alway lower then BUF_SIZE that
  * direct access to Buffer array is used
@@ -1028,40 +1038,40 @@ static TOKEN ScanDelim2( void )
 {
     TOKEN           token;
 
-    token = static_cast<TOKEN>(TokValue[cvars_state().CurrChar]);
-    cvars_state().Buffer[0] = cvars_state().CurrChar;
-    cvars_state().TokenLen = 1;
-    if( (scan_state().CharSet[cvars_state().NextChar()] & C_DE)
-      && checkDelim2( &token, static_cast<TOKEN>(TokValue[cvars_state().CurrChar]) ) ) {
-        cvars_state().Buffer[cvars_state().TokenLen++] = cvars_state().CurrChar;
-        if( (scan_state().CharSet[cvars_state().NextChar()] & C_DE)
-          && checkDelim2( &token, static_cast<TOKEN>(TokValue[cvars_state().CurrChar]) ) ) {
-            cvars_state().Buffer[cvars_state().TokenLen++] = cvars_state().CurrChar;
-            cvars_state().NextChar();
+    token = static_cast<TOKEN>(TokValue[front.cvars.CurrChar]);
+    front.cvars.Buffer[0] = front.cvars.CurrChar;
+    front.cvars.TokenLen = 1;
+    if( (front.scan.CharSet[front.cvars.NextChar(front)] & C_DE)
+      && checkDelim2( &token, static_cast<TOKEN>(TokValue[front.cvars.CurrChar]) ) ) {
+        front.cvars.Buffer[front.cvars.TokenLen++] = front.cvars.CurrChar;
+        if( (front.scan.CharSet[front.cvars.NextChar(front)] & C_DE)
+          && checkDelim2( &token, static_cast<TOKEN>(TokValue[front.cvars.CurrChar]) ) ) {
+            front.cvars.Buffer[front.cvars.TokenLen++] = front.cvars.CurrChar;
+            front.cvars.NextChar(front);
         }
     }
-    cvars_state().Buffer[cvars_state().TokenLen] = '\0';
+    front.cvars.Buffer[front.cvars.TokenLen] = '\0';
     return( token );
 }
 
-static void doScanComment( void )
+static void doScanComment( FrontRun& front )
 /*******************************/
 {
     int         c;
     int         prev_char;
 
-    cvars_state().CommentLoc = cvars_state().TokenLoc;
-    cvars_state().CompFlags.scanning_comment = true;
-    if( cvars_state().CompFlags.cpp_mode ) {
-        CppComment( '*' );
-        c = cvars_state().NextChar();
+    front.cvars.CommentLoc = front.cvars.TokenLoc;
+    front.cvars.CompFlags.scanning_comment = true;
+    if( front.cvars.CompFlags.cpp_mode ) {
+        CppComment( front, '*' );
+        c = front.cvars.NextChar(front);
         for( ;; ) {
             if( c == '*' ) {
-                c = cvars_state().NextChar();
+                c = front.cvars.NextChar(front);
                 if( c == '/' )
                     break;
-                if( cvars_state().CompFlags.cpp_keep_comments ) {
-                    CppPrtChar( '*' );
+                if( front.cvars.CompFlags.cpp_keep_comments ) {
+                    CppPrtChar( front, '*' );
                 }
                 continue; // could be **/
             }
@@ -1069,69 +1079,69 @@ static void doScanComment( void )
                 break;
             }
             if( c == '\n' ) {
-                CppPrtChar( c );
-                NewLineStartPos( cvars_state().SrcFiles );
+                CppPrtChar( front, c );
+                NewLineStartPos( front.cvars.SrcFiles );
             } else if( c != '\r'
-              && cvars_state().CompFlags.cpp_keep_comments ) {
-                CppPrtChar( c );
+              && front.cvars.CompFlags.cpp_keep_comments ) {
+                CppPrtChar( front, c );
             }
-            c = cvars_state().NextChar();
+            c = front.cvars.NextChar(front);
         }
-        CppComment( '\0' );
+        CppComment( front, '\0' );
     } else {
         /*
          * make '/' anf '\n' a special characters so that we only have
          * to do one test for each character inside the main loop
          */
-        scan_state().CharSet['/'] |= C_EX;   /* make '/' special character */
-        scan_state().CharSet['\n'] |= C_EX;  /* make '\n' special character */
+        front.scan.CharSet['/'] |= C_EX;   /* make '/' special character */
+        front.scan.CharSet['\n'] |= C_EX;  /* make '\n' special character */
         c = '\0';
         for( ; c != LCHR_EOF; ) {
             if( c == '\n' ) {
-                NewLineStartPos( cvars_state().SrcFiles );
-                cvars_state().TokenLoc = cvars_state().SrcFileLoc = cvars_state().SrcFiles->src_loc;
+                NewLineStartPos( front.cvars.SrcFiles );
+                front.cvars.TokenLoc = front.cvars.SrcFileLoc = front.cvars.SrcFiles->src_loc;
             }
             do {
                 do {
                     prev_char = c;
-                    c = *cvars_state().SrcFiles->src_ptr++;
-                } while( (scan_state().CharSet[c] & C_EX) == 0 );
-                c = cvars_state().GetCharCheck( c );
+                    c = *front.cvars.SrcFiles->src_ptr++;
+                } while( (front.scan.CharSet[c] & C_EX) == 0 );
+                c = front.cvars.GetCharCheck( front, c );
                 if( c == LCHR_EOF ) {
                     break;
                 }
-            } while( (scan_state().CharSet[c] & C_EX) == 0 );
+            } while( (front.scan.CharSet[c] & C_EX) == 0 );
             if( c == '/' ) {
                 if( prev_char == '*' )
                     break;
                 /*
                  * get next character and see if it is '*' for nested comment
                  */
-                c = cvars_state().NextChar();
+                c = front.cvars.NextChar(front);
                 if( c == '*' ) {
-                    c = cvars_state().NextChar();
+                    c = front.cvars.NextChar(front);
                     if( c == '/' )
                         break;
-                    CWarn2( ERR_NESTED_COMMENT, cvars_state().CommentLoc.line );
+                    CWarn2( front, ERR_NESTED_COMMENT, front.cvars.CommentLoc.line );
                 }
             }
             /*
              * NextChar might not be pointing to GetNextChar at this point
              */
-            while( c != LCHR_EOF && cvars_state().NextChar != GetNextChar ) {
-                c = cvars_state().NextChar();
+            while( c != LCHR_EOF && front.cvars.NextChar != GetNextChar ) {
+                c = front.cvars.NextChar(front);
             }
         }
-        scan_state().CharSet['\n'] &= ~C_EX;     /* undo '\n' special character */
-        scan_state().CharSet['/'] &= ~C_EX;      /* undo '/' special character */
+        front.scan.CharSet['\n'] &= ~C_EX;     /* undo '\n' special character */
+        front.scan.CharSet['/'] &= ~C_EX;      /* undo '/' special character */
     }
     if( c != LCHR_EOF ) {
-        cvars_state().CompFlags.scanning_comment = false;
-        cvars_state().NextChar();
+        front.cvars.CompFlags.scanning_comment = false;
+        front.cvars.NextChar(front);
     }
 }
 
-static TOKEN ScanSlash( void )
+static TOKEN ScanSlash( FrontRun& front )
 /*****************************
  * TokenLen is alway lower then BUF_SIZE that
  * direct access to Buffer array is used
@@ -1140,56 +1150,56 @@ static TOKEN ScanSlash( void )
     TOKEN   token;
 
     token = T_DIV;
-    cvars_state().Buffer[0] = '/';
-    cvars_state().TokenLen = 1;
-    cvars_state().NextChar();             /* can't inline this copy of NextChar */
-    if( cvars_state().CurrChar == '=' ) { /* if second char is an = */
-        cvars_state().Buffer[cvars_state().TokenLen++] = '=';
-        cvars_state().NextChar();
+    front.cvars.Buffer[0] = '/';
+    front.cvars.TokenLen = 1;
+    front.cvars.NextChar(front);             /* can't inline this copy of NextChar */
+    if( front.cvars.CurrChar == '=' ) { /* if second char is an = */
+        front.cvars.Buffer[front.cvars.TokenLen++] = '=';
+        front.cvars.NextChar(front);
         token = T_DIV_EQUAL;
-    } else if( cvars_state().CurrChar == '/'
-      && !cvars_state().CompFlags.strict_ANSI ) {   /* if C++ // style comment */
-        if( cvars_state().CompFlags.cpp_mode ) {
-            CppComment( '/' );
+    } else if( front.cvars.CurrChar == '/'
+      && !front.cvars.CompFlags.strict_ANSI ) {   /* if C++ // style comment */
+        if( front.cvars.CompFlags.cpp_mode ) {
+            CppComment( front, '/' );
         }
-        cvars_state().CompFlags.scanning_cpp_comment = true;
+        front.cvars.CompFlags.scanning_cpp_comment = true;
         for( ;; ) {
-            if( cvars_state().CurrChar == '\r' ) {
+            if( front.cvars.CurrChar == '\r' ) {
                 /*
                  * some editors don't put linefeeds on end of lines
                  */
-                cvars_state().NextChar();
+                front.cvars.NextChar(front);
                 break;
             }
-            cvars_state().NextChar();
-            if( cvars_state().CurrChar == '\n' )
+            front.cvars.NextChar(front);
+            if( front.cvars.CurrChar == '\n' )
                 break;
-            if( cvars_state().CurrChar == LCHR_EOF )
+            if( front.cvars.CurrChar == LCHR_EOF )
                 break;
-            if( cvars_state().CurrChar == '\0' )
+            if( front.cvars.CurrChar == '\0' )
                 break;
-            if( cvars_state().CompFlags.cpp_mode
-              && cvars_state().CompFlags.cpp_keep_comments
-              && cvars_state().CurrChar != '\r' ) {
-                CppPrtChar( cvars_state().CurrChar );
+            if( front.cvars.CompFlags.cpp_mode
+              && front.cvars.CompFlags.cpp_keep_comments
+              && front.cvars.CurrChar != '\r' ) {
+                CppPrtChar( front, front.cvars.CurrChar );
             }
         }
-        if( cvars_state().CompFlags.cpp_mode ) {
-            CppComment( '\0' );
+        if( front.cvars.CompFlags.cpp_mode ) {
+            CppComment( front, '\0' );
         }
-        cvars_state().CompFlags.scanning_cpp_comment = false;
-        cvars_state().Buffer[0] = ' ';
+        front.cvars.CompFlags.scanning_cpp_comment = false;
+        front.cvars.Buffer[0] = ' ';
         token = T_WHITE_SPACE;
-    } else if( cvars_state().CurrChar == '*' ) {
-        doScanComment();
-        cvars_state().Buffer[0] = ' ';
+    } else if( front.cvars.CurrChar == '*' ) {
+        doScanComment(front);
+        front.cvars.Buffer[0] = ' ';
         token = T_WHITE_SPACE;
     }
-    cvars_state().Buffer[cvars_state().TokenLen] = '\0';
+    front.cvars.Buffer[front.cvars.TokenLen] = '\0';
     return( token );
 }
 
-static msg_codes doScanHex( int max, unsigned_64 *pval64, escinp_fn ifn, escout_fn ofn )
+static msg_codes doScanHex( FrontRun& front, int max, unsigned_64 *pval64, escinp_fn ifn, escout_fn ofn )
 /***************************************************************************************
  * Warning! this function is also used from cstring.c
  * cannot use Buffer array or NextChar function in any way
@@ -1204,13 +1214,13 @@ static msg_codes doScanHex( int max, unsigned_64 *pval64, escinp_fn ifn, escout_
     count = max;
     Set64ValZero( *pval64 );
     for( ;; ) {
-        c = ifn();
+        c = ifn(front);
         if( max == 0 )
             break;
-        if( (scan_state().CharSet[c] & (C_HX | C_DI)) == 0 )
+        if( (front.scan.CharSet[c] & (C_HX | C_DI)) == 0 )
             break;
         if( ofn != NULL )
-            ofn( c );
+            ofn( front, c );
         if( U64Cnv16( pval64, HEXBIN( c ) ) ) {
             too_big = true;
         }
@@ -1231,7 +1241,7 @@ static msg_codes doScanHex( int max, unsigned_64 *pval64, escinp_fn ifn, escout_
     return( ERR_NONE );
 }
 
-int ESCChar( escinp_fn ifn, escout_fn ofn, msg_codes *perr_msg )
+int ESCChar( FrontRun& front, escinp_fn ifn, escout_fn ofn, msg_codes *perr_msg )
 /***************************************************************
  * Warning! this function is also used from cstring.c
  * cannot use Buffer array or NextChar function in any way
@@ -1243,7 +1253,7 @@ int ESCChar( escinp_fn ifn, escout_fn ofn, msg_codes *perr_msg )
     msg_codes   err_msg;
     int         c;
 
-    c = ifn();
+    c = ifn(front);
     if( OCTAL( c ) ) {
         /*
          * get octal escape sequence
@@ -1252,9 +1262,9 @@ int ESCChar( escinp_fn ifn, escout_fn ofn, msg_codes *perr_msg )
         i = 3;
         while( i-- > 0 && OCTAL( c ) ) {
             if( ofn != NULL )
-                ofn( c );
+                ofn( front, c );
             n = n * 8 + DEC2BIN( c );
-            c = ifn();
+            c = ifn(front);
         }
     } else if( c == 'x' ) {
         unsigned_64 val64;
@@ -1263,14 +1273,14 @@ int ESCChar( escinp_fn ifn, escout_fn ofn, msg_codes *perr_msg )
          * get hex escape sequence
          */
         if( ofn != NULL )
-            ofn( c );
-        err_msg = doScanHex( 127, &val64, ifn, ofn );
+            ofn( front, c );
+        err_msg = doScanHex( front, 127, &val64, ifn, ofn );
         if( err_msg != ERR_NONE )
             *perr_msg = err_msg;
         n = U32FetchTrunc( val64 );
     } else {
         if( ofn != NULL )
-            ofn( c );
+            ofn( front, c );
         switch( c ) {
         case 'a':
             c = ESCAPE_a;
@@ -1316,20 +1326,20 @@ int ESCChar( escinp_fn ifn, escout_fn ofn, msg_codes *perr_msg )
         _ASCIIOUT( c );
 #endif
         n = c;
-        ifn();
+        ifn(front);
     }
     return( n );
 }
 
-int EncodeWchar( int c )
+int EncodeWchar( FrontRun& front, int c )
 /**********************/
 {
-    if( cvars_state().CompFlags.use_double_byte ) {
-        if( cvars_state().CompFlags.jis_to_unicode ) {
+    if( front.cvars.CompFlags.use_double_byte ) {
+        if( front.cvars.CompFlags.jis_to_unicode ) {
             c = JIS2Unicode( c );
         }
     } else {
-        c = unicode_state().UniCode[c];
+        c = front.unicode.UniCode[c];
     }
     return( c );
 }
@@ -1393,12 +1403,12 @@ int IndexLower( int c )
     return( -1 );
 }
 
-static int read_inp( void )
+static int read_inp( FrontRun& front )
 {
-    return( cvars_state().NextChar() );
+    return( front.cvars.NextChar(front) );
 }
 
-static TOKEN doScanCharConst( DATA_TYPE char_type )
+static TOKEN doScanCharConst( FrontRun& front, DATA_TYPE char_type )
 /**************************************************
  * TokenLen is alway lower then BUF_SIZE that
  * direct access to Buffer array is used
@@ -1408,14 +1418,14 @@ static TOKEN doScanCharConst( DATA_TYPE char_type )
     int         i;
     TOKEN       token;
 
-    Set64ValZero( cvars_state().Constant64 );
-    c = cvars_state().NextChar();
+    Set64ValZero( front.cvars.Constant64 );
+    c = front.cvars.NextChar(front);
     if( c == '\'' ) {
-        cvars_state().Buffer[cvars_state().TokenLen++] = '\'';
-        cvars_state().NextChar();
+        front.cvars.Buffer[front.cvars.TokenLen++] = '\'';
+        front.cvars.NextChar(front);
         token = T_BAD_TOKEN;
     } else {
-        cvars_state().BadTokenInfo = ERR_NONE;
+        front.cvars.BadTokenInfo = ERR_NONE;
         token = T_CONSTANT;
         i = 0;
         for( ;; ) {
@@ -1425,51 +1435,51 @@ static TOKEN doScanCharConst( DATA_TYPE char_type )
                 break;
             }
             if( c == '\\' ) {
-                cvars_state().Buffer[cvars_state().TokenLen++] = '\\';
-                c = ESCChar( read_inp, WriteBufferChar, &cvars_state().BadTokenInfo );
-                if( cvars_state().BadTokenInfo == ERR_INVALID_HEX_CONSTANT ) {
+                front.cvars.Buffer[front.cvars.TokenLen++] = '\\';
+                c = ESCChar( front, read_inp, WriteBufferChar, &front.cvars.BadTokenInfo );
+                if( front.cvars.BadTokenInfo == ERR_INVALID_HEX_CONSTANT ) {
                     if( diagnose_lex_error() ) {
-                        CErr1( ERR_INVALID_HEX_CONSTANT );
+                        CErr1( front, ERR_INVALID_HEX_CONSTANT );
                     }
-                } else if( cvars_state().BadTokenInfo == ERR_CONSTANT_TOO_BIG
-                  || cvars_state().BadTokenInfo == ERR_INV_CHAR_CONSTANT ) {
+                } else if( front.cvars.BadTokenInfo == ERR_CONSTANT_TOO_BIG
+                  || front.cvars.BadTokenInfo == ERR_INV_CHAR_CONSTANT ) {
                     if( diagnose_lex_error() ) {
-                        CWarn1( cvars_state().BadTokenInfo );
+                        CWarn1( front, front.cvars.BadTokenInfo );
                     }
                 }
                 if( char_type == TYP_WCHAR ) {
                     ++i;
                     /* value = (value << 8) + ((c & 0xFF00) >> 8); */
-                    U64ShiftLEq( &cvars_state().Constant64, 8 );
-                    U64AddI32( &cvars_state().Constant64, ((c & 0xFF00) >> 8) );
+                    U64ShiftLEq( &front.cvars.Constant64, 8 );
+                    U64AddI32( &front.cvars.Constant64, ((c & 0xFF00) >> 8) );
                     c &= 0x00FF;
                 }
             } else {
-                cvars_state().Buffer[cvars_state().TokenLen++] = c;
-                cvars_state().NextChar();
-                if( scan_state().CharSet[c] & C_DB ) {
+                front.cvars.Buffer[front.cvars.TokenLen++] = c;
+                front.cvars.NextChar(front);
+                if( front.scan.CharSet[c] & C_DB ) {
                     /*
                      * if double-byte char
                      */
-                    c = (c << 8) + (cvars_state().CurrChar & 0x00FF);
+                    c = (c << 8) + (front.cvars.CurrChar & 0x00FF);
                     if( char_type == TYP_WCHAR ) {
-                        if( cvars_state().CompFlags.jis_to_unicode ) {
+                        if( front.cvars.CompFlags.jis_to_unicode ) {
                             c = JIS2Unicode( c );
                         }
                     }
                     ++i;
                     /* value = (value << 8) + ((c & 0xFF00) >> 8); */
-                    U64ShiftLEq( &cvars_state().Constant64, 8 );
-                    U64AddI32( &cvars_state().Constant64, ((c & 0xFF00) >> 8) );
+                    U64ShiftLEq( &front.cvars.Constant64, 8 );
+                    U64AddI32( &front.cvars.Constant64, ((c & 0xFF00) >> 8) );
                     c &= 0x00FF;
-                    cvars_state().Buffer[cvars_state().TokenLen++] = cvars_state().CurrChar;
-                    cvars_state().NextChar();
+                    front.cvars.Buffer[front.cvars.TokenLen++] = front.cvars.CurrChar;
+                    front.cvars.NextChar(front);
                 } else if( char_type == TYP_WCHAR ) {
-                    c = EncodeWchar( c );
+                    c = EncodeWchar( front, c );
                     ++i;
                     /* value = (value << 8) + ((c & 0xFF00) >> 8); */
-                    U64ShiftLEq( &cvars_state().Constant64, 8 );
-                    U64AddI32( &cvars_state().Constant64, ((c & 0xFF00) >> 8) );
+                    U64ShiftLEq( &front.cvars.Constant64, 8 );
+                    U64AddI32( &front.cvars.Constant64, ((c & 0xFF00) >> 8) );
                     c &= 0x00FF;
 #if _CPU == 370
                 } else {
@@ -1479,17 +1489,17 @@ static TOKEN doScanCharConst( DATA_TYPE char_type )
             }
             ++i;
             /* value = (value << 8) + c; */
-            U64ShiftLEq( &cvars_state().Constant64, 8 );
-            U64AddI32( &cvars_state().Constant64, c );
+            U64ShiftLEq( &front.cvars.Constant64, 8 );
+            U64AddI32( &front.cvars.Constant64, c );
             /*
              * handle case where user wants a \ but doesn't escape it
              */
             if( c == '\''
-              && cvars_state().CurrChar != '\'' ) {
+              && front.cvars.CurrChar != '\'' ) {
                 token = T_BAD_TOKEN;
                 break;
             }
-            c = cvars_state().CurrChar;
+            c = front.cvars.CurrChar;
             if( c == '\'' )
                 break;
             if( i >= 4 ) {
@@ -1499,63 +1509,63 @@ static TOKEN doScanCharConst( DATA_TYPE char_type )
         }
     }
     if( token == T_BAD_TOKEN ) {
-        cvars_state().BadTokenInfo = ERR_INV_CHAR_CONSTANT;
+        front.cvars.BadTokenInfo = ERR_INV_CHAR_CONSTANT;
     } else {
-        cvars_state().Buffer[cvars_state().TokenLen++] = c;
-        cvars_state().NextChar();
-        if( cvars_state().BadTokenInfo == ERR_INVALID_HEX_CONSTANT ) {
+        front.cvars.Buffer[front.cvars.TokenLen++] = c;
+        front.cvars.NextChar(front);
+        if( front.cvars.BadTokenInfo == ERR_INVALID_HEX_CONSTANT ) {
             token = T_BAD_TOKEN;
         }
     }
-    cvars_state().Buffer[cvars_state().TokenLen] = '\0';
-    cvars_state().ConstType = char_type;
+    front.cvars.Buffer[front.cvars.TokenLen] = '\0';
+    front.cvars.ConstType = char_type;
     if( char_type == TYP_CHAR ) {
         /*
          * character constant has plain character type
          * ConstType must be setup to appropriate character type
          */
-        if( cvars_state().CompFlags.signed_char ) {
+        if( front.cvars.CompFlags.signed_char ) {
             /*
              * check if it is single character constant
              * it means value in range 128 ... 255
              * then convert into signed char range -128 ... 127
              */
-            if( U64CmpU32( cvars_state().Constant64, 127 ) > 0
-              && U64CmpU32( cvars_state().Constant64, 256 ) < 0 ) {
-                U64AddI32( &cvars_state().Constant64, -256 );
+            if( U64CmpU32( front.cvars.Constant64, 127 ) > 0
+              && U64CmpU32( front.cvars.Constant64, 256 ) < 0 ) {
+                U64AddI32( &front.cvars.Constant64, -256 );
             }
         } else {
-            cvars_state().ConstType = TYP_UCHAR;
+            front.cvars.ConstType = TYP_UCHAR;
         }
     }
     return( token );
 }
 
-static TOKEN ScanCharConst( void )
+static TOKEN ScanCharConst( FrontRun& front )
 /********************************/
 {
-    cvars_state().Buffer[0] = '\'';
-    cvars_state().TokenLen = 1;
-    return( doScanCharConst( TYP_CHAR ) );
+    front.cvars.Buffer[0] = '\'';
+    front.cvars.TokenLen = 1;
+    return( doScanCharConst( front, TYP_CHAR ) );
 }
 
-static TOKEN doScanString( bool wide )
+static TOKEN doScanString( FrontRun& front, bool wide )
 /************************************/
 {
     int         c;
     bool        ok;
 
     ok = false;
-    cvars_state().BadTokenInfo = ERR_NONE;
-    cvars_state().CompFlags.wide_char_string = false;
-    cvars_state().CompFlags.trigraph_alert = false;
-    cvars_state().TokenLen = 0;
-    c = cvars_state().NextChar();
+    front.cvars.BadTokenInfo = ERR_NONE;
+    front.cvars.CompFlags.wide_char_string = false;
+    front.cvars.CompFlags.trigraph_alert = false;
+    front.cvars.TokenLen = 0;
+    c = front.cvars.NextChar(front);
     for( ;; ) {
         if( c == '\n' ) {
-            if( cvars_state().SkipLevel != cvars_state().NestLevel ) {
-                if( cvars_state().CompFlags.extensions_enabled ) {
-                    CWarn1( ERR_MISSING_QUOTE );
+            if( front.cvars.SkipLevel != front.cvars.NestLevel ) {
+                if( front.cvars.CompFlags.extensions_enabled ) {
+                    CWarn1( front, ERR_MISSING_QUOTE );
                     ok = true;
                 }
             }
@@ -1564,55 +1574,55 @@ static TOKEN doScanString( bool wide )
         if( c == LCHR_EOF )
             break;
         if( c == '"' ) {
-            cvars_state().NextChar();
+            front.cvars.NextChar(front);
             ok = true;
             break;
         }
 
         if( c == '\\' ) {
-            WriteBufferChar( c );
-            ESCChar( read_inp, WriteBufferChar, &cvars_state().BadTokenInfo );
-            if( cvars_state().BadTokenInfo == ERR_INVALID_HEX_CONSTANT ) {
+            WriteBufferChar( front, c );
+            ESCChar( front, read_inp, WriteBufferChar, &front.cvars.BadTokenInfo );
+            if( front.cvars.BadTokenInfo == ERR_INVALID_HEX_CONSTANT ) {
                 if( diagnose_lex_error() ) {
-                    CErr1( ERR_INVALID_HEX_CONSTANT );
+                    CErr1( front, ERR_INVALID_HEX_CONSTANT );
                 }
-            } else if( cvars_state().BadTokenInfo == ERR_CONSTANT_TOO_BIG
-              || cvars_state().BadTokenInfo == ERR_INV_CHAR_CONSTANT ) {
+            } else if( front.cvars.BadTokenInfo == ERR_CONSTANT_TOO_BIG
+              || front.cvars.BadTokenInfo == ERR_INV_CHAR_CONSTANT ) {
                 if( diagnose_lex_error() ) {
-                    CWarn1( cvars_state().BadTokenInfo );
+                    CWarn1( front, front.cvars.BadTokenInfo );
                 }
             }
-            c = cvars_state().CurrChar;
+            c = front.cvars.CurrChar;
         } else {
             /*
              * if first character of a double-byte character, then
              * save it and get the next one.
              */
-            if( scan_state().CharSet[c] & C_DB ) {
-                c = WriteBufferCharNextChar( c );
+            if( front.scan.CharSet[c] & C_DB ) {
+                c = WriteBufferCharNextChar( front, c );
             }
-            c = WriteBufferCharNextChar( c );
+            c = WriteBufferCharNextChar( front, c );
         }
     }
-    WriteBufferNullChar();
-    if( cvars_state().CompFlags.trigraph_alert ) {
-        CWarn1( ERR_EXPANDED_TRIGRAPH );
+    WriteBufferNullChar(front);
+    if( front.cvars.CompFlags.trigraph_alert ) {
+        CWarn1( front, ERR_EXPANDED_TRIGRAPH );
     }
     if( wide )
-        cvars_state().CompFlags.wide_char_string = wide;
+        front.cvars.CompFlags.wide_char_string = wide;
     if( ok )
         return( T_STRING );
-    cvars_state().BadTokenInfo = ERR_MISSING_QUOTE;
+    front.cvars.BadTokenInfo = ERR_MISSING_QUOTE;
     return( T_BAD_TOKEN );
 }
 
-static TOKEN ScanString( void )
+static TOKEN ScanString( FrontRun& front )
 /*****************************/
 {
-    return( doScanString( false ) );
+    return( doScanString( front, false ) );
 }
 
-static TOKEN ScanWide( void )
+static TOKEN ScanWide( FrontRun& front )
 /****************************
  * scan something that starts with L
  */
@@ -1620,127 +1630,127 @@ static TOKEN ScanWide( void )
     int         c;
     TOKEN       token;
 
-    c = cvars_state().NextChar();
+    c = front.cvars.NextChar(front);
     if( c == '"' ) {
         /*
          * L"abc"
          */
-        token = doScanString( true );
+        token = doScanString( front, true );
     } else {
         /*
          * regular identifier
          */
-        cvars_state().Buffer[0] = 'L';
-        cvars_state().TokenLen = 1;
+        front.cvars.Buffer[0] = 'L';
+        front.cvars.TokenLen = 1;
         if( c == '\'' ) {
             /*
              * L'a'
              */
-            cvars_state().Buffer[cvars_state().TokenLen++] = '\'';
-            token = doScanCharConst( TYP_WCHAR );
+            front.cvars.Buffer[front.cvars.TokenLen++] = '\'';
+            token = doScanCharConst( front, TYP_WCHAR );
         } else {
             /*
              * regular identifier
              */
-            token = doScanName();
+            token = doScanName(front);
         }
     }
     return( token );
 }
 
-static TOKEN ScanWhiteSpace( void )
+static TOKEN ScanWhiteSpace( FrontRun& front )
 /*********************************/
 {
     int         c;
 
-    if( cvars_state().NextChar == getCharAfterBackSlash ) {
+    if( front.cvars.NextChar == getCharAfterBackSlash ) {
         do {
-            c = cvars_state().NextChar();
-        } while( scan_state().CharSet[c] & C_WS );
+            c = front.cvars.NextChar(front);
+        } while( front.scan.CharSet[c] & C_WS );
     } else {
         do {
             do {
-                c = *cvars_state().SrcFiles->src_ptr++;
-            } while( scan_state().CharSet[c] & C_WS );
-            if( (scan_state().CharSet[c] & C_EX) == 0 )
+                c = *front.cvars.SrcFiles->src_ptr++;
+            } while( front.scan.CharSet[c] & C_WS );
+            if( (front.scan.CharSet[c] & C_EX) == 0 )
                 break;
-            c = cvars_state().GetCharCheck( c );
-        } while( scan_state().CharSet[c] & C_WS );
-        cvars_state().CurrChar = c;
+            c = front.cvars.GetCharCheck( front, c );
+        } while( front.scan.CharSet[c] & C_WS );
+        front.cvars.CurrChar = c;
     }
     return( T_WHITE_SPACE );
 }
 
-static void SkipWhiteSpace( int c )
+static void SkipWhiteSpace( FrontRun& front, int c )
 /*********************************/
 {
-    if( !cvars_state().CompFlags.cpp_mode ) {
-        ScanWhiteSpace();
+    if( !front.cvars.CompFlags.cpp_mode ) {
+        ScanWhiteSpace(front);
     } else {
-        while( scan_state().CharSet[c] & C_WS ) {
+        while( front.scan.CharSet[c] & C_WS ) {
             if( c != '\r'
               && IS_PPCTL_NORMAL() ) {
-                CppPrtChar( c );
+                CppPrtChar( front, c );
             }
-            c = cvars_state().NextChar();
+            c = front.cvars.NextChar(front);
         }
     }
 }
 
 
-void SkipAhead( void )
+void SkipAhead( FrontRun& front )
 /********************/
 {
     for( ;; ) {
         for( ;; ) {
-            if( scan_state().CharSet[cvars_state().CurrChar] & C_WS ) {
-                SkipWhiteSpace( cvars_state().CurrChar );
+            if( front.scan.CharSet[front.cvars.CurrChar] & C_WS ) {
+                SkipWhiteSpace( front, front.cvars.CurrChar );
             }
-            if( cvars_state().CurrChar != '\n' )
+            if( front.cvars.CurrChar != '\n' )
                 break;
-            if( cvars_state().CompFlags.cpp_mode
+            if( front.cvars.CompFlags.cpp_mode
               && IS_PPCTL_NORMAL() ) {
-                CppPrtChar( '\n' );
+                CppPrtChar( front, '\n' );
             }
-            NewLineStartPos( cvars_state().SrcFiles );
-            cvars_state().SrcFileLoc = cvars_state().SrcFiles->src_loc;
-            cvars_state().NextChar();
+            NewLineStartPos( front.cvars.SrcFiles );
+            front.cvars.SrcFileLoc = front.cvars.SrcFiles->src_loc;
+            front.cvars.NextChar(front);
         }
-        if( cvars_state().CurrChar != '/' )
+        if( front.cvars.CurrChar != '/' )
             break;
-        cvars_state().NextChar();
-        if( cvars_state().CurrChar == '*' ) {
-            cvars_state().TokenLoc = cvars_state().SrcFileLoc;
-            doScanComment();
+        front.cvars.NextChar(front);
+        if( front.cvars.CurrChar == '*' ) {
+            front.cvars.TokenLoc = front.cvars.SrcFileLoc;
+            doScanComment(front);
         } else {
-            cvars_state().UnGetChar( cvars_state().CurrChar );
-            cvars_state().CurrChar = '/';
+            front.cvars.UnGetChar( front, front.cvars.CurrChar );
+            front.cvars.CurrChar = '/';
             break;
         }
     }
 }
 
-static TOKEN ScanNewline( void )
+static TOKEN ScanNewline( FrontRun& front )
 /******************************/
 {
-    NewLineStartPos( cvars_state().SrcFiles );
-    cvars_state().SrcFileLoc = cvars_state().SrcFiles->src_loc;
-    if( cvars_state().PPControl & PPCTL_EOL )
+    NewLineStartPos( front.cvars.SrcFiles );
+    front.cvars.SrcFileLoc = front.cvars.SrcFiles->src_loc;
+    if( front.cvars.PPControl & PPCTL_EOL )
         return( T_NULL );
-    return( CheckControl() );
+    return( CheckControl(front) );
 }
 
-static TOKEN ScanCarriageReturn( void )
+static TOKEN ScanCarriageReturn( FrontRun& front )
 /*************************************/
 {
-    if( cvars_state().NextChar() == '\n' ) {
-        return( ScanNewline() );
+    if( front.cvars.NextChar(front) == '\n' ) {
+        return( ScanNewline(front) );
     } else {
-        return( ScanWhiteSpace() );
+        return( ScanWhiteSpace(front) );
     }
 }
 
-static TOKEN ScanInvalid( void )
+static TOKEN ScanInvalid( FrontRun& front )
 /*******************************
  * TokenLen is alway lower then BUF_SIZE that
  * direct access to Buffer array is used
@@ -1749,10 +1759,10 @@ static TOKEN ScanInvalid( void )
     TOKEN   token;
 
     token = T_BAD_CHAR;
-    cvars_state().Buffer[0] = cvars_state().CurrChar;
-    cvars_state().Buffer[1] = '\0';
-    cvars_state().TokenLen = 1;
-    cvars_state().NextChar();
+    front.cvars.Buffer[0] = front.cvars.CurrChar;
+    front.cvars.Buffer[1] = '\0';
+    front.cvars.TokenLen = 1;
+    front.cvars.NextChar(front);
     return( token );
 }
 
@@ -1774,132 +1784,132 @@ static TOKEN ScanMacroToken( void )
 }
 #endif
 
-static TOKEN ScanEof( void )
+static TOKEN ScanEof( FrontRun& front )
 /**************************/
 {
     return( T_EOF );
 }
 
 
-TOKEN ScanToken( void )
+TOKEN ScanToken( FrontRun& front )
 /*********************/
 {
     /*
      * remember line token starts on
      */
-    cvars_state().TokenLoc = cvars_state().SrcFileLoc;
+    front.cvars.TokenLoc = front.cvars.SrcFileLoc;
 //    TokenLen = 1;
 //    Buffer[0] = CurrChar;
-    return( (*cscan_state().ScanFunc[cscan_state().ClassTable[cvars_state().CurrChar]])() );
+    return( (*front.cscan.ScanFunc[front.cscan.ClassTable[front.cvars.CurrChar]])(front) );
 }
 
-TOKEN NextToken( void )
+TOKEN NextToken( FrontRun& front )
 /*********************/
 {
     do {
-        if( cvars_state().MacroPtr == NULL ) {
-            cvars_state().CurToken = ScanToken();
+        if( front.cvars.MacroPtr == NULL ) {
+            front.cvars.CurToken = ScanToken(front);
         } else {
-            cvars_state().CurToken = GetMacroToken();
-            if( cvars_state().CurToken == T_NULL ) {
-                cvars_state().CurToken = ScanToken();
+            front.cvars.CurToken = GetMacroToken(front);
+            if( front.cvars.CurToken == T_NULL ) {
+                front.cvars.CurToken = ScanToken(front);
             }
         }
-    } while( cvars_state().CurToken == T_WHITE_SPACE );
+    } while( front.cvars.CurToken == T_WHITE_SPACE );
 #ifdef FDEBUG
     DumpToken();
 #endif
-    return( cvars_state().CurToken );
+    return( front.cvars.CurToken );
 }
 
-TOKEN PPNextToken( void )
+TOKEN PPNextToken( FrontRun& front )
 /************************
  * called from macro pre-processor
  */
 {
     do {
-        if( cvars_state().MacroPtr == NULL ) {
-            cvars_state().CurToken = ScanToken();
+        if( front.cvars.MacroPtr == NULL ) {
+            front.cvars.CurToken = ScanToken(front);
         } else {
-            cvars_state().CurToken = GetMacroToken();
-            if( cvars_state().CurToken == T_NULL ) {
-                if( cvars_state().CompFlags.cpp_mode ) {
-                    CppPrtChar( ' ' );
+            front.cvars.CurToken = GetMacroToken(front);
+            if( front.cvars.CurToken == T_NULL ) {
+                if( front.cvars.CompFlags.cpp_mode ) {
+                    CppPrtChar( front, ' ' );
                 }
-                cvars_state().CurToken = ScanToken();
+                front.cvars.CurToken = ScanToken(front);
             }
         }
-    } while( cvars_state().CurToken == T_WHITE_SPACE );
-    return( cvars_state().CurToken );
+    } while( front.cvars.CurToken == T_WHITE_SPACE );
+    return( front.cvars.CurToken );
 }
 
-TOKEN ReScanToken( void )
+TOKEN ReScanToken( FrontRun& front )
 /***********************/
 {
     FCB             *oldSrcFile;
     int             saved_currchar;
-    int             (*saved_nextchar)( void );
-    void            (*saved_ungetchar)( int );
-    int             (*saved_getcharcheck)( int );
+    int             (*saved_nextchar)( FrontRun& );
+    void            (*saved_ungetchar)( FrontRun&, int );
+    int             (*saved_getcharcheck)( FrontRun&, int );
     TOKEN           token;
 
     /*
      * save current status
      */
-    saved_currchar = cvars_state().CurrChar;
-    saved_nextchar = cvars_state().NextChar;
-    saved_ungetchar = cvars_state().UnGetChar;
-    saved_getcharcheck = cvars_state().GetCharCheck;
-    oldSrcFile = cvars_state().SrcFiles;
+    saved_currchar = front.cvars.CurrChar;
+    saved_nextchar = front.cvars.NextChar;
+    saved_ungetchar = front.cvars.UnGetChar;
+    saved_getcharcheck = front.cvars.GetCharCheck;
+    oldSrcFile = front.cvars.SrcFiles;
 
-    cvars_state().SrcFiles = &cscan_state().rescan_fcb;
-    cvars_state().NextChar = reScanGetNextChar;
-    cvars_state().UnGetChar = reScanGetNextCharUndo;
-    cvars_state().GetCharCheck = reScanGetCharCheck;
-    cvars_state().CompFlags.rescan_buffer_done = false;
+    front.cvars.SrcFiles = &front.cscan.rescan_fcb;
+    front.cvars.NextChar = reScanGetNextChar;
+    front.cvars.UnGetChar = reScanGetNextCharUndo;
+    front.cvars.GetCharCheck = reScanGetCharCheck;
+    front.cvars.CompFlags.rescan_buffer_done = false;
 
-    cvars_state().CurrChar = cvars_state().NextChar();
-    cvars_state().CompFlags.doing_macro_expansion = true; /* return macros as ID's */
-    token = ScanToken();
-    cvars_state().CompFlags.doing_macro_expansion = false;
+    front.cvars.CurrChar = front.cvars.NextChar(front);
+    front.cvars.CompFlags.doing_macro_expansion = true; /* return macros as ID's */
+    token = ScanToken(front);
+    front.cvars.CompFlags.doing_macro_expansion = false;
     if( token == T_STRING
-      && cvars_state().CompFlags.wide_char_string ) {
+      && front.cvars.CompFlags.wide_char_string ) {
         token = T_LSTRING;
     }
-    cvars_state().SrcFiles->src_ptr--;
+    front.cvars.SrcFiles->src_ptr--;
 
-    cvars_state().SrcFiles = oldSrcFile;
-    cvars_state().CurrChar = saved_currchar;
-    cvars_state().NextChar = saved_nextchar;
-    cvars_state().UnGetChar = saved_ungetchar;
-    cvars_state().GetCharCheck = saved_getcharcheck;
+    front.cvars.SrcFiles = oldSrcFile;
+    front.cvars.CurrChar = saved_currchar;
+    front.cvars.NextChar = saved_nextchar;
+    front.cvars.UnGetChar = saved_ungetchar;
+    front.cvars.GetCharCheck = saved_getcharcheck;
 
     return( token );
 }
 
-void ScanInit( void )
+void ScanInit( FrontRun& front )
 /*******************/
 {
     int         i;
     int         c;
 
-    memset( &cscan_state().ClassTable[0],   SCAN_INVALID, 256 );
-    memset( &cscan_state().ClassTable['A'], SCAN_NAME,    26 );
-    memset( &cscan_state().ClassTable['a'], SCAN_NAME,    26 );
-    memset( &cscan_state().ClassTable['0'], SCAN_NUM,     10 );
+    memset( &front.cscan.ClassTable[0],   SCAN_INVALID, 256 );
+    memset( &front.cscan.ClassTable['A'], SCAN_NAME,    26 );
+    memset( &front.cscan.ClassTable['a'], SCAN_NAME,    26 );
+    memset( &front.cscan.ClassTable['0'], SCAN_NUM,     10 );
     for( i = 0; (c = InitClassTable[i].chr) != '\0'; i++ ) {
-        cscan_state().ClassTable[c] = InitClassTable[i].cls;
+        front.cscan.ClassTable[c] = InitClassTable[i].cls;
     }
-    cvars_state().CurrChar = '\n';
-    cvars_state().PPControl = PPCTL_NORMAL;
-    cvars_state().CompFlags.scanning_comment = false;
-    cvars_state().SizeOfCount = 0;
-    cvars_state().NextChar = GetNextChar;
-    cvars_state().UnGetChar = GetNextCharUndo;
-    cvars_state().GetCharCheck = GetCharCheckFile;
+    front.cvars.CurrChar = '\n';
+    front.cvars.PPControl = PPCTL_NORMAL;
+    front.cvars.CompFlags.scanning_comment = false;
+    front.cvars.SizeOfCount = 0;
+    front.cvars.NextChar = GetNextChar;
+    front.cvars.UnGetChar = GetNextCharUndo;
+    front.cvars.GetCharCheck = GetCharCheckFile;
 }
 
-bool InitPPScan( void )
+bool InitPPScan( FrontRun& front )
 /**********************
  * called by CollectParms() to gather tokens for macro parms
  * and CDefine() to gather tokens for macro definition
@@ -1910,9 +1920,9 @@ bool InitPPScan( void )
  *      FiniPPScan( ppscan_mode );
  */
 {
-    if( cscan_state().ScanFunc[SCAN_NUM] == ScanNum ) {
-        cscan_state().ScanFunc[SCAN_NUM] = ScanPPDigit;
-        cscan_state().ScanFunc[SCAN_DOT] = ScanPPDot;
+    if( front.cscan.ScanFunc[SCAN_NUM] == ScanNum ) {
+        front.cscan.ScanFunc[SCAN_NUM] = ScanPPDigit;
+        front.cscan.ScanFunc[SCAN_DOT] = ScanPPDot;
         /*
          * indicate changed to PP mode
          */
@@ -1924,7 +1934,7 @@ bool InitPPScan( void )
     return( false );
 }
 
-void FiniPPScan( bool ppscan_mode )
+void FiniPPScan( FrontRun& front, bool ppscan_mode )
 /**********************************
  * called when CollectParms() and
  * CDefine() are finished gathering tokens
@@ -1936,7 +1946,7 @@ void FiniPPScan( bool ppscan_mode )
         /*
          * reset back to normal mode
          */
-        cscan_state().ScanFunc[SCAN_NUM] = ScanNum;
-        cscan_state().ScanFunc[SCAN_DOT] = ScanDot;
+        front.cscan.ScanFunc[SCAN_NUM] = ScanNum;
+        front.cscan.ScanFunc[SCAN_DOT] = ScanDot;
     }
 }

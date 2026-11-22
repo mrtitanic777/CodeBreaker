@@ -30,7 +30,8 @@
 ****************************************************************************/
 
 
+#pragma once
 extern void     InitFrl( pointer ** );
-extern pointer  AllocFrl( pointer **, size_t );
-extern void     FrlFreeSize( pointer **, pointer *, size_t );
-extern bool     FrlFreeAll( pointer **, size_t );
+extern pointer  AllocFrl( BackRun& back, pointer **, size_t );
+extern void     FrlFreeSize( BackRun& back, pointer **, pointer *, size_t );
+extern bool     FrlFreeAll( BackRun& back, pointer **, size_t );

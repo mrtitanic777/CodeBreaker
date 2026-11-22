@@ -33,6 +33,7 @@
 
 /* aligned */
 
+#pragma once
 typedef enum {
         CL_ADDR_GLOBAL,
         CL_ADDR_TEMP,

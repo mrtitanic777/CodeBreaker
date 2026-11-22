@@ -39,26 +39,27 @@
 #include "data.h"
 #include "namelist.h"
 #include "rgtbl.h"
+#include "backrun.hpp"
 
 
-pointer ScAlloc( size_t size )
+pointer ScAlloc( BackRun& back, size_t size )
 /****************************/
 {
     pointer     chunk;
 
-    chunk = CGAlloc( size );
+    chunk = CGAlloc( back, size );
     return( chunk );
 }
 
-void    ScFree( pointer chunk )
+void    ScFree( BackRun& back, pointer chunk )
 /*****************************/
 {
     if( chunk != NULL ) {
-        CGFree( chunk );
+        CGFree( back, chunk );
     }
 }
 
-void    ScoreCalcList( void )
+void    ScoreCalcList( BackRun& back )
 /***************************/
 {
     score_reg   *curr;
@@ -66,30 +67,30 @@ void    ScoreCalcList( void )
     int         i;
     hw_reg_set  reg;
 
-    score_state().ScoreCount = 0;
-    AddRegs();
-    for( reg_name = data_state().Names[N_REGISTER]; reg_name != NULL; reg_name = reg_name->n.next_name ) {
+    back.score.ScoreCount = 0;
+    AddRegs(back);
+    for( reg_name = back.data.Names[N_REGISTER]; reg_name != NULL; reg_name = reg_name->n.next_name ) {
         if( ScRealRegister( reg_name ) ) {
-            reg = HighOffsetReg( reg_name->r.reg );
+            reg = HighOffsetReg( back, reg_name->r.reg );
             if( !HW_CEqual( reg, HW_EMPTY ) ) {
-                AllocRegName( reg );
+                AllocRegName( back, reg );
             }
-            reg = LowOffsetReg( reg_name->r.reg );
+            reg = LowOffsetReg( back, reg_name->r.reg );
             if( !HW_CEqual( reg, HW_EMPTY ) ) {
-                AllocRegName( reg );
+                AllocRegName( back, reg );
             }
         }
     }
-    for( reg_name = data_state().Names[N_REGISTER]; reg_name != NULL; reg_name = reg_name->n.next_name ) {
+    for( reg_name = back.data.Names[N_REGISTER]; reg_name != NULL; reg_name = reg_name->n.next_name ) {
         if( ScRealRegister( reg_name ) ) {
-            ++score_state().ScoreCount;
+            ++back.score.ScoreCount;
         }
     }
-    if( score_state().ScoreCount > 0 ) {
-        score_state().ScoreList = static_cast<score_reg **>(ScAlloc( score_state().ScoreCount * sizeof( score_reg * ) + score_state().ScoreCount * sizeof( score_reg ) ));
-        curr = (score_reg *)&score_state().ScoreList[score_state().ScoreCount];
+    if( back.score.ScoreCount > 0 ) {
+        back.score.ScoreList = static_cast<score_reg **>(ScAlloc( back, back.score.ScoreCount * sizeof( score_reg * ) + back.score.ScoreCount * sizeof( score_reg ) ));
+        curr = (score_reg *)&back.score.ScoreList[back.score.ScoreCount];
         i = 0;
-        for( reg_name = data_state().Names[N_REGISTER]; reg_name != NULL; reg_name = reg_name->n.next_name ) {
+        for( reg_name = back.data.Names[N_REGISTER]; reg_name != NULL; reg_name = reg_name->n.next_name ) {
             if( ScRealRegister( reg_name ) ) {
                 curr->reg_name = reg_name;
                 curr->reg = reg_name->r.reg;
@@ -98,37 +99,37 @@ void    ScoreCalcList( void )
                 curr->high_of = NO_INDEX;
                 curr->low_of = NO_INDEX;
                 reg_name->r.reg_index = i;
-                score_state().ScoreList[i] = curr; /*% This avoids MANY multiplies!*/
+                back.score.ScoreList[i] = curr; /*% This avoids MANY multiplies!*/
                 ++curr;
                 ++i;
             }
         }
-        i = score_state().ScoreCount;
-        while( curr != score_state().ScoreList[0] ) {
+        i = back.score.ScoreCount;
+        while( curr != back.score.ScoreList[0] ) {
             --curr;
             --i;
-            reg = HighOffsetReg( curr->reg );
+            reg = HighOffsetReg( back, curr->reg );
             if( !HW_CEqual( reg, HW_EMPTY ) ) {
-                reg_name = AllocRegName( reg );
+                reg_name = AllocRegName( back, reg );
                 if( !ScRealRegister( reg_name )
                   || reg_name->r.reg_index == NO_INDEX ) {
                     curr->high = NO_INDEX;
                 } else {
                     curr->high = reg_name->r.reg_index;
-                    score_state().ScoreList[curr->high]->high_of = i;
+                    back.score.ScoreList[curr->high]->high_of = i;
                 }
             } else {
                 curr->high = NO_INDEX;
             }
-            reg = LowOffsetReg( curr->reg );
+            reg = LowOffsetReg( back, curr->reg );
             if( !HW_CEqual( reg, HW_EMPTY ) ) {
-                reg_name = AllocRegName( reg );
+                reg_name = AllocRegName( back, reg );
                 if( !ScRealRegister( reg_name )
                   || reg_name->r.reg_index == NO_INDEX ) {
                     curr->low = NO_INDEX;
                 } else {
                     curr->low = reg_name->r.reg_index;
-                    score_state().ScoreList[curr->low]->low_of = i;
+                    back.score.ScoreList[curr->low]->low_of = i;
                 }
             } else {
                 curr->low = NO_INDEX;
@@ -138,15 +139,15 @@ void    ScoreCalcList( void )
 }
 
 
-void    ScoreClear( score_hdl scoreboard )
+void    ScoreClear( BackRun& back, score_hdl scoreboard )
 /****************************************/
 {
     int         i;
     list_head   *list_heads;
 
-    list_heads = (list_head *)&scoreboard[score_state().ScoreCount];
+    list_heads = (list_head *)&scoreboard[back.score.ScoreCount];
     *list_heads = NULL;  /* initialize free list*/
-    for( i = 0; i < score_state().ScoreCount; ++i ) {
+    for( i = 0; i < back.score.ScoreCount; ++i ) {
         ++list_heads;
         scoreboard->list = list_heads;
         *list_heads = NULL;
@@ -159,14 +160,14 @@ void    ScoreClear( score_hdl scoreboard )
 }
 
 
-void    FreeScListEntry( score_list *list )
+void    FreeScListEntry( BackRun& back, score_list *list )
 /*****************************************/
 {
-    FrlFreeSize( &score_state().ScListFrl, (pointer *)list, sizeof( score_list ) );
+    FrlFreeSize( back, &back.score.ScListFrl, (pointer *)list, sizeof( score_list ) );
 }
 
 
-void    ScoreFreeList( score_hdl scoreitem )
+void    ScoreFreeList( BackRun& back, score_hdl scoreitem )
 /******************************************/
 {
     score_list  *curr;
@@ -175,26 +176,26 @@ void    ScoreFreeList( score_hdl scoreitem )
     if( scoreitem->list != NULL ) {
         for( curr = *scoreitem->list; curr != NULL; curr = next ) {
             next = curr->next;
-            FreeScListEntry( curr );
+            FreeScListEntry( back, curr );
         }
         *scoreitem->list = NULL;
     }
 }
 
 
-void    FreeScoreBoard( score_hdl scoreboard )
+void    FreeScoreBoard( BackRun& back, score_hdl scoreboard )
 /********************************************/
 {
     int         i;
     list_head   *list_heads;
 
     if( scoreboard != NULL ) {
-        for( i = 0; i < score_state().ScoreCount; i++ ) {
-            ScoreFreeList( &scoreboard[i] );
+        for( i = 0; i < back.score.ScoreCount; i++ ) {
+            ScoreFreeList( back, &scoreboard[i] );
         }
-        list_heads = (list_head *)&scoreboard[score_state().ScoreCount];
+        list_heads = (list_head *)&scoreboard[back.score.ScoreCount];
         *list_heads = NULL;  /* initialize free list*/
-        for( i = 0; i < score_state().ScoreCount; i++ ) {
+        for( i = 0; i < back.score.ScoreCount; i++ ) {
             scoreboard[i].list = ++list_heads;
             scoreboard[i].next_reg = &scoreboard[i];
             scoreboard[i].prev_reg = &scoreboard[i];
@@ -205,7 +206,7 @@ void    FreeScoreBoard( score_hdl scoreboard )
 }
 
 
-void    MemChanged( score_hdl scoreboard, bool statics_too )
+void    MemChanged( BackRun& back, score_hdl scoreboard, bool statics_too )
 /**********************************************************/
 {
     int         i;
@@ -213,7 +214,7 @@ void    MemChanged( score_hdl scoreboard, bool statics_too )
     score_list  *curr;
     bool        changed;
 
-    for( i = score_state().ScoreCount; i > 0; --i ) {
+    for( i = back.score.ScoreCount; i > 0; --i ) {
         if( scoreboard->list != NULL ) {
             for( owner = scoreboard->list; (curr = *owner) != NULL; ) {
                 changed = false;
@@ -249,7 +250,7 @@ void    MemChanged( score_hdl scoreboard, bool statics_too )
                     owner = &curr->next;
                 } else {
                     *owner = curr->next;
-                    FreeScListEntry( curr );
+                    FreeScListEntry( back, curr );
                 }
             }
         }
@@ -258,18 +259,18 @@ void    MemChanged( score_hdl scoreboard, bool statics_too )
 }
 
 
-score_list      *NewScListEntry( void )
+score_list      *NewScListEntry( BackRun& back )
 /*************************************/
 {
     score_list  *list;
 
-    list = static_cast<score_list *>(AllocFrl( &score_state().ScListFrl, sizeof( score_list ) ));
+    list = static_cast<score_list *>(AllocFrl( back, &back.score.ScListFrl, sizeof( score_list ) ));
     return( list );
 }
 
 
-bool    ScoreFrlFree( void )
+bool    ScoreFrlFree( BackRun& back )
 /**************************/
 {
-    return( FrlFreeAll( &score_state().ScListFrl, sizeof( score_list ) ) );
+    return( FrlFreeAll( back, &back.score.ScListFrl, sizeof( score_list ) ) );
 }

@@ -30,13 +30,14 @@
 ****************************************************************************/
 
 
-extern ins_entry    *ValidIns( ins_entry *instr );
-extern ins_entry    *PrevIns( ins_entry *instr );
-extern oc_class     PrevClass( ins_entry *instr );
-extern ins_entry    *NextIns( ins_entry *instr );
-extern oc_class     NextClass( ins_entry *instr );
-extern void         AddInstr( ins_entry *instr, ins_entry *insert );
-extern void         DelRef( ins_entry **owner, ins_entry *instr );
-extern void         UnLinkInstr( ins_entry *old );
-extern ins_entry    *DelInstr( ins_entry *old );
-extern void         FreePendingDeletes( void );
+#pragma once
+extern ins_entry    *ValidIns( BackRun& back, ins_entry *instr );
+extern ins_entry    *PrevIns( BackRun& back, ins_entry *instr );
+extern oc_class     PrevClass( BackRun& back, ins_entry *instr );
+extern ins_entry    *NextIns( BackRun& back, ins_entry *instr );
+extern oc_class     NextClass( BackRun& back, ins_entry *instr );
+extern void         AddInstr( BackRun& back, ins_entry *instr, ins_entry *insert );
+extern void         DelRef( BackRun& back, ins_entry **owner, ins_entry *instr );
+extern void         UnLinkInstr( BackRun& back, ins_entry *old );
+extern ins_entry    *DelInstr( BackRun& back, ins_entry *old );
+extern void         FreePendingDeletes( BackRun& back );

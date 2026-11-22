@@ -39,39 +39,37 @@
 #include "makeins.h"
 #include "namelist.h"
 #include "optab.h"
+#include "backrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct MakeinsState {
-    pointer *InsFrl;
-};
+/* (struct MakeinsState: makeins_state.h) */
 
 }  // namespace
 
-static inline MakeinsState& makeins_state() { return cbrun_part<MakeinsState>(); }
 
 
-void    InitIns( void )
+void    InitIns( BackRun& back )
 /********************************
  * Initialize the free list of "instruction"
  */
 {
-    InitFrl( &makeins_state().InsFrl );
+    InitFrl( &back.makeins.InsFrl );
 }
 
 
-bool    InsFrlFree( void )
+bool    InsFrlFree( BackRun& back )
 /******************************
  * Free up the "instruction" free list.
  */
 {
-    return( FrlFreeAll( &makeins_state().InsFrl, INS_SIZE ) );
+    return( FrlFreeAll( back, &back.makeins.InsFrl, INS_SIZE ) );
 }
 
 
-void    FreeIns( instruction *ins )
+void    FreeIns( BackRun& back, instruction *ins )
 /********************************************
  * Free an instruction "ins"
  */
@@ -95,11 +93,11 @@ void    FreeIns( instruction *ins )
 
     ins->head.prev->head.next = next;
     next->head.prev = ins->head.prev;
-    FrlFreeSize( &makeins_state().InsFrl, (pointer *)ins, INS_SIZE );
+    FrlFreeSize( back, &back.makeins.InsFrl, (pointer *)ins, INS_SIZE );
 }
 
 
-instruction     *NewIns( opcnt num )
+instruction     *NewIns( BackRun& back, opcnt num )
 /***********************************
  * Allocate a new instruction (with "num" operands) and initialize its
  * fields to sensible defaults.
@@ -110,7 +108,7 @@ instruction     *NewIns( opcnt num )
     if( num > MAX_OPS_PER_INS ) {
         _Zoiks( ZOIKS_026 );
     }
-    new_ins = static_cast<instruction *>(AllocFrl( &makeins_state().InsFrl, INS_SIZE ));
+    new_ins = static_cast<instruction *>(AllocFrl( back, &back.makeins.InsFrl, INS_SIZE ));
     new_ins->head.state = INS_NEEDS_WORK;
     new_ins->u2.index_needs = RL_;
     new_ins->num_operands = num;
@@ -128,28 +126,28 @@ instruction     *NewIns( opcnt num )
     new_ins->table = NULL;
     new_ins->u.gen_table = NULL;
     new_ins->base_type_class = XX;
-    new_ins->zap = (register_name *)AllocRegName( HW_EMPTY );
+    new_ins->zap = (register_name *)AllocRegName( back, HW_EMPTY );
     return( new_ins );
 }
 
 
-instruction     *MakeNop( void )
+instruction     *MakeNop( BackRun& back )
 /*****************************************
  * Return an initialized "NOP" instruction
  */
 {
     instruction *ins;
 
-    ins = NewIns( 0 );
+    ins = NewIns( back, 0 );
     ins->head.opcode = OP_NOP;
     ins->head.state = INS_READY;
     ins->type_class = XX;
-    DoNothing( ins );
+    DoNothing( back, ins );
     return( ins );
 }
 
 
-instruction     *MakeNary( opcode_defs opcode, name *left,
+instruction     *MakeNary( BackRun& back, opcode_defs opcode, name *left,
                                      name *right, name *result,
                                      type_class_def type_class,
                                      type_class_def base_type_class,
@@ -160,7 +158,7 @@ instruction     *MakeNary( opcode_defs opcode, name *left,
 {
     instruction *ins;
 
-    ins = NewIns( num_operands );
+    ins = NewIns( back, num_operands );
     ins->head.opcode = opcode;
     ins->type_class = type_class;
     ins->base_type_class = base_type_class;
@@ -171,7 +169,7 @@ instruction     *MakeNary( opcode_defs opcode, name *left,
 }
 
 
-instruction     *MakeMove( name *src, name *dst,
+instruction     *MakeMove( BackRun& back, name *src, name *dst,
                                    type_class_def type_class )
 /**********************************************************
  * Make a move instruction (MOV src => dst)
@@ -179,55 +177,55 @@ instruction     *MakeMove( name *src, name *dst,
 {
     instruction *move;
 
-    move = MakeNary( OP_MOV, src, NULL, dst, type_class, XX, 1 );
+    move = MakeNary( back, OP_MOV, src, NULL, dst, type_class, XX, 1 );
     return( move );
 }
 
 
-instruction     *MakeUnary( opcode_defs opcode, name *src,
+instruction     *MakeUnary( BackRun& back, opcode_defs opcode, name *src,
                                     name *dst, type_class_def type_class )
 /**********************************************************************
  * Make a unary instruction (opcode  src => dst)
  */
 {
-    return( MakeNary( opcode, src, NULL, dst, type_class, XX, 1 ) );
+    return( MakeNary( back, opcode, src, NULL, dst, type_class, XX, 1 ) );
 }
 
 
-instruction     *MakeConvert( name *src, name *dst, type_class_def type_class,
+instruction     *MakeConvert( BackRun& back, name *src, name *dst, type_class_def type_class,
                                       type_class_def base_type_class )
 /**********************************************************************
  * Make a conversion instruction.  Convert "src" (type = "base_class") to
  * "dst" (type = "class")
  */
 {
-    return( MakeNary( OP_CONVERT, src, NULL, dst, type_class, base_type_class, 1 ) );
+    return( MakeNary( back, OP_CONVERT, src, NULL, dst, type_class, base_type_class, 1 ) );
 }
 
 
-instruction     *MakeRound( name *src, name *dst, type_class_def type_class,
+instruction     *MakeRound( BackRun& back, name *src, name *dst, type_class_def type_class,
                                       type_class_def base_type_class )
 /**********************************************************************
  * Make a round instruction.  Convert "src" (type = "base_class") to
  * "dst" (type = "class")
  */
 {
-    return( MakeNary( OP_ROUND, src, NULL, dst, type_class, base_type_class, 1 ) );
+    return( MakeNary( back, OP_ROUND, src, NULL, dst, type_class, base_type_class, 1 ) );
 }
 
 
-instruction     *MakeBinary( opcode_defs opcode, name *left,
+instruction     *MakeBinary( BackRun& back, opcode_defs opcode, name *left,
                                      name *right, name *result,
                                      type_class_def type_class )
 /************************************************************
  * Make a binary instruction (OPCODE left, right => result)
  */
 {
-    return( MakeNary( opcode, left, right, result, type_class, XX, 2 ) );
+    return( MakeNary( back, opcode, left, right, result, type_class, XX, 2 ) );
 }
 
 
-instruction     *MakeCondition( opcode_defs opcode,
+instruction     *MakeCondition( BackRun& back, opcode_defs opcode,
                                 name *left, name *right,
                                 cond_dst_idx t, cond_dst_idx f,
                                 type_class_def type_class )
@@ -237,7 +235,7 @@ instruction     *MakeCondition( opcode_defs opcode,
 {
     instruction *cond;
 
-    cond = MakeNary( opcode, left, right, NULL, type_class, XX, 2 );
+    cond = MakeNary( back, opcode, left, right, NULL, type_class, XX, 2 );
     _SetBlockIndex( cond, t, f );
     return( cond );
 }

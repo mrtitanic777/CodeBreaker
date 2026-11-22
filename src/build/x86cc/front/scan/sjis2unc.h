@@ -33,6 +33,7 @@
 
 // these are identity mapping, treat them as special case
 // note that U-3004 and U4edd are both mapped into SJIS-8157
+#pragma once
 #if 0
 0x0020, 0x0020,
 0x0021, 0x0021,

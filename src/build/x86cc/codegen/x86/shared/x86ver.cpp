@@ -37,13 +37,14 @@
 #include "fixindex.h"
 #include "verify.h"
 #include "targetin.h"
+#include "backrun.hpp"
 
 
 //extern  hw_reg_set      Low16Reg( hw_reg_set );
 //extern  type_class_def  RegClass(hw_reg_set);
 
 
-bool    DoVerify( vertype kind, instruction *ins )
+bool    DoVerify( BackRun& back, vertype kind, instruction *ins )
 /************************************************/
 {
     name        *op1 = NULL;
@@ -104,11 +105,11 @@ bool    DoVerify( vertype kind, instruction *ins )
             return( false );
         if( ins->head.opcode != OP_LSHIFT )
             return( false );
-        return( OtherVerify( V_OP2ONE, ins, op1, op2, result ) );
+        return( OtherVerify( back, V_OP2ONE, ins, op1, op2, result ) );
     case V_OP2TWO_SIZE:
-        if( data_state().OptForSize <= 50 )
+        if( back.data.OptForSize <= 50 )
             return( false );
-        return( OtherVerify( V_OP2TWO, ins, op1, op2, result ) );
+        return( OtherVerify( back, V_OP2TWO, ins, op1, op2, result ) );
     case V_BYTESHIFT:
         if( ins->head.opcode != OP_LSHIFT
           && ins->type_class != U4 )
@@ -174,7 +175,7 @@ bool    DoVerify( vertype kind, instruction *ins )
             return( true );
         break;
     case V_LEA_GOOD:
-        if( data_state().OptForSize > 50 )
+        if( back.data.OptForSize > 50 )
             return( false );
         /* fall through */
     case V_LEA:
@@ -195,7 +196,7 @@ bool    DoVerify( vertype kind, instruction *ins )
               && (_CPULevel( CPU_586 )
               && !_CPULevel( CPU_686 )) )
                 return( false );
-            if( data_state().OptForSize > 50 )
+            if( back.data.OptForSize > 50 )
                 return( false );
             switch( op2->c.lo.u.int_value ) {
             case 1:
@@ -227,7 +228,7 @@ bool    DoVerify( vertype kind, instruction *ins )
 #endif
         case OP_ADD:
         case OP_SUB:
-            if( data_state().OptForSize < 50
+            if( back.data.OptForSize < 50
               && !_CPULevel( CPU_286 ) )
                 return( false );
             return( true );
@@ -236,7 +237,7 @@ bool    DoVerify( vertype kind, instruction *ins )
         }
         break;
     case V_SIZE:
-        if( data_state().OptForSize > 50 )
+        if( back.data.OptForSize > 50 )
             return( true );
         break;
     case V_DIV_BUG: /* cant do idiv from mem on 80186 (or 8086 for compatibility) */
@@ -274,7 +275,7 @@ bool    DoVerify( vertype kind, instruction *ins )
     case V_OP2POW2_286:
         if( !_CPULevel( CPU_286 ) )
             return( false );
-        return( OtherVerify( V_OP2POW2, ins, op1, op2, result ) );
+        return( OtherVerify( back, V_OP2POW2, ins, op1, op2, result ) );
     case V_OP1ADDR:
     case V_OP1LOC:
         if( _IsTargetModel( CGSW_X86_INDEXED_GLOBALS ) )
@@ -293,7 +294,7 @@ bool    DoVerify( vertype kind, instruction *ins )
             return( true );
         /* Always allow cases like ax<-al which is just a simple mov or xor */
         if( op1->n.class_ == N_REGISTER
-          && RegClass( result->r.reg ) == U2
+          && RegClass( back, result->r.reg ) == U2
           && HW_Equal( op1->r.reg, Low16Reg( result->r.reg ) ) ) {
             return( true );
         }
@@ -303,7 +304,7 @@ bool    DoVerify( vertype kind, instruction *ins )
         if( !_CPULevel( CPU_486 )
           || _CPULevel( CPU_686 ) )
             break;
-        if( data_state().OptForSize > 50 )
+        if( back.data.OptForSize > 50 )
             break;
         if( result->n.class_ == N_REGISTER ) {
             if( HW_Ovlap( result->r.reg, HW_xBP ) ) {
@@ -320,19 +321,19 @@ bool    DoVerify( vertype kind, instruction *ins )
         if( _CPULevel( CPU_686 )
           || !_CPULevel( CPU_586 ) )
             return( true );
-        if( data_state().OptForSize >= 50 )
+        if( back.data.OptForSize >= 50 )
             return( true );
         break;
     case V_P5_FXCH:
         if( !_CPULevel( CPU_586 ) )
             return( false );
-        if( data_state().OptForSize <= 50 )
+        if( back.data.OptForSize <= 50 )
             return( true );
         break;
     case V_CYP_SEX:
         if( !_CPULevel( CPU_586 ) )
             return( false );
-        if( data_state().OptForSize > 50 )
+        if( back.data.OptForSize > 50 )
             return( false );
         op1 = ins->operands[0];
         {
@@ -384,7 +385,7 @@ bool    DoVerify( vertype kind, instruction *ins )
     case V_SWAP_GOOD_386:
         if( !_CPULevel( CPU_386 ) )
             return( false );
-        return( OtherVerify( V_SWAP_GOOD, ins, op1, op2, result ) );
+        return( OtherVerify( back, V_SWAP_GOOD, ins, op1, op2, result ) );
     case V_INTCOMP:
         if( ins->result != NULL
           && ins->type_class != FS )
@@ -405,7 +406,7 @@ bool    DoVerify( vertype kind, instruction *ins )
 #endif
         return( false );
     default:
-        return( OtherVerify( kind, ins, op1, op2, result ) );
+        return( OtherVerify( back, kind, ins, op1, op2, result ) );
     }
     return( false );
 }

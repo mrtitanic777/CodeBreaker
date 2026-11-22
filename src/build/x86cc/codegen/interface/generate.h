@@ -29,21 +29,22 @@
 ****************************************************************************/
 
 
-extern void             InitCG( void );
-extern void             AbortCG( void );
-extern void             FiniCG( void );
-extern void             FEMessageCurrProc( fe_msg femsg );
-extern void             Generate( bool routine_done );
+#pragma once
+extern void             InitCG( BackRun& back );
+extern void             AbortCG( BackRun& back );
+extern void             FiniCG( BackRun& back );
+extern void             FEMessageCurrProc( BackRun& back, fe_msg femsg );
+extern void             Generate( BackRun& back, bool routine_done );
 
-extern void             OptSegs( void );
+extern void             OptSegs( BackRun& back );
 extern void             InitSegment( void );
 extern void             FiniSegment( void );
-extern bool             LdStAlloc( void );
-extern void             LdStCompress( void );
-extern bool             SetOnCondition( void );
-extern void             BuildIndex( void );
+extern bool             LdStAlloc( BackRun& back );
+extern void             LdStCompress( BackRun& back );
+extern bool             SetOnCondition( BackRun& back );
+extern void             BuildIndex( BackRun& back );
 extern void             MemtoBaseTemp( void );
 extern void             FixMemBases( void );
-extern bool             LoadAToMove( instruction *ins );
+extern bool             LoadAToMove( BackRun& back, instruction *ins );
 extern void             FixCallIns( instruction *ins );
 //extern bool             CharsAndShortsToInts( void );

@@ -30,23 +30,24 @@
 ****************************************************************************/
 
 
-extern  void    CVInitDbgInfo( void );
+#pragma once
+extern  void    CVInitDbgInfo( BackRun& back );
 extern  void    CVFiniDbgInfo( void );
-extern  void    CVObjInitDbgInfo( void );
+extern  void    CVObjInitDbgInfo( BackRun& back );
 extern  void    CVObjFiniDbgInfo( void );
-extern  void    CVGenStatic( cg_sym_handle sym, dbg_loc loc, bool mem );
-extern  void    CVTypedef( const char *nm, dbg_type tipe );
+extern  void    CVGenStatic( BackRun& back, cg_sym_handle sym, dbg_loc loc, bool mem );
+extern  void    CVTypedef( BackRun& back, const char *nm, dbg_type tipe );
 extern  void    CVSetBase( void );
 extern  void    CVRtnBeg( dbg_rtn *rtn, offset lc );
-extern  void    CVProEnd( dbg_rtn *rtn, offset lc );
-extern  void    CVBlkBeg( dbg_block *blk, offset lc );
-extern  void    CVBlkEnd( dbg_block *blk, offset lc );
+extern  void    CVProEnd( BackRun& back, dbg_rtn *rtn, offset lc );
+extern  void    CVBlkBeg( BackRun& back, dbg_block *blk, offset lc );
+extern  void    CVBlkEnd( BackRun& back, dbg_block *blk, offset lc );
 extern  void    CVEpiBeg( dbg_rtn *rtn, offset lc );
-extern  void    CVRtnEnd( dbg_rtn *rtn, offset lc );
-extern  void    CVDefSegs( void );
-extern  void    CVOutSymICon( cv_out *out, const char *nm, int val, dbg_type tipe );
-extern  void    CVOutSym( cv_out *out, cg_sym_handle sym );
-extern  void    CVOutBck( cv_out *out, back_handle bck, offset add,  dbg_type tipe );
-extern  void    CVOutLocal( cv_out *out, name *t, int disp,  dbg_type tipe );
-extern  void    CVSymIConst( const char *nm, int val, dbg_type tipe );
-extern  void    CVSymIConst64( const char *nm, signed_64 val, dbg_type tipe );
+extern  void    CVRtnEnd( BackRun& back, dbg_rtn *rtn, offset lc );
+extern  void    CVDefSegs( BackRun& back );
+extern  void    CVOutSymICon( BackRun& back, cv_out *out, const char *nm, int val, dbg_type tipe );
+extern  void    CVOutSym( BackRun& back, cv_out *out, cg_sym_handle sym );
+extern  void    CVOutBck( BackRun& back, cv_out *out, back_handle bck, offset add,  dbg_type tipe );
+extern  void    CVOutLocal( BackRun& back, cv_out *out, name *t, int disp,  dbg_type tipe );
+extern  void    CVSymIConst( BackRun& back, const char *nm, int val, dbg_type tipe );
+extern  void    CVSymIConst64( BackRun& back, const char *nm, signed_64 val, dbg_type tipe );

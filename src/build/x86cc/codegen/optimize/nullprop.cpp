@@ -39,14 +39,15 @@
 #include "nullprop.h"
 #include "insdead.h"
 #include "blktrim.h"
+#include "backrun.hpp"
 
 
-void    ClearBlocksBitsMask( block_class mask )
+void    ClearBlocksBitsMask( BackRun& back, block_class mask )
 /*********************************************/
 {
     block               *blk;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         blk->class_ &= mask;
     }
 }
@@ -73,65 +74,65 @@ static  bool            IsZero( name *op )
 }
 
 
-typedef struct edge_entry {
-    struct edge_entry   *next;
+typedef struct null_edge_entry {
+    struct null_edge_entry   *next;
     block_edge          *edge;
-} edge_entry;
+} null_edge_entry;
 
-typedef struct edge_stack {
-    edge_entry          *top;
-} edge_stack;
+typedef struct null_edge_stack {
+    null_edge_entry          *top;
+} null_edge_stack;
 
-static  edge_stack      *InitStack( void )
+static  null_edge_stack      *InitStack( BackRun& back )
 /****************************************/
 {
-    edge_stack          *stk;
+    null_edge_stack          *stk;
 
-    stk = static_cast<edge_stack *>(CGAlloc( sizeof( edge_stack ) ));
+    stk = static_cast<null_edge_stack *>(CGAlloc( back, sizeof( null_edge_stack ) ));
     stk->top = NULL;
     return( stk );
 }
 
-static  bool            Empty( edge_stack *stk )
+static  bool            Empty( null_edge_stack *stk )
 /**********************************************/
 {
     return( stk->top == NULL );
 }
 
-static  void            Push( edge_stack *stk, block_edge *edge )
+static  void            Push( BackRun& back, null_edge_stack *stk, block_edge *edge )
 /***************************************************************/
 {
-    edge_entry          *new_entry;
+    null_edge_entry          *new_entry;
 
-    new_entry = static_cast<edge_entry *>(CGAlloc( sizeof( edge_entry ) ));
+    new_entry = static_cast<null_edge_entry *>(CGAlloc( back, sizeof( null_edge_entry ) ));
     new_entry->edge = edge;
     new_entry->next = stk->top;
     stk->top = new_entry;
 }
 
-static  block_edge      *Pop( edge_stack *stk )
+static  block_edge      *Pop( BackRun& back, null_edge_stack *stk )
 /*********************************************/
 {
-    edge_entry          *top;
+    null_edge_entry          *top;
     block_edge          *edge;
 
     if( stk->top != NULL ) {
         top = stk->top;
         edge = top->edge;
         stk->top = top->next;
-        CGFree( top );
+        CGFree( back, top );
         return( edge );
     }
     return( NULL );
 }
 
-static  void            FiniStack( edge_stack *stk )
+static  void            FiniStack( BackRun& back, null_edge_stack *stk )
 /**************************************************/
 {
     while( !Empty( stk ) ) {
-        Pop( stk );
+        Pop( back, stk );
     }
-    CGFree( stk );
+    CGFree( back, stk );
 }
 
 static  bool            DereferencedBy( instruction *ins, name *ptr )
@@ -157,7 +158,7 @@ static  bool            DereferencedBy( instruction *ins, name *ptr )
     return( false );
 }
 
-static  void            PushTargets( edge_stack *stk, block *blk, bool forward )
+static  void            PushTargets( BackRun& back, null_edge_stack *stk, block *blk, bool forward )
 /******************************************************************************/
 {
     block_num           i;
@@ -165,11 +166,11 @@ static  void            PushTargets( edge_stack *stk, block *blk, bool forward )
 
     if( forward ) {
         for( i = 0; i < blk->targets; i++ ) {
-            Push( stk, &blk->edge[i] );
+            Push( back, stk, &blk->edge[i] );
         }
     } else {
         for( edge = blk->input_edges; edge != NULL; edge = edge->next_source ) {
-            Push( stk, edge );
+            Push( back, stk, edge );
         }
     }
 }
@@ -210,7 +211,7 @@ static  block           *EdgeBlock( block_edge *edge, bool forward )
     }
 }
 
-static  bool            LastBlock( block *blk, bool forward )
+static  bool            LastBlock( BackRun& back, block *blk, bool forward )
 /***********************************************************/
 {
     if( forward ) {
@@ -218,7 +219,7 @@ static  bool            LastBlock( block *blk, bool forward )
             return( true );
         }
     } else {
-        if( blk == data_state().HeadBlock ) {
+        if( blk == back.data.HeadBlock ) {
             return( true );
         }
     }
@@ -238,9 +239,9 @@ typedef struct goofy_struct_so_we_can_use_saferecurse {
     bool        forward;
 } parm_struct;
 
-static  void            *DominatingDeref( parm_struct *parms );
+static  void            *DominatingDeref( BackRun& back, parm_struct *parms );
 
-static  int             BlockSearch( block *blk, instruction *ins, name *op, bool forward )
+static  int             BlockSearch( BackRun& back, block *blk, instruction *ins, name *op, bool forward )
 /******************************************************************************************
     Search the block for something interesting - either a dereference or a
     redefinition of the given operand.
@@ -286,7 +287,7 @@ static  int             BlockSearch( block *blk, instruction *ins, name *op, boo
     return( BLOCK_NOTHING );
 }
 
-static  void            *DominatingDeref( parm_struct *parms )
+static  void            *DominatingDeref( BackRun& back, parm_struct *parms )
 /*************************************************************
     Return true if the given instruction is dominated by a dereference of op. This is not a true
     dominator in the sense of the dragon book, but a dominator in the sense that every path from
@@ -296,7 +297,7 @@ static  void            *DominatingDeref( parm_struct *parms )
 */
 {
     block_edge          *edge;
-    edge_stack          *stk;
+    null_edge_stack          *stk;
     int                 result;
     bool                dominated;
     block               *blk;
@@ -304,25 +305,25 @@ static  void            *DominatingDeref( parm_struct *parms )
 
     // check instructions from ins to end of block
     // also check that op is USE_IN_ANOTHER_BLOCK
-    result = BlockSearch( parms->blk, NextIns( parms->ins, parms->forward ), parms->op, parms->forward );
+    result = BlockSearch( back, parms->blk, NextIns( parms->ins, parms->forward ), parms->op, parms->forward );
     switch( result ) {
     case BLOCK_DEREFS:
         return( TO_SR_VALUE( true ) );
     case BLOCK_REDEFS:
         return( TO_SR_VALUE( false ) );
     }
-    if( LastBlock( parms->blk, parms->forward ) || (parms->op->v.usage & USE_IN_ANOTHER_BLOCK) == 0 )
+    if( LastBlock( back, parms->blk, parms->forward ) || (parms->op->v.usage & USE_IN_ANOTHER_BLOCK) == 0 )
         return( TO_SR_VALUE( false ) );
-    stk = InitStack();
-    PushTargets( stk, parms->blk, parms->forward );
+    stk = InitStack(back);
+    PushTargets( back, stk, parms->blk, parms->forward );
     for( dominated = true; dominated; ) {
         if( Empty( stk ) )
             break;
-        edge = Pop( stk );
+        edge = Pop( back, stk );
         blk = EdgeBlock( edge, parms->forward );
         if( _IsBlkVisited( blk ) )
             continue;
-        result = BlockSearch( blk, FirstIns( blk, parms->forward ), parms->op, parms->forward );
+        result = BlockSearch( back, blk, FirstIns( blk, parms->forward ), parms->op, parms->forward );
         switch( result ) {
         case BLOCK_DEREFS:
             // continue on with the next block in the old depth-first search
@@ -334,8 +335,8 @@ static  void            *DominatingDeref( parm_struct *parms )
             dominated = false;
             break;
         default:
-            PushTargets( stk, blk, parms->forward );
-            if( LastBlock( blk, parms->forward ) ) {
+            PushTargets( back, stk, blk, parms->forward );
+            if( LastBlock( back, blk, parms->forward ) ) {
                 // we have hit either the return or head of the function without
                 // finding a deref along this particular path, so the compare is
                 // not dominated by a dereference.
@@ -344,31 +345,31 @@ static  void            *DominatingDeref( parm_struct *parms )
         }
         _MarkBlkVisited( blk );
     }
-    FiniStack( stk );
+    FiniStack( back, stk );
     return( TO_SR_VALUE( dominated ) );
 }
 
-static void     FloodDown( block *blk, block_class bits )
+static void     FloodDown( BackRun& back, block *blk, block_class bits )
 /*******************************************************/
 {
-    edge_stack          *stk;
+    null_edge_stack          *stk;
     block_edge          *edge;
 
-    stk = InitStack();
+    stk = InitStack(back);
     for( ;; ) {
         if( _IsBlkAttr( blk, bits ) ) {
             _MarkBlkAttrSet( blk, bits );
-            PushTargets( stk, blk, true );
+            PushTargets( back, stk, blk, true );
         }
         if( Empty( stk ) )
             break;
-        edge = Pop( stk );
+        edge = Pop( back, stk );
         blk = edge->destination.u.blk;
     }
-    FiniStack( stk );
+    FiniStack( back, stk );
 }
 
-static  bool            BlockSideEffect( block *blk )
+static  bool            BlockSideEffect( BackRun& back, block *blk )
 /***************************************************/
 {
     instruction         *ins;
@@ -376,17 +377,17 @@ static  bool            BlockSideEffect( block *blk )
     for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
         if( _OpIsCall( ins->head.opcode ) )
             return( true );
-        if( SideEffect( ins ) ) {
+        if( SideEffect( back, ins ) ) {
             return( true );
         }
     }
     return( false );
 }
 
-static  bool            EdgeHasSideEffect( block *blk, instruction *cmp, bool cmp_result )
+static  bool            EdgeHasSideEffect( BackRun& back, block *blk, instruction *cmp, bool cmp_result )
 /****************************************************************************************/
 {
-    edge_stack          *stk;
+    null_edge_stack          *stk;
     block               *elim;
     block               *taken;
     bool                side_effect;
@@ -400,8 +401,8 @@ static  bool            EdgeHasSideEffect( block *blk, instruction *cmp, bool cm
         elim = blk->edge[_TrueIndex( cmp )].destination.u.blk;
     }
     _MarkBlkAllUnVisited();
-    FloodDown( taken, BLK_BLOCK_VISITED );
-    stk = InitStack();
+    FloodDown( back, taken, BLK_BLOCK_VISITED );
+    stk = InitStack(back);
 
     /*
      * Flood fill forward looking for a path which has a side effect on it.
@@ -410,7 +411,7 @@ static  bool            EdgeHasSideEffect( block *blk, instruction *cmp, bool cm
      */
     for( side_effect = false; !side_effect; ) {
         if( !_IsBlkVisited( elim ) ) {
-            if( BlockSideEffect( elim ) ) {
+            if( BlockSideEffect( back, elim ) ) {
                 side_effect = true;
                 break;
             }
@@ -418,19 +419,19 @@ static  bool            EdgeHasSideEffect( block *blk, instruction *cmp, bool cm
             // deref of the temp we are searching for - a call to
             // BlockSearch with the appropriate parms should do
             _MarkBlkVisited( elim );
-            PushTargets( stk, elim, true );
+            PushTargets( back, stk, elim, true );
         }
         if( Empty( stk ) )
             break;
-        edge = Pop( stk );
+        edge = Pop( back, stk );
         elim = edge->destination.u.blk;
     }
-    FiniStack( stk );
+    FiniStack( back, stk );
     _MarkBlkAllUnVisited();
     return( side_effect );
 }
 
-static  bool            NullProp( block *blk )
+static  bool            NullProp( BackRun& back, block *blk )
 /********************************************/
 {
     instruction         *cmp;
@@ -463,24 +464,24 @@ static  bool            NullProp( block *blk )
     parms.op = *ptr;
     parms.forward = true;
     _MarkBlkAllUnVisited();
-    if( FROM_SR_VALUE( DominatingDeref( &parms ), bool ) ) {
-        if( !EdgeHasSideEffect( blk, cmp, cmp->head.opcode == OP_CMP_NOT_EQUAL ) ) {
+    if( FROM_SR_VALUE( DominatingDeref( back, &parms ), bool ) ) {
+        if( !EdgeHasSideEffect( back, blk, cmp, cmp->head.opcode == OP_CMP_NOT_EQUAL ) ) {
             // only nuke the edge if the code we are removing
             // does not have a side effect or if the dominators are before the compare
-            KillCondBlk( blk, cmp, dest_idx );
+            KillCondBlk( back, blk, cmp, dest_idx );
             return( true );
         }
     }
     parms.forward = false;
     _MarkBlkAllUnVisited();
-    if( FROM_SR_VALUE( DominatingDeref( &parms ), bool ) ) {
-        KillCondBlk( blk, cmp, dest_idx );
+    if( FROM_SR_VALUE( DominatingDeref( back, &parms ), bool ) ) {
+        KillCondBlk( back, blk, cmp, dest_idx );
         return( true );
     }
     return( false );
 }
 
-void            PropNullInfo( void )
+void            PropNullInfo( BackRun& back )
 /***********************************
     Use pointer dereferences as information to enable folding of
     pointer comparisons versus NULL.
@@ -494,11 +495,11 @@ void            PropNullInfo( void )
     if( _IsModel( CGSW_GEN_NULL_DEREF_OK ) )
         return;
     change = false;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
-        change |= NullProp( blk );
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
+        change |= NullProp( back, blk );
     }
     _MarkBlkAllUnVisited();
     if( change ) {
-        BlockTrim();
+        BlockTrim(back);
     }
 }

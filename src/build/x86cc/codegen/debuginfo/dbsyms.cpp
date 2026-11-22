@@ -56,6 +56,7 @@
 #include "dbsupp.h"
 #include "feprotos.h"
 #include "cgprotos.h"
+#include "backrun.hpp"
 
 
 static const opcode_entry     DbgInfo[] = {
@@ -63,25 +64,25 @@ static const opcode_entry     DbgInfo[] = {
 _OE( _None(                         ), V_NO,           RG_,          G_DEBUG,        FU_NO )
 };
 
-static  void    SrcFileNoInit( void )
+static  void    SrcFileNoInit( BackRun& back )
 /***********************************/
 {
-    dbsyms_state().DBFiles.lst = NULL;
-    dbsyms_state().DBFiles.count = 0;
+    back.dbsyms.DBFiles.lst = NULL;
+    back.dbsyms.DBFiles.count = 0;
 }
 
-static  void    DBSrcFileFini( void )
+static  void    DBSrcFileFini( BackRun& back )
 /***********************************/
 {
     fname_lst   *curr;
 
-    while( (curr = dbsyms_state().DBFiles.lst) != NULL ) {
-        dbsyms_state().DBFiles.lst = curr->next;
-        CGFree( curr );
+    while( (curr = back.dbsyms.DBFiles.lst) != NULL ) {
+        back.dbsyms.DBFiles.lst = curr->next;
+        CGFree( back, curr );
     }
 }
 
-uint    _CGAPI DBSrcFile( cchar_ptr fname )
+uint    _CGAPI DBSrcFile( BackRun& back, cchar_ptr fname )
 /*****************************************/
 {
     uint        index;
@@ -93,7 +94,7 @@ uint    _CGAPI DBSrcFile( cchar_ptr fname )
     EchoAPI( "DBSrcFile( %c )", fname );
 #endif
     index = 0;
-    for( lnk = &dbsyms_state().DBFiles.lst; (curr = *lnk) != NULL; lnk = &curr->next ) {
+    for( lnk = &back.dbsyms.DBFiles.lst; (curr = *lnk) != NULL; lnk = &curr->next ) {
         if( strcmp( fname, curr->fname ) == 0 ) {
 #ifdef DEVBUILD
             EchoAPI( " -> %i\n", index );
@@ -103,11 +104,11 @@ uint    _CGAPI DBSrcFile( cchar_ptr fname )
         ++index;
     }
     len = strlen( fname ) + 1;
-    curr = static_cast<fname_lst *>(CGAlloc( sizeof( *curr ) - 1 + len ));
+    curr = static_cast<fname_lst *>(CGAlloc( back, sizeof( *curr ) - 1 + len ));
     curr->len = len;
     curr->next = NULL;
     strcpy( curr->fname, fname );
-    ++dbsyms_state().DBFiles.count;
+    ++back.dbsyms.DBFiles.count;
     *lnk = curr;
 #ifdef DEVBUILD
     EchoAPI( " -> %i\n", index );
@@ -115,14 +116,14 @@ uint    _CGAPI DBSrcFile( cchar_ptr fname )
     return( index );
 }
 
-const char *SrcFNoFind( uint fno )
+const char *SrcFNoFind( BackRun& back, uint fno )
 /********************************/
 {
     uint        index;
     fname_lst   *curr;
 
     index = 0;
-    for( curr  = dbsyms_state().DBFiles.lst; curr != NULL; curr = curr->next ) {
+    for( curr  = back.dbsyms.DBFiles.lst; curr != NULL; curr = curr->next ) {
         if( index == fno ) {
             return( curr->fname );
         }
@@ -132,12 +133,12 @@ const char *SrcFNoFind( uint fno )
 }
 
 
-static void  AddCueBlk( cue_ctl *ctl )
+static void  AddCueBlk( BackRun& back, cue_ctl *ctl )
 /************************************/
 {
     cue_blk *new_cb;
 
-    new_cb = static_cast<cue_blk *>(CGAlloc( sizeof( *new_cb ) ));
+    new_cb = static_cast<cue_blk *>(CGAlloc( back, sizeof( *new_cb ) ));
     new_cb->next = NULL;
     *ctl->lnk = new_cb;
     ctl->curr = new_cb;
@@ -161,7 +162,7 @@ static void  SourceCueInit( cue_ctl *ctl )
     ctl->count = 0;
 }
 
-cue_idx CueAdd( int fno, int line, int col )
+cue_idx CueAdd( BackRun& back, int fno, int line, int col )
 /******************************************/
 {
     enum {
@@ -176,7 +177,7 @@ cue_idx CueAdd( int fno, int line, int col )
     if( fno == 0 && col == 1 && line < PRIMARY_RANGE ) {
         return( line );
     }
-    ctl = &dbsyms_state().LineInfo;
+    ctl = &back.dbsyms.LineInfo;
     cmp = EQUAL;
     if( fno != ctl->state.fno ) {
         cmp |= FNO_NO;
@@ -195,7 +196,7 @@ cue_idx CueAdd( int fno, int line, int col )
     }
     if( cmp ) {
         if( ctl->next >= ctl->end ) {
-            AddCueBlk( ctl );
+            AddCueBlk( back, ctl );
         }
         ++ctl->state.cue;
         ctl->state.fno = fno;
@@ -208,7 +209,7 @@ cue_idx CueAdd( int fno, int line, int col )
     return( ctl->state.cue + PRIMARY_RANGE );
 }
 
-bool CueFind( cue_idx cue, cue_state *ret )
+bool CueFind( BackRun& back, cue_idx cue, cue_state *ret )
 /*****************************************/
 {
     cue_ctl     *ctl;
@@ -216,7 +217,7 @@ bool CueFind( cue_idx cue, cue_state *ret )
     cue_state   *hi;
     int         diff;
 
-    ctl = &dbsyms_state().LineInfo;
+    ctl = &back.dbsyms.LineInfo;
     if( ctl->count == 0 || cue < PRIMARY_RANGE ) {
         ret->fno = 0;
         ret->line = cue;
@@ -225,7 +226,7 @@ bool CueFind( cue_idx cue, cue_state *ret )
     }
     cue -= PRIMARY_RANGE;
     if( cue < ctl->start[0].cue ) {
-        Zoiks( ZOIKS_078 ); /* lower than low */
+        Zoiks( back, ZOIKS_078 ); /* lower than low */
         return( false );
     }
     hi = &ctl->start[1];
@@ -239,7 +240,7 @@ bool CueFind( cue_idx cue, cue_state *ret )
         /* if cue in last blk next is end of entries in blk */
         hi = ctl->next;
         if( cue > ctl->state.cue ) { /* high than high */
-            Zoiks( ZOIKS_078 );
+            Zoiks( back, ZOIKS_078 );
             return( false );
         }
     }
@@ -349,7 +350,7 @@ void DmpCue( cue_idx cue  )
     }
 }
 #endif
-static void SourceCueFini( cue_ctl *ctl )
+static void SourceCueFini( BackRun& back, cue_ctl *ctl )
 /***************************************/
 {
     cue_blk *list;
@@ -357,41 +358,41 @@ static void SourceCueFini( cue_ctl *ctl )
 
     for( list = ctl->head; list != NULL; list = next ) {
         next = list->next;
-        CGFree( list );
+        CGFree( back, list );
     }
     ctl->head = NULL;
 }
 
-void    InitDbgInfo( void )
+void    InitDbgInfo( BackRun& back )
 /*************************/
 {
 //    cue_idx     idx;
     uint        fno;
 
-    SrcFileNoInit();
-    DBNested( false ); /* set nesting */
-    SourceCueInit( &dbsyms_state().LineInfo );
-    fno = DBSrcFile( static_cast<cchar_ptr>(FEAuxInfo( NULL, FEINF_SOURCE_NAME )) );
+    SrcFileNoInit(back);
+    DBNested( back, false ); /* set nesting */
+    SourceCueInit( &back.dbsyms.LineInfo );
+    fno = DBSrcFile( back, static_cast<cchar_ptr>(FEAuxInfo( *back.front, NULL, FEINF_SOURCE_NAME )) );
 //    idx = CueAdd( fno, 1, 1 );
-    CueAdd( fno, 1, 1 );
-    data_state().SrcLine = 1;
+    CueAdd( back, fno, 1, 1 );
+    back.data.SrcLine = 1;
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        DFInitDbgInfo();
+        DFInitDbgInfo(back);
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        CVInitDbgInfo();
+        CVInitDbgInfo(back);
 #if _TARGET_INTEL
     } else {
-        WVInitDbgInfo();
+        WVInitDbgInfo(back);
 #endif
     }
 }
 
 
-void    FiniDbgInfo( void )
+void    FiniDbgInfo( BackRun& back )
 /*************************/
 {
-    DBSrcFileFini();
-    SourceCueFini( &dbsyms_state().LineInfo );
+    DBSrcFileFini(back);
+    SourceCueFini( back, &back.dbsyms.LineInfo );
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
         DFFiniDbgInfo();
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
@@ -404,16 +405,16 @@ void    FiniDbgInfo( void )
 }
 
 
-void    _CGAPI DBLineNum( uint no )
+void    _CGAPI DBLineNum( BackRun& back, uint no )
 /*********************************/
 {
 #ifdef DEVBUILD
     EchoAPI( "\nDBLineNum( %i )\n", no );
 #endif
-    data_state().SrcLine = no;
+    back.data.SrcLine = no;
 }
 
-void _CGAPI     DBSrcCue( uint fno, uint line, uint col )
+void _CGAPI     DBSrcCue( BackRun& back, uint fno, uint line, uint col )
 /*******************************************************/
 {
     cue_idx     idx;
@@ -428,24 +429,24 @@ void _CGAPI     DBSrcCue( uint fno, uint line, uint col )
     hasxcue =  _IsntModel( CGSW_GEN_DBG_TYPES ); // Just OMF line nums
     if( hasxcue ) {
         if( fno == 0 && col == 1 ) {
-            DBLineNum( line );
+            DBLineNum( back, line );
         }
     } else {
-        idx = CueAdd( fno, line, col );
-        data_state().SrcLine = idx;
+        idx = CueAdd( back, fno, line, col );
+        back.data.SrcLine = idx;
     }
 }
 
-void _CGAPI DBGenStMem( cg_sym_handle sym, dbg_loc loc )
+void _CGAPI DBGenStMem( BackRun& back, cg_sym_handle sym, dbg_loc loc )
 /******************************************************/
 {
 #ifdef DEVBUILD
     EchoAPI( "DBGenStMem( %s,%i)\n", sym, loc );
 #endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        DFGenStatic( sym, loc );
+        DFGenStatic( back, sym, loc );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        CVGenStatic( sym, loc, true );
+        CVGenStatic( back, sym, loc, true );
     } else {
     }
 }
@@ -462,21 +463,21 @@ static  void    AddLocal( dbg_local **owner, dbg_local *lcl )
     *owner = lcl;
 }
 
-static  dbg_block *MkBlock( void )
+static  dbg_block *MkBlock( BackRun& back )
 /********************************/
 {
     dbg_block   *blk;
 
-    blk = static_cast<dbg_block *>(CGAlloc( sizeof( dbg_block ) ));
-    blk->parent = data_state().CurrProc->targ.debug->blk;
-    data_state().CurrProc->targ.debug->blk = blk;
+    blk = static_cast<dbg_block *>(CGAlloc( back, sizeof( dbg_block ) ));
+    blk->parent = back.data.CurrProc->targ.debug->blk;
+    back.data.CurrProc->targ.debug->blk = blk;
     blk->locals = NULL;
     blk->bpatches = NULL;
     return( blk );
 }
 
 
-void _CGAPI DBGenSym( cg_sym_handle sym, dbg_loc loc, int scoped )
+void _CGAPI DBGenSym( BackRun& back, cg_sym_handle sym, dbg_loc loc, int scoped )
 /****************************************************************/
 {
     fe_attr     attr;
@@ -486,31 +487,31 @@ void _CGAPI DBGenSym( cg_sym_handle sym, dbg_loc loc, int scoped )
     EchoAPI( "DBGenSym( %s, %i, %i )\n", sym, loc, scoped );
 #endif
     if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
-        attr = FEAttr( sym );
+        attr = FEAttr( *back.front, sym );
         if( (attr & FE_IMPORT) == 0 ) {
             if( attr & FE_PROC ) {
-                data_state().CurrProc->state.attr |= ROUTINE_WANTS_DEBUGGING;
-                data_state().CurrProc->targ.debug = static_cast<dbg_rtn *>(CGAlloc( sizeof( dbg_rtn ) ));
-                memset( data_state().CurrProc->targ.debug, 0, sizeof( dbg_rtn ) );
-                data_state().CurrProc->targ.debug->parms = NULL;
-                data_state().CurrProc->targ.debug->return_loc = LocDupl( loc );
-                data_state().CurrProc->targ.debug->obj_type = DBG_NIL_TYPE;
-                data_state().CurrProc->targ.debug->obj_loc = NULL;
-                data_state().CurrProc->targ.debug->rtn_blk = MkBlock();
+                back.data.CurrProc->state.attr |= ROUTINE_WANTS_DEBUGGING;
+                back.data.CurrProc->targ.debug = static_cast<dbg_rtn *>(CGAlloc( back, sizeof( dbg_rtn ) ));
+                memset( back.data.CurrProc->targ.debug, 0, sizeof( dbg_rtn ) );
+                back.data.CurrProc->targ.debug->parms = NULL;
+                back.data.CurrProc->targ.debug->return_loc = LocDupl( loc );
+                back.data.CurrProc->targ.debug->obj_type = DBG_NIL_TYPE;
+                back.data.CurrProc->targ.debug->obj_loc = NULL;
+                back.data.CurrProc->targ.debug->rtn_blk = MkBlock(back);
             } else if( scoped ) {
-                lcl = static_cast<dbg_local *>(CGAlloc( sizeof( dbg_local ) ));
+                lcl = static_cast<dbg_local *>(CGAlloc( back, sizeof( dbg_local ) ));
                 lcl->sym = sym;
                 lcl->loc = LocDupl( loc );
                 lcl->kind = DBG_SYM_VAR;
-                AddLocal( &data_state().CurrProc->targ.debug->blk->locals, lcl );
+                AddLocal( &back.data.CurrProc->targ.debug->blk->locals, lcl );
             } else {
                 if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-                    DFGenStatic( sym, loc );
+                    DFGenStatic( back, sym, loc );
                 } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-                    CVGenStatic( sym, loc, false );
+                    CVGenStatic( back, sym, loc, false );
 #if _TARGET_INTEL
                 } else {
-                    WVGenStatic( sym , loc );
+                    WVGenStatic( back, sym , loc );
 #endif
                 }
             }
@@ -519,7 +520,7 @@ void _CGAPI DBGenSym( cg_sym_handle sym, dbg_loc loc, int scoped )
 }
 
 
-void    _CGAPI DBModSym( cg_sym_handle sym, cg_type indirect )
+void    _CGAPI DBModSym( BackRun& back, cg_sym_handle sym, cg_type indirect )
 /************************************************************/
 {
     fe_attr     attr;
@@ -531,22 +532,22 @@ void    _CGAPI DBModSym( cg_sym_handle sym, cg_type indirect )
     EchoAPI( "DBModSym( %s, %t )\n",  sym, indirect );
 #endif
     if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
-        attr = FEAttr( sym );
+        attr = FEAttr( *back.front, sym );
         if( (attr & FE_IMPORT) == 0 ) {
             if( attr & FE_PROC ) {
                 loc = NULL;
             } else {
                 loc = DBLocInit();
-                loc = DBLocSym( loc, sym );
+                loc = DBLocSym( back, loc, sym );
             }
-            DBGenSym( sym, loc, false );
-            DBLocFini( loc );
+            DBGenSym( back, sym, loc, false );
+            DBLocFini( back, loc );
         }
     }
 }
 
 
-void _CGAPI DBObject( dbg_type tipe, dbg_loc loc, cg_type ptr_type )
+void _CGAPI DBObject( BackRun& back, dbg_type tipe, dbg_loc loc, cg_type ptr_type )
 /******************************************************************/
 {
     /* unused parameters */ (void)ptr_type;
@@ -554,15 +555,15 @@ void _CGAPI DBObject( dbg_type tipe, dbg_loc loc, cg_type ptr_type )
 #ifdef DEVBUILD
     EchoAPI( "DBObject( %i, %i, %t )\n", tipe, loc, ptr_type );
 #endif
-    data_state().CurrProc->targ.debug->obj_type = tipe;
-    data_state().CurrProc->targ.debug->obj_loc = LocDupl( loc );
+    back.data.CurrProc->targ.debug->obj_type = tipe;
+    back.data.CurrProc->targ.debug->obj_loc = LocDupl( loc );
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
         //
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
         //
 #if _TARGET_INTEL
     } else {
-        WVObjectPtr( ptr_type );
+        WVObjectPtr( back, ptr_type );
 #endif
     }
 }
@@ -574,21 +575,21 @@ void    DBAllocReg( name *reg, name *temp )
     /* unused parameters */ (void)reg; (void)temp;
 }
 
-void _CGAPI DBTypeDef( cchar_ptr nm, dbg_type tipe )
+void _CGAPI DBTypeDef( BackRun& back, cchar_ptr nm, dbg_type tipe )
 /**************************************************/
 {
 #ifdef DEVBUILD
     EchoAPI( "DBTypeDef( %c, %t )\n", nm, tipe );
 #endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        DFTypedef( nm, tipe );
+        DFTypedef( back, nm, tipe );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        CVTypedef( nm, tipe );
+        CVTypedef( back, nm, tipe );
     } else {
     }
 }
 
-void    _CGAPI DBLocalSym( cg_sym_handle sym, cg_type indirect )
+void    _CGAPI DBLocalSym( BackRun& back, cg_sym_handle sym, cg_type indirect )
 /**************************************************************/
 {
     fe_attr     attr;
@@ -599,18 +600,18 @@ void    _CGAPI DBLocalSym( cg_sym_handle sym, cg_type indirect )
 #ifdef DEVBUILD
     EchoAPI( "DBLocalSym( %s, %t )\n", sym, indirect );
 #endif
-    if( data_state().CurrProc->targ.debug != NULL ) {
-        attr = FEAttr( sym );
+    if( back.data.CurrProc->targ.debug != NULL ) {
+        attr = FEAttr( *back.front, sym );
         if( (attr & FE_IMPORT) == 0 ) {
             loc = DBLocInit();
-            loc = DBLocSym( loc, sym );
-            DBGenSym( sym, loc, true );
-            DBLocFini( loc );
+            loc = DBLocSym( back, loc, sym );
+            DBGenSym( back, sym, loc, true );
+            DBLocFini( back, loc );
         }
     }
 }
 
-void    _CGAPI DBLocalType( cg_sym_handle sym, bool kind )
+void    _CGAPI DBLocalType( BackRun& back, cg_sym_handle sym, bool kind )
 /********************************************************/
 {
     dbg_local   *lcl;
@@ -621,7 +622,7 @@ void    _CGAPI DBLocalType( cg_sym_handle sym, bool kind )
     if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
         if( _IsModel( CGSW_GEN_DBG_CV )
           || _IsModel( CGSW_GEN_DBG_DF ) ) {
-            lcl = static_cast<dbg_local *>(CGAlloc( sizeof( dbg_local ) ));
+            lcl = static_cast<dbg_local *>(CGAlloc( back, sizeof( dbg_local ) ));
             lcl->sym = sym;
             lcl->loc = NULL;
             if( kind ) {
@@ -629,53 +630,53 @@ void    _CGAPI DBLocalType( cg_sym_handle sym, bool kind )
             } else {
                 lcl->kind = DBG_SYM_TYPEDEF;
             }
-            AddLocal( &data_state().CurrProc->targ.debug->blk->locals, lcl );
+            AddLocal( &back.data.CurrProc->targ.debug->blk->locals, lcl );
         }
     }
 }
 
-static  void    AddBlockInfo( dbg_block *blk, bool start )
+static  void    AddBlockInfo( BackRun& back, dbg_block *blk, bool start )
 /********************************************************/
 {
     instruction *ins;
 
-    ins = MakeNop();
+    ins = MakeNop(back);
     ins->table = DbgInfo;
     ins->u.gen_table = ins->table;
     ins->flags.u.nop_flags = NOP_DBGINFO;
     if( start )
         ins->flags.u.nop_flags |= NOP_DBGINFO_START;
     ins->operands[0] = (name *)blk;
-    AddIns( ins );
+    AddIns( back, ins );
 }
 
 
-dbg_block *DoDBBegBlock( int fast_codegen )
+dbg_block *DoDBBegBlock( BackRun& back, int fast_codegen )
 /*****************************************/
 {
     dbg_block   *blk;
 
-    if( data_state().CurrProc->targ.debug == NULL )
+    if( back.data.CurrProc->targ.debug == NULL )
         return( NULL );
-    blk = MkBlock();
+    blk = MkBlock(back);
     if( !fast_codegen ) {
         /*%%%% stick a NOP in the instruction stream, point it at block*/
-        AddBlockInfo( blk, true );
+        AddBlockInfo( back, blk, true );
     }
     return( blk );
 }
 
-void _CGAPI     DBBegBlock( void )
+void _CGAPI     DBBegBlock( BackRun& back )
 /********************************/
 {
 #ifdef DEVBUILD
     EchoAPI( "DBBegBlock()\n" );
 #endif
-    DoDBBegBlock( 0 );
+    DoDBBegBlock( back, 0 );
 }
 
 
-void    DoDBEndBlock( int fast_codegen )
+void    DoDBEndBlock( BackRun& back, int fast_codegen )
 /**************************************/
 {
     dbg_block   *blk;
@@ -683,23 +684,23 @@ void    DoDBEndBlock( int fast_codegen )
 #ifdef DEVBUILD
     EchoAPI( "DBEndBlock()\n" );
 #endif
-    if( data_state().CurrProc->targ.debug != NULL ) {
-        blk = data_state().CurrProc->targ.debug->blk;
+    if( back.data.CurrProc->targ.debug != NULL ) {
+        blk = back.data.CurrProc->targ.debug->blk;
         if( !fast_codegen ) {
-            AddBlockInfo( blk, false );
+            AddBlockInfo( back, blk, false );
         }
-        data_state().CurrProc->targ.debug->blk = blk->parent;
+        back.data.CurrProc->targ.debug->blk = blk->parent;
     }
 }
 
-void _CGAPI     DBEndBlock( void )
+void _CGAPI     DBEndBlock( BackRun& back )
 /********************************/
 {
-    DoDBEndBlock( 0 );
+    DoDBEndBlock( back, 0 );
 }
 
 
-void    DbgSetBase( void )
+void    DbgSetBase( BackRun& back )
 /************************/
 {
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
@@ -708,13 +709,13 @@ void    DbgSetBase( void )
         CVSetBase();
 #if _TARGET_INTEL
     } else {
-        WVSetBase();
+        WVSetBase(back);
 #endif
     }
 }
 
 
-void    DbgParmLoc( name *parm, cg_sym_handle sym )
+void    DbgParmLoc( BackRun& back, name *parm, cg_sym_handle sym )
 /*************************************************/
 // sym is NULL if no front end sym
 {
@@ -726,34 +727,34 @@ void    DbgParmLoc( name *parm, cg_sym_handle sym )
             return;
         }
     }
-    lcl = static_cast<dbg_local *>(CGAlloc( sizeof( dbg_local ) ));
+    lcl = static_cast<dbg_local *>(CGAlloc( back, sizeof( dbg_local ) ));
     loc = DBLocInit();
-    loc = LocParm( loc, parm );
+    loc = LocParm( back, loc, parm );
     lcl->loc = loc;
     lcl->sym = sym;
     lcl->kind = DBG_SYM_VAR;
-    AddLocal( &data_state().CurrProc->targ.debug->parms, lcl );
+    AddLocal( &back.data.CurrProc->targ.debug->parms, lcl );
 }
 
 
-void    DbgRetLoc( void )
+void    DbgRetLoc( BackRun& back )
 /***********************/
 {
     dbg_loc loc;
 
-    if( data_state().CurrProc->targ.debug->return_loc == NULL ) {
+    if( back.data.CurrProc->targ.debug->return_loc == NULL ) {
         loc = DBLocInit();
-        loc = LocReg( loc, AllocRegName( data_state().CurrProc->state.return_reg ) );
+        loc = LocReg( back, loc, AllocRegName( back, back.data.CurrProc->state.return_reg ) );
 #if _TARGET_INTEL
-        if( data_state().CurrProc->targ.return_points == NULL ) {
+        if( back.data.CurrProc->targ.return_points == NULL ) {
             /* nothing to do */
-        } else if( data_state().CurrProc->state.attr & ROUTINE_ALLOCS_RETURN ) {
+        } else if( back.data.CurrProc->state.attr & ROUTINE_ALLOCS_RETURN ) {
             loc->class_ = LOC_IND_REG + IND_RALLOC_NEAR;
         } else {
             loc->class_ = LOC_IND_REG + IND_CALLOC_NEAR;
         }
 #endif
-        data_state().CurrProc->targ.debug->return_loc = loc;
+        back.data.CurrProc->targ.debug->return_loc = loc;
     }
 }
 
@@ -763,14 +764,14 @@ void    DbgRetLoc( void )
 /**/
 
 
-void    DbgRetOffset( type_length offset )
+void    DbgRetOffset( BackRun& back, type_length offset )
 /****************************************/
 {
-    data_state().CurrProc->targ.debug->ret_offset = offset;
+    back.data.CurrProc->targ.debug->ret_offset = offset;
 }
 
 
-static  void    EmitDbg( oc_class class_, pointer ptr )
+static  void    EmitDbg( BackRun& back, oc_class class_, pointer ptr )
 /****************************************************/
 {
     any_oc      oc;
@@ -779,48 +780,48 @@ static  void    EmitDbg( oc_class class_, pointer ptr )
     oc.oc_debug.hdr.reclen = sizeof( oc_debug );
     oc.oc_debug.hdr.objlen = 0;
     oc.oc_debug.ptr = ptr;
-    InputOC( &oc );
+    InputOC( back, &oc );
 }
 
 
-void    EmitRtnBeg( void )
+void    EmitRtnBeg( BackRun& back )
 /************************/
 {
-    EmitDbg( static_cast<oc_class>(OC_INFO_DBG_RTN_BEG), data_state().CurrProc->targ.debug );
+    EmitDbg( back, static_cast<oc_class>(OC_INFO_DBG_RTN_BEG), back.data.CurrProc->targ.debug );
 }
 
 
-void    EmitProEnd( void )
+void    EmitProEnd( BackRun& back )
 /************************/
 {
-    EmitDbg( static_cast<oc_class>(OC_INFO_DBG_PRO_END), data_state().CurrProc->targ.debug );
+    EmitDbg( back, static_cast<oc_class>(OC_INFO_DBG_PRO_END), back.data.CurrProc->targ.debug );
 }
 
 
-void    EmitDbgInfo( instruction *ins )
+void    EmitDbgInfo( BackRun& back, instruction *ins )
 /*************************************/
 {
     if( ins->flags.u.nop_flags & NOP_DBGINFO_START ) {
-        EmitDbg( static_cast<oc_class>(OC_INFO_DBG_BLK_BEG), ins->operands[0] );
+        EmitDbg( back, static_cast<oc_class>(OC_INFO_DBG_BLK_BEG), ins->operands[0] );
     } else {
-        EmitDbg( static_cast<oc_class>(OC_INFO_DBG_BLK_END), ins->operands[0] );
+        EmitDbg( back, static_cast<oc_class>(OC_INFO_DBG_BLK_END), ins->operands[0] );
     }
 }
 
 
-void    EmitEpiBeg( void )
+void    EmitEpiBeg( BackRun& back )
 /************************/
 {
-    EmitDbg( static_cast<oc_class>(OC_INFO_DBG_EPI_BEG), data_state().CurrProc->targ.debug );
+    EmitDbg( back, static_cast<oc_class>(OC_INFO_DBG_EPI_BEG), back.data.CurrProc->targ.debug );
 }
 
 
-void    EmitRtnEnd( void )
+void    EmitRtnEnd( BackRun& back )
 /************************/
 {
-    EmitDbg( static_cast<oc_class>(OC_INFO_DBG_RTN_END), data_state().CurrProc->targ.debug );
-    PUSH_OP( AskCodeSeg() );
-        EmptyQueue();
+    EmitDbg( back, static_cast<oc_class>(OC_INFO_DBG_RTN_END), back.data.CurrProc->targ.debug );
+    PUSH_OP( AskCodeSeg(back) );
+        EmptyQueue(back);
     POP_OP();
 }
 
@@ -830,7 +831,7 @@ void    EmitRtnEnd( void )
 /**/
 
 
-void    DbgRtnBeg( dbg_rtn *rtn,  offset lc )
+void    DbgRtnBeg( BackRun& back, dbg_rtn *rtn,  offset lc )
 /*******************************************/
 {
     rtn->rtn_blk->start = lc;
@@ -840,69 +841,69 @@ void    DbgRtnBeg( dbg_rtn *rtn,  offset lc )
 }
 
 
-void    DbgProEnd( dbg_rtn *rtn, offset lc )
+void    DbgProEnd( BackRun& back, dbg_rtn *rtn, offset lc )
 /******************************************/
 {
     rtn->pro_size = lc - rtn->rtn_blk->start;
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        DFProEnd( rtn, lc );
+        DFProEnd( back, rtn, lc );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        CVProEnd( rtn, lc );
+        CVProEnd( back, rtn, lc );
     }
 }
 
 
-void    DbgBlkBeg( dbg_block *blk, offset lc )
+void    DbgBlkBeg( BackRun& back, dbg_block *blk, offset lc )
 /********************************************/
 {
     blk->start = lc;
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        DFBlkBeg( blk, lc );
+        DFBlkBeg( back, blk, lc );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        CVBlkBeg( blk, lc );
+        CVBlkBeg( back, blk, lc );
     }
 }
 
-void    DbgBlkEnd( dbg_block *blk, offset lc )
+void    DbgBlkEnd( BackRun& back, dbg_block *blk, offset lc )
 /********************************************/
 {
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        DFBlkEnd( blk, lc );
+        DFBlkEnd( back, blk, lc );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        CVBlkEnd( blk, lc );
+        CVBlkEnd( back, blk, lc );
 #if _TARGET_INTEL
     } else {
-        WVBlkEnd( blk, lc );
+        WVBlkEnd( back, blk, lc );
 #endif
     }
-    CGFree( blk );
+    CGFree( back, blk );
 }
 
 
-void    DbgEpiBeg( dbg_rtn *rtn, offset lc )
+void    DbgEpiBeg( BackRun& back, dbg_rtn *rtn, offset lc )
 /******************************************/
 {
     rtn->epi_start = lc;
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        DFEpiBeg( rtn, lc );
+        DFEpiBeg( back, rtn, lc );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
         CVEpiBeg( rtn, lc );
     }
 }
 
 
-void    DbgRtnEnd( dbg_rtn *rtn, offset lc )
+void    DbgRtnEnd( BackRun& back, dbg_rtn *rtn, offset lc )
 /******************************************/
 {
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        DFRtnEnd( rtn, lc );
+        DFRtnEnd( back, rtn, lc );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        CVRtnEnd( rtn, lc );
+        CVRtnEnd( back, rtn, lc );
 #if _TARGET_INTEL
     } else {
-        WVRtnEnd( rtn, lc );
+        WVRtnEnd( back, rtn, lc );
 #endif
     }
-    CGFree( rtn->blk );
-    CGFree( rtn );
+    CGFree( back, rtn->blk );
+    CGFree( back, rtn );
 }

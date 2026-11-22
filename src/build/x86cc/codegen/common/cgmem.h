@@ -29,5 +29,6 @@
 ****************************************************************************/
 
 
-extern  pointer         CGAlloc( size_t );
-extern  void            CGFree( pointer );
+#pragma once
+extern  pointer         CGAlloc( BackRun& back, size_t );
+extern  void            CGFree( BackRun& back, pointer );

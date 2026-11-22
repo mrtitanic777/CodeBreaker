@@ -88,6 +88,5 @@ struct CerrsState {
     #undef MSG_DEF
     };
 };
-inline CerrsState& cerrs_state() { return cbrun_part<CerrsState>(); }
 
 #endif

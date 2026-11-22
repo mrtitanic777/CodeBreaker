@@ -49,33 +49,30 @@
 #include "tree.h"
 #include "treeprot.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct MemlimitState {
-    pointer_uint MemLimit;
-    bool IckyWicky;
-};
+/* (struct MemlimitState: memlimit_state.h) */
 
 }  // namespace
 
-static inline MemlimitState& memlimit_state() { return cbrun_part<MemlimitState>(); }
 
 
-static  bool    FlushSomeOpt( pointer_uint size )
+static  bool    FlushSomeOpt( BackRun& back, pointer_uint size )
 /***********************************************/
 {
     bool        freed;
 
-    if( optmac_state().InOptimizer == 0 && HaveCodeSeg() ) {
-        PUSH_OP( AskCodeSeg() );
-            freed = ShrinkQueue( size );
+    if( back.optmac.InOptimizer == 0 && HaveCodeSeg(back) ) {
+        PUSH_OP( AskCodeSeg(back) );
+            freed = ShrinkQueue( back, size );
         POP_OP();
-        if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) && !memlimit_state().IckyWicky ) {
-            memlimit_state().IckyWicky = true;
-            FEMessage( FEMSG_PEEPHOLE_FLUSHED, NULL );
+        if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) && !back.memlimit.IckyWicky ) {
+            back.memlimit.IckyWicky = true;
+            FEMessage( *back.front, FEMSG_PEEPHOLE_FLUSHED, NULL );
         }
     } else {
         freed = false;
@@ -84,96 +81,96 @@ static  bool    FlushSomeOpt( pointer_uint size )
 }
 
 
-static  bool    ChkMemLimit( pointer_uint limit )
+static  bool    ChkMemLimit( BackRun& back, pointer_uint limit )
 /***********************************************/
 {
     if( _IsModel( CGSW_GEN_MEMORY_LOW_FAILS ) )
         return( false );
-    if( MemInUse() - data_state().FrlSize <= limit )
+    if( MemInUse(back) - back.data.FrlSize <= limit )
         return( false );
-    FlushSomeOpt( MemInUse() - limit - data_state().FrlSize );
-    if( MemInUse() - data_state().FrlSize <= limit )
+    FlushSomeOpt( back, MemInUse(back) - limit - back.data.FrlSize );
+    if( MemInUse(back) - back.data.FrlSize <= limit )
         return( false );
     return( true );
 }
 
 
-void    CalcMemLimit( void )
+void    CalcMemLimit( BackRun& back )
 /**************************/
 {
     pointer_uint    size;
 
-    size = MemSize();
-    memlimit_state().MemLimit = size - size / 4;
-    memlimit_state().IckyWicky = false;
+    size = MemSize(back);
+    back.memlimit.MemLimit = size - size / 4;
+    back.memlimit.IckyWicky = false;
 }
 
 
-void    FlushOpt( void )
+void    FlushOpt( BackRun& back )
 /**********************/
 {
-    FlushSomeOpt( (pointer_uint)-1 );
+    FlushSomeOpt( back, (pointer_uint)-1 );
 }
 
 
-bool    MemCritical( void )
+bool    MemCritical( BackRun& back )
 /*************************/
 {
-    return( ChkMemLimit( memlimit_state().MemLimit - memlimit_state().MemLimit/4 ) );
+    return( ChkMemLimit( back, back.memlimit.MemLimit - back.memlimit.MemLimit/4 ) );
 }
 
 
-bool    MemLow( void )
+bool    MemLow( BackRun& back )
 /********************/
 {
-    return( ChkMemLimit( memlimit_state().MemLimit ) );
+    return( ChkMemLimit( back, back.memlimit.MemLimit ) );
 }
 
 
-void    BlowAwayFreeLists( void )
+void    BlowAwayFreeLists( BackRun& back )
 /*******************************/
 {
-    AddrFrlFree();
-    ScoreFrlFree();
-    TreeFrlFree();
-    RegTreeFrlFree();
-    InsFrlFree();
-    InstrFrlFree();
-    CFFrlFree( &cfloat_state().cgh );
-    ConfFrlFree();
-    NameFrlFree();
-    SchedFrlFree();
+    AddrFrlFree(back);
+    ScoreFrlFree(back);
+    TreeFrlFree(back);
+    RegTreeFrlFree(back);
+    InsFrlFree(back);
+    InstrFrlFree(back);
+    CFFrlFree( back, &back.cfloat.cgh );
+    ConfFrlFree(back);
+    NameFrlFree(back);
+    SchedFrlFree(back);
 }
 
 
-bool    MemCheck( size_t size )
+bool    MemCheck( BackRun& back, size_t size )
 /*****************************/
 {
     if( FEMoreMem( size ) )
         return( true );
-    if( FreeObjCache() )
+    if( FreeObjCache(back) )
         return( true );
-    if( ScoreFrlFree() )
+    if( ScoreFrlFree(back) )
         return( true );
-    if( AddrFrlFree() )
+    if( AddrFrlFree(back) )
         return( true );
-    if( RegTreeFrlFree() )
+    if( RegTreeFrlFree(back) )
         return( true );
-    if( CFFrlFree( &cfloat_state().cgh ) )
+    if( CFFrlFree( back, &back.cfloat.cgh ) )
         return( true );
-    if( InsFrlFree() )
+    if( InsFrlFree(back) )
         return( true );
-    if( TreeFrlFree() )
+    if( TreeFrlFree(back) )
         return( true );
-    if( ConfFrlFree() )
+    if( ConfFrlFree(back) )
         return( true );
-    if( NameFrlFree() )
+    if( NameFrlFree(back) )
         return( true );
-    if( InstrFrlFree() )
+    if( InstrFrlFree(back) )
         return( true );
-    if( SchedFrlFree() )
+    if( SchedFrlFree(back) )
         return( true );
-    if( FlushSomeOpt( size ) )
+    if( FlushSomeOpt( back, size ) )
         return( true );
     return( false );
 }

@@ -42,36 +42,33 @@
 #include "dataflo.h"
 #include "varusage.h"
 #include "splitvar.h"
+#include "backrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct SplitvarState {
-    block_id Instance;
-    global_bit_set Id;
-};
+/* (struct SplitvarState: splitvar_state.h) */
 
 }  // namespace
 
-static inline SplitvarState& splitvar_state() { return cbrun_part<SplitvarState>(); }
 
-static  void            *MarkInstance(block *blk);
+static  void            *MarkInstance(BackRun& back, block *blk);
 
-static  block   *FindUnMarkedInstance( void )
+static  block   *FindUnMarkedInstance( BackRun& back )
 /*******************************************/
 {
     block               *blk;
     data_flow_def       *flow;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( _IsBlkVisited( blk ) )
             continue;
         flow = blk->dataflow;
-        if( _GBitOverlap( splitvar_state().Id, flow->in )
-          || _GBitOverlap( splitvar_state().Id, flow->out )
-          || _GBitOverlap( splitvar_state().Id, flow->def )
-          || _GBitOverlap( splitvar_state().Id, flow->use ) ) {
+        if( _GBitOverlap( back.splitvar.Id, flow->in )
+          || _GBitOverlap( back.splitvar.Id, flow->out )
+          || _GBitOverlap( back.splitvar.Id, flow->def )
+          || _GBitOverlap( back.splitvar.Id, flow->use ) ) {
             break;
         }
     }
@@ -79,19 +76,19 @@ static  block   *FindUnMarkedInstance( void )
 }
 
 
-static  void    NotVisited( void )
+static  void    NotVisited( BackRun& back )
 /********************************/
 {
     block       *blk;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         _MarkBlkUnVisited( blk );
         blk->blk_id = 0;
     }
 }
 
 
-bool    RepOp( name **pop, name *of, name *with )
+bool    RepOp( BackRun& back, name **pop, name *of, name *with )
 /***********************************************/
 {
     name        *op;
@@ -116,7 +113,7 @@ bool    RepOp( name **pop, name *of, name *with )
             change = true;
         }
         if( change ) {
-            *pop = ScaleIndex( index, base, op->i.constant,
+            *pop = ScaleIndex( back, index, base, op->i.constant,
                                 op->n.type_class, op->n.size,
                                 op->i.scale, op->i.index_flags );
         }
@@ -125,7 +122,7 @@ bool    RepOp( name **pop, name *of, name *with )
 }
 
 
-static  void    ReplaceInstances( name *of, name *with )
+static  void    ReplaceInstances( BackRun& back, name *of, name *with )
 /******************************************************/
 {
     block       *blk;
@@ -134,14 +131,14 @@ static  void    ReplaceInstances( name *of, name *with )
 //    block       *replaced;
 
 //    replaced = NULL;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
-        if( blk->blk_id == splitvar_state().Instance ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
+        if( blk->blk_id == back.splitvar.Instance ) {
             for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
                 for( i = ins->num_operands; i-- > 0; ) {
-                    RepOp( &ins->operands[i], of, with );
+                    RepOp( back, &ins->operands[i], of, with );
                 }
                 if( ins->result != NULL ) {
-                    RepOp( &ins->result, of, with );
+                    RepOp( back, &ins->result, of, with );
                 }
             }
         }
@@ -149,49 +146,49 @@ static  void    ReplaceInstances( name *of, name *with )
 }
 
 
-static  bool    Split1Var( conflict_node *conf )
+static  bool    Split1Var( BackRun& back, conflict_node *conf )
 /**********************************************/
 {
     block       *unlabeled;
     bool        change;
     name        *op;
 
-    NotVisited();
-    splitvar_state().Instance = 0;
-    _GBitAssign( splitvar_state().Id, conf->id.out_of_block );
+    NotVisited(back);
+    back.splitvar.Instance = 0;
+    _GBitAssign( back.splitvar.Id, conf->id.out_of_block );
     for( ;; ) {
-        unlabeled = FindUnMarkedInstance();
+        unlabeled = FindUnMarkedInstance(back);
         if( unlabeled == NULL )
             break;
-        ++splitvar_state().Instance;
-        MarkInstance( unlabeled );
+        ++back.splitvar.Instance;
+        MarkInstance( back, unlabeled );
     }
     op = conf->name;
     change = false;
-    while( splitvar_state().Instance > 1 ) {
+    while( back.splitvar.Instance > 1 ) {
         change = true;
-        ReplaceInstances( op, SAllocTemp( op->n.type_class, op->n.size ) );
-        --splitvar_state().Instance;
+        ReplaceInstances( back, op, SAllocTemp( back, op->n.type_class, op->n.size ) );
+        --back.splitvar.Instance;
     }
     return( change );
 }
 
 
-static  void    CleanUp( void )
+static  void    CleanUp( BackRun& back )
 /*****************************/
 {
     block       *blk;
     block_id    blk_id;
 
     blk_id = 1;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         _MarkBlkUnVisited( blk );
         blk->blk_id = blk_id++;
     }
 }
 
 
-static  void *MarkInstance( block *blk )
+static  void *MarkInstance( BackRun& back, block *blk )
 /**************************************/
 {
     block_edge          *edge;
@@ -202,22 +199,22 @@ static  void *MarkInstance( block *blk )
     if( _IsBlkVisited( blk ) )
         return( NULL );
     _MarkBlkVisited( blk );
-    blk->blk_id = splitvar_state().Instance;
+    blk->blk_id = back.splitvar.Instance;
     flow = blk->dataflow;
-    if( _GBitOverlap( flow->in, splitvar_state().Id ) ) {
+    if( _GBitOverlap( flow->in, back.splitvar.Id ) ) {
         for( edge = blk->input_edges; edge != NULL; edge = edge->next_source ) {
             bitp = &edge->source->dataflow->out;
-            if( _GBitOverlap( *bitp, splitvar_state().Id ) ) {
-                SafeRecurseCG( (func_sr)MarkInstance, edge->source );
+            if( _GBitOverlap( *bitp, back.splitvar.Id ) ) {
+                SafeRecurseCG( back, (func_sr)MarkInstance, edge->source );
             }
         }
     }
-    if( _GBitOverlap( flow->out, splitvar_state().Id ) ) {
+    if( _GBitOverlap( flow->out, back.splitvar.Id ) ) {
         edge = &blk->edge[0];
         for( i = blk->targets; i > 0; --i ) {
             bitp = &edge->destination.u.blk->dataflow->in;
-            if( _GBitOverlap( *bitp, splitvar_state().Id ) ) {
-                SafeRecurseCG( (func_sr)MarkInstance, edge->destination.u.blk );
+            if( _GBitOverlap( *bitp, back.splitvar.Id ) ) {
+                SafeRecurseCG( back, (func_sr)MarkInstance, edge->destination.u.blk );
             }
             ++edge;
         }
@@ -226,7 +223,7 @@ static  void *MarkInstance( block *blk )
 }
 
 
- void    SplitVars( void )
+ void    SplitVars( BackRun& back )
 /************************/
 /* For each variable, find out if it can be split into two separate variables.*/
 /* This often happens when programmers re-use variables rather than defining*/
@@ -236,7 +233,7 @@ static  void *MarkInstance( block *blk )
     conflict_node       *conf;
 
     for( ;; ) {
-        for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
+        for( conf = back.data.ConfList; conf != NULL; conf = conf->next_conflict ) {
             op = conf->name;
             if( (op->v.usage & USE_IN_ANOTHER_BLOCK) == 0 )
                 continue;
@@ -248,18 +245,18 @@ static  void *MarkInstance( block *blk )
             if( _GBitEmpty( conf->id.out_of_block ) )
                 continue;
             if( op->t.alias == op )
-                Split1Var( conf );
+                Split1Var( back, conf );
             _GBitInit( conf->id.out_of_block, EMPTY );
             _SetTrue( conf, CST_CONFLICT_ON_HOLD | CST_CONF_VISITED );
         }
-        if( !MoreConflicts() ) {
+        if( !MoreConflicts(back) ) {
             break;
         }
     }
-    CleanUp();
-    FreeConflicts();
-    InsDead();
-    NullConflicts( static_cast<var_usage>(EMPTY) );
-    FindReferences();
-    MakeConflicts();
+    CleanUp(back);
+    FreeConflicts(back);
+    InsDead(back);
+    NullConflicts( back, static_cast<var_usage>(EMPTY) );
+    FindReferences(back);
+    MakeConflicts(back);
 }

@@ -38,6 +38,7 @@
 #include "toggles.h"
 
 #include "clibext.h"
+#include "frontrun.hpp"
 
 
 #define PH_BUF_SIZE     32768
@@ -64,14 +65,11 @@
 #define PCHGetUInt(p)           ((unsigned)(pointer_uint)(p))
 #define PCHSetUInt(v)           ((void *)(pointer_uint)((unsigned)(v)))
 
-#define PCHWriteVar(m)          PCHWriteUnalign(&(m),sizeof(m))
+#define PCHWriteVar(m)          PCHWriteUnalign(front, &(m),sizeof(m))
 
 #define PCHAlign(p)             _RoundUp(p,sizeof(int))
 
-enum pch_aux_info_index {
-    PCH_NULL_INDEX,
-    PCH_FIRST_INDEX
-};
+
 
 #define PCH_FIRST_USER_INDEX    (PCH_FIRST_INDEX + MAX_BUILTIN_AUXINFO)
 
@@ -79,45 +77,10 @@ enum pch_aux_info_index {
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct PchdrState {
-    jmp_buf PH_jmpbuf;
-    int PH_handle;
-    char *PH_Buffer;
-    char *PH_BufPtr;
-    unsigned PH_BufSize;
-    MEPTR *PCHMacroHash;
-    MEPTR PCHUndefMacroList;
-    TYPEPTR TypeArray;
-    TAGPTR *TagArray;
-    FNAMEPTR FNameList;
-    textsegment **TextSegArray;
-    unsigned PH_SymHashCount;
-    unsigned PH_FileCount;
-    unsigned PH_RDirCount;
-    unsigned PH_IAliasCount;
-    unsigned PH_IncFileCount;
-    unsigned PH_LibraryCount;
-    unsigned PH_AliasCount;
-    unsigned PH_SegCount;
-    unsigned PH_MacroCount;
-    unsigned PH_UndefMacroCount;
-    unsigned PH_TypeCount;
-    unsigned PH_TagCount;
-    unsigned PH_PragmaCount;
-    unsigned PH_PragmaEntryCount;
-    unsigned PH_size;
-    unsigned PH_MacroSize;
-    unsigned PH_cwd_len;
-    char PH_computing_size;
-    RDIRPTR PCHRDirNames;   /* list of read-only directories */
-    IALIASPTR PCHIAliasNames;   /* list of include aliases */
-    INCFILE *PCHOldIncFileList;   /* temporary copy of old include file list */
-    bool PCHOldIncListValid;   /* flag to indicate if PCHOldIncFileList is valid */
-};
+/* (struct PchdrState: pchdr_state.h) */
 
 }  // namespace
 
-static inline PchdrState& pchdr_state() { return cbrun_part<PchdrState>(); }
 
 
 typedef struct pheader {
@@ -154,134 +117,134 @@ typedef struct pheader {
     unsigned        ignore_default_dirs;
 } pheader;
 
-static int FixupDataStructures( char *p, pheader *pch );
+static int FixupDataStructures( FrontRun& front, char *p, pheader *pch );
 
-void InitDebugTypes( void );
+void InitDebugTypes( FrontRun& front );
 
 //========================================================================
 //      This portion of the code creates the pre-compiled header.
 //========================================================================
 
-static void InitPHVars( void )
+static void InitPHVars( FrontRun& front )
 //*****************************
 // Set vars to 0
 //*****************************
 {
-    pchdr_state().PH_SymHashCount    = 0;
-    pchdr_state().PH_FileCount       = 0;
-    pchdr_state().PH_RDirCount       = 0;
-    pchdr_state().PH_IAliasCount     = 0;
-    pchdr_state().PH_IncFileCount    = 0;
-    pchdr_state().PH_LibraryCount    = 0;
-    pchdr_state().PH_AliasCount      = 0;
-    pchdr_state().PH_SegCount        = 0;
-    pchdr_state().PH_MacroCount      = 0;
-    pchdr_state().PH_UndefMacroCount = 0;
-    pchdr_state().PH_TypeCount       = 0;
-    pchdr_state().PH_TagCount        = 0;
-    pchdr_state().PH_PragmaCount     = 0;
-    pchdr_state().PH_PragmaEntryCount = 0;
-    pchdr_state().PH_size            = 0;
-    pchdr_state().PH_MacroSize       = 0;
-    pchdr_state().PH_cwd_len         = 0;
-    pchdr_state().PH_computing_size  = 0;
+    front.pchdr.PH_SymHashCount    = 0;
+    front.pchdr.PH_FileCount       = 0;
+    front.pchdr.PH_RDirCount       = 0;
+    front.pchdr.PH_IAliasCount     = 0;
+    front.pchdr.PH_IncFileCount    = 0;
+    front.pchdr.PH_LibraryCount    = 0;
+    front.pchdr.PH_AliasCount      = 0;
+    front.pchdr.PH_SegCount        = 0;
+    front.pchdr.PH_MacroCount      = 0;
+    front.pchdr.PH_UndefMacroCount = 0;
+    front.pchdr.PH_TypeCount       = 0;
+    front.pchdr.PH_TagCount        = 0;
+    front.pchdr.PH_PragmaCount     = 0;
+    front.pchdr.PH_PragmaEntryCount = 0;
+    front.pchdr.PH_size            = 0;
+    front.pchdr.PH_MacroSize       = 0;
+    front.pchdr.PH_cwd_len         = 0;
+    front.pchdr.PH_computing_size  = 0;
 }
 
-static void CreatePHeader( const char *filename )
+static void CreatePHeader( FrontRun& front, const char *filename )
 {
-    pchdr_state().PH_handle = _sopen4( filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, SH_DENYRW, PMODE_RW );
-    if( pchdr_state().PH_handle == -1 ) {
-        longjmp( pchdr_state().PH_jmpbuf, 1 );
+    front.pchdr.PH_handle = _sopen4( filename, O_WRONLY | O_CREAT | O_TRUNC | O_BINARY, SH_DENYRW, PMODE_RW );
+    if( front.pchdr.PH_handle == -1 ) {
+        longjmp( front.pchdr.PH_jmpbuf, 1 );
     }
 }
 
-static bool pch_write( const char *buf, size_t len )
+static bool pch_write( FrontRun& front, const char *buf, size_t len )
 {
     size_t     amt_towrite;
 
-    if( pchdr_state().PH_Buffer != NULL ) {
+    if( front.pchdr.PH_Buffer != NULL ) {
         for( ; len != 0; ) {
             amt_towrite = len;
-            if( amt_towrite > pchdr_state().PH_BufSize )
-                amt_towrite = pchdr_state().PH_BufSize;
-            memcpy( pchdr_state().PH_BufPtr, buf, amt_towrite );
-            pchdr_state().PH_BufSize -= amt_towrite;
-            pchdr_state().PH_BufPtr  += amt_towrite;
+            if( amt_towrite > front.pchdr.PH_BufSize )
+                amt_towrite = front.pchdr.PH_BufSize;
+            memcpy( front.pchdr.PH_BufPtr, buf, amt_towrite );
+            front.pchdr.PH_BufSize -= amt_towrite;
+            front.pchdr.PH_BufPtr  += amt_towrite;
             buf += amt_towrite;
             len -= amt_towrite;
-            if( pchdr_state().PH_BufSize == 0 ) {         // if buffer is full
-                pchdr_state().PH_BufSize = PH_BUF_SIZE;
-                pchdr_state().PH_BufPtr = pchdr_state().PH_Buffer;
-                if( write( pchdr_state().PH_handle, pchdr_state().PH_Buffer, PH_BUF_SIZE ) != PH_BUF_SIZE ) {
+            if( front.pchdr.PH_BufSize == 0 ) {         // if buffer is full
+                front.pchdr.PH_BufSize = PH_BUF_SIZE;
+                front.pchdr.PH_BufPtr = front.pchdr.PH_Buffer;
+                if( write( front.pchdr.PH_handle, front.pchdr.PH_Buffer, PH_BUF_SIZE ) != PH_BUF_SIZE ) {
                     return( true );
                 }
             }
         }
     } else if( len > 0 ) {
-        if( write( pchdr_state().PH_handle, buf, len ) != len ) {
+        if( write( front.pchdr.PH_handle, buf, len ) != len ) {
             return( true );
         }
     }
     return( false );
 }
 
-static bool pch_align( size_t len )
+static bool pch_align( FrontRun& front, size_t len )
 {
     len = PCHAlign( len ) - len;
     if( len > 0 ) {
         char    padding[8] = {0};
-        return( pch_write( padding, len ) );
+        return( pch_write( front, padding, len ) );
     }
     return( false );
 }
 
-static bool PCHWrite( const void *bufptr, size_t len )
+static bool PCHWrite( FrontRun& front, const void *bufptr, size_t len )
 {
     bool    rc = false;
 
     if( len != 0 ) {
-        if( pchdr_state().PH_computing_size ) {
-            pchdr_state().PH_size += PCHAlign( len );
+        if( front.pchdr.PH_computing_size ) {
+            front.pchdr.PH_size += PCHAlign( len );
         } else {
-            rc = pch_write( static_cast<const char *>(bufptr), len );
-            rc |= pch_align( len );
+            rc = pch_write( front, static_cast<const char *>(bufptr), len );
+            rc |= pch_align( front, len );
         }
     }
     return( rc );
 }
 
-static bool PCHWriteUnalign( const void *bufptr, size_t len )
+static bool PCHWriteUnalign( FrontRun& front, const void *bufptr, size_t len )
 {
     if( len != 0 ) {
-        if( pchdr_state().PH_computing_size ) {
-            pchdr_state().PH_size += len;
+        if( front.pchdr.PH_computing_size ) {
+            front.pchdr.PH_size += len;
         } else {
-            return( pch_write( static_cast<const char *>(bufptr), len ) );
+            return( pch_write( front, static_cast<const char *>(bufptr), len ) );
         }
     }
     return( false );
 }
 
-static void FlushPHeader( void )
+static void FlushPHeader( FrontRun& front )
 {
     unsigned    len;
 
-    if( pchdr_state().PH_BufSize != PH_BUF_SIZE ) {   // if buffer has some stuff in it
-        len = (unsigned)( PH_BUF_SIZE - pchdr_state().PH_BufSize );
-        if( (unsigned)write( pchdr_state().PH_handle, pchdr_state().PH_Buffer, len ) != len ) {
-            longjmp( pchdr_state().PH_jmpbuf, 1 );
+    if( front.pchdr.PH_BufSize != PH_BUF_SIZE ) {   // if buffer has some stuff in it
+        len = (unsigned)( PH_BUF_SIZE - front.pchdr.PH_BufSize );
+        if( (unsigned)write( front.pchdr.PH_handle, front.pchdr.PH_Buffer, len ) != len ) {
+            longjmp( front.pchdr.PH_jmpbuf, 1 );
         }
     }
 }
 
-static void ClosePHeader( void )
+static void ClosePHeader( FrontRun& front )
 {
-    close( pchdr_state().PH_handle );
-    pchdr_state().PH_handle = -1;
+    close( front.pchdr.PH_handle );
+    front.pchdr.PH_handle = -1;
 }
 
 
-static void OutPutHeader( void )
+static void OutPutHeader( FrontRun& front )
 {
     bool            rc;
     pheader         pch;
@@ -290,94 +253,94 @@ static void OutPutHeader( void )
     pch.version           = PCH_VERSION_HOST;
     pch.size_of_header    = sizeof( pheader );
     pch.size_of_int       = TARGET_INT;
-    pch.pack_amount       = cvars_state().PackAmount;
-    pch.gen_switches      = cvars_state().GenSwitches;
-    pch.target_switches   = cvars_state().TargetSwitches;
-    pch.toggles           = toggles_state().PragmaToggles;
-    pch.size              = pchdr_state().PH_size - pchdr_state().PH_MacroSize;
-    pch.macro_size        = pchdr_state().PH_MacroSize;
-    pch.file_count        = pchdr_state().PH_FileCount;
-    pch.rdir_count        = pchdr_state().PH_RDirCount;
-    pch.ialias_count      = pchdr_state().PH_IAliasCount;
-    pch.incfile_count     = pchdr_state().PH_IncFileCount;
-    pch.incline_count     = cvars_state().IncLineCount;
-    pch.library_count     = pchdr_state().PH_LibraryCount;
-    pch.alias_count       = pchdr_state().PH_AliasCount;
-    pch.seg_count         = pchdr_state().PH_SegCount;
-    pch.macro_count       = pchdr_state().PH_MacroCount;
-    pch.undef_macro_count = pchdr_state().PH_UndefMacroCount;
-    pch.type_count        = pchdr_state().PH_TypeCount;
-    pch.tag_count         = pchdr_state().PH_TagCount;
-    pch.pragma_count      = pchdr_state().PH_PragmaCount;
-    pch.pragma_entry_count = pchdr_state().PH_PragmaEntryCount;
-    pch.symhash_count     = pchdr_state().PH_SymHashCount;
-    pch.symbol_count      = SymGetNumSyms();
-    pch.specialsyms_count = SymGetNumSpecialSyms();
-    pch.cwd_len           = pchdr_state().PH_cwd_len;
-    pch.msglevel_len      = sizeof( cerrs_state().msg_level );
-    pch.cpp_ignore_env    = cvars_state().CompFlags.cpp_ignore_env;
-    pch.ignore_default_dirs = cvars_state().CompFlags.ignore_default_dirs;
+    pch.pack_amount       = front.cvars.PackAmount;
+    pch.gen_switches      = front.cvars.GenSwitches;
+    pch.target_switches   = front.cvars.TargetSwitches;
+    pch.toggles           = front.toggles.PragmaToggles;
+    pch.size              = front.pchdr.PH_size - front.pchdr.PH_MacroSize;
+    pch.macro_size        = front.pchdr.PH_MacroSize;
+    pch.file_count        = front.pchdr.PH_FileCount;
+    pch.rdir_count        = front.pchdr.PH_RDirCount;
+    pch.ialias_count      = front.pchdr.PH_IAliasCount;
+    pch.incfile_count     = front.pchdr.PH_IncFileCount;
+    pch.incline_count     = front.cvars.IncLineCount;
+    pch.library_count     = front.pchdr.PH_LibraryCount;
+    pch.alias_count       = front.pchdr.PH_AliasCount;
+    pch.seg_count         = front.pchdr.PH_SegCount;
+    pch.macro_count       = front.pchdr.PH_MacroCount;
+    pch.undef_macro_count = front.pchdr.PH_UndefMacroCount;
+    pch.type_count        = front.pchdr.PH_TypeCount;
+    pch.tag_count         = front.pchdr.PH_TagCount;
+    pch.pragma_count      = front.pchdr.PH_PragmaCount;
+    pch.pragma_entry_count = front.pchdr.PH_PragmaEntryCount;
+    pch.symhash_count     = front.pchdr.PH_SymHashCount;
+    pch.symbol_count      = SymGetNumSyms(front);
+    pch.specialsyms_count = SymGetNumSpecialSyms(front);
+    pch.cwd_len           = front.pchdr.PH_cwd_len;
+    pch.msglevel_len      = sizeof( front.cerrs.msg_level );
+    pch.cpp_ignore_env    = front.cvars.CompFlags.cpp_ignore_env;
+    pch.ignore_default_dirs = front.cvars.CompFlags.ignore_default_dirs;
 
     rc = PCHWriteVar( pch );
-    rc |= PCHWrite( pchdr_state().PH_Buffer + sizeof( pch ), pch.cwd_len );
+    rc |= PCHWrite( front, front.pchdr.PH_Buffer + sizeof( pch ), pch.cwd_len );
     if( rc ) {
-        longjmp( pchdr_state().PH_jmpbuf, rc );
+        longjmp( front.pchdr.PH_jmpbuf, rc );
     }
 }
 
-static void OutPutIncPathList( void )     // output include paths
+static void OutPutIncPathList( FrontRun& front )     // output include paths
 {
     bool        rc;
     size_t      len;
 
-    len = strlen( cvars_state().IncPathList ) + 1;
-    rc = PCHWrite( cvars_state().IncPathList, len );
+    len = strlen( front.cvars.IncPathList ) + 1;
+    rc = PCHWrite( front, front.cvars.IncPathList, len );
     if( rc ) {
-        longjmp( pchdr_state().PH_jmpbuf, rc );
+        longjmp( front.pchdr.PH_jmpbuf, rc );
     }
 }
 
-static void OutPutIncFileList( void )   // output primary include files
+static void OutPutIncFileList( FrontRun& front )   // output primary include files
 {
     bool        rc;
     size_t      len;
     INCFILE     *ifile;
     INCFILE     *next_file;
 
-    for( ifile = cvars_state().IncFileList; ifile != NULL; ifile = next_file ) {
+    for( ifile = front.cvars.IncFileList; ifile != NULL; ifile = next_file ) {
         next_file = ifile->nextfile;
         len = offsetof( INCFILE, filename ) + strlen( ifile->filename ) + 1;
         ifile->nextfile = static_cast<struct incfile *>(PCHSetUInt( PCHAlign( len ) ));
-        rc = PCHWrite( ifile, len );
+        rc = PCHWrite( front, ifile, len );
         ifile->nextfile = next_file;
         if( rc ) {
-            longjmp( pchdr_state().PH_jmpbuf, rc );
+            longjmp( front.pchdr.PH_jmpbuf, rc );
         }
-        pchdr_state().PH_IncFileCount++;
+        front.pchdr.PH_IncFileCount++;
     }
 }
 
-static void OutPutLibraries( void )
+static void OutPutLibraries( FrontRun& front )
 {
     bool                rc;
     size_t              len;
     library_list        *lib;
     library_list        *lib_next;
 
-    for( lib = cvars_state().HeadLibs; lib != NULL; lib = lib_next ) {
+    for( lib = front.cvars.HeadLibs; lib != NULL; lib = lib_next ) {
         lib_next = lib->next;
         len = offsetof( library_list, libname ) + strlen( lib->libname ) + 1;
         lib->next = static_cast<struct library_list *>(PCHSetUInt( PCHAlign( len ) ));
-        rc = PCHWrite( lib, len );
+        rc = PCHWrite( front, lib, len );
         lib->next = lib_next;
         if( rc ) {
-            longjmp( pchdr_state().PH_jmpbuf, rc );
+            longjmp( front.pchdr.PH_jmpbuf, rc );
         }
-        pchdr_state().PH_LibraryCount++;
+        front.pchdr.PH_LibraryCount++;
     }
 }
 
-static void OutPutAliases( void )
+static void OutPutAliases( FrontRun& front )
 {
     bool            rc;
     size_t          len;
@@ -388,7 +351,7 @@ static void OutPutAliases( void )
     const char      *alias_name;
     const char      *alias_subst;
 
-    for( alias = cvars_state().AliasHead; alias != NULL; alias = alias->next ) {
+    for( alias = front.cvars.AliasHead; alias != NULL; alias = alias->next ) {
         alias_next = alias->next;
         alias_name = alias->name;
         alias_subst = alias->subst;
@@ -404,28 +367,28 @@ static void OutPutAliases( void )
             len += subst_len;
         }
         alias->next = static_cast<struct alias_list *>(PCHSetUInt( PCHAlign( len ) ));
-        rc = PCHWrite( alias, len );
+        rc = PCHWrite( front, alias, len );
         alias->subst = alias_subst;
         alias->name = alias_name;
         alias->next = alias_next;
         if( rc ) {
-            longjmp( pchdr_state().PH_jmpbuf, rc );
+            longjmp( front.pchdr.PH_jmpbuf, rc );
         }
-        pchdr_state().PH_AliasCount++;
+        front.pchdr.PH_AliasCount++;
     }
 }
 
-static void OutPutMsgLevels( void )
+static void OutPutMsgLevels( FrontRun& front )
 {
     bool        rc;
 
-    rc = PCHWrite( cerrs_state().msg_level, sizeof( cerrs_state().msg_level ) );
+    rc = PCHWrite( front, front.cerrs.msg_level, sizeof( front.cerrs.msg_level ) );
     if( rc ) {
-        longjmp( pchdr_state().PH_jmpbuf, rc );
+        longjmp( front.pchdr.PH_jmpbuf, rc );
     }
 }
 
-static void OutPutIncludes( void )
+static void OutPutIncludes( FrontRun& front )
 {
     FNAMEPTR    flist;
     FNAMEPTR    next_flist;
@@ -433,40 +396,40 @@ static void OutPutIncludes( void )
     bool        rc;
 
     // don't want to include the primary source file, skip first item
-    for( flist = cvars_state().FNames->next; flist != NULL; flist = next_flist ) {
+    for( flist = front.cvars.FNames->next; flist != NULL; flist = next_flist ) {
         next_flist = flist->next;
         len = offsetof( fname_list, name ) + strlen( flist->name ) + 1;
         flist->next = static_cast<struct fname_list *>(PCHSetUInt( PCHAlign( len ) ));
-        rc = PCHWrite( flist, len );
+        rc = PCHWrite( front, flist, len );
         flist->next = next_flist;
         if( rc ) {
-            longjmp( pchdr_state().PH_jmpbuf, rc );
+            longjmp( front.pchdr.PH_jmpbuf, rc );
         }
-        pchdr_state().PH_FileCount++;
+        front.pchdr.PH_FileCount++;
     }
 }
 
-static void OutPutRoDirList( void )
+static void OutPutRoDirList( FrontRun& front )
 {
     RDIRPTR     dirlist;
     RDIRPTR     next_dirlist;
     size_t      len;
     bool        rc;
 
-    for( dirlist = pchdr_state().PCHRDirNames; dirlist != NULL; dirlist = next_dirlist ) {
+    for( dirlist = front.pchdr.PCHRDirNames; dirlist != NULL; dirlist = next_dirlist ) {
         next_dirlist = dirlist->next;
         len = offsetof( rdir_list, name ) + strlen( dirlist->name ) + 1;
         dirlist->next = static_cast<struct rdir_list *>(PCHSetUInt( PCHAlign( len ) ));
-        rc = PCHWrite( dirlist, len );
+        rc = PCHWrite( front, dirlist, len );
         dirlist->next = next_dirlist;
         if( rc ) {
-            longjmp( pchdr_state().PH_jmpbuf, rc );
+            longjmp( front.pchdr.PH_jmpbuf, rc );
         }
-        pchdr_state().PH_RDirCount++;
+        front.pchdr.PH_RDirCount++;
     }
 }
 
-static void OutPutIncAliasList( void )
+static void OutPutIncAliasList( FrontRun& front )
 {
     IALIASPTR   aliaslist;
     IALIASPTR   next_aliaslist;
@@ -475,45 +438,45 @@ static void OutPutIncAliasList( void )
     size_t      alias_len;
     bool        rc;
 
-    for( aliaslist = cvars_state().IAliasNames; aliaslist != NULL; aliaslist = next_aliaslist ) {
+    for( aliaslist = front.cvars.IAliasNames; aliaslist != NULL; aliaslist = next_aliaslist ) {
         next_aliaslist = aliaslist->next;
         real_name = aliaslist->real_name;
         alias_len = aliaslist->real_name - aliaslist->alias_name;
         len = offsetof( ialias_list, alias_name ) + alias_len + strlen( aliaslist->real_name ) + 1;
         aliaslist->next = static_cast<struct ialias_list *>(PCHSetUInt( PCHAlign( len ) ));
         aliaslist->real_name = static_cast<char *>(PCHSetUInt( alias_len ));
-        rc = PCHWrite( aliaslist, len );
+        rc = PCHWrite( front, aliaslist, len );
         aliaslist->real_name = real_name;
         aliaslist->next = next_aliaslist;
         if( rc ) {
-            longjmp( pchdr_state().PH_jmpbuf, rc );
+            longjmp( front.pchdr.PH_jmpbuf, rc );
         }
-        pchdr_state().PH_IAliasCount++;
+        front.pchdr.PH_IAliasCount++;
     }
 }
 
-static void OutPutSegInfo( void )
+static void OutPutSegInfo( FrontRun& front )
 {
     textsegment     *tseg;
     textsegment     *tseg_next;
     bool            rc;
     size_t          len;
 
-    for( tseg = cvars_state().TextSegList; tseg != NULL; tseg = tseg_next ) {
+    for( tseg = front.cvars.TextSegList; tseg != NULL; tseg = tseg_next ) {
         tseg_next = tseg->next;             // save next pointer
-        pchdr_state().PH_SegCount++;
-        tseg->index = pchdr_state().PH_SegCount;
+        front.pchdr.PH_SegCount++;
+        tseg->index = front.pchdr.PH_SegCount;
         len = offsetof( textsegment, segname ) + tseg->class_ + strlen( tseg->segname + tseg->class_ ) + 1;
         tseg->next = static_cast<struct textsegment *>(PCHSetUInt( PCHAlign( len ) ));
-        rc = PCHWrite( tseg, len );
+        rc = PCHWrite( front, tseg, len );
         tseg->next = tseg_next;             // restore next pointer
         if( rc ) {
-            longjmp( pchdr_state().PH_jmpbuf, rc );
+            longjmp( front.pchdr.PH_jmpbuf, rc );
         }
     }
 }
 
-static void OutPutEnums( ENUMPTR ep, TAGPTR parent )
+static void OutPutEnums( FrontRun& front, ENUMPTR ep, TAGPTR parent )
 {
     bool        rc;
     size_t      len;
@@ -521,15 +484,15 @@ static void OutPutEnums( ENUMPTR ep, TAGPTR parent )
     for( ; ep != NULL; ep = ep->thread ) {
         len = offsetof( ENUMDEFN, name ) + strlen( ep->name ) + 1;
         ep->parent = static_cast<struct tag_entry *>(PCHSetUInt( PCHAlign( len ) ));
-        rc = PCHWrite( ep, len );
+        rc = PCHWrite( front, ep, len );
         ep->parent = parent;
         if( rc ) {
-            longjmp( pchdr_state().PH_jmpbuf, rc );
+            longjmp( front.pchdr.PH_jmpbuf, rc );
         }
     }
 }
 
-static void OutPutFields( FIELDPTR field )
+static void OutPutFields( FrontRun& front, FIELDPTR field )
 {
     bool        rc;
     size_t      len;
@@ -540,15 +503,15 @@ static void OutPutFields( FIELDPTR field )
         len = offsetof( FIELD_ENTRY, name ) + strlen( field->name ) + 1;
         field->next_field_same_hash = static_cast<struct field_entry *>(PCHSetUInt( PCHAlign( len ) ));
         field->field_type = static_cast<TYPEPTR>(PCHSetUInt( field_type->u1.type_index ));
-        rc = PCHWrite( field, len );
+        rc = PCHWrite( front, field, len );
         field->field_type = field_type;         // restore pointer
         if( rc ) {
-            longjmp( pchdr_state().PH_jmpbuf, rc );
+            longjmp( front.pchdr.PH_jmpbuf, rc );
         }
     }
 }
 
-static void OutPutATag( TAGPTR tag )
+static void OutPutATag( FrontRun& front, TAGPTR tag )
 {
     bool        rc;
     TYPEPTR     sym_type;
@@ -560,66 +523,66 @@ static void OutPutATag( TAGPTR tag )
     len = offsetof( TAGDEFN, name ) + strlen( tag->name ) + 1;
     tag->next_tag = static_cast<struct tag_entry *>(PCHSetUInt( PCHAlign( len ) ));
     tag->sym_type = static_cast<TYPEPTR>(PCHSetUInt( sym_type->u1.type_index ));
-    rc = PCHWrite( tag, len );
+    rc = PCHWrite( front, tag, len );
     tag->sym_type = sym_type;
     tag->next_tag = next_tag;
     if( rc ) {
-        longjmp( pchdr_state().PH_jmpbuf, rc );
+        longjmp( front.pchdr.PH_jmpbuf, rc );
     }
     if( sym_type->decl_type == TYP_ENUM ) {
-        OutPutEnums( tag->u.enum_list, tag );
+        OutPutEnums( front, tag->u.enum_list, tag );
     } else {
-        OutPutFields( tag->u.field_list );
+        OutPutFields( front, tag->u.field_list );
     }
 }
 
-static void OutPutTags( void )
+static void OutPutTags( FrontRun& front )
 {
-    WalkTagList( OutPutATag );
+    WalkTagList( front, OutPutATag );
 }
 
-static void SetTypeIndex( TYPEPTR typ )
+static void SetTypeIndex( FrontRun& front, TYPEPTR typ )
 {
-    pchdr_state().PH_TypeCount++;
-    typ->u1.type_index = pchdr_state().PH_TypeCount;
+    front.pchdr.PH_TypeCount++;
+    typ->u1.type_index = front.pchdr.PH_TypeCount;
 }
 
-static void SetFuncTypeIndex( TYPEPTR typ, int index )
+static void SetFuncTypeIndex( FrontRun& front, TYPEPTR typ, int index )
 {
     /* unused parameters */ (void)index;
 
-    SetTypeIndex( typ );
+    SetTypeIndex( front, typ );
 }
 
-static void NumberTypes( void )
+static void NumberTypes( FrontRun& front )
 {
-    pchdr_state().PH_TypeCount = 0;
-    WalkTypeList( SetTypeIndex );
-    WalkFuncTypeList( SetFuncTypeIndex );
+    front.pchdr.PH_TypeCount = 0;
+    WalkTypeList( front, SetTypeIndex );
+    WalkFuncTypeList( front, SetFuncTypeIndex );
 }
 
-static void SetTagIndex( TAGPTR tag )
+static void SetTagIndex( FrontRun& front, TAGPTR tag )
 {
-    tag->refno = pchdr_state().PH_TagCount++;
+    tag->refno = front.pchdr.PH_TagCount++;
 }
 
-static void SetDebugTag( TAGPTR tag )
+static void SetDebugTag( FrontRun& front, TAGPTR tag )
 {
     tag->refno = 0;
 }
 
-static void NumberTags( void )
+static void NumberTags( FrontRun& front )
 {
-    pchdr_state().PH_TagCount = 0;
-    WalkTagList( SetTagIndex );
+    front.pchdr.PH_TagCount = 0;
+    WalkTagList( front, SetTagIndex );
 }
 
-static void InitDebugTags( void )
+static void InitDebugTags( FrontRun& front )
 {
-    WalkTagList( SetDebugTag );
+    WalkTagList( front, SetDebugTag );
 }
 
-static bool WriteType( TYPEPTR typ )
+static bool WriteType( FrontRun& front, TYPEPTR typ )
 {
     bool        rc;
     TYPEPTR     object;
@@ -641,7 +604,7 @@ typedef struct type_indices {
     int     constchartype_index;
 } type_indices;
 
-static void OutPutTypeIndexes( void )
+static void OutPutTypeIndexes( FrontRun& front )
 {
     TYPEPTR             typ;
     bool                rc;
@@ -649,22 +612,22 @@ static void OutPutTypeIndexes( void )
     type_indices        typ_index;
 
     for( i = 0; i < DATA_TYPE_SIZE; i++ ) {
-        typ = cvars_state().BaseTypes[i];
+        typ = front.cvars.BaseTypes[i];
         if( typ == NULL ) {
             typ_index.basetype_index[i] = 0;
         } else {
             typ_index.basetype_index[i] = typ->u1.type_index;
         }
     }
-    typ_index.stringtype_index = cvars_state().StringType->u1.type_index;
-    typ_index.constchartype_index = cvars_state().ConstCharType->u1.type_index;
+    typ_index.stringtype_index = front.cvars.StringType->u1.type_index;
+    typ_index.constchartype_index = front.cvars.ConstCharType->u1.type_index;
     rc = PCHWriteVar( typ_index );
     if( rc ) {
-        longjmp( pchdr_state().PH_jmpbuf, rc );
+        longjmp( front.pchdr.PH_jmpbuf, rc );
     }
 }
 
-static void OutPutAType( TYPEPTR typ )
+static void OutPutAType( FrontRun& front, TYPEPTR typ )
 {
     TAGPTR          tag;
     bool            rc;
@@ -675,7 +638,7 @@ static void OutPutAType( TYPEPTR typ )
     case TYP_ARRAY:
         array = typ->u.array;                   // save pointer
         typ->u.array = static_cast<array_info *>(PCHSetUInt( array->dimension ));  // replace with dim
-        rc = WriteType( typ );
+        rc = WriteType( front, typ );
         typ->u.array = array;                   // restore pointer
         break;
     case TYP_STRUCT:
@@ -683,35 +646,35 @@ static void OutPutAType( TYPEPTR typ )
     case TYP_ENUM:
         tag = typ->u.tag;                       // save tag
         typ->u.tag = static_cast<struct tag_entry *>(PCHSetUInt( tag->refno ));  // replace with index
-        rc = WriteType( typ );
+        rc = WriteType( front, typ );
         typ->u.tag = tag;                       // restore tag pointer
         break;
     default:
         if( typ->decl_type != TYP_FUNCTION ) {
-            rc = WriteType( typ );
+            rc = WriteType( front, typ );
         }
         break;
     }
     if( rc ) {
-        longjmp( pchdr_state().PH_jmpbuf, rc );
+        longjmp( front.pchdr.PH_jmpbuf, rc );
     }
 }
 
-static void OutPutAFuncType( TYPEPTR typ, int index )
+static void OutPutAFuncType( FrontRun& front, TYPEPTR typ, int index )
 {
     TYPEPTR     *parm_types;
     bool        rc;
 
     parm_types = typ->u.fn.parms;           // save pointer
     typ->u.fn.parms = static_cast<struct type_definition **>(PCHSetUInt( index ));  // replace with index
-    rc = WriteType( typ );
+    rc = WriteType( front, typ );
     typ->u.fn.parms = parm_types;           // restore pointer
     if( rc ) {
-        longjmp( pchdr_state().PH_jmpbuf, rc );
+        longjmp( front.pchdr.PH_jmpbuf, rc );
     }
 }
 
-static void OutPutFuncParmList( TYPEPTR typ, int index )
+static void OutPutFuncParmList( FrontRun& front, TYPEPTR typ, int index )
 {
     TYPEPTR     *parm_types;
     bool        rc;
@@ -724,29 +687,29 @@ static void OutPutFuncParmList( TYPEPTR typ, int index )
             parm_type = static_cast<TYPEPTR>(PCHSetUInt( parm_type->u1.type_index ));
             rc = PCHWriteVar( parm_type );
             if( rc ) {
-                longjmp( pchdr_state().PH_jmpbuf, rc );
+                longjmp( front.pchdr.PH_jmpbuf, rc );
             }
         }
     }
     parm_type = static_cast<TYPEPTR>(PCHSetUInt( -1 ));
     rc = PCHWriteVar( parm_type );
     if( rc ) {
-        longjmp( pchdr_state().PH_jmpbuf, rc );
+        longjmp( front.pchdr.PH_jmpbuf, rc );
     }
 }
 
-static void OutPutTypes( void )
+static void OutPutTypes( FrontRun& front )
 {
-    NumberTypes();
-    NumberTags();
-    WalkTypeList( OutPutAType );
-    WalkFuncTypeList( OutPutAFuncType );
-    WalkFuncTypeList( OutPutFuncParmList );
-    OutPutTypeIndexes();
+    NumberTypes(front);
+    NumberTags(front);
+    WalkTypeList( front, OutPutAType );
+    WalkFuncTypeList( front, OutPutAFuncType );
+    WalkFuncTypeList( front, OutPutFuncParmList );
+    OutPutTypeIndexes(front);
 }
 
 #if _INTEL_CPU
-static void OutPutAuxInfo( aux_info *info )
+static void OutPutAuxInfo( FrontRun& front, aux_info *info )
 {
     hw_reg_set          *regs;
     hw_reg_set          *info_parms;
@@ -790,20 +753,20 @@ static void OutPutAuxInfo( aux_info *info )
         }
     }
     if( info_objname != NULL ) {
-        rc |= PCHWrite( info_objname, objname_len );
+        rc |= PCHWrite( front, info_objname, objname_len );
     }
     if( info_code != NULL ) {
-        rc |= PCHWrite( info_code, code_len );
+        rc |= PCHWrite( front, info_code, code_len );
     }
     info->parms = info_parms;
     info->objname = info_objname;
     info->code = info_code;
     if( rc ) {
-        longjmp( pchdr_state().PH_jmpbuf, rc );
+        longjmp( front.pchdr.PH_jmpbuf, rc );
     }
 }
 
-static void OutPutPragmaInfo( void )
+static void OutPutPragmaInfo( FrontRun& front )
 {
     aux_entry       *ent;
     aux_entry       *ent_next;
@@ -814,74 +777,74 @@ static void OutPutPragmaInfo( void )
 
     // write built-in aux_info
     for( index = PCH_FIRST_INDEX; index < PCH_FIRST_USER_INDEX; index++ ) {
-        ent_info = callinfo_state().BuiltinAuxInfo + index - PCH_FIRST_INDEX;
+        ent_info = front.callinfo.BuiltinAuxInfo + index - PCH_FIRST_INDEX;
         ent_info->index = index;
-        OutPutAuxInfo( ent_info );      // write out the aux_info struct
+        OutPutAuxInfo( front, ent_info );      // write out the aux_info struct
     }
     // write user aux_info
-    for( ent = pragdefn_state().AuxList; ent != NULL; ent = ent->next ) {
+    for( ent = front.pragdefn.AuxList; ent != NULL; ent = ent->next ) {
         ent->info->index = PCH_NULL_INDEX;
     }
-    for( ent = pragdefn_state().AuxList; ent != NULL; ent = ent->next ) {
+    for( ent = front.pragdefn.AuxList; ent != NULL; ent = ent->next ) {
         ent_info = ent->info;
         if( ent_info->index == PCH_NULL_INDEX ) {
             ent_info->index = index++;
-            OutPutAuxInfo( ent_info );      // write out the aux_info struct
+            OutPutAuxInfo( front, ent_info );      // write out the aux_info struct
         }
     }
-    pchdr_state().PH_PragmaCount = index - PCH_FIRST_INDEX;
-    pchdr_state().PH_PragmaEntryCount = 0;
-    for( ent = pragdefn_state().AuxList; ent != NULL; ent = ent_next ) {
+    front.pchdr.PH_PragmaCount = index - PCH_FIRST_INDEX;
+    front.pchdr.PH_PragmaEntryCount = 0;
+    for( ent = front.pragdefn.AuxList; ent != NULL; ent = ent_next ) {
         ent_next = ent->next;                   // save pointer
         ent_info = ent->info;                   // save pointer
         len = offsetof( aux_entry, name ) + strlen( ent->name ) + 1;
         ent->next = static_cast<struct aux_entry *>(PCHSetUInt( PCHAlign( len ) ));
         ent->info = static_cast<aux_info *>(PCHSetUInt( ent_info->index - PCH_FIRST_INDEX ));
-        rc = PCHWrite( ent, len );
+        rc = PCHWrite( front, ent, len );
         ent->info = ent_info;                   // restore pointer
         ent->next = ent_next;                   // restore pointer
         if( rc ) {
-            longjmp( pchdr_state().PH_jmpbuf, rc );
+            longjmp( front.pchdr.PH_jmpbuf, rc );
         }
-        pchdr_state().PH_PragmaEntryCount++;
+        front.pchdr.PH_PragmaEntryCount++;
     }
 }
 #endif
 
-static void OutPutMacros( void )
+static void OutPutMacros( FrontRun& front )
 {
     mac_hash_idx    hash;
     bool            rc;
     MEPTR           mentry;
     MEPTR           mentry_next_macro;
 
-    pchdr_state().PH_MacroCount = 0;
-    pchdr_state().PH_MacroSize = pchdr_state().PH_size;
+    front.pchdr.PH_MacroCount = 0;
+    front.pchdr.PH_MacroSize = front.pchdr.PH_size;
     for( hash = 0; hash < MACRO_HASH_SIZE; hash++ ) {
-        for( mentry = cvars_state().MacHash[hash]; mentry != NULL; mentry = mentry_next_macro ) {
+        for( mentry = front.cvars.MacHash[hash]; mentry != NULL; mentry = mentry_next_macro ) {
             mentry_next_macro = mentry->next_macro;        // save pointer
             mentry->next_macro = static_cast<struct macro_entry *>(PCHSetUInt( hash ));
-            rc = PCHWrite( mentry, mentry->macro_len );
+            rc = PCHWrite( front, mentry, mentry->macro_len );
             mentry->next_macro = mentry_next_macro;        // restore pointer
             if( rc ) {
-                longjmp( pchdr_state().PH_jmpbuf, rc );
+                longjmp( front.pchdr.PH_jmpbuf, rc );
             }
-            pchdr_state().PH_MacroCount++;
+            front.pchdr.PH_MacroCount++;
         }
     }
     /* write out undefined macro list. */
-    pchdr_state().PH_UndefMacroCount = 0;
-    for( mentry = cvars_state().UndefMacroList; mentry != NULL; mentry = mentry->next_macro ) {
-        rc = PCHWrite( mentry, mentry->macro_len );
+    front.pchdr.PH_UndefMacroCount = 0;
+    for( mentry = front.cvars.UndefMacroList; mentry != NULL; mentry = mentry->next_macro ) {
+        rc = PCHWrite( front, mentry, mentry->macro_len );
         if( rc ) {
-            longjmp( pchdr_state().PH_jmpbuf, rc );
+            longjmp( front.pchdr.PH_jmpbuf, rc );
         }
-        pchdr_state().PH_UndefMacroCount++;
+        front.pchdr.PH_UndefMacroCount++;
     }
-    pchdr_state().PH_MacroSize = pchdr_state().PH_size - pchdr_state().PH_MacroSize;
+    front.pchdr.PH_MacroSize = front.pchdr.PH_size - front.pchdr.PH_MacroSize;
 }
 
-static void OutPutSymHashTable( void )
+static void OutPutSymHashTable( FrontRun& front )
 {
     SYM_HASHPTR     hsym;
     SYM_HASHPTR     hsym_next_sym;
@@ -894,13 +857,13 @@ static void OutPutSymHashTable( void )
     for( hash = 0; hash < ID_HASH_SIZE; hash++ ) {
         // reverse the list
         sym_list = NULL;
-        for( hsym = cvars_state().HashTab[hash]; hsym != NULL; hsym = hsym_next_sym ) {
+        for( hsym = front.cvars.HashTab[hash]; hsym != NULL; hsym = hsym_next_sym ) {
             hsym_next_sym = hsym->next_sym;
             hsym->next_sym = sym_list;
             sym_list = hsym;
-            pchdr_state().PH_SymHashCount++;
+            front.pchdr.PH_SymHashCount++;
         }
-        cvars_state().HashTab[hash] = NULL;
+        front.cvars.HashTab[hash] = NULL;
         rc = false;
         for( hsym = sym_list; hsym != NULL; hsym = hsym_next_sym ) {
             hsym_next_sym = hsym->next_sym;
@@ -910,28 +873,28 @@ static void OutPutSymHashTable( void )
                 hsym->sym_type = static_cast<TYPEPTR>(PCHSetUInt( hsym_sym_typ->u1.type_index )); // replace with index
             }
             len = offsetof( id_hash_entry, name ) + strlen( hsym->name ) + 1;
-            rc |= PCHWrite( hsym, len );
+            rc |= PCHWrite( front, hsym, len );
             hsym->sym_type = hsym_sym_typ;               // restore type pointer
-            hsym->next_sym = cvars_state().HashTab[hash];
-            cvars_state().HashTab[hash] = hsym;
+            hsym->next_sym = front.cvars.HashTab[hash];
+            front.cvars.HashTab[hash] = hsym;
         }
         if( rc ) {
-            longjmp( pchdr_state().PH_jmpbuf, rc );
+            longjmp( front.pchdr.PH_jmpbuf, rc );
         }
     }
 }
 
-static void OutPutSymbols( void )
+static void OutPutSymbols( FrontRun& front )
 {
     SYM_ENTRY   sym;
     SYM_HANDLE  sym_handle;
     bool        rc;
 
-    if( pchdr_state().PH_computing_size ) {
-        pchdr_state().PH_size += SymGetNumSyms() * sizeof( SYM_ENTRY );
+    if( front.pchdr.PH_computing_size ) {
+        front.pchdr.PH_size += SymGetNumSyms(front) * sizeof( SYM_ENTRY );
     } else {
-        for( sym_handle = SymGetFirst(); sym_handle != SYM_INVALID; sym_handle = SymGetNext( sym_handle ) ) {
-            SymGet( &sym, sym_handle );
+        for( sym_handle = SymGetFirst(); sym_handle != SYM_INVALID; sym_handle = SymGetNext( front, sym_handle ) ) {
+            SymGet( front, &sym, sym_handle );
             if( sym.sym_type != NULL ) {
                 sym.sym_type = static_cast<TYPEPTR>(PCHSetUInt( sym.sym_type->u1.type_index ));
             }
@@ -941,89 +904,89 @@ static void OutPutSymbols( void )
             sym.name = NULL; // can't carry a name across
             rc = PCHWriteVar( sym );
             if( rc ) {
-                longjmp( pchdr_state().PH_jmpbuf, rc );
+                longjmp( front.pchdr.PH_jmpbuf, rc );
             }
         }
     }
 }
 
-static void OutPutEverything( void )
+static void OutPutEverything( FrontRun& front )
 {
-    pchdr_state().PH_SymHashCount = 0;
-    pchdr_state().PH_FileCount = 0;
-    pchdr_state().PH_RDirCount = 0;
-    pchdr_state().PH_IAliasCount = 0;
-    pchdr_state().PH_SegCount = 0;
-    OutPutIncludes();
-    OutPutRoDirList();
-    OutPutIncAliasList();
-    OutPutIncPathList();
-    OutPutIncFileList();
-    OutPutLibraries();
-    OutPutAliases();
-    OutPutSegInfo();
-    OutPutTypes();
-    OutPutTags();
+    front.pchdr.PH_SymHashCount = 0;
+    front.pchdr.PH_FileCount = 0;
+    front.pchdr.PH_RDirCount = 0;
+    front.pchdr.PH_IAliasCount = 0;
+    front.pchdr.PH_SegCount = 0;
+    OutPutIncludes(front);
+    OutPutRoDirList(front);
+    OutPutIncAliasList(front);
+    OutPutIncPathList(front);
+    OutPutIncFileList(front);
+    OutPutLibraries(front);
+    OutPutAliases(front);
+    OutPutSegInfo(front);
+    OutPutTypes(front);
+    OutPutTags(front);
 #if _INTEL_CPU
-    OutPutPragmaInfo();
+    OutPutPragmaInfo(front);
 #endif
-    OutPutSymHashTable();
-    OutPutSymbols();
-    OutPutMsgLevels();
-    OutPutMacros();
+    OutPutSymHashTable(front);
+    OutPutSymbols(front);
+    OutPutMsgLevels(front);
+    OutPutMacros(front);
 }
 
-void InitBuildPreCompiledHeader( void )
+void InitBuildPreCompiledHeader( FrontRun& front )
 //Save any before info when building pre compiled headers
 {
     RDIRPTR     start;
 
-    start = cvars_state().RDirNames;
+    start = front.cvars.RDirNames;
     if( start != NULL ) {
         start = start->next;
     }
-    pchdr_state().PCHRDirNames = start;
+    front.pchdr.PCHRDirNames = start;
 
-    pchdr_state().PCHIAliasNames = cvars_state().IAliasNames;
+    front.pchdr.PCHIAliasNames = front.cvars.IAliasNames;
 }
 
-void BuildPreCompiledHeader( const char *filename )
+void BuildPreCompiledHeader( FrontRun& front, const char *filename )
 {
     int         rc;
     char        *cwd;
 
-    if( cvars_state().FirstStmt != 0 || DataQuadsAvailable() ) {
-        PCHNote( PCHDR_NO_OBJECT );
+    if( front.cvars.FirstStmt != 0 || DataQuadsAvailable(front) ) {
+        PCHNote( front, PCHDR_NO_OBJECT );
         return;
     }
-    InitPHVars();
-    pchdr_state().PH_Buffer = static_cast<char *>(FEmalloc( PH_BUF_SIZE ));
-    pchdr_state().PH_BufPtr = pchdr_state().PH_Buffer;
-    pchdr_state().PH_BufSize = PH_BUF_SIZE;
-    cwd = getcwd( pchdr_state().PH_Buffer + sizeof( pheader ), PH_BUF_SIZE - sizeof( pheader ) );
-    rc = setjmp( pchdr_state().PH_jmpbuf );
+    InitPHVars(front);
+    front.pchdr.PH_Buffer = static_cast<char *>(FEmalloc( front, PH_BUF_SIZE ));
+    front.pchdr.PH_BufPtr = front.pchdr.PH_Buffer;
+    front.pchdr.PH_BufSize = PH_BUF_SIZE;
+    cwd = getcwd( front.pchdr.PH_Buffer + sizeof( pheader ), PH_BUF_SIZE - sizeof( pheader ) );
+    rc = setjmp( front.pchdr.PH_jmpbuf );
     if( rc == 0 ) {
-        CreatePHeader( filename );
-        pchdr_state().PH_cwd_len = PCHAlign( strlen( cwd ) + 1 );
-        pchdr_state().PH_size = pchdr_state().PH_cwd_len;
-        pchdr_state().PH_computing_size = 1;
-        OutPutEverything();
-        pchdr_state().PH_computing_size = 0;
-        OutPutHeader();
-        OutPutEverything();
-        FlushPHeader();
-        ClosePHeader();
+        CreatePHeader( front, filename );
+        front.pchdr.PH_cwd_len = PCHAlign( strlen( cwd ) + 1 );
+        front.pchdr.PH_size = front.pchdr.PH_cwd_len;
+        front.pchdr.PH_computing_size = 1;
+        OutPutEverything(front);
+        front.pchdr.PH_computing_size = 0;
+        OutPutHeader(front);
+        OutPutEverything(front);
+        FlushPHeader(front);
+        ClosePHeader(front);
     } else {                            // error creating pre-compiled header
-        if( pchdr_state().PH_handle != -1 ) {
-            ClosePHeader();             // close the file
+        if( front.pchdr.PH_handle != -1 ) {
+            ClosePHeader(front);             // close the file
             remove( filename );         // delete the pre-compiled header
         }
     }
-    InitDebugTypes();
-    InitDebugTags();
-    FEfree( pchdr_state().PH_Buffer );
-    cvars_state().PCH_FileName = NULL;
-    cvars_state().CompFlags.make_precompiled_header = false;
+    InitDebugTypes(front);
+    InitDebugTags(front);
+    FEfree( front, front.pchdr.PH_Buffer );
+    front.cvars.PCH_FileName = NULL;
+    front.cvars.CompFlags.make_precompiled_header = false;
 }
 
 //========================================================================
@@ -1032,49 +995,49 @@ void BuildPreCompiledHeader( const char *filename )
 //      pointers, reconstructing hash tables, etc.
 //========================================================================
 
-static char *FixupIncFileList( char *p, unsigned incfile_count )
+static char *FixupIncFileList( FrontRun& front, char *p, unsigned incfile_count )
 {
     INCFILE     *ifile;
 
-    pchdr_state().PCHOldIncFileList = cvars_state().IncFileList;
-    pchdr_state().PCHOldIncListValid = true;
-    cvars_state().IncFileList = NULL;
+    front.pchdr.PCHOldIncFileList = front.cvars.IncFileList;
+    front.pchdr.PCHOldIncListValid = true;
+    front.cvars.IncFileList = NULL;
     while( incfile_count-- > 0 ) {
         ifile = (INCFILE *)p;
         p += PCHGetUInt( ifile->nextfile );
-        AddIncFile( ifile );
+        AddIncFile( front, ifile );
     }
     return( p );
 }
 
-static void RestoreIncFileList( void )
+static void RestoreIncFileList( FrontRun& front )
 {
-    if( pchdr_state().PCHOldIncListValid ) {
-        cvars_state().IncFileList = pchdr_state().PCHOldIncFileList;
-        pchdr_state().PCHOldIncFileList = NULL;
+    if( front.pchdr.PCHOldIncListValid ) {
+        front.cvars.IncFileList = front.pchdr.PCHOldIncFileList;
+        front.pchdr.PCHOldIncFileList = NULL;
     }
 }
 
-static void FreeOldIncFileList( void )
+static void FreeOldIncFileList( FrontRun& front )
 {
     INCFILE *ilist;
 
-    if( pchdr_state().PCHOldIncListValid ) {
-        while( (ilist = pchdr_state().PCHOldIncFileList) != NULL ) {
-            pchdr_state().PCHOldIncFileList = ilist->nextfile;
-            CMemFree( ilist );
+    if( front.pchdr.PCHOldIncListValid ) {
+        while( (ilist = front.pchdr.PCHOldIncFileList) != NULL ) {
+            front.pchdr.PCHOldIncFileList = ilist->nextfile;
+            CMemFree( front, ilist );
         }
-        pchdr_state().PCHOldIncFileList = NULL;
-        pchdr_state().PCHOldIncListValid = false;
+        front.pchdr.PCHOldIncFileList = NULL;
+        front.pchdr.PCHOldIncListValid = false;
     }
 }
 
-static char *FixupIncludes( char *p, unsigned file_count )
+static char *FixupIncludes( FrontRun& front, char *p, unsigned file_count )
 {
     FNAMEPTR    flist;
     FNAMEPTR    *lnk;
 
-    for( lnk = &pchdr_state().FNameList; file_count-- > 0; lnk = &flist->next ) {
+    for( lnk = &front.pchdr.FNameList; file_count-- > 0; lnk = &flist->next ) {
         flist = (FNAMEPTR)p;
         p += PCHGetUInt( flist->next );
         flist->fullpath = NULL;
@@ -1084,12 +1047,12 @@ static char *FixupIncludes( char *p, unsigned file_count )
     return( p );
 }
 
-static char *FixupRoDirList( char *p, unsigned list_count )
+static char *FixupRoDirList( FrontRun& front, char *p, unsigned list_count )
 {
     RDIRPTR     dirlist;
     RDIRPTR     *lnk;
 
-    for( lnk = &cvars_state().RDirNames; (dirlist = *lnk) != NULL; ) {
+    for( lnk = &front.cvars.RDirNames; (dirlist = *lnk) != NULL; ) {
         lnk = &dirlist->next;
     }
     for( ; list_count-- > 0; lnk = &dirlist->next ) {
@@ -1101,23 +1064,23 @@ static char *FixupRoDirList( char *p, unsigned list_count )
     return( p );
 }
 
-static char *FixupIncAliasList( char *p, unsigned list_count )
+static char *FixupIncAliasList( FrontRun& front, char *p, unsigned list_count )
 {
     IALIASPTR   aliaslist;
     IALIASPTR   *lnk;
 
-    for( lnk = &cvars_state().IAliasNames; list_count-- > 0; lnk = &aliaslist->next ) {
+    for( lnk = &front.cvars.IAliasNames; list_count-- > 0; lnk = &aliaslist->next ) {
         aliaslist = (IALIASPTR)p;
         p += PCHGetUInt( aliaslist->next );
         aliaslist->real_name = aliaslist->alias_name + PCHGetUInt( aliaslist->real_name );
         *lnk = aliaslist;
     }
     /* Tack pre-existing aliases onto the end (so that they're searched last) */
-    *lnk = pchdr_state().PCHIAliasNames;
+    *lnk = front.pchdr.PCHIAliasNames;
     return( p );
 }
 
-static bool VerifyIncludes( const char *filename )
+static bool VerifyIncludes( FrontRun& front, const char *filename )
 {
     FNAMEPTR    flist;
     time_t      mtime;
@@ -1125,8 +1088,8 @@ static bool VerifyIncludes( const char *filename )
     struct stat statbuf;
 
     // skip the primary source file (first item)
-    fnew = cvars_state().FNames->next;
-    for( flist = pchdr_state().FNameList; flist != NULL; flist = flist->next ) {
+    fnew = front.cvars.FNames->next;
+    for( flist = front.pchdr.FNameList; flist != NULL; flist = flist->next ) {
         if( fnew != NULL ) {
             if( FNAMECMPSTR( fnew->name, flist->name ) != 0 ) {
                 return( true );
@@ -1139,7 +1102,7 @@ static bool VerifyIncludes( const char *filename )
             filename = NULL;
         }
         if( flist->rwflag ) {
-            if( SrcFileInRDir( flist ) ) {
+            if( SrcFileInRDir( front, flist ) ) {
                 flist->rwflag = false;
             }
         }
@@ -1149,7 +1112,7 @@ static bool VerifyIncludes( const char *filename )
                 mtime = statbuf.st_mtime;
             }
             if( flist->mtime != mtime || mtime == 0 ) {
-                PCHNote( PCHDR_INCFILE_CHANGED, flist->name  );
+                PCHNote( front, PCHDR_INCFILE_CHANGED, flist->name  );
 #if 0
                 printf( "%s old %d new %d\n", flist->name, flist->mtime, mtime );
 #endif
@@ -1160,12 +1123,12 @@ static bool VerifyIncludes( const char *filename )
     return( false );
 }
 
-static char *FixupLibraries( char *p, unsigned library_count )
+static char *FixupLibraries( FrontRun& front, char *p, unsigned library_count )
 {
     library_list    *lib;
     library_list    **lnk;
 
-    for( lnk = &cvars_state().HeadLibs; library_count-- > 0; lnk = &lib->next ) {
+    for( lnk = &front.cvars.HeadLibs; library_count-- > 0; lnk = &lib->next ) {
         lib = (library_list *)p;
         p += PCHGetUInt( lib->next );
         *lnk = lib;
@@ -1174,13 +1137,13 @@ static char *FixupLibraries( char *p, unsigned library_count )
     return( p );
 }
 
-static char *FixupAliases( char *p, unsigned alias_count )
+static char *FixupAliases( FrontRun& front, char *p, unsigned alias_count )
 {
     alias_list  *alias;
     alias_list  **lnk;
     unsigned    len;
 
-    for( lnk = &cvars_state().AliasHead; alias_count-- > 0; lnk = &alias->next ) {
+    for( lnk = &front.cvars.AliasHead; alias_count-- > 0; lnk = &alias->next ) {
         alias = (alias_list *)p;
         p += PCHGetUInt( alias->next );
         len = PCHGetUInt( alias->name );
@@ -1196,24 +1159,24 @@ static char *FixupAliases( char *p, unsigned alias_count )
     return( p );
 }
 
-static char *FixupSegInfo( char *p, unsigned seg_count )
+static char *FixupSegInfo( FrontRun& front, char *p, unsigned seg_count )
 {
     textsegment     *tseg;
     textsegment     **lnk;
 
-    pchdr_state().TextSegArray = (textsegment **)CMemAlloc( ( seg_count + 1 ) * sizeof( textsegment * ) );
-    pchdr_state().TextSegArray[0] = NULL;
+    front.pchdr.TextSegArray = (textsegment **)CMemAlloc( front, ( seg_count + 1 ) * sizeof( textsegment * ) );
+    front.pchdr.TextSegArray[0] = NULL;
     for( lnk = &tseg; seg_count-- > 0; lnk = &tseg->next ) {
         tseg = (textsegment *)p;
         p += PCHGetUInt( tseg->next );
-        pchdr_state().TextSegArray[tseg->index + 1] = tseg;
+        front.pchdr.TextSegArray[tseg->index + 1] = tseg;
         *lnk = tseg;
     }
     *lnk = NULL;
     return( p );
 }
 
-static char *FixupMacros( char *p, unsigned macro_count )
+static char *FixupMacros( FrontRun& front, char *p, unsigned macro_count )
 {
     int         i;
     MEPTR       mentry;
@@ -1222,18 +1185,18 @@ static char *FixupMacros( char *p, unsigned macro_count )
         mentry = (MEPTR)p;
         p += PCHAlign( mentry->macro_len );
         i = PCHGetUInt( mentry->next_macro );       // get hash index
-        mentry->next_macro = pchdr_state().PCHMacroHash[i];
-        pchdr_state().PCHMacroHash[i] = mentry;
+        mentry->next_macro = front.pchdr.PCHMacroHash[i];
+        front.pchdr.PCHMacroHash[i] = mentry;
     }
     return( p );
 }
 
-static char *FixupUndefMacros( char *p, unsigned undef_macro_count )
+static char *FixupUndefMacros( FrontRun& front, char *p, unsigned undef_macro_count )
 {   // Read in as written out
     MEPTR       mentry;
     MEPTR       *lnk;
 
-    for( lnk = &pchdr_state().PCHUndefMacroList; undef_macro_count-- > 0; lnk = &mentry->next_macro ) {
+    for( lnk = &front.pchdr.PCHUndefMacroList; undef_macro_count-- > 0; lnk = &mentry->next_macro ) {
         mentry = (MEPTR)p;
         p += PCHAlign( mentry->macro_len );
         *lnk = mentry;
@@ -1242,23 +1205,23 @@ static char *FixupUndefMacros( char *p, unsigned undef_macro_count )
     return( p );
 }
 
-static int VerifyMacros( char *p, unsigned macro_count, unsigned undef_count )
+static int VerifyMacros( FrontRun& front, char *p, unsigned macro_count, unsigned undef_count )
 {
     mac_hash_idx    hash;
     MEPTR           mpch;
     MEPTR           mcur;
     bool            macro_compare;
 
-    pchdr_state().PCHMacroHash = (MEPTR *)CMemAlloc( MACRO_HASH_SIZE * sizeof( MEPTR ) );
-    p = FixupMacros( p, macro_count );
-    p = FixupUndefMacros( p, undef_count );
+    front.pchdr.PCHMacroHash = (MEPTR *)CMemAlloc( front, MACRO_HASH_SIZE * sizeof( MEPTR ) );
+    p = FixupMacros( front, p, macro_count );
+    p = FixupUndefMacros( front, p, undef_count );
     for( hash = 0; hash < MACRO_HASH_SIZE; hash++ ) {
         MEPTR       prev_mpch;
 
         prev_mpch = NULL;
-        for( mpch = pchdr_state().PCHMacroHash[hash]; mpch != NULL; mpch = mpch->next_macro ) {
+        for( mpch = front.pchdr.PCHMacroHash[hash]; mpch != NULL; mpch = mpch->next_macro ) {
             if( mpch->macro_flags & MFLAG_DEFINED_BEFORE_FIRST_INCLUDE ) {
-                for( mcur = cvars_state().MacHash[hash]; mcur != NULL; mcur = mcur->next_macro ) {
+                for( mcur = front.cvars.MacHash[hash]; mcur != NULL; mcur = mcur->next_macro ) {
                     if( strcmp( mcur->macro_name, mpch->macro_name ) == 0 ) {
                         macro_compare = MacroCompare( mpch, mcur );
                         if( mpch->macro_flags & MFLAG_REFERENCED ) {
@@ -1268,7 +1231,7 @@ static int VerifyMacros( char *p, unsigned macro_count, unsigned undef_count )
                         } else if( macro_compare ) {    /* if different */
                             /* delete macro from pch, add new one */
                             if( prev_mpch == NULL ) {
-                                pchdr_state().PCHMacroHash[hash] = mpch->next_macro;
+                                front.pchdr.PCHMacroHash[hash] = mpch->next_macro;
                             } else {
                                 prev_mpch->next_macro = mpch->next_macro;
                             }
@@ -1282,7 +1245,7 @@ static int VerifyMacros( char *p, unsigned macro_count, unsigned undef_count )
                     }
                     // delete macro from PCH list
                     if( prev_mpch == NULL ) {
-                        pchdr_state().PCHMacroHash[hash] = mpch->next_macro;
+                        front.pchdr.PCHMacroHash[hash] = mpch->next_macro;
                     } else {
                         prev_mpch->next_macro = mpch->next_macro;
                     }
@@ -1306,8 +1269,8 @@ static int VerifyMacros( char *p, unsigned macro_count, unsigned undef_count )
     // - endif
     // endloop
     for( hash = 0; hash < MACRO_HASH_SIZE; hash++ ) {
-        for( mcur = cvars_state().MacHash[hash]; mcur != NULL; mcur = mcur->next_macro ) {
-            for( mpch = pchdr_state().PCHMacroHash[hash]; mpch != NULL; mpch = mpch->next_macro ) {
+        for( mcur = front.cvars.MacHash[hash]; mcur != NULL; mcur = mcur->next_macro ) {
+            for( mpch = front.pchdr.PCHMacroHash[hash]; mpch != NULL; mpch = mpch->next_macro ) {
                 if( strcmp( mpch->macro_name, mcur->macro_name ) == 0 ) {
                     break;
                 }
@@ -1315,7 +1278,7 @@ static int VerifyMacros( char *p, unsigned macro_count, unsigned undef_count )
             if( mpch == NULL || (mpch->macro_flags & MFLAG_DEFINED_BEFORE_FIRST_INCLUDE) == 0 ) {
             // macro may either have been undef'd (mpch == NULL ) or undef'd and defined
                 if( mcur->macro_flags & MFLAG_USER_DEFINED ) {  //compiler defined macros not saved on undefs
-                    for( mpch = pchdr_state().PCHUndefMacroList; mpch != NULL; mpch = mpch->next_macro ) {
+                    for( mpch = front.pchdr.PCHUndefMacroList; mpch != NULL; mpch = mpch->next_macro ) {
                         if( strcmp( mpch->macro_name, mcur->macro_name ) == 0 ) {
                             if( MacroCompare( mpch, mcur ) ) {
                                 return( -1 );
@@ -1336,27 +1299,27 @@ static int VerifyMacros( char *p, unsigned macro_count, unsigned undef_count )
     for( hash = 0; hash < MACRO_HASH_SIZE; hash++ ) {
         MEPTR       next_mcur;
 
-        for( mcur = cvars_state().MacHash[hash]; mcur != NULL; mcur = next_mcur ) {
-            for( mpch = pchdr_state().PCHMacroHash[hash]; mpch != NULL; mpch = mpch->next_macro ) {
+        for( mcur = front.cvars.MacHash[hash]; mcur != NULL; mcur = next_mcur ) {
+            for( mpch = front.pchdr.PCHMacroHash[hash]; mpch != NULL; mpch = mpch->next_macro ) {
                 if( strcmp( mpch->macro_name, mcur->macro_name ) == 0 ) {
                     break;
                 }
             }
             next_mcur = mcur->next_macro;
             if( mpch == NULL ) {                        // if this macro not found in PCH
-                mcur->next_macro = pchdr_state().PCHMacroHash[hash];  // add it to PCH
-                pchdr_state().PCHMacroHash[hash] = mcur;
+                mcur->next_macro = front.pchdr.PCHMacroHash[hash];  // add it to PCH
+                front.pchdr.PCHMacroHash[hash] = mcur;
             }
         }
     }
-    memcpy( cvars_state().MacHash, pchdr_state().PCHMacroHash, MACRO_HASH_SIZE * sizeof( MEPTR ) );
-    CMemFree( pchdr_state().PCHMacroHash );
-    pchdr_state().PCHMacroHash = NULL;
-    cvars_state().UndefMacroList = pchdr_state().PCHUndefMacroList;
+    memcpy( front.cvars.MacHash, front.pchdr.PCHMacroHash, MACRO_HASH_SIZE * sizeof( MEPTR ) );
+    CMemFree( front, front.pchdr.PCHMacroHash );
+    front.pchdr.PCHMacroHash = NULL;
+    front.cvars.UndefMacroList = front.pchdr.PCHUndefMacroList;
     return( 0 );
 }
 
-static char *FixupSymHashTable( char *p, unsigned symhash_count )
+static char *FixupSymHashTable( FrontRun& front, char *p, unsigned symhash_count )
 {
     SYM_HASHPTR hsym;
     int         index;
@@ -1365,16 +1328,16 @@ static char *FixupSymHashTable( char *p, unsigned symhash_count )
         hsym = (SYM_HASHPTR)p;
         p += PCHAlign( offsetof( id_hash_entry, name ) + strlen( hsym->name ) + 1 );
         index = PCHGetUInt( hsym->next_sym );
-        hsym->next_sym = cvars_state().HashTab[index];
-        cvars_state().HashTab[index] = hsym;
+        hsym->next_sym = front.cvars.HashTab[index];
+        front.cvars.HashTab[index] = hsym;
         if( PCHGetUInt( hsym->sym_type ) != 0 ) {
-            hsym->sym_type = pchdr_state().TypeArray + PCHGetUInt( hsym->sym_type );
+            hsym->sym_type = front.pchdr.TypeArray + PCHGetUInt( hsym->sym_type );
         }
     }
     return( p );
 }
 
-static char *FixupSymbols( char *p, unsigned symbol_count )
+static char *FixupSymbols( FrontRun& front, char *p, unsigned symbol_count )
 {
     SYMPTR      symptr;
     SYM_ENTRY   sym;
@@ -1384,20 +1347,20 @@ static char *FixupSymbols( char *p, unsigned symbol_count )
         symptr = (SYMPTR)p;
         p += sizeof( SYM_ENTRY );
         if( PCHGetUInt( symptr->sym_type ) != 0 ) {
-            symptr->sym_type = pchdr_state().TypeArray + PCHGetUInt( symptr->sym_type );
+            symptr->sym_type = front.pchdr.TypeArray + PCHGetUInt( symptr->sym_type );
         }
-        symptr->seginfo = pchdr_state().TextSegArray[PCHGetUInt( symptr->seginfo )];
-        cvars_state().PCH_SymArray[handle] = symptr;
+        symptr->seginfo = front.pchdr.TextSegArray[PCHGetUInt( symptr->seginfo )];
+        front.cvars.PCH_SymArray[handle] = symptr;
     }
-    for( handle = 0; handle < (unsigned)(pointer_uint)cvars_state().SpecialSyms; handle++ ) {
-        SymGet( &sym, (SYM_HANDLE)(pointer_uint)handle );  // Redo special syms
-        symptr = cvars_state().PCH_SymArray[handle];
+    for( handle = 0; handle < (unsigned)(pointer_uint)front.cvars.SpecialSyms; handle++ ) {
+        SymGet( front, &sym, (SYM_HANDLE)(pointer_uint)handle );  // Redo special syms
+        symptr = front.cvars.PCH_SymArray[handle];
         *symptr = sym;
     }
     return( p );
 }
 
-static void FixupTypeIndexes( type_indices *typ_index )
+static void FixupTypeIndexes( FrontRun& front, type_indices *typ_index )
 {
     DATA_TYPE   i;
     int         index;
@@ -1405,15 +1368,15 @@ static void FixupTypeIndexes( type_indices *typ_index )
     for( i = static_cast<DATA_TYPE>(0); i < DATA_TYPE_SIZE; i++ ) {
         index = typ_index->basetype_index[i];
         if( index != 0 ) {
-            cvars_state().BaseTypes[i] = pchdr_state().TypeArray + index;
+            front.cvars.BaseTypes[i] = front.pchdr.TypeArray + index;
         }
     }
-    cvars_state().VoidParmList[0] = cvars_state().BaseTypes[TYP_VOID];
-    cvars_state().StringType = pchdr_state().TypeArray + typ_index->stringtype_index;
-    cvars_state().ConstCharType = pchdr_state().TypeArray + typ_index->constchartype_index;
+    front.cvars.VoidParmList[0] = front.cvars.BaseTypes[TYP_VOID];
+    front.cvars.StringType = front.pchdr.TypeArray + typ_index->stringtype_index;
+    front.cvars.ConstCharType = front.pchdr.TypeArray + typ_index->constchartype_index;
 }
 
-static char *FixupTypes( char *p, unsigned type_count )
+static char *FixupTypes( FrontRun& front, char *p, unsigned type_count )
 {
     TYPEPTR         typ;
     parm_hash_idx   hash;
@@ -1421,48 +1384,48 @@ static char *FixupTypes( char *p, unsigned type_count )
     TYPEPTR         *parm_types;
     int             idx;
 
-    InitTypeHashTables();
+    InitTypeHashTables(front);
     typ = (TYPEPTR)p;
-    pchdr_state().TypeArray = typ - 1;
+    front.pchdr.TypeArray = typ - 1;
     while( type_count-- > 0 ) {
         if( typ->decl_type == TYP_FUNCTION )
             break;
         if( PCHGetUInt( typ->object ) != 0 ) {
-            typ->object = pchdr_state().TypeArray + PCHGetUInt( typ->object );
+            typ->object = front.pchdr.TypeArray + PCHGetUInt( typ->object );
         }
         if( typ->decl_type == TYP_ARRAY ) {
-            array = (array_info *)CMemAlloc( sizeof( array_info ) );
+            array = (array_info *)CMemAlloc( front, sizeof( array_info ) );
             array->dimension = PCHGetUInt( typ->u.array );
             array->unspecified_dim = ( array->dimension == 0 );
             typ->u.array = array;
         }
-        AddTypeHash( typ );
+        AddTypeHash( front, typ );
         typ++;
     }
     parm_types = (TYPEPTR *)( typ + type_count );
     while( type_count-- > 0 ) {
         hash = (parm_hash_idx)PCHGetUInt( typ->u.fn.parms );
-        typ->next_type = cvars_state().FuncTypeHead[hash];
-        cvars_state().FuncTypeHead[hash] = typ;
+        typ->next_type = front.cvars.FuncTypeHead[hash];
+        front.cvars.FuncTypeHead[hash] = typ;
         if( PCHGetUInt( typ->object ) != 0 ) {
-            typ->object = pchdr_state().TypeArray + PCHGetUInt( typ->object );
+            typ->object = front.pchdr.TypeArray + PCHGetUInt( typ->object );
         }
         if( PCHGetUInt( *parm_types ) == -1 ) {
             typ->u.fn.parms = NULL;
         } else {
             typ->u.fn.parms = parm_types;
             while( (idx = PCHGetUInt( *parm_types )) != -1 ) {
-                *parm_types++ = pchdr_state().TypeArray + idx;
+                *parm_types++ = front.pchdr.TypeArray + idx;
             }
         }
         *parm_types++ = NULL;
         typ++;
     }
-    FixupTypeIndexes( (type_indices *)parm_types );
+    FixupTypeIndexes( front, (type_indices *)parm_types );
     return( (char *)parm_types + sizeof( type_indices ) );
 }
 
-static char *FixupEnums( char *p, TAGPTR parent )
+static char *FixupEnums( FrontRun& front, char *p, TAGPTR parent )
 {
     ENUMPTR     ep;
     ENUMPTR     *lnk;
@@ -1472,8 +1435,8 @@ static char *FixupEnums( char *p, TAGPTR parent )
         ep = (ENUMPTR)p;
         p += PCHGetUInt( ep->parent );
         ep->parent = parent;            // parent is union'ed with enum_len
-        ep->next_enum = cvars_state().EnumTable[ep->hash];
-        cvars_state().EnumTable[ep->hash] = ep;
+        ep->next_enum = front.cvars.EnumTable[ep->hash];
+        front.cvars.EnumTable[ep->hash] = ep;
         *lnk = ep;
         lnk = &ep->thread;
     } while( ep->thread != NULL );
@@ -1481,7 +1444,7 @@ static char *FixupEnums( char *p, TAGPTR parent )
     return( p );
 }
 
-static char *FixupFields( char *p )
+static char *FixupFields( FrontRun& front, char *p )
 {
     FIELDPTR    field;
     FIELDPTR    *lnk;
@@ -1491,7 +1454,7 @@ static char *FixupFields( char *p )
         field = (FIELDPTR)p;
         p += PCHGetUInt( field->next_field_same_hash );
         field->next_field_same_hash = NULL;
-        field->field_type = pchdr_state().TypeArray + PCHGetUInt( field->field_type );
+        field->field_type = front.pchdr.TypeArray + PCHGetUInt( field->field_type );
         *lnk = field;
         lnk = &field->next_field;
     } while( field->next_field != NULL );
@@ -1499,25 +1462,25 @@ static char *FixupFields( char *p )
     return( p );
 }
 
-static void FixupTag( TYPEPTR typ )
+static void FixupTag( FrontRun& front, TYPEPTR typ )
 {
     switch( typ->decl_type ) {
     case TYP_STRUCT:
     case TYP_UNION:
     case TYP_ENUM:
-        typ->u.tag = pchdr_state().TagArray[PCHGetUInt( typ->u.tag )];
+        typ->u.tag = front.pchdr.TagArray[PCHGetUInt( typ->u.tag )];
         break;
     default:
         break;
     }
 }
 
-static void FixupTagPointers( void )
+static void FixupTagPointers( FrontRun& front )
 {
-    WalkTypeList( FixupTag );
+    WalkTypeList( front, FixupTag );
 }
 
-static char *FixupTags( char *p, unsigned tag_count )
+static char *FixupTags( FrontRun& front, char *p, unsigned tag_count )
 {
     TAGPTR      tag;
     TAGPTR      prevtag;
@@ -1525,34 +1488,34 @@ static char *FixupTags( char *p, unsigned tag_count )
     TYPEPTR     typ;
 
     if( tag_count != 0 ) {
-        pchdr_state().TagArray = (TAGPTR *)CMemAlloc( tag_count * sizeof( TAGPTR ) );
+        front.pchdr.TagArray = (TAGPTR *)CMemAlloc( front, tag_count * sizeof( TAGPTR ) );
     }
     tag = NULL;
     for( prevtag = NULL; tag_count-- > 0; prevtag = tag ) {
         tag = (TAGPTR)p;
         p += PCHGetUInt( tag->next_tag );
-        pchdr_state().TagArray[tag->refno] = tag;
-        typ = pchdr_state().TypeArray + PCHGetUInt( tag->sym_type );
+        front.pchdr.TagArray[tag->refno] = tag;
+        typ = front.pchdr.TypeArray + PCHGetUInt( tag->sym_type );
         tag->sym_type = typ;
         if( typ->decl_type == TYP_ENUM ) {
             if( tag->u.enum_list != NULL ) {
                 tag->u.enum_list = (ENUMPTR)p;
-                p = FixupEnums( p, tag );
+                p = FixupEnums( front, p, tag );
             }
         } else {
             if( tag->u.field_list != NULL ) {
                 tag->u.field_list = (FIELDPTR)p;
-                p = FixupFields( p );
+                p = FixupFields( front, p );
             }
         }
         tag->next_tag = prevtag;
     }
     for( tag = prevtag; tag != NULL; tag = nexttag ) {
         nexttag = tag->next_tag;
-        tag->next_tag = cvars_state().TagHash[tag->hash];
-        cvars_state().TagHash[tag->hash] = tag;
+        tag->next_tag = front.cvars.TagHash[tag->hash];
+        front.cvars.TagHash[tag->hash] = tag;
     }
-    FixupTagPointers();
+    FixupTagPointers(front);
     return( p );
 }
 
@@ -1580,7 +1543,7 @@ static char *FixupAuxInfo( char *p, aux_info *info )
     return( p );
 }
 
-static char *FixupPragmaInfo( char *p, unsigned pragma_count, unsigned entry_count )
+static char *FixupPragmaInfo( FrontRun& front, char *p, unsigned pragma_count, unsigned entry_count )
 {
     aux_entry       *ent;
     aux_entry       **lnk;
@@ -1588,10 +1551,10 @@ static char *FixupPragmaInfo( char *p, unsigned pragma_count, unsigned entry_cou
     aux_info        **info_array;
     unsigned        index;
 
-    info_array = (aux_info **)CMemAlloc( pragma_count * sizeof( aux_info * ) );
+    info_array = (aux_info **)CMemAlloc( front, pragma_count * sizeof( aux_info * ) );
     for( index = 0; index < pragma_count; index++ ) {
         if( index < PCH_FIRST_USER_INDEX - PCH_FIRST_INDEX ) {
-            info = callinfo_state().BuiltinAuxInfo + index;
+            info = front.callinfo.BuiltinAuxInfo + index;
             memcpy( info, p, sizeof( aux_info ) );
         } else {
             info = (aux_info *)p;
@@ -1599,87 +1562,87 @@ static char *FixupPragmaInfo( char *p, unsigned pragma_count, unsigned entry_cou
         info_array[index] = info;
         p = FixupAuxInfo( p, info );
     }
-    for( lnk = &pragdefn_state().AuxList; entry_count-- > 0; lnk = &ent->next ) {
+    for( lnk = &front.pragdefn.AuxList; entry_count-- > 0; lnk = &ent->next ) {
         ent = (aux_entry *)p;
         p += PCHGetUInt( ent->next );
         ent->info = info_array[PCHGetUInt( ent->info )];
         *lnk = ent;
     }
     *lnk = NULL;
-    CMemFree( info_array );
+    CMemFree( front, info_array );
     return( p );
 }
 #endif
 
-static char *FixupMsgLevels( char *p, unsigned len )
+static char *FixupMsgLevels( FrontRun& front, char *p, unsigned len )
 {
-    memcpy( cerrs_state().msg_level, p, len );
+    memcpy( front.cerrs.msg_level, p, len );
     p += PCHAlign( len );
     return( p );
 }
 
-static void FixupFNames( void )
+static void FixupFNames( FrontRun& front )
 {
     FNAMEPTR    *lnk;
     FNAMEPTR    flist;
 
-    for( lnk = &cvars_state().FNames; (flist = *lnk) != NULL; lnk = &flist->next ) {
-        if( FNAMECMPSTR( flist->name, pchdr_state().FNameList->name ) == 0 ) {
+    for( lnk = &front.cvars.FNames; (flist = *lnk) != NULL; lnk = &flist->next ) {
+        if( FNAMECMPSTR( flist->name, front.pchdr.FNameList->name ) == 0 ) {
             break;
         }
     }
-    *lnk = pchdr_state().FNameList;
-    for( flist = pchdr_state().FNameList; flist != NULL; flist = flist->next ) {
+    *lnk = front.pchdr.FNameList;
+    for( flist = front.pchdr.FNameList; flist != NULL; flist = flist->next ) {
         flist->index_db = DBFILE_INVALID;
     }
 }
 
-static bool ValidHeader( pheader *pch )
+static bool ValidHeader( FrontRun& front, pheader *pch )
 {
     if( (pch->signature == PCH_SIGNATURE)
       && (pch->version == PCH_VERSION_HOST)
       && (pch->size_of_header == sizeof( pheader ))
       && (pch->size_of_int == TARGET_INT)
-      && (pch->specialsyms_count == SymGetNumSpecialSyms())
-      && (pch->pack_amount == cvars_state().PackAmount)
-      && (pch->msglevel_len == sizeof( cerrs_state().msg_level )) ) {
+      && (pch->specialsyms_count == SymGetNumSpecialSyms(front))
+      && (pch->pack_amount == front.cvars.PackAmount)
+      && (pch->msglevel_len == sizeof( front.cerrs.msg_level )) ) {
         return( true );
     }
     return( false );                // indicate unusable pre-compiled header
 }
 
-static int LoadPreCompiledHeader( char *p, pheader *pch )
+static int LoadPreCompiledHeader( FrontRun& front, char *p, pheader *pch )
 {
     int         rc;
 
-    rc = FixupDataStructures( p, pch );
-    CMemFree( pchdr_state().TagArray );
-    CMemFree( pchdr_state().TextSegArray );
-    CMemFree( pchdr_state().PCHMacroHash );
+    rc = FixupDataStructures( front, p, pch );
+    CMemFree( front, front.pchdr.TagArray );
+    CMemFree( front, front.pchdr.TextSegArray );
+    CMemFree( front, front.pchdr.PCHMacroHash );
     return( rc );
 }
 
-static int FixupDataStructures( char *p, pheader *pch )
+static int FixupDataStructures( FrontRun& front, char *p, pheader *pch )
 {
-    p = FixupLibraries( p, pch->library_count );
-    p = FixupAliases( p, pch->alias_count );
-    p = FixupSegInfo( p, pch->seg_count );
-    p = FixupTypes( p, pch->type_count );
-    p = FixupTags( p, pch->tag_count );
+    p = FixupLibraries( front, p, pch->library_count );
+    p = FixupAliases( front, p, pch->alias_count );
+    p = FixupSegInfo( front, p, pch->seg_count );
+    p = FixupTypes( front, p, pch->type_count );
+    p = FixupTags( front, p, pch->tag_count );
 #if _INTEL_CPU
-    p = FixupPragmaInfo( p, pch->pragma_count, pch->pragma_entry_count );
+    p = FixupPragmaInfo( front, p, pch->pragma_count, pch->pragma_entry_count );
 #endif
-    p = FixupSymHashTable( p, pch->symhash_count );
-    p = FixupSymbols( p, pch->symbol_count );
-    p = FixupMsgLevels( p, pch->msglevel_len );
+    p = FixupSymHashTable( front, p, pch->symhash_count );
+    p = FixupSymbols( front, p, pch->symbol_count );
+    p = FixupMsgLevels( front, p, pch->msglevel_len );
 
-    cvars_state().PCH_MaxSymHandle = pch->symbol_count;
-    SetNextSymHandle( pch->symbol_count - 1 );
-    cvars_state().IncLineCount = pch->incline_count;
-    toggles_state().PragmaToggles = pch->toggles;
-    FixupFNames();
-    InitDebugTypes();
-    InitDebugTags();
+    front.cvars.PCH_MaxSymHandle = pch->symbol_count;
+    SetNextSymHandle( front, pch->symbol_count - 1 );
+    front.cvars.IncLineCount = pch->incline_count;
+    front.toggles.PragmaToggles = pch->toggles;
+    FixupFNames(front);
+    InitDebugTypes(front);
+    InitDebugTags(front);
     return( 0 );
 }
 
@@ -1694,31 +1657,31 @@ static bool SameCWD( const char *p )
     return( same == 0 );
 }
 
-void FreePreCompiledHeader( void )
+void FreePreCompiledHeader( FrontRun& front )
 {
-    FEfree( cvars_state().PCH_Start );
-    FEfree( cvars_state().PCH_Macros );
-    FEfree( cvars_state().PCH_SymArray );
+    FEfree( front, front.cvars.PCH_Start );
+    FEfree( front, front.cvars.PCH_Macros );
+    FEfree( front, front.cvars.PCH_SymArray );
 }
 
-static void AbortPreCompiledHeader( void )
+static void AbortPreCompiledHeader( FrontRun& front )
 {
-    FreePreCompiledHeader();
-    CMemFree( pchdr_state().TagArray );
-    CMemFree( pchdr_state().TextSegArray );
-    CMemFree( pchdr_state().PCHMacroHash );
-    cvars_state().PCH_Start = NULL;
-    cvars_state().PCH_End = NULL;
-    cvars_state().PCH_Macros = NULL;
-    cvars_state().PCH_SymArray = NULL;
-    cvars_state().PCH_MaxSymHandle = 0;
-    pchdr_state().TagArray = NULL;
-    pchdr_state().TextSegArray = NULL;
-    pchdr_state().FNameList = NULL;
-    pchdr_state().PCHMacroHash = NULL;
-    cvars_state().IAliasNames = pchdr_state().PCHIAliasNames;
-    RestoreIncFileList();
-    cvars_state().CompFlags.make_precompiled_header = true;   // force new PCH to be created
+    FreePreCompiledHeader(front);
+    CMemFree( front, front.pchdr.TagArray );
+    CMemFree( front, front.pchdr.TextSegArray );
+    CMemFree( front, front.pchdr.PCHMacroHash );
+    front.cvars.PCH_Start = NULL;
+    front.cvars.PCH_End = NULL;
+    front.cvars.PCH_Macros = NULL;
+    front.cvars.PCH_SymArray = NULL;
+    front.cvars.PCH_MaxSymHandle = 0;
+    front.pchdr.TagArray = NULL;
+    front.pchdr.TextSegArray = NULL;
+    front.pchdr.FNameList = NULL;
+    front.pchdr.PCHMacroHash = NULL;
+    front.cvars.IAliasNames = front.pchdr.PCHIAliasNames;
+    RestoreIncFileList(front);
+    front.cvars.CompFlags.make_precompiled_header = true;   // force new PCH to be created
 }
 
 //========================================================================
@@ -1728,7 +1691,7 @@ static void AbortPreCompiledHeader( void )
 //      - all the include files are the same and have not been modified
 //========================================================================
 
-bool UsePreCompiledHeader( const char *filename )
+bool UsePreCompiledHeader( FrontRun& front, const char *filename )
 {
     int                 handle;
     unsigned            size;
@@ -1736,100 +1699,100 @@ bool UsePreCompiledHeader( const char *filename )
     char                *p;
     pheader             pch;
 
-    handle = _sopen3( cvars_state().PCH_FileName, O_RDONLY | O_BINARY, SH_DENYWR );
+    handle = _sopen3( front.cvars.PCH_FileName, O_RDONLY | O_BINARY, SH_DENYWR );
     if( handle == -1 ) {
-        cvars_state().CompFlags.make_precompiled_header = true;
+        front.cvars.CompFlags.make_precompiled_header = true;
         return( false );
     }
-    cvars_state().PCH_Start = NULL;
-    pchdr_state().TextSegArray = NULL;
-    pchdr_state().TagArray = NULL;
-    pchdr_state().PCHMacroHash = NULL;
-    pchdr_state().PCHOldIncFileList = NULL;
-    pchdr_state().PCHOldIncListValid = false;
+    front.cvars.PCH_Start = NULL;
+    front.pchdr.TextSegArray = NULL;
+    front.pchdr.TagArray = NULL;
+    front.pchdr.PCHMacroHash = NULL;
+    front.pchdr.PCHOldIncFileList = NULL;
+    front.pchdr.PCHOldIncListValid = false;
     size = read( handle, &pch, sizeof( pheader ) );
     if( size != sizeof( pheader ) ) {
         close( handle );
-        PCHNote( PCHDR_READ_ERROR );
-        AbortPreCompiledHeader();
+        PCHNote( front, PCHDR_READ_ERROR );
+        AbortPreCompiledHeader(front);
         return( false );
     }
-    if( !ValidHeader( &pch ) ) {
+    if( !ValidHeader( front, &pch ) ) {
         close( handle );
-        PCHNote( PCHDR_INVALID_HEADER );
-        AbortPreCompiledHeader();
+        PCHNote( front, PCHDR_INVALID_HEADER );
+        AbortPreCompiledHeader(front);
         return( false );
     }
-    if( pch.gen_switches != cvars_state().GenSwitches || pch.target_switches != cvars_state().TargetSwitches ) {
+    if( pch.gen_switches != front.cvars.GenSwitches || pch.target_switches != front.cvars.TargetSwitches ) {
         close( handle );
-        PCHNote( PCHDR_DIFFERENT_OPTIONS );
-        AbortPreCompiledHeader();
+        PCHNote( front, PCHDR_DIFFERENT_OPTIONS );
+        AbortPreCompiledHeader(front);
         return( false );
     }
-    p = static_cast<char *>(FEmalloc( pch.size ));                   // allocate big memory block
-    cvars_state().PCH_Start = p;
-    cvars_state().PCH_End = p + pch.size;
-    pchdr_state().PH_size = read( handle, p, pch.size );      // read rest of the file
-    cvars_state().PCH_Macros = static_cast<char *>(FEmalloc( pch.macro_size ));
-    size = read( handle, cvars_state().PCH_Macros, pch.macro_size );
+    p = static_cast<char *>(FEmalloc( front, pch.size ));                   // allocate big memory block
+    front.cvars.PCH_Start = p;
+    front.cvars.PCH_End = p + pch.size;
+    front.pchdr.PH_size = read( handle, p, pch.size );      // read rest of the file
+    front.cvars.PCH_Macros = static_cast<char *>(FEmalloc( front, pch.macro_size ));
+    size = read( handle, front.cvars.PCH_Macros, pch.macro_size );
     close( handle );
-    cvars_state().PCH_SymArray = (SYMPTR *)FEmalloc( pch.symbol_count * sizeof( SYMPTR ) );
-    if( pchdr_state().PH_size != pch.size || size != pch.macro_size ) {
-        PCHNote( PCHDR_READ_ERROR );
-        AbortPreCompiledHeader();
+    front.cvars.PCH_SymArray = (SYMPTR *)FEmalloc( front, pch.symbol_count * sizeof( SYMPTR ) );
+    if( front.pchdr.PH_size != pch.size || size != pch.macro_size ) {
+        PCHNote( front, PCHDR_READ_ERROR );
+        AbortPreCompiledHeader(front);
         return( false );
     }
     if( !SameCWD( p ) ) {
-        PCHNote( PCHDR_DIFFERENT_CWD );
-        AbortPreCompiledHeader();
+        PCHNote( front, PCHDR_DIFFERENT_CWD );
+        AbortPreCompiledHeader(front);
         return( false );
     }
-    if( cvars_state().CompFlags.cpp_ignore_env != pch.cpp_ignore_env || cvars_state().CompFlags.ignore_default_dirs != pch.ignore_default_dirs ) {
-        PCHNote( PCHDR_INCFILE_DIFFERENT );
-        AbortPreCompiledHeader();
+    if( front.cvars.CompFlags.cpp_ignore_env != pch.cpp_ignore_env || front.cvars.CompFlags.ignore_default_dirs != pch.ignore_default_dirs ) {
+        PCHNote( front, PCHDR_INCFILE_DIFFERENT );
+        AbortPreCompiledHeader(front);
         return( false );
     }
-    p = FixupIncludes( p + pch.cwd_len, pch.file_count );
-    p = FixupRoDirList( p, pch.rdir_count );
-    p = FixupIncAliasList( p, pch.ialias_count );
-    if( VerifyIncludes( filename ) ) {
-        PCHNote( PCHDR_INCFILE_DIFFERENT );
-        AbortPreCompiledHeader();
+    p = FixupIncludes( front, p + pch.cwd_len, pch.file_count );
+    p = FixupRoDirList( front, p, pch.rdir_count );
+    p = FixupIncAliasList( front, p, pch.ialias_count );
+    if( VerifyIncludes( front, filename ) ) {
+        PCHNote( front, PCHDR_INCFILE_DIFFERENT );
+        AbortPreCompiledHeader(front);
         return( false );
     }
     len = strlen( p ) + 1;              // get length of saved IncPathList
-    if( FNAMECMPSTR( p, cvars_state().IncPathList ) != 0 ) {
-        PCHNote( PCHDR_INCPATH_CHANGED );
-        AbortPreCompiledHeader();
+    if( FNAMECMPSTR( p, front.cvars.IncPathList ) != 0 ) {
+        PCHNote( front, PCHDR_INCPATH_CHANGED );
+        AbortPreCompiledHeader(front);
         return( false );
     }
     p += PCHAlign( len );
-    p = FixupIncFileList( p, pch.incfile_count );
-    if( VerifyMacros( cvars_state().PCH_Macros, pch.macro_count, pch.undef_macro_count ) != 0 ) {
-        PCHNote( PCHDR_MACRO_CHANGED );
-        AbortPreCompiledHeader();
+    p = FixupIncFileList( front, p, pch.incfile_count );
+    if( VerifyMacros( front, front.cvars.PCH_Macros, pch.macro_count, pch.undef_macro_count ) != 0 ) {
+        PCHNote( front, PCHDR_MACRO_CHANGED );
+        AbortPreCompiledHeader(front);
         return( false );
     }
-    LoadPreCompiledHeader( p, &pch );
-    FreeOldIncFileList();
-    cvars_state().PCH_FileName = NULL;
+    LoadPreCompiledHeader( front, p, &pch );
+    FreeOldIncFileList(front);
+    front.cvars.PCH_FileName = NULL;
     return( true );
 }
 
-static void SetDebugType( TYPEPTR typ )
+static void SetDebugType( FrontRun& front, TYPEPTR typ )
 {
     typ->u1.debug_type = DBG_NIL_TYPE;
 }
 
-static void SetFuncDebugType( TYPEPTR typ, int index )
+static void SetFuncDebugType( FrontRun& front, TYPEPTR typ, int index )
 {
     /* unused parameters */ (void)index;
 
     typ->u1.debug_type = DBG_NIL_TYPE;
 }
 
-void InitDebugTypes( void )
+void InitDebugTypes( FrontRun& front )
 {
-    WalkTypeList( SetDebugType );
-    WalkFuncTypeList( SetFuncDebugType );
+    WalkTypeList( front, SetDebugType );
+    WalkFuncTypeList( front, SetFuncDebugType );
 }

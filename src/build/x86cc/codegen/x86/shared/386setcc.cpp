@@ -41,6 +41,7 @@
 #include "expand.h"
 #include "revcond.h"
 #include "generate.h"
+#include "backrun.hpp"
 
 
 static  instruction     *SetToConst( block *blk, signed_64 *pcons ) {
@@ -75,7 +76,7 @@ static  instruction     *SetToConst( block *blk, signed_64 *pcons ) {
  * by adding a constant to the result of SETcc to directly obtain
  * the result of the assignment.
  */
-static  bool    FindFlowOut( block *blk ) {
+static  bool    FindFlowOut( BackRun& back, block *blk ) {
 /*****************************************/
 
     signed_64           false_cons;
@@ -102,7 +103,7 @@ static  bool    FindFlowOut( block *blk ) {
         ins = ins->head.prev;
     }
 //    prev = ins->head.prev;
-    if( data_state().TypeClassSize[ins->type_class] > WORD_SIZE )
+    if( back.data.TypeClassSize[ins->type_class] > WORD_SIZE )
         return( false );
     true_blk = blk->edge[_TrueIndex( ins )].destination.u.blk;
     if( true_blk->inputs != 1 )
@@ -152,21 +153,21 @@ static  bool    FindFlowOut( block *blk ) {
     if( reverse )
         FlipCond( ins );
 
-    u1temp = AllocTemp( U1 );
-    temp = AllocTemp( type_class );
+    u1temp = AllocTemp( back, U1 );
+    temp = AllocTemp( back, type_class );
 
     ins->result = u1temp;
-    ins1 = MakeConvert( u1temp, temp, type_class, U1 );
-    SuffixIns( ins, ins1 );
+    ins1 = MakeConvert( back, u1temp, temp, type_class, U1 );
+    SuffixIns( back, ins, ins1 );
     ins = ins1;
 
     if( U64isntZero( false_cons ) ) {
-        konst = AllocS64Const( U64Low( false_cons ), U64High( false_cons ) );
-        ins1 = MakeBinary( OP_ADD, temp, konst, result, type_class );
+        konst = AllocS64Const( back, U64Low( false_cons ), U64High( false_cons ) );
+        ins1 = MakeBinary( back, OP_ADD, temp, konst, result, type_class );
     } else {
-        ins1 = MakeMove( temp, result, type_class );
+        ins1 = MakeMove( back, temp, result, type_class );
     }
-    SuffixIns( ins, ins1 );
+    SuffixIns( back, ins, ins1 );
 
     RemoveInputEdge( join_blk->input_edges );
     RemoveInputEdge( join_blk->input_edges );
@@ -174,8 +175,8 @@ static  bool    FindFlowOut( block *blk ) {
     RemoveInputEdge( false_blk->input_edges );
     true_blk->targets = 0;
     false_blk->targets = 0;
-    RemoveBlock( true_blk );
-    RemoveBlock( false_blk );
+    RemoveBlock( back, true_blk );
+    RemoveBlock( back, false_blk );
 
     blk->targets = 1;
     new_edge = &blk->edge[0];
@@ -188,7 +189,7 @@ static  bool    FindFlowOut( block *blk ) {
     return( true );
 }
 
-bool    SetOnCondition( void )
+bool    SetOnCondition( BackRun& back )
 /****************************/
 {
     block       *blk;
@@ -197,9 +198,9 @@ bool    SetOnCondition( void )
     if( !_CPULevel( CPU_386 ) )
         return( false );
     change = false;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( _IsBlkAttr( blk, BLK_CONDITIONAL ) ) {
-            change |= FindFlowOut( blk );
+            change |= FindFlowOut( back, blk );
         }
     }
     return( change );

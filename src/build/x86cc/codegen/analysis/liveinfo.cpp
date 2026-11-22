@@ -41,9 +41,10 @@
 #include "fixindex.h"
 #include "conflict.h"
 #include "liveinfo.h"
+#include "backrun.hpp"
 
 
-static  void            GlobalConflictsFirst( void )
+static  void            GlobalConflictsFirst( BackRun& back )
 /***************************************************
  * Run down the list of conflicts and rip out any which are
  * USE_IN_ANOTHER_BLOCK and not CONFLICT_ON_HOLD (ones with global
@@ -58,7 +59,7 @@ static  void            GlobalConflictsFirst( void )
     conflict_node       *list;
     conflict_node       *conf;
 
-    conf_owner = &data_state().ConfList;
+    conf_owner = &back.data.ConfList;
     list_owner = &list;
     for( ;; ) {
         conf = *conf_owner;
@@ -73,13 +74,13 @@ static  void            GlobalConflictsFirst( void )
         }
     }
     if( list_owner != &list ) {
-        *list_owner = data_state().ConfList;
-        data_state().ConfList = list;
+        *list_owner = back.data.ConfList;
+        back.data.ConfList = list;
     }
 }
 
 
-static  void    ExtendConflicts( block *blk, conflict_node *first_global )
+static  void    ExtendConflicts( BackRun& back, block *blk, conflict_node *first_global )
 /*************************************************************************
  * Make sure that first & last pointers of extended conflicts point
  * to instructions that will never be replaced. (ie: OP_NOP)
@@ -108,14 +109,14 @@ static  void    ExtendConflicts( block *blk, conflict_node *first_global )
             }
             if( conf->ins_range.last == NULL || conf->ins_range.last->id <= last_ins->id ) {
                 if( last_ins->head.opcode != OP_NOP ) {
-                    new_ins = MakeNop();
-                    havelive = data_state().HaveLiveInfo;
-                    data_state().HaveLiveInfo = false;
-                    SuffixIns( last_ins, new_ins );
+                    new_ins = MakeNop(back);
+                    havelive = back.data.HaveLiveInfo;
+                    back.data.HaveLiveInfo = false;
+                    SuffixIns( back, last_ins, new_ins );
                     new_ins->head.live.regs = blk->ins.head.live.regs;
                     new_ins->head.live.within_block = blk->ins.head.live.within_block;
                     new_ins->head.live.out_of_block = blk->ins.head.live.out_of_block;
-                    data_state().HaveLiveInfo = havelive;
+                    back.data.HaveLiveInfo = havelive;
                     last_ins = new_ins;
                 }
                 conf->ins_range.last = last_ins;
@@ -133,14 +134,14 @@ static  void    ExtendConflicts( block *blk, conflict_node *first_global )
             }
             if( conf->ins_range.first == NULL || conf->ins_range.first->id >= first_ins->id ) {
                 if( first_ins->head.opcode != OP_NOP ) {
-                    new_ins = MakeNop();
-                    havelive = data_state().HaveLiveInfo;
-                    data_state().HaveLiveInfo = false;
-                    PrefixIns( first_ins, new_ins );
+                    new_ins = MakeNop(back);
+                    havelive = back.data.HaveLiveInfo;
+                    back.data.HaveLiveInfo = false;
+                    PrefixIns( back, first_ins, new_ins );
                     new_ins->head.live.regs = blk->ins.head.live.regs;
                     new_ins->head.live.within_block = first_ins->head.live.within_block;
                     new_ins->head.live.out_of_block = first_ins->head.live.out_of_block;
-                    data_state().HaveLiveInfo = havelive;
+                    back.data.HaveLiveInfo = havelive;
                     first_ins = new_ins;
                 }
                 conf->ins_range.first = first_ins;
@@ -214,7 +215,7 @@ void    NowDead( name *opnd, conflict_node *conf, name_set *alive, block *blk )
 }
 
 
-static  void    FlowConflicts( instruction *first, instruction *last, block *blk )
+static  void    FlowConflicts( BackRun& back, instruction *first, instruction *last, block *blk )
 /********************************************************************************
  * Scan through instructions backwards in the block
  * Mark each instruction with the set of names live
@@ -267,7 +268,7 @@ static  void    FlowConflicts( instruction *first, instruction *last, block *blk
                 if( opnd->n.class_ == N_INDEXED ) {
                     opnd = opnd->i.index;
                 }
-                conf = FindConflictNode( opnd, blk, ins );
+                conf = FindConflictNode( back, opnd, blk, ins );
                 NowAlive( opnd, conf, &alive, blk );
             }
         }
@@ -276,7 +277,7 @@ static  void    FlowConflicts( instruction *first, instruction *last, block *blk
             /*
              * all memory names are operands of a call instruction
              */
-            _GBitTurnOn( alive.out_of_block, data_state().MemoryBits );
+            _GBitTurnOn( alive.out_of_block, back.data.MemoryBits );
         }
         /*
          * Move information into current instruction
@@ -284,7 +285,7 @@ static  void    FlowConflicts( instruction *first, instruction *last, block *blk
          * previous instruction & this instruction)
          */
         ins->head.live.regs = alive.regs;
-        HW_TurnOn( ins->head.live.regs, data_state().CurrProc->state.unalterable );
+        HW_TurnOn( ins->head.live.regs, back.data.CurrProc->state.unalterable );
 
         ins->head.live.out_of_block = alive.out_of_block;
         ins->head.live.within_block = alive.within_block;
@@ -301,10 +302,10 @@ static  void    FlowConflicts( instruction *first, instruction *last, block *blk
         opnd = ins->result;
         if( opnd != NULL ) {
             if( opnd->n.class_ == N_INDEXED ) {
-                conf = FindConflictNode( opnd->i.index, blk, ins );
+                conf = FindConflictNode( back, opnd->i.index, blk, ins );
                 NowAlive( opnd->i.index, conf, &alive, blk );
             } else {
-                conf = FindConflictNode( opnd, blk, ins );
+                conf = FindConflictNode( back, opnd, blk, ins );
                 NowDead( opnd, conf, &alive, blk );
                 /*
                  * 2007-06-28 RomanT
@@ -335,7 +336,7 @@ static  void    FlowConflicts( instruction *first, instruction *last, block *blk
                 }
 
                 if( result_forced_alive ) {
-                    conf = FindConflictNode( ins->result, blk, ins );
+                    conf = FindConflictNode( back, ins->result, blk, ins );
                     NowAlive( ins->result, conf, &ins->head.next->head.live, blk );
                 }
             }
@@ -344,45 +345,45 @@ static  void    FlowConflicts( instruction *first, instruction *last, block *blk
 }
 
 
-void    MakeLiveInfo( void )
+void    MakeLiveInfo( BackRun& back )
 /**************************/
 {
     block               *blk;
     conflict_node       *first_global;
     bool                havelive;
 
-    GlobalConflictsFirst();
-    first_global = data_state().ConfList; // assumes conflicts get added at start of list
-    havelive = data_state().HaveLiveInfo;
-    data_state().HaveLiveInfo = false;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    GlobalConflictsFirst(back);
+    first_global = back.data.ConfList; // assumes conflicts get added at start of list
+    havelive = back.data.HaveLiveInfo;
+    back.data.HaveLiveInfo = false;
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( blk->ins.head.prev->head.opcode != OP_NOP ) {
-            PrefixInsRenum( (instruction *)&blk->ins, MakeNop(), false );
+            PrefixInsRenum( back, (instruction *)&blk->ins, MakeNop(back), false );
         }
     }
-    data_state().HaveLiveInfo = havelive;
-    Renumber();
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
-        FlowConflicts( (instruction *)&blk->ins, (instruction *)&blk->ins, blk );
-        ExtendConflicts( blk, first_global );
+    back.data.HaveLiveInfo = havelive;
+    Renumber(back);
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
+        FlowConflicts( back, (instruction *)&blk->ins, (instruction *)&blk->ins, blk );
+        ExtendConflicts( back, blk, first_global );
     }
 }
 
 
-void    LiveInfoUpdate( void )
+void    LiveInfoUpdate( BackRun& back )
 /****************************/
 {
     block       *blk;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( blk->ins.head.next != (instruction *)&blk->ins ) {
-            FlowConflicts( (instruction *)&blk->ins, (instruction *)&blk->ins, blk );
+            FlowConflicts( back, (instruction *)&blk->ins, (instruction *)&blk->ins, blk );
         }
     }
 }
 
 
-void    UpdateLive( instruction *first, instruction *last )
+void    UpdateLive( BackRun& back, instruction *first, instruction *last )
 /**********************************************************
  * update the live information from 'first'.prev to 'last'.next inclusive
  */
@@ -394,10 +395,10 @@ void    UpdateLive( instruction *first, instruction *last )
         ins = ins->head.next;
     }
     if( ins->head.next == ins->head.prev ) { /* 1 or 2 instructions*/
-        FlowConflicts( ins, ins, _BLOCK( ins ) );
+        FlowConflicts( back, ins, ins, _BLOCK( ins ) );
     } else {
         if( first->head.opcode != OP_BLOCK )
             first = first->head.prev;
-        FlowConflicts( first, last, _BLOCK( ins ) );
+        FlowConflicts( back, first, last, _BLOCK( ins ) );
     }
 }

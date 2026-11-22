@@ -42,8 +42,8 @@
 typedef uint_32 abbrev_code;
 
 extern void         DW_InitDebugAbbrev( dw_client );
-extern void         DW_FiniDebugAbbrev( dw_client );
-extern unsigned     DW_MarkAbbrevAsUsed( dw_client, abbrev_code * );
-extern void         DW_GenAllAbbrev( dw_client  cli );
+extern void         DW_FiniDebugAbbrev( BackRun& back, dw_client );
+extern unsigned     DW_MarkAbbrevAsUsed( BackRun& back, dw_client, abbrev_code * );
+extern void         DW_GenAllAbbrev( BackRun& back, dw_client  cli );
 
 #endif

@@ -51,68 +51,66 @@
 #include "wvsupp.h"
 #include "feprotos.h"
 #include "cgprotos.h"
+#include "backrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct WvsymsState {
-    offset CodeOffset;
-};
+/* (struct WvsymsState: wvsyms_state.h) */
 
 }  // namespace
 
-static inline WvsymsState& wvsyms_state() { return cbrun_part<WvsymsState>(); }
 
 
-static  void    DumpDbgBlkStart( dbg_block *blk, offset lc ) {
+static  void    DumpDbgBlkStart( BackRun& back, dbg_block *blk, offset lc ) {
 /************************************************************/
 
     block_patch *bpatch;
     offset      off;
     segment_id  old_segid;
 
-    old_segid = AskOP();
+    old_segid = AskOP(back);
     while( blk->bpatches != NULL ) {
         bpatch = blk->bpatches;
         blk->bpatches = bpatch->link;
-        SetOP( bpatch->dpatch.segid );
-        off = AskLocation();
-        SetLocation( bpatch->dpatch.offset );
-        DataShort( off );
-        SetLocation( off );
-        CGFree( bpatch );
+        SetOP( back, bpatch->dpatch.segid );
+        off = AskLocation(back);
+        SetLocation( back, bpatch->dpatch.offset );
+        DataShort( back, off );
+        SetLocation( back, off );
+        CGFree( back, bpatch );
     }
-    SetOP( old_segid );
-    BuffOffset( blk->start - wvsyms_state().CodeOffset );
-    BuffOffset( lc - blk->start );
+    SetOP( back, old_segid );
+    BuffOffset( back, blk->start - back.wvsyms.CodeOffset );
+    BuffOffset( back, lc - blk->start );
 }
 
 
-static  void    DumpParentPtr( dbg_block *blk ) {
+static  void    DumpParentPtr( BackRun& back, dbg_block *blk ) {
 /***********************************************/
 
     block_patch *bpatch;
 
     blk = blk->parent;
     if( blk == NULL ) {
-        BuffWord( 0 );
+        BuffWord( back, 0 );
    } else {
-        bpatch = static_cast<block_patch *>(CGAlloc( sizeof( block_patch ) ));
+        bpatch = static_cast<block_patch *>(CGAlloc( back, sizeof( block_patch ) ));
         bpatch->link = blk->bpatches;
         blk->bpatches = bpatch;
-        BuffForward( &bpatch->dpatch );
+        BuffForward( back, &bpatch->dpatch );
     }
 }
 
-static  void    DumpDbgBlk( dbg_block *blk, offset lc ) {
+static  void    DumpDbgBlk( BackRun& back, dbg_block *blk, offset lc ) {
 /*******************************************************/
 
-    DumpDbgBlkStart( blk, lc );
-    DumpParentPtr( blk );
+    DumpDbgBlkStart( back, blk, lc );
+    DumpParentPtr( back, blk );
 }
 
-static  void    DumpLocals( dbg_local *local ) {
+static  void    DumpLocals( BackRun& back, dbg_local *local ) {
 /*************************************************/
 
 
@@ -121,31 +119,31 @@ static  void    DumpLocals( dbg_local *local ) {
     dbg_type    tipe;
 
     while( local != NULL ) {
-        tipe = FEDbgType( static_cast<cg_sym_handle>(local->sym) );
-        BuffStart( &temp, SYM_VARIABLE + VAR_LOCAL );
-        LocDump( local->loc );
-        BuffIndex( (uint) tipe );
-        BuffWSLString( FEName( static_cast<cg_sym_handle>(local->sym) ) );
-        BuffEnd( data_state().DbgLocals );
+        tipe = FEDbgType( *back.front, static_cast<cg_sym_handle>(local->sym) );
+        BuffStart( back, &temp, SYM_VARIABLE + VAR_LOCAL );
+        LocDump( back, local->loc );
+        BuffIndex( back, (uint) tipe );
+        BuffWSLString( back, FEName( *back.front, static_cast<cg_sym_handle>(local->sym) ) );
+        BuffEnd( back, back.data.DbgLocals );
         junk = local;
         local = local->link;
-        CGFree( junk );
+        CGFree( back, junk );
     }
 }
 
-void    WVInitDbgInfo( void )
+void    WVInitDbgInfo( BackRun& back )
 /***************************/
 {
-    data_state().TypeIdx   = 0;
-    data_state().DbgLocals = 0;
-    data_state().DbgTypes  = 0;
+    back.data.TypeIdx   = 0;
+    back.data.DbgLocals = 0;
+    back.data.DbgTypes  = 0;
 }
 
-void    WVObjInitDbgInfo( void )
+void    WVObjInitDbgInfo( BackRun& back )
 /******************************/
 // Called right after define seg's in Obj
 {
-    WVSrcCueLoc();
+    WVSrcCueLoc(back);
 }
 
 void    WVFiniDbgInfo( void )
@@ -158,54 +156,54 @@ void    WVObjFiniDbgInfo( void )
 {
 }
 
-void    WVGenStatic( cg_sym_handle sym, dbg_loc loc )
+void    WVGenStatic( BackRun& back, cg_sym_handle sym, dbg_loc loc )
 /***************************************************/
 {
     temp_buff   temp;
     dbg_type    tipe;
 
-    tipe = FEDbgType( sym );
+    tipe = FEDbgType( *back.front, sym );
     if( LocSimpStatic( loc ) == sym ) {
-        BuffStart( &temp, SYM_VARIABLE + VAR_MODULE );
-        BuffAddr( sym );
+        BuffStart( back, &temp, SYM_VARIABLE + VAR_MODULE );
+        BuffAddr( back, sym );
     } else {
-        BuffStart( &temp, SYM_VARIABLE + VAR_MODULE_LOC );
-        LocDump( LocDupl( loc ) );
+        BuffStart( back, &temp, SYM_VARIABLE + VAR_MODULE_LOC );
+        LocDump( back, LocDupl( loc ) );
     }
-    BuffIndex( (uint) tipe );
-    BuffWSLString( FEName( sym ) );
-    BuffEnd( data_state().DbgLocals );
+    BuffIndex( back, (uint) tipe );
+    BuffWSLString( back, FEName( *back.front, sym ) );
+    BuffEnd( back, back.data.DbgLocals );
 }
 
-void    WVSetBase( void )
+void    WVSetBase( BackRun& back )
 /***********************/
 {
     temp_buff   temp;
     back_handle bck;
 
-    if( _IsModel( CGSW_GEN_DBG_LOCALS ) && NeedBaseSet() ) {
-        bck = BENewBack( NULL );
-        bck->segid = AskOP();
-        OutLabel( bck->lbl );
-        wvsyms_state().CodeOffset = AskAddress( bck->lbl );
-        BuffStart( &temp, NEW_BASE+SET_BASE );
-        BuffBack( bck, 0 );
-        BuffEnd( data_state().DbgLocals );
-        BEFreeBack( bck );
-        SetUpObj( false );
+    if( _IsModel( CGSW_GEN_DBG_LOCALS ) && NeedBaseSet(back) ) {
+        bck = BENewBack( back, NULL );
+        bck->segid = AskOP(back);
+        OutLabel( back, bck->lbl );
+        back.wvsyms.CodeOffset = AskAddress( back, bck->lbl );
+        BuffStart( back, &temp, NEW_BASE+SET_BASE );
+        BuffBack( back, bck, 0 );
+        BuffEnd( back, back.data.DbgLocals );
+        BEFreeBack( back, bck );
+        SetUpObj( back, false );
     }
 }
 
-void    WVObjectPtr(  cg_type ptr_type )
+void    WVObjectPtr(  BackRun& back, cg_type ptr_type )
 /**************************************/
 {
-    switch( TypeAddress( ptr_type )->refno ) {
+    switch( TypeAddress( back, ptr_type )->refno ) {
     case TY_NEAR_POINTER:
     case TY_NEAR_CODE_PTR:
-        data_state().CurrProc->targ.debug->obj_ptr_type = POINTER_NEAR;
+        back.data.CurrProc->targ.debug->obj_ptr_type = POINTER_NEAR;
         break;
     default:
-        data_state().CurrProc->targ.debug->obj_ptr_type = POINTER_FAR;
+        back.data.CurrProc->targ.debug->obj_ptr_type = POINTER_FAR;
         break;
     }
 }
@@ -220,19 +218,19 @@ void    WVObjectPtr(  cg_type ptr_type )
 /**/
 
 
-void    WVBlkEnd( dbg_block *blk, offset lc )
+void    WVBlkEnd( BackRun& back, dbg_block *blk, offset lc )
 /*******************************************/
 {
     temp_buff   temp;
 
-    BuffStart( &temp, SYM_CODE + CODE_BLOCK );
-    DumpDbgBlk( blk, lc );
-    BuffEnd( data_state().DbgLocals );
-    DumpLocals( blk->locals );
+    BuffStart( back, &temp, SYM_CODE + CODE_BLOCK );
+    DumpDbgBlk( back, blk, lc );
+    BuffEnd( back, back.data.DbgLocals );
+    DumpLocals( back, blk->locals );
 }
 
 
-void    WVRtnEnd( dbg_rtn *rtn, offset lc )
+void    WVRtnEnd( BackRun& back, dbg_rtn *rtn, offset lc )
 /*****************************************/
 {
     uint                count;
@@ -246,39 +244,39 @@ void    WVRtnEnd( dbg_rtn *rtn, offset lc )
     off = 0;
     if( rtn->obj_type != DBG_NIL_TYPE ) {
         /* is a member function */
-        PUSH_OP( data_state().DbgLocals );
-            off = AskLocation();
-            BuffStart( &temp, SYM_CODE + CODE_MEMBER_SCOPE );
-            DumpParentPtr( rtn->blk );
-            BuffIndex( (uint) rtn->obj_type );
+        PUSH_OP( back.data.DbgLocals );
+            off = AskLocation(back);
+            BuffStart( back, &temp, SYM_CODE + CODE_MEMBER_SCOPE );
+            DumpParentPtr( back, rtn->blk );
+            BuffIndex( back, (uint) rtn->obj_type );
             if( rtn->obj_loc != NULL ) {
-                BuffByte( rtn->obj_ptr_type ); /* 'this' pointer type */
-                LocDump( rtn->obj_loc );
+                BuffByte( back, rtn->obj_ptr_type ); /* 'this' pointer type */
+                LocDump( back, rtn->obj_loc );
             }
-            BuffEnd( data_state().DbgLocals );
+            BuffEnd( back, back.data.DbgLocals );
         POP_OP();
     }
-    sym = AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) );
-    tipe = FEDbgType( sym );
+    sym = AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) );
+    tipe = FEDbgType( *back.front, sym );
     if( (call_class_target)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL ) {
-        BuffStart( &temp, SYM_CODE + CODE_FAR_RTN );
+        BuffStart( back, &temp, SYM_CODE + CODE_FAR_RTN );
     } else {
-        BuffStart( &temp, SYM_CODE + CODE_NEAR_RTN );
+        BuffStart( back, &temp, SYM_CODE + CODE_NEAR_RTN );
     }
-    DumpDbgBlkStart( rtn->blk, lc );
+    DumpDbgBlkStart( back, rtn->blk, lc );
     if( off != 0 ) {
-        BuffWord( off );
+        BuffWord( back, off );
     } else {
-        DumpParentPtr( rtn->blk );
+        DumpParentPtr( back, rtn->blk );
     }
-    BuffByte( rtn->pro_size );
-    BuffByte( lc - rtn->epi_start );
-    BuffOffset( rtn->ret_offset );
-    BuffIndex( (uint) tipe );
+    BuffByte( back, rtn->pro_size );
+    BuffByte( back, lc - rtn->epi_start );
+    BuffOffset( back, rtn->ret_offset );
+    BuffIndex( back, (uint) tipe );
     if( rtn->return_loc == NULL ) {
-        BuffByte( 0 ); /* no return location */
+        BuffByte( back, 0 ); /* no return location */
     } else {
-        LocDump( rtn->return_loc );
+        LocDump( back, rtn->return_loc );
     }
     count = 0;
     parm = rtn->parms;
@@ -286,15 +284,15 @@ void    WVRtnEnd( dbg_rtn *rtn, offset lc )
         ++count;
         parm = parm->link;
     }
-    BuffByte( count );
+    BuffByte( back, count );
     parm = rtn->parms;
     while( parm != NULL ) {
-        LocDump( parm->loc );
+        LocDump( back, parm->loc );
         junk = parm;
         parm = parm->link;
-        CGFree( junk );
+        CGFree( back, junk );
     }
-    BuffWSLString( FEName( AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) ) ) );
-    BuffEnd( data_state().DbgLocals );
-    DumpLocals( rtn->blk->locals );
+    BuffWSLString( back, FEName( *back.front, AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) ) ) );
+    BuffEnd( back, back.data.DbgLocals );
+    DumpLocals( back, rtn->blk->locals );
 }

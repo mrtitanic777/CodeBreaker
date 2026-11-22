@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 FEINF_CLASS_NAME,
 FEINF_CODE_GROUP,
 FEINF_FREE_AUX_REQ1,

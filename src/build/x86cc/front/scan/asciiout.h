@@ -34,6 +34,7 @@
  * source code for conversion tables are in cg/s37/c directory
  */
 
+#pragma once
 #if _CPU != 370
     #define _ASCIIOUT( c )
 #elif  ' ' == 0x40   /* EBCDIC host */

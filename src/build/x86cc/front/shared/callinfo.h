@@ -67,18 +67,18 @@ typedef struct aux_info {
   #endif
 } aux_info;
 
-#define DefaultInfo      callinfo_state().BuiltinAuxInfo[0]
-#define WatcallInfo      callinfo_state().BuiltinAuxInfo[1]
-#define CdeclInfo        callinfo_state().BuiltinAuxInfo[2]
-#define PascalInfo       callinfo_state().BuiltinAuxInfo[3]
-#define FortranInfo      callinfo_state().BuiltinAuxInfo[4]
-#define SyscallInfo      callinfo_state().BuiltinAuxInfo[5]
-#define OptlinkInfo      callinfo_state().BuiltinAuxInfo[6]
-#define StdcallInfo      callinfo_state().BuiltinAuxInfo[7]
-#define FastcallInfo     callinfo_state().BuiltinAuxInfo[8]
+#define DefaultInfo      front.callinfo.BuiltinAuxInfo[0]
+#define WatcallInfo      front.callinfo.BuiltinAuxInfo[1]
+#define CdeclInfo        front.callinfo.BuiltinAuxInfo[2]
+#define PascalInfo       front.callinfo.BuiltinAuxInfo[3]
+#define FortranInfo      front.callinfo.BuiltinAuxInfo[4]
+#define SyscallInfo      front.callinfo.BuiltinAuxInfo[5]
+#define OptlinkInfo      front.callinfo.BuiltinAuxInfo[6]
+#define StdcallInfo      front.callinfo.BuiltinAuxInfo[7]
+#define FastcallInfo     front.callinfo.BuiltinAuxInfo[8]
   #if _CPU == 386
-#define Far16CdeclInfo   callinfo_state().BuiltinAuxInfo[9]
-#define Far16PascalInfo  callinfo_state().BuiltinAuxInfo[10]
+#define Far16CdeclInfo   front.callinfo.BuiltinAuxInfo[9]
+#define Far16PascalInfo  front.callinfo.BuiltinAuxInfo[10]
   #endif
 
   #if _CPU == 386
@@ -88,13 +88,13 @@ typedef struct aux_info {
   #endif
 
 
-extern void         AuxInfoInit( int );
-extern void         SetAuxStackConventions( void );
-extern void         SetAuxWatcallInfo( void );
-extern void         SetDefaultAuxInfo( void );
-extern int          IsAuxParmsBuiltIn( hw_reg_set *parms );
-extern int          IsAuxInfoBuiltIn( aux_info *inf );
-extern char         *VarNamePattern( aux_info *inf );
+extern void         AuxInfoInit( FrontRun& front, int );
+extern void         SetAuxStackConventions( FrontRun& front );
+extern void         SetAuxWatcallInfo( FrontRun& front );
+extern void         SetDefaultAuxInfo( FrontRun& front );
+extern int          IsAuxParmsBuiltIn( FrontRun& front, hw_reg_set *parms );
+extern int          IsAuxInfoBuiltIn( FrontRun& front, aux_info *inf );
+extern char         *VarNamePattern( FrontRun& front, aux_info *inf );
 
 #endif
 
@@ -103,6 +103,5 @@ struct CallinfoState {
     aux_info *DftCallConv;
     aux_info BuiltinAuxInfo[MAX_BUILTIN_AUXINFO];
 };
-inline CallinfoState& callinfo_state() { return cbrun_part<CallinfoState>(); }
 
 #endif

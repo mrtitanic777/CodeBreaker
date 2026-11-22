@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef enum {
     #include "x86swi.h"
 } cg_target_switches;

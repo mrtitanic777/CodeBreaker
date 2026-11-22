@@ -37,9 +37,10 @@
 #include "zoiks.h"
 #include "optab.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
-const opcode_entry  *CodeTable( instruction *ins )
+const opcode_entry  *CodeTable( BackRun& back, instruction *ins )
 /************************************************/
 {
     int         idx;
@@ -57,14 +58,14 @@ const opcode_entry  *CodeTable( instruction *ins )
         _Zoiks( ZOIKS_091 );
     }
 #endif
-    return( OpcodeTable( opcode_idx ) );
+    return( OpcodeTable( back, opcode_idx ) );
 }
 
 
-void    DoNothing( instruction *ins )
+void    DoNothing( BackRun& back, instruction *ins )
 /***********************************/
 {
-    ins->table = OpcodeTable( DONOTHING );
+    ins->table = OpcodeTable( back, DONOTHING );
     ins->u.gen_table = ins->table;
 }
 

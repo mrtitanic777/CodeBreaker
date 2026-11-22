@@ -47,6 +47,7 @@
 #include "varusage.h"
 #include "optimize.h"
 #include "liveinfo.h"
+#include "backrun.hpp"
 
 
 typedef enum {
@@ -72,7 +73,7 @@ static const opcode_attr OpAttrs[LAST_OP - FIRST_OP + 1] = {
 #define _IsntIns( ins, attr )      ((OpAttrs[ins->head.opcode] & attr) == 0)
 
 
-static  bool    ReDefinesOps( instruction *of, instruction *ins )
+static  bool    ReDefinesOps( BackRun& back, instruction *of, instruction *ins )
 /******************************************************************
  * return true if instruction "ins" redefines any of the operands
  * or the result of instruction "of"
@@ -98,20 +99,20 @@ static  bool    ReDefinesOps( instruction *of, instruction *ins )
 }
 
 
-static  bool    CanReorder( instruction *try_, instruction *after )
+static  bool    CanReorder( BackRun& back, instruction *try_, instruction *after )
 /*****************************************************************
  * return try if "try" could be moved past instruction "after"
  */
 {
-    if( ReDefinesOps( try_, after ) )
+    if( ReDefinesOps( back, try_, after ) )
         return( false );
-    if( ReDefinesOps( after, try_ ) )
+    if( ReDefinesOps( back, after, try_ ) )
         return( false );
     return( true );
 }
 
 
-static  instruction     *CanMoveAfter( instruction *ins )
+static  instruction     *CanMoveAfter( BackRun& back, instruction *ins )
 /********************************************************
  * Decide whether we can/should push down instruction "ins". If we can,
  * return a pointer to the instruction we could put it after.
@@ -132,7 +133,7 @@ static  instruction     *CanMoveAfter( instruction *ins )
     for( next = ins->head.next; next != NULL; next = next->head.next ) {
         if( _IsntIns( next, SWAPABLE ) )
             break;
-        if( !CanReorder( ins, next ) ) {
+        if( !CanReorder( back, ins, next ) ) {
             break;
         }
     }
@@ -142,7 +143,7 @@ static  instruction     *CanMoveAfter( instruction *ins )
 }
 
 
-static  void    PushInsForward( block *blk )
+static  void    PushInsForward( BackRun& back, block *blk )
 /*******************************************
  * Try pushing down each instruction in the program.
  */
@@ -157,7 +158,7 @@ static  void    PushInsForward( block *blk )
     for( ins = blk->ins.head.prev; ins->head.opcode != OP_BLOCK; ins = prev ) {
         prev = ins->head.prev;
 
-        next = CanMoveAfter( ins );
+        next = CanMoveAfter( back, ins );
         if( next != NULL ) {
             /*
              * Remove 'ins' from its current position
@@ -206,7 +207,7 @@ bool    SameThing( name *x, name *y )
 }
 
 
-void    DeadTemps( void )
+void    DeadTemps( BackRun& back )
 /********************************
  * Using the information contained in each N_TEMP, delete any instruction
  * whose result is a temporary that isnt used again. This is only a very
@@ -222,21 +223,21 @@ void    DeadTemps( void )
     instruction *ins;
     instruction *next;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
             next = ins->head.next;
-            if( !SideEffect( ins ) && _IsntIns( ins, SIDE_EFFECT )
+            if( !SideEffect( back, ins ) && _IsntIns( ins, SIDE_EFFECT )
              && ins->result != NULL
              && ins->result->n.class_ == N_TEMP
              && ( ins->result->v.usage & (USE_ADDRESS | HAS_MEMORY | USE_WITHIN_BLOCK | USE_IN_ANOTHER_BLOCK) ) == 0 ) {
-                FreeIns( ins );
+                FreeIns( back, ins );
             }
         }
     }
 }
 
 
-static  bool    IsDeadIns( block *blk, instruction *ins, instruction *next )
+static  bool    IsDeadIns( BackRun& back, block *blk, instruction *ins, instruction *next )
 /*****************************************************************************
  * returns true if an instruction is assigning to a name which is not
  * live immediately following instruction "ins".
@@ -252,9 +253,9 @@ static  bool    IsDeadIns( block *blk, instruction *ins, instruction *next )
 //        return( false );
     if( op->v.usage & USE_ADDRESS )
         return( false );
-    if( SideEffect( ins ) )
+    if( SideEffect( back, ins ) )
         return( false );
-    conf = FindConflictNode( op, blk, ins );
+    conf = FindConflictNode( back, op, blk, ins );
     if( conf == NULL )
         return( false );
     if( _LBitEmpty( conf->id.within_block )
@@ -271,7 +272,7 @@ static  bool    IsDeadIns( block *blk, instruction *ins, instruction *next )
 }
 
 
-void    AxeDeadCode( void )
+void    AxeDeadCode( BackRun& back )
 /******************************
  * This is like DeadTemps, but it uses the live information in order
  * to discover whether an instruction is assigning to a variable that
@@ -296,10 +297,10 @@ void    AxeDeadCode( void )
     for( ;; ) {
         kill = NULL;
         change = false;
-        for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+        for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
             for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
                 next = ins->head.next;
-                if( IsDeadIns( blk, ins, next ) ) {
+                if( IsDeadIns( back, blk, ins, next ) ) {
                     ins->result = NULL;
                     change = true;
                     if( _IsntIns( ins, SIDE_EFFECT ) ) {
@@ -318,23 +319,23 @@ void    AxeDeadCode( void )
         }
         if( !change )
             break;
-        FreeConflicts();
+        FreeConflicts(back);
         /*
          * Now it's safe to free instructions without problems with edges
          */
         for( ; kill != NULL; kill = next ) {
             next = _INS_KILL_LINK( kill );
-            FreeIns( kill );
+            FreeIns( back, kill );
         }
-        NullConflicts( static_cast<var_usage>(EMPTY) );
-        FindReferences();
-        MakeConflicts();
-        MakeLiveInfo();
+        NullConflicts( back, static_cast<var_usage>(EMPTY) );
+        FindReferences(back);
+        MakeConflicts(back);
+        MakeLiveInfo(back);
     }
 }
 
 
-void    DeadInstructions( void )
+void    DeadInstructions( BackRun& back )
 /***********************************
  * This is called after register allocation. It frees up any
  * instructions whose generate table says G_NO (don't generate me).
@@ -342,13 +343,13 @@ void    DeadInstructions( void )
 {
     block       *blk;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
-        FreeJunk( blk );
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
+        FreeJunk( back, blk );
     }
 }
 
 
-void    PushPostOps( void )
+void    PushPostOps( BackRun& back )
 /**********************************
  * This routine tries to push add and subtract instructions
  * forward in the basic block. The reason for this is that
@@ -368,9 +369,9 @@ void    PushPostOps( void )
 {
     block       *blk;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
-        PushInsForward( blk );
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
+        PushInsForward( back, blk );
     }
-    PropagateMoves();
-    Renumber();
+    PropagateMoves(back);
+    Renumber(back);
 }

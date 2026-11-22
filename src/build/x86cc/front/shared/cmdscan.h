@@ -44,69 +44,69 @@ extern "C" {
 // PROTOTYPES
 
 bool CmdRecogLowerChar(         // RECOGNIZE A LOWER CASE CHARACTER
-    int recog )                 // - character to be recognized
+    FrontRun& front, int recog )                 // - character to be recognized
 ;
 bool CmdRecogChar(              // RECOGNIZE A CHARACTER
-    int recog )                 // - character to be recognized
+    FrontRun& front, int recog )                 // - character to be recognized
 ;
 bool CmdReRecogChar(            // RE-RECOGNIZE LAST CHARACTER
-    int recog )                 // - character to be recognized
+    FrontRun& front, int recog )                 // - character to be recognized
 ;
 size_t CmdScanNumber(           // SCAN A NUMBER
-    unsigned *pvalue )          // - addr( return value )
+    FrontRun& front, unsigned *pvalue )          // - addr( return value )
 ;
 bool CmdRecogEquals(            // RECOGNIZE AN '=' or synonym
-    void )
+    FrontRun& front )
 ;
 bool CmdPathDelim(              // SKIP EQUALCHAR # or ' ' IN COMMAND LINE
-    void )
+    FrontRun& front )
 ;
 char const *CmdScanAddr(        // RETURN COMMAND-LINE SCAN ADDRESS
-    void )
+    FrontRun& front )
 ;
 int CmdScanChar(                // SCAN THE NEXT CHARACTER
-    void )
+    FrontRun& front )
 ;
 size_t CmdScanQuotedString(     // SCAN A QUOTED STRING
-    char const **option )       // - addr( option pointer )
+    FrontRun& front, char const **option )       // - addr( option pointer )
 ;
 size_t CmdScanFilename(         // SCAN A FILE NAME
-    char const **option,        // - addr( option pointer )
+    FrontRun& front, char const **option,        // - addr( option pointer )
     bool *quoted )              // - addr( quoted )
 ;
 size_t CmdScanId(               // SCAN AN IDENTIFIER
-    char const **option )       // - addr( option pointer )
+    FrontRun& front, char const **option )       // - addr( option pointer )
 ;
 char const *CmdScanLineInit(    // INITIALIZE FOR COMMAND SCANNING
-    char const *cmd_line )      // - new command line
+    FrontRun& front, char const *cmd_line )      // - new command line
 ;                               // RETURN OLD COMMAND-LINE SCAN ADDRESS
 int CmdScanLowerChar(           // SCAN THE NEXT CHARACTER, IN LOWER CASE
-    void )
+    FrontRun& front )
 ;
 int CmdPeekChar(                // PEEK AT NEXT CHARACTER, IN LOWER CASE
-    void )
+    FrontRun& front )
 ;
 size_t CmdScanOption(           // SCAN AN OPTION
-    char const **option,        // - addr( option pointer )
+    FrontRun& front, char const **option,        // - addr( option pointer )
     bool *quoted )              // - addr( quoted )
 ;
 bool CmdScanBufferEnd(          // TEST IF END OF BUFFER
-    void )
+    FrontRun& front )
 ;
 bool CmdScanSwEnd(              // TEST IF END OF SWITCH
-    void )
+    FrontRun& front )
 ;
 void CmdScanSwitchBackup(       // BACK UP SCANNER TO START OF SWITCH
     void )
 ;
 void CmdScanSwitchBegin(        // REMEMBER START OF SWITCH
-    void )
+    FrontRun& front )
 ;
 char const *CmdScanUngetChar(   // UNGET THE LAST CMD SCAN CHARACTER
-    void )
+    FrontRun& front )
 ;
 void CmdScanSkipWhiteSpace(     // SKIP OVER WHITE SPACES
-    void )
+    FrontRun& front )
 ;
 bool CmdScanSwitchChar(         // TEST IF SWITCH CHAR
     int )

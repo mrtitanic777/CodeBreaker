@@ -32,10 +32,10 @@
 ****************************************************************************/
 
 
-#define optbegin            ++optmac_state().InOptimizer;
-#define optend              --optmac_state().InOptimizer;
-#define optreturn( x )      { --optmac_state().InOptimizer; return( x ); }
-#define optreturnvoid       { --optmac_state().InOptimizer; return; }
+#define optbegin            ++back.optmac.InOptimizer;
+#define optend              --back.optmac.InOptimizer;
+#define optreturn( x )      { --back.optmac.InOptimizer; return( x ); }
+#define optreturnvoid       { --back.optmac.InOptimizer; return; }
 
 #define _TransferClass(var) ((var) >= OC_JMP)
 //#define _TransferClass(var) ((var) == OC_JMP || (var) == OC_JMPI || (var) == OC_RET || (var) == OC_NORET || (var) == OC_IDATA)
@@ -67,6 +67,5 @@
 struct OptmacState {
     int InOptimizer;
 };
-inline OptmacState& optmac_state() { return cbrun_part<OptmacState>(); }
 
 #endif

@@ -35,73 +35,43 @@
 
 #include "clibext.h"
 #include "cerrs.h"
+#include "frontrun.hpp"
 
 
 /*
  * Types of post-processing messages (informational notes)
  */
-typedef enum {
-    POSTLIST_SYMBOL,     /* location of previously defined symbol */
-    POSTLIST_TWOTYPES_1, /* type mismatch between two types ( source/target ) - print them */
-    POSTLIST_TWOTYPES_2  /* type mismatch between two types ( first/second ) - print them */
-} postlist_type;
 
-typedef struct ErrPostList {
-    struct ErrPostList  *next;
-    postlist_type       type;
 
-    union {
-        /*
-         * POSTLIST_SYMBOL
-         */
-        struct {
-            const char  *sym_name;
-            const char  *sym_file;
-            unsigned    sym_line;
-        } s;
-        /*
-         * POSTLIST_TWOTYPES
-         */
-        struct {
-            TOKEN       opr;
-            TYPEPTR     types[2];
-        } o;
-    } u;
-} ErrPostList;
+
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct CerrorState {
-    ErrPostList *PostList;
-    unsigned error_line = 0;
-    unsigned error_column = 0;
-    char *error_fname = NULL;
-};
+/* (struct CerrorState: cerror_state.h) */
 
 }  // namespace
 
-static inline CerrorState& cerror_state() { return cbrun_part<CerrorState>(); }
 
 
-void OpenErrFile( void )
+void OpenErrFile( FrontRun& front )
 /**********************/
 {
     char        *name;
 
-    if( cvars_state().SrcFName != NULL ) {
-        name = ErrFileName();
+    if( front.cvars.SrcFName != NULL ) {
+        name = ErrFileName(front);
         if( name != NULL ) {
-            cvars_state().ErrFile = fopen( name, "w" );
-            if( cvars_state().ErrFile != NULL ) {
-                setvbuf( cvars_state().ErrFile, static_cast<char *>(CPermAlloc( 32 )), _IOFBF, 32 );
+            front.cvars.ErrFile = front.held->fopen( name, "w" );
+            if( front.cvars.ErrFile != NULL ) {
+                setvbuf( front.cvars.ErrFile, static_cast<char *>(CPermAlloc( front, 32 )), _IOFBF, 32 );
             }
         }
     }
 }
 
-static bool okToPrintMsg( msg_codes msgnum, int *plevel )
+static bool okToPrintMsg( FrontRun& front, msg_codes msgnum, int *plevel )
 /********************************************************
  * See if OK to print message
  */
@@ -113,18 +83,18 @@ static bool okToPrintMsg( msg_codes msgnum, int *plevel )
     msg_index = GetMsgIndex( msgnum );
     if( IS_MSGIDX_INVALID( msg_index ) )
         return( false );
-    ok = cerrs_state().msg_level[msg_index].enabled;
-    level = cerrs_state().msg_level[msg_index].level;
-    switch( cerrs_state().msg_level[msg_index].type ) {
+    ok = front.cerrs.msg_level[msg_index].enabled;
+    level = front.cerrs.msg_level[msg_index].level;
+    switch( front.cerrs.msg_level[msg_index].type ) {
     case MSG_TYPE_INFO :
         level = WLEVEL_NOTE;
         break;
     case MSG_TYPE_ANSIERR :
     case MSG_TYPE_ANSIWARN :
-        ok = !cvars_state().CompFlags.extensions_enabled;
+        ok = !front.cvars.CompFlags.extensions_enabled;
         break;
     case MSG_TYPE_ANSI :
-        if( !cvars_state().CompFlags.extensions_enabled ) {
+        if( !front.cvars.CompFlags.extensions_enabled ) {
             level = WLEVEL_ERROR;
         }
         break;
@@ -138,7 +108,7 @@ static bool okToPrintMsg( msg_codes msgnum, int *plevel )
     return( ok );
 }
 
-static void CMsgInfo( cmsg_info *info, int parm_num, msg_codes msgnum, va_list args )
+static void CMsgInfo( FrontRun& front, cmsg_info *info, int parm_num, msg_codes msgnum, va_list args )
 /************************************************************************************
  * fill cmsg_info struct
  */
@@ -163,23 +133,23 @@ static void CMsgInfo( cmsg_info *info, int parm_num, msg_codes msgnum, va_list a
         fname = NULL;
         break;
     default:
-        if( cerror_state().error_fname != NULL ) {
-            fname = cerror_state().error_fname;
-            line = cerror_state().error_line;
-            column = cerror_state().error_column;
+        if( front.cerror.error_fname != NULL ) {
+            fname = front.cerror.error_fname;
+            line = front.cerror.error_line;
+            column = front.cerror.error_column;
         } else {
-            fname = FileIndexToCorrectName( cvars_state().TokenLoc.fno );
-            line = cvars_state().TokenLoc.line;
-            column = cvars_state().TokenLoc.column;
+            fname = FileIndexToCorrectName( front, front.cvars.TokenLoc.fno );
+            line = front.cvars.TokenLoc.line;
+            column = front.cvars.TokenLoc.column;
         }
     }
     prefix_len = 0;
     if( parm_num ) {
-        msgstr = CGetMsgStr( PHRASE_PARAM );
+        msgstr = CGetMsgStr( front, PHRASE_PARAM );
         prefix_len = sprintf( info->msgtxt, msgstr, parm_num );
         info->msgtxt[prefix_len++] = ' ';
     }
-    msgstr = CGetMsgStr( msgnum );
+    msgstr = CGetMsgStr( front, msgnum );
     vsnprintf( info->msgtxt + prefix_len, MAX_MSG_LEN - prefix_len, msgstr, args );
     info->msgtxt[MAX_MSG_LEN - 1] = '\0';
     info->line = line;
@@ -187,7 +157,7 @@ static void CMsgInfo( cmsg_info *info, int parm_num, msg_codes msgnum, va_list a
     info->fname = fname;
 }
 
-static char const *MsgClassPhrase( cmsg_class class_ )
+static char const *MsgClassPhrase( FrontRun& front, cmsg_class class_ )
 {
     msg_codes       msgnum = PHRASE_ERROR;     // just for init.
     char const      *phrase;
@@ -203,11 +173,11 @@ static char const *MsgClassPhrase( cmsg_class class_ )
         msgnum = PHRASE_ERROR;
         break;
     }
-    phrase = CGetMsgStr( msgnum );
+    phrase = CGetMsgStr( front, msgnum );
     return( phrase );
 }
 
-void FmtCMsg( char *buff, cmsg_info *info )
+void FmtCMsg( FrontRun& front, char *buff, cmsg_info *info )
 /******************************************
  * format message with line & file int buff
  */
@@ -223,65 +193,65 @@ void FmtCMsg( char *buff, cmsg_info *info )
         }
     }
     code_prefix = CGetMsgPrefix( info->msgnum );
-    phrase = MsgClassPhrase( info->class_ );
+    phrase = MsgClassPhrase( front, info->class_ );
     len = strlen( buff );
     snprintf( buff + len, MAX_MSG_LEN - len, "%s %s%03d: ", phrase, code_prefix, info->msgnum );
 }
 
-static void OutMsg( cmsg_info  *info )
+static void OutMsg( FrontRun& front, cmsg_info  *info )
 /*************************************
  * print message to streams
  */
 {
     char        pre[MAX_MSG_LEN]; //actual message text
 
-    if( cvars_state().ErrFile == NULL )
-        OpenErrFile();
-    if( !cvars_state().CompFlags.eq_switch_used )
-        ConsErrMsg( info );
-    if( cvars_state().ErrFile != NULL ) {
-        FmtCMsg( pre, info );
-        fputs( pre, cvars_state().ErrFile );
-        fputs( info->msgtxt, cvars_state().ErrFile );
-        fputc( '\n', cvars_state().ErrFile );
-        cvars_state().CompFlags.errfile_written = true;
+    if( front.cvars.ErrFile == NULL )
+        OpenErrFile(front);
+    if( !front.cvars.CompFlags.eq_switch_used )
+        ConsErrMsg( front, info );
+    if( front.cvars.ErrFile != NULL ) {
+        FmtCMsg( front, pre, info );
+        fputs( pre, front.cvars.ErrFile );
+        fputs( info->msgtxt, front.cvars.ErrFile );
+        fputc( '\n', front.cvars.ErrFile );
+        front.cvars.CompFlags.errfile_written = true;
     }
 }
 
-static void PrintType( msg_codes msgnum, TYPEPTR typ )
+static void PrintType( FrontRun& front, msg_codes msgnum, TYPEPTR typ )
 {
     char    *text;
 
     if( typ == NULL )
         return;
 
-    text = DiagGetTypeName( typ );
-    CInfoMsg( msgnum, text );
-    CMemFree( text );
+    text = DiagGetTypeName( front, typ );
+    CInfoMsg( front, msgnum, text );
+    CMemFree( front, text );
 }
 
-static void PrintPostNotes( void )
+static void PrintPostNotes( FrontRun& front )
 {
-    while( cerror_state().PostList != NULL ) {
-        switch( cerror_state().PostList->type ) {
+    while( front.cerror.PostList != NULL ) {
+        switch( front.cerror.PostList->type ) {
         case POSTLIST_SYMBOL:
-            CInfoMsg( INFO_SYMBOL_DECLARATION, cerror_state().PostList->u.s.sym_name, cerror_state().PostList->u.s.sym_file, cerror_state().PostList->u.s.sym_line );
+            CInfoMsg( front, INFO_SYMBOL_DECLARATION, front.cerror.PostList->u.s.sym_name, front.cerror.PostList->u.s.sym_file, front.cerror.PostList->u.s.sym_line );
             break;
         case POSTLIST_TWOTYPES_1:
-            PrintType( INFO_SRC_CNV_TYPE, cerror_state().PostList->u.o.types[0] );
-            PrintType( INFO_TGT_CNV_TYPE, cerror_state().PostList->u.o.types[1] );
+            PrintType( front, INFO_SRC_CNV_TYPE, front.cerror.PostList->u.o.types[0] );
+            PrintType( front, INFO_TGT_CNV_TYPE, front.cerror.PostList->u.o.types[1] );
             break;
         case POSTLIST_TWOTYPES_2:
-            CInfoMsg( INFO_OPERATOR, TokenString[cerror_state().PostList->u.o.opr] );
-            PrintType( INFO_FIRST_OPND_TYPE, cerror_state().PostList->u.o.types[0] );
-            PrintType( INFO_SECOND_OPND_TYPE, cerror_state().PostList->u.o.types[1] );
+            CInfoMsg( front, INFO_OPERATOR, TokenString[front.cerror.PostList->u.o.opr] );
+            PrintType( front, INFO_FIRST_OPND_TYPE, front.cerror.PostList->u.o.types[0] );
+            PrintType( front, INFO_SECOND_OPND_TYPE, front.cerror.PostList->u.o.types[1] );
             break;
         }
-        SetDiagPop();
+        SetDiagPop(front);
     }
 }
 
-static void CErr( int parm_num, msg_codes msgnum, ... )
+static void CErr( FrontRun& front, int parm_num, msg_codes msgnum, ... )
 /******************************************************
  * Output error message
  */
@@ -290,54 +260,54 @@ static void CErr( int parm_num, msg_codes msgnum, ... )
     cmsg_info   info;
 
     info.class_ = CMSG_ERRO;
-    if( cvars_state().ErrLimit == ERRLIMIT_NOMAX || cvars_state().ErrCount < cvars_state().ErrLimit ) {
+    if( front.cvars.ErrLimit == ERRLIMIT_NOMAX || front.cvars.ErrCount < front.cvars.ErrLimit ) {
         va_start( args1, msgnum );
-        CMsgInfo( &info, parm_num, msgnum, args1 );
+        CMsgInfo( front, &info, parm_num, msgnum, args1 );
         va_end( args1 );
-        OutMsg( &info );
-        ++cvars_state().ErrCount;
-        PrintPostNotes();
+        OutMsg( front, &info );
+        ++front.cvars.ErrCount;
+        PrintPostNotes(front);
     } else {
         va_start( args1, msgnum );
-        CMsgInfo( &info, 0, ERR_TOO_MANY_ERRORS, args1 );
+        CMsgInfo( front, &info, 0, ERR_TOO_MANY_ERRORS, args1 );
         va_end( args1 );
-        OutMsg( &info );
-        CSuicide();
+        OutMsg( front, &info );
+        CSuicide(front);
     }
 }
 
-void CErr1( msg_codes msgnum )
+void CErr1( FrontRun& front, msg_codes msgnum )
 {
-    CErr( 0, msgnum );
+    CErr( front, 0, msgnum );
 }
 
-void CErr2( msg_codes msgnum, int p1 )
+void CErr2( FrontRun& front, msg_codes msgnum, int p1 )
 {
-    CErr( 0, msgnum, p1 );
+    CErr( front, 0, msgnum, p1 );
 }
 
-void CErr2p( msg_codes msgnum, const char *p1 )
+void CErr2p( FrontRun& front, msg_codes msgnum, const char *p1 )
 {
-    CErr( 0, msgnum, p1 );
+    CErr( front, 0, msgnum, p1 );
 }
 
-void CErr3p( msg_codes msgnum, const char *p1, const char *p2 )
+void CErr3p( FrontRun& front, msg_codes msgnum, const char *p1, const char *p2 )
 {
-    CErr( 0, msgnum, p1, p2 );
+    CErr( front, 0, msgnum, p1, p2 );
 }
 
-void CErr4p( msg_codes msgnum, const char *p1, const char *p2, const char *p3 )
+void CErr4p( FrontRun& front, msg_codes msgnum, const char *p1, const char *p2, const char *p3 )
 {
-    CErr( 0, msgnum, p1, p2, p3 );
+    CErr( front, 0, msgnum, p1, p2, p3 );
 }
 
-void CErrP1( int parm_num, msg_codes msgnum )
+void CErrP1( FrontRun& front, int parm_num, msg_codes msgnum )
 {
-    CErr( parm_num, msgnum );
+    CErr( front, parm_num, msgnum );
 }
 
 
-static void CWarn( int parm_num, msg_codes msgnum, ... )
+static void CWarn( FrontRun& front, int parm_num, msg_codes msgnum, ... )
 /*******************************************************
  * Out warning message
  */
@@ -346,59 +316,59 @@ static void CWarn( int parm_num, msg_codes msgnum, ... )
     cmsg_info   info;
     int         level;
 
-    if( okToPrintMsg( msgnum, &level ) ) {
-        if( level <= cvars_state().WngLevel ) {
+    if( okToPrintMsg( front, msgnum, &level ) ) {
+        if( level <= front.cvars.WngLevel ) {
             info.class_ = CMSG_WARN;
             va_start( args1, msgnum );
-            CMsgInfo( &info, parm_num, msgnum, args1 );
-            OutMsg( &info );
-            ++cvars_state().WngCount;
-            PrintPostNotes();
+            CMsgInfo( front, &info, parm_num, msgnum, args1 );
+            OutMsg( front, &info );
+            ++front.cvars.WngCount;
+            PrintPostNotes(front);
             va_end( args1 );
         }
     }
 }
 
-void CWarn1( msg_codes msgnum )
+void CWarn1( FrontRun& front, msg_codes msgnum )
 {
-    CWarn( 0, msgnum );
+    CWarn( front, 0, msgnum );
 }
 
-void CWarn2( msg_codes msgnum, int p1 )
+void CWarn2( FrontRun& front, msg_codes msgnum, int p1 )
 {
-    CWarn( 0, msgnum, p1 );
+    CWarn( front, 0, msgnum, p1 );
 }
 
-void CWarn2p( msg_codes msgnum, const char *p1 )
+void CWarn2p( FrontRun& front, msg_codes msgnum, const char *p1 )
 {
-    CWarn( 0, msgnum, p1 );
+    CWarn( front, 0, msgnum, p1 );
 }
 
-void CWarnP1( int parm_num, msg_codes msgnum )
+void CWarnP1( FrontRun& front, int parm_num, msg_codes msgnum )
 {
-    CWarn( parm_num, msgnum );
+    CWarn( front, parm_num, msgnum );
 }
 
 
-void CInfoMsg( msg_codes msgnum, ... )
+void CInfoMsg( FrontRun& front, msg_codes msgnum, ... )
 {
     va_list     args1;
     cmsg_info   info;
     int         level;
 
-    if( okToPrintMsg( msgnum, &level ) ) {
-        if( level <= cvars_state().WngLevel ) {
+    if( okToPrintMsg( front, msgnum, &level ) ) {
+        if( level <= front.cvars.WngLevel ) {
             info.class_ = CMSG_INFO;
             va_start( args1, msgnum );
-            CMsgInfo( &info, 0, msgnum, args1 );
-            OutMsg( &info );
+            CMsgInfo( front, &info, 0, msgnum, args1 );
+            OutMsg( front, &info );
             va_end( args1 );
         }
     }
 }
 
 
-void PCHNote( msg_codes msgnum, ... )
+void PCHNote( FrontRun& front, msg_codes msgnum, ... )
 /************************************
  * Output pre-compiled header Note
  */
@@ -407,36 +377,36 @@ void PCHNote( msg_codes msgnum, ... )
     char        msgbuf[MAX_MSG_LEN];
     char const  *msgstr;
 
-    if( !cvars_state().CompFlags.no_pch_warnings ) {
-        msgstr = CGetMsgStr( msgnum );
+    if( !front.cvars.CompFlags.no_pch_warnings ) {
+        msgstr = CGetMsgStr( front, msgnum );
         va_start( args1, msgnum );
         vsnprintf( msgbuf, MAX_MSG_LEN, msgstr, args1 );
         va_end( args1 );
-        NoteMsg( msgbuf );
+        NoteMsg( front, msgbuf );
     }
 }
 
 
-void SetErrLoc( source_loc *src_loc )
+void SetErrLoc( FrontRun& front, source_loc *src_loc )
 {
-    cerror_state().error_fname = FileIndexToCorrectName( src_loc->fno );
-    cerror_state().error_line = src_loc->line;
-    cerror_state().error_column = src_loc->column;
+    front.cerror.error_fname = FileIndexToCorrectName( front, src_loc->fno );
+    front.cerror.error_line = src_loc->line;
+    front.cerror.error_column = src_loc->column;
 }
 
 
-void InitErrLoc( void )
+void InitErrLoc( FrontRun& front )
 {
-    cerror_state().error_fname = NULL;
+    front.cerror.error_fname = NULL;
 }
 
 
-void CSuicide( void )
+void CSuicide( FrontRun& front )
 {
-    if( cvars_state().Environment != NULL ) {
-        longjmp( *cvars_state().Environment, 1 );
+    if( front.cvars.Environment != NULL ) {
+        longjmp( *front.cvars.Environment, 1 );
     }
-    MyExit(1);
+    MyExit(front, 1);
 }
 
 
@@ -499,84 +469,84 @@ void DumpAllMsg( void ) {
 }
 #endif
 
-static struct ErrPostList *NewPostList( postlist_type type )
+static struct ErrPostList *NewPostList( FrontRun& front, postlist_type type )
 /***********************************************************
  * post-processing messages (informational notes)
  */
 {
     struct ErrPostList  *np;
 
-    np = static_cast<struct ErrPostList *>(CMemAlloc( sizeof( *np ) ));
-    np->next = cerror_state().PostList;
+    np = static_cast<struct ErrPostList *>(CMemAlloc( front, sizeof( *np ) ));
+    np->next = front.cerror.PostList;
     np->type = type;
-    cerror_state().PostList = np;
+    front.cerror.PostList = np;
     return( np );
 }
 
-void SetDiagSymbol( SYMPTR sym, SYM_HANDLE handle )
+void SetDiagSymbol( FrontRun& front, SYMPTR sym, SYM_HANDLE handle )
 {
     struct ErrPostList  *np;
 
-    np = NewPostList( POSTLIST_SYMBOL );
-    np->u.s.sym_name = SymName( sym, handle );
+    np = NewPostList( front, POSTLIST_SYMBOL );
+    np->u.s.sym_name = SymName( front, sym, handle );
     if( np->u.s.sym_name == NULL )
         np->u.s.sym_name = "???";
-    np->u.s.sym_file = FileIndexToCorrectName( sym->src_loc.fno );
+    np->u.s.sym_file = FileIndexToCorrectName( front, sym->src_loc.fno );
     np->u.s.sym_line = sym->src_loc.line;
 }
 
-void SetDiagEnum( ENUMPTR ep )
+void SetDiagEnum( FrontRun& front, ENUMPTR ep )
 {
     struct ErrPostList  *np;
 
-    np = NewPostList( POSTLIST_SYMBOL );
+    np = NewPostList( front, POSTLIST_SYMBOL );
     np->u.s.sym_name = ep->name;
-    np->u.s.sym_file = FileIndexToCorrectName( ep->src_loc.fno );
+    np->u.s.sym_file = FileIndexToCorrectName( front, ep->src_loc.fno );
     np->u.s.sym_line = ep->src_loc.line;
 }
 
-void SetDiagMacro( MEPTR mp )
+void SetDiagMacro( FrontRun& front, MEPTR mp )
 {
     struct ErrPostList  *np;
 
-    np = NewPostList( POSTLIST_SYMBOL );
+    np = NewPostList( front, POSTLIST_SYMBOL );
     np->u.s.sym_name = mp->macro_name;
-    np->u.s.sym_file = FileIndexToCorrectName( mp->src_loc.fno );
+    np->u.s.sym_file = FileIndexToCorrectName( front, mp->src_loc.fno );
     np->u.s.sym_line = mp->src_loc.line;
 }
 
-void SetDiagType1( TYPEPTR typ_source )
+void SetDiagType1( FrontRun& front, TYPEPTR typ_source )
 {
-    SetDiagType2( NULL, typ_source );
+    SetDiagType2( front, NULL, typ_source );
 }
 
-void SetDiagType2( TYPEPTR typ_target, TYPEPTR typ_source )
+void SetDiagType2( FrontRun& front, TYPEPTR typ_target, TYPEPTR typ_source )
 {
     struct ErrPostList  *np;
 
-    np = NewPostList( POSTLIST_TWOTYPES_1 );
+    np = NewPostList( front, POSTLIST_TWOTYPES_1 );
     np->u.o.opr = static_cast<TOKEN>(0);
     np->u.o.types[0] = typ_source;
     np->u.o.types[1] = typ_target;
 }
 
-void SetDiagType3( TYPEPTR typ_first, TYPEPTR typ_second, TOKEN opr )
+void SetDiagType3( FrontRun& front, TYPEPTR typ_first, TYPEPTR typ_second, TOKEN opr )
 {
     struct ErrPostList  *np;
 
-    np = NewPostList( POSTLIST_TWOTYPES_2 );
+    np = NewPostList( front, POSTLIST_TWOTYPES_2 );
     np->u.o.opr = opr;
     np->u.o.types[0] = typ_first;
     np->u.o.types[1] = typ_second;
 }
 
-void SetDiagPop( void )
+void SetDiagPop( FrontRun& front )
 {
     struct ErrPostList  *np;
 
-    np = cerror_state().PostList;
+    np = front.cerror.PostList;
     if( np != NULL ) {
-        cerror_state().PostList = np->next;
-        CMemFree( np );
+        front.cerror.PostList = np->next;
+        CMemFree( front, np );
     }
 }

@@ -49,6 +49,7 @@
 #include "pcencode.h"
 #include "liveinfo.h"
 #include "x86regn.h"
+#include "backrun.hpp"
 
 
 static const byte StackReq8087[LAST_IFUNC - FIRST_IFUNC + 1] = {
@@ -81,38 +82,10 @@ static const byte StackReq8087[LAST_IFUNC - FIRST_IFUNC + 1] = {
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct I87regState {
-    fp_patches FPPatchType;
-    byte StackReq387[LAST_IFUNC - FIRST_IFUNC + 1] = {
-    /********************************************************
-        how much stack over and above the parm
-        does the operation require? NB: this number + number parms must be <= 4
-    */
-        2,        /* OP_POW */
-        0,        /* OP_ATAN2 */
-        0,        /* OP_FMOD */
-        0,        /* OP_NEGATE */
-        0,        /* OP_COMPLEMENT */
-        1,        /* OP_LOG */
-        1,        /* OP_COS */
-        1,        /* OP_SIN */
-        1,        /* OP_TAN */
-        0,        /* OP_SQRT */
-        0,        /* OP_FABS */
-        2,        /* OP_ACOS */
-        2,        /* OP_ASIN */
-        1,        /* OP_ATAN */
-        2,        /* OP_COSH */
-        2,        /* OP_EXP */
-        1,        /* OP_LOG10 */
-        2,        /* OP_SINH */
-        2         /* OP_TANH */
-    };
-};
+/* (struct I87regState: i87reg_state.h) */
 
 }  // namespace
 
-static inline I87regState& i87reg_state() { return cbrun_part<I87regState>(); }
 
 
 static const fp_patches SegPatchTab[] = {
@@ -122,34 +95,34 @@ static const fp_patches SegPatchTab[] = {
 };
 
 
-void SetFPPatchSegm( int i )
+void SetFPPatchSegm( BackRun& back, int i )
 /**************************/
 {
-    if( i87reg_state().FPPatchType != FPP_NONE ) {
-        i87reg_state().FPPatchType = SegPatchTab[i];
+    if( back.i87reg.FPPatchType != FPP_NONE ) {
+        back.i87reg.FPPatchType = SegPatchTab[i];
     }
 }
 
-void SetFPPatchType( fp_patches type )
+void SetFPPatchType( BackRun& back, fp_patches type )
 /************************************/
 {
-    i87reg_state().FPPatchType = type;
+    back.i87reg.FPPatchType = type;
 }
 
-void FPPatchTypeRef( void )
+void FPPatchTypeRef( BackRun& back )
 /*************************/
 {
     int         i;
 
-    if( i87reg_state().FPPatchType != FPP_NONE ) {
-        for( i = pcencode_state().Temp.hdr.reclen - offsetof( template_, data ) + 2; i > 2; i-- ) {
-            pcencode_state().Temp.data[i] = pcencode_state().Temp.data[i - 3];
+    if( back.i87reg.FPPatchType != FPP_NONE ) {
+        for( i = back.pcencode.Temp.hdr.reclen - offsetof( template_, data ) + 2; i > 2; i-- ) {
+            back.pcencode.Temp.data[i] = back.pcencode.Temp.data[i - 3];
         }
-        pcencode_state().Temp.data[0] = ESC;
-        pcencode_state().Temp.data[1] = ESC_FUN;
-        pcencode_state().Temp.data[2] = i87reg_state().FPPatchType;
-        pcencode_state().Temp.hdr.reclen += 3;
-        i87reg_state().FPPatchType = FPP_NONE;
+        back.pcencode.Temp.data[0] = ESC;
+        back.pcencode.Temp.data[1] = ESC_FUN;
+        back.pcencode.Temp.data[2] = back.i87reg.FPPatchType;
+        back.pcencode.Temp.hdr.reclen += 3;
+        back.i87reg.FPPatchType = FPP_NONE;
     }
 }
 
@@ -162,16 +135,16 @@ void SetFPParmsUsed( call_state *state, int parms )
     }
 }
 
-name    *ST( int num )
+name    *ST( BackRun& back, int num )
 /*******************************
     return an N_REGISTER for ST(num)
 */
 {
-    return( AllocRegName( GetFPReg( num ) ) );
+    return( AllocRegName( back, GetFPReg( num ) ) );
 }
 
 
-static  bool    MathOpsBlowStack( conflict_node *conf, int stk_level )
+static  bool    MathOpsBlowStack( BackRun& back, conflict_node *conf, int stk_level )
 /*****************************************************************
     See if putting "conf" on the stack would blow the 8087 stack in the
     face of stack requirements for any complicated math operations in
@@ -186,7 +159,7 @@ static  bool    MathOpsBlowStack( conflict_node *conf, int stk_level )
     if( ins == last )
         return( true );
     for( ins = ins->head.next; ins != last; ins = ins->head.next ) {
-        if( FPStkReq( ins ) + stk_level + OpcodeNumOperands( ins ) >= i87data_state().Max87Stk ) {
+        if( FPStkReq( back, ins ) + stk_level + OpcodeNumOperands( ins ) >= back.i87data.Max87Stk ) {
             return( true );
         }
     }
@@ -194,7 +167,7 @@ static  bool    MathOpsBlowStack( conflict_node *conf, int stk_level )
 }
 
 
-static  bool    AssignFPResult( block *blk, instruction *ins, int *stk_level )
+static  bool    AssignFPResult( BackRun& back, block *blk, instruction *ins, int *stk_level )
 /*******************************************************************************
     Try to assign a "stack" register to the result of instruction
     "ins"., updating "*stk_level" if we did.  These register given out
@@ -228,15 +201,15 @@ static  bool    AssignFPResult( block *blk, instruction *ins, int *stk_level )
         return( false );
     if( *stk_level < 0 )
         return( false );
-    if( *stk_level >= ( i87data_state().Max87Stk - 1 ) )
+    if( *stk_level >= ( back.i87data.Max87Stk - 1 ) )
         return( false );
-    conf = FindConflictNode( op, blk, ins );
+    conf = FindConflictNode( back, op, blk, ins );
     if( conf == NULL )
         return( false );
-    if( MathOpsBlowStack( conf, *stk_level ) )
+    if( MathOpsBlowStack( back, conf, *stk_level ) )
         return( false );
     ++*stk_level;
-    need_live_update = AssignARegister( conf, GetFPReg( *stk_level ) );
+    need_live_update = AssignARegister( back, conf, GetFPReg( *stk_level ) );
     return( need_live_update );
 }
 
@@ -290,7 +263,7 @@ static  void    SetStackLevel( instruction *ins, int *stk_level )
 }
 
 
-static  void    ToMemory( instruction *ins, name *t )
+static  void    ToMemory( BackRun& back, instruction *ins, name *t )
 /******************************************************
     Force "t" into memory (no register may be allocated for it) since we
     can't use 8086 registers in 8087 instructions.
@@ -299,9 +272,9 @@ static  void    ToMemory( instruction *ins, name *t )
     conflict_node       *conf;
 
     if( t->n.class_ == N_TEMP || t->n.class_ == N_MEMORY ) {
-        conf = NameConflict( ins, t );
+        conf = NameConflict( back, ins, t );
         if( conf != NULL ) {
-            InMemory( conf );
+            InMemory( back, conf );
         } else {
             t->v.usage |= NEEDS_MEMORY | USE_MEMORY;
         }
@@ -309,7 +282,7 @@ static  void    ToMemory( instruction *ins, name *t )
 }
 
 
-static  void    CnvOperand( instruction *ins )
+static  void    CnvOperand( BackRun& back, instruction *ins )
 /***********************************************
     Turn op1 (operands[0]) of instruction "ins" into a variable of a
     type that can be used directly by an 8087 instruction like FLD or
@@ -324,22 +297,22 @@ static  void    CnvOperand( instruction *ins )
     switch( type_class ) {
     case U1:
     case I1:
-        t = AllocTemp( I2 );
-        new_ins = MakeConvert( ins->operands[0], t, I2, type_class );
+        t = AllocTemp( back, I2 );
+        new_ins = MakeConvert( back, ins->operands[0], t, I2, type_class );
         ins->base_type_class = I2;
         ins->operands[0] = t;
-        MoveSegOp( ins, new_ins, 0 );
-        PrefixIns( ins, new_ins );
-        InMemory( NameConflict( ins, t ) );
+        MoveSegOp( back, ins, new_ins, 0 );
+        PrefixIns( back, ins, new_ins );
+        InMemory( back, NameConflict( back, ins, t ) );
         break;
     case U2:
-        t = AllocTemp( I4 );
-        new_ins = MakeConvert( ins->operands[0], t, I4, type_class );
+        t = AllocTemp( back, I4 );
+        new_ins = MakeConvert( back, ins->operands[0], t, I4, type_class );
         ins->base_type_class = I4;
         ins->operands[0] = t;
-        MoveSegOp( ins, new_ins, 0 );
-        PrefixIns( ins, new_ins );
-        InMemory( NameConflict( ins, t ) );
+        MoveSegOp( back, ins, new_ins, 0 );
+        PrefixIns( back, ins, new_ins );
+        InMemory( back, NameConflict( back, ins, t ) );
         break;
     case I2:
     case I4:
@@ -347,23 +320,23 @@ static  void    CnvOperand( instruction *ins )
     case U8:
         if( ins->operands[0]->n.class_ == N_TEMP
           && (ins->operands[0]->v.usage & HAS_MEMORY) == 0 ) {
-            t = AllocTemp( type_class );
-            new_ins = MakeMove( ins->operands[0], t, type_class );
+            t = AllocTemp( back, type_class );
+            new_ins = MakeMove( back, ins->operands[0], t, type_class );
             ins->operands[0] = t;
-            MoveSegOp( ins, new_ins, 0 );
-            PrefixIns( ins, new_ins );
-            InMemory( NameConflict( ins, t ) );
+            MoveSegOp( back, ins, new_ins, 0 );
+            PrefixIns( back, ins, new_ins );
+            InMemory( back, NameConflict( back, ins, t ) );
         } else {
-            ToMemory( ins, ins->operands[0] );
+            ToMemory( back, ins, ins->operands[0] );
         }
         break;
     case U4:
-        t = AllocTemp( U8 );
-        new_ins = MakeConvert( ins->operands[0], t, U8, U4 );
+        t = AllocTemp( back, U8 );
+        new_ins = MakeConvert( back, ins->operands[0], t, U8, U4 );
         ins->operands[0] = t;
-        MoveSegOp( ins, new_ins, 0 );
-        PrefixIns( ins, new_ins );
-        InMemory( NameConflict( ins, t ) );
+        MoveSegOp( back, ins, new_ins, 0 );
+        PrefixIns( back, ins, new_ins );
+        InMemory( back, NameConflict( back, ins, t ) );
         break;
     default:
         break;
@@ -371,7 +344,7 @@ static  void    CnvOperand( instruction *ins )
 }
 
 
-static  void    CnvResult( instruction *ins )
+static  void    CnvResult( BackRun& back, instruction *ins )
 /**********************************************
     Convert the result of instruction "ins" into a variable of a type
     that can be directly used by an instruction like FSTP or FISTP.
@@ -385,35 +358,35 @@ static  void    CnvResult( instruction *ins )
     switch( type_class ) {
     case U1:
     case I1:
-        t = AllocTemp( I2 );
+        t = AllocTemp( back, I2 );
         t->v.usage |= NEEDS_MEMORY | USE_MEMORY;
-        new_ins = MakeConvert( t, ins->result, type_class, I2 );
+        new_ins = MakeConvert( back, t, ins->result, type_class, I2 );
         ins->result = t;
-        MoveSegRes( ins, new_ins );
-        SuffixIns( ins, new_ins );
+        MoveSegRes( back, ins, new_ins );
+        SuffixIns( back, ins, new_ins );
         break;
     case U2:
-        t = AllocTemp( I4 );
+        t = AllocTemp( back, I4 );
         t->v.usage |= NEEDS_MEMORY | USE_MEMORY;
-        new_ins = MakeConvert( t, ins->result, type_class, I4 );
+        new_ins = MakeConvert( back, t, ins->result, type_class, I4 );
         ins->result = t;
-        MoveSegRes( ins, new_ins );
-        SuffixIns( ins, new_ins );
+        MoveSegRes( back, ins, new_ins );
+        SuffixIns( back, ins, new_ins );
         break;
     case I2:
     case I4:
     case I8:
     case U8:
-        ToMemory( ins, ins->result );
+        ToMemory( back, ins, ins->result );
         break;
     case U4:
-        t = AllocTemp( XX );
+        t = AllocTemp( back, XX );
         t->n.size = 8;
         t->v.usage |= NEEDS_MEMORY | USE_MEMORY;
-        new_ins = MakeMove( TempOffset(t,0,U4), ins->result, U4);
+        new_ins = MakeMove( back, TempOffset(back, t,0,U4), ins->result, U4);
         ins->result = t;
-        MoveSegRes( ins, new_ins );
-        SuffixIns( ins, new_ins );
+        MoveSegRes( back, ins, new_ins );
+        SuffixIns( back, ins, new_ins );
         break;
     default:
         break;
@@ -421,7 +394,7 @@ static  void    CnvResult( instruction *ins )
 }
 
 
-static  void    FPConvert( void )
+static  void    FPConvert( BackRun& back )
 /****************************
     Make sure all operands of _IsFloating() instructions are a type that
     may be used in an FLD or FST instruction.
@@ -432,13 +405,13 @@ static  void    FPConvert( void )
     instruction *ins;
     instruction *next;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
             next = ins->head.next;
             if( ins->head.opcode == OP_CONVERT ) {
                 if( _Is87Ins( ins ) ) {
-                    CnvOperand( ins );
-                    CnvResult( ins );
+                    CnvOperand( back, ins );
+                    CnvResult( back, ins );
                 }
             }
         }
@@ -446,7 +419,7 @@ static  void    FPConvert( void )
 }
 
 
-static  void    FPAlloc( void )
+static  void    FPAlloc( BackRun& back )
 /**************************
    Pre allocate 8087 registers to temporarys that lend themselves
    to a stack architecture.  ST(0) is reserved as the floating top
@@ -466,11 +439,11 @@ static  void    FPAlloc( void )
     name                *name;
     instruction         *new_ins;
 
-    HW_CTurnOn( data_state().CurrProc->state.unalterable, HW_FLTS );
-    i87data_state().FPStatWord = NULL;
+    HW_CTurnOn( back.data.CurrProc->state.unalterable, HW_FLTS );
+    back.i87data.FPStatWord = NULL;
     stk_level = 0;
     need_live_update = false;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         ins = blk->ins.head.next;
         if( ins->head.opcode == OP_BLOCK )
             continue;
@@ -486,19 +459,19 @@ static  void    FPAlloc( void )
                 if( ( ins->type_class == FS && ins->base_type_class == FD ) || ( ins->type_class == FD && ins->base_type_class == FS ) ) {
                     if( ins->operands[0]->n.class_ != N_REGISTER ) {
                         if( ins->operands[0]->n.class_ != N_TEMP || (ins->operands[0]->t.temp_flags & CAN_STACK) == 0 ) {
-                            name = AllocTemp( ins->base_type_class );
+                            name = AllocTemp( back, ins->base_type_class );
                             name->t.temp_flags |= CAN_STACK;
-                            new_ins = MakeMove( ins->operands[0], name, ins->base_type_class );
+                            new_ins = MakeMove( back, ins->operands[0], name, ins->base_type_class );
                             ins->operands[0] = name;
-                            MoveSegOp( ins, new_ins, 0 );
-                            PrefixIns( ins, new_ins );
+                            MoveSegOp( back, ins, new_ins, 0 );
+                            PrefixIns( back, ins, new_ins );
                             ins = new_ins;
                         }
                     }
                 }
             }
             /* check the result ... if it's top of stack, bump up stack level*/
-            if( AssignFPResult( blk, ins, &stk_level ) ) {
+            if( AssignFPResult( back, blk, ins, &stk_level ) ) {
                 need_live_update = true;
             }
             ins->sequence = sequence;
@@ -521,9 +494,9 @@ static  void    FPAlloc( void )
         }
     }
     if( need_live_update ) {
-        LiveInfoUpdate();
+        LiveInfoUpdate(back);
     }
-    FPConvert();
+    FPConvert(back);
 }
 
 
@@ -561,7 +534,7 @@ static  bool    CanStack( name *name )
 }
 
 
-static  void    StackShortLivedTemps( void )
+static  void    StackShortLivedTemps( BackRun& back )
 /***************************************
     Most temporaries are marked as CAN_STACK when they are back end
     generated temps which are used to hold an intermediate result from
@@ -575,7 +548,7 @@ static  void    StackShortLivedTemps( void )
     instruction         *ins2;
     name                *temp;
 
-    for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
+    for( conf = back.data.ConfList; conf != NULL; conf = conf->next_conflict ) {
         ins1 = conf->ins_range.first;
         ins2 = conf->ins_range.last;
         if( ins1 == NULL )
@@ -617,7 +590,7 @@ static  void    CheckForStack( name *temp )
 }
 
 
-static  void    NoStackAcrossCalls( void )
+static  void    NoStackAcrossCalls( BackRun& back )
 /*************************************
     Since a call requires the stack of the 8087 to be empty, we can't
     hold a value in a stack register across a call instrution.  This
@@ -631,7 +604,7 @@ static  void    NoStackAcrossCalls( void )
     instruction *ins;
     opcnt       i;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = ins->num_operands; i-- > 0; ) {
                 CheckForStack( ins->operands[i] );
@@ -643,7 +616,7 @@ static  void    NoStackAcrossCalls( void )
     }
 }
 
-static  void   FindSinCos( instruction *ins, opcode_defs next_opcode )
+static  void   FindSinCos( BackRun& back, instruction *ins, opcode_defs next_opcode )
 /********************************************************************/
 {
     instruction *next;
@@ -661,70 +634,70 @@ static  void   FindSinCos( instruction *ins, opcode_defs next_opcode )
             }
         }
     }
-    temp = AllocTemp( ins->type_class );
-    new_ins = MakeUnary( next_opcode, ins->operands[0], temp, ins->type_class );
+    temp = AllocTemp( back, ins->type_class );
+    new_ins = MakeUnary( back, next_opcode, ins->operands[0], temp, ins->type_class );
     next->head.opcode = OP_MOV;
     next->operands[0] = temp;
-    SuffixIns( ins, new_ins );
-    UpdateLive( ins, next );
+    SuffixIns( back, ins, new_ins );
+    UpdateLive( back, ins, next );
 }
 
-static  void    FSinCos( void )
+static  void    FSinCos( BackRun& back )
 /*****************************/
 {
     block       *blk;
     instruction *ins;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( ins->head.opcode == OP_SIN ) {
-                FindSinCos( ins, OP_COS );
+                FindSinCos( back, ins, OP_COS );
             } else if( ins->head.opcode == OP_COS ) {
-                FindSinCos( ins, OP_SIN );
+                FindSinCos( back, ins, OP_SIN );
             }
         }
     }
 }
 
-void    FPRegAlloc( void )
+void    FPRegAlloc( BackRun& back )
 /*****************************
     Allocate registers comprising the "stack" portion of the 8087.
 */
 {
     if( _FPULevel( FPU_87 ) ) {
         if( _FPULevel( FPU_387 ) ) {
-            FSinCos();
+            FSinCos(back);
         }
-        StackShortLivedTemps();
-        NoStackAcrossCalls();
-        FPAlloc();
+        StackShortLivedTemps(back);
+        NoStackAcrossCalls(back);
+        FPAlloc(back);
     }
 }
 
-void    FPInitStkReq( void )
+void    FPInitStkReq( BackRun& back )
 /**************************/
 {
     if( _IsModel( CGSW_GEN_I_MATH_INLINE ) ) {
-        i87reg_state().StackReq387[OP_SIN - FIRST_IFUNC] = 0;
-        i87reg_state().StackReq387[OP_COS - FIRST_IFUNC] = 0;
+        back.i87reg.StackReq387[OP_SIN - FIRST_IFUNC] = 0;
+        back.i87reg.StackReq387[OP_COS - FIRST_IFUNC] = 0;
     }
 }
 
 
-int     FPStkReq( instruction *ins )
+int     FPStkReq( BackRun& back, instruction *ins )
 /**********************************/
 {
     if( !_OpIsIFunc( ins->head.opcode ) )
         return( 0 );
     if( _FPULevel( FPU_387 ) ) {
-        return( i87reg_state().StackReq387[ins->head.opcode - FIRST_IFUNC] );
+        return( back.i87reg.StackReq387[ins->head.opcode - FIRST_IFUNC] );
     } else {
         return( StackReq8087[ins->head.opcode - FIRST_IFUNC] );
     }
 }
 
 
-bool    FPStackIns( instruction *ins )
+bool    FPStackIns( BackRun& back, instruction *ins )
 /************************************/
 {
     if( !_FPULevel( FPU_87 ) )
@@ -737,7 +710,7 @@ bool    FPStackIns( instruction *ins )
 }
 
 
-bool    FPSideEffect( instruction *ins )
+bool    FPSideEffect( BackRun& back, instruction *ins )
 /*************************************************
     Return true if instruction "ins" is an instruction that has a side
     effect, namely pushes or pops the 8087 stack.
@@ -780,7 +753,7 @@ bool    FPSideEffect( instruction *ins )
 }
 
 
-type_class_def  FPInsClass( instruction *ins )
+type_class_def  FPInsClass( BackRun& back, instruction *ins )
 /*******************************************************
     Return FD if the instruction will use the 8087.
 */
@@ -821,7 +794,7 @@ bool    FPIsStack( name *name )
 }
 
 
-bool    FPStackOp( name *name )
+bool    FPStackOp( BackRun& back, name *name )
 /****************************************
     return true if "name" is a stackable temp.
 */
@@ -845,7 +818,7 @@ void    FPNotStack( name *name )
 }
 
 
-bool    FPIsConvert( instruction *ins )
+bool    FPIsConvert( BackRun& back, instruction *ins )
 /************************************************
     return true if "ins" is a converstion that could be handled by the 8087.
 */

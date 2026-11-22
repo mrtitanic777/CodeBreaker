@@ -52,6 +52,7 @@
 #include "x86rtrn.h"
 #include "bldselco.h"
 #include "_x86rtrn.h"
+#include "backrun.hpp"
 
 
 /*
@@ -70,7 +71,8 @@ const rtn_info RTInfo[] = {
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct RtrtnState {
+}  // namespace
+struct X386rtrtnState {
     const struct STRUCT_BYTE_SEQ( 2 ) Scn1 = {
          2, false,
         {0xF2,           /*       repne     */
@@ -114,13 +116,13 @@ struct RtrtnState {
          0x07}          /*      pop     es  */
     };
 };
+namespace {
 
 }  // namespace
 
-static inline RtrtnState& rtrtn_state() { return cbrun_part<RtrtnState>(); }
 
 
-const char  *AskRTName( rt_class rtindex )
+const char  *AskRTName( BackRun& back, rt_class rtindex )
 /****************************************/
 {
     if( _IsTargetModel( CGSW_X86_INDEXED_GLOBALS ) ) {
@@ -147,7 +149,7 @@ const char  *AskRTName( rt_class rtindex )
 }
 
 
-bool    RTLeaveOp2( instruction *ins )
+bool    RTLeaveOp2( BackRun& back, instruction *ins )
 /*************************************
  * return true if it's a bad idea to put op2 into a temporary since we're
  * gonna take the bugger's address in rMAKECALL.
@@ -159,7 +161,7 @@ bool    RTLeaveOp2( instruction *ins )
 }
 
 
-name    *ScanCall( tbl_control *table, name *value, type_class_def type_class )
+name    *ScanCall( BackRun& back, tbl_control *table, name *value, type_class_def type_class )
 /******************************************************************************
  * generates a fake call to a runtime routine that looks up "value" in a table
  * and jumps to the appropriate case, using either a pointer or index
@@ -190,104 +192,104 @@ name    *ScanCall( tbl_control *table, name *value, type_class_def type_class )
         break;
     }
 
-    reg_name = AllocRegName( FirstReg( RTInfo[rtindex].left ) );
-    new_ins = MakeConvert( value, reg_name, type_class, value->n.type_class );
-    AddIns( new_ins );
+    reg_name = AllocRegName( back, FirstReg( back, RTInfo[rtindex].left ) );
+    new_ins = MakeConvert( back, value, reg_name, type_class, value->n.type_class );
+    AddIns( back, new_ins );
 
-    reg_name = AllocRegName( HW_ECX );
-    new_ins = MakeMove( AllocIntConst( table->size + 1 ), reg_name, U4 );
-    AddIns( new_ins );
+    reg_name = AllocRegName( back, HW_ECX );
+    new_ins = MakeMove( back, AllocIntConst( back, table->size + 1 ), reg_name, U4 );
+    AddIns( back, new_ins );
 
-    reg_name = AllocRegName( HW_EDI );
-    label = AllocMemory( table, 0, CG_VTB, U4 );
-    label = AddrConst( label, AskBackSeg(), CONS_OFFSET );
-    new_ins = MakeMove( label, reg_name, U4 );
-    AddIns( new_ins );
+    reg_name = AllocRegName( back, HW_EDI );
+    label = AllocMemory( back, table, 0, CG_VTB, U4 );
+    label = AddrConst( back, label, AskBackSeg(back), CONS_OFFSET );
+    new_ins = MakeMove( back, label, reg_name, U4 );
+    AddIns( back, new_ins );
 
-    new_ins = NewIns( 3 );
+    new_ins = NewIns( back, 3 );
     new_ins->head.opcode = OP_CALL;
     new_ins->type_class = U2;
-    tmp = FirstReg( RTInfo[rtindex].left );
+    tmp = FirstReg( back, RTInfo[rtindex].left );
     HW_CTurnOn( tmp, HW_ECX );
     HW_CTurnOn( tmp, HW_EDI );
     HW_CTurnOn( tmp, HW_ES );
-    new_ins->operands[CALL_OP_USED] = AllocRegName( tmp );
+    new_ins->operands[CALL_OP_USED] = AllocRegName( back, tmp );
     new_ins->operands[CALL_OP_USED2] = new_ins->operands[CALL_OP_USED];
-    new_ins->operands[CALL_OP_ADDR] = AllocMemory( RTLabel( rtindex ), 0, CG_LBL, U4 );
+    new_ins->operands[CALL_OP_ADDR] = AllocMemory( back, RTLabel( back, rtindex ), 0, CG_LBL, U4 );
     new_ins->result = NULL;
     new_ins->num_operands = 2;
-    AddIns( new_ins );
+    AddIns( back, new_ins );
 
-    result = AllocMemory( table, 0, CG_TBL, U4 ); /* so table gets freed!*/
+    result = AllocMemory( back, table, 0, CG_TBL, U4 ); /* so table gets freed!*/
     if( type_class == U4 ) {
         HW_CAsgn( tmp, HW_ECX );
         HW_CTurnOn( tmp, HW_EDI );
-        new_ins->zap = &AllocRegName( tmp )->r;
-        new_ins->result = AllocRegName( HW_EDI );
+        new_ins->zap = &AllocRegName( back, tmp )->r;
+        new_ins->result = AllocRegName( back, HW_EDI );
         HW_CAsgn( tmp, HW_CS );
         HW_CTurnOn( tmp, HW_EDI );
-        result = AllocRegName( tmp );
-        result = AllocIndex( result, NULL, ( table->size - 1 ) * 4, U4 );
-        new_ins = MakeMove( result, AllocTemp( WD ), WD );
-        AddIns( new_ins );
+        result = AllocRegName( back, tmp );
+        result = AllocIndex( back, result, NULL, ( table->size - 1 ) * 4, U4 );
+        new_ins = MakeMove( back, result, AllocTemp( back, WD ), WD );
+        AddIns( back, new_ins );
         result = new_ins->result;
     } else {
         HW_CAsgn( tmp, HW_ECX );
         HW_CTurnOn( tmp, HW_EDI );
-        new_ins->zap = &AllocRegName( tmp )->r;
-        new_ins->result = AllocRegName( HW_ECX );
-        new_ins = MakeMove( new_ins->result, AllocTemp( WD ), WD );
-        AddIns( new_ins );
-        result = AllocIndex( new_ins->result, result, 0, U4 );
+        new_ins->zap = &AllocRegName( back, tmp )->r;
+        new_ins->result = AllocRegName( back, HW_ECX );
+        new_ins = MakeMove( back, new_ins->result, AllocTemp( back, WD ), WD );
+        AddIns( back, new_ins );
+        result = AllocIndex( back, new_ins->result, result, 0, U4 );
         result->i.scale = SCALE_4; /* 2**2 == 4 */
     }
     return( result );
 }
 
 
-name    *Addressable( name *cons, type_class_def type_class )
+name    *Addressable( BackRun& back, name *cons, type_class_def type_class )
 /************************************************************
  * make sure a floating point constant is addressable (dropped
  * it into memory if it isnt)
  */
 {
     if( cons->n.class_ == N_CONSTANT )
-        return( GenFloat( cons, type_class ) );
+        return( GenFloat( back, cons, type_class ) );
     return( cons );
 }
 
 
-pointer BEAuxInfo( pointer hdl, aux_class request )
+pointer BEAuxInfo( BackRun& back, pointer hdl, aux_class request )
 /**************************************************
  * see ScanCall for explanation
  */
 {
     switch( request ) {
     case FEINF_AUX_LOOKUP:
-        switch( FindRTLabel( static_cast<label_handle>(hdl) ) ) {
+        switch( FindRTLabel( back, static_cast<label_handle>(hdl) ) ) {
         case RT_SCAN1:
             if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) )
-                return( (pointer)&rtrtn_state().Scn1ES );
-            return( (pointer)&rtrtn_state().Scn1 );
+                return( (pointer)&back.x386rtrtn->Scn1ES );
+            return( (pointer)&back.x386rtrtn->Scn1 );
         case RT_SCAN2:
             if( _IsntTargetModel( CGSW_X86_USE_32 ) ) {
                 if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) )
-                    return( (pointer)&rtrtn_state().Scn4ES );
-                return( (pointer)&rtrtn_state().Scn4 );
+                    return( (pointer)&back.x386rtrtn->Scn4ES );
+                return( (pointer)&back.x386rtrtn->Scn4 );
             } else {
                 if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) )
-                    return( (pointer)&rtrtn_state().Scn2ES );
-                return( (pointer)&rtrtn_state().Scn2 );
+                    return( (pointer)&back.x386rtrtn->Scn2ES );
+                return( (pointer)&back.x386rtrtn->Scn2 );
             }
         case RT_SCAN4:
             if( _IsntTargetModel( CGSW_X86_USE_32 ) ) {
                 if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) )
-                    return( (pointer)&rtrtn_state().Scn2ES );
-                return( (pointer)&rtrtn_state().Scn2 );
+                    return( (pointer)&back.x386rtrtn->Scn2ES );
+                return( (pointer)&back.x386rtrtn->Scn2 );
             } else {
                 if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) )
-                    return( (pointer)&rtrtn_state().Scn4ES );
-                return( (pointer)&rtrtn_state().Scn4 );
+                    return( (pointer)&back.x386rtrtn->Scn4ES );
+                return( (pointer)&back.x386rtrtn->Scn4 );
             }
         default:
             return( NULL );
@@ -304,10 +306,16 @@ pointer BEAuxInfo( pointer hdl, aux_class request )
     }
 }
 
-instruction     *rMAKEFNEG( instruction *ins )
+instruction     *rMAKEFNEG( BackRun& back, instruction *ins )
 /*********************************************
  * this is intentionally a stub for the 386.
  */
 {
     return( ins );
 }
+
+/* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
+#if _TARGET & _TARG_80386
+X386rtrtnState* x386rtrtn_make() { return new X386rtrtnState(); }
+void x386rtrtn_free(X386rtrtnState* part) { delete part; }
+#endif

@@ -79,6 +79,7 @@
 
 #include "clibint.h"
 #include "clibext.h"
+#include "supportrun.hpp"
 
 
 /****************************************************************************
@@ -112,24 +113,10 @@
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct ClibextFileState {
-#ifdef __WATCOMC__
-#elif defined(_MSC_VER)
-    char __altoptchar = '/';   /* alternate option character */
-#endif
-#ifdef __WATCOMC__
-#elif defined(_MSC_VER)
-    char __optchar;   /* matched option char ('-' or altoptchar) */
-#endif
-#ifdef __WATCOMC__
-#elif defined(_MSC_VER)
-    int opt_offset = 0;   /* position in currently parsed argument */
-#endif
-};
+/* (struct ClibextFileState: clibext_state.h) */
 
 }  // namespace
 
-static inline ClibextFileState& clibext_file_state() { return cbrun_part<ClibextFileState>(); }
 
 #ifdef __WATCOMC__
 
@@ -668,7 +655,7 @@ char *_cmdname( char *name )
 
 #elif defined( _MSC_VER )
 
-char *_cmdname( char *name )
+char *_cmdname( SupportRun& support, char *name )
 {
     char    *pgm;
     char    buff[_MAX_PATH];
@@ -690,9 +677,9 @@ char *_cmdname( char *name )
 
 #else   /* others */
 
-char *_cmdname( char *name )
+char *_cmdname( SupportRun& support, char *name )
 {
-    return( strcpy( name, clibint_state()._argv[0] ) );
+    return( strcpy( name, support.clibint._argv[0] ) );
 }
 
 #endif
@@ -707,7 +694,7 @@ char *_cmdname( char *name )
 
 #elif defined( _MSC_VER )
 
-int _bgetcmd( char *buffer, int len )
+int _bgetcmd( SupportRun& support, char *buffer, int len )
 {
     int         cmdlen;
     char        *cmd;
@@ -756,13 +743,13 @@ int _bgetcmd( char *buffer, int len )
 
 #else   /* others */
 
-int (_bgetcmd)( char *buffer, int len )
+int (_bgetcmd)( SupportRun& support, char *buffer, int len )
 {
     int     total;
     int     i;
     char    *word;
     char    *p;
-    char    **argv = &clibint_state()._argv[1];
+    char    **argv = &support.clibint._argv[1];
     int     need_quotes;
 
     if( ( buffer != NULL )
@@ -1230,18 +1217,18 @@ int   fnmatch( const char *patt, const char *s, int flags )
 
 #elif defined(_MSC_VER)
 
-int setenv( const char *name, const char *newvalue, int overwrite )
+int setenv( SupportRun& support, const char *name, const char *newvalue, int overwrite )
 /*****************************************************************/
 {
     char    *buff;
     size_t  len;
 
     len = strlen( name ) + strlen( newvalue ) + 16;
-    buff = static_cast<char *>(malloc( len ));
+    buff = static_cast<char *>(support.held->malloc( len ));
     overwrite = overwrite;
     sprintf( buff, "%s=%s", name, newvalue );
     putenv( buff );
-    free( buff );
+    support.held->free( buff );
     return( 0 );
 }
 
@@ -1272,17 +1259,17 @@ void unsetenv( const char *name )
 
 #elif defined(_MSC_VER)
 
-int unsetenv( const char *name )
+int unsetenv( SupportRun& support, const char *name )
 /******************************/
 {
     char    *buff;
     size_t  len;
 
     len = strlen( name ) + 16;
-    buff = static_cast<char *>(malloc( len ));
+    buff = static_cast<char *>(support.held->malloc( len ));
     sprintf( buff, "%s=", name );
     putenv( buff );
-    free( buff );
+    support.held->free( buff );
     return( 0 );
 }
 
@@ -1508,7 +1495,7 @@ static DIRXX *__opendir( const char *dirname, DIRXX *dirp )
     return( dirp );
 }
 
-DIRXX *OPENDIRXX( const char *dirname )
+DIRXX *OPENDIRXX( SupportRun& support, const char *dirname )
 /*************************************/
 {
     DIRXX       tmp;
@@ -1541,7 +1528,7 @@ DIRXX *OPENDIRXX( const char *dirname )
         }
         dirname = pathname;
     }
-    dirp = static_cast<DIR *>(malloc( sizeof( *dirp ) ));
+    dirp = static_cast<DIR *>(support.held->malloc( sizeof( *dirp ) ));
     if( dirp == NULL ) {
         FindClose( DTAXXX_HANDLE_OF( tmp.d_dta ) );
         errno = ENOMEM;
@@ -1572,7 +1559,7 @@ struct DIRENTXX *READDIRXX( DIRXX *dirp )
     return( dirp );
 }
 
-int CLOSEDIRXX( DIRXX *dirp )
+int CLOSEDIRXX( SupportRun& support, DIRXX *dirp )
 /***************************/
 {
     if( dirp == NULL
@@ -1585,8 +1572,8 @@ int CLOSEDIRXX( DIRXX *dirp )
     }
     dirp->d_first = _DIR_CLOSED;
     if( dirp->d_openpath != NULL )
-        free( dirp->d_openpath );
-    free( dirp );
+        support.held->free( dirp->d_openpath );
+    support.held->free( dirp );
     return( 0 );
 }
 
@@ -1607,86 +1594,86 @@ int CLOSEDIRXX( DIRXX *dirp )
     #define NO_ARG_MSG      "%s: option requires an argument -- %c\n"
     #define BAD_OPT_MSG     "%s: illegal option -- %c\n"
 
-int getopt( int argc, char * const argv[], const char *optstring )
+int getopt( SupportRun& support, int argc, char * const argv[], const char *optstring )
 /****************************************************************/
 {
     char        *ptr;
     char        *curr_arg;
 
     argc = argc;
-    clibext_state().optarg = NULL;
-    curr_arg = argv[clibext_state().optind];
+    support.clibext.optarg = NULL;
+    curr_arg = argv[support.clibext.optind];
     if( curr_arg == NULL ) {
         return( -1 );
     }
     for( ;; ) {
-        clibext_state().optopt = curr_arg[clibext_file_state().opt_offset];
-        if( isspace( clibext_state().optopt ) ) {
-            clibext_file_state().opt_offset++;
+        support.clibext.optopt = curr_arg[support.clibext_file.opt_offset];
+        if( isspace( support.clibext.optopt ) ) {
+            support.clibext_file.opt_offset++;
             continue;
         }
         break;
     }
-    if( clibext_file_state().opt_offset > 1
-      || clibext_state().optopt == '-'
-      || clibext_state().optopt == clibext_file_state().__altoptchar ) {
-        if( clibext_file_state().opt_offset > 1 ) {
-            clibext_state().optopt = curr_arg[clibext_file_state().opt_offset];
-            if( clibext_state().optopt == '-'
-              || clibext_state().optopt == clibext_file_state().__altoptchar ) {
-                clibext_file_state().__optchar = (char)clibext_state().optopt;
-                clibext_file_state().opt_offset++;
-                clibext_state().optopt = curr_arg[clibext_file_state().opt_offset];
+    if( support.clibext_file.opt_offset > 1
+      || support.clibext.optopt == '-'
+      || support.clibext.optopt == support.clibext_file.__altoptchar ) {
+        if( support.clibext_file.opt_offset > 1 ) {
+            support.clibext.optopt = curr_arg[support.clibext_file.opt_offset];
+            if( support.clibext.optopt == '-'
+              || support.clibext.optopt == support.clibext_file.__altoptchar ) {
+                support.clibext_file.__optchar = (char)support.clibext.optopt;
+                support.clibext_file.opt_offset++;
+                support.clibext.optopt = curr_arg[support.clibext_file.opt_offset];
             }
         } else {
-            clibext_file_state().__optchar = (char)clibext_state().optopt;
-            clibext_file_state().opt_offset++;
-            clibext_state().optopt = curr_arg[clibext_file_state().opt_offset];
+            support.clibext_file.__optchar = (char)support.clibext.optopt;
+            support.clibext_file.opt_offset++;
+            support.clibext.optopt = curr_arg[support.clibext_file.opt_offset];
         }
-        if( clibext_state().optopt == '\0' ) {  /* option char by itself should be */
+        if( support.clibext.optopt == '\0' ) {  /* option char by itself should be */
             return( -1 );       /* left alone */
         }
-        if( clibext_state().optopt == '-'
-          && curr_arg[clibext_file_state().opt_offset + 1] == '\0' ) {
-            clibext_file_state().opt_offset = 0;
-            ++clibext_state().optind;
+        if( support.clibext.optopt == '-'
+          && curr_arg[support.clibext_file.opt_offset + 1] == '\0' ) {
+            support.clibext_file.opt_offset = 0;
+            ++support.clibext.optind;
             return( -1 );   /* "--" POSIX end of options delimiter */
         }
-        ptr = const_cast<char *>(strchr( optstring, clibext_state().optopt ));
+        ptr = const_cast<char *>(strchr( optstring, support.clibext.optopt ));
         if( ptr == NULL ) {
-            if( clibext_state().opterr
+            if( support.clibext.opterr
               && *optstring != ':' ) {
-                fprintf( stderr, BAD_OPT_MSG, argv[0], clibext_state().optopt );
+                fprintf( stderr, BAD_OPT_MSG, argv[0], support.clibext.optopt );
             }
             return( '?' );  /* unrecognized option */
         }
         if( *(ptr + 1) == ':' ) {   /* check if option requires argument */
-            if( curr_arg[clibext_file_state().opt_offset + 1] == '\0' ) {
-                if( argv[clibext_state().optind + 1] == NULL ) {
+            if( curr_arg[support.clibext_file.opt_offset + 1] == '\0' ) {
+                if( argv[support.clibext.optind + 1] == NULL ) {
                     if( *optstring == ':' ) {
                         return( ':' );
                     } else {
-                        if( clibext_state().opterr ) {
-                            fprintf( stderr, NO_ARG_MSG, argv[0], clibext_state().optopt );
+                        if( support.clibext.opterr ) {
+                            fprintf( stderr, NO_ARG_MSG, argv[0], support.clibext.optopt );
                         }
                         return( '?' );
                     }
                 }
-                clibext_state().optarg = argv[clibext_state().optind + 1];
-                ++clibext_state().optind;
+                support.clibext.optarg = argv[support.clibext.optind + 1];
+                ++support.clibext.optind;
             } else {
-                clibext_state().optarg = &curr_arg[clibext_file_state().opt_offset + 1];
+                support.clibext.optarg = &curr_arg[support.clibext_file.opt_offset + 1];
             }
-            clibext_file_state().opt_offset = 0;
-            ++clibext_state().optind;
+            support.clibext_file.opt_offset = 0;
+            ++support.clibext.optind;
         } else {
-            clibext_file_state().opt_offset++;
-            if( curr_arg[clibext_file_state().opt_offset] == '\0' ) {    /* last char in argv element */
-                clibext_file_state().opt_offset = 0;
-                ++clibext_state().optind;
+            support.clibext_file.opt_offset++;
+            if( curr_arg[support.clibext_file.opt_offset] == '\0' ) {    /* last char in argv element */
+                support.clibext_file.opt_offset = 0;
+                ++support.clibext.optind;
             }
         }
-        return( clibext_state().optopt );   /* return recognized option char */
+        return( support.clibext.optopt );   /* return recognized option char */
     } else {
         return( -1 );       /* no more options */
     }
@@ -1807,7 +1794,7 @@ wres_lang_id _WResLanguage( void )
 
 #else
 
-char *get_dllname( char *buf, int len )
+char *get_dllname( SupportRun& support, char *buf, int len )
 {
   #ifdef _MSC_VER
     HMODULE hnd = NULL;
@@ -1815,7 +1802,7 @@ char *get_dllname( char *buf, int len )
 
     *buf = '\0';
   #ifdef _MSC_VER
-    GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCTSTR)&clibext_state().optind, &hnd);
+    GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCTSTR)&support.clibext.optind, &hnd);
     GetModuleFileName( hnd, buf, len );
   #endif
     return( buf );

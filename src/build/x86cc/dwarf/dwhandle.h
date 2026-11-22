@@ -94,17 +94,17 @@ typedef union handle_extra {
 /* maximum height of a node in the skip list */
 #define MAX_HANDLE_HEIGHT       12
 
-extern void             DW_InitHandles( dw_client );
-extern void             DW_FiniHandles( dw_client );
-extern dw_handle        DW_NewHandle( dw_client );
+extern void             DW_InitHandles( BackRun& back, dw_client );
+extern void             DW_FiniHandles( BackRun& back, dw_client );
+extern dw_handle        DW_NewHandle( BackRun& back, dw_client );
 extern handle_common    *DW_GetCommon( dw_client, dw_handle );
-extern handle_extra     *DW_CreateExtra( dw_client, dw_handle );
+extern handle_extra     *DW_CreateExtra( BackRun& back, dw_client, dw_handle );
 extern void             DW_DestroyExtra( dw_client, dw_handle );
 extern handle_extra     *DW_GetExtra( dw_client, dw_handle );
-extern dw_handle        DW_LabelNewHandle( dw_client );
-extern dw_handle        DW_GetHandle( dw_client cli );
-extern void             DW_SetHandleLocation( dw_client, dw_handle );
-extern void             DW_HandleReference( dw_client, dw_handle, dw_sectnum );
-extern void             DW_HandleWriteOffset( dw_client, dw_handle, dw_sectnum );
+extern dw_handle        DW_LabelNewHandle( BackRun& back, dw_client );
+extern dw_handle        DW_GetHandle( BackRun& back, dw_client cli );
+extern void             DW_SetHandleLocation( BackRun& back, dw_client, dw_handle );
+extern void             DW_HandleReference( BackRun& back, dw_client, dw_handle, dw_sectnum );
+extern void             DW_HandleWriteOffset( BackRun& back, dw_client, dw_handle, dw_sectnum );
 
 #endif

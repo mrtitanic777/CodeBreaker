@@ -182,8 +182,8 @@ struct opt_storage {
     bool      _question : 1;
 };
 extern void OPT_INIT( OPT_STORAGE *data );
-extern void OPT_FINI( OPT_STORAGE *data );
-extern bool OPT_PROCESS( OPT_STORAGE *data );
+extern void OPT_FINI( FrontRun& front, OPT_STORAGE *data );
+extern bool OPT_PROCESS( FrontRun& front, OPT_STORAGE *data );
 #define OPT_ENUM_win_zw 1
 #define OPT_ENUM_win_zws 2
 #define OPT_ENUM_win_zW 3

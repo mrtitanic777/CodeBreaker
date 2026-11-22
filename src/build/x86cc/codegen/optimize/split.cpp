@@ -45,6 +45,7 @@
 #include "revcond.h"
 #include "conflict.h"
 #include "_split.h"
+#include "backrun.hpp"
 
 
 const type_class_def    HalfClass[] = {
@@ -156,45 +157,45 @@ static  reg_set_index   ResPossible( instruction *ins )
     return( RegList[ins->u.gen_table->reg_set].result );
 }
 
-hw_reg_set      Op1Reg( instruction *ins )
+hw_reg_set      Op1Reg( BackRun& back, instruction *ins )
 /****************************************/
 {
     const hw_reg_set    *list;
 
-    list = RegSetList(Op1Possible( ins ));
+    list = RegSetList(back, Op1Possible( ins ));
     return( *list );
 }
 
-hw_reg_set      ResultReg( instruction *ins )
+hw_reg_set      ResultReg( BackRun& back, instruction *ins )
 /*******************************************/
 {
     const hw_reg_set    *list;
 
-    list = RegSetList(ResultPossible( ins ));
+    list = RegSetList(back, ResultPossible( ins ));
     return( *list );
 }
 
-hw_reg_set      ZapReg( instruction *ins )
+hw_reg_set      ZapReg( BackRun& back, instruction *ins )
 /****************************************/
 {
     const hw_reg_set    *list;
 
-    list = RegSetList(RegList[ins->u.gen_table->reg_set].zap);
+    list = RegSetList(back, RegList[ins->u.gen_table->reg_set].zap);
     return( *list );
 }
 
-instruction *MoveConst( uint_32 value, name *result, type_class_def type_class )
+instruction *MoveConst( BackRun& back, uint_32 value, name *result, type_class_def type_class )
 /******************************************************************************/
 {
-    return( MakeMove( AllocConst( CFCnvU32F( &cfloat_state().cgh, value ) ), result, type_class ) );
+    return( MakeMove( back, AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, value ) ), result, type_class ) );
 }
 
 
-instruction *Reduce( instruction *ins )
+instruction *Reduce( BackRun& back, instruction *ins )
 /*************************************/
 {
     ins->head.state = INS_NEEDS_WORK;
-    return( ReduceTab[G( ins ) - FIRST_REDUCT]( ins ) );
+    return( ReduceTab[G( ins ) - FIRST_REDUCT]( back, ins ) );
 }
 
 
@@ -216,16 +217,16 @@ void    ChangeType( instruction *ins, type_class_def type_class )
 }
 
 
-static  void    ForceToMemory( name *name )
+static  void    ForceToMemory( BackRun& back, name *name )
 /*****************************************/
 {
     while( name->v.conflict != NULL ) {
-        InMemory( name->v.conflict );
+        InMemory( back, name->v.conflict );
     }
 }
 
 
-instruction     *rMOVOP1TEMP( instruction *ins )
+instruction     *rMOVOP1TEMP( BackRun& back, instruction *ins )
 /**********************************************/
 {
     instruction         *new_ins;
@@ -233,31 +234,31 @@ instruction     *rMOVOP1TEMP( instruction *ins )
     name                *name;
 
     type_class = _OpClass( ins );
-    name = AllocTemp( type_class );
-    new_ins = MakeMove( ins->operands[0], name, type_class );
+    name = AllocTemp( back, type_class );
+    new_ins = MakeMove( back, ins->operands[0], name, type_class );
     ins->operands[0] = name;
-    MoveSegOp( ins, new_ins, 0 );
-    PrefixIns( ins, new_ins );
+    MoveSegOp( back, ins, new_ins, 0 );
+    PrefixIns( back, ins, new_ins );
     return( new_ins );
 }
 
 
-instruction      *rMOVOP2TEMP( instruction *ins )
+instruction      *rMOVOP2TEMP( BackRun& back, instruction *ins )
 /***********************************************/
 {
     instruction         *new_ins;
     name                *name1;
 
-    name1 = AllocTemp( ins->type_class );
-    new_ins = MakeMove( ins->operands[1], name1, ins->type_class );
+    name1 = AllocTemp( back, ins->type_class );
+    new_ins = MakeMove( back, ins->operands[1], name1, ins->type_class );
     ins->operands[1] = name1;
-    MoveSegOp( ins, new_ins, 0 );
-    PrefixIns( ins, new_ins );
+    MoveSegOp( back, ins, new_ins, 0 );
+    PrefixIns( back, ins, new_ins );
     return( new_ins );
 }
 
 
-instruction      *rOP1REG( instruction *ins )
+instruction      *rOP1REG( BackRun& back, instruction *ins )
 /*******************************************/
 {
     instruction         *new_ins;
@@ -265,18 +266,18 @@ instruction      *rOP1REG( instruction *ins )
     type_class_def      type_class;
 
     type_class = _OpClass( ins );
-    name1 = AllocTemp( type_class );
-    new_ins = MakeMove( ins->operands[0], name1, type_class );
+    name1 = AllocTemp( back, type_class );
+    new_ins = MakeMove( back, ins->operands[0], name1, type_class );
     ins->operands[0] = name1;
-    MoveSegOp( ins, new_ins, 0 );
-    PrefixIns( ins, new_ins );
-    MarkPossible( ins, name1, Op1Possible( ins ) );
+    MoveSegOp( back, ins, new_ins, 0 );
+    PrefixIns( back, ins, new_ins );
+    MarkPossible( back, ins, name1, Op1Possible( ins ) );
     ins->u.gen_table = NULL;
-    GiveRegister( NameConflict( ins, name1 ), true );
+    GiveRegister( back, NameConflict( back, ins, name1 ), true );
     return( new_ins );
 }
 
-instruction      *rOP2REG( instruction *ins )
+instruction      *rOP2REG( BackRun& back, instruction *ins )
 /*******************************************/
 {
     instruction         *new_ins;
@@ -284,73 +285,73 @@ instruction      *rOP2REG( instruction *ins )
     type_class_def      type_class;
 
     type_class = _OpClass( ins );
-    name1 = AllocTemp( type_class );
-    new_ins = MakeMove( ins->operands[1], name1, type_class );
+    name1 = AllocTemp( back, type_class );
+    new_ins = MakeMove( back, ins->operands[1], name1, type_class );
     ins->operands[1] = name1;
-    MoveSegOp( ins, new_ins, 0 );
-    PrefixIns( ins, new_ins );
-    MarkPossible( ins, name1, Op1Possible( ins ) );
+    MoveSegOp( back, ins, new_ins, 0 );
+    PrefixIns( back, ins, new_ins );
+    MarkPossible( back, ins, name1, Op1Possible( ins ) );
     ins->u.gen_table = NULL;
-    GiveRegister( NameConflict( ins, name1 ), true );
+    GiveRegister( back, NameConflict( back, ins, name1 ), true );
     return( new_ins );
 }
 
 
 /* 370 */
-instruction      *rMOVRESREG( instruction *ins )
+instruction      *rMOVRESREG( BackRun& back, instruction *ins )
 /**********************************************/
 {
     instruction         *new_ins;
     name                *name1;
 
-    name1 = AllocTemp( ins->type_class );
-    new_ins = MakeMove( name1, ins->result, ins->type_class );
+    name1 = AllocTemp( back, ins->type_class );
+    new_ins = MakeMove( back, name1, ins->result, ins->type_class );
     ins->result = name1;
-    MoveSegRes( ins, new_ins );
-    SuffixIns( ins, new_ins );
-    MarkPossible( ins, name1, ResPossible( ins ) );
+    MoveSegRes( back, ins, new_ins );
+    SuffixIns( back, ins, new_ins );
+    MarkPossible( back, ins, name1, ResPossible( ins ) );
     ins->u.gen_table = NULL;
-    GiveRegister( NameConflict( ins, name1 ), true );
+    GiveRegister( back, NameConflict( back, ins, name1 ), true );
     return( ins );
 }
 
-instruction      *rMOVRESTEMP( instruction *ins )
+instruction      *rMOVRESTEMP( BackRun& back, instruction *ins )
 /***********************************************/
 {
     instruction         *new_ins;
     name                *name1;
 
-    name1 = AllocTemp( ins->type_class );
-    new_ins = MakeMove( name1, ins->result, ins->type_class );
+    name1 = AllocTemp( back, ins->type_class );
+    new_ins = MakeMove( back, name1, ins->result, ins->type_class );
     ins->result = name1;
-    MoveSegRes( ins, new_ins );
-    SuffixIns( ins, new_ins );
-    MarkPossible( ins, name1, ResPossible( ins ) );
+    MoveSegRes( back, ins, new_ins );
+    SuffixIns( back, ins, new_ins );
+    MarkPossible( back, ins, name1, ResPossible( ins ) );
     ins->u.gen_table = NULL;
     return( ins );
 }
 
 
-instruction      *rRESREG( instruction *ins )
+instruction      *rRESREG( BackRun& back, instruction *ins )
 /*******************************************/
 {
     instruction         *new_ins;
     name                *name1;
 
-    name1 = AllocTemp( ins->type_class );
-    new_ins = MakeMove( name1, ins->result, ins->type_class );
+    name1 = AllocTemp( back, ins->type_class );
+    new_ins = MakeMove( back, name1, ins->result, ins->type_class );
     ins->result = name1;
-    MoveSegRes( ins, new_ins );
-    SuffixIns( ins, new_ins );
-    MarkPossible( ins, name1, ResultPossible( ins ) );
+    MoveSegRes( back, ins, new_ins );
+    SuffixIns( back, ins, new_ins );
+    MarkPossible( back, ins, name1, ResultPossible( ins ) );
     ins->u.gen_table = NULL;
-    GiveRegister( NameConflict( ins, name1 ), true );
+    GiveRegister( back, NameConflict( back, ins, name1 ), true );
     new_ins = ins;
     return( new_ins );
 }
 
 
-instruction      *rOP1RESREG( instruction *ins )
+instruction      *rOP1RESREG( BackRun& back, instruction *ins )
 /**********************************************/
 {
     instruction         *new_ins;
@@ -358,16 +359,16 @@ instruction      *rOP1RESREG( instruction *ins )
     name                *name1;
     name                *name2;
 
-    name1 = AllocRegName( Op1Reg( ins ) );
-    new_ins = MakeMove( ins->operands[0], name1, _OpClass( ins ) );
+    name1 = AllocRegName( back, Op1Reg( back, ins ) );
+    new_ins = MakeMove( back, ins->operands[0], name1, _OpClass( ins ) );
     ins->operands[0] = name1;
-    MoveSegOp( ins, new_ins, 0 );
-    PrefixIns( ins, new_ins );
-    name2 = AllocRegName( ResultReg( ins ) );
-    ins2 = MakeMove( name2, ins->result, ins->type_class );
+    MoveSegOp( back, ins, new_ins, 0 );
+    PrefixIns( back, ins, new_ins );
+    name2 = AllocRegName( back, ResultReg( back, ins ) );
+    ins2 = MakeMove( back, name2, ins->result, ins->type_class );
     ins->result = name2;
-    MoveSegRes( ins, ins2 );
-    SuffixIns( ins, ins2 );
+    MoveSegRes( back, ins, ins2 );
+    SuffixIns( back, ins, ins2 );
     return( new_ins );
 }
 
@@ -393,7 +394,7 @@ static  bool    CanUseOp1( instruction *ins, name *op1 )
 }
 
 /* 370 */
-instruction      *rUSEREGISTER( instruction *ins )
+instruction      *rUSEREGISTER( BackRun& back, instruction *ins )
 /************************************************/
 {
     instruction         *new_ins;
@@ -402,43 +403,43 @@ instruction      *rUSEREGISTER( instruction *ins )
 
     name1 = ins->operands[0];
     if( CanUseOp1( ins, name1 ) ) {
-        new_ins = MakeMove( name1, ins->result, ins->type_class );
+        new_ins = MakeMove( back, name1, ins->result, ins->type_class );
         ins->result = name1;
-        MoveSegRes( ins, new_ins );
-        SuffixIns( ins, new_ins );
+        MoveSegRes( back, ins, new_ins );
+        SuffixIns( back, ins, new_ins );
         new_ins = ins;
     } else {
-        name1 = AllocTemp( ins->type_class );
-        new_ins = MakeMove( ins->operands[0], name1, ins->type_class );
+        name1 = AllocTemp( back, ins->type_class );
+        new_ins = MakeMove( back, ins->operands[0], name1, ins->type_class );
         CheckCC( ins, new_ins );
         ins->operands[0] = name1;
-        MoveSegOp( ins, new_ins, 0 );
-        PrefixIns( ins, new_ins );
-        ins2 = MakeMove( name1, ins->result, ins->type_class );
+        MoveSegOp( back, ins, new_ins, 0 );
+        PrefixIns( back, ins, new_ins );
+        ins2 = MakeMove( back, name1, ins->result, ins->type_class );
         ins->result = name1;
-        MoveSegRes( ins, ins2 );
-        SuffixIns( ins, ins2 );
-        MarkPossible( ins, name1, ResultPossible( ins ) );
+        MoveSegRes( back, ins, ins2 );
+        SuffixIns( back, ins, ins2 );
+        MarkPossible( back, ins, name1, ResultPossible( ins ) );
         ins->u.gen_table = NULL;
-        GiveRegister( NameConflict( ins, name1 ), true );
+        GiveRegister( back, NameConflict( back, ins, name1 ), true );
     }
     return( new_ins );
 }
 
 
-instruction      *rCHANGESHIFT( instruction *ins )
+instruction      *rCHANGESHIFT( BackRun& back, instruction *ins )
 /************************************************/
 {
     int_32      shift_count;
 
     shift_count = ins->operands[1]->c.lo.u.int_value;
     assert( shift_count >= 0 );
-    ins->operands[1] = AllocS32Const( shift_count & ( ( WORD_SIZE * 8 ) - 1 ) );
+    ins->operands[1] = AllocS32Const( back, shift_count & ( ( WORD_SIZE * 8 ) - 1 ) );
     return( ins );
 }
 
 
-instruction      *rFIXSHIFT( instruction *ins )
+instruction      *rFIXSHIFT( BackRun& back, instruction *ins )
 /*********************************************/
 {
     instruction     *new_ins;
@@ -458,18 +459,18 @@ instruction      *rFIXSHIFT( instruction *ins )
 #endif
     if( ins->head.opcode == OP_RSHIFT
       && Signed[ins->type_class] == ins->type_class ) {
-        ins->operands[1] = AllocS32Const( REG_SIZE * 8 - 1 );
+        ins->operands[1] = AllocS32Const( back, REG_SIZE * 8 - 1 );
         return( ins );
     } else {
-        new_ins = MoveConst( 0, ins->result, ins->type_class );
+        new_ins = MoveConst( back, 0, ins->result, ins->type_class );
         DupSeg( ins, new_ins );
-        ReplIns( ins, new_ins );
+        ReplIns( back, ins, new_ins );
         return( new_ins );
     }
 }
 
 
-instruction      *rCLRHI_BW( instruction *ins )
+instruction      *rCLRHI_BW( BackRun& back, instruction *ins )
 /*********************************************/
 {
     instruction         *new_ins;
@@ -478,13 +479,13 @@ instruction      *rCLRHI_BW( instruction *ins )
     type_class_def      half_type_class;
 
     half_type_class = HalfClass[ins->type_class];
-    name1 = AllocTemp( ins->type_class );
-    new_ins = MakeMove( ins->operands[0], LowPart( name1, half_type_class ), half_type_class );
+    name1 = AllocTemp( back, ins->type_class );
+    new_ins = MakeMove( back, ins->operands[0], LowPart( back, name1, half_type_class ), half_type_class );
     ins->operands[0] = name1;
-    MoveSegOp( ins, new_ins, 0 );
-    PrefixIns( ins, new_ins );
-    ins2 = MoveConst( 0, HighPart( name1, half_type_class ), half_type_class );
-    PrefixIns( ins, ins2 );
+    MoveSegOp( back, ins, new_ins, 0 );
+    PrefixIns( back, ins, new_ins );
+    ins2 = MoveConst( back, 0, HighPart( back, name1, half_type_class ), half_type_class );
+    PrefixIns( back, ins, ins2 );
     ins->head.opcode = OP_MOV;
     ins->table = NULL;
     ins->u.gen_table = NULL;
@@ -492,7 +493,7 @@ instruction      *rCLRHI_BW( instruction *ins )
 }
 
 
-instruction      *rCLRHI_R( instruction *ins )
+instruction      *rCLRHI_R( BackRun& back, instruction *ins )
 /********************************************/
 {
     instruction         *new_ins;
@@ -508,11 +509,11 @@ instruction      *rCLRHI_R( instruction *ins )
     op = ins->operands[0];
     type_class = ins->base_type_class;
     res = ins->result;
-    high = HighReg( res->r.reg );
+    high = HighReg( back, res->r.reg );
     if( op->n.class_ == N_INDEXED
       && ( ( op->i.index->n.class_ == N_REGISTER
       && HW_Ovlap( op->i.index->r.reg, res->r.reg ) ) /* (1) */
-      || ( CheckIndecies( ins, res->r.reg, HW_EMPTY, NULL ) == MB_MAYBE ) ) ) { /* 2 */
+      || ( CheckIndecies( back, ins, res->r.reg, HW_EMPTY, NULL ) == MB_MAYBE ) ) ) { /* 2 */
         /* (1) would have gen'd movzd  eax,[eax]
          * (2) avoid incorrect reduction of "cnv [foo] => BX" to
          *      xor bx,bx / mov bx, [foo] / mov bl, [bx]
@@ -526,18 +527,18 @@ instruction      *rCLRHI_R( instruction *ins )
             /* look out for movzd ax,ah */
             new_ins = NULL;
         } else {
-            new_ins = MoveConst( 0, HighPart( res, type_class ), type_class );
+            new_ins = MoveConst( back, 0, HighPart( back, res, type_class ), type_class );
         }
     } else if( op->n.class_ == N_REGISTER
       && HW_Ovlap( op->r.reg, res->r.reg ) ) {
         /* would have gen'd movzd eax,ah */
         new_ins = NULL;
     } else {
-        new_ins = MoveConst( 0, res, ins->type_class );
+        new_ins = MoveConst( back, 0, res, ins->type_class );
     }
-    ins->result = LowPart( res, type_class );
+    ins->result = LowPart( back, res, type_class );
     if( new_ins != NULL ) {
-        PrefixIns( ins, new_ins );
+        PrefixIns( back, ins, new_ins );
     } else {
         value = 0;
         switch( type_class ) {
@@ -552,12 +553,12 @@ instruction      *rCLRHI_R( instruction *ins )
         }
         high = res->r.reg;
         HW_TurnOff( high, ins->result->r.reg );
-        new_ins = MakeNop();
-        new_ins->zap = (register_name *)AllocRegName( high );
-        SuffixIns( ins, new_ins ); // don't cause high part to be live on entry
+        new_ins = MakeNop(back);
+        new_ins->zap = (register_name *)AllocRegName( back, high );
+        SuffixIns( back, ins, new_ins ); // don't cause high part to be live on entry
 
-        and_ins = MakeBinary( OP_AND, res, AllocS32Const( value ), res, ins->type_class );
-        SuffixIns( new_ins, and_ins );
+        and_ins = MakeBinary( back, OP_AND, res, AllocS32Const( back, value ), res, ins->type_class );
+        SuffixIns( back, new_ins, and_ins );
         new_ins = ins;
     }
     ins->type_class = type_class;
@@ -568,110 +569,110 @@ instruction      *rCLRHI_R( instruction *ins )
 }
 
 
-instruction      *rCONVERT_LOW( instruction *ins )
+instruction      *rCONVERT_LOW( BackRun& back, instruction *ins )
 /************************************************/
 /* change convert 4 byte==>1 byte to 2 byte ==> 1 byte */
 {
-    ins->operands[0] = LowPart( ins->operands[0], HalfClass[ins->operands[0]->n.type_class] );
+    ins->operands[0] = LowPart( back, ins->operands[0], HalfClass[ins->operands[0]->n.type_class] );
     ins->base_type_class = HalfClass[ins->base_type_class];
     ins->table = NULL;
     return( ins );
 }
 
 
-instruction      *rCYPHIGH( instruction *ins )
+instruction      *rCYPHIGH( BackRun& back, instruction *ins )
 /********************************************/
 {
     HalfType( ins );
-    ins->operands[0] = HighPart( ins->operands[0], ins->type_class );
-    ins->operands[1] = HighPart( ins->operands[1], ins->type_class );
+    ins->operands[0] = HighPart( back, ins->operands[0], ins->type_class );
+    ins->operands[1] = HighPart( back, ins->operands[1], ins->type_class );
     if( ins->result != NULL
       && ins->head.opcode < FIRST_CONDITION ) {
-        ins->result = HighPart( ins->result, ins->type_class );
+        ins->result = HighPart( back, ins->result, ins->type_class );
     }
     return( ins );
 }
 
 
-instruction      *rCYPLOW( instruction *ins )
+instruction      *rCYPLOW( BackRun& back, instruction *ins )
 /*******************************************/
 {
     HalfType( ins );
-    ins->operands[0] = LowPart( ins->operands[0], ins->type_class );
-    ins->operands[1] = LowPart( ins->operands[1], ins->type_class );
+    ins->operands[0] = LowPart( back, ins->operands[0], ins->type_class );
+    ins->operands[1] = LowPart( back, ins->operands[1], ins->type_class );
     if( ins->result != NULL
       && ins->head.opcode < FIRST_CONDITION ) {
-        ins->result = LowPart( ins->result, ins->type_class );
+        ins->result = LowPart( back, ins->result, ins->type_class );
     }
     return( ins );
 }
 
 
-instruction      *rDOUBLEHALF( instruction *ins )
+instruction      *rDOUBLEHALF( BackRun& back, instruction *ins )
 /***********************************************/
 {
     instruction         *new_ins;
     name                *name1;
 
     name1 = ins->operands[1];
-    name1 = AllocIntConst( name1->c.lo.u.int_value >> 1 );
+    name1 = AllocIntConst( back, name1->c.lo.u.int_value >> 1 );
     ins->operands[1] = name1;
-    new_ins = MakeBinary( ins->head.opcode, ins->operands[0], name1, ins->result, ins->type_class );
+    new_ins = MakeBinary( back, ins->head.opcode, ins->operands[0], name1, ins->result, ins->type_class );
     new_ins->table = ins->table;
     DupSeg( ins, new_ins );
-    PrefixIns( ins, new_ins );
+    PrefixIns( back, ins, new_ins );
     return( new_ins );
 }
 
 
-instruction      *rOP1MEM( instruction *ins )
+instruction      *rOP1MEM( BackRun& back, instruction *ins )
 /*******************************************/
 {
-    ForceToMemory( ins->operands[0] );
+    ForceToMemory( back, ins->operands[0] );
     return( ins );
 }
 
 
-instruction      *rOP2MEM( instruction *ins )
+instruction      *rOP2MEM( BackRun& back, instruction *ins )
 /*******************************************/
 {
-    ForceToMemory( ins->operands[1] );
+    ForceToMemory( back, ins->operands[1] );
     return( ins );
 }
 
 
-instruction      *rFORCERESMEM( instruction *ins )
+instruction      *rFORCERESMEM( BackRun& back, instruction *ins )
 /************************************************/
 {
-    ForceToMemory( ins->result );
+    ForceToMemory( back, ins->result );
     return( ins );
 }
 
 
-instruction      *rMAKEMOVE( instruction *ins )
+instruction      *rMAKEMOVE( BackRun& back, instruction *ins )
 /*********************************************/
 {
     instruction         *new_ins;
 
-    new_ins = MakeMove( ins->operands[0], ins->result, ins->type_class );
+    new_ins = MakeMove( back, ins->operands[0], ins->result, ins->type_class );
     DupSeg( ins, new_ins );
-    ReplIns( ins, new_ins );
+    ReplIns( back, ins, new_ins );
     return( new_ins );
 }
 
 
-instruction      *rMAKEXORRR( instruction *ins )
+instruction      *rMAKEXORRR( BackRun& back, instruction *ins )
 /**********************************************/
 {
     instruction         *new_ins;
 
-    new_ins = MakeBinary( OP_XOR, ins->result, ins->result, ins->result, ins->type_class );
-    ReplIns( ins, new_ins );
+    new_ins = MakeBinary( back, OP_XOR, ins->result, ins->result, ins->result, ins->type_class );
+    ReplIns( back, ins, new_ins );
     return( new_ins );
 }
 
 
-instruction      *rADDRR( instruction *ins )
+instruction      *rADDRR( BackRun& back, instruction *ins )
 /******************************************/
 {
     ins->head.opcode = OP_ADD;
@@ -681,49 +682,49 @@ instruction      *rADDRR( instruction *ins )
 }
 
 
-instruction      *rMOVOP2( instruction *ins )
+instruction      *rMOVOP2( BackRun& back, instruction *ins )
 /*******************************************/
 {
     instruction         *new_ins;
 
-    new_ins = MakeMove( ins->operands[1], ins->result, ins->type_class );
-    MoveSegOp( ins, new_ins, 0 );
-    DupSegRes( ins, new_ins );
-    ReplIns( ins, new_ins );
+    new_ins = MakeMove( back, ins->operands[1], ins->result, ins->type_class );
+    MoveSegOp( back, ins, new_ins, 0 );
+    DupSegRes( back, ins, new_ins );
+    ReplIns( back, ins, new_ins );
     return( new_ins );
 }
 
 
-instruction      *rMOVOP1RES( instruction *ins )
+instruction      *rMOVOP1RES( BackRun& back, instruction *ins )
 /**********************************************/
 {
     instruction         *new_ins;
 
-    new_ins = MakeMove( ins->operands[0], ins->result, ins->type_class );
+    new_ins = MakeMove( back, ins->operands[0], ins->result, ins->type_class );
     ins->operands[0] = ins->result;
-    MoveSegOp( ins, new_ins, 0 );
-    DupSegRes( ins, new_ins );
-    PrefixIns( ins, new_ins );
+    MoveSegOp( back, ins, new_ins, 0 );
+    DupSegRes( back, ins, new_ins );
+    PrefixIns( back, ins, new_ins );
     return( new_ins );
 }
 
 
 /* 386 */
-instruction      *rMOVOP2RES( instruction *ins )
+instruction      *rMOVOP2RES( BackRun& back, instruction *ins )
 /**********************************************/
 {
     instruction         *new_ins;
 
-    new_ins = MakeMove( ins->operands[1], ins->result, ins->type_class );
+    new_ins = MakeMove( back, ins->operands[1], ins->result, ins->type_class );
     ins->operands[1] = ins->result;
-    MoveSegOp( ins, new_ins, 1 );
-    DupSegRes( ins, new_ins );
-    PrefixIns( ins, new_ins );
+    MoveSegOp( back, ins, new_ins, 1 );
+    DupSegRes( back, ins, new_ins );
+    PrefixIns( back, ins, new_ins );
     return( new_ins );
 }
 
 /* 370 */
-instruction      *rSWAPOPS( instruction *ins )
+instruction      *rSWAPOPS( BackRun& back, instruction *ins )
 /********************************************/
 {
     name                *name1;
@@ -736,131 +737,131 @@ instruction      *rSWAPOPS( instruction *ins )
 
 
 /* 370 */
-instruction      *rSWAPCMP( instruction *ins )
+instruction      *rSWAPCMP( BackRun& back, instruction *ins )
 /********************************************/
 {
     RevCond( ins );
-    return( rSWAPOPS( ins ) );
+    return( rSWAPOPS( back, ins ) );
 }
 
 
-instruction      *rMOVEINDEX( instruction *ins )
+instruction      *rMOVEINDEX( BackRun& back, instruction *ins )
 /**********************************************/
 {
     instruction         *new_ins;
 
-    new_ins = MakeMove( ins->operands[0]->i.index, ins->result, ins->type_class );
-    ReplIns( ins, new_ins );
+    new_ins = MakeMove( back, ins->operands[0]->i.index, ins->result, ins->type_class );
+    ReplIns( back, ins, new_ins );
     return( new_ins );
 }
 
 /* 370 */
-instruction      *rLOADOP2( instruction *ins )
+instruction      *rLOADOP2( BackRun& back, instruction *ins )
 /********************************************/
 {
     instruction         *new_ins;
     name                *name1;
 
-    name1 = AllocTemp( ins->type_class );
-    new_ins = MakeMove( ins->operands[1], name1, ins->type_class );
+    name1 = AllocTemp( back, ins->type_class );
+    new_ins = MakeMove( back, ins->operands[1], name1, ins->type_class );
     CheckCC( ins, new_ins );
     ins->operands[1] = name1;
-    MoveSegOp( ins, new_ins, 0 );
-    PrefixIns( ins, new_ins );
-    MarkPossible( ins, name1, Op2Possible( ins ) );
+    MoveSegOp( back, ins, new_ins, 0 );
+    PrefixIns( back, ins, new_ins );
+    MarkPossible( back, ins, name1, Op2Possible( ins ) );
     ins->u.gen_table = NULL;
-    GiveRegister( NameConflict( ins, name1 ), true );
+    GiveRegister( back, NameConflict( back, ins, name1 ), true );
     return( new_ins );
 }
 
 
-instruction      *rNEGADD( instruction *ins )
+instruction      *rNEGADD( BackRun& back, instruction *ins )
 /**************************************************/
 {
     instruction         *new_ins;
 
-    new_ins = MakeUnary( OP_NEGATE, ins->operands[1], AllocTemp( U4 ), U4 );
-    MoveSegOp( ins, new_ins, 0 );
+    new_ins = MakeUnary( back, OP_NEGATE, ins->operands[1], AllocTemp( back, U4 ), U4 );
+    MoveSegOp( back, ins, new_ins, 0 );
     ins->operands[1] = new_ins->result;
     ins->head.opcode = OP_ADD;
     ins->table = NULL;
-    PrefixIns( ins, new_ins );
+    PrefixIns( back, ins, new_ins );
     return( new_ins );
 }
 
 
-static  void    NegOp2( instruction *ins )
+static  void    NegOp2( BackRun& back, instruction *ins )
 /****************************************/
 {
-    ins->operands[1] = AllocConst( CFCnvI32F( &cfloat_state().cgh, -ins->operands[1]->c.lo.u.int_value ) );
+    ins->operands[1] = AllocConst( back, CFCnvI32F( back, &back.cfloat.cgh, -ins->operands[1]->c.lo.u.int_value ) );
 }
 
 
-instruction      *rMAKEADD( instruction *ins )
+instruction      *rMAKEADD( BackRun& back, instruction *ins )
 /********************************************/
 {
     ins->head.opcode = OP_ADD;
-    NegOp2( ins );
+    NegOp2( back, ins );
     ins->table = NULL;
     return( ins );
 }
 
 
-instruction      *rMAKENEG( instruction *ins )
+instruction      *rMAKENEG( BackRun& back, instruction *ins )
 /********************************************/
 {
     instruction         *new_ins;
 
-    new_ins = MakeUnary( OP_NEGATE, ins->operands[1], ins->result, ins->type_class );
+    new_ins = MakeUnary( back, OP_NEGATE, ins->operands[1], ins->result, ins->type_class );
     DupSeg( ins, new_ins );
-    ReplIns( ins, new_ins );
+    ReplIns( back, ins, new_ins );
     return( new_ins );
 }
 
 
-instruction      *rMAKESUB( instruction *ins )
+instruction      *rMAKESUB( BackRun& back, instruction *ins )
 /********************************************/
 {
     ins->head.opcode = OP_SUB;
-    NegOp2( ins );
+    NegOp2( back, ins );
     ins->table = NULL;
     return( ins );
 }
 
 
-instruction      *rCMPTRUE( instruction *ins )
+instruction      *rCMPTRUE( BackRun& back, instruction *ins )
 /********************************************/
 {
-    DoNothing( ins );
+    DoNothing( back, ins );
     _SetBlockIndex( ins, _TrueIndex( ins ), _TrueIndex( ins ) );
     return( ins );
 }
 
 
-instruction      *rCMPFALSE( instruction *ins )
+instruction      *rCMPFALSE( BackRun& back, instruction *ins )
 /*********************************************/
 {
-    DoNothing( ins );
+    DoNothing( back, ins );
     _SetBlockIndex( ins, _FalseIndex( ins ), _FalseIndex( ins ) );
     return( ins );
 }
 
 
-instruction      *rOP1RESTEMP( instruction *ins )
+instruction      *rOP1RESTEMP( BackRun& back, instruction *ins )
 /***********************************************/
 {
     instruction         *new_ins;
     instruction         *ins2;
     name                *name1;
 
-    name1 = AllocTemp( ins->type_class );
-    new_ins = MakeMove( ins->operands[0], name1, ins->type_class );
+    name1 = AllocTemp( back, ins->type_class );
+    new_ins = MakeMove( back, ins->operands[0], name1, ins->type_class );
     ins->operands[0] = name1;
-    MoveSegOp( ins, new_ins, 0 );
-    PrefixIns( ins, new_ins );
-    ins2 = MakeMove( name1, ins->result, ins->type_class );
+    MoveSegOp( back, ins, new_ins, 0 );
+    PrefixIns( back, ins, new_ins );
+    ins2 = MakeMove( back, name1, ins->result, ins->type_class );
     ins->result = name1;
-    MoveSegRes( ins, ins2 );
-    SuffixIns( ins, ins2 );
+    MoveSegRes( back, ins, ins2 );
+    SuffixIns( back, ins, ins2 );
     return( new_ins );
 }

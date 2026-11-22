@@ -44,9 +44,9 @@ typedef struct die_tree {
 
 extern void     DW_InitDIE( dw_client );
 extern void     DW_FiniDIE( dw_client );
-extern void     DW_StartDIE( dw_client, abbrev_code );
+extern void     DW_StartDIE( BackRun& back, dw_client, abbrev_code );
 extern void     DW_EndDIE( dw_client );
-extern void     DW_StartChildren( dw_client );
-extern void     DW_EndChildren( dw_client );
+extern void     DW_StartChildren( BackRun& back, dw_client );
+extern void     DW_EndChildren( BackRun& back, dw_client );
 
 #endif

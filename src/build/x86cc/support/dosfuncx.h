@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define DOS_GET_CHAR_ECHO_CHECK     0x01
 #define DOS_OUT_CHAR_CHECK          0x02
 #define DOS_GET_CHAR_AUX            0x03

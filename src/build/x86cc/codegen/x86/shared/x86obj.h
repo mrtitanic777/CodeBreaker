@@ -30,36 +30,37 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "fppatch.h"
 
 
-extern bool         UseImportForm( fe_attr attr );
-extern bool         AskSegIsPrivate( segment_id segid );
-extern bool         AskSegIsROM( segment_id segid );
-extern segment_id   AskCode16Seg( void );
-extern void         OutSelect( bool starts );
-extern void         SetUpObj( bool is_data );
-extern void         OutDLLExport( uint words, cg_sym_handle sym );
-extern void         OutFPPatch( fp_patches i );
-extern void         OutPatch( label_handle lbl, patch_attr attr );
-extern abs_patch    *NewAbsPatch( void );
-extern void         OutDataByte( byte value );
-extern void         OutDataShort( uint_16 value );
-extern void         OutDataLong( uint_32 value );
-extern void         OutAbsPatch( abs_patch *patch, patch_attr attr );
-extern void         OutReloc( segment_id segid, fix_class class_, bool rel );
-extern void         OutSpecialCommon( import_handle imphdl, fix_class class_, bool rel );
-extern void         OutImport( cg_sym_handle sym, fix_class class_, bool rel );
-extern void         OutRTImportRel( rt_class rtindex, fix_class class_, bool rel );
-extern void         OutRTImport( rt_class rtindex, fix_class class_ );
-extern void         OutBckExport( const char *name, bool is_export );
-extern void         OutBckImport( const char *name, back_handle bck, fix_class class_ );
-extern unsigned     SavePendingLine( unsigned new_line );
-extern void         OutDBytes( unsigned len, const byte *src );
-extern void         OutIBytes( byte pat, offset len );
-extern void         TellObjVirtFuncRef( void *cookie );
-extern bool         AskNameIsCode( pointer hdl, cg_class class_ );
-extern segment_id   DbgSegDef( const char *seg_name, const char *seg_class, int seg_modifier );
+extern bool         UseImportForm( BackRun& back, fe_attr attr );
+extern bool         AskSegIsPrivate( BackRun& back, segment_id segid );
+extern bool         AskSegIsROM( BackRun& back, segment_id segid );
+extern segment_id   AskCode16Seg( BackRun& back );
+extern void         OutSelect( BackRun& back, bool starts );
+extern void         SetUpObj( BackRun& back, bool is_data );
+extern void         OutDLLExport( BackRun& back, uint words, cg_sym_handle sym );
+extern void         OutFPPatch( BackRun& back, fp_patches i );
+extern void         OutPatch( BackRun& back, label_handle lbl, patch_attr attr );
+extern abs_patch    *NewAbsPatch( BackRun& back );
+extern void         OutDataByte( BackRun& back, byte value );
+extern void         OutDataShort( BackRun& back, uint_16 value );
+extern void         OutDataLong( BackRun& back, uint_32 value );
+extern void         OutAbsPatch( BackRun& back, abs_patch *patch, patch_attr attr );
+extern void         OutReloc( BackRun& back, segment_id segid, fix_class class_, bool rel );
+extern void         OutSpecialCommon( BackRun& back, import_handle imphdl, fix_class class_, bool rel );
+extern void         OutImport( BackRun& back, cg_sym_handle sym, fix_class class_, bool rel );
+extern void         OutRTImportRel( BackRun& back, rt_class rtindex, fix_class class_, bool rel );
+extern void         OutRTImport( BackRun& back, rt_class rtindex, fix_class class_ );
+extern void         OutBckExport( BackRun& back, const char *name, bool is_export );
+extern void         OutBckImport( BackRun& back, const char *name, back_handle bck, fix_class class_ );
+extern unsigned     SavePendingLine( BackRun& back, unsigned new_line );
+extern void         OutDBytes( BackRun& back, unsigned len, const byte *src );
+extern void         OutIBytes( BackRun& back, byte pat, offset len );
+extern void         TellObjVirtFuncRef( BackRun& back, void *cookie );
+extern bool         AskNameIsCode( BackRun& back, pointer hdl, cg_class class_ );
+extern segment_id   DbgSegDef( BackRun& back, const char *seg_name, const char *seg_class, int seg_modifier );
 
-extern bool         UseRepForm( unsigned size );
-extern void         TellObjNewLabel( cg_sym_handle lbl );
+extern bool         UseRepForm( BackRun& back, unsigned size );
+extern void         TellObjNewLabel( BackRun& back, cg_sym_handle lbl );

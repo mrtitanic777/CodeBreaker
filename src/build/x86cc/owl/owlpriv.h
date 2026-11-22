@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #include <assert.h>
 #include <string.h>
 #include <stdio.h>
@@ -113,14 +114,14 @@ struct owl_section_info {
     } x;
 };
 
-#define _ClientAlloc( a, b )            ((a)->info->client_funcs.alloc( b ))
-#define _ClientFree( a, b )             ((a)->info->client_funcs.free( b ))
-#define _ClientWrite( a, b, c )         ((a)->info->client_funcs.write( (a)->client_handle, b, c ))
-#define _ClientWriteFile( a, b, c, d )  ((a)->info->client_funcs.write( b, c, d ))
+#define _ClientAlloc( run, a, b )           ((a)->info->client_funcs.alloc( run, b ))
+#define _ClientFree( run, a, b )            ((a)->info->client_funcs.free( run, b ))
+#define _ClientWrite( run, a, b, c )        ((a)->info->client_funcs.write( run, (a)->client_handle, b, c ))
+#define _ClientWriteFile( run, a, b, c, d ) ((a)->info->client_funcs.write( run, b, c, d ))
 #define _ClientTell( a )                ((a)->info->client_funcs.tell( (a)->client_handle ))
 #define _ClientSeek( a, b, c )          ((a)->info->client_funcs.seek( (a)->client_handle, b, c ))
 #define _ClientLabelName( a, b )        ((a)->info->client_funcs.lbl_name( b ))
 #define _ClientLabelDone( a, b )        ((a)->info->client_funcs.lbl_done( b ))
 
 
-extern void OWLENTRY OWLSectionFree( owl_section_handle section );
+extern void OWLENTRY OWLSectionFree( BackRun& back, owl_section_handle section );

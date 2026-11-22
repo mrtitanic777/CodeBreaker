@@ -99,9 +99,9 @@ typedef struct asm_sym {
     asmfixup        *fixup;
 } asm_sym;
 
-extern asm_sym_handle   AsmLookup( const char *name );
+extern asm_sym_handle   AsmLookup( AsmRun& assembler, const char *name );
 extern asm_sym_handle   AsmGetSymbol( const char *name );
-extern void             FreeASym( asm_sym_handle sym );
+extern void             FreeASym( AsmRun& assembler, asm_sym_handle sym );
 
 #if defined( _STANDALONE_ )
 

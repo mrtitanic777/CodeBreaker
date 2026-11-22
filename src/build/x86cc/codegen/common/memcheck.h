@@ -29,10 +29,11 @@
 ****************************************************************************/
 
 
-extern bool     MemCritical( void );
-extern bool     MemCheck( size_t );
-extern bool     MemLow( void );
+#pragma once
+extern bool     MemCritical( BackRun& back );
+extern bool     MemCheck( BackRun& back, size_t );
+extern bool     MemLow( BackRun& back );
 
-#define _MemLow                 MemLow()
-#define _MemCritical            MemCritical()
-#define _MemCheck( size )       MemCheck( size )
+#define _MemLow                 MemLow(back)
+#define _MemCritical            MemCritical(back)
+#define _MemCheck( size )       MemCheck( back, size )

@@ -35,6 +35,7 @@
 #include "model.h"
 #include "encode.h"
 #include "x86nopli.h"
+#include "backrun.hpp"
 
 
 static const byte   NopList1[] = {
@@ -72,7 +73,7 @@ static const byte   InsSize[6][OC_DEST_FAR + 1] = {
 };
 
 
-obj_length  OptInsSize( oc_class class_, oc_dest_attr attr )
+obj_length  OptInsSize( BackRun& back, oc_class class_, oc_dest_attr attr )
 /**********************************************************
     return the object code size of a given call/branch with a
     given attribute (short/near/far)

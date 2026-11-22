@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef enum {
     #define pick(e,t) e,
     #include "typcldef.h"

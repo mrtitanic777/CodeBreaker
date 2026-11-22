@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef enum {
     NEEDS_NOTHING       = 0,
     NEEDS_ST0           = 0x01,
@@ -100,9 +101,8 @@ struct I87schedState {
     byte *SeqCurDepth;
     temp_entry *TempList;
 };
-inline I87schedState& i87sched_state() { return cbrun_part<I87schedState>(); }
 
 #endif
 
-#define RegSTLoc( seq, vir )    ( i87sched_state().STLocations + (seq) )->actual_locn[vir]
+#define RegSTLoc( seq, vir )    ( back.i87sched.STLocations + (seq) )->actual_locn[vir]
 #define InsSTLoc( ins, vir )    RegSTLoc( (ins)->sequence, vir )

@@ -39,9 +39,10 @@
 #include "rgtbl.h"
 #include "x86segs.h"
 #include "x86opseg.h"
+#include "backrun.hpp"
 
 
-static  void    CheckName( name **pop, name *gblreg )
+static  void    CheckName( BackRun& back, name **pop, name *gblreg )
 /****************************************************
     add gblreg to a memory reference. eg: x[EAX*2] -> x[gblreg+EAX*2]
 */
@@ -52,28 +53,28 @@ static  void    CheckName( name **pop, name *gblreg )
     hw_reg_set  tmp;
 
     op = *pop;
-    if( op->n.class_ == N_MEMORY && !SegIsCS( op ) ) {
-        *pop = SAllocIndex( gblreg, op, op->v.offset, op->n.type_class, op->n.size );
+    if( op->n.class_ == N_MEMORY && !SegIsCS( back, op ) ) {
+        *pop = SAllocIndex( back, gblreg, op, op->v.offset, op->n.type_class, op->n.size );
     } else if( op->n.class_ == N_INDEXED ) {
         if( op->i.base != NULL && op->i.base->n.class_ == N_MEMORY &&
-            !SegIsCS( op->i.base ) ) {
+            !SegIsCS( back, op->i.base ) ) {
             tmp =  gblreg->r.reg;
             HW_TurnOn( tmp, op->i.index->r.reg );
-            index = AllocRegName( tmp );
+            index = AllocRegName( back, tmp );
             tmp = High64Reg( index->r.reg );
             if( HW_Equal( tmp, gblreg->r.reg ) ) {
                 flags = X_HIGH_BASE;
             } else {
                 flags = X_LOW_BASE;
             }
-            *pop = ScaleIndex( index, op->i.base, op->i.constant, op->n.type_class,
+            *pop = ScaleIndex( back, index, op->i.base, op->i.constant, op->n.type_class,
                                 op->n.size, op->i.scale, op->i.index_flags | flags );
         }
     }
 }
 
 
-static  void    AddGlobalIndex( void )
+static  void    AddGlobalIndex( BackRun& back )
 /*************************************
     add EBX to every memory reference in the program
 */
@@ -83,21 +84,21 @@ static  void    AddGlobalIndex( void )
     opcnt       i;
     name        *gblreg;
 
-    gblreg = AllocRegName( HW_EBX );
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    gblreg = AllocRegName( back, HW_EBX );
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = ins->num_operands; i-- > 0; ) {
-                CheckName( &ins->operands[i], gblreg );
+                CheckName( back, &ins->operands[i], gblreg );
             }
             if( ins->result != NULL ) {
-                CheckName( &ins->result, gblreg );
+                CheckName( back, &ins->result, gblreg );
             }
         }
     }
 }
 
 
-void    InitZeroPage( void )
+void    InitZeroPage( BackRun& back )
 /***************************
     This is here to handle the "indexed" globals option.
     It should really be in its own module, but
@@ -105,14 +106,14 @@ void    InitZeroPage( void )
     right time, and wasn't used by the 386 compiler
 */
 {
-    x86opseg_state().ZPageType = ZP_USES_SS;
+    back.x86opseg.ZPageType = ZP_USES_SS;
     if( _IsTargetModel( CGSW_X86_INDEXED_GLOBALS ) ) {
-        AddGlobalIndex();
+        AddGlobalIndex(back);
     }
 }
 
 
-void    FiniZeroPage( void )
+void    FiniZeroPage( BackRun& back )
 /**************************/
 {
 }

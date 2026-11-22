@@ -50,38 +50,39 @@
 #include "dbsupp.h"
 #include "feprotos.h"
 #include "cgprotos.h"
+#include "backrun.hpp"
 
 
-static  dbg_loc         LocCreate( dbg_loc loc, unsigned typ )
+static  dbg_loc         LocCreate( BackRun& back, dbg_loc loc, unsigned typ )
 /************************************************************/
 {
     dbg_loc     new_loc;
 
-    new_loc = static_cast<dbg_loc>(CGAlloc( sizeof( location ) ));
+    new_loc = static_cast<dbg_loc>(CGAlloc( back, sizeof( location ) ));
     new_loc->next = loc;
     new_loc->class_ = typ;
     new_loc->use = 1;
     return( new_loc );
 }
 
-dbg_loc         LocReg( dbg_loc loc, name *reg )
+dbg_loc         LocReg( BackRun& back, dbg_loc loc, name *reg )
 /**********************************************/
 {
-    loc = LocCreate( loc, LOC_REG );
+    loc = LocCreate( back, loc, LOC_REG );
     loc->u.be_sym = reg;
     return( loc );
 }
 
-dbg_loc          LocParm( dbg_loc loc, name *tmp )
+dbg_loc          LocParm( BackRun& back, dbg_loc loc, name *tmp )
 /************************************************/
 {
     if( tmp->n.class_ == N_REGISTER ) {
-        loc = LocCreate( loc, LOC_REG );
+        loc = LocCreate( back, loc, LOC_REG );
         loc->u.be_sym = tmp;
     } else {
-        loc = LocCreate( loc, LOC_CONST_4 );
+        loc = LocCreate( back, loc, LOC_CONST_4 );
         loc->u.val = tmp->t.location;
-        loc->u.val += ParmsAtPrologue();
+        loc->u.val += ParmsAtPrologue(back);
     }
     return( loc );
 }
@@ -144,19 +145,19 @@ dbg_loc  _CGAPI DBLocInit( void )
 }
 
 
-dbg_loc  _CGAPI DBLocSym( dbg_loc loc, cg_sym_handle sym )
+dbg_loc  _CGAPI DBLocSym( BackRun& back, dbg_loc loc, cg_sym_handle sym )
 /********************************************************/
 {
     fe_attr     attr;
     name        *tmp;
 
-    attr = FEAttr( sym );
+    attr = FEAttr( *back.front, sym );
     if( attr & FE_STATIC ) {
-        loc = LocCreate( loc, LOC_MEMORY );
+        loc = LocCreate( back, loc, LOC_MEMORY );
         loc->u.fe_sym = sym;
     } else {
-        loc = LocCreate( loc, LOC_BP_OFFSET );
-        tmp = DeAlias( AllocUserTemp( sym, XX ) );
+        loc = LocCreate( back, loc, LOC_BP_OFFSET );
+        tmp = DeAlias( AllocUserTemp( back, sym, XX ) );
         tmp->v.usage |= VAR_VOLATILE|NEEDS_MEMORY|USE_IN_ANOTHER_BLOCK|USE_ADDRESS;
         loc->u.be_sym = tmp;
     }
@@ -164,7 +165,7 @@ dbg_loc  _CGAPI DBLocSym( dbg_loc loc, cg_sym_handle sym )
 }
 
 
-dbg_loc _CGAPI DBLocTemp( dbg_loc loc, temp_handle temp )
+dbg_loc _CGAPI DBLocTemp( BackRun& back, dbg_loc loc, temp_handle temp )
 /*******************************************************/
 {
     name        *tmp;
@@ -172,7 +173,7 @@ dbg_loc _CGAPI DBLocTemp( dbg_loc loc, temp_handle temp )
 #ifdef DEVBUILD
     EchoAPI( "DBLocTemp( %i, %i )", loc, temp );
 #endif
-    loc = LocCreate( loc, LOC_BP_OFFSET );
+    loc = LocCreate( back, loc, LOC_BP_OFFSET );
     tmp = DeAlias( (name *)temp );
     tmp->v.usage |= VAR_VOLATILE|NEEDS_MEMORY|USE_IN_ANOTHER_BLOCK|USE_ADDRESS;
     loc->u.be_sym = tmp;
@@ -182,14 +183,14 @@ dbg_loc _CGAPI DBLocTemp( dbg_loc loc, temp_handle temp )
     return( loc );
 }
 
-dbg_loc _CGAPI DBLocConst( dbg_loc loc, uint_32 val )
+dbg_loc _CGAPI DBLocConst( BackRun& back, dbg_loc loc, uint_32 val )
 /***************************************************/
 {
 #ifdef DEVBUILD
     EchoAPI( "DBLocConst( %i, %i  )", loc, val );
 #endif
 
-    loc = LocCreate( loc, LOC_CONST_1 );
+    loc = LocCreate( back, loc, LOC_CONST_1 );
     loc->u.val = val;
 #ifdef DEVBUILD
     EchoAPI( " -> %i\n", loc );
@@ -198,7 +199,7 @@ dbg_loc _CGAPI DBLocConst( dbg_loc loc, uint_32 val )
 }
 
 
-dbg_loc _CGAPI DBLocOp( dbg_loc loc, dbg_loc_op op, unsigned other )
+dbg_loc _CGAPI DBLocOp( BackRun& back, dbg_loc loc, dbg_loc_op op, unsigned other )
 /******************************************************************/
 {
     unsigned    stkop;
@@ -209,7 +210,7 @@ dbg_loc _CGAPI DBLocOp( dbg_loc loc, dbg_loc_op op, unsigned other )
     stkop = 0;
     switch( op ) {
     case DB_OP_POINTS:
-        switch( TypeAddress( static_cast<cg_type>(other) )->refno ) {
+        switch( TypeAddress( back, static_cast<cg_type>(other) )->refno ) {
 #if _TARGET & _TARG_8086
         case TY_NEAR_POINTER:
         case TY_NEAR_CODE_PTR:
@@ -236,13 +237,13 @@ dbg_loc _CGAPI DBLocOp( dbg_loc loc, dbg_loc_op op, unsigned other )
     #endif
             break;
         default:
-            Zoiks( ZOIKS_085 );
+            Zoiks( back, ZOIKS_085 );
             break;
         }
-        loc = LocCreate( loc, stkop );
+        loc = LocCreate( back, loc, stkop );
         break;
     case DB_OP_ZEX:
-        switch( TypeAddress( static_cast<cg_type>(other) )->length ) {
+        switch( TypeAddress( back, static_cast<cg_type>(other) )->length ) {
         case 1:
             stkop = LOC_OPER + LOP_ZEB;
             break;
@@ -250,29 +251,29 @@ dbg_loc _CGAPI DBLocOp( dbg_loc loc, dbg_loc_op op, unsigned other )
             stkop = LOC_OPER + LOP_ZEW;
             break;
         default:
-            Zoiks( ZOIKS_084 );
+            Zoiks( back, ZOIKS_084 );
             break;
         }
-        loc = LocCreate( loc, stkop );
+        loc = LocCreate( back, loc, stkop );
         break;
     case DB_OP_XCHG:
-        loc = LocCreate( loc, LOC_OPER + LOP_XCHG );
+        loc = LocCreate( back, loc, LOC_OPER + LOP_XCHG );
         loc->u.stk = other;
         break;
     case DB_OP_MK_FP:
-        loc = LocCreate( loc, LOC_OPER + LOP_MK_FP );
+        loc = LocCreate( back, loc, LOC_OPER + LOP_MK_FP );
         break;
     case DB_OP_ADD:
-        loc = LocCreate( loc, LOC_OPER + LOP_ADD );
+        loc = LocCreate( back, loc, LOC_OPER + LOP_ADD );
         break;
     case DB_OP_DUP:
-        loc = LocCreate( loc, LOC_OPER + LOP_DUP );
+        loc = LocCreate( back, loc, LOC_OPER + LOP_DUP );
         break;
     case DB_OP_POP:
-        loc = LocCreate( loc, LOC_OPER + LOP_POP );
+        loc = LocCreate( back, loc, LOC_OPER + LOP_POP );
         break;
     default:
-        Zoiks( ZOIKS_083 );
+        Zoiks( back, ZOIKS_083 );
         break;
     }
 #ifdef DEVBUILD
@@ -282,7 +283,7 @@ dbg_loc _CGAPI DBLocOp( dbg_loc loc, dbg_loc_op op, unsigned other )
 }
 
 
-void _CGAPI DBLocFini( dbg_loc loc )
+void _CGAPI DBLocFini( BackRun& back, dbg_loc loc )
 /**********************************/
 {
     dbg_loc     *owner;
@@ -299,7 +300,7 @@ void _CGAPI DBLocFini( dbg_loc loc )
         curr->use--;
         if( curr->use == 0 ) {
             *owner = curr->next;
-            CGFree( curr );
+            CGFree( back, curr );
         } else {
             owner = &curr->next;
         }

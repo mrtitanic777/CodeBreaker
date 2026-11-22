@@ -30,5 +30,6 @@
 ****************************************************************************/
 
 
-extern void FlowSave( hw_reg_set *preg );
-extern void FlowRestore( hw_reg_set *preg );
+#pragma once
+extern void FlowSave( BackRun& back, hw_reg_set *preg );
+extern void FlowRestore( BackRun& back, hw_reg_set *preg );

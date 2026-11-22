@@ -84,137 +84,134 @@
 #include "condcode.h"
 #include "trecurse.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct GenerateState {
-    bool abortCG;
-    proc_def *FEMessageCurrProc_lastproc = NULL;
-};
+/* (struct GenerateState: generate_state.h) */
 
 }  // namespace
 
-static inline GenerateState& generate_state() { return cbrun_part<GenerateState>(); }
 
-void    InitCG( void )
+void    InitCG( BackRun& back )
 /********************/
 {
-    optmac_state().InOptimizer = 0;
-    data_state().InsId = 0;
-    data_state().CurrProc = NULL;
-    data_state().CurrBlock = NULL;
-    data_state().BlockList = NULL;
-    data_state().HeadBlock = NULL;
-    data_state().BlockByBlock = false;
-    generate_state().abortCG = false;
-    FPInit();/* must be before InitRegTbl */
-    InitRegTbl();
-    ScoreInit();
-    InitQueue();
-    InitMakeAddr();
-    RegTreeInit();
-    InitIns();
-    InitConflict();
-    InitRT();
-    InitNames();
-    ObjInit();
-    data_state().ClassPointer = TypeClass( data_state().TypePtr );
+    back.optmac.InOptimizer = 0;
+    back.data.InsId = 0;
+    back.data.CurrProc = NULL;
+    back.data.CurrBlock = NULL;
+    back.data.BlockList = NULL;
+    back.data.HeadBlock = NULL;
+    back.data.BlockByBlock = false;
+    back.generate.abortCG = false;
+    FPInit(back);/* must be before InitRegTbl */
+    InitRegTbl(back);
+    ScoreInit(back);
+    InitQueue(back);
+    InitMakeAddr(back);
+    RegTreeInit(back);
+    InitIns(back);
+    InitConflict(back);
+    InitRT(back);
+    InitNames(back);
+    ObjInit(back);
+    back.data.ClassPointer = TypeClass( back, back.data.TypePtr );
     InitSegment();
 }
 
 
-void    AbortCG( void )
+void    AbortCG( BackRun& back )
 /*********************/
 {
-    generate_state().abortCG = true;
+    back.generate.abortCG = true;
 }
 
 
-void    FiniCG( void )
+void    FiniCG( BackRun& back )
 /********************/
 {
-    FiniQueue();
+    FiniQueue(back);
     FiniSegment();
-    if( generate_state().abortCG ) {
-        AbortObj();
+    if( back.generate.abortCG ) {
+        AbortObj(back);
     }
-    ObjFini();
-    TellFreeAllLabels();
-    BlowAwayFreeLists();
+    ObjFini(back);
+    TellFreeAllLabels(back);
+    BlowAwayFreeLists(back);
     ScoreFini();
 }
 
 
-static  void    AddANop( void )
+static  void    AddANop( BackRun& back )
 /*****************************/
 {
-    AddAnIns( data_state().BlockList, MakeNop() );
+    AddAnIns( back, back.data.BlockList, MakeNop(back) );
 }
 
 
-static  void            PreOptimize( void )
+static  void            PreOptimize( BackRun& back )
 /*****************************************/
 {
     bool        change;
 
     if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
 //        CharsAndShortsToInts();
-        MakeMovAddrConsts();
-        PushPostOps();
-        DeadTemps();
-        InsDead();
-        MakeFlowGraph();
-        BlockTrim();
-        CommonSex( _IsModel( CGSW_GEN_LOOP_OPTIMIZATION ) );
-        SetOnCondition();
-        BlockTrim();
-        AddANop();
+        MakeMovAddrConsts(back);
+        PushPostOps(back);
+        DeadTemps(back);
+        InsDead(back);
+        MakeFlowGraph(back);
+        BlockTrim(back);
+        CommonSex( back, _IsModel( CGSW_GEN_LOOP_OPTIMIZATION ) );
+        SetOnCondition(back);
+        BlockTrim(back);
+        AddANop(back);
         if( _IsModel( CGSW_GEN_LOOP_OPTIMIZATION ) ) {
             change = false;
-            if( TransLoops( false ) ) {
+            if( TransLoops( back, false ) ) {
                 change = true;
             }
-            if( LoopInvariant() ) {
-                change = true;
-            }
-            if( change ) {
-                CommonSex(true);
-                InsDead();
-                CommonInvariant();
-            }
-            if( IndVars() ) {
-                CommonSex(false);
-                InsDead();
-                change = true;
-            }
-            BlockTrim();
-            if( TransLoops( true ) ) {
-                BlockTrim();
-                CommonSex( false );
+            if( LoopInvariant(back) ) {
                 change = true;
             }
             if( change ) {
-                ReConstFold();
+                CommonSex(back, true);
+                InsDead(back);
+                CommonInvariant(back);
             }
-            LoopEnregister();
+            if( IndVars(back) ) {
+                CommonSex(back, false);
+                InsDead(back);
+                change = true;
+            }
+            BlockTrim(back);
+            if( TransLoops( back, true ) ) {
+                BlockTrim(back);
+                CommonSex( back, false );
+                change = true;
+            }
             if( change ) {
-                BlockTrim();
+                ReConstFold(back);
+            }
+            LoopEnregister(back);
+            if( change ) {
+                BlockTrim(back);
             }
         }
-        MulToShiftAdd();
-        KillMovAddrConsts();
-        FindReferences();
+        MulToShiftAdd(back);
+        KillMovAddrConsts(back);
+        FindReferences(back);
     } else {
-        MakeFlowGraph();
-        AddANop();
-        FindReferences();
+        MakeFlowGraph(back);
+        AddANop(back);
+        FindReferences(back);
     }
 }
 
 
-static  block           *NextBlock( block *blk, void *parm )
+static  block           *NextBlock( BackRun& back, block *blk, void *parm )
 /**********************************************************/
 {
     /* unused parameters */ (void)parm;
@@ -223,7 +220,7 @@ static  block           *NextBlock( block *blk, void *parm )
 }
 
 
-static  void            PostOptimize( void )
+static  void            PostOptimize( BackRun& back )
 /******************************************/
 {
     if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
@@ -232,17 +229,17 @@ static  void            PostOptimize( void )
          * new instructions can be directly generated because RegAlloc is
          * done by now. PeepOpt() is responsible for verifying that.
          */
-        if( PeepOpt( data_state().HeadBlock, NextBlock, NULL, true ) ) {
-            LiveInfoUpdate();
+        if( PeepOpt( back, back.data.HeadBlock, NextBlock, NULL, true ) ) {
+            LiveInfoUpdate(back);
         }
         /*
          * this is important as BuildIndex cannot handle instructions with no operands
          */
-        DeadInstructions();
-        BuildIndex();
-        DeadInstructions();
+        DeadInstructions(back);
+        BuildIndex(back);
+        DeadInstructions(back);
     }
-    MergeIndex();
+    MergeIndex(back);
     if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
 #if !_TARGET_RISC
         /*
@@ -264,60 +261,60 @@ static  void            PostOptimize( void )
     #endif
 #endif
 //        OptCloseMoves();  /* todo: merge constant moves before riscifier */
-        LdStAlloc();
-        Score();
-        DeadInstructions(); /* cleanup junk after Score() */
+        LdStAlloc(back);
+        Score(back);
+        DeadInstructions(back); /* cleanup junk after Score() */
         /*
          * deRISCify before LoopRegInvariant() or Shedule() are run:
          * they're moving RISCified pair.
          */
-        LdStCompress();
+        LdStCompress(back);
         /*
          * Reuse registers freed by deriscifier
          */
-        Score();
-        DeadInstructions(); /* cleanup junk after Score() */
-        if( !data_state().BlockByBlock )
-            LoopRegInvariant();
+        Score(back);
+        DeadInstructions(back); /* cleanup junk after Score() */
+        if( !back.data.BlockByBlock )
+            LoopRegInvariant(back);
 #if !_TARGET_RISC
         /*
          * Get rid of remaining unused conditions on register level.
          */
         if( _IsntTargetModel( CGSW_X86_STATEMENT_COUNTING ) ) {
-            Conditions();
+            Conditions(back);
         }
 #endif
     }
-    FPExpand();
+    FPExpand(back);
     if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-        DeadInstructions();   /* cleanup junk after Conditions() */
+        DeadInstructions(back);   /* cleanup junk after Conditions() */
         /*
          * Run scheduler last, when all instructions are stable
          */
         if( _IsModel( CGSW_GEN_INS_SCHEDULING ) ) {
-            data_state().HaveLiveInfo = false;
-            Schedule(); /* NOTE: Schedule messes up live information */
-            LiveInfoUpdate();
-            data_state().HaveLiveInfo = true;
+            back.data.HaveLiveInfo = false;
+            Schedule(back); /* NOTE: Schedule messes up live information */
+            LiveInfoUpdate(back);
+            back.data.HaveLiveInfo = true;
         }
         /*
          * run this again in case Scheduler messed around with indices
          */
-        if( PeepOpt( data_state().HeadBlock, NextBlock, NULL, true ) ) {
-            LiveInfoUpdate();
+        if( PeepOpt( back, back.data.HeadBlock, NextBlock, NULL, true ) ) {
+            LiveInfoUpdate(back);
         }
     }
-    FPOptimize();
+    FPOptimize(back);
 }
 
 
-static  void    FreeExtraTemps( name *last, block_id blk_id )
+static  void    FreeExtraTemps( BackRun& back, name *last, block_id blk_id )
 /***********************************************************/
 {
     name        **owner;
     name        *temp;
 
-    owner = &data_state().Names[N_TEMP];
+    owner = &back.data.Names[N_TEMP];
     for( ;; ) {
         temp = *owner;
         if( temp == last )
@@ -326,7 +323,7 @@ static  void    FreeExtraTemps( name *last, block_id blk_id )
           && !_FrontEndTmp( temp )
           && temp->t.u.blk_id == blk_id ) {
             *owner = temp->n.next_name;
-            FreeAName( temp );
+            FreeAName( back, temp );
         } else {
             owner = &temp->n.next_name;
         }
@@ -334,37 +331,37 @@ static  void    FreeExtraTemps( name *last, block_id blk_id )
 }
 
 
-static  void    ForceTempsMemory( void )
+static  void    ForceTempsMemory( BackRun& back )
 /**************************************/
 {
     name        *op;
     name        *next;
 
-    ParmPropagate();
-    for( op = data_state().Names[N_TEMP]; op != data_state().LastTemp; op = next ) {
+    ParmPropagate(back);
+    for( op = back.data.Names[N_TEMP]; op != back.data.LastTemp; op = next ) {
         next = op->n.next_name;
         if( (op->v.usage & USE_IN_ANOTHER_BLOCK)
           || _FrontEndTmp( op ) ) {
             op = DeAlias( op );
             op->v.usage |= NEEDS_MEMORY | USE_MEMORY;
             while( op->v.conflict != NULL ) {
-                FreeAConflict( op->v.conflict );
+                FreeAConflict( back, op->v.conflict );
             }
         }
     }
-    AssignOtherLocals();
-    for( op = data_state().Names[N_MEMORY]; op != NULL; op = op->n.next_name ) {
+    AssignOtherLocals(back);
+    for( op = back.data.Names[N_MEMORY]; op != NULL; op = op->n.next_name ) {
         op->v.usage |= USE_IN_ANOTHER_BLOCK | USE_MEMORY;
         if( op->v.conflict != NULL ) {
-            FreeAConflict( op->v.conflict );
+            FreeAConflict( back, op->v.conflict );
             op->v.conflict = NULL;
         }
     }
-    data_state().LastTemp = data_state().Names[N_TEMP];
+    back.data.LastTemp = back.data.Names[N_TEMP];
 }
 
 
-static  void    BlockToCode( bool partly_done )
+static  void    BlockToCode( BackRun& back, bool partly_done )
 /*********************************************/
 {
     block_num           inputs;
@@ -381,58 +378,58 @@ static  void    BlockToCode( bool partly_done )
 
     /* make the block look like an entire procedure*/
 
-    data_state().HeadBlock = data_state().CurrBlock;
-    data_state().BlockList = data_state().CurrBlock;
-    data_state().HeadBlock->prev_block = NULL;
-    if( data_state().HeadBlock->next_block != NULL ) {
-        data_state().HeadBlock->next_block->prev_block = NULL;
+    back.data.HeadBlock = back.data.CurrBlock;
+    back.data.BlockList = back.data.CurrBlock;
+    back.data.HeadBlock->prev_block = NULL;
+    if( back.data.HeadBlock->next_block != NULL ) {
+        back.data.HeadBlock->next_block->prev_block = NULL;
     }
     /* Kludge - need a pointer to the next block for CALL_LABEL - puke! */
-    if( _IsBlkAttr( data_state().HeadBlock, BLK_CALL_LABEL ) ) {
-        data_state().HeadBlock->u2.next = data_state().HeadBlock->next_block;
+    if( _IsBlkAttr( back.data.HeadBlock, BLK_CALL_LABEL ) ) {
+        back.data.HeadBlock->u2.next = back.data.HeadBlock->next_block;
     }
-    data_state().HeadBlock->next_block = NULL;
+    back.data.HeadBlock->next_block = NULL;
 
     /* force anything that spans blocks to memory */
 
-    data_state().HeadBlock->u.partition = data_state().HeadBlock;
-    ConstFold( data_state().HeadBlock );
-    data_state().HeadBlock->u.partition = NULL;
+    back.data.HeadBlock->u.partition = back.data.HeadBlock;
+    ConstFold( back, back.data.HeadBlock );
+    back.data.HeadBlock->u.partition = NULL;
 
-    ForceTempsMemory();
+    ForceTempsMemory(back);
     if( !partly_done ) {
-        FixMemRefs();
-        data_state().HaveLiveInfo = false;
+        FixMemRefs(back);
+        back.data.HaveLiveInfo = false;
         if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION )
           && _IsntModel( CGSW_GEN_FORTRAN_ALIASING ) ) {
-            FindReferences();
-            CommonSex(false);
-            PushPostOps();
+            FindReferences(back);
+            CommonSex(back, false);
+            PushPostOps(back);
         }
-        FindReferences();
-        DeadTemps();
+        FindReferences(back);
+        DeadTemps(back);
         if( _IsModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-            SetInOut( data_state().HeadBlock );
+            SetInOut( back, back.data.HeadBlock );
         } else {
-            MakeConflicts();
+            MakeConflicts(back);
         }
-        MakeLiveInfo();
-        data_state().HaveLiveInfo = true;
-        AxeDeadCode();
-        FixIndex();
-        FixSegments();
-        FPRegAlloc();
-        RegAlloc( true );
-        FreeConflicts();
-        data_state().HaveLiveInfo = false;
+        MakeLiveInfo(back);
+        back.data.HaveLiveInfo = true;
+        AxeDeadCode(back);
+        FixIndex(back);
+        FixSegments(back);
+        FPRegAlloc(back);
+        RegAlloc( back, true );
+        FreeConflicts(back);
+        back.data.HaveLiveInfo = false;
     } else {
         conflist = NULL;
-        owner = &data_state().ConfList;
+        owner = &back.data.ConfList;
         for( ;; ) {
             curr = *owner;
             if( curr == NULL )
                 break;
-            if( curr->start_block == data_state().HeadBlock ) {
+            if( curr->start_block == back.data.HeadBlock ) {
                 *owner = curr->next_conflict;
                 curr->next_conflict = conflist;
                 conflist = curr;
@@ -440,53 +437,53 @@ static  void    BlockToCode( bool partly_done )
                 owner = &curr->next_conflict;
             }
         }
-        curr = data_state().ConfList;
-        data_state().ConfList = conflist;
-        RegAlloc( true );
-        FreeConflicts();
-        data_state().ConfList = curr;
+        curr = back.data.ConfList;
+        back.data.ConfList = conflist;
+        RegAlloc( back, true );
+        FreeConflicts(back);
+        back.data.ConfList = curr;
     }
-    input_edges = data_state().HeadBlock->input_edges;
-    inputs = data_state().HeadBlock->inputs;
-    targets = data_state().HeadBlock->targets;
-    data_state().HeadBlock->inputs = 0;
-    data_state().HeadBlock->input_edges = NULL;
-    data_state().HeadBlock->targets = 0;
-    FPParms();
-    PostOptimize();
-    data_state().HeadBlock->input_edges = input_edges;
-    data_state().HeadBlock->inputs = inputs;
-    data_state().HeadBlock->targets = targets;
+    input_edges = back.data.HeadBlock->input_edges;
+    inputs = back.data.HeadBlock->inputs;
+    targets = back.data.HeadBlock->targets;
+    back.data.HeadBlock->inputs = 0;
+    back.data.HeadBlock->input_edges = NULL;
+    back.data.HeadBlock->targets = 0;
+    FPParms(back);
+    PostOptimize(back);
+    back.data.HeadBlock->input_edges = input_edges;
+    back.data.HeadBlock->inputs = inputs;
+    back.data.HeadBlock->targets = targets;
 
     /* generate a prolog that saves all registers*/
 
-    if( (data_state().CurrProc->prolog_state & PST_PROLOG_GENERATED) == 0 ) {
-        data_state().CurrProc->state.used = AllCacheRegs();
-        GenProlog();
+    if( (back.data.CurrProc->prolog_state & PST_PROLOG_GENERATED) == 0 ) {
+        back.data.CurrProc->state.used = AllCacheRegs(back);
+        GenProlog(back);
     }
 
-    blk_id = data_state().CurrBlock->blk_id;
-    AssgnMoreTemps( blk_id );
-    OptSegs();
+    blk_id = back.data.CurrBlock->blk_id;
+    AssgnMoreTemps( back, blk_id );
+    OptSegs(back);
 
     /* generate the code for the block*/
 
-    if( _IsBlkAttr( data_state().CurrBlock, BLK_RETURN ) ) {
-        GenObject();
-        FiniStackMap();
-        FreeProc();
+    if( _IsBlkAttr( back.data.CurrBlock, BLK_RETURN ) ) {
+        GenObject(back);
+        FiniStackMap(back);
+        FreeProc(back);
     } else {
-        GenObject();
+        GenObject(back);
     }
     if( partly_done ) {
-        FreeExtraTemps( NULL, blk_id );
+        FreeExtraTemps( back, NULL, blk_id );
     } else {
-        FreeExtraTemps( data_state().LastTemp, blk_id );
+        FreeExtraTemps( back, back.data.LastTemp, blk_id );
     }
 }
 
 
-static  void    FlushBlocks( bool partly_done )
+static  void    FlushBlocks( BackRun& back, bool partly_done )
 /*********************************************/
 /* we're in deep trouble. Try to get out of it using as little memory as*/
 /* possible*/
@@ -496,36 +493,36 @@ static  void    FlushBlocks( bool partly_done )
     block       *curr;
     block_class classes;
 
-    if( !data_state().BlockByBlock ) {
-        FEMessageCurrProc( FEMSG_REGALLOC_DIED );
+    if( !back.data.BlockByBlock ) {
+        FEMessageCurrProc( back, FEMSG_REGALLOC_DIED );
     }
     if( !partly_done ) {
-        Renumber();
+        Renumber(back);
     }
-    curr = data_state().CurrBlock;
-    data_state().BlockByBlock = true;
+    curr = back.data.CurrBlock;
+    back.data.BlockByBlock = true;
     classes = static_cast<block_class>(0);
-    for( blk = data_state().HeadBlock; blk != NULL; blk = next ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = next ) {
         next = blk->next_block;
         classes |= blk->class_;
-        data_state().CurrBlock = blk;
-        BlockToCode( partly_done );
-        FlushOpt();
+        back.data.CurrBlock = blk;
+        BlockToCode( back, partly_done );
+        FlushOpt(back);
     }
-    data_state().CurrBlock = curr;
-    data_state().HeadBlock = NULL;
-    data_state().BlockList = NULL;
+    back.data.CurrBlock = curr;
+    back.data.HeadBlock = NULL;
+    back.data.BlockList = NULL;
 }
 
 
-static  void    FreeExtraSyms( name *last )
+static  void    FreeExtraSyms( BackRun& back, name *last )
 /*****************************************/
 {
     name        **owner;
     name        *temp;
     name        *next;
 
-    owner = &data_state().Names[N_TEMP];
+    owner = &back.data.Names[N_TEMP];
     for( ;; ) {
         temp = *owner;
         if( temp == last )
@@ -533,34 +530,34 @@ static  void    FreeExtraSyms( name *last )
         if( (temp->v.usage & USE_IN_ANOTHER_BLOCK) == 0
           && !_FrontEndTmp( temp ) ) {
             *owner = temp->n.next_name;
-            FreeAName( temp );
+            FreeAName( back, temp );
         } else {
             owner = &temp->n.next_name;
         }
     }
-    for( temp = data_state().Names[N_CONSTANT]; temp != NULL; temp = next ) {
+    for( temp = back.data.Names[N_CONSTANT]; temp != NULL; temp = next ) {
         next = temp->n.next_name;
-        FreeAName( temp );
+        FreeAName( back, temp );
     }
-    data_state().Names[N_CONSTANT] = NULL;
-    for( temp = data_state().Names[N_INDEXED]; temp != NULL; temp = next ) {
+    back.data.Names[N_CONSTANT] = NULL;
+    for( temp = back.data.Names[N_INDEXED]; temp != NULL; temp = next ) {
         next = temp->n.next_name;
-        FreeAName( temp );
+        FreeAName( back, temp );
     }
-    data_state().Names[N_INDEXED] = NULL;
+    back.data.Names[N_INDEXED] = NULL;
 }
 
 
-static  void    FinishIndex( void )
+static  void    FinishIndex( BackRun& back )
 /*********************************/
 {
     block       *blk;
     instruction *ins;
     instruction *next;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
-            next = NeedIndex( ins );
+            next = NeedIndex( back, ins );
             if( next == ins ) {
                 next = ins->head.next;
             }
@@ -569,115 +566,115 @@ static  void    FinishIndex( void )
 }
 
 
-static  void    ForceConflictsMemory( void )
+static  void    ForceConflictsMemory( BackRun& back )
 /******************************************/
 {
     conflict_node       *conf;
     conflict_node       *next;
 
-    ParmPropagate();
-    for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
+    ParmPropagate(back);
+    for( conf = back.data.ConfList; conf != NULL; conf = conf->next_conflict ) {
         _SetFalse( conf, CST_NEEDS_INDEX_SPLIT | CST_NEEDS_SEGMENT_SPLIT );
     }
-    for( conf = data_state().ConfList; conf != NULL; conf = next ) {
+    for( conf = back.data.ConfList; conf != NULL; conf = next ) {
         next = conf->next_conflict;
         if( !_GBitEmpty( conf->id.out_of_block )
           || ( conf->name->n.class_ == N_TEMP && _FrontEndTmp( conf->name ) )
           || ( conf->name->n.class_ == N_MEMORY && conf->name->v.symbol != NULL )
           || (conf->name->v.usage & USE_IN_ANOTHER_BLOCK) ) {
-            next = InMemory( conf );
+            next = InMemory( back, conf );
         }
     }
 }
 
 
-static  void    Panic( bool partly_done )
+static  void    Panic( BackRun& back, bool partly_done )
 /***************************************/
 {
     proc_def    *curr_proc;
 
     if( partly_done ) {
-        FinishIndex();
+        FinishIndex(back);
     }
-    ForceConflictsMemory();
-    SortBlocks();
-    UnFixEdges();
-    InitStackMap();
-    AssgnMoreTemps( BLK_ID_NONE );
-    curr_proc = data_state().CurrProc;
-    FlushBlocks( partly_done );
-    if( curr_proc == data_state().CurrProc /* if not freed (dummy!) */
-      && (data_state().CurrProc->prolog_state & PST_EPILOG_GENERATED) == 0 ) {
-        GenEpilog();
-        FiniStackMap();
-        FreeProc();
+    ForceConflictsMemory(back);
+    SortBlocks(back);
+    UnFixEdges(back);
+    InitStackMap(back);
+    AssgnMoreTemps( back, BLK_ID_NONE );
+    curr_proc = back.data.CurrProc;
+    FlushBlocks( back, partly_done );
+    if( curr_proc == back.data.CurrProc /* if not freed (dummy!) */
+      && (back.data.CurrProc->prolog_state & PST_EPILOG_GENERATED) == 0 ) {
+        GenEpilog(back);
+        FiniStackMap(back);
+        FreeProc(back);
     }
 }
 
 
-static  void            GenPartialRoutine( bool routine_done )
+static  void            GenPartialRoutine( BackRun& back, bool routine_done )
 /************************************************************/
 {
     while( routine_done || _MemLow ) {
-        if( CreateBreak() ) {
-            data_state().BlockByBlock = true;
-            BlockTrim();
-            FindReferences();
-            PreOptimize();
-            FixBreak();
-            SortBlocks();
+        if( CreateBreak(back) ) {
+            back.data.BlockByBlock = true;
+            BlockTrim(back);
+            FindReferences(back);
+            PreOptimize(back);
+            FixBreak(back);
+            SortBlocks(back);
             /* so the front gets told we're panicking */
-            data_state().BlockByBlock = false;
-            FlushBlocks( false );
-            RemoveBreak();
-            if( data_state().HeadBlock == NULL ) {
-                FreeExtraSyms( NULL );
+            back.data.BlockByBlock = false;
+            FlushBlocks( back, false );
+            RemoveBreak(back);
+            if( back.data.HeadBlock == NULL ) {
+                FreeExtraSyms( back, NULL );
             }
         } else {
-            FlushBlocks( false );
-            FreeExtraSyms( NULL );
+            FlushBlocks( back, false );
+            FreeExtraSyms( back, NULL );
             break;
         }
     }
 }
 
 
-void    FEMessageCurrProc( fe_msg femsg )
+void    FEMessageCurrProc( BackRun& back, fe_msg femsg )
 /***************************************/
 {
 
     if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION )
-      && generate_state().FEMessageCurrProc_lastproc != data_state().CurrProc ) {
-        FEMessage( femsg, AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) ) );
-        generate_state().FEMessageCurrProc_lastproc = data_state().CurrProc;
+      && back.generate.FEMessageCurrProc_lastproc != back.data.CurrProc ) {
+        FEMessage( *back.front, femsg, AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) ) );
+        back.generate.FEMessageCurrProc_lastproc = back.data.CurrProc;
     }
 }
 
 
-void    Generate( bool routine_done )
+void    Generate( BackRun& back, bool routine_done )
 /***********************************/
 /* The big one - here's where most of code generation happens.
  * Follow this routine to see the transformation of code unfold.
  */
 {
-    if( BGInInline() )
+    if( BGInInline(back) )
         return;
-    data_state().HaveLiveInfo = false;
-    data_state().HaveDominatorInfo = false;
+    back.data.HaveLiveInfo = false;
+    back.data.HaveDominatorInfo = false;
 #if _TARGET_RISC == 0 && ( _TARGET & _TARG_370 ) == 0
     /*
      * if we want to go fast, generate statement at a time
      */
     if( _IsModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-        if( !data_state().BlockByBlock ) {
-            InitStackMap();
-            data_state().BlockByBlock = true;
+        if( !back.data.BlockByBlock ) {
+            InitStackMap(back);
+            back.data.BlockByBlock = true;
         }
-        LNBlip( data_state().SrcLine );
-        FlushBlocks( false );
-        FreeExtraSyms( data_state().LastTemp );
+        LNBlip( back.data.SrcLine );
+        FlushBlocks( back, false );
+        FreeExtraSyms( back, back.data.LastTemp );
         if( _MemLow ) {
-            BlowAwayFreeLists();
+            BlowAwayFreeLists(back);
         }
         return;
     }
@@ -685,12 +682,12 @@ void    Generate( bool routine_done )
     /*
      * if we couldn't get the whole procedure in memory, generate part of it
      */
-    if( data_state().BlockByBlock ) {
+    if( back.data.BlockByBlock ) {
         if( _MemLow
           || routine_done ) {
-            GenPartialRoutine( routine_done );
+            GenPartialRoutine( back, routine_done );
         } else {
-            BlkTooBig();
+            BlkTooBig(back);
         }
         return;
     }
@@ -698,88 +695,88 @@ void    Generate( bool routine_done )
      * if we're low on memory, go into BlockByBlock mode
      */
     if( _MemLow ) {
-        InitStackMap();
-        GenPartialRoutine( routine_done );
-        BlowAwayFreeLists();
+        InitStackMap(back);
+        GenPartialRoutine( back, routine_done );
+        BlowAwayFreeLists(back);
         return;
     }
     /*
      * check to see that no basic block gets too unwieldy
      */
     if( !routine_done ) {
-        BlkTooBig();
+        BlkTooBig(back);
         return;
     }
     /*
      * The routine is all in memory. Optimize and generate it
      */
-    FixReturns();
-    FixEdges();
-    Renumber();
-    BlockTrim();
-    FindReferences();
-    TailRecursion();
-    NullConflicts( USE_IN_ANOTHER_BLOCK );
-    InsDead();
-    FixMemRefs();
-    FindReferences();
-    PreOptimize();
-    PropNullInfo();
+    FixReturns(back);
+    FixEdges(back);
+    Renumber(back);
+    BlockTrim(back);
+    FindReferences(back);
+    TailRecursion(back);
+    NullConflicts( back, USE_IN_ANOTHER_BLOCK );
+    InsDead(back);
+    FixMemRefs(back);
+    FindReferences(back);
+    PreOptimize(back);
+    PropNullInfo(back);
     MemtoBaseTemp();
     if( _MemCritical ) {
-        Panic( false );
+        Panic( back, false );
         return;
     }
-    MakeConflicts();
+    MakeConflicts(back);
     if( _IsModel( CGSW_GEN_LOOP_OPTIMIZATION ) ) {
-        SplitVars();
+        SplitVars(back);
     }
-    AddCacheRegs();
-    MakeLiveInfo();
-    data_state().HaveLiveInfo = true;
-    AxeDeadCode();
+    AddCacheRegs(back);
+    MakeLiveInfo(back);
+    back.data.HaveLiveInfo = true;
+    AxeDeadCode(back);
     /*
      * AxeDeadCode() may have emptied some blocks. Run BlockTrim() to get rid
      * of useless conditionals, then redo conflicts etc. if any blocks died.
      */
-    if( BlockTrim() ) {
-        FreeConflicts();
-        NullConflicts( static_cast<var_usage>(EMPTY) );
-        FindReferences();
-        MakeConflicts();
-        MakeLiveInfo();
+    if( BlockTrim(back) ) {
+        FreeConflicts(back);
+        NullConflicts( back, static_cast<var_usage>(EMPTY) );
+        FindReferences(back);
+        MakeConflicts(back);
+        MakeLiveInfo(back);
     }
-    FixIndex();
-    FixSegments();
-    FPRegAlloc();
-    if( !RegAlloc( false ) ) {
-        Panic( true );
-        data_state().HaveLiveInfo = false;
+    FixIndex(back);
+    FixSegments(back);
+    FPRegAlloc(back);
+    if( !RegAlloc( back, false ) ) {
+        Panic( back, true );
+        back.data.HaveLiveInfo = false;
         return;
     }
-    FPParms();
+    FPParms(back);
     FixMemBases();
-    PostOptimize();
-    InitStackMap();
-    AssignTemps();
-    FiniStackMap();
-    FreeConflicts();
-    SortBlocks();
-    if( CalcDominatorInfo() ) {
-        data_state().HaveDominatorInfo = true;
+    PostOptimize(back);
+    InitStackMap(back);
+    AssignTemps(back);
+    FiniStackMap(back);
+    FreeConflicts(back);
+    SortBlocks(back);
+    if( CalcDominatorInfo(back) ) {
+        back.data.HaveDominatorInfo = true;
     }
-    GenProlog();
-    UnFixEdges();
-    OptSegs();
-    GenObject();
-    if( (data_state().CurrProc->prolog_state & PST_EPILOG_GENERATED) == 0 ) {
-        GenEpilog();
+    GenProlog(back);
+    UnFixEdges(back);
+    OptSegs(back);
+    GenObject(back);
+    if( (back.data.CurrProc->prolog_state & PST_EPILOG_GENERATED) == 0 ) {
+        GenEpilog(back);
     }
-    FreeProc();
-    data_state().HaveLiveInfo = false;
+    FreeProc(back);
+    back.data.HaveLiveInfo = false;
 #if _TARGET_INTEL
     if( _IsTargetModel( CGSW_X86_NEW_P5_PROFILING ) ) {
-        FlushQueue();
+        FlushQueue(back);
     }
 #else
     FlushQueue();

@@ -30,27 +30,28 @@
 ****************************************************************************/
 
 
-extern instruction      *rSPLITPUSH( instruction *ins );
-extern instruction      *rMAKEU2( instruction *ins );
-extern instruction      *rLOADLONGADDR( instruction *ins );
-extern instruction      *rHIGHCMP( instruction *ins );
-extern instruction      *rMAKEU4( instruction *ins );
-extern instruction      *rCLRHI_D( instruction *ins );
-extern instruction      *rEXT_PUSH1( instruction *ins );
-extern instruction      *rEXT_PUSH2( instruction *ins );
-extern instruction      *rINTCOMP( instruction *ins );
-extern instruction      *rCDQ( instruction *ins );
-extern instruction      *rCONVERT_UP( instruction *ins );
-extern instruction      *rCYP_SEX( instruction *ins );
-extern instruction      *rSPLIT8( instruction *ins );
-extern instruction      *rSPLIT8BIN( instruction *ins );
-extern instruction      *rSPLIT8NEG( instruction *ins );
-extern instruction      *rSPLIT8TST( instruction *ins );
-extern instruction      *rSPLIT8CMP( instruction *ins );
+#pragma once
+extern instruction      *rSPLITPUSH( BackRun& back, instruction *ins );
+extern instruction      *rMAKEU2( BackRun& back, instruction *ins );
+extern instruction      *rLOADLONGADDR( BackRun& back, instruction *ins );
+extern instruction      *rHIGHCMP( BackRun& back, instruction *ins );
+extern instruction      *rMAKEU4( BackRun& back, instruction *ins );
+extern instruction      *rCLRHI_D( BackRun& back, instruction *ins );
+extern instruction      *rEXT_PUSH1( BackRun& back, instruction *ins );
+extern instruction      *rEXT_PUSH2( BackRun& back, instruction *ins );
+extern instruction      *rINTCOMP( BackRun& back, instruction *ins );
+extern instruction      *rCDQ( BackRun& back, instruction *ins );
+extern instruction      *rCONVERT_UP( BackRun& back, instruction *ins );
+extern instruction      *rCYP_SEX( BackRun& back, instruction *ins );
+extern instruction      *rSPLIT8( BackRun& back, instruction *ins );
+extern instruction      *rSPLIT8BIN( BackRun& back, instruction *ins );
+extern instruction      *rSPLIT8NEG( BackRun& back, instruction *ins );
+extern instruction      *rSPLIT8TST( BackRun& back, instruction *ins );
+extern instruction      *rSPLIT8CMP( BackRun& back, instruction *ins );
 #if 0
 extern instruction      *rCLRHIGH_DW( instruction *ins );
 extern instruction      *rSEX_DW( instruction *ins );
 #endif
-extern instruction      *rCYPSHIFT( instruction *ins );
-extern instruction      *rBYTESHIFT( instruction *ins );
-extern instruction      *rMOVE8LOW( instruction *ins );
+extern instruction      *rCYPSHIFT( BackRun& back, instruction *ins );
+extern instruction      *rBYTESHIFT( BackRun& back, instruction *ins );
+extern instruction      *rMOVE8LOW( BackRun& back, instruction *ins );

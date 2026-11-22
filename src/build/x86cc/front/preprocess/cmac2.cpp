@@ -38,32 +38,29 @@
 #include "cmacadd.h"
 #include "cscanbuf.h"
 #include "ppexpn.h"
+#include "frontrun.hpp"
 
 
 #define HasVarArgs(m)       (((m) & MFLAG_HAS_VAR_ARGS) != 0)
 
 
-static void    CSkip( void );
-static void    CSkipIf( void );
-static void    CDefine( void );
-static void    CInclude( void );
-static void    CIfDef( void );
-static void    CIfNDef( void );
-static void    CIf( void );
-static void    CElif( void );
-static void    CElse( void );
-static void    CEndif( void );
-static void    CUnDef( void );
-static void    CLine( void );
-static void    CError( void );
-static void    CIdent( void );
-static void    CWarning( void );
+static void    CSkip( FrontRun& front );
+static void    CSkipIf( FrontRun& front );
+static void    CDefine( FrontRun& front );
+static void    CInclude( FrontRun& front );
+static void    CIfDef( FrontRun& front );
+static void    CIfNDef( FrontRun& front );
+static void    CIf( FrontRun& front );
+static void    CElif( FrontRun& front );
+static void    CElse( FrontRun& front );
+static void    CEndif( FrontRun& front );
+static void    CUnDef( FrontRun& front );
+static void    CLine( FrontRun& front );
+static void    CError( FrontRun& front );
+static void    CIdent( FrontRun& front );
+static void    CWarning( FrontRun& front );
 
-struct preproc {
-    char  *directive;
-    void  (*samelevel)( void ); /* func to call when SkipLevel == NestLevel */
-    void  (*skipfunc)( void );  /* func to call when SkipLevel != NestLevel */
-};
+
 
 static unsigned char const PreProcWeights[] = {
 /* a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z */
@@ -73,8 +70,14 @@ static unsigned char const PreProcWeights[] = {
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct Cmac2State {
-    struct preproc PreProcTable[16] = {
+/* (struct Cmac2State: cmac2_state.h) */
+
+}  // namespace
+
+/* (the directives of the preprocessor: the run starts with these) */
+void cmac2_start( FrontRun& front )
+{
+    const struct preproc directives[16] = {
         { const_cast<char *>("define"),     CDefine,    CSkip },
         { const_cast<char *>("error"),      CError,     CSkip },
         { const_cast<char *>("pragma"),     CPragma,    CSkip },
@@ -92,11 +95,16 @@ struct Cmac2State {
         { const_cast<char *>("ifdef"),      CIfDef,     CSkipIf },
         { const_cast<char *>("ifndef"),     CIfNDef,    CSkipIf },
     };
-};
+
+    for( int i = 0; i < 16; ++i ) {
+        front.cmac2.PreProcTable[i] = directives[i];
+    }
+}
+
+namespace {
 
 }  // namespace
 
-static inline Cmac2State& cmac2_state() { return cbrun_part<Cmac2State>(); }
 
 
 enum    pp_types {
@@ -114,153 +122,153 @@ struct  cpp_info {              /* C Pre-processor information */
 };
 
 
-static void PPFlush2EOL( void )
+static void PPFlush2EOL( FrontRun& front )
 {
-    while( cvars_state().CurToken != T_NULL && cvars_state().CurToken != T_EOF ) {
-        PPNextToken();
-        if( cvars_state().CurToken == T_BAD_TOKEN && cvars_state().BadTokenInfo == ERR_MISSING_QUOTE ) {
-            CErr1( cvars_state().BadTokenInfo );
+    while( front.cvars.CurToken != T_NULL && front.cvars.CurToken != T_EOF ) {
+        PPNextToken(front);
+        if( front.cvars.CurToken == T_BAD_TOKEN && front.cvars.BadTokenInfo == ERR_MISSING_QUOTE ) {
+            CErr1( front, front.cvars.BadTokenInfo );
         }
     }
 }
 
 
-static void CheckEOL( void )
+static void CheckEOL( FrontRun& front )
 {
-    if( cvars_state().CurToken != T_EOF ) {
-        ExpectingToken( T_NULL );
+    if( front.cvars.CurToken != T_EOF ) {
+        ExpectingToken( front, T_NULL );
     }
 }
 
 
-static void WantEOL( void )
+static void WantEOL( FrontRun& front )
 {
-    if( cvars_state().CompFlags.extensions_enabled ) {
-        if( cvars_state().CurToken != T_NULL && cvars_state().CurToken != T_EOF ) {
-            if( cvars_state().SkipLevel == cvars_state().NestLevel ) {
-                CWarn1( ERR_JUNK_FOLLOWS_DIRECTIVE );
+    if( front.cvars.CompFlags.extensions_enabled ) {
+        if( front.cvars.CurToken != T_NULL && front.cvars.CurToken != T_EOF ) {
+            if( front.cvars.SkipLevel == front.cvars.NestLevel ) {
+                CWarn1( front, ERR_JUNK_FOLLOWS_DIRECTIVE );
             }
         }
     } else {
-        CheckEOL();
+        CheckEOL(front);
     }
 }
 
 
-static void IncLevel( bool value )
+static void IncLevel( FrontRun& front, bool value )
 {
     struct cpp_info *cpp;
 
-    cpp = (struct cpp_info *)CMemAlloc( sizeof( struct cpp_info ) );
-    cpp->prev_cpp = cvars_state().CppStack;
-    cpp->src_loc = cvars_state().TokenLoc;
-    cpp->flist = cvars_state().SrcFiles->src_flist;
+    cpp = (struct cpp_info *)CMemAlloc( front, sizeof( struct cpp_info ) );
+    cpp->prev_cpp = front.cvars.CppStack;
+    cpp->src_loc = front.cvars.TokenLoc;
+    cpp->flist = front.cvars.SrcFiles->src_flist;
     cpp->cpp_type = PRE_IF;
     cpp->processing = false;
-    cvars_state().CppStack = cpp;
-    if( cvars_state().SkipLevel == cvars_state().NestLevel ) {
+    front.cvars.CppStack = cpp;
+    if( front.cvars.SkipLevel == front.cvars.NestLevel ) {
         if( value ) {
-            ++cvars_state().SkipLevel;
+            ++front.cvars.SkipLevel;
             cpp->processing = true;
         }
     }
-    ++cvars_state().NestLevel;
+    ++front.cvars.NestLevel;
 }
 
 
-static void CUnknown( void )
+static void CUnknown( FrontRun& front )
 {
-    if( cvars_state().SkipLevel == cvars_state().NestLevel ) {
-        CErr2p( ERR_UNKNOWN_DIRECTIVE, cvars_state().Buffer );
+    if( front.cvars.SkipLevel == front.cvars.NestLevel ) {
+        CErr2p( front, ERR_UNKNOWN_DIRECTIVE, front.cvars.Buffer );
     }
 }
 
 
-static void PreProcStmt( void )
+static void PreProcStmt( FrontRun& front )
 {
     struct preproc      *pp;
     unsigned            hash;
     int                 c1;
     int                 c2;
 
-    cvars_state().NextChar();                 /* skip over '#' */
-    PPNextToken();
-    if( cvars_state().CurToken == T_ID ) {
-        c1 = IndexLower( ((unsigned char *)cvars_state().Buffer)[0] );
-        c2 = IndexLower( ((unsigned char *)cvars_state().Buffer)[cvars_state().TokenLen - 1] );
+    front.cvars.NextChar(front);                 /* skip over '#' */
+    PPNextToken(front);
+    if( front.cvars.CurToken == T_ID ) {
+        c1 = IndexLower( ((unsigned char *)front.cvars.Buffer)[0] );
+        c2 = IndexLower( ((unsigned char *)front.cvars.Buffer)[front.cvars.TokenLen - 1] );
         if( c1 >= 0 && c2 >= 0 ) {
-            hash = (cvars_state().TokenLen + PreProcWeights[c1] + PreProcWeights[c2]) & 0x0f;
-            pp = &cmac2_state().PreProcTable[hash];
-            if( strcmp( pp->directive, cvars_state().Buffer ) == 0 ) {
-                if( cvars_state().SkipLevel == cvars_state().NestLevel ) {
-                    pp->samelevel();
+            hash = (front.cvars.TokenLen + PreProcWeights[c1] + PreProcWeights[c2]) & 0x0f;
+            pp = &front.cmac2.PreProcTable[hash];
+            if( strcmp( pp->directive, front.cvars.Buffer ) == 0 ) {
+                if( front.cvars.SkipLevel == front.cvars.NestLevel ) {
+                    pp->samelevel(front);
                 } else {
-                    pp->skipfunc();
+                    pp->skipfunc(front);
                 }
             } else {
-                CUnknown();
+                CUnknown(front);
             }
         } else {
-            CUnknown();
+            CUnknown(front);
         }
-    } else if( cvars_state().CurToken != T_NULL ) {
-        CUnknown();
+    } else if( front.cvars.CurToken != T_NULL ) {
+        CUnknown(front);
     }
 }
 
-TOKEN CheckControl( void )
+TOKEN CheckControl( FrontRun& front )
 {
     bool        lines_skipped;
     ppctl_t     old_ppctl;
     TOKEN       token;
 
-    if( !cvars_state().CompFlags.doing_macro_expansion ) {
-        if( cvars_state().CompFlags.cpp_mode ) {
-            cvars_state().PrintWhiteSpace = false;
+    if( !front.cvars.CompFlags.doing_macro_expansion ) {
+        if( front.cvars.CompFlags.cpp_mode ) {
+            front.cvars.PrintWhiteSpace = false;
         }
     }
-    while( cvars_state().CurrChar == '\n' ) {
-        if( TBreak() ) {
-            CErr1( ERR_BREAK_KEY_HIT );
-            CSuicide();
+    while( front.cvars.CurrChar == '\n' ) {
+        if( TBreak(*front.back) ) {
+            CErr1( front, ERR_BREAK_KEY_HIT );
+            CSuicide(front);
         }
         lines_skipped = false;
-        old_ppctl = cvars_state().PPControl;
-        for( ; cvars_state().CurrChar != LCHR_EOF; ) {
-            if( cvars_state().CompFlags.cpp_mode ) {
-                CppPrtChar( '\n' );
+        old_ppctl = front.cvars.PPControl;
+        for( ; front.cvars.CurrChar != LCHR_EOF; ) {
+            if( front.cvars.CompFlags.cpp_mode ) {
+                CppPrtChar( front, '\n' );
             }
-            cvars_state().NextChar();
-            if( cvars_state().CurrChar != cvars_state().PreProcChar ) {
-                SkipAhead();
+            front.cvars.NextChar(front);
+            if( front.cvars.CurrChar != front.cvars.PreProcChar ) {
+                SkipAhead(front);
             }
-            if( cvars_state().CurrChar == LCHR_EOF )
+            if( front.cvars.CurrChar == LCHR_EOF )
                 break;
-            if( cvars_state().CurrChar == cvars_state().PreProcChar ) { /* start of comp control line */
+            if( front.cvars.CurrChar == front.cvars.PreProcChar ) { /* start of comp control line */
                 PPCTL_ENABLE_EOL();
                 PPCTL_DISABLE_MACROS();
                 PPCTL_DISABLE_LEX_ERRORS();
-                PreProcStmt();
-                PPFlush2EOL();
-                cvars_state().PPControl = old_ppctl;
-            } else if( cvars_state().SkipLevel != cvars_state().NestLevel ) {
+                PreProcStmt(front);
+                PPFlush2EOL(front);
+                front.cvars.PPControl = old_ppctl;
+            } else if( front.cvars.SkipLevel != front.cvars.NestLevel ) {
                 PPCTL_ENABLE_EOL();
                 PPCTL_DISABLE_MACROS();
                 PPCTL_DISABLE_LEX_ERRORS();
-                PPNextToken();              /* get into token mode */
-                PPFlush2EOL();
-                cvars_state().PPControl = old_ppctl;
+                PPNextToken(front);              /* get into token mode */
+                PPFlush2EOL(front);
+                front.cvars.PPControl = old_ppctl;
             }
-            if( cvars_state().SkipLevel == cvars_state().NestLevel )
+            if( front.cvars.SkipLevel == front.cvars.NestLevel )
                 break;
-            if( cvars_state().CurrChar == '\n' ) {
+            if( front.cvars.CurrChar == '\n' ) {
                 lines_skipped = true;
             }
         }
-        if( cvars_state().CompFlags.cpp_mode ) {
+        if( front.cvars.CompFlags.cpp_mode ) {
             if( lines_skipped ) {
-                if( cvars_state().SrcFiles != NULL ) {
-                    CppEmitPoundLine( cvars_state().SrcFiles->src_loc.line, cvars_state().SrcFiles->src_name, false );
+                if( front.cvars.SrcFiles != NULL ) {
+                    CppEmitPoundLine( front, front.cvars.SrcFiles->src_loc.line, front.cvars.SrcFiles->src_name, false );
                 }
             }
         }
@@ -274,46 +282,46 @@ TOKEN CheckControl( void )
 }
 
 
-static void CSkip( void )
+static void CSkip( FrontRun& front )
 {
 }
 
 
-static void CSkipIf( void )
+static void CSkipIf( FrontRun& front )
 {
-    IncLevel( false );
+    IncLevel( front, false );
 }
 
 
-static void CIdent( void )
+static void CIdent( FrontRun& front )
 {
-    if( !cvars_state().CompFlags.extensions_enabled ) {
-        CUnknown();
+    if( !front.cvars.CompFlags.extensions_enabled ) {
+        CUnknown(front);
     }
 }
 
 
-void CInclude( void )
+void CInclude( FrontRun& front )
 {
     bool        in_macro;
     char        buf[82];
 
-    if( cvars_state().PCH_FileName != NULL && !cvars_state().CompFlags.make_precompiled_header ) {
-        if( cvars_state().CompFlags.ok_to_use_precompiled_hdr ) {
-            cvars_state().CompFlags.use_precompiled_header = true;
+    if( front.cvars.PCH_FileName != NULL && !front.cvars.CompFlags.make_precompiled_header ) {
+        if( front.cvars.CompFlags.ok_to_use_precompiled_hdr ) {
+            front.cvars.CompFlags.use_precompiled_header = true;
         }
     }
-    if( cvars_state().CompFlags.use_precompiled_header ) {
-        InitBuildPreCompiledHeader();
+    if( front.cvars.CompFlags.use_precompiled_header ) {
+        InitBuildPreCompiledHeader(front);
     }
-    cvars_state().InitialMacroFlags = MFLAG_NONE;
-    in_macro = ( cvars_state().MacroPtr != NULL );
+    front.cvars.InitialMacroFlags = MFLAG_NONE;
+    in_macro = ( front.cvars.MacroPtr != NULL );
     PPCTL_ENABLE_MACROS();
-    PPNextToken();
+    PPNextToken(front);
     PPCTL_DISABLE_MACROS();
-    if( cvars_state().CurToken == T_STRING ) {
-        if( !OpenSrcFile( cvars_state().Buffer, FT_HEADER ) ) {
-            PrtfFilenameErr( cvars_state().Buffer, FT_HEADER, true );
+    if( front.cvars.CurToken == T_STRING ) {
+        if( !OpenSrcFile( front, front.cvars.Buffer, FT_HEADER ) ) {
+            PrtfFilenameErr( front, front.cvars.Buffer, FT_HEADER, true );
         }
 #if _CPU == 370
         if( !CompFlags.use_precompiled_header ) {
@@ -321,22 +329,22 @@ void CInclude( void )
             SrcFiles->trunc = Trunc;     /* on user source files */
         }
 #endif
-    } else if( cvars_state().CurToken == T_LT ) {
+    } else if( front.cvars.CurToken == T_LT ) {
         if( in_macro ) {
             PPCTL_ENABLE_MACROS();
         }
         buf[0] = '\0';
         for( ;; ) {
-            PPNextToken();
-            if( cvars_state().CurToken == T_GT ) {
-                if( !OpenSrcFile( buf, FT_LIBRARY ) ) {
-                    PrtfFilenameErr( buf, FT_LIBRARY, true );
+            PPNextToken(front);
+            if( front.cvars.CurToken == T_GT ) {
+                if( !OpenSrcFile( front, buf, FT_LIBRARY ) ) {
+                    PrtfFilenameErr( front, buf, FT_LIBRARY, true );
                 }
                 break;
             }
-            strncat( buf, cvars_state().Buffer, sizeof( buf ) - 2 );
-            if( in_macro && cvars_state().MacroPtr == NULL || cvars_state().CurToken == T_NULL || cvars_state().CurToken == T_EOF ) {
-                CErr1( ERR_INVALID_INCLUDE );
+            strncat( buf, front.cvars.Buffer, sizeof( buf ) - 2 );
+            if( in_macro && front.cvars.MacroPtr == NULL || front.cvars.CurToken == T_NULL || front.cvars.CurToken == T_EOF ) {
+                CErr1( front, ERR_INVALID_INCLUDE );
                 break;
             }
         }
@@ -344,22 +352,22 @@ void CInclude( void )
             PPCTL_DISABLE_MACROS();
         }
     } else {
-        CErr1( ERR_INVALID_INCLUDE );
+        CErr1( front, ERR_INVALID_INCLUDE );
     }
-    if( cvars_state().CurToken != T_EOF ) {
-        PPNextToken();
+    if( front.cvars.CurToken != T_EOF ) {
+        PPNextToken(front);
     }
-    cvars_state().CompFlags.use_precompiled_header = false;
+    front.cvars.CompFlags.use_precompiled_header = false;
 }
 
 
-static int FormalParm( MPPTR formal_parms )
+static int FormalParm( FrontRun& front, MPPTR formal_parms )
 {
     int     parm_num;
 
     parm_num = 1;
     for( ; formal_parms != NULL; formal_parms = formal_parms->next ) {
-        if( strcmp( formal_parms->parm, cvars_state().Buffer ) == 0 ) {
+        if( strcmp( formal_parms->parm, front.cvars.Buffer ) == 0 ) {
             return( parm_num );
         }
         ++parm_num;
@@ -368,7 +376,7 @@ static int FormalParm( MPPTR formal_parms )
 }
 
 
-static MEPTR GrabTokens( int parm_count, macro_flags mflags, MPPTR formal_parms, const char *mac_name, source_loc *loc )
+static MEPTR GrabTokens( FrontRun& front, int parm_count, macro_flags mflags, MPPTR formal_parms, const char *mac_name, source_loc *loc )
 {
     MEPTR           mentry;
     MEPTR           new_mentry;
@@ -377,111 +385,111 @@ static MEPTR GrabTokens( int parm_count, macro_flags mflags, MPPTR formal_parms,
     size_t          mlen;
     int             parm_num;
 
-    mentry = CreateMEntry( mac_name, 0 );
+    mentry = CreateMEntry( front, mac_name, 0 );
     mentry->u.parm_count = parm_count;
     mentry->src_loc = *loc;
     mlen = mentry->macro_len;
     mentry->macro_defn = mlen;
     prev_token = T_NULL;
     prev_non_ws_token = T_NULL;
-    if( cvars_state().CurToken != T_NULL ) {
+    if( front.cvars.CurToken != T_NULL ) {
         do {
-            cvars_state().CurToken = ScanToken();
-        } while( cvars_state().CurToken == T_WHITE_SPACE );
-        if( cvars_state().CurToken == T_SHARP_SHARP ) {
-            CErr1( ERR_MISPLACED_SHARP_SHARP );
-            PPNextToken();
+            front.cvars.CurToken = ScanToken(front);
+        } while( front.cvars.CurToken == T_WHITE_SPACE );
+        if( front.cvars.CurToken == T_SHARP_SHARP ) {
+            CErr1( front, ERR_MISPLACED_SHARP_SHARP );
+            PPNextToken(front);
         }
     }
-    for( ; cvars_state().CurToken != T_NULL && cvars_state().CurToken != T_EOF ; ) {
-        switch( cvars_state().CurToken ) {
+    for( ; front.cvars.CurToken != T_NULL && front.cvars.CurToken != T_EOF ; ) {
+        switch( front.cvars.CurToken ) {
         case T_SHARP:
             /*
              * if it is a function-like macro definition
              */
             if( parm_count != 0 ) {
-                cvars_state().CurToken = T_MACRO_SHARP;
+                front.cvars.CurToken = T_MACRO_SHARP;
             }
-            MacroSegmentAddToken( &mlen, cvars_state().CurToken );
+            MacroSegmentAddToken( front, &mlen, front.cvars.CurToken );
             break;
         case T_SHARP_SHARP:
-            cvars_state().CurToken = T_MACRO_SHARP_SHARP;
-            MacroSegmentAddToken( &mlen, cvars_state().CurToken );
+            front.cvars.CurToken = T_MACRO_SHARP_SHARP;
+            MacroSegmentAddToken( front, &mlen, front.cvars.CurToken );
             break;
         case T_WHITE_SPACE:
             if( prev_token != T_WHITE_SPACE ) {
-                MacroSegmentAddToken( &mlen, cvars_state().CurToken );
+                MacroSegmentAddToken( front, &mlen, front.cvars.CurToken );
             }
             break;
         case T_ID:
-            parm_num = FormalParm( formal_parms );
+            parm_num = FormalParm( front, formal_parms );
             if( parm_num != 0 ) {
                 if( HasVarArgs( mflags ) && (parm_num == parm_count - 1) ) {
-                    cvars_state().CurToken = T_MACRO_VAR_PARM;
+                    front.cvars.CurToken = T_MACRO_VAR_PARM;
                 } else {
-                    cvars_state().CurToken = T_MACRO_PARM;
+                    front.cvars.CurToken = T_MACRO_PARM;
                 }
             }
-            MacroSegmentAddToken( &mlen, cvars_state().CurToken );
+            MacroSegmentAddToken( front, &mlen, front.cvars.CurToken );
             if( parm_num != 0 ) {
-                MacroSegmentAddChar( &mlen, parm_num - 1 );
+                MacroSegmentAddChar( front, &mlen, parm_num - 1 );
             } else {
-                MacroSegmentAddMem( &mlen, cvars_state().Buffer, cvars_state().TokenLen + 1 );
+                MacroSegmentAddMem( front, &mlen, front.cvars.Buffer, front.cvars.TokenLen + 1 );
             }
             break;
         case T_BAD_CHAR:
-            MacroSegmentAddToken( &mlen, cvars_state().CurToken );
-            MacroSegmentAddChar( &mlen, cvars_state().Buffer[0] );
-            if( cvars_state().Buffer[1] != '\0' ) {
-                cvars_state().CurToken = T_WHITE_SPACE;
-                MacroSegmentAddToken( &mlen, cvars_state().CurToken );
+            MacroSegmentAddToken( front, &mlen, front.cvars.CurToken );
+            MacroSegmentAddChar( front, &mlen, front.cvars.Buffer[0] );
+            if( front.cvars.Buffer[1] != '\0' ) {
+                front.cvars.CurToken = T_WHITE_SPACE;
+                MacroSegmentAddToken( front, &mlen, front.cvars.CurToken );
             }
             break;
         case T_STRING:
-            if( cvars_state().CompFlags.wide_char_string ) {
-                cvars_state().CurToken = T_LSTRING;
+            if( front.cvars.CompFlags.wide_char_string ) {
+                front.cvars.CurToken = T_LSTRING;
             }
             /* fall through */
         case T_LSTRING:
         case T_CONSTANT:
         case T_BAD_TOKEN:
         case T_PPNUMBER:
-            MacroSegmentAddToken( &mlen, cvars_state().CurToken );
-            MacroSegmentAddMem( &mlen, cvars_state().Buffer, cvars_state().TokenLen + 1 );
+            MacroSegmentAddToken( front, &mlen, front.cvars.CurToken );
+            MacroSegmentAddMem( front, &mlen, front.cvars.Buffer, front.cvars.TokenLen + 1 );
             break;
         default:
-            MacroSegmentAddToken( &mlen, cvars_state().CurToken );
+            MacroSegmentAddToken( front, &mlen, front.cvars.CurToken );
             break;
         }
-        if( cvars_state().CurToken != T_WHITE_SPACE ) {
-            if( prev_non_ws_token == T_MACRO_SHARP && cvars_state().CurToken != T_MACRO_PARM && cvars_state().CurToken != T_MACRO_VAR_PARM ) {
-                CErr1( ERR_MUST_BE_MACRO_PARM );
+        if( front.cvars.CurToken != T_WHITE_SPACE ) {
+            if( prev_non_ws_token == T_MACRO_SHARP && front.cvars.CurToken != T_MACRO_PARM && front.cvars.CurToken != T_MACRO_VAR_PARM ) {
+                CErr1( front, ERR_MUST_BE_MACRO_PARM );
 //                SET_MTOKEN( MacroOffset + mlen - SIZE_MTOKEN, T_SHARP );
             }
-            prev_non_ws_token = cvars_state().CurToken;
+            prev_non_ws_token = front.cvars.CurToken;
         }
-        prev_token = cvars_state().CurToken;
-        cvars_state().CurToken = ScanToken();
+        prev_token = front.cvars.CurToken;
+        front.cvars.CurToken = ScanToken(front);
     }
     if( prev_non_ws_token == T_MACRO_SHARP ) {
-        CErr1( ERR_MUST_BE_MACRO_PARM );
+        CErr1( front, ERR_MUST_BE_MACRO_PARM );
     }
     if( prev_token == T_WHITE_SPACE ) {
         mlen -= SIZE_MTOKEN;
     }
-    MacroSegmentAddToken( &mlen, T_NULL );
+    MacroSegmentAddToken( front, &mlen, T_NULL );
     if( prev_non_ws_token == T_MACRO_SHARP_SHARP ) {
-        CErr1( ERR_MISPLACED_SHARP_SHARP );
+        CErr1( front, ERR_MISPLACED_SHARP_SHARP );
     }
-    new_mentry = MacroDefine( mlen, mflags );
+    new_mentry = MacroDefine( front, mlen, mflags );
     if( new_mentry != NULL ) {
-        cvars_state().MacroSize += mlen;
+        front.cvars.MacroSize += mlen;
     }
     return( new_mentry );
 }
 
 
-MEPTR MacroScan( void )
+MEPTR MacroScan( FrontRun& front )
 {
     MPPTR           mp;
     MPPTR           prev_mp;
@@ -493,65 +501,65 @@ MEPTR MacroScan( void )
     source_loc      macro_loc;
     MEPTR           mentry;
 
-    PPNextToken();
-    if( cvars_state().CurToken != T_ID ) {
-        ExpectIdentifier();
+    PPNextToken(front);
+    if( front.cvars.CurToken != T_ID ) {
+        ExpectIdentifier(front);
         return( NULL );
     }
-    if( IS_PPOPERATOR_DEFINED( cvars_state().Buffer ) ) {
-        CErr1( ERR_CANT_DEFINE_DEFINED );
+    if( IS_PPOPERATOR_DEFINED( front.cvars.Buffer ) ) {
+        CErr1( front, ERR_CANT_DEFINE_DEFINED );
         return( NULL );
     }
-    token_buf = CMemStrdup( cvars_state().Buffer );
+    token_buf = CMemStrdup( front, front.cvars.Buffer );
     formal_parms = NULL;
-    macro_loc = cvars_state().SrcFileLoc;
+    macro_loc = front.cvars.SrcFileLoc;
     parm_count = 0;             /* 0 ==> no () following */
     mflags = MFLAG_NONE;
-    if( cvars_state().CurrChar == '(' ) {     /* parms present */
-        PPNextToken();          /* grab the '(' */
-        PPNextToken();
+    if( front.cvars.CurrChar == '(' ) {     /* parms present */
+        PPNextToken(front);          /* grab the '(' */
+        PPNextToken(front);
         parm_count = 1;         /* 1 ==> () following */
         prev_mp = NULL;
-        for( ; cvars_state().CurToken != T_RIGHT_PAREN; ) {
+        for( ; front.cvars.CurToken != T_RIGHT_PAREN; ) {
             if( HasVarArgs( mflags ) ) {
-                ExpectingAfter( T_RIGHT_PAREN, T_DOT_DOT_DOT );
+                ExpectingAfter( front, T_RIGHT_PAREN, T_DOT_DOT_DOT );
                 return( NULL );
             }
-            if( cvars_state().CurToken != T_DOT_DOT_DOT && !ExpectingToken( T_ID ) ) {
+            if( front.cvars.CurToken != T_DOT_DOT_DOT && !ExpectingToken( front, T_ID ) ) {
                 return( NULL );
             }
             ++parm_count;
-            if( cvars_state().CurToken == T_DOT_DOT_DOT ) {
+            if( front.cvars.CurToken == T_DOT_DOT_DOT ) {
                 mflags |= MFLAG_HAS_VAR_ARGS;   /* can have no more parms after this. */
             }
-            mp = (MPPTR)CMemAlloc( sizeof( MPDEFN ) );
+            mp = (MPPTR)CMemAlloc( front, sizeof( MPDEFN ) );
             if( formal_parms == NULL ) {
                 formal_parms = mp;
             } else {
-                if( FormalParm( formal_parms ) ) {
-                    CErr2p( ERR_DUPLICATE_MACRO_PARM, cvars_state().Buffer );
+                if( FormalParm( front, formal_parms ) ) {
+                    CErr2p( front, ERR_DUPLICATE_MACRO_PARM, front.cvars.Buffer );
                 }
                 prev_mp->next = mp;
             }
-            if( cvars_state().CurToken == T_DOT_DOT_DOT ) {
-                mp->parm = CMemStrdup( "__VA_ARGS__" );
+            if( front.cvars.CurToken == T_DOT_DOT_DOT ) {
+                mp->parm = CMemStrdup( front, "__VA_ARGS__" );
             } else {
-                mp->parm = CMemStrdup( cvars_state().Buffer );
+                mp->parm = CMemStrdup( front, front.cvars.Buffer );
             }
             prev_mp = mp;
-            PPNextToken();
-            if( cvars_state().CurToken == T_RIGHT_PAREN )
+            PPNextToken(front);
+            if( front.cvars.CurToken == T_RIGHT_PAREN )
                 break;
-            if( cvars_state().CurToken == T_NULL ) {
-                CErr1( ERR_INVALID_MACRO_DEFN );
+            if( front.cvars.CurToken == T_NULL ) {
+                CErr1( front, ERR_INVALID_MACRO_DEFN );
                 break;
             }
             if( HasVarArgs( mflags ) ) {
-                ExpectingAfter( T_RIGHT_PAREN, T_DOT_DOT_DOT );
+                ExpectingAfter( front, T_RIGHT_PAREN, T_DOT_DOT_DOT );
                 return( NULL );
             }
-            MustRecog( T_COMMA );
-            if( cvars_state().CurToken != T_DOT_DOT_DOT && !ExpectingToken( T_ID ) ) {
+            MustRecog( front, T_COMMA );
+            if( front.cvars.CurToken != T_DOT_DOT_DOT && !ExpectingToken( front, T_ID ) ) {
                 return( NULL );
             }
         }
@@ -559,111 +567,111 @@ MEPTR MacroScan( void )
     /*
      * grab replacement tokens
      */
-    ppscan_mode = InitPPScan();         // enable T_PPNUMBER tokens
-    mentry = GrabTokens( parm_count, mflags, formal_parms, token_buf, &macro_loc );
-    FiniPPScan( ppscan_mode );          // disable T_PPNUMBER tokens
+    ppscan_mode = InitPPScan(front);         // enable T_PPNUMBER tokens
+    mentry = GrabTokens( front, parm_count, mflags, formal_parms, token_buf, &macro_loc );
+    FiniPPScan( front, ppscan_mode );          // disable T_PPNUMBER tokens
     for( ; (mp = formal_parms) != NULL; ) {
         formal_parms = mp->next;
-        CMemFree( mp->parm );
-        CMemFree( mp );
+        CMemFree( front, mp->parm );
+        CMemFree( front, mp );
     }
-    CMemFree( token_buf );
+    CMemFree( front, token_buf );
     return( mentry );
 }
 
-static void CDefine( void )
+static void CDefine( FrontRun& front )
 {
     MEPTR           mentry;
 
-    mentry = MacroScan();
+    mentry = MacroScan(front);
     if( mentry != NULL ) {
         mentry->macro_flags |= MFLAG_USER_DEFINED;
     }
 }
 
-static void CIfDef( void )
+static void CIfDef( FrontRun& front )
 {
     MEPTR       mentry;
 
-    PPNextToken();
-    if( cvars_state().CurToken != T_ID ) {
-        ExpectIdentifier();
-        IncLevel( false );
+    PPNextToken(front);
+    if( front.cvars.CurToken != T_ID ) {
+        ExpectIdentifier(front);
+        IncLevel( front, false );
         return;
     }
-    mentry = MacroLookup( cvars_state().Buffer );
+    mentry = MacroLookup( front, front.cvars.Buffer );
     if( mentry != NULL ) {
         mentry->macro_flags |= MFLAG_REFERENCED;
-        IncLevel( true );
+        IncLevel( front, true );
     } else {
-        IncLevel( false );
+        IncLevel( front, false );
     }
-    PPNextToken();
-    CheckEOL();
+    PPNextToken(front);
+    CheckEOL(front);
 }
 
 
-static void CIfNDef( void )
+static void CIfNDef( FrontRun& front )
 {
     MEPTR       mentry;
 
-    PPNextToken();
-    if( !ExpectingToken( T_ID ) ) {
-        IncLevel( false );
+    PPNextToken(front);
+    if( !ExpectingToken( front, T_ID ) ) {
+        IncLevel( front, false );
         return;
     }
-    mentry = MacroLookup( cvars_state().Buffer );
+    mentry = MacroLookup( front, front.cvars.Buffer );
     if( mentry != NULL ) {
         mentry->macro_flags |= MFLAG_REFERENCED;
-        IncLevel( false );
+        IncLevel( front, false );
     } else {
-        IncLevel( true );
+        IncLevel( front, true );
     }
-    PPNextToken();
-    CheckEOL();
+    PPNextToken(front);
+    CheckEOL(front);
 }
 
 
-static void CIf( void )
+static void CIf( FrontRun& front )
 {
     bool    value;
 
     PPCTL_ENABLE_LEX_ERRORS();
     PPCTL_ENABLE_MACROS();
-    PPNextToken();
-    value = PpConstExpr();
-    IncLevel( value );
-    CheckEOL();
+    PPNextToken(front);
+    value = PpConstExpr(front);
+    IncLevel( front, value );
+    CheckEOL(front);
     PPCTL_DISABLE_MACROS();
     PPCTL_DISABLE_LEX_ERRORS();
 }
 
 
-static void CElif( void )
+static void CElif( FrontRun& front )
 {
     bool    value;
 
     PPCTL_ENABLE_LEX_ERRORS();
     PPCTL_ENABLE_MACROS();
-    PPNextToken();
-    if( ( cvars_state().NestLevel == 0 ) || ( cvars_state().CppStack->cpp_type == PRE_ELSE ) ) {
-        CErr1( ERR_MISPLACED_ELIF );
+    PPNextToken(front);
+    if( ( front.cvars.NestLevel == 0 ) || ( front.cvars.CppStack->cpp_type == PRE_ELSE ) ) {
+        CErr1( front, ERR_MISPLACED_ELIF );
     } else {
-        if( cvars_state().SkipLevel == cvars_state().NestLevel ) {
-            --cvars_state().SkipLevel;                /* start skipping else part */
-            cvars_state().CppStack->processing = false;
-            cvars_state().CppStack->cpp_type = PRE_ELIF;
-        } else if( cvars_state().SkipLevel + 1 == cvars_state().NestLevel ) {
+        if( front.cvars.SkipLevel == front.cvars.NestLevel ) {
+            --front.cvars.SkipLevel;                /* start skipping else part */
+            front.cvars.CppStack->processing = false;
+            front.cvars.CppStack->cpp_type = PRE_ELIF;
+        } else if( front.cvars.SkipLevel + 1 == front.cvars.NestLevel ) {
             /*
              * only evaluate the expression when required
              */
-            if( cvars_state().CppStack->cpp_type == PRE_IF ) {
-                value = PpConstExpr();
-                CheckEOL();
+            if( front.cvars.CppStack->cpp_type == PRE_IF ) {
+                value = PpConstExpr(front);
+                CheckEOL(front);
                 if( value ) {
-                    cvars_state().SkipLevel = cvars_state().NestLevel; /* start including else part */
-                    cvars_state().CppStack->processing = true;
-                    cvars_state().CppStack->cpp_type = PRE_ELIF;
+                    front.cvars.SkipLevel = front.cvars.NestLevel; /* start including else part */
+                    front.cvars.CppStack->processing = true;
+                    front.cvars.CppStack->cpp_type = PRE_ELIF;
                 }
             }
         }
@@ -673,53 +681,53 @@ static void CElif( void )
 }
 
 
-static void CElse( void )
+static void CElse( FrontRun& front )
 {
-    if( ( cvars_state().NestLevel == 0 ) || ( cvars_state().CppStack->cpp_type == PRE_ELSE ) ) {
-        CErr1( ERR_MISPLACED_ELSE );
+    if( ( front.cvars.NestLevel == 0 ) || ( front.cvars.CppStack->cpp_type == PRE_ELSE ) ) {
+        CErr1( front, ERR_MISPLACED_ELSE );
     } else {
-        if( cvars_state().SkipLevel == cvars_state().NestLevel ) {
-            --cvars_state().SkipLevel;                /* start skipping else part */
-            cvars_state().CppStack->processing = false;
-        } else if( cvars_state().SkipLevel + 1 == cvars_state().NestLevel ) {
+        if( front.cvars.SkipLevel == front.cvars.NestLevel ) {
+            --front.cvars.SkipLevel;                /* start skipping else part */
+            front.cvars.CppStack->processing = false;
+        } else if( front.cvars.SkipLevel + 1 == front.cvars.NestLevel ) {
             /*
              * cpp_type will be PRE_ELIF if an elif was true
              */
-            if( cvars_state().CppStack->cpp_type == PRE_IF ) {
-                cvars_state().SkipLevel = cvars_state().NestLevel;  /* start including else part */
-                cvars_state().CppStack->processing = true;
+            if( front.cvars.CppStack->cpp_type == PRE_IF ) {
+                front.cvars.SkipLevel = front.cvars.NestLevel;  /* start including else part */
+                front.cvars.CppStack->processing = true;
             }
         }
-        cvars_state().CppStack->cpp_type = PRE_ELSE;
+        front.cvars.CppStack->cpp_type = PRE_ELSE;
     }
-    PPNextToken();
-    WantEOL();
+    PPNextToken(front);
+    WantEOL(front);
 }
 
 
-static void CEndif( void )
+static void CEndif( FrontRun& front )
 {
-    if( cvars_state().NestLevel == 0 ) {
-        CErr1( ERR_MISPLACED_ENDIF );
+    if( front.cvars.NestLevel == 0 ) {
+        CErr1( front, ERR_MISPLACED_ENDIF );
     } else {
         struct cpp_info *cpp;
 
-        --cvars_state().NestLevel;
-        cpp = cvars_state().CppStack;
-        if( cvars_state().SrcFiles != NULL && cpp->flist != cvars_state().SrcFiles->src_flist ) {
-             CWarn2p( ERR_WEIRD_ENDIF_ENCOUNTER, FileIndexToCorrectName( cpp->src_loc.fno ) );
+        --front.cvars.NestLevel;
+        cpp = front.cvars.CppStack;
+        if( front.cvars.SrcFiles != NULL && cpp->flist != front.cvars.SrcFiles->src_flist ) {
+             CWarn2p( front, ERR_WEIRD_ENDIF_ENCOUNTER, FileIndexToCorrectName( front, cpp->src_loc.fno ) );
         }
-        cvars_state().CppStack = cpp->prev_cpp;
-        CMemFree( cpp );
+        front.cvars.CppStack = cpp->prev_cpp;
+        CMemFree( front, cpp );
     }
-    if( cvars_state().SkipLevel > cvars_state().NestLevel ) {
-        cvars_state().SkipLevel = cvars_state().NestLevel;
+    if( front.cvars.SkipLevel > front.cvars.NestLevel ) {
+        front.cvars.SkipLevel = front.cvars.NestLevel;
     }
-    PPNextToken();
-    WantEOL();
+    PPNextToken(front);
+    WantEOL(front);
 }
 
-bool MacroDel( const char *name )
+bool MacroDel( FrontRun& front, const char *name )
 /*******************************/
 {
     MEPTR           mentry;
@@ -729,32 +737,32 @@ bool MacroDel( const char *name )
 
     ret = false;
     if( IS_PPOPERATOR_DEFINED( name ) ) {
-        CErr2p( ERR_CANT_UNDEF_THESE_NAMES, name  );
+        CErr2p( front, ERR_CANT_UNDEF_THESE_NAMES, name  );
         return( ret );
     }
     hash = CalcHashMacro( name );
     prev_mentry = NULL;
-    for( mentry = cvars_state().MacHash[hash]; mentry != NULL; mentry = mentry->next_macro ) {
+    for( mentry = front.cvars.MacHash[hash]; mentry != NULL; mentry = mentry->next_macro ) {
         if( strcmp( mentry->macro_name, name ) == 0 )
             break;
         prev_mentry = mentry;
     }
     if( mentry != NULL ) {
         if( MacroIsSpecial( mentry ) ) {
-            CErr2p( ERR_CANT_UNDEF_THESE_NAMES, name );
+            CErr2p( front, ERR_CANT_UNDEF_THESE_NAMES, name );
         } else {
             if( prev_mentry != NULL ) {
                 prev_mentry->next_macro = mentry->next_macro;
             } else {
-                cvars_state().MacHash[hash] = mentry->next_macro;
+                front.cvars.MacHash[hash] = mentry->next_macro;
             }
-            if( (cvars_state().InitialMacroFlags & MFLAG_DEFINED_BEFORE_FIRST_INCLUDE) == 0 ) {
+            if( (front.cvars.InitialMacroFlags & MFLAG_DEFINED_BEFORE_FIRST_INCLUDE) == 0 ) {
                 /*
                  * remember macros that were defined before first include
                  */
                 if( mentry->macro_flags & MFLAG_DEFINED_BEFORE_FIRST_INCLUDE ) {
-                    mentry->next_macro = cvars_state().UndefMacroList;
-                    cvars_state().UndefMacroList = mentry;
+                    mentry->next_macro = front.cvars.UndefMacroList;
+                    front.cvars.UndefMacroList = mentry;
                 }
             }
             ret = true;
@@ -764,122 +772,122 @@ bool MacroDel( const char *name )
 }
 
 
-static void CUnDef( void )
+static void CUnDef( FrontRun& front )
 {
 
-    PPNextToken();
-    if( ExpectingToken( T_ID ) ) {
-        MacroDel( cvars_state().Buffer );
-        PPNextToken();
-        CheckEOL();
+    PPNextToken(front);
+    if( ExpectingToken( front, T_ID ) ) {
+        MacroDel( front, front.cvars.Buffer );
+        PPNextToken(front);
+        CheckEOL(front);
     }
 }
 
 
-static void CLine( void )
+static void CLine( FrontRun& front )
 {
     FNAMEPTR        flist;
     unsigned        src_line;
 
     src_line = 0;
     PPCTL_ENABLE_MACROS();
-    PPNextToken();
-    if( ExpectingConstant() ) {
-        if( !cvars_state().CompFlags.cpp_ignore_line ) {
-            src_line = U32FetchTrunc( cvars_state().Constant64 ); // stash in case of side effects
-            cvars_state().SrcFiles->src_loc.line = src_line - 1; /* don't count this line */
+    PPNextToken(front);
+    if( ExpectingConstant(front) ) {
+        if( !front.cvars.CompFlags.cpp_ignore_line ) {
+            src_line = U32FetchTrunc( front.cvars.Constant64 ); // stash in case of side effects
+            front.cvars.SrcFiles->src_loc.line = src_line - 1; /* don't count this line */
         }
-        PPNextToken();
-        if( cvars_state().CurToken == T_NULL ) {
-            if( !cvars_state().CompFlags.cpp_ignore_line ) {
-                if( cvars_state().CompFlags.cpp_mode ) {
-                    CppEmitPoundLine( src_line, cvars_state().SrcFiles->src_name, false );
+        PPNextToken(front);
+        if( front.cvars.CurToken == T_NULL ) {
+            if( !front.cvars.CompFlags.cpp_ignore_line ) {
+                if( front.cvars.CompFlags.cpp_mode ) {
+                    CppEmitPoundLine( front, src_line, front.cvars.SrcFiles->src_name, false );
                 }
             }
         } else {
-            if( ExpectingToken( T_STRING ) ) {
-                if( cvars_state().CompFlags.wide_char_string ) {
+            if( ExpectingToken( front, T_STRING ) ) {
+                if( front.cvars.CompFlags.wide_char_string ) {
                     /*
                      * wide char string not allowed
                      */
-                    ExpectString();
+                    ExpectString(front);
                 } else {
-                    if( !cvars_state().CompFlags.cpp_ignore_line ) {
+                    if( !front.cvars.CompFlags.cpp_ignore_line ) {
 //                        RemoveEscapes( Buffer );
-                        flist = AddFlist( cvars_state().Buffer );
+                        flist = AddFlist( front, front.cvars.Buffer );
                         flist->rwflag = false;  // not a real file so no autodep
-                        cvars_state().SrcFiles->src_name = flist->name;
-                        cvars_state().SrcFiles->src_loc.fno = flist->index;
-                        if( cvars_state().CompFlags.cpp_mode ) {
-                            CppEmitPoundLine( src_line, cvars_state().SrcFiles->src_name, false );
+                        front.cvars.SrcFiles->src_name = flist->name;
+                        front.cvars.SrcFiles->src_loc.fno = flist->index;
+                        if( front.cvars.CompFlags.cpp_mode ) {
+                            CppEmitPoundLine( front, src_line, front.cvars.SrcFiles->src_name, false );
                         }
                     }
                 }
             }
-            PPNextToken();
-            CheckEOL();
+            PPNextToken(front);
+            CheckEOL(front);
         }
     }
     PPCTL_DISABLE_MACROS();
 }
 
-static void get_arg_message( void )
+static void get_arg_message( FrontRun& front )
 {
-    while( cvars_state().CurrChar == ' ' )
-        cvars_state().NextChar();
-    cvars_state().TokenLen = 0;
-    while( cvars_state().CurrChar != '\n' && cvars_state().CurrChar != '\r' && cvars_state().CurrChar != LCHR_EOF ) {
-        WriteBufferChar( cvars_state().CurrChar );
-        cvars_state().NextChar();
+    while( front.cvars.CurrChar == ' ' )
+        front.cvars.NextChar(front);
+    front.cvars.TokenLen = 0;
+    while( front.cvars.CurrChar != '\n' && front.cvars.CurrChar != '\r' && front.cvars.CurrChar != LCHR_EOF ) {
+        WriteBufferChar( front, front.cvars.CurrChar );
+        front.cvars.NextChar(front);
     }
-    WriteBufferNullChar();
+    WriteBufferNullChar(front);
 }
 
-static void CError( void )
+static void CError( FrontRun& front )
 {
-    get_arg_message();
+    get_arg_message(front);
     /*
      * Force #error output to be reported, even with preprocessor
      */
-    CErr2p( ERR_USER_ERROR_MSG, cvars_state().Buffer );
+    CErr2p( front, ERR_USER_ERROR_MSG, front.cvars.Buffer );
 }
 
 
-static void CWarning( void )
+static void CWarning( FrontRun& front )
 {
-    if( cvars_state().CompFlags.extensions_enabled
-      || ( cvars_state().CompVars.cstd >= STD_C23 ) ) {
-        get_arg_message();
+    if( front.cvars.CompFlags.extensions_enabled
+      || ( front.cvars.CompVars.cstd >= STD_C23 ) ) {
+        get_arg_message(front);
         /*
          * Force #error output to be reported, even with preprocessor
          */
-        CWarn2p( ERR_USER_WARNING_MSG, cvars_state().Buffer );
+        CWarn2p( front, ERR_USER_WARNING_MSG, front.cvars.Buffer );
     } else {
-        CUnknown();
+        CUnknown(front);
     }
 }
 
 
-void CppStackInit( void )
+void CppStackInit( FrontRun& front )
 {
-    cvars_state().NestLevel = 0;
-    cvars_state().SkipLevel = 0;
-    cvars_state().CppStack = NULL;
+    front.cvars.NestLevel = 0;
+    front.cvars.SkipLevel = 0;
+    front.cvars.CppStack = NULL;
 }
 
 
-void CppStackFini( void )
+void CppStackFini( FrontRun& front )
 {
     struct cpp_info *cpp;
 
-    while( (cpp = cvars_state().CppStack) != NULL ) {
-        SetErrLoc( &cpp->src_loc );
-        CErr1( ERR_MISSING_CENDIF );
-        InitErrLoc();
-        cvars_state().CppStack = cpp->prev_cpp;
-        CMemFree( cpp );
+    while( (cpp = front.cvars.CppStack) != NULL ) {
+        SetErrLoc( front, &cpp->src_loc );
+        CErr1( front, ERR_MISSING_CENDIF );
+        InitErrLoc(front);
+        front.cvars.CppStack = cpp->prev_cpp;
+        CMemFree( front, cpp );
     }
-    cvars_state().CppStack = NULL;
+    front.cvars.CppStack = NULL;
 }
 
 static void stringize( char *s )
@@ -898,45 +906,45 @@ static void stringize( char *s )
     *d = '\0';
 }
 
-TOKEN Process_Pragma( void )
+TOKEN Process_Pragma( FrontRun& front )
 {
-    PPNextToken();
-    if( cvars_state().CurToken == T_LEFT_PAREN ) {
-        PPNextToken();
-        if( cvars_state().CurToken == T_STRING ) {
+    PPNextToken(front);
+    if( front.cvars.CurToken == T_LEFT_PAREN ) {
+        PPNextToken(front);
+        if( front.cvars.CurToken == T_STRING ) {
             char        *token_buf;
 
-            token_buf = CMemStrdup( cvars_state().Buffer );
-            PPNextToken();
-            if( cvars_state().CurToken == T_RIGHT_PAREN ) {
+            token_buf = CMemStrdup( front, front.cvars.Buffer );
+            PPNextToken(front);
+            if( front.cvars.CurToken == T_RIGHT_PAREN ) {
                 ppctl_t old_ppctl;
 
                 stringize( token_buf );
-                InsertReScanPragmaTokens( token_buf );
+                InsertReScanPragmaTokens( front, token_buf );
                 /*
                  * call CPragma()
                  */
-                old_ppctl = cvars_state().PPControl;
+                old_ppctl = front.cvars.PPControl;
                 PPCTL_ENABLE_EOL();
-                CPragma();
-                cvars_state().PPControl = old_ppctl;
+                CPragma(front);
+                front.cvars.PPControl = old_ppctl;
             } else {
                 /*
                  * error, incorrect syntax of the operator _Pragma()
                  */
             }
-            CMemFree( token_buf );
-            PPNextToken();
+            CMemFree( front, token_buf );
+            PPNextToken(front);
         } else {
             /*
              * error, incorrect syntax of the operator _Pragma()
              */
         }
     } else {
-        InsertToken( cvars_state().CurToken, cvars_state().Buffer );
-        strcpy( cvars_state().Buffer, PPOPERATOR_PRAGMA );
-        cvars_state().TokenLen = LENLIT( PPOPERATOR_PRAGMA );
-        cvars_state().CurToken = T_ID;
+        InsertToken( front, front.cvars.CurToken, front.cvars.Buffer );
+        strcpy( front.cvars.Buffer, PPOPERATOR_PRAGMA );
+        front.cvars.TokenLen = LENLIT( PPOPERATOR_PRAGMA );
+        front.cvars.CurToken = T_ID;
     }
-    return( cvars_state().CurToken );
+    return( front.cvars.CurToken );
 }

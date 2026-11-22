@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 extern void     TRAddParm( instruction *call_ins, instruction *parm_ins );
-extern void     TRDeclareParm( instruction *parm_ins );
-extern bool     TailRecursion( void );
+extern void     TRDeclareParm( BackRun& back, instruction *parm_ins );
+extern bool     TailRecursion( BackRun& back );

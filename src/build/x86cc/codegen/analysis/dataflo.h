@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
-extern void    MakeConflicts( void );
-extern bool    MoreConflicts( void );
-extern void    SetInOut( block *blk );
+#pragma once
+extern void    MakeConflicts( BackRun& back );
+extern bool    MoreConflicts( BackRun& back );
+extern void    SetInOut( BackRun& back, block *blk );

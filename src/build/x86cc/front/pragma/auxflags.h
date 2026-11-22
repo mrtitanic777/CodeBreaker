@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef enum aux_flags {
     AUX_FLAG_FAR16 = 1
 } aux_flags;

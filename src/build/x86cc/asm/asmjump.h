@@ -30,5 +30,6 @@
 ****************************************************************************/
 
 
-extern bool jmp( token_buffer *tokbuf, expr_list *opndx, int *flags );
-extern bool ptr_operator( memtype mem_type, bool fix_mem_type );
+#pragma once
+extern bool jmp( AsmRun& assembler, token_buffer *tokbuf, expr_list *opndx, int *flags );
+extern bool ptr_operator( AsmRun& assembler, memtype mem_type, bool fix_mem_type );

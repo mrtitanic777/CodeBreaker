@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 extern void         RevCond( instruction *ins );
 extern opcode_defs  FlipOpcode( opcode_defs opcode );
 extern void         FlipCond( instruction *ins );

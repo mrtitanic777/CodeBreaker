@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
-extern const type_def   *TypeOfTypeClass( type_class_def type_class );
-extern type_class_def   ReturnTypeClass( const type_def *tipe, call_attributes attr );
-extern type_class_def   TypeClass( const type_def *tipe );
+#pragma once
+extern const type_def   *TypeOfTypeClass( BackRun& back, type_class_def type_class );
+extern type_class_def   ReturnTypeClass( BackRun& back, const type_def *tipe, call_attributes attr );
+extern type_class_def   TypeClass( BackRun& back, const type_def *tipe );

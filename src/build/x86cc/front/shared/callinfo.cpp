@@ -33,6 +33,7 @@
 #include <string.h>
 #include <stdio.h>
 #include "callinfo.h"
+#include "frontrun.hpp"
 
 #if defined( BY_C_FRONT_END )
     #define AUX_MEMALLOC        CMemAlloc
@@ -68,68 +69,15 @@ static hw_reg_set WatcallParms[] = {
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct CallinfoFileState {
-#if _INTEL_CPU
-    hw_reg_set WatcallParms[2] = {
-  #if _CPU == 8086
-        HW_D_4( HW_AX, HW_BX, HW_CX, HW_DX )  /*+HW_ST1+HW_ST2+HW_ST3+HW_ST4*/,
-  #else /* _CPU == 386 */
-        HW_D_4( HW_EAX,HW_EBX,HW_ECX,HW_EDX ) /*+HW_ST1+HW_ST2+HW_ST3+HW_ST4*/,
-  #endif
-        HW_D( HW_EMPTY )
-    };
-#endif
-#if _INTEL_CPU
-    hw_reg_set StackParms[1] = {
-        HW_D( HW_EMPTY )
-    };
-#endif
-#if _INTEL_CPU
-    #if _CPU == 386
-    hw_reg_set FastcallParms[3] = {
-  #if _CPU == 8086
-        HW_D( HW_AX ), HW_D( HW_DX ), HW_D( HW_BX ),
-  #else /* _CPU == 386 */
-        HW_D( HW_ECX ), HW_D( HW_EDX ),
-  #endif
-        HW_D( HW_EMPTY )
-    };
-#else
-    hw_reg_set FastcallParms[4] = {
-  #if _CPU == 8086
-        HW_D( HW_AX ), HW_D( HW_DX ), HW_D( HW_BX ),
-  #else /* _CPU == 386 */
-        HW_D( HW_ECX ), HW_D( HW_EDX ),
-  #endif
-        HW_D( HW_EMPTY )
-    };
-#endif
-#endif
-#if _INTEL_CPU
-#if _CPU == 386
-    hw_reg_set MetaWareParms[1] = {
-        HW_D( HW_EMPTY )
-    };
-#endif
-#endif
-#if _INTEL_CPU
-#if _CPU == 386
-    hw_reg_set OptlinkParms[2] = {
-        HW_D_4( HW_EAX, HW_ECX, HW_EDX, HW_FLTS ),
-        HW_D( HW_EMPTY )
-    };
-#endif
-#endif
-};
+/* (struct CallinfoFileState: callinfo_state.h) */
 
 }  // namespace
 
-static inline CallinfoFileState& callinfo_file_state() { return cbrun_part<CallinfoFileState>(); }
 
 #if _INTEL_CPU
 
 
-void AuxInfoInit( int flag_stdatnum )
+void AuxInfoInit( FrontRun& front, int flag_stdatnum )
 /***********************************/
 {
     hw_reg_set          full_no_segs;
@@ -152,7 +100,7 @@ void AuxInfoInit( int flag_stdatnum )
 /*************************************************
  *  __fortran calling convention
  *************************************************/
-    FortranInfo.objname = AUX_STRALLOC( "^" );
+    FortranInfo.objname = AUX_STRALLOC( front, "^" );
 
 /*************************************************
  *  __cdecl calling convention
@@ -177,8 +125,8 @@ void AuxInfoInit( int flag_stdatnum )
                          //FECALL_X86_SPECIAL_RETURN |
                          FECALL_X86_SPECIAL_STRUCT_RETURN |
                          FECALL_X86_NONE;
-    CdeclInfo.parms = callinfo_file_state().StackParms;
-    CdeclInfo.objname = AUX_STRALLOC( "_*" );
+    CdeclInfo.parms = front.callinfo_file.StackParms;
+    CdeclInfo.objname = AUX_STRALLOC( front, "_*" );
 
     HW_CAsgn( CdeclInfo.returns, HW_EMPTY );
     HW_TurnOn( CdeclInfo.save, full_no_segs );
@@ -213,8 +161,8 @@ void AuxInfoInit( int flag_stdatnum )
                          //FECALL_X86_SPECIAL_RETURN |
                          FECALL_X86_SPECIAL_STRUCT_RETURN |
                          FECALL_X86_NONE;
-    PascalInfo.parms = callinfo_file_state().StackParms;
-    PascalInfo.objname = AUX_STRALLOC( "^" );
+    PascalInfo.parms = front.callinfo_file.StackParms;
+    PascalInfo.objname = AUX_STRALLOC( front, "^" );
 
     HW_CAsgn( PascalInfo.returns, HW_EMPTY );
     HW_CAsgn( PascalInfo.streturn, HW_EMPTY );
@@ -249,11 +197,11 @@ void AuxInfoInit( int flag_stdatnum )
                          //FECALL_X86_SPECIAL_RETURN |
                          FECALL_X86_SPECIAL_STRUCT_RETURN |
                          FECALL_X86_NONE;
-    StdcallInfo.parms = callinfo_file_state().StackParms;
+    StdcallInfo.parms = front.callinfo_file.StackParms;
     if( flag_stdatnum ) {
-        StdcallInfo.objname = AUX_STRALLOC( "_*#" );
+        StdcallInfo.objname = AUX_STRALLOC( front, "_*#" );
     } else {
-        StdcallInfo.objname = AUX_STRALLOC( "_*" );
+        StdcallInfo.objname = AUX_STRALLOC( front, "_*" );
     }
 
     HW_CAsgn( StdcallInfo.returns, HW_EMPTY );
@@ -276,7 +224,7 @@ void AuxInfoInit( int flag_stdatnum )
 /*************************************************
  *  __fastcall calling convention
  *************************************************/
-    FastcallInfo.parms = callinfo_file_state().FastcallParms;
+    FastcallInfo.parms = front.callinfo_file.FastcallParms;
     HW_CAsgn( FastcallInfo.returns, HW_EMPTY );
     HW_CAsgn( FastcallInfo.streturn, HW_EMPTY );
     HW_TurnOn( FastcallInfo.save, full_no_segs );
@@ -301,11 +249,11 @@ void AuxInfoInit( int flag_stdatnum )
                          FECALL_X86_SPECIAL_STRUCT_RETURN |
                          FECALL_X86_NONE;
   #if _CPU == 8086
-    FastcallInfo.objname = AUX_STRALLOC( "@*" );
+    FastcallInfo.objname = AUX_STRALLOC( front, "@*" );
     HW_CTurnOff( FastcallInfo.save, HW_ABCD );
     HW_CTurnOff( FastcallInfo.save, HW_ES );
   #else /* _CPU == 386 */
-    FastcallInfo.objname = AUX_STRALLOC( "@*#" );
+    FastcallInfo.objname = AUX_STRALLOC( front, "@*#" );
     HW_CTurnOff( FastcallInfo.save, HW_EAX );
 //    HW_CTurnOff( FastcallInfo.save, HW_EBX );
     HW_CTurnOff( FastcallInfo.save, HW_ECX );
@@ -331,11 +279,11 @@ void AuxInfoInit( int flag_stdatnum )
                          FECALL_X86_SPECIAL_STRUCT_RETURN |
                          FECALL_X86_NONE;
   #if _CPU == 8086
-    OptlinkInfo.parms = callinfo_file_state().StackParms;
+    OptlinkInfo.parms = front.callinfo_file.StackParms;
   #else /* _CPU == 386 */
-    OptlinkInfo.parms = callinfo_file_state().OptlinkParms;
+    OptlinkInfo.parms = front.callinfo_file.OptlinkParms;
   #endif
-    OptlinkInfo.objname = AUX_STRALLOC( "*" );
+    OptlinkInfo.objname = AUX_STRALLOC( front, "*" );
 
     HW_CAsgn( OptlinkInfo.returns, HW_EMPTY );
 //    HW_CAsgn( OptlinkInfo.returns, HW_FLTS );
@@ -369,8 +317,8 @@ void AuxInfoInit( int flag_stdatnum )
                          //FECALL_X86_SPECIAL_RETURN |
                          FECALL_X86_SPECIAL_STRUCT_RETURN |
                          FECALL_X86_NONE;
-    SyscallInfo.parms = callinfo_file_state().StackParms;
-    SyscallInfo.objname = AUX_STRALLOC( "*" );
+    SyscallInfo.parms = front.callinfo_file.StackParms;
+    SyscallInfo.objname = AUX_STRALLOC( front, "*" );
 
     HW_CAsgn( SyscallInfo.returns, HW_EMPTY );
     HW_CAsgn( SyscallInfo.streturn, HW_EMPTY );
@@ -396,21 +344,21 @@ void AuxInfoInit( int flag_stdatnum )
 
     Far16CdeclInfo = CdeclInfo;
     Far16CdeclInfo.cclass_target |= FECALL_X86_FAR16_CALL;
-    Far16CdeclInfo.parms = callinfo_file_state().StackParms;
-    Far16CdeclInfo.objname = AUX_STRALLOC( CdeclInfo.objname );
+    Far16CdeclInfo.parms = front.callinfo_file.StackParms;
+    Far16CdeclInfo.objname = AUX_STRALLOC( front, CdeclInfo.objname );
     // __far16 __cdecl depends on EBX being trashed in __cdecl
     // but NT 386 __cdecl preserves EBX
     HW_CTurnOff( Far16CdeclInfo.save, HW_EBX );
 
     Far16PascalInfo = PascalInfo;
     Far16PascalInfo.cclass_target |= FECALL_X86_FAR16_CALL;
-    Far16PascalInfo.parms = callinfo_file_state().StackParms;
-    Far16PascalInfo.objname = AUX_STRALLOC( PascalInfo.objname );
+    Far16PascalInfo.parms = front.callinfo_file.StackParms;
+    Far16PascalInfo.objname = AUX_STRALLOC( front, PascalInfo.objname );
   #endif
 }
 
   #if _CPU == 386
-void SetAuxStackConventions( void )
+void SetAuxStackConventions( FrontRun& front )
 /*********************************/
 {
     WatcallInfo.cclass &= FECALL_GEN_NONE;
@@ -421,32 +369,32 @@ void SetAuxStackConventions( void )
                                  FECALL_X86_NONE;
     WatcallInfo.cclass_target |= FECALL_X86_NO_8087_RETURNS |
                                  FECALL_X86_NONE;
-    WatcallInfo.parms = callinfo_file_state().MetaWareParms;
+    WatcallInfo.parms = front.callinfo_file.MetaWareParms;
     HW_CTurnOff( WatcallInfo.save, HW_EAX );
 //    HW_CTurnOff( WatcallInfo.save, HW_EBX );
     HW_CTurnOff( WatcallInfo.save, HW_ECX );
     HW_CTurnOff( WatcallInfo.save, HW_EDX );
     HW_CTurnOff( WatcallInfo.save, HW_FLTS );
-    WatcallInfo.objname = AUX_STRALLOC( "*" );
+    WatcallInfo.objname = AUX_STRALLOC( front, "*" );
 }
   #endif
 
 #endif /* _INTEL_CPU */
 
-int IsAuxParmsBuiltIn( hw_reg_set *parms )
+int IsAuxParmsBuiltIn( FrontRun& front, hw_reg_set *parms )
 /***************************************/
 {
-    if( parms == callinfo_file_state().WatcallParms ) {
+    if( parms == front.callinfo_file.WatcallParms ) {
         return( true );
 #if _INTEL_CPU
-    } else if( parms == callinfo_file_state().StackParms ) {
+    } else if( parms == front.callinfo_file.StackParms ) {
         return( true );
-    } else if( parms == callinfo_file_state().FastcallParms ) {
+    } else if( parms == front.callinfo_file.FastcallParms ) {
         return( true );
   #if _CPU == 386
-    } else if( parms == callinfo_file_state().OptlinkParms ) {
+    } else if( parms == front.callinfo_file.OptlinkParms ) {
         return( true );
-    } else if( parms == callinfo_file_state().MetaWareParms ) {
+    } else if( parms == front.callinfo_file.MetaWareParms ) {
         return( true );
   #endif
 #endif
@@ -457,17 +405,17 @@ int IsAuxParmsBuiltIn( hw_reg_set *parms )
     }
 }
 
-void SetAuxWatcallInfo( void )
+void SetAuxWatcallInfo( FrontRun& front )
 /****************************/
 {
-    callinfo_state().DftCallConv         = &DEFAULT_CALLINFO;
+    front.callinfo.DftCallConv         = &DEFAULT_CALLINFO;
 
     WatcallInfo.cclass        = FECALL_GEN_NONE;
 #if _INTEL_CPU
     WatcallInfo.cclass_target = FECALL_X86_NONE;
 #endif
     WatcallInfo.code    = NULL;
-    WatcallInfo.parms   = callinfo_file_state().WatcallParms;
+    WatcallInfo.parms   = front.callinfo_file.WatcallParms;
 #if _CPU == 370
     WatcallInfo.linkage = &DefaultLinkage;
 #endif
@@ -478,16 +426,16 @@ void SetAuxWatcallInfo( void )
     WatcallInfo.objname = NULL;
 }
 
-void SetDefaultAuxInfo( void )
+void SetDefaultAuxInfo( FrontRun& front )
 /****************************/
 {
-    DefaultInfo = *callinfo_state().DftCallConv;
+    DefaultInfo = *front.callinfo.DftCallConv;
     if( DefaultInfo.objname != NULL ) {
-        DefaultInfo.objname = AUX_STRALLOC( DefaultInfo.objname );
+        DefaultInfo.objname = AUX_STRALLOC( front, DefaultInfo.objname );
     }
 }
 
-int IsAuxInfoBuiltIn( aux_info *inf )
+int IsAuxInfoBuiltIn( FrontRun& front, aux_info *inf )
 /***********************************/
 {
     if( inf == &DefaultInfo )
@@ -523,11 +471,11 @@ int IsAuxInfoBuiltIn( aux_info *inf )
  * and useful for interoperability with IBM compilers.
  * NB: WatcallInfo.objname value depends on the -3r/3s switch.
  */
-char *VarNamePattern( aux_info *inf )
+char *VarNamePattern( FrontRun& front, aux_info *inf )
 /***********************************/
 {
     if( inf == &DefaultInfo )
-        inf = callinfo_state().DftCallConv;
+        inf = front.callinfo.DftCallConv;
     if( inf == &WatcallInfo )
         return( WatcallInfo.objname );
     if( inf == &CdeclInfo || inf == &StdcallInfo || inf == &FastcallInfo )

@@ -32,6 +32,7 @@
 
 #include "owlpriv.h"
 #include "owreloc.h"
+#include "backrun.hpp"
 
 #define PPC_RELOCS                          /* coff                         elf                 mask */ \
 /* OWL_RELOC_ABSOLUTE */        PPC_RELOC( COFF_IMAGE_REL_PPC_ABSOLUTE, R_PPC_NONE,         0xffffffff ) \
@@ -106,6 +107,7 @@
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
+}  // namespace
 struct OwrelocState {
     uint_32 coffRelocTypesPPC[14] = {
     #define PPC_RELOC(coff,elf,mask)    coff,
@@ -163,28 +165,28 @@ struct OwrelocState {
     #undef ALPHA_RELOC
     };
 };
+namespace {
 
 }  // namespace
 
-static inline OwrelocState& owreloc_state() { return cbrun_part<OwrelocState>(); }
 
-Elf32_Word OWLENTRY ElfRelocType( owl_reloc_type reloc_type, owl_cpu cpu ) {
+Elf32_Word OWLENTRY ElfRelocType( BackRun& back, owl_reloc_type reloc_type, owl_cpu cpu ) {
 //**************************************************************************
 
     Elf32_Word  *elf_relocs = NULL;
 
     switch( cpu ) {
     case OWL_CPU_PPC:
-        elf_relocs = owreloc_state().elfRelocTypesPPC;
+        elf_relocs = back.owreloc->elfRelocTypesPPC;
         break;
     case OWL_CPU_MIPS:
-        elf_relocs = owreloc_state().elfRelocTypesMIPS;
+        elf_relocs = back.owreloc->elfRelocTypesMIPS;
         break;
     case OWL_CPU_ALPHA:
-        elf_relocs = owreloc_state().elfRelocTypesAlpha;
+        elf_relocs = back.owreloc->elfRelocTypesAlpha;
         break;
     case OWL_CPU_X86:
-        elf_relocs = owreloc_state().elfRelocTypes386;
+        elf_relocs = back.owreloc->elfRelocTypes386;
         break;
     default:
         assert( 0 );
@@ -192,23 +194,23 @@ Elf32_Word OWLENTRY ElfRelocType( owl_reloc_type reloc_type, owl_cpu cpu ) {
     return( elf_relocs[ reloc_type ] );
 }
 
-uint_32 OWLENTRY CoffRelocType( owl_reloc_type reloc_type, owl_cpu cpu ) {
+uint_32 OWLENTRY CoffRelocType( BackRun& back, owl_reloc_type reloc_type, owl_cpu cpu ) {
 //************************************************************************
 
     uint_32     *coff_relocs = NULL;
 
     switch( cpu ) {
     case OWL_CPU_PPC:
-        coff_relocs = owreloc_state().coffRelocTypesPPC;
+        coff_relocs = back.owreloc->coffRelocTypesPPC;
         break;
     case OWL_CPU_MIPS:
-        coff_relocs = owreloc_state().coffRelocTypesMIPS;
+        coff_relocs = back.owreloc->coffRelocTypesMIPS;
         break;
     case OWL_CPU_ALPHA:
-        coff_relocs = owreloc_state().coffRelocTypesAlpha;
+        coff_relocs = back.owreloc->coffRelocTypesAlpha;
         break;
     case OWL_CPU_X86:
-        coff_relocs = owreloc_state().coffRelocTypes386;
+        coff_relocs = back.owreloc->coffRelocTypes386;
         break;
     default:
         assert( 0 );
@@ -217,7 +219,7 @@ uint_32 OWLENTRY CoffRelocType( owl_reloc_type reloc_type, owl_cpu cpu ) {
 }
 
 
-unsigned OWLENTRY OWLRelocBitMask( owl_file_handle file, owl_reloc_info *reloc ) {
+unsigned OWLENTRY OWLRelocBitMask( BackRun& back, owl_file_handle file, owl_reloc_info *reloc ) {
 //********************************************************************************
 
     unsigned    *mask_array = NULL;
@@ -225,15 +227,15 @@ unsigned OWLENTRY OWLRelocBitMask( owl_file_handle file, owl_reloc_info *reloc )
     assert( reloc != NULL );
     switch( file->info->cpu ) {
     case OWL_CPU_PPC:
-        mask_array = owreloc_state().ppcMasks;
+        mask_array = back.owreloc->ppcMasks;
         break;
     case OWL_CPU_ALPHA:
-        mask_array = owreloc_state().alphaMasks;
+        mask_array = back.owreloc->alphaMasks;
         break;
     case OWL_CPU_X86:
         return( 0xffffffff );
     case OWL_CPU_MIPS:
-        mask_array = owreloc_state().mipsMasks;
+        mask_array = back.owreloc->mipsMasks;
         break;
     default:
         assert( 0 );
@@ -269,3 +271,7 @@ uint_8 OWLENTRY OWLRelocIsRelative( owl_file_handle file, owl_reloc_info *reloc 
 
     return( reloc->type == OWL_RELOC_BRANCH_REL || reloc->type == OWL_RELOC_JUMP_REL );
 }
+
+/* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
+OwrelocState* owreloc_make() { return new OwrelocState(); }
+void owreloc_free(OwrelocState* part) { delete part; }

@@ -58,12 +58,13 @@
 #include "bgcall.h"
 #include "cgprotos.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
-static  void    AddCall( instruction *ins, cn call );
+static  void    AddCall( BackRun& back, instruction *ins, cn call );
 
 #if _TARGET & _TARG_80386
-static  void    Far16Parms( cn call )
+static  void    Far16Parms( BackRun& back, cn call )
 /***********************************/
 {
     instruction         *ins;
@@ -85,39 +86,39 @@ static  void    Far16Parms( cn call )
     for( parm = call->parms; parm != NULL; parm = parm->next ) {
         parm_size += _RoundUp( parm->name->tipe->length, 2 );
     }
-    parmlist = SAllocTemp( XX, parm_size );
+    parmlist = SAllocTemp( back, XX, parm_size );
     parmlist->v.usage |= NEEDS_MEMORY | USE_IN_ANOTHER_BLOCK | USE_ADDRESS;
     offset = 0;
     for( parm = call->parms; parm != NULL; parm = parm->next ) {
-        parm->name->u.i.ins->result = STempOffset( parmlist, offset,
-                                                 TypeClass( parm->name->tipe ),
+        parm->name->u.i.ins->result = STempOffset( back, parmlist, offset,
+                                                 TypeClass( back, parm->name->tipe ),
                                                  parm->name->tipe->length );
         offset += _RoundUp( parm->name->tipe->length, 2 );
     }
     for( parm = call->parms; parm != NULL; parm = next ) {
         next = parm->next;
         parm->name->format = NF_ADDR;   /* so instruction doesn't get freed! */
-        BGDone( parm->name );
-        CGFree( parm );
+        BGDone( back, parm->name );
+        CGFree( back, parm );
     }
-    eax = AllocRegName( HW_EAX );
-    ecx = AllocRegName( HW_ECX );
-    esi = AllocRegName( HW_ESI );
+    eax = AllocRegName( back, HW_EAX );
+    ecx = AllocRegName( back, HW_ECX );
+    esi = AllocRegName( back, HW_ESI );
     HW_TurnOn( state->parm.used, eax->r.reg );
     HW_TurnOn( state->parm.used, ecx->r.reg );
     HW_TurnOn( state->parm.used, esi->r.reg );
-    ins = MakeMove( AllocS32Const( parm_size ), ecx, WD );
-    AddIns( ins );
-    ins = MakeUnary( OP_LA, parmlist, esi, WD );
-    AddIns( ins );
+    ins = MakeMove( back, AllocS32Const( back, parm_size ), ecx, WD );
+    AddIns( back, ins );
+    ins = MakeUnary( back, OP_LA, parmlist, esi, WD );
+    AddIns( back, ins );
     if( ins->head.opcode == OP_CALL ) {
-        ins = MakeUnary( OP_LA, call->name->u.n.name, eax, WD );
+        ins = MakeUnary( back, OP_LA, call->name->u.n.name, eax, WD );
     } else {
-        ins = MakeMove( GenIns( call->name ), eax, WD );
+        ins = MakeMove( back, GenIns( back, call->name ), eax, WD );
         call_ins->head.opcode = OP_CALL;
     }
     call_ins->num_operands = 2;
-    AddIns( ins );
+    AddIns( back, ins );
     if( call_ins->type_class == XX ) {
         if( state->attr & ROUTINE_ALLOCS_RETURN ) {
             rtindex = RT_Far16Cdecl;
@@ -127,17 +128,17 @@ static  void    Far16Parms( cn call )
     } else {
         rtindex = RT_Far16Func;
     }
-    lbl = RTLabel( rtindex );
-    call->name->u.n.name = AllocMemory( lbl, 0, CG_LBL, WD );
+    lbl = RTLabel( back, rtindex );
+    call->name->u.n.name = AllocMemory( back, lbl, 0, CG_LBL, WD );
     call_ins->flags.u.call_flags |= CALL_FAR16 | CALL_POPS_PARMS;
-    call_ins->operands[CALL_OP_USED] = AllocRegName( state->parm.used );
-    call_ins->operands[CALL_OP_POPS] = AllocS32Const( 0 );
+    call_ins->operands[CALL_OP_USED] = AllocRegName( back, state->parm.used );
+    call_ins->operands[CALL_OP_POPS] = AllocS32Const( back, 0 );
     call_ins->zap = &call_ins->operands[CALL_OP_USED]->r;
 }
 #endif
 
 
-an      BGCall( cn call, bool use_return, bool aux_inline )
+an      BGCall( BackRun& back, cn call, bool use_return, bool aux_inline )
 /*********************************************************/
 {
     instruction         *call_ins;
@@ -150,12 +151,12 @@ an      BGCall( cn call, bool use_return, bool aux_inline )
     hw_reg_set          return_reg;
     hw_reg_set          zap_reg;
 
-    if( call->name->tipe == data_state().TypeProcParm ) {
-        SaveDisplay( OP_PUSH );
+    if( call->name->tipe == back.data.TypeProcParm ) {
+        SaveDisplay( back, OP_PUSH );
     }
 
     state = call->state;
-    result = BGNewTemp( call->tipe );
+    result = BGNewTemp( back, call->tipe );
     call_ins = call->ins;
     /*
      * If we have a return value that won't fit in a register
@@ -171,11 +172,11 @@ an      BGCall( cn call, bool use_return, bool aux_inline )
         }
         if( (state->attr & ROUTINE_ALLOCS_RETURN) == 0 ) {
             if( HW_CEqual( state->return_reg, HW_EMPTY ) ) {
-                ret_ptr = AllocTemp( WD );
+                ret_ptr = AllocTemp( back, WD );
             } else {
-                ret_ptr = AllocRegName( state->return_reg );
+                ret_ptr = AllocRegName( back, state->return_reg );
             }
-            ret_ins = MakeUnary( OP_LA, result, ret_ptr, WD );
+            ret_ins = MakeUnary( back, OP_LA, result, ret_ptr, WD );
             HW_TurnOn( state->parm.used, state->return_reg );
             call_ins->flags.u.call_flags |= CALL_RETURNS_STRUCT;
         }
@@ -186,10 +187,10 @@ an      BGCall( cn call, bool use_return, bool aux_inline )
     }
     if( _RoutineIsFar16( state->attr ) ) {
 #if _TARGET & _TARG_80386
-        Far16Parms( call );
+        Far16Parms( back, call );
 #endif
     } else {
-        if( AssgnParms( call, aux_inline ) ) {
+        if( AssgnParms( back, call, aux_inline ) ) {
             if( state->attr & ROUTINE_REMOVES_PARMS ) {
                 call_ins->flags.u.call_flags |= CALL_POPS_PARMS;
             }
@@ -222,59 +223,59 @@ an      BGCall( cn call, bool use_return, bool aux_inline )
         call_ins->flags.u.call_flags |= CALL_IGNORES_RETURN;
     }
     if( call_ins->type_class == XX ) {
-        reg_name = AllocRegName( state->return_reg );
+        reg_name = AllocRegName( back, state->return_reg );
         if( state->attr & ROUTINE_ALLOCS_RETURN ) {
             call_ins->result = reg_name;
-            AddCall( call_ins, call );
+            AddCall( back, call_ins, call );
             if( use_return ) {
-                temp = AllocTemp( WD ); /* assume near pointer*/
-                AddIns( MakeMove( reg_name, temp, WD ) );
-                temp = SAllocIndex( temp, NULL, 0,
+                temp = AllocTemp( back, WD ); /* assume near pointer*/
+                AddIns( back, MakeMove( back, reg_name, temp, WD ) );
+                temp = SAllocIndex( back, temp, NULL, 0,
                                     result->n.type_class, call->tipe->length );
-                AddIns( MakeMove( temp, result, result->n.type_class ) );
+                AddIns( back, MakeMove( back, temp, result, result->n.type_class ) );
             }
         } else {
             call_ins->result = result;
-            AddIns( ret_ins );
+            AddIns( back, ret_ins );
             if( HW_CEqual( state->return_reg, HW_EMPTY ) ) {
-                AddIns( MakeUnary( OP_PUSH, ret_ptr, NULL, WD ) );
-                state->parm.offset += data_state().TypeClassSize[WD];
+                AddIns( back, MakeUnary( back, OP_PUSH, ret_ptr, NULL, WD ) );
+                state->parm.offset += back.data.TypeClassSize[WD];
                 call_ins->operands[CALL_OP_POPS] =
-                        AllocS32Const( call_ins->operands[CALL_OP_POPS]->c.lo.u.int_value + data_state().TypeClassSize[WD] );
+                        AllocS32Const( back, call_ins->operands[CALL_OP_POPS]->c.lo.u.int_value + back.data.TypeClassSize[WD] );
                 if( state->attr & ROUTINE_REMOVES_PARMS ) {
                     call_ins->flags.u.call_flags |= CALL_POPS_PARMS;
                 }
             }
-            AddCall( call_ins, call );
+            AddCall( back, call_ins, call );
         }
     } else {
         return_reg = state->return_reg;
         zap_reg = call_ins->zap->reg;
         HW_CTurnOn( zap_reg, HW_FLTS );
         HW_OnlyOn( return_reg, zap_reg );
-        call_ins->result = AllocRegName( return_reg );
-        reg_name = AllocRegName( state->return_reg );
-        AddCall( call_ins, call );
+        call_ins->result = AllocRegName( back, return_reg );
+        reg_name = AllocRegName( back, state->return_reg );
+        AddCall( back, call_ins, call );
         if( use_return ) {
-            ret_ins = MakeMove( reg_name, result, result->n.type_class );
+            ret_ins = MakeMove( back, reg_name, result, result->n.type_class );
             if( HW_COvlap( reg_name->r.reg, HW_FLTS ) ) {
                 ret_ins->stk_entry = 1;
                 ret_ins->stk_exit = 0;
             }
-            AddIns( ret_ins );
+            AddIns( back, ret_ins );
         }
     }
     if( state->parm.offset != 0
       && (state->attr & ROUTINE_REMOVES_PARMS) == 0 ) {
-        reg_name = AllocRegName( HW_xSP );
-        AddIns( MakeBinary( OP_ADD, reg_name,
-                AllocS32Const( state->parm.offset ), reg_name, WD ) );
+        reg_name = AllocRegName( back, HW_xSP );
+        AddIns( back, MakeBinary( back, OP_ADD, reg_name,
+                AllocS32Const( back, state->parm.offset ), reg_name, WD ) );
     }
-    return( MakeTempAddr( result ) );
+    return( MakeTempAddr( back, result ) );
 }
 
 
-void    BGProcDecl( cg_sym_handle sym, const type_def *tipe )
+void    BGProcDecl( BackRun& back, cg_sym_handle sym, const type_def *tipe )
 /***********************************************************/
 {
     hw_reg_set          reg;
@@ -282,38 +283,38 @@ void    BGProcDecl( cg_sym_handle sym, const type_def *tipe )
     type_class_def      type_class;
     label_handle        lbl;
 
-    model_state().SaveTargetModel = model_state().TargetModel;
-    type_class = AddCallBlock( sym, tipe );
-    if( tipe != data_state().TypeNone ) {
+    back.model.SaveTargetModel = back.model.TargetModel;
+    type_class = AddCallBlock( back, sym, tipe );
+    if( tipe != back.data.TypeNone ) {
         if( type_class == XX ) {
-            if( data_state().CurrProc->state.attr & ROUTINE_ALLOCS_RETURN ) {
-                PUSH_OP( AskBackSeg() );
-                    lbl = AskForNewLabel();
-                    DataLabel( lbl );
-                    DGUBytes( tipe->length );
-                    data_state().CurrProc->targ.return_points = SAllocMemory( lbl, 0, CG_LBL, TypeClass( tipe ), tipe->length );
+            if( back.data.CurrProc->state.attr & ROUTINE_ALLOCS_RETURN ) {
+                PUSH_OP( AskBackSeg(back) );
+                    lbl = AskForNewLabel(back);
+                    DataLabel( back, lbl );
+                    DGUBytes( back, tipe->length );
+                    back.data.CurrProc->targ.return_points = SAllocMemory( back, lbl, 0, CG_LBL, TypeClass( back, tipe ), tipe->length );
                 POP_OP();
             } else {
-                reg = data_state().CurrProc->state.return_reg;
+                reg = back.data.CurrProc->state.return_reg;
                 if( HW_CEqual( reg, HW_EMPTY ) ) {
-                    temp = DoParmDecl( NULL, data_state().TypeInteger, HW_EMPTY );
+                    temp = DoParmDecl( back, NULL, back.data.TypeInteger, HW_EMPTY );
                 } else {
-                    temp = AllocTemp( WD );
+                    temp = AllocTemp( back, WD );
                     temp->v.usage |= USE_IN_ANOTHER_BLOCK;
-                    AddIns( MakeMove( AllocRegName( reg ), temp, WD ) );
-                    HW_TurnOn( data_state().CurrProc->state.parm.used, reg );
+                    AddIns( back, MakeMove( back, AllocRegName( back, reg ), temp, WD ) );
+                    HW_TurnOn( back.data.CurrProc->state.parm.used, reg );
                 }
-                data_state().CurrProc->targ.return_points = temp;
+                back.data.CurrProc->targ.return_points = temp;
             }
         }
     }
-    if( data_state().CurrProc->state.attr & ROUTINE_FARSS ) {
-        model_state().TargetModel |= CGSW_X86_FLOATING_SS;
+    if( back.data.CurrProc->state.attr & ROUTINE_FARSS ) {
+        back.model.TargetModel |= CGSW_X86_FLOATING_SS;
     }
 }
 
 
-name    *StReturn( an retval, const type_def *tipe, instruction **pins )
+name    *StReturn( BackRun& back, an retval, const type_def *tipe, instruction **pins )
 /**********************************************************************/
 {
     name        *retp;
@@ -322,50 +323,50 @@ name    *StReturn( an retval, const type_def *tipe, instruction **pins )
     name        *seg;
     hw_reg_set  reg;
 
-    if( data_state().CurrProc->state.attr & ROUTINE_ALLOCS_RETURN ) {
-        retp = data_state().CurrProc->targ.return_points;
-        AddIns( MakeUnary( OP_LA, retp, AllocRegName( data_state().CurrProc->state.return_reg ), WD ) );
+    if( back.data.CurrProc->state.attr & ROUTINE_ALLOCS_RETURN ) {
+        retp = back.data.CurrProc->targ.return_points;
+        AddIns( back, MakeUnary( back, OP_LA, retp, AllocRegName( back, back.data.CurrProc->state.return_reg ), WD ) );
         *pins = NULL;
     } else {
         if( _IsTargetModel( CGSW_X86_FLOATING_SS )
           || _IsTargetModel( CGSW_X86_FLOATING_DS ) ) {
-            ptr = AllocTemp( CP );
-            off = OffsetPart( ptr );
-            seg = SegmentPart( ptr );
-            AddIns( MakeMove( AllocRegName( HW_SS ), seg, U2 ) );
+            ptr = AllocTemp( back, CP );
+            off = OffsetPart( back, ptr );
+            seg = SegmentPart( back, ptr );
+            AddIns( back, MakeMove( back, AllocRegName( back, HW_SS ), seg, U2 ) );
         } else {
-            ptr = AllocTemp( WD );
+            ptr = AllocTemp( back, WD );
             off = ptr;
         }
-        AddIns( MakeMove( data_state().CurrProc->targ.return_points, off, WD ) );
-        retp = SAllocIndex( ptr, NULL, 0, TypeClass( retval->tipe ), tipe->length );
-        reg = ReturnReg( WD, false );
-        *pins = MakeMove( data_state().CurrProc->targ.return_points, AllocRegName( reg ), WD );
-        data_state().CurrProc->state.return_reg = reg;
+        AddIns( back, MakeMove( back, back.data.CurrProc->targ.return_points, off, WD ) );
+        retp = SAllocIndex( back, ptr, NULL, 0, TypeClass( back, retval->tipe ), tipe->length );
+        reg = ReturnReg( back, WD, false );
+        *pins = MakeMove( back, back.data.CurrProc->targ.return_points, AllocRegName( back, reg ), WD );
+        back.data.CurrProc->state.return_reg = reg;
     }
     return( retp );
 }
 
 
-static  void    AddCall( instruction *ins, cn call ) {
+static  void    AddCall( BackRun& back, instruction *ins, cn call ) {
 /****************************************************/
 
     name        *proc_name;
 
     if( _IsTargetModel( CGSW_X86_FLOATING_DS )
       && (call->state->attr & ROUTINE_NEEDS_DS_LOADED) ) {
-        AddIns( MakeMove( NearSegment(), AllocRegName( HW_DS ), U2 ) );
+        AddIns( back, MakeMove( back, NearSegment(back), AllocRegName( back, HW_DS ), U2 ) );
     }
-    if( call->name->tipe == data_state().TypeProcParm ) {
-        proc_name = AllocTemp( data_state().ClassPointer );
+    if( call->name->tipe == back.data.TypeProcParm ) {
+        proc_name = AllocTemp( back, back.data.ClassPointer );
 /* what to do?        proc_name->usage |= USE_REGISTER;*/
-        AddIns( MakeMove( ins->operands[CALL_OP_ADDR], proc_name, data_state().ClassPointer ));
+        AddIns( back, MakeMove( back, ins->operands[CALL_OP_ADDR], proc_name, back.data.ClassPointer ));
         ins->operands[CALL_OP_ADDR] = proc_name;
-        SetDisplay( GenIns( call->name ) );
-        AddIns( ins );
-        SaveDisplay( OP_POP );
+        SetDisplay( back, GenIns( back, call->name ) );
+        AddIns( back, ins );
+        SaveDisplay( back, OP_POP );
     } else {
-        AddCallIns( ins, call );
+        AddCallIns( back, ins, call );
     }
 }
 
@@ -385,49 +386,49 @@ reg_set_index   CallIPossible( instruction *ins )
 }
 
 
-void    InitTargProc( void )
+void    InitTargProc( BackRun& back )
 /**************************/
 {
-    data_state().CurrProc->targ.stack_check = NULL;
-    data_state().CurrProc->targ.push_local_size = 0;
-    data_state().CurrProc->targ.debug = NULL;
-    data_state().CurrProc->targ.return_points = NULL;
-    data_state().CurrProc->targ.sp_frame = false;
-    data_state().CurrProc->targ.sp_align = false;
-    data_state().CurrProc->targ.has_fd_temps = false;
-    data_state().CurrProc->targ.never_sp_frame = false;
-    data_state().CurrProc->targ.tls_index = NULL;
+    back.data.CurrProc->targ.stack_check = NULL;
+    back.data.CurrProc->targ.push_local_size = 0;
+    back.data.CurrProc->targ.debug = NULL;
+    back.data.CurrProc->targ.return_points = NULL;
+    back.data.CurrProc->targ.sp_frame = false;
+    back.data.CurrProc->targ.sp_align = false;
+    back.data.CurrProc->targ.has_fd_temps = false;
+    back.data.CurrProc->targ.never_sp_frame = false;
+    back.data.CurrProc->targ.tls_index = NULL;
 }
 
 
-void    SaveToTargProc( void )
+void    SaveToTargProc( BackRun& back )
 /****************************/
 {
-    data_state().CurrProc->targ.max_stack = data_state().MaxStack;
+    back.data.CurrProc->targ.max_stack = back.data.MaxStack;
 }
 
 
-void    RestoreFromTargProc( void )
+void    RestoreFromTargProc( BackRun& back )
 /*********************************/
 {
-    data_state().MaxStack = data_state().CurrProc->targ.max_stack;
+    back.data.MaxStack = back.data.CurrProc->targ.max_stack;
 }
 
 
-void    PushInSameBlock( instruction *ins )
+void    PushInSameBlock( BackRun& back, instruction *ins )
 /*****************************************/
 {
 #if ( _TARGET & _TARG_8086 )
     /* unused parameters */ (void)ins;
 #else
-    if( InsBlock( ins ) != data_state().CurrBlock ) {
-        data_state().CurrProc->targ.never_sp_frame = true;
+    if( InsBlock( ins ) != back.data.CurrBlock ) {
+        back.data.CurrProc->targ.never_sp_frame = true;
     }
 #endif
 }
 
 
-instruction *   PushOneParm( instruction *ins, name *curr,
+instruction *   PushOneParm( BackRun& back, instruction *ins, name *curr,
                                 type_class_def type_class,
                                 type_length offset,
                                 call_state *state )
@@ -438,8 +439,8 @@ instruction *   PushOneParm( instruction *ins, name *curr,
 
     /* unused parameters */ (void)state; (void)offset;
 
-    new_ins = MakeUnary( OP_PUSH, curr, NULL, type_class );
-    SuffixIns( ins, new_ins );
+    new_ins = MakeUnary( back, OP_PUSH, curr, NULL, type_class );
+    SuffixIns( back, ins, new_ins );
 #if 0
     if( curr->n.class_ == N_CONSTANT ) {
         size = TypeClassSize[type_class];
@@ -464,10 +465,10 @@ void    PostCall( cn call )
     /* unused parameters */ (void)call;
 }
 
-const type_def  *PassParmType( cg_sym_handle func, const type_def *tipe )
+const type_def  *PassParmType( BackRun& back, cg_sym_handle func, const type_def *tipe )
 /***********************************************************************/
 {
     if( (call_class_target)(pointer_uint)FindAuxInfoSym( func, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR16_CALL )
         return( tipe );
-    return( QParmType( func, NULL, tipe ) );
+    return( QParmType( back, func, NULL, tipe ) );
 }

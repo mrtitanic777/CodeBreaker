@@ -32,37 +32,38 @@
 
 #include "cvars.h"
 #include "asmstmt.h"
+#include "frontrun.hpp"
 
 
 #define MAX_ASM_LINE_LEN 511
 
-static bool EndOfAsmStmt( void )
+static bool EndOfAsmStmt( FrontRun& front )
 /******************************/
 {
-    if( cvars_state().CurToken == T_SEMI_COLON ) {
+    if( front.cvars.CurToken == T_SEMI_COLON ) {
         /*
          * ; .ASM comment
          */
         for( ;; ) {
-            NextToken();
-            if( ( cvars_state().CurToken == T_EOF ) || ( cvars_state().CurToken == T_NULL ) ) {
+            NextToken(front);
+            if( ( front.cvars.CurToken == T_EOF ) || ( front.cvars.CurToken == T_NULL ) ) {
                 break;
             }
         }
         return( true );
     }
-    if( cvars_state().CurToken == T_EOF )
+    if( front.cvars.CurToken == T_EOF )
         return( true );
-    if( cvars_state().CurToken == T_NULL )
+    if( front.cvars.CurToken == T_NULL )
         return( true );
-    if( cvars_state().CurToken == T___ASM )
+    if( front.cvars.CurToken == T___ASM )
         return( true );
-    if( cvars_state().CurToken == T_RIGHT_BRACE )
+    if( front.cvars.CurToken == T_RIGHT_BRACE )
         return( true );
     return( false );
 }
 
-static void GetAsmLine( void )
+static void GetAsmLine( FrontRun& front )
 /****************************/
 {
     unsigned    AsmErrLine;
@@ -70,31 +71,31 @@ static void GetAsmLine( void )
     char        buf[MAX_ASM_LINE_LEN + 1];
 
     PPCTL_ENABLE_EOL();
-    AsmErrLine = cvars_state().TokenLoc.line;
+    AsmErrLine = front.cvars.TokenLoc.line;
     *buf = '\0';
-    if( strcmp( cvars_state().Buffer, "_emit" ) == 0 ) {
+    if( strcmp( front.cvars.Buffer, "_emit" ) == 0 ) {
         strcpy( buf, AsmSysDefineByte() );
-        NextToken();
+        NextToken(front);
     }
     LastToken = T_DOT;
     for( ;; ) {
-        if( EndOfAsmStmt() )
+        if( EndOfAsmStmt(front) )
             break;
-        if(( LastToken != T_DOT ) && ( LastToken != T_BAD_CHAR ) && ( cvars_state().CurToken != T_XOR ))
+        if(( LastToken != T_DOT ) && ( LastToken != T_BAD_CHAR ) && ( front.cvars.CurToken != T_XOR ))
             strncat( buf, " ", MAX_ASM_LINE_LEN );
-        strncat( buf, cvars_state().Buffer, MAX_ASM_LINE_LEN );
-        LastToken = cvars_state().CurToken;
-        NextToken();
+        strncat( buf, front.cvars.Buffer, MAX_ASM_LINE_LEN );
+        LastToken = front.cvars.CurToken;
+        NextToken(front);
     }
     buf[MAX_ASM_LINE_LEN] = '\0';
     if( *buf != '\0' ) {
-        cvars_state().TokenLoc.line = AsmErrLine;
-        AsmSysLine( buf );
+        front.cvars.TokenLoc.line = AsmErrLine;
+        AsmSysLine( front, buf );
     }
     PPCTL_DISABLE_EOL();
 }
 
-void AsmStmt( void )
+void AsmStmt( FrontRun& front )
 /******************/
 {
     bool            too_many_bytes;
@@ -103,55 +104,55 @@ void AsmStmt( void )
     ppctl_t         old_ppctl;
     TREEPTR         tree;
 
-    old_ppctl = cvars_state().PPControl;
+    old_ppctl = front.cvars.PPControl;
     /*
      * indicate that we are inside an __asm statement so scanner will
      * allow tokens unique to the assembler. e.g. 21h
      */
     PPCTL_ENABLE_ASM();
 
-    NextToken();
-    AsmSysInit( buff );
+    NextToken(front);
+    AsmSysInit( front, buff );
     too_many_bytes = false;
-    if( cvars_state().CurToken == T_LEFT_BRACE ) {
-        NextToken();
+    if( front.cvars.CurToken == T_LEFT_BRACE ) {
+        NextToken(front);
         for( ;; ) {             // grab assembler lines
-            GetAsmLine();
-            if( asminlin_state().AsmCodeAddress > MAXIMUM_BYTESEQ ) {
+            GetAsmLine(front);
+            if( front.asminlin->AsmCodeAddress > MAXIMUM_BYTESEQ ) {
                 if( !too_many_bytes ) {
-                    CErr1( ERR_TOO_MANY_BYTES_IN_PRAGMA );
+                    CErr1( front, ERR_TOO_MANY_BYTES_IN_PRAGMA );
                     too_many_bytes = true;
                 }
                 /*
                  * reset index to we don't overrun buffer
                  */
-                asminlin_state().AsmCodeAddress = 0;
+                front.asminlin->AsmCodeAddress = 0;
             }
-            if( cvars_state().CurToken == T_RIGHT_BRACE )
+            if( front.cvars.CurToken == T_RIGHT_BRACE )
                 break;
-            if( cvars_state().CurToken == T_EOF )
+            if( front.cvars.CurToken == T_EOF )
                 break;
-            NextToken();
+            NextToken(front);
         }
         skip_token = T_RIGHT_BRACE;
     } else {
-        GetAsmLine();           // grab single assembler instruction
+        GetAsmLine(front);           // grab single assembler instruction
         skip_token = T_NULL;
     }
-    cvars_state().PPControl = old_ppctl;
-    if( asminlin_state().AsmCodeAddress > 0 ) {
-        CreateAuxInlineFunc( too_many_bytes );
-        pragdefn_state().CurrEntry = NULL;
-        tree = LeafNode( OPR_FUNCNAME );
-        tree->op.u2.sym_handle = MakeFunction( pragdefn_state().AuxList->name, FuncNode( GetType( TYP_VOID ), FLAG_NONE, NULL ) );
-        tree = ExprNode( tree, OPR_CALL, NULL );
-        tree->u.expr_type = GetType( TYP_VOID );
-        AddStmt( tree );
+    front.cvars.PPControl = old_ppctl;
+    if( front.asminlin->AsmCodeAddress > 0 ) {
+        CreateAuxInlineFunc( front, too_many_bytes );
+        front.pragdefn.CurrEntry = NULL;
+        tree = LeafNode( front, OPR_FUNCNAME );
+        tree->op.u2.sym_handle = MakeFunction( front, front.pragdefn.AuxList->name, FuncNode( front, GetType( front, TYP_VOID ), FLAG_NONE, NULL ) );
+        tree = ExprNode( front, tree, OPR_CALL, NULL );
+        tree->u.expr_type = GetType( front, TYP_VOID );
+        AddStmt( front, tree );
     } else {
 //        expr = NULL;
     }
-    AsmSysFini();
-    if( cvars_state().CurToken == skip_token ) {
-        NextToken();
+    AsmSysFini(front);
+    if( front.cvars.CurToken == skip_token ) {
+        NextToken(front);
     }
 }

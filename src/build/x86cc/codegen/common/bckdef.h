@@ -32,6 +32,7 @@
 
 
 /* aligned */
+#pragma once
 typedef int             import_handle;
 typedef pointer         abspatch_handle;
 

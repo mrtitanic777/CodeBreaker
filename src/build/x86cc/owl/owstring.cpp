@@ -32,8 +32,9 @@
 
 
 #include "owlpriv.h"
+#include "backrun.hpp"
 
-static patricia *newNode( owl_string_table *table, const char *text, unsigned bit ) {
+static patricia *newNode( BackRun& back, owl_string_table *table, const char *text, unsigned bit ) {
 //***********************************************************************************
 
     patricia            *node;
@@ -41,7 +42,7 @@ static patricia *newNode( owl_string_table *table, const char *text, unsigned bi
 
     len = strlen( text );
     table->bytes += len + 1;
-    node = static_cast<patricia *>(_ClientAlloc( table->file, sizeof( *node ) + len ));
+    node = static_cast<patricia *>(_ClientAlloc( back, table->file, sizeof( *node ) + len ));
     node->left = NULL;
     node->right = NULL;
     node->bit = bit;
@@ -64,7 +65,7 @@ static unsigned getBit( const char *text, unsigned len, unsigned bit_pos ) {
 }
 
 
-static owl_string_handle patInsert( owl_string_table *table, const char *text ) {
+static owl_string_handle patInsert( BackRun& back, owl_string_table *table, const char *text ) {
 //*******************************************************************************
 
     patricia            *prev;
@@ -106,7 +107,7 @@ static owl_string_handle patInsert( owl_string_table *table, const char *text ) 
         other = getBit( text, len, other->bit ) ? other->right : other->left;
     }
 
-    n = newNode( table, text, diff_bit );
+    n = newNode( back, table, text, diff_bit );
 
     if( getBit( text, len, diff_bit ) ) {
         n->left = other;
@@ -126,22 +127,22 @@ static owl_string_handle patInsert( owl_string_table *table, const char *text ) 
 
 }
 
-static void patFree( owl_string_table *table, patricia *tree ) {
+static void patFree( BackRun& back, owl_string_table *table, patricia *tree ) {
 //**************************************************************
 
     patricia            *child;
 
     child = tree->left;
     if( child != NULL && child->bit > tree->bit ) {
-        patFree( table, child );
+        patFree( back, table, child );
     }
 
     child = tree->right;
     if( child != NULL && child->bit > tree->bit ) {
-        patFree( table, child );
+        patFree( back, table, child );
     }
 
-    _ClientFree( table->file, tree );
+    _ClientFree( back, table->file, tree );
 }
 
 static void patEmit( owl_string_table *table, patricia *tree, char **buffer, owl_offset *offset ) {
@@ -190,31 +191,31 @@ static void patDump( patricia *tree, unsigned indent ) {
     }
 }
 
-extern owl_string_table * OWLENTRY OWLStringInit( owl_file_handle file ) {
+extern owl_string_table * OWLENTRY OWLStringInit( BackRun& back, owl_file_handle file ) {
 //************************************************************************
 
     owl_string_table    *table;
 
-    table = static_cast<owl_string_table *>(_ClientAlloc( file, sizeof( *table ) ));
+    table = static_cast<owl_string_table *>(_ClientAlloc( back, file, sizeof( *table ) ));
     table->file = file;
     table->bytes = 0;
-    table->tree = newNode( table, "", 0 );
+    table->tree = newNode( back, table, "", 0 );
     table->tree->left  = table->tree;
     table->tree->right = table->tree;
     return( table );
 }
 
-extern void OWLENTRY OWLStringFini( owl_string_table *table ) {
+extern void OWLENTRY OWLStringFini( BackRun& back, owl_string_table *table ) {
 //*************************************************************
 
-    patFree( table, table->tree );
-    _ClientFree( table->file, table );
+    patFree( back, table, table->tree );
+    _ClientFree( back, table->file, table );
 }
 
-extern owl_string_handle OWLENTRY OWLStringAdd( owl_string_table *table, const char *string ) {
+extern owl_string_handle OWLENTRY OWLStringAdd( BackRun& back, owl_string_table *table, const char *string ) {
 //*********************************************************************************************
 
-    return( patInsert( table, string ) );
+    return( patInsert( back, table, string ) );
 }
 
 extern const char * OWLENTRY OWLStringText( owl_string_handle string ) {

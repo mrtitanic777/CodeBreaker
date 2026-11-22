@@ -42,23 +42,24 @@
 #include "split.h"
 #include "regsave.h"
 #include "x86temps.h"
+#include "backrun.hpp"
 
 
-static  void    AssignPushLocals( void );
+static  void    AssignPushLocals( BackRun& back );
 
-void    PushLocals( void )
+void    PushLocals( BackRun& back )
 /*************************
     Assign locals which can have their initial value pushed onto the stack
 */
 {
-    if( data_state().BlockByBlock )
+    if( back.data.BlockByBlock )
         return;
-    if( regsave_state().Save.store_cost[WD] <= regsave_state().Save.push_cost[WD] )
+    if( back.regsave.Save.store_cost[WD] <= back.regsave.Save.push_cost[WD] )
         return;
-    AssignPushLocals();
+    AssignPushLocals(back);
 }
 
-static  void    AssignPushLocals( void ) {
+static  void    AssignPushLocals( BackRun& back ) {
 /***********************************
     Scan through HeadBlock to see if there are any leading instructions of
     the form MOV REG => temp, where temp is on the stack. We can eliminate
@@ -75,8 +76,8 @@ static  void    AssignPushLocals( void ) {
     type_length curr_offset;
 
     curr_offset = 0;
-    for( ins = data_state().HeadBlock->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-        if( data_state().CurrProc->prolog_state & PST_PROLOG_GENERATED )
+    for( ins = back.data.HeadBlock->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
+        if( back.data.CurrProc->prolog_state & PST_PROLOG_GENERATED )
             break;
         if( DoesSomething( ins ) ) {
             if( ins->head.opcode != OP_MOV )
@@ -106,19 +107,19 @@ static  void    AssignPushLocals( void ) {
                     break;
                 }
             } else {
-                data_state().CurrProc->targ.push_local_size += PushSize( dst->n.size );
-                dst->t.location = - data_state().CurrProc->targ.push_local_size;
+                back.data.CurrProc->targ.push_local_size += PushSize( dst->n.size );
+                dst->t.location = - back.data.CurrProc->targ.push_local_size;
                 dst->v.usage |= HAS_MEMORY;
                 PropLocal( dst );
             }
             ins->head.state = OPERANDS_NEED_WORK;
-            DoNothing( ins );
+            DoNothing( back, ins );
         }
     }
 }
 
 
-void    AdjustPushLocal( name *temp )
+void    AdjustPushLocal( BackRun& back, name *temp )
 /**********************************************
     Adjust the location field of a push local, and all its aliases.
     Before this routine is called, the location field just contains
@@ -131,7 +132,7 @@ void    AdjustPushLocal( name *temp )
     name        *scan;
 
     if( (temp->t.temp_flags & PUSH_LOCAL) == 0 ) { /* if not already adjusted*/
-        temp->t.location += -data_state().CurrProc->locals.size - data_state().CurrProc->locals.base;
+        temp->t.location += -back.data.CurrProc->locals.size - back.data.CurrProc->locals.base;
         for( scan = temp->t.alias; scan != temp; scan = scan->t.alias ) {
             scan->t.location = temp->t.location;
             scan->v.usage |= HAS_MEMORY;
@@ -141,18 +142,18 @@ void    AdjustPushLocal( name *temp )
 }
 
 
-void    SetTempLocation( name *temp, type_length size )
+void    SetTempLocation( BackRun& back, name *temp, type_length size )
 /******************************************************
     Snag a temporary with length "size" off the stack and set it's location
 */
 {
-    data_state().CurrProc->locals.size += size;
-    temp->t.location = - data_state().CurrProc->locals.size
-                      - data_state().CurrProc->locals.base;
+    back.data.CurrProc->locals.size += size;
+    temp->t.location = - back.data.CurrProc->locals.size
+                      - back.data.CurrProc->locals.base;
 }
 
 
-void    RelocParms( void )
+void    RelocParms( BackRun& back )
 /*****************************
     Relocate parameter locations based on what type of prolog we generated,
     how many registers were pushed on the stack, and all that other stuff
@@ -161,24 +162,24 @@ void    RelocParms( void )
 {
     name        *name;
 
-    for( name = data_state().Names[N_TEMP]; name != NULL; name = name->n.next_name ) {
+    for( name = back.data.Names[N_TEMP]; name != NULL; name = name->n.next_name ) {
         if( ( name->v.usage & HAS_MEMORY ) && ( name->t.temp_flags & STACK_PARM ) ) {
-            name->t.location += data_state().CurrProc->parms.base;
+            name->t.location += back.data.CurrProc->parms.base;
         }
     }
 }
 
 
-bool    TempAllocBefore( void *t1, void *t2 )
+bool    TempAllocBefore( BackRun& back, void *t1, void *t2 )
 /*******************************************/
 {
     if( (((name *)t1)->t.temp_flags & USED_AS_FD) && (((name *)t2)->t.temp_flags & USED_AS_FD) == 0 ) {
-        if( data_state().CurrProc->targ.sp_align )
+        if( back.data.CurrProc->targ.sp_align )
             return( false );
         return( true );
     }
     if( (((name *)t2)->t.temp_flags & USED_AS_FD) && (((name *)t1)->t.temp_flags & USED_AS_FD) == 0 ) {
-        if( data_state().CurrProc->targ.sp_align )
+        if( back.data.CurrProc->targ.sp_align )
             return( true );
         return( false );
     }

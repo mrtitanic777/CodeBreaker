@@ -31,16 +31,17 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "i87data.h"
 #include "fppatch.h"
 
 
 /* i87exp.c*/
-extern instruction      *PrefFLDOp( instruction *ins, operand_type op, name *opnd );
+extern instruction      *PrefFLDOp( BackRun& back, instruction *ins, operand_type op, name *opnd );
 extern bool             FPResultNotNeeded( instruction *ins );
-extern instruction      *SuffFSTPRes( instruction *ins, name *opnd, result_type res );
-extern instruction      *SuffFXCH( instruction *ins, int i );
-extern instruction      *PrefFXCH( instruction *ins, int i );
+extern instruction      *SuffFSTPRes( BackRun& back, instruction *ins, name *opnd, result_type res );
+extern instruction      *SuffFXCH( BackRun& back, instruction *ins, int i );
+extern instruction      *PrefFXCH( BackRun& back, instruction *ins, int i );
 extern void             NoPopRBin( instruction *ins );
 extern void             NoPopBin( instruction *ins );
 extern void             ToPopBin( instruction *ins );
@@ -49,21 +50,21 @@ extern void             ToRFld( instruction *ins );
 extern void             ToRFstp( instruction *ins );
 extern void             NoPop( instruction *ins );
 extern void             NoMemBin( instruction *ins );
-extern instruction      *MakeWait( void );
+extern instruction      *MakeWait( BackRun& back );
 
 /* i87opt.c */
 
 /* i87reg.c */
 extern void             SetFPParmsUsed( call_state *state, int parms );
-extern name             *ST( int i );
-extern void             FPInitStkReq( void );
-extern int              FPStkReq( instruction *ins );
-extern void             SetFPPatchSegm( int i );
-extern void             SetFPPatchType( fp_patches type );
-extern void             FPPatchTypeRef( void );
+extern name             *ST( BackRun& back, int i );
+extern void             FPInitStkReq( BackRun& back );
+extern int              FPStkReq( BackRun& back, instruction *ins );
+extern void             SetFPPatchSegm( BackRun& back, int i );
+extern void             SetFPPatchType( BackRun& back, fp_patches type );
+extern void             FPPatchTypeRef( BackRun& back );
 
 /* i87sched.c */
 extern bool             FPInsIntroduced( instruction * );
 
 /* i87wait.c */
-extern void             Wait8087( void );
+extern void             Wait8087( BackRun& back );

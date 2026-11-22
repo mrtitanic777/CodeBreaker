@@ -50,6 +50,7 @@
 
 #include "clibint.h"
 #include "clibext.h"
+#include "frontrun.hpp"
 
 
 static uint_16 const sigCheck[] = {
@@ -58,17 +59,17 @@ static uint_16 const sigCheck[] = {
     #undef LS_DEF
 };
 
-#define LS_DEF( name, sig )     static int do##name( IntlData *, _LocaleItem * );
+#define LS_DEF( name, sig )     static int do##name( FrontRun& front, IntlData *, _LocaleItem * );
 LS_DEFS
 #undef LS_DEF
 
-static int (*const codeDispatch[])( IntlData *, _LocaleItem * ) = {
+static int (*const codeDispatch[])( FrontRun&, IntlData *, _LocaleItem * ) = {
     #define LS_DEF( name, sig ) do##name,
     LS_DEFS
     #undef LS_DEF
 };
 
-static int doErrors( IntlData *data, _LocaleItem *item )
+static int doErrors( FrontRun& front, IntlData *data, _LocaleItem *item )
 {
     LocaleErrors *errors_item = (LocaleErrors*)item;
     unsigned count;
@@ -98,7 +99,7 @@ static int doErrors( IntlData *data, _LocaleItem *item )
     return( 0 );
 }
 
-static int doUsage( IntlData *data, _LocaleItem *item )
+static int doUsage( FrontRun& front, IntlData *data, _LocaleItem *item )
 {
     LocaleUsage *usage_item = (LocaleUsage*)item;
 
@@ -106,14 +107,14 @@ static int doUsage( IntlData *data, _LocaleItem *item )
     return( 0 );
 }
 
-static int doNULL( IntlData *data, _LocaleItem *item )
+static int doNULL( FrontRun& front, IntlData *data, _LocaleItem *item )
 {
     /* unused parameters */ (void)data; (void)item;
 
     return( -1 );
 }
 
-static IntlData *getData( int fh )
+static IntlData *getData( FrontRun& front, int fh )
 {
     unsigned raw_size;
     LocaleData intl_header;
@@ -162,14 +163,14 @@ static IntlData *getData( int fh )
         if( item->signature != sigCheck[i] ) {
             return( data );
         }
-        if( codeDispatch[ i ]( data, item ) ) {
+        if( codeDispatch[ i ]( front, data, item ) ) {
             return( data );
         }
     }
     return( data );
 }
 
-static char *imageName( char *buff )
+static char *imageName( FrontRun& front, char *buff )
 {
 #if defined( __SW_BD )
 #if defined(__NT__) || defined(__OS2__)
@@ -180,11 +181,11 @@ static char *imageName( char *buff )
     }
 #endif
 #endif
-    return( _cmdname( buff ) );
+    return( _cmdname( *front.support, buff ) );
 }
 
 IntlData *LoadInternationalData(
-    const char *file_prefix )
+    FrontRun& front, const char *file_prefix )
 {
     IntlData *data;
     int fh;
@@ -198,7 +199,7 @@ IntlData *LoadInternationalData(
     if( lang == LANG_RLE_ENGLISH ) {
         return( NULL );
     }
-    if( imageName( cmd_name ) == NULL ) {
+    if( imageName( front, cmd_name ) == NULL ) {
         return( NULL );
     }
     _splitpath2( cmd_name, pg.buffer, &pg.drive, &pg.dir, NULL, NULL );
@@ -213,10 +214,10 @@ IntlData *LoadInternationalData(
     if( fh == -1 ) {
         return( NULL );
     }
-    data = getData( fh );
+    data = getData( front, fh );
     if( data != NULL ) {
         if( data->usage_text == NULL || data->errors_text == NULL ) {
-            FreeInternationalData( data );
+            FreeInternationalData( front, data );
             data = NULL;
         }
     }
@@ -225,7 +226,7 @@ IntlData *LoadInternationalData(
 }
 
 void FreeInternationalData(
-    IntlData *handle )
+    FrontRun& front, IntlData *handle )
 {
     if( handle != NULL ) {
         _MemoryFree( handle->errors_text );

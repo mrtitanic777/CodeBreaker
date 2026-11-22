@@ -30,11 +30,12 @@
 ****************************************************************************/
 
 
-extern  void    BGStartInline( cg_sym_handle proc_sym );
-extern  void    BGAddInlineParm( an addr );
-extern  an      BGStopInline( call_handle call, const type_def *tipe );
-extern  void    BGProcInline( cg_sym_handle proc_sym, const type_def *tipe );
-extern  void    BGParmInline( cg_sym_handle sym, const type_def *tipe );
-extern  void    BGRetInline( an addr, const type_def *tipe );
-extern  bool    BGInInline( void );
-extern  int     BGInlineDepth( void );
+#pragma once
+extern  void    BGStartInline( BackRun& back, cg_sym_handle proc_sym );
+extern  void    BGAddInlineParm( BackRun& back, an addr );
+extern  an      BGStopInline( BackRun& back, call_handle call, const type_def *tipe );
+extern  void    BGProcInline( BackRun& back, cg_sym_handle proc_sym, const type_def *tipe );
+extern  void    BGParmInline( BackRun& back, cg_sym_handle sym, const type_def *tipe );
+extern  void    BGRetInline( BackRun& back, an addr, const type_def *tipe );
+extern  bool    BGInInline( BackRun& back );
+extern  int     BGInlineDepth( BackRun& back );

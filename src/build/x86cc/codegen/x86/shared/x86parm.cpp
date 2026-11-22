@@ -40,6 +40,7 @@
 #include "rgtbl.h"
 #include "parmreg.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
 type_length     ParmAlignment( const type_def *tipe )
@@ -50,7 +51,7 @@ type_length     ParmAlignment( const type_def *tipe )
     return( 1 );
 }
 
-hw_reg_set  ParmReg( type_class_def type_class, type_length len, type_length alignment, call_state *state )
+hw_reg_set  ParmReg( BackRun& back, type_class_def type_class, type_length len, type_length alignment, call_state *state )
 /*********************************************************************************************************/
 {
     const hw_reg_set    *possible;
@@ -59,7 +60,7 @@ hw_reg_set  ParmReg( type_class_def type_class, type_length len, type_length ali
 
     /* unused parameters */ (void)len; (void)alignment;
 
-    possible = ParmChoices( type_class );
+    possible = ParmChoices( back, type_class );
     if( possible == NULL || HW_CEqual( *possible, HW_EMPTY ) ) {
         if( !HW_CEqual( *state->parm.curr_entry, HW_EMPTY ) ) {
             state->parm.curr_entry++;

@@ -40,6 +40,7 @@
 #include "treefold.h"
 #include "opctable.h"
 #include "verify.h"
+#include "backrun.hpp"
 
 
 static  bool    SameLocation( name *n1, name *n2 )
@@ -162,7 +163,7 @@ static  bool    IsMax( name *op, type_class_def type_class )
     return( false );
 }
 
-static  bool    Op2Pow2( instruction *ins )
+static  bool    Op2Pow2( BackRun& back, instruction *ins )
 /*****************************************/
 {
     int         log;
@@ -170,7 +171,7 @@ static  bool    Op2Pow2( instruction *ins )
     log = GetLog2( ins->operands[1]->c.lo.u.int_value );
     if( log == -1 )
         return( false );
-    if( log == ( ( data_state().TypeClassSize[ins->type_class] * 8 ) - 1 ) ) {
+    if( log == ( ( back.data.TypeClassSize[ins->type_class] * 8 ) - 1 ) ) {
         if( _IsSigned( ins->type_class ) ) {
             return( false );
         }
@@ -178,7 +179,7 @@ static  bool    Op2Pow2( instruction *ins )
     return( true );
 }
 
-bool    OtherVerify( vertype kind, instruction *ins,
+bool    OtherVerify( BackRun& back, vertype kind, instruction *ins,
                         name *op1, name *op2, name *result )
 /***********************************************************
  * verify a if "kind" is true about instruction "ins" whose operands
@@ -217,7 +218,7 @@ bool    OtherVerify( vertype kind, instruction *ins,
             } else if( ins->head.opcode == OP_CMP_GREATER ) {
                 return( IsMax( op2, ins->type_class ) );
             } else if( ins->head.opcode == OP_BIT_TEST_TRUE ) {
-                return( OtherVerify( V_OP2ZERO, ins, op1, op2, result ) );
+                return( OtherVerify( back, V_OP2ZERO, ins, op1, op2, result ) );
             }
         }
         break;
@@ -239,7 +240,7 @@ bool    OtherVerify( vertype kind, instruction *ins,
             } else if( ins->head.opcode == OP_CMP_LESS_EQUAL ) {
                 return( IsMax( op2, ins->type_class ) );
             } else if( ins->head.opcode == OP_BIT_TEST_FALSE ) {
-                return( OtherVerify( V_OP2ZERO, ins, op1, op2, result ) );
+                return( OtherVerify( back, V_OP2ZERO, ins, op1, op2, result ) );
             }
         }
         break;
@@ -280,7 +281,7 @@ bool    OtherVerify( vertype kind, instruction *ins,
     case V_OP2POW2:
         if( !CFIsI32( op2->c.u.cfval ) )
             return( false );
-        return( Op2Pow2( ins ) );
+        return( Op2Pow2( back, ins ) );
         break;
     case V_OP2TWO:
         if( op2->c.const_type == CONS_ABSOLUTE
@@ -318,7 +319,7 @@ bool    OtherVerify( vertype kind, instruction *ins,
         }
         break;
     case V_SPEED:
-        if( data_state().OptForSize <= 50 )
+        if( back.data.OptForSize <= 50 )
             return( true );
         break;
     case V_SWAP_GOOD:

@@ -30,7 +30,8 @@
 ****************************************************************************/
 
 
-extern instruction      *rSPLITOP( instruction * );
-extern instruction      *rSPLITMOVE( instruction * );
-extern instruction      *rSPLITCMP( instruction * );
-extern instruction      *rSPLITNEG( instruction * );
+#pragma once
+extern instruction      *rSPLITOP( BackRun& back, instruction * );
+extern instruction      *rSPLITMOVE( BackRun& back, instruction * );
+extern instruction      *rSPLITCMP( BackRun& back, instruction * );
+extern instruction      *rSPLITNEG( BackRun& back, instruction * );

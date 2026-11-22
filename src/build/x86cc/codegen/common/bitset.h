@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #if INT_MAX == SHRT_MAX
 #error 16-bit bitsets not_ supported
 #endif

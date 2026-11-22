@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "dominati.h"
 
 #define _IsBlkAttr( b, a )      ( ((b)->class_ & (a)) != 0 )
@@ -46,8 +47,8 @@
 #define _MarkBlkUnMarked( b )   _MarkBlkAttrClr( b, BLK_BLOCK_MARKED )
 #define _MarkBlkMarked( b )     _MarkBlkAttrSet( b, BLK_BLOCK_MARKED )
 
-#define _MarkBlkAllAttrClr( a ) ClearBlocksBitsMask( ~(a) )
-#define _MarkBlkAllUnVisited()  ClearBlocksBitsMask( ~BLK_BLOCK_VISITED )
+#define _MarkBlkAllAttrClr( a ) ClearBlocksBitsMask( back, ~(a) )
+#define _MarkBlkAllUnVisited()  ClearBlocksBitsMask( back, ~BLK_BLOCK_VISITED )
 
 /* aligned */
 #define MAX_INTERVAL_DEPTH      255U

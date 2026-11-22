@@ -35,9 +35,10 @@
 #include "score.h"
 #include "data.h"
 #include "namelist.h"
+#include "backrun.hpp"
 
 
-void    ScInitRegs( score_hdl scoreboard )
+void    ScInitRegs( BackRun& back, score_hdl scoreboard )
 /*****************************************
     Add some register equality "truths" to the scoreboard "sc"
 */
@@ -45,37 +46,37 @@ void    ScInitRegs( score_hdl scoreboard )
     int xs;
     int ds;
 
-    ds = AllocRegName( HW_DS )->r.reg_index;
+    ds = AllocRegName( back, HW_DS )->r.reg_index;
     if( _IsntTargetModel( CGSW_X86_FLOATING_DS ) ) {
         if( _IsntTargetModel( CGSW_X86_FLOATING_ES ) ) {
-            xs = AllocRegName( HW_ES )->r.reg_index;
+            xs = AllocRegName( back, HW_ES )->r.reg_index;
             if( !RegsEqual( scoreboard, xs, ds ) ) {
-                RegInsert( scoreboard, xs, ds );
+                RegInsert( back, scoreboard, xs, ds );
             }
         }
         if( _IsntTargetModel( CGSW_X86_FLOATING_SS ) ) {
-            xs = AllocRegName( HW_SS )->r.reg_index;
+            xs = AllocRegName( back, HW_SS )->r.reg_index;
             if( !RegsEqual( scoreboard, xs, ds ) ) {
-                RegInsert( scoreboard, xs, ds );
+                RegInsert( back, scoreboard, xs, ds );
             }
         }
     }
 }
 
 
-void    AddRegs( void )
+void    AddRegs( BackRun& back )
 /******************************
     Add some registers to the N_REGISTER list, so that we can do
     scoreboarding on them
 */
 {
-    AllocRegName( HW_DS );
-    AllocRegName( HW_ES );
-    AllocRegName( HW_SS );
+    AllocRegName( back, HW_DS );
+    AllocRegName( back, HW_ES );
+    AllocRegName( back, HW_SS );
 }
 
 
-void    ScoreSegments( score_hdl scoreboard )
+void    ScoreSegments( BackRun& back, score_hdl scoreboard )
 /********************************************
     Do special scoreboarding on segment registers.
 */
@@ -84,19 +85,19 @@ void    ScoreSegments( score_hdl scoreboard )
 }
 
 
-bool    ScAddOk( hw_reg_set reg1, hw_reg_set reg2 )
+bool    ScAddOk( BackRun& back, hw_reg_set reg1, hw_reg_set reg2 )
 /**********************************************************
     Is it ok to say that "reg1" = "reg2"?  This is not ok for
     unalterable registers since there may be hidden modifications of
     these registers.
 */
 {
-    if( HW_Ovlap( reg1, data_state().CurrProc->state.unalterable ) ) {
+    if( HW_Ovlap( reg1, back.data.CurrProc->state.unalterable ) ) {
         if( !HW_CEqual( reg1, HW_DS ) && !HW_CEqual( reg1, HW_SS ) ) {
             return( false );
         }
     }
-    if( HW_Ovlap( reg2, data_state().CurrProc->state.unalterable ) ) {
+    if( HW_Ovlap( reg2, back.data.CurrProc->state.unalterable ) ) {
         if( !HW_Equal( reg2, HW_DS ) && !HW_Equal( reg2, HW_SS ) ) {
             return( false );
         }
@@ -105,7 +106,7 @@ bool    ScAddOk( hw_reg_set reg1, hw_reg_set reg2 )
 }
 
 
-bool    ScConvert( instruction *ins )
+bool    ScConvert( BackRun& back, instruction *ins )
 /********************************************
     Get rid of instructions like CBW if the high part is not used in the
     next instruction.

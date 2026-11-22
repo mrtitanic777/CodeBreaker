@@ -30,17 +30,18 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "jumps.h"
 
 #define OC_ATTR_IRET    OC_ATTR_SHORT
 
-#define _Code   Format( OC_CODE );
-#define _Next   EjectInst()
-#define _Emit   Finalize()
+#define _Code   Format( back, OC_CODE );
+#define _Next   EjectInst(back)
+#define _Emit   Finalize(back)
 
-extern void     EjectInst(void);
-extern void     Finalize(void);
-extern void     Format(oc_class);
+extern void     EjectInst(BackRun& back);
+extern void     Finalize(BackRun& back);
+extern void     Format(BackRun& back, oc_class);
 
 #define M_PUSHATBP      0x76ff
 #define M_PUSH          0x50
@@ -142,6 +143,5 @@ struct PcencodeState {
     byte Inst[INSSIZE];   /* template for instructions */
     byte ILen;   /* length of object instruction */
 };
-inline PcencodeState& pcencode_state() { return cbrun_part<PcencodeState>(); }
 
 #endif

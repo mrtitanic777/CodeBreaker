@@ -34,10 +34,10 @@
 #ifndef DWREFER_H_INCLUDED
 #define DWREFER_H_INCLUDED
 
-extern void     DW_InitReferences( dw_client );
-extern void     DW_FiniReferences( dw_client );
+extern void     DW_InitReferences( BackRun& back, dw_client );
+extern void     DW_FiniReferences( BackRun& back, dw_client );
 extern void     DW_SetReferenceFile( dw_client, uint );
-extern void     DW_StartRef( dw_client );
-extern void     DW_EndRef( dw_client );
+extern void     DW_StartRef( BackRun& back, dw_client );
+extern void     DW_EndRef( BackRun& back, dw_client );
 
 #endif

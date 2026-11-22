@@ -40,9 +40,10 @@
 #include "namelist.h"
 #include "optab.h"
 #include "breakrtn.h"
+#include "backrun.hpp"
 
 
-static  void    InitVisitedTemps( void )
+static  void    InitVisitedTemps( BackRun& back )
 /***************************************
  * Mark all N_TEMP and N_MEMORY names as Not visited. If CGSW_GEN_NO_OPTIMIZATION
  * is on, mark them all as visited.
@@ -51,10 +52,10 @@ static  void    InitVisitedTemps( void )
     name        *op;
     name        *alias;
 
-    for( op = data_state().Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
+    for( op = back.data.Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
         op->t.temp_flags &= ~VISITED;
     }
-    for( op = data_state().Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
+    for( op = back.data.Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
         if( op->v.usage & (USE_ADDRESS | VAR_VOLATILE) ) {
             alias = op;
             do {
@@ -64,14 +65,14 @@ static  void    InitVisitedTemps( void )
         }
     }
     if( _IsModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-        for( op = data_state().Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
+        for( op = back.data.Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
             if( _FrontEndTmp( op ) ) {
                 op->t.temp_flags |= VISITED;
             }
         }
     }
-    if( data_state().BlockByBlock || _IsModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-        for( op = data_state().Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
+    if( back.data.BlockByBlock || _IsModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+        for( op = back.data.Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
             if( op->v.usage & USE_IN_ANOTHER_BLOCK ) {
                 op->t.temp_flags |= VISITED;
             }
@@ -80,7 +81,7 @@ static  void    InitVisitedTemps( void )
 }
 
 
-static  bool            FreeUselessIns( block *tail, bool just_the_loop,
+static  bool            FreeUselessIns( BackRun& back, block *tail, bool just_the_loop,
                                         bool in_regalloc )
 /***********************************************************************
  * Free any instructions which have not been marked
@@ -105,9 +106,9 @@ static  bool            FreeUselessIns( block *tail, bool just_the_loop,
                 if( (ins->ins_flags & INS_VISITED) == 0 ) {
                     change = true;
                     if( in_regalloc ) {
-                        DoNothing( ins );
+                        DoNothing( back, ins );
                     } else {
-                        FreeIns( ins );
+                        FreeIns( back, ins );
                     }
                 } else {
                     ins->ins_flags &= ~INS_VISITED;
@@ -119,7 +120,7 @@ static  bool            FreeUselessIns( block *tail, bool just_the_loop,
 }
 
 
-static  void            FreeUnVisitedTemps( void )
+static  void            FreeUnVisitedTemps( BackRun& back )
 /*************************************************
  * Free any temps which have not been marked VISITED. They are
  * useless. See below for setting of this bit.
@@ -128,7 +129,7 @@ static  void            FreeUnVisitedTemps( void )
     name        *op;
     name        **owner;
 
-    owner = &data_state().Names[N_TEMP];
+    owner = &back.data.Names[N_TEMP];
     for( ;; ) {
         op = *owner;
         if( op == NULL )
@@ -138,7 +139,7 @@ static  void            FreeUnVisitedTemps( void )
             owner = &op->n.next_name;
         } else {
             *owner = op->n.next_name;
-            FreeAName( op );
+            FreeAName( back, op );
         }
     }
 }
@@ -166,7 +167,7 @@ bool    VolatileIns( instruction *ins )
 }
 
 
-bool    SideEffect( instruction *ins )
+bool    SideEffect( BackRun& back, instruction *ins )
 /***************************************************
  * Is an instruction a side effect instruction, such as one
  * that changes the 8087 stack or a SUB with a following SBB.
@@ -180,7 +181,7 @@ bool    SideEffect( instruction *ins )
     if( (ins->ins_flags & INS_CC_USED)
       && ins->head.opcode != OP_MOV )
         return( true );
-    if( FPSideEffect( ins ) )
+    if( FPSideEffect( back, ins ) )
         return( true );
     return( VolatileIns( ins ) );
 }
@@ -237,7 +238,7 @@ static  bool    MarkOpsUseful( instruction *ins )
 }
 
 
-static  bool    CheckUseful( instruction *ins )
+static  bool    CheckUseful( BackRun& back, instruction *ins )
 /**********************************************
  * Mark an instruction INS_VISITED if it is useful. A useful
  * instruction is one that causes a branch, defines memory, a register
@@ -258,7 +259,7 @@ static  bool    CheckUseful( instruction *ins )
      && opcode != OP_NOP
      && opcode != OP_CALL_INDIRECT
      && opcode != OP_CALL ) {
-        if( SideEffect( ins ) ) {
+        if( SideEffect( back, ins ) ) {
             if( res != NULL ) {
                 change |= MarkUseful( res );
             }
@@ -292,7 +293,7 @@ static  bool    CheckUseful( instruction *ins )
 }
 
 
-static  void            FindUsefulIns( block * tail, bool just_the_loop,
+static  void            FindUsefulIns( BackRun& back, block * tail, bool just_the_loop,
                                         bool in_regalloc )
 /***********************************************************************
  * This goes around calling CheckUseful until no more instructions
@@ -327,7 +328,7 @@ static  void            FindUsefulIns( block * tail, bool just_the_loop,
             if( !just_the_loop || _IsBlkAttr( blk, BLK_IN_LOOP ) ) {
                 for( ins = blk->ins.head.prev; ins->head.opcode != OP_BLOCK; ins = ins->head.prev ) {
                     if( !in_regalloc || DoesSomething( ins ) ) {
-                        change |= CheckUseful( ins );
+                        change |= CheckUseful( back, ins );
                     }
                 }
             }
@@ -336,7 +337,7 @@ static  void            FindUsefulIns( block * tail, bool just_the_loop,
 }
 
 
-static  bool    RemoveUselessStuff( bool just_the_loop, bool in_regalloc )
+static  bool    RemoveUselessStuff( BackRun& back, bool just_the_loop, bool in_regalloc )
 /************************************************************************
  * This routine removes useless instructions from the routine. Note
  * that if BreakExists(), there are some extra blocks hanging off
@@ -350,49 +351,49 @@ static  bool    RemoveUselessStuff( bool just_the_loop, bool in_regalloc )
     block       *tail;
     bool        change;
 
-    InitVisitedTemps();
-    FindUsefulIns( data_state().BlockList, just_the_loop, in_regalloc );
-    tail = TailBlocks();
+    InitVisitedTemps(back);
+    FindUsefulIns( back, back.data.BlockList, just_the_loop, in_regalloc );
+    tail = TailBlocks(back);
     if( tail != NULL ) {
-        FindUsefulIns( tail, just_the_loop, in_regalloc );
+        FindUsefulIns( back, tail, just_the_loop, in_regalloc );
     }
-    change = FreeUselessIns( data_state().BlockList, just_the_loop, in_regalloc );
+    change = FreeUselessIns( back, back.data.BlockList, just_the_loop, in_regalloc );
     if( tail != NULL ) {
-        change |= FreeUselessIns( tail, just_the_loop, in_regalloc );
+        change |= FreeUselessIns( back, tail, just_the_loop, in_regalloc );
     }
     if( !in_regalloc )
-        FreeUnVisitedTemps();
+        FreeUnVisitedTemps(back);
     return( change );
 }
 
 
-static bool DoInsDead( bool just_the_loop, bool in_regalloc )
+static bool DoInsDead( BackRun& back, bool just_the_loop, bool in_regalloc )
 /***********************************************************/
 {
-    if( data_state().BlockByBlock && !BreakExists() )
+    if( back.data.BlockByBlock && !BreakExists(back) )
         return( false );
-    return( RemoveUselessStuff( just_the_loop, in_regalloc ) );
+    return( RemoveUselessStuff( back, just_the_loop, in_regalloc ) );
 }
 
 
-bool    InsDead( void )
+bool    InsDead( BackRun& back )
 /**********************
  * Remove any dead or useless instructions in the program we can find.
  */
 {
-    return( DoInsDead( false, false ) );
+    return( DoInsDead( back, false, false ) );
 }
 
-bool    RegInsDead( void )
+bool    RegInsDead( BackRun& back )
 /*************************
  * Remove any dead or useless instructions in the program we can find.
  */
 {
-    return( DoInsDead( false, true ) );
+    return( DoInsDead( back, false, true ) );
 }
 
-bool    LoopInsDead( void )
+bool    LoopInsDead( BackRun& back )
 /*************************/
 {
-    return( DoInsDead( true, false ) );
+    return( DoInsDead( back, true, false ) );
 }

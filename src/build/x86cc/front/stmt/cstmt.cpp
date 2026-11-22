@@ -34,61 +34,37 @@
 #include "i64.h"
 #include "cfeinfo.h"
 #include "toggles.h"
+#include "frontrun.hpp"
 
 
-typedef struct block_entry {
-    struct block_entry  *prev_block;
-    struct block_entry  *prev_loop;
-    TOKEN       block_type;
-    LABEL_INDEX top_label;
-    LABEL_INDEX break_label;
-    LABEL_INDEX continue_label;
-    tryindex_t  try_index;      /* TRY: current index */
-    tryindex_t  parent_index;   /* TRY: parent index */
-    TREEPTR     inc_var;        /* variable used in FOR statement */
-    SYM_HANDLE  sym_list;       /* symbols defined in this block */
-    bool        gen_endblock;   /* set if OPR_ENDBLOCK needed */
-} BLOCKDEFN, *BLOCKPTR;
+
 
 /*
  * values for return_type
  */
-enum return_with {
-    RETURN_WITH_NONE = 0,
-    RETURN_WITH_NO_EXPR = 1,
-    RETURN_WITH_EXPR = 2,
-};
 
-struct return_info {
-    enum return_with    with;
-    bool                with_expr;
-};
+
+
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct CstmtState {
-    TREEPTR LastStmt;
-    BLOCKPTR BlockStack;
-    BLOCKPTR LoopStack;
-    SWITCHPTR SwitchStack;
-};
+/* (struct CstmtState: cstmt_state.h) */
 
 }  // namespace
 
-static inline CstmtState& cstmt_state() { return cbrun_part<CstmtState>(); }
 
 
-void StmtInit( void )
+void StmtInit( FrontRun& front )
 {
-    cvars_state().FirstStmt = NULL;
-    cstmt_state().LastStmt = NULL;
-    cvars_state().SymListHeads = NULL;
+    front.cvars.FirstStmt = NULL;
+    front.cstmt.LastStmt = NULL;
+    front.cvars.SymListHeads = NULL;
 }
 
 
-static void CheckStringLeaf( TREEPTR leaf )
+static void CheckStringLeaf( FrontRun& front, TREEPTR leaf )
 {
     if( leaf->op.opr == OPR_PUSHSTRING ) {
         leaf->op.u2.string_handle->ref_count++;
@@ -96,97 +72,97 @@ static void CheckStringLeaf( TREEPTR leaf )
 }
 
 
-static void CheckUseful( void )
+static void CheckUseful( FrontRun& front )
 {
-    if( cvars_state().CompFlags.useful_side_effect ) {
-        CWarn1( ERR_USEFUL_SIDE_EFFECT );
+    if( front.cvars.CompFlags.useful_side_effect ) {
+        CWarn1( front, ERR_USEFUL_SIDE_EFFECT );
     } else {
-        CWarn1( ERR_MEANINGLESS );
+        CWarn1( front, ERR_MEANINGLESS );
     }
 }
 
 
-static void CheckStmtExpr( void )
+static void CheckStmtExpr( FrontRun& front )
 {
     TREEPTR     tree;
 
-    tree = Expr();
-    if( cvars_state().CompFlags.meaningless_stmt ) {
-        CheckUseful();
+    tree = Expr(front);
+    if( front.cvars.CompFlags.meaningless_stmt ) {
+        CheckUseful(front);
     }
-    AddStmt( tree );
-    if( cvars_state().CompFlags.pending_dead_code ) {
-        cvars_state().DeadCode = 1;
+    AddStmt( front, tree );
+    if( front.cvars.CompFlags.pending_dead_code ) {
+        front.cvars.DeadCode = 1;
     }
 }
 
 
-SYM_HANDLE GetBlockSymList( void )
+SYM_HANDLE GetBlockSymList( FrontRun& front )
 {
-    return( cstmt_state().BlockStack->sym_list );
+    return( front.cstmt.BlockStack->sym_list );
 }
 
 
-void InitStmt( void )
+void InitStmt( FrontRun& front )
 {
-    cstmt_state().BlockStack = NULL;
-    cstmt_state().LoopStack = NULL;
-    cstmt_state().SwitchStack = NULL;
+    front.cstmt.BlockStack = NULL;
+    front.cstmt.LoopStack = NULL;
+    front.cstmt.SwitchStack = NULL;
 }
 
 
-void SwitchPurge( void )
+void SwitchPurge( FrontRun& front )
 {
     SWITCHPTR   sw;
     CASEPTR     c_entry;
     CASEPTR     c_tmp;
 
-    while( (sw = cstmt_state().SwitchStack) != NULL ) {
-        cstmt_state().SwitchStack = sw->prev_switch;
+    while( (sw = front.cstmt.SwitchStack) != NULL ) {
+        front.cstmt.SwitchStack = sw->prev_switch;
         c_entry = sw->case_list;
         while( c_entry != NULL ) {
             c_tmp = c_entry->next_case;
-            CMemFree( c_entry );
+            CMemFree( front, c_entry );
             c_entry = c_tmp;
         }
-        CMemFree( sw );
+        CMemFree( front, sw );
     }
 }
 
 
-void AddStmt( TREEPTR stmt )
+void AddStmt( FrontRun& front, TREEPTR stmt )
 {
-    WalkExprTree( stmt, CheckStringLeaf, NoOp, NoOp, DoConstFold );
-    stmt = ExprNode( NULL, OPR_STMT, stmt );
-    stmt->op.u2.src_loc = cvars_state().SrcLoc;
-    stmt->op.u1.unroll_count = cvars_state().UnrollCount;
-    if( cvars_state().FirstStmt == NULL )
-        cvars_state().FirstStmt = stmt;
-    if( cstmt_state().LastStmt != NULL ) {
-        cstmt_state().LastStmt->left = stmt;
+    WalkExprTree( front, stmt, CheckStringLeaf, NoOp, NoOp, DoConstFold );
+    stmt = ExprNode( front, NULL, OPR_STMT, stmt );
+    stmt->op.u2.src_loc = front.cvars.SrcLoc;
+    stmt->op.u1.unroll_count = front.cvars.UnrollCount;
+    if( front.cvars.FirstStmt == NULL )
+        front.cvars.FirstStmt = stmt;
+    if( front.cstmt.LastStmt != NULL ) {
+        front.cstmt.LastStmt->left = stmt;
     }
-    cstmt_state().LastStmt = stmt;
+    front.cstmt.LastStmt = stmt;
 }
 
 
-static void AddSymList( SYM_HANDLE sym_handle )
+static void AddSymList( FrontRun& front, SYM_HANDLE sym_handle )
 {
     SYM_LIST_HEADS   *symlisthead;
 
-    symlisthead = (SYM_LIST_HEADS *)CMemAlloc( sizeof( SYM_LIST_HEADS ) );
-    symlisthead->next = cvars_state().SymListHeads;
+    symlisthead = (SYM_LIST_HEADS *)CMemAlloc( front, sizeof( SYM_LIST_HEADS ) );
+    symlisthead->next = front.cvars.SymListHeads;
     symlisthead->sym_head = sym_handle;
-    cvars_state().SymListHeads = symlisthead;
+    front.cvars.SymListHeads = symlisthead;
 }
 
 
-void GenFunctionNode( SYM_HANDLE sym_handle )
+void GenFunctionNode( FrontRun& front, SYM_HANDLE sym_handle )
 {
     TREEPTR     tree;
     SYMPTR      sym;
 
-    tree = LeafNode( OPR_FUNCTION );
-    sym = SymGetPtr( sym_handle );
+    tree = LeafNode( front, OPR_FUNCTION );
+    sym = SymGetPtr( front, sym_handle );
     tree->op.u2.func.sym_handle = sym_handle;
     tree->op.u2.func.flags = FUNC_NONE;
     if( TOGGLE( inline )
@@ -199,13 +175,13 @@ void GenFunctionNode( SYM_HANDLE sym_handle )
     }
     tree->op.flags = OpFlags( sym->mods );
     tree->u.expr_type = sym->sym_type->object;    // function return type
-    AddStmt( tree );
+    AddStmt( front, tree );
     /*
      * Evil, evil globals! But we need this for later lookups in cgen.c
      */
-    sym->u.func.start_of_func = cstmt_state().LastStmt;
-    cvars_state().CurFuncNode = tree;
-    cvars_state().NodeCount = 0;
+    sym->u.func.start_of_func = front.cstmt.LastStmt;
+    front.cvars.CurFuncNode = tree;
+    front.cvars.NodeCount = 0;
 }
 
 
@@ -224,155 +200,155 @@ void GenFunctionNode( SYM_HANDLE sym_handle )
 #ifdef _WIN64
 __declspec(noinline)
 #endif
-LABEL_INDEX NextLabel( void )
+LABEL_INDEX NextLabel( FrontRun& front )
 {
-    return( ++cvars_state().LabelIndex );
+    return( ++front.cvars.LabelIndex );
 }
 
 
-static void DropLabel( LABEL_INDEX label )
+static void DropLabel( FrontRun& front, LABEL_INDEX label )
 {
     TREEPTR     tree;
 
-    cvars_state().CompFlags.label_dropped = true;
-    cvars_state().DeadCode = 0;
-    tree = LeafNode( OPR_LABEL );
+    front.cvars.CompFlags.label_dropped = true;
+    front.cvars.DeadCode = 0;
+    tree = LeafNode( front, OPR_LABEL );
     tree->op.u2.label_index = label;
-    AddStmt( tree );
+    AddStmt( front, tree );
 }
 
 
-static void DropBreakLabel( void )
+static void DropBreakLabel( FrontRun& front )
 {
-    if( cstmt_state().BlockStack->break_label != 0 ) {
-        DropLabel( cstmt_state().BlockStack->break_label );
+    if( front.cstmt.BlockStack->break_label != 0 ) {
+        DropLabel( front, front.cstmt.BlockStack->break_label );
     }
 }
 
 
-static void DropContinueLabel( void )
+static void DropContinueLabel( FrontRun& front )
 {
-    if( cstmt_state().BlockStack->continue_label != 0 ) {
-        DropLabel( cstmt_state().BlockStack->continue_label );
+    if( front.cstmt.BlockStack->continue_label != 0 ) {
+        DropLabel( front, front.cstmt.BlockStack->continue_label );
     }
 }
 
 
-static TREEPTR BracketExpr( void )
+static TREEPTR BracketExpr( FrontRun& front )
 {
     TREEPTR     tree;
 
-    MustRecog( T_LEFT_PAREN );
-    tree = Expr();
-    FoldExprTree( tree );
-    MustRecog( T_RIGHT_PAREN );
+    MustRecog( front, T_LEFT_PAREN );
+    tree = Expr(front);
+    FoldExprTree( front, tree );
+    MustRecog( front, T_RIGHT_PAREN );
     return( tree );
 }
 
 
-static void JumpCond( TREEPTR expr,
+static void JumpCond( FrontRun& front, TREEPTR expr,
                      LABEL_INDEX label,
                      opr_code jump_opcode,
                      opr_code jump_opposite )
 {
     TREEPTR     tree;
 
-    tree = BoolExpr( expr );
+    tree = BoolExpr( front, expr );
     if( tree->op.opr == OPR_NOT ) {
         tree->op.opr = jump_opposite;
     } else {
-        tree = ExprNode( NULL, jump_opcode, tree );
+        tree = ExprNode( front, NULL, jump_opcode, tree );
     }
     tree->op.u2.label_index = label;
-    AddStmt( tree );
+    AddStmt( front, tree );
 }
 
 
-static void Jump( LABEL_INDEX label )
+static void Jump( FrontRun& front, LABEL_INDEX label )
 {
     TREEPTR     tree;
 
-    if( cvars_state().DeadCode == 0 ) {
-        tree = LeafNode( OPR_JUMP );
+    if( front.cvars.DeadCode == 0 ) {
+        tree = LeafNode( front, OPR_JUMP );
         tree->op.u2.label_index = label;
-        AddStmt( tree );
-        cvars_state().DeadCode = 1;
+        AddStmt( front, tree );
+        front.cvars.DeadCode = 1;
     }
 }
 
 
-static bool JumpFalse( TREEPTR expr, LABEL_INDEX label )
+static bool JumpFalse( FrontRun& front, TREEPTR expr, LABEL_INDEX label )
 {
     bool        jump_generated;
 
     jump_generated = false;
     if( expr->op.opr == OPR_PUSHINT ) {
-        if( CheckZeroConstant( expr ) ) {
-            Jump( label );
+        if( CheckZeroConstant( front, expr ) ) {
+            Jump( front, label );
             jump_generated = true;
         }
-        FreeExprNode( expr );
+        FreeExprNode( front, expr );
     } else {
-        JumpCond( expr, label, OPR_JUMPFALSE, OPR_JUMPTRUE );
+        JumpCond( front, expr, label, OPR_JUMPFALSE, OPR_JUMPTRUE );
         jump_generated = true;
     }
     return( jump_generated );
 }
 
 
-static void JumpTrue( TREEPTR expr, LABEL_INDEX label )
+static void JumpTrue( FrontRun& front, TREEPTR expr, LABEL_INDEX label )
 {
     if( expr->op.opr == OPR_PUSHINT ) {
-        if( !CheckZeroConstant( expr ) ) {
-            Jump( label );
+        if( !CheckZeroConstant( front, expr ) ) {
+            Jump( front, label );
         }
-        FreeExprNode( expr );
+        FreeExprNode( front, expr );
     } else {
-        JumpCond( expr, label, OPR_JUMPTRUE, OPR_JUMPFALSE );
+        JumpCond( front, expr, label, OPR_JUMPTRUE, OPR_JUMPFALSE );
     }
 }
 
 
-void LookAhead( void )
+void LookAhead( FrontRun& front )
 {
-    cvars_state().SavedId = CMemStrdup( cvars_state().Buffer );     /* save current id */
-    cvars_state().SavedTokenLoc = cvars_state().TokenLoc;           /* save linenum and fno */
-    NextToken();                        /* get next token */
-    cvars_state().LAToken = cvars_state().CurToken;                 /* save it in look ahead */
-    cvars_state().CurToken = T_SAVED_ID;              /* go back to saved id */
+    front.cvars.SavedId = CMemStrdup( front, front.cvars.Buffer );     /* save current id */
+    front.cvars.SavedTokenLoc = front.cvars.TokenLoc;           /* save linenum and fno */
+    NextToken(front);                        /* get next token */
+    front.cvars.LAToken = front.cvars.CurToken;                 /* save it in look ahead */
+    front.cvars.CurToken = T_SAVED_ID;              /* go back to saved id */
 }
 
 
-static bool GrabLabels( void )
+static bool GrabLabels( FrontRun& front )
 {
     LABELPTR    label;
 
     label = NULL;
     for( ;; ) {
-        if( cvars_state().CurToken == T_SAVED_ID ) {
-            cvars_state().SrcLoc = cvars_state().SavedTokenLoc;
+        if( front.cvars.CurToken == T_SAVED_ID ) {
+            front.cvars.SrcLoc = front.cvars.SavedTokenLoc;
         } else {
-            cvars_state().SrcLoc = cvars_state().TokenLoc;
-            if( cvars_state().CurToken != T_ID )
+            front.cvars.SrcLoc = front.cvars.TokenLoc;
+            if( front.cvars.CurToken != T_ID )
                 break;
-            LookAhead();
+            LookAhead(front);
         }
-        if( cvars_state().LAToken != T_COLON )
+        if( front.cvars.LAToken != T_COLON )
             break; /* quit if look ahead not : */
-        label = LkLabel( cvars_state().SavedId );
+        label = LkLabel( front, front.cvars.SavedId );
         if( label->defined ) {
-            CErr2p( ERR_LABEL_ALREADY_DEFINED, label->name );
+            CErr2p( front, ERR_LABEL_ALREADY_DEFINED, label->name );
         } else {
-            DropLabel( label->ref_list );
+            DropLabel( front, label->ref_list );
             label->defined = true;      /* indicate label defined now */
         }
-        CMemFree( cvars_state().SavedId );            /* free the saved id */
-        cvars_state().SavedId = NULL;
-        NextToken();                    /* get next token */
+        CMemFree( front, front.cvars.SavedId );            /* free the saved id */
+        front.cvars.SavedId = NULL;
+        NextToken(front);                    /* get next token */
     }
     if( label != NULL ) {               /* label was found */
-        if( cvars_state().CurToken == T_RIGHT_BRACE ) {
-            CErr1( ERR_STMT_REQUIRED_AFTER_LABEL );
+        if( front.cvars.CurToken == T_RIGHT_BRACE ) {
+            CErr1( front, ERR_STMT_REQUIRED_AFTER_LABEL );
         }
         return( true );                    // indicate label found
     }
@@ -380,39 +356,39 @@ static bool GrabLabels( void )
 }
 
 
-static void UnWindTry( tryindex_t try_scope )
+static void UnWindTry( FrontRun& front, tryindex_t try_scope )
 {
 #ifdef __SEH__
     TREEPTR     tree;
 
-    tree = LeafNode( OPR_UNWIND );
+    tree = LeafNode( front, OPR_UNWIND );
     tree->op.u2.st.u.try_index = try_scope;
-    AddStmt( tree );
+    AddStmt( front, tree );
 #else
     /* unused parameters */ (void)try_scope;
 #endif
 }
 
 
-static void ReturnStmt( SYM_HANDLE func_result_handle, struct return_info *info )
+static void ReturnStmt( FrontRun& front, SYM_HANDLE func_result_handle, struct return_info *info )
 {
     TREEPTR             tree;
     BLOCKPTR            block;
     enum return_with    with;
 
-    NextToken();
-    if( cvars_state().CurToken != T_SEMI_COLON ) {
+    NextToken(front);
+    if( front.cvars.CurToken != T_SEMI_COLON ) {
         TYPEPTR     func_type;
 
-        func_type = cvars_state().CurFunc->sym_type->object;
+        func_type = front.cvars.CurFunc->sym_type->object;
         SKIP_TYPEDEFS( func_type );
-        tree = RValue( Expr() );
-        CheckRetType( tree );
-        tree = FixupAss( tree, func_type );
-        tree = ExprNode( NULL, OPR_RETURN, tree );
+        tree = RValue( front, Expr(front) );
+        CheckRetType( front, tree );
+        tree = FixupAss( front, tree, func_type );
+        tree = ExprNode( front, NULL, OPR_RETURN, tree );
         tree->u.expr_type = func_type;
         tree->op.u2.sym_handle = func_result_handle;
-        AddStmt( tree );
+        AddStmt( front, tree );
         with = RETURN_WITH_EXPR;
         info->with_expr = true;
     } else {
@@ -422,100 +398,100 @@ static void ReturnStmt( SYM_HANDLE func_result_handle, struct return_info *info 
         info->with = with;
     }
     if( info->with != with ) {
-        CErr1( ERR_INCONSISTENT_USE_OF_RETURN );
+        CErr1( front, ERR_INCONSISTENT_USE_OF_RETURN );
     }
-    for( block = cstmt_state().BlockStack; block != NULL; block = block->prev_block ) {
+    for( block = front.cstmt.BlockStack; block != NULL; block = block->prev_block ) {
         if( (block->block_type == T__TRY)
           || (block->block_type == T___TRY) ) {
-            UnWindTry( TRYSCOPE_NONE );
+            UnWindTry( front, TRYSCOPE_NONE );
             break;
         }
     }
 }
 
 
-static void SetFuncReturnNode( TREEPTR tree )
+static void SetFuncReturnNode( FrontRun& front, TREEPTR tree )
 {
     TYPEPTR     typ;
 
-    typ = cvars_state().CurFunc->sym_type->object;
+    typ = front.cvars.CurFunc->sym_type->object;
     tree->u.expr_type = typ;
     SKIP_TYPEDEFS( typ );
     if( typ->decl_type == TYP_STRUCT
       || typ->decl_type == TYP_UNION ) {
-        tree->right = LeafNode( OPR_NOP );      // place holder
+        tree->right = LeafNode( front, OPR_NOP );      // place holder
         tree->right->u.expr_type = NULL;
     }
 }
 
 
-static void CheckRetValue( void )
+static void CheckRetValue( FrontRun& front )
 {
     TYPEPTR     typ;
 
-    typ = cvars_state().CurFunc->sym_type;
+    typ = front.cvars.CurFunc->sym_type;
     typ = typ->object;
     SKIP_TYPEDEFS( typ );
     if( typ->decl_type != TYP_VOID ) {
-        CWarn2p( ERR_MISSING_RETURN_VALUE, cvars_state().CurFunc->name );
+        CWarn2p( front, ERR_MISSING_RETURN_VALUE, front.cvars.CurFunc->name );
     }
 }
 
-static SYM_HANDLE GetLocalVarDecls( void )
+static SYM_HANDLE GetLocalVarDecls( FrontRun& front )
 {
     SYM_HANDLE  symlist;
     SYM_HANDLE  symhandle;
     SYM_ENTRY   sym;
 
-    DeclList( &symlist );
+    DeclList( front, &symlist );
     if( symlist != SYM_NULL ) {
-        symhandle = cvars_state().CurFunc->u.func.locals;
+        symhandle = front.cvars.CurFunc->u.func.locals;
         /*
          * symhandle will be non-zero if MakeNewDotSym was called while
          * parsing the declaration list.
          */
         if( symhandle != SYM_NULL ) {   // if some temporaries were created
             for( ;; ) {                 // - find end of list
-                SymGet( &sym, symhandle );
+                SymGet( front, &sym, symhandle );
                 if( sym.handle == SYM_NULL )
                     break;
                 symhandle = sym.handle;
             }
             sym.handle = symlist;
-            SymReplace( &sym, symhandle );
+            SymReplace( front, &sym, symhandle );
         } else {
-            cvars_state().CurFunc->u.func.locals = symlist;
+            front.cvars.CurFunc->u.func.locals = symlist;
         }
     }
     return( symlist );
 }
 
 
-static void DeadMsg( void )
+static void DeadMsg( FrontRun& front )
 /*************************/
 {
-    CWarn1( ERR_DEAD_CODE );
-    cvars_state().DeadCode = 2;   /* so we don't get more messages */
+    CWarn1( front, ERR_DEAD_CODE );
+    front.cvars.DeadCode = 2;   /* so we don't get more messages */
 }
 
 
-static void StartNewBlock( void )
+static void StartNewBlock( FrontRun& front )
 {
     BLOCKPTR    block;
 
-    block = (BLOCKPTR)CMemAlloc( sizeof( BLOCKDEFN ) );
-    block->block_type = cvars_state().CurToken;
+    block = (BLOCKPTR)CMemAlloc( front, sizeof( BLOCKDEFN ) );
+    block->block_type = front.cvars.CurToken;
     block->top_label = 0;
     block->continue_label = 0;
     block->break_label = 0;
-    block->prev_block = cstmt_state().BlockStack;
-    block->prev_loop = cstmt_state().LoopStack;
+    block->prev_block = front.cstmt.BlockStack;
+    block->prev_loop = front.cstmt.LoopStack;
     block->gen_endblock = false;
-    cstmt_state().BlockStack = block;
+    front.cstmt.BlockStack = block;
 }
 
 
-static void LeftBrace( void )
+static void LeftBrace( FrontRun& front )
 {
     TREEPTR     tree;
 
@@ -528,39 +504,39 @@ static void LeftBrace( void )
      * DeclList might generate some quads to do some initializers
      * if that happens, we want them output after the OPR_NEWBLOCK node
      */
-    StartNewBlock();
-    NextToken();
-    ++cvars_state().SymLevel;
-    tree = LeafNode( OPR_NEWBLOCK );
-    AddStmt( tree );
-    cstmt_state().BlockStack->sym_list = SYM_NULL;
-    cstmt_state().BlockStack->gen_endblock = true;
-    DeclList( &cstmt_state().BlockStack->sym_list );
-    tree->op.u2.sym_handle = cstmt_state().BlockStack->sym_list;
+    StartNewBlock(front);
+    NextToken(front);
+    ++front.cvars.SymLevel;
+    tree = LeafNode( front, OPR_NEWBLOCK );
+    AddStmt( front, tree );
+    front.cstmt.BlockStack->sym_list = SYM_NULL;
+    front.cstmt.BlockStack->gen_endblock = true;
+    DeclList( front, &front.cstmt.BlockStack->sym_list );
+    tree->op.u2.sym_handle = front.cstmt.BlockStack->sym_list;
 }
 
 
-static void JumpBreak( BLOCKPTR block )
+static void JumpBreak( FrontRun& front, BLOCKPTR block )
 {
-    if( cvars_state().DeadCode == 0 ) {
+    if( front.cvars.DeadCode == 0 ) {
         if( block->break_label == 0 ) {
-            block->break_label = NextLabel();
+            block->break_label = NextLabel(front);
         }
-        Jump( block->break_label );
+        Jump( front, block->break_label );
     }
 }
 
 
-static void BreakStmt( void )
+static void BreakStmt( FrontRun& front )
 {
     BLOCKPTR    block;
     tryindex_t  try_scope;
 
-    NextToken();
+    NextToken(front);
     try_scope = TRYSCOPE_UNDEF;
-    block = cstmt_state().BlockStack;
+    block = front.cstmt.BlockStack;
     if( block != NULL ) {
-        while( block != cstmt_state().LoopStack ) {
+        while( block != front.cstmt.LoopStack ) {
             if( block->block_type == T_SWITCH )
                 break;
             if( (block->block_type == T__TRY)
@@ -572,23 +548,23 @@ static void BreakStmt( void )
     }
     if( block != NULL ) {
         if( try_scope != TRYSCOPE_UNDEF ) {
-            UnWindTry( try_scope );
+            UnWindTry( front, try_scope );
         }
-        JumpBreak( block );
+        JumpBreak( front, block );
     } else {
-        CErr1( ERR_MISPLACED_BREAK );
+        CErr1( front, ERR_MISPLACED_BREAK );
     }
-    MustRecog( T_SEMI_COLON );
+    MustRecog( front, T_SEMI_COLON );
 }
 
 
 #ifdef __SEH__
-static void LeaveStmt( void )
+static void LeaveStmt( FrontRun& front )
 {
     BLOCKPTR    block;
 
-    NextToken();
-    block = cstmt_state().BlockStack;
+    NextToken(front);
+    block = front.cstmt.BlockStack;
     while( block != NULL ) {
         if( (block->block_type == T__TRY)
           || (block->block_type == T___TRY) )
@@ -596,26 +572,26 @@ static void LeaveStmt( void )
         block = block->prev_block;
     }
     if( block != NULL ) {
-        JumpBreak( block );
+        JumpBreak( front, block );
     } else {
-        CErr1( ERR_MISPLACED_LEAVE );
+        CErr1( front, ERR_MISPLACED_LEAVE );
     }
-    MustRecog( T_SEMI_COLON );
+    MustRecog( front, T_SEMI_COLON );
 }
 #endif
 
 
-static void ContinueStmt( void )
+static void ContinueStmt( FrontRun& front )
 {
     BLOCKPTR    block;
     tryindex_t  try_scope;
 
-    NextToken();
-    if( cstmt_state().LoopStack != NULL ) {
-        if( cvars_state().DeadCode == 0 ) {
+    NextToken(front);
+    if( front.cstmt.LoopStack != NULL ) {
+        if( front.cvars.DeadCode == 0 ) {
             try_scope = TRYSCOPE_UNDEF;
-            block = cstmt_state().BlockStack;
-            while( block != cstmt_state().LoopStack ) {
+            block = front.cstmt.BlockStack;
+            while( block != front.cstmt.LoopStack ) {
                 if( ( block->block_type == T__TRY )
                   || ( block->block_type == T___TRY ) ) {
                     try_scope = block->parent_index;
@@ -623,162 +599,162 @@ static void ContinueStmt( void )
                 block = block->prev_block;
             }
             if( try_scope != TRYSCOPE_UNDEF ) {
-                UnWindTry( try_scope );
+                UnWindTry( front, try_scope );
             }
-            if( cstmt_state().LoopStack->continue_label == 0 ) {
-                cstmt_state().LoopStack->continue_label = NextLabel();
+            if( front.cstmt.LoopStack->continue_label == 0 ) {
+                front.cstmt.LoopStack->continue_label = NextLabel(front);
             }
-            Jump( cstmt_state().LoopStack->continue_label );
+            Jump( front, front.cstmt.LoopStack->continue_label );
         }
     } else {
-        CErr1( ERR_MISPLACED_CONTINUE );
+        CErr1( front, ERR_MISPLACED_CONTINUE );
     }
-    MustRecog( T_SEMI_COLON );
+    MustRecog( front, T_SEMI_COLON );
 }
 
 
-static void DefaultStmt( void )
+static void DefaultStmt( FrontRun& front )
 {
-    NextToken();
-    MustRecog( T_COLON );
-    if( cstmt_state().SwitchStack ) {
-        if( cstmt_state().SwitchStack->default_label == 0 ) {
-            cstmt_state().SwitchStack->default_label = NextLabel();
-            DropLabel( cstmt_state().SwitchStack->default_label );
+    NextToken(front);
+    MustRecog( front, T_COLON );
+    if( front.cstmt.SwitchStack ) {
+        if( front.cstmt.SwitchStack->default_label == 0 ) {
+            front.cstmt.SwitchStack->default_label = NextLabel(front);
+            DropLabel( front, front.cstmt.SwitchStack->default_label );
         } else {
-            CErr1( ERR_ONLY_1_DEFAULT );
+            CErr1( front, ERR_ONLY_1_DEFAULT );
         }
-        if( cvars_state().CurToken == T_RIGHT_BRACE ) {
-            CErr1( ERR_STMT_REQUIRED_AFTER_DEFAULT );
+        if( front.cvars.CurToken == T_RIGHT_BRACE ) {
+            CErr1( front, ERR_STMT_REQUIRED_AFTER_DEFAULT );
         }
     } else {
-        CErr1( ERR_MISPLACED_DEFAULT );
+        CErr1( front, ERR_MISPLACED_DEFAULT );
     }
 }
 
 
-static void ElseStmt( void )
+static void ElseStmt( FrontRun& front )
 {
     LABEL_INDEX if_label;
 
-    cvars_state().SrcLoc = cvars_state().TokenLoc;
-    NextToken();
-    cstmt_state().BlockStack->block_type = T_ELSE;
-    if_label = cstmt_state().BlockStack->break_label;
-    if( cvars_state().DeadCode == 0 ) {
-        cstmt_state().BlockStack->break_label = NextLabel();
-        Jump( cstmt_state().BlockStack->break_label );
+    front.cvars.SrcLoc = front.cvars.TokenLoc;
+    NextToken(front);
+    front.cstmt.BlockStack->block_type = T_ELSE;
+    if_label = front.cstmt.BlockStack->break_label;
+    if( front.cvars.DeadCode == 0 ) {
+        front.cstmt.BlockStack->break_label = NextLabel(front);
+        Jump( front, front.cstmt.BlockStack->break_label );
     } else {
-        cstmt_state().BlockStack->break_label = 0;
+        front.cstmt.BlockStack->break_label = 0;
     }
-    DropLabel( if_label );
+    DropLabel( front, if_label );
 }
 
 
-static void GotoStmt( void )
+static void GotoStmt( FrontRun& front )
 {
     LABELPTR    label;
 
-    NextToken();
-    if( cvars_state().CurToken != T_ID ) {
-        CErr1( ERR_EXPECTING_LABEL );
+    NextToken(front);
+    if( front.cvars.CurToken != T_ID ) {
+        CErr1( front, ERR_EXPECTING_LABEL );
     } else {
-        label = LkLabel( cvars_state().Buffer );
+        label = LkLabel( front, front.cvars.Buffer );
         label->referenced = true;
-        Jump( label->ref_list );
+        Jump( front, label->ref_list );
     }
-    NextToken();
-    MustRecog( T_SEMI_COLON );
+    NextToken(front);
+    MustRecog( front, T_SEMI_COLON );
 }
 
 
-static void PushBlock( void )
+static void PushBlock( FrontRun& front )
 {
-    StartNewBlock();
-    ++cvars_state().SymLevel;
-    cstmt_state().BlockStack->sym_list = SYM_NULL;
+    StartNewBlock(front);
+    ++front.cvars.SymLevel;
+    front.cstmt.BlockStack->sym_list = SYM_NULL;
 }
 
 
-static void NewLoop( void )
+static void NewLoop( FrontRun& front )
 {
-    StartNewBlock();
-    cstmt_state().LoopStack = cstmt_state().BlockStack;
-    cstmt_state().LoopStack->top_label = NextLabel();
-    DropLabel( cstmt_state().LoopStack->top_label );
-    ++cvars_state().LoopDepth;
+    StartNewBlock(front);
+    front.cstmt.LoopStack = front.cstmt.BlockStack;
+    front.cstmt.LoopStack->top_label = NextLabel(front);
+    DropLabel( front, front.cstmt.LoopStack->top_label );
+    ++front.cvars.LoopDepth;
 }
 
 
-static void ForStmt( void )
+static void ForStmt( FrontRun& front )
 {
     bool    parsed_semi_colon = false;
 
-    NextToken();
-    MustRecog( T_LEFT_PAREN );
-    if( cvars_state().CompVars.cstd > STD_C89 ) {
-        PushBlock();    // 'for' opens new scope
+    NextToken(front);
+    MustRecog( front, T_LEFT_PAREN );
+    if( front.cvars.CompVars.cstd > STD_C89 ) {
+        PushBlock(front);    // 'for' opens new scope
     }
-    if( cvars_state().CurToken != T_SEMI_COLON ) {
-        if( cvars_state().CompVars.cstd > STD_C89 ) {
+    if( front.cvars.CurToken != T_SEMI_COLON ) {
+        if( front.cvars.CompVars.cstd > STD_C89 ) {
             TREEPTR     tree;
 
-            tree = LeafNode( OPR_NEWBLOCK );
-            AddStmt( tree );
-            cstmt_state().BlockStack->gen_endblock = true;
-            if( !LoopDecl( &cstmt_state().BlockStack->sym_list ) ) {
-                CheckStmtExpr();    // no declarator, try init_expr
+            tree = LeafNode( front, OPR_NEWBLOCK );
+            AddStmt( front, tree );
+            front.cstmt.BlockStack->gen_endblock = true;
+            if( !LoopDecl( front, &front.cstmt.BlockStack->sym_list ) ) {
+                CheckStmtExpr(front);    // no declarator, try init_expr
             } else {
                 parsed_semi_colon = true;   // LoopDecl ate it up
             }
-            tree->op.u2.sym_handle = cstmt_state().BlockStack->sym_list;
+            tree->op.u2.sym_handle = front.cstmt.BlockStack->sym_list;
         } else {
-            CheckStmtExpr();        // init_expr
+            CheckStmtExpr(front);        // init_expr
         }
     }
     if( !parsed_semi_colon ) {
-        MustRecog( T_SEMI_COLON );
+        MustRecog( front, T_SEMI_COLON );
     }
-    NewLoop();
-    cstmt_state().BlockStack->block_type = T_FOR;
-    if( cvars_state().CurToken != T_SEMI_COLON ) {
-        cstmt_state().BlockStack->break_label = NextLabel();
-        if( !JumpFalse( Expr(), cstmt_state().BlockStack->break_label ) ) {
-            cstmt_state().BlockStack->break_label = 0;
+    NewLoop(front);
+    front.cstmt.BlockStack->block_type = T_FOR;
+    if( front.cvars.CurToken != T_SEMI_COLON ) {
+        front.cstmt.BlockStack->break_label = NextLabel(front);
+        if( !JumpFalse( front, Expr(front), front.cstmt.BlockStack->break_label ) ) {
+            front.cstmt.BlockStack->break_label = 0;
         }
     }
-    MustRecog( T_SEMI_COLON );
-    cstmt_state().BlockStack->inc_var = NULL;
-    if( cvars_state().CurToken != T_RIGHT_PAREN ) {
-        cstmt_state().BlockStack->inc_var = Expr();                   // save this
-        if( cvars_state().CompFlags.meaningless_stmt ) {
-            CheckUseful();
+    MustRecog( front, T_SEMI_COLON );
+    front.cstmt.BlockStack->inc_var = NULL;
+    if( front.cvars.CurToken != T_RIGHT_PAREN ) {
+        front.cstmt.BlockStack->inc_var = Expr(front);                   // save this
+        if( front.cvars.CompFlags.meaningless_stmt ) {
+            CheckUseful(front);
         }
     }
-    MustRecog( T_RIGHT_PAREN );
+    MustRecog( front, T_RIGHT_PAREN );
 }
 
 
-static void EndForStmt( void )
+static void EndForStmt( FrontRun& front )
 {
-    DropContinueLabel();
-    if( cstmt_state().BlockStack->inc_var ) {
-        AddStmt( cstmt_state().BlockStack->inc_var );
+    DropContinueLabel(front);
+    if( front.cstmt.BlockStack->inc_var ) {
+        AddStmt( front, front.cstmt.BlockStack->inc_var );
     }
-    Jump( cstmt_state().BlockStack->top_label );
+    Jump( front, front.cstmt.BlockStack->top_label );
 }
 
 
-static void StmtExpr( void )
+static void StmtExpr( FrontRun& front )
 {
-    CheckStmtExpr();
-    if( ExpectingToken( T_SEMI_COLON ) ) {
-        NextToken();
+    CheckStmtExpr(front);
+    if( ExpectingToken( front, T_SEMI_COLON ) ) {
+        NextToken(front);
     }
 }
 
 
-static void AddCaseLabel( signed_64 value )
+static void AddCaseLabel( FrontRun& front, signed_64 value )
 {
     CASEPTR         ce;
     CASEPTR         prev_ce;
@@ -800,7 +776,7 @@ static void AddCaseLabel( signed_64 value )
 #endif
     old_value = converted_value;
     U64Inc( old_value ); /* make old_value different */
-    for( ce = cstmt_state().SwitchStack->case_list; ce != NULL; ce = ce->next_case ) {
+    for( ce = front.cstmt.SwitchStack->case_list; ce != NULL; ce = ce->next_case ) {
         old_value = ce->value;
         if( I64Cmp( &old_value, &converted_value ) >= 0 )
             break;
@@ -811,13 +787,13 @@ static void AddCaseLabel( signed_64 value )
          * duplicate case value found
          */
         sprintf( buffer, "%lld", value.u._64[0] );
-        CErr2p( ERR_DUPLICATE_CASE_VALUE, buffer );
+        CErr2p( front, ERR_DUPLICATE_CASE_VALUE, buffer );
     } else {
-        new_ce = (CASEPTR)CMemAlloc( sizeof( CASEDEFN ) );
+        new_ce = (CASEPTR)CMemAlloc( front, sizeof( CASEDEFN ) );
         new_ce->value = converted_value;
         if( prev_ce == NULL ) {
-            new_ce->next_case = cstmt_state().SwitchStack->case_list;
-            cstmt_state().SwitchStack->case_list = new_ce;
+            new_ce->next_case = front.cstmt.SwitchStack->case_list;
+            front.cstmt.SwitchStack->case_list = new_ce;
         } else {
             prev_ce->next_case = new_ce;
             new_ce->next_case = ce;
@@ -826,97 +802,97 @@ static void AddCaseLabel( signed_64 value )
          * too many labels seriously slows down code generation.
          */
         if( prev_ce
-          && cstmt_state().LastStmt->op.opr == OPR_STMT
-          && cstmt_state().LastStmt->right->op.opr == OPR_CASE ) {
-            new_ce->label = cstmt_state().SwitchStack->last_case_label;
+          && front.cstmt.LastStmt->op.opr == OPR_STMT
+          && front.cstmt.LastStmt->right->op.opr == OPR_CASE ) {
+            new_ce->label = front.cstmt.SwitchStack->last_case_label;
             new_ce->gen_label = false;
         } else {
-            new_ce->label = NextLabel();
+            new_ce->label = NextLabel(front);
             new_ce->gen_label = true;
         }
-        cstmt_state().SwitchStack->number_of_cases++;
-        if( I64Cmp( &converted_value, &cstmt_state().SwitchStack->low_value ) < 0 ) {
-            cstmt_state().SwitchStack->low_value = converted_value;
+        front.cstmt.SwitchStack->number_of_cases++;
+        if( I64Cmp( &converted_value, &front.cstmt.SwitchStack->low_value ) < 0 ) {
+            front.cstmt.SwitchStack->low_value = converted_value;
         }
-        if( I64Cmp( &converted_value, &cstmt_state().SwitchStack->high_value ) > 0 ) {
-            cstmt_state().SwitchStack->high_value = converted_value;
+        if( I64Cmp( &converted_value, &front.cstmt.SwitchStack->high_value ) > 0 ) {
+            front.cstmt.SwitchStack->high_value = converted_value;
         }
-        cstmt_state().SwitchStack->last_case_label = new_ce->label;
-        tree = LeafNode( OPR_CASE );
+        front.cstmt.SwitchStack->last_case_label = new_ce->label;
+        tree = LeafNode( front, OPR_CASE );
         tree->op.u2.case_info = new_ce;
-        AddStmt( tree );
+        AddStmt( front, tree );
     }
 }
 
 
-static void CaseStmt( void )
+static void CaseStmt( FrontRun& front )
 {
     const_val   val;
 
-    NextToken();
-    if( cstmt_state().SwitchStack ) {
-        if( ConstExprAndType( &val ) ) {
-            AddCaseLabel( val.value );
+    NextToken(front);
+    if( front.cstmt.SwitchStack ) {
+        if( ConstExprAndType( front, &val ) ) {
+            AddCaseLabel( front, val.value );
         }
-        MustRecog( T_COLON );
-        if( cvars_state().CurToken == T_RIGHT_BRACE ) {
-            CErr1( ERR_STMT_REQUIRED_AFTER_CASE );
+        MustRecog( front, T_COLON );
+        if( front.cvars.CurToken == T_RIGHT_BRACE ) {
+            CErr1( front, ERR_STMT_REQUIRED_AFTER_CASE );
         }
     } else {
-        CErr1( ERR_MISPLACED_CASE );
-        ConstExprAndType( &val );        /* grab constant expression */
-        MustRecog( T_COLON );
+        CErr1( front, ERR_MISPLACED_CASE );
+        ConstExprAndType( front, &val );        /* grab constant expression */
+        MustRecog( front, T_COLON );
     }
 }
 
 
 #ifdef __SEH__
-static void MarkTryVolatile( SYM_HANDLE sym_handle )
+static void MarkTryVolatile( FrontRun& front, SYM_HANDLE sym_handle )
 {
     SYM_ENTRY   sym;
 
     for( ; sym_handle != SYM_NULL; sym_handle = sym.handle ) {
-        SymGet( &sym, sym_handle );
+        SymGet( front, &sym, sym_handle );
         sym.flags |= SYM_TRY_VOLATILE; //force into memory
-        SymReplace( &sym, sym_handle );
+        SymReplace( front, &sym, sym_handle );
     }
 }
 
 
-static void TryStmt( void )
+static void TryStmt( FrontRun& front )
 {
     TREEPTR     tree;
 
-    MarkTryVolatile( cvars_state().CurFunc->u.func.parms );
-    MarkTryVolatile( cvars_state().CurFunc->u.func.locals );
-    cvars_state().CurFuncNode->op.u2.func.flags |=  FUNC_USES_SEH;
-    cvars_state().CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
-    cvars_state().CurToken = T__TRY;
-    StartNewBlock();
-    NextToken();
-    cstmt_state().BlockStack->parent_index = cvars_state().TryScope;
-    ++cvars_state().TryCount;
-    cstmt_state().BlockStack->try_index = cvars_state().TryCount;
-    cvars_state().TryScope = cvars_state().TryCount;
-    tree = LeafNode( OPR_TRY );
+    MarkTryVolatile( front, front.cvars.CurFunc->u.func.parms );
+    MarkTryVolatile( front, front.cvars.CurFunc->u.func.locals );
+    front.cvars.CurFuncNode->op.u2.func.flags |=  FUNC_USES_SEH;
+    front.cvars.CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
+    front.cvars.CurToken = T__TRY;
+    StartNewBlock(front);
+    NextToken(front);
+    front.cstmt.BlockStack->parent_index = front.cvars.TryScope;
+    ++front.cvars.TryCount;
+    front.cstmt.BlockStack->try_index = front.cvars.TryCount;
+    front.cvars.TryScope = front.cvars.TryCount;
+    tree = LeafNode( front, OPR_TRY );
     tree->op.u2.st.u.try_index = 0;
-    tree->op.u2.st.parent_scope = cvars_state().TryCount;
-    AddStmt( tree );
+    tree->op.u2.st.parent_scope = front.cvars.TryCount;
+    AddStmt( front, tree );
 }
 
 
-static SYM_HANDLE DummyTrySymbol( void )
+static SYM_HANDLE DummyTrySymbol( FrontRun& front )
 {
     SYM_ENTRY   sym;
     SYM_HANDLE  sym_handle;
 
-    sym_handle = MakeNewDotSym( &sym, 'T', GetType( TYP_VOID ), SC_STATIC );
-    SymReplace( &sym, sym_handle );
+    sym_handle = MakeNewDotSym( front, &sym, 'T', GetType( front, TYP_VOID ), SC_STATIC );
+    SymReplace( front, &sym, sym_handle );
     return( sym_handle );
 }
 
 
-static bool EndTry( void )
+static bool EndTry( FrontRun& front )
 {
     tryindex_t  parent_scope;
     TREEPTR     expr;
@@ -925,53 +901,53 @@ static bool EndTry( void )
     TYPEPTR     typ;
     DATA_TYPE   expr_type;
 
-    DropBreakLabel();           /* _leave jumps to this label */
-    parent_scope = cstmt_state().BlockStack->parent_index;
-    tree = LeafNode( OPR_TRY );
-    tree->op.u2.st.u.try_index = cstmt_state().BlockStack->try_index;
+    DropBreakLabel(front);           /* _leave jumps to this label */
+    parent_scope = front.cstmt.BlockStack->parent_index;
+    tree = LeafNode( front, OPR_TRY );
+    tree->op.u2.st.u.try_index = front.cstmt.BlockStack->try_index;
     tree->op.u2.st.parent_scope = parent_scope;
-    AddStmt( tree );
-    if( (cvars_state().CurToken == T__EXCEPT)
-      || (cvars_state().CurToken == T___EXCEPT) ) {
-        NextToken();
-        cstmt_state().BlockStack->block_type = T__EXCEPT;
-        cstmt_state().BlockStack->break_label = NextLabel();
-        Jump( cstmt_state().BlockStack->break_label );
-        cvars_state().DeadCode = 0;
-        tree = LeafNode( OPR_EXCEPT );
-        tree->op.u2.st.u.try_sym_handle = DummyTrySymbol();
+    AddStmt( front, tree );
+    if( (front.cvars.CurToken == T__EXCEPT)
+      || (front.cvars.CurToken == T___EXCEPT) ) {
+        NextToken(front);
+        front.cstmt.BlockStack->block_type = T__EXCEPT;
+        front.cstmt.BlockStack->break_label = NextLabel(front);
+        Jump( front, front.cstmt.BlockStack->break_label );
+        front.cvars.DeadCode = 0;
+        tree = LeafNode( front, OPR_EXCEPT );
+        tree->op.u2.st.u.try_sym_handle = DummyTrySymbol(front);
         tree->op.u2.st.parent_scope = parent_scope;
-        AddStmt( tree );
-        cvars_state().CompFlags.exception_filter_expr = true;
-        expr = RValue( BracketExpr() );
-        cvars_state().CompFlags.exception_filter_expr = false;
-        cvars_state().CompFlags.exception_handler = true;
+        AddStmt( front, tree );
+        front.cvars.CompFlags.exception_filter_expr = true;
+        expr = RValue( front, BracketExpr(front) );
+        front.cvars.CompFlags.exception_filter_expr = false;
+        front.cvars.CompFlags.exception_handler = true;
         typ = TypeOf( expr );
         expr_type = DataTypeOf( typ );
         if( expr_type != TYP_VOID ) {
             if( expr_type > TYP_ULONG ) {
-                CErr1( ERR_EXPR_MUST_BE_INTEGRAL );
+                CErr1( front, ERR_EXPR_MUST_BE_INTEGRAL );
             }
         }
-        func = VarLeaf( SymGetPtr( cvars_state().SymExcept ), cvars_state().SymExcept );
+        func = VarLeaf( front, SymGetPtr( front, front.cvars.SymExcept ), front.cvars.SymExcept );
         func->op.opr = OPR_FUNCNAME;
-        expr = ExprNode( NULL, OPR_PARM, expr );
+        expr = ExprNode( front, NULL, OPR_PARM, expr );
         expr->u.expr_type = typ;
         expr->op.u2.result_type = typ;
-        tree = ExprNode( func, OPR_CALL, expr );
-        tree->u.expr_type = GetType( TYP_VOID );
-        AddStmt( tree );
+        tree = ExprNode( front, func, OPR_CALL, expr );
+        tree->u.expr_type = GetType( front, TYP_VOID );
+        AddStmt( front, tree );
         return( true );
-    } else if( (cvars_state().CurToken == T__FINALLY)
-      || (cvars_state().CurToken == T___FINALLY) ) {
-        cvars_state().CompFlags.in_finally_block = true;
-        NextToken();
-        cstmt_state().BlockStack->block_type = T__FINALLY;
-        cvars_state().DeadCode = 0;
-        tree = LeafNode( OPR_FINALLY );
-        tree->op.u2.st.u.try_sym_handle = DummyTrySymbol();
+    } else if( (front.cvars.CurToken == T__FINALLY)
+      || (front.cvars.CurToken == T___FINALLY) ) {
+        front.cvars.CompFlags.in_finally_block = true;
+        NextToken(front);
+        front.cstmt.BlockStack->block_type = T__FINALLY;
+        front.cvars.DeadCode = 0;
+        tree = LeafNode( front, OPR_FINALLY );
+        tree->op.u2.st.u.try_sym_handle = DummyTrySymbol(front);
         tree->op.u2.st.parent_scope = parent_scope;
-        AddStmt( tree );
+        AddStmt( front, tree );
         return( true );
     }
     return( false );
@@ -979,40 +955,40 @@ static bool EndTry( void )
 #endif
 
 
-static void PopBlock( void )
+static void PopBlock( FrontRun& front )
 {
     BLOCKPTR    block;
     TREEPTR     tree;
 
-    if( cstmt_state().BlockStack->gen_endblock ) {
-        tree = LeafNode( OPR_ENDBLOCK );
-        tree->op.u2.sym_handle = cstmt_state().BlockStack->sym_list;
-        AddStmt( tree );
+    if( front.cstmt.BlockStack->gen_endblock ) {
+        tree = LeafNode( front, OPR_ENDBLOCK );
+        tree->op.u2.sym_handle = front.cstmt.BlockStack->sym_list;
+        AddStmt( front, tree );
     }
-    if( cstmt_state().BlockStack->sym_list != SYM_NULL ) {
-        AddSymList( cstmt_state().BlockStack->sym_list );
+    if( front.cstmt.BlockStack->sym_list != SYM_NULL ) {
+        AddSymList( front, front.cstmt.BlockStack->sym_list );
     }
-    block = cstmt_state().BlockStack;
-    cstmt_state().LoopStack = block->prev_loop;
-    cstmt_state().BlockStack = block->prev_block;
-    CMemFree( block );
+    block = front.cstmt.BlockStack;
+    front.cstmt.LoopStack = block->prev_loop;
+    front.cstmt.BlockStack = block->prev_block;
+    CMemFree( front, block );
 }
 
 
-static void SwitchStmt( void )
+static void SwitchStmt( FrontRun& front )
 {
     SWITCHPTR   sw;
     TREEPTR     tree;
     TYPEPTR     typ;
 
-    StartNewBlock();
-    NextToken();
-    sw = (SWITCHPTR)CMemAlloc( sizeof( SWITCHDEFN ) );
-    sw->prev_switch = cstmt_state().SwitchStack;
+    StartNewBlock(front);
+    NextToken(front);
+    sw = (SWITCHPTR)CMemAlloc( front, sizeof( SWITCHDEFN ) );
+    sw->prev_switch = front.cstmt.SwitchStack;
     Set64Val1m( sw->low_value );
     Set64ValZero( sw->high_value );
-    cstmt_state().SwitchStack = sw;
-    tree = RValue( BracketExpr() );
+    front.cstmt.SwitchStack = sw;
+    tree = RValue( front, BracketExpr(front) );
     typ = TypeOf( tree );
     SKIP_ENUM( typ );
     switch( typ->decl_type ) {
@@ -1031,27 +1007,27 @@ static void SwitchStmt( void )
     case TYP_LONG64:
         break;
     default:
-        CErr1( ERR_INVALID_TYPE_FOR_SWITCH );
+        CErr1( front, ERR_INVALID_TYPE_FOR_SWITCH );
     }
-    tree = ExprNode( NULL, OPR_SWITCH, tree );
+    tree = ExprNode( front, NULL, OPR_SWITCH, tree );
     tree->op.u2.switch_info = sw;
-    AddStmt( tree );
+    AddStmt( front, tree );
 }
 
 
-static void EndSwitch( void )
+static void EndSwitch( FrontRun& front )
 {
     SWITCHPTR   sw;
 //    CASEPTR   ce;
 
-    sw = cstmt_state().SwitchStack;
-    cstmt_state().SwitchStack = sw->prev_switch;
+    sw = front.cstmt.SwitchStack;
+    front.cstmt.SwitchStack = sw->prev_switch;
     if( sw->default_label == 0 ) {
-        if( cstmt_state().BlockStack->break_label == 0 ) {
-            sw->default_label = NextLabel();
-            DropLabel( sw->default_label );
+        if( front.cstmt.BlockStack->break_label == 0 ) {
+            sw->default_label = NextLabel(front);
+            DropLabel( front, sw->default_label );
         } else {
-            sw->default_label = cstmt_state().BlockStack->break_label;
+            sw->default_label = front.cstmt.BlockStack->break_label;
         }
     }
 //    if( sw->case_list == NULL ) {
@@ -1067,81 +1043,81 @@ static void EndSwitch( void )
 }
 
 
-static void EndOfStmt( void )
+static void EndOfStmt( FrontRun& front )
 {
     do {
-        switch( cstmt_state().BlockStack->block_type ) {
+        switch( front.cstmt.BlockStack->block_type ) {
         case T_LEFT_BRACE:
-            EndBlock();
+            EndBlock(front);
             break;
         case T_IF:
-            if( cvars_state().CurToken == T_ELSE ) {
-                ElseStmt();
+            if( front.cvars.CurToken == T_ELSE ) {
+                ElseStmt(front);
                 return;
             }
-            DropBreakLabel();
+            DropBreakLabel(front);
             break;
         case T_ELSE:
-            DropBreakLabel();
+            DropBreakLabel(front);
             break;
         case T_WHILE:
-            DropContinueLabel();
-            Jump( cstmt_state().BlockStack->top_label );
-            --cvars_state().LoopDepth;
-            DropBreakLabel();
+            DropContinueLabel(front);
+            Jump( front, front.cstmt.BlockStack->top_label );
+            --front.cvars.LoopDepth;
+            DropBreakLabel(front);
             break;
         case T_FOR:
-            EndForStmt();
-            --cvars_state().LoopDepth;
-            DropBreakLabel();
-            if( cvars_state().CompVars.cstd > STD_C89 ) {
-                EndBlock();     /* Terminate the scope introduced by 'for' */
-                PopBlock();
+            EndForStmt(front);
+            --front.cvars.LoopDepth;
+            DropBreakLabel(front);
+            if( front.cvars.CompVars.cstd > STD_C89 ) {
+                EndBlock(front);     /* Terminate the scope introduced by 'for' */
+                PopBlock(front);
             }
             break;
         case T_DO:
-            DropContinueLabel();
-            MustRecog( T_WHILE );
-            cvars_state().SrcLoc = cvars_state().TokenLoc;
-            JumpTrue( BracketExpr(), cstmt_state().BlockStack->top_label );
-            MustRecog( T_SEMI_COLON );
-            cvars_state().SrcLoc = cvars_state().TokenLoc;
-            --cvars_state().LoopDepth;
-            DropBreakLabel();
+            DropContinueLabel(front);
+            MustRecog( front, T_WHILE );
+            front.cvars.SrcLoc = front.cvars.TokenLoc;
+            JumpTrue( front, BracketExpr(front), front.cstmt.BlockStack->top_label );
+            MustRecog( front, T_SEMI_COLON );
+            front.cvars.SrcLoc = front.cvars.TokenLoc;
+            --front.cvars.LoopDepth;
+            DropBreakLabel(front);
             break;
         case T_SWITCH:
-            EndSwitch();
-            DropBreakLabel();
+            EndSwitch(front);
+            DropBreakLabel(front);
             break;
 #ifdef __SEH__
         case T__TRY:
         case T___TRY:
-            if( EndTry() )
+            if( EndTry(front) )
                 return;
             break;
         case T__EXCEPT:
         case T___EXCEPT:
-            DropBreakLabel();
-            cvars_state().TryScope = cstmt_state().BlockStack->parent_index;
-            cvars_state().CompFlags.exception_handler = false;
+            DropBreakLabel(front);
+            front.cvars.TryScope = front.cstmt.BlockStack->parent_index;
+            front.cvars.CompFlags.exception_handler = false;
             break;
         case T__FINALLY:
         case T___FINALLY:
-            AddStmt( LeafNode( OPR_END_FINALLY ) );
-            cvars_state().CompFlags.in_finally_block = false;
-            cvars_state().TryScope = cstmt_state().BlockStack->parent_index;
+            AddStmt( front, LeafNode( front, OPR_END_FINALLY ) );
+            front.cvars.CompFlags.in_finally_block = false;
+            front.cvars.TryScope = front.cstmt.BlockStack->parent_index;
             break;
 #endif
         }
-        PopBlock();
-        if( cstmt_state().BlockStack == NULL ) {
+        PopBlock(front);
+        if( front.cstmt.BlockStack == NULL ) {
             break;
         }
-    } while( cstmt_state().BlockStack->block_type != T_LEFT_BRACE );
+    } while( front.cstmt.BlockStack->block_type != T_LEFT_BRACE );
 }
 
 
-static bool IsDeclarator( TOKEN token )
+static bool IsDeclarator( FrontRun& front, TOKEN token )
 {
     SYM_HANDLE      sym_handle;
     SYM_ENTRY       sym;
@@ -1155,12 +1131,12 @@ static bool IsDeclarator( TOKEN token )
     }
 
     /* If token is an ID, it might be a typedef */
-    if( (cvars_state().CurToken == T_ID)
-      || (cvars_state().CurToken == T_SAVED_ID) ) {
-        if( cvars_state().CurToken == T_ID ) {
-            sym_handle = SymLookTypedef( CalcHashID( cvars_state().Buffer ), cvars_state().Buffer, &sym );
+    if( (front.cvars.CurToken == T_ID)
+      || (front.cvars.CurToken == T_SAVED_ID) ) {
+        if( front.cvars.CurToken == T_ID ) {
+            sym_handle = SymLookTypedef( front, CalcHashID( front.cvars.Buffer ), front.cvars.Buffer, &sym );
         } else {    /* T_SAVED_ID */
-            sym_handle = SymLookTypedef( CalcHashID( cvars_state().SavedId ), cvars_state().SavedId, &sym );
+            sym_handle = SymLookTypedef( front, CalcHashID( front.cvars.SavedId ), front.cvars.SavedId, &sym );
         }
         if( sym_handle != SYM_NULL
           && sym.attribs.stg_class == SC_TYPEDEF ) {
@@ -1171,27 +1147,27 @@ static bool IsDeclarator( TOKEN token )
 }
 
 
-static void FixupC99MainReturn( SYM_HANDLE func_result_handle, struct return_info *info )
+static void FixupC99MainReturn( FrontRun& front, SYM_HANDLE func_result_handle, struct return_info *info )
 {
     TREEPTR             tree;
     TYPEPTR             main_type;
 
     /* In C99 mode, return statement need not be explicit for main()... */
-    main_type = cvars_state().CurFunc->sym_type->object;
+    main_type = front.cvars.CurFunc->sym_type->object;
     SKIP_TYPEDEFS( main_type );
     /* ... as long as return type is compatible with int */
     if( main_type->decl_type == TYP_INT ) {
-        tree = IntLeaf( 0 );    /* zero is the default return value */
-        tree = ExprNode( NULL, OPR_RETURN, tree );
+        tree = IntLeaf( front, 0 );    /* zero is the default return value */
+        tree = ExprNode( front, NULL, OPR_RETURN, tree );
         tree->u.expr_type = main_type;
         tree->op.u2.sym_handle = func_result_handle;
-        AddStmt( tree );
+        AddStmt( front, tree );
         info->with_expr = true;
     }
 }
 
 
-void Statement( void )
+void Statement( FrontRun& front )
 {
     LABEL_INDEX         end_of_func_label;
     SYM_HANDLE          func_result_handle;
@@ -1208,175 +1184,175 @@ void Statement( void )
         PrintStats();
     }
 #endif
-    ++cvars_state().FuncCount;
+    ++front.cvars.FuncCount;
     return_info.with = RETURN_WITH_NONE; /* indicate no return statements */
     return_info.with_expr = false;
-    cvars_state().CompFlags.label_dropped = false;
-    cvars_state().CompFlags.addr_of_auto_taken = false;
+    front.cvars.CompFlags.label_dropped = false;
+    front.cvars.CompFlags.addr_of_auto_taken = false;
     end_of_func_label = 0;
     return_at_outer_level = false;
     declaration_allowed = false;
-    cvars_state().DeadCode = 0;
-    cvars_state().LoopDepth = 0;
-    cvars_state().LabelIndex = 0;
-    cstmt_state().BlockStack = NULL;
-    cstmt_state().LoopStack = NULL;
-    cstmt_state().SwitchStack = NULL;
+    front.cvars.DeadCode = 0;
+    front.cvars.LoopDepth = 0;
+    front.cvars.LabelIndex = 0;
+    front.cstmt.BlockStack = NULL;
+    front.cstmt.LoopStack = NULL;
+    front.cstmt.SwitchStack = NULL;
 #ifdef __SEH__
-    cvars_state().TryCount = TRYSCOPE_NONE;
-    cvars_state().TryScope = TRYSCOPE_NONE;
+    front.cvars.TryCount = TRYSCOPE_NONE;
+    front.cvars.TryScope = TRYSCOPE_NONE;
 #endif
-    StartNewBlock();
-    NextToken();                        // skip over {
-    ++cvars_state().SymLevel;
-    tree = LeafNode( OPR_LABELCOUNT );
-    AddStmt( tree );
-    if( GrabLabels() == 0 ) {
-        GetLocalVarDecls();
+    StartNewBlock(front);
+    NextToken(front);                        // skip over {
+    ++front.cvars.SymLevel;
+    tree = LeafNode( front, OPR_LABELCOUNT );
+    AddStmt( front, tree );
+    if( GrabLabels(front) == 0 ) {
+        GetLocalVarDecls(front);
     }
-    func_result_handle = MakeNewDotSym( &sym, 'R', cvars_state().CurFunc->sym_type->object, SC_AUTO );
+    func_result_handle = MakeNewDotSym( front, &sym, 'R', front.cvars.CurFunc->sym_type->object, SC_AUTO );
     sym.flags |= SYM_FUNC_RETURN_VAR;
-    SymReplace( &sym, func_result_handle );
+    SymReplace( front, &sym, func_result_handle );
     for( ;; ) {
-        cvars_state().CompFlags.pending_dead_code = false;
-        if( GrabLabels() == 0
+        front.cvars.CompFlags.pending_dead_code = false;
+        if( GrabLabels(front) == 0
           && declaration_allowed
-          && IsDeclarator( cvars_state().CurToken ) ) {
-            GetLocalVarDecls();
+          && IsDeclarator( front, front.cvars.CurToken ) ) {
+            GetLocalVarDecls(front);
         }
-        if( cvars_state().CompVars.cstd > STD_C89 ) {
+        if( front.cvars.CompVars.cstd > STD_C89 ) {
             declaration_allowed = true;
         }
         skip_to_next_token = false;
-        switch( cvars_state().CurToken ) {
+        switch( front.cvars.CurToken ) {
         case T_IF:
-            StartNewBlock();
-            NextToken();
-            cstmt_state().BlockStack->break_label = NextLabel();
-            JumpFalse( BracketExpr(), cstmt_state().BlockStack->break_label );
+            StartNewBlock(front);
+            NextToken(front);
+            front.cstmt.BlockStack->break_label = NextLabel(front);
+            JumpFalse( front, BracketExpr(front), front.cstmt.BlockStack->break_label );
             /* only issue msg if ';' is on same line as 'if' */
-            if( cvars_state().CurToken == T_SEMI_COLON
-              && cvars_state().SrcLoc.line == cvars_state().TokenLoc.line
-              && cvars_state().SrcLoc.fno == cvars_state().TokenLoc.fno ) {
-                SetErrLoc( &cvars_state().TokenLoc );
-                NextToken();    /* look ahead for else keyword */
-                if( cvars_state().CurToken != T_ELSE ) {
-                    CheckUseful();
+            if( front.cvars.CurToken == T_SEMI_COLON
+              && front.cvars.SrcLoc.line == front.cvars.TokenLoc.line
+              && front.cvars.SrcLoc.fno == front.cvars.TokenLoc.fno ) {
+                SetErrLoc( front, &front.cvars.TokenLoc );
+                NextToken(front);    /* look ahead for else keyword */
+                if( front.cvars.CurToken != T_ELSE ) {
+                    CheckUseful(front);
                 }
-                InitErrLoc();
+                InitErrLoc(front);
                 break;
             }
             declaration_allowed = false;
             continue;
         case T_ELSE:
             /* misplaced else, no previous if */
-            CErr1( ERR_ELSE_WITHOUT_IF );
-            NextToken();
+            CErr1( front, ERR_ELSE_WITHOUT_IF );
+            NextToken(front);
             continue;
         case T_WHILE:
-            NewLoop();
-            NextToken();
-            cstmt_state().BlockStack->break_label = NextLabel();
-            if( !JumpFalse( BracketExpr(), cstmt_state().BlockStack->break_label ) ) {
-                cstmt_state().BlockStack->break_label = 0;
+            NewLoop(front);
+            NextToken(front);
+            front.cstmt.BlockStack->break_label = NextLabel(front);
+            if( !JumpFalse( front, BracketExpr(front), front.cstmt.BlockStack->break_label ) ) {
+                front.cstmt.BlockStack->break_label = 0;
             }
-            if( cvars_state().CurToken == T_SEMI_COLON ) {
-                if( !cvars_state().CompFlags.useful_side_effect ) {
-                    CWarn1( ERR_MEANINGLESS );
+            if( front.cvars.CurToken == T_SEMI_COLON ) {
+                if( !front.cvars.CompFlags.useful_side_effect ) {
+                    CWarn1( front, ERR_MEANINGLESS );
                 }
             }
             declaration_allowed = false;
             continue;
         case T_DO:
-            NewLoop();
-            NextToken();
-            if( cvars_state().CurToken == T_RIGHT_BRACE ) {
-                CErr1( ERR_STMT_REQUIRED_AFTER_DO );
+            NewLoop(front);
+            NextToken(front);
+            if( front.cvars.CurToken == T_RIGHT_BRACE ) {
+                CErr1( front, ERR_STMT_REQUIRED_AFTER_DO );
                 break;
             }
             declaration_allowed = false;
             continue;
         case T_FOR:
-            ForStmt();
+            ForStmt(front);
             declaration_allowed = false;
             continue;
         case T_SWITCH:
-            SwitchStmt();
-            cvars_state().DeadCode = 1;
+            SwitchStmt(front);
+            front.cvars.DeadCode = 1;
             declaration_allowed = false;
             continue;
         case T_CASE:
-            cvars_state().DeadCode = 0;
-            CaseStmt();
+            front.cvars.DeadCode = 0;
+            CaseStmt(front);
             declaration_allowed = false;
             continue;
         case T_DEFAULT:
-            DefaultStmt();
+            DefaultStmt(front);
             declaration_allowed = false;
             continue;
         case T_BREAK:
-            BreakStmt();
-            cvars_state().DeadCode = 1;
-            if( cstmt_state().BlockStack->block_type != T_LEFT_BRACE )
+            BreakStmt(front);
+            front.cvars.DeadCode = 1;
+            if( front.cstmt.BlockStack->block_type != T_LEFT_BRACE )
                 break;
             continue;
         case T_CONTINUE:
-            ContinueStmt();
-            cvars_state().DeadCode = 1;
-            if( cstmt_state().BlockStack->block_type != T_LEFT_BRACE )
+            ContinueStmt(front);
+            front.cvars.DeadCode = 1;
+            if( front.cstmt.BlockStack->block_type != T_LEFT_BRACE )
                 break;
             continue;
 #ifdef __SEH__
         case T__LEAVE:
         case T___LEAVE:
-            LeaveStmt();
-            cvars_state().DeadCode = 1;
-            if( cstmt_state().BlockStack->block_type != T_LEFT_BRACE )
+            LeaveStmt(front);
+            front.cvars.DeadCode = 1;
+            if( front.cstmt.BlockStack->block_type != T_LEFT_BRACE )
                 break;
             continue;
 #endif
         case T_RETURN:
-            ReturnStmt( func_result_handle, &return_info );
-            if( cstmt_state().BlockStack->prev_block == NULL ) {
+            ReturnStmt( front, func_result_handle, &return_info );
+            if( front.cstmt.BlockStack->prev_block == NULL ) {
                 return_at_outer_level = true;
             }
-            MustRecog( T_SEMI_COLON );
-            if( cvars_state().SymLevel != 1
-              || cvars_state().CurToken != T_RIGHT_BRACE
-              || cstmt_state().BlockStack->block_type != T_LEFT_BRACE ) {
+            MustRecog( front, T_SEMI_COLON );
+            if( front.cvars.SymLevel != 1
+              || front.cvars.CurToken != T_RIGHT_BRACE
+              || front.cstmt.BlockStack->block_type != T_LEFT_BRACE ) {
                 if( end_of_func_label == 0 ) {
-                    end_of_func_label = NextLabel();
+                    end_of_func_label = NextLabel(front);
                 }
-                Jump( end_of_func_label );
+                Jump( front, end_of_func_label );
             }
-            if( cstmt_state().BlockStack->block_type != T_LEFT_BRACE )
+            if( front.cstmt.BlockStack->block_type != T_LEFT_BRACE )
                 break;
             continue;
         case T_GOTO:
-            GotoStmt();
-            if( cstmt_state().BlockStack->block_type != T_LEFT_BRACE )
+            GotoStmt(front);
+            if( front.cstmt.BlockStack->block_type != T_LEFT_BRACE )
                 break;
             continue;
         case T_SEMI_COLON:
-            NextToken();
-            if( cstmt_state().BlockStack->block_type != T_LEFT_BRACE ) {
-                if( cvars_state().CurToken == T_ELSE ) {
+            NextToken(front);
+            if( front.cstmt.BlockStack->block_type != T_LEFT_BRACE ) {
+                if( front.cvars.CurToken == T_ELSE ) {
                     declaration_allowed = false;
                 }
                 break;
             }
             continue;
         case T_LEFT_BRACE:
-            LeftBrace();
+            LeftBrace(front);
             continue;
         case T_RIGHT_BRACE:
-            if( cstmt_state().BlockStack->block_type != T_LEFT_BRACE ) {
-                CErr1( ERR_MISPLACED_RIGHT_BRACE );
+            if( front.cstmt.BlockStack->block_type != T_LEFT_BRACE ) {
+                CErr1( front, ERR_MISPLACED_RIGHT_BRACE );
             }
-            if( cstmt_state().BlockStack->prev_block == NULL ) {
+            if( front.cstmt.BlockStack->prev_block == NULL ) {
                 skip_to_next_token = true;
             } else {
-                NextToken();
+                NextToken(front);
             }
             break;
         case T_EXTERN:
@@ -1392,100 +1368,100 @@ void Statement( void )
         case T_DOUBLE:
         case T_SIGNED:
         case T_UNSIGNED:
-            if( cvars_state().CompVars.cstd < STD_C99 ) {
-                CErr1( ERR_MISSING_RIGHT_BRACE );
+            if( front.cvars.CompVars.cstd < STD_C99 ) {
+                CErr1( front, ERR_MISSING_RIGHT_BRACE );
             } else {
-                CErr1( ERR_UNEXPECTED_DECLARATION );
+                CErr1( front, ERR_UNEXPECTED_DECLARATION );
             }
             break;
         case T_EOF:
-            CErr1( ERR_MISSING_RIGHT_BRACE );
+            CErr1( front, ERR_MISSING_RIGHT_BRACE );
             break;
 #ifdef __SEH__
         case T__TRY:
         case T___TRY:
-            TryStmt();
+            TryStmt(front);
             continue;
 #endif
         case T___ASM:
-            AsmStmt();
+            AsmStmt(front);
             continue;
         default:
-            if( cvars_state().DeadCode == 1 ) {
-                DeadMsg();
+            if( front.cvars.DeadCode == 1 ) {
+                DeadMsg(front);
             }
-            StmtExpr();
-            if( cstmt_state().BlockStack->block_type != T_LEFT_BRACE )
+            StmtExpr(front);
+            if( front.cstmt.BlockStack->block_type != T_LEFT_BRACE )
                 break;
             continue;
         }
-        EndOfStmt();
-        if( cstmt_state().BlockStack == NULL )
+        EndOfStmt(front);
+        if( front.cstmt.BlockStack == NULL )
             break;
         if( skip_to_next_token ) {
-            NextToken();
+            NextToken(front);
         }
     }
     /* C99 has special semantics for return value of main() */
-    if( ( cvars_state().CompVars.cstd > STD_C89 )
-      && strcmp( cvars_state().CurFunc->name, "main" ) == 0 ) {
+    if( ( front.cvars.CompVars.cstd > STD_C89 )
+      && strcmp( front.cvars.CurFunc->name, "main" ) == 0 ) {
         if( !return_at_outer_level ) {
-            FixupC99MainReturn( func_result_handle, &return_info );
+            FixupC99MainReturn( front, func_result_handle, &return_info );
             return_at_outer_level = true;
         }
     }
     if( !return_info.with_expr ) {   /* no return values present */
-        if( cvars_state().DeadCode == 0
-          && !cvars_state().CurFunc->attribs.naked ) {
-            CheckRetValue();
+        if( front.cvars.DeadCode == 0
+          && !front.cvars.CurFunc->attribs.naked ) {
+            CheckRetValue(front);
         }
     } else if( !return_at_outer_level ) {
-        if( cvars_state().DeadCode == 0
-          && !cvars_state().CurFunc->attribs.naked ) {
-            CWarn2p( ERR_MISSING_RETURN_VALUE, cvars_state().CurFunc->name );
+        if( front.cvars.DeadCode == 0
+          && !front.cvars.CurFunc->attribs.naked ) {
+            CWarn2p( front, ERR_MISSING_RETURN_VALUE, front.cvars.CurFunc->name );
         }
     }
     if( end_of_func_label != 0 ) {
-        DropLabel( end_of_func_label );
+        DropLabel( front, end_of_func_label );
     }
-    cvars_state().DeadCode = 0;
-    tree->op.u2.label_count = cvars_state().LabelIndex;
-    tree = LeafNode( OPR_FUNCEND );
+    front.cvars.DeadCode = 0;
+    tree->op.u2.label_count = front.cvars.LabelIndex;
+    tree = LeafNode( front, OPR_FUNCEND );
     if( !return_info.with_expr ) {
         tree->u.expr_type = NULL;
         tree->op.u2.sym_handle = SYM_NULL;
     } else {
         tree->op.u2.sym_handle = func_result_handle;
-        SetFuncReturnNode( tree );
+        SetFuncReturnNode( front, tree );
     }
-    AddStmt( tree );
-    AddSymList( cvars_state().CurFunc->u.func.locals );
-    cvars_state().SrcLoc = cvars_state().TokenLoc;
-    FreeLabels();
+    AddStmt( front, tree );
+    AddSymList( front, front.cvars.CurFunc->u.func.locals );
+    front.cvars.SrcLoc = front.cvars.TokenLoc;
+    FreeLabels(front);
     if( skip_to_next_token ) {
-        NextToken();
+        NextToken(front);
     }
-    if( cvars_state().CompFlags.generate_prototypes ) {
-        if( cvars_state().DefFile == NULL ) {
-            OpenDefFile();
+    if( front.cvars.CompFlags.generate_prototypes ) {
+        if( front.cvars.DefFile == NULL ) {
+            OpenDefFile(front);
         }
-        if( cvars_state().DefFile != NULL
-          && cvars_state().CurFunc->attribs.stg_class == SC_NONE ) {
+        if( front.cvars.DefFile != NULL
+          && front.cvars.CurFunc->attribs.stg_class == SC_NONE ) {
             /* function exported */
-            DumpFuncDefn();
+            DumpFuncDefn(front);
         }
     }
 
     if( TOGGLE( inline ) ) {
-        if( cvars_state().Inline_Threshold < cvars_state().NodeCount ) {
-            cvars_state().CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
+        if( front.cvars.Inline_Threshold < front.cvars.NodeCount ) {
+            front.cvars.CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
         }
     }
-    if( VarParm( cvars_state().CurFunc ) ) {
-        cvars_state().CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
+    if( VarParm( front.cvars.CurFunc ) ) {
+        front.cvars.CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
     }
-    cvars_state().NodeCount = 0;
-    if( cvars_state().CompFlags.addr_of_auto_taken ) {
-        cvars_state().CurFunc->flags &= ~ SYM_OK_TO_RECURSE;
+    front.cvars.NodeCount = 0;
+    if( front.cvars.CompFlags.addr_of_auto_taken ) {
+        front.cvars.CurFunc->flags &= ~ SYM_OK_TO_RECURSE;
     }
 }

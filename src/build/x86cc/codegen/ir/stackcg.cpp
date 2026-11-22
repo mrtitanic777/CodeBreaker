@@ -41,6 +41,7 @@
 #include "utils.h"
 #include "onexit.h"
 #include "memmgt.h"
+#include "backrun.hpp"
 
 
 extern char __near  *bp( void );
@@ -90,10 +91,10 @@ void    *SafeRecurseCG( func_sr rtn, void *arg )
 
 #else
 
-void    *SafeRecurseCG( func_sr rtn, void *arg )
+void    *SafeRecurseCG( BackRun& back, func_sr rtn, void *arg )
 /**********************************************/
 {
-    return( rtn( arg ) );
+    return( rtn( back, arg ) );
 }
 
 #endif

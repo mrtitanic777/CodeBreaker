@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 pick( PST_PROLOG_FAT,       0x0001 )
 pick( PST_PROLOG_THUNK,     0x0002 )
 pick( PST_PROLOG_HOOKS,     0x0004 )

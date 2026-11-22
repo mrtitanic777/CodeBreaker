@@ -31,7 +31,8 @@
 ****************************************************************************/
 
 
-extern void    RetAftrCall( ins_entry *ret_instr );
-extern void    JmpToRet( ins_entry *instr, ins_entry *ret );
-extern bool    RetAftrLbl( ins_entry *ret );
-extern void    MultiLineNums( ins_entry *ins );
+#pragma once
+extern void    RetAftrCall( BackRun& back, ins_entry *ret_instr );
+extern void    JmpToRet( BackRun& back, ins_entry *instr, ins_entry *ret );
+extern bool    RetAftrLbl( BackRun& back, ins_entry *ret );
+extern void    MultiLineNums( BackRun& back, ins_entry *ins );

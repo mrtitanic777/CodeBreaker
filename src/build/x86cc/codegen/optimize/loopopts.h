@@ -30,31 +30,32 @@
 ****************************************************************************/
 
 
-block    *AddPreBlock( block *postblk );
-void     MarkLoop( void );
-void     UnMarkLoop( void );
-block    *NextInLoop( block *blk );
+#pragma once
+block    *AddPreBlock( BackRun& back, block *postblk );
+void     MarkLoop( BackRun& back );
+void     UnMarkLoop( BackRun& back );
+block    *NextInLoop( BackRun& back, block *blk );
 block    *NextInProg( block *blk );
 void     MakeJumpBlock( block *cond_blk, block_edge *exit_edge );
-void     UnMarkInvariants( void );
-void     MarkInvariants( void );
-bool     InvariantOp( name *op );
-bool     Hoistable( instruction *ins, block *blk );
-induction    *FindIndVar( name *op );
-void     CommonInvariant( void );
-void    FiniIndVars( void );
+void     UnMarkInvariants( BackRun& back );
+void     MarkInvariants( BackRun& back );
+bool     InvariantOp( BackRun& back, name *op );
+bool     Hoistable( BackRun& back, instruction *ins, block *blk );
+induction    *FindIndVar( BackRun& back, name *op );
+void     CommonInvariant( BackRun& back );
+void    FiniIndVars( BackRun& back );
 bool    Inducable( block *blk, instruction *ins );
-void    SuffixPreHeader( instruction *ins );
-void    MoveDownLoop( block *cond );
-instruction     *DupIns( instruction *blk_end, instruction *ins, name *var, int_32 adjust );
-instruction     *DupInstrs( instruction *blk_end, instruction *first, instruction *last, induction *var, int_32 adjust );
-bool    AnalyseLoop( induction *var, bool *ponecond, instruction **pcond, block **pcond_blk );
-bool    CalcFinalValue( induction *var, block *blk, instruction *ins, int_32 *final, int_32 *initial );
-bool    LoopInvariant( void );
-bool    LoopRegInvariant( void );
-void    LoopEnregister( void );
-bool    IndVars( void );
-bool    TransLoops( bool unroll );
+void    SuffixPreHeader( BackRun& back, instruction *ins );
+void    MoveDownLoop( BackRun& back, block *cond );
+instruction     *DupIns( BackRun& back, instruction *blk_end, instruction *ins, name *var, int_32 adjust );
+instruction     *DupInstrs( BackRun& back, instruction *blk_end, instruction *first, instruction *last, induction *var, int_32 adjust );
+bool    AnalyseLoop( BackRun& back, induction *var, bool *ponecond, instruction **pcond, block **pcond_blk );
+bool    CalcFinalValue( BackRun& back, induction *var, block *blk, instruction *ins, int_32 *final, int_32 *initial );
+bool    LoopInvariant( BackRun& back );
+bool    LoopRegInvariant( BackRun& back );
+void    LoopEnregister( BackRun& back );
+bool    IndVars( BackRun& back );
+bool    TransLoops( BackRun& back, bool unroll );
 
 #ifndef CB_STATE_LOOPOPTS_H
 #define CB_STATE_LOOPOPTS_H
@@ -66,6 +67,5 @@ struct LoopoptsState {
     induction *IndVarList;
     block *Loop;
 };
-inline LoopoptsState& loopopts_state() { return cbrun_part<LoopoptsState>(); }
 
 #endif

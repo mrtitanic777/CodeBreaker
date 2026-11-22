@@ -47,7 +47,6 @@ struct Pdefn2State {
     hw_reg_set AsmRegsSaved = HW_D( HW_FULL );
     aux_info InlineInfo;
 };
-inline Pdefn2State& pdefn2_state() { return cbrun_part<Pdefn2State>(); }
 
 global  const inline_funcs    SInline_Functions[];
 global  const inline_funcs    Inline_Functions[];

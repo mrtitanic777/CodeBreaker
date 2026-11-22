@@ -327,6 +327,7 @@ IDEDLLENTRY int      IDEAPI IDERunYourSelf( IDEDllHdl hdl, const char *opts, IDE
 IDEDLLENTRY int      IDEAPI IDERunYourSelfArgv( IDEDllHdl hdl, int argc, char **argv, IDEBool *fatalerr );
 IDEDLLENTRY void     IDEAPI IDEStopRunning( void );
 IDEDLLENTRY void     IDEAPI IDEFreeHeap( void );
+IDEDLLENTRY void     IDEAPI IDEFreeRun( IDEDllHdl hdl );   // (CodeBreaker: frees the run the compiler kept for the host's next compile)
 
 /**********************************************************
  * Routines the DLL should use to fill in the Output Message
@@ -386,8 +387,9 @@ void IdeMsgFormat               // FORMAT A MESSAGE
     , size_t bsize              // - buffer size
     , IDEMsgInfoFn displayer )  // - display function
 ;
+struct SupportRun;   // (the compiler's runtime support, run/cbrun.hpp: the host does not look inside)
 void IdeMsgStartDll             // START OF FORMATING FOR A DLL (EACH TIME)
-    ( void )
+    ( SupportRun& support )
 ;
 
 #include "poppck.h"

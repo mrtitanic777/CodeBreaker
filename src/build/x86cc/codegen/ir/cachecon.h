@@ -31,5 +31,6 @@
 ****************************************************************************/
 
 
-extern void    ConstToTemp( block *pre, block *head, block*(*next)(block*) );
-extern void    MemConstTemp( conflict_node *conf );
+#pragma once
+extern void    ConstToTemp( BackRun& back, block *pre, block *head, block*(*next)(BackRun&, block*) );
+extern void    MemConstTemp( BackRun& back, conflict_node *conf );

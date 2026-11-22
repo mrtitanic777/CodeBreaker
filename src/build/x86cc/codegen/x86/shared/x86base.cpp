@@ -38,6 +38,7 @@
 #include "namelist.h"
 #include "x86base.h"
 #include "temps.h"
+#include "backrun.hpp"
 
 
 #define MAX_SHORT_NEG   127
@@ -54,15 +55,15 @@
 #endif
 
 static  int             CalcBaseSave( type_length bp, name *temp );
-static  void            SortTemps(void);
+static  void            SortTemps(BackRun& back);
 
-static  void    setTempLocations( void )
+static  void    setTempLocations( BackRun& back )
 /**************************************/
 {
     name                *base;
     name                *temp;
 
-    for( temp = data_state().Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
+    for( temp = back.data.Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
         base = DeAlias( temp );
         if( base->t.location == NO_LOCATION ) {
             temp->t.v.alt_location = NO_LOCATION;
@@ -73,7 +74,7 @@ static  void    setTempLocations( void )
     }
 }
 
-type_length     AdjustBase( void ) {
+type_length     AdjustBase( BackRun& back ) {
 /*************************************
     Decide how far we should adjust BP away from SP, based on the number
     of short v.s.  long x[bp] references we would have.  It works like
@@ -96,16 +97,16 @@ type_length     AdjustBase( void ) {
     type_length         last_location;
     name                *temp;
 
-    if( data_state().BlockByBlock ) {
+    if( back.data.BlockByBlock ) {
         return( -( MAX_SHORT_POS & ~1 ) );
     }
-    setTempLocations();
-    CountTempRefs();
-    SortTemps();
+    setTempLocations(back);
+    CountTempRefs(back);
+    SortTemps(back);
     best_bp = 0;
-    best_savings = CalcBaseSave( best_bp, data_state().Names[N_TEMP] );
+    best_savings = CalcBaseSave( best_bp, back.data.Names[N_TEMP] );
     last_location = NO_LOCATION;
-    for( temp = data_state().Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
+    for( temp = back.data.Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
         if( temp->t.v.alt_location != last_location &&
             temp->t.v.alt_location != NO_LOCATION ) {
             bp = ( temp->t.v.alt_location - ( MAX_SHORT_POS - 1 ) ) & ~1;
@@ -150,15 +151,15 @@ static  int             CalcBaseSave( type_length bp, name *temp ) {
 }
 
 
-static  bool    TempBefore( void *t1, void *t2 ) {
+static  bool    TempBefore( BackRun& back, void *t1, void *t2 ) {
 /************************************************/
 
     return( ((name *)t1)->t.v.alt_location > ((name *)t2)->t.v.alt_location );
 }
 
 
-static  void    SortTemps(void) {
+static  void    SortTemps(BackRun& back) {
 /*******************************/
 
-    data_state().Names[N_TEMP] = static_cast<name *>(SortList( data_state().Names[N_TEMP], offsetof( name, n.next_name ), TempBefore ));
+    back.data.Names[N_TEMP] = static_cast<name *>(SortList( back, back.data.Names[N_TEMP], offsetof( name, n.next_name ), TempBefore ));
 }

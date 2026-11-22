@@ -32,15 +32,16 @@
 
 
 #include "cfloati.h"
+#include "backrun.hpp"
 
-cfloat  *CFInverse( cfhandle h, cfloat *f )
+cfloat  *CFInverse( BackRun& back, cfhandle h, cfloat *f )
 /*****************************************/
 {
     cfloat      *one;
     cfloat      *result;
 
-    one = CFCnvI32F( h, 1 );
-    result = CFDiv( h, one, f );
-    CFFree( h, one );
+    one = CFCnvI32F( back, h, 1 );
+    result = CFDiv( back, h, one, f );
+    CFFree( back, h, one );
     return( result );
 }

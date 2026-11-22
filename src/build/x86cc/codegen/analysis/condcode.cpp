@@ -40,6 +40,7 @@
 #include "optab.h"
 #include "overlap.h"
 #include "condcode.h"
+#include "backrun.hpp"
 
 
 typedef enum {          /* in order of increasing amount of information */
@@ -130,7 +131,7 @@ static void DoMarkUsedCC( block *blk )
     }
 }
 
-static void MarkUsedCC( block *blk )
+static void MarkUsedCC( BackRun& back, block *blk )
 /***********************************
     We have to mark the instructions that set the condition codes
     as INS_CC_USED. If the blk->u1.cc->ins field is non-NULL, that means that
@@ -143,7 +144,7 @@ static void MarkUsedCC( block *blk )
     _MarkBlkAllUnVisited();
 }
 
-static  bool    Traverse( block *blk, name *zero )
+static  bool    Traverse( BackRun& back, block *blk, name *zero )
 /*************************************************
     Given a starting condition code setting for "blk" (blk->u1.cc),
     traverse the block, modifying the condition codes accordingly, and
@@ -175,8 +176,8 @@ static  bool    Traverse( block *blk, name *zero )
             if( UselessCompare( ins, cc, zero ) ) {
                 if( G( ins ) != G_NO ) {
                     change = true;
-                    DoNothing( ins );
-                    MarkUsedCC( blk );
+                    DoNothing( back, ins );
+                    MarkUsedCC( back, blk );
                 }
             }
             cc_affect = static_cast<operand_types>(NO_CC);
@@ -208,9 +209,9 @@ static  bool    Traverse( block *blk, name *zero )
         } else if( cc_affect == SETS_CC ) {       /* includes compares*/
             if( _OpIsCompare( ins->head.opcode ) ) {
                 if( UselessCompare( ins, cc, zero ) ) {
-                    DoNothing( ins );
+                    DoNothing( back, ins );
                     change = true;
-                    MarkUsedCC( blk );
+                    MarkUsedCC( back, blk );
                 } else if( G( ins ) != G_NO ) {
                     cc->state = CONDITIONS_SET;
                     cc->result_op = NULL;
@@ -320,7 +321,7 @@ static  void    GatherSources( block *blk )
     }
 }
 
-static  void    FlowConditions( void )
+static  void    FlowConditions( BackRun& back )
 /*************************************
     For each block in the program, first "GatherSources" to determine
     what the state of the condition codes are on entry to the routine,
@@ -334,18 +335,18 @@ static  void    FlowConditions( void )
     name        *zero;
     bool        change;
 
-    zero = AllocIntConst( 0 );
+    zero = AllocIntConst( back, 0 );
     do {
         change = false;
-        for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+        for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
             GatherSources( blk );
-            change |= Traverse( blk, zero );
+            change |= Traverse( back, blk, zero );
         }
     } while( change );
 }
 
 
-void    Conditions( void )
+void    Conditions( BackRun& back )
 /*********************************
     Traverse the basic blocks and determine if there are any compare
     instructions that we can eliminate, since the condition codes are
@@ -368,8 +369,8 @@ void    Conditions( void )
     block       *blk;
     cc_handle   cc;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
-        cc = static_cast<cc_handle>(CGAlloc( sizeof( *cc ) ));
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
+        cc = static_cast<cc_handle>(CGAlloc( back, sizeof( *cc ) ));
         cc->state = UNKNOWN_STATE;
         cc->left_op = NULL;
         cc->right_op = NULL;
@@ -379,8 +380,8 @@ void    Conditions( void )
         blk->u1.cc = cc;
         _MarkBlkUnVisited( blk );
     }
-    FlowConditions();
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
-        CGFree( blk->u1.cc );
+    FlowConditions(back);
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
+        CGFree( back, blk->u1.cc );
     }
 }

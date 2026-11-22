@@ -30,15 +30,16 @@
 ****************************************************************************/
 
 
-extern conflict_node    *AddConflictNode( name *opnd );
-extern conflict_node    *FindConflictNode( name *opnd, block *blk, instruction *ins );
-extern void             MarkSegment( instruction *ins, name *opnd );
-extern conflict_node    *NameConflict( instruction *ins, name *opnd );
+#pragma once
+extern conflict_node    *AddConflictNode( BackRun& back, name *opnd );
+extern conflict_node    *FindConflictNode( BackRun& back, name *opnd, block *blk, instruction *ins );
+extern void             MarkSegment( BackRun& back, instruction *ins, name *opnd );
+extern conflict_node    *NameConflict( BackRun& back, instruction *ins, name *opnd );
 extern reg_set_index    GetPossibleForTemp(conflict_node *conf, name *temp);
-extern void             MarkPossible( instruction *ins, name *opnd, reg_set_index idx );
-extern reg_set_index    MarkIndex( instruction *ins, name *opnd, bool is_temp_index );
-extern void             FreePossibleForAlias( conflict_node *conf );
-extern void             FreeConflicts( void );
-extern void             FreeAConflict( conflict_node *conf );
-extern void             InitConflict( void );
-extern bool             ConfFrlFree( void );
+extern void             MarkPossible( BackRun& back, instruction *ins, name *opnd, reg_set_index idx );
+extern reg_set_index    MarkIndex( BackRun& back, instruction *ins, name *opnd, bool is_temp_index );
+extern void             FreePossibleForAlias( BackRun& back, conflict_node *conf );
+extern void             FreeConflicts( BackRun& back );
+extern void             FreeAConflict( BackRun& back, conflict_node *conf );
+extern void             InitConflict( BackRun& back );
+extern bool             ConfFrlFree( BackRun& back );

@@ -42,6 +42,5 @@
 struct CfloatState {
     cfstruct cgh;
 };
-inline CfloatState& cfloat_state() { return cbrun_part<CfloatState>(); }
 
 #endif

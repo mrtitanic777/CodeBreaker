@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "cgmem.h"
 #include "_cg.h"
 #include "bckdef.h"

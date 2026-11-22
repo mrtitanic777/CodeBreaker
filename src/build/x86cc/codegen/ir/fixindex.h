@@ -29,15 +29,16 @@
 ****************************************************************************/
 
 
+#pragma once
 extern opcnt        OpcodeNumOperands( instruction *ins );
 extern void         ReplaceOperand( instruction *ins, name *old, name *new_ );
-extern name         *IndexToTemp( instruction * ins, name * index );
-extern name         *FindIndex( instruction *ins );
-extern void         NoMemIndex( instruction *ins );
-extern instruction  *OneMemRef( instruction *ins );
-extern void         FixIndex( void );
+extern name         *IndexToTemp( BackRun& back, instruction * ins, name * index );
+extern name         *FindIndex( BackRun& back, instruction *ins );
+extern void         NoMemIndex( BackRun& back, instruction *ins );
+extern instruction  *OneMemRef( BackRun& back, instruction *ins );
+extern void         FixIndex( BackRun& back );
 extern void         FixFPConsts( instruction *ins );
-extern void         FixChoices( void );
-extern void         FixMemRefs( void );
-extern void         FixSegments( void );
-extern void         AddSegment( instruction *ins );
+extern void         FixChoices( BackRun& back );
+extern void         FixMemRefs( BackRun& back );
+extern void         FixSegments( BackRun& back );
+extern void         AddSegment( BackRun& back, instruction *ins );

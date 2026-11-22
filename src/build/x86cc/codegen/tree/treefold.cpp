@@ -44,6 +44,7 @@
 #include "namelist.h"
 #include "u32moddi.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
 #define HasBigConst( t )       ( ( (t)->attr & TYPE_FLOAT ) || (t)->length == 8 )
@@ -109,7 +110,7 @@ static int CmpType( const type_def *tipe )
     return( ret );
 }
 
-static cmp_result CheckCmpRange( cg_op opcode, int op_type, float_handle cf )
+static cmp_result CheckCmpRange( BackRun& back, cg_op opcode, int op_type, float_handle cf )
 /***************************************************************************/
 /* Check if comparison 'op' of operand of type 'op_type' against constant
  * 'val' can be folded, eg. '(unsigned char)x <= 255'. Integer only, can
@@ -217,38 +218,38 @@ static int_32 CFConvertByType( float_handle cf, const type_def *tipe )
     return( data );
 }
 
-static signed_64 CFGetInteger64Value( float_handle cf )
+static signed_64 CFGetInteger64Value( BackRun& back, float_handle cf )
 /*****************************************************/
 {
     signed_64       value;
     int             neg;
     float_handle    trunc;
 
-    trunc = CFTrunc( &cfloat_state().cgh, cf );
+    trunc = CFTrunc( back, &back.cfloat.cgh, cf );
     neg = CFTest( trunc );
     if( neg < 0 )
         CFNegate( trunc );
     value = CFCnvF64( trunc );
     if( neg < 0 )
         U64NegEq( &value );
-    CFFree( &cfloat_state().cgh, trunc );
+    CFFree( back, &back.cfloat.cgh, trunc );
     return( value );
 }
 
-static  float_handle IntToCF( signed_64 value, const type_def *tipe )
+static  float_handle IntToCF( BackRun& back, signed_64 value, const type_def *tipe )
 /*******************************************************************/
 {
     if( tipe->attr & TYPE_SIGNED ) {
         switch( tipe->length ) {
         case 1:
-            return( CFCnvI32F( &cfloat_state().cgh, I64LowByte( value ) ) );
+            return( CFCnvI32F( back, &back.cfloat.cgh, I64LowByte( value ) ) );
         case 2:
-            return( CFCnvI32F( &cfloat_state().cgh, I64LowWord( value ) ) );
+            return( CFCnvI32F( back, &back.cfloat.cgh, I64LowWord( value ) ) );
         case 4:
         case 6:
-            return( CFCnvI32F( &cfloat_state().cgh, I64Low( value ) ) );
+            return( CFCnvI32F( back, &back.cfloat.cgh, I64Low( value ) ) );
         case 8:
-            return( CFCnvI64F( &cfloat_state().cgh, U64Low( value ), U64High( value ) ) );
+            return( CFCnvI64F( back, &back.cfloat.cgh, U64Low( value ), U64High( value ) ) );
         default:
             _Zoiks( ZOIKS_112 );
             return( NULL );
@@ -256,14 +257,14 @@ static  float_handle IntToCF( signed_64 value, const type_def *tipe )
     } else {
         switch( tipe->length ) {
         case 1:
-            return( CFCnvU32F( &cfloat_state().cgh, U64LowByte( value ) ) );
+            return( CFCnvU32F( back, &back.cfloat.cgh, U64LowByte( value ) ) );
         case 2:
-            return( CFCnvU32F( &cfloat_state().cgh, U64LowWord( value ) ) );
+            return( CFCnvU32F( back, &back.cfloat.cgh, U64LowWord( value ) ) );
         case 4:
         case 6:
-            return( CFCnvU32F( &cfloat_state().cgh, U64Low( value ) ) );
+            return( CFCnvU32F( back, &back.cfloat.cgh, U64Low( value ) ) );
         case 8:
-            return( CFCnvU64F( &cfloat_state().cgh, U64Low( value ), U64High( value ) ) );
+            return( CFCnvU64F( back, &back.cfloat.cgh, U64Low( value ), U64High( value ) ) );
         default:
             _Zoiks( ZOIKS_112 );
             return( NULL );
@@ -271,33 +272,33 @@ static  float_handle IntToCF( signed_64 value, const type_def *tipe )
     }
 }
 
-static  tn      IntToType( int_32 value, const type_def *tipe )
+static  tn      IntToType( BackRun& back, int_32 value, const type_def *tipe )
 /*************************************************************/
 {
     signed_64   temp;
 
     Set64ValI32( temp, value );
-    return( TGConst( IntToCF( temp, tipe ), tipe ) );
+    return( TGConst( back, IntToCF( back, temp, tipe ), tipe ) );
 }
 
 
-static  tn      Int64ToType( signed_64 value, const type_def *tipe )
+static  tn      Int64ToType( BackRun& back, signed_64 value, const type_def *tipe )
 /******************************************************************/
 {
-    return( TGConst( IntToCF( value, tipe ), tipe ) );
+    return( TGConst( back, IntToCF( back, value, tipe ), tipe ) );
 }
 
 
-static  tn      CFToType( float_handle cf, const type_def *tipe )
+static  tn      CFToType( BackRun& back, float_handle cf, const type_def *tipe )
 /***************************************************************/
 {
     tn          result;
 
     if( (tipe->attr & TYPE_FLOAT) == 0 ) {
-        result = TGConst( IntToCF( CFGetInteger64Value( cf ), tipe ), tipe );
-        CFFree( &cfloat_state().cgh, cf );
+        result = TGConst( back, IntToCF( back, CFGetInteger64Value( back, cf ), tipe ), tipe );
+        CFFree( back, &back.cfloat.cgh, cf );
     } else {
-        result = TGConst( cf, tipe );
+        result = TGConst( back, cf, tipe );
     }
     return( result );
 }
@@ -323,7 +324,7 @@ int     GetLog2( uint_32 value )
 }
 
 
-tn      FoldTimes( tn left, tn rite, const type_def *tipe )
+tn      FoldTimes( BackRun& back, tn left, tn rite, const type_def *tipe )
 /*********************************************************/
 {
     tn              temp;
@@ -345,11 +346,11 @@ tn      FoldTimes( tn left, tn rite, const type_def *tipe )
     if( left->class_ == TN_BINARY && left->u1.t.op == O_TIMES &&
         tipe == left->tipe && !HasBigConst( tipe ) ) {
         if( left->u.left->class_ == TN_CONS ) {
-            left->u.left = FoldTimes( left->u.left, rite, tipe );
+            left->u.left = FoldTimes( back, left->u.left, rite, tipe );
             return( left );
         }
         if( left->u1.t.rite->class_ == TN_CONS ) {
-            left->u1.t.rite = FoldTimes( left->u1.t.rite, rite, tipe );
+            left->u1.t.rite = FoldTimes( back, left->u1.t.rite, rite, tipe );
             return( left );
         }
     }
@@ -359,10 +360,10 @@ tn      FoldTimes( tn left, tn rite, const type_def *tipe )
             for( log = left->u1.t.rite->u.name->c.lo.u.int_value; log > 0; --log ) {
                 li <<= 1;
             }
-            BurnTree( left->u1.t.rite );
-            left->u1.t.rite = CFToType( CFCnvU32F( &cfloat_state().cgh, li ), tipe );
+            BurnTree( back, left->u1.t.rite );
+            left->u1.t.rite = CFToType( back, CFCnvU32F( back, &back.cfloat.cgh, li ), tipe );
             left->u1.t.op = O_TIMES;
-            left->u1.t.rite = FoldTimes( left->u1.t.rite, rite, tipe );
+            left->u1.t.rite = FoldTimes( back, left->u1.t.rite, rite, tipe );
             return( left );
         }
     }
@@ -373,21 +374,21 @@ tn      FoldTimes( tn left, tn rite, const type_def *tipe )
             li = CFConvertByType( lv, tipe );
             ri = CFConvertByType( rv, tipe );
             ri = li * ri;
-            fold = IntToType( ri, tipe );
+            fold = IntToType( back, ri, tipe );
         } else {
-            fold = CFToType( CFMul( &cfloat_state().cgh, left->u.name->c.u.cfval, rv ), tipe );
+            fold = CFToType( back, CFMul( back, &back.cfloat.cgh, left->u.name->c.u.cfval, rv ), tipe );
         }
-        BurnTree( left );
-        BurnTree( rite );
+        BurnTree( back, left );
+        BurnTree( back, rite );
         return( fold );
     }
     if( !HasBigConst( tipe ) && rite->u.name->c.lo.u.int_value == 1 ) {
-        BurnTree( rite );
+        BurnTree( back, rite );
         return( left );
     }
     test = CFTest( rv );
     if( test == 0 ) {
-        return( TGBinary( O_COMMA, TGTrash( left ), rite, tipe ) );
+        return( TGBinary( back, O_COMMA, TGTrash( left ), rite, tipe ) );
     }
     if( HasBigConst( tipe ) )
         return( NULL );
@@ -398,12 +399,12 @@ tn      FoldTimes( tn left, tn rite, const type_def *tipe )
     if( CFIsU32( rv ) ) {
         log = GetLog2( CFConvertByType( rv, tipe ) );
         if( log != -1 ) {
-            fold = TGBinary( O_LSHIFT, left,
-                          IntToType( log, data_state().TypeInteger ), tipe );
+            fold = TGBinary( back, O_LSHIFT, left,
+                          IntToType( back, log, back.data.TypeInteger ), tipe );
             if( test < 0 ) {
-                fold = TGUnary( O_UMINUS, fold, tipe );
+                fold = TGUnary( back, O_UMINUS, fold, tipe );
             }
-            BurnTree( rite );
+            BurnTree( back, rite );
         }
     }
     if( test < 0 ) {
@@ -413,7 +414,7 @@ tn      FoldTimes( tn left, tn rite, const type_def *tipe )
 }
 
 
-float_handle OkToNegate( float_handle value, const type_def *tipe )
+float_handle OkToNegate( BackRun& back, float_handle value, const type_def *tipe )
 /*****************************************************************/
 /* make sure we don't negate an unsigned and get out of range */
 /* for example -MAX_LONG is no longer an integer type */
@@ -422,7 +423,7 @@ float_handle OkToNegate( float_handle value, const type_def *tipe )
 
     if( HasBigConst( tipe ) && ( tipe->attr & TYPE_FLOAT ) == 0 )
         return( NULL );
-    neg = CFCopy( &cfloat_state().cgh, value );
+    neg = CFCopy( back, &back.cfloat.cgh, value );
     CFNegate( neg );
     if( HasBigConst( tipe ) )
         return( neg );
@@ -430,11 +431,11 @@ float_handle OkToNegate( float_handle value, const type_def *tipe )
         return( neg );
     if( CFIsSize( neg, tipe->length ) )
         return( neg );
-    CFFree( &cfloat_state().cgh, neg );
+    CFFree( back, &back.cfloat.cgh, neg );
     return( NULL );
 }
 
-tn      FoldMinus( tn left, tn rite, const type_def *tipe )
+tn      FoldMinus( BackRun& back, tn left, tn rite, const type_def *tipe )
 /*********************************************************/
 {
     tn              fold;
@@ -452,28 +453,28 @@ tn      FoldMinus( tn left, tn rite, const type_def *tipe )
                 li = CFConvertByType( lv, tipe );
                 ri = CFConvertByType( rv, tipe );
                 ri = li - ri;
-                fold = IntToType( ri, tipe );
+                fold = IntToType( back, ri, tipe );
             } else {
-                fold = CFToType( CFSub( &cfloat_state().cgh, lv, rite->u.name->c.u.cfval ),
+                fold = CFToType( back, CFSub( back, &back.cfloat.cgh, lv, rite->u.name->c.u.cfval ),
                                   tipe );
             }
-            BurnTree( rite );
-            BurnTree( left );
+            BurnTree( back, rite );
+            BurnTree( back, left );
         } else if( CFTest( lv ) == 0 ) {
-            fold = TGUnary( O_UMINUS, rite, tipe );
-            BurnTree( left );
+            fold = TGUnary( back, O_UMINUS, rite, tipe );
+            BurnTree( back, left );
         }
     } else if( rite->class_ == TN_CONS ) {
-        rv = OkToNegate( rite->u.name->c.u.cfval, tipe );
+        rv = OkToNegate( back, rite->u.name->c.u.cfval, tipe );
         if( rv != NULL ) {
-            fold = TGBinary( O_PLUS, left, TGConst( rv, rite->tipe ),
+            fold = TGBinary( back, O_PLUS, left, TGConst( back, rv, rite->tipe ),
                               tipe );
-            BurnTree( rite );
+            BurnTree( back, rite );
         }
     } else if( rite->class_ == TN_UNARY && rite->u1.t.op == O_UMINUS ) {
-        fold = TGBinary( O_PLUS, left, rite->u.left, tipe );
+        fold = TGBinary( back, O_PLUS, left, rite->u.left, tipe );
         rite->u.left = NULL;
-        BurnTree( rite );
+        BurnTree( back, rite );
     }
     return( fold );
 }
@@ -490,7 +491,7 @@ static const type_def *FixAddType( tn left, tn rite, const type_def *tipe )
 }
 
 
-tn      FoldPlus( tn left, tn rite, const type_def *tipe )
+tn      FoldPlus( BackRun& back, tn left, tn rite, const type_def *tipe )
 /**********************************************************/
 {
     tn              fold;
@@ -514,83 +515,83 @@ tn      FoldPlus( tn left, tn rite, const type_def *tipe )
                 li = CFConvertByType( lv, tipe );
                 ri = CFConvertByType( rv, tipe );
                 ri = li + ri;
-                fold = IntToType( ri, tipe );
+                fold = IntToType( back, ri, tipe );
             } else {
-                fold = CFToType( CFAdd( &cfloat_state().cgh, lv, rite->u.name->c.u.cfval ),
+                fold = CFToType( back, CFAdd( back, &back.cfloat.cgh, lv, rite->u.name->c.u.cfval ),
                                   tipe );
             }
-            BurnTree( rite );
-            BurnTree( left );
+            BurnTree( back, rite );
+            BurnTree( back, left );
         } else if( CFTest( lv ) == 0 ) {
-            fold = TGConvert( rite, tipe );
-            BurnTree( left );
+            fold = TGConvert( back, rite, tipe );
+            BurnTree( back, left );
         }
     } else if( rite->class_ == TN_CONS ) {
         if( CFTest( rite->u.name->c.u.cfval ) == 0 ) {
-            fold = TGConvert( left, tipe );
-            BurnTree( rite );
+            fold = TGConvert( back, left, tipe );
+            BurnTree( back, rite );
         } else if( left->class_ == TN_BINARY && left->u1.t.op == O_PLUS &&
                    tipe == left->tipe && !HasBigConst( tipe ) ) {
             if( left->u.left->class_ == TN_CONS ) {
                 tipe = FixAddType( left->u.left, rite, tipe );
                 if( left->u.left->tipe == tipe ) {
-                    fold = FoldPlus( left->u.left, rite, tipe );
+                    fold = FoldPlus( back, left->u.left, rite, tipe );
                     left->u.left = fold;
                     fold = left;
                 }
             } else if( left->u1.t.rite->class_ == TN_CONS ) {
                 tipe = FixAddType( left->u1.t.rite, rite, tipe );
                 if( left->u1.t.rite->tipe == tipe ) {
-                    fold = FoldPlus( left->u1.t.rite, rite, tipe );
+                    fold = FoldPlus( back, left->u1.t.rite, rite, tipe );
                     left->u1.t.rite = fold;
                     fold = left;
                 }
             }
         }
     } else if( rite->class_ == TN_UNARY && rite->u1.t.op == O_UMINUS ) {
-        fold = TGBinary( O_MINUS, left, rite->u.left, tipe );
+        fold = TGBinary( back, O_MINUS, left, rite->u.left, tipe );
         rite->u.left = NULL;
-        BurnTree( rite );
+        BurnTree( back, rite );
     } else if( left->class_ == TN_UNARY && left->u1.t.op == O_UMINUS ) {
-        fold = TGBinary( O_MINUS, rite, left->u.left, tipe );
+        fold = TGBinary( back, O_MINUS, rite, left->u.left, tipe );
         left->u.left = NULL;
-        BurnTree( left );
+        BurnTree( back, left );
     }
     return( fold );
 }
 
 
-static  tn      Halve( tn left, const type_def *tipe )
+static  tn      Halve( BackRun& back, tn left, const type_def *tipe )
 /****************************************************/
 {
 #define ONE_HALF "0.5"
 
-    return( TGBinary( O_TIMES, left, TGConst( CFCnvSF( &cfloat_state().cgh, ONE_HALF ), tipe ), tipe ) );
+    return( TGBinary( back, O_TIMES, left, TGConst( back, CFCnvSF( back, &back.cfloat.cgh, ONE_HALF ), tipe ), tipe ) );
 }
 
-tn      FoldPow( tn left, tn rite, const type_def *tipe )
+tn      FoldPow( BackRun& back, tn left, tn rite, const type_def *tipe )
 /*********************************************************/
 {
     tn          fold;
 
     fold = NULL;
     if( left->class_ == TN_UNARY && left->u1.t.op == O_SQRT ) {
-        fold = Halve( rite, tipe );
-        fold = TGBinary( O_POW, left->u.left, fold, tipe );
+        fold = Halve( back, rite, tipe );
+        fold = TGBinary( back, O_POW, left->u.left, fold, tipe );
         left->u.left = NULL;
-        BurnTree( left );
+        BurnTree( back, left );
     } else if( left->class_ == TN_UNARY && left->u1.t.op == O_EXP ) {
-        left->u.left = TGBinary( O_TIMES, left->u.left, rite, tipe );
+        left->u.left = TGBinary( back, O_TIMES, left->u.left, rite, tipe );
         fold = left;
     } else if( left->class_ == TN_BINARY && left->u1.t.op == O_POW ) {
-        left->u1.t.rite = TGBinary( O_TIMES, left->u1.t.rite, rite, tipe );
+        left->u1.t.rite = TGBinary( back, O_TIMES, left->u1.t.rite, rite, tipe );
         fold = left;
     }
     return( fold );
 }
 
 
-tn      FoldAnd( tn left, tn rite, const type_def *tipe )
+tn      FoldAnd( BackRun& back, tn left, tn rite, const type_def *tipe )
 /*********************************************************/
 {
     tn              fold;
@@ -610,39 +611,39 @@ tn      FoldAnd( tn left, tn rite, const type_def *tipe )
             uint_32     and_;
 
             and_ = CFConvertByType( rv, tipe ) & CFConvertByType( lv, tipe );
-            fold = IntToType( and_, tipe );
-            BurnTree( left );
-            BurnTree( rite );
+            fold = IntToType( back, and_, tipe );
+            BurnTree( back, left );
+            BurnTree( back, rite );
         } else if( CFIs64( lv ) && CFIs64( rv ) ) {
             unsigned_64     and_;
             unsigned_64     li;
             unsigned_64     ri;
 
-            li = CFGetInteger64Value( lv );
-            ri = CFGetInteger64Value( rv );
+            li = CFGetInteger64Value( back, lv );
+            ri = CFGetInteger64Value( back, rv );
 
             U64And( and_, li, ri );
-            fold = Int64ToType( and_, tipe );
-            BurnTree( left );
-            BurnTree( rite );
+            fold = Int64ToType( back, and_, tipe );
+            BurnTree( back, left );
+            BurnTree( back, rite );
         }
     } else if( rite->class_ == TN_CONS ) {
         rv = rite->u.name->c.u.cfval;
         /* For any X: X & 0 = 0, and X & ~0 = X */
         if( CFTest( rv ) == 0 ) {
             left = TGTrash( left );
-            fold = TGBinary( O_COMMA, left, IntToType( 0, tipe ), tipe );
-            BurnTree( rite );
+            fold = TGBinary( back, O_COMMA, left, IntToType( back, 0, tipe ), tipe );
+            BurnTree( back, rite );
         } else if( !HasBigConst( tipe ) && rite->u.name->c.lo.u.int_value == -1 ) {
-            fold = TGConvert( left, tipe );
-            BurnTree( rite );
+            fold = TGConvert( back, left, tipe );
+            BurnTree( back, rite );
         }
     }
     return( fold );
 }
 
 
-tn      FoldOr( tn left, tn rite, const type_def *tipe )
+tn      FoldOr( BackRun& back, tn left, tn rite, const type_def *tipe )
 /********************************************************/
 {
     tn              fold;
@@ -662,39 +663,39 @@ tn      FoldOr( tn left, tn rite, const type_def *tipe )
             uint_32     or_;
 
             or_ = CFConvertByType( rv, tipe ) | CFConvertByType( lv, tipe );
-            fold = IntToType( or_, tipe );
-            BurnTree( left );
-            BurnTree( rite );
+            fold = IntToType( back, or_, tipe );
+            BurnTree( back, left );
+            BurnTree( back, rite );
         } else if( CFIs64( lv ) && CFIs64( rv ) ) {
             unsigned_64     or_;
             unsigned_64     li;
             unsigned_64     ri;
 
-            li = CFGetInteger64Value( lv );
-            ri = CFGetInteger64Value( rv );
+            li = CFGetInteger64Value( back, lv );
+            ri = CFGetInteger64Value( back, rv );
 
             U64Or( or_, li, ri );
-            fold = Int64ToType( or_, tipe );
-            BurnTree( left );
-            BurnTree( rite );
+            fold = Int64ToType( back, or_, tipe );
+            BurnTree( back, left );
+            BurnTree( back, rite );
         }
     } else if( rite->class_ == TN_CONS ) {
         rv = rite->u.name->c.u.cfval;
         /* For any X: X | 0 = X, and X | ~0 = ~0 */
         if( CFTest( rv ) == 0 ) {
-            fold = TGConvert( left, tipe );
-            BurnTree( rite );
+            fold = TGConvert( back, left, tipe );
+            BurnTree( back, rite );
         } else if( !HasBigConst( tipe ) && rite->u.name->c.lo.u.int_value == -1 ) {
             left = TGTrash( left );
-            fold = TGBinary( O_COMMA, left, IntToType( -1, tipe ), tipe );
-            BurnTree( rite );
+            fold = TGBinary( back, O_COMMA, left, IntToType( back, -1, tipe ), tipe );
+            BurnTree( back, rite );
         }
     }
     return( fold );
 }
 
 
-tn      FoldXor( tn left, tn rite, const type_def *tipe )
+tn      FoldXor( BackRun& back, tn left, tn rite, const type_def *tipe )
 /*********************************************************/
 {
     tn              fold;
@@ -717,38 +718,38 @@ tn      FoldXor( tn left, tn rite, const type_def *tipe )
             li = CFConvertByType( lv, tipe );
             ri = CFConvertByType( rv, tipe );
             ri = li ^ ri;
-            fold = IntToType( ri, tipe );
-            BurnTree( left );
-            BurnTree( rite );
+            fold = IntToType( back, ri, tipe );
+            BurnTree( back, left );
+            BurnTree( back, rite );
         } else if( CFIs64( lv ) && CFIs64( rv ) ) {
             unsigned_64     xor_;
             unsigned_64     li;
             unsigned_64     ri;
 
-            li = CFGetInteger64Value( lv );
-            ri = CFGetInteger64Value( rv );
+            li = CFGetInteger64Value( back, lv );
+            ri = CFGetInteger64Value( back, rv );
 
             U64Xor( xor_, li, ri );
-            fold = Int64ToType( xor_, tipe );
-            BurnTree( left );
-            BurnTree( rite );
+            fold = Int64ToType( back, xor_, tipe );
+            BurnTree( back, left );
+            BurnTree( back, rite );
         }
     } else if( rite->class_ == TN_CONS ) {
         rv = rite->u.name->c.u.cfval;
         /* For any X: X ^ 0 = X, and X ^ ~0 = ~X */
         if( CFTest( rv ) == 0 ) {
-            fold = TGConvert( left, tipe );
-            BurnTree( rite );
+            fold = TGConvert( back, left, tipe );
+            BurnTree( back, rite );
         } else if( !HasBigConst( tipe ) && rite->u.name->c.lo.u.int_value == -1 ) {
-            fold = TGUnary( O_COMPLEMENT, left, tipe );
-            BurnTree( rite );
+            fold = TGUnary( back, O_COMPLEMENT, left, tipe );
+            BurnTree( back, rite );
         }
     }
     return( fold );
 }
 
 
-tn      FoldRShift( tn left, tn rite, const type_def *tipe )
+tn      FoldRShift( BackRun& back, tn left, tn rite, const type_def *tipe )
 /************************************************************/
 {
     tn              fold;
@@ -769,7 +770,7 @@ tn      FoldRShift( tn left, tn rite, const type_def *tipe )
                     // then do the math
                     ri = (tipe->length * 8) - 1;
                 } else {
-                    fold = IntToType( 0, tipe );
+                    fold = IntToType( back, 0, tipe );
                     done = true;
                 }
             }
@@ -785,36 +786,36 @@ tn      FoldRShift( tn left, tn rite, const type_def *tipe )
                     } else {
                         shft = (uint_32)li >> (uint_32)ri;
                     }
-                    fold = IntToType( shft, tipe );
+                    fold = IntToType( back, shft, tipe );
                 } else if( CFIs64( lv ) && CFIs64( rv ) ) {
                     signed_64       rsh;
                     signed_64       li;
 
-                    li = CFGetInteger64Value( lv );
+                    li = CFGetInteger64Value( back, lv );
 
                     if( tipe->attr & TYPE_SIGNED ) {
                         I64ShiftR( &rsh, &li, ri );
                     } else {
                         U64ShiftR( &rsh, &li, ri );
                     }
-                    fold = Int64ToType( rsh, tipe );
+                    fold = Int64ToType( back, rsh, tipe );
                 }
             }
-            BurnTree( left );
-            BurnTree( rite );
+            BurnTree( back, left );
+            BurnTree( back, rite );
         } else if( ri == 0 ) {
-            fold = TGConvert( left, tipe );
-            BurnTree( rite );
+            fold = TGConvert( back, left, tipe );
+            BurnTree( back, rite );
         } else if( ri >= (tipe->length * 8) && (tipe->attr & TYPE_SIGNED) == 0 ) {
-            fold = TGBinary( O_COMMA, TGTrash( left ), IntToType( 0, tipe ), tipe );
-            BurnTree( rite );
+            fold = TGBinary( back, O_COMMA, TGTrash( left ), IntToType( back, 0, tipe ), tipe );
+            BurnTree( back, rite );
         }
     }
     return( fold );
 }
 
 
-tn      FoldLShift( tn left, tn rite, const type_def *tipe )
+tn      FoldLShift( BackRun& back, tn left, tn rite, const type_def *tipe )
 /************************************************************/
 {
     tn              fold;
@@ -834,39 +835,39 @@ tn      FoldLShift( tn left, tn rite, const type_def *tipe )
         }
         if( left->class_ == TN_CONS ) {
             if( ri >= (tipe->length * 8) ) {
-                fold = IntToType( 0, tipe );
+                fold = IntToType( back, 0, tipe );
             } else {
                 lv = left->u.name->c.u.cfval;
                 if( !HasBigConst( tipe ) && CFIs32( lv ) && CFIs32( rv ) ) {
                     int_32  li;
 
                     li = CFConvertByType( lv, tipe );
-                    fold = IntToType( li << ri, tipe );
+                    fold = IntToType( back, li << ri, tipe );
                 } else if( CFIs64( lv ) && CFIs64( rv ) ) {
                     signed_64       lsh;
                     signed_64       li;
 
-                    li = CFGetInteger64Value( lv );
+                    li = CFGetInteger64Value( back, lv );
 
                     U64ShiftL( &lsh, &li, ri );
-                    fold = Int64ToType( lsh, tipe );
+                    fold = Int64ToType( back, lsh, tipe );
                 }
             }
-            BurnTree( left );
-            BurnTree( rite );
+            BurnTree( back, left );
+            BurnTree( back, rite );
         } else if( ri == 0 ) {
-            fold = TGConvert( left, tipe );
-            BurnTree( rite );
+            fold = TGConvert( back, left, tipe );
+            BurnTree( back, rite );
         } else if( ri >= (tipe->length * 8) ) {
-            fold = TGBinary( O_COMMA, TGTrash( left ), IntToType( 0, tipe ), tipe );
-            BurnTree( rite );
+            fold = TGBinary( back, O_COMMA, TGTrash( left ), IntToType( back, 0, tipe ), tipe );
+            BurnTree( back, rite );
         }
     }
     return( fold );
 }
 
 
-tn      FoldDiv( tn left, tn rite, const type_def *tipe )
+tn      FoldDiv( BackRun& back, tn left, tn rite, const type_def *tipe )
 /*********************************************************/
 {
     tn              fold;
@@ -882,7 +883,7 @@ tn      FoldDiv( tn left, tn rite, const type_def *tipe )
             lv = left->u.name->c.u.cfval;
             if( CFTest( rv ) != 0 && left->class_ == TN_CONS ) {
                 if( tipe->attr & TYPE_FLOAT ) {
-                    fold = CFToType( CFDiv( &cfloat_state().cgh, lv, rv ), tipe );
+                    fold = CFToType( back, CFDiv( back, &back.cfloat.cgh, lv, rv ), tipe );
                 } else {    /* Must be a 64-bit integer. */
                     signed_64       div;
                     signed_64       rem;
@@ -891,26 +892,26 @@ tn      FoldDiv( tn left, tn rite, const type_def *tipe )
 
                     assert( CFIs64( lv ) );
                     assert( CFIs64( rv ) );
-                    li = CFGetInteger64Value( lv );
-                    ri = CFGetInteger64Value( rv );
+                    li = CFGetInteger64Value( back, lv );
+                    ri = CFGetInteger64Value( back, rv );
 
                     if( tipe->attr & TYPE_SIGNED ) {
                         I64Div( &li, &ri, &div, &rem );
                     } else {
                         U64Div( &li, &ri, &div, &rem );
                     }
-                    fold = Int64ToType( div, tipe );
+                    fold = Int64ToType( back, div, tipe );
                 }
-                BurnTree( left );
-                BurnTree( rite );
+                BurnTree( back, left );
+                BurnTree( back, rite );
             } else if( ( tipe->attr & TYPE_FLOAT ) &&
                 ( _IsModel( CGSW_GEN_FP_UNSTABLE_OPTIMIZATION ) ||
                 ( CFIsU32( rv ) && GetLog2( CFConvertByType( rv, tipe ) ) != -1 ) ) ) {
                 if( CFTest( rv ) != 0 ) {
-                    tmp = CFInverse( &cfloat_state().cgh, rv );
+                    tmp = CFInverse( back, &back.cfloat.cgh, rv );
                     if( tmp != NULL ) {
-                        fold = TGBinary( O_TIMES, left, TGConst( tmp, tipe ), tipe );
-                        BurnTree( rite );
+                        fold = TGBinary( back, O_TIMES, left, TGConst( back, tmp, tipe ), tipe );
+                        BurnTree( back, rite );
                     }
                 }
             }
@@ -923,9 +924,9 @@ tn      FoldDiv( tn left, tn rite, const type_def *tipe )
 
                     li = CFConvertByType( lv, tipe );
                     ri = CFConvertByType( rv, tipe );
-                    fold = IntToType( li / ri, tipe );
-                    BurnTree( left );
-                    BurnTree( rite );
+                    fold = IntToType( back, li / ri, tipe );
+                    BurnTree( back, left );
+                    BurnTree( back, rite );
                 }
             } else {
                 if( CFIsU32( lv ) && CFIsU32( rv ) ) {
@@ -935,34 +936,34 @@ tn      FoldDiv( tn left, tn rite, const type_def *tipe )
                     li = CFCnvF32( lv );
                     ri = CFCnvF32( rv );
                     U32ModDiv( &li, ri );
-                    fold = IntToType( li, tipe );
-                    BurnTree( left );
-                    BurnTree( rite );
+                    fold = IntToType( back, li, tipe );
+                    BurnTree( back, left );
+                    BurnTree( back, rite );
                 }
             }
         } else if( rite->u.name->c.lo.u.int_value == 1 ) {
-            fold = TGConvert( left, tipe );
-            BurnTree( rite );
+            fold = TGConvert( back, left, tipe );
+            BurnTree( back, rite );
         } else if( !HasBigConst( tipe ) && ( left->tipe->attr & TYPE_SIGNED ) == 0 ) {
             if( CFIsU32( rv ) ) {
                 log = GetLog2( rite->u.name->c.lo.u.int_value );
                 if( log != -1 ) {
-                    fold = TGBinary( O_RSHIFT, left, IntToType( log, data_state().TypeInteger ), tipe );
-                    BurnTree( rite );
+                    fold = TGBinary( back, O_RSHIFT, left, IntToType( back, log, back.data.TypeInteger ), tipe );
+                    BurnTree( back, rite );
                 }
             }
         }
     } else if( left->class_ == TN_CONS ) {
         if( CFTest( left->u.name->c.u.cfval ) == 0 ) {
             rite = TGTrash( rite );
-            fold = TGBinary( O_COMMA, rite, TGConvert( left, tipe ), tipe );
+            fold = TGBinary( back, O_COMMA, rite, TGConvert( back, left, tipe ), tipe );
         }
     }
     return( fold );
 }
 
 
-tn      FoldMod( tn left, tn rite, const type_def *tipe )
+tn      FoldMod( BackRun& back, tn left, tn rite, const type_def *tipe )
 /*********************************************************/
 {
     tn              fold;
@@ -981,17 +982,17 @@ tn      FoldMod( tn left, tn rite, const type_def *tipe )
                 signed_64       li;
                 signed_64       ri;
 
-                li = CFGetInteger64Value( lv );
-                ri = CFGetInteger64Value( rv );
+                li = CFGetInteger64Value( back, lv );
+                ri = CFGetInteger64Value( back, rv );
 
                 if( tipe->attr & TYPE_SIGNED ) {
                     I64Div( &li, &ri, &div, &rem );
                 } else {
                     U64Div( &li, &ri, &div, &rem );
                 }
-                fold = Int64ToType( rem, tipe );
-                BurnTree( left );
-                BurnTree( rite );
+                fold = Int64ToType( back, rem, tipe );
+                BurnTree( back, left );
+                BurnTree( back, rite );
             } else {
                 if( tipe->attr & TYPE_SIGNED ) {
                     if( CFIsI32( lv ) && CFIsI32( rv ) ) {
@@ -1000,9 +1001,9 @@ tn      FoldMod( tn left, tn rite, const type_def *tipe )
 
                         li = CFConvertByType( lv, tipe );
                         ri = CFConvertByType( rv, tipe );
-                        fold = IntToType( li % ri, tipe );
-                        BurnTree( left );
-                        BurnTree( rite );
+                        fold = IntToType( back, li % ri, tipe );
+                        BurnTree( back, left );
+                        BurnTree( back, rite );
                     }
                 } else {
                     if( CFIsU32( lv ) && CFIsU32( rv ) ) {
@@ -1012,24 +1013,24 @@ tn      FoldMod( tn left, tn rite, const type_def *tipe )
                         li = CFConvertByType( lv, tipe );
                         ri = CFConvertByType( rv, tipe );
                         li = U32ModDiv( &li, ri );
-                        fold = IntToType( li, tipe );
-                        BurnTree( left );
-                        BurnTree( rite );
+                        fold = IntToType( back, li, tipe );
+                        BurnTree( back, left );
+                        BurnTree( back, rite );
                     }
                 }
             }
         } else if( !HasBigConst( tipe ) && rite->u.name->c.lo.u.int_value == 1 ) {
-            fold = CFToType( CFCnvIF( &cfloat_state().cgh, 0 ), tipe );
-            fold = TGBinary( O_COMMA, left, fold, tipe );
-            BurnTree( rite );
+            fold = CFToType( back, CFCnvIF( back, &back.cfloat.cgh, 0 ), tipe );
+            fold = TGBinary( back, O_COMMA, left, fold, tipe );
+            BurnTree( back, rite );
         } else if( !HasBigConst( tipe ) ) {
             if( ( left->tipe->attr & TYPE_SIGNED ) == 0 ) {
                 if( CFIsU32( rv ) ) {
                     uint_32 ri = CFConvertByType( rv, tipe );
                     log = GetLog2( ri );
                     if( log != -1 ) {
-                        fold = TGBinary( O_AND, left, IntToType( ri - 1, tipe ), tipe );
-                        BurnTree( rite );
+                        fold = TGBinary( back, O_AND, left, IntToType( back, ri - 1, tipe ), tipe );
+                        BurnTree( back, rite );
                     }
                 }
             } else if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION )
@@ -1049,30 +1050,30 @@ tn      FoldMod( tn left, tn rite, const type_def *tipe )
                     tn b1, b2, b3, b4; /* 4 copies of b - will be treated as CSE */
                     tn left1, t1, t2;
 
-                    left1 = TGDuplicate( left );
-                    b1 = TGBinary( O_RSHIFT, left1, IntToType( 31, tipe ), tipe );
-                    b2 = TGDuplicate( b1 );
-                    b3 = TGDuplicate( b1 );
-                    b4 = TGDuplicate( b1 );
-                    t1 = TGBinary( O_MINUS, TGBinary( O_XOR, left, b1, tipe ), b2, tipe );
-                    t2 = TGBinary( O_AND, t1, IntToType( ri-1, tipe ), tipe );
-                    fold = TGBinary( O_MINUS, TGBinary( O_XOR, t2, b3, tipe ), b4, tipe );
-                    BurnTree( rite );
+                    left1 = TGDuplicate( back, left );
+                    b1 = TGBinary( back, O_RSHIFT, left1, IntToType( back, 31, tipe ), tipe );
+                    b2 = TGDuplicate( back, b1 );
+                    b3 = TGDuplicate( back, b1 );
+                    b4 = TGDuplicate( back, b1 );
+                    t1 = TGBinary( back, O_MINUS, TGBinary( back, O_XOR, left, b1, tipe ), b2, tipe );
+                    t2 = TGBinary( back, O_AND, t1, IntToType( back, ri-1, tipe ), tipe );
+                    fold = TGBinary( back, O_MINUS, TGBinary( back, O_XOR, t2, b3, tipe ), b4, tipe );
+                    BurnTree( back, rite );
                 }
             }
         }
     } else if( left->class_ == TN_CONS ) {
         if( CFTest( left->u.name->c.u.cfval ) == 0 ) {
             rite = TGTrash( rite );
-            fold = TGBinary( O_COMMA, rite, IntToType( 0, tipe ), tipe );
-            BurnTree( left );
+            fold = TGBinary( back, O_COMMA, rite, IntToType( back, 0, tipe ), tipe );
+            BurnTree( back, left );
         }
     }
     return( fold );
 }
 
 
-tn      Fold1sComp( tn left, const type_def *tipe )
+tn      Fold1sComp( BackRun& back, tn left, const type_def *tipe )
 /***************************************************/
 {
     tn              new_tn;
@@ -1082,15 +1083,15 @@ tn      Fold1sComp( tn left, const type_def *tipe )
     if( !HasBigConst( tipe ) && left->class_ == TN_CONS ) {
         lv = left->u.name->c.u.cfval;
         if( CFIs32( lv ) ) {
-            new_tn = IntToType( ~CFConvertByType( lv, tipe ), tipe );
-            BurnTree( left );
+            new_tn = IntToType( back, ~CFConvertByType( lv, tipe ), tipe );
+            BurnTree( back, left );
         }
     }
     return( new_tn );
 }
 
 
-tn      FoldUMinus( tn left, const type_def *tipe )
+tn      FoldUMinus( BackRun& back, tn left, const type_def *tipe )
 /***************************************************/
 {
     tn              new_tn;
@@ -1098,60 +1099,60 @@ tn      FoldUMinus( tn left, const type_def *tipe )
 
     new_tn = NULL;
     if( left->class_ == TN_CONS ) {
-        lv = OkToNegate( left->u.name->c.u.cfval, tipe );
+        lv = OkToNegate( back, left->u.name->c.u.cfval, tipe );
         if( lv != NULL ) {
-            new_tn = CFToType( lv, tipe );
-            BurnTree( left );
+            new_tn = CFToType( back, lv, tipe );
+            BurnTree( back, left );
         }
     } else if( left->class_ == TN_UNARY && left->u1.t.op == O_UMINUS ) {
         new_tn = left->u.left;
         left->u.left = NULL;
-        BurnTree( left );
+        BurnTree( back, left );
     }
     return( new_tn );
 }
 
 
-tn      FoldSqrt( tn left, const type_def *tipe )
+tn      FoldSqrt( BackRun& back, tn left, const type_def *tipe )
 /*************************************************/
 {
     tn          fold;
 
     fold = NULL;
     if( left->class_ == TN_UNARY && left->u1.t.op == O_EXP ) {
-        left->u.left = Halve( left->u.left, tipe );
+        left->u.left = Halve( back, left->u.left, tipe );
         fold = left;
     } else if( left->class_ == TN_BINARY && left->u1.t.op == O_POW ) {
-        left->u1.t.rite = Halve( left->u1.t.rite, tipe );
+        left->u1.t.rite = Halve( back, left->u1.t.rite, tipe );
         fold = left;
     }
     return( fold );
 }
 
 
-tn      FoldLog( cg_op opcode, tn left, const type_def *tipe )
+tn      FoldLog( BackRun& back, cg_op opcode, tn left, const type_def *tipe )
 /************************************************************/
 {
     tn          fold;
 
     fold = NULL;
     if( left->class_ == TN_UNARY && left->u1.t.op == O_SQRT ) {
-        fold = TGUnary( opcode, left->u.left, tipe );
-        fold = Halve( fold, tipe );
+        fold = TGUnary( back, opcode, left->u.left, tipe );
+        fold = Halve( back, fold, tipe );
         left->u.left = NULL;
-        BurnTree( left );
+        BurnTree( back, left );
     } else if( left->class_ == TN_BINARY && left->u1.t.op == O_POW ) {
-        fold = TGUnary( opcode, left->u.left, tipe );
-        fold = TGBinary( O_TIMES, left->u1.t.rite, fold, tipe );
+        fold = TGUnary( back, opcode, left->u.left, tipe );
+        fold = TGBinary( back, O_TIMES, left->u1.t.rite, fold, tipe );
         left->u.left = NULL;
         left->u1.t.rite = NULL;
-        BurnTree( left );
+        BurnTree( back, left );
     }
     return( fold );
 }
 
 
-tn      FoldFlAnd( tn left, tn rite )
+tn      FoldFlAnd( BackRun& back, tn left, tn rite )
 /*******************************************/
 {
     tn  fold;
@@ -1160,38 +1161,38 @@ tn      FoldFlAnd( tn left, tn rite )
     if( left->class_ == TN_CONS ) {
         if( rite->class_ == TN_CONS ) {
             if( CFTest( left->u.name->c.u.cfval ) && CFTest( rite->u.name->c.u.cfval ) ) {
-                fold = IntToType( FETrue(), data_state().TypeInteger );
+                fold = IntToType( back, FETrue(), back.data.TypeInteger );
             } else {
-                fold = IntToType( 0, data_state().TypeInteger );
+                fold = IntToType( back, 0, back.data.TypeInteger );
             }
-            BurnTree( left );
-            BurnTree( rite );
+            BurnTree( back, left );
+            BurnTree( back, rite );
         } else if( CFTest( left->u.name->c.u.cfval ) == 0 ) {
             // ( 0 && expr ) -> 0
-            fold = IntToType( 0, data_state().TypeInteger );
-            BurnTree( left );
-            BurnTree( rite );
+            fold = IntToType( back, 0, back.data.TypeInteger );
+            BurnTree( back, left );
+            BurnTree( back, rite );
         } else {
             // ( 1 && expr ) -> ( expr )
             fold = rite;
-            BurnTree( left );
+            BurnTree( back, left );
         }
     } else if( rite->class_ == TN_CONS ) {
         if( CFTest( rite->u.name->c.u.cfval ) ) {
             // ( expr && 1 ) -> ( expr )
             fold = left;
-            BurnTree( rite );
+            BurnTree( back, rite );
         } else {
             // ( expr && 0 ) -> ( expr, 0 )
-            fold = TGNode( TN_COMMA, O_NOP, left, IntToType( 0, data_state().TypeInteger ), data_state().TypeInteger );
-            BurnTree( rite );
+            fold = TGNode( back, TN_COMMA, O_NOP, left, IntToType( back, 0, back.data.TypeInteger ), back.data.TypeInteger );
+            BurnTree( back, rite );
         }
     }
     return( fold );
 }
 
 
-tn      FoldFlOr( tn left, tn rite )
+tn      FoldFlOr( BackRun& back, tn left, tn rite )
 /******************************************/
 {
     tn  fold;
@@ -1200,30 +1201,30 @@ tn      FoldFlOr( tn left, tn rite )
     if( left->class_ == TN_CONS ) {
         if( CFTest( left->u.name->c.u.cfval ) ) {
             // ( 1 || expr ) -> ( true )
-            fold = IntToType( FETrue(), data_state().TypeInteger );
-            BurnTree( left );
-            BurnTree( rite );
+            fold = IntToType( back, FETrue(), back.data.TypeInteger );
+            BurnTree( back, left );
+            BurnTree( back, rite );
         } else {
             // ( 0 || expr ) -> ( expr )
             fold = rite;
-            BurnTree( left );
+            BurnTree( back, left );
         }
     } else if( rite->class_ == TN_CONS ) {
         if( CFTest( rite->u.name->c.u.cfval ) ) {
             // ( expr || 1 ) -> ( expr, true )
-            fold = TGNode( TN_COMMA, O_NOP, left, IntToType( FETrue(), data_state().TypeInteger ), data_state().TypeInteger );
-            BurnTree( rite );
+            fold = TGNode( back, TN_COMMA, O_NOP, left, IntToType( back, FETrue(), back.data.TypeInteger ), back.data.TypeInteger );
+            BurnTree( back, rite );
         } else {
             // ( expr || 0 ) -> ( expr )
             fold = left;
-            BurnTree( rite );
+            BurnTree( back, rite );
         }
     }
     return( fold );
 }
 
 
-tn      FoldFlNot( tn left )
+tn      FoldFlNot( BackRun& back, tn left )
 /**********************************/
 {
     tn          fold;
@@ -1237,13 +1238,13 @@ tn      FoldFlNot( tn left )
         } else {
             result = 0;
         }
-        fold = IntToType( result, data_state().TypeInteger );
-        BurnTree( left );
+        fold = IntToType( back, result, back.data.TypeInteger );
+        BurnTree( back, left );
     }
     return( fold );
 }
 
-tn      FoldBitCompare( cg_op opcode, tn left, tn rite )
+tn      FoldBitCompare( BackRun& back, cg_op opcode, tn left, tn rite )
 /**********************************************************/
 {
     tn          fold;
@@ -1262,25 +1263,25 @@ tn      FoldBitCompare( cg_op opcode, tn left, tn rite )
         new_c <<= left->u1.b.start;
         mask = TGMask32( left );
         if( ( new_c & ~mask ) == 0 ) { /* idiot comparing out of range*/
-            fold = TGUnary( O_POINTS, left->u.left, left->tipe );
-            fold = TGBinary( O_AND, fold, IntToType( mask, left->tipe ), left->tipe );
-            fold = TGCompare( opcode, fold, IntToType( new_c, left->tipe ), left->tipe );
+            fold = TGUnary( back, O_POINTS, left->u.left, left->tipe );
+            fold = TGBinary( back, O_AND, fold, IntToType( back, mask, left->tipe ), left->tipe );
+            fold = TGCompare( back, opcode, fold, IntToType( back, new_c, left->tipe ), left->tipe );
             left->u.left = NULL; /* so no recursion*/
-            BurnTree( left );
-            BurnTree( rite );
+            BurnTree( back, left );
+            BurnTree( back, rite );
         }
     }
     return( fold );
 }
 
 
-float_handle CnvCFToType( float_handle cf, const type_def *tipe )
+float_handle CnvCFToType( BackRun& back, float_handle cf, const type_def *tipe )
 /*****************************************************************/
 {
     if( (tipe->attr & TYPE_FLOAT) == 0 ) {
-        cf = IntToCF( CFGetInteger64Value( cf ), tipe );
+        cf = IntToCF( back, CFGetInteger64Value( back, cf ), tipe );
     } else {
-        cf = CFCopy( &cfloat_state().cgh, cf );
+        cf = CFCopy( back, &back.cfloat.cgh, cf );
     }
     return( cf );
 }
@@ -1316,7 +1317,7 @@ static  tn      FindBase( tn tree, bool op_eq )
     return( tree );
 }
 
-static  void    BurnToBase( tn root, tn base )
+static  void    BurnToBase( BackRun& back, tn root, tn base )
 /********************************************/
 {
     tn          next;
@@ -1326,7 +1327,7 @@ static  void    BurnToBase( tn root, tn base )
         assert( curr->class_ == TN_UNARY && curr->u1.t.op == O_CONVERT );
         next = curr->u.left;
         curr->u.left = NULL;
-        BurnTree( curr );
+        BurnTree( back, curr );
     }
 }
 
@@ -1345,7 +1346,7 @@ static bool IsObjectAddr( tn tree )
     return( false );
 }
 
-tn  FoldCompare( cg_op opcode, tn left, tn rite, const type_def *tipe )
+tn  FoldCompare( BackRun& back, cg_op opcode, tn left, tn rite, const type_def *tipe )
 /*********************************************************************/
 {
     int             compare;
@@ -1371,11 +1372,11 @@ tn  FoldCompare( cg_op opcode, tn left, tn rite, const type_def *tipe )
     true_value = FETrue();
     result = 0;
     if( left->class_ == TN_CONS ) {
-        lv = CnvCFToType( left->u.name->c.u.cfval, tipe );
-        rv = CnvCFToType( rite->u.name->c.u.cfval, tipe );
+        lv = CnvCFToType( back, left->u.name->c.u.cfval, tipe );
+        rv = CnvCFToType( back, rite->u.name->c.u.cfval, tipe );
         compare = CFCompare( lv, rv );
-        CFFree( &cfloat_state().cgh, lv );
-        CFFree( &cfloat_state().cgh, rv );
+        CFFree( back, &back.cfloat.cgh, lv );
+        CFFree( back, &back.cfloat.cgh, rv );
         switch( opcode ) {
         case O_EQ:
             if( compare == 0 ) {
@@ -1408,9 +1409,9 @@ tn  FoldCompare( cg_op opcode, tn left, tn rite, const type_def *tipe )
             }
             break;
         }
-        BurnTree( left );
-        BurnTree( rite );
-        return( IntToType( result, data_state().TypeInteger ) );
+        BurnTree( back, left );
+        BurnTree( back, rite );
+        return( IntToType( back, result, back.data.TypeInteger ) );
     } else if( rite->class_ == TN_CONS ) {
         if( left->class_ != TN_BINARY ) {
             base_l = FindBase( left, false );
@@ -1423,15 +1424,15 @@ tn  FoldCompare( cg_op opcode, tn left, tn rite, const type_def *tipe )
             if( (tipe->attr & (TYPE_FLOAT | TYPE_POINTER )) == 0 ) {
                 cmp_result  cmp;
 
-                cmp = CheckCmpRange( opcode, CmpType( tipe ), rite->u.name->c.u.cfval );
+                cmp = CheckCmpRange( back, opcode, CmpType( tipe ), rite->u.name->c.u.cfval );
                 if( cmp != CMP_VOID ) {
                     if( cmp == CMP_TRUE ) {
                         result = true_value;
                     }
                     /* Throw away constant but keep non-const part */
-                    BurnTree( rite );
+                    BurnTree( back, rite );
                     left = TGTrash( left );
-                    return( TGBinary( O_COMMA, left, IntToType( result, data_state().TypeInteger ), data_state().TypeInteger ) );
+                    return( TGBinary( back, O_COMMA, left, IntToType( back, result, back.data.TypeInteger ), back.data.TypeInteger ) );
                 }
                 if( _IsntModel( CGSW_GEN_NULL_DEREF_OK )
                   && IsObjectAddr( left )
@@ -1439,16 +1440,16 @@ tn  FoldCompare( cg_op opcode, tn left, tn rite, const type_def *tipe )
                     /* Addresses of globals or local variables are guaranteed not to be null
                      * unless CGSW_GEN_NULL_DEREF_OK is in effect
                      */
-                    BurnTree( left );
-                    BurnTree( rite );
-                    return( FoldCompare( opcode, IntToType( 1, data_state().TypeInteger ), IntToType( 0, data_state().TypeInteger ), data_state().TypeInteger ) );
+                    BurnTree( back, left );
+                    BurnTree( back, rite );
+                    return( FoldCompare( back, opcode, IntToType( back, 1, back.data.TypeInteger ), IntToType( back, 0, back.data.TypeInteger ), back.data.TypeInteger ) );
                 }
             }
             if( ( base_l != left ) && (tipe->attr & TYPE_FLOAT) == 0 ) {
                 // If we couldn't fold the comparison, get rid of some lame converts
                 // the C++ compiler likes to emit. Careful with floats!
-                BurnToBase( left, base_l );
-                return( TGNode( TN_COMPARE, opcode, base_l, rite, data_state().TypeBoolean ) );
+                BurnToBase( back, left, base_l );
+                return( TGNode( back, TN_COMPARE, opcode, base_l, rite, back.data.TypeBoolean ) );
             }
             return( NULL );
         }
@@ -1469,7 +1470,7 @@ tn  FoldCompare( cg_op opcode, tn left, tn rite, const type_def *tipe )
          && left->u1.t.rite->u.left == rite->u.left
          && !HasBigConst( tipe )
          && GetLog2( rite->u.name->c.lo.u.int_value ) != -1 ) {
-            rite->u.name = AllocIntConst( 0 );
+            rite->u.name = AllocIntConst( back, 0 );
             if( opcode == O_EQ ) {
                 opcode = O_NE;
             } else {
@@ -1478,9 +1479,9 @@ tn  FoldCompare( cg_op opcode, tn left, tn rite, const type_def *tipe )
         }
         if( CFTest( rite->u.name->c.u.cfval ) != 0 )
             return( NULL );
-        BurnTree( rite );
+        BurnTree( back, rite );
         left->class_ = TN_COMPARE;
-        left->tipe = data_state().TypeBoolean;
+        left->tipe = back.data.TypeBoolean;
         if( opcode == O_EQ ) {
             left->u1.t.op = (cg_op)OP_BIT_TEST_FALSE;
         } else {
@@ -1492,9 +1493,9 @@ tn  FoldCompare( cg_op opcode, tn left, tn rite, const type_def *tipe )
         base_l = FindBase( left, op_eq );
         if( base_r != rite || base_l != left ) {
             if( ( base_r->tipe == base_l->tipe ) && ( ( opcode == O_EQ ) || ( opcode == O_NE ) ) ) {
-                BurnToBase( rite, base_r );
-                BurnToBase( left, base_l );
-                return( TGNode( TN_COMPARE, opcode, base_l, base_r, data_state().TypeBoolean ) );
+                BurnToBase( back, rite, base_r );
+                BurnToBase( back, left, base_l );
+                return( TGNode( back, TN_COMPARE, opcode, base_l, base_r, back.data.TypeBoolean ) );
             }
         }
     }
@@ -1511,7 +1512,7 @@ static  bool    SimpleLeaf( tn tree )
 }
 
 
-tn      FoldPostGetsCompare( cg_op opcode, tn left, tn rite, const type_def *tipe )
+tn      FoldPostGetsCompare( BackRun& back, cg_op opcode, tn left, tn rite, const type_def *tipe )
 /*********************************************************************************/
 {
 //    tn              compare;
@@ -1557,11 +1558,11 @@ tn      FoldPostGetsCompare( cg_op opcode, tn left, tn rite, const type_def *tip
                     li = CFConvertByType( lv, tipe );
                     ri = CFConvertByType( rv, tipe );
                     value = ( left->u1.t.op == O_MINUS ) ? ( ri - li ) : ( ri + li );
-                    temp = IntToType( value, tipe );
+                    temp = IntToType( back, value, tipe );
                     left->class_ = TN_PRE_GETS;
                     left->optipe = left->tipe;
-                    temp = TGNode( TN_COMPARE, opcode, left, temp, data_state().TypeBoolean );
-                    BurnTree( rite );
+                    temp = TGNode( back, TN_COMPARE, opcode, left, temp, back.data.TypeBoolean );
+                    BurnTree( back, rite );
                     return( temp );
                 }
             }
@@ -1574,15 +1575,15 @@ tn      FoldPostGetsCompare( cg_op opcode, tn left, tn rite, const type_def *tip
 /* routines above here are called while building the tree */
 /* routines below here are called while tearing the tree apart */
 
-static  an Flip( an name, bool op_false, bool op_true )
+static  an Flip( BackRun& back, an name, bool op_false, bool op_true )
 /*****************************************************/
 {
     label_handle    *temp;
 
     if( op_false ) {
         if( op_true ) {
-            BGDone( name );
-            name = BGInteger( FETrue(), data_state().TypeInteger );
+            BGDone( back, name );
+            name = BGInteger( back, FETrue(), back.data.TypeInteger );
         } else {
             temp = name->u.b.f;
             name->u.b.f = name->u.b.t;
@@ -1592,15 +1593,15 @@ static  an Flip( an name, bool op_false, bool op_true )
         if( op_true ) {
             /* nothing*/
         } else {
-            BGDone( name );
-            name = BGInteger( 0, data_state().TypeInteger );
+            BGDone( back, name );
+            name = BGInteger( back, 0, back.data.TypeInteger );
         }
     }
     return( name );
 }
 
 
-an FoldConsCompare( cg_op opcode, tn left, tn rite, const type_def *tipe )
+an FoldConsCompare( BackRun& back, cg_op opcode, tn left, tn rite, const type_def *tipe )
 /************************************************************************/
 {
     tn              temp;
@@ -1620,55 +1621,55 @@ an FoldConsCompare( cg_op opcode, tn left, tn rite, const type_def *tipe )
     fold = NULL;
     if( rite->class_ == TN_CONS ) {
         if( left->class_ == TN_FLOW_OUT ) {
-            f = CFCnvIF( &cfloat_state().cgh, 0 );
-            t = CFCnvIF( &cfloat_state().cgh, FETrue() );
-            rv = CnvCFToType( rite->u.name->c.u.cfval, tipe );
+            f = CFCnvIF( back, &back.cfloat.cgh, 0 );
+            t = CFCnvIF( back, &back.cfloat.cgh, FETrue() );
+            rv = CnvCFToType( back, rite->u.name->c.u.cfval, tipe );
             compare = CFCompare( f, rv );
             compare_true = CFCompare( t, rv );
-            CFFree( &cfloat_state().cgh, rv );
-            CFFree( &cfloat_state().cgh, f );
-            CFFree( &cfloat_state().cgh, t );
-            fold = TreeGen( left->u.left );
+            CFFree( back, &back.cfloat.cgh, rv );
+            CFFree( back, &back.cfloat.cgh, f );
+            CFFree( back, &back.cfloat.cgh, t );
+            fold = TreeGen( back, left->u.left );
             switch( opcode ) {
             case O_EQ:
-                fold = Flip( fold, compare == 0, compare_true == 0 );
+                fold = Flip( back, fold, compare == 0, compare_true == 0 );
                 break;
             case O_NE:
-                fold = Flip( fold, compare != 0, compare_true != 0 );
+                fold = Flip( back, fold, compare != 0, compare_true != 0 );
                 break;
             case O_GT:
-                fold = Flip( fold, compare > 0, compare_true > 0 );
+                fold = Flip( back, fold, compare > 0, compare_true > 0 );
                 break;
             case O_LT:
-                fold = Flip( fold, compare < 0, compare_true < 0 );
+                fold = Flip( back, fold, compare < 0, compare_true < 0 );
                 break;
             case O_GE:
-                fold = Flip( fold, compare >= 0, compare_true >= 0 );
+                fold = Flip( back, fold, compare >= 0, compare_true >= 0 );
                 break;
             case O_LE:
-                fold = Flip( fold, compare <= 0, compare_true <= 0 );
+                fold = Flip( back, fold, compare <= 0, compare_true <= 0 );
                 break;
             case (cg_op)OP_BIT_TEST_TRUE:
                 if( !HasBigConst( tipe ) ) {
-                    fold = Flip( fold, false, (rite->u.name->c.lo.u.int_value & FETrue()) != 0 );
+                    fold = Flip( back, fold, false, (rite->u.name->c.lo.u.int_value & FETrue()) != 0 );
                 }
                 break;
             case (cg_op)OP_BIT_TEST_FALSE:
                 if( !HasBigConst( tipe ) ) {
-                    fold = Flip( fold, true, (rite->u.name->c.lo.u.int_value & FETrue()) == 0 );
+                    fold = Flip( back, fold, true, (rite->u.name->c.lo.u.int_value & FETrue()) == 0 );
                 }
                 break;
             }
-            BurnTree( rite );
+            BurnTree( back, rite );
             left->u.left = NULL;
-            BurnTree( left );
+            BurnTree( back, left );
         }
     }
     return( fold );
 }
 
 
-bool    FoldIfTrue( tn left, label_handle lbl )
+bool    FoldIfTrue( BackRun& back, tn left, label_handle lbl )
 /*****************************************************/
 {
     bool        folded;
@@ -1676,16 +1677,16 @@ bool    FoldIfTrue( tn left, label_handle lbl )
     folded = false;
     if( left->class_ == TN_CONS ) {
         if( CFTest( left->u.name->c.u.cfval ) != 0 ) {
-            BGGenCtrl( O_GOTO, NULL, lbl, true );
+            BGGenCtrl( back, O_GOTO, NULL, lbl, true );
         }
         folded = true;
-        BurnTree( left );
+        BurnTree( back, left );
     }
     return( folded );
 }
 
 
-bool    FoldIfFalse( tn left, label_handle lbl )
+bool    FoldIfFalse( BackRun& back, tn left, label_handle lbl )
 /******************************************************/
 {
     bool        folded;
@@ -1693,10 +1694,10 @@ bool    FoldIfFalse( tn left, label_handle lbl )
     folded = false;
     if( left->class_ == TN_CONS ) {
         if( CFTest( left->u.name->c.u.cfval ) == 0 ) {
-            BGGenCtrl( O_GOTO, NULL, lbl, true );
+            BGGenCtrl( back, O_GOTO, NULL, lbl, true );
         }
         folded = true;
-        BurnTree( left );
+        BurnTree( back, left );
     }
     return( folded );
 }

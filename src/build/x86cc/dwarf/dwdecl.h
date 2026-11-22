@@ -38,7 +38,7 @@
 
 extern void         DW_InitDecl( dw_client );
 extern void         DW_FiniDecl( dw_client );
-extern void         DW_EmitDecl( dw_client );
+extern void         DW_EmitDecl( BackRun& back, dw_client );
 extern abbrev_code  DW_CheckDecl( dw_client, abbrev_code );
 
 #endif

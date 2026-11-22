@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "weights.gh"
 
 /* the following table is in order of priority of operators */

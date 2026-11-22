@@ -34,66 +34,60 @@
 #include <stdlib.h>
 #include "bool.h"
 #include "cmdscan.h"
+#include "frontrun.hpp"
 
 
-typedef struct cmd_scan_ctl {
-    char const  *curr_ptr;      // current scan position
-    char const  *switch_ptr;    // start of current switch
-    bool        unix_mode;      // scan mode
-} cmd_scan_ctl;
+
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct CmdscanState {
-    cmd_scan_ctl cmd;
-};
+/* (struct CmdscanState: cmdscan_state.h) */
 
 }  // namespace
 
-static inline CmdscanState& cmdscan_state() { return cbrun_part<CmdscanState>(); }
 
 
 char const *CmdScanLineInit(    // INITIALIZE FOR COMMAND SCANNING
-    char const *cmd_line )      // - new command line
+    FrontRun& front, char const *cmd_line )      // - new command line
 {                               // RETURN OLD COMMAND-LINE SCAN ADDRESS
     char const *old;
 
-    old = cmdscan_state().cmd.curr_ptr;
-    cmdscan_state().cmd.curr_ptr = cmd_line;
-    cmdscan_state().cmd.switch_ptr = NULL;
-    cmdscan_state().cmd.unix_mode = false;
+    old = front.cmdscan.cmd.curr_ptr;
+    front.cmdscan.cmd.curr_ptr = cmd_line;
+    front.cmdscan.cmd.switch_ptr = NULL;
+    front.cmdscan.cmd.unix_mode = false;
     return( old );
 }
 
 
 char const *CmdScanAddr(        // RETURN COMMAND-LINE SCAN ADDRESS
-    void )
+    FrontRun& front )
 {
-    return( cmdscan_state().cmd.curr_ptr );
+    return( front.cmdscan.cmd.curr_ptr );
 }
 
 
 int CmdScanChar(                // SCAN THE NEXT CHARACTER
-    void )
+    FrontRun& front )
 {
-    return( *(unsigned char *)cmdscan_state().cmd.curr_ptr++ );
+    return( *(unsigned char *)front.cmdscan.cmd.curr_ptr++ );
 }
 
 
 bool CmdScanBufferEnd(          // TEST IF END OF BUFFER
-    void )
+    FrontRun& front )
 {
-    return( *cmdscan_state().cmd.curr_ptr == '\0' );
+    return( *front.cmdscan.cmd.curr_ptr == '\0' );
 }
 
 
 bool CmdScanSwEnd(              // TEST IF END OF SWITCH
-    void )
+    FrontRun& front )
 {
     int c;                     // - current character
 
-    c = *(unsigned char *)cmdscan_state().cmd.curr_ptr;
+    c = *(unsigned char *)front.cmdscan.cmd.curr_ptr;
     if( c == '\0' ) {
         return( true );
     }
@@ -108,36 +102,36 @@ bool CmdScanSwEnd(              // TEST IF END OF SWITCH
 
 
 int CmdScanLowerChar(           // SCAN THE NEXT CHARACTER, IN LOWER CASE
-    void )
+    FrontRun& front )
 {
     int c;                     // - character scanned
 
-    c = CmdScanChar();
+    c = CmdScanChar(front);
     c = tolower( c );
     return( c );
 }
 
 
 int CmdPeekChar(                // PEEK AT NEXT CHARACTER, IN LOWER CASE
-    void )
+    FrontRun& front )
 {
     int c;                     // - character scanned
 
-    c = CmdScanLowerChar();
-    CmdScanUngetChar();
+    c = CmdScanLowerChar(front);
+    CmdScanUngetChar(front);
     return( c );
 }
 
 
 bool CmdRecogLowerChar(         // RECOGNIZE A LOWER CASE CHARACTER
-    int recog )                 // - character to be recognized
+    FrontRun& front, int recog )                 // - character to be recognized
 {
     bool retn;                  // - true ==> got it
 
-    if( recog == CmdScanLowerChar() ) {
+    if( recog == CmdScanLowerChar(front) ) {
         retn = true;
     } else {
-        CmdScanUngetChar();
+        CmdScanUngetChar(front);
         retn = false;
     }
     return( retn );
@@ -145,14 +139,14 @@ bool CmdRecogLowerChar(         // RECOGNIZE A LOWER CASE CHARACTER
 
 
 bool CmdRecogChar(              // RECOGNIZE A CHARACTER
-    int recog )                 // - character to be recognized
+    FrontRun& front, int recog )                 // - character to be recognized
 {
     bool retn;                  // - true ==> got it
 
-    if( recog == CmdScanChar() ) {
+    if( recog == CmdScanChar(front) ) {
         retn = true;
     } else {
-        CmdScanUngetChar();
+        CmdScanUngetChar(front);
         retn = false;
     }
     return( retn );
@@ -160,12 +154,12 @@ bool CmdRecogChar(              // RECOGNIZE A CHARACTER
 
 
 bool CmdReRecogChar(            // RE-RECOGNIZE LAST CHARACTER
-    int recog )                 // - character to be recognized
+    FrontRun& front, int recog )                 // - character to be recognized
 {
     bool retn;                  // - true ==> got it
 
-    CmdScanUngetChar();
-    if( recog == CmdScanChar() ) {
+    CmdScanUngetChar(front);
+    if( recog == CmdScanChar(front) ) {
         retn = true;
     } else {
         retn = false;
@@ -175,12 +169,12 @@ bool CmdReRecogChar(            // RE-RECOGNIZE LAST CHARACTER
 
 
 bool CmdRecogEquals(            // SKIP EQUALCHAR IN COMMAND LINE
-    void )
+    FrontRun& front )
 {
-    switch( CmdPeekChar() ) {
+    switch( CmdPeekChar(front) ) {
     case '=':
     case '#':
-        CmdScanChar();
+        CmdScanChar(front);
         return( true );
         break;
     }
@@ -188,24 +182,24 @@ bool CmdRecogEquals(            // SKIP EQUALCHAR IN COMMAND LINE
 }
 
 bool CmdPathDelim(              // SKIP EQUALCHAR # or ' ' IN COMMAND LINE
-    void )
+    FrontRun& front )
 {
-    switch( CmdPeekChar() ) {
+    switch( CmdPeekChar(front) ) {
     case ' ':
-        CmdScanSkipWhiteSpace();
+        CmdScanSkipWhiteSpace(front);
         return( true );
     case '=':
     case '#':
-        CmdScanChar();
+        CmdScanChar(front);
         return( true );
     }
     return( false );
 }
 
 void CmdScanSwitchBegin(        // REMEMBER START OF SWITCH
-    void )
+    FrontRun& front )
 {
-    cmdscan_state().cmd.switch_ptr = cmdscan_state().cmd.curr_ptr - 1;
+    front.cmdscan.cmd.switch_ptr = front.cmdscan.cmd.curr_ptr - 1;
 }
 
 
@@ -219,118 +213,118 @@ void CmdScanSwitchBackup(       // BACK UP SCANNER TO START OF SWITCH
 
 
 size_t CmdScanQuotedString(     // SCAN AN OPTION
-    char const **option )       // - addr( option pointer )
+    FrontRun& front, char const **option )       // - addr( option pointer )
 {
     char const *str_beg;        // - start of string
     int c;
     int quote;
 
-    quote = *(unsigned char *)cmdscan_state().cmd.curr_ptr++;
-    *option = str_beg = cmdscan_state().cmd.curr_ptr;
-    while( (c = *(unsigned char *)cmdscan_state().cmd.curr_ptr) != '\0' ) {
-        cmdscan_state().cmd.curr_ptr++;
+    quote = *(unsigned char *)front.cmdscan.cmd.curr_ptr++;
+    *option = str_beg = front.cmdscan.cmd.curr_ptr;
+    while( (c = *(unsigned char *)front.cmdscan.cmd.curr_ptr) != '\0' ) {
+        front.cmdscan.cmd.curr_ptr++;
         if( c == quote ) {
             str_beg++;
             break;
         }
         // '"\\"' means '\', not '\"'
         if( c == '\\' ) {
-            c = *(unsigned char *)cmdscan_state().cmd.curr_ptr;
+            c = *(unsigned char *)front.cmdscan.cmd.curr_ptr;
             if( c == '\\' || c == '"' ) {
-                cmdscan_state().cmd.curr_ptr++;
+                front.cmdscan.cmd.curr_ptr++;
             }
         }
     }
-    return( cmdscan_state().cmd.curr_ptr - str_beg );
+    return( front.cmdscan.cmd.curr_ptr - str_beg );
 }
 
 size_t CmdScanOption(           // SCAN AN OPTION
-    char const **option,        // - addr( option pointer )
+    FrontRun& front, char const **option,        // - addr( option pointer )
     bool *quoted )              // - addr( quoted )
 {
     char const *str_beg;        // - start of string
 
-    if( *cmdscan_state().cmd.curr_ptr == '"' ) {
+    if( *front.cmdscan.cmd.curr_ptr == '"' ) {
         *quoted = true;
-        return( CmdScanQuotedString( option ) );
+        return( CmdScanQuotedString( front, option ) );
     }
-    *option = str_beg = cmdscan_state().cmd.curr_ptr;
-    while( !CmdScanSwEnd() ) {
-        cmdscan_state().cmd.curr_ptr++;
+    *option = str_beg = front.cmdscan.cmd.curr_ptr;
+    while( !CmdScanSwEnd(front) ) {
+        front.cmdscan.cmd.curr_ptr++;
     }
     *quoted = false;
-    return( cmdscan_state().cmd.curr_ptr - str_beg );
+    return( front.cmdscan.cmd.curr_ptr - str_beg );
 }
 
 char const *CmdScanUngetChar(   // UNGET THE LAST CMD SCAN CHARACTER
-    void )
+    FrontRun& front )
 {
-    return( --cmdscan_state().cmd.curr_ptr );
+    return( --front.cmdscan.cmd.curr_ptr );
 }
 
 
 size_t CmdScanNumber(           // SCAN A NUMBER
-    unsigned *pvalue )          // - addr( return value )
+    FrontRun& front, unsigned *pvalue )          // - addr( return value )
 {
     char const *str_beg;        // - start of string
     unsigned value;             // - base 10 value
 
     value = 0;
-    str_beg = cmdscan_state().cmd.curr_ptr;
-    for( ; isdigit( *(unsigned char *)cmdscan_state().cmd.curr_ptr ); cmdscan_state().cmd.curr_ptr++ ) {
+    str_beg = front.cmdscan.cmd.curr_ptr;
+    for( ; isdigit( *(unsigned char *)front.cmdscan.cmd.curr_ptr ); front.cmdscan.cmd.curr_ptr++ ) {
         value *= 10;
-        value += *(unsigned char *)cmdscan_state().cmd.curr_ptr - '0';
+        value += *(unsigned char *)front.cmdscan.cmd.curr_ptr - '0';
     }
     *pvalue = value;
-    return( cmdscan_state().cmd.curr_ptr - str_beg );
+    return( front.cmdscan.cmd.curr_ptr - str_beg );
 }
 
 
 size_t CmdScanId(               // SCAN AN IDENTIFIER
-    char const **option )       // - addr( option pointer )
+    FrontRun& front, char const **option )       // - addr( option pointer )
 {
     char const *str_beg;        // - start of string
 
-    *option = str_beg = cmdscan_state().cmd.curr_ptr;
-    while( isalnum( *(unsigned char *)cmdscan_state().cmd.curr_ptr ) || *(unsigned char *)cmdscan_state().cmd.curr_ptr == '_' ) {
-        cmdscan_state().cmd.curr_ptr++;
+    *option = str_beg = front.cmdscan.cmd.curr_ptr;
+    while( isalnum( *(unsigned char *)front.cmdscan.cmd.curr_ptr ) || *(unsigned char *)front.cmdscan.cmd.curr_ptr == '_' ) {
+        front.cmdscan.cmd.curr_ptr++;
     }
-    return( cmdscan_state().cmd.curr_ptr - str_beg );
+    return( front.cmdscan.cmd.curr_ptr - str_beg );
 }
 
 
 size_t CmdScanFilename(         // SCAN A FILE NAME
-    char const **option,        // - addr( option pointer )
+    FrontRun& front, char const **option,        // - addr( option pointer )
     bool *quoted )              // - addr( quoted )
 {
     char const *str_beg;        // - start of string
     int c;
 
-    *option = str_beg = cmdscan_state().cmd.curr_ptr;
-    if( cmdscan_state().cmd.unix_mode ) {
-        while( *cmdscan_state().cmd.curr_ptr != '\0' ) {
-            cmdscan_state().cmd.curr_ptr++;
+    *option = str_beg = front.cmdscan.cmd.curr_ptr;
+    if( front.cmdscan.cmd.unix_mode ) {
+        while( *front.cmdscan.cmd.curr_ptr != '\0' ) {
+            front.cmdscan.cmd.curr_ptr++;
         }
-    } else if( *cmdscan_state().cmd.curr_ptr == '"' ) {
+    } else if( *front.cmdscan.cmd.curr_ptr == '"' ) {
         *quoted = true;
-        return( CmdScanQuotedString( option ) );
+        return( CmdScanQuotedString( front, option ) );
     } else {
-        for( ; (c = *(unsigned char *)cmdscan_state().cmd.curr_ptr) != '\0'; cmdscan_state().cmd.curr_ptr++ ) {
+        for( ; (c = *(unsigned char *)front.cmdscan.cmd.curr_ptr) != '\0'; front.cmdscan.cmd.curr_ptr++ ) {
             if( isspace( c ) ) {
                 break;
             }
         }
     }
     *quoted = false;
-    return( cmdscan_state().cmd.curr_ptr - str_beg );
+    return( front.cmdscan.cmd.curr_ptr - str_beg );
 }
 
 
 void CmdScanSkipWhiteSpace(     // SKIP OVER WHITE SPACES
-    void )
+    FrontRun& front )
 {
-    while( isspace( *(unsigned char *)cmdscan_state().cmd.curr_ptr ) ) {
-        cmdscan_state().cmd.curr_ptr++;
+    while( isspace( *(unsigned char *)front.cmdscan.cmd.curr_ptr ) ) {
+        front.cmdscan.cmd.curr_ptr++;
     }
 }
 

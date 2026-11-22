@@ -54,6 +54,7 @@
 #include "x86data.h"
 #include "x86regn.h"
 #include "cgprotos.h"
+#include "backrun.hpp"
 
 
 struct dbg_seg_names {
@@ -74,7 +75,7 @@ static const struct dbg_seg_names DwarfSegNames[DW_DEBUG_MAX] = {
 };
 
 
-void    DFDefSegs( void )
+void    DFDefSegs( BackRun& back )
 /***********************/
 {
     if( _IsModel( CGSW_GEN_DBG_LOCALS )
@@ -82,14 +83,14 @@ void    DFDefSegs( void )
         dw_sectnum  i;
 
         for( i = static_cast<dw_sectnum>(0); i < DW_DEBUG_MAX; ++i ) {
-            DFSetSection( i, NULL, DbgSegDef( DwarfSegNames[i].seg_name, DwarfSegNames[i].class_name, SEG_COMB_NORMAL + SEG_USE_32 ) );
+            DFSetSection( back, i, NULL, DbgSegDef( back, DwarfSegNames[i].seg_name, DwarfSegNames[i].class_name, SEG_COMB_NORMAL + SEG_USE_32 ) );
         }
     } else if( _IsModel( CGSW_GEN_DBG_NUMBERS ) ) {
-        DFSetSection( DW_DEBUG_LINE, NULL, DbgSegDef( DwarfSegNames[DW_DEBUG_LINE].seg_name, DwarfSegNames[DW_DEBUG_LINE].class_name, SEG_COMB_NORMAL + SEG_USE_32 ) );
+        DFSetSection( back, DW_DEBUG_LINE, NULL, DbgSegDef( back, DwarfSegNames[DW_DEBUG_LINE].seg_name, DwarfSegNames[DW_DEBUG_LINE].class_name, SEG_COMB_NORMAL + SEG_USE_32 ) );
     }
 }
 
-void   DFOutReg( dw_loc_id locid, name *reg )
+void   DFOutReg( BackRun& back, dw_loc_id locid, name *reg )
 /*******************************************/
 {
     hw_reg_set  hw_reg;
@@ -99,14 +100,14 @@ void   DFOutReg( dw_loc_id locid, name *reg )
     hw_reg = reg->r.reg;
 #if _TARGET & _TARG_8086
     if( HW_CEqual( hw_reg, HW_ABCD ) ) {
-        DWLocReg( dfsyms_state().Client, locid, DW_REG_DX );
-        DWLocPiece( dfsyms_state().Client, locid, WD );
-        DWLocReg( dfsyms_state().Client, locid, DW_REG_CX );
-        DWLocPiece( dfsyms_state().Client, locid, WD );
-        DWLocReg( dfsyms_state().Client, locid, DW_REG_BX );
-        DWLocPiece( dfsyms_state().Client, locid, WD );
-        DWLocReg( dfsyms_state().Client, locid, DW_REG_AX );
-        DWLocPiece( dfsyms_state().Client, locid, WD );
+        DWLocReg( back, back.dfsyms.Client, locid, DW_REG_DX );
+        DWLocPiece( back, back.dfsyms.Client, locid, WD );
+        DWLocReg( back, back.dfsyms.Client, locid, DW_REG_CX );
+        DWLocPiece( back, back.dfsyms.Client, locid, WD );
+        DWLocReg( back, back.dfsyms.Client, locid, DW_REG_BX );
+        DWLocPiece( back, back.dfsyms.Client, locid, WD );
+        DWLocReg( back, back.dfsyms.Client, locid, DW_REG_AX );
+        DWLocPiece( back, back.dfsyms.Client, locid, WD );
         return;
     }
 #endif
@@ -116,62 +117,62 @@ void   DFOutReg( dw_loc_id locid, name *reg )
     hw_low = Low64Reg( hw_reg );
 #endif
     if( HW_CEqual( hw_low, HW_EMPTY ) ) {
-        dw_reg = RegTransDW( hw_reg );
-        DWLocReg( dfsyms_state().Client, locid, dw_reg );
+        dw_reg = RegTransDW( back, hw_reg );
+        DWLocReg( back, back.dfsyms.Client, locid, dw_reg );
    } else {
-        dw_reg =  RegTransDW( hw_low );
-        DWLocReg( dfsyms_state().Client, locid, dw_reg );
-        DWLocPiece( dfsyms_state().Client, locid, WD );
+        dw_reg =  RegTransDW( back, hw_low );
+        DWLocReg( back, back.dfsyms.Client, locid, dw_reg );
+        DWLocPiece( back, back.dfsyms.Client, locid, WD );
         HW_TurnOff( hw_reg, hw_low );
-        dw_reg = RegTransDW( hw_reg );
-        DWLocReg( dfsyms_state().Client, locid, dw_reg );
-        DWLocPiece( dfsyms_state().Client, locid, WD );
+        dw_reg = RegTransDW( back, hw_reg );
+        DWLocReg( back, back.dfsyms.Client, locid, dw_reg );
+        DWLocPiece( back, back.dfsyms.Client, locid, WD );
     }
 }
 
-void   DFOutRegInd( dw_loc_id locid, name *reg )
+void   DFOutRegInd( BackRun& back, dw_loc_id locid, name *reg )
 /**********************************************/
 {
     dw_regs     dw_reg;
 
-    dw_reg = RegTransDW( reg->r.reg );
-    DWLocOp( dfsyms_state().Client, locid, DW_LOC_breg, dw_reg, 0 );
+    dw_reg = RegTransDW( back, reg->r.reg );
+    DWLocOp( back, back.dfsyms.Client, locid, DW_LOC_breg, dw_reg, 0 );
 }
 
-uint DFStkReg( void )
+uint DFStkReg( BackRun& back )
 /*******************/
 {
     dw_regs    dw_reg;
     hw_reg_set stk;
 
     stk = StackReg();
-    dw_reg = RegTransDW( stk );
+    dw_reg = RegTransDW( back, stk );
     return( dw_reg );
 }
 
-uint DFDisplayReg( void )
+uint DFDisplayReg( BackRun& back )
 /***********************/
 {
     dw_regs    dw_reg;
     hw_reg_set dsp;
 
-    dsp = DisplayReg();
-    dw_reg = RegTransDW( dsp );
+    dsp = DisplayReg(back);
+    dw_reg = RegTransDW( back, dsp );
     return( dw_reg );
 }
 
-void DFAbbrevRef( void )
+void DFAbbrevRef( BackRun& back )
 /**********************/
 {
     back_handle bck;
 
-    bck = BENewBack( NULL );
-    BackImpPtr( ABBREV_NAME, bck, 0 );
-    BEFreeBack( bck );
+    bck = BENewBack( back, NULL );
+    BackImpPtr( back, ABBREV_NAME, bck, 0 );
+    BEFreeBack( back, bck );
 }
 
-void DFAbbrevDef( void )
+void DFAbbrevDef( BackRun& back )
 /**********************/
 {
-    OutBckExport( ABBREV_NAME, true );
+    OutBckExport( back, ABBREV_NAME, true );
 }

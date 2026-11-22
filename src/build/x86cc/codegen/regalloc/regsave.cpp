@@ -39,6 +39,7 @@
 #include "namelist.h"
 #include "loadstor.h"
 #include "regsave.h"
+#include "backrun.hpp"
 
 
 void    AdjTimeSize( uint *time, uint *size )
@@ -55,7 +56,7 @@ void    AdjTimeSize( uint *time, uint *size )
 }
 
 
-void    SetLoopCost( uint time )
+void    SetLoopCost( BackRun& back, uint time )
 /******************************/
 {
     save_def    loop_weight;
@@ -65,10 +66,10 @@ void    SetLoopCost( uint time )
     if( loop_weight == 0 ) {
         loop_weight = 1;
     }
-    regsave_state().Save.loop_weight[0] = 1;
+    back.regsave.Save.loop_weight[0] = 1;
     i = 1;
     for( ;; ) {
-        regsave_state().Save.loop_weight[i] = regsave_state().Save.loop_weight[i - 1] * loop_weight;
+        back.regsave.Save.loop_weight[i] = back.regsave.Save.loop_weight[i - 1] * loop_weight;
         ++ i;
         if( i > MAX_LOOP ) {
             break;
@@ -103,19 +104,19 @@ void    SetCost( save_def *array, save_def cost )
 }
 
 
-save_def        Weight( save_def value, block *blk )
+save_def        Weight( BackRun& back, save_def value, block *blk )
 /**************************************************/
 {
     if( blk->depth < MAX_LOOP ) {
-        value *= regsave_state().Save.loop_weight[blk->depth];
+        value *= back.regsave.Save.loop_weight[blk->depth];
     } else {
-        value *= regsave_state().Save.loop_weight[MAX_LOOP];
+        value *= back.regsave.Save.loop_weight[MAX_LOOP];
     }
     return( value );
 }
 
 
-void    CalcSavings( conflict_node *conf )
+void    CalcSavings( BackRun& back, conflict_node *conf )
 /****************************************/
 /* NB: <regsave> relies on the fact that "conf" is a parm to this routine*/
 {
@@ -127,7 +128,7 @@ void    CalcSavings( conflict_node *conf )
 
     if( ( conf->name->v.usage & USE_IN_ANOTHER_BLOCK )
      && ( conf->name->v.usage & ( NEEDS_MEMORY | USE_ADDRESS ) ) ) {
-        CalcLoadStore( conf );
+        CalcLoadStore( back, conf );
     }
     if( _Is( conf, CST_CONFLICT_ON_HOLD ) ) {
         conf->savings = 0;

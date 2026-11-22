@@ -36,6 +36,7 @@
 #include <errno.h>
 #include "wio.h"
 #include "walloca.h"
+#include "supportrun.hpp"
 
 #define _NLONGS( x )    ( ( (x) + 31 ) / 32 )
 
@@ -298,7 +299,7 @@ static void emitBitNext( FILE *fp, int size, char *prefix, char *type_name )
     fprintf( fp, "#endif\n\n" );
 }
 
-static void genBitsetHeader( char *file, int size, char *prefix, char *type_name )
+static void genBitsetHeader( SupportRun& support, char *file, int size, char *prefix, char *type_name )
 //*************************************************************************
 // create a header file named 'file' which contains type and macro definitions
 // for dealing with a bitset of length 'size'.
@@ -307,7 +308,7 @@ static void genBitsetHeader( char *file, int size, char *prefix, char *type_name
 
     fp = stdout;
     if( file != NULL ) {
-        fp = fopen( file, "wt" );
+        fp = support.held->fopen( file, "wt" );
     }
     if( fp != NULL ) {
         emitHeaderInit( fp, size, prefix, type_name );
@@ -322,18 +323,19 @@ static void genBitsetHeader( char *file, int size, char *prefix, char *type_name
         emitTurnOn( fp, size, prefix, type_name );
         emitScalar( fp, size, prefix, type_name );
         emitBitNext( fp, size, prefix, type_name );
-        fclose( fp );
+        support.held->fclose( fp );
     } else {
         fprintf( stderr, "Error: unable to create file '%s': %s\n", file, strerror( errno ) );
     }
 }
 
 int main( int argc, char *argv[] ) {
+    SupportRun support;   // (this tool's own run of the support routines: it is no part of a compiler's)
 
     if( argc != 5 ) {
         fprintf( stderr, "usage: %s <size> <prefix> <type_name> <file>\n", argv[ 0 ] );
         exit( EXIT_FAILURE );
     }
-    genBitsetHeader( argv[ 4 ], atoi( argv[ 1 ] ), argv[ 2 ], argv[ 3 ] );
+    genBitsetHeader( support, argv[ 4 ], atoi( argv[ 1 ] ), argv[ 2 ], argv[ 3 ] );
     return 0;
 }

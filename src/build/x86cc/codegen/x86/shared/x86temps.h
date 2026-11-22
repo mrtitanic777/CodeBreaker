@@ -31,5 +31,6 @@
 ****************************************************************************/
 
 
-extern void     AdjustPushLocal( name *temp );
-extern void     RelocParms( void );
+#pragma once
+extern void     AdjustPushLocal( BackRun& back, name *temp );
+extern void     RelocParms( BackRun& back );

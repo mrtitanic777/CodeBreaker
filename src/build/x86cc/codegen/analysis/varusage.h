@@ -30,5 +30,6 @@
 ****************************************************************************/
 
 
-extern  void    TransferTempFlags( void );
-extern  void    FindReferences( void );
+#pragma once
+extern  void    TransferTempFlags( BackRun& back );
+extern  void    FindReferences( BackRun& back );

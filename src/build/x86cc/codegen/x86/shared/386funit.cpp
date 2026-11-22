@@ -35,6 +35,7 @@
 #include "indvars.h"
 #include "model.h"
 #include "inssched.h"
+#include "backrun.hpp"
 
 enum {
     F_NONE      = 0x0000,
@@ -66,7 +67,7 @@ static const FU_entry FUnits586[] = {
 };
 
 
-const FU_entry *FUEntry( instruction *ins )
+const FU_entry *FUEntry( BackRun& back, instruction *ins )
 {
     if( _CPULevel( CPU_586 ) ) {
         return( &FUnits586[ins->u.gen_table->func_unit] );

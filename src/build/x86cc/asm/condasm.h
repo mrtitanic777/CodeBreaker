@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 extern void IfCondInit( void );
 extern void IfCondFini( void );
 extern void prep_line_for_conditional_assembly( char * );

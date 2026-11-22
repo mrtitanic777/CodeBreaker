@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef enum {
         IV_DEAD         = 0x0001, /* may no longer be used (from inner loop) */
         IV_SURVIVED     = 0x0002, /* survived one pass of loop */

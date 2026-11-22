@@ -41,9 +41,10 @@
 #include "x86enc.h"
 #include "x86proc.h"
 #include "x86opseg.h"
+#include "backrun.hpp"
 
 
-static  int     Overs( name *op )
+static  int     Overs( BackRun& back, name *op )
 /********************************
     return the number of SS: overrides associated with "op" (0 or 1)
 */
@@ -52,7 +53,7 @@ static  int     Overs( name *op )
     name        *index;
 
     if( op->n.class_ == N_MEMORY ) {
-        if( SegIsSS( op ) )
+        if( SegIsSS( back, op ) )
             return( 1 );
         return( 0 );
     } else if( op->n.class_ == N_INDEXED ) {
@@ -61,21 +62,21 @@ static  int     Overs( name *op )
             return( 0 );
         if( base->n.class_ != N_MEMORY )
             return( 0 );
-        if( !SegIsSS( base ) )
+        if( !SegIsSS( back, base ) )
             return( 0 );
         index = op->i.index;
         if( HW_CEqual( index->r.reg, HW_BX ) )
             return( 0 );
-        if( x86opseg_state().ZPageType == ZP_USES_SI )
+        if( back.x86opseg.ZPageType == ZP_USES_SI )
             return( 0 );
-        if( x86opseg_state().ZPageType == ZP_USES_DI )
+        if( back.x86opseg.ZPageType == ZP_USES_DI )
             return( 0 );
         return( 1 );
     }
     return( 0 );
 }
 
-static  int     CountSegOvers( void )
+static  int     CountSegOvers( BackRun& back )
 /************************************
     Count the number of SS: overrides in the routine.
 */
@@ -86,15 +87,15 @@ static  int     CountSegOvers( void )
     int         overs;
 
     overs = 0;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-            if( OpcodeNumOperands( ins ) == ins->num_operands && ( x86opseg_state().ZPageType == ZP_USES_DS
+            if( OpcodeNumOperands( ins ) == ins->num_operands && ( back.x86opseg.ZPageType == ZP_USES_DS
                || ( G( ins ) != G_MOVAM && G( ins ) != G_MOVMA ) ) ) {
                 for( i = OpcodeNumOperands( ins ); i-- > 0; ) {
-                    overs += Overs( ins->operands[i] );
+                    overs += Overs( back, ins->operands[i] );
                 }
                 if( ins->result != NULL ) {
-                    overs += Overs( ins->result );
+                    overs += Overs( back, ins->result );
                 }
             }
         }
@@ -102,7 +103,7 @@ static  int     CountSegOvers( void )
     return( overs );
 }
 
-void    InitZeroPage( void )
+void    InitZeroPage( BackRun& back )
 /***************************
     Decide what type of "zeropage" scheme we should use (if it's worthwhile).
     This is sort of a misleading name, carried over from the days of the 6809.
@@ -112,71 +113,71 @@ void    InitZeroPage( void )
     the "zeropage" register, as well as pushing it to save it.
 */
 {
-    x86opseg_state().ZPageType = ZP_USES_SS;
+    back.x86opseg.ZPageType = ZP_USES_SS;
     if( _IsTargetModel( CGSW_X86_FLOATING_DS )
-      && data_state().OptForSize > 50 ) {
-        if( !HW_COvlap( data_state().CurrProc->state.used, HW_DS ) ) {
-            x86opseg_state().ZPageType = ZP_USES_DS;
-            if( CountSegOvers() > 4 ) {
-                QuickSave( HW_DS, OP_PUSH );
-                QuickSave( HW_SS, OP_PUSH );
-                QuickSave( HW_DS, OP_POP );
+      && back.data.OptForSize > 50 ) {
+        if( !HW_COvlap( back.data.CurrProc->state.used, HW_DS ) ) {
+            back.x86opseg.ZPageType = ZP_USES_DS;
+            if( CountSegOvers(back) > 4 ) {
+                QuickSave( back, HW_DS, OP_PUSH );
+                QuickSave( back, HW_SS, OP_PUSH );
+                QuickSave( back, HW_DS, OP_POP );
             } else {
-                x86opseg_state().ZPageType = ZP_USES_SS;
+                back.x86opseg.ZPageType = ZP_USES_SS;
             }
-        } else if( CanZapBP()
-          && !HW_COvlap( data_state().CurrProc->state.used, HW_BP ) ) {
-            x86opseg_state().ZPageType = ZP_USES_BP;
-            if( CountSegOvers() > 4 ) {
-                QuickSave( HW_BP, OP_PUSH );
-                GenRegXor( HW_BP, HW_BP );
+        } else if( CanZapBP(back)
+          && !HW_COvlap( back.data.CurrProc->state.used, HW_BP ) ) {
+            back.x86opseg.ZPageType = ZP_USES_BP;
+            if( CountSegOvers(back) > 4 ) {
+                QuickSave( back, HW_BP, OP_PUSH );
+                GenRegXor( back, HW_BP, HW_BP );
             } else {
-                x86opseg_state().ZPageType = ZP_USES_SS;
+                back.x86opseg.ZPageType = ZP_USES_SS;
             }
-        } else if( !HW_COvlap( data_state().CurrProc->state.used, HW_DI ) ) {
-            x86opseg_state().ZPageType = ZP_USES_DI;
-            if( CountSegOvers() > 6 ) {
-                QuickSave( HW_DI, OP_PUSH );
-                GenRegMove( HW_BP, HW_DI );
-                GenRegNeg( HW_DI );
+        } else if( !HW_COvlap( back.data.CurrProc->state.used, HW_DI ) ) {
+            back.x86opseg.ZPageType = ZP_USES_DI;
+            if( CountSegOvers(back) > 6 ) {
+                QuickSave( back, HW_DI, OP_PUSH );
+                GenRegMove( back, HW_BP, HW_DI );
+                GenRegNeg( back, HW_DI );
             } else {
-                x86opseg_state().ZPageType = ZP_USES_SS;
+                back.x86opseg.ZPageType = ZP_USES_SS;
             }
-        } else if( !HW_COvlap( data_state().CurrProc->state.used, HW_SI ) ) {
-            x86opseg_state().ZPageType = ZP_USES_SI;
-            if( CountSegOvers() > 6 ) {
-                QuickSave( HW_SI, OP_PUSH );
-                GenRegMove( HW_BP, HW_SI );
-                GenRegNeg( HW_SI );
+        } else if( !HW_COvlap( back.data.CurrProc->state.used, HW_SI ) ) {
+            back.x86opseg.ZPageType = ZP_USES_SI;
+            if( CountSegOvers(back) > 6 ) {
+                QuickSave( back, HW_SI, OP_PUSH );
+                GenRegMove( back, HW_BP, HW_SI );
+                GenRegNeg( back, HW_SI );
             } else {
-                x86opseg_state().ZPageType = ZP_USES_SS;
+                back.x86opseg.ZPageType = ZP_USES_SS;
             }
         }
     }
 }
 
 
-void    FiniZeroPage( void )
+void    FiniZeroPage( BackRun& back )
 /***************************
     Pop the "zeropage" register.
 */
 {
-    switch( x86opseg_state().ZPageType ) {
+    switch( back.x86opseg.ZPageType ) {
     case ZP_USES_SS:
         /* nothing*/
         break;
     case ZP_USES_DS:
-        QuickSave( HW_DS, OP_POP );
+        QuickSave( back, HW_DS, OP_POP );
         break;
     case ZP_USES_BP:
-        QuickSave( HW_BP, OP_POP );
+        QuickSave( back, HW_BP, OP_POP );
         break;
     case ZP_USES_SI:
-        QuickSave( HW_SI, OP_POP );
+        QuickSave( back, HW_SI, OP_POP );
         break;
     case ZP_USES_DI:
-        QuickSave( HW_DI, OP_POP );
+        QuickSave( back, HW_DI, OP_POP );
         break;
     }
-    x86opseg_state().ZPageType = ZP_USES_SS;
+    back.x86opseg.ZPageType = ZP_USES_SS;
 }

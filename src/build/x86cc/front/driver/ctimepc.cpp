@@ -32,17 +32,18 @@
 
 #include "cvars.h"
 #include "ppfmttm.h"
+#include "frontrun.hpp"
 
 
-void TimeInit( void )
+void TimeInit( FrontRun& front )
 {
     struct tm   *tod;
     time_t      time_of_day;
 
     time_of_day = time( &time_of_day );
     tod = localtime( &time_of_day );
-    strcpy( cvars_state().__Time, "00:00:00" );
-    FormatTime_tm( cvars_state().__Time, tod );
-    strcpy( cvars_state().__Date, "Jan  1 1970" );
-    FormatDate_tm( cvars_state().__Date, tod );
+    strcpy( front.cvars.__Time, "00:00:00" );
+    FormatTime_tm( front.cvars.__Time, tod );
+    strcpy( front.cvars.__Date, "Jan  1 1970" );
+    FormatDate_tm( front.cvars.__Date, tod );
 }

@@ -30,10 +30,11 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "exeelf.h"
 
-extern Elf32_Word OWLENTRY ElfRelocType( owl_reloc_type reloc_type, owl_cpu cpu );
-extern uint_32 OWLENTRY CoffRelocType( owl_reloc_type reloc_type, owl_cpu cpu );
-extern unsigned OWLENTRY OWLRelocBitMask( owl_file_handle file, owl_reloc_info *reloc );
+extern Elf32_Word OWLENTRY ElfRelocType( BackRun& back, owl_reloc_type reloc_type, owl_cpu cpu );
+extern uint_32 OWLENTRY CoffRelocType( BackRun& back, owl_reloc_type reloc_type, owl_cpu cpu );
+extern unsigned OWLENTRY OWLRelocBitMask( BackRun& back, owl_file_handle file, owl_reloc_info *reloc );
 extern owl_offset OWLENTRY OWLRelocTargetDisp( owl_section_handle section, owl_offset from, owl_offset to );
 extern uint_8 OWLENTRY OWLRelocIsRelative( owl_file_handle file, owl_reloc_info *reloc );

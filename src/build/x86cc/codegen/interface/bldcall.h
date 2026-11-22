@@ -30,20 +30,21 @@
 ****************************************************************************/
 
 
-extern  type_class_def  AddCallBlock( cg_sym_handle sym, const type_def *tipe );
-extern  void            BGFiniCall( cn call );
-extern  cn              BGInitCall( an node, const type_def *tipe, aux_handle aux );
-extern  void            BGAddParm( cn call, an parm );
-extern  void            BGAutoDecl( cg_sym_handle sym, const type_def *tipe );
-extern  name            *DoParmDecl( cg_sym_handle sym, const type_def *tipe, hw_reg_set reg );
-extern  void            BGParmDecl( cg_sym_handle sym, const type_def *tipe );
-extern  void            AddCallIns( instruction *ins, cn call );
+#pragma once
+extern  type_class_def  AddCallBlock( BackRun& back, cg_sym_handle sym, const type_def *tipe );
+extern  void            BGFiniCall( BackRun& back, cn call );
+extern  cn              BGInitCall( BackRun& back, an node, const type_def *tipe, aux_handle aux );
+extern  void            BGAddParm( BackRun& back, cn call, an parm );
+extern  void            BGAutoDecl( BackRun& back, cg_sym_handle sym, const type_def *tipe );
+extern  name            *DoParmDecl( BackRun& back, cg_sym_handle sym, const type_def *tipe, hw_reg_set reg );
+extern  void            BGParmDecl( BackRun& back, cg_sym_handle sym, const type_def *tipe );
+extern  void            AddCallIns( BackRun& back, instruction *ins, cn call );
 extern  void            ReverseParmNodeList( pn *owner );
-extern  void            PushParms( pn parm, call_state *state );
-extern  void            ReserveStack( call_state *state, instruction *prev, type_length len );
-extern  void            ParmIns( pn parm, call_state *state );
-extern  void            BGZapBase( name *base, const type_def *tipe );
-extern  void            BGReturn( an retval, const type_def *tipe );
-extern  bool            AssgnParms( cn call, bool aux_inline );
-extern  hw_reg_set      CallZap( call_state *state );
-extern  void            UpdateReturn( call_state *, const type_def *, type_class_def, aux_handle );
+extern  void            PushParms( BackRun& back, pn parm, call_state *state );
+extern  void            ReserveStack( BackRun& back, call_state *state, instruction *prev, type_length len );
+extern  void            ParmIns( BackRun& back, pn parm, call_state *state );
+extern  void            BGZapBase( BackRun& back, name *base, const type_def *tipe );
+extern  void            BGReturn( BackRun& back, an retval, const type_def *tipe );
+extern  bool            AssgnParms( BackRun& back, cn call, bool aux_inline );
+extern  hw_reg_set      CallZap( BackRun& back, call_state *state );
+extern  void            UpdateReturn( BackRun& back, call_state *, const type_def *, type_class_def, aux_handle );

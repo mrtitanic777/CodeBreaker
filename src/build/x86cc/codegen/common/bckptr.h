@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define FAKE_NULL               ((back_handle)(pointer_uint)1)
 #define PTR_INT( x )            ((pointer_uint)(x))
 #define IS_REAL_BACK( bck )     ((PTR_INT(bck) & 1) == 0)

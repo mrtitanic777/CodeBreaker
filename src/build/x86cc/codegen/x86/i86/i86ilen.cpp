@@ -36,6 +36,7 @@
 #include "inslist.h"
 #include "encode.h"
 #include "x86nopli.h"
+#include "backrun.hpp"
 
 
 static const byte   NopList[] = {
@@ -55,7 +56,7 @@ static const byte   InsSize[4][OC_DEST_FAR + 1] = {
 };
 
 
-obj_length  OptInsSize( oc_class class_, oc_dest_attr attr )
+obj_length  OptInsSize( BackRun& back, oc_class class_, oc_dest_attr attr )
 /*********************************************************/
 {
     obj_length  i;

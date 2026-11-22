@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef enum {
         /* don't use these directly -- use the macros below */
         ROUTINE_LONG                    = 0x00000001,

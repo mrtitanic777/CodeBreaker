@@ -30,11 +30,12 @@
 ****************************************************************************/
 
 
+#pragma once
 extern void     DelSeg( instruction *ins );
-extern void     DelSegOp( instruction *ins, opcnt i );
-extern void     DelSegRes( instruction *ins );
+extern void     DelSegOp( BackRun& back, instruction *ins, opcnt i );
+extern void     DelSegRes( BackRun& back, instruction *ins );
 extern void     DupSeg( instruction *ins, instruction *new_ins );
-extern void     DupSegOp( instruction *ins, instruction *new_ins, opcnt i );
-extern void     DupSegRes( instruction *ins, instruction *new_ins );
-extern void     MoveSegOp( instruction *ins, instruction *new_ins, opcnt i );
-extern void     MoveSegRes( instruction *ins, instruction *new_ins );
+extern void     DupSegOp( BackRun& back, instruction *ins, instruction *new_ins, opcnt i );
+extern void     DupSegRes( BackRun& back, instruction *ins, instruction *new_ins );
+extern void     MoveSegOp( BackRun& back, instruction *ins, instruction *new_ins, opcnt i );
+extern void     MoveSegRes( BackRun& back, instruction *ins, instruction *new_ins );

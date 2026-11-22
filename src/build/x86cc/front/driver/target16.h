@@ -34,6 +34,7 @@
  * target16.h: target types for 16-bit machine
  */
 
+#pragma once
 #define TARGET_CHAR         1
 #define TARGET_SHORT        2
 #define TARGET_INT          2

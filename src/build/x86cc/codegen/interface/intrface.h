@@ -30,11 +30,12 @@
 ****************************************************************************/
 
 
+#pragma once
 #define cg_internal
 
-extern name             * cg_internal LkAddBackUserTemp( cg_sym_handle sym, name *temp );
-extern name             * cg_internal SymBackUserTemp( cg_sym_handle sym );
-extern const char       * cg_internal AskName( pointer hdl, cg_class class_ );
-extern label_handle     cg_internal AskForSymLabel( pointer hdl, cg_class class_ );
-extern import_handle    cg_internal AskImportHandle( cg_sym_handle sym );
-extern void             cg_internal TellImportHandle( cg_sym_handle sym, import_handle imphdl );
+extern name             * cg_internal LkAddBackUserTemp( BackRun& back, cg_sym_handle sym, name *temp );
+extern name             * cg_internal SymBackUserTemp( BackRun& back, cg_sym_handle sym );
+extern const char       * cg_internal AskName( BackRun& back, pointer hdl, cg_class class_ );
+extern label_handle     cg_internal AskForSymLabel( BackRun& back, pointer hdl, cg_class class_ );
+extern import_handle    cg_internal AskImportHandle( BackRun& back, cg_sym_handle sym );
+extern void             cg_internal TellImportHandle( BackRun& back, cg_sym_handle sym, import_handle imphdl );

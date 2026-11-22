@@ -36,7 +36,6 @@
 struct BlipsState {
     bool BlipsOn;
 };
-inline BlipsState& blips_state() { return cbrun_part<BlipsState>(); }
 
 #endif
 

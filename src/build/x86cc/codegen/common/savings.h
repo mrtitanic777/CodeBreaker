@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define MAX_LOOP        5       /*  maximum loop depth considered */
 #define LOOP_FACTOR     20      /*  NB LOOP_FACTOR^MAX_LOOP must fit */
                                 /*  in a save_def */

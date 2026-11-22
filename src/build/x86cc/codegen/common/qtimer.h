@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 extern void     GrabTimer( void );
-extern void     ReleTimer( void );
+extern void     ReleTimer( BackRun& back );
 extern unsigned GetTickCnt( void );

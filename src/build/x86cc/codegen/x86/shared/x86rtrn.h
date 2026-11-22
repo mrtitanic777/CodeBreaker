@@ -31,4 +31,5 @@
 ****************************************************************************/
 
 
-extern  name    *Addressable( name *cons, type_class_def type_class );
+#pragma once
+extern  name    *Addressable( BackRun& back, name *cons, type_class_def type_class );

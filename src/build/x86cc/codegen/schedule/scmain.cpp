@@ -44,12 +44,13 @@
 #include "scmain.h"
 #include "liveinfo.h"
 #include "memmgt.h"
+#include "backrun.hpp"
 
 
-void    ScoreInit( void )
+void    ScoreInit( BackRun& back )
 /***********************/
 {
-    InitFrl( &score_state().ScListFrl );
+    InitFrl( &back.score.ScListFrl );
 }
 
 void    ScoreFini( void )
@@ -58,7 +59,7 @@ void    ScoreFini( void )
 }
 
 
-static  void    ScoreSeed( block *blk, block *son, byte index )
+static  void    ScoreSeed( BackRun& back, block *blk, block *son, byte index )
 /**************************************************************
     If block ends with a single comparison for == or !=, then the
     one of the sons (true index for ==, false index for !=) knows
@@ -87,11 +88,11 @@ static  void    ScoreSeed( block *blk, block *son, byte index )
     }
     if( which != index )
         return;
-    ScoreMakeEqual( son->u1.scoreboard, cmp->operands[0], cmp->operands[1] );
+    ScoreMakeEqual( back, son->u1.scoreboard, cmp->operands[0], cmp->operands[1] );
 }
 
 
-static  void    CopyList( score_hdl frm, score_hdl to,
+static  void    CopyList( BackRun& back, score_hdl frm, score_hdl to,
                           list_head **sc_heads, int i )
 /*****************************************************/
 {
@@ -110,7 +111,7 @@ static  void    CopyList( score_hdl frm, score_hdl to,
     if( *to[i].list == NULL ) {
         next = to[i].next_reg;
         for( first = *frm[i].list; first != NULL; first = first->next ) {
-            new_sc = NewScListEntry();
+            new_sc = NewScListEntry(back);
             Copy( &first->info, &new_sc->info, sizeof( score_info ) );
             new_sc->next = *next->list;
             *next->list = new_sc;
@@ -119,15 +120,15 @@ static  void    CopyList( score_hdl frm, score_hdl to,
 }
 
 
-static  void    ScoreCopy( score_hdl other_scoreboard, score_hdl scoreboard )
+static  void    ScoreCopy( BackRun& back, score_hdl other_scoreboard, score_hdl scoreboard )
 /***************************************************************************/
 {
     list_head   **sc_heads;
     int         i;
 
-    FreeScoreBoard( scoreboard );
-    sc_heads = (list_head **)&scoreboard[score_state().ScoreCount];
-    for( i = score_state().ScoreCount; i-- > 0; ) {
+    FreeScoreBoard( back, scoreboard );
+    sc_heads = (list_head **)&scoreboard[back.score.ScoreCount];
+    for( i = back.score.ScoreCount; i-- > 0; ) {
         scoreboard[i].next_reg = &scoreboard[other_scoreboard[i].next_reg->index];
         scoreboard[i].prev_reg = &scoreboard[other_scoreboard[i].prev_reg->index];
         scoreboard[i].generation = other_scoreboard[i].generation;
@@ -136,14 +137,14 @@ static  void    ScoreCopy( score_hdl other_scoreboard, score_hdl scoreboard )
         ++sc_heads;
     }
     *sc_heads = NULL;
-    sc_heads = (list_head **)&scoreboard[score_state().ScoreCount];
-    for( i = score_state().ScoreCount; i-- > 0; ) {
-        CopyList( other_scoreboard, scoreboard, sc_heads, i );
+    sc_heads = (list_head **)&scoreboard[back.score.ScoreCount];
+    for( i = back.score.ScoreCount; i-- > 0; ) {
+        CopyList( back, other_scoreboard, scoreboard, sc_heads, i );
     }
 }
 
 
-static  void *ScoreDescendants( block *blk )
+static  void *ScoreDescendants( BackRun& back, block *blk )
 /******************************************/
 {
     block_num   i;
@@ -153,20 +154,20 @@ static  void *ScoreDescendants( block *blk )
     for( i = blk->targets; i-- > 0; ) {
         son = blk->edge[i].destination.u.blk;
         if( ( son->inputs == 1 ) && !_IsBlkVisited( son ) ) {
-            son->u1.scoreboard = static_cast<score_hdl>(ScAlloc( score_state().ScoreCount * sizeof( score ) + ( score_state().ScoreCount + 1 ) * sizeof( list_head ) ));
-            ScoreClear( son->u1.scoreboard );
+            son->u1.scoreboard = static_cast<score_hdl>(ScAlloc( back, back.score.ScoreCount * sizeof( score ) + ( back.score.ScoreCount + 1 ) * sizeof( list_head ) ));
+            ScoreClear( back, son->u1.scoreboard );
             for( ;; ) {
-                ScoreCopy( blk->u1.scoreboard, son->u1.scoreboard );
-                ScoreSeed( blk, son, i );
-                if( !DoScore( son ) )
+                ScoreCopy( back, blk->u1.scoreboard, son->u1.scoreboard );
+                ScoreSeed( back, blk, son, i );
+                if( !DoScore( back, son ) )
                     break;
-                UpdateLive( son->ins.head.next, son->ins.head.prev );
+                UpdateLive( back, son->ins.head.next, son->ins.head.prev );
             }
             _MarkBlkVisited( son );
             _MarkBlkMarked( son );
-            SafeRecurseCG( (func_sr)ScoreDescendants, son );
-            FreeScoreBoard( son->u1.scoreboard );
-            ScFree( son->u1.scoreboard );
+            SafeRecurseCG( back, (func_sr)ScoreDescendants, son );
+            FreeScoreBoard( back, son->u1.scoreboard );
+            ScFree( back, son->u1.scoreboard );
             son->u1.scoreboard = NULL;
         }
     }
@@ -179,52 +180,52 @@ static  void *ScoreDescendants( block *blk )
         }
     }
     HW_TurnOn( blk->ins.head.live.regs, regs );
-    UpdateLive( blk->ins.head.next, blk->ins.head.prev );
+    UpdateLive( back, blk->ins.head.next, blk->ins.head.prev );
     return( NULL );
 }
 
 
-static  void    InitZero( void )
+static  void    InitZero( BackRun& back )
 /******************************/
 /* Must be allocd. Could be modified by ScoreAssign but that's ok */
 /* since it will just set offset to 0 */
 {
-    score_state().ScZero = static_cast<score_info *>(ScAlloc( sizeof( score_info ) ));
-    score_state().ScZero->class_       = SC_N_CONSTANT;
-    score_state().ScZero->offset      = 0;
-    score_state().ScZero->symbol.u.p  = NULL;
-    score_state().ScZero->reg_index   = NO_INDEX;
-    score_state().ScZero->base        = NULL;
+    back.score.ScZero = static_cast<score_info *>(ScAlloc( back, sizeof( score_info ) ));
+    back.score.ScZero->class_       = SC_N_CONSTANT;
+    back.score.ScZero->offset      = 0;
+    back.score.ScZero->symbol.u.p  = NULL;
+    back.score.ScZero->reg_index   = NO_INDEX;
+    back.score.ScZero->base        = NULL;
 }
 
 
-static  void    ScoreRoutine( void )
+static  void    ScoreRoutine( BackRun& back )
 /**********************************/
 {
     block       *blk;
 //    bool        change;
 
-    ScoreCalcList();
-    if( score_state().ScoreCount != 0 ) {
-        InitZero();
+    ScoreCalcList(back);
+    if( back.score.ScoreCount != 0 ) {
+        InitZero(back);
         _MarkBlkAllUnVisited();
-        MakeLiveInfo();
+        MakeLiveInfo(back);
 //        change = false;
-        for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+        for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
             if( !_IsBlkVisited( blk ) ) {
-                blk->u1.scoreboard = static_cast<score_hdl>(ScAlloc( score_state().ScoreCount * sizeof( score ) + ( score_state().ScoreCount + 1 ) * sizeof( list_head ) ));
-                ScoreClear( blk->u1.scoreboard );
+                blk->u1.scoreboard = static_cast<score_hdl>(ScAlloc( back, back.score.ScoreCount * sizeof( score ) + ( back.score.ScoreCount + 1 ) * sizeof( list_head ) ));
+                ScoreClear( back, blk->u1.scoreboard );
                 for( ;; ) {
-                    FreeScoreBoard( blk->u1.scoreboard );
-                    ScInitRegs( blk->u1.scoreboard );
-                    if( !DoScore( blk ) )
+                    FreeScoreBoard( back, blk->u1.scoreboard );
+                    ScInitRegs( back, blk->u1.scoreboard );
+                    if( !DoScore( back, blk ) )
                         break;
-                    UpdateLive( blk->ins.head.next, blk->ins.head.prev );
+                    UpdateLive( back, blk->ins.head.next, blk->ins.head.prev );
                 }
                 _MarkBlkVisited( blk );
-                ScoreDescendants( blk );
-                FreeScoreBoard( blk->u1.scoreboard );
-                ScFree( blk->u1.scoreboard );
+                ScoreDescendants( back, blk );
+                FreeScoreBoard( back, blk->u1.scoreboard );
+                ScFree( back, blk->u1.scoreboard );
                 blk->u1.scoreboard = NULL;
             }
         }
@@ -232,27 +233,27 @@ static  void    ScoreRoutine( void )
 }
 
 
-static  void    CleanUp( void )
+static  void    CleanUp( BackRun& back )
 /*****************************/
 {
     block       *blk;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
-        FreeScoreBoard( blk->u1.scoreboard );
-        ScFree( blk->u1.scoreboard );
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
+        FreeScoreBoard( back, blk->u1.scoreboard );
+        ScFree( back, blk->u1.scoreboard );
         blk->u1.scoreboard = NULL;
     }
-    ScFree( score_state().ScoreList );
-    ScFree( score_state().ScZero );
+    ScFree( back, back.score.ScoreList );
+    ScFree( back, back.score.ScZero );
 }
 
 
-static  void    ConstSizes( void )
+static  void    ConstSizes( BackRun& back )
 /********************************/
 {
     name        *cons;
 
-    for( cons = data_state().Names[N_CONSTANT]; cons != NULL; cons = cons->n.next_name ) {
+    for( cons = back.data.Names[N_CONSTANT]; cons != NULL; cons = cons->n.next_name ) {
         if( cons->c.const_type == CONS_ABSOLUTE ) {
             if( CFIsU16( cons->c.u.cfval ) ) {
                 cons->n.size = 2;
@@ -264,22 +265,22 @@ static  void    ConstSizes( void )
 }
 
 
-void    Score( void )
+void    Score( BackRun& back )
 /*******************/
 {
     mem_out_action      old_memout;
     block               *blk;
 
-    ConstSizes();
-    old_memout = SetMemOut( MO_SUICIDE );
-    score_state().ScZero = NULL;               /* in case of Suicide*/
-    score_state().ScoreList = NULL;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    ConstSizes(back);
+    old_memout = SetMemOut( back, MO_SUICIDE );
+    back.score.ScZero = NULL;               /* in case of Suicide*/
+    back.score.ScoreList = NULL;
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         blk->u1.scoreboard = NULL;
     }
-    if( Spawn( &ScoreRoutine ) != 0 ) {
-        FEMessageCurrProc( FEMSG_SCOREBOARD_DIED );
+    if( Spawn( back, &ScoreRoutine ) != 0 ) {
+        FEMessageCurrProc( back, FEMSG_SCOREBOARD_DIED );
     }
-    CleanUp();
-    SetMemOut( old_memout );
+    CleanUp(back);
+    SetMemOut( back, old_memout );
 }

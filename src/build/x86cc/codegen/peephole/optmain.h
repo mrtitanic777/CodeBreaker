@@ -30,13 +30,14 @@
 ****************************************************************************/
 
 
-extern void     InputOC( any_oc *oc );
-extern void     OutputOC( any_oc *, any_oc * );
-extern bool     ShrinkQueue( pointer_uint size );
-extern void     InitQueue( void );
-extern void     EmptyQueue( void );
-extern void     FlushQueue( void );
-extern void     FiniQueue( void );
-extern void     AbortQueue( void );
+#pragma once
+extern void     InputOC( BackRun& back, any_oc *oc );
+extern void     OutputOC( BackRun& back, any_oc *, any_oc * );
+extern bool     ShrinkQueue( BackRun& back, pointer_uint size );
+extern void     InitQueue( BackRun& back );
+extern void     EmptyQueue( BackRun& back );
+extern void     FlushQueue( BackRun& back );
+extern void     FiniQueue( BackRun& back );
+extern void     AbortQueue( BackRun& back );
 
 extern byte     ReverseCondition( byte );

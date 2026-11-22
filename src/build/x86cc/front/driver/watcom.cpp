@@ -32,6 +32,7 @@
 
 #include "cvars.h"
 #include <banner.h>
+#include "frontrun.hpp"
 
 #if _CPU == 8086
 #define _TARGET_    "x86 16-bit"
@@ -49,21 +50,21 @@
 
 extern char const CompilerID[] = { "__WATCOMC__=" _MACROSTR( _BLDVER ) };
 
-void CBanner( void )
+void CBanner( FrontRun& front )
 {
-    if( !cvars_state().CompFlags.banner_printed ) {
-        cvars_state().CompFlags.banner_printed = true;
-        if( !cvars_state().CompFlags.quiet_mode ) {
+    if( !front.cvars.CompFlags.banner_printed ) {
+        front.cvars.CompFlags.banner_printed = true;
+        if( !front.cvars.CompFlags.quiet_mode ) {
 #if defined( _BETAVER )
-            BannerMsg( banner1t( "C " _TARGET_ " Optimizing Compiler" ) );
-            BannerMsg( banner1v( _WCC_VERSION_ ) );
+            BannerMsg( front, banner1t( "C " _TARGET_ " Optimizing Compiler" ) );
+            BannerMsg( front, banner1v( _WCC_VERSION_ ) );
 #else
             BannerMsg( banner1w( "C " _TARGET_ " Optimizing Compiler", _WCC_VERSION_ ) );
 #endif
-            BannerMsg( banner2 );
-            BannerMsg( banner2a( 1984 ) );
-            BannerMsg( banner3 );
-            BannerMsg( banner3a );
+            BannerMsg( front, banner2 );
+            BannerMsg( front, banner2a( 1984 ) );
+            BannerMsg( front, banner3 );
+            BannerMsg( front, banner3a );
         }
     }
 }

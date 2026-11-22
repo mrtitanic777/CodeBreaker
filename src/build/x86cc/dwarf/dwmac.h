@@ -35,7 +35,7 @@
 #define DWMAC_H_INCLUDED
 
 extern void     DW_InitDebugMacInfo( dw_client );
-extern void     DW_FiniDebugMacInfo( dw_client );
+extern void     DW_FiniDebugMacInfo( BackRun& back, dw_client );
 extern void     DW_MacInfoStartFile( dw_client, uint );
 extern void     DW_MacInfoEndFile( dw_client );
 

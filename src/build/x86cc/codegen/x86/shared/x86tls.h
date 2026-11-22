@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #if _TARGET & _TARG_80386
-extern void     ExpandThreadDataRef( instruction *ins );
+extern void     ExpandThreadDataRef( BackRun& back, instruction *ins );
 #endif

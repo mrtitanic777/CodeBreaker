@@ -31,11 +31,12 @@
 
 
 #include "owlpriv.h"
+#include "backrun.hpp"
 
-static void addSectionSymbol( owl_section_handle section, const char *name ) {
+static void addSectionSymbol( BackRun& back, owl_section_handle section, const char *name ) {
 //****************************************************************************
 
-    section->sym = OWLSymbolInit( section->file, name );
+    section->sym = OWLSymbolInit( back, section->file, name );
     OWLSymbolDefine( section->file->symbol_table, section->sym, section, 0, OWL_TYPE_SECTION, OWL_SYM_GLOBAL );
     section->sym->x.section = section;
 }
@@ -73,7 +74,7 @@ static void deleteSection( owl_file_handle file, owl_section_handle section ) {
     assert( 0 );
 }
 
-static void freeRelocs( owl_file_handle file, owl_reloc_info *relocs ) {
+static void freeRelocs( BackRun& back, owl_file_handle file, owl_reloc_info *relocs ) {
 /**********************************************************************/
 
     owl_reloc_info      *ptr;
@@ -81,21 +82,21 @@ static void freeRelocs( owl_file_handle file, owl_reloc_info *relocs ) {
 
     for( ptr = relocs; ptr != NULL; ptr = next ) {
         next = ptr->next;
-        _ClientFree( file, ptr );
+        _ClientFree( back, file, ptr );
     }
 }
 
-owl_section_handle OWLENTRY OWLSectionInit( owl_file_handle file, const char *name, owl_section_type type, owl_alignment align ) {
+owl_section_handle OWLENTRY OWLSectionInit( BackRun& back, owl_file_handle file, const char *name, owl_section_type type, owl_alignment align ) {
 //********************************************************************************************************************************
 
     owl_section_handle          section;
 
-    section = static_cast<owl_section_handle>(_ClientAlloc( file, sizeof( owl_section_info ) ));
+    section = static_cast<owl_section_handle>(_ClientAlloc( back, file, sizeof( owl_section_info ) ));
     section->file = file;
-    section->name = OWLStringAdd( file->string_table, name );
+    section->name = OWLStringAdd( back, file->string_table, name );
     section->type = type;
     section->align = align;
-    section->buffer = ( type & OWL_SEC_ATTR_BSS ) ? NULL : OWLBufferInit( file );
+    section->buffer = ( type & OWL_SEC_ATTR_BSS ) ? NULL : OWLBufferInit( back, file );
     section->linenum_buffer = NULL;
     section->num_linenums = 0;
     section->size = 0;
@@ -106,7 +107,7 @@ owl_section_handle OWLENTRY OWLSectionInit( owl_file_handle file, const char *na
     section->comdat_sym = NULL;
     section->comdat_dep = NULL;
     addSection( file, section );
-    addSectionSymbol( section, name );
+    addSectionSymbol( back, section, name );
     _Log(( file, "OWLSectionInit( %x, '%s', %x, %x ) -> %x\n", file, name, type, align, section ));
     return( section );
 }
@@ -129,7 +130,7 @@ void OWLENTRY OWLSectionFini( owl_section_handle section ) {
     _Log(( section->file, "OWLSectionFini( %x )\n", section ));
 }
 
-void OWLENTRY OWLSectionFree( owl_section_handle section ) {
+void OWLENTRY OWLSectionFree( BackRun& back, owl_section_handle section ) {
 //**********************************************************
 
     owl_file_handle     file;
@@ -137,14 +138,14 @@ void OWLENTRY OWLSectionFree( owl_section_handle section ) {
     file = section->file;
     deleteSection( file, section );
     if( section->buffer != NULL ) {
-        OWLBufferFini( section->buffer );
+        OWLBufferFini( back, section->buffer );
     }
     if( section->linenum_buffer != NULL ) {
-        OWLBufferFini( section->linenum_buffer );
+        OWLBufferFini( back, section->linenum_buffer );
     }
     if( section->first_reloc != NULL ) {
-        freeRelocs( file, section->first_reloc );
+        freeRelocs( back, file, section->first_reloc );
     }
-    _ClientFree( file, section );
+    _ClientFree( back, file, section );
     _Log(( file, "OWLSectionFree( %x )\n", section ));
 }

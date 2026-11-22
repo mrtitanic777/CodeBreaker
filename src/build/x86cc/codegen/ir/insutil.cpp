@@ -39,6 +39,7 @@
 #include "namelist.h"
 #include "blktrim.h"
 #include "liveinfo.h"
+#include "backrun.hpp"
 
 
 typedef enum {
@@ -56,24 +57,25 @@ typedef struct  conflict_info {
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
+}  // namespace
 struct InsutilState {
     int CurrInfo;
     conflict_info ConflictInfo[MAX_CONF_INFO];
 };
+namespace {
 
 }  // namespace
 
-static inline InsutilState& insutil_state() { return cbrun_part<InsutilState>(); }
 
 
-static void RenumFrom( instruction *ins )
+static void RenumFrom( BackRun& back, instruction *ins )
 /***************************************/
 {
     block               *blk;
     instruction_id      id;
 
     if( ins->head.opcode == OP_BLOCK ) {
-        Renumber();
+        Renumber(back);
     } else {
         id = ins->id;
         ins = ins->head.next;
@@ -92,41 +94,41 @@ static void RenumFrom( instruction *ins )
     }
 }
 
-static void     CleanConfInfo( void )
+static void     CleanConfInfo( BackRun& back )
 /***********************************/
 {
     int     i;
 
     for( i = 0; i < MAX_CONF_INFO; ++i ) {
-        insutil_state().ConflictInfo[i].conf = NULL;
-        insutil_state().ConflictInfo[i].flags = CB_NONE;
+        back.insutil->ConflictInfo[i].conf = NULL;
+        back.insutil->ConflictInfo[i].flags = CB_NONE;
     }
-    insutil_state().CurrInfo = 0;
+    back.insutil->CurrInfo = 0;
 }
 
-static void     ResetConfInfo( void )
+static void     ResetConfInfo( BackRun& back )
 /***********************************/
 {
     conflict_info       *info;
 
-    for( info = insutil_state().ConflictInfo; info->conf != NULL; ++info ) {
+    for( info = back.insutil->ConflictInfo; info->conf != NULL; ++info ) {
         _SetFalse( info->conf, CST_CONF_VISITED );
     }
 }
 
-static  conflict_info   *AddConfInfo( conflict_node *conf )
+static  conflict_info   *AddConfInfo( BackRun& back, conflict_node *conf )
 /*********************************************************/
 {
     conflict_info       *info;
 
     if( _Is( conf, CST_CONF_VISITED ) ) {
-        for( info = insutil_state().ConflictInfo; ; ++info ) {
+        for( info = back.insutil->ConflictInfo; ; ++info ) {
             if( info->conf == conf ) {
                 break;
             }
         }
     } else {
-        info = &insutil_state().ConflictInfo[insutil_state().CurrInfo++];
+        info = &back.insutil->ConflictInfo[back.insutil->CurrInfo++];
         info->conf = conf;
         _SetTrue( conf, CST_CONF_VISITED );
     }
@@ -134,7 +136,7 @@ static  conflict_info   *AddConfInfo( conflict_node *conf )
 }
 
 
-static  void    FindNameConf( name *name, instruction *ins,
+static  void    FindNameConf( BackRun& back, name *name, instruction *ins,
                     instruction *other, conflict_bits for_which )
 /***************************************************************/
 {
@@ -153,38 +155,38 @@ static  void    FindNameConf( name *name, instruction *ins,
          || conf->ins_range.first == other
          || conf->ins_range.last == ins
          || conf->ins_range.last == other ) {
-            AddConfInfo( conf )->flags |= for_which;
+            AddConfInfo( back, conf )->flags |= for_which;
             break;
         }
     }
 }
 
 
-static  void    FindAllConflicts( instruction *ins, instruction *other, conflict_bits for_which )
+static  void    FindAllConflicts( BackRun& back, instruction *ins, instruction *other, conflict_bits for_which )
 /***********************************************************************************************/
 {
     opcnt   i;
 
     for( i = ins->num_operands; i-- > 0; ) {
-        FindNameConf( ins->operands[i], ins, other, for_which );
+        FindNameConf( back, ins->operands[i], ins, other, for_which );
     }
     if( ins->result != NULL ) {
-        FindNameConf( ins->result, ins, other, for_which );
+        FindNameConf( back, ins->result, ins, other, for_which );
     }
 }
 
 
-static  void    MakeConflictInfo( instruction *ins1, instruction *ins2 )
+static  void    MakeConflictInfo( BackRun& back, instruction *ins1, instruction *ins2 )
 /**********************************************************************/
 {
-    CleanConfInfo();
-    FindAllConflicts( ins1, ins2, CB_FOR_INS1 );
-    FindAllConflicts( ins2, ins1, CB_FOR_INS2 );
-    ResetConfInfo();
+    CleanConfInfo(back);
+    FindAllConflicts( back, ins1, ins2, CB_FOR_INS1 );
+    FindAllConflicts( back, ins2, ins1, CB_FOR_INS2 );
+    ResetConfInfo(back);
 }
 
 
-void    PrefixInsRenum( instruction *ins, instruction *pref, bool renum )
+void    PrefixInsRenum( BackRun& back, instruction *ins, instruction *pref, bool renum )
 /***********************************************************************/
 {
     conflict_info       *info;
@@ -228,7 +230,7 @@ void    PrefixInsRenum( instruction *ins, instruction *pref, bool renum )
             for (;;) {
                 blk = _BLOCK( next )->next_block;
                 if( blk == NULL ) {
-                    Zoiks( ZOIKS_141 );
+                    Zoiks( back, ZOIKS_141 );
                     break;
                 }
                 next = blk->ins.head.next;
@@ -241,16 +243,16 @@ void    PrefixInsRenum( instruction *ins, instruction *pref, bool renum )
     }
 
     if( renum ) {
-        RenumFrom( pref );
+        RenumFrom( back, pref );
     }
 
-    if( data_state().HaveLiveInfo ) {
+    if( back.data.HaveLiveInfo ) {
         /*
          * move the first/last pointers of any relevant conflict nodes
          */
         if( ins->head.opcode != OP_BLOCK ) {
-            MakeConflictInfo( pref, ins );
-            for( info = insutil_state().ConflictInfo; info->conf != NULL; ++info ) {
+            MakeConflictInfo( back, pref, ins );
+            for( info = back.insutil->ConflictInfo; info->conf != NULL; ++info ) {
                 if( info->flags & CB_FOR_INS1 ) {
                     conf = info->conf;
                     if( conf->ins_range.first == ins ) {
@@ -272,19 +274,19 @@ void    PrefixInsRenum( instruction *ins, instruction *pref, bool renum )
         /*
          * Add live & conflict information for the new instruction
          */
-        UpdateLive( pref, ins );
+        UpdateLive( back, pref, ins );
     }
 }
 
 
-void    PrefixIns( instruction *ins, instruction *pref )
+void    PrefixIns( BackRun& back, instruction *ins, instruction *pref )
 /******************************************************/
 {
-    PrefixInsRenum( ins, pref, true );
+    PrefixInsRenum( back, ins, pref, true );
 }
 
 
-void    SuffixIns( instruction *ins, instruction *suff )
+void    SuffixIns( BackRun& back, instruction *ins, instruction *suff )
 /*******************************************************
  * Link the new instruction into the instruction ring
  */
@@ -314,7 +316,7 @@ void    SuffixIns( instruction *ins, instruction *suff )
              */
             suff->head.line_num = ins->head.line_num;
             ins = ins->head.prev;
-            FreeIns( ins->head.next );
+            FreeIns( back, ins->head.next );
         }
     }
     if( ins->head.opcode != OP_BLOCK ) {
@@ -323,14 +325,14 @@ void    SuffixIns( instruction *ins, instruction *suff )
 //        suff->s.stk_extra = ins->s.stk_extra;
         suff->sequence = ins->sequence;
     }
-    RenumFrom( ins );
-    if( data_state().HaveLiveInfo ) {
+    RenumFrom( back, ins );
+    if( back.data.HaveLiveInfo ) {
         /*
          * move the first/last pointers of any relevant conflict nodes
          */
         if( ins->head.opcode != OP_BLOCK ) {
-            MakeConflictInfo( ins, suff );
-            for( info = insutil_state().ConflictInfo; info->conf != NULL; ++info ) {
+            MakeConflictInfo( back, ins, suff );
+            for( info = back.insutil->ConflictInfo; info->conf != NULL; ++info ) {
                 if( info->flags & CB_FOR_INS2 ) {
                     conf = info->conf;
                     if( conf->ins_range.last == ins ) {
@@ -349,7 +351,7 @@ void    SuffixIns( instruction *ins, instruction *suff )
          */
         ins->head.state = INS_NEEDS_WORK;
         suff->head.state = INS_NEEDS_WORK;
-        UpdateLive( ins, suff );
+        UpdateLive( back, ins, suff );
     }
 }
 
@@ -361,7 +363,7 @@ block *InsBlock( instruction *ins )
     return( _BLOCK( ins ) );
 }
 
-void    ReplIns( instruction *ins, instruction *new_ins )
+void    ReplIns( BackRun& back, instruction *ins, instruction *new_ins )
 /*******************************************************/
 {
     block               *blk;
@@ -389,7 +391,7 @@ void    ReplIns( instruction *ins, instruction *new_ins )
     new_ins->id = ins->id;
     new_ins->head.state = INS_NEEDS_WORK;
     blk = NULL;
-    if( data_state().HaveLiveInfo ) {
+    if( back.data.HaveLiveInfo ) {
         /*
          * Copy the live analysis information from ins to new_ins
          */
@@ -411,8 +413,8 @@ void    ReplIns( instruction *ins, instruction *new_ins )
          * It must be fixed in more correct way if somebody ever understand
          * how all this stuff works.
          */
-        MakeConflictInfo( ins, new_ins );
-        for( info = insutil_state().ConflictInfo; info->conf != NULL; ++info ) {
+        MakeConflictInfo( back, ins, new_ins );
+        for( info = back.insutil->ConflictInfo; info->conf != NULL; ++info ) {
             if( info->flags & CB_FOR_INS1 ) {
                 conf = info->conf;
                 if( conf->ins_range.first == ins ) {
@@ -446,17 +448,17 @@ void    ReplIns( instruction *ins, instruction *new_ins )
     /*
      * Free up the old instruction
      */
-    FreeIns( ins );
+    FreeIns( back, ins );
     /*
      * if we wrecked a conflicts first or last pointer
      */
     if( blk != NULL ) {
-        UpdateLive( blk->ins.head.next, blk->ins.head.prev );
+        UpdateLive( back, blk->ins.head.next, blk->ins.head.prev );
     }
 }
 
 
-instruction_id  Renumber( void )
+instruction_id  Renumber( BackRun& back )
 /******************************/
 {
     block               *blk;
@@ -466,7 +468,7 @@ instruction_id  Renumber( void )
     uint_32             number_instrs;
 
     number_instrs = 0;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         number_instrs += CountIns( blk );
     }
     if( number_instrs == 0 ) {
@@ -478,7 +480,7 @@ instruction_id  Renumber( void )
         increment = 10; // BBB - tired of stupid looking ins id's
     }
     id = 0;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             ins->id = id;
             id += increment;
@@ -488,16 +490,20 @@ instruction_id  Renumber( void )
 }
 
 
-void            ClearInsBits( instruction_flags mask )
+void            ClearInsBits( BackRun& back, instruction_flags mask )
 /****************************************************/
 {
     block               *blk;
     instruction         *ins;
 
     mask = ~mask;
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             ins->ins_flags &= mask;
         }
     }
 }
+
+/* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
+InsutilState* insutil_make() { return new InsutilState(); }
+void insutil_free(InsutilState* part) { delete part; }

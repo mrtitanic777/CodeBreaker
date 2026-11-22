@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 extern const type_def   TNearCP;
 extern const type_def   TLongCP;
 extern const type_def   THugeCP;
@@ -48,14 +49,13 @@ struct TypesState {
     const type_def *PTPointer;
     const type_def *PTCodePointer;
 };
-inline TypesState& types_state() { return cbrun_part<TypesState>(); }
 
 #endif
 
-extern void             TypeInit( void );
-extern const type_def   *TypeAddress( cg_type tipe );
-extern type_length      TypeLength( cg_type tipe );
-extern const type_def   *TypeAlias( cg_type define, cg_type existing );
-extern const type_def   *TypeDef( cg_type refno, type_length length, type_length align );
-extern void             TypeFini( void );
-extern void             TargTypeInit( void );
+extern void             TypeInit( BackRun& back );
+extern const type_def   *TypeAddress( BackRun& back, cg_type tipe );
+extern type_length      TypeLength( BackRun& back, cg_type tipe );
+extern const type_def   *TypeAlias( BackRun& back, cg_type define, cg_type existing );
+extern const type_def   *TypeDef( BackRun& back, cg_type refno, type_length length, type_length align );
+extern void             TypeFini( BackRun& back );
+extern void             TargTypeInit( BackRun& back );

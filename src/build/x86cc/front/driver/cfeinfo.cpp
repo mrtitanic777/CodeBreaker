@@ -47,13 +47,14 @@
 #include "dwarfid.h"
 #include "felang.h"
 #include "scan.h"
+#include "frontrun.hpp"
 
 
 #define TRUNC_SYMBOL_HASH_LEN        4
 #define TRUNC_SYMBOL_LEN_WARN        120
 
-#define _HAS_EXE_MAIN   (cvars_state().CompFlags.has_main || cvars_state().CompFlags.has_winmain)
-#define _HAS_DLL_MAIN   (cvars_state().CompFlags.bd_switch_used || cvars_state().CompFlags.has_libmain)
+#define _HAS_EXE_MAIN   (front.cvars.CompFlags.has_main || front.cvars.CompFlags.has_winmain)
+#define _HAS_DLL_MAIN   (front.cvars.CompFlags.bd_switch_used || front.cvars.CompFlags.has_libmain)
 #define _HAS_ANY_MAIN   (_HAS_EXE_MAIN || _HAS_DLL_MAIN)
 
 static unsigned char const VarFuncWeights[] = {
@@ -160,7 +161,7 @@ bool VarParm( SYMPTR sym )
     return( false );
 }
 
-bool VarFunc( SYMPTR sym )
+bool VarFunc( FrontRun& front, SYMPTR sym )
 /*************************
  * does the specified symbol take variable args? hash calc'ed
  */
@@ -182,7 +183,7 @@ bool VarFunc( SYMPTR sym )
         if( c1 >= 0 && c2 >= 0 ) {
             hash = (len + VarFuncWeights[c1] + VarFuncWeights[c2]) & 0x1f;
             if( strcmp( p, VarParmFuncs[hash] ) == 0
-              && ( cvars_state().CompFlags.extensions_enabled
+              && ( front.cvars.CompFlags.extensions_enabled
               || (( 1 << hash ) & VAR_PARM_FUNCS_ANSI) ) ) {
                 return( true );
             }
@@ -194,12 +195,12 @@ bool VarFunc( SYMPTR sym )
 
 #if _INTEL_CPU
 
-static const inline_funcs *Flat( const inline_funcs *ifunc )
+static const inline_funcs *Flat( FrontRun& front, const inline_funcs *ifunc )
 {
   #if _CPU == 386
     const alt_inline_funcs  *p;
 
-    if( cvars_state().TargetSwitches & CGSW_X86_FLAT_MODEL ) {
+    if( front.cvars.TargetSwitches & CGSW_X86_FLAT_MODEL ) {
         for( p = FlatAlternates; p->byteseq != NULL; p++ ) {
             if( p->byteseq == ifunc->code ) {
                 return( &(p->alt_ifunc) );
@@ -210,28 +211,28 @@ static const inline_funcs *Flat( const inline_funcs *ifunc )
     return( ifunc );
 }
 
-static const inline_funcs *IF_Lookup( const char *name )
+static const inline_funcs *IF_Lookup( FrontRun& front, const char *name )
 {
     const inline_funcs  *ifunc;
 
-    if( !GET_FPU_FPC( cvars_state().ProcRevision ) ) {
+    if( !GET_FPU_FPC( front.cvars.ProcRevision ) ) {
         for( ifunc = _8087_Functions; ifunc->name != NULL; ifunc++ ) {
             if( strcmp( ifunc->name, name ) == 0 ) {
-                return( Flat( ifunc ) );
+                return( Flat( front, ifunc ) );
             }
         }
     }
-    if( cvars_state().OptSize == 100 ) {              /* if /os specified */
+    if( front.cvars.OptSize == 100 ) {              /* if /os specified */
         ifunc = SInline_Functions;
-        if( cvars_state().TargetSwitches & CGSW_X86_BIG_DATA ) {
+        if( front.cvars.TargetSwitches & CGSW_X86_BIG_DATA ) {
   #if _CPU == 8086
-            if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_DS ) {
+            if( front.cvars.TargetSwitches & CGSW_X86_FLOATING_DS ) {
                 ifunc = ZF_Data_Functions;
             } else {
                 ifunc = ZP_Data_Functions;
             }
   #else /* _CPU == 386 */
-            if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_DS ) {
+            if( front.cvars.TargetSwitches & CGSW_X86_FLOATING_DS ) {
                 ifunc = SBigData_Functions;
             } else {
                 ifunc = SBigDataNoDs_Functions;
@@ -240,12 +241,12 @@ static const inline_funcs *IF_Lookup( const char *name )
         }
         for( ; ifunc->name != NULL; ifunc++ ) {
             if( strcmp( ifunc->name, name ) == 0 ) {
-                return( Flat( ifunc ) );
+                return( Flat( front, ifunc ) );
             }
         }
     }
   #if _CPU == 386
-    if( cvars_state().TargetSwitches & CGSW_X86_FLAT_MODEL ) {
+    if( front.cvars.TargetSwitches & CGSW_X86_FLAT_MODEL ) {
         for( ifunc = Flat_Functions; ifunc->name != NULL; ifunc++ ) {
             if( strcmp( ifunc->name, name ) == 0 ) {
                 return( ifunc );
@@ -254,15 +255,15 @@ static const inline_funcs *IF_Lookup( const char *name )
     }
   #endif
     ifunc = Inline_Functions;
-    if( cvars_state().TargetSwitches & CGSW_X86_BIG_DATA ) {
+    if( front.cvars.TargetSwitches & CGSW_X86_BIG_DATA ) {
   #if _CPU == 8086
-        if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_DS ) {
+        if( front.cvars.TargetSwitches & CGSW_X86_FLOATING_DS ) {
             ifunc = DF_Data_Functions;
         } else {
             ifunc = DP_Data_Functions;
         }
   #else /* _CPU == 386 */
-        if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_DS ) {
+        if( front.cvars.TargetSwitches & CGSW_X86_FLOATING_DS ) {
             ifunc = BigData_Functions;
         } else {
             ifunc = BigDataNoDs_Functions;
@@ -271,19 +272,19 @@ static const inline_funcs *IF_Lookup( const char *name )
     }
     for( ; ifunc->name != NULL; ifunc++ ) {
         if( strcmp( ifunc->name, name ) == 0 ) {
-            return( Flat( ifunc ) );
+            return( Flat( front, ifunc ) );
         }
     }
     for( ifunc = Common_Functions; ifunc->name != NULL; ifunc++ ) {
         if( strcmp( ifunc->name, name ) == 0 ) {
-            return( Flat( ifunc ) );
+            return( Flat( front, ifunc ) );
         }
     }
     return( NULL );
 }
 #endif
 
-aux_info *GetLangInfo( type_modifiers flags )
+aux_info *GetLangInfo( FrontRun& front, type_modifiers flags )
 {
     switch( flags & MASK_LANGUAGES ) {
     case FLAG_WATCALL:
@@ -326,25 +327,13 @@ bool ParmsToBeReversed( type_modifiers flags, aux_info *inf )
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct CfeinfoState {
-#if _CPU == 386
-    hw_reg_set TryFiniParms[2] = {
-        HW_D( HW_EAX ),
-        HW_D( HW_EMPTY )
-    };
-#endif
-    hw_reg_set FEAuxInfo_save_set;
-#if _INTEL_CPU
-    unsigned char FEAuxInfo_Alignment[3] = { 2, 1, 1 };
-#endif
-};
+/* (struct CfeinfoState: cfeinfo_state.h) */
 
 }  // namespace
 
-static inline CfeinfoState& cfeinfo_state() { return cbrun_part<CfeinfoState>(); }
 
 
-static aux_info *InfoLookup( SYMPTR sym )
+static aux_info *InfoLookup( FrontRun& front, SYMPTR sym )
 {
     char            *name;
     aux_info        *inf;
@@ -357,7 +346,7 @@ static aux_info *InfoLookup( SYMPTR sym )
     inf = &DefaultInfo;
     if( name == NULL )
         return( inf );
-    ent = AuxLookup( name );
+    ent = AuxLookup( front, name );
     if( ent != NULL )
         inf = ent->info;
     if( ( ent == NULL )
@@ -373,7 +362,7 @@ static aux_info *InfoLookup( SYMPTR sym )
         {
             const inline_funcs  *ifunc;
 
-            ifunc = IF_Lookup( name );
+            ifunc = IF_Lookup( front, name );
             if( ifunc == NULL )
                 return( inf );
   #if ( _CPU == 8086 )
@@ -381,18 +370,18 @@ static aux_info *InfoLookup( SYMPTR sym )
               || HW_CEqual( ifunc->returns, HW_DS_SI )
               || HW_CEqual( ifunc->returns, HW_ES_DI )
               || HW_CEqual( ifunc->returns, HW_CX_DI ) ) {
-                if( SizeOfArg( sym->sym_type->object ) != 4 ) {
+                if( SizeOfArg( front, sym->sym_type->object ) != 4 ) {
   #else /* _CPU == 386 */
             if( HW_CEqual( ifunc->returns, HW_DX_AX )
               || HW_CEqual( ifunc->returns, HW_DS_ESI )
               || HW_CEqual( ifunc->returns, HW_ES_EDI )
               || HW_CEqual( ifunc->returns, HW_CX_DI ) ) {
-                if( SizeOfArg( sym->sym_type->object ) != 6 ) {
+                if( SizeOfArg( front, sym->sym_type->object ) != 6 ) {
   #endif
                     return( inf );
                 }
             }
-            inf = &pdefn2_state().InlineInfo;
+            inf = &front.pdefn2.InlineInfo;
             inf->cclass         = FECALL_GEN_NONE;
             inf->cclass_target  = (WatcallInfo.cclass_target & FECALL_X86_FAR_CALL) | FECALL_X86_MODIFY_EXACT;
 
@@ -418,7 +407,7 @@ static aux_info *InfoLookup( SYMPTR sym )
     return( inf );
 }
 
-aux_info *FindInfo( SYMPTR sym, SYM_HANDLE sym_handle )
+aux_info *FindInfo( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
 {
     SYM_ENTRY       sym_typedef;
     aux_entry       *ent;
@@ -432,35 +421,35 @@ aux_info *FindInfo( SYMPTR sym, SYM_HANDLE sym_handle )
     if( sym_handle == SYM_NULL )
         return( inf );
 
-    SymGet( sym, sym_handle );
+    SymGet( front, sym, sym_handle );
 #if _CPU == 386
-    if( (sym_handle == cvars_state().SymSTOSB)
-      || (sym_handle == cvars_state().SymSTOSD) ) {
-        return( &pragdefn_state().STOSBInfo );
-    } else if( sym_handle == cvars_state().SymFinally ) {
-        pdefn2_state().InlineInfo = WatcallInfo;
-        pdefn2_state().InlineInfo.code = (byte_seq *)&FinallyCode;
-        return( &pdefn2_state().InlineInfo );
-    } else if( sym_handle == cvars_state().SymTryFini ) {
-        pdefn2_state().InlineInfo = WatcallInfo;
-        pdefn2_state().InlineInfo.parms = cfeinfo_state().TryFiniParms;
-        pdefn2_state().InlineInfo.code = (byte_seq *)&TryFiniCode;
-        return( &pdefn2_state().InlineInfo );
+    if( (sym_handle == front.cvars.SymSTOSB)
+      || (sym_handle == front.cvars.SymSTOSD) ) {
+        return( &front.pragdefn.STOSBInfo );
+    } else if( sym_handle == front.cvars.SymFinally ) {
+        front.pdefn2.InlineInfo = WatcallInfo;
+        front.pdefn2.InlineInfo.code = (byte_seq *)&FinallyCode;
+        return( &front.pdefn2.InlineInfo );
+    } else if( sym_handle == front.cvars.SymTryFini ) {
+        front.pdefn2.InlineInfo = WatcallInfo;
+        front.pdefn2.InlineInfo.parms = front.cfeinfo.TryFiniParms;
+        front.pdefn2.InlineInfo.code = (byte_seq *)&TryFiniCode;
+        return( &front.pdefn2.InlineInfo );
     }
 #endif
     if( (sym->flags & SYM_TEMP) == 0 ) {
         /*
          * not an indirect func call
          */
-        inf = InfoLookup( sym );
+        inf = InfoLookup( front, sym );
     }
     if( inf == &DefaultInfo ) {
         typ = sym->sym_type;
         SKIP_DUMMY_TYPEDEFS( typ );
         if( typ->decl_type == TYP_TYPEDEF ) {
-            SymGet( &sym_typedef, typ->u.typedefn );
+            SymGet( front, &sym_typedef, typ->u.typedefn );
             if( sym_typedef.name != NULL ) {
-                ent = AuxLookup( sym_typedef.name );
+                ent = AuxLookup( front, sym_typedef.name );
                 if( ent != NULL ) {
                     inf = ent->info;
                 }
@@ -479,22 +468,22 @@ aux_info *FindInfo( SYMPTR sym, SYM_HANDLE sym_handle )
     }
 #endif
     if( inf == &DefaultInfo ) {
-        inf = GetLangInfo( sym->mods );
+        inf = GetLangInfo( front, sym->mods );
     }
     return( inf );
 }
 
-bool FunctionAborts( SYMPTR sym, SYM_HANDLE sym_handle )
+bool FunctionAborts( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
 {
     aux_entry    *ent;
 
     if( sym_handle != SYM_NULL ) {
-        SymGet( sym, sym_handle );
+        SymGet( front, sym, sym_handle );
         if( sym->mods & FLAG_ABORTS )
             return( true );
         if( sym->mods & FLAG_NORETURN )
             return( true );
-        ent = AuxLookup( SymName( sym, sym_handle ) );
+        ent = AuxLookup( front, SymName( front, sym, sym_handle ) );
         if( ent != NULL ) {
             if( ent->info->cclass & FECALL_GEN_ABORTS ) {
                 return( true );
@@ -504,7 +493,7 @@ bool FunctionAborts( SYMPTR sym, SYM_HANDLE sym_handle )
     return( false );
 }
 
-static call_class getCallClass( SYM_HANDLE sym_handle )
+static call_class getCallClass( FrontRun& front, SYM_HANDLE sym_handle )
 /******************************************************
  * handle only generic attributes for call class
  */
@@ -514,7 +503,7 @@ static call_class getCallClass( SYM_HANDLE sym_handle )
     call_class          cclass;
 
     sym.mods = static_cast<type_modifiers>(0);
-    inf = FindInfo( &sym, sym_handle );
+    inf = FindInfo( front, &sym, sym_handle );
     cclass = inf->cclass;
     if( sym_handle != SYM_NULL ) {
         if( sym.flags & SYM_FUNCTION ) {
@@ -527,10 +516,10 @@ static call_class getCallClass( SYM_HANDLE sym_handle )
             if( sym.mods & FLAG_EXPORT ) {
                 cclass |= FECALL_GEN_DLL_EXPORT;
             }
-            if( IsInLineFunc( sym_handle ) ) {
+            if( IsInLineFunc( front, sym_handle ) ) {
                 cclass |= FECALL_GEN_MAKE_CALL_INLINE;
             }
-            if( VarFunc( &sym ) ) {
+            if( VarFunc( front, &sym ) ) {
                 cclass |= FECALL_GEN_CALLER_POPS | FECALL_GEN_HAS_VARARGS;
             }
         }
@@ -541,7 +530,7 @@ static call_class getCallClass( SYM_HANDLE sym_handle )
     return( cclass );
 }
 
-static call_class_target getCallClassTarget( SYM_HANDLE sym_handle )
+static call_class_target getCallClassTarget( FrontRun& front, SYM_HANDLE sym_handle )
 /*******************************************************************
  * handle only target specific attributes for call class
  */
@@ -552,12 +541,12 @@ static call_class_target getCallClassTarget( SYM_HANDLE sym_handle )
     SYM_ENTRY           sym;
 
     sym.mods = static_cast<type_modifiers>(0);
-    inf = FindInfo( &sym, sym_handle );
+    inf = FindInfo( front, &sym, sym_handle );
     cclass_target = inf->cclass_target;
     if( sym_handle != SYM_NULL ) {
         if( sym.flags & SYM_FUNCTION ) {
   #if _CPU == 8086
-            if( cvars_state().TargetSystem == TS_WINDOWS ) {
+            if( front.cvars.TargetSystem == TS_WINDOWS ) {
                 if( inf == &PascalInfo
                   || inf == &CdeclInfo ) {
                     cclass_target |= FECALL_X86_PROLOG_FAT_WINDOWS;
@@ -567,7 +556,7 @@ static call_class_target getCallClassTarget( SYM_HANDLE sym_handle )
             if( sym.mods & FLAG_FARSS ) {
                 cclass_target |= FECALL_X86_FARSS;
             }
-            if( cvars_state().CompFlags.emit_names ) {
+            if( front.cvars.CompFlags.emit_names ) {
                 cclass_target |= FECALL_X86_EMIT_FUNCTION_NAME;
             }
             if( sym.mods & FLAG_FAR ) {
@@ -594,16 +583,16 @@ static call_class_target getCallClassTarget( SYM_HANDLE sym_handle )
             cclass_target |= FECALL_X86_THUNK_PROLOG;
         }
     }
-    if( cvars_state().CompFlags.ep_switch_used ) {
+    if( front.cvars.CompFlags.ep_switch_used ) {
         cclass_target |= FECALL_X86_PROLOG_HOOKS;
     }
-    if( cvars_state().CompFlags.ee_switch_used ) {
+    if( front.cvars.CompFlags.ee_switch_used ) {
         cclass_target |= FECALL_X86_EPILOG_HOOKS;
     }
-    if( cvars_state().CompFlags.sg_switch_used ) {
+    if( front.cvars.CompFlags.sg_switch_used ) {
         cclass_target |= FECALL_X86_GROW_STACK;
     }
-    if( cvars_state().CompFlags.st_switch_used ) {
+    if( front.cvars.CompFlags.st_switch_used ) {
         cclass_target |= FECALL_X86_TOUCH_STACK;
     }
 #else
@@ -614,7 +603,7 @@ static call_class_target getCallClassTarget( SYM_HANDLE sym_handle )
     return( cclass_target );
 }
 
-static void addDefaultLibs( void )
+static void addDefaultLibs( FrontRun& front )
 /*********************************
  * NextLibrary
  *  Called (indirectly) from the code generator to inject automagically defined symbols.
@@ -629,23 +618,23 @@ static void addDefaultLibs( void )
  *          returns the requested name.
  */
 {
-    if( cvars_state().CompFlags.emit_library_names ) {
+    if( front.cvars.CompFlags.emit_library_names ) {
         if( _HAS_ANY_MAIN
-          || cvars_state().CompFlags.pragma_library
-          || cvars_state().CompFlags.emit_all_default_libs ) {
-            AddLibraryName( cvars_state().CLIB_Name + 1, cvars_state().CLIB_Name[0] );
+          || front.cvars.CompFlags.pragma_library
+          || front.cvars.CompFlags.emit_all_default_libs ) {
+            AddLibraryName( front, front.cvars.CLIB_Name + 1, front.cvars.CLIB_Name[0] );
         }
-        if( cvars_state().CompFlags.pgm_used_8087
-          || cvars_state().CompFlags.float_used ) {
-            AddLibraryName( cvars_state().MATHLIB_Name + 1, cvars_state().MATHLIB_Name[0] );
-            if( cvars_state().EmuLib_Name != NULL ) {
-                AddLibraryName( cvars_state().EmuLib_Name + 1, cvars_state().EmuLib_Name[0] );
+        if( front.cvars.CompFlags.pgm_used_8087
+          || front.cvars.CompFlags.float_used ) {
+            AddLibraryName( front, front.cvars.MATHLIB_Name + 1, front.cvars.MATHLIB_Name[0] );
+            if( front.cvars.EmuLib_Name != NULL ) {
+                AddLibraryName( front, front.cvars.EmuLib_Name + 1, front.cvars.EmuLib_Name[0] );
             }
         }
     }
 }
 
-static CGPOINTER NextLibrary( int index, aux_class request )
+static CGPOINTER NextLibrary( FrontRun& front, int index, aux_class request )
 {
     library_list    *lib;
     char            *name;
@@ -653,12 +642,12 @@ static CGPOINTER NextLibrary( int index, aux_class request )
 
     name = NULL;
     if( index == 0 ) {
-        addDefaultLibs();
+        addDefaultLibs(front);
     }
     if( request == FEINF_NEXT_LIBRARY )
         index++;
     if( index > 0 ) {
-        for( i = 1, lib = cvars_state().HeadLibs; lib != NULL; i++, lib = lib->next ) {
+        for( i = 1, lib = front.cvars.HeadLibs; lib != NULL; i++, lib = lib->next ) {
             if( i == index ) {
                 name = lib->libname;
                 break;
@@ -677,7 +666,7 @@ static CGPOINTER NextLibrary( int index, aux_class request )
     return( (CGPOINTER)(pointer_uint)index );
 }
 
-static CGPOINTER NextAlias( int index, aux_class request )
+static CGPOINTER NextAlias( FrontRun& front, int index, aux_class request )
 /*********************************************************
  * NextAlias
  *  Called (indirectly) from the code generator to go through the list of
@@ -707,7 +696,7 @@ static CGPOINTER NextAlias( int index, aux_class request )
     if( request == FEINF_NEXT_ALIAS )
         ++index;
 
-    for( i = 1, aliaslist = cvars_state().AliasHead; aliaslist != NULL; i++, aliaslist = aliaslist->next ) {
+    for( i = 1, aliaslist = front.cvars.AliasHead; aliaslist != NULL; i++, aliaslist = aliaslist->next ) {
         if( i == index ) {
             switch( request ) {
             case FEINF_ALIAS_NAME:
@@ -726,7 +715,7 @@ static CGPOINTER NextAlias( int index, aux_class request )
     return( (CGPOINTER)(pointer_uint)0 );
 }
 
-static unsigned GetParmsSize( SYM_HANDLE sym_handle )
+static unsigned GetParmsSize( FrontRun& front, SYM_HANDLE sym_handle )
 /****************************************************
  * Return the size of function parameters or -1 if size could
  * not be determined (symbol isn't a function or is variadic)
@@ -739,7 +728,7 @@ static unsigned GetParmsSize( SYM_HANDLE sym_handle )
     TYPEPTR     typ;
     SYM_ENTRY   sym;
 
-    SymGet( &sym, sym_handle );
+    SymGet( front, &sym, sym_handle );
     fn_typ = sym.sym_type;
     SKIP_TYPEDEFS( fn_typ );
     if( fn_typ->decl_type == TYP_FUNCTION ) {
@@ -754,7 +743,7 @@ static unsigned GetParmsSize( SYM_HANDLE sym_handle )
                 if( typ->decl_type == TYP_VOID )
                     break;
 
-                parm_size = _RoundUp( TypeSize( typ ), TARGET_INT );
+                parm_size = _RoundUp( TypeSize( front, typ ), TARGET_INT );
                 total_parm_size += parm_size;
             }
         }
@@ -764,7 +753,7 @@ static unsigned GetParmsSize( SYM_HANDLE sym_handle )
     return( total_parm_size );
 }
 
-static const char *GetNamePattern( SYM_HANDLE sym_handle )
+static const char *GetNamePattern( FrontRun& front, SYM_HANDLE sym_handle )
 /*********************************************************
  * Return name pattern manipulator string
  */
@@ -773,21 +762,21 @@ static const char *GetNamePattern( SYM_HANDLE sym_handle )
     SYM_ENTRY            sym;
     aux_info             *inf;
 
-    inf = FindInfo( &sym, sym_handle );
+    inf = FindInfo( front, &sym, sym_handle );
 #ifdef __SEH__
-    if(( sym_handle == cvars_state().SymTryInit )
-      || ( sym_handle == cvars_state().SymTryFini )
-      || ( sym_handle == cvars_state().SymTryUnwind )
-      || ( sym_handle == cvars_state().SymExcept )) {
+    if(( sym_handle == front.cvars.SymTryInit )
+      || ( sym_handle == front.cvars.SymTryFini )
+      || ( sym_handle == front.cvars.SymTryUnwind )
+      || ( sym_handle == front.cvars.SymExcept )) {
         pattern = const_cast<char *>("*");
     } else {
 #endif
         if( sym.flags & SYM_FUNCTION ) {
             pattern = inf->objname;
 #if _INTEL_CPU
-            if( VarFunc( &sym ) ) {
+            if( VarFunc( front, &sym ) ) {
                 if( inf == &DefaultInfo )
-                    inf = callinfo_state().DftCallConv;
+                    inf = front.callinfo.DftCallConv;
                 if( inf == &StdcallInfo ) {
                     pattern = CdeclInfo.objname;
                 } else if( inf == &FastcallInfo ) {
@@ -799,7 +788,7 @@ static const char *GetNamePattern( SYM_HANDLE sym_handle )
                 pattern =  const_cast<char *>(TS_CODE_MANGLE);
             }
         } else {
-            pattern = VarNamePattern( inf );
+            pattern = VarNamePattern( front, inf );
             if( pattern == NULL ) {
                 pattern =  const_cast<char *>(TS_DATA_MANGLE);
             }
@@ -810,33 +799,33 @@ static const char *GetNamePattern( SYM_HANDLE sym_handle )
     return( pattern );
 }
 
-static const char *GetBaseName( SYM_HANDLE sym_handle )
+static const char *GetBaseName( FrontRun& front, SYM_HANDLE sym_handle )
 {
     SYM_ENTRY            sym;
 
-    SymGet( &sym, sym_handle );
+    SymGet( front, &sym, sym_handle );
     return( sym.name );
 }
 
-const char *FEExtName( CGSYM_HANDLE sym_handle, int request )
+const char *FEExtName( FrontRun& front, CGSYM_HANDLE sym_handle, int request )
 /***********************************************************/
 {
     switch( request ) {
     case EXTN_BASENAME:
-        return( GetBaseName( (SYM_HANDLE)sym_handle ) );
+        return( GetBaseName( front, (SYM_HANDLE)sym_handle ) );
     case EXTN_PATTERN:
-        return( GetNamePattern( (SYM_HANDLE)sym_handle ) );
+        return( GetNamePattern( front, (SYM_HANDLE)sym_handle ) );
     case EXTN_PRMSIZE:
-        return( (const char *)(pointer_uint)GetParmsSize( (SYM_HANDLE)sym_handle ) );
+        return( (const char *)(pointer_uint)GetParmsSize( front, (SYM_HANDLE)sym_handle ) );
     case EXTN_IMPPREFIX:
-        return( ( cvars_state().TargetSystem == TS_NT ) ? "__imp_" : NULL );
+        return( ( front.cvars.TargetSystem == TS_NT ) ? "__imp_" : NULL );
     case EXTN_CALLBACKNAME:
     default:
         return( NULL );
     }
 }
 
-static void addDefaultImports( void )
+static void addDefaultImports( FrontRun& front )
 {
     typedef enum {
         CM_DLLMAIN      = 0x01,
@@ -848,79 +837,79 @@ static void addDefaultImports( void )
     if( _HAS_ANY_MAIN ) {
         check_mask control;
 
-        if( cvars_state().CompFlags.bd_switch_used ) {
+        if( front.cvars.CompFlags.bd_switch_used ) {
             control = CM_DLLMAIN;
-        } else if( cvars_state().CompFlags.bw_switch_used ) {
+        } else if( front.cvars.CompFlags.bw_switch_used ) {
             control = CM_WINMAIN | CM_MAIN;
-        } else if( cvars_state().CompFlags.bg_switch_used ) {
+        } else if( front.cvars.CompFlags.bg_switch_used ) {
             control = CM_WINMAIN;
-        } else if( cvars_state().CompFlags.bc_switch_used ) {
+        } else if( front.cvars.CompFlags.bc_switch_used ) {
             control = CM_MAIN;
         } else {
             control = CM_DLLMAIN | CM_WINMAIN | CM_MAIN;
         }
         if( (control & CM_DLLMAIN) && _HAS_DLL_MAIN ) {
-            if( cvars_state().CompFlags.has_wchar_entry ) {
-                AddExtRefN( "__DLLstartw_" );
+            if( front.cvars.CompFlags.has_wchar_entry ) {
+                AddExtRefN( front, "__DLLstartw_" );
             } else {
-                AddExtRefN( "__DLLstart_" );
+                AddExtRefN( front, "__DLLstart_" );
             }
             control = CM_NULL;
         }
 #if _CPU == 8086
-        if( (control & CM_WINMAIN) && cvars_state().CompFlags.has_winmain
-          || (cvars_state().TargetSwitches & CGSW_X86_WINDOWS) && cvars_state().CompFlags.has_main ) {
+        if( (control & CM_WINMAIN) && front.cvars.CompFlags.has_winmain
+          || (front.cvars.TargetSwitches & CGSW_X86_WINDOWS) && front.cvars.CompFlags.has_main ) {
 #else
-        if( (control & CM_WINMAIN) && cvars_state().CompFlags.has_winmain ) {
+        if( (control & CM_WINMAIN) && front.cvars.CompFlags.has_winmain ) {
 #endif
-            if( cvars_state().CompFlags.has_wchar_entry ) {
-                AddExtRefN( "_wstartw_" );
+            if( front.cvars.CompFlags.has_wchar_entry ) {
+                AddExtRefN( front, "_wstartw_" );
             } else {
-                AddExtRefN( "_wstart_" );
+                AddExtRefN( front, "_wstart_" );
             }
             control = CM_NULL;
         }
         if( control & CM_MAIN ) {
             assert( CompFlags.has_main );
-            if( cvars_state().CompFlags.has_wchar_entry ) {
-                AddExtRefN( "_cstartw_" );
+            if( front.cvars.CompFlags.has_wchar_entry ) {
+                AddExtRefN( front, "_cstartw_" );
             } else {
-                AddExtRefN( "_cstart_" );
+                AddExtRefN( front, "_cstart_" );
             }
             control = CM_NULL;
         }
     }
 #if _INTEL_CPU
-    if( cvars_state().CompFlags.emit_library_names ) {
-        if( cvars_state().CompFlags.float_used ) {
-            if( cvars_state().CompFlags.use_long_double ) {
-                AddExtRefN( "_fltused_80bit_" );
+    if( front.cvars.CompFlags.emit_library_names ) {
+        if( front.cvars.CompFlags.float_used ) {
+            if( front.cvars.CompFlags.use_long_double ) {
+                AddExtRefN( front, "_fltused_80bit_" );
             }
-            AddExtRefN( "_fltused_" );
+            AddExtRefN( front, "_fltused_" );
         }
   #if _CPU == 8086
-        if( cvars_state().FirstStmt != 0 ) {
-            if( cvars_state().TargetSwitches & CGSW_X86_BIG_CODE ) {
-                AddExtRefN( "_big_code_" );
+        if( front.cvars.FirstStmt != 0 ) {
+            if( front.cvars.TargetSwitches & CGSW_X86_BIG_CODE ) {
+                AddExtRefN( front, "_big_code_" );
             } else {
-                AddExtRefN( "_small_code_" );
+                AddExtRefN( front, "_small_code_" );
             }
         }
   #endif
-        if( cvars_state().CompFlags.pgm_used_8087
-          || cvars_state().CompFlags.float_used ) {
-            if( GET_FPU_EMU( cvars_state().ProcRevision ) ) {
+        if( front.cvars.CompFlags.pgm_used_8087
+          || front.cvars.CompFlags.float_used ) {
+            if( GET_FPU_EMU( front.cvars.ProcRevision ) ) {
   #if _CPU == 8086
-                AddExtRefN( "__init_87_emulator" );
+                AddExtRefN( front, "__init_87_emulator" );
   #else /* _CPU == 386 */
-                AddExtRefN( "__init_387_emulator" );
+                AddExtRefN( front, "__init_387_emulator" );
   #endif
             }
-            if( !GET_FPU_FPC( cvars_state().ProcRevision ) ) {
-                if( cvars_state().Stack87 == 4 ) {
-                    AddExtRefN( "__old_8087" );
+            if( !GET_FPU_FPC( front.cvars.ProcRevision ) ) {
+                if( front.cvars.Stack87 == 4 ) {
+                    AddExtRefN( front, "__old_8087" );
                 } else {
-                    AddExtRefN( "__8087" );
+                    AddExtRefN( front, "__8087" );
                 }
             }
         }
@@ -936,25 +925,25 @@ static void addDefaultImports( void )
     }
 #endif
 #if _INTEL_CPU
-    if( cvars_state().CompFlags.main_has_parms ) {
+    if( front.cvars.CompFlags.main_has_parms ) {
   #if _CPU == 8086
-        if( cvars_state().CompFlags.has_wchar_entry ) {
-            AddExtRefN( "__wargc" );
+        if( front.cvars.CompFlags.has_wchar_entry ) {
+            AddExtRefN( front, "__wargc" );
         } else {
-            AddExtRefN( "__argc" );
+            AddExtRefN( front, "__argc" );
         }
   #else /* _CPU == 386 */
-        if( cvars_state().CompFlags.register_conventions ) {
-            if( cvars_state().CompFlags.has_wchar_entry ) {
-                AddExtRefN( "__wargc" );
+        if( front.cvars.CompFlags.register_conventions ) {
+            if( front.cvars.CompFlags.has_wchar_entry ) {
+                AddExtRefN( front, "__wargc" );
             } else {
-                AddExtRefN( "__argc" );
+                AddExtRefN( front, "__argc" );
             }
         } else {
-            if( cvars_state().CompFlags.has_wchar_entry ) {
-                AddExtRefN( "_wargc" );
+            if( front.cvars.CompFlags.has_wchar_entry ) {
+                AddExtRefN( front, "_wargc" );
             } else {
-                AddExtRefN( "_argc" );
+                AddExtRefN( front, "_argc" );
             }
         }
   #endif
@@ -967,43 +956,43 @@ static void addDefaultImports( void )
     /*
      * handle default windowing app
      */
-    if( cvars_state().CompFlags.bw_switch_used ) {
-        AddExtRefN( "__init_default_win" );
+    if( front.cvars.CompFlags.bw_switch_used ) {
+        AddExtRefN( front, "__init_default_win" );
     }
 #if _INTEL_CPU
     /*
      * handle NetWare
      */
-    if( cvars_state().TargetSystem == TS_NETWARE
-      || cvars_state().TargetSystem == TS_NETWARE5 ) {
+    if( front.cvars.TargetSystem == TS_NETWARE
+      || front.cvars.TargetSystem == TS_NETWARE5 ) {
         /*
          * is target NETWARE or NETWARE5?
          */
-        AddExtRefN( "__WATCOM_Prelude" );
+        AddExtRefN( front, "__WATCOM_Prelude" );
     }
     /*
      * handle 'old' profiling
      */
-    if( cvars_state().TargetSwitches & CGSW_X86_P5_PROFILING ) {
+    if( front.cvars.TargetSwitches & CGSW_X86_P5_PROFILING ) {
         /*
          * is profiling enabled (-et)?
          */
-        AddExtRefN( "__p5_profile" );
+        AddExtRefN( front, "__p5_profile" );
     }
     /*
      * handle 'new' profiling
      */
-    if( cvars_state().TargetSwitches & CGSW_X86_NEW_P5_PROFILING ) {
+    if( front.cvars.TargetSwitches & CGSW_X86_NEW_P5_PROFILING ) {
         /*
          * is profiling enabled (-etp)?
          */
-        AddExtRefN( "__new_p5_profile" );
+        AddExtRefN( front, "__new_p5_profile" );
     }
 #endif
 }
 
 
-static CGPOINTER NextImport( int index, aux_class request )
+static CGPOINTER NextImport( FrontRun& front, int index, aux_class request )
 /**********************************************************
  * NextImport
  *  Called (indirectly) from the code generator to inject automagically defined symbols.
@@ -1026,17 +1015,17 @@ static CGPOINTER NextImport( int index, aux_class request )
     int         i;
     extref_info *e;
 
-    if( !cvars_state().CompFlags.emit_targimp_symbols )
+    if( !front.cvars.CompFlags.emit_targimp_symbols )
         return( NULL );
 
     name = NULL;
     if( index == 0 ) {
-        addDefaultImports();
+        addDefaultImports(front);
     }
     if( request == FEINF_NEXT_IMPORT )
         index++;
     if( index > 0 ) {
-        for( i = 1, e = cvars_state().ExtrefInfo; e != NULL; i++, e = e->next ) {
+        for( i = 1, e = front.cvars.ExtrefInfo; e != NULL; i++, e = e->next ) {
             if( e->symbol != NULL )
                 continue;
             if( i == index ) {
@@ -1057,21 +1046,21 @@ static CGPOINTER NextImport( int index, aux_class request )
     return( (CGPOINTER)(pointer_uint)index );
 }
 
-static CGPOINTER NextImportS( int index, aux_class request )
+static CGPOINTER NextImportS( FrontRun& front, int index, aux_class request )
 /**********************************************************/
 {
     void        *symbol;
     int         i;
     extref_info *e;
 
-    if(!cvars_state().CompFlags.emit_targimp_symbols)
+    if(!front.cvars.CompFlags.emit_targimp_symbols)
         return( NULL );
 
     symbol = NULL;
     if( request == FEINF_NEXT_IMPORT_S )
         index++;
     if( index > 0 ) {
-        for( i = 1, e = cvars_state().ExtrefInfo; e != NULL; i++, e = e->next ) {
+        for( i = 1, e = front.cvars.ExtrefInfo; e != NULL; i++, e = e->next ) {
             if( e->symbol == NULL )
                 continue;
             if( i == index ) {
@@ -1092,7 +1081,7 @@ static CGPOINTER NextImportS( int index, aux_class request )
     return( (CGPOINTER)(pointer_uint)index );
 }
 
-CGPOINTER FEAuxInfo( CGPOINTER req_handle, aux_class request )
+CGPOINTER FEAuxInfo( FrontRun& front, CGPOINTER req_handle, aux_class request )
 /*************************************************************
  * pass auxiliary information to back end
  */
@@ -1105,129 +1094,129 @@ CGPOINTER FEAuxInfo( CGPOINTER req_handle, aux_class request )
         return( (CGPOINTER)FE_LANG_C );
 #if _INTEL_CPU
     case FEINF_STACK_SIZE_8087:
-        return( (CGPOINTER)(pointer_uint)cvars_state().Stack87 );
+        return( (CGPOINTER)(pointer_uint)front.cvars.Stack87 );
     case FEINF_CODE_GROUP:
-        return( (CGPOINTER)cvars_state().GenCodeGroup );
+        return( (CGPOINTER)front.cvars.GenCodeGroup );
     case FEINF_DATA_GROUP:
-        return( (CGPOINTER)cvars_state().DataSegName );
+        return( (CGPOINTER)front.cvars.DataSegName );
 #endif
     case FEINF_OBJECT_FILE_NAME:
-        return( (CGPOINTER)ObjFileName() );
+        return( (CGPOINTER)ObjFileName(front) );
     case FEINF_REVISION_NUMBER:
         return( (CGPOINTER)(pointer_uint)II_REVISION );
     case FEINF_AUX_LOOKUP:
         return( req_handle );
 #if _INTEL_CPU
     case FEINF_PROEPI_DATA_SIZE:
-        return( (CGPOINTER)(pointer_uint)cvars_state().ProEpiDataSize );
+        return( (CGPOINTER)(pointer_uint)front.cvars.ProEpiDataSize );
     case FEINF_DBG_PREDEF_SYM:
-        return( (CGPOINTER)cvars_state().SymDFAbbr );
+        return( (CGPOINTER)front.cvars.SymDFAbbr );
     case FEINF_P5_CHIP_BUG_SYM:
-        return( (CGPOINTER)cvars_state().SymChipBug );
+        return( (CGPOINTER)front.cvars.SymChipBug );
     case FEINF_CODE_LABEL_ALIGNMENT:
         {
 
-            if( cvars_state().OptSize == 0 )
-                cfeinfo_state().FEAuxInfo_Alignment[1] = TARGET_INT;
+            if( front.cvars.OptSize == 0 )
+                front.cfeinfo.FEAuxInfo_Alignment[1] = TARGET_INT;
 
-            return( (CGPOINTER)cfeinfo_state().FEAuxInfo_Alignment );
+            return( (CGPOINTER)front.cfeinfo.FEAuxInfo_Alignment );
         }
     case FEINF_CLASS_NAME:
-        return( (CGPOINTER)SegClassName( (segment_id)(pointer_uint)req_handle ) );
+        return( (CGPOINTER)SegClassName( front, (segment_id)(pointer_uint)req_handle ) );
     case FEINF_USED_8087:
-        cvars_state().CompFlags.pgm_used_8087 = true;
+        front.cvars.CompFlags.pgm_used_8087 = true;
         return( NULL );
   #if _CPU == 386
     case FEINF_P5_PROF_DATA:
-        return( (CGPOINTER)cvars_state().FunctionProfileBlock );
+        return( (CGPOINTER)front.cvars.FunctionProfileBlock );
     case FEINF_P5_PROF_SEG:
-        return( (CGPOINTER)(pointer_uint)cvars_state().FunctionProfileSegId );
+        return( (CGPOINTER)(pointer_uint)front.cvars.FunctionProfileSegId );
   #endif
 #endif
     case FEINF_SOURCE_NAME:
-        return( (CGPOINTER)FNameFullPath( cvars_state().FNames ) );
+        return( (CGPOINTER)FNameFullPath( front, front.cvars.FNames ) );
     case FEINF_CALL_CLASS:
-        return( (CGPOINTER)getCallClass( req_handle ) );
+        return( (CGPOINTER)getCallClass( front, req_handle ) );
     case FEINF_CALL_CLASS_TARGET:
-        return( (CGPOINTER)getCallClassTarget( req_handle ) );
+        return( (CGPOINTER)getCallClassTarget( front, req_handle ) );
     case FEINF_FREE_SEGMENT:
         return( NULL );
     case FEINF_NEXT_LIBRARY:
     case FEINF_LIBRARY_NAME:
-        return( NextLibrary( (int)(pointer_uint)req_handle, request ) );
+        return( NextLibrary( front, (int)(pointer_uint)req_handle, request ) );
     case FEINF_NEXT_IMPORT:
     case FEINF_IMPORT_NAME:
-        return( NextImport( (int)(pointer_uint)req_handle, request ) );
+        return( NextImport( front, (int)(pointer_uint)req_handle, request ) );
     case FEINF_NEXT_IMPORT_S:
     case FEINF_IMPORT_NAME_S:
-        return( NextImportS( (int)(pointer_uint)req_handle, request ) );
+        return( NextImportS( front, (int)(pointer_uint)req_handle, request ) );
     case FEINF_NEXT_ALIAS:
     case FEINF_ALIAS_NAME:
     case FEINF_ALIAS_SYMBOL:
     case FEINF_ALIAS_SUBST_NAME:
     case FEINF_ALIAS_SUBST_SYMBOL:
-        return( NextAlias( (int)(pointer_uint)req_handle, request ) );
+        return( NextAlias( front, (int)(pointer_uint)req_handle, request ) );
     case FEINF_TEMP_LOC_NAME:
         return( (CGPOINTER)(pointer_uint)TEMP_LOC_QUIT );
     case FEINF_TEMP_LOC_TELL:
         return( NULL );
     case FEINF_NEXT_DEPENDENCY:
-        if( cvars_state().CompFlags.emit_dependencies )
-            return( (CGPOINTER)NextDependency( (FNAMEPTR)req_handle ) );
+        if( front.cvars.CompFlags.emit_dependencies )
+            return( (CGPOINTER)NextDependency( front, (FNAMEPTR)req_handle ) );
         return( NULL );
     case FEINF_DEPENDENCY_TIMESTAMP:
         return( (CGPOINTER)&(((FNAMEPTR)req_handle)->mtime) );
     case FEINF_DEPENDENCY_NAME:
-        return( (CGPOINTER)FNameFullPath( (FNAMEPTR)req_handle ) );
+        return( (CGPOINTER)FNameFullPath( front, (FNAMEPTR)req_handle ) );
 #if _INTEL_CPU
     case FEINF_PEGGED_REGISTER:
-        return( (CGPOINTER)SegPeggedReg( (segment_id)(pointer_uint)req_handle ) );
+        return( (CGPOINTER)SegPeggedReg( front, (segment_id)(pointer_uint)req_handle ) );
 #endif
     case FEINF_DBG_DWARF_PRODUCER:
         return( (CGPOINTER)DWARF_PRODUCER_ID );
     case FEINF_SAVE_REGS:
         sym.mods = static_cast<type_modifiers>(0);
-        inf = FindInfo( &sym, req_handle );
-        cfeinfo_state().FEAuxInfo_save_set = inf->save;
+        inf = FindInfo( front, &sym, req_handle );
+        front.cfeinfo.FEAuxInfo_save_set = inf->save;
 #if _INTEL_CPU
         if( sym.mods & FLAG_SAVEREGS ) {
-            HW_CTurnOn( cfeinfo_state().FEAuxInfo_save_set, HW_SEGS );
+            HW_CTurnOn( front.cfeinfo.FEAuxInfo_save_set, HW_SEGS );
         }
   #ifdef __SEH__
-        if( (SYM_HANDLE)req_handle == cvars_state().SymTryInit ) {
-            HW_CTurnOff( cfeinfo_state().FEAuxInfo_save_set, HW_xSP );
+        if( (SYM_HANDLE)req_handle == front.cvars.SymTryInit ) {
+            HW_CTurnOff( front.cfeinfo.FEAuxInfo_save_set, HW_xSP );
         }
   #endif
 #endif
-        return( (CGPOINTER)&cfeinfo_state().FEAuxInfo_save_set );
+        return( (CGPOINTER)&front.cfeinfo.FEAuxInfo_save_set );
     case FEINF_RETURN_REG:
-        inf = FindInfo( &sym, req_handle );
+        inf = FindInfo( front, &sym, req_handle );
         return( (CGPOINTER)&inf->returns );
     case FEINF_CALL_BYTES:
-        inf = FindInfo( &sym, req_handle );
+        inf = FindInfo( front, &sym, req_handle );
         return( (CGPOINTER)inf->code );
     case FEINF_PARM_REGS:
 #if _INTEL_CPU
   #ifdef __SEH__
-        if(( (SYM_HANDLE)req_handle == cvars_state().SymTryInit )
-          || ( (SYM_HANDLE)req_handle == cvars_state().SymTryFini )
-          || ( (SYM_HANDLE)req_handle == cvars_state().SymTryUnwind )
-          || ( (SYM_HANDLE)req_handle == cvars_state().SymExcept )) {
+        if(( (SYM_HANDLE)req_handle == front.cvars.SymTryInit )
+          || ( (SYM_HANDLE)req_handle == front.cvars.SymTryFini )
+          || ( (SYM_HANDLE)req_handle == front.cvars.SymTryUnwind )
+          || ( (SYM_HANDLE)req_handle == front.cvars.SymExcept )) {
             return( (CGPOINTER)TryParms );
         }
   #endif
 #endif
-        inf = FindInfo( &sym, req_handle );
+        inf = FindInfo( front, &sym, req_handle );
         if( req_handle != NULL ) {
             if( inf->code == NULL
-              && VarFunc( &sym ) ) {
+              && VarFunc( front, &sym ) ) {
                 return( (CGPOINTER)DefaultVarParms );
             }
         }
         return( (CGPOINTER)inf->parms );
 #if _INTEL_CPU
     case FEINF_STRETURN_REG:
-        inf = FindInfo( &sym, req_handle );
+        inf = FindInfo( front, &sym, req_handle );
         return( (CGPOINTER)&inf->streturn );
 #endif
     default:

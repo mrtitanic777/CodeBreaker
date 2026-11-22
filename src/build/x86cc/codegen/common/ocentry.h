@@ -35,6 +35,7 @@
  * base class is in range 0x00 - 0x1F
  * info bits are shifted to upper bits by OC_INFO_SHIFT
  */
+#pragma once
 #define OC_INFO_SHIFT       5
 
 #define OC_BASE_MASK        ((1 << OC_INFO_SHIFT) - 1)

@@ -29,6 +29,7 @@
 ****************************************************************************/
 
 
-extern void     ScoreInit( void );
+#pragma once
+extern void     ScoreInit( BackRun& back );
 extern void     ScoreFini( void );
-extern void     Score( void );
+extern void     Score( BackRun& back );

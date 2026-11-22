@@ -30,22 +30,23 @@
 ****************************************************************************/
 
 
-extern block            *MakeBlockInit( block_num targets );
-extern block            *MakeBlockCopy( block_num targets, block *src, block_num src_targets );
-extern void             FreeABlock( block *blk );
-extern void             FreeBlock( void );
-extern void             EnLink( label_handle label );
-extern void             AddIns( instruction *ins );
-extern void             GenBlock( block_class class_, block_num targets );
-extern block            *ReGenBlock( block *blk, label_handle lbl );
-extern type_class_def   InitCallState( const type_def *tipe );
-extern type_class_def   CallState( aux_handle aux, const type_def *tipe, call_state *state );
-extern void             AddTarget( label_handle dest, bool dest_label_dies );
-extern block            *FindBlockWithLbl( label_handle label );
-extern void             FixEdges( void );
-extern bool             FixReturns( void );
-extern void             UnFixEdges( void );
-extern void             AddAnIns( block *blk, instruction *ins );
-extern bool             BlkTooBig( void );
-extern void             NewProc( level_depth level );
-extern void             FreeProc( void );
+#pragma once
+extern block            *MakeBlockInit( BackRun& back, block_num targets );
+extern block            *MakeBlockCopy( BackRun& back, block_num targets, block *src, block_num src_targets );
+extern void             FreeABlock( BackRun& back, block *blk );
+extern void             FreeBlock( BackRun& back );
+extern void             EnLink( BackRun& back, label_handle label );
+extern void             AddIns( BackRun& back, instruction *ins );
+extern void             GenBlock( BackRun& back, block_class class_, block_num targets );
+extern block            *ReGenBlock( BackRun& back, block *blk, label_handle lbl );
+extern type_class_def   InitCallState( BackRun& back, const type_def *tipe );
+extern type_class_def   CallState( BackRun& back, aux_handle aux, const type_def *tipe, call_state *state );
+extern void             AddTarget( BackRun& back, label_handle dest, bool dest_label_dies );
+extern block            *FindBlockWithLbl( BackRun& back, label_handle label );
+extern void             FixEdges( BackRun& back );
+extern bool             FixReturns( BackRun& back );
+extern void             UnFixEdges( BackRun& back );
+extern void             AddAnIns( BackRun& back, block *blk, instruction *ins );
+extern bool             BlkTooBig( BackRun& back );
+extern void             NewProc( BackRun& back, level_depth level );
+extern void             FreeProc( BackRun& back );

@@ -39,6 +39,7 @@
 #include "rgtbl.h"
 #include "parm.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
 hw_reg_set      ParmInLineReg( parm_state *state )
@@ -55,7 +56,7 @@ hw_reg_set      ParmInLineReg( parm_state *state )
     return( regs );
 }
 
-type_length      ParmMem( type_length length, type_length alignment, call_state *state )
+type_length      ParmMem( BackRun& back, type_length length, type_length alignment, call_state *state )
 /**************************************************************************************/
 {
     type_length     offset;
@@ -73,14 +74,14 @@ type_length      ParmMem( type_length length, type_length alignment, call_state 
         offset = _RoundUp( offset, alignment );
     }
     state->parm.offset = offset + _RoundUp( length, word_size );
-    if( state->parm.offset > data_state().MaxStack ) {
-        data_state().MaxStack = state->parm.offset;
+    if( state->parm.offset > back.data.MaxStack ) {
+        back.data.MaxStack = state->parm.offset;
     }
     return( offset );
 }
 
-const type_def  *QParmType( cg_sym_handle func, cg_sym_handle parm, const type_def *tipe )
+const type_def  *QParmType( BackRun& back, cg_sym_handle func, cg_sym_handle parm, const type_def *tipe )
 /****************************************************************************************/
 {
-    return( TypeAddress( FEParmType( func, parm, tipe->refno ) ) );
+    return( TypeAddress( back, FEParmType( *back.front, func, parm, tipe->refno ) ) );
 }

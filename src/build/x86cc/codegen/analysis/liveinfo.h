@@ -30,8 +30,9 @@
 ****************************************************************************/
 
 
+#pragma once
 extern void    NowAlive( name *opnd, conflict_node *conf, name_set *alive, block *blk );
 extern void    NowDead( name *opnd, conflict_node *conf, name_set *alive, block *blk );
-extern void    MakeLiveInfo( void );
-extern void    LiveInfoUpdate( void );
-extern void    UpdateLive( instruction *first, instruction *last );
+extern void    MakeLiveInfo( BackRun& back );
+extern void    LiveInfoUpdate( BackRun& back );
+extern void    UpdateLive( BackRun& back, instruction *first, instruction *last );

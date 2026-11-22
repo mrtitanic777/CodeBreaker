@@ -65,9 +65,10 @@
 #include "tree.h"
 #include "treeprot.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
-type_class_def  AddCallBlock( cg_sym_handle sym, const type_def *tipe )
+type_class_def  AddCallBlock( BackRun& back, cg_sym_handle sym, const type_def *tipe )
 /*********************************************************************
  * create the initial basic block for routine "sym", and call some
  * other initialization routines.
@@ -75,32 +76,32 @@ type_class_def  AddCallBlock( cg_sym_handle sym, const type_def *tipe )
 {
     type_class_def      type_class;
 
-    if( blips_state().BlipsOn ) {
-        PGBlip( FEName( sym ) );
+    if( back.blips.BlipsOn ) {
+        PGBlip( FEName( *back.front, sym ) );
     }
-    NewProc( FELexLevel( sym ) );
-    EnLink( AskForSymLabel( sym, CG_FE ) );
-    _MarkBlkAttrSet( data_state().CurrBlock, BLK_BIG_LABEL );
-    data_state().CurrProc->label = data_state().CurrBlock->label;
-    type_class = InitCallState( tipe );
-    AddIns( MakeNop() );
+    NewProc( back, FELexLevel( sym ) );
+    EnLink( back, AskForSymLabel( back, sym, CG_FE ) );
+    _MarkBlkAttrSet( back.data.CurrBlock, BLK_BIG_LABEL );
+    back.data.CurrProc->label = back.data.CurrBlock->label;
+    type_class = InitCallState( back, tipe );
+    AddIns( back, MakeNop(back) );
     return( type_class );
 }
 
 
-void    BGFiniCall( cn call )
+void    BGFiniCall( BackRun& back, cn call )
 /************************************
  * free up a call node
  */
 {
-    BGDone( call->name );
-    CGFree( call->state->parm.table );
-    CGFree( call->state );
-    CGFree( call );
+    BGDone( back, call->name );
+    CGFree( back, call->state->parm.table );
+    CGFree( back, call->state );
+    CGFree( back, call );
 }
 
 
-cn      BGInitCall( an node, const type_def *tipe, aux_handle aux )
+cn      BGInitCall( BackRun& back, an node, const type_def *tipe, aux_handle aux )
 /******************************************************************
  * initialize a call node for a call to routine "node", with type
  * "tipe" and aux handle "aux". This also allocates the instruction
@@ -115,28 +116,28 @@ cn      BGInitCall( an node, const type_def *tipe, aux_handle aux )
 #endif
 
     if( tipe->refno == TY_DEFAULT ) {
-        tipe = data_state().TypeInteger;
+        tipe = back.data.TypeInteger;
     }
-    call = static_cast<cn>(CGAlloc( sizeof( call_node ) ));
-    call->state = static_cast<struct call_state *>(CGAlloc( sizeof( call_state ) ));
+    call = static_cast<cn>(CGAlloc( back, sizeof( call_node ) ));
+    call->state = static_cast<struct call_state *>(CGAlloc( back, sizeof( call_state ) ));
     call->name = node;
     call->tipe = tipe;
     call->parms = NULL;
-    call->ins = NewIns( 3 );
+    call->ins = NewIns( back, 3 );
     if( node->format == NF_ADDR && node->class_ == CL_ADDR_GLOBAL ) {
         call->ins->head.opcode = OP_CALL;
-        type_class = CallState( aux, tipe, call->state );
+        type_class = CallState( back, aux, tipe, call->state );
         mem = node->u.n.name;
-        mem = SAllocMemory( mem->v.symbol, mem->v.offset, mem->m.memory_type,
+        mem = SAllocMemory( back, mem->v.symbol, mem->v.offset, mem->m.memory_type,
                             mem->n.type_class, mem->n.size );
         node->u.n.name = mem;
     } else {
         call->ins->head.opcode = OP_CALL_INDIRECT;
-        type_class = CallState( aux, tipe, call->state );
+        type_class = CallState( back, aux, tipe, call->state );
 #if _TARGET_INTEL
-        cookie = FEAuxInfo( aux, FEINF_VIRT_FUNC_REFERENCE );
+        cookie = FEAuxInfo( *back.front, aux, FEINF_VIRT_FUNC_REFERENCE );
         if( cookie != NULL )
-            TellObjVirtFuncRef( cookie );
+            TellObjVirtFuncRef( back, cookie );
 #elif _TARGET & _TARG_PPC
         CurrProc->targ.toc_clobbered = true;
 #endif
@@ -146,28 +147,28 @@ cn      BGInitCall( an node, const type_def *tipe, aux_handle aux )
 }
 
 
-void    BGAddParm( cn call, an parm )
+void    BGAddParm( BackRun& back, cn call, an parm )
 /**********************************************
  * link a parm into the list of parms for a call node
  */
 {
     pn          new_parm;
 
-    new_parm = static_cast<pn>(CGAlloc( sizeof( parm_node ) ));
-    new_parm->name = AddrToIns( parm );
+    new_parm = static_cast<pn>(CGAlloc( back, sizeof( parm_node ) ));
+    new_parm->name = AddrToIns( back, parm );
     new_parm->name->flags |= FL_ADDR_OK_ACROSS_BLOCKS; /* always taken care of by BGCall*/
     new_parm->next = call->parms;
     call->parms = new_parm;
 }
 
 
-void    BGAutoDecl( cg_sym_handle sym, const type_def *tipe )
+void    BGAutoDecl( BackRun& back, cg_sym_handle sym, const type_def *tipe )
 /*************************************************************
  * declare an automatic variable with name "sym" and type "tipe". This
  * just creates the appropriate back end symbol table entry. (eg: N_TEMP)
  */
 {
-    BGDone( MakeAddrName( CG_FE, sym, tipe ) );
+    BGDone( back, MakeAddrName( back, CG_FE, sym, tipe ) );
 }
 
 static  void    LinkParmIns( instruction *parm_def, instruction *ins )
@@ -179,16 +180,16 @@ static  void    LinkParmIns( instruction *parm_def, instruction *ins )
     parm_def->ins_flags |= INS_PARAMETER;
 }
 
-static  instruction *DoParmDef( name *result, type_class_def type_class )
+static  instruction *DoParmDef( BackRun& back, name *result, type_class_def type_class )
 /***********************************************************************/
 {
     instruction *parm_def;
 
-    parm_def = NewIns( 0 );
+    parm_def = NewIns( back, 0 );
     parm_def->head.opcode = OP_PARM_DEF;
     parm_def->type_class = type_class;
     parm_def->result = result;
-    AddIns( parm_def );
+    AddIns( back, parm_def );
     return( parm_def );
 }
 
@@ -265,7 +266,7 @@ static  name    *DoAlphaParmDecl( hw_reg_set reg, cg_sym_handle sym, const type_
 }
 #endif
 
-name    *DoParmDecl( cg_sym_handle sym, const type_def *tipe, hw_reg_set reg )
+name    *DoParmDecl( BackRun& back, cg_sym_handle sym, const type_def *tipe, hw_reg_set reg )
 /**************************************************************************
  * Declare a parameter of type "tipe" for the current routine. This
  * routine determines whether the parameter is coming in in a register
@@ -288,13 +289,13 @@ name    *DoParmDecl( cg_sym_handle sym, const type_def *tipe, hw_reg_set reg )
     const type_def      *ptipe;
     bool                no_temp;
 
-    ptipe = QParmType( AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) ), sym, tipe );
-    type_class = TypeClass( ptipe );
+    ptipe = QParmType( back, AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) ), sym, tipe );
+    type_class = TypeClass( back, ptipe );
     if( sym == NULL ) {
-        temp = AllocTemp( TypeClass( tipe ) );
+        temp = AllocTemp( back, TypeClass( back, tipe ) );
     } else {
-        temp = SAllocUserTemp( sym, TypeClass( tipe ), tipe->length );
-        BGDone( MakeAddrName( CG_FE, sym, tipe ) );
+        temp = SAllocUserTemp( back, sym, TypeClass( back, tipe ), tipe->length );
+        BGDone( back, MakeAddrName( back, CG_FE, sym, tipe ) );
     }
     temp->v.usage |= USE_IN_ANOTHER_BLOCK;
 
@@ -306,7 +307,7 @@ name    *DoParmDecl( cg_sym_handle sym, const type_def *tipe, hw_reg_set reg )
      * them specially to stop the optimizer from eliminating the writes (don't
      * create temps normally used with simple types).
      */
-    if( _RoutineIsInterrupt( data_state().CurrProc->state.attr ) && HW_CEqual( reg, HW_EMPTY ) ) {
+    if( _RoutineIsInterrupt( back.data.CurrProc->state.attr ) && HW_CEqual( reg, HW_EMPTY ) ) {
         no_temp = true;
         temp->v.usage |= USE_ADDRESS;
     }
@@ -319,37 +320,37 @@ name    *DoParmDecl( cg_sym_handle sym, const type_def *tipe, hw_reg_set reg )
     if( HW_CEqual( reg, HW_EMPTY ) ) {
         if( no_temp ) {
             parm_name = temp;
-            parm_name->t.location = ParmMem( tipe->length, ParmAlignment( ptipe ), &data_state().CurrProc->state );
+            parm_name->t.location = ParmMem( back, tipe->length, ParmAlignment( ptipe ), &back.data.CurrProc->state );
         } else {
-            parm_name = AllocTemp( type_class );
-            parm_name->t.location = ParmMem( ptipe->length, ParmAlignment( ptipe ), &data_state().CurrProc->state );
+            parm_name = AllocTemp( back, type_class );
+            parm_name->t.location = ParmMem( back, ptipe->length, ParmAlignment( ptipe ), &back.data.CurrProc->state );
         }
         parm_name->t.temp_flags |= STACK_PARM;
 //        parm_name->n.size = tipe->length;
         parm_name->n.size = ptipe->length;
         parm_name->v.usage |= NEEDS_MEMORY | HAS_MEMORY | USE_MEMORY;
     } else {
-        parm_name = AllocRegName( ActualParmReg( reg ) );
+        parm_name = AllocRegName( back, ActualParmReg( reg ) );
 #if _TARGET & _TARG_80386
-        if( data_state().CurrProc->state.attr & ROUTINE_STACK_RESERVE ) {
+        if( back.data.CurrProc->state.attr & ROUTINE_STACK_RESERVE ) {
             /*
              * Just make sure we are taking up some space
              */
-            ParmMem( ptipe->length, ParmAlignment( ptipe ), &data_state().CurrProc->state );
+            ParmMem( back, ptipe->length, ParmAlignment( ptipe ), &back.data.CurrProc->state );
         }
 #endif
     }
     if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) { // d1+ or d2
         if( sym != NULL ) {
-            DbgParmLoc( parm_name, sym );
+            DbgParmLoc( back, parm_name, sym );
         }
     }
-    parm_def = DoParmDef( parm_name, type_class );
+    parm_def = DoParmDef( back, parm_name, type_class );
     if( type_class != XX ) {
-        ins = MakeConvert( parm_name, temp, TypeClass( tipe ), type_class );
+        ins = MakeConvert( back, parm_name, temp, TypeClass( back, tipe ), type_class );
         LinkParmIns( parm_def, ins );
-        AddIns( ins );
-        TRDeclareParm( ins );
+        AddIns( back, ins );
+        TRDeclareParm( back, ins );
         if( temp->n.class_ == N_TEMP && parm_name->n.class_ == N_TEMP ) {
             temp->t.location = parm_name->t.location;
 #if (_TARGET & _TARG_PPC) || (_TARGET & _TARG_MIPS)
@@ -368,24 +369,24 @@ name    *DoParmDecl( cg_sym_handle sym, const type_def *tipe, hw_reg_set reg )
 #endif
         }
     }
-    data_state().MaxStack = 0;
+    back.data.MaxStack = 0;
     return( temp );
 }
 
 
-void    BGParmDecl( cg_sym_handle sym, const type_def *tipe )
+void    BGParmDecl( BackRun& back, cg_sym_handle sym, const type_def *tipe )
 /***********************************************************/
 {
     hw_reg_set          reg;
     const type_def      *t;
 
-    t = QParmType( AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) ), sym, tipe );
-    reg = ParmReg( TypeClass( t ), t->length, ParmAlignment( tipe ), &data_state().CurrProc->state );
-    DoParmDecl( sym, tipe, reg );
+    t = QParmType( back, AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) ), sym, tipe );
+    reg = ParmReg( back, TypeClass( back, t ), t->length, ParmAlignment( tipe ), &back.data.CurrProc->state );
+    DoParmDecl( back, sym, tipe, reg );
 }
 
 
-static  void    LinkParms( instruction *call_ins, pn *owner )
+static  void    LinkParms( BackRun& back, instruction *call_ins, pn *owner )
 /**************************************************************
  * call TRAddParm for each parm in order and delete the parm nodes
  */
@@ -400,12 +401,12 @@ static  void    LinkParms( instruction *call_ins, pn *owner )
          */
 //        if( parm->ins == NULL ) _Zoiks( ZOIKS_XXX );
         TRAddParm( call_ins, parm->ins );
-        CGFree( parm );
+        CGFree( back, parm );
     }
     *owner = NULL;
 }
 
-void    AddCallIns( instruction *ins, cn call )
+void    AddCallIns( BackRun& back, instruction *ins, cn call )
 /*********************************************************
  * stick the call instruction into the current basic block
  */
@@ -421,7 +422,7 @@ void    AddCallIns( instruction *ins, cn call )
         call_name = call->name->u.n.name;
         attr = static_cast<fe_attr>(0);
         if( call_name->m.memory_type == CG_FE ) {
-            attr = FEAttr( static_cast<cg_sym_handle>(call_name->v.symbol) );
+            attr = FEAttr( *back.front, static_cast<cg_sym_handle>(call_name->v.symbol) );
 #if _TARGET_RISC
             /*
              * in case the inline assembly code references a local variable
@@ -446,23 +447,23 @@ void    AddCallIns( instruction *ins, cn call )
              */
             addr_type_class = WD;
 #if _TARGET_INTEL
-            if( (call_class_target)(pointer_uint)FindAuxInfo( call_name, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL ) {
+            if( (call_class_target)(pointer_uint)FindAuxInfo( back, call_name, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL ) {
                 addr_type_class = CP;
             }
 #endif
-            temp = AllocTemp( addr_type_class );
-            new_ins = MakeUnary( OP_LA, call_name, temp, addr_type_class );
-            AddIns( new_ins );
+            temp = AllocTemp( back, addr_type_class );
+            new_ins = MakeUnary( back, OP_LA, call_name, temp, addr_type_class );
+            AddIns( back, new_ins );
             call_name = temp;
             ins->head.opcode = OP_CALL_INDIRECT;
             ins->num_operands = 3;
         }
         ins->operands[CALL_OP_ADDR] = call_name;
     } else {
-        ins->operands[CALL_OP_ADDR] = GenIns( call->name );
+        ins->operands[CALL_OP_ADDR] = GenIns( back, call->name );
     }
-    AddIns( ins );
-    TNZapParms();
+    AddIns( back, ins );
+    TNZapParms(back);
     PostCall( call );
 }
 
@@ -485,7 +486,7 @@ void    ReverseParmNodeList( pn *owner )
 }
 
 
-void            PushParms( pn parm, call_state *state )
+void            PushParms( BackRun& back, pn parm, call_state *state )
 /**************************************************************
  * Run through the list of parameters, generating pushes
  * for the ones that are being passed on the stack. Unhook them
@@ -505,21 +506,21 @@ void            PushParms( pn parm, call_state *state )
                     _Zoiks( ZOIKS_043 );
                 }
                 ins = addr->u.i.ins;
-                PushInSameBlock( ins );
+                PushInSameBlock( back, ins );
                 if( ins->head.opcode == OP_MOV && !IsVolatile( ins->operands[0] ) && (addr->flags & FL_VOLATILE) == 0 ) {
-                    push_ins = PushOneParm( ins, ins->operands[0], ins->type_class, parm->offset, state );
+                    push_ins = PushOneParm( back, ins, ins->operands[0], ins->type_class, parm->offset, state );
 //                    ins->result = ins->operands[0]; /* was this useful? */
-                    FreeIns( ins );
+                    FreeIns( back, ins );
                 } else {
-                    ins->result = BGNewTemp( addr->tipe );
+                    ins->result = BGNewTemp( back, addr->tipe );
                     FPNotStack( ins->result );
                     if( addr->flags & FL_ADDR_CROSSED_BLOCKS ) {
                         ins->result->v.usage |= USE_IN_ANOTHER_BLOCK;
                     }
-                    push_ins = PushOneParm( ins, ins->result, ins->result->n.type_class, parm->offset, state );
+                    push_ins = PushOneParm( back, ins, ins->result, ins->result->n.type_class, parm->offset, state );
                 }
                 addr->format = NF_ADDR; /* so instruction doesn't get freed! */
-                BGDone( addr );
+                BGDone( back, addr );
                 parm->ins = push_ins;
             }
         }
@@ -527,7 +528,7 @@ void            PushParms( pn parm, call_state *state )
 }
 
 #if _TARGET & _TARG_80386
-void    ReserveStack( call_state *state, instruction *prev, type_length len )
+void    ReserveStack( BackRun& back, call_state *state, instruction *prev, type_length len )
 /****************************************************************************
  * grab len bytes off the stack - doesn't matter what goes in there
  * as long as the space is allocated.  Guaranteed that len is a multiple
@@ -537,28 +538,28 @@ void    ReserveStack( call_state *state, instruction *prev, type_length len )
     name        *reg;
     instruction *ins;
 
-    data_state().CurrProc->targ.never_sp_frame = true;
-    reg = AllocRegName( HW_xAX );
+    back.data.CurrProc->targ.never_sp_frame = true;
+    reg = AllocRegName( back, HW_xAX );
     switch( len ) {
     case 8:
-        ins = MakeUnary( OP_PUSH, reg, NULL, WD );
-        SuffixIns( prev, ins );
+        ins = MakeUnary( back, OP_PUSH, reg, NULL, WD );
+        SuffixIns( back, prev, ins );
         /* fall through */
     case 4:
-        ins = MakeUnary( OP_PUSH, reg, NULL, WD );
-        SuffixIns( prev, ins );
+        ins = MakeUnary( back, OP_PUSH, reg, NULL, WD );
+        SuffixIns( back, prev, ins );
         break;
     default:
         _Zoiks( ZOIKS_133 );
     }
     state->parm.offset += len;
-    if( state->parm.offset > data_state().MaxStack ) {
-        data_state().MaxStack = state->parm.offset;
+    if( state->parm.offset > back.data.MaxStack ) {
+        back.data.MaxStack = state->parm.offset;
     }
 }
 #endif
 
-void    ParmIns( pn parm, call_state *state )
+void    ParmIns( BackRun& back, pn parm, call_state *state )
 /******************************************************
  * generate the move instructions for parameters that are passed in registers.
  * This should be all that's left on the list by now. The rest have all
@@ -576,9 +577,9 @@ void    ParmIns( pn parm, call_state *state )
             if( addr->format != NF_INS ) {
                 _Zoiks( ZOIKS_043 );
             }
-            reg = AllocRegName( ActualParmReg( parm->regs ) );
+            reg = AllocRegName( back, ActualParmReg( parm->regs ) );
             ins = addr->u.i.ins;
-            ins->result = BGNewTemp( addr->tipe );
+            ins->result = BGNewTemp( back, addr->tipe );
             if( addr->flags & FL_ADDR_CROSSED_BLOCKS ) {
                 ins->result->v.usage |= USE_IN_ANOTHER_BLOCK;
             }
@@ -588,19 +589,19 @@ void    ParmIns( pn parm, call_state *state )
             AddIns( ins );
 #else
             if( addr->tipe->length == reg->n.size ) {
-                ins = MakeMove( curr, reg, TypeClass( addr->tipe ) );
-                AddIns( ins );
-            } else if( !CvtOk( TypeClass( addr->tipe ), reg->n.type_class ) ) {
+                ins = MakeMove( back, curr, reg, TypeClass( back, addr->tipe ) );
+                AddIns( back, ins );
+            } else if( !CvtOk( back, TypeClass( back, addr->tipe ), reg->n.type_class ) ) {
                 ins = NULL;
-                FEMessage( FEMSG_BAD_PARM_REGISTER, (pointer)(pointer_uint)parm->num );
+                FEMessage( *back.front, FEMSG_BAD_PARM_REGISTER, (pointer)(pointer_uint)parm->num );
   #if _TARGET_INTEL
             } else if( HW_CEqual( reg->r.reg, HW_ABCD ) ) {
                 ins = NULL;
-                FEMessage( FEMSG_BAD_PARM_REGISTER, (pointer)(pointer_uint)parm->num );
+                FEMessage( *back.front, FEMSG_BAD_PARM_REGISTER, (pointer)(pointer_uint)parm->num );
   #endif
             } else {
-                ins = MakeConvert( curr, reg, reg->n.type_class, TypeClass( addr->tipe ) );
-                AddIns( ins );
+                ins = MakeConvert( back, curr, reg, reg->n.type_class, TypeClass( back, addr->tipe ) );
+                AddIns( back, ins );
             }
 #endif
 #if _TARGET & _TARG_80386
@@ -608,20 +609,20 @@ void    ParmIns( pn parm, call_state *state )
                 /*
                  * this is for the stupid OS/2 _Optlink calling convention
                  */
-                ReserveStack( state, ins, addr->tipe->length );
+                ReserveStack( back, state, ins, addr->tipe->length );
             }
 #else
             /* unused parameters */ (void)state;
 #endif
             addr->format = NF_ADDR; /* so instruction doesn't get freed! */
-            BGDone( addr );
+            BGDone( back, addr );
             parm->ins = ins;
         }
     }
 }
 
 
-void    BGZapBase( name *base, const type_def *tipe )
+void    BGZapBase( BackRun& back, name *base, const type_def *tipe )
 /********************************************************
  * for FORTRAN. Generate a NOP with result of base[temp], so that we
  * know that a pass by reference argument can be modified by the
@@ -636,16 +637,16 @@ void    BGZapBase( name *base, const type_def *tipe )
         return;
     if( (tipe->attr & TYPE_POINTER) == 0 )
         return;
-    ins = MakeNop();
-    if( data_state().DummyIndex == NULL )
-        data_state().DummyIndex = AllocTemp( WD );
-    ins->result = ScaleIndex( data_state().DummyIndex, base, 0, XX, tipe->length, SCALE_NONE, X_FAKE_BASE );
+    ins = MakeNop(back);
+    if( back.data.DummyIndex == NULL )
+        back.data.DummyIndex = AllocTemp( back, WD );
+    ins->result = ScaleIndex( back, back.data.DummyIndex, base, 0, XX, tipe->length, SCALE_NONE, X_FAKE_BASE );
     ins->flags.u.nop_flags |= NOP_ZAP_INFO;
-    AddIns( ins );
+    AddIns( back, ins );
 }
 
 
-void    BGReturn( an retval, const type_def *tipe )
+void    BGReturn( BackRun& back, an retval, const type_def *tipe )
 /******************************************************
  * generate the instructions to return the value 'retval', then
  * go off and call generate to optimize the whole routine and
@@ -659,23 +660,23 @@ void    BGReturn( an retval, const type_def *tipe )
     type_class_def      tipe_type_class;
     type_class_def      type_class;
 
-    ins = MakeNop();
+    ins = MakeNop(back);
     last_ins = NULL;
     if( retval != NULL ) {
-        tipe_type_class = TypeClass( tipe );
-        type_class = ReturnTypeClass( tipe, data_state().CurrProc->state.attr );
-        UpdateReturn( &data_state().CurrProc->state, tipe, type_class, static_cast<aux_handle>(FEAuxInfo( AskForLblSym(static_cast<label_handle>(data_state().CurrProc->label)), FEINF_AUX_LOOKUP )) );
+        tipe_type_class = TypeClass( back, tipe );
+        type_class = ReturnTypeClass( back, tipe, back.data.CurrProc->state.attr );
+        UpdateReturn( back, &back.data.CurrProc->state, tipe, type_class, static_cast<aux_handle>(FEAuxInfo( *back.front, AskForLblSym(back, static_cast<label_handle>(back.data.CurrProc->label)), FEINF_AUX_LOOKUP )) );
         if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) { // d1+ or d2
-            DbgRetLoc();
+            DbgRetLoc(back);
         }
         if( type_class == XX ) {
-            name = StReturn( retval, tipe, &last_ins );
-            AddIns( MakeMove( GenIns( retval ), name, tipe_type_class ) );
+            name = StReturn( back, retval, tipe, &last_ins );
+            AddIns( back, MakeMove( back, GenIns( back, retval ), name, tipe_type_class ) );
         } else {
-            if( HW_CEqual( data_state().CurrProc->state.return_reg, HW_EMPTY ) ) {
-                name = StReturn( retval, tipe, &last_ins );
+            if( HW_CEqual( back.data.CurrProc->state.return_reg, HW_EMPTY ) ) {
+                name = StReturn( back, retval, tipe, &last_ins );
             } else {
-                name = AllocRegName( data_state().CurrProc->state.return_reg );
+                name = AllocRegName( back, back.data.CurrProc->state.return_reg );
             }
 #if _TARGET & _TARG_AXP
             if( tipe_type_class == U4 && type_class == I8 ) {
@@ -683,9 +684,9 @@ void    BGReturn( an retval, const type_def *tipe )
             } else {
 #endif
                 if( tipe->length == name->n.size ) {
-                    ret_ins = MakeMove( GenIns( retval ), name, name->n.type_class );
+                    ret_ins = MakeMove( back, GenIns( back, retval ), name, name->n.type_class );
                 } else {
-                    ret_ins = MakeConvert( GenIns( retval ), name, name->n.type_class, tipe_type_class );
+                    ret_ins = MakeConvert( back, GenIns( back, retval ), name, name->n.type_class, tipe_type_class );
                 }
                 /*
                  * BBB - we can get a situation where we are returning
@@ -696,22 +697,22 @@ void    BGReturn( an retval, const type_def *tipe )
 #if _TARGET & _TARG_AXP
             }
 #endif
-            AddIns( ret_ins );
+            AddIns( back, ret_ins );
         }
-        BGDone( retval );
+        BGDone( back, retval );
     } else {
-        ins->zap = &AllocRegName( data_state().CurrProc->state.return_reg )->r;
+        ins->zap = &AllocRegName( back, back.data.CurrProc->state.return_reg )->r;
         ins->flags.u.nop_flags |= NOP_ZAP_INFO;
     }
-    AddIns( ins );
+    AddIns( back, ins );
     if( last_ins != NULL )
-        AddIns( last_ins );
-    GenBlock( BLK_RETURN, 0 );
-    if( data_state().AddrList != NULL ) {
+        AddIns( back, last_ins );
+    GenBlock( back, BLK_RETURN, 0 );
+    if( back.data.AddrList != NULL ) {
         _Zoiks( ZOIKS_003 );
     }
-    Generate( true );
-    model_state().TargetModel = model_state().SaveTargetModel;
+    Generate( back, true );
+    back.model.TargetModel = back.model.SaveTargetModel;
 }
 
 #if _TARGET_RISC
@@ -805,7 +806,7 @@ static void SplitStructParms( pn *parm_list, call_state *state )
 }
 #endif
 
-bool        AssgnParms( cn call, bool aux_inline )
+bool        AssgnParms( BackRun& back, cn call, bool aux_inline )
 /********************************************************
  * Decide what registers the parms should go in.
  * Assign registers to first parm first, etc. Also, assign a congolmeration
@@ -837,17 +838,17 @@ bool        AssgnParms( cn call, bool aux_inline )
             parm->regs = ParmInLineReg( &state->parm );
             if( HW_CEqual( parm->regs, HW_EMPTY ) ) {
                 if( !HW_CEqual( *(state->parm.curr_entry), HW_EMPTY ) ) {
-                    FEMessage( FEMSG_ERROR, const_cast<pointer>(static_cast<const void *>("More parameters than registers in pragma")) );
+                    FEMessage( *back.front, FEMSG_ERROR, const_cast<pointer>(static_cast<const void *>("More parameters than registers in pragma")) );
                 } else {
-                    parm->offset = ParmMem( parm->name->tipe->length, ParmAlignment( parm->name->tipe ), state );
+                    parm->offset = ParmMem( back, parm->name->tipe->length, ParmAlignment( parm->name->tipe ), state );
                     push_no_pop = true;
                 }
             } else {
-                parm_type_class = TypeClass( parm->name->tipe );
-                reg_type_class  = AllocRegName( parm->regs )->n.type_class;
+                parm_type_class = TypeClass( back, parm->name->tipe );
+                reg_type_class  = AllocRegName( back, parm->regs )->n.type_class;
                 if( parm_type_class != FD || reg_type_class != U8 ) {
-                    if( !CvtOk( parm_type_class, reg_type_class ) ) {
-                        FEMessage( FEMSG_BAD_PARM_REGISTER, (pointer)(pointer_uint)( parms + 1 ) );
+                    if( !CvtOk( back, parm_type_class, reg_type_class ) ) {
+                        FEMessage( *back.front, FEMSG_BAD_PARM_REGISTER, (pointer)(pointer_uint)( parms + 1 ) );
                     }
                 }
             }
@@ -855,12 +856,12 @@ bool        AssgnParms( cn call, bool aux_inline )
 #if ( _TARGET & _TARG_PPC ) == 0
             parm->alignment = 1;
 #endif
-            parm->regs = ParmReg( TypeClass( parm->name->tipe ),
+            parm->regs = ParmReg( back, TypeClass( back, parm->name->tipe ),
                                    parm->name->tipe->length,
                                    parm->alignment,
                                    state );
             if( HW_CEqual( parm->regs, HW_EMPTY ) ) {
-                parm->offset = ParmMem( parm->name->tipe->length, parm->alignment, state );
+                parm->offset = ParmMem( back, parm->name->tipe->length, parm->alignment, state );
                 push_no_pop = true;
             }
         }
@@ -869,21 +870,21 @@ bool        AssgnParms( cn call, bool aux_inline )
         parm->ins = NULL;
     }
     ReverseParmNodeList( &call->parms );
-    PushParms( call->parms, state );
-    FPPushParms( call->parms, state );
-    ParmIns( call->parms, state );
+    PushParms( back, call->parms, state );
+    FPPushParms( back, call->parms, state );
+    ParmIns( back, call->parms, state );
     ReverseParmNodeList( &call->parms );
-    LinkParms( call_ins, &call->parms );
+    LinkParms( back, call_ins, &call->parms );
     if( call_ins->head.opcode == OP_CALL ) {
         /*
          * special case for call so we ignore address in dataflow
          */
         call_ins->num_operands = 2;
-        call_ins->operands[CALL_OP_USED] = AllocRegName( state->parm.used );
+        call_ins->operands[CALL_OP_USED] = AllocRegName( back, state->parm.used );
     } else {
-        call_ins->operands[CALL_OP_USED] = AllocRegName( state->parm.used );
+        call_ins->operands[CALL_OP_USED] = AllocRegName( back, state->parm.used );
     }
-    call_ins->operands[CALL_OP_POPS] = AllocS32Const( state->parm.offset );
-    call_ins->zap = &AllocRegName( CallZap( state ) )->r;
+    call_ins->operands[CALL_OP_POPS] = AllocS32Const( back, state->parm.offset );
+    call_ins->zap = &AllocRegName( back, CallZap( back, state ) )->r;
     return( push_no_pop );
 }

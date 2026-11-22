@@ -37,6 +37,7 @@
 #include "data.h"
 #include "namelist.h"
 #include "varusage.h"
+#include "backrun.hpp"
 
 
 static  void    Use( name *op, block *blk, var_usage usage )
@@ -128,7 +129,7 @@ static  void    Define( name *op, block *blk )
 }
 
 
-static  void    UseDefGlobals( block *blk )
+static  void    UseDefGlobals( BackRun& back, block *blk )
 /******************************************
     If a call instruction is encountered, all N_MEMORY names (visible
     outside this procedure), could be both used and defined by the call.
@@ -137,7 +138,7 @@ static  void    UseDefGlobals( block *blk )
     conflict_node       *conf;
     var_usage           usage;
 
-    for( conf = data_state().ConfList; conf != NULL; conf = conf->next_conflict ) {
+    for( conf = back.data.ConfList; conf != NULL; conf = conf->next_conflict ) {
         if( conf->name->n.class_ == N_MEMORY ) {
             usage = conf->name->v.block_usage;
             Use( conf->name, blk, static_cast<var_usage>(EMPTY) );
@@ -214,14 +215,14 @@ static void TransferTempBlockUsage( block *blk )
 }
 
 
-static  void    TransferAllMemBlockUsage( void )
+static  void    TransferAllMemBlockUsage( BackRun& back )
 /***********************************************
     Like TransferTempBlockUsage.
 */
 {
     name        *mem;
 
-    for( mem = data_state().Names[N_MEMORY]; mem != NULL; mem = mem->n.next_name ) {
+    for( mem = back.data.Names[N_MEMORY]; mem != NULL; mem = mem->n.next_name ) {
         TransferBlockUsage( mem );
     }
 }
@@ -290,7 +291,7 @@ static void TransferOneTempFlag( name *t )
 }
 
 
-void    TransferTempFlags( void )
+void    TransferTempFlags( BackRun& back )
 /********************************
     Run through the program and for each variable reference, transfer
     the usage flags from each variable to all of its aliases.  (if we
@@ -303,7 +304,7 @@ void    TransferTempFlags( void )
     instruction *ins;
     opcnt       i;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             for( i = ins->num_operands; i-- > 0; ) {
                 TransferOneTempFlag( ins->operands[i] );
@@ -313,13 +314,13 @@ void    TransferTempFlags( void )
             }
         }
     }
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         TransferTempBlockUsage( blk );
     }
 }
 
 
-static  void    TransferMemoryFlags( void )
+static  void    TransferMemoryFlags( BackRun& back )
 /******************************************
     If we use the address of FOOBAR, we're effectively using the address
     of FOOBAR+1 as well
@@ -329,11 +330,11 @@ static  void    TransferMemoryFlags( void )
     name        *same_sym;
     var_usage   usage;
 
-    for( m = data_state().Names[N_MEMORY]; m != NULL; m = m->n.next_name ) {
+    for( m = back.data.Names[N_MEMORY]; m != NULL; m = m->n.next_name ) {
         m->m.memory_flags = MF_EMPTY;
     }
 
-    for( m = data_state().Names[N_MEMORY]; m != NULL; m = m->n.next_name ) {
+    for( m = back.data.Names[N_MEMORY]; m != NULL; m = m->n.next_name ) {
         if( ( m->m.memory_flags & MF_VISITED ) == 0 ) {
             if( m->m.same_sym != NULL ) {
                 // union together mem flags from all symbols that
@@ -358,7 +359,7 @@ static  void    TransferMemoryFlags( void )
 }
 
 
-static  void    SearchDefUse( void )
+static  void    SearchDefUse( BackRun& back )
 /***********************************
     see FindReferences ^
 */
@@ -369,14 +370,14 @@ static  void    SearchDefUse( void )
     opcnt       i;
     bool        touched_non_op;
 
-    for( blk = data_state().HeadBlock; blk != NULL; blk = blk->next_block ) {
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         touched_non_op = false;
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( ( ins->head.opcode == OP_CALL
                || ins->head.opcode == OP_CALL_INDIRECT )
              && ( ( ins->flags.u.call_flags & CALL_READS_NO_MEMORY ) == 0
 /*21-nov-90*/  || ( ins->flags.u.call_flags & CALL_WRITES_NO_MEMORY ) == 0 ) ) {
-                UseDefGlobals( blk );
+                UseDefGlobals( back, blk );
                 touched_non_op = true;
             }
             for( i = ins->num_operands; i-- > 0; ) {
@@ -413,19 +414,19 @@ static  void    SearchDefUse( void )
             }
         }
         /* in/out/def/use ignored if BlockByBlock so don't worry about it */
-        if( touched_non_op && !data_state().BlockByBlock ) {
-            TransferAllMemBlockUsage();
+        if( touched_non_op && !back.data.BlockByBlock ) {
+            TransferAllMemBlockUsage(back);
         } else {
             TransferMemBlockUsage( blk );
         }
         TransferTempBlockUsage( blk );
     }
-    TransferTempFlags();
-    TransferMemoryFlags();
+    TransferTempFlags(back);
+    TransferMemoryFlags(back);
 }
 
 
-void    FindReferences( void )
+void    FindReferences( BackRun& back )
 /*****************************
     Traverse the blocks an allocate a data_flow_def for each one if it
     is needed.  Then calculate which variables are USE_WITHIN_BLOCK,
@@ -440,9 +441,9 @@ void    FindReferences( void )
 {
     block       *curr;
 
-    for( curr = data_state().HeadBlock; curr != NULL; curr = curr->next_block ) {
+    for( curr = back.data.HeadBlock; curr != NULL; curr = curr->next_block ) {
         if( curr->dataflow == NULL ) {
-            curr->dataflow = static_cast<struct data_flow_def *>(CGAlloc( sizeof( data_flow_def ) ));
+            curr->dataflow = static_cast<struct data_flow_def *>(CGAlloc( back, sizeof( data_flow_def ) ));
         }
         _GBitInit( curr->dataflow->def         , EMPTY );
         _GBitInit( curr->dataflow->use         , EMPTY );
@@ -452,5 +453,5 @@ void    FindReferences( void )
         _GBitInit( curr->dataflow->need_load   , EMPTY );
         _GBitInit( curr->dataflow->need_store  , EMPTY );
     }
-    SearchDefUse();
+    SearchDefUse(back);
 }

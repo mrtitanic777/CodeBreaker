@@ -30,5 +30,6 @@
 ****************************************************************************/
 
 
+#pragma once
 extern type_length      ParmAlignment( const type_def *tipe );
-extern hw_reg_set       ParmReg( type_class_def type_class, type_length len, type_length alignment, call_state *state );
+extern hw_reg_set       ParmReg( BackRun& back, type_class_def type_class, type_length len, type_length alignment, call_state *state );

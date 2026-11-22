@@ -30,10 +30,11 @@
 ****************************************************************************/
 
 
+#pragma once
 extern int      CountIns( block *blk );
-extern void     RemoveBlock( block *blk );
+extern void     RemoveBlock( BackRun& back, block *blk );
 extern void     RemoveInputEdge( block_edge *edge );
-extern void     MoveHead( block *old, block *new_ );
-extern void     KillCondBlk( block *blk, instruction *ins, cond_dst_idx dest_idx );
-extern bool     DeadBlocks( void );
-extern bool     BlockTrim( void );
+extern void     MoveHead( BackRun& back, block *old, block *new_ );
+extern void     KillCondBlk( BackRun& back, block *blk, instruction *ins, cond_dst_idx dest_idx );
+extern bool     DeadBlocks( BackRun& back );
+extern bool     BlockTrim( BackRun& back );

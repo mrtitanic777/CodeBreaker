@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef unsigned short unicode_type;
 
 
@@ -298,6 +299,5 @@ struct UnicodeState {
     /* 0xFF */   0x00A0   //SP300000        NON-BREAKING SPACE
     };
 };
-inline UnicodeState& unicode_state() { return cbrun_part<UnicodeState>(); }
 
 #endif

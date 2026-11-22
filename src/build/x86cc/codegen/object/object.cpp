@@ -46,6 +46,7 @@
 #include "makeblk.h"
 #include "nullprop.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
 /*
@@ -74,11 +75,11 @@ typedef struct flood_info {
     block       *dominator;
 } flood_info;
 
-typedef flood_decision (*flood_down_func)( block *, flood_info * );
+typedef flood_decision (*flood_down_func)( BackRun&, block *, flood_info * );
 
-typedef int (*bp_heuristic)( block *, instruction * );
+typedef int (*bp_heuristic)( BackRun&, block *, instruction * );
 
-static  source_line_number      DumpLineNum( source_line_number n,
+static  source_line_number      DumpLineNum( BackRun& back, source_line_number n,
                                              source_line_number last,
                                              bool label_line )
 /*******************************************************************/
@@ -86,14 +87,14 @@ static  source_line_number      DumpLineNum( source_line_number n,
     if( _IsModel( CGSW_GEN_DBG_NUMBERS ) ) {
         if( n > 0 && n != last ) {
             last = n;
-            CodeLineNumber( n, label_line );
+            CodeLineNumber( back, n, label_line );
         }
     }
     return( last );
 }
 
 
-void    GenObject( void )
+void    GenObject( BackRun& back )
 /***********************/
 {
     block               *blk;
@@ -106,33 +107,33 @@ void    GenObject( void )
     unsigned            align;
     fe_attr             attr;
 
-    PUSH_OP( AskCodeSeg() );
-        InitZeroPage();
+    PUSH_OP( AskCodeSeg(back) );
+        InitZeroPage(back);
         last_line = 0;
-        attr = FEAttr( AskForLblSym( static_cast<label_handle>(data_state().CurrProc->label) ) );
-        for( blk = data_state().HeadBlock; blk != NULL; blk = next_block ) {
+        attr = FEAttr( *back.front, AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) ) );
+        for( blk = back.data.HeadBlock; blk != NULL; blk = next_block ) {
             next_block = blk->next_block;
-            if( blk->label != data_state().CurrProc->label && blk->label != NULL ) {
-                last_line = DumpLineNum( blk->ins.head.line_num, last_line, true );
+            if( blk->label != back.data.CurrProc->label && blk->label != NULL ) {
+                last_line = DumpLineNum( back, blk->ins.head.line_num, last_line, true );
                 if( _IsBlkAttr( blk, BLK_ITERATIONS_KNOWN ) && blk->iterations >= 10 ) {
-                    align = DepthAlign( DEEP_LOOP_ALIGN );
+                    align = DepthAlign( back, DEEP_LOOP_ALIGN );
                 } else {
-                    align = DepthAlign( blk->depth );
+                    align = DepthAlign( back, blk->depth );
                 }
-                CodeLabel( blk->label, align );
-                if( (blk->edge[0].flags & BEF_BLOCK_LABEL_DIES) && data_state().BlocksUnTrimmed ) {
-                    TellCondemnedLabel( blk->label );
+                CodeLabel( back, blk->label, align );
+                if( (blk->edge[0].flags & BEF_BLOCK_LABEL_DIES) && back.data.BlocksUnTrimmed ) {
+                    TellCondemnedLabel( back, blk->label );
                 }
             }
-            StartBlockProfiling( blk );
-            InitStackDepth( blk );
+            StartBlockProfiling( back, blk );
+            InitStackDepth( back, blk );
             for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
                 if( ins->head.opcode == OP_NOP
                   && ( (ins->flags.u.nop_flags & NOP_SOURCE_QUEUE)
                   || ins->flags.u.nop_flags == NOP_DBGINFO )) { // an end block
-                    last_line = DumpLineNum(ins->head.line_num, last_line, true);
+                    last_line = DumpLineNum(back, ins->head.line_num, last_line, true);
                 } else {
-                    last_line = DumpLineNum(ins->head.line_num, last_line, false);
+                    last_line = DumpLineNum(back, ins->head.line_num, last_line, false);
                 }
                 if( attr & FE_NAKED ) {
                     /*
@@ -140,47 +141,47 @@ void    GenObject( void )
                      * naked functions
                      */
                     if( ins->head.opcode == OP_CALL ) {
-                        if( FindAuxInfo( ins->operands[CALL_OP_ADDR], FEINF_CALL_BYTES ) != NULL ) {
-                            GenObjCode( ins );
+                        if( FindAuxInfo( back, ins->operands[CALL_OP_ADDR], FEINF_CALL_BYTES ) != NULL ) {
+                            GenObjCode( back, ins );
                         }
                     }
                 } else {
-                    GenObjCode( ins );
+                    GenObjCode( back, ins );
                 }
             }
             EndBlockProfiling();
             if( _IsBlkAttr( blk, BLK_JUMP | BLK_BIG_JUMP ) ) {
-                if( data_state().BlockByBlock
+                if( back.data.BlockByBlock
                  || next_block == NULL
                  || blk->edge[0].destination.u.lbl != next_block->label ) {
                     /*
                      * watch out for orphan blocks (no inputs/targets)
                      */
                     if( blk->targets > 0 ) {
-                        GenJumpLabel( blk->edge[0].destination.u.lbl );
+                        GenJumpLabel( back, blk->edge[0].destination.u.lbl );
                     }
                 }
             } else if( _IsBlkAttr( blk, BLK_RETURN ) ) {
-                FiniZeroPage();
-                GenEpilog();
+                FiniZeroPage(back);
+                GenEpilog(back);
             } else if( _IsBlkAttr( blk, BLK_CALL_LABEL ) ) {
-                GenCallLabel( blk->edge[0].destination.u.blk );
-                if( data_state().BlockByBlock ) {
+                GenCallLabel( back, blk->edge[0].destination.u.blk );
+                if( back.data.BlockByBlock ) {
                     if( next_block == NULL ) {
-                        GenJumpLabel( blk->u2.next->label );
+                        GenJumpLabel( back, blk->u2.next->label );
                     } else {
-                        GenJumpLabel( next_block->label );
+                        GenJumpLabel( back, next_block->label );
                     }
                 }
             } else if( _IsBlkAttr( blk, BLK_LABEL_RETURN ) ) {
-                GenLabelReturn();
+                GenLabelReturn(back);
             }
             if( !_IsBlkAttr( blk, BLK_LABEL_RETURN ) ) { /* maybe pointer to dead label */
                 for( j = blk->targets; j-- > 0; ) {
                     lbl = blk->edge[j].destination.u.lbl;
-                    TellReachedLabel( lbl );
-                    if( (blk->edge[j].flags & BEF_DEST_LABEL_DIES) && data_state().BlocksUnTrimmed ) {
-                        TellCondemnedLabel( lbl );
+                    TellReachedLabel( back, lbl );
+                    if( (blk->edge[j].flags & BEF_DEST_LABEL_DIES) && back.data.BlocksUnTrimmed ) {
+                        TellCondemnedLabel( back, lbl );
                         for( i = j; i-- > 0; ) {
                             if( blk->edge[i].destination.u.lbl == lbl ) {
                                 blk->edge[i].flags &= ~BEF_DEST_LABEL_DIES;
@@ -189,49 +190,49 @@ void    GenObject( void )
                     }
                 }
             }
-            if( !data_state().BlocksUnTrimmed && blk->label != data_state().CurrProc->label && blk->label != NULL ) {
-                TellCondemnedLabel( blk->label );
+            if( !back.data.BlocksUnTrimmed && blk->label != back.data.CurrProc->label && blk->label != NULL ) {
+                TellCondemnedLabel( back, blk->label );
             }
-            data_state().CurrBlock = blk;
-            FreeBlock();
+            back.data.CurrBlock = blk;
+            FreeBlock(back);
         }
-        data_state().HeadBlock = blk;
-        data_state().BlockList = blk;
+        back.data.HeadBlock = blk;
+        back.data.BlockList = blk;
     POP_OP();
 }
 
 
-static  bool    GenId( block *blk, block *next )
+static  bool    GenId( BackRun& back, block *blk, block *next )
 /**********************************************/
 {
     return( blk->gen_blk_id > next->gen_blk_id );
 }
 
 
-static  void    BlocksSortedBy( bool (*bigger)( block *, block * ) )
+static  void    BlocksSortedBy( BackRun& back, bool (*bigger)( BackRun&, block *, block * ) )
 /******************************************************************/
 {
     block       *blk;
     block       *next;
     bool        change;
 
-    for( change = ( data_state().HeadBlock->next_block != NULL ); change; ) {
+    for( change = ( back.data.HeadBlock->next_block != NULL ); change; ) {
         change = false;
-        for( blk = data_state().HeadBlock->next_block; (next = blk->next_block) != NULL; blk = next ) {
-            if( bigger( blk, next ) ) {
+        for( blk = back.data.HeadBlock->next_block; (next = blk->next_block) != NULL; blk = next ) {
+            if( bigger( back, blk, next ) ) {
                 blk->prev_block->next_block = next;
                 if( next->next_block != NULL ) {
                     next->next_block->prev_block = blk;
                 }
                 blk->next_block = next->next_block;
-                if( blk->prev_block == data_state().HeadBlock ) {
-                    data_state().HeadBlock->next_block = next;
+                if( blk->prev_block == back.data.HeadBlock ) {
+                    back.data.HeadBlock->next_block = next;
                 }
                 next->prev_block = blk->prev_block;
                 blk->prev_block = next;
                 next->next_block = blk;
-                if( data_state().BlockList == next ) {
-                    data_state().BlockList = blk;
+                if( back.data.BlockList == next ) {
+                    back.data.BlockList = blk;
                 }
                 change = true;
             }
@@ -330,7 +331,7 @@ static  instruction     *FindCondition( block *blk )
     return( NULL );
 }
 
-static  int     PointerHeuristic( block *blk, instruction *cond )
+static  int     PointerHeuristic( BackRun& back, block *blk, instruction *cond )
 /***************************************************************/
 {
     int                 prediction;
@@ -351,7 +352,7 @@ static  int     PointerHeuristic( block *blk, instruction *cond )
     return( prediction );
 }
 
-static  int     OpcodeHeuristic( block *blk, instruction *cond )
+static  int     OpcodeHeuristic( BackRun& back, block *blk, instruction *cond )
 /**************************************************************/
 {
     int                 prediction;
@@ -436,17 +437,17 @@ static  bool    BlockContainsCall( block *blk )
     return( false );
 }
 
-static  void    PushTargets( void *stack, block *blk )
+static  void    PushTargets( BackRun& back, void *stack, block *blk )
 /****************************************************/
 {
     block_num   i;
 
     for( i = 0; i < blk->targets; i++ ) {
-        EdgeStackPush( static_cast<edge_stack *>(stack), &blk->edge[i] );
+        EdgeStackPush( back, static_cast<edge_stack *>(stack), &blk->edge[i] );
     }
 }
 
-static  void    FloodDown( block *from, flood_down_func func, void *parm )
+static  void    FloodDown( BackRun& back, block *from, flood_down_func func, void *parm )
 /************************************************************************/
 {
     void                *stack;
@@ -455,26 +456,26 @@ static  void    FloodDown( block *from, flood_down_func func, void *parm )
     block_edge          *edge;
 
     _MarkBlkAllAttrClr( BLK_FLOODED );
-    stack = EdgeStackInit();
-    PushTargets( stack, from );
+    stack = EdgeStackInit(back);
+    PushTargets( back, stack, from );
     _MarkBlkAttrSet( from, BLK_FLOODED );
     while( !EdgeStackEmpty( static_cast<edge_stack *>(stack) ) ) {
-        edge = EdgeStackPop( static_cast<edge_stack *>(stack) );
+        edge = EdgeStackPop( back, static_cast<edge_stack *>(stack) );
         dest = edge->destination.u.blk;
         if( _IsBlkAttr( dest, BLK_FLOODED ) )
             continue;
-        decision = func( dest, static_cast<flood_info *>(parm) );
+        decision = func( back, dest, static_cast<flood_info *>(parm) );
         if( decision == ABORT )
             continue;
         if( decision == STOP )
             break;
         _MarkBlkAttrSet( dest, BLK_FLOODED );
-        PushTargets( stack, dest );
+        PushTargets( back, stack, dest );
     }
-    EdgeStackFini( static_cast<edge_stack *>(stack) );
+    EdgeStackFini( back, static_cast<edge_stack *>(stack) );
 }
 
-static  flood_decision PDFloodFunc( block *blk, flood_info *info )
+static  flood_decision PDFloodFunc( BackRun& back, block *blk, flood_info *info )
 /****************************************************************/
 {
     if( blk == info->dominator )
@@ -486,7 +487,7 @@ static  flood_decision PDFloodFunc( block *blk, flood_info *info )
     return( CONTINUE );
 }
 
-static  bool    PostDominates( block *dominator, block *blk )
+static  bool    PostDominates( BackRun& back, block *dominator, block *blk )
 /**************************************************************
  * Return true if dominator post-dominates blk.
  * To determine this, we just flood down aborting whenever we hit
@@ -498,34 +499,34 @@ static  bool    PostDominates( block *dominator, block *blk )
 
     info.post_dominates = true;
     info.dominator = dominator;
-    FloodDown( blk, PDFloodFunc, (void *)&info );
+    FloodDown( back, blk, PDFloodFunc, (void *)&info );
     return( info.post_dominates );
 }
 
-static  bool    CallApplies( block *src, block *dst )
+static  bool    CallApplies( BackRun& back, block *src, block *dst )
 /***************************************************/
 {
     src = dst;
     if( BlockContainsCall( dst ) ) {
-        if( !PostDominates( dst, src ) ) {
+        if( !PostDominates( back, dst, src ) ) {
             return( true );
         }
     }
     return( false );
 }
 
-static  int     CallHeuristic( block *blk, instruction *cond )
+static  int     CallHeuristic( BackRun& back, block *blk, instruction *cond )
 /************************************************************/
 {
     int         prediction;
 
     prediction = DNA;
-    if( CallApplies( blk, blk->edge[0].destination.u.blk ) ) {
-        if( !CallApplies( blk, blk->edge[1].destination.u.blk ) ) {
+    if( CallApplies( back, blk, blk->edge[0].destination.u.blk ) ) {
+        if( !CallApplies( back, blk, blk->edge[1].destination.u.blk ) ) {
             prediction = Want( cond, 1 );
         }
     } else {
-        if( CallApplies( blk, blk->edge[1].destination.u.blk ) ) {
+        if( CallApplies( back, blk, blk->edge[1].destination.u.blk ) ) {
             prediction = Want( cond, 0 );
         }
     }
@@ -545,7 +546,7 @@ static  bool    LoopApplies( block *blk )
     return( false );
 }
 
-static  int     LoopHeuristic( block *blk, instruction *cond )
+static  int     LoopHeuristic( BackRun& back, block *blk, instruction *cond )
 /************************************************************/
 {
     int         prediction;
@@ -563,7 +564,7 @@ static  int     LoopHeuristic( block *blk, instruction *cond )
     return( prediction );
 }
 
-static  bool    GuardApplies( block *blk, block *dst, name *reg )
+static  bool    GuardApplies( BackRun& back, block *blk, block *dst, name *reg )
 /***************************************************************/
 {
     instruction *ins;
@@ -575,7 +576,7 @@ static  bool    GuardApplies( block *blk, block *dst, name *reg )
              * this could be beefed up to take into account aggragates
              */
             if( ins->operands[i] == reg ) {
-                return( !PostDominates( dst, blk ) );
+                return( !PostDominates( back, dst, blk ) );
             }
             if( _IsReDefinedBy( ins, reg ) ) {
                 return( false );
@@ -585,25 +586,25 @@ static  bool    GuardApplies( block *blk, block *dst, name *reg )
     return( false );
 }
 
-static  int     TryGuard( block *blk, instruction *cond, name *reg )
+static  int     TryGuard( BackRun& back, block *blk, instruction *cond, name *reg )
 /******************************************************************/
 {
     int         prediction;
 
     prediction = DNA;
-    if( GuardApplies( blk, blk->edge[0].destination.u.blk, reg ) ) {
-        if( !GuardApplies( blk, blk->edge[1].destination.u.blk, reg ) ) {
+    if( GuardApplies( back, blk, blk->edge[0].destination.u.blk, reg ) ) {
+        if( !GuardApplies( back, blk, blk->edge[1].destination.u.blk, reg ) ) {
             prediction = Want( cond, 0 );
         }
     } else {
-        if( GuardApplies( blk, blk->edge[1].destination.u.blk, reg ) ) {
+        if( GuardApplies( back, blk, blk->edge[1].destination.u.blk, reg ) ) {
             prediction = Want( cond, 1 );
         }
     }
     return( prediction );
 }
 
-static  int     GuardHeuristic( block *blk, instruction *cond )
+static  int     GuardHeuristic( BackRun& back, block *blk, instruction *cond )
 /*************************************************************/
 {
     name        *op1;
@@ -614,22 +615,22 @@ static  int     GuardHeuristic( block *blk, instruction *cond )
     op2 = cond->operands[1];
     prediction = DNA;
     if( op1->n.class_ == N_REGISTER ) {
-        prediction = TryGuard( blk, cond, op1 );
+        prediction = TryGuard( back, blk, cond, op1 );
     }
     if( prediction == DNA ) {
         if( op2->n.class_ == N_REGISTER ) {
-            prediction = TryGuard( blk, cond, op2 );
+            prediction = TryGuard( back, blk, cond, op2 );
         }
     }
     return( DNA );
 }
 
-static  bool    StoreApplies( block *blk, block *next )
+static  bool    StoreApplies( BackRun& back, block *blk, block *next )
 /*****************************************************/
 {
     instruction *ins;
 
-    if( PostDominates( next, blk ) )
+    if( PostDominates( back, next, blk ) )
         return( false );
     for( ins = next->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
         if( ins->result == NULL )
@@ -644,18 +645,18 @@ static  bool    StoreApplies( block *blk, block *next )
     return( false );
 }
 
-static  int     StoreHeuristic( block *blk, instruction *cond )
+static  int     StoreHeuristic( BackRun& back, block *blk, instruction *cond )
 /*************************************************************/
 {
     int         prediction;
 
     prediction = DNA;
-    if( StoreApplies( blk, blk->edge[0].destination.u.blk ) ) {
-        if( !StoreApplies( blk, blk->edge[1].destination.u.blk ) ) {
+    if( StoreApplies( back, blk, blk->edge[0].destination.u.blk ) ) {
+        if( !StoreApplies( back, blk, blk->edge[1].destination.u.blk ) ) {
             prediction = Want( cond, 1 );
         }
     } else {
-        if( StoreApplies( blk, blk->edge[1].destination.u.blk ) ) {
+        if( StoreApplies( back, blk, blk->edge[1].destination.u.blk ) ) {
             prediction = Want( cond, 0 );
         }
     }
@@ -675,7 +676,7 @@ static  bool    ReturnApplies( block *blk )
     return( false );
 }
 
-static  int     ReturnHeuristic( block *blk, instruction *cond )
+static  int     ReturnHeuristic( BackRun& back, block *blk, instruction *cond )
 /**************************************************************/
 {
     int         prediction;
@@ -703,7 +704,7 @@ static bp_heuristic const Heuristics[] = {
     GuardHeuristic,
 };
 
-static  block   *Predictor( block *blk )
+static  block   *Predictor( BackRun& back, block *blk )
 /*****************************************
  * Given a conditional block, return the most likely
  * successor of this block.
@@ -720,7 +721,7 @@ static  block   *Predictor( block *blk )
         cond = FindCondition( blk );
         for( i = 0; i < sizeof(Heuristics) / sizeof(Heuristics[0]); i++ ) {
             ptr = Heuristics[i];
-            prediction = ptr( blk, cond );
+            prediction = ptr( back, blk, cond );
             switch( prediction ) {
             case TAKEN:
                 return( blk->edge[_TrueIndex( cond )].destination.u.blk );
@@ -735,7 +736,7 @@ static  block   *Predictor( block *blk )
     return( blk->edge[0].destination.u.blk );
 }
 
-static  block   *BestFollower( block_queue *unplaced, block *blk )
+static  block   *BestFollower( BackRun& back, block_queue *unplaced, block *blk )
 /****************************************************************/
 {
     block       *best;
@@ -768,7 +769,7 @@ static  block   *BestFollower( block_queue *unplaced, block *blk )
             /*
              * get some branch prediction going here
              */
-            best = Predictor( blk );
+            best = Predictor( back, blk );
             break;
         case _Munge( 1, 0 ):
             best = blk->edge[1].destination.u.blk;
@@ -796,7 +797,7 @@ static  block   *BestFollower( block_queue *unplaced, block *blk )
     return( best );
 }
 
-void    SortBlocks( void )
+void    SortBlocks( BackRun& back )
 /************************/
 {
     block_queue unplaced;
@@ -806,12 +807,12 @@ void    SortBlocks( void )
 //    block       *ret_block;
 
     _MarkBlkAllUnVisited();
-    BlocksSortedBy( GenId );
+    BlocksSortedBy( back, GenId );
     if( _IsModel( CGSW_GEN_NO_OPTIMIZATION ) )
         return;
     if( _IsntModel( CGSW_GEN_BRANCH_PREDICTION ) )
         return;
-    if( data_state().OptForSize > 50 )
+    if( back.data.OptForSize > 50 )
         return;
     /*
      * we can't screw about with the placement of the return
@@ -822,7 +823,7 @@ void    SortBlocks( void )
         return;
     BQInit( &unplaced );
     BQInit( &placed );
-    for( curr = data_state().HeadBlock; curr != NULL; curr = next ) {
+    for( curr = back.data.HeadBlock; curr != NULL; curr = next ) {
         next = curr->next_block;
         BQAdd( &unplaced, curr );
         if( _IsBlkAttr( curr, BLK_RETURNED_TO ) ) {
@@ -843,12 +844,12 @@ void    SortBlocks( void )
         for( ;; ) {
             BQAdd( &placed, curr );
             _MarkBlkVisited( curr );
-            curr = BestFollower( &unplaced, curr );
+            curr = BestFollower( back, &unplaced, curr );
             if( curr == NULL )
                 break;
             BQRemove( &unplaced, curr );
         }
     }
-    data_state().HeadBlock = placed.first;
+    back.data.HeadBlock = placed.first;
     _MarkBlkAllUnVisited();
 }

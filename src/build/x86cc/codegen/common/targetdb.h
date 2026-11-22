@@ -30,5 +30,6 @@
 ****************************************************************************/
 
 
-extern  type_length     NewBase( name * );
-extern  int             ParmsAtPrologue( void );
+#pragma once
+extern  type_length     NewBase( BackRun& back, name * );
+extern  int             ParmsAtPrologue( BackRun& back );

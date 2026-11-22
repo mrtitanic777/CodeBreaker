@@ -31,8 +31,9 @@
 ****************************************************************************/
 
 
-extern void     DoAbsPatch( abspatch_handle *handle, int len );
-extern void     DoFESymRef( cg_sym_handle sym, cg_class class_, offset val, fe_fixup_types fixup_type );
-extern void     DoSymRef( name *opnd, offset val, bool base );
-extern void     DoSegRef( segment_id segid );
-extern void     DoLblRef( label_handle lbl, segment_id segid, offset val, escape_class esc_attr );
+#pragma once
+extern void     DoAbsPatch( BackRun& back, abspatch_handle *handle, int len );
+extern void     DoFESymRef( BackRun& back, cg_sym_handle sym, cg_class class_, offset val, fe_fixup_types fixup_type );
+extern void     DoSymRef( BackRun& back, name *opnd, offset val, bool base );
+extern void     DoSegRef( BackRun& back, segment_id segid );
+extern void     DoLblRef( BackRun& back, label_handle lbl, segment_id segid, offset val, escape_class esc_attr );

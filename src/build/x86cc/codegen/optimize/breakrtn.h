@@ -30,8 +30,9 @@
 ****************************************************************************/
 
 
-extern bool     CreateBreak( void );
-extern void     RemoveBreak( void );
-extern void     FixBreak( void );
-extern block    *TailBlocks( void );
-extern bool     BreakExists( void );
+#pragma once
+extern bool     CreateBreak( BackRun& back );
+extern void     RemoveBreak( BackRun& back );
+extern void     FixBreak( BackRun& back );
+extern block    *TailBlocks( BackRun& back );
+extern bool     BreakExists( BackRun& back );

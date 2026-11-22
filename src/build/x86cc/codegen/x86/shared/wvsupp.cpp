@@ -43,9 +43,10 @@
 #include "x86regn.h"
 #include "wvsupp.h"
 #include "cgprotos.h"
+#include "backrun.hpp"
 
 
-static  uint    MultiReg( register_name *reg )
+static  uint    MultiReg( BackRun& back, register_name *reg )
 /********************************************/
 {
     hw_reg_set  hw_reg;
@@ -54,10 +55,10 @@ static  uint    MultiReg( register_name *reg )
     hw_reg = reg->reg;
 #if _TARGET & _TARG_8086
     if( HW_CEqual( hw_reg, HW_ABCD ) ) {
-        BuffByte( WV_REG_DX );
-        BuffByte( WV_REG_CX );
-        BuffByte( WV_REG_BX );
-        BuffByte( WV_REG_AX );
+        BuffByte( back, WV_REG_DX );
+        BuffByte( back, WV_REG_CX );
+        BuffByte( back, WV_REG_BX );
+        BuffByte( back, WV_REG_AX );
         return( 4 );
     }
 #endif
@@ -67,18 +68,18 @@ static  uint    MultiReg( register_name *reg )
     hw_reg = Low64Reg( hw_reg );
 #endif
     if( HW_CEqual( hw_reg, HW_EMPTY ) ) {
-        BuffByte( RegTransWV( reg->reg ) );
+        BuffByte( back, RegTransWV( back, reg->reg ) );
         return( 1 );
     } else {
-        BuffByte( RegTransWV( hw_reg ) );
+        BuffByte( back, RegTransWV( back, hw_reg ) );
         tmp = reg->reg;
         HW_TurnOff( tmp, hw_reg );
-        BuffByte( RegTransWV( tmp ) );
+        BuffByte( back, RegTransWV( back, tmp ) );
         return( 2 );
     }
 }
 
-static  void    DoLocDump( dbg_loc loc )
+static  void    DoLocDump( BackRun& back, dbg_loc loc )
 /**************************************/
 {
     int         offset;
@@ -86,94 +87,94 @@ static  void    DoLocDump( dbg_loc loc )
     uint        patch;
 
     if( loc->next != NULL ) {
-        DoLocDump( loc->next );
+        DoLocDump( back, loc->next );
     }
     switch( loc->class_ & 0xf0 ) {
     case LOC_CONSTANT:
         if( loc->class_ == LOC_MEMORY ) {
-            BuffByte( LOC_MEMORY );
-            BuffAddr( loc->u.fe_sym );
+            BuffByte( back, LOC_MEMORY );
+            BuffAddr( back, loc->u.fe_sym );
         } else {
             offset = loc->u.val;
             if( offset >= -128 && offset <= 127 ) {
-                BuffByte( LOC_CONST_1 );
-                BuffByte( offset );
+                BuffByte( back, LOC_CONST_1 );
+                BuffByte( back, offset );
            } else if( offset >= -32768 && offset <= 32767 ) {
-                BuffByte( LOC_CONST_2 );
-                BuffWord( offset );
+                BuffByte( back, LOC_CONST_2 );
+                BuffWord( back, offset );
             } else {
-                BuffByte( LOC_CONST_4 );
-                BuffDWord( offset );
+                BuffByte( back, LOC_CONST_4 );
+                BuffDWord( back, offset );
             }
         }
         break;
     case LOC_BP_OFFSET:
-        offset = NewBase( loc->u.be_sym );
+        offset = NewBase( back, loc->u.be_sym );
         if( offset >= -128 && offset <= 127 ) {
-            BuffByte( LOC_BP_OFFSET + BP_BYTE );
-            BuffByte( offset );
+            BuffByte( back, LOC_BP_OFFSET + BP_BYTE );
+            BuffByte( back, offset );
        } else if( offset >= -32768 && offset <= 32767 ) {
-            BuffByte( LOC_BP_OFFSET + BP_WORD );
-            BuffWord( offset );
+            BuffByte( back, LOC_BP_OFFSET + BP_WORD );
+            BuffWord( back, offset );
         } else {
-            BuffByte( LOC_BP_OFFSET + BP_DWORD );
-            BuffDWord( offset );
+            BuffByte( back, LOC_BP_OFFSET + BP_DWORD );
+            BuffDWord( back, offset );
         }
         break;
     case LOC_REG:
-        reg = RegTransWV( loc->u.be_sym->r.reg );
+        reg = RegTransWV( back, loc->u.be_sym->r.reg );
         if( reg > 15 ) {
-            patch = BuffLoc();
-            BuffByte( 0 );
-            BuffPatch( LOC_MULTI_REG | ( MultiReg( &loc->u.be_sym->r ) - 1 ), patch );
+            patch = BuffLoc(back);
+            BuffByte( back, 0 );
+            BuffPatch( back, LOC_MULTI_REG | ( MultiReg( back, &loc->u.be_sym->r ) - 1 ), patch );
         } else {
-            BuffByte( LOC_REG | reg );
+            BuffByte( back, LOC_REG | reg );
         }
         break;
     case LOC_IND_REG:
         if( HW_CEqual( loc->u.be_sym->r.reg, HW_EMPTY ) ) {
             //NYI: structured return value on the stack. Have to do something
             //       suitable. For now, output a no location.
-            BuffByte( 0 );
+            BuffByte( back, 0 );
         } else {
-            reg = RegTransWV( loc->u.be_sym->r.reg );
+            reg = RegTransWV( back, loc->u.be_sym->r.reg );
             if( reg < 0 ) { /* register not found */
-                BuffByte( loc->class_ + 1 ); /* assumes ..._FAR is one greater*/
-                MultiReg( &loc->u.be_sym->r );
+                BuffByte( back, loc->class_ + 1 ); /* assumes ..._FAR is one greater*/
+                MultiReg( back, &loc->u.be_sym->r );
             } else {
-                BuffByte( loc->class_ );
-                BuffByte( reg );
+                BuffByte( back, loc->class_ );
+                BuffByte( back, reg );
             }
         }
         break;
     case LOC_OPER:
-        BuffByte( loc->class_ );
+        BuffByte( back, loc->class_ );
         if( loc->class_ == LOC_OPER+LOP_XCHG ) {
-            BuffByte( loc->u.stk );
+            BuffByte( back, loc->u.stk );
         }
         break;
     default:
-        BuffByte( 0 ); /* No location*/
+        BuffByte( back, 0 ); /* No location*/
         break;
     }
 }
 
-void    LocDump( dbg_loc loc )
+void    LocDump( BackRun& back, dbg_loc loc )
 /****************************/
 {
     uint        patch;
 
     if( loc != NULL ) {
         if( loc->next != NULL ) {
-            patch = BuffLoc();
-            BuffByte( 0 );
-            DoLocDump( loc );
-            BuffPatch( LOC_EXPR_IND | (BuffLoc() - patch), patch );
+            patch = BuffLoc(back);
+            BuffByte( back, 0 );
+            DoLocDump( back, loc );
+            BuffPatch( back, LOC_EXPR_IND | (BuffLoc(back) - patch), patch );
         } else {
-            DoLocDump( loc );
+            DoLocDump( back, loc );
         }
     } else {
-        BuffByte( LOC_OPER+LOP_NOP );
+        BuffByte( back, LOC_OPER+LOP_NOP );
     }
-    DBLocFini( loc );
+    DBLocFini( back, loc );
 }

@@ -45,7 +45,6 @@ struct OptdataState {
     ins_entry *NoRetList;
     pointer *InstrFrl;
 };
-inline OptdataState& optdata_state() { return cbrun_part<OptdataState>(); }
 
 #endif
 //      pointer         *CodeLblFrl;

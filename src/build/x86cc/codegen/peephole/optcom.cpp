@@ -43,6 +43,7 @@
 #include "optcom.h"
 #include "optins.h"
 #include "optpull.h"
+#include "backrun.hpp"
 
 
 typedef struct common_info {
@@ -51,7 +52,7 @@ typedef struct common_info {
         uint        save;
 } common_info;
 
-static  bool    JustMoveLabel( common_info *max, ins_entry *ins )
+static  bool    JustMoveLabel( BackRun& back, common_info *max, ins_entry *ins )
 /***************************************************************/
 {
     oc_class            cl;
@@ -60,30 +61,30 @@ static  bool    JustMoveLabel( common_info *max, ins_entry *ins )
     ins_entry           *next;
 
   optbegin
-    if( PrevClass( max->start_del ) != OC_LABEL )
+    if( PrevClass( back, max->start_del ) != OC_LABEL )
         optreturn( false );
-    lbl = PrevIns( max->start_del );
+    lbl = PrevIns( back, max->start_del );
     if( _ChkAttr( lbl, OC_ATTR_SHORT ) )
         optreturn( false );
-    cl = PrevClass( lbl );
+    cl = PrevClass( back, lbl );
     if( !_TransferClass( cl ) )
         optreturn( false );
-    DeleteQueue( lbl );
-    InsertQueue( lbl, PrevIns( max->start_com ) );
-    add = PrevIns( max->start_del );
+    DeleteQueue( back, lbl );
+    InsertQueue( back, lbl, PrevIns( back, max->start_com ) );
+    add = PrevIns( back, max->start_del );
     for( ;; ) {
-        next = NextIns( add );
-        DelInstr( next );
+        next = NextIns( back, add );
+        DelInstr( back, next );
         if( next == ins ) {
             break;
         }
     }
-    Untangle( lbl );
+    Untangle( back, lbl );
     optreturn( true );
 }
 
 
-static  void    TransformJumps( ins_entry *ins, ins_entry *first )
+static  void    TransformJumps( BackRun& back, ins_entry *ins, ins_entry *first )
 /****************************************************************/
 {
     ins_entry           *add;
@@ -96,7 +97,7 @@ static  void    TransformJumps( ins_entry *ins, ins_entry *first )
     if( cl == OC_RET || cl == OC_NORET )
         optreturnvoid;
     lbl = _Label( ins )->ins;
-    for( add = lbl; add != NULL; add = NextIns( add ) ) {
+    for( add = lbl; add != NULL; add = NextIns( back, add ) ) {
         cl = _Class( add );
         if( _TransferClass( cl ) )
             break;
@@ -108,24 +109,24 @@ static  void    TransformJumps( ins_entry *ins, ins_entry *first )
     }
     if( add == NULL || add == first || add == ins )
         optreturnvoid;
-    if( FindShort( first, lbl ) )
+    if( FindShort( back, first, lbl ) )
         optreturnvoid;
     for( ;; ) {
-        next = PrevIns( add );
-        DeleteQueue( add );
-        InsertQueue( add, first );
+        next = PrevIns( back, add );
+        DeleteQueue( back, add );
+        InsertQueue( back, add, first );
         if( add == lbl )
             break;
         add = next;
     }
-    DeleteQueue( first );
-    InsertQueue( first, next );
-    Untangle( NextIns( first ) );
+    DeleteQueue( back, first );
+    InsertQueue( back, first, next );
+    Untangle( back, NextIns( back, first ) );
   optend
 }
 
 
-static  bool    CommonInstr( ins_entry *old, ins_entry *add )
+static  bool    CommonInstr( BackRun& back, ins_entry *old, ins_entry *add )
 /***********************************************************/
 {
   optbegin
@@ -180,26 +181,26 @@ static  bool    CommonInstr( ins_entry *old, ins_entry *add )
 }
 
 
-static  void    FindCommon( common_info *c, ins_entry *p1, ins_entry *p2 )
+static  void    FindCommon( BackRun& back, common_info *c, ins_entry *p1, ins_entry *p2 )
 /************************************************************************/
 {
   optbegin
     c->save = 0;
     for( ;; ) {
-        if( !CommonInstr( p1, p2 ) )
+        if( !CommonInstr( back, p1, p2 ) )
             break;
         c->start_com = p1;
         c->start_del = p2;
         c->save += _ObjLen( p1 );
         for( ;; ) {
-            p1 = PrevIns( p1 );
+            p1 = PrevIns( back, p1 );
             if( p1 == NULL )
                 optreturnvoid;
             if( _Class( p1 ) != OC_LABEL ) {
                 break;
             }
         }
-        p2 = PrevIns( p2 );
+        p2 = PrevIns( back, p2 );
         if( p2 == NULL ) {
             break;
         }
@@ -207,7 +208,7 @@ static  void    FindCommon( common_info *c, ins_entry *p1, ins_entry *p2 )
   optend
 }
 
-bool    ComTail( ins_entry *list, ins_entry *ins )
+bool    ComTail( BackRun& back, ins_entry *list, ins_entry *ins )
 /************************************************/
 {
     ins_entry           *try_;
@@ -226,7 +227,7 @@ bool    ComTail( ins_entry *list, ins_entry *ins )
     max.save = 0;
     for( ;; ) {
         if( try_ != ins ) {
-            FindCommon( &common, try_, ins );
+            FindCommon( back, &common, try_, ins );
             if( common.save > max.save ) {
                 max = common;
                 first = try_;
@@ -239,34 +240,34 @@ bool    ComTail( ins_entry *list, ins_entry *ins )
     }
     if( max.save == 0 )
         optreturn( false );
-    if( JustMoveLabel( &max, ins ) )
+    if( JustMoveLabel( back, &max, ins ) )
         optreturn( true );
-    if( data_state().OptForSize < 25 )
+    if( back.data.OptForSize < 25 )
         optreturn( false );
-    if( max.save <= OptInsSize( OC_JMP, OC_DEST_NEAR ) )
+    if( max.save <= OptInsSize( back, OC_JMP, OC_DEST_NEAR ) )
         optreturn( false );
-    TransformJumps( ins, first );
-    add = PrevIns( max.start_del );
-    try_ = PrevIns( max.start_com );
-    if( FindShort( try_, NULL ) )
+    TransformJumps( back, ins, first );
+    add = PrevIns( back, max.start_del );
+    try_ = PrevIns( back, max.start_com );
+    if( FindShort( back, try_, NULL ) )
         align = 0;
-    AddNewJump( add, AddNewLabel( PrevIns( max.start_com ), align ) );
-    lbl = PrevIns( max.start_com );
-    add = NextIns( add );
+    AddNewJump( back, add, AddNewLabel( back, PrevIns( back, max.start_com ), align ) );
+    lbl = PrevIns( back, max.start_com );
+    add = NextIns( back, add );
     for( ;; ) {
-        next = NextIns( add );
-        DelInstr( next );
+        next = NextIns( back, add );
+        DelInstr( back, next );
         if( next == ins ) {
             break;
         }
     }
-    Untangle( lbl );
-    IsolatedCode( add );
+    Untangle( back, lbl );
+    IsolatedCode( back, add );
     optreturn( true );
 }
 
 
-bool    ComCode( ins_entry *jmp )
+bool    ComCode( BackRun& back, ins_entry *jmp )
 /*******************************/
 {
     ins_entry   *new_ins;
@@ -282,7 +283,7 @@ bool    ComCode( ins_entry *jmp )
         align = _ObjLen( new_ins );
         for( ;; ) {
             for( ;; ) {
-                new_ins = PrevIns( new_ins );
+                new_ins = PrevIns( back, new_ins );
                 if( new_ins == NULL )
                     break;
                 if( new_ins == jmp )
@@ -295,34 +296,34 @@ bool    ComCode( ins_entry *jmp )
                 break;
             if( new_ins == jmp )
                 break;
-            com = PrevIns( jmp );
+            com = PrevIns( back, jmp );
             if( com == NULL )
                 break;
-            if( !CommonInstr( new_ins, com ) )
+            if( !CommonInstr( back, new_ins, com ) )
                 break;
-            com = PrevIns( DelInstr( com ) );
+            com = PrevIns( back, DelInstr( back, com ) );
             common = true;
             if( _Class( jmp ) == OC_DEAD ) {
                 optreturn( common );
             }
         }
         if( common ) {
-            if( FindShort( new_ins, NULL ) )
+            if( FindShort( back, new_ins, NULL ) )
                 align = 0;
-            ChgLblRef( jmp, AddNewLabel( new_ins, align ) );
-            Untangle( NextIns( new_ins ) );
-            Untangle( NextIns( jmp ) );
-            Untangle( com );
+            ChgLblRef( back, jmp, AddNewLabel( back, new_ins, align ) );
+            Untangle( back, NextIns( back, new_ins ) );
+            Untangle( back, NextIns( back, jmp ) );
+            Untangle( back, com );
         }
     }
     if( _Class( jmp ) == OC_DEAD )
         optreturn( common );
-    common |= ComTail( _Label( jmp )->refs, jmp );
+    common |= ComTail( back, _Label( jmp )->refs, jmp );
     optreturn( common );
 }
 
 
-void    TraceCommon( ins_entry *lbl_ins )
+void    TraceCommon( BackRun& back, ins_entry *lbl_ins )
 /***************************************/
 {
     ins_entry   *ref;
@@ -341,7 +342,7 @@ void    TraceCommon( ins_entry *lbl_ins )
                     break;
                 }
             }
-            if( ComCode( ins ) ) {
+            if( ComCode( back, ins ) ) {
                 break;
             }
         }

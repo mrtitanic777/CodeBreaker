@@ -35,6 +35,7 @@
 #include "data.h"
 #include "i87data.h"
 #include "rgtbl.h"
+#include "backrun.hpp"
 
 
 /* some short forms*/
@@ -406,7 +407,8 @@ static const hw_reg_set     * const ParmSets[] = {
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct RgtblState {
+}  // namespace
+struct X386rgtblState {
     hw_reg_set FPParm2Reg[2] = {
         HW_D_1( HW_EMPTY ),     /* filled in by InitRegTbl */
         HW_D_1( HW_EMPTY )
@@ -443,10 +445,10 @@ struct RgtblState {
         Empty                   /* XX */
     };
 };
+namespace {
 
 }  // namespace
 
-static inline RgtblState& rgtbl_state() { return cbrun_part<RgtblState>(); }
 
 
 static const reg_set_index  IsSets[] = {
@@ -641,29 +643,29 @@ static const reg_set_index  * const InterTable[] = {
     #undef pick
 };
 
-void            InitRegTbl( void )
+void            InitRegTbl( BackRun& back )
 /*********************************
  * Initialize the tables.
  */
 {
     if( _FPULevel( FPU_87 ) ) {
-        HW_CAsgn( rgtbl_state().STParmReg[i87data_state().Max87Stk], HW_EMPTY );
+        HW_CAsgn( back.x386rgtbl->STParmReg[back.i87data.Max87Stk], HW_EMPTY );
     }
     if( _IsTargetModel( CGSW_X86_INDEXED_GLOBALS ) ) {
-        HW_CAsgn( rgtbl_state().FPParm2Reg[0], HW_ECX_ESI );
+        HW_CAsgn( back.x386rgtbl->FPParm2Reg[0], HW_ECX_ESI );
     } else {
-        HW_CAsgn( rgtbl_state().FPParm2Reg[0], HW_ECX_EBX );
+        HW_CAsgn( back.x386rgtbl->FPParm2Reg[0], HW_ECX_EBX );
     }
 }
 
 
-const hw_reg_set   *RegSetList( unsigned index )
+const hw_reg_set   *RegSetList( BackRun& back, unsigned index )
 /***********************************************
  * the registers of register list "index"
  */
 {
     if( index == RL_FPPARM2 )
-        return( rgtbl_state().FPParm2Reg );   /* the list this run filled in */
+        return( back.x386rgtbl->FPParm2Reg );   /* the list this run filled in */
     return( RegSets[index] );
 }
 
@@ -694,7 +696,7 @@ reg_set_index   RegIntersect( reg_set_index s1, reg_set_index s2 )
 }
 
 
-const hw_reg_set    *ParmChoices( type_class_def type_class )
+const hw_reg_set    *ParmChoices( BackRun& back, type_class_def type_class )
 /************************************************************
  * return a list of register which could be used to return type "class"
  */
@@ -702,7 +704,7 @@ const hw_reg_set    *ParmChoices( type_class_def type_class )
     const hw_reg_set    *list;
 
     if( _FPULevel( FPU_87 ) ) {
-        list = rgtbl_state().ParmSets8087[type_class];
+        list = back.x386rgtbl->ParmSets8087[type_class];
     } else {
         list = ParmSets[type_class];
     }
@@ -740,7 +742,7 @@ hw_reg_set      StructReg( void )
 }
 
 
-hw_reg_set      ReturnReg( type_class_def type_class, bool use_87 )
+hw_reg_set      ReturnReg( BackRun& back, type_class_def type_class, bool use_87 )
 /******************************************************************
  * return the "normal" return register used for type "class"
  */
@@ -748,9 +750,9 @@ hw_reg_set      ReturnReg( type_class_def type_class, bool use_87 )
     const hw_reg_set  *list;
 
     if( _FPULevel( FPU_87 ) && use_87 ) {
-        list = RegSetList(Return8087[type_class]);
+        list = RegSetList(back, Return8087[type_class]);
     } else {
-        list = RegSetList(ReturnSets[type_class]);
+        list = RegSetList(back, ReturnSets[type_class]);
     }
     return( *list );
 }
@@ -787,7 +789,7 @@ reg_set_index   IndexIntersect( reg_set_index curr, type_class_def type_class, b
 }
 
 
-bool    IsIndexReg( hw_reg_set reg, type_class_def type_class, bool is_temp_index )
+bool    IsIndexReg( BackRun& back, hw_reg_set reg, type_class_def type_class, bool is_temp_index )
 /*****************************************************************************
  * return true if "reg" can be used as an index of type "class"
  */
@@ -796,7 +798,7 @@ bool    IsIndexReg( hw_reg_set reg, type_class_def type_class, bool is_temp_inde
 
     /* unused parameters */ (void)is_temp_index;
 
-    for( list = RegSetList(IndexSets[type_class]); !HW_CEqual( *list, HW_EMPTY ); ++list ) {
+    for( list = RegSetList(back, IndexSets[type_class]); !HW_CEqual( *list, HW_EMPTY ); ++list ) {
         if( HW_Equal( *list, reg ) ) {
             break;
         }
@@ -804,14 +806,14 @@ bool    IsIndexReg( hw_reg_set reg, type_class_def type_class, bool is_temp_inde
     return( HW_Equal( *list, reg ) );
 }
 
-static  type_class_def  NotFloatRegClass( hw_reg_set regs )
+static  type_class_def  NotFloatRegClass( BackRun& back, hw_reg_set regs )
 /*********************************************************/
 {
     const hw_reg_set    *possible;
     type_class_def      type_class;
 
     for( type_class = U1; type_class < XX; ++type_class ) {
-        for( possible = RegSetList(ClassSets[type_class]); !HW_CEqual( *possible, HW_EMPTY ); ++possible ) {
+        for( possible = RegSetList(back, ClassSets[type_class]); !HW_CEqual( *possible, HW_EMPTY ); ++possible ) {
             if( HW_Equal( *possible, regs ) ) {
                 return( type_class );
             }
@@ -819,14 +821,14 @@ static  type_class_def  NotFloatRegClass( hw_reg_set regs )
     }
     if( HW_COvlap( regs, HW_SEGS ) ) { // a kludge to get GS:[EAX+EDX]
         HW_CTurnOff( regs, HW_SEGS );
-        if( NotFloatRegClass( regs ) == FD ) {
+        if( NotFloatRegClass( back, regs ) == FD ) {
             return( CP );
         }
     }
     return( XX );
 }
 
-type_class_def  RegClass( hw_reg_set regs )
+type_class_def  RegClass( BackRun& back, hw_reg_set regs )
 /******************************************
  * return the type associated with "regs".
  */
@@ -843,11 +845,11 @@ type_class_def  RegClass( hw_reg_set regs )
         }
         return( XX );
     } else {
-        return( NotFloatRegClass( regs ) );
+        return( NotFloatRegClass( back, regs ) );
     }
 }
 
-bool    IndexRegOk( hw_reg_set reg, bool is_temp_index )
+bool    IndexRegOk( BackRun& back, hw_reg_set reg, bool is_temp_index )
 /*******************************************************
  * return true if "reg" is ok to be used as in index reg.
  * "is_temp_index" means we'll also need to incorporate the
@@ -858,10 +860,10 @@ bool    IndexRegOk( hw_reg_set reg, bool is_temp_index )
 
     /* unused parameters */ (void)is_temp_index;
 
-    if( RegClass( reg ) == U4 ) {
-        list = RegSetList(RL_DOUBLE);
+    if( RegClass( back, reg ) == U4 ) {
+        list = RegSetList(back, RL_DOUBLE);
     } else {
-        list = RegSetList(RL_LONG_INDEX);
+        list = RegSetList(back, RL_LONG_INDEX);
     }
     for( ; !HW_CEqual( *list, HW_EMPTY ); ++list ) {
         if( HW_Equal( *list, reg ) ) {
@@ -1032,12 +1034,12 @@ hw_reg_set      High64Reg( hw_reg_set regs )
 }
 
 
-hw_reg_set      HighReg( hw_reg_set regs )
+hw_reg_set      HighReg( BackRun& back, hw_reg_set regs )
 /*****************************************
  * return the high order portion of "regs"
  */
 {
-    switch( RegClass( regs ) ) {
+    switch( RegClass( back, regs ) ) {
     case CP:
         HW_COnlyOn( regs, HW_SEGS );
         return( regs );
@@ -1055,21 +1057,21 @@ hw_reg_set      HighReg( hw_reg_set regs )
     }
 }
 
-hw_reg_set      HighOffsetReg( hw_reg_set regs )
+hw_reg_set      HighOffsetReg( BackRun& back, hw_reg_set regs )
 /***********************************************
  * return the portion of "regs" which would occupy the high memory address
  */
 {
-    return( HighReg( regs ) );
+    return( HighReg( back, regs ) );
 }
 
 
-hw_reg_set      LowReg( hw_reg_set regs )
+hw_reg_set      LowReg( BackRun& back, hw_reg_set regs )
 /****************************************
  * return the low order portion of "regs"
  */
 {
-    switch( RegClass( regs ) ) {
+    switch( RegClass( back, regs ) ) {
     case CP:
         HW_CTurnOff( regs, HW_SEGS );
         return( regs );
@@ -1086,23 +1088,23 @@ hw_reg_set      LowReg( hw_reg_set regs )
     }
 }
 
-hw_reg_set      LowOffsetReg( hw_reg_set regs )
+hw_reg_set      LowOffsetReg( BackRun& back, hw_reg_set regs )
 /**********************************************
  * return the portion of "regs" which would occupy the low memory address
  */
 {
-    return( LowReg( regs ) );
+    return( LowReg( back, regs ) );
 }
 
 
-bool    IsRegClass( hw_reg_set regs, type_class_def type_class )
+bool    IsRegClass( BackRun& back, hw_reg_set regs, type_class_def type_class )
 /***************************************************************
  * return true if "regs" has type "class" (eg I4, U4, etc)
  */
 {
     const hw_reg_set    *list;
 
-    for( list = RegSetList(IsSets[type_class]); !HW_Equal( *list, HW_EMPTY ); ++list ) {
+    for( list = RegSetList(back, IsSets[type_class]); !HW_Equal( *list, HW_EMPTY ); ++list ) {
         if( HW_Equal( *list, regs ) ) {
             break;
         }
@@ -1124,7 +1126,7 @@ hw_reg_set      ActualParmReg( hw_reg_set reg )
     return( reg );
 }
 
-hw_reg_set      FixedRegs( void )
+hw_reg_set      FixedRegs( BackRun& back )
 /********************************
  * return the set of register which may not be modified within this routine
  */
@@ -1169,10 +1171,10 @@ hw_reg_set      StackReg( void )
 }
 
 
-hw_reg_set      DisplayReg( void )
+hw_reg_set      DisplayReg( BackRun& back )
 /********************************/
 {
-    if( data_state().CurrProc->targ.sp_frame )
+    if( back.data.CurrProc->targ.sp_frame )
         return( HW_ESP );
     return( HW_EBP );
 }
@@ -1187,7 +1189,7 @@ int     SizeDisplayReg( void )
 }
 
 
-hw_reg_set      AllCacheRegs( void )
+hw_reg_set      AllCacheRegs( BackRun& back )
 /***********************************
  * return the set of all registers that could be used to cache values
  */
@@ -1219,7 +1221,7 @@ const hw_reg_set    *IdxRegs( void )
     return( DoubleRegs );
 }
 
-hw_reg_set      FirstReg( reg_set_index regs_idx )
+hw_reg_set      FirstReg( BackRun& back, reg_set_index regs_idx )
 /*************************************************
  * The table RTInfo[] uses reg_set_indexes instead of hw_reg_sets since
  * they are only one byte long.  This retrieves the first hw_reg_set
@@ -1230,5 +1232,11 @@ hw_reg_set      FirstReg( reg_set_index regs_idx )
  * register list and returns it.
  */
 {
-    return( *RegSetList(regs_idx) );
+    return( *RegSetList(back, regs_idx) );
 }
+
+/* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
+#if _TARGET & _TARG_80386
+X386rgtblState* x386rgtbl_make() { return new X386rgtblState(); }
+void x386rgtbl_free(X386rgtblState* part) { delete part; }
+#endif

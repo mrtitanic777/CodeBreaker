@@ -50,11 +50,12 @@
 #endif
 
 #include "scan.h"
+#include "frontrun.hpp"
 
 
-#define SET_CHARSET_DB(x)   scan_state().CharSet[x] = C_DB | C_EX
+#define SET_CHARSET_DB(x)   front.scan.CharSet[x] = C_DB | C_EX
 
-static void setRange( unsigned low, unsigned high )
+static void setRange( FrontRun& front, unsigned low, unsigned high )
 /*************************************************/
 {
     unsigned    i;
@@ -64,22 +65,22 @@ static void setRange( unsigned low, unsigned high )
     }
 }
 
-void SetDBChar( int character_set )
+void SetDBChar( FrontRun& front, int character_set )
 /*********************************/
 {
     switch( character_set ) {
     case 0: // KANJI
-        setRange( 0x81, 0x9f );
-        setRange( 0xe0, 0xfc );
+        setRange( front, 0x81, 0x9f );
+        setRange( front, 0xe0, 0xfc );
         break;
     case 1: // TRADITIONAL_CHINESE
-        setRange( 0x81, 0xfe );
+        setRange( front, 0x81, 0xfe );
         break;
     case 2: // WANSUNG_KOREAN
-        setRange( 0x81, 0xfe );
+        setRange( front, 0x81, 0xfe );
         break;
     case 3: // SIMPLIFIED_CHINESE
-        setRange( 0xa1, 0xfe );
+        setRange( front, 0xa1, 0xfe );
         break;
     case -1:
 #if defined( __RDOS__ )

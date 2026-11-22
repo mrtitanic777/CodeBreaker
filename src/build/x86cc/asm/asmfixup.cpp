@@ -40,6 +40,7 @@
   #include "myassert.h"
   #include "mangle.h"
 #endif
+#include "asmrun.hpp"
 
 #if defined( _STANDALONE_ )
 asmfixup_list   FixupList;
@@ -90,7 +91,7 @@ static void append_to_fixup_list_end( asmfixup *fixup )
 }
 #endif
 
-asmfixup *AddFixup( asm_sym_handle sym, fixup_types fixup_type, fixup_options fixup_option )
+asmfixup *AddFixup( AsmRun& assembler, asm_sym_handle sym, fixup_types fixup_type, fixup_options fixup_option )
 /*******************************************************************************************
  * put the correct target offset into the link list when forward reference of
  * relocatable is resolved;
@@ -98,7 +99,7 @@ asmfixup *AddFixup( asm_sym_handle sym, fixup_types fixup_type, fixup_options fi
 {
     asmfixup    *fixup;
 
-    switch( asmdefs_state().Code->info.token ) {
+    switch( assembler.asmdefs.Code->info.token ) {
     case T_CMPS:
     case T_LODS:
     case T_MOVS:
@@ -125,17 +126,17 @@ asmfixup *AddFixup( asm_sym_handle sym, fixup_types fixup_type, fixup_options fi
     fixup->next = sym->fixup;
     sym->fixup = fixup;
 #else
-    fixup = static_cast<asmfixup *>(MemAllocSafe( sizeof( asmfixup ) ));
+    fixup = static_cast<asmfixup *>(MemAllocSafe( *assembler.front, sizeof( asmfixup ) ));
     fixup->external = false;
-    fixup->fixup_loc = asminlin_state().AsmCodeAddress;
+    fixup->fixup_loc = assembler.asminlin->AsmCodeAddress;
     fixup->name = sym->name;
-    fixup->next = asminlin_state().FixupHead;
-    asminlin_state().FixupHead = fixup;
+    fixup->next = assembler.asminlin->FixupHead;
+    assembler.asminlin->FixupHead = fixup;
     fixup->u_offset = 0;
 #endif
     fixup->fixup_type = fixup_type;
     fixup->fixup_option = fixup_option;
-    asmfixup_state().InsFixups[asmdefs_state().Opnd_Count] = fixup;
+    assembler.asmfixup.InsFixups[assembler.asmdefs.Opnd_Count] = fixup;
     return( fixup );
 }
 
@@ -148,26 +149,26 @@ asmfixup *AddFixup( asm_sym_handle sym, fixup_types fixup_type, fixup_options fi
 #else
 
 #define SkipFixup() \
-    fixup->next = asminlin_state().FixupHead; \
-    asminlin_state().FixupHead = fixup
+    fixup->next = assembler.asminlin->FixupHead; \
+    assembler.asminlin->FixupHead = fixup
 
-static void PatchCodeBuffer( asmfixup *fixup, unsigned size )
+static void PatchCodeBuffer( AsmRun& assembler, asmfixup *fixup, unsigned size )
 /***********************************************************/
 {
     long    disp;
     long    fixup_loc;
 
     fixup_loc = fixup->fixup_loc;
-    disp = fixup->u_offset + asminlin_state().AsmCodeAddress - fixup->fixup_loc - size;
+    disp = fixup->u_offset + assembler.asminlin->AsmCodeAddress - fixup->fixup_loc - size;
     for( ; size > 0; size-- ) {
-        asminlin_state().AsmCodeBuffer[fixup_loc++] = (uint_8)disp;
+        assembler.asminlin->AsmCodeBuffer[fixup_loc++] = (uint_8)disp;
         disp >>= 8;
     }
 }
 
 #endif
 
-static bool DoPatch( asm_sym_handle sym, asmfixup *fixup )
+static bool DoPatch( AsmRun& assembler, asm_sym_handle sym, asmfixup *fixup )
 /********************************************************/
 {
     long                disp;
@@ -230,7 +231,7 @@ static bool DoPatch( asm_sym_handle sym, asmfixup *fixup )
         /*
          * calculate the displacement
          */
-        disp = fixup->u_offset + asminlin_state().AsmCodeAddress - fixup->fixup_loc - size;
+        disp = fixup->u_offset + assembler.asminlin->AsmCodeAddress - fixup->fixup_loc - size;
         max_disp = (1UL << ((size * 8)-1)) - 1;
         if( disp > max_disp || disp < -(max_disp + 1) ) {
 #if defined( _STANDALONE_ )
@@ -267,14 +268,14 @@ static bool DoPatch( asm_sym_handle sym, asmfixup *fixup )
                 break;
             }
 #else
-            AsmError( JUMP_OUT_OF_RANGE );
-            asminlin_state().FixupHead = NULL;
+            AsmError( *assembler.front, JUMP_OUT_OF_RANGE );
+            assembler.asminlin->FixupHead = NULL;
             return( RC_ERROR );
         } else {
-            PatchCodeBuffer( fixup, size );
+            PatchCodeBuffer( assembler, fixup, size );
 #endif
         }
-        MemFree( fixup );
+        MemFree( *assembler.front, fixup );
         break;
     default:
         SkipFixup();
@@ -283,7 +284,7 @@ static bool DoPatch( asm_sym_handle sym, asmfixup *fixup )
     return( RC_OK );
 }
 
-bool BackPatch( asm_sym_handle sym )
+bool BackPatch( AsmRun& assembler, asm_sym_handle sym )
 /*****************************
  * patching for forward reference labels in Jmp/Call instructions;
  * call only when a new label appears;
@@ -296,19 +297,19 @@ bool BackPatch( asm_sym_handle sym )
     fixup = sym->fixup;
     sym->fixup = NULL;
 #else
-    fixup = asminlin_state().FixupHead;
-    asminlin_state().FixupHead = NULL;
+    fixup = assembler.asminlin->FixupHead;
+    assembler.asminlin->FixupHead = NULL;
 #endif
     for( ; fixup != NULL; fixup = next ) {
         next = fixup->next;
-        if( DoPatch( sym, fixup ) ) {
+        if( DoPatch( assembler, sym, fixup ) ) {
             return( RC_ERROR );
         }
     }
     return( RC_OK );
 }
 
-void mark_fixupp( OPNDTYPE determinant, operand_idx index )
+void mark_fixupp( AsmRun& assembler, OPNDTYPE determinant, operand_idx index )
 /**********************************************************
  * this routine marks the correct target offset and data record address for
  * FIXUPP record;
@@ -316,9 +317,9 @@ void mark_fixupp( OPNDTYPE determinant, operand_idx index )
 {
     asmfixup    *fixup;
 
-    fixup = asmfixup_state().InsFixups[index];
+    fixup = assembler.asmfixup.InsFixups[index];
     if( fixup != NULL ) {
-        fixup->fixup_loc = asminlin_state().AsmCodeAddress;
+        fixup->fixup_loc = assembler.asminlin->AsmCodeAddress;
 #if defined( _STANDALONE_ )
         // fixup->offset = Code->data[index];
         // Code->data[index] = 0; // fixme
@@ -329,8 +330,8 @@ void mark_fixupp( OPNDTYPE determinant, operand_idx index )
          * put the offset in the location instead of attaching it to the fixup
          */
 #else
-        fixup->u_offset = asmdefs_state().Code->data[index];
-        asmdefs_state().Code->data[index] = 0;
+        fixup->u_offset = assembler.asmdefs.Code->data[index];
+        assembler.asmdefs.Code->data[index] = 0;
 #endif
 
         switch( determinant ) {
@@ -430,7 +431,7 @@ static bool MakeFpFixup( const char *patch_name )
 
 #endif
 
-bool AddFPPatchAndFixups( fp_patches patch )
+bool AddFPPatchAndFixups( AsmRun& assembler, fp_patches patch )
 /******************************************/
 {
 #if defined( _STANDALONE_ )
@@ -451,11 +452,11 @@ bool AddFPPatchAndFixups( fp_patches patch )
 #else
     asmfixup    *fixup;
 
-    fixup = static_cast<asmfixup *>(MemAllocSafe( sizeof( asmfixup ) ));
-    fixup->next = asminlin_state().FixupHead;
-    asminlin_state().FixupHead = fixup;
+    fixup = static_cast<asmfixup *>(MemAllocSafe( *assembler.front, sizeof( asmfixup ) ));
+    fixup->next = assembler.asminlin->FixupHead;
+    assembler.asminlin->FixupHead = fixup;
     fixup->external = false;
-    fixup->fixup_loc = asminlin_state().AsmCodeAddress;
+    fixup->fixup_loc = assembler.asminlin->AsmCodeAddress;
     fixup->name = NULL;
     fixup->u_fppatch = patch;
     fixup->fixup_type = FIX_FPPATCH;
@@ -470,14 +471,14 @@ bool AddFPPatchAndFixups( fp_patches patch )
 }
 
 #if !defined( _STANDALONE_ )
-void AsmFiniRelocs( void )
+void AsmFiniRelocs( AsmRun& assembler )
 /************************/
 {
     asmfixup    *fixup;
 
-    while( (fixup = asminlin_state().FixupHead) != NULL ) {
-        asminlin_state().FixupHead = fixup->next;
-        MemFree( fixup );
+    while( (fixup = assembler.asminlin->FixupHead) != NULL ) {
+        assembler.asminlin->FixupHead = fixup->next;
+        MemFree( *assembler.front, fixup );
     }
 }
 #endif

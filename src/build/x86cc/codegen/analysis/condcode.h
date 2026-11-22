@@ -30,4 +30,5 @@
 ****************************************************************************/
 
 
-extern void     Conditions( void );
+#pragma once
+extern void     Conditions( BackRun& back );

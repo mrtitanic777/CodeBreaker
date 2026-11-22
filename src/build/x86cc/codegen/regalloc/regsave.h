@@ -38,16 +38,15 @@
 struct RegsaveState {
     savings Save;
 };
-inline RegsaveState& regsave_state() { return cbrun_part<RegsaveState>(); }
 
 #endif
 
 extern void         AdjTimeSize( uint *time, uint *size );
-extern void         SetLoopCost( uint time );
+extern void         SetLoopCost( BackRun& back, uint time );
 extern void         SetCost( save_def *array, save_def cost );
-extern save_def     Weight( save_def value, block *blk );
-extern void         CalcSavings( conflict_node *conf );
+extern save_def     Weight( BackRun& back, save_def value, block *blk );
+extern void         CalcSavings( BackRun& back, conflict_node *conf );
 
-extern void         InitWeights( uint size );
-extern bool         WorthProlog( conflict_node *conf, hw_reg_set reg );
-extern void         ConstSavings( void );
+extern void         InitWeights( BackRun& back, uint size );
+extern bool         WorthProlog( BackRun& back, conflict_node *conf, hw_reg_set reg );
+extern void         ConstSavings( BackRun& back );

@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #ifdef MKOPCODE
 
 #define ins(tok,op1,byte1_info,op2,op3,op_dir,rm_info,wds,opcode,rm_byte,cpu,prefix) tok,

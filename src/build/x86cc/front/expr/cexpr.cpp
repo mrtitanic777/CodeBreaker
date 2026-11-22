@@ -39,6 +39,7 @@
 #include "i64.h"
 #include "caux.h"
 #include "cfeinfo.h"
+#include "frontrun.hpp"
 
 
 #define TOKEN2BOOL(t)   ((bool)(t))
@@ -57,70 +58,66 @@ static const struct mathfuncs {
     { NULL, NULL,   0, 0 }
 };
 
-static TREEPTR      GenNextParm(TREEPTR,TYPEPTR **);
-static TREEPTR      StartFunc(TREEPTR,TYPEPTR **);
-static TREEPTR      GetExpr(void);
-static TREEPTR      ExprId(void);
-static TREEPTR      ExprOpnd(void);
-static TREEPTR      SizeofOp(TYPEPTR);
-static TREEPTR      ScalarExpr(TREEPTR);
-static TREEPTR      UnaryPlus(TREEPTR);
-static TREEPTR      TernOp(TREEPTR,TREEPTR,TREEPTR);
-static TREEPTR      ColonOp(TREEPTR);
-static TREEPTR      StartTernary(TREEPTR);
-static TREEPTR      NotOp(TREEPTR);
-static TREEPTR      AndAnd(TREEPTR);
-static TREEPTR      OrOr(TREEPTR);
-static TREEPTR      GenFuncCall(TREEPTR);
-static TREEPTR      IndexOp(TREEPTR,TREEPTR);
-static TREEPTR      SegOp(TREEPTR,TREEPTR);
-static void         PopNestedParms( TYPEPTR **plistptr );
-static void         IncSymWeight( SYMPTR sym );
-static void         AddCallNode( TREEPTR tree );
+static TREEPTR      GenNextParm(FrontRun& front, TREEPTR,TYPEPTR **);
+static TREEPTR      StartFunc(FrontRun& front, TREEPTR,TYPEPTR **);
+static TREEPTR      GetExpr(FrontRun& front);
+static TREEPTR      ExprId(FrontRun& front);
+static TREEPTR      ExprOpnd(FrontRun& front);
+static TREEPTR      SizeofOp(FrontRun& front, TYPEPTR);
+static TREEPTR      ScalarExpr(FrontRun& front, TREEPTR);
+static TREEPTR      UnaryPlus(FrontRun& front, TREEPTR);
+static TREEPTR      TernOp(FrontRun& front, TREEPTR,TREEPTR,TREEPTR);
+static TREEPTR      ColonOp(FrontRun& front, TREEPTR);
+static TREEPTR      StartTernary(FrontRun& front, TREEPTR);
+static TREEPTR      NotOp(FrontRun& front, TREEPTR);
+static TREEPTR      AndAnd(FrontRun& front, TREEPTR);
+static TREEPTR      OrOr(FrontRun& front, TREEPTR);
+static TREEPTR      GenFuncCall(FrontRun& front, TREEPTR);
+static TREEPTR      IndexOp(FrontRun& front, TREEPTR,TREEPTR);
+static TREEPTR      SegOp(FrontRun& front, TREEPTR,TREEPTR);
+static void         PopNestedParms( FrontRun& front, TYPEPTR **plistptr );
+static void         IncSymWeight( FrontRun& front, SYMPTR sym );
+static void         AddCallNode( FrontRun& front, TREEPTR tree );
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct CexprState {
-    call_list **LastCallLnk;
-    call_list **FirstCallLnk;
-};
+/* (struct CexprState: cexpr_state.h) */
 
 }  // namespace
 
-static inline CexprState& cexpr_state() { return cbrun_part<CexprState>(); }
 
 
-void ExprInit( void )
+void ExprInit( FrontRun& front )
 {
-    cvars_state().ExprLevel = 0;
-    cvars_state().NestedParms = NULL;
-    cvars_state().CallNodeList = NULL;
-    cexpr_state().LastCallLnk = &cvars_state().CallNodeList;
-    cexpr_state().FirstCallLnk = cexpr_state().LastCallLnk;
-    InitExprTree();
+    front.cvars.ExprLevel = 0;
+    front.cvars.NestedParms = NULL;
+    front.cvars.CallNodeList = NULL;
+    front.cexpr.LastCallLnk = &front.cvars.CallNodeList;
+    front.cexpr.FirstCallLnk = front.cexpr.LastCallLnk;
+    InitExprTree(front);
 }
 
 //-----------------------------CNODE-----------------------------------
 
-static TREEPTR CallNode( TREEPTR func, TREEPTR parms, TYPEPTR func_result_type )
+static TREEPTR CallNode( FrontRun& front, TREEPTR func, TREEPTR parms, TYPEPTR func_result_type )
 {
     TREEPTR     tree;
     TYPEPTR     typ;
 
-    tree = ExprNode( func, OPR_CALL, parms );
+    tree = ExprNode( front, func, OPR_CALL, parms );
     tree->u.expr_type = func_result_type;
     tree->op.u2.result_type = func_result_type;
     typ = func_result_type;
     SKIP_TYPEDEFS( typ );
     if( typ->decl_type != TYP_VOID
-      && TypeSize( typ ) == 0 ) {
-        CErr1( ERR_INCOMPLETE_EXPR_TYPE );
+      && TypeSize( front, typ ) == 0 ) {
+        CErr1( front, ERR_INCOMPLETE_EXPR_TYPE );
     }
     return( tree );
 }
 
-static TYPEPTR Far16Type( TYPEPTR typ )
+static TYPEPTR Far16Type( FrontRun& front, TYPEPTR typ )
 /**************************************
  * TODO all this stuff should be part of the func defn.
  * not some hack on for later
@@ -135,10 +132,10 @@ static TYPEPTR Far16Type( TYPEPTR typ )
     }
     switch( typ2->decl_type ) {
     case TYP_INT:
-        typ = GetType( TYP_SHORT );
+        typ = GetType( front, TYP_SHORT );
         break;
     case TYP_UINT:
-        typ = GetType( TYP_USHORT );
+        typ = GetType( front, TYP_USHORT );
         break;
     default:
         break;
@@ -146,7 +143,7 @@ static TYPEPTR Far16Type( TYPEPTR typ )
     return( typ );
 }
 
-static TREEPTR FarPtr16Cvt( TREEPTR newparm  )
+static TREEPTR FarPtr16Cvt( FrontRun& front, TREEPTR newparm  )
 {
     TYPEPTR         parmtyp;
     pointer_class   op1_ptrclass;
@@ -156,8 +153,8 @@ static TREEPTR FarPtr16Cvt( TREEPTR newparm  )
     SKIP_TYPEDEFS( parmtyp );
     if( parmtyp->decl_type == TYP_POINTER ) {
         op1_ptrclass = PTRCLS_FAR16;
-        op2_ptrclass = ExprTypeClass( newparm->u.expr_type );
-        newparm = ExprNode( NULL, OPR_CONVERT_PTR, newparm );
+        op2_ptrclass = ExprTypeClass( front, newparm->u.expr_type );
+        newparm = ExprNode( front, NULL, OPR_CONVERT_PTR, newparm );
         newparm->u.expr_type = parmtyp;
         newparm->op.u2.sp.old_ptrclass = op2_ptrclass;
         newparm->op.u2.sp.new_ptrclass = op1_ptrclass;
@@ -165,17 +162,17 @@ static TREEPTR FarPtr16Cvt( TREEPTR newparm  )
     return( newparm );
 }
 
-static TREEPTR ParmNode( TREEPTR parmlist, TREEPTR newparm, bool far16_func )
+static TREEPTR ParmNode( FrontRun& front, TREEPTR parmlist, TREEPTR newparm, bool far16_func )
 {
     TREEPTR     tree;
     TYPEPTR     parmtyp;
 
     if( far16_func ) {
-        newparm = FarPtr16Cvt( newparm );
+        newparm = FarPtr16Cvt( front, newparm );
     }
-    tree = ExprNode( parmlist, OPR_PARM, newparm );
+    tree = ExprNode( front, parmlist, OPR_PARM, newparm );
     if( far16_func ) {
-        parmtyp = Far16Type( newparm->u.expr_type );
+        parmtyp = Far16Type( front, newparm->u.expr_type );
     } else {
         parmtyp = newparm->u.expr_type;
     }
@@ -184,11 +181,11 @@ static TREEPTR ParmNode( TREEPTR parmlist, TREEPTR newparm, bool far16_func )
     return( tree );
 }
 
-TREEPTR ErrorNode( TREEPTR tree )
+TREEPTR ErrorNode( FrontRun& front, TREEPTR tree )
 {
-    FreeExprTree( tree );
-    tree = LeafNode( OPR_ERROR );
-    tree->u.expr_type = GetType( TYP_INT );
+    FreeExprTree( front, tree );
+    tree = LeafNode( front, OPR_ERROR );
+    tree->u.expr_type = GetType( front, TYP_INT );
     return( tree );
 }
 
@@ -240,7 +237,7 @@ type_modifiers FlagOps( op_flags ops )
     return( flags );
 }
 
-static TREEPTR ConstLeaf( void )
+static TREEPTR ConstLeaf( FrontRun& front )
 {
     TREEPTR     leaf;
     FLOATVAL    *flt;
@@ -248,38 +245,38 @@ static TREEPTR ConstLeaf( void )
     /*
      * assume integer value
      */
-    leaf = LeafNode( OPR_PUSHINT );
-    leaf->op.u1.const_type = cvars_state().ConstType;
-    switch( cvars_state().ConstType ) {
+    leaf = LeafNode( front, OPR_PUSHINT );
+    leaf->op.u1.const_type = front.cvars.ConstType;
+    switch( front.cvars.ConstType ) {
     case TYP_WCHAR:
 #if TARGET_WCHAR == TARGET_UINT
         leaf->op.u1.const_type = TYP_UINT;
 #else
         leaf->op.u1.const_type = TYP_USHORT;
 #endif
-        leaf->op.u2.long_value = U32FetchTrunc( cvars_state().Constant64 );
+        leaf->op.u2.long_value = U32FetchTrunc( front.cvars.Constant64 );
         break;
     case TYP_CHAR:
     case TYP_UCHAR:
         leaf->op.u1.const_type = TYP_INT;
         /* fall through */
     case TYP_INT:
-        leaf->op.u2.long_value = I32FetchTrunc( cvars_state().Constant64 );
+        leaf->op.u2.long_value = I32FetchTrunc( front.cvars.Constant64 );
         break;
     case TYP_UINT:
-        leaf->op.u2.ulong_value = U32FetchTrunc( cvars_state().Constant64 );
+        leaf->op.u2.ulong_value = U32FetchTrunc( front.cvars.Constant64 );
         break;
     case TYP_LONG:
-        leaf->op.u2.long_value = I32FetchTrunc( cvars_state().Constant64 );
+        leaf->op.u2.long_value = I32FetchTrunc( front.cvars.Constant64 );
         break;
     case TYP_ULONG:
-        leaf->op.u2.ulong_value = U32FetchTrunc( cvars_state().Constant64 );
+        leaf->op.u2.ulong_value = U32FetchTrunc( front.cvars.Constant64 );
         break;
     case TYP_LONG64:
-        leaf->op.u2.long64_value = cvars_state().Constant64;
+        leaf->op.u2.long64_value = front.cvars.Constant64;
         break;
     case TYP_ULONG64:
-        leaf->op.u2.ulong64_value = cvars_state().Constant64;
+        leaf->op.u2.ulong64_value = front.cvars.Constant64;
         break;
     case TYP_FLOAT:
     case TYP_DOUBLE:
@@ -287,63 +284,63 @@ static TREEPTR ConstLeaf( void )
     case TYP_FIMAGINARY:
     case TYP_DIMAGINARY:
     case TYP_LDIMAGINARY:
-        flt = static_cast<FLOATVAL *>(CMemAlloc( sizeof( FLOATVAL ) - 1 + 1 + cvars_state().TokenLen + 1 ));
+        flt = static_cast<FLOATVAL *>(CMemAlloc( front, sizeof( FLOATVAL ) - 1 + 1 + front.cvars.TokenLen + 1 ));
         flt->string[0] = '+';
-        strcpy( flt->string + 1, cvars_state().Buffer );
-        flt->len = (unsigned char)( 1 + cvars_state().TokenLen );
-        flt->type = cvars_state().ConstType;
+        strcpy( flt->string + 1, front.cvars.Buffer );
+        flt->len = (unsigned char)( 1 + front.cvars.TokenLen );
+        flt->type = front.cvars.ConstType;
         flt->next = NULL;
         leaf->op.u2.float_value = flt;
         leaf->op.opr = OPR_PUSHFLOAT;
         /*
          * Convert constant to binary; that ensures it'll be cast properly.
          */
-        MakeBinaryFloat( leaf );
+        MakeBinaryFloat( front, leaf );
         break;
     }
-    leaf->u.expr_type = GetType( leaf->op.u1.const_type );
+    leaf->u.expr_type = GetType( front, leaf->op.u1.const_type );
     return( leaf );
 }
 
-TREEPTR IntLeaf( target_int value )
+TREEPTR IntLeaf( FrontRun& front, target_int value )
 {
     TREEPTR     leaf;
 
-    leaf = LeafNode( OPR_PUSHINT );
+    leaf = LeafNode( front, OPR_PUSHINT );
     leaf->op.u1.const_type = TYP_INT;
     leaf->op.u2.long_value = value;
-    leaf->u.expr_type = GetType( TYP_INT );
+    leaf->u.expr_type = GetType( front, TYP_INT );
     return( leaf );
 }
 
-TREEPTR UIntLeaf( target_uint value )
+TREEPTR UIntLeaf( FrontRun& front, target_uint value )
 {
     TREEPTR     leaf;
 
-    leaf = LeafNode( OPR_PUSHINT );
+    leaf = LeafNode( front, OPR_PUSHINT );
     leaf->op.u1.const_type = TYP_UINT;
     leaf->op.u2.ulong_value = value;
-    leaf->u.expr_type = GetType( TYP_UINT );
+    leaf->u.expr_type = GetType( front, TYP_UINT );
     return( leaf );
 }
 
-TREEPTR LongLeaf( target_long value )
+TREEPTR LongLeaf( FrontRun& front, target_long value )
 {
     TREEPTR     leaf;
 
-    leaf = LeafNode( OPR_PUSHINT );
+    leaf = LeafNode( front, OPR_PUSHINT );
     leaf->op.u1.const_type = TYP_LONG;
     leaf->op.u2.long_value = value;
-    leaf->u.expr_type = GetType( TYP_LONG );
+    leaf->u.expr_type = GetType( front, TYP_LONG );
     return( leaf );
 }
 
-static TREEPTR EnumLeaf( ENUMPTR ep )
+static TREEPTR EnumLeaf( FrontRun& front, ENUMPTR ep )
 {
     DATA_TYPE   decl_type;
     TREEPTR     leaf;
 
-    leaf = LeafNode( OPR_PUSHINT );
+    leaf = LeafNode( front, OPR_PUSHINT );
     decl_type = ep->parent->sym_type->object->decl_type;
     switch( decl_type ) {
     case TYP_CHAR:
@@ -368,17 +365,17 @@ static TREEPTR EnumLeaf( ENUMPTR ep )
         break;
     }
     leaf->op.u1.const_type = decl_type;
-    leaf->u.expr_type = GetType( decl_type );
+    leaf->u.expr_type = GetType( front, decl_type );
     return( leaf );
 }
 
-TREEPTR VarLeaf( SYMPTR sym, SYM_HANDLE sym_handle )
+TREEPTR VarLeaf( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
 {
     TREEPTR         leaf;
     TYPEPTR         typ;
     type_modifiers  flags;
 
-    leaf = LeafNode( OPR_PUSHADDR );
+    leaf = LeafNode( front, OPR_PUSHADDR );
     leaf->op.u2.sym_handle = sym_handle;
     typ = sym->sym_type;
     leaf->u.expr_type = typ;
@@ -387,7 +384,7 @@ TREEPTR VarLeaf( SYMPTR sym, SYM_HANDLE sym_handle )
     return( leaf );
 }
 
-static TREEPTR CheckSym( id_hash_idx hash, const char *id,
+static TREEPTR CheckSym( FrontRun& front, id_hash_idx hash, const char *id,
                         SYM_ENTRY *sym_out, SYM_HANDLE *symhandle )
 {
     SYM_HANDLE  sym_handle;
@@ -395,30 +392,30 @@ static TREEPTR CheckSym( id_hash_idx hash, const char *id,
     ENUMPTR     ep;
     SYM_ENTRY   sym;
 
-    ep = EnumLookup( hash, id );
-    sym_handle = SymLook( hash, id );
+    ep = EnumLookup( front, hash, id );
+    sym_handle = SymLook( front, hash, id );
     if( sym_handle == SYM_NULL ) {
         if( ep != NULL )
-            return( EnumLeaf( ep ) );
-        SymCreate( &sym, id );
+            return( EnumLeaf( front, ep ) );
+        SymCreate( front, &sym, id );
     } else {
-        SymGet( &sym, sym_handle );
+        SymGet( front, &sym, sym_handle );
         if( ep != NULL
           && ep->parent->level > sym.level ) {
-            return( EnumLeaf( ep ) );
+            return( EnumLeaf( front, ep ) );
         }
         if( sym.attribs.stg_class == SC_EXTERN
           && sym.level > 0 ) {
-            sym_handle0 = Sym0Look( hash, id );
+            sym_handle0 = Sym0Look( front, hash, id );
             if( sym_handle0 != SYM_NULL ) {
-                SymGet( &sym, sym_handle0 );
+                SymGet( front, &sym, sym_handle0 );
                 sym_handle = sym_handle0;
             }
         }
 
         if( sym.attribs.stg_class == SC_TYPEDEF ) {
-            CErr2p( ERR_CANT_USE_TYPEDEF_AS_VAR, id );
-            return( IntLeaf( 0 ) );
+            CErr2p( front, ERR_CANT_USE_TYPEDEF_AS_VAR, id );
+            return( IntLeaf( front, 0 ) );
         }
     }
 
@@ -427,21 +424,21 @@ static TREEPTR CheckSym( id_hash_idx hash, const char *id,
     return( NULL );
 }
 
-static TREEPTR SymLeaf( void )
+static TREEPTR SymLeaf( FrontRun& front )
 {
     SYM_HANDLE  sym_handle;
     id_hash_idx hash;
     TREEPTR     tree;
     SYM_ENTRY   sym;
 
-    if( cvars_state().CurToken == T_SAVED_ID ) {
-        hash = CalcHashID( cvars_state().SavedId );
-        cvars_state().CurToken = cvars_state().LAToken;
-        tree = CheckSym( hash, cvars_state().SavedId, &sym, &sym_handle );
+    if( front.cvars.CurToken == T_SAVED_ID ) {
+        hash = CalcHashID( front.cvars.SavedId );
+        front.cvars.CurToken = front.cvars.LAToken;
+        tree = CheckSym( front, hash, front.cvars.SavedId, &sym, &sym_handle );
     } else {
-        hash = CalcHashID( cvars_state().Buffer );
-        tree = CheckSym( hash, cvars_state().Buffer, &sym, &sym_handle );
-        NextToken();
+        hash = CalcHashID( front.cvars.Buffer );
+        tree = CheckSym( front, hash, front.cvars.Buffer, &sym, &sym_handle );
+        NextToken(front);
     }
 
     if( tree == NULL ) {
@@ -452,40 +449,40 @@ static TREEPTR SymLeaf( void )
          */
         sym.flags |= SYM_REFERENCED;
         if( sym_handle == SYM_NULL ) {
-            if( cvars_state().CurToken == T_LEFT_PAREN ) {
+            if( front.cvars.CurToken == T_LEFT_PAREN ) {
                 sym.attribs.stg_class = SC_FORWARD;     /* indicate forward decl */
                 /*
                  * Warn about unprototyped function
                  */
-                CWarn2p( ERR_ASSUMED_IMPORT, sym.name );
-                sym_handle = SymAddL0( hash, &sym ); /* add symbol to level 0 */
+                CWarn2p( front, ERR_ASSUMED_IMPORT, sym.name );
+                sym_handle = SymAddL0( front, hash, &sym ); /* add symbol to level 0 */
                 sym.flags |= SYM_FUNCTION;
-                sym.sym_type = FuncNode( GetType( TYP_INT ), FLAG_NONE, NULL );
+                sym.sym_type = FuncNode( front, GetType( front, TYP_INT ), FLAG_NONE, NULL );
             } else {
                 sym.attribs.stg_class = SC_EXTERN;      /* indicate extern decl */
-                CErr2p( ERR_UNDECLARED_SYM, sym.name );
-                sym_handle = SymAdd( hash, &sym ); /* add sym to current level*/
-                sym.sym_type = GetType( TYP_INT );
+                CErr2p( front, ERR_UNDECLARED_SYM, sym.name );
+                sym_handle = SymAdd( front, hash, &sym ); /* add sym to current level*/
+                sym.sym_type = GetType( front, TYP_INT );
             }
         }
-        IncSymWeight( &sym );
-        tree = VarLeaf( &sym, sym_handle );
-        SymReplace( &sym, sym_handle );
+        IncSymWeight( front, &sym );
+        tree = VarLeaf( front, &sym, sym_handle );
+        SymReplace( front, &sym, sym_handle );
     }
     return( tree );
 }
 
 
-static void IncSymWeight( SYMPTR sym )
+static void IncSymWeight( FrontRun& front, SYMPTR sym )
 {
     static int  const LoopWeights[] = { 1, 0x10, 0x100, 0x1000 };
 
     if( sym->level != 0 ) {
         if( (sym->flags & SYM_FUNCTION) == 0 ) {
-            if( cvars_state().LoopDepth > 3 ) {
+            if( front.cvars.LoopDepth > 3 ) {
                 sym->u.var.offset = ~0U >> 1;
             } else {
-                sym->u.var.offset += LoopWeights[cvars_state().LoopDepth];
+                sym->u.var.offset += LoopWeights[front.cvars.LoopDepth];
             }
         }
     }
@@ -537,7 +534,7 @@ static bool IsCallValue( TREEPTR tree )
     return( tree->op.opr == OPR_CALL );
 }
 
-static TREEPTR TakeRValue( TREEPTR tree, int void_ok )
+static TREEPTR TakeRValue( FrontRun& front, TREEPTR tree, int void_ok )
 /*****************************************************
  * This RVALUE thing is backwards
  */
@@ -553,89 +550,89 @@ static TREEPTR TakeRValue( TREEPTR tree, int void_ok )
         return( tree );
     if( !IS_PPCTL_NORMAL() ) {
         if( tree->op.opr == OPR_PUSHFLOAT ) {
-            CErr1( ERR_EXPR_MUST_BE_INTEGRAL );
-            return( ErrorNode( tree ) );
+            CErr1( front, ERR_EXPR_MUST_BE_INTEGRAL );
+            return( ErrorNode( front, tree ) );
         }
     }
     typ = tree->u.expr_type;
     SKIP_TYPEDEFS( typ );
     if( typ->decl_type == TYP_VOID ) {
         if( ! void_ok ) {
-            CErr1( ERR_EXPR_HAS_VOID_TYPE );
-            return( ErrorNode( tree ) );
+            CErr1( front, ERR_EXPR_HAS_VOID_TYPE );
+            return( ErrorNode( front, tree ) );
         }
     } else if( typ->decl_type == TYP_ARRAY ) {
         if( tree->op.opr == OPR_PUSHSTRING ) {
             if( typ->object->decl_type == TYP_USHORT ) {
-                typ = PtrNode( typ->object, FLAG_NONE, SEG_DATA );
+                typ = PtrNode( front, typ->object, FLAG_NONE, SEG_DATA );
             } else {
-                cvars_state().StringArrayType = typ;
-                typ = cvars_state().StringType;
+                front.cvars.StringArrayType = typ;
+                typ = front.cvars.StringType;
             }
             tree->u.expr_type = typ;
         } else {
             segid = SEG_DATA;
             decl_flags = FlagOps( tree->op.flags );
             if( tree->op.opr == OPR_PUSHADDR ) {
-                SymGet( &sym, tree->op.u2.sym_handle );
+                SymGet( front, &sym, tree->op.u2.sym_handle );
                 symb_flags = sym.flags;
                 sym.flags |= SYM_REFERENCED | SYM_ASSIGNED;
                 if( symb_flags != sym.flags ) {
-                    SymReplace( &sym, tree->op.u2.sym_handle );
+                    SymReplace( front, &sym, tree->op.u2.sym_handle );
                 }
                 if( sym.attribs.stg_class == SC_AUTO ) {
                     segid = SEG_STACK;
                 }
             }
             if( IsCallValue( tree ) ) {
-                CErr1( ERR_CANT_TAKE_ADDR_OF_RVALUE );
+                CErr1( front, ERR_CANT_TAKE_ADDR_OF_RVALUE );
             }
-            tree = ExprNode( NULL, OPR_ADDROF, tree );
+            tree = ExprNode( front, NULL, OPR_ADDROF, tree );
             if( segid == SEG_STACK ) {
-                cvars_state().CompFlags.addr_of_auto_taken = true;
+                front.cvars.CompFlags.addr_of_auto_taken = true;
 #if _INTEL_CPU
-                if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_SS ) {
+                if( front.cvars.TargetSwitches & CGSW_X86_FLOATING_SS ) {
                     decl_flags = (decl_flags & ~FLAG_NEAR) | FLAG_FAR;
                 }
 #endif
             }
-            tree->u.expr_type = PtrNode( typ->object, decl_flags, segid );
+            tree->u.expr_type = PtrNode( front, typ->object, decl_flags, segid );
         }
     } else if( typ->decl_type == TYP_FUNCTION ) {
 
         if( tree->op.opr == OPR_PUSHADDR ) {
-            SymGet( &sym, tree->op.u2.sym_handle );
+            SymGet( front, &sym, tree->op.u2.sym_handle );
             decl_flags = sym.mods;
             symb_flags = sym.flags;
             sym.flags |= SYM_REFERENCED | SYM_ADDR_TAKEN;
             if( symb_flags != sym.flags ) {
-                SymReplace( &sym, tree->op.u2.sym_handle );
+                SymReplace( front, &sym, tree->op.u2.sym_handle );
             }
         } else if( tree->op.opr == OPR_POINTS ) {
             decl_flags = tree->op.u2.result_type->u.p.decl_flags;
         } else {
             decl_flags = FLAG_NONE;
         }
-        tree = ExprNode( NULL, OPR_ADDROF, tree );
-        tree->u.expr_type = PtrNode( typ, decl_flags, SEG_NULL );
-    } else if( TypeSize( typ ) == 0 ) {
-        SetDiagType1( typ );
-        CErr1( ERR_INCOMPLETE_EXPR_TYPE );
-        SetDiagPop();
-        return( ErrorNode( tree ) );
+        tree = ExprNode( front, NULL, OPR_ADDROF, tree );
+        tree->u.expr_type = PtrNode( front, typ, decl_flags, SEG_NULL );
+    } else if( TypeSize( front, typ ) == 0 ) {
+        SetDiagType1( front, typ );
+        CErr1( front, ERR_INCOMPLETE_EXPR_TYPE );
+        SetDiagPop(front);
+        return( ErrorNode( front, tree ) );
     } else {
-        if( cvars_state().SizeOfCount == 0 ) {
+        if( front.cvars.SizeOfCount == 0 ) {
             if( tree->op.flags & OPFLAG_VOLATILE ) {
-                cvars_state().CompFlags.useful_side_effect = true;
+                front.cvars.CompFlags.useful_side_effect = true;
             }
         }
         if( tree->op.opr == OPR_PUSHSYM
           || tree->op.opr == OPR_PUSHADDR ) {
-            SymGet( &sym, tree->op.u2.sym_handle );
+            SymGet( front, &sym, tree->op.u2.sym_handle );
             symb_flags = sym.flags;
             sym.flags |= SYM_REFERENCED;
-            if( !cvars_state().CompFlags.label_dropped
-              && cvars_state().SizeOfCount == 0 ) {
+            if( !front.cvars.CompFlags.label_dropped
+              && front.cvars.SizeOfCount == 0 ) {
                 if( sym.level != 0
                   && sym.attribs.stg_class != SC_STATIC
                   && sym.attribs.stg_class != SC_EXTERN ) {
@@ -644,12 +641,12 @@ static TREEPTR TakeRValue( TREEPTR tree, int void_ok )
                          * turn on flag so msg only comes out once per sym
                          */
                         sym.flags |= SYM_ASSIGNED;
-                        CWarn2p( ERR_SYM_NOT_ASSIGNED, SymName( &sym, tree->op.u2.sym_handle ) );
+                        CWarn2p( front, ERR_SYM_NOT_ASSIGNED, SymName( front, &sym, tree->op.u2.sym_handle ) );
                     }
                 }
             }
             if( symb_flags != sym.flags ) {
-                SymReplace( &sym, tree->op.u2.sym_handle );
+                SymReplace( front, &sym, tree->op.u2.sym_handle );
             }
         }
     }
@@ -672,11 +669,11 @@ static TREEPTR TakeRValue( TREEPTR tree, int void_ok )
     case OPR_CALL:                      /* func() */
         tree->op.flags |= OPFLAG_RVALUE;
         if( tree->left->op.opr == OPR_FUNCNAME ) {
-            SymGet( &sym, tree->left->op.u2.sym_handle );
+            SymGet( front, &sym, tree->left->op.u2.sym_handle );
             if( sym.attribs.stg_class == SC_FORWARD
               && (sym.flags & SYM_TYPE_GIVEN) == 0 ) {
                  sym.flags |= SYM_TYPE_GIVEN;
-                 SymReplace( &sym, tree->left->op.u2.sym_handle );
+                 SymReplace( front, &sym, tree->left->op.u2.sym_handle );
             }
         }
         break;
@@ -690,8 +687,8 @@ static TREEPTR TakeRValue( TREEPTR tree, int void_ok )
             if( typ->object->decl_type == TYP_USHORT ) {
                 value = (string->literal[1] << 8) | value;
             }
-            FreeExprTree( tree );
-            tree = IntLeaf( value );
+            FreeExprTree( front, tree );
+            tree = IntLeaf( front, value );
         } else {
             tree->op.flags |= OPFLAG_RVALUE;
         }
@@ -701,15 +698,15 @@ static TREEPTR TakeRValue( TREEPTR tree, int void_ok )
 }
 
 
-static TREEPTR VoidRValue( TREEPTR tree )
+static TREEPTR VoidRValue( FrontRun& front, TREEPTR tree )
 {
-    tree = TakeRValue( tree, 1 );
+    tree = TakeRValue( front, tree, 1 );
     return( tree );
 }
 
-TREEPTR RValue( TREEPTR tree )
+TREEPTR RValue( FrontRun& front, TREEPTR tree )
 {
-    tree = TakeRValue( tree, 0 );
+    tree = TakeRValue( front, tree, 0 );
     return( tree );
 }
 
@@ -727,7 +724,7 @@ static void CheckAddrOfArray( TYPEPTR typ )
 
 //-----------------------------COPS------------------------------------
 
-static TREEPTR AddrOp( TREEPTR tree )
+static TREEPTR AddrOp( FrontRun& front, TREEPTR tree )
 {
     TYPEPTR         typ;
     TREEPTR         leaf;
@@ -741,25 +738,25 @@ static TREEPTR AddrOp( TREEPTR tree )
     typ = tree->u.expr_type;
     if( typ->decl_type == TYP_FIELD
       || typ->decl_type == TYP_UFIELD ) {
-        CErr1( ERR_CANT_TAKE_ADDR_OF_BIT_FIELD );
-        return( ErrorNode( tree ) );
+        CErr1( front, ERR_CANT_TAKE_ADDR_OF_BIT_FIELD );
+        return( ErrorNode( front, tree ) );
     } else if( typ->decl_type == TYP_VOID ) {
-        CErr1( ERR_CANT_TAKE_ADDR_OF_RVALUE );
-        return( ErrorNode( tree ) );
+        CErr1( front, ERR_CANT_TAKE_ADDR_OF_RVALUE );
+        return( ErrorNode( front, tree ) );
     }
     if( tree->op.flags & OPFLAG_LVALUE_CAST ) {
-        if( cvars_state().CompFlags.extensions_enabled ) {
+        if( front.cvars.CompFlags.extensions_enabled ) {
             tree->op.flags &= ~(OPFLAG_LVALUE_CAST | OPFLAG_RVALUE);
-            CWarn1( ERR_LVALUE_CAST );
+            CWarn1( front, ERR_LVALUE_CAST );
         } else {
-            CErr1( ERR_CANT_TAKE_ADDR_OF_RVALUE );
-            return( ErrorNode( tree ) );
+            CErr1( front, ERR_CANT_TAKE_ADDR_OF_RVALUE );
+            return( ErrorNode( front, tree ) );
         }
     }
     if( (tree->op.opr == OPR_CONVERT
       || tree->op.opr == OPR_CONVERT_PTR)
-      && cvars_state().CompFlags.extensions_enabled ) {
-        tree = LCastAdj( tree );
+      && front.cvars.CompFlags.extensions_enabled ) {
+        tree = LCastAdj( front, tree );
     }
     leaf = tree;
     if( tree->op.opr == OPR_DOT ) {
@@ -775,8 +772,8 @@ static TREEPTR AddrOp( TREEPTR tree )
             leaf = tree->left;
             leaf->op.u2.ulong_value += tree->right->op.u2.ulong_value;
             tree->left = NULL;
-            FreeExprTree( tree );
-            leaf->u.expr_type = PtrNode( typ, FLAG_NONE, SEG_DATA );
+            FreeExprTree( front, tree );
+            leaf->u.expr_type = PtrNode( front, typ, FLAG_NONE, SEG_DATA );
             return( leaf );
         }
     }
@@ -784,47 +781,47 @@ static TREEPTR AddrOp( TREEPTR tree )
     modifiers = FLAG_NONE;
     segid = SEG_DATA;
     if( leaf->op.opr == OPR_PUSHADDR ) {
-        SymGet( &sym, leaf->op.u2.sym_handle );
+        SymGet( front, &sym, leaf->op.u2.sym_handle );
         if( sym.attribs.stg_class == SC_REGISTER ) {
-            CErr1( ERR_CANT_TAKE_ADDR_OF_REGISTER );
+            CErr1( front, ERR_CANT_TAKE_ADDR_OF_REGISTER );
         }
         if( sym.level != 0 ) {
             sym.flags |= SYM_ASSIGNED;
         }
         sym.flags |= SYM_ADDR_TAKEN | SYM_REFERENCED;
-        SymReplace( &sym, leaf->op.u2.sym_handle );
+        SymReplace( front, &sym, leaf->op.u2.sym_handle );
     }
     if( leaf->op.opr == OPR_PUSHADDR ) {
 //        CheckAddrOfArray( typ );
-        SymGet( &sym, leaf->op.u2.sym_handle );
+        SymGet( front, &sym, leaf->op.u2.sym_handle );
         modifiers = sym.mods;
         if( sym.attribs.stg_class == SC_AUTO ) {
             segid = SEG_STACK;
-            cvars_state().CompFlags.addr_of_auto_taken = true;
+            front.cvars.CompFlags.addr_of_auto_taken = true;
 #if _INTEL_CPU
-            if( cvars_state().TargetSwitches & CGSW_X86_FLOATING_SS ) {
+            if( front.cvars.TargetSwitches & CGSW_X86_FLOATING_SS ) {
                 modifiers |= FLAG_FAR;
             }
 #endif
         }
-        typ = PtrNode( typ, modifiers & MASK_PTR, segid );
+        typ = PtrNode( front, typ, modifiers & MASK_PTR, segid );
     } else if( tree->op.opr == OPR_POINTS ) {
         typ = tree->op.u2.result_type;
     } else {
         modifiers = FlagOps( tree->op.flags );
-        typ = PtrNode( typ, modifiers, SEG_DATA );
+        typ = PtrNode( front, typ, modifiers, SEG_DATA );
     }
     if( IsLValue( tree ) ) {
-        tree = ExprNode( NULL, OPR_ADDROF, tree );
+        tree = ExprNode( front, NULL, OPR_ADDROF, tree );
     } else {
-        CErr1( ERR_CANT_TAKE_ADDR_OF_RVALUE );
-        return( ErrorNode( tree ) );
+        CErr1( front, ERR_CANT_TAKE_ADDR_OF_RVALUE );
+        return( ErrorNode( front, tree ) );
     }
     tree->u.expr_type = typ;
     return( tree );
 }
 
-static TREEPTR FarPtrCvt( SYMPTR sym, SYM_HANDLE sym_handle )
+static TREEPTR FarPtrCvt( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
 {
     TYPEPTR         typ;
     TREEPTR         tree;
@@ -833,18 +830,18 @@ static TREEPTR FarPtrCvt( SYMPTR sym, SYM_HANDLE sym_handle )
     SKIP_TYPEDEFS( typ );
     if( typ->decl_type == TYP_POINTER ) {
         if( typ->u.p.decl_flags & FLAG_FAR ) {
-            tree = VarLeaf( sym, sym_handle );
+            tree = VarLeaf( front, sym, sym_handle );
             tree->op.opr = OPR_PUSHSYM;
         } else if( typ->u.p.decl_flags & FLAG_BASED ) {
-            tree = VarLeaf( sym, sym_handle );
+            tree = VarLeaf( front, sym, sym_handle );
             tree->op.opr = OPR_PUSHSYM;
-            tree = BasedPtrNode( typ, tree );
+            tree = BasedPtrNode( front, typ, tree );
         } else {
-            tree = VarLeaf( sym, sym_handle );
+            tree = VarLeaf( front, sym, sym_handle );
             tree->op.opr = OPR_PUSHSYM;
-            tree = ExprNode( NULL, OPR_CONVERT, tree );
+            tree = ExprNode( front, NULL, OPR_CONVERT, tree );
             tree->u.expr_type = typ;
-            tree->op.u2.result_type = PtrNode( typ->object, FLAG_FAR, SEG_NULL );
+            tree->op.u2.result_type = PtrNode( front, typ->object, FLAG_FAR, SEG_NULL );
         }
     } else {
         assert( 0 );
@@ -853,19 +850,19 @@ static TREEPTR FarPtrCvt( SYMPTR sym, SYM_HANDLE sym_handle )
     return( tree );
 }
 
-static TREEPTR MakeFarOp( TREEPTR based_sym, TREEPTR tree )
+static TREEPTR MakeFarOp( FrontRun& front, TREEPTR based_sym, TREEPTR tree )
 {
     TYPEPTR     typ;
 
     typ = tree->u.expr_type;
     SKIP_TYPEDEFS( typ );
-    typ = PtrNode( typ->object, FLAG_FAR, SEG_NULL );
-    tree = ExprNode( based_sym, OPR_FARPTR, tree );
+    typ = PtrNode( front, typ->object, FLAG_FAR, SEG_NULL );
+    tree = ExprNode( front, based_sym, OPR_FARPTR, tree );
     tree->u.expr_type = typ;
     return( tree );
 }
 
-TREEPTR BasedPtrNode( TYPEPTR ptrtyp, TREEPTR tree )
+TREEPTR BasedPtrNode( FrontRun& front, TYPEPTR ptrtyp, TREEPTR tree )
 {
     TREEPTR     based_sym;
     SYM_HANDLE  sym_handle;
@@ -887,10 +884,10 @@ TREEPTR BasedPtrNode( TYPEPTR ptrtyp, TREEPTR tree )
          * __based( (__segment) __self ) use seg of self
          */
         tree->op.flags &= ~OPFLAG_RVALUE;
-        based_sym = ExprNode( tree, OPR_DUPE, NULL );
+        based_sym = ExprNode( front, tree, OPR_DUPE, NULL );
         based_sym->op.flags |= OPFLAG_RVALUE;
         based_sym->op.u2.result_type = tree->op.u2.result_type;
-        tree = MakeFarOp( based_sym, tree );
+        tree = MakeFarOp( front, based_sym, tree );
         tree->right = NULL;
         break;
     case BASED_VAR:
@@ -903,18 +900,18 @@ TREEPTR BasedPtrNode( TYPEPTR ptrtyp, TREEPTR tree )
 
         old = tree->u.expr_type;
         SKIP_TYPEDEFS( old );
-        sym = SymGetPtr( sym_handle );
-        based_sym = VarLeaf( sym, sym_handle );
+        sym = SymGetPtr( front, sym_handle );
+        based_sym = VarLeaf( front, sym, sym_handle );
         based_sym->op.opr = OPR_PUSHSYM;
         typ = sym->sym_type;
         SKIP_TYPEDEFS( typ );
         if( typ->u.p.decl_flags & FLAG_BASED ) {
-            based_sym = BasedPtrNode( typ, based_sym );
+            based_sym = BasedPtrNode( front, typ, based_sym );
             typ = based_sym->u.expr_type;
             SKIP_TYPEDEFS( typ );
         }
-        old = PtrNode( old->object, typ->u.p.decl_flags, SEG_NULL );
-        tree = ExprNode( based_sym, OPR_ADD, tree );
+        old = PtrNode( front, old->object, typ->u.p.decl_flags, SEG_NULL );
+        tree = ExprNode( front, based_sym, OPR_ADD, tree );
         tree->u.expr_type = old;
         tree->op.u2.result_type = old;
       } break;
@@ -922,49 +919,49 @@ TREEPTR BasedPtrNode( TYPEPTR ptrtyp, TREEPTR tree )
         /*
          * __based( <var> )             add offset to seg var
          */
-        sym = SymGetPtr( sym_handle );
-        based_sym = VarLeaf( sym, sym_handle );
+        sym = SymGetPtr( front, sym_handle );
+        based_sym = VarLeaf( front, sym, sym_handle );
         based_sym->op.opr = OPR_PUSHSYM;
-        tree = MakeFarOp( based_sym, tree );
+        tree = MakeFarOp( front, based_sym, tree );
         break;
     case BASED_VARSEG:
         /*
          * __based( (__segment) <var> ) ) use seg of var
          */
-        sym = SymGetPtr( sym_handle );
-        based_sym = FarPtrCvt( sym, sym_handle );
-        tree = MakeFarOp( based_sym, tree );
+        sym = SymGetPtr( front, sym_handle );
+        based_sym = FarPtrCvt( front, sym, sym_handle );
+        tree = MakeFarOp( front, based_sym, tree );
         break;
     case BASED_SEGNAME:
         /*
          * __based( __segname( "name" )   use seg of segname
          */
         if( sym_handle != SYM_NULL ) {
-            sym = SymGetPtr( sym_handle );
-            based_sym = VarLeaf( sym, sym_handle );
+            sym = SymGetPtr( front, sym_handle );
+            based_sym = VarLeaf( front, sym, sym_handle );
             based_sym->op.opr = OPR_PUSHSEG;
         } else {
             /*
              * error I guess
              */
-            based_sym = LeafNode( OPR_PUSHINT );
+            based_sym = LeafNode( front, OPR_PUSHINT );
             based_sym->op.u1.const_type = TYP_INT;
             based_sym->op.u2.long_value = segid;
-            based_sym->u.expr_type = GetType( TYP_USHORT );
+            based_sym->u.expr_type = GetType( front, TYP_USHORT );
         }
-        tree = MakeFarOp( based_sym, tree );
+        tree = MakeFarOp( front, based_sym, tree );
     }
     return( tree  );
 }
 
 
-static TREEPTR CheckBasedPtr( TREEPTR tree, TYPEPTR typ, type_modifiers *p_flags )
+static TREEPTR CheckBasedPtr( FrontRun& front, TREEPTR tree, TYPEPTR typ, type_modifiers *p_flags )
 {
     type_modifiers  flags;
 
     flags = typ->u.p.decl_flags & MASK_PTR;
     if( flags & FLAG_BASED ) {
-        tree = BasedPtrNode( typ, tree );
+        tree = BasedPtrNode( front, typ, tree );
         flags &= ~(FLAG_NEAR | FLAG_BASED);
         if( typ->u.p.based_kind == BASED_VAR ) {
             SYM_HANDLE  base_sym_handle;
@@ -975,7 +972,7 @@ static TREEPTR CheckBasedPtr( TREEPTR tree, TYPEPTR typ, type_modifiers *p_flags
              * For pointers based on another pointer, copy flags from the base ptr
              */
             base_sym_handle = typ->u.p.based_sym;
-            base_sym = SymGetPtr( base_sym_handle );
+            base_sym = SymGetPtr( front, base_sym_handle );
             base_typ = base_sym->sym_type;
             flags |= base_typ->u.p.decl_flags & MASK_PTR;
         } else {
@@ -987,7 +984,7 @@ static TREEPTR CheckBasedPtr( TREEPTR tree, TYPEPTR typ, type_modifiers *p_flags
 }
 
 
-static TREEPTR PtrOp( TREEPTR tree )
+static TREEPTR PtrOp( FrontRun& front, TREEPTR tree )
 {
     TYPEPTR         ptrtyp;
     TYPEPTR         typ;
@@ -998,20 +995,20 @@ static TREEPTR PtrOp( TREEPTR tree )
     typ = tree->u.expr_type;
     SKIP_TYPEDEFS( typ );
     if( typ->decl_type != TYP_POINTER ) {
-        CErr1( ERR_EXPR_MUST_BE_POINTER_TO );
-        return( ErrorNode( tree ) );
+        CErr1( front, ERR_EXPR_MUST_BE_POINTER_TO );
+        return( ErrorNode( front, tree ) );
     }
     ptrtyp = typ;
-    tree = CheckBasedPtr( tree, typ, &flags );
-    tree = ExprNode( tree, OPR_POINTS, NULL );
+    tree = CheckBasedPtr( front, tree, typ, &flags );
+    tree = ExprNode( front, tree, OPR_POINTS, NULL );
     typ = typ->object;
 //    SKIP_TYPEDEFS( typ );
     tree->u.expr_type = typ;
     tree->op.u2.result_type = ptrtyp;
     tree->op.flags = OpFlags( flags );
-    if( cvars_state().SizeOfCount == 0 ) {
+    if( front.cvars.SizeOfCount == 0 ) {
         if( tree->op.flags & OPFLAG_VOLATILE ) {
-            cvars_state().CompFlags.useful_side_effect = true;
+            front.cvars.CompFlags.useful_side_effect = true;
         }
     }
     return( tree );
@@ -1065,7 +1062,7 @@ static TYPEPTR Ptr2Struct( TYPEPTR typ )
 }
 
 
-static TREEPTR DotOp( TREEPTR tree )
+static TREEPTR DotOp( FrontRun& front, TREEPTR tree )
 {
     TYPEPTR             typ;
     TYPEPTR             get_typ;
@@ -1074,9 +1071,9 @@ static TREEPTR DotOp( TREEPTR tree )
     op_flags            opflag;
     SYM_ENTRY           sym;
 
-    if( cvars_state().CurToken != T_ID ) {
-        CErr1( ERR_EXPECTING_ID );
-        return( ErrorNode( tree ) );
+    if( front.cvars.CurToken != T_ID ) {
+        CErr1( front, ERR_EXPECTING_ID );
+        return( ErrorNode( front, tree ) );
     }
     if( tree->op.opr == OPR_ERROR )
         return( tree );
@@ -1084,33 +1081,33 @@ static TREEPTR DotOp( TREEPTR tree )
     SKIP_TYPEDEFS( typ );
     if( typ->decl_type != TYP_STRUCT
       && typ->decl_type != TYP_UNION ) {
-        CErr1( ERR_MUST_BE_STRUCT_OR_UNION );
-        return( ErrorNode( tree ) );
+        CErr1( front, ERR_MUST_BE_STRUCT_OR_UNION );
+        return( ErrorNode( front, tree ) );
     }
     get_typ = typ;
     offset = 0;
-    field = SearchFields( &get_typ, &offset, cvars_state().Buffer );
+    field = SearchFields( &get_typ, &offset, front.cvars.Buffer );
     if( field == NULL ) {
-        CErr3p( ERR_NAME_NOT_FOUND_IN_STRUCT, cvars_state().Buffer, typ->u.tag->name );
-        return( ErrorNode( tree ) );
+        CErr3p( front, ERR_NAME_NOT_FOUND_IN_STRUCT, front.cvars.Buffer, typ->u.tag->name );
+        return( ErrorNode( front, tree ) );
     }
     typ = field->field_type;
     opflag = tree->op.flags | OpFlags( field->attrib );
-    if( cvars_state().CompFlags.emit_browser_info ) {
-        field->xref->next_xref = NewXref( field->xref->next_xref );
+    if( front.cvars.CompFlags.emit_browser_info ) {
+        field->xref->next_xref = NewXref( front, field->xref->next_xref );
     }
     if( tree->op.opr == OPR_DOT
       || tree->op.opr == OPR_ARROW ) {
         tree->right->op.u2.ulong_value += offset;
     } else {
         if( tree->op.opr == OPR_PUSHADDR ) {
-            SymGet( &sym, tree->op.u2.sym_handle );
+            SymGet( front, &sym, tree->op.u2.sym_handle );
             if( (sym.flags & SYM_ASSIGNED) == 0 ) {
                 sym.flags |= SYM_ASSIGNED;
-                SymReplace( &sym, tree->op.u2.sym_handle );
+                SymReplace( front, &sym, tree->op.u2.sym_handle );
             }
         }
-        tree = ExprNode( tree, OPR_DOT, UIntLeaf( offset ) );
+        tree = ExprNode( front, tree, OPR_DOT, UIntLeaf( front, offset ) );
     }
     tree->u.expr_type = typ;
     tree->op.u2.result_type = typ;
@@ -1119,7 +1116,7 @@ static TREEPTR DotOp( TREEPTR tree )
 }
 
 
-static TREEPTR ArrowOp( TREEPTR tree )
+static TREEPTR ArrowOp( FrontRun& front, TREEPTR tree )
 {
     TYPEPTR             typ;
     TYPEPTR             get_typ;
@@ -1127,35 +1124,35 @@ static TREEPTR ArrowOp( TREEPTR tree )
     target_size         offset;
     type_modifiers      flags;
 
-    if( cvars_state().CurToken != T_ID ) {
-        CErr1( ERR_EXPECTING_ID );
-        return( ErrorNode( tree ) );
+    if( front.cvars.CurToken != T_ID ) {
+        CErr1( front, ERR_EXPECTING_ID );
+        return( ErrorNode( front, tree ) );
     }
     if( tree->op.opr == OPR_ERROR )
         return( tree );
     typ = tree->u.expr_type;
     SKIP_TYPEDEFS( typ );
     if( Ptr2Struct( typ ) == NULL ) {
-        CErr1( ERR_MUST_BE_PTR_TO_STRUCT_OR_UNION );
-        return( ErrorNode( tree ) );
+        CErr1( front, ERR_MUST_BE_PTR_TO_STRUCT_OR_UNION );
+        return( ErrorNode( front, tree ) );
     }
     if( tree->op.opr == OPR_PUSHADDR ) {
         tree->op.opr = OPR_PUSHSYM;
     }
-    tree = CheckBasedPtr( tree, typ, &flags );
+    tree = CheckBasedPtr( front, tree, typ, &flags );
     typ = typ->object;
     SKIP_TYPEDEFS( typ );
     get_typ = typ;
     offset = 0;
-    field = SearchFields( &get_typ, &offset, cvars_state().Buffer );
+    field = SearchFields( &get_typ, &offset, front.cvars.Buffer );
     if( field == NULL ) {
-        CErr3p( ERR_NAME_NOT_FOUND_IN_STRUCT, cvars_state().Buffer, typ->u.tag->name );
-        return( ErrorNode( tree ) );
+        CErr3p( front, ERR_NAME_NOT_FOUND_IN_STRUCT, front.cvars.Buffer, typ->u.tag->name );
+        return( ErrorNode( front, tree ) );
     }
-    if( cvars_state().CompFlags.emit_browser_info ) {
-        field->xref->next_xref = NewXref( field->xref->next_xref );
+    if( front.cvars.CompFlags.emit_browser_info ) {
+        field->xref->next_xref = NewXref( front, field->xref->next_xref );
     }
-    tree = ExprNode( tree, OPR_ARROW, UIntLeaf( offset ) );
+    tree = ExprNode( front, tree, OPR_ARROW, UIntLeaf( front, offset ) );
     typ = field->field_type;
     tree->u.expr_type = typ;
     tree->op.u2.result_type = typ;
@@ -1164,32 +1161,32 @@ static TREEPTR ArrowOp( TREEPTR tree )
     return( tree );
 }
 
-static TREEPTR IncDec( TREEPTR tree, TOKEN opr )
+static TREEPTR IncDec( FrontRun& front, TREEPTR tree, TOKEN opr )
 {
     op_flags    volatile_flag;
 
     volatile_flag = tree->op.flags & OPFLAG_VOLATILE;
-    CheckConst( tree );
-    tree = AddOp( tree, opr, IntLeaf( 1 ) );
+    CheckConst( front, tree );
+    tree = AddOp( front, tree, opr, IntLeaf( front, 1 ) );
     tree->op.flags |= volatile_flag;
-    cvars_state().CompFlags.meaningless_stmt = false;
-    cvars_state().CompFlags.useful_side_effect = true;
+    front.cvars.CompFlags.meaningless_stmt = false;
+    front.cvars.CompFlags.useful_side_effect = true;
     return( tree );
 }
 
 //-----------------------------CEXPR-----------------------------------
 
-bool ConstExprAndType( const_val *val )
+bool ConstExprAndType( FrontRun& front, const_val *val )
 {
     TREEPTR     tree;
     call_list   **save;
     bool        ret;
 
-    save = cexpr_state().FirstCallLnk;
-    ++cvars_state().ExprLevel;                    /* allow for nested expressions */
-    tree = SingleExpr();
-    --cvars_state().ExprLevel;                    /* put Level back */
-    cexpr_state().FirstCallLnk = save;
+    save = front.cexpr.FirstCallLnk;
+    ++front.cvars.ExprLevel;                    /* allow for nested expressions */
+    tree = SingleExpr(front);
+    --front.cvars.ExprLevel;                    /* put Level back */
+    front.cexpr.FirstCallLnk = save;
     val->type = TYP_INT;
     switch( tree->op.opr ) {
     case OPR_PUSHINT:
@@ -1210,225 +1207,225 @@ bool ConstExprAndType( const_val *val )
         ret = true;
         break;
     case OPR_PUSHFLOAT:
-        CErr1( ERR_EXPR_MUST_BE_INTEGRAL );
+        CErr1( front, ERR_EXPR_MUST_BE_INTEGRAL );
         val->value.u._64[0] = (long long)atof( tree->op.u2.float_value->string );
         ret = false;
         break;
     default:
         if( tree->op.opr != OPR_ERROR ) {
-            CErr1( ERR_NOT_A_CONSTANT_EXPR );
+            CErr1( front, ERR_NOT_A_CONSTANT_EXPR );
         }
         Set64ValZero( val->value );
         ret = false;
         break;
     }
-    FreeExprTree( tree );
+    FreeExprTree( front, tree );
     return( ret );
 }
 
-TREEPTR Expr( void )
+TREEPTR Expr( FrontRun& front )
 {
-    cvars_state().Class[cvars_state().ExprLevel] = TC_START;
-    return( GetExpr() );
+    front.cvars.Class[front.cvars.ExprLevel] = TC_START;
+    return( GetExpr(front) );
 }
 
 
-TREEPTR CommaExpr( void )
+TREEPTR CommaExpr( FrontRun& front )
 {
-    cvars_state().Class[cvars_state().ExprLevel] = TC_START1;
-    return( GetExpr() );
+    front.cvars.Class[front.cvars.ExprLevel] = TC_START1;
+    return( GetExpr(front) );
 }
 
 
-TREEPTR AddrExpr( void )
+TREEPTR AddrExpr( FrontRun& front )
 {
-    return( SingleExpr() );
+    return( SingleExpr(front) );
 }
 
 
-TREEPTR SingleExpr( void )
+TREEPTR SingleExpr( FrontRun& front )
 {
     TREEPTR     tree;
 
-    cvars_state().Class[cvars_state().ExprLevel] = TC_START2;
-    tree = GetExpr();
-    FoldExprTree( tree );
+    front.cvars.Class[front.cvars.ExprLevel] = TC_START2;
+    tree = GetExpr(front);
+    FoldExprTree( front, tree );
     return( tree );
 }
 
 
-static TREEPTR GetExpr( void )
+static TREEPTR GetExpr( FrontRun& front )
 {
     TREEPTR     tree, op1;
     TYPEPTR     typ;
     token_class curclass;
     TYPEPTR     *plist;
 
-    cvars_state().CompFlags.useful_side_effect = false;
-    cexpr_state().FirstCallLnk = cexpr_state().LastCallLnk;
+    front.cvars.CompFlags.useful_side_effect = false;
+    front.cexpr.FirstCallLnk = front.cexpr.LastCallLnk;
     tree = NULL;
     plist = NULL;
     for( ;; ) {
         if( tree == NULL )
-            tree = ExprOpnd();
-        curclass = TokenClass[cvars_state().CurToken];
-        while( curclass <= cvars_state().Class[cvars_state().ExprLevel] ) {
-            op1 = cvars_state().ValueStack[cvars_state().ExprLevel];
+            tree = ExprOpnd(front);
+        curclass = TokenClass[front.cvars.CurToken];
+        while( curclass <= front.cvars.Class[front.cvars.ExprLevel] ) {
+            op1 = front.cvars.ValueStack[front.cvars.ExprLevel];
             /*
              * the following cases are listed from lowest to highest
              * priority
              */
-            switch( cvars_state().Class[cvars_state().ExprLevel] ) {
+            switch( front.cvars.Class[front.cvars.ExprLevel] ) {
             case TC_START:
             case TC_START1:
             case TC_START2:
             case TC_START_UNARY:
                 return( tree );
             case TC_LEFT_PAREN:         /* bracketed expression */
-                MustRecog( T_RIGHT_PAREN );
-                curclass = TokenClass[cvars_state().CurToken];
+                MustRecog( front, T_RIGHT_PAREN );
+                curclass = TokenClass[front.cvars.CurToken];
                 break;
             case TC_COMMA:
                 if( op1->op.opr == OPR_ERROR ) {
-                    FreeExprTree( tree );
+                    FreeExprTree( front, tree );
                     return( op1 );
                 }
                 if( tree->op.opr == OPR_ERROR ) {
-                    FreeExprTree( op1 );
+                    FreeExprTree( front, op1 );
                     return( tree );
                 }
-                op1 = VoidRValue( op1 );
+                op1 = VoidRValue( front, op1 );
                 typ = TypeOf( tree );
                 if( IsStruct( typ ) ) {
                     if( tree->op.opr == OPR_PUSHADDR ) {
                         tree->op.opr = OPR_PUSHSYM;
                     }
                 } else {
-                    tree = VoidRValue( tree );
+                    tree = VoidRValue( front, tree );
                 }
-                tree = ExprNode( op1, OPR_COMMA, tree );
+                tree = ExprNode( front, op1, OPR_COMMA, tree );
                 tree->u.expr_type = typ;
                 tree->op.u2.result_type = typ;
                 break;
             case TC_ASSIGNMENT:  /*  = += -= *= /= %= >>= <<= &= ^= |=  */
-                CheckConst( op1 );
-                tree = AsgnOp( op1, cvars_state().Token[cvars_state().ExprLevel], tree );
-                cvars_state().CompFlags.meaningless_stmt = false;
-                cvars_state().CompFlags.useful_side_effect = true;
+                CheckConst( front, op1 );
+                tree = AsgnOp( front, op1, front.cvars.Token[front.cvars.ExprLevel], tree );
+                front.cvars.CompFlags.meaningless_stmt = false;
+                front.cvars.CompFlags.useful_side_effect = true;
                 break;
             case TC_TERNARY:
-                MustRecog( T_COLON );
+                MustRecog( front, T_COLON );
                 break;
             case TC_TERNARY_DONE:
-                cvars_state().CompFlags.meaningless_stmt &= TOKEN2BOOL( cvars_state().Token[cvars_state().ExprLevel] );
-                --cvars_state().ExprLevel;
-                tree = TernOp( cvars_state().ValueStack[cvars_state().ExprLevel], op1, tree );
-                cvars_state().CompFlags.pending_dead_code = false;
+                front.cvars.CompFlags.meaningless_stmt &= TOKEN2BOOL( front.cvars.Token[front.cvars.ExprLevel] );
+                --front.cvars.ExprLevel;
+                tree = TernOp( front, front.cvars.ValueStack[front.cvars.ExprLevel], op1, tree );
+                front.cvars.CompFlags.pending_dead_code = false;
                 break;
             case TC_OR_OR:
-                if( cvars_state().Token[cvars_state().ExprLevel] == T_NULL ) {
-                    BoolExpr( tree );   /* checks type of op2 */
-                    --cvars_state().SizeOfCount;
+                if( front.cvars.Token[front.cvars.ExprLevel] == T_NULL ) {
+                    BoolExpr( front, tree );   /* checks type of op2 */
+                    --front.cvars.SizeOfCount;
                     tree = op1;
                 } else {
-                    tree = FlowOp( op1, OPR_OR_OR, BoolExpr( tree ) );
+                    tree = FlowOp( front, op1, OPR_OR_OR, BoolExpr( front, tree ) );
                 }
-                cvars_state().CompFlags.meaningless_stmt = true;
-                cvars_state().CompFlags.pending_dead_code = false;
+                front.cvars.CompFlags.meaningless_stmt = true;
+                front.cvars.CompFlags.pending_dead_code = false;
                 break;
             case TC_AND_AND:
-                if( cvars_state().Token[cvars_state().ExprLevel] == T_NULL ) {
-                    BoolExpr( tree );   /* checks type of op2 */
-                    --cvars_state().SizeOfCount;
+                if( front.cvars.Token[front.cvars.ExprLevel] == T_NULL ) {
+                    BoolExpr( front, tree );   /* checks type of op2 */
+                    --front.cvars.SizeOfCount;
                     tree = op1;
                 } else {
-                    tree = FlowOp( op1, OPR_AND_AND, BoolExpr( tree ) );
+                    tree = FlowOp( front, op1, OPR_AND_AND, BoolExpr( front, tree ) );
                 }
-                cvars_state().CompFlags.meaningless_stmt = true;
-                cvars_state().CompFlags.pending_dead_code = false;
+                front.cvars.CompFlags.meaningless_stmt = true;
+                front.cvars.CompFlags.pending_dead_code = false;
                 break;
             case TC_OR:
             case TC_XOR:
             case TC_AND:
-                tree = IntOp( op1, cvars_state().Token[cvars_state().ExprLevel], tree );
-                cvars_state().CompFlags.meaningless_stmt = true;
+                tree = IntOp( front, op1, front.cvars.Token[front.cvars.ExprLevel], tree );
+                front.cvars.CompFlags.meaningless_stmt = true;
                 break;
             case TC_EQ_NE:
             case TC_REL_OP:
-                tree = RelOp( op1, cvars_state().Token[cvars_state().ExprLevel], tree );
-                cvars_state().CompFlags.meaningless_stmt = true;
+                tree = RelOp( front, op1, front.cvars.Token[front.cvars.ExprLevel], tree );
+                front.cvars.CompFlags.meaningless_stmt = true;
                 break;
             case TC_SHIFT_OP:
-                tree = ShiftOp( op1, cvars_state().Token[cvars_state().ExprLevel], tree );
-                cvars_state().CompFlags.meaningless_stmt = true;
+                tree = ShiftOp( front, op1, front.cvars.Token[front.cvars.ExprLevel], tree );
+                front.cvars.CompFlags.meaningless_stmt = true;
                 break;
             case TC_ADD_OP:
-                tree = AddOp( op1, cvars_state().Token[cvars_state().ExprLevel], tree );
-                cvars_state().CompFlags.meaningless_stmt = true;
+                tree = AddOp( front, op1, front.cvars.Token[front.cvars.ExprLevel], tree );
+                front.cvars.CompFlags.meaningless_stmt = true;
                 break;
             case TC_MUL_OP:
-                tree = BinOp( RValue(op1), cvars_state().Token[cvars_state().ExprLevel], tree );
-                cvars_state().CompFlags.meaningless_stmt = true;
+                tree = BinOp( front, RValue(front, op1), front.cvars.Token[front.cvars.ExprLevel], tree );
+                front.cvars.CompFlags.meaningless_stmt = true;
                 break;
             case TC_PREINC:
-                tree = IncDec( tree, cvars_state().Token[cvars_state().ExprLevel] );
+                tree = IncDec( front, tree, front.cvars.Token[front.cvars.ExprLevel] );
                 break;
             case TC_ADDR:
-                tree = AddrOp( tree );
-                cvars_state().CompFlags.meaningless_stmt = true;
+                tree = AddrOp( front, tree );
+                front.cvars.CompFlags.meaningless_stmt = true;
                 break;
             case TC_EXCLAMATION:
-                tree = NotOp( RValue( tree ) );
-                cvars_state().CompFlags.meaningless_stmt = true;
+                tree = NotOp( front, RValue( front, tree ) );
+                front.cvars.CompFlags.meaningless_stmt = true;
                 break;
             case TC_PLUS:                       /* unary plus */
-                tree = UnaryPlus( tree );
-                cvars_state().CompFlags.meaningless_stmt = true;
+                tree = UnaryPlus( front, tree );
+                front.cvars.CompFlags.meaningless_stmt = true;
                 break;
             case TC_MINUS:                      /* unary minus */
-                tree = UMinus( tree );
-                cvars_state().CompFlags.meaningless_stmt = true;
+                tree = UMinus( front, tree );
+                front.cvars.CompFlags.meaningless_stmt = true;
                 break;
             case TC_TILDE:
-                tree = UComplement( tree );
-                cvars_state().CompFlags.meaningless_stmt = true;
+                tree = UComplement( front, tree );
+                front.cvars.CompFlags.meaningless_stmt = true;
                 break;
             case TC_SIZEOF:
                 typ = tree->u.expr_type;
                 if( typ != NULL
                   && typ->decl_type == TYP_FUNCTION ) {
-                    tree = AddrOp( tree );
+                    tree = AddrOp( front, tree );
                     typ = tree->u.expr_type;
                 }
-                FreeExprTree( tree );
+                FreeExprTree( front, tree );
                 if( typ != NULL ) {
-                    tree = SizeofOp( typ );
+                    tree = SizeofOp( front, typ );
                 } else {
                     /*
                      * error use this as default
                      */
-                    tree = UIntLeaf( 1 );
+                    tree = UIntLeaf( front, 1 );
                 }
-                --cvars_state().SizeOfCount;
-                cvars_state().CompFlags.meaningless_stmt = true;
+                --front.cvars.SizeOfCount;
+                front.cvars.CompFlags.meaningless_stmt = true;
                 break;
             case TC_INDIRECTION:
-                tree = PtrOp( RValue( tree ) );
-                cvars_state().CompFlags.meaningless_stmt = true;
+                tree = PtrOp( front, RValue( front, tree ) );
+                front.cvars.CompFlags.meaningless_stmt = true;
                 break;
             case TC_CAST:
-                tree = CnvOp( tree, TypeOf( op1 ), true );
-                FreeExprTree( op1 );
+                tree = CnvOp( front, tree, TypeOf( op1 ), true );
+                FreeExprTree( front, op1 );
                 break;
             case TC_INDEX:
-                tree = IndexOp( op1, tree );
-                MustRecog( T_RIGHT_BRACKET );
-                curclass = TokenClass[cvars_state().CurToken];
-                cvars_state().CompFlags.meaningless_stmt = true;
+                tree = IndexOp( front, op1, tree );
+                MustRecog( front, T_RIGHT_BRACKET );
+                curclass = TokenClass[front.cvars.CurToken];
+                front.cvars.CompFlags.meaningless_stmt = true;
                 break;
             case TC_SEG_OP:
-                tree = SegOp( op1, tree );
-                cvars_state().CompFlags.meaningless_stmt = true;
+                tree = SegOp( front, op1, tree );
+                front.cvars.CompFlags.meaningless_stmt = true;
                 break;
             case TC_PARM_LIST:          /* do func call */
                 {
@@ -1439,60 +1436,60 @@ static TREEPTR GetExpr( void )
                     /*
                      * find the corresponding function symbol
                      */
-                    n = cvars_state().ExprLevel;
-                    while( cvars_state().Token[n] != T_LEFT_PAREN ) {
+                    n = front.cvars.ExprLevel;
+                    while( front.cvars.Token[n] != T_LEFT_PAREN ) {
                         --n;
                     }
-                    functree = cvars_state().ValueStack[n];
-                    sym = SymGetPtr( functree->op.u2.sym_handle );
+                    functree = front.cvars.ValueStack[n];
+                    sym = SymGetPtr( front, functree->op.u2.sym_handle );
                     if( (sym->flags & SYM_TEMP) == 0 )
-                        SetDiagSymbol( sym, functree->op.u2.sym_handle );
-                    tree = GenNextParm( tree, &plist );
-                    tree = GenFuncCall( tree );
-                    MustRecog( T_RIGHT_PAREN );
+                        SetDiagSymbol( front, sym, functree->op.u2.sym_handle );
+                    tree = GenNextParm( front, tree, &plist );
+                    tree = GenFuncCall( front, tree );
+                    MustRecog( front, T_RIGHT_PAREN );
                     if( plist != NULL ) {
                         /*
                          * function has prototype
                          */
                         if( *plist != NULL
                           && (*plist)->decl_type != TYP_DOT_DOT_DOT ) {
-                            ParmCountMismatch();
+                            ParmCountMismatch(front);
                         }
                     } else {
-                        AddCallNode( tree );
+                        AddCallNode( front, tree );
                     }
                     if( (sym->flags & SYM_TEMP) == 0 )
-                        SetDiagPop();
-                    PopNestedParms( &plist );
-                    curclass = TokenClass[cvars_state().CurToken];
-                    cvars_state().CompFlags.meaningless_stmt = false;
-                    cvars_state().CompFlags.useful_side_effect = true;
+                        SetDiagPop(front);
+                    PopNestedParms( front, &plist );
+                    curclass = TokenClass[front.cvars.CurToken];
+                    front.cvars.CompFlags.meaningless_stmt = false;
+                    front.cvars.CompFlags.useful_side_effect = true;
                 }
                 break;
             }
-            --cvars_state().ExprLevel;
+            --front.cvars.ExprLevel;
         }
         switch( curclass ) {
         case TC_RIGHT_PAREN:
-            CErr1( ERR_UNEXPECTED_RIGHT_PAREN );
-            NextToken();
+            CErr1( front, ERR_UNEXPECTED_RIGHT_PAREN );
+            NextToken(front);
             continue;
         case TC_QUESTION:
-            tree = StartTernary( tree );
+            tree = StartTernary( front, tree );
             curclass = TC_TERNARY;
             break;
         case TC_COLON:
-            tree = ColonOp( tree );
-            cvars_state().CurToken = BOOL2TOKEN( cvars_state().CompFlags.meaningless_stmt );
+            tree = ColonOp( front, tree );
+            front.cvars.CurToken = BOOL2TOKEN( front.cvars.CompFlags.meaningless_stmt );
             curclass = TC_TERNARY_DONE;
             break;
         case TC_OR_OR:
-            tree = BoolExpr( tree );
-            tree = OrOr( tree );
+            tree = BoolExpr( front, tree );
+            tree = OrOr( front, tree );
             break;
         case TC_AND_AND:
-            tree = BoolExpr( tree );
-            tree = AndAnd( tree );
+            tree = BoolExpr( front, tree );
+            tree = AndAnd( front, tree );
             break;
         case TC_OR:
         case TC_XOR:
@@ -1511,235 +1508,235 @@ static TREEPTR GetExpr( void )
             curclass = TC_INDEX;
             break;
         case TC_COMMA:
-            if( cvars_state().Class[cvars_state().ExprLevel] != TC_PARM_LIST ) {
-                if( cvars_state().CompFlags.meaningless_stmt ) {
-                    if( cvars_state().CompFlags.useful_side_effect ) {
-                        CWarn1( ERR_USEFUL_SIDE_EFFECT );
+            if( front.cvars.Class[front.cvars.ExprLevel] != TC_PARM_LIST ) {
+                if( front.cvars.CompFlags.meaningless_stmt ) {
+                    if( front.cvars.CompFlags.useful_side_effect ) {
+                        CWarn1( front, ERR_USEFUL_SIDE_EFFECT );
                     } else {
-                        CWarn1( ERR_MEANINGLESS );
+                        CWarn1( front, ERR_MEANINGLESS );
                     }
                 }
             } else {
-                tree = GenNextParm( tree, &plist );
+                tree = GenNextParm( front, tree, &plist );
                 curclass = TC_PARM_LIST;
             }
             break;
         case TC_FUNC_CALL:
-            tree = StartFunc( tree, &plist );
+            tree = StartFunc( front, tree, &plist );
             continue;
         case TC_DOT:
-            NextToken();
-            tree = DotOp( tree );
-            if( cvars_state().CurToken != T_SEMI_COLON )
-                NextToken();
-            cvars_state().CompFlags.meaningless_stmt = true;
+            NextToken(front);
+            tree = DotOp( front, tree );
+            if( front.cvars.CurToken != T_SEMI_COLON )
+                NextToken(front);
+            front.cvars.CompFlags.meaningless_stmt = true;
             continue;
         case TC_ARROW:
-            NextToken();
-            tree = ArrowOp( RValue( tree ) );
-            if( cvars_state().CurToken != T_SEMI_COLON )
-                NextToken();
-            cvars_state().CompFlags.meaningless_stmt = true;
+            NextToken(front);
+            tree = ArrowOp( front, RValue( front, tree ) );
+            if( front.cvars.CurToken != T_SEMI_COLON )
+                NextToken(front);
+            front.cvars.CompFlags.meaningless_stmt = true;
             continue;
         case TC_POSTINC:
-            tree = IncDec( tree, cvars_state().CurToken );
-            NextToken();
+            tree = IncDec( front, tree, front.cvars.CurToken );
+            NextToken(front);
             continue;
         }
-        if( cvars_state().ExprLevel >= (MAX_LEVEL - 1) ) {
-            CErr1( ERR_EXPR_TOO_COMPLICATED );
-            CSuicide();
+        if( front.cvars.ExprLevel >= (MAX_LEVEL - 1) ) {
+            CErr1( front, ERR_EXPR_TOO_COMPLICATED );
+            CSuicide(front);
         }
         if( tree != NULL ) {
-            ++cvars_state().ExprLevel;
-            cvars_state().ValueStack[cvars_state().ExprLevel] = tree;
-            cvars_state().Class[cvars_state().ExprLevel] = curclass;
-            cvars_state().Token[cvars_state().ExprLevel] = cvars_state().CurToken;
+            ++front.cvars.ExprLevel;
+            front.cvars.ValueStack[front.cvars.ExprLevel] = tree;
+            front.cvars.Class[front.cvars.ExprLevel] = curclass;
+            front.cvars.Token[front.cvars.ExprLevel] = front.cvars.CurToken;
             tree = NULL;            /* indicate need opnd */
         }
-        NextToken();
+        NextToken(front);
     }
 }
 
 
-static TREEPTR ExprOpnd( void )
+static TREEPTR ExprOpnd( FrontRun& front )
 {
     TREEPTR     tree;
     TYPEPTR     typ;
 
-    cvars_state().CompFlags.meaningless_stmt = true;
+    front.cvars.CompFlags.meaningless_stmt = true;
     for( ;; ) {
-        ++cvars_state().ExprLevel;
-        switch( cvars_state().CurToken ) {
+        ++front.cvars.ExprLevel;
+        switch( front.cvars.CurToken ) {
         case T_PLUS_PLUS:
         case T_MINUS_MINUS:
-            cvars_state().Token[cvars_state().ExprLevel] = static_cast<TOKEN>(cvars_state().CurToken - 1);
-            cvars_state().Class[cvars_state().ExprLevel] = TC_PREINC;
-            NextToken();
+            front.cvars.Token[front.cvars.ExprLevel] = static_cast<TOKEN>(front.cvars.CurToken - 1);
+            front.cvars.Class[front.cvars.ExprLevel] = TC_PREINC;
+            NextToken(front);
             continue;
         case T_AND:
-            cvars_state().Class[cvars_state().ExprLevel] = TC_ADDR;
-            NextToken();
+            front.cvars.Class[front.cvars.ExprLevel] = TC_ADDR;
+            NextToken(front);
             continue;
         case T_EXCLAMATION:
-            cvars_state().Class[cvars_state().ExprLevel] = TC_EXCLAMATION;
-            NextToken();
+            front.cvars.Class[front.cvars.ExprLevel] = TC_EXCLAMATION;
+            NextToken(front);
             continue;
         case T_PLUS:
-            cvars_state().Class[cvars_state().ExprLevel] = TC_PLUS;
-            NextToken();
+            front.cvars.Class[front.cvars.ExprLevel] = TC_PLUS;
+            NextToken(front);
             continue;
         case T_MINUS:
-            cvars_state().Class[cvars_state().ExprLevel] = TC_MINUS;
-            NextToken();
+            front.cvars.Class[front.cvars.ExprLevel] = TC_MINUS;
+            NextToken(front);
             continue;
         case T_TILDE:
-            cvars_state().Class[cvars_state().ExprLevel] = TC_TILDE;
-            NextToken();
+            front.cvars.Class[front.cvars.ExprLevel] = TC_TILDE;
+            NextToken(front);
             continue;
         case T_SIZEOF:
             if( !IS_PPCTL_NORMAL() ) {
-                CErr1( ERR_NO_SIZEOF_DURING_PP );
+                CErr1( front, ERR_NO_SIZEOF_DURING_PP );
             }
-            cvars_state().Class[cvars_state().ExprLevel] = TC_SIZEOF;
-            NextToken();
-            cvars_state().Token[cvars_state().ExprLevel] = cvars_state().CurToken;
-            if( cvars_state().CurToken == T_LEFT_PAREN ) {
-                NextToken();
-                typ = TypeName();
+            front.cvars.Class[front.cvars.ExprLevel] = TC_SIZEOF;
+            NextToken(front);
+            front.cvars.Token[front.cvars.ExprLevel] = front.cvars.CurToken;
+            if( front.cvars.CurToken == T_LEFT_PAREN ) {
+                NextToken(front);
+                typ = TypeName(front);
                 if( typ != NULL ) {
-                    tree = SizeofOp( typ );
-                    MustRecog( T_RIGHT_PAREN );
+                    tree = SizeofOp( front, typ );
+                    MustRecog( front, T_RIGHT_PAREN );
                     break;
                 }
-                ++cvars_state().ExprLevel;
-                cvars_state().Class[cvars_state().ExprLevel] = TC_LEFT_PAREN;
+                ++front.cvars.ExprLevel;
+                front.cvars.Class[front.cvars.ExprLevel] = TC_LEFT_PAREN;
             } else {
-                typ = TypeName();
+                typ = TypeName(front);
                 if( typ != NULL ) {
-                    tree = SizeofOp( typ );
+                    tree = SizeofOp( front, typ );
                     break;
                 }
             }
-            ++cvars_state().SizeOfCount;
+            ++front.cvars.SizeOfCount;
             continue;
         case T___BUILTIN_ISFLOAT:
-            NextToken();
-            if( cvars_state().CurToken == T_LEFT_PAREN ) {
-                NextToken();
-                typ = TypeName();
+            NextToken(front);
+            if( front.cvars.CurToken == T_LEFT_PAREN ) {
+                NextToken(front);
+                typ = TypeName(front);
                 if( typ != NULL ) {
                     SKIP_TYPEDEFS( typ );
                     switch( typ->decl_type ) {
                     case TYP_FLOAT:
                     case TYP_DOUBLE:
-                        tree = IntLeaf( 1 );
+                        tree = IntLeaf( front, 1 );
                         break;
                     default:
-                        tree = IntLeaf( 0 );
+                        tree = IntLeaf( front, 0 );
                         break;
                     }
                 } else {
-                    CErr1( ERR_OPND_OF_BUILTIN_ISFLOAT_MUST_BE_TYPE );
-                    NextToken();
-                    tree = LeafNode( OPR_ERROR );
+                    CErr1( front, ERR_OPND_OF_BUILTIN_ISFLOAT_MUST_BE_TYPE );
+                    NextToken(front);
+                    tree = LeafNode( front, OPR_ERROR );
                 }
-                MustRecog( T_RIGHT_PAREN );
+                MustRecog( front, T_RIGHT_PAREN );
             } else {
-                MustRecog( T_LEFT_PAREN );
-                tree = LeafNode( OPR_ERROR );
+                MustRecog( front, T_LEFT_PAREN );
+                tree = LeafNode( front, OPR_ERROR );
             }
             break;
         case T_TIMES:
-            cvars_state().Class[cvars_state().ExprLevel] = TC_INDIRECTION;
-            NextToken();
+            front.cvars.Class[front.cvars.ExprLevel] = TC_INDIRECTION;
+            NextToken(front);
             continue;
         case T_LEFT_PAREN:
-            NextToken();
-            typ = TypeName();
+            NextToken(front);
+            typ = TypeName(front);
             if( typ != NULL ) {
                 if( !IS_PPCTL_NORMAL() ) {
-                    CErr1( ERR_NO_CAST_DURING_PP );
+                    CErr1( front, ERR_NO_CAST_DURING_PP );
                 }
-                MustRecog( T_RIGHT_PAREN );
-                cvars_state().Class[cvars_state().ExprLevel] = TC_CAST;
-                tree = LeafNode( OPR_CAST );
+                MustRecog( front, T_RIGHT_PAREN );
+                front.cvars.Class[front.cvars.ExprLevel] = TC_CAST;
+                tree = LeafNode( front, OPR_CAST );
                 tree->u.expr_type = typ;
-                cvars_state().ValueStack[cvars_state().ExprLevel] = tree;
+                front.cvars.ValueStack[front.cvars.ExprLevel] = tree;
             } else {
-                cvars_state().Class[cvars_state().ExprLevel] = TC_LEFT_PAREN;
+                front.cvars.Class[front.cvars.ExprLevel] = TC_LEFT_PAREN;
             }
             continue;
         case T_ID:
-            tree = ExprId();
-            cvars_state().CompFlags.meaningless_stmt = false;
+            tree = ExprId(front);
+            front.cvars.CompFlags.meaningless_stmt = false;
             break;
         case T_SAVED_ID:
-            tree = SymLeaf();
-            CMemFree( cvars_state().SavedId );
-            cvars_state().SavedId = NULL;
-            cvars_state().CurToken = cvars_state().LAToken;
-            cvars_state().CompFlags.meaningless_stmt = false;
+            tree = SymLeaf(front);
+            CMemFree( front, front.cvars.SavedId );
+            front.cvars.SavedId = NULL;
+            front.cvars.CurToken = front.cvars.LAToken;
+            front.cvars.CompFlags.meaningless_stmt = false;
             break;
         case T_CONSTANT:
-            tree = ConstLeaf();
-            NextToken();
+            tree = ConstLeaf(front);
+            NextToken(front);
             break;
         case T_STRING:
-            if( cvars_state().CompFlags.strings_in_code_segment ) {
-                tree = StringLeaf( STRLIT_CONST );
+            if( front.cvars.CompFlags.strings_in_code_segment ) {
+                tree = StringLeaf( front, STRLIT_CONST );
             } else {
-                tree = StringLeaf( STRLIT_NONE );
+                tree = StringLeaf( front, STRLIT_NONE );
             }
             break;
         case T_BAD_TOKEN:
-            CErr1( cvars_state().BadTokenInfo );
-            cvars_state().BadTokenInfo = ERR_NONE;
-            NextToken();
-            tree = ErrorNode( NULL );
+            CErr1( front, front.cvars.BadTokenInfo );
+            front.cvars.BadTokenInfo = ERR_NONE;
+            NextToken(front);
+            tree = ErrorNode( front, NULL );
             break;
         case T___OW_IMAGINARY_UNIT:
             {
                 FLOATVAL    *flt;
 
 #define FLOAT_PLUS_ONE "+1.0"
-                tree = LeafNode( OPR_PUSHFLOAT );
+                tree = LeafNode( front, OPR_PUSHFLOAT );
                 tree->op.u1.const_type = TYP_DIMAGINARY;
-                flt = static_cast<FLOATVAL *>(CMemAlloc( sizeof( FLOATVAL ) - 1 + LENLIT( FLOAT_PLUS_ONE ) + 1 ));
+                flt = static_cast<FLOATVAL *>(CMemAlloc( front, sizeof( FLOATVAL ) - 1 + LENLIT( FLOAT_PLUS_ONE ) + 1 ));
                 strcpy( flt->string, FLOAT_PLUS_ONE );
                 flt->len = LENLIT( FLOAT_PLUS_ONE );
                 flt->type = TYP_DIMAGINARY;
                 flt->next = NULL;
                 tree->op.u2.float_value = flt;
                 tree->op.opr = OPR_PUSHFLOAT;
-                tree->u.expr_type = GetType( tree->op.u1.const_type );
+                tree->u.expr_type = GetType( front, tree->op.u1.const_type );
             }
-            NextToken();
+            NextToken(front);
             break;
         default:
             if( !IS_PPCTL_NORMAL()
-              && IS_KEYWORD( cvars_state().CurToken ) ) {
-                tree = ExprId();
+              && IS_KEYWORD( front.cvars.CurToken ) ) {
+                tree = ExprId(front);
             } else {
-                CErr1( ERR_MISSING_OPERAND );
-                tree = ErrorNode( NULL );
+                CErr1( front, ERR_MISSING_OPERAND );
+                tree = ErrorNode( front, NULL );
             }
         }
         break;
     }
-    --cvars_state().ExprLevel;
+    --front.cvars.ExprLevel;
     return( tree );
 }
 
 
-static bool IsMacroDefined( void )
+static bool IsMacroDefined( FrontRun& front )
 {
     MEPTR       mentry;
 
-    if( cvars_state().CurToken != T_ID ) {
-        ExpectIdentifier();
+    if( front.cvars.CurToken != T_ID ) {
+        ExpectIdentifier(front);
     } else {
-        mentry = MacroLookup( cvars_state().Buffer );
+        mentry = MacroLookup( front, front.cvars.Buffer );
         if( mentry != NULL ) {
             mentry->macro_flags |= MFLAG_REFERENCED;
             return( true );
@@ -1749,46 +1746,46 @@ static bool IsMacroDefined( void )
 }
 
 
-static TREEPTR ExprId( void )
+static TREEPTR ExprId( FrontRun& front )
 {
     TREEPTR     tree;
     int         value;
     int         count;
 
     if( !IS_PPCTL_NORMAL() ) {
-        if( IS_PPOPERATOR_DEFINED( cvars_state().Buffer ) ) {
+        if( IS_PPOPERATOR_DEFINED( front.cvars.Buffer ) ) {
             ppctl_t old_ppctl;
 
-            old_ppctl = cvars_state().PPControl;
+            old_ppctl = front.cvars.PPControl;
             PPCTL_DISABLE_MACROS();    /* don't want macro expanded */
-            NextToken();
-            if( cvars_state().CurToken == T_LEFT_PAREN ) {
-                NextToken();
-                value = IsMacroDefined();
-                NextToken();
-                MustRecog( T_RIGHT_PAREN );
-                cvars_state().PPControl = old_ppctl;
+            NextToken(front);
+            if( front.cvars.CurToken == T_LEFT_PAREN ) {
+                NextToken(front);
+                value = IsMacroDefined(front);
+                NextToken(front);
+                MustRecog( front, T_RIGHT_PAREN );
+                front.cvars.PPControl = old_ppctl;
             } else {
-                value = IsMacroDefined();
-                cvars_state().PPControl = old_ppctl;
-                NextToken();
+                value = IsMacroDefined(front);
+                front.cvars.PPControl = old_ppctl;
+                NextToken(front);
             }
         } else {
 //            if( SizeOfCount == 0 ) {
 //                CWarn2p( ERR_UNDECLARED_PP_SYM, Buffer);
 //            }
-            NextToken();
-            if( cvars_state().CurToken == T_LEFT_PAREN ) {
+            NextToken(front);
+            if( front.cvars.CurToken == T_LEFT_PAREN ) {
                 count = 0;
                 for(;;) {               /* flush to ')' or end of line */
-                    NextToken();
-                    if( cvars_state().CurToken == T_NULL )
+                    NextToken(front);
+                    if( front.cvars.CurToken == T_NULL )
                         break;
-                    if( cvars_state().CurToken == T_LEFT_PAREN )
+                    if( front.cvars.CurToken == T_LEFT_PAREN )
                         ++count;
-                    if( cvars_state().CurToken == T_RIGHT_PAREN ) {
+                    if( front.cvars.CurToken == T_RIGHT_PAREN ) {
                         if( count == 0 ) {
-                            NextToken();
+                            NextToken(front);
                             break;
                         }
                         --count;
@@ -1797,9 +1794,9 @@ static TREEPTR ExprId( void )
             }
             value = 0;
         }
-        tree = IntLeaf( value );
+        tree = IntLeaf( front, value );
     } else {
-        tree = SymLeaf();
+        tree = SymLeaf(front);
     }
     return( tree );
 }
@@ -1825,7 +1822,7 @@ static bool LValueArray( TREEPTR tree )
 }
 #endif
 
-static TREEPTR GenIndex( TREEPTR tree, TREEPTR index_expr )
+static TREEPTR GenIndex( FrontRun& front, TREEPTR tree, TREEPTR index_expr )
 {
     TYPEPTR         typ;
     op_flags        tree_flags;
@@ -1837,14 +1834,14 @@ static TREEPTR GenIndex( TREEPTR tree, TREEPTR index_expr )
         return( ErrorNode( tree ) );
     }
 #endif
-    index_expr = RValue( index_expr );
+    index_expr = RValue( front, index_expr );
     if( DataTypeOf( TypeOf( index_expr ) ) > TYP_ULONG64 ) {
-        CErr1( ERR_EXPR_MUST_BE_INTEGRAL );
-        FreeExprTree( tree );
-        return( ErrorNode( index_expr ) );
+        CErr1( front, ERR_EXPR_MUST_BE_INTEGRAL );
+        FreeExprTree( front, tree );
+        return( ErrorNode( front, index_expr ) );
     }
     if( TypeOf( index_expr )->type_flags & TF2_TYP_PLAIN_CHAR ) {
-        CWarn1( ERR_PLAIN_CHAR_SUBSCRIPT );
+        CWarn1( front, ERR_PLAIN_CHAR_SUBSCRIPT );
     }
     typ = tree->u.expr_type;
     SKIP_TYPEDEFS( typ );
@@ -1853,13 +1850,13 @@ static TREEPTR GenIndex( TREEPTR tree, TREEPTR index_expr )
     } else if( typ->decl_type == TYP_POINTER ) {
         type_modifiers  flags;
 
-        tree = CheckBasedPtr( tree, typ, &flags );
+        tree = CheckBasedPtr( front, tree, typ, &flags );
         /*
          * We will indirect so get modifiers of indirected obj
          */
         tree_flags = OpFlags( flags );
     } else {
-        CErr2p( ERR_FATAL_ERROR, "Bad array index tree" );
+        CErr2p( front, ERR_FATAL_ERROR, "Bad array index tree" );
         tree_flags = OPFLAG_NONE;
     }
     typ = typ->object;
@@ -1869,12 +1866,12 @@ static TREEPTR GenIndex( TREEPTR tree, TREEPTR index_expr )
      */
     if( index_expr->op.opr == OPR_PUSHINT
       && tree->u.expr_type->decl_type == TYP_ARRAY ) {
-        index_expr->op.u2.long_value *= SizeOfArg( typ );
-        tree = ExprNode( tree, OPR_DOT, index_expr );
+        index_expr->op.u2.long_value *= SizeOfArg( front, typ );
+        tree = ExprNode( front, tree, OPR_DOT, index_expr );
 #if _CPU == 8086
         if( index_expr->op.u2.long_value > TARGET_INT_MAX ) {
             index_expr->op.u1.const_type = TYP_LONG;
-            index_expr->u.expr_type = GetType( TYP_LONG );
+            index_expr->u.expr_type = GetType( front, TYP_LONG );
         }
 #endif
     } else {
@@ -1883,11 +1880,11 @@ static TREEPTR GenIndex( TREEPTR tree, TREEPTR index_expr )
             if( (tree_flags & OPFLAG_HUGEPTR)
               || (IsHugeData()
               && (tree_flags & (OPFLAG_NEARPTR | OPFLAG_FARPTR)) == 0) ) {
-                index_expr = CnvOp( index_expr, GetType( TYP_LONG ), false );
+                index_expr = CnvOp( front, index_expr, GetType( front, TYP_LONG ), false );
             }
         }
 #endif
-        tree = ExprNode( tree, OPR_INDEX, index_expr );
+        tree = ExprNode( front, tree, OPR_INDEX, index_expr );
     }
     tree->u.expr_type = typ;
     tree->op.u2.result_type = typ;
@@ -1895,14 +1892,14 @@ static TREEPTR GenIndex( TREEPTR tree, TREEPTR index_expr )
     return( tree );
 }
 
-static TREEPTR ArrayIndex( TREEPTR tree, TREEPTR index_expr )
+static TREEPTR ArrayIndex( FrontRun& front, TREEPTR tree, TREEPTR index_expr )
 {
-    tree = GenIndex( tree, index_expr );
+    tree = GenIndex( front, tree, index_expr );
     return( tree );
 }
 
 
-static TREEPTR IndexOp( TREEPTR tree, TREEPTR index_expr )
+static TREEPTR IndexOp( FrontRun& front, TREEPTR tree, TREEPTR index_expr )
 {
     TYPEPTR     typ;
 
@@ -1910,27 +1907,27 @@ static TREEPTR IndexOp( TREEPTR tree, TREEPTR index_expr )
         typ = tree->u.expr_type;
         SKIP_TYPEDEFS( typ );
         if( typ->decl_type == TYP_ARRAY ) {
-            tree = ArrayIndex( tree, index_expr );
+            tree = ArrayIndex( front, tree, index_expr );
         } else if( typ->decl_type == TYP_POINTER ) {
-            tree = GenIndex( RValue( tree ), index_expr );
+            tree = GenIndex( front, RValue( front, tree ), index_expr );
         } else {                    /* try index[array] */
             typ = index_expr->u.expr_type;
             SKIP_TYPEDEFS( typ );
             if( typ->decl_type == TYP_ARRAY ) {
-                tree = ArrayIndex( index_expr, tree );
+                tree = ArrayIndex( front, index_expr, tree );
             } else if( typ->decl_type == TYP_POINTER ) {
-                tree = GenIndex( RValue( index_expr ), tree );
+                tree = GenIndex( front, RValue( front, index_expr ), tree );
             } else {
-                CErr1( ERR_EXPR_MUST_BE_ARRAY );
-                FreeExprTree( index_expr );
-                tree = ErrorNode( tree );
+                CErr1( front, ERR_EXPR_MUST_BE_ARRAY );
+                FreeExprTree( front, index_expr );
+                tree = ErrorNode( front, tree );
             }
         }
     }
     return( tree );
 }
 
-static void AddCallNode( TREEPTR tree )
+static void AddCallNode( FrontRun& front, TREEPTR tree )
 /**************************************
  * if a function call has no prototype wait till end
  * to check it out
@@ -1939,21 +1936,21 @@ static void AddCallNode( TREEPTR tree )
     call_list   *new_;
 
     if( tree->left != NULL ) {  /* could be errors */
-        new_ = static_cast<call_list *>(CMemAlloc( sizeof( call_list ) ));
+        new_ = static_cast<call_list *>(CMemAlloc( front, sizeof( call_list ) ));
         new_->next = NULL;
         new_->callnode = tree;
-        new_->src_loc = cvars_state().SrcLoc;
-        *cexpr_state().LastCallLnk = new_;
-        cexpr_state().LastCallLnk = &new_->next;
+        new_->src_loc = front.cvars.SrcLoc;
+        *front.cexpr.LastCallLnk = new_;
+        front.cexpr.LastCallLnk = &new_->next;
     }
 }
 
-void CheckCallNode( TREEPTR tree )
+void CheckCallNode( FrontRun& front, TREEPTR tree )
 {
     call_list   **lnk;
     call_list   *curr;
 
-    for( lnk = cexpr_state().FirstCallLnk; (curr = *lnk) != NULL; lnk = &curr->next ) {
+    for( lnk = front.cexpr.FirstCallLnk; (curr = *lnk) != NULL; lnk = &curr->next ) {
         if( curr->callnode == tree ) {
             curr->callnode = NULL;
             break;
@@ -1961,7 +1958,7 @@ void CheckCallNode( TREEPTR tree )
     }
 }
 
-static int ParmNum( void )
+static int ParmNum( FrontRun& front )
 /*************************
  * get current parm num
  */
@@ -1970,20 +1967,20 @@ static int ParmNum( void )
     expr_level_type n;
 
     parm_count = 1;
-    for( n = cvars_state().ExprLevel; cvars_state().Token[n] != T_LEFT_PAREN; --n ) {
+    for( n = front.cvars.ExprLevel; front.cvars.Token[n] != T_LEFT_PAREN; --n ) {
         ++parm_count;
     }
     return( parm_count );
 }
 
-static TREEPTR GenNextParm( TREEPTR tree, TYPEPTR **plistptr )
+static TREEPTR GenNextParm( FrontRun& front, TREEPTR tree, TYPEPTR **plistptr )
 {
     TYPEPTR     *plist;
     TYPEPTR     typ;
     TYPEPTR     typ2;
     TYPEPTR     parm_typ;
 
-    tree = RValue( tree );
+    tree = RValue( front, tree );
     if( tree->op.opr == OPR_ERROR )
         return( tree );
     /*
@@ -1997,15 +1994,15 @@ static TREEPTR GenNextParm( TREEPTR tree, TYPEPTR **plistptr )
             /*
              * can allow wrong number of parms with -3s option
              */
-            if( !cvars_state().CompFlags.register_conventions ) {
-                CWarn1( ERR_PARM_COUNT_WARNING );
+            if( !front.cvars.CompFlags.register_conventions ) {
+                CWarn1( front, ERR_PARM_COUNT_WARNING );
             } else {
-                ParmCountMismatch();
+                ParmCountMismatch(front);
             }
 #else
-            ParmCountMismatch();
+            ParmCountMismatch(front);
 #endif
-            *plist = GetType( TYP_DOT_DOT_DOT );        /* shut up message */
+            *plist = GetType( front, TYP_DOT_DOT_DOT );        /* shut up message */
             plist = NULL;
         } else if( (*plist)->decl_type == TYP_DOT_DOT_DOT ) {
             plist = NULL;
@@ -2018,29 +2015,29 @@ static TREEPTR GenNextParm( TREEPTR tree, TYPEPTR **plistptr )
          * do conversion from tree to parm type
          */
         parm_typ = *plist;
-        CheckParmAssign( parm_typ, tree, ParmNum(), true );
+        CheckParmAssign( front, parm_typ, tree, ParmNum(front), true );
         if( parm_typ != NULL ) {
             /*
              * skip typedefs, go into enum base
              */
             parm_typ = SkipTypeFluff( parm_typ );
             if( parm_typ != typ ) {
-                tree = FixupAss( tree, parm_typ );
+                tree = FixupAss( front, tree, parm_typ );
             }
             ++*plistptr;
         }
     } else {
         if( typ->decl_type == TYP_FLOAT ) {     /* default conversions */
-            typ = GetType( TYP_DOUBLE );
-            tree = FixupAss( tree, typ );
+            typ = GetType( front, TYP_DOUBLE );
+            tree = FixupAss( front, tree, typ );
         } else if( typ->decl_type == TYP_POINTER ) {
             typ2 = typ->object;
             SKIP_TYPEDEFS( typ );
             if( typ2->decl_type != TYP_FUNCTION ) {
                 if( typ->u.p.decl_flags & FLAG_NEAR ) {
-                    if( cvars_state().DataPtrSize == TARGET_FAR_POINTER ) {
-                        typ = PtrNode( typ2, FLAG_NONE, SEG_DATA );
-                        tree = FixupAss( tree, typ );
+                    if( front.cvars.DataPtrSize == TARGET_FAR_POINTER ) {
+                        typ = PtrNode( front, typ2, FLAG_NONE, SEG_DATA );
+                        tree = FixupAss( front, tree, typ );
                     }
                 }
             }
@@ -2052,7 +2049,7 @@ static TREEPTR GenNextParm( TREEPTR tree, TYPEPTR **plistptr )
     if( typ->decl_type == TYP_DOUBLE
       || typ->decl_type == TYP_LONG_DOUBLE
       || typ->decl_type == TYP_FLOAT ) {
-        cvars_state().CompFlags.float_used = true;
+        front.cvars.CompFlags.float_used = true;
     }
     return( tree );
 }
@@ -2198,7 +2195,7 @@ static TREEPTR GenVaArgNode( TREEPTR last_parm )
 }
 #endif
 
-static TREEPTR GenFuncCall( TREEPTR last_parm )
+static TREEPTR GenFuncCall( FrontRun& front, TREEPTR last_parm )
 {
     expr_level_type i;
     expr_level_type n;
@@ -2217,96 +2214,96 @@ static TREEPTR GenFuncCall( TREEPTR last_parm )
 
     flags = static_cast<type_modifiers>(0);
     parm_count = 1;
-    for( n = cvars_state().ExprLevel; cvars_state().Token[n] != T_LEFT_PAREN; --n ) {
+    for( n = front.cvars.ExprLevel; front.cvars.Token[n] != T_LEFT_PAREN; --n ) {
         ++parm_count;
     }
-    functree = cvars_state().ValueStack[n];
+    functree = front.cvars.ValueStack[n];
     typ = TypeOf( functree );
     if( typ->decl_type == TYP_FUNCTION ) {
-        SymGet( &sym, functree->op.u2.sym_handle );
-        sym_name = SymName( &sym, functree->op.u2.sym_handle );
+        SymGet( front, &sym, functree->op.u2.sym_handle );
+        sym_name = SymName( front, &sym, functree->op.u2.sym_handle );
         flags = sym.mods;
         typ = typ->object;
         SKIP_TYPEDEFS( typ );
         if( typ->decl_type == TYP_DOUBLE
           || typ->decl_type == TYP_LONG_DOUBLE
           || typ->decl_type == TYP_FLOAT ) {
-            cvars_state().CompFlags.float_used = true;
+            front.cvars.CompFlags.float_used = true;
         }
 #if _CPU == 386
         {
             aux_info    *inf;
 
-            inf = FindInfo( &sym, functree->op.u2.sym_handle );
+            inf = FindInfo( front, &sym, functree->op.u2.sym_handle );
             if( inf == &Far16PascalInfo
               || inf == &Far16CdeclInfo ) {
                 far16_func = true;
-                typ = Far16Type( typ );
+                typ = Far16Type( front, typ );
             }
         }
 #endif
     } else {
-        typ = TypeDefault();
+        typ = TypeDefault(front);
     }
     func_result_type = typ;
     if( ParmsToBeReversed( flags, NULL ) ) {
         i = n;
-        if( i == cvars_state().ExprLevel ) {
-            tree = ParmNode( NULL, last_parm, far16_func );
+        if( i == front.cvars.ExprLevel ) {
+            tree = ParmNode( front, NULL, last_parm, far16_func );
         } else {
             ++i;
-            tree = ParmNode( NULL, cvars_state().ValueStack[i], far16_func );
+            tree = ParmNode( front, NULL, front.cvars.ValueStack[i], far16_func );
         }
         tree->op.u2.result_type = typ;
-        while( i != cvars_state().ExprLevel ) {
+        while( i != front.cvars.ExprLevel ) {
             ++i;
-            tree = ParmNode( tree, cvars_state().ValueStack[i], far16_func );
+            tree = ParmNode( front, tree, front.cvars.ValueStack[i], far16_func );
         }
-        if( n != cvars_state().ExprLevel ) {
-            tree = ParmNode( tree, last_parm, far16_func );     /* this is 1'st parm */
+        if( n != front.cvars.ExprLevel ) {
+            tree = ParmNode( front, tree, last_parm, far16_func );     /* this is 1'st parm */
         }
-        cvars_state().ExprLevel = n;
+        front.cvars.ExprLevel = n;
     } else {
         optimized = false;
         string_len = 0;
         if( last_parm->op.opr == OPR_PUSHSTRING ) {
-            if( (cvars_state().GenSwitches & CGSW_GEN_NO_OPTIMIZATION) == 0 ) {
+            if( (front.cvars.GenSwitches & CGSW_GEN_NO_OPTIMIZATION) == 0 ) {
                 string_len = last_parm->op.u2.string_handle->length;
                 if( functree->op.opr == OPR_PUSHADDR ) {
-                    SymGet( &sym, functree->op.u2.sym_handle );
-                    sym_name = SymName( &sym, functree->op.u2.sym_handle );
+                    SymGet( front, &sym, functree->op.u2.sym_handle );
+                    sym_name = SymName( front, &sym, functree->op.u2.sym_handle );
                     if( strcmp( sym_name, "_inline_strcmp" ) == 0 ) {
-                        SymGet( &sym, cvars_state().SymMEMCMP );
-                        tree = VarLeaf( &sym, cvars_state().SymMEMCMP );
+                        SymGet( front, &sym, front.cvars.SymMEMCMP );
+                        tree = VarLeaf( front, &sym, front.cvars.SymMEMCMP );
                         optimized = true;
                     }
                 }
             }
         } else {
             if( functree->op.opr == OPR_FUNCNAME ) {
-                SymGet( &sym, functree->op.u2.sym_handle );
+                SymGet( front, &sym, functree->op.u2.sym_handle );
 #if 0
                 if( functree->op.u2.sym_handle == CurFuncHandle ) {
                     recursive = true;
                 }
 #endif
-                sym_name = SymName( &sym, functree->op.u2.sym_handle );
-                if( (cvars_state().GenSwitches & CGSW_GEN_NO_OPTIMIZATION) == 0
-                  && cvars_state().CompFlags.extensions_enabled ) {
+                sym_name = SymName( front, &sym, functree->op.u2.sym_handle );
+                if( (front.cvars.GenSwitches & CGSW_GEN_NO_OPTIMIZATION) == 0
+                  && front.cvars.CompFlags.extensions_enabled ) {
                     for( i = 0; MathFuncs[i].name != NULL; ++i ) {
                         if( parm_count == MathFuncs[i].parm_count
                           && ( strcmp( sym_name, MathFuncs[i].name ) == 0
                           || (sym.flags & SYM_INTRINSIC)
                           && strcmp( sym_name, MathFuncs[i].iname ) == 0 ) ) {
-                            FreeExprNode( functree );
+                            FreeExprNode( front, functree );
                             if( parm_count == 1 ) {
-                                tree = ExprNode( NULL, OPR_MATHFUNC, last_parm );
+                                tree = ExprNode( front, NULL, OPR_MATHFUNC, last_parm );
                             } else {  /* parm_count == 2 */
-                                tree = cvars_state().ValueStack[cvars_state().ExprLevel]; /* op1 */
-                                --cvars_state().ExprLevel;
-                                tree = ExprNode( tree, OPR_MATHFUNC2, last_parm );
+                                tree = front.cvars.ValueStack[front.cvars.ExprLevel]; /* op1 */
+                                --front.cvars.ExprLevel;
+                                tree = ExprNode( front, tree, OPR_MATHFUNC2, last_parm );
                             }
-                            tree->u.expr_type = GetType( TYP_DOUBLE );
+                            tree->u.expr_type = GetType( front, TYP_DOUBLE );
                             tree->op.u1.mathfunc = MathFuncs[i].mathop;
                             return( tree );
                         }
@@ -2328,56 +2325,56 @@ static TREEPTR GenFuncCall( TREEPTR last_parm )
             }
         }
         if( !optimized ) {
-            tree = ParmNode( NULL, last_parm, far16_func );
+            tree = ParmNode( front, NULL, last_parm, far16_func );
         } else {
-            tree = ParmNode( NULL, IntLeaf( string_len ), far16_func );
-            tree = ParmNode( tree, last_parm, far16_func );
+            tree = ParmNode( front, NULL, IntLeaf( front, string_len ), far16_func );
+            tree = ParmNode( front, tree, last_parm, far16_func );
         }
-        while( cvars_state().Token[cvars_state().ExprLevel] != T_LEFT_PAREN ) {
-            tree = ParmNode( tree, cvars_state().ValueStack[cvars_state().ExprLevel], far16_func );
-            --cvars_state().ExprLevel;
+        while( front.cvars.Token[front.cvars.ExprLevel] != T_LEFT_PAREN ) {
+            tree = ParmNode( front, tree, front.cvars.ValueStack[front.cvars.ExprLevel], far16_func );
+            --front.cvars.ExprLevel;
         }
     }
-    tree = CallNode( functree, tree, func_result_type );
-    if( cvars_state().DeadCode == 0 ) {
+    tree = CallNode( front, functree, tree, func_result_type );
+    if( front.cvars.DeadCode == 0 ) {
         if( functree->op.opr == OPR_FUNCNAME ) {
-            cvars_state().CompFlags.pending_dead_code |= FunctionAborts( &sym, functree->op.u2.sym_handle );
+            front.cvars.CompFlags.pending_dead_code |= FunctionAborts( front, &sym, functree->op.u2.sym_handle );
         }
     }
     return( tree );
 }
 
-static void PopNestedParms( TYPEPTR **plistptr )
+static void PopNestedParms( FrontRun& front, TYPEPTR **plistptr )
 {
     struct nested_parm_lists    *npl;
 
-    if( cvars_state().NestedParms != NULL ) {
-        npl = cvars_state().NestedParms;
+    if( front.cvars.NestedParms != NULL ) {
+        npl = front.cvars.NestedParms;
         *plistptr = npl->next_parm_type;
-        cvars_state().NestedParms = npl->prev_list;
-        CMemFree( npl );
+        front.cvars.NestedParms = npl->prev_list;
+        CMemFree( front, npl );
     } else {
         *plistptr = NULL;
     }
 }
 
-static TREEPTR DummyFuncName( void )
+static TREEPTR DummyFuncName( FrontRun& front )
 {
     TREEPTR             tree;
     TYPEPTR             typ;
     SYM_HANDLE          sym_handle;
     SYM_ENTRY           sym;
 
-    typ = FuncNode( GetType( TYP_INT ), FLAG_NONE, NULL );
-    sym_handle = MakeNewDotSym( &sym, 'F', typ, SC_AUTO );
+    typ = FuncNode( front, GetType( front, TYP_INT ), FLAG_NONE, NULL );
+    sym_handle = MakeNewDotSym( front, &sym, 'F', typ, SC_AUTO );
     sym.flags |= SYM_FUNCTION;
     sym.mods = FLAG_NONE;
-    SymReplace( &sym, sym_handle );
-    tree = VarLeaf( &sym, sym_handle );
+    SymReplace( front, &sym, sym_handle );
+    tree = VarLeaf( front, &sym, sym_handle );
     return( tree );
 }
 
-static TREEPTR StartFunc( TREEPTR tree, TYPEPTR **plistptr )
+static TREEPTR StartFunc( FrontRun& front, TREEPTR tree, TYPEPTR **plistptr )
 {
     TYPEPTR             typ;
     TYPEPTR             orig_typ;
@@ -2392,14 +2389,14 @@ static TREEPTR StartFunc( TREEPTR tree, TYPEPTR **plistptr )
     SYM_ENTRY           sym;
 
     if( tree->op.opr == OPR_ERROR ) {   /* hoke something up */
-        tree = DummyFuncName();
+        tree = DummyFuncName(front);
     }
     decl_flags = FLAG_NONE;
     typ = tree->u.expr_type;
     orig_typ = typ;
     SKIP_TYPEDEFS( typ );
     if( typ->decl_type == TYP_POINTER ) {
-        tree = PtrOp( RValue( tree ) );
+        tree = PtrOp( front, RValue( front, tree ) );
         typ = tree->u.expr_type;
         orig_typ = typ;
         SKIP_TYPEDEFS( typ );
@@ -2407,7 +2404,7 @@ static TREEPTR StartFunc( TREEPTR tree, TYPEPTR **plistptr )
     if( tree->op.opr == OPR_PUSHADDR ) {        /* direct call */
         tree->op.opr = OPR_FUNCNAME;            /* change to funcname */
         sym_handle = tree->op.u2.sym_handle;
-        SymGet( &sym, sym_handle );
+        SymGet( front, &sym, sym_handle );
 #if 0
         if( tree->op.u2.sym_handle == CurFuncHandle ) {
             recursive = true;
@@ -2418,83 +2415,83 @@ static TREEPTR StartFunc( TREEPTR tree, TYPEPTR **plistptr )
          * is it OK to inline?
          */
     } else {                                    /* indirect call */
-        if( cvars_state().CompFlags.initializing_data ) {
-            CErr1( ERR_NOT_A_CONSTANT_EXPR );
+        if( front.cvars.CompFlags.initializing_data ) {
+            CErr1( front, ERR_NOT_A_CONSTANT_EXPR );
             sym_handle = SYM_NULL;
             sym.flags = SYM_NONE;
         } else {
             if( tree->op.opr == OPR_POINTS ) {  /* need to recover decl flags */
                 decl_flags = typ->u.fn.decl_flags;
             }
-            sym_handle = MakeNewDotSym( &sym, 'F', orig_typ, SC_AUTO );
+            sym_handle = MakeNewDotSym( front, &sym, 'F', orig_typ, SC_AUTO );
             sym.flags |= SYM_FUNCTION;
             sym.mods = decl_flags;
-            SymReplace( &sym, sym_handle );
-            tree = ExprNode( NULL, OPR_CALL_INDIRECT, tree );
+            SymReplace( front, &sym, sym_handle );
+            tree = ExprNode( front, NULL, OPR_CALL_INDIRECT, tree );
             tree->u.expr_type = typ;
             tree->op.u2.sym_handle = sym_handle;
         }
     }
     if( typ->decl_type != TYP_FUNCTION ) {
-        CErr1( ERR_NOT_A_FUNCTION );
-        tree = DummyFuncName();
+        CErr1( front, ERR_NOT_A_FUNCTION );
+        tree = DummyFuncName(front);
         typ = tree->u.expr_type;
     } else {
         if( decl_flags & FLAG_FAR16 ) {
-            if( cvars_state().DeadCode == 0 ) {
-                cvars_state().CurFuncSym.flags |= SYM_FUNC_NEEDS_THUNK;
+            if( front.cvars.DeadCode == 0 ) {
+                front.cvars.CurFuncSym.flags |= SYM_FUNC_NEEDS_THUNK;
             }
         }
     }
     parm_types = typ->u.fn.parms;   /* Parameters (prototype), if any */
-    NextToken();                        /* skip over '(' */
-    if( cvars_state().CurToken != T_RIGHT_PAREN ) {
+    NextToken(front);                        /* skip over '(' */
+    if( front.cvars.CurToken != T_RIGHT_PAREN ) {
         /*
          * push previous plist for nested calls
          */
         struct nested_parm_lists    *npl;
 
-        npl = static_cast<struct nested_parm_lists *>(CMemAlloc( sizeof( struct nested_parm_lists ) ));
-        npl->prev_list = cvars_state().NestedParms;
+        npl = static_cast<struct nested_parm_lists *>(CMemAlloc( front, sizeof( struct nested_parm_lists ) ));
+        npl->prev_list = front.cvars.NestedParms;
         npl->next_parm_type = *plistptr;
-        cvars_state().NestedParms = npl;
+        front.cvars.NestedParms = npl;
 
         *plistptr = parm_types;
-        ++cvars_state().ExprLevel;
-        cvars_state().ValueStack[cvars_state().ExprLevel] = tree;
-        cvars_state().Class[cvars_state().ExprLevel] = TC_PARM_LIST;
-        cvars_state().Token[cvars_state().ExprLevel] = T_LEFT_PAREN;
+        ++front.cvars.ExprLevel;
+        front.cvars.ValueStack[front.cvars.ExprLevel] = tree;
+        front.cvars.Class[front.cvars.ExprLevel] = TC_PARM_LIST;
+        front.cvars.Token[front.cvars.ExprLevel] = T_LEFT_PAREN;
         tree = NULL;               /* indicate need operand for parm */
     } else { /* foo() build call */
 #ifdef __SEH__
         opr = OPR_CALL;
-        if( cvars_state().CompFlags.exception_filter_expr
-          || cvars_state().CompFlags.in_finally_block
-          || cvars_state().CompFlags.exception_handler ) {
+        if( front.cvars.CompFlags.exception_filter_expr
+          || front.cvars.CompFlags.in_finally_block
+          || front.cvars.CompFlags.exception_handler ) {
             SYM_NAMEPTR         func_name;
 
             if( (sym.flags & SYM_TEMP) == 0 ) {
                 sym_handle = tree->op.u2.sym_handle;
-                SymGet( &sym, sym_handle );
-                func_name = SymName( &sym, sym_handle );
+                SymGet( front, &sym, sym_handle );
+                func_name = SymName( front, &sym, sym_handle );
                 if( strcmp( func_name, "_exception_code" ) == 0 ) {
-                    if( cvars_state().CompFlags.exception_filter_expr
-                      || cvars_state().CompFlags.exception_handler ) {
+                    if( front.cvars.CompFlags.exception_filter_expr
+                      || front.cvars.CompFlags.exception_handler ) {
                         opr = OPR_EXCEPT_CODE;
                     }
                 } else if( strcmp( func_name, "_exception_info" ) == 0 ) {
-                    if( cvars_state().CompFlags.exception_filter_expr ) {
+                    if( front.cvars.CompFlags.exception_filter_expr ) {
                         opr = OPR_EXCEPT_INFO;
                     }
                 } else if( strcmp( func_name, "_abnormal_termination" ) == 0 ) {
-                    if( cvars_state().CompFlags.in_finally_block ) {
+                    if( front.cvars.CompFlags.in_finally_block ) {
                         opr = OPR_ABNORMAL_TERMINATION;
                     }
                 }
                 if( opr != OPR_CALL ) {
-                    FreeExprNode( tree );
-                    tree = LeafNode( opr );
-                    tree->u.expr_type = GetType( TYP_INT );
+                    FreeExprNode( front, tree );
+                    tree = LeafNode( front, opr );
+                    tree->u.expr_type = GetType( front, TYP_INT );
                 }
             }
         }
@@ -2503,63 +2500,63 @@ static TREEPTR StartFunc( TREEPTR tree, TYPEPTR **plistptr )
             typ = typ->object; /* get return type */
             SKIP_TYPEDEFS( typ );
             if( (sym.flags & SYM_TEMP) == 0 ) {
-                SetDiagSymbol( &sym, sym_handle );
+                SetDiagSymbol( front, &sym, sym_handle );
             }
-            tree = CallNode( tree, NULL, typ );
+            tree = CallNode( front, tree, NULL, typ );
             if( parm_types != NULL ) {        /* function has prototype */
                 parm_type = *parm_types;
                 if( parm_type != NULL
                   && parm_type->decl_type != TYP_VOID ) {
-                    ParmCountMismatch();
+                    ParmCountMismatch(front);
                 }
             } else {                                /* check later */
-                AddCallNode( tree );
+                AddCallNode( front, tree );
             }
             if( (sym.flags & SYM_TEMP) == 0 ) {
-                SetDiagPop();
+                SetDiagPop(front);
             }
 #ifdef __SEH__
         }
 #endif
-        cvars_state().CompFlags.meaningless_stmt = false;
-        cvars_state().CompFlags.useful_side_effect = true;
-        NextToken();                    /* skip over ')' */
+        front.cvars.CompFlags.meaningless_stmt = false;
+        front.cvars.CompFlags.useful_side_effect = true;
+        NextToken(front);                    /* skip over ')' */
     }
     return( tree );
 }
 
 
-static TREEPTR OrOr( TREEPTR tree )
+static TREEPTR OrOr( FrontRun& front, TREEPTR tree )
 {
     /*
      * This routine is called when || token is found
      */
     if( tree->op.opr == OPR_PUSHINT ) {
-        if( !CheckZeroConstant( tree ) ) {
-            ++cvars_state().SizeOfCount;      /* skip code gen */
-            cvars_state().CurToken = T_NULL;
+        if( !CheckZeroConstant( front, tree ) ) {
+            ++front.cvars.SizeOfCount;      /* skip code gen */
+            front.cvars.CurToken = T_NULL;
         }
     }
     return( tree );
 }
 
 
-static TREEPTR AndAnd( TREEPTR tree )
+static TREEPTR AndAnd( FrontRun& front, TREEPTR tree )
 {
     /*
      * This routine is called when && token is found
      */
     if( tree->op.opr == OPR_PUSHINT ) {
-        if( CheckZeroConstant( tree ) ) {
-            ++cvars_state().SizeOfCount;      /* skip code gen */
-            cvars_state().CurToken = T_NULL;
+        if( CheckZeroConstant( front, tree ) ) {
+            ++front.cvars.SizeOfCount;      /* skip code gen */
+            front.cvars.CurToken = T_NULL;
         }
     }
     return( tree );
 }
 
 
-TREEPTR BoolExpr( TREEPTR tree )
+TREEPTR BoolExpr( FrontRun& front, TREEPTR tree )
 {
     switch( tree->op.opr ) {
     case OPR_NOT:
@@ -2574,27 +2571,27 @@ TREEPTR BoolExpr( TREEPTR tree )
     default:
         if( tree->op.opr == OPR_EQUALS ) {
             if( IsConstLeaf( tree ) ) {
-                CWarn1( ERR_ASSIGNMENT_IN_BOOL_EXPR );
+                CWarn1( front, ERR_ASSIGNMENT_IN_BOOL_EXPR );
             }
         }
-        tree = RValue( tree );
+        tree = RValue( front, tree );
         if( DataTypeOf( TypeOf( tree ) ) > TYP_POINTER ) {
-            CErr1( ERR_EXPR_MUST_BE_SCALAR );
+            CErr1( front, ERR_EXPR_MUST_BE_SCALAR );
         } else if( tree->op.opr == OPR_PUSHINT ) {
-            if( !CheckZeroConstant( tree ) ) {
+            if( !CheckZeroConstant( front, tree ) ) {
                 tree->op.u2.ulong_value = 1;
             }
             tree->op.u1.const_type = TYP_INT;
-            tree->u.expr_type = GetType( TYP_INT );
+            tree->u.expr_type = GetType( front, TYP_INT );
         } else {
-            tree = RelOp( tree, T_NE, IntLeaf( 0 ) );
+            tree = RelOp( front, tree, T_NE, IntLeaf( front, 0 ) );
         }
     }
     return( tree );
 }
 
 
-static TREEPTR NotOp( TREEPTR tree )
+static TREEPTR NotOp( FrontRun& front, TREEPTR tree )
 {
     TREEPTR     opnd;
     FLOATVAL    *flt;
@@ -2626,92 +2623,92 @@ static TREEPTR NotOp( TREEPTR tree )
             } else {
                 tree->op.u2.long_value = 0;
             }
-            CMemFree( flt );
+            CMemFree( front, flt );
             tree->op.opr = OPR_PUSHINT;
             tree->op.u1.const_type = TYP_INT;
             break;
         default:
-            tree = RelOp( ScalarExpr( tree ), T_EQ, IntLeaf( 0 ) );
+            tree = RelOp( front, ScalarExpr( front, tree ), T_EQ, IntLeaf( front, 0 ) );
             break;
         }
     } else {
         if( tree->op.opr == OPR_EQUALS ) {
             opnd = tree->right;
             if( IsConstLeaf( opnd ) ) {
-                CWarn1( ERR_ASSIGNMENT_IN_BOOL_EXPR );
+                CWarn1( front, ERR_ASSIGNMENT_IN_BOOL_EXPR );
             }
         }
-        tree = RelOp( ScalarExpr( tree ), T_EQ, IntLeaf( 0 ) );
+        tree = RelOp( front, ScalarExpr( front, tree ), T_EQ, IntLeaf( front, 0 ) );
     }
-    tree->u.expr_type = GetType( TYP_INT );
+    tree->u.expr_type = GetType( front, TYP_INT );
     return( tree );
 }
 
 
-static TREEPTR StartTernary( TREEPTR tree )
+static TREEPTR StartTernary( FrontRun& front, TREEPTR tree )
 {
-    tree = BoolExpr( tree );
+    tree = BoolExpr( front, tree );
     return( tree );
 }
 
 
-static TREEPTR ColonOp( TREEPTR true_part )
+static TREEPTR ColonOp( FrontRun& front, TREEPTR true_part )
 {
-    if( cvars_state().Class[cvars_state().ExprLevel] != TC_TERNARY ) {
-        CErr1( ERR_MISSING_QUESTION_OR_MISPLACED_COLON );
-        true_part = ErrorNode( NULL );
+    if( front.cvars.Class[front.cvars.ExprLevel] != TC_TERNARY ) {
+        CErr1( front, ERR_MISSING_QUESTION_OR_MISPLACED_COLON );
+        true_part = ErrorNode( front, NULL );
     }
     return( true_part );
 }
 
 
-static TREEPTR TernOp( TREEPTR expr1, TREEPTR true_part, TREEPTR false_part )
+static TREEPTR TernOp( FrontRun& front, TREEPTR expr1, TREEPTR true_part, TREEPTR false_part )
 {
     TYPEPTR     typ1, typ2, result_typ;
     TREEPTR     tree;
     op_flags    ops;
 
     if( true_part->op.opr == OPR_ERROR ) {
-        FreeExprTree( false_part );
-        return( ErrorNode( expr1 ) );
+        FreeExprTree( front, false_part );
+        return( ErrorNode( front, expr1 ) );
     }
     if( false_part->op.opr == OPR_ERROR ) {
-        FreeExprTree( true_part );
-        return( ErrorNode( expr1 ) );
+        FreeExprTree( front, true_part );
+        return( ErrorNode( front, expr1 ) );
     }
     typ1 = true_part->u.expr_type;
     typ2 = false_part->u.expr_type;
     if( !IsStruct( typ1 ) ) {
-        true_part = VoidRValue( true_part );
+        true_part = VoidRValue( front, true_part );
         typ1 = true_part->u.expr_type;
     }
     if( !IsStruct( typ2 ) ) {
-        false_part = VoidRValue( false_part );
+        false_part = VoidRValue( front, false_part );
         typ2 = false_part->u.expr_type;
     }
     if( typ1->decl_type == TYP_VOID
       || typ2->decl_type == TYP_VOID ) {
         if( typ1->decl_type != typ2->decl_type ) {
-            CErr1( ERR_TYPE_MISMATCH );
+            CErr1( front, ERR_TYPE_MISMATCH );
         }
         result_typ = typ1;
     } else {
-        result_typ = TernType( true_part, false_part );
+        result_typ = TernType( front, true_part, false_part );
     }
     if( expr1->op.opr == OPR_PUSHINT ) {
-        if( CheckZeroConstant( expr1 ) ) {
-            FreeExprTree( true_part );
+        if( CheckZeroConstant( front, expr1 ) ) {
+            FreeExprTree( front, true_part );
             tree = false_part;
         } else {
-            FreeExprTree( false_part );
+            FreeExprTree( front, false_part );
             tree = true_part;
         }
-        FreeExprNode( expr1 );
+        FreeExprNode( front, expr1 );
     } else {
-        tree = ExprNode( true_part, OPR_COLON, false_part );
-        tree->op.u2.label_index = NextLabel();
-        NextLabel();                            /* need 2 labels */
-        tree = ExprNode( expr1, OPR_QUESTION, tree );
+        tree = ExprNode( front, true_part, OPR_COLON, false_part );
+        tree->op.u2.label_index = NextLabel(front);
+        NextLabel(front);                            /* need 2 labels */
+        tree = ExprNode( front, expr1, OPR_QUESTION, tree );
         tree->op.u2.result_type = result_typ;
         ops = OPFLAG_NONE;
         if( !IsConstLeaf( true_part ) ) {
@@ -2727,11 +2724,11 @@ static TREEPTR TernOp( TREEPTR expr1, TREEPTR true_part, TREEPTR false_part )
 }
 
 
-static TREEPTR UnaryPlus( TREEPTR tree )
+static TREEPTR UnaryPlus( FrontRun& front, TREEPTR tree )
 {
     TYPEPTR     typ;
 
-    tree = RValue( tree );
+    tree = RValue( front, tree );
     typ = tree->u.expr_type;
     switch( typ->decl_type ) {
     case TYP_CHAR:
@@ -2741,8 +2738,8 @@ static TREEPTR UnaryPlus( TREEPTR tree )
     case TYP_USHORT:
     case TYP_FIELD:
     case TYP_UFIELD:
-        tree = ExprNode( NULL, OPR_CONVERT, tree );
-        tree->u.expr_type = GetType( TYP_INT );
+        tree = ExprNode( front, NULL, OPR_CONVERT, tree );
+        tree->u.expr_type = GetType( front, TYP_INT );
         tree->op.u2.result_type = tree->u.expr_type;
         break;
     case TYP_ARRAY:
@@ -2751,76 +2748,76 @@ static TREEPTR UnaryPlus( TREEPTR tree )
     case TYP_UNION:
     case TYP_FUNCTION:
     case TYP_VOID:
-        CErr1( ERR_EXPR_MUST_BE_SCALAR );
-        tree = ErrorNode( tree );
+        CErr1( front, ERR_EXPR_MUST_BE_SCALAR );
+        tree = ErrorNode( front, tree );
         break;
     }
     return( tree );
 }
 
 
-TREEPTR ScalarExpr( TREEPTR tree )
+TREEPTR ScalarExpr( FrontRun& front, TREEPTR tree )
 {
     TYPEPTR     typ;
 
     if( tree->op.opr == OPR_ERROR )
         return( tree );
-    tree = RValue( tree );
+    tree = RValue( front, tree );
     typ = tree->u.expr_type;
     switch( typ->decl_type ) {
     case TYP_STRUCT:
     case TYP_UNION:
     case TYP_FUNCTION:
     case TYP_VOID:
-        CErr1( ERR_EXPR_MUST_BE_SCALAR );
-        tree = ErrorNode( tree );
+        CErr1( front, ERR_EXPR_MUST_BE_SCALAR );
+        tree = ErrorNode( front, tree );
         break;
     }
     return( tree );
 }
 
 
-static TREEPTR SizeofOp( TYPEPTR typ )
+static TREEPTR SizeofOp( FrontRun& front, TYPEPTR typ )
 {
     TREEPTR             tree;
     target_size         size;
 
     if( typ->decl_type == TYP_FIELD
       || typ->decl_type == TYP_UFIELD ) {
-        CErr1( ERR_CANT_TAKE_SIZEOF_FIELD );
+        CErr1( front, ERR_CANT_TAKE_SIZEOF_FIELD );
     }
-    size = SizeOfArg( typ );
+    size = SizeOfArg( front, typ );
     if( size == 0 ) {
         SKIP_TYPEDEFS( typ );
         if( typ->decl_type == TYP_VOID ) {
-            CErr1( ERR_EXPR_HAS_VOID_TYPE );
+            CErr1( front, ERR_EXPR_HAS_VOID_TYPE );
         } else {
-            SetDiagType1( typ );
-            CErr1( ERR_INCOMPLETE_EXPR_TYPE );
-            SetDiagPop();
+            SetDiagType1( front, typ );
+            CErr1( front, ERR_INCOMPLETE_EXPR_TYPE );
+            SetDiagPop(front);
         }
     }
 #if TARGET_INT < TARGET_LONG
     if( size > TARGET_UINT_MAX ) {
-        tree = LongLeaf( size );
+        tree = LongLeaf( front, size );
     } else {
-        tree = UIntLeaf( size );
+        tree = UIntLeaf( front, size );
     }
 #else
-    tree = UIntLeaf( size );
+    tree = UIntLeaf( front, size );
 #endif
     return( tree );
 }
 
-static TREEPTR SegOp( TREEPTR seg, TREEPTR offset )
+static TREEPTR SegOp( FrontRun& front, TREEPTR seg, TREEPTR offset )
 {
     TREEPTR     tree;
     TYPEPTR     typ;
 
     typ = offset->u.expr_type->object;
     if( typ == NULL )
-        typ = GetType( TYP_VOID );
-    tree = ExprNode( RValue(seg), OPR_FARPTR, RValue(offset) );
-    tree->u.expr_type = PtrNode( typ, FLAG_FAR, SEG_NULL );
+        typ = GetType( front, TYP_VOID );
+    tree = ExprNode( front, RValue(front, seg), OPR_FARPTR, RValue(front, offset) );
+    tree->u.expr_type = PtrNode( front, typ, FLAG_FAR, SEG_NULL );
     return( tree );
 }

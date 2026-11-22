@@ -30,12 +30,13 @@
 ****************************************************************************/
 
 
+#pragma once
 #define TO_SR_VALUE(x)      ((void *)(pointer_uint)(x))
 #define FROM_SR_VALUE(x,t)  ((t)(pointer_uint)(x))
 
-typedef void    *(*func_sr)(void *);
+typedef void    *(*func_sr)(BackRun&, void *);
 
-extern  void    *SafeRecurseCG( func_sr rtn, void *arg );
+extern  void    *SafeRecurseCG( BackRun& back, func_sr rtn, void *arg );
 #if defined( __WATCOMC__ ) && defined( _M_IX86 ) && !defined( __NT__ )
 /* just to be sure! must not put any parametr on the stack */
 #pragma aux SafeRecurseCG __parm __caller [__eax __ebx __ecx __edx]

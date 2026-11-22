@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 typedef enum {
     GPR_IDX  = 0x01,    /* general purpose registers */
     FPR_IDX  = 0x02,    /* floating-point registers */
@@ -68,6 +69,6 @@ extern const arch_reg_info  RegsTab[];
 extern hw_reg_set   GetFPReg( int idx );
 extern int          CountFPRegs( hw_reg_set regs );
 extern int          FPRegNum( name *reg_name );
-extern reg_idx      RegTrans( hw_reg_set reg );
-extern dw_regs      RegTransDW( hw_reg_set reg );
-extern int          RegTransWV( hw_reg_set reg );
+extern reg_idx      RegTrans( BackRun& back, hw_reg_set reg );
+extern dw_regs      RegTransDW( BackRun& back, hw_reg_set reg );
+extern int          RegTransWV( BackRun& back, hw_reg_set reg );

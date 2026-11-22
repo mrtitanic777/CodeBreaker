@@ -44,18 +44,16 @@
 #include "dumpio.h"
 #include "memmgt.h"
 #include "trmem.h"
+#include "backrun.hpp"
 
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct MemmgtState {
-    mem_out_action MemOut;
-};
+/* (struct MemmgtState: memmgt_state.h) */
 
 }  // namespace
 
-static inline MemmgtState& memmgt_state() { return cbrun_part<MemmgtState>(); }
 
 #ifdef _CHUNK_TRACKING
 static uint             Chunks;
@@ -76,11 +74,11 @@ static void PrintLine( void *handle, const char *buff, size_t len )
 
 #endif /* TRMEM */
 
-void    CGMemInit( pointer trmemhdl )
+void    CGMemInit( BackRun& back, pointer trmemhdl )
 /***********************************/
 {
     _SysReInit();
-    memmgt_state().MemOut = MO_FATAL;
+    back.memmgt.MemOut = MO_FATAL;
 #ifdef TRMEM
     if( trmemhdl == NULL ) {
         TrHdl = _trmem_open( _SysAlloc, _SysFree, _TRMEM_NO_REALLOC, _TRMEM_NO_STRDUP,
@@ -96,10 +94,10 @@ void    CGMemInit( pointer trmemhdl )
 #ifdef _CHUNK_TRACKING
     Chunks = 0;
 #endif
-    CalcMemLimit();
+    CalcMemLimit(back);
 }
 
-void    CGMemFini( void )
+void    CGMemFini( BackRun& back )
 /***********************/
 {
 #ifdef TRMEM
@@ -118,24 +116,24 @@ void    CGMemFini( void )
         _Zoiks( ZOIKS_002 );
     }
 #endif
-    MemFini();
+    MemFini(back);
 }
 
 
-mem_out_action    SetMemOut( mem_out_action what )
+mem_out_action    SetMemOut( BackRun& back, mem_out_action what )
 /************************************************/
 {
     mem_out_action      old;
 
-    old = memmgt_state().MemOut;
-    memmgt_state().MemOut = what;
+    old = back.memmgt.MemOut;
+    back.memmgt.MemOut = what;
     return( old );
 }
 
 #if defined( TRMEM ) && defined( _M_IX86 )
 pointer _CGAlloc( size_t size, _trmem_who who )
 #else
-pointer CGAlloc( size_t size )
+pointer CGAlloc( BackRun& back, size_t size )
 #endif
 /******************************************/
 {
@@ -148,7 +146,7 @@ pointer CGAlloc( size_t size )
 #elif defined( TRMEM )
         chunk = _trmem_alloc( size, NULL, TrHdl );
 #else
-        chunk = _SysAlloc( size );
+        chunk = _SysAlloc( back, size );
 #endif
         if( chunk != NULL ) {
 #ifdef _CHUNK_TRACKING
@@ -161,10 +159,10 @@ pointer CGAlloc( size_t size )
             break;
         }
     }
-    if( ( memmgt_state().MemOut == MO_FATAL ) || ( optmac_state().InOptimizer != 0 ) ) {
-        FatalError( "Out of memory" );
-    } else if( memmgt_state().MemOut == MO_SUICIDE ) {
-        Suicide();
+    if( ( back.memmgt.MemOut == MO_FATAL ) || ( back.optmac.InOptimizer != 0 ) ) {
+        FatalError( back, "Out of memory" );
+    } else if( back.memmgt.MemOut == MO_SUICIDE ) {
+        Suicide(back);
     }
     return( NULL );
 }
@@ -181,7 +179,7 @@ pointer CGAlloc( size_t size )
 #if defined( TRMEM ) && defined( _M_IX86 )
 void    _CGFree( pointer chunk, _trmem_who who )
 #else
-void    CGFree( pointer chunk )
+void    CGFree( BackRun& back, pointer chunk )
 #endif
 /*******************************************/
 {
@@ -193,7 +191,7 @@ void    CGFree( pointer chunk )
 #elif defined( TRMEM )
     _trmem_free( chunk, NULL, TrHdl );
 #else
-    _SysFree( chunk );
+    _SysFree( back, chunk );
 #endif
 }
 

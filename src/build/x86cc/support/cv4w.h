@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "cv4.h"            /* common defn for reading or writing codeview */
 
 /* include fixed field defn */

@@ -37,6 +37,7 @@
 #include <limits.h>
 
 #include "cfloati.h"
+#include "backrun.hpp"
 
 
 static void efInit( char ue[] )
@@ -66,13 +67,13 @@ static void efSet( cfloat *f, char ue[], int i, int val )
     }
 }
 
-static cfloat *scalarMultiply( cfhandle h, cfloat *f, int s )
+static cfloat *scalarMultiply( BackRun& back, cfhandle h, cfloat *f, int s )
 {
     cfloat      *result;
     div_t       d;
     int         i;
 
-    result = CFAlloc( h, f->len + 1 );
+    result = CFAlloc( back, h, f->len + 1 );
 
     result->len  = f->len + 1;
     result->exp  = f->exp;
@@ -88,7 +89,7 @@ static cfloat *scalarMultiply( cfhandle h, cfloat *f, int s )
     return( result );
 }
 
-static void expandCF( cfhandle h, cfloat **f, int scale )
+static void expandCF( BackRun& back, cfhandle h, cfloat **f, int scale )
 {
     cfloat      *result;
     int         result_len;
@@ -96,7 +97,7 @@ static void expandCF( cfhandle h, cfloat **f, int scale )
 
     len = (*f)->len;
     result_len = len + scale;
-    result = CFAlloc( h, result_len );
+    result = CFAlloc( back, h, result_len );
     memcpy( result, *f, CFLOAT_SIZE + len - 1 );
     while( len < result_len ) {
         result->mant[len++] = '0';
@@ -104,7 +105,7 @@ static void expandCF( cfhandle h, cfloat **f, int scale )
     result->mant[len] = NULLCHAR;
     result->len  = result_len;
 
-    CFFree( h, *f );
+    CFFree( back, h, *f );
 
     *f = result;
 }
@@ -128,7 +129,7 @@ static void roundupCF( cfloat *f )
 /*
  * CFDiv:  Computes  f1 / f2
  */
-cfloat  *CFDiv( cfhandle h, cfloat *f1, cfloat *f2 )
+cfloat  *CFDiv( BackRun& back, cfhandle h, cfloat *f1, cfloat *f2 )
 {
     cfloat         *result;
     cfloat         *u, *v;
@@ -138,7 +139,7 @@ cfloat  *CFDiv( cfhandle h, cfloat *f1, cfloat *f2 )
     char            ue[CF_MAX_PREC];
 
     if( f2->sign == 0 ) {                       // Attempt to divide by zero.
-        result = CFAlloc( h, 1 );
+        result = CFAlloc( back, h, 1 );
         result->mant[0] = '1';
         result->sign    = 1;
         result->exp     = CF_ERR_EXP;           // Return error-type.
@@ -147,7 +148,7 @@ cfloat  *CFDiv( cfhandle h, cfloat *f1, cfloat *f2 )
 
     efInit( ue );                               // Initialize extended float.
 
-    result  = CFAlloc( h, CF_MAX_PREC );        // Allocate mem. for result.
+    result  = CFAlloc( back, h, CF_MAX_PREC );        // Allocate mem. for result.
 
     result->sign = f1->sign * f2->sign;         // Set sign of result.
     result->exp  = f1->exp - f2->exp + 1;       // Set exponent of result.
@@ -159,14 +160,14 @@ cfloat  *CFDiv( cfhandle h, cfloat *f1, cfloat *f2 )
         scale = 1;
     }
 
-    u = scalarMultiply( h, f1, scale );         // Extra digit added.
-    v = scalarMultiply( h, f2, scale );         // Extra digit added.
+    u = scalarMultiply( back, h, f1, scale );         // Extra digit added.
+    v = scalarMultiply( back, h, f2, scale );         // Extra digit added.
 
     if( v->len < 3 ) {                          // Divisor must have at least
-        expandCF( h, &v, 1 );                   // two digits (ignore leading 0)
+        expandCF( back, h, &v, 1 );                   // two digits (ignore leading 0)
     }
     if( v->len >= u->len ) {                    // Dividend must have more
-        expandCF( h, &u, v->len - u->len + 1 ); // digits than divisor.
+        expandCF( back, h, &u, v->len - u->len + 1 ); // digits than divisor.
     }
     /*
      * We now use the classical division algorithm described in Knuth,
@@ -246,8 +247,8 @@ cfloat  *CFDiv( cfhandle h, cfloat *f1, cfloat *f2 )
     /*
      * Clean up the mess we made.
      */
-    CFFree( h, u );
-    CFFree( h, v );
+    CFFree( back, h, u );
+    CFFree( back, h, v );
     /*
      * normalize result
      */

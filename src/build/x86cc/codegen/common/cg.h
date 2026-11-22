@@ -90,7 +90,7 @@ typedef struct cfloat       *float_handle;      /* for the BF... routines */
 typedef void                *callback_handle;   /* passed to rtn from callback node */
 typedef struct patch_info   *patch_handle;      /* used to stuff patchable ints into tree */
 
-typedef void                (*cg_callback)( callback_handle );
+typedef void                (*cg_callback)( BackRun&, callback_handle );
 
 /*
  * segment_id must be signed

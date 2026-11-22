@@ -1,105 +1,119 @@
-/* cbrun.cpp -- see cbrun.hpp: the start and the end of a run of the compiler, and what a run owns besides its state: the memory
- * it allocates and the files it opens. A compile that ends in a fatal error leaves by longjmp, past the code that frees them
- * (a process that ended freed them for it), so the run keeps the list and releases what is left when it ends. */
+/* cbrun.cpp -- see cbrun.hpp: the start and the end of a run of the compiler (its four parts made and linked, then freed), and what
+ * a run holds besides its state: the memory it allocates and the files it opens (Held). */
 #include "cbrun.hpp"
 
 #include <cstdio>
 #include <cstdlib>
-#include <unordered_set>
-#include <vector>
 
-#undef malloc   /* (cbcxx.h renamed them for the compilers: here are the real ones) */
-#undef calloc
-#undef realloc
-#undef free
-#undef fopen
-#undef fclose
+FrontRun* front_run_new();
+void front_run_link(FrontRun& run, BackRun* back, AsmRun* assembler, SupportRun* support, Held* held, AsminlinState* asminlin);
+void front_run_reset(FrontRun* run);
+void front_run_delete(FrontRun* run);
+BackRun* back_run_new();
+void back_run_link(BackRun& run, FrontRun* front, AsmRun* assembler, SupportRun* support, Held* held, AsminlinState* asminlin);
+void back_run_reset(BackRun* run);
+void back_run_delete(BackRun* run);
+AsmRun* asm_run_new();
+void asm_run_link(AsmRun& run, FrontRun* front, BackRun* back, SupportRun* support, Held* held, AsminlinState* asminlin);
+void asm_run_reset(AsmRun* run);
+void asm_run_delete(AsmRun* run);
+SupportRun* support_run_new();
+void support_run_link(SupportRun& run, FrontRun* front, BackRun* back, AsmRun* assembler, Held* held, AsminlinState* asminlin);
+void support_run_reset(SupportRun* run);
+void support_run_delete(SupportRun* run);
+AsminlinState* asminlin_new();
+void asminlin_reset(AsminlinState* part);
+void asminlin_delete(AsminlinState* part);
 
-namespace {
-
-struct Owned {
-    std::unordered_set<void*> blocks;   /* the memory handed out by cbrun_malloc & co. and not freed */
-    std::unordered_set<FILE*> files;    /* the files opened by cbrun_fopen and not closed */
-};
-
-Owned& owned() {
-    static Owned all;   /* (the lists of what the run owns: empty between runs) */
-    return all;
-}
-
-}  // namespace
-
-cbrun_parts& cbrun_registry() {
-    static cbrun_parts all;   /* (the list of what to destroy: not a run's state, and empty between runs) */
-    return all;
-}
-
-namespace {
-std::vector<bool> made;   /* which parts of the registry the last CBRunBegin made (so CBRunEnd destroys those) */
-}  // namespace
-
-extern "C" {
-
-void* cbrun_malloc(size_t size) {
+void* Held::malloc(std::size_t size) {
     void* p = std::malloc(size);
-    if (p != nullptr) owned().blocks.insert(p);
+    if (p != nullptr) blocks.insert(p);
     return p;
 }
 
-void* cbrun_calloc(size_t count, size_t size) {
+void* Held::calloc(std::size_t count, std::size_t size) {
     void* p = std::calloc(count, size);
-    if (p != nullptr) owned().blocks.insert(p);
+    if (p != nullptr) blocks.insert(p);
     return p;
 }
 
-void* cbrun_realloc(void* old, size_t size) {
+void* Held::realloc(void* old, std::size_t size) {
     void* p = std::realloc(old, size);
     if (p != nullptr) {
-        if (old != nullptr && p != old) owned().blocks.erase(old);
-        owned().blocks.insert(p);
+        if (old != nullptr && p != old) blocks.erase(old);
+        blocks.insert(p);
     } else if (size == 0 && old != nullptr) {
-        owned().blocks.erase(old);
+        blocks.erase(old);
     }
     return p;
 }
 
-void cbrun_free(void* p) {
-    if (p != nullptr) owned().blocks.erase(p);
-    std::free(p);
+void Held::free(void* block) {
+    if (block != nullptr) blocks.erase(block);
+    std::free(block);
 }
 
-FILE* cbrun_fopen(const char* name, const char* mode) {
-    FILE* f = std::fopen(name, mode);
-    if (f != nullptr) owned().files.insert(f);
+std::FILE* Held::fopen(const char* name, const char* mode) {
+    std::FILE* f = std::fopen(name, mode);
+    if (f != nullptr) files.insert(f);
     return f;
 }
 
-int cbrun_fclose(FILE* f) {
-    if (f != nullptr) owned().files.erase(f);
-    return std::fclose(f);
+int Held::fclose(std::FILE* file) {
+    if (file != nullptr) files.erase(file);
+    return std::fclose(file);
 }
 
-/* a run ends: the files and memory it still holds are given back, and every part of its state is destroyed (newest first: a
- * part may name another's address in its initial value) */
-void CBRunEnd(void) {
-    Owned& o = owned();
-    for (FILE* f : o.files) std::fclose(f);
-    o.files.clear();
-    for (void* p : o.blocks) std::free(p);
-    o.blocks.clear();
-    cbrun_parts& all = cbrun_registry();
-    for (std::size_t k = all.all.size(); k-- > 0;) {
-        if (k < made.size() && made[k]) all.all[k].unmake();
-    }
-    made.assign(all.all.size(), false);
+void Held::release() {
+    for (std::FILE* f : files) std::fclose(f);
+    files.clear();
+    for (void* p : blocks) std::free(p);
+    blocks.clear();
 }
 
-/* a run begins: nothing of an earlier one is left, and every part of the new one is made */
-void CBRunBegin(void) {
-    CBRunEnd();
-    cbrun_parts& all = cbrun_registry();
-    made.assign(all.all.size(), true);
-    for (const cbrun_part_ops& op : all.all) op.make();
+
+/* the four parts of a run are linked to each other, to what the run holds and to the shared inline-assembler part */
+static void link_run(RunSet* run) {
+    front_run_link(*run->front, run->back, run->assembler, run->support, &run->held, run->asminlin);
+    back_run_link(*run->back, run->front, run->assembler, run->support, &run->held, run->asminlin);
+    asm_run_link(*run->assembler, run->front, run->back, run->support, &run->held, run->asminlin);
+    support_run_link(*run->support, run->front, run->back, run->assembler, &run->held, run->asminlin);
 }
 
-}  // extern "C"
+/* a compile begins: the run the host kept from the last one (its state is new), or, the first time, a new one */
+RunSet* cbrun_begin(RunSet* kept) {
+    if (kept != nullptr) return kept;
+    RunSet* run = new RunSet();
+    run->front = front_run_new();
+    run->back = back_run_new();
+    run->assembler = asm_run_new();
+    run->support = support_run_new();
+    run->asminlin = asminlin_new();
+    link_run(run);
+    return run;
+}
+
+/* a compile ends: what the run still holds is given back and each part's state is made new again (in the storage it has: the next
+ * compile starts with it, as a process of its own would with new variables) */
+void cbrun_end(RunSet* run) {
+    if (run == nullptr) return;
+    run->held.release();
+    front_run_reset(run->front);
+    back_run_reset(run->back);
+    asm_run_reset(run->assembler);
+    support_run_reset(run->support);
+    asminlin_reset(run->asminlin);
+    link_run(run);
+}
+
+/* the host has no more compiles */
+void cbrun_free(RunSet* run) {
+    if (run == nullptr) return;
+    run->held.release();
+    front_run_delete(run->front);
+    back_run_delete(run->back);
+    asm_run_delete(run->assembler);
+    support_run_delete(run->support);
+    asminlin_delete(run->asminlin);
+    delete run;
+}

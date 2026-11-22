@@ -31,6 +31,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #define HASH_TABLE_SIZE 211
 
 static unsigned int hashpjw( const char *s )

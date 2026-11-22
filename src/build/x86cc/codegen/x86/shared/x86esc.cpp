@@ -56,26 +56,28 @@
 #include "x86enc.h"
 #include "x86nopli.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
 #define OC_INFO_NOT_DEBUG   static_cast<oc_class>(OC_INFO_SELECT)
 
-static void     DoRelocRef( cg_sym_handle sym, cg_class class_, segment_id segid, offset val, escape_class esc_attr );
-static void     OutShortDisp( label_handle lbl );
-static void     OutCodeDisp( label_handle lbl, fix_class f, bool rel, oc_class class_ );
+static void     DoRelocRef( BackRun& back, cg_sym_handle sym, cg_class class_, segment_id segid, offset val, escape_class esc_attr );
+static void     OutShortDisp( BackRun& back, label_handle lbl );
+static void     OutCodeDisp( BackRun& back, label_handle lbl, fix_class f, bool rel, oc_class class_ );
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
+}  // namespace
 struct X86escState {
     oc_class SaveDbgOc = static_cast<oc_class>(OC_INFO_NOT_DEBUG);
     pointer SaveDbgPtr;
     offset LastUnique = ADDR_UNKNOWN;
 };
+namespace {
 
 }  // namespace
 
-static inline X86escState& x86esc_state() { return cbrun_part<X86escState>(); }
 
 
 bool    CodeHasAbsPatch( oc_entry *code )
@@ -97,24 +99,24 @@ bool    CodeHasAbsPatch( oc_entry *code )
 }
 
 
-void    DoAbsPatch( abspatch_handle *handle, int len )
+void    DoAbsPatch( BackRun& back, abspatch_handle *handle, int len )
 /****************************************************/
 {
-    EmitByte( ESC );
-    EmitByte( ESC_ABS );
+    EmitByte( back, ESC );
+    EmitByte( back, ESC_ABS );
     if( len == 1 ) {
-        EmitByte( BYTE_PATCH );
+        EmitByte( back, BYTE_PATCH );
     } else if( len == 2 ) {
-        EmitByte( WORD_PATCH );
+        EmitByte( back, WORD_PATCH );
     } else { /*4*/
-        EmitByte( LONG_PATCH );
+        EmitByte( back, LONG_PATCH );
     }
-    *handle = NewAbsPatch();
-    EmitPtr( *handle );
+    *handle = NewAbsPatch(back);
+    EmitPtr( back, *handle );
 }
 
 
-void  DoFESymRef( cg_sym_handle sym, cg_class class_, offset val, fe_fixup_types fixup_type )
+void  DoFESymRef( BackRun& back, cg_sym_handle sym, cg_class class_, offset val, fe_fixup_types fixup_type )
 /******************************************************************************************/
 {
     fe_attr             attr;
@@ -134,49 +136,49 @@ void  DoFESymRef( cg_sym_handle sym, cg_class class_, offset val, fe_fixup_types
         esc_attr |= ESCA_OFST;  /* offset follows*/
     }
     if( class_ == CG_FE ) {
-        attr = FEAttr( sym );
+        attr = FEAttr( *back.front, sym );
         if( ((esc_attr & ESCA_BASE) == 0)
           && _IsTargetModel( CGSW_X86_WINDOWS )
           && (attr & FE_PROC)
           && ((call_class_target)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL) ) {
             esc_attr |= ESCA_LDOF;
         }
-        if( UseImportForm( attr ) ) {
-            EmitByte( ESC );
-            EmitByte( ESC_IMP | esc_attr );
-            EmitPtr( sym );
+        if( UseImportForm( back, attr ) ) {
+            EmitByte( back, ESC );
+            EmitByte( back, ESC_IMP | esc_attr );
+            EmitPtr( back, sym );
             if( esc_attr & ESCA_OFST ) {
-                EmitOffset( val );
+                EmitOffset( back, val );
             }
         } else if( attr & FE_GLOBAL ) {
-            DoRelocRef( sym, CG_FE, AskSegID( sym, CG_FE ), val, esc_attr );
+            DoRelocRef( back, sym, CG_FE, AskSegID( back, sym, CG_FE ), val, esc_attr );
         } else {
             // handle mismatch Fix it!
-            DoRelocRef( (cg_sym_handle)AskForSymLabel( sym, CG_FE ), CG_LBL, AskSegID( sym, CG_FE ), val, esc_attr );
+            DoRelocRef( back, (cg_sym_handle)AskForSymLabel( back, sym, CG_FE ), CG_LBL, AskSegID( back, sym, CG_FE ), val, esc_attr );
         }
     } else {                                /* CG_TBL, CG_LBL or CG_BCK*/
-        DoRelocRef( sym, class_, AskSegID( sym, class_ ), val, esc_attr );
+        DoRelocRef( back, sym, class_, AskSegID( back, sym, class_ ), val, esc_attr );
     }
 }
 
 
-void    DoSymRef( name *opnd, offset val, bool base )
+void    DoSymRef( BackRun& back, name *opnd, offset val, bool base )
 /***************************************************/
 {
-    DoFESymRef( static_cast<cg_sym_handle>(opnd->v.symbol), opnd->m.memory_type, val, base ? FE_FIX_BASE : FE_FIX_OFF );
+    DoFESymRef( back, static_cast<cg_sym_handle>(opnd->v.symbol), opnd->m.memory_type, val, base ? FE_FIX_BASE : FE_FIX_OFF );
 }
 
 
-void    DoSegRef( segment_id segid )
+void    DoSegRef( BackRun& back, segment_id segid )
 /**********************************/
 {
-    EmitByte( ESC );
-    EmitByte( ESC_REL | ESCA_BASE | ESCA_OFST );
-    EmitSegId( segid );
-    EmitOffset( 0 );
+    EmitByte( back, ESC );
+    EmitByte( back, ESC_REL | ESCA_BASE | ESCA_OFST );
+    EmitSegId( back, segid );
+    EmitOffset( back, 0 );
 }
 
-static void     DoRelocRef( cg_sym_handle sym, cg_class class_,
+static void     DoRelocRef( BackRun& back, cg_sym_handle sym, cg_class class_,
                     segment_id segid, offset val, escape_class esc_attr )
 /***********************************************************************/
 {
@@ -184,71 +186,71 @@ static void     DoRelocRef( cg_sym_handle sym, cg_class class_,
     label_handle        lbl;
 
     if( esc_attr & ESCA_BASE ) {                /* don't need offset*/
-        EmitByte( ESC );
-        EmitByte( ESC_REL | esc_attr | ESCA_OFST );
-        EmitSegId( segid );
-        EmitOffset( 0 );
+        EmitByte( back, ESC );
+        EmitByte( back, ESC_REL | esc_attr | ESCA_OFST );
+        EmitSegId( back, segid );
+        EmitOffset( back, 0 );
     } else {
-        lbl = AskForSymLabel( sym, class_ );
-        addr = AskAddress( lbl );
-        if( (addr != ADDR_UNKNOWN) && !AskIfCommonLabel( lbl ) ) {
-            EmitByte( ESC );
-            EmitByte( ESC_REL | esc_attr | ESCA_OFST );
-            EmitSegId( segid );
+        lbl = AskForSymLabel( back, sym, class_ );
+        addr = AskAddress( back, lbl );
+        if( (addr != ADDR_UNKNOWN) && !AskIfCommonLabel( back, lbl ) ) {
+            EmitByte( back, ESC );
+            EmitByte( back, ESC_REL | esc_attr | ESCA_OFST );
+            EmitSegId( back, segid );
             val += addr;
-            EmitOffset( val );
+            EmitOffset( back, val );
         } else if( class_ == CG_FE ) {
-            EmitByte( ESC );
-            EmitByte( ESC_SYM | esc_attr );     /* patch may be needed*/
-            EmitPtr( sym );
+            EmitByte( back, ESC );
+            EmitByte( back, ESC_SYM | esc_attr );     /* patch may be needed*/
+            EmitPtr( back, sym );
             if( esc_attr & ESCA_OFST ) {
-                EmitOffset( val );
+                EmitOffset( back, val );
             }
         } else {
-            DoLblRef( lbl, segid, val, esc_attr );
+            DoLblRef( back, lbl, segid, val, esc_attr );
         }
     }
 }
 
-void    DoLblRef( label_handle lbl, segment_id segid,
+void    DoLblRef( BackRun& back, label_handle lbl, segment_id segid,
                     offset val, escape_class esc_attr )
 /*****************************************************/
 {
-    EmitByte( ESC );
-    EmitByte( ESC_LBL | esc_attr );
-    EmitSegId( segid );
-    EmitPtr( lbl );
+    EmitByte( back, ESC );
+    EmitByte( back, ESC_LBL | esc_attr );
+    EmitSegId( back, segid );
+    EmitPtr( back, lbl );
     if( esc_attr & ESCA_OFST ) {
-        EmitOffset( val );
+        EmitOffset( back, val );
     }
 }
 
-static void SendBytes( const byte *ptr, unsigned len )
+static void SendBytes( BackRun& back, const byte *ptr, unsigned len )
 /****************************************************/
 {
     if( len != 0 ) {
-        OutDBytes( len, ptr );
+        OutDBytes( back, len, ptr );
     }
 }
 
-static  void    DumpSavedDebug( void )
+static  void    DumpSavedDebug( BackRun& back )
 /******************************/
 {
-    switch( x86esc_state().SaveDbgOc ) {
+    switch( back.x86esc->SaveDbgOc ) {
     case OC_INFO_DBG_RTN_BEG:
-        DbgRtnBeg( static_cast<dbg_rtn *>(x86esc_state().SaveDbgPtr), AskLocation() );
+        DbgRtnBeg( back, static_cast<dbg_rtn *>(back.x86esc->SaveDbgPtr), AskLocation(back) );
         break;
     case OC_INFO_DBG_BLK_BEG:
-        DbgBlkBeg( static_cast<dbg_block *>(x86esc_state().SaveDbgPtr), AskLocation() );
+        DbgBlkBeg( back, static_cast<dbg_block *>(back.x86esc->SaveDbgPtr), AskLocation(back) );
         break;
     case OC_INFO_DBG_EPI_BEG:
-        DbgEpiBeg( static_cast<dbg_rtn *>(x86esc_state().SaveDbgPtr), AskLocation() );
+        DbgEpiBeg( back, static_cast<dbg_rtn *>(back.x86esc->SaveDbgPtr), AskLocation(back) );
         break;
     }
-    x86esc_state().SaveDbgOc = OC_INFO_NOT_DEBUG;
+    back.x86esc->SaveDbgOc = OC_INFO_NOT_DEBUG;
 }
 
-void DoAlignment( int len )
+void DoAlignment( BackRun& back, int len )
 /*************************/
 {
     const byte          *ptr;
@@ -256,30 +258,30 @@ void DoAlignment( int len )
     int                 i;
     unsigned            save_line;
 
-    save_line = SavePendingLine( 0 );
+    save_line = SavePendingLine( back, 0 );
     if( _IsTargetModel( CGSW_X86_MSC8 ) ) {
         /* Microsoft C 8 pads with NOP, a byte at a time (-zmsc) */
         static const byte nop = 0x90;
         for( ; len > 0; --len )
-            SendBytes( &nop, 1 );
-        SavePendingLine( save_line );
+            SendBytes( back, &nop, 1 );
+        SavePendingLine( back, save_line );
         return;
     }
     /* get the size of the largest NOP pattern  */
     i = 0;
     for( nop = NopLists[i][0]; len > nop; len -= nop ) {
-        SendBytes( &NopLists[i][1], nop );
+        SendBytes( back, &NopLists[i][1], nop );
         i = !i;
     }
     /* find the correct size NOP pattern to use */
     for( ptr = &NopLists[i][1]; nop != len; --nop )
         ptr += nop;
-    SendBytes( ptr, len );
-    SavePendingLine( save_line );
+    SendBytes( back, ptr, len );
+    SavePendingLine( back, save_line );
 }
 
 
-static  void    ExpandCJ( any_oc *oc )
+static  void    ExpandCJ( BackRun& back, any_oc *oc )
 /************************************/
 {
     oc_class            class_;
@@ -290,28 +292,28 @@ static  void    ExpandCJ( any_oc *oc )
     class_ = oc->oc_header.class_;
     objlen = oc->oc_header.objlen;
     if( OC_BASE_CLASS( class_ ) == OC_JCOND ) {
-        if( objlen == OptInsSize( OC_JCOND, OC_DEST_NEAR ) ) {
+        if( objlen == OptInsSize( back, OC_JCOND, OC_DEST_NEAR ) ) {
             if( _CPULevel( CPU_386 ) ) {
                 _OutJCondNear( oc->oc_jcond.cond );
             } else {
                 _OutJCond( ReverseCondition( oc->oc_jcond.cond ) );
-                OutDataByte( OptInsSize( OC_JMP, OC_DEST_NEAR ) );
+                OutDataByte( back, OptInsSize( back, OC_JMP, OC_DEST_NEAR ) );
                 _OutJNear;
             }
-            OutCodeDisp( oc->oc_jcond.handle, F_OFFSET, true, class_ );
+            OutCodeDisp( back, oc->oc_jcond.handle, F_OFFSET, true, class_ );
         } else {
             _OutJCond( oc->oc_jcond.cond );
-            OutShortDisp( oc->oc_jcond.handle );
+            OutShortDisp( back, oc->oc_jcond.handle );
         }
-    } else if( OC_BASE_CLASS( class_ ) == OC_JMP && objlen == OptInsSize( OC_JMP, OC_DEST_SHORT ) ) {
+    } else if( OC_BASE_CLASS( class_ ) == OC_JMP && objlen == OptInsSize( back, OC_JMP, OC_DEST_SHORT ) ) {
         _OutJShort;
-        OutShortDisp( oc->oc_handle.handle );
+        OutShortDisp( back, oc->oc_handle.handle );
     } else {
         if( class_ & OC_ATTR_FAR ) {
             f = F_PTR;
             rel = false;
             if( OC_BASE_CLASS( class_ ) == OC_CALL ) {
-                if( objlen == OptInsSize( OC_CALL, OC_DEST_CHEAP ) ) {
+                if( objlen == OptInsSize( back, OC_CALL, OC_DEST_CHEAP ) ) {
                     f = F_OFFSET;
                     rel = true;
                     class_ &= ~ OC_ATTR_FAR;
@@ -331,71 +333,71 @@ static  void    ExpandCJ( any_oc *oc )
                 _OutJNear;
             }
         }
-        OutCodeDisp( oc->oc_handle.handle, f, rel, class_ );
+        OutCodeDisp( back, oc->oc_handle.handle, f, rel, class_ );
     }
 }
 
 
-static  void    OutShortDisp( label_handle lbl ) {
+static  void    OutShortDisp( BackRun& back, label_handle lbl ) {
 /************************************************/
 
     offset              addr;
 
-    addr = AskAddress( lbl );
+    addr = AskAddress( back, lbl );
     if( addr == ADDR_UNKNOWN ) {
-        OutPatch( lbl, _SHORT_PATCH );
+        OutPatch( back, lbl, _SHORT_PATCH );
         addr = 0;
     }
     _OutShortD( addr );
 }
 
 
-static  void    OutCodeDisp( label_handle lbl, fix_class f,
+static  void    OutCodeDisp( BackRun& back, label_handle lbl, fix_class f,
                              bool rel, oc_class class_ ) {
 /********************************************************/
 
     offset              addr;
     cg_sym_handle       sym;
 
-    sym = AskForLblSym( lbl );
-    if( AskIfRTLabel( lbl ) ) {
-        OutRTImport( static_cast<rt_class>(SYM2RTIDX( sym )), f );
+    sym = AskForLblSym( back, lbl );
+    if( AskIfRTLabel( back, lbl ) ) {
+        OutRTImport( back, static_cast<rt_class>(SYM2RTIDX( sym )), f );
         if( class_ & OC_ATTR_FAR ) {
             _OutFarD( 0, 0 );
         } else {
             _OutFarOff( 0 );
         }
-    } else if( AskIfCommonLabel( lbl ) ) {
-        OutSpecialCommon( SYM2IMPHDL( sym ), f, rel );
+    } else if( AskIfCommonLabel( back, lbl ) ) {
+        OutSpecialCommon( back, SYM2IMPHDL( sym ), f, rel );
         _OutFarOff( 0 );
-    } else if( sym != NULL && UseImportForm( FEAttr( sym ) ) ) { /* 90-05-22 */
-        OutImport( sym, f, rel );
+    } else if( sym != NULL && UseImportForm( back, FEAttr( *back.front, sym ) ) ) { /* 90-05-22 */
+        OutImport( back, sym, f, rel );
         if( class_ & OC_ATTR_FAR ) {
             _OutFarD( 0, 0 );
         } else {
             _OutFarOff( 0 );
         }
     } else {                /* patch, to be done later*/
-        addr = AskAddress( lbl );
+        addr = AskAddress( back, lbl );
         if( ( class_ & OC_ATTR_FAR ) == 0 ) {
             if( addr == ADDR_UNKNOWN ) {
-                OutPatch( lbl, _NEAR_PATCH );
+                OutPatch( back, lbl, _NEAR_PATCH );
                 addr = 0;
             }
             _OutNearD( addr );
         } else {
             if( addr == ADDR_UNKNOWN ) {
-                OutPatch( lbl, _OFFSET_PATCH );
+                OutPatch( back, lbl, _OFFSET_PATCH );
             }
             _OutFarOff( addr );
-            OutReloc( AskSegID( sym, CG_FE ), F_BASE, false );
+            OutReloc( back, AskSegID( back, sym, CG_FE ), F_BASE, false );
             _OutFarSeg( 0 );
         }
     }
 }
 
 
-static  label_handle ExpandObj( byte *cur, int explen )
+static  label_handle ExpandObj( BackRun& back, byte *cur, int explen )
 /*****************************************************/
 {
     byte                *fini;
@@ -420,7 +422,7 @@ static  label_handle ExpandObj( byte *cur, int explen )
             }
         }
         if( len != 0 ) {
-            OutDBytes( len, cur );
+            OutDBytes( back, len, cur );
             cur += len;
             if( cur >= fini ) {
                 break;
@@ -429,7 +431,7 @@ static  label_handle ExpandObj( byte *cur, int explen )
         cur++;
         esc_class = static_cast<escape_class>(*cur++);
         if( esc_class == ESC ) {
-            OutDataByte( ESC );
+            OutDataByte( back, ESC );
             continue;
         }
         if( esc_class & ESCA_BASE ) {
@@ -448,44 +450,44 @@ static  label_handle ExpandObj( byte *cur, int explen )
         case ESC_REL:
             memcpy( &segid, cur, sizeof( segment_id ) );
             cur += sizeof( segment_id );
-            OutReloc( segid, class_, rel );
+            OutReloc( back, segid, class_, rel );
             val = 0;
             break;
         case ESC_SYM:       /* never BASE*/
             memcpy( &sym, cur, sizeof( pointer ) );
             cur += sizeof( pointer );
-            lbl = AskForSymLabel( sym, CG_FE );
-            val = AskAddress( lbl );
+            lbl = AskForSymLabel( back, sym, CG_FE );
+            val = AskAddress( back, lbl );
             if( val == ADDR_UNKNOWN ) {
                 if( class_ == F_OFFSET || class_ == F_LDR_OFFSET ) {
-                    OutPatch( lbl, ADD_PATCH | _OFFSET_PATCH );
+                    OutPatch( back, lbl, ADD_PATCH | _OFFSET_PATCH );
                 } else {
-                    OutPatch( lbl, ADD_PATCH | WORD_PATCH );
+                    OutPatch( back, lbl, ADD_PATCH | WORD_PATCH );
                 }
                 val = 0;
             }
-            OutReloc( AskSegID( sym, CG_FE ), class_, rel );
+            OutReloc( back, AskSegID( back, sym, CG_FE ), class_, rel );
             break;
         case ESC_LBL:       /* never BASE*/
             memcpy( &segid, cur, sizeof( segment_id ) );
             cur += sizeof( segment_id );
             memcpy( &lbl, cur, sizeof( pointer ) );
             cur += sizeof( pointer );
-            if( AskIfRTLabel( lbl ) ) {
-                OutRTImportRel( static_cast<rt_class>(SYM2RTIDX( AskForLblSym( lbl ) )), F_OFFSET, false );
+            if( AskIfRTLabel( back, lbl ) ) {
+                OutRTImportRel( back, static_cast<rt_class>(SYM2RTIDX( AskForLblSym( back, lbl ) )), F_OFFSET, false );
                 val = 0;
             } else {
-                if( AskIfCommonLabel( lbl ) ) {
-                    OutSpecialCommon( SYM2IMPHDL( AskForLblSym( lbl ) ), class_, rel );
+                if( AskIfCommonLabel( back, lbl ) ) {
+                    OutSpecialCommon( back, SYM2IMPHDL( AskForLblSym( back, lbl ) ), class_, rel );
                 } else {
-                    OutReloc( segid, class_, rel );
+                    OutReloc( back, segid, class_, rel );
                 }
-                val = AskAddress( lbl );
+                val = AskAddress( back, lbl );
                 if( val == ADDR_UNKNOWN ) {
                     if( class_ == F_OFFSET || class_ == F_LDR_OFFSET ) {
-                        OutPatch( lbl, ADD_PATCH | _OFFSET_PATCH );
+                        OutPatch( back, lbl, ADD_PATCH | _OFFSET_PATCH );
                     } else {
-                        OutPatch( lbl, ADD_PATCH | WORD_PATCH );
+                        OutPatch( back, lbl, ADD_PATCH | WORD_PATCH );
                     }
                     val = 0;
                 }
@@ -494,17 +496,17 @@ static  label_handle ExpandObj( byte *cur, int explen )
         case ESC_IMP:
             memcpy( &sym, cur, sizeof( pointer ) );
             cur += sizeof( pointer );
-            OutImport( sym, class_, rel );
+            OutImport( back, sym, class_, rel );
             val = 0;
             break;
         case ESC_ABS:
             val = *cur++;
             memcpy( &apatch, cur, sizeof( pointer ) );
             cur += sizeof( pointer );
-            OutAbsPatch( apatch, static_cast<patch_attr>(val) );
+            OutAbsPatch( back, apatch, static_cast<patch_attr>(val) );
             continue;
         case ESC_FUN:
-            OutFPPatch( static_cast<fp_patches>(*cur) );
+            OutFPPatch( back, static_cast<fp_patches>(*cur) );
             cur++;
             continue;
         default:
@@ -530,7 +532,7 @@ static  label_handle ExpandObj( byte *cur, int explen )
     return( lbl );
 }
 
-void    OutputOC( any_oc *oc, any_oc *next_lbl )
+void    OutputOC( BackRun& back, any_oc *oc, any_oc *next_lbl )
 /**********************************************/
 {
     label_handle    lbl;
@@ -544,61 +546,61 @@ void    OutputOC( any_oc *oc, any_oc *next_lbl )
     if( base == OC_NORET )
         return;
     if( base != OC_LABEL ) {
-        DumpSavedDebug();
+        DumpSavedDebug(back);
     }
-    SetUpObj( false );
+    SetUpObj( back, false );
     switch( base ) {
     case OC_CODE:
     case OC_DATA:
-        ExpandObj( oc->oc_entry.data, oc->oc_entry.hdr.reclen - offsetof( oc_entry, data ) );
+        ExpandObj( back, oc->oc_entry.data, oc->oc_entry.hdr.reclen - offsetof( oc_entry, data ) );
         break;
     case OC_IDATA:
         if( next_lbl != NULL ) { /* cause next_lbl to need no alignment */
-            len = -( AskLocation() + oc->oc_entry.hdr.objlen );
+            len = -( AskLocation(back) + oc->oc_entry.hdr.objlen );
             len &= next_lbl->oc_entry.hdr.objlen;
-            DoAlignment( len );
+            DoAlignment( back, len );
         }
-        OutSelect( true );
-        SendBytes( oc->oc_entry.data, oc->oc_entry.hdr.objlen );
-        OutSelect( false );
+        OutSelect( back, true );
+        SendBytes( back, oc->oc_entry.data, oc->oc_entry.hdr.objlen );
+        OutSelect( back, false );
         break;
     case OC_BDATA:
-        SendBytes( oc->oc_entry.data, oc->oc_entry.hdr.objlen );
+        SendBytes( back, oc->oc_entry.data, oc->oc_entry.hdr.objlen );
         break;
     case OC_LABEL:
         /* figure out number of bytes to pad */
-        lc = AskLocation();
+        lc = AskLocation(back);
         len = -lc & oc->oc_handle.hdr.objlen;
-        if( AskIfUniqueLabel( oc->oc_handle.handle ) ) {
-            if( (lc == x86esc_state().LastUnique) && (len == 0) ) {
+        if( AskIfUniqueLabel( back, oc->oc_handle.handle ) ) {
+            if( (lc == back.x86esc->LastUnique) && (len == 0) ) {
                 /* Two unique labels have ended up next to each other.
                    Pad out to next label alignment boundry. */
                 len = oc->oc_handle.hdr.objlen + 1;
             }
-            x86esc_state().LastUnique = lc + len;
+            back.x86esc->LastUnique = lc + len;
         }
-        DoAlignment( len );
-        OutLabel( oc->oc_handle.handle );           /* do patches*/
-        DbgSetBase();
-        DumpSavedDebug();
+        DoAlignment( back, len );
+        OutLabel( back, oc->oc_handle.handle );           /* do patches*/
+        DbgSetBase(back);
+        DumpSavedDebug(back);
         break;
     case OC_LREF:
         lbl = oc->oc_handle.handle;
-        sym = AskForLblSym( lbl );
-        if( AskIfRTLabel( lbl ) ) {
-            OutRTImport( static_cast<rt_class>(SYM2RTIDX( sym )), F_OFFSET );
+        sym = AskForLblSym( back, lbl );
+        if( AskIfRTLabel( back, lbl ) ) {
+            OutRTImport( back, static_cast<rt_class>(SYM2RTIDX( sym )), F_OFFSET );
             lc = 0;
-        } else if( AskIfCommonLabel( lbl ) ) {
-            OutSpecialCommon( SYM2IMPHDL( sym ), F_OFFSET, false );
+        } else if( AskIfCommonLabel( back, lbl ) ) {
+            OutSpecialCommon( back, SYM2IMPHDL( sym ), F_OFFSET, false );
             lc = 0;
-        } else if( sym != NULL && UseImportForm( FEAttr( sym ) ) ) {
-            OutImport( sym, F_OFFSET, false );
+        } else if( sym != NULL && UseImportForm( back, FEAttr( *back.front, sym ) ) ) {
+            OutImport( back, sym, F_OFFSET, false );
             lc = 0;
         } else {
-            OutReloc( AskOP(), F_OFFSET, false );
-            lc = AskAddress( lbl );
+            OutReloc( back, AskOP(back), F_OFFSET, false );
+            lc = AskAddress( back, lbl );
             if( lc == ADDR_UNKNOWN ) {
-                OutPatch( lbl, ADD_PATCH | _OFFSET_PATCH );
+                OutPatch( back, lbl, ADD_PATCH | _OFFSET_PATCH );
                 lc = 0;
             }
         }
@@ -614,7 +616,7 @@ void    OutputOC( any_oc *oc, any_oc *next_lbl )
         }
         ++len;
         _OutOpndSize;
-        ExpandObj( ptr, len );
+        ExpandObj( back, ptr, len );
         ptr += len;
 
     /* Need to put bits in 2nd byte of instruction distinguishing call vs.*/
@@ -627,17 +629,17 @@ void    OutputOC( any_oc *oc, any_oc *next_lbl )
         } else {
             *ptr |= B_IND_RMR_JMP;
         }
-        OutDataByte( *ptr++ );
-        lbl = ExpandObj( ptr, oc->oc_entry.hdr.reclen - offsetof( oc_entry, data ) - 1 - len );
+        OutDataByte( back, *ptr++ );
+        lbl = ExpandObj( back, ptr, oc->oc_entry.hdr.reclen - offsetof( oc_entry, data ) - 1 - len );
         if( lbl != NULL && base == OC_JMPI ) {
-            TellKeepLabel( lbl ); /* make sure label comes out*/
-            GenKillLabel( lbl );  /* but kill it when it does*/
+            TellKeepLabel( back, lbl ); /* make sure label comes out*/
+            GenKillLabel( back, lbl );  /* but kill it when it does*/
         }
         break;
     case OC_CALL:
     case OC_JMP:
     case OC_JCOND:
-        ExpandCJ( oc );
+        ExpandCJ( back, oc );
         break;
     case OC_RET:
         _OutOpndSize;
@@ -652,19 +654,19 @@ void    OutputOC( any_oc *oc, any_oc *next_lbl )
         if( (base & OC_ATTR_POP) == 0 ) {
             len |= B_RET_NOPOP;
         }
-        OutDataByte( len );
+        OutDataByte( back, len );
         if( base & OC_ATTR_POP ) {
-            OutDataShort( oc->oc_ret.pops );
+            OutDataShort( back, oc->oc_ret.pops );
         }
         break;
     case OC_INFO:
         base = static_cast<oc_class>(OC_INFO_CLASS( oc->oc_header.class_ ));
         switch( base ) {
         case OC_INFO_LINE:
-            OutLineNum( oc->oc_linenum.line, oc->oc_linenum.label_line );
+            OutLineNum( back, oc->oc_linenum.line, oc->oc_linenum.label_line );
             break;
         case OC_INFO_LDONE:
-            TellScrapLabel( oc->oc_handle.handle );
+            TellScrapLabel( back, oc->oc_handle.handle );
             break;
         case OC_INFO_DEAD_JMP:
             _Zoiks( ZOIKS_036 );
@@ -672,21 +674,21 @@ void    OutputOC( any_oc *oc, any_oc *next_lbl )
         case OC_INFO_DBG_RTN_BEG:
         case OC_INFO_DBG_BLK_BEG:
         case OC_INFO_DBG_EPI_BEG:
-            x86esc_state().SaveDbgOc = base;
-            x86esc_state().SaveDbgPtr = oc->oc_debug.ptr;
+            back.x86esc->SaveDbgOc = base;
+            back.x86esc->SaveDbgPtr = oc->oc_debug.ptr;
             break;
         case OC_INFO_DBG_BLK_END:
-            DbgBlkEnd( static_cast<dbg_block *>(oc->oc_debug.ptr), AskLocation() );
+            DbgBlkEnd( back, static_cast<dbg_block *>(oc->oc_debug.ptr), AskLocation(back) );
             break;
         case OC_INFO_DBG_PRO_END:
-            DbgProEnd( static_cast<dbg_rtn *>(oc->oc_debug.ptr), AskLocation() );
+            DbgProEnd( back, static_cast<dbg_rtn *>(oc->oc_debug.ptr), AskLocation(back) );
             break;
         case OC_INFO_DBG_RTN_END:
-            DbgRtnEnd( static_cast<dbg_rtn *>(oc->oc_debug.ptr), AskLocation() );
-            OutLineNum( 0, false ); /* Kill pending line number */
+            DbgRtnEnd( back, static_cast<dbg_rtn *>(oc->oc_debug.ptr), AskLocation(back) );
+            OutLineNum( back, 0, false ); /* Kill pending line number */
             break;
         case OC_INFO_SELECT:
-            OutSelect( oc->oc_select.starts );
+            OutSelect( back, oc->oc_select.starts );
             break;
         }
         break;
@@ -695,3 +697,7 @@ void    OutputOC( any_oc *oc, any_oc *next_lbl )
         break;
     }
 }
+
+/* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
+X86escState* x86esc_make() { return new X86escState(); }
+void x86esc_free(X86escState* part) { delete part; }

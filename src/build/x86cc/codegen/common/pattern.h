@@ -30,6 +30,7 @@
 ****************************************************************************/
 
 
+#pragma once
 #include "regsetop.h"
 #include "vergen.h"
 #include "funits.h"

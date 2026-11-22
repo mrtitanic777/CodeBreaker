@@ -31,6 +31,7 @@
 
 
 /* dwarf debug info */
+#pragma once
 typedef struct sect_info {
     back_handle bck;
     segment_id  segid;

@@ -41,9 +41,10 @@
 #include "confldef.h"
 #include "liveinfo.h"
 #include "split.h"
+#include "backrun.hpp"
 
 
-void    FreeJunk( block *blk )
+void    FreeJunk( BackRun& back, block *blk )
 /*************************************
  * Free instructions which aren't going to be generated.
  */
@@ -53,15 +54,15 @@ void    FreeJunk( block *blk )
 
     for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
         next = ins->head.next;
-        if( !DoesSomething( ins ) && !SideEffect( ins )
+        if( !DoesSomething( ins ) && !SideEffect( back, ins )
          && ins->head.opcode < FIRST_OP_WITH_LABEL
          && ins->head.opcode != OP_NOP ) { /*% there for zap info*/
-            FreeIns( ins );
+            FreeIns( back, ins );
         }
     }
 }
 
-static bool StupidMove( score_hdl scoreboard, instruction *ins )
+static bool StupidMove( BackRun& back, score_hdl scoreboard, instruction *ins )
 /**************************************************************/
 {
     score_info  info;
@@ -77,8 +78,8 @@ static bool StupidMove( score_hdl scoreboard, instruction *ins )
             return( false );
         }
     } else {
-        ScoreInfo( &info, ins->operands[0] );
-        if( !ScoreEqual( scoreboard, dst_index, &info ) ) {
+        ScoreInfo( back, &info, ins->operands[0] );
+        if( !ScoreEqual( back, scoreboard, dst_index, &info ) ) {
             return( false );
         }
     }
@@ -88,12 +89,12 @@ static bool StupidMove( score_hdl scoreboard, instruction *ins )
      * that assigns a value to the result register that the
      * register already has. Kill the sucker.
      */
-    DoNothing( ins );
+    DoNothing( back, ins );
     return( true );
 }
 
 
-static  bool    RemDeadCode( block *blk )
+static  bool    RemDeadCode( BackRun& back, block *blk )
 /****************************************
  * This removes any instructions in "blk" which assign to a register which
  * dies immediately following that instruction and has no side effects.
@@ -115,19 +116,19 @@ static  bool    RemDeadCode( block *blk )
          */
         if( !_OpIsCall( ins->head.opcode )
           && !UnChangeable( ins )
-          && !SideEffect( ins )
+          && !SideEffect( back, ins )
           && result != NULL
-          && !ScConvert( ins )
+          && !ScConvert( back, ins )
           && result->n.class_ == N_REGISTER
           && !HW_Ovlap( ins->head.next->head.live.regs, result->r.reg ) ) {
-            FreeIns( ins );
+            FreeIns( back, ins );
             change = true;
         }
     }
     return( change );
 }
 
-bool    DoScore( block *blk )
+bool    DoScore( BackRun& back, block *blk )
 /************************************
  * Do register scoreboarding on a basic block. Remember which
  * registers contain which values as we run through the block and
@@ -147,18 +148,18 @@ bool    DoScore( block *blk )
     change = false;
     for( ;; ) {
         SCBlip();
-        while( RemDeadCode( blk ) ) {
-            UpdateLive( blk->ins.head.next, blk->ins.head.prev );
+        while( RemDeadCode( back, blk ) ) {
+            UpdateLive( back, blk->ins.head.next, blk->ins.head.prev );
             change = true;
         }
-        if( !RegThrash( blk ) )
+        if( !RegThrash( back, blk ) )
             break;
         change = true;
     }
     scoreboard = blk->u1.scoreboard;
     had_condition = false;
     for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
-        ScoreSegments( scoreboard );
+        ScoreSegments( back, scoreboard );
         /*
          * May all intel designers rot in hell forever and ever, amen
          */
@@ -168,9 +169,9 @@ bool    DoScore( block *blk )
             }
             had_condition = true;
         }
-        if( ScoreZero( scoreboard, &ins ) ) {
+        if( ScoreZero( back, scoreboard, &ins ) ) {
             change = true;
-            UpdateLive( blk->ins.head.next, blk->ins.head.prev );
+            UpdateLive( back, blk->ins.head.next, blk->ins.head.prev );
         }
         if( ins->head.opcode == OP_BLOCK )
             break;
@@ -181,72 +182,72 @@ bool    DoScore( block *blk )
         dst = ins->result;
         if( UnChangeable( ins ) ) {
             if( dst != NULL ) {
-                ScoreInfo( &info, dst );
-                ScoreKillInfo( scoreboard, dst, &info, HW_EMPTY );
-                RegKill( scoreboard, ins->zap->reg );
+                ScoreInfo( back, &info, dst );
+                ScoreKillInfo( back, scoreboard, dst, &info, HW_EMPTY );
+                RegKill( back, scoreboard, ins->zap->reg );
             }
         } else if( DoesSomething( ins ) ) {
             if( ins->head.opcode == OP_CALL || ins->head.opcode == OP_CALL_INDIRECT ) {
-                MemChanged( scoreboard,
+                MemChanged( back, scoreboard,
                     ( ins->flags.u.call_flags & CALL_WRITES_NO_MEMORY ) == 0 );
-                RegKill( scoreboard, ins->zap->reg );
+                RegKill( back, scoreboard, ins->zap->reg );
                 if( dst != NULL && dst->n.class_ != N_REGISTER ) {
-                    ScoreInfo( &info, dst );
-                    ScoreKillInfo( scoreboard, dst, &info, HW_EMPTY );
+                    ScoreInfo( back, &info, dst );
+                    ScoreKillInfo( back, scoreboard, dst, &info, HW_EMPTY );
                 }
             } else {
-                if( FindRegOpnd( scoreboard, ins ) ) {
+                if( FindRegOpnd( back, scoreboard, ins ) ) {
                     change = true;
-                    UpdateLive( blk->ins.head.next, blk->ins.head.prev );
+                    UpdateLive( back, blk->ins.head.next, blk->ins.head.prev );
                 }
                 if( ins->head.opcode == OP_MOV && !had_condition ) {
-                    if( ScoreMove( scoreboard, ins ) ) {
+                    if( ScoreMove( back, scoreboard, ins ) ) {
                         change = true;
-                        UpdateLive( blk->ins.head.next, blk->ins.head.prev );
+                        UpdateLive( back, blk->ins.head.next, blk->ins.head.prev );
                     }
                     if( next->head.prev == ins ) {
-                        RegKill( scoreboard, ins->zap->reg );
+                        RegKill( back, scoreboard, ins->zap->reg );
                     }
                 } else if( ins->head.opcode == OP_LA && !had_condition ) {
-                    if( ScoreLA( scoreboard, ins ) ) {
+                    if( ScoreLA( back, scoreboard, ins ) ) {
                         change = true;
-                        UpdateLive( blk->ins.head.next, blk->ins.head.prev );
+                        UpdateLive( back, blk->ins.head.next, blk->ins.head.prev );
                     }
                     if( next->head.prev == ins ) {
-                        RegKill( scoreboard, ins->zap->reg );
+                        RegKill( back, scoreboard, ins->zap->reg );
                     }
                 } else if( dst == NULL ) {
-                    RegKill( scoreboard, ins->zap->reg );
-                } else if( StupidMove( scoreboard, ins ) ) {
+                    RegKill( back, scoreboard, ins->zap->reg );
+                } else if( StupidMove( back, scoreboard, ins ) ) {
                     change = true;
                 } else {
                     if( dst->n.class_ == N_REGISTER ) {
                         tmp = ins->zap->reg;
                         HW_TurnOn( tmp, dst->r.reg );
-                        RegKill( scoreboard, tmp );
+                        RegKill( back, scoreboard, tmp );
                     } else {
-                        ScoreInfo( &info, dst );
-                        ScoreKillInfo( scoreboard, dst, &info, HW_EMPTY );
-                        RegKill( scoreboard, ins->zap->reg );
+                        ScoreInfo( back, &info, dst );
+                        ScoreKillInfo( back, scoreboard, dst, &info, HW_EMPTY );
+                        RegKill( back, scoreboard, ins->zap->reg );
                     }
                     if( !had_condition ) {
-                        ScZeroCheck( scoreboard, ins );
+                        ScZeroCheck( back, scoreboard, ins );
                     }
                 }
             }
         } else {
             if( ins->head.opcode == OP_NOP && dst != NULL ) {
-                ScoreInfo( &info, dst );
-                ScoreKillInfo( scoreboard, dst, &info, HW_EMPTY );
+                ScoreInfo( back, &info, dst );
+                ScoreKillInfo( back, scoreboard, dst, &info, HW_EMPTY );
             }
-            RegKill( scoreboard, ins->zap->reg );
+            RegKill( back, scoreboard, ins->zap->reg );
         }
     }
     return( change );
 }
 
 
-byte    HasZero( score_hdl scoreboard, name *n )
+byte    HasZero( BackRun& back, score_hdl scoreboard, name *n )
 /***********************************************
  * given a scoreboard "sc", determine if name "n" is equal to
  * zero or has any portions which are equal to zero. This is recursive
@@ -281,16 +282,16 @@ byte    HasZero( score_hdl scoreboard, name *n )
         }
     } else if( n->n.class_ == N_REGISTER ) {
         i  = n->r.reg_index;
-        if( ScoreLookup( &scoreboard[i], score_state().ScZero ) ) {
+        if( ScoreLookup( &scoreboard[i], back.score.ScZero ) ) {
             bits |= LO_HALF | HI_HALF;
         } else {
-            hi = score_state().ScoreList[i]->high;
-            lo = score_state().ScoreList[i]->low;
+            hi = back.score.ScoreList[i]->high;
+            lo = back.score.ScoreList[i]->low;
             if( hi != NO_INDEX && lo != NO_INDEX ) {
-                if( _IsZero( HasZero( scoreboard, score_state().ScoreList[lo]->reg_name ) ) ) {
+                if( _IsZero( HasZero( back, scoreboard, back.score.ScoreList[lo]->reg_name ) ) ) {
                     bits |= LO_HALF;
                 }
-                if( _IsZero( HasZero( scoreboard, score_state().ScoreList[hi]->reg_name ) ) ) {
+                if( _IsZero( HasZero( back, scoreboard, back.score.ScoreList[hi]->reg_name ) ) ) {
                     bits |= HI_HALF;
                 }
             }

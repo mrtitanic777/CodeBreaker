@@ -29,5 +29,6 @@
 ****************************************************************************/
 
 
-extern void            ClearBlocksBitsMask( block_class mask );
-extern void            PropNullInfo( void );
+#pragma once
+extern void            ClearBlocksBitsMask( BackRun& back, block_class mask );
+extern void            PropNullInfo( BackRun& back );

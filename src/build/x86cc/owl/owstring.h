@@ -41,6 +41,7 @@
  * by Sedgewick, and was modified by Anthony Scian.
  */
 
+#pragma once
 typedef struct patricia patricia;
 
 struct patricia {
@@ -59,9 +60,9 @@ typedef struct owl_string_table {
 
 typedef patricia *owl_string_handle;
 
-extern owl_string_table * OWLENTRY OWLStringInit( owl_file_handle file );
-extern void OWLENTRY OWLStringFini( owl_string_table *table );
-extern owl_string_handle OWLENTRY OWLStringAdd( owl_string_table *table, const char *string );
+extern owl_string_table * OWLENTRY OWLStringInit( BackRun& back, owl_file_handle file );
+extern void OWLENTRY OWLStringFini( BackRun& back, owl_string_table *table );
+extern owl_string_handle OWLENTRY OWLStringAdd( BackRun& back, owl_string_table *table, const char *string );
 extern const char * OWLENTRY OWLStringText( owl_string_handle string );
 extern owl_offset OWLENTRY OWLStringOffset( owl_string_handle string );
 extern owl_offset OWLENTRY OWLStringTableSize( owl_string_table *table );

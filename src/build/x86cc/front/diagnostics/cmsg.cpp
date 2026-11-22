@@ -35,17 +35,15 @@
 #include "cvars.h"
 #include "target.h"
 #include "intlload.h"
+#include "frontrun.hpp"
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct CmsgState {
-    IntlData *internationalData;   // translated messages
-};
+/* (struct CmsgState: cmsg_state.h) */
 
 }  // namespace
 
-static inline CmsgState& cmsg_state() { return cbrun_part<CmsgState>(); }
 
 
 //get default language
@@ -108,24 +106,24 @@ static char const EngUsageText[] = {
 #define _mkstr( a ) #a
 #define _str( a ) _mkstr( a )
 
-void InitMsg( void )
+void InitMsg( FrontRun& front )
 {
-    cmsg_state().internationalData = LoadInternationalData( _str( __msg_file_prefix ) );
+    front.cmsg.internationalData = LoadInternationalData( front, _str( __msg_file_prefix ) );
 }
 
-void FiniMsg( void )
+void FiniMsg( FrontRun& front )
 {
-    if( cmsg_state().internationalData != NULL ) {
-        FreeInternationalData( cmsg_state().internationalData );
+    if( front.cmsg.internationalData != NULL ) {
+        FreeInternationalData( front, front.cmsg.internationalData );
     }
 }
 
-char const *UsageText(void)      // GET INTERNATIONAL USAGE TEXT
+char const *UsageText(FrontRun& front)      // GET INTERNATIONAL USAGE TEXT
 {
     char const *usage_text;
 
-    if( cmsg_state().internationalData != NULL ) {
-        usage_text = cmsg_state().internationalData->usage_text;
+    if( front.cmsg.internationalData != NULL ) {
+        usage_text = front.cmsg.internationalData->usage_text;
     } else {
         usage_text = EngUsageText;
     }
@@ -179,7 +177,7 @@ msg_type CGetMsgType( msg_codes msgnum )
 }
 #endif
 
-char const *CGetMsgStr( msg_codes msgnum )
+char const *CGetMsgStr( FrontRun& front, msg_codes msgnum )
 {
     char const      *p;
     unsigned        msg_index;
@@ -187,18 +185,18 @@ char const *CGetMsgStr( msg_codes msgnum )
     msg_index = GetMsgIndex( msgnum );
     p = NULL;
     if( !IS_MSGIDX_INVALID( msg_index ) ) {
-        if( cmsg_state().internationalData == NULL ) {
+        if( front.cmsg.internationalData == NULL ) {
             p = EMsgArray[msg_index];
-        } else if( msg_index < cmsg_state().internationalData->errors_count ) {
-            p = cmsg_state().internationalData->errors_text[msg_index];
+        } else if( msg_index < front.cmsg.internationalData->errors_count ) {
+            p = front.cmsg.internationalData->errors_text[msg_index];
         }
     }
     return( p );
 }
 
-void CGetMsg( char *msgbuf, msg_codes msgnum )
+void CGetMsg( FrontRun& front, char *msgbuf, msg_codes msgnum )
 {
-    char const *p = CGetMsgStr( msgnum );
+    char const *p = CGetMsgStr( front, msgnum );
     while( (*msgbuf++ = *p++) != '\0' )
         /* empty */;
 }

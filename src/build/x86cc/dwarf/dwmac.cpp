@@ -37,6 +37,7 @@
 #include "dwutils.h"
 #include "dwmem.h"
 #include "dwmac.h"
+#include "backrun.hpp"
 
 typedef struct dw_parm {
     struct dw_parm      *next;
@@ -52,25 +53,25 @@ struct dw_macro_s {
 };
 
 
-void DWENTRY DWMacStartFile( dw_client cli, dw_linenum line, const char *name )
+void DWENTRY DWMacStartFile( BackRun& back, dw_client cli, dw_linenum line, const char *name )
 {
     uint_8              buf[1 + 2 * MAX_LEB128];
     uint_8              *end;
 
     buf[0] = DW_MACINFO_start_file;
     end = WriteULEB128( buf + 1, line );
-    end = WriteULEB128( end, DW_GetFileNumber( cli, name ) );
+    end = WriteULEB128( end, DW_GetFileNumber( back, cli, name ) );
     CLIWrite( cli, DW_DEBUG_MACINFO, buf, end - buf );
 }
 
 
-void DWENTRY DWMacEndFile( dw_client cli )
+void DWENTRY DWMacEndFile( BackRun& back, dw_client cli )
 {
-    CLIWriteU8( cli, DW_DEBUG_MACINFO, DW_MACINFO_end_file );
+    CLIWriteU8( back, cli, DW_DEBUG_MACINFO, DW_MACINFO_end_file );
 }
 
 
-dw_macro DWENTRY DWMacDef( dw_client cli, dw_linenum line, const char *name )
+dw_macro DWENTRY DWMacDef( BackRun& back, dw_client cli, dw_linenum line, const char *name )
 {
     dw_macro            mac;
     size_t              len;
@@ -87,7 +88,7 @@ dw_macro DWENTRY DWMacDef( dw_client cli, dw_linenum line, const char *name )
 }
 
 
-void DWENTRY DWMacParam( dw_client cli, dw_macro mac, const char *name )
+void DWENTRY DWMacParam( BackRun& back, dw_client cli, dw_macro mac, const char *name )
 {
     dw_parm             *parm;
     size_t              len;
@@ -103,7 +104,7 @@ void DWENTRY DWMacParam( dw_client cli, dw_macro mac, const char *name )
 }
 
 
-void DWENTRY DWMacFini( dw_client cli, dw_macro mac, const char *def )
+void DWENTRY DWMacFini( BackRun& back, dw_client cli, dw_macro mac, const char *def )
 {
     uint_8              buf[1 + MAX_LEB128];
     uint_8              *end;
@@ -117,26 +118,26 @@ void DWENTRY DWMacFini( dw_client cli, dw_macro mac, const char *def )
     CLIWrite( cli, DW_DEBUG_MACINFO, mac->name, mac->len );
     parm = mac->parms;
     if( parm != NULL ) {
-        CLIWriteU8( cli, DW_DEBUG_MACINFO, '(' );
+        CLIWriteU8( back, cli, DW_DEBUG_MACINFO, '(' );
         /* parms are in the linked list in reverse order */
-        for( parm = static_cast<dw_parm *>(DW_ReverseChain( parm )); parm->next != NULL; parm = static_cast<dw_parm *>(DW_FreeLink( cli, parm )) ) {
+        for( parm = static_cast<dw_parm *>(DW_ReverseChain( parm )); parm->next != NULL; parm = static_cast<dw_parm *>(DW_FreeLink( back, cli, parm )) ) {
             CLIWrite( cli, DW_DEBUG_MACINFO, parm->name, parm->len );
-            CLIWriteU8( cli, DW_DEBUG_MACINFO, ',' );
+            CLIWriteU8( back, cli, DW_DEBUG_MACINFO, ',' );
         }
         CLIWrite( cli, DW_DEBUG_MACINFO, parm->name, parm->len );
-        CLIWriteU8( cli, DW_DEBUG_MACINFO, ')' );
+        CLIWriteU8( back, cli, DW_DEBUG_MACINFO, ')' );
         CLIFree( cli, parm );
     }
     /* write parms terminator */
-    CLIWriteU8( cli, DW_DEBUG_MACINFO, ' ' );
+    CLIWriteU8( back, cli, DW_DEBUG_MACINFO, ' ' );
     CLIFree( cli, mac );
     if( def == NULL )
         def = "";
-    CLIWriteString( cli, DW_DEBUG_MACINFO, def );
+    CLIWriteString( back, cli, DW_DEBUG_MACINFO, def );
 }
 
 
-void DWENTRY DWMacUnDef( dw_client cli, dw_linenum line, const char *name )
+void DWENTRY DWMacUnDef( BackRun& back, dw_client cli, dw_linenum line, const char *name )
 {
     uint_8              buf[1 + MAX_LEB128];
     uint_8              *end;
@@ -146,11 +147,11 @@ void DWENTRY DWMacUnDef( dw_client cli, dw_linenum line, const char *name )
     buf[0] = DW_MACINFO_undef;
     end = WriteULEB128( buf + 1, line );
     CLIWrite( cli, DW_DEBUG_MACINFO, buf, end - buf );
-    CLIWriteString( cli, DW_DEBUG_MACINFO, name );
+    CLIWriteString( back, cli, DW_DEBUG_MACINFO, name );
 }
 
 
-void DWENTRY DWMacUse( dw_client cli, dw_linenum line, const char *name )
+void DWENTRY DWMacUse( BackRun& back, dw_client cli, dw_linenum line, const char *name )
 {
     uint_8              buf[2 + MAX_LEB128];
     uint_8              *end;
@@ -161,7 +162,7 @@ void DWENTRY DWMacUse( dw_client cli, dw_linenum line, const char *name )
     end = WriteULEB128( buf + 1, line );
     *end++ = 1;
     CLIWrite( cli, DW_DEBUG_MACINFO, buf, end - buf );
-    CLIWriteString( cli, DW_DEBUG_MACINFO, name );
+    CLIWriteString( back, cli, DW_DEBUG_MACINFO, name );
 }
 
 
@@ -172,8 +173,8 @@ void DW_InitDebugMacInfo( dw_client cli )
 }
 
 
-void DW_FiniDebugMacInfo( dw_client cli )
+void DW_FiniDebugMacInfo( BackRun& back, dw_client cli )
 {
     /* write the terminator */
-    CLISectionWriteZeros( cli, DW_DEBUG_MACINFO, 1 );
+    CLISectionWriteZeros( back, cli, DW_DEBUG_MACINFO, 1 );
 }

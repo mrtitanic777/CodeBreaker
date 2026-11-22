@@ -30,5 +30,6 @@
 ****************************************************************************/
 
 
+#pragma once
 #define COMP_CFG_COFF   0
 #define COMP_CFG_CG_FPE 0

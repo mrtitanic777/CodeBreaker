@@ -41,9 +41,10 @@
 #include "toggles.h"
 
 #include "clibext.h"
+#include "frontrun.hpp"
 
 
-static FILE *OpenUnicodeFile( const char *filename )
+static FILE *OpenUnicodeFile( FrontRun& front, const char *filename )
 {
     FILE        *fp;
     char        fullpath[_MAX_PATH];
@@ -60,12 +61,12 @@ static FILE *OpenUnicodeFile( const char *filename )
 #endif
     fp = NULL;
     if( fullpath[0] != '\0' ) {
-        fp = fopen( fullpath, "r" );
+        fp = front.held->fopen( fullpath, "r" );
     }
     return( fp );
 }
 
-static void ReadUnicodeFile( FILE *fp )
+static void ReadUnicodeFile( FrontRun& front, FILE *fp )
 {
     size_t          i;
     size_t          len;
@@ -76,11 +77,11 @@ static void ReadUnicodeFile( FILE *fp )
      * UniCode might be a FAR table
      */
     for( i = 0; i < 256; i++ ) {
-        unicode_state().UniCode[i] = ( i < len ) ? unicode_table[i] : 0;
+        front.unicode.UniCode[i] = ( i < len ) ? unicode_table[i] : 0;
     }
 }
 
-void LoadUnicodeTable( unsigned codePage )
+void LoadUnicodeTable( FrontRun& front, unsigned codePage )
 {
     FILE        *fp;
     char        filename[20];
@@ -90,53 +91,49 @@ void LoadUnicodeTable( unsigned codePage )
         filename[7] = filename[8];
         filename[8] = '.';
     }
-    fp = OpenUnicodeFile( filename );
+    fp = OpenUnicodeFile( front, filename );
     if( fp != NULL ) {
-        ReadUnicodeFile( fp );
-        fclose( fp );
+        ReadUnicodeFile( front, fp );
+        front.held->fclose( fp );
     } else {
-        CBanner();
-        CErr2p( ERR_CANT_OPEN_FILE, filename );
+        CBanner(front);
+        CErr2p( front, ERR_CANT_OPEN_FILE, filename );
     }
     return;
 }
 
-void StringInit( void )
+void StringInit( FrontRun& front )
 {
     str_hash_idx    hash;
 
     for( hash = 0; hash < STRING_HASH_SIZE; hash++ ) {
-        cvars_state().StringHash[hash] = 0;
+        front.cvars.StringHash[hash] = 0;
     }
 }
 
-void FreeLiteral( STR_HANDLE str_lit )
+void FreeLiteral( FrontRun& front, STR_HANDLE str_lit )
 {
-    CMemFree( str_lit->literal );
-    CMemFree( str_lit );
+    CMemFree( front, str_lit->literal );
+    CMemFree( front, str_lit );
 }
 
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct CstringState {
-    target_size CLitLength;   /* length of string literal */
-    const unsigned char *pbuf = NULL;
-};
+/* (struct CstringState: cstring_state.h) */
 
 }  // namespace
 
-static inline CstringState& cstring_state() { return cbrun_part<CstringState>(); }
 
 
-static int read_inp( void )
+static int read_inp( FrontRun& front )
 {
-    return( *cstring_state().pbuf++ );
+    return( *front.cstring.pbuf++ );
 }
 
 #define WRITE_BYTE(x) if( buf != NULL ) buf[olen] = x; ++olen
 
-static target_size RemoveEscapes( char *buf, const char *inbuf, target_size ilen )
+static target_size RemoveEscapes( FrontRun& front, char *buf, const char *inbuf, target_size ilen )
 /*********************************************************************************
  * check mode if buf == NULL, only check required output size
  */
@@ -146,43 +143,43 @@ static target_size RemoveEscapes( char *buf, const char *inbuf, target_size ilen
     const unsigned char *pend;
 
     olen = 0;
-    cvars_state().BadTokenInfo = ERR_NONE;
-    cstring_state().pbuf = (const unsigned char *)inbuf;
-    pend = cstring_state().pbuf + ilen;
-    while( cstring_state().pbuf < pend ) {
-        c = read_inp();
+    front.cvars.BadTokenInfo = ERR_NONE;
+    front.cstring.pbuf = (const unsigned char *)inbuf;
+    pend = front.cstring.pbuf + ilen;
+    while( front.cstring.pbuf < pend ) {
+        c = read_inp(front);
         if( c == '\\' ) {
-            c = ESCChar( read_inp, NULL, &cvars_state().BadTokenInfo );
+            c = ESCChar( front, read_inp, NULL, &front.cvars.BadTokenInfo );
             if( buf != NULL ) {
-                if( !cvars_state().CompFlags.cpp_mode ) {
-                    if( cvars_state().SkipLevel == cvars_state().NestLevel ) {
-                        if( cvars_state().BadTokenInfo == ERR_INVALID_HEX_CONSTANT ) {
-                            CErr1( ERR_INVALID_HEX_CONSTANT );
-                        } else if( cvars_state().BadTokenInfo == ERR_CONSTANT_TOO_BIG
-                          || cvars_state().BadTokenInfo == ERR_INV_CHAR_CONSTANT ) {
-                            CWarn1( cvars_state().BadTokenInfo );
+                if( !front.cvars.CompFlags.cpp_mode ) {
+                    if( front.cvars.SkipLevel == front.cvars.NestLevel ) {
+                        if( front.cvars.BadTokenInfo == ERR_INVALID_HEX_CONSTANT ) {
+                            CErr1( front, ERR_INVALID_HEX_CONSTANT );
+                        } else if( front.cvars.BadTokenInfo == ERR_CONSTANT_TOO_BIG
+                          || front.cvars.BadTokenInfo == ERR_INV_CHAR_CONSTANT ) {
+                            CWarn1( front, front.cvars.BadTokenInfo );
                         }
                     }
                 }
             }
-            cstring_state().pbuf--; // move pointer to first character after Escape sequence
-            if( cvars_state().CompFlags.wide_char_string ) {
+            front.cstring.pbuf--; // move pointer to first character after Escape sequence
+            if( front.cvars.CompFlags.wide_char_string ) {
                 WRITE_BYTE( c );
                 c = c >> 8;
             }
         } else {
-            if( scan_state().CharSet[c] & C_DB ) {       /* if double-byte character */
-                if( cvars_state().CompFlags.jis_to_unicode && cvars_state().CompFlags.wide_char_string ) {
-                    c = (c << 8) + read_inp();
+            if( front.scan.CharSet[c] & C_DB ) {       /* if double-byte character */
+                if( front.cvars.CompFlags.jis_to_unicode && front.cvars.CompFlags.wide_char_string ) {
+                    c = (c << 8) + read_inp(front);
                     c = JIS2Unicode( c );
                     WRITE_BYTE( c );
                     c = c >> 8;
                 } else {
                     WRITE_BYTE( c );
-                    c = read_inp();
+                    c = read_inp(front);
                 }
-            } else if( cvars_state().CompFlags.wide_char_string ) {
-                c = EncodeWchar( c );
+            } else if( front.cvars.CompFlags.wide_char_string ) {
+                c = EncodeWchar( front, c );
                 WRITE_BYTE( c );
                 c = c >> 8;
 #if _CPU == 370
@@ -196,7 +193,7 @@ static target_size RemoveEscapes( char *buf, const char *inbuf, target_size ilen
     return( olen );
 }
 
-STR_HANDLE GetLiteral( void )
+STR_HANDLE GetLiteral( FrontRun& front )
 {
     target_size         len;
     target_size         len2;
@@ -210,25 +207,25 @@ STR_HANDLE GetLiteral( void )
      * first we store the whole string in a linked list to see if
      * the end result is wide or not wide
      */
-    p = str_lit = static_cast<STR_HANDLE>(CMemAlloc( sizeof( STRING_LITERAL ) ));
+    p = str_lit = static_cast<STR_HANDLE>(CMemAlloc( front, sizeof( STRING_LITERAL ) ));
     q = NULL;
     is_wide = false;
     do {
         /*
          * if one component is wide then the whole string is wide
          */
-        if( cvars_state().CompFlags.wide_char_string )
+        if( front.cvars.CompFlags.wide_char_string )
             is_wide = true;
         if( q != NULL ) {
-            p = static_cast<STR_HANDLE>(CMemAlloc( sizeof( STRING_LITERAL ) ));
+            p = static_cast<STR_HANDLE>(CMemAlloc( front, sizeof( STRING_LITERAL ) ));
             q->next_string = p;
         }
         q = p;
         p->next_string = NULL;
-        p->length = cvars_state().TokenLen + 1;
-        p->literal = ToStringDup( cvars_state().Buffer, cvars_state().TokenLen );
-    } while( NextToken() == T_STRING );
-    cvars_state().CompFlags.wide_char_string = is_wide;
+        p->length = front.cvars.TokenLen + 1;
+        p->literal = ToStringDup( front, front.cvars.Buffer, front.cvars.TokenLen );
+    } while( NextToken(front) == T_STRING );
+    front.cvars.CompFlags.wide_char_string = is_wide;
     /*
      * then remove escapes (C99: translation phase 5), and only then
      * concatenate (translation phase 6), not the other way around!
@@ -237,21 +234,21 @@ STR_HANDLE GetLiteral( void )
     s = NULL;
     q = str_lit;
     do {
-        len2 = RemoveEscapes( NULL, q->literal, q->length );
+        len2 = RemoveEscapes( front, NULL, q->literal, q->length );
         --len;
         if( is_wide && len != 0 ) {
             --len;
         }
-        s = static_cast<char *>(CMemRealloc( s, len + len2 + 1 ));
-        RemoveEscapes( &s[len], q->literal, q->length );
+        s = static_cast<char *>(CMemRealloc( front, s, len + len2 + 1 ));
+        RemoveEscapes( front, &s[len], q->literal, q->length );
         len += len2;
         p = q->next_string;
         if( q != str_lit )
-            FreeLiteral( q );
+            FreeLiteral( front, q );
         q = p;
     } while ( q != NULL );
-    cstring_state().CLitLength = len;
-    CMemFree( str_lit->literal );
+    front.cstring.CLitLength = len;
+    CMemFree( front, str_lit->literal );
     str_lit->literal = s;
     str_lit->length = len;
     str_lit->flags = static_cast<string_flags>(0);
@@ -260,25 +257,25 @@ STR_HANDLE GetLiteral( void )
     return( str_lit );
 }
 
-static TYPEPTR StringLeafType( void )
+static TYPEPTR StringLeafType( FrontRun& front )
 {
     TYPEPTR     typ;
 
-    if( cvars_state().CompFlags.wide_char_string ) {
-        typ = ArrayNode( GetType( TYP_USHORT ) );
-        typ->u.array->dimension = cstring_state().CLitLength >> 1;
-    } else if( cvars_state().StringArrayType != NULL ) {
-        typ = cvars_state().StringArrayType;
-        cvars_state().StringArrayType->u.array->dimension = cstring_state().CLitLength;
-        cvars_state().StringArrayType = NULL;
+    if( front.cvars.CompFlags.wide_char_string ) {
+        typ = ArrayNode( front, GetType( front, TYP_USHORT ) );
+        typ->u.array->dimension = front.cstring.CLitLength >> 1;
+    } else if( front.cvars.StringArrayType != NULL ) {
+        typ = front.cvars.StringArrayType;
+        front.cvars.StringArrayType->u.array->dimension = front.cstring.CLitLength;
+        front.cvars.StringArrayType = NULL;
     } else {
-        typ = ArrayNode( GetType( TYP_PLAIN_CHAR ) );
-        typ->u.array->dimension = cstring_state().CLitLength;
+        typ = ArrayNode( front, GetType( front, TYP_PLAIN_CHAR ) );
+        typ->u.array->dimension = front.cstring.CLitLength;
     }
     return( typ );
 }
 
-TREEPTR StringLeaf( string_flags flags )
+TREEPTR StringLeaf( FrontRun& front, string_flags flags )
 {
     STR_HANDLE          new_lit;
     STR_HANDLE          strlit;
@@ -286,25 +283,25 @@ TREEPTR StringLeaf( string_flags flags )
     str_hash_idx        hash;
 
     strlit = NULL;
-    new_lit = GetLiteral();
+    new_lit = GetLiteral(front);
 #if _INTEL_CPU
-    if( cvars_state().TargetSwitches & CGSW_X86_BIG_DATA ) {
-        if( !cvars_state().CompFlags.strings_in_code_segment ) {
-            if( new_lit->length > cvars_state().DataThreshold ) {
+    if( front.cvars.TargetSwitches & CGSW_X86_BIG_DATA ) {
+        if( !front.cvars.CompFlags.strings_in_code_segment ) {
+            if( new_lit->length > front.cvars.DataThreshold ) {
                 flags |= STRLIT_FAR;
             }
         }
     }
 #endif
-    if( cvars_state().CompFlags.wide_char_string )
+    if( front.cvars.CompFlags.wide_char_string )
         flags |= STRLIT_WIDE;
 #if _INTEL_CPU
     if( flags & STRLIT_FAR )
-        cvars_state().CompFlags.far_strings = true;
+        front.cvars.CompFlags.far_strings = true;
 #endif
     hash = CalcStringHash( new_lit );
     if( TOGGLE( reuse_duplicate_strings ) ) {
-        for( strlit = cvars_state().StringHash[hash]; strlit != NULL; strlit = strlit->next_string ) {
+        for( strlit = front.cvars.StringHash[hash]; strlit != NULL; strlit = strlit->next_string ) {
             if( strlit->length == new_lit->length && strlit->flags == flags ) {
                 /*
                  * it contains wide characters with 0 bytes
@@ -318,22 +315,22 @@ TREEPTR StringLeaf( string_flags flags )
     }
     if( strlit == NULL ) {
         new_lit->flags = flags;
-        ++cvars_state().LitCount;
-        cvars_state().LitPoolSize += cstring_state().CLitLength;
-        new_lit->next_string = cvars_state().StringHash[hash];
-        cvars_state().StringHash[hash] = new_lit;
+        ++front.cvars.LitCount;
+        front.cvars.LitPoolSize += front.cstring.CLitLength;
+        new_lit->next_string = front.cvars.StringHash[hash];
+        front.cvars.StringHash[hash] = new_lit;
     } else {            // we found a duplicate
-        FreeLiteral( new_lit );
+        FreeLiteral( front, new_lit );
         new_lit = strlit;
     }
 
-    leaf_index = LeafNode( OPR_PUSHSTRING );
+    leaf_index = LeafNode( front, OPR_PUSHSTRING );
     leaf_index->op.u2.string_handle = new_lit;
     // set op.flags field
-    leaf_index->u.expr_type = StringLeafType();
+    leaf_index->u.expr_type = StringLeafType(front);
 
-    if( cvars_state().CurFunc != NULL ) {
-        cvars_state().CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
+    if( front.cvars.CurFunc != NULL ) {
+        front.cvars.CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
     }
     return( leaf_index );
 }

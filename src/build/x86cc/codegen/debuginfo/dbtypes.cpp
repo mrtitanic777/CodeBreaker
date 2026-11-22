@@ -52,6 +52,7 @@
 #include "cvtypes.h"
 #include "dbsupp.h"
 #include "cgprotos.h"
+#include "backrun.hpp"
 
 
 #define MAX_TYPE_SIZE  (1024 * 16)
@@ -59,13 +60,10 @@
 namespace {
 
 /* the statics of this file, one set for each run of the compiler */
-struct DbtypesState {
-    bool Nested;   /* set when types are nested by others */
-};
+/* (struct DbtypesState: dbtypes_state.h) */
 
 }  // namespace
 
-static inline DbtypesState& dbtypes_state() { return cbrun_part<DbtypesState>(); }
 
 
 /*
@@ -73,7 +71,7 @@ static inline DbtypesState& dbtypes_state() { return cbrun_part<DbtypesState>();
   by any format WV, DW and CV.
   figure how fundamental types are done
 */
-dbg_type _CGAPI DBFtnType( cchar_ptr name, dbg_ftn_type tipe )
+dbg_type _CGAPI DBFtnType( BackRun& back, cchar_ptr name, dbg_ftn_type tipe )
 /********************************************************************/
 {
     dbg_type ret;
@@ -82,12 +80,12 @@ dbg_type _CGAPI DBFtnType( cchar_ptr name, dbg_ftn_type tipe )
     EchoAPI( "DBFtnType( %c, %i )", name, tipe );
 #endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        ret = DFFtnType( name, tipe );
+        ret = DFFtnType( back, name, tipe );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
         ret = CVFtnType( name, tipe );
     } else {
 #if _TARGET_INTEL
-        ret = WVFtnType( name, tipe );
+        ret = WVFtnType( back, name, tipe );
 #else
         ret = 0;
 #endif
@@ -99,7 +97,7 @@ dbg_type _CGAPI DBFtnType( cchar_ptr name, dbg_ftn_type tipe )
 }
 
 
-dbg_type _CGAPI DBScalar( cchar_ptr name, cg_type tipe )
+dbg_type _CGAPI DBScalar( BackRun& back, cchar_ptr name, cg_type tipe )
 /**************************************************************/
 {
     dbg_type ret;
@@ -108,12 +106,12 @@ dbg_type _CGAPI DBScalar( cchar_ptr name, cg_type tipe )
     EchoAPI( "DBScalar( %c,%t )", name, tipe );
 #endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        ret = DFScalar( name, tipe );
+        ret = DFScalar( back, name, tipe );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        ret = CVScalar( name, tipe );
+        ret = CVScalar( back, name, tipe );
     } else {
 #if _TARGET_INTEL
-        ret = WVScalar( name, tipe );
+        ret = WVScalar( back, name, tipe );
 #else
         ret = 0;
 #endif
@@ -125,7 +123,7 @@ dbg_type _CGAPI DBScalar( cchar_ptr name, cg_type tipe )
 }
 
 
-dbg_type _CGAPI DBScope( cchar_ptr name )
+dbg_type _CGAPI DBScope( BackRun& back, cchar_ptr name )
 /***********************************************/
 {
     dbg_type ret;
@@ -139,7 +137,7 @@ dbg_type _CGAPI DBScope( cchar_ptr name )
         ret = CVScope( name );
     } else {
 #if _TARGET_INTEL
-        ret = WVScope( name );
+        ret = WVScope( back, name );
 #else
         ret = 0;
 #endif
@@ -151,7 +149,7 @@ dbg_type _CGAPI DBScope( cchar_ptr name )
 }
 
 
-dbg_name _CGAPI DBBegName( cchar_ptr nm, dbg_type scope )
+dbg_name _CGAPI DBBegName( BackRun& back, cchar_ptr nm, dbg_type scope )
 /***************************************************************/
 {
     dbg_name    name;
@@ -161,7 +159,7 @@ dbg_name _CGAPI DBBegName( cchar_ptr nm, dbg_type scope )
     EchoAPI( "DBBegName( %c, %i )", nm, scope );
 #endif
     len = strlen( nm );
-    name = static_cast<dbg_name>(CGAlloc( sizeof( name_entry ) + len ));
+    name = static_cast<dbg_name>(CGAlloc( back, sizeof( name_entry ) + len ));
     strcpy( name->name, nm );
     name->len = len;
     name->scope = scope;
@@ -173,7 +171,7 @@ dbg_name _CGAPI DBBegName( cchar_ptr nm, dbg_type scope )
 }
 
 
-dbg_type _CGAPI DBForward( dbg_name name )
+dbg_type _CGAPI DBForward( BackRun& back, dbg_name name )
 /************************************************/
 {
 #ifdef DEVBUILD
@@ -183,10 +181,10 @@ dbg_type _CGAPI DBForward( dbg_name name )
         if( _IsModel( CGSW_GEN_DBG_DF ) ) {
             /* do nothing */
         } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-            CVDumpName( name, DBG_FWD_TYPE );
+            CVDumpName( back, name, DBG_FWD_TYPE );
 #if _TARGET_INTEL
         } else {
-            WVDumpName( name, DBG_FWD_TYPE );
+            WVDumpName( back, name, DBG_FWD_TYPE );
 #endif
         }
     }
@@ -197,7 +195,7 @@ dbg_type _CGAPI DBForward( dbg_name name )
 }
 
 
-dbg_type _CGAPI DBEndName( dbg_name name, dbg_type tipe )
+dbg_type _CGAPI DBEndName( BackRun& back, dbg_name name, dbg_type tipe )
 /***************************************************************/
 {
     dbg_type    retv;
@@ -207,27 +205,27 @@ dbg_type _CGAPI DBEndName( dbg_name name, dbg_type tipe )
 #endif
     if( name->refno == DBG_NIL_TYPE ) {
         if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-           DFDumpName( name, tipe );
+           DFDumpName( back, name, tipe );
         } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-           CVDumpName( name, tipe );
+           CVDumpName( back, name, tipe );
 #if _TARGET_INTEL
         } else {
-           WVDumpName( name, tipe );
+           WVDumpName( back, name, tipe );
 #endif
         }
     } else if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
         if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-            DFBackRefType( name, tipe );
+            DFBackRefType( back, name, tipe );
         } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-            CVBackRefType( name, tipe );
+            CVBackRefType( back, name, tipe );
 #if _TARGET_INTEL
         } else {
-            WVBackRefType( name, tipe );
+            WVBackRefType( back, name, tipe );
 #endif
         }
     }
     retv = name->refno;
-    CGFree( name );
+    CGFree( back, name );
 #ifdef DEVBUILD
     EchoAPI( " -> %i\n", retv );
 #endif
@@ -235,7 +233,7 @@ dbg_type _CGAPI DBEndName( dbg_name name, dbg_type tipe )
 }
 
 
-dbg_type _CGAPI DBCharBlock( uint_32 len )
+dbg_type _CGAPI DBCharBlock( BackRun& back, uint_32 len )
 /****************************************/
 {
     dbg_type ret;
@@ -244,12 +242,12 @@ dbg_type _CGAPI DBCharBlock( uint_32 len )
     EchoAPI( "DBCharBlock( %i )", len );
 #endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        ret = DFCharBlock( len );
+        ret = DFCharBlock( back, len );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        ret = CVCharBlock( len );
+        ret = CVCharBlock( back, len );
     } else {
 #if _TARGET_INTEL
-        ret = WVCharBlock( len );
+        ret = WVCharBlock( back, len );
 #else
         ret = 0;
 #endif
@@ -257,7 +255,7 @@ dbg_type _CGAPI DBCharBlock( uint_32 len )
     return( ret );
 }
 
-dbg_type _CGAPI DBCharBlockNamed( cchar_ptr name, uint_32 len )
+dbg_type _CGAPI DBCharBlockNamed( BackRun& back, cchar_ptr name, uint_32 len )
 /*************************************************************/
 {
     dbg_type ret;
@@ -266,12 +264,12 @@ dbg_type _CGAPI DBCharBlockNamed( cchar_ptr name, uint_32 len )
     EchoAPI( "DBCharBlock( %i )", len );
 #endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        ret = DFCharBlockNamed( name, len );
+        ret = DFCharBlockNamed( back, name, len );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        ret = CVCharBlock( len );
+        ret = CVCharBlock( back, len );
     } else {
 #if _TARGET_INTEL
-        ret = WVCharBlock( len );
+        ret = WVCharBlock( back, len );
 #else
         ret = 0;
 #endif
@@ -279,7 +277,7 @@ dbg_type _CGAPI DBCharBlockNamed( cchar_ptr name, uint_32 len )
     return( ret );
 }
 
-dbg_type _CGAPI DBIndCharBlock( back_handle len, cg_type len_type, int off )
+dbg_type _CGAPI DBIndCharBlock( BackRun& back, back_handle len, cg_type len_type, int off )
 /**********************************************************************************/
 {
     dbg_type ret;
@@ -288,12 +286,12 @@ dbg_type _CGAPI DBIndCharBlock( back_handle len, cg_type len_type, int off )
     EchoAPI( "DBIndCharBlock( %i, %t, %i )", len,len_type, off );
 #endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        ret = DFIndCharBlock( len, len_type, off );
+        ret = DFIndCharBlock( back, len, len_type, off );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        ret = CVIndCharBlock( len, len_type, off );
+        ret = CVIndCharBlock( back, len, len_type, off );
     } else {
 #if _TARGET_INTEL
-        ret = WVIndCharBlock( len, len_type, off );
+        ret = WVIndCharBlock( back, len, len_type, off );
 #else
         ret = 0;
 #endif
@@ -304,7 +302,7 @@ dbg_type _CGAPI DBIndCharBlock( back_handle len, cg_type len_type, int off )
     return( ret );
 }
 
-dbg_type _CGAPI DBLocCharBlock( dbg_loc loc, cg_type len_type )
+dbg_type _CGAPI DBLocCharBlock( BackRun& back, dbg_loc loc, cg_type len_type )
 /*********************************************************************/
 {
     dbg_type ret;
@@ -314,12 +312,12 @@ dbg_type _CGAPI DBLocCharBlock( dbg_loc loc, cg_type len_type )
 #endif
 
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        ret = DFLocCharBlock( loc, len_type );
+        ret = DFLocCharBlock( back, loc, len_type );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        ret = CVLocCharBlock( loc, len_type );
+        ret = CVLocCharBlock( back, loc, len_type );
     } else {
 #if _TARGET_INTEL
-        ret = WVLocCharBlock( loc, len_type );
+        ret = WVLocCharBlock( back, loc, len_type );
 #else
         ret = 0;
 #endif
@@ -331,7 +329,7 @@ dbg_type _CGAPI DBLocCharBlock( dbg_loc loc, cg_type len_type )
 }
 
 
-dbg_type _CGAPI DBFtnArray( back_handle dims, cg_type lo_bound_tipe,
+dbg_type _CGAPI DBFtnArray( BackRun& back, back_handle dims, cg_type lo_bound_tipe,
                                     cg_type num_elems_tipe, int off,
                                     dbg_type base )
 /***************************************************************************/
@@ -343,12 +341,12 @@ dbg_type _CGAPI DBFtnArray( back_handle dims, cg_type lo_bound_tipe,
              num_elems_tipe, off, base );
 #endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        ret = DFFtnArray( dims, lo_bound_tipe, num_elems_tipe, off, base );
+        ret = DFFtnArray( back, dims, lo_bound_tipe, num_elems_tipe, off, base );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        ret = CVFtnArray( dims, lo_bound_tipe, num_elems_tipe, off, base );
+        ret = CVFtnArray( back, dims, lo_bound_tipe, num_elems_tipe, off, base );
     } else {
 #if _TARGET_INTEL
-        ret = WVFtnArray( dims, lo_bound_tipe, num_elems_tipe, off, base );
+        ret = WVFtnArray( back, dims, lo_bound_tipe, num_elems_tipe, off, base );
 #else
         ret = 0;
 #endif
@@ -360,7 +358,7 @@ dbg_type _CGAPI DBFtnArray( back_handle dims, cg_type lo_bound_tipe,
 }
 
 
-dbg_type _CGAPI DBArray( dbg_type idx, dbg_type base )
+dbg_type _CGAPI DBArray( BackRun& back, dbg_type idx, dbg_type base )
 /************************************************************/
 {
     dbg_type ret;
@@ -369,12 +367,12 @@ dbg_type _CGAPI DBArray( dbg_type idx, dbg_type base )
     EchoAPI( "DBArray( %i, %i)", idx, base );
 #endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        ret = DFArray( idx, base );
+        ret = DFArray( back, idx, base );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        ret = CVArray( idx, base );
+        ret = CVArray( back, idx, base );
     } else {
 #if _TARGET_INTEL
-        ret = WVArray( idx, base );
+        ret = WVArray( back, idx, base );
 #else
         ret = 0;
 #endif
@@ -385,7 +383,7 @@ dbg_type _CGAPI DBArray( dbg_type idx, dbg_type base )
     return( ret );
 }
 
-dbg_array _CGAPI DBBegArray( dbg_type base, cg_type tipe, bool is_col_major )
+dbg_array _CGAPI DBBegArray( BackRun& back, dbg_type base, cg_type tipe, bool is_col_major )
 /***************************************************************************/
 {
     dbg_array       ar;
@@ -396,7 +394,7 @@ dbg_array _CGAPI DBBegArray( dbg_type base, cg_type tipe, bool is_col_major )
 #ifdef DEVBUILD
     EchoAPI( "DBBegArray( %i,%t,%i)", base, tipe, is_col_major );
 #endif
-    ar = static_cast<dbg_array>(CGAlloc( sizeof( *ar ) ));
+    ar = static_cast<dbg_array>(CGAlloc( back, sizeof( *ar ) ));
     ar->num = 0;
 //  tipe_addr = TypeAddress( tipe );
 //  ar->size = tipe_addr->length;
@@ -428,7 +426,7 @@ static  void    AddDim( dbg_array ar, dim_any *dim )
     ar->num++;
 }
 
-void _CGAPI DBDimCon( dbg_array ar, dbg_type idx, int_32 lo, int_32 hi )
+void _CGAPI DBDimCon( BackRun& back, dbg_array ar, dbg_type idx, int_32 lo, int_32 hi )
 /**********************************************************************/
 {
     dim_any *dim;
@@ -436,7 +434,7 @@ void _CGAPI DBDimCon( dbg_array ar, dbg_type idx, int_32 lo, int_32 hi )
 #ifdef DEVBUILD
     EchoAPI( "DBDimCon( %i, %i, %i, %i )\n", ar, idx, lo, hi );
 #endif
-    dim = static_cast<dim_any *>(CGAlloc( sizeof( *dim ) ));
+    dim = static_cast<dim_any *>(CGAlloc( back, sizeof( *dim ) ));
     dim->kind = DIM_CON;
     dim->u.con.lo = lo;
     dim->u.con.hi = hi;
@@ -444,7 +442,7 @@ void _CGAPI DBDimCon( dbg_array ar, dbg_type idx, int_32 lo, int_32 hi )
     AddDim( ar, dim );
 }
 
-void _CGAPI DBDimVar( dbg_array ar, back_handle dims, int off,
+void _CGAPI DBDimVar( BackRun& back, dbg_array ar, back_handle dims, int off,
                         cg_type lo_bound_tipe,
                         cg_type num_elems_tipe )
 /*************************************************/
@@ -454,7 +452,7 @@ void _CGAPI DBDimVar( dbg_array ar, back_handle dims, int off,
 #ifdef DEVBUILD
     EchoAPI( "DBDimVar(%i, %B, %i, %t, %t)\n", ar, dims, off, lo_bound_tipe, num_elems_tipe );
 #endif
-    dim = static_cast<dim_any *>(CGAlloc( sizeof( *dim ) ));
+    dim = static_cast<dim_any *>(CGAlloc( back, sizeof( *dim ) ));
     dim->kind = DIM_VAR;
     dim->u.var.dims = dims;
     dim->u.var.off = off;
@@ -464,7 +462,7 @@ void _CGAPI DBDimVar( dbg_array ar, back_handle dims, int off,
     ar->is_variable = true;
 }
 
-dbg_type _CGAPI DBEndArray( dbg_array ar )
+dbg_type _CGAPI DBEndArray( BackRun& back, dbg_array ar )
 /************************************************/
 {
     dbg_type ret;
@@ -473,24 +471,24 @@ dbg_type _CGAPI DBEndArray( dbg_array ar )
     EchoAPI( "DBEndArray( %i )", ar );
 #endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        ret =  DFEndArray( ar );
+        ret =  DFEndArray( back, ar );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        ret =  CVEndArray( ar );
+        ret =  CVEndArray( back, ar );
     } else {
 #if _TARGET_INTEL
-        ret = WVEndArray( ar );
+        ret = WVEndArray( back, ar );
 #else
         ret = 0;
 #endif
     }
-    CGFree( ar );
+    CGFree( back, ar );
 #ifdef DEVBUILD
     EchoAPI( " -> %i\n", ret );
 #endif
     return( ret );
 }
 
-dbg_type _CGAPI DBIntArray( uint_32 hi, dbg_type base )
+dbg_type _CGAPI DBIntArray( BackRun& back, uint_32 hi, dbg_type base )
 /*****************************************************/
 {
     dbg_type ret;
@@ -499,12 +497,12 @@ dbg_type _CGAPI DBIntArray( uint_32 hi, dbg_type base )
     EchoAPI(  "DBIntArray( %i, %i )", hi, base );
 #endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        ret = DFIntArray( hi, base );
+        ret = DFIntArray( back, hi, base );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        ret = CVIntArray( hi, base );
+        ret = CVIntArray( back, hi, base );
     } else {
 #if _TARGET_INTEL
-        ret = WVIntArray( hi, base );
+        ret = WVIntArray( back, hi, base );
 #else
         ret = 0;
 #endif
@@ -515,7 +513,7 @@ dbg_type _CGAPI DBIntArray( uint_32 hi, dbg_type base )
     return( ret );
 }
 
-dbg_type _CGAPI DBIntArrayCG( cg_type tipe, uint_32 hi, dbg_type base )
+dbg_type _CGAPI DBIntArrayCG( BackRun& back, cg_type tipe, uint_32 hi, dbg_type base )
 /*********************************************************************/
 {
     dbg_type        ret;
@@ -524,14 +522,14 @@ dbg_type _CGAPI DBIntArrayCG( cg_type tipe, uint_32 hi, dbg_type base )
 #ifdef DEVBUILD
     EchoAPI( "DBIntArrayCG( %t, %i, %i )", tipe, hi, base );
 #endif
-    tipe_addr = TypeAddress( tipe );
+    tipe_addr = TypeAddress( back, tipe );
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        ret = DFIntArray( hi, base );
+        ret = DFIntArray( back, hi, base );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        ret = CVArraySize( tipe_addr->length, hi, base );
+        ret = CVArraySize( back, tipe_addr->length, hi, base );
     } else {
 #if _TARGET_INTEL
-        ret = WVIntArray( hi, base );
+        ret = WVIntArray( back, hi, base );
 #else
         ret = 0;
 #endif
@@ -542,7 +540,7 @@ dbg_type _CGAPI DBIntArrayCG( cg_type tipe, uint_32 hi, dbg_type base )
     return( ret );
 }
 
-dbg_type _CGAPI DBSubRange( int_32 lo, int_32 hi, dbg_type base )
+dbg_type _CGAPI DBSubRange( BackRun& back, int_32 lo, int_32 hi, dbg_type base )
 /***************************************************************/
 {
     dbg_type ret;
@@ -553,10 +551,10 @@ dbg_type _CGAPI DBSubRange( int_32 lo, int_32 hi, dbg_type base )
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
         ret = DFSubRange( lo, hi, base );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        ret = CVSubRange( lo, hi, base );
+        ret = CVSubRange( back, lo, hi, base );
     } else {
 #if _TARGET_INTEL
-        ret = WVSubRange( lo, hi, base );
+        ret = WVSubRange( back, lo, hi, base );
 #else
         ret = 0;
 #endif
@@ -568,7 +566,7 @@ dbg_type _CGAPI DBSubRange( int_32 lo, int_32 hi, dbg_type base )
 }
 
 
-dbg_type _CGAPI DBDereference( cg_type ptr_type, dbg_type base )
+dbg_type _CGAPI DBDereference( BackRun& back, cg_type ptr_type, dbg_type base )
 /**********************************************************************/
 {
     dbg_type ret;
@@ -578,12 +576,12 @@ dbg_type _CGAPI DBDereference( cg_type ptr_type, dbg_type base )
     EchoAPI( "DBDereference( %t, %i)", ptr_type, base );
 #endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        ret = DFDereference( ptr_type, base );
+        ret = DFDereference( back, ptr_type, base );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        ret = CVDereference( ptr_type, base );
+        ret = CVDereference( back, ptr_type, base );
     } else {
 #if _TARGET_INTEL
-        ret = WVDereference( ptr_type, base );
+        ret = WVDereference( back, ptr_type, base );
 #else
         ret = 0;
 #endif
@@ -595,7 +593,7 @@ dbg_type _CGAPI DBDereference( cg_type ptr_type, dbg_type base )
     return( ret );
 }
 
-dbg_type _CGAPI DBPtr( cg_type ptr_type, dbg_type base )
+dbg_type _CGAPI DBPtr( BackRun& back, cg_type ptr_type, dbg_type base )
 /**************************************************************/
 {
     dbg_type ret;
@@ -604,12 +602,12 @@ dbg_type _CGAPI DBPtr( cg_type ptr_type, dbg_type base )
     EchoAPI( "DBPtr( %t, %i )", ptr_type, base );
 #endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        ret = DFPtr( ptr_type, base );
+        ret = DFPtr( back, ptr_type, base );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        ret = CVPtr( ptr_type, base );
+        ret = CVPtr( back, ptr_type, base );
     } else {
 #if _TARGET_INTEL
-        ret = WVPtr( ptr_type, base );
+        ret = WVPtr( back, ptr_type, base );
 #else
         ret = 0;
 #endif
@@ -620,7 +618,7 @@ dbg_type _CGAPI DBPtr( cg_type ptr_type, dbg_type base )
     return( ret );
 }
 
-dbg_type _CGAPI DBBasedPtr( cg_type ptr_type, dbg_type base,
+dbg_type _CGAPI DBBasedPtr( BackRun& back, cg_type ptr_type, dbg_type base,
                                         dbg_loc loc_segment )
 /****************************************************************/
 {
@@ -630,12 +628,12 @@ dbg_type _CGAPI DBBasedPtr( cg_type ptr_type, dbg_type base,
     EchoAPI("DBBasedPtr( %t, %i, %i )", ptr_type, base, loc_segment );
 #endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        ret = DFBasedPtr( ptr_type, base, loc_segment );
+        ret = DFBasedPtr( back, ptr_type, base, loc_segment );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        ret = CVBasedPtr( ptr_type, base, loc_segment );
+        ret = CVBasedPtr( back, ptr_type, base, loc_segment );
     } else {
 #if _TARGET_INTEL
-        ret = WVBasedPtr( ptr_type, base, loc_segment );
+        ret = WVBasedPtr( back, ptr_type, base, loc_segment );
 #else
         ret = 0;
 #endif
@@ -647,7 +645,7 @@ dbg_type _CGAPI DBBasedPtr( cg_type ptr_type, dbg_type base,
 }
 
 
-bool _CGAPI DBNested( bool nested )
+bool _CGAPI DBNested( BackRun& back, bool nested )
 /*********************************/
 {
     bool ret;
@@ -655,15 +653,15 @@ bool _CGAPI DBNested( bool nested )
 #ifdef DEVBUILD
     EchoAPI( "DBNested(%i)", nested );
 #endif
-    ret = dbtypes_state().Nested;
-    dbtypes_state().Nested = nested;
+    ret = back.dbtypes.Nested;
+    back.dbtypes.Nested = nested;
 #ifdef DEVBUILD
     EchoAPI( " -> %i\n", ret );
 #endif
     return( ret );
 }
 
-dbg_struct _CGAPI DBBegNameStruct( cchar_ptr nm, cg_type tipe, bool is_struct )
+dbg_struct _CGAPI DBBegNameStruct( BackRun& back, cchar_ptr nm, cg_type tipe, bool is_struct )
 /*****************************************************************************/
 {
     uint        n_len;
@@ -673,18 +671,18 @@ dbg_struct _CGAPI DBBegNameStruct( cchar_ptr nm, cg_type tipe, bool is_struct )
     EchoAPI( "DBBegNameStruct( %c, %t, %i )", nm, tipe, is_struct );
 #endif
     n_len = Length( nm );
-    st = static_cast<dbg_struct>(CGAlloc( sizeof( struct_list ) + n_len ));
+    st = static_cast<dbg_struct>(CGAlloc( back, sizeof( struct_list ) + n_len ));
     strcpy( st->name, nm );
     st->num = 0;
     st->list = NULL;
     st->list_tail = &st->list;
-    st->size = TypeAddress( tipe )->length;
+    st->size = TypeAddress( back, tipe )->length;
     st->is_struct = is_struct;   /* v.s. union */
     st->is_class = false;
-    st->is_nested = dbtypes_state().Nested;
+    st->is_nested = back.dbtypes.Nested;
     st->is_cnested = false;
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        DFBegStruct( st );
+        DFBegStruct( back, st );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
 //       CVBegStruct( st );
         st->me = DBG_NIL_TYPE;
@@ -702,7 +700,7 @@ dbg_struct _CGAPI DBBegNameStruct( cchar_ptr nm, cg_type tipe, bool is_struct )
     return( st );
 }
 
-dbg_struct _CGAPI DBBegStruct( cg_type tipe, bool is_struct )
+dbg_struct _CGAPI DBBegStruct( BackRun& back, cg_type tipe, bool is_struct )
 /***********************************************************/
 {
     dbg_struct  st;
@@ -710,21 +708,21 @@ dbg_struct _CGAPI DBBegStruct( cg_type tipe, bool is_struct )
 #ifdef DEVBUILD
     EchoAPI( "DBBegStruct( %t, %i )", tipe, is_struct );
 #endif
-    st = DBBegNameStruct( "", tipe, is_struct );
+    st = DBBegNameStruct( back, "", tipe, is_struct );
 #ifdef DEVBUILD
     EchoAPI( " -> %i\n", st );
 #endif
     return( st );
 }
 
-static  field_member     *CreateMember( const char *nm, byte strt,
+static  field_member     *CreateMember( BackRun& back, const char *nm, byte strt,
                               byte len, dbg_type base, uint attr ) {
 /******************************************************************/
     uint          n_len;
     field_member *field;
 
     n_len = Length( nm );
-    field = static_cast<field_member *>(CGAlloc( sizeof( field_member ) + n_len ));
+    field = static_cast<field_member *>(CGAlloc( back, sizeof( field_member ) + n_len ));
     strcpy( field->name, nm );
     field->attr = attr;
     field->len = n_len;
@@ -744,7 +742,7 @@ static  void    AddField( dbg_struct st, field_any *field )
 }
 
 
-void _CGAPI DBAddBitField( dbg_struct st, uint_32 off, byte strt,
+void _CGAPI DBAddBitField( BackRun& back, dbg_struct st, uint_32 off, byte strt,
                             byte len, cchar_ptr nm, dbg_type base )
 /*****************************************************************/
 {
@@ -753,25 +751,25 @@ void _CGAPI DBAddBitField( dbg_struct st, uint_32 off, byte strt,
 #ifdef DEVBUILD
     EchoAPI( "DBAddBitField(%i,%i,%i,%i,%c,%i)\n", st, off, strt, len, nm, base );
 #endif
-    field = CreateMember( nm, strt, len, base, 0 );
+    field = CreateMember( back, nm, strt, len, base, 0 );
     field->entry.field_type = FIELD_OFFSET;
     field->u.off= off;
     AddField( st, (field_any *)field );
 }
 
 
-void _CGAPI DBAddField( dbg_struct st, uint_32 off,
+void _CGAPI DBAddField( BackRun& back, dbg_struct st, uint_32 off,
                         cchar_ptr nm, dbg_type  base )
 /****************************************************/
 {
 #ifdef DEVBUILD
     EchoAPI( "DBAddField( %i, %i,%c,%i)\n", st, off, nm, base );
 #endif
-    DBAddBitField( st, off, 0, 0, nm, base );
+    DBAddBitField( back, st, off, 0, 0, nm, base );
 }
 
 
-void _CGAPI DBAddLocField( dbg_struct st, dbg_loc loc, uint attr,
+void _CGAPI DBAddLocField( BackRun& back, dbg_struct st, dbg_loc loc, uint attr,
                          byte strt, byte len, cchar_ptr nm, dbg_type base )
 /*************************************************************************/
 {
@@ -781,7 +779,7 @@ void _CGAPI DBAddLocField( dbg_struct st, dbg_loc loc, uint attr,
 #ifdef DEVBUILD
     EchoAPI( "DBAddLocField( %i,%i,%i,%i,%i,%c,%i)\n", st, loc, attr, strt, len, nm, base );
 #endif
-    field = CreateMember( nm, strt, len, base, attr );
+    field = CreateMember( back, nm, strt, len, base, attr );
     off = LocSimpField( loc );
     if( off != NO_OFFSET && (attr==FIELD_ATTR_NONE || attr==FIELD_ATTR_PUBLIC) ) {
         field->entry.field_type = FIELD_OFFSET;
@@ -793,7 +791,7 @@ void _CGAPI DBAddLocField( dbg_struct st, dbg_loc loc, uint attr,
     AddField( st, (field_any *)field );
 }
 
-void _CGAPI DBAddStField( dbg_struct st, dbg_loc loc, cchar_ptr nm, uint_32 attr, dbg_type base )
+void _CGAPI DBAddStField( BackRun& back, dbg_struct st, dbg_loc loc, cchar_ptr nm, uint_32 attr, dbg_type base )
 /***********************************************************************************************/
 {
     uint          n_len;
@@ -803,7 +801,7 @@ void _CGAPI DBAddStField( dbg_struct st, dbg_loc loc, cchar_ptr nm, uint_32 attr
     EchoAPI( "DBAddStField(%i,%i,%c,%i,%i)\n", st, loc, nm, attr, base );
 #endif
     n_len = Length( nm );
-    field = static_cast<field_stfield *>(CGAlloc( sizeof( field_stfield ) + n_len ));
+    field = static_cast<field_stfield *>(CGAlloc( back, sizeof( field_stfield ) + n_len ));
     strcpy( field->name, nm );
     field->entry.field_type = FIELD_STFIELD;
     field->loc = LocDupl( loc );
@@ -812,7 +810,7 @@ void _CGAPI DBAddStField( dbg_struct st, dbg_loc loc, cchar_ptr nm, uint_32 attr
     AddField( st, (field_any *)field );
 }
 
-void _CGAPI DBAddMethod( dbg_struct st, dbg_loc loc, uint attr,
+void _CGAPI DBAddMethod( BackRun& back, dbg_struct st, dbg_loc loc, uint attr,
                                  uint kind, cchar_ptr nm, dbg_type base )
 /***********************************************************************/
 {
@@ -823,7 +821,7 @@ void _CGAPI DBAddMethod( dbg_struct st, dbg_loc loc, uint attr,
     EchoAPI( "DBAddMethod( %i,%i,%i,%i,%c,%i)\n", st, loc, attr, kind, nm, base );
 #endif
     n_len = Length( nm );
-    field = static_cast<field_method *>(CGAlloc( sizeof( field_method ) + n_len ));
+    field = static_cast<field_method *>(CGAlloc( back, sizeof( field_method ) + n_len ));
     strcpy( field->name, nm );
     field->entry.field_type = FIELD_METHOD;
     field->u.loc = LocDupl( loc );
@@ -834,7 +832,7 @@ void _CGAPI DBAddMethod( dbg_struct st, dbg_loc loc, uint attr,
     AddField( st, (field_any *)field );
 }
 
-void _CGAPI DBAddNestedType( dbg_struct st, cchar_ptr nm, dbg_type base )
+void _CGAPI DBAddNestedType( BackRun& back, dbg_struct st, cchar_ptr nm, dbg_type base )
 /*******************************************************************************/
 {
     uint          n_len;
@@ -844,7 +842,7 @@ void _CGAPI DBAddNestedType( dbg_struct st, cchar_ptr nm, dbg_type base )
     EchoAPI( "DBAddNestedType( %i,%c,%i)\n", st, nm, base );
 #endif
     n_len = Length( nm );
-    field = static_cast<field_nested *>(CGAlloc( sizeof( field_nested ) + n_len ));
+    field = static_cast<field_nested *>(CGAlloc( back, sizeof( field_nested ) + n_len ));
     strcpy( field->name, nm );
     field->entry.field_type = FIELD_NESTED;
     field->base = base;
@@ -853,7 +851,7 @@ void _CGAPI DBAddNestedType( dbg_struct st, cchar_ptr nm, dbg_type base )
 }
 
 
-void _CGAPI DBAddInheritance( dbg_struct st, dbg_type inherit,
+void _CGAPI DBAddInheritance( BackRun& back, dbg_struct st, dbg_type inherit,
                                   uint attr, uint kind,  dbg_loc loc )
 /**********************************************************************/
 {
@@ -862,7 +860,7 @@ void _CGAPI DBAddInheritance( dbg_struct st, dbg_type inherit,
 #ifdef DEVBUILD
     EchoAPI( "DBAddInheritance(%i,%i,%i,%i,%i)\n", st, inherit, attr, kind, loc );
 #endif
-    field = static_cast<field_bclass *>(CGAlloc( sizeof( field_bclass ) ));
+    field = static_cast<field_bclass *>(CGAlloc( back, sizeof( field_bclass ) ));
     field->entry.field_type = FIELD_INHERIT;
     field->attr = attr;
     field->base = inherit;
@@ -886,7 +884,7 @@ void _CGAPI DBAddBaseInfo( dbg_struct st, uint_32 vb_off, int esize,
 }
 
 
-void _CGAPI DBAddVFuncInfo( dbg_struct st, uint_32 vfptr_off,
+void _CGAPI DBAddVFuncInfo( BackRun& back, dbg_struct st, uint_32 vfptr_off,
                                 int size, cg_type vft_cgtype )
 /************************************************************/
 {
@@ -895,7 +893,7 @@ void _CGAPI DBAddVFuncInfo( dbg_struct st, uint_32 vfptr_off,
 #ifdef DEVBUILD
     EchoAPI( "DBAddVFuncInfo( %i,%i,%i,%t )\n", st, vfptr_off, size, vft_cgtype );
 #endif
-    field = static_cast<field_vfunc *>(CGAlloc( sizeof( field_vfunc ) ));
+    field = static_cast<field_vfunc *>(CGAlloc( back, sizeof( field_vfunc ) ));
     field->entry.field_type = FIELD_VFUNC;
     field->vfptr_off = vfptr_off;
     field->vft_cgtype = vft_cgtype;
@@ -904,7 +902,7 @@ void _CGAPI DBAddVFuncInfo( dbg_struct st, uint_32 vfptr_off,
     AddField( st, (field_any *)field );
 }
 
-dbg_type _CGAPI DBEndStruct( dbg_struct st )
+dbg_type _CGAPI DBEndStruct( BackRun& back, dbg_struct st )
 /**************************************************/
 {
     dbg_type ret;
@@ -913,17 +911,17 @@ dbg_type _CGAPI DBEndStruct( dbg_struct st )
     EchoAPI( "DBEndStruct(%i)", st );
 #endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        ret =  DFEndStruct( st );
+        ret =  DFEndStruct( back, st );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        ret =  CVEndStruct( st );
+        ret =  CVEndStruct( back, st );
     } else {
 #if _TARGET_INTEL
-        ret = WVEndStruct( st );
+        ret = WVEndStruct( back, st );
 #else
         ret = 0;
 #endif
     }
-    CGFree( st );
+    CGFree( back, st );
 #ifdef DEVBUILD
     EchoAPI( " -> %i\n", ret );
 #endif
@@ -940,7 +938,7 @@ dbg_type _CGAPI DBStructForward( dbg_struct st )
     return( st->me );
 }
 
-dbg_enum _CGAPI DBBegEnum( cg_type tipe )
+dbg_enum _CGAPI DBBegEnum( BackRun& back, cg_type tipe )
 /***********************************************/
 {
     dbg_enum    en;
@@ -948,11 +946,11 @@ dbg_enum _CGAPI DBBegEnum( cg_type tipe )
 #ifdef DEVBUILD
     EchoAPI( "DBBegEnum( %t )", tipe );
 #endif
-    en = static_cast<dbg_enum>(CGAlloc( sizeof( enum_list ) ));
+    en = static_cast<dbg_enum>(CGAlloc( back, sizeof( enum_list ) ));
     en->num = 0;
     en->list = NULL;
     en->tipe = tipe;
-    en->is_nested = dbtypes_state().Nested;
+    en->is_nested = back.dbtypes.Nested;
     en->is_c  = true;
 #ifdef DEVBUILD
     EchoAPI( " -> %i\n", en );
@@ -960,7 +958,7 @@ dbg_enum _CGAPI DBBegEnum( cg_type tipe )
     return( en );
 }
 
-void _CGAPI DBAddConst( dbg_enum en, cchar_ptr nm, int_32 val )
+void _CGAPI DBAddConst( BackRun& back, dbg_enum en, cchar_ptr nm, int_32 val )
 /*************************************************************/
 {
     const_entry *cons;
@@ -970,7 +968,7 @@ void _CGAPI DBAddConst( dbg_enum en, cchar_ptr nm, int_32 val )
     EchoAPI( "DBAddConst( %i,%c,%i)\n", en, nm, val );
 #endif
     len = Length( nm );
-    cons = static_cast<const_entry *>(CGAlloc( sizeof( const_entry ) + len ));
+    cons = static_cast<const_entry *>(CGAlloc( back, sizeof( const_entry ) + len ));
     strcpy( cons->name, nm );
     cons->len = len;
     Set64ValI32( cons->val, val );
@@ -979,7 +977,7 @@ void _CGAPI DBAddConst( dbg_enum en, cchar_ptr nm, int_32 val )
     en->num++;
 }
 
-void _CGAPI DBAddConst64( dbg_enum en, cchar_ptr nm, signed_64  val )
+void _CGAPI DBAddConst64( BackRun& back, dbg_enum en, cchar_ptr nm, signed_64  val )
 /*******************************************************************/
 {
     const_entry *cons;
@@ -989,7 +987,7 @@ void _CGAPI DBAddConst64( dbg_enum en, cchar_ptr nm, signed_64  val )
     EchoAPI( "DBAddConst( %i,%c,%x %x )\n", en, nm, val.u._32[0],val.u._32[1] );
 #endif
     len = Length( nm );
-    cons = static_cast<const_entry *>(CGAlloc( sizeof( const_entry ) + len ));
+    cons = static_cast<const_entry *>(CGAlloc( back, sizeof( const_entry ) + len ));
     strcpy( cons->name, nm );
     cons->len = len;
     cons->val = val;
@@ -998,7 +996,7 @@ void _CGAPI DBAddConst64( dbg_enum en, cchar_ptr nm, signed_64  val )
     en->num++;
 }
 
-dbg_type _CGAPI DBEndEnum( dbg_enum en )
+dbg_type _CGAPI DBEndEnum( BackRun& back, dbg_enum en )
 /**********************************************/
 {
     dbg_type ret;
@@ -1007,17 +1005,17 @@ dbg_type _CGAPI DBEndEnum( dbg_enum en )
     EchoAPI( "DBEndEnum(%i)", en );
 #endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        ret = DFEndEnum( en );
+        ret = DFEndEnum( back, en );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        ret = CVEndEnum( en );
+        ret = CVEndEnum( back, en );
     } else {
 #if _TARGET_INTEL
-        ret = WVEndEnum( en );
+        ret = WVEndEnum( back, en );
 #else
         ret = 0;
 #endif
     }
-    CGFree( en );
+    CGFree( back, en );
 #ifdef DEVBUILD
     EchoAPI( " -> %i\n", ret );
 #endif
@@ -1025,7 +1023,7 @@ dbg_type _CGAPI DBEndEnum( dbg_enum en )
 }
 
 
-dbg_proc _CGAPI DBBegProc( cg_type call_type, dbg_type  ret )
+dbg_proc _CGAPI DBBegProc( BackRun& back, cg_type call_type, dbg_type  ret )
 /*******************************************************************/
 {
     dbg_proc    pr;
@@ -1033,10 +1031,10 @@ dbg_proc _CGAPI DBBegProc( cg_type call_type, dbg_type  ret )
 #ifdef DEVBUILD
     EchoAPI( "DBBegProc( %t,%i)", call_type, ret );
 #endif
-    pr = static_cast<dbg_proc>(CGAlloc( sizeof( proc_list ) ));
+    pr = static_cast<dbg_proc>(CGAlloc( back, sizeof( proc_list ) ));
     pr->num = 0;
     pr->list = NULL;
-    pr->call = TypeAddress( call_type )->refno;
+    pr->call = TypeAddress( back, call_type )->refno;
     pr->ret = ret;
     pr->cls = DBG_NIL_TYPE;
     pr->this_ = DBG_NIL_TYPE;
@@ -1056,7 +1054,7 @@ void  _CGAPI DBAddMethParms( dbg_proc pr, dbg_type cls, dbg_type this_ )
     pr->this_ = this_;
 }
 
-void _CGAPI DBAddParm( dbg_proc pr, dbg_type tipe )
+void _CGAPI DBAddParm( BackRun& back, dbg_proc pr, dbg_type tipe )
 /*********************************************************/
 {
     parm_entry  *parm;
@@ -1065,7 +1063,7 @@ void _CGAPI DBAddParm( dbg_proc pr, dbg_type tipe )
 #ifdef DEVBUILD
     EchoAPI( "DBAddParm( %i,%i )\n", pr, tipe );
 #endif
-    parm = static_cast<parm_entry *>(CGAlloc( sizeof( parm_entry ) ));
+    parm = static_cast<parm_entry *>(CGAlloc( back, sizeof( parm_entry ) ));
     pr->num++;
     for( owner = &pr->list; *owner != NULL; ) {
         owner = &(*owner)->next;
@@ -1076,7 +1074,7 @@ void _CGAPI DBAddParm( dbg_proc pr, dbg_type tipe )
 }
 
 
-dbg_type _CGAPI DBEndProc( dbg_proc pr )
+dbg_type _CGAPI DBEndProc( BackRun& back, dbg_proc pr )
 /**********************************************/
 {
     dbg_type ret;
@@ -1085,17 +1083,17 @@ dbg_type _CGAPI DBEndProc( dbg_proc pr )
     EchoAPI( "DBEndProc( %i )", pr );
 #endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        ret =  DFEndProc( pr );
+        ret =  DFEndProc( back, pr );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
-        ret =  CVEndProc( pr );
+        ret =  CVEndProc( back, pr );
     } else {
 #if _TARGET_INTEL
-        ret = WVEndProc( pr );
+        ret = WVEndProc( back, pr );
 #else
         ret = 0;
 #endif
     }
-    CGFree( pr );
+    CGFree( back, pr );
 #ifdef DEVBUILD
     EchoAPI( " -> %i\n", ret );
 #endif

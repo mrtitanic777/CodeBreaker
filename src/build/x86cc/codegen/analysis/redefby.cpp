@@ -41,9 +41,10 @@
 #include "rgtbl.h"
 #include "namelist.h"
 #include "feprotos.h"
+#include "backrun.hpp"
 
 
-static bool_maybe   ZapsIndexed( name *, name * );
+static bool_maybe   ZapsIndexed( BackRun& back, name *, name * );
 
 bool    TempsOverlap( name *name1, name *name2 )
 /***********************************************
@@ -66,7 +67,7 @@ bool    TempsOverlap( name *name1, name *name2 )
 }
 
 
-static  bool  ZapsMemory( name *result, name *op, bool for_index )
+static  bool  ZapsMemory( BackRun& back, name *result, name *op, bool for_index )
 /*****************************************************************
  * Could redefining "result" redefine N_MEMORY name "op"?
  */
@@ -92,7 +93,7 @@ static  bool  ZapsMemory( name *result, name *op, bool for_index )
         if( result->i.base->n.class_ == N_TEMP ) {
             return( _IsntModel( CGSW_GEN_RELAX_ALIAS ) );
         } else { /* it must be N_MEMORY*/
-            return( ZapsMemory( result->i.base, op, true ) );
+            return( ZapsMemory( back, result->i.base, op, true ) );
         }
     case N_REGISTER:
         return( false );
@@ -103,7 +104,7 @@ static  bool  ZapsMemory( name *result, name *op, bool for_index )
 }
 
 
-static  bool  ZapsTemp( name *result, name *op, bool for_index )
+static  bool  ZapsTemp( BackRun& back, name *result, name *op, bool for_index )
 /***************************************************************
  * Could redefining "result" redefine N_TEMP name "op"?
  */
@@ -135,7 +136,7 @@ static  bool  ZapsTemp( name *result, name *op, bool for_index )
         {
             hw_reg_set      tmp;
 
-            tmp = DisplayReg();
+            tmp = DisplayReg(back);
             return( HW_Ovlap( result->r.reg, tmp ) );
         }
     default:
@@ -145,7 +146,7 @@ static  bool  ZapsTemp( name *result, name *op, bool for_index )
 }
 
 
-static bool_maybe   ZapsTheOp( name *result, name *op )
+static bool_maybe   ZapsTheOp( BackRun& back, name *result, name *op )
 /*****************************************************/
 {
     if( result == NULL )
@@ -154,15 +155,15 @@ static bool_maybe   ZapsTheOp( name *result, name *op )
     case N_MEMORY:
         if( op->v.usage & VAR_VOLATILE )
             return( MB_TRUE );
-        return( ZapsMemory( result, op, false ) ? MB_TRUE : MB_FALSE );
+        return( ZapsMemory( back, result, op, false ) ? MB_TRUE : MB_FALSE );
     case N_INDEXED:
         if( op->i.index_flags & X_VOLATILE )
             return( MB_TRUE );
-        return( ZapsIndexed( result, op ) );
+        return( ZapsIndexed( back, result, op ) );
     case N_TEMP:
         if( op->v.usage & VAR_VOLATILE )
             return( MB_TRUE );
-        return( ZapsTemp( result, op, false ) ? MB_TRUE : MB_FALSE );
+        return( ZapsTemp( back, result, op, false ) ? MB_TRUE : MB_FALSE );
     case N_REGISTER:
         if( result->n.class_ == N_REGISTER
           && HW_Ovlap( result->r.reg, op->r.reg ) )
@@ -177,7 +178,7 @@ static bool_maybe   ZapsTheOp( name *result, name *op )
 }
 
 
-static  bool_maybe  ZapsIndexed( name *result, name *op )
+static  bool_maybe  ZapsIndexed( BackRun& back, name *result, name *op )
 /********************************************************
  * Could redefining "result" redefine N_INDEXED name "op"?
  */
@@ -209,7 +210,7 @@ static  bool_maybe  ZapsIndexed( name *result, name *op )
         } else if( op->i.base->n.class_ == N_TEMP ) {
             return( _IsModel( CGSW_GEN_RELAX_ALIAS ) ? MB_FALSE : MB_TRUE );
         } else {
-            return( ZapsMemory( result, op->i.base, true ) ? MB_TRUE : MB_FALSE );
+            return( ZapsMemory( back, result, op->i.base, true ) ? MB_TRUE : MB_FALSE );
         }
     case N_INDEXED:
         if( result->i.base == op->i.base
@@ -227,15 +228,15 @@ static  bool_maybe  ZapsIndexed( name *result, name *op )
         if( result->i.base->n.class_ != op->i.base->n.class_ )
             return( MB_FALSE );
         if( result->i.base->n.class_ == N_TEMP ) {
-            return( ZapsTemp( result->i.base, op->i.base, true ) ? MB_TRUE : MB_FALSE );
+            return( ZapsTemp( back, result->i.base, op->i.base, true ) ? MB_TRUE : MB_FALSE );
         }
-        return( ZapsMemory( result->i.base, op->i.base, true ) ? MB_TRUE : MB_FALSE );
+        return( ZapsMemory( back, result->i.base, op->i.base, true ) ? MB_TRUE : MB_FALSE );
     case N_REGISTER:
         if( op->i.base != NULL
-          && ZapsTheOp( result, op->i.base ) ) {
+          && ZapsTheOp( back, result, op->i.base ) ) {
             return( MB_TRUE );
         }
-        return( ZapsTheOp( result, op->i.index ) );
+        return( ZapsTheOp( back, result, op->i.index ) );
     default:
         _Zoiks( ZOIKS_023 );
         return( MB_FALSE );
@@ -243,7 +244,7 @@ static  bool_maybe  ZapsIndexed( name *result, name *op )
 }
 
 
-bool    NameIsConstant( name *op )
+bool    NameIsConstant( BackRun& back, name *op )
 /********************************/
 {
     if( op->n.class_ == N_TEMP
@@ -256,12 +257,12 @@ bool    NameIsConstant( name *op )
     if( op->v.usage & VAR_CONSTANT )
         return( true );
     if( op->m.memory_type == CG_FE
-      && (FEAttr( static_cast<cg_sym_handle>(op->v.symbol) ) & FE_CONSTANT) )
+      && (FEAttr( *back.front, static_cast<cg_sym_handle>(op->v.symbol) ) & FE_CONSTANT) )
         return( true );
-    return( AskNameIsROM( op->v.symbol, op->m.memory_type ) );
+    return( AskNameIsROM( back, op->v.symbol, op->m.memory_type ) );
 }
 
-bool_maybe  VisibleToCall( instruction *ins, name *op, bool modifies )
+bool_maybe  VisibleToCall( BackRun& back, instruction *ins, name *op, bool modifies )
 /*********************************************************************
  * Is the operand 'op' visible to the code in invoked by the call 'ins'?
  * The 'modifies' flag means we only care if the routine can modify 'op'.
@@ -275,7 +276,7 @@ bool_maybe  VisibleToCall( instruction *ins, name *op, bool modifies )
         if( _IsModel( CGSW_GEN_FORTRAN_ALIASING ) ) {
             switch( op->m.memory_type ) {
             case CG_FE:
-                if( (FEAttr( static_cast<cg_sym_handle>(op->v.symbol) ) & FE_VISIBLE ) == 0 ) {
+                if( (FEAttr( *back.front, static_cast<cg_sym_handle>(op->v.symbol) ) & FE_VISIBLE ) == 0 ) {
                     return( MB_FALSE );
                 }
                 return( MB_TRUE );
@@ -291,7 +292,7 @@ bool_maybe  VisibleToCall( instruction *ins, name *op, bool modifies )
     case N_INDEXED:
         if( op->i.base == NULL )
             return( MB_TRUE );
-        return( ReDefinedBy( ins, op->i.base ) );
+        return( ReDefinedBy( back, ins, op->i.base ) );
     case N_TEMP:
         if( op->v.usage & USE_ADDRESS )
             return( MB_TRUE );
@@ -358,7 +359,7 @@ static  bool    ZappedBySTQ_U( instruction *ins, name *op )
     return( false );
 }
 
-bool_maybe  ReDefinedBy( instruction *ins, name *op )
+bool_maybe  ReDefinedBy( BackRun& back, instruction *ins, name *op )
 /****************************************************
  * Is it possible that operand "op" could be redefined by instruction "ins"?
  */
@@ -370,16 +371,16 @@ bool_maybe  ReDefinedBy( instruction *ins, name *op )
             return( MB_TRUE );
         }
     }
-    if( NameIsConstant( op ) )
+    if( NameIsConstant( back, op ) )
         return( MB_FALSE );
     if( ZappedBySTQ_U( ins, op ) )
         return( MB_TRUE );
-    zaps = ZapsTheOp( ins->result, op );
+    zaps = ZapsTheOp( back, ins->result, op );
     if( zaps != MB_FALSE )
         return( zaps );
     if( !_OpIsCall( ins->head.opcode ) )
         return( MB_FALSE );
-    return( VisibleToCall( ins, op, true ) );
+    return( VisibleToCall( back, ins, op, true ) );
 }
 
 

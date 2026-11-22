@@ -32,9 +32,10 @@
 
 
 #include "cfloati.h"
+#include "backrun.hpp"
 
 
-static  cfloat  *SDMul( cfhandle h, cfloat *f, int plyer, int fleft, int fexp, int byexp )
+static  cfloat  *SDMul( BackRun& back, cfhandle h, cfloat *f, int plyer, int fleft, int fexp, int byexp )
 /****************************************************************************************/
 {
     int         sum;
@@ -47,7 +48,7 @@ static  cfloat  *SDMul( cfhandle h, cfloat *f, int plyer, int fleft, int fexp, i
     exp = fexp;
     resexp = fexp + byexp - 1;
     respos = fleft - fexp + 1;
-    result = CFAlloc( h, respos + 1 );
+    result = CFAlloc( back, h, respos + 1 );
     result->len = respos + 1;
     result->exp = fleft + byexp;
     while( exp <= fleft ) {
@@ -65,7 +66,7 @@ static  cfloat  *SDMul( cfhandle h, cfloat *f, int plyer, int fleft, int fexp, i
     return( result );
 }
 
-cfloat  *CFMul( cfhandle h, cfloat *f1, cfloat *f2 )
+cfloat  *CFMul( BackRun& back, cfhandle h, cfloat *f1, cfloat *f2 )
 /**************************************************/
 {
     cfloat      *result;
@@ -78,18 +79,18 @@ cfloat  *CFMul( cfhandle h, cfloat *f1, cfloat *f2 )
     signed char sgn;
 
     sgn = f1->sign * f2->sign;
-    result = CFAlloc( h, 1 );
+    result = CFAlloc( back, h, 1 );
     if( sgn != 0 ) {
         f1left = f1->exp;
         f1exp = f1left - f1->len + 1;
         f2exp = f2->exp - f2->len + 1;
         f2ptr = f2->len - 1;
         while( f2ptr >= 0 ) {
-            temp = SDMul( h, f1, CFAccess( f2, f2ptr-- ),
+            temp = SDMul( back, h, f1, CFAccess( f2, f2ptr-- ),
                 f1left, f1exp, f2exp++ );
-            sum = CFAdd( h, result, temp );
-            CFFree( h, temp );
-            CFFree( h, result );
+            sum = CFAdd( back, h, result, temp );
+            CFFree( back, h, temp );
+            CFFree( back, h, result );
             result = sum;
         }
         result->sign = sgn;

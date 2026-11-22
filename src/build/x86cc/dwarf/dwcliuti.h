@@ -44,17 +44,17 @@
 #define InfoSkip(c,l)               CLISectionSkip( c, DW_DEBUG_INFO, l )
 #define InfoSectionOffset(c)        CLISectionOffset( c, DW_DEBUG_INFO )
 
-extern void     CLIWriteSLEB128( dw_client cli, dw_sectnum sect, dw_sconst value );
-extern void     CLIWriteULEB128( dw_client cli, dw_sectnum sect, dw_uconst value );
-extern void     CLIWriteU8( dw_client cli, dw_sectnum sect, uint_8 data );
-extern void     CLIWriteU16( dw_client cli, dw_sectnum sect, uint_16 data );
-extern void     CLIWriteU32( dw_client cli, dw_sectnum sect, uint_32 data );
-extern void     CLIWriteString( dw_client cli, dw_sectnum sect, const char *str );
+extern void     CLIWriteSLEB128( BackRun& back, dw_client cli, dw_sectnum sect, dw_sconst value );
+extern void     CLIWriteULEB128( BackRun& back, dw_client cli, dw_sectnum sect, dw_uconst value );
+extern void     CLIWriteU8( BackRun& back, dw_client cli, dw_sectnum sect, uint_8 data );
+extern void     CLIWriteU16( BackRun& back, dw_client cli, dw_sectnum sect, uint_16 data );
+extern void     CLIWriteU32( BackRun& back, dw_client cli, dw_sectnum sect, uint_32 data );
+extern void     CLIWriteString( BackRun& back, dw_client cli, dw_sectnum sect, const char *str );
 
 extern void     BufWriteU16( dw_client cli, void *buf, uint_16 data );
 extern void     BufWriteU32( dw_client cli, void *buf, uint_32 data );
 
-extern void     CLISectionSetSize( dw_client cli, dw_sectnum sect );
-extern void     CLISectionWriteZeros( dw_client cli, dw_sectnum sect, size_t len );
+extern void     CLISectionSetSize( BackRun& back, dw_client cli, dw_sectnum sect );
+extern void     CLISectionWriteZeros( BackRun& back, dw_client cli, dw_sectnum sect, size_t len );
 
 #endif
