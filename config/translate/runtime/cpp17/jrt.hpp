@@ -399,6 +399,7 @@ struct Throwable : Object {
 	ref<String> getLocalizedMessage() { return getMessage(); }
 	ref<Throwable> getCause() { return cause; }
 	void addSuppressed(ref<Throwable> t) { suppressed.push_back(t); }
+	ref<Array<ref<Throwable>>> getSuppressed();
 	void printStackTrace();
 	ref<String> toString() override {
 		ref<String> m = getLocalizedMessage();
@@ -794,6 +795,29 @@ template <class T> struct Hold {
 template <class T> Hold<T> in(const ref<T>& r) { return Hold<T>{r}; }
 template <class T> ref<Array<T>> new_array(int32_t n) { auto r = std::make_shared<Array<T>>(); r->init(n); return r; }
 template <class T> ref<Array<T>> array_of(std::initializer_list<T> xs) { auto r = std::make_shared<Array<T>>(); r->a = xs; r->length = (int32_t)r->a.size(); return r; }
+inline ref<Array<ref<Throwable>>> Throwable::getSuppressed() {
+	auto r = new_array<ref<Throwable>>((int32_t)suppressed.size());
+	for (int32_t i = 0; i < r->length; ++i) (*r)[i] = suppressed[(size_t)i];
+	return r;
+}
+// The end of a try-with-resources for one resource: a null is not closed; a close that throws while `thrown` is on its way is added to it.
+template <class R> void close_resource(const R& r, const std::exception_ptr& thrown) {
+	if (!thrown) {
+		if (r) r->close();
+		return;
+	}
+	try {
+		if (r) r->close();
+	} catch (JavaThrow& c) {
+		try {
+			std::rethrow_exception(thrown);
+		} catch (JavaThrow& first) {
+			first.t->addSuppressed(c.t);
+			throw;
+		}
+	}
+	std::rethrow_exception(thrown);
+}
 // new T[a][b]: every row made
 template <class T> ref<Array<ref<Array<T>>>> new_array2(int32_t n, int32_t m) {
 	auto r = new_array<ref<Array<T>>>(n);

@@ -39,6 +39,7 @@ const std::vector<std::pair<std::string, std::vector<std::string>>>& lib_supers(
         {"java.lang.RuntimeException", {"java.lang.Exception"}},
         {"java.lang.IllegalArgumentException", {"java.lang.RuntimeException"}},
         {"java.lang.IllegalStateException", {"java.lang.RuntimeException"}},
+        {"java.lang.NegativeArraySizeException", {"java.lang.RuntimeException"}},
         {"java.lang.ArithmeticException", {"java.lang.RuntimeException"}},
         {"java.lang.NullPointerException", {"java.lang.RuntimeException"}},
         {"java.lang.ClassCastException", {"java.lang.RuntimeException"}},
@@ -496,7 +497,11 @@ std::optional<Sam> Model::sam(const std::string& q) const {
     for (auto& a : ancestors(q)) {
         ClassInfo* sci = info(a);
         if (!sci) {
-            if (auto s = sam_of_lib(a)) abstract.push_back(*s);
+            if (auto s = sam_of_lib(a)) {   // an interface may declare again the method it inherits: still one method
+                bool dup = false;
+                for (auto& x : abstract) dup = dup || (x.name == s->name && x.params.size() == s->params.size());
+                if (!dup) abstract.push_back(*s);
+            }
             continue;
         }
         if (sci->kind != "interface") continue;

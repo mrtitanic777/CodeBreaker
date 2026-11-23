@@ -79,6 +79,8 @@ public:
     std::optional<std::string> iterable(cs::Context& w, ir::Node* e) override;
     void record(cs::Context& w, const ir::SymP& sym, ir::Node* init) override;
     void check_lambda(cs::Context& w, ir::Lambda& lambda, const ir::TypeP& type) override;
+    std::optional<std::string> lambda_class(cs::Context& w, const ir::TypeP& type) override;
+    bool checks_array_sizes() const override { return catches_negative_size_; }
     // `Type::method`, and any reference into Java's library, as the lambda it stands for.
     ir::Node* method_ref(cs::Context& w, ir::Node* e) override;
     // A Java record is written as a sealed class: javac's members for it (its accessors, equals, hashCode, toString) are in the tree.
@@ -92,6 +94,11 @@ public:
     std::optional<std::string> enum_case(const ir::TypeP& scrutinee, const std::string& name) const override;
 
 private:
+    // An interface of the program that a lambda or method reference is made for: it holds a small class JFn around a delegate.
+    const ir::MethodDecl* single_abstract(cs::Program& program, const ir::ClassDecl& c) const;
+    std::unordered_map<std::string, const ir::MethodDecl*> lambda_interfaces_;
+    bool catches_negative_size_ = false;
+
     // A box that can be null. Java's Integer is C#'s int; the variables, fields, parameters and results that may hold a null (found by
     // following nulls through the program) are `int?`. Reading one where a number is wanted goes through JLib.Unbox, which throws as
     // Java does; the places that keep the null (a test against null, text, another such variable) read it as it is.

@@ -124,7 +124,8 @@ CB_TEST("translate.csharp_java.semantics_in_the_text", [] {
     CB_CHECK(has("internal const int LIMIT = 10;"));
     CB_CHECK(has("(object)a == (object)b"));                             // Java compares the references
     CB_CHECK(has("JavaRt.Str(d)"));                                      // a double as text
-    CB_CHECK(has("using (var r = new Resource())"));
+    CB_CHECK(has("var r = new Resource();"));
+    CB_CHECK(has("JLib.CloseResource(r, j_thrown1);"));   // (a close that throws must not replace the exception on its way, as C#'s using lets it)
     CB_CHECK(has("public static void Main(string[] args)"));
 });
 

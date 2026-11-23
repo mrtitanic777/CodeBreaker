@@ -63,6 +63,23 @@ public static partial class JLib
 
     public static T NonNull<T>(T v) where T : class => v ?? throw new NullReferenceException();
 
+    // The end of a Java try-with-resources for one resource: a null is not closed; a close that throws while `thrown` is on its way is added to it.
+    public static void CloseResource(IDisposable resource, Exception thrown)
+    {
+        if (resource == null) return;
+        if (thrown == null) { resource.Dispose(); return; }
+        try { resource.Dispose(); }
+        catch (Exception closing) { AddSuppressed(thrown, closing); }
+    }
+
+    public static void AddSuppressed(Exception e, Exception more)
+    {
+        if (e.Data["java.suppressed"] is not List<Exception> held) e.Data["java.suppressed"] = held = new List<Exception>();
+        held.Add(more);
+    }
+
+    public static Exception[] Suppressed(Exception e) => e.Data["java.suppressed"] is List<Exception> held ? held.ToArray() : new Exception[0];
+
     // A Java box that may be null: reading its number throws as Java's unboxing does.
     public static T Unbox<T>(T? v) where T : struct => v ?? throw new NullReferenceException();
 
@@ -102,9 +119,12 @@ public static partial class JLib
     public static T Jagged<T>(params int[] sizes)
     {
         foreach (int n in sizes)
-            if (n < 0) throw new OverflowException();
+            if (n < 0) throw new OverflowException(n.ToString());
         return (T)(object)MakeArray(typeof(T), sizes, 0);
     }
+
+    // A size of `new int[n]` in a program that catches a negative one: the exception's message is the size, as Java's is.
+    public static int ArraySize(int n) => n >= 0 ? n : throw new OverflowException(n.ToString());
 
     static Array MakeArray(Type type, int[] sizes, int at)
     {

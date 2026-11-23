@@ -28,6 +28,7 @@ void MethodWriter::block(const ir::Node* s, Lines& out, std::string_view ind) {
 void MethodWriter::loop_body(const ir::Node* body, Lines& out, std::string_view ind) {
     const std::optional<std::string> label = std::exchange(cont_next_, std::nullopt);
     ++loops_;
+    ++real_loops_;
     if (!label) {
         block(body, out, ind);
     } else {
@@ -39,6 +40,7 @@ void MethodWriter::loop_body(const ir::Node* body, Lines& out, std::string_view 
         out.push_back(std::format("{}\t{}_cont:;", ind, *label));
     }
     --loops_;
+    --real_loops_;
 }
 
 void MethodWriter::stmt(const ir::Node* s, Lines& out, std::string_view ind) {
@@ -222,7 +224,7 @@ void MethodWriter::jump(bool is_break, const std::optional<std::string>& label, 
     const bool labelled = label && !label->empty();
     std::size_t outside = 0;   // the handlers that stay open: those around the loop, or around the label
     if (!labelled) {
-        for (const Handler& h : tries_) outside += h.loops < loops_;
+        for (const Handler& h : tries_) outside += is_break ? h.loops < loops_ : h.real_loops < real_loops_;   // (a switch holds a break, not a continue)
     } else if (const auto at = label_depth_.find(*label); at != label_depth_.end()) {
         outside = at->second;
     }
@@ -352,7 +354,7 @@ void MethodWriter::emit(const ir::Node&, const ir::Try& k, Lines& out, std::stri
     out.push_back(std::format("{}\tjrt_try {};", ind, f));
     out.push_back(std::format("{}\tjrt_push(&{});", ind, f));
     out.push_back(std::format("{}\tif (setjmp({}.jb) == 0) {{", ind, f));
-    tries_.push_back(Handler{f, loops_, k.finally_body, {}});
+    tries_.push_back(Handler{f, loops_, k.finally_body, {}, real_loops_});
     try_catch(k, out, std::string(ind) + "\t\t");
     tries_.pop_back();
     out.push_back(std::format("{}\t\tjrt_pop(&{});", ind, f));
@@ -411,7 +413,7 @@ void MethodWriter::try_body(const ir::Try& s, std::size_t at, Lines& out, std::s
     out.push_back(std::format("{}jrt_try {};", i2, h));
     out.push_back(std::format("{}jrt_push(&{});", i2, h));
     out.push_back(std::format("{}if (setjmp({}.jb) == 0) {{", i2, h));
-    tries_.push_back(Handler{h, loops_, nullptr, std::format("if ({} != NULL) {};", name, call)});
+    tries_.push_back(Handler{h, loops_, nullptr, std::format("if ({} != NULL) {};", name, call), real_loops_});
     try_body(s, at + 1, out, i2);
     tries_.pop_back();
     out.push_back(std::format("{}jrt_pop(&{});", i3, h));
@@ -442,7 +444,7 @@ void MethodWriter::try_catch(const ir::Try& s, Lines& out, std::string_view ind)
     out.push_back(std::format("{}\tjrt_try {};", ind, t));
     out.push_back(std::format("{}\tjrt_push(&{});", ind, t));
     out.push_back(std::format("{}\tif (setjmp({}.jb) == 0) {{", ind, t));
-    tries_.push_back(Handler{t, loops_, nullptr, {}});
+    tries_.push_back(Handler{t, loops_, nullptr, {}, real_loops_});
     try_body(s, 0, out, std::string(ind) + "\t");
     tries_.pop_back();
     out.push_back(std::format("{}\t\tjrt_pop(&{});", ind, t));

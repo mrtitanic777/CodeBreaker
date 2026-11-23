@@ -313,6 +313,21 @@ void JavaLibrary::prepare(cs::Program& program) {
     }
     prepare_local_classes(program, classes);
     prepare_inner_classes(program, classes);
+    for (Node* u : program.units()) {   // the interfaces of the program that lambdas are made for
+        for (Node* n : ir::walk(u)) {
+            if (const ir::Catch* caught = ir::get<ir::Catch>(n)) {
+                for (const ir::TypeP& t : caught->types) {
+                    const std::string* name = cj_qual(t);
+                    catches_negative_size_ = catches_negative_size_ || (name != nullptr && *name == "java.lang.NegativeArraySizeException");
+                }
+            }
+            if (!ir::is<ir::Lambda>(n) && !ir::is<ir::MethodRef>(n)) continue;
+            const std::string* q = cj_qual(n->type);
+            const ir::ClassDecl* target = q != nullptr ? program.class_named(*q) : nullptr;
+            if (target == nullptr || target->kind != "interface" || lambda_interfaces_.contains(*q)) continue;
+            if (const ir::MethodDecl* method = single_abstract(program, *target)) lambda_interfaces_.emplace(*q, method);
+        }
+    }
     for (Node* cn : classes) {   // an enum of objects is a class: a plain one stays a C# enum
         const ir::ClassDecl& c = *ir::get<ir::ClassDecl>(cn);
         if (c.kind != "enum" || !c.qname) continue;
@@ -1034,7 +1049,78 @@ bool JavaLibrary::has_captures(const ir::ClassDecl& c) const {
 }
 
 // A Java Iterable has `iterator()`; .NET's foreach wants GetEnumerator.
+// The one method an interface leaves to implement, with what it inherits; null when there are several, or one a generic parent would retype.
+const ir::MethodDecl* JavaLibrary::single_abstract(cs::Program& program, const ir::ClassDecl& start) const {
+    std::vector<const ir::MethodDecl*> found;
+    std::set<std::string> seen;
+    bool must_close = false;
+    const std::function<bool(const ir::ClassDecl&, bool)> visit = [&](const ir::ClassDecl& k, bool top) {
+        if (!k.qname || !seen.insert(*k.qname).second) return true;
+        if (!k.typeparams.empty() && !top) return false;
+        for (Node* mn : k.members) {
+            const ir::MethodDecl* m = ir::get<ir::MethodDecl>(mn);
+            if (m == nullptr || cj_has(m->mods, "static") || cj_has(m->mods, "default") || cj_has(m->mods, "private")) continue;
+            const Node* const* one = std::get_if<Node*>(&m->body);
+            if (one != nullptr && *one != nullptr) continue;
+            if (const auto* many = std::get_if<std::vector<Node*>>(&m->body); many != nullptr && !many->empty()) continue;
+            const std::string name = m->name.value_or("");
+            if (cj_object_method(name, m->params.size())) continue;
+            const bool again = std::any_of(found.begin(), found.end(), [&](const ir::MethodDecl* x) { return x->name == m->name && x->params.size() == m->params.size(); });
+            if (!again) found.push_back(m);
+        }
+        std::vector<ir::TypeP> parents = k.implements;
+        if (k.extends) parents.push_back(k.extends);
+        for (const ir::TypeP& parent : parents) {
+            const std::string* q = cj_qual(parent);
+            if (q == nullptr) return false;
+            if (*q == "java.lang.Object") continue;
+            if (*q == "java.lang.AutoCloseable" || *q == "java.io.Closeable") {
+                must_close = true;
+            } else if (const ir::ClassDecl* up = program.class_named(*q)) {
+                if (!visit(*up, false)) return false;
+            } else {
+                return false;
+            }
+        }
+        return true;
+    };
+    if (!visit(start, true) || found.size() != 1 || !found[0]->typeparams.empty()) return nullptr;
+    if (must_close && !(found[0]->name == "close" && found[0]->params.empty())) return nullptr;
+    return found[0];
+}
+
+std::optional<std::string> JavaLibrary::lambda_class(cs::Context& w, const ir::TypeP& type) {
+    const std::string* q = cj_qual(type);
+    if (q == nullptr || !lambda_interfaces_.contains(*q)) return std::nullopt;
+    return w.ctype(type) + ".JFn";
+}
+
 std::vector<std::string> JavaLibrary::extra_members(cs::Context& w, ir::ClassDecl& c) {
+    if (c.kind == "interface") {
+        const auto held = c.qname ? lambda_interfaces_.find(*c.qname) : lambda_interfaces_.end();
+        if (held == lambda_interfaces_.end()) return {};
+        const ir::MethodDecl& m = *held->second;
+        w.add_using("System");
+        std::vector<std::string> types, params, names;
+        for (std::size_t i = 0; i < m.params.size(); ++i) {
+            const std::string t = w.ctype(ir::get<ir::Param>(m.params[i])->type);
+            types.push_back(t);
+            names.push_back("a" + std::to_string(i));
+            params.push_back(t + " " + names.back());
+        }
+        const std::string result = w.ctype(m.ret);
+        if (result != "void") types.push_back(result);
+        const std::string word = result == "void" ? "Action" : "Func";
+        const std::string fn = types.empty() ? word : word + "<" + text::join(types, ", ") + ">";
+        std::string self = cs::ident(c.name.value_or(""));
+        if (!c.typeparams.empty()) self += "<" + text::join(c.typeparams, ", ") + ">";
+        return {"public sealed class JFn : " + self,
+                "{",
+                "    private readonly " + fn + " body;",
+                "    public JFn(" + fn + " body) { this.body = body; }",
+                "    public " + result + " " + member_name(w, *m.sym) + "(" + text::join(params, ", ") + ") => body(" + text::join(names, ", ") + ");",
+                "}"};
+    }
     if (c.kind != "class" && c.kind != "record") return {};
     for (const ir::TypeP& i : c.implements) {
         const std::string* q = cj_qual(i);
@@ -1507,6 +1593,14 @@ std::optional<Ex> JavaLibrary::call(cs::Context& w, Node* e, bool statement) {
         }
     }
     if (c != nullptr || owner.empty()) return std::nullopt;
+    if (owner == "java.lang.Throwable" && call.target != nullptr && (s->name == "getSuppressed" || s->name == "addSuppressed")) {
+        w.program().use_runtime("JavaRt");
+        w.program().use_runtime("JavaCollections");
+        if (s->name == "getSuppressed" && call.args.empty()) return Ex{"JLib.Suppressed(" + w.expr(call.target).text + ")", cs::kPrimary};
+        if (s->name == "addSuppressed" && call.args.size() == 1) {
+            return Ex{"JLib.AddSuppressed(" + w.expr(call.target).text + ", " + w.expr(call.args[0]).text + ")", cs::kPrimary};
+        }
+    }
     check_list_change(call);
     if (std::optional<Ex> got = stream_call(w, e)) return got;
     const Row row = lookup(call);
@@ -1965,7 +2059,8 @@ void JavaLibrary::check_lambda(cs::Context& w, ir::Lambda&, const ir::TypeP& typ
     const std::string* q = cj_qual(type);
     if (q == nullptr) return;
     if (w.program().class_named(*q) != nullptr) {
-        throw Decline("lambda", "a lambda of an interface declared in the program (C# lambdas make delegates only)");
+        if (lambda_interfaces_.contains(*q)) return;
+        throw Decline("lambda", "a lambda of an interface of the program with no single method a delegate can stand for");
     }
     if (!cj_functions().contains(*q) && *q != "java.lang.Runnable") {
         throw Decline("lambda", "a lambda of the interface " + *q + " (no C# delegate for it)");

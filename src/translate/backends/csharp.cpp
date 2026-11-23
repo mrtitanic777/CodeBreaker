@@ -460,6 +460,22 @@ bool loop_has_break(const std::vector<Node*>& body) {
     return found;
 }
 
+// Whether a return, break or continue in this code goes somewhere outside it.
+bool jumps_out(Node* n, int loops, std::set<std::string> labels, int switches = 0) {
+    if (n == nullptr) return false;
+    if (ir::is<ir::Return>(n)) return true;
+    if (const auto* b = ir::get<ir::Break>(n)) return b->label ? !labels.contains(*b->label) : loops + switches == 0;
+    if (const auto* c = ir::get<ir::Continue>(n)) return c->label ? !labels.contains(*c->label) : loops == 0;   // (a switch holds a break, not a continue)
+    if (ir::is<ir::Lambda>(n) || ir::is<ir::ClassDecl>(n) || ir::is<ir::LocalClass>(n)) return false;
+    if (ir::is<ir::While>(n) || ir::is<ir::DoWhile>(n) || ir::is<ir::For>(n) || ir::is<ir::ForEach>(n)) ++loops;
+    if (ir::is<ir::Switch>(n)) ++switches;
+    if (const auto* l = ir::get<ir::Labeled>(n); l != nullptr && l->label) labels.insert(*l->label);
+    for (Node* c : ir::children(*n)) {
+        if (jumps_out(c, loops, labels, switches)) return true;
+    }
+    return false;
+}
+
 bool abrupt(const std::vector<Node*>& stmts);
 
 // Does this statement never fall off its end?
@@ -728,6 +744,7 @@ private:
     void local_stmt(const ir::Local& s, Lines& out, const std::string& ind);
     void catch_clause(const ir::Catch& c, const TypeP& t, Lines& out, const std::string& ind);
     void using_stmt(std::span<Node* const> res, Node* body, Lines& out, const std::string& ind);
+    int try_helpers_ = 0;   // numbers the names a lowered try declares: C# forbids reusing one in a scope inside
     void try_stmt(const ir::Try& s, Lines& out, const std::string& ind);
     void switch_stmt(const ir::Switch& s, Lines& out, const std::string& ind);
     std::vector<Node*> initializers(const std::vector<Node*>& in);
@@ -1557,6 +1574,50 @@ void Writer::catch_clause(const ir::Catch& c, const TypeP& t, Lines& out, const 
 
 void Writer::using_stmt(std::span<Node* const> res, Node* body, Lines& out, const std::string& ind) {
     Node* r = res[0];
+    if (java_) {   // C#'s `using` lets a throwing Dispose replace the exception on its way; Java keeps that one and adds the close's to it as suppressed
+        prog_.use_runtime("JavaRt");
+        prog_.use_runtime("JavaCollections");
+        usings_.insert("System");
+        Scope held(*this);
+        const std::string inner = ind + "    ";
+        out.push_back(ind + "{");
+        std::string name;
+        if (const auto* local = ir::get<ir::Local>(r)) {
+            const std::string init = coerce(local->init, local->type);
+            Node* made = strip(local->init);
+            const std::string type = ir::is<ir::New>(made) && type_of(local->init) == local->type ? "var" : ctype(local->type);
+            name = declare(local->sym->name, true);
+            out.push_back(inner + type + " " + name + " = " + init + ";");
+        } else if (const auto* given = ir::get<ir::ExprStmt>(r)) {
+            const std::string value = expr(given->expr).text;
+            name = declare("j_resource" + std::to_string(try_helpers_ + 1), true);
+            out.push_back(inner + "var " + name + " = " + value + ";");
+        } else {
+            throw Decline("using", "a resource " + describe(r));
+        }
+        const std::string thrown = declare("j_thrown" + std::to_string(++try_helpers_), true);
+        const std::string caught = declare("j_caught" + std::to_string(try_helpers_), true);
+        out.push_back(inner + "Exception " + thrown + " = null;");
+        out.push_back(inner + "try");
+        if (res.size() > 1) {
+            out.push_back(inner + "{");
+            using_stmt(res.subspan(1), body, out, inner + "    ");
+            out.push_back(inner + "}");
+        } else {
+            block_into(body, out, inner);
+        }
+        out.push_back(inner + "catch (Exception " + caught + ")");
+        out.push_back(inner + "{");
+        out.push_back(inner + "    " + thrown + " = " + caught + ";");
+        out.push_back(inner + "    throw;");
+        out.push_back(inner + "}");
+        out.push_back(inner + "finally");
+        out.push_back(inner + "{");
+        out.push_back(inner + "    JLib.CloseResource(" + name + ", " + thrown + ");");
+        out.push_back(inner + "}");
+        out.push_back(ind + "}");
+        return;
+    }
     std::string head;
     const auto* loc = ir::get<ir::Local>(r);
     std::optional<Scope> scope;
@@ -1583,6 +1644,36 @@ void Writer::using_stmt(std::span<Node* const> res, Node* body, Lines& out, cons
 }
 
 void Writer::try_stmt(const ir::Try& s, Lines& out, const std::string& ind) {
+    if (java_ && s.finally_body != nullptr && jumps_out(s.finally_body, 0, {})) {   // C# forbids leaving a finally: it is written after the try
+        bool body_jumps = jumps_out(s.body, 0, {});
+        for (Node* c : s.catches) body_jumps = body_jumps || jumps_out(c, 0, {});
+        if (body_jumps) throw Decline("finally", "a finally that returns or jumps, around a body that also does");
+        usings_.insert("System");
+        Scope held(*this);
+        const std::string thrown = declare("j_thrown" + std::to_string(++try_helpers_), true);
+        const std::string caught = declare("j_caught" + std::to_string(try_helpers_), true);
+        const std::string inner = ind + "    ";
+        out.push_back(ind + "{");
+        out.push_back(inner + "Exception " + thrown + " = null;");
+        out.push_back(inner + "try");
+        if (s.resources.empty() && s.catches.empty()) {
+            block_into(s.body, out, inner);
+        } else {
+            ir::Try without = s;
+            without.finally_body = nullptr;
+            out.push_back(inner + "{");
+            try_stmt(without, out, inner + "    ");
+            out.push_back(inner + "}");
+        }
+        out.push_back(inner + "catch (Exception " + caught + ")");
+        out.push_back(inner + "{");
+        out.push_back(inner + "    " + thrown + " = " + caught + ";");
+        out.push_back(inner + "}");
+        block_into(s.finally_body, out, inner);
+        out.push_back(inner + "if (" + thrown + " != null) throw " + thrown + ";");
+        out.push_back(ind + "}");
+        return;
+    }
     if (!s.resources.empty() && s.catches.empty() && s.finally_body == nullptr) {
         using_stmt(s.resources, s.body, out, ind);
         return;
@@ -2232,13 +2323,19 @@ Ex Writer::dispatch(Node* e) {
         Lines names;
         for (Node* p : x->params) names.push_back(declare(ir::get<ir::Param>(p)->sym->name, true));
         const std::string ps = names.size() == 1 ? names[0] : "(" + text::join(names, ", ") + ")";
+        const auto made = [&](std::string written) -> Ex {   // (a lambda of an interface of the program is an object of that interface)
+            if (java_) {
+                if (auto holder = lib().lambda_class(*this, e->type)) return {"new " + *holder + "(" + written + ")", kPrimary};
+            }
+            return {std::move(written), kAssign};
+        };
         if (ir::is<ir::Block>(x->body)) {
             Lines out;
             block_into(x->body, out, "");
             // on lines of its own, re-indented by the caller's line
-            return {ps + " =>\n" + text::join(out, "\n"), kAssign};
+            return made(ps + " =>\n" + text::join(out, "\n"));
         }
-        return {ps + " => " + expr(x->body).text, kAssign};
+        return made(ps + " => " + expr(x->body).text);
     }
     if (const auto* x = ir::get<ir::MethodRef>(e)) {
         if (java_) {
@@ -2246,7 +2343,11 @@ Ex Writer::dispatch(Node* e) {
         }
         if (x->mode == "new") throw Decline("method-ref", "a constructor reference");
         if (ir::is<ir::TypeName>(x->target) && !x->sym->is_static) throw Decline("method-ref", "an unbound method reference (Type::instanceMethod)");
-        return {wrap(x->target, kPrimary) + "." + member_name(*x->sym), kPrimary};
+        std::string group = wrap(x->target, kPrimary) + "." + member_name(*x->sym);
+        if (java_) {
+            if (auto holder = lib().lambda_class(*this, e->type)) group = "new " + *holder + "(" + group + ")";
+        }
+        return {std::move(group), kPrimary};
     }
     if (const auto* x = ir::get<ir::SwitchExpr>(e)) {
         Lines arms;
@@ -2324,7 +2425,15 @@ Ex Writer::dispatch(Node* e) {
             return {"JLib.Jagged<" + ctype(t) + ">(" + text::join(ds, ", ") + ")", kPrimary};
         }
         std::string sizes;
-        for (Node* d : x->dims) sizes += "[" + expr(d).text + "]";
+        for (Node* d : x->dims) {
+            std::string size = expr(d).text;
+            if (java_ && lib().checks_array_sizes() && !ir::is<ir::Lit>(strip(d))) {   // (the program reads the message: Java's is the size)
+                prog_.use_runtime("JavaRt");
+                prog_.use_runtime("JavaCollections");
+                size = "JLib.ArraySize(" + size + ")";
+            }
+            sizes += "[" + size + "]";
+        }
         std::string rest;
         for (std::size_t i = x->dims.size(); i < n; ++i) rest += "[]";
         return {"new " + ctype(base) + sizes + rest, kPrimary};

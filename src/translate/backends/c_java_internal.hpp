@@ -331,10 +331,12 @@ private:
         std::size_t loops = 0;
         const ir::Node* finally_body = nullptr;   // what a jump out of it runs: a finally,
         std::string close;                        // or the closing of a resource
+        std::size_t real_loops = 0;               // the loops around it, without the switches (what a continue counts)
     };
     std::vector<Handler> tries_;              // the handlers open around the statement
     std::unordered_map<std::string, std::size_t> label_depth_;   // how many handlers were open at each label
     std::size_t loops_ = 0;
+    std::size_t real_loops_ = 0;
     bool vol_ = false;                        // locals volatile (the function has a try)
     std::unordered_map<std::string, std::string> captures_;
     bool static_ = false;

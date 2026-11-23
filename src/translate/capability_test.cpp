@@ -138,9 +138,11 @@ CB_TEST("translate.capability.java_source_becomes_cpp17_and_csharp_when_both_pro
     cb::fs::write_text(work / "LibraryKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/LibraryKit.java")));
     cb::fs::write_text(work / "BoxKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/BoxKit.java")));
     cb::fs::write_text(work / "TryKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/c_java/trykit/TryKit.java")));
+    cb::fs::write_text(work / "JumpKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/c_java/trykit/JumpKit.java")));
+    cb::fs::write_text(work / "SwitchTry.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/c_java/trykit/SwitchTry.java")));
     const std::pair<const char*, const char*> cases[] = {{"cpp17", "Streams"}, {"csharp", "Shapes"}, {"csharp", "Streams"}, {"csharp", "StreamKit"}, {"csharp", "Recs"}, {"csharp", "CollectionKit"}, {"csharp", "LocalKit"}, {"csharp", "LibraryKit"}, {"csharp", "BoxKit"},
                                                          {"cpp17", "StreamKit"}, {"cpp17", "CollectionKit"}, {"cpp17", "LocalKit"}, {"cpp17", "LibraryKit"}, {"cpp17", "Library"},
-                                                         {"c", "TryKit"}, {"c", "CollectionKit"}, {"c", "LocalKit"}, {"c", "LibraryKit"}, {"c", "Library"}};
+                                                         {"c", "TryKit"}, {"cpp17", "TryKit"}, {"csharp", "TryKit"}, {"cpp17", "JumpKit"}, {"csharp", "JumpKit"}, {"c", "SwitchTry"}, {"c", "CollectionKit"}, {"c", "LocalKit"}, {"c", "LibraryKit"}, {"c", "Library"}};
     cb::fs::write_text(work / "Library.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/cpp03/modernlib/src/000_Library.java")));
     for (const auto& [to, program] : cases) {
         const cap::Path* path = cap::find_path("java", to);

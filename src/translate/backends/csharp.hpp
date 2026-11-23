@@ -157,6 +157,10 @@ public:
     virtual void record(Context&, const ir::SymP&, ir::Node* /*init*/) {}
     // A lambda of this type (the node's: the interface it is written for).
     virtual void check_lambda(Context&, ir::Lambda&, const ir::TypeP& /*type*/) {}
+    // The class that holds a lambda of this type, where a C# delegate cannot be one (an interface of the program); nothing for a delegate.
+    virtual std::optional<std::string> lambda_class(Context&, const ir::TypeP&) { return std::nullopt; }
+    // Does the program catch a negative array size, so that the exception must carry the source language's message?
+    virtual bool checks_array_sizes() const { return false; }
     // A method reference as the lambda it stands for, where C# has no method group for it; null for "as written".
     virtual ir::Node* method_ref(Context&, ir::Node*) { return nullptr; }
     // `this` (or `Outer.this`) as C# reaches it, where it is an enclosing instance; nothing for plain `this`.
