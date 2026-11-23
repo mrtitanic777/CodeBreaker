@@ -281,7 +281,7 @@ static  block *ScanForLabelReturn( BackRun& back, block *blk )
         son = blk->edge[i].destination.u.blk;
         if( son->edge[0].flags & BEF_DOWN_ONE_CALL )
             continue;
-        if( SafeRecurseCG( back, (func_sr)ScanForLabelReturn, son ) == NULL ) {
+        if( SafeRecurseCG( back, reinterpret_cast<func_sr>(ScanForLabelReturn), son ) == NULL ) {
             return( NULL );
         }
     }
@@ -433,7 +433,7 @@ static  void    EmitNameInCode( BackRun& back )
 static  int ProEpiDataSize( BackRun& back )
 /********************************/
 {
-    return( RoundUp( (int)(pointer_uint)FEAuxInfo( *back.front, NULL, FEINF_PROEPI_DATA_SIZE ), WORD_SIZE ) );
+    return( RoundUp( static_cast<int>(reinterpret_cast<pointer_uint>(FEAuxInfo( *back.front, NULL, FEINF_PROEPI_DATA_SIZE ))), WORD_SIZE ) );
 }
 
 

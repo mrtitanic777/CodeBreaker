@@ -625,20 +625,20 @@ static bool idata_nofixup( AsmRun& assembler, expr_list *opndx )
                 break;
             }
             if( assembler.asmdefs.Code->use32 ) {
-                if( (int_8)value == (int_32)value ) {
+                if( static_cast<int_8>(value) == static_cast<int_32>(value) ) {
                     op_type = OP_I8;
                 } else {
                     op_type = OP_I32;
                 }
-            } else if( (unsigned long)value > USHRT_MAX ) {
+            } else if( static_cast<unsigned long>(value) > USHRT_MAX ) {
                 SetOpsiz32( assembler.asmdefs.Code );
-                if( (int_8)value == (int_32)value ) {
+                if( static_cast<int_8>(value) == static_cast<int_32>(value) ) {
                     op_type = OP_I8;
                 } else {
                     op_type = OP_I32;
                 }
             } else {
-                if( (int_8)value == (int_16)value ) {
+                if( static_cast<int_8>(value) == static_cast<int_16>(value) ) {
                     op_type = OP_I8;
                 } else {
                     op_type = OP_I16;
@@ -647,13 +647,13 @@ static bool idata_nofixup( AsmRun& assembler, expr_list *opndx )
             break;
         } else if( assembler.asmdefs.Code->info.token == T_PUSHW ) {
             op_type = OP_I16;
-            if( (int_8)value == (int_16)value ) {
+            if( static_cast<int_8>(value) == static_cast<int_16>(value) ) {
                 op_type = OP_I8;
             }
             break;
         } else if( assembler.asmdefs.Code->info.token == T_PUSHD ) {
             op_type = OP_I32;
-            if( (int_8)value == (int_32)value ) {
+            if( static_cast<int_8>(value) == static_cast<int_32>(value) ) {
                 op_type = OP_I8;
             }
             break;
@@ -1217,7 +1217,7 @@ static bool process_reg( AsmRun& assembler, token_buffer *tokbuf, expr_list *opn
     case OP_XMM:
         break;
     case OP_ST:
-        st_reg = (unsigned char)opndx->idx_reg & BIT_012;
+        st_reg = opndx->idx_reg & BIT_012;
         assembler.asmdefs.Code->info.rm_byte |= st_reg;
         if( st_reg != 0 )
             assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_ST_REG;
@@ -1644,7 +1644,7 @@ static bool check_size( AsmRun& assembler )
         // ENTER has to be OP_I16, OP_I8
         if( op1 == OP_I32 ) {
             //parse_phase_1 will treat 16-bit data as OP_I32 if CPU is 386
-            if( assembler.asmdefs.Code->data[OPND1] > (signed long)USHRT_MAX ) {
+            if( assembler.asmdefs.Code->data[OPND1] > static_cast<signed long>(USHRT_MAX) ) {
                 // if op1 is really 32-bit data, then error
                 AsmError( *assembler.front, IMMEDIATE_DATA_TOO_BIG );
                 state = RC_ERROR;
@@ -1830,11 +1830,11 @@ static bool check_size( AsmRun& assembler )
             }
             if( op1_size == 0 ) {
                 if( ( op1 & OP_M_ANY ) && ( op2 & OP_I ) ) {
-                    if( (unsigned long)assembler.asmdefs.Code->data[OPND2] > USHRT_MAX ) {
+                    if( static_cast<unsigned long>(assembler.asmdefs.Code->data[OPND2]) > USHRT_MAX ) {
                          assembler.asmdefs.Code->mem_type = MT_DWORD;
                          assembler.asmdefs.Code->info.opcode |= W_BIT;
                          assembler.asmdefs.Code->info.opnd_type[OPND2] = OP_I32;
-                    } else if( (unsigned long)assembler.asmdefs.Code->data[OPND2] > UCHAR_MAX ) {
+                    } else if( static_cast<unsigned long>(assembler.asmdefs.Code->data[OPND2]) > UCHAR_MAX ) {
                          assembler.asmdefs.Code->mem_type = MT_WORD;
                          assembler.asmdefs.Code->info.opcode |= W_BIT;
                          assembler.asmdefs.Code->info.opnd_type[OPND2] = OP_I16;
@@ -1844,9 +1844,9 @@ static bool check_size( AsmRun& assembler )
                     }
                 } else if( ( op1 & OP_M_ANY ) && ( op2 & ( OP_R | OP_SR ) ) ) {
                 } else if( ( op1 & ( OP_MMX | OP_XMM ) ) && ( op2 & OP_I ) ) {
-                    if( (unsigned long)assembler.asmdefs.Code->data[OPND2] > USHRT_MAX ) {
+                    if( static_cast<unsigned long>(assembler.asmdefs.Code->data[OPND2]) > USHRT_MAX ) {
                          assembler.asmdefs.Code->info.opnd_type[OPND2] = OP_I32;
-                    } else if( (unsigned long)assembler.asmdefs.Code->data[OPND2] > UCHAR_MAX ) {
+                    } else if( static_cast<unsigned long>(assembler.asmdefs.Code->data[OPND2]) > UCHAR_MAX ) {
                          assembler.asmdefs.Code->info.opnd_type[OPND2] = OP_I16;
                     } else {
                          assembler.asmdefs.Code->info.opnd_type[OPND2] = OP_I8;

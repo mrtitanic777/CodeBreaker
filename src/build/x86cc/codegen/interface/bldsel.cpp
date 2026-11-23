@@ -136,7 +136,7 @@ int SelCompare( BackRun& back, const signed_64 *lo1, const signed_64 *lo2 )
 static bool     NodeLess( BackRun& back, void *s1, void *s2 )
 /********************************************/
 {
-    return( SelCompare( back, &((const select_list *)s1)->low, &((const select_list *)s2)->low ) < 0 );
+    return( SelCompare( back, &(static_cast<const select_list *>(s1))->low, &(static_cast<const select_list *>(s2))->low ) < 0 );
 }
 
 
@@ -341,7 +341,7 @@ static  an      GenScanTable( BackRun& back, an node, sel_handle s_node, const t
         }
     }
     ScanBlock( back, MakeScanTab( back, s_node, value_type, real_type ),
-               node, (type_class_def)value_type, s_node->other_wise );
+               node, static_cast<type_class_def>(value_type), s_node->other_wise );
     return( node );
 }
 

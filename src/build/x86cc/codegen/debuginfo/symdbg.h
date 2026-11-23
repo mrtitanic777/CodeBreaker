@@ -83,7 +83,7 @@
 #define FIELD_PROTECTED     0x04
 #define FIELD_PRIVATE       0x08
 
-#define NO_OFFSET   ((offset)-1)
+#define NO_OFFSET   (static_cast<offset>(-1))
 
 enum field_kind {
     FIELD_OFFSET,    /* member */

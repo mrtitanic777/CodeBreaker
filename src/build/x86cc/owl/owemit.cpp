@@ -126,7 +126,7 @@ void OWLENTRY OWLEmitMetaReloc( BackRun& back, owl_section_handle section, owl_o
 
     owl_section_handle  target;
 
-    target = (owl_section_handle)data;
+    target = static_cast<owl_section_handle>(data);
     _Log(( section->file, "OWLEmitMetaReloc( %x, %x, %x, %x )\n",
                 section, offset, target, type ));
     doNewReloc( back, section, target->sym, offset, type );
@@ -141,11 +141,11 @@ void OWLENTRY OWLEmitRelocAddend( BackRun& back, owl_section_handle section, owl
 
     _Log(( section->file, "OWLEmitRelocAddend( %x, %x, %x )\n",
                 section, type, addend ));
-    OWLTellData( section, section->location, (char *)&data, sizeof( data ) );
+    OWLTellData( section, section->location, reinterpret_cast<char *>(&data), sizeof( data ) );
     reloc.type = type;
     bit_mask = OWLRelocBitMask( back, section->file, &reloc );
     data = (data&~bit_mask)|(((addend&bit_mask)+(data&bit_mask))&bit_mask);
-    OWLEmitData( back, section, (char *)&data, sizeof( data ) );
+    OWLEmitData( back, section, reinterpret_cast<char *>(&data), sizeof( data ) );
 }
 
 void OWLENTRY OWLEmitImport( BackRun& back, owl_file_handle file, const char *name ) {

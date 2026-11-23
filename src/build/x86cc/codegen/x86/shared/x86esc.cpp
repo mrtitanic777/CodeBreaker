@@ -141,7 +141,7 @@ void  DoFESymRef( BackRun& back, cg_sym_handle sym, cg_class class_, offset val,
         if( ((esc_attr & ESCA_BASE) == 0)
           && IsTargetModel( back, CGSW_X86_WINDOWS )
           && (attr & FE_PROC)
-          && ((call_class_target)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL) ) {
+          && (static_cast<call_class_target>(reinterpret_cast<pointer_uint>(FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ))) & FECALL_X86_FAR_CALL) ) {
             esc_attr |= ESCA_LDOF;
         }
         if( UseImportForm( back, attr ) ) {
@@ -155,7 +155,7 @@ void  DoFESymRef( BackRun& back, cg_sym_handle sym, cg_class class_, offset val,
             DoRelocRef( back, sym, CG_FE, AskSegID( back, sym, CG_FE ), val, esc_attr );
         } else {
             // handle mismatch Fix it!
-            DoRelocRef( back, (cg_sym_handle)AskForSymLabel( back, sym, CG_FE ), CG_LBL, AskSegID( back, sym, CG_FE ), val, esc_attr );
+            DoRelocRef( back, reinterpret_cast<cg_sym_handle>(AskForSymLabel( back, sym, CG_FE )), CG_LBL, AskSegID( back, sym, CG_FE ), val, esc_attr );
         }
     } else {                                /* CG_TBL, CG_LBL or CG_BCK*/
         DoRelocRef( back, sym, class_, AskSegID( back, sym, class_ ), val, esc_attr );

@@ -119,8 +119,8 @@ void DW_CarveFree(
     carve_t cv,
     void *elm )
 {
-    *(void **)elm = cv->free_list;
-    cv->free_list = (void **)elm;
+    *static_cast<void **>(elm) = cv->free_list;
+    cv->free_list = static_cast<void **>(elm);
 }
 
 
@@ -130,9 +130,9 @@ void *DW_CarveFreeLink(
 {
     void            *next;
 
-    next = *(void **)elm;
-    *(void**)elm = cv->free_list;
-    cv->free_list = (void **)elm;
+    next = *static_cast<void **>(elm);
+    *static_cast<void**>(elm) = cv->free_list;
+    cv->free_list = static_cast<void **>(elm);
     return( next );
 }
 
@@ -145,8 +145,8 @@ void DW_CarveFreeChain(
 
     while( list != NULL ) {
         cur = list;
-        list = *(void **)list;
-        *(void **)cur = cv->free_list;
-        cv->free_list = (void **)cur;
+        list = *static_cast<void **>(list);
+        *static_cast<void **>(cur) = cv->free_list;
+        cv->free_list = static_cast<void **>(cur);
     }
 }

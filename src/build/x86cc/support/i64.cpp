@@ -324,7 +324,7 @@ int U64Cnv10( unsigned_64 *res, char c )
     }
     save = tmp2.u._32[L] + c;
     tmp2.u._32[L] = save;
-    if( save < (unsigned)c ) { // add carry;
+    if( save < static_cast<unsigned>(c) ) { // add carry;
         ++tmp2.u._32[H];
         if( tmp2.u._32[H] == 0 ) {
             over = 1;

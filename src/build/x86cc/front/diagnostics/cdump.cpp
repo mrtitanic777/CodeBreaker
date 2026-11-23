@@ -248,7 +248,7 @@ static void DumpArray( FrontRun& front, TYPEPTR typ, STRCHUNK *pch )
     while( typ->decl_type == TYP_ARRAY ) {
         size = typ->u.array->dimension;
         if( size != 0 ) {
-            sprintf( tempbuf, "[%u]", (unsigned)size );
+            sprintf( tempbuf, "[%u]", size );
             ChunkSaveStr( front, pch, tempbuf );
         } else {
             ChunkSaveStr( front, pch, "[]" );
@@ -320,7 +320,7 @@ static void DumpBaseType( FrontRun& front, TYPEPTR typ, STRCHUNK *pch )
             ChunkSaveStrWord( front, pch, "char" );
         } else if( typ->decl_type == TYP_FIELD || typ->decl_type == TYP_UFIELD ) {
             ChunkSaveStr( front, pch, CTypeNames[typ->u.f.field_type] );
-            sprintf( tempbuf, ":%u", (unsigned)typ->u.f.field_width );
+            sprintf( tempbuf, ":%u", static_cast<unsigned>(typ->u.f.field_width) );
             ChunkSaveStr( front, pch, tempbuf );
         } else {
             ChunkSaveStrWord( front, pch, CTypeNames[typ->decl_type] );

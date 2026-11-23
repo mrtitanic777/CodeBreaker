@@ -353,7 +353,7 @@ instruction     *rDOCVT( BackRun& back, instruction *ins )
         how = AskHow( back, ins->base_type_class, ins->type_class );
     }
     if( how < OK ) {
-        new_ins = doConversion( back, ins, (type_class_def)how );
+        new_ins = doConversion( back, ins, static_cast<type_class_def>(how) );
     } else if( how == FPOK ) {
         ins->head.opcode = OP_MOV;
         ins->table = NULL;

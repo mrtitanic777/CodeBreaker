@@ -163,9 +163,9 @@ static bool         symIsExported( BackRun& back, cg_sym_handle );
 
 
 template <class T>
-inline T *ArrayOf( array_control *what ) { return (T *)what->array; }
+inline T *ArrayOf( array_control *what ) { return static_cast<T *>(what->array); }
 
-inline unsigned char &OmfNameLen( char *s ) { return ( *(unsigned char *)(s) ); }
+inline unsigned char &OmfNameLen( char *s ) { return ( *reinterpret_cast<unsigned char *>(s) ); }
 
 enum {
     TIME_SEC_B  = 0,
@@ -316,7 +316,7 @@ static omf_idx GetNameIdx( BackRun& back, const char *name, const char *suff )
         *owner = curr;
         curr->next = NULL;
         curr->idx = ++back.x86omf->NameIndex;
-        curr->name[0] = (unsigned char)len;
+        curr->name[0] = static_cast<unsigned char>(len);
         strcpy( curr->name + 1, idxname );
         return( back.x86omf->NameIndex );
     }
@@ -345,11 +345,11 @@ static void PutObjOMFRec( BackRun& back, byte class_, array_control *actl )
     if( actl->used > 0 ) {
         blen = ( actl->used + 1 );
         cksum = class_;
-        cksum += DoSum( static_cast<const byte *>((const void *)&blen), sizeof( blen ) );
+        cksum += DoSum( static_cast<const byte *>(reinterpret_cast<const void *>(&blen)), sizeof( blen ) );
         cksum += DoSum( static_cast<const byte *>(actl->array), actl->used );
         cksum = -cksum;
         PutObjBytes( back, &class_, 1 );
-        PutObjBytes( back, (const byte *)&blen, sizeof( blen ) );
+        PutObjBytes( back, reinterpret_cast<const byte *>(&blen), sizeof( blen ) );
         PutObjBytes( back, actl->array, actl->used );
         PutObjBytes( back, &cksum, 1 );
         actl->used = 0;
@@ -363,7 +363,7 @@ static void PatchObj( BackRun& back, objhandle rec, objoffset roffset, const byt
     uint_16         reclen;
     byte            inbuff[80];
 
-    SeekGetObj( back, rec, 1, (byte *)&reclen, 2 );
+    SeekGetObj( back, rec, 1, reinterpret_cast<byte *>(&reclen), 2 );
     reclen = ( reclen );
     SeekGetObj( back, rec, roffset + 3, inbuff, len );
     SeekPutObj( back, rec, roffset + 3, buff, len );
@@ -503,7 +503,7 @@ static  void    SegmentClass( BackRun& back, index_rec *rec )
 {
     char        *class_name;
 
-    class_name = static_cast<char *>(FEAuxInfo( *back.front, (pointer)(pointer_uint)rec->segid, FEINF_CLASS_NAME ));
+    class_name = static_cast<char *>(FEAuxInfo( *back.front, reinterpret_cast<pointer>(static_cast<pointer_uint>(rec->segid)), FEINF_CLASS_NAME ));
     if( class_name != NULL ) {
         rec->cidx = GetNameIdx( back, class_name, "" );
     }
@@ -554,7 +554,7 @@ static void *allocOut( BackRun& back, array_control *dest, unsigned size )
     }
     size = dest->used;
     dest->used = need;
-    return( (char *)dest->array + dest->entry * size );
+    return( static_cast<char *>(dest->array) + dest->entry * size );
 }
 
 
@@ -576,14 +576,14 @@ static void *allocOutData( BackRun& back, unsigned size )
         obj_data->used = need;
     }
     SetMaxWritten(back);
-    return( (char *)obj_data->array + obj_data->entry * i );
+    return( static_cast<char *>(obj_data->array) + obj_data->entry * i );
 }
 
 
 static  void    OutByte( BackRun& back, byte value, array_control *dest )
 /********************************************************/
 {
-    *(byte *)allocOut( back, dest, sizeof( byte ) ) = value;
+    *static_cast<byte *>(allocOut( back, dest, sizeof( byte ) )) = value;
 }
 
 static  void    OutShort( BackRun& back, uint_16 value, array_control *dest )
@@ -997,7 +997,7 @@ static  void    OutName( BackRun& back, const char *name, array_control *dest )
     if( len >= 256 ) {
         len = 255;
         FEMessage( *back.front, FEMSG_INFO_PROC, const_cast<pointer>(static_cast<const void *>("Code generator truncated name, its length exceeds allowed maximum.")) );
-        FEMessage( *back.front, FEMSG_INFO_PROC, (pointer)name );
+        FEMessage( *back.front, FEMSG_INFO_PROC, const_cast<pointer>(static_cast<const void *>(name)) );
     }
     OutByte( back, len, dest );
     OutBuffer( back, name, len, dest );
@@ -1006,7 +1006,7 @@ static  void    OutName( BackRun& back, const char *name, array_control *dest )
 static  void    OutObjectName( BackRun& back, cg_sym_handle sym, array_control *dest )
 /*********************************************************************/
 {
-    DoOutObjectName( back, sym, (outputter_fn *)(OutName), (outputter_data)(dest), NORMAL );
+    DoOutObjectName( back, sym, reinterpret_cast<outputter_fn *>(OutName), reinterpret_cast<outputter_data>(dest), NORMAL );
 }
 
 static  void    OutString( BackRun& back, const char *name, array_control *dest )
@@ -1284,7 +1284,7 @@ static void    objInit( BackRun& back )
         } else {
             OutByte( back, 0, names );
         }
-        OutString( back, (const char *)FEAuxInfo( *back.front, NULL, FEINF_SOURCE_LANGUAGE ), names );
+        OutString( back, static_cast<const char *>(FEAuxInfo( *back.front, NULL, FEINF_SOURCE_LANGUAGE )), names );
         PutObjOMFRec( back, CMD_COMENT, names );
     }
     for( depend = NULL; (depend = FEAuxInfo( *back.front, depend, FEINF_NEXT_DEPENDENCY )) != NULL; ) {
@@ -1294,7 +1294,7 @@ static void    objInit( BackRun& back )
          * for better portability, we use UTC instead of local time,
          * so as not to be dependent on the time zone
          */
-        OutLongInt( back, timet2dosu( *(time_t *)FEAuxInfo( *back.front, depend, FEINF_DEPENDENCY_TIMESTAMP ) ), names );
+        OutLongInt( back, timet2dosu( *static_cast<time_t *>(FEAuxInfo( *back.front, depend, FEINF_DEPENDENCY_TIMESTAMP )) ), names );
         OutName( back, static_cast<const char *>(FEAuxInfo( *back.front, depend, FEINF_DEPENDENCY_NAME )), names );
         PutObjOMFRec( back, CMD_COMENT, names );
     }
@@ -1347,7 +1347,7 @@ static void    objInit( BackRun& back )
 static offset  askLocation( BackRun& back )
 /*************************/
 {
-    return( (offset)back.x86omf->CurrSeg->location );
+    return( static_cast<offset>(back.x86omf->CurrSeg->location) );
 }
 
 static void chkDbgSegSize( BackRun& back, offset max, bool typing )
@@ -1360,7 +1360,7 @@ static void chkDbgSegSize( BackRun& back, offset max, bool typing )
     if( typing )
         info++;
     { segment_id old_segid = ChangeOP( back, *info->segid );
-        curr = (offset)back.x86omf->CurrSeg->location;
+        curr = static_cast<offset>(back.x86omf->CurrSeg->location);
         if( curr >= max ) {
             if( typing ) {
                 back.x86omf->DbgTypeSize += curr;
@@ -1594,7 +1594,7 @@ static omf_idx NeedComdatNidx( BackRun& back, import_kind kind )
 /***********************************************/
 {
     if( back.x86omf->CurrSeg->comdat_nidx == 0 ) {
-        DoOutObjectName( back, back.x86omf->CurrSeg->comdat_symbol, (outputter_fn *)(GetSymLName), (outputter_data)(&back.x86omf->CurrSeg->comdat_nidx), kind );
+        DoOutObjectName( back, back.x86omf->CurrSeg->comdat_symbol, reinterpret_cast<outputter_fn *>(GetSymLName), reinterpret_cast<outputter_data>(&back.x86omf->CurrSeg->comdat_nidx), kind );
         FlushNames(back);
     }
     return( back.x86omf->CurrSeg->comdat_nidx );
@@ -1608,7 +1608,7 @@ static void    outSelect( BackRun& back, bool starts )
 
     if( starts ) {
         back.x86omf->selIdx = back.x86omf->CurrSeg->sidx;
-        back.x86omf->SelStart = (offset)back.x86omf->CurrSeg->location;
+        back.x86omf->SelStart = static_cast<offset>(back.x86omf->CurrSeg->location);
     } else if( back.x86omf->selIdx != 0 ) {
         if( !back.x86omf->CurrSeg->start_data_in_code ) {
             EjectLEData(back);
@@ -1626,7 +1626,7 @@ static void    outSelect( BackRun& back, bool starts )
                 OutIdx( back, back.x86omf->selIdx, obj_data );
             }
             OutOffset( back, back.x86omf->SelStart, obj_data );
-            OutOffset( back, (offset)back.x86omf->CurrSeg->location, obj_data );
+            OutOffset( back, static_cast<offset>(back.x86omf->CurrSeg->location), obj_data );
             PutObjOMFRec( back, CMD_COMENT, obj_data );
         }
         back.x86omf->selIdx = 0;
@@ -1654,7 +1654,7 @@ static  void    OutLEDataStart( BackRun& back, bool iterated )
             OutByte( back, flag, obj_data );
             OutByte( back, 0x10, obj_data );
             OutByte( back, 0, obj_data );
-            OutOffset( back, (offset)back.x86omf->CurrSeg->location, obj_data );
+            OutOffset( back, static_cast<offset>(back.x86omf->CurrSeg->location), obj_data );
             OutIdx( back, 0, obj_data );
             if( back.x86omf->CurrSeg->btype == BASE_GRP ) {
                 OutIdx( back, back.x86omf->CurrSeg->base, obj_data );  /* group index*/
@@ -1666,12 +1666,12 @@ static  void    OutLEDataStart( BackRun& back, bool iterated )
         } else { /* LEDATA */
             OutIdx( back, back.x86omf->CurrSeg->sidx, obj_data );
 #if _TARGET & _TARG_80386
-            OutOffset( back, (offset)back.x86omf->CurrSeg->location, obj_data );
+            OutOffset( back, back.x86omf->CurrSeg->location, obj_data );
 #else /* SEG32DBG dwarf, codeview */
             if( back.x86omf->CurrSeg->attr & SEG_USE_32 ) {
                 OutLongOffset( back, back.x86omf->CurrSeg->location, obj_data );
             } else {
-                OutOffset( back, (offset)back.x86omf->CurrSeg->location, obj_data );
+                OutOffset( back, static_cast<offset>(back.x86omf->CurrSeg->location), obj_data );
             }
 #endif
         }
@@ -1804,7 +1804,7 @@ static  void    GenComdef( BackRun& back )
             /*
              * element size
              */
-            OutByte( back, (byte)size, comdef );
+            OutByte( back, static_cast<byte>(size), comdef );
             size >>= 8;
             --count;
         } while( count != 0 );
@@ -1945,14 +1945,14 @@ static  void    FiniTarg( BackRun& back )
     } else {
 #if _TARGET & _TARG_80386
         size_s = ( size_l );
-        PatchObj( back, obj->segfix, SEGDEF_SIZE, (byte *)&size_s, sizeof( size_s ) );
+        PatchObj( back, obj->segfix, SEGDEF_SIZE, reinterpret_cast<byte *>(&size_s), sizeof( size_s ) );
 #else /* SEG32DBG dwarf, codeview */
         if( rec->attr & SEG_USE_32 ) {
             size_l = ( size_l );
-            PatchObj( back, obj->segfix, SEGDEF_SIZE, (byte *)&size_l, sizeof( size_l ) );
+            PatchObj( back, obj->segfix, SEGDEF_SIZE, reinterpret_cast<byte *>(&size_l), sizeof( size_l ) );
         } else {
             size_s = ( size_l );
-            PatchObj( back, obj->segfix, SEGDEF_SIZE, (byte *)&size_s, sizeof( size_s ) );
+            PatchObj( back, obj->segfix, SEGDEF_SIZE, reinterpret_cast<byte *>(&size_s), sizeof( size_s ) );
         }
 #endif
     }
@@ -1993,7 +1993,7 @@ static void FiniWVTypes( BackRun& back )
     WVTypesEof(back);
     info = &back.x86omf->DbgSegs[1];
     { segment_id old_segid = ChangeOP( back, *info->segid );
-        curr = (offset)back.x86omf->CurrSeg->location;
+        curr = static_cast<offset>(back.x86omf->CurrSeg->location);
         curr += back.x86omf->DbgTypeSize;
         *info->segid = dbgSegDef( back, info->seg_name, info->class_name, SEG_COMB_PRIVATE );
         setOP( back, *info->segid );
@@ -2041,7 +2041,7 @@ static void DoSegARange( BackRun& back, offset *codesize, index_rec *rec )
         if( rec->max_size != 0 ) {
             { segment_id old_segid = ChangeOP( back, rec->segid );
                 if( back.x86omf->CurrSeg->comdat_symbol != NULL ) {
-                    DFSymRange( back, rec->comdat_symbol, (offset)rec->comdat_size );
+                    DFSymRange( back, rec->comdat_symbol, static_cast<offset>(rec->comdat_size) );
                 }
                 NormalData(back);
                 DFSegRange(back);
@@ -2062,28 +2062,28 @@ static  void    DoPatch( BackRun& back, obj_patch *patch, offset lc )
 
     if( patch->attr & LONG_PATCH ) {
         if( patch->attr & ADD_PATCH ) {
-            GetFromObj( back, patch->ref, patch->where, (byte *)&lword_val, sizeof( lword_val ) );
+            GetFromObj( back, patch->ref, patch->where, reinterpret_cast<byte *>(&lword_val), sizeof( lword_val ) );
             lword_val += lc;
         } else {
             lword_val = ( lc );
         }
-        PatchObj( back, patch->ref, patch->where, (byte *)&lword_val, sizeof( lword_val ) );
+        PatchObj( back, patch->ref, patch->where, reinterpret_cast<byte *>(&lword_val), sizeof( lword_val ) );
     } else if( patch->attr & WORD_PATCH ) {
         if( patch->attr & ADD_PATCH ) {
-            GetFromObj( back, patch->ref, patch->where, (byte *)&word_val, sizeof( word_val ) );
+            GetFromObj( back, patch->ref, patch->where, reinterpret_cast<byte *>(&word_val), sizeof( word_val ) );
             word_val += lc;
         } else {
             word_val = ( lc );
         }
-        PatchObj( back, patch->ref, patch->where, (byte *)&word_val, sizeof( word_val ) );
+        PatchObj( back, patch->ref, patch->where, reinterpret_cast<byte *>(&word_val), sizeof( word_val ) );
     } else {
         if( patch->attr & ADD_PATCH ) {
-            GetFromObj( back, patch->ref, patch->where, (byte *)&byte_val, sizeof( byte_val ) );
+            GetFromObj( back, patch->ref, patch->where, &byte_val, sizeof( byte_val ) );
             byte_val += lc;
         } else {
             byte_val = lc;
         }
-        PatchObj( back, patch->ref, patch->where, (byte *)&byte_val, sizeof( byte_val ) );
+        PatchObj( back, patch->ref, patch->where, &byte_val, sizeof( byte_val ) );
     }
 }
 
@@ -2095,7 +2095,7 @@ static  void    FiniAbsPatches( BackRun& back )
 
     while( (apatch = back.x86omf->AbsPatches) != NULL ) {
         back.x86omf->AbsPatches = apatch->link;
-        DoPatch( back, &apatch->patch, (offset)apatch->value );
+        DoPatch( back, &apatch->patch, static_cast<offset>(apatch->value) );
         CGFree( back, apatch );
     }
 }
@@ -2191,7 +2191,7 @@ static void    objFini( BackRun& back )
      */
     for( lib = NULL; (lib = static_cast<char *>(FEAuxInfo( *back.front, lib, FEINF_NEXT_LIBRARY ))) != NULL; ) {
         OutShort( back, LIBNAME_COMMENT, &back.x86omf->Imports );
-        OutString( back, (char *)FEAuxInfo( *back.front, lib, FEINF_LIBRARY_NAME ), &back.x86omf->Imports );
+        OutString( back, static_cast<char *>(FEAuxInfo( *back.front, lib, FEINF_LIBRARY_NAME )), &back.x86omf->Imports );
         PutObjOMFRec( back, CMD_COMENT, &back.x86omf->Imports );
     }
     /*
@@ -2220,8 +2220,8 @@ static void    objFini( BackRun& back )
     FiniAbsPatches(back);
     EndModule(back);
     CloseObj(back);
-    FEMessage( *back.front, FEMSG_CODE_SIZE, (pointer)(pointer_uint)back.x86omf->CodeSize );
-    FEMessage( *back.front, FEMSG_DATA_SIZE, (pointer)(pointer_uint)back.x86omf->DataSize );
+    FEMessage( *back.front, FEMSG_CODE_SIZE, reinterpret_cast<pointer>(static_cast<pointer_uint>(back.x86omf->CodeSize)) );
+    FEMessage( *back.front, FEMSG_DATA_SIZE, reinterpret_cast<pointer>(static_cast<pointer_uint>(back.x86omf->DataSize)) );
 }
 
 
@@ -2289,7 +2289,7 @@ static  void    OutExport( BackRun& back, cg_sym_handle sym )
         OutIdx( back, obj->index, obj_exports );          /* segment index*/
     }
     OutObjectName( back, sym, obj_exports );
-    OutOffset( back, (offset)back.x86omf->CurrSeg->location, obj_exports );
+    OutOffset( back, static_cast<offset>(back.x86omf->CurrSeg->location), obj_exports );
     OutIdx( back, 0, obj_exports );                       /* type index*/
 }
 
@@ -2323,7 +2323,7 @@ static void GenImportResolve( BackRun& back, cg_sym_handle sym, omf_idx idx, omf
     import_type         type;
 
     cmt = InitArray( back, sizeof( byte ), MODEST_HDR, INCREMENT_HDR );
-    type = (import_type)(pointer_uint)FEAuxInfo( *back.front, sym, FEINF_IMPORT_TYPE );
+    type = static_cast<import_type>(reinterpret_cast<pointer_uint>(FEAuxInfo( *back.front, sym, FEINF_IMPORT_TYPE )));
     switch( type ) {
     case IMPORT_IS_LAZY:
         OutShort( back, LAZY_EXTRN_COMMENT, cmt );
@@ -2352,7 +2352,7 @@ static void GenImportResolve( BackRun& back, cg_sym_handle sym, omf_idx idx, omf
         OutIdx( back, def_idx, cmt );
         for( cond = FEAuxInfo( *back.front, sym, FEINF_CONDITIONAL_IMPORT ); cond != NULL; cond = FEAuxInfo( *back.front, cond, FEINF_NEXT_CONDITIONAL ) ) {
             sym = static_cast<cg_sym_handle>(FEAuxInfo( *back.front, cond, FEINF_CONDITIONAL_SYMBOL ));
-            DoOutObjectName( back, sym, (outputter_fn *)(GetSymLName), (outputter_data)(&nidx), NORMAL );
+            DoOutObjectName( back, sym, reinterpret_cast<outputter_fn *>(GetSymLName), reinterpret_cast<outputter_data>(&nidx), NORMAL );
             OutIdx( back, nidx, cmt );
         }
         FlushNames(back);
@@ -2388,7 +2388,7 @@ static omf_idx  GenImport( BackRun& back, cg_sym_handle sym, bool alt_dllimp )
                 kind = PIC_RW;
             }
         }
-        DoOutObjectName( back, sym, (outputter_fn *)(OutName), (outputter_data)(&back.x86omf->Imports), kind );
+        DoOutObjectName( back, sym, reinterpret_cast<outputter_fn *>(OutName), reinterpret_cast<outputter_data>(&back.x86omf->Imports), kind );
         OutIdx( back, 0, &back.x86omf->Imports );           /* type index*/
         def_resolve = static_cast<cg_sym_handle>(FEAuxInfo( *back.front, sym, FEINF_DEFAULT_IMPORT_RESOLVE ));
         if( def_resolve != NULL && def_resolve != sym ) {
@@ -2404,7 +2404,7 @@ static  omf_idx     GenImportComdat( BackRun& back )
 /*****************************************/
 {
     CheckImportSwitch( back, (FEAttr( *back.front, back.x86omf->CurrSeg->comdat_symbol ) & FE_GLOBAL) == 0 );
-    DoOutObjectName( back, back.x86omf->CurrSeg->comdat_symbol, (outputter_fn *)(OutName), (outputter_data)(&back.x86omf->Imports), SPECIAL );
+    DoOutObjectName( back, back.x86omf->CurrSeg->comdat_symbol, reinterpret_cast<outputter_fn *>(OutName), reinterpret_cast<outputter_data>(&back.x86omf->Imports), SPECIAL );
     OutIdx( back, 0, &back.x86omf->Imports );           /* type index*/
     return( getImportHdl(back) );
 }
@@ -2536,7 +2536,7 @@ static void    outLabel( BackRun& back, label_handle lbl )
         }
         TellCommonLabel( back, lbl, back.x86omf->CurrSeg->comdat_prefix_import );
     }
-    lc = (offset)back.x86omf->CurrSeg->location;
+    lc = static_cast<offset>(back.x86omf->CurrSeg->location);
     TellAddress( back, lbl, lc );
     for( i = back.x86omf->SegInfo.used; i-- > 0; ) {
         obj = ArrayOf<index_rec>( &back.x86omf->SegInfo)[i].obj;
@@ -2560,7 +2560,7 @@ static void    outLabel( BackRun& back, label_handle lbl )
                             val = GetU16Unaligned( patchptr ) + lc;
                             PutU16Unaligned( patchptr, val );
                         } else {
-                            *(byte *)patchptr += lc;
+                            *static_cast<byte *>(patchptr) += lc;
                         }
                     } else {
                         if( tpatch->patch.attr & LONG_PATCH ) {
@@ -2568,7 +2568,7 @@ static void    outLabel( BackRun& back, label_handle lbl )
                         } else if( tpatch->patch.attr & WORD_PATCH ) {
                             PutU16Unaligned( patchptr, lc );
                         } else {
-                            *(byte *)patchptr = lc;
+                            *static_cast<byte *>(patchptr) = lc;
                         }
                     }
                     *owner = tpatch->link;
@@ -2593,7 +2593,7 @@ static void    absPatch( BackRun& back, abspatch_handle patch_handle, offset lc 
 {
     abs_patch   *apatch;
 
-    apatch = (abs_patch *)patch_handle;
+    apatch = static_cast<abs_patch *>(patch_handle);
     if( apatch->flags & AP_HAVE_OFFSET ) {
         DoPatch( back, &apatch->patch, lc );
         FreeAbsPatch( back, apatch );
@@ -2751,10 +2751,10 @@ static void    incLocation( BackRun& back, offset by )
         } else if( back.x86omf->CurrSeg->comdat_label == NULL ) {
             back.x86omf->CurrSeg->big = 1;
             if( back.x86omf->CurrSeg->attr & SEG_USE_32 ) {
-                back.x86omf->CurrSeg->max_size = (long_offset)(-1);
-                back.x86omf->CurrSeg->location = (long_offset)(-1);
+                back.x86omf->CurrSeg->max_size = static_cast<long_offset>(-1);
+                back.x86omf->CurrSeg->location = static_cast<long_offset>(-1);
             } else {
-                back.x86omf->CurrSeg->max_size = (short_offset)(-1);
+                back.x86omf->CurrSeg->max_size = static_cast<short_offset>(-1);
                 back.x86omf->CurrSeg->location =  1L << 8 * sizeof( short_offset );
             }
         }
@@ -2782,7 +2782,7 @@ static void    setLocation( BackRun& back, offset loc )
 static  void    DecLocation( BackRun& back, offset by )
 /**************************************/
 {
-    setLocation( back, (offset)back.x86omf->CurrSeg->location - by );
+    setLocation( back, static_cast<offset>(back.x86omf->CurrSeg->location) - by );
 }
 
 static void    outFPPatch( BackRun& back, fp_patches i )
@@ -2949,7 +2949,7 @@ static void    outDataByte( BackRun& back, byte value )
 {
     SetPendingLine(back);
     CheckLEDataSize( back, sizeof( byte ), true );
-    *(byte *)allocOutData( back, sizeof( byte ) ) = value;
+    *static_cast<byte *>(allocOutData( back, sizeof( byte ) )) = value;
 }
 
 static void    outDataShort( BackRun& back, uint_16 value )
@@ -2993,7 +2993,7 @@ static void    outAbsPatch( BackRun& back, abs_patch *apatch, patch_attr attr )
     } else if( attr & WORD_PATCH ) {
         outDataShort( back, value );
     } else {
-        outDataByte( back, (byte)value );
+        outDataByte( back, static_cast<byte>(value) );
     }
 }
 
@@ -3029,7 +3029,7 @@ static void    outImport( BackRun& back, cg_sym_handle sym, fix_class class_, bo
     attr = FEAttr( *back.front, sym );
 #if  _TARGET & _TARG_80386
     if( !rel && FixClass( class_ ) == F_OFFSET && (attr & FE_PROC) ) {
-        if( (call_class_target)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR16_CALL ) {
+        if( static_cast<call_class_target>(reinterpret_cast<pointer_uint>(FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ))) & FECALL_X86_FAR16_CALL ) {
             class_ |= F_FAR16;
         }
     }
@@ -3088,7 +3088,7 @@ static void    outBckExport( BackRun& back, const char *name, bool is_export )
         OutIdx( back, obj->index, obj_exports );          /* segment index*/
     }
     OutName( back, name, obj_exports );
-    OutOffset( back, (offset)back.x86omf->CurrSeg->location, obj_exports );
+    OutOffset( back, static_cast<offset>(back.x86omf->CurrSeg->location), obj_exports );
     OutIdx( back, 0, obj_exports );                       /* type index*/
 }
 
@@ -3235,7 +3235,7 @@ static bool    needBaseSet( BackRun& back )
 static offset  askMaxSize( BackRun& back )
 /************************/
 {
-    return( (offset)back.x86omf->CurrSeg->max_size );
+    return( static_cast<offset>(back.x86omf->CurrSeg->max_size) );
 }
 
 static long_offset  askBigLocation( BackRun& back )
@@ -3268,7 +3268,7 @@ static void    tellObjNewLabel( BackRun& back, cg_sym_handle lbl )
         doEmptyQueue(back);
         if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
             if( back.x86omf->CurrSeg->comdat_symbol != NULL ) {
-                DFSymRange( back, back.x86omf->CurrSeg->comdat_symbol, (offset)back.x86omf->CurrSeg->comdat_size );
+                DFSymRange( back, back.x86omf->CurrSeg->comdat_symbol, static_cast<offset>(back.x86omf->CurrSeg->comdat_size) );
             }
         }
     } else if( back.x86omf->CurrSeg->comdat_symbol != NULL ) {
@@ -3276,7 +3276,7 @@ static void    tellObjNewLabel( BackRun& back, cg_sym_handle lbl )
         setUpObj( back, false );
         if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
             if( back.x86omf->CurrSeg->comdat_symbol != NULL ) {
-                DFSymRange( back, back.x86omf->CurrSeg->comdat_symbol, (offset)back.x86omf->CurrSeg->comdat_size );
+                DFSymRange( back, back.x86omf->CurrSeg->comdat_symbol, static_cast<offset>(back.x86omf->CurrSeg->comdat_size) );
             }
         }
     }
@@ -3292,7 +3292,7 @@ static void    tellObjNewProc( BackRun& back, cg_sym_handle proc )
         if( back.x86omf->codeSegId != proc_segid ) {
             if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
                 if( back.x86omf->CurrSeg->comdat_symbol != NULL ) {
-                    DFSymRange( back, back.x86omf->CurrSeg->comdat_symbol, (offset)back.x86omf->CurrSeg->comdat_size );
+                    DFSymRange( back, back.x86omf->CurrSeg->comdat_symbol, static_cast<offset>(back.x86omf->CurrSeg->comdat_size) );
                 }
             }
             if( back.x86omf->CurrSeg->obj != NULL ) {
@@ -3310,7 +3310,7 @@ static void    tellObjNewProc( BackRun& back, cg_sym_handle proc )
             doEmptyQueue(back);
             if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
                 if( back.x86omf->CurrSeg->comdat_symbol != NULL ) {
-                    DFSymRange( back, back.x86omf->CurrSeg->comdat_symbol, (offset)back.x86omf->CurrSeg->comdat_size );
+                    DFSymRange( back, back.x86omf->CurrSeg->comdat_symbol, static_cast<offset>(back.x86omf->CurrSeg->comdat_size) );
                 }
             }
             back.x86omf->CurrSeg->comdat_symbol = proc;
@@ -3320,7 +3320,7 @@ static void    tellObjNewProc( BackRun& back, cg_sym_handle proc )
             setUpObj( back, false );
             if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
                 if( back.x86omf->CurrSeg->comdat_symbol != NULL ) {
-                    DFSymRange( back, back.x86omf->CurrSeg->comdat_symbol, (offset)back.x86omf->CurrSeg->comdat_size );
+                    DFSymRange( back, back.x86omf->CurrSeg->comdat_symbol, static_cast<offset>(back.x86omf->CurrSeg->comdat_size) );
                 }
             }
             NormalData(back);
@@ -3346,7 +3346,7 @@ static bool     InlineFunction( BackRun& back, cg_sym_handle sym )
 {
     if( FEAttr( *back.front, sym ) & FE_PROC ) {
         if( FindAuxInfoSym( back, sym, FEINF_CALL_BYTES ) != NULL
-          || ((call_class)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS ) & FECALL_GEN_MAKE_CALL_INLINE) ) {
+          || (static_cast<call_class>(reinterpret_cast<pointer_uint>(FindAuxInfoSym( back, sym, FEINF_CALL_CLASS ))) & FECALL_GEN_MAKE_CALL_INLINE) ) {
             return( true );
         }
     }
@@ -3358,12 +3358,12 @@ static segment_id      askSegID( BackRun& back, pointer hdl, cg_class class_ )
 {
     switch( class_ ) {
     case CG_FE:
-        if( InlineFunction( back, (cg_sym_handle)hdl ) ) {
+        if( InlineFunction( back, static_cast<cg_sym_handle>(hdl) ) ) {
             return( back.x86omf->codeSegId );    /* askCodeSeg() */
         }
-        return( FESegID( *back.front, (cg_sym_handle)hdl ) );
+        return( FESegID( *back.front, static_cast<cg_sym_handle>(hdl) ) );
     case CG_BACK:
-        return( ((back_handle)hdl)->segid );
+        return( (static_cast<back_handle>(hdl))->segid );
     case CG_TBL:
     case CG_VTB:
         return( back.x86omf->codeSegId );        /* askCodeSeg() */
@@ -3405,7 +3405,7 @@ static bool symIsExported( BackRun& back, cg_sym_handle sym )
     if( sym != NULL ) {
         if( FEAttr( *back.front, sym ) & FE_DLLEXPORT ) {
             exported = true;
-        } else if( (call_class)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS ) & FECALL_GEN_DLL_EXPORT ) {
+        } else if( static_cast<call_class>(reinterpret_cast<pointer_uint>(FindAuxInfoSym( back, sym, FEINF_CALL_CLASS ))) & FECALL_GEN_DLL_EXPORT ) {
             exported = true;
         }
     }

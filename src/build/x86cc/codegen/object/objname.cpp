@@ -204,8 +204,8 @@ static int GetExtName( BackRun& back, cg_sym_handle sym, char *buffer, int max_l
         if( *src == '#' ) {
             unsigned    size;
 
-            size = (unsigned)(pointer_uint)FEExtName( *back.front, sym, EXTN_PRMSIZE );
-            if( size != (unsigned)-1 ) {
+            size = static_cast<unsigned>(reinterpret_cast<pointer_uint>(FEExtName( *back.front, sym, EXTN_PRMSIZE )));
+            if( size != static_cast<unsigned>(-1) ) {
                 *(dst++) = '@';
                 dst = xtoa( dst, size );
             }

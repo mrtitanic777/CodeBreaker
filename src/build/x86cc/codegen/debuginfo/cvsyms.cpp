@@ -101,7 +101,7 @@ static  void    BuffWrite( BackRun& back, cv_out *out, void *to )
 {
     unsigned    len;
 
-    len = (byte *)to - out->beg;
+    len = static_cast<byte *>(to) - out->beg;
     { segment_id old_segid = ChangeOP( back, out->segid );
         DataBytes( back, len, out->beg );
         out->beg = static_cast<byte *>(to);
@@ -129,7 +129,7 @@ static  void  *StartSym( cv_out *out, sg_index what )
 {
     s_common    *ptr;
 
-    ptr = (s_common *)out->beg;
+    ptr = reinterpret_cast<s_common *>(out->beg);
     out->ptr += SInfo[what].size;
     ptr->code = SInfo[what].code;
     ++ptr; /* skip to start of cs_... */
@@ -143,7 +143,7 @@ static  void    EndSym( cv_out *out )
     s_common    *com;
     byte        *ptr;
 
-    com = (s_common *)out->beg; /* assume ptr marks end of a sym */
+    com = reinterpret_cast<s_common *>(out->beg); /* assume ptr marks end of a sym */
     ptr = out->ptr;
     len = ptr - out->beg;
 #if CVSIZE == 32
@@ -171,7 +171,7 @@ static int SetCvLang( BackRun& back )
     int         index;
 
     ret = LANG_C;
-    name =  (const char *)FEAuxInfo( *back.front, NULL, FEINF_SOURCE_LANGUAGE );
+    name =  static_cast<const char *>(FEAuxInfo( *back.front, NULL, FEINF_SOURCE_LANGUAGE ));
     for( index = 0; index < MAX_LANG; ++index ) {
         if( strcmp( name, LangNames[index].name ) == 0 ) {
             ret = LangNames[index].cv_lang;
@@ -619,7 +619,7 @@ void    CVProEnd( BackRun& back, dbg_rtn *rtn, offset lc )
     tipe = FEDbgType( *back.front, sym );
     ptr->proctype = tipe;
     ptr->flags.s = 0;
-    if( (call_class_target)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL ) {
+    if( static_cast<call_class_target>(reinterpret_cast<pointer_uint>(FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ))) & FECALL_X86_FAR_CALL ) {
         ptr->flags.f.far_ret = true;
     }
     if( rtn->obj_type != DBG_NIL_TYPE ) {

@@ -139,7 +139,7 @@ static target_size RemoveEscapes( FrontRun& front, char *buf, const char *inbuf,
 
     olen = 0;
     front.cvars.BadTokenInfo = ERR_NONE;
-    front.cstring.pbuf = (const unsigned char *)inbuf;
+    front.cstring.pbuf = reinterpret_cast<const unsigned char *>(inbuf);
     pend = front.cstring.pbuf + ilen;
     while( front.cstring.pbuf < pend ) {
         c = read_inp(front);

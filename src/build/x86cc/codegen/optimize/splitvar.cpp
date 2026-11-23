@@ -205,7 +205,7 @@ static  void *MarkInstance( BackRun& back, block *blk )
         for( edge = blk->input_edges; edge != NULL; edge = edge->next_source ) {
             bitp = &edge->source->dataflow->out;
             if( GBitOverlap( *bitp, back.splitvar.Id ) ) {
-                SafeRecurseCG( back, (func_sr)MarkInstance, edge->source );
+                SafeRecurseCG( back, reinterpret_cast<func_sr>(MarkInstance), edge->source );
             }
         }
     }
@@ -214,7 +214,7 @@ static  void *MarkInstance( BackRun& back, block *blk )
         for( i = blk->targets; i > 0; --i ) {
             bitp = &edge->destination.u.blk->dataflow->in;
             if( GBitOverlap( *bitp, back.splitvar.Id ) ) {
-                SafeRecurseCG( back, (func_sr)MarkInstance, edge->destination.u.blk );
+                SafeRecurseCG( back, reinterpret_cast<func_sr>(MarkInstance), edge->destination.u.blk );
             }
             ++edge;
         }

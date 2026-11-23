@@ -66,8 +66,8 @@ block   *MakeBlockInit( BackRun& back, block_num targets )
     blk->label = NULL;
     blk->class_ = static_cast<block_class>(0);
     blk->ins.head.line_num = 0;
-    blk->ins.head.next = (instruction *)&blk->ins;
-    blk->ins.head.prev = (instruction *)&blk->ins;
+    blk->ins.head.next = reinterpret_cast<instruction *>(&blk->ins);
+    blk->ins.head.prev = reinterpret_cast<instruction *>(&blk->ins);
     blk->ins.head.opcode = OP_BLOCK;
     HW_CAsgn( blk->ins.head.live.regs, HW_EMPTY );
     LBitInit( blk->ins.head.live.within_block, EMPTY );
@@ -118,7 +118,7 @@ void    FreeABlock( BackRun& back, block * blk )
 void    FreeBlock( BackRun& back )
 /***********************/
 {
-    while( back.data.CurrBlock->ins.head.next != (instruction *)&back.data.CurrBlock->ins ) {
+    while( back.data.CurrBlock->ins.head.next != reinterpret_cast<instruction *>(&back.data.CurrBlock->ins) ) {
         FreeIns( back, back.data.CurrBlock->ins.head.next );
     }
     if( back.data.CurrBlock->dataflow != NULL ) {
@@ -148,7 +148,7 @@ void    AddIns( BackRun& back, instruction *ins )
         back.data.CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
         back.data.HaveCurrBlock = true;
     }
-    ins->head.next = (instruction *)&back.data.CurrBlock->ins;
+    ins->head.next = reinterpret_cast<instruction *>(&back.data.CurrBlock->ins);
     ins->head.prev = back.data.CurrBlock->ins.head.prev;
     back.data.CurrBlock->ins.head.prev->head.next = ins;
     back.data.CurrBlock->ins.head.prev = ins;
@@ -190,12 +190,12 @@ void    GenBlock( BackRun& back, block_class class_, block_num targets )
     back.data.CurrBlock->next_block = NULL;
     if( targets > 1 ) {
         new_blk = MakeBlockCopy( back, targets, back.data.CurrBlock, 1 );
-        if( back.data.CurrBlock->ins.head.next == (instruction *)&back.data.CurrBlock->ins ) {
-            new_blk->ins.head.next = (instruction *)&new_blk->ins;
-            new_blk->ins.head.prev = (instruction *)&new_blk->ins;
+        if( back.data.CurrBlock->ins.head.next == reinterpret_cast<instruction *>(&back.data.CurrBlock->ins) ) {
+            new_blk->ins.head.next = reinterpret_cast<instruction *>(&new_blk->ins);
+            new_blk->ins.head.prev = reinterpret_cast<instruction *>(&new_blk->ins);
         } else {
-            new_blk->ins.head.next->head.prev = (instruction *)&new_blk->ins;
-            new_blk->ins.head.prev->head.next = (instruction *)&new_blk->ins;
+            new_blk->ins.head.next->head.prev = reinterpret_cast<instruction *>(&new_blk->ins);
+            new_blk->ins.head.prev->head.next = reinterpret_cast<instruction *>(&new_blk->ins);
         }
         new_blk->ins.blk = new_blk;
         /*
@@ -243,12 +243,12 @@ block   *ReGenBlock( BackRun& back, block *blk, label_handle lbl )
     /*
      * Move all references to blk
      */
-    if( blk->ins.head.next == (instruction *)&blk->ins ) {
-        new_blk->ins.head.next = (instruction *)&new_blk->ins;
-        new_blk->ins.head.prev = (instruction *)&new_blk->ins;
+    if( blk->ins.head.next == reinterpret_cast<instruction *>(&blk->ins) ) {
+        new_blk->ins.head.next = reinterpret_cast<instruction *>(&new_blk->ins);
+        new_blk->ins.head.prev = reinterpret_cast<instruction *>(&new_blk->ins);
     } else {
-        blk->ins.head.next->head.prev = (instruction *)&new_blk->ins;
-        blk->ins.head.prev->head.next = (instruction *)&new_blk->ins;
+        blk->ins.head.next->head.prev = reinterpret_cast<instruction *>(&new_blk->ins);
+        blk->ins.head.prev->head.next = reinterpret_cast<instruction *>(&new_blk->ins);
     }
     while( targets-- > 0 ) {
         new_blk->edge[targets].source = new_blk;
@@ -477,7 +477,7 @@ bool    BlkTooBig( BackRun& back )
         return( false );
     if( back.data.CurrBlock == NULL )
         return( false );
-    if( back.data.CurrBlock->ins.head.next == (instruction *)&back.data.CurrBlock->ins )
+    if( back.data.CurrBlock->ins.head.next == reinterpret_cast<instruction *>(&back.data.CurrBlock->ins) )
         return( false );
     InsNotBlock( back, back.data.CurrBlock->ins.head.next );
     if( (back.data.InsId - back.data.CurrBlock->ins.head.next->id) < INS_PER_BLOCK )

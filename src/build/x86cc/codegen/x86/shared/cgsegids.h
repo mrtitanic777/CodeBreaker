@@ -31,5 +31,5 @@
 
 
 #pragma once
-#define BACKSEGS        ((segment_id)32767)
-#define UNDEFSEG        ((segment_id)-1)
+#define BACKSEGS        (static_cast<segment_id>(32767))
+#define UNDEFSEG        (static_cast<segment_id>(-1))

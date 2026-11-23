@@ -153,7 +153,7 @@ static  int             CalcBaseSave( type_length bp, name *temp ) {
 static  bool    TempBefore( BackRun& back, void *t1, void *t2 ) {
 /************************************************/
 
-    return( ((name *)t1)->t.v.alt_location > ((name *)t2)->t.v.alt_location );
+    return( (static_cast<name *>(t1))->t.v.alt_location > (static_cast<name *>(t2))->t.v.alt_location );
 }
 
 

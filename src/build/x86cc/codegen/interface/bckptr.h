@@ -31,8 +31,8 @@
 
 
 #pragma once
-#define FAKE_NULL               ((back_handle)(pointer_uint)1)
-inline unsigned long long PtrInt( bck_info *x ) { return ((pointer_uint)(x)); }
+#define FAKE_NULL               (reinterpret_cast<back_handle>(static_cast<pointer_uint>(1)))
+inline unsigned long long PtrInt( bck_info *x ) { return (reinterpret_cast<pointer_uint>(x)); }
 inline bool IsRealBack( bck_info *bck ) { return ((PtrInt(bck) & 1) == 0); }
-inline bck_info *ToRealBack( bck_info *bck ) { return ((back_handle)(pointer_uint)(PtrInt(bck) & ~((pointer_uint)1))); }
-inline bck_info *ToFakeBack( bck_info *bck ) { return ((back_handle)(pointer_uint)(PtrInt(bck) | 1)); }
+inline bck_info *ToRealBack( bck_info *bck ) { return (reinterpret_cast<back_handle>(PtrInt(bck) & ~(static_cast<pointer_uint>(1)))); }
+inline bck_info *ToFakeBack( bck_info *bck ) { return (reinterpret_cast<back_handle>(PtrInt(bck) | 1)); }

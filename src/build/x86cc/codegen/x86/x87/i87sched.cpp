@@ -637,7 +637,7 @@ static  void    CheckTemp( BackRun& back, instruction *ins, name *op, bool defin
 static  bool Better( BackRun& back, void *t1, void *t2 )
 /***************************************/
 {
-    return( ((temp_entry *)t1)->savings > ((temp_entry *)t2)->savings );
+    return( (static_cast<temp_entry *>(t1))->savings > (static_cast<temp_entry *>(t2))->savings );
 }
 
 
@@ -833,7 +833,7 @@ static  void    FiniGlobalTemps( BackRun& back )
 
     for( temp = back.i87sched.TempList; temp != NULL; temp = temp->next ) {
         if( temp->whole_block ) {
-            ins = (instruction *)&back.i87sched_file.Exit->ins;
+            ins = reinterpret_cast<instruction *>(&back.i87sched_file.Exit->ins);
             if( temp->defined ) {
                 SuffFSTPRes( back, ins, temp->actual_op, RES_MEM );
             } else {
@@ -1114,7 +1114,7 @@ void    FPPostSched( BackRun& back, block *blk )
                  * ??? what is in ins->result ???
                  * ??? virtual or actual      ???
                  */
-                SetResultSTReg( back, ins, (virtual_st_locn)FPRegNum( ins->result ) );
+                SetResultSTReg( back, ins, static_cast<virtual_st_locn>(FPRegNum( ins->result )) );
             }
             temp = LookupTempEntry( back, ins->operands[0] );
             if( temp != NULL ) {

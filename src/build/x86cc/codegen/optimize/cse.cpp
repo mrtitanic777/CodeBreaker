@@ -74,8 +74,8 @@
  */
 inline unsigned int &InsBits( instruction *ins ) { return ( LBitScalar((ins)->head.live.within_block) ); }
 inline unsigned int &BlkBits( block *blk ) { return ( LBitScalar((blk)->available_bit) ); }
-inline instruction *&InsLink( instruction *ins ) { return (*(instruction **)&(ins)->u1.cse_link); }
-inline instruction *&NameLink( name *op ) { return (*(instruction **)&(op)->v.conflict); }
+inline instruction *&InsLink( instruction *ins ) { return (*&(ins)->u1.cse_link); }
+inline instruction *&NameLink( name *op ) { return (*reinterpret_cast<instruction **>(&(op)->v.conflict)); }
 
 
 
@@ -1075,7 +1075,7 @@ static  bool    FixStructRet( BackRun& back, block *root )
 static  block   *NextBlock( BackRun& back, block *blk, void *parm )
 /**************************************************/
 {
-    if( blk->u.partition == (block *)parm )
+    if( blk->u.partition == static_cast<block *>(parm) )
         return( NULL );
     return( blk->u.partition );
 }
@@ -1147,7 +1147,7 @@ static void RemoveLink( instruction *ins, name *link )
         link = link->i.index;
     }
     if( link->n.class_ != N_REGISTER ) {
-        last = (instruction **)&NameLink( link );
+        last = &NameLink( link );
         for( curr = NameLink( link ); curr != NULL; curr = InsLink( curr ) ) {
             if( curr == ins ) {
                 *last = InsLink( ins );

@@ -155,7 +155,7 @@ void    AddrFree( BackRun& back, an node )
             FreeIns( back, node->u.i.ins );
         }
     }
-    FrlFreeSize( back, &back.makeaddr.AddrNameFrl, (pointer *)node, sizeof( address_name ) );
+    FrlFreeSize( back, &back.makeaddr.AddrNameFrl, reinterpret_cast<pointer *>(node), sizeof( address_name ) );
 }
 
 

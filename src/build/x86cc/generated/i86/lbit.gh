@@ -8,7 +8,7 @@ inline void LBitAssign( local_bit_set &dst, const local_bit_set &src ) { (dst)._
 
 inline bool LBitEmpty( const local_bit_set &set ) { return ( (set)._0 == 0 ); }
 
-inline void LBitSet( local_bit_set &dst, a_bit_set a ) { (dst)._0 = (a_bit_set)a; }
+inline void LBitSet( local_bit_set &dst, a_bit_set a ) { (dst)._0 = a; }
 
 inline void LBitFirst( local_bit_set &set ) { LBitSet( set, 1 ); }
 

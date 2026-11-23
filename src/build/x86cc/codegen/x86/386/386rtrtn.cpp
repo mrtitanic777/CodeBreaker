@@ -269,35 +269,35 @@ pointer BEAuxInfo( BackRun& back, pointer hdl, aux_class request )
         switch( FindRTLabel( back, static_cast<label_handle>(hdl) ) ) {
         case RT_SCAN1:
             if( IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) )
-                return( (pointer)&back.x386rtrtn->Scn1ES );
-            return( (pointer)&back.x386rtrtn->Scn1 );
+                return( const_cast<pointer>(static_cast<const void *>(&back.x386rtrtn->Scn1ES)) );
+            return( const_cast<pointer>(static_cast<const void *>(&back.x386rtrtn->Scn1)) );
         case RT_SCAN2:
             if( IsntTargetModel( back, CGSW_X86_USE_32 ) ) {
                 if( IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) )
-                    return( (pointer)&back.x386rtrtn->Scn4ES );
-                return( (pointer)&back.x386rtrtn->Scn4 );
+                    return( const_cast<pointer>(static_cast<const void *>(&back.x386rtrtn->Scn4ES)) );
+                return( const_cast<pointer>(static_cast<const void *>(&back.x386rtrtn->Scn4)) );
             } else {
                 if( IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) )
-                    return( (pointer)&back.x386rtrtn->Scn2ES );
-                return( (pointer)&back.x386rtrtn->Scn2 );
+                    return( const_cast<pointer>(static_cast<const void *>(&back.x386rtrtn->Scn2ES)) );
+                return( const_cast<pointer>(static_cast<const void *>(&back.x386rtrtn->Scn2)) );
             }
         case RT_SCAN4:
             if( IsntTargetModel( back, CGSW_X86_USE_32 ) ) {
                 if( IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) )
-                    return( (pointer)&back.x386rtrtn->Scn2ES );
-                return( (pointer)&back.x386rtrtn->Scn2 );
+                    return( const_cast<pointer>(static_cast<const void *>(&back.x386rtrtn->Scn2ES)) );
+                return( const_cast<pointer>(static_cast<const void *>(&back.x386rtrtn->Scn2)) );
             } else {
                 if( IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) )
-                    return( (pointer)&back.x386rtrtn->Scn4ES );
-                return( (pointer)&back.x386rtrtn->Scn4 );
+                    return( const_cast<pointer>(static_cast<const void *>(&back.x386rtrtn->Scn4ES)) );
+                return( const_cast<pointer>(static_cast<const void *>(&back.x386rtrtn->Scn4)) );
             }
         default:
             return( NULL );
         }
     case FEINF_CALL_CLASS:
-        return( (pointer)FECALL_GEN_NONE );
+        return( reinterpret_cast<pointer>(FECALL_GEN_NONE) );
     case FEINF_CALL_CLASS_TARGET:
-        return( (pointer)FECALL_X86_NONE );
+        return( reinterpret_cast<pointer>(FECALL_X86_NONE) );
     case FEINF_CALL_BYTES:
         return( hdl );
     default:

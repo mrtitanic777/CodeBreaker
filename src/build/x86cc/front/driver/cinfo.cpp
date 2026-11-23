@@ -271,7 +271,7 @@ static fe_attr FESymAttr( FrontRun& front, SYMPTR sym )
 void    FEGenProc( FrontRun& front, CGSYM_HANDLE hdl, call_handle call )
 /*****************************************************/
 {
-    SYM_HANDLE      sym_handle = (SYM_HANDLE)hdl;
+    SYM_HANDLE      sym_handle = reinterpret_cast<SYM_HANDLE>(hdl);
 
     /* unused parameters */ (void)call;
 
@@ -282,7 +282,7 @@ void    FEGenProc( FrontRun& front, CGSYM_HANDLE hdl, call_handle call )
 fe_attr FEAttr( FrontRun& front, CGSYM_HANDLE cgsym_handle )
 /*****************************************/
 {
-    SYM_HANDLE sym_handle = (SYM_HANDLE)cgsym_handle;
+    SYM_HANDLE sym_handle = reinterpret_cast<SYM_HANDLE>(cgsym_handle);
 
     return( FESymAttr( front, SymGetPtr( front, sym_handle ) ) );
 }
@@ -618,7 +618,7 @@ void    SetSegs( FrontRun& front )
     align_type      optsize_segalign;
 
     front.cvars.CompFlags.low_on_memory_printed = false;
-    optsize_segalign = ( front.cvars.OptSize == 0 ) ? (align_type)BETypeLength( *front.back, TY_INTEGER ) : 1;
+    optsize_segalign = ( front.cvars.OptSize == 0 ) ? static_cast<align_type>(BETypeLength( *front.back, TY_INTEGER )) : 1;
 
     if( *front.cvars.TextSegName == '\0' ) {
         BEDefSeg( *front.back, SEG_CODE, GLOBAL | INIT | EXEC, TS_SEG_CODE, SegAlign( front, optsize_segalign ) );
@@ -680,7 +680,7 @@ void EmitSegLabels( FrontRun& front )
     for( useg = front.cinfo->userSegments; useg != NULL; useg = useg->next ) {
         if( useg->sym_handle != SYM_NULL ) {
             SymGet( front, &sym, useg->sym_handle );
-            bck = BENewBack( *front.back, (CGSYM_HANDLE)useg->sym_handle );
+            bck = BENewBack( *front.back, static_cast<CGSYM_HANDLE>(useg->sym_handle) );
             sym.u1.backinfo = bck;
             SymReplace( front, &sym, useg->sym_handle );
             BESetSeg( *front.back, segid );
@@ -725,7 +725,7 @@ const char *FEName( FrontRun& front, CGSYM_HANDLE cgsym_handle )
     SYM_HANDLE  sym_handle;
     SYMPTR      sym;
 
-    sym_handle = (SYM_HANDLE)cgsym_handle;
+    sym_handle = reinterpret_cast<SYM_HANDLE>(cgsym_handle);
     if( sym_handle == SYM_NULL )
         return( "*** NULL ***" );
     sym = SymGetPtr( front, sym_handle );
@@ -744,7 +744,7 @@ void FEMessage( FrontRun& front, fe_msg femsg, CGPOINTER parm )
         {
             SYM_ENTRY   *sym;
 
-            sym = SymGetPtr( front, (SYM_HANDLE)parm );
+            sym = SymGetPtr( front, parm );
             SetErrLoc( front, &sym->src_loc );
             CWarn2p( front, ERR_SYMBOL_NAME_TOO_LONG, sym->name );
             InitErrLoc(front);
@@ -770,7 +770,7 @@ void FEMessage( FrontRun& front, fe_msg femsg, CGPOINTER parm )
         if( front.cvars.GlobalCompFlags.ide_console_output ) {
             if( !front.cvars.CompFlags.quiet_mode ) {
                 CGetMsg( front, msgtxt, PHRASE_CODE_SIZE );
-                sprintf( msgbuf, "%s: %u", msgtxt, (unsigned)(pointer_uint)parm );
+                sprintf( msgbuf, "%s: %u", msgtxt, static_cast<unsigned>(reinterpret_cast<pointer_uint>(parm)) );
                 NoteMsg( front, msgbuf );
             }
         }
@@ -789,17 +789,17 @@ void FEMessage( FrontRun& front, fe_msg femsg, CGPOINTER parm )
         /*
          * this will be issued after a call to CGInitCall or CGProcDecl
          */
-        CErr2( front, ERR_BAD_PARM_REGISTER, (int)(pointer_uint)parm );
+        CErr2( front, ERR_BAD_PARM_REGISTER, static_cast<int>(reinterpret_cast<pointer_uint>(parm)) );
         break;
     case FEMSG_BAD_RETURN_REGISTER:
-        CErr2p( front, ERR_BAD_RETURN_REGISTER, FEName( front, (CGSYM_HANDLE)parm ) );
+        CErr2p( front, ERR_BAD_RETURN_REGISTER, FEName( front, static_cast<CGSYM_HANDLE>(parm) ) );
         break;
     case FEMSG_SCHEDULER_DIED:
     case FEMSG_REGALLOC_DIED:
     case FEMSG_SCOREBOARD_DIED:
         if( (front.cvars.GenSwitches & CGSW_GEN_NO_OPTIMIZATION) == 0 ) {
             if( front.cvars.LastFuncOutOfMem != parm ) {
-                CInfoMsg( front, INFO_NOT_ENOUGH_MEMORY_TO_FULLY_OPTIMIZE, FEName( front, (CGSYM_HANDLE)parm ) );
+                CInfoMsg( front, INFO_NOT_ENOUGH_MEMORY_TO_FULLY_OPTIMIZE, FEName( front, static_cast<CGSYM_HANDLE>(parm) ) );
                 front.cvars.LastFuncOutOfMem = parm;
             }
         }
@@ -813,19 +813,19 @@ void FEMessage( FrontRun& front, fe_msg femsg, CGPOINTER parm )
         }
         break;
     case FEMSG_BACK_END_ERROR:
-        CErr2( front, ERR_BACK_END_ERROR, (int)(pointer_uint)parm );
+        CErr2( front, ERR_BACK_END_ERROR, static_cast<int>(reinterpret_cast<pointer_uint>(parm)) );
         break;
     case FEMSG_BAD_SAVE:
-        CErr2p( front, ERR_BAD_SAVE, FEName( front, (CGSYM_HANDLE)parm ) );
+        CErr2p( front, ERR_BAD_SAVE, FEName( front, static_cast<CGSYM_HANDLE>(parm) ) );
         break;
     case FEMSG_BAD_LINKAGE:
-        CErr2p( front, ERR_BAD_LINKAGE, FEName( front, (CGSYM_HANDLE)parm ) );
+        CErr2p( front, ERR_BAD_LINKAGE, FEName( front, static_cast<CGSYM_HANDLE>(parm) ) );
         break;
     case FEMSG_NO_SEG_REGS:
-        CErr2p( front, ERR_NO_SEG_REGS, FEName( front, (CGSYM_HANDLE)parm ) );
+        CErr2p( front, ERR_NO_SEG_REGS, FEName( front, static_cast<CGSYM_HANDLE>(parm) ) );
         break;
     case FEMSG_BAD_PEG_REG:
-        CErr2p( front, ERR_BAD_PEG_REG, FEName( front, (CGSYM_HANDLE)parm ) );
+        CErr2p( front, ERR_BAD_PEG_REG, FEName( front, static_cast<CGSYM_HANDLE>(parm) ) );
         break;
     default:
         break;
@@ -852,7 +852,7 @@ int FETrue( void )
 segment_id FESegID( FrontRun& front, CGSYM_HANDLE cgsym_handle )
 /*********************************************/
 {
-    SYM_HANDLE  sym_handle = (SYM_HANDLE)cgsym_handle;
+    SYM_HANDLE  sym_handle = reinterpret_cast<SYM_HANDLE>(cgsym_handle);
     segment_id  segid;
     SYMPTR      sym;
 
@@ -891,7 +891,7 @@ segment_id FESegID( FrontRun& front, CGSYM_HANDLE cgsym_handle )
 BACK_HANDLE FEBack( FrontRun& front, CGSYM_HANDLE cgsym_handle )
 /*********************************************/
 {
-    SYM_HANDLE          sym_handle = (SYM_HANDLE)cgsym_handle;
+    SYM_HANDLE          sym_handle = reinterpret_cast<SYM_HANDLE>(cgsym_handle);
     BACK_HANDLE         bck;
     SYMPTR              symptr;
     SYM_ENTRY           sym;
@@ -899,7 +899,7 @@ BACK_HANDLE FEBack( FrontRun& front, CGSYM_HANDLE cgsym_handle )
     symptr = SymGetPtr( front, sym_handle );
     bck = symptr->u1.backinfo;
     if( bck == NULL ) {
-        bck = BENewBack( *front.back, (CGSYM_HANDLE)sym_handle );
+        bck = BENewBack( *front.back, static_cast<CGSYM_HANDLE>(sym_handle) );
         SymGet( front, &sym, sym_handle );
         sym.u1.backinfo = bck;
         SymReplace( front, &sym, sym_handle );
@@ -921,7 +921,7 @@ cg_type FEParmType( FrontRun& front, CGSYM_HANDLE func, CGSYM_HANDLE parm, cg_ty
 /**********************************************************************/
 {
 #if _CPU == 386
-    SYM_HANDLE  sym_handle = (SYM_HANDLE)func;
+    SYM_HANDLE  sym_handle = reinterpret_cast<SYM_HANDLE>(func);
     SYMPTR      sym;
 #else
     /* unused parameters */ (void)func;
@@ -952,7 +952,7 @@ cg_type FEParmType( FrontRun& front, CGSYM_HANDLE func, CGSYM_HANDLE parm, cg_ty
 int FEStackChk( FrontRun& front, CGSYM_HANDLE cgsym_handle )
 /*****************************************/
 {
-    SYM_HANDLE  sym_handle = (SYM_HANDLE)cgsym_handle;
+    SYM_HANDLE  sym_handle = reinterpret_cast<SYM_HANDLE>(cgsym_handle);
     SYMPTR      sym;
 
     sym = SymGetPtr( front, sym_handle );

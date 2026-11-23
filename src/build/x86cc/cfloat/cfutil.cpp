@@ -41,11 +41,11 @@ void    CFCnvTarget( cfloat *f, flt *buffer, int size ) {
 
     switch( size ) {
     case 4:
-        buffer->sngl = (float)CFToF( f );
+        buffer->sngl = static_cast<float>(CFToF( f ));
         break;
     case 8:
     case 10:
-        buffer->dble = (double)CFToF( f );
+        buffer->dble = CFToF( f );
         break;
     }
 }

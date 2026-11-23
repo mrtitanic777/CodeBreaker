@@ -49,7 +49,7 @@ static  int     Suber( BackRun& back, int a, int b )
     return( a - b );
 }
 
-int     CFOrder( cfloat *f1, cfloat *f2 )
+int     CFOrder( const cfloat *f1, const cfloat *f2 )
 /****************************************
  * compare absolute value of f1 and f2
  *
@@ -68,7 +68,7 @@ int     CFOrder( cfloat *f1, cfloat *f2 )
         diff = f1->len - f2->len;
         for( i = 0; i < f1->len && i < f2->len; i++ ) {
             if( f1->mant[i] != f2->mant[i] ) {
-                diff = (unsigned char)f1->mant[i] - (unsigned char)f2->mant[i];
+                diff = static_cast<unsigned char>(f1->mant[i]) - static_cast<unsigned char>(f2->mant[i]);
                 break;
             }
         }
@@ -225,7 +225,7 @@ void    CFNegate( cfloat *f )
     f->sign = -f->sign;
 }
 
-int     CFCompare( cfloat *f1, cfloat *f2 )
+int     CFCompare( const cfloat *f1, const cfloat *f2 )
 /*****************************************/
 {
     int     cmp;
@@ -260,7 +260,7 @@ int     CFExp( cfloat *f )
     return( f->exp );
 }
 
-int     CFAccess( cfloat *f, int index )
+int     CFAccess( const cfloat *f, int index )
 /**************************************/
 {
     return( f->mant[index] - '0' );
@@ -269,7 +269,7 @@ int     CFAccess( cfloat *f, int index )
 void    CFDeposit( cfloat *f, int index, int data )
 /*************************************************/
 {
-    f->mant[index] = (char)data + '0';
+    f->mant[index] = static_cast<char>(data) + '0';
 }
 
 void    CFClean( cfloat *f )

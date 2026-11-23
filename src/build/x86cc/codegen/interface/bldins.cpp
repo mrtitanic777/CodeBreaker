@@ -189,7 +189,7 @@ static  an Unary( BackRun& back, cg_op opcode, an left, const type_def *tipe )
     instruction *ins;
     an          res;
 
-    ins = MakeNary( back, (opcode_defs)opcode, GenIns( back, left ), NULL, NULL, TypeClass( back, tipe ), TypeClass( back, left->tipe ), 1 );
+    ins = MakeNary( back, static_cast<opcode_defs>(opcode), GenIns( back, left ), NULL, NULL, TypeClass( back, tipe ), TypeClass( back, left->tipe ), 1 );
     res = InsName( back, ins, tipe );
     AddIns( back, ins );
     BGDone( back, left );
@@ -288,7 +288,7 @@ an      BGCompare( BackRun& back, cg_op opcode, an left, an rite, label_handle e
     BGDone( back, left );
     BGDone( back, rite );
     NamesCrossBlocks(back);
-    ins = MakeCondition( back, (opcode_defs)opcode, newleft, newrite, 0, 1, TypeClass( back, tipe ) );
+    ins = MakeCondition( back, static_cast<opcode_defs>(opcode), newleft, newrite, 0, 1, TypeClass( back, tipe ) );
     AddIns( back, ins );
     GenBlock( back, BLK_CONDITIONAL, 2 );
     AddTarget( back, NULL, false );
@@ -556,7 +556,7 @@ an      BGBinary( BackRun& back, cg_op opcode, an left, an rite, const type_def 
     }
     if( result == NULL ) {
         left = CheckType( back, left, tipe );
-        ins = MakeBinary( back, (opcode_defs)opcode, GenIns( back, left ), GenIns( back, rite ), NULL, TypeClass( back, tipe ) );
+        ins = MakeBinary( back, static_cast<opcode_defs>(opcode), GenIns( back, left ), GenIns( back, rite ), NULL, TypeClass( back, tipe ) );
         result = InsName( back, ins, tipe );
         AddIns( back, ins );
         BGDone( back, left );
@@ -586,11 +586,11 @@ an      BGOpGets( BackRun& back, cg_op opcode, an left, an rite, const type_def 
         temp = AllocTemp( back, op_type_class );
         ins = MakeConvert( back, left_name, temp, op_type_class, type_class );
         AddIns( back, ins );
-        AddIns( back, MakeBinary( back, (opcode_defs)opcode, temp, GenIns( back, rite ), temp, op_type_class ) );
+        AddIns( back, MakeBinary( back, static_cast<opcode_defs>(opcode), temp, GenIns( back, rite ), temp, op_type_class ) );
         ins = MakeConvert( back, temp, left_name, type_class, op_type_class );
         AddIns( back, ins );
     } else {
-        ins = MakeBinary( back, (opcode_defs)opcode, left_name, GenIns( back, rite ), left_name, op_type_class );
+        ins = MakeBinary( back, static_cast<opcode_defs>(opcode), left_name, GenIns( back, rite ), left_name, op_type_class );
         if( tipe != optipe ) {
             ins->ins_flags |= INS_DEMOTED; /* its not quite the right type */
         }

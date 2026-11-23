@@ -172,7 +172,7 @@ void    DelRef( BackRun& back, ins_entry **owner, ins_entry *instr )
         curr = *owner;
         if( curr == instr )
             break;
-        owner = (ins_entry **)&LblRef( curr );
+        owner = &LblRef( curr );
     }
     *owner = LblRef( curr );
   OptEnd( back );
@@ -248,7 +248,7 @@ ins_entry       *DelInstr( BackRun& back, ins_entry *old )
 /*****************************************/
 {
     if( OcClass( old ) != OC_DEAD ) {
-        return static_cast<ins_entry *>(( SafeRecurseCG( back, (func_sr)DelInstr_Helper, old ) ));
+        return static_cast<ins_entry *>(( SafeRecurseCG( back, reinterpret_cast<func_sr>(DelInstr_Helper), old ) ));
     }
     return( ValidIns( back, old->ins.next ) );
 }

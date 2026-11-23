@@ -131,4 +131,3 @@ inline bool OwlMetaSymbol( owl_sym_type x ) { return ( (x) == OWL_TYPE_SECTION |
 inline bool OwlSectionBSS( owl_section_info *x ) { return ( ( (x)->type & OWL_SEC_ATTR_BSS ) ) != 0; }
 
 inline bool OwlSectionComdat( owl_section_info *x ) { return ( ( (x)->type & OWL_SEC_ATTR_COMDAT ) ) != 0; }
-

@@ -35,8 +35,8 @@
         #define HW_64( x ) x
 #define HW_COMMA ,
 
-#define __0(x) (hw_reg_part)x##_0
-#define __1(x) (hw_reg_part)x##_1
+#define __0(x) static_cast<hw_reg_part>(x##_0)
+#define __1(x) static_cast<hw_reg_part>(x##_1)
 #define __2(x) (hw_reg_part)x##_2
 #define __3(x) (hw_reg_part)x##_3
 #define __4(x) (hw_reg_part)x##_4
@@ -56,8 +56,8 @@
 
     #define HW_DEFINE_SIMPLE( r, p_0, p_1 )  \
         enum {                      \
-                             r##_0 = (int)p_0  \
-            HW_64(  HW_COMMA r##_1 = (int)p_1 )\
+                             r##_0 = static_cast<int>(p_0)  \
+            HW_64(  HW_COMMA r##_1 = static_cast<int>(p_1) )\
         }
 
 typedef unsigned hw_reg_part;

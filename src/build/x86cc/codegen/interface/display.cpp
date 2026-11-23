@@ -103,7 +103,7 @@ void    BigLabel( BackRun& back )
     } else {
         ins = MakeNop(back);
     }
-    ins->zap = (register_name *)AllocRegName( back, AllCacheRegs(back) );
+    ins->zap = reinterpret_cast<register_name *>(AllocRegName( back, AllCacheRegs(back) ));
     ins->flags.u.nop_flags |= NOP_ZAP_INFO;
     AddIns( back, ins );
 }

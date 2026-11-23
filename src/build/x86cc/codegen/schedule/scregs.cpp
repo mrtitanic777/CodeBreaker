@@ -49,8 +49,8 @@ void    RegInsert( BackRun& back, score_hdl scoreboard, int dst_idx, int src_idx
     src = &scoreboard[src_idx];
     dst = &scoreboard[dst_idx];
     ScoreFreeList( back, dst );
-    free_heads = (list_head **)&scoreboard[back.score.ScoreCount];
-    *dst->list = (list_head)*free_heads;
+    free_heads = reinterpret_cast<list_head **>(&scoreboard[back.score.ScoreCount]);
+    *dst->list = reinterpret_cast<list_head>(*free_heads);
     *free_heads = dst->list;
     next = dst;
     do {
@@ -151,7 +151,7 @@ void    RegKill( BackRun& back, score_hdl scoreboard, hw_reg_set regs )
 
     if( !HW_CEqual( regs, HW_EMPTY ) ) {
         entry = *back.score.ScoreList;
-        free_heads = (list_head **)&scoreboard[back.score.ScoreCount];
+        free_heads = reinterpret_cast<list_head **>(&scoreboard[back.score.ScoreCount]);
         for( i = back.score.ScoreCount; i > 0; --i ) {
             if( HwOvlap( entry->reg, regs ) ) {
                 if( scoreboard->list != NULL ) {
@@ -159,7 +159,7 @@ void    RegKill( BackRun& back, score_hdl scoreboard, hw_reg_set regs )
                         ScoreFreeList( back, scoreboard );
                     } else {
                         scoreboard->list = *free_heads;
-                        *free_heads = (list_head *)**free_heads;
+                        *free_heads = reinterpret_cast<list_head *>(**free_heads);
                         *scoreboard->list = NULL;
                     }
                 }

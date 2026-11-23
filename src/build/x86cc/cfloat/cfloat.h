@@ -72,7 +72,7 @@ typedef union flt {
 extern  void        CFCnvTarget( cfloat *f, flt *buffer, int class_ );
 extern  char        *CFCnvFS( cfloat *f, char *buffer, int maxlen );
 extern  cfloat      *CFCnvSF( BackRun& back, cfhandle h, const char *str );
-extern  cfloat      *CFCopy( BackRun& back, cfhandle h, cfloat *f );
+extern  cfloat      *CFCopy( BackRun& back, cfhandle h, const cfloat *f );
 extern  cfloat      *CFTrunc( BackRun& back, cfhandle h, cfloat *f );
 extern  cfloat      *CFRound( BackRun& back, cfhandle h, cfloat *f );
 extern  cfloat      *CFCnvI32F( BackRun& back, cfhandle h, signed_32 data );
@@ -108,13 +108,13 @@ extern  cfloat      *CFAlloc( BackRun& back, cfhandle h, size_t );
 extern  void        CFFree( BackRun& back, cfhandle h, cfloat *f );
 extern  bool        CFFrlFree( BackRun& back, cfhandle h );
 
-extern  cfloat      *CFMul( BackRun& back, cfhandle h, cfloat *f1, cfloat *f2 );
+extern  cfloat      *CFMul( BackRun& back, cfhandle h, cfloat *f1, const cfloat *f2 );
 extern  cfloat      *CFDiv( BackRun& back, cfhandle h, cfloat *f1, cfloat *f2 );
 extern  cfloat      *CFInverse( BackRun& back, cfhandle h, cfloat *f );
 extern  cfloat      *CFAdd( BackRun& back, cfhandle h, cfloat *f1, cfloat *f2 );
 extern  cfloat      *CFSub( BackRun& back, cfhandle h, cfloat *f1, cfloat *f2 );
 extern  void        CFNegate( cfloat *f );
-extern  int         CFCompare( cfloat *f1, cfloat *f2 );
+extern  int         CFCompare( const cfloat *f1, const cfloat *f2 );
 extern  int         CFTest( cfloat *f );
 extern  int         CFExp( cfloat *f );
 

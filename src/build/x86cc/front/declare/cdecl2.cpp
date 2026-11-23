@@ -1155,7 +1155,7 @@ static void AbsDecl( FrontRun& front, SYMPTR sym, type_modifiers mod, TYPEPTR ty
         if( front.cvars.CurToken == T_RIGHT_PAREN ) {
             typ = FuncNode( front, typ, info.modifier, NULL );
         } else {
-            AbsDecl( front, sym, info.modifier, (TYPEPTR)NULL );
+            AbsDecl( front, sym, info.modifier, static_cast<TYPEPTR>(NULL) );
             info.modifier = FLAG_NONE;
             MustRecog( front, T_RIGHT_PAREN );
             ParseDeclPart2( front, &sym->sym_type, typ, FLAG_NONE );
@@ -1198,7 +1198,7 @@ void Declarator( FrontRun& front, SYMPTR sym, type_modifiers mod, TYPEPTR typ, d
             if( (state & DECL_STATE_ISPARM) && TokenClass[front.cvars.CurToken] == TC_STG_CLASS ) {
                 typ = DeclPart3( front, typ, info.modifier );
             } else {
-                Declarator( front, sym, info.modifier, (TYPEPTR)NULL, state );
+                Declarator( front, sym, info.modifier, static_cast<TYPEPTR>(NULL), state );
                 info.modifier = FLAG_NONE;
                 MustRecog( front, T_RIGHT_PAREN );
             }
@@ -1257,7 +1257,7 @@ FIELDPTR FieldCreate( FrontRun& front, const char *name )
 {
     FIELDPTR    field;
 
-    field = (FIELDPTR)CPermAlloc( front, sizeof( FIELD_ENTRY ) + strlen( name ) );
+    field = static_cast<FIELDPTR>(CPermAlloc( front, sizeof( FIELD_ENTRY ) + strlen( name ) ));
     strcpy( field->name, name );
     if( front.cvars.CompFlags.emit_browser_info ) {
         field->xref = NewXref( front, NULL );
@@ -1278,7 +1278,7 @@ FIELDPTR FieldDecl( FrontRun& front, TYPEPTR typ, type_modifiers mod, decl_state
     typ = Pointer( front, typ, &info );
     if( front.cvars.CurToken == T_LEFT_PAREN ) {
         NextToken(front);
-        field = FieldDecl( front, (TYPEPTR)NULL, info.modifier, DECL_STATE_NONE );
+        field = FieldDecl( front, static_cast<TYPEPTR>(NULL), info.modifier, DECL_STATE_NONE );
         info.modifier = FLAG_NONE;
         MustRecog( front, T_RIGHT_PAREN );
         ParseDeclPart2( front, &field->field_type, typ, FLAG_NONE );
@@ -1472,7 +1472,7 @@ parm_list *NewParm( FrontRun& front, TYPEPTR typ, parm_list *prev_parm )
 {
     parm_list    *parm;
 
-    parm = (parm_list *)CMemAlloc( front, sizeof( parm_list ) );
+    parm = static_cast<parm_list *>(CMemAlloc( front, sizeof( parm_list ) ));
     parm->parm_type = typ;
     parm->next_parm = prev_parm;
     return( parm );
@@ -1531,7 +1531,7 @@ static TYPEPTR *GetProtoType( FrontRun& front, decl_info *first )
             }
             typ = TypeDefault(front);
         }
-        parm = (PARMPTR) CMemAlloc( front, sizeof( PARM_ENTRY ) );
+        parm = static_cast<PARMPTR>(CMemAlloc( front, sizeof( PARM_ENTRY ) ));
         parm->next_parm = NULL;
         sym = &parm->sym;
         memset( sym, 0, sizeof( SYM_ENTRY ) );
@@ -1624,7 +1624,7 @@ TYPEPTR *MakeParmList( FrontRun& front, parm_list *parm, bool reversed )
          */
         hash = MAX_PARM_LIST_HASH_SIZE;
         if( parm_count < MAX_PARM_LIST_HASH_SIZE ) {
-            hash = (parm_hash_idx)parm_count;
+            hash = static_cast<parm_hash_idx>(parm_count);
         }
         for( typ = front.cvars.FuncTypeHead[hash]; typ != NULL; typ = typ->next_type ) {
             next_parm = parm;
@@ -1645,7 +1645,7 @@ TYPEPTR *MakeParmList( FrontRun& front, parm_list *parm, bool reversed )
             }
         }
 
-        parm_types = (TYPEPTR *)CPermAlloc( front, ( parm_count + 1 ) * sizeof( TYPEPTR ) );
+        parm_types = static_cast<TYPEPTR *>(CPermAlloc( front, ( parm_count + 1 ) * sizeof( TYPEPTR ) ));
         if( parm_types != NULL ) {
             parm_types[parm_count] = NULL;
             parm_count = 0;
@@ -1726,11 +1726,11 @@ static void GetFuncParmList( FrontRun& front )
      */
     while( front.cvars.CurToken == T_ID ) {
         if( parm_namelist == NULL ) {
-            parm = (PARMPTR)CMemAlloc( front, sizeof( PARM_ENTRY ) );
+            parm = static_cast<PARMPTR>(CMemAlloc( front, sizeof( PARM_ENTRY ) ));
             SymCreate( front, &parm->sym, front.cvars.Buffer );
             parm_namelist = parm;
         } else {
-            newparm = (PARMPTR)CMemAlloc( front, sizeof( PARM_ENTRY ) );
+            newparm = static_cast<PARMPTR>(CMemAlloc( front, sizeof( PARM_ENTRY ) ));
             SymCreate( front, &newparm->sym, front.cvars.Buffer );
             CheckUniqueName( front, parm_namelist, front.cvars.Buffer );
             parm->next_parm = newparm;
@@ -1757,7 +1757,7 @@ static void GetFuncParmList( FrontRun& front )
         }
         MustRecog( front, T_COMMA );
         if( front.cvars.CurToken == T_DOT_DOT_DOT ) {
-            parm->next_parm = (PARMPTR)CMemAlloc( front, sizeof( PARM_ENTRY ) );
+            parm->next_parm = static_cast<PARMPTR>(CMemAlloc( front, sizeof( PARM_ENTRY ) ));
             parm = parm->next_parm;
             SymCreate( front, &parm->sym, "" );
             /*

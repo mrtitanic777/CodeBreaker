@@ -109,7 +109,7 @@ void    CalcMemLimit( BackRun& back )
 void    FlushOpt( BackRun& back )
 /**********************/
 {
-    FlushSomeOpt( back, (pointer_uint)-1 );
+    FlushSomeOpt( back, static_cast<pointer_uint>(-1) );
 }
 
 

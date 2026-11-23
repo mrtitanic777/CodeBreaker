@@ -254,7 +254,7 @@ static  void    CalculateLoadStore( BackRun& back, conflict_node *conf )
             } else {
                 GBitTurnOff( flow->need_store, id );
             }
-            if( blk->ins.head.prev != (instruction *)&blk->ins ) {
+            if( blk->ins.head.prev != reinterpret_cast<instruction *>(&blk->ins) ) {
                 InsNotBlock( back, blk->ins.head.prev );
                 InsNotBlock( back, conf->ins_range.last );
                 if( blk->ins.head.prev->id >= conf->ins_range.last->id) {

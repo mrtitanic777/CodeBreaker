@@ -102,7 +102,7 @@ static void writeFileHeader( BackRun& back, owl_file_handle file )
     header.e_shentsize = sizeof( Elf32_Shdr );
     header.e_shnum = numSections( file );
     header.e_shstrndx = ELF_STRING_INDEX;
-    ClientWrite( back, file, (const char *)&header, sizeof( header ) );
+    ClientWrite( back, file, reinterpret_cast<const char *>(&header), sizeof( header ) );
 }
 
 static void prepareStringTable( BackRun& back, owl_file_handle file, elf_special_section *str_sect )
@@ -176,7 +176,7 @@ static void prepareSymbolTable( BackRun& back, owl_file_handle file, elf_special
 
     sym_sect->length = ( numSymbols( file ) + 1 ) * sizeof( Elf32_Sym );
     sym_sect->buffer = static_cast<char *>(ClientAlloc( back, file, sym_sect->length ));
-    elf_syms = (Elf32_Sym *)sym_sect->buffer;
+    elf_syms = reinterpret_cast<Elf32_Sym *>(sym_sect->buffer);
     emitBogusSymbol( elf_syms );
     next_local_index = 1;
     next_global_index = file->symbol_table->num_global_symbols + file->symbol_table->num_local_symbols;
@@ -370,7 +370,7 @@ static void emitSectionHeaders( BackRun& back, owl_file_handle file )
     formatStringTableHeader( file, &headers[ELF_STRING_INDEX] );
     formatSymbolTableHeader( file, &headers[ELF_SYMBOL_INDEX] );
     formatUserSectionHeaders( back, file, headers );
-    ClientWrite( back, file, (const char *)headers, section_header_table_size );
+    ClientWrite( back, file, reinterpret_cast<const char *>(headers), section_header_table_size );
     ClientFree( back, file, headers );
 }
 
@@ -401,9 +401,9 @@ static void emitReloc( BackRun& back, owl_section_handle sec, owl_reloc_info *re
          */
         old_loc = OWLBufferTell( sec->buffer );
         OWLBufferSeek( sec->buffer, reloc->location );
-        OWLBufferRead( sec->buffer, reloc->location, (char *)&data, sizeof( data ) );
+        OWLBufferRead( sec->buffer, reloc->location, reinterpret_cast<char *>(&data), sizeof( data ) );
         data = (data&~bit_mask)|(((data&bit_mask)-4)&bit_mask);
-        OWLBufferWrite( back, sec->buffer, (char *)&data, sizeof( data ) );
+        OWLBufferWrite( back, sec->buffer, reinterpret_cast<char *>(&data), sizeof( data ) );
         OWLBufferSeek( sec->buffer, old_loc );
     }
     if( back.owelf->useRela ) {
@@ -416,10 +416,10 @@ static void emitReloc( BackRun& back, owl_section_handle sec, owl_reloc_info *re
         data_size = OWLBufferSize( sec->buffer ) - reloc->location;
         if( data_size > 4 )
             data_size = 4;
-        OWLBufferRead( sec->buffer, reloc->location, (char *)&data, data_size );
+        OWLBufferRead( sec->buffer, reloc->location, reinterpret_cast<char *>(&data), data_size );
         elf_reloc->r_addend = ( data & bit_mask );
         data &= ~bit_mask;
-        OWLBufferWrite( back, sec->buffer, (char *)&data, data_size );
+        OWLBufferWrite( back, sec->buffer, reinterpret_cast<char *>(&data), data_size );
         OWLBufferSeek( sec->buffer, old_loc );
     }
 }
@@ -467,7 +467,7 @@ static void emitSectionData( BackRun& back, owl_file_handle file )
             next_reloc = reloc_buffer;
             for( reloc = curr->first_reloc; reloc != NULL; reloc = reloc->next ) {
                 emitReloc( back, curr, reloc, next_reloc );
-                next_reloc = (Elf32_Rela *)( (unsigned)(pointer_uint)next_reloc + reloc_entry_size );
+                next_reloc = reinterpret_cast<Elf32_Rela *>( static_cast<unsigned>(reinterpret_cast<pointer_uint>(next_reloc)) + reloc_entry_size );
             }
         } else {
             reloc_buffer = NULL;
@@ -481,7 +481,7 @@ static void emitSectionData( BackRun& back, owl_file_handle file )
             /*
              * Now write out the prepared reloc_buffer
              */
-            ClientWrite( back, file, (const char *)reloc_buffer, relocs_size );
+            ClientWrite( back, file, reinterpret_cast<const char *>(reloc_buffer), relocs_size );
             ClientFree( back, file, reloc_buffer );
         }
     }

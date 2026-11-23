@@ -749,7 +749,7 @@ char *get_dllname( SupportRun& support, char *buf, int len )
 
     *buf = '\0';
   #ifdef _MSC_VER
-    GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCTSTR)&support.clibext.optind, &hnd);
+    GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, reinterpret_cast<LPCTSTR>(&support.clibext.optind), &hnd);
     GetModuleFileName( hnd, buf, len );
   #endif
     return( buf );

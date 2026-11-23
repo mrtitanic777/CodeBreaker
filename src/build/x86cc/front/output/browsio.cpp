@@ -278,7 +278,7 @@ static void dw_write( BackRun& back, dw_sectnum sect, const void *block, size_t 
     bufnum = front.browsio->dw_sections[sect].offset / C_DWARF_BUFSIZE;
     endbufnum = ( front.browsio->dw_sections[sect].offset + len ) / C_DWARF_BUFSIZE;
     if( endbufnum >= front.browsio->dw_sections[sect].bufcount ) {
-        newbufptrs = (char **)CMemAlloc( front, ( endbufnum + 1 ) * sizeof( char * ) );
+        newbufptrs = static_cast<char **>(CMemAlloc( front, ( endbufnum + 1 ) * sizeof( char * ) ));
         if( front.browsio->dw_sections[sect].bufptrs != NULL ) {
             memcpy( newbufptrs, front.browsio->dw_sections[sect].bufptrs, front.browsio->dw_sections[sect].bufcount * sizeof( char * ) );
             CMemFree( front, front.browsio->dw_sections[sect].bufptrs );
@@ -294,14 +294,14 @@ static void dw_write( BackRun& back, dw_sectnum sect, const void *block, size_t 
     while( len != 0 ) {
         bufptr = front.browsio->dw_sections[sect].bufptrs[bufnum];
         if( bufptr == NULL ) {
-            bufptr = (char *)CMemAlloc( front, C_DWARF_BUFSIZE );
+            bufptr = static_cast<char *>(CMemAlloc( front, C_DWARF_BUFSIZE ));
             front.browsio->dw_sections[sect].bufptrs[bufnum] = bufptr;
         }
         bufptr += C_DWARF_BUFSIZE - bufsize;
         if( bufsize > len  )
             bufsize = len;
         memcpy( bufptr, block, bufsize );
-        block = (char *)block + bufsize;
+        block = static_cast<const char *>(block) + bufsize;
         len -= bufsize;
         ++bufnum;                       /* advance to next buffer */
         bufsize = C_DWARF_BUFSIZE;      /* buffer is full size */

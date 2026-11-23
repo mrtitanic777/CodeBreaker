@@ -132,13 +132,13 @@ static  void    TellTempLocs( BackRun& back )
 
     for( temp = back.data.Names[N_TEMP]; temp != NULL; temp = temp->n.next_name ) {
         if( temp->v.symbol != NULL && (temp->t.temp_flags & ALIAS) == 0 ) {
-            ans = (int)(pointer_uint)FEAuxInfo( *back.front, temp->v.symbol, FEINF_TEMP_LOC_NAME );
+            ans = static_cast<int>(reinterpret_cast<pointer_uint>(FEAuxInfo( *back.front, temp->v.symbol, FEINF_TEMP_LOC_NAME )));
             if( ans == TEMP_LOC_QUIT )
                 break;
             if( temp->t.location == NO_LOCATION )
                 continue;
             if( ans == TEMP_LOC_YES ) {
-                FEAuxInfo( *back.front, (pointer)(pointer_uint)TempLocation( back, temp ), FEINF_TEMP_LOC_TELL );
+                FEAuxInfo( *back.front, reinterpret_cast<pointer>(static_cast<pointer_uint>(TempLocation( back, temp ))), FEINF_TEMP_LOC_TELL );
             }
         }
     }

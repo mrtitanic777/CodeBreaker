@@ -410,7 +410,7 @@ void    LayLeaRegOp( BackRun& back, instruction *ins )
         break;
     case OP_LSHIFT:
         disp = GetNextAddConstant( back, ins );   /* 2004-11-05  RomanT */
-        scale = (scale_typ)right->c.lo.u.int_value;
+        scale = static_cast<scale_typ>(right->c.lo.u.int_value);
         switch( scale ) {
         case SCALE_2:
             if( CPULevel( back, CPU_586 ) ) {
@@ -544,7 +544,7 @@ void    DoRelocConst( BackRun& back, name *op, type_class_def type_class )
     } else if( op->c.const_type == CONS_SEGMENT ) {
         back.pcencode.ILen += 2;
         if( op->c.u.op == NULL ) {
-            DoSegRef( back, (segment_id)op->c.lo.u.int_value );
+            DoSegRef( back, static_cast<segment_id>(op->c.lo.u.int_value) );
         } else {
             DoSymRef( back, op->c.u.op, 0, true );
         }
@@ -627,7 +627,7 @@ static void    doProfilingCode( BackRun& back, char *fe_name, label_handle *data
     Format( back, OC_CODE );
     LayOpbyte( back, 0x68 );
     back.pcencode.ILen += 4;
-    DoLblRef( back, *data, (segment_id)(pointer_uint)FEAuxInfo( *back.front, NULL, FEINF_P5_PROF_SEG ), 0, ESCA_OFST );
+    DoLblRef( back, *data, static_cast<segment_id>(reinterpret_cast<pointer_uint>(FEAuxInfo( *back.front, NULL, FEINF_P5_PROF_SEG ))), 0, ESCA_OFST );
     Finalize( back );
     DoRTCall( back, prolog ? RT_PROFILE_ON : RT_PROFILE_OFF, true );
 }
@@ -643,11 +643,11 @@ static  void    doProfilingPrologEpilog( BackRun& back, label_handle label, bool
         label_handle    data_lbl;
         segment_id      data_segid;
 
-        bck = (back_handle)FEAuxInfo( *back.front, AskForLblSym( back, label ), FEINF_P5_PROF_DATA );
+        bck = static_cast<back_handle>(FEAuxInfo( *back.front, AskForLblSym( back, label ), FEINF_P5_PROF_DATA ));
         if( bck == NULL )
             return;
         data_lbl = bck->lbl;
-        data_segid = (segment_id)(pointer_uint)FEAuxInfo( *back.front, NULL, FEINF_P5_PROF_SEG );
+        data_segid = static_cast<segment_id>(reinterpret_cast<pointer_uint>(FEAuxInfo( *back.front, NULL, FEINF_P5_PROF_SEG )));
         TellKeepLabel( back, data_lbl );
         Format( back, OC_CODE );
         if( prolog ) {
@@ -710,7 +710,7 @@ segment_id GenProfileData( BackRun& back, char *fe_name, label_handle *data, lab
  * generate P5 profiler code
  */
 {
-    segment_id      data_segid = (segment_id)(pointer_uint)FEAuxInfo( *back.front, NULL, FEINF_P5_PROF_SEG );
+    segment_id      data_segid = static_cast<segment_id>(reinterpret_cast<pointer_uint>(FEAuxInfo( *back.front, NULL, FEINF_P5_PROF_SEG )));
 
     { segment_id old_segid = ChangeOP( back, data_segid );
         TellOptimizerByPassed(back);
@@ -903,7 +903,7 @@ void StartBlockProfiling( BackRun& back, block *blk )
         return;
     if( IsntTargetModel( back, CGSW_X86_STATEMENT_COUNTING ) )
         return;
-    data_segid = (segment_id)(pointer_uint)FEAuxInfo( *back.front, NULL, FEINF_P5_PROF_SEG );
+    data_segid = static_cast<segment_id>(reinterpret_cast<pointer_uint>(FEAuxInfo( *back.front, NULL, FEINF_P5_PROF_SEG )));
     if( blk->label == NULL )
         return;
     TellKeepLabel( back, blk->label );

@@ -353,13 +353,13 @@ void    MakeLiveInfo( BackRun& back )
     back.data.HaveLiveInfo = false;
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( blk->ins.head.prev->head.opcode != OP_NOP ) {
-            PrefixInsRenum( back, (instruction *)&blk->ins, MakeNop(back), false );
+            PrefixInsRenum( back, reinterpret_cast<instruction *>(&blk->ins), MakeNop(back), false );
         }
     }
     back.data.HaveLiveInfo = havelive;
     Renumber(back);
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        FlowConflicts( back, (instruction *)&blk->ins, (instruction *)&blk->ins, blk );
+        FlowConflicts( back, reinterpret_cast<instruction *>(&blk->ins), reinterpret_cast<instruction *>(&blk->ins), blk );
         ExtendConflicts( back, blk, first_global );
     }
 }
@@ -371,8 +371,8 @@ void    LiveInfoUpdate( BackRun& back )
     block       *blk;
 
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        if( blk->ins.head.next != (instruction *)&blk->ins ) {
-            FlowConflicts( back, (instruction *)&blk->ins, (instruction *)&blk->ins, blk );
+        if( blk->ins.head.next != reinterpret_cast<instruction *>(&blk->ins) ) {
+            FlowConflicts( back, reinterpret_cast<instruction *>(&blk->ins), reinterpret_cast<instruction *>(&blk->ins), blk );
         }
     }
 }

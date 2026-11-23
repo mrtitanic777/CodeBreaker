@@ -49,4 +49,3 @@ typedef enum {
 } result_type;
 
 #define MAX_8087_REG    7
-

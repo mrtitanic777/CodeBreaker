@@ -63,7 +63,7 @@ an      TNPatch( BackRun& back, tn node )
     an                  addr;
     type_class_def      type_class;
 
-    patch = (patch_handle)node->u.handle;
+    patch = static_cast<patch_handle>(node->u.handle);
     patch->in_tree = false;
     type_class = TypeClass( back, node->tipe );
     addr = AddrName( back, AllocTemp( back, type_class ), node->tipe );

@@ -53,7 +53,7 @@ static void AllocMoreExprNodes( FrontRun& front )
     TREEPTR     node;
     int         i;
 
-    node = (TREEPTR)CMemAlloc( front, 500 * sizeof( EXPRNODE ) );
+    node = static_cast<TREEPTR>(CMemAlloc( front, 500 * sizeof( EXPRNODE ) ));
     front.exprtree.ExprNodeList = node;
     for( i = 0; i < (500 - 1); i++ ) {
         node->left = node + 1;

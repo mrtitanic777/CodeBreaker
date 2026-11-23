@@ -158,7 +158,7 @@ bool FoldIntoIndex( BackRun& back, instruction *ins )
                      */
                     sib.flags ^= ( X_HIGH_BASE | X_LOW_BASE );
                 }
-                sib.scale = static_cast<scale_typ>((scale_typ)cons->c.lo.u.int_value + sib.index->i.scale);
+                sib.scale = static_cast<scale_typ>(static_cast<scale_typ>(cons->c.lo.u.int_value) + sib.index->i.scale);
                 if( sib.scale > SCALE_8 )
                     break;
                 if( ins->operands[0] == ins->result ) {

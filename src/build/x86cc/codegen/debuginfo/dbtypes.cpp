@@ -537,7 +537,7 @@ void _CGAPI DBAddBitField( BackRun& back, dbg_struct st, uint_32 off, byte strt,
     field = CreateMember( back, nm, strt, len, base, 0 );
     field->entry.field_type = FIELD_OFFSET;
     field->u.off= off;
-    AddField( st, (field_any *)field );
+    AddField( st, reinterpret_cast<field_any *>(field) );
 }
 
 
@@ -565,7 +565,7 @@ void _CGAPI DBAddLocField( BackRun& back, dbg_struct st, dbg_loc loc, uint attr,
         field->entry.field_type = FIELD_LOC;
         field->u.loc = LocDupl( loc );
     }
-    AddField( st, (field_any *)field );
+    AddField( st, reinterpret_cast<field_any *>(field) );
 }
 
 void _CGAPI DBAddStField( BackRun& back, dbg_struct st, dbg_loc loc, cchar_ptr nm, uint_32 attr, dbg_type base )
@@ -581,7 +581,7 @@ void _CGAPI DBAddStField( BackRun& back, dbg_struct st, dbg_loc loc, cchar_ptr n
     field->loc = LocDupl( loc );
     field->attr = attr;
     field->base = base;
-    AddField( st, (field_any *)field );
+    AddField( st, reinterpret_cast<field_any *>(field) );
 }
 
 void _CGAPI DBAddMethod( BackRun& back, dbg_struct st, dbg_loc loc, uint attr,
@@ -600,7 +600,7 @@ void _CGAPI DBAddMethod( BackRun& back, dbg_struct st, dbg_loc loc, uint attr,
     field->kind = kind;
     field->len = n_len;
     field->base = base;
-    AddField( st, (field_any *)field );
+    AddField( st, reinterpret_cast<field_any *>(field) );
 }
 
 void _CGAPI DBAddNestedType( BackRun& back, dbg_struct st, cchar_ptr nm, dbg_type base )
@@ -614,7 +614,7 @@ void _CGAPI DBAddNestedType( BackRun& back, dbg_struct st, cchar_ptr nm, dbg_typ
     strcpy( field->name, nm );
     field->entry.field_type = FIELD_NESTED;
     field->base = base;
-    AddField( st, (field_any *)field );
+    AddField( st, reinterpret_cast<field_any *>(field) );
     st->is_cnested = true;
 }
 
@@ -632,7 +632,7 @@ void _CGAPI DBAddInheritance( BackRun& back, dbg_struct st, dbg_type inherit,
     field->attr = attr;
     field->kind = kind;
     field->u.adjustor = LocDupl( loc );
-    AddField( st, (field_any *)field );
+    AddField( st, reinterpret_cast<field_any *>(field) );
 }
 
 void _CGAPI DBAddBaseInfo( dbg_struct st, uint_32 vb_off, int esize,
@@ -658,7 +658,7 @@ void _CGAPI DBAddVFuncInfo( BackRun& back, dbg_struct st, uint_32 vfptr_off,
     field->vft_cgtype = vft_cgtype;
     field->vft_size = size;
     st->vf = field;
-    AddField( st, (field_any *)field );
+    AddField( st, reinterpret_cast<field_any *>(field) );
 }
 
 dbg_type _CGAPI DBEndStruct( BackRun& back, dbg_struct st )

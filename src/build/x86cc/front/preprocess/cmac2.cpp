@@ -159,7 +159,7 @@ static void IncLevel( FrontRun& front, bool value )
 {
     struct cpp_info *cpp;
 
-    cpp = (struct cpp_info *)CMemAlloc( front, sizeof( struct cpp_info ) );
+    cpp = static_cast<struct cpp_info *>(CMemAlloc( front, sizeof( struct cpp_info ) ));
     cpp->prev_cpp = front.cvars.CppStack;
     cpp->src_loc = front.cvars.TokenLoc;
     cpp->flist = front.cvars.SrcFiles->src_flist;
@@ -194,8 +194,8 @@ static void PreProcStmt( FrontRun& front )
     front.cvars.NextChar(front);                 /* skip over '#' */
     PPNextToken(front);
     if( front.cvars.CurToken == T_ID ) {
-        c1 = IndexLower( ((unsigned char *)front.cvars.Buffer)[0] );
-        c2 = IndexLower( ((unsigned char *)front.cvars.Buffer)[front.cvars.TokenLen - 1] );
+        c1 = IndexLower( (reinterpret_cast<unsigned char *>(front.cvars.Buffer))[0] );
+        c2 = IndexLower( (reinterpret_cast<unsigned char *>(front.cvars.Buffer))[front.cvars.TokenLen - 1] );
         if( c1 >= 0 && c2 >= 0 ) {
             hash = (front.cvars.TokenLen + PreProcWeights[c1] + PreProcWeights[c2]) & 0x0f;
             pp = &front.cmac2.PreProcTable[hash];
@@ -526,7 +526,7 @@ MEPTR MacroScan( FrontRun& front )
             if( front.cvars.CurToken == T_DOT_DOT_DOT ) {
                 mflags |= MFLAG_HAS_VAR_ARGS;   /* can have no more parms after this. */
             }
-            mp = (MPPTR)CMemAlloc( front, sizeof( MPDEFN ) );
+            mp = static_cast<MPPTR>(CMemAlloc( front, sizeof( MPDEFN ) ));
             if( formal_parms == NULL ) {
                 formal_parms = mp;
             } else {

@@ -84,14 +84,14 @@ static void EmitADBType( FrontRun& front, TYPEPTR typ )
     case TYP_STRUCT:
     case TYP_UNION:
     case TYP_ENUM:
-        if( !front.cvars.CompFlags.dump_types_with_names ) break;
-        if( typ->u.tag->name[0] == '\0' ) break;
-        goto dump_type;
+        if( front.cvars.CompFlags.dump_types_with_names && typ->u.tag->name[0] != '\0' ) {
+            DBType( front, typ );
+        }
+        break;
     case TYP_TYPEDEF:
-        if( !front.cvars.CompFlags.dump_types_with_names ) break;
-        if( front.cvars.CompFlags.no_debug_type_names ) break;
-    dump_type:
-        DBType( front, typ );
+        if( front.cvars.CompFlags.dump_types_with_names && !front.cvars.CompFlags.no_debug_type_names ) {
+            DBType( front, typ );
+        }
         break;
     default:
         break;
@@ -176,7 +176,7 @@ static dbug_type DoBasedPtr( FrontRun& front, TYPEPTR typ, cg_type cgtype )
                 ret_val = DBPtr( *front.back, cgtype, DBType( front, typ->object ) );
                 have_retval = true;
             } else {
-                dl = DBLocSym( *front.back, dl, (CGSYM_HANDLE)sym_handle );
+                dl = DBLocSym( *front.back, dl, static_cast<CGSYM_HANDLE>(sym_handle) );
                 dl = DBLocOp( *front.back, dl, DB_OP_POINTS, TY_UINT_2 );
                 dl = DBLocConst( *front.back, dl, 0 );
                 dl = DBLocOp( *front.back, dl, DB_OP_MK_FP, 0 );
@@ -388,14 +388,14 @@ static dbug_type DBTypeEnum( FrontRun& front, TYPEPTR typ )
 
 dbug_type FEDbgType( FrontRun& front, CGSYM_HANDLE cgsym_handle )
 {
-    SYM_HANDLE     sym_handle = (SYM_HANDLE)cgsym_handle;
+    SYM_HANDLE     sym_handle = reinterpret_cast<SYM_HANDLE>(cgsym_handle);
 
     return( DBType( front, SymGetPtr( front, sym_handle )->sym_type ) );
 }
 
 dbug_type FEDbgRetType( FrontRun& front, CGSYM_HANDLE cgsym_handle )
 {
-    SYM_HANDLE     sym_handle = (SYM_HANDLE)cgsym_handle;
+    SYM_HANDLE     sym_handle = reinterpret_cast<SYM_HANDLE>(cgsym_handle);
     TYPEPTR        typ;
 
     typ = SymGetPtr( front, sym_handle )->sym_type;

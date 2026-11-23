@@ -31,9 +31,9 @@
 
 
 #pragma once
-inline void *ToSrValue( bool x ) { return ((void *)(pointer_uint)(x)); }
+inline void *ToSrValue( bool x ) { return (reinterpret_cast<void *>(static_cast<pointer_uint>(x))); }
 template <class T>
-inline T FromSrValue( void *x ) { return (T)(pointer_uint)x; }
+inline T FromSrValue( void *x ) { return static_cast<T>(reinterpret_cast<pointer_uint>(x)); }
 
 typedef void    *(*func_sr)(BackRun&, void *);
 

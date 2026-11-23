@@ -296,7 +296,7 @@ static void RelSeekBytes( FrontRun& front, target_ssize n )
     DATA_QUAD_LIST  *dql;
 
     dql = front.cdinit->CurDataQuad;
-    while( n < 0 && n <= -(target_ssize)dql->size ) {
+    while( n < 0 && n <= -static_cast<target_ssize>(dql->size) ) {
         n += dql->size;
         dql = dql->prev;
     }
@@ -331,12 +331,12 @@ static void StoreIValue( FrontRun& front, DATA_TYPE dtype, int value, target_siz
     if( front.cdinit->StoreIValue_LastCurDataQuad == front.cdinit->CurDataQuad ) {
         dq_ptr = &front.cdinit->CurDataQuad->dq;
     }
-    if( (DATA_TYPE)dq_ptr->type == dtype
+    if( static_cast<DATA_TYPE>(dq_ptr->type) == dtype
       && dq_ptr->flags == (Q_DATA | Q_REPEATED_DATA)
       && dq_ptr->u_long_value1 == value ) {
         dq_ptr->u_rpt_count++;                  /* increment repeat count */
         front.cdinit->CurDataQuad->size += size;
-    } else if( (DATA_TYPE)dq_ptr->type == dtype
+    } else if( static_cast<DATA_TYPE>(dq_ptr->type) == dtype
       && dq_ptr->flags == Q_DATA ) {
         if( dq_ptr->u_long_value1 == value ) {
             dq_ptr->flags |= Q_REPEATED_DATA;
@@ -347,7 +347,7 @@ static void StoreIValue( FrontRun& front, DATA_TYPE dtype, int value, target_siz
         }
         front.cdinit->CurDataQuad->size += size;
     } else {
-        dq.type = (enum quad_type)dtype;
+        dq.type = static_cast<enum quad_type>(dtype);
         dq.flags = Q_DATA;
         dq.u_long_value1 = value;
         if( value != 0 )
@@ -375,7 +375,7 @@ static void StoreIValue64( FrontRun& front, DATA_TYPE dtype, int64 value )
 {
     DATA_QUAD           dq;
 
-    dq.type = (enum quad_type)dtype;
+    dq.type = static_cast<enum quad_type>(dtype);
     dq.flags = Q_DATA;
     dq.u.long64 = value;
     front.cvars.CompFlags.non_zero_data = true;
@@ -401,9 +401,9 @@ static void AddrFold( FrontRun& front, TREEPTR tree, addrfold_info *info )
     case OPR_PUSHFLOAT:
         info->state = IS_ADDR;
         if( tree->op.u2.float_value->len != 0 ) {
-            info->offset = (target_ssize)atof( tree->op.u2.float_value->string );
+            info->offset = static_cast<target_ssize>(atof( tree->op.u2.float_value->string ));
         } else {
-            info->offset = (target_ssize)tree->op.u2.float_value->ld.u.value;
+            info->offset = static_cast<target_ssize>(tree->op.u2.float_value->ld.u.value);
         }
         if( info->offset != 0 )
             front.cvars.CompFlags.non_zero_data = true;
@@ -660,7 +660,7 @@ static void StoreInt64( FrontRun& front, TYPEPTR typ )
     TREEPTR     tree;
     DATA_QUAD   dq;
 
-    dq.type = (enum quad_type)typ->decl_type;
+    dq.type = static_cast<enum quad_type>(typ->decl_type);
     dq.flags = Q_DATA;
     Set64ValZero( dq.u.long64 );
     if( front.cvars.CurToken != T_RIGHT_BRACE ) {
@@ -794,7 +794,7 @@ static void *DesignatedInit( FrontRun& front, TYPEPTR typ, TYPEPTR ctyp, void *f
         tree = SingleExpr(front);
         if( IsConstLeaf( tree ) ) {
             CastConstValue( front, tree, typ->decl_type );
-            *(target_size *)field = tree->op.u2.ulong_value;
+            *static_cast<target_size *>(field) = tree->op.u2.ulong_value;
         } else {
             CErr1( front, ERR_NOT_A_CONSTANT_EXPR );
         }
@@ -879,7 +879,7 @@ static void InitArray( FrontRun& front, TYPEPTR typ, TYPEPTR ctyp )
              */
             elem_size = SizeOfArg( front, typ->object );
             ZeroBytes( front, elem_size );
-            RelSeekBytes( front, -(target_ssize)elem_size );
+            RelSeekBytes( front, -static_cast<target_ssize>(elem_size) );
         }
         InitSymData( front, typ->object, ctyp, 1 );
         if( front.cvars.CurToken == T_EOF )
@@ -1032,7 +1032,7 @@ void InitSymData( FrontRun& front, TYPEPTR typ, TYPEPTR ctyp, int level )
                  * initializers will make life very difficult
                  */
                 ZeroBytes( front, size );
-                RelSeekBytes( front, -(target_ssize)size );
+                RelSeekBytes( front, -static_cast<target_ssize>(size) );
             }
             InitArray( front, typ, ctyp );
         }
@@ -1054,7 +1054,7 @@ void InitSymData( FrontRun& front, TYPEPTR typ, TYPEPTR ctyp, int level )
              * by designated initializers will make life very difficult
              */
             ZeroBytes( front, size );
-            RelSeekBytes( front, -(target_ssize)size );
+            RelSeekBytes( front, -static_cast<target_ssize>(size) );
         }
         InitStruct( front, typ, ctyp );
         break;
@@ -1211,7 +1211,7 @@ static void InitWCharArray( FrontRun& front, TYPEPTR typ )
         }
         len = size;
     }
-    pwc = (unsigned short *)str_lit->literal;
+    pwc = reinterpret_cast<unsigned short *>(str_lit->literal);
     for( i = 0; i < len; ++i ) {
         value = *pwc++;
         if( value != 0 )
@@ -1231,7 +1231,7 @@ static void StoreFloat( FrontRun& front, DATA_TYPE dtype, target_size size )
     TREEPTR     tree;
     DATA_QUAD   dq;
 
-    dq.type = (enum quad_type)dtype;
+    dq.type = static_cast<enum quad_type>(dtype);
     dq.flags = Q_DATA;
     dq.u.double_value = 0.0;
     if( front.cvars.CurToken != T_RIGHT_BRACE ) {

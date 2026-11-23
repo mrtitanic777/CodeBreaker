@@ -233,7 +233,7 @@ static bool get_operand( AsmRun& assembler, expr_list *new_, token_buffer *tokbu
         new_->type = EXPR_CONST;
         new_->string = tokbuf->tokens[i].string_ptr;
         value = 0;
-        for( ptr = new_->string; (c = *(unsigned char *)ptr) != '\0'; ptr++ ) {
+        for( ptr = new_->string; (c = *reinterpret_cast<const unsigned char *>(ptr)) != '\0'; ptr++ ) {
             value = ( value << 8 ) | c;
         }
         new_->value = value;
@@ -299,10 +299,10 @@ static bool get_operand( AsmRun& assembler, expr_list *new_, token_buffer *tokbu
                     new_->type = EXPR_UNDEF;
                     return( RC_ERROR );
                 }
-                new_->idx_reg = (token_idx)sti.value;
+                new_->idx_reg = static_cast<token_idx>(sti.value);
                 return( RC_OK );
             default:
-                new_->idx_reg = (token_idx)0; // st = st(0)
+                new_->idx_reg = static_cast<token_idx>(0); // st = st(0)
                 break;
             }
         }
@@ -1005,10 +1005,10 @@ static bool calculate( AsmRun& assembler, expr_list *token_1, expr_list *token_2
         }
         switch( tokbuf->tokens[index].u.token ) {
         case T_SHL:
-            token_1->value = (unsigned_32)token_1->value << token_2->value;
+            token_1->value = static_cast<unsigned_32>(token_1->value) << token_2->value;
             break;
         case T_SHR:
-            token_1->value = (unsigned_32)token_1->value >> token_2->value;
+            token_1->value = static_cast<unsigned_32>(token_1->value) >> token_2->value;
             break;
         case T_NOT:
             token_1->value = ~(token_2->value);
@@ -1073,14 +1073,14 @@ static bool calculate( AsmRun& assembler, expr_list *token_1, expr_list *token_2
                     /* scale * reg */
                     token_1->idx_reg = token_2->base_reg;
                     token_1->base_reg = INVALID_IDX;
-                    token_1->scale = (uint_8)token_1->value;
+                    token_1->scale = static_cast<uint_8>(token_1->value);
                     token_1->value = 0;
                     token_2->base_reg = INVALID_IDX;
                 } else {
                     /* reg * scale */
                     token_1->idx_reg = token_1->base_reg;
                     token_1->base_reg = INVALID_IDX;
-                    token_1->scale = (uint_8)token_2->value;
+                    token_1->scale = static_cast<uint_8>(token_2->value);
                 }
                 token_1->indirect |= token_2->indirect;
                 token_1->type = EXPR_ADDR;
@@ -1600,11 +1600,11 @@ static token_idx fix( AsmRun& assembler, expr_list *res, token_buffer *tokbuf, t
         tokbuf->tokens[ start ].string_ptr = tokbuf->tokens[ res->base_reg ].string_ptr;
         tokbuf->tokens[ start++ ].u.value = tokbuf->tokens[ res->base_reg ].u.value;
         if( tokbuf->tokens[ res->base_reg ].u.token == T_ST
-          && (int)res->idx_reg > 0 ) {
+          && static_cast<int>(res->idx_reg) > 0 ) {
 //            tokbuf->tokens[start].string_ptr = "(";
 //            tokbuf->tokens[start++].class = TC_OP_BRACKET;
             tokbuf->tokens[start].class_ = TC_NUM;
-            tokbuf->tokens[start].u.value = (int)res->idx_reg;
+            tokbuf->tokens[start].u.value = static_cast<int>(res->idx_reg);
             tokbuf->tokens[start++].string_ptr = const_cast<char *>("");
 //            tokbuf->tokens[start].string_ptr = ")";
 //            tokbuf->tokens[start++].class = TC_CL_BRACKET;

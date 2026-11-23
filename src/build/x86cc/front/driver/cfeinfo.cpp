@@ -172,8 +172,8 @@ bool VarFunc( FrontRun& front, SYMPTR sym )
     if( sym->flags & SYM_FUNCTION ) {
         p = sym->name;
         len = strlen( p );
-        c1 = IndexLower( ((unsigned char *)p)[0] );
-        c2 = IndexLower( ((unsigned char *)p)[len - 1] );
+        c1 = IndexLower( (reinterpret_cast<unsigned char *>(p))[0] );
+        c2 = IndexLower( (reinterpret_cast<unsigned char *>(p))[len - 1] );
         if( c1 >= 0 && c2 >= 0 ) {
             hash = (len + VarFuncWeights[c1] + VarFuncWeights[c2]) & 0x1f;
             if( strcmp( p, VarParmFuncs[hash] ) == 0
@@ -407,12 +407,12 @@ aux_info *FindInfo( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
         return( &front.pragdefn.STOSBInfo );
     } else if( sym_handle == front.cvars.SymFinally ) {
         front.pdefn2.InlineInfo = WatcallInfo( front );
-        front.pdefn2.InlineInfo.code = (byte_seq *)&FinallyCode;
+        front.pdefn2.InlineInfo.code = const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&FinallyCode));
         return( &front.pdefn2.InlineInfo );
     } else if( sym_handle == front.cvars.SymTryFini ) {
         front.pdefn2.InlineInfo = WatcallInfo( front );
         front.pdefn2.InlineInfo.parms = front.cfeinfo.TryFiniParms;
-        front.pdefn2.InlineInfo.code = (byte_seq *)&TryFiniCode;
+        front.pdefn2.InlineInfo.code = const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&TryFiniCode));
         return( &front.pdefn2.InlineInfo );
     }
 #endif
@@ -621,11 +621,11 @@ static CGPOINTER NextLibrary( FrontRun& front, int index, aux_class request )
      */
     if( request == FEINF_LIBRARY_NAME
       || name == NULL )
-        return( (CGPOINTER)name );
+        return( reinterpret_cast<CGPOINTER>(name) );
     /*
      * library index
      */
-    return( (CGPOINTER)(pointer_uint)index );
+    return( reinterpret_cast<CGPOINTER>(static_cast<pointer_uint>(index)) );
 }
 
 static CGPOINTER NextAlias( FrontRun& front, int index, aux_class request )
@@ -662,19 +662,19 @@ static CGPOINTER NextAlias( FrontRun& front, int index, aux_class request )
         if( i == index ) {
             switch( request ) {
             case FEINF_ALIAS_NAME:
-                return( (CGPOINTER)aliaslist->name );
+                return( const_cast<CGPOINTER>(static_cast<const void *>(aliaslist->name)) );
             case FEINF_ALIAS_SYMBOL:
-                return( (CGPOINTER)aliaslist->a_sym );
+                return( aliaslist->a_sym );
             case FEINF_ALIAS_SUBST_NAME:
-                return( (CGPOINTER)aliaslist->subst );
+                return( const_cast<CGPOINTER>(static_cast<const void *>(aliaslist->subst)) );
             case FEINF_ALIAS_SUBST_SYMBOL:
-                return( (CGPOINTER)aliaslist->s_sym );
+                return( aliaslist->s_sym );
             }
-            return( (CGPOINTER)(pointer_uint)index );
+            return( reinterpret_cast<CGPOINTER>(static_cast<pointer_uint>(index)) );
         }
     }
     /* no (more) aliases */
-    return( (CGPOINTER)(pointer_uint)0 );
+    return( reinterpret_cast<CGPOINTER>(static_cast<pointer_uint>(0)) );
 }
 
 static unsigned GetParmsSize( FrontRun& front, SYM_HANDLE sym_handle )
@@ -697,7 +697,7 @@ static unsigned GetParmsSize( FrontRun& front, SYM_HANDLE sym_handle )
         if( fn_typ->u.fn.parms != NULL ) {
             for( parm_types = fn_typ->u.fn.parms; (typ = *parm_types) != NULL; parm_types++ ) {
                 if( typ->decl_type == TYP_DOT_DOT_DOT ) {
-                    total_parm_size = (unsigned)-1;
+                    total_parm_size = static_cast<unsigned>(-1);
                     break;
                 }
 
@@ -710,7 +710,7 @@ static unsigned GetParmsSize( FrontRun& front, SYM_HANDLE sym_handle )
             }
         }
     } else {
-        total_parm_size = (unsigned)-1;
+        total_parm_size = static_cast<unsigned>(-1);
     }
     return( total_parm_size );
 }
@@ -772,11 +772,11 @@ const char *FEExtName( FrontRun& front, CGSYM_HANDLE sym_handle, int request )
 {
     switch( request ) {
     case EXTN_BASENAME:
-        return( GetBaseName( front, (SYM_HANDLE)sym_handle ) );
+        return( GetBaseName( front, reinterpret_cast<SYM_HANDLE>(sym_handle) ) );
     case EXTN_PATTERN:
-        return( GetNamePattern( front, (SYM_HANDLE)sym_handle ) );
+        return( GetNamePattern( front, reinterpret_cast<SYM_HANDLE>(sym_handle) ) );
     case EXTN_PRMSIZE:
-        return( (const char *)(pointer_uint)GetParmsSize( front, (SYM_HANDLE)sym_handle ) );
+        return( reinterpret_cast<const char *>(static_cast<pointer_uint>(GetParmsSize( front, reinterpret_cast<SYM_HANDLE>(sym_handle) ))) );
     case EXTN_IMPPREFIX:
         return( ( front.cvars.TargetSystem == TS_NT ) ? "__imp_" : NULL );
     case EXTN_CALLBACKNAME:
@@ -980,11 +980,11 @@ static CGPOINTER NextImport( FrontRun& front, int index, aux_class request )
      */
     if( request == FEINF_IMPORT_NAME
       || name == NULL )
-        return( (CGPOINTER)name );
+        return( reinterpret_cast<CGPOINTER>(name) );
     /*
      * return the index
      */
-    return( (CGPOINTER)(pointer_uint)index );
+    return( reinterpret_cast<CGPOINTER>(static_cast<pointer_uint>(index)) );
 }
 
 static CGPOINTER NextImportS( FrontRun& front, int index, aux_class request )
@@ -1015,11 +1015,11 @@ static CGPOINTER NextImportS( FrontRun& front, int index, aux_class request )
      */
     if( request == FEINF_IMPORT_NAME_S
       || symbol == NULL )
-        return( (CGPOINTER)symbol );
+        return( symbol );
     /*
      * return the index
      */
-    return( (CGPOINTER)(pointer_uint)index );
+    return( reinterpret_cast<CGPOINTER>(static_cast<pointer_uint>(index)) );
 }
 
 CGPOINTER FEAuxInfo( FrontRun& front, CGPOINTER req_handle, aux_class request )
@@ -1032,83 +1032,83 @@ CGPOINTER FEAuxInfo( FrontRun& front, CGPOINTER req_handle, aux_class request )
 
     switch( request ) {
     case FEINF_SOURCE_LANGUAGE:
-        return( (CGPOINTER)FE_LANG_C );
+        return( const_cast<CGPOINTER>(static_cast<const void *>(FE_LANG_C)) );
     case FEINF_STACK_SIZE_8087:
-        return( (CGPOINTER)(pointer_uint)front.cvars.Stack87 );
+        return( reinterpret_cast<CGPOINTER>(static_cast<pointer_uint>(front.cvars.Stack87)) );
     case FEINF_CODE_GROUP:
-        return( (CGPOINTER)front.cvars.GenCodeGroup );
+        return( reinterpret_cast<CGPOINTER>(front.cvars.GenCodeGroup) );
     case FEINF_DATA_GROUP:
-        return( (CGPOINTER)front.cvars.DataSegName );
+        return( reinterpret_cast<CGPOINTER>(front.cvars.DataSegName) );
     case FEINF_OBJECT_FILE_NAME:
-        return( (CGPOINTER)ObjFileName(front) );
+        return( reinterpret_cast<CGPOINTER>(ObjFileName(front)) );
     case FEINF_REVISION_NUMBER:
-        return( (CGPOINTER)(pointer_uint)II_REVISION );
+        return( reinterpret_cast<CGPOINTER>(static_cast<pointer_uint>(II_REVISION)) );
     case FEINF_AUX_LOOKUP:
         return( req_handle );
     case FEINF_PROEPI_DATA_SIZE:
-        return( (CGPOINTER)(pointer_uint)front.cvars.ProEpiDataSize );
+        return( reinterpret_cast<CGPOINTER>(static_cast<pointer_uint>(front.cvars.ProEpiDataSize)) );
     case FEINF_DBG_PREDEF_SYM:
-        return( (CGPOINTER)front.cvars.SymDFAbbr );
+        return( front.cvars.SymDFAbbr );
     case FEINF_P5_CHIP_BUG_SYM:
-        return( (CGPOINTER)front.cvars.SymChipBug );
+        return( front.cvars.SymChipBug );
     case FEINF_CODE_LABEL_ALIGNMENT:
         {
 
             if( front.cvars.OptSize == 0 )
                 front.cfeinfo.FEAuxInfo_Alignment[1] = TARGET_INT;
 
-            return( (CGPOINTER)front.cfeinfo.FEAuxInfo_Alignment );
+            return( static_cast<CGPOINTER>(front.cfeinfo.FEAuxInfo_Alignment) );
         }
     case FEINF_CLASS_NAME:
-        return( (CGPOINTER)SegClassName( front, (segment_id)(pointer_uint)req_handle ) );
+        return( reinterpret_cast<CGPOINTER>(SegClassName( front, static_cast<segment_id>(reinterpret_cast<pointer_uint>(req_handle)) )) );
     case FEINF_USED_8087:
         front.cvars.CompFlags.pgm_used_8087 = true;
         return( NULL );
   #if _CPU == 386
     case FEINF_P5_PROF_DATA:
-        return( (CGPOINTER)front.cvars.FunctionProfileBlock );
+        return( reinterpret_cast<CGPOINTER>(front.cvars.FunctionProfileBlock) );
     case FEINF_P5_PROF_SEG:
-        return( (CGPOINTER)(pointer_uint)front.cvars.FunctionProfileSegId );
+        return( reinterpret_cast<CGPOINTER>(static_cast<pointer_uint>(front.cvars.FunctionProfileSegId)) );
   #endif
     case FEINF_SOURCE_NAME:
-        return( (CGPOINTER)FNameFullPath( front, front.cvars.FNames ) );
+        return( reinterpret_cast<CGPOINTER>(FNameFullPath( front, front.cvars.FNames )) );
     case FEINF_CALL_CLASS:
-        return( (CGPOINTER)getCallClass( front, req_handle ) );
+        return( reinterpret_cast<CGPOINTER>(getCallClass( front, req_handle )) );
     case FEINF_CALL_CLASS_TARGET:
-        return( (CGPOINTER)getCallClassTarget( front, req_handle ) );
+        return( reinterpret_cast<CGPOINTER>(getCallClassTarget( front, req_handle )) );
     case FEINF_FREE_SEGMENT:
         return( NULL );
     case FEINF_NEXT_LIBRARY:
     case FEINF_LIBRARY_NAME:
-        return( NextLibrary( front, (int)(pointer_uint)req_handle, request ) );
+        return( NextLibrary( front, static_cast<int>(reinterpret_cast<pointer_uint>(req_handle)), request ) );
     case FEINF_NEXT_IMPORT:
     case FEINF_IMPORT_NAME:
-        return( NextImport( front, (int)(pointer_uint)req_handle, request ) );
+        return( NextImport( front, static_cast<int>(reinterpret_cast<pointer_uint>(req_handle)), request ) );
     case FEINF_NEXT_IMPORT_S:
     case FEINF_IMPORT_NAME_S:
-        return( NextImportS( front, (int)(pointer_uint)req_handle, request ) );
+        return( NextImportS( front, static_cast<int>(reinterpret_cast<pointer_uint>(req_handle)), request ) );
     case FEINF_NEXT_ALIAS:
     case FEINF_ALIAS_NAME:
     case FEINF_ALIAS_SYMBOL:
     case FEINF_ALIAS_SUBST_NAME:
     case FEINF_ALIAS_SUBST_SYMBOL:
-        return( NextAlias( front, (int)(pointer_uint)req_handle, request ) );
+        return( NextAlias( front, static_cast<int>(reinterpret_cast<pointer_uint>(req_handle)), request ) );
     case FEINF_TEMP_LOC_NAME:
-        return( (CGPOINTER)(pointer_uint)TEMP_LOC_QUIT );
+        return( reinterpret_cast<CGPOINTER>(static_cast<pointer_uint>(TEMP_LOC_QUIT)) );
     case FEINF_TEMP_LOC_TELL:
         return( NULL );
     case FEINF_NEXT_DEPENDENCY:
         if( front.cvars.CompFlags.emit_dependencies )
-            return( (CGPOINTER)NextDependency( front, (FNAMEPTR)req_handle ) );
+            return( reinterpret_cast<CGPOINTER>(NextDependency( front, static_cast<FNAMEPTR>(req_handle) )) );
         return( NULL );
     case FEINF_DEPENDENCY_TIMESTAMP:
-        return( (CGPOINTER)&(((FNAMEPTR)req_handle)->mtime) );
+        return( reinterpret_cast<CGPOINTER>(&((static_cast<FNAMEPTR>(req_handle))->mtime)) );
     case FEINF_DEPENDENCY_NAME:
-        return( (CGPOINTER)FNameFullPath( front, (FNAMEPTR)req_handle ) );
+        return( reinterpret_cast<CGPOINTER>(FNameFullPath( front, static_cast<FNAMEPTR>(req_handle) )) );
     case FEINF_PEGGED_REGISTER:
-        return( (CGPOINTER)SegPeggedReg( front, (segment_id)(pointer_uint)req_handle ) );
+        return( reinterpret_cast<CGPOINTER>(SegPeggedReg( front, static_cast<segment_id>(reinterpret_cast<pointer_uint>(req_handle)) )) );
     case FEINF_DBG_DWARF_PRODUCER:
-        return( (CGPOINTER)DWARF_PRODUCER_ID );
+        return( const_cast<CGPOINTER>(static_cast<const void *>(DWARF_PRODUCER_ID)) );
     case FEINF_SAVE_REGS:
         sym.mods = static_cast<type_modifiers>(0);
         inf = FindInfo( front, &sym, req_handle );
@@ -1117,37 +1117,37 @@ CGPOINTER FEAuxInfo( FrontRun& front, CGPOINTER req_handle, aux_class request )
             HW_CTurnOn( front.cfeinfo.FEAuxInfo_save_set, HW_SEGS );
         }
   #ifdef __SEH__
-        if( (SYM_HANDLE)req_handle == front.cvars.SymTryInit ) {
+        if( req_handle == front.cvars.SymTryInit ) {
             HW_CTurnOff( front.cfeinfo.FEAuxInfo_save_set, HW_xSP );
         }
   #endif
-        return( (CGPOINTER)&front.cfeinfo.FEAuxInfo_save_set );
+        return( reinterpret_cast<CGPOINTER>(&front.cfeinfo.FEAuxInfo_save_set) );
     case FEINF_RETURN_REG:
         inf = FindInfo( front, &sym, req_handle );
-        return( (CGPOINTER)&inf->returns );
+        return( reinterpret_cast<CGPOINTER>(&inf->returns) );
     case FEINF_CALL_BYTES:
         inf = FindInfo( front, &sym, req_handle );
-        return( (CGPOINTER)inf->code );
+        return( reinterpret_cast<CGPOINTER>(inf->code) );
     case FEINF_PARM_REGS:
   #ifdef __SEH__
-        if(( (SYM_HANDLE)req_handle == front.cvars.SymTryInit )
-          || ( (SYM_HANDLE)req_handle == front.cvars.SymTryFini )
-          || ( (SYM_HANDLE)req_handle == front.cvars.SymTryUnwind )
-          || ( (SYM_HANDLE)req_handle == front.cvars.SymExcept )) {
-            return( (CGPOINTER)TryParms );
+        if(( req_handle == front.cvars.SymTryInit )
+          || ( req_handle == front.cvars.SymTryFini )
+          || ( req_handle == front.cvars.SymTryUnwind )
+          || ( req_handle == front.cvars.SymExcept )) {
+            return( const_cast<CGPOINTER>(static_cast<const void *>(TryParms)) );
         }
   #endif
         inf = FindInfo( front, &sym, req_handle );
         if( req_handle != NULL ) {
             if( inf->code == NULL
               && VarFunc( front, &sym ) ) {
-                return( (CGPOINTER)DefaultVarParms );
+                return( const_cast<CGPOINTER>(static_cast<const void *>(DefaultVarParms)) );
             }
         }
-        return( (CGPOINTER)inf->parms );
+        return( reinterpret_cast<CGPOINTER>(inf->parms) );
     case FEINF_STRETURN_REG:
         inf = FindInfo( front, &sym, req_handle );
-        return( (CGPOINTER)&inf->streturn );
+        return( reinterpret_cast<CGPOINTER>(&inf->streturn) );
     default:
         break;
     }

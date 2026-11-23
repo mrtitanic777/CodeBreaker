@@ -38,7 +38,7 @@ extern owl_handle OWLENTRY OWLInit( BackRun& back, owl_client_funcs *funcs, owl_
 
     owl_handle  h;
 
-    h = (owl_handle)(funcs->alloc( back, sizeof( owl_info ) ));
+    h = static_cast<owl_handle>(funcs->alloc( back, sizeof( owl_info ) ));
     h->client_funcs = *funcs;
     h->cpu = cpu;
     h->files = NULL;

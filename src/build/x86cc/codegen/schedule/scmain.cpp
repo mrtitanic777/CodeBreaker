@@ -102,7 +102,7 @@ static  void    CopyList( BackRun& back, score_hdl frm, score_hdl to,
 
     if( to[i].list == NULL ) {
         to[i].list = *sc_heads;
-        *sc_heads = (list_head *)**sc_heads;
+        *sc_heads = reinterpret_cast<list_head *>(**sc_heads);
         *to[i].list = NULL;
         for( next = to[i].next_reg; next->list == NULL; next = next->next_reg ) {
             next->list = next->prev_reg->list;
@@ -127,17 +127,17 @@ static  void    ScoreCopy( BackRun& back, score_hdl other_scoreboard, score_hdl 
     int         i;
 
     FreeScoreBoard( back, scoreboard );
-    sc_heads = (list_head **)&scoreboard[back.score.ScoreCount];
+    sc_heads = reinterpret_cast<list_head **>(&scoreboard[back.score.ScoreCount]);
     for( i = back.score.ScoreCount; i-- > 0; ) {
         scoreboard[i].next_reg = &scoreboard[other_scoreboard[i].next_reg->index];
         scoreboard[i].prev_reg = &scoreboard[other_scoreboard[i].prev_reg->index];
         scoreboard[i].generation = other_scoreboard[i].generation;
         scoreboard[i].list = NULL;
-        *sc_heads = (list_head *)sc_heads + 1;
+        *sc_heads = reinterpret_cast<list_head *>(sc_heads) + 1;
         ++sc_heads;
     }
     *sc_heads = NULL;
-    sc_heads = (list_head **)&scoreboard[back.score.ScoreCount];
+    sc_heads = reinterpret_cast<list_head **>(&scoreboard[back.score.ScoreCount]);
     for( i = back.score.ScoreCount; i-- > 0; ) {
         CopyList( back, other_scoreboard, scoreboard, sc_heads, i );
     }
@@ -165,7 +165,7 @@ static  void *ScoreDescendants( BackRun& back, block *blk )
             }
             MarkBlkVisited( son );
             MarkBlkMarked( son );
-            SafeRecurseCG( back, (func_sr)ScoreDescendants, son );
+            SafeRecurseCG( back, reinterpret_cast<func_sr>(ScoreDescendants), son );
             FreeScoreBoard( back, son->u1.scoreboard );
             ScFree( back, son->u1.scoreboard );
             son->u1.scoreboard = NULL;

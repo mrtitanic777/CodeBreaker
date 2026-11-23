@@ -699,10 +699,10 @@ FNAMEPTR AddFlist( FrontRun& front, char const *filename )
         len1 = strlen( filename ) + 1;
         if( HasPath( filename ) || front.cvars.DependHeaderPath == NULL ) {
             len2 = 0;
-            flist = (FNAMEPTR)CMemAlloc( front, offsetof( fname_list, name ) + len1 );
+            flist = static_cast<FNAMEPTR>(CMemAlloc( front, offsetof( fname_list, name ) + len1 ));
         } else {
             len2 = strlen( front.cvars.DependHeaderPath );
-            flist = (FNAMEPTR)CMemAlloc( front, offsetof( fname_list, name ) + len2 + len1 );
+            flist = static_cast<FNAMEPTR>(CMemAlloc( front, offsetof( fname_list, name ) + len2 + len1 ));
             strcpy( flist->name, front.cvars.DependHeaderPath );
         }
         strcpy( flist->name + len2, filename );
@@ -799,7 +799,7 @@ void AddIncFileList( FrontRun& front, const char *filename )
 {
     INCFILE     *ifile;
 
-    ifile = (INCFILE *)CMemAlloc( front, offsetof( INCFILE, filename ) + strlen( filename ) + 1 );
+    ifile = static_cast<INCFILE *>(CMemAlloc( front, offsetof( INCFILE, filename ) + strlen( filename ) + 1 ));
     strcpy( ifile->filename, filename );
     AddIncFile( front, ifile );
 }
@@ -825,7 +825,7 @@ static RDIRPTR AddRDir( FrontRun& front, const char *path )
         }
     }
     if( dirlist == NULL ) {
-        dirlist = (RDIRPTR)CMemAlloc( front, offsetof( rdir_list, name ) + strlen( path ) + 1 );
+        dirlist = static_cast<RDIRPTR>(CMemAlloc( front, offsetof( rdir_list, name ) + strlen( path ) + 1 ));
         dirlist->next = NULL;
         strcpy( dirlist->name, path );
         *lnk = dirlist;

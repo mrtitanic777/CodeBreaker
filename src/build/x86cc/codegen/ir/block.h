@@ -168,4 +168,4 @@ inline void MarkBlkVisited( block *b ) { MarkBlkAttrSet( b, BLK_BLOCK_VISITED );
 inline bool IsBlkMarked( block *b ) { return IsBlkAttr( b, BLK_BLOCK_MARKED ); }
 inline void MarkBlkUnMarked( block *b ) { MarkBlkAttrClr( b, BLK_BLOCK_MARKED ); }
 inline void MarkBlkMarked( block *b ) { MarkBlkAttrSet( b, BLK_BLOCK_MARKED ); }
-inline block *&BlockOf( instruction *ins ) { return ( ( (block_ins *)ins)->blk ); }
+inline block *&BlockOf( instruction *ins ) { return ( ( reinterpret_cast<block_ins *>(ins))->blk ); }

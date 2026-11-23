@@ -67,7 +67,7 @@ static void output_float( AsmRun& assembler, token_buffer *tokbuf, token_idx ind
     TB_LD               tbyte;
 
     if( no_of_bytes == BYTE_10 ) {
-        char_ptr = (char *)strtotb( assembler, tokbuf->tokens[index].string_ptr, &tbyte, negative );
+        char_ptr = reinterpret_cast<char *>(strtotb( assembler, tokbuf->tokens[index].string_ptr, &tbyte, negative ));
     } else {
         double_value = strtod( tokbuf->tokens[index].string_ptr, NULL );
         if( negative )
@@ -76,14 +76,14 @@ static void output_float( AsmRun& assembler, token_buffer *tokbuf, token_idx ind
         case BYTE_1:
         case BYTE_2:
         default:
-            char_ptr = (char *)&tokbuf->tokens[index].u.value;
+            char_ptr = reinterpret_cast<char *>(&tokbuf->tokens[index].u.value);
             break;
         case BYTE_4:
-            float_value = (float)double_value;
-            char_ptr = (char *)&float_value;
+            float_value = static_cast<float>(double_value);
+            char_ptr = reinterpret_cast<char *>(&float_value);
             break;
         case BYTE_8:
-            char_ptr = (char *)&double_value;
+            char_ptr = reinterpret_cast<char *>(&double_value);
             break;
         }
     }
@@ -173,7 +173,7 @@ static token_idx array_element( AsmRun& assembler, asm_sym_handle sym, asm_sym_h
                 negative = false;
                 break;
             }
-                char_ptr = (char *)tokbuf->tokens[cur_pos].u.bytes;
+                char_ptr = reinterpret_cast<char *>(tokbuf->tokens[cur_pos].u.bytes);
                 for( count = 0; count < no_of_bytes; ++count ) {
                     AsmByte( assembler, *char_ptr++ );
                 }
@@ -210,7 +210,7 @@ static token_idx array_element( AsmRun& assembler, asm_sym_handle sym, asm_sym_h
             int         direction;
 
             if( no_of_bytes != 1 ) {
-                if( (unsigned)tokbuf->tokens[cur_pos].u.value > no_of_bytes ) {
+                if( static_cast<unsigned>(tokbuf->tokens[cur_pos].u.value) > no_of_bytes ) {
                     AsmError( *assembler.front, INITIALIZER_OUT_OF_RANGE );
                     return( INVALID_IDX );
                 }
@@ -307,7 +307,7 @@ static token_idx array_element( AsmRun& assembler, asm_sym_handle sym, asm_sym_h
             }
 
             /* now actually output the data */
-            ptr = (char *)&data;
+            ptr = reinterpret_cast<char *>(&data);
                 /*
                  * only output up to 4 bytes of offset (segment is on fixup)
                  */
@@ -414,7 +414,7 @@ static token_idx array_element( AsmRun& assembler, asm_sym_handle sym, asm_sym_h
                     }
 
                     /* now actually output the data */
-                    ptr = (char *)&data;
+                    ptr = reinterpret_cast<char *>(&data);
                         for( i = 0; i < no_of_bytes; i++ ) {
                             AsmByte( assembler, *ptr );
                             ptr++;

@@ -166,8 +166,8 @@ void    BGAutoDecl( BackRun& back, cg_sym_handle sym, const type_def *tipe )
 static  void    LinkParmIns( instruction *parm_def, instruction *ins )
 /********************************************************************/
 {
-    ins->operands[2] = (name *)parm_def; /* link them together*/
-    parm_def->operands[2] = (name *)ins;
+    ins->operands[2] = reinterpret_cast<name *>(parm_def); /* link them together*/
+    parm_def->operands[2] = reinterpret_cast<name *>(ins);
     ins->ins_flags |= INS_PARAMETER;
     parm_def->ins_flags |= INS_PARAMETER;
 }
@@ -333,7 +333,7 @@ void    AddCallIns( BackRun& back, instruction *ins, cn call )
              * screws up the back end
              */
             addr_type_class = WD;
-            if( (call_class_target)(pointer_uint)FindAuxInfo( back, call_name, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL ) {
+            if( static_cast<call_class_target>(reinterpret_cast<pointer_uint>(FindAuxInfo( back, call_name, FEINF_CALL_CLASS_TARGET ))) & FECALL_X86_FAR_CALL ) {
                 addr_type_class = CP;
             }
             temp = AllocTemp( back, addr_type_class );
@@ -474,10 +474,10 @@ void    ParmIns( BackRun& back, pn parm, call_state *state )
                 AddIns( back, ins );
             } else if( !CvtOk( back, TypeClass( back, addr->tipe ), reg->n.type_class ) ) {
                 ins = NULL;
-                FEMessage( *back.front, FEMSG_BAD_PARM_REGISTER, (pointer)(pointer_uint)parm->num );
+                FEMessage( *back.front, FEMSG_BAD_PARM_REGISTER, reinterpret_cast<pointer>(static_cast<pointer_uint>(parm->num)) );
             } else if( HW_CEqual( reg->r.reg, HW_ABCD ) ) {
                 ins = NULL;
-                FEMessage( *back.front, FEMSG_BAD_PARM_REGISTER, (pointer)(pointer_uint)parm->num );
+                FEMessage( *back.front, FEMSG_BAD_PARM_REGISTER, reinterpret_cast<pointer>(static_cast<pointer_uint>(parm->num)) );
             } else {
                 ins = MakeConvert( back, curr, reg, reg->n.type_class, TypeClass( back, addr->tipe ) );
                 AddIns( back, ins );
@@ -624,7 +624,7 @@ bool        AssgnParms( BackRun& back, cn call, bool aux_inline )
                 reg_type_class  = AllocRegName( back, parm->regs )->n.type_class;
                 if( parm_type_class != FD || reg_type_class != U8 ) {
                     if( !CvtOk( back, parm_type_class, reg_type_class ) ) {
-                        FEMessage( *back.front, FEMSG_BAD_PARM_REGISTER, (pointer)(pointer_uint)( parms + 1 ) );
+                        FEMessage( *back.front, FEMSG_BAD_PARM_REGISTER, reinterpret_cast<pointer>(static_cast<pointer_uint>( parms + 1 )) );
                     }
                 }
             }

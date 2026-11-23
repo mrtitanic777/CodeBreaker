@@ -44,37 +44,37 @@
 
 inline bool TransferClass( oc_class var ) { return ((var) >= OC_JMP); }
 
-inline oc_class OcClass( ins_entry *var ) { return static_cast<oc_class>(OcBaseClass(((ins_entry *)(var))->oc.oc_header.class_)); }
+inline oc_class OcClass( ins_entry *var ) { return static_cast<oc_class>(OcBaseClass(((var))->oc.oc_header.class_)); }
 
-inline int GetAttr( ins_entry *var ) { return OcInfoClass(((ins_entry *)(var))->oc.oc_header.class_); }
+inline int GetAttr( ins_entry *var ) { return OcInfoClass(((var))->oc.oc_header.class_); }
 
-inline bool ChkAttr( ins_entry *v1, oc_class v2 ) { return ((((ins_entry *)(v1))->oc.oc_header.class_ & v2) != 0); }
+inline bool ChkAttr( ins_entry *v1, oc_class v2 ) { return ((((v1))->oc.oc_header.class_ & v2) != 0); }
 
 inline void SetAttr( ins_entry *v1, int v2 )
 {
-    ((ins_entry *)(v1))->oc.oc_header.class_ |= static_cast<oc_class>( v2 );
+    ((v1))->oc.oc_header.class_ |= static_cast<oc_class>( v2 );
 }
 
 inline void ChgClass( ins_entry *v1, oc_class v2 )
 {
-    ((ins_entry *)(v1))->oc.oc_header.class_ = static_cast<oc_class>(GetAttr(v1) | v2);
+    ((v1))->oc.oc_header.class_ = static_cast<oc_class>(GetAttr(v1) | v2);
 }
 
-inline void ResetClass( ins_entry *v1, oc_class v2 ) { ((ins_entry *)(v1))->oc.oc_header.class_ = v2; }
+inline void ResetClass( ins_entry *v1, oc_class v2 ) { ((v1))->oc.oc_header.class_ = v2; }
 
-inline code_lbl *&LabelOf( ins_entry *var ) { return (((ins_entry *)(var))->oc.oc_handle.handle); }
+inline code_lbl *&LabelOf( ins_entry *var ) { return (((var))->oc.oc_handle.handle); }
 
-inline ins_entry *&LblRef( ins_entry *var ) { return (((ins_entry *)(var))->oc.oc_handle.ref); }
+inline ins_entry *&LblRef( ins_entry *var ) { return (((var))->oc.oc_handle.ref); }
 
-inline unsigned char &JmpCond( ins_entry *var ) { return (((ins_entry *)(var))->oc.oc_jcond.cond); }
+inline unsigned char &JmpCond( ins_entry *var ) { return (((var))->oc.oc_jcond.cond); }
 
-inline unsigned int &RetPop( ins_entry *var ) { return (((ins_entry *)(var))->oc.oc_ret.pops); }
+inline unsigned int &RetPop( ins_entry *var ) { return (((var))->oc.oc_ret.pops); }
 
-inline unsigned char &ObjLen( ins_entry *var ) { return (((ins_entry *)(var))->oc.oc_header.objlen); }
+inline unsigned char &ObjLen( ins_entry *var ) { return (((var))->oc.oc_header.objlen); }
 
-inline unsigned char &InsLen( ins_entry *var ) { return (((ins_entry *)(var))->oc.oc_header.reclen); }
+inline unsigned char &InsLen( ins_entry *var ) { return (((var))->oc.oc_header.reclen); }
 
-inline oc_class &ClassInfo( ins_entry *var ) { return (((ins_entry *)(var))->oc.oc_header.class_); }
+inline oc_class &ClassInfo( ins_entry *var ) { return (((var))->oc.oc_header.class_); }
 #include "optdata.h"
 #include "hwreg.h"
 #include "typclass.h"

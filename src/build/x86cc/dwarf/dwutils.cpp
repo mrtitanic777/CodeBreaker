@@ -36,5 +36,5 @@
 
 void OutputLEB128( void **h, unsigned char byte )
 {
-    *(*(unsigned char **)h)++ = byte;
+    *(*reinterpret_cast<unsigned char **>(h))++ = byte;
 }

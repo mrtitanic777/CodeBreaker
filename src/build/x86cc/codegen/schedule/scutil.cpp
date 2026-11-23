@@ -88,7 +88,7 @@ void    ScoreCalcList( BackRun& back )
     }
     if( back.score.ScoreCount > 0 ) {
         back.score.ScoreList = static_cast<score_reg **>(ScAlloc( back, back.score.ScoreCount * sizeof( score_reg * ) + back.score.ScoreCount * sizeof( score_reg ) ));
-        curr = (score_reg *)&back.score.ScoreList[back.score.ScoreCount];
+        curr = reinterpret_cast<score_reg *>(&back.score.ScoreList[back.score.ScoreCount]);
         i = 0;
         for( reg_name = back.data.Names[N_REGISTER]; reg_name != NULL; reg_name = reg_name->n.next_name ) {
             if( ScRealRegister( reg_name ) ) {
@@ -145,7 +145,7 @@ void    ScoreClear( BackRun& back, score_hdl scoreboard )
     int         i;
     list_head   *list_heads;
 
-    list_heads = (list_head *)&scoreboard[back.score.ScoreCount];
+    list_heads = reinterpret_cast<list_head *>(&scoreboard[back.score.ScoreCount]);
     *list_heads = NULL;  /* initialize free list*/
     for( i = 0; i < back.score.ScoreCount; ++i ) {
         ++list_heads;
@@ -163,7 +163,7 @@ void    ScoreClear( BackRun& back, score_hdl scoreboard )
 void    FreeScListEntry( BackRun& back, score_list *list )
 /*****************************************/
 {
-    FrlFreeSize( back, &back.score.ScListFrl, (pointer *)list, sizeof( score_list ) );
+    FrlFreeSize( back, &back.score.ScListFrl, reinterpret_cast<pointer *>(list), sizeof( score_list ) );
 }
 
 
@@ -193,7 +193,7 @@ void    FreeScoreBoard( BackRun& back, score_hdl scoreboard )
         for( i = 0; i < back.score.ScoreCount; i++ ) {
             ScoreFreeList( back, &scoreboard[i] );
         }
-        list_heads = (list_head *)&scoreboard[back.score.ScoreCount];
+        list_heads = reinterpret_cast<list_head *>(&scoreboard[back.score.ScoreCount]);
         *list_heads = NULL;  /* initialize free list*/
         for( i = 0; i < back.score.ScoreCount; i++ ) {
             scoreboard[i].list = ++list_heads;

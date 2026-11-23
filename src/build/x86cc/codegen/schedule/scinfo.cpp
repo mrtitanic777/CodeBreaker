@@ -285,7 +285,7 @@ void    ScoreInfo( BackRun& back, score_info *info, name *op )
       && op->i.index_flags == (X_FAKE_BASE | X_BASE_IS_INDEX) ) {
         op = op->i.base; /* track memory location */
     }
-    info->class_ = (score_name_class_def)op->n.class_;
+    info->class_ = static_cast<score_name_class_def>(op->n.class_);
     info->scale = SCALE_NONE;
     info->base  = NULL;
     info->reg_index = NO_INDEX;
@@ -309,7 +309,7 @@ void    ScoreInfo( BackRun& back, score_info *info, name *op )
             /* FIXME: not sure what to do here */
             if( op->c.u.op != NULL ) {
                 info->symbol.u.p = &back.scinfo.HighAddrSymbol;
-                info->offset = (int_32)(pointer_uint)op->c.u.op;
+                info->offset = static_cast<int_32>(reinterpret_cast<pointer_uint>(op->c.u.op));
             } else {
                 info->symbol.u.p = &back.scinfo.HighAddrConst;
                 info->offset = op->c.lo.u.int_value;

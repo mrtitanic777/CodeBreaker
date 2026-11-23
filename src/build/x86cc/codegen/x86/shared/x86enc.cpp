@@ -235,7 +235,7 @@ void    Finalize( BackRun& back )
     EjectInst(back);
     FPPatchTypeRef(back);
     if( back.pcencode.Temp.hdr.objlen != 0 ) {
-        InputOC( back, (any_oc *)&back.pcencode.Temp );
+        InputOC( back, reinterpret_cast<any_oc *>(&back.pcencode.Temp) );
     }
 }
 
@@ -1254,17 +1254,17 @@ static  void    AddSWCons( BackRun& back, opcode_defs opcode, name *opnd, type_c
 void    AddWData( BackRun& back, int_32 value, type_class_def type_class )
 /*********************************************************/
 {
-    AddByte( back, (byte)value );
+    AddByte( back, static_cast<byte>(value) );
     if( type_class == U1 || type_class == I1 )
         return;
     value >>= 8;
-    AddByte( back, (byte)value );
+    AddByte( back, static_cast<byte>(value) );
     if( type_class == U2 || type_class == I2 )
         return;
     value >>= 8;
-    AddByte( back, (byte)value );
+    AddByte( back, static_cast<byte>(value) );
     value >>= 8;
-    AddByte( back, (byte)value );
+    AddByte( back, static_cast<byte>(value) );
 }
 
 void    AddWCons( BackRun& back, name *op, type_class_def type_class )
@@ -1581,7 +1581,7 @@ void    GenEnter( BackRun& back, int size, int level )
     LayOpbyte( back, 0xc8 );
     OpndSize( back, HW_xBP );
     AddWData( back, size, U2 );
-    AddByte( back, (byte)level );
+    AddByte( back, static_cast<byte>(level) );
     Finalize( back );
 }
 
@@ -1638,7 +1638,7 @@ void    GenUnkEnter( BackRun& back, pointer value, int level )
     LayOpbyte( back, 0xc8 );
     DoAbsPatch( back, static_cast<abspatch_handle *>(value), 2 );
     back.pcencode.ILen += 2;
-    AddByte( back, (byte)level );
+    AddByte( back, static_cast<byte>(level) );
     Finalize( back );
 }
 
@@ -2088,11 +2088,11 @@ void    GenObjCode( BackRun& back, instruction *ins )
             break;
         case G_RNSHIFT:
             LayRMRegOp( back, left );
-            AddByte( back, (byte)right->c.lo.u.int_value ); /* never address */
+            AddByte( back, static_cast<byte>(right->c.lo.u.int_value) ); /* never address */
             break;
         case G_NSHIFT:
             LayModRM( back, left );
-            AddByte( back, (byte)right->c.lo.u.int_value ); /* never address */
+            AddByte( back, static_cast<byte>(right->c.lo.u.int_value) ); /* never address */
             break;
         case G_R2:
             LayRMRegOp( back, right );

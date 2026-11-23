@@ -37,11 +37,11 @@
 #include "objrep.h"
 
 
-inline symbol *RtIdxToSym( rt_class i ) { return ((cg_sym_handle)(pointer_uint)((i) + 1)); }
-inline int SymToRtIdx( symbol *s ) { return ((rt_class)(pointer_uint)(s) - 1); }
+inline symbol *RtIdxToSym( rt_class i ) { return (reinterpret_cast<cg_sym_handle>(static_cast<pointer_uint>((i) + 1))); }
+inline int SymToRtIdx( symbol *s ) { return (static_cast<rt_class>(reinterpret_cast<pointer_uint>(s)) - 1); }
 
-inline int SymToImpHdl( symbol *s ) { return ((import_handle)(pointer_uint)(s)); }
-inline symbol *ImpHdlToSym( int i ) { return ((cg_sym_handle)(pointer_uint)(i)); }
+inline int SymToImpHdl( symbol *s ) { return (static_cast<import_handle>(reinterpret_cast<pointer_uint>(s))); }
+inline symbol *ImpHdlToSym( int i ) { return (reinterpret_cast<cg_sym_handle>(static_cast<pointer_uint>(i))); }
 
 typedef enum {
     CODELABEL           = 0x0001,

@@ -160,7 +160,7 @@ dbg_loc _CGAPI DBLocTemp( BackRun& back, dbg_loc loc, temp_handle temp )
     name        *tmp;
 
     loc = LocCreate( back, loc, LOC_BP_OFFSET );
-    tmp = DeAlias( (name *)temp );
+    tmp = DeAlias( reinterpret_cast<name *>(temp) );
     tmp->v.usage |= VAR_VOLATILE|NEEDS_MEMORY|USE_IN_ANOTHER_BLOCK|USE_ADDRESS;
     loc->u.be_sym = tmp;
     return( loc );

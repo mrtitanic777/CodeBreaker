@@ -118,7 +118,7 @@ static cost_val Balance( BackRun& back, uint_32 size, uint_32 time )
         opt_size = 25;
     }
     balance = ( size * opt_size + 10 * time * ( 100 - opt_size ) ) / 100;
-    if( (int_32)balance < 0 || balance > MAX_COST )
+    if( static_cast<int_32>(balance) < 0 || balance > MAX_COST )
         return( MAX_COST );
     return( balance );
 }

@@ -205,7 +205,7 @@ void    Do4CXShift( BackRun& back, instruction *ins, void (*rtn)(BackRun&, instr
                 EjectInst( back );
                 LayOpword( back, 0x2081 ); /* AND reg,immed (word) */
                 LayRegRM( back, lreg );
-                AddWData( back, ((uint_16)~0) << shift, U2 );
+                AddWData( back, (static_cast<uint_16>(~0)) << shift, U2 );
                 EjectInst( back );
                 LayOpword( back, M_XORRR | B_KEY_W );
                 LayReg( back, lreg );
@@ -228,7 +228,7 @@ void    Do4CXShift( BackRun& back, instruction *ins, void (*rtn)(BackRun&, instr
                 EjectInst( back );
                 LayOpword( back, 0x2081 ); /* AND reg,immed (word) */
                 LayRegRM( back, hreg );
-                AddWData( back, ((uint_16)~0) >> shift, U2 );
+                AddWData( back, (static_cast<uint_16>(~0)) >> shift, U2 );
                 EjectInst( back );
                 LayOpword( back, M_XORRR | B_KEY_W );
                 LayReg( back, hreg );

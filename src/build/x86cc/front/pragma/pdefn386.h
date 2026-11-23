@@ -330,106 +330,106 @@ static hw_reg_set const P_8087[] = {
 };
 
 extern const alt_inline_funcs FlatAlternates[] = {
-    (byte_seq *)&S_memset,    { const_cast<char *>("memset"), (byte_seq *)&FS_memset, FS_memset_parms, FS_memset_ret, FS_memset_saves },
-    (byte_seq *)&C_memset,    { const_cast<char *>("memset"), (byte_seq *)&FC_memset, FC_memset_parms, FC_memset_ret, FC_memset_saves },
-    (byte_seq *)&S_memcpy,    { const_cast<char *>("memcpy"), (byte_seq *)&FS_memcpy, FS_memcpy_parms, FS_memcpy_ret, FS_memcpy_saves },
-    (byte_seq *)&C_memcpy,    { const_cast<char *>("memcpy"), (byte_seq *)&FC_memcpy, FC_memcpy_parms, FC_memcpy_ret, FC_memcpy_saves },
-    (byte_seq *)&C_memcmp,    { const_cast<char *>("memcmp"), (byte_seq *)&FC_memcmp, FC_memcmp_parms, FC_memcmp_ret, FC_memcmp_saves },
-    (byte_seq *)&C_memchr,    { const_cast<char *>("memchr"), (byte_seq *)&FC_memchr, FC_memchr_parms, FC_memchr_ret, FC_memchr_saves },
-    (byte_seq *)&C_strlen,    { const_cast<char *>("strlen"), (byte_seq *)&FC_strlen, FC_strlen_parms, FC_strlen_ret, FC_strlen_saves },
-    (byte_seq *)&C_strcat,    { const_cast<char *>("strcat"), (byte_seq *)&FC_strcat, FC_strcat_parms, FC_strcat_ret, FC_strcat_saves },
+    const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&S_memset)),    { const_cast<char *>("memset"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&FS_memset)), FS_memset_parms, FS_memset_ret, FS_memset_saves },
+    const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_memset)),    { const_cast<char *>("memset"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&FC_memset)), FC_memset_parms, FC_memset_ret, FC_memset_saves },
+    const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&S_memcpy)),    { const_cast<char *>("memcpy"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&FS_memcpy)), FS_memcpy_parms, FS_memcpy_ret, FS_memcpy_saves },
+    const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_memcpy)),    { const_cast<char *>("memcpy"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&FC_memcpy)), FC_memcpy_parms, FC_memcpy_ret, FC_memcpy_saves },
+    const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_memcmp)),    { const_cast<char *>("memcmp"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&FC_memcmp)), FC_memcmp_parms, FC_memcmp_ret, FC_memcmp_saves },
+    const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_memchr)),    { const_cast<char *>("memchr"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&FC_memchr)), FC_memchr_parms, FC_memchr_ret, FC_memchr_saves },
+    const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_strlen)),    { const_cast<char *>("strlen"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&FC_strlen)), FC_strlen_parms, FC_strlen_ret, FC_strlen_saves },
+    const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_strcat)),    { const_cast<char *>("strcat"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&FC_strcat)), FC_strcat_parms, FC_strcat_ret, FC_strcat_saves },
     NULL,                     { NULL }
 };
 
 /* these must also work in FLAT model */
 extern const inline_funcs SInline_Functions[] = {
-    { const_cast<char *>("strcpy"), (byte_seq *)&S_strcpy, S_strcpy_parms, S_strcpy_ret, S_strcpy_saves },
-    { const_cast<char *>("strcmp"), (byte_seq *)&S_strcmp, S_strcmp_parms, S_strcmp_ret, S_strcmp_saves },
-    { const_cast<char *>("strcat"), (byte_seq *)&S_strcat, S_strcat_parms, S_strcat_ret, S_strcat_saves },
-    { const_cast<char *>("strchr"), (byte_seq *)&S_strchr, S_strchr_parms, S_strchr_ret, S_strchr_saves },
-    { const_cast<char *>("memset"), (byte_seq *)&S_memset, S_memset_parms, S_memset_ret, S_memset_saves },
-    { const_cast<char *>("memcpy"), (byte_seq *)&S_memcpy, S_memcpy_parms, S_memcpy_ret, S_memcpy_saves },
+    { const_cast<char *>("strcpy"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&S_strcpy)), S_strcpy_parms, S_strcpy_ret, S_strcpy_saves },
+    { const_cast<char *>("strcmp"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&S_strcmp)), S_strcmp_parms, S_strcmp_ret, S_strcmp_saves },
+    { const_cast<char *>("strcat"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&S_strcat)), S_strcat_parms, S_strcat_ret, S_strcat_saves },
+    { const_cast<char *>("strchr"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&S_strchr)), S_strchr_parms, S_strchr_ret, S_strchr_saves },
+    { const_cast<char *>("memset"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&S_memset)), S_memset_parms, S_memset_ret, S_memset_saves },
+    { const_cast<char *>("memcpy"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&S_memcpy)), S_memcpy_parms, S_memcpy_ret, S_memcpy_saves },
     { NULL }
 };
 
 /* these must also work in FLAT model */
 extern const inline_funcs Inline_Functions[] = {
-    { const_cast<char *>("strlen"), (byte_seq *)&C_strlen, C_strlen_parms, C_strlen_ret, C_strlen_saves },
-    { const_cast<char *>("strcpy"), (byte_seq *)&C_strcpy, C_strcpy_parms, C_strcpy_ret, C_strcpy_saves },
-    { const_cast<char *>("strcmp"), (byte_seq *)&C_strcmp, C_strcmp_parms, C_strcmp_ret, C_strcmp_saves },
-    { const_cast<char *>("strcat"), (byte_seq *)&C_strcat, C_strcat_parms, C_strcat_ret, C_strcat_saves },
-    { const_cast<char *>("strchr"), (byte_seq *)&C_strchr, C_strchr_parms, C_strchr_ret, C_strchr_saves },
-    { const_cast<char *>("memcpy"), (byte_seq *)&C_memcpy, C_memcpy_parms, C_memcpy_ret, C_memcpy_saves },
-    { const_cast<char *>("memcmp"), (byte_seq *)&C_memcmp, C_memcmp_parms, C_memcmp_ret, C_memcmp_saves },
-    { const_cast<char *>("memset"), (byte_seq *)&C_memset, C_memset_parms, C_memset_ret, C_memset_saves },
-    { const_cast<char *>("memchr"), (byte_seq *)&C_memchr, C_memchr_parms, C_memchr_ret, C_memchr_saves },
-    { const_cast<char *>(".stosd"), (byte_seq *)&C_stosd,  C_stosd_parms,  C_stosd_ret,  C_stosd_saves  },
-    { const_cast<char *>(".stosw"), (byte_seq *)&C_stosw,  C_stosw_parms,  C_stosw_ret,  C_stosw_saves  },
-    { const_cast<char *>(".stoswb"),(byte_seq *)&C_stoswb, C_stoswb_parms, C_stoswb_ret, C_stoswb_saves },
+    { const_cast<char *>("strlen"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_strlen)), C_strlen_parms, C_strlen_ret, C_strlen_saves },
+    { const_cast<char *>("strcpy"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_strcpy)), C_strcpy_parms, C_strcpy_ret, C_strcpy_saves },
+    { const_cast<char *>("strcmp"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_strcmp)), C_strcmp_parms, C_strcmp_ret, C_strcmp_saves },
+    { const_cast<char *>("strcat"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_strcat)), C_strcat_parms, C_strcat_ret, C_strcat_saves },
+    { const_cast<char *>("strchr"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_strchr)), C_strchr_parms, C_strchr_ret, C_strchr_saves },
+    { const_cast<char *>("memcpy"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_memcpy)), C_memcpy_parms, C_memcpy_ret, C_memcpy_saves },
+    { const_cast<char *>("memcmp"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_memcmp)), C_memcmp_parms, C_memcmp_ret, C_memcmp_saves },
+    { const_cast<char *>("memset"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_memset)), C_memset_parms, C_memset_ret, C_memset_saves },
+    { const_cast<char *>("memchr"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_memchr)), C_memchr_parms, C_memchr_ret, C_memchr_saves },
+    { const_cast<char *>(".stosd"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_stosd)),  C_stosd_parms,  C_stosd_ret,  C_stosd_saves  },
+    { const_cast<char *>(".stosw"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_stosw)),  C_stosw_parms,  C_stosw_ret,  C_stosw_saves  },
+    { const_cast<char *>(".stoswb"),const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_stoswb)), C_stoswb_parms, C_stoswb_ret, C_stoswb_saves },
     { NULL }
 };
 
 extern const inline_funcs SBigData_Functions[] = {
-    { const_cast<char *>("strcpy"), (byte_seq *)&Z_strcpy, Z_strcpy_parms, Z_strcpy_ret, Z_strcpy_saves },
-    { const_cast<char *>("strcmp"), (byte_seq *)&Z_strcmp, Z_strcmp_parms, Z_strcmp_ret, Z_strcmp_saves },
-    { const_cast<char *>("strcat"), (byte_seq *)&Z_strcat, Z_strcat_parms, Z_strcat_ret, Z_strcat_saves },
-    { const_cast<char *>("memset"), (byte_seq *)&Z_memset, Z_memset_parms, Z_memset_ret, Z_memset_saves },
-    { const_cast<char *>("memcpy"), (byte_seq *)&Z_memcpy, Z_memcpy_parms, Z_memcpy_ret, Z_memcpy_saves },
+    { const_cast<char *>("strcpy"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&Z_strcpy)), Z_strcpy_parms, Z_strcpy_ret, Z_strcpy_saves },
+    { const_cast<char *>("strcmp"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&Z_strcmp)), Z_strcmp_parms, Z_strcmp_ret, Z_strcmp_saves },
+    { const_cast<char *>("strcat"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&Z_strcat)), Z_strcat_parms, Z_strcat_ret, Z_strcat_saves },
+    { const_cast<char *>("memset"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&Z_memset)), Z_memset_parms, Z_memset_ret, Z_memset_saves },
+    { const_cast<char *>("memcpy"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&Z_memcpy)), Z_memcpy_parms, Z_memcpy_ret, Z_memcpy_saves },
     { NULL }
 };
 
 extern const inline_funcs SBigDataNoDs_Functions[] = {
-    { const_cast<char *>("strcpy"), (byte_seq *)&DP_strcpy, DP_strcpy_parms, DP_strcpy_ret, DP_strcpy_saves },
-    { const_cast<char *>("strcmp"), (byte_seq *)&DP_strcmp, DP_strcmp_parms, DP_strcmp_ret, DP_strcmp_saves },
-    { const_cast<char *>("strcat"), (byte_seq *)&DP_strcat, DP_strcat_parms, DP_strcat_ret, DP_strcat_saves },
-    { const_cast<char *>("memset"), (byte_seq *)&DP_memset, DP_memset_parms, DP_memset_ret, DP_memset_saves },
-    { const_cast<char *>("memcpy"), (byte_seq *)&DP_memcpy, DP_memcpy_parms, DP_memcpy_ret, DP_memcpy_saves },
+    { const_cast<char *>("strcpy"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_strcpy)), DP_strcpy_parms, DP_strcpy_ret, DP_strcpy_saves },
+    { const_cast<char *>("strcmp"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_strcmp)), DP_strcmp_parms, DP_strcmp_ret, DP_strcmp_saves },
+    { const_cast<char *>("strcat"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_strcat)), DP_strcat_parms, DP_strcat_ret, DP_strcat_saves },
+    { const_cast<char *>("memset"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_memset)), DP_memset_parms, DP_memset_ret, DP_memset_saves },
+    { const_cast<char *>("memcpy"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_memcpy)), DP_memcpy_parms, DP_memcpy_ret, DP_memcpy_saves },
     { NULL }
 };
 
 extern const inline_funcs Flat_Functions[] = {
-    { const_cast<char *>("strcmp"), (byte_seq *)&F_strcmp, F_strcmp_parms, F_strcmp_ret, F_strcmp_saves },
-    { const_cast<char *>(".stosd"), (byte_seq *)&F_stosd,  F_stosd_parms,  F_stosd_ret,  F_stosd_saves  },
-    { const_cast<char *>(".stosw"), (byte_seq *)&F_stosw,  F_stosw_parms,  F_stosw_ret,  F_stosw_saves  },
-    { const_cast<char *>(".stoswb"),(byte_seq *)&F_stoswb, F_stoswb_parms, F_stoswb_ret, F_stoswb_saves },
+    { const_cast<char *>("strcmp"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&F_strcmp)), F_strcmp_parms, F_strcmp_ret, F_strcmp_saves },
+    { const_cast<char *>(".stosd"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&F_stosd)),  F_stosd_parms,  F_stosd_ret,  F_stosd_saves  },
+    { const_cast<char *>(".stosw"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&F_stosw)),  F_stosw_parms,  F_stosw_ret,  F_stosw_saves  },
+    { const_cast<char *>(".stoswb"),const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&F_stoswb)), F_stoswb_parms, F_stoswb_ret, F_stoswb_saves },
     { NULL }
 };
 
 extern const inline_funcs BigData_Functions[] = {
-    { const_cast<char *>("strlen"), (byte_seq *)&BD_strlen, BD_strlen_parms, BD_strlen_ret, BD_strlen_saves },
-    { const_cast<char *>("strcpy"), (byte_seq *)&BD_strcpy, BD_strcpy_parms, BD_strcpy_ret, BD_strcpy_saves },
-    { const_cast<char *>("strcmp"), (byte_seq *)&BD_strcmp, BD_strcmp_parms, BD_strcmp_ret, BD_strcmp_saves },
-    { const_cast<char *>("strcat"), (byte_seq *)&BD_strcat, BD_strcat_parms, BD_strcat_ret, BD_strcat_saves },
-    { const_cast<char *>("strchr"), (byte_seq *)&BD_strchr, BD_strchr_parms, BD_strchr_ret, BD_strchr_saves },
-    { const_cast<char *>("memcpy"), (byte_seq *)&BD_memcpy, BD_memcpy_parms, BD_memcpy_ret, BD_memcpy_saves },
-    { const_cast<char *>("memcmp"), (byte_seq *)&BD_memcmp, BD_memcmp_parms, BD_memcmp_ret, BD_memcmp_saves },
-    { const_cast<char *>("memset"), (byte_seq *)&BD_memset, BD_memset_parms, BD_memset_ret, BD_memset_saves },
-    { const_cast<char *>("memchr"), (byte_seq *)&BD_memchr, BD_memchr_parms, BD_memchr_ret, BD_memchr_saves },
-    { const_cast<char *>(".stosd"), (byte_seq *)&BD_stosd,  BD_stosd_parms,  BD_stosd_ret,  BD_stosd_saves  },
-    { const_cast<char *>(".stosw"), (byte_seq *)&BD_stosw,  BD_stosw_parms,  BD_stosw_ret,  BD_stosw_saves  },
-    { const_cast<char *>(".stoswb"),(byte_seq *)&BD_stoswb, BD_stoswb_parms, BD_stoswb_ret, BD_stoswb_saves },
+    { const_cast<char *>("strlen"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&BD_strlen)), BD_strlen_parms, BD_strlen_ret, BD_strlen_saves },
+    { const_cast<char *>("strcpy"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&BD_strcpy)), BD_strcpy_parms, BD_strcpy_ret, BD_strcpy_saves },
+    { const_cast<char *>("strcmp"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&BD_strcmp)), BD_strcmp_parms, BD_strcmp_ret, BD_strcmp_saves },
+    { const_cast<char *>("strcat"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&BD_strcat)), BD_strcat_parms, BD_strcat_ret, BD_strcat_saves },
+    { const_cast<char *>("strchr"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&BD_strchr)), BD_strchr_parms, BD_strchr_ret, BD_strchr_saves },
+    { const_cast<char *>("memcpy"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&BD_memcpy)), BD_memcpy_parms, BD_memcpy_ret, BD_memcpy_saves },
+    { const_cast<char *>("memcmp"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&BD_memcmp)), BD_memcmp_parms, BD_memcmp_ret, BD_memcmp_saves },
+    { const_cast<char *>("memset"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&BD_memset)), BD_memset_parms, BD_memset_ret, BD_memset_saves },
+    { const_cast<char *>("memchr"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&BD_memchr)), BD_memchr_parms, BD_memchr_ret, BD_memchr_saves },
+    { const_cast<char *>(".stosd"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&BD_stosd)),  BD_stosd_parms,  BD_stosd_ret,  BD_stosd_saves  },
+    { const_cast<char *>(".stosw"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&BD_stosw)),  BD_stosw_parms,  BD_stosw_ret,  BD_stosw_saves  },
+    { const_cast<char *>(".stoswb"),const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&BD_stoswb)), BD_stoswb_parms, BD_stoswb_ret, BD_stoswb_saves },
     { NULL }
  };
 
 extern const struct  inline_funcs BigDataNoDs_Functions[] = {
-    { const_cast<char *>("strlen"), (byte_seq *)&DP_strlen, DP_strlen_parms, DP_strlen_ret, DP_strlen_saves },
-    { const_cast<char *>("strcpy"), (byte_seq *)&DP_strcpy, DP_strcpy_parms, DP_strcpy_ret, DP_strcpy_saves },
-    { const_cast<char *>("strcmp"), (byte_seq *)&DP_strcmp, DP_strcmp_parms, DP_strcmp_ret, DP_strcmp_saves },
-    { const_cast<char *>("strcat"), (byte_seq *)&DP_strcat, DP_strcat_parms, DP_strcat_ret, DP_strcat_saves },
-    { const_cast<char *>("strchr"), (byte_seq *)&DP_strchr, DP_strchr_parms, DP_strchr_ret, DP_strchr_saves },
-    { const_cast<char *>("memcpy"), (byte_seq *)&DP_memcpy, DP_memcpy_parms, DP_memcpy_ret, DP_memcpy_saves },
-    { const_cast<char *>("memcmp"), (byte_seq *)&DP_memcmp, DP_memcmp_parms, DP_memcmp_ret, DP_memcmp_saves },
-    { const_cast<char *>("memset"), (byte_seq *)&DP_memset, DP_memset_parms, DP_memset_ret, DP_memset_saves },
-    { const_cast<char *>("memchr"), (byte_seq *)&DP_memchr, DP_memchr_parms, DP_memchr_ret, DP_memchr_saves },
-    { const_cast<char *>(".stosd"), (byte_seq *)&BD_stosd,  BD_stosd_parms,  BD_stosd_ret,  BD_stosd_saves  },
-    { const_cast<char *>(".stosw"), (byte_seq *)&BD_stosw,  BD_stosw_parms,  BD_stosw_ret,  BD_stosw_saves  },
-    { const_cast<char *>(".stoswb"),(byte_seq *)&BD_stoswb, BD_stoswb_parms, BD_stoswb_ret, BD_stoswb_saves },
+    { const_cast<char *>("strlen"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_strlen)), DP_strlen_parms, DP_strlen_ret, DP_strlen_saves },
+    { const_cast<char *>("strcpy"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_strcpy)), DP_strcpy_parms, DP_strcpy_ret, DP_strcpy_saves },
+    { const_cast<char *>("strcmp"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_strcmp)), DP_strcmp_parms, DP_strcmp_ret, DP_strcmp_saves },
+    { const_cast<char *>("strcat"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_strcat)), DP_strcat_parms, DP_strcat_ret, DP_strcat_saves },
+    { const_cast<char *>("strchr"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_strchr)), DP_strchr_parms, DP_strchr_ret, DP_strchr_saves },
+    { const_cast<char *>("memcpy"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_memcpy)), DP_memcpy_parms, DP_memcpy_ret, DP_memcpy_saves },
+    { const_cast<char *>("memcmp"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_memcmp)), DP_memcmp_parms, DP_memcmp_ret, DP_memcmp_saves },
+    { const_cast<char *>("memset"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_memset)), DP_memset_parms, DP_memset_ret, DP_memset_saves },
+    { const_cast<char *>("memchr"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_memchr)), DP_memchr_parms, DP_memchr_ret, DP_memchr_saves },
+    { const_cast<char *>(".stosd"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&BD_stosd)),  BD_stosd_parms,  BD_stosd_ret,  BD_stosd_saves  },
+    { const_cast<char *>(".stosw"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&BD_stosw)),  BD_stosw_parms,  BD_stosw_ret,  BD_stosw_saves  },
+    { const_cast<char *>(".stoswb"),const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&BD_stoswb)), BD_stoswb_parms, BD_stoswb_ret, BD_stoswb_saves },
     { NULL }
  };
 
 /* these must also work in FLAT model */
 extern const struct  inline_funcs _8087_Functions[] = {
-    { const_cast<char *>("fabs"),  (byte_seq *)&_8087_fabs, C_8087_fabs_parms, C_8087_fabs_ret, C_8087_fabs_saves  },
+    { const_cast<char *>("fabs"),  const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&_8087_fabs)), C_8087_fabs_parms, C_8087_fabs_ret, C_8087_fabs_saves  },
     { NULL }
 };
 
@@ -438,33 +438,33 @@ extern const struct  inline_funcs _8087_Functions[] = {
 
 /* these must also work in FLAT model except _fmem & _fstr functions */
 extern const struct  inline_funcs Common_Functions[] = {
-  { const_cast<char *>("abs"),     (byte_seq *)&C_abs,     C_abs_parms,     C_abs_ret,     C_abs_saves      },
-  { const_cast<char *>("labs"),    (byte_seq *)&C_labs,    C_labs_parms,    C_labs_ret,    C_labs_saves     },
-  { const_cast<char *>("fabs"),    (byte_seq *)&C_fabs,    C_fabs_parms,    C_fabs_ret,    C_fabs_saves     },
-  { const_cast<char *>("inp"),     (byte_seq *)&C_inp,     C_inp_parms,     C_inp_ret,     C_inp_saves      },
-  { const_cast<char *>("inpw"),    (byte_seq *)&C_inpw,    C_inpw_parms,    C_inpw_ret,    C_inpw_saves     },
-  { const_cast<char *>("inpd"),    (byte_seq *)&C_inpd,    C_inpd_parms,    C_inpd_ret,    C_inpd_saves     },
-  { const_cast<char *>("outp"),    (byte_seq *)&C_outp,    C_outp_parms,    C_outp_ret,    C_outp_saves     },
-  { const_cast<char *>("outpw"),   (byte_seq *)&C_outpw,   C_outpw_parms,   C_outpw_ret,   C_outpw_saves    },
-  { const_cast<char *>("outpd"),   (byte_seq *)&C_outpd,   C_outpd_parms,   C_outpd_ret,   C_outpd_saves    },
-  { const_cast<char *>("movedata"),(byte_seq *)&C_movedata,C_movedata_parms,C_movedata_ret,C_movedata_saves },
-  { const_cast<char *>("_enable"), (byte_seq *)&C_enable,  C_enable_parms,  C_enable_ret,  C_enable_saves   },
-  { const_cast<char *>("_disable"),(byte_seq *)&C_disable, C_disable_parms, C_disable_ret, C_disable_saves  },
-  { const_cast<char *>("_rotl"),   (byte_seq *)&C_rotl,    C_rotl_parms,    C_rotl_ret,    C_rotl_saves     },
-  { const_cast<char *>("_rotr"),   (byte_seq *)&C_rotr,    C_rotr_parms,    C_rotr_ret,    C_rotr_saves     },
-  { const_cast<char *>("_lrotl"),  (byte_seq *)&C_rotl,    C_rotl_parms,    C_rotl_ret,    C_rotl_saves     },
-  { const_cast<char *>("_lrotr"),  (byte_seq *)&C_rotr,    C_rotr_parms,    C_rotr_ret,    C_rotr_saves     },
-  { const_cast<char *>("div"),     (byte_seq *)&C_div,     C_div_parms,     C_div_ret,     C_div_saves      },
-  { const_cast<char *>("ldiv"),    (byte_seq *)&C_div,     C_div_parms,     C_div_ret,     C_div_saves      },
-  { const_cast<char *>("_fmemcpy"),(byte_seq *)&DP_memcpy, DP_memcpy_parms, DP_memcpy_ret, DP_memcpy_saves  },
-  { const_cast<char *>("_fmemcmp"),(byte_seq *)&DP_memcmp, DP_memcmp_parms, DP_memcmp_ret, DP_memcmp_saves  },
-  { const_cast<char *>("_fmemset"),(byte_seq *)&DP_memset, DP_memset_parms, DP_memset_ret, DP_memset_saves  },
-  { const_cast<char *>("_fmemchr"),(byte_seq *)&DP_memchr, DP_memchr_parms, DP_memchr_ret, DP_memchr_saves  },
-  { const_cast<char *>("_fstrcpy"),(byte_seq *)&DP_strcpy, DP_strcpy_parms, DP_strcpy_ret, DP_strcpy_saves  },
-  { const_cast<char *>("_fstrcat"),(byte_seq *)&DP_strcat, DP_strcat_parms, DP_strcat_ret, DP_strcat_saves  },
-  { const_cast<char *>("_fstrcmp"),(byte_seq *)&DP_strcmp, DP_strcmp_parms, DP_strcmp_ret, DP_strcmp_saves  },
-  { const_cast<char *>("_fstrlen"),(byte_seq *)&DP_strlen, DP_strlen_parms, DP_strlen_ret, DP_strlen_saves  },
-  { const_cast<char *>(".min"),    (byte_seq *)&C_min,     C_min_parms,     C_min_ret,     C_min_saves      },
-  { const_cast<char *>(".max"),    (byte_seq *)&C_max,     C_max_parms,     C_max_ret,     C_max_saves      },
+  { const_cast<char *>("abs"),     const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_abs)),     C_abs_parms,     C_abs_ret,     C_abs_saves      },
+  { const_cast<char *>("labs"),    const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_labs)),    C_labs_parms,    C_labs_ret,    C_labs_saves     },
+  { const_cast<char *>("fabs"),    const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_fabs)),    C_fabs_parms,    C_fabs_ret,    C_fabs_saves     },
+  { const_cast<char *>("inp"),     const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_inp)),     C_inp_parms,     C_inp_ret,     C_inp_saves      },
+  { const_cast<char *>("inpw"),    const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_inpw)),    C_inpw_parms,    C_inpw_ret,    C_inpw_saves     },
+  { const_cast<char *>("inpd"),    const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_inpd)),    C_inpd_parms,    C_inpd_ret,    C_inpd_saves     },
+  { const_cast<char *>("outp"),    const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_outp)),    C_outp_parms,    C_outp_ret,    C_outp_saves     },
+  { const_cast<char *>("outpw"),   const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_outpw)),   C_outpw_parms,   C_outpw_ret,   C_outpw_saves    },
+  { const_cast<char *>("outpd"),   const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_outpd)),   C_outpd_parms,   C_outpd_ret,   C_outpd_saves    },
+  { const_cast<char *>("movedata"),const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_movedata)),C_movedata_parms,C_movedata_ret,C_movedata_saves },
+  { const_cast<char *>("_enable"), const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_enable)),  C_enable_parms,  C_enable_ret,  C_enable_saves   },
+  { const_cast<char *>("_disable"),const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_disable)), C_disable_parms, C_disable_ret, C_disable_saves  },
+  { const_cast<char *>("_rotl"),   const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_rotl)),    C_rotl_parms,    C_rotl_ret,    C_rotl_saves     },
+  { const_cast<char *>("_rotr"),   const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_rotr)),    C_rotr_parms,    C_rotr_ret,    C_rotr_saves     },
+  { const_cast<char *>("_lrotl"),  const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_rotl)),    C_rotl_parms,    C_rotl_ret,    C_rotl_saves     },
+  { const_cast<char *>("_lrotr"),  const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_rotr)),    C_rotr_parms,    C_rotr_ret,    C_rotr_saves     },
+  { const_cast<char *>("div"),     const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_div)),     C_div_parms,     C_div_ret,     C_div_saves      },
+  { const_cast<char *>("ldiv"),    const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_div)),     C_div_parms,     C_div_ret,     C_div_saves      },
+  { const_cast<char *>("_fmemcpy"),const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_memcpy)), DP_memcpy_parms, DP_memcpy_ret, DP_memcpy_saves  },
+  { const_cast<char *>("_fmemcmp"),const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_memcmp)), DP_memcmp_parms, DP_memcmp_ret, DP_memcmp_saves  },
+  { const_cast<char *>("_fmemset"),const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_memset)), DP_memset_parms, DP_memset_ret, DP_memset_saves  },
+  { const_cast<char *>("_fmemchr"),const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_memchr)), DP_memchr_parms, DP_memchr_ret, DP_memchr_saves  },
+  { const_cast<char *>("_fstrcpy"),const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_strcpy)), DP_strcpy_parms, DP_strcpy_ret, DP_strcpy_saves  },
+  { const_cast<char *>("_fstrcat"),const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_strcat)), DP_strcat_parms, DP_strcat_ret, DP_strcat_saves  },
+  { const_cast<char *>("_fstrcmp"),const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_strcmp)), DP_strcmp_parms, DP_strcmp_ret, DP_strcmp_saves  },
+  { const_cast<char *>("_fstrlen"),const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&DP_strlen)), DP_strlen_parms, DP_strlen_ret, DP_strlen_saves  },
+  { const_cast<char *>(".min"),    const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_min)),     C_min_parms,     C_min_ret,     C_min_saves      },
+  { const_cast<char *>(".max"),    const_cast<byte_seq *>(reinterpret_cast<const byte_seq *>(&C_max)),     C_max_parms,     C_max_ret,     C_max_saves      },
   { NULL }
 };

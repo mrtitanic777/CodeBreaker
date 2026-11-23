@@ -44,9 +44,3 @@
  * these are for size which is power of 2
  */
 inline unsigned long long RoundUpSize( unsigned long long x, unsigned long long amt ) { return (((x)+((amt)-1))&(~((amt)-1))); }
-
-
-
-
-
-

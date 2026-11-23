@@ -81,9 +81,9 @@ void    FPParms( BackRun& back )
                 if( FPRegNum( ins->result ) == 0 ) {
                     next = ins->head.next;
                     if( next->head.opcode == OP_BLOCK
-                     || (instruction *)ins->operands[2] != next /* not associated*/
-                     || (instruction *)next->operands[2] != ins ) {
-                        back.i87data.Parm8087[i] = (name *)back.data.CurrProc; /* klude - means parm ignored*/
+                     || reinterpret_cast<instruction *>(ins->operands[2]) != next /* not associated*/
+                     || reinterpret_cast<instruction *>(next->operands[2]) != ins ) {
+                        back.i87data.Parm8087[i] = reinterpret_cast<name *>(back.data.CurrProc); /* klude - means parm ignored*/
                     } else {
                         back.i87data.Parm8087[i] = next->result;
                         DoNothing( back, next );

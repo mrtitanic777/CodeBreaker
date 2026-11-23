@@ -37,7 +37,7 @@
 #include "frontrun.hpp"
 
 
-#define U64_DOUBLE_CORRECTION   (2.0 * ( (double)9223372036854775807LL + 1.0 ))
+#define U64_DOUBLE_CORRECTION   (2.0 * ( static_cast<double>(9223372036854775807LL) + 1.0 ))
 
 
 static bool IsConstantZero( FrontRun& front, TREEPTR tree );
@@ -61,7 +61,7 @@ static uint_32 DoOp32( uint_32 left, opr_code opr, uint_32 right, bool sign )
             value = 0;
         } else {
             if( sign ) {
-                value = (int_32)left / (int_32)right;
+                value = static_cast<int_32>(left) / static_cast<int_32>(right);
             } else {
                 value = left / right;
             }
@@ -72,7 +72,7 @@ static uint_32 DoOp32( uint_32 left, opr_code opr, uint_32 right, bool sign )
             value = 0;
         } else {
             if( sign ) {
-                value = (int_32)left % (int_32)right;
+                value = static_cast<int_32>(left) % static_cast<int_32>(right);
             } else {
                 value = left % right;
             }
@@ -80,7 +80,7 @@ static uint_32 DoOp32( uint_32 left, opr_code opr, uint_32 right, bool sign )
         break;
     case OPR_RSHIFT:
         if( sign ) {
-            value = (int_32)left >> (int_32)right;
+            value = static_cast<int_32>(left) >> static_cast<int_32>(right);
         } else {
             value = left >> right;
         }
@@ -104,7 +104,7 @@ static uint_32 DoOp32( uint_32 left, opr_code opr, uint_32 right, bool sign )
         value = left ^ right;
         break;
     case OPR_NEG:
-        value = - (int_32)right;
+        value = - static_cast<int_32>(right);
         break;
     case OPR_COM:
         value = ~ right;
@@ -154,12 +154,10 @@ static uint64 DoOp64( uint64 left, opr_code opr, uint64 right, bool sign )
         }
         break;
     case OPR_LSHIFT:
-        shift = U64Low( right );
-        shift = -shift;
-        goto do_shift;
     case OPR_RSHIFT:
         shift = U64Low( right );
-    do_shift:
+        if( opr == OPR_LSHIFT )
+            shift = -shift;
         if( shift > 0 ) {
             if( sign ) {
                 I64ShiftR( &value, &left, shift );
@@ -242,13 +240,13 @@ static int DoSignedOp( FrontRun& front, TREEPTR op1, TREEPTR tree, TREEPTR op2 )
             break;
         }
         const_type = TYP_INT;
-        tree->op.u2.long_value = (target_int)value;
+        tree->op.u2.long_value = static_cast<target_int>(value);
     } else {
         value = DoOp32( left, tree->op.opr, right, true );
         if( const_type == TYP_LONG ) {
             tree->op.u2.long_value = value;
         } else {
-            tree->op.u2.long_value = (target_int)value;
+            tree->op.u2.long_value = static_cast<target_int>(value);
         }
     }
     tree->op.opr = OPR_PUSHINT;
@@ -301,13 +299,13 @@ static int DoUnSignedOp( FrontRun& front, TREEPTR op1, TREEPTR tree, TREEPTR op2
             break;
         }
         const_type = TYP_INT;
-        tree->op.u2.long_value = (target_int)value;
+        tree->op.u2.long_value = static_cast<target_int>(value);
     } else {
         value = DoOp32( left, tree->op.opr, right, false );
         if( const_type == TYP_ULONG || const_type == TYP_POINTER ) {
             tree->op.u2.ulong_value = value;
         } else {
-            tree->op.u2.ulong_value = (target_uint)value;
+            tree->op.u2.ulong_value = static_cast<target_uint>(value);
         }
     }
     tree->op.opr = OPR_PUSHINT;
@@ -333,36 +331,36 @@ int64 LongValue64( FrontRun& front, TREEPTR leaf )
     switch( leaf->op.u1.const_type ) {
     case TYP_CHAR:
         sign = true;
-        val32 = (signed char)leaf->op.u2.ulong_value;
+        val32 = static_cast<signed char>(leaf->op.u2.ulong_value);
         break;
     case TYP_UCHAR:
         sign = false;
-        val32 = (unsigned char)leaf->op.u2.ulong_value;
+        val32 = static_cast<unsigned char>(leaf->op.u2.ulong_value);
         break;
     case TYP_SHORT:
         sign = true;
-        val32 = (target_short)leaf->op.u2.ulong_value;
+        val32 = static_cast<target_short>(leaf->op.u2.ulong_value);
         break;
     case TYP_USHORT:
         sign = false;
-        val32 = (target_ushort)leaf->op.u2.ulong_value;
+        val32 = static_cast<target_ushort>(leaf->op.u2.ulong_value);
         break;
     case TYP_INT:
         sign = true;
-        val32 = (target_int)leaf->op.u2.ulong_value;
+        val32 = static_cast<target_int>(leaf->op.u2.ulong_value);
         break;
     case TYP_UINT:
         sign = false;
-        val32 = (target_uint)leaf->op.u2.ulong_value;
+        val32 = static_cast<target_uint>(leaf->op.u2.ulong_value);
         break;
     case TYP_LONG:
         sign = true;
-        val32 = (target_long)leaf->op.u2.ulong_value;
+        val32 = static_cast<target_long>(leaf->op.u2.ulong_value);
         break;
     case TYP_POINTER:
     case TYP_ULONG:
         sign = false;
-        val32 = (target_ulong)leaf->op.u2.ulong_value;
+        val32 = leaf->op.u2.ulong_value;
         break;
     case TYP_LONG64:
     case TYP_ULONG64:
@@ -379,7 +377,7 @@ int64 LongValue64( FrontRun& front, TREEPTR leaf )
             __Strtold( flt->string, &ld, &endptr );
         }
         CMemFree( front, flt );
-        value.u._64[0] = (uint_64)(int_64)ld.u.value;
+        value.u._64[0] = static_cast<uint_64>(static_cast<int_64>(ld.u.value));
         return( value );
     default:
         sign = false;
@@ -496,7 +494,7 @@ static int DoSignedOp64( FrontRun& front, TREEPTR op1, TREEPTR tree, TREEPTR op2
         if( const_type  == TYP_LONG64 ) {
             tree->op.u2.long64_value = value;
         } else {
-            tree->op.u2.long_value = (signed_32)U64Low( value );
+            tree->op.u2.long_value = static_cast<signed_32>(U64Low( value ));
         }
     }
     tree->op.opr = OPR_PUSHINT;
@@ -524,15 +522,15 @@ static void CastFloatValue( FrontRun& front, TREEPTR leaf, DATA_TYPE newtype )
     } else {    // integer
         switch( leaf->op.u1.const_type ) {
         case TYP_LONG64:
-            ld.u.value = (double)(int_64)leaf->op.u2.long64_value.u._64[0];
+            ld.u.value = static_cast<double>(static_cast<int_64>(leaf->op.u2.long64_value.u._64[0]));
             break;
         case TYP_ULONG64:
             /*
              * temporary fix for missing uint_64 -> double conversion in OW code generator for RISC
              * it is valid for two's complement integers
              */
-            ld.u.value = (double)(int_64)leaf->op.u2.ulong64_value.u._64[0];
-            if( (int_64)leaf->op.u2.ulong64_value.u._64[0] < 0 ) {
+            ld.u.value = static_cast<double>(static_cast<int_64>(leaf->op.u2.ulong64_value.u._64[0]));
+            if( static_cast<int_64>(leaf->op.u2.ulong64_value.u._64[0]) < 0 ) {
                 ld.u.value += U64_DOUBLE_CORRECTION;
             }
             break;
@@ -543,13 +541,13 @@ static void CastFloatValue( FrontRun& front, TREEPTR leaf, DATA_TYPE newtype )
             /*
              * signed types
              */
-            ld.u.value = (double)leaf->op.u2.long_value;
+            ld.u.value = static_cast<double>(leaf->op.u2.long_value);
             break;
         default:
             /*
              * unsigned types
              */
-            ld.u.value = (double)(int_64)leaf->op.u2.ulong_value;
+            ld.u.value = static_cast<double>(static_cast<int_64>(leaf->op.u2.ulong_value));
             break;
         }
         flt = static_cast<FLOATVAL *>(CMemAlloc( front, sizeof( FLOATVAL ) ));
@@ -559,7 +557,7 @@ static void CastFloatValue( FrontRun& front, TREEPTR leaf, DATA_TYPE newtype )
     leaf->op.u1.const_type = newtype;
     switch( newtype ) {
     case TYP_FLOAT:
-        ld.u.value = (float)ld.u.value;
+        ld.u.value = static_cast<float>(ld.u.value);
         break;
     case TYP_DOUBLE:
         break;
@@ -584,7 +582,7 @@ void MakeBinaryFloat( FrontRun& front, TREEPTR opnd )
     if( flt->len != 0 ) {
         __Strtold( flt->string, &ld, &endptr );
         if( flt->type == TYP_FLOAT ) {
-            ld.u.value = (float)ld.u.value;
+            ld.u.value = static_cast<float>(ld.u.value);
         } else if( flt->type == TYP_DOUBLE ) {
         }
         flt->ld = ld;
@@ -717,35 +715,35 @@ static int_32 LongValue( FrontRun& front, TREEPTR leaf )
 
     switch( leaf->op.u1.const_type ) {
     case TYP_CHAR:
-        value = (signed char)leaf->op.u2.ulong_value;
+        value = static_cast<signed char>(leaf->op.u2.ulong_value);
         break;
     case TYP_UCHAR:
-        value = (unsigned char)leaf->op.u2.ulong_value;
+        value = static_cast<unsigned char>(leaf->op.u2.ulong_value);
         break;
     case TYP_SHORT:
-        value = (target_short)leaf->op.u2.ulong_value;
+        value = static_cast<target_short>(leaf->op.u2.ulong_value);
         break;
     case TYP_USHORT:
-        value = (target_ushort)leaf->op.u2.ulong_value;
+        value = static_cast<target_ushort>(leaf->op.u2.ulong_value);
         break;
     case TYP_INT:
-        value = (target_int)leaf->op.u2.ulong_value;
+        value = static_cast<target_int>(leaf->op.u2.ulong_value);
         break;
     case TYP_UINT:
-        value = (target_uint)leaf->op.u2.ulong_value;
+        value = static_cast<target_uint>(leaf->op.u2.ulong_value);
         break;
     case TYP_LONG:
-        value = (target_long)leaf->op.u2.ulong_value;
+        value = static_cast<target_long>(leaf->op.u2.ulong_value);
         break;
     case TYP_ULONG:
     case TYP_POINTER:
-        value = (target_ulong)leaf->op.u2.ulong_value;
+        value = leaf->op.u2.ulong_value;
         break;
     case TYP_LONG64:
-        value = (target_long)U64Low( leaf->op.u2.ulong64_value );
+        value = static_cast<target_long>(U64Low( leaf->op.u2.ulong64_value ));
         break;
     case TYP_ULONG64:
-        value = (target_ulong)U64Low( leaf->op.u2.ulong64_value );
+        value = U64Low( leaf->op.u2.ulong64_value );
         break;
     case TYP_FLOAT:
     case TYP_DOUBLE:
@@ -757,7 +755,7 @@ static int_32 LongValue( FrontRun& front, TREEPTR leaf )
             __Strtold( flt->string, &ld, &endptr );
         }
         CMemFree( front, flt );
-        value = (int_32)ld.u.value;
+        value = static_cast<int_32>(ld.u.value);
         break;
     default:
         value = 0;
@@ -789,31 +787,31 @@ void CastConstValue( FrontRun& front, TREEPTR leaf, DATA_TYPE newtyp )
         val32 = LongValue( front, leaf );
         switch( newtyp ) {
         case TYP_CHAR:
-            leaf->op.u2.ulong_value = (signed char)val32;
+            leaf->op.u2.ulong_value = static_cast<signed char>(val32);
             break;
         case TYP_UCHAR:
-            leaf->op.u2.ulong_value = (unsigned char)val32;
+            leaf->op.u2.ulong_value = static_cast<unsigned char>(val32);
             break;
         case TYP_SHORT:
-            leaf->op.u2.ulong_value = (target_short)val32;
+            leaf->op.u2.ulong_value = static_cast<target_short>(val32);
             break;
         case TYP_USHORT:
-            leaf->op.u2.ulong_value = (target_ushort)val32;
+            leaf->op.u2.ulong_value = static_cast<target_ushort>(val32);
             break;
         case TYP_INT:
-            leaf->op.u2.ulong_value = (target_int)val32;
+            leaf->op.u2.ulong_value = static_cast<target_int>(val32);
             break;
         case TYP_UINT:
-            leaf->op.u2.ulong_value = (target_uint)val32;
+            leaf->op.u2.ulong_value = static_cast<target_uint>(val32);
             break;
         case TYP_LONG:
-            leaf->op.u2.ulong_value = (target_long)val32;
+            leaf->op.u2.ulong_value = val32;
             break;
         case TYP_ULONG:
-            leaf->op.u2.ulong_value = (target_ulong)val32;
+            leaf->op.u2.ulong_value = static_cast<target_ulong>(val32);
             break;
         case TYP_POINTER:
-            leaf->op.u2.ulong_value = (target_ulong)val32;
+            leaf->op.u2.ulong_value = static_cast<target_ulong>(val32);
             break;
         case TYP_FLOAT:
         case TYP_DOUBLE:
@@ -838,7 +836,7 @@ void CastConstNode( FrontRun& front, TREEPTR leaf, TYPEPTR newtyp )
          * function can't figure out the exact pointer size
          */
         if ( TypeSize( front, newtyp ) == TARGET_SHORT ) {
-            leaf->op.u2.ulong_value = (target_ushort)leaf->op.u2.ulong_value;
+            leaf->op.u2.ulong_value = static_cast<target_ushort>(leaf->op.u2.ulong_value);
         }
     }
 }

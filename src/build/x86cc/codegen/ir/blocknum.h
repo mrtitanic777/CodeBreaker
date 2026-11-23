@@ -32,7 +32,7 @@
 
 
 #pragma once
-#define BLK_ID_NONE             ((block_id)-1)
+#define BLK_ID_NONE             (static_cast<block_id>(-1))
 
 typedef unsigned short          block_id;
 typedef unsigned short          block_num;

@@ -61,9 +61,9 @@ static int efGet( cfloat *f, char ue[], int i )
 static void efSet( cfloat *f, char ue[], int i, int val )
 {
     if( i >= f->len ) {
-        ue[i - f->len] = (char)val;
+        ue[i - f->len] = static_cast<char>(val);
     } else {
-        f->mant[i] = (char)val + '0';
+        f->mant[i] = static_cast<char>(val) + '0';
     }
 }
 

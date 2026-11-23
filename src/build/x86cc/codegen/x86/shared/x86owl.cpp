@@ -139,7 +139,7 @@ static const char *symbolName( BackRun& back, cg_sym_handle sym )
     kind = NORMAL;
     if( attr & FE_DLLIMPORT )
         kind = DLLIMPORT;
-    DoOutObjectName( back, sym, (outputter_fn *)(gatherName), (outputter_data)(back.x86owl->ObjName), kind );
+    DoOutObjectName( back, sym, reinterpret_cast<outputter_fn *>(gatherName), static_cast<outputter_data>(back.x86owl->ObjName), kind );
     return( back.x86owl->ObjName );
 }
 
@@ -207,7 +207,7 @@ static owl_x86_patch *appendPatch( BackRun& back, array_control *array )
             CGFree( back, old );
         }
     }
-    patch = (owl_x86_patch *)array->array + array->used;
+    patch = static_cast<owl_x86_patch *>(array->array) + array->used;
     ++array->used;
     return( patch );
 }
@@ -230,28 +230,28 @@ static void applyPatch( BackRun& back, const owl_x86_patch *patch, offset value 
     OWLSetLocation( patch->section, patch->where );
     if( patch->attr & LONG_PATCH ) {
         if( patch->attr & ADD_PATCH ) {
-            OWLTellData( patch->section, patch->where, (char *)&dword, sizeof( dword ) );
+            OWLTellData( patch->section, patch->where, reinterpret_cast<char *>(&dword), sizeof( dword ) );
             dword += value;
         } else {
             dword = value;
         }
-        OWLEmitData( back, patch->section, (char *)&dword, sizeof( dword ) );
+        OWLEmitData( back, patch->section, reinterpret_cast<char *>(&dword), sizeof( dword ) );
     } else if( patch->attr & WORD_PATCH ) {
         if( patch->attr & ADD_PATCH ) {
-            OWLTellData( patch->section, patch->where, (char *)&word, sizeof( word ) );
+            OWLTellData( patch->section, patch->where, reinterpret_cast<char *>(&word), sizeof( word ) );
             word += value;
         } else {
             word = value;
         }
-        OWLEmitData( back, patch->section, (char *)&word, sizeof( word ) );
+        OWLEmitData( back, patch->section, reinterpret_cast<char *>(&word), sizeof( word ) );
     } else {
         if( patch->attr & ADD_PATCH ) {
-            OWLTellData( patch->section, patch->where, (char *)&one, sizeof( one ) );
+            OWLTellData( patch->section, patch->where, reinterpret_cast<char *>(&one), sizeof( one ) );
             one += value;
         } else {
             one = value;
         }
-        OWLEmitData( back, patch->section, (char *)&one, sizeof( one ) );
+        OWLEmitData( back, patch->section, reinterpret_cast<char *>(&one), sizeof( one ) );
     }
     OWLSetLocation( patch->section, save );
 }
@@ -285,7 +285,7 @@ static bool inlineFunction( BackRun& back, cg_sym_handle sym )
 {
     if( FEAttr( *back.front, sym ) & FE_PROC ) {
         if( FindAuxInfoSym( back, sym, FEINF_CALL_BYTES ) != NULL
-          || ((call_class)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS ) & FECALL_GEN_MAKE_CALL_INLINE) ) {
+          || (static_cast<call_class>(reinterpret_cast<pointer_uint>(FindAuxInfoSym( back, sym, FEINF_CALL_CLASS ))) & FECALL_GEN_MAKE_CALL_INLINE) ) {
             return( true );
         }
     }
@@ -432,7 +432,7 @@ static void owlDefaultLibs( BackRun& back )
         lib = static_cast<char *>(FEAuxInfo( *back.front, lib, FEINF_NEXT_LIBRARY ));
         if( lib == NULL )
             break;
-        name = (char *)FEAuxInfo( *back.front, lib, FEINF_LIBRARY_NAME );
+        name = static_cast<char *>(FEAuxInfo( *back.front, lib, FEINF_LIBRARY_NAME ));
         if( name == NULL || *name == '\0' )
             continue;
         if( comments == NULL )
@@ -465,11 +465,11 @@ static void owlAliasNames( BackRun& back )
             break;
         alias_name = static_cast<const char *>(FEAuxInfo( *back.front, alias, FEINF_ALIAS_NAME ));
         if( alias_name == NULL ) {
-            DoOutObjectName( back, static_cast<cg_sym_handle>(FEAuxInfo( *back.front, alias, FEINF_ALIAS_SYMBOL )), (outputter_fn *)(stringOut), (outputter_data)(&alias_name), NORMAL );
+            DoOutObjectName( back, static_cast<cg_sym_handle>(FEAuxInfo( *back.front, alias, FEINF_ALIAS_SYMBOL )), reinterpret_cast<outputter_fn *>(stringOut), static_cast<outputter_data>(&alias_name), NORMAL );
         }
         subst_name = static_cast<const char *>(FEAuxInfo( *back.front, alias, FEINF_ALIAS_SUBST_NAME ));
         if( subst_name == NULL ) {
-            DoOutObjectName( back, static_cast<cg_sym_handle>(FEAuxInfo( *back.front, alias, FEINF_ALIAS_SUBST_SYMBOL )), (outputter_fn *)(stringOut), (outputter_data)(&subst_name), NORMAL );
+            DoOutObjectName( back, static_cast<cg_sym_handle>(FEAuxInfo( *back.front, alias, FEINF_ALIAS_SUBST_SYMBOL )), reinterpret_cast<outputter_fn *>(stringOut), static_cast<outputter_data>(&subst_name), NORMAL );
         }
         owl_alias = OWLSymbolInit( back, back.x86owl->OwlFile, alias_name );
         owl_subst = OWLSymbolInit( back, back.x86owl->OwlFile, subst_name );
@@ -494,7 +494,7 @@ static void owlEmitImports( BackRun& back )
         auto_import = FEAuxInfo( *back.front, auto_import, FEINF_NEXT_IMPORT_S );
         if( auto_import == NULL )
             break;
-        DoOutObjectName( back, static_cast<cg_sym_handle>(FEAuxInfo( *back.front, auto_import, FEINF_IMPORT_NAME_S )), (outputter_fn *)(stringOut), (outputter_data)(&name), NORMAL );
+        DoOutObjectName( back, static_cast<cg_sym_handle>(FEAuxInfo( *back.front, auto_import, FEINF_IMPORT_NAME_S )), reinterpret_cast<outputter_fn *>(stringOut), static_cast<outputter_data>(&name), NORMAL );
         OWLEmitImport( back, back.x86owl->OwlFile, name );
     }
 }
@@ -514,16 +514,16 @@ static void owlEmitDependencyInfo( BackRun& back )
             break;
         if( section == NULL )
             section = OWLSectionInit( back, back.x86owl->OwlFile, ".depend", OWL_SECTION_INFO, 16 );
-        name = (char *)FEAuxInfo( *back.front, depend, FEINF_DEPENDENCY_NAME );
-        info.time = *(time_t *)FEAuxInfo( *back.front, depend, FEINF_DEPENDENCY_TIMESTAMP );
+        name = static_cast<char *>(FEAuxInfo( *back.front, depend, FEINF_DEPENDENCY_NAME ));
+        info.time = *static_cast<time_t *>(FEAuxInfo( *back.front, depend, FEINF_DEPENDENCY_TIMESTAMP ));
         info.len = strlen( name ) + 1;
-        OWLEmitData( back, section, (char *)&info, offsetof( DepInfo, name ) );
+        OWLEmitData( back, section, reinterpret_cast<char *>(&info), offsetof( DepInfo, name ) );
         OWLEmitData( back, section, name, info.len );
     }
     if( section != NULL ) {
         info.time = 0;
         info.len = 0;
-        OWLEmitData( back, section, (char *)&info, offsetof( DepInfo, name ) );
+        OWLEmitData( back, section, reinterpret_cast<char *>(&info), offsetof( DepInfo, name ) );
     }
 }
 
@@ -554,7 +554,7 @@ static void owlObjFini( BackRun& back )
 static bool owlSymIsExported( BackRun& back, cg_sym_handle sym )
 {
     return( sym != NULL && ((FEAttr( *back.front, sym ) & FE_DLLEXPORT) != 0
-        || ((call_class)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS ) & FECALL_GEN_DLL_EXPORT) != 0) );
+        || (static_cast<call_class>(reinterpret_cast<pointer_uint>(FindAuxInfoSym( back, sym, FEINF_CALL_CLASS ))) & FECALL_GEN_DLL_EXPORT) != 0) );
 }
 
 static void owlOutDLLExport( BackRun& back, uint words, cg_sym_handle sym )
@@ -589,7 +589,7 @@ static void owlOutLabel( BackRun& back, label_handle label )
         OWLEmitExport( back.x86owl->OwlFile, labelSymbol( back, label ) );
     patches = static_cast<array_control *>(AskLblPatches( back, label ));
     for( i = 0; i < patches->used; ++i ) {
-        patch = (owl_x86_patch *)patches->array + i;
+        patch = static_cast<owl_x86_patch *>(patches->array) + i;
         applyPatch( back, patch, location );
     }
     deletePatchArray( back, patches );
@@ -598,7 +598,7 @@ static void owlOutLabel( BackRun& back, label_handle label )
 
 static void owlAbsPatch( BackRun& back, abspatch_handle handle, offset value )
 {
-    owl_x86_abs_patch *patch = (owl_x86_abs_patch *)handle;
+    owl_x86_abs_patch *patch = static_cast<owl_x86_abs_patch *>(handle);
     if( patch->have_offset ) {
         applyPatch( back, &patch->patch, value );
         freeAbsPatch( back, patch );
@@ -628,16 +628,16 @@ static abs_patch *owlNewAbsPatch( BackRun& back )
     memset( patch, 0, sizeof( *patch ) );
     patch->next = back.x86owl->AbsPatches;
     back.x86owl->AbsPatches = patch;
-    return( (abs_patch *)patch );
+    return( reinterpret_cast<abs_patch *>(patch) );
 }
 
-static void owlOutDataByte( BackRun& back, byte value ) { OWLEmitData( back, back.x86owl->CurrSection->handle, (char *)&value, sizeof( value ) ); }
-static void owlOutDataShort( BackRun& back, uint_16 value ) { OWLEmitData( back, back.x86owl->CurrSection->handle, (char *)&value, sizeof( value ) ); }
-static void owlOutDataLong( BackRun& back, uint_32 value ) { OWLEmitData( back, back.x86owl->CurrSection->handle, (char *)&value, sizeof( value ) ); }
+static void owlOutDataByte( BackRun& back, byte value ) { OWLEmitData( back, back.x86owl->CurrSection->handle, reinterpret_cast<char *>(&value), sizeof( value ) ); }
+static void owlOutDataShort( BackRun& back, uint_16 value ) { OWLEmitData( back, back.x86owl->CurrSection->handle, reinterpret_cast<char *>(&value), sizeof( value ) ); }
+static void owlOutDataLong( BackRun& back, uint_32 value ) { OWLEmitData( back, back.x86owl->CurrSection->handle, reinterpret_cast<char *>(&value), sizeof( value ) ); }
 
 static void owlOutAbsPatch( BackRun& back, abs_patch *handle, patch_attr attr )
 {
-    owl_x86_abs_patch *patch = (owl_x86_abs_patch *)handle;
+    owl_x86_abs_patch *patch = reinterpret_cast<owl_x86_abs_patch *>(handle);
     long_offset value = 0;
     if( patch->have_value ) {
         value = patch->value;
@@ -701,7 +701,7 @@ static void owlOutBckImport( BackRun& back, const char *name, back_handle bck, f
 
 static void owlOutLineNum( BackRun& back, cg_linenum line, bool label_line ) { (void)label_line; back.x86owl->PendingLine = line; }
 static unsigned owlSavePendingLine( BackRun& back, unsigned line ) { unsigned old = back.x86owl->PendingLine; back.x86owl->PendingLine = line; return( old ); }
-static void owlOutBytes( BackRun& back, unsigned len, const byte *src ) { if( len != 0 ) OWLEmitData( back, back.x86owl->CurrSection->handle, (const char *)src, len ); }
+static void owlOutBytes( BackRun& back, unsigned len, const byte *src ) { if( len != 0 ) OWLEmitData( back, back.x86owl->CurrSection->handle, reinterpret_cast<const char *>(src), len ); }
 
 static void owlOutIterated( BackRun& back, byte pattern, offset len )
 {
@@ -710,7 +710,7 @@ static void owlOutIterated( BackRun& back, byte pattern, offset len )
     memset( buffer, pattern, sizeof( buffer ) );
     while( len != 0 ) {
         amount = len > sizeof( buffer ) ? sizeof( buffer ) : len;
-        OWLEmitData( back, back.x86owl->CurrSection->handle, (char *)buffer, amount );
+        OWLEmitData( back, back.x86owl->CurrSection->handle, reinterpret_cast<char *>(buffer), amount );
         len -= amount;
     }
 }
@@ -736,9 +736,9 @@ static segment_id owlAskSegID( BackRun& back, pointer handle, cg_class class_ )
 {
     switch( class_ ) {
     case CG_FE:
-        if( inlineFunction( back, (cg_sym_handle)handle ) ) return( back.x86owl->CodeSectionId );
-        return( FESegID( *back.front, (cg_sym_handle)handle ) );
-    case CG_BACK: return( ((back_handle)handle)->segid );
+        if( inlineFunction( back, static_cast<cg_sym_handle>(handle) ) ) return( back.x86owl->CodeSectionId );
+        return( FESegID( *back.front, static_cast<cg_sym_handle>(handle) ) );
+    case CG_BACK: return( (static_cast<back_handle>(handle))->segid );
     case CG_TBL:
     case CG_VTB:
     case CG_CLB: return( back.x86owl->CodeSectionId );

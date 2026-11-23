@@ -176,7 +176,7 @@ dbg_type    DFIndCharBlock( BackRun& back, back_handle len, cg_type len_type, in
     const type_def  *tipe_addr;
 
     len_locid = DWLocInit( back, back.dfsyms.Client );
-    DWLocSym( back, back.dfsyms.Client, len_locid, (dw_sym_handle)len, DW_W_LABEL );
+    DWLocSym( back, back.dfsyms.Client, len_locid, reinterpret_cast<dw_sym_handle>(len), DW_W_LABEL );
     DWLocOp( back, back.dfsyms.Client, len_locid, DW_LOC_plus_uconst, off );
     len_loc = DWLocFini( back, back.dfsyms.Client, len_locid );
     tipe_addr = TypeAddress( back, len_type );
@@ -236,13 +236,13 @@ static  dw_handle   MKBckVar( BackRun& back, back_handle bck, int off, dw_handle
     dw_handle       obj;
 
     locid = DWLocInit( back, back.dfsyms.Client );
-    DWLocSym( back, back.dfsyms.Client, locid, (dw_sym_handle)bck, DW_W_LABEL );
+    DWLocSym( back, back.dfsyms.Client, locid, reinterpret_cast<dw_sym_handle>(bck), DW_W_LABEL );
     DWLocOp( back, back.dfsyms.Client, locid, DW_LOC_plus_uconst, off );
     dw_loc = DWLocFini( back, back.dfsyms.Client, locid );
     dw_segloc = NULL;
     if( IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) ) {
         locid = DWLocInit( back, back.dfsyms.Client );
-        DWLocSym( back, back.dfsyms.Client, locid, (dw_sym_handle)bck, DW_W_LABEL_SEG );
+        DWLocSym( back, back.dfsyms.Client, locid, reinterpret_cast<dw_sym_handle>(bck), DW_W_LABEL_SEG );
         dw_segloc = DWLocFini( back, back.dfsyms.Client, locid );
     }
     obj = DWVariable( back, back.dfsyms.Client, tipe, dw_loc, 0, dw_segloc, "__bck", 0, static_cast<dw_flags>(0) );
@@ -431,7 +431,7 @@ static  dw_loc_id   DoLocCnv( BackRun& back, dbg_loc loc, loc_state *state )
     switch( loc->class_ & 0xf0 ) {
     case LOC_CONSTANT:
         if( loc->class_ == LOC_MEMORY ) {
-            sym = (dw_sym_handle)loc->u.fe_sym;
+            sym = reinterpret_cast<dw_sym_handle>(loc->u.fe_sym);
             if( state->seg ) {
                 DWLocSegment( back, back.dfsyms.Client, locid, sym );
             }

@@ -737,7 +737,7 @@ static  void    RevOtherCond( block *blk, instruction *ins )
             for( i = blk->targets; i-- > 0; ) {
                 target = blk->edge[i].destination.u.blk;
                 if( !IsBlkVisited( target ) ) {
-                    RevOtherCond( target, (instruction *)&target->ins );
+                    RevOtherCond( target, reinterpret_cast<instruction *>(&target->ins) );
                 }
             }
             break;
@@ -1190,7 +1190,7 @@ void    FPInit( BackRun& back )
     Initialize.
 */
 {
-    back.i87data.Max87Stk = (int)(pointer_uint)FEAuxInfo( *back.front, NULL, FEINF_STACK_SIZE_8087 );
+    back.i87data.Max87Stk = static_cast<int>(reinterpret_cast<pointer_uint>(FEAuxInfo( *back.front, NULL, FEINF_STACK_SIZE_8087 )));
     if( back.i87data.Max87Stk > 8 )
         back.i87data.Max87Stk = 8;
     if( back.i87data.Max87Stk < 4 )

@@ -65,7 +65,7 @@ static void writeFileName( BackRun& back, dw_client cli, const char *name, size_
 
     *end++ = DW_LNE_define_file;    // write in the sub-opcode
 
-    end = (uint_8 *)strncpy( (char *)end, name, len ); // write the filename
+    end = reinterpret_cast<uint_8 *>(strncpy( reinterpret_cast<char *>(end), name, len )); // write the filename
     end += len;
 
     end = WriteULEB128( end, 0 );   // not using a path index
@@ -218,7 +218,7 @@ void DW_InitDebugLine( BackRun& back, dw_client cli, const char *source_filename
     cli->debug_line.end_sequence = 0;
 
     /* write the prologue */
-    CLIWrite( back, cli, DW_DEBUG_LINE, (char *)&prol, sizeof( prol ) );
+    CLIWrite( back, cli, DW_DEBUG_LINE, reinterpret_cast<char *>(&prol), sizeof( prol ) );
 
     if( inc_list != NULL ) {    // write the include list
         CLIWrite( back, cli, DW_DEBUG_LINE, inc_list, inc_list_len );

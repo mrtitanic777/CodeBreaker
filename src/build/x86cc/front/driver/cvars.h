@@ -50,11 +50,11 @@
 #include "csegid.h"
 #include "ctokens.h"
 
-inline unsigned char &GetMtoken( const char *p ) { return (*(TYPE_MTOKEN *)(p)); }
+inline TYPE_MTOKEN GetMtoken( const char *p ) { return *reinterpret_cast<const TYPE_MTOKEN *>(p); }
 
-inline void SetMtoken( char *p, TOKEN v ) { *(TYPE_MTOKEN *)(p)=(v); }
+inline void SetMtoken( char *p, TOKEN v ) { *reinterpret_cast<TYPE_MTOKEN *>(p)=(v); }
 
-inline unsigned char &GetMparm( const char *p ) { return (*(TYPE_MPARM *)(p)); }
+inline TYPE_MPARM GetMparm( const char *p ) { return *reinterpret_cast<const TYPE_MPARM *>(p); }
 
 inline int GetMacroParmCount( macro_entry *m ) { return ((m)->u.parm_count - 1); }
 
@@ -75,10 +75,10 @@ inline bool IsIdOrKeyword( TOKEN t ) { return (t == T_ID || t >= FIRST_KEYWORD &
 
 #define MAX_LEVEL       1024
 #define USER_LIB_PRIO   '9'
-#define ERRLIMIT_NOMAX  ((unsigned)-1)
+#define ERRLIMIT_NOMAX  (static_cast<unsigned>(-1))
 
 #define MSGIDX_INVALID  (-1)
-inline bool IsMsgidxInvalid( unsigned int m ) { return ((int)(m) == MSGIDX_INVALID); }
+inline bool IsMsgidxInvalid( unsigned int m ) { return (static_cast<int>(m) == MSGIDX_INVALID); }
 
 /* whether a symbol, tag or hash entry is of the current lex level of the run (the bodies are in frontrun.hpp) */
 struct FrontRun;

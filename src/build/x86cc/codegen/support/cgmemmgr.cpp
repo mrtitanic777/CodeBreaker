@@ -190,7 +190,7 @@ static  void    CalcMemSize( BackRun& back )
         }
     }
     if( max_size_queried || size_queried ) {
-        sprintf( buff, "Maximum WCGMEMORY=%d\n", (int)( memory_available / _1K ) );
+        sprintf( buff, "Maximum WCGMEMORY=%d\n", static_cast<int>( memory_available / _1K ) );
         FEMessage( *back.front, FEMSG_INFO, buff );
     }
 }
@@ -271,7 +271,7 @@ static pointer  GetFromBlk( BackRun& back, size_t amount )
 
     for( block = back.cgmemmgr->_Blks; block != NULL; block = block->next ) {
         if( block->free >= amount ) {
-            alloc = (tag *)( (char *)block + block->size - block->free );
+            alloc = reinterpret_cast<tag *>( reinterpret_cast<char *>(block) + block->size - block->free );
             *alloc = amount | ALLOCATED;
             block->free -= amount;
             return( ++alloc );
@@ -317,14 +317,14 @@ void     CgMemFree( BackRun& back, pointer p )
     int     mem_class;
     tag     length;
 
-    free   = (frl *)( (char *)p - TAG_SIZE );
+    free   = reinterpret_cast<frl *>( static_cast<char *>(p) - TAG_SIZE );
     free->length &= ~ALLOCATED;
     length = free->length;
     if( length > MAX_ALLOC ) {   // This was a full block
         blk_hdr     *header;
         mem_blk     *blk;
 
-        header = (blk_hdr *)( (char *)p - sizeof( blk_hdr ) );
+        header = reinterpret_cast<blk_hdr *>( static_cast<char *>(p) - sizeof( blk_hdr ) );
         blk    = header->block;
         blk->free += header->size + sizeof( blk_hdr );
         blk->size += header->size + sizeof( blk_hdr );
@@ -395,12 +395,12 @@ static  pointer MemFromSys( BackRun& back, size_t amount )
         if( amount ) {
             blk->size -= amount + sizeof( blk_hdr );
             blk->free -= sizeof( blk_hdr );
-            allocated = (blk_hdr *)((char *)blk + sizeof( mem_blk ) + blk->free);
+            allocated = reinterpret_cast<blk_hdr *>(reinterpret_cast<char *>(blk) + sizeof( mem_blk ) + blk->free);
             allocated->block = blk;
             allocated->size  = amount | ALLOCATED;
-            ptr = (char *)allocated + sizeof( blk_hdr );
+            ptr = reinterpret_cast<char *>(allocated) + sizeof( blk_hdr );
         } else {
-            ptr = (char *)blk + sizeof( mem_blk );
+            ptr = reinterpret_cast<char *>(blk) + sizeof( mem_blk );
         }
         return( ptr );
     }

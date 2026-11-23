@@ -50,7 +50,7 @@ typedef struct __nt_dta {
 } __nt_dta;
 #include "poppck.h"
 
-inline void *&DtaHandleOf( char *x ) { return (((__nt_dta *)(x))->handle); }
-inline long long &DtaTimeOf( char *x ) { return (((__nt_dta *)(x))->time); }
+inline void *&DtaHandleOf( char *x ) { return ((reinterpret_cast<__nt_dta *>(x))->handle); }
+inline long long &DtaTimeOf( char *x ) { return ((reinterpret_cast<__nt_dta *>(x))->time); }
 
 

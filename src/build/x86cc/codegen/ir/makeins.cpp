@@ -84,7 +84,7 @@ void    FreeIns( BackRun& back, instruction *ins )
 
     ins->head.prev->head.next = next;
     next->head.prev = ins->head.prev;
-    FrlFreeSize( back, &back.makeins.InsFrl, (pointer *)ins, INS_SIZE );
+    FrlFreeSize( back, &back.makeins.InsFrl, reinterpret_cast<pointer *>(ins), INS_SIZE );
 }
 
 
@@ -117,7 +117,7 @@ instruction     *NewIns( BackRun& back, opcnt num )
     new_ins->table = NULL;
     new_ins->u.gen_table = NULL;
     new_ins->base_type_class = XX;
-    new_ins->zap = (register_name *)AllocRegName( back, HW_EMPTY );
+    new_ins->zap = reinterpret_cast<register_name *>(AllocRegName( back, HW_EMPTY ));
     return( new_ins );
 }
 

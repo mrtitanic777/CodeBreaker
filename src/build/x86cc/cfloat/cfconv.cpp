@@ -235,7 +235,7 @@ char    *CFCnvFS( cfloat *f, char *buffer, int maxlen )
     len /= 10;
     buffer[1] = len % 10 + '0';
     len /= 10;
-    buffer[0] = (char)len + '0';
+    buffer[0] = static_cast<char>(len) + '0';
     buffer[3] = NULLCHAR;
     buffer += 3;
     return( buffer );
@@ -327,7 +327,7 @@ cfloat  *CFCnvSF( BackRun& back, cfhandle h, const char *str )
     return( result );
 }
 
-cfloat  *CFCopy( BackRun& back, cfhandle h, cfloat *f )
+cfloat  *CFCopy( BackRun& back, cfhandle h, const cfloat *f )
 /**************************************/
 {
     cfloat      *result;
@@ -399,7 +399,7 @@ static cfloat   *CFCnvLongToF( BackRun& back, cfhandle h, signed_32 data, bool i
         /*
          * Aha! It's  -MaxNegI32
          */
-        result = CFCopy( back, h, (cfloat *)&MaxNegI32 );
+        result = CFCopy( back, h, reinterpret_cast<const cfloat *>(&MaxNegI32) );
         return( result );
     }
     sign = 1;
@@ -413,7 +413,7 @@ static cfloat   *CFCnvLongToF( BackRun& back, cfhandle h, signed_32 data, bool i
     *digit = NULLCHAR;
     dividend = data;
     while( dividend != 0 ) {
-        *--digit = (char)U32ModDiv( &dividend, 10 ) + '0';
+        *--digit = static_cast<char>(U32ModDiv( &dividend, 10 )) + '0';
         ++len;
     }
     if( len > I16DIGITS ) {
@@ -454,7 +454,7 @@ cfloat  *CFCnvU64F( BackRun& back, cfhandle h, unsigned_32 lo32, unsigned_32 hi3
 
     lo = CFCnvU32F( back, h, lo32 );
     hi = CFCnvU32F( back, h, hi32 );
-    temp = CFMul( back, h, hi, (cfloat *)&High64Mult );
+    temp = CFMul( back, h, hi, reinterpret_cast<const cfloat *>(&High64Mult) );
     result = CFAdd( back, h, temp, lo );
     CFFree( back, h, lo );
     CFFree( back, h, hi );
@@ -501,7 +501,7 @@ cfloat  *CFCnvUF( BackRun& back, cfhandle h, uint data )
     return( CFCnvLongToF( back, h, data, false ) );
 }
 
-static bool     CFIsIntType( cfloat *f, cfloat *maxval )
+static bool     CFIsIntType( cfloat *f, const cfloat *maxval )
 /*******************************************************
  * Assume 2-complement
  * if signed maxval is magnitude of smallest negative number
@@ -534,49 +534,49 @@ static bool     CFIsIntType( cfloat *f, cfloat *maxval )
 bool CFIsI8( cfloat *f )
 /**********************/
 {
-    return( CFIsIntType( f, (cfloat *)&MaxNegI8 ) );
+    return( CFIsIntType( f, reinterpret_cast<const cfloat *>(&MaxNegI8) ) );
 }
 
 bool CFIsI16( cfloat *f )
 /***********************/
 {
-    return( CFIsIntType( f, (cfloat *)&MaxNegI16 ) );
+    return( CFIsIntType( f, reinterpret_cast<const cfloat *>(&MaxNegI16) ) );
 }
 
 bool CFIsI32( cfloat *f )
 /***********************/
 {
-    return( CFIsIntType( f, (cfloat *)&MaxNegI32 ) );
+    return( CFIsIntType( f, reinterpret_cast<const cfloat *>(&MaxNegI32) ) );
 }
 
 bool CFIsI64( cfloat *f )
 /***********************/
 {
-    return( CFIsIntType( f, (cfloat *)&MaxNegI64 ) );
+    return( CFIsIntType( f, reinterpret_cast<const cfloat *>(&MaxNegI64) ) );
 }
 
 bool CFIsU8( cfloat *f )
 /**********************/
 {
-    return( CFIsIntType( f, (cfloat *)&MaxU8 ) );
+    return( CFIsIntType( f, reinterpret_cast<const cfloat *>(&MaxU8) ) );
 }
 
 bool CFIsU16( cfloat *f )
 /***********************/
 {
-    return( CFIsIntType( f, (cfloat *)&MaxU16 ) );
+    return( CFIsIntType( f, reinterpret_cast<const cfloat *>(&MaxU16) ) );
 }
 
 bool CFIsU32( cfloat *f )
 /***********************/
 {
-    return( CFIsIntType( f, (cfloat *)&MaxU32 ) );
+    return( CFIsIntType( f, reinterpret_cast<const cfloat *>(&MaxU32) ) );
 }
 
 bool CFIsU64( cfloat *f )
 /***********************/
 {
-    return( CFIsIntType( f, (cfloat *)&MaxU64 ) );
+    return( CFIsIntType( f, reinterpret_cast<const cfloat *>(&MaxU64) ) );
 }
 
 bool CFIs32( cfloat *f )
@@ -688,8 +688,8 @@ bool CFIsFloat( cfloat *f )
     sign = f->sign;
     f->sign = 1;
     ok = true;
-    if( CFCompare( f, (cfloat *)&MaxPosFloat ) > 0
-      || CFCompare( f, (cfloat *)&MinPosFloat ) < 0 ) {
+    if( CFCompare( f, reinterpret_cast<const cfloat *>(&MaxPosFloat) ) > 0
+      || CFCompare( f, reinterpret_cast<const cfloat *>(&MinPosFloat) ) < 0 ) {
         ok = false;
     }
     f->sign = sign;
@@ -705,8 +705,8 @@ bool CFIsDouble( cfloat *f )
     sign = f->sign;
     f->sign = 1;
     ok = true;
-    if( CFCompare( f, (cfloat *)&MaxPosDouble ) > 0
-      || CFCompare( f, (cfloat *)&MinPosDouble ) < 0 ) {
+    if( CFCompare( f, reinterpret_cast<const cfloat *>(&MaxPosDouble) ) > 0
+      || CFCompare( f, reinterpret_cast<const cfloat *>(&MinPosDouble) ) < 0 ) {
         ok = false;
     }
     f->sign = sign;
@@ -723,7 +723,7 @@ signed_16       CFCnvF16( cfloat *f )
     if( CFIsI16( f )
       || CFIsU16( f ) ) {
         data = CFGetDec16( f->mant );
-        exp = (signed_16)( f->exp - f->len );
+        exp = static_cast<signed_16>( f->exp - f->len );
         while( exp > 0 ) {
             data *= 10;
             exp--;

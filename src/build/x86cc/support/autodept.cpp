@@ -41,7 +41,7 @@ char *_getFilenameFullPath( char *buff, char const *name, size_t max )
 
     p = _fullpath( buff, name, max );
     if( p == NULL )
-        p = (char *)name;
+        p = const_cast<char *>(name);
 
     return( p );
 }

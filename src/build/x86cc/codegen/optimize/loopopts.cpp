@@ -843,7 +843,7 @@ static void     UpdateLoopLiveInfo( BackRun& back, instruction *ins )
     }
     HwTurnOn( ins->head.live.regs, reg );
     for( blk = back.loopopts.Loop; blk != NULL; blk = blk->u.loop ) {
-        ins = (instruction *)&blk->ins;
+        ins = reinterpret_cast<instruction *>(&blk->ins);
         do {
             HwTurnOn( ins->head.live.regs, reg );
             ins = ins->head.next;
@@ -881,7 +881,7 @@ static invariant    *CopyInvariant( BackRun& back, invariant *invar )
         new_inv->name = invar->name;
         new_inv->times = invar->times;
         new_inv->id = invar->id;
-        new_inv->next = static_cast<struct invariant *>(SafeRecurseCG( back, (func_sr)CopyInvariant, invar->next ));
+        new_inv->next = static_cast<struct invariant *>(SafeRecurseCG( back, reinterpret_cast<func_sr>(CopyInvariant), invar->next ));
     }
     return( new_inv );
 }
@@ -2027,7 +2027,7 @@ static  void *MarkDown( BackRun& back, block *blk )
         return( NULL );
     MarkBlkUnMarked( blk );
     for( i = blk->targets; i-- > 0; ) {
-        SafeRecurseCG( back, (func_sr)MarkDown, blk->edge[i].destination.u.blk );
+        SafeRecurseCG( back, reinterpret_cast<func_sr>(MarkDown), blk->edge[i].destination.u.blk );
     }
     return( NULL );
 }
@@ -2174,7 +2174,7 @@ static  void    MarkWillExecBlocks( BackRun& back )
     for( blk = back.loopopts.Loop; blk != NULL; blk = blk->u.loop ) {
         if( !IsBlkMarked( blk ) )
             continue;
-        if( blk->ins.head.next == (instruction *)&blk->ins ) {
+        if( blk->ins.head.next == reinterpret_cast<instruction *>(&blk->ins) ) {
             MarkBlkUnMarked( blk );
             continue;
         }
@@ -2654,7 +2654,7 @@ static  bool    FinalValue( BackRun& back, instruction *ins, block *blk, inducti
          * (otherwise we might be mucking with vars used in a later block)
          */
         ins = MakeMove( back, op, var->name, type_class );
-        SuffixIns( back, (instruction *)&dest->ins, ins );
+        SuffixIns( back, reinterpret_cast<instruction *>(&dest->ins), ins );
     }
     return( true );
 }

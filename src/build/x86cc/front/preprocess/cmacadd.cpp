@@ -94,7 +94,7 @@ void FreeMacroSegments( FrontRun& front )
     struct macro_seg_list *msl;
 
     for( ; (msl = front.cmacadd.MacSegList) != NULL; ) {
-        FEfree( front, (void *)(msl->macro_seg) );
+        FEfree( front, reinterpret_cast<void *>(msl->macro_seg) );
         front.cmacadd.MacSegList = msl->next;
         CMemFree( front, msl );
     }
@@ -144,7 +144,7 @@ MEPTR MacroDefine( FrontRun& front, size_t mlen, macro_flags mflags )
     mac_hash_idx    hash;
 
     new_mentry = NULL;
-    mentry = (MEPTR)front.cmacadd.MacroOffset;
+    mentry = reinterpret_cast<MEPTR>(front.cmacadd.MacroOffset);
     mentry->macro_len = mlen;
     name = mentry->macro_name;
     hash = CalcHashMacro( name );
@@ -249,7 +249,7 @@ MEPTR CreateMEntry( FrontRun& front, const char *name, size_t len )
     }
     size = offsetof( MEDEFN, macro_name ) + len + 1;
     MacroReallocOverflow( front, size, 0 );
-    mentry = (MEPTR)front.cmacadd.MacroOffset;
+    mentry = reinterpret_cast<MEPTR>(front.cmacadd.MacroOffset);
     memcpy( mentry->macro_name, name, len );
     mentry->macro_name[len] = '\0';
     mentry->macro_len = size;

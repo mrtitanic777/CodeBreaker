@@ -137,14 +137,14 @@ static void DoReloc( BackRun& back, dw_sym_handle sym, dw_addr_offset disp )
     const type_def      *ptr_type;
 
     ptr_type = TypeAddress( back, TY_NEAR_POINTER );
-    FEPtr( back, (cg_sym_handle)sym, ptr_type, disp );
+    FEPtr( back, static_cast<cg_sym_handle>(sym), ptr_type, disp );
 }
 
 
 static void DoSegReloc( BackRun& back, dw_sym_handle sym )
 /*****************************************/
 {
-    FEPtrBase( back, (cg_sym_handle)sym );
+    FEPtrBase( back, static_cast<cg_sym_handle>(sym) );
 }
 
 static void DoLblReloc( BackRun& back, back_handle bck, int disp )
@@ -219,7 +219,7 @@ static void CLIReloc( BackRun& back, dw_sectnum sect, dw_reloc_type reloc_type, 
             break;
         case DW_W_LABEL:
             bck = va_arg( args, dw_sym_handle );
-            DoLblReloc( back, (back_handle)bck, 0 );
+            DoLblReloc( back, static_cast<back_handle>(bck), 0 );
             break;
         case DW_W_SEGMENT:
             sym = va_arg( args, dw_sym_handle );
@@ -227,7 +227,7 @@ static void CLIReloc( BackRun& back, dw_sectnum sect, dw_reloc_type reloc_type, 
             break;
         case DW_W_LABEL_SEG:
             bck = va_arg( args, dw_sym_handle );
-            DoSegLblReloc( back, (back_handle)bck );
+            DoSegLblReloc( back, static_cast<back_handle>(bck) );
             break;
         case DW_W_LOC_RANGE:
             low =  va_arg( args, loc_range* );
@@ -315,7 +315,7 @@ static dw_langnum SetDwarfLang( BackRun& back )
     int         index;
 
     ret = DW_LANG_C89;
-    name = (const char *)FEAuxInfo( *back.front, NULL, FEINF_SOURCE_LANGUAGE );
+    name = static_cast<const char *>(FEAuxInfo( *back.front, NULL, FEINF_SOURCE_LANGUAGE ));
     for( index = 0; index < MAX_LANG; ++index ) {
         if( strcmp( name, LangNames[index].name ) == 0 ) {
             ret = LangNames[index].dwarf_lang;
@@ -531,7 +531,7 @@ void    DFObjInitDbgInfo( BackRun& back )
         InitSegBck(back); // start each seg with a ref label
         if( IsModel( back, CGSW_GEN_DBG_PREDEF ) ) {
             abbrev_sym = static_cast<cg_sym_handle>(FEAuxInfo( *back.front, NULL, FEINF_DBG_PREDEF_SYM ));
-            info.abbrev_sym = (dw_sym_handle)abbrev_sym;
+            info.abbrev_sym = reinterpret_cast<dw_sym_handle>(abbrev_sym);
             attr = FEAttr( *back.front, abbrev_sym );
             if( (attr & FE_IMPORT) ) {
                 info.compiler_options |= DW_CM_ABBREV_PRE;
@@ -564,7 +564,7 @@ void    DFObjInitDbgInfo( BackRun& back )
         if( back.dfsyms.Client == NULL ) {
             Zoiks( back, ZOIKS_107 ); /* Bad */
         }
-        DFBegCCU( back, AskCodeSeg(back), (dw_sym_handle)debug_pch );
+        DFBegCCU( back, AskCodeSeg(back), reinterpret_cast<dw_sym_handle>(debug_pch) );
     } else {
         Zoiks( back, ZOIKS_107 ); /* Big Error */
     }
@@ -681,12 +681,12 @@ void     DFLineNum( BackRun& back, cue_state *state, offset lc )
 
         bck = MakeLabel(back);
         OutLabel( back, bck->lbl );
-        DWLineAddr( back, back.dfsyms.Client, (dw_sym_handle)bck, lc );
+        DWLineAddr( back, back.dfsyms.Client, reinterpret_cast<dw_sym_handle>(bck), lc );
 #if (_TARGET & _TARG_8086)
-        DWLineSeg( back, back.dfsyms.Client, (dw_sym_handle)bck );
+        DWLineSeg( back, back.dfsyms.Client, reinterpret_cast<dw_sym_handle>(bck) );
 #elif (_TARGET & _TARG_80386)
         if( IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) ) {
-            DWLineSeg( back, back.dfsyms.Client, (dw_sym_handle)bck );
+            DWLineSeg( back, back.dfsyms.Client, reinterpret_cast<dw_sym_handle>(bck) );
         }
 #endif
         BEFreeBack( back, bck );
@@ -707,7 +707,7 @@ static  dw_loc_handle   SegLoc( BackRun& back, cg_sym_handle sym )
     dw_loc_handle   df_loc;
 
     locid = DWLocInit( back, back.dfsyms.Client );
-    DWLocSegment( back, back.dfsyms.Client, locid, (dw_sym_handle)sym );
+    DWLocSegment( back, back.dfsyms.Client, locid, reinterpret_cast<dw_sym_handle>(sym) );
     df_loc = DWLocFini( back, back.dfsyms.Client, locid );
     return( df_loc );
 }
@@ -945,7 +945,7 @@ void    DFProEnd( BackRun& back, dbg_rtn *rtn, offset lc )
     sym = AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) );
     tipe = FEDbgRetType( *back.front, sym );
     flags = DW_FLAG_NONE;
-    if( (call_class_target)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL ) {
+    if( static_cast<call_class_target>(reinterpret_cast<pointer_uint>(FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ))) & FECALL_X86_FAR_CALL ) {
   #if _TARGET & _TARG_8086
         flags = DW_FLAG_PTR_TYPE_FAR16;
   #elif _TARGET & _TARG_80386

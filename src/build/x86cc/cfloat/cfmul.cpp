@@ -66,7 +66,7 @@ static  cfloat  *SDMul( BackRun& back, cfhandle h, cfloat *f, int plyer, int fle
     return( result );
 }
 
-cfloat  *CFMul( BackRun& back, cfhandle h, cfloat *f1, cfloat *f2 )
+cfloat  *CFMul( BackRun& back, cfhandle h, cfloat *f1, const cfloat *f2 )
 /**************************************************/
 {
     cfloat      *result;

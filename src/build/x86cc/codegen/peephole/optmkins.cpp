@@ -68,7 +68,7 @@ void    FreeInstr( BackRun& back, ins_entry *instr )
 
     len = instr->oc.oc_header.reclen + sizeof( ins_link );
     if( len <= OCENTRY_SIZE ) {
-        FrlFreeSize( back, &back.optdata.InstrFrl, (pointer *)instr, OCENTRY_SIZE );
+        FrlFreeSize( back, &back.optdata.InstrFrl, reinterpret_cast<pointer *>(instr), OCENTRY_SIZE );
     } else {
         CGFree( back, instr );
     }

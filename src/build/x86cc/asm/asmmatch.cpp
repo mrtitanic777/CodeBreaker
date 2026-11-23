@@ -367,7 +367,7 @@ static bool output_data( AsmRun& assembler, OPNDTYPE determinant, operand_idx in
         }
     }
     while( out > 0 ) {
-        AsmByte( assembler, (uint_8)assembler.asmdefs.Code->data[index] );
+        AsmByte( assembler, static_cast<uint_8>(assembler.asmdefs.Code->data[index]) );
         assembler.asmdefs.Code->data[index] >>= 8;
         out--;
     }
@@ -755,9 +755,9 @@ static bool match_phase_3( AsmRun& assembler, bool *found, const asm_ins ASMI86F
                 && ( assembler.asmfixup.InsFixups[OPND2] == NULL )
                 && ( (last_opnd & OP_R16)
                 || (last_opnd & OP_M16) && ( MEM_TYPE( assembler.asmdefs.Code->mem_type, WORD ) ) ) ) {
-                if( (int_8)assembler.asmdefs.Code->data[OPND2] == (int_16)assembler.asmdefs.Code->data[OPND2] ) {
+                if( static_cast<int_8>(assembler.asmdefs.Code->data[OPND2]) == static_cast<int_16>(assembler.asmdefs.Code->data[OPND2]) ) {
                     assembler.asmdefs.Code->info.opnd_type[OPND2] = OP_I8;
-                    assembler.asmdefs.Code->data[OPND2] = (int_8)assembler.asmdefs.Code->data[OPND2];
+                    assembler.asmdefs.Code->data[OPND2] = static_cast<int_8>(assembler.asmdefs.Code->data[OPND2]);
                 } else {
                     break;
                 }
@@ -765,9 +765,9 @@ static bool match_phase_3( AsmRun& assembler, bool *found, const asm_ins ASMI86F
                 && ( assembler.asmfixup.InsFixups[OPND2] == NULL )
                 && ( (last_opnd & OP_R32)
                 || (last_opnd & OP_M32) && ( MEM_TYPE( assembler.asmdefs.Code->mem_type, DWORD ) ) ) ) {
-                if( (int_8)assembler.asmdefs.Code->data[OPND2] == (int_32)assembler.asmdefs.Code->data[OPND2] ) {
+                if( static_cast<int_8>(assembler.asmdefs.Code->data[OPND2]) == static_cast<int_32>(assembler.asmdefs.Code->data[OPND2]) ) {
                     assembler.asmdefs.Code->info.opnd_type[OPND2] = OP_I8;
-                    assembler.asmdefs.Code->data[OPND2] = (int_8)assembler.asmdefs.Code->data[OPND2];
+                    assembler.asmdefs.Code->data[OPND2] = static_cast<int_8>(assembler.asmdefs.Code->data[OPND2]);
                 } else {
                     break;
                 }

@@ -49,8 +49,8 @@
 
 
 /* the expression values of the statement being generated are on the run's ValueStack; `index` is the generator's top of it */
-static inline void PushCGName( FrontRun& front, int& index, cg_name name ) { front.cvars.ValueStack[index++] = (TREEPTR)name; }
-static inline cg_name PopCGName( FrontRun& front, int& index ) { return (cg_name)front.cvars.ValueStack[--index]; }
+static inline void PushCGName( FrontRun& front, int& index, cg_name name ) { front.cvars.ValueStack[index++] = reinterpret_cast<TREEPTR>(name); }
+static inline cg_name PopCGName( FrontRun& front, int& index ) { return reinterpret_cast<cg_name>(front.cvars.ValueStack[--index]); }
 
 
 
@@ -104,7 +104,7 @@ static void DefineLabels( FrontRun& front, OPNODE *node )
 
     front.cvars.LabelIndex = node->u2.label_count;
     if( front.cvars.LabelIndex != 0 ) {
-        front.cgen.CGLabelHandles = (label_handle *)CMemAlloc( front, ( front.cvars.LabelIndex + 1 ) * sizeof( label_handle ) );
+        front.cgen.CGLabelHandles = static_cast<label_handle *>(CMemAlloc( front, ( front.cvars.LabelIndex + 1 ) * sizeof( label_handle ) ));
         for( i = 1; i <= front.cvars.LabelIndex; i++ ) {
             front.cgen.CGLabelHandles[i] = BENewLabel(*front.back);
         }
@@ -115,7 +115,7 @@ static local_vars *ReleaseVars( FrontRun& front, SYM_HANDLE sym_list, local_vars
 {
     local_vars  *local_entry;
 
-    local_entry = (local_vars *)CMemAlloc( front, sizeof( local_vars ) );
+    local_entry = static_cast<local_vars *>(CMemAlloc( front, sizeof( local_vars ) ));
     local_entry->next = local_var_list;
     local_entry->sym_list = sym_list;
     return( local_entry );
@@ -192,21 +192,21 @@ static void CallTryRtn( FrontRun& front, SYM_HANDLE try_rtn, cg_name parm )
 {
     call_handle call;
 
-    call = CGInitCall( *front.back, CGFEName( *front.back, (CGSYM_HANDLE)try_rtn, TY_POINTER ), TY_INTEGER, (CGSYM_HANDLE)try_rtn );
+    call = CGInitCall( *front.back, CGFEName( *front.back, static_cast<CGSYM_HANDLE>(try_rtn), TY_POINTER ), TY_INTEGER, static_cast<CGSYM_HANDLE>(try_rtn) );
     CGAddParm( *front.back, call, parm, TY_POINTER );
     CGDone( *front.back, CGCall( call ) );
 }
 
 static void CallTryInit( FrontRun& front )
 {
-    CallTryRtn( front, front.cvars.SymTryInit, CGFEName( *front.back, (CGSYM_HANDLE)front.cvars.TrySymHandle, TY_POINTER ) );
+    CallTryRtn( front, front.cvars.SymTryInit, CGFEName( *front.back, static_cast<CGSYM_HANDLE>(front.cvars.TrySymHandle), TY_POINTER ) );
 }
 
 static cg_name TryFieldAddr( FrontRun& front, unsigned offset )
 {
     cg_name     name;
 
-    name = CGFEName( *front.back, (CGSYM_HANDLE)front.cvars.TrySymHandle, static_cast<cg_type>(front.cgen.TryRefno) );
+    name = CGFEName( *front.back, static_cast<CGSYM_HANDLE>(front.cvars.TrySymHandle), static_cast<cg_type>(front.cgen.TryRefno) );
     name = CGBinary( *front.back, O_PLUS, name, CGInteger( *front.back, offset, TY_UNSIGNED ), TY_POINTER );
     name = CGVolatile( name );
     return( name );
@@ -317,7 +317,7 @@ static cg_name PushSymSeg( FrontRun& front, OPNODE *node )
         segname = CGInteger( *front.back, 0, TY_UNSIGNED );
     } else {
         if( sym_handle == front.cvars.Sym_CS ) {
-            segname = CGFEName( *front.back, (CGSYM_HANDLE)front.cvars.CurFuncHandle, TY_LONG_CODE_PTR );
+            segname = CGFEName( *front.back, static_cast<CGSYM_HANDLE>(front.cvars.CurFuncHandle), TY_LONG_CODE_PTR );
         } else if( sym_handle == front.cvars.Sym_SS ) {
             if( front.cgen.SSVar == NULL ) {
                 front.cgen.SSVar = CGTemp( *front.back, TY_UINT_2 );
@@ -325,7 +325,7 @@ static cg_name PushSymSeg( FrontRun& front, OPNODE *node )
             segname = CGTempName( *front.back, front.cgen.SSVar, TY_UINT_2 );
         } else {
 //            sym = SymGetPtr( sym_handle );
-            segname = CGFEName( *front.back, (CGSYM_HANDLE)sym_handle, TY_UINT_2 );
+            segname = CGFEName( *front.back, static_cast<CGSYM_HANDLE>(sym_handle), TY_UINT_2 );
         }
     }
     return( segname );
@@ -372,8 +372,8 @@ static void EndFinally( FrontRun& front )
     name = CGUnary( *front.back, O_POINTS, name, TY_UINT_1 );
     name = CGCompare( *front.back, O_EQ, name, CGInteger( *front.back, 0, TY_UINT_1 ), TY_UINT_1 );
     CGControl( *front.back, O_IF_TRUE, name, label_handle );
-    func = CGFEName( *front.back, (CGSYM_HANDLE)front.cvars.SymFinally, TY_CODE_PTR );
-    call = CGInitCall( *front.back, func, TY_INTEGER, (CGSYM_HANDLE)front.cvars.SymFinally );
+    func = CGFEName( *front.back, static_cast<CGSYM_HANDLE>(front.cvars.SymFinally), TY_CODE_PTR );
+    call = CGInitCall( *front.back, func, TY_INTEGER, static_cast<CGSYM_HANDLE>(front.cvars.SymFinally) );
     CGDone( *front.back, CGCall( call ) );
     CGControl( *front.back, O_LABEL, NULL, label_handle );
     BEFiniLabel( *front.back, label_handle );
@@ -393,7 +393,7 @@ static void CallTryUnwind( FrontRun& front, tryindex_t scope_index )
     call_handle call;
     cg_name     parm;
 
-    call = CGInitCall( *front.back, CGFEName( *front.back, (CGSYM_HANDLE)front.cvars.SymTryUnwind, TY_POINTER ), TY_INTEGER, (CGSYM_HANDLE)front.cvars.SymTryUnwind );
+    call = CGInitCall( *front.back, CGFEName( *front.back, static_cast<CGSYM_HANDLE>(front.cvars.SymTryUnwind), TY_POINTER ), TY_INTEGER, static_cast<CGSYM_HANDLE>(front.cvars.SymTryUnwind) );
     parm = CGInteger( *front.back, scope_index, TY_UINT_1 );
     CGAddParm( *front.back, call, parm, TY_INTEGER );
     CGDone( *front.back, CGCall( call ) );
@@ -433,7 +433,7 @@ static void GenerateTryBlock( FrontRun& front, TREEPTR tree )
 
         old_segid = BESetSeg( *front.back, SEG_DATA );
         except_table = BENewBack( *front.back, NULL );
-        try_backinfo = (try_table_back_handles *)CMemAlloc( front, sizeof( try_table_back_handles ) );
+        try_backinfo = static_cast<try_table_back_handles *>(CMemAlloc( front, sizeof( try_table_back_handles ) ));
         try_backinfo->back_handle = except_table;
         try_backinfo->next = front.cgen.TryTableBackHandles;
         front.cgen.TryTableBackHandles = try_backinfo;
@@ -446,8 +446,8 @@ static void GenerateTryBlock( FrontRun& front, TREEPTR tree )
             } else {
                 DGInteger( *front.back, 1, TY_UINT_1 );
             }
-            except_label = FEBack( front, (CGSYM_HANDLE)stmt->op.u2.st.u.try_sym_handle );
-            DGBackPtr( *front.back, except_label, FESegID( front, (CGSYM_HANDLE)front.cvars.CurFuncHandle ), 0, TY_CODE_PTR );
+            except_label = FEBack( front, static_cast<CGSYM_HANDLE>(stmt->op.u2.st.u.try_sym_handle) );
+            DGBackPtr( *front.back, except_label, FESegID( front, static_cast<CGSYM_HANDLE>(front.cvars.CurFuncHandle) ), 0, TY_CODE_PTR );
         }
         BESetSeg( *front.back, old_segid );
         SetTryTable( front, except_table );
@@ -488,7 +488,7 @@ static cg_name PushSym( FrontRun& front, OPNODE *node )
     if( sym.flags & SYM_FUNC_RETURN_VAR ) {
         name = CGTempName( *front.back, sym.u1.return_var, dtype );
     } else {
-        name = CGFEName( *front.back, (CGSYM_HANDLE)node->u2.sym_handle, dtype );
+        name = CGFEName( *front.back, static_cast<CGSYM_HANDLE>(node->u2.sym_handle), dtype );
     }
     if( node->flags & OPFLAG_UNALIGNED ) {
         name = CGAttr( name, CG_SYM_UNALIGNED );
@@ -519,7 +519,7 @@ static cg_name PushSymAddr( FrontRun& front, OPNODE *node )
     if( sym.flags & SYM_FUNC_RETURN_VAR ) {
         name = CGTempName( *front.back, sym.u1.return_var, dtype );
     } else {
-        name = CGFEName( *front.back, (CGSYM_HANDLE)node->u2.sym_handle, dtype );
+        name = CGFEName( *front.back, static_cast<CGSYM_HANDLE>(node->u2.sym_handle), dtype );
         if( sym.flags & SYM_USED_IN_PRAGMA ) {
             name = CGVolatile( name );
         }
@@ -826,10 +826,10 @@ static call_handle InitFuncCall( FrontRun& front, OPNODE *node )
     sym = SymGetPtr( front, node->u2.sym_handle );
     typ = sym->sym_type;
     dtype = CGenType( front, typ );
-    name = CGFEName( *front.back, (CGSYM_HANDLE)node->u2.sym_handle, dtype );
+    name = CGFEName( *front.back, static_cast<CGSYM_HANDLE>(node->u2.sym_handle), dtype );
 //    dtype = FESymType( sym );
     SkipTypedefs( typ );
-    return( CGInitCall( *front.back, name, CGenType( front, typ->object ), (CGSYM_HANDLE)node->u2.sym_handle ) );
+    return( CGInitCall( *front.back, name, CGenType( front, typ->object ), static_cast<CGSYM_HANDLE>(node->u2.sym_handle) ) );
 }
 
 static call_handle InitIndFuncCall( FrontRun& front, OPNODE *node, cg_name name )
@@ -840,7 +840,7 @@ static call_handle InitIndFuncCall( FrontRun& front, OPNODE *node, cg_name name 
     sym = SymGetPtr( front, node->u2.sym_handle );
     typ = sym->sym_type;
     SkipTypedefs( typ );
-    return( CGInitCall( *front.back, name, CGenType( front, typ->object ), (CGSYM_HANDLE)node->u2.sym_handle ) );
+    return( CGInitCall( *front.back, name, CGenType( front, typ->object ), static_cast<CGSYM_HANDLE>(node->u2.sym_handle) ) );
 }
 
 static void DoSwitch( FrontRun& front, OPNODE *node, cg_name name )
@@ -930,7 +930,7 @@ static void EmitSym( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
             if( (sym->flags & SYM_INITIALIZED) == 0 || segid == SEG_BSS) {
                 BESetSeg( *front.back, segid );
                 AlignIt( front, typ );
-                DGLabel( *front.back, FEBack( front, (CGSYM_HANDLE)sym_handle ) );
+                DGLabel( *front.back, FEBack( front, static_cast<CGSYM_HANDLE>(sym_handle) ) );
                 /*
                  * initialize all bytes to 0
                  * if size > 64k, have to break it into chunks of 64k
@@ -1009,7 +1009,7 @@ static void CDoAutoDecl( FrontRun& front, SYM_HANDLE sym_handle )
                 sym.u1.return_var = CGTemp( *front.back, dtype );
                 SymReplace( front, &sym, sym_handle );
             } else {
-                CGAutoDecl( *front.back, (CGSYM_HANDLE)sym_handle, dtype );
+                CGAutoDecl( *front.back, static_cast<CGSYM_HANDLE>(sym_handle), dtype );
             }
         }
         if( ! front.cvars.CompFlags.debug_info_some )
@@ -1018,7 +1018,7 @@ static void CDoAutoDecl( FrontRun& front, SYM_HANDLE sym_handle )
             if( front.cgen.Saved_CurFunc == SYM_NULL ) {  /* if we are not inlining */
                 if( front.cvars.GenSwitches & CGSW_GEN_DBG_LOCALS ) {
                     if( (sym.flags & SYM_TEMP) == 0 ) {
-                        DBLocalSym( *front.back, (CGSYM_HANDLE)sym_handle, TY_DEFAULT );
+                        DBLocalSym( *front.back, static_cast<CGSYM_HANDLE>(sym_handle), TY_DEFAULT );
                     }
                 }
             }
@@ -1035,7 +1035,7 @@ static void CDoParmDecl( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
     typ = sym->sym_type;
     SkipTypedefs( typ );
     dtype = CGenType( front, typ );
-    CGParmDecl( *front.back, (CGSYM_HANDLE)sym_handle, dtype );
+    CGParmDecl( *front.back, static_cast<CGSYM_HANDLE>(sym_handle), dtype );
 #if _CPU == 386
     if( (front.cvars.GenSwitches & CGSW_GEN_NO_OPTIMIZATION)
       || (!front.cvars.CompFlags.register_conventions && front.cvars.CompFlags.debug_info_some) ) {
@@ -1043,7 +1043,7 @@ static void CDoParmDecl( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
     if( front.cvars.GenSwitches & CGSW_GEN_NO_OPTIMIZATION ) {
 #endif
         if( front.cvars.GenSwitches & CGSW_GEN_DBG_LOCALS ) {
-            DBLocalSym( *front.back, (CGSYM_HANDLE)sym_handle, TY_DEFAULT );
+            DBLocalSym( *front.back, static_cast<CGSYM_HANDLE>(sym_handle), TY_DEFAULT );
         }
     }
 }
@@ -1078,20 +1078,20 @@ static bool DoFuncDefn( FrontRun& front, SYM_HANDLE funcsym_handle )
         }
     }
     ret_type = ReturnType( front, CGenType( front, front.cvars.CurFunc->sym_type->object ) );
-    CGProcDecl( *front.back, (CGSYM_HANDLE)funcsym_handle, ret_type );
+    CGProcDecl( *front.back, static_cast<CGSYM_HANDLE>(funcsym_handle), ret_type );
 #if _CPU == 386
     if( front.cvars.TargetSwitches & CGSW_X86_P5_PROFILING ) {
         const char *fn_name;
         size_t     len;
         segment_id old_segid;
 
-        fn_name = FEName( front, (CGSYM_HANDLE)funcsym_handle );
+        fn_name = FEName( front, static_cast<CGSYM_HANDLE>(funcsym_handle) );
         len = strlen( fn_name ) + 1;
         old_segid = BESetSeg( *front.back, front.cvars.FunctionProfileSegId );
         front.cvars.FunctionProfileBlock = BENewBack( *front.back, NULL );
         DGLabel( *front.back, front.cvars.FunctionProfileBlock );
         DGInteger( *front.back, 0,   TY_INTEGER );
-        DGInteger( *front.back, (unsigned)-1,  TY_INTEGER );
+        DGInteger( *front.back, static_cast<unsigned>(-1),  TY_INTEGER );
         DGInteger( *front.back, 0,   TY_INTEGER );
         DGInteger( *front.back, 0,   TY_INTEGER );
         DGBytes( *front.back, len, fn_name );
@@ -1104,7 +1104,7 @@ static bool DoFuncDefn( FrontRun& front, SYM_HANDLE funcsym_handle )
 #endif
     if( front.cvars.GenSwitches & CGSW_GEN_DBG_LOCALS ) {
         if( front.cgen.InLineDepth == 0 ) {
-            DBModSym( *front.back, (CGSYM_HANDLE)front.cvars.CurFuncHandle, TY_DEFAULT );
+            DBModSym( *front.back, static_cast<CGSYM_HANDLE>(front.cvars.CurFuncHandle), TY_DEFAULT );
         } else {
             DBBegBlock(*front.back);
         }
@@ -1132,7 +1132,7 @@ static bool DoFuncDefn( FrontRun& front, SYM_HANDLE funcsym_handle )
     CDoAutoDecl( front, front.cvars.CurFunc->u.func.locals );
 #ifdef __SEH__
     if( front.cgen.FuncNodePtr->u2.func.flags & FUNC_USES_SEH ) {
-        CGAutoDecl( *front.back, (CGSYM_HANDLE)front.cvars.TrySymHandle, static_cast<cg_type>(front.cgen.TryRefno) );
+        CGAutoDecl( *front.back, static_cast<CGSYM_HANDLE>(front.cvars.TrySymHandle), static_cast<cg_type>(front.cgen.TryRefno) );
         CallTryInit(front);                  // generate call to __TryInit
     }
 #endif
@@ -1438,7 +1438,7 @@ static void EmitNodes( FrontRun& front, TREEPTR tree )
             break;
         case OPR_EXCEPT:
         case OPR_FINALLY:
-            CGBigLabel( *front.back, FEBack( front, (CGSYM_HANDLE)node->u2.sym_handle ) );
+            CGBigLabel( *front.back, FEBack( front, static_cast<CGSYM_HANDLE>(node->u2.sym_handle) ) );
             break;
         case OPR_END_FINALLY:
             EndFinally(front);
@@ -1711,7 +1711,7 @@ static void EmitSyms( FrontRun& front )
           && ( sym.sym_type->decl_type != TYP_FUNCTION )
           && ( (sym.flags & SYM_TEMP) == 0 )
           && ( sym.attribs.stg_class != SC_TYPEDEF ) ) {
-            DBModSym( *front.back, (CGSYM_HANDLE)sym_handle, TY_DEFAULT );
+            DBModSym( *front.back, static_cast<CGSYM_HANDLE>(sym_handle), TY_DEFAULT );
         }
     }
 }

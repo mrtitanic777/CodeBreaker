@@ -111,7 +111,7 @@ static  type_class_def  FindMaxClass( BackRun& back, name *cons, int *prefs )
             for( i = 0; i < num_operands; ++i ) {
                 if( ins->operands[i] == cons ) {
                     ++*prefs;
-                    if( (int)ins->type_class >= type_class ) {
+                    if( static_cast<int>(ins->type_class) >= type_class ) {
                         type_class = OpClass( ins );
                     }
                 }
@@ -262,5 +262,5 @@ void            MemConstTemp( BackRun& back, conflict_node *conf )
             }
         }
     }
-    SafeRecurseCG( back, (func_sr)InMemory, other->v.conflict );
+    SafeRecurseCG( back, reinterpret_cast<func_sr>(InMemory), other->v.conflict );
 }

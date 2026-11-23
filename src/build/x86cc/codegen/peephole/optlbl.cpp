@@ -122,7 +122,7 @@ void    ChgLblRef( BackRun& back, ins_entry *instr, label_handle new_lbl )
             curr = *owner;
             if( curr == instr )
                 break;
-            owner = (ins_entry **)&LblRef( curr );
+            owner = &LblRef( curr );
         }
         *owner = LblRef( curr );
         LblRef( curr ) = new_lbl->refs;
@@ -187,7 +187,7 @@ ins_entry       *AliasLabels( BackRun& back, ins_entry *old_ins, ins_entry *new_
             if( old_jmp == NULL )
                 break;
             LabelOf( old_jmp ) = new_lbl;
-            owner = (ins_entry **)&LblRef( old_jmp );
+            owner = &LblRef( old_jmp );
         }
         *owner = new_lbl->refs;
         new_lbl->refs = old_lbl->refs;

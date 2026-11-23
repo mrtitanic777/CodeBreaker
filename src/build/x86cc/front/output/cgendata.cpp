@@ -125,7 +125,7 @@ static void EmitDQuad( FrontRun& front, DATA_QUAD *dq )
         front.cgendata.EmitDQuad_segid = sym.u.var.segid;
         BESetSeg( *front.back, front.cgendata.EmitDQuad_segid );
         AlignIt( front, sym.sym_type );
-        DGLabel( *front.back, FEBack( front, (CGSYM_HANDLE)dq->u.var.sym_handle ) );
+        DGLabel( *front.back, FEBack( front, static_cast<CGSYM_HANDLE>(dq->u.var.sym_handle) ) );
         front.cgendata.EmitDQuad_size = 0;
         break;
     case QDT_CHAR:
@@ -186,8 +186,8 @@ static void EmitDQuad( FrontRun& front, DATA_QUAD *dq )
              */
             local_dq.u_long_value1 = dq->u_long_value1;
             local_dq.u_long_value2 = dq->u_long_value2;
-            float_value = (float)local_dq.u.double_value;
-            DGBytes( *front.back, TARGET_FLOAT, (char *)&float_value );
+            float_value = static_cast<float>(local_dq.u.double_value);
+            DGBytes( *front.back, TARGET_FLOAT, reinterpret_cast<char *>(&float_value) );
         }
         front.cgendata.EmitDQuad_size += TARGET_FLOAT;
         break;
@@ -195,12 +195,12 @@ static void EmitDQuad( FrontRun& front, DATA_QUAD *dq )
     case QDT_DIMAGINARY:
 //        ftoa( dq->u.double_value, Buffer );
 //        DGFloat( Buffer, TY_DOUBLE );
-        DGBytes( *front.back, TARGET_DOUBLE, (char *)&dq->u.double_value );
+        DGBytes( *front.back, TARGET_DOUBLE, reinterpret_cast<char *>(&dq->u.double_value) );
         front.cgendata.EmitDQuad_size += TARGET_DOUBLE;
         break;
     case QDT_LONG_DOUBLE:
     case QDT_LDIMAGINARY:
-        DGBytes( *front.back, TARGET_LDOUBLE, (char *)&dq->u.long_double_value );
+        DGBytes( *front.back, TARGET_LDOUBLE, reinterpret_cast<char *>(&dq->u.long_double_value) );
         front.cgendata.EmitDQuad_size += TARGET_LDOUBLE;
         break;
     case QDT_STRING:
@@ -214,9 +214,9 @@ static void EmitDQuad( FrontRun& front, DATA_QUAD *dq )
         if( dq->u.var.sym_handle == SYM_NULL ) {
             DGInteger( *front.back, dq->u.var.offset, data_type );
         } else if( dq->flags & Q_SEGMENT ) {    /* CodeBreaker: the selector of the symbol's segment */
-            DGFEPtrBase( *front.back, (CGSYM_HANDLE)dq->u.var.sym_handle );
+            DGFEPtrBase( *front.back, static_cast<CGSYM_HANDLE>(dq->u.var.sym_handle) );
         } else {
-            DGFEPtr( *front.back, (CGSYM_HANDLE)dq->u.var.sym_handle, data_type, dq->u.var.offset );
+            DGFEPtr( *front.back, static_cast<CGSYM_HANDLE>(dq->u.var.sym_handle), data_type, dq->u.var.offset );
         }
         front.cgendata.EmitDQuad_size += GetDQuadPointerSize( front, dq->flags );
         break;

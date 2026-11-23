@@ -144,13 +144,13 @@ namespace {
 void ReScanInit( FrontRun& front, const char *ptr )
 /********************************/
 {
-    front.cscan.rescan_fcb.src_ptr = (const unsigned char *)ptr;
+    front.cscan.rescan_fcb.src_ptr = reinterpret_cast<const unsigned char *>(ptr);
 }
 
 const char *ReScanPos( FrontRun& front )
 /***************************/
 {
-    return( (const char *)front.cscan.rescan_fcb.src_ptr );
+    return( reinterpret_cast<const char *>(front.cscan.rescan_fcb.src_ptr) );
 }
 
 static int reScanGetNextChar( FrontRun& front )
@@ -187,11 +187,11 @@ static unsigned hashpjw( const char *s, size_t len )
     unsigned        h;
     size_t          i;
 
-    h = *(const unsigned char *)s++;
+    h = *reinterpret_cast<const unsigned char *>(s++);
     if( len > 1 ) {
-        h = ( ( h << 4 ) + *(const unsigned char *)s++ ) & 0x0fff;
+        h = ( ( h << 4 ) + *reinterpret_cast<const unsigned char *>(s++) ) & 0x0fff;
         for( i = 2; i < len; i++) {
-            h = ( h << 4 ) + *(const unsigned char *)s++;
+            h = ( h << 4 ) + *reinterpret_cast<const unsigned char *>(s++);
             h = ( h ^ ( h >> 12 ) ) & 0x0fff;
         }
     }
@@ -206,7 +206,7 @@ id_hash_idx CalcHashID( const char *id )
     if( *id == '\0' )
         return( 0 );
     hash = hashpjw( id, strlen( id ) );
-    return( (id_hash_idx)( hash % ID_HASH_SIZE ) );
+    return( static_cast<id_hash_idx>( hash % ID_HASH_SIZE ) );
 }
 
 mac_hash_idx CalcHashMacro( const char *id )
@@ -220,7 +220,7 @@ mac_hash_idx CalcHashMacro( const char *id )
     if( hash >= MACRO_HASH_SIZE ) {
         hash -= MACRO_HASH_SIZE;
     }
-    return( (mac_hash_idx)hash );
+    return( static_cast<mac_hash_idx>(hash) );
 }
 
 str_hash_idx CalcStringHash( STR_HANDLE lit )
@@ -228,7 +228,7 @@ str_hash_idx CalcStringHash( STR_HANDLE lit )
 {
     if( lit->length == 0 )
         return( 0 );
-    return( (str_hash_idx)( hashpjw( lit->literal, lit->length ) % STRING_HASH_SIZE ) );
+    return( static_cast<str_hash_idx>( hashpjw( lit->literal, lit->length ) % STRING_HASH_SIZE ) );
 }
 
 TOKEN KwLookup( FrontRun& front, const char *buf, size_t len )
@@ -607,7 +607,7 @@ static TOKEN doScanNum( FrontRun& front )
                 while( len-- > 0 ) {
                     unsigned char   ch;
 
-                    ch = *(unsigned char *)curr++;
+                    ch = *reinterpret_cast<const unsigned char *>(curr++);
                     if( U64Cnv16( &front.cvars.Constant64, HexBin( front, ch ) ) ) {
                         overflow = true;
                     }
@@ -639,7 +639,7 @@ static TOKEN doScanNum( FrontRun& front )
                 while( len-- > 0 ) {
                     unsigned char   ch;
 
-                    ch = *(unsigned char *)curr++;
+                    ch = *reinterpret_cast<const unsigned char *>(curr++);
                     if( U64Cnv2( &front.cvars.Constant64, DecToBin( ch ) ) ) {
                         overflow = true;
                     }
@@ -679,7 +679,7 @@ static TOKEN doScanNum( FrontRun& front )
                 while( len-- > 0 ) {
                     unsigned char   ch;
 
-                    ch = *(unsigned char *)curr++;
+                    ch = *reinterpret_cast<const unsigned char *>(curr++);
                     if( U64Cnv8( &front.cvars.Constant64, DecToBin( ch ) ) ) {
                         overflow = true;
                     }
@@ -705,7 +705,7 @@ static TOKEN doScanNum( FrontRun& front )
         while( len-- > 0 ) {
             unsigned char   ch;
 
-            ch = *(unsigned char *)curr++;
+            ch = *reinterpret_cast<const unsigned char *>(curr++);
             if( U64Cnv10( &front.cvars.Constant64, DecToBin( ch ) ) ) {
                 overflow = true;
             }

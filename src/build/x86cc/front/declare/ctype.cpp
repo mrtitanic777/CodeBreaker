@@ -721,8 +721,8 @@ static TAGPTR NewTag( FrontRun& front, id_hash_idx hash, const char *name )
 {
     TAGPTR      tag;
 
-    tag = (TAGPTR)CPermAlloc( front, sizeof( TAGDEFN ) + strlen( name ) );
-    tag->level = (id_level_type)front.cvars.SymLevel;
+    tag = static_cast<TAGPTR>(CPermAlloc( front, sizeof( TAGDEFN ) + strlen( name ) ));
+    tag->level = static_cast<id_level_type>(front.cvars.SymLevel);
     tag->hash = hash;
     tag->next_tag = front.cvars.TagHash[hash];
     front.cvars.TagHash[hash] = tag;
@@ -860,7 +860,7 @@ align_type GetTypeAlignment( FrontRun& front, TYPEPTR typ )
     if( typ->decl_type == TYP_STRUCT || typ->decl_type == TYP_UNION ) {
         size = typ->u.tag->alignment;
     } else {
-        size = (align_type)TypeSize( front, typ );
+        size = static_cast<align_type>(TypeSize( front, typ ));
     }
     return( size );
 }
@@ -884,7 +884,7 @@ static target_size FieldAlign( FrontRun& front, target_size next_offset, FIELDPT
         old_offset = next_offset;
         next_offset = RoundUp( next_offset, align );
         if( front.cvars.CompFlags.slack_byte_warning && (next_offset - old_offset) ) {
-            CWarn2( front, ERR_SLACK_ADDED, (unsigned)( next_offset - old_offset ) );
+            CWarn2( front, ERR_SLACK_ADDED, ( next_offset - old_offset ) );
         }
     }
     field->offset = next_offset;
@@ -1110,8 +1110,8 @@ static target_size GetFields( FrontRun& front, TYPEPTR decl )
                 if( field != NULL ) {
                     field->offset = next_offset;
                     field->field_type = EnumFieldType( front, typ, plain_int,
-                              (bitfield_width)( bits_total - bits_available ),
-                              (bitfield_width)bits_width );
+                              static_cast<bitfield_width>( bits_total - bits_available ),
+                              static_cast<bitfield_width>(bits_width) );
                 }
                 bits_available -= bits_width;
             } else {
@@ -1362,7 +1362,7 @@ TYPEPTR TypeNode( FrontRun& front, DATA_TYPE type_spec, TYPEPTR the_object )
 {
     TYPEPTR     typ;
 
-    typ = (TYPEPTR)CPermAlloc( front, sizeof( TYPEDEFN ) );
+    typ = static_cast<TYPEPTR>(CPermAlloc( front, sizeof( TYPEDEFN ) ));
     typ->decl_type = type_spec;
     typ->object = the_object;
     typ->u.tag = NULL;

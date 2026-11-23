@@ -536,7 +536,7 @@ instruction      *rCLRHI_R( BackRun& back, instruction *ins )
         high = res->r.reg;
         HwTurnOff( high, ins->result->r.reg );
         new_ins = MakeNop(back);
-        new_ins->zap = (register_name *)AllocRegName( back, high );
+        new_ins->zap = reinterpret_cast<register_name *>(AllocRegName( back, high ));
         SuffixIns( back, ins, new_ins ); // don't cause high part to be live on entry
 
         and_ins = MakeBinary( back, OP_AND, res, AllocS32Const( back, value ), res, ins->type_class );

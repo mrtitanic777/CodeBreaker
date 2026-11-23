@@ -499,7 +499,7 @@ static  bool    PostDominates( BackRun& back, block *dominator, block *blk )
 
     info.post_dominates = true;
     info.dominator = dominator;
-    FloodDown( back, blk, PDFloodFunc, (void *)&info );
+    FloodDown( back, blk, PDFloodFunc, reinterpret_cast<void *>(&info) );
     return( info.post_dominates );
 }
 

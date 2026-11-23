@@ -161,7 +161,7 @@ static void PushOperator( FrontRun& front, TOKEN token, loc_info *loc, int prec 
 {
     PPEXPN_OPERATOR_STACK *stack_entry;
 
-    stack_entry = (PPEXPN_OPERATOR_STACK *)CMemAlloc( front, sizeof( PPEXPN_OPERATOR_STACK ) );
+    stack_entry = static_cast<PPEXPN_OPERATOR_STACK *>(CMemAlloc( front, sizeof( PPEXPN_OPERATOR_STACK ) ));
     stack_entry->token = token;
     stack_entry->loc = *loc;
     stack_entry->prec = prec;
@@ -222,7 +222,7 @@ static void PushOperand( FrontRun& front, ppvalue p, loc_info *loc )
 {
     PPEXPN_OPERAND_STACK *stack_entry;
 
-    stack_entry = (PPEXPN_OPERAND_STACK *)CMemAlloc( front, sizeof( PPEXPN_OPERAND_STACK ) );
+    stack_entry = static_cast<PPEXPN_OPERAND_STACK *>(CMemAlloc( front, sizeof( PPEXPN_OPERAND_STACK ) ));
     stack_entry->value = p;
     stack_entry->loc = *loc;
     StackPush( &front.ppexpn.HeadOperand, stack_entry );
@@ -368,7 +368,7 @@ static bool COperand( FrontRun& front )
         case TYP_LONG_DOUBLE:
             CErr1( front, ERR_EXPR_MUST_BE_INTEGRAL );
             done = true;
-            p.u.sval.u._64[0] = (long long)SafeAtof( front, front.cvars.Buffer );
+            p.u.sval.u._64[0] = static_cast<long long>(SafeAtof( front, front.cvars.Buffer ));
             // add long double support if available
             break;
         case TYP_WCHAR:

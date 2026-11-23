@@ -94,7 +94,7 @@ name    *LowPart( BackRun& back, name *tosplit, type_class_def type_class )
                 new_part = AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, ( U64LowLE( floatval->buffer.u64 ) ) ) );
             }
         } else if( tosplit->c.const_type == CONS_ADDRESS ) {
-            new_part = AddrConst( back, tosplit->c.u.op, (segment_id)tosplit->c.lo.u.int_value, CONS_OFFSET );
+            new_part = AddrConst( back, tosplit->c.u.op, static_cast<segment_id>(tosplit->c.lo.u.int_value), CONS_OFFSET );
         } else {
             Zoiks( back, ZOIKS_044 );
         }
@@ -168,7 +168,7 @@ name    *HighPart( BackRun& back, name *tosplit, type_class_def type_class )
                 new_part = AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, ( U64HighLE( floatval->buffer.u64 ) ) ) );
             }
         } else if( tosplit->c.const_type == CONS_ADDRESS ) {
-            new_part = AddrConst( back, tosplit->c.u.op, (segment_id)tosplit->c.lo.u.int_value, CONS_SEGMENT );
+            new_part = AddrConst( back, tosplit->c.u.op, static_cast<segment_id>(tosplit->c.lo.u.int_value), CONS_SEGMENT );
         } else {
             Zoiks( back, ZOIKS_044 );
         }

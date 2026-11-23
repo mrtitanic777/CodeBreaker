@@ -53,7 +53,7 @@ void *DW_FreeLink(
 {
     void            *next;
 
-    next = *(void **)node;
+    next = *static_cast<void **>(node);
     CLIFree( back, cli, node );
     return( next );
 }
@@ -66,7 +66,7 @@ void DW_FreeChain(
     void            *cur;
 
     while( (cur = list) != NULL ) {
-        list = *(void **)list;
+        list = *static_cast<void **>(list);
         CLIFree( back, cli, cur );
     }
 }
@@ -82,8 +82,8 @@ void *DW_ReverseChain(
     current = head;
     head = NULL;
     while( current != NULL ) {
-        next = *(void **)current;
-        *(void **)current = head;
+        next = *static_cast<void **>(current);
+        *static_cast<void **>(current) = head;
         head = current;
         current = next;
     }

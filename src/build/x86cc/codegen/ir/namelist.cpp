@@ -698,7 +698,7 @@ void    FreeAName( BackRun& back, name *op )
             CFFree( back, &back.cfloat.cgh, op->c.u.cfval );
             for( defn = op->c.static_defn; defn != NULL; defn = next ) {
                 next = defn->next_defn;
-                FrlFreeSize( back, &back.namelist.ConstDefnFrl, (pointer *)defn, sizeof( constant_defn ) );
+                FrlFreeSize( back, &back.namelist.ConstDefnFrl, reinterpret_cast<pointer *>(defn), sizeof( constant_defn ) );
             }
         }
     } else if( op->n.class_ == N_MEMORY ) {
@@ -716,7 +716,7 @@ void    FreeAName( BackRun& back, name *op )
             back.data.DummyIndex = NULL;
         }
     }
-    FrlFreeSize( back, &back.namelist.FrlHead[op->n.class_], (pointer *)op, Size[op->n.class_] );
+    FrlFreeSize( back, &back.namelist.FrlHead[op->n.class_], reinterpret_cast<pointer *>(op), Size[op->n.class_] );
 }
 
 

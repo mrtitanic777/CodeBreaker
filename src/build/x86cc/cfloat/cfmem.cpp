@@ -51,7 +51,7 @@ void    CFInit( cfhandle h )
 }
 
 
-inline void *&NextMemBlock( void *x ) { return (((mem_blk *)(x))->next); }
+inline void *&NextMemBlock( void *x ) { return ((static_cast<mem_blk *>(x))->next); }
 
 cfloat  *CFAlloc( BackRun& back, cfhandle h, size_t size )
 /*****************************************/

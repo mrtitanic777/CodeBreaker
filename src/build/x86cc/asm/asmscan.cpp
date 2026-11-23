@@ -106,7 +106,7 @@ static bool get_float( asm_tok *tok, const char **input, char **output )
     *(*output)++ = '\0';
     *input = ptr + extra;
 
-    tok->u.float_value = (float)atof( tok->string_ptr );
+    tok->u.float_value = static_cast<float>(atof( tok->string_ptr ));
     return( RC_OK );
 }
 
@@ -121,7 +121,7 @@ static void array_mul_add( unsigned char *buf, unsigned base, const char *dig, u
     }
     while( size-- > 0 ) {
         num = num + *buf * base;
-        *buf = (unsigned char)num;
+        *buf = static_cast<unsigned char>(num);
         num >>= 8;
         buf++;
     }
@@ -224,9 +224,9 @@ static bool get_number( AsmRun& assembler, asm_tok *tok, const char **input, cha
     first_char_0 = false;
     extra = 0;
     ptr = *input;
-    if( *(unsigned char *)ptr == '0' ) {
+    if( *reinterpret_cast<const unsigned char *>(ptr) == '0' ) {
         ++ptr;
-        if( tolower( *(unsigned char *)ptr ) == 'x' ) {
+        if( tolower( *reinterpret_cast<const unsigned char *>(ptr) ) == 'x' ) {
             ++ptr;
             base = 16;
         } else {
@@ -234,7 +234,7 @@ static bool get_number( AsmRun& assembler, asm_tok *tok, const char **input, cha
         }
     }
     dig_start = ptr;
-    for( ; (c = *(unsigned char *)ptr) != '\0'; ++ptr ) {
+    for( ; (c = *reinterpret_cast<const unsigned char *>(ptr)) != '\0'; ++ptr ) {
         if( isdigit( c ) ) {
             digits_seen |= 1 << (c - '0');
             continue;
@@ -254,7 +254,7 @@ static bool get_number( AsmRun& assembler, asm_tok *tok, const char **input, cha
             if( base != 16 && assembler.asmscan->radix_base != 16 ) {
                 if( c == 'b' ) {
                     if( base == 0 && OK_NUM( BINARY ) ) {
-                        c2 = ((unsigned char *)ptr)[1];
+                        c2 = (reinterpret_cast<const unsigned char *>(ptr))[1];
                         if( !isxdigit( c2 ) && tolower( c2 ) != 'h' ) {
                             base = 2;
                             extra = 1;
@@ -327,9 +327,9 @@ static bool get_number( AsmRun& assembler, asm_tok *tok, const char **input, cha
         /* fall through */
         //AsmError( INVALID_NUMBER_DIGIT );
         /* swallow remainder of token */
-        c = *(unsigned char *)ptr;
+        c = *reinterpret_cast<const unsigned char *>(ptr);
         while( IsValidIdChar( c ) ) {
-            c = *(unsigned char *)(++ptr);
+            c = *reinterpret_cast<const unsigned char *>(++ptr);
         }
         tok->class_ = TC_BAD_NUM;
         break;
@@ -388,7 +388,7 @@ static bool get_id( asm_tok *tok, const char **input, char **output )
 
     *(*output)++ = *(*input)++;
     for( ; ; ) {
-        c = *(unsigned char *)*input;
+        c = *reinterpret_cast<const unsigned char *>(*input);
         /* if character is part of a valid name, add it */
         if( IsValidIdChar( c ) ) {
             *(*output)++ = *(*input)++;
@@ -573,7 +573,7 @@ bool AsmScan( AsmRun& assembler, token_buffer *tokbuf, const char *string )
         while( isspace( *ptr ) ) {
             ptr++;
         }
-        c = *(unsigned char *)ptr;
+        c = *reinterpret_cast<const unsigned char *>(ptr);
         if( c == NULLC ) {
             SetFinalToken( tokbuf, i );
             return( RC_OK );

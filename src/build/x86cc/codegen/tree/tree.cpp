@@ -381,7 +381,7 @@ uint_32    TGMask32( tn node )
 
     len = node->u1.b.len;
     mask = 0;
-    bit = (uint_32)1 << node->u1.b.start;
+    bit = static_cast<uint_32>(1) << node->u1.b.start;
     for( ;; ) {
         mask |= bit;
         bit <<= 1;
@@ -783,9 +783,9 @@ call_handle TGInitCall( BackRun& back, tn left, const type_def *tipe, cg_sym_han
 {
     tn      node;
 
-    node = TGNode( back, TN_PARM, O_NOP, left, (tn)sym, NULL );
+    node = TGNode( back, TN_PARM, O_NOP, left, reinterpret_cast<tn>(sym), NULL );
     node = TGNode( back, TN_CALL, O_NOP, node, NULL, tipe );
-    if( (call_class)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS ) & FECALL_GEN_REVERSE_PARMS ) {
+    if( static_cast<call_class>(reinterpret_cast<pointer_uint>(FindAuxInfoSym( back, sym, FEINF_CALL_CLASS ))) & FECALL_GEN_REVERSE_PARMS ) {
         node->flags |= TF_REVERSE;
     }
     return( node );
@@ -1381,7 +1381,7 @@ static  name *TNFindBase( BackRun& back, tn node )
     case TN_SIDE_EFFECT:
         if( (node->tipe->attr & TYPE_POINTER) == 0 )
             return( NULL );
-        op = static_cast<name *>(SafeRecurseCG( back, (func_sr)TNFindBase, ( node->class_ == TN_COMMA ) ? node->u.left : node->u1.t.rite ));
+        op = static_cast<name *>(SafeRecurseCG( back, reinterpret_cast<func_sr>(TNFindBase), ( node->class_ == TN_COMMA ) ? node->u.left : node->u1.t.rite ));
         if( op != NULL )
             return( op );
         /* fall through */
@@ -1394,14 +1394,14 @@ static  name *TNFindBase( BackRun& back, tn node )
     case TN_LV_PRE_GETS:
         if( (node->tipe->attr & TYPE_POINTER) == 0 )
             return( NULL );
-        op = static_cast<name *>(SafeRecurseCG( back, (func_sr)TNFindBase, node->u1.t.rite ));
+        op = static_cast<name *>(SafeRecurseCG( back, reinterpret_cast<func_sr>(TNFindBase), node->u1.t.rite ));
         if( op != NULL )
             return( op );
         if( node->u1.t.op == O_CONVERT )
             return( NULL );
         if( node->class_ != TN_BINARY )
             return( NULL );
-        return static_cast<name *>(( SafeRecurseCG( back, (func_sr)TNFindBase, node->u.left ) ));
+        return static_cast<name *>(( SafeRecurseCG( back, reinterpret_cast<func_sr>(TNFindBase), node->u.left ) ));
     case TN_UNARY:
         if( (node->tipe->attr & TYPE_POINTER) == 0 )
             return( NULL );
@@ -1409,7 +1409,7 @@ static  name *TNFindBase( BackRun& back, tn node )
         case O_PTR_TO_NATIVE:
         case O_PTR_TO_FOREIGN:
         case O_CONVERT:
-            return static_cast<name *>(( SafeRecurseCG( back, (func_sr)TNFindBase, node->u.left ) ));
+            return static_cast<name *>(( SafeRecurseCG( back, reinterpret_cast<func_sr>(TNFindBase), node->u.left ) ));
         default:
             break;
         }
@@ -1419,12 +1419,12 @@ static  name *TNFindBase( BackRun& back, tn node )
             return( NULL );
         switch( node->u.left->class_ ) {
         case TN_SIDE_EFFECT:
-            return static_cast<name *>(( SafeRecurseCG( back, (func_sr)TNFindBase, node->u.left->u1.t.rite ) ));
+            return static_cast<name *>(( SafeRecurseCG( back, reinterpret_cast<func_sr>(TNFindBase), node->u.left->u1.t.rite ) ));
         case TN_COMMA:
-            return static_cast<name *>(( SafeRecurseCG( back, (func_sr)TNFindBase, node->u.left->u.left ) ));
+            return static_cast<name *>(( SafeRecurseCG( back, reinterpret_cast<func_sr>(TNFindBase), node->u.left->u.left ) ));
         case TN_LV_ASSIGN:
         case TN_LV_PRE_GETS:
-            return static_cast<name *>(( SafeRecurseCG( back, (func_sr)TNFindBase, node->u.left->u1.t.rite ) ));
+            return static_cast<name *>(( SafeRecurseCG( back, reinterpret_cast<func_sr>(TNFindBase), node->u.left->u1.t.rite ) ));
         default:
             break;
         }
@@ -1522,7 +1522,7 @@ static  an  TNCallback( BackRun& back, tn node )
     callback_handle parm;
 
     rtn = node->u.left->u.callback;
-    parm = (callback_handle)node->u1.t.rite->u.handle;
+    parm = node->u1.t.rite->u.handle;
     if( rtn != NULL ) {
         rtn( back, parm );
     }
@@ -1741,8 +1741,8 @@ static  an  TNBitOpGets( BackRun& back, tn node, const type_def *tipe, bool yiel
     FreeTreeNode( back, lhs );
     U64ShiftR( &shiftmask, &mask, shift );  // shiftmask = mask >> shift;
     if( after_value->format == NF_CONS && after_value->class_ == CL_CONS2 ) {
-        retv = Int( back, U64Low( shiftmask ) & (uint_32)after_value->u.n.name->c.lo.u.int_value );
-        if( (uint_32)retv->u.n.name->c.lo.u.int_value != U64Low( shiftmask ) ) {
+        retv = Int( back, U64Low( shiftmask ) & static_cast<uint_32>(after_value->u.n.name->c.lo.u.int_value) );
+        if( static_cast<uint_32>(retv->u.n.name->c.lo.u.int_value) != U64Low( shiftmask ) ) {
             DoAnd( back, left, mask, node );
         }
         if( retv->u.n.name->c.lo.u.int_value != 0 ) {
@@ -2108,7 +2108,7 @@ static  bool    FunctionModifiesSP( BackRun& back, tn call )
     hw_reg_set      *pregs;
     cg_sym_handle   sym;
 
-    sym = (cg_sym_handle)call->u.left->u1.t.rite;
+    sym = reinterpret_cast<cg_sym_handle>(call->u.left->u1.t.rite);
     pregs = static_cast<hw_reg_set *>(FindAuxInfoSym( back, sym, FEINF_SAVE_REGS ));
     if( !HwOvlap( *pregs, StackReg() ) ) {
         return( true );
@@ -2208,10 +2208,10 @@ static  an  TNCall( BackRun& back, tn callhandle, bool ignore_return )
 
     callnode = NULL;
     addr = callhandle->u.left; /* address to call*/
-    sym = (cg_sym_handle)addr->u1.t.rite;
+    sym = reinterpret_cast<cg_sym_handle>(addr->u1.t.rite);
     aux = static_cast<aux_handle>(FEAuxInfo( *back.front, sym, FEINF_AUX_LOOKUP ));
     aux_inline = ( FEAuxInfo( *back.front, aux, FEINF_CALL_BYTES ) != NULL );
-    cclass = (call_class)(pointer_uint)FEAuxInfo( *back.front, aux, FEINF_CALL_CLASS );
+    cclass = static_cast<call_class>(reinterpret_cast<pointer_uint>(FEAuxInfo( *back.front, aux, FEINF_CALL_CLASS )));
     call_inline = ( (cclass & FECALL_GEN_MAKE_CALL_INLINE) != 0 );
     retv = TreeGen( back, addr->u.left );
     if( call_inline ) {
@@ -2360,7 +2360,7 @@ static  void    FreeTreeNode( BackRun& back, tn node )
  * free one tree node.
  */
 {
-    FrlFreeSize( back, &back.tree.TreeFrl, (pointer *)node, sizeof( tree_node ) );
+    FrlFreeSize( back, &back.tree.TreeFrl, reinterpret_cast<pointer *>(node), sizeof( tree_node ) );
 }
 
 
@@ -2468,5 +2468,5 @@ an  TreeGen( BackRun& back, tn node )
  * generate tree node "node"
  */
 {
-    return static_cast<an>(( SafeRecurseCG( back, (func_sr)DoTreeGen, node ) ));
+    return static_cast<an>(( SafeRecurseCG( back, reinterpret_cast<func_sr>(DoTreeGen), node ) ));
 }

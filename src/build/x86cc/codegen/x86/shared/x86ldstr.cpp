@@ -308,7 +308,7 @@ static  bool    SplitMem16Move( BackRun& back, instruction *ins )
      * unused operands of the first move instruction, and the original ins
      * in another unused operand.
      */
-    new_l->operands[1] = static_cast<name *>((void *)new_h);
+    new_l->operands[1] = static_cast<name *>(reinterpret_cast<void *>(new_h));
     new_l->ins_flags |= INS_SPLIT;
     new_h->ins_flags |= INS_SPLIT;
     SuffixIns( back, ins, new_l );
@@ -330,9 +330,9 @@ static  void    RestoreMem16Move( BackRun& back, instruction *ins )
     instruction *other;
     hw_reg_set  full;
 
-    if( ins->head.next == (instruction *)ins->operands[1] ) {
+    if( ins->head.next == reinterpret_cast<instruction *>(ins->operands[1]) ) {
         other = ins->head.next;
-    } else if( ins->head.prev == (instruction *)ins->operands[1] ) {
+    } else if( ins->head.prev == reinterpret_cast<instruction *>(ins->operands[1]) ) {
         other = ins->head.prev;
     } else {
         return;

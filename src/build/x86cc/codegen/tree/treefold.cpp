@@ -202,16 +202,16 @@ static int_32 CFConvertByType( float_handle cf, const type_def *tipe )
     switch( tipe->length ) {
     case 1:
         if( tipe->attr & TYPE_SIGNED ) {
-            data = (signed_8)data;
+            data = static_cast<signed_8>(data);
         } else {
-            data = (unsigned_8)data;
+            data = static_cast<unsigned_8>(data);
         }
         break;
     case 2:
         if( tipe->attr & TYPE_SIGNED ) {
-            data = (int_16)data;
+            data = static_cast<int_16>(data);
         } else {
-            data = (uint_16)data;
+            data = static_cast<uint_16>(data);
         }
         break;
     }
@@ -784,7 +784,7 @@ tn      FoldRShift( BackRun& back, tn left, tn rite, const type_def *tipe )
                     if( tipe->attr & TYPE_SIGNED ) {
                         shft = li >> ri;
                     } else {
-                        shft = (uint_32)li >> (uint_32)ri;
+                        shft = static_cast<uint_32>(li) >> static_cast<uint_32>(ri);
                     }
                     fold = IntToType( back, shft, tipe );
                 } else if( CFIs64( lv ) && CFIs64( rv ) ) {
@@ -1479,9 +1479,9 @@ tn  FoldCompare( BackRun& back, cg_op opcode, tn left, tn rite, const type_def *
         left->class_ = TN_COMPARE;
         left->tipe = back.data.TypeBoolean;
         if( opcode == O_EQ ) {
-            left->u1.t.op = (cg_op)OP_BIT_TEST_FALSE;
+            left->u1.t.op = static_cast<cg_op>(OP_BIT_TEST_FALSE);
         } else {
-            left->u1.t.op = (cg_op)OP_BIT_TEST_TRUE;
+            left->u1.t.op = static_cast<cg_op>(OP_BIT_TEST_TRUE);
         }
         return( left );
     } else {
@@ -1645,12 +1645,12 @@ an FoldConsCompare( BackRun& back, cg_op opcode, tn left, tn rite, const type_de
             case O_LE:
                 fold = Flip( back, fold, compare <= 0, compare_true <= 0 );
                 break;
-            case (cg_op)OP_BIT_TEST_TRUE:
+            case static_cast<cg_op>(OP_BIT_TEST_TRUE):
                 if( !HasBigConst( tipe ) ) {
                     fold = Flip( back, fold, false, (rite->u.name->c.lo.u.int_value & FETrue()) != 0 );
                 }
                 break;
-            case (cg_op)OP_BIT_TEST_FALSE:
+            case static_cast<cg_op>(OP_BIT_TEST_FALSE):
                 if( !HasBigConst( tipe ) ) {
                     fold = Flip( back, fold, true, (rite->u.name->c.lo.u.int_value & FETrue()) == 0 );
                 }

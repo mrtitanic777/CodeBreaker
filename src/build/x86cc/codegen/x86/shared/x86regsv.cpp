@@ -51,7 +51,7 @@ namespace {
 
 
 inline uint Cost( uint size, uint time, int s, int t ) { return ( s * size + t * time ) / TOTAL_WEIGHT; }
-inline conflict_node *&NextCon( conflict_node *c ) { return (*(conflict_node**)&((c)->tree)); }
+inline conflict_node *&NextCon( conflict_node *c ) { return (*reinterpret_cast<conflict_node**>(&((c)->tree))); }
 
 void    InitWeights( BackRun& back, uint size )
 /*****************************************

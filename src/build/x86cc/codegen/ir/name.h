@@ -211,5 +211,3 @@ typedef union name {
 inline bool HasTrueBase( name *op ) { return ( (op)->i.base != NULL && ((op)->i.index_flags & X_FAKE_BASE) == 0 ); }
 inline bool FrontEndTmp( name *op ) { return ( ((op)->t.temp_flags & CONST_TEMP) == 0 && (op)->v.symbol != NULL ); }
 inline bool ConstTemp( name *op ) { return ( ( (op)->n.class_ == N_TEMP ) && ( (op)->t.temp_flags & CONST_TEMP ) ); }
-
-

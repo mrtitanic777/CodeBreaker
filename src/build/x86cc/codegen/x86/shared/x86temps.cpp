@@ -173,22 +173,22 @@ void    RelocParms( BackRun& back )
 bool    TempAllocBefore( BackRun& back, void *t1, void *t2 )
 /*******************************************/
 {
-    if( (((name *)t1)->t.temp_flags & USED_AS_FD) && (((name *)t2)->t.temp_flags & USED_AS_FD) == 0 ) {
+    if( ((static_cast<name *>(t1))->t.temp_flags & USED_AS_FD) && ((static_cast<name *>(t2))->t.temp_flags & USED_AS_FD) == 0 ) {
         if( back.data.CurrProc->targ.sp_align )
             return( false );
         return( true );
     }
-    if( (((name *)t2)->t.temp_flags & USED_AS_FD) && (((name *)t1)->t.temp_flags & USED_AS_FD) == 0 ) {
+    if( ((static_cast<name *>(t2))->t.temp_flags & USED_AS_FD) && ((static_cast<name *>(t1))->t.temp_flags & USED_AS_FD) == 0 ) {
         if( back.data.CurrProc->targ.sp_align )
             return( true );
         return( false );
     }
-    if( ((name *)t1)->n.size < ((name *)t2)->n.size )
+    if( (static_cast<name *>(t1))->n.size < (static_cast<name *>(t2))->n.size )
         return( true );
-    if( ((name *)t1)->n.size != ((name *)t2)->n.size )
+    if( (static_cast<name *>(t1))->n.size != (static_cast<name *>(t2))->n.size )
         return( false );
     /* allocate big pointers the right way 'round for LES/LDS*/
-    if( ((name *)t1)->t.v.id == ((name *)t2)->t.v.id && ((name *)t1)->v.offset > ((name *)t2)->v.offset )
+    if( (static_cast<name *>(t1))->t.v.id == (static_cast<name *>(t2))->t.v.id && (static_cast<name *>(t1))->v.offset > (static_cast<name *>(t2))->v.offset )
         return( true );
     return( false );
 }

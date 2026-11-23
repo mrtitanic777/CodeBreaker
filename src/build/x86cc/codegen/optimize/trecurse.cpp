@@ -271,7 +271,7 @@ static block *SafeBlock( BackRun& back, block *blk )
         safe = blk;
         for( i = 0; i < blk->targets; i++ ) {
             dest = blk->edge[i].destination.u.blk;
-            if( SafeRecurseCG( back, (func_sr)SafeBlock, dest ) == NULL ) {
+            if( SafeRecurseCG( back, reinterpret_cast<func_sr>(SafeBlock), dest ) == NULL ) {
                 safe = NULL;
                 break;
             }
@@ -398,8 +398,8 @@ void     TRAddParm( instruction *call_ins, instruction *parm_ins )
     if( call_ins == NULL
       || parm_ins == NULL )
         return;
-    TrLink( parm_ins ) = static_cast<struct instruction *>((void *)TrLink( call_ins ));
-    TrLink( call_ins ) = static_cast<struct instruction *>((void *)parm_ins);
+    TrLink( parm_ins ) = static_cast<struct instruction *>(reinterpret_cast<void *>(TrLink( call_ins )));
+    TrLink( call_ins ) = static_cast<struct instruction *>(reinterpret_cast<void *>(parm_ins));
 }
 
 void     TRDeclareParm( BackRun& back, instruction *parm_ins )
@@ -410,8 +410,8 @@ void     TRDeclareParm( BackRun& back, instruction *parm_ins )
 {
     if( parm_ins == NULL )
         return;
-    TrLink( parm_ins ) = static_cast<struct instruction *>((void *)ProcLink( back.data.CurrProc ));
-    ProcLink( back.data.CurrProc ) = static_cast<instruction *>((void *)parm_ins);
+    TrLink( parm_ins ) = static_cast<struct instruction *>(reinterpret_cast<void *>(ProcLink( back.data.CurrProc )));
+    ProcLink( back.data.CurrProc ) = static_cast<instruction *>(reinterpret_cast<void *>(parm_ins));
 }
 
 bool     TailRecursion( BackRun& back )

@@ -169,7 +169,7 @@ const char *FEGetEnv( FrontRun& front, char const *name )
 
     ret = NULL;
     if( !front.cvars.GlobalCompFlags.ignore_environment ) {
-        if( front.ideentry.IdeCbs->GetInfo( front.ideentry.IdeHdl, IDE_GET_ENV_VAR, (IDEGetInfoWParam)name, (IDEGetInfoLParam)&ret ) ) {
+        if( front.ideentry.IdeCbs->GetInfo( front.ideentry.IdeHdl, IDE_GET_ENV_VAR, reinterpret_cast<IDEGetInfoWParam>(name), reinterpret_cast<IDEGetInfoLParam>(&ret) ) ) {
             ret = NULL;
         }
     }
@@ -245,11 +245,11 @@ static void getFrontEndArgv( FrontRun& front, char **argv, char *infile, char *o
 
     if( !front.cvars.GlobalCompFlags.ide_cmd_line_has_files ) {
         infile[0] = '\0';
-        front.ideentry.IdeCbs->GetInfo( front.ideentry.IdeHdl, IDE_GET_SOURCE_FILE, (IDEGetInfoWParam)NULL, (IDEGetInfoLParam)infile );
+        front.ideentry.IdeCbs->GetInfo( front.ideentry.IdeHdl, IDE_GET_SOURCE_FILE, static_cast<IDEGetInfoWParam>(NULL), reinterpret_cast<IDEGetInfoLParam>(infile) );
         *argv++ = infile;
         outfile[0] = '\0';
         p = outfile + 4;
-        if( !front.ideentry.IdeCbs->GetInfo( front.ideentry.IdeHdl, IDE_GET_TARGET_FILE, (IDEGetInfoWParam)NULL, (IDEGetInfoLParam)p ) ) {
+        if( !front.ideentry.IdeCbs->GetInfo( front.ideentry.IdeHdl, IDE_GET_TARGET_FILE, static_cast<IDEGetInfoWParam>(NULL), reinterpret_cast<IDEGetInfoLParam>(p) ) ) {
             outfile[0] = '-';
             outfile[1] = 'f';
             outfile[2] = 'o';
@@ -283,7 +283,7 @@ int IDEAPI IDERunYourSelf       // COMPILE A PROGRAM
     /*
      * initialize argv array
      */
-    argv[0] = (char *)opts;
+    argv[0] = const_cast<char *>(opts);
     argv[1] = NULL;
     getFrontEndArgv( front, argv + 1, infile, outfile );
     if( setjmp( env ) != 0 ) {  /* if fatal error has occurred */

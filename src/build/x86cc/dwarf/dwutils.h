@@ -39,10 +39,10 @@
 extern void     OutputLEB128( void **h, unsigned char byte );
 
 
-inline unsigned char *WriteSLEB128( unsigned char *h, long long v ) { return (unsigned char *)EncodeSLEB128((h), OutputLEB128, (v)); }
+inline unsigned char *WriteSLEB128( unsigned char *h, long long v ) { return static_cast<unsigned char *>(EncodeSLEB128((h), OutputLEB128, (v))); }
 inline unsigned char *WriteULEB128( unsigned char *h, unsigned long long v )
 {
-    return (unsigned char *)EncodeULEB128((h), OutputLEB128, (v));
+    return static_cast<unsigned char *>(EncodeULEB128((h), OutputLEB128, (v)));
 }
 
 #endif

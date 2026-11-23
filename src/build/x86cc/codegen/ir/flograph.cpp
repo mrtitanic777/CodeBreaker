@@ -168,7 +168,7 @@ static  void *MarkVisited( BackRun& back, block *blk )
     for( i = 0; i < blk->targets; ++i ) {
         if( IsBlkVisited( blk->edge[i].destination.u.blk ) )
             continue;
-        SafeRecurseCG( back, (func_sr)MarkVisited, blk->edge[i].destination.u.blk );
+        SafeRecurseCG( back, reinterpret_cast<func_sr>(MarkVisited), blk->edge[i].destination.u.blk );
     }
     blk->prev_block = back.data.BlockList;
     back.data.BlockList = blk;
@@ -526,7 +526,7 @@ static  void    KillIntervals( BackRun& back )
 static  bool    FlowDone( BackRun& back, block *curr, void *parm )
 /*************************************************/
 {
-    if( curr == (block *)parm ) {
+    if( curr == static_cast<block *>(parm) ) {
         back.flograph.functionDegenerate = true;
         return( false );
     }

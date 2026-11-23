@@ -469,7 +469,7 @@ dw_handle DWENTRY DWFormalParameter(
         DW_InfoULEB128( back, cli, DW_FORM_block );
         value = va_arg( args, const void * );
         len = va_arg( args, size_t );
-        DW_InfoULEB128( back, cli, (dw_uconst)len );
+        DW_InfoULEB128( back, cli, static_cast<dw_uconst>(len) );
         DW_InfoBytes( back, cli, value, len );
         break;
     default:
@@ -635,7 +635,7 @@ dw_handle DWENTRY DWConstant(
         DW_InfoString( back, cli, static_cast<const char *>(value) );
     } else {
         DW_InfoULEB128( back, cli, DW_FORM_block );
-        DW_InfoULEB128( back, cli, (dw_uconst)len );
+        DW_InfoULEB128( back, cli, static_cast<dw_uconst>(len) );
         DW_InfoBytes( back, cli, value, len );
     }
     /* AT_name */

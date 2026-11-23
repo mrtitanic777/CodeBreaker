@@ -42,5 +42,5 @@ char *GetPathElement( const char *path_list, const char *end, char **path )
             *(*path)++ = c;
         }
     }
-    return( (char *)path_list );
+    return( const_cast<char *>(path_list) );
 }

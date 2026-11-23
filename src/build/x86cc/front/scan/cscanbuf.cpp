@@ -33,7 +33,7 @@ static void GrowBuffer( FrontRun& front, size_t size )
     size = RoundUp( size, BUF_SIZE );
     newBuffer = static_cast<char *>(CMemAlloc( front, size ));
     memcpy( newBuffer, front.cvars.Buffer, front.cscanbuf.BufferSize );
-    CMemFree( front, (void *)front.cvars.Buffer );
+    CMemFree( front, reinterpret_cast<void *>(front.cvars.Buffer) );
     front.cvars.Buffer = newBuffer;
     front.cscanbuf.BufferSize = size;
 }
@@ -51,14 +51,14 @@ void WriteBufferChar( FrontRun& front, int c )
 /***************************/
 {
     EnlargeBuffer( front, front.cvars.TokenLen + 1 );
-    front.cvars.Buffer[front.cvars.TokenLen++] = (char)c;
+    front.cvars.Buffer[front.cvars.TokenLen++] = static_cast<char>(c);
 }
 
 int WriteBufferCharNextChar( FrontRun& front, int c )
 /**********************************/
 {
     EnlargeBuffer( front, front.cvars.TokenLen + 1 );
-    front.cvars.Buffer[front.cvars.TokenLen++] = (char)c;
+    front.cvars.Buffer[front.cvars.TokenLen++] = static_cast<char>(c);
     return( front.cvars.NextChar(front) );
 }
 

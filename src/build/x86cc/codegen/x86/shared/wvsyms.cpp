@@ -122,7 +122,7 @@ static  void    DumpLocals( BackRun& back, dbg_local *local ) {
         tipe = FEDbgType( *back.front, static_cast<cg_sym_handle>(local->sym) );
         BuffStart( back, &temp, SYM_VARIABLE + VAR_LOCAL );
         LocDump( back, local->loc );
-        BuffIndex( back, (uint) tipe );
+        BuffIndex( back, tipe );
         BuffWSLString( back, FEName( *back.front, static_cast<cg_sym_handle>(local->sym) ) );
         BuffEnd( back, back.data.DbgLocals );
         junk = local;
@@ -170,7 +170,7 @@ void    WVGenStatic( BackRun& back, cg_sym_handle sym, dbg_loc loc )
         BuffStart( back, &temp, SYM_VARIABLE + VAR_MODULE_LOC );
         LocDump( back, LocDupl( loc ) );
     }
-    BuffIndex( back, (uint) tipe );
+    BuffIndex( back, tipe );
     BuffWSLString( back, FEName( *back.front, sym ) );
     BuffEnd( back, back.data.DbgLocals );
 }
@@ -248,7 +248,7 @@ void    WVRtnEnd( BackRun& back, dbg_rtn *rtn, offset lc )
             off = AskLocation(back);
             BuffStart( back, &temp, SYM_CODE + CODE_MEMBER_SCOPE );
             DumpParentPtr( back, rtn->blk );
-            BuffIndex( back, (uint) rtn->obj_type );
+            BuffIndex( back, rtn->obj_type );
             if( rtn->obj_loc != NULL ) {
                 BuffByte( back, rtn->obj_ptr_type ); /* 'this' pointer type */
                 LocDump( back, rtn->obj_loc );
@@ -258,7 +258,7 @@ void    WVRtnEnd( BackRun& back, dbg_rtn *rtn, offset lc )
     }
     sym = AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) );
     tipe = FEDbgType( *back.front, sym );
-    if( (call_class_target)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL ) {
+    if( static_cast<call_class_target>(reinterpret_cast<pointer_uint>(FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ))) & FECALL_X86_FAR_CALL ) {
         BuffStart( back, &temp, SYM_CODE + CODE_FAR_RTN );
     } else {
         BuffStart( back, &temp, SYM_CODE + CODE_NEAR_RTN );
@@ -272,7 +272,7 @@ void    WVRtnEnd( BackRun& back, dbg_rtn *rtn, offset lc )
     BuffByte( back, rtn->pro_size );
     BuffByte( back, lc - rtn->epi_start );
     BuffOffset( back, rtn->ret_offset );
-    BuffIndex( back, (uint) tipe );
+    BuffIndex( back, tipe );
     if( rtn->return_loc == NULL ) {
         BuffByte( back, 0 ); /* no return location */
     } else {

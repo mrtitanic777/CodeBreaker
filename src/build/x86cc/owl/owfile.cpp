@@ -112,7 +112,7 @@ static void doReloc( BackRun& back, owl_section_handle section, owl_reloc_info *
     // OWLBufferPatch( section->buffer, reloc->location, displacement, bitMask );
     old_loc = OWLBufferTell( section->buffer );
     OWLBufferSeek( section->buffer, reloc->location );
-    OWLBufferRead( section->buffer, reloc->location, (char *)&data, 4 );
+    OWLBufferRead( section->buffer, reloc->location, reinterpret_cast<char *>(&data), 4 );
     if( section->file->format == OWL_FORMAT_COFF &&
         section->file->info->cpu == OWL_CPU_PPC &&
         reloc->type == OWL_RELOC_JUMP_REL ) {
@@ -120,7 +120,7 @@ static void doReloc( BackRun& back, owl_section_handle section, owl_reloc_info *
         displacement += reloc->location;
     }
     data = (data&~bit_mask)|(((displacement&bit_mask)+(data&bit_mask))&bit_mask);
-    OWLBufferWrite( back, section->buffer, (char *)&data, 4 );
+    OWLBufferWrite( back, section->buffer, reinterpret_cast<char *>(&data), 4 );
     OWLBufferSeek( section->buffer, old_loc );
     ClientFree( back, section->file, reloc );
     section->num_relocs -= 1;

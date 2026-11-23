@@ -50,7 +50,7 @@
 #define SYM_SEG_MAX         (SYM_MAX_INDEX_DEF / SYM_PER_SEG + 1)
 #define SYM_MAX_INDEX       (SYM_SEG_MAX * SYM_PER_SEG)
 
-static inline SYM_HANDLE CurrSymHandle( FrontRun& front ) { return (SYM_HANDLE)(pointer_uint)front.csym.NextSymHandle; }
+static inline SYM_HANDLE CurrSymHandle( FrontRun& front ) { return reinterpret_cast<SYM_HANDLE>(static_cast<pointer_uint>(front.csym.NextSymHandle)); }
 
 
 
@@ -74,7 +74,7 @@ static SEGADDR_T AllocSegment( FrontRun& front, seg_info *si )
      * FEmalloc never returns NULL - it either allocates the memory
      * or kills the compiler.
      */
-    si->index = (SEGADDR_T)FEmalloc( front, SYM_SEG_SIZE );
+    si->index = static_cast<SEGADDR_T>(FEmalloc( front, SYM_SEG_SIZE ));
     si->allocated = true;
     return( si->index );
 }
@@ -115,7 +115,7 @@ void SymInit( FrontRun& front )
     front.cvars.LabelHead = NULL;
     front.cvars.HashFreeList = NULL;
     front.csym.NextSymHandle = 0;
-    front.cvars.ErrSym = (FIELDPTR)CPermAlloc( front, sizeof( FIELD_ENTRY ) );
+    front.cvars.ErrSym = static_cast<FIELDPTR>(CPermAlloc( front, sizeof( FIELD_ENTRY ) ));
     front.cvars.ErrSym->field_type = TypeDefault(front);
     front.cvars.SymBufNum = 0;
     front.csym.FirstSymInBuf = 0;
@@ -126,7 +126,7 @@ void SymInit( FrontRun& front )
         front.csym.SymBufSegs[seg_num].allocated = false;
     }
     front.csym.SymBufSegment = AllocSegment( front, &front.csym.SymBufSegs[0] );
-    front.csym.SymBufPtr = (char *)front.csym.SymBufSegment;
+    front.csym.SymBufPtr = front.csym.SymBufSegment;
     EnumInit(front);
 }
 
@@ -157,20 +157,20 @@ unsigned SymGetNumSyms( FrontRun& front )
 
 unsigned SymGetNumSpecialSyms( FrontRun& front )
 {
-    return( (unsigned)(pointer_uint)front.cvars.SpecialSyms );
+    return( static_cast<unsigned>(reinterpret_cast<pointer_uint>(front.cvars.SpecialSyms)) );
 }
 
 SYM_HANDLE SymGetFirst( void )
 {
-    return( (SYM_HANDLE)0 );
+    return( static_cast<SYM_HANDLE>(0) );
 }
 
 SYM_HANDLE SymGetNext( FrontRun& front, SYM_HANDLE sym_handle )
 {
-    unsigned    handle = (unsigned)(pointer_uint)sym_handle;
+    unsigned    handle = static_cast<unsigned>(reinterpret_cast<pointer_uint>(sym_handle));
 
     if( handle < front.csym.NextSymHandle ) {
-        return( (SYM_HANDLE)(pointer_uint)( handle + 1 ) );
+        return( reinterpret_cast<SYM_HANDLE>(static_cast<pointer_uint>( handle + 1 )) );
     } else {
         return( SYM_INVALID );
     }
@@ -338,7 +338,7 @@ static void SymAccess( FrontRun& front, unsigned sym_num )
         seg_num = buf_num / SYM_BUF_PER_SEG;
         si = &front.csym.SymBufSegs[seg_num];
         front.csym.SymBufSegment = AccessSegment( front, si );
-        front.csym.SymBufPtr = (char *)front.csym.SymBufSegment + (buf_num % SYM_BUF_PER_SEG) * SYM_BUF_SIZE;
+        front.csym.SymBufPtr = front.csym.SymBufSegment + (buf_num % SYM_BUF_PER_SEG) * SYM_BUF_SIZE;
         front.cvars.SymBufNum = buf_num;
         front.cvars.SymBufSegNum = seg_num;
         front.csym.FirstSymInBuf = buf_num * SYM_PER_BUF;
@@ -348,7 +348,7 @@ static void SymAccess( FrontRun& front, unsigned sym_num )
 
 SYMPTR SymGetPtr( FrontRun& front, SYM_HANDLE sym_handle )
 {
-    unsigned    handle = (unsigned)(pointer_uint)sym_handle;
+    unsigned    handle = static_cast<unsigned>(reinterpret_cast<pointer_uint>(sym_handle));
     SYMPTR      symptr;
 
     front.csym.SymStats.getptr++;
@@ -367,7 +367,7 @@ SYMPTR SymGetPtr( FrontRun& front, SYM_HANDLE sym_handle )
 
 void SymGet( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
 {
-    unsigned    handle = (unsigned)(pointer_uint)sym_handle;
+    unsigned    handle = static_cast<unsigned>(reinterpret_cast<pointer_uint>(sym_handle));
     SYMPTR      symptr;
 
     front.csym.SymStats.get++;
@@ -387,7 +387,7 @@ void SymGet( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
 
 void SymReplace( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
 {
-    unsigned    handle = (unsigned)(pointer_uint)sym_handle;
+    unsigned    handle = static_cast<unsigned>(reinterpret_cast<pointer_uint>(sym_handle));
 
     front.csym.SymStats.replace++;
     if( sym_handle == front.cvars.CurFuncHandle ) {
@@ -441,7 +441,7 @@ SYM_HANDLE SymAdd( FrontRun& front, id_hash_idx hash, SYMPTR sym )
         ++front.cvars.LclSymCount;
     }
     NewSym(front);
-    sym->level = (id_level_type)front.cvars.SymLevel;
+    sym->level = static_cast<id_level_type>(front.cvars.SymLevel);
     hsym = SymHash( front, sym, CurrSymHandle( front ) );
     sym->u1.hash = hash;
     /*
@@ -747,7 +747,7 @@ static SYM_HASHPTR GetSymList( FrontRun& front )
         }
         for( hsym = sym_list; hsym != NULL; hsym = next_hsymptr ) {
             next_hsymptr = hsym->next_sym;
-            i = (unsigned)(pointer_uint)hsym->handle / (SYM_PER_BUF * SYM_BUF_PER_SEG);
+            i = static_cast<unsigned>(reinterpret_cast<pointer_uint>(hsym->handle)) / (SYM_PER_BUF * SYM_BUF_PER_SEG);
             hsym->next_sym = sym_seglist[i];
             sym_seglist[i] = hsym;
         }
@@ -760,7 +760,7 @@ static SYM_HASHPTR GetSymList( FrontRun& front )
             }
             for( hsym = sym_seglist[i]; hsym != NULL; hsym = next_hsymptr ) {
                 next_hsymptr = hsym->next_sym;
-                j = ((unsigned)(pointer_uint)hsym->handle / SYM_PER_BUF) % SYM_BUF_PER_SEG;
+                j = (static_cast<unsigned>(reinterpret_cast<pointer_uint>(hsym->handle)) / SYM_PER_BUF) % SYM_BUF_PER_SEG;
                 hsym->next_sym = sym_buflist[j];
                 sym_buflist[j] = hsym;
                 if( sym_buftail[j] == NULL ) {
@@ -923,7 +923,7 @@ LABELPTR LkLabel( FrontRun& front, const char *name )
             return( label );
         }
     }
-    label = (LABELPTR)CMemAlloc( front, sizeof( LABELDEFN ) + strlen( name ) );
+    label = static_cast<LABELPTR>(CMemAlloc( front, sizeof( LABELDEFN ) + strlen( name ) ));
     if( label != NULL ) {
         label->next_label = front.cvars.LabelHead;
         front.cvars.LabelHead = label;
@@ -976,7 +976,7 @@ XREFPTR NewXref( FrontRun& front, XREFPTR next_xref )
 {
     XREFPTR     xref;
 
-    xref = (XREFPTR)CMemAlloc( front, sizeof( XREF_ENTRY ) );
+    xref = static_cast<XREFPTR>(CMemAlloc( front, sizeof( XREF_ENTRY ) ));
     xref->next_xref = next_xref;
     xref->src_loc = front.cvars.TokenLoc;
     return( xref );

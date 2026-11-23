@@ -306,9 +306,9 @@ enum {
  * defined. Otherwise, section numbers have the following meanings:
  */
 enum {
-    COFF_IMAGE_SYM_UNDEFINED         = (signed_16)0,  // Symbol is undefined or is common.
-    COFF_IMAGE_SYM_ABSOLUTE          = (signed_16)-1, // Symbol is an absolute value.
-    COFF_IMAGE_SYM_DEBUG             = (signed_16)-2  // Symbol is a special debug item.
+    COFF_IMAGE_SYM_UNDEFINED         = static_cast<signed_16>(0),  // Symbol is undefined or is common.
+    COFF_IMAGE_SYM_ABSOLUTE          = static_cast<signed_16>(-1), // Symbol is an absolute value.
+    COFF_IMAGE_SYM_DEBUG             = static_cast<signed_16>(-2)  // Symbol is a special debug item.
 };
 
 /*

@@ -47,9 +47,9 @@
 #include "dwhandle.h"
 
 
-inline unsigned char GetFlagPtrType( dw_flags f ) { return ((uint_8)(((f) & DW_FLAG_PTR_TYPE_MASK) >> DW_FLAG_PTR_TYPE_SHIFT)); }
-inline unsigned char GetFlagInline( dw_flags f ) { return ((uint_8)(((f) & DW_FLAG_INLINE_MASK) >> DW_FLAG_INLINE_SHIFT)); }
-inline unsigned char GetFlagVirtual( dw_flags f ) { return ((uint_8)(((f) & DW_FLAG_VIRTUAL_MASK) >> DW_FLAG_VIRTUAL_SHIFT)); }
+inline unsigned char GetFlagPtrType( dw_flags f ) { return (static_cast<uint_8>(((f) & DW_FLAG_PTR_TYPE_MASK) >> DW_FLAG_PTR_TYPE_SHIFT)); }
+inline unsigned char GetFlagInline( dw_flags f ) { return (static_cast<uint_8>(((f) & DW_FLAG_INLINE_MASK) >> DW_FLAG_INLINE_SHIFT)); }
+inline unsigned char GetFlagVirtual( dw_flags f ) { return (static_cast<uint_8>(((f) & DW_FLAG_VIRTUAL_MASK) >> DW_FLAG_VIRTUAL_SHIFT)); }
 
 
 struct handles_private {

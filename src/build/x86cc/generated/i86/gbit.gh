@@ -21,10 +21,10 @@ inline bool GBitEmpty( const global_bit_set &set ) { return ( (set)._0 == 0 && (
 
 inline void GBitSet( global_bit_set &dst, a_bit_set a, a_bit_set b, a_bit_set c, a_bit_set d )
 {
-    (dst)._0 = (a_bit_set)a;
-    (dst)._1 = (a_bit_set)b;
-    (dst)._2 = (a_bit_set)c;
-    (dst)._3 = (a_bit_set)d;
+    (dst)._0 = a;
+    (dst)._1 = b;
+    (dst)._2 = c;
+    (dst)._3 = d;
 }
 
 inline void GBitFirst( global_bit_set &set ) { GBitSet( set, 1, 0, 0, 0 ); }

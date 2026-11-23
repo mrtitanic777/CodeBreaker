@@ -209,27 +209,27 @@ inline unsigned long SwapBytes32( unsigned long w )
     return ( (((w) & 0x000000FFUL) << 24) | (((w) & 0x0000FF00UL) << 8) | (((w) & 0x00FF0000UL) >> 8) | (((w) & 0xFF000000UL) >> 24) );
 }
 template <class T>
-inline T& MemAs( void *p ) { return *(T *)p; }
+inline T& MemAs( void *p ) { return *static_cast<T *>(p); }
 inline void PutLeU16( void *p, uint_16 w ) { MemAs<uint_16>( p ) = w; }
 inline void PutLeU32( void *p, uint_32 w ) { MemAs<uint_32>( p ) = w; }
 inline void PutBeU16( void *p, uint_16 w ) { MemAs<uint_16>( p ) = SwapBytes16( w ); }
 inline void PutBeU32( void *p, uint_32 w ) { MemAs<uint_32>( p ) = SwapBytes32( w ); }
-inline unsigned char &U8At0( void *x ) { return (((uint_8*)(x))[0]); }
-inline unsigned char &U8At1( void *x ) { return (((uint_8*)(x))[1]); }
-inline unsigned char &U8At2( void *x ) { return (((uint_8*)(x))[2]); }
-inline unsigned char &U8At3( void *x ) { return (((uint_8*)(x))[3]); }
-inline unsigned char U16Byte0( uint_16 x ) { return ((uint_8)(uint_16)(x)); }
-inline unsigned char U16Byte1( uint_16 x ) { return ((uint_8)(((uint_16)(x)) >> 8)); }
-inline unsigned char U32Byte0( uint_32 x ) { return ((uint_8)(uint_32)(x)); }
-inline unsigned char U32Byte1( uint_32 x ) { return ((uint_8)(((uint_32)(x)) >> 8)); }
-inline unsigned char U32Byte2( uint_32 x ) { return ((uint_8)(((uint_32)(x)) >> 16)); }
-inline unsigned char U32Byte3( uint_32 x ) { return ((uint_8)(((uint_32)(x)) >> 24)); }
-inline unsigned short U16Place0( unsigned char x ) { return ((uint_16)(x)); }
-inline int U16Place1( unsigned char x ) { return (((uint_16)(x)) << 8); }
-inline unsigned int U32Place0( unsigned char x ) { return ((uint_32)(x)); }
-inline unsigned int U32Place1( unsigned char x ) { return (((uint_32)(x)) << 8); }
-inline unsigned int U32Place2( unsigned char x ) { return (((uint_32)(x)) << 16); }
-inline unsigned int U32Place3( unsigned char x ) { return (((uint_32)(x)) << 24); }
+inline unsigned char &U8At0( void *x ) { return ((static_cast<uint_8*>(x))[0]); }
+inline unsigned char &U8At1( void *x ) { return ((static_cast<uint_8*>(x))[1]); }
+inline unsigned char &U8At2( void *x ) { return ((static_cast<uint_8*>(x))[2]); }
+inline unsigned char &U8At3( void *x ) { return ((static_cast<uint_8*>(x))[3]); }
+inline unsigned char U16Byte0( uint_16 x ) { return (static_cast<uint_8>((x))); }
+inline unsigned char U16Byte1( uint_16 x ) { return (static_cast<uint_8>(((x)) >> 8)); }
+inline unsigned char U32Byte0( uint_32 x ) { return (static_cast<uint_8>((x))); }
+inline unsigned char U32Byte1( uint_32 x ) { return (static_cast<uint_8>(((x)) >> 8)); }
+inline unsigned char U32Byte2( uint_32 x ) { return (static_cast<uint_8>(((x)) >> 16)); }
+inline unsigned char U32Byte3( uint_32 x ) { return (static_cast<uint_8>(((x)) >> 24)); }
+inline unsigned short U16Place0( unsigned char x ) { return (static_cast<uint_16>(x)); }
+inline int U16Place1( unsigned char x ) { return ((static_cast<uint_16>(x)) << 8); }
+inline unsigned int U32Place0( unsigned char x ) { return (static_cast<uint_32>(x)); }
+inline unsigned int U32Place1( unsigned char x ) { return ((static_cast<uint_32>(x)) << 8); }
+inline unsigned int U32Place2( unsigned char x ) { return ((static_cast<uint_32>(x)) << 16); }
+inline unsigned int U32Place3( unsigned char x ) { return ((static_cast<uint_32>(x)) << 24); }
 inline int GetU16Unaligned( void *p ) { return ( U16Place0(U8At0((p))) | U16Place1(U8At1((p))) ); }
 inline unsigned int GetU32Unaligned( void *p )
 {

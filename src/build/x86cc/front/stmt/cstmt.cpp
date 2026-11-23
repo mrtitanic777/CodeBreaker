@@ -149,7 +149,7 @@ static void AddSymList( FrontRun& front, SYM_HANDLE sym_handle )
 {
     SYM_LIST_HEADS   *symlisthead;
 
-    symlisthead = (SYM_LIST_HEADS *)CMemAlloc( front, sizeof( SYM_LIST_HEADS ) );
+    symlisthead = static_cast<SYM_LIST_HEADS *>(CMemAlloc( front, sizeof( SYM_LIST_HEADS ) ));
     symlisthead->next = front.cvars.SymListHeads;
     symlisthead->sym_head = sym_handle;
     front.cvars.SymListHeads = symlisthead;
@@ -477,7 +477,7 @@ static void StartNewBlock( FrontRun& front )
 {
     BLOCKPTR    block;
 
-    block = (BLOCKPTR)CMemAlloc( front, sizeof( BLOCKDEFN ) );
+    block = static_cast<BLOCKPTR>(CMemAlloc( front, sizeof( BLOCKDEFN ) ));
     block->block_type = front.cvars.CurToken;
     block->top_label = 0;
     block->continue_label = 0;
@@ -779,7 +779,7 @@ static void AddCaseLabel( FrontRun& front, signed_64 value )
         sprintf( buffer, "%lld", value.u._64[0] );
         CErr2p( front, ERR_DUPLICATE_CASE_VALUE, buffer );
     } else {
-        new_ce = (CASEPTR)CMemAlloc( front, sizeof( CASEDEFN ) );
+        new_ce = static_cast<CASEPTR>(CMemAlloc( front, sizeof( CASEDEFN ) ));
         new_ce->value = converted_value;
         if( prev_ce == NULL ) {
             new_ce->next_case = front.cstmt.SwitchStack->case_list;
@@ -973,7 +973,7 @@ static void SwitchStmt( FrontRun& front )
 
     StartNewBlock(front);
     NextToken(front);
-    sw = (SWITCHPTR)CMemAlloc( front, sizeof( SWITCHDEFN ) );
+    sw = static_cast<SWITCHPTR>(CMemAlloc( front, sizeof( SWITCHDEFN ) ));
     sw->prev_switch = front.cstmt.SwitchStack;
     Set64Val1m( sw->low_value );
     Set64ValZero( sw->high_value );

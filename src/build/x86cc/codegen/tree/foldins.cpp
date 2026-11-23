@@ -138,7 +138,7 @@ static  instruction *CmpRelocZero( BackRun& back, instruction *ins, opcnt c, opc
         return( NULL );
     rel = ins->operands[r];
     if( rel->c.const_type == CONS_OFFSET
-      && !AskSegIsNear( back, (segment_id)rel->c.lo.u.int_value ) )
+      && !AskSegIsNear( back, static_cast<segment_id>(rel->c.lo.u.int_value) ) )
         return( NULL );
     switch( ins->head.opcode ) {
     case OP_BIT_TEST_FALSE:
@@ -271,7 +271,7 @@ static  instruction    *FoldAbsolute( BackRun& back, instruction *ins ) {
             return( NULL );
         /* fall through */
     case OP_ROUND:
-        fold = FoldCnvRnd( back, (cg_op)ins->head.opcode, static_cast<tn>(left), tipe );
+        fold = FoldCnvRnd( back, static_cast<cg_op>(ins->head.opcode), static_cast<tn>(left), tipe );
         break;
     case OP_CMP_EQUAL:
     case OP_CMP_NOT_EQUAL:
@@ -280,7 +280,7 @@ static  instruction    *FoldAbsolute( BackRun& back, instruction *ins ) {
     case OP_CMP_LESS:
     case OP_CMP_GREATER_EQUAL:
         if( ActiveCompare( ins ) ) {
-            fold = FoldCompare( back, (cg_op)ins->head.opcode, static_cast<tn>(left), static_cast<tn>(rite), tipe );
+            fold = FoldCompare( back, static_cast<cg_op>(ins->head.opcode), static_cast<tn>(left), static_cast<tn>(rite), tipe );
             if( fold != NULL ) {
                 return( StraightLine( back, ins, fold, true ) );
             }

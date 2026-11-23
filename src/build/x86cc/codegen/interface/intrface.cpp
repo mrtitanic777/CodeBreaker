@@ -131,7 +131,7 @@ cg_init_info _CGAPI     BEInitCg( BackRun& back, cg_switches switches,
 {
     cg_init_info        cg_info;
 
-    back.data.OptForSize = (byte)optsize;
+    back.data.OptForSize = static_cast<byte>(optsize);
     back.model.CGProcessorVersion = proc; /* so CPULevel works */
 #if _TARGET & _TARG_8086
     /* if it ain't a 386 or better, FS and GS aren't there */
@@ -342,10 +342,10 @@ name * cg_internal LkAddBackUserTemp( BackRun& back, cg_sym_handle sym, name *te
 {
     back_handle bck;
 
-    back.intrface->NewBackReturn = ToFakeBack( (back_handle)temp );
+    back.intrface->NewBackReturn = ToFakeBack( reinterpret_cast<back_handle>(temp) );
     bck = FEBack( *back.front, sym );
     back.intrface->NewBackReturn = NULL;
-    return( (name *)ToRealBack( bck ) );
+    return( reinterpret_cast<name *>(ToRealBack( bck )) );
 }
 
 name * cg_internal SymBackUserTemp( BackRun& back, cg_sym_handle sym )
@@ -354,7 +354,7 @@ name * cg_internal SymBackUserTemp( BackRun& back, cg_sym_handle sym )
     back_handle bck;
 
     bck = FEBack( *back.front, sym );
-    return( (name *)ToRealBack( bck ) );
+    return( reinterpret_cast<name *>(ToRealBack( bck )) );
 }
 
 static void AllocMoreBckInfo( BackRun& back )
@@ -423,7 +423,7 @@ void _CGAPI     BEFreeBack( BackRun& back, back_handle bck )
 //        CGFree( bck );
         uback_info      *p;
 
-        p = (uback_info *)bck;
+        p = reinterpret_cast<uback_info *>(bck);
         p->u.link = back.intrface->BckInfoHead;
         back.intrface->BckInfoHead = p;
     }
@@ -592,13 +592,13 @@ cg_name _CGAPI CGTempName( BackRun& back, temp_handle temp, cg_type tipe )
 {
     /* unused parameters */ (void)tipe;
 
-    return( TGLeaf( back, BGTempName( back, (name *)temp, TypeAddress( back, TY_POINTER ) ) ) );
+    return( TGLeaf( back, BGTempName( back, reinterpret_cast<name *>(temp), TypeAddress( back, TY_POINTER ) ) ) );
 }
 
 temp_handle _CGAPI      CGTemp( BackRun& back, cg_type tipe )
 /********************************************/
 {
-    return( (temp_handle)BGGlobalTemp( back, TypeAddress( back, tipe ) ) );
+    return( reinterpret_cast<temp_handle>(BGGlobalTemp( back, TypeAddress( back, tipe ) )) );
 }
 
 /**/
@@ -1062,15 +1062,15 @@ label_handle cg_internal AskForSymLabel( BackRun& back, pointer hdl, cg_class cl
     case CG_FE:
         return( FEBack( *back.front, static_cast<cg_sym_handle>(hdl) )->lbl );
     case CG_LBL:
-        return( (label_handle)hdl );
+        return( static_cast<label_handle>(hdl) );
     case CG_CLB:
-        return( (label_handle)hdl );
+        return( static_cast<label_handle>(hdl) );
     case CG_BACK:
-        return( ((back_handle)hdl)->lbl );
+        return( (static_cast<back_handle>(hdl))->lbl );
     case CG_TBL:
-        return( ((tbl_control*)hdl)->lbl );
+        return( (static_cast<tbl_control*>(hdl))->lbl );
     case CG_VTB:
-        return( ((tbl_control*)hdl)->value_lbl );
+        return( (static_cast<tbl_control*>(hdl))->value_lbl );
     default:
         Zoiks( back, ZOIKS_130 );
         return( NULL );

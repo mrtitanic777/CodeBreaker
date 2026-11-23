@@ -541,7 +541,7 @@ static bool FCB_Alloc( FrontRun& front, FILE *fp, const char *filename, src_file
     FNAMEPTR        flist;
 
     --front.cgetch.IncFileDepth;
-    fcb = (FCB *)CMemAlloc( front, sizeof( FCB ) );
+    fcb = static_cast<FCB *>(CMemAlloc( front, sizeof( FCB ) ));
     src_buffer = static_cast<unsigned char *>(FEmalloc( front, SRC_BUF_SIZE + 3 ));
     if( fcb != NULL ) {
         src_buffer[0] = '\n';

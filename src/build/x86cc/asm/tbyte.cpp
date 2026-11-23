@@ -151,8 +151,8 @@ static int add_check_u96_overflow( u96 *x, unsigned int c)
     } else {
         cy = c;
         for( i = 0; i < 3; i++ ) {
-            cy += (u64)x->m32[i] * 10;
-            x->m32[i] = (u32)cy;
+            cy += static_cast<u64>(x->m32[i]) * 10;
+            x->m32[i] = static_cast<u32>(cy);
             cy >>= 32;
         }
         return 0;
@@ -212,7 +212,7 @@ static int U96LD(u96 *op, ELD *res)
     if( bs == 0 ) {
         res->e = 0;
     } else {
-        res->e = (unsigned short)( bs - 1 + EXPONENT_BIAS );
+        res->e = static_cast<unsigned short>( bs - 1 + EXPONENT_BIAS );
         bs %= 32;
         if( bs ) {
             shft = 32 - bs;
@@ -272,16 +272,16 @@ static int add192(u192 *res, u64 x, int pos)
     u64 cy;
     int i;
 
-    cy = (u32)x;
+    cy = static_cast<u32>(x);
     for( i = pos; i < 6; i++ ) {
         cy += res->m32[i];
-        res->m32[i] = (u32)cy;
+        res->m32[i] = static_cast<u32>(cy);
         cy >>= 32;
     }
     cy = x >> 32;
     for( i = pos + 1; i < 6; i++ ) {
         cy += res->m32[i];
-        res->m32[i] = (u32)cy;
+        res->m32[i] = static_cast<u32>(cy);
         cy >>= 32;
     }
     return 0;
@@ -297,21 +297,21 @@ static int multiply(ELD *op1, ELD *op2, ELD *res)
     u192 r1;
     long exp;
 
-    exp = (long)(op1->e & 0x7fff) + (long)(op2->e & 0x7fff) - EXPONENT_BIAS + 1;
-    r1.m64[0] = (u64)(op1->m32[0]) * (u64)(op2->m32[0]);
-    r1.m64[1] = (u64)(op1->m32[1]) * (u64)(op2->m32[1]);
-    r1.m64[2] = (u64)(op1->m32[2]) * (u64)(op2->m32[2]);
-    x1 = (u64)(op1->m32[1]) * (u64)(op2->m32[0]);
+    exp = static_cast<long>(op1->e & 0x7fff) + static_cast<long>(op2->e & 0x7fff) - EXPONENT_BIAS + 1;
+    r1.m64[0] = static_cast<u64>(op1->m32[0]) * static_cast<u64>(op2->m32[0]);
+    r1.m64[1] = static_cast<u64>(op1->m32[1]) * static_cast<u64>(op2->m32[1]);
+    r1.m64[2] = static_cast<u64>(op1->m32[2]) * static_cast<u64>(op2->m32[2]);
+    x1 = static_cast<u64>(op1->m32[1]) * static_cast<u64>(op2->m32[0]);
     add192(&r1, x1, 1);
-    x1 = (u64)(op1->m32[0]) * (u64)(op2->m32[1]);
+    x1 = static_cast<u64>(op1->m32[0]) * static_cast<u64>(op2->m32[1]);
     add192(&r1, x1, 1);
-    x1 = (u64)(op1->m32[0]) * (u64)(op2->m32[2]);
+    x1 = static_cast<u64>(op1->m32[0]) * static_cast<u64>(op2->m32[2]);
     add192(&r1, x1, 2);
-    x1 = (u64)(op1->m32[2]) * (u64)(op2->m32[0]);
+    x1 = static_cast<u64>(op1->m32[2]) * static_cast<u64>(op2->m32[0]);
     add192(&r1, x1, 2);
-    x1 = (u64)(op1->m32[1]) * (u64)(op2->m32[2]);
+    x1 = static_cast<u64>(op1->m32[1]) * static_cast<u64>(op2->m32[2]);
     add192(&r1, x1, 3);
-    x1 = (u64)(op1->m32[2]) * (u64)(op2->m32[1]);
+    x1 = static_cast<u64>(op1->m32[2]) * static_cast<u64>(op2->m32[1]);
     add192(&r1, x1, 3);
     exp += normalize(&r1);
     // round result
@@ -329,7 +329,7 @@ static int multiply(ELD *op1, ELD *op2, ELD *res)
     res->m32[0] = r1.m32[3];
     res->m32[1] = r1.m32[4];
     res->m32[2] = r1.m32[5];
-    res->e = (unsigned short)exp;
+    res->e = static_cast<unsigned short>(exp);
     return 0;
 }
 
@@ -361,7 +361,7 @@ static int TB_create(AsmRun& assembler, u96 *value, long exponent, TB_LD *ld)
         // exponent overflow
     }
     ld->e = res.e;
-    ld->m = res.m32[1] + ((u64)res.m32[2] << 32) ;
+    ld->m = res.m32[1] + (static_cast<u64>(res.m32[2]) << 32) ;
     // round result
     if(res.m32[0] & 0x80000000U) {
         if( ld->m == 0xffffffffffffffffULL ) {
@@ -411,7 +411,7 @@ TB_LD * strtotb( AsmRun& assembler, const char *p, TB_LD * ld, bool negative )
     exp1 = 0;
     exponent_tmp = 0;
     overflow = 0;
-    while ( (unsigned int)(*p - '0') < 10u ) {
+    while ( static_cast<unsigned int>(*p - '0') < 10u ) {
         if( overflow ) {
             exponent_tmp++;
             exp1++;
@@ -432,7 +432,7 @@ TB_LD * strtotb( AsmRun& assembler, const char *p, TB_LD * ld, bool negative )
     exponent = exp1;
     if ( *p == '.' ) {
         p++;
-        while ( (unsigned int)(*p - '0') < 10u ) {
+        while ( static_cast<unsigned int>(*p - '0') < 10u ) {
             if( overflow == 0 ) {
                 if( add_check_u96_overflow(&value_tmp, *p - '0') ) {
                     overflow = 1;
@@ -472,7 +472,7 @@ TB_LD * strtotb( AsmRun& assembler, const char *p, TB_LD * ld, bool negative )
             SetSign(ld, sign);
             return ld;
         }
-        while ( (unsigned int)(*p - '0') < 10u )
+        while ( static_cast<unsigned int>(*p - '0') < 10u )
             exp_value = 10 * exp_value + (*p++ - '0');
         if( exp_sign < 0 ) {
             exp_value = -exp_value;

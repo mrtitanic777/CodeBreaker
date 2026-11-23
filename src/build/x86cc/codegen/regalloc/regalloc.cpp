@@ -362,7 +362,7 @@ static  void    BitOff( conflict_node *conf )
         while( ins != last ) {
             if( ins->head.opcode == OP_BLOCK ) {
                 blk = blk->next_block;
-                ins = (instruction *)&blk->ins;
+                ins = reinterpret_cast<instruction *>(&blk->ins);
             }
             ins = ins->head.next;
             GBitTurnOff( ins->head.live.out_of_block, conf->id.out_of_block );
@@ -840,7 +840,7 @@ static  void    NeighboursUse( BackRun& back, conflict_node *conf )
                     break;
                 }
                 blk = blk->next_block;
-                ins = (instruction *)&blk->ins;
+                ins = reinterpret_cast<instruction *>(&blk->ins);
                 NameSetInit( no_conflict );
             }
             if( ins->id == last->id ) {
@@ -1047,7 +1047,7 @@ static  void    PutInMemory( BackRun& back, conflict_node *conf )
                     break;
                 }
                 blk = blk->next_block;
-                ins = (instruction *)&blk->ins;
+                ins = reinterpret_cast<instruction *>(&blk->ins);
             }
             ins = ins->head.next;
             GBitTurnOff( ins->head.live.out_of_block, conf->id.out_of_block );
@@ -1149,7 +1149,7 @@ static bool         ConfBefore( BackRun& back, void *c1, void *c2 )
     used by SortConflicts
 */
 {
-    return( ((conflict_node *)c1)->savings > ((conflict_node *)c2)->savings );
+    return( (static_cast<conflict_node *>(c1))->savings > (static_cast<conflict_node *>(c2))->savings );
 }
 
 

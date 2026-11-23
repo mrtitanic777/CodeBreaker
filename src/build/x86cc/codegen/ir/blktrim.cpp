@@ -145,7 +145,7 @@ void    RemoveBlock( BackRun& back, block *blk )
     last_line = blk->ins.head.line_num;
     for( ;; ) {
         next_ins = blk->ins.head.next;
-        if( next_ins == (instruction *)&blk->ins )
+        if( next_ins == reinterpret_cast<instruction *>(&blk->ins) )
             break;
         if( next_ins->head.line_num != 0 ) {
             last_line = next_ins->head.line_num;
@@ -322,19 +322,19 @@ static  void    JoinBlocks( BackRun& back, block *jump, block *target )
         }
     }
 
-    if( jump->ins.head.next != (instruction *)&jump->ins ) {
+    if( jump->ins.head.next != reinterpret_cast<instruction *>(&jump->ins) ) {
         if( line_num != 0 ) {
             jump->ins.head.prev->head.line_num = line_num;
         }
         jump->ins.head.prev->head.next = target->ins.head.next;
         target->ins.head.next->head.prev = jump->ins.head.prev;
         target->ins.head.next = jump->ins.head.next;
-        target->ins.head.next->head.prev = (instruction *)&target->ins;
+        target->ins.head.next->head.prev = reinterpret_cast<instruction *>(&target->ins);
         /*
          * so RemoveBlock won't free the instr list
          */
-        jump->ins.head.next = (instruction *)&jump->ins;
-        jump->ins.head.prev = (instruction *)&jump->ins;
+        jump->ins.head.next = reinterpret_cast<instruction *>(&jump->ins);
+        jump->ins.head.prev = reinterpret_cast<instruction *>(&jump->ins);
     }
 
     jump->inputs = 0;

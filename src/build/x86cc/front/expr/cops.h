@@ -126,8 +126,8 @@ typedef struct floatval {
 } FLOATVAL;
 
 typedef short           tryindex_t;
-#define TRYSCOPE_UNDEF  ((tryindex_t)-2)
-#define TRYSCOPE_NONE   ((tryindex_t)-1)
+#define TRYSCOPE_UNDEF  (static_cast<tryindex_t>(-2))
+#define TRYSCOPE_NONE   (static_cast<tryindex_t>(-1))
 
 struct expr_node;
 

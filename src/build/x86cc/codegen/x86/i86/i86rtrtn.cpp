@@ -576,19 +576,19 @@ pointer BEAuxInfo( BackRun& back, pointer hdl, aux_class request )
     case FEINF_AUX_LOOKUP:
         switch( FindRTLabel( back, static_cast<label_handle>(hdl) ) ) {
         case RT_SCAN1:
-            return( (pointer)&back.i86rtrtn->Scn1 );
+            return( const_cast<pointer>(static_cast<const void *>(&back.i86rtrtn->Scn1)) );
         case RT_SCAN2:
-            return( (pointer)&back.i86rtrtn->Scn2 );
+            return( const_cast<pointer>(static_cast<const void *>(&back.i86rtrtn->Scn2)) );
         case RT_SCAN4:
-            return( (pointer)&back.i86rtrtn->Scn4 );
+            return( const_cast<pointer>(static_cast<const void *>(&back.i86rtrtn->Scn4)) );
         default:
             break;
         }
         break;
     case FEINF_CALL_CLASS:
-        return( (pointer)FECALL_GEN_NONE );
+        return( reinterpret_cast<pointer>(FECALL_GEN_NONE) );
     case FEINF_CALL_CLASS_TARGET:
-        return( (pointer)FECALL_X86_NONE );
+        return( reinterpret_cast<pointer>(FECALL_X86_NONE) );
     case FEINF_CALL_BYTES:
         return( hdl );
     default:

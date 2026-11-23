@@ -117,5 +117,5 @@ void FatalError( BackRun& back, const char *str )
      ReleTimer(back);
      BrkFini(back);
      ScratchObj(back);
-     FEMessage( *back.front, FEMSG_FATAL, (pointer)str );
+     FEMessage( *back.front, FEMSG_FATAL, const_cast<pointer>(static_cast<const void *>(str)) );
 }

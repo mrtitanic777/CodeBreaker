@@ -78,7 +78,7 @@ hw_reg_set      CalcSegment( BackRun& back, cg_sym_handle sym, cg_class class_ )
         attr = static_cast<fe_attr>(EMPTY);
     }
     segid = AskSegID( back, sym, class_ );
-    reg = static_cast<hw_reg_set *>(FEAuxInfo( *back.front, (pointer)(pointer_uint)segid, FEINF_PEGGED_REGISTER ));
+    reg = static_cast<hw_reg_set *>(FEAuxInfo( *back.front, reinterpret_cast<pointer>(static_cast<pointer_uint>(segid)), FEINF_PEGGED_REGISTER ));
     if( reg != NULL && !HW_CEqual( *reg, HW_EMPTY ) ) {
         if( HW_COvlap( *reg, HW_SEGS ) )
             return( *reg );
@@ -245,7 +245,7 @@ cg_type NamePtrType( BackRun& back, name *op ) {
             if( AskNameIsCode( back, sym, op->m.memory_type ) ) {
                 if( op->m.memory_type == CG_FE ) {
                     if( FEAttr( *back.front, sym ) & FE_PROC ) {
-                        if( (call_class_target)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL )
+                        if( static_cast<call_class_target>(reinterpret_cast<pointer_uint>(FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ))) & FECALL_X86_FAR_CALL )
                             return( TY_LONG_CODE_PTR );
                         return( TY_NEAR_CODE_PTR );
                     } else {

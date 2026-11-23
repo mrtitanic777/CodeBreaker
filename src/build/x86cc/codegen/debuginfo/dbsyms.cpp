@@ -499,7 +499,7 @@ static  void    AddBlockInfo( BackRun& back, dbg_block *blk, bool start )
     ins->flags.u.nop_flags = NOP_DBGINFO;
     if( start )
         ins->flags.u.nop_flags |= NOP_DBGINFO_START;
-    ins->operands[0] = (name *)blk;
+    ins->operands[0] = reinterpret_cast<name *>(blk);
     AddIns( back, ins );
 }
 

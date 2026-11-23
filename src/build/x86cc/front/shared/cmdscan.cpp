@@ -71,7 +71,7 @@ char const *CmdScanAddr(        // RETURN COMMAND-LINE SCAN ADDRESS
 int CmdScanChar(                // SCAN THE NEXT CHARACTER
     FrontRun& front )
 {
-    return( *(unsigned char *)front.cmdscan.cmd.curr_ptr++ );
+    return( *reinterpret_cast<const unsigned char *>(front.cmdscan.cmd.curr_ptr++) );
 }
 
 
@@ -87,7 +87,7 @@ bool CmdScanSwEnd(              // TEST IF END OF SWITCH
 {
     int c;                     // - current character
 
-    c = *(unsigned char *)front.cmdscan.cmd.curr_ptr;
+    c = *reinterpret_cast<const unsigned char *>(front.cmdscan.cmd.curr_ptr);
     if( c == '\0' ) {
         return( true );
     }
@@ -212,9 +212,9 @@ size_t CmdScanQuotedString(     // SCAN AN OPTION
     int c;
     int quote;
 
-    quote = *(unsigned char *)front.cmdscan.cmd.curr_ptr++;
+    quote = *reinterpret_cast<const unsigned char *>(front.cmdscan.cmd.curr_ptr++);
     *option = str_beg = front.cmdscan.cmd.curr_ptr;
-    while( (c = *(unsigned char *)front.cmdscan.cmd.curr_ptr) != '\0' ) {
+    while( (c = *reinterpret_cast<const unsigned char *>(front.cmdscan.cmd.curr_ptr)) != '\0' ) {
         front.cmdscan.cmd.curr_ptr++;
         if( c == quote ) {
             str_beg++;
@@ -222,7 +222,7 @@ size_t CmdScanQuotedString(     // SCAN AN OPTION
         }
         // '"\\"' means '\', not '\"'
         if( c == '\\' ) {
-            c = *(unsigned char *)front.cmdscan.cmd.curr_ptr;
+            c = *reinterpret_cast<const unsigned char *>(front.cmdscan.cmd.curr_ptr);
             if( c == '\\' || c == '"' ) {
                 front.cmdscan.cmd.curr_ptr++;
             }
@@ -264,9 +264,9 @@ size_t CmdScanNumber(           // SCAN A NUMBER
 
     value = 0;
     str_beg = front.cmdscan.cmd.curr_ptr;
-    for( ; isdigit( *(unsigned char *)front.cmdscan.cmd.curr_ptr ); front.cmdscan.cmd.curr_ptr++ ) {
+    for( ; isdigit( *reinterpret_cast<const unsigned char *>(front.cmdscan.cmd.curr_ptr) ); front.cmdscan.cmd.curr_ptr++ ) {
         value *= 10;
-        value += *(unsigned char *)front.cmdscan.cmd.curr_ptr - '0';
+        value += *reinterpret_cast<const unsigned char *>(front.cmdscan.cmd.curr_ptr) - '0';
     }
     *pvalue = value;
     return( front.cmdscan.cmd.curr_ptr - str_beg );
@@ -279,7 +279,7 @@ size_t CmdScanId(               // SCAN AN IDENTIFIER
     char const *str_beg;        // - start of string
 
     *option = str_beg = front.cmdscan.cmd.curr_ptr;
-    while( isalnum( *(unsigned char *)front.cmdscan.cmd.curr_ptr ) || *(unsigned char *)front.cmdscan.cmd.curr_ptr == '_' ) {
+    while( isalnum( *reinterpret_cast<const unsigned char *>(front.cmdscan.cmd.curr_ptr) ) || *reinterpret_cast<const unsigned char *>(front.cmdscan.cmd.curr_ptr) == '_' ) {
         front.cmdscan.cmd.curr_ptr++;
     }
     return( front.cmdscan.cmd.curr_ptr - str_beg );
@@ -302,7 +302,7 @@ size_t CmdScanFilename(         // SCAN A FILE NAME
         *quoted = true;
         return( CmdScanQuotedString( front, option ) );
     } else {
-        for( ; (c = *(unsigned char *)front.cmdscan.cmd.curr_ptr) != '\0'; front.cmdscan.cmd.curr_ptr++ ) {
+        for( ; (c = *reinterpret_cast<const unsigned char *>(front.cmdscan.cmd.curr_ptr)) != '\0'; front.cmdscan.cmd.curr_ptr++ ) {
             if( isspace( c ) ) {
                 break;
             }
@@ -316,7 +316,7 @@ size_t CmdScanFilename(         // SCAN A FILE NAME
 void CmdScanSkipWhiteSpace(     // SKIP OVER WHITE SPACES
     FrontRun& front )
 {
-    while( isspace( *(unsigned char *)front.cmdscan.cmd.curr_ptr ) ) {
+    while( isspace( *reinterpret_cast<const unsigned char *>(front.cmdscan.cmd.curr_ptr) ) ) {
         front.cmdscan.cmd.curr_ptr++;
     }
 }

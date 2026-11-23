@@ -82,8 +82,8 @@ typedef enum {
         NOP_ZAP_INFO            = 0x08,
 } nop_flags;
 
-#define FIRST_INS_ID    ((instruction_id)0)
-#define LAST_INS_ID     ((instruction_id)0xFFFF)
+#define FIRST_INS_ID    (0)
+#define LAST_INS_ID     (0xFFFF)
 
 typedef struct name_set {
         hw_reg_set              regs;

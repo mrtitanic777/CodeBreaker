@@ -201,8 +201,8 @@ typedef enum {
     FEMSG_INFO                      /* general informational message (string) */
 } fe_msg;
 
-#define DBG_NIL_TYPE    ((dbg_type)0)
-#define DBG_FWD_TYPE    ((dbg_type)-1)
+#define DBG_NIL_TYPE    (static_cast<dbg_type>(0))
+#define DBG_FWD_TYPE    (static_cast<dbg_type>(-1))
 
 typedef struct  cg_init_info {
     unsigned short    revision;

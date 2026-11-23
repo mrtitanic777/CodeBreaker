@@ -61,5 +61,5 @@ void    Zoiks( BackRun& back, int msg )
         return;
     if( ( msg == ZOIKS_040 ) && ( ++back.zoiks.Zoiks40 < MAX_ZOIKS_40 ) )
         return;
-    FEMessage( *back.front, FEMSG_BACK_END_ERROR, (pointer)(pointer_uint)msg );
+    FEMessage( *back.front, FEMSG_BACK_END_ERROR, reinterpret_cast<pointer>(static_cast<pointer_uint>(msg)) );
 }

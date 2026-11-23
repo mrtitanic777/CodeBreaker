@@ -93,5 +93,5 @@ inline bool LacksVarState( induction *var, ind_var_state bits ) { return (((var)
 inline bool LacksVarState( induction *var, int bits ) { return (((var)->state & (bits) ) == 0); }
 inline void SetVarState( induction *var, ind_var_state bits ) { (var)->state |= (bits); }
 inline void ClrVarState( induction *var, ind_var_state bits ) { (var)->state &= ~(bits); }
-inline bool ChkLoopUsage( name *x, variance b ) { return (((x)->v.block_usage & (var_usage)(b)) != 0); }
-inline var_usage &SetLoopUsage( name *x, int b ) { return ((x)->v.block_usage = (var_usage)(b)); }
+inline bool ChkLoopUsage( name *x, variance b ) { return (((x)->v.block_usage & static_cast<var_usage>(b)) != 0); }
+inline var_usage &SetLoopUsage( name *x, int b ) { return ((x)->v.block_usage = static_cast<var_usage>(b)); }

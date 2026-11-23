@@ -65,7 +65,7 @@ static int (*const codeDispatch[])( FrontRun&, IntlData *, _LocaleItem * ) = {
 
 static int doErrors( FrontRun& front, IntlData *data, _LocaleItem *item )
 {
-    LocaleErrors *errors_item = (LocaleErrors*)item;
+    LocaleErrors *errors_item = reinterpret_cast<LocaleErrors*>(item);
     unsigned count;
     int skip;
     char *p;
@@ -80,7 +80,7 @@ static int doErrors( FrontRun& front, IntlData *data, _LocaleItem *item )
     init = data->errors_text;
     p = errors_item->data;
     for(;;) {
-        skip = *(uint_8*)p;
+        skip = *reinterpret_cast<uint_8*>(p);
         *p++ = '\0';
         if( skip == 0 || skip >= 0x80 ) break;
         *init++ = p;
@@ -95,7 +95,7 @@ static int doErrors( FrontRun& front, IntlData *data, _LocaleItem *item )
 
 static int doUsage( FrontRun& front, IntlData *data, _LocaleItem *item )
 {
-    LocaleUsage *usage_item = (LocaleUsage*)item;
+    LocaleUsage *usage_item = reinterpret_cast<LocaleUsage*>(item);
 
     data->usage_text = usage_item->data;
     return( 0 );
@@ -145,12 +145,12 @@ static IntlData *getData( FrontRun& front, int fh )
     data->errors_count = 0;
     data->errors_text = NULL;
     data->usage_text = NULL;
-    raw_data = (char *)( data + 1 );
-    if( (unsigned)read( fh, raw_data, raw_size ) != raw_size ) {
+    raw_data = reinterpret_cast<char *>( data + 1 );
+    if( static_cast<unsigned>(read( fh, raw_data, raw_size )) != raw_size ) {
         return( data );
     }
     for( i = 0; i < LS_MAX; ++i ) {
-        _LocaleItem *item = static_cast<_LocaleItem *>((void*)( raw_data + intl_header.offset[i] ));
+        _LocaleItem *item = static_cast<_LocaleItem *>(reinterpret_cast<void*>( raw_data + intl_header.offset[i] ));
         if( item->code != i ) {
             return( data );
         }

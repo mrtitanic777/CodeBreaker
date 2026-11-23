@@ -156,7 +156,7 @@ static void calcLineNumSymbolIndices( BackRun& back, owl_file_handle file ) {
             assert( sym->section != NULL );
             assert( sym->section->linenum_buffer != NULL );
             OWLBufferSeek( sym->section->linenum_buffer, sym->x.func->linenum_offset );
-            OWLBufferWrite( back, sym->section->linenum_buffer, (const char *)&sym->index, sizeof( sym->index ) );
+            OWLBufferWrite( back, sym->section->linenum_buffer, reinterpret_cast<const char *>(&sym->index), sizeof( sym->index ) );
         }
     }
 }
@@ -215,7 +215,7 @@ static void emitFileHeader( BackRun& back, owl_file_handle file ) {
     if( file->type == OWL_FILE_EXE || file->type == OWL_FILE_DLL ) {
         header.flags |= COFF_IMAGE_FILE_EXECUTABLE_IMAGE;
     }
-    ClientWrite( back, file, (const char *)&header, sizeof( header ) );
+    ClientWrite( back, file, reinterpret_cast<const char *>(&header), sizeof( header ) );
 }
 
 static void formatSectionName( owl_section_handle section, char *buffer ) {
@@ -332,7 +332,7 @@ static void emitSectionHeaders( BackRun& back, owl_file_handle file ) {
             formatSectionHeader( curr, &section_table[ curr->index ] );
             curr->index = count++;
         }
-        ClientWrite( back, file, (const char *)section_table, section_table_size );
+        ClientWrite( back, file, reinterpret_cast<const char *>(section_table), section_table_size );
         ClientFree( back, file, section_table );
     }
 }
@@ -444,7 +444,7 @@ static void formatSectionSymbol( owl_symbol_info *symbol,
     buffer->type = COFF_IMAGE_SYM_DTYPE_NULL;
     buffer->storage_class = COFF_IMAGE_SYM_CLASS_STATIC;
     buffer->num_aux = 1;
-    aux = (_WCUNALIGNED coff_sym_section *)( buffer + 1 );
+    aux = reinterpret_cast<_WCUNALIGNED coff_sym_section *>( buffer + 1 );
     aux->length = sectionVirtSize( section );
     aux->num_relocs = numRelocs( section );
     aux->num_line_numbers = numLineNums( section );
@@ -497,7 +497,7 @@ static unsigned doFileRecord( BackRun& back, _WCUNALIGNED coff_symbol *buffer,
     num_aux /= sizeof( coff_symbol );
     buffer->num_aux = num_aux;
     buffer += 1;
-    strncpy( ((coff_sym_file *)buffer)->filename, name, num_aux * sizeof( coff_symbol ) );
+    strncpy( (reinterpret_cast<coff_sym_file *>(buffer))->filename, name, num_aux * sizeof( coff_symbol ) );
     return( 1 + num_aux );
 }
 
@@ -527,7 +527,7 @@ static void doBfRecord( BackRun& back, _WCUNALIGNED coff_symbol *buffer,
     buffer->type = COFF_IMAGE_SYM_DTYPE_NULL;
     buffer->storage_class = COFF_IMAGE_SYM_CLASS_FUNCTION;
     buffer->num_aux = 1;
-    aux = (_WCUNALIGNED coff_sym_bfef *)( buffer + 1 );
+    aux = reinterpret_cast<_WCUNALIGNED coff_sym_bfef *>( buffer + 1 );
     aux->linenum = info->first_line;
     aux->next_func = 0;
     if( back.owcoff->lastBf != NULL ) {
@@ -561,7 +561,7 @@ static void doEfRecord( _WCUNALIGNED coff_symbol *buffer,
     buffer->type = COFF_IMAGE_SYM_DTYPE_NULL;
     buffer->storage_class = COFF_IMAGE_SYM_CLASS_FUNCTION;
     buffer->num_aux = 1;
-    aux = (_WCUNALIGNED coff_sym_bfef *)( buffer + 1 );
+    aux = reinterpret_cast<_WCUNALIGNED coff_sym_bfef *>( buffer + 1 );
     aux->linenum = info->last_line;
     aux->next_func = 0;
 }
@@ -586,7 +586,7 @@ static void formatFunctionSymbol( BackRun& back, owl_symbol_info *symbol,
         owl_symbol_index index;
 
         buffer->num_aux = 1;
-        aux = (_WCUNALIGNED coff_sym_func *)( buffer + 1 );
+        aux = reinterpret_cast<_WCUNALIGNED coff_sym_func *>( buffer + 1 );
         index = symbol->index+2;
         aux->bf = index;
         aux->size = info->end - info->start;
@@ -645,7 +645,7 @@ static void formatOneSymbol( BackRun& back, owl_symbol_info *symbol,
             coff_sym_weak    *aux;
 
             buffer->num_aux = 1;
-            aux = (coff_sym_weak *)( buffer + 1 );
+            aux = reinterpret_cast<coff_sym_weak *>( buffer + 1 );
             aux->tag_index = symbol->x.alt_sym->index;
             if( symbol->flags & OWL_SYM_ALIAS ) {
                 aux->characteristics = COFF_IMAGE_WEAK_EXTERN_SEARCH_ALIAS;
@@ -699,7 +699,7 @@ static void emitSymbolTable( BackRun& back, owl_file_handle file ) {
                 count += 1;
             }
         }
-        ClientWrite( back, file, (const char *)symbol_buffer, symbol_table_size );
+        ClientWrite( back, file, reinterpret_cast<const char *>(symbol_buffer), symbol_table_size );
         ClientFree( back, file, symbol_buffer );
     }
 }
@@ -720,7 +720,7 @@ static void prepareStringTable( BackRun& back, owl_file_handle file ) {
 static void emitStringTable( BackRun& back, owl_file_handle file ) {
 //***************************************************
 
-    ClientWrite( back, file, (const char *)file->x.coff.string_table, sizeof( coff_string_table ) + file->x.coff.string_table->size - 5 );
+    ClientWrite( back, file, reinterpret_cast<const char *>(file->x.coff.string_table), sizeof( coff_string_table ) + file->x.coff.string_table->size - 5 );
     ClientFree( back, file, file->x.coff.string_table );
 }
 
@@ -769,7 +769,7 @@ static void emitSectionData( BackRun& back, owl_file_handle file ) {
                 emitReloc( back, file, reloc, next_reloc );
                 next_reloc++;
             }
-            ClientWrite( back, file, (const char *)reloc_buffer, relocs_size );
+            ClientWrite( back, file, reinterpret_cast<const char *>(reloc_buffer), relocs_size );
             ClientFree( back, file, reloc_buffer );
         }
         // now emit linenumbers

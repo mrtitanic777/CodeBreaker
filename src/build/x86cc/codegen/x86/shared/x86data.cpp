@@ -68,7 +68,7 @@ void    DataAlign( BackRun& back, uint_32 align )
     modulus = curr_loc % align;
     if( modulus != 0 ) {
         if( !AskSegIsBlank( back, AskOP(back) ) ) {
-            IterBytes( back, (offset)( align - modulus ), 0 );
+            IterBytes( back, static_cast<offset>( align - modulus ), 0 );
         } else {
             IncLocation( back, align - modulus );
         }
@@ -212,7 +212,7 @@ void    FEPtr( BackRun& back, cg_sym_handle sym, const type_def *tipe, offset pl
     attr = FEAttr( *back.front, sym );
     if( (attr & FE_PROC)
       && IsTargetModel( back, CGSW_X86_WINDOWS )
-      && ((call_class_target)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL) ) {
+      && (static_cast<call_class_target>(reinterpret_cast<pointer_uint>(FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ))) & FECALL_X86_FAR_CALL) ) {
         class_ = F_LDR_OFFSET;
     } else {
         class_ = F_OFFSET;

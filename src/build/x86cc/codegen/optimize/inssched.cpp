@@ -630,7 +630,7 @@ static void *AnnointADag( BackRun& back, data_dag *dag )
         pred = dep->dep;
         pred->anc_count++;
         if( !pred->visited )
-            SafeRecurseCG( back, (func_sr)AnnointADag, pred );
+            SafeRecurseCG( back, reinterpret_cast<func_sr>(AnnointADag), pred );
         if( max_cycle_count < pred->height ) {
             max_cycle_count = pred->height;
         }
@@ -782,7 +782,7 @@ static void FixIndexAdjust( BackRun& back, instruction *adj, bool forward )
     opcnt       i;
     scale_typ   scale_adj;
 
-    bias = (type_length)adj->operands[1]->c.lo.u.int_value;
+    bias = static_cast<type_length>(adj->operands[1]->c.lo.u.int_value);
     if( adj->head.opcode == OP_SUB )
         bias = -bias;
     if( forward )
@@ -891,8 +891,8 @@ static void ScheduleIns( BackRun& back )
     /*
      * so we can dump!
      */
-    back.inssched_file->SBlock->ins.head.next = (instruction *)&back.inssched_file->SBlock->ins;
-    back.inssched_file->SBlock->ins.head.prev = (instruction *)&back.inssched_file->SBlock->ins;
+    back.inssched_file->SBlock->ins.head.next = reinterpret_cast<instruction *>(&back.inssched_file->SBlock->ins);
+    back.inssched_file->SBlock->ins.head.prev = reinterpret_cast<instruction *>(&back.inssched_file->SBlock->ins);
     while( ready != NULL ) {
         /*
          * find best instruction to schedule
@@ -1003,8 +1003,8 @@ static void ScheduleIns( BackRun& back )
     }
     back.inssched_file->SBlock->ins.head.next = top;
     back.inssched_file->SBlock->ins.head.prev = top->head.prev;
-    top->head.prev->head.next = (instruction *)&back.inssched_file->SBlock->ins;
-    top->head.prev = (instruction *)&back.inssched_file->SBlock->ins;
+    top->head.prev->head.next = reinterpret_cast<instruction *>(&back.inssched_file->SBlock->ins);
+    top->head.prev = reinterpret_cast<instruction *>(&back.inssched_file->SBlock->ins);
     /*
      * We have to run backwards through the block, adjusting all
      * the index offsets that were scheduled before their corresponding
@@ -1036,7 +1036,7 @@ static  void    FreeDataDag( BackRun& back )
     back.inssched.DataDag = NULL;
     for( dep = back.inssched_file->CurrDepBlock; dep != NULL; dep = next ) {
         next = dep->next;
-        FrlFreeSize( back, &back.inssched_file->DepFrl, (pointer *)dep, sizeof( dep_list_block ) );
+        FrlFreeSize( back, &back.inssched_file->DepFrl, reinterpret_cast<pointer *>(dep), sizeof( dep_list_block ) );
     }
     back.inssched_file->CurrDepBlock = NULL;
 }

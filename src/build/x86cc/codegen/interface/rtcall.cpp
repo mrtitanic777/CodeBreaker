@@ -103,7 +103,7 @@ instruction     *rMAKECALL( BackRun& back, instruction *ins )
     new_ins->operands[CALL_OP_ADDR] = AllocMemory( back, lbl, 0, CG_LBL, ins->type_class );
     new_ins->result = NULL;
     new_ins->num_operands = 2;         /* special case for OP_CALL*/
-    new_ins->zap = (register_name *)AllocRegName( back, all_regs );   /* all parm regs could be zapped*/
+    new_ins->zap = reinterpret_cast<register_name *>(AllocRegName( back, all_regs ));   /* all parm regs could be zapped*/
     last_ins = new_ins;
     if( ins->result == NULL || OpIsCondition( ins->head.opcode ) ) {
         /* comparison, still need conditional jumps*/
@@ -118,7 +118,7 @@ instruction     *rMAKECALL( BackRun& back, instruction *ins )
         regs = FirstReg( back, info->result );
         tmp = regs;
         HwTurnOn( tmp, new_ins->zap->reg );
-        new_ins->zap = (register_name *)AllocRegName( back, tmp );
+        new_ins->zap = reinterpret_cast<register_name *>(AllocRegName( back, tmp ));
         reg_name = AllocRegName( back, regs );
         new_ins->result = reg_name;
         last_ins = MakeMove( back, reg_name, ins->result, ins->type_class );

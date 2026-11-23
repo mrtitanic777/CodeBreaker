@@ -143,9 +143,9 @@ inline void PPCtlDisableLexErrors( FrontRun& front ) { front.cvars.PPControl |= 
 inline bool IsPPCtlNormal( const FrontRun& front ) { return ( front.cvars.PPControl & ( PPCTL_EOL | PPCTL_NO_EXPAND ) ) == 0; }
 
 template< class Entry >
-inline bool CheckEqSymLevel( const FrontRun& front, const Entry *entry ) { return entry->level == (id_level_type)front.cvars.SymLevel; }
+inline bool CheckEqSymLevel( const FrontRun& front, const Entry *entry ) { return entry->level == static_cast<id_level_type>(front.cvars.SymLevel); }
 template< class Entry >
-inline bool CheckLtSymLevel( const FrontRun& front, const Entry *entry ) { return entry->level < (id_level_type)front.cvars.SymLevel; }
+inline bool CheckLtSymLevel( const FrontRun& front, const Entry *entry ) { return entry->level < static_cast<id_level_type>(front.cvars.SymLevel); }
 
 CB_ALWAYS_INLINE bool IsPPOperatorPragma( const FrontRun& front, const char *s, size_t length )
 {

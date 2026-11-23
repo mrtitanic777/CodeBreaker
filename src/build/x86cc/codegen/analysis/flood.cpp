@@ -62,7 +62,7 @@ static void *doFloodForward( BackRun& back, flood_parms *fp )
             break;
         MarkBlkVisited( next );
         new_parms.blk = next;
-        SafeRecurseCG( back, (func_sr)doFloodForward, &new_parms );
+        SafeRecurseCG( back, reinterpret_cast<func_sr>(doFloodForward), &new_parms );
     }
     return NULL;
 }
@@ -93,7 +93,7 @@ static void *doFloodBackward( BackRun& back, flood_parms *fp )
             break;
         MarkBlkVisited( next );
         new_parms.blk = next;
-        SafeRecurseCG( back, (func_sr)doFloodBackward, &new_parms );
+        SafeRecurseCG( back, reinterpret_cast<func_sr>(doFloodBackward), &new_parms );
     }
     return NULL;
 }

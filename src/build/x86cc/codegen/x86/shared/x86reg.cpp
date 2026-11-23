@@ -74,8 +74,8 @@ type_class_def  CallState( BackRun& back, aux_handle aux, const type_def *tipe, 
         FEMessage( *back.front, FEMSG_BAD_SAVE, aux );
     }
     state->attr = ROUTINE_REMOVES_PARMS;
-    cclass = (call_class)(pointer_uint)FEAuxInfo( *back.front, aux, FEINF_CALL_CLASS );
-    cclass_target = (call_class_target)(pointer_uint)FEAuxInfo( *back.front, aux, FEINF_CALL_CLASS_TARGET );
+    cclass = static_cast<call_class>(reinterpret_cast<pointer_uint>(FEAuxInfo( *back.front, aux, FEINF_CALL_CLASS )));
+    cclass_target = static_cast<call_class_target>(reinterpret_cast<pointer_uint>(FEAuxInfo( *back.front, aux, FEINF_CALL_CLASS_TARGET )));
     if( cclass_target & FECALL_X86_INTERRUPT ) {
         state->attr |= ROUTINE_INTERRUPT;
     } else if( cclass_target & FECALL_X86_FAR_CALL ) {

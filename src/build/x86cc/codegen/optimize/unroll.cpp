@@ -124,7 +124,7 @@ block   *DupBlock( BackRun& back, block *blk )
     copy->label = AskForNewLabel(back);
     copy->depth = blk->depth;
     copy->gen_blk_id = blk->gen_blk_id;
-    DupInstrs( back, (instruction *)&copy->ins, blk->ins.head.next, blk->ins.head.prev, NULL, 0 );
+    DupInstrs( back, reinterpret_cast<instruction *>(&copy->ins), blk->ins.head.next, blk->ins.head.prev, NULL, 0 );
     return( copy );
 }
 

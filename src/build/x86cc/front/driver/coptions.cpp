@@ -406,8 +406,8 @@ void SetTargetNameBT( FrontRun& front, char **target_name, OPT_STRING **bt_value
         CMemFree( front, *target_name );
     }
     *target_name = p = SetStringOption( front, NULL, bt_value );
-    while( (c = *(unsigned char *)p) != '\0' ) {
-        *p++ = (char)toupper( c );
+    while( (c = *reinterpret_cast<unsigned char *>(p)) != '\0' ) {
+        *p++ = static_cast<char>(toupper( c ));
     }
 }
 
@@ -719,7 +719,7 @@ static void AnalyseAnyTargetOptions( FrontRun& front, OPT_STORAGE *data )
         front.cvars.CompFlags.cpp_mode = true;
     }
     if( data->p_sharp ) {
-        front.cvars.PreProcChar = (char)data->p_sharp_value;
+        front.cvars.PreProcChar = static_cast<char>(data->p_sharp_value);
     }
     if( data->pil ) {
         front.cvars.CompFlags.cpp_ignore_line = true;
@@ -848,7 +848,7 @@ static char *ReadIndirectFile( FrontRun& front, const char *fname )
     fp = front.held->fopen( fname, "rb" );
     if( fp != NULL ) {
         fseek( fp, 0, SEEK_END );
-        len = (size_t)ftell( fp );
+        len = static_cast<size_t>(ftell( fp ));
         env = static_cast<char *>(CMemAlloc( front, len + 1 ));
         rewind( fp );
         len = fread( env, 1, len, fp );

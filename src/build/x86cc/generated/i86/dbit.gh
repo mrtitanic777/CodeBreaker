@@ -38,14 +38,14 @@ inline bool DBitEmpty( const dom_bit_set &set )
 
 inline void DBitSet( dom_bit_set &dst, a_bit_set a, a_bit_set b, a_bit_set c, a_bit_set d, a_bit_set e, a_bit_set f, a_bit_set g, a_bit_set h )
 {
-    (dst)._0 = (a_bit_set)a;
-    (dst)._1 = (a_bit_set)b;
-    (dst)._2 = (a_bit_set)c;
-    (dst)._3 = (a_bit_set)d;
-    (dst)._4 = (a_bit_set)e;
-    (dst)._5 = (a_bit_set)f;
-    (dst)._6 = (a_bit_set)g;
-    (dst)._7 = (a_bit_set)h;
+    (dst)._0 = a;
+    (dst)._1 = b;
+    (dst)._2 = c;
+    (dst)._3 = d;
+    (dst)._4 = e;
+    (dst)._5 = f;
+    (dst)._6 = g;
+    (dst)._7 = h;
 }
 
 inline void DBitFirst( dom_bit_set &set ) { DBitSet( set, 1, 0, 0, 0, 0, 0, 0, 0 ); }

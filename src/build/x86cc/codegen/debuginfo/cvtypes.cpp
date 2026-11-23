@@ -69,7 +69,7 @@ static  void    BuffWrite( BackRun& back, cv_out *out, void *to )
     unsigned    len;
 
     { segment_id old_segid = ChangeOP( back, out->segid );
-        len = (byte *)to - out->beg;
+        len = static_cast<byte *>(to) - out->beg;
         DataBytes( back, len, out->beg );
         out->beg = static_cast<byte *>(to);
     SetOP( back, old_segid ); }
@@ -137,7 +137,7 @@ static  void    *StartType( cv_out *out, lfg_index what )
 {
     lf_common   *ptr;
 
-    ptr = (lf_common *)out->ptr;
+    ptr = reinterpret_cast<lf_common *>(out->ptr);
     out->ptr += LFInfo[what].size;
     ptr->code = LFInfo[what].code;
     ++ptr; /* start of ct_... */
@@ -190,7 +190,7 @@ static  long_offset   EndTypeString( BackRun& back, cv_out *out )
     if( IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
         AlignBuff( out );
         len = out->ptr - out->buff;
-        *((u2 *)&out->buff[0]) = len - sizeof( u2 );  /* set type rec len*/
+        *(reinterpret_cast<u2 *>(&out->buff[0])) = len - sizeof( u2 );  /* set type rec len*/
         { segment_id old_segid = ChangeOP( back, back.cvdbg.CVTypes );
             here = AskBigLocation(back);
             DataBytes( back, len, out->buff );
@@ -206,7 +206,7 @@ void    CVEndType( cv_out *out )
 
     AlignBuff( out );
     len = out->ptr - out->buff;
-    *((u2 *)&out->buff[0]) = len-sizeof( u2 );  /* set type rec len*/
+    *(reinterpret_cast<u2 *>(&out->buff[0])) = len-sizeof( u2 );  /* set type rec len*/
 }
 
 static  void    PatchLen( BackRun& back, long_offset where, u2 what )
@@ -227,7 +227,7 @@ static  void    PatchLen( BackRun& back, long_offset where, u2 what )
 static  void PutFld2( cv_out *out, short num )
 /********************************************/
 {
-    *((short*)out->ptr) = num;  /* set an imbedded num */
+    *(reinterpret_cast<short*>(out->ptr)) = num;  /* set an imbedded num */
     out->ptr += sizeof( short );
 }
 
@@ -236,15 +236,15 @@ static void PutFldSized( cv_out *out, int size, uint_32 val )
 {
     switch( size ) {
     case 1:
-        *((u1*)out->ptr) = val;  /* out 1 */
+        *out->ptr = val;  /* out 1 */
         out->ptr += sizeof( u1 );
         break;
     case 2:
-        *((u2*)out->ptr) = val;  /* out 2 */
+        *(reinterpret_cast<u2*>(out->ptr)) = val;  /* out 2 */
         out->ptr += sizeof( u2 );
         break;
     case 4:
-        *((u4*)out->ptr) = val;   /* out 4 */
+        *(reinterpret_cast<u4*>(out->ptr)) = val;   /* out 4 */
         out->ptr += sizeof( u4 );
         break;
     }
@@ -255,15 +255,15 @@ static void PutLFInt( cv_out *out, cv_psize size, uint_32 val )
 {
     switch( size ) {
     case CV_IB1:
-        *((u1*)out->ptr) = val;  /* out 1 */
+        *out->ptr = val;  /* out 1 */
         out->ptr += sizeof( u1 );
         break;
     case CV_IB2:
-        *((u2*)out->ptr) = val;  /* out 2 */
+        *(reinterpret_cast<u2*>(out->ptr)) = val;  /* out 2 */
         out->ptr += sizeof( u2 );
         break;
     case CV_IB4:
-        *((u4*)out->ptr) = val;   /* out 4 */
+        *(reinterpret_cast<u4*>(out->ptr)) = val;   /* out 4 */
         out->ptr += sizeof( u4 );
         break;
     }
@@ -292,7 +292,7 @@ static lf_values   LFIntType( BackRun& back, int size )
 }
 
 template <class To>
-inline To& LvalueCast( byte &what ) { return *((To *)&what); }
+inline To& LvalueCast( byte &what ) { return *reinterpret_cast<To *>(&what); }
 
 void CVPutINum( cv_out *out, int_32 num )
 /***************************************/
@@ -300,7 +300,7 @@ void CVPutINum( cv_out *out, int_32 num )
     byte       *ptr;
 
     if( num >= 0 && num < 0x00008000 ) {
-        *((u2*)out->ptr) = num;  /* out num as is */
+        *(reinterpret_cast<u2*>(out->ptr)) = num;  /* out num as is */
         out->ptr += sizeof( u2 );
         return;
     }
@@ -465,7 +465,7 @@ dbg_type    CVScalar( BackRun& back, const char *name, cg_type tipe )
                         }
                         index.f.size = length;
                     }
-                    goto done;
+                    return( index.s );
                 }
             }
             if( tipe_addr->attr & TYPE_SIGNED ) {
@@ -489,7 +489,6 @@ dbg_type    CVScalar( BackRun& back, const char *name, cg_type tipe )
             }
         }
     }
-done:;
     return( index.s );
 }
 
@@ -899,8 +898,8 @@ static  lf_values   ArrayDimL( BackRun& back, int_32 low, int_32 hi )
     index.s = LFSignedRange( low, hi );
     dim->rank = 1;
     dim->index = index.s;
-    PutLFInt( out, static_cast<cv_psize>(index.f.size), (offset)low );
-    PutLFInt( out, static_cast<cv_psize>(index.f.size), (offset)hi );
+    PutLFInt( out, static_cast<cv_psize>(index.f.size), static_cast<offset>(low) );
+    PutLFInt( out, static_cast<cv_psize>(index.f.size), static_cast<offset>(hi) );
     EndTypeString( back, out );
     return( ret );
 }

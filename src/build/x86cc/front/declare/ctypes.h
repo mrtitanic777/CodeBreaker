@@ -180,8 +180,8 @@ typedef struct  string_literal {
     char                *literal;       /* actual literal string */
 } STRING_LITERAL, *STR_HANDLE;
 
-#define SYM_INVALID     ((SYM_HANDLE)(pointer_uint)-1)  // invalid symbol; never a real sym
-#define SYM_NULL        ((SYM_HANDLE)(pointer_uint)0)
+#define SYM_INVALID     (reinterpret_cast<SYM_HANDLE>(static_cast<pointer_uint>(-1)))  // invalid symbol; never a real sym
+#define SYM_NULL        (reinterpret_cast<SYM_HANDLE>(static_cast<pointer_uint>(0)))
 
 typedef struct array_info {
     target_size         dimension;
@@ -300,7 +300,7 @@ typedef struct fname_list {
     char                name[1];
 } fname_list, *FNAMEPTR;
 
-#define DBFILE_INVALID  ((unsigned)-1)
+#define DBFILE_INVALID  (static_cast<unsigned>(-1))
 
 typedef struct rdir_list {
     struct rdir_list    *next;      /* also used by pre-compiled header */

@@ -39,7 +39,7 @@
 #include "backrun.hpp"
 
 
-inline void *&NextOf( void *list, unsigned int offset ) { return (*((void **)((char *)list + offset))); }
+inline void *&NextOf( void *list, unsigned int offset ) { return (*(reinterpret_cast<void **>(static_cast<char *>(list) + offset))); }
 
 static  void            ShellSort( BackRun& back, void **array, unsigned length,
                                    bool (*before)(BackRun&, void *,void *) );

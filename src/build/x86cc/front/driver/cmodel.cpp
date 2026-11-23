@@ -58,7 +58,7 @@ static size_t get_token_len( const char *start )
     int         ch;
     const char  *src;
 
-    for( src = start; (ch = *(unsigned char *)src) != '\0'; ++src ) {
+    for( src = start; (ch = *reinterpret_cast<const unsigned char *>(src)) != '\0'; ++src ) {
         if( EqualChar( ch ) )
             break;
         if( ch == ' ' )
@@ -81,7 +81,7 @@ static char *Def_Macro_Tokens( FrontRun& front, const char *str, bool multiple_t
     mlen = get_token_len( str );
     if( mlen == 0 ) {
         CErr1( front, ERR_NO_MACRO_ID_COMMAND_LINE );
-        return( (char *)str );
+        return( const_cast<char *>(str) );
     }
     mentry = CreateMEntry( front, str, mlen );
     str += mlen;
@@ -130,7 +130,7 @@ static char *Def_Macro_Tokens( FrontRun& front, const char *str, bool multiple_t
     } else {
         MacroDefine( front, mlen, mflags );
     }
-    return( (char *)str );
+    return( const_cast<char *>(str) );
 }
 
 char *Define_Macro( FrontRun& front, const char *str )
@@ -180,7 +180,7 @@ void AddUndefMacro( FrontRun& front, const char *str )
         front.cvars.CompFlags.undefine_all_macros = true;
     } else {
         if( !MacroDel( front, str ) ) {
-            uname = (undef_names *)CMemAlloc( front, sizeof( undef_names ) );
+            uname = static_cast<undef_names *>(CMemAlloc( front, sizeof( undef_names ) ));
             uname->next = front.cvars.UndefNames;
             uname->name = CMemStrdup( front, str );
             front.cvars.UndefNames = uname;

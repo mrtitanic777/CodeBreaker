@@ -51,13 +51,13 @@
 
 #define BLK_HDR_SIZE    RoundUpSize( sizeof( mem_blk ), MEM_ALIGN )
 inline unsigned long long BlkSize( unsigned long long s ) { return (BLK_HDR_SIZE + (s)); }
-inline char *BlkData( mem_blk *m, size_t x ) { return ((char *)(m) + BLK_HDR_SIZE + (x)); }
+inline char *BlkData( mem_blk *m, size_t x ) { return (reinterpret_cast<char *>(m) + BLK_HDR_SIZE + (x)); }
 
 #define MCB_HDR_SIZE    RoundUpSize( sizeof( MCB ), MEM_ALIGN )
 inline unsigned long long McbSize( size_t s ) { return (MCB_HDR_SIZE + (s)); }
-inline char *McbData( mem_block *m, int x ) { return ((char *)(m) + MCB_HDR_SIZE + (x)); }
-inline mem_block *McbFromC( void *p ) { return ((MCB *)((char *)(p) - MCB_HDR_SIZE)); }
-inline mem_block *McbNext( mem_block *x ) { return ((MCB *)((char *)(x) + ((x)->size & ~ALLOC_FLAG))); }
+inline char *McbData( mem_block *m, int x ) { return (reinterpret_cast<char *>(m) + MCB_HDR_SIZE + (x)); }
+inline mem_block *McbFromC( void *p ) { return (reinterpret_cast<MCB *>(static_cast<char *>(p) - MCB_HDR_SIZE)); }
+inline mem_block *McbNext( mem_block *x ) { return (reinterpret_cast<MCB *>(reinterpret_cast<char *>(x) + ((x)->size & ~ALLOC_FLAG))); }
 
 /*
  * Size of permanent area. Needs to be reasonably big to satisfy
@@ -162,7 +162,7 @@ static void AllocPermArea( FrontRun& front )
             front.cmemmgr.Blks = blk;
             blk->ptr = front.cmemmgr.PermPtr;
             blk->size = front.cmemmgr.PermSize;
-            ((MCB *)BlkData( blk, front.cmemmgr.PermSize ))->size = PERM_BLK_END;    /* null length tag */
+            (reinterpret_cast<MCB *>(BlkData( blk, front.cmemmgr.PermSize )))->size = PERM_BLK_END;    /* null length tag */
             front.cmemmgr.PermPtr = BlkData( blk, 0 );
             front.cmemmgr.PermAvail = front.cmemmgr.PermSize;
             return;
@@ -245,7 +245,7 @@ static void *CFastAlloc( FrontRun& front, size_t size )
     if( mcb_size > front.cmemmgr.PermAvail )
         return( NULL );
     front.cmemmgr.PermAvail -= mcb_size;
-    mcb = (MCB *)( front.cmemmgr.PermPtr + front.cmemmgr.PermAvail );
+    mcb = reinterpret_cast<MCB *>( front.cmemmgr.PermPtr + front.cmemmgr.PermAvail );
     mcb->size = mcb_size | ALLOC_FLAG;
     return( McbData( mcb, 0 ) );
 }
@@ -268,7 +268,7 @@ void *CMemAlloc( FrontRun& front, size_t size )
     /*
      * make sure pointer is properly aligned
      */
-    assert( ((unsigned)(pointer_uint)p & (MEM_ALIGN - 1)) == 0 );
+    assert( (static_cast<unsigned>(reinterpret_cast<pointer_uint>(p)) & (MEM_ALIGN - 1)) == 0 );
 
     return( memset( p, 0, size ) );
 }
@@ -330,7 +330,7 @@ static enum cmem_kind CMemKind( FrontRun& front, const char *p )
     ptr = front.cmemmgr.PermPtr;
     size = front.cmemmgr.PermSize;
     for( blk = front.cmemmgr.Blks; blk != NULL; blk = blk->next ) {
-        if( p > (char *)blk ) {
+        if( p > reinterpret_cast<char *>(blk) ) {
             /*
              * check if permanent memory (from beginning of block)
              */
@@ -360,14 +360,14 @@ void CMemFree( FrontRun& front, void *p )
      *
      * ignore precompiled header memory block
      */
-    if( p != NULL && ( front.cvars.PCH_Start == NULL || (char *)p < front.cvars.PCH_Start || (char *)p >= front.cvars.PCH_End ) ) {
+    if( p != NULL && ( front.cvars.PCH_Start == NULL || static_cast<char *>(p) < front.cvars.PCH_Start || static_cast<char *>(p) >= front.cvars.PCH_End ) ) {
         if( CMemKind( front, static_cast<const char *>(p) ) == CMEM_MEM ) {
             mcb = McbFromC( p );
-            if( (char *)mcb == front.cmemmgr.PermPtr + front.cmemmgr.PermAvail ) {
+            if( reinterpret_cast<char *>(mcb) == front.cmemmgr.PermPtr + front.cmemmgr.PermAvail ) {
                 front.cmemmgr.PermAvail += mcb->size & ~ALLOC_FLAG;
                 mcb = McbNext( mcb );
                 if( (mcb->size & ALLOC_FLAG) == 0 ) {
-                    if( (char *)mcb == front.cmemmgr.PermPtr + front.cmemmgr.PermAvail ) {
+                    if( reinterpret_cast<char *>(mcb) == front.cmemmgr.PermPtr + front.cmemmgr.PermAvail ) {
                         front.cmemmgr.PermAvail += mcb->size;
                         removeMCBfromFreeList( mcb );
                     }

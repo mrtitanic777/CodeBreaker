@@ -154,7 +154,7 @@ void    OpenObj( BackRun& back )
 static  objoffset   Byte( objhandle rec )
 /***************************************/
 {
-    return( (objoffset)rec );
+    return( rec );
 }
 
 
@@ -165,7 +165,7 @@ static  objhandle   Offset( BackRun& back, objoffset offset )
         FatalError( back, "Object file too large" );
         return( INVALID_OBJHANDLE );
     } else {
-        return( (objhandle)offset );
+        return( offset );
     }
 }
 

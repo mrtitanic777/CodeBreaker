@@ -120,7 +120,7 @@ static ENUMPTR EnumLkAdd( FrontRun& front, TAGPTR tag )
     len = sizeof( ENUMDEFN ) + front.cvars.TokenLen;
     if( front.cvars.EnumRecSize < len )
         front.cvars.EnumRecSize = len;
-    esym = (ENUMPTR)CPermAlloc( front, len );
+    esym = static_cast<ENUMPTR>(CPermAlloc( front, len ));
     strcpy( esym->name, front.cvars.Buffer );
     esym->parent = tag;
     esym->hash = hash;
@@ -138,7 +138,7 @@ static void get_msg_range( char *buff, enum enum_rng index )
     if( index & 1 ) {
         sprintf( buff, "%llu to %llu", RangeTable[index][LOW].u._64[0], RangeTable[index][HIGH].u._64[0] );
     } else {
-        sprintf( buff, "%lld to %lld", (long long)RangeTable[index][LOW].u._64[0], (long long)RangeTable[index][HIGH].u._64[0] );
+        sprintf( buff, "%lld to %lld", static_cast<long long>(RangeTable[index][LOW].u._64[0]), static_cast<long long>(RangeTable[index][HIGH].u._64[0]) );
     }
 }
 

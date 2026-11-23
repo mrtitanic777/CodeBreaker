@@ -66,7 +66,7 @@ static instruction  *DoReduce( BackRun& back, instruction *ins, const opcode_ent
     for( zap = RegSetList(back, RegList[try_->reg_set].zap); !HW_CEqual( *zap, HW_EMPTY ); ++zap ) {
         HwTurnOn( zap_all, *zap );
     }
-    ins->zap = (register_name *)AllocRegName( back, zap_all );
+    ins->zap = reinterpret_cast<register_name *>(AllocRegName( back, zap_all ));
     if( has_index || ins->num_operands > OpcodeNumOperands( ins ) ) {
         ins = NeedIndex( back, ins );
     } else {

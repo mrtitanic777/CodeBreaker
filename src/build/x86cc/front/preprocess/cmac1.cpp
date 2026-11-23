@@ -88,7 +88,7 @@ static void EnlargeTokenBuf( FrontRun& front, size_t size )
         size = RoundUp( size, BUF_SIZE );
         newBuffer = static_cast<char *>(CMemAlloc( front, size ));
         memcpy( newBuffer, front.cvars.TokenBuf, front.cmac1.TokenBufSize );
-        CMemFree( front, (void *)front.cvars.TokenBuf );
+        CMemFree( front, reinterpret_cast<void *>(front.cvars.TokenBuf) );
         front.cvars.TokenBuf = newBuffer;
         front.cmac1.TokenBufSize = size;
     }
@@ -248,7 +248,7 @@ void DumpAllMacros( FrontRun& front )
             if( MacroIsSpecial( mentry ) )
                 continue;
             fprintf( front.cvars.CppFile, "#define %s", mentry->macro_name );
-            p = (char *)mentry + mentry->macro_defn;
+            p = reinterpret_cast<char *>(mentry) + mentry->macro_defn;
             if( GetMtoken( p ) != T_NULL ) {
                 fputc( ' ', front.cvars.CppFile );
                 DumpMacroDefn( front, p );
@@ -520,7 +520,7 @@ static MACRO_ARG *CollectParms( FrontRun& front, MEPTR mentry )
         ppscan_mode = InitPPScan(front);     // enable T_PPNUMBER tokens
         parm_count_reqd = GetMacroParmCount( mentry );
         if( parm_count_reqd > 0 ) {
-            macro_parms = (MACRO_ARG *)CMemAlloc( front, parm_count_reqd * sizeof( MACRO_ARG ) );
+            macro_parms = static_cast<MACRO_ARG *>(CMemAlloc( front, parm_count_reqd * sizeof( MACRO_ARG ) ));
         }
         parm_idx = 0;
         do {
@@ -626,7 +626,7 @@ static MACRO_TOKEN *BuildAToken( FrontRun& front, TOKEN token, const char *data 
 {
     MACRO_TOKEN *mtok;
 
-    mtok = (MACRO_TOKEN *)CMemAlloc( front, sizeof( MACRO_TOKEN ) + strlen( data ) );
+    mtok = static_cast<MACRO_TOKEN *>(CMemAlloc( front, sizeof( MACRO_TOKEN ) + strlen( data ) ));
     strcpy( mtok->data, data );
     mtok->token = token;
     mtok->next = NULL;
@@ -1118,7 +1118,7 @@ static MACRO_TOKEN *MacroExpansion( FrontRun& front, bool rescanning, MEPTR ment
     MACRO_TOKEN     *mtok_head;
     NESTED_MACRO    *nested;
 
-    nested = (NESTED_MACRO *)CMemAlloc( front, sizeof( NESTED_MACRO ) );
+    nested = static_cast<NESTED_MACRO *>(CMemAlloc( front, sizeof( NESTED_MACRO ) ));
     nested->mentry = mentry;
     nested->rescanning = rescanning;
     nested->substituting_parms = false;
@@ -1132,7 +1132,7 @@ static MACRO_TOKEN *MacroExpansion( FrontRun& front, bool rescanning, MEPTR ment
         nested->next = front.cmac1.NestedMacros;
         front.cmac1.NestedMacros = nested;
         nested->macro_parms = macro_parms;
-        mtok_head = BuildMTokenList( front, (char *)mentry + mentry->macro_defn, macro_parms );
+        mtok_head = BuildMTokenList( front, reinterpret_cast<char *>(mentry) + mentry->macro_defn, macro_parms );
         markUnexpandableIds( front, mtok_head );
     }
     mtok_head = AppendToken( front, mtok_head, T_NULL, MACRO_END_STRING );

@@ -90,7 +90,7 @@ void    BuffEnd( BackRun& back, segment_id segid )
                 buff += 2 + WORD_SIZE;
                 break;
             case FIX_BACKHANDLE:
-                DoBigBckPtr( back, static_cast<back_handle>(back.x86dbsup.CurrBuff->fix[i].p), *(offset *)buff );
+                DoBigBckPtr( back, static_cast<back_handle>(back.x86dbsup.CurrBuff->fix[i].p), *reinterpret_cast<offset *>(buff) );
                 last += 2 + WORD_SIZE;
                 buff += 2 + WORD_SIZE;
                 break;

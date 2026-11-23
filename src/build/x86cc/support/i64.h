@@ -102,10 +102,10 @@ inline const unsigned short &U64HighWord( const unsigned_64 &a ) { return ((a).u
 inline unsigned int &U64High( unsigned_64 &a ) { return ((a).u._32[I64HI32]); }
 inline const unsigned int &U64High( const unsigned_64 &a ) { return ((a).u._32[I64HI32]); }
 inline unsigned int &U64HighLE( unsigned_64 &a ) { return ((a).u._32[1]); }
-inline signed char I64LowByte( const unsigned_64 &a ) { return ((signed_8)(a).u._8[I64B0]); }
-inline short I64LowWord( const unsigned_64 &a ) { return ((signed_16)(a).u._16[I64W0]); }
-inline int I64Low( const unsigned_64 &a ) { return ((signed_32)(a).u._32[I64LO32]); }
-inline int I64High( const unsigned_64 &a ) { return ((signed_32)(a).u._32[I64HI32]); }
+inline signed char I64LowByte( const unsigned_64 &a ) { return (static_cast<signed_8>((a).u._8[I64B0])); }
+inline short I64LowWord( const unsigned_64 &a ) { return (static_cast<signed_16>((a).u._16[I64W0])); }
+inline int I64Low( const unsigned_64 &a ) { return (static_cast<signed_32>((a).u._32[I64LO32])); }
+inline int I64High( const unsigned_64 &a ) { return (static_cast<signed_32>((a).u._32[I64HI32])); }
 inline int U64CmpU32( const unsigned_64 &a, unsigned_32 b )
 {
     return (((a).u._32[I64HI32])?1:(((a).u._32[I64LO32]<(b))?-1:((a).u._32[I64LO32]!=(b))));
@@ -163,7 +163,7 @@ inline void U64NotAndEq( unsigned_64 &r, const unsigned_64 &b )
 inline void U64Inc( unsigned_64 &r ) { if( ++(r).u._32[I64LO32] == 0 ) ++(r).u._32[I64HI32]; }
 inline void U64Dec( unsigned_64 &r ) { if( (r).u._32[I64LO32]-- == 0 ) --(r).u._32[I64HI32]; }
 inline unsigned int &U32FetchTrunc( unsigned_64 &x ) { return ((x).u._32[I64LO32]); }
-inline int I32FetchTrunc( const unsigned_64 &x ) { return ((signed_32)(x).u._32[I64LO32]); }
+inline int I32FetchTrunc( const unsigned_64 &x ) { return (static_cast<signed_32>((x).u._32[I64LO32])); }
 inline unsigned char &U8FetchTrunc( unsigned_64 &x ) { return ((x).u._8[I64LO8]); }
 inline void Set64Val( unsigned_64 &x, unsigned_32 l, unsigned_32 h )
 {
@@ -173,15 +173,15 @@ inline void Set64ValZero( unsigned_64 &x ) { (x).u._32[0]=0,(x).u._32[1]=0; }
 inline void Set64Val1p( unsigned_64 &x ) { (x).u._32[I64LO32]=1,(x).u._32[I64HI32]=0; }
 inline void Set64Val1m( unsigned_64 &x )
 {
-    (x).u._32[I64LO32]=(unsigned_32)-1,(x).u._32[I64HI32]=(unsigned_32)-1;
+    (x).u._32[I64LO32]=static_cast<unsigned_32>(-1),(x).u._32[I64HI32]=static_cast<unsigned_32>(-1);
 }
 inline void Set64ValI32( unsigned_64 &x, int v )
 {
-    (x).u._32[I64LO32]=(v),(x).u._32[I64HI32]=((signed_32)(x).u._32[I64LO32]<0)?(unsigned_32)-1:0;
+    (x).u._32[I64LO32]=(v),(x).u._32[I64HI32]=(static_cast<signed_32>((x).u._32[I64LO32])<0)?static_cast<unsigned_32>(-1):0;
 }
 inline void Set64ValU32( unsigned_64 &x, unsigned_32 v ) { (x).u._32[I64LO32]=(v),(x).u._32[I64HI32]=0; }
 inline bool U64IsU32( const unsigned_64 &x ) { return ((x).u._32[I64HI32]==0); }
-inline bool U64IsI32( const unsigned_64 &x ) { return (((x).u._32[I64HI32]==0)&&((signed_32)(x).u._32[I64LO32]>=0)); }
+inline bool U64IsI32( const unsigned_64 &x ) { return (((x).u._32[I64HI32]==0)&&(static_cast<signed_32>((x).u._32[I64LO32])>=0)); }
 inline void U64NegEq( unsigned_64 *a ) { U64Neg((a),(a)); }
 inline void U64AddEq( unsigned_64 *a, unsigned_64 *b ) { U64Add((a),(a),(b)); }
 inline void U64SubEq( unsigned_64 *a, unsigned_64 *b ) { U64Sub((a),(a),(b)); }

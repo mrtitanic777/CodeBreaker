@@ -43,7 +43,7 @@
 inline bool IsDigit( char ch ) { return (ch >= '0' && ch <= '9'); }
 
 extern  unsigned_32     U32ModDiv( unsigned_32 *, unsigned_32 );
-extern  int             CFOrder( cfloat *f1, cfloat *f2 );
-extern  int             CFAccess( cfloat *f, int index );
+extern  int             CFOrder( const cfloat *f1, const cfloat *f2 );
+extern  int             CFAccess( const cfloat *f, int index );
 extern  void            CFDeposit( cfloat *f, int index, int data );
 extern  void            CFClean( cfloat *f );

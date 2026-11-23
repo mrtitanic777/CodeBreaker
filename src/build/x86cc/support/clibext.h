@@ -56,7 +56,7 @@
 
     #define _MAX_PATH2 (_MAX_PATH + 3)
 
-    #define __Strtold(s,ld,endptr) ((*(double *)(ld))=strtod(s,endptr))
+    #define __Strtold(s,ld,endptr) ((*reinterpret_cast<double *>(ld))=strtod(s,endptr))
 
 // #ifndef __cplusplus
 //  #ifndef max

@@ -297,7 +297,7 @@ typedef struct {
 
 // r_info field contents
 
-inline unsigned int Elf32RInfo( unsigned int s, unsigned int t ) { return (((s)<<8)+(unsigned_8)(t)); }   // make a new r_info
+inline unsigned int Elf32RInfo( unsigned int s, unsigned int t ) { return (((s)<<8)+static_cast<unsigned_8>(t)); }   // make a new r_info
 
 
 // relocation types.

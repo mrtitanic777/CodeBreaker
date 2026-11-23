@@ -153,7 +153,7 @@ static void PragmaAuxEnd( FrontRun& front )
          * Redefining a built-in calling convention
          */
     } else {
-        front.pragdefn.CurrInfo = (aux_info *)CMemAlloc( front, sizeof( aux_info ) );
+        front.pragdefn.CurrInfo = static_cast<aux_info *>(CMemAlloc( front, sizeof( aux_info ) ));
         *front.pragdefn.CurrInfo = *front.pragdefn.CurrAlias;
     }
     if( front.cpragx86.AuxInfo.code != NULL ) {
@@ -328,7 +328,7 @@ static int AsmType( FrontRun& front, TYPEPTR typ, type_modifiers flags )
 enum sym_type AsmQueryType( FrontRun& front, void *handle )
 /****************************************/
 {
-    SYM_HANDLE  sym_handle = (SYM_HANDLE)handle;
+    SYM_HANDLE  sym_handle = handle;
     SYM_ENTRY   sym;
 
     if( sym_handle == SYM_NULL )
@@ -560,10 +560,10 @@ bool AsmInsertFixups( FrontRun& front, aux_info *info )
             }
         }
         src = temp;
-        len = (byte_seq_len)( dst - temp );
+        len = static_cast<byte_seq_len>( dst - temp );
         perform_fixups = true;
     }
-    seq = (byte_seq *)CMemAlloc( front, offsetof( byte_seq, data ) + len );
+    seq = static_cast<byte_seq *>(CMemAlloc( front, offsetof( byte_seq, data ) + len ));
     seq->relocs = perform_fixups;
     seq->length = len;
     memcpy( &seq->data[0], src, len );
@@ -576,7 +576,7 @@ static void AddAFix( FrontRun& front, unsigned loc, char *name, unsigned type, u
 {
     struct asmfixup     *fix;
 
-    fix = (struct asmfixup *)CMemAlloc( front, sizeof( *fix ) );
+    fix = static_cast<struct asmfixup *>(CMemAlloc( front, sizeof( *fix ) ));
     fix->external = 1;
     fix->fixup_loc = loc;
     fix->name = name;
@@ -609,7 +609,7 @@ static bool checkEnum( FrontRun& front, unsigned char *byte_value )
         if( sym_handle == NULL ) {
             ep = EnumLookup( front, hash, front.cvars.Buffer );
             if( ep != NULL ) {
-                *byte_value = (unsigned char)ep->value.u._64[0];
+                *byte_value = static_cast<unsigned char>(ep->value.u._64[0]);
                 return( true );
             }
         }
@@ -688,7 +688,7 @@ static bool GetByteSeq( FrontRun& front, aux_info *info )
                     } else if( front.cvars.CurToken == T_MINUS ) {
                         PPNextToken(front);
                         if( front.cvars.CurToken == T_CONSTANT ) {
-                            offset = -(int)U32FetchTrunc( front.cvars.Constant64 );
+                            offset = -static_cast<int>(U32FetchTrunc( front.cvars.Constant64 ));
                             PPNextToken(front);
                         }
                     }

@@ -89,7 +89,7 @@ static void PatchCodeBuffer( AsmRun& assembler, asmfixup *fixup, unsigned size )
     fixup_loc = fixup->fixup_loc;
     disp = fixup->u_offset + assembler.asminlin->AsmCodeAddress - fixup->fixup_loc - size;
     for( ; size > 0; size-- ) {
-        assembler.asminlin->AsmCodeBuffer[fixup_loc++] = (uint_8)disp;
+        assembler.asminlin->AsmCodeBuffer[fixup_loc++] = static_cast<uint_8>(disp);
         disp >>= 8;
     }
 }

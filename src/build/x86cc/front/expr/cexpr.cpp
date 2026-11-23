@@ -42,8 +42,8 @@
 #include "frontrun.hpp"
 
 
-inline bool TokenToBool( TOKEN t ) { return ((bool)(t)); }
-inline TOKEN BoolToToken( bool b ) { return ((TOKEN)(b)); }
+inline bool TokenToBool( TOKEN t ) { return (static_cast<bool>(t)); }
+inline TOKEN BoolToToken( bool b ) { return (static_cast<TOKEN>(b)); }
 
 
 static const struct mathfuncs {
@@ -283,7 +283,7 @@ static TREEPTR ConstLeaf( FrontRun& front )
         flt = static_cast<FLOATVAL *>(CMemAlloc( front, sizeof( FLOATVAL ) - 1 + 1 + front.cvars.TokenLen + 1 ));
         flt->string[0] = '+';
         strcpy( flt->string + 1, front.cvars.Buffer );
-        flt->len = (unsigned char)( 1 + front.cvars.TokenLen );
+        flt->len = static_cast<unsigned char>( 1 + front.cvars.TokenLen );
         flt->type = front.cvars.ConstType;
         flt->next = NULL;
         leaf->op.u2.float_value = flt;
@@ -345,7 +345,7 @@ static TREEPTR EnumLeaf( FrontRun& front, ENUMPTR ep )
         /* fall through */
     case TYP_INT:
     case TYP_LONG:
-        leaf->op.u2.long_value = (signed_32)U64Low( ep->value );
+        leaf->op.u2.long_value = static_cast<signed_32>(U64Low( ep->value ));
         break;
     case TYP_UCHAR:
     case TYP_USHORT:
@@ -1189,7 +1189,7 @@ bool ConstExprAndType( FrontRun& front, const_val *val )
         break;
     case OPR_PUSHFLOAT:
         CErr1( front, ERR_EXPR_MUST_BE_INTEGRAL );
-        val->value.u._64[0] = (long long)atof( tree->op.u2.float_value->string );
+        val->value.u._64[0] = static_cast<long long>(atof( tree->op.u2.float_value->string ));
         ret = false;
         break;
     default:

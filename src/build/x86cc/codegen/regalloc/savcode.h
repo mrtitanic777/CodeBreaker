@@ -249,12 +249,12 @@
                 }
             }
 #endif
-            if( (instruction *)&blk->ins == blk->ins.head.next ) {
+            if( reinterpret_cast<instruction *>(&blk->ins) == blk->ins.head.next ) {
                 if( GBitOverlap( conf->id.out_of_block, flow->need_store ) ) {
-                    _SuffixStore( back, (instruction *)&blk->ins, reg_name, opnd, class_ );
+                    _SuffixStore( back, reinterpret_cast<instruction *>(&blk->ins), reg_name, opnd, class_ );
                 }
                 if( GBitOverlap( conf->id.out_of_block, flow->need_load ) ) {
-                    _SuffixLoad( back, (instruction *)&blk->ins, opnd, reg_name, class_ );
+                    _SuffixLoad( back, reinterpret_cast<instruction *>(&blk->ins), opnd, reg_name, class_ );
                 }
             } else {
                 if( GBitOverlap( conf->id.out_of_block, flow->need_store ) ) {

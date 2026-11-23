@@ -331,7 +331,7 @@ void *AsmQuerySymbol( FrontRun& front, const char *name )
 enum sym_state AsmQueryState( FrontRun& front, void *handle )
 /******************************************/
 {
-    SYM_HANDLE  sym_handle = (SYM_HANDLE)handle;
+    SYM_HANDLE  sym_handle = handle;
     SYM_ENTRY   sym;
 
     if( sym_handle == SYM_NULL )
@@ -368,7 +368,7 @@ static aux_info *lookupMagicKeyword( FrontRun& front, const char *name )
 void CreateAux( FrontRun& front, const char *id )
 /******************************/
 {
-    front.pragdefn.CurrEntry = (aux_entry *)CMemAlloc( front, offsetof( aux_entry, name ) + strlen( id ) + 1 );
+    front.pragdefn.CurrEntry = static_cast<aux_entry *>(CMemAlloc( front, offsetof( aux_entry, name ) + strlen( id ) + 1 ));
     strcpy( front.pragdefn.CurrEntry->name, id );
 }
 
@@ -381,7 +381,7 @@ void CreateAuxInlineFunc( FrontRun& front, bool too_many_bytes )
     sprintf( name, "F.%d", front.cpragma->AsmFuncNum );
     ++front.cpragma->AsmFuncNum;
     CreateAux( front, name );
-    front.pragdefn.CurrInfo = (aux_info *)CMemAlloc( front, sizeof( aux_info ) );
+    front.pragdefn.CurrInfo = static_cast<aux_info *>(CMemAlloc( front, sizeof( aux_info ) ));
     front.pragdefn.CurrEntry->info = front.pragdefn.CurrInfo;
     *front.pragdefn.CurrInfo = WatcallInfo( front );
     front.pragdefn.CurrInfo->use = 1;
@@ -477,7 +477,7 @@ static void CopyParms( FrontRun& front )
     for( regs = front.pragdefn.CurrInfo->parms; !HW_CEqual( *regs, HW_EMPTY ); ++regs ) {
         size += sizeof( hw_reg_set );
     }
-    regs = (hw_reg_set *)CMemAlloc( front, size );
+    regs = static_cast<hw_reg_set *>(CMemAlloc( front, size ));
     memcpy( regs, front.pragdefn.CurrInfo->parms, size );
     front.pragdefn.CurrInfo->parms = regs;
 }
@@ -496,7 +496,7 @@ static void CopyCode( FrontRun& front )
     if( front.pragdefn.CurrInfo->code != front.pragdefn.CurrAlias->code )
         return;
     size = offsetof( byte_seq, data ) + front.pragdefn.CurrInfo->code->length;
-    code = (byte_seq *)CMemAlloc( front, size );
+    code = static_cast<byte_seq *>(CMemAlloc( front, size ));
     memcpy( code, front.pragdefn.CurrInfo->code, size );
     front.pragdefn.CurrInfo->code = code;
 }
@@ -609,9 +609,9 @@ int PragRegNumIndex( const char *str, int max_reg )
     /*
      * decode regular register index, max 2 digit
      */
-    if( isdigit( (unsigned char)str[0] ) ) {
+    if( isdigit( static_cast<unsigned char>(str[0]) ) ) {
         index = str[0] - '0';
-        if( isdigit( (unsigned char)str[1] ) ) {
+        if( isdigit( static_cast<unsigned char>(str[1]) ) ) {
             index = index * 10 + ( str[1] - '0' );
             if( str[2] == '\0' && index < max_reg ) {
                 return( index );
@@ -668,7 +668,7 @@ hw_reg_set *PragManyRegSets( FrontRun& front )
     }
     HW_CAsgn( buff[i], HW_EMPTY );
     i = ( i + 1 ) * sizeof( hw_reg_set );
-    sets = (hw_reg_set *)CMemAlloc( front, i );
+    sets = static_cast<hw_reg_set *>(CMemAlloc( front, i ));
     memcpy( sets, buff, i );
     return( sets );
 }
@@ -848,7 +848,7 @@ static void getPackArgs( FrontRun& front )
      * check to make sure it is a numeric token
      */
     if( PragRecogId( front, "push" ) ) {
-        pushPrag( front, &TOGGLE_STK( front, pack ), (unsigned)front.cvars.PackAmount );
+        pushPrag( front, &TOGGLE_STK( front, pack ), static_cast<unsigned>(front.cvars.PackAmount) );
         if( front.cvars.CurToken == T_COMMA ) {
             PPNextToken(front);
             if( ExpectingConstant(front) ) {
@@ -860,7 +860,7 @@ static void getPackArgs( FrontRun& front )
         unsigned    value;
 
         if( popPrag( front, &TOGGLE_STK( front, pack ), &value ) ) {
-            front.cvars.PackAmount = (align_type)value;
+            front.cvars.PackAmount = static_cast<align_type>(value);
         }
     } else {
         CErr1( front, ERR_NOT_A_CONSTANT_EXPR );
@@ -1038,7 +1038,7 @@ bool GetMsgNum( const char *str, msg_codes *val )
      */
     if( c == 'C' || c == 'c' )
         str++;
-    if( isdigit( *(unsigned char *)str ) ) {
+    if( isdigit( *reinterpret_cast<const unsigned char *>(str) ) ) {
         *val = static_cast<msg_codes>(atol( str ));
         return( true );
     }
@@ -1419,9 +1419,9 @@ static void pragUnroll( FrontRun& front )
         PPNextToken(front);
         if( front.cvars.CurToken == T_CONSTANT ) {
             if( U64CmpU32( front.cvars.Constant64, 255 ) > 0 ) {
-                unroll_count = (unroll_type)255;
+                unroll_count = static_cast<unroll_type>(255);
             } else {
-                unroll_count = (unroll_type)U8FetchTrunc( front.cvars.Constant64 );
+                unroll_count = U8FetchTrunc( front.cvars.Constant64 );
             }
             PPNextToken(front);
         }
@@ -1707,7 +1707,7 @@ static void pragAlias( FrontRun& front )
     if( ( alias_name != NULL || alias_sym != SYM_NULL ) && ( subst_name != NULL || subst_sym != SYM_NULL ) ) {
         for( alias = &front.cvars.AliasHead; *alias != NULL; alias = &(*alias)->next )
             ; /* nothing to do */
-        new_alias = static_cast<alias_list *>((void *)CMemAlloc( front, sizeof( alias_list ) ));
+        new_alias = static_cast<alias_list *>(CMemAlloc( front, sizeof( alias_list ) ));
         new_alias->next = NULL;
         if( alias_name ) {
             new_alias->name = alias_name;

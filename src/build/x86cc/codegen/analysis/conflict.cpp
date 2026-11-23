@@ -349,7 +349,7 @@ void    FreePossibleForAlias( BackRun& back, conflict_node *conf )
 
     for( aposs = conf->possible_for_alias_list; aposs != NULL; aposs = next ) {
         next = aposs->next;
-        FrlFreeSize( back, &back.conflict_vars.ConfAliasVarsFrl, (pointer *)aposs, sizeof( possible_for_alias ) );
+        FrlFreeSize( back, &back.conflict_vars.ConfAliasVarsFrl, reinterpret_cast<pointer *>(aposs), sizeof( possible_for_alias ) );
     }
     conf->possible_for_alias_list = NULL;
 }
@@ -416,7 +416,7 @@ void    FreeAConflict( BackRun& back, conflict_node *conf )
         }
     }
     FreePossibleForAlias( back, conf );
-    FrlFreeSize( back, &back.conflict_vars.ConfFrl, (pointer *)conf, sizeof( conflict_node ) );
+    FrlFreeSize( back, &back.conflict_vars.ConfFrl, reinterpret_cast<pointer *>(conf), sizeof( conflict_node ) );
 }
 
 

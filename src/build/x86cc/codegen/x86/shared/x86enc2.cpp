@@ -378,9 +378,9 @@ void    GenCall( BackRun& back, instruction *ins )
         Pushf(back);
     }
     op = ins->operands[CALL_OP_ADDR];
-    cclass = (call_class)(pointer_uint)FindAuxInfo( back, op, FEINF_CALL_CLASS );
-    far_call = ( ((call_class_target)(pointer_uint)FindAuxInfo( back, op, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL) != 0 );
-    code = (const byte_seq *)FindAuxInfo( back, op, FEINF_CALL_BYTES );
+    cclass = static_cast<call_class>(reinterpret_cast<pointer_uint>(FindAuxInfo( back, op, FEINF_CALL_CLASS )));
+    far_call = ( (static_cast<call_class_target>(reinterpret_cast<pointer_uint>(FindAuxInfo( back, op, FEINF_CALL_CLASS_TARGET ))) & FECALL_X86_FAR_CALL) != 0 );
+    code = static_cast<const byte_seq *>(FindAuxInfo( back, op, FEINF_CALL_BYTES ));
     if( code != NULL ) {
         Finalize( back );
         if( code->relocs ) {
@@ -407,7 +407,7 @@ void    GenCall( BackRun& back, instruction *ins )
             /*
              * handles mismatch Fix it!
              */
-            lbl = (label_handle)sym;
+            lbl = reinterpret_cast<label_handle>(sym);
             imp = true;
         }
         DoCall( back, lbl, imp, far_call, (ins->flags.u.call_flags & CALL_POPS_PARMS) != 0 );
@@ -706,14 +706,14 @@ static  void    DoCodeBytes( BackRun& back, const void *src, byte_seq_len len, o
     while( len + addlen > MAX_OBJ_LEN ) {
         memcpy( oc->oc_entry.data, src, MAX_OBJ_LEN );
         InputOC( back, oc );
-        src = (char *)src + MAX_OBJ_LEN;
+        src = static_cast<const char *>(src) + MAX_OBJ_LEN;
         len -= MAX_OBJ_LEN;
     }
     oc->oc_entry.hdr.reclen = offsetof( oc_entry, data ) + len + addlen;
     oc->oc_entry.hdr.objlen = len + addlen;
     memcpy( oc->oc_entry.data, src, len );
     if( addlen )
-        oc->oc_entry.data[len] = (byte)len;
+        oc->oc_entry.data[len] = static_cast<byte>(len);
     InputOC( back, oc );
     CGFree( back, oc );
 }

@@ -427,9 +427,9 @@ typedef struct {
 };
 #include "poppck.h"
 
-inline dw_op DwOpLit( int x ) { return ((dw_op)((x) + 0x30)); }   // valid for 0..31 only
-inline dw_op DwOpLit( unsigned int x ) { return ((dw_op)((x) + 0x30)); }
-inline dw_op DwOpReg( unsigned int x ) { return ((dw_op)((x) + 0x50)); }   // valid for 0..31 only
-inline dw_op DwOpBreg( unsigned int x ) { return ((dw_op)((x) + 0x70)); }   // valid for 0..31 only
+inline dw_op DwOpLit( int x ) { return (static_cast<dw_op>((x) + 0x30)); }   // valid for 0..31 only
+inline dw_op DwOpLit( unsigned int x ) { return (static_cast<dw_op>((x) + 0x30)); }
+inline dw_op DwOpReg( unsigned int x ) { return (static_cast<dw_op>((x) + 0x50)); }   // valid for 0..31 only
+inline dw_op DwOpBreg( unsigned int x ) { return (static_cast<dw_op>((x) + 0x70)); }   // valid for 0..31 only
 
 #endif

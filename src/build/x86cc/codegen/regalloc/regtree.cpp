@@ -80,7 +80,7 @@ static  reg_tree        *AllocRegTree( BackRun& back )
 static  void    FreeRegTree( BackRun& back, reg_tree *tree )
 /*******************************************/
 {
-    FrlFreeSize( back, &back.regtree.TreeFrl, (pointer *)tree, sizeof( reg_tree ) );
+    FrlFreeSize( back, &back.regtree.TreeFrl, reinterpret_cast<pointer *>(tree), sizeof( reg_tree ) );
 }
 
 
@@ -102,7 +102,7 @@ static  hw_reg_set      *AllocRegSet( BackRun& back )
 static  void    FreeRegSet( BackRun& back, hw_reg_set *regs )
 /********************************************/
 {
-    FrlFreeSize( back, &back.regtree.RegFrl, (pointer *)regs, REGSET_SIZE );
+    FrlFreeSize( back, &back.regtree.RegFrl, reinterpret_cast<pointer *>(regs), REGSET_SIZE );
 }
 
 

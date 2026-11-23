@@ -36,7 +36,7 @@
 typedef int             import_handle;
 typedef pointer         abspatch_handle;
 
-#define ADDR_UNKNOWN    ((offset)(-1))
+#define ADDR_UNKNOWN    (static_cast<offset>(-1))
 #define NOT_IMPORTED    0
 
 typedef struct bck_info {
@@ -63,5 +63,5 @@ typedef enum {
         CG_CLB
 } cg_class;
 
-#define PROC_ALIGN      ((unsigned)-1)
-#define DEEP_LOOP_ALIGN ((unsigned)-2)
+#define PROC_ALIGN      (static_cast<unsigned>(-1))
+#define DEEP_LOOP_ALIGN (static_cast<unsigned>(-2))
