@@ -1525,6 +1525,7 @@ void WwApp::on_board_done() {
     } catch (const std::exception&) {}   // (only what opens by itself next time)
     model_.status_text = board::count_words(model_.board->cards.size()) + " files on the board";
     board_load_decks(model_);
+    if (model_.board_scores) model_.status_text += " · " + board::c_score_words(*model_.board_scores);
     refresh_board();
 }
 
@@ -3611,6 +3612,8 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
                 for (const std::uint32_t i : stack.todo)
                     if (card < 0 && (wanted.empty() ? m.board->cards[i].pile == board::Pile::Programs : text::lower(m.board->cards[i].name) == wanted)) card = static_cast<int>(i);
             }
+            for (std::size_t i = 0; card < 0 && !wanted.empty() && i < m.board->cards.size(); ++i)   // (a converted file is in no stack's to-do list)
+                if (text::lower(m.board->cards[i].name) == wanted) card = static_cast<int>(i);
             if (state == "board-inspect") board_inspect_card(m, card);
             else {
                 board_hover_card(m, card);
@@ -3630,6 +3633,7 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
             if (state == "board-library-function" && m.board_library && !m.board_library->right.empty()) board_go_to(m, m.board_focus, m.board_library->right[0].key);
         }
         m.status_text = board::count_words(m.board->cards.size()) + " files on the board";
+        if (m.board_scores) m.status_text += " Â· " + board::c_score_words(*m.board_scores);
         if (state == "board-expanded") {
             m.board_expanded[1] = true;
             m.board_scroll[1] = 46 * 200;

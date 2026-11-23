@@ -320,6 +320,7 @@ struct Model {
     std::shared_ptr<const board::LibraryView> board_library;
     std::shared_ptr<const board::Projection> board_projection;  // calls per hour: measured where a trace saw them, else a model (board_projection.hpp)
     std::shared_ptr<const board::Measured> board_measured;      // the trace kept with this board
+    std::shared_ptr<const board::CScores> board_scores;         // how its generated C recompiled
     double board_flow_time = 2.5;                               // seconds: where the flow dots are
     std::vector<std::pair<int, std::string>> board_crumbs;      // the way here: (module, function or empty), the last is what is in view
     std::string board_function;                                 // the Library view is centred on this function of the module in focus

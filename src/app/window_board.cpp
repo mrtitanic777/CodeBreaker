@@ -318,7 +318,7 @@ void board_inspect_card(Model& m, int card) {
     m.board_inspecting = true;
     m.board_selected = card;
     m.board_inspect_scroll = 0;
-    m.board_inspector = std::make_shared<const board::Inspector>(board::build_inspector(*m.board, *m.board_index, m.board_signals.get(), static_cast<std::uint32_t>(card)));
+    m.board_inspector = std::make_shared<const board::Inspector>(board::build_inspector(*m.board, *m.board_index, m.board_signals.get(), static_cast<std::uint32_t>(card), m.board_scores.get()));
 }
 
 void board_sync_inspector(Model& m) {
@@ -395,6 +395,8 @@ void board_load_decks(Model& m) {
     m.board_projection.reset();
     std::optional<board::Measured> kept = board::load_measured(m.board->root);
     m.board_measured = kept ? std::make_shared<const board::Measured>(std::move(*kept)) : nullptr;
+    std::optional<board::CScores> scores = board::load_c_scores(m.board->root);
+    m.board_scores = scores ? std::make_shared<const board::CScores>(std::move(*scores)) : nullptr;
 }
 
 void board_apply_deck(Model& m, int deck) {

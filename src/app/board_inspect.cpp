@@ -63,7 +63,7 @@ void add_links(Inspector& out, const Board& board, const std::map<std::uint32_t,
 
 }  // namespace
 
-Inspector build_inspector(const Board& board, const Index& index, const Signals* signals, std::uint32_t card) {
+Inspector build_inspector(const Board& board, const Index& index, const Signals* signals, std::uint32_t card, const CScores* scores) {
     Inspector out;
     out.card = card;
     const Card& c = board.cards[card];
@@ -85,6 +85,33 @@ Inspector build_inspector(const Board& board, const Index& index, const Signals*
     if (node.unresolved > 0) fact("Names not on the board", count_words(node.unresolved));
     fact("SHA-256", node.sha256.empty() ? std::string("unreadable") : node.sha256.substr(0, 16) + "\xE2\x80\xA6");
     fact("Where", c.rel);
+
+    if (scores != nullptr) {   // (one copy was scored for all: identical bytes)
+        const CScore* found = nullptr;
+        for (const std::uint32_t copy : copies) {
+            const auto it = scores->by_card.find(board.cards[copy].rel);
+            if (it != scores->by_card.end() && (found == nullptr || it->second.scored())) found = &it->second;
+        }
+        if (found != nullptr || c.format == "PE" || c.format == "NE" || c.format == "LE" || c.format == "MZ") {
+            out.rows.push_back({InspectorRow::Kind::Heading, "C recompile", "measured"});
+            if (found == nullptr) {
+                fact("C result", "not scored yet");
+            } else if (!found->scored()) {
+                fact("C result", found->result == "timeout" ? "ran out of time: no score" : "the scorer failed: no score");
+            } else if (found->functions == 0) {
+                fact("C result", "no functions to compare");
+            } else {
+                const auto line = [&](const char* name, std::uint64_t n) {
+                    fact(name, count_words(n) + " of " + count_words(found->functions) + " (" + score_percent(n, found->functions) + ")");
+                };
+                line("Byte-identical", found->identical);
+                line("Same size", found->same_size);
+                line("Different", found->different);
+                line("Will not compile", found->no_compile);
+                if (found->library > 0) line("Run-time library", found->library);
+            }
+        }
+    }
 
     std::map<std::uint32_t, Linked> inbound, outbound;
     for (const std::uint32_t copy : copies) {
