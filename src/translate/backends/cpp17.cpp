@@ -36,7 +36,24 @@ std::string program(const native_l2::Library& lib, Arena& arena, std::span<ir::N
     std::vector<Json> docs;
     docs.reserve(units.size());
     for (const ir::Node* u : units) docs.push_back(l2::to_json(*u));
-    return lib.cpp17_program(docs, main);
+    std::string text = lib.cpp17_program(docs, main);
+    if (text.find("Character::getType(") == std::string::npos) return text;
+    // Java's Unicode categories are a large table: only a program that asks for them carries it
+    const std::string table = fs::read_text(runtime_dir().parent_path() / "java_char_types.inc");
+    const std::string include = "#include \"jrt.hpp\"\n";
+    const std::size_t at = text.find(include);
+    CB_ASSERT(at != std::string::npos, "the program includes its runtime");
+    text.insert(at + include.size(),
+                "static const uint16_t jrt_char_types[] = {\n" + table + "};\n"
+                "inline int32_t jrt::Character::getType(char16_t c) {\n"
+                "\tsize_t low = 0, high = sizeof(jrt_char_types) / sizeof(jrt_char_types[0]) / 2;\n"
+                "\twhile (high - low > 1) {\n"
+                "\t\tconst size_t middle = low + (high - low) / 2;\n"
+                "\t\tif (jrt_char_types[middle * 2] <= c) low = middle; else high = middle;\n"
+                "\t}\n"
+                "\treturn jrt_char_types[low * 2 + 1];\n"
+                "}\n");
+    return text;
 }
 
 }  // namespace cb::translate::backends::cpp17

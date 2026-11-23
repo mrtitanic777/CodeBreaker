@@ -283,16 +283,16 @@ static int32_t Generics_boxed(int32_t v) {
 	Generics_Box* b = Generics_Box_new(jrt_box_I(v));
 	Generics_Box_set_v((jobject*)b, jrt_box_I(jrt_unbox_I((jobject*)Generics_Box_get_v((jobject*)b)) + 1));
 	Generics_Box* s = Generics_Box_map_v((jobject*)b, Lambda1_new());
-	int32_t o1 = 0;
-	jobject* o2 = NULL;
-	return (o1 = jrt_String_length_((jstring*)jrt_cast((jobject*)Generics_Box_get_v((jobject*)s), &jrt_String_class)), o2 = Generics_Box_get_v((jobject*)b), o1 + jrt_unbox_I((jobject*)o2));
+	int32_t jrt_o1 = 0;
+	jobject* jrt_o2 = NULL;
+	return (jrt_o1 = jrt_String_length_((jstring*)jrt_cast((jobject*)Generics_Box_get_v((jobject*)s), &jrt_String_class)), jrt_o2 = Generics_Box_get_v((jobject*)b), jrt_o1 + jrt_unbox_I((jobject*)jrt_o2));
 }
 
 static jstring* Generics_pairText(int32_t a, jstring* b) {
 	Generics_Pair* p = Generics_Pair_new(jrt_box_I(a), (jobject*)b);
-	jstring* o1 = NULL;
-	jobject* o2 = NULL;
-	return (o1 = jrt_toString((jobject*)Generics_Pair_swap_v((jobject*)p)), o2 = Generics_Pair_first_v((jobject*)p), jrt_concat(2, jrt_str_O((jobject*)o1), jrt_str_O((jobject*)o2)));
+	jstring* jrt_o1 = NULL;
+	jstring* jrt_o2 = NULL;
+	return (jrt_o1 = jrt_str_O((jobject*)jrt_toString((jobject*)Generics_Pair_swap_v((jobject*)p))), jrt_o2 = jrt_str_O((jobject*)Generics_Pair_first_v((jobject*)p)), jrt_concat(2, jrt_o1, jrt_o2));
 }
 
 static int32_t Generics_maxOf(int32_t a, int32_t b) {
@@ -353,11 +353,11 @@ static int32_t Generics_innerHits(int32_t n) {
 }
 
 static void Generics_main(jarray* args) {
-	volatile int32_t o1 = 0;
-	jstring* volatile o2 = NULL;
-	volatile int32_t o3 = 0;
-	jstring* volatile o4 = NULL;
-	jrt_PrintStream_println_Str(jrt_System_out, (o1 = Generics_boxed(41), o2 = Generics_pairText(7, jrt_lit(&lit_4, u"seven", 5)), o3 = Generics_maxOf(12, 5), o4 = Generics_maxWord(jrt_lit(&lit_5, u"pear", 4), jrt_lit(&lit_6, u"apple", 5)), jrt_concat(7, jrt_str_I(o1), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)o2), jrt_lit(&lit_7, u" ", 1), jrt_str_I(o3), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)o4))));
+	volatile int32_t jrt_o1 = 0;
+	jstring* volatile jrt_o2 = NULL;
+	volatile int32_t jrt_o3 = 0;
+	jstring* volatile jrt_o4 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o1 = Generics_boxed(41), jrt_o2 = Generics_pairText(7, jrt_lit(&lit_4, u"seven", 5)), jrt_o3 = Generics_maxOf(12, 5), jrt_o4 = Generics_maxWord(jrt_lit(&lit_5, u"pear", 4), jrt_lit(&lit_6, u"apple", 5)), jrt_concat(7, jrt_str_I(jrt_o1), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)jrt_o2), jrt_lit(&lit_7, u" ", 1), jrt_str_I(jrt_o3), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)jrt_o4))));
 	Generics_Stack* volatile st = Generics_Stack_new();
 	Generics_Stack_push_v((jobject*)st, (jobject*)jrt_lit(&lit_8, u"a", 1));
 	Generics_Stack_push_v((jobject*)st, (jobject*)jrt_lit(&lit_9, u"b", 1));
@@ -369,10 +369,10 @@ static void Generics_main(jarray* args) {
 			jrt_PrintStream_print_Str(jrt_System_out, s);
 		}
 	}
-	jstring* volatile o5 = NULL;
-	jstring* volatile o6 = NULL;
-	volatile bool o7 = 0;
-	jrt_PrintStream_println_Str(jrt_System_out, (o5 = (jstring*)jrt_cast((jobject*)Generics_Stack_pop_v((jobject*)st), &jrt_String_class), o6 = (jstring*)jrt_cast((jobject*)Generics_Stack_pop_v((jobject*)st), &jrt_String_class), o7 = Generics_Stack_isEmpty_v((jobject*)st), jrt_concat(5, jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)o5), jrt_str_O((jobject*)o6), jrt_lit(&lit_7, u" ", 1), jrt_str_Z(o7))));
+	jstring* volatile jrt_o5 = NULL;
+	jstring* volatile jrt_o6 = NULL;
+	volatile bool jrt_o7 = 0;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o5 = (jstring*)jrt_cast((jobject*)Generics_Stack_pop_v((jobject*)st), &jrt_String_class), jrt_o6 = (jstring*)jrt_cast((jobject*)Generics_Stack_pop_v((jobject*)st), &jrt_String_class), jrt_o7 = Generics_Stack_isEmpty_v((jobject*)st), jrt_concat(5, jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)jrt_o5), jrt_str_O((jobject*)jrt_o6), jrt_lit(&lit_7, u" ", 1), jrt_str_Z(jrt_o7))));
 	{
 		jrt_try t8;
 		jrt_push(&t8);
@@ -390,15 +390,15 @@ static void Generics_main(jarray* args) {
 			}
 		}
 	}
-	volatile int32_t o9 = 0;
-	jstring* volatile o10 = NULL;
-	jstring* volatile o11 = NULL;
-	volatile int32_t o12 = 0;
-	jrt_PrintStream_println_Str(jrt_System_out, (o9 = Generics_stackSum(10), o10 = Generics_visit(4), o11 = Generics_visit(5), o12 = Generics_innerHits(10), jrt_concat(7, jrt_str_I(o9), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)o10), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)o11), jrt_lit(&lit_7, u" ", 1), jrt_str_I(o12))));
+	volatile int32_t jrt_o9 = 0;
+	jstring* volatile jrt_o10 = NULL;
+	jstring* volatile jrt_o11 = NULL;
+	volatile int32_t jrt_o12 = 0;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o9 = Generics_stackSum(10), jrt_o10 = Generics_visit(4), jrt_o11 = Generics_visit(5), jrt_o12 = Generics_innerHits(10), jrt_concat(7, jrt_str_I(jrt_o9), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)jrt_o10), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)jrt_o11), jrt_lit(&lit_7, u" ", 1), jrt_str_I(jrt_o12))));
 	jobject* volatile words = jrt_List_of(5, (jobject*)jrt_lit(&lit_12, u"alpha", 5), (jobject*)jrt_lit(&lit_13, u"beta", 4), (jobject*)jrt_lit(&lit_14, u"gamma", 5), (jobject*)jrt_lit(&lit_15, u"delta", 5), (jobject*)jrt_lit(&lit_16, u"epsilon", 7));
-	volatile int32_t o13 = 0;
-	volatile int32_t o14 = 0;
-	jrt_PrintStream_println_Str(jrt_System_out, (o13 = Generics_countMatching(words, Lambda2_new()), o14 = Generics_countMatching(words, Lambda3_new()), jrt_concat(3, jrt_str_I(o13), jrt_lit(&lit_7, u" ", 1), jrt_str_I(o14))));
+	volatile int32_t jrt_o13 = 0;
+	volatile int32_t jrt_o14 = 0;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o13 = Generics_countMatching(words, Lambda2_new()), jrt_o14 = Generics_countMatching(words, Lambda3_new()), jrt_concat(3, jrt_str_I(jrt_o13), jrt_lit(&lit_7, u" ", 1), jrt_str_I(jrt_o14))));
 }
 
 static void Generics_finit(Generics* self) {

@@ -125,7 +125,7 @@ void MethodWriter::emit(const ir::Node&, const ir::Local& k, Lines& out, std::st
         return;
     }
     const Code init = expr(k.init);
-    out.push_back(std::string(ind) + decl(ct, name, conv(init.code, init.ctype, ct)));
+    out.push_back(std::string(ind) + decl(ct, name, conv_to(init, k.type, ct)));
 }
 
 void MethodWriter::emit(const ir::Node&, const ir::ExprStmt& k, Lines& out, std::string_view ind) {

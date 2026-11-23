@@ -764,12 +764,30 @@ float jrt_unbox_F(jobject* o) { jrt_nn(o); if (o->cls == &jrt_Float_class) retur
 int16_t jrt_unbox_S(jobject* o) { return ((jrt_Short*)jrt_cast((jobject*)jrt_nn(o), &jrt_Short_class))->value; }
 int8_t jrt_unbox_B(jobject* o) { return ((jrt_Byte*)jrt_cast((jobject*)jrt_nn(o), &jrt_Byte_class))->value; }
 char16_t jrt_unbox_C(jobject* o) { return ((jrt_Character*)jrt_cast((jobject*)jrt_nn(o), &jrt_Character_class))->value; }
+// (whole numbers step through unsigned, so the largest wraps to the smallest as Java's does)
+#define JRT_BOX_STEP(L, T, NEXT) \
+	jobject* jrt_box_step_##L(jobject* volatile* slot, int by, bool postfix) { \
+		jobject* before = *slot; \
+		T v = jrt_unbox_##L(before); \
+		jobject* after = jrt_box_##L((T)(NEXT)); \
+		*slot = after; \
+		return postfix ? before : after; \
+	}
+JRT_BOX_STEP(I, int32_t, (uint32_t)v + (uint32_t)by)
+JRT_BOX_STEP(J, int64_t, (uint64_t)v + (uint64_t)(int64_t)by)
+JRT_BOX_STEP(D, double, v + by)
+JRT_BOX_STEP(F, float, v + (float)by)
+JRT_BOX_STEP(S, int16_t, (uint32_t)v + (uint32_t)by)
+JRT_BOX_STEP(B, int8_t, (uint32_t)v + (uint32_t)by)
+JRT_BOX_STEP(C, char16_t, (uint32_t)v + (uint32_t)by)
 bool jrt_unbox_Z(jobject* o) { return ((jrt_Boolean*)jrt_cast((jobject*)jrt_nn(o), &jrt_Boolean_class))->value; }
 int32_t jrt_natural(jobject* a, jobject* b) {
 	if (!a || !b) jrt_throw_npe();
 	if (a->cls == &jrt_String_class) return jrt_String_compareTo_O((jstring*)a, b);
-	if (a->cls == &jrt_Integer_class || a->cls == &jrt_Short_class || a->cls == &jrt_Byte_class || a->cls == &jrt_Character_class)
-		return jrt_Integer_compare_II(jrt_unbox_I(a), jrt_unbox_I(b));
+	if (a->cls == &jrt_Integer_class) return jrt_Integer_compare_II(jrt_unbox_I(a), jrt_unbox_I(b));
+	if (a->cls == &jrt_Short_class) return (int32_t)jrt_unbox_S(a) - (int32_t)jrt_unbox_S(b);   // (these three give the difference, as Java's do)
+	if (a->cls == &jrt_Byte_class) return (int32_t)jrt_unbox_B(a) - (int32_t)jrt_unbox_B(b);
+	if (a->cls == &jrt_Character_class) return (int32_t)jrt_unbox_C(a) - (int32_t)jrt_unbox_C(b);
 	if (a->cls == &jrt_Long_class) return jrt_Long_compare_JJ(jrt_unbox_J(a), jrt_unbox_J(b));
 	if (a->cls == &jrt_Double_class) return jrt_Double_compare_DD(jrt_unbox_D(a), jrt_unbox_D(b));
 	if (a->cls == &jrt_Float_class) return jrt_Float_compare_FF(jrt_unbox_F(a), jrt_unbox_F(b));

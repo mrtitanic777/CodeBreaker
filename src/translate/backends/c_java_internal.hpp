@@ -179,6 +179,7 @@ public:
     std::vector<std::string> all_ifaces(const ClassInfo& cls) const;
     // The function implementing an interface method in class `cls` (its own or a base's, or an interface's default), if any.
     std::optional<std::string> find_impl(const ClassInfo& cls, std::string_view java_name, std::size_t parameters) const;
+    Lines lambda_tables(const std::string& name, const ClassInfo& iface, std::string_view java_name, std::size_t parameters) const;
 
     // ---- constructors
     std::string ctor_name(const ClassInfo& cls, const ir::Node* ctor) const;
@@ -236,6 +237,8 @@ public:
     // ---- expressions -> (code, C type) (c_java_expr.cpp)
     Code expr(const ir::Node* e);
     std::string conv(const std::string& code, std::string_view src, std::string_view dst) const;
+    // A value put in a place of Java type `type`: a constant given to a Short, Byte or Character is boxed as that, not as an int.
+    std::string conv_to(const Code& value, const ir::TypeP& type, std::string_view dst) const;
 
     // ---- closures (c_java_closure.cpp)
     Code closure(const ir::Node* e);

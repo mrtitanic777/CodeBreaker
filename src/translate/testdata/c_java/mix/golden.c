@@ -190,9 +190,9 @@ static Mix* Mix_new(void) {
 
 static int32_t Mix_fib(int32_t n) {
 	Mix_clinit();
-	int32_t o1 = 0;
-	int32_t o2 = 0;
-	return (n < 2 ? n : (o1 = Mix_fib(n - 1), o2 = Mix_fib(n - 2), o1 + o2));
+	int32_t jrt_o1 = 0;
+	int32_t jrt_o2 = 0;
+	return (n < 2 ? n : (jrt_o1 = Mix_fib(n - 1), jrt_o2 = Mix_fib(n - 2), jrt_o1 + jrt_o2));
 }
 
 static int32_t Mix_sw(int32_t k) {
@@ -274,24 +274,24 @@ static void Mix_main(jarray* args) {
 	Mix_clinit();
 	Mix* volatile m = Mix_new();
 	Mix_Inner* volatile in = Mix_Inner_new((Mix*)jrt_nn(m), 3);
-	volatile int32_t o1 = 0;
-	volatile int32_t o2 = 0;
-	volatile int32_t o3 = 0;
-	volatile int32_t o4 = 0;
-	volatile int32_t o5 = 0;
-	jstring* volatile o6 = NULL;
-	jstring* volatile o7 = NULL;
-	jrt_PrintStream_println_Str(jrt_System_out, (o1 = Mix_Inner_get_v((jobject*)in), o2 = Mix_fib(10), o3 = Mix_sw(1), o4 = Mix_sw(3), o5 = Mix_sw(9), o6 = Mix_name(jrt_lit(&lit_3, u"b", 1)), o7 = Mix_name(jrt_lit(&lit_8, u"z", 1)), jrt_concat(10, jrt_str_I(o1), jrt_lit(&lit_9, u" ", 1), jrt_str_I(o2), jrt_lit(&lit_9, u" ", 1), jrt_str_I(o3), jrt_str_I(o4), jrt_str_I(o5), jrt_lit(&lit_9, u" ", 1), jrt_str_O((jobject*)o6), jrt_str_O((jobject*)o7))));
+	volatile int32_t jrt_o1 = 0;
+	volatile int32_t jrt_o2 = 0;
+	volatile int32_t jrt_o3 = 0;
+	volatile int32_t jrt_o4 = 0;
+	volatile int32_t jrt_o5 = 0;
+	jstring* volatile jrt_o6 = NULL;
+	jstring* volatile jrt_o7 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o1 = Mix_Inner_get_v((jobject*)in), jrt_o2 = Mix_fib(10), jrt_o3 = Mix_sw(1), jrt_o4 = Mix_sw(3), jrt_o5 = Mix_sw(9), jrt_o6 = Mix_name(jrt_lit(&lit_3, u"b", 1)), jrt_o7 = Mix_name(jrt_lit(&lit_8, u"z", 1)), jrt_concat(10, jrt_str_I(jrt_o1), jrt_lit(&lit_9, u" ", 1), jrt_str_I(jrt_o2), jrt_lit(&lit_9, u" ", 1), jrt_str_I(jrt_o3), jrt_str_I(jrt_o4), jrt_str_I(jrt_o5), jrt_lit(&lit_9, u" ", 1), jrt_str_O((jobject*)jrt_o6), jrt_str_O((jobject*)jrt_o7))));
 	{
 		jarray* volatile j2x_a3 = Mix_Color_values();
 		{
 			volatile int32_t j2x_i4 = 0;
 			for (; j2x_i4 < JLEN(j2x_a3); j2x_i4++) {
 				Mix_Color* volatile c = (Mix_Color*)jrt_cast((jobject*)JA(jobject*, j2x_a3, j2x_i4), &Mix_Color_class);
-				jstring* volatile o8 = NULL;
-				jstring* volatile o9 = NULL;
-				jstring* volatile o10 = NULL;
-				jrt_PrintStream_println_Str(jrt_System_out, (o8 = jrt_str_O((jobject*)c), o9 = jrt_str_I(Mix_Color_weight_v((jobject*)c)), o10 = jrt_str_I(jrt_Enum_ordinal_((jobject*)c)), jrt_concat(5, o8, jrt_lit(&lit_10, u":", 1), o9, jrt_lit(&lit_10, u":", 1), o10)));
+				jstring* volatile jrt_o8 = NULL;
+				jstring* volatile jrt_o9 = NULL;
+				jstring* volatile jrt_o10 = NULL;
+				jrt_PrintStream_println_Str(jrt_System_out, (jrt_o8 = jrt_str_O((jobject*)c), jrt_o9 = jrt_str_I(Mix_Color_weight_v((jobject*)c)), jrt_o10 = jrt_str_I(jrt_Enum_ordinal_((jobject*)c)), jrt_concat(5, jrt_o8, jrt_lit(&lit_10, u":", 1), jrt_o9, jrt_lit(&lit_10, u":", 1), jrt_o10)));
 			}
 		}
 	}
@@ -318,9 +318,9 @@ static void Mix_main(jarray* args) {
 	}
 	jrt_PrintStream_println_Str(jrt_System_out, jrt_concat(7, jrt_str_I(sum), jrt_lit(&lit_9, u" ", 1), jrt_str_J(Mix_mix(1234567LL, 5, 7.9, u'x', (int8_t)(3))), jrt_lit(&lit_9, u" ", 1), jrt_str_O((jobject*)Mix_label), jrt_str_I(Mix_counter), jrt_str_J(Mix_total)));
 	Mix_Box* volatile b = Mix_Box_new((jobject*)jrt_lit(&lit_11, u"boxed", 5));
-	volatile int32_t o11 = 0;
-	jstring* volatile o12 = NULL;
-	jrt_PrintStream_println_Str(jrt_System_out, (o11 = jrt_String_length_((jstring*)jrt_cast((jobject*)Mix_Box_get_v((jobject*)b), &jrt_String_class)), o12 = (jstring*)jrt_cast((jobject*)Mix_Box_get_v((jobject*)b), &jrt_String_class), jrt_concat(2, jrt_str_I(o11), jrt_str_O((jobject*)o12))));
+	volatile int32_t jrt_o11 = 0;
+	jstring* volatile jrt_o12 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o11 = jrt_String_length_((jstring*)jrt_cast((jobject*)Mix_Box_get_v((jobject*)b), &jrt_String_class)), jrt_o12 = (jstring*)jrt_cast((jobject*)Mix_Box_get_v((jobject*)b), &jrt_String_class), jrt_concat(2, jrt_str_I(jrt_o11), jrt_str_O((jobject*)jrt_o12))));
 	{
 		volatile int32_t i = 0;
 		for (; i < 4; i++) {
@@ -361,10 +361,10 @@ static void Mix_main(jarray* args) {
 	jobject* volatile twice = Lambda1_new();
 	jobject* volatile add = Lambda2_new();
 	jobject* volatile sup = Lambda3_new();
-	jobject* volatile o15 = NULL;
-	jobject* volatile o16 = NULL;
-	jstring* volatile o17 = NULL;
-	jrt_PrintStream_println_Str(jrt_System_out, (o15 = jrt_Function_apply_O(twice, jrt_box_I(21)), o16 = jrt_BiFunction_apply_OO(add, jrt_box_I(3), jrt_box_I(4)), o17 = (jstring*)jrt_cast((jobject*)jrt_Supplier_get_(sup), &jrt_String_class), jrt_concat(5, jrt_str_O((jobject*)o15), jrt_lit(&lit_9, u" ", 1), jrt_str_O((jobject*)o16), jrt_lit(&lit_9, u" ", 1), jrt_str_O((jobject*)o17))));
+	jstring* volatile jrt_o15 = NULL;
+	jstring* volatile jrt_o16 = NULL;
+	jstring* volatile jrt_o17 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o15 = jrt_str_O((jobject*)jrt_Function_apply_O(twice, jrt_box_I(21))), jrt_o16 = jrt_str_O((jobject*)jrt_BiFunction_apply_OO(add, jrt_box_I(3), jrt_box_I(4))), jrt_o17 = jrt_str_O((jobject*)(jstring*)jrt_cast((jobject*)jrt_Supplier_get_(sup), &jrt_String_class)), jrt_concat(5, jrt_o15, jrt_lit(&lit_9, u" ", 1), jrt_o16, jrt_lit(&lit_9, u" ", 1), jrt_o17)));
 	jrt_StringBuilder* volatile sb = jrt_StringBuilder_new_();
 	{
 		volatile int32_t i = 0;

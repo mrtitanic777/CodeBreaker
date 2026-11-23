@@ -205,11 +205,11 @@ static void Zoo_main(jarray* args) {
 			jrt_PrintStream_println_Str(jrt_System_out, Zoo_Animal_greet_i((jobject*)a));
 		}
 	}
-	jstring* volatile o1 = NULL;
-	jstring* volatile o2 = NULL;
-	jstring* volatile o3 = NULL;
-	jstring* volatile o4 = NULL;
-	jrt_PrintStream_println_Str(jrt_System_out, (o1 = jrt_str_I(Zoo_Base_made), o2 = jrt_str_I(((Zoo_Dog*)jrt_nn(((Zoo_Dog*)jrt_cast((jobject*)jrt_List_get_I(zoo, 0), &Zoo_Dog_class))))->barks), o3 = jrt_str_O((jobject*)Zoo_Pair_new(jrt_lit(&lit_5, u"x", 1), 2)), o4 = jrt_str_I(Zoo_sumTo(4)), jrt_concat(7, o1, jrt_lit(&lit_4, u" ", 1), o2, jrt_lit(&lit_4, u" ", 1), o3, jrt_lit(&lit_4, u" ", 1), o4)));
+	jstring* volatile jrt_o1 = NULL;
+	jstring* volatile jrt_o2 = NULL;
+	jstring* volatile jrt_o3 = NULL;
+	jstring* volatile jrt_o4 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o1 = jrt_str_I(Zoo_Base_made), jrt_o2 = jrt_str_I(((Zoo_Dog*)jrt_nn(((Zoo_Dog*)jrt_cast((jobject*)jrt_List_get_I(zoo, 0), &Zoo_Dog_class))))->barks), jrt_o3 = jrt_str_O((jobject*)Zoo_Pair_new(jrt_lit(&lit_5, u"x", 1), 2)), jrt_o4 = jrt_str_I(Zoo_sumTo(4)), jrt_concat(7, jrt_o1, jrt_lit(&lit_4, u" ", 1), jrt_o2, jrt_lit(&lit_4, u" ", 1), jrt_o3, jrt_lit(&lit_4, u" ", 1), jrt_o4)));
 	{
 		jrt_try f5;
 		jrt_push(&f5);
@@ -241,10 +241,10 @@ static void Zoo_main(jarray* args) {
 	jobject* volatile m = jrt_LinkedHashMap_new_();
 	jrt_Map_put_OO(m, (jobject*)jrt_lit(&lit_8, u"one", 3), jrt_box_I(1));
 	jrt_Map_put_OO(m, (jobject*)jrt_lit(&lit_9, u"two", 3), jrt_box_I(2));
-	jstring* volatile o7 = NULL;
-	jstring* volatile o8 = NULL;
-	jstring* volatile o9 = NULL;
-	jrt_PrintStream_println_Str(jrt_System_out, (o7 = jrt_str_O((jobject*)m), o8 = jrt_str_I(Zoo_pick(5)), o9 = jrt_str_O((jobject*)jrt_String_format(jrt_lit(&lit_10, u"%5.2f|%d", 8), 2, jrt_box_D(3.14159), jrt_box_I(42))), jrt_concat(5, o7, jrt_lit(&lit_4, u" ", 1), o8, jrt_lit(&lit_4, u" ", 1), o9)));
+	jstring* volatile jrt_o7 = NULL;
+	jstring* volatile jrt_o8 = NULL;
+	jstring* volatile jrt_o9 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o7 = jrt_str_O((jobject*)m), jrt_o8 = jrt_str_I(Zoo_pick(5)), jrt_o9 = jrt_str_O((jobject*)jrt_String_format(jrt_lit(&lit_10, u"%5.2f|%d", 8), 2, jrt_box_D(3.14159), jrt_box_I(42))), jrt_concat(5, jrt_o7, jrt_lit(&lit_4, u" ", 1), jrt_o8, jrt_lit(&lit_4, u" ", 1), jrt_o9)));
 	jobject* volatile byLen = Lambda1_new();
 	jobject* volatile ws = jrt_ArrayList_new_O(jrt_List_of(3, (jobject*)jrt_lit(&lit_11, u"ccc", 3), (jobject*)jrt_lit(&lit_12, u"a", 1), (jobject*)jrt_lit(&lit_13, u"bb", 2)));
 	jrt_List_sort_O(ws, byLen);
@@ -256,9 +256,9 @@ static void Zoo_finit(Zoo* self) {
 
 static jstring* Zoo_Animal_greet(jobject* self_) {
 	jobject* self = self_;
-	jstring* o1 = NULL;
-	jstring* o2 = NULL;
-	return (o1 = Zoo_Animal_name_i((jobject*)self), o2 = Zoo_Animal_sound_i((jobject*)self), jrt_concat(3, jrt_str_O((jobject*)o1), jrt_lit(&lit_14, u" says ", 6), jrt_str_O((jobject*)o2)));
+	jstring* jrt_o1 = NULL;
+	jstring* jrt_o2 = NULL;
+	return (jrt_o1 = Zoo_Animal_name_i((jobject*)self), jrt_o2 = Zoo_Animal_sound_i((jobject*)self), jrt_concat(3, jrt_str_O((jobject*)jrt_o1), jrt_lit(&lit_14, u" says ", 6), jrt_str_O((jobject*)jrt_o2)));
 }
 
 static void Zoo_Base_init(Zoo_Base* self, jstring* n) {

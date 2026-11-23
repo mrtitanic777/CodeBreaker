@@ -268,13 +268,13 @@ static int32_t Calc_sum(jarray* var0) {
 
 static int32_t Calc_sums(int32_t var0) {
 	Calc_clinit();
-	int32_t o1 = 0;
-	int32_t o2 = 0;
-	int32_t o3 = 0;
-	int32_t o4 = 0;
-	int32_t o5 = 0;
-	int32_t o6 = 0;
-	return (o5 = (o3 = (o1 = Calc_sum(jrt_new_array(sizeof(int32_t), 0)), o2 = Calc_sum(jrt_array_of(sizeof(int32_t), 1, (int32_t[]){var0})), o1 + o2), o4 = Calc_sum(jrt_array_of(sizeof(int32_t), 3, (int32_t[]){var0, 2, 3})), o3 + o4), o6 = Calc_sum(jrt_array_of(sizeof(int32_t), 2, (int32_t[]){var0, var0})), o5 + o6);
+	int32_t jrt_o1 = 0;
+	int32_t jrt_o2 = 0;
+	int32_t jrt_o3 = 0;
+	int32_t jrt_o4 = 0;
+	int32_t jrt_o5 = 0;
+	int32_t jrt_o6 = 0;
+	return (jrt_o5 = (jrt_o3 = (jrt_o1 = Calc_sum(jrt_new_array(sizeof(int32_t), 0)), jrt_o2 = Calc_sum(jrt_array_of(sizeof(int32_t), 1, (int32_t[]){var0})), jrt_o1 + jrt_o2), jrt_o4 = Calc_sum(jrt_array_of(sizeof(int32_t), 3, (int32_t[]){var0, 2, 3})), jrt_o3 + jrt_o4), jrt_o6 = Calc_sum(jrt_array_of(sizeof(int32_t), 2, (int32_t[]){var0, var0})), jrt_o5 + jrt_o6);
 }
 
 static int32_t Calc_tabled(int32_t var0) {

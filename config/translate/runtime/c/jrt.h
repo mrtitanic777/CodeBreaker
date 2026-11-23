@@ -172,6 +172,14 @@ int16_t jrt_unbox_S(jobject* o);
 int8_t jrt_unbox_B(jobject* o);
 char16_t jrt_unbox_C(jobject* o);
 bool jrt_unbox_Z(jobject* o);
+// x++ and x-- of a box: the place gets a new box; the result is the old one (postfix) or the new one. A null throws.
+jobject* jrt_box_step_I(jobject* volatile* slot, int by, bool postfix);
+jobject* jrt_box_step_J(jobject* volatile* slot, int by, bool postfix);
+jobject* jrt_box_step_D(jobject* volatile* slot, int by, bool postfix);
+jobject* jrt_box_step_F(jobject* volatile* slot, int by, bool postfix);
+jobject* jrt_box_step_S(jobject* volatile* slot, int by, bool postfix);
+jobject* jrt_box_step_B(jobject* volatile* slot, int by, bool postfix);
+jobject* jrt_box_step_C(jobject* volatile* slot, int by, bool postfix);
 int32_t jrt_natural(jobject* a, jobject* b);             /* Comparable.compareTo: Strings, boxes, enums, programs */
 jstring* jrt_Integer_toString_I(int32_t v);
 jstring* jrt_Integer_toHexString_I(int32_t v);
@@ -271,7 +279,9 @@ static inline jarray* jrt_ck(jarray* a, int32_t i) {
 	if ((uint32_t)i >= (uint32_t)a->length) jrt_aioobe(i, a->length);
 	return a;
 }
-#define JA(T, a, i) (((T*)jrt_ck((jarray*)(a), (i))->data)[(i)])
+// an element, its array and index each worked out once (the index may be `i++` or a call)
+static inline void* jrt_at(jarray* a, int32_t i, size_t size) { return (char*)jrt_ck(a, i)->data + (size_t)i * size; }
+#define JA(T, a, i) (*(T*)jrt_at((jarray*)(a), (i), sizeof(T)))
 #define JLEN(a) (((jarray*)jrt_nn(a))->length)
 void jrt_Arrays_sort_CA(jarray* a);
 void jrt_Arrays_sort_IA(jarray* a);
@@ -376,7 +386,54 @@ typedef struct jrt_IntConsumer_vt { jobject_vt base; void (*accept)(jobject*, in
 #define jrt_IntFunction_apply_I(o, a) JRT_ICALL(IntFunction, o, apply, a)
 #define jrt_ToIntFunction_applyAsInt_O(o, a) JRT_ICALL(ToIntFunction, o, applyAsInt, a)
 #define jrt_IntConsumer_accept_I(o, a) JRT_ICALL(IntConsumer, o, accept, a)
+/* a box's number as another kind, as Number's methods convert it (a floating one is truncated and saturates) */
+#define jrt_Integer_intValue_(o) ((int32_t)jrt_unbox_I((jobject*)(o)))
+#define jrt_Integer_longValue_(o) ((int64_t)jrt_unbox_I((jobject*)(o)))
+#define jrt_Integer_shortValue_(o) ((int16_t)jrt_unbox_I((jobject*)(o)))
+#define jrt_Integer_byteValue_(o) ((int8_t)jrt_unbox_I((jobject*)(o)))
+#define jrt_Integer_doubleValue_(o) ((double)jrt_unbox_I((jobject*)(o)))
+#define jrt_Integer_floatValue_(o) ((float)jrt_unbox_I((jobject*)(o)))
+#define jrt_Long_intValue_(o) ((int32_t)jrt_unbox_J((jobject*)(o)))
+#define jrt_Long_longValue_(o) ((int64_t)jrt_unbox_J((jobject*)(o)))
+#define jrt_Long_shortValue_(o) ((int16_t)jrt_unbox_J((jobject*)(o)))
+#define jrt_Long_byteValue_(o) ((int8_t)jrt_unbox_J((jobject*)(o)))
+#define jrt_Long_doubleValue_(o) ((double)jrt_unbox_J((jobject*)(o)))
+#define jrt_Long_floatValue_(o) ((float)jrt_unbox_J((jobject*)(o)))
+#define jrt_Short_intValue_(o) ((int32_t)jrt_unbox_S((jobject*)(o)))
+#define jrt_Short_longValue_(o) ((int64_t)jrt_unbox_S((jobject*)(o)))
+#define jrt_Short_shortValue_(o) ((int16_t)jrt_unbox_S((jobject*)(o)))
+#define jrt_Short_byteValue_(o) ((int8_t)jrt_unbox_S((jobject*)(o)))
+#define jrt_Short_doubleValue_(o) ((double)jrt_unbox_S((jobject*)(o)))
+#define jrt_Short_floatValue_(o) ((float)jrt_unbox_S((jobject*)(o)))
+#define jrt_Byte_intValue_(o) ((int32_t)jrt_unbox_B((jobject*)(o)))
+#define jrt_Byte_longValue_(o) ((int64_t)jrt_unbox_B((jobject*)(o)))
+#define jrt_Byte_shortValue_(o) ((int16_t)jrt_unbox_B((jobject*)(o)))
+#define jrt_Byte_byteValue_(o) ((int8_t)jrt_unbox_B((jobject*)(o)))
+#define jrt_Byte_doubleValue_(o) ((double)jrt_unbox_B((jobject*)(o)))
+#define jrt_Byte_floatValue_(o) ((float)jrt_unbox_B((jobject*)(o)))
+#define jrt_Double_intValue_(o) ((int32_t)jrt_d2i(jrt_unbox_D((jobject*)(o))))
+#define jrt_Double_longValue_(o) ((int64_t)jrt_d2l(jrt_unbox_D((jobject*)(o))))
+#define jrt_Double_shortValue_(o) ((int16_t)jrt_d2i(jrt_unbox_D((jobject*)(o))))
+#define jrt_Double_byteValue_(o) ((int8_t)jrt_d2i(jrt_unbox_D((jobject*)(o))))
+#define jrt_Double_doubleValue_(o) ((double)jrt_unbox_D((jobject*)(o)))
+#define jrt_Double_floatValue_(o) ((float)jrt_unbox_D((jobject*)(o)))
+#define jrt_Float_intValue_(o) ((int32_t)jrt_d2i(jrt_unbox_F((jobject*)(o))))
+#define jrt_Float_longValue_(o) ((int64_t)jrt_d2l(jrt_unbox_F((jobject*)(o))))
+#define jrt_Float_shortValue_(o) ((int16_t)jrt_d2i(jrt_unbox_F((jobject*)(o))))
+#define jrt_Float_byteValue_(o) ((int8_t)jrt_d2i(jrt_unbox_F((jobject*)(o))))
+#define jrt_Float_doubleValue_(o) ((double)jrt_unbox_F((jobject*)(o)))
+#define jrt_Float_floatValue_(o) ((float)jrt_unbox_F((jobject*)(o)))
+#define jrt_Character_charValue_(o) jrt_unbox_C((jobject*)(o))
+#define jrt_Boolean_booleanValue_(o) jrt_unbox_Z((jobject*)(o))
 #define jrt_Comparable_compareTo_O(o, a) jrt_natural((jobject*)(o), (jobject*)(a))
+#define jrt_Integer_compareTo_O(o, a) jrt_natural((jobject*)(o), (jobject*)(a))
+#define jrt_Long_compareTo_O(o, a) jrt_natural((jobject*)(o), (jobject*)(a))
+#define jrt_Short_compareTo_O(o, a) jrt_natural((jobject*)(o), (jobject*)(a))
+#define jrt_Byte_compareTo_O(o, a) jrt_natural((jobject*)(o), (jobject*)(a))
+#define jrt_Character_compareTo_O(o, a) jrt_natural((jobject*)(o), (jobject*)(a))
+#define jrt_Double_compareTo_O(o, a) jrt_natural((jobject*)(o), (jobject*)(a))
+#define jrt_Float_compareTo_O(o, a) jrt_natural((jobject*)(o), (jobject*)(a))
+#define jrt_Boolean_compareTo_O(o, a) jrt_natural((jobject*)(o), (jobject*)(a))
 
 /* ---- collections (ArrayList, the immutable List.of, HashMap/LinkedHashMap/TreeMap, HashSet/LinkedHashSet/TreeSet) */
 typedef struct jrt_ArrayList { jobject hdr; int32_t size, cap; jobject** items; bool immutable, fixed; } jrt_ArrayList;   /* fixed: Arrays.asList, over its array */

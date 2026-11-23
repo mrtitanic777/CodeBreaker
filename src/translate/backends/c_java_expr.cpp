@@ -98,7 +98,7 @@ std::string MethodWriter::sequenced(const ir::Node* e) {
         if (cpp03::is_constant(n) || subst_.contains(n) || ir::is<ir::Lambda>(n) || ir::is<ir::MethodRef>(n)) continue;
         const Code c = expr(n);
         if (c.ctype == "void" || c.ctype == "nullptr_t") return "";
-        const std::string name = std::format("o{}", ++temps_);
+        const std::string name = std::format("jrt_o{}", ++temps_);
         pending_.push_back(decl(c.ctype, name));
         parts.push_back(std::format("{} = {}", name, c.code));
         subst_[n] = Code{name, c.ctype};
@@ -264,6 +264,15 @@ Code MethodWriter::on(const ir::Node&, const ir::Index& k) {
     return {std::format("JA({}, {}, {})", store, array, conv(index.code, index.ctype, "int32_t")), store};
 }
 
+std::string MethodWriter::conv_to(const Code& value, const ir::TypeP& type, std::string_view dst) const {
+    if (is_pointer_ctype(dst) && is_prim_c(value.ctype) && kind_of(type) == "class") {
+        if (const std::string_view letter = box_letter(class_name(type)); !letter.empty() && letter_ctype(letter) != value.ctype) {
+            return std::format("({})jrt_box_{}(({}){})", dst, letter, letter_ctype(letter), value.code);
+        }
+    }
+    return conv(value.code, value.ctype, dst);
+}
+
 // A boxed value read where a number is wanted: its accessor.
 Code MethodWriter::unboxed(const std::string& code, std::string_view ct, const ir::TypeP& type) const {
     if (is_pointer_ctype(ct) && kind_of(type) == "class") {
@@ -276,7 +285,12 @@ Code MethodWriter::unboxed(const std::string& code, std::string_view ct, const i
 Code MethodWriter::on(const ir::Node& n, const ir::Unary& k) {
     Code x = expr(k.x);
     if (k.op == "++" || k.op == "--") {
-        if (is_pointer_ctype(x.ctype)) throw Decline("++ on a box");
+        if (is_pointer_ctype(x.ctype)) {   // a box is replaced by a new one; the place is named once, so what it is made of runs once
+            const ir::TypeP held = type_of(k.x);
+            const std::string_view letter = kind_of(held) == "class" ? box_letter(class_name(held)) : std::string_view();
+            if (letter.empty()) throw Decline("++ on a box");
+            return {std::format("(({})jrt_box_step_{}((jobject* volatile*)&{}, {}, {}))", x.ctype, letter, x.code, k.op == "++" ? 1 : -1, k.postfix ? "true" : "false"), x.ctype};
+        }
         return {k.postfix ? x.code + k.op : k.op + x.code, x.ctype};
     }
     x = unboxed(x.code, x.ctype, type_of(k.x));
@@ -335,16 +349,16 @@ std::string MethodWriter::as_string(const ir::Node* x) {
 // beside something that can change it: another part with an effect, or a second object, whose toString may have one.
 bool MethodWriter::concat_in_turn(const ir::Concat& k) const {
     if (!order_) return false;
-    std::size_t open = 0, objects = 0;
+    std::size_t open = 0, objects = 0, boxes = 0;
     bool effects = false;
     for (const ir::Node* x : k.parts) {
         if (cpp03::is_constant(x)) continue;
         ++open;
         effects = effects || cpp03::has_effects(x);
         const ir::TypeP t = type_of(x);
-        if (kind_of(t) == "class" && class_name(t) != "java.lang.String" && box_letter(class_name(t)).empty()) ++objects;
+        if (kind_of(t) == "class" && class_name(t) != "java.lang.String") ++(box_letter(class_name(t)).empty() ? objects : boxes);
     }
-    return open >= 2 && objects >= 1 && (effects || objects >= 2);
+    return open >= 2 && ((objects >= 1 && (effects || objects >= 2)) || (boxes >= 1 && effects));
 }
 
 Code MethodWriter::on(const ir::Node&, const ir::Concat& k) {
@@ -353,7 +367,7 @@ Code MethodWriter::on(const ir::Node&, const ir::Concat& k) {
     for (const ir::Node* x : k.parts) {
         std::string text = as_string(x);
         if (in_turn && !cpp03::is_constant(x)) {
-            const std::string name = std::format("o{}", ++temps_);
+            const std::string name = std::format("jrt_o{}", ++temps_);
             pending_.push_back(decl(kStr, name));
             steps.push_back(std::format("{} = {}", name, text));
             text = name;
@@ -367,19 +381,19 @@ Code MethodWriter::on(const ir::Node&, const ir::Concat& k) {
 Code MethodWriter::on(const ir::Node&, const ir::Assign& k) {
     const Code target = expr(k.target);
     Code value = expr(k.value);
-    const std::string& t = target.code;
-    const std::string& tt = target.ctype;
-    if (!k.op) return {std::format("{} = {}", t, conv(value.code, value.ctype, tt)), tt};
+    const std::string& place_code = target.code;
+    const std::string& place_type = target.ctype;
+    if (!k.op) return {std::format("{} = {}", place_code, conv_to(value, type_of(k.target), place_type)), place_type};
     const std::string& op = *k.op;
-    if (tt == kStr && op == "+") return {std::format("{} = jrt_concat(2, jrt_str_O((jobject*){}), {})", t, t, as_string(k.value)), tt};
+    if (place_type == kStr && op == "+") return {std::format("{} = jrt_concat(2, jrt_str_O((jobject*){}), {})", place_code, place_code, as_string(k.value)), place_type};
     // the target is read twice by the forms below: only a name or a `this`/static field may be
     const ir::Node* tgt = cpp03::strip_paren(k.target);
-    bool plain = ir::is<ir::Name>(tgt);
-    if (const auto* sel = ir::get<ir::Select>(tgt); !plain && sel != nullptr) plain = ir::is<ir::This>(sel->obj) || ir::is<ir::TypeName>(sel->obj);
-    if (is_pointer_ctype(tt)) throw Decline("compound assignment to a reference");
+    bool simple = ir::is<ir::Name>(tgt);
+    if (const auto* sel = ir::get<ir::Select>(tgt); !simple && sel != nullptr) simple = ir::is<ir::This>(sel->obj) || ir::is<ir::TypeName>(sel->obj);
     value = unboxed(value.code, value.ctype, type_of(k.value));
     const std::string& v = value.code;
     const std::string& vt = value.ctype;
+    const auto update = [&](const std::string& t, const std::string& tt, bool plain) -> Code {
     if ((op == "/" || op == "%") && is_integral(tt) && is_integral(vt)) {
         if (!plain) throw Decline("integer /= on a complex target");
         const char* wide = (tt == "int64_t" || vt == "int64_t") ? "J" : "I";
@@ -404,6 +418,20 @@ Code MethodWriter::on(const ir::Node&, const ir::Assign& k) {
         return {std::format("{} = ({})fmod({}, {})", t, tt, t, v), tt};
     }
     return {std::format("{} {}= {}", t, op, v), tt};
+    };
+    if (!is_pointer_ctype(place_type)) return update(place_code, place_type, simple);
+    // a box: the place is found once, its number read (a null throws), the right side worked out, and a new box put there
+    const ir::TypeP held = type_of(k.target);
+    const std::string_view letter = kind_of(held) == "class" ? box_letter(class_name(held)) : std::string_view();
+    if (letter.empty()) throw Decline("compound assignment to a reference");
+    const std::string number(letter_ctype(letter));
+    const std::size_t id = ++temps_;
+    const std::string place = std::format("jrt_place{}", id), old = std::format("jrt_old{}", id);
+    pending_.push_back(decl("jobject* volatile*", place));
+    pending_.push_back(decl(number, old));
+    return {std::format("({} = (jobject* volatile*)&{}, {} = jrt_unbox_{}(*{}), {}, *{} = jrt_box_{}({}), ({})*{})", place, place_code, old, letter, place,
+                        update(old, number, true).code, place, letter, old, place_type, place),
+            place_type};
 }
 
 Code MethodWriter::on(const ir::Node& n, const ir::Cond& k) {

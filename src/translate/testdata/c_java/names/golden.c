@@ -81,12 +81,12 @@ static void Names_main(jarray* args) {
 	jobject* sr = Lambda1_new(register_, self_, a_b);
 	jobject* twice = Lambda2_new(register_);
 	jstring* s = jrt_lit(&lit_1, u"\x00e9\xd83d\xde00x\x0009" u"1", 6);
-	jobject* o1 = NULL;
-	int32_t o2 = 0;
-	int32_t o3 = 0;
-	int32_t o4 = 0;
-	int32_t o5 = 0;
-	jrt_PrintStream_println_Str(jrt_System_out, (o1 = jrt_Supplier_get_(sr), o2 = jrt_IntUnaryOperator_applyAsInt_I(twice, 1), o3 = Names_sizeof_(4), o4 = jrt_String_length_(s), o5 = (int32_t)(jrt_String_charAt_I(s, 1)), jrt_concat(9, jrt_str_O((jobject*)o1), jrt_lit(&lit_2, u" ", 1), jrt_str_I(o2), jrt_lit(&lit_2, u" ", 1), jrt_str_I(o3), jrt_lit(&lit_2, u" ", 1), jrt_str_I(o4), jrt_lit(&lit_2, u" ", 1), jrt_str_I(o5))));
+	jstring* jrt_o1 = NULL;
+	jstring* jrt_o2 = NULL;
+	jstring* jrt_o3 = NULL;
+	jstring* jrt_o4 = NULL;
+	jstring* jrt_o5 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o1 = jrt_str_O((jobject*)jrt_Supplier_get_(sr)), jrt_o2 = jrt_str_I(jrt_IntUnaryOperator_applyAsInt_I(twice, 1)), jrt_o3 = jrt_str_I(Names_sizeof_(4)), jrt_o4 = jrt_str_I(jrt_String_length_(s)), jrt_o5 = jrt_str_I((int32_t)(jrt_String_charAt_I(s, 1))), jrt_concat(9, jrt_o1, jrt_lit(&lit_2, u" ", 1), jrt_o2, jrt_lit(&lit_2, u" ", 1), jrt_o3, jrt_lit(&lit_2, u" ", 1), jrt_o4, jrt_lit(&lit_2, u" ", 1), jrt_o5)));
 }
 
 static void Names_finit(Names* self) {

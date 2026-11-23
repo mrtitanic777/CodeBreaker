@@ -288,7 +288,7 @@ Lines MethodWriter::clinit() {
 
 std::string MethodWriter::constant(const ir::FieldDecl& field) {
     const Code c = expr(field.init);
-    return conv(c.code, c.ctype, p_.ct(field.type));
+    return conv_to(c, field.type, p_.ct(field.type));
 }
 
 }  // namespace cb::translate::backends::c_java::detail

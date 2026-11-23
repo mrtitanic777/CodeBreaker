@@ -36,7 +36,6 @@ SamInfo MethodWriter::sam(const ir::TypeP& type) {
 
 Code MethodWriter::on(const ir::Node& n, const ir::Lambda& k) {
     const SamInfo si = sam(n.type);
-    if (si.ms.size() != 1) throw Decline("a lambda for an interface with default methods");
     const std::string name = std::format("Lambda{}", ++p_.lambda_count);
 
     // what the body reads from outside: locals and parameters of the enclosing code, and `this`
@@ -116,8 +115,13 @@ Code MethodWriter::on(const ir::Node& n, const ir::Lambda& k) {
     unit_text.insert(unit_text.end(), entry.begin(), entry.end());
     unit_text.insert(unit_text.end(), out.begin(), out.end());
     unit_text.emplace_back("}");
-    unit_text.push_back(std::format("static const {} {}_vt = {{{{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}}, {}_fn}};", vt, name, name));
-    unit_text.push_back(std::format("static const jitab {}_itabs[] = {{{{{}, &{}_vt}}}};", name, cls_ref, name));
+    if (qi != nullptr && (si.ms.size() != 1 || !p_.all_ifaces(*qi).empty())) {   // default methods, or interfaces it extends: a table for each
+        const Lines tables = p_.lambda_tables(name, *qi, p_.model().functional(si.q)->name, k.params.size());
+        unit_text.insert(unit_text.end(), tables.begin(), tables.end());
+    } else {
+        unit_text.push_back(std::format("static const {} {}_vt = {{{{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}}, {}_fn}};", vt, name, name));
+        unit_text.push_back(std::format("static const jitab {}_itabs[] = {{{{{}, &{}_vt}}}};", name, cls_ref, name));
+    }
     unit_text.push_back(std::format("static const jclass {}_class = {{\"{}$$Lambda\", &jrt_Object_class, sizeof(struct {}), &jrt_Object_vt, JRT_ITABS({}_itabs), 0}};",
                                name, text::trim(ci_->qname, "<>"), name, name));
     std::vector<std::string> ctor_params;

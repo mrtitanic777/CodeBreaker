@@ -500,6 +500,39 @@ struct Character : Object {
 	int32_t hashCode() override { return value; }
 	char16_t charValue() { return value; }
 	int32_t compareTo(const ref<Object>& o) { return (int32_t)value - (int32_t)cast<Character>(o)->value; }
+	static constexpr int8_t UNASSIGNED = 0;
+	static constexpr int8_t UPPERCASE_LETTER = 1;
+	static constexpr int8_t LOWERCASE_LETTER = 2;
+	static constexpr int8_t TITLECASE_LETTER = 3;
+	static constexpr int8_t MODIFIER_LETTER = 4;
+	static constexpr int8_t OTHER_LETTER = 5;
+	static constexpr int8_t NON_SPACING_MARK = 6;
+	static constexpr int8_t ENCLOSING_MARK = 7;
+	static constexpr int8_t COMBINING_SPACING_MARK = 8;
+	static constexpr int8_t DECIMAL_DIGIT_NUMBER = 9;
+	static constexpr int8_t LETTER_NUMBER = 10;
+	static constexpr int8_t OTHER_NUMBER = 11;
+	static constexpr int8_t SPACE_SEPARATOR = 12;
+	static constexpr int8_t LINE_SEPARATOR = 13;
+	static constexpr int8_t PARAGRAPH_SEPARATOR = 14;
+	static constexpr int8_t CONTROL = 15;
+	static constexpr int8_t FORMAT = 16;
+	static constexpr int8_t PRIVATE_USE = 18;
+	static constexpr int8_t SURROGATE = 19;
+	static constexpr int8_t DASH_PUNCTUATION = 20;
+	static constexpr int8_t START_PUNCTUATION = 21;
+	static constexpr int8_t END_PUNCTUATION = 22;
+	static constexpr int8_t CONNECTOR_PUNCTUATION = 23;
+	static constexpr int8_t OTHER_PUNCTUATION = 24;
+	static constexpr int8_t MATH_SYMBOL = 25;
+	static constexpr int8_t CURRENCY_SYMBOL = 26;
+	static constexpr int8_t MODIFIER_SYMBOL = 27;
+	static constexpr int8_t OTHER_SYMBOL = 28;
+	static constexpr int8_t INITIAL_QUOTE_PUNCTUATION = 29;
+	static constexpr int8_t FINAL_QUOTE_PUNCTUATION = 30;
+	// Java's Unicode category. A program that calls it carries the table and this function's body; a code point past the first plane has no table.
+	static int32_t getType(char16_t c);
+	static int32_t getType(int32_t) = delete;
 	static bool isDigit(char16_t c) { return c >= '0' && c <= '9'; }
 	static bool isLetter(char16_t c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= 0xC0 && c <= 0xFF && c != 0xD7 && c != 0xF7); }
 	static bool isLetterOrDigit(char16_t c) { return isLetter(c) || isDigit(c); }
@@ -795,6 +828,23 @@ template <class T> struct Hold {
 template <class T> Hold<T> in(const ref<T>& r) { return Hold<T>{r}; }
 template <class T> ref<Array<T>> new_array(int32_t n) { auto r = std::make_shared<Array<T>>(); r->init(n); return r; }
 template <class T> ref<Array<T>> array_of(std::initializer_list<T> xs) { auto r = std::make_shared<Array<T>>(); r->a = xs; r->length = (int32_t)r->a.size(); return r; }
+// x++ and x-- of a box: the place gets a new box; the result is the old one (postfix) or the new one. A null throws.
+template <class V, class B> ref<B> box_step(ref<B>& place, int by, bool postfix) {
+	ref<B> before = place;
+	const V v = unbox<V>(before);
+	V next;
+	if constexpr (std::is_floating_point_v<V>) next = v + (V)by;
+	else next = (V)((std::uint64_t)(std::int64_t)v + (std::uint64_t)(std::int64_t)by);   // (through unsigned: the largest wraps to the smallest)
+	place = box(next);
+	return postfix ? before : place;
+}
+// x op= y of a box: `step` changes the number; the place gets a new box, which is the result.
+template <class V, class B, class F> ref<B> box_update(ref<B>& place, F step) {
+	V v = unbox<V>(place);
+	step(v);
+	place = box(v);
+	return place;
+}
 inline ref<Array<ref<Throwable>>> Throwable::getSuppressed() {
 	auto r = new_array<ref<Throwable>>((int32_t)suppressed.size());
 	for (int32_t i = 0; i < r->length; ++i) (*r)[i] = suppressed[(size_t)i];

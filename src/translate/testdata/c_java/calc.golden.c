@@ -172,21 +172,21 @@ static void CalcMain_main(jarray* args) {
 		int32_t i = 0;
 		for (; i < JLEN(inputs); i++) {
 			int32_t x = JA(int32_t, inputs, i);
-			int32_t o1 = 0;
-			int32_t o2 = 0;
-			jstring* o3 = NULL;
-			int32_t o4 = 0;
-			int32_t o5 = 0;
-			int32_t o6 = 0;
-			int32_t o7 = 0;
-			jrt_PrintStream_println_Str(jrt_System_out, (o1 = x, o2 = Calc_fill_v((jobject*)c, x), o3 = Calc_label_v((jobject*)c, x), o4 = Calc_guarded_v((jobject*)c, x), o5 = Calc_cleanup_v((jobject*)c, x), o6 = Calc_search_v((jobject*)c, x), o7 = Calc_count_v((jobject*)c, x), jrt_concat(14, jrt_lit(&lit_1, u"fill(", 5), jrt_str_I(o1), jrt_lit(&lit_2, u")=", 2), jrt_str_I(o2), jrt_lit(&lit_3, u" label=", 7), jrt_str_O((jobject*)o3), jrt_lit(&lit_4, u" guarded=", 9), jrt_str_I(o4), jrt_lit(&lit_5, u" cleanup=", 9), jrt_str_I(o5), jrt_lit(&lit_6, u" search=", 8), jrt_str_I(o6), jrt_lit(&lit_7, u" count=", 7), jrt_str_I(o7))));
-			int64_t o8 = 0;
-			float o9 = 0;
-			int32_t o10 = 0;
-			int32_t o11 = 0;
-			int32_t o12 = 0;
-			int32_t o13 = 0;
-			jrt_PrintStream_println_Str(jrt_System_out, (o8 = Calc_mix((int64_t)x * 31LL, x), o9 = Calc_wrap((float)x / 3.0f), o10 = Calc_sums(x), o11 = Calc_tabled(x), o12 = Calc_made(x), o13 = Sub_build(x), jrt_concat(12, jrt_lit(&lit_8, u"  mix=", 6), jrt_str_J(o8), jrt_lit(&lit_9, u" wrap=", 6), jrt_str_F(o9), jrt_lit(&lit_10, u" sums=", 6), jrt_str_I(o10), jrt_lit(&lit_11, u" tabled=", 8), jrt_str_I(o11), jrt_lit(&lit_12, u" made=", 6), jrt_str_I(o12), jrt_lit(&lit_13, u" build=", 7), jrt_str_I(o13))));
+			int32_t jrt_o1 = 0;
+			int32_t jrt_o2 = 0;
+			jstring* jrt_o3 = NULL;
+			int32_t jrt_o4 = 0;
+			int32_t jrt_o5 = 0;
+			int32_t jrt_o6 = 0;
+			int32_t jrt_o7 = 0;
+			jrt_PrintStream_println_Str(jrt_System_out, (jrt_o1 = x, jrt_o2 = Calc_fill_v((jobject*)c, x), jrt_o3 = Calc_label_v((jobject*)c, x), jrt_o4 = Calc_guarded_v((jobject*)c, x), jrt_o5 = Calc_cleanup_v((jobject*)c, x), jrt_o6 = Calc_search_v((jobject*)c, x), jrt_o7 = Calc_count_v((jobject*)c, x), jrt_concat(14, jrt_lit(&lit_1, u"fill(", 5), jrt_str_I(jrt_o1), jrt_lit(&lit_2, u")=", 2), jrt_str_I(jrt_o2), jrt_lit(&lit_3, u" label=", 7), jrt_str_O((jobject*)jrt_o3), jrt_lit(&lit_4, u" guarded=", 9), jrt_str_I(jrt_o4), jrt_lit(&lit_5, u" cleanup=", 9), jrt_str_I(jrt_o5), jrt_lit(&lit_6, u" search=", 8), jrt_str_I(jrt_o6), jrt_lit(&lit_7, u" count=", 7), jrt_str_I(jrt_o7))));
+			int64_t jrt_o8 = 0;
+			float jrt_o9 = 0;
+			int32_t jrt_o10 = 0;
+			int32_t jrt_o11 = 0;
+			int32_t jrt_o12 = 0;
+			int32_t jrt_o13 = 0;
+			jrt_PrintStream_println_Str(jrt_System_out, (jrt_o8 = Calc_mix((int64_t)x * 31LL, x), jrt_o9 = Calc_wrap((float)x / 3.0f), jrt_o10 = Calc_sums(x), jrt_o11 = Calc_tabled(x), jrt_o12 = Calc_made(x), jrt_o13 = Sub_build(x), jrt_concat(12, jrt_lit(&lit_8, u"  mix=", 6), jrt_str_J(jrt_o8), jrt_lit(&lit_9, u" wrap=", 6), jrt_str_F(jrt_o9), jrt_lit(&lit_10, u" sums=", 6), jrt_str_I(jrt_o10), jrt_lit(&lit_11, u" tabled=", 8), jrt_str_I(jrt_o11), jrt_lit(&lit_12, u" made=", 6), jrt_str_I(jrt_o12), jrt_lit(&lit_13, u" build=", 7), jrt_str_I(jrt_o13))));
 		}
 	}
 	jrt_PrintStream_println_Str(jrt_System_out, jrt_concat(4, jrt_lit(&lit_14, u"total=", 6), jrt_str_I((Calc_clinit(), Calc_total)), jrt_lit(&lit_15, u" name=", 6), jrt_str_O((jobject*)((Calc*)jrt_nn(c))->name)));
@@ -336,13 +336,13 @@ static int32_t Calc_sum(jarray* var0) {
 
 static int32_t Calc_sums(int32_t var0) {
 	Calc_clinit();
-	int32_t o1 = 0;
-	int32_t o2 = 0;
-	int32_t o3 = 0;
-	int32_t o4 = 0;
-	int32_t o5 = 0;
-	int32_t o6 = 0;
-	return (o5 = (o3 = (o1 = Calc_sum(jrt_new_array(sizeof(int32_t), 0)), o2 = Calc_sum(jrt_array_of(sizeof(int32_t), 1, (int32_t[]){var0})), o1 + o2), o4 = Calc_sum(jrt_array_of(sizeof(int32_t), 3, (int32_t[]){var0, 2, 3})), o3 + o4), o6 = Calc_sum(jrt_array_of(sizeof(int32_t), 2, (int32_t[]){var0, var0})), o5 + o6);
+	int32_t jrt_o1 = 0;
+	int32_t jrt_o2 = 0;
+	int32_t jrt_o3 = 0;
+	int32_t jrt_o4 = 0;
+	int32_t jrt_o5 = 0;
+	int32_t jrt_o6 = 0;
+	return (jrt_o5 = (jrt_o3 = (jrt_o1 = Calc_sum(jrt_new_array(sizeof(int32_t), 0)), jrt_o2 = Calc_sum(jrt_array_of(sizeof(int32_t), 1, (int32_t[]){var0})), jrt_o1 + jrt_o2), jrt_o4 = Calc_sum(jrt_array_of(sizeof(int32_t), 3, (int32_t[]){var0, 2, 3})), jrt_o3 + jrt_o4), jrt_o6 = Calc_sum(jrt_array_of(sizeof(int32_t), 2, (int32_t[]){var0, var0})), jrt_o5 + jrt_o6);
 }
 
 static int32_t Calc_tabled(int32_t var0) {

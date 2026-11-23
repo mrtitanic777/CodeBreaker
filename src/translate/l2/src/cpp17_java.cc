@@ -1833,7 +1833,13 @@ E Method::x_unary(const NodeP& e) {
     E v = expr(node(e, "x"));
     std::string op = str(raw(e, "op"));
     if (op == "++" || op == "--") {
-        if (is_ref(v.second)) throw Decline("++ on a box");
+        if (is_ref(v.second)) {   // a box is replaced by a new one; the place is named once, so what it is made of runs once
+            TypeP held = type(node(e, "x"));
+            const char* number = held && held->kind == "class" ? box(tname(held)) : nullptr;
+            if (!number) throw Decline("++ on a box");
+            return E("jrt::box_step<" + std::string(number) + ">(" + v.first + ", " + (op == "++" ? "1" : "-1") + ", " +
+                         (py::truthy(raw(e, "postfix")) ? "true" : "false") + ")", v.second);
+        }
         return E(py::truthy(raw(e, "postfix")) ? v.first + op : op + v.first, v.second);
     }
     v = unboxed(v.first, v.second, type(node(e, "x")));
@@ -1897,17 +1903,17 @@ E Method::x_concat(const NodeP& e) {
 
 E Method::x_assign(const NodeP& e) {
     NodeP tg = node(e, "target");
-    E t = expr(tg);
+    E place_code = expr(tg);
     E v = expr(node(e, "value"));
-    const std::string& tt = t.second;
+    const std::string& place_type = place_code.second;
     std::string op = str(raw(e, "op"));
-    if (raw(e, "op").is_none()) return E(t.first + " = " + conv(v.first, v.second, tt), tt);
-    if (tt == "ref<" + p.rt("String") + ">" && op == "+") return E(t.first + " = jrt::concat(" + t.first + ", " + v.first + ")", tt);
+    if (raw(e, "op").is_none()) return E(place_code.first + " = " + conv(v.first, v.second, place_type), place_type);
+    if (place_type == "ref<" + p.rt("String") + ">" && op == "+") return E(place_code.first + " = jrt::concat(" + place_code.first + ", " + v.first + ")", place_type);
     NodeP st = strip_paren(tg);
-    bool plain = is(st, "Name") || (is(st, "Select") && (is(node(st, "obj"), "This") || is(node(st, "obj"), "TypeName")));
-    if (is_ref(tt)) throw Decline("compound assignment to a box");
+    bool simple = is(st, "Name") || (is(st, "Select") && (is(node(st, "obj"), "This") || is(node(st, "obj"), "TypeName")));
     v = unboxed(v.first, v.second, type(node(e, "value")));
     const std::string& vt = v.second;
+    const auto update = [&](const E& t, const std::string& tt, bool plain) -> E {
     if ((op == "/" || op == "%") && integral(tt) && integral(vt)) {
         if (!plain) throw Decline("integer /= on a complex target");
         std::string wide = (tt == "int64_t" || vt == "int64_t") ? "int64_t" : "int32_t";
@@ -1932,6 +1938,15 @@ E Method::x_assign(const NodeP& e) {
         return E(t.first + " = (" + tt + ")std::fmod(" + t.first + ", " + v.first + ")", tt);
     }
     return E(t.first + " " + op + "= " + v.first, tt);
+    };
+    if (!is_ref(place_type)) return update(place_code, place_type, simple);
+    // a box: the place is found once, its number read (a null throws), the right side worked out, and a new box put there
+    TypeP held = type(tg);
+    const char* number = held && held->kind == "class" ? box(tname(held)) : nullptr;
+    if (!number) throw Decline("compound assignment to a box");
+    const std::string old = "j2x_old" + std::to_string(++temps);
+    const E step = update(E(old, number), number, true);
+    return E("jrt::box_update<" + std::string(number) + ">(" + place_code.first + ", [&](" + number + "& " + old + ") { " + step.first + "; })", place_type);
 }
 
 E Method::x_cond(const NodeP& e) {

@@ -2469,7 +2469,11 @@ const std::vector<File>& Program::files() {
         out.push_back({name + ".cs", w.unit_text()});
     }
     for (const std::string& r : runtime_) {   // (a set: by name)
-        out.push_back({r + ".cs", text::replace_all(fs::read_text(options_.runtime_dir / (r + ".cs")), "\r\n", "\n")});
+        std::string runtime_text = fs::read_text(options_.runtime_dir / (r + ".cs"));
+        if (r == "JavaCharTypes") {   // (the one table of Java's Unicode categories, which the C and C++ translations carry too)
+            runtime_text = text::replace_all(runtime_text, "/*JAVA_CHAR_TYPES*/", fs::read_text(options_.runtime_dir.parent_path().parent_path() / "runtime" / "java_char_types.inc"));
+        }
+        out.push_back({r + ".cs", text::replace_all(runtime_text, "\r\n", "\n")});
     }
     files_ = std::move(out);
     return *files_;

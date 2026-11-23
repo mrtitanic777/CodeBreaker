@@ -222,9 +222,9 @@ static jstring* Bank_wordFreq(jstring* text) {
 		jobject* j2x_it3 = jrt_Set_iterator_(jrt_Map_entrySet_(counts));
 		for (; jrt_Iterator_hasNext_(j2x_it3); ) {
 			jobject* e = jrt_Iterator_next_(j2x_it3);
-			jrt_StringBuilder* o1 = NULL;
-			jobject* o2 = NULL;
-			jrt_StringBuilder_append_C((o1 = jrt_StringBuilder_append_C(jrt_StringBuilder_append_Str(sb, (jstring*)jrt_cast((jobject*)jrt_MapEntry_getKey_(e), &jrt_String_class)), u'='), o2 = jrt_MapEntry_getValue_(e), jrt_StringBuilder_append_O(o1, o2)), u' ');
+			jrt_StringBuilder* jrt_o1 = NULL;
+			jobject* jrt_o2 = NULL;
+			jrt_StringBuilder_append_C((jrt_o1 = jrt_StringBuilder_append_C(jrt_StringBuilder_append_Str(sb, (jstring*)jrt_cast((jobject*)jrt_MapEntry_getKey_(e), &jrt_String_class)), u'='), jrt_o2 = jrt_MapEntry_getValue_(e), jrt_StringBuilder_append_O(jrt_o1, jrt_o2)), u' ');
 		}
 	}
 	return jrt_String_trim_(jrt_toString((jobject*)sb));
@@ -241,9 +241,9 @@ static jstring* Bank_ordered(int32_t n) {
 			(jstring*)jrt_cast((jobject*)jrt_Map_put_OO(tm, jrt_box_I(k), (jobject*)jrt_concat(2, jrt_lit(&lit_4, u"v", 1), jrt_str_I(i))), &jrt_String_class);
 		}
 	}
-	jstring* o1 = NULL;
-	jstring* o2 = NULL;
-	return (o1 = jrt_str_O((jobject*)jrt_Map_keySet_(lm)), o2 = jrt_str_O((jobject*)jrt_Map_values_(tm)), jrt_concat(3, o1, jrt_lit(&lit_5, u"|", 1), o2));
+	jstring* jrt_o1 = NULL;
+	jstring* jrt_o2 = NULL;
+	return (jrt_o1 = jrt_str_O((jobject*)jrt_Map_keySet_(lm)), jrt_o2 = jrt_str_O((jobject*)jrt_Map_values_(tm)), jrt_concat(3, jrt_o1, jrt_lit(&lit_5, u"|", 1), jrt_o2));
 }
 
 static int32_t Bank_hashOrder(int32_t n) {
@@ -268,10 +268,10 @@ static int32_t Bank_hashOrder(int32_t n) {
 static void Bank_main(jarray* args) {
 	Bank_Checking* volatile c = Bank_Checking_new(jrt_lit(&lit_7, u"A1", 2), (int64_t)(100));
 	Bank_Savings* volatile s = Bank_Savings_new(jrt_lit(&lit_8, u"B2", 2), (int64_t)(5000), 20);
-	jstring* volatile o1 = NULL;
-	jstring* volatile o2 = NULL;
-	jstring* volatile o3 = NULL;
-	jrt_PrintStream_println_Str(jrt_System_out, (o1 = jrt_str_O((jobject*)c), o2 = jrt_str_O((jobject*)s), o3 = jrt_str_I(Bank_Account_opened), jrt_concat(5, o1, jrt_lit(&lit_3, u" ", 1), o2, jrt_lit(&lit_9, u" opened=", 8), o3)));
+	jstring* volatile jrt_o1 = NULL;
+	jstring* volatile jrt_o2 = NULL;
+	jstring* volatile jrt_o3 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o1 = jrt_str_O((jobject*)c), jrt_o2 = jrt_str_O((jobject*)s), jrt_o3 = jrt_str_I(Bank_Account_opened), jrt_concat(5, jrt_o1, jrt_lit(&lit_3, u" ", 1), jrt_o2, jrt_lit(&lit_9, u" opened=", 8), jrt_o3)));
 	{
 		jrt_try f4;
 		jrt_push(&f4);
@@ -318,17 +318,17 @@ static void Bank_main(jarray* args) {
 		}
 	}
 	Bank_Savings_accrue_v((jobject*)s);
-	jstring* volatile o7 = NULL;
-	jstring* volatile o8 = NULL;
-	jstring* volatile o9 = NULL;
-	jrt_PrintStream_println_Str(jrt_System_out, (o7 = jrt_str_O((jobject*)s), o8 = jrt_str_O((jobject*)((Bank_Account*)jrt_nn(c))->log), o9 = jrt_str_O((jobject*)((Bank_Account*)jrt_nn(s))->log), jrt_concat(5, o7, jrt_lit(&lit_3, u" ", 1), o8, jrt_lit(&lit_3, u" ", 1), o9)));
-	volatile int64_t o10 = 0;
-	volatile int64_t o11 = 0;
-	jrt_PrintStream_println_Str(jrt_System_out, (o10 = Bank_simulate(42), o11 = Bank_simulate(7), jrt_concat(3, jrt_str_J(o10), jrt_lit(&lit_3, u" ", 1), jrt_str_J(o11))));
+	jstring* volatile jrt_o7 = NULL;
+	jstring* volatile jrt_o8 = NULL;
+	jstring* volatile jrt_o9 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o7 = jrt_str_O((jobject*)s), jrt_o8 = jrt_str_O((jobject*)((Bank_Account*)jrt_nn(c))->log), jrt_o9 = jrt_str_O((jobject*)((Bank_Account*)jrt_nn(s))->log), jrt_concat(5, jrt_o7, jrt_lit(&lit_3, u" ", 1), jrt_o8, jrt_lit(&lit_3, u" ", 1), jrt_o9)));
+	volatile int64_t jrt_o10 = 0;
+	volatile int64_t jrt_o11 = 0;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o10 = Bank_simulate(42), jrt_o11 = Bank_simulate(7), jrt_concat(3, jrt_str_J(jrt_o10), jrt_lit(&lit_3, u" ", 1), jrt_str_J(jrt_o11))));
 	jrt_PrintStream_println_Str(jrt_System_out, Bank_wordFreq(jrt_lit(&lit_14, u"to be or not to be that is the question to be", 45)));
-	jstring* volatile o12 = NULL;
-	volatile int32_t o13 = 0;
-	jrt_PrintStream_println_Str(jrt_System_out, (o12 = Bank_ordered(9), o13 = Bank_hashOrder(33), jrt_concat(3, jrt_str_O((jobject*)o12), jrt_lit(&lit_3, u" ", 1), jrt_str_I(o13))));
+	jstring* volatile jrt_o12 = NULL;
+	volatile int32_t jrt_o13 = 0;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o12 = Bank_ordered(9), jrt_o13 = Bank_hashOrder(33), jrt_concat(3, jrt_str_O((jobject*)jrt_o12), jrt_lit(&lit_3, u" ", 1), jrt_str_I(jrt_o13))));
 }
 
 static void Bank_finit(Bank* self) {

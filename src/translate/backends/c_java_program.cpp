@@ -322,6 +322,33 @@ std::optional<std::string> Program::find_impl(const ClassInfo& cls, std::string_
     return std::nullopt;
 }
 
+// The interface tables of a lambda: its function in the one abstract slot, each default method in its own, for the interface and those it extends.
+Lines Program::lambda_tables(const std::string& name, const ClassInfo& iface, std::string_view java_name, std::size_t parameters) const {
+    Lines out;
+    std::vector<std::string> all{iface.qname}, itabs;
+    for (std::string& q : all_ifaces(iface)) all.push_back(std::move(q));
+    int number = 0;
+    for (const std::string& q : all) {
+        std::string impls;
+        for (const IMethod& x : iface_methods(q)) {
+            std::string impl = name + "_fn";
+            if (x.java != java_name || x.eps.size() != parameters) {
+                std::optional<std::string> found = find_impl(iface, x.java, x.eps.size());
+                if (!found) throw Decline(std::format("a lambda of {} leaves {} without a body", iface.qname, x.java));
+                impl = std::move(*found);
+            }
+            impls += std::format(", ({} (*)({})){}", x.r, join_commas(with_self(x.ps)), impl);
+        }
+        const ClassInfo* qi = model_->info(q);
+        const std::string vt = qi != nullptr ? std::format("struct {}_vt", qi->cname) : std::format("jrt_{}_vt", after_dot(q));
+        const std::string table = std::format("{}_vt{}", name, number++);
+        out.push_back(std::format("static const {} {} = {{{{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}}{}}};", vt, table, impls));
+        itabs.push_back(std::format("{{{}, &{}}}", class_ref(q), table));
+    }
+    out.push_back(std::format("static const jitab {}_itabs[] = {{{}}};", name, join_commas(itabs)));
+    return out;
+}
+
 // ---- constructors
 std::string Program::ctor_name(const ClassInfo& cls, const ir::Node* ctor) const {
     std::size_t n = 0;

@@ -234,9 +234,9 @@ static int32_t Shapes_sides(jobject* o) {
 		return 4 + Shapes_Square_side_v((jobject*)sq) * 0;
 	}
 	Shapes_Rect* r = NULL;
-	int32_t o1 = 0;
-	int32_t o2 = 0;
-	if ((jrt_instanceof((jobject*)o, &Shapes_Rect_class) && (jobject*)(r = (Shapes_Rect*)jrt_cast((jobject*)o, &Shapes_Rect_class)) != (jobject*)NULL) && (o1 = Shapes_Rect_w_v((jobject*)r), o2 = Shapes_Rect_h_v((jobject*)r), o1 != o2)) {
+	int32_t jrt_o1 = 0;
+	int32_t jrt_o2 = 0;
+	if ((jrt_instanceof((jobject*)o, &Shapes_Rect_class) && (jobject*)(r = (Shapes_Rect*)jrt_cast((jobject*)o, &Shapes_Rect_class)) != (jobject*)NULL) && (jrt_o1 = Shapes_Rect_w_v((jobject*)r), jrt_o2 = Shapes_Rect_h_v((jobject*)r), jrt_o1 != jrt_o2)) {
 		return 4;
 	}
 	if (jrt_instanceof((jobject*)o, &Shapes_Circle_class)) {
@@ -251,9 +251,9 @@ static int32_t Shapes_rectArea(int32_t w, int32_t h) {
 }
 
 static bool Shapes_sameRect(int32_t a, int32_t b) {
-	Shapes_Rect* o1 = NULL;
-	Shapes_Rect* o2 = NULL;
-	return (o1 = Shapes_Rect_new(a & 15, b & 15), o2 = Shapes_Rect_new(b & 15, a & 15), jrt_equals((jobject*)o1, (jobject*)o2));
+	Shapes_Rect* jrt_o1 = NULL;
+	Shapes_Rect* jrt_o2 = NULL;
+	return (jrt_o1 = Shapes_Rect_new(a & 15, b & 15), jrt_o2 = Shapes_Rect_new(b & 15, a & 15), jrt_equals((jobject*)jrt_o1, (jobject*)jrt_o2));
 }
 
 static jstring* Shapes_rectText(int32_t a, int32_t b) {
@@ -340,30 +340,30 @@ static int32_t Shapes_countKinds(int32_t n) {
 }
 
 static void Shapes_main(jarray* args) {
-	Shapes_Circle* volatile o1 = NULL;
-	Shapes_Rect* volatile o2 = NULL;
-	Shapes_Square* volatile o3 = NULL;
-	Shapes_Rect* volatile o4 = NULL;
-	jobject* volatile shapes = (o1 = Shapes_Circle_new(1.5), o2 = Shapes_Rect_new(3, 4), o3 = Shapes_Square_new(5), o4 = Shapes_Rect_new(2, 2), jrt_List_of(4, (jobject*)o1, (jobject*)o2, (jobject*)o3, (jobject*)o4));
+	Shapes_Circle* volatile jrt_o1 = NULL;
+	Shapes_Rect* volatile jrt_o2 = NULL;
+	Shapes_Square* volatile jrt_o3 = NULL;
+	Shapes_Rect* volatile jrt_o4 = NULL;
+	jobject* volatile shapes = (jrt_o1 = Shapes_Circle_new(1.5), jrt_o2 = Shapes_Rect_new(3, 4), jrt_o3 = Shapes_Square_new(5), jrt_o4 = Shapes_Rect_new(2, 2), jrt_List_of(4, (jobject*)jrt_o1, (jobject*)jrt_o2, (jobject*)jrt_o3, (jobject*)jrt_o4));
 	volatile double sum = (double)(0);
 	{
 		jobject* volatile j2x_it9 = jrt_List_iterator_(shapes);
 		for (; jrt_Iterator_hasNext_(j2x_it9); ) {
 			jobject* volatile s = jrt_Iterator_next_(j2x_it9);
-			jstring* volatile o5 = NULL;
-			jstring* volatile o6 = NULL;
-			jstring* volatile o7 = NULL;
-			jrt_PrintStream_println_Str(jrt_System_out, (o5 = jrt_str_O((jobject*)Shapes_Shape_describe_i((jobject*)s)), o6 = jrt_str_O((jobject*)Shapes_classify(Shapes_Shape_area_i((jobject*)s))), o7 = jrt_str_I(Shapes_sides(s)), jrt_concat(5, o5, jrt_lit(&lit_14, u" -> ", 4), o6, jrt_lit(&lit_15, u" sides=", 7), o7)));
+			jstring* volatile jrt_o5 = NULL;
+			jstring* volatile jrt_o6 = NULL;
+			jstring* volatile jrt_o7 = NULL;
+			jrt_PrintStream_println_Str(jrt_System_out, (jrt_o5 = jrt_str_O((jobject*)Shapes_Shape_describe_i((jobject*)s)), jrt_o6 = jrt_str_O((jobject*)Shapes_classify(Shapes_Shape_area_i((jobject*)s))), jrt_o7 = jrt_str_I(Shapes_sides(s)), jrt_concat(5, jrt_o5, jrt_lit(&lit_14, u" -> ", 4), jrt_o6, jrt_lit(&lit_15, u" sides=", 7), jrt_o7)));
 			sum += Shapes_Shape_area_i((jobject*)s);
 		}
 	}
 	jrt_PrintStream_println_Str(jrt_System_out, jrt_concat(2, jrt_lit(&lit_16, u"total ", 6), jrt_str_D(sum)));
-	jstring* volatile o8 = NULL;
-	jstring* volatile o9 = NULL;
-	Shapes_Rect* volatile o10 = NULL;
-	Shapes_Rect* volatile o11 = NULL;
-	jstring* volatile o12 = NULL;
-	jrt_PrintStream_println_Str(jrt_System_out, (o8 = jrt_str_O((jobject*)Shapes_Rect_new(1, 2)), o9 = jrt_str_O((jobject*)Shapes_Circle_new(0.5)), o12 = jrt_str_Z((o10 = Shapes_Rect_new(1, 2), o11 = Shapes_Rect_new(1, 2), jrt_equals((jobject*)o10, (jobject*)o11))), jrt_concat(5, o8, jrt_lit(&lit_17, u" ", 1), o9, jrt_lit(&lit_17, u" ", 1), o12)));
+	jstring* volatile jrt_o8 = NULL;
+	jstring* volatile jrt_o9 = NULL;
+	Shapes_Rect* volatile jrt_o10 = NULL;
+	Shapes_Rect* volatile jrt_o11 = NULL;
+	jstring* volatile jrt_o12 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o8 = jrt_str_O((jobject*)Shapes_Rect_new(1, 2)), jrt_o9 = jrt_str_O((jobject*)Shapes_Circle_new(0.5)), jrt_o12 = jrt_str_Z((jrt_o10 = Shapes_Rect_new(1, 2), jrt_o11 = Shapes_Rect_new(1, 2), jrt_equals((jobject*)jrt_o10, (jobject*)jrt_o11))), jrt_concat(5, jrt_o8, jrt_lit(&lit_17, u" ", 1), jrt_o9, jrt_lit(&lit_17, u" ", 1), jrt_o12)));
 	{
 		volatile int32_t k = 0;
 		for (; k < 4; k++) {
@@ -371,10 +371,10 @@ static void Shapes_main(jarray* args) {
 		}
 	}
 	jrt_PrintStream_println_(jrt_System_out);
-	jstring* volatile o13 = NULL;
-	jstring* volatile o14 = NULL;
-	jstring* volatile o15 = NULL;
-	jrt_PrintStream_println_Str(jrt_System_out, (o13 = Shapes_dayKind(jrt_lit(&lit_5, u"sun", 3)), o14 = Shapes_dayKind(jrt_lit(&lit_9, u"wed", 3)), o15 = Shapes_dayKind(jrt_lit(&lit_19, u"xyz", 3)), jrt_concat(5, jrt_str_O((jobject*)o13), jrt_lit(&lit_17, u" ", 1), jrt_str_O((jobject*)o14), jrt_lit(&lit_17, u" ", 1), jrt_str_O((jobject*)o15))));
+	jstring* volatile jrt_o13 = NULL;
+	jstring* volatile jrt_o14 = NULL;
+	jstring* volatile jrt_o15 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o13 = Shapes_dayKind(jrt_lit(&lit_5, u"sun", 3)), jrt_o14 = Shapes_dayKind(jrt_lit(&lit_9, u"wed", 3)), jrt_o15 = Shapes_dayKind(jrt_lit(&lit_19, u"xyz", 3)), jrt_concat(5, jrt_str_O((jobject*)jrt_o13), jrt_lit(&lit_17, u" ", 1), jrt_str_O((jobject*)jrt_o14), jrt_lit(&lit_17, u" ", 1), jrt_str_O((jobject*)jrt_o15))));
 	{
 		jrt_try t16;
 		jrt_push(&t16);
@@ -399,9 +399,9 @@ static void Shapes_finit(Shapes* self) {
 
 static jstring* Shapes_Shape_describe(jobject* self_) {
 	jobject* self = self_;
-	jstring* o1 = NULL;
-	jstring* o2 = NULL;
-	return (o1 = Shapes_Shape_name_i((jobject*)self), o2 = jrt_String_format(jrt_lit(&lit_21, u"%.2f", 4), 1, jrt_box_D(Shapes_Shape_area_i((jobject*)self))), jrt_concat(3, jrt_str_O((jobject*)o1), jrt_lit(&lit_22, u" with area ", 11), jrt_str_O((jobject*)o2)));
+	jstring* jrt_o1 = NULL;
+	jstring* jrt_o2 = NULL;
+	return (jrt_o1 = Shapes_Shape_name_i((jobject*)self), jrt_o2 = jrt_String_format(jrt_lit(&lit_21, u"%.2f", 4), 1, jrt_box_D(Shapes_Shape_area_i((jobject*)self))), jrt_concat(3, jrt_str_O((jobject*)jrt_o1), jrt_lit(&lit_22, u" with area ", 11), jrt_str_O((jobject*)jrt_o2)));
 }
 
 static void Shapes_Circle_init(Shapes_Circle* self, double r) {
