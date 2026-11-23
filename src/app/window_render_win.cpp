@@ -1064,6 +1064,16 @@ void rd_board(RdDraw& d, const Layout& l, const Model& m) {
         d.fill(c.foundation, 6, rd_alpha(hue, over ? 0.42f : c.done_view ? 0.30f : hot_pile ? 0.24f : 0.16f));
         d.stroke(c.foundation, 6, over ? pal.accent : rd_alpha(hue, 0.7f), over ? 2.0f : 1.0f);
         d.text(widen(std::string(board::pile_name(static_cast<board::Pile>(i)))), Rect{c.foundation.x + 8, c.foundation.y + 4, c.foundation.w - 12, 20}, 0, 13, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+        if (m.board_c_marks) {   // this column's measured byte-identical share; with no number, an outline
+            const board::CPileScore& pile_score = m.board_c_marks->by_pile[i];
+            const std::string pile_words = board::c_pile_words(pile_score);
+            if (!pile_words.empty()) {
+                const Rect chip{c.foundation.right() - 50, c.foundation.y + 6, 44, 15};
+                if (pile_score.functions > 0) d.fill(chip, 7, rd_alpha(pal.ok, 0.28f));
+                else d.stroke(chip, 7, rd_alpha(pal.text2, 0.7f));
+                d.text(widen(pile_words), chip, 0, 10, DWRITE_FONT_WEIGHT_SEMI_BOLD, pile_score.functions > 0 ? pal.text : pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+            }
+        }
         d.text(widen(board::count_words(stack.done.size()) + " of " + board::count_words(stack.total()) + " done"), Rect{c.foundation.x + 8, c.foundation.y + 23, c.foundation.w - 12, 16}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
         const Rect meter{c.foundation.x + 8, c.foundation.bottom() - 10, c.foundation.w - 16, 3};
         d.fill(meter, 1.5f, rd_alpha(pal.text, 0.12f));
@@ -1139,7 +1149,12 @@ void rd_board(RdDraw& d, const Layout& l, const Model& m) {
     if (b.detail.w > 0) {
         const board::Card& c = m.board->cards[static_cast<std::size_t>(m.board_selected)];
         d.fill(b.detail, 6, pal.subtle);
-        d.text(widen(c.name + "  \xC2\xB7  " + std::string(board::pile_name(c.pile)) + (c.format.empty() ? std::string() : "  \xC2\xB7  " + c.format) + "  \xC2\xB7  " + board::size_words(c.size) + "  \xC2\xB7  " + std::string(board::conv_words(c.conv))),
+        std::string c_detail;
+        if (m.board_c_marks && static_cast<std::size_t>(m.board_selected) < m.board_c_marks->by_card.size()) {
+            c_detail = board::c_detail_words(m.board_c_marks->by_card[static_cast<std::size_t>(m.board_selected)]);
+            if (!c_detail.empty()) c_detail = "  \xC2\xB7  " + c_detail;
+        }
+        d.text(widen(c.name + "  \xC2\xB7  " + std::string(board::pile_name(c.pile)) + (c.format.empty() ? std::string() : "  \xC2\xB7  " + c.format) + "  \xC2\xB7  " + board::size_words(c.size) + "  \xC2\xB7  " + std::string(board::conv_words(c.conv)) + c_detail),
                Rect{b.detail_text.x, b.detail_text.y, b.detail_text.w, 20}, 0, 13, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
         std::string where = !c.note.empty() ? c.note : c.from.empty() ? c.rel : c.rel + "  (from " + name_of_rel(c.from) + ")";
         if (m.board_signals && c.note.empty()) {   // what this file is wired to, by kind

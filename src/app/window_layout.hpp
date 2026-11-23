@@ -326,6 +326,7 @@ struct Model {
     std::shared_ptr<const board::CScores> board_scores;         // how its generated C recompiled
     std::shared_ptr<const board::CMarks> board_c_marks;         // those scores by card, and the whole OS (with the stacks)
     board::CView board_c_view = board::CView::All;              // the filter by C result
+    std::pair<std::uint64_t, std::int64_t> board_scores_stamp{};   // the size and time of the table those scores were read from
     std::array<bool, board::kPileCount> board_c_kept_done{};    // which columns listed their foundation before that filter
     double board_flow_time = 2.5;                               // seconds: where the flow dots are
     std::vector<std::pair<int, std::string>> board_crumbs;      // the way here: (module, function or empty), the last is what is in view

@@ -68,12 +68,25 @@ CMarks build_c_marks(const Board& board, const Index* index, const CScores& scor
         else if (g.converted && g.program) mark.state = CState::NotScored;
         if (mark.state == CState::None) continue;
         CSummary& s = out.summary;
+        CPileScore& pile = out.by_pile[static_cast<std::size_t>(board.cards[at].pile)];
         switch (mark.state) {
-            case CState::NotScored: ++s.not_scored; break;
-            case CState::OutOfTime: ++s.out_of_time; break;
-            case CState::ScorerFailed: ++s.scorer_failed; break;
+            case CState::NotScored:
+                ++s.not_scored;
+                ++pile.unscored;
+                break;
+            case CState::OutOfTime:
+                ++s.out_of_time;
+                ++pile.unscored;
+                break;
+            case CState::ScorerFailed:
+                ++s.scorer_failed;
+                ++pile.unscored;
+                break;
             default:
                 ++s.scored;
+                ++pile.scored;
+                pile.functions += g.row->functions;
+                pile.identical += g.row->identical;
                 s.functions += g.row->functions;
                 s.identical += g.row->identical;
                 s.same_size += g.row->same_size;
@@ -133,6 +146,41 @@ std::string_view c_view_name(CView view) {
         case CView::NearMisses: return "Near misses";
         case CView::WillNotCompile: return "Will not compile";
         case CView::NotScored: return "Not scored";
+    }
+    return {};
+}
+
+std::string_view c_view_key(CView view) {
+    switch (view) {
+        case CView::MostIdentical: return "identical";
+        case CView::NearMisses: return "near";
+        case CView::WillNotCompile: return "nocompile";
+        case CView::NotScored: return "unscored";
+        case CView::All: break;
+    }
+    return "all";
+}
+
+CView c_view_from_key(std::string_view key) {
+    for (const CView view : {CView::MostIdentical, CView::NearMisses, CView::WillNotCompile, CView::NotScored})
+        if (key == c_view_key(view)) return view;
+    return CView::All;
+}
+
+std::string c_pile_words(const CPileScore& pile) {
+    if (pile.functions > 0) return score_percent(pile.identical, pile.functions);
+    if (pile.scored > 0) return "no code";
+    return pile.unscored > 0 ? "not yet" : "";
+}
+
+std::string c_detail_words(const CMark& mark) {
+    switch (mark.state) {
+        case CState::None: return {};
+        case CState::NotScored: return "C not scored yet";
+        case CState::OutOfTime: return "C ran out of time: no score";
+        case CState::ScorerFailed: return "C scorer failed: no score";
+        case CState::NoFunctions: return "C no functions to compare";
+        case CState::Scored: return "C " + count_words(mark.identical) + " of " + count_words(mark.functions) + " byte-identical (" + score_percent(mark.identical, mark.functions) + ")";
     }
     return {};
 }

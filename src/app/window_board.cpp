@@ -422,6 +422,47 @@ void board_toggle_c_view(Model& m, board::CView view) {
     for (std::size_t i = 0; i < board::kPileCount; ++i) m.board_show_done[i] = !m.board_stacks[i].done.empty();
 }
 
+namespace {
+
+std::pair<std::uint64_t, std::int64_t> board_scores_stamp_of(const std::filesystem::path& root) {
+    std::error_code ec;
+    const std::filesystem::path table = root / "c_scores.tsv";
+    const std::uintmax_t size = std::filesystem::file_size(table, ec);
+    if (ec) return {};
+    const auto when = std::filesystem::last_write_time(table, ec);
+    if (ec) return {};
+    return {static_cast<std::uint64_t>(size), static_cast<std::int64_t>(when.time_since_epoch().count())};
+}
+
+}  // namespace
+
+bool board_refresh_scores(Model& m) {
+    if (!m.board || m.board_busy || m.board_drag >= 0 || m.board_batch_armed > 0) return false;
+    const auto stamp = board_scores_stamp_of(m.board->root);   // (taken before reading: a row added meanwhile is read next time)
+    if (stamp.first == 0 || stamp == m.board_scores_stamp) return false;
+    std::optional<board::CScores> fresh;
+    try {
+        fresh = board::load_c_scores(m.board->root);
+    } catch (const std::exception&) {
+        return false;   // (the scorer has it open: next time)
+    }
+    if (!fresh) return false;
+    const std::string before = m.board_scores ? board::c_score_words(*m.board_scores) : std::string();
+    m.board_scores = std::make_shared<const board::CScores>(std::move(*fresh));
+    m.board_scores_stamp = stamp;
+    board_rebuild_stacks(m);
+    if (m.board_c_view != board::CView::All)
+        for (std::size_t i = 0; i < board::kPileCount; ++i)   // (a column a filter has just reached; one the person turned stays turned)
+            if (!m.board_stacks[i].done.empty() && m.board_stacks[i].todo.empty()) m.board_show_done[i] = true;
+    if (!before.empty() && m.status_text.ends_with(before)) m.status_text.replace(m.status_text.size() - before.size(), before.size(), board::c_score_words(*m.board_scores));
+    if (m.board_inspecting && m.board_selected >= 0) {
+        const float scroll = m.board_inspect_scroll;
+        board_inspect_card(m, m.board_selected);
+        m.board_inspect_scroll = scroll;
+    }
+    return true;
+}
+
 void board_toggle_orphans(Model& m) {
     if (!m.board || !m.board_index) return;
     if (!m.board_orphans) m.board_orphans = std::make_shared<const board::Orphans>(board::find_orphans(*m.board, *m.board_index, m.board_signals.get(), m.board_measured.get()));
@@ -442,6 +483,7 @@ void board_load_decks(Model& m) {
     m.board_projection.reset();
     std::optional<board::Measured> kept = board::load_measured(m.board->root);
     m.board_measured = kept ? std::make_shared<const board::Measured>(std::move(*kept)) : nullptr;
+    m.board_scores_stamp = board_scores_stamp_of(m.board->root);
     std::optional<board::CScores> scores = board::load_c_scores(m.board->root);
     m.board_scores = scores ? std::make_shared<const board::CScores>(std::move(*scores)) : nullptr;
 }
@@ -471,6 +513,7 @@ void board_apply_deck(Model& m, int deck) {
                 if (m.board_signals->signals[id].type == f.type && m.board_signals->signals[id].value == f.value) m.board_filters.push_back(id);
     }
     board_rebuild_stacks(m);
+    if (d.c_view != board::CView::All) board_toggle_c_view(m, d.c_view);
 }
 
 void board_save_deck(Model& m) {
@@ -479,10 +522,12 @@ void board_save_deck(Model& m) {
     d.query = m.board_query;
     d.orphans = m.board_orphans_only;
     d.names = m.board_deck_names;
+    d.c_view = m.board_c_view;
     std::string name;
     const auto part = [&](const std::string& words) { name += (name.empty() ? "" : " + ") + words; };
     if (m.board_active_deck >= 0 && static_cast<std::size_t>(m.board_active_deck) < m.board_decks.size()) part(m.board_decks[static_cast<std::size_t>(m.board_active_deck)].name);
     if (m.board_orphans_only) part("Orphans");
+    if (m.board_c_view != board::CView::All) part(std::string(board::c_view_name(m.board_c_view)));
     if (!m.board_query.empty()) part("\"" + m.board_query + "\"");
     if (m.board_signals) {
         for (const std::uint32_t id : m.board_filters) {

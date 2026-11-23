@@ -147,6 +147,7 @@ void save_decks(const stdfs::path& root, const std::vector<Deck>& decks) {
         out += "deck\t" + one_field(d.name) + '\t' + one_field(d.query) + '\t' + (d.orphans ? "1" : "0") + '\n';
         for (const std::string& name : d.names) out += "name\t" + one_field(name) + '\n';
         for (const DeckFilter& f : d.filters) out += "filter\t" + std::to_string(static_cast<int>(f.type)) + '\t' + one_field(f.value) + '\n';
+        if (d.c_view != CView::All) out += "cview\t" + std::string(c_view_key(d.c_view)) + '\n';
     }
     fs::make_dirs(root);
     fs::write_file_atomic(root / "decks.tsv", as_bytes(out));
@@ -178,6 +179,8 @@ std::vector<Deck> load_decks(const stdfs::path& root) {
             int type = 0;
             for (const char c : p[1]) type = c >= '0' && c <= '9' ? type * 10 + (c - '0') : type;
             if (type < static_cast<int>(kSignalTypes)) decks.back().filters.push_back({static_cast<SignalType>(type), std::string(p[2])});
+        } else if (p[0] == "cview" && p.size() >= 2 && !decks.empty()) {
+            decks.back().c_view = c_view_from_key(p[1]);
         }
     }
     return decks;

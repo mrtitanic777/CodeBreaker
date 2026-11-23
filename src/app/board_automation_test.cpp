@@ -70,6 +70,7 @@ CB_TEST("app.board_automation.a_deck_is_kept_and_read_back_and_builtin_ones_are_
     mine.orphans = true;
     mine.names = {"ddraw", "dsound"};
     mine.filters = {{SignalType::Mutex, "__DDHelpMutex__"}};
+    mine.c_view = CView::NearMisses;
     decks.push_back(mine);
     save_decks(root, decks);
     const std::vector<Deck> again = load_decks(root);
@@ -79,6 +80,7 @@ CB_TEST("app.board_automation.a_deck_is_kept_and_read_back_and_builtin_ones_are_
     CB_CHECK_EQ(again[0].names.size(), std::size_t{2});
     CB_CHECK(again[0].filters[0].type == SignalType::Mutex);
     CB_CHECK_EQ(again[0].filters[0].value, std::string("__DDHelpMutex__"));
+    CB_CHECK(again[0].c_view == CView::NearMisses);
     CB_CHECK(load_decks(root / "none").empty());
 });
 

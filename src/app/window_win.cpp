@@ -106,6 +106,8 @@ constexpr UINT_PTR kWwTaskbarTimer = 4;    // a failure shown on the taskbar but
 constexpr UINT kWwTaskbarErrorMs = 4000;
 constexpr UINT_PTR kWwMinuteTimer = 5;     // the Recent list's "when" words are made new
 constexpr UINT kWwMinuteMs = 30000;
+constexpr UINT_PTR kWwScoresTimer = 17;    // the Board looks for new rows in its score table
+constexpr UINT kWwScoresMs = 5000;
 constexpr UINT_PTR kWwFlowTimer = 6;       // while Flow, Trace or Library shows: the projected-call dots move
 constexpr UINT kWwFlowFrameMs = 33;
 constexpr wchar_t kWwClass[] = L"CodeBreakerWindow";
@@ -646,6 +648,7 @@ int WwApp::run() {
     if (!create_window()) return 2;
     refresh_recent();
     SetTimer(hwnd_, kWwMinuteTimer, kWwMinuteMs, nullptr);
+    SetTimer(hwnd_, kWwScoresTimer, kWwScoresMs, nullptr);
     if (initial_file_.empty()) start_welcome();   // (a window opened on a file goes straight to work)
     ShowWindow(hwnd_, SW_SHOWNORMAL);
     UpdateWindow(hwnd_);
@@ -3245,6 +3248,13 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 if (!IsIconic(hwnd_)) invalidate();
                 return 0;
             }
+            if (wp == kWwScoresTimer) {
+                if (model_.page == Page::Board && !IsIconic(hwnd_) && board_refresh_scores(model_)) {
+                    relayout();
+                    invalidate();
+                }
+                return 0;
+            }
             if (wp == kWwMinuteTimer) {   // "2 minutes ago" moves on
                 if (model_.page == Page::Convert && model_.view == View::Idle && !model_.recent.empty()) refresh_recent();
                 return 0;
@@ -3606,6 +3616,8 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
         if (state == "board-c-near") board_toggle_c_view(m, board::CView::NearMisses);
         if (state == "board-c-nocompile") board_toggle_c_view(m, board::CView::WillNotCompile);
         if (state == "board-c-unscored") board_toggle_c_view(m, board::CView::NotScored);
+        if (state.starts_with("board-c-") && !m.board_stacks[static_cast<std::size_t>(board::Pile::Programs)].done.empty())
+            m.board_selected = static_cast<int>(m.board_stacks[static_cast<std::size_t>(board::Pile::Programs)].done[0]);   // (its result on the strip)
         if (state == "board-deck") {
             board_apply_deck(m, 0);
             m.board_decks_open = true;

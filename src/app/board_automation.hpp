@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "app/board.hpp"
+#include "app/board_c_view.hpp"
 #include "app/board_flow.hpp"
 #include "app/board_index.hpp"
 #include "app/board_projection.hpp"
@@ -41,6 +42,7 @@ struct Deck {
     bool builtin = false;
     std::vector<std::string> names;    // a card's file name holds any of these (lower case); empty: any
     std::vector<DeckFilter> filters;
+    CView c_view = CView::All;         // the filter by C result it comes back with
 };
 // DirectX and media, dial-up networking, and the Plug and Play boot chain.
 std::vector<Deck> builtin_decks();

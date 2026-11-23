@@ -116,6 +116,9 @@ void board_open_signals(Model& model, int type);
 void board_toggle_filter(Model& model, std::uint32_t signal);
 // Filter by C result (the same one again: off). Converted programs live on their foundations, so the columns list those until it is off, then go back as they were.
 void board_toggle_c_view(Model& model, board::CView view);
+// The score table again if it has changed (a scorer may still be adding to it). A table that cannot be read just now keeps the scores there are; nothing moves
+// under a drag or a batch waiting for its second press. True when the page has new numbers.
+bool board_refresh_scores(Model& model);
 
 inline constexpr float kSignalRowHeight = 26;
 struct SignalPanel {

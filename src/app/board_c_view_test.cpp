@@ -2,6 +2,7 @@
 #include "app/board_c_view.hpp"
 
 #include "app/window_board.hpp"
+#include "core/fs.hpp"
 #include "core/testing.hpp"
 
 namespace cb::app::board {
@@ -139,6 +140,58 @@ CB_TEST("app.board_c_view.the_page_filters_and_gives_the_column_back", [] {
     CB_CHECK(b.c_pills.back().right() <= b.orphans_button.x);
     m.board_scores.reset();
     CB_CHECK(compute_board_layout(shell, m).c_summary.h == 0);  // no table: no row claiming anything
+});
+
+CB_TEST("app.board_c_view.a_column_and_a_strip_say_what_was_measured", [] {
+    const CViewFixture f;
+    const CMarks marks = build_c_marks(f.board, &f.index, f.scores);
+    const CPileScore& programs = marks.by_pile[static_cast<std::size_t>(Pile::Programs)];
+    CB_CHECK_EQ(programs.functions, std::uint64_t{124});
+    CB_CHECK_EQ(programs.scored, std::uint64_t{5});
+    CB_CHECK_EQ(programs.unscored, std::uint64_t{3});
+    CB_CHECK_EQ(c_pile_words(programs), "12.9%");
+    CB_CHECK_EQ(c_pile_words(CPileScore{0, 0, 0, 4}), "not yet");     // never 0%
+    CB_CHECK_EQ(c_pile_words(CPileScore{0, 0, 2, 0}), "no code");
+    CB_CHECK_EQ(c_pile_words(CPileScore{}), "");
+    CB_CHECK_EQ(c_detail_words(marks.by_card[1]), "C 10 of 100 byte-identical (10.0%)");
+    CB_CHECK_EQ(c_detail_words(marks.by_card[4]), "C ran out of time: no score");
+    CB_CHECK_EQ(c_detail_words(marks.by_card[8]), "C not scored yet");
+    CB_CHECK_EQ(c_detail_words(marks.by_card[9]), "");
+    for (const CView view : {CView::All, CView::MostIdentical, CView::NearMisses, CView::WillNotCompile, CView::NotScored}) CB_CHECK(c_view_from_key(c_view_key(view)) == view);
+    CB_CHECK(c_view_from_key("from a newer version") == CView::All);
+});
+
+CB_TEST("app.board_c_view.new_rows_reach_the_page_and_a_bad_read_changes_nothing", [] {
+    using namespace window;
+    const std::filesystem::path root = std::filesystem::temp_directory_path() / "cb_board_c_view_test" / "live";
+    fs::remove_tree(root);
+    fs::make_dirs(root);
+    const std::string header = "card\tformat\tresult\tfunctions\tidentical\tsame_size\tdifferent\tno_compile\tother\tseconds\n";
+    fs::write_text(root / "c_scores.tsv", header + "a/best.exe\tPE\tscored\t10\t5\t1\t2\t1\t1\t9\n");
+    CViewFixture f;
+    f.board.root = root;
+    Model m;
+    m.board = std::make_shared<Board>(f.board);
+    m.board_index = std::make_shared<const Index>(f.index);
+    board_load_decks(m);
+    board_rebuild_stacks(m);
+    m.status_text = "Files \xC2\xB7 " + c_score_words(*m.board_scores);
+    CB_CHECK(!board_refresh_scores(m));                                // nothing new
+    CB_CHECK_EQ(m.board_c_marks->summary.scored, std::uint64_t{1});
+
+    fs::write_text(root / "c_scores.tsv", header + "a/best.exe\tPE\tscored\t10\t5\t1\t2\t1\t1\t9\na/mid.exe\tPE\tscored\t100\t10\t40\t30\t20\t0\t9\na/new.exe\tPE\tsc");
+    m.board_batch_armed = 3;
+    CB_CHECK(!board_refresh_scores(m));                                // a batch waiting for its second press is left alone
+    m.board_batch_armed = 0;
+    CB_CHECK(board_refresh_scores(m));
+    CB_CHECK_EQ(m.board_c_marks->summary.scored, std::uint64_t{2});    // (the row still being written is not counted)
+    CB_CHECK_EQ(c_mark_words(m.board_c_marks->by_card[8]), "not yet");
+    CB_CHECK_EQ(m.status_text, "Files \xC2\xB7 " + c_score_words(*m.board_scores));
+
+    fs::write_text(root / "c_scores.tsv", "half a heade");
+    CB_CHECK(!board_refresh_scores(m));
+    CB_CHECK_EQ(m.board_c_marks->summary.scored, std::uint64_t{2});
+    fs::remove_tree(root);
 });
 
 }  // namespace

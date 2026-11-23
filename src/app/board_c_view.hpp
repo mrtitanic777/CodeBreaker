@@ -43,9 +43,15 @@ struct CSummary {
     std::uint64_t programs() const { return scored + unscored(); }
 };
 
+// One column's programs, each distinct program once, in the column of its first copy.
+struct CPileScore {
+    std::uint64_t functions = 0, identical = 0, scored = 0, unscored = 0;
+};
+
 struct CMarks {
     std::vector<CMark> by_card;            // one per Board::cards
     CSummary summary;
+    std::array<CPileScore, kPileCount> by_pile{};
 };
 
 // `index` (may be null) says which cards are copies of one file.
@@ -61,6 +67,13 @@ std::string c_mark_words(const CMark& mark);
 float c_identical_share(const CMark& mark);
 
 std::string_view c_view_name(CView view);
+// A view's word in a saved deck, and back (anything else: All).
+std::string_view c_view_key(CView view);
+CView c_view_from_key(std::string_view key);
+// A column's foundation: "4.2%" of its scored functions, "not yet" with programs but no score, "no code", or empty with no programs.
+std::string c_pile_words(const CPileScore& pile);
+// The selected card's strip: "C 12 of 340 byte-identical (3.5%)", or what stands in for a number. Empty: no mark.
+std::string c_detail_words(const CMark& mark);
 // How a view orders its cards, for the head of a column: the mark on a card is always its byte-identical share.
 std::string_view c_view_order(CView view);
 // A filter's words: "Near misses 412".
