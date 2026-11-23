@@ -6,7 +6,7 @@
  * (a header of its own states the variables of its files, and no part's headers fit another's: the inline assembler's tokens are
  * the scanner's names for other things):
  *   FrontRun    the front end         front/driver/frontrun.hpp
- *   BackRun     the code generator    codegen/common/backrun.hpp  (with its libraries: cfloat, dwarf, owl)
+ *   BackRun     the code generator    codegen/base/backrun.hpp     (with its libraries: cfloat, dwarf, owl)
  *   AsmRun      the inline assembler  asm/asmrun.hpp
  *   SupportRun  runtime support       support/supportrun.hpp
  * A function of one part takes that part's context first (`FrontRun& front`) and reaches another part's through it (`front.back`).
