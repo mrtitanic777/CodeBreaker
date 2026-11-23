@@ -56,6 +56,12 @@ bool enabled() {
     return !(env && (*env == "0" || *env == "false" || *env == "no"));
 }
 
+bool enabled_when_asked() {
+    if (const int f = g_force.load(); f >= 0) return f == 1;
+    const std::optional<std::string> env = cb::fs::get_env("CB_PCODE_EMU");
+    return env && (*env == "1" || *env == "true" || *env == "yes");
+}
+
 void force(std::optional<bool> on) { g_force = on ? (*on ? 1 : 0) : -1; }
 
 m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options) {

@@ -64,6 +64,10 @@ public:
     std::uint32_t read(std::uint32_t address, unsigned size);
     void write(std::uint32_t address, unsigned size, std::uint32_t value);
 
+    // What a read of `size` bytes would give, without making it: for a memory range that nothing logs (nullopt for a device, a logged range, an address no range holds).
+    // The adapter on the p-code emulator fetches instructions with it, and leaves a fetch that would show in the log to this core.
+    std::optional<std::uint32_t> peek(std::uint32_t address, unsigned size) const;
+
     // The bytes of the memory range that starts at `lo`.
     std::span<std::uint8_t> bytes(std::uint32_t lo);
     const std::vector<DeviceAccess>& log() const { return log_; }

@@ -71,6 +71,12 @@ public:
     bool syscall(mipsle::Cpu& cpu, std::uint32_t code, std::string& stopped) override;
     Intercept intercept(mipsle::Cpu& cpu, std::string& stopped) override;
 
+    // A read that logs nothing: the bytes of the scratchpad, the RAM, the video memory or a loaded region. False for the hardware (a read of it is logged) and for an address
+    // nothing answers. The adapter on the p-code emulator fetches instructions with it, and leaves any other fetch to this core.
+    bool peek(std::uint32_t address, unsigned size, std::uint64_t& value) const;
+    // Whether the address is the stub of an imported function (a call to it is the bus's to answer, in intercept).
+    bool is_stub(std::uint32_t address) const { return address >= stub_low_ && address <= stub_high_ && options_.imports.count(address) != 0; }
+
     const paged_memory::Memory& memory() const { return memory_; }
     paged_memory::Memory& memory() { return memory_; }
     const std::vector<BusAccess>& log() const { return log_; }

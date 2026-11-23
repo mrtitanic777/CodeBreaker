@@ -8,6 +8,7 @@
 #include "emulate/f8.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
+#include "engine/pcode_cpu_f8.hpp"
 #include "formats/read.hpp"
 #include "platforms/chf.hpp"
 #include "formats/chf.hpp"
@@ -81,7 +82,7 @@ vl::Effects chf_effects(const stdfs::path& path, std::uint32_t entry, const vl::
         const auto named = formats::chf::bios().find(r.pc0);
         calls.push_back(named != formats::chf::bios().end() ? named->second : std::format("BIOS_{:04X}", r.pc0));
     };
-    const ef8::RunResult run = ef8::run(bus, static_cast<std::uint16_t>(entry), options);
+    const ef8::RunResult run = pcode_cpu::call(bus, static_cast<std::uint16_t>(entry), options);
     std::vector<std::string> io;
     for (const ef8::PortAccess& x : run.io) {
         io.push_back(std::format("{} PORT_{} {:x}", x.kind == ef8::PortAccess::Kind::In ? "in" : "out", x.port, x.value));

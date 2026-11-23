@@ -67,6 +67,30 @@ bool Bus::read(std::uint32_t address, unsigned size, std::uint64_t& value) {
     return false;
 }
 
+bool Bus::peek(std::uint32_t address, unsigned size, std::uint64_t& value) const {
+    if (address >= kScratchpad && address - kScratchpad + size <= kScratchpadSize) {
+        value = 0;
+        for (unsigned i = 0; i < size; ++i) value |= static_cast<std::uint64_t>(scratch_[address - kScratchpad + i]) << (8 * i);
+        return true;
+    }
+    const std::optional<std::uint32_t> p = physical(address);
+    if (!p) return false;
+    if (*p < kRamSize || memory_.covers(address)) {
+        value = memory_.read(*p < kRamSize ? *p : address, size);
+        return true;
+    }
+    if (is_register(*p)) return false;
+    if (*p >= kIopRam && *p <= kIopRamEnd) {
+        value = memory_.read(address, size);
+        return true;
+    }
+    if (*p >= kBios) {
+        value = 0;
+        return true;
+    }
+    return false;
+}
+
 bool Bus::write(std::uint32_t address, unsigned size, std::uint64_t value) {
     if (address >= kScratchpad && address - kScratchpad + size <= kScratchpadSize) {
         for (unsigned i = 0; i < size; ++i) scratch_[address - kScratchpad + i] = static_cast<std::uint8_t>(value >> (8 * i));

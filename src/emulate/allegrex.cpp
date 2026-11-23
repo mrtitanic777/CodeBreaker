@@ -60,6 +60,21 @@ bool Bus::read(std::uint32_t address, unsigned size, std::uint64_t& value) {
     return false;
 }
 
+bool Bus::peek(std::uint32_t address, unsigned size, std::uint64_t& value) const {
+    const std::optional<std::uint32_t> p = physical(address);
+    if (!p) return false;
+    if (options_.scratchpad && *p >= kScratchpad && *p - kScratchpad + size <= kScratchpadSize) {
+        value = 0;
+        for (unsigned i = 0; i < size; ++i) value |= static_cast<std::uint64_t>(scratch_[*p - kScratchpad + i]) << (8 * i);
+        return true;
+    }
+    if ((*p >= kRamBase && *p < kRamBase + kRamSize) || (*p >= kVram && *p < kVram + kVramSize) || memory_.covers(*p)) {
+        value = memory_.read(*p, size);
+        return true;
+    }
+    return false;
+}
+
 bool Bus::write(std::uint32_t address, unsigned size, std::uint64_t value) {
     const std::optional<std::uint32_t> p = physical(address);
     if (!p) return false;

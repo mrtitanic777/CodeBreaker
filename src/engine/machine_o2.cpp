@@ -10,6 +10,7 @@
 #include "emulate/i8048.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
+#include "engine/pcode_cpu_i8048.hpp"
 #include "formats/read.hpp"
 #include "platforms/o2.hpp"
 #include "formats/o2.hpp"
@@ -101,7 +102,7 @@ vl::Effects o2_effects(const stdfs::path& path, std::uint32_t entry, const vl::S
         if (r.pc >= formats::o2::kBase || calls.size() >= kIoShown) return;
         calls.push_back(std::format("BIOS_{:04X}", r.pc));
     };
-    const e48::RunResult run = e48::run(bus, static_cast<std::uint16_t>(entry), options);
+    const e48::RunResult run = pcode_cpu::call(bus, static_cast<std::uint16_t>(entry), options);
     std::vector<std::string> io;
     for (const e48::DeviceAccess& x : run.io) {
         io.push_back(std::format("{} {} {:x}", x.kind == e48::DeviceAccess::Kind::Read ? "r" : "w", place_text(x), x.value));

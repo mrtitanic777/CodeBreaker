@@ -23,6 +23,7 @@
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
 #include "engine/pcode_cpu.hpp"
+#include "engine/pcode_cpu_sm83.hpp"
 #include "formats/gb.hpp"
 #include "formats/gba.hpp"
 #include "formats/genesis.hpp"
@@ -111,7 +112,7 @@ lanes::Effects gb_effects(const stdfs::path& path, std::uint32_t entry, const la
     options.regs.e = static_cast<std::uint8_t>(at(state, "e"));
     options.regs.h = static_cast<std::uint8_t>(at(state, "h"));
     options.regs.l = static_cast<std::uint8_t>(at(state, "l"));
-    const emulate::sm83::RunResult run = emulate::sm83::run(bus, static_cast<std::uint16_t>(entry), options);
+    const emulate::sm83::RunResult run = pcode_cpu::call(bus, static_cast<std::uint16_t>(entry), options);
     Bytes ram(bus.memory().begin() + 0xC000, bus.memory().begin() + 0xE000);
     ram.insert(ram.end(), bus.memory().begin() + 0xFF80, bus.memory().begin() + 0xFFFF);
     std::vector<std::string> io;
