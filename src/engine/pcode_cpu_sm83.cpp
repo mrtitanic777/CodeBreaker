@@ -6,7 +6,6 @@
 #include <cstring>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "decompile/engine/pcode_emulator.hh"
@@ -30,17 +29,18 @@ sm83cpu::RunResult run(sm83cpu::Bus& bus, std::uint16_t entry, const sm83cpu::Ru
     sl::Emulator& emu = emulator_named("sm83.sla");
     const auto& reg = reg_refs(emu, kSm83Names);
     const std::size_t log_start = bus.log().size();
-    const std::span<std::uint8_t> memory = bus.memory();
     constexpr std::uint32_t kSize = 0x10000;
 
-    // The page map the emulator decodes from (`shadow`), and the bus's memory as it was last looked at (`plain`): they differ where an instruction was fetched from a device.
-    std::vector<std::uint8_t> plain(memory.begin(), memory.begin() + kSize);
-    std::vector<std::uint8_t> shadow = plain;
-    emu.write(0, shadow.data(), kSize);
-    emu.flushDecoded();
+    // The page map the emulator decodes from (`shadow`, kept from run to run). Only the bytes of the instruction being run are read from it, and those are put there from the
+    // bus's own fetch before each step, so a store or a device's doing to memory needs no copying to it.
+    thread_local std::vector<std::uint8_t> image;   // (what the emulator holds: kept between runs, with what it decoded from it)
+    if (image.size() != kSize) {
+        image.assign(kSize, 0);
+        emu.flushDecoded();
+    }
+    std::vector<std::uint8_t>& shadow = image;
     emu.clearStops();
 
-    bool wrote = false;
     emu.onRead([&](std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t& value) {
         if (!is_ram(space)) return false;
         value = 0;
@@ -49,7 +49,6 @@ sm83cpu::RunResult run(sm83cpu::Bus& bus, std::uint16_t entry, const sm83cpu::Ru
     });
     emu.onWrite([&](std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t value) {
         if (!is_ram(space)) return false;
-        wrote = true;
         for (unsigned i = 0; i < size; ++i) bus.write(static_cast<std::uint16_t>(addr + i), static_cast<std::uint8_t>(value >> (8 * i)));
         return true;
     });
@@ -93,25 +92,18 @@ sm83cpu::RunResult run(sm83cpu::Bus& bus, std::uint16_t entry, const sm83cpu::Ru
     emu.setReg(reg[sm83_reg::SP], sp);
     emu.setPc(entry);
 
-    const auto sync = [&] {   // what a store or a device did to the bus's memory (a stack push, a store into RAM code runs from), to the page map
-        if (std::memcmp(plain.data(), memory.data(), kSize) == 0) return;
-        std::uint32_t first = 0, last = kSize - 1;
-        while (plain[first] == memory[first]) ++first;
-        while (plain[last] == memory[last]) --last;
-        std::memcpy(plain.data() + first, memory.data() + first, last - first + 1);
-        std::memcpy(shadow.data() + first, memory.data() + first, last - first + 1);
-        emu.write(first, shadow.data() + first, last - first + 1);
-    };
-    sync();   // (the return address just pushed)
-
     // The own core fetches every instruction through the bus (a device in the range sees each read and answers it, and the answers are what is decoded): the first time at an
     // address three bytes, afterwards the bytes the instruction had, read again and compared, and three more if one changed. The adapter makes those reads, in that order, and
     // gives the emulator the bytes they returned.
     struct Known {
-        std::uint8_t size;
-        std::array<std::uint8_t, 3> raw;
+        std::uint32_t run = 0;   // the run that fetched it (a table kept between runs is not cleared: an entry of an earlier run is none)
+        std::uint8_t size = 0;
+        std::array<std::uint8_t, 3> raw{};
     };
-    std::unordered_map<std::uint16_t, Known> known;
+    thread_local std::vector<Known> known_table(0x10000);
+    thread_local std::uint32_t run_number = 0;
+    const std::uint32_t this_run = ++run_number;
+    std::vector<Known>& known = known_table;
 
     sm83cpu::RunResult out;
     out.end = sm83cpu::End::Limit;
@@ -129,17 +121,16 @@ sm83cpu::RunResult run(sm83cpu::Bus& bus, std::uint16_t entry, const sm83cpu::Ru
             out.fault = sm83cpu::Fault{sm83cpu::Fault::Kind::Halt, pc};
             break;
         }
-        const std::size_t seen = bus.log().size();
         std::array<std::uint8_t, 3> code{};
-        const auto it = known.find(pc);
-        bool fresh = it == known.end();
+        Known& at_pc = known[pc];
+        bool fresh = at_pc.run != this_run;
         if (!fresh)
-            for (std::size_t i = 0; i < it->second.size; ++i)
-                if (bus.read(static_cast<std::uint16_t>(pc + i)) != it->second.raw[i]) fresh = true;
+            for (std::size_t i = 0; i < at_pc.size; ++i)
+                if (bus.read(static_cast<std::uint16_t>(pc + i)) != at_pc.raw[i]) fresh = true;
         if (fresh)
             for (std::size_t i = 0; i < code.size(); ++i) code[i] = bus.read(static_cast<std::uint16_t>(pc + i));
         else
-            code = it->second.raw;
+            code = at_pc.raw;
         for (std::size_t i = 0; i < code.size(); ++i) {   // (the page map holds what was fetched)
             const std::uint16_t at = static_cast<std::uint16_t>(pc + i);
             if (shadow[at] != code[i]) {
@@ -147,16 +138,14 @@ sm83cpu::RunResult run(sm83cpu::Bus& bus, std::uint16_t entry, const sm83cpu::Ru
                 emu.write(at, &code[i], 1);
             }
         }
-        const std::size_t length = emu.length(pc);
-        wrote = false;
+        const std::size_t length = fresh ? emu.length(pc) : at_pc.size;
         const sl::Emulator::Status status = emu.step();
         if (status == sl::Emulator::Status::BadInstruction || status == sl::Emulator::Status::Error) {
             out.end = sm83cpu::End::Stopped;
             out.fault = sm83cpu::Fault{sm83cpu::Fault::Kind::Undecodable, pc};
             break;
         }
-        if (!fault || fault->kind != sm83cpu::Fault::Kind::Undecodable) known[pc] = Known{static_cast<std::uint8_t>(length), code};   // (decoded: an opcode that is none is not kept)
-        if (wrote || bus.log().size() != seen) sync();
+        if (!fault || fault->kind != sm83cpu::Fault::Kind::Undecodable) at_pc = Known{this_run, static_cast<std::uint8_t>(length), code};   // (decoded: an opcode that is none is not kept)
         if (fault) {   // neither a STOP nor an undefined opcode counts as a step
             out.end = sm83cpu::End::Stopped;
             out.fault = fault;
@@ -183,6 +172,6 @@ sm83cpu::RunResult run(sm83cpu::Bus& bus, std::uint16_t entry, const sm83cpu::Ru
     return out;
 }
 
-sm83cpu::RunResult call(sm83cpu::Bus& bus, std::uint16_t entry, const sm83cpu::RunOptions& options) { return enabled_when_asked() ? pcode_cpu::run(bus, entry, options) : sm83cpu::run(bus, entry, options); }
+sm83cpu::RunResult call(sm83cpu::Bus& bus, std::uint16_t entry, const sm83cpu::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : sm83cpu::run(bus, entry, options); }
 
 }  // namespace cb::engine::pcode_cpu

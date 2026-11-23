@@ -20,15 +20,21 @@ namespace dc = cb::decompile::cp1610;
 
 c::RunResult run(c::Bus& bus, std::uint16_t entry, const c::RunOptions& options) {
     sl::Emulator& emu = emulator_named("CP1600.sla");
-    emu.clearMemory();   // (the words handed over last run are not this run's)
     emu.clearStops();
     emu.keepAddressContext(false);
     emu.setContext("doublebyte", 0);
-    emu.flushDecoded();
 
     // The emulator's memory is bytes, a word at twice its address: the three words of an instruction are handed over as they are read, and a word is written only when it changed.
-    std::vector<std::uint16_t> handed(0x10000, 0);
-    std::vector<bool> known(0x10000, false);
+    // What was handed over stays with the emulator from run to run (per thread, as the emulator is), so a word that is the same in the next run costs nothing, and what the emulator
+    // decoded from it stays decoded; a word the program wrote is handed over again when code is next read from it.
+    thread_local std::vector<std::uint16_t> handed;
+    thread_local std::vector<bool> known;
+    if (handed.empty()) {
+        handed.assign(0x10000, 0);
+        known.assign(0x10000, false);
+        emu.clearMemory();
+        emu.flushDecoded();
+    }
     const auto hand_over = [&](std::uint16_t address, std::uint16_t value) {
         if (known[address] && handed[address] == value) return;
         known[address] = true;
@@ -53,9 +59,7 @@ c::RunResult run(c::Bus& bus, std::uint16_t entry, const c::RunOptions& options)
         for (unsigned i = 0; i < size / 2; ++i) {
             const std::uint16_t word = static_cast<std::uint16_t>(value >> (16 * (size / 2 - 1 - i)));
             bus.write(static_cast<std::uint16_t>(first + i), word);
-            if (known[static_cast<std::uint16_t>(first + i)]) {   // (a word written where code was read from)
-                known[static_cast<std::uint16_t>(first + i)] = false;
-            }
+            known[static_cast<std::uint16_t>(first + i)] = false;   // (a word written where code was read from is handed over again at the next read)
         }
         return true;
     });
@@ -139,6 +143,6 @@ c::RunResult run(c::Bus& bus, std::uint16_t entry, const c::RunOptions& options)
     return out;
 }
 
-c::RunResult call(c::Bus& bus, std::uint16_t entry, const c::RunOptions& options) { return enabled_when_asked() ? pcode_cpu::run(bus, entry, options) : c::run(bus, entry, options); }
+c::RunResult call(c::Bus& bus, std::uint16_t entry, const c::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : c::run(bus, entry, options); }
 
 }  // namespace cb::engine::pcode_cpu

@@ -19,6 +19,7 @@
 #include "emulate/unicorn_uc.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
+#include "engine/pcode_cpu_x86.hpp"
 #include "formats/read.hpp"
 #include "platforms/ps4.hpp"
 #include "platforms/ps5.hpp"
@@ -241,34 +242,12 @@ std::shared_ptr<const Loaded> cached(const std::string& kind, const Loader& load
     return loaded;
 }
 
-// What the host's syscall hook needs.
-struct SyscallLog {
-    const Loaded* loaded = nullptr;
-    std::vector<std::string>* calls = nullptr;
-    const emu::unicorn::Api* api = nullptr;
-    uc_engine* engine = nullptr;
-};
-
-void on_syscall(uc_engine*, void* user) {
-    SyscallLog& log = *static_cast<SyscallLog*>(user);
-    std::uint64_t rax = 0, rdi = 0, rsi = 0, rdx = 0, zero = 0;
-    log.api->uc_reg_read(log.engine, UC_X86_REG_RAX, &rax);
-    log.api->uc_reg_read(log.engine, UC_X86_REG_RDI, &rdi);
-    log.api->uc_reg_read(log.engine, UC_X86_REG_RSI, &rsi);
-    log.api->uc_reg_read(log.engine, UC_X86_REG_RDX, &rdx);
-    if (log.calls->size() < kShown) {
-        const std::string name = log.loaded->syscall_name ? log.loaded->syscall_name(rax) : std::string();
-        log.calls->push_back(std::format("syscall {}({:x}, {:x}, {:x})", name.empty() ? std::format("#{}", rax) : name, rdi, rsi, rdx));
-    }
-    log.api->uc_reg_write(log.engine, UC_X86_REG_RAX, &zero);
-}
-
 int reg(const char* name) { return *emulate::unicorn_uc::x86_register(name); }
 
 vl::Effects effects(const std::string& kind, const Loader& loader, const stdfs::path& path, std::uint32_t entry, const vl::State& state) {
     const std::shared_ptr<const Loaded> loaded = cached(kind, loader, path);
     namespace uu = emulate::unicorn_uc;
-    const std::unique_ptr<core16::Uc> uc = uu::open_x86(64);
+    const std::unique_ptr<core16::Uc> uc = pcode_cpu::open_x86(64);   // (Unicorn, unless the one emulator is asked for: pcode_cpu_x86.hpp)
     uc->mem_map(loaded->low, loaded->high - loaded->low);
     for (const Loaded::Part& part : loaded->parts) uc->mem_write(part.address, part.bytes);
     uc->mem_map(kStubs, page_up(std::max<std::size_t>(loaded->imports.size(), 1) * 16));
@@ -335,11 +314,14 @@ vl::Effects effects(const std::string& kind, const Loader& loader, const stdfs::
         },
         kStubs, kStubs + stub_names.size() * 16);
 
-    const emu::unicorn::Api& api = emu::unicorn::api();
-    auto engine = static_cast<uc_engine*>(uc->handle());
-    SyscallLog log{loaded.get(), &calls, &api, engine};
-    uc_hook syscall_hook = 0;
-    emu::unicorn::check(api.uc_hook_add(engine, &syscall_hook, UC_HOOK_INSN, reinterpret_cast<void*>(&on_syscall), &log, 1, 0, UC_X86_INS_SYSCALL), "uc_hook_add(syscall)");
+    const std::shared_ptr<void> syscall_hook = pcode_cpu::hook_syscall(*uc, [&](core16::Uc& u) {
+        const std::uint64_t rax = u.reg_read(reg("RAX")), rdi = u.reg_read(reg("RDI")), rsi = u.reg_read(reg("RSI")), rdx = u.reg_read(reg("RDX"));
+        if (calls.size() < kShown) {
+            const std::string name = loaded->syscall_name ? loaded->syscall_name(rax) : std::string();
+            calls.push_back(std::format("syscall {}({:x}, {:x}, {:x})", name.empty() ? std::format("#{}", rax) : name, rdi, rsi, rdx));
+        }
+        u.reg_write(reg("RAX"), 0);
+    });
 
     // the arguments and the stack: a return address on the top, which is where the run ends
     const char* const sysv[] = {"RDI", "RSI", "RDX", "RCX", "R8", "R9"};
@@ -364,7 +346,6 @@ vl::Effects effects(const std::string& kind, const Loader& loader, const stdfs::
     } catch (const emulate::unicorn_uc::UcFault& fault) {
         end = ended ? "exit" : std::format("fault {}", fault.code());
     }
-    api.uc_hook_del(engine, syscall_hook);
 
     std::vector<std::string> changed;
     for (std::size_t w = 0; w < watched.size() && changed.size() < kShown; ++w) {

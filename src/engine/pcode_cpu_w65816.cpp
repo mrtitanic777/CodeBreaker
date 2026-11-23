@@ -192,6 +192,7 @@ w::Run run(w::Machine& machine, std::uint32_t entry, const w::Options& options) 
         emu.setReg(r[kSP], s);
     }
     emu.setPc(entry);
+    bool flag_e = emulation, flag_m = m8, flag_x = x8;   // E, M and X as the last instruction that could change them left them (read there, not at the start of every instruction)
     bool wide_a = !m8, wide_x = !x8;   // the widths the emulator decodes in now
     emu.setContext("m16", wide_a ? 1 : 0);
     emu.setContext("x16", wide_x ? 1 : 0);
@@ -206,8 +207,8 @@ w::Run run(w::Machine& machine, std::uint32_t entry, const w::Options& options) 
             out.end = w::End::Return;
             break;
         }
-        const bool emulation_now = emu.reg(r[kE]) != 0;
-        const bool a8 = emulation_now || emu.reg(r[kMF]) != 0, i8 = emulation_now || emu.reg(r[kXF]) != 0;
+        const bool emulation_now = flag_e;
+        const bool a8 = emulation_now || flag_m, i8 = emulation_now || flag_x;
         if (a8 == wide_a || i8 == wide_x) {   // (the flags and the widths the emulator decodes in differ)
             if (a8 == wide_a) emu.setContext("m16", (wide_a = !a8) ? 1 : 0);
             if (i8 == wide_x) emu.setContext("x16", (wide_x = !i8) ? 1 : 0);
@@ -296,7 +297,7 @@ w::Run run(w::Machine& machine, std::uint32_t entry, const w::Options& options) 
         } else {
             const std::optional<bool> add = adds(opcode);   // (in decimal mode: carried here, the description adds in binary)
             const bool decimal = add && emu.reg(r[kD]) != 0;
-            const unsigned a_before = static_cast<unsigned>(emu.reg(r[kA])), carry = static_cast<unsigned>(emu.reg(r[kC]));
+            const unsigned a_before = decimal ? static_cast<unsigned>(emu.reg(r[kA])) : 0, carry = decimal ? static_cast<unsigned>(emu.reg(r[kC])) : 0;
             current_opcode = opcode;
             in_emulation = emulation_now;
             const sl::Emulator::Status status = emu.step();
@@ -323,15 +324,26 @@ w::Run run(w::Machine& machine, std::uint32_t entry, const w::Options& options) 
                 if ((now & 0xFF0000) != bank) emu.setPc(bank | (now & 0xFFFF));
             }
         }
-        // what the description leaves to the processor: emulation mode keeps M and X set and the stack in page 1, and an 8-bit index has no high byte
-        if (emu.reg(r[kE]) != 0) {
-            emu.setReg(r[kMF], 1);
-            emu.setReg(r[kXF], 1);
+        // Only an instruction that changes the mode (REP, SEP, PLP, RTI, XCE, BRK, COP) can leave the flags and the index registers as the description has them and not as the chip does,
+        // and one that moves the stack pointer (a push or a pull, TCS, TXS) the stack outside page 1 in emulation mode: the others leave all of them as they were.
+        const bool mode_change = opcode == 0xC2 || opcode == 0xE2 || opcode == 0x28 || opcode == 0x40 || opcode == 0xFB || opcode == 0x00 || opcode == 0x02;
+        if (mode_change) {
+            flag_e = emu.reg(r[kE]) != 0;
+            if (flag_e) {
+                emu.setReg(r[kMF], 1);
+                emu.setReg(r[kXF], 1);
+                emu.setReg(r[kSP], 0x0100 | (emu.reg(r[kSP]) & 0xFF));
+                flag_m = flag_x = true;
+            } else {
+                flag_m = emu.reg(r[kMF]) != 0;
+                flag_x = emu.reg(r[kXF]) != 0;
+            }
+            if (flag_x) {
+                if (const std::uint64_t x = emu.reg(r[kX]); x > 0xFF) emu.setReg(r[kX], x & 0xFF);
+                if (const std::uint64_t y = emu.reg(r[kY]); y > 0xFF) emu.setReg(r[kY], y & 0xFF);
+            }
+        } else if (flag_e && (pushes(opcode) || pulls(opcode) || opcode == 0x1B || opcode == 0x9A)) {
             emu.setReg(r[kSP], 0x0100 | (emu.reg(r[kSP]) & 0xFF));
-        }
-        if (emu.reg(r[kXF]) != 0) {
-            if (const std::uint64_t x = emu.reg(r[kX]); x > 0xFF) emu.setReg(r[kX], x & 0xFF);
-            if (const std::uint64_t y = emu.reg(r[kY]); y > 0xFF) emu.setReg(r[kY], y & 0xFF);
         }
     }
     w::Registers& g = out.regs;
@@ -350,6 +362,6 @@ w::Run run(w::Machine& machine, std::uint32_t entry, const w::Options& options) 
     return out;
 }
 
-w::Run call(w::Machine& machine, std::uint32_t entry, const w::Options& options) { return enabled_when_asked() ? pcode_cpu::run(machine, entry, options) : w::run(machine, entry, options); }
+w::Run call(w::Machine& machine, std::uint32_t entry, const w::Options& options) { return enabled() ? pcode_cpu::run(machine, entry, options) : w::run(machine, entry, options); }
 
 }  // namespace cb::engine::pcode_cpu

@@ -83,36 +83,26 @@ bool is_adc(std::uint8_t op) { return (op & 0xE0) == 0x60 && ((op & 0x1F) == 0x0
 bool is_sbc(std::uint8_t op) { return (op & 0xE0) == 0xE0 && ((op & 0x1F) == 0x01 || (op & 0x1F) == 0x05 || (op & 0x1F) == 0x09 || (op & 0x1F) == 0x0D || (op & 0x1F) == 0x11 || (op & 0x1F) == 0x12 || (op & 0x1F) == 0x15 || (op & 0x1F) == 0x19 || (op & 0x1F) == 0x1D); }
 
 }  // namespace
-
 h::Run run(h::Machine& machine, std::uint16_t entry, const h::Options& options) {
     sl::Emulator& emu = emulator_named("huc6280.sla");
     const std::size_t log_start = machine.log().size();
 
-    // The page map the emulator decodes from: the logical address space as the mapping registers show it. It is kept per thread, as the emulator is: the same card is run again and
-    // again, and what the emulator decoded from a window that has not changed need not be decoded again (a window that differs is handed over, and what was decoded from it dropped).
+    // The page map the emulator decodes from. It is kept per thread, as the emulator is: the same card is run again and again, and what the emulator decoded from bytes that have
+    // not changed need not be decoded again. Only the bytes of the instruction about to run are read from it, so they are compared and handed over just before each step (a store
+    // into RAM, another run's fill of it, or a mapping register that shows another bank cost nothing until code runs from the changed bytes).
     thread_local std::vector<std::uint8_t> held;
-    const bool fresh = held.size() != kLogical;
-    if (fresh) held.assign(kLogical, 0);
+    if (held.size() != kLogical) {
+        held.assign(kLogical, 0);
+        emu.flushDecoded();
+    }
     std::vector<std::uint8_t>& shadow = held;
-    const auto view_window = [&](unsigned window) {
-        const std::uint8_t* want = window_bytes(machine, window);   // (the window's 8 KB as peek() finds them, found once rather than a byte at a time)
-        if (!fresh && std::memcmp(want, shadow.data() + (window << 13), h::kBankSize) == 0) return;
-        std::memcpy(shadow.data() + (window << 13), want, h::kBankSize);
-        emu.write(window << 13, want, h::kBankSize);
+    std::array<const std::uint8_t*, 8> windows{};   // what each logical window shows (as peek() answers), found again when a mapping register changes
+    const auto view_windows = [&] {
+        for (unsigned w = 0; w < 8; ++w) windows[w] = window_bytes(machine, w);
     };
-    for (unsigned w = 0; w < 8; ++w) view_window(w);
-    if (fresh) emu.flushDecoded();
+    view_windows();
     emu.clearStops();
 
-    const auto after_ram_write = [&](std::uint16_t offset) {   // a store into RAM: every window that shows it
-        for (unsigned w = 0; w < 8; ++w) {
-            if (!is_ram_bank(machine.mpr[w])) continue;
-            const std::size_t at = (w << 13) | offset;
-            if (shadow[at] == machine.ram[offset]) continue;
-            shadow[at] = machine.ram[offset];
-            emu.write(at, &shadow[at], 1);
-        }
-    };
     // A byte the instruction at hand was read as, handed over when the emulator does not hold it already (the bytes past $FFFF, where an instruction that crosses the end of the
     // address space has its operands, are kept apart).
     std::array<std::uint8_t, 8> beyond{};
@@ -124,7 +114,6 @@ h::Run run(h::Machine& machine, std::uint16_t entry, const h::Options& options) 
     };
     const auto store = [&](std::uint16_t logical, std::uint8_t value) {
         machine.write(logical, value);
-        if (is_ram_bank(machine.mpr[logical >> 13])) after_ram_write(logical & 0x1FFF);
     };
     // The description reads an operand more than once in some instructions (an access of a hardware register is an event): what an instruction has read or written is kept
     // until it ends (not in a block transfer, which reads one place again and again on purpose).
@@ -264,10 +253,16 @@ h::Run run(h::Machine& machine, std::uint16_t entry, const h::Options& options) 
         // The instruction's bytes. A program does not run from the hardware page, but a function the lane judges may be data, or a vector may point there: the own core then reads the
         // opcode through the chips' registers (a read the log shows, which changes the VDC status's next answer), reads it again for the 65C02 core when it is not one of the
         // HuC6280's own, and the operand bytes after it; the bytes it finds are what runs. An instruction that runs over the end of the address space finds its operands at $0000.
-        std::array<std::uint8_t, 8> code;
-        for (unsigned i = 0; i < code.size(); ++i) code[i] = shadow[static_cast<std::uint16_t>(pc + i)];
+        std::array<std::uint8_t, 8> code{};
+        const auto window_byte = [&](unsigned i) {
+            const std::uint16_t at = static_cast<std::uint16_t>(pc + i);
+            return windows[at >> 13][at & 0x1FFF];
+        };
+        code[0] = window_byte(0);
         bool brk_by_65c02 = false;
         const auto hardware = [&](std::uint32_t at) { return machine.mpr[(at & 0xFFFF) >> 13] == formats::pce::kHardwareBank; };
+        thread_local std::array<std::int8_t, 256> lengths = [] { std::array<std::int8_t, 256> a; a.fill(-1); return a; }();   // (an opcode's length does not depend on its operands)
+        // Only the bytes the instruction has are handed to the emulator (what lies after them is nothing it reads: a byte there that changes would drop what was decoded for no reason).
         if (hardware(pc) || hardware(pc + 6) || pc > 0xFFF9) {
             std::uint8_t first = code[0];
             if (hardware(pc)) {
@@ -277,16 +272,20 @@ h::Run run(h::Machine& machine, std::uint16_t entry, const h::Options& options) 
                     brk_by_65c02 = first == 0x00;
                 }
             }
+            for (unsigned i = 1; i < code.size(); ++i) code[i] = window_byte(i);
             code[0] = first;
             put_code(pc, first);
-            thread_local std::array<std::int8_t, 256> lengths = [] { std::array<std::int8_t, 256> a; a.fill(-1); return a; }();   // (an opcode's length does not depend on its operands)
             if (lengths[first] < 0) lengths[first] = static_cast<std::int8_t>(std::min<std::size_t>(emu.length(pc), 7));
             const unsigned length = static_cast<unsigned>(lengths[first]);
-            for (unsigned i = 1; i < 8; ++i) {
+            for (unsigned i = 1; i < length; ++i) {
                 const std::uint32_t at = static_cast<std::uint32_t>(pc) + i;
-                if (i < length && hardware(at)) code[i] = machine.read(static_cast<std::uint16_t>(at));
+                if (hardware(at)) code[i] = machine.read(static_cast<std::uint16_t>(at));
                 put_code(at, code[i]);
             }
+        } else {   // (what the emulator holds there is handed the bytes that are now)
+            put_code(pc, code[0]);
+            if (lengths[code[0]] < 0) lengths[code[0]] = static_cast<std::int8_t>(std::min<std::size_t>(emu.length(pc), 7));
+            for (unsigned i = 1, length = static_cast<unsigned>(lengths[code[0]]); i < length; ++i) put_code(static_cast<std::uint32_t>(pc) + i, code[i] = window_byte(i));
         }
         const std::uint8_t op = code[0];
         const bool t = std::exchange(set_pending, false);
@@ -321,10 +320,12 @@ h::Run run(h::Machine& machine, std::uint16_t entry, const h::Options& options) 
             emu.setPc(static_cast<std::uint16_t>(pc + 2));
         } else {
             prepare(op, code[1]);
-            const std::uint64_t n = emu.reg(refs[kN]), v = emu.reg(refs[kV]);
-            const Before was = before();
+            const bool bit_immediate = op == 0x89;
+            const bool decimal_op = is_adc(op) || is_sbc(op);
+            const std::uint64_t n = bit_immediate ? emu.reg(refs[kN]) : 0, v = bit_immediate ? emu.reg(refs[kV]) : 0;
+            const Before was = decimal_op ? before() : Before{0, false, false};
             const sl::Emulator::Status status = emu.step();
-            if (op == 0x89) {   // BIT #: the own core's (the 65C02's) leaves N and V alone, the description sets them from the byte
+            if (bit_immediate) {   // BIT #: the own core's (the 65C02's) leaves N and V alone, the description sets them from the byte
                 emu.setReg(refs[kN], n);
                 emu.setReg(refs[kV], v);
             }
@@ -333,7 +334,7 @@ h::Run run(h::Machine& machine, std::uint16_t entry, const h::Options& options) 
                 out.fault = h::Fault{op, pc};
                 break;
             }
-            emu.setReg(refs[kSH], kStack >> 8);   // (S wraps within its page: the high byte is put back after every instruction)
+            if (pushes || pulls) emu.setReg(refs[kSH], kStack >> 8);   // (S wraps within its page: the high byte is put back after an instruction that moves S)
             decimal_fix(op, was);
             if (op == 0x00) {   // (BRK clears D after pushing P, as the own core's 65C02 does; the description leaves it)
                 emu.setReg(refs[kD], 0);
@@ -344,8 +345,8 @@ h::Run run(h::Machine& machine, std::uint16_t entry, const h::Options& options) 
                     const std::uint8_t now = static_cast<std::uint8_t>(emu.reg(refs[kMpr + i]));
                     if (now == machine.mpr[i]) continue;
                     machine.mpr[i] = now;
-                    view_window(i);
                 }
+                view_windows();
             }
         }
         if (emu.pc() > 0xFFFF) emu.setPc(emu.pc() & 0xFFFF);   // (the program counter is 16 bits: an instruction that ends past $FFFF goes on at $0000)
@@ -367,6 +368,6 @@ h::Run run(h::Machine& machine, std::uint16_t entry, const h::Options& options) 
     return out;
 }
 
-h::Run call(h::Machine& machine, std::uint16_t entry, const h::Options& options) { return enabled_when_asked() ? pcode_cpu::run(machine, entry, options) : h::run(machine, entry, options); }
+h::Run call(h::Machine& machine, std::uint16_t entry, const h::Options& options) { return enabled() ? pcode_cpu::run(machine, entry, options) : h::run(machine, entry, options); }
 
 }  // namespace cb::engine::pcode_cpu

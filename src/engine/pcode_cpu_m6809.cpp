@@ -44,14 +44,20 @@ m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options)
     const std::span<std::uint8_t> memory = bus.memory();
     constexpr std::uint32_t kSize = m::kMemorySize;
 
-    // The page map the emulator decodes from: the bus's memory as the own core reads instructions (not through the device ranges).
-    std::vector<std::uint8_t> shadow(memory.begin(), memory.begin() + kSize);
-    emu.write(0, shadow.data(), kSize);
-    emu.flushDecoded();
+    // The page map the emulator decodes from (`shadow`): the bus's memory as the own core reads instructions (not through the device ranges). It is kept per thread with the
+    // emulator, and so is what was found about the instruction at each address: only the bytes of the instruction about to run are read from it, so they are compared with the
+    // memory just before each step, and a byte that differs is handed over then (a store, a device, or another run's memory cost nothing until code runs from the changed bytes).
+    thread_local std::vector<std::uint8_t> held;
+    thread_local std::vector<std::uint8_t> kinds;
+    if (held.size() != kSize) {
+        held.assign(kSize, 0);
+        kinds.assign(kSize, kUnknown);
+        emu.flushDecoded();
+    }
+    std::vector<std::uint8_t>& shadow = held;
     emu.clearStops();
-    std::vector<std::uint8_t> kinds(kSize, kUnknown);
 
-    const auto update = [&](std::uint32_t at) {   // a byte of memory the bus changed: the emulator decodes the new one, and what was found about instructions near it is forgotten
+    const auto update = [&](std::uint32_t at) {   // a byte of memory the emulator decodes from that is not what it holds: it decodes the new one, and what was found about instructions near it is forgotten
         if (memory[at] == shadow[at]) return;
         shadow[at] = memory[at];
         emu.write(at, &shadow[at], 1);
@@ -85,7 +91,6 @@ m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options)
             const unsigned i = descending ? size - 1 - k : k;
             const std::uint16_t at = static_cast<std::uint16_t>(addr + i);
             bus.write(at, static_cast<std::uint8_t>(value >> (8 * (size - 1 - i))));
-            update(at);
         }
         return true;
     });
@@ -112,8 +117,6 @@ m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options)
     emu.setReg(refs[kS], sp);
     bus.write(sp, static_cast<std::uint8_t>(m::kReturnAddress >> 8));
     bus.write(static_cast<std::uint16_t>(sp + 1), static_cast<std::uint8_t>(m::kReturnAddress));
-    update(sp);
-    update(static_cast<std::uint16_t>(sp + 1));
     emu.setPc(entry);
     const std::size_t log_start = bus.log().size();   // (the return address is no effect of the function)
 
@@ -130,12 +133,6 @@ m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options)
         r.pc = static_cast<std::uint16_t>(emu.pc());
         return r;
     };
-    const auto sync = [&] {   // what a device did to the bus's memory: the bytes that differ
-        if (std::memcmp(shadow.data(), memory.data(), kSize) == 0) return;
-        for (std::uint32_t i = 0; i < kSize; ++i) update(i);
-    };
-    std::size_t seen = bus.log().size();
-
     m::RunResult out;
     out.end = m::End::Limit;
     std::uint64_t steps = 0;
@@ -146,6 +143,7 @@ m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options)
             break;
         }
         if (options.on_instruction) options.on_instruction(registers());
+        for (std::uint32_t i = 0; i < 5; ++i) update((pc + i) & (kSize - 1));   // (the longest instruction has five bytes)
         std::uint8_t& kind = kinds[pc];
         if (kind == kUnknown) {
             const std::optional<dm::Insn> found = dm::decode(memory, pc, pc);
@@ -171,8 +169,6 @@ m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options)
             emu.setReg(refs[kU], cpu.regs.u);
             emu.setReg(refs[kS], cpu.regs.s);
             emu.setPc(cpu.regs.pc);
-            sync();
-            seen = bus.log().size();
             ++steps;
             continue;
         }
@@ -185,10 +181,6 @@ m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options)
             break;
         }
         ++steps;
-        if (bus.log().size() != seen) {   // a device was touched: it may have changed the memory
-            sync();
-            seen = bus.log().size();
-        }
     }
     if (out.end == m::End::Limit && emu.pc() == m::kReturnAddress) out.end = m::End::Return;
     out.regs = registers();
@@ -197,6 +189,6 @@ m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options)
     return out;
 }
 
-m::RunResult call(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options) { return enabled_when_asked() ? pcode_cpu::run(bus, entry, options) : m::run(bus, entry, options); }
+m::RunResult call(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : m::run(bus, entry, options); }
 
 }  // namespace cb::engine::pcode_cpu

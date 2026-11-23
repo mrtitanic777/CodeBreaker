@@ -60,6 +60,9 @@ inline bool fast_unary(OpCode opc, int sizeout, int sizein, std::uint64_t a, std
         case ghidra::CPUI_COPY: r = a; return true;
         case ghidra::CPUI_INT_ZEXT: r = a; return true;
         case ghidra::CPUI_INT_SEXT: r = ghidra::sign_extend(a, sizein, sizeout); return true;
+        case ghidra::CPUI_INT_NEGATE: r = ~a & ghidra::calc_mask(sizein); return true;
+        case ghidra::CPUI_INT_2COMP: r = ~(a - 1) & ghidra::calc_mask(sizein); return true;
+        case ghidra::CPUI_BOOL_NEGATE: r = a ^ 1; return true;
         default: return false;
     }
 }
@@ -92,10 +95,44 @@ inline bool fast_binary(OpCode opc, int sizeout, int sizein, std::uint64_t a, st
         case ghidra::CPUI_INT_LEFT: r = c >= static_cast<std::uint64_t>(sizeout) * 8 ? 0 : (a << c) & ghidra::calc_mask(sizeout); return true;
         case ghidra::CPUI_INT_RIGHT: r = c >= static_cast<std::uint64_t>(sizeout) * 8 ? 0 : (a & ghidra::calc_mask(sizeout)) >> c; return true;
         case ghidra::CPUI_SUBPIECE: r = c >= sizeof(std::uint64_t) ? 0 : (a >> (c * 8)) & ghidra::calc_mask(sizeout); return true;
+        case ghidra::CPUI_INT_CARRY: r = a > ((a + c) & ghidra::calc_mask(sizein)) ? 1 : 0; return true;
+        case ghidra::CPUI_INT_SCARRY: {
+            const std::uint64_t sum = a + c;
+            const unsigned top = static_cast<unsigned>(sizein) * 8 - 1;   // (the sign bit's place)
+            const unsigned sa = static_cast<unsigned>(a >> top) & 1, sb = static_cast<unsigned>(c >> top) & 1, sr = static_cast<unsigned>(sum >> top) & 1;
+            r = (sr ^ sa) & (sa ^ sb ^ 1);
+            return true;
+        }
+        case ghidra::CPUI_INT_SBORROW: {
+            const std::uint64_t diff = a - c;
+            const unsigned top = static_cast<unsigned>(sizein) * 8 - 1;
+            const unsigned sa = static_cast<unsigned>(a >> top) & 1, sb = static_cast<unsigned>(c >> top) & 1, sr = static_cast<unsigned>(diff >> top) & 1;
+            r = (sa ^ sr) & (sr ^ sb ^ 1);
+            return true;
+        }
+        case ghidra::CPUI_BOOL_AND: r = a & c; return true;
+        case ghidra::CPUI_BOOL_OR: r = a | c; return true;
+        case ghidra::CPUI_BOOL_XOR: r = a ^ c; return true;
         default: return false;
     }
 }
 
+// Whether fast_unary / fast_binary write the operation out (they return false for the others).
+constexpr bool isFastUnary(OpCode opc) {
+    return opc == ghidra::CPUI_COPY || opc == ghidra::CPUI_INT_ZEXT || opc == ghidra::CPUI_INT_SEXT || opc == ghidra::CPUI_INT_NEGATE || opc == ghidra::CPUI_INT_2COMP ||
+           opc == ghidra::CPUI_BOOL_NEGATE;
+}
+constexpr bool isFastBinary(OpCode opc) {
+    switch (opc) {
+        case ghidra::CPUI_INT_ADD: case ghidra::CPUI_INT_SUB: case ghidra::CPUI_INT_MULT: case ghidra::CPUI_INT_AND: case ghidra::CPUI_INT_OR: case ghidra::CPUI_INT_XOR:
+        case ghidra::CPUI_INT_EQUAL: case ghidra::CPUI_INT_NOTEQUAL: case ghidra::CPUI_INT_LESS: case ghidra::CPUI_INT_LESSEQUAL: case ghidra::CPUI_INT_SLESS:
+        case ghidra::CPUI_INT_SLESSEQUAL: case ghidra::CPUI_INT_LEFT: case ghidra::CPUI_INT_RIGHT: case ghidra::CPUI_SUBPIECE: case ghidra::CPUI_INT_CARRY:
+        case ghidra::CPUI_INT_SCARRY: case ghidra::CPUI_INT_SBORROW: case ghidra::CPUI_BOOL_AND: case ghidra::CPUI_BOOL_OR: case ghidra::CPUI_BOOL_XOR: return true;
+        default: return false;
+    }
+}
+
+constexpr std::size_t kRetiredLimit = 1u << 16;   // decoded instructions set aside at most
 constexpr std::uint64_t kPageBits = 12;
 constexpr std::uint64_t kPageSize = std::uint64_t{1} << kPageBits;
 
@@ -153,6 +190,8 @@ struct Decoded {
     std::vector<Op> ops;
     std::vector<VarnodeData> vn;
     std::vector<Slot> slots;  // by vn
+    std::vector<std::uint8_t> raw;   // the bytes it was decoded from (kept for a decode set aside by a change of them: it is used again if they come back)
+    std::uint64_t tag = 0;           // the context it was decoded under
 };
 
 class Collect : public ghidra::PcodeEmit {
@@ -231,6 +270,17 @@ struct Emulator::Impl {
     std::unordered_map<std::uint64_t, std::unordered_map<std::uint64_t, Decoded>> caches;
     std::unordered_map<std::uint64_t, Decoded>* cache = &caches[0];
     std::uint64_t contextTag = 0;
+    // The instructions run most recently, found without a lookup in the cache: by the low bits of the address (an entry is cleared when its instruction is dropped, and all of
+    // them when the cache or its context changes).
+    static constexpr std::size_t kHot = 1024;
+    std::array<const Decoded*, kHot> hotEntry{};
+    std::array<std::uint64_t, kHot> hotPc{};
+    const void* hotCache = nullptr;
+    void clearHot() { hotEntry.fill(nullptr); }
+    // Decoded instructions set aside because bytes they were decoded from changed, by address: code that is written over and over (a routine run from RAM that changes, a
+    // device that answers a fetch differently each time) comes back to bytes it had before, and decoding from the description is the costly step.
+    std::unordered_map<std::uint64_t, std::vector<Decoded>> retired;
+    std::size_t retiredCount = 0;
     bool parsesStale = false;   // a context default changed since the translator's parse cache was last cleared: it is cleared when an instruction is next decoded
     std::map<std::string, int> contextSet;   // the variables setContext changed, and to what
     bool addressContextKept = true;     // the context a decoded instruction sets for other addresses (SLEIGH's globalset) stays; false: dropped after each decode
@@ -470,6 +520,9 @@ struct Emulator::Impl {
     // ---- decoding
     void flush() {
         caches.clear();
+        clearHot();
+        retired.clear();
+        retiredCount = 0;
         cache = &caches[contextTag];
         trans->forgetParses();
         for (SpaceMem& m : mem)
@@ -501,9 +554,25 @@ struct Emulator::Impl {
             for (std::uint64_t s = at >= 16 ? at - 16 : 0; s <= at; ++s)
                 for (auto& [tag, decoded] : caches) {
                     const auto it = decoded.find(s);
-                    if (it != decoded.end() && s + it->second.length / unit > at) decoded.erase(it);
+                    if (it != decoded.end() && s + it->second.length / unit > at) {
+                        if (!it->second.raw.empty() && retiredCount < kRetiredLimit) {
+                            std::vector<Decoded>& variants = retired[s];
+                            if (variants.size() >= 8) {
+                                variants.erase(variants.begin());
+                                --retiredCount;
+                            }
+                            variants.push_back(std::move(it->second));
+                            ++retiredCount;
+                        }
+                        if (hotPc[s % kHot] == s) hotEntry[s % kHot] = nullptr;
+                        decoded.erase(it);
+                    }
                 }
         }
+        // (no instruction decoded from these bytes is held now: a write to one is of no concern until an instruction is decoded from it again)
+        SpaceMem& code = mem[static_cast<std::size_t>(codeIndex)];
+        for (const std::uint64_t byteAddress : stale)
+            if (Page* p = const_cast<Page*>(code.find(byteAddress >> kPageBits))) p->decoded.reset(static_cast<std::size_t>(byteAddress & (kPageSize - 1)));
         stale.clear();
         if (!blocks.empty()) blocks.clear();
         parsesStale = true;   // (the translator's parse cache is cleared when an instruction is next decoded, if one is)
@@ -519,8 +588,39 @@ struct Emulator::Impl {
         } else if (!stale.empty()) {
             dropStale();
         }
+        if (hotCache != cache) {
+            clearHot();
+            hotCache = cache;
+        }
+        if (const Decoded* hot = hotEntry[pc % kHot]; hot && hotPc[pc % kHot] == pc) return hot;
         auto it = cache->find(pc);
-        if (it != cache->end()) return &it->second;
+        if (it != cache->end()) {
+            hotEntry[pc % kHot] = &it->second;
+            hotPc[pc % kHot] = pc;
+            return &it->second;
+        }
+        if (const auto back = retired.find(pc); back != retired.end()) {   // (decoded before from these very bytes)
+            const SpaceMem& code = mem[static_cast<std::size_t>(codeIndex)];
+            std::vector<Decoded>& variants = back->second;
+            for (std::size_t v = variants.size(); v-- > 0;) {
+                Decoded& old = variants[v];
+                if (old.tag != contextTag) continue;
+                bool same = true;
+                for (std::size_t i = 0; i < old.raw.size() && same; ++i) same = getByte(code, pc * code.word + i) == old.raw[i];
+                if (!same) continue;
+                const auto placed = cache->emplace(pc, std::move(old));
+                variants.erase(variants.begin() + static_cast<std::ptrdiff_t>(v));
+                --retiredCount;
+                for (std::size_t i = 0; i < placed.first->second.raw.size(); ++i) {   // (the bytes it reads are decoded-from again)
+                    const std::uint64_t a = pc * code.word + i;
+                    if (Page* page = const_cast<Page*>(code.find(a >> kPageBits))) {
+                        page->code = true;
+                        page->decoded.set(static_cast<std::size_t>(a & (kPageSize - 1)));
+                    }
+                }
+                return &placed.first->second;
+            }
+        }
         if (parsesStale) {
             trans->forgetParses();
             parsesStale = false;
@@ -536,7 +636,14 @@ struct Emulator::Impl {
         if (!addressContextKept) dropAddressContext();
         if (d.length == 0) return nullptr;
         resolve(d);
+        {
+            const SpaceMem& code = mem[static_cast<std::size_t>(codeIndex)];
+            d.raw.resize(d.length);
+            for (std::size_t i = 0; i < d.length; ++i) d.raw[i] = getByte(code, pc * code.word + i);
+            d.tag = contextTag;
+        }
         if (cache->size() > (1u << 20)) {
+            clearHot();
             cache->clear();
             blocks.clear();
         }
@@ -700,6 +807,7 @@ struct Emulator::Impl {
         const auto found = blocks.find(pc);
         if (found != blocks.end()) return &found->second;
         if (cache->size() + 32 > (1u << 20)) {   // (decoding below must not clear the instructions this block is pointing at)
+            clearHot();
             cache->clear();
             blocks.clear();
         }
@@ -847,6 +955,21 @@ struct Emulator::Impl {
                         break;
                     }
                     default: {
+                        if (out && out->size <= 8 && v[0].size <= 8) {   // (the common operations are written out, as blocks run them, rather than reached through the behaviour table)
+                            std::uint64_t fast;
+                            if (op.nIn == 1 && isFastUnary(op.opc)) {
+                                fast_unary(op.opc, static_cast<int>(out->size), static_cast<int>(v[0].size), get(v[0]), fast);
+                                put(*out, fast);
+                                break;
+                            }
+                            if (op.nIn == 2 && v[1].size <= 8 && isFastBinary(op.opc)) {
+                                const std::uint64_t a = get(v[0]);
+                                const std::uint64_t c = get(v[1]);
+                                fast_binary(op.opc, static_cast<int>(out->size), static_cast<int>(v[0].size), a, c, fast);
+                                put(*out, fast);
+                                break;
+                            }
+                        }
                         const ghidra::OpBehavior* b = static_cast<std::size_t>(op.opc) < behave.size() ? behave[static_cast<std::size_t>(op.opc)] : nullptr;
                         if (!b || b->isSpecial() || !out) throw ghidra::LowlevelError(std::string("p-code operation without a behaviour: ") + ghidra::get_opname(op.opc));
                         if (b->isUnary()) {
@@ -1068,7 +1191,7 @@ void Emulator::setBlocksOverride(int mode) { g_blocks_override = mode; }
 
 bool Emulator::evaluateOp(unsigned opcode, int sizeOut, int sizeIn, std::uint64_t a, std::uint64_t c, std::uint64_t& result, bool writtenOut) const {
     const OpCode opc = static_cast<OpCode>(opcode);
-    const bool unary = opc == ghidra::CPUI_COPY || opc == ghidra::CPUI_INT_ZEXT || opc == ghidra::CPUI_INT_SEXT;
+    const bool unary = isFastUnary(opc);
     if (writtenOut) return unary ? fast_unary(opc, sizeOut, sizeIn, a, result) : fast_binary(opc, sizeOut, sizeIn, a, c, result);
     const ghidra::OpBehavior* b = opcode < impl_->behave.size() ? impl_->behave[opcode] : nullptr;
     if (!b) return false;
@@ -1264,6 +1387,7 @@ void Emulator::setContext(const std::string& name, int value) {
 }
 
 void Emulator::keepAddressContext(bool keep) {
+    if (impl_->addressContextKept == keep) return;   // (what was decoded was decoded under this setting already)
     impl_->addressContextKept = keep;
     if (!keep) impl_->dropAddressContext();
     impl_->flush();
