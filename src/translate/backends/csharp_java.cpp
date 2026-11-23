@@ -311,6 +311,24 @@ void JavaLibrary::prepare(cs::Program& program) {
             for (Node* t : unit->types) cj_collect(t, classes);
         }
     }
+    for (Node* cn : classes) {   // CodeBreaker's Class and Constructor are of no type in C#: what Java types T is an object, cast where it is used
+        ir::ClassDecl& c = *ir::get<ir::ClassDecl>(cn);
+        if (c.qname != "java.lang.Class" && c.qname != "java.lang.reflect.Constructor") continue;
+        c.typeparams.clear();
+        c.tparams.clear();
+        const ir::TypeP object = ir::class_type("java.lang.Object");
+        const auto plain = [&](const ir::TypeP& t) { return t && t->kind() == "typevar" ? object : t; };
+        for (Node* m : c.members) {
+            for (Node* n : ir::walk(m)) {
+                n->type = plain(n->type);
+                ir::visit(*n, [&](auto& k) {
+                    using K = std::decay_t<decltype(k)>;
+                    if constexpr (std::is_same_v<K, ir::Local> || std::is_same_v<K, ir::Param> || std::is_same_v<K, ir::FieldDecl>) k.type = plain(k.type);
+                    if constexpr (std::is_same_v<K, ir::MethodDecl>) k.ret = plain(k.ret);
+                });
+            }
+        }
+    }
     prepare_local_classes(program, classes);
     prepare_inner_classes(program, classes);
     for (Node* u : program.units()) {   // the interfaces of the program that lambdas are made for
@@ -698,6 +716,7 @@ std::optional<Ex> JavaLibrary::update(cs::Context& w, Node* e) {
 std::optional<std::string> JavaLibrary::type_name(cs::Context& w, const ir::TypeP& t) {
     const std::string& q = std::get<ir::ClassType>(t->body).name;
     const std::vector<ir::TypeP>& type_args = std::get<ir::ClassType>(t->body).args;
+    if ((q == "java.lang.Class" || q == "java.lang.reflect.Constructor") && w.program().class_named(q) != nullptr) return q == "java.lang.Class" ? "global::java.lang.Class" : "global::java.lang.reflect.Constructor";
     if (w.program().class_named(q) != nullptr) return std::nullopt;
     if (cj_is_null_box(t)) return std::string(cj_types().at(q)) + "?";
     const auto ctypes = [&] {
@@ -858,6 +877,13 @@ std::vector<std::string> JavaLibrary::method_mods(cs::Context& w, ir::MethodDecl
         return out;
     }
     if (overrides(w, c, m)) {
+        // Java may widen what it overrides; C# wants the base's own access
+        for (const ir::ClassDecl* up = w.program().base_of(c); up != nullptr; up = w.program().base_of(*up)) {
+            for (Node* member : w.program().members(const_cast<ir::ClassDecl&>(*up))) {
+                const ir::MethodDecl* d = ir::get<ir::MethodDecl>(member);
+                if (d != nullptr && d->kind == "method" && d->name == m.name && d->params.size() == m.params.size() && !cj_has(d->mods, "static")) out = access(d->mods, *up);
+            }
+        }
         out.push_back("override");
         if (cj_has(mods, "final")) out.push_back("sealed");
         return out;
@@ -1666,6 +1692,14 @@ std::optional<Ex> JavaLibrary::call(cs::Context& w, Node* e, bool statement) {
     const ir::SymP& s = call.sym;
     if (s == nullptr) return std::nullopt;
     const std::string owner = s->owner.value_or("");
+    if ((owner == "java.lang.Class" || owner == "java.lang.reflect.Constructor") && s->ret && s->ret->kind() == "typevar" && !reflect_casting_.contains(e)) {
+        reflect_casting_.insert(e);   // (an object in C#: the type Java knows it to be)
+        const std::string made = w.expr(e, statement).text;
+        reflect_casting_.erase(e);
+        const std::string* wanted = cj_qual(e->type);
+        if (statement || wanted == nullptr || *wanted == "java.lang.Object") return Ex{made, cs::kPrimary};
+        return Ex{"((" + w.ctype(e->type) + ")" + made + ")", cs::kPrimary};
+    }
     if (call.target != nullptr && call.target->type && w.program().class_named(owner) == nullptr) {   // a null put into a collection of numbers
         static const std::unordered_set<std::string_view> stores = {"add", "addFirst", "addLast", "offer", "push", "put", "putIfAbsent", "replace", "set"};
         if (const auto* held = std::get_if<ir::ClassType>(&call.target->type->body); held != nullptr && stores.contains(s->name)) {
@@ -1745,6 +1779,22 @@ std::optional<Ex> JavaLibrary::call(cs::Context& w, Node* e, bool statement) {
             w.program().use_runtime("JavaCollections");
             return Ex{std::string(way->second) + "(" + w.expr(call.args[0]).text + ")", cs::kPrimary};
         }
+    }
+    {   // what .NET's collections and numbers have no one call for
+        const auto helper = [&](std::string_view name, const std::vector<Node*>& given) {
+            w.program().use_runtime("JavaRt");
+            w.program().use_runtime("JavaCollections");
+            std::vector<std::string> parts;
+            for (Node* a : given) parts.push_back(w.expr(a).text);
+            return Ex{"JLib." + std::string(name) + "(" + text::join(parts, ", ") + ")", cs::kPrimary};
+        };
+        const auto family = cj_family().find(owner);
+        const bool collection = family != cj_family().end() || owner == "java.util.Collection";
+        if (collection && call.target != nullptr && s->name == "removeAll" && call.args.size() == 1) return helper("RemoveAll", {call.target, call.args[0]});
+        if (owner == "java.util.TreeSet" && call.target != nullptr && call.args.empty() && s->name == "first") return helper("First", {call.target});
+        if (owner == "java.util.TreeSet" && call.target != nullptr && call.args.empty() && s->name == "last") return helper("Last", {call.target});
+        if (owner == "java.util.Arrays" && s->name == "fill" && call.args.size() == 4) return helper("FillRange", call.args);
+        if (owner == "java.lang.Integer" && s->is_static && s->name == "toString" && call.args.size() == 2) return helper("ToRadix", call.args);
     }
     if (owner == "java.lang.Character" && s->name == "getType" && call.args.size() == 1 && w.ctype(call.args[0]->type) == "char") {
         w.program().use_runtime("JavaCharTypes");
@@ -2136,7 +2186,14 @@ std::optional<Ex> JavaLibrary::new_object(cs::Context& w, Node* e) {
         return Ex{"new JavaRandom(" + joined() + ")", cs::kPrimary};
     }
     if (cj_types().contains(*q) && tn.ends_with("Exception")) {
-        if (args.size() > 1 || (!args.empty() && !cs::is_string(args[0]->type))) throw Decline("exception", "an exception made with a cause");
+        if (args.size() == 2) return Ex{"new " + tn + "(" + joined() + ")", cs::kPrimary};
+        if (args.size() == 1 && !cs::is_string(args[0]->type)) {   // made from a cause: its message is the cause's text
+            w.program().use_runtime("JavaRt");
+            w.program().use_runtime("JavaCollections");
+            const std::string cause = w.expr(args[0]).text;
+            return Ex{"new " + tn + "(JLib.CauseText(" + cause + "), " + cause + ")", cs::kPrimary};
+        }
+        if (args.size() > 2) throw Decline("exception", "an exception made with more than a message and a cause");
         return Ex{"new " + tn + "(" + joined() + ")", cs::kPrimary};
     }
     if (*q == "java.lang.Object") return Ex{"new object()", cs::kPrimary};

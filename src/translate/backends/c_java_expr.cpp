@@ -273,6 +273,16 @@ std::string MethodWriter::conv_to(const Code& value, const ir::TypeP& type, std:
     return conv(value.code, value.ctype, dst);
 }
 
+// A static field of a class still to be initialised reads `(X_clinit(), X_f)`, which C cannot assign to: as a place it is `(*(X_clinit(), &X_f))`.
+static std::string as_place(std::string code) {
+    static constexpr std::string_view kCall = "_clinit(), ";
+    const std::size_t at = code.find(kCall);
+    if (!code.starts_with('(') || !code.ends_with(')') || at == std::string::npos || code.find(',') != at + kCall.size() - 2) return code;
+    const std::string head = code.substr(1, at + kCall.size() - 3);
+    const std::string field = code.substr(at + kCall.size(), code.size() - at - kCall.size() - 1);
+    return "(*(" + head + ", &" + field + "))";
+}
+
 // A boxed value read where a number is wanted: its accessor.
 Code MethodWriter::unboxed(const std::string& code, std::string_view ct, const ir::TypeP& type) const {
     if (is_pointer_ctype(ct) && kind_of(type) == "class") {
@@ -285,6 +295,7 @@ Code MethodWriter::unboxed(const std::string& code, std::string_view ct, const i
 Code MethodWriter::on(const ir::Node& n, const ir::Unary& k) {
     Code x = expr(k.x);
     if (k.op == "++" || k.op == "--") {
+        x.code = as_place(std::move(x.code));
         if (is_pointer_ctype(x.ctype)) {   // a box is replaced by a new one; the place is named once, so what it is made of runs once
             const ir::TypeP held = type_of(k.x);
             const std::string_view letter = kind_of(held) == "class" ? box_letter(class_name(held)) : std::string_view();
@@ -379,7 +390,40 @@ Code MethodWriter::on(const ir::Node&, const ir::Concat& k) {
 }
 
 Code MethodWriter::on(const ir::Node&, const ir::Assign& k) {
-    const Code target = expr(k.target);
+    // a[i] = f(): Java works out a and i before f, and C does not order the two sides
+    if (const auto* place = ir::get<ir::Index>(cpp03::strip_paren(k.target)); !k.op && place != nullptr && cpp03::has_effects(k.value)) {
+        std::unordered_set<std::string> written;
+        for_each_node(k.value, [&](const ir::Node* n) {
+            const ir::Node* changed = nullptr;
+            if (const auto* a = ir::get<ir::Assign>(n)) changed = cpp03::strip_paren(a->target);
+            if (const auto* u = ir::get<ir::Unary>(n); u != nullptr && (u->op == "++" || u->op == "--")) changed = cpp03::strip_paren(u->x);
+            if (const auto* name = ir::get<ir::Name>(changed); name != nullptr && name->sym) written.insert(name->sym->name);
+        });
+        const auto stays = [&](const ir::Node* x) {
+            x = cpp03::strip_paren(x);
+            if (ir::is<ir::Lit>(x) || ir::is<ir::This>(x)) return true;
+            const auto* name = ir::get<ir::Name>(x);
+            return name != nullptr && name->sym && (name->sym->kind == ir::SymKind::Local || name->sym->kind == ir::SymKind::Param) && !written.contains(name->sym->name);
+        };
+        const ir::Node* at = single(place->index);
+        if (!stays(place->arr) || !stays(at)) {
+            const ir::TypeP elem = elem_of(type_of(place->arr));
+            const std::string store = array_store(elem ? p_.ct(elem) : std::string(kObj));
+            const std::size_t id = ++temps_;
+            const std::string array = std::format("jrt_arr{}", id), index = std::format("jrt_idx{}", id), held = std::format("jrt_val{}", id);
+            pending_.push_back(decl("jarray*", array));
+            pending_.push_back(decl("int32_t", index));
+            pending_.push_back(decl(store, held));
+            const std::string array_code = expr(place->arr).code;
+            const Code index_code = expr(at);
+            const Code value_code = expr(k.value);
+            return {std::format("({} = (jarray*){}, {} = {}, {} = {}, JA({}, {}, {}) = {})", array, array_code, index, conv(index_code.code, index_code.ctype, "int32_t"), held,
+                                conv_to(value_code, elem, store), store, array, index, held),
+                    store};
+        }
+    }
+    Code target = expr(k.target);
+    target.code = as_place(std::move(target.code));
     Code value = expr(k.value);
     const std::string& place_code = target.code;
     const std::string& place_type = target.ctype;

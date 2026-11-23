@@ -7,7 +7,10 @@
 #include <cmath>
 #include <format>
 #include <limits>
+#include <map>
+#include <optional>
 #include <set>
+#include <unordered_map>
 
 #include <nlohmann/json.hpp>
 
@@ -913,18 +916,28 @@ stdfs::path treedump_folder(const DumpTools& tools) {
     const stdfs::path folder = tools.state / "translate" / ("treedump-" + key);
     std::error_code ec;
     if (stdfs::is_regular_file(folder / "TreeDump.class", ec)) return folder;
-    fs::make_dirs(folder);
-    const process::ProcessResult r = process::run({.argv = {fs::to_text(tools.javac), "-nowarn", "-encoding", "UTF-8", "-d", fs::to_text(folder), fs::to_text(tools.treedump_source)},
+    // built beside it and moved in whole: another CodeBreaker may be building or using this folder at the same moment
+    fs::make_dirs(folder.parent_path());
+    const fs::ScopedTempDir building{"cb-treedump-build"};
+    const process::ProcessResult r = process::run({.argv = {fs::to_text(tools.javac), "-nowarn", "-encoding", "UTF-8", "-d", fs::to_text(building.path()), fs::to_text(tools.treedump_source)},
                                                    .err = process::Capture::Merge,
                                                    .timeout = std::chrono::minutes(5)});
     if (r.exit_code != 0) {
-        stdfs::remove_all(folder, ec);
         const std::string message(r.out.begin(), r.out.end());
         throw ToolError("javac", r.exit_code, "TreeDump did not compile: " + message.substr(0, 400));
     }
-    for (const auto& old : stdfs::directory_iterator(folder.parent_path(), ec)) {   // (those of another source or JDK: never used again)
+    const stdfs::path ready = folder.parent_path() / (folder.filename().string() + ".new-" + building.path().filename().string());
+    stdfs::copy(building.path(), ready, stdfs::copy_options::recursive | stdfs::copy_options::overwrite_existing);
+    stdfs::rename(ready, folder, ec);
+    if (ec) stdfs::remove_all(ready, ec);   // (another run got there first: its copy is the same)
+    // A copy for another source or JDK may be in use by another CodeBreaker right now: only one left alone for a month is cleared
+    const auto now = stdfs::file_time_type::clock::now();
+    for (const auto& old : stdfs::directory_iterator(folder.parent_path(), ec)) {
         const std::string name = fs::to_text(old.path().filename());
-        if (name.starts_with("treedump-") && old.path() != folder) stdfs::remove_all(old.path(), ec);
+        if (!name.starts_with("treedump-") || old.path() == folder) continue;
+        std::error_code age;
+        const auto written = stdfs::last_write_time(old.path(), age);
+        if (!age && now - written > std::chrono::hours(24 * 30)) stdfs::remove_all(old.path(), age);
     }
     return folder;
 }
@@ -961,6 +974,198 @@ std::vector<stdfs::path> library_used(const stdfs::path& library, const std::vec
     return out;
 }
 
+// ---- reflection, as plain Java: X.class is a field of a generated table, o.getClass() a search of it
+
+bool uses_reflection(const std::vector<Node*>& units) {
+    for (Node* u : units) {
+        for (Node* n : ir::walk(u)) {
+            if (ir::is<ir::ClassLit>(n)) return true;
+            if (const auto* c = ir::get<ir::Call>(n); c != nullptr && c->sym != nullptr && c->sym->name == "getClass" && c->args.empty()) return true;
+        }
+    }
+    return false;
+}
+
+const std::string* class_name_of(const ir::TypeP& t) {
+    if (!t) return nullptr;
+    const auto* c = std::get_if<ir::ClassType>(&t->body);
+    return c != nullptr ? &c->name : nullptr;
+}
+
+std::string table_field(std::string_view q) {
+    std::string out = "c_";
+    for (char c : q) out += std::isalnum(static_cast<unsigned char>(c)) != 0 ? c : '_';
+    return out;
+}
+
+struct TableEntry {
+    bool is_interface = false;
+    std::string superclass;
+    std::vector<std::string> parents;
+    std::vector<std::vector<std::string>> makers;   // the parameter classes of each constructor a table can call
+};
+
+void table_collect(Node* node, bool inside_class, std::map<std::string, TableEntry>& out) {
+    const auto* c = ir::get<ir::ClassDecl>(node);
+    if (c == nullptr || !c->qname || !c->name || c->name->empty()) return;
+    const auto has = [](const std::vector<std::string>& mods, std::string_view m) { return std::find(mods.begin(), mods.end(), m) != mods.end(); };
+    if (!has(c->mods, "private")) {
+        TableEntry e;
+        e.is_interface = c->kind == "interface" || c->kind == "annotation";
+        if (const std::string* up = class_name_of(c->extends)) {
+            if (e.is_interface) e.parents.push_back(*up);
+            else e.superclass = *up;
+        }
+        if (!e.superclass.empty()) e.parents.push_back(e.superclass);
+        for (const ir::TypeP& i : c->implements) {
+            if (const std::string* q = class_name_of(i)) e.parents.push_back(*q);
+        }
+        const bool needs_outer = inside_class && c->kind == "class" && !has(c->mods, "static");
+        if (c->kind == "class" && !has(c->mods, "abstract") && !needs_outer) {
+            for (Node* m : c->members) {
+                const auto* ctor = ir::get<ir::MethodDecl>(m);
+                if (ctor == nullptr || ctor->kind != "ctor" || has(ctor->mods, "private")) continue;
+                std::vector<std::string> params;
+                bool plain = true;
+                for (Node* p : ctor->params) {
+                    const std::string* q = class_name_of(ir::get<ir::Param>(p)->type);
+                    if (q == nullptr) plain = false;
+                    else params.push_back(*q);
+                }
+                if (plain) e.makers.push_back(std::move(params));
+            }
+        }
+        out[*c->qname] = std::move(e);
+    }
+    for (Node* m : c->members) table_collect(m, c->kind != "interface", out);
+}
+
+// The table's Java source; nothing when a literal names what it cannot hold (an array, a primitive, a private class) or the program spans packages.
+std::optional<std::string> class_table(const std::vector<Node*>& units) {
+    std::map<std::string, TableEntry> entries;
+    std::string package;
+    bool first = true;
+    for (Node* u : units) {
+        const auto* unit = ir::get<ir::Unit>(u);
+        const std::string here = unit->package.value_or("");
+        const bool ours = !here.starts_with("java.");
+        if (ours && !first && here != package) return std::nullopt;
+        if (ours) {
+            package = here;
+            first = false;
+        }
+        for (Node* t : unit->types) table_collect(t, false, entries);
+    }
+    std::set<std::string> named;   // library classes the table must also know
+    for (Node* u : units) {
+        for (Node* n : ir::walk(u)) {
+            if (const auto* lit = ir::get<ir::ClassLit>(n)) {
+                const std::string* q = class_name_of(lit->of);
+                if (q == nullptr) return std::nullopt;
+                if (!entries.contains(*q)) named.insert(*q);
+            }
+        }
+    }
+    for (const std::string& q : named) {
+        if (q.find('.') == std::string::npos && !package.empty()) return std::nullopt;
+        entries[q] = TableEntry{};
+    }
+    for (auto& [q, e] : entries) {
+        std::erase_if(e.makers, [&](const std::vector<std::string>& maker) {
+            return std::any_of(maker.begin(), maker.end(), [&](const std::string& p) { return !entries.contains(p); });
+        });
+    }
+    const auto depth = [&](std::string q) {
+        int d = 0;
+        for (auto it = entries.find(q); it != entries.end() && !it->second.superclass.empty(); it = entries.find(it->second.superclass)) ++d;
+        return d;
+    };
+    std::string s;
+    if (!package.empty()) s += "package " + package + ";\n\n";
+    s += "// Written by CodeBreaker: this program's classes, for what it does through reflection.\nfinal class CbClasses {\n";
+    for (const auto& [q, e] : entries) {
+        s += "    static final java.lang.Class<?> " + table_field(q) + " = java.lang.Class.make(\"" + q + "\", " + (e.is_interface ? "true" : "false") + ", o -> o instanceof " + q + ");\n";
+    }
+    s += "\n    static {\n";
+    for (const auto& [q, e] : entries) {
+        std::string parents, makers;
+        for (const std::string& p : e.parents) {
+            if (entries.contains(p)) parents += (parents.empty() ? "" : ", ") + table_field(p);
+        }
+        for (const auto& maker : e.makers) {
+            std::string types, given;
+            for (std::size_t i = 0; i < maker.size(); ++i) {
+                types += (i == 0 ? "" : ", ") + table_field(maker[i]);
+                given += (i == 0 ? "(" : ", (") + maker[i] + ") a[" + std::to_string(i) + "]";
+            }
+            makers += (makers.empty() ? "" : ", ") + std::string("new java.lang.Class.Made(new java.lang.Class<?>[] {") + types + "}, a -> new " + q + "(" + given + "))";
+        }
+        const std::string up = !e.superclass.empty() && entries.contains(e.superclass) ? table_field(e.superclass) : "null";
+        s += "        " + table_field(q) + ".link(" + up + ", new java.lang.Class<?>[] {" + parents + "}, new java.lang.Class.Made[] {" + makers + "});\n";
+    }
+    s += "    }\n\n    static java.lang.Class<?> of(Object o) {\n        if (o == null) throw new NullPointerException();\n";
+    std::vector<std::string> order;
+    for (const auto& [q, e] : entries) {
+        if (!e.is_interface) order.push_back(q);
+    }
+    std::stable_sort(order.begin(), order.end(), [&](const std::string& a, const std::string& b) { return depth(a) > depth(b); });
+    for (const std::string& q : order) s += "        if (" + table_field(q) + ".isInstance(o)) return " + table_field(q) + ";\n";
+    s += "        throw new UnsupportedOperationException(\"getClass of a class the table does not hold\");\n    }\n}\n";
+    return s;
+}
+
+void table_rewrite(Arena& arena, Node*& n, const ir::TypeP& table_type, const std::unordered_map<std::string, ir::SymP>& fields, const ir::SymP& of,
+                   const std::string* enclosing, bool& failed) {
+    if (const auto* c = ir::get<ir::ClassDecl>(n); c != nullptr && c->qname) enclosing = &*c->qname;
+    ir::visit(*n, [&](auto& k) {
+        k.each_child([&](Node*& child) { table_rewrite(arena, child, table_type, fields, of, enclosing, failed); });
+    });
+    if (const auto* lit = ir::get<ir::ClassLit>(n)) {
+        const std::string* q = class_name_of(lit->of);
+        const auto field = q != nullptr ? fields.find(table_field(*q)) : fields.end();
+        if (field == fields.end()) {
+            failed = true;
+            return;
+        }
+        n = ir::make(arena, ir::Select{.obj = ir::make(arena, ir::TypeName{}, table_type), .sym = field->second}, n->type);
+    } else if (const auto* call = ir::get<ir::Call>(n); call != nullptr && call->sym != nullptr && call->sym->name == "getClass" && call->args.empty()) {
+        Node* object = call->target;
+        if (object == nullptr) {
+            if (enclosing == nullptr) {
+                failed = true;
+                return;
+            }
+            object = ir::make(arena, ir::This{}, ir::class_type(*enclosing));
+        }
+        n = ir::make(arena, ir::Call{.target = ir::make(arena, ir::TypeName{}, table_type), .sym = of, .args = {object}}, n->type);
+    }
+}
+
+// Every X.class and o.getClass() of the program, as the table's. False when one cannot be.
+bool use_class_table(Arena& arena, const std::vector<Node*>& units) {
+    ir::TypeP table_type;
+    std::unordered_map<std::string, ir::SymP> fields;
+    ir::SymP of;
+    for (Node* u : units) {
+        for (Node* t : ir::get<ir::Unit>(u)->types) {
+            const auto* c = ir::get<ir::ClassDecl>(t);
+            if (c == nullptr || c->name != "CbClasses" || !c->qname) continue;
+            table_type = ir::class_type(*c->qname);
+            for (Node* m : c->members) {
+                if (const auto* f = ir::get<ir::FieldDecl>(m); f != nullptr && f->sym) fields[f->sym->name] = f->sym;
+                if (const auto* d = ir::get<ir::MethodDecl>(m); d != nullptr && d->name == "of") of = d->sym;
+            }
+        }
+    }
+    if (!table_type || of == nullptr) return false;
+    bool failed = false;
+    for (Node* unit : units) {
+        Node* u = unit;   // (a unit stays itself: only what is inside it is replaced)
+        table_rewrite(arena, u, table_type, fields, of, nullptr, failed);
+    }
+    return !failed;
+}
+
 }  // namespace
 
 std::vector<Node*> lower_program(Arena& arena, const stdfs::path& java_dir, const DumpTools& tools) {
@@ -970,17 +1175,21 @@ std::vector<Node*> lower_program(Arena& arena, const stdfs::path& java_dir, cons
     const stdfs::path listing = out.path() / "_files.txt";
     const std::vector<stdfs::path> program = java_files(java_dir);
     const std::vector<stdfs::path> library = library_used(tools.library, program);
-    const auto dump = [&](bool with_library) {
+    int round = 0;   // each dump has a folder of its own: Windows may still be deleting the last one
+    const auto units_dir = [&] { return out.path() / ("units" + std::to_string(round)); };
+    const auto dump = [&](bool with_library, const std::vector<stdfs::path>& more = {}, const std::string& patch_more = {}) {
+        ++round;
         std::string names;
         for (const stdfs::path& f : program) names += (names.empty() ? "" : "\n") + fs::to_text(f);
         if (with_library) {
             for (const stdfs::path& f : library) names += "\n" + fs::to_text(f);
         }
+        for (const stdfs::path& f : more) names += "\n" + fs::to_text(f);
         fs::write_text(listing, names);
-        std::vector<std::string> argv = {fs::to_text(tools.java), "-Xss16m", "-cp", fs::to_text(folder), "TreeDump", "--out", fs::to_text(out.path() / "units"), "--sourcepath", fs::to_text(java_dir)};
-        if (with_library) {
+        std::vector<std::string> argv = {fs::to_text(tools.java), "-Xss16m", "-cp", fs::to_text(folder), "TreeDump", "--out", fs::to_text(units_dir()), "--sourcepath", fs::to_text(java_dir)};
+        if ((with_library && !library.empty()) || !patch_more.empty()) {
             argv.push_back("--patch");
-            argv.push_back(fs::to_text(tools.library));
+            argv.push_back(with_library && !library.empty() ? fs::to_text(tools.library) + (patch_more.empty() ? "" : ";" + patch_more) : patch_more);
         }
         if (!tools.classpath.empty()) {
             std::string cp;
@@ -989,31 +1198,51 @@ std::vector<Node*> lower_program(Arena& arena, const stdfs::path& java_dir, cons
             argv.push_back(cp);
         }
         argv.push_back("@" + fs::to_text(listing));
-        std::error_code ec;
-        stdfs::remove_all(out.path() / "units", ec);
-        fs::make_dirs(out.path() / "units");
+        fs::make_dirs(units_dir());
         return process::run({.argv = argv, .timeout = std::chrono::minutes(30)});
     };
     process::ProcessResult r = dump(!library.empty());
+    const bool library_taken = r.exit_code == 0 && !library.empty();
     if (r.exit_code != 0 && !library.empty()) r = dump(false);   // (a member our library does not have: the program is then refused as using the JDK's)
     if (r.exit_code != 0) {
         const std::string err(r.err.begin(), r.err.end());
         throw ToolError("TreeDump", r.exit_code, "TreeDump failed: " + err.substr(err.size() > 600 ? err.size() - 600 : 0));
     }
-    // {path relative to the dump without .json: tree}, in order of the path
-    std::vector<std::pair<std::string, stdfs::path>> dumped;
-    for (const auto& entry : stdfs::recursive_directory_iterator(out.path() / "units")) {
-        if (!entry.is_regular_file() || entry.path().extension() != ".json") continue;
-        const std::string name = fs::to_text(entry.path().filename());
-        if (name.starts_with("_")) continue;
-        std::string rel = stdfs::relative(entry.path(), out.path() / "units").generic_string();
-        rel.resize(rel.size() - 5);
-        dumped.emplace_back(std::move(rel), entry.path());
+    const auto read_units = [&] {
+        // {path relative to the dump without .json: tree}, in order of the path
+        std::vector<std::pair<std::string, stdfs::path>> dumped;
+        for (const auto& entry : stdfs::recursive_directory_iterator(units_dir())) {
+            if (!entry.is_regular_file() || entry.path().extension() != ".json") continue;
+            const std::string name = fs::to_text(entry.path().filename());
+            if (name.starts_with("_")) continue;
+            std::string rel = stdfs::relative(entry.path(), units_dir()).generic_string();
+            rel.resize(rel.size() - 5);
+            dumped.emplace_back(std::move(rel), entry.path());
+        }
+        std::sort(dumped.begin(), dumped.end());
+        std::vector<Node*> lowered;
+        for (const auto& [rel, file] : dumped) lowered.push_back(lower_unit(arena, json::load(file), rel));
+        return lowered;
+    };
+    std::vector<Node*> units = read_units();
+    // reflection: CodeBreaker's java.lang.Class and a table of this program's classes, written in Java and translated with it
+    const stdfs::path reflect = tools.library.empty() ? stdfs::path() : tools.library.parent_path() / "reflect";
+    std::error_code absent;
+    if (reflect.empty() || !stdfs::is_directory(reflect, absent) || !uses_reflection(units)) return units;
+    const std::optional<std::string> table = class_table(units);
+    if (!table) return units;
+    const stdfs::path table_dir = out.path() / "table";
+    fs::make_dirs(table_dir);
+    const stdfs::path table_file = table_dir / "CbClasses.java";
+    fs::write_text(table_file, *table);
+    std::vector<stdfs::path> more = java_files(reflect);
+    more.push_back(table_file);
+    const process::ProcessResult with_table = dump(library_taken, more, fs::to_text(reflect));
+    if (with_table.exit_code != 0) {   // (a use our Class does not have: as the JDK's, which the back ends then refuse)
+        return units;
     }
-    std::sort(dumped.begin(), dumped.end());
-    std::vector<Node*> units;
-    for (const auto& [rel, file] : dumped) units.push_back(lower_unit(arena, json::load(file), rel));
-    return units;
+    std::vector<Node*> reflected = read_units();
+    return use_class_table(arena, reflected) ? reflected : units;
 }
 
 }  // namespace cb::java::frontend

@@ -2,6 +2,9 @@
 #include "jrt.h"
 #include <stdarg.h>
 #include <time.h>
+#ifdef _WIN32
+#include <sys/timeb.h>
+#endif
 
 /* ---------------------------------------------------------------------------------------- the collector
  * Mark and sweep, and it never moves anything. Every block this file allocates has a header and is listed. A collection starts when
@@ -811,6 +814,19 @@ static jstring* radix(uint64_t v, int shift) {
 	return str8(b + k + 1);
 }
 jstring* jrt_Integer_toString_I(int32_t v) { return jrt_str_I(v); }
+jstring* jrt_Integer_toString_II(int32_t v, int32_t radix) {
+	char b[40];
+	int k = 38;
+	int64_t left = v < 0 ? -(int64_t)v : v;
+	if (radix < 2 || radix > 36) radix = 10;
+	b[39] = 0;
+	do {
+		b[k--] = "0123456789abcdefghijklmnopqrstuvwxyz"[left % radix];
+		left /= radix;
+	} while (left > 0);
+	if (v < 0) b[k--] = '-';
+	return str8(b + k + 1);
+}
 jstring* jrt_Integer_toHexString_I(int32_t v) { return radix((uint32_t)v, 4); }
 jstring* jrt_Integer_toBinaryString_I(int32_t v) { return radix((uint32_t)v, 1); }
 int32_t jrt_Integer_parseInt_Str(jstring* s) {
@@ -947,6 +963,27 @@ static int cmp_d(const void* a, const void* b) { return jrt_Double_compare_DD(*(
 void jrt_Arrays_sort_CA(jarray* a) { qsort(((jarray*)jrt_nn(a))->data, a->length, 2, cmp_c); }
 void jrt_Arrays_sort_IA(jarray* a) { qsort(((jarray*)jrt_nn(a))->data, a->length, 4, cmp_i); }
 void jrt_Arrays_sort_DA(jarray* a) { qsort(((jarray*)jrt_nn(a))->data, a->length, 8, cmp_d); }
+// Arrays.fill(a, from, to, v): the range is checked first, as Java's is
+static void fill_range(jarray* a, int32_t from, int32_t to) {
+	char text[80];
+	if (from > to) {
+		snprintf(text, sizeof text, "fromIndex(%d) > toIndex(%d)", from, to);
+		jrt_throw_new(&jrt_IllegalArgumentException_class, text);
+	}
+	if (from < 0 || to > JLEN(a)) {
+		snprintf(text, sizeof text, "Array index out of range: %d", from < 0 ? from : to);
+		jrt_throw_new(&jrt_ArrayIndexOutOfBoundsException_class, text);
+	}
+}
+void jrt_Arrays_fill_IAIII(jarray* a, int32_t from, int32_t to, int32_t v) { fill_range(a, from, to); for (int32_t i = from; i < to; ++i) ((int32_t*)a->data)[i] = v; }
+void jrt_Arrays_fill_JAIIJ(jarray* a, int32_t from, int32_t to, int64_t v) { fill_range(a, from, to); for (int32_t i = from; i < to; ++i) ((int64_t*)a->data)[i] = v; }
+void jrt_Arrays_fill_DAIID(jarray* a, int32_t from, int32_t to, double v) { fill_range(a, from, to); for (int32_t i = from; i < to; ++i) ((double*)a->data)[i] = v; }
+void jrt_Arrays_fill_FAIIF(jarray* a, int32_t from, int32_t to, float v) { fill_range(a, from, to); for (int32_t i = from; i < to; ++i) ((float*)a->data)[i] = v; }
+void jrt_Arrays_fill_BAIIB(jarray* a, int32_t from, int32_t to, int8_t v) { fill_range(a, from, to); for (int32_t i = from; i < to; ++i) ((int8_t*)a->data)[i] = v; }
+void jrt_Arrays_fill_SAIIS(jarray* a, int32_t from, int32_t to, int16_t v) { fill_range(a, from, to); for (int32_t i = from; i < to; ++i) ((int16_t*)a->data)[i] = v; }
+void jrt_Arrays_fill_CAIIC(jarray* a, int32_t from, int32_t to, char16_t v) { fill_range(a, from, to); for (int32_t i = from; i < to; ++i) ((char16_t*)a->data)[i] = v; }
+void jrt_Arrays_fill_ZAIIZ(jarray* a, int32_t from, int32_t to, bool v) { fill_range(a, from, to); for (int32_t i = from; i < to; ++i) ((bool*)a->data)[i] = v; }
+void jrt_Arrays_fill_OAIIO(jarray* a, int32_t from, int32_t to, jobject* v) { fill_range(a, from, to); for (int32_t i = from; i < to; ++i) ((jobject**)a->data)[i] = v; }
 void jrt_Arrays_fill_IA(jarray* a, int32_t v) { for (int32_t i = 0; i < JLEN(a); ++i) ((int32_t*)a->data)[i] = v; }
 jstring* jrt_Arrays_toString_IA(jarray* a) {
 	if (!a) return str8("null");
@@ -1602,6 +1639,45 @@ static jobject* add_all(jobject* set, jobject* from) {
 	while (jrt_Iterator_hasNext_(it)) jrt_Collection_add_O(set, jrt_Iterator_next_(it));
 	return set;
 }
+bool jrt_Collection_addAll_O(jobject* c, jobject* from) {
+	jobject* copy = jrt_ArrayList_new_O(from);               /* (a collection may be added to itself) */
+	bool changed = false;
+	jobject* it = jrt_Collection_iterator_(copy);
+	while (jrt_Iterator_hasNext_(it)) changed = jrt_Collection_add_O(c, jrt_Iterator_next_(it)) || changed;
+	return changed;
+}
+bool jrt_Collection_removeAll_O(jobject* c, jobject* other) {
+	jrt_nn(other);
+	jobject* kept = jrt_ArrayList_new_();                    /* what stays, in its order */
+	bool changed = false;
+	jobject* it = jrt_Collection_iterator_(c);
+	while (jrt_Iterator_hasNext_(it)) {
+		jobject* x = jrt_Iterator_next_(it);
+		if (jrt_Collection_contains_O(other, x)) changed = true;
+		else jrt_Collection_add_O(kept, x);
+	}
+	if (!changed) return false;
+	jrt_Collection_clear_(c);
+	add_all(c, kept);
+	return true;
+}
+jobject* jrt_TreeSet_first_(jobject* s) {
+	jobject* it = jrt_Collection_iterator_(s);
+	if (!jrt_Iterator_hasNext_(it)) jrt_throw_new(&jrt_NoSuchElementException_class, NULL);
+	return jrt_Iterator_next_(it);
+}
+int64_t jrt_System_currentTimeMillis_(void) {
+#ifdef _WIN32
+	struct _timeb now;
+	_ftime(&now);
+	return (int64_t)now.time * 1000 + now.millitm;
+#else
+	struct timespec now;
+	timespec_get(&now, TIME_UTC);
+	return (int64_t)now.tv_sec * 1000 + now.tv_nsec / 1000000;
+#endif
+}
+bool jrt_Double_isInfinite_D(double v) { return v == INFINITY || v == -INFINITY; }
 jobject* jrt_HashSet_new_O(jobject* from) {                  /* Java's size for a copy */
 	const int32_t wanted = (int32_t)((float)jrt_Collection_size_(from) / 0.75f) + 1;
 	return add_all(jrt_HashSet_new_I(wanted > 16 ? wanted : 16), from);

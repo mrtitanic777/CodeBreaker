@@ -156,6 +156,7 @@ public:
     std::string cname(std::string_view qname) const;
     // A method's name in C: its own, or with its parameter codes when the program overloads it.
     std::string mname(std::string_view name, std::span<const ir::TypeP> params) const;
+    std::string exact_code(const ir::TypeP& type) const;
     std::string ct(const ir::TypeP& type) const;
     // &X_class of a class or interface, program or runtime.
     std::string class_ref(std::string_view qname) const;
@@ -207,6 +208,7 @@ private:
     std::optional<std::string> main_;
     OrderedMap<std::string, std::string> lits_;                       // literal text -> slot name
     std::unordered_set<std::string> overloaded_;
+    std::unordered_set<std::string> by_class_;       // overloads whose codes alone are the same
     std::unordered_set<std::string> static_names_;   // static fields and enum constants: a method of the same name is written apart
     std::unordered_map<const ClassInfo*, std::vector<Slot>> slots_;   // per class, made on first use
     std::unordered_map<std::string, ClassInfo*> by_cname_;            // `X` -> the class (first of that name)

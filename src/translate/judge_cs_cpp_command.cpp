@@ -86,7 +86,7 @@ bool build(const Cxx& cxx, const stdfs::path& runtime, const stdfs::path& source
                                         fs::to_text(*vcvars()), fs::to_text(runtime), fs::to_text(exe), fs::to_text(source.parent_path()), fs::to_text(source)));
         spec.argv = {"cmd", "/c", fs::to_text(bat)};
     } else {
-        spec.argv = {fs::to_text(cxx.exe), "-std=c++17", "-fwrapv", "-w", "-O1", "-I", fs::to_text(runtime), "-o", fs::to_text(exe), fs::to_text(source)};
+        spec.argv = {fs::to_text(cxx.exe), "-std=c++17", "-fwrapv", "-w", "-O1", "-Wa,-mbig-obj", "-I", fs::to_text(runtime), "-o", fs::to_text(exe), fs::to_text(source)};   // (a whole game is more sections than a plain object file holds)
         if (cxx.kind == Compiler::Gcc) spec.argv.insert(spec.argv.end(), {"-static"});
     }
     const process::ProcessResult r = process::run(spec);

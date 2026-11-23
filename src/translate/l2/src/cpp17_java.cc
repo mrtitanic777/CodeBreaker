@@ -837,6 +837,37 @@ Strs Program::struct_(ClassInfo* c) {
             }
         }
     }
+    if (c->kind != "interface") {   // Java lets a base class's method be the one an interface asks for; in C++ the two are separate until one forwards
+        std::set<std::string> have;
+        for (auto& m : c->methods()) have.insert(str(raw(m, "name")) + "/" + std::to_string(nodes(m, "params").size()));
+        auto an = model->ancestors(c->qname);
+        for (size_t i = 1; i < an.size(); i++) {
+            ClassInfo* iface = model->info(an[i]);
+            if (!iface || iface->kind != "interface") continue;
+            for (auto& im : iface->methods()) {
+                if (str(raw(im, "kind")) != "method" || node(im, "body") || (sym(im) && sstatic(sym(im)))) continue;
+                const std::string name = str(raw(im, "name"));
+                const size_t arity = nodes(im, "params").size();
+                if (!have.insert(name + "/" + std::to_string(arity)).second) continue;
+                ClassInfo* giver = nullptr;
+                for (size_t k = 1; k < an.size() && !giver; k++) {
+                    ClassInfo* b = model->info(an[k]);
+                    if (!b || b->kind == "interface") continue;
+                    for (auto& bm : b->methods(&name)) {
+                        if (str(raw(bm, "kind")) == "method" && node(bm, "body") && nodes(bm, "params").size() == arity && !(sym(bm) && sstatic(sym(bm)))) giver = b;
+                    }
+                }
+                if (!giver || model->is_sub(giver->qname, iface->qname)) continue;
+                auto sg = sig(iface, im);
+                Strs params, given;
+                for (size_t a = 0; a < sg.first.size(); a++) {
+                    params.push_back(sg.first[a] + " a" + std::to_string(a));
+                    given.push_back("a" + std::to_string(a));
+                }
+                L.push_back("\t" + sg.second + " " + ident(name) + "(" + join(params, ", ") + ") override { return " + giver->cname + "::" + ident(name) + "(" + join(given, ", ") + "); }");
+            }
+        }
+    }
     if (c->kind == "interface" && model->sam(c->qname)) L.push_back("\ttemplate <class L> struct Of;");
     L.push_back("};");
     if (c->kind == "interface") {

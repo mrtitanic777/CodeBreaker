@@ -98,6 +98,7 @@ private:
     const ir::MethodDecl* single_abstract(cs::Program& program, const ir::ClassDecl& c) const;
     std::unordered_map<std::string, const ir::MethodDecl*> lambda_interfaces_;
     bool catches_negative_size_ = false;
+    std::unordered_set<const ir::Node*> reflect_casting_;
     std::unordered_map<const ir::Node*, ir::TypeP> enum_body_;   // the `new` of an enum constant with a body: the class of that body
 
     // A box that can be null. Java's Integer is C#'s int; the variables, fields, parameters and results that may hold a null (found by

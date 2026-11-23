@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <exception>
 #include <functional>
 #include <initializer_list>
@@ -802,7 +803,9 @@ struct Math {
 
 // ------------------------------------------------------------------------------------------- arrays
 template <class T> struct Array : Object {
-	std::vector<T> a;
+	// (std::vector<bool> has no real elements to hand out a reference to, and Java's a[i] is a place)
+	using Store = std::conditional_t<std::is_same_v<T, bool>, std::deque<bool>, std::vector<T>>;
+	Store a;
 	int32_t length = 0;
 #ifdef JRT_CYCLES
 	std::conditional_t<gc::is_ref<T>::value, gc::Tracked, gc::NotTracked> gc_tracked_{this};
@@ -816,8 +819,8 @@ template <class T> struct Array : Object {
 			raise_msg(std::make_shared<ArrayIndexOutOfBoundsException>(), u"Index " + sv(i) + u" out of bounds for length " + sv(length));
 		return a[i];
 	}
-	typename std::vector<T>::iterator begin() { return a.begin(); }
-	typename std::vector<T>::iterator end() { return a.end(); }
+	typename Store::iterator begin() { return a.begin(); }
+	typename Store::iterator end() { return a.end(); }
 	ref<Array<T>> clone() { auto r = std::make_shared<Array<T>>(); r->a = a; r->length = length; return r; }
 };
 // for (T x : expr): the range holds the reference, so a temporary array or collection lives through the loop
@@ -1108,6 +1111,7 @@ struct Collection : Iterable {
 	virtual bool remove(O x) { auto it = iterator(); while (it->hasNext()) { O y = it->next(); if (y ? y->equals(x) : !x) { it->remove(); return true; } } return false; }
 	virtual bool addAll(ref<Collection> c) { bool ch = false; std::vector<O> tmp; for (O x : *nn(c)) tmp.push_back(x); for (auto& x : tmp) ch |= add(x); return ch; }
 	virtual void clear() { auto it = iterator(); while (it->hasNext()) { it->next(); it->remove(); } }
+	virtual bool removeAll(ref<Collection> c) { bool ch = false; nn(c); auto it = iterator(); while (it->hasNext()) if (c->contains(it->next())) { it->remove(); ch = true; } return ch; }
 	bool removeIf(ref<Predicate> p) { bool ch = false; auto it = iterator(); while (it->hasNext()) if (p->test(it->next())) { it->remove(); ch = true; } return ch; }
 	bool containsAll(ref<Collection> c) { for (O x : *nn(c)) if (!contains(x)) return false; return true; }
 	ref<Stream> stream();
@@ -1229,6 +1233,12 @@ struct Arrays {
 	}
 	template <class T> static void sort(const ref<Array<T>>& a, ref<Comparator> c) { std::stable_sort(nn(a)->a.begin(), a->a.end(), [&](const T& x, const T& y) { return c->compare(x, y) < 0; }); }
 	template <class T> static void fill(const ref<Array<T>>& a, T v) { std::fill(nn(a)->a.begin(), a->a.end(), v); }
+	template <class T, class V> static void fill(const ref<Array<T>>& a, int32_t from, int32_t to, V v) {
+		if (from > to) raise_msg(std::make_shared<IllegalArgumentException>(), u"fromIndex(" + sv(from) + u") > toIndex(" + sv(to) + u")");
+		if (from < 0) raise_msg(std::make_shared<ArrayIndexOutOfBoundsException>(), u"Array index out of range: " + sv(from));
+		if (to > nn(a)->length) raise_msg(std::make_shared<ArrayIndexOutOfBoundsException>(), u"Array index out of range: " + sv(to));
+		std::fill(a->a.begin() + from, a->a.begin() + to, (T)v);
+	}
 	template <class T> static ref<String> toString(const ref<Array<T>>& a) {
 		if (!a) return lit(u"null");
 		std::u16string r = u"[";
@@ -2010,6 +2020,9 @@ template <class F> struct Finally {
 		else f();
 	}
 };
+
+inline int64_t System::currentTimeMillis() { return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count(); }
+inline int64_t System::nanoTime() { return std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
 
 inline int run_main(void (*m)(ref<Array<ref<String>>>), int argc, char** argv) {
 #ifdef JRT_CYCLES

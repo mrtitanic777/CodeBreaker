@@ -47,6 +47,7 @@ Program::Program(Arena& arena, std::span<ir::Node* const> units, std::optional<s
     model_->name_anonymous();
     // a method name the program declares with more than one parameter list is written with its parameter codes
     std::map<std::string, std::set<std::string>> signatures;
+    std::map<std::string, std::map<std::string, std::set<std::string>>> exact;   // name: its codes: the parameter classes behind them
     for (const auto& [qname, cls] : model_->classes()) {
         by_cname_.emplace(cls->cname, cls);
         for (const ir::Node* x : cls->members()) {
@@ -59,11 +60,29 @@ Program::Program(Arena& arena, std::span<ir::Node* const> units, std::optional<s
             std::vector<std::string> codes;
             for (const ir::Node* pn : m.params) codes.push_back(type_code(jmodel::erase(param_of(pn).type)));
             signatures[m.name.value_or("")].insert(join_commas(codes));
+            std::string classes;
+            for (const ir::Node* pn : m.params) classes += exact_code(jmodel::erase(param_of(pn).type)) + ",";
+            exact[m.name.value_or("")][join_commas(codes)].insert(std::move(classes));
         }
     }
     for (const auto& [name, sigs] : signatures) {
         if (sigs.size() > 1) overloaded_.insert(name);
     }
+    for (const auto& [name, by_code] : exact) {   // foo(Item) and foo(Block) have one code: those are told apart by their classes
+        if (std::any_of(by_code.begin(), by_code.end(), [](const auto& entry) { return entry.second.size() > 1; })) {
+            overloaded_.insert(name);
+            by_class_.insert(name);
+        }
+    }
+}
+
+// A parameter's code, naming its class where the code alone says only "an object".
+std::string Program::exact_code(const ir::TypeP& type) const {
+    std::string code = type_code(type);
+    ir::TypeP inner = type;
+    while (inner && kind_of(inner) == "array") inner = elem_of(inner);
+    if ((code == "O" || code == "OA") && inner && kind_of(inner) == "class") code += ident(after_dot(class_name(inner)));
+    return code;
 }
 
 // ---- names and types
@@ -77,7 +96,8 @@ std::string Program::mname(std::string_view name, std::span<const ir::TypeP> par
     std::string base = ident(name);
     if (overloaded_.contains(std::string(name))) {
         base += '_';
-        for (const ir::TypeP& p : params) base += type_code(jmodel::erase(p));
+        const bool classes = by_class_.contains(std::string(name));
+        for (const ir::TypeP& p : params) base += classes ? exact_code(jmodel::erase(p)) : type_code(jmodel::erase(p));
     } else if (static_names_.contains(std::string(name))) {   // Java keeps fields and methods apart; C has one name for both
         base += "_m";
     }
@@ -171,6 +191,9 @@ std::string Program::lit(std::string_view text) {
 }
 
 bool Program::needs_clinit(const ClassInfo& cls) const {
+    if (cls.base) {   // making or using a class initialises the classes it extends first
+        if (const ClassInfo* base = model_->info(*cls.base); base != nullptr && needs_clinit(*base)) return true;
+    }
     for (const ir::Node* x : cls.members()) {
         if (const auto* m = ir::get<ir::MethodDecl>(x); m != nullptr && m->kind == "static_init") return true;
         if (const auto* f = ir::get<ir::FieldDecl>(x); f != nullptr && f->sym && f->sym->is_static && f->init != nullptr &&
@@ -363,8 +386,16 @@ std::string Program::ctor_name(const ClassInfo& cls, const ir::Node* ctor) const
     for (const ir::Node* x : cls.methods()) n += method_of(x).kind == "ctor";
     if (n <= 1) return cls.cname + "_init";
     CB_ASSERT(ctor != nullptr, "a class with several constructors names the one it means");
-    std::string codes;
-    for (const ir::Node* pn : method_of(ctor).params) codes += type_code(jmodel::erase(param_of(pn).type));
+    const auto codes_of = [&](const ir::Node* c, bool classes) {
+        std::string text;
+        for (const ir::Node* pn : method_of(c).params) text += classes ? exact_code(jmodel::erase(param_of(pn).type)) : type_code(jmodel::erase(param_of(pn).type));
+        return text;
+    };
+    bool classes = false;   // (two constructors with one code are told apart by their parameters' classes)
+    for (const ir::Node* x : cls.methods()) {
+        classes = classes || (x != ctor && method_of(x).kind == "ctor" && method_of(x).params.size() == method_of(ctor).params.size() && codes_of(x, false) == codes_of(ctor, false));
+    }
+    std::string codes = codes_of(ctor, classes);
     return std::format("{}_init_{}", cls.cname, codes.empty() ? "V" : codes);
 }
 

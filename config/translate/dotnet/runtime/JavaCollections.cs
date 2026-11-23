@@ -63,6 +63,59 @@ public static partial class JLib
 
     public static T NonNull<T>(T v) where T : class => v ?? throw new NullReferenceException();
 
+    public static string CauseText(Exception cause) => cause == null ? null : JavaRt.Str(cause);
+
+    // Java's Collection.removeAll: every element the other holds goes, and whether anything did.
+    public static bool RemoveAll<T>(ICollection<T> from, IEnumerable other)
+    {
+        var gone = new HashSet<object>();
+        bool hasNull = false;
+        foreach (object x in other)
+        {
+            if (x == null) hasNull = true;
+            else gone.Add(x);
+        }
+        var kept = new List<T>();
+        bool changed = false;
+        foreach (T x in from)
+        {
+            if (x == null ? hasNull : gone.Contains(x)) changed = true;
+            else kept.Add(x);
+        }
+        if (!changed) return false;
+        from.Clear();
+        foreach (T x in kept) from.Add(x);
+        return true;
+    }
+
+    public static T First<T>(SortedSet<T> set) => set.Count != 0 ? set.Min : throw new InvalidOperationException();
+    public static T Last<T>(SortedSet<T> set) => set.Count != 0 ? set.Max : throw new InvalidOperationException();
+
+    // Arrays.fill(a, from, to, value)
+    public static void FillRange<T, V>(T[] a, int from, int to, V value)
+    {
+        if (from > to) throw new ArgumentException("fromIndex(" + from + ") > toIndex(" + to + ")");
+        if (from < 0 || to > a.Length) throw new IndexOutOfRangeException();
+        T item = (T)Convert.ChangeType(value, typeof(T));
+        for (int i = from; i < to; i++) a[i] = item;
+    }
+
+    // Integer.toString(v, radix): lower-case digits, a minus sign
+    public static string ToRadix(int value, int radix)
+    {
+        if (radix < 2 || radix > 36) radix = 10;
+        if (value == 0) return "0";
+        var digits = new StringBuilder();
+        long left = Math.Abs((long)value);
+        while (left > 0)
+        {
+            digits.Insert(0, "0123456789abcdefghijklmnopqrstuvwxyz"[(int)(left % radix)]);
+            left /= radix;
+        }
+        if (value < 0) digits.Insert(0, '-');
+        return digits.ToString();
+    }
+
     // A number's bits, with every NaN the one NaN, as Java's has it.
     public static long DoubleBits(double v) => double.IsNaN(v) ? 0x7ff8000000000000L : BitConverter.DoubleToInt64Bits(v);
     public static int FloatBits(float v) => float.IsNaN(v) ? 0x7fc00000 : BitConverter.SingleToInt32Bits(v);

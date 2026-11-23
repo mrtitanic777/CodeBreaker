@@ -129,18 +129,7 @@ CB_TEST("translate.csharp_java.semantics_in_the_text", [] {
     CB_CHECK(has("public static void Main(string[] args)"));
 });
 
-CB_TEST("translate.csharp_java.what_it_declines", [] {
-    // each program that has a thing the library cannot carry says so, with the reason, and the rest is written
-    struct Case {
-        const char* name;
-        const char* kind;
-        const char* in_text;     // what is still written
-        const char* not_in_text; // what is not
-    };
-    const Case cases[] = {
-        // a class it cannot carry declines the whole unit; the others only the method
-        {"exception_cause", "exception", "throw new ArgumentException(\"bad\");", "RuntimeException"},
-    };
+CB_TEST("translate.csharp_java.what_it_once_declined", [] {
     {   // a box that may be null is a nullable value, and only that one
         auto u = cjt_load("boxed_null");
         cs::Program p(u->units, cjt_options());
@@ -156,14 +145,11 @@ CB_TEST("translate.csharp_java.what_it_declines", [] {
         CB_CHECK(p.ledger().empty());
         CB_CHECK(written.find(": JEnum") != std::string::npos);
     }
-    for (const Case& c : cases) {
-        auto u = cjt_load(c.name);
+    {   // an exception made from a cause keeps it
+        auto u = cjt_load("exception_cause");
         cs::Program p(u->units, cjt_options());
-        const std::string text = cjt_files_text(p);
-        CB_CHECK_EQ(p.ledger().size(), std::size_t{1});
-        if (!p.ledger().empty()) CB_CHECK_EQ(p.ledger()[0].kind, std::string(c.kind));
-        CB_CHECK(text.find(c.in_text) != std::string::npos);
-        CB_CHECK(std::string_view(c.not_in_text).empty() || text.find(c.not_in_text) == std::string::npos);
+        CB_CHECK(p.ledger().empty());
+        CB_CHECK(cjt_files_text(p).find("new Exception(") != std::string::npos);
     }
 });
 

@@ -199,6 +199,7 @@ int32_t jrt_Long_compare_JJ(int64_t a, int64_t b);
 int32_t jrt_Double_compare_DD(double a, double b);
 int32_t jrt_Double_hashCode_D(double v);
 int64_t jrt_Double_doubleToRawLongBits_D(double v);
+jstring* jrt_Integer_toString_II(int32_t v, int32_t radix);
 int64_t jrt_Double_doubleToLongBits_D(double v);
 double jrt_Double_longBitsToDouble_J(int64_t bits);
 int32_t jrt_Float_floatToIntBits_F(float v);
@@ -290,6 +291,15 @@ void jrt_Arrays_sort_CA(jarray* a);
 void jrt_Arrays_sort_IA(jarray* a);
 void jrt_Arrays_sort_DA(jarray* a);
 void jrt_Arrays_fill_IA(jarray* a, int32_t v);
+void jrt_Arrays_fill_IAIII(jarray* a, int32_t from, int32_t to, int32_t v);
+void jrt_Arrays_fill_JAIIJ(jarray* a, int32_t from, int32_t to, int64_t v);
+void jrt_Arrays_fill_DAIID(jarray* a, int32_t from, int32_t to, double v);
+void jrt_Arrays_fill_FAIIF(jarray* a, int32_t from, int32_t to, float v);
+void jrt_Arrays_fill_BAIIB(jarray* a, int32_t from, int32_t to, int8_t v);
+void jrt_Arrays_fill_SAIIS(jarray* a, int32_t from, int32_t to, int16_t v);
+void jrt_Arrays_fill_CAIIC(jarray* a, int32_t from, int32_t to, char16_t v);
+void jrt_Arrays_fill_ZAIIZ(jarray* a, int32_t from, int32_t to, bool v);
+void jrt_Arrays_fill_OAIIO(jarray* a, int32_t from, int32_t to, jobject* v);
 jstring* jrt_Arrays_toString_IA(jarray* a);
 void jrt_System_arraycopy(jobject* src, int32_t sp, jobject* dst, int32_t dp, int32_t n);
 #define jrt_System_arraycopy_OIOII(s, sp, d, dp, n) jrt_System_arraycopy((jobject*)(s), (sp), (jobject*)(d), (dp), (n))
@@ -468,6 +478,48 @@ bool jrt_Collection_isEmpty_(jobject* c);
 bool jrt_Collection_contains_O(jobject* c, jobject* x);
 bool jrt_Collection_remove_O(jobject* c, jobject* x);
 void jrt_Collection_clear_(jobject* c);
+bool jrt_Collection_addAll_O(jobject* c, jobject* from);
+bool jrt_Collection_removeAll_O(jobject* c, jobject* other);
+jobject* jrt_TreeSet_first_(jobject* s);
+int64_t jrt_System_currentTimeMillis_(void);
+bool jrt_Double_isInfinite_D(double v);
+#define jrt_TreeSet_add_O jrt_Collection_add_O
+#define jrt_TreeSet_size_ jrt_Collection_size_
+#define jrt_TreeSet_isEmpty_ jrt_Collection_isEmpty_
+#define jrt_TreeSet_contains_O jrt_Collection_contains_O
+#define jrt_TreeSet_remove_O jrt_Collection_remove_O
+#define jrt_TreeSet_clear_ jrt_Collection_clear_
+#define jrt_TreeSet_iterator_ jrt_Collection_iterator_
+#define jrt_TreeSet_addAll_O jrt_Collection_addAll_O
+#define jrt_TreeSet_removeAll_O jrt_Collection_removeAll_O
+#define jrt_ArrayList_contains_O jrt_Collection_contains_O
+#define jrt_ArrayList_remove_O jrt_Collection_remove_O
+#define jrt_ArrayList_clear_ jrt_Collection_clear_
+#define jrt_ArrayList_iterator_ jrt_Collection_iterator_
+#define jrt_ArrayList_addAll_O jrt_Collection_addAll_O
+#define jrt_ArrayList_removeAll_O jrt_Collection_removeAll_O
+#define jrt_HashSet_size_ jrt_Collection_size_
+#define jrt_HashSet_isEmpty_ jrt_Collection_isEmpty_
+#define jrt_HashSet_contains_O jrt_Collection_contains_O
+#define jrt_HashSet_remove_O jrt_Collection_remove_O
+#define jrt_HashSet_clear_ jrt_Collection_clear_
+#define jrt_HashSet_iterator_ jrt_Collection_iterator_
+#define jrt_HashSet_addAll_O jrt_Collection_addAll_O
+#define jrt_HashSet_removeAll_O jrt_Collection_removeAll_O
+#define jrt_LinkedHashSet_add_O jrt_Collection_add_O
+#define jrt_LinkedHashSet_size_ jrt_Collection_size_
+#define jrt_LinkedHashSet_isEmpty_ jrt_Collection_isEmpty_
+#define jrt_LinkedHashSet_contains_O jrt_Collection_contains_O
+#define jrt_LinkedHashSet_remove_O jrt_Collection_remove_O
+#define jrt_LinkedHashSet_clear_ jrt_Collection_clear_
+#define jrt_LinkedHashSet_iterator_ jrt_Collection_iterator_
+#define jrt_LinkedHashSet_addAll_O jrt_Collection_addAll_O
+#define jrt_LinkedHashSet_removeAll_O jrt_Collection_removeAll_O
+#define jrt_Set_clear_ jrt_Collection_clear_
+#define jrt_Set_addAll_O jrt_Collection_addAll_O
+#define jrt_Set_removeAll_O jrt_Collection_removeAll_O
+#define jrt_List_addAll_O jrt_Collection_addAll_O
+#define jrt_List_removeAll_O jrt_Collection_removeAll_O
 jobject* jrt_Collection_iterator_(jobject* c);
 jobject* jrt_List_get_I(jobject* l, int32_t i);
 jobject* jrt_List_set_IO(jobject* l, int32_t i, jobject* x);
