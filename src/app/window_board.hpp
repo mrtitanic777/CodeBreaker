@@ -118,9 +118,14 @@ void board_compare_step(Model& model, int delta);
 bool board_toggle_leaders(Model& model);
 void board_close_leaders(Model& model);
 void board_open_leader(Model& model, int rank);
+// What the list shows: the search's matches, or with no search the closest functions.
+const std::vector<board::CLeader>& board_leader_rows(const Model& model);
+void board_search_leaders(Model& model);       // after the words changed, or new results came in
+// Every match of the search (or the closest functions) as a table in the board's exports folder; the file written.
+std::filesystem::path board_export_leaders(const Model& model);
 inline constexpr float kLeaderRowHeight = 26;
 struct BoardLeadersLayout {
-    Rect outline, title, close, head, list;
+    Rect outline, title, close, search, export_button, head, list;
     int first = 0;
     std::vector<Rect> rows;            // the rows in view
     float max_scroll = 0;

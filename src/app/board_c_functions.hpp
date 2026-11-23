@@ -33,6 +33,25 @@ struct CNearMisses {
     std::uint64_t candidates = 0;      // all that compiled, differ, and have something in common with the original
 };
 
+enum class CVerdict : std::uint8_t { Identical, SameSize, Different, NoCompile, Library };
+enum class CMeasure : std::uint8_t { None, BytesEqual, Similar, Units };   // a, b: BytesEqual size; Similar size, original; Units differing, total
+
+// Every function of a results file, whatever became of it.
+struct CFunctionRow {
+    std::string name;
+    CVerdict verdict = CVerdict::Different;
+    CMeasure measure = CMeasure::None;
+    double closeness = 0;
+    std::uint32_t a = 0, b = 0;
+    bool near_miss = false;            // compiled, differs, and has something in common with the original
+};
+// What was measured, in words: "byte-identical", "will not compile", "99.1% of bytes equal" ...
+std::string c_measure_words(CVerdict verdict, CMeasure measure, double closeness, std::uint32_t a, std::uint32_t b);
+// nullopt when the text is not a results file (it may be half written).
+std::optional<std::vector<CFunctionRow>> parse_c_function_rows(std::string_view text);
+// Those of `rows` that are near misses, best first, at most `keep`.
+CNearMisses c_near_misses_of(const std::vector<CFunctionRow>& rows, std::size_t keep = kCNearMissesShown);
+
 // The text of one results file. nullopt when it is not one (it may be half written).
 std::optional<CNearMisses> parse_c_near_misses(std::string_view text, std::size_t keep = kCNearMissesShown);
 // "ba7816bf8f01cfea.json"

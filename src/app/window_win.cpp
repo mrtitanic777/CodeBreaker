@@ -950,6 +950,7 @@ void WwApp::set_page(Page page) {
 std::string* WwApp::edit_target() {
     if (model_.focus == Control::ToolSearch) return &model_.tool_query;
     if (model_.focus == Control::BoardSearch) return &model_.board_query;
+    if (model_.focus == Control::BoardLeadersSearch) return &model_.board_leaders_query;
     if (model_.focus != Control::Field || model_.focus_index < 0) return nullptr;
     std::vector<FieldItem>& fields = model_.page == Page::Settings ? model_.setting_fields : model_.tool_fields;
     if (static_cast<std::size_t>(model_.focus_index) >= fields.size()) return nullptr;
@@ -967,6 +968,11 @@ void WwApp::set_focus(Control c, int index) {
 
 // Something the person typed or chose in a field of the selected tool, or in the search box: the page follows.
 void WwApp::edited() {
+    if (model_.page == Page::Board && model_.focus == Control::BoardLeadersSearch) {
+        board_search_leaders(model_);
+        invalidate();
+        return;
+    }
     if (model_.page == Page::Board) {
         refresh_board();
         return;
@@ -1611,7 +1617,10 @@ void WwApp::on_leaders_done() {
         root = leaders_root_;
     }
     model_.board_leaders_busy = false;
-    if (result && model_.board && model_.board->root == root) model_.board_leaders = std::make_shared<const board::CLeaders>(std::move(*result));
+    if (result && model_.board && model_.board->root == root) {
+        model_.board_leaders = std::make_shared<const board::CLeaders>(std::move(*result));
+        board_search_leaders(model_);
+    }
     invalidate();
 }
 
@@ -1735,6 +1744,17 @@ void WwApp::activate_page(Control c, int index) {
             invalidate();
             break;
         case Control::BoardSearch: set_focus(Control::BoardSearch, -1); break;
+        case Control::BoardLeadersSearch: set_focus(Control::BoardLeadersSearch, -1); break;
+        case Control::BoardLeadersExport:
+            if (model_.board && !board_leader_rows(model_).empty()) {
+                try {
+                    model_.status_text = "Exported the function table: " + fs::to_text(board_export_leaders(model_));
+                } catch (const std::exception& e) {
+                    model_.status_text = std::string("The export failed: ") + e.what();
+                }
+                invalidate();
+            }
+            break;
         case Control::BoardFoundation:   // the pile shows what is really on it, or back to what is left to do
             if (index >= 0 && index < static_cast<int>(board::kPileCount)) {
                 model_.board_show_done[static_cast<std::size_t>(index)] = !model_.board_show_done[static_cast<std::size_t>(index)];
@@ -3392,7 +3412,7 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             } else {
                 // a text box takes the keyboard at once (a switch or a drop-down acts when the click is released)
                 const std::vector<FieldItem>& fields = model_.page == Page::Settings ? model_.setting_fields : model_.tool_fields;
-                const bool text_field = h.control == Control::ToolSearch || h.control == Control::BoardSearch ||
+                const bool text_field = h.control == Control::ToolSearch || h.control == Control::BoardSearch || h.control == Control::BoardLeadersSearch ||
                                         (h.control == Control::Field && h.index >= 0 && static_cast<std::size_t>(h.index) < fields.size() && fields[static_cast<std::size_t>(h.index)].kind <= 2);
                 if (text_field) set_focus(h.control, h.index);
                 else set_focus(Control::None, -1);
@@ -3434,7 +3454,7 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             invalidate();
             if (pressed != Control::None && pressed == h.control && pressed_index == h.index) {
                 if (pressed >= Control::NavConvert) {
-                    if (pressed != Control::ToolSearch && pressed != Control::BoardSearch) activate_page(pressed, pressed_index);
+                    if (pressed != Control::ToolSearch && pressed != Control::BoardSearch && pressed != Control::BoardLeadersSearch) activate_page(pressed, pressed_index);
                     sync_board_title();
                 } else {
                     activate(pressed);
@@ -3707,11 +3727,15 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
         board_load_decks(m);
         board_rebuild_stacks(m);
         if (state == "board-orphans") board_toggle_orphans(m);
-        if ((state == "board-leaders" || state == "board-leaders-compare") && m.board_scores) {   // (read here: a screenshot has no message loop)
+        if ((state == "board-leaders" || state == "board-leaders-compare" || state == "board-leaders-search") && m.board_scores) {   // (read here: a screenshot has no message loop)
             const std::atomic<bool> go{false};
             if (std::optional<board::CLeaders> read = board::build_c_leaders(m.board->root, *m.board_scores, go)) m.board_leaders = std::make_shared<const board::CLeaders>(std::move(*read));
             m.board_leaders_open = true;
             if (state == "board-leaders-compare") board_open_leader(m, 0);
+            if (state == "board-leaders-search") {   // --board-focus: the words
+                m.board_leaders_query = board_focus_name.empty() ? "lzread" : board_focus_name;
+                board_search_leaders(m);
+            }
         }
         if (state == "board-c-identical") board_toggle_c_view(m, board::CView::MostIdentical);
         if (state == "board-c-near") board_toggle_c_view(m, board::CView::NearMisses);
@@ -4422,7 +4446,7 @@ int run(std::span<const std::string> args, bool no_command_given) {
         } else if (!a.starts_with("--") && open_file.empty()) {
             open_file = a;
         } else {
-            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout|functions|check|compare|palette|board|board-expanded|board-flow|board-trace|board-library|board-library-hover|board-library-function|board-filter|board-inspect|board-hover|board-orphans|board-leaders|board-leaders-compare|board-compare|board-c-identical|board-c-near|board-c-nocompile|board-c-unscored|board-deck|board-empty|board-scanning] [--board FOLDER] [--theme light|dark] [--size WxH] [--scale N]] [--board IMAGE] [--board-scan IMAGE [--board-out FOLDER]] [--board-trace TRACE --board-trace-disk IMAGE --board-out FOLDER]\n");
+            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout|functions|check|compare|palette|board|board-expanded|board-flow|board-trace|board-library|board-library-hover|board-library-function|board-filter|board-inspect|board-hover|board-orphans|board-leaders|board-leaders-compare|board-leaders-search|board-compare|board-c-identical|board-c-near|board-c-nocompile|board-c-unscored|board-deck|board-empty|board-scanning] [--board FOLDER] [--theme light|dark] [--size WxH] [--scale N]] [--board IMAGE] [--board-scan IMAGE [--board-out FOLDER]] [--board-trace TRACE --board-trace-disk IMAGE --board-out FOLDER]\n");
             return 2;
         }
     }

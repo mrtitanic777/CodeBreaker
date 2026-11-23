@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <limits>
 #include <string_view>
 #include <unordered_map>
 
@@ -192,6 +193,8 @@ PageHit hit_test_board(const BoardLayout& b, const Model& m, float x, float y) {
     if (m.board_view == 0 && m.board_leaders_open) {   // the list of closest functions is over the columns and the drawer
         const BoardLeadersLayout list = layout_board_leaders(b, m);
         if (list.close.contains(x, y)) return {Control::BoardLeadersClose, -1};
+        if (list.search.contains(x, y)) return {Control::BoardLeadersSearch, -1};
+        if (list.export_button.contains(x, y)) return {Control::BoardLeadersExport, -1};
         for (std::size_t i = 0; i < list.rows.size(); ++i)
             if (list.rows[i].contains(x, y)) return {Control::BoardLeaderRow, list.first + static_cast<int>(i)};
         if (list.outline.contains(x, y)) return {};
@@ -336,6 +339,7 @@ std::vector<PageHit> focus_order_board(const Model& m) {
     if (m.board_busy) order.push_back({Control::BoardCancel, -1});
     if (m.board) {
         if (m.board_scores && m.board_view == 0) order.push_back({Control::BoardLeaders, -1});
+        if (m.board_leaders_open && m.board_view == 0) order.push_back({Control::BoardLeadersSearch, -1});
         if (m.board_scores && m.board_view == 0)
             for (int i = 1; i <= static_cast<int>(board::kCViews); ++i) order.push_back({Control::BoardCView, i});
         for (int i = 0; i < static_cast<int>(board::kPileCount); ++i)
@@ -413,17 +417,45 @@ bool board_toggle_leaders(Model& m) {
 void board_close_leaders(Model& m) {
     m.board_leaders_open = false;
     m.board_leaders_scroll = 0;
+    if (m.focus == Control::BoardLeadersSearch) m.focus = Control::None;
+}
+
+const std::vector<board::CLeader>& board_leader_rows(const Model& m) {
+    static const std::vector<board::CLeader> none;
+    if (!m.board_leaders) return none;
+    return m.board_leaders_query.find_first_not_of(' ') == std::string::npos ? m.board_leaders->top : m.board_leaders_found;
+}
+
+void board_search_leaders(Model& m) {
+    m.board_leaders_scroll = 0;
+    m.board_leaders_found.clear();
+    m.board_leaders_matches = 0;
+    if (!m.board_leaders) return;
+    board::CSearch found = board::search_c_catalog(m.board_leaders->catalog, m.board_leaders_query);
+    m.board_leaders_found = std::move(found.rows);
+    m.board_leaders_matches = found.matches;
+}
+
+std::filesystem::path board_export_leaders(const Model& m) {
+    const bool searching = m.board_leaders_query.find_first_not_of(' ') != std::string::npos;
+    const std::vector<board::CLeader> rows = searching && m.board_leaders ? board::search_c_catalog(m.board_leaders->catalog, m.board_leaders_query, std::numeric_limits<std::size_t>::max()).rows : board_leader_rows(m);
+    const std::filesystem::path folder = m.board->root / "exports";
+    fs::make_dirs(folder);
+    const std::filesystem::path file = folder / board::c_leaders_file_name(searching ? std::string_view(m.board_leaders_query) : std::string_view());
+    fs::write_file_atomic(file, as_bytes(board::c_leaders_tsv(rows)));
+    return file;
 }
 
 void board_open_leader(Model& m, int rank) {
-    if (!m.board || !m.board_index || !m.board_leaders || rank < 0 || static_cast<std::size_t>(rank) >= m.board_leaders->top.size()) return;
+    const std::vector<board::CLeader>& rows = board_leader_rows(m);
+    if (!m.board || !m.board_index || !m.board_leaders || rank < 0 || static_cast<std::size_t>(rank) >= rows.size()) return;
     std::unordered_map<std::string_view, std::uint32_t> cards;
     cards.reserve(m.board->cards.size());
     for (std::uint32_t i = 0; i < m.board->cards.size(); ++i) cards.emplace(m.board->cards[i].rel, i);
     m.board_compare_list.clear();
     m.board_compare_at = -1;
-    for (std::size_t i = 0; i < m.board_leaders->top.size(); ++i) {
-        const board::CLeader& leader = m.board_leaders->top[i];
+    for (std::size_t i = 0; i < rows.size(); ++i) {
+        const board::CLeader& leader = rows[i];
         const auto card = cards.find(leader.rel);
         if (card == cards.end()) continue;
         if (static_cast<int>(i) == rank) m.board_compare_at = static_cast<int>(m.board_compare_list.size());
@@ -440,12 +472,14 @@ void board_open_leader(Model& m, int rank) {
 BoardLeadersLayout layout_board_leaders(const BoardLayout& b, const Model& m) {
     BoardLeadersLayout l;
     l.outline = b.tableau;
-    l.title = {l.outline.x + 12, l.outline.y + 4, std::max(0.0f, l.outline.w - 56), 26};
     l.close = {l.outline.right() - 34, l.outline.y + 4, 28, 26};
+    l.export_button = {l.close.x - 6 - 62, l.outline.y + 5, 62, 24};
+    l.search = {l.export_button.x - 6 - 230, l.outline.y + 3, 230, 28};
+    l.title = {l.outline.x + 12, l.outline.y + 4, std::max(0.0f, l.search.x - 8 - l.outline.x - 12), 26};
     l.head = {l.outline.x + 8, l.outline.y + 32, std::max(0.0f, l.outline.w - 16), 20};
     l.list = {l.head.x, l.head.bottom(), l.head.w, std::max(0.0f, l.outline.bottom() - 6 - l.head.bottom())};
     if (!m.board_leaders) return l;
-    const std::size_t count = m.board_leaders->top.size();
+    const std::size_t count = board_leader_rows(m).size();
     l.max_scroll = std::max(0.0f, static_cast<float>(count) * kLeaderRowHeight - l.list.h);
     const float scroll = std::clamp(m.board_leaders_scroll, 0.0f, l.max_scroll);
     l.first = static_cast<int>(scroll / kLeaderRowHeight);
@@ -657,6 +691,9 @@ void board_load_decks(Model& m) {
     board_close_compare(m);
     board_close_leaders(m);
     m.board_leaders.reset();
+    m.board_leaders_query.clear();
+    m.board_leaders_found.clear();
+    m.board_leaders_matches = 0;
     m.board_c_marks.reset();
     if (!m.board) return;
     for (board::Deck& d : board::load_decks(m.board->root)) m.board_decks.push_back(std::move(d));

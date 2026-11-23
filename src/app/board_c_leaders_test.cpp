@@ -124,5 +124,65 @@ CB_TEST("app.board_c_leaders.the_list_opens_a_function_and_the_panel_steps_throu
     CB_CHECK(!m.board_leaders_open);
 });
 
+CB_TEST("app.board_c_leaders.any_function_can_be_found_by_name_or_program", [] {
+    CCatalog catalog;
+    const std::string_view one = R"({
+      "LZRead": {"verdict": "different", "share": 0.7, "size": 128, "original": 113},
+      "LZReadEx": {"verdict": "identical", "share": 1.0, "size": 20, "original": 20},
+      "MyLZRead": {"verdict": "no-compile", "share": 0.0, "size": 0, "original": 9},
+      "crt": {"verdict": "identified"}
+    })";
+    const std::string_view two = R"({
+      "lzread": {"verdict": "same size", "differing": 2, "total": 50, "segment": 1},
+      "other": {"verdict": "different", "share": 0.2, "size": 40, "original": 30}
+    })";
+    add_c_catalog(catalog, "a/lz32.dll", *parse_c_function_rows(one));
+    add_c_catalog(catalog, "b/lzexpand.dll", *parse_c_function_rows(two));
+    CB_CHECK_EQ(catalog.entries.size(), std::size_t{6});
+    const CSearch found = search_c_catalog(catalog, "LZREAD");
+    CB_CHECK_EQ(found.matches, std::uint64_t{4});
+    CB_CHECK_EQ(found.rows[0].function, "lzread");              // exact names first, the closer one before
+    CB_CHECK_EQ(found.rows[1].function, "LZRead");
+    CB_CHECK_EQ(found.rows[2].function, "LZReadEx");            // then those starting with it
+    CB_CHECK_EQ(found.rows[3].function, "MyLZRead");
+    CB_CHECK_EQ(found.rows[0].words, "2 of 50 units differ");
+    CB_CHECK_EQ(found.rows[2].words, "byte-identical");
+    CB_CHECK_EQ(found.rows[3].words, "will not compile");
+    CB_CHECK_EQ(search_c_catalog(catalog, "lz32 crt").rows.at(0).words, "run-time library");   // a word may name the program
+    CB_CHECK_EQ(search_c_catalog(catalog, "lzexpand other").matches, std::uint64_t{1});
+    CB_CHECK_EQ(search_c_catalog(catalog, "   ").matches, std::uint64_t{0});
+    CB_CHECK_EQ(search_c_catalog(catalog, "nothing here").matches, std::uint64_t{0});
+    const CSearch capped = search_c_catalog(catalog, "lz", 2);
+    CB_CHECK_EQ(capped.rows.size(), std::size_t{2});
+    CB_CHECK_EQ(capped.matches, std::uint64_t{6});              // (every function of both programs: "lz" is in their names)
+});
+
+CB_TEST("app.board_c_leaders.a_table_is_exported_with_every_match", [] {
+    using namespace window;
+    CB_CHECK_EQ(c_leaders_file_name(""), "closest-functions.tsv");
+    CB_CHECK_EQ(c_leaders_file_name("LZ read/../x"), "functions-LZ_read_x.tsv");
+    CLeader odd{"a/b.dll", "b.dll", "f\tg", "99.0% of bytes equal", 0.99, true, 32};
+    CB_CHECK_EQ(c_leaders_tsv({odd}), "rank\tprogram\tpath\tfunction\tmeasured\tcloseness\n1\tb.dll\ta/b.dll\tf g\t99.0% of bytes equal\t0.9900\n");
+
+    const CLeaderFixture f;
+    Board board;
+    board.root = f.root;
+    Model m;
+    m.board = std::make_shared<Board>(board);
+    m.board_scores = std::make_shared<const CScores>(f.scores);
+    const std::atomic<bool> go{false};
+    m.board_leaders = std::make_shared<const CLeaders>(*build_c_leaders(f.root, f.scores, go));
+    CB_CHECK_EQ(m.board_leaders->catalog.entries.size(), std::size_t{5});   // every function, the tiny one too
+    CB_CHECK_EQ(board_leader_rows(m).size(), std::size_t{4});               // no search: the closest
+    m.board_leaders_query = "best";
+    board_search_leaders(m);
+    CB_CHECK_EQ(board_leader_rows(m).size(), std::size_t{1});
+    const std::filesystem::path file = board_export_leaders(m);
+    CB_CHECK_EQ(fs::to_text(file.filename()), "functions-best.tsv");
+    CB_CHECK(fs::read_text(file).find("\tbest\t98.0% of bytes equal\t0.9800\n") != std::string::npos);
+    m.board_leaders_query.clear();
+    CB_CHECK(fs::read_text(board_export_leaders(m)).find("\tclose\t") != std::string::npos);
+});
+
 }  // namespace
 }  // namespace cb::app::board

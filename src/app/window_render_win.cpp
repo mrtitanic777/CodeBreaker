@@ -999,13 +999,24 @@ void rd_board_leaders(RdDraw& d, const BoardLayout& b, const Model& m) {
     const BoardLeadersLayout l = layout_board_leaders(b, m);
     d.fill(l.outline, 6, pal.dark ? rd_color(0x303030) : rd_color(0xFFFFFF));
     d.stroke(l.outline, 6, rd_alpha(pal.text, 0.25f));
+    const bool searching = m.board_leaders_query.find_first_not_of(' ') != std::string::npos;
+    const std::vector<board::CLeader>& shown = board_leader_rows(m);
     std::string title = "Closest to identical, whole OS \xC2\xB7 measured";
-    if (m.board_leaders)
-        title += " \xC2\xB7 top " + board::count_words(m.board_leaders->top.size()) + " of " + board::count_words(m.board_leaders->candidates) + " near misses in " + board::count_words(m.board_leaders->programs) + " programs";
+    if (m.board_leaders && searching)
+        title = board::count_words(m.board_leaders_matches) + " of " + board::count_words(m.board_leaders->catalog.entries.size()) + " functions match" + (m.board_leaders_matches > shown.size() ? " \xC2\xB7 first " + board::count_words(shown.size()) : std::string());
+    else if (m.board_leaders)
+        title += " \xC2\xB7 top " + board::count_words(m.board_leaders->top.size()) + " of " + board::count_words(m.board_leaders->candidates) + " in " + board::count_words(m.board_leaders->programs) + " programs";
     if (m.board_leaders_busy && m.board_leaders) title += " \xC2\xB7 updating";
     d.text(widen(title), l.title, 0, 14, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
     if (m.hot == Control::BoardLeadersClose) d.fill(l.close, 4, pal.subtle);
     d.text(L"×", l.close, 0, 16, DWRITE_FONT_WEIGHT_NORMAL, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+    const bool search_focused = m.focus == Control::BoardLeadersSearch;
+    const int search_caret = search_focused ? static_cast<int>(widen(m.board_leaders_query.substr(0, std::min<std::size_t>(static_cast<std::size_t>(std::max(0, m.caret)), m.board_leaders_query.size()))).size()) : -1;
+    rd_text_box(d, l.search, widen(m.board_leaders_query), L"Find any function", search_focused, search_caret);
+    const bool can_export = !shown.empty();
+    if (can_export && m.hot == Control::BoardLeadersExport) d.fill(l.export_button, 12, pal.subtle);
+    d.stroke(l.export_button, 12, pal.stroke2);
+    d.text(L"Export", l.export_button, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, can_export ? pal.text2 : pal.text3, DWRITE_TEXT_ALIGNMENT_CENTER);
     if (!m.board_leaders) {
         d.text(m.board_leaders_busy ? L"Reading every program's results…" : L"The results could not be read.", Rect{l.list.x + 6, l.list.y + 8, l.list.w - 12, 24}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
         return;
@@ -1021,13 +1032,14 @@ void rd_board_leaders(RdDraw& d, const BoardLayout& b, const Model& m) {
     d.rt->PushAxisAlignedClip(rd_rect(l.list), D2D1_ANTIALIAS_MODE_ALIASED);
     for (std::size_t i = 0; i < l.rows.size(); ++i) {
         const auto at = static_cast<std::size_t>(l.first) + i;
-        const board::CLeader& leader = m.board_leaders->top[at];
+        const board::CLeader& leader = shown[at];
         const Rect& r = l.rows[i];
         if (m.hot == Control::BoardLeaderRow && m.hot_index == static_cast<int>(at)) d.fill(r, 3, rd_alpha(pal.accent, 0.26f));
         columns(r, std::to_wstring(at + 1), widen(leader.function), widen(leader.program), widen(leader.words), 12, pal.accent, pal.text2);
     }
     d.rt->PopAxisAlignedClip();
-    rd_scrollbar(d, l.list, static_cast<float>(m.board_leaders->top.size()) * kLeaderRowHeight, std::clamp(m.board_leaders_scroll, 0.0f, l.max_scroll));
+    if (shown.empty() && searching) d.text(L"No function or program has those words.", Rect{l.list.x + 6, l.list.y + 8, l.list.w - 12, 24}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+    rd_scrollbar(d, l.list, static_cast<float>(shown.size()) * kLeaderRowHeight, std::clamp(m.board_leaders_scroll, 0.0f, l.max_scroll));
 }
 
 void rd_board(RdDraw& d, const Layout& l, const Model& m) {
