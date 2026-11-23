@@ -933,7 +933,7 @@ jarray* jrt_new_array(int32_t esize, int32_t n) {
 	jarray* a = (jarray*)jrt_alloc(&jrt_Array_class);
 	a->length = n;
 	a->esize = esize;
-	a->data = calloc((size_t)(n ? n : 1), (size_t)esize);
+	a->data = gc_alloc((size_t)(n ? n : 1) * (size_t)esize, (size_t)esize < sizeof(void*), 1);   /* (elements smaller than a pointer hold none: the collector need not read them) */
 	return a;
 }
 jarray* jrt_array_of(int32_t esize, int32_t n, const void* items) {
@@ -1405,11 +1405,22 @@ jobject* jrt_TreeMap_new_O(jobject* x) {                     /* the two construc
 static int32_t spread(jobject* k) { if (!k) return 0; int32_t h = jrt_hashCode(k); return h ^ (int32_t)((uint32_t)h >> 16); }
 static int32_t key_cmp(jrt_HashMap* m, jobject* a, jobject* b) { return m->cmp ? jrt_Comparator_compare_OO(m->cmp, a, b) : jrt_natural(a, b); }
 static void mutable_map(const jrt_HashMap* m) { if (m->immutable) jrt_throw_new(&jrt_UnsupportedOperationException_class, 0); }
+/* A TreeMap: its entries in key order, linked for walking and held in `table` for finding by halves. */
+static int32_t tree_at(jrt_HashMap* m, jobject* k) {
+	int32_t low = 0, high = m->count;
+	while (low < high) {
+		const int32_t middle = low + (high - low) / 2;
+		if (key_cmp(m, m->table[middle]->key, k) < 0) low = middle + 1;
+		else high = middle;
+	}
+	return low;
+}
 static jrt_node* map_find(jrt_HashMap* m, jobject* k) {
 	if (m->immutable && !k) jrt_throw_npe();                  /* (Set.of and Map.of do not hold a null, and say so when asked) */
 	if (m->kind == 2) {
 		if (!k && !m->cmp) jrt_throw_npe();
-		for (jrt_node* e = m->head; e; e = e->after) { int32_t c = key_cmp(m, e->key, k); if (c == 0) return e; if (c > 0) break; }
+		const int32_t at = tree_at(m, k);
+		if (at < m->count && key_cmp(m, m->table[at]->key, k) == 0) return m->table[at];
 		return 0;
 	}
 	if (!m->cap) return 0;
@@ -1450,14 +1461,23 @@ static jrt_node* map_insert(jrt_HashMap* m, jobject* k, jobject* v, bool head) {
 	jrt_node* n = (jrt_node*)jrt_alloc(&jrt_node_class);
 	n->key = k;
 	n->value = v;
-	if (m->kind == 2) {                                  /* sorted list */
-		jrt_node** at = &m->head;
-		jrt_node* prev = 0;
-		while (*at && key_cmp(m, (*at)->key, k) < 0) { prev = *at; at = &(*at)->after; }
-		n->after = *at;
+	if (m->kind == 2) {                                  /* in key order */
+		const int32_t at = tree_at(m, k);
+		if (m->count == m->cap) {
+			const int32_t room = m->cap ? m->cap * 2 : 16;
+			jrt_node** more = (jrt_node**)calloc((size_t)room, sizeof(jrt_node*));
+			if (m->count) memcpy(more, m->table, (size_t)m->count * sizeof(jrt_node*));
+			m->table = more;
+			m->cap = room;
+		}
+		jrt_node* next = at < m->count ? m->table[at] : 0;
+		jrt_node* prev = at > 0 ? m->table[at - 1] : 0;
+		memmove(m->table + at + 1, m->table + at, (size_t)(m->count - at) * sizeof(jrt_node*));
+		m->table[at] = n;
+		n->after = next;
 		n->before = prev;
-		if (*at) (*at)->before = n; else m->tail = n;
-		*at = n;
+		if (next) next->before = n; else m->tail = n;
+		if (prev) prev->after = n; else m->head = n;
 		++m->count;
 		return n;
 	}
@@ -1495,6 +1515,10 @@ jobject* jrt_Map_remove_O(jobject* o, jobject* k) {
 		jrt_node** p = &m->table[e->hash & (m->cap - 1)];
 		while (*p != e) p = &(*p)->next;
 		*p = e->next;
+	} else {
+		const int32_t at = tree_at(m, e->key);
+		memmove(m->table + at, m->table + at + 1, (size_t)(m->count - at - 1) * sizeof(jrt_node*));
+		m->table[m->count - 1] = 0;
 	}
 	if (e->before) e->before->after = e->after; else m->head = e->after;
 	if (e->after) e->after->before = e->before; else m->tail = e->before;
@@ -1662,9 +1686,9 @@ bool jrt_Collection_removeAll_O(jobject* c, jobject* other) {
 	return true;
 }
 jobject* jrt_TreeSet_first_(jobject* s) {
-	jobject* it = jrt_Collection_iterator_(s);
-	if (!jrt_Iterator_hasNext_(it)) jrt_throw_new(&jrt_NoSuchElementException_class, NULL);
-	return jrt_Iterator_next_(it);
+	const jrt_MapSet* set = (const jrt_MapSet*)jrt_nn(s);
+	if (!set->m->head) jrt_throw_new(&jrt_NoSuchElementException_class, NULL);
+	return set_item(set, (jobject*)set->m->head);
 }
 int64_t jrt_System_currentTimeMillis_(void) {
 #ifdef _WIN32
@@ -1727,6 +1751,15 @@ jstring* jrt_String_replace_OO(jstring* s, jobject* target, jobject* with) {
 	}
 	jrt_StringBuilder_append_Str(out, jrt_String_substring_I(s, at));
 	return jrt_StringBuilder_toString_(out);
+}
+int32_t jrt_String_indexOf_StrI(jstring* s, jstring* t, int32_t from) {
+	jrt_nn(s);
+	jrt_nn(t);
+	if (from < 0) from = 0;
+	for (int32_t i = from; i + t->len <= s->len; ++i) {
+		if (memcmp(s->s + i, t->s, (size_t)t->len * sizeof(char16_t)) == 0) return i;
+	}
+	return from <= s->len && t->len == 0 ? from : (t->len == 0 ? s->len : -1);
 }
 int32_t jrt_String_lastIndexOf_Str(jstring* s, jstring* t) {
 	jrt_nn(s);

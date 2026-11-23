@@ -526,15 +526,15 @@ static const struct Mix_vt Mix_vt_ = {{jrt_Object_toString, jrt_Object_equals, j
 const jclass Mix_class = {"Mix", &jrt_Object_class, sizeof(Mix), &Mix_vt_, 0, 0, 0};
 
 static const struct Mix_Color_vt Mix_Color_vt_ = {{jrt_Enum_toString, jrt_Object_equals, jrt_Object_hashCode}, (int32_t (*)(jobject*))Mix_Color_weight};
-const jclass Mix_Color_class = {"Mix.Color", &jrt_Enum_class, sizeof(Mix_Color), &Mix_Color_vt_, 0, 0, 0};
+const jclass Mix_Color_class = {"Mix$Color", &jrt_Enum_class, sizeof(Mix_Color), &Mix_Color_vt_, 0, 0, 0};
 
-const jclass Mix_Shape_class = {"Mix.Shape", 0, 0, 0, 0, 0, 1};
+const jclass Mix_Shape_class = {"Mix$Shape", 0, 0, 0, 0, 0, 1};
 
 static const struct Mix_Inner_vt Mix_Inner_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (int32_t (*)(jobject*))Mix_Inner_get};
-const jclass Mix_Inner_class = {"Mix.Inner", &jrt_Object_class, sizeof(Mix_Inner), &Mix_Inner_vt_, 0, 0, 0};
+const jclass Mix_Inner_class = {"Mix$Inner", &jrt_Object_class, sizeof(Mix_Inner), &Mix_Inner_vt_, 0, 0, 0};
 
 static const struct Mix_Box_vt Mix_Box_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (jobject* (*)(jobject*))Mix_Box_get};
-const jclass Mix_Box_class = {"Mix.Box", &jrt_Object_class, sizeof(Mix_Box), &Mix_Box_vt_, 0, 0, 0};
+const jclass Mix_Box_class = {"Mix$Box", &jrt_Object_class, sizeof(Mix_Box), &Mix_Box_vt_, 0, 0, 0};
 
 static const struct Mix_anon1_vt Mix_anon1_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (double (*)(jobject*))Mix_anon1_area};
 static const struct Mix_Shape_vt Mix_anon1_as_Shape = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (double (*)(jobject*))Mix_anon1_area};

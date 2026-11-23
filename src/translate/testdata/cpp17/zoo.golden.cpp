@@ -33,14 +33,14 @@ struct Zoo : virtual Object {
 };
 
 struct Zoo_Animal : virtual Object {
-	const char16_t* jclass_() const override { return u"Zoo.Animal"; }
+	const char16_t* jclass_() const override { return u"Zoo$Animal"; }
 	virtual ref<String> sound() = 0;
 	virtual ref<String> greet();
 	virtual ref<String> name() = 0;
 };
 
 struct Zoo_Base : virtual Object, virtual Zoo_Animal {
-	const char16_t* jclass_() const override { return u"Zoo.Base"; }
+	const char16_t* jclass_() const override { return u"Zoo$Base"; }
 	ref<String> name_{};
 	static inline int32_t made{};
 	void ctor_(ref<String> n);
@@ -50,7 +50,7 @@ struct Zoo_Base : virtual Object, virtual Zoo_Animal {
 };
 
 struct Zoo_Dog : Zoo_Base {
-	const char16_t* jclass_() const override { return u"Zoo.Dog"; }
+	const char16_t* jclass_() const override { return u"Zoo$Dog"; }
 	int32_t barks{};
 	void ctor_(ref<String> n);
 	virtual ref<String> sound();
@@ -60,14 +60,14 @@ struct Zoo_Dog : Zoo_Base {
 };
 
 struct Zoo_Cat : Zoo_Base {
-	const char16_t* jclass_() const override { return u"Zoo.Cat"; }
+	const char16_t* jclass_() const override { return u"Zoo$Cat"; }
 	void ctor_(ref<String> n);
 	virtual ref<String> sound();
 	void finit_();
 };
 
 struct Zoo_Pair : virtual Object {
-	const char16_t* jclass_() const override { return u"Zoo.Pair"; }
+	const char16_t* jclass_() const override { return u"Zoo$Pair"; }
 	ref<String> a_{};
 	int32_t b_{};
 	Zoo_Pair(ref<String> a, int32_t b);
@@ -80,7 +80,7 @@ struct Zoo_Pair : virtual Object {
 };
 
 struct Zoo_Empty : RuntimeException {
-	const char16_t* jclass_() const override { return u"Zoo.Empty"; }
+	const char16_t* jclass_() const override { return u"Zoo$Empty"; }
 	void ctor_(ref<String> m);
 	void finit_();
 };

@@ -2289,6 +2289,9 @@ Ex Writer::dispatch(Node* e) {
         return {c + " ? " + a + " : " + b, kCond};
     }
     if (const auto* x = ir::get<ir::Cast>(e)) {
+        if (java_) {
+            if (auto held = lib().name_text(*this, e)) return {*held, kPrimary};   // ((Integer)o, which may be null, read as a number)
+        }
         const std::string tn = ctype(e->type);
         std::string v = wrap(x->x, kUnary);
         if (v.starts_with("-") || v.starts_with("+")) v = "(" + v + ")";

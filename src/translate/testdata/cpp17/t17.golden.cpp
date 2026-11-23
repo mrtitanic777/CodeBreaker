@@ -40,7 +40,7 @@ struct Modern : virtual Object {
 };
 
 struct Modern_Point : virtual Object {
-	const char16_t* jclass_() const override { return u"Modern.Point"; }
+	const char16_t* jclass_() const override { return u"Modern$Point"; }
 	int32_t x_{};
 	int32_t y_{};
 	Modern_Point(int32_t x, int32_t y);
@@ -54,11 +54,11 @@ struct Modern_Point : virtual Object {
 };
 
 struct Modern_Shape : virtual Object {
-	const char16_t* jclass_() const override { return u"Modern.Shape"; }
+	const char16_t* jclass_() const override { return u"Modern$Shape"; }
 };
 
 struct Modern_Sq : virtual Object, virtual Modern_Shape {
-	const char16_t* jclass_() const override { return u"Modern.Sq"; }
+	const char16_t* jclass_() const override { return u"Modern$Sq"; }
 	int32_t side_{};
 	Modern_Sq(int32_t side);
 	virtual int32_t side();
@@ -69,7 +69,7 @@ struct Modern_Sq : virtual Object, virtual Modern_Shape {
 };
 
 struct Modern_Circ : virtual Object, virtual Modern_Shape {
-	const char16_t* jclass_() const override { return u"Modern.Circ"; }
+	const char16_t* jclass_() const override { return u"Modern$Circ"; }
 	int32_t r_{};
 	Modern_Circ(int32_t r);
 	virtual int32_t r();
@@ -80,7 +80,7 @@ struct Modern_Circ : virtual Object, virtual Modern_Shape {
 };
 
 struct Modern_Color : Enum {
-	const char16_t* jclass_() const override { return u"Modern.Color"; }
+	const char16_t* jclass_() const override { return u"Modern$Color"; }
 	static inline ref<Modern_Color> RED;
 	static inline ref<Modern_Color> GREEN;
 	static inline ref<Modern_Color> BLUE;

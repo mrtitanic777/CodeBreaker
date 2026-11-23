@@ -754,9 +754,15 @@ Strs Program::reference_fields(ClassInfo* c) {
     return out;
 }
 
+// The name Java gives the class at run time: a member class is Outer$Inner.
+static std::string binary_name(const ClassInfo* c) {
+    if (!c->outer || c->local || c->anon || c->qname.rfind(c->outer->qname + ".", 0) != 0) return py::strip_chars(c->qname, "<>");
+    return binary_name(c->outer) + "$" + c->qname.substr(c->outer->qname.size() + 1);
+}
+
 Strs Program::struct_(ClassInfo* c) {
     Strs L{"struct " + c->cname + " : " + join(bases(c), ", ") + " {"};
-    L.push_back("\tconst char16_t* jclass_() const override { return " + u16(py::strip_chars(c->qname, "<>")) + "; }");
+    L.push_back("\tconst char16_t* jclass_() const override { return " + u16(binary_name(c)) + "; }");
     if (c->needs_outer) L.push_back("\t" + ct(mk_type("class", c->outer->qname)) + " outer_;");
     for (auto& cap : c->captures) L.push_back("\t" + ct(cap.second) + " cap_" + ident(cap.first) + "{};");
     if (collected && c->kind != "interface") {

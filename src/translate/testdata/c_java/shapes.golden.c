@@ -600,25 +600,25 @@ static jarray* Shapes_Size_values(void) {
 static const struct Shapes_vt Shapes_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}};
 const jclass Shapes_class = {"Shapes", &jrt_Object_class, sizeof(Shapes), &Shapes_vt_, 0, 0, 0};
 
-const jclass Shapes_Shape_class = {"Shapes.Shape", 0, 0, 0, 0, 0, 1};
+const jclass Shapes_Shape_class = {"Shapes$Shape", 0, 0, 0, 0, 0, 1};
 
 static const struct Shapes_Circle_vt Shapes_Circle_vt_ = {{Shapes_Circle_toString, Shapes_Circle_equals, Shapes_Circle_hashCode}, (double (*)(jobject*))Shapes_Circle_area, (jstring* (*)(jobject*))Shapes_Circle_name, (double (*)(jobject*))Shapes_Circle_r};
 static const struct Shapes_Shape_vt Shapes_Circle_as_Shape = {{Shapes_Circle_toString, Shapes_Circle_equals, Shapes_Circle_hashCode}, (double (*)(jobject*))Shapes_Circle_area, (jstring* (*)(jobject*))Shapes_Shape_describe, (jstring* (*)(jobject*))Shapes_Circle_name};
 static const jitab Shapes_Circle_itabs[] = {{&Shapes_Shape_class, &Shapes_Circle_as_Shape}};
-const jclass Shapes_Circle_class = {"Shapes.Circle", &jrt_Object_class, sizeof(Shapes_Circle), &Shapes_Circle_vt_, JRT_ITABS(Shapes_Circle_itabs), 0};
+const jclass Shapes_Circle_class = {"Shapes$Circle", &jrt_Object_class, sizeof(Shapes_Circle), &Shapes_Circle_vt_, JRT_ITABS(Shapes_Circle_itabs), 0};
 
 static const struct Shapes_Rect_vt Shapes_Rect_vt_ = {{Shapes_Rect_toString, Shapes_Rect_equals, Shapes_Rect_hashCode}, (double (*)(jobject*))Shapes_Rect_area, (jstring* (*)(jobject*))Shapes_Rect_name, (int32_t (*)(jobject*))Shapes_Rect_w, (int32_t (*)(jobject*))Shapes_Rect_h};
 static const struct Shapes_Shape_vt Shapes_Rect_as_Shape = {{Shapes_Rect_toString, Shapes_Rect_equals, Shapes_Rect_hashCode}, (double (*)(jobject*))Shapes_Rect_area, (jstring* (*)(jobject*))Shapes_Shape_describe, (jstring* (*)(jobject*))Shapes_Rect_name};
 static const jitab Shapes_Rect_itabs[] = {{&Shapes_Shape_class, &Shapes_Rect_as_Shape}};
-const jclass Shapes_Rect_class = {"Shapes.Rect", &jrt_Object_class, sizeof(Shapes_Rect), &Shapes_Rect_vt_, JRT_ITABS(Shapes_Rect_itabs), 0};
+const jclass Shapes_Rect_class = {"Shapes$Rect", &jrt_Object_class, sizeof(Shapes_Rect), &Shapes_Rect_vt_, JRT_ITABS(Shapes_Rect_itabs), 0};
 
 static const struct Shapes_Square_vt Shapes_Square_vt_ = {{Shapes_Square_toString, Shapes_Square_equals, Shapes_Square_hashCode}, (double (*)(jobject*))Shapes_Square_area, (jstring* (*)(jobject*))Shapes_Square_name, (int32_t (*)(jobject*))Shapes_Square_side};
 static const struct Shapes_Shape_vt Shapes_Square_as_Shape = {{Shapes_Square_toString, Shapes_Square_equals, Shapes_Square_hashCode}, (double (*)(jobject*))Shapes_Square_area, (jstring* (*)(jobject*))Shapes_Shape_describe, (jstring* (*)(jobject*))Shapes_Square_name};
 static const jitab Shapes_Square_itabs[] = {{&Shapes_Shape_class, &Shapes_Square_as_Shape}};
-const jclass Shapes_Square_class = {"Shapes.Square", &jrt_Object_class, sizeof(Shapes_Square), &Shapes_Square_vt_, JRT_ITABS(Shapes_Square_itabs), 0};
+const jclass Shapes_Square_class = {"Shapes$Square", &jrt_Object_class, sizeof(Shapes_Square), &Shapes_Square_vt_, JRT_ITABS(Shapes_Square_itabs), 0};
 
 static const struct Shapes_Size_vt Shapes_Size_vt_ = {{jrt_Enum_toString, jrt_Object_equals, jrt_Object_hashCode}};
-const jclass Shapes_Size_class = {"Shapes.Size", &jrt_Enum_class, sizeof(Shapes_Size), &Shapes_Size_vt_, 0, 0, 0};
+const jclass Shapes_Size_class = {"Shapes$Size", &jrt_Enum_class, sizeof(Shapes_Size), &Shapes_Size_vt_, 0, 0, 0};
 
 
 int main(int argc, char** argv) {

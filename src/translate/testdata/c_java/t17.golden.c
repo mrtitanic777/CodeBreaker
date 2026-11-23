@@ -523,22 +523,22 @@ static const struct Modern_vt Modern_vt_ = {{jrt_Object_toString, jrt_Object_equ
 const jclass Modern_class = {"Modern", &jrt_Object_class, sizeof(Modern), &Modern_vt_, 0, 0, 0};
 
 static const struct Modern_Point_vt Modern_Point_vt_ = {{Modern_Point_toString, Modern_Point_equals, Modern_Point_hashCode}, (int32_t (*)(jobject*))Modern_Point_dist2, (int32_t (*)(jobject*))Modern_Point_x, (int32_t (*)(jobject*))Modern_Point_y};
-const jclass Modern_Point_class = {"Modern.Point", &jrt_Object_class, sizeof(Modern_Point), &Modern_Point_vt_, 0, 0, 0};
+const jclass Modern_Point_class = {"Modern$Point", &jrt_Object_class, sizeof(Modern_Point), &Modern_Point_vt_, 0, 0, 0};
 
-const jclass Modern_Shape_class = {"Modern.Shape", 0, 0, 0, 0, 0, 1};
+const jclass Modern_Shape_class = {"Modern$Shape", 0, 0, 0, 0, 0, 1};
 
 static const struct Modern_Sq_vt Modern_Sq_vt_ = {{Modern_Sq_toString, Modern_Sq_equals, Modern_Sq_hashCode}, (int32_t (*)(jobject*))Modern_Sq_side};
 static const struct Modern_Shape_vt Modern_Sq_as_Shape = {{Modern_Sq_toString, Modern_Sq_equals, Modern_Sq_hashCode}};
 static const jitab Modern_Sq_itabs[] = {{&Modern_Shape_class, &Modern_Sq_as_Shape}};
-const jclass Modern_Sq_class = {"Modern.Sq", &jrt_Object_class, sizeof(Modern_Sq), &Modern_Sq_vt_, JRT_ITABS(Modern_Sq_itabs), 0};
+const jclass Modern_Sq_class = {"Modern$Sq", &jrt_Object_class, sizeof(Modern_Sq), &Modern_Sq_vt_, JRT_ITABS(Modern_Sq_itabs), 0};
 
 static const struct Modern_Circ_vt Modern_Circ_vt_ = {{Modern_Circ_toString, Modern_Circ_equals, Modern_Circ_hashCode}, (int32_t (*)(jobject*))Modern_Circ_r};
 static const struct Modern_Shape_vt Modern_Circ_as_Shape = {{Modern_Circ_toString, Modern_Circ_equals, Modern_Circ_hashCode}};
 static const jitab Modern_Circ_itabs[] = {{&Modern_Shape_class, &Modern_Circ_as_Shape}};
-const jclass Modern_Circ_class = {"Modern.Circ", &jrt_Object_class, sizeof(Modern_Circ), &Modern_Circ_vt_, JRT_ITABS(Modern_Circ_itabs), 0};
+const jclass Modern_Circ_class = {"Modern$Circ", &jrt_Object_class, sizeof(Modern_Circ), &Modern_Circ_vt_, JRT_ITABS(Modern_Circ_itabs), 0};
 
 static const struct Modern_Color_vt Modern_Color_vt_ = {{jrt_Enum_toString, jrt_Object_equals, jrt_Object_hashCode}};
-const jclass Modern_Color_class = {"Modern.Color", &jrt_Enum_class, sizeof(Modern_Color), &Modern_Color_vt_, 0, 0, 0};
+const jclass Modern_Color_class = {"Modern$Color", &jrt_Enum_class, sizeof(Modern_Color), &Modern_Color_vt_, 0, 0, 0};
 
 
 int main(int argc, char** argv) {

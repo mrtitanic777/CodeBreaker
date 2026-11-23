@@ -208,6 +208,7 @@ _Noreturn void jrt_System_exit_I(int32_t status);
 jobject* jrt_Object_new_(void);
 jstring* jrt_String_replace_OO(jstring* s, jobject* target, jobject* with);
 int32_t jrt_String_lastIndexOf_Str(jstring* s, jstring* t);
+int32_t jrt_String_indexOf_StrI(jstring* s, jstring* t, int32_t from);
 int64_t jrt_Double_doubleToLongBits_D(double v);
 double jrt_Double_longBitsToDouble_J(int64_t bits);
 int32_t jrt_Float_floatToIntBits_F(float v);

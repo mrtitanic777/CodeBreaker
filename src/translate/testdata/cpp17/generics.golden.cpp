@@ -48,7 +48,7 @@ struct Generics : virtual Object {
 };
 
 struct Generics_Box : virtual Object {
-	const char16_t* jclass_() const override { return u"Generics.Box"; }
+	const char16_t* jclass_() const override { return u"Generics$Box"; }
 	jrt::gc::Tracked gc_tracked_{this};
 	void trace_(jrt::gc::Tracer& t) override;
 	void clear_() override;
@@ -61,7 +61,7 @@ struct Generics_Box : virtual Object {
 };
 
 struct Generics_Pair : virtual Object {
-	const char16_t* jclass_() const override { return u"Generics.Pair"; }
+	const char16_t* jclass_() const override { return u"Generics$Pair"; }
 	jrt::gc::Tracked gc_tracked_{this};
 	void trace_(jrt::gc::Tracer& t) override;
 	void clear_() override;
@@ -78,13 +78,13 @@ struct Generics_Pair : virtual Object {
 };
 
 struct Generics_Visitor : virtual Object {
-	const char16_t* jclass_() const override { return u"Generics.Visitor"; }
+	const char16_t* jclass_() const override { return u"Generics$Visitor"; }
 	virtual ref<Object> visitNumber(int32_t n) = 0;
 	virtual ref<Object> visitText(ref<String> s) = 0;
 };
 
 struct Generics_Stack : virtual Object, virtual Iterable {
-	const char16_t* jclass_() const override { return u"Generics.Stack"; }
+	const char16_t* jclass_() const override { return u"Generics$Stack"; }
 	jrt::gc::Tracked gc_tracked_{this};
 	void trace_(jrt::gc::Tracer& t) override;
 	void clear_() override;
@@ -111,7 +111,7 @@ struct Generics_Stack_anon1 : virtual Object, virtual Iterator {
 };
 
 struct Generics_Counter : virtual Object {
-	const char16_t* jclass_() const override { return u"Generics.Counter"; }
+	const char16_t* jclass_() const override { return u"Generics$Counter"; }
 	ref<Generics> outer_;
 	jrt::gc::Tracked gc_tracked_{this};
 	void trace_(jrt::gc::Tracer& t) override;

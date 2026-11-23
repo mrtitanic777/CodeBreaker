@@ -594,17 +594,17 @@ static const struct Generics_vt Generics_vt_ = {{jrt_Object_toString, jrt_Object
 const jclass Generics_class = {"Generics", &jrt_Object_class, sizeof(Generics), &Generics_vt_, 0, 0, 0};
 
 static const struct Generics_Box_vt Generics_Box_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (jobject* (*)(jobject*))Generics_Box_get, (void (*)(jobject*, jobject*))Generics_Box_set, (Generics_Box* (*)(jobject*, jobject*))Generics_Box_map};
-const jclass Generics_Box_class = {"Generics.Box", &jrt_Object_class, sizeof(Generics_Box), &Generics_Box_vt_, 0, 0, 0};
+const jclass Generics_Box_class = {"Generics$Box", &jrt_Object_class, sizeof(Generics_Box), &Generics_Box_vt_, 0, 0, 0};
 
 static const struct Generics_Pair_vt Generics_Pair_vt_ = {{Generics_Pair_toString, Generics_Pair_equals, Generics_Pair_hashCode}, (Generics_Pair* (*)(jobject*))Generics_Pair_swap, (jobject* (*)(jobject*))Generics_Pair_first, (jobject* (*)(jobject*))Generics_Pair_second};
-const jclass Generics_Pair_class = {"Generics.Pair", &jrt_Object_class, sizeof(Generics_Pair), &Generics_Pair_vt_, 0, 0, 0};
+const jclass Generics_Pair_class = {"Generics$Pair", &jrt_Object_class, sizeof(Generics_Pair), &Generics_Pair_vt_, 0, 0, 0};
 
-const jclass Generics_Visitor_class = {"Generics.Visitor", 0, 0, 0, 0, 0, 1};
+const jclass Generics_Visitor_class = {"Generics$Visitor", 0, 0, 0, 0, 0, 1};
 
 static const struct Generics_Stack_vt Generics_Stack_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (void (*)(jobject*, jobject*))Generics_Stack_push, (jobject* (*)(jobject*))Generics_Stack_pop, (bool (*)(jobject*))Generics_Stack_isEmpty, (jobject* (*)(jobject*))Generics_Stack_iterator};
 static const jrt_Iterable_vt Generics_Stack_as_Iterable = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (jobject* (*)(jobject*))Generics_Stack_iterator};
 static const jitab Generics_Stack_itabs[] = {{&jrt_Iterable_class, &Generics_Stack_as_Iterable}};
-const jclass Generics_Stack_class = {"Generics.Stack", &jrt_Object_class, sizeof(Generics_Stack), &Generics_Stack_vt_, JRT_ITABS(Generics_Stack_itabs), 0};
+const jclass Generics_Stack_class = {"Generics$Stack", &jrt_Object_class, sizeof(Generics_Stack), &Generics_Stack_vt_, JRT_ITABS(Generics_Stack_itabs), 0};
 
 static const struct Generics_Stack_anon1_vt Generics_Stack_anon1_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (bool (*)(jobject*))Generics_Stack_anon1_hasNext, (jobject* (*)(jobject*))Generics_Stack_anon1_next};
 static const jrt_Iterator_vt Generics_Stack_anon1_as_Iterator = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (bool (*)(jobject*))Generics_Stack_anon1_hasNext, (jobject* (*)(jobject*))Generics_Stack_anon1_next};
@@ -612,7 +612,7 @@ static const jitab Generics_Stack_anon1_itabs[] = {{&jrt_Iterator_class, &Generi
 const jclass Generics_Stack_anon1_class = {"Generics_Stack_anon1", &jrt_Object_class, sizeof(Generics_Stack_anon1), &Generics_Stack_anon1_vt_, JRT_ITABS(Generics_Stack_anon1_itabs), 0};
 
 static const struct Generics_Counter_vt Generics_Counter_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (void (*)(jobject*))Generics_Counter_hit};
-const jclass Generics_Counter_class = {"Generics.Counter", &jrt_Object_class, sizeof(Generics_Counter), &Generics_Counter_vt_, 0, 0, 0};
+const jclass Generics_Counter_class = {"Generics$Counter", &jrt_Object_class, sizeof(Generics_Counter), &Generics_Counter_vt_, 0, 0, 0};
 
 static const struct Generics_anon2_vt Generics_anon2_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (jobject* (*)(jobject*, int32_t))Generics_anon2_visitNumber, (jobject* (*)(jobject*, jstring*))Generics_anon2_visitText};
 static const struct Generics_Visitor_vt Generics_anon2_as_Visitor = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (jobject* (*)(jobject*, int32_t))Generics_anon2_visitNumber, (jobject* (*)(jobject*, jstring*))Generics_anon2_visitText};

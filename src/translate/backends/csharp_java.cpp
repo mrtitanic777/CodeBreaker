@@ -467,6 +467,10 @@ void JavaLibrary::prepare_boxed_nulls(cs::Program& program, const std::vector<No
         Node* x = cs::strip(e);
         if (cj_null_literal(x) || cj_map_get(x)) return true;
         if (const auto* i = ir::get<ir::Index>(x)) return cj_is_box(x->type) && holds(i->arr->type);
+        if (const auto* cast = ir::get<ir::Cast>(x); cast != nullptr && cj_is_box(x->type)) {   // (Integer)o: a null stays a null
+            Node* inner = cs::strip(cast->x);
+            return cj_is_box(inner->type) ? nullish(inner, scope) : inner->type && !inner->type->is_prim();
+        }
         if (const auto* c = ir::get<ir::Call>(x); c != nullptr && c->target != nullptr && cj_is_box(x->type) && holds(c->target->type)) return true;
         if (const auto* n = ir::get<ir::Name>(x)) return cj_is_box(x->type) && may.contains(of_sym(n->sym, scope));
         if (const auto* s = ir::get<ir::Select>(x)) return cj_is_box(x->type) && may.contains(of_sym(s->sym, scope));
@@ -586,7 +590,9 @@ void JavaLibrary::prepare_boxed_nulls(cs::Program& program, const std::vector<No
         if (cj_is_box(n->type) && !cj_is_null_box(n->type)) {   // a read out of what holds nulls
             const auto* index = ir::get<ir::Index>(n);
             const auto* from = ir::get<ir::Call>(n);
-            if ((index != nullptr && holds(index->arr->type)) || (from != nullptr && from->target != nullptr && holds(from->target->type))) {
+            const auto* cast = ir::get<ir::Cast>(n);
+            const bool cast_may = cast != nullptr && nullish(n, scope);
+            if (cast_may || (index != nullptr && holds(index->arr->type)) || (from != nullptr && from->target != nullptr && holds(from->target->type))) {
                 n->type = cj_null_box(n->type);
                 null_reads_.insert(n);
             }

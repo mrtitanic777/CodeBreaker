@@ -91,6 +91,10 @@ struct Object : std::enable_shared_from_this<Object> {
 #endif
 	void ctor_() {}
 	virtual const char16_t* jclass_() const { return u"java.lang.Object"; }
+	// an array of references, whatever their class: what System.arraycopy needs to copy between them
+	virtual bool holds_refs_() const { return false; }
+	virtual ref<Object> ref_at_(int32_t) { return nullptr; }
+	virtual void ref_put_(int32_t, const ref<Object>&) {}
 	virtual ref<String> toString();
 	virtual bool equals(ref<Object> o) { return o.get() == this; }
 	virtual int32_t hashCode() { return (int32_t)(((uintptr_t)this) >> 4); }
@@ -422,6 +426,7 @@ JRT_THROWABLE(IndexOutOfBoundsException, RuntimeException, u"java.lang.IndexOutO
 JRT_THROWABLE(ArrayIndexOutOfBoundsException, IndexOutOfBoundsException, u"java.lang.ArrayIndexOutOfBoundsException")
 JRT_THROWABLE(StringIndexOutOfBoundsException, IndexOutOfBoundsException, u"java.lang.StringIndexOutOfBoundsException")
 JRT_THROWABLE(NegativeArraySizeException, RuntimeException, u"java.lang.NegativeArraySizeException")
+JRT_THROWABLE(ArrayStoreException, RuntimeException, u"java.lang.ArrayStoreException")
 JRT_THROWABLE(NumberFormatException, IllegalArgumentException, u"java.lang.NumberFormatException")
 JRT_THROWABLE(NoSuchElementException, RuntimeException, u"java.util.NoSuchElementException")
 JRT_THROWABLE(ConcurrentModificationException, RuntimeException, u"java.util.ConcurrentModificationException")
@@ -802,6 +807,8 @@ struct Math {
 };
 
 // ------------------------------------------------------------------------------------------- arrays
+template <class T> struct is_ref_element : std::false_type {};
+template <class U> struct is_ref_element<ref<U>> : std::true_type {};
 template <class T> struct Array : Object {
 	// (std::vector<bool> has no real elements to hand out a reference to, and Java's a[i] is a place)
 	using Store = std::conditional_t<std::is_same_v<T, bool>, std::deque<bool>, std::vector<T>>;
@@ -818,6 +825,18 @@ template <class T> struct Array : Object {
 		if ((uint32_t)i >= (uint32_t)length)
 			raise_msg(std::make_shared<ArrayIndexOutOfBoundsException>(), u"Index " + sv(i) + u" out of bounds for length " + sv(length));
 		return a[i];
+	}
+	bool holds_refs_() const override { return is_ref_element<T>::value; }
+	ref<Object> ref_at_(int32_t i) override {
+		if constexpr (is_ref_element<T>::value) return a[(size_t)i];
+		else return nullptr;
+	}
+	void ref_put_(int32_t i, const ref<Object>& v) override {
+		if constexpr (is_ref_element<T>::value) {
+			auto held = std::dynamic_pointer_cast<typename T::element_type>(v);
+			if (v && !held) raise_new<ArrayStoreException>(v->jclass_());
+			a[(size_t)i] = held;
+		}
 	}
 	typename Store::iterator begin() { return a.begin(); }
 	typename Store::iterator end() { return a.end(); }
@@ -964,6 +983,17 @@ inline void System::arraycopy(const ref<Object>& src, int32_t sp, const ref<Obje
 		|| copy_typed<float>(src, sp, dst, dp, n) || copy_typed<int16_t>(src, sp, dst, dp, n) || copy_typed<ref<Object>>(src, sp, dst, dp, n)
 		|| copy_typed<ref<String>>(src, sp, dst, dp, n))
 		return;
+	if (src->holds_refs_() && dst->holds_refs_()) {   // arrays of the program's classes
+		if (n < 0 || sp < 0 || dp < 0) raise_new<ArrayIndexOutOfBoundsException>(u"arraycopy: negative index");
+		std::vector<ref<Object>> held;
+		held.reserve((size_t)n);
+		auto& from = *std::static_pointer_cast<Array<ref<Object>>>(src);   // (only its length, which every Array keeps in one place)
+		auto& to = *std::static_pointer_cast<Array<ref<Object>>>(dst);
+		if (sp + n > from.length || dp + n > to.length) raise_new<ArrayIndexOutOfBoundsException>(u"arraycopy: last source index out of bounds");
+		for (int32_t i = 0; i < n; ++i) held.push_back(src->ref_at_(sp + i));
+		for (int32_t i = 0; i < n; ++i) dst->ref_put_(dp + i, held[(size_t)i]);
+		return;
+	}
 	raise_new<UnsupportedOperationException>(u"arraycopy of this element type");
 }
 
@@ -1518,7 +1548,7 @@ struct HashSet : MapSet {
 	void ctor_(int32_t n, float f) { auto h = std::make_shared<HashMap>(); h->ctor_(n, f); m = h; }
 	void ctor_(ref<Collection> c) { ctor_(std::max((int32_t)(nn(c)->size() / .75f) + 1, 16)); for (O x : *c) add(x); }
 };
-struct LinkedHashSet : MapSet {
+struct LinkedHashSet : HashSet {   // (as in Java: a program may hold one in a HashSet)
 	const char16_t* jclass_() const override { return u"java.util.LinkedHashSet"; }
 	void ctor_() { m = std::make_shared<LinkedHashMap>(); }
 	void ctor_(int32_t) { ctor_(); }

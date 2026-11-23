@@ -32,7 +32,11 @@ void helper_params(const std::vector<std::string>& ps, std::string& params, std:
     args = join_commas(a);
 }
 
-std::string class_text_name(const ClassInfo& cls) { return std::string(text::trim(cls.qname, "<>")); }
+// The name Java gives the class at run time: a member class is Outer$Inner.
+std::string class_text_name(const ClassInfo& cls) {
+    if (cls.outer == nullptr || cls.local || cls.anon || !cls.qname.starts_with(cls.outer->qname + ".")) return std::string(text::trim(cls.qname, "<>"));
+    return class_text_name(*cls.outer) + "$" + cls.qname.substr(cls.outer->qname.size() + 1);
+}
 
 bool names_object_method(const std::optional<std::string>& name) {
     return name && (*name == "toString" || *name == "equals" || *name == "hashCode");

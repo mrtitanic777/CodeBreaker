@@ -33,6 +33,7 @@ public static class JavaRt
             case System.Collections.IList l when !(o is Array): return ListStr(l);
             case System.Collections.ICollection c when !(o is Array): return CollectionStr(c);     // (a TreeSet)
         }
+        if (HasNoText(o)) return ObjectText(o);
         Type type = o.GetType();
         if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))      // a Map.Entry
             return Str(type.GetProperty("Key")!.GetValue(o)) + "=" + Str(type.GetProperty("Value")!.GetValue(o));
@@ -238,6 +239,23 @@ public static class JavaRt
     public static T RemoveAt<T>(IList<T> l, int i) { T old = l[i]; l.RemoveAt(i); return old; }
 
     // map.get: a key it does not hold is Java's null, and a number read from that null throws.
+    // A class with no toString of its own prints as Java's Object.toString does.
+    static readonly Dictionary<Type, bool> PlainText = new Dictionary<Type, bool>();
+
+    public static bool HasNoText(object o)
+    {
+        Type t = o.GetType();
+        if (t.IsPrimitive || t.IsEnum || t.Assembly == typeof(object).Assembly) return false;
+        if (!PlainText.TryGetValue(t, out bool plain))
+        {
+            plain = t.GetMethod("ToString", Type.EmptyTypes)?.DeclaringType == typeof(object);
+            PlainText[t] = plain;
+        }
+        return plain;
+    }
+
+    public static string ObjectText(object o) => o.GetType().FullName.Replace('+', '$') + "@" + ((uint)o.GetHashCode()).ToString("x");
+
     public static V Get<K, V>(IDictionary<K, V> m, K k)
     {
         if (m.TryGetValue(k, out V v)) return v;

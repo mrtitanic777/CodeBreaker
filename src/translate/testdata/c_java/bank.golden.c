@@ -449,16 +449,16 @@ static const struct Bank_vt Bank_vt_ = {{jrt_Object_toString, jrt_Object_equals,
 const jclass Bank_class = {"Bank", &jrt_Object_class, sizeof(Bank), &Bank_vt_, 0, 0, 0};
 
 static const struct Bank_InsufficientFunds_vt Bank_InsufficientFunds_vt_ = {{jrt_Throwable_toString, jrt_Object_equals, jrt_Object_hashCode}, (jstring* (*)(jobject*))jrt_Throwable_getMessage};
-const jclass Bank_InsufficientFunds_class = {"Bank.InsufficientFunds", &jrt_Exception_class, sizeof(Bank_InsufficientFunds), &Bank_InsufficientFunds_vt_, 0, 0, 0};
+const jclass Bank_InsufficientFunds_class = {"Bank$InsufficientFunds", &jrt_Exception_class, sizeof(Bank_InsufficientFunds), &Bank_InsufficientFunds_vt_, 0, 0, 0};
 
 static const struct Bank_Account_vt Bank_Account_vt_ = {{Bank_Account_toString, jrt_Object_equals, jrt_Object_hashCode}, (jstring* (*)(jobject*))0, (int64_t (*)(jobject*, int64_t))0, (void (*)(jobject*, int64_t))Bank_Account_withdraw, (void (*)(jobject*, int64_t))Bank_Account_deposit};
-const jclass Bank_Account_class = {"Bank.Account", &jrt_Object_class, sizeof(Bank_Account), &Bank_Account_vt_, 0, 0, 0};
+const jclass Bank_Account_class = {"Bank$Account", &jrt_Object_class, sizeof(Bank_Account), &Bank_Account_vt_, 0, 0, 0};
 
 static const struct Bank_Checking_vt Bank_Checking_vt_ = {{Bank_Account_toString, jrt_Object_equals, jrt_Object_hashCode}, (jstring* (*)(jobject*))Bank_Checking_kind, (int64_t (*)(jobject*, int64_t))Bank_Checking_fee, (void (*)(jobject*, int64_t))Bank_Account_withdraw, (void (*)(jobject*, int64_t))Bank_Account_deposit};
-const jclass Bank_Checking_class = {"Bank.Checking", &Bank_Account_class, sizeof(Bank_Checking), &Bank_Checking_vt_, 0, 0, 0};
+const jclass Bank_Checking_class = {"Bank$Checking", &Bank_Account_class, sizeof(Bank_Checking), &Bank_Checking_vt_, 0, 0, 0};
 
 static const struct Bank_Savings_vt Bank_Savings_vt_ = {{Bank_Account_toString, jrt_Object_equals, jrt_Object_hashCode}, (jstring* (*)(jobject*))Bank_Savings_kind, (int64_t (*)(jobject*, int64_t))Bank_Savings_fee, (void (*)(jobject*, int64_t))Bank_Account_withdraw, (void (*)(jobject*, int64_t))Bank_Account_deposit, (void (*)(jobject*))Bank_Savings_accrue};
-const jclass Bank_Savings_class = {"Bank.Savings", &Bank_Account_class, sizeof(Bank_Savings), &Bank_Savings_vt_, 0, 0, 0};
+const jclass Bank_Savings_class = {"Bank$Savings", &Bank_Account_class, sizeof(Bank_Savings), &Bank_Savings_vt_, 0, 0, 0};
 
 
 int main(int argc, char** argv) {
