@@ -105,6 +105,7 @@ public static partial class JLib
 
     // map.get of boxed values: a key the map does not hold is a null.
     public static V? GetBox<K, V>(IDictionary<K, V> m, K key) where V : struct => m.TryGetValue(key, out V v) ? v : (V?)null;
+    public static V? GetBox<K, V>(IDictionary<K, V?> m, K key) where V : struct => m.TryGetValue(key, out V? v) ? v : null;
 
     // `x++` of a box: the value it had, after the update.
     public static T Before<T, U>(T before, U after) => before;

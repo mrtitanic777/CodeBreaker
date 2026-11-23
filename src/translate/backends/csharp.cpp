@@ -2205,6 +2205,9 @@ Ex Writer::dispatch(Node* e) {
     if (const auto* x = ir::get<ir::Length>(e)) return {wrap(x->arr, kPrimary) + ".Length", kPrimary};
     if (const auto* x = ir::get<ir::Index>(e)) {
         if (x->sym && java_) throw Decline("indexer", "an indexer from Java");
+        if (java_) {
+            if (auto held = lib().name_text(*this, e)) return {*held, kPrimary};   // (an element that may be null, read as a number)
+        }
         Lines is;
         for (Node* i : ir::statements(x->index)) is.push_back(expr(i).text);
         return {wrap(x->arr, kPrimary) + "[" + text::join(is, ", ") + "]", kPrimary};

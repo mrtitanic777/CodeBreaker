@@ -343,7 +343,16 @@ void JavaLibrary::prepare(cs::Program& program) {
                 rich = true;
             }
         }
-        if (rich && !bodies) object_enums_[*c.qname] = std::move(names);
+        if (rich || bodies) object_enums_[*c.qname] = std::move(names);
+        if (bodies) {   // what a constant's body must give makes the enum's class abstract
+            ir::ClassDecl& held = *ir::get<ir::ClassDecl>(cn);
+            const bool open = std::any_of(held.members.begin(), held.members.end(), [](Node* m) {
+                const ir::MethodDecl* md = ir::get<ir::MethodDecl>(m);
+                return md != nullptr && cj_has(md->mods, "abstract");
+            });
+            if (open && !cj_has(held.mods, "abstract")) held.mods.push_back("abstract");
+            std::erase(held.mods, "final");
+        }
     }
     for (Node* cn : classes) {
         ir::ClassDecl& c = *ir::get<ir::ClassDecl>(cn);
@@ -415,6 +424,15 @@ void JavaLibrary::prepare_boxed_nulls(cs::Program& program, const std::vector<No
         }
     }
     std::unordered_set<std::string> may;                     // what may hold a null: L:method:name, F:class.field, R:name/n, P:name/n:i
+    std::unordered_set<std::string> held;                    // the kinds of box some collection or array holds a null of: all of that kind are written `T?`
+    std::function<bool(const ir::TypeP&)> holds = [&](const ir::TypeP& t) -> bool {
+        if (!t) return false;
+        if (const auto* a = std::get_if<ir::ArrayType>(&t->body)) return (cj_is_box(a->elem) && held.contains(*cj_qual(a->elem))) || holds(a->elem);
+        if (const auto* c = std::get_if<ir::ClassType>(&t->body)) {
+            return std::any_of(c->args.begin(), c->args.end(), [&](const ir::TypeP& x) { return (cj_is_box(x) && held.contains(*cj_qual(x))) || holds(x); });
+        }
+        return false;
+    };
     const auto of_sym = [](const ir::SymP& s, const std::string& scope) -> std::string {
         if (s == nullptr) return {};
         if (s->kind == ir::SymKind::Field) return "F:" + s->owner.value_or("") + "." + s->name;
@@ -430,6 +448,8 @@ void JavaLibrary::prepare_boxed_nulls(cs::Program& program, const std::vector<No
         if (e == nullptr) return false;
         Node* x = cs::strip(e);
         if (cj_null_literal(x) || cj_map_get(x)) return true;
+        if (const auto* i = ir::get<ir::Index>(x)) return cj_is_box(x->type) && holds(i->arr->type);
+        if (const auto* c = ir::get<ir::Call>(x); c != nullptr && c->target != nullptr && cj_is_box(x->type) && holds(c->target->type)) return true;
         if (const auto* n = ir::get<ir::Name>(x)) return cj_is_box(x->type) && may.contains(of_sym(n->sym, scope));
         if (const auto* s = ir::get<ir::Select>(x)) return cj_is_box(x->type) && may.contains(of_sym(s->sym, scope));
         if (const auto* c = ir::get<ir::Call>(x)) return c->sym != nullptr && cj_is_box(x->type) && own_method(*c->sym) && may.contains(of_result(*c->sym));
@@ -446,9 +466,33 @@ void JavaLibrary::prepare_boxed_nulls(cs::Program& program, const std::vector<No
             if (cj_is_box(s.params[i]) && nullish(args[i], scope)) mark(of_param(method, s.params.size(), i));
         }
     };
+    const auto hold = [&](const ir::TypeP& box) {
+        if (cj_is_box(box) && held.insert(*cj_qual(box)).second) grew = true;
+    };
     // what one node says: `ret` is the method's result while its own body is walked (a lambda's return is the lambda's)
     std::function<void(Node*, const std::string&, const std::string&)> look = [&](Node* n, const std::string& scope, const std::string& ret) {
         if (n == nullptr) return;
+        if (const auto* c = ir::get<ir::Call>(n); c != nullptr && c->sym != nullptr && c->target != nullptr && c->target->type && !own_method(*c->sym)) {   // a null stored
+            static const std::unordered_set<std::string_view> stores = {"add", "addFirst", "addLast", "offer", "push", "put", "putIfAbsent", "replace", "set"};
+            if (const auto* into = std::get_if<ir::ClassType>(&c->target->type->body); into != nullptr && stores.contains(c->sym->name)) {
+                if (std::any_of(c->args.begin(), c->args.end(), [&](Node* a) { return nullish(a, scope); })) {
+                    for (const ir::TypeP& x : into->args) hold(x);
+                }
+            }
+        }
+        if (const auto* a = ir::get<ir::NewArray>(n)) {   // a Java array of boxes starts full of nulls
+            const auto* made = n->type ? std::get_if<ir::ArrayType>(&n->type->body) : nullptr;
+            if (made != nullptr) {
+                ir::TypeP inner = made->elem;
+                while (inner && std::holds_alternative<ir::ArrayType>(inner->body)) inner = std::get<ir::ArrayType>(inner->body).elem;
+                if (!a->dims.empty()) hold(inner);
+                if (std::any_of(a->init.begin(), a->init.end(), [&](Node* item) { return nullish(item, scope); })) hold(inner);
+            }
+        }
+        if (const auto* a = ir::get<ir::Assign>(n); a != nullptr && !a->op && ir::is<ir::Index>(cs::strip(a->target)) && nullish(a->value, scope)) hold(a->target->type);
+        if (const auto* each = ir::get<ir::ForEach>(n); each != nullptr && holds(each->iterable->type)) {
+            if (const auto* v = ir::get<ir::Local>(each->var); v != nullptr && cj_is_box(v->type)) mark(of_sym(v->sym, scope));
+        }
         if (const auto* l = ir::get<ir::Local>(n); l != nullptr && cj_is_box(l->type) && nullish(l->init, scope)) mark(of_sym(l->sym, scope));
         if (const auto* a = ir::get<ir::Assign>(n); a != nullptr && !a->op && cj_is_box(a->target->type) && nullish(a->value, scope)) {
             Node* t = cs::strip(a->target);
@@ -485,11 +529,50 @@ void JavaLibrary::prepare_boxed_nulls(cs::Program& program, const std::vector<No
             }
         }
     } while (grew);
-    if (may.empty()) return;
+    if (may.empty() && held.empty()) return;
+    // the element types of what holds nulls: List<Integer> is List<int?>, Integer[] is int?[]
+    std::function<ir::TypeP(const ir::TypeP&)> holding = [&](const ir::TypeP& t) -> ir::TypeP {
+        if (!t || held.empty()) return t;
+        if (const auto* a = std::get_if<ir::ArrayType>(&t->body)) {
+            ir::ArrayType next = *a;
+            next.elem = cj_is_box(a->elem) && held.contains(*cj_qual(a->elem)) ? cj_null_box(a->elem) : holding(a->elem);
+            return ir::make_type(std::move(next));
+        }
+        if (const auto* c = std::get_if<ir::ClassType>(&t->body); c != nullptr && !c->args.empty()) {
+            ir::ClassType next = *c;
+            for (ir::TypeP& x : next.args) x = cj_is_box(x) && held.contains(*cj_qual(x)) ? cj_null_box(x) : holding(x);
+            return ir::make_type(std::move(next));
+        }
+        return t;
+    };
+    const auto retyped = [&](Node* n) {
+        ir::visit(*n, [&](auto& k) {
+            using K = std::decay_t<decltype(k)>;
+            if constexpr (std::is_same_v<K, ir::Local> || std::is_same_v<K, ir::Param> || std::is_same_v<K, ir::FieldDecl>) k.type = holding(k.type);
+            if constexpr (std::is_same_v<K, ir::MethodDecl>) k.ret = holding(k.ret);
+            if constexpr (std::is_same_v<K, ir::NewArray>) k.elem = holding(k.elem);
+        });
+        n->type = holding(n->type);
+    };
+    if (!held.empty()) {
+        for (Node* cn : classes) {
+            for (Node* m : program.members(*ir::get<ir::ClassDecl>(cn))) {
+                for (Node* n : cj_own_nodes(m)) retyped(n);
+            }
+        }
+    }
     // the declarations become `T?`, and each read of one is known
     std::function<void(Node*, const std::string&)> rewrite = [&](Node* n, const std::string& scope) {
         if (n == nullptr) return;
         for (Node* child : ir::children(*n)) rewrite(child, scope);
+        if (cj_is_box(n->type) && !cj_is_null_box(n->type)) {   // a read out of what holds nulls
+            const auto* index = ir::get<ir::Index>(n);
+            const auto* from = ir::get<ir::Call>(n);
+            if ((index != nullptr && holds(index->arr->type)) || (from != nullptr && from->target != nullptr && holds(from->target->type))) {
+                n->type = cj_null_box(n->type);
+                null_reads_.insert(n);
+            }
+        }
         if (auto* l = ir::get<ir::Local>(n); l != nullptr && cj_is_box(l->type) && may.contains(of_sym(l->sym, scope))) {
             l->type = cj_null_box(l->type);
         } else if (const auto* name = ir::get<ir::Name>(n); name != nullptr && cj_is_box(n->type) && may.contains(of_sym(name->sym, scope))) {
@@ -847,6 +930,9 @@ std::vector<Node*> JavaLibrary::arrange_members(cs::Context& w, ir::ClassDecl& c
             if (const ir::EnumConst* ec = ir::get<ir::EnumConst>(mn)) {
                 Node* made = ir::make(arena, ir::New{.sym = ec->ctor, .args = ec->args}, self);
                 enum_made_[made] = {ec->sym->name, ordinal++};
+                if (ec->body != nullptr) {
+                    if (const auto own = hoist_of_.find(ec->body); own != hoist_of_.end()) enum_body_[made] = ir::class_type(own->second->qname.value_or(""));
+                }
                 ir::FieldDecl field;
                 field.sym = ir::make_sym(ir::SymKind::Field, ec->sym->name, qname, true, self);
                 field.type = self;
@@ -1161,7 +1247,7 @@ void JavaLibrary::prepare_local_classes(cs::Program& program, std::vector<Node*>
     int anonymous = 0;
     for (const auto& entry : model.classes()) {
         const jmodel::ClassInfo& ci = *entry.second;
-        if (!(ci.local || ci.anon) || ci.enum_const != nullptr || ci.outer == nullptr) continue;
+        if (!(ci.local || ci.anon) || ci.outer == nullptr) continue;
         const auto refuse = [&](std::string why) { refused_[ci.node] = std::move(why); };
         ir::ClassDecl* around = ci.outer->decl;
         if (ci.outer->local || ci.outer->anon) {
@@ -1175,7 +1261,31 @@ void JavaLibrary::prepare_local_classes(cs::Program& program, std::vector<Node*>
         ir::ClassDecl copy = *ci.decl;
         std::string name, q;
         Hoisted made;
-        if (ci.anon) {
+        if (const ir::EnumConst* constant = ir::get<ir::EnumConst>(ci.enum_const)) {   // a constant with a body: a class of the enum's, made with the constant's arguments
+            name = "Const_" + constant->sym->name;
+            q = *around->qname + "." + name;
+            copy.kind = "class";
+            copy.extends = ir::class_type(*around->qname);
+            copy.implements.clear();
+            std::erase_if(copy.members, [](Node* m) { const ir::MethodDecl* md = ir::get<ir::MethodDecl>(m); return md != nullptr && md->kind == "ctor"; });
+            ir::MethodDecl ctor;
+            ctor.sym = ir::make_sym(ir::SymKind::Ctor, name, q);
+            ctor.name = name;
+            ctor.kind = "ctor";
+            ctor.ret = ir::void_type();
+            std::vector<Node*> forwarded;
+            for (std::size_t i = 0; i < constant->args.size(); ++i) {
+                const bool typed = constant->ctor != nullptr && i < constant->ctor->params.size() && static_cast<bool>(constant->ctor->params[i]);
+                const ir::TypeP type = typed ? constant->ctor->params[i] : constant->args[i]->type;
+                const ir::SymP given = ir::make_sym(ir::SymKind::Param, "a" + std::to_string(i), std::nullopt, false, type);
+                ctor.params.push_back(ir::make(arena, ir::Param{.sym = given, .type = type}));
+                forwarded.push_back(ir::make(arena, ir::Name{.sym = given}, type));
+            }
+            std::vector<Node*> body;
+            if (!forwarded.empty()) body.push_back(ir::make(arena, ir::CtorCall{.kind = "super", .sym = constant->ctor, .args = std::move(forwarded)}));
+            ctor.body = ir::make(arena, ir::Block{.stmts = std::move(body)});
+            copy.members.push_back(ir::make(arena, std::move(ctor)));
+        } else if (ci.anon) {
             const ir::New& creation = *ir::get<ir::New>(ci.creation);
             if (creation.outer != nullptr) { refuse("an anonymous class made on an outer instance"); continue; }
             if (creation.sym != nullptr && creation.sym->varargs) { refuse("an anonymous class with a varargs base constructor"); continue; }
@@ -1206,6 +1316,20 @@ void JavaLibrary::prepare_local_classes(cs::Program& program, std::vector<Node*>
                 copy.implements.push_back(written);
             } else if (const auto mapped = cj_types().find(target); mapped != cj_types().end() && mapped->second.ends_with("Exception")) {
                 copy.extends = written;
+            } else if (!is_interface && cj_generic().contains(target)) {   // `new ArrayList<>() {{ add(1); }}`: a collection filled as it is made
+                const bool overrides = std::any_of(copy.members.begin(), copy.members.end(), [](Node* m) {
+                    const ir::MethodDecl* md = ir::get<ir::MethodDecl>(m);
+                    return md != nullptr && md->kind == "method" && !cj_has(md->mods, "IMPLICIT");
+                });
+                if (overrides) { refuse("an anonymous class overriding methods of the library type " + target); continue; }
+                copy.extends = written;
+                for (Node* member : copy.members) {   // what the block calls by name alone is the collection's own
+                    for (Node* n : cj_own_nodes(member)) {
+                        ir::Call* call = ir::get<ir::Call>(n);
+                        if (call == nullptr || call->target != nullptr || call->sym == nullptr || call->sym->is_static) continue;
+                        if (program.class_named(call->sym->owner.value_or("")) == nullptr) call->target = ir::make(arena, ir::This{}, written);
+                    }
+                }
             } else if (target != "java.lang.Object") {
                 refuse("an anonymous class of the library type " + target);
                 continue;
@@ -1545,7 +1669,7 @@ std::optional<Ex> JavaLibrary::call(cs::Context& w, Node* e, bool statement) {
     if (call.target != nullptr && call.target->type && w.program().class_named(owner) == nullptr) {   // a null put into a collection of numbers
         static const std::unordered_set<std::string_view> stores = {"add", "addFirst", "addLast", "offer", "push", "put", "putIfAbsent", "replace", "set"};
         if (const auto* held = std::get_if<ir::ClassType>(&call.target->type->body); held != nullptr && stores.contains(s->name)) {
-            const bool of_boxes = std::any_of(held->args.begin(), held->args.end(), [](const ir::TypeP& a) { return cj_is_box(a); });
+            const bool of_boxes = std::any_of(held->args.begin(), held->args.end(), [](const ir::TypeP& a) { return cj_is_box(a) && !cj_is_null_box(a); });
             const bool given_null = std::any_of(call.args.begin(), call.args.end(), [](Node* a) { return cj_null_literal(cs::strip(a)); });
             if (of_boxes && given_null) throw Decline("boxed-null", "a null held in a collection of " + held->args.back()->simple() + ": the translation keeps those values");
         }
@@ -1961,7 +2085,8 @@ std::optional<Ex> JavaLibrary::new_object(cs::Context& w, Node* e) {
             const bool typed = made.sym != nullptr && i < made.sym->params.size() && made.sym->params[i] && made.sym->params[i]->kind() != "typevar";
             parts.push_back(typed ? w.coerce(made.args[i], made.sym->params[i]) : w.expr(made.args[i]).text);
         }
-        return Ex{"JLib.EnumMade(new " + w.ctype(t) + "(" + text::join(parts, ", ") + "), \"" + constant->second.first + "\", " + std::to_string(constant->second.second) + ")", cs::kPrimary};
+        const auto own_body = enum_body_.find(e);
+        return Ex{"JLib.EnumMade(new " + w.ctype(own_body != enum_body_.end() ? own_body->second : t) + "(" + text::join(parts, ", ") + "), \"" + constant->second.first + "\", " + std::to_string(constant->second.second) + ")", cs::kPrimary};
     }
     if (const Node* body = ir::get<ir::New>(e)->body; body != nullptr) {
         const auto found = hoist_of_.find(body);
