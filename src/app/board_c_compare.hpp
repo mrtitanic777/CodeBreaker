@@ -1,6 +1,8 @@
-// app/board_c_compare.hpp -- one function side by side: the C the conversion wrote, and the original's assembly from the conversion's listing.
-// The bytes the period compiler made from that C are not kept, so this is for reading, not a byte diff. A listing labels code by address: sub_1_0024 is s1_L24 in a
-// 16-bit module and sub_00BA30 is L40ba30 at image base 0x400000. A function known only by name has no label to find, and the panel says so.
+// app/board_c_compare.hpp -- one function side by side: the C the conversion wrote, and the original's code.
+// The bytes the period compiler made from that C are not kept, so this is for reading, not a byte diff. The original's side is disassembled from the file itself: a
+// PE function at its address (from its name, or its export) for the length the scorer measured; an NE function at its segment and offset (from its name, or the
+// entry table) up to the next function the scorer knows. Where that cannot be done it falls back on the conversion's listing, which labels only code something
+// jumps to: sub_1_0024 is s1_L24 in a 16-bit module and sub_00BA30 is L40ba30 at image base 0x400000.
 // No operating-system API (board_c_compare_test.cpp).
 #pragma once
 
@@ -16,6 +18,7 @@
 #include "app/board_index.hpp"
 #include "app/board_scores.hpp"
 #include "app/source_preview.hpp"
+#include "core/bytes.hpp"
 
 namespace cb::app::board {
 
@@ -36,6 +39,13 @@ std::uint64_t c_listing_base(std::string_view asm_text);
 std::set<std::string, std::less<>> c_function_labels(std::string_view c_text, std::uint64_t image_base);
 // The listing from `label` to the next of `ends` or the end of its section. Empty: no such label.
 CCodeSlice c_function_assembly(std::string_view asm_text, std::string_view label, const std::set<std::string, std::less<>>& ends);
+
+// `code` as lines of "00401000  mov eax, 1"; a byte that decodes to nothing is a `db`. `bits`: 16 or 32. Throws when the disassembler cannot be loaded.
+CCodeSlice c_disassemble(ByteView code, std::uint64_t address, int bits);
+// Where a function starting at `start` ends: the next of `starts` after it, else `limit`.
+std::uint64_t c_function_end(const std::vector<std::uint64_t>& starts, std::uint64_t start, std::uint64_t limit);
+// The original's code of `function`, from the program's bytes and its results file (the text of c_scores/<hash>.json). nullopt when it cannot be placed.
+std::optional<CCodeSlice> c_original_code(ByteView file, std::string_view format, std::string_view function, std::string_view results);
 
 struct CFunctionCompare {
     std::string program, function, measure;

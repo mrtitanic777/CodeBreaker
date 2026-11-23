@@ -5,11 +5,17 @@
 #include <charconv>
 #include <filesystem>
 #include <format>
+#include <map>
+#include <nlohmann/json.hpp>
 #include <system_error>
 
 #include "app/board_c_functions.hpp"
+#include "core/capstone_api.hpp"
 #include "core/fs.hpp"
+#include "core/json.hpp"
 #include "core/text.hpp"
+#include "formats/ne.hpp"
+#include "formats/pe.hpp"
 
 namespace cb::app::board {
 
@@ -39,14 +45,92 @@ std::string c_compare_shown(std::string_view line) {
     return out;
 }
 
-// The line index of the "{" under a definition's signature at `at`, or npos.
+// The line index of the "{" under a definition whose signature starts at `at` (it may run over several lines), or npos.
 std::size_t c_compare_body(const std::vector<std::string_view>& lines, std::size_t at) {
-    if (lines[at].empty() || lines[at].back() == ';' || lines[at].front() == ' ' || lines[at].front() == '\t') return std::string_view::npos;
-    for (std::size_t i = at + 1; i < lines.size() && i <= at + 2; ++i) {
+    constexpr std::size_t kMostSignatureLines = 24;
+    if (lines[at].empty() || lines[at].front() == ' ' || lines[at].front() == '\t' || lines[at].find('(') == std::string_view::npos) return std::string_view::npos;
+    int depth = 0;
+    std::size_t closed = lines.size();
+    for (std::size_t i = at; i < lines.size() && i < at + kMostSignatureLines && closed == lines.size(); ++i) {
+        for (const char c : lines[i]) depth += c == '(' ? 1 : c == ')' ? -1 : 0;
+        if (depth <= 0) closed = i;
+    }
+    if (closed == lines.size() || lines[closed].ends_with(";")) return std::string_view::npos;
+    for (std::size_t i = closed + 1; i < lines.size() && i <= closed + 2; ++i) {
         if (lines[i].empty()) continue;
         return lines[i].starts_with("{") ? i : std::string_view::npos;
     }
     return std::string_view::npos;
+}
+
+// A long signature puts its return type on the line above.
+bool c_compare_return_type(std::string_view line) {
+    return !line.empty() && line.front() != ' ' && line.front() != '\t' && line.front() != '#' && line.front() != '}' && !line.starts_with("//") && !line.ends_with(";") && line.find('(') == std::string_view::npos;
+}
+
+std::uint64_t c_compare_count(const Json& entry, const char* key) {
+    const auto it = entry.find(key);
+    return it != entry.end() && it->is_number_unsigned() ? it->get<std::uint64_t>() : 0;
+}
+
+bool c_compare_hex(std::string_view s, std::uint64_t& out);   // (below)
+
+std::optional<CCodeSlice> c_original_pe(ByteView file, std::string_view function, const Json& entry) {
+    const std::optional<formats::pe::Image> image = formats::pe::Image::try_parse(file);
+    if (!image || image->header().machine != 0x14C || image->header().is_plus) return std::nullopt;
+    const std::uint64_t length = c_compare_count(entry, "original");
+    if (length == 0) return std::nullopt;
+    std::optional<std::uint64_t> rva;
+    std::uint64_t numbered = 0;
+    if (function.starts_with("sub_") && c_compare_hex(function.substr(4), numbered)) rva = numbered;
+    else
+        for (const formats::pe::Export& e : image->exports())
+            if (e.name && *e.name == function) rva = e.rva;
+    if (!rva) return std::nullopt;
+    const std::optional<ByteView> code = image->read_rva(*rva, length);
+    if (!code) return std::nullopt;
+    return c_disassemble(*code, image->header().image_base + *rva, 32);
+}
+
+std::optional<CCodeSlice> c_original_ne(ByteView file, std::string_view function, const Json& all) {
+    const std::optional<formats::ne::Module> module = formats::ne::Module::try_open(file);
+    if (!module) return std::nullopt;
+    std::map<std::string, std::uint32_t, std::less<>> ordinals;
+    for (const auto& table : {module->resident_names(), module->nonresident_names()})
+        for (const formats::ne::Name& n : table)
+            if (n.ordinal != 0) ordinals.emplace(text::lower(n.name), n.ordinal);
+    std::map<std::uint32_t, std::pair<std::uint32_t, std::uint64_t>> entries;
+    for (const formats::ne::Entry& e : module->entries())
+        if (e.kind != formats::ne::Entry::Kind::Unused) entries[e.ordinal] = {e.segment, e.offset};
+    const auto place = [&](std::string_view name) -> std::optional<std::pair<std::uint32_t, std::uint64_t>> {
+        if (name.starts_with("sub_")) {
+            const std::string_view rest = name.substr(4);
+            const std::size_t bar = rest.find('_');
+            std::uint64_t segment = 0, offset = 0;
+            if (bar != std::string_view::npos && c_compare_hex(rest.substr(bar + 1), offset)) {
+                const std::string_view digits = rest.substr(0, bar);
+                const auto [end, ec] = std::from_chars(digits.data(), digits.data() + digits.size(), segment, 10);
+                if (ec == std::errc{} && end == digits.data() + digits.size()) return std::pair{static_cast<std::uint32_t>(segment), offset};
+            }
+        }
+        const auto ordinal = ordinals.find(text::lower(name));
+        if (ordinal == ordinals.end()) return std::nullopt;
+        const auto entry = entries.find(ordinal->second);
+        return entry == entries.end() ? std::nullopt : std::optional{entry->second};
+    };
+    const auto where = place(function);
+    if (!where) return std::nullopt;
+    std::vector<std::uint64_t> starts;
+    for (auto it = all.begin(); it != all.end(); ++it) {
+        const auto other = place(it.key());
+        if (other && other->first == where->first) starts.push_back(other->second);
+    }
+    for (const formats::ne::Segment& s : module->segments()) {
+        if (s.index != where->first || s.file_offset == 0 || where->second >= s.length || s.file_offset + s.length > module->data().size()) continue;
+        const std::uint64_t end = c_function_end(starts, where->second, s.length);
+        return c_disassemble(module->data().subspan(s.file_offset + where->second, end - where->second), where->second, 16);
+    }
+    return std::nullopt;
 }
 
 // Where `name(` stands as a whole word in the line.
@@ -85,7 +169,7 @@ CCodeSlice c_function_source(std::string_view c_text, std::string_view name) {
     const std::vector<std::string_view> lines = c_compare_lines(c_text);
     for (std::size_t i = 0; i < lines.size(); ++i) {
         if (!c_compare_names(lines[i], name) || c_compare_body(lines, i) == std::string_view::npos) continue;
-        for (std::size_t k = i; k < lines.size(); ++k) {
+        for (std::size_t k = i > 0 && c_compare_return_type(lines[i - 1]) ? i - 1 : i; k < lines.size(); ++k) {
             if (out.lines.size() == kCCompareMostLines) {
                 out.cut = true;
                 break;
@@ -163,6 +247,54 @@ CCodeSlice c_function_assembly(std::string_view asm_text, std::string_view label
     return out;
 }
 
+CCodeSlice c_disassemble(ByteView code, std::uint64_t address, int bits) {
+    const auto& cs = disasm::capstone::api();
+    csh handle = 0;
+    disasm::capstone::check(cs.cs_open(CS_ARCH_X86, bits == 16 ? CS_MODE_16 : CS_MODE_32, &handle), "cs_open");
+    cs_insn* insn = cs.cs_malloc(handle);
+    CCodeSlice out;
+    const std::uint8_t* at = code.data();
+    std::size_t left = code.size();
+    std::uint64_t pc = address;
+    const int width = bits == 16 ? 4 : 8;
+    while (left > 0) {
+        if (out.lines.size() == kCCompareMostLines) {
+            out.cut = true;
+            break;
+        }
+        if (insn != nullptr && cs.cs_disasm_iter(handle, &at, &left, &pc, insn)) {
+            std::string line = std::format("{:0{}X}  {}", insn->address, width, insn->mnemonic);
+            if (insn->op_str[0] != '\0') line += std::format(" {}", insn->op_str);
+            out.lines.push_back(std::move(line));
+        } else {
+            out.lines.push_back(std::format("{:0{}X}  db 0x{:02X}", pc, width, *at));
+            ++at;
+            --left;
+            ++pc;
+        }
+    }
+    if (insn != nullptr) cs.cs_free(insn, 1);
+    cs.cs_close(&handle);
+    return out;
+}
+
+std::uint64_t c_function_end(const std::vector<std::uint64_t>& starts, std::uint64_t start, std::uint64_t limit) {
+    std::uint64_t end = limit;
+    for (const std::uint64_t s : starts)
+        if (s > start && s < end) end = s;
+    return end;
+}
+
+std::optional<CCodeSlice> c_original_code(ByteView file, std::string_view format, std::string_view function, std::string_view results) {
+    Json all;
+    if (!json::try_parse(results, all) || !all.is_object()) return std::nullopt;
+    const auto entry = all.find(std::string(function));
+    if (entry == all.end() || !entry->is_object()) return std::nullopt;
+    if (format == "PE") return c_original_pe(file, function, *entry);
+    if (format == "NE") return c_original_ne(file, function, all);
+    return std::nullopt;
+}
+
 CFunctionCompare load_c_compare(const Board& board, const Index& index, std::uint32_t card, const CScores* scores, std::string_view function, std::string_view measure) {
     CFunctionCompare out;
     out.function = std::string(function);
@@ -199,7 +331,18 @@ CFunctionCompare load_c_compare(const Board& board, const Index& index, std::uin
     if (source.lines.empty()) out.source_note = "This function is not in the converted C.";
     else if (source.cut) out.source_note = std::format("Showing the first {} lines.", kCCompareMostLines);
     const std::uint64_t base = c_listing_base(asm_text);
-    if (const std::optional<std::string> label = c_function_label(function, base)) {
+    std::optional<CCodeSlice> exact;
+    try {
+        const std::string rel = scored.empty() ? converted->rel : scored;
+        const std::string results = fs::read_text(board.root / "c_scores" / c_functions_file_name(rel));
+        const Bytes file = fs::read_file(board.root / "files" / fs::from_text(rel));
+        exact = c_original_code(file, converted->format, function, results);
+    } catch (const std::exception&) {}   // (the listing is still there)
+    if (exact && !exact->lines.empty()) {
+        if (exact->cut) out.assembly_note = std::format("Showing the first {} lines.", kCCompareMostLines);
+        else if (converted->format == "NE") out.assembly_note = "Calls the loader fixes up show placeholder addresses.";
+        out.assembly = std::move(exact->lines);
+    } else if (const std::optional<std::string> label = c_function_label(function, base)) {
         CCodeSlice assembly = c_function_assembly(asm_text, *label, c_function_labels(c_text, base));
         if (assembly.lines.empty()) out.assembly_note = "The listing has no label at this function's address.";
         else if (assembly.cut) out.assembly_note = std::format("Showing the first {} lines.", kCCompareMostLines);

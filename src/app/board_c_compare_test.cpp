@@ -76,6 +76,48 @@ CB_TEST("app.board_c_compare.the_assembly_stops_at_the_next_function_or_section"
     CB_CHECK(c_function_assembly(kCompareAsm, "L40", ends).lines.empty());
 });
 
+CB_TEST("app.board_c_compare.a_signature_over_several_lines_is_one_definition", [] {
+    constexpr std::string_view kLong =
+        "int2 __stdcall16far\r\n"
+        "LongOne(int2 a1,int2 a2,\r\n"
+        "        int2 a3)\r\n"
+        "\r\n"
+        "{\r\n"
+        "  return a1;\r\n"
+        "}\r\n"
+        "\r\n"
+        "void Other(int a1);\r\n"
+        "\r\n"
+        "sub_1_0040(int2 a1,\r\n"
+        "          int2 a2)\r\n"
+        "{\r\n"
+        "  return;\r\n"
+        "}\r\n";
+    const CCodeSlice s = c_function_source(kLong, "LongOne");
+    CB_CHECK_EQ(s.lines.size(), std::size_t{7});
+    CB_CHECK_EQ(s.lines[0], "int2 __stdcall16far");             // its return type comes with it
+    CB_CHECK(c_function_source(kLong, "Other").lines.empty());   // a prototype is no definition
+    CB_CHECK_EQ(c_function_labels(kLong, 0).count("s1_L40"), std::size_t{1});
+});
+
+CB_TEST("app.board_c_compare.the_original_is_read_from_its_own_bytes", [] {
+    const std::uint8_t code32[] = {0x8B, 0x44, 0x24, 0x04, 0xC3};
+    const CCodeSlice a = c_disassemble(code32, 0x401000, 32);
+    CB_CHECK_EQ(a.lines.size(), std::size_t{2});
+    CB_CHECK_EQ(a.lines[0], "00401000  mov eax, dword ptr [esp + 4]");
+    CB_CHECK_EQ(a.lines[1], "00401004  ret");
+    const std::uint8_t code16[] = {0x55, 0x8B, 0xEC};
+    const CCodeSlice b = c_disassemble(code16, 0x10, 16);
+    CB_CHECK_EQ(b.lines[0], "0010  push bp");
+    CB_CHECK_EQ(b.lines[1], "0011  mov bp, sp");
+    CB_CHECK_EQ(c_function_end({0x10, 0x40, 0x20}, 0x10, 0x100), std::uint64_t{0x20});
+    CB_CHECK_EQ(c_function_end({0x10, 0x40}, 0x40, 0x100), std::uint64_t{0x100});
+    CB_CHECK(!c_original_code({}, "PE", "absent", "{}").has_value());
+    CB_CHECK(!c_original_code({}, "PE", "half", "{\"half\":").has_value());
+    CB_CHECK(!c_original_code({}, "PE", "f", R"({"f": {"verdict": "different", "share": 0.5, "size": 4, "original": 4}})").has_value());   // not a PE
+    CB_CHECK(!c_original_code({}, "LE", "f", R"({"f": {"verdict": "different"}})").has_value());
+});
+
 struct CCompareFixture {
     Board board;
     Index index;
