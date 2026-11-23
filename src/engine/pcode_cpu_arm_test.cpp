@@ -1,22 +1,31 @@
 // The Game Boy Advance lane's ARM7TDMI on the one emulator (engine/pcode_cpu_arm.cpp): the lane's homebrew run in every state on both cores, and each function
 // judged against edited copies of the program.
+#include <algorithm>
 #include <array>
 #include <chrono>
 #include <cstdio>
+#include <bit>
 #include <format>
+#include <random>
+#include <optional>
 #include <map>
 #include <vector>
 
 #include "base/config.hpp"
+#include "core/cpu_time.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
+#include "decompile/arm.hpp"
+#include "decompile/arm_ext.hpp"
 #include "emulate/arm.hpp"
 #include "emulate/paged_memory.hpp"
 #include "engine/lane_kit.hpp"
 #include "decompile/engine/pcode_emulator.hh"
 #include "engine/machine_n3ds.hpp"
+#include "engine/machine_threedo.hpp"
 #include "engine/pcode_cpu.hpp"
+#include "engine/pcode_cpu_arm.hpp"
 #include "engine/pcode_cpu_compare.hpp"
 #include "engine/pcode_cpu_internal.hpp"
 #include "formats/nds.hpp"
@@ -50,6 +59,24 @@ CB_TEST("engine.pcode_cpu.the_nds_lane_runs_homebrew_the_same_on_both_cores", []
 CB_TEST("engine.pcode_cpu.the_3ds_lane_runs_homebrew_the_same_on_both_cores", [] {
     compare_homebrew("n3ds", "3ds", ".3dsx", n3ds_file_offset);
     compare_homebrew("n3ds", "3ds", ".elf", n3ds_file_offset);
+});
+
+CB_TEST("engine.pcode_cpu.the_vita_lane_runs_homebrew_the_same_on_both_cores", [] {
+    engine::pcode_cpu::arm_handover() = {};
+    compare_homebrew("vita", "vita", ".bin", [](const stdfs::path&, std::uint32_t) { return SIZE_MAX; });   // (its files are packed: no edited copies)
+    // What the adapter did not run itself: the steps handed to the own core by kind, and the runs it ended where the own core refuses a 32-bit Thumb instruction.
+    const engine::pcode_cpu::ArmHandover& handover = engine::pcode_cpu::arm_handover();
+    std::uint64_t handed = 0, refused = 0;
+    for (const auto& [kind, steps] : handover.by_class) {
+        handed += steps;
+        std::printf("  handed to the own core: %llu x %s\n", static_cast<unsigned long long>(steps), kind.c_str());
+    }
+    for (const auto& [mnemonic, runs] : handover.refused) {
+        refused += runs;
+        std::printf("  run ended at a refused instruction: %llu x thumb2 %s\n", static_cast<unsigned long long>(runs), mnemonic.c_str());
+    }
+    std::printf("pcode_cpu vita: %llu steps on the emulator's side, %llu handed to the own core, %llu runs ended at a refused instruction\n",
+                static_cast<unsigned long long>(handover.steps), static_cast<unsigned long long>(handed), static_cast<unsigned long long>(refused));
 });
 
 // A tool, not a check: CB_GBA_TRACE=<rom>,<hex entry> (state 0 of the lane: registers zero, memory as the cartridge leaves it) finds the first instruction after which the
@@ -365,5 +392,488 @@ CB_TEST("engine.pcode_cpu.the_vfp_conversions_are_the_same_on_both_cores", [] {
         }
     }
     std::printf("pcode_cpu vfp conversions: %u runs, %u differing\n", runs, differing);
+    CB_CHECK_EQ(differing, 0u);
+});
+
+// ---- the Vita's ARMv7-A (Thumb-2, IT blocks, the VFP and NEON rows) ---------------------------------------------------------------------------------------------
+
+namespace {
+
+namespace da = cb::decompile::arm;
+
+constexpr std::uint32_t kVitaCode = 0x81000000, kVitaData = 0x82000000, kVitaStack = 0x83000000;   // (the Vita maps from $81000000)
+constexpr std::uint32_t kVitaReturn = 0x100;
+
+using Changes = std::vector<std::pair<std::uint32_t, std::uint8_t>>;
+
+// What differs between two runs (empty: nothing); `ma` and `mb` are each core's list of changed bytes.
+std::string describe_arm(const emulate::arm::RunResult& a, const emulate::arm::RunResult& b, const Changes& ma, const Changes& mb) {
+    std::string out;
+    if (a.exit() != b.exit()) out += std::format("exit('{}' / '{}') ", a.exit(), b.exit());
+    for (unsigned i = 0; i < 16; ++i)
+        if (a.r[i] != b.r[i]) out += std::format("r{}[own {:X} emu {:X}] ", i, a.r[i], b.r[i]);
+    if ((a.cpsr & 0xF8000020u) != (b.cpsr & 0xF8000020u)) out += std::format("cpsr[{:08X}/{:08X}] ", a.cpsr, b.cpsr);
+    if (a.steps != b.steps) out += std::format("steps[{}/{}] ", a.steps, b.steps);
+    if (ma != mb) out += std::format("memory[{}/{}] ", ma.size(), mb.size());
+    bool same_io = a.io.size() == b.io.size();
+    for (std::size_t i = 0; same_io && i < a.io.size(); ++i)
+        same_io = a.io[i].address == b.io[i].address && a.io[i].value == b.io[i].value && a.io[i].kind == b.io[i].kind && a.io[i].size == b.io[i].size;
+    if (!same_io) out += "io ";
+    bool same_calls = a.bios.size() == b.bios.size();
+    for (std::size_t i = 0; same_calls && i < a.bios.size(); ++i) same_calls = a.bios[i].function == b.bios[i].function && a.bios[i].args == b.bios[i].args;
+    if (!same_calls) out += "calls ";
+    return out;
+}
+
+// A value for a register: a pointer into the data (aligned, or not), a small number, or any word.
+std::uint32_t random_value(std::mt19937& rng, std::uint32_t data = kVitaData, std::uint32_t stack = kVitaStack) {
+    switch (rng() % 8) {
+        case 0: return 0;
+        case 1: return rng() % 40;
+        case 2: return data + (rng() % 0x3000 & ~3u);
+        case 3: return data + (rng() % 0x3000);
+        case 4: return stack + 0x100 + (rng() % 0x600 & ~3u);
+        case 5: return 0xFFFFFFFFu - rng() % 8;
+        default: return static_cast<std::uint32_t>(rng());
+    }
+}
+
+// Whether an ARM instruction is one the manual defines for the registers it names: the pc as an operand or the base of a writing access, and the like, are UNPREDICTABLE
+// there (and the cores need not agree on what they do), so the random programs leave them out.
+bool defined_operands(const da::Insn& i, std::uint32_t w) {
+    const auto pc = [](unsigned r) { return r == 15; };
+    if (static_cast<unsigned>(i.op) < 16) {
+        if (i.s && !(i.op == da::Op::Tst || i.op == da::Op::Teq || i.op == da::Op::Cmp || i.op == da::Op::Cmn) && pc(i.rd)) return false;   // (a return from an exception)
+        if (pc(i.rd) && !i.imm_form && i.shift_by_reg) return false;
+        if (!i.imm_form && (pc(i.rm) && i.shift_by_reg)) return false;
+        if (!i.imm_form && i.shift_by_reg && pc(i.rs)) return false;
+        return !(i.shift_by_reg && pc(i.rn));
+    }
+    switch (i.op) {
+        case da::Op::Ldr: case da::Op::Str:
+            if ((i.wb || !i.pre) && (pc(i.rn) || i.rn == i.rd)) return false;
+            if ((i.wb || !i.pre) && !i.imm_form && i.rm == i.rn) return false;
+            if (i.op == da::Op::Str && pc(i.rd)) return false;
+            if (i.op == da::Op::Ldr && pc(i.rd) && (i.size != 4 || i.wb || !i.pre)) return false;
+            return !(!i.imm_form && pc(i.rm));
+        case da::Op::Ldm: case da::Op::Stm: return !pc(i.rn) && !i.hat && !(i.op == da::Op::Stm && (i.list & 0x8000));
+        case da::Op::B: case da::Op::Bl: case da::Op::Swi: case da::Op::Mrs: case da::Op::Msr: case da::Op::Bkpt: case da::Op::Pld: case da::Op::Mcr: case da::Op::Mrc: return true;
+        case da::Op::Blx: return i.target.has_value() || !pc(i.rm);
+        case da::Op::Bx: return !pc(i.rm);
+        case da::Op::Ext:
+            if (i.ext < 0 || i.ext >= da::t2::kIt) return false;
+            if (da::ext::mnemonic(i.ext).starts_with('v')) return true;   // (the VFP's and NEON's fields are register numbers of their own)
+            return !(pc(w & 15) || pc(w >> 8 & 15) || pc(w >> 12 & 15) || pc(w >> 16 & 15));
+        default: return !(pc(i.rd) || pc(i.rn) || pc(i.rm) || pc(i.rs));
+    }
+}
+
+// One random instruction of the ARMv7-A that the own core's decoder reads, as bytes (Thumb: one or two halfwords; ARM: a word), and its text.
+std::string random_instruction(std::mt19937& rng, bool thumb, Bytes& out, da::Arch arch = da::Arch::V7A, std::uint32_t where = kVitaCode) {
+    for (;;) {
+        if (thumb) {
+            const std::uint32_t a = rng() % 4 == 0 ? 0xE800u + rng() % 0x1800u : rng() % 0xE800u, b = rng() & 0xFFFF;
+            const std::optional<da::Insn> insn = da::decode_thumb(static_cast<std::uint16_t>(a), static_cast<std::uint16_t>(b), kVitaCode | 1, da::Arch::V7A);
+            if (!insn || (insn->length == 2 && a >= 0xE800)) continue;
+            if (insn->op == da::Op::Ext && insn->ext == da::t2::kIt) continue;   // (the programs put their own)
+            out.push_back(static_cast<std::uint8_t>(a));
+            out.push_back(static_cast<std::uint8_t>(a >> 8));
+            if (insn->length == 4) {
+                out.push_back(static_cast<std::uint8_t>(b));
+                out.push_back(static_cast<std::uint8_t>(b >> 8));
+            }
+            return da::text(*insn);
+        }
+        const std::uint32_t w = static_cast<std::uint32_t>(rng());
+        const std::optional<da::Insn> insn = da::decode_arm(w, where, arch);
+        if (!insn || !defined_operands(*insn, w)) continue;
+        for (unsigned k = 0; k < 4; ++k) out.push_back(static_cast<std::uint8_t>(w >> (8 * k)));
+        return da::text(*insn);
+    }
+}
+
+// One program and the registers and memory it starts from.
+struct VitaCase {
+    Bytes code;
+    bool thumb = true;
+    std::array<std::uint32_t, 4> a{};
+    std::array<std::uint32_t, 8> s{};
+    unsigned seed = 0;   // (what the data and stack are filled from)
+};
+
+// The case on both cores: results and the bytes each changed.
+void run_vita_case(const VitaCase& one, emulate::arm::RunResult result[2], Changes memory[2]) {
+    namespace ar = emulate::arm;
+    std::mt19937 fill(one.seed * 7919u + 17u);
+    Bytes data(0x4000), stack(0x1000);
+    for (std::uint8_t& b : data) b = static_cast<std::uint8_t>(fill());
+    for (std::uint8_t& b : stack) b = static_cast<std::uint8_t>(fill());
+    const auto regions = std::make_shared<std::vector<emulate::paged_memory::Region>>();
+    regions->push_back({kVitaCode, one.code});
+    regions->push_back({kVitaData, data});
+    regions->push_back({kVitaStack, stack});
+    ar::RunOptions options;
+    options.a = one.a;
+    options.s = one.s;
+    options.sp = kVitaStack + 0x800;
+    options.return_address = kVitaReturn;
+    options.max_steps = 64;
+    const std::uint32_t entry = kVitaCode | (one.thumb ? 1u : 0u);
+    for (int core = 0; core < 2; ++core) {
+        ar::Bus bus(ar::System::Vita);
+        bus.set_regions(regions);
+        result[core] = core == 1 ? engine::pcode_cpu::run(bus, entry, options) : ar::run(bus, entry, options);
+        memory[core] = bus.memory().changes(1 << 20);
+    }
+}
+
+// Programs of random instructions (Thumb ones with IT blocks of their own; `single`: one instruction, or one IT block, after a compare that sets the flags) run on both
+// cores from random registers and memory; every result field and each byte changed is compared.
+void compare_vita_random(const char* title, bool thumb, bool single, unsigned count) {
+    namespace ar = emulate::arm;
+    std::mt19937 rng(thumb ? (single ? 31 : 32) : 33);
+    unsigned runs = 0, differing = 0;
+    std::map<std::string, unsigned> per_instruction, ends;   // (how the runs ended: a test whose runs all stop at once proves nothing)
+    for (unsigned n = 0; n < count; ++n) {
+        Bytes code;
+        std::string texts;
+        const auto put = [&](std::uint16_t half) {
+            code.push_back(static_cast<std::uint8_t>(half));
+            code.push_back(static_cast<std::uint8_t>(half >> 8));
+        };
+        if (thumb) put(0x4288);   // cmp r0, r1: the flags the conditions meet
+        const unsigned body = single ? 1 : 1 + rng() % 8;
+        for (unsigned k = 0; k < body; ++k) {
+            if (thumb && (single ? rng() % 2 == 0 : rng() % 4 == 0)) {   // IT <first condition> <mask>, then the instructions it covers
+                const unsigned first = rng() % 15;
+                const unsigned mask = 1 + rng() % 15;
+                put(static_cast<std::uint16_t>(0xBF00 | first << 4 | mask));
+                texts += std::format("it {:x} {:x}; ", first, mask);
+                for (unsigned inner = 0, left = 4 - std::countr_zero(mask); inner < left; ++inner) texts += random_instruction(rng, true, code) + "; ";
+                continue;
+            }
+            texts += random_instruction(rng, thumb, code) + "; ";
+        }
+        if (thumb) {
+            put(0x4770);   // bx lr
+        } else {
+            const std::uint32_t bx_lr = 0xE12FFF1E;
+            for (unsigned k = 0; k < 4; ++k) code.push_back(static_cast<std::uint8_t>(bx_lr >> (8 * k)));
+        }
+        VitaCase one;
+        one.code = code;
+        one.thumb = thumb;
+        one.seed = n;
+        for (std::uint32_t& v : one.a) v = random_value(rng);
+        for (std::uint32_t& v : one.s) v = random_value(rng);
+        ar::RunResult result[2];
+        Changes memory[2];
+        run_vita_case(one, result, memory);
+        ++runs;
+        std::string how = result[0].exit();
+        if (how.starts_with("stopped: bus error")) how = "stopped: bus error";
+        else if (how.starts_with("stopped: no instruction")) how = "stopped: no instruction";
+        ++ends[how];
+        const std::string what = describe_arm(result[0], result[1], memory[0], memory[1]);
+        if (what.empty()) continue;
+        ++differing;
+        if (++per_instruction[texts.substr(0, 60)] == 1 && differing <= 25) {
+            std::string hex;
+            for (const std::uint8_t b : code) hex += std::format("{:02X}", b);
+            std::printf("  %s: %s\n      code %s\n      %s\n", title, texts.c_str(), hex.c_str(), what.c_str());
+            std::string regs = std::format("{}", thumb ? "thumb" : "arm");
+            regs += "," + hex;
+            for (const std::uint32_t v : one.a) regs += std::format(",{:x}", v);
+            for (const std::uint32_t v : one.s) regs += std::format(",{:x}", v);
+            std::printf("      CB_ARM_CASE=%s,%u\n", regs.c_str(), one.seed);
+        }
+    }
+    std::printf("pcode_cpu %s: %u runs, %u differing\n", title, runs, differing);
+    for (const auto& [how, times] : ends)
+        if (times * 50 >= runs) std::printf("    %u x %s\n", times, how.c_str());
+    CB_CHECK_EQ(differing, 0u);
+}
+
+}  // namespace
+
+CB_TEST("engine.pcode_cpu.vita_thumb_instructions_run_as_the_own_core_does", [] { compare_vita_random("vita thumb instructions", true, true, 20000); });
+
+CB_TEST("engine.pcode_cpu.vita_thumb_programs_run_as_the_own_core_does", [] { compare_vita_random("vita thumb programs", true, false, 10000); });
+
+CB_TEST("engine.pcode_cpu.vita_arm_instructions_run_as_the_own_core_does", [] { compare_vita_random("vita arm instructions", false, true, 10000); });
+
+// A tool, not a check: CB_ARM_CASE=<thumb|arm>,<hex code>,<a0>,<a1>,<a2>,<a3>,<s0>...<s7>,<seed> (the values in hex, the seed in decimal; what a failure of the random
+// tests prints) runs the one program on both cores and prints each instruction as the decoder reads it and every difference.
+CB_TEST("engine.pcode_cpu.arm_tool_runs_one_vita_case_on_both_cores", [] {
+    namespace ar = emulate::arm;
+    const auto given = fs::get_env("CB_ARM_CASE");
+    if (!given || given->empty()) return;
+    std::vector<std::string> field;
+    for (std::size_t at = 0;;) {
+        const std::size_t end = given->find(',', at);
+        field.push_back(given->substr(at, end - at));
+        if (end == std::string::npos) break;
+        at = end + 1;
+    }
+    if (field.size() < 15) return;
+    VitaCase one;
+    one.thumb = field[0] == "thumb";
+    for (std::size_t i = 0; i + 1 < field[1].size(); i += 2) one.code.push_back(static_cast<std::uint8_t>(std::strtoul(field[1].substr(i, 2).c_str(), nullptr, 16)));
+    for (unsigned i = 0; i < 4; ++i) one.a[i] = static_cast<std::uint32_t>(std::strtoul(field[2 + i].c_str(), nullptr, 16));
+    for (unsigned i = 0; i < 8; ++i) one.s[i] = static_cast<std::uint32_t>(std::strtoul(field[6 + i].c_str(), nullptr, 16));
+    one.seed = static_cast<unsigned>(std::strtoul(field[14].c_str(), nullptr, 10));
+    for (std::size_t at = 0; at < one.code.size();) {
+        const std::uint32_t a = one.code[at] | one.code[at + 1] << 8, b = at + 3 < one.code.size() ? one.code[at + 2] | one.code[at + 3] << 8 : 0;
+        const std::optional<da::Insn> insn = one.thumb ? da::decode_thumb(static_cast<std::uint16_t>(a), static_cast<std::uint16_t>(b), static_cast<std::uint32_t>(kVitaCode + at + 1), da::Arch::V7A)
+                                                       : da::decode_arm(a | b << 16, static_cast<std::uint32_t>(kVitaCode + at), da::Arch::V7A);
+        if (!insn) {
+            std::printf("  +%zx: no instruction\n", at);
+            break;
+        }
+        std::printf("  +%zx: op %d ext %d cond %u rd %u rn %u rm %u s %d imm_form %d len %u  %s\n", at, static_cast<int>(insn->op), static_cast<int>(insn->ext), insn->cond, insn->rd,
+                    insn->rn, insn->rm, insn->s ? 1 : 0, insn->imm_form ? 1 : 0, insn->length, da::text(*insn).c_str());
+        at += insn->length;
+    }
+    ar::RunResult result[2];
+    Changes memory[2];
+    run_vita_case(one, result, memory);
+    for (int core = 0; core < 2; ++core) {
+        std::printf("  %s: %s steps %llu cpsr %08X r0-r3 %X %X %X %X r4-r7 %X %X %X %X sp %X lr %X pc %X, %zu bytes changed\n", core == 0 ? "own" : "emu", result[core].exit().c_str(),
+                    static_cast<unsigned long long>(result[core].steps), result[core].cpsr, result[core].r[0], result[core].r[1], result[core].r[2], result[core].r[3], result[core].r[4],
+                    result[core].r[5], result[core].r[6], result[core].r[7], result[core].r[13], result[core].r[14], result[core].r[15], memory[core].size());
+    }
+    std::printf("  differences: %s\n", describe_arm(result[0], result[1], memory[0], memory[1]).c_str());
+});
+
+// ---- the 3DO's ARM60 (big-endian words on the DS's ARM7 map, the machine_threedo lane) ------------------------------------------------------------------------------
+
+namespace {
+
+constexpr std::uint32_t kThreedoCode = 0x02000000, kThreedoData = 0x02200000, kThreedoStack = 0x023FFF00;
+
+// The words of a big-endian program as the lane's bus holds them (each four bytes reversed).
+Bytes reversed_words(const Bytes& big_endian) {
+    Bytes out(big_endian.size() + (4 - big_endian.size() % 4) % 4, 0);
+    std::copy(big_endian.begin(), big_endian.end(), out.begin());
+    for (std::size_t i = 0; i < out.size(); i += 4) std::reverse(out.begin() + static_cast<std::ptrdiff_t>(i), out.begin() + static_cast<std::ptrdiff_t>(i) + 4);
+    return out;
+}
+
+// What the 3DO lane's bus is: the main RAM holds the program and the work memory, Clio's registers answer a read with 0 and its vertical counter moves with each read.
+void threedo_bus(emulate::arm::Bus& bus, const Bytes& program, const Bytes& data) {
+    bus.set_big_endian(true);
+    bus.load(kThreedoCode, reversed_words(program));
+    bus.load(kThreedoData, reversed_words(data));
+    const auto lines = std::make_shared<std::uint32_t>(0);
+    bus.map(0x03300000, 0x033FFFFF, [](std::uint32_t, unsigned) -> std::uint32_t { return 0; });
+    bus.map(0x03400000, 0x034FFFFF, [lines](std::uint32_t address, unsigned) -> std::uint32_t { return address == 0x03400014 ? (*lines)++ % 263 : 0; });
+}
+
+}  // namespace
+
+// Programs of random ARM instructions (the ARMv4T the old core reads, so a BX into Thumb is run too) on the big-endian lane's bus, on both cores.
+CB_TEST("engine.pcode_cpu.threedo_programs_run_as_the_own_core_does", [] {
+    namespace ar = emulate::arm;
+    std::mt19937 rng(3003);
+    unsigned runs = 0, differing = 0;
+    double seconds[2] = {0, 0};
+    std::map<std::string, unsigned> ends;
+    const unsigned count = [] {
+        const auto given = fs::get_env("CB_THREEDO_RANDOM");
+        return given && !given->empty() ? static_cast<unsigned>(std::strtoul(given->c_str(), nullptr, 10)) : 10000u;
+    }();
+    for (unsigned n = 0; n < count; ++n) {
+        const bool single = n % 2 == 0;
+        Bytes code;
+        std::string texts;
+        const auto put = [&](std::uint32_t word) {
+            for (int k = 3; k >= 0; --k) code.push_back(static_cast<std::uint8_t>(word >> (8 * k)));   // (big-endian)
+        };
+        put(0xE1500001);   // cmp r0, r1: the flags the conditions meet
+        const unsigned body = single ? 1 : 1 + rng() % 8;
+        for (unsigned k = 0; k < body; ++k) {
+            Bytes word;
+            texts += random_instruction(rng, false, word, da::Arch::V4T, kThreedoCode) + "; ";
+            for (int b = 3; b >= 0; --b) code.push_back(word[static_cast<std::size_t>(b)]);   // (the generator gives little-endian bytes)
+        }
+        put(0xE1A0F00E);   // mov pc, lr
+        Bytes data(0x4000);
+        std::mt19937 fill(n * 7919u + 5u);
+        for (std::uint8_t& b : data) b = static_cast<std::uint8_t>(fill());
+        ar::RunOptions options;
+        for (std::uint32_t& v : options.a) v = random_value(rng, kThreedoData, kThreedoStack - 0x800);
+        for (std::uint32_t& v : options.s) v = random_value(rng, kThreedoData, kThreedoStack - 0x800);
+        options.sp = kThreedoStack;
+        options.max_steps = 64;
+        ar::RunResult result[2];
+        Bytes memory[2];
+        for (int core = 0; core < 2; ++core) {
+            ar::Bus bus(ar::System::Nds7);
+            threedo_bus(bus, code, data);
+            const double start = cb::thread_cpu_seconds();
+            result[core] = core == 1 ? engine::pcode_cpu::run(bus, kThreedoCode, options) : ar::run(bus, kThreedoCode, options);
+            seconds[core] += cb::thread_cpu_seconds() - start;
+            const ByteSpan ram = bus.ewram();
+            memory[core].assign(ram.begin(), ram.end());
+        }
+        ++runs;
+        std::string how = result[0].exit();
+        if (how.starts_with("stopped: bus error")) how = "stopped: bus error";
+        else if (how.starts_with("stopped: no instruction")) how = "stopped: no instruction";
+        ++ends[how];
+        std::string what = describe_arm(result[0], result[1], {}, {});
+        if (memory[0] != memory[1]) what += "memory ";
+        if (what.empty()) continue;
+        if (++differing <= 20) {
+            std::string hex;
+            for (const std::uint8_t b : code) hex += std::format("{:02X}", b);
+            std::printf("  threedo: %s\n      code %s\n      %s\n", texts.c_str(), hex.c_str(), what.c_str());
+        }
+    }
+    std::printf("pcode_cpu threedo programs: %u runs, %u differing; time own core %.2fs emulator %.2fs (the runs alone)\n", runs, differing, seconds[0], seconds[1]);
+    for (const auto& [how, times] : ends)
+        if (times * 50 >= runs) std::printf("    %u x %s\n", times, how.c_str());
+    CB_CHECK_EQ(differing, 0u);
+});
+
+// The speed of the big-endian description against the own core on a loop that does memory and arithmetic (the lane has no homebrew to time), and the same result from both.
+CB_TEST("engine.pcode_cpu.threedo_loop_runs_as_the_own_core_does_and_how_fast", [] {
+    namespace ar = emulate::arm;
+    Bytes code;
+    const auto put = [&](std::uint32_t word) {
+        for (int k = 3; k >= 0; --k) code.push_back(static_cast<std::uint8_t>(word >> (8 * k)));
+    };
+    put(0xE3A03000);   // mov r3, #0
+    put(0xE5921000);   // loop: ldr r1, [r2]
+    put(0xE0833001);   // add r3, r3, r1
+    put(0xE5C23004);   // strb r3, [r2, #4]
+    put(0xE2800000 | 0x1);   // add r0, r0, #1 -- (the counter counts up to the limit in r4)
+    put(0xE1500004);   // cmp r0, r4
+    put(0x1AFFFFF9);   // bne loop
+    put(0xE1A0F00E);   // mov pc, lr
+    Bytes data(0x4000, 0x5A);
+    ar::RunResult result[2];
+    double seconds[2] = {0, 0};
+    for (int core = 0; core < 2; ++core) {
+        ar::Bus bus(ar::System::Nds7);
+        threedo_bus(bus, code, data);
+        ar::RunOptions options;
+        options.a = {0, 0, kThreedoData, 0};
+        options.s[0] = 30000;
+        options.sp = kThreedoStack;
+        options.max_steps = 1000000;
+        const double start = cb::thread_cpu_seconds();
+        result[core] = core == 1 ? engine::pcode_cpu::run(bus, kThreedoCode, options) : ar::run(bus, kThreedoCode, options);
+        seconds[core] = cb::thread_cpu_seconds() - start;
+    }
+    std::printf("pcode_cpu threedo loop: %llu steps, own core %.3fs emulator %.3fs\n", static_cast<unsigned long long>(result[0].steps), seconds[0], seconds[1]);
+    CB_CHECK_EQ(describe_arm(result[0], result[1], {}, {}), std::string());
+    CB_CHECK(result[0].steps > 100000);
+});
+
+// The speed on the lane's kind of work: 100 functions (random programs that reach their return), each run in four states with the same code, the way the lane runs a
+// function (the lane has no homebrew to time). The runs alone are timed, not the making of the buses.
+CB_TEST("engine.pcode_cpu.threedo_functions_run_as_the_own_core_does_and_how_fast", [] {
+    namespace ar = emulate::arm;
+    std::mt19937 rng(77);
+    unsigned functions = 0, runs = 0, differing = 0;
+    double seconds[2] = {0, 0};
+    std::uint64_t steps = 0;
+    while (functions < 100) {
+        Bytes code;
+        const auto put = [&](std::uint32_t word) {
+            for (int k = 3; k >= 0; --k) code.push_back(static_cast<std::uint8_t>(word >> (8 * k)));
+        };
+        put(0xE1500001);
+        const unsigned body = 2 + rng() % 12;
+        for (unsigned k = 0; k < body; ++k) {
+            Bytes word;
+            random_instruction(rng, false, word, da::Arch::V4T, kThreedoCode);
+            for (int b = 3; b >= 0; --b) code.push_back(word[static_cast<std::size_t>(b)]);
+        }
+        put(0xE1A0F00E);
+        Bytes data(0x4000);
+        for (std::uint8_t& b : data) b = static_cast<std::uint8_t>(rng());
+        std::array<std::array<std::uint32_t, 5>, 4> states{};
+        for (auto& state : states)
+            for (std::uint32_t& v : state) v = random_value(rng, kThreedoData, kThreedoStack - 0x800);
+        // a function the lane would keep: it reaches its return in the first state
+        {
+            ar::Bus bus(ar::System::Nds7);
+            threedo_bus(bus, code, data);
+            ar::RunOptions options;
+            options.a = {states[0][0], states[0][1], states[0][2], states[0][3]};
+            options.s[0] = states[0][4];
+            options.sp = kThreedoStack;
+            options.max_steps = 64;
+            if (ar::run(bus, kThreedoCode, options).end != ar::End::Return) continue;
+        }
+        ++functions;
+        for (const auto& state : states) {
+            ar::RunResult result[2];
+            for (int core = 0; core < 2; ++core) {
+                ar::Bus bus(ar::System::Nds7);
+                threedo_bus(bus, code, data);
+                ar::RunOptions options;
+                options.a = {state[0], state[1], state[2], state[3]};
+                options.s[0] = state[4];
+                options.sp = kThreedoStack;
+                options.max_steps = 20000;
+                const double start = cb::thread_cpu_seconds();
+                result[core] = core == 1 ? engine::pcode_cpu::run(bus, kThreedoCode, options) : ar::run(bus, kThreedoCode, options);
+                seconds[core] += cb::thread_cpu_seconds() - start;
+            }
+            ++runs;
+            steps += result[0].steps;
+            if (!describe_arm(result[0], result[1], {}, {}).empty()) ++differing;
+        }
+    }
+    std::printf("pcode_cpu threedo functions: %u functions, %u runs, %llu steps, %u differing; time own core %.3fs emulator %.3fs\n", functions, runs,
+                static_cast<unsigned long long>(steps), differing, seconds[0], seconds[1]);
+    CB_CHECK_EQ(differing, 0u);
+});
+
+// The lane's whole effects call (the program read, the bus made, the memory compared) on the two functions of a small AIF, 13 times each in each of the lane's states
+// (104 runs), on both cores: what a lane run costs the user (no 3DO homebrew exists to take 100 functions from).
+CB_TEST("engine.pcode_cpu.threedo_lane_effects_are_the_same_on_both_cores_and_how_fast", [] {
+    fs::ScopedTempDir dir("cb_pcode_threedo_effects");
+    Bytes f(0x68, 0);
+    const auto put_be = [&](std::size_t at, std::uint32_t v) {
+        for (int i = 0; i < 4; ++i) f[at + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(v >> (24 - 8 * i));
+    };
+    for (const std::size_t at : {0u, 4u, 8u}) put_be(at, 0xE1A00000);
+    put_be(12, 0xEB00000B);
+    put_be(16, 0xEF000011);
+    put_be(20, 0x68);
+    put_be(48, 0x20);
+    put_be(0x40, 0xE92D4010);   // push {r4, lr}
+    put_be(0x44, 0xE3A04001);   // mov r4, #1
+    put_be(0x48, 0xEB000003);   // bl sub
+    put_be(0x4C, 0xE59F1004);   // ldr r1, [pc, #4]
+    put_be(0x50, 0xE8BD8010);   // pop {r4, pc}
+    put_be(0x54, 0x12345678);
+    put_be(0x58, 0x03400014);
+    put_be(0x5C, 0xE5910000);   // sub: ldr r0, [r1]
+    put_be(0x60, 0xE5C20001);   // strb r0, [r2, #1]
+    put_be(0x64, 0xE1A0F00E);   // mov pc, lr
+    const stdfs::path path = dir.path() / "LaunchMe";
+    fs::write_file(path, f);
+    const verify::lanes::ImageLaneSpec spec = engine::threedo_lane_spec();
+    double seconds[2] = {0, 0};
+    unsigned runs = 0, differing = 0;
+    for (unsigned rep = 0; rep < 13; ++rep)
+        for (const std::uint32_t address : {0x40u, 0x5Cu})
+            for (const verify::lanes::State& state : spec.states) {
+                verify::lanes::Effects e[2];
+                for (int core = 0; core < 2; ++core) {
+                    engine::pcode_compare::ForcedCore forced(core == 1);
+                    const double start = cb::thread_cpu_seconds();
+                    e[core] = spec.effects(path, address, state);
+                    seconds[core] += cb::thread_cpu_seconds() - start;
+                }
+                ++runs;
+                if (!(e[0] == e[1])) ++differing;
+            }
+    std::printf("pcode_cpu threedo lane: %u runs of 2 functions, %u differing; time own core %.3fs emulator %.3fs\n", runs, differing, seconds[0], seconds[1]);
     CB_CHECK_EQ(differing, 0u);
 });

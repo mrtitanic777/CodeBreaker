@@ -170,7 +170,7 @@ bool Bus::copy_block(std::uint32_t address, std::uint8_t* out, std::size_t size)
 }
 
 const std::uint8_t* Bus::plain_block(std::uint32_t address, std::size_t size) {
-    if (big_endian_ || paged()) return nullptr;
+    if (paged()) return nullptr;   // (a big-endian bus gives its words reversed, as it holds them)
     for (const Range& range : ranges_)
         if (address <= range.hi && address + size - 1 >= range.lo) return nullptr;
     const std::uint32_t region = address >> 24;

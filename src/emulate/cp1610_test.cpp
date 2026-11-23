@@ -132,7 +132,7 @@ CB_TEST("emulate.cp1610.shifts_rotates_and_the_status_word", [] {
     Rig m;
     m.run(R"(
         MVII #0x81,R0
-        SLL R4, 2
+        SLL R0, 2
         SDBD
         .half 0x02b9, 0x0000, 0x0080   ; MVII #0x8000,R1 under SDBD
         MOVR R1,R3

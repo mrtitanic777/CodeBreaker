@@ -13,6 +13,7 @@
 
 #include <array>
 #include <cstdint>
+#include <cstring>
 #include <optional>
 #include <string>
 
@@ -124,8 +125,17 @@ w::Run run(w::Machine& machine, std::uint32_t entry, const w::Options& options) 
     sl::Emulator& emu = emulator_named("65816.sla");
     const auto& r = reg_refs(emu, kNames);
     const std::size_t log_start = machine.log().size();
-    emu.keepAddressContext(false);   // (the widths are set here, from the flags: no REP or SEP of an earlier run's flow decides how code is read)
-    emu.flushDecoded();
+    // the bytes the emulator holds for the code run so far (a run's pc lands on the same instructions again and again: only a byte that differs is handed over). Reset with each
+    // run, as other users of this emulator may have written its memory since.
+    thread_local std::array<std::uint32_t, 4096> held_at;
+    thread_local std::array<std::array<std::uint8_t, 4>, 4096> held_bytes;
+    thread_local std::array<std::uint8_t, 4096> held_size;   // (the bytes written at the pc: a longer instruction there later is written again)
+    held_at.fill(0xFFFFFFFFu);
+    thread_local const sl::Emulator* configured = nullptr;
+    if (configured != &emu) {   // (once for the emulator: the widths are set here, from the flags, so no REP or SEP of an earlier run's flow decides how code is read; what is decoded stays for the next run)
+        emu.keepAddressContext(false);
+        configured = &emu;
+    }
     emu.clearStops();
 
     // every data access is the machine's: a word is its bytes, low first, each at the next address of the 24-bit space; the stack is in bank 0 and, in emulation
@@ -208,7 +218,19 @@ w::Run run(w::Machine& machine, std::uint32_t entry, const w::Options& options) 
         const dec::OpcodeEntry& entry_of = dec::opcode_table()[code[0]];
         const std::uint8_t size = dec::instruction_size(entry_of.mode, !a8, !i8);
         for (unsigned i = size; i-- > 1;) code[i] = machine.read(bank | ((pc16 + i) & 0xFFFF));
-        emu.write(pc24, code, size);
+        {
+            const std::size_t slot = (pc24 ^ pc24 >> 12) & 4095;
+            if (held_at[slot] != pc24 || held_size[slot] != size || held_bytes[slot][1] != code[1] || held_bytes[slot][2] != code[2] || held_bytes[slot][3] != code[3] || held_bytes[slot][0] != code[0]) {
+                for (std::uint32_t neighbor = pc24 - 3; neighbor != pc24 + 4; ++neighbor) {   // (the instructions held at addresses this write overlaps are no longer what the emulator holds)
+                    const std::size_t other = ((neighbor & 0xFFFFFF) ^ (neighbor & 0xFFFFFF) >> 12) & 4095;
+                    if (held_at[other] == (neighbor & 0xFFFFFF)) held_at[other] = 0xFFFFFFFFu;
+                }
+                held_at[slot] = pc24;
+                held_size[slot] = size;
+                std::memcpy(held_bytes[slot].data(), code, 4);
+                emu.write(pc24, code, size);
+            }
+        }
         ++steps;
         const std::uint8_t opcode = code[0];
         std::uint32_t operand = 0;

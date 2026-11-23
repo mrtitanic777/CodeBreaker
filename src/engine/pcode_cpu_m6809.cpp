@@ -197,6 +197,6 @@ m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options)
     return out;
 }
 
-m::RunResult call(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : m::run(bus, entry, options); }
+m::RunResult call(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options) { return enabled_when_asked() ? pcode_cpu::run(bus, entry, options) : m::run(bus, entry, options); }
 
 }  // namespace cb::engine::pcode_cpu

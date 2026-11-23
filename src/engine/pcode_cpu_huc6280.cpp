@@ -53,6 +53,21 @@ std::uint8_t peek(const h::Machine& machine, std::uint16_t logical) {
     return rom[index * h::kBankSize + offset];
 }
 
+// The 8 KB a logical window shows, as peek() answers for each of its bytes: a RAM bank, a ROM bank (mirrored as peek mirrors it), or $FF.
+const std::uint8_t* window_bytes(const h::Machine& machine, unsigned window) {
+    static const std::array<std::uint8_t, h::kBankSize> open = [] { std::array<std::uint8_t, h::kBankSize> a; a.fill(0xFF); return a; }();
+    const std::uint8_t bank = machine.mpr[window];
+    if (is_ram_bank(bank)) return machine.ram.data();
+    if (bank > 0x7F) return open.data();
+    const ByteView rom = machine.rom();
+    const std::size_t count = rom.size() / h::kBankSize;
+    if (count == 0) return open.data();
+    std::size_t index = bank;
+    if (std::has_single_bit(count)) index &= count - 1;
+    else if (index >= count) return open.data();
+    return rom.data() + index * h::kBankSize;
+}
+
 // The opcodes the own core's wrapper runs itself (the HuC6280's additions and the Rockwell bit instructions); every other opcode it hands to the 65C02 core, which reads it again.
 bool is_handled(std::uint8_t op) {
     if ((op & 0x0F) == 0x07 || (op & 0x0F) == 0x0F) return true;
@@ -80,11 +95,10 @@ h::Run run(h::Machine& machine, std::uint16_t entry, const h::Options& options) 
     if (fresh) held.assign(kLogical, 0);
     std::vector<std::uint8_t>& shadow = held;
     const auto view_window = [&](unsigned window) {
-        std::array<std::uint8_t, h::kBankSize> want;
-        for (std::uint32_t i = 0; i < h::kBankSize; ++i) want[i] = peek(machine, static_cast<std::uint16_t>((window << 13) | i));
-        if (!fresh && std::memcmp(want.data(), shadow.data() + (window << 13), h::kBankSize) == 0) return;
-        std::memcpy(shadow.data() + (window << 13), want.data(), h::kBankSize);
-        emu.write(window << 13, want.data(), h::kBankSize);
+        const std::uint8_t* want = window_bytes(machine, window);   // (the window's 8 KB as peek() finds them, found once rather than a byte at a time)
+        if (!fresh && std::memcmp(want, shadow.data() + (window << 13), h::kBankSize) == 0) return;
+        std::memcpy(shadow.data() + (window << 13), want, h::kBankSize);
+        emu.write(window << 13, want, h::kBankSize);
     };
     for (unsigned w = 0; w < 8; ++w) view_window(w);
     if (fresh) emu.flushDecoded();

@@ -131,6 +131,7 @@ public:
     // A big-endian system (the 3DO's ARM60): the memory holds each aligned word with its bytes reversed (the caller loads it that way, so a
     // word access sees the program's value), and a byte access goes to the byte `address ^ 3` of it, a halfword to `address ^ 2`.
     void set_big_endian(bool on) { big_endian_ = on; }
+    bool big_endian() const { return big_endian_; }
 
     // Does an address reach memory, a register, or a mapped range?
     bool mapped(std::uint32_t address) const;

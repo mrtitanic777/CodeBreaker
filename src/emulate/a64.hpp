@@ -117,6 +117,15 @@ public:
     // Execute the instruction at pc. nullopt: it ran. A string: why the run cannot go on.
     std::optional<std::string> step();
 
+    // The exclusive monitor (a load-exclusive sets it to its address, a store-exclusive to that address succeeds once, clrex clears it): the one engine/pcode_cpu_a64 keeps
+    // when it runs the exclusives on the description and the rest here.
+    bool monitor_set() const { return monitor_set_; }
+    std::uint64_t monitor_address() const { return monitor_; }
+    void set_monitor(bool set, std::uint64_t address) {
+        monitor_set_ = set;
+        monitor_ = address;
+    }
+
 private:
     Memory* mem_;
     std::uint64_t monitor_ = 0;

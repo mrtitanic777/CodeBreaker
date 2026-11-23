@@ -183,6 +183,6 @@ sm83cpu::RunResult run(sm83cpu::Bus& bus, std::uint16_t entry, const sm83cpu::Ru
     return out;
 }
 
-sm83cpu::RunResult call(sm83cpu::Bus& bus, std::uint16_t entry, const sm83cpu::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : sm83cpu::run(bus, entry, options); }
+sm83cpu::RunResult call(sm83cpu::Bus& bus, std::uint16_t entry, const sm83cpu::RunOptions& options) { return enabled_when_asked() ? pcode_cpu::run(bus, entry, options) : sm83cpu::run(bus, entry, options); }
 
 }  // namespace cb::engine::pcode_cpu

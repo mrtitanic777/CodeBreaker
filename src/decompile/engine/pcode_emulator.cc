@@ -195,7 +195,7 @@ struct Emulator::Impl {
         explicit Image(Impl& owner) : LoadImage("codebreaker"), o(owner) {}
         void loadFill(ghidra::uint1* ptr, ghidra::int4 size, const ghidra::Address& addr) override {
             SpaceMem& m = o.mem[o.codeIndex];
-            const std::uint64_t start = addr.getOffset() * m.word;
+            const std::uint64_t start = addr.getOffset();   // (the translator's addresses are bytes, in a word-addressed space too)
             for (ghidra::int4 i = 0; i < size; ++i) {
                 const std::uint64_t a = start + static_cast<std::uint64_t>(i);
                 Page* p = const_cast<Page*>(m.find(a >> kPageBits));
@@ -231,6 +231,7 @@ struct Emulator::Impl {
     std::unordered_map<std::uint64_t, std::unordered_map<std::uint64_t, Decoded>> caches;
     std::unordered_map<std::uint64_t, Decoded>* cache = &caches[0];
     std::uint64_t contextTag = 0;
+    bool parsesStale = false;   // a context default changed since the translator's parse cache was last cleared: it is cleared when an instruction is next decoded
     std::map<std::string, int> contextSet;   // the variables setContext changed, and to what
     bool addressContextKept = true;     // the context a decoded instruction sets for other addresses (SLEIGH's globalset) stays; false: dropped after each decode
     bool dirty = false;                // too much decoded code changed: flush before the next step
@@ -504,8 +505,8 @@ struct Emulator::Impl {
                 }
         }
         stale.clear();
-        blocks.clear();
-        trans->forgetParses();
+        if (!blocks.empty()) blocks.clear();
+        parsesStale = true;   // (the translator's parse cache is cleared when an instruction is next decoded, if one is)
     }
     // The translator's context cache points into the entries cleared here, so it is told to read them again.
     void dropAddressContext() {
@@ -520,10 +521,14 @@ struct Emulator::Impl {
         }
         auto it = cache->find(pc);
         if (it != cache->end()) return &it->second;
+        if (parsesStale) {
+            trans->forgetParses();
+            parsesStale = false;
+        }
         Decoded d;
         try {
             Collect collect(d);
-            d.length = static_cast<std::size_t>(trans->oneInstruction(collect, ghidra::Address(mem[static_cast<std::size_t>(codeIndex)].space, pc)));
+            d.length = static_cast<std::size_t>(trans->oneInstruction(collect, ghidra::Address(mem[static_cast<std::size_t>(codeIndex)].space, pc * mem[static_cast<std::size_t>(codeIndex)].word)));
         } catch (const ghidra::LowlevelError&) {
             if (!addressContextKept) dropAddressContext();
             return nullptr;
@@ -657,7 +662,7 @@ struct Emulator::Impl {
                     f.rel = static_cast<std::int32_t>(target);
                 } else {
                     f.absolute = true;
-                    f.target = t.offset;
+                    f.target = t.offset / mem[static_cast<std::size_t>(codeIndex)].word;   // (a fixed address in a word-addressed space comes as bytes)
                 }
                 if (f.cbranch) {
                     f.c = d.slots[in0 + 1];
@@ -774,12 +779,12 @@ struct Emulator::Impl {
                     case ghidra::CPUI_BRANCH:
                     case ghidra::CPUI_CALL:
                         if (v[0].space == constSpace) relative(v[0]);
-                        else next = v[0].offset, leave = true;
+                        else next = v[0].offset / unit, leave = true;   // (a fixed address in a word-addressed space comes as bytes)
                         break;
                     case ghidra::CPUI_CBRANCH:
                         if (get(v[1]) != 0) {
                             if (v[0].space == constSpace) relative(v[0]);
-                            else next = v[0].offset, leave = true;
+                            else next = v[0].offset / unit, leave = true;   // (a fixed address in a word-addressed space comes as bytes)
                         }
                         break;
                     case ghidra::CPUI_BRANCHIND:
@@ -1225,8 +1230,12 @@ const std::map<std::string, std::uint64_t>& Emulator::unimplementedOps() const {
 std::string Emulator::text(std::uint64_t pc) const {
     Impl& o = *impl_;
     try {
+        if (o.parsesStale) {
+            o.trans->forgetParses();
+            o.parsesStale = false;
+        }
         Text t;
-        o.trans->printAssembly(t, ghidra::Address(o.mem[static_cast<std::size_t>(o.codeIndex)].space, pc));
+        o.trans->printAssembly(t, ghidra::Address(o.mem[static_cast<std::size_t>(o.codeIndex)].space, pc * o.mem[static_cast<std::size_t>(o.codeIndex)].word));
         return t.text;
     } catch (const ghidra::LowlevelError&) {
         return {};
@@ -1241,7 +1250,7 @@ std::size_t Emulator::length(std::uint64_t pc) const {
 void Emulator::setContext(const std::string& name, int value) {
     Impl& o = *impl_;
     o.trans->setContextDefault(name, static_cast<ghidra::uintm>(value));
-    o.trans->forgetParses();
+    o.parsesStale = true;   // (an instruction already decoded is in the emulator's own cache, per context: only a decode that misses needs the translator's cache clear)
     // the tag of the contexts decoding now runs under: the variables set so far and their values
     o.contextSet[name] = value;
     std::uint64_t tag = 1469598103934665603ull;
