@@ -16,6 +16,18 @@ constexpr float kHeaderHeight = 40;
 constexpr float kButtonH = 32;
 }  // namespace
 
+bool board_column_shown(const Model& m, std::size_t column) {
+    if (m.board_c_view == board::CView::All) return true;
+    if (m.board_stacks[column].total() > 0) return true;
+    return std::none_of(m.board_stacks.begin(), m.board_stacks.end(), [](const board::Stack& s) { return s.total() > 0; });
+}
+
+std::size_t board_columns_shown(const Model& m) {
+    std::size_t shown = 0;
+    for (std::size_t i = 0; i < board::kPileCount; ++i) shown += board_column_shown(m, i) ? 1 : 0;
+    return shown;
+}
+
 BoardLayout compute_board_layout(const Layout& shell, const Model& model) {
     BoardLayout b;
     b.card = shell.left_card;
@@ -83,8 +95,9 @@ BoardLayout compute_board_layout(const Layout& shell, const Model& model) {
         b.drawer = {b.card.right() - kPad - width, b.tableau.y, width, b.tableau.h};
         b.drawer_close = {b.drawer.right() - 32, b.drawer.y + 4, 28, 26};
     }
-    const float n = static_cast<float>(board::kPileCount);
+    const float n = static_cast<float>(board_columns_shown(model));
     b.column_width = std::max(kBoardColumnMin, (b.tableau.w - (n - 1) * kBoardColumnGap) / n);
+    if (model.board_c_view != board::CView::All) b.column_width = std::min(b.column_width, std::max(kBoardColumnMin, kBoardColumnWide));
     b.content_width = n * b.column_width + (n - 1) * kBoardColumnGap;
     if (model.board_view != 0) {
         constexpr float kChipW = 88, kChipH = 26;
@@ -111,7 +124,13 @@ float board_max_hscroll(const BoardLayout& layout) { return std::max(0.0f, layou
 
 BoardColumn compute_board_column(const BoardLayout& layout, const Model& model, std::size_t column) {
     BoardColumn c;
-    const float x = layout.tableau.x + static_cast<float>(column) * (layout.column_width + kBoardColumnGap) - model.board_hscroll;
+    if (!board_column_shown(model, column)) {
+        c.cards = &model.board_stacks[column].todo;
+        return c;
+    }
+    std::size_t slot = 0;
+    for (std::size_t i = 0; i < column; ++i) slot += board_column_shown(model, i) ? 1 : 0;
+    const float x = layout.tableau.x + static_cast<float>(slot) * (layout.column_width + kBoardColumnGap) - model.board_hscroll;
     c.foundation = {x, layout.tableau.y, layout.column_width, kBoardFoundationHeight};
     c.head = {x, c.foundation.bottom() + 4, layout.column_width, kBoardHeadHeight};
     const float area_top = c.head.bottom() + 4;
@@ -261,8 +280,13 @@ PageHit hit_test_board(const BoardLayout& b, const Model& m, float x, float y) {
     const float pitch = b.column_width + kBoardColumnGap;
     const float along = x - b.tableau.x + m.board_hscroll;
     if (along < 0) return {};
-    const auto column = static_cast<std::size_t>(along / pitch);
-    if (column >= board::kPileCount || along - static_cast<float>(column) * pitch >= b.column_width) return {};
+    const auto slot = static_cast<std::size_t>(along / pitch);
+    if (slot >= board_columns_shown(m) || along - static_cast<float>(slot) * pitch >= b.column_width) return {};
+    std::size_t column = 0;
+    for (std::size_t seen = 0; column < board::kPileCount; ++column) {
+        if (!board_column_shown(m, column)) continue;
+        if (seen++ == slot) break;
+    }
     const BoardColumn c = compute_board_column(b, m, column);
     if (c.foundation.contains(x, y)) return {Control::BoardFoundation, static_cast<int>(column)};
     if (c.head.contains(x, y) || c.deck.contains(x, y)) return {Control::BoardExpand, static_cast<int>(column)};
@@ -292,8 +316,10 @@ std::vector<PageHit> focus_order_board(const Model& m) {
     if (m.board) {
         if (m.board_scores && m.board_view == 0)
             for (int i = 1; i <= static_cast<int>(board::kCViews); ++i) order.push_back({Control::BoardCView, i});
-        for (int i = 0; i < static_cast<int>(board::kPileCount); ++i) order.push_back({Control::BoardFoundation, i});
-        for (int i = 0; i < static_cast<int>(board::kPileCount); ++i) order.push_back({Control::BoardExpand, i});
+        for (int i = 0; i < static_cast<int>(board::kPileCount); ++i)
+            if (board_column_shown(m, static_cast<std::size_t>(i))) order.push_back({Control::BoardFoundation, i});
+        for (int i = 0; i < static_cast<int>(board::kPileCount); ++i)
+            if (board_column_shown(m, static_cast<std::size_t>(i))) order.push_back({Control::BoardExpand, i});
         if (m.board_selected >= 0) {
             order.push_back({Control::BoardCardOpen, m.board_selected});
             order.push_back({Control::BoardCardConvert, m.board_selected});
@@ -332,7 +358,12 @@ void board_inspect_card(Model& m, int card) {
     m.board_inspecting = true;
     m.board_selected = card;
     m.board_inspect_scroll = 0;
-    m.board_inspector = std::make_shared<const board::Inspector>(board::build_inspector(*m.board, *m.board_index, m.board_signals.get(), static_cast<std::uint32_t>(card), m.board_scores.get()));
+    std::optional<board::CNearMisses> near_misses;
+    if (m.board_scores) {
+        const std::string rel = board::c_scored_rel(*m.board, *m.board_index, static_cast<std::uint32_t>(card), *m.board_scores);
+        if (!rel.empty()) near_misses = board::load_c_near_misses(m.board->root, rel);
+    }
+    m.board_inspector = std::make_shared<const board::Inspector>(board::build_inspector(*m.board, *m.board_index, m.board_signals.get(), static_cast<std::uint32_t>(card), m.board_scores.get(), near_misses ? &*near_misses : nullptr));
 }
 
 void board_sync_inspector(Model& m) {
@@ -404,6 +435,7 @@ void board_clear_c_view(Model& m) {
     if (m.board_c_view == board::CView::All) return;
     m.board_c_view = board::CView::All;
     m.board_show_done = m.board_c_kept_done;
+    m.board_hscroll = 0;
 }
 
 }  // namespace
@@ -418,6 +450,7 @@ void board_toggle_c_view(Model& m, board::CView view) {
     }
     if (m.board_c_view == board::CView::All) m.board_c_kept_done = m.board_show_done;
     m.board_c_view = view;
+    m.board_hscroll = 0;
     board_rebuild_stacks(m);
     for (std::size_t i = 0; i < board::kPileCount; ++i) m.board_show_done[i] = !m.board_stacks[i].done.empty();
 }

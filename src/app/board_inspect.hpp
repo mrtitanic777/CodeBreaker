@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "app/board.hpp"
+#include "app/board_c_functions.hpp"
 #include "app/board_index.hpp"
 #include "app/board_scores.hpp"
 #include "app/board_signals.hpp"
@@ -27,7 +28,7 @@ struct Inspector {
     std::uint32_t copies = 1, inbound = 0, outbound = 0, signals = 0;   // distinct files, and distinct (signal, direction)
     std::vector<InspectorRow> rows;
 };
-Inspector build_inspector(const Board& board, const Index& index, const Signals* signals, std::uint32_t card, const CScores* scores = nullptr);
+Inspector build_inspector(const Board& board, const Index& index, const Signals* signals, std::uint32_t card, const CScores* scores = nullptr, const CNearMisses* near_misses = nullptr);
 
 // What a hovered card is linked to. role per card: bit 0 it uses that card, bit 1 that card uses it. Copies of a linked file are all lit.
 struct HoverLinks {

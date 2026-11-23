@@ -13,6 +13,7 @@ namespace cb::app::window {
 
 inline constexpr float kBoardColumnMin = 136;
 inline constexpr float kBoardColumnGap = 8;
+inline constexpr float kBoardColumnWide = 300;   // the most a column grows to when a C filter leaves only a few
 inline constexpr float kBoardFoundationHeight = 58;
 inline constexpr float kBoardHeadHeight = 26;
 inline constexpr float kBoardFanPitch = 24;
@@ -62,6 +63,9 @@ struct BoardColumn {
     float content_height = 0;          // expanded: every card
 };
 BoardColumn compute_board_column(const BoardLayout& layout, const Model& model, std::size_t column);
+// A C filter lays out only the columns holding what it found (all of them if it found nothing).
+bool board_column_shown(const Model& model, std::size_t column);
+std::size_t board_columns_shown(const Model& model);
 // The rectangle of the card at a position of a column (the last fanned one is whole; those above it show their top strip).
 Rect board_card_rect(const BoardColumn& column, int position);
 float board_max_scroll(const BoardColumn& column);

@@ -63,7 +63,7 @@ void add_links(Inspector& out, const Board& board, const std::map<std::uint32_t,
 
 }  // namespace
 
-Inspector build_inspector(const Board& board, const Index& index, const Signals* signals, std::uint32_t card, const CScores* scores) {
+Inspector build_inspector(const Board& board, const Index& index, const Signals* signals, std::uint32_t card, const CScores* scores, const CNearMisses* near_misses) {
     Inspector out;
     out.card = card;
     const Card& c = board.cards[card];
@@ -109,6 +109,11 @@ Inspector build_inspector(const Board& board, const Index& index, const Signals*
                 line("Different", found->different);
                 line("Will not compile", found->no_compile);
                 if (found->library > 0) line("Run-time library", found->library);
+                if (near_misses != nullptr && !near_misses->closest.empty()) {
+                    const std::string shown = near_misses->candidates > near_misses->closest.size() ? count_words(near_misses->closest.size()) + " of " + count_words(near_misses->candidates) : count_words(near_misses->candidates);
+                    out.rows.push_back({InspectorRow::Kind::Heading, "Closest to identical (" + shown + ")", "measured"});
+                    for (const CNearMiss& miss : near_misses->closest) out.rows.push_back({InspectorRow::Kind::Fact, miss.name, miss.words});
+                }
             }
         }
     }

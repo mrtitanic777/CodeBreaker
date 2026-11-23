@@ -605,10 +605,16 @@ void rd_board_card(RdDraw& d, const Rect& r, const board::Card& c, bool selected
     if (r.h < 40) return;
     const std::string facts = (c.format.empty() ? std::string() : c.format + " \xC2\xB7 ") + board::size_words(c.size);
     d.text(widen(facts), Rect{r.x + 9, r.y + 21, r.w - 14, 16}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
-    if (!c_words.empty() && copies > 1 && (whole || r.h < kBoardCardHeight)) {   // (the mark has its place: the copies move down a line, where this card shows it)
-        const Rect chip{r.right() - 34, r.y + 22, 30, 15};
-        d.fill(chip, 7, rd_alpha(pal.accent, 0.28f));
-        d.text(widen("\xC3\x97" + std::to_string(copies)), chip, 0, 10, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+    if (!c_words.empty() && (whole || r.h < kBoardCardHeight)) {   // (the second line, where this card shows it)
+        float right = r.right() - 4;
+        if (copies > 1) {   // the mark has the first line: the copies move down
+            const Rect chip{right - 30, r.y + 22, 30, 15};
+            d.fill(chip, 7, rd_alpha(pal.accent, 0.28f));
+            d.text(widen("\xC3\x97" + std::to_string(copies)), chip, 0, 10, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+            right -= 36;
+        }
+        if (c_mark->state == board::CState::Scored && r.w >= 200)   // a wide card has room for what the percent is of
+            d.text(widen(board::count_words(c_mark->identical) + " of " + board::count_words(c_mark->functions) + " identical"), Rect{right - 130, r.y + 21, 130, 16}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
     }
     if (whole) d.text(widen(std::string(board::conv_words(c.conv))), Rect{r.x + 9, r.y + 40, r.w - 14, 16}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, rd_conv_color(pal, c.conv));
 }
@@ -1054,6 +1060,7 @@ void rd_board(RdDraw& d, const Layout& l, const Model& m) {
     const D2D1_COLOR_F uses_color = pal.accent, used_by_color = rd_color(0xFF9A4D);
     d.rt->PushAxisAlignedClip(rd_rect(b.tableau), D2D1_ANTIALIAS_MODE_ALIASED);
     for (std::size_t i = 0; i < board::kPileCount; ++i) {
+        if (!board_column_shown(m, i)) continue;
         const BoardColumn c = compute_board_column(b, m, i);
         heads[i] = c.head;
         if (c.foundation.right() < b.tableau.x || c.foundation.x > b.tableau.right()) continue;   // out of view: nothing of it is drawn
