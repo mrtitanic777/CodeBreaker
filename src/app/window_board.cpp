@@ -37,7 +37,11 @@ BoardLayout compute_board_layout(const Layout& shell, const Model& model) {
         top += kButtonH + 8;
     }
     if (model.board && model.board_view == 0) {   // the row of signal kinds, and the filters in force
-        constexpr float kPillH = 26, kGroupW = 106;
+        constexpr float kPillH = 26, kGroupW = 106, kCSummaryH = 40, kCPillW = 124;
+        if (model.board_scores) {
+            b.c_summary = {b.card.x + kPad, top, b.card.w - 2 * kPad, kCSummaryH};
+            top += kCSummaryH + 6;
+        }
         b.group_copies = {right - kGroupW, top, kGroupW, kPillH};
         if (model.board_signals) {
             const float room = b.group_copies.x - 8 - (b.card.x + kPad);
@@ -50,7 +54,13 @@ BoardLayout compute_board_layout(const Layout& shell, const Model& model) {
         b.export_button = {b.batch_button.x - 6 - 66, top, 66, kPillH};
         b.decks_button = {b.export_button.x - 6 - 66, top, 66, kPillH};
         b.orphans_button = {b.decks_button.x - 6 - 92, top, 92, kPillH};
-        b.filter_row = {b.card.x + kPad, top, std::max(0.0f, b.orphans_button.x - 8 - b.card.x - kPad), kPillH};
+        float filters_x = b.card.x + kPad;
+        if (model.board_scores) {
+            const float width = std::min(kCPillW, std::max(0.0f, b.orphans_button.x - 8 - filters_x + 4) / static_cast<float>(board::kCViews));
+            for (std::size_t i = 0; i < b.c_pills.size(); ++i) b.c_pills[i] = {filters_x + static_cast<float>(i) * width, top, width - 4, kPillH};
+            filters_x += static_cast<float>(b.c_pills.size()) * width + 4;
+        }
+        b.filter_row = {filters_x, top, std::max(0.0f, b.orphans_button.x - 8 - filters_x), kPillH};
         top += kPillH + 6;
     }
     float bottom = b.card.bottom() - 12;
@@ -187,6 +197,8 @@ PageHit hit_test_board(const BoardLayout& b, const Model& m, float x, float y) {
         for (std::size_t i = 0; i < b.signal_pills.size(); ++i)
             if (b.signal_pills[i].contains(x, y)) return {Control::BoardSignalType, static_cast<int>(i)};
         if (b.group_copies.contains(x, y)) return {Control::BoardGroupCopies, -1};
+        for (std::size_t i = 0; i < b.c_pills.size(); ++i)
+            if (b.c_pills[i].contains(x, y)) return {Control::BoardCView, static_cast<int>(i) + 1};
         if (b.filter_row.contains(x, y)) {
             const auto at = static_cast<std::size_t>((x - b.filter_row.x) / (kFilterChipWidth + 6));
             if (at < m.board_filters.size() && x - b.filter_row.x - static_cast<float>(at) * (kFilterChipWidth + 6) < kFilterChipWidth)
@@ -278,6 +290,8 @@ std::vector<PageHit> focus_order_board(const Model& m) {
         for (int i = 0; i < 4; ++i) order.push_back({Control::BoardViewTab, i});
     if (m.board_busy) order.push_back({Control::BoardCancel, -1});
     if (m.board) {
+        if (m.board_scores && m.board_view == 0)
+            for (int i = 1; i <= static_cast<int>(board::kCViews); ++i) order.push_back({Control::BoardCView, i});
         for (int i = 0; i < static_cast<int>(board::kPileCount); ++i) order.push_back({Control::BoardFoundation, i});
         for (int i = 0; i < static_cast<int>(board::kPileCount); ++i) order.push_back({Control::BoardExpand, i});
         if (m.board_selected >= 0) {
@@ -371,10 +385,41 @@ void board_rebuild_stacks(Model& m) {
     if (m.board_orphans_only && m.board_orphans) only(m.board_orphans->card);
     if (!m.board_deck_names.empty()) only(board::cards_named(*m.board, m.board_deck_names));
     m.board_stacks = board::build_stacks(*m.board, m.board_query, options);
+    m.board_c_marks.reset();
+    if (m.board_scores) {   // (each time: a card that has just been converted changes its mark)
+        const bool linked = m.board_index && m.board_index->nodes.size() == m.board->cards.size();
+        m.board_c_marks = std::make_shared<const board::CMarks>(board::build_c_marks(*m.board, linked ? m.board_index.get() : nullptr, *m.board_scores));
+        board::apply_c_view(m.board_stacks, *m.board_c_marks, m.board_c_view);
+    }
     if (m.board_measured && m.board_index && !m.board_projection && m.board_index->nodes.size() == m.board->cards.size())
         m.board_projection = std::make_shared<const board::Projection>(board::build_projection(*m.board, *m.board_index, m.board_signals.get(), m.board_measured.get()));
     m.board_batch = m.board_index ? board::batch_order(*m.board, *m.board_index, m.board_stacks, m.board_measured ? m.board_projection.get() : nullptr) : std::vector<std::uint32_t>{};
     m.board_batch_armed = 0;
+}
+
+namespace {
+
+// The filter by C result off, the columns as they were before it. The stacks are the caller's to rebuild.
+void board_clear_c_view(Model& m) {
+    if (m.board_c_view == board::CView::All) return;
+    m.board_c_view = board::CView::All;
+    m.board_show_done = m.board_c_kept_done;
+}
+
+}  // namespace
+
+void board_toggle_c_view(Model& m, board::CView view) {
+    if (!m.board || !m.board_scores) return;
+    m.board_scroll = {};
+    if (view == board::CView::All || view == m.board_c_view) {
+        board_clear_c_view(m);
+        board_rebuild_stacks(m);
+        return;
+    }
+    if (m.board_c_view == board::CView::All) m.board_c_kept_done = m.board_show_done;
+    m.board_c_view = view;
+    board_rebuild_stacks(m);
+    for (std::size_t i = 0; i < board::kPileCount; ++i) m.board_show_done[i] = !m.board_stacks[i].done.empty();
 }
 
 void board_toggle_orphans(Model& m) {
@@ -390,6 +435,8 @@ void board_load_decks(Model& m) {
     m.board_decks = board::builtin_decks();
     m.board_active_deck = -1;
     m.board_deck_names.clear();
+    board_clear_c_view(m);
+    m.board_c_marks.reset();
     if (!m.board) return;
     for (board::Deck& d : board::load_decks(m.board->root)) m.board_decks.push_back(std::move(d));
     m.board_projection.reset();
@@ -402,6 +449,7 @@ void board_load_decks(Model& m) {
 void board_apply_deck(Model& m, int deck) {
     if (deck < 0 || static_cast<std::size_t>(deck) >= m.board_decks.size()) return;
     m.board_filters.clear();
+    board_clear_c_view(m);
     m.board_scroll = {};
     if (m.board_active_deck == deck) {   // the same deck again: everything
         m.board_active_deck = -1;

@@ -573,23 +573,43 @@ D2D1_COLOR_F rd_conv_color(const RdPalette& pal, board::Conv conv) {
 }
 
 // A card: a coloured edge, its name and a state dot; with room, its format, size and state in words.
-void rd_board_card(RdDraw& d, const Rect& r, const board::Card& c, bool selected, bool hot, bool whole, std::uint32_t copies = 1) {
+void rd_board_card(RdDraw& d, const Rect& r, const board::Card& c, bool selected, bool hot, bool whole, std::uint32_t copies = 1, const board::CMark* c_mark = nullptr) {
     const RdPalette& pal = d.pal;
     const D2D1_COLOR_F face = pal.dark ? rd_mix(rd_color(0x2B2B2B), D2D1::ColorF(1, 1, 1), hot ? 0.13f : 0.08f) : (hot ? rd_color(0xF3F6FB) : rd_color(0xFFFFFF));
     d.fill(r, 5, face);
     d.stroke(r, 5, selected ? pal.accent : rd_alpha(pal.text, pal.dark ? 0.18f : 0.16f), selected ? 2.0f : 1.0f);
     d.fill(Rect{r.x + 1, r.y + 4, 3, std::min(r.h, kBoardFanPitch) - 8}, 1.5f, rd_pile_color(static_cast<std::size_t>(c.pile)));
-    d.circle(Rect{r.right() - 14, r.y + 8, 7, 7}, rd_conv_color(pal, c.conv));
-    const float badge = copies > 1 ? 30.0f : 0.0f;
-    if (copies > 1) {   // a master card: how many places on the disc hold these bytes
-        const Rect chip{r.right() - 18 - badge, r.y + 4, badge - 2, 15};
-        d.fill(chip, 7, rd_alpha(pal.accent, 0.28f));
-        d.text(widen("\xC3\x97" + std::to_string(copies)), chip, 0, 10, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+    const std::string c_words = c_mark != nullptr ? board::c_mark_words(*c_mark) : std::string();
+    float badge = copies > 1 ? 30.0f : 0.0f;
+    if (!c_words.empty()) {   // the measured C result, in place of the state dot; a state with no number is an outline, never a low score
+        badge = c_mark->state == board::CState::Scored ? 44.0f : 54.0f;
+        const Rect chip{r.right() - 4 - badge, r.y + 4, badge, 15};
+        D2D1_COLOR_F ink = pal.text2;
+        if (c_mark->state == board::CState::Scored) {
+            d.fill(chip, 7, rd_alpha(pal.ok, 0.16f + 0.5f * board::c_identical_share(*c_mark)));
+            ink = pal.text;
+        } else {
+            if (c_mark->state == board::CState::OutOfTime) ink = pal.warn;
+            d.stroke(chip, 7, rd_alpha(ink, 0.7f));
+        }
+        d.text(widen(c_words), chip, 0, 10, DWRITE_FONT_WEIGHT_SEMI_BOLD, ink, DWRITE_TEXT_ALIGNMENT_CENTER);
+    } else {
+        d.circle(Rect{r.right() - 14, r.y + 8, 7, 7}, rd_conv_color(pal, c.conv));
+        if (copies > 1) {   // a master card: how many places on the disc hold these bytes
+            const Rect chip{r.right() - 18 - badge, r.y + 4, badge - 2, 15};
+            d.fill(chip, 7, rd_alpha(pal.accent, 0.28f));
+            d.text(widen("\xC3\x97" + std::to_string(copies)), chip, 0, 10, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
     }
-    d.text(widen(c.name), Rect{r.x + 9, r.y + 2, r.w - 27 - badge, 20}, 0, 12, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+    d.text(widen(c.name), Rect{r.x + 9, r.y + 2, r.w - (c_words.empty() ? 27 : 17) - badge, 20}, 0, 12, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
     if (r.h < 40) return;
     const std::string facts = (c.format.empty() ? std::string() : c.format + " \xC2\xB7 ") + board::size_words(c.size);
     d.text(widen(facts), Rect{r.x + 9, r.y + 21, r.w - 14, 16}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+    if (!c_words.empty() && copies > 1 && (whole || r.h < kBoardCardHeight)) {   // (the mark has its place: the copies move down a line, where this card shows it)
+        const Rect chip{r.right() - 34, r.y + 22, 30, 15};
+        d.fill(chip, 7, rd_alpha(pal.accent, 0.28f));
+        d.text(widen("\xC3\x97" + std::to_string(copies)), chip, 0, 10, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+    }
     if (whole) d.text(widen(std::string(board::conv_words(c.conv))), Rect{r.x + 9, r.y + 40, r.w - 14, 16}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, rd_conv_color(pal, c.conv));
 }
 
@@ -1051,7 +1071,7 @@ void rd_board(RdDraw& d, const Layout& l, const Model& m) {
         if (m.focus == Control::BoardFoundation && m.focus_index == static_cast<int>(i)) d.stroke(c.foundation, 6, pal.text, 2.0f);
         const bool hot_head = m.hot == Control::BoardExpand && m.hot_index == static_cast<int>(i);
         if (hot_head) d.fill(c.head, 4, pal.subtle);
-        const std::string head = m.board_hover ? board::count_words(m.board_hover_linked[i]) + " linked" : board::count_words(static_cast<std::uint64_t>(c.count)) + (c.done_view ? " done" : " to do");
+        const std::string head = m.board_hover ? board::count_words(m.board_hover_linked[i]) + " linked" : board::count_words(static_cast<std::uint64_t>(c.count)) + (m.board_c_view != board::CView::All && c.count > 0 ? " · " + std::string(board::c_view_order(m.board_c_view)) : std::string(c.done_view ? " done" : " to do"));
         d.text(widen(head), Rect{c.head.x + 6, c.head.y, c.head.w - 28, c.head.h}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
         d.text(c.expanded ? L"\u25B4" : L"\u25BE", Rect{c.head.right() - 22, c.head.y, 18, c.head.h}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
         if (m.focus == Control::BoardExpand && m.focus_index == static_cast<int>(i)) d.stroke(c.head, 4, pal.text, 2.0f);
@@ -1067,7 +1087,8 @@ void rd_board(RdDraw& d, const Layout& l, const Model& m) {
             const bool whole = !c.expanded && p == c.last - 1;
             Rect r = board_card_rect(c, p);
             const std::uint32_t copies = m.board_group_copies && m.board_index && index < m.board_index->nodes.size() ? m.board_index->nodes[index].copies : 1;
-            rd_board_card(d, r, m.board->cards[index], static_cast<int>(index) == m.board_selected, m.hot == Control::BoardCard && m.hot_index == static_cast<int>(index), whole, copies);
+            const board::CMark* c_mark = m.board_c_marks && index < m.board_c_marks->by_card.size() ? &m.board_c_marks->by_card[index] : nullptr;
+            rd_board_card(d, r, m.board->cards[index], static_cast<int>(index) == m.board_selected, m.hot == Control::BoardCard && m.hot_index == static_cast<int>(index), whole, copies, c_mark);
             if (m.board_hover) {   // unrelated cards dim; linked ones take the colour of how they are linked
                 const std::uint8_t role = m.board_hover->role[index];
                 const float strip = whole || c.expanded ? r.h : std::min(r.h, c.pitch);
@@ -1148,6 +1169,40 @@ void rd_board(RdDraw& d, const Layout& l, const Model& m) {
             d.fill(r, 13, filtered ? rd_alpha(pal.accent, 0.34f) : open ? rd_alpha(pal.text, 0.12f) : hot ? pal.subtle : D2D1::ColorF(0, 0, 0, 0));
             d.stroke(r, 13, filtered || open ? pal.accent : pal.stroke2);
             d.text(kPills[i], r, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, filtered || open ? pal.text : pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
+        if (b.c_summary.w > 0 && m.board_c_marks) {   // the whole OS, as measured: one bar of every function, and what each colour is
+            const board::CSummary& s = m.board_c_marks->summary;
+            const std::array<D2D1_COLOR_F, 5> hues{pal.ok, pal.accent, rd_alpha(pal.text2, 0.55f), pal.error, rd_color(0x7A5FC0)};
+            const auto parts = board::c_summary_parts(s);
+            d.fill(b.c_summary, 6, pal.subtle);
+            d.text(widen(board::c_summary_words(s)), Rect{b.c_summary.x + 10, b.c_summary.y + 2, b.c_summary.w - 20, 18}, 0, 11, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+            const float line = b.c_summary.y + 21;
+            const float bar_w = std::min(220.0f, b.c_summary.w * 0.22f);
+            const Rect bar{b.c_summary.x + 10, line + 5, bar_w, 6};
+            d.fill(bar, 3, rd_alpha(pal.text, 0.12f));
+            float at = bar.x;
+            for (std::size_t i = 0; i < parts.size() && s.functions > 0; ++i) {
+                const float w = bar.w * static_cast<float>(static_cast<double>(parts[i].count) / static_cast<double>(s.functions));
+                if (w > 0) d.fill(Rect{at, bar.y, w, bar.h}, 1, hues[i]);
+                at += w;
+            }
+            const float legend_x = bar.right() + 12;
+            const float cell = std::max(0.0f, b.c_summary.right() - 8 - legend_x) / static_cast<float>(parts.size());
+            for (std::size_t i = 0; i < parts.size(); ++i) {
+                const float x = legend_x + static_cast<float>(i) * cell;
+                d.circle(Rect{x, line + 4, 8, 8}, hues[i]);
+                d.text(widen(std::string(parts[i].name) + " " + board::score_percent(parts[i].count, s.functions)), Rect{x + 12, line, cell - 14, 16}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+            }
+        }
+        for (std::size_t i = 0; i < b.c_pills.size() && m.board_c_marks; ++i) {
+            const Rect& r = b.c_pills[i];
+            if (r.w <= 0) continue;
+            const auto view = static_cast<board::CView>(i + 1);
+            const bool on = m.board_c_view == view, hot = m.hot == Control::BoardCView && m.hot_index == static_cast<int>(i) + 1;
+            d.fill(r, 13, on ? rd_alpha(pal.accent, 0.34f) : hot ? pal.subtle : D2D1::ColorF(0, 0, 0, 0));
+            d.stroke(r, 13, on ? pal.accent : pal.stroke2);
+            d.text(widen(board::c_view_words(m.board_c_marks->summary, view)), r, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, on ? pal.text : pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+            if (m.focus == Control::BoardCView && m.focus_index == static_cast<int>(i) + 1) d.stroke(r, 13, pal.text, 2.0f);
         }
         if (b.group_copies.w > 0) {
             const bool on = m.board_group_copies, hot = m.hot == Control::BoardGroupCopies;

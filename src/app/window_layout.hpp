@@ -16,6 +16,7 @@
 
 #include "app/board.hpp"
 #include "app/board_automation.hpp"
+#include "app/board_c_view.hpp"
 #include "app/board_flow.hpp"
 #include "app/board_index.hpp"
 #include "app/board_inspect.hpp"
@@ -99,7 +100,9 @@ enum class Control {
     // the X-Ray inspector: Inspect on the selected card, its close button, one of its rows (index)
     BoardInspect, BoardInspectClose, BoardInspectRow,
     // automation: Orphans, Decks and its list (a row's index; -1 Save this view) and a deck's remove, Export, the batch button
-    BoardOrphans, BoardDecks, BoardDeckRow, BoardDeckRemove, BoardExport, BoardBatch
+    BoardOrphans, BoardDecks, BoardDeckRow, BoardDeckRemove, BoardExport, BoardBatch,
+    // a filter by C result (index: board::CView)
+    BoardCView
 };
 
 // The Source card's three tabs; Compare (one function's original beside its rebuilt source) is a view of Functions.
@@ -321,6 +324,9 @@ struct Model {
     std::shared_ptr<const board::Projection> board_projection;  // calls per hour: measured where a trace saw them, else a model (board_projection.hpp)
     std::shared_ptr<const board::Measured> board_measured;      // the trace kept with this board
     std::shared_ptr<const board::CScores> board_scores;         // how its generated C recompiled
+    std::shared_ptr<const board::CMarks> board_c_marks;         // those scores by card, and the whole OS (with the stacks)
+    board::CView board_c_view = board::CView::All;              // the filter by C result
+    std::array<bool, board::kPileCount> board_c_kept_done{};    // which columns listed their foundation before that filter
     double board_flow_time = 2.5;                               // seconds: where the flow dots are
     std::vector<std::pair<int, std::string>> board_crumbs;      // the way here: (module, function or empty), the last is what is in view
     std::string board_function;                                 // the Library view is centred on this function of the module in focus

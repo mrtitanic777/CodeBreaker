@@ -34,6 +34,8 @@ struct BoardLayout {
     Rect inspect, drawer, drawer_close;   // Inspect on the selected card's strip; the X-Ray drawer and its close button
     std::array<Rect, board::kSignalTypes> signal_pills{};   // the cards: one per kind of signal
     Rect group_copies, filter_row;     // the cards: Group copies, and the active filters' row (empty when there are none)
+    Rect c_summary;                    // the cards: the whole OS's measured C result (empty with no score table)
+    std::array<Rect, board::kCViews> c_pills{};   // the cards: the filters by C result
     Rect map;                          // Map, on the selected card's strip
     std::array<Rect, 3> chips{};       // Flow and Trace: Imports, Installs, References
     std::array<Rect, 3> widths{};      // Flow and Trace: channels as wide as their Files, Links or Calls
@@ -112,6 +114,8 @@ void board_rebuild_stacks(Model& model);
 // Open a kind of signal's list (again: close it). Its values, the ones most files share first.
 void board_open_signals(Model& model, int type);
 void board_toggle_filter(Model& model, std::uint32_t signal);
+// Filter by C result (the same one again: off). Converted programs live on their foundations, so the columns list those until it is off, then go back as they were.
+void board_toggle_c_view(Model& model, board::CView view);
 
 inline constexpr float kSignalRowHeight = 26;
 struct SignalPanel {

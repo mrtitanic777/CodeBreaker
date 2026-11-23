@@ -1770,6 +1770,11 @@ void WwApp::activate_page(Control c, int index) {
                 }
             }
             break;
+        case Control::BoardCView:
+            board_toggle_c_view(model_, static_cast<board::CView>(index));
+            relayout();
+            invalidate();
+            break;
         case Control::BoardOrphans:
             board_toggle_orphans(model_);
             relayout();
@@ -3597,6 +3602,10 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
         board_load_decks(m);
         board_rebuild_stacks(m);
         if (state == "board-orphans") board_toggle_orphans(m);
+        if (state == "board-c-identical") board_toggle_c_view(m, board::CView::MostIdentical);
+        if (state == "board-c-near") board_toggle_c_view(m, board::CView::NearMisses);
+        if (state == "board-c-nocompile") board_toggle_c_view(m, board::CView::WillNotCompile);
+        if (state == "board-c-unscored") board_toggle_c_view(m, board::CView::NotScored);
         if (state == "board-deck") {
             board_apply_deck(m, 0);
             m.board_decks_open = true;
@@ -3633,7 +3642,7 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
             if (state == "board-library-function" && m.board_library && !m.board_library->right.empty()) board_go_to(m, m.board_focus, m.board_library->right[0].key);
         }
         m.status_text = board::count_words(m.board->cards.size()) + " files on the board";
-        if (m.board_scores) m.status_text += " Â· " + board::c_score_words(*m.board_scores);
+        if (m.board_scores) m.status_text += " · " + board::c_score_words(*m.board_scores);
         if (state == "board-expanded") {
             m.board_expanded[1] = true;
             m.board_scroll[1] = 46 * 200;
@@ -4297,7 +4306,7 @@ int run(std::span<const std::string> args, bool no_command_given) {
         } else if (!a.starts_with("--") && open_file.empty()) {
             open_file = a;
         } else {
-            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout|functions|check|compare|palette|board|board-expanded|board-flow|board-trace|board-library|board-library-hover|board-library-function|board-filter|board-inspect|board-hover|board-orphans|board-deck|board-empty|board-scanning] [--board FOLDER] [--theme light|dark] [--size WxH] [--scale N]] [--board IMAGE] [--board-scan IMAGE [--board-out FOLDER]] [--board-trace TRACE --board-trace-disk IMAGE --board-out FOLDER]\n");
+            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout|functions|check|compare|palette|board|board-expanded|board-flow|board-trace|board-library|board-library-hover|board-library-function|board-filter|board-inspect|board-hover|board-orphans|board-c-identical|board-c-near|board-c-nocompile|board-c-unscored|board-deck|board-empty|board-scanning] [--board FOLDER] [--theme light|dark] [--size WxH] [--scale N]] [--board IMAGE] [--board-scan IMAGE [--board-out FOLDER]] [--board-trace TRACE --board-trace-disk IMAGE --board-out FOLDER]\n");
             return 2;
         }
     }
