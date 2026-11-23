@@ -764,6 +764,14 @@ float jrt_unbox_F(jobject* o) { jrt_nn(o); if (o->cls == &jrt_Float_class) retur
 int16_t jrt_unbox_S(jobject* o) { return ((jrt_Short*)jrt_cast((jobject*)jrt_nn(o), &jrt_Short_class))->value; }
 int8_t jrt_unbox_B(jobject* o) { return ((jrt_Byte*)jrt_cast((jobject*)jrt_nn(o), &jrt_Byte_class))->value; }
 char16_t jrt_unbox_C(jobject* o) { return ((jrt_Character*)jrt_cast((jobject*)jrt_nn(o), &jrt_Character_class))->value; }
+double jrt_Double_longBitsToDouble_J(int64_t bits) { double d; memcpy(&d, &bits, sizeof d); return d; }
+int32_t jrt_Float_floatToIntBits_F(float v) {
+	int32_t bits;
+	if (v != v) return 0x7fc00000;   // every NaN is the one NaN, as Java's has it
+	memcpy(&bits, &v, sizeof bits);
+	return bits;
+}
+float jrt_Float_intBitsToFloat_I(int32_t bits) { float f; memcpy(&f, &bits, sizeof f); return f; }
 // (whole numbers step through unsigned, so the largest wraps to the smallest as Java's does)
 #define JRT_BOX_STEP(L, T, NEXT) \
 	jobject* jrt_box_step_##L(jobject* volatile* slot, int by, bool postfix) { \

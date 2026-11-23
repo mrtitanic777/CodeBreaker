@@ -35,7 +35,7 @@ public class TreeDump {
 	}
 
 	public static void main(String[] args) throws Exception {
-		String out = null, cp = null, sourcepath = null, release = null;
+		String out = null, cp = null, sourcepath = null, release = null, patch = null;
 		List<String> files = new ArrayList<>();
 		for (int i = 0; i < args.length; i++) {
 			String a = args[i];
@@ -43,6 +43,7 @@ public class TreeDump {
 			else if (a.equals("--cp")) cp = args[++i];
 			else if (a.equals("--sourcepath")) sourcepath = args[++i];
 			else if (a.equals("--release")) release = args[++i];
+			else if (a.equals("--patch")) patch = args[++i];
 			else if (a.startsWith("@")) {
 				for (String line : Files.readAllLines(Paths.get(a.substring(1)), StandardCharsets.UTF_8))
 					if (!line.isBlank()) files.add(line.trim());
@@ -59,6 +60,7 @@ public class TreeDump {
 		if (cp != null) { opts.add("-cp"); opts.add(cp); }
 		if (sourcepath != null) { opts.add("-sourcepath"); opts.add(sourcepath); }
 		if (release != null) { opts.add("--release"); opts.add(release); }
+		if (patch != null) { opts.add("--patch-module"); opts.add("java.base=" + patch); }
 		JavacTask task = (JavacTask) compiler.getTask(null, fm, diags, opts, null, fm.getJavaFileObjectsFromStrings(files));
 		Iterable<? extends CompilationUnitTree> units = task.parse();
 		task.analyze();

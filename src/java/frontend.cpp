@@ -2,10 +2,12 @@
 #include "java/frontend.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <format>
 #include <limits>
+#include <set>
 
 #include <nlohmann/json.hpp>
 
@@ -927,6 +929,38 @@ stdfs::path treedump_folder(const DumpTools& tools) {
     return folder;
 }
 
+bool names_word(std::string_view text, std::string_view word) {
+    for (std::size_t at = text.find(word); at != std::string_view::npos; at = text.find(word, at + 1)) {
+        const auto part = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_'; };
+        if ((at == 0 || !part(text[at - 1])) && (at + word.size() >= text.size() || !part(text[at + word.size()]))) return true;
+    }
+    return false;
+}
+
+// The classes of CodeBreaker's Java library this program names, and those they name in turn.
+std::vector<stdfs::path> library_used(const stdfs::path& library, const std::vector<stdfs::path>& program) {
+    std::vector<stdfs::path> out;
+    std::error_code ec;
+    if (library.empty() || !stdfs::is_directory(library, ec)) return out;
+    std::vector<std::pair<stdfs::path, std::string>> available;
+    for (const stdfs::path& f : java_files(library)) available.emplace_back(f, fs::read_text(f));
+    std::vector<std::string> open;
+    for (const stdfs::path& f : program) open.push_back(fs::read_text(f));
+    std::set<stdfs::path> taken;
+    while (!open.empty()) {
+        const std::string text = std::move(open.back());
+        open.pop_back();
+        for (const auto& [file, source] : available) {
+            if (!taken.contains(file) && names_word(text, fs::to_text(file.stem()))) {
+                taken.insert(file);
+                open.push_back(source);
+            }
+        }
+    }
+    out.assign(taken.begin(), taken.end());
+    return out;
+}
+
 }  // namespace
 
 std::vector<Node*> lower_program(Arena& arena, const stdfs::path& java_dir, const DumpTools& tools) {
@@ -934,19 +968,34 @@ std::vector<Node*> lower_program(Arena& arena, const stdfs::path& java_dir, cons
     const stdfs::path folder = treedump_folder(tools);
     fs::ScopedTempDir out{"cb-treedump"};
     const stdfs::path listing = out.path() / "_files.txt";
-    std::string names;
-    for (const stdfs::path& f : java_files(java_dir)) names += (names.empty() ? "" : "\n") + fs::to_text(f);
-    fs::write_text(listing, names);
-    std::vector<std::string> argv = {fs::to_text(tools.java), "-Xss16m", "-cp", fs::to_text(folder), "TreeDump", "--out", fs::to_text(out.path() / "units"), "--sourcepath", fs::to_text(java_dir)};
-    if (!tools.classpath.empty()) {
-        std::string cp;
-        for (const stdfs::path& p : tools.classpath) cp += (cp.empty() ? "" : ";") + fs::to_text(p);
-        argv.push_back("--cp");
-        argv.push_back(cp);
-    }
-    argv.push_back("@" + fs::to_text(listing));
-    fs::make_dirs(out.path() / "units");
-    const process::ProcessResult r = process::run({.argv = argv, .timeout = std::chrono::minutes(30)});
+    const std::vector<stdfs::path> program = java_files(java_dir);
+    const std::vector<stdfs::path> library = library_used(tools.library, program);
+    const auto dump = [&](bool with_library) {
+        std::string names;
+        for (const stdfs::path& f : program) names += (names.empty() ? "" : "\n") + fs::to_text(f);
+        if (with_library) {
+            for (const stdfs::path& f : library) names += "\n" + fs::to_text(f);
+        }
+        fs::write_text(listing, names);
+        std::vector<std::string> argv = {fs::to_text(tools.java), "-Xss16m", "-cp", fs::to_text(folder), "TreeDump", "--out", fs::to_text(out.path() / "units"), "--sourcepath", fs::to_text(java_dir)};
+        if (with_library) {
+            argv.push_back("--patch");
+            argv.push_back(fs::to_text(tools.library));
+        }
+        if (!tools.classpath.empty()) {
+            std::string cp;
+            for (const stdfs::path& p : tools.classpath) cp += (cp.empty() ? "" : ";") + fs::to_text(p);
+            argv.push_back("--cp");
+            argv.push_back(cp);
+        }
+        argv.push_back("@" + fs::to_text(listing));
+        std::error_code ec;
+        stdfs::remove_all(out.path() / "units", ec);
+        fs::make_dirs(out.path() / "units");
+        return process::run({.argv = argv, .timeout = std::chrono::minutes(30)});
+    };
+    process::ProcessResult r = dump(!library.empty());
+    if (r.exit_code != 0 && !library.empty()) r = dump(false);   // (a member our library does not have: the program is then refused as using the JDK's)
     if (r.exit_code != 0) {
         const std::string err(r.err.begin(), r.err.end());
         throw ToolError("TreeDump", r.exit_code, "TreeDump failed: " + err.substr(err.size() > 600 ? err.size() - 600 : 0));

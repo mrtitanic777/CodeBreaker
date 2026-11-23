@@ -296,13 +296,21 @@ std::vector<std::string> Program::all_ifaces(const ClassInfo& cls) const {
     return out;
 }
 
-std::optional<std::string> Program::find_impl(const ClassInfo& cls, std::string_view java_name, std::size_t parameters) const {
+std::optional<std::string> Program::find_impl(const ClassInfo& cls, std::string_view java_name, std::size_t parameters, const std::string* slot) const {
+    if (slot != nullptr) {
+        if (auto exact = find_impl_of(cls, java_name, parameters, slot)) return exact;
+    }
+    return find_impl_of(cls, java_name, parameters, nullptr);
+}
+
+std::optional<std::string> Program::find_impl_of(const ClassInfo& cls, std::string_view java_name, std::size_t parameters, const std::string* slot) const {
     const auto implementing = [&](const ClassInfo& c) -> std::optional<std::string> {
         for (const ir::Node* mn : c.methods()) {
             const ir::MethodDecl& m = method_of(mn);
             if (m.kind == "method" && m.name == java_name && has_body(m) && m.params.size() == parameters && !is_static(m)) {
                 const Sig s = sig(c, mn);
-                return std::format("{}_{}", c.cname, mname(*m.name, s.eps));
+                const std::string name = mname(*m.name, s.eps);
+                if (slot == nullptr || name == *slot) return std::format("{}_{}", c.cname, name);
             }
         }
         return std::nullopt;
@@ -333,7 +341,7 @@ Lines Program::lambda_tables(const std::string& name, const ClassInfo& iface, st
         for (const IMethod& x : iface_methods(q)) {
             std::string impl = name + "_fn";
             if (x.java != java_name || x.eps.size() != parameters) {
-                std::optional<std::string> found = find_impl(iface, x.java, x.eps.size());
+                std::optional<std::string> found = find_impl(iface, x.java, x.eps.size(), &x.name);
                 if (!found) throw Decline(std::format("a lambda of {} leaves {} without a body", iface.qname, x.java));
                 impl = std::move(*found);
             }
@@ -612,7 +620,7 @@ Lines Program::tables(const ClassInfo& cls) {
         if (q == "java.lang.Comparable" && !find_impl(cls, "compareTo", 1)) continue;   // an enum's: jrt_natural compares by ordinal
         std::string impls;
         for (const IMethod& x : ms) {
-            std::optional<std::string> impl = find_impl(cls, x.java, x.eps.size());
+            std::optional<std::string> impl = find_impl(cls, x.java, x.eps.size(), &x.name);
             const bool is_abstract = std::find(cls.decl->mods.begin(), cls.decl->mods.end(), "abstract") != cls.decl->mods.end();
             if (!impl && is_abstract) impl = "0";   // never reached: an instance is of a subclass, whose own table is found first
             if (!impl) throw Decline(std::format("{} does not implement {}.{}", cls.cname, q, x.java));

@@ -200,6 +200,9 @@ int32_t jrt_Double_compare_DD(double a, double b);
 int32_t jrt_Double_hashCode_D(double v);
 int64_t jrt_Double_doubleToRawLongBits_D(double v);
 int64_t jrt_Double_doubleToLongBits_D(double v);
+double jrt_Double_longBitsToDouble_J(int64_t bits);
+int32_t jrt_Float_floatToIntBits_F(float v);
+float jrt_Float_intBitsToFloat_I(int32_t bits);
 bool jrt_Double_isNaN_D(double v);
 jstring* jrt_Double_toString_D(double v);
 double jrt_Double_parseDouble_Str(jstring* s);
@@ -289,6 +292,7 @@ void jrt_Arrays_sort_DA(jarray* a);
 void jrt_Arrays_fill_IA(jarray* a, int32_t v);
 jstring* jrt_Arrays_toString_IA(jarray* a);
 void jrt_System_arraycopy(jobject* src, int32_t sp, jobject* dst, int32_t dp, int32_t n);
+#define jrt_System_arraycopy_OIOII(s, sp, d, dp, n) jrt_System_arraycopy((jobject*)(s), (sp), (jobject*)(d), (dp), (n))
 
 /* ---- StringBuilder */
 typedef struct jrt_StringBuilder { jobject hdr; int32_t len, cap; char16_t* s; } jrt_StringBuilder;

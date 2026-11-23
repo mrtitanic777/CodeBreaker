@@ -1712,7 +1712,15 @@ E Method::x_lit(const NodeP& e) {
         return E(float_text(f, ""), "double");
     }
     if (k == "u16") return E(char_lit(v), "char16_t");
-    if (v.is_str()) return E("jrt::lit(" + u16(v.str()) + ")", "ref<" + p.rt("String") + ">");
+    if (v.is_str()) {
+        const std::string& held = v.str();
+        if (held.find('\0') != std::string::npos) {   // (a NUL inside: a C string would end there, so the length is said)
+            std::size_t units = 0;
+            for (unsigned char c : held) units += (c & 0xC0) != 0x80 ? (c >= 0xF0 ? 2 : 1) : 0;
+            return E("jrt::str(std::u16string(" + u16(held) + ", " + std::to_string(units) + "))", "ref<" + p.rt("String") + ">");
+        }
+        return E("jrt::lit(" + u16(held) + ")", "ref<" + p.rt("String") + ">");
+    }
     throw Decline("literal " + py::repr(v));
 }
 

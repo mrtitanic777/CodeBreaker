@@ -343,7 +343,8 @@ Result tf_java(const std::string& to, const stdfs::path& input, const stdfs::pat
     }
     Arena arena;
     const java::frontend::DumpTools tools{*java, javac, environment.config.checkout_root() / "config" / "translate" / "frontends" / "java" / "TreeDump.java",
-                                          environment.config.state(), {}};
+                                          environment.config.state(), {},
+                                          environment.config.checkout_root() / "config" / "translate" / "frontends" / "java" / "library"};
     std::vector<ir::Node*> units = java::frontend::lower_program(arena, sources, tools);
     const JavaMain main_class = tf_java_main(units, name);
     if (main_class.simple.empty()) {

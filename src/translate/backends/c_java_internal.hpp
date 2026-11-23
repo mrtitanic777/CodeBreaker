@@ -178,7 +178,10 @@ public:
     std::vector<IMethod> iface_methods(std::string_view qname) const;
     std::vector<std::string> all_ifaces(const ClassInfo& cls) const;
     // The function implementing an interface method in class `cls` (its own or a base's, or an interface's default), if any.
-    std::optional<std::string> find_impl(const ClassInfo& cls, std::string_view java_name, std::size_t parameters) const;
+    // `slot`, when given, picks among overloads of one length: the method of exactly that slot name first, then (a generic one, whose erased
+    // parameters differ from the interface's) any of that length.
+    std::optional<std::string> find_impl(const ClassInfo& cls, std::string_view java_name, std::size_t parameters, const std::string* slot = nullptr) const;
+    std::optional<std::string> find_impl_of(const ClassInfo& cls, std::string_view java_name, std::size_t parameters, const std::string* slot) const;
     Lines lambda_tables(const std::string& name, const ClassInfo& iface, std::string_view java_name, std::size_t parameters) const;
 
     // ---- constructors

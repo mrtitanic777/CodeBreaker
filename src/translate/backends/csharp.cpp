@@ -1972,6 +1972,10 @@ std::string Writer::coerce(Node* e, const TypeP& t) {
     }
     if (java_) {
         if (auto got = lib().coerce(*this, e, t)) return *got;
+        // a constant arm of ?: narrowed to a byte, short or char: C# types the whole expression int unless each arm is cast
+        if (const auto* choice = ir::get<ir::Cond>(strip(e)); choice != nullptr && tp && ep && (tp == ir::Prim::I8 || tp == ir::Prim::I16 || tp == ir::Prim::U16)) {
+            return "(" + expr(choice->cond).text + " ? (" + ctype(t) + ")(" + expr(choice->then).text + ") : (" + ctype(t) + ")(" + expr(choice->orelse).text + "))";
+        }
     }
     return expr(e).text;
 }

@@ -256,7 +256,7 @@ const Code* library_static(std::string_view owner, std::string_view name) {
         std::string_view owner, name;
         Code code;
     };
-    static const std::array<Entry, 47> table = {{
+    static const std::array<Entry, 54> table = {{
         {"java.lang.Integer", "MAX_VALUE", {"JRT_INT_MAX", "int32_t"}},
         {"java.lang.Integer", "MIN_VALUE", {"JRT_INT_MIN", "int32_t"}},
         {"java.lang.Long", "MAX_VALUE", {"JRT_LONG_MAX", "int64_t"}},
@@ -297,6 +297,13 @@ const Code* library_static(std::string_view owner, std::string_view name) {
         {"java.lang.Character", "OTHER_SYMBOL", {"((int8_t)28)", "int8_t"}},
         {"java.lang.Character", "INITIAL_QUOTE_PUNCTUATION", {"((int8_t)29)", "int8_t"}},
         {"java.lang.Character", "FINAL_QUOTE_PUNCTUATION", {"((int8_t)30)", "int8_t"}},
+        {"java.lang.Float", "NaN", {"((float)NAN)", "float"}},
+        {"java.lang.Float", "POSITIVE_INFINITY", {"((float)INFINITY)", "float"}},
+        {"java.lang.Float", "NEGATIVE_INFINITY", {"((float)-INFINITY)", "float"}},
+        {"java.lang.Float", "MAX_VALUE", {"3.4028234663852886e38f", "float"}},
+        {"java.lang.Float", "MIN_VALUE", {"1.4e-45f", "float"}},
+        {"java.lang.Double", "MAX_VALUE", {"1.7976931348623157e308", "double"}},
+        {"java.lang.Double", "MIN_VALUE", {"4.9e-324", "double"}},
         {"java.lang.Math", "PI", {"JRT_PI", "double"}},
         {"java.lang.Math", "E", {"JRT_E", "double"}},
         {"java.lang.Double", "NaN", {"NAN", "double"}},

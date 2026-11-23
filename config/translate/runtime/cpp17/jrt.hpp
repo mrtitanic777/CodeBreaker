@@ -738,6 +738,7 @@ struct Double_ {
 };
 struct Float_ {
 	static constexpr float MAX_VALUE = 3.4028235e38f, MIN_VALUE = 1.4e-45f;
+	static constexpr float POSITIVE_INFINITY = (float)INFINITY, NEGATIVE_INFINITY = (float)-INFINITY, NaN = (float)NAN;
 	static ref<Float> valueOf(float v) { return box(v); }
 	static ref<String> toString(float v) { return str(ftos(v)); }
 	static int32_t hashCode(float v) { return fbits(v); }

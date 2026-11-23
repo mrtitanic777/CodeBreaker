@@ -63,6 +63,10 @@ public static partial class JLib
 
     public static T NonNull<T>(T v) where T : class => v ?? throw new NullReferenceException();
 
+    // A number's bits, with every NaN the one NaN, as Java's has it.
+    public static long DoubleBits(double v) => double.IsNaN(v) ? 0x7ff8000000000000L : BitConverter.DoubleToInt64Bits(v);
+    public static int FloatBits(float v) => float.IsNaN(v) ? 0x7fc00000 : BitConverter.SingleToInt32Bits(v);
+
     // The end of a Java try-with-resources for one resource: a null is not closed; a close that throws while `thrown` is on its way is added to it.
     public static void CloseResource(IDisposable resource, Exception thrown)
     {
@@ -76,6 +80,22 @@ public static partial class JLib
     {
         if (e.Data["java.suppressed"] is not List<Exception> held) e.Data["java.suppressed"] = held = new List<Exception>();
         held.Add(more);
+    }
+
+    // Java's getMessage: null for an exception made with no message, where .NET's Message makes one up.
+    // It is recognised as the text the nearest .NET exception type gives when made with no arguments.
+    static readonly Dictionary<Type, string> MadeUpMessages = new Dictionary<Type, string>();
+    public static string Message(Exception e)
+    {
+        Type type = e.GetType();
+        while (type.Assembly != typeof(Exception).Assembly) type = type.BaseType;
+        if (!MadeUpMessages.TryGetValue(type, out string madeUp))
+        {
+            try { madeUp = ((Exception)Activator.CreateInstance(type)).Message; }
+            catch (Exception) { madeUp = null; }
+            MadeUpMessages[type] = madeUp;
+        }
+        return e.Message == madeUp ? null : e.Message;
     }
 
     public static Exception[] Suppressed(Exception e) => e.Data["java.suppressed"] is List<Exception> held ? held.ToArray() : new Exception[0];

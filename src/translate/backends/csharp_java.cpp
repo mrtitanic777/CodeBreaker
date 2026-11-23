@@ -38,7 +38,7 @@ const std::unordered_map<std::string_view, std::string_view>& cj_types() {
         {"java.lang.NumberFormatException", "FormatException"}, {"java.lang.ClassCastException", "InvalidCastException"},
         {"java.lang.NegativeArraySizeException", "OverflowException"}, {"java.util.NoSuchElementException", "InvalidOperationException"},
         {"java.lang.Comparable", "IComparable"}, {"java.lang.Iterable", "IEnumerable"}, {"java.lang.AutoCloseable", "IDisposable"},
-        {"java.io.Closeable", "IDisposable"}, {"java.lang.Runnable", "Action"}, {"java.util.Random", "JavaRandom"}};
+        {"java.io.Closeable", "IDisposable"}, {"java.io.IOException", "System.IO.IOException"}, {"java.lang.Runnable", "Action"}, {"java.util.Random", "JavaRandom"}};
     return table;
 }
 
@@ -1493,6 +1493,14 @@ std::optional<Ex> JavaLibrary::select(cs::Context& w, Node* e) {
     if (ir::is<ir::This>(sel.obj)) {   // a field of an enclosing instance
         if (const std::optional<std::string> path = this_text(w, sel.obj); path && *path != "this") return Ex{*path + "." + member_name(w, *s), cs::kPrimary};
     }
+    if (owner == "java.lang.Float" || owner == "java.lang.Double") {
+        const std::string word = owner == "java.lang.Float" ? "float" : "double";
+        if (s->name == "POSITIVE_INFINITY") return Ex{word + ".PositiveInfinity", cs::kPrimary};
+        if (s->name == "NEGATIVE_INFINITY") return Ex{word + ".NegativeInfinity", cs::kPrimary};
+        if (s->name == "NaN") return Ex{word + ".NaN", cs::kPrimary};
+        if (s->name == "MAX_VALUE") return Ex{word + ".MaxValue", cs::kPrimary};
+        if (s->name == "MIN_VALUE") return Ex{word + ".Epsilon", cs::kPrimary};   // (Java's smallest positive value)
+    }
     if (owner == "java.lang.Character") {   // Java's Unicode categories, by Java's own numbers (.NET numbers them differently)
         static const std::unordered_map<std::string_view, int> categories = {{"UNASSIGNED", 0}, {"UPPERCASE_LETTER", 1}, {"LOWERCASE_LETTER", 2}, {"TITLECASE_LETTER", 3}, {"MODIFIER_LETTER", 4}, {"OTHER_LETTER", 5}, {"NON_SPACING_MARK", 6}, {"ENCLOSING_MARK", 7}, {"COMBINING_SPACING_MARK", 8}, {"DECIMAL_DIGIT_NUMBER", 9}, {"LETTER_NUMBER", 10}, {"OTHER_NUMBER", 11}, {"SPACE_SEPARATOR", 12}, {"LINE_SEPARATOR", 13}, {"PARAGRAPH_SEPARATOR", 14}, {"CONTROL", 15}, {"FORMAT", 16}, {"PRIVATE_USE", 18}, {"SURROGATE", 19}, {"DASH_PUNCTUATION", 20}, {"START_PUNCTUATION", 21}, {"END_PUNCTUATION", 22}, {"CONNECTOR_PUNCTUATION", 23}, {"OTHER_PUNCTUATION", 24}, {"MATH_SYMBOL", 25}, {"CURRENCY_SYMBOL", 26}, {"MODIFIER_SYMBOL", 27}, {"OTHER_SYMBOL", 28}, {"INITIAL_QUOTE_PUNCTUATION", 29}, {"FINAL_QUOTE_PUNCTUATION", 30}};
         if (const auto category = categories.find(s->name); category != categories.end()) return Ex{"(sbyte)" + std::to_string(category->second), cs::kUnary};
@@ -1505,6 +1513,7 @@ std::optional<Ex> JavaLibrary::select(cs::Context& w, Node* e) {
         w.add_using("System");
         return Ex{s->name == "out" ? "Console.Out" : "Console.Error", cs::kPrimary};
     }
+    if (w.program().class_named(owner) != nullptr) return std::nullopt;   // (a class of CodeBreaker's Java library, translated with the program)
     if (cj_library_name(owner)) throw Decline("library", "the Java library field " + owner + "." + s->name + " has no C# mapping");
     return std::nullopt;
 }
@@ -1603,9 +1612,24 @@ std::optional<Ex> JavaLibrary::call(cs::Context& w, Node* e, bool statement) {
         }
     }
     if (c != nullptr || owner.empty()) return std::nullopt;
+    if ((owner == "java.lang.Double" || owner == "java.lang.Float") && s->is_static && call.args.size() == 1) {   // a number's bits, with Java's one NaN
+        static const std::unordered_map<std::string_view, std::string_view> bits = {{"doubleToLongBits", "JLib.DoubleBits"}, {"longBitsToDouble", "BitConverter.Int64BitsToDouble"},
+                                                                                       {"floatToIntBits", "JLib.FloatBits"}, {"intBitsToFloat", "BitConverter.Int32BitsToSingle"}};
+        if (const auto way = bits.find(s->name); way != bits.end()) {
+            w.add_using("System");
+            w.program().use_runtime("JavaRt");
+            w.program().use_runtime("JavaCollections");
+            return Ex{std::string(way->second) + "(" + w.expr(call.args[0]).text + ")", cs::kPrimary};
+        }
+    }
     if (owner == "java.lang.Character" && s->name == "getType" && call.args.size() == 1 && w.ctype(call.args[0]->type) == "char") {
         w.program().use_runtime("JavaCharTypes");
         return Ex{"JavaCharTypes.Of(" + w.expr(call.args[0]).text + ")", cs::kPrimary};
+    }
+    if (owner == "java.lang.Throwable" && call.target != nullptr && s->name == "getMessage" && call.args.empty()) {   // (.NET invents a message where Java has none)
+        w.program().use_runtime("JavaRt");
+        w.program().use_runtime("JavaCollections");
+        return Ex{"JLib.Message(" + w.expr(call.target).text + ")", cs::kPrimary};
     }
     if (owner == "java.lang.Throwable" && call.target != nullptr && (s->name == "getSuppressed" || s->name == "addSuppressed")) {
         w.program().use_runtime("JavaRt");
