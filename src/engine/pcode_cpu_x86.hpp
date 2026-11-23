@@ -1,7 +1,7 @@
 // engine/pcode_cpu_x86.hpp -- an x86 engine on CodeBreaker's one emulator (decompile/engine/pcode_emulator), as the core16::Uc the lanes that run x86 code on Unicorn use: the
 // WonderSwan's V30MZ (16-bit, x86.sla) and the PlayStation 4 and 5's and the Xbox One's x86-64 (x86-64.sla).
 //
-//     std::unique_ptr<core16::Uc> uc = engine::pcode_cpu::open_x86(64);   // the emulator when asked for (CB_PCODE_EMU=1), else Unicorn
+//     std::unique_ptr<core16::Uc> uc = engine::pcode_cpu::open_x86(64);   // the emulator, unless CB_PCODE_EMU=0, then Unicorn
 //
 // The engine is what a lane would have made with emulate::unicorn_uc::open_x86(bits): the same calls, the same registers (Unicorn's ids), the same faults (emu_start throws
 // UcFault with Unicorn's number and text), the same hooks. What Unicorn is, the engine is made of: mapped regions, the registers as the description names them (EFLAGS put
@@ -25,7 +25,7 @@ namespace cb::engine::pcode_cpu {
 // An engine on the emulator, always. `bits` is 16 (real mode, x86.sla) or 64 (x86-64.sla); UsageError for another.
 std::unique_ptr<core16::Uc> open_x86_emulator(int bits);
 
-// open_x86_emulator() or emulate::unicorn_uc::open_x86(), by enabled_when_asked() (the emulator is slower than Unicorn's translator: the lanes that call this are off by default).
+// open_x86_emulator() or emulate::unicorn_uc::open_x86(), by enabled() (CB_PCODE_EMU=0 gives Unicorn): the emulator is on by default, about as fast as Unicorn on the lanes' runs.
 std::unique_ptr<core16::Uc> open_x86(int bits);
 
 // Whether `uc` is the emulator's engine, and whether its run has gone to Unicorn.

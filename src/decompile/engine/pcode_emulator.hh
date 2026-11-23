@@ -56,6 +56,13 @@ public:
     void write(std::uint64_t addr, const std::uint8_t* data, std::size_t size, std::string_view space = {});
     void clearMemory(std::string_view space = {});   // every page of the space forgotten (it reads zeros again); decoded instructions dropped
     void read(std::uint64_t addr, std::uint8_t* data, std::size_t size, std::string_view space = {}) const;
+    // Where the bytes of a page the map does not hold come from, for a memory that is mostly an image written once and read a little (a page is made the first time a run
+    // looks at it, instead of all of them when the image is written). The source fills `out` with the bytes of [address, address + size) (zeros where it has none) and says
+    // whether it had any; with `out` null it only says whether it has any. The pages written since are the map's: write() merges into a page the source gave, writeHeld()
+    // writes only the pages the map holds already, read() takes a page the map does not hold from the source without making it. {} switches the source off.
+    using PageSource = std::function<bool(std::uint64_t address, std::uint8_t* out, std::size_t size)>;
+    void setPageSource(PageSource source, std::string_view space = {});
+    void writeHeld(std::uint64_t addr, const std::uint8_t* data, std::size_t size, std::string_view space = {});
     std::uint64_t readValue(std::uint64_t addr, unsigned size, std::string_view space = {}) const;   // in the processor's byte order
     void writeValue(std::uint64_t addr, unsigned size, std::uint64_t value, std::string_view space = {});
 
@@ -81,6 +88,10 @@ public:
     RegRef regRef(const std::string& name) const;
     std::uint64_t reg(const RegRef& ref) const;
     void setReg(const RegRef& ref, std::uint64_t value);
+    // `size` bytes of the register space from the register's place on (the registers that lie after it too), in one copy: what an adapter saves and puts back around an
+    // instruction it may have to undo.
+    void readRegs(const RegRef& from, std::uint8_t* out, std::size_t size) const;
+    void writeRegs(const RegRef& to, const std::uint8_t* data, std::size_t size);
     // Every register of at most 8 bytes that is not part of a bigger one (the ones a trace shows), in the description's order.
     // parts = true: every register of at most 8 bytes, the parts too (Z80's A and F as well as AF, x86's flags).
     const std::vector<Register>& registers(bool parts = false) const;

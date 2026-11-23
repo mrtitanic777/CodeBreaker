@@ -20,7 +20,11 @@
 // machine's CALLF (the description does not load CS) and RET imm16, RETF imm16 and IRET (it leaves the segment out), and OUTS (its operands come the other way round).
 // What stays unmatched: the flag AF, which the description never computes (it keeps the value it had; Unicorn computes it for every arithmetic instruction), and the flags the
 // processor leaves undefined, which Unicorn and the description each choose (shifts' OF, multiplies' SF ZF PF, the BCD instructions'). For the 64-bit lanes that is no part of the
-// lanes' comparison; for the WonderSwan lane, which compares the flags, it is why that lane is not on this engine.
+// lanes' comparison; the WonderSwan lane compares the flags, so the adapter works AF out itself (decode_af) and hands the instructions with undefined flags to Unicorn.
+//
+// Speed (the lanes run hundreds of short runs, most of which end on Unicorn): a lane's mem_write is kept as written and the emulator's pages are made from it when a run first
+// looks at them (Emulator::setPageSource), where it was a page made and copied for every page of the image, and again to hand them to Unicorn; a Unicorn engine is handed what was
+// written in one write each and only the pages the run itself wrote. The registers saved around an instruction are a few copies of bytes, not one read for each.
 #include "engine/pcode_cpu_x86.hpp"
 
 #include <algorithm>
@@ -95,7 +99,36 @@ struct Machine {
             }
         fs_base = emu.regRef("FS_OFFSET");
         gs_base = emu.regRef("GS_OFFSET");
+        // where each register the snapshot keeps sits in it: a group of registers is one copy of the bytes from its first to its last
+        unsigned next = 0;
+        const auto group = [&](Group& g, const RegRef* refs, int n, Slot* slots) {
+            std::uint64_t lo = ~std::uint64_t{0}, hi = 0;
+            for (int i = 0; i < n; ++i) {
+                lo = std::min<std::uint64_t>(lo, refs[i].offset);
+                hi = std::max<std::uint64_t>(hi, refs[i].offset + refs[i].size);
+            }
+            g.at = {refs[0].space, lo, 0};
+            g.len = static_cast<unsigned>(hi - lo);
+            g.dst = next;
+            next += (g.len + 7) & ~7u;
+            if (next > kSnapshotBytes) throw UsageError("the p-code x86 engine's registers are spread too far apart to keep");
+            for (int i = 0; i < n; ++i) slots[i] = {g.dst + static_cast<unsigned>(refs[i].offset - lo), refs[i].size};
+        };
+        group(gpr_group, gpr, gprs, gpr_slot);
+        group(flag_group, flag_words, 3, flag_slot);
+        if (bits == 16) group(seg_group, seg, 6, seg_slot);
+        if (bits == 64) group(xmm_group, xmm, 32, xmm_slot);
     }
+    struct Group {
+        RegRef at;
+        unsigned len = 0, dst = 0;
+    };
+    struct Slot {
+        unsigned dst = 0, size = 0;
+    };
+    static constexpr unsigned kSnapshotBytes = 4096;
+    Group gpr_group, flag_group, seg_group, xmm_group;
+    Slot gpr_slot[16], flag_slot[3], seg_slot[6], xmm_slot[32];
     int bits;
     sl::Emulator emu;
     RegRef flag[21];
@@ -180,6 +213,7 @@ public:
         emu_.setPc(0);
         set_flag_bits(0x2);
         // (Unicorn's own start: the x87 control word and MXCSR are zero, not the processor's reset values)
+        emu_.setPageSource([this](u64 address, std::uint8_t* out, std::size_t size) { return image_bytes(address, out, size); });
         emu_.onRead([this](std::string_view space, u64 address, unsigned size, u64& value) {
             if (!is_ram(space)) return false;
             if (!mapped(address, size)) {
@@ -218,6 +252,7 @@ public:
         emu_.onRead({});
         emu_.onWrite({});
         emu_.onUserOp({});
+        emu_.setPageSource({});
         emu_.clearMemory();
         m_->busy = false;
     }
@@ -245,8 +280,11 @@ public:
             if (r.end > address + size) kept.push_back({address + size, r.end});
         }
         regions_ = std::move(kept);
+        forget_image(address, address + size);
         const std::vector<std::uint8_t> zeros(static_cast<std::size_t>(std::min<u64>(size, 1u << 20)), 0);
-        for (u64 at = 0; at < size; at += zeros.size()) emu_.write(address + at, zeros.data(), static_cast<std::size_t>(std::min<u64>(zeros.size(), size - at)));
+        for (u64 at = 0; at < size; at += zeros.size()) emu_.writeHeld(address + at, zeros.data(), static_cast<std::size_t>(std::min<u64>(zeros.size(), size - at)));
+        for (u64 page = address / kPage; page < (address + size) / kPage; ++page) touched_.erase(page);
+        last_page_ = ~u64{0};
     }
     Bytes mem_read(u64 address, u64 size) override {
         if (twin_) return twin_->mem_read(address, size);
@@ -258,8 +296,10 @@ public:
     void mem_write(u64 address, ByteView data) override {
         if (twin_) return twin_->mem_write(address, data);
         if (!mapped(address, data.size())) fail(kErrWriteUnmapped, "uc_mem_write");
-        touch(address, data.size());
-        emu_.write(address, data.data(), data.size());
+        if (data.empty()) return;
+        // (kept as written: the emulator's pages are made from it when a run first looks at them, and a Unicorn engine is handed it as it was written)
+        image_.push_back({address, Bytes(data.begin(), data.end())});
+        emu_.writeHeld(address, data.data(), data.size());   // (a page the emulator has made already is changed as well)
     }
 
     // ---- registers
@@ -435,32 +475,35 @@ private:
         unsigned mod = 0, rm = 0;
         bool rex_b = false, has_rex = false;
     };
-    // The registers an instruction can change, kept to put back before an instruction goes to Unicorn.
+    // The registers an instruction can change, kept to put back before an instruction goes to Unicorn: the groups' bytes, copied whole (Machine::group).
     struct Snapshot {
-        u64 gpr[16];
-        u64 flags[3];  // the flag registers' bytes, eight at a time
-        u64 seg[6];
-        u64 xmm[32];   // XMM0..15, low and high halves (64-bit machine)
-        u64 pc;
+        const Machine* m = nullptr;
+        alignas(8) std::uint8_t raw[Machine::kSnapshotBytes];
+        u64 pc = 0;
+        u64 word(const Machine::Slot& s) const {
+            u64 v = 0;
+            std::memcpy(&v, raw + s.dst, s.size);   // (the description's registers are little-endian, as the host)
+            return v;
+        }
+        u64 gpr(int i) const { return word(m->gpr_slot[i]); }
+        u64 flags(int i) const { return word(m->flag_slot[i]); }   // the flag registers' bytes, eight at a time
+        u64 seg(int i) const { return word(m->seg_slot[i]); }
     };
     void save(Snapshot& s) const {
-        for (int i = 0; i < m_->gprs; ++i) s.gpr[i] = emu_.reg(m_->gpr[i]);
-        for (int i = 0; i < 3; ++i) s.flags[i] = emu_.reg(m_->flag_words[i]);
-        if (bits_ == 16)
-            for (int i = 0; i < 6; ++i) s.seg[i] = emu_.reg(m_->seg[i]);
-        if (vector_ && bits_ == 64)
-            for (int i = 0; i < 32; ++i) s.xmm[i] = emu_.reg(m_->xmm[i]);
+        s.m = m_;
+        emu_.readRegs(m_->gpr_group.at, s.raw + m_->gpr_group.dst, m_->gpr_group.len);
+        emu_.readRegs(m_->flag_group.at, s.raw + m_->flag_group.dst, m_->flag_group.len);
+        if (bits_ == 16) emu_.readRegs(m_->seg_group.at, s.raw + m_->seg_group.dst, m_->seg_group.len);
+        if (vector_ && bits_ == 64) emu_.readRegs(m_->xmm_group.at, s.raw + m_->xmm_group.dst, m_->xmm_group.len);
         s.pc = emu_.pc();
     }
     void restore(const Snapshot& s) {
         for (std::size_t i = journal_size_; i-- > 0;) emu_.write(journal_[i].address, journal_[i].old, journal_[i].size);
         journal_size_ = 0;
-        for (int i = 0; i < m_->gprs; ++i) emu_.setReg(m_->gpr[i], s.gpr[i]);
-        for (int i = 0; i < 3; ++i) emu_.setReg(m_->flag_words[i], s.flags[i]);
-        if (bits_ == 16)
-            for (int i = 0; i < 6; ++i) emu_.setReg(m_->seg[i], s.seg[i]);
-        if (vector_ && bits_ == 64)
-            for (int i = 0; i < 32; ++i) emu_.setReg(m_->xmm[i], s.xmm[i]);
+        emu_.writeRegs(m_->gpr_group.at, s.raw + m_->gpr_group.dst, m_->gpr_group.len);
+        emu_.writeRegs(m_->flag_group.at, s.raw + m_->flag_group.dst, m_->flag_group.len);
+        if (bits_ == 16) emu_.writeRegs(m_->seg_group.at, s.raw + m_->seg_group.dst, m_->seg_group.len);
+        if (vector_ && bits_ == 64) emu_.writeRegs(m_->xmm_group.at, s.raw + m_->xmm_group.dst, m_->xmm_group.len);
         emu_.setPc(s.pc);
     }
 
@@ -490,6 +533,35 @@ private:
             if (!found) return false;
         }
         return true;
+    }
+    // The image the lane wrote with mem_write, as the emulator's pages are made from it: [address, address + size) of it (zeros where nothing was written), and whether any byte was.
+    bool image_bytes(u64 address, std::uint8_t* out, std::size_t size) const {
+        if (out != nullptr) std::memset(out, 0, size);
+        bool any = false;
+        const u64 end = address + size;
+        for (const Image& w : image_) {
+            const u64 w_end = w.address + w.data.size();
+            if (w.address >= end || w_end <= address) continue;
+            if (out == nullptr) return true;
+            any = true;
+            const u64 from = std::max(w.address, address), to = std::min(w_end, end);
+            std::memcpy(out + (from - address), w.data.data() + (from - w.address), static_cast<std::size_t>(to - from));
+        }
+        return any;
+    }
+    // [begin, end) is no longer mapped: what was written there is forgotten.
+    void forget_image(u64 begin, u64 end) {
+        std::vector<Image> kept;
+        for (Image& w : image_) {
+            const u64 w_end = w.address + w.data.size();
+            if (w_end <= begin || w.address >= end) {
+                kept.push_back(std::move(w));
+                continue;
+            }
+            if (w.address < begin) kept.push_back({w.address, Bytes(w.data.begin(), w.data.begin() + static_cast<std::ptrdiff_t>(begin - w.address))});
+            if (w_end > end) kept.push_back({end, Bytes(w.data.begin() + static_cast<std::ptrdiff_t>(end - w.address), w.data.end())});
+        }
+        image_ = std::move(kept);
     }
     void touch(u64 address, u64 size) {
         for (u64 page = address / kPage; page <= (address + size - 1) / kPage; ++page) {
@@ -804,14 +876,14 @@ private:
         if (a.kind == K::Clear) return 0;
         const u64 mask = a.size == 1 ? 0xFF : 0xFFFF;
         const auto register_value = [&](unsigned n) -> u64 {
-            if (a.size == 1) return n < 4 ? before.gpr[hardware_to_index(n)] & 0xFF : (before.gpr[hardware_to_index(n - 4)] >> 8) & 0xFF;
-            return before.gpr[hardware_to_index(n)] & 0xFFFF;
+            if (a.size == 1) return n < 4 ? before.gpr(hardware_to_index(n)) & 0xFF : (before.gpr(hardware_to_index(n - 4)) >> 8) & 0xFF;
+            return before.gpr(hardware_to_index(n)) & 0xFFFF;
         };
         u64 x = a.a, y = a.b;
-        if ((a.kind == K::Cmps || a.kind == K::Scas) && a.rep && (before.gpr[hardware_to_index(1)] & 0xFFFF) == 0) return (before.flags[0] >> 32) & 1;   // (nothing was compared)
+        if ((a.kind == K::Cmps || a.kind == K::Scas) && a.rep && (before.gpr(hardware_to_index(1)) & 0xFFFF) == 0) return (before.flags(0) >> 32) & 1;   // (nothing was compared)
         if (a.kind == K::Cmps || a.kind == K::Scas) {
-            const u64 si = before.gpr[hardware_to_index(6)] & 0xFFFF, di = before.gpr[hardware_to_index(7)] & 0xFFFF;
-            const u64 es = before.seg[2], source = before.seg[a.segment];
+            const u64 si = before.gpr(hardware_to_index(6)) & 0xFFFF, di = before.gpr(hardware_to_index(7)) & 0xFFFF;
+            const u64 es = before.seg(2), source = before.seg(a.segment);
             const u64 dest_value = emu_.readValue((es << 4) + di, a.size);
             if (a.kind == K::Scas) {
                 x = register_value(0);
@@ -828,7 +900,7 @@ private:
         }
         x &= mask;
         y &= mask;
-        const u64 carry = a.kind == K::Adc || a.kind == K::Sbb ? before.flags[0] & 1 : 0;
+        const u64 carry = a.kind == K::Adc || a.kind == K::Sbb ? before.flags(0) & 1 : 0;
         const u64 result = (a.kind == K::Add || a.kind == K::Adc ? x + y + carry : x - y - carry) & mask;
         return ((x ^ y ^ result) >> 4) & 1;
     }
@@ -847,8 +919,8 @@ private:
         u64 value = 0;
         if (d.mod == 3) {
             const unsigned n = d.rm + (d.rex_b ? 8 : 0);
-            if (d.bytes == 1 && !d.has_rex && n >= 4 && n < 8) value = (before.gpr[hardware_to_index(n - 4)] >> 8) & 0xFF;   // AH, CH, DH, BH
-            else value = before.gpr[hardware_to_index(n)];
+            if (d.bytes == 1 && !d.has_rex && n >= 4 && n < 8) value = (before.gpr(hardware_to_index(n - 4)) >> 8) & 0xFF;   // AH, CH, DH, BH
+            else value = before.gpr(hardware_to_index(n));
         } else {
             value = emu_.readValue(last_read_address_, d.bytes);
         }
@@ -864,7 +936,7 @@ private:
         if (divisor == 0) return true;
         const unsigned bits = d.bytes * 8;
         const u64 mask = bits == 64 ? ~u64{0} : ((u64{1} << bits) - 1);
-        const u64 rax = before.gpr[0], rdx = before.gpr[3];
+        const u64 rax = before.gpr(0), rdx = before.gpr(3);
         u64 dividend = 0;   // the dividend, as a word (for 64 bits it must be one: the high half nothing, or the sign of the low)
         switch (d.bytes) {
             case 1: dividend = rax & 0xFFFF; break;
@@ -907,6 +979,7 @@ private:
         const u64 pc = emu_.pc();
         twin_ = uu::open_x86(bits_);
         for (const Region& r : regions_) twin_->mem_map(r.begin, r.end - r.begin);
+        for (const Image& w : image_) twin_->mem_write(w.address, w.data);
         Bytes page(kPage);
         for (const u64 index : touched_) {
             emu_.read(index * kPage, page.data(), page.size());
@@ -994,7 +1067,12 @@ private:
     std::function<u32(core16::Uc&, u32, u32)> in_;
     std::function<void(core16::Uc&, u32, u32, u32)> out_;
     std::function<void(core16::Uc&)> syscall_;
-    std::unordered_set<u64> touched_;   // the pages written so far: what a Unicorn engine is handed
+    struct Image {
+        u64 address;
+        Bytes data;
+    };
+    std::vector<Image> image_;          // what mem_write wrote, in order (a Unicorn engine is handed it)
+    std::unordered_set<u64> touched_;   // the pages the run has written since: a Unicorn engine is handed them as they are
     u64 last_page_ = ~u64{0};
     struct Stored {
         u64 address = 0;
@@ -1043,7 +1121,7 @@ std::unique_ptr<core16::Uc> open_x86_emulator(int bits) {
 }
 
 std::unique_ptr<core16::Uc> open_x86(int bits) {
-    if (enabled_when_asked() && (bits == 16 || bits == 64)) return open_x86_emulator(bits);
+    if (enabled() && (bits == 16 || bits == 64)) return open_x86_emulator(bits);
     return uu::open_x86(bits);
 }
 
