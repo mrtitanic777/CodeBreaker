@@ -434,8 +434,8 @@ CB_TEST("build.msc6.compile_many_one_source_a_file", [] {
     std::vector<msc6::Source> sources{{.text = "int2 f1(int2 a)\n{\n}"}, {.text = "int2 f2(int2 a)\n{\n}"}, {.text = "#error\nint2 bad(int2 a)\n{\n}"}};
     const auto built = msc6::compile_many(rig.ctx, sources, "typedef short int2;\n", "/AM /Gcsw /Os", rig.options);
     CB_CHECK_EQ(built.size(), 3u);
-    CB_CHECK_EQ(rig.runner.sessions, 1);                 // all of them in one DOS session
-    CB_CHECK_EQ(rig.runner.files_per_session[0], 3u);
+    CB_CHECK_EQ(rig.runner.sessions, 3);                 // one run a file, each under one name (the kept start of the compiler applies)
+    CB_CHECK_EQ(rig.runner.files_per_session[0], 1u);
     CB_CHECK_EQ(code_hex(built[0]), "909055" "8bec" "66" "0f" "5dcb");   // the first code segment: the helper filler and the function
     CB_CHECK(!built[2].has_value());                      // refused
     CB_CHECK_EQ(rig.runner.flags_seen[0], "cl /nologo /c /W0 /AM /Gcsw /Os ");
@@ -453,9 +453,7 @@ CB_TEST("build.msc6.compile_many_named_functions_share_files_and_a_refused_one_i
     const auto built = msc6::compile_many(rig.ctx, sources, "", "/AM /Gcsw /Os", rig.options);
     CB_CHECK_EQ(built.size(), 5u);
     // round 1: all five in one file, refused with its errors in `bad`; round 2: bad on its own and the other four together
-    CB_CHECK_EQ(rig.runner.sessions, 2);
-    CB_CHECK_EQ(rig.runner.files_per_session[0], 1u);
-    CB_CHECK_EQ(rig.runner.files_per_session[1], 2u);
+    CB_CHECK_EQ(rig.runner.sessions, 3);
     for (std::size_t i : {0u, 1u, 2u, 4u}) CB_CHECK(built[i].has_value());
     CB_CHECK(!built[3].has_value());
     CB_CHECK_EQ(built[0]->code.size(), 7u);   // each function is cut out between its public name and the next
@@ -469,15 +467,14 @@ CB_TEST("build.msc6.compile_many_together_batch_and_sessions_cut_off", [] {
         std::vector<msc6::Source> sources{named("a"), named("b"), named("c"), named("d"), named("e")};
         rig.options.batch = 2;
         msc6::compile_many(rig.ctx, sources, "", "/AM", rig.options);
-        CB_CHECK_EQ(rig.runner.sessions, 1);
-        CB_CHECK_EQ(rig.runner.files_per_session[0], 3u);   // 2 + 2 + 1
+        CB_CHECK_EQ(rig.runner.sessions, 3);                // 2 + 2 + 1
     }
     {
         Rig rig;
         std::vector<msc6::Source> sources{named("a"), named("b"), named("c")};
         rig.options.together = {{0, 2, 99}, {1}};            // an index that is not a source is dropped
         const auto built = msc6::compile_many(rig.ctx, sources, "", "/AM", rig.options);
-        CB_CHECK_EQ(rig.runner.files_per_session[0], 2u);
+        CB_CHECK_EQ(rig.runner.sessions, 2);
         CB_CHECK(built[0] && built[1] && built[2]);
         // functions of one file see each other: the code is the same whichever file it is in, here
         CB_CHECK_EQ(built[0]->code[3], 'a');

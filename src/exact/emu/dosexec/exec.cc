@@ -5,10 +5,12 @@
 #include "exact/emu/dosexec/dosexec.h"
 #include "exact/emu/dosexec/cbdos.h"
 
+#include <algorithm>
 #include <chrono>
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
+#include <deque>
 #include <mutex>
 #include <thread>
 
@@ -522,8 +524,10 @@ void Run::int21() {
             if (ah == 0x3D) {
                 if (!fsisfile(hp)) { carry(true, 2); return; }
                 f = fsopen(hp, (al & 3) ? "r+b" : "rb");
+                if (up.size() > 2 && up.compare(up.size() - 2, 2, L".C") == 0) startup_source = true;
             } else {
                 f = fsopen(hp, "w+b");
+                created.push_back(name);
             }
         } catch (PyErr &e) {
             if (!is_os(e)) throw;
@@ -534,6 +538,7 @@ void Run::int21() {
         Handle e;
         e.f = f;
         e.name = name;
+        e.mode = (ah == 0x3D && !(al & 3)) ? "rb" : "r+b";
         files[h] = e;
         carry(false, uint64_t(h));
         return;
@@ -583,6 +588,7 @@ void Run::int21() {
         return;
     }
     if (ah == 0x41) {
+        startup_dirty = true;
         std::wstring p = hostpath(cstr(ds, dx));
         try {
             fsremove(p);
@@ -684,6 +690,7 @@ void Run::int21() {
     }
     if (ah == 0x4F) { carry(true, 18); return; }
     if (ah == 0x56) {                                  // rename DS:DX to ES:DI
+        startup_dirty = true;
         std::wstring old = hostpath(cstr(ds, dx));
         std::wstring nw = hostpath(cstr(es, R(UC_X86_REG_DI)));
         if (!fsisfile(old)) { carry(true, 2); return; }
@@ -824,7 +831,9 @@ void Run::intr(int intno) {
 static void hook_intr(uc_engine *, uint32_t intno, void *user) {
     Run &r = *static_cast<Run *>(user);
     try {
+        if (++r.intr_count == r.startup_at) r.save_startup(int(intno));
         r.intr(int(intno));
+        r.after_interrupt();
     } catch (DosExit &) {
         r.stop();
     } catch (PyErr &e) {
@@ -981,6 +990,165 @@ struct Watchdog {                                      // one timer for a whole 
 };
 }  // namespace
 
+// ---- a compiler's start, kept ------------------------------------------------------------------------------------------
+// A DOS-extended compiler spends a third of a small compile before it opens its source: the extender starts, CL starts, C1 is loaded. All of that depends only on
+// the program, its command line and its environment, and the clock here is fixed, so it is run once and kept. The first run of a command line counts the interrupts up
+// to the one that opens the source; the second keeps the whole machine as that interrupt arrives (registers, memory, the DOS and DPMI state, its files); later runs start
+// there, in a new engine, and serve that interrupt. What a run deleted or renamed before that point, or an FCB it holds, is not kept: that command line just runs whole.
+namespace {
+struct SavedHandle {
+    int64_t number;
+    Handle handle;
+    int64_t position;
+    size_t group;
+};
+void keep_pages(const uint8_t *p, size_t n, std::vector<uint32_t> &index, Bytes &data) {
+    for (size_t at = 0; at + 4096 <= n; at += 4096) {
+        if (std::all_of(p + at, p + at + 4096, [](uint8_t b) { return b == 0; })) continue;
+        index.push_back(uint32_t(at));
+        data.insert(data.end(), p + at, p + at + 4096);
+    }
+}
+void put_pages(uint8_t *p, const std::vector<uint32_t> &index, const Bytes &data) {
+    for (size_t k = 0; k < index.size(); ++k) std::memcpy(p + index[k], data.data() + k * 4096, 4096);
+}
+}  // namespace
+
+struct StartupEntry {
+    uint64_t at = 0;
+    bool off = false, ready = false;
+    int intno = 0;
+    uc_context *context = nullptr;
+    std::vector<uint32_t> ram_index, high_index;
+    Bytes ram_data, high_data;
+    std::vector<std::pair<std::wstring, Bytes>> files;
+    std::vector<SavedHandle> handles;
+    std::unique_ptr<Run> holder;                       // (the run its Host copy names; never run)
+    std::unique_ptr<Host> host;
+    int first_mcb = 0, drive = 0;
+    Bytes console, standard_out;
+    bool err_is_out = false, out_is_err = false, pm = false;
+    std::deque<uint8_t> in;
+    uint64_t dta = 0, cur_psp = 0;
+    std::map<int, std::pair<uint64_t, uint64_t>> vec;
+    int64_t child = 0, strategy = 0, nexth = 5;
+    std::unordered_map<uint64_t, Desc> desc;
+};
+
+static std::mutex startup_lock;
+static std::unordered_map<std::string, StartupEntry> &startups() {
+    static auto *table = new std::unordered_map<std::string, StartupEntry>();   // (kept to the process's end)
+    return *table;
+}
+
+void Run::after_interrupt() {
+    if (startup_counting && startup_source && startup && startup->at == 0) {
+        if (startup_dirty || !fcbs.empty()) startup->off = true;
+        else startup->at = intr_count;
+        startup_counting = false;
+    }
+}
+
+void Run::save_startup(int intno) {
+    startup_at = 0;
+    if (!startup || startup->ready || !host || startup_dirty || !fcbs.empty()) {
+        if (startup) startup->off = true;
+        return;
+    }
+    StartupEntry &k = *startup;
+    uc_err e = UC.context_alloc(uc, &k.context);
+    if (e == UC_ERR_OK) e = UC.context_save(uc, k.context);
+    if (e != UC_ERR_OK) { k.off = true; return; }
+    keep_pages(ram.data(), size_t(RAM), k.ram_index, k.ram_data);
+    keep_pages(high.data(), high.size(), k.high_index, k.high_data);
+    for (const std::wstring &name : created) {
+        const std::wstring hp = hostpath(name);
+        if (disk_isfile(hp)) k.files.emplace_back(name, disk_read(hp));
+    }
+    std::vector<const File *> groups;
+    for (const auto &[number, handle] : files) {
+        size_t group = 0;
+        if (handle.f) {
+            const auto it = std::find(groups.begin(), groups.end(), handle.f.get());
+            group = size_t(it - groups.begin());
+            if (it == groups.end()) groups.push_back(handle.f.get());
+        }
+        k.handles.push_back({number, handle, handle.f ? handle.f->tell() : 0, group});
+        k.handles.back().handle.f = nullptr;
+    }
+    k.holder = std::make_unique<Run>();
+    k.host = std::make_unique<Host>(*k.holder);
+    k.host->copy_from(*host);
+    k.first_mcb = first_mcb;
+    k.drive = S.drive;
+    k.console = console;
+    k.standard_out = standard_out;
+    k.err_is_out = err_is_out;
+    k.out_is_err = out_is_err;
+    k.pm = pm;
+    k.in = in;
+    k.dta = dta;
+    k.cur_psp = cur_psp;
+    k.vec = vec;
+    k.child = child;
+    k.strategy = strategy;
+    k.nexth = nexth;
+    k.desc = desc;
+    k.intno = intno;
+    k.ready = true;
+}
+
+bool Run::restore_startup() {
+    const StartupEntry &k = *startup;
+    ram.assign(0x200000, 0);
+    high.assign(size_t(0x01000000 - RAM), 0);
+    uc_err e = UC.open(UC_ARCH_X86, UC_MODE_16, &uc);
+    if (e != UC_ERR_OK) { uc = nullptr; throw uc_error(e); }
+    e = UC.mem_map_ptr(uc, 0, RAM, 7, ram.data());
+    if (e == UC_ERR_OK) e = UC.mem_map_ptr(uc, RAM, high.size(), 7, high.data());
+    if (e != UC_ERR_OK) throw uc_error(e);
+    put_pages(ram.data(), k.ram_index, k.ram_data);
+    put_pages(high.data(), k.high_index, k.high_data);
+    e = UC.context_restore(uc, k.context);
+    if (e != UC_ERR_OK) throw uc_error(e);
+    S.drive = k.drive;
+    for (const auto &[name, data] : k.files) {
+        FileP out = disk_open(hostpath(name), "wb");
+        if (!data.empty()) out->write(data.data(), data.size());
+        out->close();
+    }
+    std::map<size_t, FileP> opened;
+    for (const SavedHandle &saved : k.handles) {
+        Handle handle = saved.handle;
+        if (!handle.has_dev) {
+            FileP &f = opened[saved.group];
+            if (!f) {
+                f = disk_open(hostpath(handle.name), handle.mode.c_str());
+                f->seek(saved.position, 0);
+            }
+            handle.f = f;
+        }
+        files[saved.number] = handle;
+    }
+    host = std::make_unique<Host>(*this);
+    host->copy_from(*k.host);
+    first_mcb = k.first_mcb;
+    console = k.console;
+    standard_out = k.standard_out;
+    err_is_out = k.err_is_out;
+    out_is_err = k.out_is_err;
+    pm = k.pm;
+    in = k.in;
+    dta = k.dta;
+    cur_psp = k.cur_psp;
+    vec = k.vec;
+    child = k.child;
+    strategy = k.strategy;
+    nexth = k.nexth;
+    desc = k.desc;
+    return true;
+}
+
 void Run::go() {
     fast = fast && !trace_calls && !watch;             // (fast and not instrument ... and not trace_calls)
     Bytes b = fs ? fs->read(exe) : disk_read(exe);
@@ -997,6 +1165,27 @@ void Run::go() {
     load = PSP + 0x10;
     relocate(image, b, nreloc, relofs, uint64_t(load));
 
+    if (fast && want_dpmi && !fs) {
+        std::string key(reinterpret_cast<const char *>(b.data()), b.size());
+        key.append(reinterpret_cast<const char *>(cmdline.data()), cmdline.size());
+        key.push_back('\0');
+        key.append(reinterpret_cast<const char *>(env.data()), env.size());
+        key += fmt("|%d|%d|%d|", PSP, TOP, S.drive);
+        for (const auto &d : drives) key += utf8(std::wstring(1, d.first) + L"=" + d.second) + "|";
+        key += utf8(workdir);
+        const std::lock_guard<std::mutex> hold(startup_lock);
+        startup = &startups()[key];
+        if (startup->off) startup = nullptr;
+    }
+    if (startup && startup->ready) {
+        restore_startup();
+        drive(0, startup->intno);
+        return;
+    }
+    if (startup) {
+        if (startup->at == 0) startup_counting = true;
+        else startup_at = startup->at;
+    }
     ram.assign(0x200000, 0);
     uc_err e = UC.open(UC_ARCH_X86, UC_MODE_16, &uc);
     if (e != UC_ERR_OK) { uc = nullptr; throw uc_error(e); }
@@ -1085,9 +1274,13 @@ void Run::go() {
         host = std::make_unique<Host>(*this);
         host->attach();
     }
+    drive((cs + load) * 16 + ip, -1);
+}
+
+void Run::drive(uint64_t start, int pending) {
     uint64_t until = host ? 0x1000000 : 0x10FFFF;      // protected-mode code/tables live above 1 MB
     uc_hook h1, h2, h3;
-    e = UC.hook_add(uc, &h1, UC_HOOK_INTR, (void *)hook_intr, this, 1, 0);
+    uc_err e = UC.hook_add(uc, &h1, UC_HOOK_INTR, (void *)hook_intr, this, 1, 0);
     if (e != UC_ERR_OK) throw uc_error(e);
     if (!fast) {
         e = UC.hook_add(uc, &h2, UC_HOOK_BLOCK, (void *)hook_block, this, 1, 0);
@@ -1105,8 +1298,13 @@ void Run::go() {
     auto t_start = std::chrono::system_clock::now();
     if (use_watchdog) wd.start(*this, limit);
     try {
-        e = UC.emu_start(uc, (cs + load) * 16 + ip, until, timeout, 0);
-        if (e != UC_ERR_OK) throw uc_error(e);
+        if (pending >= 0) {                            // (a kept start: the interrupt it stopped at is served first)
+            hook_intr(uc, uint32_t(pending), this);
+            again = !exit && err.empty();
+        } else {
+            e = UC.emu_start(uc, start, until, timeout, 0);
+            if (e != UC_ERR_OK) throw uc_error(e);
+        }
         while (again && !exit && err.empty() && !timedout) {
             // (Unicorn's 16-bit mode takes a start address as CS*16 + IP in either CPU mode)
             again = false;
@@ -1128,6 +1326,7 @@ void Run::go() {
         err.push_back(runtime_error("cpu fault " + x.message + " at " + py_hex(int64_t(pc()), 5)));
     }
     wd.cancel();
+    if (startup_counting && startup && startup->at == 0) startup->off = true;   // (it never opened a source)
     for (auto &kv : files)
         if (kv.second.f) kv.second.f->close();
     if (!err.empty() && !exit)

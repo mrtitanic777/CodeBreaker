@@ -36,6 +36,9 @@ struct UcLib {
     decltype(&uc_emu_start) emu_start = nullptr;
     decltype(&uc_emu_stop) emu_stop = nullptr;
     decltype(&uc_hook_add) hook_add = nullptr;
+    decltype(&uc_context_alloc) context_alloc = nullptr;
+    decltype(&uc_context_save) context_save = nullptr;
+    decltype(&uc_context_restore) context_restore = nullptr;
     decltype(&uc_strerror) strerror = nullptr;
 };
 extern UcLib UC;
@@ -126,9 +129,10 @@ struct Settings {
 
 struct Desc { uint64_t base, limit, access; };
 
-struct Handle { std::wstring dev; bool has_dev = false; FileP f; std::wstring name; };
+struct Handle { std::wstring dev; bool has_dev = false; FileP f; std::wstring name; std::string mode; };
 
 class Host;
+struct StartupEntry;                             // a compiler's start, kept (exec.cc)
 
 struct Run {
     // what dos.run was given
@@ -149,6 +153,12 @@ struct Run {
     // the machine
     uc_engine *uc = nullptr;
     std::vector<uint8_t> ram;
+    std::vector<uint8_t> high;                   // the DPMI host's tables and extended memory, above the real-mode megabyte
+    StartupEntry *startup = nullptr;             // this command line's kept start
+    bool startup_counting = false;               // this run finds which interrupt opens the source
+    bool startup_source = false, startup_dirty = false;
+    uint64_t startup_at = 0, intr_count = 0;     // the interrupt to keep the machine at; the interrupts so far
+    std::vector<std::wstring> created;           // the files this run made
     int load = 0;
     int first_mcb = 0;
     std::unique_ptr<Host> host;
@@ -180,6 +190,10 @@ struct Run {
 
     ~Run();
     void go();                                   // dos.run's body (raises PyErr)
+    void drive(uint64_t start, int pending);     // runs to the end from `start`, after the interrupt `pending` (-1: none)
+    void save_startup(int intno);
+    bool restore_startup();
+    void after_interrupt();
 
     // registers and memory, as dos.py's R / W / mu.mem_read / mu.mem_write
     uint64_t R(int r);
@@ -227,6 +241,7 @@ constexpr int MCB_FREE = 0, MCB_DOS = 8;
 class Host {
 public:
     explicit Host(Run &ctx) : ctx(ctx) {}
+    void copy_from(const Host &other);           // all but the run it belongs to
     void attach();
     bool handle(int intno);
 private:
