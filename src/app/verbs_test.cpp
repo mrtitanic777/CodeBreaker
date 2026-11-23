@@ -53,7 +53,7 @@ CB_TEST("app.verbs.every_older_command_belongs_to_a_verb", [] {
         }
         const std::string_view verb = verb_of(d.name);
         CB_CHECK(!verb.empty());
-        CB_CHECK(is_verb(verb) || verb == "cache"); // cache takes in tidy-state and migrate-state
+        CB_CHECK(is_verb(verb) || verb == "cache"); // cache takes in tidy-state
         CB_CHECK(is_alias(d.name));
     }
     CB_CHECK_EQ(verb_of("decompile"), std::string_view("convert"));
@@ -236,7 +236,6 @@ CB_TEST("app.verbs.compare_corpus_lookup_xbox", [] {
     CB_CHECK(routed("xbox", {"match", "g.xex"}) == Route{step("xdk-match", {"g.xex"})});
     CB_CHECK(!route("xbox", Words{}, fake_probe()).has_value());
     CB_CHECK(routed("cache", {"--tidy", "--dry"}) == Route{step("tidy-state", {"--dry"})});
-    CB_CHECK(routed("cache", {"--migrate"}) == Route{step("migrate-state", {})});
     CB_CHECK(routed("cache", {"--stats"}) == Route{step("cache", {"--stats"})});
 });
 

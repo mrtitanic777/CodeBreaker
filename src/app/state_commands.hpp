@@ -1,7 +1,7 @@
 // app/state_commands.hpp -- the commands that read and write the state folder: names, knowledge, coverage, progress, facts, origin,
-// driver-services, migrate-state.
+// driver-services.
 //
-// Each is built over the configuration's state folder and the corpus; what is costly (the verifier settings, the lane kit, the
+// Each is built over the configuration's state folder and the corpus; what is costly (the lane kit, the
 // knowledge base) is worked out when a command first asks for it, so building the table stays cheap.
 #pragma once
 

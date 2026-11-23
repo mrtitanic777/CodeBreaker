@@ -161,19 +161,6 @@ std::map<std::string, std::optional<std::string>> digests_of(const Kinds& kinds)
     return out;
 }
 
-std::map<std::string, lanes::Profile> profiles_of(const Kinds& kinds) {
-    std::map<std::string, lanes::Profile> out;
-    for (const std::string& name : kinds.names()) {
-        // A lane whose tools are not set up here has no profile: not an error.
-        try {
-            out.emplace(name, kinds.find(name)->profile({}));
-        } catch (const Error& e) {   // isolation boundary: one lane of the set
-            log::debug(std::format("reconstruct: no verifier profile for {} files: {}", name, e.what()));
-        }
-    }
-    return out;
-}
-
 std::map<std::string, std::optional<std::string>> Reconstructor::digests() const {
     if (digests_generation_ != services_.kinds.generation()) {
         digests_ = digests_of(services_.kinds);
@@ -181,8 +168,6 @@ std::map<std::string, std::optional<std::string>> Reconstructor::digests() const
     }
     return digests_;
 }
-
-std::map<std::string, lanes::Profile> Reconstructor::profiles() const { return profiles_of(services_.kinds); }
 
 Identity Reconstructor::identity(const std::filesystem::path& module_path) const {
     const lanes::Kind& kind = kind_of(module_path);

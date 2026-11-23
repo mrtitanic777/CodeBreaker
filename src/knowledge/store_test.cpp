@@ -283,7 +283,6 @@ CB_TEST("knowledge.store.default_path_and_beside", [] {
         fs::ScopedEnv env("CB_KNOWLEDGE_DB", std::nullopt);
         CB_CHECK_EQ(fs::to_text(Store::default_path(folders)), testing::rooted("repo/build/knowledge.v2.sqlite"));
         CB_CHECK_EQ(fs::to_text(folders.kept), testing::rooted("repo/config/knowledge/kept"));
-        CB_CHECK_EQ(fs::to_text(Store::in_state(testing::rooted("state"))), testing::rooted("state/db/knowledge.v2.sqlite"));
     }
     {
         fs::ScopedEnv env("CB_KNOWLEDGE_DB", testing::rooted("elsewhere/k.sqlite"));

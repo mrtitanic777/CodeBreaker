@@ -107,9 +107,8 @@ constexpr Mode kModes[] = {
     {"xbox", "crypto",           "crypto",            std::nullopt},
     {"xbox", "config",           "xenon-config",      std::nullopt},
     {"xbox", "match",            "xdk-match",         std::nullopt},
-    // cache: the clean-up and carry-over commands it takes in
+    // cache: the clean-up command it takes in
     {"cache", "--tidy",          "tidy-state",        std::nullopt},
-    {"cache", "--migrate",       "migrate-state",     std::nullopt},
 };
 // clang-format on
 

@@ -83,9 +83,6 @@ public:
 
     // `$CB_KNOWLEDGE_DB` when set, else the folders' index (<checkout>/build/knowledge.v2.sqlite).
     static std::filesystem::path default_path(const DataFolders& folders);
-    // Where a state folder kept the base before it moved into build/ (`$CB_KNOWLEDGE_DB` when set, else
-    // <state>/db/knowledge.v2.sqlite): what migrate writes to.
-    static std::filesystem::path in_state(const std::filesystem::path& state_dir);
     // The knowledge base of the state folder a function store is in (a test's own store in a folder of its own has a
     // knowledge base of its own).
     static std::filesystem::path beside(const std::filesystem::path& function_store_file);

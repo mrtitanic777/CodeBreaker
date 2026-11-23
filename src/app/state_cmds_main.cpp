@@ -1,6 +1,6 @@
 // cb_state_cmds: the proof harness of the commands that read and write the state folder -- names, knowledge, coverage, progress, facts, origin,
-// driver-services -- and of `migrate-state`. Each gets the Environment the command table will give it (the settings, the corpus, the verifier
-// profiles in force), so what it reads of a state folder and writes to it can be checked on a copy of a real folder. Not part of codebreaker.exe; not built by default (`cmake --build <dir> --target cb_state_cmds`).
+// driver-services. Each gets the Environment the command table will give it (the settings, the corpus), so what
+// it reads of a state folder and writes to it can be checked on a copy of a real folder. Not part of codebreaker.exe; not built by default (`cmake --build <dir> --target cb_state_cmds`).
 //
 //     CB_STATE=<copy of state> cb_state_cmds <command> [arguments]
 //
@@ -27,7 +27,6 @@
 #include "formats/inspect.hpp"
 #include "knowledge/store.hpp"
 #include "store/functions.hpp"
-#include "store/migrate_state.hpp"
 #include "symbols/driver_services.hpp"
 #include "symbols/environment.hpp"
 #include "symbols/names.hpp"
@@ -44,7 +43,7 @@ int main(int argc, char** argv) {
     const std::shared_ptr<base::Corpus> corpus = ui::mcp::standard_corpus(config);
     std::vector<std::string> args(argv + 1, argv + argc);
     if (args.empty()) {
-        err("usage: cb_state_cmds <names|knowledge|coverage|progress|facts|origin|driver-services|migrate-state> [arguments]\n");
+        err("usage: cb_state_cmds <names|knowledge|coverage|progress|facts|origin|driver-services> [arguments]\n");
         return kExitUsage;
     }
     int code = kExitUsage;

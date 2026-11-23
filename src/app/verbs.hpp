@@ -86,7 +86,7 @@ std::optional<Route> route(std::string_view verb, std::span<const std::string> a
 // `codebreaker VERB --help`: what it does, what it picks, its options, and the old names at the end.
 std::string help(std::string_view verb);
 
-// Make the verbs run: each of the nine (and `cache`, which takes in tidy-state and migrate-state) is set on `table`, in front of any command of
+// Make the verbs run: each of the nine (and `cache`, which takes in tidy-state) is set on `table`, in front of any command of
 // the same name, which stays reachable as the verb's default. The older commands must be registered first.
 void register_verbs(CommandTable& table, Probe probe = file_probe());
 

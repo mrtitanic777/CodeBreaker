@@ -305,7 +305,7 @@ Nine verbs, one program. Each works out what to do from what you give it (a file
 | `lookup NAME` | a decorated C++ name, a DOS or BIOS interrupt, a driver service, or a name from the knowledge base |
 | `xbox [xex\|edit\|crypto\|config\|match]` | the Xbox 360 specialist tools |
 
-`settings`, `cache` (which also tidies state and carries old results over), `regress`, `serve`, `mcp` and `app` (the window; what `codebreaker` with no command starts) stay as they were. Every command name of earlier versions still works, hidden from `help`: `decompile x.dll` is `convert x.dll --decompile`, `pe-source` is `convert FILE --asm`, `names` is `inspect FILE --names`, `sweep` is `corpus run`, and the same output.
+`settings`, `cache` (which also tidies state), `regress`, `serve`, `mcp` and `app` (the window; what `codebreaker` with no command starts) stay as they were. Every command name of earlier versions still works, hidden from `help`: `decompile x.dll` is `convert x.dll --decompile`, `pe-source` is `convert FILE --asm`, `names` is `inspect FILE --names`, `sweep` is `corpus run`, and the same output.
 
 ---|---|
 | `reach <file or folder>` | what CodeBreaker makes of anything: formats, lanes, what can be reconstructed |
