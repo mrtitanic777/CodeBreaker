@@ -29,17 +29,17 @@ struct CNearMiss {
 };
 
 struct CNearMisses {
-    std::vector<CNearMiss> closest;    // best first, at most kCNearMissesShown
+    std::vector<CNearMiss> closest;    // best first, as many as were asked for
     std::uint64_t candidates = 0;      // all that compiled, differ, and have something in common with the original
 };
 
 // The text of one results file. nullopt when it is not one (it may be half written).
-std::optional<CNearMisses> parse_c_near_misses(std::string_view text);
+std::optional<CNearMisses> parse_c_near_misses(std::string_view text, std::size_t keep = kCNearMissesShown);
 // "ba7816bf8f01cfea.json"
 std::string c_functions_file_name(std::string_view rel);
 // The rel whose score stands for this card: its own, or a copy's (a scored one first). Empty: none.
 std::string c_scored_rel(const Board& board, const Index& index, std::uint32_t card, const CScores& scores);
 // nullopt when the file is missing or cannot be read just now.
-std::optional<CNearMisses> load_c_near_misses(const std::filesystem::path& root, std::string_view rel);
+std::optional<CNearMisses> load_c_near_misses(const std::filesystem::path& root, std::string_view rel, std::size_t keep = kCNearMissesShown);
 
 }  // namespace cb::app::board

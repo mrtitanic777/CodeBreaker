@@ -993,6 +993,43 @@ void rd_inspector(RdDraw& d, const BoardLayout& b, const Model& m) {
 
 void rd_board_compare(RdDraw& d, const BoardLayout& b, const Model& m);   // (below, with the code drawing it shares)
 
+// The whole OS's closest functions, best first; a row opens the function side by side.
+void rd_board_leaders(RdDraw& d, const BoardLayout& b, const Model& m) {
+    const RdPalette& pal = d.pal;
+    const BoardLeadersLayout l = layout_board_leaders(b, m);
+    d.fill(l.outline, 6, pal.dark ? rd_color(0x303030) : rd_color(0xFFFFFF));
+    d.stroke(l.outline, 6, rd_alpha(pal.text, 0.25f));
+    std::string title = "Closest to identical, whole OS \xC2\xB7 measured";
+    if (m.board_leaders)
+        title += " \xC2\xB7 top " + board::count_words(m.board_leaders->top.size()) + " of " + board::count_words(m.board_leaders->candidates) + " near misses in " + board::count_words(m.board_leaders->programs) + " programs";
+    if (m.board_leaders_busy && m.board_leaders) title += " \xC2\xB7 updating";
+    d.text(widen(title), l.title, 0, 14, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+    if (m.hot == Control::BoardLeadersClose) d.fill(l.close, 4, pal.subtle);
+    d.text(L"×", l.close, 0, 16, DWRITE_FONT_WEIGHT_NORMAL, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+    if (!m.board_leaders) {
+        d.text(m.board_leaders_busy ? L"Reading every program's results…" : L"The results could not be read.", Rect{l.list.x + 6, l.list.y + 8, l.list.w - 12, 24}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+        return;
+    }
+    const float rank_w = 46, function_w = l.head.w * 0.34f, program_w = l.head.w * 0.26f;
+    const auto columns = [&](const Rect& r, const std::wstring& rank, const std::wstring& function, const std::wstring& program, const std::wstring& measure, float size, D2D1_COLOR_F function_color, D2D1_COLOR_F other) {
+        d.text(rank, Rect{r.x + 4, r.y, rank_w - 10, r.h}, 0, size, DWRITE_FONT_WEIGHT_NORMAL, other, DWRITE_TEXT_ALIGNMENT_TRAILING);
+        d.text(function, Rect{r.x + rank_w, r.y, function_w - 6, r.h}, 0, size, DWRITE_FONT_WEIGHT_NORMAL, function_color);
+        d.text(program, Rect{r.x + rank_w + function_w, r.y, program_w - 6, r.h}, 0, size, DWRITE_FONT_WEIGHT_NORMAL, other);
+        d.text(measure, Rect{r.x + rank_w + function_w + program_w, r.y, std::max(0.0f, r.w - rank_w - function_w - program_w - 8), r.h}, 0, size, DWRITE_FONT_WEIGHT_NORMAL, other);
+    };
+    columns(l.head, L"#", L"Function", L"Program", L"Measured", 11, pal.text3, pal.text3);
+    d.rt->PushAxisAlignedClip(rd_rect(l.list), D2D1_ANTIALIAS_MODE_ALIASED);
+    for (std::size_t i = 0; i < l.rows.size(); ++i) {
+        const auto at = static_cast<std::size_t>(l.first) + i;
+        const board::CLeader& leader = m.board_leaders->top[at];
+        const Rect& r = l.rows[i];
+        if (m.hot == Control::BoardLeaderRow && m.hot_index == static_cast<int>(at)) d.fill(r, 3, rd_alpha(pal.accent, 0.26f));
+        columns(r, std::to_wstring(at + 1), widen(leader.function), widen(leader.program), widen(leader.words), 12, pal.accent, pal.text2);
+    }
+    d.rt->PopAxisAlignedClip();
+    rd_scrollbar(d, l.list, static_cast<float>(m.board_leaders->top.size()) * kLeaderRowHeight, std::clamp(m.board_leaders_scroll, 0.0f, l.max_scroll));
+}
+
 void rd_board(RdDraw& d, const Layout& l, const Model& m) {
     const RdPalette& pal = d.pal;
     const BoardLayout b = compute_board_layout(l, m);
@@ -1199,7 +1236,12 @@ void rd_board(RdDraw& d, const Layout& l, const Model& m) {
             const std::array<D2D1_COLOR_F, 5> hues{pal.ok, pal.accent, rd_alpha(pal.text2, 0.55f), pal.error, rd_color(0x7A5FC0)};
             const auto parts = board::c_summary_parts(s);
             d.fill(b.c_summary, 6, pal.subtle);
-            d.text(widen(board::c_summary_words(s)), Rect{b.c_summary.x + 10, b.c_summary.y + 2, b.c_summary.w - 20, 18}, 0, 11, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+            d.text(widen(board::c_summary_words(s)), Rect{b.c_summary.x + 10, b.c_summary.y + 2, std::max(0.0f, b.c_leaders.x - 8 - b.c_summary.x - 10), 18}, 0, 11, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+            const bool leaders_hot = m.hot == Control::BoardLeaders;
+            d.fill(b.c_leaders, 9, m.board_leaders_open ? rd_alpha(pal.accent, 0.34f) : leaders_hot ? rd_alpha(pal.text, 0.10f) : D2D1::ColorF(0, 0, 0, 0));
+            d.stroke(b.c_leaders, 9, m.board_leaders_open ? pal.accent : pal.stroke2);
+            d.text(L"Closest functions", b.c_leaders, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, m.board_leaders_open ? pal.text : pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+            if (m.focus == Control::BoardLeaders) d.stroke(b.c_leaders, 9, pal.text, 2.0f);
             const float line = b.c_summary.y + 21;
             const float bar_w = std::min(220.0f, b.c_summary.w * 0.22f);
             const Rect bar{b.c_summary.x + 10, line + 5, bar_w, 6};
@@ -1292,6 +1334,7 @@ void rd_board(RdDraw& d, const Layout& l, const Model& m) {
         }
     }
     if (b.drawer.w > 0 && m.board_inspector) rd_inspector(d, b, m);
+    if (m.board_view == 0 && m.board_leaders_open) rd_board_leaders(d, b, m);
     if (m.board_view == 0 && m.board_compare) rd_board_compare(d, b, m);
     if (m.board_drag >= 0 && static_cast<std::size_t>(m.board_drag) < m.board->cards.size()) {
         const Rect ghost{m.board_drag_x - b.column_width / 2, m.board_drag_y - 12, b.column_width, kBoardCardHeight};
@@ -1658,6 +1701,16 @@ void rd_board_compare(RdDraw& d, const BoardLayout& b, const Model& m) {
     d.text(widen(c.function + "  \xC2\xB7  " + c.program + (c.measure.empty() ? std::string() : "  \xC2\xB7  " + c.measure)), p.title, 0, 14, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
     if (m.hot == Control::BoardCompareClose) d.fill(p.close, 4, pal.subtle);
     d.text(L"×", p.close, 0, 16, DWRITE_FONT_WEIGHT_NORMAL, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+    if (m.board_compare_list.size() > 1) {   // along the list it was opened from
+        const int last = static_cast<int>(m.board_compare_list.size()) - 1;
+        const auto arrow = [&](Control id, const Rect& r, const wchar_t* glyph, bool enabled) {
+            if (enabled && m.hot == id) d.fill(r, 4, pal.subtle);
+            d.text(glyph, r, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, enabled ? pal.text : pal.text3, DWRITE_TEXT_ALIGNMENT_CENTER);
+        };
+        arrow(Control::BoardComparePrev, p.prev, L"◂", m.board_compare_at > 0);
+        arrow(Control::BoardCompareNext, p.next, L"▸", m.board_compare_at < last);
+        d.text(widen(board::count_words(static_cast<std::uint64_t>(m.board_compare_at) + 1) + " of " + board::count_words(m.board_compare_list.size())), p.position, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
+    }
     ID2D1SolidColorBrush* brushes[5] = {};
     ComPtr<ID2D1SolidColorBrush> owned[5];
     const preview::Tok kinds[5] = {preview::Tok::Plain, preview::Tok::Keyword, preview::Tok::Comment, preview::Tok::Number, preview::Tok::String};

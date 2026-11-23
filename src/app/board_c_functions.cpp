@@ -25,7 +25,7 @@ std::uint64_t c_json_count(const Json& entry, const char* key) {
 
 }  // namespace
 
-std::optional<CNearMisses> parse_c_near_misses(std::string_view text) {
+std::optional<CNearMisses> parse_c_near_misses(std::string_view text, std::size_t keep) {
     Json all;
     if (!json::try_parse(text, all) || !all.is_object()) return std::nullopt;
     std::vector<CNearMiss> found;
@@ -64,7 +64,7 @@ std::optional<CNearMisses> parse_c_near_misses(std::string_view text) {
     });
     CNearMisses out;
     out.candidates = found.size();
-    if (found.size() > kCNearMissesShown) found.resize(kCNearMissesShown);
+    if (found.size() > keep) found.resize(keep);
     out.closest = std::move(found);
     return out;
 }
@@ -92,12 +92,12 @@ std::string c_scored_rel(const Board& board, const Index& index, std::uint32_t c
     return best;
 }
 
-std::optional<CNearMisses> load_c_near_misses(const std::filesystem::path& root, std::string_view rel) {
+std::optional<CNearMisses> load_c_near_misses(const std::filesystem::path& root, std::string_view rel, std::size_t keep) {
     const std::filesystem::path file = root / "c_scores" / c_functions_file_name(rel);
     std::error_code ec;
     if (!std::filesystem::is_regular_file(file, ec)) return std::nullopt;
     try {
-        return parse_c_near_misses(fs::read_text(file));
+        return parse_c_near_misses(fs::read_text(file), keep);
     } catch (const std::exception&) {
         return std::nullopt;   // (the scorer has it open)
     }

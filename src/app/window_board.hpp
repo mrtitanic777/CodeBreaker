@@ -36,6 +36,7 @@ struct BoardLayout {
     std::array<Rect, board::kSignalTypes> signal_pills{};   // the cards: one per kind of signal
     Rect group_copies, filter_row;     // the cards: Group copies, and the active filters' row (empty when there are none)
     Rect c_summary;                    // the cards: the whole OS's measured C result (empty with no score table)
+    Rect c_leaders;                    // on it: the whole OS's closest functions
     std::array<Rect, board::kCViews> c_pills{};   // the cards: the filters by C result
     Rect map;                          // Map, on the selected card's strip
     std::array<Rect, 3> chips{};       // Flow and Trace: Imports, Installs, References
@@ -111,8 +112,22 @@ void board_sync_inspector(Model& model);
 // One near miss of the drawer side by side (`row`: its row), and back to the drawer.
 void board_open_compare(Model& model, int row);
 void board_close_compare(Model& model);
+// To the function `delta` stops along the list it was opened from (the ends stay).
+void board_compare_step(Model& model, int delta);
+// The whole OS's closest functions. Toggling open says whether they need reading (never read, or the scores have moved on).
+bool board_toggle_leaders(Model& model);
+void board_close_leaders(Model& model);
+void board_open_leader(Model& model, int rank);
+inline constexpr float kLeaderRowHeight = 26;
+struct BoardLeadersLayout {
+    Rect outline, title, close, head, list;
+    int first = 0;
+    std::vector<Rect> rows;            // the rows in view
+    float max_scroll = 0;
+};
+BoardLeadersLayout layout_board_leaders(const BoardLayout& layout, const Model& model);
 struct BoardCompareLayout {
-    Rect outline, title, close, source_head, assembly_head, source, assembly, footer;
+    Rect outline, title, close, prev, next, position, source_head, assembly_head, source, assembly, footer;
 };
 BoardCompareLayout layout_board_compare(const BoardLayout& layout);
 // The most a side scrolls. `side`: 0 the C, 1 the assembly.

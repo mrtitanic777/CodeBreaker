@@ -102,6 +102,7 @@ constexpr UINT kWmToast = WM_APP + 3;      // a button or click on the notificat
 constexpr UINT kWmTray = WM_APP + 4;       // the balloon's callbacks (where there is no toast)
 constexpr UINT kWmBoardProgress = WM_APP + 5;   // the board's extraction has progress to show
 constexpr UINT kWmBoardDone = WM_APP + 6;       // the board's extraction or load has ended
+constexpr UINT kWmBoardLeaders = WM_APP + 7;    // the whole OS's closest functions have been read
 constexpr UINT_PTR kWwTaskbarTimer = 4;    // a failure shown on the taskbar button while the window is in front: cleared after a few seconds
 constexpr UINT kWwTaskbarErrorMs = 4000;
 constexpr UINT_PTR kWwMinuteTimer = 5;     // the Recent list's "when" words are made new
@@ -458,6 +459,8 @@ private:
     void board_convert(int index);
     void board_open_card(int index);
     void board_sync_states();
+    void start_leaders();
+    void on_leaders_done();
     void board_release(float x, float y);
     void sync_board_title();
     void sync_flow_timer();
@@ -524,6 +527,10 @@ private:
     std::optional<board::Board> board_result_;
     std::optional<board::Index> board_result_index_;
     std::optional<board::Signals> board_result_signals_;
+    std::thread leaders_worker_;       // reads every program's results, at low priority
+    std::atomic<bool> leaders_cancel_{false};
+    std::optional<board::CLeaders> leaders_result_;     // (under board_lock_)
+    stdfs::path leaders_root_;
     std::string board_failure_;
     std::unordered_map<std::string, std::uint32_t> board_paths_;
     int board_press_card_ = -1;
@@ -660,6 +667,8 @@ int WwApp::run() {
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
+    leaders_cancel_ = true;
+    if (leaders_worker_.joinable()) leaders_worker_.join();
     board_cancel_ = true;
     if (board_worker_.joinable()) board_worker_.join();   // (the scan stops between files; nothing is half-kept: a board is saved only when whole)
     if (running_) {   // closed with a conversion under way: ask it to stop, wait a little, then end the process (the staging folder is its own)
@@ -1569,6 +1578,43 @@ void WwApp::board_open_card(int index) {
 }
 
 // The cards the board sent to the queue follow it. Only what the queue really says moves a card, and a Done needs its output folder (board::record).
+// The whole OS's closest functions, read on a thread of its own: 80 MB of results must not hold up the window or the scorer.
+void WwApp::start_leaders() {
+    if (!model_.board || !model_.board_scores || model_.board_leaders_busy) return;
+    leaders_cancel_ = true;
+    if (leaders_worker_.joinable()) leaders_worker_.join();
+    leaders_cancel_ = false;
+    model_.board_leaders_busy = true;
+    leaders_worker_ = std::thread([this, window = hwnd_, scores = model_.board_scores, root = model_.board->root] {
+        SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+        std::optional<board::CLeaders> result;
+        try {
+            result = board::build_c_leaders(root, *scores, leaders_cancel_);
+        } catch (const std::exception&) {}   // (the list says it could not be read)
+        {
+            std::lock_guard hold(board_lock_);
+            leaders_result_ = std::move(result);
+            leaders_root_ = root;
+        }
+        PostMessageW(window, kWmBoardLeaders, 0, 0);
+    });
+}
+
+void WwApp::on_leaders_done() {
+    if (leaders_worker_.joinable()) leaders_worker_.join();
+    std::optional<board::CLeaders> result;
+    stdfs::path root;
+    {
+        std::lock_guard hold(board_lock_);
+        result = std::move(leaders_result_);
+        leaders_result_.reset();
+        root = leaders_root_;
+    }
+    model_.board_leaders_busy = false;
+    if (result && model_.board && model_.board->root == root) model_.board_leaders = std::make_shared<const board::CLeaders>(std::move(*result));
+    invalidate();
+}
+
 void WwApp::board_sync_states() {
     if (!model_.board) return;
     bool moved = false, ended = false;
@@ -1855,6 +1901,26 @@ void WwApp::activate_page(Control c, int index) {
             board_close_compare(model_);
             invalidate();
             break;
+        case Control::BoardComparePrev:
+            board_compare_step(model_, -1);
+            invalidate();
+            break;
+        case Control::BoardCompareNext:
+            board_compare_step(model_, 1);
+            invalidate();
+            break;
+        case Control::BoardLeaders:
+            if (board_toggle_leaders(model_)) start_leaders();
+            invalidate();
+            break;
+        case Control::BoardLeadersClose:
+            board_close_leaders(model_);
+            invalidate();
+            break;
+        case Control::BoardLeaderRow:
+            board_open_leader(model_, index);
+            invalidate();
+            break;
         case Control::BoardInspectRow:   // a file: the drawer goes to it; a signal: the board shows what shares it; a near miss: side by side
             if (model_.board_inspector && index >= 0 && static_cast<std::size_t>(index) < model_.board_inspector->rows.size()) {
                 const board::InspectorRow row = model_.board_inspector->rows[static_cast<std::size_t>(index)];
@@ -1957,6 +2023,8 @@ void WwApp::scroll_page(float x, float y, int lines) {
         const int side = x >= panel.assembly.x ? 1 : 0;
         float& scroll = model_.board_compare_scroll[static_cast<std::size_t>(side)];
         scroll = std::clamp(scroll - step * 2, 0.0f, board_compare_max_scroll(panel, model_, side));
+    } else if (model_.page == Page::Board && model_.board_view == 0 && model_.board_leaders_open && layout_board_leaders(compute_board_layout(layout_, model_), model_).outline.contains(x, y)) {   // the closest functions
+        model_.board_leaders_scroll = std::clamp(model_.board_leaders_scroll - step * 2, 0.0f, layout_board_leaders(compute_board_layout(layout_, model_), model_).max_scroll);
     } else if (model_.page == Page::Board && model_.board_inspecting && compute_board_layout(layout_, model_).drawer.contains(x, y)) {   // the X-Ray drawer
         model_.board_inspect_scroll = std::clamp(model_.board_inspect_scroll - step * 2, 0.0f, layout_inspector(compute_board_layout(layout_, model_), model_).max_scroll);
     } else if (model_.page == Page::Board && model_.board && model_.board_view == 0 && model_.board_signal_type >= 0 &&
@@ -3414,8 +3482,18 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 set_page(wp == '1' ? Page::Convert : wp == '2' ? Page::Tools : Page::Settings);
                 return 0;
             }
-            if (wp == VK_ESCAPE && model_.page == Page::Board && model_.board_compare) {   // back to the drawer
+            if (wp == VK_ESCAPE && model_.page == Page::Board && model_.board_compare) {   // back to where it was opened from
                 board_close_compare(model_);
+                invalidate();
+                return 0;
+            }
+            if ((wp == VK_LEFT || wp == VK_RIGHT) && model_.page == Page::Board && model_.board_compare) {
+                board_compare_step(model_, wp == VK_LEFT ? -1 : 1);
+                invalidate();
+                return 0;
+            }
+            if (wp == VK_ESCAPE && model_.page == Page::Board && model_.board_leaders_open) {
+                board_close_leaders(model_);
                 invalidate();
                 return 0;
             }
@@ -3539,6 +3617,7 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
         case kWmFinished: on_finished(); return 0;
         case kWmBoardProgress: on_board_progress(); return 0;
         case kWmBoardDone: on_board_done(); return 0;
+        case kWmBoardLeaders: on_leaders_done(); return 0;
         case kWmToast: on_toast(wp); return 0;
         case kWmTray:
             if (notifier_) notifier_->on_tray(lp);
@@ -3628,6 +3707,12 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
         board_load_decks(m);
         board_rebuild_stacks(m);
         if (state == "board-orphans") board_toggle_orphans(m);
+        if ((state == "board-leaders" || state == "board-leaders-compare") && m.board_scores) {   // (read here: a screenshot has no message loop)
+            const std::atomic<bool> go{false};
+            if (std::optional<board::CLeaders> read = board::build_c_leaders(m.board->root, *m.board_scores, go)) m.board_leaders = std::make_shared<const board::CLeaders>(std::move(*read));
+            m.board_leaders_open = true;
+            if (state == "board-leaders-compare") board_open_leader(m, 0);
+        }
         if (state == "board-c-identical") board_toggle_c_view(m, board::CView::MostIdentical);
         if (state == "board-c-near") board_toggle_c_view(m, board::CView::NearMisses);
         if (state == "board-c-nocompile") board_toggle_c_view(m, board::CView::WillNotCompile);
@@ -4337,7 +4422,7 @@ int run(std::span<const std::string> args, bool no_command_given) {
         } else if (!a.starts_with("--") && open_file.empty()) {
             open_file = a;
         } else {
-            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout|functions|check|compare|palette|board|board-expanded|board-flow|board-trace|board-library|board-library-hover|board-library-function|board-filter|board-inspect|board-hover|board-orphans|board-compare|board-c-identical|board-c-near|board-c-nocompile|board-c-unscored|board-deck|board-empty|board-scanning] [--board FOLDER] [--theme light|dark] [--size WxH] [--scale N]] [--board IMAGE] [--board-scan IMAGE [--board-out FOLDER]] [--board-trace TRACE --board-trace-disk IMAGE --board-out FOLDER]\n");
+            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout|functions|check|compare|palette|board|board-expanded|board-flow|board-trace|board-library|board-library-hover|board-library-function|board-filter|board-inspect|board-hover|board-orphans|board-leaders|board-leaders-compare|board-compare|board-c-identical|board-c-near|board-c-nocompile|board-c-unscored|board-deck|board-empty|board-scanning] [--board FOLDER] [--theme light|dark] [--size WxH] [--scale N]] [--board IMAGE] [--board-scan IMAGE [--board-out FOLDER]] [--board-trace TRACE --board-trace-disk IMAGE --board-out FOLDER]\n");
             return 2;
         }
     }

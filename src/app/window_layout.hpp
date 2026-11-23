@@ -17,6 +17,7 @@
 #include "app/board.hpp"
 #include "app/board_automation.hpp"
 #include "app/board_c_compare.hpp"
+#include "app/board_c_leaders.hpp"
 #include "app/board_c_view.hpp"
 #include "app/board_flow.hpp"
 #include "app/board_index.hpp"
@@ -105,7 +106,9 @@ enum class Control {
     // a filter by C result (index: board::CView)
     BoardCView,
     // the function compare panel
-    BoardCompareClose
+    BoardCompareClose, BoardComparePrev, BoardCompareNext,
+    // the whole OS's closest functions: the button, the list's close, a row (its rank)
+    BoardLeaders, BoardLeadersClose, BoardLeaderRow
 };
 
 // The Source card's three tabs; Compare (one function's original beside its rebuilt source) is a view of Functions.
@@ -317,6 +320,11 @@ struct Model {
     float board_inspect_scroll = 0;
     std::shared_ptr<const board::CFunctionCompare> board_compare;   // one function side by side, over the columns
     std::array<float, 2> board_compare_scroll{};                // its C and its assembly, DIPs
+    std::vector<board::CCompareItem> board_compare_list;        // what previous and next go through
+    int board_compare_at = -1;
+    std::shared_ptr<const board::CLeaders> board_leaders;       // the whole OS's closest functions, as last read
+    bool board_leaders_open = false, board_leaders_busy = false;
+    float board_leaders_scroll = 0;
     std::shared_ptr<const board::HoverLinks> board_hover;       // the card under the pointer and what it is linked to
     std::array<std::uint32_t, board::kPileCount> board_hover_linked{};   // how many cards of each column are lit
     bool board_group_copies = true;                             // identical files are one master card

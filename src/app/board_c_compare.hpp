@@ -47,6 +47,12 @@ std::uint64_t c_function_end(const std::vector<std::uint64_t>& starts, std::uint
 // The original's code of `function`, from the program's bytes and its results file (the text of c_scores/<hash>.json). nullopt when it cannot be placed.
 std::optional<CCodeSlice> c_original_code(ByteView file, std::string_view format, std::string_view function, std::string_view results);
 
+// One stop of the compare panel's previous and next.
+struct CCompareItem {
+    std::uint32_t card = 0;
+    std::string function, measure;
+};
+
 struct CFunctionCompare {
     std::string program, function, measure;
     std::vector<std::string> source, assembly;

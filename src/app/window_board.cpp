@@ -4,6 +4,8 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <string_view>
+#include <unordered_map>
 
 #include "app/window_convert.hpp"
 #include "core/fs.hpp"
@@ -53,6 +55,7 @@ BoardLayout compute_board_layout(const Layout& shell, const Model& model) {
         constexpr float kPillH = 26, kGroupW = 106, kCSummaryH = 40, kCPillW = 124;
         if (model.board_scores) {
             b.c_summary = {b.card.x + kPad, top, b.card.w - 2 * kPad, kCSummaryH};
+            b.c_leaders = {b.c_summary.right() - 6 - 128, b.c_summary.y + 3, 128, 18};
             top += kCSummaryH + 6;
         }
         b.group_copies = {right - kGroupW, top, kGroupW, kPillH};
@@ -180,7 +183,18 @@ PageHit hit_test_board(const BoardLayout& b, const Model& m, float x, float y) {
     if (m.board_view == 0 && m.board_compare) {   // the compare panel is over the columns and the drawer
         const BoardCompareLayout panel = layout_board_compare(b);
         if (panel.close.contains(x, y)) return {Control::BoardCompareClose, -1};
+        if (m.board_compare_list.size() > 1) {
+            if (panel.prev.contains(x, y)) return {Control::BoardComparePrev, -1};
+            if (panel.next.contains(x, y)) return {Control::BoardCompareNext, -1};
+        }
         if (panel.outline.contains(x, y)) return {};
+    }
+    if (m.board_view == 0 && m.board_leaders_open) {   // the list of closest functions is over the columns and the drawer
+        const BoardLeadersLayout list = layout_board_leaders(b, m);
+        if (list.close.contains(x, y)) return {Control::BoardLeadersClose, -1};
+        for (std::size_t i = 0; i < list.rows.size(); ++i)
+            if (list.rows[i].contains(x, y)) return {Control::BoardLeaderRow, list.first + static_cast<int>(i)};
+        if (list.outline.contains(x, y)) return {};
     }
     if (m.board_view == 0 && m.board_decks_open) {   // the open list of decks is over everything under it
         const DeckPanel panel = layout_deck_panel(b, m);
@@ -222,6 +236,7 @@ PageHit hit_test_board(const BoardLayout& b, const Model& m, float x, float y) {
         for (std::size_t i = 0; i < b.signal_pills.size(); ++i)
             if (b.signal_pills[i].contains(x, y)) return {Control::BoardSignalType, static_cast<int>(i)};
         if (b.group_copies.contains(x, y)) return {Control::BoardGroupCopies, -1};
+        if (b.c_leaders.contains(x, y)) return {Control::BoardLeaders, -1};
         for (std::size_t i = 0; i < b.c_pills.size(); ++i)
             if (b.c_pills[i].contains(x, y)) return {Control::BoardCView, static_cast<int>(i) + 1};
         if (b.filter_row.contains(x, y)) {
@@ -320,6 +335,7 @@ std::vector<PageHit> focus_order_board(const Model& m) {
         for (int i = 0; i < 4; ++i) order.push_back({Control::BoardViewTab, i});
     if (m.board_busy) order.push_back({Control::BoardCancel, -1});
     if (m.board) {
+        if (m.board_scores && m.board_view == 0) order.push_back({Control::BoardLeaders, -1});
         if (m.board_scores && m.board_view == 0)
             for (int i = 1; i <= static_cast<int>(board::kCViews); ++i) order.push_back({Control::BoardCView, i});
         for (int i = 0; i < static_cast<int>(board::kPileCount); ++i)
@@ -359,21 +375,98 @@ void board_open_compare(Model& m, int row) {
     if (!m.board || !m.board_index || !m.board_inspector || row < 0 || static_cast<std::size_t>(row) >= m.board_inspector->rows.size()) return;
     const board::InspectorRow& r = m.board_inspector->rows[static_cast<std::size_t>(row)];
     if (r.kind != board::InspectorRow::Kind::Function) return;
-    m.board_compare = std::make_shared<const board::CFunctionCompare>(board::load_c_compare(*m.board, *m.board_index, m.board_inspector->card, m.board_scores.get(), r.text, r.detail));
-    m.board_compare_scroll = {};
+    m.board_compare_list.clear();
+    m.board_compare_at = -1;
+    for (std::size_t i = 0; i < m.board_inspector->rows.size(); ++i) {
+        const board::InspectorRow& other = m.board_inspector->rows[i];
+        if (other.kind != board::InspectorRow::Kind::Function) continue;
+        if (static_cast<int>(i) == row) m.board_compare_at = static_cast<int>(m.board_compare_list.size());
+        m.board_compare_list.push_back({m.board_inspector->card, other.text, other.detail});
+    }
+    board_compare_step(m, 0);
 }
 
 void board_close_compare(Model& m) {
     m.board_compare.reset();
     m.board_compare_scroll = {};
+    m.board_compare_list.clear();
+    m.board_compare_at = -1;
+}
+
+void board_compare_step(Model& m, int delta) {
+    if (!m.board || !m.board_index || m.board_compare_list.empty()) return;
+    const int at = std::clamp(m.board_compare_at + delta, 0, static_cast<int>(m.board_compare_list.size()) - 1);
+    if (m.board_compare && at == m.board_compare_at) return;
+    m.board_compare_at = at;
+    const board::CCompareItem& item = m.board_compare_list[static_cast<std::size_t>(at)];
+    m.board_compare = std::make_shared<const board::CFunctionCompare>(board::load_c_compare(*m.board, *m.board_index, item.card, m.board_scores.get(), item.function, item.measure));
+    m.board_compare_scroll = {};
+}
+
+bool board_toggle_leaders(Model& m) {
+    if (!m.board || !m.board_scores) return false;
+    m.board_leaders_open = !m.board_leaders_open;
+    m.board_leaders_scroll = 0;
+    return m.board_leaders_open && !m.board_leaders_busy && (!m.board_leaders || m.board_leaders->scored != m.board_scores->scored);
+}
+
+void board_close_leaders(Model& m) {
+    m.board_leaders_open = false;
+    m.board_leaders_scroll = 0;
+}
+
+void board_open_leader(Model& m, int rank) {
+    if (!m.board || !m.board_index || !m.board_leaders || rank < 0 || static_cast<std::size_t>(rank) >= m.board_leaders->top.size()) return;
+    std::unordered_map<std::string_view, std::uint32_t> cards;
+    cards.reserve(m.board->cards.size());
+    for (std::uint32_t i = 0; i < m.board->cards.size(); ++i) cards.emplace(m.board->cards[i].rel, i);
+    m.board_compare_list.clear();
+    m.board_compare_at = -1;
+    for (std::size_t i = 0; i < m.board_leaders->top.size(); ++i) {
+        const board::CLeader& leader = m.board_leaders->top[i];
+        const auto card = cards.find(leader.rel);
+        if (card == cards.end()) continue;
+        if (static_cast<int>(i) == rank) m.board_compare_at = static_cast<int>(m.board_compare_list.size());
+        m.board_compare_list.push_back({card->second, leader.function, leader.words});
+    }
+    if (m.board_compare_at < 0) {
+        m.board_compare_list.clear();
+        return;
+    }
+    m.board_compare.reset();
+    board_compare_step(m, 0);
+}
+
+BoardLeadersLayout layout_board_leaders(const BoardLayout& b, const Model& m) {
+    BoardLeadersLayout l;
+    l.outline = b.tableau;
+    l.title = {l.outline.x + 12, l.outline.y + 4, std::max(0.0f, l.outline.w - 56), 26};
+    l.close = {l.outline.right() - 34, l.outline.y + 4, 28, 26};
+    l.head = {l.outline.x + 8, l.outline.y + 32, std::max(0.0f, l.outline.w - 16), 20};
+    l.list = {l.head.x, l.head.bottom(), l.head.w, std::max(0.0f, l.outline.bottom() - 6 - l.head.bottom())};
+    if (!m.board_leaders) return l;
+    const std::size_t count = m.board_leaders->top.size();
+    l.max_scroll = std::max(0.0f, static_cast<float>(count) * kLeaderRowHeight - l.list.h);
+    const float scroll = std::clamp(m.board_leaders_scroll, 0.0f, l.max_scroll);
+    l.first = static_cast<int>(scroll / kLeaderRowHeight);
+    const float offset = l.list.y - (scroll - static_cast<float>(l.first) * kLeaderRowHeight);
+    for (std::size_t i = static_cast<std::size_t>(l.first); i < count; ++i) {
+        const float y = offset + static_cast<float>(i - static_cast<std::size_t>(l.first)) * kLeaderRowHeight;
+        if (y >= l.list.bottom()) break;
+        l.rows.push_back({l.list.x, y, l.list.w, kLeaderRowHeight - 1});
+    }
+    return l;
 }
 
 BoardCompareLayout layout_board_compare(const BoardLayout& b) {
     constexpr float kInset = 12, kTitleH = 30, kHeadH = 22, kFooterH = 22, kGap = 8;
     BoardCompareLayout p;
     p.outline = b.tableau;
-    p.title = {p.outline.x + kInset, p.outline.y + 4, std::max(0.0f, p.outline.w - 2 * kInset - 34), kTitleH - 4};
     p.close = {p.outline.right() - 34, p.outline.y + 4, 28, 26};
+    p.next = {p.close.x - 4 - 28, p.outline.y + 4, 28, 26};
+    p.prev = {p.next.x - 2 - 28, p.outline.y + 4, 28, 26};
+    p.position = {p.prev.x - 6 - 84, p.outline.y + 4, 84, 26};
+    p.title = {p.outline.x + kInset, p.outline.y + 4, std::max(0.0f, p.position.x - 6 - p.outline.x - kInset), kTitleH - 4};
     p.footer = {p.outline.x + kInset, p.outline.bottom() - kFooterH, std::max(0.0f, p.outline.w - 2 * kInset), kFooterH - 4};
     const float width = std::max(0.0f, (p.outline.w - 2 * kInset - kGap) / 2);
     const float head_y = p.outline.y + kTitleH + 2, code_y = head_y + kHeadH;
@@ -535,10 +628,14 @@ bool board_refresh_scores(Model& m) {
         const float scroll = m.board_inspect_scroll;
         const auto compare = m.board_compare;                  // (new numbers do not close what is being read)
         const auto compare_scroll = m.board_compare_scroll;
+        auto compare_list = std::move(m.board_compare_list);
+        const int compare_at = m.board_compare_at;
         board_inspect_card(m, m.board_selected);
         m.board_inspect_scroll = scroll;
         m.board_compare = compare;
         m.board_compare_scroll = compare_scroll;
+        m.board_compare_list = std::move(compare_list);
+        m.board_compare_at = compare_at;
     }
     return true;
 }
@@ -558,6 +655,8 @@ void board_load_decks(Model& m) {
     m.board_deck_names.clear();
     board_clear_c_view(m);
     board_close_compare(m);
+    board_close_leaders(m);
+    m.board_leaders.reset();
     m.board_c_marks.reset();
     if (!m.board) return;
     for (board::Deck& d : board::load_decks(m.board->root)) m.board_decks.push_back(std::move(d));
