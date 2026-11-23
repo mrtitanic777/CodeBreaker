@@ -16,6 +16,7 @@
 
 #include "app/board.hpp"
 #include "app/board_automation.hpp"
+#include "app/board_c_compare.hpp"
 #include "app/board_c_view.hpp"
 #include "app/board_flow.hpp"
 #include "app/board_index.hpp"
@@ -102,7 +103,9 @@ enum class Control {
     // automation: Orphans, Decks and its list (a row's index; -1 Save this view) and a deck's remove, Export, the batch button
     BoardOrphans, BoardDecks, BoardDeckRow, BoardDeckRemove, BoardExport, BoardBatch,
     // a filter by C result (index: board::CView)
-    BoardCView
+    BoardCView,
+    // the function compare panel
+    BoardCompareClose
 };
 
 // The Source card's three tabs; Compare (one function's original beside its rebuilt source) is a view of Functions.
@@ -312,6 +315,8 @@ struct Model {
     bool board_inspecting = false;                              // the X-Ray drawer is open
     std::shared_ptr<const board::Inspector> board_inspector;
     float board_inspect_scroll = 0;
+    std::shared_ptr<const board::CFunctionCompare> board_compare;   // one function side by side, over the columns
+    std::array<float, 2> board_compare_scroll{};                // its C and its assembly, DIPs
     std::shared_ptr<const board::HoverLinks> board_hover;       // the card under the pointer and what it is linked to
     std::array<std::uint32_t, board::kPileCount> board_hover_linked{};   // how many cards of each column are lit
     bool board_group_copies = true;                             // identical files are one master card

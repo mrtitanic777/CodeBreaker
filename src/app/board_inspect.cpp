@@ -112,7 +112,7 @@ Inspector build_inspector(const Board& board, const Index& index, const Signals*
                 if (near_misses != nullptr && !near_misses->closest.empty()) {
                     const std::string shown = near_misses->candidates > near_misses->closest.size() ? count_words(near_misses->closest.size()) + " of " + count_words(near_misses->candidates) : count_words(near_misses->candidates);
                     out.rows.push_back({InspectorRow::Kind::Heading, "Closest to identical (" + shown + ")", "measured"});
-                    for (const CNearMiss& miss : near_misses->closest) out.rows.push_back({InspectorRow::Kind::Fact, miss.name, miss.words});
+                    for (const CNearMiss& miss : near_misses->closest) out.rows.push_back({InspectorRow::Kind::Function, miss.name, miss.words});
                 }
             }
         }

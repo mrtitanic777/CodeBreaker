@@ -5,6 +5,7 @@
 #include <cmath>
 #include <filesystem>
 
+#include "app/window_convert.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 
@@ -176,6 +177,11 @@ Rect board_card_rect(const BoardColumn& c, int position) {
 float board_max_scroll(const BoardColumn& c) { return std::max(0.0f, c.content_height - c.area.h); }
 
 PageHit hit_test_board(const BoardLayout& b, const Model& m, float x, float y) {
+    if (m.board_view == 0 && m.board_compare) {   // the compare panel is over the columns and the drawer
+        const BoardCompareLayout panel = layout_board_compare(b);
+        if (panel.close.contains(x, y)) return {Control::BoardCompareClose, -1};
+        if (panel.outline.contains(x, y)) return {};
+    }
     if (m.board_view == 0 && m.board_decks_open) {   // the open list of decks is over everything under it
         const DeckPanel panel = layout_deck_panel(b, m);
         if (panel.outline.contains(x, y)) {
@@ -208,7 +214,7 @@ PageHit hit_test_board(const BoardLayout& b, const Model& m, float x, float y) {
             if (!inspector.rows[i].contains(x, y)) continue;
             const auto at = static_cast<std::size_t>(inspector.first) + i;
             const board::InspectorRow& row = m.board_inspector->rows[at];
-            if (row.card >= 0 || row.signal >= 0) return {Control::BoardInspectRow, static_cast<int>(at)};
+            if (row.card >= 0 || row.signal >= 0 || row.kind == board::InspectorRow::Kind::Function) return {Control::BoardInspectRow, static_cast<int>(at)};
         }
         return {};
     }
@@ -349,7 +355,44 @@ InspectorLayout layout_inspector(const BoardLayout& b, const Model& m) {
     return l;
 }
 
+void board_open_compare(Model& m, int row) {
+    if (!m.board || !m.board_index || !m.board_inspector || row < 0 || static_cast<std::size_t>(row) >= m.board_inspector->rows.size()) return;
+    const board::InspectorRow& r = m.board_inspector->rows[static_cast<std::size_t>(row)];
+    if (r.kind != board::InspectorRow::Kind::Function) return;
+    m.board_compare = std::make_shared<const board::CFunctionCompare>(board::load_c_compare(*m.board, *m.board_index, m.board_inspector->card, m.board_scores.get(), r.text, r.detail));
+    m.board_compare_scroll = {};
+}
+
+void board_close_compare(Model& m) {
+    m.board_compare.reset();
+    m.board_compare_scroll = {};
+}
+
+BoardCompareLayout layout_board_compare(const BoardLayout& b) {
+    constexpr float kInset = 12, kTitleH = 30, kHeadH = 22, kFooterH = 22, kGap = 8;
+    BoardCompareLayout p;
+    p.outline = b.tableau;
+    p.title = {p.outline.x + kInset, p.outline.y + 4, std::max(0.0f, p.outline.w - 2 * kInset - 34), kTitleH - 4};
+    p.close = {p.outline.right() - 34, p.outline.y + 4, 28, 26};
+    p.footer = {p.outline.x + kInset, p.outline.bottom() - kFooterH, std::max(0.0f, p.outline.w - 2 * kInset), kFooterH - 4};
+    const float width = std::max(0.0f, (p.outline.w - 2 * kInset - kGap) / 2);
+    const float head_y = p.outline.y + kTitleH + 2, code_y = head_y + kHeadH;
+    const float code_h = std::max(0.0f, p.footer.y - 4 - code_y);
+    p.source_head = {p.outline.x + kInset, head_y, width, kHeadH};
+    p.assembly_head = {p.source_head.right() + kGap, head_y, width, kHeadH};
+    p.source = {p.source_head.x, code_y, width, code_h};
+    p.assembly = {p.assembly_head.x, code_y, width, code_h};
+    return p;
+}
+
+float board_compare_max_scroll(const BoardCompareLayout& panel, const Model& m, int side) {
+    if (!m.board_compare) return 0;
+    const std::size_t lines = side == 0 ? m.board_compare->source.size() : m.board_compare->assembly.size();
+    return std::max(0.0f, static_cast<float>(lines) * kCodeLineHeight + 8 - (side == 0 ? panel.source.h : panel.assembly.h));
+}
+
 void board_inspect_card(Model& m, int card) {
+    board_close_compare(m);
     if (card < 0 || !m.board || !m.board_index || static_cast<std::size_t>(card) >= m.board->cards.size()) {
         m.board_inspecting = false;
         m.board_inspector.reset();
@@ -490,8 +533,12 @@ bool board_refresh_scores(Model& m) {
     if (!before.empty() && m.status_text.ends_with(before)) m.status_text.replace(m.status_text.size() - before.size(), before.size(), board::c_score_words(*m.board_scores));
     if (m.board_inspecting && m.board_selected >= 0) {
         const float scroll = m.board_inspect_scroll;
+        const auto compare = m.board_compare;                  // (new numbers do not close what is being read)
+        const auto compare_scroll = m.board_compare_scroll;
         board_inspect_card(m, m.board_selected);
         m.board_inspect_scroll = scroll;
+        m.board_compare = compare;
+        m.board_compare_scroll = compare_scroll;
     }
     return true;
 }
@@ -510,6 +557,7 @@ void board_load_decks(Model& m) {
     m.board_active_deck = -1;
     m.board_deck_names.clear();
     board_clear_c_view(m);
+    board_close_compare(m);
     m.board_c_marks.reset();
     if (!m.board) return;
     for (board::Deck& d : board::load_decks(m.board->root)) m.board_decks.push_back(std::move(d));

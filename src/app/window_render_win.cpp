@@ -978,8 +978,8 @@ void rd_inspector(RdDraw& d, const BoardLayout& b, const Model& m) {
             continue;
         }
         if (hot) d.fill(r, 3, rd_alpha(pal.accent, 0.26f));
-        if (row.kind == board::InspectorRow::Kind::Fact) {
-            d.text(widen(row.text), Rect{r.x + 6, r.y, 136, r.h}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+        if (row.kind == board::InspectorRow::Kind::Fact || row.kind == board::InspectorRow::Kind::Function) {
+            d.text(widen(row.text), Rect{r.x + 6, r.y, 136, r.h}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, row.kind == board::InspectorRow::Kind::Function ? pal.accent : pal.text2);
             d.text(widen(row.detail), Rect{r.x + 142, r.y, r.w - 148, r.h}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
         } else {
             const bool signal = row.kind == board::InspectorRow::Kind::Signal;
@@ -990,6 +990,8 @@ void rd_inspector(RdDraw& d, const BoardLayout& b, const Model& m) {
     d.rt->PopAxisAlignedClip();
     rd_scrollbar(d, l.list, static_cast<float>(inspector.rows.size()) * kInspectorRowHeight, m.board_inspect_scroll);
 }
+
+void rd_board_compare(RdDraw& d, const BoardLayout& b, const Model& m);   // (below, with the code drawing it shares)
 
 void rd_board(RdDraw& d, const Layout& l, const Model& m) {
     const RdPalette& pal = d.pal;
@@ -1290,6 +1292,7 @@ void rd_board(RdDraw& d, const Layout& l, const Model& m) {
         }
     }
     if (b.drawer.w > 0 && m.board_inspector) rd_inspector(d, b, m);
+    if (m.board_view == 0 && m.board_compare) rd_board_compare(d, b, m);
     if (m.board_drag >= 0 && static_cast<std::size_t>(m.board_drag) < m.board->cards.size()) {
         const Rect ghost{m.board_drag_x - b.column_width / 2, m.board_drag_y - 12, b.column_width, kBoardCardHeight};
         rd_board_card(d, ghost, m.board->cards[static_cast<std::size_t>(m.board_drag)], true, false, true);
@@ -1643,6 +1646,49 @@ void rd_code_line(RdDraw& d, const std::string& line, const std::vector<preview:
         if (s.kind == preview::Tok::Keyword) layout->SetFontWeight(DWRITE_FONT_WEIGHT_SEMI_BOLD, range);
     }
     d.rt->DrawTextLayout(D2D1::Point2F(x, y + 2), layout.get(), brushes[0], D2D1_DRAW_TEXT_OPTIONS_NONE);
+}
+
+// One function side by side: the C the conversion wrote and the original's assembly, each scrolling on its own.
+void rd_board_compare(RdDraw& d, const BoardLayout& b, const Model& m) {
+    const RdPalette& pal = d.pal;
+    const BoardCompareLayout p = layout_board_compare(b);
+    const board::CFunctionCompare& c = *m.board_compare;
+    d.fill(p.outline, 6, pal.dark ? rd_color(0x303030) : rd_color(0xFFFFFF));
+    d.stroke(p.outline, 6, rd_alpha(pal.text, 0.25f));
+    d.text(widen(c.function + "  \xC2\xB7  " + c.program + (c.measure.empty() ? std::string() : "  \xC2\xB7  " + c.measure)), p.title, 0, 14, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+    if (m.hot == Control::BoardCompareClose) d.fill(p.close, 4, pal.subtle);
+    d.text(L"×", p.close, 0, 16, DWRITE_FONT_WEIGHT_NORMAL, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+    ID2D1SolidColorBrush* brushes[5] = {};
+    ComPtr<ID2D1SolidColorBrush> owned[5];
+    const preview::Tok kinds[5] = {preview::Tok::Plain, preview::Tok::Keyword, preview::Tok::Comment, preview::Tok::Number, preview::Tok::String};
+    for (int k = 0; k < 5; ++k) {
+        if (FAILED(d.rt->CreateSolidColorBrush(rd_token_color(pal, kinds[k]), owned[k].put()))) return;
+        brushes[static_cast<int>(kinds[k])] = owned[k].get();
+    }
+    const auto side = [&](const Rect& head, const Rect& area, const wchar_t* title, const std::vector<std::string>& lines, const std::vector<std::vector<preview::Span>>& spans, const std::string& note, int which) {
+        d.text(title, Rect{head.x + 2, head.y, head.w * 0.5f, head.h}, 0, 12, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text2);
+        if (!lines.empty()) d.text(widen(board::count_words(lines.size()) + " lines"), Rect{head.x + head.w * 0.5f, head.y, head.w * 0.5f - 2, head.h}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text3, DWRITE_TEXT_ALIGNMENT_TRAILING);
+        d.fill(area, 4, pal.dark ? rd_color(0x1F1F1F) : rd_color(0xF6F6F6));
+        if (lines.empty()) {
+            d.text(widen(note), Rect{area.x + 10, area.y + 8, area.w - 20, 40}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+            return;
+        }
+        const float scroll = std::clamp(m.board_compare_scroll[static_cast<std::size_t>(which)], 0.0f, board_compare_max_scroll(p, m, which));
+        const auto first = static_cast<std::size_t>(scroll / kCodeLineHeight);
+        const float top = area.y + 4 - (scroll - static_cast<float>(first) * kCodeLineHeight);
+        d.rt->PushAxisAlignedClip(rd_rect(area), D2D1_ANTIALIAS_MODE_ALIASED);
+        static const std::vector<preview::Span> none;
+        for (std::size_t i = first, k = 0; i < lines.size() && top + static_cast<float>(k) * kCodeLineHeight < area.bottom(); ++i, ++k)
+            rd_code_line(d, lines[i], i < spans.size() ? spans[i] : none, area.x + 8, top + static_cast<float>(k) * kCodeLineHeight, brushes);
+        d.rt->PopAxisAlignedClip();
+        rd_scrollbar(d, area, static_cast<float>(lines.size()) * kCodeLineHeight + 8, scroll);
+    };
+    side(p.source_head, p.source, L"Generated C", c.source, c.source_spans, c.source_note, 0);
+    side(p.assembly_head, p.assembly, L"Original assembly", c.assembly, c.assembly_spans, c.assembly_note, 1);
+    std::string footer = "For reading side by side: the recompiled bytes are not kept, and lines do not pair up one to one.";
+    if (!c.source.empty() && !c.source_note.empty()) footer = "C: " + c.source_note + "  " + footer;
+    if (!c.assembly.empty() && !c.assembly_note.empty()) footer = "Assembly: " + c.assembly_note + "  " + footer;
+    d.text(widen(footer), p.footer, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
 }
 
 // The Source card's preview: the output folder's files on the left, the selected file's source on the right.

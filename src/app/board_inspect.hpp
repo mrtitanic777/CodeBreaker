@@ -16,7 +16,7 @@
 namespace cb::app::board {
 
 struct InspectorRow {
-    enum class Kind : std::uint8_t { Heading, Fact, File, Signal };
+    enum class Kind : std::uint8_t { Heading, Fact, File, Signal, Function };   // Function: a near miss, a click compares it
     Kind kind = Kind::Fact;
     std::string text, detail;
     std::int64_t card = -1;            // File: the card a click goes to

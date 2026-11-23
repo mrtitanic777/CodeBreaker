@@ -108,6 +108,15 @@ InspectorLayout layout_inspector(const BoardLayout& layout, const Model& model);
 // Open the drawer on a card, or close it (-1). It follows the selected card while it is open.
 void board_inspect_card(Model& model, int card);
 void board_sync_inspector(Model& model);
+// One near miss of the drawer side by side (`row`: its row), and back to the drawer.
+void board_open_compare(Model& model, int row);
+void board_close_compare(Model& model);
+struct BoardCompareLayout {
+    Rect outline, title, close, source_head, assembly_head, source, assembly, footer;
+};
+BoardCompareLayout layout_board_compare(const BoardLayout& layout);
+// The most a side scrolls. `side`: 0 the C, 1 the assembly.
+float board_compare_max_scroll(const BoardCompareLayout& panel, const Model& model, int side);
 // The card under the pointer lights what it is linked to; -1: nothing is lit.
 void board_hover_card(Model& model, int card);
 

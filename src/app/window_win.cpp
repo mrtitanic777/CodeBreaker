@@ -1851,10 +1851,16 @@ void WwApp::activate_page(Control c, int index) {
             relayout();
             invalidate();
             break;
-        case Control::BoardInspectRow:   // a file: the drawer goes to it; a signal: the board shows what shares it
+        case Control::BoardCompareClose:
+            board_close_compare(model_);
+            invalidate();
+            break;
+        case Control::BoardInspectRow:   // a file: the drawer goes to it; a signal: the board shows what shares it; a near miss: side by side
             if (model_.board_inspector && index >= 0 && static_cast<std::size_t>(index) < model_.board_inspector->rows.size()) {
                 const board::InspectorRow row = model_.board_inspector->rows[static_cast<std::size_t>(index)];
-                if (row.card >= 0) {
+                if (row.kind == board::InspectorRow::Kind::Function) {
+                    board_open_compare(model_, index);
+                } else if (row.card >= 0) {
                     board_inspect_card(model_, static_cast<int>(row.card));
                 } else if (row.signal >= 0) {
                     if (model_.board_view != 0) board_crumb_back(model_, -1);
@@ -1946,6 +1952,11 @@ void WwApp::scroll_page(float x, float y, int lines) {
     } else if (model_.page == Page::Settings) {
         const SettingsLayout s = compute_settings_layout(layout_, model_);
         model_.setting_scroll = std::clamp(model_.setting_scroll - step, 0.0f, std::max(0.0f, s.form.content_height - s.fields_area.h));
+    } else if (model_.page == Page::Board && model_.board_view == 0 && model_.board_compare && layout_board_compare(compute_board_layout(layout_, model_)).outline.contains(x, y)) {   // the side under the pointer
+        const BoardCompareLayout panel = layout_board_compare(compute_board_layout(layout_, model_));
+        const int side = x >= panel.assembly.x ? 1 : 0;
+        float& scroll = model_.board_compare_scroll[static_cast<std::size_t>(side)];
+        scroll = std::clamp(scroll - step * 2, 0.0f, board_compare_max_scroll(panel, model_, side));
     } else if (model_.page == Page::Board && model_.board_inspecting && compute_board_layout(layout_, model_).drawer.contains(x, y)) {   // the X-Ray drawer
         model_.board_inspect_scroll = std::clamp(model_.board_inspect_scroll - step * 2, 0.0f, layout_inspector(compute_board_layout(layout_, model_), model_).max_scroll);
     } else if (model_.page == Page::Board && model_.board && model_.board_view == 0 && model_.board_signal_type >= 0 &&
@@ -3403,6 +3414,11 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 set_page(wp == '1' ? Page::Convert : wp == '2' ? Page::Tools : Page::Settings);
                 return 0;
             }
+            if (wp == VK_ESCAPE && model_.page == Page::Board && model_.board_compare) {   // back to the drawer
+                board_close_compare(model_);
+                invalidate();
+                return 0;
+            }
             if (model_.field_popup >= 0 && !(popup_is_search() && wp != VK_UP && wp != VK_DOWN && wp != VK_RETURN && wp != VK_ESCAPE)) {   // a form's open list takes the keys
                 popup_key(wp);
                 return 0;
@@ -3626,7 +3642,7 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
             board_open_signals(m, static_cast<int>(board::SignalType::Mutex));
             if (!m.board_signal_rows.empty()) board_toggle_filter(m, m.board_signal_rows[0].first);
         }
-        if ((state == "board-inspect" || state == "board-hover") && m.board_index) {   // a named file (else the first program), in the drawer or under the pointer
+        if ((state == "board-inspect" || state == "board-compare" || state == "board-hover") && m.board_index) {   // a named file (else the first program), in the drawer or under the pointer
             int card = -1;
             const std::string wanted = text::lower(board_focus_name);
             for (const board::Stack& stack : m.board_stacks) {
@@ -3635,8 +3651,11 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
             }
             for (std::size_t i = 0; card < 0 && !wanted.empty() && i < m.board->cards.size(); ++i)   // (a converted file is in no stack's to-do list)
                 if (text::lower(m.board->cards[i].name) == wanted) card = static_cast<int>(i);
-            if (state == "board-inspect") board_inspect_card(m, card);
-            else {
+            if (state == "board-inspect" || state == "board-compare") {
+                board_inspect_card(m, card);
+                if (state == "board-compare" && m.board_inspector)   // its closest function, side by side
+                    for (std::size_t i = 0; i < m.board_inspector->rows.size() && !m.board_compare; ++i) board_open_compare(m, static_cast<int>(i));
+            } else {
                 board_hover_card(m, card);
                 m.hot = Control::BoardCard;
                 m.hot_index = card;
@@ -4318,7 +4337,7 @@ int run(std::span<const std::string> args, bool no_command_given) {
         } else if (!a.starts_with("--") && open_file.empty()) {
             open_file = a;
         } else {
-            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout|functions|check|compare|palette|board|board-expanded|board-flow|board-trace|board-library|board-library-hover|board-library-function|board-filter|board-inspect|board-hover|board-orphans|board-c-identical|board-c-near|board-c-nocompile|board-c-unscored|board-deck|board-empty|board-scanning] [--board FOLDER] [--theme light|dark] [--size WxH] [--scale N]] [--board IMAGE] [--board-scan IMAGE [--board-out FOLDER]] [--board-trace TRACE --board-trace-disk IMAGE --board-out FOLDER]\n");
+            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout|functions|check|compare|palette|board|board-expanded|board-flow|board-trace|board-library|board-library-hover|board-library-function|board-filter|board-inspect|board-hover|board-orphans|board-compare|board-c-identical|board-c-near|board-c-nocompile|board-c-unscored|board-deck|board-empty|board-scanning] [--board FOLDER] [--theme light|dark] [--size WxH] [--scale N]] [--board IMAGE] [--board-scan IMAGE [--board-out FOLDER]] [--board-trace TRACE --board-trace-disk IMAGE --board-out FOLDER]\n");
             return 2;
         }
     }
