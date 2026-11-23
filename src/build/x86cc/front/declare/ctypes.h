@@ -520,15 +520,17 @@ typedef enum ppctl_t {
     PPCTL_NORMAL            = 0x00  // expand macros, treat <eol> as white space, diagnose lexical problems
 } ppctl_t;
 
-#define PPCTL_ENABLE_ASM()          front.cvars.PPControl |= PPCTL_ASM
-#define PPCTL_ENABLE_EOL()          front.cvars.PPControl |= PPCTL_EOL
-#define PPCTL_DISABLE_EOL()         front.cvars.PPControl &= ~PPCTL_EOL
-#define PPCTL_ENABLE_MACROS()       front.cvars.PPControl &= ~PPCTL_NO_EXPAND
-#define PPCTL_DISABLE_MACROS()      front.cvars.PPControl |= PPCTL_NO_EXPAND
-#define PPCTL_ENABLE_LEX_ERRORS()   front.cvars.PPControl &= ~PPCTL_NO_LEX_ERRORS
-#define PPCTL_DISABLE_LEX_ERRORS()  front.cvars.PPControl |= PPCTL_NO_LEX_ERRORS
+/* what the pre-processor does with what follows (the run's PPControl); the bodies are in frontrun.hpp, which reads the run */
+struct FrontRun;
+inline void PPCtlEnableAsm( FrontRun& front );
+inline void PPCtlEnableEol( FrontRun& front );
+inline void PPCtlDisableEol( FrontRun& front );
+inline void PPCtlEnableMacros( FrontRun& front );
+inline void PPCtlDisableMacros( FrontRun& front );
+inline void PPCtlEnableLexErrors( FrontRun& front );
+inline void PPCtlDisableLexErrors( FrontRun& front );
 
-#define IS_PPCTL_NORMAL()           ((front.cvars.PPControl & (PPCTL_EOL | PPCTL_NO_EXPAND)) == 0)
+inline bool IsPPCtlNormal( const FrontRun& front );
 
 typedef struct comp_flags {
     bool label_dropped                       : 1;

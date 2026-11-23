@@ -120,7 +120,7 @@ static void FuncDefn( FrontRun& front, SYMPTR sym )
     }
 
     front.cvars.CompFlags.external_defn_found = true;
-    if( TOGGLE( check_stack ) )
+    if( Toggles( front ).tog_check_stack )
         sym->flags |= SYM_CHECK_STACK;
 
     if( !front.cvars.CompFlags.zu_switch_used ) {

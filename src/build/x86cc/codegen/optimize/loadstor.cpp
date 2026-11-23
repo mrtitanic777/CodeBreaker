@@ -225,7 +225,7 @@ static  void    CalculateLoadStore( BackRun& back, conflict_node *conf )
     _GBitAssign( id, conf->id.out_of_block );
     blk = back.data.HeadBlock;
     if( blk != NULL ) {
-        _MarkBlkAllAttrClr( BLK_CONTAINS_CALL | BLK_BLOCK_MARKED | BLK_BLOCK_VISITED );
+        MarkBlkAllAttrClr( back, BLK_CONTAINS_CALL | BLK_BLOCK_MARKED | BLK_BLOCK_VISITED );
         _MarkBlkAttrSet( blk, BLK_BIG_LABEL );
         /*
          * turn on bits before the conflict range
@@ -255,8 +255,8 @@ static  void    CalculateLoadStore( BackRun& back, conflict_node *conf )
                 _GBitTurnOff( flow->need_store, id );
             }
             if( blk->ins.head.prev != (instruction *)&blk->ins ) {
-                _INS_NOT_BLOCK( blk->ins.head.prev );
-                _INS_NOT_BLOCK( conf->ins_range.last );
+                InsNotBlock( back, blk->ins.head.prev );
+                InsNotBlock( back, conf->ins_range.last );
                 if( blk->ins.head.prev->id >= conf->ins_range.last->id) {
                     break;
                 }
@@ -285,7 +285,7 @@ static  void    CalculateLoadStore( BackRun& back, conflict_node *conf )
                 _GBitTurnOff( flow->need_store, id );
             }
         }
-        _MarkBlkAllAttrClr( BLK_CONTAINS_CALL | BLK_BLOCK_MARKED | BLK_BLOCK_VISITED );
+        MarkBlkAllAttrClr( back, BLK_CONTAINS_CALL | BLK_BLOCK_MARKED | BLK_BLOCK_VISITED );
     } else {
         PropagateLoadStoreBits( conf->start_block, &id );
     }

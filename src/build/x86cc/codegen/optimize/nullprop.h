@@ -31,4 +31,6 @@
 
 #pragma once
 extern void            ClearBlocksBitsMask( BackRun& back, block_class mask );
+inline void            MarkBlkAllAttrClr( BackRun& back, block_class attr ) { ClearBlocksBitsMask( back, ~attr ); }
+inline void            MarkBlkAllUnVisited( BackRun& back ) { ClearBlocksBitsMask( back, ~BLK_BLOCK_VISITED ); }
 extern void            PropNullInfo( BackRun& back );

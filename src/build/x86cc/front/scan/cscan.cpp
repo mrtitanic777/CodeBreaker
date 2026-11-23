@@ -42,9 +42,12 @@
 #include "frontrun.hpp"
 
 
-#define diagnose_lex_error()    ((front.cvars.SkipLevel == front.cvars.NestLevel) && (front.cvars.PPControl & PPCTL_NO_LEX_ERRORS) == 0)
+static inline bool diagnose_lex_error( FrontRun& front )
+{
+    return ( front.cvars.SkipLevel == front.cvars.NestLevel ) && ( front.cvars.PPControl & PPCTL_NO_LEX_ERRORS ) == 0;
+}
 
-#define HEXBIN(c)               ((front.scan.CharSet[c] & C_HX) ? HEX2BIN((c)) : DEC2BIN((c)))
+static inline int HexBin( FrontRun& front, int c ) { return ( front.scan.CharSet[c] & C_HX ) ? HEX2BIN( c ) : DEC2BIN( c ); }
 #define OCTAL(c)                ((c) >= '0' && (c) <= '7')
 
 enum scan_class {
@@ -302,7 +305,7 @@ static TOKEN doScanName( FrontRun& front )
     }
     mentry = MacroLookup( front, front.cvars.Buffer );
     if( mentry == NULL ) {
-        if( IS_PPOPERATOR_PRAGMA( front.cvars.Buffer, front.cvars.TokenLen ) ) {
+        if( IsPPOperatorPragma( front, front.cvars.Buffer, front.cvars.TokenLen ) ) {
             token = Process_Pragma(front);
         } else {
             token = KwLookup( front, front.cvars.Buffer, front.cvars.TokenLen );
@@ -326,7 +329,7 @@ static TOKEN doScanName( FrontRun& front )
                     InsertToken( front, T_WHITE_SPACE, " " );
                     token = T_ID;
                 } else {
-                    if( IS_PPOPERATOR_PRAGMA( front.cvars.Buffer, front.cvars.TokenLen ) ) {
+                    if( IsPPOperatorPragma( front, front.cvars.Buffer, front.cvars.TokenLen ) ) {
                         token = Process_Pragma(front);
                     } else {
                         token = KwLookup( front, front.cvars.Buffer, front.cvars.TokenLen );
@@ -592,7 +595,7 @@ static TOKEN doScanNum( FrontRun& front )
                  * just collected a 0x
                  */
                 front.cvars.BadTokenInfo = ERR_INVALID_HEX_CONSTANT;
-                if( diagnose_lex_error() ) {
+                if( diagnose_lex_error( front ) ) {
                     CErr1( front, ERR_INVALID_HEX_CONSTANT );
                 }
             } else {
@@ -605,7 +608,7 @@ static TOKEN doScanNum( FrontRun& front )
                     unsigned char   ch;
 
                     ch = *(unsigned char *)curr++;
-                    if( U64Cnv16( &front.cvars.Constant64, HEXBIN( ch ) ) ) {
+                    if( U64Cnv16( &front.cvars.Constant64, HexBin( front, ch ) ) ) {
                         overflow = true;
                     }
                 }
@@ -624,7 +627,7 @@ static TOKEN doScanNum( FrontRun& front )
                  * just collected a 0b
                  */
                 front.cvars.BadTokenInfo = ERR_INVALID_BINARY_CONSTANT;
-                if( diagnose_lex_error() ) {
+                if( diagnose_lex_error( front ) ) {
                     CErr1( front, ERR_INVALID_BINARY_CONSTANT );
                 }
             } else {
@@ -667,7 +670,7 @@ static TOKEN doScanNum( FrontRun& front )
                  * if digit 8 or 9 somewhere
                  */
                 front.cvars.BadTokenInfo = ERR_INVALID_OCTAL_CONSTANT;
-                if( diagnose_lex_error() ) {
+                if( diagnose_lex_error( front ) ) {
                     CErr1( front, ERR_INVALID_OCTAL_CONSTANT );
                 }
             } else {
@@ -735,7 +738,7 @@ static TOKEN doScanNum( FrontRun& front )
             if( c == '4' ) {
                 suffix |= SUFF_LL | SUFF_MS;
                 c = WriteBufferCharNextChar( front, c );
-            } else if( diagnose_lex_error() ) {
+            } else if( diagnose_lex_error( front ) ) {
                 CErr1( front, ERR_INVALID_CONSTANT );
             }
         } else if( c == '3' ) {
@@ -743,7 +746,7 @@ static TOKEN doScanNum( FrontRun& front )
             if( c == '2' ) {
                 suffix |= SUFF_L | SUFF_MS;
                 c = WriteBufferCharNextChar( front, c );
-            } else if( diagnose_lex_error() ) {
+            } else if( diagnose_lex_error( front ) ) {
                 CErr1( front, ERR_INVALID_CONSTANT );
             }
         } else if( c == '1' ) {
@@ -751,13 +754,13 @@ static TOKEN doScanNum( FrontRun& front )
             if( c == '6' ) {
                 suffix |= SUFF_16 | SUFF_MS;
                 c = WriteBufferCharNextChar( front, c );
-            } else if( diagnose_lex_error() ) {
+            } else if( diagnose_lex_error( front ) ) {
                 CErr1( front, ERR_INVALID_CONSTANT );
             }
         } else if( c == '8' ) {
             suffix |= SUFF_8 | SUFF_MS;
             c = WriteBufferCharNextChar( front, c );
-        } else if( diagnose_lex_error() ) {
+        } else if( diagnose_lex_error( front ) ) {
             CErr1( front, ERR_INVALID_CONSTANT );
         }
     }
@@ -816,7 +819,7 @@ static TOKEN doScanNum( FrontRun& front )
              * unsigned long long type
              */
             front.cvars.ConstType = TYP_ULONG64;
-            if( diagnose_lex_error() ) {
+            if( diagnose_lex_error( front ) ) {
                 CWarn1( front, ERR_INT_IS_UNSIGNED );
             }
         }
@@ -833,7 +836,7 @@ static TOKEN doScanNum( FrontRun& front )
     WriteBufferNullChar(front);
     if( overflow ) {
         front.cvars.BadTokenInfo = ERR_CONSTANT_TOO_BIG;
-        if( diagnose_lex_error() ) {
+        if( diagnose_lex_error( front ) ) {
             CWarn1( front, ERR_CONSTANT_TOO_BIG );
         }
     }
@@ -1205,7 +1208,7 @@ static msg_codes doScanHex( FrontRun& front, int max, unsigned_64 *pval64, escin
             break;
         if( ofn != NULL )
             ofn( front, c );
-        if( U64Cnv16( pval64, HEXBIN( c ) ) ) {
+        if( U64Cnv16( pval64, HexBin( front, c ) ) ) {
             too_big = true;
         }
         --max;
@@ -1409,12 +1412,12 @@ static TOKEN doScanCharConst( FrontRun& front, DATA_TYPE char_type )
                 front.cvars.Buffer[front.cvars.TokenLen++] = '\\';
                 c = ESCChar( front, read_inp, WriteBufferChar, &front.cvars.BadTokenInfo );
                 if( front.cvars.BadTokenInfo == ERR_INVALID_HEX_CONSTANT ) {
-                    if( diagnose_lex_error() ) {
+                    if( diagnose_lex_error( front ) ) {
                         CErr1( front, ERR_INVALID_HEX_CONSTANT );
                     }
                 } else if( front.cvars.BadTokenInfo == ERR_CONSTANT_TOO_BIG
                   || front.cvars.BadTokenInfo == ERR_INV_CHAR_CONSTANT ) {
-                    if( diagnose_lex_error() ) {
+                    if( diagnose_lex_error( front ) ) {
                         CWarn1( front, front.cvars.BadTokenInfo );
                     }
                 }
@@ -1550,12 +1553,12 @@ static TOKEN doScanString( FrontRun& front, bool wide )
             WriteBufferChar( front, c );
             ESCChar( front, read_inp, WriteBufferChar, &front.cvars.BadTokenInfo );
             if( front.cvars.BadTokenInfo == ERR_INVALID_HEX_CONSTANT ) {
-                if( diagnose_lex_error() ) {
+                if( diagnose_lex_error( front ) ) {
                     CErr1( front, ERR_INVALID_HEX_CONSTANT );
                 }
             } else if( front.cvars.BadTokenInfo == ERR_CONSTANT_TOO_BIG
               || front.cvars.BadTokenInfo == ERR_INV_CHAR_CONSTANT ) {
-                if( diagnose_lex_error() ) {
+                if( diagnose_lex_error( front ) ) {
                     CWarn1( front, front.cvars.BadTokenInfo );
                 }
             }
@@ -1656,7 +1659,7 @@ static void SkipWhiteSpace( FrontRun& front, int c )
     } else {
         while( front.scan.CharSet[c] & C_WS ) {
             if( c != '\r'
-              && IS_PPCTL_NORMAL() ) {
+              && IsPPCtlNormal( front ) ) {
                 CppPrtChar( front, c );
             }
             c = front.cvars.NextChar(front);
@@ -1676,7 +1679,7 @@ void SkipAhead( FrontRun& front )
             if( front.cvars.CurrChar != '\n' )
                 break;
             if( front.cvars.CompFlags.cpp_mode
-              && IS_PPCTL_NORMAL() ) {
+              && IsPPCtlNormal( front ) ) {
                 CppPrtChar( front, '\n' );
             }
             NewLineStartPos( front.cvars.SrcFiles );

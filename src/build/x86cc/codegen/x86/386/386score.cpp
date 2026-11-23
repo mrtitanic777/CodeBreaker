@@ -47,14 +47,14 @@ void    ScInitRegs( BackRun& back, score_hdl scoreboard )
     int ds;
 
     ds = AllocRegName( back, HW_DS )->r.reg_index;
-    if( _IsntTargetModel( CGSW_X86_FLOATING_DS ) ) {
-        if( _IsntTargetModel( CGSW_X86_FLOATING_ES ) ) {
+    if( IsntTargetModel( back, CGSW_X86_FLOATING_DS ) ) {
+        if( IsntTargetModel( back, CGSW_X86_FLOATING_ES ) ) {
             xs = AllocRegName( back, HW_ES )->r.reg_index;
             if( !RegsEqual( scoreboard, xs, ds ) ) {
                 RegInsert( back, scoreboard, xs, ds );
             }
         }
-        if( _IsntTargetModel( CGSW_X86_FLOATING_SS ) ) {
+        if( IsntTargetModel( back, CGSW_X86_FLOATING_SS ) ) {
             xs = AllocRegName( back, HW_SS )->r.reg_index;
             if( !RegsEqual( scoreboard, xs, ds ) ) {
                 RegInsert( back, scoreboard, xs, ds );

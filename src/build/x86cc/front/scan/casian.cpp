@@ -47,7 +47,7 @@
 #include "frontrun.hpp"
 
 
-#define SET_CHARSET_DB(x)   front.scan.CharSet[x] = C_DB | C_EX
+static inline void SetCharsetDB( FrontRun& front, unsigned x ) { front.scan.CharSet[x] = C_DB | C_EX; }
 
 static void setRange( FrontRun& front, unsigned low, unsigned high )
 /*************************************************/
@@ -55,7 +55,7 @@ static void setRange( FrontRun& front, unsigned low, unsigned high )
     unsigned    i;
 
     for( i = low; i <= high; ++i ) {
-        SET_CHARSET_DB( i );
+        SetCharsetDB( front, i );
     }
 }
 
@@ -83,7 +83,7 @@ void SetDBChar( FrontRun& front, int character_set )
             _setmbcp( _MB_CP_ANSI );
             for( i = 0x80; i <= 0x0ff; ++i ) {
                 if( _ismbblead( i ) ) {
-                    SET_CHARSET_DB( i );
+                    SetCharsetDB( front, i );
                 }
             }
         }

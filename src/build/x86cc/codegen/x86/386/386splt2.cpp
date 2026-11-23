@@ -85,7 +85,7 @@ name    *LowPart( BackRun& back, name *tosplit, type_class_def type_class )
             } else if( type_class == U4 ) {
                 new_part = AllocU32Const( back, tosplit->c.lo.u.uint_value );
             } else if( type_class == FL ) {
-                _Zoiks( ZOIKS_129 );
+                Zoiks( back, ZOIKS_129 );
             } else { /* FD */
                 floatval = GetFloat( back, tosplit, FD );
                 new_part = AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, _TargetLongInt( U64LowLE( floatval->buffer.u64 ) ) ) );
@@ -93,7 +93,7 @@ name    *LowPart( BackRun& back, name *tosplit, type_class_def type_class )
         } else if( tosplit->c.const_type == CONS_ADDRESS ) {
             new_part = AddrConst( back, tosplit->c.u.op, (segment_id)tosplit->c.lo.u.int_value, CONS_OFFSET );
         } else {
-            _Zoiks( ZOIKS_044 );
+            Zoiks( back, ZOIKS_044 );
         }
         break;
     case N_REGISTER:
@@ -143,7 +143,7 @@ name    *OffsetPart( BackRun& back, name *tosplit )
         } else if( tosplit->c.const_type == CONS_ADDRESS ) {
             return( AddrConst( back, tosplit->c.u.op, (segment_id)tosplit->c.lo.u.int_value, CONS_OFFSET ) );
         } else {
-            _Zoiks( ZOIKS_044 );
+            Zoiks( back, ZOIKS_044 );
             return( tosplit );
         }
     case N_TEMP:
@@ -156,7 +156,7 @@ name    *OffsetPart( BackRun& back, name *tosplit )
     case N_INDEXED:
         return( LowPart( back, tosplit, U4 ) );
     default:
-        _Zoiks( ZOIKS_129 );
+        Zoiks( back, ZOIKS_129 );
         return( NULL );
     }
 }
@@ -175,7 +175,7 @@ name    *SegmentPart( BackRun& back, name *tosplit )
         } else if( tosplit->c.const_type == CONS_ADDRESS ) {
             return( AddrConst( back, tosplit->c.u.op, (segment_id)tosplit->c.lo.u.int_value, CONS_SEGMENT ) );
         } else {
-            _Zoiks( ZOIKS_044 );
+            Zoiks( back, ZOIKS_044 );
             return( NULL );
         }
         break;
@@ -202,7 +202,7 @@ name    *SegmentPart( BackRun& back, name *tosplit )
                 tosplit->i.scale, tosplit->i.index_flags );
         return( new_part );
     default:
-        _Zoiks( ZOIKS_129 );
+        Zoiks( back, ZOIKS_129 );
         return( NULL );
     }
 }
@@ -238,7 +238,7 @@ name    *HighPart( BackRun& back, name *tosplit, type_class_def type_class )
             } else if( type_class == U4 ) {
                 new_part = AllocU32Const( back, tosplit->c.hi.u.uint_value );
             } else if( type_class == FL ) {
-                _Zoiks( ZOIKS_129 );
+                Zoiks( back, ZOIKS_129 );
             } else { /* FD */
                 floatval = GetFloat( back, tosplit, FD );
                 new_part = AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, _TargetLongInt( U64HighLE( floatval->buffer.u64 ) ) ) );
@@ -246,7 +246,7 @@ name    *HighPart( BackRun& back, name *tosplit, type_class_def type_class )
         } else if( tosplit->c.const_type == CONS_ADDRESS ) {
             new_part = AddrConst( back, tosplit->c.u.op, (segment_id)tosplit->c.lo.u.int_value, CONS_SEGMENT );
         } else {
-            _Zoiks( ZOIKS_044 );
+            Zoiks( back, ZOIKS_044 );
         }
         break;
     case N_REGISTER:

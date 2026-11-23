@@ -157,7 +157,7 @@ static  name    *GetGenericTLSDataRef( BackRun& back, instruction *ins, name *op
 static  name    *GetTLSDataRef( BackRun& back, instruction *ins, name *op, type_class_def type_class )
 /*************************************************************************************/
 {
-    if( _IsTargetModel( CGSW_X86_GENERIC_TLS ) ) {
+    if( IsTargetModel( back, CGSW_X86_GENERIC_TLS ) ) {
         return( GetNTTLSDataRef( back, ins, op, type_class ) );
     } else {
         return( GetGenericTLSDataRef( back, ins, op, type_class ) );
@@ -213,7 +213,7 @@ static  void    ExpandTlsOp( BackRun& back, instruction *ins, name **pop )
             if( op->i.scale != SCALE_NONE ) {
                 const int_32 values[] = { 1, 2, 4, 8, 16 };
                 if( op->i.scale > SCALE_16 )
-                    _Zoiks( ZOIKS_134 );
+                    Zoiks( back, ZOIKS_134 );
                 index = AllocTemp( back, WD );
                 new_ins = MakeBinary( back, OP_MUL, op->i.index,
                                 AllocS32Const( back, values[op->i.scale] ),

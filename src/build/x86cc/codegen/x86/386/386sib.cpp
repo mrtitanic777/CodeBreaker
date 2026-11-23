@@ -130,7 +130,7 @@ bool FoldIntoIndex( BackRun& back, instruction *ins )
             break;
         sib.ins = next;
         sib.offset = 0;
-        if( !HW_Equal( base_reg, HW_EMPTY ) && _IsTargetModel( CGSW_X86_INDEXED_GLOBALS )
+        if( !HW_Equal( base_reg, HW_EMPTY ) && IsTargetModel( back, CGSW_X86_INDEXED_GLOBALS )
          && sib.index->i.base != NULL
          && sib.index->i.base->n.class_ == N_MEMORY )
             break;

@@ -199,7 +199,7 @@ void    PrefixInsRenum( BackRun& back, instruction *ins, instruction *pref, bool
      * If renum = true, assign id and renumber.
      * renum can be false only if you're going to call Renumber() manually.
      */
-    _INS_NOT_BLOCK( pref );
+    InsNotBlock( back, pref );
     pref->head.prev = ins->head.prev;
     pref->head.prev->head.next = pref;
     pref->head.next = ins;
@@ -299,7 +299,7 @@ void    SuffixIns( BackRun& back, instruction *ins, instruction *suff )
     suff->head.prev = ins;
     ins->head.next = suff;
     suff->head.line_num = 0;
-    _INS_NOT_BLOCK( suff );
+    InsNotBlock( back, suff );
     /*
      * A little dirty, but check of OP_BLOCK can be skipped - in this case
      * we'll just Renumber() everything from scratch.
@@ -385,8 +385,8 @@ void    ReplIns( BackRun& back, instruction *ins, instruction *new_ins )
 //    new_ins->s.stk_extra = ins->s.stk_extra;
     new_ins->sequence = ins->sequence;
 
-    _INS_NOT_BLOCK( new_ins );
-    _INS_NOT_BLOCK( ins );
+    InsNotBlock( back, new_ins );
+    InsNotBlock( back, ins );
     new_ins->head.line_num = ins->head.line_num;
     new_ins->id = ins->id;
     new_ins->head.state = INS_NEEDS_WORK;
@@ -474,7 +474,7 @@ instruction_id  Renumber( BackRun& back )
     if( number_instrs == 0 ) {
         increment = 1;
     } else if( number_instrs > MAX_INS_ID ) {
-        _Zoiks( ZOIKS_069 );
+        Zoiks( back, ZOIKS_069 );
         increment = 1;
     } else {
         increment = 10; // BBB - tired of stupid looking ins id's

@@ -42,42 +42,11 @@
 #define B_RET_IRET      0x000C
 #define B_RET_NOPOP     0x0001
 
-#define _OutShortD( addr )      OutDataByte( back, addr - AskLocation(back) - 1 )
-#define _OutFarSeg( seg )       OutDataShort( back, seg )
 #if _TARGET & _TARG_8086
-    #define _OutOpndSize
-    #define _OutFarD( seg, off )    OutDataShort( back, seg ); \
-                                    OutDataShort( back, off )
-    #define _OutFarOff( off )       OutDataShort( back, off )
-    #define _OutNearD( addr )       OutDataShort( back, addr - AskLocation(back) - 2 )
     #define _OFFSET_PATCH           WORD_PATCH
     #define _NEAR_PATCH             (ADD_PATCH | WORD_PATCH)
 #else
-    #define _OutOpndSize            if( _IsntTargetModel( CGSW_X86_USE_32 ) ) { \
-                                        OutDataByte( back, 0x66 ); \
-                                    }
-    #define _OutFarOff( off )       OutDataLong( back, off );
-    #define _OutNearD( addr )       OutDataLong( back, (addr)-AskLocation(back)-4 );
-    #define _OutFarD( seg, off )    OutDataShort( back, seg ); \
-                                    OutDataLong( back, (unsigned)off );
     #define _OFFSET_PATCH           LONG_PATCH
     #define _NEAR_PATCH             (ADD_PATCH | LONG_PATCH)
 #endif
-#define _OutCCyp                OutDataByte( back, 0x0e ); \
-                                _OutOpndSize; \
-                                OutDataByte( back, 0xe8 )
-#define _OutCNear               _OutOpndSize; \
-                                OutDataByte( back, 0xe8 )
-#define _OutJNear               _OutOpndSize; \
-                                OutDataByte( back, 0xe9 )
-#define _OutCFar                _OutOpndSize; \
-                                OutDataByte( back, 0x9a )
-#define _OutJFar                _OutOpndSize; \
-                                OutDataByte( back, 0xea )
-#define _OutJShort              OutDataByte( back, 0xeb )
-#define _OutJCond( cond )       OutDataByte( back, 0x70 + cond )
-#define _OutJCondNear( cond )   _OutOpndSize; \
-                                OutDataByte( back, 0x0f ); \
-                                OutDataByte( back, 0x80 + cond )
-
 #define _SHORT_PATCH            (ADD_PATCH | BYTE_PATCH)

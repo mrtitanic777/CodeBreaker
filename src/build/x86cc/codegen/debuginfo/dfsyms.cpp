@@ -89,10 +89,10 @@ static void CLIWrite( BackRun& back, dw_sectnum sect, const void *block, size_t 
 //    long_offset         off;
 
     curr = &back.dfsyms_file.DwarfSegs[sect];
-    PUSH_OP( curr->segid );
+    { segment_id old_segid = ChangeOP( back, curr->segid );
 //        off = AskBigLocation();
         DataBytes( back, size, block );
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 static dw_out_offset CLITell( BackRun& back, dw_sectnum sect )
@@ -102,9 +102,9 @@ static dw_out_offset CLITell( BackRun& back, dw_sectnum sect )
     long_offset         off;
 
     curr = &back.dfsyms_file.DwarfSegs[sect];
-    PUSH_OP( curr->segid );
+    { segment_id old_segid = ChangeOP( back, curr->segid );
         off = AskBigLocation(back);
-    POP_OP();
+    SetOP( back, old_segid ); }
     return( off );
 }
 
@@ -115,7 +115,7 @@ static void CLISeek( BackRun& back, dw_sectnum sect, dw_out_offset offset, int t
     dw_out_offset       new_offset;
 
     curr = &back.dfsyms_file.DwarfSegs[sect];
-    PUSH_OP( curr->segid );
+    { segment_id old_segid = ChangeOP( back, curr->segid );
         new_offset = offset;
         switch( type ) {
         case DW_SEEK_CUR:
@@ -128,7 +128,7 @@ static void CLISeek( BackRun& back, dw_sectnum sect, dw_out_offset offset, int t
             break;
         }
         SetBigLocation( back, new_offset );
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 static void DoReloc( BackRun& back, dw_sym_handle sym, dw_addr_offset disp )
@@ -196,7 +196,7 @@ static void CLIReloc( BackRun& back, dw_sectnum sect, dw_reloc_type reloc_type, 
 
     va_start( args, reloc_type );
     curr = &back.dfsyms_file.DwarfSegs[sect];
-    PUSH_OP( curr->segid );
+    { segment_id old_segid = ChangeOP( back, curr->segid );
 //        off = AskBigLocation();
         switch( reloc_type ) {
         case DW_W_LOW_PC:
@@ -242,7 +242,7 @@ static void CLIReloc( BackRun& back, dw_sectnum sect, dw_reloc_type reloc_type, 
     #if (_TARGET & _TARG_8086)
             DoSegLblReloc( back, back.dfsyms_file.ARange );
     #elif (_TARGET & _TARG_80386)
-            if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) ) {
+            if( IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) ) {
                 DoSegLblReloc( back, back.dfsyms_file.ARange );
             }
     #endif
@@ -270,7 +270,7 @@ static void CLIReloc( BackRun& back, dw_sectnum sect, dw_reloc_type reloc_type, 
             Zoiks( back, ZOIKS_107 ); /* Unknown reloc */
             break;
         }
-    POP_OP();
+    SetOP( back, old_segid ); }
     va_end( args );
 }
 
@@ -348,12 +348,12 @@ static  void    InitLineSegBck( BackRun& back )
 {
     back_handle bck;
 
-    PUSH_OP( back.dfsyms_file.DwarfSegs[DW_DEBUG_LINE].segid );
+    { segment_id old_segid = ChangeOP( back, back.dfsyms_file.DwarfSegs[DW_DEBUG_LINE].segid );
         bck = MakeLabel(back);
         bck->segid = back.dfsyms_file.DwarfSegs[DW_DEBUG_LINE].segid;
         back.dfsyms_file.DwarfSegs[DW_DEBUG_LINE].bck = bck;
         DataLabel( back, bck->lbl );
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 static  void    FiniSegBck( BackRun& back )
@@ -390,7 +390,7 @@ static int InitCU( BackRun& back, dw_cu_info *cu )
 #if (_TARGET & _TARG_8086)
     cu->segment_size = 2;
 #elif (_TARGET & _TARG_80386)
-    cu->segment_size = ( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) ) ? 2 : 0;
+    cu->segment_size = ( IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) ) ? 2 : 0;
 #endif
     switch( GetMemModel(back) ) {
     case 'h':
@@ -428,8 +428,8 @@ void    DFSymRange( BackRun& back, cg_sym_handle sym, offset size )
  * a FIXME
  */
 {
-    if( _IsModel( CGSW_GEN_DBG_LOCALS )
-      || _IsModel( CGSW_GEN_DBG_TYPES ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_LOCALS )
+      || IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
         back.dfsyms_file.ARange = FEBack( *back.front, sym );
         DWAddress( back, back.dfsyms.Client, size );
     }
@@ -444,8 +444,8 @@ void    DFSegRange( BackRun& back )
     offset      off;
     offset      size;
 
-    if( _IsModel( CGSW_GEN_DBG_LOCALS )
-      || _IsModel( CGSW_GEN_DBG_TYPES ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_LOCALS )
+      || IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
         size = AskMaxSize(back);
         if( size > 0 ) {
             bck = MakeLabel(back);
@@ -470,8 +470,8 @@ void    DFBegCCU( BackRun& back, segment_id code_segid, dw_sym_handle dbg_pch )
 
     /* unused parameters */ (void)code_segid;
 
-    if( _IsntModel( CGSW_GEN_DBG_LOCALS )
-      && _IsntModel( CGSW_GEN_DBG_TYPES ) ) {
+    if( IsntModel( back, CGSW_GEN_DBG_LOCALS )
+      && IsntModel( back, CGSW_GEN_DBG_TYPES ) ) {
         return;
     }
     if( back.dfsyms_file.CcuDef ) {
@@ -517,11 +517,11 @@ void    DFObjInitDbgInfo( BackRun& back )
     cg_sym_handle   debug_pch;
     fe_attr         attr;
 
-    if( _IsntModel( CGSW_GEN_DBG_LOCALS )
-      && _IsntModel( CGSW_GEN_DBG_TYPES ) ) {
+    if( IsntModel( back, CGSW_GEN_DBG_LOCALS )
+      && IsntModel( back, CGSW_GEN_DBG_TYPES ) ) {
         return;
     }
-    info.big_endian = _IsModel( CGSW_GEN_OBJ_ENDIAN_BIG );
+    info.big_endian = IsModel( back, CGSW_GEN_OBJ_ENDIAN_BIG );
     info.compiler_options = DW_CM_DEBUGGER;
     info.abbrev_sym = 0;
     info.producer_name = SetDwarfProducer();
@@ -529,7 +529,7 @@ void    DFObjInitDbgInfo( BackRun& back )
     if( setjmp( info.exception_handler ) == 0 ) {
         info.funcs = cli_funcs;
         InitSegBck(back); // start each seg with a ref label
-        if( _IsModel( CGSW_GEN_DBG_PREDEF ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_PREDEF ) ) {
             abbrev_sym = static_cast<cg_sym_handle>(FEAuxInfo( *back.front, NULL, FEINF_DBG_PREDEF_SYM ));
             info.abbrev_sym = (dw_sym_handle)abbrev_sym;
             attr = FEAttr( *back.front, abbrev_sym );
@@ -541,9 +541,9 @@ void    DFObjInitDbgInfo( BackRun& back )
                 info.compiler_options |= DW_CM_ABBREV_GEN;
                 bck = FEBack( *back.front, abbrev_sym ); // dump out export label
                 bck->segid = back.dfsyms_file.DwarfSegs[DW_DEBUG_ABBREV].segid;
-                PUSH_OP( back.dfsyms_file.DwarfSegs[DW_DEBUG_ABBREV].segid );
+                { segment_id old_segid = ChangeOP( back, back.dfsyms_file.DwarfSegs[DW_DEBUG_ABBREV].segid );
                     DataLabel( back, bck->lbl );
-                POP_OP();
+                SetOP( back, old_segid ); }
             }
         }
         debug_pch = static_cast<cg_sym_handle>(FEAuxInfo( *back.front, NULL, FEINF_DBG_PCH_SYM ));
@@ -554,9 +554,9 @@ void    DFObjInitDbgInfo( BackRun& back )
 
                 bck = FEBack( *back.front, debug_pch );
                 bck->segid = back.dfsyms_file.DwarfSegs[DW_DEBUG_INFO].segid;
-                PUSH_OP( back.dfsyms_file.DwarfSegs[DW_DEBUG_INFO].segid );
+                { segment_id old_segid = ChangeOP( back, back.dfsyms_file.DwarfSegs[DW_DEBUG_INFO].segid );
                     DataLabel( back, bck->lbl );
-                POP_OP();
+                SetOP( back, old_segid ); }
                 debug_pch = NULL;
             }
         }
@@ -586,7 +586,7 @@ void    DFObjLineInitDbgInfo( BackRun& back )
     dw_init_info    info;
     dw_cu_info      cu;
 
-    info.big_endian = _IsModel( CGSW_GEN_OBJ_ENDIAN_BIG );
+    info.big_endian = IsModel( back, CGSW_GEN_OBJ_ENDIAN_BIG );
     info.compiler_options = DW_CM_DEBUGGER;
     info.abbrev_sym = 0;
     info.producer_name = SetDwarfProducer();
@@ -641,24 +641,24 @@ void    DFObjFiniDbgInfo( BackRun& back, offset codesize )
     offset          here;
     back_handle     bck;
 
-    if( _IsModel( CGSW_GEN_DBG_LOCALS )
-      || _IsModel( CGSW_GEN_DBG_TYPES ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_LOCALS )
+      || IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
         bck = back.dfsyms_file.Comp_High;
         if( bck != NULL ) {
-            PUSH_OP( AskCodeSeg(back) );
+            { segment_id old_segid = ChangeOP( back, AskCodeSeg(back) );
                 OutLabel( back, bck->lbl );
-            POP_OP();
+            SetOP( back, old_segid ); }
             BEFreeBack( back, bck );
             back.dfsyms_file.Comp_High = NULL;
         }
         DWEndCompileUnit( back, back.dfsyms.Client );
         DWFini( back, back.dfsyms.Client );
-        PUSH_OP( back.dfsyms_file.UnitSize->segid );
+        { segment_id old_segid = ChangeOP( back, back.dfsyms_file.UnitSize->segid );
             here = AskLocation(back);
             SetLocation( back, back.dfsyms_file.UnitSize->offset );
             DataLong( back, codesize );
             SetLocation( back, here );
-        POP_OP();
+        SetOP( back, old_segid ); }
         FiniSegBck(back);
     }
 }
@@ -685,7 +685,7 @@ void     DFLineNum( BackRun& back, cue_state *state, offset lc )
 #if (_TARGET & _TARG_8086)
         DWLineSeg( back, back.dfsyms.Client, (dw_sym_handle)bck );
 #elif (_TARGET & _TARG_80386)
-        if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) ) {
+        if( IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) ) {
             DWLineSeg( back, back.dfsyms.Client, (dw_sym_handle)bck );
         }
 #endif
@@ -737,7 +737,7 @@ void    DFGenStatic( BackRun& back, cg_sym_handle sym, dbg_loc loc )
     }
 #elif (_TARGET & _TARG_80386)
     if( attr & FE_STATIC ) {
-        if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) ) {
+        if( IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) ) {
             dw_segloc = SegLoc( back, sym );
         }
     }
@@ -945,7 +945,7 @@ void    DFProEnd( BackRun& back, dbg_rtn *rtn, offset lc )
     sym = AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) );
     tipe = FEDbgRetType( *back.front, sym );
     flags = DW_FLAG_NONE;
-    if( (call_class_target)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL ) {
+    if( (call_class_target)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL ) {
   #if _TARGET & _TARG_8086
         flags = DW_FLAG_PTR_TYPE_FAR16;
   #elif _TARGET & _TARG_80386
@@ -981,7 +981,7 @@ void    DFProEnd( BackRun& back, dbg_rtn *rtn, offset lc )
 #elif (_TARGET & _TARG_80386)
     dw_retloc = RetLoc( back, rtn->ret_offset );
     dw_frameloc = FrameLoc(back);
-    dw_segloc = ( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) ) ? SegLoc( back, sym ) : NULL;
+    dw_segloc = ( IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) ) ? SegLoc( back, sym ) : NULL;
 #endif
     rtn->end_lbl = MakeLabel(back);
     back.dfsyms_file.Pc_Low  = FEBack( *back.front, sym );

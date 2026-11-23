@@ -139,7 +139,7 @@ static const char *symbolName( BackRun& back, cg_sym_handle sym )
     kind = NORMAL;
     if( attr & FE_DLLIMPORT )
         kind = DLLIMPORT;
-    OUTPUT_OBJECT_NAME( sym, gatherName, back.x86owl->ObjName, kind );
+    DoOutObjectName( back, sym, (outputter_fn *)(gatherName), (outputter_data)(back.x86owl->ObjName), kind );
     return( back.x86owl->ObjName );
 }
 
@@ -284,8 +284,8 @@ static owl_reloc_type relocType( BackRun& back, fix_class class_, bool relative 
 static bool inlineFunction( BackRun& back, cg_sym_handle sym )
 {
     if( FEAttr( *back.front, sym ) & FE_PROC ) {
-        if( FindAuxInfoSym( sym, FEINF_CALL_BYTES ) != NULL
-          || ((call_class)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS ) & FECALL_GEN_MAKE_CALL_INLINE) ) {
+        if( FindAuxInfoSym( back, sym, FEINF_CALL_BYTES ) != NULL
+          || ((call_class)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS ) & FECALL_GEN_MAKE_CALL_INLINE) ) {
             return( true );
         }
     }
@@ -297,7 +297,7 @@ static void owlInitSegDefs( BackRun& back )
     owl_client_funcs funcs = { putBytes, NULL, NULL, CGAlloc, CGFree };
     owl_format       format;
 
-    format = _IsModel( CGSW_GEN_OBJ_ELF ) ? OWL_FORMAT_ELF : OWL_FORMAT_COFF;
+    format = IsModel( back, CGSW_GEN_OBJ_ELF ) ? OWL_FORMAT_ELF : OWL_FORMAT_COFF;
     back.x86owl->OwlHandle = OWLInit( back, &funcs, OWL_CPU_X86 );
     back.x86owl->OwlFile = OWLFileInit( back, back.x86owl->OwlHandle, static_cast<const char *>(FEAuxInfo( *back.front, NULL, FEINF_SOURCE_NAME )), NULL, format, OWL_FILE_OBJECT );
     back.x86owl->Sections = NULL;
@@ -380,7 +380,7 @@ static segment_id owlDbgSegDef( BackRun& back, const char *name, const char *cla
 
 static void owlObjInit( BackRun& back )
 {
-    if( _IsModel( CGSW_GEN_DBG_TYPES | CGSW_GEN_DBG_LOCALS | CGSW_GEN_DBG_NUMBERS ) )
+    if( IsModel( back, CGSW_GEN_DBG_TYPES | CGSW_GEN_DBG_LOCALS | CGSW_GEN_DBG_NUMBERS ) )
         owlUnsupported( back, "debug information is not implemented by the OWL x86 MVP" );
     OpenObj(back);
 }
@@ -465,13 +465,11 @@ static void owlAliasNames( BackRun& back )
             break;
         alias_name = static_cast<const char *>(FEAuxInfo( *back.front, alias, FEINF_ALIAS_NAME ));
         if( alias_name == NULL ) {
-            OUTPUT_OBJECT_NAME( static_cast<cg_sym_handle>(FEAuxInfo( *back.front, alias, FEINF_ALIAS_SYMBOL )),
-                                stringOut, &alias_name, NORMAL );
+            DoOutObjectName( back, static_cast<cg_sym_handle>(FEAuxInfo( *back.front, alias, FEINF_ALIAS_SYMBOL )), (outputter_fn *)(stringOut), (outputter_data)(&alias_name), NORMAL );
         }
         subst_name = static_cast<const char *>(FEAuxInfo( *back.front, alias, FEINF_ALIAS_SUBST_NAME ));
         if( subst_name == NULL ) {
-            OUTPUT_OBJECT_NAME( static_cast<cg_sym_handle>(FEAuxInfo( *back.front, alias, FEINF_ALIAS_SUBST_SYMBOL )),
-                                stringOut, &subst_name, NORMAL );
+            DoOutObjectName( back, static_cast<cg_sym_handle>(FEAuxInfo( *back.front, alias, FEINF_ALIAS_SUBST_SYMBOL )), (outputter_fn *)(stringOut), (outputter_data)(&subst_name), NORMAL );
         }
         owl_alias = OWLSymbolInit( back, back.x86owl->OwlFile, alias_name );
         owl_subst = OWLSymbolInit( back, back.x86owl->OwlFile, subst_name );
@@ -496,8 +494,7 @@ static void owlEmitImports( BackRun& back )
         auto_import = FEAuxInfo( *back.front, auto_import, FEINF_NEXT_IMPORT_S );
         if( auto_import == NULL )
             break;
-        OUTPUT_OBJECT_NAME( static_cast<cg_sym_handle>(FEAuxInfo( *back.front, auto_import, FEINF_IMPORT_NAME_S )),
-                            stringOut, &name, NORMAL );
+        DoOutObjectName( back, static_cast<cg_sym_handle>(FEAuxInfo( *back.front, auto_import, FEINF_IMPORT_NAME_S )), (outputter_fn *)(stringOut), (outputter_data)(&name), NORMAL );
         OWLEmitImport( back, back.x86owl->OwlFile, name );
     }
 }
@@ -557,7 +554,7 @@ static void owlObjFini( BackRun& back )
 static bool owlSymIsExported( BackRun& back, cg_sym_handle sym )
 {
     return( sym != NULL && ((FEAttr( *back.front, sym ) & FE_DLLEXPORT) != 0
-        || ((call_class)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS ) & FECALL_GEN_DLL_EXPORT) != 0) );
+        || ((call_class)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS ) & FECALL_GEN_DLL_EXPORT) != 0) );
 }
 
 static void owlOutDLLExport( BackRun& back, uint words, cg_sym_handle sym )

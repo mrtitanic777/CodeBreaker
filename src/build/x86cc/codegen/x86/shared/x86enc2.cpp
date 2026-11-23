@@ -140,12 +140,12 @@ unsigned DepthAlign( BackRun& back, unsigned depth )
     }
     if( back.data.OptForSize > 0 )
         return( 1 );
-    if( _CPULevel( CPU_486 ) ) {
+    if( CPULevel( back, CPU_486 ) ) {
         if( depth == PROC_ALIGN || depth == DEEP_LOOP_ALIGN )
             return( 16 );
         return( 1 );
     }
-    if( _CPULevel( CPU_386 ) ) {
+    if( CPULevel( back, CPU_386 ) ) {
         if( depth == PROC_ALIGN || depth == DEEP_LOOP_ALIGN )
             return( 4 );
         return( 1 );
@@ -168,7 +168,7 @@ byte    CondCode( BackRun& back, instruction *cond )
 {
     issigned        is_signed;
 
-    if( _FPULevel( FPU_87 ) ) {
+    if( FPULevel( back, FPU_87 ) ) {
         is_signed = SIGNED_87;
     } else {
         is_signed = SIGNED_86;
@@ -185,7 +185,7 @@ void    GenSetCC( BackRun& back, instruction *cond )
  * Given a conditional "cond", generate the correct setxx instruction
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpword( back, M_SETCC | CondCode( back, cond ) );
     if( cond->result->n.class_ == N_REGISTER ) {
         LayRMRegOp( back, cond->result );
@@ -193,7 +193,7 @@ void    GenSetCC( BackRun& back, instruction *cond )
         LayModRM( back, cond->result );
     }
     AddToTemp( back, M_SECONDARY );
-    _Emit;
+    Finalize( back );
 }
 
 byte    ReverseCondition( byte cond )
@@ -249,7 +249,7 @@ static  void    CodeSequence( BackRun& back, const byte *p, byte_seq_len len )
     first = false;
     endp = p + len;
     while( p < endp ) {
-        _Code;
+        Format( back, OC_CODE );
         startp = p;
         for( ; p < endp && ( p - startp ) < ( INSSIZE - 5 ); ) {
             if( p[0] == FLOATING_FIXUP_BYTE ) {
@@ -319,7 +319,7 @@ static  void    CodeSequence( BackRun& back, const byte *p, byte_seq_len len )
                         continue;
                     }
                     p += 2;
-                    if( _IsEmulation() ) {
+                    if( IsEmulation( back ) ) {
                         SetFPPatchType( back, static_cast<fp_patches>(type) );
                         back.i87data.Used87 = true;
                     }
@@ -334,7 +334,7 @@ static  void    CodeSequence( BackRun& back, const byte *p, byte_seq_len len )
             }
             ++p;
         }
-        _Emit;
+        Finalize( back );
     }
 }
 
@@ -356,8 +356,8 @@ static  void    Pushf( BackRun& back )
 /***************************/
 {
     LayOpbyte( back, 0x9c ); /* PUSHF*/
-    _Emit;
-    _Code;
+    Finalize( back );
+    Format( back, OC_CODE );
 }
 
 
@@ -382,14 +382,14 @@ void    GenCall( BackRun& back, instruction *ins )
     far_call = ( ((call_class_target)(pointer_uint)FindAuxInfo( back, op, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL) != 0 );
     code = (const byte_seq *)FindAuxInfo( back, op, FEINF_CALL_BYTES );
     if( code != NULL ) {
-        _Emit;
+        Finalize( back );
         if( code->relocs ) {
             CodeSequence( back, code->data, code->length );
         } else {
             CodeBytes( back, code->data, code->length );
         }
     } else if( (cclass & FECALL_GEN_ABORTS)
-      && _IsntTargetModel( CGSW_X86_NEW_P5_PROFILING ) ) {
+      && IsntTargetModel( back, CGSW_X86_NEW_P5_PROFILING ) ) {
         sym = static_cast<cg_sym_handle>(op->v.symbol);
         lbl = FEBack( *back.front, sym )->lbl;
         if( far_call && (FEAttr( *back.front, sym ) & FE_IMPORT) ) {
@@ -413,7 +413,7 @@ void    GenCall( BackRun& back, instruction *ins )
         DoCall( back, lbl, imp, far_call, (ins->flags.u.call_flags & CALL_POPS_PARMS) != 0 );
     }
     if( (cclass & (FECALL_GEN_ABORTS | FECALL_GEN_NORETURN))
-      && _IsntTargetModel( CGSW_X86_NEW_P5_PROFILING ) ) {
+      && IsntTargetModel( back, CGSW_X86_NEW_P5_PROFILING ) ) {
         GenNoReturn(back);
     }
 }
@@ -432,7 +432,7 @@ void    GenCallIndirect( BackRun& back, instruction *ins )
         Pushf(back);
     }
     if( (ins->flags.u.call_flags & CALL_ABORTS)
-      && _IsntTargetModel( CGSW_X86_NEW_P5_PROFILING ) ) {
+      && IsntTargetModel( back, CGSW_X86_NEW_P5_PROFILING ) ) {
         occlass = OC_JMPI;
     } else {
         occlass = OC_CALLI;
@@ -450,9 +450,9 @@ void    GenCallIndirect( BackRun& back, instruction *ins )
     ReFormat( back, occlass );
     LayOpword( back, opcode );
     LayModRM( back, op );
-    _Emit;
+    Finalize( back );
     if( (ins->flags.u.call_flags & CALL_NORETURN)
-      && _IsntTargetModel( CGSW_X86_NEW_P5_PROFILING ) ) {
+      && IsntTargetModel( back, CGSW_X86_NEW_P5_PROFILING ) ) {
         GenNoReturn(back);
     }
 }
@@ -477,9 +477,9 @@ void    GenCallRegister( BackRun& back, instruction *ins )
     ReFormat( back, occlass );
     LayOpword( back, M_CJINEAR );
     LayRegRM( back, op->r.reg );
-    _Emit;
+    Finalize( back );
     if( (ins->flags.u.call_flags & CALL_NORETURN)
-      && _IsntTargetModel( CGSW_X86_NEW_P5_PROFILING ) ) {
+      && IsntTargetModel( back, CGSW_X86_NEW_P5_PROFILING ) ) {
         GenNoReturn(back);
     }
 }
@@ -506,9 +506,9 @@ void    Gen1ByteValue( BackRun& back, byte value )
  * Drop an 8 bit integer into the queue.
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     AddByte( back, value );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -517,10 +517,10 @@ void    Gen2ByteValue( BackRun& back, uint_16 value )
  * Drop a 16 bit integer into the queue.
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     AddByte( back, value & 0xFF );
     AddByte( back, ( value >> 8 ) & 0xFF );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -529,12 +529,12 @@ void    Gen4ByteValue( BackRun& back, uint_32 value )
  * Drop a 32 bit integer into the queue.
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     AddByte( back, value & 0xFF );
     AddByte( back, ( value >> 8 ) & 0xFF );
     AddByte( back, ( value >> 16 ) & 0xFF );
     AddByte( back, ( value >> 24 ) & 0xFF );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -543,7 +543,7 @@ void    Gen8ByteValue( BackRun& back, unsigned_64 *value )
  * Drop a 64 bit integer into the queue.
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     AddByte( back, U64Byte( *value, I64B0 ) );
     AddByte( back, U64Byte( *value, I64B1 ) );
     AddByte( back, U64Byte( *value, I64B2 ) );
@@ -552,7 +552,7 @@ void    Gen8ByteValue( BackRun& back, unsigned_64 *value )
     AddByte( back, U64Byte( *value, I64B5 ) );
     AddByte( back, U64Byte( *value, I64B6 ) );
     AddByte( back, U64Byte( *value, I64B7 ) );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -628,7 +628,7 @@ void    GenJmpMemory( BackRun& back, instruction *ins )
     name            *base;
 
     if( ins->head.opcode != OP_SELECT
-      && _IsTargetModel( CGSW_X86_BIG_CODE ) ) {
+      && IsTargetModel( back, CGSW_X86_BIG_CODE ) ) {
         ReFormat( back, OC_JMPI | OC_ATTR_FAR );
         LayOpword( back, M_CJILONG );
     } else {
@@ -660,19 +660,19 @@ static  void    JumpReg( BackRun& back, instruction *ins, name *reg_name )
     regs = reg_name->r.reg;
     if( reg_name->n.size > WORD_SIZE ) {
         /* fake up intersegment jump*/
-        _Code;
+        Format( back, OC_CODE );
         LayOpbyte( back, M_PUSH );
         LayRegAC( back, High32Reg( regs ) );
-        _Next;
+        EjectInst( back );
         LayOpbyte( back, M_PUSH );
         LayRegAC( back, Low32Reg( regs ) );
-        _Emit;
+        Finalize( back );
         GenReturn( back, 0, true );
     } else {
         ReFormat( back, OC_JMPI );
         LayOpword( back, M_CJINEAR );
         LayRegRM( back, regs );
-        _Emit;
+        Finalize( back );
     }
 }
 

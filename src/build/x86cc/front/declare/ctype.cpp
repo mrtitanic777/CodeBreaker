@@ -41,12 +41,16 @@ static void      SetPlainCharType( FrontRun& front, DATA_TYPE char_type );
 static void CheckBitfieldType( FrontRun& front, TYPEPTR typ );
 
 #if _CPU == 386
-#define _CHECK_SIZE( s )
+static inline void CheckStructSize( FrontRun&, target_size )
+{
+}
 #else
-#define _CHECK_SIZE( s ) \
-        if( (s) > 0xffff ) {\
-            CErr1( front, ERR_MAX_STRUCT_SIZE_IS_64K );\
-        }
+static inline void CheckStructSize( FrontRun& front, target_size size )
+{
+    if( size > 0xffff ) {
+        CErr1( front, ERR_MAX_STRUCT_SIZE_IS_64K );
+    }
+}
 #endif
 
 /*
@@ -737,7 +741,7 @@ TAGPTR NullTag( FrontRun& front )
 TAGPTR VfyNewTag( FrontRun& front, TAGPTR tag, DATA_TYPE tag_type )
 {
     if( tag->sym_type != NULL ) {               /* tag already exists */
-        if( !CheckEqSymLevel( tag ) ) {
+        if( !CheckEqSymLevel( front, tag ) ) {
             tag = NewTag( front, tag->hash, tag->name );
         } else if( tag->size != 0 || tag->sym_type->decl_type != tag_type ) {
             CErr2p( front, ERR_DUPLICATE_TAG, tag->name );
@@ -1144,7 +1148,7 @@ static target_size GetFields( FrontRun& front, TYPEPTR decl )
     ClearFieldHashTable( front, decl->u.tag );
     decl->u.tag->alignment = worst_alignment;
     struct_size = _RoundUp( struct_size, worst_alignment );
-    _CHECK_SIZE( struct_size );
+    CheckStructSize( front, struct_size );
     NextToken(front);
     front.ctype.GetFields_struct_level--;
     return( struct_size );
@@ -1183,7 +1187,7 @@ static TYPEPTR StructDecl( FrontRun& front, DATA_TYPE decl_typ, bool packed )
         }
         if( front.cvars.CurToken != T_LEFT_BRACE ) {
             if( front.cvars.CurToken == T_SEMI_COLON ) {
-                if( !CheckEqSymLevel( tag ) ) {
+                if( !CheckEqSymLevel( front, tag ) ) {
                     tag = NewTag( front, tag->hash, tag->name );
                 }
             }
@@ -1274,7 +1278,7 @@ void VfyNewSym( FrontRun& front, id_hash_idx hash, const char *name )
     ENUMPTR     ep;
 
     ep = EnumLookup( front, hash, name );
-    if( ep != NULL && CheckEqSymLevel( ep->parent ) ) {
+    if( ep != NULL && CheckEqSymLevel( front, ep->parent ) ) {
         SetDiagEnum( front, ep );
         CErr2p( front, ERR_SYM_ALREADY_DEFINED, name );
         SetDiagPop(front);
@@ -1282,7 +1286,7 @@ void VfyNewSym( FrontRun& front, id_hash_idx hash, const char *name )
     sym_handle = SymLook( front, hash, name );
     if( sym_handle != SYM_NULL ) {
         SymGet( front, &sym, sym_handle );
-        if( CheckEqSymLevel( &sym ) ) {
+        if( CheckEqSymLevel( front, &sym ) ) {
             SetDiagSymbol( front, &sym, sym_handle );
             CErr2p( front, ERR_SYM_ALREADY_DEFINED, name );
             SetDiagPop(front);
@@ -1312,7 +1316,7 @@ void FreeTags( FrontRun& front )
 
     for( hash = 0; hash <= ID_HASH_SIZE; hash++ ) {
         for( ; (tag = front.cvars.TagHash[hash]) != NULL; ) {
-            if( CheckLtSymLevel( tag ) )
+            if( CheckLtSymLevel( front, tag ) )
                 break;
             front.cvars.TagHash[hash] = tag->next_tag;
             tag->next_tag = front.cvars.DeadTags;

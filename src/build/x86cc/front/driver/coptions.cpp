@@ -457,9 +457,9 @@ static void AnalyseAnyTargetOptions( FrontRun& front, OPT_STORAGE *data )
         data->oi = true;                            // -oi
         front.cvars.GenSwitches |= CGSW_GEN_LOOP_OPTIMIZATION;  // -ol
         front.cvars.Inline_Threshold = 20;                      // -oe=20
-        TOGGLE( inline ) = true;                    // ...
+        Toggles( front ).tog_inline = true;                    // ...
         front.cvars.GenSwitches |= CGSW_GEN_INS_SCHEDULING;     // -or
-        TOGGLE( check_stack ) = false;              // -s
+        Toggles( front ).tog_check_stack = false;              // -s
         break;
     case OPT_ENUM_opt_level_od:
         front.cvars.GenSwitches |= CGSW_GEN_NO_OPTIMIZATION;
@@ -693,7 +693,7 @@ static void AnalyseAnyTargetOptions( FrontRun& front, OPT_STORAGE *data )
     // following must follow processing of debug options
     if( data->oe ) {
         front.cvars.Inline_Threshold = data->oe_value;
-        TOGGLE( inline ) = true;
+        Toggles( front ).tog_inline = true;
     }
     if( data->oh ) {
         front.cvars.GenSwitches |= CGSW_GEN_SUPER_OPTIMAL;
@@ -769,7 +769,7 @@ static void AnalyseAnyTargetOptions( FrontRun& front, OPT_STORAGE *data )
         }
     }
     if( data->s ) {
-        TOGGLE( check_stack ) = false;
+        Toggles( front ).tog_check_stack = false;
     }
     if( data->v ) {
         front.cvars.CompFlags.dump_prototypes = true;

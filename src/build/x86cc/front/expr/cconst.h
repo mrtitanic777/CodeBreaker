@@ -49,12 +49,12 @@
 #define PPOPERATOR_PRAGMA           "_Pragma"
 
 #define IS_PPOPERATOR_DEFINED(s)    (strcmp(s, PPOPERATOR_DEFINED) == 0)
-#define IS_PPOPERATOR_PRAGMA(s,l)   ((front.cvars.CompFlags.extensions_enabled || front.cvars.CompVars.cstd > STD_C89) \
-                                    && l == LENLIT(PPOPERATOR_PRAGMA) \
-                                    && strcmp(s, PPOPERATOR_PRAGMA) == 0)
+/* whether the token (its text and length) is the _Pragma operator, where the run's language has it (the bodies of these two are in frontrun.hpp) */
+struct FrontRun;
+CB_ALWAYS_INLINE bool IsPPOperatorPragma( const FrontRun& front, const char *s, size_t length );
 
 #define ARRAY_SIZE(x)               (sizeof( x ) / sizeof( *x ))
 
-#define IsHugeData()                ((front.cvars.TargetSwitches & (CGSW_X86_BIG_DATA | CGSW_X86_CHEAP_POINTER)) == CGSW_X86_BIG_DATA)
+inline bool IsHugeData( const FrontRun& front );
 
 #define DOS_EOF_CHAR                0x1A

@@ -47,7 +47,6 @@
 #include "frontrun.hpp"
 
 
-#define IDEFN(x)        front.ideentry.IdeCbs->x
 
 //static   IDEInitInfo   Info;
 
@@ -64,7 +63,7 @@ void ConBlip( FrontRun& front )
  * C compiler do a blip to console
  */
 {
-    IDEFN( PrintWithCRLF )( front.ideentry.IdeHdl, "." );
+    front.ideentry.IdeCbs->PrintWithCRLF( front.ideentry.IdeHdl, "." );
     /*
      * we are ignoring return for now
      */
@@ -99,7 +98,7 @@ void ConsErrMsg( FrontRun& front, cmsg_info *cinfo )
     if( cinfo->line != 0 ) {
         IdeMsgSetSrcLine( &info, cinfo->line );
     }
-    IDEFN( PrintWithInfo )( front.ideentry.IdeHdl, &info );
+    front.ideentry.IdeCbs->PrintWithInfo( front.ideentry.IdeHdl, &info );
     /*
      * we are ignoring return for now
      */
@@ -113,7 +112,7 @@ void ConsErrMsgVerbatim( FrontRun& front, char const *line )
     IDEMsgInfo info;
 
     IdeMsgInit( &info, IDEMSGSEV_ERROR, line );
-    IDEFN( PrintWithInfo )( front.ideentry.IdeHdl, &info );
+    front.ideentry.IdeCbs->PrintWithInfo( front.ideentry.IdeHdl, &info );
     /*
      * we are ignoring return for now
      */
@@ -127,7 +126,7 @@ void BannerMsg( FrontRun& front, char const  *line )
     IDEMsgInfo info;
 
     IdeMsgInit( &info, IDEMSGSEV_BANNER, line );
-    IDEFN( PrintWithInfo )( front.ideentry.IdeHdl, &info );
+    front.ideentry.IdeCbs->PrintWithInfo( front.ideentry.IdeHdl, &info );
     /*
      * we are ignoring return for now
      */
@@ -141,7 +140,7 @@ void DebugMsg( FrontRun& front, char const  *line )
     IDEMsgInfo info;
 
     IdeMsgInit( &info, IDEMSGSEV_DEBUG, line );
-    IDEFN( PrintWithInfo )( front.ideentry.IdeHdl, &info );
+    front.ideentry.IdeCbs->PrintWithInfo( front.ideentry.IdeHdl, &info );
     /*
      * we are ignoring return for now
      */
@@ -155,7 +154,7 @@ void NoteMsg( FrontRun& front, char const  *line )
     IDEMsgInfo info;
 
     IdeMsgInit( &info, IDEMSGSEV_NOTE_MSG, line );
-    IDEFN( PrintWithInfo )( front.ideentry.IdeHdl, &info );
+    front.ideentry.IdeCbs->PrintWithInfo( front.ideentry.IdeHdl, &info );
     /*
      * we are ignoring return for now
      */
@@ -170,7 +169,7 @@ const char *FEGetEnv( FrontRun& front, char const *name )
 
     ret = NULL;
     if( !front.cvars.GlobalCompFlags.ignore_environment ) {
-        if( IDEFN( GetInfo )( front.ideentry.IdeHdl, IDE_GET_ENV_VAR, (IDEGetInfoWParam)name, (IDEGetInfoLParam)&ret ) ) {
+        if( front.ideentry.IdeCbs->GetInfo( front.ideentry.IdeHdl, IDE_GET_ENV_VAR, (IDEGetInfoWParam)name, (IDEGetInfoLParam)&ret ) ) {
             ret = NULL;
         }
     }
@@ -246,11 +245,11 @@ static void getFrontEndArgv( FrontRun& front, char **argv, char *infile, char *o
 
     if( !front.cvars.GlobalCompFlags.ide_cmd_line_has_files ) {
         infile[0] = '\0';
-        IDEFN( GetInfo )( front.ideentry.IdeHdl, IDE_GET_SOURCE_FILE, (IDEGetInfoWParam)NULL, (IDEGetInfoLParam)infile );
+        front.ideentry.IdeCbs->GetInfo( front.ideentry.IdeHdl, IDE_GET_SOURCE_FILE, (IDEGetInfoWParam)NULL, (IDEGetInfoLParam)infile );
         *argv++ = infile;
         outfile[0] = '\0';
         p = outfile + 4;
-        if( !IDEFN( GetInfo )( front.ideentry.IdeHdl, IDE_GET_TARGET_FILE, (IDEGetInfoWParam)NULL, (IDEGetInfoLParam)p ) ) {
+        if( !front.ideentry.IdeCbs->GetInfo( front.ideentry.IdeHdl, IDE_GET_TARGET_FILE, (IDEGetInfoWParam)NULL, (IDEGetInfoLParam)p ) ) {
             outfile[0] = '-';
             outfile[1] = 'f';
             outfile[2] = 'o';

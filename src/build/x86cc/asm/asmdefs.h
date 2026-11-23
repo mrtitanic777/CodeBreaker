@@ -111,8 +111,6 @@ extern bool             AsmScan( AsmRun& assembler, token_buffer *tokbuf, const 
 extern void             RadixSet( AsmRun& assembler, unsigned );
 
 
-#define AsmCodeByte( c )    AsmByte( assembler, c )
-#define AsmDataByte( c )    AsmByte( assembler, c )
 
 
 #endif

@@ -130,7 +130,7 @@ static void MarkUsedCC( BackRun& back, block *blk )
 */
 {
     DoMarkUsedCC( blk );
-    _MarkBlkAllUnVisited();
+    MarkBlkAllUnVisited( back );
 }
 
 static  bool    Traverse( BackRun& back, block *blk, name *zero )

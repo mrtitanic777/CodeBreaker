@@ -49,23 +49,23 @@ int     MulCost( BackRun& back, uint_32 num )
      * is less than the number of cycles it takes to execute, to give slight
      * preference to multiply versus a shift/add sequence.
      */
-    if( _CPULevel( CPU_686 ) ) {
+    if( CPULevel( back, CPU_686 ) ) {
         /* On the Pentium Pro and up, multiply is pretty cheap. */
         cost = 3;
-    } else if( _CPULevel( CPU_586 ) ) {
+    } else if( CPULevel( back, CPU_586 ) ) {
         /* On the Pentium, multiply takes a fixed amount of time. */
         cost = 6;
-    } else if( _CPULevel( CPU_386 ) ) {
+    } else if( CPULevel( back, CPU_386 ) ) {
         /* The 386 and 486 have an early-out algorithm. */
         cost = 4;
         while( num ) {
             cost++;
             num >>= 1;
         }
-    } else if( _CPULevel( CPU_286 ) ) {
+    } else if( CPULevel( back, CPU_286 ) ) {
         /* The 286 can multiply reasonably quickly. */
         cost = 18;
-    } else if( _CPULevel( CPU_186 ) ) {
+    } else if( CPULevel( back, CPU_186 ) ) {
         /* The 80186/188 is slower. */
         cost = 28;
     } else {
@@ -80,9 +80,9 @@ int     AddCost( BackRun& back )
 {
     int     cost;
 
-    if( _CPULevel( CPU_486 ) ) {
+    if( CPULevel( back, CPU_486 ) ) {
         cost = 1;
-    } else if( _CPULevel( CPU_286 ) ) {
+    } else if( CPULevel( back, CPU_286 ) ) {
         cost = 2;
     } else {
         cost = 3;
@@ -101,13 +101,13 @@ int     ShiftCost( BackRun& back, int count )
 {
     int     cost;
 
-    if( _CPULevel( CPU_586 ) ) {
+    if( CPULevel( back, CPU_586 ) ) {
         cost = 1;
-    } else if( _CPULevel( CPU_486 ) ) {
+    } else if( CPULevel( back, CPU_486 ) ) {
         cost = 2;
-    } else if( _CPULevel( CPU_386 ) ) {
+    } else if( CPULevel( back, CPU_386 ) ) {
         cost = 3;
-    } else if( _CPULevel( CPU_186 ) ) {
+    } else if( CPULevel( back, CPU_186 ) ) {
         /* On the older CPUs, shift by 1 is a lot cheaper than shift immediate. */
         if( count == 1 ) {
             cost = 2;

@@ -31,7 +31,9 @@
 
 
 #pragma once
-#define TOGGLE(x)           front.toggles.PragmaToggles.tog_##x
+struct FrontRun;
+struct pragma_toggles;
+inline struct pragma_toggles& Toggles( FrontRun& front );   /* the run's pragma toggles (the body is in frontrun.hpp) */
 #define TOGGLE_STK(x)       HeadToggles_tog_##x
 
 typedef struct pragma_toggles {

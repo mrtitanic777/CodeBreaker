@@ -253,7 +253,7 @@ name    *DoParmDecl( BackRun& back, cg_sym_handle sym, const type_def *tipe, hw_
         }
 #endif
     }
-    if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) { // d1+ or d2
+    if( IsModel( back, CGSW_GEN_DBG_LOCALS ) ) { // d1+ or d2
         if( sym != NULL ) {
             DbgParmLoc( back, parm_name, sym );
         }
@@ -388,7 +388,7 @@ void            PushParms( BackRun& back, pn parm, call_state *state )
             if( HW_CEqual( parm->regs, HW_EMPTY ) ) {
                 addr = parm->name;
                 if( addr->format != NF_INS ) {
-                    _Zoiks( ZOIKS_043 );
+                    Zoiks( back, ZOIKS_043 );
                 }
                 ins = addr->u.i.ins;
                 PushInSameBlock( back, ins );
@@ -435,7 +435,7 @@ void    ReserveStack( BackRun& back, call_state *state, instruction *prev, type_
         SuffixIns( back, prev, ins );
         break;
     default:
-        _Zoiks( ZOIKS_133 );
+        Zoiks( back, ZOIKS_133 );
     }
     state->parm.offset += len;
     if( state->parm.offset > back.data.MaxStack ) {
@@ -460,7 +460,7 @@ void    ParmIns( BackRun& back, pn parm, call_state *state )
         if( parm->ins == NULL ) {
             addr = parm->name;
             if( addr->format != NF_INS ) {
-                _Zoiks( ZOIKS_043 );
+                Zoiks( back, ZOIKS_043 );
             }
             reg = AllocRegName( back, ActualParmReg( parm->regs ) );
             ins = addr->u.i.ins;
@@ -511,7 +511,7 @@ void    BGZapBase( BackRun& back, name *base, const type_def *tipe )
 
     if( base == NULL )
         return;
-    if( _IsntModel( CGSW_GEN_FORTRAN_ALIASING ) )
+    if( IsntModel( back, CGSW_GEN_FORTRAN_ALIASING ) )
         return;
     if( (tipe->attr & TYPE_POINTER) == 0 )
         return;
@@ -544,7 +544,7 @@ void    BGReturn( BackRun& back, an retval, const type_def *tipe )
         tipe_type_class = TypeClass( back, tipe );
         type_class = ReturnTypeClass( back, tipe, back.data.CurrProc->state.attr );
         UpdateReturn( back, &back.data.CurrProc->state, tipe, type_class, static_cast<aux_handle>(FEAuxInfo( *back.front, AskForLblSym(back, static_cast<label_handle>(back.data.CurrProc->label)), FEINF_AUX_LOOKUP )) );
-        if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) { // d1+ or d2
+        if( IsModel( back, CGSW_GEN_DBG_LOCALS ) ) { // d1+ or d2
             DbgRetLoc(back);
         }
         if( type_class == XX ) {
@@ -579,7 +579,7 @@ void    BGReturn( BackRun& back, an retval, const type_def *tipe )
         AddIns( back, last_ins );
     GenBlock( back, BLK_RETURN, 0 );
     if( back.data.AddrList != NULL ) {
-        _Zoiks( ZOIKS_003 );
+        Zoiks( back, ZOIKS_003 );
     }
     Generate( back, true );
     back.model.TargetModel = back.model.SaveTargetModel;

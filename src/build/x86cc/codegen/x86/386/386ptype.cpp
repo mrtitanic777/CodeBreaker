@@ -59,7 +59,7 @@ type_class_def MapIntReturn( BackRun& back, cg_type type )
     case TY_UINT_8:
         return( U8 );
     default:
-        _Zoiks( ZOIKS_127 );
+        Zoiks( back, ZOIKS_127 );
         return( XX );
     }
 }
@@ -81,7 +81,7 @@ type_class_def MapPointer( BackRun& back, cg_type type )
     case TY_LONG_CODE_PTR:
         return( CP );
     default:
-        _Zoiks( ZOIKS_127 );
+        Zoiks( back, ZOIKS_127 );
         return( XX );
     }
 }

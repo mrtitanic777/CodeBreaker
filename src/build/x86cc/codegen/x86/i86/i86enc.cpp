@@ -71,7 +71,7 @@ static const hw_reg_set IndexTab[] = {
 static void OpndSizeIf( BackRun& back )
 /****************************/
 {
-    if( _IsTargetModel( CGSW_X86_USE_32 ) ) {
+    if( IsTargetModel( back, CGSW_X86_USE_32 ) ) {
         AddToTemp( back, M_OPND_SIZE );
     }
 }
@@ -86,7 +86,7 @@ byte    DoIndex( BackRun& back, hw_reg_set regs )
             return( i << S_RMR_RM );
         }
     }
-    _Zoiks( ZOIKS_033 );
+    Zoiks( back, ZOIKS_033 );
     return( 0 );
 }
 
@@ -124,7 +124,7 @@ static  byte    DoDisp( BackRun& back, name *op, hw_reg_set regs )
     } else if( base->n.class_ == N_TEMP ) {
         temp_base = DeAlias( base );
         if( temp_base->t.location == NO_LOCATION ) {
-            _Zoiks( ZOIKS_034 );
+            Zoiks( back, ZOIKS_034 );
         }
         val += NewBase( back, temp_base ) + base->v.offset - temp_base->v.offset;
         dmod = Displacement( back, val, regs );
@@ -192,21 +192,21 @@ void    Do4CXShift( BackRun& back, instruction *ins, void (*rtn)(BackRun&, instr
                 LayOpbyte( back, 0xb0 );   /* Move register immediate (byte)*/
                 LayRegAC( back, HW_CL );
                 AddByte( back, shift );
-                _Next;
+                EjectInst( back );
                 LayOpword( back, M_SHL1 | B_KEY_W | 0x02 ); /* SHL reg,CL (word) */
                 LayRegRM( back, hreg );
-                _Next;
+                EjectInst( back );
                 LayOpword( back, 0x00d3 );    /* ROL reg,CL (word) */
                 LayRegRM( back, lreg );
-                _Next;
+                EjectInst( back );
                 LayOpword( back, M_XORRR | B_KEY_W );
                 LayReg( back, lreg );
                 LayRegRM( back, hreg );
-                _Next;
+                EjectInst( back );
                 LayOpword( back, 0x2081 ); /* AND reg,immed (word) */
                 LayRegRM( back, lreg );
                 AddWData( back, ((uint_16)~0) << shift, U2 );
-                _Next;
+                EjectInst( back );
                 LayOpword( back, M_XORRR | B_KEY_W );
                 LayReg( back, lreg );
                 LayRegRM( back, hreg );
@@ -215,21 +215,21 @@ void    Do4CXShift( BackRun& back, instruction *ins, void (*rtn)(BackRun&, instr
                 LayOpbyte( back, 0xb0 );   /* Move register immediate (byte)*/
                 LayRegAC( back, HW_CL );
                 AddByte( back, shift );
-                _Next;
+                EjectInst( back );
                 LayOpword( back, M_SHR1 | B_KEY_W | 0x02 ); /* SHR reg,CL (word) */
                 LayRegRM( back, lreg );
-                _Next;
+                EjectInst( back );
                 LayOpword( back, 0x08d3 );    /* ROR reg,CL (word) */
                 LayRegRM( back, hreg );
-                _Next;
+                EjectInst( back );
                 LayOpword( back, M_XORRR | B_KEY_W );
                 LayReg( back, hreg );
                 LayRegRM( back, lreg );
-                _Next;
+                EjectInst( back );
                 LayOpword( back, 0x2081 ); /* AND reg,immed (word) */
                 LayRegRM( back, hreg );
                 AddWData( back, ((uint_16)~0) >> shift, U2 );
-                _Next;
+                EjectInst( back );
                 LayOpword( back, M_XORRR | B_KEY_W );
                 LayReg( back, hreg );
                 LayRegRM( back, lreg );
@@ -239,17 +239,17 @@ void    Do4CXShift( BackRun& back, instruction *ins, void (*rtn)(BackRun&, instr
         LayOpbyte( back, 0xb8 );   /* Move register immediate (word)*/
         LayRegAC( back, HW_CX );
         AddWCons( back, ins->operands[1], U2 );
-        _Next;
+        EjectInst( back );
         rtn( back, ins );
-        _Next;
+        EjectInst( back );
         LayOpword( back, M_LOOP );
         back.pcencode.Inst[DATALO] = - ( -3 + 2 + back.pcencode.Temp.hdr.objlen );
     } else {
         LayOpbyte( back, 0xe3 );    /* JCXZ*/
         AddByte( back, 0 );        /* to be patched*/
-        _Next;
+        EjectInst( back );
         rtn( back, ins );
-        _Next;
+        EjectInst( back );
         LayOpword( back, M_LOOP );
         back.pcencode.Inst[DATALO] = - ( -2 + 2 + back.pcencode.Temp.hdr.objlen );
         back.pcencode.Temp.data[1] = -back.pcencode.Inst[DATALO];
@@ -282,7 +282,7 @@ void    LayLeaRegOp( BackRun& back, instruction *ins )
 static  void    CheckSize( BackRun& back )
 /*******************************/
 {
-    if( _IsTargetModel( CGSW_X86_USE_32 ) ) {
+    if( IsTargetModel( back, CGSW_X86_USE_32 ) ) {
         AddToTemp( back, M_ADDR_SIZE );
     }
 }
@@ -293,7 +293,7 @@ void    DoMAddr( BackRun& back, name *op )
 {
     back.pcencode.ILen += 2;
     if( op->n.class_ == N_CONSTANT ) {
-        _Zoiks( ZOIKS_035 );
+        Zoiks( back, ZOIKS_035 );
     } else {        /* assume global name*/
         DoSymRef( back, op, op->v.offset, false );
     }
@@ -354,7 +354,7 @@ void    LayModRM( BackRun& back, name *op )
         CheckSize(back);
         base = DeAlias( op );
         if( base->t.location == NO_LOCATION ) {
-            _Zoiks( ZOIKS_030 );
+            Zoiks( back, ZOIKS_030 );
         }
         back.pcencode.Inst[RMR] |= Displacement( back, NewBase( back, base ) + op->v.offset - base->v.offset, HW_BP );
         back.pcencode.Inst[RMR] |= DoIndex( back, HW_BP );
@@ -425,7 +425,7 @@ void    DoRelocConst( BackRun& back, name *op, type_class_def type_class )
             DoSymRef( back, op->c.u.op, 0, true );
         }
     } else if( op->c.const_type == CONS_ADDRESS ) {
-        _Zoiks( ZOIKS_045 );
+        Zoiks( back, ZOIKS_045 );
     }
 }
 
@@ -452,7 +452,7 @@ void    Do4Shift( BackRun& back, instruction *ins )
     if( ins->head.opcode == OP_LSHIFT ) {
         LayOpword( back, M_SHL1 | B_KEY_W );
         LayModRM( back, op );
-        _Next;
+        EjectInst( back );
         SetOff( op,  2 );
         LayOpword( back, M_RCL1 | B_KEY_W );
         LayModRM( back, op );
@@ -464,7 +464,7 @@ void    Do4Shift( BackRun& back, instruction *ins )
             back.pcencode.Inst[RMR] |= B_RMR_SHR_SAR;
         }
         LayModRM( back, op );
-        _Next;
+        EjectInst( back );
         SetOff( op, -2 );
         LayOpword( back, M_RCR1 | B_KEY_W );
         LayModRM( back, op );
@@ -481,7 +481,7 @@ void    Do4RShift( BackRun& back, instruction *ins )
     if( ins->head.opcode == OP_LSHIFT ) {
         LayOpword( back, M_SHL1 | B_KEY_W );
         LayRegRM( back, Low32Reg( regs ) );
-        _Next;
+        EjectInst( back );
         LayOpword( back, M_RCL1 | B_KEY_W );
         LayRegRM( back, High32Reg( regs ) );
     } else {
@@ -490,7 +490,7 @@ void    Do4RShift( BackRun& back, instruction *ins )
             back.pcencode.Inst[RMR] |= B_RMR_SHR_SAR;
         }
         LayRegRM( back, High32Reg( regs ) );
-        _Next;
+        EjectInst( back );
         LayOpword( back, M_RCR1 | B_KEY_W );
         LayRegRM( back, Low32Reg( regs ) );
     }
@@ -506,11 +506,11 @@ void    Gen4RNeg( BackRun& back, instruction *ins )
     LayOpword( back, M_NEG );
     LayW( back, I2 );
     LayRegRM( back, High32Reg( regs ) );
-    _Next;
+    EjectInst( back );
     LayOpword( back, M_NEG );
     LayW( back, I2 );
     LayRegRM( back, Low32Reg( regs ) );
-    _Next;
+    EjectInst( back );
     LayOpword( back, M_SBB );
     LayW( back, I2 );
     LayRegRM( back, High32Reg( regs ) );
@@ -528,12 +528,12 @@ void    Gen4Neg( BackRun& back, instruction *ins )
     LayOpword( back, M_NEG );
     LayW( back, I2 );
     LayModRM( back, res );
-    _Next;
+    EjectInst( back );
     SetOff( res, -2 );
     LayOpword( back, M_NEG );
     LayW( back, I2 );
     LayModRM( back, res );
-    _Next;
+    EjectInst( back );
     SetOff( res,  2 );
     LayOpword( back, M_SBB );
     LayW( back, I2 );
@@ -550,14 +550,14 @@ void    By2Div( BackRun& back, instruction *ins )
     case I1:
     case U1:
         LayOpword( back, 0xc42a );    /* sub  al,ah */
-        _Next;
+        EjectInst( back );
         LayOpword( back, 0xf8d0 );    /* sar  al,1 */
         break;
     case I2:
     case U2:
         LayOpword( back, 0xc22b );    /* sub  ax,dx */
         OpndSizeIf(back);
-        _Next;
+        EjectInst( back );
         LayOpword( back, 0xf8d1 );    /* sar  ax,1 */
         OpndSizeIf(back);
     default:
@@ -577,9 +577,9 @@ void Pow2Div286( BackRun& back, instruction *ins )
     case U1:
         LayOpword( back, 0xe4c0 );    /* shl  ah,n */
         AddByte( back, log2 );
-        _Next;
+        EjectInst( back );
         LayOpword( back, 0xc41a );    /* sbb  al,ah */
-        _Next;
+        EjectInst( back );
         LayOpword( back, 0xf8c0 );    /* sar  al,n */
         AddByte( back, log2 );
         break;
@@ -588,10 +588,10 @@ void Pow2Div286( BackRun& back, instruction *ins )
         LayOpword( back, 0xe2c1 );    /* shl  dx,n */
         OpndSizeIf(back);
         AddByte( back, log2 );
-        _Next;
+        EjectInst( back );
         LayOpword( back, 0xc21b );    /* sbb  ax,dx */
         OpndSizeIf(back);
-        _Next;
+        EjectInst( back );
         LayOpword( back, 0xf8c1 );    /* sar  ax,n */
         OpndSizeIf(back);
         AddByte( back, log2 );
@@ -613,23 +613,23 @@ void    Pow2Div( BackRun& back, instruction *ins )
     case U1:
         LayOpbyte( back, 0xb1 );              /* mov  cl,n */
         AddByte( back, log2 );
-        _Next;
+        EjectInst( back );
         LayOpbyte( back, 0xe4d2 );    /* shl  ah,cl */
-        _Next;
+        EjectInst( back );
         LayOpword( back, 0xc41a );    /* sbb  al,ah */
-        _Next;
+        EjectInst( back );
         break;
     case I2:
     case U2:
         LayOpbyte( back, 0xb1 );              /* mov  cl,n */
         AddByte( back, log2 );
-        _Next;
+        EjectInst( back );
         LayOpword( back, 0xe2d3 );    /* shl  dx,cl */
         OpndSizeIf(back);
-        _Next;
+        EjectInst( back );
         LayOpword( back, 0xc21b );    /* sbb  ax,dx */
         OpndSizeIf(back);
-        _Next;
+        EjectInst( back );
         LayOpword( back, 0xf8d3 );    /* sar  ax,cl */
         OpndSizeIf(back);
         break;
@@ -644,7 +644,7 @@ void    GFstp10( BackRun& back, type_length where )
     GCondFwait(back);
     LayOpword( back, 0x3edb );
     back.pcencode.Inst[RMR] |= Displacement( back, -where, HW_BP );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -654,7 +654,7 @@ void    GFld10( BackRun& back, type_length where )
     GCondFwait(back);
     LayOpword( back, 0x2edb );
     back.pcencode.Inst[RMR] |= Displacement( back, -where, HW_BP );
-    _Emit;
+    Finalize( back );
 }
 
 void StartBlockProfiling( BackRun& back, block *blk )

@@ -35,10 +35,6 @@
 
 #define OC_ATTR_IRET    OC_ATTR_SHORT
 
-#define _Code   Format( back, OC_CODE );
-#define _Next   EjectInst(back)
-#define _Emit   Finalize(back)
-
 extern void     EjectInst(BackRun& back);
 extern void     Finalize(BackRun& back);
 extern void     Format(BackRun& back, oc_class);

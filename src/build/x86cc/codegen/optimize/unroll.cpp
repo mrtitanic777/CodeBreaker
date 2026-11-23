@@ -54,7 +54,12 @@
 #include "backrun.hpp"
 
 
-#define Assert( x )     { if( !(x) ) Zoiks( back, ZOIKS_113 ); }
+static inline void Assert( BackRun& back, bool condition )
+{
+    if( !condition ) {
+        Zoiks( back, ZOIKS_113 );
+    }
+}
 
 typedef struct loop_condition {
     byte        opcode;
@@ -295,7 +300,7 @@ static int_32   UnrollCount( BackRun& back, block *loop_tail, bool *clean, bool 
     *clean = false;
     unroll_count = back.loopopts.Head->unroll_count;
     if( unroll_count == 0 ) {
-        if( _IsntModel( CGSW_GEN_LOOP_UNROLLING ) )
+        if( IsntModel( back, CGSW_GEN_LOOP_UNROLLING ) )
             return( 0 );
         if( back.data.OptForSize > 0 )
             return( false );
@@ -696,7 +701,7 @@ static  void    MarkLoopHeader( BackRun& back, block *loop, block *header )
         }
         loop->loop_head = header;
     }
-    Assert( loop != NULL );
+    Assert( back, loop != NULL );
 }
 
 /*

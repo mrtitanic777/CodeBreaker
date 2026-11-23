@@ -283,7 +283,7 @@ TREEPTR StringLeaf( FrontRun& front, string_flags flags )
     if( flags & STRLIT_FAR )
         front.cvars.CompFlags.far_strings = true;
     hash = CalcStringHash( new_lit );
-    if( TOGGLE( reuse_duplicate_strings ) ) {
+    if( Toggles( front ).tog_reuse_duplicate_strings ) {
         for( strlit = front.cvars.StringHash[hash]; strlit != NULL; strlit = strlit->next_string ) {
             if( strlit->length == new_lit->length && strlit->flags == flags ) {
                 /*

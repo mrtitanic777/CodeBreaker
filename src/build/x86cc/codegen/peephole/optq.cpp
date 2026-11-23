@@ -39,7 +39,7 @@
 void    InsertQueue( BackRun& back, ins_entry *old_ins, ins_entry *new_ins )
 /***********************************************************/
 {
-  optbegin
+  OptBegin( back );
     if( back.optdata.FirstIns == NULL ) {
         back.optdata.FirstIns = old_ins;
         back.optdata.LastIns = old_ins;
@@ -62,14 +62,14 @@ void    InsertQueue( BackRun& back, ins_entry *old_ins, ins_entry *new_ins )
         new_ins->ins.next = old_ins;
     }
     ++back.optdata.QCount;
-  optend
+  OptEnd( back );
 }
 
 
 void    DeleteQueue( BackRun& back, ins_entry *old_ins )
 /***************************************/
 {
-  optbegin
+  OptBegin( back );
     if( old_ins == back.optdata.FirstIns ) {
         back.optdata.FirstIns = back.optdata.FirstIns->ins.next;
         if( back.optdata.FirstIns != NULL ) {
@@ -85,5 +85,5 @@ void    DeleteQueue( BackRun& back, ins_entry *old_ins )
         old_ins->ins.prev->ins.next = old_ins->ins.next;
     }
     --back.optdata.QCount;
-  optend
+  OptEnd( back );
 }

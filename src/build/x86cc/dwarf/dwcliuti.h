@@ -33,16 +33,16 @@
 #ifndef DWCLIUTI_H_INCLUDED
 #define DWCLIUTI_H_INCLUDED
 
-#define CLISectionOffset(c,s)       (CLITell( c, s ) - (c)->section_base[s])
-#define CLISectionAbs(c,s)          CLITell( c, s )
-#define CLISectionSkip(c,s,l)       CLISeek( c, s, l, DW_SEEK_CUR )
-#define CLISectionSeekOffset(c,s,o) CLISeek( c, s, (c)->section_base[s] + (o), DW_SEEK_SET )
-#define CLISectionSeekAbs(c,s,o)    CLISeek( c, s, (o), DW_SEEK_SET )
-#define CLISectionSeekEnd(c,s)      CLISeek( c, s, 0, DW_SEEK_END )
+inline dw_out_offset CLISectionOffset( BackRun& back, dw_client cli, dw_sectnum sect ) { return CLITell( back, cli, sect ) - cli->section_base[sect]; }
+inline dw_out_offset CLISectionAbs( BackRun& back, dw_client cli, dw_sectnum sect ) { return CLITell( back, cli, sect ); }
+inline void CLISectionSkip( BackRun& back, dw_client cli, dw_sectnum sect, dw_out_offset len ) { CLISeek( back, cli, sect, len, DW_SEEK_CUR ); }
+inline void CLISectionSeekOffset( BackRun& back, dw_client cli, dw_sectnum sect, dw_out_offset offset ) { CLISeek( back, cli, sect, cli->section_base[sect] + offset, DW_SEEK_SET ); }
+inline void CLISectionSeekAbs( BackRun& back, dw_client cli, dw_sectnum sect, dw_out_offset offset ) { CLISeek( back, cli, sect, offset, DW_SEEK_SET ); }
+inline void CLISectionSeekEnd( BackRun& back, dw_client cli, dw_sectnum sect ) { CLISeek( back, cli, sect, 0, DW_SEEK_END ); }
 
-#define CLISectionReserveSize(c,s)  CLISectionSkip( c, s, sizeof( uint_32 ) )
-#define InfoSkip(c,l)               CLISectionSkip( c, DW_DEBUG_INFO, l )
-#define InfoSectionOffset(c)        CLISectionOffset( c, DW_DEBUG_INFO )
+inline void CLISectionReserveSize( BackRun& back, dw_client cli, dw_sectnum sect ) { CLISectionSkip( back, cli, sect, sizeof( uint_32 ) ); }
+inline void InfoSkip( BackRun& back, dw_client cli, dw_out_offset len ) { CLISectionSkip( back, cli, DW_DEBUG_INFO, len ); }
+inline dw_out_offset InfoSectionOffset( BackRun& back, dw_client cli ) { return CLISectionOffset( back, cli, DW_DEBUG_INFO ); }
 
 extern void     CLIWriteSLEB128( BackRun& back, dw_client cli, dw_sectnum sect, dw_sconst value );
 extern void     CLIWriteULEB128( BackRun& back, dw_client cli, dw_sectnum sect, dw_uconst value );

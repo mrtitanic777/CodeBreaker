@@ -544,7 +544,7 @@ static TREEPTR TakeRValue( FrontRun& front, TREEPTR tree, int void_ok )
 
     if( tree->op.opr == OPR_ERROR )
         return( tree );
-    if( !IS_PPCTL_NORMAL() ) {
+    if( !IsPPCtlNormal( front ) ) {
         if( tree->op.opr == OPR_PUSHFLOAT ) {
             CErr1( front, ERR_EXPR_MUST_BE_INTEGRAL );
             return( ErrorNode( front, tree ) );
@@ -1576,7 +1576,7 @@ static TREEPTR ExprOpnd( FrontRun& front )
             NextToken(front);
             continue;
         case T_SIZEOF:
-            if( !IS_PPCTL_NORMAL() ) {
+            if( !IsPPCtlNormal( front ) ) {
                 CErr1( front, ERR_NO_SIZEOF_DURING_PP );
             }
             front.cvars.Class[front.cvars.ExprLevel] = TC_SIZEOF;
@@ -1636,7 +1636,7 @@ static TREEPTR ExprOpnd( FrontRun& front )
             NextToken(front);
             typ = TypeName(front);
             if( typ != NULL ) {
-                if( !IS_PPCTL_NORMAL() ) {
+                if( !IsPPCtlNormal( front ) ) {
                     CErr1( front, ERR_NO_CAST_DURING_PP );
                 }
                 MustRecog( front, T_RIGHT_PAREN );
@@ -1695,7 +1695,7 @@ static TREEPTR ExprOpnd( FrontRun& front )
             NextToken(front);
             break;
         default:
-            if( !IS_PPCTL_NORMAL()
+            if( !IsPPCtlNormal( front )
               && IS_KEYWORD( front.cvars.CurToken ) ) {
                 tree = ExprId(front);
             } else {
@@ -1733,12 +1733,12 @@ static TREEPTR ExprId( FrontRun& front )
     int         value;
     int         count;
 
-    if( !IS_PPCTL_NORMAL() ) {
+    if( !IsPPCtlNormal( front ) ) {
         if( IS_PPOPERATOR_DEFINED( front.cvars.Buffer ) ) {
             ppctl_t old_ppctl;
 
             old_ppctl = front.cvars.PPControl;
-            PPCTL_DISABLE_MACROS();    /* don't want macro expanded */
+            PPCtlDisableMacros( front );    /* don't want macro expanded */
             NextToken(front);
             if( front.cvars.CurToken == T_LEFT_PAREN ) {
                 NextToken(front);
@@ -1833,7 +1833,7 @@ static TREEPTR GenIndex( FrontRun& front, TREEPTR tree, TREEPTR index_expr )
 #if _CPU == 8086
         if( DataTypeOf( TypeOf( index_expr ) ) == TYP_UINT ) {
             if( (tree_flags & OPFLAG_HUGEPTR)
-              || (IsHugeData()
+              || (IsHugeData( front )
               && (tree_flags & (OPFLAG_NEARPTR | OPFLAG_FARPTR)) == 0) ) {
                 index_expr = CnvOp( front, index_expr, GetType( front, TYP_LONG ), false );
             }
@@ -2052,8 +2052,8 @@ static TREEPTR GenFuncCall( FrontRun& front, TREEPTR last_parm )
             aux_info    *inf;
 
             inf = FindInfo( front, &sym, functree->op.u2.sym_handle );
-            if( inf == &Far16PascalInfo
-              || inf == &Far16CdeclInfo ) {
+            if( inf == &Far16PascalInfo( front )
+              || inf == &Far16CdeclInfo( front ) ) {
                 far16_func = true;
                 typ = Far16Type( front, typ );
             }

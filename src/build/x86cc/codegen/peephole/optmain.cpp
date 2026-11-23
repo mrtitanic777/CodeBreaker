@@ -54,7 +54,7 @@ static  void    PullQueue( BackRun& back )
     label_handle    be_lbls;
     label_handle    *owner;
 
-  optbegin
+  OptBegin( back );
     for( ;; ) {
         PLBlip();
         OptPull(back);
@@ -117,7 +117,7 @@ static  void    PullQueue( BackRun& back )
             break;
         }
     }
-  optend
+  OptEnd( back );
 }
 
 
@@ -126,16 +126,16 @@ static  bool    LDone( BackRun& back, any_oc *oc )
 {
     label_handle    lbl;
 
-  optbegin
+  OptBegin( back );
     if( oc->oc_header.class_ != OC_LDONE )
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
     lbl = oc->oc_handle.handle;
     _ValidLbl( lbl );
     if( !_TstStatus( lbl, CODELABEL ) )
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
     _SetStatus( lbl, DYINGLABEL );
     TryScrapLabel( back, lbl );
-    optreturn( true );
+    { OptEnd( back ); return( true ); }
 }
 
 void    InputOC( BackRun& back, any_oc *oc )
@@ -143,14 +143,14 @@ void    InputOC( BackRun& back, any_oc *oc )
 {
     oc_class        cl;
 
-  optbegin
+  OptBegin( back );
     PSBlip();
     if( !LDone( back, oc ) ) {
         if( OC_BASE_CLASS( oc->oc_header.class_ ) != OC_INFO
          && OC_BASE_CLASS( oc->oc_header.class_ ) != OC_LABEL ) {
             cl = PrevClass( back, NULL );
             if( _TransferClass( cl ) ) {
-                optreturnvoid; /*dead code*/
+                { OptEnd( back ); return; } /*dead code*/
             }
         }
         while( back.optdata.QCount >= Q_MAX ) {
@@ -175,7 +175,7 @@ void    InputOC( BackRun& back, any_oc *oc )
         }
         OptPush(back);
     }
-  optend
+  OptEnd( back );
 }
 
 
@@ -185,7 +185,7 @@ bool    ShrinkQueue( BackRun& back, pointer_uint size )
     pointer_uint    freed;
     pointer_uint    need;
 
-  optbegin
+  OptBegin( back );
     need = size;
     freed = 0;
     for( ;; ) {
@@ -197,14 +197,14 @@ bool    ShrinkQueue( BackRun& back, pointer_uint size )
         PullQueue(back);
         freed -= MemInUse(back);
     }
-    optreturn( freed >= need );
+    { OptEnd( back ); return( freed >= need ); }
 }
 
 
 void    InitQueue( BackRun& back )
 /***********************/
 {
-  optbegin
+  OptBegin( back );
     back.optdata.QCount = 0;
     back.optdata.FirstIns = NULL;
     back.optdata.LastIns = NULL;
@@ -213,39 +213,39 @@ void    InitQueue( BackRun& back )
     back.optdata.PendingDeletes = NULL;
     back.optdata.Handles = NULL;
     InitFrl( &back.optdata.InstrFrl );
-  optend
+  OptEnd( back );
 }
 
 
 void    EmptyQueue( BackRun& back )
 /************************/
 {
-  optbegin
+  OptBegin( back );
     while( back.optdata.QCount != 0 ) {
         PullQueue(back);
     }
-  optend
+  OptEnd( back );
 }
 
 void    FlushQueue( BackRun& back )
 /************************/
 {
-  optbegin
-    PUSH_OP( AskCodeSeg(back) );
+  OptBegin( back );
+    { segment_id old_segid = ChangeOP( back, AskCodeSeg(back) );
         EmptyQueue(back);
-    POP_OP();
-  optend
+    SetOP( back, old_segid ); }
+  OptEnd( back );
 }
 
 void    FiniQueue( BackRun& back )
 /***********************/
 {
-  optbegin
-    PUSH_OP( AskCodeSeg(back) );
+  OptBegin( back );
+    { segment_id old_segid = ChangeOP( back, AskCodeSeg(back) );
         EmptyQueue(back);
         _DumpSavings();
-    POP_OP();
-  optend
+    SetOP( back, old_segid ); }
+  OptEnd( back );
 }
 
 
@@ -254,10 +254,10 @@ void    AbortQueue( BackRun& back )
 {
     ins_entry   *next;
 
-  optbegin
+  OptBegin( back );
     for( ; back.optdata.FirstIns != NULL; back.optdata.FirstIns = next ) {
         next = back.optdata.FirstIns->ins.next;
         FreeInstr( back, back.optdata.FirstIns );
     }
-  optend
+  OptEnd( back );
 }

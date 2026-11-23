@@ -49,21 +49,21 @@ void    RetAftrCall( BackRun& back, ins_entry *ret_instr )
 {
     ins_entry   *call_instr;
 
-  optbegin
-    if( _IsModel( CGSW_GEN_NO_CALL_RET_TRANSFORM ) )
-        optreturnvoid;
+  OptBegin( back );
+    if( IsModel( back, CGSW_GEN_NO_CALL_RET_TRANSFORM ) )
+        { OptEnd( back ); return; }
     for( call_instr = ret_instr; PrevClass( back, call_instr ) == OC_LABEL; ) {
         call_instr = PrevIns( back, call_instr );
     }
     if( PrevClass( back, call_instr ) != OC_CALL )
-        optreturnvoid;
+        { OptEnd( back ); return; }
     call_instr = PrevIns( back, call_instr );
     if( _ChkAttr( call_instr, OC_ATTR_POP ) )
-        optreturnvoid;
+        { OptEnd( back ); return; }
     if( _ChkAttr( ret_instr, OC_ATTR_POP ) )
-        optreturnvoid;
+        { OptEnd( back ); return; }
     if( ( _ChkAttr( call_instr, OC_ATTR_FAR ) ^ _ChkAttr( ret_instr, OC_ATTR_FAR ) ) != 0 )
-        optreturnvoid;
+        { OptEnd( back ); return; }
     back.optdata.InsDelete = true;
     _ChgClass( call_instr, OC_JMP );
     /* NB! this code assumes that we aren't making the instruction longer */
@@ -77,20 +77,20 @@ void    RetAftrCall( BackRun& back, ins_entry *ret_instr )
     }
     IsolatedCode( back, call_instr );
     Untangle( back, PrevIns( back, call_instr ) );
-  optend
+  OptEnd( back );
 }
 
 
 void    JmpToRet( BackRun& back, ins_entry *instr, ins_entry *ret )
 /**************************************************/
 {
-  optbegin
+  OptBegin( back );
     ret = NewInstr( back, &ret->oc );
     AddInstr( back, ret, instr );
     _Savings( OPT_JMPTORET, _ObjLen( instr ) - _ObjLen( ret ) );
     DelInstr( back, instr );
     RetAftrCall( back, ret );
-  optend
+  OptEnd( back );
 }
 
 
@@ -102,7 +102,7 @@ bool    RetAftrLbl( BackRun& back, ins_entry *ret )
     ins_entry       *next;
     bool            change;
 
-  optbegin
+  OptBegin( back );
     change = false;
     if( PrevClass( back, ret ) == OC_LABEL ) {
         lbl = _Label( PrevIns( back, ret ) );
@@ -120,7 +120,7 @@ bool    RetAftrLbl( BackRun& back, ins_entry *ret )
             }
         }
     }
-    optreturn( change );
+    { OptEnd( back ); return( change ); }
 }
 
 
@@ -129,7 +129,7 @@ void    MultiLineNums( BackRun& back, ins_entry *ins )
 {
     ins_entry   *prev;
 
-  optbegin
+  OptBegin( back );
     if( _ClassInfo( ins ) == OC_LINENUM ) {
         prev = ins->ins.prev;
         for( ;; ) {
@@ -147,5 +147,5 @@ void    MultiLineNums( BackRun& back, ins_entry *ins )
             }
         }
     }
-  optend
+  OptEnd( back );
 }

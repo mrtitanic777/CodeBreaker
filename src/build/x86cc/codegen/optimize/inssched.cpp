@@ -238,15 +238,15 @@ static  bool    ReallyDefinedBy( BackRun& back, instruction *ins_i, instruction 
 //    redef == MB_MAYBE
     if( !ins_linked )
         return( true );
-    _INS_NOT_BLOCK( ins_i );
-    _INS_NOT_BLOCK( ins_j );
+    InsNotBlock( back, ins_i );
+    InsNotBlock( back, ins_j );
     if( ins_i->id > ins_j->id ) {
         ins = ins_i;
         ins_i = ins_j;
         ins_j = ins;
     }
     for( ; ins_i != ins_j; ins_i = ins_i->head.next ) {
-        if( _IsReDefinedBy( ins_i, op->i.index ) ) {
+        if( IsReDefinedBy( back, ins_i, op->i.index ) ) {
             return( true );
         }
     }
@@ -321,7 +321,7 @@ static dep_type CheckOneOp( BackRun& back, instruction *ins_i, instruction *ins_
             && OkToSlide( back, ins_j, op ) ) {
             return(DEP_NONE);
         }
-        if( _IsReDefinedBy( ins_i, op->i.index ) ) {
+        if( IsReDefinedBy( back, ins_i, op->i.index ) ) {
             return( DEP_INDEX );
         }
     }
@@ -367,7 +367,7 @@ static dep_type DataDependant( BackRun& back, instruction *ins_i,
             return( ret );
         }
     }
-    if( _IsModel( CGSW_GEN_FORTRAN_ALIASING ) && _OpIsCall( ins_j->head.opcode ) ) {
+    if( IsModel( back, CGSW_GEN_FORTRAN_ALIASING ) && _OpIsCall( ins_j->head.opcode ) ) {
         if( !ins_linked )
             return( DEP_OP );
         /*
@@ -445,7 +445,7 @@ bool InsOrderDependant( BackRun& back, instruction *ins_i, instruction *ins_j )
     if( _OpIsCall( ins_i->head.opcode ) ) {
         if( (ins_i->flags.u.call_flags & CALL_READS_NO_MEMORY) == 0
           && ins_j->result != NULL
-          && _IsVisibleToCall( ins_i, ins_j->result, false ) )
+          && IsVisibleToCall( back, ins_i, ins_j->result, false ) )
             return( true );
         if( FPStackIns( back, ins_j ) ) {
             return( true );
@@ -787,7 +787,7 @@ static void FixIndexAdjust( BackRun& back, instruction *adj, bool forward )
         bias = -bias;
     if( forward )
         bias = -bias;
-    _INS_NOT_BLOCK( adj );
+    InsNotBlock( back, adj );
     reg = adj->result->r.reg;
     chk = adj;
     for( ;; ) {
@@ -800,7 +800,7 @@ static void FixIndexAdjust( BackRun& back, instruction *adj, bool forward )
             break;
         if( chk->head.opcode == OP_BLOCK )
             break;
-        if( (chk->ins_flags & INS_INDEX_ADJUST) == 0 && _IsReDefinedBy( chk, adj->result ) )
+        if( (chk->ins_flags & INS_INDEX_ADJUST) == 0 && IsReDefinedBy( back, chk, adj->result ) )
             break;
         if( forward ) {
             if( chk->id > adj->id ) {
@@ -935,8 +935,8 @@ static void ScheduleIns( BackRun& back )
                              */
                             MARK_BEST;
                         } else {
-                            _INS_NOT_BLOCK( curr->ins );
-                            _INS_NOT_BLOCK( best->ins );
+                            InsNotBlock( back, curr->ins );
+                            InsNotBlock( back, best->ins );
                             if( curr->ins->id > best->ins->id ) {
                                 MARK_BEST;
                             }
@@ -954,7 +954,7 @@ static void ScheduleIns( BackRun& back )
             best = fp_stack_just_squeeks_by;
         }
         if( best == NULL ) {
-            _Zoiks( ZOIKS_081 );
+            Zoiks( back, ZOIKS_081 );
             best = ready;
         }
         /*

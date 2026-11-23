@@ -33,7 +33,3 @@
 extern bool     MemCritical( BackRun& back );
 extern bool     MemCheck( BackRun& back, size_t );
 extern bool     MemLow( BackRun& back );
-
-#define _MemLow                 MemLow(back)
-#define _MemCritical            MemCritical(back)
-#define _MemCheck( size )       MemCheck( back, size )

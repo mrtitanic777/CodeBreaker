@@ -66,31 +66,45 @@
 
 #define WORDS_COUNT(size)   (((size) + WORD_SIZE - 1) / WORD_SIZE)
 
-#define WINDOWS_CHEAP  ( \
-    ( _IsModel( CGSW_GEN_DLL_RESIDENT_CODE ) \
-      && (back.data.CurrProc->state.attr & ROUTINE_LOADS_DS) ) \
-    || ( _IsTargetModel( CGSW_X86_CHEAP_WINDOWS ) \
-      && (back.data.CurrProc->prolog_state & PST_EXPORT) == 0 ) \
-    || ( _IsTargetModel( CGSW_X86_WINDOWS ) \
-      && (back.data.CurrProc->prolog_state & (PST_EXPORT | PST_PROLOG_FAT)) == 0 ) )
+static CB_ALWAYS_INLINE bool WindowsCheap( BackRun& back )
+{
+    return ( IsModel( back, CGSW_GEN_DLL_RESIDENT_CODE )
+             && (back.data.CurrProc->state.attr & ROUTINE_LOADS_DS) )
+        || ( IsTargetModel( back, CGSW_X86_CHEAP_WINDOWS )
+             && (back.data.CurrProc->prolog_state & PST_EXPORT) == 0 )
+        || ( IsTargetModel( back, CGSW_X86_WINDOWS )
+             && (back.data.CurrProc->prolog_state & (PST_EXPORT | PST_PROLOG_FAT)) == 0 );
+}
 
-#define DO_WINDOWS_CRAP ( _IsTargetModel( CGSW_X86_WINDOWS ) \
-               && ( !WINDOWS_CHEAP || back.data.CurrProc->contains_call ) )
+static CB_ALWAYS_INLINE bool DoWindowsCrap( BackRun& back )
+{
+    return IsTargetModel( back, CGSW_X86_WINDOWS )
+        && ( !WindowsCheap( back ) || back.data.CurrProc->contains_call );
+}
 
-#define DO_BP_CHAIN ( ( ( _IsTargetModel( CGSW_X86_NEED_STACK_FRAME ) \
-                          || (back.data.CurrProc->state.attr & ROUTINE_NEEDS_BP_CHAIN) \
-                          || _IsModel( CGSW_GEN_DBG_CV ) ) \
-                        && back.data.CurrProc->contains_call ) \
-                      || (back.data.CurrProc->prolog_state & PST_PROLOG_FAT) )
+static CB_ALWAYS_INLINE bool DoBpChain( BackRun& back )
+{
+    return ( ( IsTargetModel( back, CGSW_X86_NEED_STACK_FRAME )
+               || (back.data.CurrProc->state.attr & ROUTINE_NEEDS_BP_CHAIN)
+               || IsModel( back, CGSW_GEN_DBG_CV ) )
+             && back.data.CurrProc->contains_call )
+        || (back.data.CurrProc->prolog_state & PST_PROLOG_FAT);
+}
 
-#define CHAIN_FRAME ( DO_WINDOWS_CRAP || DO_BP_CHAIN )
+static CB_ALWAYS_INLINE bool ChainFrame( BackRun& back ) { return DoWindowsCrap( back ) || DoBpChain( back ); }
 
-#define CHEAP_FRAME ( _IsTargetModel( CGSW_X86_NEED_STACK_FRAME ) \
-                      || _IsntTargetModel( CGSW_X86_WINDOWS ) \
-                      || WINDOWS_CHEAP )
+static CB_ALWAYS_INLINE bool CheapFrame( BackRun& back )
+{
+    return IsTargetModel( back, CGSW_X86_NEED_STACK_FRAME )
+        || IsntTargetModel( back, CGSW_X86_WINDOWS )
+        || WindowsCheap( back );
+}
 
-#define FAR_RET_ON_STACK ( _RoutineIsLong( back.data.CurrProc->state.attr ) \
-             && (back.data.CurrProc->state.attr & ROUTINE_NEVER_RETURNS_ABORTS) == 0 )
+static CB_ALWAYS_INLINE bool FarRetOnStack( BackRun& back )
+{
+    return _RoutineIsLong( back.data.CurrProc->state.attr )
+        && (back.data.CurrProc->state.attr & ROUTINE_NEVER_RETURNS_ABORTS) == 0;
+}
 
 
 #define HW_STACK_CHECK HW_xAX
@@ -332,8 +346,8 @@ static  bool    NeedBPProlog( BackRun& back )
         return( true );
     if( back.data.CurrProc->state.attr & ROUTINE_NEEDS_PROLOG )
         return( true );
-    if( FAR_RET_ON_STACK ) {
-        if( CHAIN_FRAME ) {
+    if( FarRetOnStack( back ) ) {
+        if( ChainFrame( back ) ) {
             return( true );
         }
     }
@@ -463,7 +477,7 @@ static  void    DoLoadDS( BackRun& back )
 /******************************/
 {
 #if _TARGET & _TARG_80386
-    if( _IsntTargetModel( CGSW_X86_LOAD_DS_DIRECTLY ) ) {
+    if( IsntTargetModel( back, CGSW_X86_LOAD_DS_DIRECTLY ) ) {
         DoRTCall( back, RT_GETDS, false );
     } else {
 #endif
@@ -559,7 +573,7 @@ static  int PushAll( BackRun& back )
  * Used for __interrupt routines only.
  */
 {
-    if( _CPULevel( CPU_186 ) ) {
+    if( CPULevel( back, CPU_186 ) ) {
         Gpusha(back);
     } else {
         QuickSave( back, HW_xAX, OP_PUSH );
@@ -573,7 +587,7 @@ static  int PushAll( BackRun& back )
     }
     QuickSave( back, HW_DS, OP_PUSH );
     QuickSave( back, HW_ES, OP_PUSH );
-    if( _CPULevel( CPU_386 ) ) {
+    if( CPULevel( back, CPU_386 ) ) {
         QuickSave( back, HW_FS, OP_PUSH );
         QuickSave( back, HW_GS, OP_PUSH );
     } else {
@@ -607,7 +621,7 @@ static  void    PopAll( BackRun& back )
     if( back.data.CurrProc->locals.size != 0 ) {
         GenRegMove( back, HW_xBP, HW_xSP );
     }
-    if( _CPULevel( CPU_386 ) ) {
+    if( CPULevel( back, CPU_386 ) ) {
         QuickSave( back, HW_GS, OP_POP );
         QuickSave( back, HW_FS, OP_POP );
     } else {
@@ -616,7 +630,7 @@ static  void    PopAll( BackRun& back )
     }
     QuickSave( back, HW_ES, OP_POP );
     QuickSave( back, HW_DS, OP_POP );
-    if( _CPULevel( CPU_186 ) ) {
+    if( CPULevel( back, CPU_186 ) ) {
         Gpopa(back);
     } else {
         QuickSave( back, HW_xDI, OP_POP );
@@ -667,12 +681,12 @@ static  void    Enter( BackRun& back )
     lex_level = back.data.CurrProc->lex_level;
 #if _TARGET & _TARG_80386
     if( !back.data.CurrProc->targ.sp_frame
-      && _CPULevel( CPU_186 )
+      && CPULevel( back, CPU_186 )
       && back.data.CurrProc->locals.size < 65536
       && ( lex_level > 0 || ( back.data.CurrProc->locals.size != 0 && back.data.OptForSize > 50 ) ) ) {
 #else
     if( !back.data.CurrProc->targ.sp_frame
-      && _CPULevel( CPU_186 )
+      && CPULevel( back, CPU_186 )
       && ( lex_level > 0 || ( back.data.CurrProc->locals.size != 0 && back.data.OptForSize > 50 ) ) ) {
 #endif
         DoEnter( back, lex_level );
@@ -747,7 +761,7 @@ static  int Push( BackRun& back, hw_reg_set to_push )
     int         i;
 
     size = 0;
-    if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION )
+    if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION )
       && back.data.CurrProc->targ.sp_frame
       && !back.data.CurrProc->targ.sp_align ) {
         FlowSave( back, &to_push );
@@ -769,7 +783,7 @@ static  void        Pop( BackRun& back, hw_reg_set to_pop )
 {
     int         i;
 
-    if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION )
+    if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION )
       && back.data.CurrProc->targ.sp_frame
       && !back.data.CurrProc->targ.sp_align ) {
         FlowRestore( back, &to_pop );
@@ -789,13 +803,13 @@ static void    GenLeaSP( BackRun& back, int offset )
  * LEA         [e]sp,[[e]bp+offset]
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpword( back, M_LEA );
     OpndSize( back, HW_xSP );
     LayReg( back, HW_xSP );
     back.pcencode.Inst[RMR] |= Displacement( back, offset, HW_xBP );
     back.pcencode.Inst[RMR] |= DoIndex( back, HW_xBP );
-    _Emit;
+    Finalize( back );
 }
 
 bool    EpilogIsLeaveOnly( BackRun& back )
@@ -806,9 +820,9 @@ bool    EpilogIsLeaveOnly( BackRun& back )
 {
     hw_reg_set  to_pop;
 
-    if( _IsntTargetModel( CGSW_X86_MSC8 ) || !_CPULevel( CPU_186 ) )
+    if( IsntTargetModel( back, CGSW_X86_MSC8 ) || !CPULevel( back, CPU_186 ) )
         return( false );
-    if( _RoutineIsInterrupt( back.data.CurrProc->state.attr ) || CHAIN_FRAME )
+    if( _RoutineIsInterrupt( back.data.CurrProc->state.attr ) || ChainFrame( back ) )
         return( false );
     if( (back.data.CurrProc->state.attr & ROUTINE_NEEDS_PROLOG) == 0 )
         return( false );
@@ -834,7 +848,7 @@ static  void    DoEpilog( BackRun& back )
     } else {
         to_pop = SaveRegs(back);
         HW_CTurnOff( to_pop, HW_FLTS );
-        if( CHAIN_FRAME ) {
+        if( ChainFrame( back ) ) {
             if( (back.data.CurrProc->state.attr & ROUTINE_NEEDS_PROLOG)
               || ( back.data.CurrProc->locals.size + back.data.CurrProc->targ.push_local_size ) != 0 ) {
                 if( back.data.CurrProc->targ.base_adjust == 0 ) {
@@ -853,7 +867,7 @@ static  void    DoEpilog( BackRun& back )
                    * Microsoft C 8 ends every frame with LEAVE on a 186 or later, whether or not
                    * it has locals to drop (-zmsc)
                    */
-                  || ( _IsTargetModel( CGSW_X86_MSC8 ) && _CPULevel( CPU_186 ) ) ) {
+                  || ( IsTargetModel( back, CGSW_X86_MSC8 ) && CPULevel( back, CPU_186 ) ) ) {
                     /*
                      * sp is not pointing at saved registers already
                      */
@@ -866,8 +880,8 @@ static  void    DoEpilog( BackRun& back )
                         }
                     } else if( back.data.CurrProc->targ.base_adjust != 0 ) {
                         GenLeaSP( back, -back.data.CurrProc->targ.base_adjust );
-                    } else if( _CPULevel( CPU_186 )
-                      && (!_CPULevel( CPU_486 ) || back.data.OptForSize > 50) ) {
+                    } else if( CPULevel( back, CPU_186 )
+                      && (!CPULevel( back, CPU_486 ) || back.data.OptForSize > 50) ) {
                         GenLeave(back);
                         HW_CTurnOff( to_pop, HW_xBP );
                     } else {
@@ -878,11 +892,11 @@ static  void    DoEpilog( BackRun& back )
         }
         Pop( back, to_pop );
         UnloadDS(back);
-        if( CHAIN_FRAME ) {
+        if( ChainFrame( back ) ) {
             if( NeedBPProlog(back) ) {
                 EpilogHook(back);
-                if( FAR_RET_ON_STACK ) {
-                    if( CHEAP_FRAME ) {
+                if( FarRetOnStack( back ) ) {
+                    if( CheapFrame( back ) ) {
                         GenCheapWindowsEpilog(back);
                     } else {
                         GenWindowsEpilog(back);
@@ -903,8 +917,8 @@ static  void    DoEpilog( BackRun& back )
     if( back.data.CurrProc->prolog_state & PST_PROLOG_THUNK ) {
         QuickSave( back, HW_xSP, OP_POP );
     }
-    if( _IsTargetModel( CGSW_X86_NEW_P5_PROFILING )
-      || _IsTargetModel( CGSW_X86_P5_PROFILING ) ) {
+    if( IsTargetModel( back, CGSW_X86_NEW_P5_PROFILING )
+      || IsTargetModel( back, CGSW_X86_P5_PROFILING ) ) {
         GenP5ProfilingEpilog( back, static_cast<label_handle>(back.data.CurrProc->label) );
     }
 #endif
@@ -921,7 +935,7 @@ static  void    DoEpilog( BackRun& back )
 bool    CanZapBP( BackRun& back )
 /**********************/
 {
-    return( !CHAIN_FRAME );
+    return( !ChainFrame( back ) );
 }
 
 
@@ -931,12 +945,12 @@ void    AddCacheRegs( BackRun& back )
 #if _TARGET & _TARG_80386
     if( back.data.CurrProc->targ.never_sp_frame )
         return;
-    if( _IsntModel( CGSW_GEN_MEMORY_LOW_FAILS ) )
+    if( IsntModel( back, CGSW_GEN_MEMORY_LOW_FAILS ) )
         return;
     if( back.data.OptForSize > 50 )
         return;
-    if( _IsTargetModel( CGSW_X86_FLOATING_DS )
-      || _IsTargetModel( CGSW_X86_FLOATING_SS ) )
+    if( IsTargetModel( back, CGSW_X86_FLOATING_DS )
+      || IsTargetModel( back, CGSW_X86_FLOATING_SS ) )
         return;
     if( !ScanInstructions(back) )
         return;
@@ -948,14 +962,14 @@ void    AddCacheRegs( BackRun& back )
         return;
     if( back.data.CurrProc->lex_level > 0 )
         return;
-    if( _FPULevel( FPU_586 ) ) {
+    if( FPULevel( back, FPU_586 ) ) {
         ScanForFDOps(back);
     }
     if( back.data.CurrProc->targ.has_fd_temps ) {
         back.data.CurrProc->targ.sp_frame = true;
         back.data.CurrProc->targ.sp_align = true;
-    } else if( !DO_BP_CHAIN
-      && _IsntTargetModel( CGSW_X86_WINDOWS )
+    } else if( !DoBpChain( back )
+      && IsntTargetModel( back, CGSW_X86_WINDOWS )
       && !_RoutineIsInterrupt( back.data.CurrProc->state.attr ) ) {
         /*
          * We cannot make EBP available under Windows because the SS
@@ -972,7 +986,7 @@ void    AddCacheRegs( BackRun& back )
 void DoRTCall( BackRun& back, rt_class rtindex, bool pop )
 /*****************************************/
 {
-    DoCall( back, RTLabel( back, rtindex ), true, _IsTargetModel( CGSW_X86_BIG_CODE ), pop );
+    DoCall( back, RTLabel( back, rtindex ), true, IsTargetModel( back, CGSW_X86_BIG_CODE ), pop );
 }
 
 static unsigned returnAddressStackSize( BackRun& back )
@@ -1003,18 +1017,18 @@ void    GenProlog( BackRun& back )
     pointer     origlabel;  /* Original label for generated __far16 thunks */
     fe_attr     attr;
 
-    ScanInstructions(back);     /* Do These 2 calls before using DO_WINDOWS_CRAP! */
+    ScanInstructions(back);     /* Do These 2 calls before using DoWindowsCrap! */
     FindIfExported(back);
-    PUSH_OP( AskCodeSeg(back) );
+    { segment_id old_segid = ChangeOP( back, AskCodeSeg(back) );
         if( back.data.CurrProc->prolog_state & PST_FUNCTION_NAME ) {
             EmitNameInCode(back);
         }
 
-        if( _IsModel( CGSW_GEN_DBG_NUMBERS ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_NUMBERS ) ) {
             CodeLineNumber( back, back.data.HeadBlock->ins.head.line_num, false );
         }
 
-        if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) { // d1+ or d2
+        if( IsModel( back, CGSW_GEN_DBG_LOCALS ) ) { // d1+ or d2
             EmitRtnBeg(back);
         }
         if( back.data.CurrProc->state.attr & ROUTINE_WANTS_DEBUGGING ) {
@@ -1034,7 +1048,7 @@ void    GenProlog( BackRun& back )
         }
 #endif
 
-        if( _IsTargetModel( CGSW_X86_MSC8 ) ) {
+        if( IsTargetModel( back, CGSW_X86_MSC8 ) ) {
             /*
              * Microsoft C 8 starts every function on an even byte, at /Os as well, padding
              * with NOP (-zmsc)
@@ -1052,8 +1066,8 @@ void    GenProlog( BackRun& back )
 
     #if _TARGET & _TARG_80386
         if( (attr & FE_NAKED) == 0 ) {
-            if( _IsTargetModel( CGSW_X86_NEW_P5_PROFILING )
-              || _IsTargetModel( CGSW_X86_P5_PROFILING ) ) {
+            if( IsTargetModel( back, CGSW_X86_NEW_P5_PROFILING )
+              || IsTargetModel( back, CGSW_X86_P5_PROFILING ) ) {
                 GenP5ProfilingProlog( back, static_cast<label_handle>(label) );
             }
             if( back.data.CurrProc->prolog_state & PST_PROLOG_THUNK ) {
@@ -1090,13 +1104,13 @@ void    GenProlog( BackRun& back )
             back.data.CurrProc->targ.base_adjust = 0;
             MoveParms(back);
         } else {
-            if( CHAIN_FRAME ) {
+            if( ChainFrame( back ) ) {
                 back.data.CurrProc->targ.base_adjust = 0;
                 if( NeedBPProlog(back) ) {
                     HW_CTurnOn( back.data.CurrProc->state.used, HW_xBP );
                     back.data.CurrProc->parms.base += WORD_SIZE;
-                    if( FAR_RET_ON_STACK ) {
-                        if( CHEAP_FRAME ) {
+                    if( FarRetOnStack( back ) ) {
+                        if( CheapFrame( back ) ) {
                             GenCheapWindowsProlog(back);
                         } else {
     #if _TARGET & _TARG_8086
@@ -1149,7 +1163,7 @@ void    GenProlog( BackRun& back )
                 }
                 Enter(back);
                 AdjustPushLocals(back);
-                if( _IsModel( CGSW_GEN_NO_OPTIMIZATION )
+                if( IsModel( back, CGSW_GEN_NO_OPTIMIZATION )
                   || back.data.CurrProc->targ.sp_frame ) {
                     back.data.CurrProc->targ.base_adjust = 0;
                 } else {
@@ -1164,11 +1178,11 @@ void    GenProlog( BackRun& back )
         }
         back.data.CurrProc->prolog_state |= PST_PROLOG_GENERATED;
 
-        if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) { // d1+ or d2
+        if( IsModel( back, CGSW_GEN_DBG_LOCALS ) ) { // d1+ or d2
             DbgRetOffset( back, back.data.CurrProc->parms.base - back.data.CurrProc->targ.base_adjust - ret_size );
             EmitProEnd(back);
         }
-    POP_OP();
+    SetOP( back, old_segid ); }
 
     if( back.data.CurrProc->prolog_state & PST_EXPORT ) {
         OutDLLExport( back, WORDS_COUNT( back.data.CurrProc->parms.size ), AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) ) );
@@ -1207,7 +1221,7 @@ void        AdjustStackDepth( BackRun& back, instruction *ins )
             return;
         op = ins->operands[1];
         if( op->n.class_ != N_CONSTANT ) {
-            _Zoiks( ZOIKS_077 );
+            Zoiks( back, ZOIKS_077 );
             return;
         }
         adjust = op->c.lo.u.int_value;
@@ -1287,7 +1301,7 @@ void    GenEpilog( BackRun& back )
          - back.data.CurrProc->targ.push_local_size;
     PatchBigLabels( back, stack );
 
-    if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) { // d1+ or d2
+    if( IsModel( back, CGSW_GEN_DBG_LOCALS ) ) { // d1+ or d2
         EmitEpiBeg(back);
     }
 
@@ -1312,7 +1326,7 @@ void    GenEpilog( BackRun& back )
 
 
     back.data.CurrProc->prolog_state |= PST_EPILOG_GENERATED;
-    if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {  // d1+ or d2
+    if( IsModel( back, CGSW_GEN_DBG_LOCALS ) ) {  // d1+ or d2
         EmitRtnEnd(back);
     }
 }

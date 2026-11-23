@@ -32,7 +32,8 @@
 #pragma once
 #include "cgaux.h"
 
-#define FindAuxInfoSym(s,r) FEAuxInfo(*back.front, FEAuxInfo(*back.front, s,FEINF_AUX_LOOKUP),r)
+/* the aux info of a symbol, through the front end of the run (it reads `back.front`: the body is in backrun.hpp) */
+CB_ALWAYS_INLINE pointer FindAuxInfoSym( BackRun& back, pointer sym, aux_class request );
 
 extern  pointer FindAuxInfo( BackRun& back, name *, aux_class );
 extern  pointer BEAuxInfo( BackRun& back, pointer, aux_class );

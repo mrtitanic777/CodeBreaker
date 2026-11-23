@@ -78,14 +78,14 @@ static const struct dbg_seg_names DwarfSegNames[DW_DEBUG_MAX] = {
 void    DFDefSegs( BackRun& back )
 /***********************/
 {
-    if( _IsModel( CGSW_GEN_DBG_LOCALS )
-      || _IsModel( CGSW_GEN_DBG_TYPES ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_LOCALS )
+      || IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
         dw_sectnum  i;
 
         for( i = static_cast<dw_sectnum>(0); i < DW_DEBUG_MAX; ++i ) {
             DFSetSection( back, i, NULL, DbgSegDef( back, DwarfSegNames[i].seg_name, DwarfSegNames[i].class_name, SEG_COMB_NORMAL + SEG_USE_32 ) );
         }
-    } else if( _IsModel( CGSW_GEN_DBG_NUMBERS ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_NUMBERS ) ) {
         DFSetSection( back, DW_DEBUG_LINE, NULL, DbgSegDef( back, DwarfSegNames[DW_DEBUG_LINE].seg_name, DwarfSegNames[DW_DEBUG_LINE].class_name, SEG_COMB_NORMAL + SEG_USE_32 ) );
     }
 }

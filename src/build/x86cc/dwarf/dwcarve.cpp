@@ -61,7 +61,7 @@ static void newBlk(
 {
     blk_t           *newblk;
 
-    newblk = static_cast<blk_t *>(CLIAlloc( cli, sizeof( blk_t ) - 1 + cv->blk_top ));
+    newblk = static_cast<blk_t *>(CLIAlloc( back, cli, sizeof( blk_t ) - 1 + cv->blk_top ));
     newblk->next = cv->blk_list;
     cv->blk_list = newblk;
     cv->top_elm = newblk->data + cv->blk_top;
@@ -76,7 +76,7 @@ carve_t DW_CarveCreate(
     carve_t                     cv;
 
     elm_size = ( elm_size + (sizeof(int)-1) ) & ~(sizeof(int)-1);
-    cv = static_cast<carve_t>(CLIAlloc( cli, sizeof( struct carve_t_s ) ));
+    cv = static_cast<carve_t>(CLIAlloc( back, cli, sizeof( struct carve_t_s ) ));
     cv->elm_size = elm_size;
     cv->blk_size = blk_size;
     cv->blk_top = blk_size * elm_size;
@@ -92,7 +92,7 @@ void DW_CarveDestroy(
     carve_t                     cv )
 {
     DW_FreeChain( back, cli, cv->blk_list );
-    CLIFree( cli, cv );
+    CLIFree( back, cli, cv );
 }
 
 

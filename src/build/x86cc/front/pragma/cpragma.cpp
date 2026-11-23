@@ -45,7 +45,7 @@
 #include "frontrun.hpp"
 
 
-#define pragmaNameRecog(what)   (strcmp(front.cvars.Buffer, what) == 0)
+static inline bool pragmaNameRecog( FrontRun& front, const char *what ) { return strcmp( front.cvars.Buffer, what ) == 0; }
 
 typedef enum {
     #define pick(a,b,c,d)   a,
@@ -84,7 +84,7 @@ struct CpragmaState {
 static void cpragma_start( FrontRun& front, CpragmaState& part )
 {
     const struct magic_words_data words[10] = {
-    #define pick(a,b,c,d) { b, d },
+    #define pick(a,b,c,d) { b, &d( front ) },
     #include "auxinfo.h"
     #undef pick
     };
@@ -100,7 +100,7 @@ namespace {
 
 /* the stacks of pushed toggles are members of the state, which the macro that named the statics now names */
 #undef TOGGLE_STK
-#define TOGGLE_STK( x )     front.cpragma->HeadToggles_tog_##x
+#define TOGGLE_STK( front, x )     front.cpragma->HeadToggles_tog_##x
 
 
 static prag_stack *stackPush( prag_stack **header, prag_stack *element )
@@ -166,11 +166,11 @@ static bool popPrag( FrontRun& front, prag_stack **header, unsigned *pvalue )
 void CPragmaInit( FrontRun& front )
 /**********************/
 {
-    #define pick( x ) TOGGLE_STK( x ) = NULL;
+    #define pick( x ) TOGGLE_STK( front, x ) = NULL;
     #include "togdef.h"
     #undef pick
-    TOGGLE_STK( pack ) = NULL;
-    TOGGLE_STK( enum ) = NULL;
+    TOGGLE_STK( front, pack ) = NULL;
+    TOGGLE_STK( front, enum ) = NULL;
     front.cpragma->FreePrags = NULL;
     front.cpragma->AsmFuncNum = 0;
 
@@ -193,11 +193,11 @@ void CPragmaFini( FrontRun& front )
 
     PragmaAuxFini(front);
 
-    #define pick( x )   freeStack( front, &TOGGLE_STK( x ) );
+    #define pick( x )   freeStack( front, &TOGGLE_STK( front, x ) );
     #include "togdef.h"
     #undef pick
-    freeStack( front, &TOGGLE_STK( pack ) );
-    freeStack( front, &TOGGLE_STK( enum ) );
+    freeStack( front, &TOGGLE_STK( front, pack ) );
+    freeStack( front, &TOGGLE_STK( front, enum ) );
     freeStack( front, &front.cpragma->FreePrags );
 
     while( (junk = front.cvars.TextSegList) != NULL ) {
@@ -278,7 +278,7 @@ bool PragRecogName( FrontRun& front, const char *what )
 
     ok = IS_ID_OR_KEYWORD( front.cvars.CurToken );
     if( ok ) {
-        ok = pragmaNameRecog( what );
+        ok = pragmaNameRecog( front, what );
         if( ok ) {
             PPNextToken(front);
         }
@@ -383,7 +383,7 @@ void CreateAuxInlineFunc( FrontRun& front, bool too_many_bytes )
     CreateAux( front, name );
     front.pragdefn.CurrInfo = (aux_info *)CMemAlloc( front, sizeof( aux_info ) );
     front.pragdefn.CurrEntry->info = front.pragdefn.CurrInfo;
-    *front.pragdefn.CurrInfo = WatcallInfo;
+    *front.pragdefn.CurrInfo = WatcallInfo( front );
     front.pragdefn.CurrInfo->use = 1;
     front.pragdefn.CurrInfo->save = front.pdefn2.AsmRegsSaved;  // indicate no registers saved
     if( !too_many_bytes ) {
@@ -686,14 +686,14 @@ void SetToggleFlag( FrontRun& front, char const *name, int func, bool push )
         if( strcmp( name, #x ) == 0 ) { \
             if( func == -1 ) { \
                 unsigned    value; \
-                if( popPrag( front, &TOGGLE_STK( x ), &value ) ) { \
-                    TOGGLE( x ) = ( value != 0 ); \
+                if( popPrag( front, &TOGGLE_STK( front, x ), &value ) ) { \
+                    Toggles( front ).tog_##x = ( value != 0 ); \
                 } \
             } else { \
                 if( push ) { \
-                    pushPrag( front, &TOGGLE_STK( x ), TOGGLE( x ) ); \
+                    pushPrag( front, &TOGGLE_STK( front, x ), Toggles( front ).tog_##x ); \
                 } \
-                TOGGLE( x ) = ( func != 0 ); \
+                Toggles( front ).tog_##x = ( func != 0 ); \
             } \
             return; \
         }
@@ -710,7 +710,7 @@ static void pragOptions( FrontRun& front, int func )
  *  #pragma pop (<toggle name>)
  */
 {
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( ExpectingToken( front, T_LEFT_PAREN ) ) {
         for( PPNextToken(front); IS_ID_OR_KEYWORD( front.cvars.CurToken ); PPNextToken(front) ) {
@@ -718,7 +718,7 @@ static void pragOptions( FrontRun& front, int func )
         }
         MustRecog( front, T_RIGHT_PAREN );
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 void AddLibraryName( FrontRun& front, const char *libname, char priority )
@@ -784,7 +784,7 @@ static void pragLibs( FrontRun& front )
  *  #pragma library (<libraries name list>)
  */
 {
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( front.cvars.CurToken == T_LEFT_PAREN ) {
         PPNextToken(front);
@@ -793,7 +793,7 @@ static void pragLibs( FrontRun& front )
     } else {
         front.cvars.CompFlags.pragma_library = true;
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 static void pragComment( FrontRun& front )
@@ -803,7 +803,7 @@ static void pragComment( FrontRun& front )
  *  #pragma comment ( comment_type [, "comment_string"] )
  */
 {
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( ExpectingToken( front, T_LEFT_PAREN ) ) {
         PPNextToken(front);
@@ -815,7 +815,7 @@ static void pragComment( FrontRun& front )
         }
         MustRecog( front, T_RIGHT_PAREN );
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 unsigned VerifyPackAmount( unsigned amount )
@@ -848,7 +848,7 @@ static void getPackArgs( FrontRun& front )
      * check to make sure it is a numeric token
      */
     if( PragRecogId( front, "push" ) ) {
-        pushPrag( front, &TOGGLE_STK( pack ), (unsigned)front.cvars.PackAmount );
+        pushPrag( front, &TOGGLE_STK( front, pack ), (unsigned)front.cvars.PackAmount );
         if( front.cvars.CurToken == T_COMMA ) {
             PPNextToken(front);
             if( ExpectingConstant(front) ) {
@@ -859,7 +859,7 @@ static void getPackArgs( FrontRun& front )
     } else if( PragRecogId( front, "pop" ) ) {
         unsigned    value;
 
-        if( popPrag( front, &TOGGLE_STK( pack ), &value ) ) {
+        if( popPrag( front, &TOGGLE_STK( front, pack ), &value ) ) {
             front.cvars.PackAmount = (align_type)value;
         }
     } else {
@@ -878,7 +878,7 @@ static void pragPack( FrontRun& front )
  *  #pragma pack ( push, n )
  */
 {
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( ExpectingToken( front, T_LEFT_PAREN ) ) {
         PPNextToken(front);
@@ -892,7 +892,7 @@ static void pragPack( FrontRun& front )
         }
         MustRecog( front, T_RIGHT_PAREN );
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 textsegment *NewTextSeg( FrontRun& front, const char *name, const char *suffix, const char *classname )
@@ -942,7 +942,7 @@ static void pragAllocText( FrontRun& front )
     SYM_HANDLE          sym_handle;
     SYM_ENTRY           sym;
 
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( ExpectingToken( front, T_LEFT_PAREN ) ) {
         PPNextToken(front);
@@ -984,7 +984,7 @@ static void pragAllocText( FrontRun& front )
         front.cvars.CompFlags.multiple_code_segments = true;
         MustRecog( front, T_RIGHT_PAREN );
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 static void changeLevel( FrontRun& front, unsigned level, int msg_index )
@@ -1151,7 +1151,7 @@ static bool pragWarning( FrontRun& front )
     ignore = false;
     change_all = false;
     msgnum = static_cast<msg_codes>(0);
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     NextToken(front);
     if( front.cvars.CurToken == T_TIMES ) {
         change_all = true;
@@ -1176,7 +1176,7 @@ static bool pragWarning( FrontRun& front )
             NextToken(front);
         }
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
     return( ignore );
 }
 
@@ -1192,7 +1192,7 @@ static void pragEnableDisableMessage( FrontRun& front, bool enabled )
 {
     msg_codes msgnum;
 
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( ExpectingToken( front, T_LEFT_PAREN ) ) {
         PPNextToken(front);
@@ -1205,7 +1205,7 @@ static void pragEnableDisableMessage( FrontRun& front, bool enabled )
         }
         MustRecog( front, T_RIGHT_PAREN );
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 static char *collectStrings( FrontRun& front, char *message )
@@ -1237,7 +1237,7 @@ static void pragMessage( FrontRun& front )
 {
     char    *message;
 
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( ExpectingToken( front, T_LEFT_PAREN ) ) {
         PPNextToken(front);
@@ -1250,7 +1250,7 @@ static void pragMessage( FrontRun& front )
         }
         MustRecog( front, T_RIGHT_PAREN );
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 static void pragEnum( FrontRun& front )
@@ -1273,25 +1273,25 @@ static void pragEnum( FrontRun& front )
  * 1-3 all push previous value before affecting value
  */
 {
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( PragRecogId( front, "int" ) ) {
-        pushPrag( front, &TOGGLE_STK( enum ), front.cvars.CompFlags.make_enums_an_int );
+        pushPrag( front, &TOGGLE_STK( front, enum ), front.cvars.CompFlags.make_enums_an_int );
         front.cvars.CompFlags.make_enums_an_int = true;
     } else if( PragRecogId( front, "minimum" ) ) {
-        pushPrag( front, &TOGGLE_STK( enum ), front.cvars.CompFlags.make_enums_an_int );
+        pushPrag( front, &TOGGLE_STK( front, enum ), front.cvars.CompFlags.make_enums_an_int );
         front.cvars.CompFlags.make_enums_an_int = false;
     } else if( PragRecogId( front, "original" ) ) {
-        pushPrag( front, &TOGGLE_STK( enum ), front.cvars.CompFlags.make_enums_an_int );
+        pushPrag( front, &TOGGLE_STK( front, enum ), front.cvars.CompFlags.make_enums_an_int );
         front.cvars.CompFlags.make_enums_an_int = front.cvars.CompFlags.original_enum_setting;
     } else if( PragRecogId( front, "pop" ) ) {
         unsigned    value;
 
-        if( popPrag( front, &TOGGLE_STK( enum ), &value ) ) {
+        if( popPrag( front, &TOGGLE_STK( front, enum ), &value ) ) {
             front.cvars.CompFlags.make_enums_an_int = ( value != 0 );
         }
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 static void pragIntrinsic( FrontRun& front, int intrinsic )
@@ -1304,7 +1304,7 @@ static void pragIntrinsic( FrontRun& front, int intrinsic )
     SYM_HANDLE  sym_handle;
     SYM_ENTRY   sym;
 
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( ExpectingToken( front, T_LEFT_PAREN ) ) {
         for( PPNextToken(front); IS_ID_OR_KEYWORD( front.cvars.CurToken ); PPNextToken(front) ) {
@@ -1323,7 +1323,7 @@ static void pragIntrinsic( FrontRun& front, int intrinsic )
         }
         MustRecog( front, T_RIGHT_PAREN );
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 static void pragCodeSeg( FrontRun& front )
@@ -1337,7 +1337,7 @@ static void pragCodeSeg( FrontRun& front )
     char            *segname;
     char            *classname;
 
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( front.cvars.CurToken == T_LEFT_PAREN ) {
         tseg = NULL;
@@ -1363,7 +1363,7 @@ static void pragCodeSeg( FrontRun& front )
         front.cvars.DefCodeSegment = tseg;
         front.cvars.CompFlags.multiple_code_segments = true;
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 static void pragDataSeg( FrontRun& front )
@@ -1376,7 +1376,7 @@ static void pragDataSeg( FrontRun& front )
     char        *segname;
     segment_id  segid;
 
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( front.cvars.CurToken == T_LEFT_PAREN ) {
         segid = SEG_NULL;
@@ -1400,7 +1400,7 @@ static void pragDataSeg( FrontRun& front )
         MustRecog( front, T_RIGHT_PAREN );
         front.cvars.DefDataSegment = segid;
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 static void pragUnroll( FrontRun& front )
@@ -1412,7 +1412,7 @@ static void pragUnroll( FrontRun& front )
 {
     unroll_type unroll_count;
 
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( ExpectingToken( front, T_LEFT_PAREN ) ) {
         unroll_count = 0;
@@ -1428,7 +1428,7 @@ static void pragUnroll( FrontRun& front )
         front.cvars.UnrollCount = unroll_count;
         MustRecog( front, T_RIGHT_PAREN );
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 static void pragReadOnlyFile( FrontRun& front )
@@ -1443,7 +1443,7 @@ static void pragReadOnlyFile( FrontRun& front )
  *      - file must have started inclusion (may have completed)
  */
 {
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( front.cvars.CurToken == T_STRING ) {
         do {
@@ -1456,7 +1456,7 @@ static void pragReadOnlyFile( FrontRun& front )
     } else {
         SrcFileReadOnlyFile( front, NULL );
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 
@@ -1469,7 +1469,7 @@ static void pragReadOnlyDir( FrontRun& front )
  * causes all files within directory to be marked read-only
  */
 {
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     while( front.cvars.CurToken == T_STRING ) {
         SrcFileReadOnlyDir( front, front.cvars.Buffer );
@@ -1478,7 +1478,7 @@ static void pragReadOnlyDir( FrontRun& front )
             PPNextToken(front);
         }
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 static void pragIncludeAlias( FrontRun& front )
@@ -1492,7 +1492,7 @@ static void pragIncludeAlias( FrontRun& front )
  * to real_name instead
  */
 {
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( ExpectingToken( front, T_LEFT_PAREN ) ) {
         PPNextToken(front);
@@ -1534,7 +1534,7 @@ static void pragIncludeAlias( FrontRun& front )
         }
         MustRecog( front, T_RIGHT_PAREN );
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 static void pragOnce( FrontRun& front )
@@ -1546,10 +1546,10 @@ static void pragOnce( FrontRun& front )
  * include file once
  */
 {
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     SetSrcFNameOnce(front);
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 static void OptionPragSTDC( FrontRun& front )
@@ -1568,7 +1568,7 @@ static void pragSTDC( FrontRun& front )
  *  #pragma STDC (FP_CONTRACT|FENV_ACCESS|CX_LIMITED_RANGE) (ON|OFF|DEFAULT)
  */
 {
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
     PPNextToken(front);
     if( PragRecogName( front, "FP_CONTRACT" ) ) {
         OptionPragSTDC(front);
@@ -1634,7 +1634,7 @@ static void pragExtRef( FrontRun& front )
  *  #pragma extref ( "symbolname" [, ...] )
  */
 {
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( front.cvars.CurToken == T_LEFT_PAREN ) {
         do {
@@ -1649,7 +1649,7 @@ static void pragExtRef( FrontRun& front )
         parseExtRef(front);
         PPNextToken(front);
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 static void pragAlias( FrontRun& front )
@@ -1675,7 +1675,7 @@ static void pragAlias( FrontRun& front )
     alias_sym = SYM_NULL;
     subst_sym = SYM_NULL;
 
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( ExpectingToken( front, T_LEFT_PAREN ) ) {
         PPNextToken(front);
@@ -1700,7 +1700,7 @@ static void pragAlias( FrontRun& front )
         PPNextToken(front);
         MustRecog( front, T_RIGHT_PAREN );
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
     /*
      * Add a new alias record - if it's valid - to the list
      */
@@ -1735,7 +1735,7 @@ void CPragma( FrontRun& front )
     front.cvars.CompFlags.in_pragma = true;
     check_end = true;
     PPNextToken(front);
-    if( IS_ID_OR_KEYWORD( front.cvars.CurToken ) && pragmaNameRecog( "include_alias" ) ) {
+    if( IS_ID_OR_KEYWORD( front.cvars.CurToken ) && pragmaNameRecog( front, "include_alias" ) ) {
         pragIncludeAlias(front);
     } else if( front.cvars.CompFlags.cpp_mode ) {
         if( front.cvars.CompFlags.cpp_output ) {
@@ -1743,34 +1743,34 @@ void CPragma( FrontRun& front )
         }
         if( front.cvars.CurToken != T_NULL ) {
             CppPrtToken( front, front.cvars.CurToken );
-            PPCTL_ENABLE_MACROS();
+            PPCtlEnableMacros( front );
             for( front.cvars.CurToken = GetNextToken(front); front.cvars.CurToken != T_NULL && front.cvars.CurToken != T_PRAGMA_END; front.cvars.CurToken = GetNextToken(front) ) {
                 CppPrtToken( front, front.cvars.CurToken );
             }
-            PPCTL_DISABLE_MACROS();
+            PPCtlDisableMacros( front );
         }
     } else if( IS_ID_OR_KEYWORD( front.cvars.CurToken ) ) {
-        if( pragmaNameRecog( "on" ) ) {
+        if( pragmaNameRecog( front, "on" ) ) {
             pragOptions( front, 1 );
-        } else if( pragmaNameRecog( "off" ) ) {
+        } else if( pragmaNameRecog( front, "off" ) ) {
             pragOptions( front, 0 );
-        } else if( pragmaNameRecog( "pop" ) ) {
+        } else if( pragmaNameRecog( front, "pop" ) ) {
             pragOptions( front, -1 );
-        } else if( pragmaNameRecog( "aux" ) || pragmaNameRecog( "linkage" ) ) {
+        } else if( pragmaNameRecog( front, "aux" ) || pragmaNameRecog( front, "linkage" ) ) {
             PragAux(front);
-        } else if( pragmaNameRecog( "library" ) ) {
+        } else if( pragmaNameRecog( front, "library" ) ) {
             pragLibs(front);
-        } else if( pragmaNameRecog( "comment" ) ) {
+        } else if( pragmaNameRecog( front, "comment" ) ) {
             pragComment(front);
-        } else if( pragmaNameRecog( "pack" ) ) {
+        } else if( pragmaNameRecog( front, "pack" ) ) {
             pragPack(front);
-        } else if( pragmaNameRecog( "alloc_text" ) ) {
+        } else if( pragmaNameRecog( front, "alloc_text" ) ) {
             pragAllocText(front);
-        } else if( pragmaNameRecog( "code_seg" ) ) {
+        } else if( pragmaNameRecog( front, "code_seg" ) ) {
             pragCodeSeg(front);
-        } else if( pragmaNameRecog( "data_seg" ) ) {
+        } else if( pragmaNameRecog( front, "data_seg" ) ) {
             pragDataSeg(front);
-        } else if( pragmaNameRecog( "warning" ) ) {
+        } else if( pragmaNameRecog( front, "warning" ) ) {
             if( pragWarning(front) ) {
                 /*
                  * ignore #pragma warning
@@ -1778,31 +1778,31 @@ void CPragma( FrontRun& front )
                  */
                 check_end = false;
             }
-        } else if( pragmaNameRecog( "disable_message" ) ) {
+        } else if( pragmaNameRecog( front, "disable_message" ) ) {
             pragEnableDisableMessage( front, false );
-        } else if( pragmaNameRecog( "enable_message" ) ) {
+        } else if( pragmaNameRecog( front, "enable_message" ) ) {
             pragEnableDisableMessage( front, true );
-        } else if( pragmaNameRecog( "message" ) ) {
+        } else if( pragmaNameRecog( front, "message" ) ) {
             pragMessage(front);
-        } else if( pragmaNameRecog( "intrinsic" ) ) {
+        } else if( pragmaNameRecog( front, "intrinsic" ) ) {
             pragIntrinsic( front, 1 );
-        } else if( pragmaNameRecog( "function" ) ) {
+        } else if( pragmaNameRecog( front, "function" ) ) {
             pragIntrinsic( front, 0 );
-        } else if( pragmaNameRecog( "enum" ) ) {
+        } else if( pragmaNameRecog( front, "enum" ) ) {
             pragEnum(front);
-        } else if( pragmaNameRecog( "read_only_file" ) ) {
+        } else if( pragmaNameRecog( front, "read_only_file" ) ) {
             pragReadOnlyFile(front);
-        } else if( pragmaNameRecog( "read_only_directory" ) ) {
+        } else if( pragmaNameRecog( front, "read_only_directory" ) ) {
             pragReadOnlyDir(front);
-        } else if( pragmaNameRecog( "once" ) ) {
+        } else if( pragmaNameRecog( front, "once" ) ) {
             pragOnce(front);
-        } else if( pragmaNameRecog( "unroll" ) ) {
+        } else if( pragmaNameRecog( front, "unroll" ) ) {
             pragUnroll(front);
-        } else if( pragmaNameRecog( "STDC" ) ) {
+        } else if( pragmaNameRecog( front, "STDC" ) ) {
             pragSTDC(front);
-        } else if( pragmaNameRecog( "extref" ) ) {
+        } else if( pragmaNameRecog( front, "extref" ) ) {
             pragExtRef(front);
-        } else if( pragmaNameRecog( "alias" ) ) {
+        } else if( pragmaNameRecog( front, "alias" ) ) {
             pragAlias(front);
         } else {
             check_end = false;

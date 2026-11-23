@@ -74,7 +74,7 @@ void    BuffEnd( BackRun& back, segment_id segid )
     uint                size;
 
     ptr_type = TypeAddress( back, TY_LONG_POINTER );
-    PUSH_OP( segid );
+    { segment_id old_segid = ChangeOP( back, segid );
         back.x86dbsup.CurrBuff->buff[0] = back.x86dbsup.CurrBuff->index;
         buff = back.x86dbsup.CurrBuff->buff;
         last = 0;
@@ -102,7 +102,7 @@ void    BuffEnd( BackRun& back, segment_id segid )
             }
         }
         DataBytes( back, back.x86dbsup.CurrBuff->index - last, buff );
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 
@@ -126,7 +126,7 @@ void    BuffByte( BackRun& back, byte b )
     if( back.x86dbsup.CurrBuff->index < DB_BUFF_SIZE ) {
         back.x86dbsup.CurrBuff->buff[back.x86dbsup.CurrBuff->index++] = b;
         if( back.x86dbsup.CurrBuff->index >= DB_BUFF_SIZE ) {
-            _Zoiks( ZOIKS_005 );
+            Zoiks( back, ZOIKS_005 );
         }
     }
 }

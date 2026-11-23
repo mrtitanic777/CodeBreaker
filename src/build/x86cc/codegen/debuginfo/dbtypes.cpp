@@ -71,9 +71,9 @@ dbg_type _CGAPI DBFtnType( BackRun& back, cchar_ptr name, dbg_ftn_type tipe )
 {
     dbg_type ret;
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret = DFFtnType( back, name, tipe );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret = CVFtnType( name, tipe );
     } else {
         ret = WVFtnType( back, name, tipe );
@@ -87,9 +87,9 @@ dbg_type _CGAPI DBScalar( BackRun& back, cchar_ptr name, cg_type tipe )
 {
     dbg_type ret;
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret = DFScalar( back, name, tipe );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret = CVScalar( back, name, tipe );
     } else {
         ret = WVScalar( back, name, tipe );
@@ -103,9 +103,9 @@ dbg_type _CGAPI DBScope( BackRun& back, cchar_ptr name )
 {
     dbg_type ret;
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret = DFScope( name );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret = CVScope( name );
     } else {
         ret = WVScope( back, name );
@@ -134,9 +134,9 @@ dbg_type _CGAPI DBForward( BackRun& back, dbg_name name )
 /************************************************/
 {
     if( name->refno == DBG_NIL_TYPE ) {
-        if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
             /* do nothing */
-        } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+        } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
             CVDumpName( back, name, DBG_FWD_TYPE );
         } else {
             WVDumpName( back, name, DBG_FWD_TYPE );
@@ -152,17 +152,17 @@ dbg_type _CGAPI DBEndName( BackRun& back, dbg_name name, dbg_type tipe )
     dbg_type    retv;
 
     if( name->refno == DBG_NIL_TYPE ) {
-        if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
            DFDumpName( back, name, tipe );
-        } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+        } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
            CVDumpName( back, name, tipe );
         } else {
            WVDumpName( back, name, tipe );
         }
-    } else if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
-        if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
             DFBackRefType( back, name, tipe );
-        } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+        } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
             CVBackRefType( back, name, tipe );
         } else {
             WVBackRefType( back, name, tipe );
@@ -179,9 +179,9 @@ dbg_type _CGAPI DBCharBlock( BackRun& back, uint_32 len )
 {
     dbg_type ret;
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret = DFCharBlock( back, len );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret = CVCharBlock( back, len );
     } else {
         ret = WVCharBlock( back, len );
@@ -194,9 +194,9 @@ dbg_type _CGAPI DBCharBlockNamed( BackRun& back, cchar_ptr name, uint_32 len )
 {
     dbg_type ret;
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret = DFCharBlockNamed( back, name, len );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret = CVCharBlock( back, len );
     } else {
         ret = WVCharBlock( back, len );
@@ -209,9 +209,9 @@ dbg_type _CGAPI DBIndCharBlock( BackRun& back, back_handle len, cg_type len_type
 {
     dbg_type ret;
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret = DFIndCharBlock( back, len, len_type, off );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret = CVIndCharBlock( back, len, len_type, off );
     } else {
         ret = WVIndCharBlock( back, len, len_type, off );
@@ -225,9 +225,9 @@ dbg_type _CGAPI DBLocCharBlock( BackRun& back, dbg_loc loc, cg_type len_type )
     dbg_type ret;
 
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret = DFLocCharBlock( back, loc, len_type );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret = CVLocCharBlock( back, loc, len_type );
     } else {
         ret = WVLocCharBlock( back, loc, len_type );
@@ -243,9 +243,9 @@ dbg_type _CGAPI DBFtnArray( BackRun& back, back_handle dims, cg_type lo_bound_ti
 {
     dbg_type ret;
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret = DFFtnArray( back, dims, lo_bound_tipe, num_elems_tipe, off, base );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret = CVFtnArray( back, dims, lo_bound_tipe, num_elems_tipe, off, base );
     } else {
         ret = WVFtnArray( back, dims, lo_bound_tipe, num_elems_tipe, off, base );
@@ -259,9 +259,9 @@ dbg_type _CGAPI DBArray( BackRun& back, dbg_type idx, dbg_type base )
 {
     dbg_type ret;
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret = DFArray( back, idx, base );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret = CVArray( back, idx, base );
     } else {
         ret = WVArray( back, idx, base );
@@ -341,9 +341,9 @@ dbg_type _CGAPI DBEndArray( BackRun& back, dbg_array ar )
 {
     dbg_type ret;
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret =  DFEndArray( back, ar );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret =  CVEndArray( back, ar );
     } else {
         ret = WVEndArray( back, ar );
@@ -357,9 +357,9 @@ dbg_type _CGAPI DBIntArray( BackRun& back, uint_32 hi, dbg_type base )
 {
     dbg_type ret;
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret = DFIntArray( back, hi, base );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret = CVIntArray( back, hi, base );
     } else {
         ret = WVIntArray( back, hi, base );
@@ -374,9 +374,9 @@ dbg_type _CGAPI DBIntArrayCG( BackRun& back, cg_type tipe, uint_32 hi, dbg_type 
     const type_def  *tipe_addr;
 
     tipe_addr = TypeAddress( back, tipe );
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret = DFIntArray( back, hi, base );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret = CVArraySize( back, tipe_addr->length, hi, base );
     } else {
         ret = WVIntArray( back, hi, base );
@@ -389,9 +389,9 @@ dbg_type _CGAPI DBSubRange( BackRun& back, int_32 lo, int_32 hi, dbg_type base )
 {
     dbg_type ret;
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret = DFSubRange( lo, hi, base );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret = CVSubRange( back, lo, hi, base );
     } else {
         ret = WVSubRange( back, lo, hi, base );
@@ -406,9 +406,9 @@ dbg_type _CGAPI DBDereference( BackRun& back, cg_type ptr_type, dbg_type base )
     dbg_type ret;
 
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret = DFDereference( back, ptr_type, base );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret = CVDereference( back, ptr_type, base );
     } else {
         ret = WVDereference( back, ptr_type, base );
@@ -422,9 +422,9 @@ dbg_type _CGAPI DBPtr( BackRun& back, cg_type ptr_type, dbg_type base )
 {
     dbg_type ret;
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret = DFPtr( back, ptr_type, base );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret = CVPtr( back, ptr_type, base );
     } else {
         ret = WVPtr( back, ptr_type, base );
@@ -438,9 +438,9 @@ dbg_type _CGAPI DBBasedPtr( BackRun& back, cg_type ptr_type, dbg_type base,
 {
     dbg_type ret;
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret = DFBasedPtr( back, ptr_type, base, loc_segment );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret = CVBasedPtr( back, ptr_type, base, loc_segment );
     } else {
         ret = WVBasedPtr( back, ptr_type, base, loc_segment );
@@ -476,9 +476,9 @@ dbg_struct _CGAPI DBBegNameStruct( BackRun& back, cchar_ptr nm, cg_type tipe, bo
     st->is_class = false;
     st->is_nested = back.dbtypes.Nested;
     st->is_cnested = false;
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         DFBegStruct( back, st );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
 //       CVBegStruct( st );
         st->me = DBG_NIL_TYPE;
     } else {
@@ -666,9 +666,9 @@ dbg_type _CGAPI DBEndStruct( BackRun& back, dbg_struct st )
 {
     dbg_type ret;
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret =  DFEndStruct( back, st );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret =  CVEndStruct( back, st );
     } else {
         ret = WVEndStruct( back, st );
@@ -734,9 +734,9 @@ dbg_type _CGAPI DBEndEnum( BackRun& back, dbg_enum en )
 {
     dbg_type ret;
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret = DFEndEnum( back, en );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret = CVEndEnum( back, en );
     } else {
         ret = WVEndEnum( back, en );
@@ -790,9 +790,9 @@ dbg_type _CGAPI DBEndProc( BackRun& back, dbg_proc pr )
 {
     dbg_type ret;
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         ret =  DFEndProc( back, pr );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         ret =  CVEndProc( back, pr );
     } else {
         ret = WVEndProc( back, pr );

@@ -181,7 +181,7 @@ void    WVSetBase( BackRun& back )
     temp_buff   temp;
     back_handle bck;
 
-    if( _IsModel( CGSW_GEN_DBG_LOCALS ) && NeedBaseSet(back) ) {
+    if( IsModel( back, CGSW_GEN_DBG_LOCALS ) && NeedBaseSet(back) ) {
         bck = BENewBack( back, NULL );
         bck->segid = AskOP(back);
         OutLabel( back, bck->lbl );
@@ -244,7 +244,7 @@ void    WVRtnEnd( BackRun& back, dbg_rtn *rtn, offset lc )
     off = 0;
     if( rtn->obj_type != DBG_NIL_TYPE ) {
         /* is a member function */
-        PUSH_OP( back.data.DbgLocals );
+        { segment_id old_segid = ChangeOP( back, back.data.DbgLocals );
             off = AskLocation(back);
             BuffStart( back, &temp, SYM_CODE + CODE_MEMBER_SCOPE );
             DumpParentPtr( back, rtn->blk );
@@ -254,11 +254,11 @@ void    WVRtnEnd( BackRun& back, dbg_rtn *rtn, offset lc )
                 LocDump( back, rtn->obj_loc );
             }
             BuffEnd( back, back.data.DbgLocals );
-        POP_OP();
+        SetOP( back, old_segid ); }
     }
     sym = AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) );
     tipe = FEDbgType( *back.front, sym );
-    if( (call_class_target)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL ) {
+    if( (call_class_target)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL ) {
         BuffStart( back, &temp, SYM_CODE + CODE_FAR_RTN );
     } else {
         BuffStart( back, &temp, SYM_CODE + CODE_NEAR_RTN );

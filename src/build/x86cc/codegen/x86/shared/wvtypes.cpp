@@ -179,7 +179,7 @@ void    WVDumpName( BackRun& back, dbg_name name, dbg_type tipe )
 
     NewType( back, &temp, WT_NAME + NAME_NAME );
     name->refno = back.data.TypeIdx;
-    if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
         BuffIndex( back, name->scope );
         if( tipe == DBG_FWD_TYPE ) {
             BuffForward( back, &name->dpatch );
@@ -196,12 +196,12 @@ void WVBackRefType( BackRun& back, dbg_name name, dbg_type tipe )
 {
     offset      here;
 
-    PUSH_OP( name->dpatch.segid );
+    { segment_id old_segid = ChangeOP( back, name->dpatch.segid );
         here = AskLocation(back);
         SetLocation( back, name->dpatch.offset );
         DataShort( back, 0x80 | (tipe >> 8) | (tipe << 8) );
         SetLocation( back, here );
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 dbg_type        WVCharBlock( BackRun& back, uint_32 len )
@@ -577,7 +577,7 @@ static  void    EndType( BackRun& back, bool check_too_big ) {
 /*********************************************/
 
 
-    if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
         if( check_too_big )
             ChkDbgSegSize( back, MAX_TYPE_SIZE, true );
         BuffEnd( back, back.data.DbgTypes );
@@ -613,12 +613,12 @@ void WVDmpCueInfo( BackRun& back, long_offset where )
     offset      here;
 
 
-    PUSH_OP( back.wvtypes.CueInfoOffset.segid );
+    { segment_id old_segid = ChangeOP( back, back.wvtypes.CueInfoOffset.segid );
         here = AskLocation(back);
         SetLocation( back, back.wvtypes.CueInfoOffset.offset );
         DataLong( back, where );  // current location in DbgTypes segment
         SetLocation( back, here );
-    POP_OP();
+    SetOP( back, old_segid ); }
     ctl = &back.dbsyms.LineInfo;
     blk = ctl->head;
     DataShort( back, ctl->count );  // number of entries

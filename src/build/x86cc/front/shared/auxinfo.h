@@ -29,14 +29,14 @@
 *
 ****************************************************************************/
 
-/*    enum        C/C++ magic    F77 magic     aux_info     */
-pick( M_DEFAULT,  "\0\0default", "DEFAULT",    &DefaultInfo  )
-pick( M_CDECL,    "__cdecl",     "__CDECL",    &CdeclInfo    )
-pick( M_PASCAL,   "__pascal",    "__PASCAL",   &PascalInfo   )
-pick( M_FORTRAN,  "__fortran",   "__FORTRAN",  &FortranInfo  )
-pick( M_SYSCALL,  "__syscall",   "__SYSCALL",  &SyscallInfo  )
-pick( M_STDCALL,  "__stdcall",   "__STDCALL",  &StdcallInfo  )
-pick( M_FASTCALL, "__fastcall",  "__FASTCALL", &FastcallInfo )
-pick( M_OPTLINK,  "__optlink",   "__OPTLINK",  &OptlinkInfo  )
-pick( M_SYSTEM,   "__system",    "__SYSTEM",   &SyscallInfo  )
-pick( M_WATCALL,  "__watcall",   "__WATCALL",  &WatcallInfo  )
+/*    enum        C/C++ magic    F77 magic     aux_info (the run's function of that name) */
+pick( M_DEFAULT,  "\0\0default", "DEFAULT",    DefaultInfo   )
+pick( M_CDECL,    "__cdecl",     "__CDECL",    CdeclInfo     )
+pick( M_PASCAL,   "__pascal",    "__PASCAL",   PascalInfo    )
+pick( M_FORTRAN,  "__fortran",   "__FORTRAN",  FortranInfo   )
+pick( M_SYSCALL,  "__syscall",   "__SYSCALL",  SyscallInfo   )
+pick( M_STDCALL,  "__stdcall",   "__STDCALL",  StdcallInfo   )
+pick( M_FASTCALL, "__fastcall",  "__FASTCALL", FastcallInfo  )
+pick( M_OPTLINK,  "__optlink",   "__OPTLINK",  OptlinkInfo   )
+pick( M_SYSTEM,   "__system",    "__SYSTEM",   SyscallInfo   )
+pick( M_WATCALL,  "__watcall",   "__WATCALL",  WatcallInfo   )

@@ -133,7 +133,7 @@ static bool     OptMemMove( BackRun& back, instruction *ins, instruction *next )
                 break;
             case 2:
 #if _TARGET & _TARG_8086
-                if( ! _CPULevel( CPU_386 ) ) {
+                if( ! CPULevel( back, CPU_386 ) ) {
                     shift = 0;
                     result_type_class = static_cast<type_class_def>(0);
                     break;
@@ -402,7 +402,7 @@ void    OptSegs( BackRun& back )
                         DoNothing(back, ins);
                     }
                 }
-                if( _CPULevel( CPU_386 ) ) {
+                if( CPULevel( back, CPU_386 ) ) {
                     if( isPushX2( ins ) && isPushX2( next ) ) {
                         if( OptPushDWORDConstant( back, ins, next ) ) {
                             /*

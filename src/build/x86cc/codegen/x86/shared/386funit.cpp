@@ -69,7 +69,7 @@ static const FU_entry FUnits586[] = {
 
 const FU_entry *FUEntry( BackRun& back, instruction *ins )
 {
-    if( _CPULevel( CPU_586 ) ) {
+    if( CPULevel( back, CPU_586 ) ) {
         return( &FUnits586[ins->u.gen_table->func_unit] );
     } else {
         return( &FUnits486[ins->u.gen_table->func_unit] );

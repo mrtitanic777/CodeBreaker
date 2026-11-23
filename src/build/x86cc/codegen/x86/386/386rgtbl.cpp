@@ -648,10 +648,10 @@ void            InitRegTbl( BackRun& back )
  * Initialize the tables.
  */
 {
-    if( _FPULevel( FPU_87 ) ) {
+    if( FPULevel( back, FPU_87 ) ) {
         HW_CAsgn( back.x386rgtbl->STParmReg[back.i87data.Max87Stk], HW_EMPTY );
     }
-    if( _IsTargetModel( CGSW_X86_INDEXED_GLOBALS ) ) {
+    if( IsTargetModel( back, CGSW_X86_INDEXED_GLOBALS ) ) {
         HW_CAsgn( back.x386rgtbl->FPParm2Reg[0], HW_ECX_ESI );
     } else {
         HW_CAsgn( back.x386rgtbl->FPParm2Reg[0], HW_ECX_EBX );
@@ -703,7 +703,7 @@ const hw_reg_set    *ParmChoices( BackRun& back, type_class_def type_class )
 {
     const hw_reg_set    *list;
 
-    if( _FPULevel( FPU_87 ) ) {
+    if( FPULevel( back, FPU_87 ) ) {
         list = back.x386rgtbl->ParmSets8087[type_class];
     } else {
         list = ParmSets[type_class];
@@ -749,7 +749,7 @@ hw_reg_set      ReturnReg( BackRun& back, type_class_def type_class, bool use_87
 {
     const hw_reg_set  *list;
 
-    if( _FPULevel( FPU_87 ) && use_87 ) {
+    if( FPULevel( back, FPU_87 ) && use_87 ) {
         list = RegSetList(back, Return8087[type_class]);
     } else {
         list = RegSetList(back, ReturnSets[type_class]);
@@ -1137,15 +1137,15 @@ hw_reg_set      FixedRegs( BackRun& back )
     HW_CTurnOn( fixed, HW_EBP );
     HW_CTurnOn( fixed, HW_SS );
     HW_CTurnOn( fixed, HW_CS );
-    if( _IsntTargetModel( CGSW_X86_FLOATING_DS ) )
+    if( IsntTargetModel( back, CGSW_X86_FLOATING_DS ) )
         HW_CTurnOn( fixed, HW_DS );
-    if( _IsntTargetModel( CGSW_X86_FLOATING_ES ) )
+    if( IsntTargetModel( back, CGSW_X86_FLOATING_ES ) )
         HW_CTurnOn( fixed, HW_ES );
-    if( _IsntTargetModel( CGSW_X86_FLOATING_FS ) )
+    if( IsntTargetModel( back, CGSW_X86_FLOATING_FS ) )
         HW_CTurnOn( fixed, HW_FS );
-    if( _IsntTargetModel( CGSW_X86_FLOATING_GS ) )
+    if( IsntTargetModel( back, CGSW_X86_FLOATING_GS ) )
         HW_CTurnOn( fixed, HW_GS );
-    if( _IsTargetModel( CGSW_X86_INDEXED_GLOBALS ) )
+    if( IsTargetModel( back, CGSW_X86_INDEXED_GLOBALS ) )
         HW_CTurnOn( fixed, HW_EBX );
     return( fixed );
 }
@@ -1206,9 +1206,9 @@ hw_reg_set      AllCacheRegs( BackRun& back )
     HW_CTurnOn( all, HW_ES );
     HW_CTurnOn( all, HW_FS );
     HW_CTurnOn( all, HW_GS );
-    if( _IsTargetModel( CGSW_X86_FLOATING_DS ) )
+    if( IsTargetModel( back, CGSW_X86_FLOATING_DS ) )
         HW_CTurnOn( all, HW_DS );
-    if( _IsTargetModel( CGSW_X86_INDEXED_GLOBALS ) )
+    if( IsTargetModel( back, CGSW_X86_INDEXED_GLOBALS ) )
         HW_CTurnOff( all, HW_EBX );
     return( all );
 }

@@ -335,7 +335,7 @@ void FreeEnums( FrontRun& front )
 
     for( hash = 0; hash < ID_HASH_SIZE; hash++ ) {
         for( ; (esym = front.cvars.EnumTable[hash]) != NULL; front.cvars.EnumTable[hash] = esym->next_enum ) {
-            if( !CheckEqSymLevel( esym->parent ) ) {
+            if( !CheckEqSymLevel( front, esym->parent ) ) {
                 break;
             }
         }

@@ -385,7 +385,7 @@ int     ExpandOps( BackRun& back, bool keep_on_truckin )
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         EXBlip();
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ) {
-            if( !keep_on_truckin && _MemLow ) {
+            if( !keep_on_truckin && MemLow( back ) ) {
                 return( -1 );
             }
             ins = ExpandIns( back, ins );

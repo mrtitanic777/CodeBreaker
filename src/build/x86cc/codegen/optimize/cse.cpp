@@ -154,7 +154,7 @@ static  bool    FindDefnBlocks( BackRun& back, block *blk, instruction *cond, op
         if( !_IsBlkAttr( input, BLK_JUMP ) )
             continue;
         for( prev = input->ins.head.prev; prev->head.opcode != OP_BLOCK; prev = prev->head.prev ) {
-            if( _IsntReDefinedBy( prev, op ) )
+            if( IsntReDefinedBy( back, prev, op ) )
                 continue;
             if( prev->head.opcode != OP_MOV )
                 break;
@@ -510,9 +510,9 @@ static  bool    UnOpsLiveFrom( BackRun& back, instruction *first, instruction *l
         }
         if( ins == first )
             break;
-        if( _IsReDefinedBy( ins, first->operands[0] ) )
+        if( IsReDefinedBy( back, ins, first->operands[0] ) )
             return( false );
-        if( _IsReDefinedBy( ins, first->result ) ) {
+        if( IsReDefinedBy( back, ins, first->result ) ) {
             return( false );
         }
     }
@@ -538,9 +538,9 @@ static  who_dies BinOpsLiveFrom( BackRun& back, instruction *first,
             }
             if( ins == first )
                 break;
-            if( _IsReDefinedBy( ins, op1 ) )
+            if( IsReDefinedBy( back, ins, op1 ) )
                 return( OP_DIES );
-            if( _IsReDefinedBy( ins, op2 ) ) {
+            if( IsReDefinedBy( back, ins, op2 ) ) {
                 return( OP_DIES );
             }
         }
@@ -552,11 +552,11 @@ static  who_dies BinOpsLiveFrom( BackRun& back, instruction *first,
             }
             if( ins == first )
                 break;
-            if( _IsReDefinedBy( ins, op1 ) )
+            if( IsReDefinedBy( back, ins, op1 ) )
                 return( OP_DIES );
-            if( _IsReDefinedBy( ins, op2 ) )
+            if( IsReDefinedBy( back, ins, op2 ) )
                 return( OP_DIES );
-            if( _IsReDefinedBy( ins, result ) ) {
+            if( IsReDefinedBy( back, ins, result ) ) {
                 result_dies = true;
             }
         }
@@ -586,7 +586,7 @@ static  bool            HoistLooksGood( BackRun& back, instruction *target, inst
         return( true );
     while( blk != NULL ) {
         if( blk->inputs != 1 )
-            _Zoiks( ZOIKS_103 ); // because we're in a partition
+            Zoiks( back, ZOIKS_103 ); // because we're in a partition
         blk = blk->input_edges->source;
         if( _IsBlkAttr( blk, BLK_SELECT ) )
             return( false );
@@ -594,7 +594,7 @@ static  bool            HoistLooksGood( BackRun& back, instruction *target, inst
             return( true );
         }
     }
-    _Zoiks( ZOIKS_104 );
+    Zoiks( back, ZOIKS_104 );
     return( true );
 }
 
@@ -711,7 +711,7 @@ static  bool    OkToInvert( BackRun& back, name *div )
  * must have said that it was OK.
  */
 {
-    if( _IsModel( CGSW_GEN_FP_UNSTABLE_OPTIMIZATION ) )
+    if( IsModel( back, CGSW_GEN_FP_UNSTABLE_OPTIMIZATION ) )
         return( true );
     if( (div->n.class_ == N_TEMP)
       && (div->t.temp_flags & CONST_TEMP) ) {
@@ -760,7 +760,7 @@ static  bool    ProcessDivide( BackRun& back, instruction *ins1, instruction *in
         divisor = ins1->operands[1];
         if( !OkToInvert( back, divisor ) )
             return( false );
-        if( _IsntReDefinedBy( ins1, divisor ) ) {
+        if( IsntReDefinedBy( back, ins1, divisor ) ) {
             killed = BinOpsLiveFrom( back, ins1, ins2, divisor, divisor, NULL );
             if( killed != OP_DIES ) {
                 temp = AllocTemp( back, ins1->type_class );
@@ -941,11 +941,11 @@ static  bool    DoArithOps( BackRun& back, block *root )
               && ins->result->n.class_ != N_REGISTER
               && !IsVolatile( ins->result ) ) {
                 ins->ins_flags &= ~INS_DEFINES_OWN_OPERAND;
-                if( _IsReDefinedBy( ins, ins->operands[0] ) ) {
+                if( IsReDefinedBy( back, ins, ins->operands[0] ) ) {
                     ins->ins_flags |= INS_DEFINES_OWN_OPERAND;
                 }
                 if( _OpIsBinary( opcode ) ) {
-                    if( _IsReDefinedBy( ins, ins->operands[1] ) ) {
+                    if( IsReDefinedBy( back, ins, ins->operands[1] ) ) {
                         ins->ins_flags |= INS_DEFINES_OWN_OPERAND;
                     }
                 }
@@ -1116,7 +1116,7 @@ static  bool    CanLinkMove( BackRun& back, instruction *ins )
         return( false );
     if( IsVolatile( ins->result ) )
         return( false );
-    if( _IsReDefinedBy( ins, ins->operands[0] ) )
+    if( IsReDefinedBy( back, ins, ins->operands[0] ) )
         return( false );
     if( FPIsConvert( back, ins ) )
         return( false );

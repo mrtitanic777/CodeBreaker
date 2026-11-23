@@ -34,11 +34,6 @@
 #pragma once
 #include "import.h"
 
-#define OUTPUT_OBJECT_NAME(s,f,d,k) DoOutObjectName( back, s, (outputter_fn *)(f), (outputter_data)(d), k )
-
-#define PUSH_OP(s)  { segment_id old_segid; old_segid = ChangeOP(back, s)
-#define POP_OP()    SetOP( back, old_segid ); }
-
 typedef void        *outputter_data;
 typedef void        outputter_fn( BackRun&, const char *, outputter_data );
 

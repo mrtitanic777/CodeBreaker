@@ -264,9 +264,9 @@ void    InitDbgInfo( BackRun& back )
 //    idx = CueAdd( fno, 1, 1 );
     CueAdd( back, fno, 1, 1 );
     back.data.SrcLine = 1;
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         DFInitDbgInfo(back);
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         CVInitDbgInfo(back);
     } else {
         WVInitDbgInfo(back);
@@ -279,9 +279,9 @@ void    FiniDbgInfo( BackRun& back )
 {
     DBSrcFileFini(back);
     SourceCueFini( back, &back.dbsyms.LineInfo );
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         DFFiniDbgInfo();
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         CVFiniDbgInfo();
     } else {
         WVFiniDbgInfo();
@@ -304,7 +304,7 @@ void _CGAPI     DBSrcCue( BackRun& back, uint fno, uint line, uint col )
 
 //  fname = SrcFNoFind( fno );
 //  printf( "in %s %d %d\n", fname, line, col );
-    hasxcue =  _IsntModel( CGSW_GEN_DBG_TYPES ); // Just OMF line nums
+    hasxcue =  IsntModel( back, CGSW_GEN_DBG_TYPES ); // Just OMF line nums
     if( hasxcue ) {
         if( fno == 0 && col == 1 ) {
             DBLineNum( back, line );
@@ -318,9 +318,9 @@ void _CGAPI     DBSrcCue( BackRun& back, uint fno, uint line, uint col )
 void _CGAPI DBGenStMem( BackRun& back, cg_sym_handle sym, dbg_loc loc )
 /******************************************************/
 {
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         DFGenStatic( back, sym, loc );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         CVGenStatic( back, sym, loc, true );
     } else {
     }
@@ -358,7 +358,7 @@ void _CGAPI DBGenSym( BackRun& back, cg_sym_handle sym, dbg_loc loc, int scoped 
     fe_attr     attr;
     dbg_local   *lcl;
 
-    if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_LOCALS ) ) {
         attr = FEAttr( *back.front, sym );
         if( (attr & FE_IMPORT) == 0 ) {
             if( attr & FE_PROC ) {
@@ -377,9 +377,9 @@ void _CGAPI DBGenSym( BackRun& back, cg_sym_handle sym, dbg_loc loc, int scoped 
                 lcl->kind = DBG_SYM_VAR;
                 AddLocal( &back.data.CurrProc->targ.debug->blk->locals, lcl );
             } else {
-                if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+                if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
                     DFGenStatic( back, sym, loc );
-                } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+                } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
                     CVGenStatic( back, sym, loc, false );
                 } else {
                     WVGenStatic( back, sym , loc );
@@ -398,7 +398,7 @@ void    _CGAPI DBModSym( BackRun& back, cg_sym_handle sym, cg_type indirect )
 
     /* unused parameters */ (void)indirect;
 
-    if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_LOCALS ) ) {
         attr = FEAttr( *back.front, sym );
         if( (attr & FE_IMPORT) == 0 ) {
             if( attr & FE_PROC ) {
@@ -421,9 +421,9 @@ void _CGAPI DBObject( BackRun& back, dbg_type tipe, dbg_loc loc, cg_type ptr_typ
 
     back.data.CurrProc->targ.debug->obj_type = tipe;
     back.data.CurrProc->targ.debug->obj_loc = LocDupl( loc );
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         //
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         //
     } else {
         WVObjectPtr( back, ptr_type );
@@ -440,9 +440,9 @@ void    DBAllocReg( name *reg, name *temp )
 void _CGAPI DBTypeDef( BackRun& back, cchar_ptr nm, dbg_type tipe )
 /**************************************************/
 {
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         DFTypedef( back, nm, tipe );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         CVTypedef( back, nm, tipe );
     } else {
     }
@@ -472,9 +472,9 @@ void    _CGAPI DBLocalType( BackRun& back, cg_sym_handle sym, bool kind )
 {
     dbg_local   *lcl;
 
-    if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
-        if( _IsModel( CGSW_GEN_DBG_CV )
-          || _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_LOCALS ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_CV )
+          || IsModel( back, CGSW_GEN_DBG_DF ) ) {
             lcl = static_cast<dbg_local *>(CGAlloc( back, sizeof( dbg_local ) ));
             lcl->sym = sym;
             lcl->loc = NULL;
@@ -550,9 +550,9 @@ void _CGAPI     DBEndBlock( BackRun& back )
 void    DbgSetBase( BackRun& back )
 /************************/
 {
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         /* nothing */
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         CVSetBase();
     } else {
         WVSetBase(back);
@@ -567,7 +567,7 @@ void    DbgParmLoc( BackRun& back, name *parm, cg_sym_handle sym )
     dbg_local       *lcl;
     dbg_loc         loc;
 
-    if( _IsntModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsntModel( back, CGSW_GEN_DBG_DF ) ) {
         if( parm->n.class_ != N_REGISTER  ) {
             return;
         }
@@ -663,9 +663,9 @@ void    EmitRtnEnd( BackRun& back )
 /************************/
 {
     EmitDbg( back, static_cast<oc_class>(OC_INFO_DBG_RTN_END), back.data.CurrProc->targ.debug );
-    PUSH_OP( AskCodeSeg(back) );
+    { segment_id old_segid = ChangeOP( back, AskCodeSeg(back) );
         EmptyQueue(back);
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 
@@ -678,7 +678,7 @@ void    DbgRtnBeg( BackRun& back, dbg_rtn *rtn,  offset lc )
 /*******************************************/
 {
     rtn->rtn_blk->start = lc;
-    if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         CVRtnBeg( rtn, lc );
     }
 }
@@ -688,9 +688,9 @@ void    DbgProEnd( BackRun& back, dbg_rtn *rtn, offset lc )
 /******************************************/
 {
     rtn->pro_size = lc - rtn->rtn_blk->start;
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         DFProEnd( back, rtn, lc );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         CVProEnd( back, rtn, lc );
     }
 }
@@ -700,9 +700,9 @@ void    DbgBlkBeg( BackRun& back, dbg_block *blk, offset lc )
 /********************************************/
 {
     blk->start = lc;
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         DFBlkBeg( back, blk, lc );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         CVBlkBeg( back, blk, lc );
     }
 }
@@ -710,9 +710,9 @@ void    DbgBlkBeg( BackRun& back, dbg_block *blk, offset lc )
 void    DbgBlkEnd( BackRun& back, dbg_block *blk, offset lc )
 /********************************************/
 {
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         DFBlkEnd( back, blk, lc );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         CVBlkEnd( back, blk, lc );
     } else {
         WVBlkEnd( back, blk, lc );
@@ -725,9 +725,9 @@ void    DbgEpiBeg( BackRun& back, dbg_rtn *rtn, offset lc )
 /******************************************/
 {
     rtn->epi_start = lc;
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         DFEpiBeg( back, rtn, lc );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         CVEpiBeg( rtn, lc );
     }
 }
@@ -736,9 +736,9 @@ void    DbgEpiBeg( BackRun& back, dbg_rtn *rtn, offset lc )
 void    DbgRtnEnd( BackRun& back, dbg_rtn *rtn, offset lc )
 /******************************************/
 {
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
         DFRtnEnd( back, rtn, lc );
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         CVRtnEnd( back, rtn, lc );
     } else {
         WVRtnEnd( back, rtn, lc );

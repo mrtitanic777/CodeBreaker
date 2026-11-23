@@ -89,9 +89,9 @@ static void BuffPatchSet( BackRun& back, segment_id segid, dbg_patch *dpatch )
 {
     long_offset         off;
 
-    PUSH_OP( segid );
+    { segment_id old_segid = ChangeOP( back, segid );
         off = AskBigLocation(back);
-    POP_OP();
+    SetOP( back, old_segid ); }
     dpatch->segid = segid;
     dpatch->offset = off;
 }
@@ -102,10 +102,10 @@ static  void    BuffWrite( BackRun& back, cv_out *out, void *to )
     unsigned    len;
 
     len = (byte *)to - out->beg;
-    PUSH_OP( out->segid );
+    { segment_id old_segid = ChangeOP( back, out->segid );
         DataBytes( back, len, out->beg );
         out->beg = static_cast<byte *>(to);
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 static  void   BuffSkip( cv_out *out, void *to )
@@ -120,9 +120,9 @@ static  void    buffEnd( BackRun& back, cv_out *out )
     unsigned    len;
 
     len = out->ptr - out->beg;
-    PUSH_OP( out->segid );
+    { segment_id old_segid = ChangeOP( back, out->segid );
         DataBytes( back, len, out->beg );
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 static  void  *StartSym( cv_out *out, sg_index what )
@@ -185,15 +185,15 @@ static int SetCvLang( BackRun& back )
 static  void    InitSegBck( BackRun& back )
 /********************************/
 {
-    if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
-        PUSH_OP( back.cvdbg.CVSyms );
+    if( IsModel( back, CGSW_GEN_DBG_LOCALS ) ) {
+        { segment_id old_segid = ChangeOP( back, back.cvdbg.CVSyms );
             DataLong( back, CV_OMF_SIG );
-        POP_OP();
+        SetOP( back, old_segid ); }
     }
-    if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
-        PUSH_OP( back.cvdbg.CVTypes );
+    if( IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
+        { segment_id old_segid = ChangeOP( back, back.cvdbg.CVTypes );
             DataLong( back, CV_OMF_SIG );
-        POP_OP();
+        SetOP( back, old_segid ); }
     }
 }
 
@@ -208,7 +208,7 @@ void    CVObjInitDbgInfo( BackRun& back )
     char        *name;
 
     InitSegBck(back);
-    if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_LOCALS ) ) {
         NewBuff( out, back.cvdbg.CVSyms );
         optr = static_cast<cs_objname *>(StartSym(  out, SG_OBJNAME ));
         optr->signature = 0;
@@ -274,9 +274,9 @@ void    CVObjFiniDbgInfo( void )
 static void     SymReloc( BackRun& back, segment_id segid, cg_sym_handle sym, offset lc )
 /************************************************************************/
 {
-    PUSH_OP( segid );
+    { segment_id old_segid = ChangeOP( back, segid );
         FEPtrBaseOffset( back, sym, lc );
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 static void LabelReloc( BackRun& back, segment_id segid, back_handle bck, offset disp )
@@ -285,11 +285,11 @@ static void LabelReloc( BackRun& back, segment_id segid, back_handle bck, offset
     const type_def  *ptr_type;
     segment_id      bck_segid;
 
-    PUSH_OP( segid );
+    { segment_id old_segid = ChangeOP( back, segid );
         bck_segid = AskSegID( back, bck, CG_BACK );
         ptr_type = TypeAddress( back, TY_LONG_POINTER );
         BackPtr( back, bck, bck_segid, disp, ptr_type );
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 void    CVOutBck( BackRun& back, cv_out *out, back_handle bck, offset add, dbg_type tipe )
@@ -619,7 +619,7 @@ void    CVProEnd( BackRun& back, dbg_rtn *rtn, offset lc )
     tipe = FEDbgType( *back.front, sym );
     ptr->proctype = tipe;
     ptr->flags.s = 0;
-    if( (call_class_target)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL ) {
+    if( (call_class_target)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL ) {
         ptr->flags.f.far_ret = true;
     }
     if( rtn->obj_type != DBG_NIL_TYPE ) {
@@ -686,13 +686,13 @@ void    CVBlkEnd( BackRun& back, dbg_block *blk, offset lc )
     cv_out              out[1];
 
     dpatch = &blk->bpatches->dpatch;
-    PUSH_OP( dpatch->segid );
+    { segment_id old_segid = ChangeOP( back, dpatch->segid );
         here = AskBigLocation(back);
         SetBigLocation( back, dpatch->offset + offsetof( s_block, f.length ) );
         length = lc - blk->start;
         DataBytes( back, sizeof( length ), &length );
         SetBigLocation( back, here );
-    POP_OP();
+    SetOP( back, old_segid ); }
     NewBuff( out, back.cvdbg.CVSyms );
     StartSym(  out, SG_END );
     EndSym( out );
@@ -716,7 +716,7 @@ void    CVRtnEnd( BackRun& back, dbg_rtn *rtn, offset lc )
     long_offset         here;
 
     dpatch = back.cvsyms.RtnPatch;
-    PUSH_OP( dpatch->segid );
+    { segment_id old_segid = ChangeOP( back, dpatch->segid );
         here = AskBigLocation(back);
         SetBigLocation( back, dpatch->offset + offsetof( s_gproc, f.proc_length ) );
         proc_length = lc - rtn->rtn_blk->start;
@@ -725,7 +725,7 @@ void    CVRtnEnd( BackRun& back, dbg_rtn *rtn, offset lc )
         debug_end = rtn->epi_start - rtn->rtn_blk->start;
         DataBytes( back, sizeof( debug_end ), &debug_end );
         SetBigLocation( back, here );
-    POP_OP();
+    SetOP( back, old_segid ); }
     NewBuff( out, back.cvdbg.CVSyms );
     StartSym(  out, SG_END );
     EndSym( out );

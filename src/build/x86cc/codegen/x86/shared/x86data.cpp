@@ -49,6 +49,7 @@
 #include "x86enc2.h"
 #include "encode.h"
 #include "x86obj.h"
+#include "jumpsout.h"
 #include "x86data.h"
 #include "feprotos.h"
 #include "backrun.hpp"
@@ -150,11 +151,11 @@ static  void    DoImpPtr( BackRun& back, cg_sym_handle sym, fix_class class_, of
     SetUpObj( back, true );
     OutImport( back, sym, class_, false );
     if( F_CLASS( class_ ) == F_BASE ) {
-        _OutFarSeg( 0 );
+        OutFarSeg( back, 0 );
     } else {
-        _OutFarOff( plus );
+        OutFarOff( back, plus );
         if( F_CLASS( class_ ) == F_PTR ) {
-            _OutFarSeg( 0 );
+            OutFarSeg( back, 0 );
         }
     }
 }
@@ -167,11 +168,11 @@ void    BackImpPtr( BackRun& back, const char *nm, back_handle bck, offset plus 
     SetUpObj( back, true );
     OutBckImport( back, nm, bck, class_ );
     if( class_ == F_BASE ) {
-        _OutFarSeg( 0 );
+        OutFarSeg( back, 0 );
     } else {
-        _OutFarOff( plus );
+        OutFarOff( back, plus );
         if( class_ == F_PTR ) {
-            _OutFarSeg( 0 );
+            OutFarSeg( back, 0 );
         }
     }
 }
@@ -187,15 +188,15 @@ void    OutLblPatch( BackRun& back, label_handle lbl, fix_class class_, offset p
         val = 0;
     }
     if( F_CLASS( class_ ) == F_BASE ) {
-        _OutFarSeg( 0 );
+        OutFarSeg( back, 0 );
     } else {
         if( F_CLASS( class_ ) == F_BIG_OFFSET ) {
             OutDataLong( back, val + plus );
         } else {
-            _OutFarOff( val + plus );
+            OutFarOff( back, val + plus );
         }
         if( F_CLASS( class_ ) == F_PTR ) {
-            _OutFarSeg( 0 );
+            OutFarSeg( back, 0 );
         }
     }
 }
@@ -210,8 +211,8 @@ void    FEPtr( BackRun& back, cg_sym_handle sym, const type_def *tipe, offset pl
     TellOptimizerByPassed(back);
     attr = FEAttr( *back.front, sym );
     if( (attr & FE_PROC)
-      && _IsTargetModel( CGSW_X86_WINDOWS )
-      && ((call_class_target)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL) ) {
+      && IsTargetModel( back, CGSW_X86_WINDOWS )
+      && ((call_class_target)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL) ) {
         class_ = F_LDR_OFFSET;
     } else {
         class_ = F_OFFSET;
@@ -293,9 +294,9 @@ void    BackPtrBase( BackRun& back, back_handle bck, segment_id segid )
 static  cg_class ConstDataClass( BackRun& back )
 /*************************************/
 {
-    if( _IsTargetModel( CGSW_X86_CONST_IN_CODE ) ) {
+    if( IsTargetModel( back, CGSW_X86_CONST_IN_CODE ) ) {
         return( CG_CLB );
-    } else if( _IsTargetModel( CGSW_X86_FLOATING_DS ) && _IsTargetModel( CGSW_X86_FLOATING_SS ) ) {
+    } else if( IsTargetModel( back, CGSW_X86_FLOATING_DS ) && IsTargetModel( back, CGSW_X86_FLOATING_SS ) ) {
         return( CG_CLB );
     } else {
         return( CG_LBL );
@@ -320,7 +321,7 @@ name    *GenConstData( BackRun& back, const void *buffer, type_class_def type_cl
     } else {
         segid = AskBackSeg(back);
     }
-    PUSH_OP( segid );
+    { segment_id old_segid = ChangeOP( back, segid );
         SetUpObj( back, true );
         if( cgclass == CG_CLB ) {
             GenSelEntry( back, true );
@@ -332,7 +333,7 @@ name    *GenConstData( BackRun& back, const void *buffer, type_class_def type_cl
             OutLabel( back, label );
             DataBytes( back, size, buffer );
         }
-    POP_OP();
+    SetOP( back, old_segid ); }
     TellByPassOver(back);
     result = AllocMemory( back, label, 0, cgclass, type_class );
     result->v.usage |= USE_IN_ANOTHER_BLOCK;

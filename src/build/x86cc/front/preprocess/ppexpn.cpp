@@ -329,7 +329,7 @@ static bool COperand( FrontRun& front )
             ppctl_t old_ppctl;
 
             old_ppctl = front.cvars.PPControl;
-            PPCTL_DISABLE_MACROS();
+            PPCtlDisableMacros( front );
             NextToken(front);        // Don't error check: can have T_ID T_ID here
             if( front.cvars.CurToken == T_LEFT_PAREN ) {
                 left_loc = front.cvars.SrcFileLoc;

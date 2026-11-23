@@ -157,7 +157,7 @@ static  int     FPPushImmed( BackRun& back, pn parm )
             if( (addr->tipe->attr & TYPE_FLOAT)
               && HW_COvlap( parm->regs, HW_FLTS ) ) {
                 if( addr->format != NF_INS ) {
-                    _Zoiks( ZOIKS_043 );
+                    Zoiks( back, ZOIKS_043 );
                 }
                 addr->u.i.ins->result = AllocRegName( back, HW_ST0 );
                 Pushes( addr->u.i.ins );
@@ -233,7 +233,7 @@ static bool PushDelayedIfRedefinition( BackRun& back, instruction *ins, pn parm,
     for( ;; ) {
         for( ; next->head.opcode != OP_BLOCK; next = next->head.next ) {
             for( i = ins->num_operands; i-- > 0; ) {
-                if( _IsReDefinedBy( next, ins->operands[i] ) ) {
+                if( IsReDefinedBy( back, next, ins->operands[i] ) ) {
                     parm->ins = PushDelayed( back, ins, parm->name, state );
 //                    CGFree( parm );
                     return( true );
@@ -291,7 +291,7 @@ static  int     FPPushDelay( BackRun& back, pn parm, call_state *state )
               && HW_COvlap( parm->regs, HW_FLTS ) ) {
                 ++parms;
                 if( addr->format != NF_INS ) {
-                    _Zoiks( ZOIKS_043 );
+                    Zoiks( back, ZOIKS_043 );
                 }
                 ins = addr->u.i.ins;
                 if( PushDelayedIfStackOperand( back, ins, parm, state ) )
@@ -338,7 +338,7 @@ void    FPPushParms( BackRun& back, pn parm, call_state *state )
 {
     int parms;
 
-    if( _FPULevel( FPU_87 ) ) {
+    if( FPULevel( back, FPU_87 ) ) {
         parms = 0;
         if( CanPushImmed( back, parm, &parms )
           && parms < back.i87data.Max87Stk
@@ -369,7 +369,7 @@ static  bool    FSinCos( BackRun& back, instruction *ins1 )
     instruction *ins3;
     instruction *ins4;
 
-    if( _IsntModel( CGSW_GEN_I_MATH_INLINE ) ) {
+    if( IsntModel( back, CGSW_GEN_I_MATH_INLINE ) ) {
         return( false );
     }
     ins2 = ins1->head.next;
@@ -813,8 +813,8 @@ void    FPOptimize( BackRun& back )
  * Fix up the 8087 instructions.  The instructions so far
  */
 {
-    if( _FPULevel( FPU_87 ) ) {
-        if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+    if( FPULevel( back, FPU_87 ) ) {
+        if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
             Opt8087(back);
         }
         Wait8087(back);
@@ -825,6 +825,6 @@ bool    FPDivIsADog( BackRun& back, type_class_def type_class )
 /**********************************************/
 {
 
-    return( _FPULevel( FPU_87 ) && _IsFloating( type_class ) );
+    return( FPULevel( back, FPU_87 ) && _IsFloating( type_class ) );
 }
 

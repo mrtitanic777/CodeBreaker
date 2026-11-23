@@ -131,4 +131,47 @@ struct FrontRun {
     FrontRun& operator=(const FrontRun&) = delete;
 };
 
+/* The bodies of the functions that were macros reading the run by name and are declared in ctypes.h, cvars.h, cconst.h, toggles.h and
+ * callinfo.h: they read members, so they are here, where FrontRun is complete. */
+inline void PPCtlEnableAsm( FrontRun& front ) { front.cvars.PPControl |= PPCTL_ASM; }
+inline void PPCtlEnableEol( FrontRun& front ) { front.cvars.PPControl |= PPCTL_EOL; }
+inline void PPCtlDisableEol( FrontRun& front ) { front.cvars.PPControl &= ~PPCTL_EOL; }
+inline void PPCtlEnableMacros( FrontRun& front ) { front.cvars.PPControl &= ~PPCTL_NO_EXPAND; }
+inline void PPCtlDisableMacros( FrontRun& front ) { front.cvars.PPControl |= PPCTL_NO_EXPAND; }
+inline void PPCtlEnableLexErrors( FrontRun& front ) { front.cvars.PPControl &= ~PPCTL_NO_LEX_ERRORS; }
+inline void PPCtlDisableLexErrors( FrontRun& front ) { front.cvars.PPControl |= PPCTL_NO_LEX_ERRORS; }
+inline bool IsPPCtlNormal( const FrontRun& front ) { return ( front.cvars.PPControl & ( PPCTL_EOL | PPCTL_NO_EXPAND ) ) == 0; }
+
+template< class Entry >
+inline bool CheckEqSymLevel( const FrontRun& front, const Entry *entry ) { return entry->level == (id_level_type)front.cvars.SymLevel; }
+template< class Entry >
+inline bool CheckLtSymLevel( const FrontRun& front, const Entry *entry ) { return entry->level < (id_level_type)front.cvars.SymLevel; }
+
+CB_ALWAYS_INLINE bool IsPPOperatorPragma( const FrontRun& front, const char *s, size_t length )
+{
+    return ( front.cvars.CompFlags.extensions_enabled || front.cvars.CompVars.cstd > STD_C89 )
+        && length == LENLIT( PPOPERATOR_PRAGMA )
+        && strcmp( s, PPOPERATOR_PRAGMA ) == 0;
+}
+inline bool IsHugeData( const FrontRun& front )
+{
+    return ( front.cvars.TargetSwitches & ( CGSW_X86_BIG_DATA | CGSW_X86_CHEAP_POINTER ) ) == CGSW_X86_BIG_DATA;
+}
+
+inline pragma_toggles& Toggles( FrontRun& front ) { return front.toggles.PragmaToggles; }
+
+inline aux_info& DefaultInfo( FrontRun& front ) { return front.callinfo.BuiltinAuxInfo[0]; }
+inline aux_info& WatcallInfo( FrontRun& front ) { return front.callinfo.BuiltinAuxInfo[1]; }
+inline aux_info& CdeclInfo( FrontRun& front ) { return front.callinfo.BuiltinAuxInfo[2]; }
+inline aux_info& PascalInfo( FrontRun& front ) { return front.callinfo.BuiltinAuxInfo[3]; }
+inline aux_info& FortranInfo( FrontRun& front ) { return front.callinfo.BuiltinAuxInfo[4]; }
+inline aux_info& SyscallInfo( FrontRun& front ) { return front.callinfo.BuiltinAuxInfo[5]; }
+inline aux_info& OptlinkInfo( FrontRun& front ) { return front.callinfo.BuiltinAuxInfo[6]; }
+inline aux_info& StdcallInfo( FrontRun& front ) { return front.callinfo.BuiltinAuxInfo[7]; }
+inline aux_info& FastcallInfo( FrontRun& front ) { return front.callinfo.BuiltinAuxInfo[8]; }
+#if _CPU == 386
+inline aux_info& Far16CdeclInfo( FrontRun& front ) { return front.callinfo.BuiltinAuxInfo[9]; }
+inline aux_info& Far16PascalInfo( FrontRun& front ) { return front.callinfo.BuiltinAuxInfo[10]; }
+#endif
+
 #endif

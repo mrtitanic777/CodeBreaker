@@ -47,9 +47,6 @@
 #define _MarkBlkUnMarked( b )   _MarkBlkAttrClr( b, BLK_BLOCK_MARKED )
 #define _MarkBlkMarked( b )     _MarkBlkAttrSet( b, BLK_BLOCK_MARKED )
 
-#define _MarkBlkAllAttrClr( a ) ClearBlocksBitsMask( back, ~(a) )
-#define _MarkBlkAllUnVisited()  ClearBlocksBitsMask( back, ~BLK_BLOCK_VISITED )
-
 /* aligned */
 
 typedef enum {

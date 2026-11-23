@@ -64,14 +64,14 @@ static  void    InitVisitedTemps( BackRun& back )
             } while( alias != op );
         }
     }
-    if( _IsModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+    if( IsModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
         for( op = back.data.Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
             if( _FrontEndTmp( op ) ) {
                 op->t.temp_flags |= VISITED;
             }
         }
     }
-    if( back.data.BlockByBlock || _IsModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+    if( back.data.BlockByBlock || IsModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
         for( op = back.data.Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
             if( op->v.usage & USE_IN_ANOTHER_BLOCK ) {
                 op->t.temp_flags |= VISITED;

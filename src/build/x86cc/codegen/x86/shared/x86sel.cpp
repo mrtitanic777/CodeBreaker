@@ -331,7 +331,7 @@ tbl_control *MakeScanTab( BackRun& back, sel_handle s_node, cg_type value_type, 
     table = static_cast<tbl_control *>(CGAlloc( back, sizeof( tbl_control ) + ( cases - 1 ) * sizeof( label_handle ) ));
     table->size = cases;
     other = s_node->other_wise;
-    PUSH_OP( AskCodeSeg(back) );
+    { segment_id old_segid = ChangeOP( back, AskCodeSeg(back) );
         table->value_lbl = AskForNewLabel(back);
         CodeLabel( back, table->value_lbl, TypeAddress( back, TY_NEAR_CODE_PTR )->length );
         GenSelEntry( back, true );
@@ -376,7 +376,7 @@ tbl_control *MakeScanTab( BackRun& back, sel_handle s_node, cg_type value_type, 
         if( value_type == TY_WORD ) {
             GenCodePtr( back, other );
         }
-    POP_OP();
+    SetOP( back, old_segid ); }
     return( table );
 }
 
@@ -396,7 +396,7 @@ tbl_control     *MakeJmpTab( BackRun& back, sel_handle s_node )
     cases = U64Low( tmp );
     table = static_cast<tbl_control *>(CGAlloc( back, sizeof( tbl_control ) + ( cases - 1 ) * sizeof( label_handle ) ));
     table->size = cases;
-    PUSH_OP( AskCodeSeg(back) );
+    { segment_id old_segid = ChangeOP( back, AskCodeSeg(back) );
         table->lbl = AskForNewLabel(back);
         table->value_lbl = NULL;
         CodeLabel( back, table->lbl, TypeAddress( back, TY_NEAR_CODE_PTR )->length );
@@ -419,7 +419,7 @@ tbl_control     *MakeJmpTab( BackRun& back, sel_handle s_node )
             }
             U64Inc( curr );
         }
-    POP_OP();
+    SetOP( back, old_segid ); }
     return( table );
 }
 

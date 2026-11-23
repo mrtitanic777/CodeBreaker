@@ -75,14 +75,14 @@ void    InitWeights( BackRun& back, uint size )
 /*   Epilogs    - pop a register*/
 
 
-    if( _CPULevel( CPU_486 ) /* or 586 */ ) {
+    if( CPULevel( back, CPU_486 ) /* or 586 */ ) {
         SetCost( back.regsave.Save.load_cost, COST( 3,1 ) );
         SetCost( back.regsave.Save.store_cost, COST( 3,1 ) );
         SetCost( back.regsave.Save.use_save, COST( 1,1 ) );
         SetCost( back.regsave.Save.def_save, COST( 1,1 ) );
         SetCost( back.regsave.Save.push_cost, COST( 1,1 ) );
         SetCost( back.regsave.Save.pop_cost, COST( 1,1 ) );
-    } else if( _CPULevel( CPU_386 ) ) {
+    } else if( CPULevel( back, CPU_386 ) ) {
         SetCost( back.regsave.Save.load_cost, COST( 3,4 ) );
         SetCost( back.regsave.Save.store_cost, COST( 3,2 ) );
         SetCost( back.regsave.Save.use_save, COST( 1,(4-2) ) );

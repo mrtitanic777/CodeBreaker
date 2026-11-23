@@ -63,13 +63,13 @@ static void emitDelayed( BackRun& back, dw_client cli )
     for( cur = static_cast<struct delayed_ref *>(DW_ReverseChain( cli->references.delayed )); cur != NULL; cur = static_cast<struct delayed_ref *>(DW_CarveFreeLink( cli->references.delay_carver, cur )) ) {
         buf[0] = REF_BEGIN_SCOPE;
         BufWriteU32( cli, buf + 1, cur->offset );
-        CLIWrite( cli, DW_DEBUG_REF, buf, 1 + sizeof( uint_32 ) );
+        CLIWrite( back, cli, DW_DEBUG_REF, buf, 1 + sizeof( uint_32 ) );
     }
     cli->references.delayed = 0;
     if( cli->references.delayed_file ) {
         buf[0] = REF_SET_FILE;
         end = WriteULEB128( buf + 1, cli->references.delayed_file );
-        CLIWrite( cli, DW_DEBUG_REF, buf, end - buf );
+        CLIWrite( back, cli, DW_DEBUG_REF, buf, end - buf );
         cli->references.delayed_file = 0;
     }
 }
@@ -86,7 +86,7 @@ void DW_StartRef( BackRun& back, dw_client cli )
     new_ = static_cast<struct delayed_ref *>(DW_CarveAlloc( back, cli, cli->references.delay_carver ));
     new_->next = cli->references.delayed;
     cli->references.delayed = new_;
-    new_->offset = InfoSectionOffset( cli );
+    new_->offset = InfoSectionOffset( back, cli );
     new_->scope = cli->references.scope;
     ++cli->references.scope;
 }
@@ -150,7 +150,7 @@ void DWENTRY DWReference( BackRun& back, dw_client cli, dw_linenum line, dw_colu
         && column_delta >= 0
         && column_delta < REF_COLUMN_RANGE );
     *end++ = REF_CODE_BASE + line_delta * REF_COLUMN_RANGE + column_delta;
-    CLIWrite( cli, DW_DEBUG_REF, buf, end - buf );
+    CLIWrite( back, cli, DW_DEBUG_REF, buf, end - buf );
     DW_HandleReference( back, cli, dependant, DW_DEBUG_REF );
 }
 

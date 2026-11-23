@@ -147,7 +147,7 @@ static cmp_result CheckCmpRange( BackRun& back, cg_op opcode, int op_type, float
         break;
     default:
         rel = static_cast<rel_op>(0);
-        _Zoiks( ZOIKS_112 );
+        Zoiks( back, ZOIKS_112 );
     }
     /* Determine type range */
     if( NumSign( op_type ) ) {
@@ -251,7 +251,7 @@ static  float_handle IntToCF( BackRun& back, signed_64 value, const type_def *ti
         case 8:
             return( CFCnvI64F( back, &back.cfloat.cgh, U64Low( value ), U64High( value ) ) );
         default:
-            _Zoiks( ZOIKS_112 );
+            Zoiks( back, ZOIKS_112 );
             return( NULL );
         }
     } else {
@@ -266,7 +266,7 @@ static  float_handle IntToCF( BackRun& back, signed_64 value, const type_def *ti
         case 8:
             return( CFCnvU64F( back, &back.cfloat.cgh, U64Low( value ), U64High( value ) ) );
         default:
-            _Zoiks( ZOIKS_112 );
+            Zoiks( back, ZOIKS_112 );
             return( NULL );
         }
     }
@@ -905,7 +905,7 @@ tn      FoldDiv( BackRun& back, tn left, tn rite, const type_def *tipe )
                 BurnTree( back, left );
                 BurnTree( back, rite );
             } else if( ( tipe->attr & TYPE_FLOAT ) &&
-                ( _IsModel( CGSW_GEN_FP_UNSTABLE_OPTIMIZATION ) ||
+                ( IsModel( back, CGSW_GEN_FP_UNSTABLE_OPTIMIZATION ) ||
                 ( CFIsU32( rv ) && GetLog2( CFConvertByType( rv, tipe ) ) != -1 ) ) ) {
                 if( CFTest( rv ) != 0 ) {
                     tmp = CFInverse( back, &back.cfloat.cgh, rv );
@@ -1033,8 +1033,8 @@ tn      FoldMod( BackRun& back, tn left, tn rite, const type_def *tipe )
                         BurnTree( back, rite );
                     }
                 }
-            } else if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION )
-              && _IsntModel( CGSW_GEN_DBG_LOCALS )
+            } else if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION )
+              && IsntModel( back, CGSW_GEN_DBG_LOCALS )
               && TGCanDuplicate( left ) ) {
                 /* signed int a; optimize a % rv like IBM does:
                    int b = a >> 31;
@@ -1434,7 +1434,7 @@ tn  FoldCompare( BackRun& back, cg_op opcode, tn left, tn rite, const type_def *
                     left = TGTrash( left );
                     return( TGBinary( back, O_COMMA, left, IntToType( back, result, back.data.TypeInteger ), back.data.TypeInteger ) );
                 }
-                if( _IsntModel( CGSW_GEN_NULL_DEREF_OK )
+                if( IsntModel( back, CGSW_GEN_NULL_DEREF_OK )
                   && IsObjectAddr( left )
                   && ( CFTest( rite->u.name->c.u.cfval ) == 0 ) ) {
                     /* Addresses of globals or local variables are guaranteed not to be null

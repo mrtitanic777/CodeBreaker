@@ -63,7 +63,7 @@ dw_handle DWENTRY DWBeginCompileUnit( BackRun& back, dw_client cli, dw_cu_info *
           && sect == DW_DEBUG_ABBREV ) {
             cli->section_base[sect] = 0;
         } else {
-            cli->section_base[sect] = CLISectionAbs( cli, sect );
+            cli->section_base[sect] = CLISectionAbs( back, cli, sect );
         }
     }
     cli->offset_size = cui->offset_size;
@@ -99,7 +99,7 @@ dw_handle DWENTRY DWBeginCompileUnit( BackRun& back, dw_client cli, dw_cu_info *
     /* AT_name */
     DW_InfoString( back, cli, cui->source_filename );
     /* AT_stmt_list */
-    CLIReloc3( cli, DW_DEBUG_INFO, DW_W_SECTION_POS, DW_DEBUG_LINE );
+    CLIReloc( back, cli, DW_DEBUG_INFO, DW_W_SECTION_POS, DW_DEBUG_LINE );
     /* AT_language */
     DW_InfoULEB128( back, cli, cli->language );
     /* AT_comp_dir */
@@ -119,17 +119,17 @@ dw_handle DWENTRY DWBeginCompileUnit( BackRun& back, dw_client cli, dw_cu_info *
     }
     DW_InfoULEB128( back, cli, tmp );
     /* AT_macro_info */
-    CLIReloc3( cli, DW_DEBUG_INFO, DW_W_SECTION_POS, DW_DEBUG_MACINFO );
+    CLIReloc( back, cli, DW_DEBUG_INFO, DW_W_SECTION_POS, DW_DEBUG_MACINFO );
     /* AT_base_types */
     if( cli->dbg_pch != NULL ) { // want start of ccu in pch
-        CLIReloc4( cli, DW_DEBUG_INFO, DW_W_EXT_REF, cli->dbg_pch, sizeof( comp_unit_prologue ) );
+        CLIReloc( back, cli, DW_DEBUG_INFO, DW_W_EXT_REF, cli->dbg_pch, sizeof( comp_unit_prologue ) );
     } else {  // 0 no pch
         DW_Info32( back, cli, 0  );
     }
     /* AT_WATCOM_memory_model */
     DW_Info8( back, cli, cui->model );
     /* AT_WATCOM_references_start */
-    CLIReloc3( cli, DW_DEBUG_INFO, DW_W_SECTION_POS, DW_DEBUG_REF );
+    CLIReloc( back, cli, DW_DEBUG_INFO, DW_W_SECTION_POS, DW_DEBUG_REF );
     DW_EndDIE( cli );
     DW_StartChildren( back, cli );
     /*
@@ -168,7 +168,7 @@ dw_client DWENTRY DWInit( BackRun& back, const dw_init_info *info )
     if( info == NULL )
         return( NULL );
 
-    cli = static_cast<dw_client>(CLIAlloc( info, sizeof( struct dw_client_s ) ));
+    cli = static_cast<dw_client>(info->funcs.cli_alloc( back, sizeof( struct dw_client_s ) ));
 
     /* copy some parms */
     cli->big_endian = info->big_endian;
@@ -194,8 +194,8 @@ void DWENTRY DWFini( BackRun& back, dw_client cli )
     if( (cli->compiler_options & DW_CM_ABBREV_PRE) == 0 ) {
         DW_FiniDebugAbbrev( back, cli );
     }
-    CLIFree( cli, cli->producer_name );
-    CLIFree( cli, cli );
+    CLIFree( back, cli, cli->producer_name );
+    CLIFree( back, cli, cli );
 }
 
 void DWENTRY DWInitDebugLine( BackRun& back, dw_client cli, dw_cu_info *cui )
@@ -204,7 +204,7 @@ void DWENTRY DWInitDebugLine( BackRun& back, dw_client cli, dw_cu_info *cui )
     cli->segment_size = cui->segment_size;
     cli->dbg_pch = cui->dbg_pch;
     cli->defset = 0;
-    cli->section_base[DW_DEBUG_LINE] = CLISectionAbs( cli, DW_DEBUG_LINE );
+    cli->section_base[DW_DEBUG_LINE] = CLISectionAbs( back, cli, DW_DEBUG_LINE );
     DW_InitDebugLine( back, cli, cui->source_filename, cui->inc_list, cui->inc_list_len );
 }
 

@@ -181,7 +181,7 @@ an      BGCall( BackRun& back, cn call, bool use_return, bool aux_inline )
             call_ins->flags.u.call_flags |= CALL_RETURNS_STRUCT;
         }
     }
-    if( _IsTargetModel( CGSW_X86_FLOATING_DS )
+    if( IsTargetModel( back, CGSW_X86_FLOATING_DS )
       && (state->attr & ROUTINE_NEEDS_DS_LOADED) ) {
         HW_CTurnOn( state->parm.used, HW_DS );
     }
@@ -288,12 +288,12 @@ void    BGProcDecl( BackRun& back, cg_sym_handle sym, const type_def *tipe )
     if( tipe != back.data.TypeNone ) {
         if( type_class == XX ) {
             if( back.data.CurrProc->state.attr & ROUTINE_ALLOCS_RETURN ) {
-                PUSH_OP( AskBackSeg(back) );
+                { segment_id old_segid = ChangeOP( back, AskBackSeg(back) );
                     lbl = AskForNewLabel(back);
                     DataLabel( back, lbl );
                     DGUBytes( back, tipe->length );
                     back.data.CurrProc->targ.return_points = SAllocMemory( back, lbl, 0, CG_LBL, TypeClass( back, tipe ), tipe->length );
-                POP_OP();
+                SetOP( back, old_segid ); }
             } else {
                 reg = back.data.CurrProc->state.return_reg;
                 if( HW_CEqual( reg, HW_EMPTY ) ) {
@@ -328,8 +328,8 @@ name    *StReturn( BackRun& back, an retval, const type_def *tipe, instruction *
         AddIns( back, MakeUnary( back, OP_LA, retp, AllocRegName( back, back.data.CurrProc->state.return_reg ), WD ) );
         *pins = NULL;
     } else {
-        if( _IsTargetModel( CGSW_X86_FLOATING_SS )
-          || _IsTargetModel( CGSW_X86_FLOATING_DS ) ) {
+        if( IsTargetModel( back, CGSW_X86_FLOATING_SS )
+          || IsTargetModel( back, CGSW_X86_FLOATING_DS ) ) {
             ptr = AllocTemp( back, CP );
             off = OffsetPart( back, ptr );
             seg = SegmentPart( back, ptr );
@@ -353,7 +353,7 @@ static  void    AddCall( BackRun& back, instruction *ins, cn call ) {
 
     name        *proc_name;
 
-    if( _IsTargetModel( CGSW_X86_FLOATING_DS )
+    if( IsTargetModel( back, CGSW_X86_FLOATING_DS )
       && (call->state->attr & ROUTINE_NEEDS_DS_LOADED) ) {
         AddIns( back, MakeMove( back, NearSegment(back), AllocRegName( back, HW_DS ), U2 ) );
     }
@@ -461,7 +461,7 @@ void    PostCall( cn call )
 const type_def  *PassParmType( BackRun& back, cg_sym_handle func, const type_def *tipe )
 /***********************************************************************/
 {
-    if( (call_class_target)(pointer_uint)FindAuxInfoSym( func, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR16_CALL )
+    if( (call_class_target)(pointer_uint)FindAuxInfoSym( back, func, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR16_CALL )
         return( tipe );
     return( QParmType( back, func, NULL, tipe ) );
 }

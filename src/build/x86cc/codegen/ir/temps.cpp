@@ -177,7 +177,7 @@ static bool SetLastUse( BackRun& back, name *op, name *temp, stack_temp *new_stk
     }
     if( op->n.class_ == N_TEMP ) {
         if( DeAlias( op ) == temp ) {
-            _INS_NOT_BLOCK ( ins );
+            InsNotBlock( back, ins );
             new_stk->last = ins->id;
             return( true );
         }

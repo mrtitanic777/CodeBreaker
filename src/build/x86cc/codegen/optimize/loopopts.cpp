@@ -564,7 +564,7 @@ void     MarkInvariants( BackRun& back )
                     break;
                 case N_INDEXED:
                     if( op->i.base == NULL ) {
-                        if( _IsntModel( CGSW_GEN_FORTRAN_ALIASING ) ) {
+                        if( IsntModel( back, CGSW_GEN_FORTRAN_ALIASING ) ) {
                             free_index = true;
                         }
                     } else if( op->i.base->n.class_ == N_TEMP ) {
@@ -597,7 +597,7 @@ void     MarkInvariants( BackRun& back )
 //    ZapRegister( Head->ins.head.next->head.live.regs );
     if( have_call
       || free_index ) {
-        if( _IsntModel( CGSW_GEN_FORTRAN_ALIASING ) ) {
+        if( IsntModel( back, CGSW_GEN_FORTRAN_ALIASING ) ) {
             for( op = back.data.Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
                 if( op->v.usage & USE_ADDRESS ) {
                     _SetLoopUsage( op, VU_VARIANT );
@@ -725,7 +725,7 @@ bool     Hoistable( BackRun& back, instruction *ins, block *blk )
         will_execute = true;
     }
     if( _IsFloating( ins->type_class )
-      && _IsntModel( CGSW_GEN_I_MATH_INLINE ) ) {
+      && IsntModel( back, CGSW_GEN_I_MATH_INLINE ) ) {
         dangerous = true;
     } else {
         for( i = 0; i < ins->num_operands; ++i ) {
@@ -1254,7 +1254,7 @@ static  bool    BasicNotRedefined( BackRun& back, induction *var, instruction *i
     for( other = var->ins->head.next; other->head.opcode != OP_BLOCK; other = other->head.next ) {
         if( other == ins )
             return( true );
-        if( _IsReDefinedBy( other, var->basic->name ) ) {
+        if( IsReDefinedBy( back, other, var->basic->name ) ) {
             break;
         }
     }
@@ -1276,7 +1276,7 @@ static  bool    KillIndVars( BackRun& back, instruction *ins )
     for( var = back.loopopts.IndVarList; var != NULL; var = var->next ) {
         if( var->ins != ins ) {
             if( _IsntV( var, IV_SURVIVED ) ) {
-                if( _IsReDefinedBy( ins, var->name ) ) {
+                if( IsReDefinedBy( back, ins, var->name ) ) {
                     killed = true;
                     _SetV( var, IV_DEAD );
                 }
@@ -1632,8 +1632,8 @@ static  void    MergeVars( BackRun& back )
             otherblock = InsBlock( other->ins );
             if( otherblock != varblock )
                 continue;
-            _INS_NOT_BLOCK( var->ins );
-            _INS_NOT_BLOCK( other->ins );
+            InsNotBlock( back, var->ins );
+            InsNotBlock( back, other->ins );
             if( var->ins->id < other->ins->id ) {
                 if( !BasicNotRedefined( back, var, other->ins ) )
                     continue;
@@ -2493,7 +2493,7 @@ static  name    *InitialValue( BackRun& back, name *op )
             other = blk->input_edges->source->ins.head.prev;
             continue;  /* re-check in case of empty blocks */
         }
-        if( _IsReDefinedBy( other, op ) )
+        if( IsReDefinedBy( back, other, op ) )
             break;
         other = other->head.prev;
     }
@@ -2701,7 +2701,7 @@ static  bool    ConstOverflowsType( BackRun& back, const signed_64 *val, type_cl
     signed_64           one;
 
     if( type_class == XX ) {
-        _Zoiks( ZOIKS_139 );
+        Zoiks( back, ZOIKS_139 );
         return( false );
     }
     if( type_class == I8

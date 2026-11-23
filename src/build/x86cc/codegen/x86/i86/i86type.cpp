@@ -54,15 +54,15 @@ void    TargTypeInit( BackRun& back )
     back.types.PTInteger = TypeAddress( back, TY_INT_2 );
     back.types.PTUnsigned = TypeAddress( back, TY_UINT_2 );
 
-    if( _IsTargetModel( CGSW_X86_BIG_CODE ) ) {
+    if( IsTargetModel( back, CGSW_X86_BIG_CODE ) ) {
         TypeAlias( back, TY_CODE_PTR, TY_LONG_CODE_PTR );
         back.types.PTCodePointer = TypeAddress( back, TY_LONG_CODE_PTR );
     } else {
         TypeAlias( back, TY_CODE_PTR, TY_NEAR_CODE_PTR );
         back.types.PTCodePointer = TypeAddress( back, TY_NEAR_CODE_PTR );
     }
-    if( _IsTargetModel( CGSW_X86_BIG_DATA ) ) {
-        if( _IsTargetModel( CGSW_X86_CHEAP_POINTER ) ) {
+    if( IsTargetModel( back, CGSW_X86_BIG_DATA ) ) {
+        if( IsTargetModel( back, CGSW_X86_CHEAP_POINTER ) ) {
             TypeAlias( back, TY_POINTER, TY_LONG_POINTER );
             back.types.PTPointer = TypeAddress( back, TY_LONG_POINTER );
         } else {

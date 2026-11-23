@@ -870,7 +870,7 @@ TREEPTR RelOp( FrontRun& front, TREEPTR op1, TOKEN opr, TREEPTR op2 )
      * check for meaningless comparison:
      * TODO this would be a better check maybe in foldtree
      */
-    if( IS_PPCTL_NORMAL() ) {
+    if( IsPPCtlNormal( front ) ) {
         cmp_cc = CMP_VOID;
         if( op2->op.opr == OPR_PUSHINT ) {
             cmp_cc = IsMeaninglessCompare( op2->op.u2.long64_value, typ1, typ2, opr );
@@ -1256,7 +1256,7 @@ TREEPTR AddOp( FrontRun& front, TREEPTR op1, TOKEN opr, TREEPTR op2 )
                 if(( op1_tp->u.p.decl_flags & FLAG_HUGE ) ||
                    ( op2_tp->u.p.decl_flags & FLAG_HUGE ) ) {
                     result_type = LNG;
-                } else if( IsHugeData() ) {
+                } else if( IsHugeData( front ) ) {
                     if( ((op1_tp->u.p.decl_flags & (FLAG_FAR | FLAG_NEAR)) == 0 )
                      && ((op2_tp->u.p.decl_flags & (FLAG_FAR | FLAG_NEAR)) == 0) ) {
                         result_type = LNG;
@@ -1290,7 +1290,7 @@ TREEPTR AddOp( FrontRun& front, TREEPTR op1, TOKEN opr, TREEPTR op2 )
                 result = ExprNode( front, op1, TokenToOperator( opr ), op2 );
                 return( PtrSubtract( front, result, size, result_type ) );
             } else if( (op1_tp->u.p.decl_flags & FLAG_HUGE)
-              || IsHugeData() ) {
+              || IsHugeData( front ) ) {
                 if( (op2_type != LNG) && (op2_type != ULN) ) {
                     op2 = CnvOp( front, op2, GetType( front, TYP_LONG ), true );
                 }
@@ -1309,7 +1309,7 @@ TREEPTR AddOp( FrontRun& front, TREEPTR op1, TOKEN opr, TREEPTR op2 )
         }
         if( size != 1 ) {
             if( (op2_tp->u.p.decl_flags & FLAG_HUGE)
-              || IsHugeData() ) {
+              || IsHugeData( front ) ) {
                 if( (op1_type != LNG ) && (op1_type != ULN) ) {
                     op2 = CnvOp( front, op2, GetType( front, TYP_LONG ), true );
                 }
@@ -1716,7 +1716,7 @@ TREEPTR CnvOp( FrontRun& front, TREEPTR opnd, TYPEPTR newtyp, bool cast_op )
         }
     }
     opnd_type = opnd->u.expr_type->decl_type;
-    if( IS_PPCTL_NORMAL() ) {
+    if( IsPPCtlNormal( front ) ) {
         opnd = RValue( front, opnd );
     }
     typ = TypeOf( opnd );

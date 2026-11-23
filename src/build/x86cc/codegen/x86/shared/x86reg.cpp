@@ -214,7 +214,7 @@ void    UpdateReturn( BackRun& back, call_state *state, const type_def *tipe, ty
 {
     hw_reg_set  normal;
 
-    if( _FPULevel( FPU_87 )
+    if( FPULevel( back, FPU_87 )
       && _NPX( state->attr )
       && (tipe->attr & TYPE_FLOAT) ) {
         HW_COnlyOn( state->return_reg, HW_ST0 );

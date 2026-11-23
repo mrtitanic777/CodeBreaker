@@ -38,7 +38,7 @@
 
 void DWENTRY DWAddress( BackRun& back, dw_client cli, uint_32 len )
 {
-    CLIReloc2( cli, DW_DEBUG_ARANGES, DW_W_ARANGE_ADDR );
+    CLIReloc( back, cli, DW_DEBUG_ARANGES, DW_W_ARANGE_ADDR );
     if( cli->offset_size == sizeof( uint_32 ) ) {
         CLIWriteU32( back, cli, DW_DEBUG_ARANGES, len );
     } else {
@@ -53,11 +53,11 @@ void DW_InitDebugAranges( BackRun& back, dw_client cli )
 
     CLIWriteU32( back, cli, DW_DEBUG_ARANGES, 0 );    /* section size */
     CLIWriteU16( back, cli, DW_DEBUG_ARANGES, 2 );    /* section version */
-    CLIReloc3( cli, DW_DEBUG_ARANGES,           /* link to CU info */
+    CLIReloc( back, cli, DW_DEBUG_ARANGES, /* link to CU info */
         DW_W_SECTION_POS, DW_DEBUG_INFO );
     buf[0] = cli->offset_size;				    /* offs size */
     buf[1] = cli->segment_size;				    /* segm size */
-    CLIWrite( cli, DW_DEBUG_ARANGES, buf, 2 );
+    CLIWrite( back, cli, DW_DEBUG_ARANGES, buf, 2 );
 }
 
 

@@ -1425,7 +1425,7 @@ const opcode_entry      *OpcodeTable( BackRun& back, table_def i )
     return the address of the appropriate generate table given an index "i"
 */
 {
-    if( _FPULevel( FPU_87 ) ) {
+    if( FPULevel( back, FPU_87 ) ) {
         return( FPOpcodeList[i] );
     } else {
         return( OpcodeList[i] );

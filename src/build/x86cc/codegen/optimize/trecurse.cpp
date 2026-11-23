@@ -435,7 +435,7 @@ bool     TailRecursion( BackRun& back )
     bool        changed;
 
     changed = false;
-    if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION )
+    if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION )
       && !ScaryConditions(back)
       && !back.data.BlockByBlock ) {
         for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {

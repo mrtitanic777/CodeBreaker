@@ -414,13 +414,13 @@ static SYM_HANDLE VarDecl( FrontRun& front, SYMPTR sym, stg_classes stg_class, d
             sym->u.var.segid = front.cdecl2.thread_segid;
         }
     }
-    if( !TOGGLE( unreferenced ) ) {
+    if( !Toggles( front ).tog_unreferenced ) {
         sym->flags |= SYM_IGNORE_UNREFERENCE;
     }
     old_sym_handle = SymLook( front, sym->u1.hash, sym->name );
     if( old_sym_handle != SYM_NULL ) {
         SymGet( front, &old_sym, old_sym_handle );
-        if( CheckEqSymLevel( &old_sym ) ) {
+        if( CheckEqSymLevel( front, &old_sym ) ) {
             SetDiagSymbol( front, &old_sym, old_sym_handle );
             if( old_sym.attribs.stg_class == SC_EXTERN && stg_class == SC_EXTERN ) {
                 if( ! CheckIdenticalType( front, old_sym.sym_type, sym->sym_type ) ) {
@@ -438,7 +438,7 @@ static SYM_HANDLE VarDecl( FrontRun& front, SYMPTR sym, stg_classes stg_class, d
     if( old_sym_handle != SYM_NULL ) {
         SymGet( front, &old_sym, old_sym_handle );
         SetDiagSymbol( front, &old_sym, old_sym_handle );
-        if( CheckEqSymLevel( &old_sym ) || stg_class == SC_EXTERN ) {
+        if( CheckEqSymLevel( front, &old_sym ) || stg_class == SC_EXTERN ) {
             old_attrs = old_sym.mods;
             new_attrs = sym->mods;
             /*
@@ -490,7 +490,7 @@ static SYM_HANDLE VarDecl( FrontRun& front, SYMPTR sym, stg_classes stg_class, d
         SetDiagSymbol( front, &old_sym, old_sym_handle );
         old_def = VerifyType( front, sym->sym_type, old_sym.sym_type, sym );
         SetDiagPop(front);
-        if( !old_def && CheckEqSymLevel( &old_sym ) ) {
+        if( !old_def && CheckEqSymLevel( front, &old_sym ) ) {
             /*
              * new symbol's type supersedes old type
              */
@@ -631,7 +631,7 @@ static SYM_HANDLE InitDeclarator( FrontRun& front, SYMPTR sym, decl_info const *
                 otyp = old_sym.sym_type;        /* skip typedefs */
                 SKIP_TYPEDEFS( otyp );
                 if( old_sym.attribs.stg_class == SC_TYPEDEF &&
-                    CheckEqSymLevel( &old_sym ) && CheckIdenticalType( front, typ, otyp ) ) {
+                    CheckEqSymLevel( front, &old_sym ) && CheckIdenticalType( front, typ, otyp ) ) {
                     return( SYM_NULL );        /* indicate already in symbol tab */
                 }
             }
@@ -1567,7 +1567,7 @@ static TYPEPTR *GetProtoType( FrontRun& front, decl_info *first )
             CheckUniqueName( front, parm_namelist, sym->name );
             prev_parm->next_parm = parm;
         }
-        if( !TOGGLE( unreferenced ) ) {
+        if( !Toggles( front ).tog_unreferenced ) {
             sym->flags |= SYM_REFERENCED;
         }
         ++parm_count;
@@ -1737,7 +1737,7 @@ static void GetFuncParmList( FrontRun& front )
             parm = newparm;
         }
         parm->sym.u1.hash = CalcHashID( front.cvars.Buffer );
-        if( !TOGGLE( unreferenced ) ) {
+        if( !Toggles( front ).tog_unreferenced ) {
             parm->sym.flags |= SYM_REFERENCED;
         }
         NextToken(front);

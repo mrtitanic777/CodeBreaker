@@ -107,7 +107,7 @@ void    InitZeroPage( BackRun& back )
 */
 {
     back.x86opseg.ZPageType = ZP_USES_SS;
-    if( _IsTargetModel( CGSW_X86_INDEXED_GLOBALS ) ) {
+    if( IsTargetModel( back, CGSW_X86_INDEXED_GLOBALS ) ) {
         AddGlobalIndex(back);
     }
 }

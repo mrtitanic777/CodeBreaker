@@ -165,7 +165,7 @@ void GenFunctionNode( FrontRun& front, SYM_HANDLE sym_handle )
     sym = SymGetPtr( front, sym_handle );
     tree->op.u2.func.sym_handle = sym_handle;
     tree->op.u2.func.flags = FUNC_NONE;
-    if( TOGGLE( inline )
+    if( Toggles( front ).tog_inline
       || (sym->mods & FLAG_INLINE) ) {
         if( !sym->attribs.naked ) {
             if( strcmp( sym->name, "main" ) != 0 ) {
@@ -1429,7 +1429,7 @@ void Statement( FrontRun& front )
         }
     }
 
-    if( TOGGLE( inline ) ) {
+    if( Toggles( front ).tog_inline ) {
         if( front.cvars.Inline_Threshold < front.cvars.NodeCount ) {
             front.cvars.CurFuncNode->op.u2.func.flags &= ~FUNC_OK_TO_INLINE;
         }

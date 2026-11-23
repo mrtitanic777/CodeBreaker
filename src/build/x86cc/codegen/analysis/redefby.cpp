@@ -84,21 +84,21 @@ static  bool  ZapsMemory( BackRun& back, name *result, name *op, bool for_index 
         return( TempsOverlap( result, op ) );
     case N_INDEXED:
         if( result->i.base == NULL ) {
-            if( _IsModel( CGSW_GEN_FORTRAN_ALIASING ) )
+            if( IsModel( back, CGSW_GEN_FORTRAN_ALIASING ) )
                 return( false );
             if( op->v.usage & USE_ADDRESS )
                 return( true );
-            return( _IsntModel( CGSW_GEN_RELAX_ALIAS ) );
+            return( IsntModel( back, CGSW_GEN_RELAX_ALIAS ) );
         }
         if( result->i.base->n.class_ == N_TEMP ) {
-            return( _IsntModel( CGSW_GEN_RELAX_ALIAS ) );
+            return( IsntModel( back, CGSW_GEN_RELAX_ALIAS ) );
         } else { /* it must be N_MEMORY*/
             return( ZapsMemory( back, result->i.base, op, true ) );
         }
     case N_REGISTER:
         return( false );
     default:
-        _Zoiks( ZOIKS_023 );
+        Zoiks( back, ZOIKS_023 );
         return( false );
     }
 }
@@ -140,7 +140,7 @@ static  bool  ZapsTemp( BackRun& back, name *result, name *op, bool for_index )
             return( HW_Ovlap( result->r.reg, tmp ) );
         }
     default:
-        _Zoiks( ZOIKS_023 );
+        Zoiks( back, ZOIKS_023 );
         return( false );
     }
 }
@@ -172,7 +172,7 @@ static bool_maybe   ZapsTheOp( BackRun& back, name *result, name *op )
     case N_CONSTANT:
         return( MB_FALSE );
     default:
-        _Zoiks( ZOIKS_023 );
+        Zoiks( back, ZOIKS_023 );
         return( MB_FALSE );
     }
 }
@@ -202,13 +202,13 @@ static  bool_maybe  ZapsIndexed( BackRun& back, name *result, name *op )
         return( MB_FALSE );
     case N_MEMORY:
         if( op->i.base == NULL ) {
-            if( _IsModel( CGSW_GEN_FORTRAN_ALIASING ) )
+            if( IsModel( back, CGSW_GEN_FORTRAN_ALIASING ) )
                 return( MB_FALSE );
             if( op->v.usage & USE_ADDRESS )
                 return( MB_TRUE );
-            return( _IsModel( CGSW_GEN_RELAX_ALIAS ) ? MB_FALSE : MB_TRUE );
+            return( IsModel( back, CGSW_GEN_RELAX_ALIAS ) ? MB_FALSE : MB_TRUE );
         } else if( op->i.base->n.class_ == N_TEMP ) {
-            return( _IsModel( CGSW_GEN_RELAX_ALIAS ) ? MB_FALSE : MB_TRUE );
+            return( IsModel( back, CGSW_GEN_RELAX_ALIAS ) ? MB_FALSE : MB_TRUE );
         } else {
             return( ZapsMemory( back, result, op->i.base, true ) ? MB_TRUE : MB_FALSE );
         }
@@ -238,7 +238,7 @@ static  bool_maybe  ZapsIndexed( BackRun& back, name *result, name *op )
         }
         return( ZapsTheOp( back, result, op->i.index ) );
     default:
-        _Zoiks( ZOIKS_023 );
+        Zoiks( back, ZOIKS_023 );
         return( MB_FALSE );
     }
 }
@@ -273,7 +273,7 @@ bool_maybe  VisibleToCall( BackRun& back, instruction *ins, name *op, bool modif
         if( modifies
           && (ins->flags.u.call_flags & CALL_WRITES_NO_MEMORY) )
             return( MB_FALSE );
-        if( _IsModel( CGSW_GEN_FORTRAN_ALIASING ) ) {
+        if( IsModel( back, CGSW_GEN_FORTRAN_ALIASING ) ) {
             switch( op->m.memory_type ) {
             case CG_FE:
                 if( (FEAttr( *back.front, static_cast<cg_sym_handle>(op->v.symbol) ) & FE_VISIBLE ) == 0 ) {

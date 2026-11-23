@@ -46,44 +46,44 @@ void    TellOptimizerByPassed( BackRun& back )
 /* tell the optimizer we're going around it so it won't flush while we're*/
 /* in the object file generator and zap our static variables*/
 {
-  optbegin
+  OptBegin( back );
 }
 
 
 void    TellByPassOver( BackRun& back )
 /****************************/
 {
-  optend
+  OptEnd( back );
 }
 
 
 void    TellAddress( BackRun& back, label_handle lbl, offset addr )
 /**************************************************/
 {
-  optbegin
+  OptBegin( back );
     _ValidLbl( lbl );
     lbl->lbl.address = addr;
-  optend
+  OptEnd( back );
 }
 
 
 void    TellDonePatches( BackRun& back, label_handle lbl )
 /*****************************************/
 {
-  optbegin
+  OptBegin( back );
     _ValidLbl( lbl );
     lbl->lbl.patches = NULL;
-  optend
+  OptEnd( back );
 }
 
 
 void    TellReachedLabel( BackRun& back, label_handle lbl )
 /******************************************/
 {
-  optbegin
+  OptBegin( back );
     _ValidLbl( lbl );
     _SetStatus( lbl, REACHED );
-  optend
+  OptEnd( back );
 }
 
 void    TellProcLabel( label_handle lbl )
@@ -96,28 +96,28 @@ void    TellProcLabel( label_handle lbl )
 void    TellCommonLabel( BackRun& back, label_handle lbl, import_handle imphdl )
 /***************************************************************/
 {
-  optbegin
+  OptBegin( back );
     _ValidLbl( lbl );
     lbl->lbl.sym = IMPHDL2SYM( imphdl );
     _SetStatus( lbl, COMMON_LBL );
-  optend
+  OptEnd( back );
 }
 
 
 void    TellKeepLabel( BackRun& back, label_handle lbl )
 /***************************************/
 {
-  optbegin
+  OptBegin( back );
     _ValidLbl( lbl );
     _SetStatus( lbl, KEEPLABEL );
-  optend
+  OptEnd( back );
 }
 
 
 void    TellNoSymbol( BackRun& back, label_handle lbl )
 /**************************************/
 {
-  optbegin
+  OptBegin( back );
     if( lbl != NULL ) {
         _ValidLbl( lbl );
         lbl->lbl.sym = NULL;
@@ -125,7 +125,7 @@ void    TellNoSymbol( BackRun& back, label_handle lbl )
             GenKillLabel( back, lbl );
         }
     }
-  optend
+  OptEnd( back );
 }
 
 static  void    ReallyScrapLabel( BackRun& back, label_handle lbl )
@@ -133,47 +133,47 @@ static  void    ReallyScrapLabel( BackRun& back, label_handle lbl )
 {
     label_handle *owner;
 
-  optbegin
+  OptBegin( back );
     owner = &back.optdata.Handles;
     for( ;; ) {
         if( *owner == NULL )
-            optreturnvoid;
+            { OptEnd( back ); return; }
         if( *owner == lbl )
             break;
         owner = &(*owner)->lbl.link;
     }
     *owner = lbl->lbl.link;
     CGFree( back, lbl );
-  optend
+  OptEnd( back );
 }
 
 
 void    TellScrapLabel( BackRun& back, label_handle lbl )
 /****************************************/
 {
-  optbegin
+  OptBegin( back );
     /* data labels in the code segment can't get freed until the end */
     if( _TstStatus( lbl, CODELABEL ) ) {
         ReallyScrapLabel( back, lbl );
     }
-  optend
+  OptEnd( back );
 }
 
 
 void    TellCondemnedLabel( BackRun& back, label_handle lbl )
 /********************************************/
 {
-  optbegin
+  OptBegin( back );
     _ValidLbl( lbl );
     _SetStatus( lbl, CONDEMNED );
-  optend
+  OptEnd( back );
 }
 
 
 static  label_handle    NextCondemned( BackRun& back, label_handle lbl )
 /*******************************************************/
 {
-  optbegin
+  OptBegin( back );
     for( ;; ) {
         if( lbl == NULL )
             break;
@@ -183,7 +183,7 @@ static  label_handle    NextCondemned( BackRun& back, label_handle lbl )
         }
         lbl = lbl->lbl.link;
     }
-    optreturn( lbl );
+    { OptEnd( back ); return( lbl ); }
 }
 
 
@@ -192,14 +192,14 @@ void    TellBeginExecutions( BackRun& back )
 {
     label_handle    dead;
 
-  optbegin
+  OptBegin( back );
     for( ;; ) {
         dead = NextCondemned( back, back.optdata.Handles );
         if( dead == NULL )
             break;
         GenKillLabel( back, dead );
     }
-  optend
+  OptEnd( back );
 }
 
 
@@ -208,19 +208,19 @@ void    TellFreeAllLabels( BackRun& back )
 {
     bool        unfreed;
 
-  optbegin
+  OptBegin( back );
     unfreed = false;
     while( back.optdata.Handles != NULL ) {
         if( _TstStatus( back.optdata.Handles, CODELABEL )
          && back.optdata.Handles->lbl.sym == NULL
          && !_TstStatus( back.optdata.Handles, REDIRECTION )
          && !unfreed ) {
-            _Zoiks( ZOIKS_001 );
+            Zoiks( back, ZOIKS_001 );
             unfreed = true;
         }
         ReallyScrapLabel( back, back.optdata.Handles );
     }
-  optend
+  OptEnd( back );
 }
 
 
@@ -232,13 +232,13 @@ void    TellUnreachLabels( BackRun& back )
 {
     label_handle    lbl;
 
-  optbegin
+  OptBegin( back );
     for( lbl = back.optdata.Handles; lbl != NULL; lbl = lbl->lbl.link ) {
         if( lbl->lbl.address != ADDR_UNKNOWN ) {
             _SetStatus( lbl, UNREACHABLE );
         }
     }
-  optend
+  OptEnd( back );
 }
 
 void    KillLblRedirects( BackRun& back )
@@ -246,10 +246,10 @@ void    KillLblRedirects( BackRun& back )
 {
     label_handle    lbl;
 
-  optbegin
+  OptBegin( back );
     for( lbl = back.optdata.Handles; lbl != NULL; lbl = lbl->lbl.link ) {
         lbl->redirect = NULL;
     }
     TellUnreachLabels(back);        // a little too conservative - stop gap
-  optend
+  OptEnd( back );
 }

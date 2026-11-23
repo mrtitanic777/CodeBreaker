@@ -56,12 +56,12 @@ namespace {
 static  bool    Jmp_to_lbl( BackRun& back, ins_entry *instr )
 /********************************************/
 {
-  optbegin
+  OptBegin( back );
     if( _Class( instr ) != OC_JMP )
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
     if( _Label( instr ) != back.optrel.Handle )
-        optreturn( false );
-    optreturn( true );
+        { OptEnd( back ); return( false ); }
+    { OptEnd( back ); return( true ); }
 }
 
 
@@ -119,7 +119,7 @@ static  void    HndlRedirect( BackRun& back, label_handle new_lbl )
 {
     label_handle    redir;
 
-  optbegin
+  OptBegin( back );
     redir = back.optrel.Handle->redirect;
     if( redir != NULL && redir != new_lbl ) {
         _ClrStatus( redir, REDIRECTION );
@@ -129,7 +129,7 @@ static  void    HndlRedirect( BackRun& back, label_handle new_lbl )
     if( new_lbl != NULL ) {
         _SetStatus( new_lbl, REDIRECTION );
     }
-  optend
+  OptEnd( back );
 }
 
 
@@ -139,25 +139,25 @@ static  bool    InRange( BackRun& back )
 {
     label_handle    jmp_lbl;
 
-  optbegin
-    if( _IsModel( CGSW_GEN_NO_OPTIMIZATION ) )
-        optreturn( false );
+  OptBegin( back );
+    if( IsModel( back, CGSW_GEN_NO_OPTIMIZATION ) )
+        { OptEnd( back ); return( false ); }
     jmp_lbl = back.optrel.Handle->redirect;
     /* we don't have a redirection for this label*/
     if( jmp_lbl == NULL )
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
     /* forward jump: must still be in range*/
     if( jmp_lbl->lbl.address == ADDR_UNKNOWN )
-        optreturn( true );
+        { OptEnd( back ); return( true ); }
     /* can't redirect the redirection jump to itself*/
     if( jmp_lbl->lbl.address == AskLocation(back) )
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
     /* can still reach old redirection with short backward jump*/
     if( (AskLocation(back) - jmp_lbl->lbl.address) <= MAX_SHORT_BWD )
-        optreturn( true );
+        { OptEnd( back ); return( true ); }
     /* can't get at old redirection any more*/
     HndlRedirect( back, NULL );
-    optreturn( false );
+    { OptEnd( back ); return( false ); }
 }
 
 
@@ -166,15 +166,15 @@ static  void    BigBranch( BackRun& back, ins_entry *add, ins_entry *jmp )
     We can't get to where we want to go, have to redirect
 */
 {
-  optbegin
-    if( jmp != NULL && _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+  OptBegin( back );
+    if( jmp != NULL && IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
         /* jump to a jump that's going where we want*/
         HndlRedirect( back, AddNewLabel( back, PrevIns( back, jmp ), 0 ) );
         ChgLblRef( back, back.optdata.FirstIns, back.optrel.Handle->redirect );
     } else if( InRange(back) ) {
         /* use old redirection label*/
         ChgLblRef( back, back.optdata.FirstIns, back.optrel.Handle->redirect );
-    } else if( add != NULL && _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+    } else if( add != NULL && IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
         /* add a jump that's in range*/
         AddNewJump( back, add, back.optrel.Handle );
         _Savings( OPT_JUMPS, -_ObjLen( NextIns( add ) ) );
@@ -187,7 +187,7 @@ static  void    BigBranch( BackRun& back, ins_entry *add, ins_entry *jmp )
         ChgLblRef( back, back.optdata.FirstIns, AddNewLabel( back, NextIns( back, back.optdata.FirstIns ), 0 ) );
         HndlRedirect( back, AddNewLabel( back, back.optdata.FirstIns, 0 ) );
     }
-  optend
+  OptEnd( back );
 }
 
 
@@ -198,7 +198,7 @@ static  void    SetShort( BackRun& back )
     obj_length  size;
     bool        floating;
 
-  optbegin
+  OptBegin( back );
     floating = false;
     if( _ChkAttr( back.optdata.FirstIns, OC_ATTR_FLOAT ) ) {
         floating = true;
@@ -223,7 +223,7 @@ static  void    SetShort( BackRun& back )
     if( l_ins != NULL ) {
         _SetAttr( l_ins, OC_ATTR_SHORT );
     }
-  optend
+  OptEnd( back );
 }
 
 
@@ -236,7 +236,7 @@ void    SetBranches( BackRun& back )
   ins_entry     *next;
   bool          was_keep;
 
-  optbegin
+  OptBegin( back );
     back.optrel.Handle = _Label( back.optdata.FirstIns );
     if( CanReach( back, back.optrel.Handle, &add, &jmp ) ) {
         _SetStatus( back.optrel.Handle, SHORTREACH );
@@ -274,5 +274,5 @@ void    SetBranches( BackRun& back )
             SetShort(back);
         }
     }
-  optend
+  OptEnd( back );
 }

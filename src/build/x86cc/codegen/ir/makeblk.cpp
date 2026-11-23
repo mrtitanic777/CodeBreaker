@@ -153,7 +153,7 @@ void    AddIns( BackRun& back, instruction *ins )
     back.data.CurrBlock->ins.head.prev->head.next = ins;
     back.data.CurrBlock->ins.head.prev = ins;
     ins->head.line_num = back.data.SrcLine;
-    _INS_NOT_BLOCK( ins );
+    InsNotBlock( back, ins );
     ins->id = ++back.data.InsId;
     back.data.SrcLine = 0;
 }
@@ -479,7 +479,7 @@ bool    BlkTooBig( BackRun& back )
         return( false );
     if( back.data.CurrBlock->ins.head.next == (instruction *)&back.data.CurrBlock->ins )
         return( false );
-    _INS_NOT_BLOCK( back.data.CurrBlock->ins.head.next );
+    InsNotBlock( back, back.data.CurrBlock->ins.head.next );
     if( (back.data.InsId - back.data.CurrBlock->ins.head.next->id) < INS_PER_BLOCK )
         return( false );
     if( back.data.CurrBlock->targets != 0 )

@@ -293,19 +293,19 @@ bool UseRepForm( BackRun& back, unsigned size )
         }
         return( count + extra > MOV_SIZE + 2 );
     }
-    if( _CPULevel( CPU_586 ) ) {
+    if( CPULevel( back, CPU_586 ) ) {
         rep_startup = 11;
         rep_iter    = 1;
         movs_cost   = 4;
-    } else if( _CPULevel( CPU_486 ) ) {
+    } else if( CPULevel( back, CPU_486 ) ) {
         rep_startup = 12;
         rep_iter    = 3;
         movs_cost   = 7;
-    } else if( _CPULevel( CPU_386 ) ) {
+    } else if( CPULevel( back, CPU_386 ) ) {
         rep_startup = 8;
         rep_iter    = 4;
         movs_cost   = 8;
-    } else if( _CPULevel( CPU_286 ) ) {
+    } else if( CPULevel( back, CPU_286 ) ) {
         rep_startup = 5;
         rep_iter    = 4;
         movs_cost   = 5;
@@ -333,10 +333,10 @@ static  bool    CanLoadStringOps( BackRun& back, instruction *ins )
     }
     HW_CAsgn( needs, HW_xSI );
     HW_CTurnOn( needs, HW_xDI );
-    if( _IsTargetModel( CGSW_X86_FLOATING_DS ) ) {
+    if( IsTargetModel( back, CGSW_X86_FLOATING_DS ) ) {
         HW_CTurnOn( needs, HW_DS );
     }
-    if( _IsTargetModel( CGSW_X86_FLOATING_ES ) ) {
+    if( IsTargetModel( back, CGSW_X86_FLOATING_ES ) ) {
        HW_CTurnOn( needs, HW_ES );
     }
     return( !HW_Ovlap( needs, ins->head.live.regs ) );
@@ -368,9 +368,9 @@ static  bool    SegmentFloats( BackRun& back, name *op )
     if( segname->n.class_ != N_REGISTER )
         return( true );
     if( HW_COvlap( segname->r.reg, HW_DS ) )
-        return( _IsTargetModel( CGSW_X86_FLOATING_DS ) );
+        return( IsTargetModel( back, CGSW_X86_FLOATING_DS ) );
     if( HW_COvlap( segname->r.reg, HW_SS ) )
-        return( _IsTargetModel( CGSW_X86_FLOATING_SS ) );
+        return( IsTargetModel( back, CGSW_X86_FLOATING_SS ) );
     return( true );
 }
 
@@ -430,7 +430,7 @@ static  instruction     *LoadStringOps( BackRun& back, instruction *ins,
             es_needs_save = true;
         }
         DelSeg( ins );
-    } else if( _IsTargetModel( CGSW_X86_FLAT_MODEL )
+    } else if( IsTargetModel( back, CGSW_X86_FLAT_MODEL )
       && !SegmentFloats( back, *op1 )
       && !SegmentFloats( back, *op2 ) ) {
         load_op1 = MakeUnary( back, OP_LA, *op2, AllocRegName( back, HW_xDI ), WD );
@@ -446,7 +446,7 @@ static  instruction     *LoadStringOps( BackRun& back, instruction *ins,
         ds_needs_save = SegmentFloats( back, *op1 );
         es_needs_save = SegmentFloats( back, *op2 );
     }
-    if( _IsntTargetModel( CGSW_X86_FLOATING_DS )
+    if( IsntTargetModel( back, CGSW_X86_FLOATING_DS )
       && ds_needs_save ) {
         /*
          * restore DS
@@ -457,7 +457,7 @@ static  instruction     *LoadStringOps( BackRun& back, instruction *ins,
         SuffixIns( back, ins, pop );
         PrefixIns( back, load_op2, MakeUnary( back, OP_PUSH, ds_reg, NULL, U2 ) );
     }
-    if( _IsntTargetModel( CGSW_X86_FLOATING_ES )
+    if( IsntTargetModel( back, CGSW_X86_FLOATING_ES )
       && es_needs_save ) {
         /*
          * restore ES
@@ -821,7 +821,7 @@ instruction     *rDOLONGPUSH( BackRun& back, instruction *ins )
         HW_CAsgn( hw_ss_sp, HW_SS );
         HW_CTurnOn( hw_ss_sp, HW_xSP );
         sp = AllocRegName( back, HW_xSP );
-        if( _IsTargetModel( CGSW_X86_FLOATING_SS ) ) {
+        if( IsTargetModel( back, CGSW_X86_FLOATING_SS ) ) {
             temp = AllocTemp( back, CP );
             temp_ins = MakeMove( back, AllocRegName( back, hw_ss_sp ), temp, CP );
         } else {
@@ -962,7 +962,7 @@ instruction     *rCMPCP( BackRun& back, instruction *ins )
     assert( ins->operands[1]->c.lo.u.int_value == 0 );
     if( ins->head.opcode == OP_CMP_EQUAL
       || ins->head.opcode == OP_CMP_NOT_EQUAL ) {
-        if( _IsTargetModel( CGSW_X86_NULL_SELECTOR_BAD ) ) {
+        if( IsTargetModel( back, CGSW_X86_NULL_SELECTOR_BAD ) ) {
             ins->operands[0] = HighPart( back, ins->operands[0], U2 );
             ChangeType( ins, U2 );
             return( ins );

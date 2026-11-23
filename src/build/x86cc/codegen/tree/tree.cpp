@@ -617,7 +617,7 @@ static const type_def   *BinResult( BackRun& back, cg_op opcode, tn *l, tn *r, c
         tipe = ResultType( back, rite, left, tipe, BinMat, true );
         break;
     default:
-        _Zoiks( ZOIKS_054 );
+        Zoiks( back, ZOIKS_054 );
         break;
     }
     *l = left;
@@ -766,7 +766,7 @@ tn  TGUnary( BackRun& back, cg_op opcode, tn left, const type_def *tipe )
     case O_STACK_ALLOC:
         break;
     default:
-        _Zoiks( ZOIKS_055 );
+        Zoiks( back, ZOIKS_055 );
         break;
     }
     if( new_tn == NULL ) {
@@ -785,7 +785,7 @@ call_handle TGInitCall( BackRun& back, tn left, const type_def *tipe, cg_sym_han
 
     node = TGNode( back, TN_PARM, O_NOP, left, (tn)sym, NULL );
     node = TGNode( back, TN_CALL, O_NOP, node, NULL, tipe );
-    if( (call_class)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS ) & FECALL_GEN_REVERSE_PARMS ) {
+    if( (call_class)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS ) & FECALL_GEN_REVERSE_PARMS ) {
         node->flags |= TF_REVERSE;
     }
     return( node );
@@ -1175,7 +1175,7 @@ tn  TGFlow( BackRun& back, cg_op opcode, tn left, tn rite )
         break;
     default:
         result = NULL;
-        _Zoiks( ZOIKS_056 );
+        Zoiks( back, ZOIKS_056 );
         break;
     }
     if( result != NULL )
@@ -1346,7 +1346,7 @@ static  name    *TNGetLeafName( BackRun& back, tn node )
     case CL_ADDR_GLOBAL:
         return( addr->u.n.name );
     case CL_POINTER:
-        if( _IsModel( CGSW_GEN_FORTRAN_ALIASING ) )
+        if( IsModel( back, CGSW_GEN_FORTRAN_ALIASING ) )
             return( addr->u.n.name );
         return( NULL );
     default:
@@ -1413,7 +1413,7 @@ static  name *TNFindBase( BackRun& back, tn node )
         default:
             break;
         }
-        if( _IsntModel( CGSW_GEN_FORTRAN_ALIASING ) )
+        if( IsntModel( back, CGSW_GEN_FORTRAN_ALIASING ) )
             return( NULL );
         if( node->u1.t.op != O_POINTS )
             return( NULL );
@@ -1586,7 +1586,7 @@ static  an  TNBitShift( BackRun& back, an retv, tn node, bool already_masked )
         break;
     default:
         tipes = NULL;
-        _Zoiks( ZOIKS_092 );
+        Zoiks( back, ZOIKS_092 );
         break;
     }
     mask = TGMask64( node );
@@ -2109,7 +2109,7 @@ static  bool    FunctionModifiesSP( BackRun& back, tn call )
     cg_sym_handle   sym;
 
     sym = (cg_sym_handle)call->u.left->u1.t.rite;
-    pregs = static_cast<hw_reg_set *>(FindAuxInfoSym( sym, FEINF_SAVE_REGS ));
+    pregs = static_cast<hw_reg_set *>(FindAuxInfoSym( back, sym, FEINF_SAVE_REGS ));
     if( !HW_Ovlap( *pregs, StackReg() ) ) {
         return( true );
     }
@@ -2456,7 +2456,7 @@ static  an DoTreeGen( BackRun& back, tn node )
         break;
     default:
         retv = NULL;
-        _Zoiks( ZOIKS_057 );
+        Zoiks( back, ZOIKS_057 );
     }
     FreeTreeNode( back, node );
     return( retv );

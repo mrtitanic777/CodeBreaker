@@ -61,7 +61,7 @@ void DW_StartChildren( BackRun& back, dw_client cli )
     die_tree        *new_;
 
     /* make a new entry in the tree */
-    new_ = static_cast<die_tree *>(CLIAlloc( cli, sizeof( *new_ ) ));
+    new_ = static_cast<die_tree *>(CLIAlloc( back, cli, sizeof( *new_ ) ));
     new_->parent = cli->die.tree;
     cli->die.tree = new_;
 
@@ -78,10 +78,10 @@ static void doTheSiblingThing( BackRun& back, dw_client cli )
     sibling = cli->die.tree->sibling;
     if( sibling ) {
         /* relocate previous sibling */
-        offset = InfoSectionOffset( cli );
-        CLISectionSeekOffset( cli, DW_DEBUG_INFO, sibling );
+        offset = InfoSectionOffset( back, cli );
+        CLISectionSeekOffset( back, cli, DW_DEBUG_INFO, sibling );
         DW_Info32( back, cli, offset );
-        CLISectionSeekEnd( cli, DW_DEBUG_INFO );
+        CLISectionSeekEnd( back, cli, DW_DEBUG_INFO );
     }
 }
 
@@ -116,9 +116,9 @@ void DW_StartDIE( BackRun& back, dw_client cli, abbrev_code abbrev )
 
     /* AT_sibling reference */
     if( haskids ) {
-        cli->die.tree->sibling = InfoSectionOffset( cli );
+        cli->die.tree->sibling = InfoSectionOffset( back, cli );
         /* reserve space (skip over) */
-        InfoSkip( cli, sizeof( dw_sect_offs ) );
+        InfoSkip( back, cli, sizeof( dw_sect_offs ) );
     } else {
         cli->die.tree->sibling = 0;
     }

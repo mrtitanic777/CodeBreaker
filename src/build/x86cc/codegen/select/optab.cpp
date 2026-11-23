@@ -51,7 +51,7 @@ const opcode_entry  *CodeTable( BackRun& back, instruction *ins )
     idx += ins->type_class;
     opcode_idx = OpTable[idx];
     if( opcode_idx == BAD ) {
-        _Zoiks( ZOIKS_052 );
+        Zoiks( back, ZOIKS_052 );
     }
     return( OpcodeTable( back, opcode_idx ) );
 }

@@ -47,13 +47,12 @@ struct ModelState {
 
 #endif
 
-#define _IsModel( mdl )         ( ( back.model.Model & (mdl) ) != 0 )
-#define _IsntModel( mdl )       ( ( back.model.Model & (mdl) ) == 0 )
-
-#define _IsTargetModel( mdl )   ( ( back.model.TargetModel & (mdl) ) != 0 )
-#define _IsntTargetModel( mdl ) ( ( back.model.TargetModel & (mdl) ) == 0 )
-
-    #define _CPULevel( v )  ( GET_CPU( back.model.CGProcessorVersion ) >= (v) )
-
-    #define _FPULevel( v )  ((GET_FPU(back.model.CGProcessorVersion) & ~FPU_EMU) >= (v) )
-    #define _IsEmulation()  ((back.model.CGProcessorVersion & FPU_EMU) != 0)
+/* what the run's code generation model says. They read `back.model`, so their bodies are in backrun.hpp, after BackRun. */
+struct BackRun;
+inline bool IsModel( const BackRun& back, cg_switches mdl );
+inline bool IsntModel( const BackRun& back, cg_switches mdl );
+inline bool IsTargetModel( const BackRun& back, cg_target_switches mdl );
+inline bool IsntTargetModel( const BackRun& back, cg_target_switches mdl );
+inline bool CPULevel( const BackRun& back, proc_revision level );
+inline bool FPULevel( const BackRun& back, proc_revision level );
+inline bool IsEmulation( const BackRun& back );

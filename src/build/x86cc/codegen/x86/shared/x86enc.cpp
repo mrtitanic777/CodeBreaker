@@ -229,7 +229,7 @@ void    EjectInst( BackRun& back )
 
 void    Finalize( BackRun& back )
 /***********************
- * Invoked by macro _Emit. Spits Temp into the peephole optimizer
+ * Spits Temp into the peephole optimizer
  */
 {
     EjectInst(back);
@@ -271,12 +271,12 @@ static void     LayInitial( BackRun& back, instruction *ins, gentype gen )
     if( table->flags & NEED_WAIT ) {
         back.i87data.Used87 = true;
 #if _TARGET & _TARG_8086
-        if( gen == G_FINIT || !_CPULevel( CPU_286 ) || _IsEmulation() ) {
-            if( _IsEmulation() ) {
+        if( gen == G_FINIT || !CPULevel( back, CPU_286 ) || IsEmulation( back ) ) {
+            if( IsEmulation( back ) ) {
                 SetFPPatchType( back, FPP_NORMAL );
             }
             LayOpbyte( back, 0x9b );
-            _Next;
+            EjectInst( back );
         }
 #endif
     }
@@ -314,7 +314,7 @@ static reg_idx  SegTrans( BackRun& back, hw_reg_set regs )
             return( RegsTab[i].idx );
         }
     }
-    _Zoiks( ZOIKS_032 );
+    Zoiks( back, ZOIKS_032 );
     return( 0 );
 }
 
@@ -331,7 +331,7 @@ reg_idx  RegTrans( BackRun& back, hw_reg_set regs )
             return( RegsTab[i].idx );
         }
     }
-    _Zoiks( ZOIKS_031 );
+    Zoiks( back, ZOIKS_031 );
     return( 0 );
 }
 
@@ -360,7 +360,7 @@ dw_regs RegTransDW( BackRun& back, hw_reg_set reg )
             return( RegsTab[i].dw_idx );
         }
     }
-    _Zoiks( ZOIKS_031 );
+    Zoiks( back, ZOIKS_031 );
     return( DW_REG_END );
 }
 
@@ -377,7 +377,7 @@ int RegTransWV( BackRun& back, hw_reg_set reg )
             return( RegsTab[i].wv_idx );
         }
     }
-    _Zoiks( ZOIKS_031 );
+    Zoiks( back, ZOIKS_031 );
 //    return( WV_REG_END );
     return( -1 );
 }
@@ -539,7 +539,7 @@ static  bool    LayOpndSize( BackRun& back, instruction *ins, gentype gen )
         default:
             break;
         }
-        if( _IsTargetModel( CGSW_X86_USE_32 ) ) {
+        if( IsTargetModel( back, CGSW_X86_USE_32 ) ) {
             if( ins->type_class == U2 || ins->type_class == I2 ) {
                 if( NeedOpndSize( ins ) ) {
                     AddToTemp( back, M_OPND_SIZE );
@@ -600,7 +600,7 @@ static  void    LayMF( BackRun& back, name *op )
             back.pcencode.Inst[RMR] |= B_RMR_FMT_I8;
             break;
         default:
-            _Zoiks( ZOIKS_029 );
+            Zoiks( back, ZOIKS_029 );
             break;
         }
     }
@@ -658,24 +658,24 @@ static  void    DoP5RegisterDivide( BackRun& back, instruction *ins )
     ins_key = ( pop & 1 ) | ( ( reverse & 1 ) << 1 ) | ( ( dest & 1 ) << 2 );
     ins_key |= st_reg << 3;
     // je ok
-    _Code;
-    _Next;
+    Format( back, OC_CODE );
+    EjectInst( back );
     LayOpbyte( back, 0x50 );                  /* push [e]ax           */
-    _Next;
+    EjectInst( back );
     LayOpbyte( back, 0xb8 );                  /* mov #cons -> [e]ax   */
     AddWData( back, ins_key, WD );
-    _Emit;
+    Finalize( back );
     DoRTCall( back, RT_FDIV_FPREG, false );   /* call __fdiv_fpr      */
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0x58 );                  /* pop [e]ax            */
-    _Emit;
+    Finalize( back );
     GenJumpLabel( back, lbl_2 );
     CodeLabel( back, lbl, 0 );
-    _Code;
+    Format( back, OC_CODE );
     LayInitial( back, ins, G( ins ) );
     LayOpndSize( back, ins, G( ins ) );
     LayST( back, ins->operands[0] );
-    _Emit;
+    Finalize( back );
     CodeLabel( back, lbl_2, 0 );
     GenKillLabel( back, lbl );
     GenKillLabel( back, lbl_2 );
@@ -712,7 +712,7 @@ static  void    DoP5MemoryDivide( BackRun& back, instruction *ins )
         seg = ins->operands[ins->num_operands - 1];
     }
 
-    _Code;
+    Format( back, OC_CODE );
     switch( ins->operands[0]->n.type_class ) {
     case FS:
 #if _TARGET & _TARG_8086
@@ -722,7 +722,7 @@ static  void    DoP5MemoryDivide( BackRun& back, instruction *ins )
             GenSeg( back, seg->r.reg );
         LayOpword( back, 0x30ff );
         LayModRM( back, high );
-        _Next;
+        EjectInst( back );
         if( seg != NULL )
             GenSeg( back, seg->r.reg );
         LayOpword( back, 0x30ff );
@@ -749,30 +749,30 @@ static  void    DoP5MemoryDivide( BackRun& back, instruction *ins )
             GenSeg( back, seg->r.reg );
         LayOpword( back, 0x30ff );
         LayModRM( back, h );
-        _Next;
+        EjectInst( back );
         if( seg != NULL )
             GenSeg( back, seg->r.reg );
         LayOpword( back, 0x30ff );
         LayModRM( back, l );
-        _Next;
+        EjectInst( back );
         h = HighPart( back, low, U2 );
         l = LowPart( back, low, U2 );
         if( seg != NULL )
             GenSeg( back, seg->r.reg );
         LayOpword( back, 0x30ff );
         LayModRM( back, h );
-        _Next;
+        EjectInst( back );
         if( seg != NULL )
             GenSeg( back, seg->r.reg );
         LayOpword( back, 0x30ff );
         LayModRM( back, l );
-        _Next;
+        EjectInst( back );
 #else
         if( seg != NULL )
             GenSeg( back, seg->r.reg );
         LayOpword( back, 0x30ff );
         LayModRM( back, high );
-        _Next;
+        EjectInst( back );
         back.x86proc.StackDepth += WORD_SIZE;
         if( seg != NULL )
             GenSeg( back, seg->r.reg );
@@ -788,13 +788,13 @@ static  void    DoP5MemoryDivide( BackRun& back, instruction *ins )
         break;
     default:
         rtindex = RT_FDIV_MEM64;
-        _Zoiks( ZOIKS_114 );
+        Zoiks( back, ZOIKS_114 );
     }
-    _Emit;
+    Finalize( back );
     DoRTCall( back, rtindex, false );
     GenJumpLabel( back, lbl_2 );
     CodeLabel( back, lbl, 0 );
-    _Code;
+    Format( back, OC_CODE );
     if( seg != NULL ) {
         GenSeg( back, seg->r.reg );
     }
@@ -802,7 +802,7 @@ static  void    DoP5MemoryDivide( BackRun& back, instruction *ins )
     LayOpndSize( back, ins, G( ins ) );
     LayMF( back, ins->operands[0] );
     LayModRM( back, ins->operands[0] );
-    _Emit;
+    Finalize( back );
     CodeLabel( back, lbl_2, 0 );
     GenKillLabel( back, lbl );
     GenKillLabel( back, lbl_2 );
@@ -817,20 +817,20 @@ static  void    DoP5Divide( BackRun& back, instruction *ins )
 {
     bool        used_ds = false;
 
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0x9c );          /* pushf */
-    _Emit;
+    Finalize( back );
 #if _TARGET & _TARG_80386
     back.x86proc.StackDepth += WORD_SIZE;
 #endif
-    _Code;
-    if( _IsTargetModel( CGSW_X86_FLOATING_DS ) ) {
-        if( _IsTargetModel( CGSW_X86_FLOATING_SS ) ) {
+    Format( back, OC_CODE );
+    if( IsTargetModel( back, CGSW_X86_FLOATING_DS ) ) {
+        if( IsTargetModel( back, CGSW_X86_FLOATING_SS ) ) {
             LayOpbyte( back, 0x1e );  /* push ds    */
             AddByte( back, 0x50 );    /* push [e]ax */
-            _Emit;
+            Finalize( back );
             GenLoadDS(back);
-            _Code;
+            Format( back, OC_CODE );
             used_ds = true;
         } else {
             AddToTemp( back, 0x36 );
@@ -844,12 +844,12 @@ static  void    DoP5Divide( BackRun& back, instruction *ins )
     back.pcencode.ILen += WORD_SIZE;
     DoLblRef( back, RTLabel( back, RT_BUGLIST ), AskBackSeg(back), 0, ESCA_OFST );
     AddWData( back, 1, U1 );
-    _Emit;
+    Finalize( back );
     if( used_ds ) {
-        _Code;
+        Format( back, OC_CODE );
         LayOpbyte( back, 0x58 );      /* pop [e]ax */
         AddByte( back, 0x1f );        /* pop ds    */
-        _Emit;
+        Finalize( back );
     }
     switch( G( ins ) ) {
     case G_RRFBIN:
@@ -868,9 +868,9 @@ static  void    DoP5Divide( BackRun& back, instruction *ins )
     case G_MNFBIN:
         DoP5MemoryDivide( back, ins );
     }
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0x9d );          /* popf */
-    _Emit;
+    Finalize( back );
 #if _TARGET & _TARG_80386
     back.x86proc.StackDepth -= WORD_SIZE;
 #endif
@@ -882,35 +882,35 @@ static  void    SetCC( BackRun& back )
  * Generate code to set the condition codes based on an 8087 FCMP instruction
  */
 {
-    if( _IsEmulation() ) {
-        _Emit;
-        _Code;
+    if( IsEmulation( back ) ) {
+        Finalize( back );
+        Format( back, OC_CODE );
         SetFPPatchType( back, FPP_NORMAL );
     }
-    if( _CPULevel( CPU_386 ) ) {
-        if( _IsEmulation() ) {
+    if( CPULevel( back, CPU_386 ) ) {
+        if( IsEmulation( back ) ) {
             AddByte( back, 0x9b );        /*  FWAIT - needed for FIDRQQ to work */
         }
         AddByte( back, 0xdf );            /*  FSTSW  AX       */
         AddByte( back, 0xe0 );            /*  ..              */
     } else {
-        if( !_CPULevel( CPU_386 ) ) {
+        if( !CPULevel( back, CPU_386 ) ) {
             AddByte( back, 0x9b );        /*  FWAIT           */
         }
-        if( _CPULevel( CPU_286 ) && !_IsEmulation() ) {
+        if( CPULevel( back, CPU_286 ) && !IsEmulation( back ) ) {
             AddByte( back, 0xdf );        /*  FSTSW  AX       */
             AddByte( back, 0xe0 );        /*  ..              */
         } else {
-            _Next;                  /*                  */
+            EjectInst( back );                  /*                  */
             LayOpword( back, 0x38dd );    /*  FSTSW  temp     */
             LayModRM( back, back.i87data.FPStatWord ); /*  ..              */
-            if( _IsEmulation() ) {
-                _Emit;              /*                  */
+            if( IsEmulation( back ) ) {
+                Finalize( back );              /*                  */
                 GFwait(back);           /*  FWAIT           */
-                _Code;              /*                  */
+                Format( back, OC_CODE );              /*                  */
             } else {
                 AddByte( back, 0x9b );    /*  FWAIT           */
-                _Next;              /*                  */
+                EjectInst( back );              /*                  */
             }
             LayOpword( back, 0x008a );    /*  MOV    AX,temp  */
             LayReg( back, HW_AX );        /*  ..              */
@@ -1038,8 +1038,8 @@ void    GenSeg( BackRun& back, hw_reg_set regs )
         if( HW_CEqual( segreg, HW_SS ) )
             return;
         if( HW_CEqual( segreg, HW_DS )
-          && _IsntTargetModel( CGSW_X86_FLOATING_DS )
-          && _IsntTargetModel( CGSW_X86_FLOATING_SS ) ) {
+          && IsntTargetModel( back, CGSW_X86_FLOATING_DS )
+          && IsntTargetModel( back, CGSW_X86_FLOATING_SS ) ) {
             return;
         }
     } else {
@@ -1057,7 +1057,7 @@ void    GenSeg( BackRun& back, hw_reg_set regs )
     } else {
         AddToTemp( back, M_SEGOVER | ( SegTrans( back, regs ) << S_KEY_SR ) );
     }
-    if( _IsEmulation() ) {
+    if( IsEmulation( back ) ) {
         for( i = ARCH_SEG_START; i < ARCH_SEG_END; i++ ) {
             if( HW_Equal( segreg, RegsTab[i].hw_reg ) ) {
                 SetFPPatchSegm( back, RegsTab[i].idx );
@@ -1076,16 +1076,16 @@ type_class_def  OpndSize( BackRun& back, hw_reg_set regs )
     if( HW_COvlap( regs, HW_SEGS ) )
         return( U2 );
 #if _TARGET & _TARG_8086
-    if( _IsTargetModel( CGSW_X86_USE_32 ) )
+    if( IsTargetModel( back, CGSW_X86_USE_32 ) )
         AddToTemp( back, M_OPND_SIZE );
     return( U2 );
 #else
     if( HW_COvlap( regs, HW_32 ) ) {
-        if( _IsntTargetModel( CGSW_X86_USE_32 ) )
+        if( IsntTargetModel( back, CGSW_X86_USE_32 ) )
             AddToTemp( back, M_OPND_SIZE );
         return( U4 );
     } else {
-        if( _IsTargetModel( CGSW_X86_USE_32 ) )
+        if( IsTargetModel( back, CGSW_X86_USE_32 ) )
             AddToTemp( back, M_OPND_SIZE );
         return( U2 );
     }
@@ -1127,7 +1127,7 @@ void    QuickSave( BackRun& back, hw_reg_set reg, opcode_defs opcode )
  * assume register is valid for PUSH/POP
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     if( HW_COvlap( reg, HW_SEGS ) ) {
         if( opcode == OP_PUSH ) {
             PushSeg( back, reg );
@@ -1142,7 +1142,7 @@ void    QuickSave( BackRun& back, hw_reg_set reg, opcode_defs opcode )
         }
         OpndSize( back, reg );
     }
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1151,12 +1151,12 @@ void    GenRegXor( BackRun& back, hw_reg_set src, hw_reg_set dst )
  * XOR         dst,src
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpword( back, M_XORRR | B_KEY_W );
     OpndSize( back, src );
     LayReg( back, src );
     LayRegRM( back, dst );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1165,11 +1165,11 @@ void    GenRegNeg( BackRun& back, hw_reg_set src )
  * NEG         src
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpword( back, M_NEGR | B_KEY_W );
     OpndSize( back, src );
     LayRegRM( back, src );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1178,15 +1178,15 @@ void    GenRegMove( BackRun& back, hw_reg_set src, hw_reg_set dst )
  * MOV         dst,src
  */
 {
-    _Code;
+    Format( back, OC_CODE );
 #if _TARGET & _TARG_8086
-    if( _IsTargetModel( CGSW_X86_MSC8 ) ) {
+    if( IsTargetModel( back, CGSW_X86_MSC8 ) ) {
         /* Microsoft C 8 moves a register into a register as MOV reg,r/m (8B: MOV BP,SP is 8B EC) (-zmsc) */
         LayOpword( back, M_MOVRR | 2 | B_KEY_W );
         OpndSize( back, src );
         LayReg( back, dst );
         LayRegRM( back, src );
-        _Emit;
+        Finalize( back );
         return;
     }
 #endif
@@ -1194,7 +1194,7 @@ void    GenRegMove( BackRun& back, hw_reg_set src, hw_reg_set dst )
     OpndSize( back, src );
     LayReg( back, src );
     LayRegRM( back, dst );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1337,12 +1337,12 @@ static  void    GenRegOp( BackRun& back, hw_reg_set dst, type_length value, gen_
 {
     type_class_def      type_class;
 
-    _Code;
+    Format( back, OC_CODE );
     LayOpword( back, op | B_KEY_W );
     type_class = OpndSize( back, dst );
     LayRegRM( back, dst );
     AddSData( back, value, type_class );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1380,7 +1380,7 @@ static  void    GFld1( BackRun& back )
 {
     GCondFwait(back);
     LayOpword( back, 0xe8d9 );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1407,7 +1407,7 @@ void    GFldM( BackRun& back, pointer what )
     LayOpword( back, 0x00d9 );
     LayMF( back, static_cast<name *>(what) );
     LayModRM( back, static_cast<name *>(what) );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1420,7 +1420,7 @@ void    GFstpM( BackRun& back, pointer what )
     LayOpword( back, 0x18d9 );
     LayMF( back, static_cast<name *>(what) );
     LayModRM( back, static_cast<name *>(what) );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1432,7 +1432,7 @@ void    GFstp( BackRun& back, int i )
     GCondFwait(back);
     LayOpword( back, 0xd8dd );
     back.pcencode.Inst[RMR] |= i;
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1444,7 +1444,7 @@ void    GFxch( BackRun& back, int i )
     GCondFwait(back);
     LayOpword( back, 0xc8d9 );
     back.pcencode.Inst[RMR] |= i;
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1455,7 +1455,7 @@ void    GFldz( BackRun& back )
 {
     GCondFwait(back);
     LayOpword( back, 0xeed9 );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1467,7 +1467,7 @@ void    GFld( BackRun& back, int i )
     GCondFwait(back);
     LayOpword( back, 0xc0d9 );
     back.pcencode.Inst[RMR] |= i;
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1476,15 +1476,15 @@ void    GCondFwait( BackRun& back )
  * FWAIT, but only if we need one
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     back.i87data.Used87 = true;
 #if _TARGET & _TARG_8086
-    if( !_CPULevel( CPU_286 ) || _IsEmulation() ) {
-        if( _IsEmulation() ) {
+    if( !CPULevel( back, CPU_286 ) || IsEmulation( back ) ) {
+        if( IsEmulation( back ) ) {
             SetFPPatchType( back, FPP_NORMAL );
         }
         LayOpbyte( back, 0x9b );
-        _Next;
+        EjectInst( back );
     }
 #endif
 }
@@ -1495,17 +1495,17 @@ void    GFwait( BackRun& back )
  * FWAIT
  */
 {
-    if( _CPULevel( CPU_386 ) )
+    if( CPULevel( back, CPU_386 ) )
         return;
-    _Code;
+    Format( back, OC_CODE );
     back.i87data.Used87 = true;
-    if( _IsEmulation() ) {
+    if( IsEmulation( back ) ) {
         SetFPPatchType( back, FPP_WAIT );
         LayOpword( back, 0x9b90 );
     } else {
         LayOpbyte( back, 0x9b );
     }
-   _Emit;
+   Finalize( back );
 }
 
 void    Gpusha( BackRun& back )
@@ -1513,9 +1513,9 @@ void    Gpusha( BackRun& back )
  * PUSHA{d}
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0x60 );
-   _Emit;
+   Finalize( back );
 }
 
 void    Gpopa( BackRun& back )
@@ -1523,9 +1523,9 @@ void    Gpopa( BackRun& back )
  * POPA{d}
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0x61 );
-   _Emit;
+   Finalize( back );
 }
 
 void    Gcld( BackRun& back )
@@ -1533,9 +1533,9 @@ void    Gcld( BackRun& back )
  * CLD
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0xfc );
-   _Emit;
+   Finalize( back );
 }
 
 void    GenLeave( BackRun& back )
@@ -1543,10 +1543,10 @@ void    GenLeave( BackRun& back )
  * LEAVE
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0xc9 );
     OpndSize( back, HW_xBP );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1562,11 +1562,11 @@ void    GenTouchStack( BackRun& back, bool sp_might_point_at_something )
         QuickSave( back, HW_xAX, OP_PUSH );
         QuickSave( back, HW_xAX, OP_POP );
     } else {
-        _Code;
+        Format( back, OC_CODE );
         LayOpword( back, 0x0489 );    /*  mov dword ptr [esp],eax */
         OpndSize( back, HW_xSP );     /*  ..                      */
         AddByte( back, 0x24 );        /*  ..                      */
-        _Emit;
+        Finalize( back );
     }
 #endif
 }
@@ -1577,12 +1577,12 @@ void    GenEnter( BackRun& back, int size, int level )
  * ENTER       size,level
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0xc8 );
     OpndSize( back, HW_xBP );
     AddWData( back, size, U2 );
     AddByte( back, (byte)level );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1591,10 +1591,10 @@ void    GenPushOffset( BackRun& back, byte offset )
  * PUSH        word ptr offset[BP]
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpword( back, M_PUSHATBP );
     AddWData( back, offset, I1 );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1603,13 +1603,13 @@ void    GenUnkSub( BackRun& back, hw_reg_set dst, pointer value )
  * SUB         dst,??? - to be patched later
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpword( back, M_SUBRC | B_KEY_W );
     OpndSize( back, dst );
     LayRegRM( back, dst );
     back.pcencode.ILen += WORD_SIZE;
     DoAbsPatch( back, static_cast<abspatch_handle *>(value), WORD_SIZE );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1620,12 +1620,12 @@ void    GenUnkMov( BackRun& back, hw_reg_set dst, pointer value )
 {
     /* unused parameters */ (void)dst;
 
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0xb8 );
     OpndSize( back, dst );
     back.pcencode.ILen += WORD_SIZE;
     DoAbsPatch( back, static_cast<abspatch_handle *>(value), WORD_SIZE );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1634,19 +1634,19 @@ void    GenUnkEnter( BackRun& back, pointer value, int level )
  * ENTER       ??,level - to be patched later
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0xc8 );
     DoAbsPatch( back, static_cast<abspatch_handle *>(value), 2 );
     back.pcencode.ILen += 2;
     AddByte( back, (byte)level );
-    _Emit;
+    Finalize( back );
 }
 
 void    GenWindowsProlog( BackRun& back )
 /******************************/
 {
-    _Code;
-    if( _IsTargetModel( CGSW_X86_SMART_WINDOWS ) ) {
+    Format( back, OC_CODE );
+    if( IsTargetModel( back, CGSW_X86_SMART_WINDOWS ) ) {
         LayOpbyte( back, 0x8c );          /*  mov     [e]ax, ss   */
         AddByte( back, 0xd0 );            /*  ..                  */
     } else {
@@ -1654,7 +1654,7 @@ void    GenWindowsProlog( BackRun& back )
         AddByte( back, 0x58 );            /*  pop     [e]ax       */
         AddByte( back, 0x90 );            /*  nop                 */
     }
-    if( !_CPULevel( CPU_386 ) ) {
+    if( !CPULevel( back, CPU_386 ) ) {
         AddByte( back, 0x45 );            /*  inc     [e]bp       */
     }
     AddByte( back, 0x55 );                /*  push    [e]bp       */
@@ -1663,7 +1663,7 @@ void    GenWindowsProlog( BackRun& back )
     AddByte( back, 0x1e );                /*  push    ds          */
     AddByte( back, 0x8e );                /*  mov     ds,[e]ax    */
     AddByte( back, 0xd8 );                /*  ..                  */
-    _Emit;
+    Finalize( back );
 }
 
 void    GenCheapWindowsProlog( BackRun& back )
@@ -1671,26 +1671,26 @@ void    GenCheapWindowsProlog( BackRun& back )
  * Generate a "cheap" windows prolog
  */
 {
-    _Code;
-    if( !_CPULevel( CPU_386 ) ) {
+    Format( back, OC_CODE );
+    if( !CPULevel( back, CPU_386 ) ) {
         LayOpbyte( back, 0x45 );          /*  inc     [e]bp       */
     }
     AddByte( back, 0x55 );                /*  push    [e]bp       */
     AddByte( back, 0x89 );                /*  mov     [e]bp,[e]sp */
     AddByte( back, 0xe5 );                /*  ..                  */
-    _Emit;
+    Finalize( back );
 }
 
 void    GenWindowsEpilog( BackRun& back )
 /******************************/
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0x1f );              /*  pop     ds          */
     AddByte( back, 0x5d );                /*  pop     [e]bp       */
-    if( !_CPULevel( CPU_386 ) ) {
+    if( !CPULevel( back, CPU_386 ) ) {
         AddByte( back, 0x4d );            /*  dec     [e]bp       */
     }
-    _Emit;
+    Finalize( back );
 }
 
 void    GenCheapWindowsEpilog( BackRun& back )
@@ -1698,79 +1698,79 @@ void    GenCheapWindowsEpilog( BackRun& back )
  * Generate a "cheap" windows epilog
  */
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0x5d );              /*  pop     [e]bp       */
-    if( !_CPULevel( CPU_386 ) ) {
+    if( !CPULevel( back, CPU_386 ) ) {
         AddByte( back, 0x4d );            /*  dec     [e]bp       */
     }
-    _Emit;
+    Finalize( back );
 }
 
 
 void    GenRdosdevProlog( BackRun& back )
 /******************************/
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0x1e );              /*  push    ds        */
-    _Emit;
+    Finalize( back );
 
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0x6 );               /*  push    es        */
-    _Emit;
+    Finalize( back );
 
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0xf );               /*  push    fs        */
     AddByte( back, 0xa0 );
-    _Emit;
+    Finalize( back );
 
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0xf );               /*  push    gs        */
     AddByte( back, 0xa8 );
-    _Emit;
+    Finalize( back );
 
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0x68 );              /*  push    DGROUP    */
     back.pcencode.ILen += WORD_SIZE;
     DoSegRef( back, AskBackSeg(back) );
     AddByte( back, 0x0 );
     AddByte( back, 0x0 );
     AddByte( back, 0x1F );                /*  pop     ds        */
-    _Emit;
+    Finalize( back );
 }
 
 void    GenRdosdevEpilog( BackRun& back )
 /******************************/
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0xf );               /*  pop     gs      */
     AddByte( back, 0xa9 );
-    _Emit;
+    Finalize( back );
 
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0xf );               /*  pop     fs      */
     AddByte( back, 0xa1 );
-    _Emit;
+    Finalize( back );
 
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0x7 );               /*  pop     es      */
-    _Emit;
+    Finalize( back );
 
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0x1f );              /*  pop     ds      */
-    _Emit;
+    Finalize( back );
 }
 
 void    GenLoadDS( BackRun& back )
 /***********************/
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0xb8 );              /*  mov     [e]ax,DGROUP */
     OpndSize( back, HW_xAX );
     back.pcencode.ILen += WORD_SIZE;
     DoSegRef( back, AskBackSeg(back) );
     AddByte( back, 0x8e );                /*  mov     ds,[e]ax   */
     AddByte( back, 0xd8 );                /*  ..                 */
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -1788,24 +1788,24 @@ static  void    MathFunc( BackRun& back, instruction *ins )
 {
     switch( ins->head.opcode ) {
     case OP_EXP:
-        OutputFP( back, 0xE8D9 ); _Emit;  /*   FLD1           */
-        OutputFP( back, 0xEAD9 ); _Emit;  /*   FLDL2E         */
-        OutputFP( back, 0xCAD8 ); _Emit;  /*   FMUL ST,ST(2)  */
-        OutputFP( back, 0xD2DD ); _Emit;  /*   FST  ST(2)     */
-        OutputFP( back, 0xF8D9 ); _Emit;  /*   FPREM          */
-        OutputFP( back, 0xF0D9 ); _Emit;  /*   F2XM1          */
-        OutputFP( back, 0xC1DE ); _Emit;  /*   FADDP ST(1),ST */
-        OutputFP( back, 0xFDD9 ); _Emit;  /*   FSCALE         */
+        OutputFP( back, 0xE8D9 ); Finalize( back );  /*   FLD1           */
+        OutputFP( back, 0xEAD9 ); Finalize( back );  /*   FLDL2E         */
+        OutputFP( back, 0xCAD8 ); Finalize( back );  /*   FMUL ST,ST(2)  */
+        OutputFP( back, 0xD2DD ); Finalize( back );  /*   FST  ST(2)     */
+        OutputFP( back, 0xF8D9 ); Finalize( back );  /*   FPREM          */
+        OutputFP( back, 0xF0D9 ); Finalize( back );  /*   F2XM1          */
+        OutputFP( back, 0xC1DE ); Finalize( back );  /*   FADDP ST(1),ST */
+        OutputFP( back, 0xFDD9 ); Finalize( back );  /*   FSCALE         */
         OutputFP( back, 0xD9DD );         /*   FSTP ST(1)     */
         break;
     case OP_LOG:
-        OutputFP( back, 0xEDD9 ); _Emit;  /*   FLDLN2         */
-        OutputFP( back, 0xC9D9 ); _Emit;  /*   FXCH    ST(1)  */
+        OutputFP( back, 0xEDD9 ); Finalize( back );  /*   FLDLN2         */
+        OutputFP( back, 0xC9D9 ); Finalize( back );  /*   FXCH    ST(1)  */
         OutputFP( back, 0xF1D9 );         /*   FYL2X          */
         break;
     case OP_LOG10:
-        OutputFP( back, 0xECD9 ); _Emit;  /*   FLDLG2         */
-        OutputFP( back, 0xC9D9 ); _Emit;  /*   FXCH    ST(1)  */
+        OutputFP( back, 0xECD9 ); Finalize( back );  /*   FLDLG2         */
+        OutputFP( back, 0xC9D9 ); Finalize( back );  /*   FXCH    ST(1)  */
         OutputFP( back, 0xF1D9 );         /*   FYL2X          */
         break;
     case OP_COS:
@@ -1815,11 +1815,11 @@ static  void    MathFunc( BackRun& back, instruction *ins )
         OutputFP( back, 0xfeD9 );         /*   FSIN           */
         break;
     case OP_TAN:
-        OutputFP( back, 0xF2D9 ); _Emit;  /*   FPTAN          */
+        OutputFP( back, 0xF2D9 ); Finalize( back );  /*   FPTAN          */
         OutputFP( back, 0xD8DD );         /*   FSTP    ST(0)  */
         break;
     case OP_ATAN:
-        OutputFP( back, 0xE8D9 ); _Emit;  /*   FLD1           */
+        OutputFP( back, 0xE8D9 ); Finalize( back );  /*   FLD1           */
         OutputFP( back, 0xF3D9 );         /*   FPATAN         */
         break;
     case OP_SQRT:
@@ -1841,7 +1841,7 @@ static  void    CallMathFunc( BackRun& back, instruction *ins )
     rt_class    rtindex;
 
     rtindex = LookupRoutine( back, ins );
-    DoCall( back, RTLabel( back, rtindex ), true, _IsTargetModel( CGSW_X86_BIG_CODE ), false );
+    DoCall( back, RTLabel( back, rtindex ), true, IsTargetModel( back, CGSW_X86_BIG_CODE ), false );
 }
 
 static void     GenUnkLea( BackRun& back, pointer value )
@@ -1905,7 +1905,7 @@ void    GenObjCode( BackRun& back, instruction *ins )
     gen = G( ins );
     if( gen != G_NO ) {
         // fixme - should be _IsTargetModel
-        if( _IsTargetModel( CGSW_X86_P5_DIVIDE_CHECK ) ) {
+        if( IsTargetModel( back, CGSW_X86_P5_DIVIDE_CHECK ) ) {
             if( ins->head.opcode == OP_DIV && _IsFloating( ins->type_class ) ) {
                 DoP5Divide( back, ins );
                 return;
@@ -1920,7 +1920,7 @@ void    GenObjCode( BackRun& back, instruction *ins )
         }
 
 #if ( _TARGET & _TARG_8086 )
-        if( _IsTargetModel( CGSW_X86_MSC8 ) && ins->head.opcode == OP_ADD && result != NULL
+        if( IsTargetModel( back, CGSW_X86_MSC8 ) && ins->head.opcode == OP_ADD && result != NULL
           && result->n.class_ == N_REGISTER && HW_CEqual( result->r.reg, HW_SP )
           && right != NULL && right->n.class_ == N_CONSTANT && right->c.const_type == CONS_ABSOLUTE
           && right->c.lo.u.int_value > 0 && CleanupDiesAtLeave( back, ins ) ) {
@@ -1931,7 +1931,7 @@ void    GenObjCode( BackRun& back, instruction *ins )
             AdjustStackDepth( back, ins );
             return;
         }
-        if( _IsTargetModel( CGSW_X86_MSC8 ) && back.data.OptForSize == 100
+        if( IsTargetModel( back, CGSW_X86_MSC8 ) && back.data.OptForSize == 100
           && ins->head.opcode == OP_ADD && result != NULL && result->n.class_ == N_REGISTER
           && HW_CEqual( result->r.reg, HW_SP ) && right != NULL && right->n.class_ == N_CONSTANT
           && right->c.const_type == CONS_ABSOLUTE && right->c.lo.u.int_value == 2 ) {
@@ -1939,14 +1939,14 @@ void    GenObjCode( BackRun& back, instruction *ins )
              * Microsoft C 8 at /Os takes two bytes of a call's arguments off with POP BX -- the
              * callee may have changed BX, so nothing lives in it (-zmsc)
              */
-            _Code;
+            Format( back, OC_CODE );
             LayOpbyte( back, 0x5b );
-            _Emit;
+            Finalize( back );
             return;
         }
 #endif
         if( gen == G_MFSTRND ) {
-            _Code;
+            Format( back, OC_CODE );
 #if ( _TARGET & _TARG_8086 )
             AddByte(back, 0x6a);      /*  push    0x00            */
             AddByte(back, 0x00);      /*  ..                      */
@@ -1977,7 +1977,7 @@ void    GenObjCode( BackRun& back, instruction *ins )
             AddByte(back, 0x2c);      /*  ..                      */
             AddByte(back, 0x24);      /*  ..                      */
 #endif
-            _Emit;
+            Finalize( back );
 
 #if ( _TARGET & _TARG_8086 )
             AdjustStackDepthDirect( back, 2 * WORD_SIZE );
@@ -1986,14 +1986,14 @@ void    GenObjCode( BackRun& back, instruction *ins )
 #endif
         }
 
-        _Code;
+        Format( back, OC_CODE );
         LayInitial( back, ins, gen );
         if( ins->num_operands > OpcodeNumOperands( ins ) ) {
             i = ins->num_operands - 1;
             if( ins->operands[i]->n.class_ == N_REGISTER ) {
                 GenSeg( back, ins->operands[i]->r.reg );
             } else {
-                _Zoiks( ZOIKS_027 );
+                Zoiks( back, ZOIKS_027 );
             }
         }
         opnd_size = LayOpndSize( back, ins, gen );
@@ -2018,7 +2018,7 @@ void    GenObjCode( BackRun& back, instruction *ins )
              * Microsoft C 8 writes a register-to-register MOV, ADD, OR, ADC, SBB, AND, SUB, XOR or
              * CMP in its reg,r/m form, the direction bit set: 8B, 03, 2B ... (-zmsc)
              */
-            if( _IsTargetModel( CGSW_X86_MSC8 ) && ( ( back.pcencode.Inst[KEY] & 0xc6 ) == 0x00 || ( back.pcencode.Inst[KEY] & 0xfe ) == 0x88 ) ) {
+            if( IsTargetModel( back, CGSW_X86_MSC8 ) && ( ( back.pcencode.Inst[KEY] & 0xc6 ) == 0x00 || ( back.pcencode.Inst[KEY] & 0xfe ) == 0x88 ) ) {
                 back.pcencode.Inst[KEY] |= 0x02;
                 LayRegOp( back, left );
                 LayRMRegOp( back, right );
@@ -2265,16 +2265,16 @@ void    GenObjCode( BackRun& back, instruction *ins )
         case G_CALL:
             GenCall( back, ins );
             AdjustStackDepth( back, ins );
-            if( _IsTargetModel( CGSW_X86_NEW_P5_PROFILING ) ) {
+            if( IsTargetModel( back, CGSW_X86_NEW_P5_PROFILING ) ) {
                 label_handle    lbl;
                 segment_id      segid;
 
                 segid = GenProfileData( back, const_cast<char *>(""), &lbl, &back.data.CurrProc->targ.routine_profile_data );
-                _Code;
+                Format( back, OC_CODE );
                 LayOpword( back, 0xc4f7 );                    /* test [e]sp, offset L1  */
                 back.pcencode.ILen += WORD_SIZE;                      /* ..                     */
                 DoLblRef( back, lbl, segid, 0, ESCA_OFST );   /* ..                     */
-                _Emit;
+                Finalize( back );
             }
             return;
         case G_CALLI:
@@ -2284,7 +2284,7 @@ void    GenObjCode( BackRun& back, instruction *ins )
                 GenCallIndirect( back, ins );
             }
             AdjustStackDepth( back, ins );
-            if( _IsTargetModel( CGSW_X86_NEW_P5_PROFILING ) ) {
+            if( IsTargetModel( back, CGSW_X86_NEW_P5_PROFILING ) ) {
                 label_handle    lbl;
                 label_handle    junk;
                 segment_id      segid;
@@ -2295,11 +2295,11 @@ void    GenObjCode( BackRun& back, instruction *ins )
                 c[0] = PROFILE_FLAG_END_GROUP;
                 c[1] = 0;
                 GenProfileData( back, c, &junk, &back.data.CurrProc->targ.routine_profile_data );
-                _Code;
+                Format( back, OC_CODE );
                 LayOpword( back, 0xc5f7 );                    /* test [e]bp, offset L1  */
                 back.pcencode.ILen += WORD_SIZE;                      /* ..                     */
                 DoLblRef( back, lbl, segid, 0, ESCA_OFST );   /* ..                     */
-                _Emit;
+                Finalize( back );
             }
             return;
         case G_JMPR:
@@ -2315,7 +2315,7 @@ void    GenObjCode( BackRun& back, instruction *ins )
             case U8:
             case I8:
                 LayOpbyte( back, M_CWD );
-                if( _IsntTargetModel( CGSW_X86_USE_32 ) )
+                if( IsntTargetModel( back, CGSW_X86_USE_32 ) )
                     AddToTemp( back, M_OPND_SIZE );
                 break;
 #endif
@@ -2327,7 +2327,7 @@ void    GenObjCode( BackRun& back, instruction *ins )
                 switch( ins->base_type_class ) {
                 case U1:
                 case I1:
-                    if( _IsTargetModel( CGSW_X86_USE_32 ) )
+                    if( IsTargetModel( back, CGSW_X86_USE_32 ) )
                         AddToTemp( back, M_OPND_SIZE );
                     AddToTemp( back, M_CBW );
                     break;
@@ -2336,12 +2336,12 @@ void    GenObjCode( BackRun& back, instruction *ins )
                 }
                 if( HW_CEqual( ins->result->r.reg, HW_DX_AX ) ) {
                     LayOpbyte( back, M_CWD );
-                    if( _IsTargetModel( CGSW_X86_USE_32 ) ) {
+                    if( IsTargetModel( back, CGSW_X86_USE_32 ) ) {
                         AddToTemp( back, M_OPND_SIZE );
                     }
                 } else {
                     LayOpbyte( back, M_CBW );
-                    if( _IsntTargetModel( CGSW_X86_USE_32 ) ) {
+                    if( IsntTargetModel( back, CGSW_X86_USE_32 ) ) {
                         AddToTemp( back, M_OPND_SIZE ); /* CWDE */
                     }
                 }
@@ -2350,7 +2350,7 @@ void    GenObjCode( BackRun& back, instruction *ins )
             case U2:
             case I2:
                 LayOpbyte( back, M_CBW );
-                if( _IsTargetModel( CGSW_X86_USE_32 ) )
+                if( IsTargetModel( back, CGSW_X86_USE_32 ) )
                     AddToTemp( back, M_OPND_SIZE );
                 break;
             default:
@@ -2413,7 +2413,7 @@ void    GenObjCode( BackRun& back, instruction *ins )
             LayOpword( back, 0xFBD9 );
             break;
         case G_FCHOP:
-            DoCall( back, RTLabel( back, RT_CHOP ), true, _IsTargetModel( CGSW_X86_BIG_CODE ), false );
+            DoCall( back, RTLabel( back, RT_CHOP ), true, IsTargetModel( back, CGSW_X86_BIG_CODE ), false );
             break;
         case G_FTST:
         case G_FCOMPP:
@@ -2422,7 +2422,7 @@ void    GenObjCode( BackRun& back, instruction *ins )
             break;
         case G_FWAIT:
             back.i87data.Used87 = true;
-            if( _IsEmulation() ) {
+            if( IsEmulation( back ) ) {
                 SetFPPatchType( back, FPP_WAIT );
                 LayOpword( back, 0x9b90 );
             } else {
@@ -2449,7 +2449,7 @@ void    GenObjCode( BackRun& back, instruction *ins )
             break;
         case G_SEG_SEG:
             PushSeg( back, left->r.reg );
-            _Next;
+            EjectInst( back );
             PopSeg( back, result->r.reg );
             break;
         case G_POW2DIV:
@@ -2477,12 +2477,12 @@ void    GenObjCode( BackRun& back, instruction *ins )
                 switch( ins->type_class ) {
                 case U2:
                 case I2:
-                    if( _IsTargetModel( CGSW_X86_USE_32 ) )
+                    if( IsTargetModel( back, CGSW_X86_USE_32 ) )
                         AddToTemp( back, M_OPND_SIZE );
                     break;
                 case U4:
                 case I4:
-                    if( _IsntTargetModel( CGSW_X86_USE_32 ) )
+                    if( IsntTargetModel( back, CGSW_X86_USE_32 ) )
                         AddToTemp( back, M_OPND_SIZE );
                     break;
                 default:
@@ -2495,13 +2495,13 @@ void    GenObjCode( BackRun& back, instruction *ins )
             AddToTemp( back, M_SECONDARY );
             break;
         case G_UNKNOWN:
-            _Zoiks( ZOIKS_097 );
+            Zoiks( back, ZOIKS_097 );
             break;
         default:
-            _Zoiks( ZOIKS_028 );
+            Zoiks( back, ZOIKS_028 );
             break;
         }
-        _Emit;
+        Finalize( back );
         if( gen == G_MFSTRND ) {
 #if ( _TARGET & _TARG_8086 )
             AdjustStackDepthDirect( back, -2 * WORD_SIZE );
@@ -2509,7 +2509,7 @@ void    GenObjCode( BackRun& back, instruction *ins )
             AdjustStackDepthDirect( back, -WORD_SIZE );
 #endif
 
-            _Code;
+            Format( back, OC_CODE );
 #if ( _TARGET & _TARG_8086 )
             AddByte(back, 0x55);      /*  push    bp              */
             AddByte(back, 0x89);      /*  mov     bp,sp           */
@@ -2531,7 +2531,7 @@ void    GenObjCode( BackRun& back, instruction *ins )
             AddByte(back, 0x24);      /*  ..                      */
             AddByte(back, 0x04);      /*  ..                      */
 #endif
-            _Emit;
+            Finalize( back );
         }
     }
     AdjustStackDepth( back, ins );

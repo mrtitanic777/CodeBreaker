@@ -50,7 +50,7 @@
 #define SYM_SEG_MAX         (SYM_MAX_INDEX_DEF / SYM_PER_SEG + 1)
 #define SYM_MAX_INDEX       (SYM_SEG_MAX * SYM_PER_SEG)
 
-#define CURR_SYM_HANDLE()   ((SYM_HANDLE)(pointer_uint)front.csym.NextSymHandle)
+static inline SYM_HANDLE CurrSymHandle( FrontRun& front ) { return (SYM_HANDLE)(pointer_uint)front.csym.NextSymHandle; }
 
 
 
@@ -189,7 +189,7 @@ SYM_HANDLE SegSymbol( FrontRun& front, const char *name, segment_id segid )
     size_t          len;
 
     NewSym(front);
-    handle = CURR_SYM_HANDLE();
+    handle = CurrSymHandle( front );
     memset( &sym, 0, sizeof( SYM_ENTRY ) );
     len = strlen( name ) + 1;
     sym.name = static_cast<char *>(CMemAlloc( front, len + 1 ));
@@ -214,8 +214,8 @@ SYM_HANDLE SpcSymbol( FrontRun& front, const char *name, TYPEPTR typ, stg_classe
     sym.name = CMemStrdup( front, name );
     sym.sym_type = typ;
     sym.attribs.stg_class = stg_class;
-    SymReplace( front, &sym, CURR_SYM_HANDLE() );
-    return( CURR_SYM_HANDLE() );
+    SymReplace( front, &sym, CurrSymHandle( front ) );
+    return( CurrSymHandle( front ) );
 }
 
 void SpcSymInit( FrontRun& front )
@@ -257,7 +257,7 @@ void SpcSymInit( FrontRun& front )
      */
     SegSymbol( front, "DS", SEG_DATA );
 
-    front.cvars.SpecialSyms = CURR_SYM_HANDLE();
+    front.cvars.SpecialSyms = CurrSymHandle( front );
     /*
      * Create special symbol table entries for use by stosw, stosb pragmas
      * This should be a TYP_FUNCTION returning pointer to char
@@ -287,9 +287,9 @@ void SpcSymInit( FrontRun& front )
 #endif
     front.cvars.SymCover = MakeFunction( front, "__COVERAGE", typ );
     MakeFunction( front, "__C", typ );
-    SymGet( front, &sym, CURR_SYM_HANDLE() );
+    SymGet( front, &sym, CurrSymHandle( front ) );
     sym.attribs.stg_class = SC_STATIC;
-    SymReplace( front, &sym, CURR_SYM_HANDLE() );
+    SymReplace( front, &sym, CurrSymHandle( front ) );
 }
 
 
@@ -304,9 +304,9 @@ SYM_HANDLE MakeFunction( FrontRun& front, const char *id, TYPEPTR typ )
     sym.handle = front.cvars.SpecialSyms;
     sym.sym_type = typ;
     NewSym(front);
-    front.cvars.SpecialSyms = CURR_SYM_HANDLE();
-    SymReplace( front, &sym, CURR_SYM_HANDLE() );
-    return( CURR_SYM_HANDLE() );
+    front.cvars.SpecialSyms = CurrSymHandle( front );
+    SymReplace( front, &sym, CurrSymHandle( front ) );
+    return( CurrSymHandle( front ) );
 }
 
 
@@ -442,13 +442,13 @@ SYM_HANDLE SymAdd( FrontRun& front, id_hash_idx hash, SYMPTR sym )
     }
     NewSym(front);
     sym->level = (id_level_type)front.cvars.SymLevel;
-    hsym = SymHash( front, sym, CURR_SYM_HANDLE() );
+    hsym = SymHash( front, sym, CurrSymHandle( front ) );
     sym->u1.hash = hash;
     /*
      * add name to head of list
      */
     for( head = &front.cvars.HashTab[hash]; *head != NULL; head = &(*head)->next_sym ) {
-        if( CheckLtSymLevel( *head ) || CheckEqSymLevel( *head ) ) {
+        if( CheckLtSymLevel( front, *head ) || CheckEqSymLevel( front, *head ) ) {
             break;
         }
     }
@@ -471,7 +471,7 @@ SYM_HANDLE SymAddL0( FrontRun& front, id_hash_idx hash, SYMPTR new_sym )
     ++front.cvars.GblSymCount;
     NewSym(front);
     new_sym->level = 0;
-    new_hsym = SymHash( front, new_sym, CURR_SYM_HANDLE() );
+    new_hsym = SymHash( front, new_sym, CurrSymHandle( front ) );
     new_hsym->next_sym = NULL;
     new_sym->u1.hash = hash;
     hsym = front.cvars.HashTab[hash];
@@ -731,7 +731,7 @@ static SYM_HASHPTR GetSymList( FrontRun& front )
     sym_list = NULL;
     for( hash = 0; hash < ID_HASH_SIZE; hash++ ) {
         for( hsym = front.cvars.HashTab[hash]; hsym != NULL; hsym = next_hsymptr ) {
-            if( !CheckEqSymLevel( hsym ) )
+            if( !CheckEqSymLevel( front, hsym ) )
                 break;
             next_hsymptr = hsym->next_sym;
             hsym->next_sym = sym_list;

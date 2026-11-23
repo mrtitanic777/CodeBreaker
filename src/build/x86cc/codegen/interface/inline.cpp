@@ -132,7 +132,7 @@ void    BGProcInline( BackRun& back, cg_sym_handle proc_sym, const type_def *tip
 /******************************************************************/
 {
     if( back.inline_part.InlineStack->proc_sym != proc_sym || NotEquiv( back, back.inline_part.InlineStack->tipe, tipe ) ) {
-        _Zoiks( ZOIKS_072 );
+        Zoiks( back, ZOIKS_072 );
     }
 }
 
@@ -164,7 +164,7 @@ void    BGRetInline( BackRun& back, an addr, const type_def *tipe )
     an  tempaddr;
 
     if( NotEquiv( back, tipe, back.inline_part.InlineStack->tipe ) ) {
-        _Zoiks( ZOIKS_070 );
+        Zoiks( back, ZOIKS_070 );
     }
     if( addr == NULL ) {
         back.inline_part.InlineStack->addr = MakeTempAddr( back, BGNewTemp(back, back.data.TypeInteger) );

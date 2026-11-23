@@ -73,7 +73,7 @@ static int doErrors( FrontRun& front, IntlData *data, _LocaleItem *item )
 
     count = errors_item->number;
     data->errors_count = count;
-    data->errors_text = static_cast<char **>(_MemoryAllocate( count * sizeof( char * ) ));
+    data->errors_text = static_cast<char **>(CMemAlloc( front, count * sizeof( char * ) ));
     if( data->errors_text == NULL ) {
         return( 1 );
     }
@@ -138,7 +138,7 @@ static IntlData *getData( FrontRun& front, int fh )
         intl_header.offset[i] -= delta;
     }
     raw_size = intl_header.offset[LS_MAX];
-    data = static_cast<IntlData *>(_MemoryAllocate( sizeof( IntlData ) + raw_size ));
+    data = static_cast<IntlData *>(CMemAlloc( front, sizeof( IntlData ) + raw_size ));
     if( data == NULL ) {
         return( data );
     }
@@ -214,7 +214,7 @@ void FreeInternationalData(
     FrontRun& front, IntlData *handle )
 {
     if( handle != NULL ) {
-        _MemoryFree( handle->errors_text );
-        _MemoryFree( handle );
+        CMemFree( front, handle->errors_text );
+        CMemFree( front, handle );
     }
 }

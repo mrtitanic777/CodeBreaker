@@ -33,6 +33,7 @@
 #pragma once
 #include <limits.h>
 #include "pattern.h"
+#include "zoiks.h"
 
 
 #define G(x)    (x)->u.gen_table->generate
@@ -170,7 +171,12 @@ typedef struct instruction {
                                        ? (ins)->base_type_class \
                                        : (ins)->type_class )
 
-#define _INS_NOT_BLOCK( ins )        if( (ins)->head.opcode == OP_BLOCK ) Zoiks( back, ZOIKS_142 )
+inline void InsNotBlock( BackRun& back, instruction *ins )
+{
+    if( ins->head.opcode == OP_BLOCK ) {
+        Zoiks( back, ZOIKS_142 );
+    }
+}
 
 typedef enum {
     MB_FALSE    = false,

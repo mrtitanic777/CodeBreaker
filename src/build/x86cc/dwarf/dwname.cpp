@@ -54,8 +54,8 @@ void DW_InitDebugPubnames( BackRun& back, dw_client cli )
     /* write the set header */
     CLIWriteU32( back, cli, DW_DEBUG_PUBNAMES, 0 );   /* section size */
     CLIWriteU16( back, cli, DW_DEBUG_PUBNAMES, 2 );   /* section version */
-    CLIReloc3( cli, DW_DEBUG_PUBNAMES, DW_W_SECTION_POS, DW_DEBUG_INFO );
-    CLIReloc2( cli, DW_DEBUG_PUBNAMES, DW_W_UNIT_SIZE );
+    CLIReloc( back, cli, DW_DEBUG_PUBNAMES, DW_W_SECTION_POS, DW_DEBUG_INFO );
+    CLIReloc( back, cli, DW_DEBUG_PUBNAMES, DW_W_UNIT_SIZE );
 }
 
 

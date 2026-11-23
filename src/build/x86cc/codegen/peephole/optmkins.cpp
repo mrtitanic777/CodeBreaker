@@ -47,7 +47,7 @@ ins_entry       *NewInstr( BackRun& back, any_oc *oc )
     ins_entry   *instr;
     oc_length   len;
 
-  optbegin
+  OptBegin( back );
     len = oc->oc_header.reclen + sizeof( ins_link );
     if( len <= OCENTRY_SIZE ) {
         instr = static_cast<ins_entry *>(AllocFrl( back, &back.optdata.InstrFrl, OCENTRY_SIZE ));
@@ -57,7 +57,7 @@ ins_entry       *NewInstr( BackRun& back, any_oc *oc )
     instr->ins.prev = NULL;
     instr->ins.next = NULL;
     Copy( oc, &instr->oc, oc->oc_header.reclen );
-    optreturn( instr );
+    { OptEnd( back ); return( instr ); }
 }
 
 
@@ -88,11 +88,11 @@ label_handle AddNewLabel( BackRun& back, ins_entry *new_ins, obj_length align )
     label_handle    lbl;
     any_oc          oc;
 
-  optbegin
+  OptBegin( back );
     if( NextClass( back, new_ins ) == OC_LABEL )
-        optreturn( _Label( NextIns( back, new_ins ) ) );
+        { OptEnd( back ); return( _Label( NextIns( back, new_ins ) ) ); }
     if( new_ins != NULL && _Class( new_ins ) == OC_LABEL )
-        optreturn( _Label( new_ins ) );
+        { OptEnd( back ); return( _Label( new_ins ) ); }
     oc.oc_handle.hdr.class_ = OC_LABEL;
     oc.oc_handle.hdr.reclen = sizeof( oc_handle );
     oc.oc_handle.hdr.objlen = align;
@@ -101,7 +101,7 @@ label_handle AddNewLabel( BackRun& back, ins_entry *new_ins, obj_length align )
     oc.oc_handle.handle = lbl;
     AddInstr( back, NewInstr( back, &oc ), new_ins );
     _SetStatus( lbl, DYINGLABEL );
-  optreturn( lbl );
+  { OptEnd( back ); return( lbl ); }
 }
 
 
@@ -110,12 +110,12 @@ void    AddNewJump( BackRun& back, ins_entry *new_ins, label_handle lbl )
 {
     any_oc     oc;
 
-  optbegin
+  OptBegin( back );
     oc.oc_handle.hdr.class_ = OC_JMP;
     oc.oc_handle.hdr.reclen = sizeof( oc_handle );
     oc.oc_handle.hdr.objlen = OptInsSize( back, OC_JMP, OC_DEST_NEAR );
     oc.oc_handle.ref = NULL;
     oc.oc_handle.handle = lbl;
     AddInstr( back, NewInstr( back, &oc ), new_ins );
-  optend
+  OptEnd( back );
 }

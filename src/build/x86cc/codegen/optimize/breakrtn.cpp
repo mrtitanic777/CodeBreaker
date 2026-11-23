@@ -82,7 +82,7 @@ bool    CreateBreak( BackRun& back )
     if( back.data.HeadBlock == NULL ) {
         return( false );
     }
-    if( _IsntModel( CGSW_GEN_FORTRAN_ALIASING ) ) {
+    if( IsntModel( back, CGSW_GEN_FORTRAN_ALIASING ) ) {
         return( false );
     }
     if( !FixReturns(back) ) {
@@ -94,7 +94,7 @@ bool    CreateBreak( BackRun& back )
      * blocks are branched to from later blocks. IE: there are no backward branches
      * around break_blk.
      */
-    _MarkBlkAllUnVisited();
+    MarkBlkAllUnVisited( back );
     break_blk = NULL;
     back_break_blk = NULL;
     pending = 0;
@@ -128,7 +128,7 @@ bool    CreateBreak( BackRun& back )
     /*
      * clean up the BLOCK_VISITED flags
      */
-    _MarkBlkAllUnVisited();
+    MarkBlkAllUnVisited( back );
     if( back_break_blk != NULL ) {
         /*
          * always better to break on a back edge

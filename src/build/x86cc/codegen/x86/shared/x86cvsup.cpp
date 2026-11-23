@@ -49,10 +49,10 @@
 void    CVDefSegs( BackRun& back )
 /***********************/
 {
-    if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_LOCALS ) ) {
         back.cvdbg.CVSyms = DbgSegDef( back, "$$SYMBOLS", "DEBSYM", SEG_COMB_PRIVATE+SEG_USE_32 );
     }
-    if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
         back.cvdbg.CVTypes = DbgSegDef( back, "$$TYPES", "DEBTYP", SEG_COMB_PRIVATE+SEG_USE_32 );
     }
 }

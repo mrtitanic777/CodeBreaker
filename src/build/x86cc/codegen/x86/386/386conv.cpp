@@ -389,7 +389,7 @@ static  conv_method     AskHow( BackRun& back, type_class_def fr, type_class_def
     if( to == XX || fr == XX ) { /* special case for 64 bit operand of IDIV */
         return( BAD );
     }
-    if( _FPULevel( FPU_87 ) ) {
+    if( FPULevel( back, FPU_87 ) ) {
         return( FPCvtTable[fr + to * XX] );
     } else {
         return( CvtTable[fr + to * XX] );
@@ -477,7 +477,7 @@ instruction     *rDOCVT( BackRun& back, instruction *ins )
         DupSeg(ins,new_ins);
         ReplIns( back, ins, new_ins );
         if( how != OK ) {
-            _Zoiks( ZOIKS_092 );
+            Zoiks( back, ZOIKS_092 );
         }
     }
     return( new_ins );

@@ -222,7 +222,7 @@ static  instruction     *MakeGeneratable( BackRun& back, instruction *ins )
         prev = ins->head.prev;
         ins = PostExpandIns( back, ins );
         if( next != ins->head.next || prev != ins->head.prev ) {
-            _Zoiks( ZOIKS_073 );
+            Zoiks( back, ZOIKS_073 );
         }
         tbl = ins->u.gen_table;
         if( tbl != NULL && tbl->generate < FIRST_REDUCT ) {
@@ -296,7 +296,7 @@ static  bool    SplitMem16Move( BackRun& back, instruction *ins )
         if( HW_CEqual( reg, HW_EMPTY ) ) {
             return( false );
         }
-        if( _IsReDefinedBy( ins, ins->operands[0] ) ) {
+        if( IsReDefinedBy( back, ins, ins->operands[0] ) ) {
             return( false );
         }
     }
@@ -365,7 +365,7 @@ static  bool    FixMem16Moves( BackRun& back )
 
     if( back.data.OptForSize > 0 )
         return( false );
-    if( !_CPULevel( CPU_586 ) )
+    if( !CPULevel( back, CPU_586 ) )
         return( false );
     changed = false;
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
@@ -394,7 +394,7 @@ static  void    CompressMem16Moves( BackRun& back )
     block       *blk;
     instruction *ins;
 
-    if( !_CPULevel( CPU_586 ) )
+    if( !CPULevel( back, CPU_586 ) )
         return;
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
@@ -434,7 +434,7 @@ bool    LdStAlloc( BackRun& back )
     if( back.data.OptForSize > 50 ) {
         back.x86ldstr.PreferSize = true;
     }
-    if( !_CPULevel( CPU_486 ) ) {
+    if( !CPULevel( back, CPU_486 ) ) {
         back.x86ldstr.PreferSize = true;
     }
 
@@ -557,7 +557,7 @@ static void     CompressIns( BackRun& back, instruction *ins )
         /*
          * It's better to use a register for PUSH/POP on a 486
          */
-        if( _CPULevel( CPU_486 ) ) {
+        if( CPULevel( back, CPU_486 ) ) {
             return;
         }
     default:

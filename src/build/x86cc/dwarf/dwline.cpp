@@ -73,7 +73,7 @@ static void writeFileName( BackRun& back, dw_client cli, const char *name, size_
     end = WriteULEB128( end, 0 );   // NYI: replace 0 with time/date stamp of file
     end = WriteULEB128( end, 0 );   // NYI: replace 0 with size file
 
-    CLIWrite( cli, DW_DEBUG_LINE, buf, end - buf );
+    CLIWrite( back, cli, DW_DEBUG_LINE, buf, end - buf );
 }
 
 
@@ -89,7 +89,7 @@ uint DW_GetFileNumber( BackRun& back, dw_client cli, const char *name )
         }
     }
     if( walk == NULL ) {
-        walk = static_cast<dw_include *>(CLIAlloc( cli, ( sizeof( dw_include ) - 1 ) + len ));
+        walk = static_cast<dw_include *>(CLIAlloc( back, cli, ( sizeof( dw_include ) - 1 ) + len ));
         memcpy( walk->name, name, len );
         walk->next = cli->debug_line.files;
         cli->debug_line.files = walk;
@@ -113,7 +113,7 @@ void DWENTRY DWSetFile( BackRun& back, dw_client cli, const char *filename )
 
     buf[0] = DW_LNS_set_file;
     end = WriteSLEB128( buf + 1, DW_GetFileNumber( back, cli, filename ) );
-    CLIWrite( cli, DW_DEBUG_LINE, buf, end - buf );
+    CLIWrite( back, cli, DW_DEBUG_LINE, buf, end - buf );
 }
 
 
@@ -146,7 +146,7 @@ void DWENTRY DWLineNum( BackRun& back, dw_client cli, uint info, dw_linenum line
     }
 
     end = DWLineGen( line_num - cli->debug_line.line, addr - cli->debug_line.addr, end );
-    CLIWrite( cli, DW_DEBUG_LINE, buf, end - buf );
+    CLIWrite( back, cli, DW_DEBUG_LINE, buf, end - buf );
     cli->debug_line.addr = addr;
     cli->debug_line.line = line_num;
 }
@@ -159,8 +159,8 @@ void DWENTRY DWLineAddr( BackRun& back, dw_client cli, dw_sym_handle sym, dw_add
     buf[0] = 0;  //extended
     end = WriteULEB128( buf + 1, 1 + cli->offset_size ); // write the opcode size
     *end++ = DW_LNE_set_address;
-    CLIWrite( cli, DW_DEBUG_LINE, buf, end - buf );
-    CLIReloc3( cli, DW_DEBUG_LINE, DW_W_LABEL, sym );
+    CLIWrite( back, cli, DW_DEBUG_LINE, buf, end - buf );
+    CLIReloc( back, cli, DW_DEBUG_LINE, DW_W_LABEL, sym );
     cli->debug_line.addr = addr;
 }
 
@@ -174,8 +174,8 @@ void DWENTRY DWLineSeg( BackRun& back, dw_client cli, dw_sym_handle sym )
         end = WriteULEB128( buf + 1, 1 + cli->segment_size ); // write the opcode size
         *end++ = DW_LNE_WATCOM_set_segment_OLD;
 //        *end++ = DW_LNE_WATCOM_set_segment;
-        CLIWrite( cli, DW_DEBUG_LINE, buf, end - buf );
-        CLIReloc3( cli, DW_DEBUG_LINE, DW_W_LABEL_SEG, sym );
+        CLIWrite( back, cli, DW_DEBUG_LINE, buf, end - buf );
+        CLIReloc( back, cli, DW_DEBUG_LINE, DW_W_LABEL_SEG, sym );
     }
 }
 
@@ -218,10 +218,10 @@ void DW_InitDebugLine( BackRun& back, dw_client cli, const char *source_filename
     cli->debug_line.end_sequence = 0;
 
     /* write the prologue */
-    CLIWrite( cli, DW_DEBUG_LINE, (char *)&prol, sizeof( prol ) );
+    CLIWrite( back, cli, DW_DEBUG_LINE, (char *)&prol, sizeof( prol ) );
 
     if( inc_list != NULL ) {    // write the include list
-        CLIWrite( cli, DW_DEBUG_LINE, inc_list, inc_list_len );
+        CLIWrite( back, cli, DW_DEBUG_LINE, inc_list, inc_list_len );
     }
 
     /* and put out the terminators */
@@ -235,7 +235,7 @@ void DW_FiniDebugLine( BackRun& back, dw_client cli )
 {
     static const uint_8 end_seq[] = { 0, 1, DW_LNE_end_sequence };
 
-    CLIWrite( cli, DW_DEBUG_LINE, end_seq, sizeof( end_seq ) );
+    CLIWrite( back, cli, DW_DEBUG_LINE, end_seq, sizeof( end_seq ) );
     /* backpatch the section length */
     CLISectionSetSize( back, cli, DW_DEBUG_LINE );
     DW_FreeChain( back, cli, cli->debug_line.files );

@@ -398,7 +398,7 @@ name    *SAllocMemory( BackRun& back, pointer symbol, type_length offset, cg_cla
         new_m->m.same_sym = NULL;
     }
     if( class_ == CG_FE
-      && _IsModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+      && IsModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
         new_m->m._v.usage |= USE_MEMORY;
     }
     new_m->m._v.block_usage = static_cast<var_usage>(0);
@@ -756,7 +756,7 @@ i_flags AlignmentToFlags( BackRun& back, type_length alignment )
         flags |= X_ALIGNED_8;
         break;
     default:
-        _Zoiks( ZOIKS_098 );
+        Zoiks( back, ZOIKS_098 );
     }
     return( flags );
 }

@@ -64,7 +64,7 @@ rt_class    LookupRoutine( BackRun& back, instruction *ins )
         ++rtn;
         ++rtindex;
         if( rtn->opcode == OP_NOP ) {
-            _Zoiks( ZOIKS_021 );
+            Zoiks( back, ZOIKS_021 );
             break;
         }
     }

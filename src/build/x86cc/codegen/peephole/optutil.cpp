@@ -44,7 +44,7 @@
 ins_entry       *ValidIns( BackRun& back, ins_entry *instr )
 /*******************************************/
 {
-  optbegin
+  OptBegin( back );
     for( ;; ) {
         if( instr == NULL )
             break;
@@ -52,14 +52,14 @@ ins_entry       *ValidIns( BackRun& back, ins_entry *instr )
             break;
         instr = instr->ins.next;
     }
-    optreturn( instr );
+    { OptEnd( back ); return( instr ); }
 }
 
 
 ins_entry       *PrevIns( BackRun& back, ins_entry *instr )
 /******************************************/
 {
-  optbegin
+  OptBegin( back );
     if( instr == NULL ) {
         instr = back.optdata.LastIns;
     } else if( _Class( instr ) == OC_DEAD ) {
@@ -74,7 +74,7 @@ ins_entry       *PrevIns( BackRun& back, ins_entry *instr )
             break;
         instr = instr->ins.prev;
     }
-    optreturn( instr );
+    { OptEnd( back ); return( instr ); }
 }
 
 
@@ -83,21 +83,21 @@ oc_class        PrevClass( BackRun& back, ins_entry *instr )
 {
     oc_class    class_;
 
-  optbegin
+  OptBegin( back );
     instr = PrevIns( back, instr );
     if( instr != NULL ) {
         class_ = _Class( instr );
     } else {
         class_ = OC_DEAD;
     }
-    optreturn( class_ );
+    { OptEnd( back ); return( class_ ); }
 }
 
 
 ins_entry       *NextIns( BackRun& back, ins_entry *instr )
 /******************************************/
 {
-  optbegin
+  OptBegin( back );
     if( instr == NULL ) {
         instr = back.optdata.FirstIns;
     } else if( _Class( instr ) == OC_DEAD ) {
@@ -112,7 +112,7 @@ ins_entry       *NextIns( BackRun& back, ins_entry *instr )
             break;
         instr = instr->ins.next;
     }
-    optreturn( instr );
+    { OptEnd( back ); return( instr ); }
 }
 
 
@@ -121,21 +121,21 @@ oc_class        NextClass( BackRun& back, ins_entry *instr )
 {
     oc_class    class_;
 
-  optbegin
+  OptBegin( back );
     instr = NextIns( back, instr );
     if( instr != NULL ) {
         class_ = _Class( instr );
     } else {
         class_ = OC_DEAD;
     }
-    optreturn( class_ );
+    { OptEnd( back ); return( class_ ); }
 }
 
 
 void    AddInstr( BackRun& back, ins_entry *instr, ins_entry *insert )
 /*****************************************************/
 {
-  optbegin
+  OptBegin( back );
     InsertQueue( back, instr, insert );
     switch( _Class( instr ) ) {
     case OC_LABEL:
@@ -158,7 +158,7 @@ void    AddInstr( BackRun& back, ins_entry *instr, ins_entry *insert )
         back.optdata.NoRetList = instr;
         break;
     }
-  optend
+  OptEnd( back );
 }
 
 
@@ -167,7 +167,7 @@ void    DelRef( BackRun& back, ins_entry **owner, ins_entry *instr )
 {
     ins_entry   *curr;
 
-  optbegin
+  OptBegin( back );
     for( ;; ) {
         curr = *owner;
         if( curr == instr )
@@ -175,19 +175,19 @@ void    DelRef( BackRun& back, ins_entry **owner, ins_entry *instr )
         owner = (ins_entry **)&_LblRef( curr );
     }
     *owner = _LblRef( curr );
-  optend
+  OptEnd( back );
 }
 
 
 void    UnLinkInstr( BackRun& back, ins_entry *old )
 /***********************************/
 {
-  optbegin
+  OptBegin( back );
     back.optdata.InsDelete = true;
     DeleteQueue( back, old );
     old->ins.prev = back.optdata.PendingDeletes;
     back.optdata.PendingDeletes = old;
-  optend
+  OptEnd( back );
 }
 
 
@@ -259,10 +259,10 @@ void    FreePendingDeletes( BackRun& back )
 {
     ins_entry   *next;
 
-  optbegin
+  OptBegin( back );
     for( ; back.optdata.PendingDeletes != NULL; back.optdata.PendingDeletes = next ) {
         next = back.optdata.PendingDeletes->ins.prev;
         FreeInstr( back, back.optdata.PendingDeletes );
     }
-  optend
+  OptEnd( back );
 }

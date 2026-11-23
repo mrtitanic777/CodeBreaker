@@ -32,10 +32,10 @@
 ****************************************************************************/
 
 
-#define optbegin            ++back.optmac.InOptimizer;
-#define optend              --back.optmac.InOptimizer;
-#define optreturn( x )      { --back.optmac.InOptimizer; return( x ); }
-#define optreturnvoid       { --back.optmac.InOptimizer; return; }
+/* a function of the optimizer is entered with OptBegin and left with OptEnd (before a return: `{ OptEnd( back ); return( x ); }`); the bodies are in backrun.hpp */
+struct BackRun;
+inline void OptBegin( BackRun& back );
+inline void OptEnd( BackRun& back );
 
 #define _TransferClass(var) ((var) >= OC_JMP)
 //#define _TransferClass(var) ((var) == OC_JMP || (var) == OC_JMPI || (var) == OC_RET || (var) == OC_NORET || (var) == OC_IDATA)

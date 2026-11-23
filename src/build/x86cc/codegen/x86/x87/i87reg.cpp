@@ -477,7 +477,7 @@ static  void    FPAlloc( BackRun& back )
             ins->sequence = sequence;
             ins->stk_exit = stk_level;
             // ins->s.stk_extra = FPStkReq( ins );
-            if( _FPULevel( FPU_586 ) && stk_level == 0 )    // NYI - overflow?
+            if( FPULevel( back, FPU_586 ) && stk_level == 0 )    // NYI - overflow?
                 ++sequence;
             ins = ins->head.next;
             if( ins->head.opcode == OP_BLOCK )
@@ -490,7 +490,7 @@ static  void    FPAlloc( BackRun& back )
             stk_level = 0;
         }
         if( stk_level != 0 ) {
-            _Zoiks( ZOIKS_074 );
+            Zoiks( back, ZOIKS_074 );
         }
     }
     if( need_live_update ) {
@@ -626,7 +626,7 @@ static  void   FindSinCos( BackRun& back, instruction *ins, opcode_defs next_opc
     for( next = ins->head.next; ; next = next->head.next ) {
         if( next->head.opcode == OP_BLOCK )
             return;
-        if( _IsReDefinedBy( next, ins->operands[0] ) )
+        if( IsReDefinedBy( back, next, ins->operands[0] ) )
             return;
         if( next->head.opcode == next_opcode ) {
             if( next->operands[0] == ins->operands[0] && next->type_class == ins->type_class ) {
@@ -664,8 +664,8 @@ void    FPRegAlloc( BackRun& back )
     Allocate registers comprising the "stack" portion of the 8087.
 */
 {
-    if( _FPULevel( FPU_87 ) ) {
-        if( _FPULevel( FPU_387 ) ) {
+    if( FPULevel( back, FPU_87 ) ) {
+        if( FPULevel( back, FPU_387 ) ) {
             FSinCos(back);
         }
         StackShortLivedTemps(back);
@@ -677,7 +677,7 @@ void    FPRegAlloc( BackRun& back )
 void    FPInitStkReq( BackRun& back )
 /**************************/
 {
-    if( _IsModel( CGSW_GEN_I_MATH_INLINE ) ) {
+    if( IsModel( back, CGSW_GEN_I_MATH_INLINE ) ) {
         back.i87reg.StackReq387[OP_SIN - FIRST_IFUNC] = 0;
         back.i87reg.StackReq387[OP_COS - FIRST_IFUNC] = 0;
     }
@@ -689,7 +689,7 @@ int     FPStkReq( BackRun& back, instruction *ins )
 {
     if( !_OpIsIFunc( ins->head.opcode ) )
         return( 0 );
-    if( _FPULevel( FPU_387 ) ) {
+    if( FPULevel( back, FPU_387 ) ) {
         return( back.i87reg.StackReq387[ins->head.opcode - FIRST_IFUNC] );
     } else {
         return( StackReq8087[ins->head.opcode - FIRST_IFUNC] );
@@ -700,7 +700,7 @@ int     FPStkReq( BackRun& back, instruction *ins )
 bool    FPStackIns( BackRun& back, instruction *ins )
 /************************************/
 {
-    if( !_FPULevel( FPU_87 ) )
+    if( !FPULevel( back, FPU_87 ) )
         return( false );
     if( _OpIsCall( ins->head.opcode ) )
         return( true );
@@ -720,7 +720,7 @@ bool    FPSideEffect( BackRun& back, instruction *ins )
     opcnt       i;
     bool        has_fp_reg;
 
-    if( !_FPULevel( FPU_87 ) )
+    if( !FPULevel( back, FPU_87 ) )
         return( false );
     /* calls require a clean stack */
     if( _OpIsCall( ins->head.opcode ) )
@@ -758,7 +758,7 @@ type_class_def  FPInsClass( BackRun& back, instruction *ins )
     Return FD if the instruction will use the 8087.
 */
 {
-    if( !_FPULevel( FPU_87 ) )
+    if( !FPULevel( back, FPU_87 ) )
         return( XX );
     if( !_Is87Ins( ins ) )
         return( XX );
@@ -799,7 +799,7 @@ bool    FPStackOp( BackRun& back, name *name )
     return true if "name" is a stackable temp.
 */
 {
-    if( !_FPULevel( FPU_87 ) )
+    if( !FPULevel( back, FPU_87 ) )
         return( false );
     return( FPIsStack( name ) );
 }
@@ -826,7 +826,7 @@ bool    FPIsConvert( BackRun& back, instruction *ins )
     type_class_def      op_type_class;
     type_class_def      res_type_class;
 
-    if( !_FPULevel( FPU_87 ) )
+    if( !FPULevel( back, FPU_87 ) )
         return( false );
     if( ins->operands[0]->n.class_ == N_CONSTANT )
         return( false );

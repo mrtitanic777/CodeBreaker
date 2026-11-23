@@ -358,7 +358,7 @@ bool    OtherVerify( BackRun& back, vertype kind, instruction *ins,
             return( true );
         break;
     default:
-        _Zoiks( ZOIKS_053 );
+        Zoiks( back, ZOIKS_053 );
         return( false );
     }
     return( false );

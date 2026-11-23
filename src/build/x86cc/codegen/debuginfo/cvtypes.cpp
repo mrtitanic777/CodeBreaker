@@ -68,11 +68,11 @@ static  void    BuffWrite( BackRun& back, cv_out *out, void *to )
 {
     unsigned    len;
 
-    PUSH_OP( out->segid );
+    { segment_id old_segid = ChangeOP( back, out->segid );
         len = (byte *)to - out->beg;
         DataBytes( back, len, out->beg );
         out->beg = static_cast<byte *>(to);
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 static  void   BuffSkip( cv_out *out, void *to )
@@ -86,10 +86,10 @@ static  void    buffEnd( BackRun& back, cv_out *out )
 {
     unsigned    len;
 
-    PUSH_OP( out->segid );
+    { segment_id old_segid = ChangeOP( back, out->segid );
         len = out->ptr - out->beg;
         DataBytes( back, len, out->beg );
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 static  void    *BuffInc( cv_out *out, int size )
@@ -127,9 +127,9 @@ static  void  *AlignBuff( cv_out *out )
 static  void    SegReloc( BackRun& back, segment_id segid, cg_sym_handle sym )
 /*************************************************************/
 {
-    PUSH_OP( segid );
+    { segment_id old_segid = ChangeOP( back, segid );
         FEPtrBase( back, sym );
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 static  void    *StartType( cv_out *out, lfg_index what )
@@ -171,11 +171,11 @@ static  int  EndSub( BackRun& back, cv_out *out )
 
     AlignBuff( out );
     len = out->ptr - out->buff;
-    if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
-        PUSH_OP( back.cvdbg.CVTypes );
+    if( IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
+        { segment_id old_segid = ChangeOP( back, back.cvdbg.CVTypes );
 //            here = AskBigLocation();
             DataBytes( back, len, out->buff );
-        POP_OP();
+        SetOP( back, old_segid ); }
     }
     out->ptr = out->buff;
     return( len );
@@ -187,14 +187,14 @@ static  long_offset   EndTypeString( BackRun& back, cv_out *out )
     unsigned        len;
     long_offset     here = 0;
 
-    if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
         AlignBuff( out );
         len = out->ptr - out->buff;
         *((u2 *)&out->buff[0]) = len - sizeof( u2 );  /* set type rec len*/
-        PUSH_OP( back.cvdbg.CVTypes );
+        { segment_id old_segid = ChangeOP( back, back.cvdbg.CVTypes );
             here = AskBigLocation(back);
             DataBytes( back, len, out->buff );
-        POP_OP();
+        SetOP( back, old_segid ); }
     }
     return( here );
 }
@@ -216,12 +216,12 @@ static  void    PatchLen( BackRun& back, long_offset where, u2 what )
 {
     long_offset         here;
 
-    PUSH_OP( back.cvdbg.CVTypes );
+    { segment_id old_segid = ChangeOP( back, back.cvdbg.CVTypes );
         here = AskBigLocation(back);
         SetBigLocation( back, where );
         DataShort( back, what );
         SetBigLocation( back, here );
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 static  void PutFld2( cv_out *out, short num )
@@ -544,7 +544,7 @@ void    CVDumpName( BackRun& back, dbg_name name, dbg_type tipe )
         NewTypeString( back, out );
         tipe = ++back.data.TypeIdx;
         name->refno = tipe;
-        if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
             mod = static_cast<ct_modifier *>(StartType( out, LFG_MODIFIER ));
             mod->attr.s = 0;
             mod->index = tipe;
@@ -561,12 +561,12 @@ void CVBackRefType( BackRun& back, dbg_name name, dbg_type tipe )
 {
     long_offset     here;
 
-    PUSH_OP( name->dpatch.segid );
+    { segment_id old_segid = ChangeOP( back, name->dpatch.segid );
         here = AskBigLocation(back);
         SetBigLocation( back, name->dpatch.offset );
         DataShort( back, tipe );
         SetBigLocation( back, here );
-    POP_OP();
+    SetOP( back, old_segid ); }
     name->refno = tipe;
 }
 

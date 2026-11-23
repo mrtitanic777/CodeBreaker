@@ -84,7 +84,7 @@ static  source_line_number      DumpLineNum( BackRun& back, source_line_number n
                                              bool label_line )
 /*******************************************************************/
 {
-    if( _IsModel( CGSW_GEN_DBG_NUMBERS ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_NUMBERS ) ) {
         if( n > 0 && n != last ) {
             last = n;
             CodeLineNumber( back, n, label_line );
@@ -107,7 +107,7 @@ void    GenObject( BackRun& back )
     unsigned            align;
     fe_attr             attr;
 
-    PUSH_OP( AskCodeSeg(back) );
+    { segment_id old_segid = ChangeOP( back, AskCodeSeg(back) );
         InitZeroPage(back);
         last_line = 0;
         attr = FEAttr( *back.front, AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) ) );
@@ -198,7 +198,7 @@ void    GenObject( BackRun& back )
         }
         back.data.HeadBlock = blk;
         back.data.BlockList = blk;
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 
@@ -455,7 +455,7 @@ static  void    FloodDown( BackRun& back, block *from, flood_down_func func, voi
     flood_decision      decision;
     block_edge          *edge;
 
-    _MarkBlkAllAttrClr( BLK_FLOODED );
+    MarkBlkAllAttrClr( back, BLK_FLOODED );
     stack = EdgeStackInit(back);
     PushTargets( back, stack, from );
     _MarkBlkAttrSet( from, BLK_FLOODED );
@@ -578,7 +578,7 @@ static  bool    GuardApplies( BackRun& back, block *blk, block *dst, name *reg )
             if( ins->operands[i] == reg ) {
                 return( !PostDominates( back, dst, blk ) );
             }
-            if( _IsReDefinedBy( ins, reg ) ) {
+            if( IsReDefinedBy( back, ins, reg ) ) {
                 return( false );
             }
         }
@@ -806,11 +806,11 @@ void    SortBlocks( BackRun& back )
     block       *next;
 //    block       *ret_block;
 
-    _MarkBlkAllUnVisited();
+    MarkBlkAllUnVisited( back );
     BlocksSortedBy( back, GenId );
-    if( _IsModel( CGSW_GEN_NO_OPTIMIZATION ) )
+    if( IsModel( back, CGSW_GEN_NO_OPTIMIZATION ) )
         return;
-    if( _IsntModel( CGSW_GEN_BRANCH_PREDICTION ) )
+    if( IsntModel( back, CGSW_GEN_BRANCH_PREDICTION ) )
         return;
     if( back.data.OptForSize > 50 )
         return;
@@ -819,7 +819,7 @@ void    SortBlocks( BackRun& back )
      * block when we are outputting records which mark the start
      * of the epilog etc...
      */
-    if( _IsModel( CGSW_GEN_DBG_LOCALS ) )
+    if( IsModel( back, CGSW_GEN_DBG_LOCALS ) )
         return;
     BQInit( &unplaced );
     BQInit( &placed );
@@ -851,5 +851,5 @@ void    SortBlocks( BackRun& back )
         }
     }
     back.data.HeadBlock = placed.first;
-    _MarkBlkAllUnVisited();
+    MarkBlkAllUnVisited( back );
 }

@@ -114,7 +114,7 @@ void    InitZeroPage( BackRun& back )
 */
 {
     back.x86opseg.ZPageType = ZP_USES_SS;
-    if( _IsTargetModel( CGSW_X86_FLOATING_DS )
+    if( IsTargetModel( back, CGSW_X86_FLOATING_DS )
       && back.data.OptForSize > 50 ) {
         if( !HW_COvlap( back.data.CurrProc->state.used, HW_DS ) ) {
             back.x86opseg.ZPageType = ZP_USES_DS;

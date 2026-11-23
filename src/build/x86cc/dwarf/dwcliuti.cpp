@@ -40,7 +40,7 @@ void CLIWriteSLEB128( BackRun& back, dw_client cli, dw_sectnum sect, dw_sconst v
 {
     uint_8              buf[MAX_LEB128];
 
-    CLIWrite( cli, sect, buf, WriteSLEB128( buf, value ) - buf );
+    CLIWrite( back, cli, sect, buf, WriteSLEB128( buf, value ) - buf );
 }
 
 
@@ -48,7 +48,7 @@ void CLIWriteULEB128( BackRun& back, dw_client cli, dw_sectnum sect, dw_uconst v
 {
     uint_8              buf[MAX_LEB128];
 
-    CLIWrite( cli, sect, buf, WriteULEB128( buf, value ) - buf );
+    CLIWrite( back, cli, sect, buf, WriteULEB128( buf, value ) - buf );
 }
 
 void CLISectionSetSize( BackRun& back, dw_client cli, dw_sectnum sect )
@@ -56,10 +56,10 @@ void CLISectionSetSize( BackRun& back, dw_client cli, dw_sectnum sect )
 {
     dw_sect_offs    size;
 
-    size = CLISectionOffset( cli, sect ) - sizeof( size );
-    CLISectionSeekOffset( cli, sect, 0 );
+    size = CLISectionOffset( back, cli, sect ) - sizeof( size );
+    CLISectionSeekOffset( back, cli, sect, 0 );
     CLIWriteU32( back, cli, sect, size );
-    CLISectionSeekEnd( cli, sect );
+    CLISectionSeekEnd( back, cli, sect );
 }
 
 void CLISectionWriteZeros( BackRun& back, dw_client cli, dw_sectnum sect, size_t len )
@@ -67,12 +67,12 @@ void CLISectionWriteZeros( BackRun& back, dw_client cli, dw_sectnum sect, size_t
     // the zeros array length must be big enought for all calls, now 16 bytes is OK
     static const uint_8     zeros[16] = { 0 };
 
-    CLIWrite( cli, sect, zeros, len );
+    CLIWrite( back, cli, sect, zeros, len );
 }
 
 void CLIWriteU8( BackRun& back, dw_client cli, dw_sectnum sect, uint_8 data )
 {
-    CLIWrite( cli, sect, &data, sizeof( data ) );
+    CLIWrite( back, cli, sect, &data, sizeof( data ) );
 }
 
 void BufWriteU16( dw_client cli, void *buf, uint_16 data )
@@ -102,7 +102,7 @@ void CLIWriteU16( BackRun& back, dw_client cli, dw_sectnum sect, uint_16 data )
     } else {
         MPUT_LE_16( buf, data );
     }
-    CLIWrite( cli, sect, buf, sizeof( buf ) );
+    CLIWrite( back, cli, sect, buf, sizeof( buf ) );
 }
 
 void CLIWriteU32( BackRun& back, dw_client cli, dw_sectnum sect, uint_32 data )
@@ -114,10 +114,10 @@ void CLIWriteU32( BackRun& back, dw_client cli, dw_sectnum sect, uint_32 data )
     } else {
         MPUT_LE_32( buf, data );
     }
-    CLIWrite( cli, sect, buf, sizeof( buf ) );
+    CLIWrite( back, cli, sect, buf, sizeof( buf ) );
 }
 
 void CLIWriteString( BackRun& back, dw_client cli, dw_sectnum sect, const char *str )
 {
-    CLIWrite( cli, sect, str, strlen( str ) + 1 );
+    CLIWrite( back, cli, sect, str, strlen( str ) + 1 );
 }

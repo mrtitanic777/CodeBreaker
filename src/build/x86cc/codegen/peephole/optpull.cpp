@@ -157,11 +157,11 @@ ins_entry       *IsolatedCode( BackRun& back, ins_entry *instr )
 {
     ins_entry   *next;
 
-  optbegin
+  OptBegin( back );
     next = NextIns( back, instr );
     for( ;; ) {
         if( next == NULL )
-            optreturn( next );
+            { OptEnd( back ); return( next ); }
         if( _Class( next ) == OC_LABEL )
             break;
         _Savings( OPT_ISOLATED, _ObjLen( next ) );
@@ -175,7 +175,7 @@ ins_entry       *IsolatedCode( BackRun& back, ins_entry *instr )
         }
     }
     next = Untangle( back, next );
-    optreturn( next );
+    { OptEnd( back ); return( next ); }
 }
 
 
@@ -189,28 +189,28 @@ bool    StraightenCode( BackRun& back, ins_entry *jump )
     oc_class    cl;
     obj_length  align;
 
-  optbegin
+  OptBegin( back );
     hoist = _Label( jump )->ins;
     if( hoist == NULL )
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
     if( hoist == back.optdata.LastIns )
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
     cl = PrevClass( back, hoist );
     if( !_TransferClass( cl ) )
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
 
     end_hoist = NULL;
     for( next = hoist; ; next = NextIns( back, next ) ) {
         if( next == jump ) { // pushing code down to jump
             if( end_hoist == NULL )
-                optreturn( false );
+                { OptEnd( back ); return( false ); }
             if( FindShort( back, hoist, end_hoist ) )
-                optreturn( false );
+                { OptEnd( back ); return( false ); }
             break;
         }
         if( next == NULL ) { // hauling code up to jump
             if( FindShort( back, jump, hoist ) )
-                optreturn( false );
+                { OptEnd( back ); return( false ); }
             break;
         }
         cl = _Class( next );
@@ -231,7 +231,7 @@ bool    StraightenCode( BackRun& back, ins_entry *jump )
         DeleteQueue( back, hoist );
         InsertQueue( back, hoist, insert );
         if( hoist == jump )
-            optreturn( false );
+            { OptEnd( back ); return( false ); }
         insert = hoist;
         cl = _Class( hoist );
         if( _TransferClass( cl ) ) {
@@ -245,7 +245,7 @@ bool    StraightenCode( BackRun& back, ins_entry *jump )
     if( _Class( jump ) != OC_DEAD ) {
         Untangle( back, _Label( jump )->ins );
     }
-    optreturn( true );
+    { OptEnd( back ); return( true ); }
 }
 
 
@@ -256,7 +256,7 @@ void    CheckStraightenCode( BackRun& back, ins_entry  *lbl_ins )
     ins_entry       *jmp;
     oc_class        cl;
 
-  optbegin
+  OptBegin( back );
     if( lbl_ins != NULL ) {
         lbl = _Label( lbl_ins );
         for( jmp = lbl->refs; jmp != NULL; jmp = _LblRef( jmp ) ) {
@@ -268,7 +268,7 @@ void    CheckStraightenCode( BackRun& back, ins_entry  *lbl_ins )
             }
         }
     }
-  optend
+  OptEnd( back );
 }
 
 
@@ -277,17 +277,17 @@ void    CallRet( BackRun& back, ins_entry *instr )
 {
     ins_entry   *lbl;
 
-  optbegin
+  OptBegin( back );
     if( _ChkAttr( instr, OC_ATTR_POP ) )
-        optreturnvoid;
+        { OptEnd( back ); return; }
     lbl = _Label( instr )->ins;
     if( lbl == NULL )
-        optreturnvoid;
+        { OptEnd( back ); return; }
     if( NextClass( back, lbl ) != OC_RET )
-        optreturnvoid;
+        { OptEnd( back ); return; }
     _Savings( OPT_CALLTORET, _ObjLen( instr ) );
     DelInstr( back, instr );
-  optend
+  OptEnd( back );
 }
 
 
@@ -296,17 +296,17 @@ void    JmpRet( BackRun& back, ins_entry *instr )
 {
     ins_entry   *ret;
 
-  optbegin
+  OptBegin( back );
     if( back.optdata.InsDelete )
-        optreturnvoid;
+        { OptEnd( back ); return; }
     ret = _Label( instr )->ins;
     if( ret == NULL )
-        optreturnvoid;
+        { OptEnd( back ); return; }
     ret = NextIns( back, ret );
     if( ret == NULL )
-        optreturnvoid;
+        { OptEnd( back ); return; }
     if( _Class( ret ) != OC_RET )
-        optreturnvoid;
+        { OptEnd( back ); return; }
     JmpToRet( back, instr, ret );
-  optend
+  OptEnd( back );
 }

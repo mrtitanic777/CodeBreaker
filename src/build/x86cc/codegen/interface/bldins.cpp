@@ -721,7 +721,7 @@ void    BGStartBlock( BackRun& back )
 {
     label_handle    lbl;
 
-    if( _MemLow ) { /* break the block here and generate code*/
+    if( MemLow( back ) ) { /* break the block here and generate code*/
         lbl = AskForNewLabel(back);
         GenBlock( back, BLK_JUMP, 1 );
         AddTarget( back, lbl, false );

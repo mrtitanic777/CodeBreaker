@@ -82,8 +82,8 @@ static const hw_reg_set IndexTab[] = {
 static void OpndSizeIf( BackRun& back, bool if_32 )
 /**********************************/
 {
-    if( ( if_32 && _IsTargetModel( CGSW_X86_USE_32 ) )
-      || _IsntTargetModel( CGSW_X86_USE_32 ) ) {
+    if( ( if_32 && IsTargetModel( back, CGSW_X86_USE_32 ) )
+      || IsntTargetModel( back, CGSW_X86_USE_32 ) ) {
         AddToTemp( back, M_OPND_SIZE );
     }
 }
@@ -93,7 +93,7 @@ static void TakeUpSlack( BackRun& back, type_length size )
 /*****************************************/
 {
     for( ; size >= 2; size -= 2 ) {
-        if( _IsTargetModel( CGSW_X86_USE_32 ) )
+        if( IsTargetModel( back, CGSW_X86_USE_32 ) )
             AddByte( back, M_OPND_SIZE );
         AddByte( back, M_MOVSW );
     }
@@ -119,7 +119,7 @@ void    DoRepOp( BackRun& back, instruction *ins )
                 OpndSizeIf( back, false );
                 first = false;
             } else {
-                if( _IsntTargetModel( CGSW_X86_USE_32 ) )
+                if( IsntTargetModel( back, CGSW_X86_USE_32 ) )
                     AddByte( back, M_OPND_SIZE );
                 AddByte( back, M_MOVSW );
             }
@@ -130,7 +130,7 @@ void    DoRepOp( BackRun& back, instruction *ins )
         if( ins->head.opcode == OP_MOV ) {
             if( (size & ( 4 - 1 )) == 0
               || back.data.OptForSize <= 50 ) {
-                if( _IsntTargetModel( CGSW_X86_USE_32 ) )
+                if( IsntTargetModel( back, CGSW_X86_USE_32 ) )
                     AddByte( back, M_OPND_SIZE );
                 AddByte( back, M_MOVSW );
                 TakeUpSlack( back, size & ( 4 - 1 ) );
@@ -142,7 +142,7 @@ void    DoRepOp( BackRun& back, instruction *ins )
                 AddByte( back, M_CMPSB );
             } else {
                 AddByte( back, M_CMPSW );
-                if( _IsntTargetModel( CGSW_X86_USE_32 ) ) {
+                if( IsntTargetModel( back, CGSW_X86_USE_32 ) ) {
                     AddByte( back, M_OPND_SIZE );
                 }
             }
@@ -186,7 +186,7 @@ byte    DoIndex( BackRun& back, hw_reg_set regs )
             return( i << S_RMR_RM );
         }
     }
-    _Zoiks( ZOIKS_033 );
+    Zoiks( back, ZOIKS_033 );
     return( 0 );
 }
 
@@ -221,7 +221,7 @@ static  byte    DoDisp( BackRun& back, type_length val, hw_reg_set base_reg, nam
     } else if( op->n.class_ == N_TEMP ) {
         base = DeAlias( op );
         if( base->t.location == NO_LOCATION ) {
-            _Zoiks( ZOIKS_034 );
+            Zoiks( back, ZOIKS_034 );
         }
         val += TmpLoc( back, base, op );
         return( Displacement( back, val, base_reg ) );
@@ -233,7 +233,7 @@ static  byte    DoDisp( BackRun& back, type_length val, hw_reg_set base_reg, nam
         DoRelocConst( back, op, U4 );
         return( DISPW );
     } else {
-        _Zoiks( ZOIKS_126 );
+        Zoiks( back, ZOIKS_126 );
         return( DISP0 );
     }
 }
@@ -259,14 +259,14 @@ static  void    EA( BackRun& back, hw_reg_set base, hw_reg_set index, scale_typ 
 /***************************************************************/
 {
     if( HW_CEqual( index, HW_ESP ) )
-        _Zoiks( ZOIKS_079 );
+        Zoiks( back, ZOIKS_079 );
     if( HW_CEqual( base, HW_EMPTY ) ) {
         if( HW_CEqual( index, HW_EMPTY ) ) {
             /*
              * [disp32]
              */
             if( scale != SCALE_NONE || val != 0 )
-                _Zoiks( ZOIKS_079 );
+                Zoiks( back, ZOIKS_079 );
             back.pcencode.Inst[RMR] |= DoMDisp( back, mem_loc, true );
         } else {
             if( scale != SCALE_NONE ) {
@@ -303,7 +303,7 @@ static  void    EA( BackRun& back, hw_reg_set base, hw_reg_set index, scale_typ 
         } else {
             if( scale == SCALE_NONE
               && HW_CEqual( base, HW_EBP )
-              && ( lea || _IsntTargetModel( CGSW_X86_FLOATING_DS ) && _IsntTargetModel( CGSW_X86_FLOATING_SS ) ) ) {
+              && ( lea || IsntTargetModel( back, CGSW_X86_FLOATING_DS ) && IsntTargetModel( back, CGSW_X86_FLOATING_SS ) ) ) {
                 /*
                  * flip base & index registers so that we might avoid having
                  * to output a byte displacement (can't have a zero sized
@@ -413,7 +413,7 @@ void    LayLeaRegOp( BackRun& back, instruction *ins )
         scale = (scale_typ)right->c.lo.u.int_value;
         switch( scale ) {
         case SCALE_2:
-            if( _CPULevel( CPU_586 ) ) {
+            if( CPULevel( back, CPU_586 ) ) {
                 /*
                  * want to avoid the extra big-fat 0 on 586's
                  * but two base registers is slower on a 486
@@ -433,7 +433,7 @@ void    LayLeaRegOp( BackRun& back, instruction *ins )
 static  void    CheckSize( BackRun& back )
 /*******************************/
 {
-    if( _IsntTargetModel( CGSW_X86_USE_32 ) ) {
+    if( IsntTargetModel( back, CGSW_X86_USE_32 ) ) {
         AddToTemp( back, M_ADDR_SIZE );
     }
 }
@@ -502,7 +502,7 @@ void    LayModRM( BackRun& back, name *op )
         CheckSize(back);
         base = DeAlias( op );
         if( base->t.location == NO_LOCATION ) {
-            _Zoiks( ZOIKS_030 );
+            Zoiks( back, ZOIKS_030 );
         }
         if( BaseIsSP( back, base ) ) {
             EA( back, HW_ESP, HW_EMPTY, SCALE_NONE, TmpLoc( back, base, op ), NULL, false );
@@ -525,7 +525,7 @@ void    DoMAddr( BackRun& back, name *op )
 {
     back.pcencode.ILen += 4;
     if( op->n.class_ == N_CONSTANT ) {
-        _Zoiks( ZOIKS_035 );
+        Zoiks( back, ZOIKS_035 );
     } else {
         /*
          * assume global name
@@ -554,7 +554,7 @@ void    DoRelocConst( BackRun& back, name *op, type_class_def type_class )
             AddByte( back, 0 );
         }
     } else if( op->c.const_type == CONS_ADDRESS ) {
-        _Zoiks( ZOIKS_045 );
+        Zoiks( back, ZOIKS_045 );
     }
 }
 
@@ -562,23 +562,23 @@ void    DoRelocConst( BackRun& back, name *op, type_class_def type_class )
 void    GenUnkPush( BackRun& back, pointer value )
 /*********************************/
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, M_PUSHI );
     OpndSizeIf( back, false );
     back.pcencode.ILen += 4;
     DoAbsPatch( back, static_cast<abspatch_handle *>(value), 4 );
-    _Emit;
+    Finalize( back );
 }
 
 
 void    GenPushC( BackRun& back, int_32 value )
 /******************************/
 {
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, M_PUSHI );
     OpndSizeIf( back, false );
     AddSData( back, value, I4 );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -587,7 +587,7 @@ pointer GenFar16Thunk( BackRun& back, pointer label, uint_16 parms_size, bool re
 {
     pointer     code_32;
 
-    PUSH_OP( AskCode16Seg(back) );
+    { segment_id old_segid = ChangeOP( back, AskCode16Seg(back) );
 //        CodeLabel( label, DepthAlign( PROC_ALIGN ) );
         code_32 = AskForNewLabel(back);
         TellOptimizerByPassed(back);
@@ -614,7 +614,7 @@ pointer GenFar16Thunk( BackRun& back, pointer label, uint_16 parms_size, bool re
         OutReloc( back, AskCodeSeg(back), F_OFFSET, false );
         OutLblPatch( back, static_cast<label_handle>(code_32), F_OFFSET, 0 );
         TellByPassOver(back);
-    POP_OP();
+    SetOP( back, old_segid ); }
     return( code_32 );
 }
 
@@ -624,11 +624,11 @@ static void    doProfilingCode( BackRun& back, char *fe_name, label_handle *data
 {
     if( prolog )
         GenProfileData( back, fe_name, data, NULL );
-    _Code;
+    Format( back, OC_CODE );
     LayOpbyte( back, 0x68 );
     back.pcencode.ILen += 4;
     DoLblRef( back, *data, (segment_id)(pointer_uint)FEAuxInfo( *back.front, NULL, FEINF_P5_PROF_SEG ), 0, ESCA_OFST );
-    _Emit;
+    Finalize( back );
     DoRTCall( back, prolog ? RT_PROFILE_ON : RT_PROFILE_OFF, true );
 }
 
@@ -636,7 +636,7 @@ static void    doProfilingCode( BackRun& back, char *fe_name, label_handle *data
 static  void    doProfilingPrologEpilog( BackRun& back, label_handle label, bool prolog )
 /************************************************************************/
 {
-    if( _IsTargetModel( CGSW_X86_NEW_P5_PROFILING ) ) {
+    if( IsTargetModel( back, CGSW_X86_NEW_P5_PROFILING ) ) {
         doProfilingCode( back, const_cast<char *>(""), &back.data.CurrProc->targ.routine_profile_data, prolog );
     } else {
         back_handle     bck;
@@ -649,58 +649,58 @@ static  void    doProfilingPrologEpilog( BackRun& back, label_handle label, bool
         data_lbl = bck->lbl;
         data_segid = (segment_id)(pointer_uint)FEAuxInfo( *back.front, NULL, FEINF_P5_PROF_SEG );
         TellKeepLabel( back, data_lbl );
-        _Code;
+        Format( back, OC_CODE );
         if( prolog ) {
             LayOpword( back, 0x05ff );                        /* inc L1+count */
             back.pcencode.ILen += 4;
             DoLblRef( back, data_lbl, data_segid, offsetof( P5_timing_info, count ), ESCA_OFST );
-            _Next;
+            EjectInst( back );
         }
         LayOpword( back, prolog ? 0x05ff : 0x0dff );          /* inc/dec L1+semaphore */
         back.pcencode.ILen += 4;
         DoLblRef( back, data_lbl, data_segid, offsetof( P5_timing_info, semaphore ), ESCA_OFST );
-        _Next;
-        if( _IsTargetModel( CGSW_X86_P5_PROFILING_CTR0 ) ) {
+        EjectInst( back );
+        if( IsTargetModel( back, CGSW_X86_P5_PROFILING_CTR0 ) ) {
             LayOpword( back, prolog ? 0x1675 : 0x167d );      /* jne/jge skip */
-            _Next;
+            EjectInst( back );
             LayOpbyte( back, 0x51 );                          /* push ecx */
-            _Next;
+            EjectInst( back );
         } else {
             LayOpword( back, prolog ? 0x1275 : 0x127d );      /* jne/jge skip */
-            _Next;
+            EjectInst( back );
         }
         LayOpbyte( back, 0x52 );                              /* push edx */
-        _Next;
-        if( _IsTargetModel( CGSW_X86_P5_PROFILING_CTR0 ) ) {
+        EjectInst( back );
+        if( IsTargetModel( back, CGSW_X86_P5_PROFILING_CTR0 ) ) {
             LayOpword( back, 0xc931 );                        /* xor ecx,ecx */
-            _Next;
+            EjectInst( back );
         }
         LayOpbyte( back, 0x50 );                              /* push eax */
-        _Next;
-        if( _IsTargetModel( CGSW_X86_P5_PROFILING_CTR0 ) ) {
+        EjectInst( back );
+        if( IsTargetModel( back, CGSW_X86_P5_PROFILING_CTR0 ) ) {
             LayOpword( back, 0x330f );                        /* rdpmc */
-            _Next;
+            EjectInst( back );
         } else {
             LayOpword( back, 0x310f );                        /* rdtsc */
-            _Next;
+            EjectInst( back );
         }
         LayOpword( back, prolog ? 0x0529 : 0x0501 );          /* sub/add L1+lo_cycle,eax */
         back.pcencode.ILen += 4;
         DoLblRef( back, data_lbl, data_segid, offsetof( P5_timing_info, lo_cycle ), ESCA_OFST );
-        _Next;
+        EjectInst( back );
         LayOpbyte( back, 0x58 );                              /* pop eax */
-        _Next;
+        EjectInst( back );
         LayOpword( back, prolog ? 0x1519 : 0x1511 );          /* sbb/adc L1+hi_cycle,edx */
         back.pcencode.ILen += 4;
         DoLblRef( back, data_lbl, data_segid, offsetof( P5_timing_info, hi_cycle ), ESCA_OFST );
-        _Next;
+        EjectInst( back );
         LayOpbyte( back, 0x5a );                              /* pop edx */
-        _Next;
-        if( _IsTargetModel( CGSW_X86_P5_PROFILING_CTR0 ) ) {
+        EjectInst( back );
+        if( IsTargetModel( back, CGSW_X86_P5_PROFILING_CTR0 ) ) {
             LayOpbyte( back, 0x59 );                          /* pop ecx */
-            _Next;
+            EjectInst( back );
         }
-        _Emit;
+        Finalize( back );
     }
 }
 
@@ -712,7 +712,7 @@ segment_id GenProfileData( BackRun& back, char *fe_name, label_handle *data, lab
 {
     segment_id      data_segid = (segment_id)(pointer_uint)FEAuxInfo( *back.front, NULL, FEINF_P5_PROF_SEG );
 
-    PUSH_OP( data_segid );
+    { segment_id old_segid = ChangeOP( back, data_segid );
         TellOptimizerByPassed(back);
         SetUpObj( back, true );
         *data = AskForNewLabel(back);
@@ -741,7 +741,7 @@ segment_id GenProfileData( BackRun& back, char *fe_name, label_handle *data, lab
         OutDataLong( back, 0 );                           //call_ins
         OutDataLong( back, 0 );                           //callee
         TellByPassOver(back);
-    POP_OP();
+    SetOP( back, old_segid ); }
     return( data_segid );
 }
 
@@ -767,7 +767,7 @@ void    GFstp10( BackRun& back, type_length where )
     CheckSize(back);
     LayOpword( back, 0x3ddb );
     EA( back, HW_EMPTY, HW_EBP, SCALE_NONE, -where, NULL, false );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -778,7 +778,7 @@ void    GFld10( BackRun& back, type_length where )
     CheckSize(back);
     LayOpword( back, 0x2ddb );
     EA( back, HW_EMPTY, HW_EBP, SCALE_NONE, -where, NULL, false );
-    _Emit;
+    Finalize( back );
 }
 
 
@@ -820,9 +820,9 @@ void    Pow2Div( BackRun& back, instruction *ins )
     case U1:
         LayOpword( back, 0xe4c0 );    /* shl  ah,n */
         AddByte( back, log2 );
-        _Next;
+        EjectInst( back );
         LayOpword( back, 0xc41a );    /* sbb  al,ah */
-        _Next;
+        EjectInst( back );
         LayOpword( back, 0xf8c0 );    /* sar  al,n */
         AddByte( back, log2 );
         break;
@@ -835,10 +835,10 @@ void    Pow2Div( BackRun& back, instruction *ins )
         LayOpword( back, 0xe2c1 );    /* shl  edx,n */
         OpndSizeIf( back, if_32 );
         AddByte( back, log2 );
-        _Next;
+        EjectInst( back );
         LayOpword( back, 0xc21b );    /* sbb  eax,edx */
         OpndSizeIf( back, if_32 );
-        _Next;
+        EjectInst( back );
         LayOpword( back, 0xf8c1 );    /* sar  eax,n */
         OpndSizeIf( back, if_32 );
         AddByte( back, log2 );
@@ -856,7 +856,7 @@ void    By2Div( BackRun& back, instruction *ins )
     case I1:
     case U1:
         LayOpword( back, 0xc42a );    /* sub  al,ah */
-        _Next;
+        EjectInst( back );
         LayOpword( back, 0xf8d0 );    /* sar  al,1 */
         break;
     case I2:
@@ -867,7 +867,7 @@ void    By2Div( BackRun& back, instruction *ins )
     case U4:
         LayOpword( back, 0xc22b );    /* sub  eax,edx */
         OpndSizeIf( back, if_32 );
-        _Next;
+        EjectInst( back );
         LayOpword( back, 0xf8d1 );    /* sar  eax,1 */
         OpndSizeIf( back, if_32 );
         break;
@@ -899,15 +899,15 @@ void StartBlockProfiling( BackRun& back, block *blk )
     segment_id          data_segid;
     label_handle        data;
 
-    if( _IsntTargetModel( CGSW_X86_NEW_P5_PROFILING ) )
+    if( IsntTargetModel( back, CGSW_X86_NEW_P5_PROFILING ) )
         return;
-    if( _IsntTargetModel( CGSW_X86_STATEMENT_COUNTING ) )
+    if( IsntTargetModel( back, CGSW_X86_STATEMENT_COUNTING ) )
         return;
     data_segid = (segment_id)(pointer_uint)FEAuxInfo( *back.front, NULL, FEINF_P5_PROF_SEG );
     if( blk->label == NULL )
         return;
     TellKeepLabel( back, blk->label );
-    PUSH_OP( data_segid );
+    { segment_id old_segid = ChangeOP( back, data_segid );
         TellOptimizerByPassed(back);
         SetUpObj( back, true );
         data = AskForNewLabel(back);
@@ -924,18 +924,18 @@ void StartBlockProfiling( BackRun& back, block *blk )
         OutReloc( back, AskCodeSeg(back), F_OFFSET, false );  //function
         OutLblPatch( back, static_cast<label_handle>(back.data.CurrProc->label), F_OFFSET, 0 );
         TellByPassOver(back);
-    POP_OP();
-    _Code;
+    SetOP( back, old_segid ); }
+    Format( back, OC_CODE );
     LayOpword( back, 0x0583 );                /* add L1+lo_count,1 */
     back.pcencode.ILen += 4;
     DoLblRef( back, data, data_segid, offsetof( block_count_info, lo_count ), ESCA_OFST );
     AddByte( back, 1 );
-    _Next;
+    EjectInst( back );
     LayOpword( back, 0x1583 );                /* adc L1+hi_count,0 */
     back.pcencode.ILen += 4;
     DoLblRef( back, data, data_segid, offsetof( block_count_info, hi_count ), ESCA_OFST );
     AddByte( back, 0 );
-    _Emit;
+    Finalize( back );
 }
 
 

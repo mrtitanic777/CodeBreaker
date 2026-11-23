@@ -44,27 +44,27 @@ pointer FindAuxInfo( BackRun& back, name *name, aux_class request )
 {
     if( name == NULL ) {
         /* return default aux info */
-        return( FindAuxInfoSym( NULL, request ) );
+        return( FindAuxInfoSym( back, NULL, request ) );
     } else if( name->n.class_ != N_MEMORY ) {
         /* return default aux info */
-        return( FindAuxInfoSym( NULL, request ) );
+        return( FindAuxInfoSym( back, NULL, request ) );
     } else if( name->m.memory_type == CG_FE ) {
-        return( FindAuxInfoSym( name->v.symbol, request ) );
+        return( FindAuxInfoSym( back, name->v.symbol, request ) );
     } else if( name->m.memory_type == CG_BACK ) {
-        return( FindAuxInfoSym( AskForLblSym( back, ((back_handle)name->v.symbol)->lbl ), request ) );
+        return( FindAuxInfoSym( back, AskForLblSym( back, ((back_handle)name->v.symbol)->lbl ), request ) );
     } else if( name->m.memory_type == CG_LBL && AskIfRTLabel( back, static_cast<label_handle>(name->v.symbol) ) ) {
         aux_handle  aux;
 
         aux = static_cast<aux_handle>(BEAuxInfo( back, name->v.symbol, FEINF_AUX_LOOKUP ));
         if( aux == NULL ) {
             /* return default aux info */
-            return( FindAuxInfoSym( NULL, request ) );
+            return( FindAuxInfoSym( back, NULL, request ) );
         } else {
             return( BEAuxInfo( back, aux, request ) );
         }
     } else {
         /* return default aux info */
-        return( FindAuxInfoSym( NULL, request ) );
+        return( FindAuxInfoSym( back, NULL, request ) );
     }
 }
 

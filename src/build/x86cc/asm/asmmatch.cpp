@@ -37,7 +37,10 @@
 #include "asmrun.hpp"
 
 
-#define USE_FPU_EMUL    ((assembler.asmglob.SWData.fpt==DO_FP_EMULATION)&&(!rCode->use32)&&(ins->cpu & P_FPU_MASK)!=P_NO87)
+static inline bool UseFpuEmulation( AsmRun& assembler, const asm_code *rCode, const asm_ins ASMI86FAR *ins )
+{
+    return ( assembler.asmglob.SWData.fpt == DO_FP_EMULATION ) && ( !rCode->use32 ) && ( ins->cpu & P_FPU_MASK ) != P_NO87;
+}
 
 static bool match_phase_3( AsmRun& assembler, bool *found, const asm_ins ASMI86FAR **pins, OPNDTYPE determinant );
 
@@ -48,7 +51,7 @@ static bool output_3DNow( AsmRun& assembler, const asm_ins ASMI86FAR *ins )
         if( !ins->wds ) {
             assembler.asmdefs.Code->info.opcode &= ~W_BIT;
         }
-        AsmCodeByte( ins->opcode | assembler.asmdefs.Code->info.opcode );
+        AsmByte( assembler, ins->opcode | assembler.asmdefs.Code->info.opcode );
     }
     return( RC_OK );
 }
@@ -79,7 +82,7 @@ static bool output( AsmRun& assembler, const asm_ins ASMI86FAR *ins )
     /*
      * Check if FPU instruction requires emulator patch and fixup
      */
-    if( USE_FPU_EMUL ) {
+    if( UseFpuEmulation( assembler, rCode, ins ) ) {
         if( ins->token == T_FWAIT ) {
             if( (rCode->info.cpu & P_FPU_MASK) < P_387 ) {
                 patch = FPP_WAIT;
@@ -102,10 +105,10 @@ static bool output( AsmRun& assembler, const asm_ins ASMI86FAR *ins )
      */
     if( patch == FPP_NONE && ins->token != T_FWAIT && ins->allowed_prefix != NO_FWAIT ) {
         if( ins->allowed_prefix == FWAIT ) {
-            AsmCodeByte( OP_WAIT );
+            AsmByte( assembler, OP_WAIT );
         } else if( (rCode->info.cpu & P_CPU_MASK) < P_286 && (ins->cpu & P_FPU_MASK) == P_87 ) {
             // implicit FWAIT synchronization for 8087 (CPU 8086/80186)
-            AsmCodeByte( OP_WAIT );
+            AsmByte( assembler, OP_WAIT );
         }
     }
 
@@ -141,18 +144,18 @@ static bool output( AsmRun& assembler, const asm_ins ASMI86FAR *ins )
         default:
             break;
         }
-        AsmCodeByte( AsmOpTable[AsmOpcode[rCode->prefix.ins].position].opcode );
+        AsmByte( assembler, AsmOpTable[AsmOpcode[rCode->prefix.ins].position].opcode );
     }
     /*
      * Output instruction prefix REP or REPNE for SSEx instructions
      */
     switch( ins->byte1_info ) {
     case F_F20F:
-        AsmCodeByte( 0xF2 );
+        AsmByte( assembler, 0xF2 );
         break;
     case F_F3:
     case F_F30F:
-        AsmCodeByte( 0xF3 );
+        AsmByte( assembler, 0xF3 );
         break;
     case F_16:
     case F_32:
@@ -167,7 +170,7 @@ static bool output( AsmRun& assembler, const asm_ins ASMI86FAR *ins )
      * Output address size prefix
      */
     if( rCode->prefix.adrsiz ) {
-        AsmCodeByte( ADRSIZ );
+        AsmByte( assembler, ADRSIZ );
     }
     /*
      * Output operand size prefix
@@ -218,10 +221,10 @@ static bool output( AsmRun& assembler, const asm_ins ASMI86FAR *ins )
         case T_LOOPZW:
         case T_LOOPNZD:
         case T_LOOPNZW:
-            AsmCodeByte( ADRSIZ );
+            AsmByte( assembler, ADRSIZ );
             break;
         default:
-            AsmCodeByte( OPSIZ );
+            AsmByte( assembler, OPSIZ );
             break;
         }
     }
@@ -239,7 +242,7 @@ static bool output( AsmRun& assembler, const asm_ins ASMI86FAR *ins )
      * Output segment prefix
      */
     if( rCode->prefix.seg != PREFIX_EMPTY ) {
-        AsmCodeByte( rCode->prefix.seg );
+        AsmByte( assembler, rCode->prefix.seg );
     }
     /*
      * Output extended opcode
@@ -248,13 +251,13 @@ static bool output( AsmRun& assembler, const asm_ins ASMI86FAR *ins )
      */
     switch( ins->byte1_info ) {
     case F_0F0F:
-        AsmCodeByte( EXTENDED_OPCODE );
+        AsmByte( assembler, EXTENDED_OPCODE );
         // no break
     case F_0F:
     case F_660F:
     case F_F20F:
     case F_F30F:
-        AsmCodeByte( EXTENDED_OPCODE );
+        AsmByte( assembler, EXTENDED_OPCODE );
         break;
     case F_F3:
     default:
@@ -270,18 +273,18 @@ static bool output( AsmRun& assembler, const asm_ins ASMI86FAR *ins )
     }
     switch( ins->rm_info ) {
     case R_in_OP:
-        AsmCodeByte( ins->opcode | (rCode->info.rm_byte & NOT_BIT_67) );
+        AsmByte( assembler, ins->opcode | (rCode->info.rm_byte & NOT_BIT_67) );
         break;
     case no_RM:
-        AsmCodeByte( ins->opcode | rCode->info.opcode );
+        AsmByte( assembler, ins->opcode | rCode->info.opcode );
         break;
     default:
         // don't output opcode for 3DNow! instructions
         if( ins->byte1_info != F_0F0F ) {
-            AsmCodeByte( ins->opcode | rCode->info.opcode );
+            AsmByte( assembler, ins->opcode | rCode->info.opcode );
         }
         tmp = ins->rm_byte | rCode->info.rm_byte;
-        AsmCodeByte( tmp );
+        AsmByte( assembler, tmp );
         if( IS_ADRSIZ_32( rCode ) ) {
             switch( tmp & NOT_BIT_345 ) {
             case 0x04:
@@ -293,7 +296,7 @@ static bool output( AsmRun& assembler, const asm_ins ASMI86FAR *ins )
             case 0x84:
                  // mod = 10, r/m = 100
                  // s-i-b is present
-                 AsmCodeByte( rCode->sib );
+                 AsmByte( assembler, rCode->sib );
             }
         }
         break;
@@ -364,7 +367,7 @@ static bool output_data( AsmRun& assembler, OPNDTYPE determinant, operand_idx in
         }
     }
     while( out > 0 ) {
-        AsmCodeByte( (uint_8)assembler.asmdefs.Code->data[index] );
+        AsmByte( assembler, (uint_8)assembler.asmdefs.Code->data[index] );
         assembler.asmdefs.Code->data[index] >>= 8;
         out--;
     }

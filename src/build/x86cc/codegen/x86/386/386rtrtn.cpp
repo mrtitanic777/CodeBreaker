@@ -125,7 +125,7 @@ namespace {
 const char  *AskRTName( BackRun& back, rt_class rtindex )
 /****************************************/
 {
-    if( _IsTargetModel( CGSW_X86_INDEXED_GLOBALS ) ) {
+    if( IsTargetModel( back, CGSW_X86_INDEXED_GLOBALS ) ) {
         switch( rtindex ) {
         case RT_FDA:
             return( "__FXA" );
@@ -268,26 +268,26 @@ pointer BEAuxInfo( BackRun& back, pointer hdl, aux_class request )
     case FEINF_AUX_LOOKUP:
         switch( FindRTLabel( back, static_cast<label_handle>(hdl) ) ) {
         case RT_SCAN1:
-            if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) )
+            if( IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) )
                 return( (pointer)&back.x386rtrtn->Scn1ES );
             return( (pointer)&back.x386rtrtn->Scn1 );
         case RT_SCAN2:
-            if( _IsntTargetModel( CGSW_X86_USE_32 ) ) {
-                if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) )
+            if( IsntTargetModel( back, CGSW_X86_USE_32 ) ) {
+                if( IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) )
                     return( (pointer)&back.x386rtrtn->Scn4ES );
                 return( (pointer)&back.x386rtrtn->Scn4 );
             } else {
-                if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) )
+                if( IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) )
                     return( (pointer)&back.x386rtrtn->Scn2ES );
                 return( (pointer)&back.x386rtrtn->Scn2 );
             }
         case RT_SCAN4:
-            if( _IsntTargetModel( CGSW_X86_USE_32 ) ) {
-                if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) )
+            if( IsntTargetModel( back, CGSW_X86_USE_32 ) ) {
+                if( IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) )
                     return( (pointer)&back.x386rtrtn->Scn2ES );
                 return( (pointer)&back.x386rtrtn->Scn2 );
             } else {
-                if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) )
+                if( IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) )
                     return( (pointer)&back.x386rtrtn->Scn4ES );
                 return( (pointer)&back.x386rtrtn->Scn4 );
             }
@@ -301,7 +301,7 @@ pointer BEAuxInfo( BackRun& back, pointer hdl, aux_class request )
     case FEINF_CALL_BYTES:
         return( hdl );
     default:
-        _Zoiks( ZOIKS_128 );
+        Zoiks( back, ZOIKS_128 );
         return( NULL );
     }
 }

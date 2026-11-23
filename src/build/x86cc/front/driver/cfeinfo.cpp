@@ -53,9 +53,9 @@
 #define TRUNC_SYMBOL_HASH_LEN        4
 #define TRUNC_SYMBOL_LEN_WARN        120
 
-#define _HAS_EXE_MAIN   (front.cvars.CompFlags.has_main || front.cvars.CompFlags.has_winmain)
-#define _HAS_DLL_MAIN   (front.cvars.CompFlags.bd_switch_used || front.cvars.CompFlags.has_libmain)
-#define _HAS_ANY_MAIN   (_HAS_EXE_MAIN || _HAS_DLL_MAIN)
+static inline bool HasExeMain( FrontRun& front ) { return front.cvars.CompFlags.has_main || front.cvars.CompFlags.has_winmain; }
+static inline bool HasDllMain( FrontRun& front ) { return front.cvars.CompFlags.bd_switch_used || front.cvars.CompFlags.has_libmain; }
+static inline bool HasAnyMain( FrontRun& front ) { return HasExeMain( front ) || HasDllMain( front ); }
 
 static unsigned char const VarFuncWeights[] = {
 /* a, b, c, d, e, f, g, h, i, j, k, l, m, n, o, p, q, r, s, t, u, v, w, x, y, z */
@@ -280,23 +280,23 @@ aux_info *GetLangInfo( FrontRun& front, type_modifiers flags )
 {
     switch( flags & MASK_LANGUAGES ) {
     case FLAG_WATCALL:
-        return( &WatcallInfo );
+        return( &WatcallInfo( front ) );
     case FLAG_CDECL:
-        return( &CdeclInfo );
+        return( &CdeclInfo( front ) );
     case FLAG_PASCAL:
-        return( &PascalInfo );
+        return( &PascalInfo( front ) );
     case FLAG_FORTRAN:
-        return( &FortranInfo );
+        return( &FortranInfo( front ) );
     case FLAG_SYSCALL:
-        return( &SyscallInfo );
+        return( &SyscallInfo( front ) );
     case FLAG_STDCALL:
-        return( &StdcallInfo );
+        return( &StdcallInfo( front ) );
     case FLAG_FASTCALL:
-        return( &FastcallInfo );
+        return( &FastcallInfo( front ) );
     case FLAG_OPTLINK:
-        return( &OptlinkInfo );
+        return( &OptlinkInfo( front ) );
     default:
-        return( &DefaultInfo );
+        return( &DefaultInfo( front ) );
     }
 }
 
@@ -324,7 +324,7 @@ static aux_info *InfoLookup( FrontRun& front, SYMPTR sym )
     /*
      * assume default
      */
-    inf = &DefaultInfo;
+    inf = &DefaultInfo( front );
     if( name == NULL )
         return( inf );
     ent = AuxLookup( front, name );
@@ -363,7 +363,7 @@ static aux_info *InfoLookup( FrontRun& front, SYMPTR sym )
             }
             inf = &front.pdefn2.InlineInfo;
             inf->cclass         = FECALL_GEN_NONE;
-            inf->cclass_target  = (WatcallInfo.cclass_target & FECALL_X86_FAR_CALL) | FECALL_X86_MODIFY_EXACT;
+            inf->cclass_target  = (WatcallInfo( front ).cclass_target & FECALL_X86_FAR_CALL) | FECALL_X86_MODIFY_EXACT;
 
             if( (sym->flags & SYM_INTRINSIC)
               && ( ent != NULL ) ) {
@@ -379,7 +379,7 @@ static aux_info *InfoLookup( FrontRun& front, SYMPTR sym )
             }
             HW_CAsgn( inf->streturn, HW_EMPTY );
             inf->save = ifunc->save;
-            inf->objname = WatcallInfo.objname;
+            inf->objname = WatcallInfo( front ).objname;
             inf->use = 1;
         }
     }
@@ -396,7 +396,7 @@ aux_info *FindInfo( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
     /*
      * assume default
      */
-    inf = &DefaultInfo;
+    inf = &DefaultInfo( front );
     if( sym_handle == SYM_NULL )
         return( inf );
 
@@ -406,11 +406,11 @@ aux_info *FindInfo( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
       || (sym_handle == front.cvars.SymSTOSD) ) {
         return( &front.pragdefn.STOSBInfo );
     } else if( sym_handle == front.cvars.SymFinally ) {
-        front.pdefn2.InlineInfo = WatcallInfo;
+        front.pdefn2.InlineInfo = WatcallInfo( front );
         front.pdefn2.InlineInfo.code = (byte_seq *)&FinallyCode;
         return( &front.pdefn2.InlineInfo );
     } else if( sym_handle == front.cvars.SymTryFini ) {
-        front.pdefn2.InlineInfo = WatcallInfo;
+        front.pdefn2.InlineInfo = WatcallInfo( front );
         front.pdefn2.InlineInfo.parms = front.cfeinfo.TryFiniParms;
         front.pdefn2.InlineInfo.code = (byte_seq *)&TryFiniCode;
         return( &front.pdefn2.InlineInfo );
@@ -422,7 +422,7 @@ aux_info *FindInfo( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
          */
         inf = InfoLookup( front, sym );
     }
-    if( inf == &DefaultInfo ) {
+    if( inf == &DefaultInfo( front ) ) {
         typ = sym->sym_type;
         SKIP_DUMMY_TYPEDEFS( typ );
         if( typ->decl_type == TYP_TYPEDEF ) {
@@ -440,13 +440,13 @@ aux_info *FindInfo( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
       || (sym->mods & FLAG_FAR16) ) {
         if( (sym->mods & MASK_LANGUAGES) == FLAG_PASCAL
           || (inf->cclass & FECALL_GEN_REVERSE_PARMS) ) {
-            return( &Far16PascalInfo );
+            return( &Far16PascalInfo( front ) );
         } else {
-            return( &Far16CdeclInfo );
+            return( &Far16CdeclInfo( front ) );
         }
     }
 #endif
-    if( inf == &DefaultInfo ) {
+    if( inf == &DefaultInfo( front ) ) {
         inf = GetLangInfo( front, sym->mods );
     }
     return( inf );
@@ -522,8 +522,8 @@ static call_class_target getCallClassTarget( FrontRun& front, SYM_HANDLE sym_han
         if( sym.flags & SYM_FUNCTION ) {
   #if _CPU == 8086
             if( front.cvars.TargetSystem == TS_WINDOWS ) {
-                if( inf == &PascalInfo
-                  || inf == &CdeclInfo ) {
+                if( inf == &PascalInfo( front )
+                  || inf == &CdeclInfo( front ) ) {
                     cclass_target |= FECALL_X86_PROLOG_FAT_WINDOWS;
                 }
             }
@@ -581,7 +581,7 @@ static void addDefaultLibs( FrontRun& front )
  */
 {
     if( front.cvars.CompFlags.emit_library_names ) {
-        if( _HAS_ANY_MAIN
+        if( HasAnyMain( front )
           || front.cvars.CompFlags.pragma_library
           || front.cvars.CompFlags.emit_all_default_libs ) {
             AddLibraryName( front, front.cvars.CLIB_Name + 1, front.cvars.CLIB_Name[0] );
@@ -736,12 +736,12 @@ static const char *GetNamePattern( FrontRun& front, SYM_HANDLE sym_handle )
         if( sym.flags & SYM_FUNCTION ) {
             pattern = inf->objname;
             if( VarFunc( front, &sym ) ) {
-                if( inf == &DefaultInfo )
+                if( inf == &DefaultInfo( front ) )
                     inf = front.callinfo.DftCallConv;
-                if( inf == &StdcallInfo ) {
-                    pattern = CdeclInfo.objname;
-                } else if( inf == &FastcallInfo ) {
-                    pattern = CdeclInfo.objname;
+                if( inf == &StdcallInfo( front ) ) {
+                    pattern = CdeclInfo( front ).objname;
+                } else if( inf == &FastcallInfo( front ) ) {
+                    pattern = CdeclInfo( front ).objname;
                 }
             }
             if( pattern == NULL ) {
@@ -794,7 +794,7 @@ static void addDefaultImports( FrontRun& front )
         CM_NULL         = 0x00
     } check_mask;
 
-    if( _HAS_ANY_MAIN ) {
+    if( HasAnyMain( front ) ) {
         check_mask control;
 
         if( front.cvars.CompFlags.bd_switch_used ) {
@@ -808,7 +808,7 @@ static void addDefaultImports( FrontRun& front )
         } else {
             control = CM_DLLMAIN | CM_WINMAIN | CM_MAIN;
         }
-        if( (control & CM_DLLMAIN) && _HAS_DLL_MAIN ) {
+        if( (control & CM_DLLMAIN) && HasDllMain( front ) ) {
             if( front.cvars.CompFlags.has_wchar_entry ) {
                 AddExtRefN( front, "__DLLstartw_" );
             } else {

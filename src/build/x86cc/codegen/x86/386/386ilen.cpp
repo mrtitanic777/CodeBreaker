@@ -92,7 +92,7 @@ obj_length  OptInsSize( BackRun& back, oc_class class_, oc_dest_attr attr )
         i = 4;
         break;
     }
-    if( _IsTargetModel( CGSW_X86_USE_32 ) )
+    if( IsTargetModel( back, CGSW_X86_USE_32 ) )
         ++i;
     return( InsSize[i][attr] );
 }

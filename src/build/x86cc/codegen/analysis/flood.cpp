@@ -71,7 +71,7 @@ void FloodForward( BackRun& back, block *blk, flood_func func, void *parm )
 {
     flood_parms parms;
 
-    _MarkBlkAllUnVisited();
+    MarkBlkAllUnVisited( back );
     parms.blk = blk;
     parms.func = func;
     parms.parm = parm;
@@ -106,7 +106,7 @@ void FloodBackwards( BackRun& back, block *start, flood_func func, void *parm )
 {
     flood_parms parms;
 
-    _MarkBlkAllUnVisited();
+    MarkBlkAllUnVisited( back );
     parms.blk = start;
     parms.func = func;
     parms.parm = parm;

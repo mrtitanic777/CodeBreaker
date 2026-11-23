@@ -319,7 +319,7 @@ void InitModInfo( FrontRun& front )
     front.cvars.CompFlags.check_truncated_fnames            = true;
 
     memset( &front.toggles.PragmaToggles, 0, sizeof( front.toggles.PragmaToggles ) );
-    TOGGLE( check_stack ) = true;
-    TOGGLE( unreferenced ) = true;
-    TOGGLE( reuse_duplicate_strings ) = true;
+    Toggles( front ).tog_check_stack = true;
+    Toggles( front ).tog_unreferenced = true;
+    Toggles( front ).tog_reuse_duplicate_strings = true;
 }

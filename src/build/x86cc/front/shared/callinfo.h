@@ -50,18 +50,20 @@ typedef struct aux_info {
         unsigned            index;          // for C pre-compiled header
 } aux_info;
 
-#define DefaultInfo      front.callinfo.BuiltinAuxInfo[0]
-#define WatcallInfo      front.callinfo.BuiltinAuxInfo[1]
-#define CdeclInfo        front.callinfo.BuiltinAuxInfo[2]
-#define PascalInfo       front.callinfo.BuiltinAuxInfo[3]
-#define FortranInfo      front.callinfo.BuiltinAuxInfo[4]
-#define SyscallInfo      front.callinfo.BuiltinAuxInfo[5]
-#define OptlinkInfo      front.callinfo.BuiltinAuxInfo[6]
-#define StdcallInfo      front.callinfo.BuiltinAuxInfo[7]
-#define FastcallInfo     front.callinfo.BuiltinAuxInfo[8]
+/* the built-in calling conventions of the run (the bodies are in frontrun.hpp) */
+struct FrontRun;
+inline aux_info& DefaultInfo( FrontRun& front );
+inline aux_info& WatcallInfo( FrontRun& front );
+inline aux_info& CdeclInfo( FrontRun& front );
+inline aux_info& PascalInfo( FrontRun& front );
+inline aux_info& FortranInfo( FrontRun& front );
+inline aux_info& SyscallInfo( FrontRun& front );
+inline aux_info& OptlinkInfo( FrontRun& front );
+inline aux_info& StdcallInfo( FrontRun& front );
+inline aux_info& FastcallInfo( FrontRun& front );
   #if _CPU == 386
-#define Far16CdeclInfo   front.callinfo.BuiltinAuxInfo[9]
-#define Far16PascalInfo  front.callinfo.BuiltinAuxInfo[10]
+inline aux_info& Far16CdeclInfo( FrontRun& front );
+inline aux_info& Far16PascalInfo( FrontRun& front );
   #endif
 
   #if _CPU == 386

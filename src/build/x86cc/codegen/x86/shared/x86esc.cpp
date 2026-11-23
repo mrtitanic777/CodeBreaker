@@ -49,6 +49,7 @@
 #include "opttell.h"
 #include "intrface.h"
 #include "x86obj.h"
+#include "jumpsout.h"
 #include "x86esc.h"
 #include "encode.h"
 #include "pccode.h"
@@ -138,9 +139,9 @@ void  DoFESymRef( BackRun& back, cg_sym_handle sym, cg_class class_, offset val,
     if( class_ == CG_FE ) {
         attr = FEAttr( *back.front, sym );
         if( ((esc_attr & ESCA_BASE) == 0)
-          && _IsTargetModel( CGSW_X86_WINDOWS )
+          && IsTargetModel( back, CGSW_X86_WINDOWS )
           && (attr & FE_PROC)
-          && ((call_class_target)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL) ) {
+          && ((call_class_target)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL) ) {
             esc_attr |= ESCA_LDOF;
         }
         if( UseImportForm( back, attr ) ) {
@@ -259,7 +260,7 @@ void DoAlignment( BackRun& back, int len )
     unsigned            save_line;
 
     save_line = SavePendingLine( back, 0 );
-    if( _IsTargetModel( CGSW_X86_MSC8 ) ) {
+    if( IsTargetModel( back, CGSW_X86_MSC8 ) ) {
         /* Microsoft C 8 pads with NOP, a byte at a time (-zmsc) */
         static const byte nop = 0x90;
         for( ; len > 0; --len )
@@ -293,20 +294,20 @@ static  void    ExpandCJ( BackRun& back, any_oc *oc )
     objlen = oc->oc_header.objlen;
     if( OC_BASE_CLASS( class_ ) == OC_JCOND ) {
         if( objlen == OptInsSize( back, OC_JCOND, OC_DEST_NEAR ) ) {
-            if( _CPULevel( CPU_386 ) ) {
-                _OutJCondNear( oc->oc_jcond.cond );
+            if( CPULevel( back, CPU_386 ) ) {
+                OutJCondNear( back, oc->oc_jcond.cond );
             } else {
-                _OutJCond( ReverseCondition( oc->oc_jcond.cond ) );
+                OutJCond( back, ReverseCondition( oc->oc_jcond.cond ) );
                 OutDataByte( back, OptInsSize( back, OC_JMP, OC_DEST_NEAR ) );
-                _OutJNear;
+                OutJNear( back );
             }
             OutCodeDisp( back, oc->oc_jcond.handle, F_OFFSET, true, class_ );
         } else {
-            _OutJCond( oc->oc_jcond.cond );
+            OutJCond( back, oc->oc_jcond.cond );
             OutShortDisp( back, oc->oc_jcond.handle );
         }
     } else if( OC_BASE_CLASS( class_ ) == OC_JMP && objlen == OptInsSize( back, OC_JMP, OC_DEST_SHORT ) ) {
-        _OutJShort;
+        OutJShort( back );
         OutShortDisp( back, oc->oc_handle.handle );
     } else {
         if( class_ & OC_ATTR_FAR ) {
@@ -317,20 +318,20 @@ static  void    ExpandCJ( BackRun& back, any_oc *oc )
                     f = F_OFFSET;
                     rel = true;
                     class_ &= ~ OC_ATTR_FAR;
-                    _OutCCyp;
+                    OutCCyp( back );
                 } else {
-                    _OutCFar;
+                    OutCFar( back );
                 }
             } else {
-                _OutJFar;
+                OutJFar( back );
             }
         } else {
             f = F_OFFSET;
             rel = true;
             if( OC_BASE_CLASS( class_ ) == OC_CALL ) {
-                _OutCNear;
+                OutCNear( back );
             } else {
-                _OutJNear;
+                OutJNear( back );
             }
         }
         OutCodeDisp( back, oc->oc_handle.handle, f, rel, class_ );
@@ -348,7 +349,7 @@ static  void    OutShortDisp( BackRun& back, label_handle lbl ) {
         OutPatch( back, lbl, _SHORT_PATCH );
         addr = 0;
     }
-    _OutShortD( addr );
+    OutShortD( back, addr );
 }
 
 
@@ -363,19 +364,19 @@ static  void    OutCodeDisp( BackRun& back, label_handle lbl, fix_class f,
     if( AskIfRTLabel( back, lbl ) ) {
         OutRTImport( back, static_cast<rt_class>(SYM2RTIDX( sym )), f );
         if( class_ & OC_ATTR_FAR ) {
-            _OutFarD( 0, 0 );
+            OutFarD( back, 0, 0 );
         } else {
-            _OutFarOff( 0 );
+            OutFarOff( back, 0 );
         }
     } else if( AskIfCommonLabel( back, lbl ) ) {
         OutSpecialCommon( back, SYM2IMPHDL( sym ), f, rel );
-        _OutFarOff( 0 );
+        OutFarOff( back, 0 );
     } else if( sym != NULL && UseImportForm( back, FEAttr( *back.front, sym ) ) ) { /* 90-05-22 */
         OutImport( back, sym, f, rel );
         if( class_ & OC_ATTR_FAR ) {
-            _OutFarD( 0, 0 );
+            OutFarD( back, 0, 0 );
         } else {
-            _OutFarOff( 0 );
+            OutFarOff( back, 0 );
         }
     } else {                /* patch, to be done later*/
         addr = AskAddress( back, lbl );
@@ -384,14 +385,14 @@ static  void    OutCodeDisp( BackRun& back, label_handle lbl, fix_class f,
                 OutPatch( back, lbl, _NEAR_PATCH );
                 addr = 0;
             }
-            _OutNearD( addr );
+            OutNearD( back, addr );
         } else {
             if( addr == ADDR_UNKNOWN ) {
                 OutPatch( back, lbl, _OFFSET_PATCH );
             }
-            _OutFarOff( addr );
+            OutFarOff( back, addr );
             OutReloc( back, AskSegID( back, sym, CG_FE ), F_BASE, false );
-            _OutFarSeg( 0 );
+            OutFarSeg( back, 0 );
         }
     }
 }
@@ -510,7 +511,7 @@ static  label_handle ExpandObj( BackRun& back, byte *cur, int explen )
             cur++;
             continue;
         default:
-            _Zoiks( ZOIKS_038 );
+            Zoiks( back, ZOIKS_038 );
             break;
         }
         if( esc_class & ESCA_OFST ) {
@@ -521,12 +522,12 @@ static  label_handle ExpandObj( BackRun& back, byte *cur, int explen )
             cur += sizeof( offset );
         }
         if( class_ == F_BASE ) {
-            _OutFarSeg( val );
+            OutFarSeg( back, val );
         } else if( class_ == F_OFFSET || class_ == F_LDR_OFFSET ) {
-            _OutFarOff( val );      /* offset */
+            OutFarOff( back, val );      /* offset */
         } else if( class_ == F_PTR ) {
-            _OutFarOff( val );
-            _OutFarSeg( 0 );        /* segment */
+            OutFarOff( back, val );
+            OutFarSeg( back, 0 );        /* segment */
         }
     }
     return( lbl );
@@ -604,7 +605,7 @@ void    OutputOC( BackRun& back, any_oc *oc, any_oc *next_lbl )
                 lc = 0;
             }
         }
-        _OutFarOff( lc );
+        OutFarOff( back, lc );
         break;
     case OC_JMPI:
     case OC_CALLI:
@@ -615,7 +616,7 @@ void    OutputOC( BackRun& back, any_oc *oc, any_oc *next_lbl )
             ++len; /* skip over top of any prefixes */
         }
         ++len;
-        _OutOpndSize;
+        OutOpndSize( back );
         ExpandObj( back, ptr, len );
         ptr += len;
 
@@ -642,7 +643,7 @@ void    OutputOC( BackRun& back, any_oc *oc, any_oc *next_lbl )
         ExpandCJ( back, oc );
         break;
     case OC_RET:
-        _OutOpndSize;
+        OutOpndSize( back );
         base = oc->oc_header.class_;
         len = M_RET;
         if( base & OC_ATTR_IRET ) {
@@ -669,7 +670,7 @@ void    OutputOC( BackRun& back, any_oc *oc, any_oc *next_lbl )
             TellScrapLabel( back, oc->oc_handle.handle );
             break;
         case OC_INFO_DEAD_JMP:
-            _Zoiks( ZOIKS_036 );
+            Zoiks( back, ZOIKS_036 );
             break;
         case OC_INFO_DBG_RTN_BEG:
         case OC_INFO_DBG_BLK_BEG:
@@ -693,7 +694,7 @@ void    OutputOC( BackRun& back, any_oc *oc, any_oc *next_lbl )
         }
         break;
     default :
-        _Zoiks( ZOIKS_036 );
+        Zoiks( back, ZOIKS_036 );
         break;
     }
 }

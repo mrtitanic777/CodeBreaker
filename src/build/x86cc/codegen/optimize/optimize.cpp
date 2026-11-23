@@ -83,14 +83,14 @@ static  bool    ReDefinesOps( BackRun& back, instruction *of, instruction *ins )
     for( i = of->num_operands; i-- > 0; ) {
         if( of->operands[i]->n.class_ == N_REGISTER )
             return( true );
-        if( _IsReDefinedBy( ins, of->operands[i] ) ) {
+        if( IsReDefinedBy( back, ins, of->operands[i] ) ) {
             return( true );
         }
     }
     if( of->result != NULL ) {
         if( of->result->n.class_ == N_REGISTER )
             return( true );
-        if( _IsReDefinedBy( ins, of->result ) ) {
+        if( IsReDefinedBy( back, ins, of->result ) ) {
             return( true );
         }
     }

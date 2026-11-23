@@ -47,7 +47,6 @@
 #include "backrun.hpp"
 
 
-    #define _ParmReg( x )       FirstReg( back, x )
 
 instruction     *rMAKECALL( BackRun& back, instruction *ins )
 /*********************************************
@@ -74,14 +73,14 @@ instruction     *rMAKECALL( BackRun& back, instruction *ins )
         rtindex = LookupConvertRoutine( back, ins );
     }
     info = &RTInfo[rtindex];
-    regs = _ParmReg( info->left );
+    regs = FirstReg( back, info->left );
     all_regs = regs;
     left_ins = MakeMove( back, ins->operands[0], AllocRegName( back, regs ),
                           info->operand_class );
     ins->operands[0] = left_ins->result;
     MoveSegOp( back, ins, left_ins, 0 );
     PrefixIns( back, ins, left_ins );
-    regs = _ParmReg( info->right );
+    regs = FirstReg( back, info->right );
     if( !HW_CEqual( regs, HW_EMPTY ) ) {
         new_ins = MakeMove( back, ins->operands[1], AllocRegName( back, regs ),
                                 info->operand_class );
@@ -116,7 +115,7 @@ instruction     *rMAKECALL( BackRun& back, instruction *ins )
         new_ins->ins_flags |= INS_CC_USED;
         last_ins = ins;
     } else {
-        regs = _ParmReg( info->result );
+        regs = FirstReg( back, info->result );
         tmp = regs;
         HW_TurnOn( tmp, new_ins->zap->reg );
         new_ins->zap = (register_name *)AllocRegName( back, tmp );

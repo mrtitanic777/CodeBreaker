@@ -70,7 +70,7 @@ static void GetAsmLine( FrontRun& front )
     TOKEN       LastToken;
     char        buf[MAX_ASM_LINE_LEN + 1];
 
-    PPCTL_ENABLE_EOL();
+    PPCtlEnableEol( front );
     AsmErrLine = front.cvars.TokenLoc.line;
     *buf = '\0';
     if( strcmp( front.cvars.Buffer, "_emit" ) == 0 ) {
@@ -92,7 +92,7 @@ static void GetAsmLine( FrontRun& front )
         front.cvars.TokenLoc.line = AsmErrLine;
         AsmSysLine( front, buf );
     }
-    PPCTL_DISABLE_EOL();
+    PPCtlDisableEol( front );
 }
 
 void AsmStmt( FrontRun& front )
@@ -109,7 +109,7 @@ void AsmStmt( FrontRun& front )
      * indicate that we are inside an __asm statement so scanner will
      * allow tokens unique to the assembler. e.g. 21h
      */
-    PPCTL_ENABLE_ASM();
+    PPCtlEnableAsm( front );
 
     NextToken(front);
     AsmSysInit( front, buff );

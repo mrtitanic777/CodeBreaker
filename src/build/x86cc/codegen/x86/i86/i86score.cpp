@@ -75,8 +75,8 @@ void    ScInitRegs( BackRun& back, score_hdl scoreboard )
     int     ss;
     int     ds;
 
-    if( _IsntTargetModel( CGSW_X86_FLOATING_DS )
-      && _IsntTargetModel( CGSW_X86_FLOATING_SS ) ) {
+    if( IsntTargetModel( back, CGSW_X86_FLOATING_DS )
+      && IsntTargetModel( back, CGSW_X86_FLOATING_SS ) ) {
         ss = AllocRegName( back, HW_SS )->r.reg_index;
         ds = AllocRegName( back, HW_DS )->r.reg_index;
         if( !RegsEqual( scoreboard, ss, ds ) ) {

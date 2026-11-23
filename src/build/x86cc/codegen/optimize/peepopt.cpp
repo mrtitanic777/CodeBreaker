@@ -575,12 +575,12 @@ static bool DoConversionOps( BackRun& back, instruction *ins, bool *change, inst
         return( false );
     }
     next = ins->head.next;
-    if( _IsReDefinedBy( ins, ins->operands[0] ) )
+    if( IsReDefinedBy( back, ins, ins->operands[0] ) )
         return( false );       // BBB - cnv U2 U1 [eax] -> ax
     for( ; next->head.opcode != OP_BLOCK; next = next->head.next ) {
-        if( _IsReDefinedBy( next, ins->result ) )
+        if( IsReDefinedBy( back, next, ins->result ) )
             return( false );
-        if( _IsReDefinedBy( next, ins->operands[0] ) )
+        if( IsReDefinedBy( back, next, ins->operands[0] ) )
             return( false );
         if( ins->head.opcode == OP_CONVERT && next->head.opcode == OP_CONVERT ) {
             if( ins->result == next->operands[0] &&
@@ -635,7 +635,7 @@ static bool ReferencedBy( BackRun& back, instruction *ins, name *op )
     name        *curr;
 
     if( _OpIsCall( ins->head.opcode ) ) {
-        if( _IsVisibleToCall( ins, op, false ) ) {
+        if( IsVisibleToCall( back, ins, op, false ) ) {
             return( true );
         }
     }
@@ -677,7 +677,7 @@ static bool DoMemWrites( BackRun& back, instruction *ins, bool *change, instruct
             for( next = ins->head.next; next->head.opcode != OP_BLOCK; next = next->head.next ) {
                 if( ReferencedBy( back, next, ins->result ) )
                     break;
-                if( _IsReDefinedBy( next, ins->result ) ) {
+                if( IsReDefinedBy( back, next, ins->result ) ) {
                     if( next->result == ins->result ) {
                         *change = true;
                         FreeIns( back, ins );

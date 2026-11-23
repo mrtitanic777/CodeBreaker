@@ -245,16 +245,16 @@ TOKEN CheckControl( FrontRun& front )
             if( front.cvars.CurrChar == LCHR_EOF )
                 break;
             if( front.cvars.CurrChar == front.cvars.PreProcChar ) { /* start of comp control line */
-                PPCTL_ENABLE_EOL();
-                PPCTL_DISABLE_MACROS();
-                PPCTL_DISABLE_LEX_ERRORS();
+                PPCtlEnableEol( front );
+                PPCtlDisableMacros( front );
+                PPCtlDisableLexErrors( front );
                 PreProcStmt(front);
                 PPFlush2EOL(front);
                 front.cvars.PPControl = old_ppctl;
             } else if( front.cvars.SkipLevel != front.cvars.NestLevel ) {
-                PPCTL_ENABLE_EOL();
-                PPCTL_DISABLE_MACROS();
-                PPCTL_DISABLE_LEX_ERRORS();
+                PPCtlEnableEol( front );
+                PPCtlDisableMacros( front );
+                PPCtlDisableLexErrors( front );
                 PPNextToken(front);              /* get into token mode */
                 PPFlush2EOL(front);
                 front.cvars.PPControl = old_ppctl;
@@ -316,16 +316,16 @@ void CInclude( FrontRun& front )
     }
     front.cvars.InitialMacroFlags = MFLAG_NONE;
     in_macro = ( front.cvars.MacroPtr != NULL );
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
     if( front.cvars.CurToken == T_STRING ) {
         if( !OpenSrcFile( front, front.cvars.Buffer, FT_HEADER ) ) {
             PrtfFilenameErr( front, front.cvars.Buffer, FT_HEADER, true );
         }
     } else if( front.cvars.CurToken == T_LT ) {
         if( in_macro ) {
-            PPCTL_ENABLE_MACROS();
+            PPCtlEnableMacros( front );
         }
         buf[0] = '\0';
         for( ;; ) {
@@ -343,7 +343,7 @@ void CInclude( FrontRun& front )
             }
         }
         if( in_macro ) {
-            PPCTL_DISABLE_MACROS();
+            PPCtlDisableMacros( front );
         }
     } else {
         CErr1( front, ERR_INVALID_INCLUDE );
@@ -630,14 +630,14 @@ static void CIf( FrontRun& front )
 {
     bool    value;
 
-    PPCTL_ENABLE_LEX_ERRORS();
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableLexErrors( front );
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     value = PpConstExpr(front);
     IncLevel( front, value );
     CheckEOL(front);
-    PPCTL_DISABLE_MACROS();
-    PPCTL_DISABLE_LEX_ERRORS();
+    PPCtlDisableMacros( front );
+    PPCtlDisableLexErrors( front );
 }
 
 
@@ -645,8 +645,8 @@ static void CElif( FrontRun& front )
 {
     bool    value;
 
-    PPCTL_ENABLE_LEX_ERRORS();
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableLexErrors( front );
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( ( front.cvars.NestLevel == 0 ) || ( front.cvars.CppStack->cpp_type == PRE_ELSE ) ) {
         CErr1( front, ERR_MISPLACED_ELIF );
@@ -670,8 +670,8 @@ static void CElif( FrontRun& front )
             }
         }
     }
-    PPCTL_DISABLE_MACROS();
-    PPCTL_DISABLE_LEX_ERRORS();
+    PPCtlDisableMacros( front );
+    PPCtlDisableLexErrors( front );
 }
 
 
@@ -784,7 +784,7 @@ static void CLine( FrontRun& front )
     unsigned        src_line;
 
     src_line = 0;
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( ExpectingConstant(front) ) {
         if( !front.cvars.CompFlags.cpp_ignore_line ) {
@@ -822,7 +822,7 @@ static void CLine( FrontRun& front )
             CheckEOL(front);
         }
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 static void get_arg_message( FrontRun& front )
@@ -919,7 +919,7 @@ TOKEN Process_Pragma( FrontRun& front )
                  * call CPragma()
                  */
                 old_ppctl = front.cvars.PPControl;
-                PPCTL_ENABLE_EOL();
+                PPCtlEnableEol( front );
                 CPragma(front);
                 front.cvars.PPControl = old_ppctl;
             } else {

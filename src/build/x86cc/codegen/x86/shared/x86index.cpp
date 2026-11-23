@@ -324,13 +324,13 @@ void    FixSegments( BackRun& back )
              */
 #define CGSW_X86_ANY_FLOATING (CGSW_X86_FLOATING_DS | CGSW_X86_FLOATING_ES | CGSW_X86_FLOATING_FS | CGSW_X86_FLOATING_GS)
 #if _TARGET & _TARG_80386
-            if( _IsntTargetModel( CGSW_X86_ANY_FLOATING )
+            if( IsntTargetModel( back, CGSW_X86_ANY_FLOATING )
               && ins->num_operands > OpcodeNumOperands( ins )
-              && !(_IsTargetModel( CGSW_X86_FLAT_MODEL )
+              && !(IsTargetModel( back, CGSW_X86_FLAT_MODEL )
               && (ins->operands[ins->num_operands - 1]->n.class_ == N_REGISTER)
               && HW_CEqual( ins->operands[ins->num_operands - 1]->r.reg, HW_CS )) ) {
 #else
-            if( _IsntTargetModel( CGSW_X86_ANY_FLOATING )
+            if( IsntTargetModel( back, CGSW_X86_ANY_FLOATING )
               && ins->num_operands > OpcodeNumOperands( ins ) ) {
 #endif
                 /*

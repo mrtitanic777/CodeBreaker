@@ -165,8 +165,6 @@ static bool         symIsExported( BackRun& back, cg_sym_handle );
 
 #define _ARRAYOF( what, type )  ((type *)(what)->array)
 
-#define altCodeSegId    back.x86omf->codeSegId
-
 #define OMFNAMELEN(s)   *(unsigned char *)(s)
 
 enum {
@@ -264,6 +262,8 @@ struct X86omfState {
     struct dbg_seg_info DbgSegs[2];
     segment_id askCode16Seg_Code16Seg = BACKSEGS;
 };
+
+static inline segment_id& altCodeSegId( BackRun& back ) { return back.x86omf->codeSegId; }
 
 /* (the debug segments' ids are the run's: set when it makes this part) */
 static void x86omf_start( BackRun& back, X86omfState& part )
@@ -487,8 +487,8 @@ static  byte    SegmentAttr( BackRun& back, byte align, seg_attr tipe, bool use_
         attr |= SEG_COMB_NORMAL;
     }
 #if _TARGET & _TARG_80386
-    if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
-        if( _IsTargetModel( CGSW_X86_USE_32 ) ) {
+    if( IsntTargetModel( back, CGSW_X86_EZ_OMF ) ) {
+        if( IsTargetModel( back, CGSW_X86_USE_32 ) ) {
             if( !use_16 ) {
                 attr |= SEG_USE_32;
             }
@@ -682,8 +682,8 @@ static  void    DoASegDef( BackRun& back, index_rec *rec, bool use_16 )
     OutIdx( back, rec->cidx, obj_data );      /* class name index */
     OutIdx( back, _NIDX_NULL, obj_data );     /* overlay name index */
 #if _TARGET & _TARG_80386
-    if( _IsTargetModel( CGSW_X86_EZ_OMF ) ) {
-        if( _IsntTargetModel( CGSW_X86_USE_32 ) || use_16 ) {
+    if( IsTargetModel( back, CGSW_X86_EZ_OMF ) ) {
+        if( IsntTargetModel( back, CGSW_X86_USE_32 ) || use_16 ) {
             OutByte( back, 2, obj_data );     /* to indicate USE16 EXECUTE/READ */
         }
     }
@@ -694,14 +694,14 @@ static  void    DoASegDef( BackRun& back, index_rec *rec, bool use_16 )
         FatalError( back, "too many segments" );
     }
 #if _TARGET & _TARG_80386
-    if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
+    if( IsntTargetModel( back, CGSW_X86_EZ_OMF ) ) {
         cmd = CMD_SEGDEF32;
     } else {
         cmd = CMD_SEGDEF;
     }
 #else /* SEG32DBG dwarf, codeview */
     if( (rec->attr & SEG_USE_32)
-      && _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
+      && IsntTargetModel( back, CGSW_X86_EZ_OMF ) ) {
         cmd = CMD_SEGDEF32;
     } else {
         cmd = CMD_SEGDEF;
@@ -838,7 +838,7 @@ static void DoSegment( BackRun& back, segdef *seg, array_control *dgroup_def, ar
             rec->nidx = GetNameIdx( back, seg->str, "" );
         } else if( back.x86omf->CodeGroupGIdx != 0 ) {
             rec->nidx = GetNameIdx( back, back.x86omf->CodeGroup, seg->str );
-        } else if( _IsTargetModel( CGSW_X86_BIG_CODE ) ) {
+        } else if( IsTargetModel( back, CGSW_X86_BIG_CODE ) ) {
             rec->nidx = GetNameIdx( back, FEModuleName(*back.front), seg->str );
         } else {
             rec->nidx = GetNameIdx( back, seg->str, "" );
@@ -966,7 +966,7 @@ static void    defSegment( BackRun& back, segment_id segid, seg_attr attr, const
         DoSegDefsAndFree( back, NULL, NULL, use_16 );
     }
     if( first_code_segid != BACKSEGS
-      && _IsModel( CGSW_GEN_DBG_DF ) ) {
+      && IsModel( back, CGSW_GEN_DBG_DF ) ) {
         DFBegCCU( back, first_code_segid, NULL );
     }
 }
@@ -1006,7 +1006,7 @@ static  void    OutName( BackRun& back, const char *name, array_control *dest )
 static  void    OutObjectName( BackRun& back, cg_sym_handle sym, array_control *dest )
 /*********************************************************************/
 {
-    OUTPUT_OBJECT_NAME( sym, OutName, dest, NORMAL );
+    DoOutObjectName( back, sym, (outputter_fn *)(OutName), (outputter_data)(dest), NORMAL );
 }
 
 static  void    OutString( BackRun& back, const char *name, array_control *dest )
@@ -1023,9 +1023,9 @@ static char getMemModel( BackRun& back )
 {
     char model;
 
-    if( _IsTargetModel( CGSW_X86_BIG_CODE ) ) {
-        if( _IsTargetModel( CGSW_X86_BIG_DATA ) ) {
-            if( _IsntTargetModel( CGSW_X86_CHEAP_POINTER ) ) {
+    if( IsTargetModel( back, CGSW_X86_BIG_CODE ) ) {
+        if( IsTargetModel( back, CGSW_X86_BIG_DATA ) ) {
+            if( IsntTargetModel( back, CGSW_X86_CHEAP_POINTER ) ) {
                 model = 'h';
             } else {
                 model = 'l';
@@ -1033,9 +1033,9 @@ static char getMemModel( BackRun& back )
         } else {
             model = 'm';
         }
-    } else if( _IsTargetModel( CGSW_X86_BIG_DATA ) ) {
+    } else if( IsTargetModel( back, CGSW_X86_BIG_DATA ) ) {
         model = 'c';
-    } else if( _IsTargetModel( CGSW_X86_FLAT_MODEL ) ) {
+    } else if( IsTargetModel( back, CGSW_X86_FLAT_MODEL ) ) {
         model = 'f';
     } else {
         model = 's';
@@ -1048,17 +1048,17 @@ static void OutModel( BackRun& back, array_control *dest )
 {
     char                model[6];
 
-    if( _CPULevel( CPU_386 ) ) {
+    if( CPULevel( back, CPU_386 ) ) {
         model[0] = '3';
-    } else if( _CPULevel( CPU_286 ) ) {
+    } else if( CPULevel( back, CPU_286 ) ) {
         model[0] = '2';
     } else {
         model[0] = '0';
     }
     model[1] = getMemModel(back);
     model[2] = 'O';     /* Why? Ask microsoft! */
-    if( _FPULevel( FPU_87 ) ) {
-        if( _IsEmulation() ) {
+    if( FPULevel( back, FPU_87 ) ) {
+        if( IsEmulation( back ) ) {
             model[3] = 'e';
         } else {
             model[3] = 'p';
@@ -1067,7 +1067,7 @@ static void OutModel( BackRun& back, array_control *dest )
         model[3] = 'c';
     }
     model[4] = 'd';
-    if( _IsModel( CGSW_GEN_POSITION_INDEPENDANT ) ) {
+    if( IsModel( back, CGSW_GEN_POSITION_INDEPENDANT ) ) {
         model[4] = 'i';
     }
     model[5] = '\0';
@@ -1124,8 +1124,8 @@ static  void    DoSegGrpNames( BackRun& back, array_control *dgroup_def, array_c
     GetNameIdx( back, "TLS", "" );    /* _NIDX_TLS */
 
 #if _TARGET & _TARG_80386
-    if( _IsTargetModel( CGSW_X86_FLAT_MODEL )
-      && _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
+    if( IsTargetModel( back, CGSW_X86_FLAT_MODEL )
+      && IsntTargetModel( back, CGSW_X86_EZ_OMF ) ) {
         back.x86omf->FlatNIndex = GetNameIdx( back, "FLAT", "" );
     }
 #endif
@@ -1160,19 +1160,19 @@ static  void    DoSegGrpNames( BackRun& back, array_control *dgroup_def, array_c
      * use DGROUP for these segments
      */
     DoSegDefsAndFree( back, dgroup_def, tgroup_def, false );
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        if( _IsModel( CGSW_GEN_DBG_LOCALS )
-          || _IsModel( CGSW_GEN_DBG_TYPES ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_LOCALS )
+          || IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
             DFDefSegs(back);
         }
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         CVDefSegs(back);
     } else {
         back.x86omf->DbgTypeSize = 0;
-        if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_LOCALS ) ) {
             back.data.DbgLocals = dbgSegDef( back, back.x86omf->DbgSegs[0].seg_name, back.x86omf->DbgSegs[0].class_name, SEG_COMB_PRIVATE );
         }
-        if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
             back.data.DbgTypes = dbgSegDef( back, back.x86omf->DbgSegs[1].seg_name, back.x86omf->DbgSegs[1].class_name, SEG_COMB_PRIVATE );
         }
     }
@@ -1250,10 +1250,10 @@ static void    objInit( BackRun& back )
     OutName( back, static_cast<const char *>(FEAuxInfo( *back.front, NULL, FEINF_SOURCE_NAME )), names );
     PutObjOMFRec( back, CMD_THEADR, names );
 #if _TARGET & _TARG_80386
-    if( _IsTargetModel( CGSW_X86_EZ_OMF )
-      || _IsTargetModel( CGSW_X86_FLAT_MODEL ) ) {
+    if( IsTargetModel( back, CGSW_X86_EZ_OMF )
+      || IsTargetModel( back, CGSW_X86_FLAT_MODEL ) ) {
         OutShort( back, PHARLAP_OMF_COMMENT, names );
-        if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
+        if( IsntTargetModel( back, CGSW_X86_EZ_OMF ) ) {
             OutString( back, "OS220", names );
         } else {
             OutString( back, "80386", names );
@@ -1267,19 +1267,19 @@ static void    objInit( BackRun& back )
     OutShort( back, MODEL_COMMENT, names );
     OutModel( back, names );
     PutObjOMFRec( back, CMD_COMENT, names );
-    if( _IsTargetModel( CGSW_X86_FLAT_MODEL )
-      && _IsModel( CGSW_GEN_DBG_DF ) ) {
+    if( IsTargetModel( back, CGSW_X86_FLAT_MODEL )
+      && IsModel( back, CGSW_GEN_DBG_DF ) ) {
         OutShort( back, LINKER_COMMENT, names );
         OutByte( back, LDIR_FLAT_ADDRS, names );
         PutObjOMFRec( back, CMD_COMENT, names );
     }
-    if( _IsntModel( CGSW_GEN_DBG_DF )
-      && _IsntModel( CGSW_GEN_DBG_CV ) ) {
+    if( IsntModel( back, CGSW_GEN_DBG_DF )
+      && IsntModel( back, CGSW_GEN_DBG_CV ) ) {
         OutShort( back, LINKER_COMMENT, names );
         OutByte( back, LDIR_SOURCE_LANGUAGE, names );
         OutByte( back, DEBUG_MAJOR_VERSION, names );
-        if( _IsModel( CGSW_GEN_DBG_TYPES )
-          || _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_TYPES )
+          || IsModel( back, CGSW_GEN_DBG_LOCALS ) ) {
             OutByte( back, DEBUG_MINOR_VERSION, names );
         } else {
             OutByte( back, 0, names );
@@ -1319,8 +1319,8 @@ static void    objInit( BackRun& back )
     }
     KillArray( back, tgroup_def );
 #if _TARGET & _TARG_80386
-    if( _IsTargetModel( CGSW_X86_FLAT_MODEL )
-      && _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
+    if( IsTargetModel( back, CGSW_X86_FLAT_MODEL )
+      && IsntTargetModel( back, CGSW_X86_EZ_OMF ) ) {
         back.x86omf->FlatGIndex = ++back.x86omf->GroupIndex;
         OutIdx( back, back.x86omf->FlatNIndex, dgroup_def );
         FlushNames(back);
@@ -1331,12 +1331,12 @@ static void    objInit( BackRun& back )
     setOP( back, back.x86omf->codeSegId );
     initImports(back);
     back.x86omf->AbsPatches = NULL;
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        if( _IsModel( CGSW_GEN_DBG_LOCALS )
-          || _IsModel( CGSW_GEN_DBG_TYPES ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_LOCALS )
+          || IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
             DFObjInitDbgInfo(back);
         }
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         CVObjInitDbgInfo(back);
     } else {
         WVObjInitDbgInfo(back);
@@ -1359,7 +1359,7 @@ static void chkDbgSegSize( BackRun& back, offset max, bool typing )
     info = back.x86omf->DbgSegs;
     if( typing )
         info++;
-    PUSH_OP( *info->segid );
+    { segment_id old_segid = ChangeOP( back, *info->segid );
         curr = (offset)back.x86omf->CurrSeg->location;
         if( curr >= max ) {
             if( typing ) {
@@ -1367,7 +1367,7 @@ static void chkDbgSegSize( BackRun& back, offset max, bool typing )
             }
             *info->segid = dbgSegDef( back, info->seg_name, info->class_name, SEG_COMB_PRIVATE );
         }
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 
@@ -1458,7 +1458,7 @@ static bool    haveCodeSeg( BackRun& back )
 static segment_id  askAltCodeSeg( BackRun& back )
 /*******************************/
 {
-    return( altCodeSegId );
+    return( altCodeSegId( back ) );
 }
 
 static segment_id  askCode16Seg( BackRun& back )
@@ -1537,7 +1537,7 @@ static void     EjectLEData( BackRun& back )
         obj_data = &back.x86omf->CurrSeg->obj->data;
         if( back.x86omf->CurrSeg->comdat_label != NULL ) {
 #if _TARGET & _TARG_80386
-            if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
+            if( IsntTargetModel( back, CGSW_X86_EZ_OMF ) ) {
                 cmd = CMD_COMDAT32;
             } else {
                 cmd = CMD_COMDAT;
@@ -1547,14 +1547,14 @@ static void     EjectLEData( BackRun& back )
 #endif
         } else {
 #if _TARGET & _TARG_80386
-            if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
+            if( IsntTargetModel( back, CGSW_X86_EZ_OMF ) ) {
                 cmd = CMD_LEDATA32;
             } else {
                 cmd = CMD_LEDATA;
             }
 #else /* SEG32DBG dwarf, codeview */
             if( (back.x86omf->CurrSeg->attr & SEG_USE_32)
-              && _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
+              && IsntTargetModel( back, CGSW_X86_EZ_OMF ) ) {
                 cmd = CMD_LEDATA32;
             } else {
                 cmd = CMD_LEDATA;
@@ -1569,7 +1569,7 @@ static void     EjectLEData( BackRun& back )
                 PutObjOMFRec( back, CMD_COMENT, obj_data );
             }
 #if _TARGET & _TARG_80386
-            if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
+            if( IsntTargetModel( back, CGSW_X86_EZ_OMF ) ) {
                 cmd = CMD_FIXUPP32;
             } else {
                 cmd = CMD_FIXUPP;
@@ -1594,7 +1594,7 @@ static omf_idx NeedComdatNidx( BackRun& back, import_kind kind )
 /***********************************************/
 {
     if( back.x86omf->CurrSeg->comdat_nidx == 0 ) {
-        OUTPUT_OBJECT_NAME( back.x86omf->CurrSeg->comdat_symbol, GetSymLName, &back.x86omf->CurrSeg->comdat_nidx, kind );
+        DoOutObjectName( back, back.x86omf->CurrSeg->comdat_symbol, (outputter_fn *)(GetSymLName), (outputter_data)(&back.x86omf->CurrSeg->comdat_nidx), kind );
         FlushNames(back);
     }
     return( back.x86omf->CurrSeg->comdat_nidx );
@@ -1827,7 +1827,7 @@ static  void    EjectExports( BackRun& back )
     if( back.x86omf->CurrSeg->obj->exports.used > 0 ) {
         if( back.x86omf->CurrSeg->obj->gen_static_exports ) {
 #if _TARGET & _TARG_80386
-            if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
+            if( IsntTargetModel( back, CGSW_X86_EZ_OMF ) ) {
                 cmd = CMD_LPUBDEF32;
             } else {
                 cmd = CMD_LPUBDEF;
@@ -1837,7 +1837,7 @@ static  void    EjectExports( BackRun& back )
 #endif
         } else {
 #if _TARGET & _TARG_80386
-            if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
+            if( IsntTargetModel( back, CGSW_X86_EZ_OMF ) ) {
                 cmd = CMD_PUBDEF32;
             } else {
                 cmd = CMD_PUBDEF;
@@ -1861,7 +1861,7 @@ static  void    FlushLineNum( BackRun& back, object *obj )
         OutOffset( back, obj->last_offset, obj->lines );
         if( back.x86omf->CurrSeg->comdat_label != NULL ) {
 #if _TARGET & _TARG_80386
-            if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
+            if( IsntTargetModel( back, CGSW_X86_EZ_OMF ) ) {
                 cmd = CMD_LINSYM32;
             } else {
                 cmd = CMD_LINSYM;
@@ -1871,7 +1871,7 @@ static  void    FlushLineNum( BackRun& back, object *obj )
 #endif
         } else {
 #if _TARGET & _TARG_80386
-            if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
+            if( IsntTargetModel( back, CGSW_X86_EZ_OMF ) ) {
                 cmd = CMD_LINNUM32;
             } else {
                 cmd = CMD_LINNUM;
@@ -1973,11 +1973,11 @@ static void    flushOP( BackRun& back, segment_id segid )
 {
     index_rec   *rec;
 
-    PUSH_OP( segid );
+    { segment_id old_segid = ChangeOP( back, segid );
         if( segid == back.x86omf->codeSegId ) {
             doEmptyQueue(back);
         }
-        if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
             rec = back.x86omf->CurrSeg;
             if( rec->exec || rec->cidx == _NIDX_DATA || rec->cidx == _NIDX_BSS ) {
                 if( rec->max_size != 0 ) {
@@ -1987,7 +1987,7 @@ static void    flushOP( BackRun& back, segment_id segid )
         }
         FiniTarg(back);
         back.x86omf->CurrSeg->obj = NULL;
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 static void FiniWVTypes( BackRun& back )
@@ -1998,13 +1998,13 @@ static void FiniWVTypes( BackRun& back )
 
     WVTypesEof(back);
     info = &back.x86omf->DbgSegs[1];
-    PUSH_OP( *info->segid );
+    { segment_id old_segid = ChangeOP( back, *info->segid );
         curr = (offset)back.x86omf->CurrSeg->location;
         curr += back.x86omf->DbgTypeSize;
         *info->segid = dbgSegDef( back, info->seg_name, info->class_name, SEG_COMB_PRIVATE );
         setOP( back, *info->segid );
         WVDmpCueInfo( back, curr );
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 static void FlushSelect( BackRun& back )
@@ -2045,13 +2045,13 @@ static void DoSegARange( BackRun& back, offset *codesize, index_rec *rec )
 {
     if( rec->exec || rec->cidx == _NIDX_DATA ||rec->cidx == _NIDX_BSS ) {
         if( rec->max_size != 0 ) {
-            PUSH_OP( rec->segid );
+            { segment_id old_segid = ChangeOP( back, rec->segid );
                 if( back.x86omf->CurrSeg->comdat_symbol != NULL ) {
                     DFSymRange( back, rec->comdat_symbol, (offset)rec->comdat_size );
                 }
                 NormalData(back);
                 DFSegRange(back);
-            POP_OP();
+            SetOP( back, old_segid ); }
         }
         if( rec->exec ) {
             *codesize += rec->max_size + rec->total_comdat_size;
@@ -2136,9 +2136,9 @@ static void    objFini( BackRun& back )
     char        *lib;
     char        *alias;
 
-    if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-        if( _IsModel( CGSW_GEN_DBG_LOCALS )
-          || _IsModel( CGSW_GEN_DBG_TYPES ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_LOCALS )
+          || IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
             offset  codesize;
 
             codesize = 0;
@@ -2149,10 +2149,10 @@ static void    objFini( BackRun& back )
             }
             DFObjFiniDbgInfo( back, codesize );
         }
-    } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+    } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
         CVObjFiniDbgInfo();
     } else {
-        if( _IsModel( CGSW_GEN_DBG_TYPES ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
             FiniWVTypes(back);
         }
         WVObjFiniDbgInfo();
@@ -2358,7 +2358,7 @@ static void GenImportResolve( BackRun& back, cg_sym_handle sym, omf_idx idx, omf
         OutIdx( back, def_idx, cmt );
         for( cond = FEAuxInfo( *back.front, sym, FEINF_CONDITIONAL_IMPORT ); cond != NULL; cond = FEAuxInfo( *back.front, cond, FEINF_NEXT_CONDITIONAL ) ) {
             sym = static_cast<cg_sym_handle>(FEAuxInfo( *back.front, cond, FEINF_CONDITIONAL_SYMBOL ));
-            OUTPUT_OBJECT_NAME( sym, GetSymLName, &nidx, NORMAL );
+            DoOutObjectName( back, sym, (outputter_fn *)(GetSymLName), (outputter_data)(&nidx), NORMAL );
             OutIdx( back, nidx, cmt );
         }
         FlushNames(back);
@@ -2389,12 +2389,12 @@ static omf_idx  GenImport( BackRun& back, cg_sym_handle sym, bool alt_dllimp )
             if( !alt_dllimp ) {
                 kind = DLLIMPORT;
             }
-        } else if( _IsModel( CGSW_GEN_POSITION_INDEPENDANT ) ) {
+        } else if( IsModel( back, CGSW_GEN_POSITION_INDEPENDANT ) ) {
             if( attr & FE_THREAD_DATA ) {
                 kind = PIC_RW;
             }
         }
-        OUTPUT_OBJECT_NAME( sym, OutName, &back.x86omf->Imports, kind );
+        DoOutObjectName( back, sym, (outputter_fn *)(OutName), (outputter_data)(&back.x86omf->Imports), kind );
         OutIdx( back, 0, &back.x86omf->Imports );           /* type index*/
         def_resolve = static_cast<cg_sym_handle>(FEAuxInfo( *back.front, sym, FEINF_DEFAULT_IMPORT_RESOLVE ));
         if( def_resolve != NULL && def_resolve != sym ) {
@@ -2410,7 +2410,7 @@ static  omf_idx     GenImportComdat( BackRun& back )
 /*****************************************/
 {
     CheckImportSwitch( back, (FEAttr( *back.front, back.x86omf->CurrSeg->comdat_symbol ) & FE_GLOBAL) == 0 );
-    OUTPUT_OBJECT_NAME( back.x86omf->CurrSeg->comdat_symbol, OutName, &back.x86omf->Imports, SPECIAL );
+    DoOutObjectName( back, back.x86omf->CurrSeg->comdat_symbol, (outputter_fn *)(OutName), (outputter_data)(&back.x86omf->Imports), SPECIAL );
     OutIdx( back, 0, &back.x86omf->Imports );           /* type index*/
     return( getImportHdl(back) );
 }
@@ -2641,19 +2641,19 @@ static omf_fix_loc getOMFFixLoc( BackRun& back, fix_class class_ )
 #else
     case F_OFFSET:
     case F_BIG_OFFSET:
-        if( _IsTargetModel( CGSW_X86_EZ_OMF ) ) {
+        if( IsTargetModel( back, CGSW_X86_EZ_OMF ) ) {
             return( LOC_PHARLAP_OFFSET_32 );
         } else {
             return( LOC_OFFSET_32 );
         }
     case F_LDR_OFFSET:
-        if( _IsTargetModel( CGSW_X86_EZ_OMF ) ) {
+        if( IsTargetModel( back, CGSW_X86_EZ_OMF ) ) {
             return( LOC_PHARLAP_OFFSET_32 );
         } else {
             return( LOC_OFFSET_LOADER_32 );
         }
     case F_PTR:
-        if( _IsTargetModel( CGSW_X86_EZ_OMF ) ) {
+        if( IsTargetModel( back, CGSW_X86_EZ_OMF ) ) {
             return static_cast<omf_fix_loc>(( LOC_PHARLAP_BASE_OFFSET_32 ));
         } else {
             return( LOC_BASE_OFFSET_32 );
@@ -2697,8 +2697,8 @@ static void DoFix( BackRun& back, omf_idx idx, bool rel, base_type base, fix_cla
         }
     }
 #if _TARGET & _TARG_80386
-    if( _IsTargetModel( CGSW_X86_FLAT_MODEL )
-      && _IsntTargetModel( CGSW_X86_EZ_OMF )
+    if( IsTargetModel( back, CGSW_X86_FLAT_MODEL )
+      && IsntTargetModel( back, CGSW_X86_EZ_OMF )
       && ( F_CLASS( class_ ) != F_PTR ) ) {
         omf_idx     grp_idx;
 
@@ -2747,7 +2747,7 @@ static void    incLocation( BackRun& back, offset by )
 
     back.x86omf->CurrSeg->obj->pending_line_number = 0;
     sum = back.x86omf->CurrSeg->location + by;
-    if( _IsntTargetModel( CGSW_X86_EZ_OMF )
+    if( IsntTargetModel( back, CGSW_X86_EZ_OMF )
       && (back.x86omf->CurrSeg->attr & SEG_USE_32) == 0 ) {
         sum &= 0xFFFF;
     }
@@ -2890,15 +2890,15 @@ static  void    AddLineInfo( BackRun& back, object *obj, cg_linenum line, offset
 {
     cue_state           info;
 
-    if( _IsModel( CGSW_GEN_DBG_DF )
-      || _IsModel( CGSW_GEN_DBG_CV ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_DF )
+      || IsModel( back, CGSW_GEN_DBG_CV ) ) {
         CueFind( back, line, &info );
-        if( _IsModel( CGSW_GEN_DBG_DF ) ) {
-            if( _IsModel( CGSW_GEN_DBG_LOCALS )
-              || _IsModel( CGSW_GEN_DBG_TYPES ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
+            if( IsModel( back, CGSW_GEN_DBG_LOCALS )
+              || IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
                  DFLineNum( back, &info, offs );
             }
-        } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
+        } else if( IsModel( back, CGSW_GEN_DBG_CV ) ) {
             if( info.fno != back.x86omf->CurrFNo ) {
                 FlushLineNum( back, obj );
                 InitLineInfo( back, obj );
@@ -3035,7 +3035,7 @@ static void    outImport( BackRun& back, cg_sym_handle sym, fix_class class_, bo
     attr = FEAttr( *back.front, sym );
 #if  _TARGET & _TARG_80386
     if( !rel && F_CLASS( class_ ) == F_OFFSET && (attr & FE_PROC) ) {
-        if( (call_class_target)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR16_CALL ) {
+        if( (call_class_target)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR16_CALL ) {
             class_ |= F_FAR16;
         }
     }
@@ -3188,7 +3188,7 @@ static void    outIBytes( BackRun& back, byte pattern, offset len )
         OutLEDataStart( back, true );
         obj_data = &back.x86omf->CurrSeg->obj->data;
 #if _TARGET & _TARG_80386
-        if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
+        if( IsntTargetModel( back, CGSW_X86_EZ_OMF ) ) {
             OutOffset( back, len, obj_data );         /* repeat count */
         } else {
             OutShort( back, len, obj_data );          /* repeat count */
@@ -3201,7 +3201,7 @@ static void    outIBytes( BackRun& back, byte pattern, offset len )
         OutByte( back, pattern, obj_data );
         if( back.x86omf->CurrSeg->comdat_label != NULL ) {
 #if _TARGET & _TARG_80386
-            if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
+            if( IsntTargetModel( back, CGSW_X86_EZ_OMF ) ) {
                 cmd = CMD_COMDAT32;
             } else {
                 cmd = CMD_COMDAT;
@@ -3211,7 +3211,7 @@ static void    outIBytes( BackRun& back, byte pattern, offset len )
 #endif
         } else {
 #if _TARGET & _TARG_80386
-            if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
+            if( IsntTargetModel( back, CGSW_X86_EZ_OMF ) ) {
                 cmd = CMD_LIDATA32;
             } else {
                 cmd = CMD_LIDATA;
@@ -3272,7 +3272,7 @@ static void    tellObjNewLabel( BackRun& back, cg_sym_handle lbl )
     */
     if( FEAttr( *back.front, lbl ) & FE_COMMON ) {
         doEmptyQueue(back);
-        if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
             if( back.x86omf->CurrSeg->comdat_symbol != NULL ) {
                 DFSymRange( back, back.x86omf->CurrSeg->comdat_symbol, (offset)back.x86omf->CurrSeg->comdat_size );
             }
@@ -3280,7 +3280,7 @@ static void    tellObjNewLabel( BackRun& back, cg_sym_handle lbl )
     } else if( back.x86omf->CurrSeg->comdat_symbol != NULL ) {
         doEmptyQueue(back);
         setUpObj( back, false );
-        if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+        if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
             if( back.x86omf->CurrSeg->comdat_symbol != NULL ) {
                 DFSymRange( back, back.x86omf->CurrSeg->comdat_symbol, (offset)back.x86omf->CurrSeg->comdat_size );
             }
@@ -3293,10 +3293,10 @@ static void    tellObjNewProc( BackRun& back, cg_sym_handle proc )
 {
     segment_id  proc_segid;
 
-    PUSH_OP( back.x86omf->codeSegId );
+    { segment_id old_segid = ChangeOP( back, back.x86omf->codeSegId );
         proc_segid = FESegID( *back.front, proc );
         if( back.x86omf->codeSegId != proc_segid ) {
-            if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+            if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
                 if( back.x86omf->CurrSeg->comdat_symbol != NULL ) {
                     DFSymRange( back, back.x86omf->CurrSeg->comdat_symbol, (offset)back.x86omf->CurrSeg->comdat_size );
                 }
@@ -3314,7 +3314,7 @@ static void    tellObjNewProc( BackRun& back, cg_sym_handle proc )
         }
         if( FEAttr( *back.front, proc ) & FE_COMMON ) {
             doEmptyQueue(back);
-            if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+            if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
                 if( back.x86omf->CurrSeg->comdat_symbol != NULL ) {
                     DFSymRange( back, back.x86omf->CurrSeg->comdat_symbol, (offset)back.x86omf->CurrSeg->comdat_size );
                 }
@@ -3324,14 +3324,14 @@ static void    tellObjNewProc( BackRun& back, cg_sym_handle proc )
         } else if( back.x86omf->CurrSeg->comdat_symbol != NULL ) {
             doEmptyQueue(back);
             setUpObj( back, false );
-            if( _IsModel( CGSW_GEN_DBG_DF ) ) {
+            if( IsModel( back, CGSW_GEN_DBG_DF ) ) {
                 if( back.x86omf->CurrSeg->comdat_symbol != NULL ) {
                     DFSymRange( back, back.x86omf->CurrSeg->comdat_symbol, (offset)back.x86omf->CurrSeg->comdat_size );
                 }
             }
             NormalData(back);
         }
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 static void     tellObjVirtFuncRef( BackRun& back, void *cookie )
@@ -3339,20 +3339,20 @@ static void     tellObjVirtFuncRef( BackRun& back, void *cookie )
 {
     virt_func_ref_list  *new_vf;
 
-    PUSH_OP( back.x86omf->codeSegId );
+    { segment_id old_segid = ChangeOP( back, back.x86omf->codeSegId );
         new_vf = static_cast<virt_func_ref_list *>(CGAlloc( back, sizeof( virt_func_ref_list ) ));
         new_vf->cookie = cookie;
         new_vf->next = static_cast<struct virt_func_ref_list *>(back.x86omf->CurrSeg->virt_func_refs);
         back.x86omf->CurrSeg->virt_func_refs = new_vf;
-    POP_OP();
+    SetOP( back, old_segid ); }
 }
 
 static bool     InlineFunction( BackRun& back, cg_sym_handle sym )
 /*************************************************/
 {
     if( FEAttr( *back.front, sym ) & FE_PROC ) {
-        if( FindAuxInfoSym( sym, FEINF_CALL_BYTES ) != NULL
-          || ((call_class)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS ) & FECALL_GEN_MAKE_CALL_INLINE) ) {
+        if( FindAuxInfoSym( back, sym, FEINF_CALL_BYTES ) != NULL
+          || ((call_class)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS ) & FECALL_GEN_MAKE_CALL_INLINE) ) {
             return( true );
         }
     }
@@ -3374,7 +3374,7 @@ static segment_id      askSegID( BackRun& back, pointer hdl, cg_class class_ )
     case CG_VTB:
         return( back.x86omf->codeSegId );        /* askCodeSeg() */
     case CG_CLB:
-        return( altCodeSegId );     /* askAltCodeSeg() */
+        return( altCodeSegId( back ) );     /* askAltCodeSeg() */
     default:
         return( back.x86omf->dataSegId );        /* askBackSeg() */
     }
@@ -3411,7 +3411,7 @@ static bool symIsExported( BackRun& back, cg_sym_handle sym )
     if( sym != NULL ) {
         if( FEAttr( *back.front, sym ) & FE_DLLEXPORT ) {
             exported = true;
-        } else if( (call_class)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS ) & FECALL_GEN_DLL_EXPORT ) {
+        } else if( (call_class)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS ) & FECALL_GEN_DLL_EXPORT ) {
             exported = true;
         }
     }

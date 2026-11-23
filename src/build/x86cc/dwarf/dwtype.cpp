@@ -167,7 +167,7 @@ dw_handle DWENTRY DWRefPCH( BackRun& back, dw_client cli, uint_32 ref )
     _Validate( cli->dbg_pch != NULL );
     new_hdl = DW_GetHandle( back, cli );
     DW_StartDIE( back, cli, AB_INDIRECT_TYPE );
-    CLIReloc4( cli, DW_DEBUG_INFO, DW_W_EXT_REF, cli->dbg_pch, ref  );
+    CLIReloc( back, cli, DW_DEBUG_INFO, DW_W_EXT_REF, cli->dbg_pch, ref );
     DW_EndDIE( cli );
     return( new_hdl );
 }

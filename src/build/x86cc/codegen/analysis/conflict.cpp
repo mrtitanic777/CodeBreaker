@@ -95,7 +95,7 @@ conflict_node   *AddConflictNode( BackRun& back, name *opnd )
     } else {
         if( opnd->m.memory_type == CG_FE ) {
             attr = FEAttr( *back.front, static_cast<cg_sym_handle>(opnd->v.symbol) );
-            if( (attr & FE_CONSTANT) || ( ( (attr & (FE_GLOBAL | FE_VISIBLE)) == 0 ) && _IsModel( CGSW_GEN_RELAX_ALIAS ) ) ) {
+            if( (attr & FE_CONSTANT) || ( ( (attr & (FE_GLOBAL | FE_VISIBLE)) == 0 ) && IsModel( back, CGSW_GEN_RELAX_ALIAS ) ) ) {
                 _SetTrue( new_cn, CST_OK_ACROSS_CALLS );
             }
         }
@@ -138,8 +138,8 @@ static  conflict_node   *FindConf( BackRun& back, name *opnd, block *blk, instru
     if( conf->start_block == NULL )
         return( conf ); /* not filled in yet */
     for( ; conf != NULL; conf = conf->next_for_name ) {                                    /* find the right one */
-        _INS_NOT_BLOCK( conf->ins_range.first );
-        _INS_NOT_BLOCK( conf->ins_range.last );
+        InsNotBlock( back, conf->ins_range.first );
+        InsNotBlock( back, conf->ins_range.last );
         if( conf->start_block != NULL
           && ins->id >= conf->ins_range.first->id
           && ins->id <= conf->ins_range.last->id ) {
@@ -168,10 +168,10 @@ conflict_node   *FindConflictNode( BackRun& back, name *opnd, block *blk, instru
     old = opnd;
     if( opnd->n.class_ == N_TEMP ) {
         opnd = DeAlias( opnd );
-    } else if( ( opnd->n.class_ != N_MEMORY || _IsntModel( CGSW_GEN_RELAX_ALIAS ) ) ) {
+    } else if( ( opnd->n.class_ != N_MEMORY || IsntModel( back, CGSW_GEN_RELAX_ALIAS ) ) ) {
         return( NULL );
     }
-    _INS_NOT_BLOCK( ins );
+    InsNotBlock( back, ins );
     conf = FindConf( back, opnd, blk, ins );
     if( conf == NULL )
         return( NULL );
@@ -222,10 +222,10 @@ conflict_node   *NameConflict( BackRun& back, instruction *ins, name *opnd )
     } else if( opnd->n.class_ != N_MEMORY ) {
         return( NULL );
     }
-    _INS_NOT_BLOCK( ins );
+    InsNotBlock( back, ins );
     for( conf = opnd->v.conflict; conf != NULL; conf = conf->next_for_name ) {
-        _INS_NOT_BLOCK( conf->ins_range.first );
-        _INS_NOT_BLOCK( conf->ins_range.last );
+        InsNotBlock( back, conf->ins_range.first );
+        InsNotBlock( back, conf->ins_range.last );
         if( conf->ins_range.first->id <= ins->id
           && conf->ins_range.last->id  >= ins->id ) {
             break;

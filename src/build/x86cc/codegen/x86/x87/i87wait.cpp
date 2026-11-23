@@ -125,8 +125,8 @@ void    Wait8087( BackRun& back )
     /* Prior to 386, FWAITs are always needed. On 386 and up, only when
      * user explicitly asked for them.
      */
-    if( _CPULevel( CPU_386 )
-      && _IsntTargetModel( CGSW_X86_GEN_FWAIT_386 ) )
+    if( CPULevel( back, CPU_386 )
+      && IsntTargetModel( back, CGSW_X86_GEN_FWAIT_386 ) )
         return;
 
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {

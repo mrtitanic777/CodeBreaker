@@ -104,5 +104,7 @@ struct I87schedState {
 
 #endif
 
-#define RegSTLoc( seq, vir )    ( back.i87sched.STLocations + (seq) )->actual_locn[vir]
-#define InsSTLoc( ins, vir )    RegSTLoc( (ins)->sequence, vir )
+/* where the virtual stack location `vir` of sequence `seq` actually is (an lvalue); the body of RegSTLoc is in backrun.hpp */
+struct BackRun;
+inline actual_st_locn& RegSTLoc( BackRun& back, int seq, int vir );
+inline actual_st_locn& InsSTLoc( BackRun& back, instruction *ins, int vir ) { return RegSTLoc( back, ins->sequence, vir ); }

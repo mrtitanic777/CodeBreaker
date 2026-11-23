@@ -48,8 +48,9 @@
 #include "frontrun.hpp"
 
 
-#define PushCGName(name)        front.cvars.ValueStack[index++] = (TREEPTR)name
-#define PopCGName()             (cg_name)front.cvars.ValueStack[--index]
+/* the expression values of the statement being generated are on the run's ValueStack; `index` is the generator's top of it */
+static inline void PushCGName( FrontRun& front, int& index, cg_name name ) { front.cvars.ValueStack[index++] = (TREEPTR)name; }
+static inline cg_name PopCGName( FrontRun& front, int& index ) { return (cg_name)front.cvars.ValueStack[--index]; }
 
 
 
@@ -607,7 +608,7 @@ static cg_name IndexOperator( FrontRun& front, cg_name op1, OPNODE *node, cg_nam
         index_type = TY_INTEGER;
 #if _CPU == 8086
         if( (node->flags & OPFLAG_HUGEPTR)
-          || (IsHugeData() && (node->flags & (OPFLAG_NEARPTR | OPFLAG_FARPTR)) == 0) ) {
+          || (IsHugeData( front ) && (node->flags & (OPFLAG_NEARPTR | OPFLAG_FARPTR)) == 0) ) {
             index_type = TY_INT_4;
         }
 #endif
@@ -1177,15 +1178,15 @@ static void EmitNodes( FrontRun& front, TREEPTR tree )
             DefineLabels( front, node );
             break;
         case OPR_RETURN:                // return( expression );
-            op1 = PopCGName();          // - get expression
+            op1 = PopCGName( front, index );          // - get expression
             ReturnExpression( front, node, op1 );
             break;
         case OPR_FUNCEND:               // end of function
             EndFunction( front, node );
             break;
         case OPR_EQUALS:                // =
-            op2 = PopCGName();          // get right opnd
-            op1 = PopCGName();          // get lvalue
+            op2 = PopCGName( front, index );          // get right opnd
+            op1 = PopCGName( front, index );          // get lvalue
             if( node->flags & OPFLAG_VOLATILE ) { // is lvalue volatile
                  op1 = CGVolatile( op1 );
             }
@@ -1195,13 +1196,13 @@ static void EmitNodes( FrontRun& front, TREEPTR tree )
             } else {
                 op1 = CGAssign( *front.back, op1, op2, CGenType( front, node->u2.result_type ) );
             }
-            PushCGName( op1 );
+            PushCGName( front, index, op1 );
             break;
         case OPR_ADD:                   // +
         case OPR_SUB:                   // -
-            op2 = PopCGName();
-            op1 = PopCGName();
-            PushCGName( DoAddSub( front, op1, node, op2 ) );
+            op2 = PopCGName( front, index );
+            op1 = PopCGName( front, index );
+            PushCGName( front, index, DoAddSub( front, op1, node, op2 ) );
             break;
         case OPR_MUL:                   // *
         case OPR_DIV:                   // /
@@ -1211,20 +1212,20 @@ static void EmitNodes( FrontRun& front, TREEPTR tree )
         case OPR_XOR:                   // ^
         case OPR_RSHIFT:                // >>
         case OPR_LSHIFT:                // <<
-            op2 = PopCGName();
-            op1 = PopCGName();
-            PushCGName( CGBinary( *front.back, CGOperator[node->opr], op1, op2,
+            op2 = PopCGName( front, index );
+            op1 = PopCGName( front, index );
+            PushCGName( front, index, CGBinary( *front.back, CGOperator[node->opr], op1, op2,
                                     CGenType( front, node->u2.result_type ) ) );
             break;
         case OPR_COMMA:                 // expr , expr
           {
             cg_type     dtype;
-            op2 = PopCGName();
-            op1 = PopCGName();
+            op2 = PopCGName( front, index );
+            op1 = PopCGName( front, index );
             dtype =  IsStruct( node->u2.result_type ) ?
                    DataPointerType( node ) : CGenType( front, node->u2.result_type );
             op1 = CGBinary( *front.back, O_COMMA, op1, op2, dtype );
-            PushCGName( PushRValue( front, node, op1 ) );
+            PushCGName( front, index, PushRValue( front, node, op1 ) );
           } break;
         case OPR_PLUS_EQUAL:
         case OPR_MINUS_EQUAL:
@@ -1236,46 +1237,46 @@ static void EmitNodes( FrontRun& front, TREEPTR tree )
         case OPR_OR_EQUAL:
         case OPR_RSHIFT_EQUAL:
         case OPR_LSHIFT_EQUAL:
-            op2 = PopCGName();          // get right opnd
-            op1 = PopCGName();          // get lvalue
+            op2 = PopCGName( front, index );          // get right opnd
+            op1 = PopCGName( front, index );          // get lvalue
             if( node->flags & OPFLAG_VOLATILE ) { // is lvalue volatile
                  op1 = CGVolatile( op1 );
             }
-            PushCGName( CGPreGets( *front.back, CGOperator[node->opr], op1, op2,
+            PushCGName( front, index, CGPreGets( *front.back, CGOperator[node->opr], op1, op2,
                                     CGenType( front, node->u2.result_type ) ) );
             break;
         case OPR_NEG:                   // negate
-            op1 = PopCGName();
-            PushCGName( CGUnary( *front.back, O_UMINUS, op1,
+            op1 = PopCGName( front, index );
+            PushCGName( front, index, CGUnary( *front.back, O_UMINUS, op1,
                                     CGenType( front, node->u2.result_type ) ) );
             break;
         case OPR_CMP:                   // compare
-            op2 = PopCGName();
-            op1 = PopCGName();
-            PushCGName( CGCompare( *front.back, CC2CGOp[node->u1.cc], op1, op2,
+            op2 = PopCGName( front, index );
+            op1 = PopCGName( front, index );
+            PushCGName( front, index, CGCompare( *front.back, CC2CGOp[node->u1.cc], op1, op2,
                                     CGenType( front, node->u2.compare_type ) ) );
             break;
         case OPR_COM:                   // ~
-            op1 = PopCGName();
-            PushCGName( CGUnary( *front.back, O_COMPLEMENT, op1,
+            op1 = PopCGName( front, index );
+            PushCGName( front, index, CGUnary( *front.back, O_COMPLEMENT, op1,
                                     CGenType( front, node->u2.result_type ) ) );
             break;
         case OPR_NOT:                   // !
-            op1 = PopCGName();
-            PushCGName( CGFlow( *front.back, O_FLOW_NOT, op1, NULL ) );
+            op1 = PopCGName( front, index );
+            PushCGName( front, index, CGFlow( *front.back, O_FLOW_NOT, op1, NULL ) );
             break;
         case OPR_QUESTION:             // ?
           {
             cg_type     dtype;
 
-            op2 = PopCGName();          // false_part
-            op1 = PopCGName();          // true_part
-            expr = PopCGName();         // test expr
+            op2 = PopCGName( front, index );          // false_part
+            op1 = PopCGName( front, index );          // true_part
+            expr = PopCGName( front, index );         // test expr
             dtype =  IsStruct( node->u2.result_type ) ?
                    DataPointerType( node ) : CGenType( front, node->u2.result_type );
             op1 = CGChoose( *front.back, expr, op1, op2, dtype );
 
-            PushCGName( PushRValue( front, node, op1 ) );
+            PushCGName( front, index, PushRValue( front, node, op1 ) );
           } break;
         case OPR_COLON:                 // :
             /*
@@ -1284,39 +1285,39 @@ static void EmitNodes( FrontRun& front, TREEPTR tree )
             break;
         case OPR_OR_OR:                 // ||
         case OPR_AND_AND:               // &&
-            op2 = PopCGName();
-            op1 = PopCGName();
-            PushCGName( CGFlow( *front.back, CGOperator[node->opr], op1, op2 ) );
+            op2 = PopCGName( front, index );
+            op1 = PopCGName( front, index );
+            PushCGName( front, index, CGFlow( *front.back, CGOperator[node->opr], op1, op2 ) );
             break;
         case OPR_POINTS:                // *ptr
-            op1 = PopCGName();
-            PushCGName( DoIndirection( front, node, op1 ) );
+            op1 = PopCGName( front, index );
+            PushCGName( front, index, DoIndirection( front, node, op1 ) );
             break;
         case OPR_POSTINC:               // lvalue++
         case OPR_POSTDEC:               // lvalue--
-            op2 = PopCGName();          // get amount to inc/dec by
-            op1 = PopCGName();          // get lvalue
+            op2 = PopCGName( front, index );          // get amount to inc/dec by
+            op1 = PopCGName( front, index );          // get lvalue
             if( node->flags & OPFLAG_VOLATILE ) { // is lvalue volatile
                  op1 = CGVolatile( op1 );
             }
-            PushCGName( CGPostGets( *front.back, CGOperator[node->opr], op1, op2,
+            PushCGName( front, index, CGPostGets( *front.back, CGOperator[node->opr], op1, op2,
                                     CGenType( front, node->u2.result_type ) ) );
             break;
         case OPR_PUSHSYM:               // push sym_handle
-            PushCGName( PushSym( front, node ) );
+            PushCGName( front, index, PushSym( front, node ) );
             break;
         case OPR_PUSHADDR:              // push address of sym_handle
-            PushCGName( PushSymAddr( front, node ) );
+            PushCGName( front, index, PushSymAddr( front, node ) );
             break;
         case OPR_PUSHINT:               // push integer constant
         case OPR_PUSHFLOAT:             // push floating-point constant
-            PushCGName( PushConstant( front, node ) );
+            PushCGName( front, index, PushConstant( front, node ) );
             break;
         case OPR_PUSHSTRING:            // push address of string literal
-            PushCGName( PushString( front, node ) );
+            PushCGName( front, index, PushString( front, node ) );
             break;
         case OPR_PUSHSEG:               // push seg of sym
-            PushCGName( PushSymSeg( front, node ) );
+            PushCGName( front, index, PushSymSeg( front, node ) );
             break;
         case OPR_DUPE:               // push seg of sym
          {
@@ -1324,89 +1325,89 @@ static void EmitNodes( FrontRun& front, TREEPTR tree )
             cg_name     name;
             cg_name     left;
 
-            op1 = PopCGName();      // - get expression
+            op1 = PopCGName( front, index );      // - get expression
             temp_name = CGTemp( *front.back, TY_LONG_POINTER );
             name = CGTempName( *front.back, temp_name, TY_LONG_POINTER );
             left = CGAssign( *front.back, name, op1, TY_LONG_POINTER );
             name = CGTempName( *front.back, temp_name, TY_LONG_POINTER );
             left = CGEval( *front.back, left );  // force order - temp_name used on both sides
-            PushCGName( left );
+            PushCGName( front, index, left );
             name = CGUnary( *front.back, O_POINTS, name, TY_LONG_POINTER );
-            PushCGName( CGUnary( *front.back, O_POINTS, name, TY_LONG_POINTER ) );
+            PushCGName( front, index, CGUnary( *front.back, O_POINTS, name, TY_LONG_POINTER ) );
           } break;
         case OPR_CONVERT:
             if( node->u2.result_type->decl_type != TYP_VOID ) {
-                op1 = PopCGName();      // - get expression
-                PushCGName( CGUnary( *front.back, O_CONVERT, op1, CGenType( front, node->u2.result_type )) );
+                op1 = PopCGName( front, index );      // - get expression
+                PushCGName( front, index, CGUnary( *front.back, O_CONVERT, op1, CGenType( front, node->u2.result_type )) );
             }
             break;
         case OPR_CONVERT_PTR:           // convert pointer
-            op1 = PopCGName();          // - get expression
-            PushCGName( ConvertPointer( front, node, op1 ) );
+            op1 = PopCGName( front, index );          // - get expression
+            PushCGName( front, index, ConvertPointer( front, node, op1 ) );
             break;
         case OPR_CONVERT_SEG:           // convert pointer to segment
           {
             cg_name     name;
 
-            op1 = PopCGName();          // - get expression
+            op1 = PopCGName( front, index );          // - get expression
             name = CGUnary( *front.back, O_CONVERT, op1, TY_LONG_POINTER );
             name = CGUnary( *front.back, O_CONVERT, name, TY_UINT_4 );
             name = CGBinary( *front.back, O_RSHIFT, name,
                              CGInteger( *front.back, 16, TY_UNSIGNED ), TY_UINT_4 );
-            PushCGName( name );
+            PushCGName( front, index, name );
           } break;
         case OPR_MATHFUNC:              // intrinsic math func with 1 parm
-            op1 = PopCGName();          // - get expression
-            PushCGName( CGUnary( *front.back, static_cast<cg_op>(node->u1.mathfunc), op1, TY_DOUBLE ) );
+            op1 = PopCGName( front, index );          // - get expression
+            PushCGName( front, index, CGUnary( *front.back, static_cast<cg_op>(node->u1.mathfunc), op1, TY_DOUBLE ) );
             break;
         case OPR_MATHFUNC2:             // intrinsic math func with 2 parms
-            op2 = PopCGName();          // - get expression
-            op1 = PopCGName();          // - get expression
-            PushCGName( CGBinary( *front.back, static_cast<cg_op>(node->u1.mathfunc), op1, op2, TY_DOUBLE ) );
+            op2 = PopCGName( front, index );          // - get expression
+            op1 = PopCGName( front, index );          // - get expression
+            PushCGName( front, index, CGBinary( *front.back, static_cast<cg_op>(node->u1.mathfunc), op1, op2, TY_DOUBLE ) );
             break;
         case OPR_DOT:                   // sym.field
-            op2 = PopCGName();          // - get offset of field
-            op1 = PopCGName();          // - get address of sym
-            PushCGName( DotOperator( front, op1, node, op2 ) );
+            op2 = PopCGName( front, index );          // - get offset of field
+            op1 = PopCGName( front, index );          // - get address of sym
+            PushCGName( front, index, DotOperator( front, op1, node, op2 ) );
             break;
         case OPR_ARROW:                 // ptr->field
-            op2 = PopCGName();          // - get offset of field
-            op1 = PopCGName();          // - get pointer
-            PushCGName( ArrowOperator( front, op1, node, op2 ) );
+            op2 = PopCGName( front, index );          // - get offset of field
+            op1 = PopCGName( front, index );          // - get pointer
+            PushCGName( front, index, ArrowOperator( front, op1, node, op2 ) );
             break;
         case OPR_INDEX:                 // array[index]
-            op2 = PopCGName();          // - get index
-            op1 = PopCGName();          // - get address of array
-            PushCGName( IndexOperator( front, op1, node, op2 ) );
+            op2 = PopCGName( front, index );          // - get index
+            op1 = PopCGName( front, index );          // - get address of array
+            PushCGName( front, index, IndexOperator( front, op1, node, op2 ) );
             break;
         case OPR_ADDROF:                // & expr
         case OPR_NOP:                   // nop
             break;
         case OPR_FARPTR:                // segment :> offset
-            op2 = PopCGName();          // - get offset
-            op1 = PopCGName();          // - get segment
-            PushCGName( CGBinary( *front.back, O_CONVERT, op2, op1, TY_LONG_POINTER ) );
+            op2 = PopCGName( front, index );          // - get offset
+            op1 = PopCGName( front, index );          // - get segment
+            PushCGName( front, index, CGBinary( *front.back, O_CONVERT, op2, op1, TY_LONG_POINTER ) );
             break;
         case OPR_FUNCNAME:              // function name
-            PushCGName( InitFuncCall( front, node ) ); // - push call_handle
+            PushCGName( front, index, InitFuncCall( front, node ) ); // - push call_handle
             break;
         case OPR_CALL_INDIRECT:         // indirect function call
-            op1 = PopCGName();                          // - get name
-            PushCGName( InitIndFuncCall( front, node, op1 ) ); // - push call_handle
+            op1 = PopCGName( front, index );                          // - get name
+            PushCGName( front, index, InitIndFuncCall( front, node, op1 ) ); // - push call_handle
             break;
         case OPR_CALL:                  // function call
-            call = PopCGName();         // - get call_handle
+            call = PopCGName( front, index );         // - get call_handle
             op1 = CGCall( call );
             if( node->flags & OPFLAG_RVALUE ) {
                 op1 = CGUnary( *front.back, O_POINTS, op1, CGenType( front, node->u2.result_type ) );
             }
-            PushCGName( op1 );
+            PushCGName( front, index, op1 );
             break;
         case OPR_PARM:                  // function parm
-            op1 = PopCGName();          // - get parm
-            call = PopCGName();         // - get call_handle
+            op1 = PopCGName( front, index );          // - get parm
+            call = PopCGName( front, index );         // - get call_handle
             CGAddParm( *front.back, call, op1, CGenType( front, node->u2.result_type ) );
-            PushCGName( call );
+            PushCGName( front, index, call );
             break;
         case OPR_LABEL:                 // label
             CGControl( *front.back, O_LABEL, NULL, front.cgen.CGLabelHandles[node->u2.label_index] );
@@ -1420,15 +1421,15 @@ static void EmitNodes( FrontRun& front, TREEPTR tree )
             CGControl( *front.back, O_GOTO, NULL, front.cgen.CGLabelHandles[node->u2.label_index] );
             break;
         case OPR_JUMPTRUE:              // jump if true
-            op1 = PopCGName();
+            op1 = PopCGName( front, index );
             CGControl( *front.back, O_IF_TRUE, op1, front.cgen.CGLabelHandles[node->u2.label_index] );
             break;
         case OPR_JUMPFALSE:             // jump if false
-            op1 = PopCGName();
+            op1 = PopCGName( front, index );
             CGControl( *front.back, O_IF_FALSE, op1, front.cgen.CGLabelHandles[node->u2.label_index] );
             break;
         case OPR_SWITCH:                // switch
-            op1 = PopCGName();
+            op1 = PopCGName( front, index );
             DoSwitch( front, node, op1 );
             break;
 #ifdef __SEH__
@@ -1448,13 +1449,13 @@ static void EmitNodes( FrontRun& front, TREEPTR tree )
         case OPR_EXCEPT_CODE:
             op1 = TryExceptionInfoAddr(front);
             op1 = CGUnary( *front.back, O_POINTS, op1, TY_POINTER );
-            PushCGName( CGUnary( *front.back, O_POINTS, op1, TY_INTEGER ) );
+            PushCGName( front, index, CGUnary( *front.back, O_POINTS, op1, TY_INTEGER ) );
             break;
         case OPR_EXCEPT_INFO:
-            PushCGName( TryExceptionInfoAddr(front) );
+            PushCGName( front, index, TryExceptionInfoAddr(front) );
             break;
         case OPR_ABNORMAL_TERMINATION:
-            PushCGName( TryAbnormalTermination(front) );
+            PushCGName( front, index, TryAbnormalTermination(front) );
             break;
 #endif
         default:
@@ -1468,7 +1469,7 @@ static void EmitNodes( FrontRun& front, TREEPTR tree )
         }
     }
     if( index > 0 ) {
-        CGDone( *front.back, PopCGName() );
+        CGDone( *front.back, PopCGName( front, index ) );
     }
 }
 

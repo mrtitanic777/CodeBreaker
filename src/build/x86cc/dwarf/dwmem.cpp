@@ -43,7 +43,7 @@ char *DW_Strdup(
     _Validate( cli != NULL && str != NULL );
 
     len = strlen( str ) + 1;
-    return static_cast<char *>(( memcpy( CLIAlloc( cli, len ), str, len ) ));
+    return static_cast<char *>(( memcpy( CLIAlloc( back, cli, len ), str, len ) ));
 }
 
 
@@ -54,7 +54,7 @@ void *DW_FreeLink(
     void            *next;
 
     next = *(void **)node;
-    CLIFree( cli, node );
+    CLIFree( back, cli, node );
     return( next );
 }
 
@@ -67,7 +67,7 @@ void DW_FreeChain(
 
     while( (cur = list) != NULL ) {
         list = *(void **)list;
-        CLIFree( cli, cur );
+        CLIFree( back, cli, cur );
     }
 }
 

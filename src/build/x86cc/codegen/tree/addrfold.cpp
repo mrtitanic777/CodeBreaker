@@ -156,7 +156,7 @@ name    *Points( BackRun& back, an addr, const type_def *tipe )
 
     CheckPointer( back, addr );
     if( addr->format != NF_ADDR && addr->format != NF_CONS ) {
-        _Zoiks( ZOIKS_024 );
+        Zoiks( back, ZOIKS_024 );
     }
     type_class = TypeClass( back, tipe );
     size = tipe->length;
@@ -508,7 +508,7 @@ static  bool    ShiftConst( BackRun& back, an r_addr ) {
 #if WORD_SIZE == 2
     if( r_addr->u.n.offset < 0 || r_addr->u.n.offset > 16 )
         return( false );
-    if( _IsTargetModel( CGSW_X86_BIG_DATA ) && _IsntTargetModel( CGSW_X86_CHEAP_POINTER ) )
+    if( IsTargetModel( back, CGSW_X86_BIG_DATA ) && IsntTargetModel( back, CGSW_X86_CHEAP_POINTER ) )
         return( false );
 #else
     if( r_addr->u.n.offset < 0 || r_addr->u.n.offset > 8 )
@@ -640,7 +640,7 @@ name    *GetValue( BackRun& back, an addr, name *suggest )
             break;
         }
     } else if( addr->format == NF_BOOL ) {
-        _Zoiks( ZOIKS_025 );
+        Zoiks( back, ZOIKS_025 );
     }
     if( op->n.class_ == N_TEMP
      && op->v.symbol == NULL

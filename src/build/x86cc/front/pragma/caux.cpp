@@ -67,13 +67,13 @@ static void FreeAuxInfo( FrontRun& front, aux_info *info )
 
 void PragmaAuxInit( FrontRun& front )
 {
-    CdeclInfo   = WatcallInfo;
-    PascalInfo  = WatcallInfo;
-    SyscallInfo = WatcallInfo;
-    StdcallInfo = WatcallInfo;
-    OptlinkInfo = WatcallInfo;
-    FortranInfo = WatcallInfo;
-    FastcallInfo= WatcallInfo;
+    CdeclInfo( front )   = WatcallInfo( front );
+    PascalInfo( front )  = WatcallInfo( front );
+    SyscallInfo( front ) = WatcallInfo( front );
+    StdcallInfo( front ) = WatcallInfo( front );
+    OptlinkInfo( front ) = WatcallInfo( front );
+    FortranInfo( front ) = WatcallInfo( front );
+    FastcallInfo( front )= WatcallInfo( front );
 
     AuxInfoInit( front, front.cvars.CompFlags.use_stdcall_at_number );
 
@@ -100,17 +100,17 @@ void PragmaAuxFini( FrontRun& front )
         CMemFree( front, junk );
     }
 
-    FreeAuxInfo( front, &DefaultInfo );
-    FreeAuxInfo( front, &WatcallInfo );
-    FreeAuxInfo( front, &CdeclInfo );
-    FreeAuxInfo( front, &PascalInfo );
-    FreeAuxInfo( front, &SyscallInfo );
-    FreeAuxInfo( front, &OptlinkInfo );
-    FreeAuxInfo( front, &FortranInfo );
-    FreeAuxInfo( front, &StdcallInfo );
-    FreeAuxInfo( front, &FastcallInfo );
+    FreeAuxInfo( front, &DefaultInfo( front ) );
+    FreeAuxInfo( front, &WatcallInfo( front ) );
+    FreeAuxInfo( front, &CdeclInfo( front ) );
+    FreeAuxInfo( front, &PascalInfo( front ) );
+    FreeAuxInfo( front, &SyscallInfo( front ) );
+    FreeAuxInfo( front, &OptlinkInfo( front ) );
+    FreeAuxInfo( front, &FortranInfo( front ) );
+    FreeAuxInfo( front, &StdcallInfo( front ) );
+    FreeAuxInfo( front, &FastcallInfo( front ) );
 #if _CPU == 386
-    FreeAuxInfo( front, &Far16CdeclInfo );
-    FreeAuxInfo( front, &Far16PascalInfo );
+    FreeAuxInfo( front, &Far16CdeclInfo( front ) );
+    FreeAuxInfo( front, &Far16PascalInfo( front ) );
 #endif
 }

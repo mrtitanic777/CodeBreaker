@@ -47,7 +47,7 @@ namespace {
 static void selectObjEmitter( BackRun& back )
 {
 #if _TARGET & _TARG_80386
-    if( _IsModel( CGSW_GEN_OBJ_OWL ) ) {
+    if( IsModel( back, CGSW_GEN_OBJ_OWL ) ) {
         back.x86obj.Emitter = &X86OwlEmitter;
     } else
 #endif

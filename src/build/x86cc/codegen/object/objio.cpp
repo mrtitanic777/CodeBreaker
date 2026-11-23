@@ -225,7 +225,7 @@ static  void    GetStream( BackRun& back, handle h, byte *b, size_t len )
             break;
         back.objio.CurBuf = back.objio.CurBuf->nextbuf;
         if( back.objio.CurBuf == NULL ) {
-            _Zoiks( ZOIKS_006 );
+            Zoiks( back, ZOIKS_006 );
         }
         back.objio.CurBuf->bufptr = back.objio.CurBuf->buf;
         back.objio.CurBuf->bytes_left = IOBUFSIZE;

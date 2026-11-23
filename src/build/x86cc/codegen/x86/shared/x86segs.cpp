@@ -68,7 +68,7 @@ hw_reg_set      CalcSegment( BackRun& back, cg_sym_handle sym, cg_class class_ )
     hw_reg_set  *reg;
 
     if( class_ == CG_TBL || class_ == CG_VTB || class_ == CG_CLB ) {
-        if( _IsTargetModel( CGSW_X86_FLAT_MODEL ) )
+        if( IsTargetModel( back, CGSW_X86_FLAT_MODEL ) )
             return( HW_DS );
         return( HW_CS );
     }
@@ -86,15 +86,15 @@ hw_reg_set      CalcSegment( BackRun& back, cg_sym_handle sym, cg_class class_ )
     }
     if( class_ == CG_FE && (attr & FE_PROC) && (attr & FE_DLLIMPORT) == 0 ) {
 #if _TARGET & _TARG_80386
-        if( _IsTargetModel( CGSW_X86_FLAT_MODEL ) )
+        if( IsTargetModel( back, CGSW_X86_FLAT_MODEL ) )
             return( HW_CS ); /* all have same CS */
         if( AskCodeSeg(back) == segid ) {
             return( HW_CS );
         }
 #endif
     } else {
-        if( _IsTargetModel( CGSW_X86_FLAT_MODEL )
-          && _IsntTargetModel( CGSW_X86_FLOATING_DS ) )
+        if( IsTargetModel( back, CGSW_X86_FLAT_MODEL )
+          && IsntTargetModel( back, CGSW_X86_FLOATING_DS ) )
             return(HW_DS);
         if( AskCodeSeg(back) == segid ) {
             /* COMDAT's might be allocated by some other module */
@@ -104,9 +104,9 @@ hw_reg_set      CalcSegment( BackRun& back, cg_sym_handle sym, cg_class class_ )
         }
         if( AskSegIsPrivate( back, segid ) )
             return( HW_EMPTY );
-        if( _IsntTargetModel( CGSW_X86_FLOATING_DS ) )
+        if( IsntTargetModel( back, CGSW_X86_FLOATING_DS ) )
             return( HW_DS );
-        if( _IsntTargetModel( CGSW_X86_FLOATING_SS ) ) {
+        if( IsntTargetModel( back, CGSW_X86_FLOATING_SS ) ) {
             return( HW_SS );
         }
     }
@@ -135,7 +135,7 @@ name    *AddrConst( BackRun& back, name *value, segment_id segid, constant_type_
     case CONS_ADDRESS:
         return( AllocAddrConst( back, value, segid, const_type, CP ) );
     default:
-        _Zoiks( ZOIKS_115 );
+        Zoiks( back, ZOIKS_115 );
         return( NULL );
     }
 }
@@ -161,8 +161,8 @@ bool    SegIsSS( BackRun& back, name *op ) {
     if( HW_CEqual( segreg, HW_SS ) )
         return( true );
     if( HW_CEqual( segreg, HW_DS )
-      && _IsntTargetModel( CGSW_X86_FLOATING_DS )
-      && _IsntTargetModel( CGSW_X86_FLOATING_SS ) )
+      && IsntTargetModel( back, CGSW_X86_FLOATING_DS )
+      && IsntTargetModel( back, CGSW_X86_FLOATING_SS ) )
         return( true );
     return( false );
 }
@@ -186,9 +186,9 @@ name    *GetSegment( BackRun& back, name *op ) {
 name    *NearSegment( BackRun& back ) {
 /******************************/
 
-    if( _IsntTargetModel( CGSW_X86_FLOATING_DS ) )
+    if( IsntTargetModel( back, CGSW_X86_FLOATING_DS ) )
         return( AllocRegName( back, HW_DS ) );
-    if( _IsTargetModel( CGSW_X86_FLOATING_SS ) )
+    if( IsTargetModel( back, CGSW_X86_FLOATING_SS ) )
         return( AddrConst( back, NULL, AskBackSeg(back), CONS_SEGMENT ) );/*means DGROUP*/
     return( AllocRegName( back, HW_SS ) );
 }
@@ -221,7 +221,7 @@ name    *SegName( BackRun& back, name *op ) {
              || HW_CEqual( idx->r.reg, HW_xBP ) ) {
                 return( AllocRegName( back, HW_SS ) );
             } else {
-                _Zoiks( ZOIKS_022 );
+                Zoiks( back, ZOIKS_022 );
                 return( op );
             }
         } else if( idx->n.type_class == CP || idx->n.type_class == PT ) {
@@ -245,7 +245,7 @@ cg_type NamePtrType( BackRun& back, name *op ) {
             if( AskNameIsCode( back, sym, op->m.memory_type ) ) {
                 if( op->m.memory_type == CG_FE ) {
                     if( FEAttr( *back.front, sym ) & FE_PROC ) {
-                        if( (call_class_target)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL )
+                        if( (call_class_target)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL )
                             return( TY_LONG_CODE_PTR );
                         return( TY_NEAR_CODE_PTR );
                     } else {
@@ -255,7 +255,7 @@ cg_type NamePtrType( BackRun& back, name *op ) {
                     return( TY_HUGE_POINTER );
                 }
             } else if( AskSegIsPrivate( back, AskSegID( back, sym, op->m.memory_type ) )
-              || _IsTargetModel( CGSW_X86_FLOATING_DS ) ) {
+              || IsTargetModel( back, CGSW_X86_FLOATING_DS ) ) {
                 if( op->m.memory_type == CG_FE &&
                     ( FEAttr( *back.front, sym ) & FE_ONESEG ) ) {
                     return( TY_POINTER );
@@ -265,21 +265,21 @@ cg_type NamePtrType( BackRun& back, name *op ) {
             } else {
                 return( TY_POINTER );
             }
-        } else if( _IsTargetModel( CGSW_X86_FLOATING_DS )
+        } else if( IsTargetModel( back, CGSW_X86_FLOATING_DS )
           || op->m.memory_type == CG_CLB ) {
             return( TY_HUGE_POINTER );
         } else {
             return( TY_POINTER );
         }
     } else if( op->n.class_ == N_TEMP ) {
-        if( _IsTargetModel( CGSW_X86_FLOATING_SS )
-          || _IsTargetModel( CGSW_X86_FLOATING_DS ) ) {
+        if( IsTargetModel( back, CGSW_X86_FLOATING_SS )
+          || IsTargetModel( back, CGSW_X86_FLOATING_DS ) ) {
             // can't have a stack > 64K - BBB 06/02/94
             return( TY_LONG_POINTER );
         } else {
             return( TY_POINTER );
         }
-    } else if( _IsTargetModel( CGSW_X86_FLOATING_DS ) ) {
+    } else if( IsTargetModel( back, CGSW_X86_FLOATING_DS ) ) {
         return( TY_HUGE_POINTER );
     } else {
         return( TY_POINTER );
@@ -298,7 +298,7 @@ cg_type NamePtrType( BackRun& back, name *op ) {
             return( true );
         if( op->i.base != NULL )
             return( SegOver( back, op->i.base ) );
-        if( _IsTargetModel( CGSW_X86_FLOATING_DS ) ) {
+        if( IsTargetModel( back, CGSW_X86_FLOATING_DS ) ) {
             return( true );
         }
     } else if( op->n.class_ == N_MEMORY ) {
@@ -311,11 +311,11 @@ cg_type NamePtrType( BackRun& back, name *op ) {
                 return( true );
             }
             if( segid == AskCodeSeg(back)
-              && _IsntTargetModel( CGSW_X86_FLAT_MODEL ) ) {
+              && IsntTargetModel( back, CGSW_X86_FLAT_MODEL ) ) {
                 return( true );
             }
-            if( _IsTargetModel( CGSW_X86_FLOATING_SS )
-              && _IsTargetModel( CGSW_X86_FLOATING_DS ) ) {
+            if( IsTargetModel( back, CGSW_X86_FLOATING_SS )
+              && IsTargetModel( back, CGSW_X86_FLOATING_DS ) ) {
                 return( true );
             }
             return( false );
@@ -335,7 +335,7 @@ bool    LoadAToMove( BackRun& back, instruction *ins ) {
     segment_id  segid;
     name        *op;
 
-    if( _IsTargetModel( CGSW_X86_INDEXED_GLOBALS ) )
+    if( IsTargetModel( back, CGSW_X86_INDEXED_GLOBALS ) )
         return( false );
     if( ins->head.opcode != OP_LA && ins->head.opcode != OP_CAREFUL_LA )
         return( false );
@@ -370,10 +370,10 @@ bool                     IsUncacheableMemory( BackRun& back, name *opnd )
         return( false );
     segreg = CalcSegment( back, static_cast<cg_sym_handle>(opnd->v.symbol), opnd->m.memory_type );
     if( HW_CEqual( segreg, HW_SS )
-      && _IsntTargetModel( CGSW_X86_FLOATING_SS ) )
+      && IsntTargetModel( back, CGSW_X86_FLOATING_SS ) )
         return( false );
     if( HW_CEqual( segreg, HW_DS )
-      && _IsntTargetModel( CGSW_X86_FLOATING_DS ) )
+      && IsntTargetModel( back, CGSW_X86_FLOATING_DS ) )
         return( false );
     if( HW_CEqual( segreg, HW_CS ) )
         return( false );

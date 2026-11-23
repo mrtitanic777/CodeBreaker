@@ -88,7 +88,7 @@ name    *LowPart( BackRun& back, name *tosplit, type_class_def type_class )
                 s16 = tosplit->c.lo.u.int_value & 0xffff;
                 new_part = AllocIntConst( back, s16 );
             } else if( type_class == FL ) {
-                _Zoiks( ZOIKS_125 );
+                Zoiks( back, ZOIKS_125 );
             } else { /* FD */
                 floatval = GetFloat( back, tosplit, FD );
                 new_part = AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, _TargetLongInt( U64LowLE( floatval->buffer.u64 ) ) ) );
@@ -96,7 +96,7 @@ name    *LowPart( BackRun& back, name *tosplit, type_class_def type_class )
         } else if( tosplit->c.const_type == CONS_ADDRESS ) {
             new_part = AddrConst( back, tosplit->c.u.op, (segment_id)tosplit->c.lo.u.int_value, CONS_OFFSET );
         } else {
-            _Zoiks( ZOIKS_044 );
+            Zoiks( back, ZOIKS_044 );
         }
         break;
     case N_REGISTER:
@@ -162,7 +162,7 @@ name    *HighPart( BackRun& back, name *tosplit, type_class_def type_class )
                 s16 = ( tosplit->c.lo.u.int_value >> 16 ) & 0xffff;
                 new_part = AllocIntConst( back, s16 );
             } else if( type_class == FL ) {
-                _Zoiks( ZOIKS_125 );
+                Zoiks( back, ZOIKS_125 );
             } else { /* FD */
                 floatval = GetFloat( back, tosplit, FD );
                 new_part = AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, _TargetLongInt( U64HighLE( floatval->buffer.u64 ) ) ) );
@@ -170,7 +170,7 @@ name    *HighPart( BackRun& back, name *tosplit, type_class_def type_class )
         } else if( tosplit->c.const_type == CONS_ADDRESS ) {
             new_part = AddrConst( back, tosplit->c.u.op, (segment_id)tosplit->c.lo.u.int_value, CONS_SEGMENT );
         } else {
-            _Zoiks( ZOIKS_044 );
+            Zoiks( back, ZOIKS_044 );
         }
         break;
     case N_REGISTER:
@@ -639,7 +639,7 @@ instruction     *rSPLIT8CMP( BackRun& back, instruction *ins )
                                         true_idx, false_idx, U2 );
         break;
     default:
-        _Zoiks( ZOIKS_125 );
+        Zoiks( back, ZOIKS_125 );
     }
     --i;
     for( j = 0; j < i; ++j ) {

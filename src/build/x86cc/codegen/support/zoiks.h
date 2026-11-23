@@ -33,6 +33,4 @@
 #pragma once
 extern void Zoiks(BackRun& back, int);
 
-#define _Zoiks(x)      Zoiks(back, x)
-
 #include "interrs.h"

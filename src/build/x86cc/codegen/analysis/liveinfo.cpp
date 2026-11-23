@@ -104,8 +104,8 @@ static  void    ExtendConflicts( BackRun& back, block *blk, conflict_node *first
         if( _GBitOverlap( conf->id.out_of_block, flow->out ) ) {
             last_ins = blk->ins.head.prev;
             if( conf->ins_range.last != NULL ) {
-                _INS_NOT_BLOCK( conf->ins_range.last );
-                _INS_NOT_BLOCK( last_ins );
+                InsNotBlock( back, conf->ins_range.last );
+                InsNotBlock( back, last_ins );
             }
             if( conf->ins_range.last == NULL || conf->ins_range.last->id <= last_ins->id ) {
                 if( last_ins->head.opcode != OP_NOP ) {
@@ -129,8 +129,8 @@ static  void    ExtendConflicts( BackRun& back, block *blk, conflict_node *first
         if( _GBitOverlap( conf->id.out_of_block, flow->in ) ) {
             first_ins = blk->ins.head.next;
             if( conf->ins_range.first != NULL) {
-                _INS_NOT_BLOCK( conf->ins_range.first );
-                _INS_NOT_BLOCK( first_ins );
+                InsNotBlock( back, conf->ins_range.first );
+                InsNotBlock( back, first_ins );
             }
             if( conf->ins_range.first == NULL || conf->ins_range.first->id >= first_ins->id ) {
                 if( first_ins->head.opcode != OP_NOP ) {

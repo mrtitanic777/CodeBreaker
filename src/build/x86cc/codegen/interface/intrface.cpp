@@ -132,14 +132,14 @@ cg_init_info _CGAPI     BEInitCg( BackRun& back, cg_switches switches,
     cg_init_info        cg_info;
 
     back.data.OptForSize = (byte)optsize;
-    back.model.CGProcessorVersion = proc; /* so _CPULevel works */
+    back.model.CGProcessorVersion = proc; /* so CPULevel works */
 #if _TARGET & _TARG_8086
     /* if it ain't a 386 or better, FS and GS aren't there */
-    if( !_CPULevel( CPU_386 ) ) {
+    if( !CPULevel( back, CPU_386 ) ) {
         platform &= ~(CGSW_X86_FLOATING_FS | CGSW_X86_FLOATING_GS);
     }
 #elif  _TARGET & _TARG_80386
-    if( !_CPULevel( CPU_386 ) ) {
+    if( !CPULevel( back, CPU_386 ) ) {
         SET_CPU( proc, CPU_386 );
     }
     proc &= ~FPU_EMU;   /* don't need funny fixups for 386 */
@@ -404,7 +404,7 @@ back_handle _CGAPI      BENewBack( BackRun& back, cg_sym_handle sym )
         bck->segid = FESegID( *back.front, sym );
     }
     if( !IS_REAL_BACK( bck ) )
-        _Zoiks( ZOIKS_067 );
+        Zoiks( back, ZOIKS_067 );
     return( bck );
 }
 
@@ -494,7 +494,7 @@ label_handle _CGAPI CGLastParm( BackRun& back )
     label_handle    top;
 
     top = NULL;
-    if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+    if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
         if( !BGInInline(back) ) {
             top = BENewLabel(back);
             BGGenCtrl( back, O_LABEL, NULL, top, true );
@@ -568,7 +568,7 @@ cg_name _CGAPI CGFEName( BackRun& back, cg_sym_handle sym, cg_type tipe )
     cg_name     leaf;
 
 
-    if( (FEAttr( *back.front, sym ) & FE_DLLIMPORT) && ( FindAuxInfoSym( sym, FEINF_CALL_BYTES ) == NULL ) ) {
+    if( (FEAttr( *back.front, sym ) & FE_DLLIMPORT) && ( FindAuxInfoSym( back, sym, FEINF_CALL_BYTES ) == NULL ) ) {
         leaf = TGLeaf( back, BGName( back, CG_FE, sym, TypeAddress( back, TY_POINTER ) ) );
         leaf = CGUnary( back, O_POINTS, leaf, TY_POINTER );
     } else {
@@ -582,7 +582,7 @@ cg_name _CGAPI CGBackName( BackRun& back, back_handle bck, cg_type tipe )
 {
 
     if( !IS_REAL_BACK( bck ) )
-        _Zoiks( ZOIKS_068 );
+        Zoiks( back, ZOIKS_068 );
 
     return( TGLeaf( back, BGName( back, CG_BACK, bck, TypeAddress( back, tipe ) ) ) );
 }
@@ -863,7 +863,7 @@ void _CGAPI     DGLabel( BackRun& back, back_handle bck )
 /****************************************/
 {
     if( !IS_REAL_BACK( bck ) )
-        _Zoiks( ZOIKS_068 );
+        Zoiks( back, ZOIKS_068 );
     DGBlip();
     DataLabel( back, bck->lbl );
     bck->segid = AskOP(back);
@@ -874,7 +874,7 @@ void _CGAPI     DGBackPtr( BackRun& back, back_handle bck, segment_id segid,
 /***********************************************************/
 {
     if( !IS_REAL_BACK( bck ) )
-        _Zoiks( ZOIKS_068 );
+        Zoiks( back, ZOIKS_068 );
     DGBlip();
     BackPtr( back, bck, segid, offset, TypeAddress( back, tipe ) );
 }
@@ -1012,7 +1012,7 @@ uint_32 _CGAPI      DGBackTell( BackRun& back, back_handle bck )
 {
 
     if( !IS_REAL_BACK( bck ) )
-        _Zoiks( ZOIKS_068 );
+        Zoiks( back, ZOIKS_068 );
 
     return( AskAddress( back, bck->lbl ) );
 }
@@ -1050,7 +1050,7 @@ const char * cg_internal AskName( BackRun& back, pointer hdl, cg_class class_ )
     case CG_VTB:
         return( "(VTB)" );
     default:
-        _Zoiks( ZOIKS_130 );
+        Zoiks( back, ZOIKS_130 );
         return( "" );
     }
 }
@@ -1072,7 +1072,7 @@ label_handle cg_internal AskForSymLabel( BackRun& back, pointer hdl, cg_class cl
     case CG_VTB:
         return( ((tbl_control*)hdl)->value_lbl );
     default:
-        _Zoiks( ZOIKS_130 );
+        Zoiks( back, ZOIKS_130 );
         return( NULL );
     }
 }

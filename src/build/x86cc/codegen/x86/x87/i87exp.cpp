@@ -449,7 +449,7 @@ static instruction  *ExpMove( BackRun& back, instruction *ins, operand_type src,
     switch( _Move( src, dst ) ) {
     case _Move( OP_STK1, RES_STK0 ):
     case _Move( OP_STK1, RES_MEM ):
-        _Zoiks( ZOIKS_008 );
+        Zoiks( back, ZOIKS_008 );
         break;
     case _Move( OP_MEM , RES_MEM ):
         PrefixFLDOp( back, ins, src, 0 );
@@ -458,13 +458,13 @@ static instruction  *ExpMove( BackRun& back, instruction *ins, operand_type src,
         DoNothing( ins );
         ins = SuffixFSTPRes( ins );
         */
-        if( _IsModel( CGSW_GEN_FPU_ROUNDING_INLINE ) ) {
+        if( IsModel( back, CGSW_GEN_FPU_ROUNDING_INLINE ) ) {
             DoNothing( back, ins );
             ins = SuffixFSTPRes( back, ins );
             if( WantsChop( ins ) ) {
                 ins->u.gen_table = MFSTRND;
             }
-        } else if( _IsModel( CGSW_GEN_FPU_ROUNDING_OMIT ) ) {
+        } else if( IsModel( back, CGSW_GEN_FPU_ROUNDING_OMIT ) ) {
             DoNothing( back, ins );
             ins = SuffixFSTPRes( back, ins );
         } else {
@@ -477,13 +477,13 @@ static instruction  *ExpMove( BackRun& back, instruction *ins, operand_type src,
         DoNothing( back, ins );
         break;
     case _Move( OP_STK0, RES_MEM  ):
-        if( _IsModel( CGSW_GEN_FPU_ROUNDING_INLINE ) ) {
+        if( IsModel( back, CGSW_GEN_FPU_ROUNDING_INLINE ) ) {
             if( WantsChop( ins ) ) {
                 ins->u.gen_table = MFSTRND;
             } else {
                 ins->u.gen_table = MFST;
             }
-        } else if( _IsModel( CGSW_GEN_FPU_ROUNDING_OMIT ) ) {
+        } else if( IsModel( back, CGSW_GEN_FPU_ROUNDING_OMIT ) ) {
             ins->u.gen_table = MFST;
         } else {
             PrefixChop( back, ins );
@@ -507,7 +507,7 @@ static instruction  *ExpMove( BackRun& back, instruction *ins, operand_type src,
         ins = SuffixFSTPRes( back, ins );
         break;
     default:
-        _Zoiks( ZOIKS_009 );
+        Zoiks( back, ZOIKS_009 );
         break;
     }
     return( ins );
@@ -553,7 +553,7 @@ static  instruction     *ExpPush( BackRun& back, instruction *ins, operand_type 
             }
             ++idx;
         }
-        if( _IsntTargetModel( CGSW_X86_FLOATING_DS ) && _IsntTargetModel( CGSW_X86_FLOATING_SS ) ) {
+        if( IsntTargetModel( back, CGSW_X86_FLOATING_DS ) && IsntTargetModel( back, CGSW_X86_FLOATING_SS ) ) {
             HW_CTurnOff( avail_index, HW_SS );
         }
         index = AllocRegName( back, avail_index );
@@ -611,7 +611,7 @@ static void ExpBinFunc( BackRun& back, instruction *ins, operand_type op1, opera
     case _OPS( OP_STK1, OP_MEM  ):
     case _OPS( OP_STK1, OP_CONS ):
     case _OPS( OP_CONS, OP_CONS ):
-        _Zoiks( ZOIKS_010 );
+        Zoiks( back, ZOIKS_010 );
         break;
     case _OPS( OP_STK0, OP_MEM  ):
     case _OPS( OP_STK0, OP_CONS ):
@@ -635,7 +635,7 @@ static void ExpBinFunc( BackRun& back, instruction *ins, operand_type op1, opera
         PrefixFLDOp( back, ins, op1, 0 );
         break;
     default:
-        _Zoiks( ZOIKS_011 );
+        Zoiks( back, ZOIKS_011 );
         break;
     }
     ins->u.gen_table = IFUNC;
@@ -671,7 +671,7 @@ static void ExpBinary( BackRun& back, instruction *ins, operand_type op1, operan
     case _OPS( OP_STK1, OP_CONS ):
     case _OPS( OP_CONS, OP_CONS ):
 /*   case 0,6,7,8,9,11,16,21,24:*/
-        _Zoiks( ZOIKS_010 );
+        Zoiks( back, ZOIKS_010 );
         break;
     case _OPS( OP_STK0, OP_STK0 ):
         ins->u.gen_table = GenTab( ins, RNFBIN );
@@ -712,7 +712,7 @@ static void ExpBinary( BackRun& back, instruction *ins, operand_type op1, operan
         ins->u.gen_table = GenTab( ins, MRFBIN );
         break;
     default:
-        _Zoiks( ZOIKS_011 );
+        Zoiks( back, ZOIKS_011 );
         break;
     }
 }
@@ -764,7 +764,7 @@ static  void    RevFPCond( BackRun& back, instruction *ins )
     codes as well.
 */
 {
-    _MarkBlkAllUnVisited();
+    MarkBlkAllUnVisited( back );
     RevOtherCond( InsBlock( ins ), ins );
     RevCond( ins );
 }
@@ -776,8 +776,8 @@ static void ExpCompare( BackRun& back, instruction *ins, operand_type op1, opera
     "op2".
 */
 {
-    if( !_CPULevel( CPU_386 ) ) {
-        if( back.i87data.FPStatWord == NULL && ( !_CPULevel(CPU_286) || _IsEmulation() ) ) {
+    if( !CPULevel( back, CPU_386 ) ) {
+        if( back.i87data.FPStatWord == NULL && ( !CPULevel( back, CPU_286 ) || IsEmulation( back ) ) ) {
             back.i87data.FPStatWord = AllocTemp( back, U2 );
             back.i87data.FPStatWord->v.usage |= VAR_VOLATILE | USE_ADDRESS; /* so that it really gets allocd */
             AllocALocal( back, back.i87data.FPStatWord );
@@ -791,7 +791,7 @@ static void ExpCompare( BackRun& back, instruction *ins, operand_type op1, opera
     case _OPS( OP_STK1, OP_CONS ):
     case _OPS( OP_CONS, OP_CONS ):
 /*   case 0,6,7,8,9,11,16,21,24:*/
-        _Zoiks( ZOIKS_012 );
+        Zoiks( back, ZOIKS_012 );
         break;
     case _OPS( OP_STK0, OP_STK0 ):
         ins->u.gen_table = RCOMP;
@@ -832,7 +832,7 @@ static void ExpCompare( BackRun& back, instruction *ins, operand_type op1, opera
         RevFPCond( back, ins );
         break;
     default:
-        _Zoiks( ZOIKS_013 );
+        Zoiks( back, ZOIKS_013 );
         break;
     }
 }
@@ -893,9 +893,9 @@ static instruction *ExpandFPIns( BackRun& back, instruction *ins, operand_type o
         case OP_TAN:
         case OP_SQRT:
         case OP_ATAN:
-            if( _FPULevel( FPU_387 )
-              && _IsModel( CGSW_GEN_I_MATH_INLINE )
-              && _IsntTargetModel( CGSW_X86_P5_DIVIDE_CHECK ) ) {
+            if( FPULevel( back, FPU_387 )
+              && IsModel( back, CGSW_GEN_I_MATH_INLINE )
+              && IsntTargetModel( back, CGSW_X86_P5_DIVIDE_CHECK ) ) {
                 ins = ExpUnary( back, ins, op1, res, FMATH );
             } else {
                 ins = ExpUnary( back, ins, op1, res, IFUNC );
@@ -904,9 +904,9 @@ static instruction *ExpandFPIns( BackRun& back, instruction *ins, operand_type o
         case OP_LOG:
         case OP_LOG10:
         case OP_EXP:
-            if( _FPULevel( FPU_387 )
-              && _IsModel( CGSW_GEN_I_MATH_INLINE )
-              && _IsntTargetModel( CGSW_X86_P5_DIVIDE_CHECK )
+            if( FPULevel( back, FPU_387 )
+              && IsModel( back, CGSW_GEN_I_MATH_INLINE )
+              && IsntTargetModel( back, CGSW_X86_P5_DIVIDE_CHECK )
               && back.data.OptForSize <= 50 ) {
                 ins = ExpUnary( back, ins, op1, res, FMATH );
             } else {
@@ -1209,7 +1209,7 @@ void    FPExpand( BackRun& back )
 
 */
 {
-    if( _FPULevel( FPU_87 ) ) {
+    if( FPULevel( back, FPU_87 ) ) {
         back.i87exp->ST0 = ST( back, 0 );
         back.i87exp->ST1 = ST( back, 1 );
         Expand(back);

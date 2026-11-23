@@ -46,14 +46,6 @@
 #include "dwcarve.h"
 #include "dwhandle.h"
 
-#define CLIReloc2( x, __s, __i )       (x)->funcs.cli_reloc( back, __s, __i )
-#define CLIReloc3( x, __s, __i, __v )  (x)->funcs.cli_reloc( back, __s, __i, __v )
-#define CLIReloc4( x, __s, __i, __v1, __v2 ) (x)->funcs.cli_reloc( back, __s, __i, __v1, __v2 )
-#define CLIWrite( x, __s,  __b, __l )  (x)->funcs.cli_write( back, __s, __b, __l )
-#define CLISeek( x, __s, __o, __t )    (x)->funcs.cli_seek( back, __s, __o, __t )
-#define CLITell( x, __s )              (x)->funcs.cli_tell( back, __s )
-#define CLIAlloc( x, __size )          (x)->funcs.cli_alloc( back, __size )
-#define CLIFree( x, __ptr )            (x)->funcs.cli_free( back, __ptr )
 
 #define GET_FLAG_PTR_TYPE(f)    ((uint_8)(((f) & DW_FLAG_PTR_TYPE_MASK) >> DW_FLAG_PTR_TYPE_SHIFT))
 #define GET_FLAG_INLINE(f)      ((uint_8)(((f) & DW_FLAG_INLINE_MASK) >> DW_FLAG_INLINE_SHIFT))
@@ -138,5 +130,18 @@ struct dw_client_s {
     uint_8                      segment_size;
     bool                        big_endian;
 };
+
+/* what the client of the library (the code generator) is asked to do: its callbacks, with the run it is given (they read members of
+ * dw_client_s, so they come after it) */
+template< class... Args >
+inline void CLIReloc( BackRun& back, dw_client cli, dw_sectnum sect, dw_reloc_type type, Args... args )
+{
+    cli->funcs.cli_reloc( back, sect, type, args... );
+}
+inline void CLIWrite( BackRun& back, dw_client cli, dw_sectnum sect, const void *block, size_t size ) { cli->funcs.cli_write( back, sect, block, size ); }
+inline void CLISeek( BackRun& back, dw_client cli, dw_sectnum sect, dw_out_offset offset, int type ) { cli->funcs.cli_seek( back, sect, offset, type ); }
+inline dw_out_offset CLITell( BackRun& back, dw_client cli, dw_sectnum sect ) { return cli->funcs.cli_tell( back, sect ); }
+inline void *CLIAlloc( BackRun& back, dw_client cli, size_t size ) { return cli->funcs.cli_alloc( back, size ); }
+inline void CLIFree( BackRun& back, dw_client cli, void *block ) { cli->funcs.cli_free( back, block ); }
 
 #endif

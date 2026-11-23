@@ -91,7 +91,7 @@ static  bool    ScoreStomp( BackRun& back, score_info *x, score_info *y )
     if( x->class_ == SC_N_INDEXED && x->base == NULL ) {
         switch( y->class_ ) {
         case SC_N_MEMORY:
-            if( _IsModel( CGSW_GEN_RELAX_ALIAS ) )
+            if( IsModel( back, CGSW_GEN_RELAX_ALIAS ) )
                 return( false );
             /* fall through */
         case SC_N_INDEXED:
@@ -164,7 +164,7 @@ bool    ScoreEqual( BackRun& back, score_hdl scoreboard, int index, score_info *
 {
     if( ScoreLookup( &scoreboard[index], info ) )
         return( true );
-    if( _IsModel( CGSW_GEN_SUPER_OPTIMAL ) ) {
+    if( IsModel( back, CGSW_GEN_SUPER_OPTIMAL ) ) {
         score_reg   *entry;
         bool        is_equal;
         type_length half_size;
@@ -216,7 +216,7 @@ static void     ScoreInsert( BackRun& back, score_hdl scoreboard, int i, score_i
 static  void    ScoreAdd( BackRun& back, score_hdl scoreboard, int i, score_info *info )
 /***********************************************************************/
 {
-    if( _IsModel( CGSW_GEN_SUPER_OPTIMAL ) ) {
+    if( IsModel( back, CGSW_GEN_SUPER_OPTIMAL ) ) {
         score_hdl   first;
         score_hdl   curr;
 
@@ -250,7 +250,7 @@ void    ScoreAssign( BackRun& back, score_hdl scoreboard, int index, score_info 
 /**********************************************************************/
 {
     ScoreAdd( back, scoreboard, index, info );
-    if( _IsModel( CGSW_GEN_SUPER_OPTIMAL ) ) {
+    if( IsModel( back, CGSW_GEN_SUPER_OPTIMAL ) ) {
         score_reg   *entry;
         uint        hi_off;
         uint        lo_off;
@@ -316,7 +316,7 @@ void    ScoreInfo( BackRun& back, score_info *info, name *op )
             }
             break;
         default:
-            _Zoiks( ZOIKS_046 );
+            Zoiks( back, ZOIKS_046 );
             break;
         }
         break;

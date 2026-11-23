@@ -195,7 +195,7 @@ bool    SetOnCondition( BackRun& back )
     block       *blk;
     bool        change;
 
-    if( !_CPULevel( CPU_386 ) )
+    if( !CPULevel( back, CPU_386 ) )
         return( false );
     change = false;
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {

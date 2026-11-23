@@ -73,9 +73,12 @@ asmfixup *AddFixup( AsmRun& assembler, asm_sym_handle sym, fixup_types fixup_typ
 }
 
 
-#define SkipFixup() \
-    fixup->next = assembler.asminlin->FixupHead; \
-    assembler.asminlin->FixupHead = fixup
+/* the fixup is not applied: it goes back on the list of those still to be */
+static inline void SkipFixup( AsmRun& assembler, asmfixup *fixup )
+{
+    fixup->next = assembler.asminlin->FixupHead;
+    assembler.asminlin->FixupHead = fixup;
+}
 
 static void PatchCodeBuffer( AsmRun& assembler, asmfixup *fixup, unsigned size )
 /***********************************************************/
@@ -99,7 +102,7 @@ static bool DoPatch( AsmRun& assembler, asm_sym_handle sym, asmfixup *fixup )
     long                max_disp;
     unsigned            size;
     if( fixup->name != sym->name ) {
-        SkipFixup();
+        SkipFixup( assembler, fixup );
         return( RC_OK );
     }
     size = 0;
@@ -127,7 +130,7 @@ static bool DoPatch( AsmRun& assembler, asm_sym_handle sym, asmfixup *fixup )
         MemFree( *assembler.front, fixup );
         break;
     default:
-        SkipFixup();
+        SkipFixup( assembler, fixup );
         break;
     }
     return( RC_OK );
@@ -210,9 +213,9 @@ bool AddFPPatchAndFixups( AsmRun& assembler, fp_patches patch )
     fixup->fixup_type = FIX_FPPATCH;
     fixup->fixup_option = OPTJ_NONE;
     if( patch == FPP_WAIT ) {
-        AsmCodeByte( OP_NOP );
+        AsmByte( assembler, OP_NOP );
     } else {
-        AsmCodeByte( OP_WAIT );
+        AsmByte( assembler, OP_WAIT );
     }
     return( RC_OK );
 }

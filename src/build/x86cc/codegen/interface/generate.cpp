@@ -156,7 +156,7 @@ static  void            PreOptimize( BackRun& back )
 {
     bool        change;
 
-    if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+    if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
 //        CharsAndShortsToInts();
         MakeMovAddrConsts(back);
         PushPostOps(back);
@@ -164,11 +164,11 @@ static  void            PreOptimize( BackRun& back )
         InsDead(back);
         MakeFlowGraph(back);
         BlockTrim(back);
-        CommonSex( back, _IsModel( CGSW_GEN_LOOP_OPTIMIZATION ) );
+        CommonSex( back, IsModel( back, CGSW_GEN_LOOP_OPTIMIZATION ) );
         SetOnCondition(back);
         BlockTrim(back);
         AddANop(back);
-        if( _IsModel( CGSW_GEN_LOOP_OPTIMIZATION ) ) {
+        if( IsModel( back, CGSW_GEN_LOOP_OPTIMIZATION ) ) {
             change = false;
             if( TransLoops( back, false ) ) {
                 change = true;
@@ -223,7 +223,7 @@ static  block           *NextBlock( BackRun& back, block *blk, void *parm )
 static  void            PostOptimize( BackRun& back )
 /******************************************/
 {
-    if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+    if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
         /*
          * Run peephole optimizer again. Important: It is critical that the
          * new instructions can be directly generated because RegAlloc is
@@ -240,7 +240,7 @@ static  void            PostOptimize( BackRun& back )
         DeadInstructions(back);
     }
     MergeIndex(back);
-    if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+    if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
         /*
          * Calling Conditions() at this point has nice optimization effect,
          * but doesn't working correctly right now. It optimizes conditions
@@ -267,17 +267,17 @@ static  void            PostOptimize( BackRun& back )
         /*
          * Get rid of remaining unused conditions on register level.
          */
-        if( _IsntTargetModel( CGSW_X86_STATEMENT_COUNTING ) ) {
+        if( IsntTargetModel( back, CGSW_X86_STATEMENT_COUNTING ) ) {
             Conditions(back);
         }
     }
     FPExpand(back);
-    if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+    if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
         DeadInstructions(back);   /* cleanup junk after Conditions() */
         /*
          * Run scheduler last, when all instructions are stable
          */
-        if( _IsModel( CGSW_GEN_INS_SCHEDULING ) ) {
+        if( IsModel( back, CGSW_GEN_INS_SCHEDULING ) ) {
             back.data.HaveLiveInfo = false;
             Schedule(back); /* NOTE: Schedule messes up live information */
             LiveInfoUpdate(back);
@@ -360,7 +360,7 @@ static  void    BlockToCode( BackRun& back, bool partly_done )
 
 
     /* try to get back some memory*/
-    _MemLow;
+    MemLow( back );
 
     /* make the block look like an entire procedure*/
 
@@ -386,15 +386,15 @@ static  void    BlockToCode( BackRun& back, bool partly_done )
     if( !partly_done ) {
         FixMemRefs(back);
         back.data.HaveLiveInfo = false;
-        if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION )
-          && _IsntModel( CGSW_GEN_FORTRAN_ALIASING ) ) {
+        if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION )
+          && IsntModel( back, CGSW_GEN_FORTRAN_ALIASING ) ) {
             FindReferences(back);
             CommonSex(back, false);
             PushPostOps(back);
         }
         FindReferences(back);
         DeadTemps(back);
-        if( _IsModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+        if( IsModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
             SetInOut( back, back.data.HeadBlock );
         } else {
             MakeConflicts(back);
@@ -601,7 +601,7 @@ static  void    Panic( BackRun& back, bool partly_done )
 static  void            GenPartialRoutine( BackRun& back, bool routine_done )
 /************************************************************/
 {
-    while( routine_done || _MemLow ) {
+    while( routine_done || MemLow( back ) ) {
         if( CreateBreak(back) ) {
             back.data.BlockByBlock = true;
             BlockTrim(back);
@@ -629,7 +629,7 @@ void    FEMessageCurrProc( BackRun& back, fe_msg femsg )
 /***************************************/
 {
 
-    if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION )
+    if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION )
       && back.generate.FEMessageCurrProc_lastproc != back.data.CurrProc ) {
         FEMessage( *back.front, femsg, AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) ) );
         back.generate.FEMessageCurrProc_lastproc = back.data.CurrProc;
@@ -650,7 +650,7 @@ void    Generate( BackRun& back, bool routine_done )
     /*
      * if we want to go fast, generate statement at a time
      */
-    if( _IsModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+    if( IsModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
         if( !back.data.BlockByBlock ) {
             InitStackMap(back);
             back.data.BlockByBlock = true;
@@ -658,7 +658,7 @@ void    Generate( BackRun& back, bool routine_done )
         LNBlip( back.data.SrcLine );
         FlushBlocks( back, false );
         FreeExtraSyms( back, back.data.LastTemp );
-        if( _MemLow ) {
+        if( MemLow( back ) ) {
             BlowAwayFreeLists(back);
         }
         return;
@@ -667,7 +667,7 @@ void    Generate( BackRun& back, bool routine_done )
      * if we couldn't get the whole procedure in memory, generate part of it
      */
     if( back.data.BlockByBlock ) {
-        if( _MemLow
+        if( MemLow( back )
           || routine_done ) {
             GenPartialRoutine( back, routine_done );
         } else {
@@ -678,7 +678,7 @@ void    Generate( BackRun& back, bool routine_done )
     /*
      * if we're low on memory, go into BlockByBlock mode
      */
-    if( _MemLow ) {
+    if( MemLow( back ) ) {
         InitStackMap(back);
         GenPartialRoutine( back, routine_done );
         BlowAwayFreeLists(back);
@@ -707,12 +707,12 @@ void    Generate( BackRun& back, bool routine_done )
     PreOptimize(back);
     PropNullInfo(back);
     MemtoBaseTemp();
-    if( _MemCritical ) {
+    if( MemCritical( back ) ) {
         Panic( back, false );
         return;
     }
     MakeConflicts(back);
-    if( _IsModel( CGSW_GEN_LOOP_OPTIMIZATION ) ) {
+    if( IsModel( back, CGSW_GEN_LOOP_OPTIMIZATION ) ) {
         SplitVars(back);
     }
     AddCacheRegs(back);
@@ -758,7 +758,7 @@ void    Generate( BackRun& back, bool routine_done )
     }
     FreeProc(back);
     back.data.HaveLiveInfo = false;
-    if( _IsTargetModel( CGSW_X86_NEW_P5_PROFILING ) ) {
+    if( IsTargetModel( back, CGSW_X86_NEW_P5_PROFILING ) ) {
         FlushQueue(back);
     }
 }

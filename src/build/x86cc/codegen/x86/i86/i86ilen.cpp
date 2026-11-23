@@ -72,7 +72,7 @@ obj_length  OptInsSize( BackRun& back, oc_class class_, oc_dest_attr attr )
     case OC_LREF:
         return( 2 );
     case OC_JCOND:
-        i = _CPULevel( CPU_386 ) ? 3 : 2;
+        i = CPULevel( back, CPU_386 ) ? 3 : 2;
         break;
     }
     return( InsSize[i][attr] );

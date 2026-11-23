@@ -61,7 +61,7 @@ static  bool    CompressLabels( BackRun& back, ins_entry *label )
     ins_entry   *other_label;
     bool        lbl_unique;
 
-  optbegin
+  OptBegin( back );
     lbl_unique = UniqueLabel( back, _Label( label ) );
     for( ;; ) {
         if( PrevClass( back, label ) != OC_LABEL )
@@ -73,7 +73,7 @@ static  bool    CompressLabels( BackRun& back, ins_entry *label )
             break;
         AliasLabels( back, other_label, label );
         if( _Class( label ) == OC_DEAD ) {
-            optreturn( false );
+            { OptEnd( back ); return( false ); }
         }
     }
     for( ;; ) {
@@ -86,10 +86,10 @@ static  bool    CompressLabels( BackRun& back, ins_entry *label )
             break;
         AliasLabels( back, other_label, label );
         if( _Class( label ) == OC_DEAD ) {
-            optreturn( false );
+            { OptEnd( back ); return( false ); }
         }
     }
-    optreturn( true );
+    { OptEnd( back ); return( true ); }
 }
 
 
@@ -140,7 +140,7 @@ static  bool    UnTangle2( BackRun& back, ins_entry *jmp, ins_entry **instr )
     oc_class    cl;
     ins_entry   *ins;
 
-    if( _IsModel( CGSW_GEN_NO_OPTIMIZATION ) )
+    if( IsModel( back, CGSW_GEN_NO_OPTIMIZATION ) )
         return( false );
     if( jmp == NULL )
         return( false );
@@ -189,7 +189,7 @@ ins_entry       *Untangle( BackRun& back, ins_entry *instr )
     ins_entry   *jmp;
     bool        change;
 
-  optbegin
+  OptBegin( back );
     for( ;; ) {
         if( instr == NULL )
             break;
@@ -212,7 +212,7 @@ ins_entry       *Untangle( BackRun& back, ins_entry *instr )
             break;
         }
     }
-    optreturn( instr );
+    { OptEnd( back ); return( instr ); }
 }
 
 
@@ -225,11 +225,11 @@ static  ins_entry       *Redirect( BackRun& back, ins_entry *l_ins, ins_entry *j
     ins_entry       *next;
     ins_entry       *new_ins;
 
-  optbegin
+  OptBegin( back );
     new_lbl = _Label( j_ins );
     new_ins = new_lbl->ins;
     if( UniqueLabel( back, _Label( l_ins ) ) && UniqueLabel( back, new_lbl ) ) {
-        optreturn( NULL );
+        { OptEnd( back ); return( NULL ); }
     }
     for( ref = _Label( l_ins )->refs; ref != NULL; ref = next ) {
         next = _LblRef( ref );
@@ -240,15 +240,15 @@ static  ins_entry       *Redirect( BackRun& back, ins_entry *l_ins, ins_entry *j
     }
     if( _Class( l_ins ) == OC_DEAD ) {
         /* got deleted*/
-        optreturn( ValidIns( back, l_ins ) );
+        { OptEnd( back ); return( ValidIns( back, l_ins ) ); }
     }
     if( new_ins == NULL
      || _Class( new_ins ) == OC_DEAD
      || _ChkAttr( l_ins, OC_ATTR_SHORT )
      || _TstStatus( _Label( l_ins ), REDIRECTION ) ) {
-         optreturn( NextIns( back, l_ins ) );
+         { OptEnd( back ); return( NextIns( back, l_ins ) ); }
     } else {
-         optreturn(  AliasLabels( back, l_ins, new_lbl->ins ) );
+         { OptEnd( back ); return( AliasLabels( back, l_ins, new_lbl->ins ) ); }
     }
 }
 
@@ -258,7 +258,7 @@ void    OptPush( BackRun& back )
 {
     ins_entry   *ins;
 
-  optbegin
+  OptBegin( back );
     ins = back.optdata.LastIns;
     for( ;; ) {
         back.optdata.InsDelete = false;
@@ -273,7 +273,7 @@ void    OptPush( BackRun& back )
             }
             break;
         case OC_CALL:
-            if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+            if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
                 CallRet( back, ins );
             }
             break;
@@ -285,7 +285,7 @@ void    OptPush( BackRun& back )
             }
             break;
         case OC_RET:
-            if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+            if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
                 RetAftrLbl( back, ins );
                 RetAftrCall( back, ins );
             }
@@ -306,13 +306,13 @@ void    OptPush( BackRun& back )
         ins = back.optdata.LastIns;
         for( ;; ) {
             if( ins == NULL )
-                optreturnvoid;
+                { OptEnd( back ); return; }
             if( _Class( ins ) != OC_INFO )
                 break;
             ins = ins->ins.prev;
         }
     }
-  optend
+  OptEnd( back );
 }
 
 
@@ -321,24 +321,24 @@ void    OptPull( BackRun& back )
 {
     oc_class    ins_class;
 
-  optbegin
+  OptBegin( back );
     for( ;; ) {
         back.optdata.InsDelete = false;
         ins_class = _Class( back.optdata.FirstIns );
         switch( ins_class ) {
         case OC_LABEL:
             Untangle( back, back.optdata.FirstIns );
-            if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) && !back.optdata.InsDelete ) {
+            if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) && !back.optdata.InsDelete ) {
                 CloneCode( back, _Label( back.optdata.FirstIns ) );
             }
             break;
         case OC_CALL:
-            if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+            if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
                 CallRet( back, back.optdata.FirstIns );
             }
             break;
         case OC_JMP:
-            if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+            if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
                 IsolatedCode( back, back.optdata.FirstIns );
                 if( !back.optdata.InsDelete ) {
                     StraightenCode( back, back.optdata.FirstIns );
@@ -353,7 +353,7 @@ void    OptPull( BackRun& back )
             }
             break;
         case OC_JMPI:
-            if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+            if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
                 IsolatedCode( back, back.optdata.FirstIns );
                 if( !back.optdata.InsDelete ) {
                     CheckStraightenCode( back, NextIns( back, back.optdata.FirstIns ) );
@@ -365,7 +365,7 @@ void    OptPull( BackRun& back )
             break;
         case OC_RET:
         case OC_NORET:
-            if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+            if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
                 IsolatedCode( back, back.optdata.FirstIns );
                 if( !back.optdata.InsDelete ) {
                     CheckStraightenCode( back, NextIns( back, back.optdata.FirstIns ) );
@@ -375,7 +375,7 @@ void    OptPull( BackRun& back )
         }
         FreePendingDeletes(back);
         if( back.optdata.FirstIns == NULL )
-            optreturnvoid;
+            { OptEnd( back ); return; }
         if( !back.optdata.InsDelete ) {
             break;
         }
@@ -393,5 +393,5 @@ void    OptPull( BackRun& back )
         _SetStatus( _Label( back.optdata.FirstIns ), KEEPLABEL );
         break;
     }
-  optend
+  OptEnd( back );
 }

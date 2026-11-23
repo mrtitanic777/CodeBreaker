@@ -67,7 +67,7 @@ static void pragmaAuxInfoInit( FrontRun& front )
      * an aux_entry, so we don't have to worry about them
      * or their fields being freed
      */
-    front.pragdefn.STOSBInfo = WatcallInfo;
+    front.pragdefn.STOSBInfo = WatcallInfo( front );
     front.pragdefn.STOSBInfo.cclass        = FECALL_GEN_NONE;
     front.pragdefn.STOSBInfo.cclass_target = FECALL_X86_NO_FLOAT_REG_RETURNS |
                               FECALL_X86_NO_STRUCT_REG_RETURNS |
@@ -187,7 +187,7 @@ static void PragmaAuxEnd( FrontRun& front )
     if( !HW_CEqual( front.cpragx86.AuxInfo.save, HW_EMPTY ) ) {
         HW_CTurnOn( front.pragdefn.CurrInfo->save, HW_FULL );
         if( (front.cpragx86.AuxInfo.cclass_target & FECALL_X86_MODIFY_EXACT) == 0 && !front.cvars.CompFlags.save_restore_segregs ) {
-            HW_Asgn( default_flt_n_seg, WatcallInfo.save );
+            HW_Asgn( default_flt_n_seg, WatcallInfo( front ).save );
             HW_CAsgn( flt_n_seg, HW_FLTS );
             HW_CTurnOn( flt_n_seg, HW_SEGS );
             HW_TurnOff( front.pragdefn.CurrInfo->save, flt_n_seg );
@@ -943,7 +943,7 @@ void PragAux( FrontRun& front )
     } have;
 
     InitAuxInfo(front);
-    PPCTL_ENABLE_MACROS();
+    PPCtlEnableMacros( front );
     PPNextToken(front);
     if( GetPragmaAuxAliasInfo(front) ) {
         SetCurrInfo( front, front.cvars.Buffer );
@@ -1002,7 +1002,7 @@ void PragAux( FrontRun& front )
         }
         PragmaAuxEnd(front);
     }
-    PPCTL_DISABLE_MACROS();
+    PPCtlDisableMacros( front );
 }
 
 void AsmSysInit( FrontRun& front, unsigned char *buf )

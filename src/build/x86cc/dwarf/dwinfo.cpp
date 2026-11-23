@@ -41,7 +41,7 @@
 
 void DW_InfoReloc( BackRun& back, dw_client cli, uint reloc_type )
 {
-    CLIReloc2( cli, DW_DEBUG_INFO, static_cast<dw_reloc_type>(reloc_type) );
+    CLIReloc( back, cli, DW_DEBUG_INFO, static_cast<dw_reloc_type>(reloc_type) );
 }
 
 
@@ -77,7 +77,7 @@ void DW_InfoULEB128( BackRun& back, dw_client cli, dw_uconst value )
 
 void DW_InfoBytes( BackRun& back, dw_client cli, const void *buf, size_t size )
 {
-    CLIWrite( cli, DW_DEBUG_INFO, buf, size );
+    CLIWrite( back, cli, DW_DEBUG_INFO, buf, size );
 }
 
 
@@ -117,11 +117,11 @@ void DW_InitDebugInfo( BackRun& back, dw_client cli )
     CLIWriteU16( back, cli, DW_DEBUG_INFO, 2 );   /* section version */
     /* abbrev start */
     if( cli->compiler_options & DW_CM_ABBREV_PRE ) {
-        CLIReloc4( cli, DW_DEBUG_INFO, DW_W_EXT_REF, cli->abbrev_sym, 0 );
+        CLIReloc( back, cli, DW_DEBUG_INFO, DW_W_EXT_REF, cli->abbrev_sym, 0 );
     } else {
-        CLISectionSeekAbs( cli, DW_DEBUG_ABBREV, 0 );
-        CLIReloc3( cli, DW_DEBUG_INFO, DW_W_SECTION_POS, DW_DEBUG_ABBREV );
-        CLISectionSeekEnd( cli, DW_DEBUG_ABBREV );
+        CLISectionSeekAbs( back, cli, DW_DEBUG_ABBREV, 0 );
+        CLIReloc( back, cli, DW_DEBUG_INFO, DW_W_SECTION_POS, DW_DEBUG_ABBREV );
+        CLISectionSeekEnd( back, cli, DW_DEBUG_ABBREV );
     }
     CLIWriteU8( back, cli, DW_DEBUG_INFO, cli->offset_size );
 }

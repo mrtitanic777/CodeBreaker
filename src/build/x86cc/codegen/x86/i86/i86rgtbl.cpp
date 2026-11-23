@@ -573,7 +573,7 @@ static const reg_set_index  * const InterTable[] = {
 void            InitRegTbl( BackRun& back )
 /********************************/
 {
-    if( _FPULevel( FPU_87 ) ) {
+    if( FPULevel( back, FPU_87 ) ) {
         HW_CAsgn( back.i86rgtbl->STParmReg[back.i87data.Max87Stk], HW_EMPTY );
     }
 }
@@ -617,7 +617,7 @@ const hw_reg_set    *ParmChoices( BackRun& back, type_class_def type_class )
 {
     const hw_reg_set    *list;
 
-    if( _FPULevel( FPU_87 ) ) {
+    if( FPULevel( back, FPU_87 ) ) {
         list = back.i86rgtbl->ParmSets8087[type_class];
     } else {
         list = ParmSets[type_class];
@@ -659,7 +659,7 @@ hw_reg_set  ReturnReg( BackRun& back, type_class_def type_class, bool use_87 )
 {
     const hw_reg_set    *list;
 
-    if( _FPULevel( FPU_87 ) && use_87 ) {
+    if( FPULevel( back, FPU_87 ) && use_87 ) {
         list = RegSetList(back, Return8087[type_class]);
     } else {
         list = RegSetList(back, ReturnSets[type_class]);
@@ -942,13 +942,13 @@ hw_reg_set      FixedRegs( BackRun& back )
     HW_CTurnOn( tmp, HW_BP );
     HW_CTurnOn( tmp, HW_SS );
     HW_CTurnOn( tmp, HW_CS );
-    if( _IsntTargetModel( CGSW_X86_FLOATING_DS ) )
+    if( IsntTargetModel( back, CGSW_X86_FLOATING_DS ) )
         HW_CTurnOn( tmp, HW_DS );
-    if( _IsntTargetModel( CGSW_X86_FLOATING_ES ) )
+    if( IsntTargetModel( back, CGSW_X86_FLOATING_ES ) )
         HW_CTurnOn( tmp, HW_ES );
-    if( _IsntTargetModel( CGSW_X86_FLOATING_FS ) )
+    if( IsntTargetModel( back, CGSW_X86_FLOATING_FS ) )
         HW_CTurnOn( tmp, HW_FS );
-    if( _IsntTargetModel( CGSW_X86_FLOATING_GS ) )
+    if( IsntTargetModel( back, CGSW_X86_FLOATING_GS ) )
         HW_CTurnOn( tmp, HW_GS );
     return( tmp );
 }
@@ -997,13 +997,13 @@ hw_reg_set      AllCacheRegs( BackRun& back )
     HW_CTurnOn( tmp, HW_ABCD );
     HW_CTurnOn( tmp, HW_SI );
     HW_CTurnOn( tmp, HW_DI );
-    if( _IsTargetModel( CGSW_X86_FLOATING_DS ) )
+    if( IsTargetModel( back, CGSW_X86_FLOATING_DS ) )
         HW_CTurnOn( tmp, HW_DS );
-    if( _IsTargetModel( CGSW_X86_FLOATING_ES ) )
+    if( IsTargetModel( back, CGSW_X86_FLOATING_ES ) )
         HW_CTurnOn( tmp, HW_ES );
-    if( _IsTargetModel( CGSW_X86_FLOATING_FS ) )
+    if( IsTargetModel( back, CGSW_X86_FLOATING_FS ) )
         HW_CTurnOn( tmp, HW_FS );
-    if( _IsTargetModel( CGSW_X86_FLOATING_GS ) )
+    if( IsTargetModel( back, CGSW_X86_FLOATING_GS ) )
         HW_CTurnOn( tmp, HW_GS );
     return( tmp );
 }

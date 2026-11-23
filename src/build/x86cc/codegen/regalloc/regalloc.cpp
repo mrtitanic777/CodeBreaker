@@ -307,7 +307,7 @@ static  bool  FixInstructions( BackRun& back, conflict_node *conf, reg_tree *tre
         conf->name->v.usage |= USE_MEMORY;
     }
     opnd = tree->temp;
-    if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
+    if( IsModel( back, CGSW_GEN_DBG_LOCALS ) ) {
         DBAllocReg( reg_name, opnd );
     }
 
@@ -483,11 +483,11 @@ static int_32   CountRegMoves( BackRun& back, conflict_node *conf,
             ins = ins->head.next;
         }
     }
-    if( _IsModel( CGSW_GEN_SUPER_OPTIMAL ) ) {
+    if( IsModel( back, CGSW_GEN_SUPER_OPTIMAL ) ) {
         count += CountRegMoves( back, conf, HighOffsetReg( back, reg ), tree->hi, levels );
         count += CountRegMoves( back, conf, LowOffsetReg( back, reg ), tree->lo, levels );
     }
-    if( _IsModel( CGSW_GEN_SUPER_OPTIMAL ) ) {
+    if( IsModel( back, CGSW_GEN_SUPER_OPTIMAL ) ) {
         /*
          * This is really expensive, compile time-wise, but what it does is
          * checks to see if we have an intervening temp or two that may turn
@@ -770,7 +770,7 @@ static  void    NeighboursUse( BackRun& back, conflict_node *conf )
     HW_CAsgn( conf->with.regs, HW_EMPTY );
     _GBitInit( conf->with.out_of_block, EMPTY );
     _LBitInit( conf->with.within_block, EMPTY );
-    _INS_NOT_BLOCK ( last );
+    InsNotBlock( back, last );
     if( ins != last ) {
         _NameSetInit( no_conflict );
         for( ;; ) {
@@ -976,7 +976,7 @@ static hw_reg_set   GiveBestReg( BackRun& back, conflict_node *conf, reg_tree *t
         }
     }
     if( HW_CEqual( given, HW_EMPTY ) && needs_one ) {
-        _Zoiks( ZOIKS_040 );
+        Zoiks( back, ZOIKS_040 );
     }
     return( given );
 }
@@ -1279,7 +1279,7 @@ bool    RegAlloc( BackRun& back, bool keep_on_truckin )
             FreeConflicts(back);
             NullConflicts( back, static_cast<var_usage>(EMPTY) );
             back.data.HaveLiveInfo = false;
-            if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
+            if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
                 DeadInstructions(back);
                 FindReferences(back);
                 PropagateMoves(back);

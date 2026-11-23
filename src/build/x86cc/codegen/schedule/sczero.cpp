@@ -156,9 +156,6 @@ bool    ScoreZero( BackRun& back, score_hdl scoreboard, instruction **pins )
     name                *tmp4;
 
 
-#define NonZeroOP2Part( x )  NonZeroPart( back, op2, x, half_type_class )
-#define NonZeroOP1Part( x )  NonZeroPart( back, op1, x, half_type_class )
-#define NonZeroRESPart( x )  NonZeroPart( back, res, x, half_type_class )
 
     ins = *pins;
     if( ins->num_operands != 2 )
@@ -196,10 +193,10 @@ bool    ScoreZero( BackRun& back, score_hdl scoreboard, instruction **pins )
         } else if( _IsZero( op2zpart ) ) {
             ins1 = MakeMove( back, op1, res, type_class );
         } else if( _OpposZero( op1zpart, op2zpart ) ) {
-            tmp1 = NonZeroOP1Part( op1zpart );
-            tmp2 = NonZeroRESPart( op1zpart );
-            tmp3 = NonZeroOP2Part( op2zpart );
-            tmp4 = NonZeroRESPart( op2zpart );
+            tmp1 = NonZeroPart( back, op1, op1zpart, half_type_class );
+            tmp2 = NonZeroPart( back, res, op1zpart, half_type_class );
+            tmp3 = NonZeroPart( back, op2, op2zpart, half_type_class );
+            tmp4 = NonZeroPart( back, res, op2zpart, half_type_class );
             if( tmp1 == 0 || tmp2 == 0 || tmp3 == 0 || tmp4 == 0 )
                 return( false );
             ins1 = MakeMove( back, tmp1, tmp2, half_type_class );
@@ -208,10 +205,10 @@ bool    ScoreZero( BackRun& back, score_hdl scoreboard, instruction **pins )
             zeropart = _ZeroHalf( op1zpart, op2zpart );
             if( _LoZero( zeropart ) ) {
                 nonzeropart = _OtherHalf( zeropart );
-                tmp1 = NonZeroRESPart( nonzeropart );
-                tmp2 = NonZeroOP1Part( zeropart );
-                tmp3 = NonZeroOP2Part( zeropart );
-                tmp4 = NonZeroRESPart( zeropart );
+                tmp1 = NonZeroPart( back, res, nonzeropart, half_type_class );
+                tmp2 = NonZeroPart( back, op1, zeropart, half_type_class );
+                tmp3 = NonZeroPart( back, op2, zeropart, half_type_class );
+                tmp4 = NonZeroPart( back, res, zeropart, half_type_class );
                 if( tmp1 == 0 || tmp2 == 0 || tmp3 == 0 || tmp4 == 0 )
                     return( false );
                 ins2 = MakeClear( back, tmp1, half_type_class );
@@ -235,10 +232,10 @@ bool    ScoreZero( BackRun& back, score_hdl scoreboard, instruction **pins )
             zeropart = AZeroHalf( op1zpart, op2zpart );
             if( zeropart ) {
                 nonzeropart = _OtherHalf( zeropart );
-                tmp1 = NonZeroRESPart( nonzeropart );
-                tmp2 = NonZeroOP1Part( zeropart );
-                tmp3 = NonZeroOP2Part( zeropart );
-                tmp4 = NonZeroRESPart( zeropart );
+                tmp1 = NonZeroPart( back, res, nonzeropart, half_type_class );
+                tmp2 = NonZeroPart( back, op1, zeropart, half_type_class );
+                tmp3 = NonZeroPart( back, op2, zeropart, half_type_class );
+                tmp4 = NonZeroPart( back, res, zeropart, half_type_class );
                 if( tmp1 == 0 || tmp2 == 0 || tmp3 == 0 || tmp4 == 0 )
                     return( false );
                 ins1 = MakeClear( back, tmp1, half_type_class );
@@ -261,10 +258,10 @@ bool    ScoreZero( BackRun& back, score_hdl scoreboard, instruction **pins )
         } else if( _IsZero( op2zpart ) ) {
             ins1 = MakeMove( back, op1, res, type_class );
         } else if( _OpposZero( op1zpart, op2zpart ) ) {
-            tmp1 = NonZeroOP1Part( op1zpart );
-            tmp2 = NonZeroRESPart( op1zpart );
-            tmp3 = NonZeroOP2Part( op2zpart );
-            tmp4 = NonZeroRESPart( op2zpart );
+            tmp1 = NonZeroPart( back, op1, op1zpart, half_type_class );
+            tmp2 = NonZeroPart( back, res, op1zpart, half_type_class );
+            tmp3 = NonZeroPart( back, op2, op2zpart, half_type_class );
+            tmp4 = NonZeroPart( back, res, op2zpart, half_type_class );
             if( tmp1 == 0 || tmp2 == 0 || tmp3 == 0 || tmp4 == 0 )
                 return( false );
             ins1 = MakeMove( back, tmp1, tmp2, half_type_class );
@@ -272,10 +269,10 @@ bool    ScoreZero( BackRun& back, score_hdl scoreboard, instruction **pins )
         } else if( _MatchZero( op1zpart, op2zpart ) ) {
             zeropart = _ZeroHalf( op1zpart, op2zpart );
             nonzeropart = _OtherHalf( zeropart );
-            tmp1 = NonZeroRESPart( nonzeropart );
-            tmp2 = NonZeroOP1Part( zeropart );
-            tmp3 = NonZeroOP2Part( zeropart );
-            tmp4 = NonZeroRESPart( zeropart );
+            tmp1 = NonZeroPart( back, res, nonzeropart, half_type_class );
+            tmp2 = NonZeroPart( back, op1, zeropart, half_type_class );
+            tmp3 = NonZeroPart( back, op2, zeropart, half_type_class );
+            tmp4 = NonZeroPart( back, res, zeropart, half_type_class );
             if( tmp1 == 0 || tmp2 == 0 || tmp3 == 0 || tmp4 == 0 )
                 return( false );
             ins2 = MakeClear( back, tmp1, half_type_class );

@@ -62,8 +62,10 @@
 #define MSGIDX_INVALID  (-1)
 #define IS_MSGIDX_INVALID(m)  ((int)(m) == MSGIDX_INVALID)
 
-#define CheckEqSymLevel(p)  ((p)->level == (id_level_type)front.cvars.SymLevel)
-#define CheckLtSymLevel(p)  ((p)->level < (id_level_type)front.cvars.SymLevel)
+/* whether a symbol, tag or hash entry is of the current lex level of the run (the bodies are in frontrun.hpp) */
+struct FrontRun;
+template< class Entry > inline bool CheckEqSymLevel( const FrontRun& front, const Entry *entry );
+template< class Entry > inline bool CheckLtSymLevel( const FrontRun& front, const Entry *entry );
 
 
 /* Macros to skip all typedefs and arrive at the underlying type */

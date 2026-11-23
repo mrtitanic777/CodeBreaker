@@ -60,15 +60,15 @@ static  bool    JustMoveLabel( BackRun& back, common_info *max, ins_entry *ins )
     ins_entry           *add;
     ins_entry           *next;
 
-  optbegin
+  OptBegin( back );
     if( PrevClass( back, max->start_del ) != OC_LABEL )
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
     lbl = PrevIns( back, max->start_del );
     if( _ChkAttr( lbl, OC_ATTR_SHORT ) )
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
     cl = PrevClass( back, lbl );
     if( !_TransferClass( cl ) )
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
     DeleteQueue( back, lbl );
     InsertQueue( back, lbl, PrevIns( back, max->start_com ) );
     add = PrevIns( back, max->start_del );
@@ -80,7 +80,7 @@ static  bool    JustMoveLabel( BackRun& back, common_info *max, ins_entry *ins )
         }
     }
     Untangle( back, lbl );
-    optreturn( true );
+    { OptEnd( back ); return( true ); }
 }
 
 
@@ -92,10 +92,10 @@ static  void    TransformJumps( BackRun& back, ins_entry *ins, ins_entry *first 
     ins_entry           *lbl;
     oc_class            cl;
 
-  optbegin
+  OptBegin( back );
     cl = _Class( ins );
     if( cl == OC_RET || cl == OC_NORET )
-        optreturnvoid;
+        { OptEnd( back ); return; }
     lbl = _Label( ins )->ins;
     for( add = lbl; add != NULL; add = NextIns( back, add ) ) {
         cl = _Class( add );
@@ -103,14 +103,14 @@ static  void    TransformJumps( BackRun& back, ins_entry *ins, ins_entry *first 
             break;
         if( cl == OC_LABEL ) {
             if( _ChkAttr( add, OC_ATTR_SHORT ) )
-                optreturnvoid;
+                { OptEnd( back ); return; }
             _ClrStatus( _Label( add ), SHORTREACH );
         }
     }
     if( add == NULL || add == first || add == ins )
-        optreturnvoid;
+        { OptEnd( back ); return; }
     if( FindShort( back, first, lbl ) )
-        optreturnvoid;
+        { OptEnd( back ); return; }
     for( ;; ) {
         next = PrevIns( back, add );
         DeleteQueue( back, add );
@@ -122,22 +122,22 @@ static  void    TransformJumps( BackRun& back, ins_entry *ins, ins_entry *first 
     DeleteQueue( back, first );
     InsertQueue( back, first, next );
     Untangle( back, NextIns( back, first ) );
-  optend
+  OptEnd( back );
 }
 
 
 static  bool    CommonInstr( BackRun& back, ins_entry *old, ins_entry *add )
 /***********************************************************/
 {
-  optbegin
-    if( _IsModel( CGSW_GEN_NO_OPTIMIZATION ) )
-        optreturn( false );
+  OptBegin( back );
+    if( IsModel( back, CGSW_GEN_NO_OPTIMIZATION ) )
+        { OptEnd( back ); return( false ); }
     if( _ClassInfo( add ) != _ClassInfo( old ) )
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
     if( _InsLen( add ) != _InsLen( old ) )
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
     if( _ObjLen( add ) != _ObjLen( old ) )
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
     switch( _Class( old ) ) {
     case OC_BDATA:
         /* User may be doing stupid stuff like stringing together a bunch
@@ -148,39 +148,39 @@ static  bool    CommonInstr( BackRun& back, ins_entry *old, ins_entry *add )
          */
         /* fall through */
     case OC_DEAD:
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
     case OC_JMP:
     case OC_CALL:
     case OC_LABEL:
     case OC_LREF:
         if( _Label( old ) != _Label( add ) )
-            optreturn( false );
+            { OptEnd( back ); return( false ); }
         break;
     case OC_JCOND:
         if( _JmpCond( old ) != _JmpCond( add ) )
-            optreturn( false );
+            { OptEnd( back ); return( false ); }
         if( _Label( old ) != _Label( add ) )
-            optreturn( false );
+            { OptEnd( back ); return( false ); }
         break;
     case OC_RET:
         if( _RetPop( old ) != _RetPop( add ) )
-            optreturn( false );
+            { OptEnd( back ); return( false ); }
         break;
     case OC_NORET:
         break;
     default:
         if( !Equal( &add->oc.oc_entry.data, &old->oc.oc_entry.data, _InsLen( add ) - offsetof( oc_entry, data ) ) )
-            optreturn( false );
+            { OptEnd( back ); return( false ); }
         break;
     }
-    optreturn( true );
+    { OptEnd( back ); return( true ); }
 }
 
 
 static  void    FindCommon( BackRun& back, common_info *c, ins_entry *p1, ins_entry *p2 )
 /************************************************************************/
 {
-  optbegin
+  OptBegin( back );
     c->save = 0;
     for( ;; ) {
         if( !CommonInstr( back, p1, p2 ) )
@@ -191,7 +191,7 @@ static  void    FindCommon( BackRun& back, common_info *c, ins_entry *p1, ins_en
         for( ;; ) {
             p1 = PrevIns( back, p1 );
             if( p1 == NULL )
-                optreturnvoid;
+                { OptEnd( back ); return; }
             if( _Class( p1 ) != OC_LABEL ) {
                 break;
             }
@@ -201,7 +201,7 @@ static  void    FindCommon( BackRun& back, common_info *c, ins_entry *p1, ins_en
             break;
         }
     }
-  optend
+  OptEnd( back );
 }
 
 bool    ComTail( BackRun& back, ins_entry *list, ins_entry *ins )
@@ -216,7 +216,7 @@ bool    ComTail( BackRun& back, ins_entry *list, ins_entry *ins )
     common_info         max;
     obj_length          align;
 
-  optbegin
+  OptBegin( back );
     align = (_Class( list ) == OC_LABEL) ? _ObjLen( list ) : 0;
     try_ = list;
     first = NULL;
@@ -235,13 +235,13 @@ bool    ComTail( BackRun& back, ins_entry *list, ins_entry *ins )
         }
     }
     if( max.save == 0 )
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
     if( JustMoveLabel( back, &max, ins ) )
-        optreturn( true );
+        { OptEnd( back ); return( true ); }
     if( back.data.OptForSize < 25 )
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
     if( max.save <= OptInsSize( back, OC_JMP, OC_DEST_NEAR ) )
-        optreturn( false );
+        { OptEnd( back ); return( false ); }
     TransformJumps( back, ins, first );
     add = PrevIns( back, max.start_del );
     try_ = PrevIns( back, max.start_com );
@@ -259,7 +259,7 @@ bool    ComTail( BackRun& back, ins_entry *list, ins_entry *ins )
     }
     Untangle( back, lbl );
     IsolatedCode( back, add );
-    optreturn( true );
+    { OptEnd( back ); return( true ); }
 }
 
 
@@ -271,7 +271,7 @@ bool    ComCode( BackRun& back, ins_entry *jmp )
     obj_length  align;
     bool        common;
 
-  optbegin
+  OptBegin( back );
     common = false;
     com = NULL;
     new_ins = _Label( jmp )->ins;
@@ -300,7 +300,7 @@ bool    ComCode( BackRun& back, ins_entry *jmp )
             com = PrevIns( back, DelInstr( back, com ) );
             common = true;
             if( _Class( jmp ) == OC_DEAD ) {
-                optreturn( common );
+                { OptEnd( back ); return( common ); }
             }
         }
         if( common ) {
@@ -313,9 +313,9 @@ bool    ComCode( BackRun& back, ins_entry *jmp )
         }
     }
     if( _Class( jmp ) == OC_DEAD )
-        optreturn( common );
+        { OptEnd( back ); return( common ); }
     common |= ComTail( back, _Label( jmp )->refs, jmp );
-    optreturn( common );
+    { OptEnd( back ); return( common ); }
 }
 
 
@@ -325,13 +325,13 @@ void    TraceCommon( BackRun& back, ins_entry *lbl_ins )
     ins_entry   *ref;
     ins_entry   *ins;
 
-  optbegin
+  OptBegin( back );
     for( ;; ) {
         ref = _Label( lbl_ins )->refs;
         for( ;; ) {
             for( ;; ) {
                 if( ref == NULL )
-                    optreturnvoid;
+                    { OptEnd( back ); return; }
                 ins = ref;
                 ref = _LblRef( ref );
                 if( _Class( ins ) == OC_JMP ) {
@@ -346,5 +346,5 @@ void    TraceCommon( BackRun& back, ins_entry *lbl_ins )
             break;
         }
     }
-    optreturnvoid;
+    { OptEnd( back ); return; }
 }

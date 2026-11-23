@@ -351,29 +351,29 @@ static void SetDftCallConv( FrontRun& front, OPT_STORAGE *data )
      */
     switch( data->intel_call_conv ) {
     case OPT_ENUM_intel_call_conv_ecc:
-        front.callinfo.DftCallConv = &CdeclInfo;
+        front.callinfo.DftCallConv = &CdeclInfo( front );
         break;
     case OPT_ENUM_intel_call_conv_ecd:
-        front.callinfo.DftCallConv = &StdcallInfo;
+        front.callinfo.DftCallConv = &StdcallInfo( front );
         break;
     case OPT_ENUM_intel_call_conv_ecf:
-        front.callinfo.DftCallConv = &FastcallInfo;
+        front.callinfo.DftCallConv = &FastcallInfo( front );
         break;
     case OPT_ENUM_intel_call_conv_eco:
-        front.callinfo.DftCallConv = &OptlinkInfo;
+        front.callinfo.DftCallConv = &OptlinkInfo( front );
         break;
     case OPT_ENUM_intel_call_conv_ecp:
-        front.callinfo.DftCallConv = &PascalInfo;
+        front.callinfo.DftCallConv = &PascalInfo( front );
         break;
     case OPT_ENUM_intel_call_conv_ecr:
-        front.callinfo.DftCallConv = &FortranInfo;
+        front.callinfo.DftCallConv = &FortranInfo( front );
         break;
     case OPT_ENUM_intel_call_conv_ecs:
-        front.callinfo.DftCallConv = &SyscallInfo;
+        front.callinfo.DftCallConv = &SyscallInfo( front );
         break;
     case OPT_ENUM_intel_call_conv_default:
     case OPT_ENUM_intel_call_conv_ecw:
-        front.callinfo.DftCallConv = &WatcallInfo;
+        front.callinfo.DftCallConv = &WatcallInfo( front );
         break;
     default:
         DbgNever();
@@ -459,20 +459,20 @@ static void SetFinalTargetSystem( FrontRun& front, OPT_STORAGE *data, char *targ
     }
     if( !front.cvars.CompFlags.save_restore_segregs ) {
         if( front.cvars.TargetSwitches & CGSW_X86_FLOATING_DS ) {
-            HW_CTurnOff( WatcallInfo.save, HW_DS );
+            HW_CTurnOff( WatcallInfo( front ).save, HW_DS );
         }
         if( front.cvars.TargetSwitches & CGSW_X86_FLOATING_ES ) {
-            HW_CTurnOff( WatcallInfo.save, HW_ES );
+            HW_CTurnOff( WatcallInfo( front ).save, HW_ES );
         }
         if( front.cvars.TargetSwitches & CGSW_X86_FLOATING_FS ) {
-            HW_CTurnOff( WatcallInfo.save, HW_FS );
+            HW_CTurnOff( WatcallInfo( front ).save, HW_FS );
         }
         if( front.cvars.TargetSwitches & CGSW_X86_FLOATING_GS ) {
-            HW_CTurnOff( WatcallInfo.save, HW_GS );
+            HW_CTurnOff( WatcallInfo( front ).save, HW_GS );
         }
     }
     if( data->of_plus ) {
-        WatcallInfo.cclass_target |= FECALL_X86_GENERATE_STACK_FRAME;
+        WatcallInfo( front ).cclass_target |= FECALL_X86_GENERATE_STACK_FRAME;
     }
   #if _CPU == 386
     if( !front.cvars.CompFlags.register_conventions ) {
@@ -944,7 +944,7 @@ static void MacroDefs( FrontRun& front, OPT_STORAGE *data )
     if( front.cvars.CompFlags.op_switch_used ) {
         DefSwitchMacro( front, "OP" );
     }
-    if( !TOGGLE( check_stack ) ) {
+    if( !Toggles( front ).tog_check_stack ) {
         DefSwitchMacro( front, "S" );
     }
 }
@@ -978,7 +978,7 @@ static void Define_Memory_Model( FrontRun& front, OPT_STORAGE *data )
         break;
     case OPT_ENUM_mem_model_mm:
         lib_model = 'm';
-        WatcallInfo.cclass_target |= FECALL_X86_FAR_CALL;
+        WatcallInfo( front ).cclass_target |= FECALL_X86_FAR_CALL;
         front.cvars.CodePtrSize = TARGET_FAR_POINTER;
         front.cvars.CompFlags.strings_in_code_segment = false;
         front.cvars.TargetSwitches &= ~CGSW_X86_CONST_IN_CODE;
@@ -991,7 +991,7 @@ static void Define_Memory_Model( FrontRun& front, OPT_STORAGE *data )
         break;
     case OPT_ENUM_mem_model_ml:
         lib_model = 'l';
-        WatcallInfo.cclass_target |= FECALL_X86_FAR_CALL;
+        WatcallInfo( front ).cclass_target |= FECALL_X86_FAR_CALL;
         front.cvars.CodePtrSize = TARGET_FAR_POINTER;
         front.cvars.DataPtrSize = TARGET_FAR_POINTER;
         bit |= CGSW_X86_BIG_CODE | CGSW_X86_BIG_DATA | CGSW_X86_CHEAP_POINTER;
@@ -999,7 +999,7 @@ static void Define_Memory_Model( FrontRun& front, OPT_STORAGE *data )
 #if _CPU == 8086
     case OPT_ENUM_mem_model_mh:
         lib_model = 'h';
-        WatcallInfo.cclass_target |= FECALL_X86_FAR_CALL;
+        WatcallInfo( front ).cclass_target |= FECALL_X86_FAR_CALL;
         front.cvars.CodePtrSize = TARGET_FAR_POINTER;
         front.cvars.DataPtrSize = TARGET_FAR_POINTER;
         bit |= CGSW_X86_BIG_CODE | CGSW_X86_BIG_DATA;

@@ -57,7 +57,7 @@ void FixMemBases( void )
 
 hw_reg_set ScratchReg( BackRun& back )
 {
-    _Zoiks( ZOIKS_091 );
+    Zoiks( back, ZOIKS_091 );
     return( HW_SI );
 }
 
@@ -73,7 +73,7 @@ type_length TempLocation( BackRun& back, name *temp )
 
 hw_reg_set      VarargsHomePtr( BackRun& back )
 {
-    _Zoiks( ZOIKS_078 );
+    Zoiks( back, ZOIKS_078 );
     return( HW_EAX );
 }
 

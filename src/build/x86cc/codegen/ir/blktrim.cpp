@@ -379,7 +379,7 @@ static  bool    DoBlockTrim( BackRun& back )
     bool        any_change;
     block_id    blk_id;
 
-    _MarkBlkAllUnVisited();
+    MarkBlkAllUnVisited( back );
     any_change = false;
     do {
         change = false;
@@ -424,7 +424,7 @@ static  bool    DoBlockTrim( BackRun& back )
                 }
             }
         }
-        _MarkBlkAllUnVisited();
+        MarkBlkAllUnVisited( back );
         if( change ) {
             back.data.BlocksUnTrimmed = false;
             any_change = true;

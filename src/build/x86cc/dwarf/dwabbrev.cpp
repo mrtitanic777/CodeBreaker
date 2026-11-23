@@ -128,7 +128,7 @@ unsigned DW_MarkAbbrevAsUsed( BackRun& back, dw_client cli, abbrev_code *abbrev 
     /* emit the abbrev number, and tag */
     end = WriteULEB128( buf, code );
     end = WriteULEB128( end, data->tag );
-    CLIWrite( cli, DW_DEBUG_ABBREV, buf, end - buf );
+    CLIWrite( back, cli, DW_DEBUG_ABBREV, buf, end - buf );
 
     /* add in the attributes that are always emitted */
     *abbrev |= data->valid_mask & AB_ALWAYS;
@@ -139,7 +139,7 @@ unsigned DW_MarkAbbrevAsUsed( BackRun& back, dw_client cli, abbrev_code *abbrev 
             DW_CHILDREN_yes,
             DW_AT_sibling,          DW_FORM_ref4
         };
-        CLIWrite( cli, DW_DEBUG_ABBREV, sibling_attr, sizeof( sibling_attr ) );
+        CLIWrite( back, cli, DW_DEBUG_ABBREV, sibling_attr, sizeof( sibling_attr ) );
     } else {
         CLIWriteU8( back, cli, DW_DEBUG_ABBREV, DW_CHILDREN_no );
     }
@@ -151,13 +151,13 @@ unsigned DW_MarkAbbrevAsUsed( BackRun& back, dw_client cli, abbrev_code *abbrev 
             DW_AT_decl_line,    DW_FORM_udata,
             DW_AT_decl_column,  DW_FORM_udata
         };
-        CLIWrite( cli, DW_DEBUG_ABBREV, attr, sizeof( attr ) );
+        CLIWrite( back, cli, DW_DEBUG_ABBREV, attr, sizeof( attr ) );
     }
 
     /* now emit the extra attributes */
     for( i = 0; i < sizeof( back.dwabbrev->bitEncodings ) / sizeof( back.dwabbrev->bitEncodings[0] ); ++i ) {
         if( *abbrev & back.dwabbrev->bitEncodings[i].bit ) {
-            CLIWrite( cli, DW_DEBUG_ABBREV, back.dwabbrev->bitEncodings[i].data, sizeof( back.dwabbrev->bitEncodings[0].data ) );
+            CLIWrite( back, cli, DW_DEBUG_ABBREV, back.dwabbrev->bitEncodings[i].data, sizeof( back.dwabbrev->bitEncodings[0].data ) );
         }
     }
 
@@ -166,7 +166,7 @@ unsigned DW_MarkAbbrevAsUsed( BackRun& back, dw_client cli, abbrev_code *abbrev 
             DW_AT_low_pc,       DW_FORM_addr,
             DW_AT_high_pc,      DW_FORM_addr,
         };
-        CLIWrite( cli, DW_DEBUG_ABBREV, lowhi_attrs, sizeof( lowhi_attrs ) );
+        CLIWrite( back, cli, DW_DEBUG_ABBREV, lowhi_attrs, sizeof( lowhi_attrs ) );
     }
 
     /* now do the AB_SUBR_DECLARATION kludge */
@@ -175,20 +175,20 @@ unsigned DW_MarkAbbrevAsUsed( BackRun& back, dw_client cli, abbrev_code *abbrev 
             static const uint_8 subr_attrs[] = {
                 DW_AT_declaration, DW_FORM_flag
             };
-            CLIWrite( cli, DW_DEBUG_ABBREV, subr_attrs, sizeof( subr_attrs ) );
+            CLIWrite( back, cli, DW_DEBUG_ABBREV, subr_attrs, sizeof( subr_attrs ) );
         } else {
             static const uint_8 subr_attrs[] = {
                 DW_AT_return_addr,      DW_FORM_block1,
                 DW_AT_low_pc,           DW_FORM_addr,
                 DW_AT_high_pc,          DW_FORM_addr,
             };
-            CLIWrite( cli, DW_DEBUG_ABBREV, subr_attrs, sizeof( subr_attrs ) );
+            CLIWrite( back, cli, DW_DEBUG_ABBREV, subr_attrs, sizeof( subr_attrs ) );
         }
     }
 
     /* and finally the base information */
     if( data->data_len ) {
-        CLIWrite( cli, DW_DEBUG_ABBREV, &encodings[data->data_offset], data->data_len );
+        CLIWrite( back, cli, DW_DEBUG_ABBREV, &encodings[data->data_offset], data->data_len );
     }
 
     /* and the zero terminators */

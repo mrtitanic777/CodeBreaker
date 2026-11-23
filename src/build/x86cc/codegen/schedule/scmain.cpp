@@ -208,7 +208,7 @@ static  void    ScoreRoutine( BackRun& back )
     ScoreCalcList(back);
     if( back.score.ScoreCount != 0 ) {
         InitZero(back);
-        _MarkBlkAllUnVisited();
+        MarkBlkAllUnVisited( back );
         MakeLiveInfo(back);
 //        change = false;
         for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {

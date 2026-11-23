@@ -128,7 +128,7 @@ static  void    DoCondJump( BackRun& back, instruction *cond )
     if( dest_true != NULL && dest_false != dest_true &&
         ( dest_true != dest_next || dest_false == NULL ) ) {
         oc.oc_jcond.hdr.class_ = OC_JCOND;
-        if( !_CPULevel( CPU_386 ) ) {
+        if( !CPULevel( back, CPU_386 ) ) {
             oc.oc_jcond.hdr.class_ |= OC_ATTR_SHORT;
         }
         oc.oc_jcond.hdr.reclen = sizeof( oc_jcond );
@@ -179,7 +179,7 @@ void    GenKillLabel( BackRun& back, label_handle label )
     out of the queue.
 */
 {
-    PUSH_OP( AskCodeSeg(back) );
+    { segment_id old_segid = ChangeOP( back, AskCodeSeg(back) );
         CodeHandle( back, static_cast<oc_class>(OC_LDONE), 0, label );
-    POP_OP();
+    SetOP( back, old_segid ); }
 }

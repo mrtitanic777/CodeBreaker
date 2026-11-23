@@ -62,7 +62,6 @@ static bool             segm_override_jumps( AsmRun& assembler, token_buffer *to
 
 
 
-#define directive( buff, i, value )   cpu_directive( assembler, value )
 
 
 extern void             make_inst_hash_table( void );
@@ -1417,7 +1416,7 @@ bool AsmParse( AsmRun& assembler, token_buffer *tokbuf, const char *curline )
             AsmError( *assembler.front, SYNTAX_ERROR );
             return( RC_ERROR );
         case TC_DIRECTIVE:
-            return( directive( tokbuf, i, tokbuf->tokens[i].u.token ) );
+            return( cpu_directive( assembler, tokbuf->tokens[i].u.token ) );
         case TC_ID:
             if( i == 0 ) {   // a new label
 

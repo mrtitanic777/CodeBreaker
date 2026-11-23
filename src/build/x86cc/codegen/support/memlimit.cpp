@@ -67,10 +67,10 @@ static  bool    FlushSomeOpt( BackRun& back, pointer_uint size )
     bool        freed;
 
     if( back.optmac.InOptimizer == 0 && HaveCodeSeg(back) ) {
-        PUSH_OP( AskCodeSeg(back) );
+        { segment_id old_segid = ChangeOP( back, AskCodeSeg(back) );
             freed = ShrinkQueue( back, size );
-        POP_OP();
-        if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) && !back.memlimit.IckyWicky ) {
+        SetOP( back, old_segid ); }
+        if( IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) && !back.memlimit.IckyWicky ) {
             back.memlimit.IckyWicky = true;
             FEMessage( *back.front, FEMSG_PEEPHOLE_FLUSHED, NULL );
         }
@@ -84,7 +84,7 @@ static  bool    FlushSomeOpt( BackRun& back, pointer_uint size )
 static  bool    ChkMemLimit( BackRun& back, pointer_uint limit )
 /***********************************************/
 {
-    if( _IsModel( CGSW_GEN_MEMORY_LOW_FAILS ) )
+    if( IsModel( back, CGSW_GEN_MEMORY_LOW_FAILS ) )
         return( false );
     if( MemInUse(back) - back.data.FrlSize <= limit )
         return( false );

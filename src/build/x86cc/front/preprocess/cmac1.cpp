@@ -323,7 +323,7 @@ TOKEN GetMacroToken( FrontRun& front )
         case T_ID:
         case T_UNEXPANDABLE_ID:
             if( !front.cvars.CompFlags.doing_macro_expansion ) {
-                if( IS_PPOPERATOR_PRAGMA( front.cvars.Buffer, front.cvars.TokenLen ) ) {
+                if( IsPPOperatorPragma( front, front.cvars.Buffer, front.cvars.TokenLen ) ) {
                     front.cmac1.MTokenList = mtok->next;
                     CMemFree( front, mtok );
                     token = Process_Pragma(front);

@@ -60,11 +60,11 @@ bool    DoVerify( BackRun& back, vertype kind, instruction *ins )
     }
     switch( kind ) {
     case V_80186:
-         if( _CPULevel( CPU_186 ) )
+         if( CPULevel( back, CPU_186 ) )
             return( true );
          break;
     case V_80386:
-         if( _CPULevel( CPU_386 ) )
+         if( CPULevel( back, CPU_386 ) )
             return( true );
          break;
     case V_DIFF_TYPES:
@@ -101,7 +101,7 @@ bool    DoVerify( BackRun& back, vertype kind, instruction *ins )
             return( true );
         break;
     case V_LSHONE:
-        if( !_CPULevel( CPU_286 ) )
+        if( !CPULevel( back, CPU_286 ) )
             return( false );
         if( ins->head.opcode != OP_LSHIFT )
             return( false );
@@ -130,7 +130,7 @@ bool    DoVerify( BackRun& back, vertype kind, instruction *ins )
             return( false );
         if( op2->c.lo.u.int_value != 8 )
             return( false );
-        if( _CPULevel( CPU_186 ) )
+        if( CPULevel( back, CPU_186 ) )
             return( false );
         if( !HW_COvlap( ins->head.live.regs, HW_AX ) )
             return( true );
@@ -193,8 +193,8 @@ bool    DoVerify( BackRun& back, vertype kind, instruction *ins )
             break;
         case OP_LSHIFT:
             if( op1 == result
-              && (_CPULevel( CPU_586 )
-              && !_CPULevel( CPU_686 )) )
+              && (CPULevel( back, CPU_586 )
+              && !CPULevel( back, CPU_686 )) )
                 return( false );
             if( back.data.OptForSize > 50 )
                 return( false );
@@ -229,7 +229,7 @@ bool    DoVerify( BackRun& back, vertype kind, instruction *ins )
         case OP_ADD:
         case OP_SUB:
             if( back.data.OptForSize < 50
-              && !_CPULevel( CPU_286 ) )
+              && !CPULevel( back, CPU_286 ) )
                 return( false );
             return( true );
         default:
@@ -241,7 +241,7 @@ bool    DoVerify( BackRun& back, vertype kind, instruction *ins )
             return( true );
         break;
     case V_DIV_BUG: /* cant do idiv from mem on 80186 (or 8086 for compatibility) */
-        if( !_CPULevel( CPU_286 )
+        if( !CPULevel( back, CPU_286 )
           && ins->type_class != U1
           && ins->type_class != U2 )
             return( true );
@@ -273,18 +273,18 @@ bool    DoVerify( BackRun& back, vertype kind, instruction *ins )
             return( true );
         break;
     case V_OP2POW2_286:
-        if( !_CPULevel( CPU_286 ) )
+        if( !CPULevel( back, CPU_286 ) )
             return( false );
         return( OtherVerify( back, V_OP2POW2, ins, op1, op2, result ) );
     case V_OP1ADDR:
     case V_OP1LOC:
-        if( _IsTargetModel( CGSW_X86_INDEXED_GLOBALS ) )
+        if( IsTargetModel( back, CGSW_X86_INDEXED_GLOBALS ) )
             return( false );
         if( op1->n.class_ == N_MEMORY )
             return( true );
         break;
     case V_RESLOC:
-        if( _IsTargetModel( CGSW_X86_INDEXED_GLOBALS ) )
+        if( IsTargetModel( back, CGSW_X86_INDEXED_GLOBALS ) )
             return( false );
         if( result->n.class_ == N_MEMORY )
             return( true );
@@ -301,8 +301,8 @@ bool    DoVerify( BackRun& back, vertype kind, instruction *ins )
         /* On P6 architecture, 'and' will cause a partial register stall with
          * horrible performance implications. Always use movzx.
          */
-        if( !_CPULevel( CPU_486 )
-          || _CPULevel( CPU_686 ) )
+        if( !CPULevel( back, CPU_486 )
+          || CPULevel( back, CPU_686 ) )
             break;
         if( back.data.OptForSize > 50 )
             break;
@@ -318,20 +318,20 @@ bool    DoVerify( BackRun& back, vertype kind, instruction *ins )
          * Therefore, generate CDQ except when optimizing for time and the
          * CPU is 586 (on 386/486, CDQ is always better).
          */
-        if( _CPULevel( CPU_686 )
-          || !_CPULevel( CPU_586 ) )
+        if( CPULevel( back, CPU_686 )
+          || !CPULevel( back, CPU_586 ) )
             return( true );
         if( back.data.OptForSize >= 50 )
             return( true );
         break;
     case V_P5_FXCH:
-        if( !_CPULevel( CPU_586 ) )
+        if( !CPULevel( back, CPU_586 ) )
             return( false );
         if( back.data.OptForSize <= 50 )
             return( true );
         break;
     case V_CYP_SEX:
-        if( !_CPULevel( CPU_586 ) )
+        if( !CPULevel( back, CPU_586 ) )
             return( false );
         if( back.data.OptForSize > 50 )
             return( false );
@@ -383,7 +383,7 @@ bool    DoVerify( BackRun& back, vertype kind, instruction *ins )
             return( false );
         }
     case V_SWAP_GOOD_386:
-        if( !_CPULevel( CPU_386 ) )
+        if( !CPULevel( back, CPU_386 ) )
             return( false );
         return( OtherVerify( back, V_SWAP_GOOD, ins, op1, op2, result ) );
     case V_INTCOMP:

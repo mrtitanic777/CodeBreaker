@@ -294,7 +294,7 @@ CI2,   CI2,   CI4,    FPOK,  FPOK,   FPOK,   C7U8_L, FPOK,   __x__, __x__, FPOK,
 static  conv_method     AskHow( BackRun& back, type_class_def fr, type_class_def to )
 /********************************************************************/
 {
-    if( _FPULevel( FPU_87 ) ) {
+    if( FPULevel( back, FPU_87 ) ) {
         return( FPCvtTable[fr + to * XX] );
     } else {
         return( CvtTable[fr + to * XX] );
@@ -374,7 +374,7 @@ instruction     *rDOCVT( BackRun& back, instruction *ins )
         DupSeg( ins, new_ins );
         ReplIns( back, ins, new_ins );
         if( how != OK ) {
-            _Zoiks( ZOIKS_092 );
+            Zoiks( back, ZOIKS_092 );
         }
     }
     return( new_ins );

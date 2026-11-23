@@ -266,4 +266,26 @@ struct BackRun {
     BackRun& operator=(const BackRun&) = delete;
 };
 
+/* The bodies of the functions that were macros reading the run by name and are declared in model.h, optmac.h, cgauxinf.h and
+ * i87sched.h: they read members, so they are here, where BackRun is complete. */
+#include "../interface/feprotos.h"
+
+inline bool IsModel( const BackRun& back, cg_switches mdl ) { return ( back.model.Model & mdl ) != 0; }
+inline bool IsntModel( const BackRun& back, cg_switches mdl ) { return ( back.model.Model & mdl ) == 0; }
+inline bool IsTargetModel( const BackRun& back, cg_target_switches mdl ) { return ( back.model.TargetModel & mdl ) != 0; }
+inline bool IsntTargetModel( const BackRun& back, cg_target_switches mdl ) { return ( back.model.TargetModel & mdl ) == 0; }
+inline bool CPULevel( const BackRun& back, proc_revision level ) { return GET_CPU( back.model.CGProcessorVersion ) >= level; }
+inline bool FPULevel( const BackRun& back, proc_revision level ) { return ( GET_FPU( back.model.CGProcessorVersion ) & ~FPU_EMU ) >= level; }
+inline bool IsEmulation( const BackRun& back ) { return ( back.model.CGProcessorVersion & FPU_EMU ) != 0; }
+
+inline void OptBegin( BackRun& back ) { ++back.optmac.InOptimizer; }
+inline void OptEnd( BackRun& back ) { --back.optmac.InOptimizer; }
+
+CB_ALWAYS_INLINE pointer FindAuxInfoSym( BackRun& back, pointer sym, aux_class request )
+{
+    return FEAuxInfo( *back.front, FEAuxInfo( *back.front, sym, FEINF_AUX_LOOKUP ), request );
+}
+
+inline actual_st_locn& RegSTLoc( BackRun& back, int seq, int vir ) { return ( back.i87sched.STLocations + seq )->actual_locn[vir]; }
+
 #endif

@@ -86,14 +86,14 @@ pointer CGAlloc( BackRun& back, size_t size )
 {
     pointer     chunk;
 
-    _MemLow;
+    MemLow( back );
     for( ;; ) {
         chunk = _SysAlloc( back, size );
         if( chunk != NULL ) {
             _AlignmentCheck( chunk, 8 );
             return( chunk );
         }
-        if( !_MemCheck( size ) ) {
+        if( !MemCheck( back, size ) ) {
             break;
         }
     }

@@ -97,7 +97,7 @@ instruction     *NewIns( BackRun& back, opcnt num )
     instruction *new_ins;
 
     if( num > MAX_OPS_PER_INS ) {
-        _Zoiks( ZOIKS_026 );
+        Zoiks( back, ZOIKS_026 );
     }
     new_ins = static_cast<instruction *>(AllocFrl( back, &back.makeins.InsFrl, INS_SIZE ));
     new_ins->head.state = INS_NEEDS_WORK;

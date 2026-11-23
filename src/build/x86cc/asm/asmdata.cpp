@@ -88,7 +88,7 @@ static void output_float( AsmRun& assembler, token_buffer *tokbuf, token_idx ind
         }
     }
     for( count = 0; count < no_of_bytes; ++count ) {
-        AsmDataByte( *char_ptr++ );
+        AsmByte( assembler, *char_ptr++ );
     }
 }
 
@@ -119,7 +119,7 @@ static token_idx array_element( AsmRun& assembler, asm_sym_handle sym, asm_sym_h
                 }
             }
             for( count = 0; count < no_of_bytes; ++count ) {
-                AsmDataByte( 0 );
+                AsmByte( assembler, 0 );
             }
             break;
         case TC_MINUS:
@@ -175,7 +175,7 @@ static token_idx array_element( AsmRun& assembler, asm_sym_handle sym, asm_sym_h
             }
                 char_ptr = (char *)tokbuf->tokens[cur_pos].u.bytes;
                 for( count = 0; count < no_of_bytes; ++count ) {
-                    AsmDataByte( *char_ptr++ );
+                    AsmByte( assembler, *char_ptr++ );
                 }
             break;
           }
@@ -225,7 +225,7 @@ static token_idx array_element( AsmRun& assembler, asm_sym_handle sym, asm_sym_h
                 if( direction == -1 )
                     char_ptr += strlen( char_ptr ) - 1;
                 for( i = 0; i < count; ++i ) {
-                    AsmDataByte( *char_ptr );
+                    AsmByte( assembler, *char_ptr );
                     char_ptr += direction;
                 }
                 /*
@@ -235,7 +235,7 @@ static token_idx array_element( AsmRun& assembler, asm_sym_handle sym, asm_sym_h
                  * up to no_of_bytes
                  */
                 for( ; i < no_of_bytes; ++i ) {
-                    AsmDataByte( 0 );
+                    AsmByte( assembler, 0 );
                 }
             break;
           }
@@ -314,10 +314,10 @@ static token_idx array_element( AsmRun& assembler, asm_sym_handle sym, asm_sym_h
                 for( i = 0; i < no_of_bytes; i++ ) {
                     if( i < 4 ) {
                         /* copy offset */
-                        AsmDataByte( *ptr++ );
+                        AsmByte( assembler, *ptr++ );
                     } else {
                         /* leave space for segment */
-                        AsmDataByte( 0 );
+                        AsmByte( assembler, 0 );
                     }
                 }
             // set position back to main loop worked correctly
@@ -416,7 +416,7 @@ static token_idx array_element( AsmRun& assembler, asm_sym_handle sym, asm_sym_h
                     /* now actually output the data */
                     ptr = (char *)&data;
                         for( i = 0; i < no_of_bytes; i++ ) {
-                            AsmDataByte( *ptr );
+                            AsmByte( assembler, *ptr );
                             ptr++;
                         }
                 } else {

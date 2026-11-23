@@ -162,7 +162,7 @@ static  bool    DoProp( BackRun& back, block *blk ) {
                 op->c.const_type == CONS_ABSOLUTE &&
                 ins->result == ins->operands[0] ) {
                 for( next = ins->head.next; next->head.opcode != OP_BLOCK; next = next->head.next ) {
-                    if( _IsReDefinedBy( next, ins->result ) )
+                    if( IsReDefinedBy( back, next, ins->result ) )
                         break;
                     if( AdjustIndex( back, next, ins->result, op->c.lo.u.int_value ) ) {
                         RemoveIns( ins );

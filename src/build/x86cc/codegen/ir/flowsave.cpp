@@ -120,7 +120,7 @@ static void DoFix( BackRun& back, block *blk )
     if( _IsBlkVisited( blk ) )
         return;
     if( _IsBlkAttr( blk, BLK_RETURN ) )
-        _Zoiks( ZOIKS_140 );
+        Zoiks( back, ZOIKS_140 );
     blk->stack_depth += WORD_SIZE;
     _MarkBlkVisited( blk );
     for( i = 0; i < blk->targets; i++ ) {
@@ -139,7 +139,7 @@ static void FixStackDepth( BackRun& back, block *save, block *restore )
 {
     block_num   i;
 
-    _MarkBlkAllUnVisited();
+    MarkBlkAllUnVisited( back );
     _MarkBlkVisited( restore );
     _MarkBlkVisited( save );
     if( save != restore ) {
@@ -279,7 +279,7 @@ void FlowSave( BackRun& back, hw_reg_set *preg )
     type_class_def      reg_type_class;
 
     HW_CAsgn( back.flowsave.flowedRegs, HW_EMPTY );
-    if( _IsntModel( CGSW_GEN_FLOW_REG_SAVES ) )
+    if( IsntModel( back, CGSW_GEN_FLOW_REG_SAVES ) )
         return;
     if( !back.data.HaveDominatorInfo )
         return;

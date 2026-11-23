@@ -49,7 +49,6 @@
 #define PCHGetUInt(p)           ((unsigned)(pointer_uint)(p))
 #define PCHSetUInt(v)           ((void *)(pointer_uint)((unsigned)(v)))
 
-#define PCHWriteVar(m)          PCHWriteUnalign(front, &(m),sizeof(m))
 
 #define PCHAlign(p)             _RoundUp(p,sizeof(int))
 
@@ -209,6 +208,10 @@ static bool PCHWriteUnalign( FrontRun& front, const void *bufptr, size_t len )
     return( false );
 }
 
+/* writes the bytes of a variable (its address and size) */
+template< class Var >
+static inline bool PCHWriteVar( FrontRun& front, Var& var ) { return PCHWriteUnalign( front, &var, sizeof( var ) ); }
+
 static void FlushPHeader( FrontRun& front )
 {
     unsigned    len;
@@ -265,7 +268,7 @@ static void OutPutHeader( FrontRun& front )
     pch.cpp_ignore_env    = front.cvars.CompFlags.cpp_ignore_env;
     pch.ignore_default_dirs = front.cvars.CompFlags.ignore_default_dirs;
 
-    rc = PCHWriteVar( pch );
+    rc = PCHWriteVar( front, pch );
     rc |= PCHWrite( front, front.pchdr.PH_Buffer + sizeof( pch ), pch.cwd_len );
     if( rc ) {
         longjmp( front.pchdr.PH_jmpbuf, rc );
@@ -574,10 +577,10 @@ static bool WriteType( FrontRun& front, TYPEPTR typ )
     object = typ->object;
     if( object != NULL ) {
         typ->object = static_cast<struct type_definition *>(PCHSetUInt( object->u1.type_index ));
-        rc = PCHWriteVar( *typ );
+        rc = PCHWriteVar( front, *typ );
         typ->object = object;
     } else {
-        rc = PCHWriteVar( *typ );
+        rc = PCHWriteVar( front, *typ );
     }
     return( rc );
 }
@@ -605,7 +608,7 @@ static void OutPutTypeIndexes( FrontRun& front )
     }
     typ_index.stringtype_index = front.cvars.StringType->u1.type_index;
     typ_index.constchartype_index = front.cvars.ConstCharType->u1.type_index;
-    rc = PCHWriteVar( typ_index );
+    rc = PCHWriteVar( front, typ_index );
     if( rc ) {
         longjmp( front.pchdr.PH_jmpbuf, rc );
     }
@@ -669,14 +672,14 @@ static void OutPutFuncParmList( FrontRun& front, TYPEPTR typ, int index )
     if( typ->u.fn.parms != NULL ) {
         for( parm_types = typ->u.fn.parms; (parm_type = *parm_types) != NULL; parm_types++ ) {
             parm_type = static_cast<TYPEPTR>(PCHSetUInt( parm_type->u1.type_index ));
-            rc = PCHWriteVar( parm_type );
+            rc = PCHWriteVar( front, parm_type );
             if( rc ) {
                 longjmp( front.pchdr.PH_jmpbuf, rc );
             }
         }
     }
     parm_type = static_cast<TYPEPTR>(PCHSetUInt( -1 ));
-    rc = PCHWriteVar( parm_type );
+    rc = PCHWriteVar( front, parm_type );
     if( rc ) {
         longjmp( front.pchdr.PH_jmpbuf, rc );
     }
@@ -726,10 +729,10 @@ static void OutPutAuxInfo( FrontRun& front, aux_info *info )
         code_len = offsetof( byte_seq, data ) + info_code->length;
         info->code = static_cast<byte_seq *>(PCHSetUInt( PCHAlign( code_len ) ));
     }
-    rc = PCHWriteVar( *info );
+    rc = PCHWriteVar( front, *info );
     if( info_parms != NULL ) {
         for( regs = info_parms; ; regs++ ) {
-            rc |= PCHWriteVar( *regs );
+            rc |= PCHWriteVar( front, *regs );
             if( HW_CEqual( *regs, HW_EMPTY ) ) {
                 break;
             }
@@ -884,7 +887,7 @@ static void OutPutSymbols( FrontRun& front )
                 sym.seginfo = static_cast<textsegment *>(PCHSetUInt( sym.seginfo->index ));
             }
             sym.name = NULL; // can't carry a name across
-            rc = PCHWriteVar( sym );
+            rc = PCHWriteVar( front, sym );
             if( rc ) {
                 longjmp( front.pchdr.PH_jmpbuf, rc );
             }

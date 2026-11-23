@@ -108,7 +108,7 @@ void    BGSelRange( BackRun& back, sel_handle s_node, const signed_64 *lo, const
      *     +       +      ok
      */
     if( lo->u.sign.v < hi->u.sign.v )
-        _Zoiks( ZOIKS_089 );
+        Zoiks( back, ZOIKS_089 );
     list = NewCase( back, lo, hi, label );
     list->next = s_node->list;
     s_node->list = list;
@@ -265,7 +265,7 @@ static const type_def   *UnSignedIntTipe( BackRun& back, const type_def *tipe )
     case 8:
         return( TypeAddress( back, TY_UINT_8 ) );
     }
-    _Zoiks( ZOIKS_102 );  /* if we get here bug */
+    Zoiks( back, ZOIKS_102 );  /* if we get here bug */
     return( NULL );
 }
 
@@ -583,7 +583,7 @@ void    BGSelect( BackRun& back, sel_handle s_node, an node, cg_switch_type allo
     unsigned_64 tmp;
 
     if( ( allowed & CG_SWITCH_ALL ) == 0 ) {
-        _Zoiks( ZOIKS_090 );
+        Zoiks( back, ZOIKS_090 );
         allowed = CG_SWITCH_ALL;
     }
     kind = static_cast<sel_kind>(0);

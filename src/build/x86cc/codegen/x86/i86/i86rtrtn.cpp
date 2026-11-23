@@ -178,7 +178,7 @@ bool    RTLeaveOp2( BackRun& back, instruction *ins )
 {
     switch( ins->type_class ) {
     case FD:
-        if( _FPULevel( FPU_87 ) )
+        if( FPULevel( back, FPU_87 ) )
             return( false );
         break;
 /* -- This is not true now - I8 math and parameters are kept in registers -- [RomanT]
@@ -362,7 +362,7 @@ instruction     *rMAKECALL( BackRun& back, instruction *ins )
         switch( also_used->n.class_ ) {
         case N_REGISTER:
         case N_CONSTANT:
-            _Zoiks( ZOIKS_047 );
+            Zoiks( back, ZOIKS_047 );
             break;
         case N_MEMORY:
         case N_TEMP:
@@ -592,7 +592,7 @@ pointer BEAuxInfo( BackRun& back, pointer hdl, aux_class request )
     case FEINF_CALL_BYTES:
         return( hdl );
     default:
-        _Zoiks( ZOIKS_128 );
+        Zoiks( back, ZOIKS_128 );
         break;
     }
     return( NULL );

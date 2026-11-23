@@ -257,10 +257,10 @@ static  int             BlockSearch( BackRun& back, block *blk, instruction *ins
         if( forward ) {
             if( DereferencedBy( curr, op ) )
                 return( BLOCK_DEREFS );
-            if( _IsReDefinedBy( curr, op ) )
+            if( IsReDefinedBy( back, curr, op ) )
                 return( BLOCK_REDEFS );
         } else {
-            if( _IsReDefinedBy( curr, op ) )
+            if( IsReDefinedBy( back, curr, op ) )
                 return( BLOCK_REDEFS );
             if( DereferencedBy( curr, op ) ) {
                 return( BLOCK_DEREFS );
@@ -383,7 +383,7 @@ static  bool            EdgeHasSideEffect( BackRun& back, block *blk, instructio
         taken = blk->edge[_FalseIndex( cmp )].destination.u.blk;
         elim = blk->edge[_TrueIndex( cmp )].destination.u.blk;
     }
-    _MarkBlkAllUnVisited();
+    MarkBlkAllUnVisited( back );
     FloodDown( back, taken, BLK_BLOCK_VISITED );
     stk = InitStack(back);
 
@@ -410,7 +410,7 @@ static  bool            EdgeHasSideEffect( BackRun& back, block *blk, instructio
         elim = edge->destination.u.blk;
     }
     FiniStack( back, stk );
-    _MarkBlkAllUnVisited();
+    MarkBlkAllUnVisited( back );
     return( side_effect );
 }
 
@@ -446,7 +446,7 @@ static  bool            NullProp( BackRun& back, block *blk )
     parms.ins = cmp;
     parms.op = *ptr;
     parms.forward = true;
-    _MarkBlkAllUnVisited();
+    MarkBlkAllUnVisited( back );
     if( FROM_SR_VALUE( DominatingDeref( back, &parms ), bool ) ) {
         if( !EdgeHasSideEffect( back, blk, cmp, cmp->head.opcode == OP_CMP_NOT_EQUAL ) ) {
             // only nuke the edge if the code we are removing
@@ -456,7 +456,7 @@ static  bool            NullProp( BackRun& back, block *blk )
         }
     }
     parms.forward = false;
-    _MarkBlkAllUnVisited();
+    MarkBlkAllUnVisited( back );
     if( FROM_SR_VALUE( DominatingDeref( back, &parms ), bool ) ) {
         KillCondBlk( back, blk, cmp, dest_idx );
         return( true );
@@ -473,15 +473,15 @@ void            PropNullInfo( BackRun& back )
     block               *blk;
     bool                change;
 
-    if( _IsModel( CGSW_GEN_NO_OPTIMIZATION ) )
+    if( IsModel( back, CGSW_GEN_NO_OPTIMIZATION ) )
         return;
-    if( _IsModel( CGSW_GEN_NULL_DEREF_OK ) )
+    if( IsModel( back, CGSW_GEN_NULL_DEREF_OK ) )
         return;
     change = false;
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         change |= NullProp( back, blk );
     }
-    _MarkBlkAllUnVisited();
+    MarkBlkAllUnVisited( back );
     if( change ) {
         BlockTrim(back);
     }
