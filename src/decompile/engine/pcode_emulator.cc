@@ -136,6 +136,12 @@ constexpr std::size_t kRetiredLimit = 1u << 16;   // decoded instructions set as
 constexpr std::uint64_t kPageBits = 12;
 constexpr std::uint64_t kPageSize = std::uint64_t{1} << kPageBits;
 
+#if defined(_MSC_VER) && !defined(__clang__)
+#define CB_PAGE_NOINLINE __declspec(noinline)
+#else
+#define CB_PAGE_NOINLINE __attribute__((noinline))
+#endif
+
 struct Page {
     std::array<std::uint8_t, kPageSize> d{};
     bool code = false;   // instructions were decoded from this page
@@ -148,16 +154,35 @@ struct SpaceMem {
     bool big = false;
     bool hooked = false;   // memory-mapped I/O hooks see this space
     bool isCode = false;
-    std::unordered_map<std::uint64_t, std::unique_ptr<Page>> pages;
+    mutable std::unordered_map<std::uint64_t, std::unique_ptr<Page>> pages;
     mutable const Page* last = nullptr;
     mutable std::uint64_t lastKey = ~std::uint64_t{0};
+    // Where the bytes of a page the map does not hold come from (Emulator::setPageSource): the page is made the first time it is looked up.
+    std::function<bool(std::uint64_t address, std::uint8_t* out, std::size_t size)> source;
 
-    const Page* find(std::uint64_t key) const {
+    // The page, without asking the source: null when the map does not hold it.
+    const Page* findHeld(std::uint64_t key) const {
         if (key == lastKey) return last;
         auto it = pages.find(key);
         const Page* p = it == pages.end() ? nullptr : it->second.get();
         if (p) lastKey = key, last = p;
         return p;
+    }
+    const Page* find(std::uint64_t key) const {
+        if (key == lastKey) return last;
+        auto it = pages.find(key);
+        const Page* p = it == pages.end() ? nullptr : it->second.get();
+        if (!p && source) p = fromSource(key);
+        if (p) lastKey = key, last = p;
+        return p;
+    }
+    // The page the source has bytes for, made (null: it has none).
+    CB_PAGE_NOINLINE const Page* fromSource(std::uint64_t key) const {
+        const std::uint64_t address = key << kPageBits;
+        if (!source(address, nullptr, static_cast<std::size_t>(kPageSize))) return nullptr;   // (nothing there: the page reads zeros and is not made)
+        auto made = std::make_unique<Page>();
+        source(address, made->d.data(), static_cast<std::size_t>(kPageSize));
+        return pages.emplace(key, std::move(made)).first->second.get();
     }
     Page* make(std::uint64_t key) {
         std::unique_ptr<Page>& slot = pages[key];
@@ -258,6 +283,8 @@ struct Emulator::Impl {
     int codeIndex = 0, regIndex = -1;
     const AddrSpace* constSpace = nullptr;
     std::vector<std::string> userOps;
+    std::string unnamedOp;                  // the name given to a user operation the description does not name
+    std::size_t segmentOp = ~std::size_t{0};   // the index of the built-in "segment" operation
     unsigned segmentShift = 0;
     std::unordered_map<std::string, VarnodeData> regCache;
     std::vector<Register> topRegs, allRegs;
@@ -655,7 +682,12 @@ struct Emulator::Impl {
         const VarnodeData* v = &d.vn[op.first];
         const VarnodeData* out = op.hasOut ? v++ : nullptr;
         const std::size_t index = static_cast<std::size_t>(v[0].offset);
-        const std::string name = index < userOps.size() ? userOps[index] : "userop" + std::to_string(index);
+        if (index == segmentOp && op.nIn == 3) {   // (x86 real mode does this for every memory operand: no name, no argument list)
+            const std::uint64_t segment = get(v[1]), offset = get(v[2]);
+            if (out) put(*out, segmentShift ? ((segment & 0xffff) << segmentShift) + (offset & 0xffff) : offset);
+            return;
+        }
+        const std::string& name = index < userOps.size() ? userOps[index] : (unnamedOp = "userop" + std::to_string(index));
         std::vector<std::uint64_t> args;
         for (unsigned i = 1; i < op.nIn; ++i) args.push_back(get(v[i]));
         std::uint64_t result = 0;
@@ -1012,6 +1044,8 @@ Emulator::Emulator(const std::filesystem::path& sla, const std::vector<std::pair
         o.trans->setDefaultFloatFormats();
         ghidra::OpBehavior::registerInstructions(o.behave, o.trans.get());
         o.trans->getUserOpNames(o.userOps);
+        for (std::size_t i = 0; i < o.userOps.size(); ++i)
+            if (o.userOps[i] == "segment") o.segmentOp = i;
     } catch (const ghidra::LowlevelError& e) {
         throw std::runtime_error(sla.string() + ": " + e.explain);
     }
@@ -1082,7 +1116,39 @@ void Emulator::clearMemory(std::string_view space) {
 
 void Emulator::read(std::uint64_t addr, std::uint8_t* data, std::size_t size, std::string_view space) const {
     const SpaceMem& m = impl_->space(space);
-    for (std::size_t i = 0; i < size; ++i) data[i] = Impl::getByte(m, addr + i);
+    // a page at a time; a page the map does not hold is the source's (not made) or zeros
+    for (std::size_t i = 0; i < size;) {
+        const std::uint64_t at = addr + i;
+        const std::size_t in = static_cast<std::size_t>(at & (kPageSize - 1));
+        const std::size_t n = std::min<std::size_t>(size - i, static_cast<std::size_t>(kPageSize) - in);
+        if (const Page* p = m.findHeld(at >> kPageBits)) std::memcpy(data + i, p->d.data() + in, n);
+        else if (!m.source || !m.source(at, data + i, n)) std::memset(data + i, 0, n);
+        i += n;
+    }
+}
+
+void Emulator::setPageSource(PageSource source, std::string_view space) {
+    SpaceMem& m = impl_->space(space);
+    m.source = std::move(source);
+    m.last = nullptr;
+    m.lastKey = ~std::uint64_t{0};
+}
+
+void Emulator::writeHeld(std::uint64_t addr, const std::uint8_t* data, std::size_t size, std::string_view space) {
+    Impl& o = *impl_;
+    SpaceMem& m = o.space(space);
+    for (std::size_t i = 0; i < size;) {
+        const std::uint64_t at = addr + i;
+        const std::size_t in = static_cast<std::size_t>(at & (kPageSize - 1));
+        const std::size_t n = std::min<std::size_t>(size - i, static_cast<std::size_t>(kPageSize) - in);
+        if (Page* p = const_cast<Page*>(m.findHeld(at >> kPageBits))) {
+            if (p->code)
+                for (std::size_t k = 0; k < n; ++k)
+                    if (p->d[in + k] != data[i + k] && p->decoded[in + k]) o.noteCodeWrite(at + k);
+            std::memcpy(p->d.data() + in, data + i, n);
+        }
+        i += n;
+    }
 }
 
 std::uint64_t Emulator::readValue(std::uint64_t addr, unsigned size, std::string_view space) const {
@@ -1123,6 +1189,31 @@ Emulator::RegRef Emulator::regRef(const std::string& name) const {
 std::uint64_t Emulator::reg(const RegRef& ref) const { return impl_->getValueBytes(impl_->mem[ref.space], ref.offset, ref.size); }
 
 void Emulator::setReg(const RegRef& ref, std::uint64_t value) { impl_->putValueBytes(impl_->mem[ref.space], ref.offset, ref.size, value); }
+
+void Emulator::readRegs(const RegRef& from, std::uint8_t* out, std::size_t size) const {
+    const SpaceMem& m = impl_->mem[from.space];
+    for (std::size_t i = 0; i < size;) {
+        const std::uint64_t at = from.offset + i;
+        const std::size_t in = static_cast<std::size_t>(at & (kPageSize - 1));
+        const std::size_t n = std::min<std::size_t>(size - i, static_cast<std::size_t>(kPageSize) - in);
+        if (const Page* p = m.findHeld(at >> kPageBits)) std::memcpy(out + i, p->d.data() + in, n);
+        else std::memset(out + i, 0, n);
+        i += n;
+    }
+}
+
+void Emulator::writeRegs(const RegRef& to, const std::uint8_t* data, std::size_t size) {
+    SpaceMem& m = impl_->mem[to.space];
+    for (std::size_t i = 0; i < size;) {
+        const std::uint64_t at = to.offset + i;
+        const std::size_t in = static_cast<std::size_t>(at & (kPageSize - 1));
+        const std::size_t n = std::min<std::size_t>(size - i, static_cast<std::size_t>(kPageSize) - in);
+        Page* p = const_cast<Page*>(m.findHeld(at >> kPageBits));
+        if (!p) p = m.make(at >> kPageBits);
+        std::memcpy(p->d.data() + in, data + i, n);
+        i += n;
+    }
+}
 
 const std::vector<Emulator::Register>& Emulator::registers(bool parts) const {
     Impl& o = *impl_;
