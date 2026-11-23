@@ -360,6 +360,7 @@ public:
             const std::string stem = command.substr(fo + 3, command.find('.', fo) - fo - 3);
             flags_seen.push_back(command.substr(0, fo));
             const std::string c = lf(fs::read_text(work / (stem + ".C")));
+            if (c.find("#stuck") != std::string::npos) return {.ok = false, .why = "cl.EXE: time limit at 12345", .work = work};
             const auto lines = text::split(c, '\n');
             std::string said;
             std::vector<std::pair<std::string, std::string>> functions;   // (name, definition)
@@ -516,6 +517,15 @@ CB_TEST("build.msc6.compile_many_keeps_what_it_compiled", [] {
     const auto third = msc6::compile_many(rig.ctx, sources, "H", "/AM", rig.options);
     CB_CHECK(rig.runner.sessions > before);
     CB_CHECK(third[0] && third[1] && third[2]);
+});
+
+CB_TEST("build.msc6.a_file_the_compiler_never_finishes_costs_only_itself", [] {
+    Rig rig;
+    std::vector<msc6::Source> sources{{.text = "int2 a(int2 a)\n{\n}"}, {.text = "#stuck\n"}, {.text = "int2 c(int2 a)\n{\n}"}};
+    const auto built = msc6::compile_many(rig.ctx, sources, "", "/AM", rig.options);
+    CB_CHECK(built[0].has_value());
+    CB_CHECK(!built[1].has_value());
+    CB_CHECK(built[2].has_value());
 });
 
 CB_TEST("build.msc6.compile_many_needs_the_tools", [] {

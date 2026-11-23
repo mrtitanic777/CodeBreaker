@@ -145,6 +145,7 @@ bool run_session(const Context& ctx, const stdfs::path& work, std::string_view h
     // Every file is compiled under one name, so that one command line serves them all and the executive's kept start of the compiler applies (exec.cc).
     static constexpr std::string_view kOneName = "R00";
     std::error_code ec;
+    bool all_ended = true;
     for (const BatchFiles::File& file : files) {
         write_dos_text(work / std::format("{}.C", kOneName), "#include \"m.h\"\n\n" + file.text + "\n");
         DosRunSpec spec;
@@ -155,14 +156,16 @@ bool run_session(const Context& ctx, const stdfs::path& work, std::string_view h
         spec.variables = {{"PATH", "C:\\BIN"}, {"INCLUDE", "C:\\INCLUDE"}, {"LIB", "C:\\LIB"}};
         stdfs::remove(work / "done.txt", ec);
         const DosRunResult ran = ctx.runner.run(spec);
-        if (!ran.why.empty()) throw ToolError("dos", 0, "", "the DOS executive could not complete the compile: " + ran.why);
+        const bool stuck = ran.why.find("time limit") != std::string::npos;   // (this file never ended: no verdict for it, and the others still get theirs)
+        if (!ran.why.empty() && !stuck) throw ToolError("dos", 0, "", "the DOS executive could not complete the compile: " + ran.why);
+        all_ended = all_ended && !stuck;
         for (const char* type : {".C", ".OBJ", ".TXT"}) {
             const stdfs::path made = work / (std::string(kOneName) + type);
             if (stdfs::is_regular_file(made, ec)) stdfs::rename(made, work / (file.stem + type), ec);
         }
-        if (!stdfs::is_regular_file(work / "done.txt", ec)) return false;   // (cut off: the files after it have no verdict)
+        if (!stuck && !stdfs::is_regular_file(work / "done.txt", ec)) return false;   // (cut off: the files after it have no verdict)
     }
-    return true;
+    return all_ended;
 }
 
 // The code a compiler's object file holds: the public function's, or (no name) the first code segment's. An object that cannot be read
