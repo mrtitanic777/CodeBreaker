@@ -33,11 +33,7 @@
 #ifndef _ASMSTMT_H
 #define _ASMSTMT_H
 
-#if _INTEL_CPU
     #include "asminlin.h"
-#else /* _RISC_CPU */
-    #include "asinline.h"
-#endif
 
 extern void         AsmSysInit( FrontRun& front, unsigned char * );
 extern void         AsmSysFini( FrontRun& front );

@@ -196,9 +196,6 @@ const type_def  *TypeDef( BackRun& back, cg_type refno, type_length length, type
     list->tipe.u.type_def.refno  =  refno;
     list->tipe.u.type_def.length = length;
     list->tipe.u.type_def.attr   = static_cast<type_attr>(0);
-#if _TARGET_RISC
-    list->tipe.u.type_def.align  = align;
-#endif
     return( &list->tipe.u.type_def );
 }
 

@@ -323,12 +323,6 @@ void CInclude( FrontRun& front )
         if( !OpenSrcFile( front, front.cvars.Buffer, FT_HEADER ) ) {
             PrtfFilenameErr( front, front.cvars.Buffer, FT_HEADER, true );
         }
-#if _CPU == 370
-        if( !CompFlags.use_precompiled_header ) {
-            SrcFiles->colum = Column;    /* do trunc and col on  */
-            SrcFiles->trunc = Trunc;     /* on user source files */
-        }
-#endif
     } else if( front.cvars.CurToken == T_LT ) {
         if( in_macro ) {
             PPCTL_ENABLE_MACROS();

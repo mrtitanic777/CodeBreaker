@@ -32,8 +32,6 @@
 
 
 #pragma once
-#define TOGGLEDBG(x)        PragmaDbgToggles.tog_##x
-#define TOGGLEDBG_STK(x)    HeadDbgToggles_tog_##x
 
 typedef struct pragma_dbg_toggles {
     #define pick(x)         unsigned    tog_##x :1;

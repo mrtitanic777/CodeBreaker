@@ -36,9 +36,6 @@
 #pragma once
 enum {
     LCHR_EOF            = 0x0100,       /* last char in program source */
-#ifdef CHAR_MACRO
-    LCHR_MACRO,
-#endif
     LCHR_MAX
 };
 
@@ -65,17 +62,10 @@ typedef enum charset_flags {
 
         (( c | HEX_MASK ) - HEX_BASE ) + 10
 */
-#ifdef _CSET_EBCDIC
-/* EBCDIC */
-#define HEX_MASK        0x40
-#define HEX_BASE        'A'
-#define ONE_CASE( c )   ((c)|'\x40')
-#else
 /* ASCII */
 #define HEX_MASK        0x20
 #define HEX_BASE        'a'
 #define ONE_CASE( c )   ((c)|'\x20')
-#endif
 #define ONE_CASE_EQUAL( a, b )  (ONE_CASE( a ) == ONE_CASE( b ))
 #define DEC2BIN( c )            ((c) - '0')
 #define HEX2BIN( c )            (((c) | HEX_MASK) - HEX_BASE + 10)
@@ -185,9 +175,6 @@ struct ScanState {
         C_BC,  C_BC,  C_BC,  C_BC,  C_BC,  C_BC,  C_BC,  C_BC,  /* $F8 to $FF */
 
         C_BC,  /* LCHR_EOF */
-#ifdef CHAR_MACRO
-        C_BC,  /* LCHR_MACRO */
-#endif
     };
 };
 

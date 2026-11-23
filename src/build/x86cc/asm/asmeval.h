@@ -67,8 +67,5 @@ typedef struct expr_list {
 
 extern token_idx    EvalExpr( AsmRun& assembler, token_buffer *tokbuf, token_idx start, token_idx end, bool );
 extern bool         EvalOperand( AsmRun& assembler, token_buffer *tokbuf, token_idx *, token_idx, expr_list *, bool );
-#if defined( _STANDALONE_ )
-extern token_idx    EvalConstant( token_buffer *tokbuf, token_idx start, token_idx end, bool );
-#endif
 
 #endif

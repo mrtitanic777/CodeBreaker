@@ -51,18 +51,9 @@ void EmitZeros( FrontRun& front, target_size amount )
 
 void AlignIt( FrontRun& front, TYPEPTR typ )
 {
-#if _INTEL_CPU
     if( front.cvars.OptSize == 0 ) {        /* optimize for time */
         DGAlign( *front.back, GetTypeAlignment( front, typ ) );
     }
-#else /* _RISC_CPU */
-    align_type  align;
-
-    align = GetTypeAlignment( typ );
-    if( align < 4 )
-        align = 4;
-    DGAlign( align );
-#endif
 }
 
 target_size GetDQuadPointerSize( FrontRun& front, enum quad_flags dq_flags )
@@ -70,7 +61,6 @@ target_size GetDQuadPointerSize( FrontRun& front, enum quad_flags dq_flags )
     target_size         size;
 
     size = TARGET_POINTER;
-#if _INTEL_CPU
     if( dq_flags & Q_SEGMENT ) {                /* CodeBreaker: a selector */
         size = TARGET_SHORT;
     } else if( dq_flags & Q_NEAR_POINTER ) {
@@ -86,11 +76,6 @@ target_size GetDQuadPointerSize( FrontRun& front, enum quad_flags dq_flags )
             size = TARGET_FAR_POINTER;
         }
     }
-#else /* _RISC_CPU */
-    if( dq_flags & Q_NEAR_POINTER ) {
-        size = TARGET_NEAR_POINTER;
-    }
-#endif
     return( size );
 }
 
@@ -228,10 +213,8 @@ static void EmitDQuad( FrontRun& front, DATA_QUAD *dq )
         data_type = GetDQuadPointerCGType( dq->flags );
         if( dq->u.var.sym_handle == SYM_NULL ) {
             DGInteger( *front.back, dq->u.var.offset, data_type );
-#if _INTEL_CPU
         } else if( dq->flags & Q_SEGMENT ) {    /* CodeBreaker: the selector of the symbol's segment */
             DGFEPtrBase( *front.back, (CGSYM_HANDLE)dq->u.var.sym_handle );
-#endif
         } else {
             DGFEPtr( *front.back, (CGSYM_HANDLE)dq->u.var.sym_handle, data_type, dq->u.var.offset );
         }

@@ -35,6 +35,4 @@
 #define FindAuxInfoSym(s,r) FEAuxInfo(*back.front, FEAuxInfo(*back.front, s,FEINF_AUX_LOOKUP),r)
 
 extern  pointer FindAuxInfo( BackRun& back, name *, aux_class );
-#if _TARGET_INTEL
 extern  pointer BEAuxInfo( BackRun& back, pointer, aux_class );
-#endif

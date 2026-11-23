@@ -269,42 +269,6 @@ static dw_handle dwarfTypeFunction( FrontRun& front, TYPEPTR typ, char *name )
     return( dh );
 }
 
-#if 0
-uint dwarfTypeModifier( type_modifiers decl_flags )
-/*************************************************/
-{
-    uint        modtype = 0;
-
-    if( decl_flags & FLAG_CONST ) {
-        modtype |= DW_MOD_CONSTANT;
-    }
-    if( decl_flags & FLAG_VOLATILE ) {
-        modtype |= DW_MOD_VOLATILE;
-    }
-#if _CPU == 386
-    if( decl_flags & FLAG_NEAR ) {
-        modtype |= DW_MOD_NEAR32;
-    }
-    if( decl_flags & FLAG_FAR ) {
-        modtype |= DW_MOD_FAR32;
-    }
-    if( decl_flags & FLAG_FAR16 ) {
-        modtype |= DW_MOD_FAR16;
-    }
-#else
-    if( decl_flags & FLAG_NEAR ) {
-        modtype |= DW_MOD_NEAR16;
-    }
-    if( decl_flags & FLAG_FAR ) {
-        modtype |= DW_MOD_FAR16;
-    }
-    if( decl_flags & FLAG_HUGE ) {
-        modtype |= DW_MOD_HUGE16;
-    }
-#endif
-    return( modtype  );
-}
-#endif
 
 static dw_handle dwarfType( FrontRun& front, TYPEPTR typ, DC_CONTROL control )
 /***********************************************************/
@@ -411,18 +375,8 @@ static dw_handle dwarfType( FrontRun& front, TYPEPTR typ, DC_CONTROL control )
         type_update( typ, TF2_DWARF_DEF, dh );
         break;
     default:
-#ifdef FDEBUG
-        DumpFullType( typ );
-        CFatal( "dwarf: illegal type" );
-#endif
         break;
     }
-#ifdef FDEBUG
-    if( dh == 0 && (control & DC_RETURN) == 0 ) {
-        DumpFullType( type );
-        CFatal( "dwarf: unable to define type" );
-    }
-#endif
     return( dh );
 }
 

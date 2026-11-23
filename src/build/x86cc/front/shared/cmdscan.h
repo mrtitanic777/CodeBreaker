@@ -37,9 +37,7 @@
 #include <stdlib.h>
 
 
-#ifdef __cplusplus
 extern "C" {
-#endif
 
 // PROTOTYPES
 
@@ -112,8 +110,6 @@ bool CmdScanSwitchChar(         // TEST IF SWITCH CHAR
     int )
 ;
 
-#ifdef __cplusplus
 };
-#endif
 
 #endif  // __CMDSCAN_H

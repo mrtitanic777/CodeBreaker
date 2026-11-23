@@ -258,9 +258,7 @@ static bool OkToSlide( BackRun& back, instruction *ins, name *op )
  * Is it OK to slide an INDEX_ADJUST instruction past an index name?
  */
 {
-#if  _TARGET_INTEL
     opcnt           i;
-#endif
 
     /* unused parameters */ (void)ins;
 
@@ -270,7 +268,6 @@ static bool OkToSlide( BackRun& back, instruction *ins, name *op )
         return( true );
     if( back.data.OptForSize >= 50 )
         return( false );
-#if  _TARGET_INTEL
     /*
      * bad news to add a displacement on an instruction that also
      * has a constant operand (takes an extra clock)
@@ -280,7 +277,6 @@ static bool OkToSlide( BackRun& back, instruction *ins, name *op )
             return( false );
         }
     }
-#endif
     return( true );
 }
 

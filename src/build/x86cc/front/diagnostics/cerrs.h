@@ -40,7 +40,6 @@
 #define WLEVEL_ERROR    0
 #define WLEVEL_DEFAULT  1
 #define WLEVEL_WX       (WLEVEL_MAX - 1)
-#define WLEVEL_ENABLED  1
 #define WLEVEL_DISABLED WLEVEL_MAX
 #define WLEVEL_NOTE     -1
 

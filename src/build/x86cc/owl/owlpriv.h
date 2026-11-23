@@ -118,8 +118,6 @@ struct owl_section_info {
 #define _ClientFree( run, a, b )            ((a)->info->client_funcs.free( run, b ))
 #define _ClientWrite( run, a, b, c )        ((a)->info->client_funcs.write( run, (a)->client_handle, b, c ))
 #define _ClientWriteFile( run, a, b, c, d ) ((a)->info->client_funcs.write( run, b, c, d ))
-#define _ClientTell( a )                ((a)->info->client_funcs.tell( (a)->client_handle ))
-#define _ClientSeek( a, b, c )          ((a)->info->client_funcs.seek( (a)->client_handle, b, c ))
 #define _ClientLabelName( a, b )        ((a)->info->client_funcs.lbl_name( b ))
 #define _ClientLabelDone( a, b )        ((a)->info->client_funcs.lbl_done( b ))
 

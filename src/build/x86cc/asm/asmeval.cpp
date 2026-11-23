@@ -32,13 +32,8 @@
 
 #include "asmglob.h"
 #include "asmeval.h"
-#if defined( _STANDALONE_ )
-#include "directiv.h"
-#include "myassert.h"
-#else
 //  FIXME!!
 #define myassert(x)
-#endif
 #include "asmrun.hpp"
 
 
@@ -158,13 +153,6 @@ static int get_precedence( token_buffer *tokbuf, token_idx i )
     switch( tokbuf->tokens[i].class_ ) {
     case TC_UNARY_OPERATOR:
         switch( tokbuf->tokens[i].u.token ) {
-#if defined( _STANDALONE_ )
-        case T_LENGTH:
-        case T_SIZE:
-        case T_LENGTHOF:
-        case T_SIZEOF:
-            return( 3 );
-#endif
         case T_SEG:
         case T_OFFSET:
         case T_OFFSET32:
@@ -173,10 +161,6 @@ static int get_precedence( token_buffer *tokbuf, token_idx i )
         break;
     case TC_ARITH_OPERATOR:
         return( 8 );
-#if defined( _STANDALONE_ )
-    case TC_RELATION_OPERATOR:
-        return( 10 );
-#endif
     case TC_INSTR:
         switch( tokbuf->tokens[i].u.token ) {
         case T_SHL:
@@ -204,11 +188,6 @@ static int get_precedence( token_buffer *tokbuf, token_idx i )
         case T_OWORD:
         case T_NEAR:
         case T_FAR:
-#if defined( _STANDALONE_ )
-        case T_SBYTE:
-        case T_SWORD:
-        case T_SDWORD:
-#endif
         case T_PTR:
             return( 5 );
         }
@@ -242,17 +221,7 @@ static bool get_operand( AsmRun& assembler, expr_list *new_, token_buffer *tokbu
     switch( tokbuf->tokens[i].class_ ) {
     case TC_NUM:
         new_->empty = false;
-#if defined( _STANDALONE_ )
-        if( (Options.mode & MODE_IDEAL)
-          && ( op_sq_bracket_level ) ) {
-            new_->type = EXPR_ADDR;
-            new_->indirect = true;
-        } else {
-            new_->type = EXPR_CONST;
-        }
-#else
         new_->type = EXPR_CONST;
-#endif
         new_->value = tokbuf->tokens[i].u.value;
         break;
     case TC_STRING:
@@ -339,80 +308,8 @@ static bool get_operand( AsmRun& assembler, expr_list *new_, token_buffer *tokbu
         }
         break;
     case TC_ID:
-#if defined( _STANDALONE_ )
-        if( Parse_Pass == PASS_1 ) {
-            new_->sym = AsmLookup( tokbuf->tokens[i].string_ptr );
-            if( new_->sym == NULL ) {
-                new_->type = EXPR_UNDEF;
-                return( RC_ERROR );
-            }
-        } else {
-            new_->sym = AsmGetSymbol( tokbuf->tokens[i].string_ptr );
-            if( new_->sym == NULL ) {
-                if( error_msg )
-                    AsmErr( SYMBOL_NOT_DEFINED, tokbuf->tokens[i].string_ptr );
-                new_->type = EXPR_UNDEF;
-                return( RC_ERROR );
-            }
-#if 0
-// FIXME !!!!!
-// problem with aliases and equ directive
-            if( ( new_->sym == NULL )
-              || ( new_->sym->state == SYM_UNDEFINED ) ) {
-                if( error_msg )
-                    AsmErr( SYMBOL_NOT_DEFINED, tokbuf->tokens[i].string_ptr );
-                new_->type = EXPR_UNDEF;
-                return( RC_ERROR );
-            }
-#endif
-        }
-        if( new_->sym != NULL ) {
-            new_->sym->referenced = true;
-            if( ( new_->sym->state == SYM_STRUCT  )
-              || (Options.mode & MODE_IDEAL)
-              && ( new_->sym->mem_type == MT_STRUCT ) ) {
-                new_->empty = false;
-                new_->value = new_->sym->offset;
-                new_->mbr = new_->sym;
-                new_->sym = NULL;
-                new_->type = EXPR_ADDR;
-                if( (Options.mode & MODE_IDEAL)
-                  && ( op_sq_bracket_level ) ) {
-                    Definition.struct_depth++;
-                    if( new_->mbr->state == SYM_STRUCT ) {
-                        Definition.curr_struct = (dir_node_handle)new_->mbr;
-                        (*start)++; /* Skip structure override and process next token */
-                        return( get_operand( new_, tokbuf, start, end, is_expr ) );
-                    } else {
-                        new_->indirect = true;
-                        Definition.curr_struct = (dir_node_handle)new_->mbr->structure;
-                    }
-                }
-                break;
-            } else if( new_->sym->state == SYM_STRUCT_FIELD ) {
-                if( (Options.mode & MODE_IDEAL)
-                  && ( Definition.struct_depth ) ) {
-                    Definition.struct_depth--;
-                    new_->indirect = true;
-                }
-                new_->empty = false;
-                new_->mem_type = new_->sym->mem_type;
-                new_->value = new_->sym->offset;
-                new_->mbr = new_->sym;
-                new_->sym = NULL;
-                new_->type = EXPR_ADDR;
-                break;
-            }
-            if( new_->sym->mem_type == MT_ABS ) {
-                new_->abs = true;
-            } else {
-                new_->mem_type = new_->sym->mem_type;
-            }
-        }
-#else
         new_->sym = AsmLookup( assembler, tokbuf->tokens[i].string_ptr );
         new_->mem_type = new_->sym->mem_type;
-#endif
         new_->empty = false;
         new_->type = EXPR_ADDR;
         new_->label = i;
@@ -491,11 +388,6 @@ static bool is_unary( token_buffer *tokbuf, token_idx i, bool sign )
         case T_SHORT:
         case T_NEAR:
         case T_FAR:
-#if defined( _STANDALONE_ )
-        case T_SBYTE:
-        case T_SWORD:
-        case T_SDWORD:
-#endif
         case T_PTR:
             return( true );
         }
@@ -570,17 +462,7 @@ static void MakeConst( expr_list *token )
         return;
     token->label = INVALID_IDX;
     if( token->mbr != NULL ) {
-#if defined( _STANDALONE_ )
-        if( token->mbr->state == SYM_STRUCT_FIELD ) {
-        } else if( token->mbr->state == SYM_STRUCT ) {
-            token->value += token->mbr->total_size;
-            token->mbr = NULL;
-        } else {
-            return;
-        }
-#else
         return;
-#endif
     }
     if( ISVALID_IDX( token->base_reg ) )
         return;
@@ -598,16 +480,7 @@ static void MakeConst( expr_list *token )
 static void fix_struct_value( expr_list *token )
 /**********************************************/
 {
-#if defined( _STANDALONE_ )
-    if( token->mbr != NULL ) {
-        if( token->mbr->state == SYM_STRUCT ) {
-            token->value += token->mbr->total_size;
-            token->mbr = NULL;
-        }
-    }
-#else
     /* unused parameters */ (void)token;
-#endif
 }
 
 static bool check_direct_reg( expr_list *token_1, expr_list *token_2 )
@@ -897,34 +770,12 @@ static bool calculate( AsmRun& assembler, expr_list *token_1, expr_list *token_2
                 sym = token_1->sym;
                 if( sym == NULL )
                     return( RC_ERROR );
-#if defined( _STANDALONE_ )
-                if( Parse_Pass > PASS_1
-                  && sym->state == SYM_UNDEFINED ) {
-                    if( error_msg )
-                        AsmError( LABEL_NOT_DEFINED );
-                    token_1->type = EXPR_UNDEF;
-                    return( RC_ERROR );
-                }
-                token_1->value += sym->offset;
-#else
                 token_1->value += sym->addr;
-#endif
                 sym = token_2->sym;
                 if( sym == NULL )
                     return( RC_ERROR );
 
-#if defined( _STANDALONE_ )
-                if( Parse_Pass > PASS_1
-                  && sym->state == SYM_UNDEFINED ) {
-                    if( error_msg )
-                        AsmError( LABEL_NOT_DEFINED );
-                    token_1->type = EXPR_UNDEF;
-                    return( RC_ERROR );
-                }
-                token_1->value -= sym->offset;
-#else
                 token_1->value -= sym->addr;
-#endif
                 token_1->value -= token_2->value;
                 token_1->label = INVALID_IDX;
                 token_1->sym = NULL;
@@ -1029,32 +880,10 @@ static bool calculate( AsmRun& assembler, expr_list *token_1, expr_list *token_2
             if( sym == NULL )
                 return( RC_ERROR );
 
-#if defined( _STANDALONE_ )
-            if( tokbuf->tokens[token_1->label].class_ == TC_RES_ID ) {
-                /* Kludge for "FLAT" */
-                tokbuf->tokens[token_1->label].class_ = TC_ID;
-            }
-            if( sym->state == SYM_GRP
-              || sym->state == SYM_SEG ) {
-                token_2->override = token_1->label;
-                token_2->indirect |= token_1->indirect;
-                if( token_1->explicit_ ) {
-                    token_2->explicit_ = token_1->explicit_;
-                    token_2->mem_type = token_1->mem_type;
-                }
-                TokenAssign( token_1, token_2 );
-            } else if( Parse_Pass > PASS_1 ) {
-                if( error_msg )
-                    AsmError( ONLY_SEG_OR_GROUP_ALLOWED );
-                token_1->type = EXPR_UNDEF;
-                return( RC_ERROR );
-            }
-#else
             if( assembler.asmeval->error_msg )
                 AsmError( *assembler.front, ONLY_SEG_OR_GROUP_ALLOWED );
             token_1->type = EXPR_UNDEF;
             return( RC_ERROR );
-#endif
         } else {
             if( assembler.asmeval->error_msg )
                 AsmError( *assembler.front, REG_OR_LABEL_EXPECTED_IN_OVERRIDE );
@@ -1073,17 +902,8 @@ static bool calculate( AsmRun& assembler, expr_list *token_1, expr_list *token_2
         case T_OWORD:
         case T_NEAR:
         case T_FAR:
-#if defined( _STANDALONE_ )
-        case T_SBYTE:
-        case T_SWORD:
-        case T_SDWORD:
-            if( ( ( tokbuf->tokens[index + 1].class_ != TC_RES_ID )
-              || ( tokbuf->tokens[index + 1].u.token != T_PTR ) )
-              && ( (Options.mode & MODE_IDEAL) == 0 ) ) {
-#else
             if( ( tokbuf->tokens[index + 1].class_ != TC_RES_ID )
               || ( tokbuf->tokens[index + 1].u.token != T_PTR ) ) {
-#endif
                 // Missing PTR operator
                 if( assembler.asmeval->error_msg )
                     AsmError( *assembler.front, MISSING_PTR_OPERATOR );
@@ -1123,17 +943,6 @@ static bool calculate( AsmRun& assembler, expr_list *token_1, expr_list *token_2
             case T_FAR:
                 token_1->mem_type = MT_FAR;
                 break;
-#if defined( _STANDALONE_ )
-            case T_SBYTE:
-                token_1->mem_type = MT_SBYTE;
-                break;
-            case T_SWORD:
-                token_1->mem_type = MT_SWORD;
-                break;
-            case T_SDWORD:
-                token_1->mem_type = MT_SDWORD;
-                break;
-#endif
             default:
                 break;
             }
@@ -1154,11 +963,6 @@ static bool calculate( AsmRun& assembler, expr_list *token_1, expr_list *token_2
                 case T_OWORD:
                 case T_NEAR:
                 case T_FAR:
-    #if defined( _STANDALONE_ )
-                case T_SBYTE:
-                case T_SWORD:
-                case T_SDWORD:
-    #endif
                     TokenAssign( token_1, token_2 );
                     token_1->explicit_ = true;
                     if( token_1->instr == T_OFFSET )
@@ -1234,104 +1038,8 @@ static bool calculate( AsmRun& assembler, expr_list *token_1, expr_list *token_2
             token_1->type = EXPR_UNDEF;
             return( RC_ERROR );
         }
-#if defined( _STANDALONE_ )
-        switch( tokbuf->tokens[index].u.token ) {
-        case T_LENGTH:
-        case T_SIZE:
-        case T_LENGTHOF:
-        case T_SIZEOF:
-            sym = token_2->sym;
-            if( token_2->mbr != NULL )
-                sym = token_2->mbr;
-            if( sym == NULL ) {
-                if( error_msg ) {
-                    AsmError( INVALID_USE_OF_LENGTH_SIZE_OPERATOR );
-                }
-                return( RC_ERROR );
-            }
-            switch( tokbuf->tokens[index].u.token ) {
-            case T_LENGTH:
-                if( sym->mem_type == MT_STRUCT ) {
-                    token_1->value = sym->count;
-                } else if( sym->mem_type == MT_EMPTY ) {
-                    token_1->value = 0;
-                } else {
-                    token_1->value = ( sym->first_length ) ? sym->first_length : 1;
-                }
-                break;
-            case T_LENGTHOF:
-                if( sym->mem_type == MT_STRUCT ) {
-                    token_1->value = sym->count;
-                } else if( sym->mem_type == MT_EMPTY ) {
-                    token_1->value = 0;
-                } else {
-                    token_1->value = sym->total_length;
-                }
-                break;
-            case T_SIZE:
-                if( sym->mem_type == MT_STRUCT ) {
-                    token_1->value = sym->total_size * sym->count;
-                } else if( sym->state == SYM_STRUCT ) {
-                    token_1->value = sym->total_size;
-                } else if( sym->mem_type == MT_NEAR ) {
-                    if( sym->segment ) {
-                        if( ((dir_node_handle)sym->segment)->e.seginfo->use32 ) {
-                            token_1->value = 0xFF04;
-                        } else {
-                            token_1->value = 0xFF02;
-                        }
-                    } else {
-                        token_1->value = 0xFF02;
-                    }
-                } else if( sym->mem_type == MT_FAR ) {
-                    if( sym->segment ) {
-                        if( ((dir_node_handle)sym->segment)->e.seginfo->use32 ) {
-                            token_1->value = 0xFF06;
-                        } else {
-                            token_1->value = 0xFF05;
-                        }
-                    } else {
-                        token_1->value = 0xFF05;
-                    }
-                } else {
-                    token_1->value = sym->first_size;
-                }
-                break;
-            case T_SIZEOF:
-                if( sym->mem_type == MT_STRUCT ) {
-                    token_1->value = sym->total_size * sym->count;
-                } else {
-                    token_1->value = sym->total_size;
-                }
-                break;
-            }
-            if( Parse_Pass != PASS_1
-              && token_1->value == 0 ) {
-                if( error_msg )
-                    AsmError( DATA_LABEL_IS_EXPECTED );
-                token_1->type = EXPR_UNDEF;
-                return( RC_ERROR );
-            }
-            token_1->label = INVALID_IDX;
-            token_1->sym = NULL;
-            token_1->base_reg = INVALID_IDX;
-            token_1->idx_reg = INVALID_IDX;
-            token_1->override = INVALID_IDX;
-            token_1->instr = T_NULL;
-            token_1->type = EXPR_CONST;
-            token_1->indirect = false;
-            token_1->explicit_ = false;
-            token_1->mem_type = MT_EMPTY;
-            break;
-        default:
-            TokenAssign( token_1, token_2 );
-            token_1->instr = tokbuf->tokens[index].u.token;
-            break;
-        }
-#else
         TokenAssign( token_1, token_2 );
         token_1->instr = tokbuf->tokens[index].u.token;
-#endif
         break;
     case TC_ARITH_OPERATOR:
         MakeConst( token_1 );
@@ -1398,38 +1106,6 @@ static bool calculate( AsmRun& assembler, expr_list *token_1, expr_list *token_2
             break;
         }
         break;
-#if defined( _STANDALONE_ )
-    case TC_RELATION_OPERATOR:
-        MakeConst( token_1 );
-        MakeConst( token_2 );
-        if( !check_same( token_1, token_2, EXPR_CONST ) ) {
-            if( error_msg )
-                AsmError( CONSTANT_EXPECTED );
-            token_1->type = EXPR_UNDEF;
-            return( RC_ERROR );
-        }
-        switch( tokbuf->tokens[index].u.token ) {
-        case T_EQ:
-            token_1->value = ( token_1->value == token_2->value ) ? -1 : 0;
-            break;
-        case T_NE:
-            token_1->value = ( token_1->value != token_2->value ) ? -1 : 0;
-            break;
-        case T_LT:
-            token_1->value = ( token_1->value < token_2->value ) ? -1 : 0;
-            break;
-        case T_LE:
-            token_1->value = ( token_1->value <= token_2->value ) ? -1 : 0;
-            break;
-        case T_GT:
-            token_1->value = ( token_1->value > token_2->value ) ? -1 : 0;
-            break;
-        case T_GE:
-            token_1->value = ( token_1->value >= token_2->value ) ? -1 : 0;
-            break;
-        }
-        break;
-#endif
     }
     token_1->empty = false;
     return( RC_OK );
@@ -1717,17 +1393,6 @@ static bool is_expr1( AsmRun& assembler, token_buffer *tokbuf, token_idx i )
         break;
     case TC_ARITH_OPERATOR:
         return( true );
-#if defined( _STANDALONE_ )
-    case TC_RELATION_OPERATOR:
-        return( true );
-    case TC_RES_ID:
-        switch( tokbuf->tokens[i].u.token ) {
-        case T_FLAT:
-            DefFlatGroup();
-            return( true );
-        }
-        break;
-#endif
     case TC_REG:
         return( true );
     case TC_PLUS:
@@ -1743,14 +1408,6 @@ static bool is_expr1( AsmRun& assembler, token_buffer *tokbuf, token_idx i )
     case TC_CL_SQ_BRACKET:
         return( true );
     case TC_COLON:
-#if defined( _STANDALONE_ )
-        if( i == 1 ) {
-            /*
-             * It is the colon following the label
-             */
-            break;
-        }
-#endif
         return( true );
     case TC_ID:
         if( i != 0 )
@@ -1808,14 +1465,6 @@ static bool is_expr2( AsmRun& assembler, token_buffer *tokbuf, token_idx i )
         return( true );
     case TC_RES_ID:
         switch( tokbuf->tokens[i].u.token ) {
-#if defined( _STANDALONE_ )
-        case T_FLAT:
-            DefFlatGroup();
-            return( true );
-        case T_SBYTE:
-        case T_SWORD:
-        case T_SDWORD:
-#endif
         case T_BYTE:
         case T_WORD:
         case T_DWORD:
@@ -2064,17 +1713,6 @@ static token_idx fix( AsmRun& assembler, expr_list *res, token_buffer *tokbuf, t
             case MT_FAR:
                 tokbuf->tokens[start++].u.token = T_FAR;
                 break;
-#if defined( _STANDALONE_ )
-            case MT_SBYTE:
-                tokbuf->tokens[start++].u.token = T_SBYTE;
-                break;
-            case MT_SWORD:
-                tokbuf->tokens[start++].u.token = T_SWORD;
-                break;
-            case MT_SDWORD:
-                tokbuf->tokens[start++].u.token = T_SDWORD;
-                break;
-#endif
             default:
                 break;
             }
@@ -2279,103 +1917,12 @@ bool EvalOperand( AsmRun& assembler, token_buffer *tokbuf, token_idx *start_tok,
         num++;
     }
     assembler.asmeval->op_sq_bracket_level = 0;
-#if defined( _STANDALONE_ )
-    if( Options.mode & MODE_IDEAL ) {
-        Definition.struct_depth = 0;
-    }
-#endif
     assembler.asmeval->error_msg = flag_msg;
     rc = evaluate( assembler, result, tokbuf, start_tok, *start_tok + num, PROC_BRACKET, is_expr2 );
-#if defined( _STANDALONE_ )
-    if( Options.mode & MODE_IDEAL ) {
-        Definition.struct_depth = 0;
-    }
-#endif
     return( rc );
 }
 
-#if 0
-static bool is_expr_const( token_idx i )
-/********************************/
-/* Check if the token is part of constant expression */
-{
-    switch( tokbuf->tokens[i].class_ ) {
-    case TC_INSTR:
-        switch( tokbuf->tokens[i].u.token ) {
-        case T_SHL:
-        case T_SHR:
-        case T_NOT:
-        case T_AND:
-        case T_OR:
-        case T_XOR:
-            if( i == 0 ) {
-                /* It is an instruction instead */
-                return( false );
-            } else if( tokbuf->tokens[i-1].class_ == TC_COLON ) {
-                /* It is an instruction instead */
-                return( false );
-            } else if( tokbuf->tokens[i-1].u.token == T_LOCK ) {
-                /* It is an instruction:
-                         lock and dword ptr [ebx], 1
-                */
-                return( false );
-            } else {
-                return( true );
-            }
-        default:
-            return( false );
-        }
-    case TC_ARITH_OPERATOR:
-        return( true );
-    case TC_RELATION_OPERATOR:
-        return( true );
-    case TC_PLUS:
-    case TC_MINUS:
-        /* hack to stop asmeval from hanging on floating point numbers */
-        if( tokbuf->tokens[i+1].class_ == TC_FLOAT )
-            return( false );
-    case TC_NUM:
-    case TC_OP_BRACKET:
-    case TC_CL_BRACKET:
-    case TC_OP_SQ_BRACKET:
-    case TC_CL_SQ_BRACKET:
-        return( true );
-    case TC_ID:
-        if( i == 0 ) {
-            /* It is a label */
-            return( false );
-        } else {
-            return( true );
-        }
-    default:
-        if( IS_STRING_TOKEN( tokbuf->tokens[i].class_ ) ) {
-            return( true );
-        }
-        return( false );
-    }
-}
-#endif
 
-#if defined( _STANDALONE_ )
-
-token_idx EvalConstant( token_buffer *tokbuf, token_idx start_tok, token_idx end_tok, bool flag_msg )
-/***************************************************************************************************/
-{
-    token_idx   i;
-//    bool        const_expr = true;
-
-    TokCnt = tokbuf->count;
-    error_msg = flag_msg;
-    for( i = start_tok; i < TokCnt && i <= end_tok; ++i ) {
-        if( !is_expr1( tokbuf, i ) ) {
-//            const_expr = false;
-            break;
-        }
-    }
-    return( TokCnt );
-}
-
-#endif
 
 /* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
 AsmevalState* asmeval_make() { return new AsmevalState(); }

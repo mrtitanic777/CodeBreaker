@@ -363,29 +363,6 @@ static  void    AllocNewLocal( BackRun& back, name *temp )
     stack_temp  st_temp;
     bool        any_references;
 
-#if 0
-    // this is disabled because users can generate code which
-    // may be incorrect (most likely) but which we don't want
-    // to trigger this assert.
-    /* such as:
-    enum MonthEnum { InvalidMonth = 0, January, February, March };
-    int IntoDays( void ) {
-        MonthEnum i = January;
-        for ( ; i <= 11; ((short&) i)++ ) ;
-        return 0;
-    } */
-    // run through the aliases making sure that none
-    // are larger than the master  BBB - May 26, 1997
-    {
-        name    *t;
-
-        for( t = temp->t.alias; t != temp; t = t->t.alias ) {
-            if( t->t.temp_flags & CG_INTRODUCED )
-                continue;
-            assert( t->n.size <= temp->n.size );
-        }
-    }
-#endif
     size = _RoundUp( temp->n.size, REG_SIZE ); /* align size*/
     if( (temp->v.usage & (USE_IN_ANOTHER_BLOCK | USE_ADDRESS)) == 0
      && temp->t.u.blk_id != BLK_ID_NONE ) {

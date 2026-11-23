@@ -163,12 +163,6 @@ ins_entry       *AliasLabels( BackRun& back, ins_entry *old_ins, ins_entry *new_
         if( _ObjLen( old_ins ) > _ObjLen( new_ins ) ) {
             _ObjLen( new_ins ) = _ObjLen( old_ins );
         }
-#if _TARGET_RISC
-        /* one of the line numbers (at most) is non-zero - keep it */
-        if( _LblLine( old_ins ) != 0 ) {
-            _LblLine( new_ins ) = _LblLine( old_ins );
-        }
-#endif
         _SetAttr( new_ins, _GetAttr( old_ins ) & OC_ATTR_SHORT );
         new_lbl = _Label( new_ins );
         old_lbl = _Label( old_ins );

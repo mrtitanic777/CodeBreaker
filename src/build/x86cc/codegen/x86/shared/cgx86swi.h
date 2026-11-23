@@ -64,12 +64,10 @@ typedef enum {
 
 #define CPU_MASK        0x000f
 #define FPU_MASK        0x00f0
-#define WTK_MASK        0x0f00
 
 #define GET_CPU( r )       ((r) & CPU_MASK)
 #define GET_FPU( r )       ((r) & FPU_MASK)
 #define GET_FPU_LEVEL( r ) (((r) & FPU_MASK)&~FPU_EMU)
-#define GET_WTK( r )       ((r) & WTK_MASK)
 
 #define SET_PROC( r, v, m ) \
     { \
@@ -80,7 +78,6 @@ typedef enum {
     }
 #define SET_CPU( r, v ) SET_PROC( r, v, CPU_MASK );
 #define SET_FPU( r, v ) SET_PROC( r, v, FPU_MASK );
-#define SET_WTK( r, v ) SET_PROC( r, v, WTK_MASK );
 
 #define SET_FPU_LEVEL( r, v ) SET_FPU( r, (v) | ( GET_FPU( r ) & FPU_EMU ) )
 #define SET_FPU_EMU( r )      SET_FPU( r, GET_FPU( r ) | FPU_EMU )

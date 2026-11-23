@@ -34,9 +34,5 @@
 #define __LANGENVD_H__
 
 #define __TGT_SYS_X86       0   // All x86 systems to date
-#define __TGT_SYS_AXP_NT    1   // Win32 on DEC Alpha AXP
-#define __TGT_SYS_PPC_NT    2   // Win32 on IBM/Motorola PowerPC
-#define __TGT_SYS_MIPS      3   // MIPS RISC Architecture
-#define __TGT_SYS_X64       4   // Intel 64-bit Architecture
 
 #endif

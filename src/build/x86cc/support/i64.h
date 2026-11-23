@@ -35,9 +35,7 @@
 
 #include "watcom.h"
 
-#ifdef __cplusplus
 extern "C" {
-#endif
 
 #define U64Byte(a,b)        ((a).u._8[(b)])
 #define U64Word(a,b)        ((a).u._16[(b)])
@@ -52,17 +50,14 @@ extern "C" {
 #define U64HighLE(a)        ((a).u._32[1])
 
 #define I64Byte(a,b)        ((signed_8)(a).u._8[(b)])
-#define I64Word(a,b)        ((signed_16)(a).u._16[(b)])
 
 #define I64LowByte(a)       ((signed_8)(a).u._8[I64B0])
 #define I64LowWord(a)       ((signed_16)(a).u._16[I64W0])
 #define I64Low(a)           ((signed_32)(a).u._32[I64LO32])
 #define I64HighByte(a)      ((signed_32)(a).u._8[I64B1])
-#define I64HighWord(a)      ((signed_32)(a).u._16[I64W1])
 #define I64High(a)          ((signed_32)(a).u._32[I64HI32])
 
 #define U64CmpU32(a,b)      (((a).u._32[I64HI32])?1:(((a).u._32[I64LO32]<(b))?-1:((a).u._32[I64LO32]!=(b))))
-#define I64CmpU32(a,b)      (((a).u.sign.v)?-1:U64CmpU32((a),(b)))
 
 #define I64isNeg(a)         ((a).u.sign.v!=0)
 #define U64isZero(a)        (((a).u._32[0]|(a).u._32[1])==0)
@@ -95,9 +90,6 @@ extern "C" {
         { (r).u._32[0] = ~(r).u._32[0]; \
           (r).u._32[1] = ~(r).u._32[1]; }
 
-#define U64NotAnd(r,a,b) \
-        { (r).u._32[0] = (a).u._32[0] & ~(b).u._32[0]; \
-          (r).u._32[0] = (a).u._32[1] & ~(b).u._32[1]; }
 #define U64NotAndEq(r,b) \
         { (r).u._32[0] &= ~(b).u._32[0]; \
           (r).u._32[1] &= ~(b).u._32[1]; }
@@ -110,7 +102,6 @@ extern "C" {
  * big endian systems where the value is at different memory address
  * depending on its size.
  */
-#define U32Fetch(x)         (assert((x).u._32[I64HI32]==0),(x).u._32[I64LO32])
 #define U32FetchTrunc(x)    ((x).u._32[I64LO32])
 #define I32FetchTrunc(x)    ((signed_32)(x).u._32[I64LO32])
 #define U16FetchTrunc(x)    ((x).u._16[I64LO16])
@@ -118,12 +109,6 @@ extern "C" {
 #define U8FetchTrunc(x)     ((x).u._8[I64LO8])
 #define I8FetchTrunc(x)     ((signed_8)(x).u._8[I64LO8])
 
-#define U64ConvU32(x)       ((x).u._32[I64HI32]=0)
-#define U64ConvI32(x)       ((x).u._32[I64HI32]=((signed_32)(x).u._32[I64LO32]<0)?-1:0)
-#define U64ConvU16(x)       ((x).u._16[I64W1]=(x).u._32[I64HI32]=0)
-#define U64ConvI16(x)       ((x).u._16[I64W1]=(x).u._32[I64HI32]=((signed_16)(x).u._16[I64W0]<0)?-1:0)
-#define U64ConvU8(x)        ((x).u._8[I64B1]=(x).u._16[I64W1]=(x).u._32[I64HI32]=0)
-#define U64ConvI8(x)        ((x).u._8[I64B1]=(x).u._16[I64W1]=(x).u._32[I64HI32]=((signed_8)(x).u._8[I64B0]<0)?-1:0)
 
 /* Note about the FetchNative macros: These assume that the value is stored
  * in memory as a non-64bit type, starting at the lowest address. That is,
@@ -137,11 +122,7 @@ extern "C" {
 #define U8FetchNative(x)    ((x).u._8[0])
 #define I8FetchNative(x)    ((signed_8)(x).u._8[0])
 
-#if defined( __BIG_ENDIAN__ )
-    #define Init64Val(h,l)  {(h),(l)}
-#else
     #define Init64Val(h,l)  {(l),(h)}
-#endif
 // set 64-bit from low and high part
 #define Set64Val(x,l,h)     ((x).u._32[I64LO32]=(l),(x).u._32[I64HI32]=(h))
 #define Set64ValZero(x)     ((x).u._32[0]=0,(x).u._32[1]=0)
@@ -155,10 +136,7 @@ extern "C" {
 // is the U64 a positive I32?
 #define U64IsI32(x)         (((x).u._32[I64HI32]==0)&&((signed_32)(x).u._32[I64LO32]>=0))
 // is the U64 a positive I64?
-#define U64IsI64(x)         ((signed_32)(x).u._32[I64HI32]>=0)
 // is the I64 a I32?
-#define I64IsI32(x)         (((x).u._32[I64HI32]==0)&&((signed_32)(x).u._32[I64LO32]>=0) \
-                            ||((x).u._32[I64HI32]==-1)&&((signed_32)(x).u._32[I64LO32]<0))
 
 #define U64NegEq(a)         U64Neg((a),(a))
 #define U64AddEq(a,b)       U64Add((a),(a),(b))
@@ -174,72 +152,6 @@ extern int      U64Cnv10( unsigned_64 *res, char c );
 extern int      U64Cnv8( unsigned_64 *res, char c );
 extern int      U64Cnv2( unsigned_64 *res, char c );
 extern int      U64Cnv16( unsigned_64 *res, char c );
-#if defined(__386__) && defined( __WATCOMC__ )
-#pragma aux U64Cnv10 \
-    __parm __caller [__esi] [__eax] = \
-        "mov  ecx,4[esi]" \
-        "xor  edx,edx" \
-        "mov  ebx,[esi]" \
-        "shld edx,ecx,3" \
-        "shld ecx,ebx,3" \
-        "shl  ebx,3" \
-        "shl  dword ptr [esi],1" \
-        "rcl  dword ptr 4[esi],1" \
-        "rcl  edx,1" \
-        "add  ebx,eax" \
-        "adc  ecx,0" \
-        "adc  edx,0" \
-        "add  [esi],ebx" \
-        "adc  4[esi],ecx" \
-        "adc  edx,0" \
-    __value [__edx] \
-    __modify __exact [__ebx __ecx __edx]
-
-#pragma aux U64Cnv8 \
-    __parm __caller [__esi] [__eax] = \
-        "mov  ecx,4[esi]" \
-        "xor  edx,edx" \
-        "mov  ebx,[esi]" \
-        "shld edx,ecx,3" \
-        "shld ecx,ebx,3" \
-        "shl  ebx,3" \
-        "mov  4[esi],ecx" \
-        "or   ebx,eax" \
-        "mov  [esi],ebx" \
-    __value [__edx] \
-    __modify __exact [__ebx __ecx __edx]
-
-#pragma aux U64Cnv2 \
-    __parm __caller [__esi] [__eax] = \
-        "mov  ecx,4[esi]" \
-        "xor  edx,edx" \
-        "mov  ebx,[esi]" \
-        "shld edx,ecx,1" \
-        "shld ecx,ebx,1" \
-        "shl  ebx,1" \
-        "mov  4[esi],ecx" \
-        "or   ebx,eax" \
-        "mov  [esi],ebx" \
-    __value [__edx] \
-    __modify __exact [__ebx __ecx __edx]
-
-#pragma aux U64Cnv16 \
-    __parm __caller [__esi] [__eax] = \
-        "mov  ecx,4[esi]" \
-        "xor  edx,edx" \
-        "mov  ebx,[esi]" \
-        "shld edx,ecx,4" \
-        "shld ecx,ebx,4" \
-        "shl  ebx,4" \
-        "mov  4[esi],ecx" \
-        "or   ebx,eax" \
-        "mov  [esi],ebx" \
-    __value [__edx] \
-    __modify __exact [__ebx __ecx __edx]
-
-#else
-#define _U64_C_ROUTINES
-#endif
 
 extern void     U64Neg( unsigned_64 *res, const unsigned_64 *a );
 extern void     U64Add( unsigned_64 *res, const unsigned_64 *a, const unsigned_64 *b );
@@ -255,8 +167,6 @@ extern void     U64ShiftR( unsigned_64 *res, const unsigned_64 *a, unsigned shif
 extern void     U64ShiftL( unsigned_64 *res, const unsigned_64 *a, unsigned shift );
 extern void     U64Shift( unsigned_64 *res, const unsigned_64 *a, int shift );
 
-#ifdef __cplusplus
 }
-#endif
 
 #endif

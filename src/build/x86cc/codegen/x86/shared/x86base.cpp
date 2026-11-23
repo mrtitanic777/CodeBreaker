@@ -43,7 +43,6 @@
 
 #define MAX_SHORT_NEG   127
 #define MAX_SHORT_POS   127
-#define SHORT_RANGE     MAX_SHORT_NEG+MAX_SHORT_POS+1;
 #define SHORT_COST      3
 
 #if _TARGET & _TARG_8086

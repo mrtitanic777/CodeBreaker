@@ -53,11 +53,6 @@ const opcode_entry  *CodeTable( BackRun& back, instruction *ins )
     if( opcode_idx == BAD ) {
         _Zoiks( ZOIKS_052 );
     }
-#if _TARGET_RISC
-    if( opcode_idx == NYI ) {
-        _Zoiks( ZOIKS_091 );
-    }
-#endif
     return( OpcodeTable( back, opcode_idx ) );
 }
 

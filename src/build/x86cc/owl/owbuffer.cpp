@@ -34,13 +34,8 @@
 #include "owlpriv.h"
 #include "backrun.hpp"
 
-#ifdef DEVBUILD
-#define NUM_BINS                (16)
-#define INITIAL_BIN_SIZE        ((8*1024)/16)
-#else
 #define NUM_BINS                16
 #define INITIAL_BIN_SIZE        (8*1024)
-#endif
 
 // This is the crazy buffering scheme of the week: we keep 16 bins
 // of a certain size hanging off of our buffer. When these fill up,

@@ -1030,7 +1030,5 @@ hw_reg_set      FirstReg( BackRun& back, reg_set_index regs_idx )
 }
 
 /* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
-#if _TARGET & _TARG_8086
 I86rgtblState* i86rgtbl_make() { return new I86rgtblState(); }
 void i86rgtbl_free(I86rgtblState* part) { delete part; }
-#endif

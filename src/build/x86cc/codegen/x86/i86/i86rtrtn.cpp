@@ -599,7 +599,5 @@ pointer BEAuxInfo( BackRun& back, pointer hdl, aux_class request )
 }
 
 /* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
-#if _TARGET & _TARG_8086
 I86rtrtnState* i86rtrtn_make() { return new I86rtrtnState(); }
 void i86rtrtn_free(I86rtrtnState* part) { delete part; }
-#endif

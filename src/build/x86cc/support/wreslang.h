@@ -46,13 +46,6 @@ typedef enum {
 
 #define LANG_RLE_FIRST_INTERNATIONAL    LANG_RLE_JAPANESE
 
-#ifdef __WATCOMC__
-#ifndef _COMDEF_H_INCLUDED
- #include <_comdef.h>
-#endif
-_WCRTLINK extern wres_lang_id _WResLanguage( void );
-#else
 extern wres_lang_id _WResLanguage( void );
-#endif
 
 #endif

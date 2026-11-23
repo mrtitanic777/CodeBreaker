@@ -65,10 +65,6 @@
 #define CheckEqSymLevel(p)  ((p)->level == (id_level_type)front.cvars.SymLevel)
 #define CheckLtSymLevel(p)  ((p)->level < (id_level_type)front.cvars.SymLevel)
 
-#ifdef DEVBUILD
-    #define __xstr(x)   #x
-    #define __location  " (" __FILE__ "," __xstr(__LINE__) ")"
-#endif
 
 /* Macros to skip all typedefs and arrive at the underlying type */
 #define SKIP_TYPEDEFS( typeptr )                    \
@@ -132,9 +128,6 @@ typedef struct {
     DATA_TYPE type;
 } const_val;
 
-#if _CPU == 370
-global char         *AuxName;
-#endif
 
 
 /* The ValueStack array is also used by CGEN for saving _try block info */
@@ -276,9 +269,7 @@ struct CvarsState {
     char *GenCodeGroup;   /* pointer to code group name */
     unsigned ProEpiDataSize;   /* data to be alloc'd for pro/epi hook */
     unsigned ErrLimit;
-#if _INTEL_CPU
     target_size DataThreshold;   /* sizeof(obj) > this ==> separate segment */
-#endif
     unsigned Inline_Threshold;   /* -oe=num for function inlining */
     unsigned DataPtrSize;
     unsigned CodePtrSize;
@@ -582,9 +573,7 @@ extern SYM_HANDLE   SegSymHandle( FrontRun& front, segment_id );
 extern void         SetFuncSegment( FrontRun& front, SYMPTR, segment_id );
 extern void         SetFarHuge( FrontRun& front, SYMPTR, bool );
 extern char         *SegClassName( FrontRun& front, segment_id );
-#if _INTEL_CPU
 extern hw_reg_set   *SegPeggedReg( FrontRun& front, segment_id );
-#endif
 extern void         SetSegment( FrontRun& front, SYMPTR );
 extern void         SetSegAlign( FrontRun& front, SYMPTR );
 extern void         AssignSeg( FrontRun& front, SYMPTR );

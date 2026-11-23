@@ -156,30 +156,18 @@ typedef enum sg_index {
     #define cs_bprel   cs_bprel16
     #define cs_ldata   cs_ldata16
     #define cs_gdata   cs_gdata16
-    #define cs_pub     cs_pub16
     #define cs_lproc   cs_lproc16
     #define cs_gproc   cs_gproc16
-    #define cs_thunk   cs_thunk16
     #define cs_block   cs_block16
-    #define cs_with    cs_with16
-    #define cs_label   cs_label16
     #define cs_cexmode cs_cexmodel16
-    #define cs_vftpath cs_vftpath16
-    #define cs_regrel  cs_regrel16
 #elif CVSIZE == 32
     #define cs_bprel   cs_bprel32
     #define cs_ldata   cs_ldata32
     #define cs_gdata   cs_gdata32
-    #define cs_pub     cs_pub32
     #define cs_lproc   cs_lproc32
     #define cs_gproc   cs_gproc32
-    #define cs_thunk   cs_thunk32
     #define cs_block   cs_block32
-    #define cs_with    cs_with32
-    #define cs_label   cs_label32
     #define cs_cexmode cs_cexmodel32
-    #define cs_vftpath cs_vftpath32
-    #define cs_regrel  cs_regrel32
 #endif
 typedef union {    /* swiped from cvdump/h/cvin.h   */
    char           *a_data;

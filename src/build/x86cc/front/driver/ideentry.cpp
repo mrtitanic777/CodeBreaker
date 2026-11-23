@@ -34,9 +34,6 @@
 #include "cvars.h"
 #include <stdlib.h>
 #include <string.h>
-#ifdef __WATCOMC__
-    #include <malloc.h>
-#endif
 #include <setjmp.h>
 #include "bool.h"
 #include "jmpbuf.h"
@@ -197,12 +194,7 @@ unsigned IDEAPI IDEGetVersion ( void )
     return IDE_CUR_DLL_VER;
 }
 
-#define HEAP_CHK 0
 
-#if HEAP_CHK == 1
-static long HeapUsedHi;
-static long HeapFreeHi;
-#endif
 
 IDEBool IDEAPI IDEInitDLL
     ( IDECBHdl      idehdl          // - handle for this instantiation
@@ -217,10 +209,6 @@ IDEBool IDEAPI IDEInitDLL
     front.ideentry.IdeHdl = idehdl;
     front.ideentry.IdeCbs = idecbs;
     *dllhdl = run;
-#if HEAP_CHK == 1
-    HeapUsedHi = 0;
-    HeapFreeHi = 0;
-#endif
     FrontEndInit( front, true );
     return( false );
 }
@@ -230,9 +218,6 @@ void IDEAPI IDEFreeHeap( void )
  * Cleanup Heap
  */
 {
-#ifdef __WATCOMC__
-   _heapmin();
-#endif
 }
 
 void IDEAPI IDEFiniDLL( IDEDllHdl hdl )
@@ -254,60 +239,6 @@ void IDEAPI IDEFreeRun( IDEDllHdl hdl )
     cbrun_free( static_cast<RunSet*>( hdl ) );
 }
 
-#if HEAP_CHK == 1
-#include <stdio.h>
-#if 0
-static void heap_dump( void ) {
-    struct _heapinfo h_info;
-    int heap_status;
-    h_info._pentry = NULL;
-    for( ; (heap_status = _heapwalk( &h_info )) == _HEAPOK; ) {
-        if( h_info._useflag == _USEDENTRY  ) {
-            printf( " %s block at %Fp of size %4.4X\n",
-                "USED", h_info._pentry, h_info._size );
-        }
-    }
-    switch( heap_status ) {
-    case _HEAPEND:
-        printf( "end of heap\n" );
-        break;
-    case _HEAPEMPTY:
-        printf( "heap empty\n" );
-        break;
-    case _HEAPBADBEGIN:
-        printf( "heap hurt\n" );
-        break;
-    case _HEAPBADPTR:
-        printf( "bad heap ptr\n" );
-        break;
-    case _HEAPBADNODE:
-        printf( "bad heap node\n" );
-        break;
-    }
-}
-#endif
-struct heap_stat {
-    int free;
-    int used;
-};
-
-static int heap_size( struct heap_stat *stat )
-{
-    struct _heapinfo h_info;
-    int heap_status;
-    h_info._pentry = NULL;
-    stat->free = 0;
-    stat->used = 0;
-    for( ; (heap_status = _heapwalk( &h_info )) == _HEAPOK; ) {
-        if( h_info._useflag == _USEDENTRY ) {
-            stat->used += h_info._size;
-        } else {
-            stat->free += h_info._size;
-        }
-    }
-    return( heap_status );
-}
-#endif
 
 static void getFrontEndArgv( FrontRun& front, char **argv, char *infile, char *outfile )
 {
@@ -362,92 +293,15 @@ int IDEAPI IDERunYourSelf       // COMPILE A PROGRAM
     } else {
         ret = FrontEnd( front, argv );
     }
-#if HEAP_CHK  == 1
-    heap_check();
-#endif
-#ifdef __OS2__
-   _heapmin();
-#endif
     return( ret );
 }
 
-#ifdef __UNIX__
-static char **init_argv( char **args, int argc, char *infile, char *outfile )
-{
-    char    **argv;
-    int     count;
-
-    count = 1 + 2;  // terminating NULL + possible input and output file
-    if( argc > 1 ) {
-        count += argc;
-    }
-    argv = malloc( count * sizeof( char * ) );
-    count = 0;
-    if( argc > 1 ) {
-        while( count < argc - 1 ) {
-            argv[count++] = *(++args);
-        }
-    }
-    argv[count] = NULL;
-    getFrontEndArgv( argv + count, infile, outfile );
-    return( argv );
-}
-
-int IDEAPI IDERunYourSelfArgv   // COMPILE A PROGRAM
-    ( IDEDllHdl hdl,            // - handle for this instantiation
-    int argc,                   // - # of arguments
-    char **args,                // - argument vector
-    IDEBool* fatal_error )      // - addr[fatality indication]
-/****************************
- * Do a compile of a file
- */
-{
-    jmp_buf             env;
-    char                infile[_MAX_PATH];      // - input file name
-    char                outfile[4 + _MAX_PATH]; // - output file name (need room for "-fo=")
-    char                **argv;
-    int                 ret;
-
-    /* unused parameters */ (void)hdl;
-
-    TBreak();   // clear any pending IDEStopRunning's
-    *fatal_error = false;
-    FatalEnv = JMPBUF_PTR( env );
-    /*
-     * allocate and initialize argv array
-     */
-    argv = init_argv( args, argc, infile, outfile );
-    if( setjmp( env ) != 0 ) {  /* if fatal error has occurred */
-        *fatal_error = true;
-        ret = true;
-    } else {
-        ret = FrontEnd( argv );
-    }
-    free( argv );
-#if HEAP_CHK  == 1
-    heap_check();
-#endif
-    return( ret );
-}
-#endif
 
 void IDEAPI IDEStopRunning( IDEDllHdl hdl )
 {
     CauseTBreak( *static_cast<RunSet*>( hdl )->back );
 }
 
-#if 0
-// HELP Interface
-
-IDEBool IDEAPI IDEProvideHelp   // PROVIDE HELP INFORMATION
-    ( IDEDllHdl hdl             // - handle for this instantiation
-    , char const *msg )         // - message
-{
-    hdl = hdl;
-    msg = msg;
-    return( true );
-}
-#endif
 
 IDEBool IDEAPI IDEPassInitInfo( IDEDllHdl hdl, IDEInitInfo *info )
 /****************************************************************/

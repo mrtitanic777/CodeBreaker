@@ -57,7 +57,6 @@
 #include "backrun.hpp"
 
 
-#define DWARF_CU_REC_NO_PCLO_PCHI   1
 
 #define MAX_LANG    (sizeof( LangNames ) / sizeof( LangNames[0] ))
 
@@ -392,8 +391,6 @@ static int InitCU( BackRun& back, dw_cu_info *cu )
     cu->segment_size = 2;
 #elif (_TARGET & _TARG_80386)
     cu->segment_size = ( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) ) ? 2 : 0;
-#else
-    cu->segment_size = 0;
 #endif
     switch( GetMemModel(back) ) {
     case 'h':
@@ -471,9 +468,7 @@ void    DFBegCCU( BackRun& back, segment_id code_segid, dw_sym_handle dbg_pch )
     dw_cu_info      cu;
     back_handle     bck;
 
-#ifdef DWARF_CU_REC_NO_PCLO_PCHI
     /* unused parameters */ (void)code_segid;
-#endif
 
     if( _IsntModel( CGSW_GEN_DBG_LOCALS )
       && _IsntModel( CGSW_GEN_DBG_TYPES ) ) {
@@ -483,36 +478,9 @@ void    DFBegCCU( BackRun& back, segment_id code_segid, dw_sym_handle dbg_pch )
         InitCU( back, &cu );
         cu.dbg_pch = dbg_pch;
         cu.flags = DW_CU_FLAG_NONE;
-#if defined( DWARF_CU_REC_NO_PCLO_PCHI ) || (_TARGET & _TARG_8086)
         back.dfsyms_file.Pc_Low = NULL;
         back.dfsyms_file.Pc_High = NULL;
         bck = NULL;
-#else
-    #if (_TARGET & _TARG_80386)
-        if( _IsTargetModel( CGSW_X86_FLAT_MODEL ) ) {
-    #endif
-            // Emitting DW_AT_low_pc and DW_AT_high_pc is valid *only* if the
-            // compilation unit's code is in a single contiguous block (see
-            // DWARF 2, section 3.1).
-            // I don't know how to find out at the time of this call if there's
-            // only one code segment or not, hence these attributes are always
-            // disabled. The low/high pc attribs should probably be handled by
-            // the linker.
-            cu.flags |= DW_CU_FLAG_CONTIGUOUS;
-            PUSH_OP( code_segid );
-                bck = MakeLabel();
-                OutLabel( bck->lbl );
-                Pc_Low = bck;
-                Pc_High = MakeLabel();
-            POP_OP();
-    #if (_TARGET & _TARG_80386)
-        } else {
-            Pc_Low = NULL;
-            Pc_High = NULL;
-            bck = NULL;
-        }
-    #endif
-#endif
         back.dfsyms_file.Comp_High = back.dfsyms_file.Pc_High;
         DWBeginCompileUnit( back, back.dfsyms.Client, &cu );
         if( cu.flags & DW_CU_FLAG_CONTIGUOUS ) {
@@ -527,13 +495,7 @@ static const char *SetDwarfProducer( void )
 {
     const char  *name;
 
-#if 0      // disable this feature for now, to have compatibility with OW 1.9
-    name = (const char *)FEAuxInfo( NULL, FEINF_DBG_DWARF_PRODUCER );
-    if( name == NULL )
-        name = "";
-#else
     name = "";
-#endif
     return( name );
 }
 
@@ -638,13 +600,7 @@ void    DFObjLineInitDbgInfo( BackRun& back )
         }
         InitCU( back, &cu );
         cu.dbg_pch = NULL;
-#if defined( DWARF_CU_REC_NO_PCLO_PCHI ) || (_TARGET & _TARG_8086)
         cu.flags = DW_CU_FLAG_NONE;
-#elif (_TARGET & _TARG_80386)
-        cu.flags = _IsntTargetModel( CGSW_X86_FLAT_MODEL ) ? DW_CU_FLAG_NONE : DW_CU_FLAG_CONTIGUOUS;
-#else
-        cu.flags = DW_CU_FLAG_CONTIGUOUS;
-#endif
         DWInitDebugLine( back, back.dfsyms.Client, &cu );
     } else {
         Zoiks( back, ZOIKS_107 ); /* Big Error */
@@ -744,7 +700,6 @@ void     DFLineNum( BackRun& back, cue_state *state, offset lc )
 }
 
 
-#if _TARGET_INTEL
 static  dw_loc_handle   SegLoc( BackRun& back, cg_sym_handle sym )
 /*************************************************/
 {
@@ -756,7 +711,6 @@ static  dw_loc_handle   SegLoc( BackRun& back, cg_sym_handle sym )
     df_loc = DWLocFini( back, back.dfsyms.Client, locid );
     return( df_loc );
 }
-#endif
 
 void    DFGenStatic( BackRun& back, cg_sym_handle sym, dbg_loc loc )
 /***************************************************/
@@ -798,11 +752,9 @@ void    DFGenStatic( BackRun& back, cg_sym_handle sym, dbg_loc loc )
     if( dw_loc != NULL ) {
         DWLocTrash( back, back.dfsyms.Client, dw_loc );
     }
-#if _TARGET_INTEL
     if( dw_segloc != NULL ) {
         DWLocTrash( back, back.dfsyms.Client, dw_segloc );
     }
-#endif
 }
 
 void    DFTypedef( BackRun& back, const char *nm, dbg_type tipe )
@@ -845,7 +797,6 @@ static void    SymParm( BackRun& back, cg_sym_handle sym, dw_loc_handle loc, dw_
  * Coming out of optimizer queue
  */
 
-#if _TARGET_INTEL
 static dw_loc_handle  RetLoc( BackRun& back, uint_32 ret_offset )
 /*************************************************
  * make a loc for return address
@@ -875,7 +826,6 @@ static dw_loc_handle  FrameLoc( BackRun& back )
     df_loc = DWLocFini( back, back.dfsyms.Client, locid );
     return( df_loc );
 }
-#endif
 static dw_loc_id StkLoc( BackRun& back, uint_32 stk_offset, dw_loc_id locid )
 /*************************************************************
  * make a loc for stack  address
@@ -995,7 +945,6 @@ void    DFProEnd( BackRun& back, dbg_rtn *rtn, offset lc )
     sym = AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) );
     tipe = FEDbgRetType( *back.front, sym );
     flags = DW_FLAG_NONE;
-#if _TARGET_INTEL
     if( (call_class_target)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL ) {
   #if _TARGET & _TARG_8086
         flags = DW_FLAG_PTR_TYPE_FAR16;
@@ -1003,7 +952,6 @@ void    DFProEnd( BackRun& back, dbg_rtn *rtn, offset lc )
         flags = DW_FLAG_PTR_TYPE_FAR32;
   #endif
     }
-#endif
     attr = FEAttr( *back.front, sym );
     name = FEName( *back.front, sym );
     if( attr & FE_GLOBAL ) {
@@ -1034,10 +982,6 @@ void    DFProEnd( BackRun& back, dbg_rtn *rtn, offset lc )
     dw_retloc = RetLoc( back, rtn->ret_offset );
     dw_frameloc = FrameLoc(back);
     dw_segloc = ( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) ) ? SegLoc( back, sym ) : NULL;
-#else
-    dw_retloc = NULL;
-    dw_frameloc = NULL;
-    dw_segloc = NULL;
 #endif
     rtn->end_lbl = MakeLabel(back);
     back.dfsyms_file.Pc_Low  = FEBack( *back.front, sym );
@@ -1053,7 +997,6 @@ void    DFProEnd( BackRun& back, dbg_rtn *rtn, offset lc )
         }
         DWPubname( back, back.dfsyms.Client, obj, name );
     }
-#if _TARGET_INTEL
     if( dw_retloc != NULL ) {
         DWLocTrash( back, back.dfsyms.Client, dw_retloc );
     }
@@ -1063,7 +1006,6 @@ void    DFProEnd( BackRun& back, dbg_rtn *rtn, offset lc )
     if( dw_segloc != NULL ) {
         DWLocTrash( back, back.dfsyms.Client, dw_segloc );
     }
-#endif
     for( parm = rtn->parms; parm != NULL; parm = next ) {
         next = parm->link;
         if( parm->sym != NULL ) {

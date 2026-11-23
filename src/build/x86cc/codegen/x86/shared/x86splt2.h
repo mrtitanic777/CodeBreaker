@@ -48,10 +48,6 @@ extern instruction      *rSPLIT8BIN( BackRun& back, instruction *ins );
 extern instruction      *rSPLIT8NEG( BackRun& back, instruction *ins );
 extern instruction      *rSPLIT8TST( BackRun& back, instruction *ins );
 extern instruction      *rSPLIT8CMP( BackRun& back, instruction *ins );
-#if 0
-extern instruction      *rCLRHIGH_DW( instruction *ins );
-extern instruction      *rSEX_DW( instruction *ins );
-#endif
 extern instruction      *rCYPSHIFT( BackRun& back, instruction *ins );
 extern instruction      *rBYTESHIFT( BackRun& back, instruction *ins );
 extern instruction      *rMOVE8LOW( BackRun& back, instruction *ins );

@@ -47,7 +47,6 @@
 #include "asmdefs.h"
 
 
-#define EXIT_ERROR              1
 
 #define EMPTY                   -2
 
@@ -68,7 +67,6 @@
 #define BIT_012                 0x07
 #define BIT_345                 0x38
 #define BIT_67                  0xC0
-#define NOT_BIT_012             0xF8
 #define NOT_BIT_345             0xC7
 #define NOT_BIT_67              0x3F
 
@@ -78,7 +76,6 @@
 #define BYTE_6                  6
 #define BYTE_8                  8
 #define BYTE_10                 10
-#define BYTE_16                 16
 
 #define IS_VALID_ID_CHAR_FIRST(ch)  (isalpha(ch) || ch=='_' || ch=='@' || ch=='$' || ch=='?')
 #define IS_VALID_ID_CHAR(ch)        (isalnum(ch) || ch=='_' || ch=='@' || ch=='$' || ch=='?')
@@ -90,128 +87,15 @@ enum fpe {
 };
 
 typedef struct sw_data {
-#if defined( _STANDALONE_ )
-    bool    protect_mode;
-    int     cpu;
-    int     fpu;
-    int     mem_model;
-#endif
     int     fpt;
 } sw_data;
 
 
 /* the variables of asmglob.h, one set for each run of the compiler (run/cbrun.hpp) */
 struct AsmglobState {
-#if defined( _STANDALONE_ )
-#else
     sw_data SWData;
-#endif
 };
 
-#if defined( _STANDALONE_ )
-
-#define DELIM                   " ,\t\0"
-#define T_UNDEFINED             -1
-
-enum {
-    PASS_1 = 0,
-    PASS_2
-};
-
-enum {
-    ASM,
-    ERR,
-    OBJ,
-    LST,
-    CMD
-};
-#define FILE_TYPES      4
-
-typedef struct {
-    FILE        *fp[FILE_TYPES];        // ASM, ERR and OBJ
-    char        *fname[FILE_TYPES];
-} File_Info;    // Information about the source and object files
-
-extern File_Info        AsmFiles;   // files information
-extern char             *ModuleName;
-
-#define ASM_EXT "asm"
-#define ERR_EXT "err"
-#define LST_EXT "lst"
-
-#ifdef __UNIX__
-#define OBJ_EXT "o"
-#else
-#define OBJ_EXT "obj"
-#endif
-
-typedef enum smode {
-    MODE_MASM6  = 0,
-    MODE_MASM5  = 1,
-    MODE_WATCOM = 2,
-    MODE_TASM   = 4,
-    MODE_IDEAL  = 8
-} smode;
-
-typedef struct global_options {
-    bool        sign_value;     /* true -> WORD & DWORD are only unsigned
-                                   signed #'s are SWORD & SDWORD instead. */
-    bool        stop_at_end;
-    bool        quiet;
-    bool        banner_printed;
-    bool        debug_info;
-    bool        output_comment_data_in_code_records;
-    bool        symbols_nocasesensitive;
-
-    /* error handling stuff */
-    int         error_count;
-    int         warning_count;
-    int         error_limit;
-    int         warning_level;
-    bool        warning_error;
-
-    char        *code_class;
-    char        *data_seg;
-    char        *text_seg;
-    char        *module_name;
-
-  #ifdef DEBUG_OUT
-    bool        int_debug;
-  #endif
-    char        *default_name_mangler;
-    bool        allow_c_octals;
-    bool        emit_dependencies;
-    bool        use_stdcall_at_number;
-    bool        mangle_stdcall;
-    bool        write_listing;
-    bool        watcom_params_passed_by_regs;
-    smode       mode_init;
-    smode       mode;
-    int         locals_len;
-    char        locals_prefix[3];
-    char        trace_stack;
-    bool        optimization;
-} global_options;
-
-extern global_options Options;
-
-typedef struct global_vars{
-    uint    code_seg;
-    bool    data_in_code;       /* have we just written data to a code seg */
-    bool    dosseg;             /* have we seen a .dosseg directive */
-    uint_16 sel_idx;
-    uint_32 sel_start;
-    uint    expand_count;
-    uint    for_counter;
-} global_vars;
-
-extern global_vars  Globals;
-extern jmp_buf      errjmp;
-
-extern char     *CreateFileName( const char *template_, const char *ext, bool forceext );
-extern void     CloseAsmFile( int type );
-
-#endif
 
 extern const asm_ins    ASMI86FAR *get_instruction( const char *string );
 

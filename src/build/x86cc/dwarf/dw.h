@@ -50,8 +50,6 @@
 
 #define GET_SEGMENT_SIZE(c)     (((c)->segment_size == 0) ? 2 : (c)->segment_size)
 
-#define DWSetRtns( __name, __reloc, __write, __seek, __tell, __alloc, __free ) \
-    dw_funcs __name = { __reloc, __write, __seek, __tell, __alloc, __free }
 
 
 /************************

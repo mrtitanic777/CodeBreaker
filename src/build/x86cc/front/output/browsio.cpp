@@ -275,16 +275,6 @@ static void dw_write( BackRun& back, dw_sectnum sect, const void *block, size_t 
     size_t              bufsize;
     char                *bufptr;
 
-#ifdef __DD__
-//    int i;
-    printf( "\nDW_WRITE(%d:%lu): offset: %lu len: %u ", sect,
-        (unsigned long)dw_sections[sect].length,
-        (unsigned long)dw_sections[sect].offset,
-        (unsigned)len );
-//    for( i = 0 ; i < len; i++ ) {
-//        printf( "%02x ", (int)((char *)block)[i] );
-//    }
-#endif
     bufnum = front.browsio->dw_sections[sect].offset / C_DWARF_BUFSIZE;
     endbufnum = ( front.browsio->dw_sections[sect].offset + len ) / C_DWARF_BUFSIZE;
     if( endbufnum >= front.browsio->dw_sections[sect].bufcount ) {
@@ -322,11 +312,6 @@ static dw_out_offset dw_tell( BackRun& back, dw_sectnum sect )
 /*********************************************/
 {
     FrontRun& front = front_of( back );
-#ifdef __DD__
-    printf( "DW_TELL (%d:%lu): %lu\n", sect,
-        (unsigned long)dw_sections[sect].length,
-        (unsigned long)dw_sections[sect].offset );
-#endif
     return( front.browsio->dw_sections[sect].offset );
 }
 
@@ -396,11 +381,6 @@ static void dw_seek( BackRun& back, dw_sectnum sect, dw_out_offset offset, int m
         new_offset = front.browsio->dw_sections[sect].length + offset;
         break;
     }
-#ifdef __DD__
-    printf( "DW_SEEK (%d:%lu): offset: %lu\n", sect,
-        (unsigned long)dw_sections[sect].length,
-        (unsigned long)new_offset );
-#endif
     if( front.browsio->dw_sections[sect].offset != new_offset ) {
         front.browsio->dw_sections[sect].offset = new_offset;
         if( front.browsio->dw_sections[sect].length < front.browsio->dw_sections[sect].offset ) {
@@ -471,26 +451,6 @@ dw_client DwarfInit( FrontRun& front )
     fname = FNameFullPath( front, front.cvars.FNames );
     incsize = 0;
     inclist = NULL;
-#if 0
-    if( HFileList != NULL ) {
-        char    *p;
-
-        incsize = strlen( HFileList ) + 1;
-        inclist = CMemAlloc( incsize );
-        memcpy( inclist, HFileList, incsize );
-        /*
-         * need to handle the case where there are multiple ';' in a row
-         */
-        for( p = inclist; *p != '\0'; p++ ) {
-            if( *p == ';' ) {
-                *p = '\0';
-            }
-        }
-        if( inclist[incsize - 2] == '\0' ) {
-            --incsize;
-        }
-    }
-#endif
     cu.source_filename = fname;
     cu.directory       = "";
     cu.flags           = DW_CU_FLAG_CONTIGUOUS;

@@ -51,7 +51,6 @@
 #define _MarkBlkAllUnVisited()  ClearBlocksBitsMask( back, ~BLK_BLOCK_VISITED )
 
 /* aligned */
-#define MAX_INTERVAL_DEPTH      255U
 
 typedef enum {
     BEF_NONE                    = 0x00,

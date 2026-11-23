@@ -77,22 +77,6 @@ static void InitDBType( FrontRun& front )
     front.cvars.DebugNameList = NULL;
 }
 
-#if 0
-static void RevTypeList( void )
-{
-    TYPEPTR     previous, current, following;
-
-    previous = NULL;
-    current = TypeHead;
-    for( following = current->next_type; following != NULL; following = following->next_type ) {
-        current->next_type = previous;
-        previous = current;
-        current = following;
-    }
-    current->next_type = previous;
-    TypeHead = current;
-}
-#endif
 
 static void EmitADBType( FrontRun& front, TYPEPTR typ )
 {
@@ -107,12 +91,6 @@ static void EmitADBType( FrontRun& front, TYPEPTR typ )
         if( !front.cvars.CompFlags.dump_types_with_names ) break;
         if( front.cvars.CompFlags.no_debug_type_names ) break;
     dump_type:
-#if 0
-        if( DebugFlag >= 2 ) {
-            DumpType( typ, 0 );
-            printf( "\n" );
-        }
-#endif
         DBType( front, typ );
         break;
     default:

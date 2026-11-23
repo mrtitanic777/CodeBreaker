@@ -1,9 +1,4 @@
-#ifndef A_BIT_SET_DEFINED
-typedef unsigned a_bit_set;
-#define A_BIT_SET_DEFINED
-#endif
 
-#define _LBit_SIZE 32
 
 typedef struct local_bit_set {
 	a_bit_set	_0;
@@ -24,9 +19,6 @@ typedef struct local_bit_set {
 
 #define _LBitInit( set, val ) _LBitSet( set, val )
 
-#define _LBitIter( routine, set ) { \
-			(routine)( (set)._0 ); \
-		}
 
 #define _LBitOverlap( a, b ) ( \
 			( (a)._0 & (b)._0 ) )

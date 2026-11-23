@@ -31,16 +31,10 @@
 ****************************************************************************/
 
 
-#ifdef __header1
-#   include __header1
-#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <limits.h>
-#ifdef __WATCOMC__
-#include <process.h>
-#endif
 #include "wio.h"
 #include "sopen.h"
 #include "wreslang.h"
@@ -172,15 +166,6 @@ static IntlData *getData( FrontRun& front, int fh )
 
 static char *imageName( FrontRun& front, char *buff )
 {
-#if defined( __SW_BD )
-#if defined(__NT__) || defined(__OS2__)
-    {
-        if( _LpDllName != NULL ) {
-            return( strcpy( buff, _LpDllName ) );
-        }
-    }
-#endif
-#endif
     return( _cmdname( *front.support, buff ) );
 }
 

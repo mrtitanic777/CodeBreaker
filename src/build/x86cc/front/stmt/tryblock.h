@@ -72,6 +72,5 @@ struct  try_block {
 #define FLD_scope_index     16
 #define FLD_unwindflag      17
 #define FLD_exception_info  20
-#define FLD_context_info    24
 
 #endif

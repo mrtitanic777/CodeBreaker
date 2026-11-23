@@ -31,17 +31,3 @@
 
 
 #pragma once
-#ifdef DEVBUILD
-
-extern void         DumpEnumTable( void );
-extern void         DumpMDefn( const char *p );
-extern void         DumpNestedMacros( void );
-extern void         DumpExpr( TREEPTR tree );
-extern void         DumpProgram( void );
-extern void         DumpDataQuads( void );
-#ifdef _LONG_DOUBLE_
-extern void         DumpALD( long_double *pld );
-extern void         DumpALDNL( long_double *pld );
-#endif
-
-#endif

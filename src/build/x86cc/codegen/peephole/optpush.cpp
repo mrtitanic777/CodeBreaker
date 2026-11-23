@@ -62,10 +62,8 @@ void    RetAftrCall( BackRun& back, ins_entry *ret_instr )
         optreturnvoid;
     if( _ChkAttr( ret_instr, OC_ATTR_POP ) )
         optreturnvoid;
-#if( OPTIONS & SEGMENTED )
     if( ( _ChkAttr( call_instr, OC_ATTR_FAR ) ^ _ChkAttr( ret_instr, OC_ATTR_FAR ) ) != 0 )
         optreturnvoid;
-#endif
     back.optdata.InsDelete = true;
     _ChgClass( call_instr, OC_JMP );
     /* NB! this code assumes that we aren't making the instruction longer */

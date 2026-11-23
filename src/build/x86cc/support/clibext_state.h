@@ -22,16 +22,4 @@
 #include "clibext.h"
 
 struct ClibextFileState {
-#ifdef __WATCOMC__
-#elif defined(_MSC_VER)
-    char __altoptchar = '/';   /* alternate option character */
-#endif
-#ifdef __WATCOMC__
-#elif defined(_MSC_VER)
-    char __optchar;   /* matched option char ('-' or altoptchar) */
-#endif
-#ifdef __WATCOMC__
-#elif defined(_MSC_VER)
-    int opt_offset = 0;   /* position in currently parsed argument */
-#endif
 };

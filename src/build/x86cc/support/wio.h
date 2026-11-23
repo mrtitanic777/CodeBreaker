@@ -35,64 +35,22 @@
 
 #include <fcntl.h>
 #include <sys/stat.h>
-#if defined( __UNIX__ )
-    #include <unistd.h>
-#elif defined( __WATCOMC__ )
-    #include <direct.h>
-    #include <unistd.h>
-#else
     #include <direct.h>
     #include <io.h>
   #if defined( _MSC_VER )
     #include <stdio.h>
   
-    #if !defined( STDIN_FILENO )
-    #define STDIN_FILENO  _fileno( stdin )
-    #endif
-    #if !defined( STDOUT_FILENO )
-    #define STDOUT_FILENO _fileno( stdout )
-    #endif
-    #if !defined( STDERR_FILENO )
-    #define STDERR_FILENO _fileno( stderr )
-    #endif
 
-    #define F_OK 0
-    #define X_OK 1
-    #define W_OK 2
-    #define R_OK 4
   #endif
-#endif
 
-#if defined( __UNIX__ ) && !defined( __WATCOMC__ )
-  #ifndef O_BINARY
-    #define O_BINARY 0
-  #endif
-  #ifndef O_TEXT
-    #define O_TEXT 0
-  #endif
-#endif
 
 /*
  * MACROS to unify file permision
  *
  */
 
-#if defined( __UNIX__ )
-    #define PMODE_R         (S_IRUSR | S_IRGRP | S_IROTH)
-    #define PMODE_W         (S_IWUSR | S_IWGRP | S_IWOTH)
-    #define PMODE_X         (S_IXUSR | S_IXGRP | S_IXOTH)
-    #define PMODE_USR_RW    (S_IRUSR | S_IWUSR)
-    #define PMODE_USR_W     S_IWUSR
-#else
     #define PMODE_R         (S_IREAD)
     #define PMODE_W         (S_IWRITE)
-    #define PMODE_X         (S_IEXEC)
-    #define PMODE_USR_RW    (S_IREAD | S_IWRITE)
-    #define PMODE_USR_W     S_IWRITE
-#endif
 #define PMODE_RW            (PMODE_R | PMODE_W)
-#define PMODE_RWX           (PMODE_R | PMODE_W | PMODE_X)
-#define PMODE_R_USR_W       (PMODE_R | PMODE_USR_W)
-#define PMODE_RX_USR_W      (PMODE_R | PMODE_X | PMODE_USR_W)
 
 #endif

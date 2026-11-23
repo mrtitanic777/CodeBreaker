@@ -68,9 +68,6 @@ void InitGlobalVars( FrontRun& front )
     front.cvars.WholeFName              = NULL;     /* whole file name with suffix */
     front.cvars.ForceInclude            = NULL;
     front.cvars.ForcePreInclude         = NULL;
-#if _CPU == 370
-    AuxName                 = NULL;
-#endif
     front.cvars.FNames                  = NULL;     /* list of file names processed */
     front.cvars.ErrFile                 = NULL;     /* error file */
     front.cvars.DefFile                 = NULL;     /* output for func prototypes */

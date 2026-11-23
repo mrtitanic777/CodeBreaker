@@ -282,7 +282,6 @@ void U64Shift( unsigned_64 *res, const unsigned_64 *a, int shift )
     }
 }
 
-#ifdef _U64_C_ROUTINES
 int U64Cnv10( unsigned_64 *res, char c )
 /***************************************
  * res = res * 10 + c res source/dest c value <= 9
@@ -398,4 +397,3 @@ int U64Cnv16( unsigned_64 *res, char c )
     *res = tmp16;
     return( over );
 }
-#endif

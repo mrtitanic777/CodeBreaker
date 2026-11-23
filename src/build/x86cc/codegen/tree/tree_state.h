@@ -34,7 +34,6 @@
 #include "feprotos.h"
 #include "cgprotos.h"
     #include "x86segs.h"
-    #include "echoapi.h"
 
 struct TreeState {
     pointer *TreeFrl;

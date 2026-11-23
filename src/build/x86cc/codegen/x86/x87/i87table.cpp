@@ -102,14 +102,6 @@ _OE( _UnPP(  ANY,  ANY,  NONE ),       V_NO,           RG_8087_NEED_MOVE, G_UNKN
 _OE( _Un(    ANY,  ANY,  NONE ),       V_NO,           RG_,               G_UNKNOWN,      FU_NO ),
 };
 
-#if 0
-const opcode_entry    Move87L[] = {
-/*           from  to    eq            verify          reg                gen             fu  */
-_OE( _UnPP(  R|M|U,R|M|U,EQ_R1 ),      V_NO,           RG_,               G_NO,           FU_NO ),
-_OE( _UnPP(  ANY,  ANY,  NONE ),       V_NO,           RG_8087_NEED_MOVE, G_UNKNOWN,      FU_NO ),
-_OE( _Un(    ANY,  ANY,  NONE ),       V_NO,           RG_,               G_UNKNOWN,      FU_NO ),
-};
-#endif
 
 const opcode_entry    Un87[] = {
 /***************************/

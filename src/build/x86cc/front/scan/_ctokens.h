@@ -30,9 +30,7 @@
 ****************************************************************************/
 
 
-#define NO_PREC     (-1)
 #define PREC_UNARY  15
-#define MAX_PREC    15
 
 /*    enum                      text                    class             operator          precedence  */
 pick( T_NULL,                   "end of line",          TC_XX,            OPR_NOP,          -1 )

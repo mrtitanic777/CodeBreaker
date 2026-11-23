@@ -188,11 +188,6 @@ static  name    *OpTemp( BackRun& back, instruction *ins, opcnt i, opcnt j ) {
             type_class = ins->operands[i]->n.type_class;
         }
     }
-#if _TARGET & _TARG_AXP
-    if( i == 0 && ins->head.opcode == OP_CONVERT ) {
-        type_class = ins->base_type_class;
-    }
-#endif
     temp = AllocTemp( back, type_class );
     FPSetStack( temp );
     new_ins = MakeMove( back, ins->operands[i], temp, type_class );

@@ -75,13 +75,6 @@ static  bool    UselessCompare( instruction *ins, cc_handle cc, name *zero )
 
     if( cc->state == UNKNOWN_STATE )
         return( false );
-#if _TARGET & _TARG_370
-    if( opcode != OP_CMP_EQUAL && opcode != OP_CMP_NOT_EQUAL ) {
-        if( cc->op_type != ins->type_class ) {
-            return( false );
-        }
-    }
-#endif
     if( ins->operands[0] == cc->left_op
      && ins->operands[1] == cc->right_op ) {
         if( cc->state == CONDITIONS_SET )
@@ -99,10 +92,6 @@ static  bool    UselessCompare( instruction *ins, cc_handle cc, name *zero )
         }
     } else if( ins->operands[0] == cc->result_op
             && ins->operands[1] == zero ) {
-#if _TARGET & _TARG_370
-        if( cc->state == CONDITIONS_SET )
-            return( true );
-#endif
         if( opcode == OP_CMP_EQUAL )
             return( true );
         if( opcode == OP_CMP_NOT_EQUAL ) {
@@ -185,17 +174,12 @@ static  bool    Traverse( BackRun& back, block *blk, name *zero )
         if( VolatileIns( ins ) || cc_affect == NO_CC ) {
             cc->state = UNKNOWN_STATE;
         } else if( cc_affect == SETS_SC ) { /* sets SIGNED conditions */
-#if _TARGET & _TARG_370
-            /* SETS_SC means ok for ==, != on 370 */
-            cc->state = EQUALITY_CONDITIONS_SET;
-#else
             if( !_OpIsBit( ins->head.opcode ) &&
                 ( ins->ins_flags & INS_DEMOTED ) ) {
                 cc->state = EQUALITY_CONDITIONS_SET;
             } else {
                 cc->state = SIGNED_CONDITIONS_SET;
             }
-#endif
             cc->result_op = ins->result;
             cc->op_type = ins->type_class;
             if( ins->head.opcode == OP_SUB ) {
@@ -311,11 +295,6 @@ static  void    GatherSources( block *blk )
                 if( cc->result_op == NULL && cc->left_op == NULL ) {
                     cc->state = UNKNOWN_STATE;
                 }
-#if _TARGET & _TARG_370
-                if( source_cc->op_type != cc->op_type ) {
-                    cc->state = UNKNOWN_STATE;
-                }
-#endif
             }
         }
     }

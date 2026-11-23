@@ -168,19 +168,6 @@ static void concatMsgNumber     // CONCATENATE MESSAGE NUMBER
 }
 
 
-#if 0
-static void displayContextMsg   // DISPLAY A CONTEXT MESSAGE
-    ( IDECBHdl handle           // - handle for requestor
-    , IDEMsgInfoFn displayer    // - display function
-    , CONSTRUCTION* ct )        // - construction information
-{
-    IDEMsgInfo info;            // - info passed to display routine
-
-    IdeMsgInit( &info, IDEMSGSEV_NOTE_MSG, ct->buffer );
-    displayer( handle, &info );
-    ct->used = 0;
-}
-#endif
 
 
 // The "displayer" parameter is no longer required
@@ -205,29 +192,6 @@ void IdeMsgFormat               // FORMAT A MESSAGE
     assert( bsize != 0 );
     assert( info->severity < _ARRAY_SIZE( text_severity ) );
     if( IDE_IS_READABLE( info ) ) {
-#if 0
-
-    // It is the responsibility of the processor to put out messages:
-    //      File: current file
-    //      Included from: file(line)
-    //          ...
-    //      Included from: file(line)
-    // before a group of messages from the current file (and nesting).
-
-        if( IDE_HAS_SRC_FILE( info ) ) {
-            if( 0 != strncmp( info->src_file
-                            , contextual_file
-                            , sizeof( contextual_file ) - 1 )
-              ) {
-                concatText( &ct, "File: " );
-                concatText( &ct, info->src_file );
-                displayContextMsg( handle, displayer, &ct );
-                strncpy( contextual_file
-                       , info->src_file
-                       , sizeof( contextual_file ) - 1 );
-            }
-        }
-#endif
         switch( info->severity ) {
           case IDEMSGSEV_ERROR :
           case IDEMSGSEV_WARNING :

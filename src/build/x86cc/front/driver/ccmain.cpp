@@ -52,15 +52,9 @@
 #include "frontrun.hpp"
 
 
-#if defined(__UNIX__)
- #define C_PATH         "../c/"
- #define H_PATH         "../h/"
- #define OBJ_EXT        "o"
-#else
  #define C_PATH         "..\\c\\"
  #define H_PATH         "..\\h\\"
  #define OBJ_EXT        "obj"
-#endif
 #define DEF_EXT         "def"
 #define ERR_EXT         "err"
 #define MBR_EXT         "mbr"
@@ -68,11 +62,7 @@
 #define CPP_EXT         "i"
 #define DEP_EXT         "d"
 
-#ifdef __UNIX__
-#define NULLDEV         "/dev/null"
-#else
 #define NULLDEV         "NUL"
-#endif
 
 #define STDIN_NAME      "stdin"
 #define NULLDEV_NAME    "nulldev"
@@ -677,15 +667,6 @@ static bool TryOpen( FrontRun& front, const char *path, pgroup2 *ff, src_file_ty
     }
     if( fp == NULL )
         return( false );
-#if 0
-    if( CompFlags.use_precompiled_header ) {
-        CompFlags.use_precompiled_header = false;
-        if( UsePreCompiledHeader( filename ) ) {
-            fclose( fp );
-            return( true );
-        }
-    }
-#endif
     if( OpenFCB( front, fp, filename, typ ) ) {
         if( front.cvars.CompFlags.cpp_mode ) {
             if( front.cvars.CppFile == NULL )
@@ -975,10 +956,6 @@ static bool OpenPgmFile( FrontRun& front )
         CSuicide(front);
         return( false );
     }
-#if _CPU == 370
-    SrcFiles->column = Column;
-    SrcFiles->trunc = Trunc;
-#endif
     front.cvars.MainSrcFile = front.cvars.SrcFiles;
     return( true );
 }
@@ -1064,9 +1041,6 @@ static void DoCCompile( FrontRun& front, char **cmdline )
             MakePgmName(front);
             DelErrFile(front);               /* delete old error file */
             CPragmaInit(front);              /* memory model is known now */
-#if _CPU == 370
-            ParseAuxFile();
-#endif
             if( front.cvars.CompFlags.cpp_mode ) {
                 front.cvars.PrintWhiteSpace = true;
                 if( front.cvars.ForcePreInclude != NULL ) {
@@ -1289,13 +1263,8 @@ static void normalizeSep( char *dir )
     char    c;
 
     while( (c = *dir) != '\0' ) {
-#if defined( __UNIX__ )
-        if( c == '\\' )
-            *dir = '/';
-#else
         if( c == '/' )
             *dir = '\\';
-#endif
         dir++;
     }
 }
@@ -1444,13 +1413,6 @@ void CloseFiles( FrontRun& front )
 
 bool FrontEnd( FrontRun& front, char **cmdline )
 {
-#if defined(__WATCOMC__) && defined( _M_IX86 )
-    /*
-     * set to 0 in case 8087 is present
-     */
-    _real87 = 0;
-    _8087 = 0;
-#endif
 
     InitGlobalVars(front);
     CMemInit(front);

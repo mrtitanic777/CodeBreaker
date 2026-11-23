@@ -213,9 +213,6 @@ void    InitQueue( BackRun& back )
     back.optdata.PendingDeletes = NULL;
     back.optdata.Handles = NULL;
     InitFrl( &back.optdata.InstrFrl );
-#if( OPTIONS & SAVINGS )
-    Savings = 0;
-#endif
   optend
 }
 

@@ -532,9 +532,6 @@ void GetNextCharUndo( FrontRun& front, int c )
         front.cvars.NextChar = restartBackSlashWhiteSpace;
         return;
     }
-#ifdef FDEBUG
-    CFatal( "more than one GetNextCharUndo executed" );
-#endif
 }
 
 static bool FCB_Alloc( FrontRun& front, FILE *fp, const char *filename, src_file_type typ )
@@ -563,11 +560,6 @@ static bool FCB_Alloc( FrontRun& front, FILE *fp, const char *filename, src_file
         fcb->fp = fp;
         fcb->prev_file = front.cvars.SrcFiles;
         fcb->prev_currchar = front.cvars.CurrChar;
-#if _CPU == 370
-        fcb->column = 0;     /* init colum, trunc info */
-        fcb->trunc = 0;
-        fcb->prevcount = 0;
-#endif
         if( front.cvars.SrcFiles != NULL ) {
             if( front.cvars.SrcFiles == front.cvars.MainSrcFile ) {
                 /*

@@ -95,13 +95,8 @@ const type_class_def    Unsigned[] = {
     U4,                 /* I4 */
     U8,                 /* U8 */
     U8,                 /* U8 */
-#if _TARGET & _TARG_370
-    U4,                 /* CP */
-    U4,                 /* PT */
-#else
     CP,                 /* CP */
     PT,                 /* PT */
-#endif
     FS,                 /* FS */
     FD,                 /* FD */
     FL,                 /* FL */
@@ -119,13 +114,8 @@ const type_class_def    Signed[] = {
     I4,                 /* I4 */
     I8,                 /* U8 */
     I8,                 /* I8 */
-#if _TARGET & _TARG_370
-    I4,                 /* CP */
-    I4,                 /* PT */
-#else
     CP,                 /* CP */
     PT,                 /* PT */
-#endif
     FS,                 /* FS */
     FD,                 /* FD */
     FL,                 /* FL */
@@ -443,20 +433,12 @@ instruction      *rFIXSHIFT( BackRun& back, instruction *ins )
 /*********************************************/
 {
     instruction     *new_ins;
-#ifdef DEVBUILD
-    int_32          shift_count;
-#endif
 
     /* Fix up shift instructions that try to shift by too large amounts. This
      * can happen when optimizer merges adjacent shift instructions. Arithmetic
      * rights shifts must never exceed (REGISTER_BITS - 1), logical shifts can
      * be replaced with loads of zero constant.
      */
-#ifdef DEVBUILD
-    assert( ins->operands[1]->n.class_ == N_CONSTANT );
-    shift_count = ins->operands[1]->c.lo.u.int_value;
-    assert( shift_count >= REG_SIZE * 8 );
-#endif
     if( ins->head.opcode == OP_RSHIFT
       && Signed[ins->type_class] == ins->type_class ) {
         ins->operands[1] = AllocS32Const( back, REG_SIZE * 8 - 1 );

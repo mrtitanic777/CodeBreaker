@@ -45,11 +45,7 @@
  * NB: MEM_ALIGN must be at least int-sized
  */
 
-#if defined( __AXP__ )
-    #define MEM_ALIGN   8
-#else
     #define MEM_ALIGN   sizeof( void * )
-#endif
 
 #define ALLOC_FLAG      1
 

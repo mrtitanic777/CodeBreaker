@@ -54,10 +54,6 @@ patch_handle    BGNewPatch( BackRun& back )
     patch = static_cast<patch_handle>(CGAlloc( back, sizeof( patch_info ) ));
     patch->in_tree = false;
     patch->patched = false;
-#ifdef DEVBUILD
-    patch->useinfo.hdltype = NO_HANDLE;
-    patch->useinfo.used = false;
-#endif
     return( patch );
 }
 

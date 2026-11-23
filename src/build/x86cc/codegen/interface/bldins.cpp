@@ -402,14 +402,6 @@ void    BGGenCtrl( BackRun& back, cg_op opcode, an expr, label_handle lbl, bool 
         if( back.data.HaveCurrBlock ) {
             GenBlock( back, BLK_CALL_LABEL, 1 );
             AddTarget( back, lbl, false );
-#if 0
-            Need to make sure that next_block != NULL when we generate the
-            code for a CALL_LABEL block - see comments in GenObject
-
-            if( gen ) {
-                Generate( false );
-            }
-#endif
             EnLink( back, AskForNewLabel(back) );
             back.data.CurrBlock->edge[0].flags = BEF_BLOCK_LABEL_DIES;
         }
@@ -508,20 +500,6 @@ an      BGUnary( BackRun& back, cg_op opcode, an left, const type_def *tipe )
             new_an = CnvRnd( back, left, tipe, O_ROUND );
         }
         break;
-#if _TARGET_RISC
-    case O_STACK_ALLOC:
-        CurrProc->targ.base_is_fp = true;
-        break;
-#endif
-#if 0
-    case O_PTR_TO_FOREIGN:
-    case O_PTR_TO_NATIVE:
-        // no large model runtime libraries
-        if( left->tipe->length != WORD_SIZE ) {
-            FEMessage( FEMSG_ERROR, "runtime call cannot be made when DS not pegged" );
-            left = Unary( O_CONVERT, left, TypeAddress( TY_NEAR_POINTER ) );
-        }
-#endif
     default:
         break;
     }

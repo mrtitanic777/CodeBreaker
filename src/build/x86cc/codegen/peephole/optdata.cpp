@@ -31,9 +31,5 @@
 
 #include "_cgstd.h"
 #include "optwif.h"
-#include "optdata.h"
 
 //      pointer         *CodeLblFrl;
-#if( OPTIONS & SAVINGS )
-        uint            Savings;
-#endif

@@ -33,15 +33,9 @@
 #ifndef _WALLOCA_H_INCLUDED
 #define _WALLOCA_H_INCLUDED
 
-#if defined( __UNIX__ ) || defined( __WATCOMC__ ) && ( __WATCOMC__ > 1290 )
-    #include <stdlib.h>
-#else
     #include <malloc.h>
-#endif
 
-#if defined( __WATCOMC__ )
-    #define walloca     __alloca
-#elif defined( _MSC_VER )
+#if defined( _MSC_VER )
     #define walloca     _alloca
 #else
     #define walloca     alloca

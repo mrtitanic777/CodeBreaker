@@ -185,17 +185,6 @@ void MacroFini( FrontRun& front )
 void MacroPurge( void )
 /*********************/
 {
-#if 0
-    mac_hash_idx    hash;
-    MEPTR           mentry;
-
-    for( hash = 0; hash < MACRO_HASH_SIZE; hash++ ) {
-        for( ; (mentry = MacHash[hash]) != NULL; ) {
-            MacHash[hash] = mentry->next_macro;
-            CMemFree( mentry );
-        }
-    }
-#endif
 }
 
 
@@ -630,82 +619,6 @@ static MACRO_ARG *CollectParms( FrontRun& front, MEPTR mentry )
 }
 
 
-#ifdef DEVBUILD
-
-void DumpMDefn( const char *p )
-/*****************************/
-{
-    unsigned char   c;
-    TOKEN           token;
-    const char      *fmt;
-
-    while( (token = GET_MTOKEN( p )) != T_NULL ) {
-        p += SIZE_MTOKEN;
-        switch( token ) {
-        case T_CONSTANT:
-        case T_PPNUMBER:
-        case T_ID:
-        case T_UNEXPANDABLE_ID:
-            for( ; (c = *p++) != '\0'; ) {
-                putchar( c );
-            }
-            break;
-        case T_LSTRING:
-            putchar( 'L' );
-            /* fall through */
-        case T_STRING:
-            putchar( '\"' );
-            for( ; (c = *p++) != '\0'; ) {
-                putchar( c );
-            }
-            putchar( '\"' );
-            break;
-        case T_WHITE_SPACE:
-            putchar( ' ' );
-            break;
-        case T_BAD_CHAR:
-            putchar( *p++ );
-            break;
-        case T_MACRO_PARM:
-            fmt = "<parm#%d>";
-            /* fall through */
-        case T_MACRO_VAR_PARM:
-            if( token == T_MACRO_VAR_PARM )
-                fmt = "<varparm#%d>";
-            printf( fmt, (int)GET_MPARM( p ) );
-            p += SIZE_MPARM;
-            break;
-        default:
-            printf( "%s", TokenString[token] );
-            break;
-        }
-    }
-    putchar( '\n' );
-    fflush( stdout );
-}
-
-
-void DumpMTokens( MACRO_TOKEN *mtok )
-/***********************************/
-{
-    for( ; mtok != NULL; mtok = mtok->next ) {
-        printf( "%s\n", mtok->data );
-    }
-    fflush( stdout );
-}
-
-
-void DumpNestedMacros( void )
-/***************************/
-{
-    NESTED_MACRO *nested;
-
-    for( nested = NestedMacros; nested != NULL; nested = nested->next ) {
-        printf( "%s\n", nested->mentry->macro_name );
-    }
-    fflush( stdout );
-}
-#endif
 
 
 static MACRO_TOKEN *BuildAToken( FrontRun& front, TOKEN token, const char *data )

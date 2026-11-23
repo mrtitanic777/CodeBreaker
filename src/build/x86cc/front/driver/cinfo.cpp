@@ -57,9 +57,7 @@ typedef struct user_seg {
     int             segtype;
     segment_id      segid;
     char            *class_name;
-#if _INTEL_CPU
     hw_reg_set      pegged_register;
-#endif
     bool            used;
 } user_seg;
 
@@ -153,7 +151,6 @@ void AssignSeg( FrontRun& front, SYMPTR sym )
 
 void SetFarHuge( FrontRun& front, SYMPTR sym, bool report )
 {
-#if _INTEL_CPU
     TYPEPTR             typ;
     type_modifiers      attrib;
     target_size         size;
@@ -202,11 +199,6 @@ void SetFarHuge( FrontRun& front, SYMPTR sym, bool report )
         InitErrLoc(front);
    }
   #endif
-#else /* _RISC_CPU */
-
-    /* unused parameters */ (void)sym; (void)report;
-
-#endif
 }
 
 static fe_attr FESymAttr( FrontRun& front, SYMPTR sym )
@@ -316,7 +308,6 @@ void SetSegment( FrontRun& front, SYMPTR sym )
     segment_list        *seg;
     target_size         size;
 
-#if _INTEL_CPU
   #if _CPU == 8086
     if( (sym->mods & FLAG_FAR) && front.cvars.CompFlags.zc_switch_used ) {
         if( CONSTANT( sym->mods )
@@ -339,7 +330,6 @@ void SetSegment( FrontRun& front, SYMPTR sym )
          }
      }
   #endif
-#endif
     if( sym->mods & (FLAG_FAR | FLAG_HUGE) ) {
         size = SizeOfArg( front, sym->sym_type );
         seg = NULL;
@@ -423,17 +413,14 @@ static segment_id AddSeg( FrontRun& front, const char *segname, const char *clas
     int             i;
     user_seg        *useg;
     user_seg        **lnk;
-#if _INTEL_CPU
     hw_reg_set      reg;
     const char      *p;
-#endif
 
     for( i = 0; i < ARRAY_SIZE( front.cinfo->Predefined_Segs ); i++ ) {
         if( strcmp( segname, front.cinfo->Predefined_Segs[i].name ) == 0 ) {
             return( front.cinfo->Predefined_Segs[i].segid );
         }
     }
-#if _INTEL_CPU
     HW_CAsgn( reg, HW_EMPTY );
     for( p = segname; *p != '\0'; ++p ) {
         if( *p == ':' ) {
@@ -459,7 +446,6 @@ static segment_id AddSeg( FrontRun& front, const char *segname, const char *clas
             break;
         }
     }
-#endif
     for( lnk = &front.cinfo->userSegments; (useg = *lnk) != NULL; lnk = &useg->next ) {
         if( strcmp( segname, useg->name ) == 0 ) {
             return( useg->segid ); /* was return( segment ) */
@@ -467,9 +453,7 @@ static segment_id AddSeg( FrontRun& front, const char *segname, const char *clas
     }
     useg = AllocUserSeg( front, segname, class_name, static_cast<seg_type>(segtype) );
     useg->next = *lnk;
-#if _INTEL_CPU
     useg->pegged_register = reg;
-#endif
     *lnk = useg;
     return( useg->segid );
 }
@@ -599,7 +583,6 @@ SYM_HANDLE SegSymHandle( FrontRun& front, segment_id segid )
     return( SYM_NULL );
 }
 
-#if _INTEL_CPU
 hw_reg_set *SegPeggedReg( FrontRun& front, segment_id segid )
 {
     user_seg    *useg;
@@ -611,7 +594,6 @@ hw_reg_set *SegPeggedReg( FrontRun& front, segment_id segid )
     }
     return( NULL );
 }
-#endif
 
 static align_type SegAlign( FrontRun& front, align_type suggested )
 /************************************************/
@@ -667,11 +649,6 @@ void    SetSegs( FrontRun& front )
     for( useg = front.cinfo->userSegments; useg != NULL ; useg = useg->next ) {
         segid = useg->segid;
         switch( useg->segtype ) {
-#if 0
-        case SEGTYPE_CODE:
-            BEDefSeg( segid, INIT | GLOBAL | EXEC, useg->name, 1 );
-            break;
-#endif
         case SEGTYPE_DATA:  /* created through #pragma data_seg */
             BEDefSeg( *front.back, segid, INIT | GLOBAL, useg->name, SegAlign( front, TARGET_INT ) );
             break;
@@ -880,11 +857,6 @@ segment_id FESegID( FrontRun& front, CGSYM_HANDLE cgsym_handle )
     SYMPTR      sym;
 
     sym = SymGetPtr( front, sym_handle );
-#if _CPU == 370
-    {
-        segid = SymSegId( sym );
-    }
-#else
     {
         fe_attr     attr;
 
@@ -897,14 +869,12 @@ segment_id FESegID( FrontRun& front, CGSYM_HANDLE cgsym_handle )
             segid = SEG_CODE;
             if( sym->seginfo != NULL ) {
                 segid = sym->seginfo->segid;
-    #if _INTEL_CPU
             } else if( attr & FE_IMPORT ) {
                 if( (sym->mods & FLAG_FAR) || (front.cvars.TargetSwitches & CGSW_X86_BIG_CODE) ) {
                     if( sym->flags & SYM_ADDR_TAKEN ) {
                         segid = front.cinfo->import_segid--;
                     }
                 }
-    #endif
             }
         } else if( sym->u.var.segid != SEG_NULL ) {
             segid = sym->u.var.segid;
@@ -914,7 +884,6 @@ segment_id FESegID( FrontRun& front, CGSYM_HANDLE cgsym_handle )
             segid = SEG_CONST;
         }
     }
-#endif
     return( segid );
 }
 
@@ -948,36 +917,6 @@ int FELexLevel( CGSYM_HANDLE cgsym_handle )
 }
 
 
-#if _CPU == _AXP
-cg_type FEParmType( CGSYM_HANDLE func, CGSYM_HANDLE parm, cg_type tipe )
-/**********************************************************************/
-{
-    /* unused parameters */ (void)func; (void)parm;
-
-    switch( tipe ) {
-    case TY_INT_1:
-    case TY_INT_2:
-    case TY_INT_4:
-    case TY_UINT_4:
-    case TY_INTEGER:
-    case TY_UNSIGNED:
-    case TY_POINTER:
-    case TY_CODE_PTR:
-    case TY_NEAR_POINTER:
-    case TY_NEAR_CODE_PTR:
-        return( TY_INT_8 );
-    case TY_UINT_1:
-    case TY_UINT_2:
-        return( TY_UINT_8 );
-    case TY_DOUBLE:
-    case TY_SINGLE:
-    case TY_LONG_DOUBLE:
-        return( TY_DOUBLE );
-    default:
-        return( tipe );
-    }
-}
-#else
 cg_type FEParmType( FrontRun& front, CGSYM_HANDLE func, CGSYM_HANDLE parm, cg_type tipe )
 /**********************************************************************/
 {
@@ -1008,7 +947,6 @@ cg_type FEParmType( FrontRun& front, CGSYM_HANDLE func, CGSYM_HANDLE parm, cg_ty
     }
     return( tipe );
 }
-#endif
 
 
 int FEStackChk( FrontRun& front, CGSYM_HANDLE cgsym_handle )

@@ -40,9 +40,7 @@ typedef enum {
     OPT_CALLTORET,
     OPT_JMPTORET,
     OPT_COMMON,
-#if SHORT_JUMPS
     OPT_JUMPS,
     OPT_JCONDS,
-#endif
     OPT_NULL
 } opt_class;

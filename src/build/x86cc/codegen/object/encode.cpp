@@ -40,7 +40,6 @@
 #include "data.h"
 #include "objout.h"
 #include "revcond.h"
-#include "dumpio.h"
 #include "insutil.h"
 #include "score.h"
 #include "backrun.hpp"
@@ -56,24 +55,6 @@ static  label_handle    LocateLabel( instruction *ins, cond_dst_idx dest_idx )
     return( InsBlock( ins->head.next )->edge[dest_idx].destination.u.lbl );
 }
 
-#if _TARGET_RISC
-void    CodeLabelLinenum( label_handle label, unsigned align, cg_linenum line )
-/*****************************************************************************/
-{
-    any_oc      oc;
-
-    if( OptForSize > 50 || align == 0 )
-        align = 1;
-    oc.oc_handle.hdr.class_ = OC_LABEL;
-    oc.oc_handle.hdr.reclen = sizeof( oc_handle );
-    oc.oc_handle.hdr.objlen = align - 1;
-    oc.oc_handle.ref = NULL;
-    oc.oc_handle.handle = label;
-    oc.oc_handle.line = line;
-    InputOC( &oc );
-
-}
-#endif
 
 void    CodeLabel( BackRun& back, label_handle label, unsigned align )
 /********************************************************
@@ -83,16 +64,6 @@ void    CodeLabel( BackRun& back, label_handle label, unsigned align )
     if( back.data.OptForSize > 50 || align == 0 )
         align = 1;
     CodeHandle( back, OC_LABEL, align - 1, label );
-#if _TARGET_RISC
-#ifdef DEVBUILD
-    if( _IsTargetModel( CGSW_RISC_ASM_OUTPUT ) ) {
-        DumpChar( 'L' );
-        DumpPtr( label );
-        DumpChar( ':' );
-        DumpNL();
-    }
-#endif
-#endif
 }
 
 void    CodeLineNumber( BackRun& back, cg_linenum line, bool label_line )
@@ -108,15 +79,6 @@ void    CodeLineNumber( BackRun& back, cg_linenum line, bool label_line )
         oc.oc_linenum.hdr.objlen = 0;
         oc.oc_linenum.label_line = label_line;
         oc.oc_linenum.line = line;
-#if _TARGET_RISC
-#ifdef DEVBUILD
-        if( _IsTargetModel( CGSW_RISC_ASM_OUTPUT ) ) {
-            DumpLiteral( "Source Line: " );
-            DumpInt( line );
-            DumpNL();
-        }
-#endif
-#endif
         InputOC( back, &oc );
     }
 }
@@ -135,9 +97,6 @@ void    CodeHandle( BackRun& back, oc_class class_, obj_length len, label_handle
     oc.oc_handle.hdr.objlen = len;
     oc.oc_handle.ref = NULL;
     oc.oc_handle.handle = handle;
-#if _TARGET_RISC
-    oc.oc_handle.line = 0;
-#endif
     InputOC( back, &oc );
 }
 
@@ -169,40 +128,15 @@ static  void    DoCondJump( BackRun& back, instruction *cond )
     if( dest_true != NULL && dest_false != dest_true &&
         ( dest_true != dest_next || dest_false == NULL ) ) {
         oc.oc_jcond.hdr.class_ = OC_JCOND;
-#if _TARGET_INTEL
         if( !_CPULevel( CPU_386 ) ) {
             oc.oc_jcond.hdr.class_ |= OC_ATTR_SHORT;
         }
-#endif
-#if _TARGET_RISC
-        if( _IsFloating( cond->type_class ) ) {
-            oc.oc_jcond.hdr.class_ |= OC_ATTR_FLOAT;
-        }
-#endif
         oc.oc_jcond.hdr.reclen = sizeof( oc_jcond );
         oc.oc_jcond.hdr.objlen = OptInsSize( back, OC_JCOND, OC_DEST_NEAR );
         oc.oc_jcond.ref = NULL;
         oc.oc_jcond.cond = CondCode( back, cond );
         oc.oc_jcond.handle = dest_true;
-#if _TARGET_RISC
-        assert( cond->operands[0]->n.class_ == N_REGISTER );
-        oc.oc_jcond.index = cond->operands[0]->r.arch_index;
-        if( cond->operands[1]->n.class_ == N_REGISTER ) {
-            oc.oc_jcond.index2 = cond->operands[1]->r.arch_index;
-        } else {
-            oc.oc_jcond.index2 = NO_INDEX;
-        }
-#endif
         InputOC( back, &oc );
-#if _TARGET_RISC
-#ifdef DEVBUILD
-        if( _IsTargetModel( CGSW_RISC_ASM_OUTPUT ) ) {
-            DumpLiteral( "Jcc L" );
-            DumpPtr( dest_true );
-            DumpNL();
-        }
-#endif
-#endif
     }
     if( dest_false != dest_next && dest_false != NULL ) {
         GenJumpLabel( back, dest_false );
@@ -237,15 +171,6 @@ void    GenJumpLabel( BackRun& back, label_handle label )
 */
 {
     CodeHandle( back, OC_JMP, OptInsSize( back, OC_JMP, OC_DEST_NEAR ), label );
-#if _TARGET_RISC
-#ifdef DEVBUILD
-    if( _IsTargetModel( CGSW_RISC_ASM_OUTPUT ) ) {
-        DumpLiteral( "JMP L" );
-        DumpPtr( label );
-        DumpNL();
-    }
-#endif
-#endif
 }
 
 void    GenKillLabel( BackRun& back, label_handle label )

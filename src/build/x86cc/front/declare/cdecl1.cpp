@@ -123,7 +123,6 @@ static void FuncDefn( FrontRun& front, SYMPTR sym )
     if( TOGGLE( check_stack ) )
         sym->flags |= SYM_CHECK_STACK;
 
-#if _INTEL_CPU
     if( !front.cvars.CompFlags.zu_switch_used ) {
         if( sym->mods & FLAG_FARSS ) {          /* function use far stack */
             front.cvars.TargetSwitches |= CGSW_X86_FLOATING_SS;
@@ -131,7 +130,6 @@ static void FuncDefn( FrontRun& front, SYMPTR sym )
             front.cvars.TargetSwitches &= ~CGSW_X86_FLOATING_SS;
         }
     }
-#endif
     if( strcmp( front.cvars.CurFunc->name, "main" ) == 0
       || strcmp( front.cvars.CurFunc->name, "wmain" ) == 0 ) {
         sym->mods &= ~MASK_LANGUAGES;  // Turn off any language flags
@@ -190,10 +188,8 @@ static void BeginFunc( FrontRun& front )
         if( front.cvars.CurFunc->seginfo == NULL ) {
             if( front.cvars.CompFlags.zm_switch_used ) {
                 name = const_cast<char *>("");
-#if _INTEL_CPU
                 if( front.cvars.TargetSwitches & CGSW_X86_BIG_CODE )
                     name = front.cvars.CurFunc->name;
-#endif
                 segname = const_cast<char *>(TS_SEG_CODE); /* "_TEXT" */
                 if( front.cvars.TextSegName[0] != '\0' ) {
                     segname = front.cvars.TextSegName;
@@ -272,24 +268,10 @@ static void  ArgPromotion( FrontRun& front, SYMPTR sym )
     SKIP_TYPEDEFS( typ );
 
     switch( typ->decl_type ) {
-#if 0
-    case TYP_CHAR:
-    case TYP_UCHAR:
-    case TYP_SHORT:
-#endif
     case TYP_ENUM:
         arg_typ = GetType( front, TYP_INT );
         break;
 
-#if 0
-    case TYP_USHORT:
-        arg_typ = GetType( TYP_UINT );
-        break;
-
-    case TYP_FLOAT:
-        arg_typ = GetType( TYP_DOUBLE );
-        break;
-#endif
     default:
         break;
     }
@@ -578,19 +560,6 @@ static void CheckParms( FrontRun& front )
             parm->sym.attribs.is_parm = true;
         }
         if( prev_parm != NULL ) {
-#if _CPU == 370
-            {
-                SYM_ENTRY   var_parm;
-
-                if( VarParm( CurFunc ) ) {
-                    typ = ArrayNode( GetType( TYP_CHAR ) );
-                    typ->u.array->dimension = 160;
-                    sym_handle = GetNewDotSym( &var_parm, 'V', typ, SC_AUTO );
-                    SymReplace( &var_parm, sym_handle );
-                    prev_parm->sym.handle = sym_handle;
-                }
-            }
-#endif
             SymReplace( front, &prev_parm->sym, prev_sym_handle );
             CMemFree( front, prev_parm );
         }

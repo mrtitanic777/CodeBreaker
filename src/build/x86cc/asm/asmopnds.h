@@ -32,11 +32,7 @@
 #ifndef ASMOPNDS_H
 #define ASMOPNDS_H
 
-#ifdef _M_I86
-#define ENUMU32(x)      x ## UL
-#else
 #define ENUMU32(x)      x ## U
-#endif
 
 typedef enum operand_type {
     OP_NONE     = ENUMU32( 0x00000000 ),

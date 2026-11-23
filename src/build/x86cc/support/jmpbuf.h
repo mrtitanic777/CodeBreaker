@@ -30,8 +30,4 @@
 
 
 #pragma once
-#if defined( __WATCOMC__ )
-#define JMPBUF_PTR(x)   x
-#else
 #define JMPBUF_PTR(x)   &(x)
-#endif

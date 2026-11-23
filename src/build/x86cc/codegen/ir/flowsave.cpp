@@ -60,29 +60,6 @@ namespace {
 
 
 
-#if 0
-static block *FindDominatorBlock( dom_bit_set *dom, bool post )
-/**************************************************************
-    Returns pointer to the block with the given dominator set. If
-    post == true, then looks at post_dominator set instead.
-*/
-{
-    block       *blk;
-
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
-        if( post ) {
-            if( _DBitSame( *dom, blk->dom.post_dominator ) ) {
-                return( blk );
-            }
-        } else {
-            if( _DBitSame( *dom, blk->dom.dominator ) ) {
-                return( blk );
-            }
-        }
-    }
-    return( NULL );
-}
-#endif
 
 static bool OpRefsReg( name *op, hw_reg_set reg )
 /***********************************************/
@@ -135,7 +112,6 @@ static bool     InLoop( block *blk )
     return( false );
 }
 
-#if 1
 static void DoFix( BackRun& back, block *blk )
 /*****************************/
 {
@@ -173,7 +149,6 @@ static void FixStackDepth( BackRun& back, block *save, block *restore )
         }
     }
 }
-#endif
 
 static int CountBlocks( BackRun& back )
 /****************************/
@@ -311,10 +286,8 @@ void FlowSave( BackRun& back, hw_reg_set *preg )
     // we can't do this if we have push's which are 'live' at the end of a block
     // - this flag is set when we see a push being generated for a call in a different
     //   block
-#if _TARGET_INTEL
     if( back.data.CurrProc->targ.never_sp_frame )
         return;
-#endif
     num_regs = CountRegs( *preg );
     if( num_regs == 0 )
         return;
@@ -328,10 +301,8 @@ void FlowSave( BackRun& back, hw_reg_set *preg )
         HW_Asgn( reg_info[curr_reg].reg, *curr_push );
         reg_info[curr_reg].save = NULL;
         reg_info[curr_reg].restore = NULL;
-#if _TARGET_INTEL
         if( HW_COvlap( *curr_push, HW_xBP ) )
             continue;  // don't mess with BP - it's magical
-#endif
         GetRegUsage( back, &reg_info[curr_reg] );
         best_score = 0;
         for( i = 0; i < num_blocks; i++ ) {
@@ -359,11 +330,9 @@ void FlowSave( BackRun& back, hw_reg_set *preg )
         restore = reg_info[curr_reg].restore;
         if( ( save != NULL && save != back.data.HeadBlock ) && ( restore != NULL && !_IsBlkAttr( restore, BLK_RETURN ) ) ) {
             reg_type_class = WD;
-#if _TARGET_INTEL
             if( IsSegReg( reg_info[curr_reg].reg ) ) {
                 reg_type_class = U2;
             }
-#endif
             ins = MakeUnary( back, OP_PUSH, AllocRegName( back, reg_info[curr_reg].reg ), NULL, reg_type_class );
             ResetGenEntry( back, ins );
             PrefixIns( back, save->ins.head.next, ins );

@@ -31,9 +31,6 @@
 
 
 #pragma once
-#if INT_MAX == SHRT_MAX
-#error 16-bit bitsets not_ supported
-#endif
 
 #ifdef GB_DEFINE_GBITNEXT
 #define _GBit_DEFINE_BITNEXT

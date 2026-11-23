@@ -77,7 +77,6 @@ extern void     Format(BackRun& back, oc_class);
 #define M_MOVSW         0xa5
 #define M_CMPSB         0xa6
 #define M_CMPSW         0xa7
-#define M_REPNE         0xf2
 #define M_REPE          0xf3
 #define M_CBW           0x98
 #define M_CWD           0x99
@@ -123,7 +122,6 @@ extern void     Format(BackRun& back, oc_class);
 
 #define KEY             0
 #define RMR             1
-#define DATAHI          2
 #define DATALO          1
 
 #define INSSIZE         128

@@ -59,7 +59,6 @@ bool     IsTrickyPointerConv( BackRun& back, instruction *ins )
     to be carefully converted with taking segments into account?
 */
 {
-#if _TARGET_INTEL
     if( (ins->head.opcode == OP_CONVERT)
       && _IsPointer( ins->type_class ) ) {
         if( ins->base_type_class == U2
@@ -67,9 +66,6 @@ bool     IsTrickyPointerConv( BackRun& back, instruction *ins )
             return( true );
         }
     }
-#else
-    /* unused parameters */ (void)ins;
-#endif
     return( false );
 }
 

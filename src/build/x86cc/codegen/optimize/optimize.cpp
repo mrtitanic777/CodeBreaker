@@ -69,7 +69,6 @@ static const opcode_attr OpAttrs[LAST_OP - FIRST_OP + 1] = {
 };
 
 
-#define _IsIns( ins, attr )        ((OpAttrs[ins->head.opcode] & attr) != 0)
 #define _IsntIns( ins, attr )      ((OpAttrs[ins->head.opcode] & attr) == 0)
 
 

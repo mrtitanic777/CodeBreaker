@@ -142,9 +142,6 @@ static  bool    ReplaceConst( BackRun& back, name *cons, name *temp, type_class_
     bool                change;
     opcnt               num_operands;
 
-#if ( _TARGET & _TARG_AXP ) || ( _TARG_MEMORY & _TARG_LOW_FIRST ) == 0
-    /* unused parameters */ (void)tmp_class;
-#endif
 
     change = false;
     for( blk = back.cachecon.Head; blk != NULL; blk = back.cachecon.Next( back, blk ) ) {
@@ -156,13 +153,11 @@ static  bool    ReplaceConst( BackRun& back, name *cons, name *temp, type_class_
                     if( type_class == temp->n.type_class ) {
                         ins->operands[i] = temp;
                         change = true;
-#if ( _TARGET & _TARG_AXP ) == 0 && ( _TARG_MEMORY & _TARG_LOW_FIRST )
                     } else {
                         if( _IsIntegral( type_class ) && _IsIntegral( tmp_class ) ) {
                             ins->operands[i] = TempOffset( back, temp, 0, type_class );
                             change = true;
                         }
-#endif
                     }
                 }
             }

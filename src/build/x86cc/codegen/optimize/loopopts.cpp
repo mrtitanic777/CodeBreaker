@@ -74,7 +74,6 @@
  * as pointer values
  */
 
-#define _POINTER_GETS_NEAR_BOUNDS 1
 
 typedef enum {
     CMP_TRUE,
@@ -785,14 +784,6 @@ bool     Hoistable( BackRun& back, instruction *ins, block *blk )
         if( ins->operands[0]->n.class_ != N_INDEXED )
             return( false );
         break;
-#if _TARGET_RISC
-    /*
-     * on RISC architectures, we want to hoist OP_LAs as they will
-     * usually turn into expensive lha, la style pairs in the encoder
-     */
-    case OP_LA:
-        break;
-#endif
     default:
         if( ins->num_operands != 2 )
             return( false );
@@ -1210,11 +1201,9 @@ bool    Inducable( block *blk, instruction *ins )
       || _IsI64( ins->type_class ) ) {
         return( false );
     }
-#ifdef _TARG_IS_SEGMENTED
     if( ins->type_class == PT ) {
         return( false );
     }
-#endif
     op = ins->operands[0];
     cons = ins->operands[1];
     if( cons->n.class_ != N_CONSTANT ) {
@@ -1664,42 +1653,9 @@ static  void    MergeVars( BackRun& back )
 static  bool    IsAddressMode( induction *var )
 /*********************************************/
 {
-#if 0 // when this doesn't work, it REALLY doesn't work
-    if( var->use_count != 1 )
-        return( false );
-    if( _IsntV( var, IV_INDEXED ) )
-        return( false );
-    if( var->times != 1
-      && var->times != 2
-      && var->times != 4
-      && var->times != 8 )
-        return( false );
-    if( var->ivtimes != NULL )
-        return( false );
-    if( var->lasttimes != 0 )
-        return( false );
-    if( var->invar != NULL ) {
-        if( var->invar->times != 1 )
-            return( false );
-        if( var->invar->next != NULL )
-            return( false );
-        if( var->plus != 0
-          || var->plus2 != 0 ) {
-            return( false );
-        }
-    } else {
-        if( var->plus != 0 ) {
-            if( var->plus2 != 0 ) {
-                return( false );
-            }
-        }
-    }
-    return( true );
-#else
     /* unused parameters */ (void)var;
 
     return( false );
-#endif
 }
 
 
@@ -1797,10 +1753,8 @@ static  void    ScanBasic( BackRun& back, instruction *ins )
     if( _IsFloating( ins->type_class )
       || _IsI64( ins->type_class ) )
         return;
-#ifdef _TARG_IS_SEGMENTED
     if( ins->type_class == PT )
         return;
-#endif
     op = ins->operands[0];
     if( op->n.class_ == N_CONSTANT
       && op->c.const_type == CONS_ABSOLUTE ) {
@@ -2372,112 +2326,6 @@ instruction     *DupInstrs( BackRun& back, instruction *blk_end,
 }
 
 
-#if 0
-static  bool    BlueMoonUnRoll( block *cond_blk, induction *var,
-                        instruction *cond, instruction *indins,
-                        block_edge *exit_edge, bool know_bounds,
-                        int_32 initial, int_32 final )
-/***************************************************************/
-{
-    instruction         *first;
-    instruction         *last;
-    instruction         *ins;
-    instruction         *blk_end;
-    int_32              iterations;
-    int                 i;
-    int_32              adjust;
-    int                 unroll_count;
-    int                 remainder;
-    int                 num_instrs;
-
-    if( Loop->u.loop != NULL )
-        return( false );
-    if( var->use_count - var->index_use_count != 1 )
-        return( false );
-    if( var->ins->head.next != cond )
-        return( false );
-    if( OptForSize > 0 )
-        return( false );
-
-    if( know_bounds ) {
-        iterations = ( final - initial ) / var->plus;
-    } else {
-        iterations = cond_blk->iterations;
-    }
-    if( iterations == 0 )
-        return( false );
-
-#define MAX_UNROLL_EXPANSION    30
-
-    num_instrs = CountIns( cond_blk );
-    /*
-     * Figure out the largest amount of unrolling that won't exceed the
-     * maximum code expansion factor
-     */
-    unroll_count = MAX_UNROLL_EXPANSION / num_instrs;
-    if( unroll_count > iterations )
-        unroll_count = iterations;
-    for( ;; ) {
-        if( unroll_count <= 1 )
-            return( false );
-        remainder = iterations % unroll_count;
-        if( ( unroll_count + remainder ) * num_instrs <= MAX_UNROLL_EXPANSION )
-            break;
-        --unroll_count;
-    }
-    cond->head.next->head.prev = cond->head.prev;
-    cond->head.prev->head.next = cond->head.next;
-    cond->head.next = cond;
-    cond->head.prev = cond;
-    blk_end = indins->head.prev;
-    indins->head.next->head.prev = indins->head.prev;
-    indins->head.prev->head.next = indins->head.next;
-    indins->head.next = indins;
-    indins->head.prev = indins;
-    first = cond_blk->ins.head.next;
-    last = blk_end;
-
-    adjust = 0;
-    for( i = 0; i < remainder; ++i ) {
-        DupInstrs( NULL, first, last, var, adjust );
-        adjust += var->plus;
-    }
-    if( know_bounds ) {
-        ins = MakeMove( AllocS32Const( initial + remainder * var->plus ),
-                        var->name, var->name->n.type_class );
-    } else {
-        ins = MakeBinary( OP_ADD, var->name, AllocS32Const( remainder * var->plus ),
-                          var->name, var->name->n.type_class );
-    }
-    SuffixPreHeader( ins );
-    adjust = var->plus;
-    for( i = 1; i < unroll_count; ++i ) {
-        blk_end = DupInstrs( blk_end, first, last, var, adjust );
-        adjust += var->plus;
-    }
-    if( (unroll_count + remainder) != iterations ) {
-        ins = MakeBinary( OP_ADD, var->name,
-                          AllocS32Const( unroll_count * var->plus ), var->name,
-                          var->ins->type_class );
-        SuffixIns( blk_end, ins );
-        blk_end = DupIns( ins, cond, var->name, 0 );
-    } else {
-        _MarkBlkAttrClr( cond_blk, BLK_LOOP_HEADER );
-        MakeJumpBlock( cond_blk, exit_edge );
-        if( know_bounds ) {
-            ins = MakeMove( AllocS32Const( final ), var->name,
-                            var->name->n.type_class );
-        } else {
-            ins = MakeBinary( OP_ADD, var->name, AllocS32Const( iterations * var->plus ),
-                              var->name, var->name->n.type_class );
-        }
-        SuffixIns( blk_end, ins );
-    }
-    FreeIns( cond );
-    FreeIns( indins );
-    return( true );
-}
-#endif
 
 
 static  induction       *FindReplacement( BackRun& back, induction *var )
@@ -2515,12 +2363,6 @@ static  induction       *FindReplacement( BackRun& back, induction *var )
         if( oth_type_class == var_type_class
           || ( oth_type_class == WD
           && var_type_class == CP )
-#ifndef _TARG_IS_SEGMENTED
-          || ( oth_type_class == WD
-          && var_type_class == PT )
-          || ( oth_type_class == PT
-          && var_type_class == WD )
-#endif
           ) {
             log2oth = GetLog2( other->times );
             if( ( replacement == NULL )
@@ -2821,23 +2663,9 @@ static  bool    FinalValue( BackRun& back, instruction *ins, block *blk, inducti
 static  bool    PointerOk( name *op )
 /***********************************/
 {
-#ifdef _POINTER_GETS_NEAR_BOUNDS
     /* unused parameters */ (void)op;
 
     return( false );
-#else
-    if( op->n.type_class == PT )
-        return( true );
-    if( op->n.type_class == CP )
-        return( true );
-    if( op->n.type_class != U2 )
-        return( false );
-    if( op->n.class_ != N_TEMP )
-        return( false );
-    if( (op->t.temp_flags & INDEXED) == 0 )
-        return( false );
-    return( true );
-#endif
 }
 
 
@@ -3410,22 +3238,6 @@ static  bool    ReduceInStrength( BackRun& back )
 }
 
 
-#if 0
-static  void    DupNoncondInstrs( block *cond_blk, instruction *cond, block *prehead )
-/*************************************************************************************
- * Duplicate all instructions in cond_blk, suffixing them to the given pre-header,
- * except for the conditional instruction pointed to by cond.
- */
-{
-    instruction         *ins;
-
-    for( ins = cond_blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-        if( ins == cond )
-            continue;
-        DupIns( prehead->ins.head.prev, ins, NULL, 0 );
-    }
-}
-#endif
 
 static  bool    TwistLoop( BackRun& back, block_list *header_list, bool unroll )
 /****************************************************************
@@ -3514,12 +3326,10 @@ static  bool    TwistLoop( BackRun& back, block_list *header_list, bool unroll )
     if( edge->destination.u.blk != cond_blk ) {
         do_the_twist = false;
     }
-#if 1
     if( cond != cond_blk->ins.head.next
       || cond != cond_blk->ins.head.prev ) {
         do_the_twist = false;
     }
-#endif
     if( do_the_twist ) {
         new_head = NULL;
         if( know_bounds ) {

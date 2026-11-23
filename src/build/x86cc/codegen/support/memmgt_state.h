@@ -11,9 +11,7 @@
 #include "optmac.h"
 #include "memlimit.h"
 #include "onexit.h"
-#include "dumpio.h"
 #include "memmgt.h"
-#include "trmem.h"
 
 struct MemmgtState {
     mem_out_action MemOut;

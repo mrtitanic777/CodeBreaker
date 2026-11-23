@@ -86,11 +86,7 @@ static void writeFileHeader( BackRun& back, owl_file_handle file )
     header.e_ident[EI_MAG2] = ELFMAG2;
     header.e_ident[EI_MAG3] = ELFMAG3;
     header.e_ident[EI_CLASS] = ELFCLASS32;
-#if defined( __BIG_ENDIAN__ )
-    header.e_ident[EI_DATA] = ELFDATA2MSB;
-#else
     header.e_ident[EI_DATA] = ELFDATA2LSB;
-#endif
     header.e_ident[EI_VERSION] = EV_CURRENT;
     header.e_type = ET_REL;
     header.e_machine = machineTypes[file->info->cpu];
@@ -409,17 +405,6 @@ static void emitReloc( BackRun& back, owl_section_handle sec, owl_reloc_info *re
         OWLBufferWrite( back, sec->buffer, (char *)&data, sizeof( data ) );
         OWLBufferSeek( sec->buffer, old_loc );
     }
-#ifdef __BIG_ENDIAN__
-    /*
-     *TODO check target, not host
-     * When targeting big endian machines, halfword relocs do not start
-     * where the instruction starts because high bits are stored first and
-     * reloc is in the low bits. Adjust the location of the reloc for those.
-     * Bit of a hack really, but this is the easiest place to do it.
-     */
-    if( (bit_mask & 0xffff0000) == 0 )
-        elf_reloc->r_offset += 2;
-#endif
     if( back.owelf->useRela ) {
         /*
          * dig up the embedded addend within the object and put it here

@@ -438,10 +438,6 @@ bool    LdStAlloc( BackRun& back )
         back.x86ldstr.PreferSize = true;
     }
 
-#if 0  /* You can optionally disable riscifer when optimizing for size */
-    if( PreferSize )
-        return( false );
-#endif
 
     changed = false;
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {

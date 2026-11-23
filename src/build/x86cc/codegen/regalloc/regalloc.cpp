@@ -158,23 +158,6 @@ static  void    AssignMoreBits( BackRun& back )
 }
 
 
-#if 0 /* 2007-07-10 RomanT -- This method is not used anymore */
-static  void    InitAChoice( name *temp )
-/***************************************/
-{
-    name        *alias;
-
-    if( temp->n.class_ != N_TEMP )
-        return;
-    if( temp->t.temp_flags & ALIAS )
-        return;
-    alias = temp;
-    do {
-        alias->t.possible = RL_NUMBER_OF_SETS;
-        alias = alias->t.alias;
-    } while( alias != temp );
-}
-#endif
 
 
 static  void    InitChoices( BackRun& back )
@@ -190,36 +173,11 @@ static  void    InitChoices( BackRun& back )
 */
 {
     conflict_node       *conf;
-#if 0 /* 2007-07-10 RomanT -- This method is not used anymore */
-    name                *opnd;
-    block               *blk;
-    instruction         *ins;
-    opcnt               i;
-#endif
 
     for( conf = back.data.ConfList; conf != NULL; conf = conf->next_conflict ) {
         conf->possible = RL_NUMBER_OF_SETS;
         FreePossibleForAlias( back, conf );  /* 2007-07-10 RomanT */
     }
-#if 0 /* 2007-07-10 RomanT -- This method is not used anymore */
-    if( BlockByBlock ) {
-        /* this is WAY faster for BlockByBlock */
-        for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
-            for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-                for( i = ins->num_operands; i-- > 0; ) {
-                    InitAChoice( ins->operands[i] );
-                }
-                if( ins->result != NULL ) {
-                    InitAChoice( ins->result );
-                }
-            }
-        }
-    } else {
-        for( opnd = Names[N_TEMP]; opnd != NULL; opnd = opnd->n.next_name ) {
-            opnd->t.possible = RL_NUMBER_OF_SETS;
-        }
-    }
-#endif
 }
 
 
@@ -432,9 +390,7 @@ static int_32   CountRegMoves( BackRun& back, conflict_node *conf,
     int                 half;
     name                *reg_name;
     name                *op1;
-#if _TARGET_INTEL || (_TARGET & _TARG_370)
     name                *op2;
-#endif
     name                *res;
     bool                idx;
     conflict_node       *other_conf;
@@ -461,7 +417,6 @@ static int_32   CountRegMoves( BackRun& back, conflict_node *conf,
             ins = blk->ins.head.next;
         } else {
             if( ins->head.opcode != OP_MOV ) {
-#if _TARGET_INTEL || (_TARGET & _TARG_370)
                 op1 = NULL;
                 op2 = NULL;
                 if( ins->num_operands != 0 ) {
@@ -496,7 +451,6 @@ static int_32   CountRegMoves( BackRun& back, conflict_node *conf,
                         count += half;  /* Or just a quarter? */
                     }
                 }
-#endif
             } else {
                 op1 = ins->operands[0];
                 res = ins->result;
@@ -529,14 +483,10 @@ static int_32   CountRegMoves( BackRun& back, conflict_node *conf,
             ins = ins->head.next;
         }
     }
-#if ( _TARGET & _TARG_370 ) == 0
     if( _IsModel( CGSW_GEN_SUPER_OPTIMAL ) ) {
-#endif
         count += CountRegMoves( back, conf, HighOffsetReg( back, reg ), tree->hi, levels );
         count += CountRegMoves( back, conf, LowOffsetReg( back, reg ), tree->lo, levels );
-#if ( _TARGET & _TARG_370 ) == 0
     }
-#endif
     if( _IsModel( CGSW_GEN_SUPER_OPTIMAL ) ) {
         /*
          * This is really expensive, compile time-wise, but what it does is

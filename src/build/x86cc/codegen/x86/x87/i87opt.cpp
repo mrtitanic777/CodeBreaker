@@ -828,25 +828,3 @@ bool    FPDivIsADog( BackRun& back, type_class_def type_class )
     return( _FPULevel( FPU_87 ) && _IsFloating( type_class ) );
 }
 
-#if 0
-void    FixP5Divs( void )
-/***********************/
-{
-    block       *blk;
-    instruction *ins;
-
-    if( _IsntTargetModel( CGSW_X86_P5_DIVIDE_CHECK ) )
-        return;
-    if( !_FPULevel( FPU_87 ) )
-        return;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
-        for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-            if( ins->head.opcode != OP_DIV )
-                continue;
-            if( !_IsFloating( ins->type_class ) )
-                continue;
-            ins->head.opcode = OP_P5DIV;
-        }
-    }
-}
-#endif

@@ -59,14 +59,6 @@ static void FreeAuxInfo( FrontRun& front, aux_info *info )
         CMemFree( front, info->parms );
         info->parms = NULL;
     }
-#if _CPU == 370
-    if( info->linkage != &DefaultLinkage && info->linkage != &OSLinkage ) {
-        if( info->linkage != NULL ) {
-            CMemFree( info->linkage );
-            info->linkage = NULL;
-        }
-    }
-#endif
     if( info->objname != NULL ) {
         CMemFree( front, info->objname );
         info->objname = NULL;
@@ -83,9 +75,7 @@ void PragmaAuxInit( FrontRun& front )
     FortranInfo = WatcallInfo;
     FastcallInfo= WatcallInfo;
 
-#if _INTEL_CPU
     AuxInfoInit( front, front.cvars.CompFlags.use_stdcall_at_number );
-#endif
 
     SetDefaultAuxInfo(front);
 }

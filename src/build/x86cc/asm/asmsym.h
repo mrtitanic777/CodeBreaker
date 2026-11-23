@@ -48,52 +48,15 @@ typedef enum {
     MT_NEAR,
     MT_FAR,
     MT_PTR,
-#if defined( _STANDALONE_ )
-    MT_SBYTE,
-    MT_SWORD,
-    MT_SDWORD,
-    MT_STRUCT,
-    MT_PROC,
-    MT_ABS,
-#endif
     MT_ERROR
 } memtype;
 
-#if defined( _STANDALONE_ )
-typedef enum {
-    WASM_LANG_NONE,
-    WASM_LANG_C,
-    WASM_LANG_SYSCALL,
-    WASM_LANG_STDCALL,
-    WASM_LANG_PASCAL,
-    WASM_LANG_FORTRAN,
-    WASM_LANG_BASIC,
-    WASM_LANG_WATCOM_C
-} lang_type;
-
-typedef char        *(*mangle_func)( asm_sym_handle sym );
-#endif
 
 typedef struct asm_sym {
     struct asm_sym  *next;
     char            *name;
 
-#if defined( _STANDALONE_ )
-    struct asm_sym  *segment;
-    struct asm_sym  *structure;     /* structure type name */
-    uint_32         offset;
-    uint_32         first_size;     /* size of 1st initializer in bytes */
-    uint_32         first_length;   /* size of 1st initializer--elts. dup'd */
-    uint_32         total_size;     /* total number of bytes (sizeof) */
-    uint_32         total_length;   /* total number of elements (lengthof) */
-    uint_32         count;
-    mangle_func     mangler;
-    bool            public_;
-    bool            referenced;
-    lang_type       langtype;
-#else
     long            addr;
-#endif
     memtype         mem_type;
     sym_state       state;
     asmfixup        *fixup;
@@ -103,20 +66,5 @@ extern asm_sym_handle   AsmLookup( AsmRun& assembler, const char *name );
 extern asm_sym_handle   AsmGetSymbol( const char *name );
 extern void             FreeASym( AsmRun& assembler, asm_sym_handle sym );
 
-#if defined( _STANDALONE_ )
-
-extern void             AsmTakeOut( const char *name );
-extern void             AsmPurgeMacro( const char *name );
-extern void             AsmRestorePurgedMacros( void );
-extern void             AsmResetPassConstants( void );
-extern bool             AsmChangeName( const char *old, const char *new_ );
-extern void             AsmSetMandatoryName( asm_sym_handle sym, const char *name );
-extern void             WriteListing( void );
-
-extern asm_sym_handle   AllocDSym( const char * );
-
-#define IS_SYM_COUNTER( x ) ( ( x[0] == '$' ) && ( x[1] == 0 ) )
-
-#endif
 
 #endif

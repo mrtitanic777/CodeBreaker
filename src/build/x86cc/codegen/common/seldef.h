@@ -34,7 +34,6 @@
 #ifndef __SELDEF__H__
 #define __SELDEF__H__
 
-#include "useinfo.h"
 
 typedef struct select_list {
         struct select_list      *next;
@@ -45,9 +44,6 @@ typedef struct select_list {
 } select_list;
 
 typedef struct select_node {
-#ifdef DEVBUILD
-        use_info                useinfo;
-#endif
         struct select_list      *list;
         label_handle            other_wise;
         signed_64               lower;

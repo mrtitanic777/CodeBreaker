@@ -31,11 +31,7 @@
 
 
 #pragma once
-#if _TARGET_INTEL
 #define MAX_COST        0x7FFFFFFF
-#else
-#define MAX_COST        0x7FFF
-#endif
 
 typedef int_32          cost_val;
 

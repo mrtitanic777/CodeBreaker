@@ -36,7 +36,6 @@
 
 /* AB_ENUM_MASK is an index into a table of partial abbreviations we use */
 #define AB_ENUM_MASK            0x0000003f
-#define AB_ENUM_SHIFT           0
 
 /* anything in the AB_ALWAYS mask will always have the attr/form pair
     emitted */

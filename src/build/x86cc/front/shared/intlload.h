@@ -42,15 +42,11 @@ typedef struct _IntlData {
     char                *usage_text;
 } IntlData;
 
-#ifdef __cplusplus
 extern "C" {
-#endif
 
 extern IntlData     *LoadInternationalData( FrontRun& front, const char *file_prefix );
 extern void         FreeInternationalData( FrontRun& front, IntlData *handle );
 
-#ifdef __cplusplus
 }
-#endif
 
 #endif

@@ -40,7 +40,6 @@
 #include "insutil.h"
 #include "insdead.h"
 #include "blktrim.h"
-#include "dumpio.h"
 #include "trecurse.h"
 #include "backrun.hpp"
 

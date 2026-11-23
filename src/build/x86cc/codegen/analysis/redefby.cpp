@@ -297,16 +297,6 @@ bool_maybe  VisibleToCall( BackRun& back, instruction *ins, name *op, bool modif
         if( op->v.usage & USE_ADDRESS )
             return( MB_TRUE );
         return( MB_FALSE );
-#if _TARGET & _TARG_AXP
-    case N_REGISTER:
-        // to make up for a brain-dead setjmp operation which only
-        // does a partial restore of the register-state, we do not
-        // schedule any instructions past a call which has the
-        // CALL_IS_SETJMP flag set
-        if( ins->flags.u.call_flags & CALL_IS_SETJMP )
-            return( MB_TRUE );
-        return( MB_FALSE );
-#endif
     }
     return( MB_FALSE );
 }
@@ -314,48 +304,7 @@ bool_maybe  VisibleToCall( BackRun& back, instruction *ins, name *op, bool modif
 static  bool    ZappedBySTQ_U( instruction *ins, name *op )
 /*********************************************************/
 {
-#if _TARGET & _TARG_AXP
-    name        *temp;
-    name        *base_1;
-    name        *base_2;
-
-    if( ins->head.opcode != OP_STORE_UNALIGNED )
-        return( false );
-    switch( op->n.class_ ) {
-    case N_MEMORY:
-    case N_INDEXED:
-        return( true );
-        break;
-    case N_TEMP:
-        temp = ins->result;
-        if( temp->n.class_ == N_INDEXED ) {
-            if( temp->i.base == NULL ) {
-                if( op->v.usage & USE_ADDRESS ) {
-                    return( true );
-                }
-            } else {
-                if( temp->i.base->n.class_ == N_TEMP ) {
-                    base_1 = DeAlias( op );
-                    base_2 = DeAlias( temp->i.base );
-                    if( base_1 == base_2 ) {
-                        return( true );
-                    }
-                }
-            }
-        }
-        if( temp->n.class_ == N_TEMP ) {
-            base_1 = DeAlias( op );
-            base_2 = DeAlias( temp );
-            if( base_1 == base_2 ) {
-                // if op is within range of ins->result
-                return( true );
-            }
-        }
-        break;
-    }
-#else
     /* unused parameters */ (void)op; (void)ins;
-#endif
     return( false );
 }
 

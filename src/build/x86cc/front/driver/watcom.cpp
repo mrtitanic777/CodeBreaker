@@ -38,14 +38,6 @@
 #define _TARGET_    "x86 16-bit"
 #elif _CPU == 386
 #define _TARGET_    "x86 32-bit"
-#elif _CPU == _AXP
-#define _TARGET_    "Alpha AXP"
-#elif _CPU == _PPC
-#define _TARGET_    "PowerPC"
-#elif _CPU == _MIPS
-#define _TARGET_    "MIPS"
-#else
-#error Unknown System
 #endif
 
 extern char const CompilerID[] = { "__WATCOMC__=" _MACROSTR( _BLDVER ) };
@@ -55,12 +47,8 @@ void CBanner( FrontRun& front )
     if( !front.cvars.CompFlags.banner_printed ) {
         front.cvars.CompFlags.banner_printed = true;
         if( !front.cvars.CompFlags.quiet_mode ) {
-#if defined( _BETAVER )
             BannerMsg( front, banner1t( "C " _TARGET_ " Optimizing Compiler" ) );
             BannerMsg( front, banner1v( _WCC_VERSION_ ) );
-#else
-            BannerMsg( banner1w( "C " _TARGET_ " Optimizing Compiler", _WCC_VERSION_ ) );
-#endif
             BannerMsg( front, banner2 );
             BannerMsg( front, banner2a( 1984 ) );
             BannerMsg( front, banner3 );

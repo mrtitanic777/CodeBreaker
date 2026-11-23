@@ -410,64 +410,6 @@ void CSuicide( FrontRun& front )
 }
 
 
-#if 0
-static void CMsgSetClass( cmsg_info *info, msg_codes msgnum )
-/************************************************************
- * doesn't work in general as phases are used in both errror and warnings
- */
-{
-    msg_type    kind;
-    cmsg_class  class_;
-
-    kind = CGetMsgType( msgnum );
-    switch( kind ) {
-    case MSG_TYPE_ERROR:
-    case MSG_TYPE_ANSIERR:
-        class_ = CMSG_ERRO;
-        break;
-    case MSG_TYPE_WARNING:
-    case MSG_TYPE_ANSIWARN:
-        class_ = CMSG_WARN;
-        break;
-    case MSG_TYPE_INFO:
-    case MSG_TYPE_ANSI:
-    case MSG_TYPE_STYLE:
-        class_ = CMSG_INFO;
-        break;
-    }
-    info->class_ = class_;
-}
-
-static void DoMsgInfo( msg_codes msgnum )
-/****************************************
- * fill info
- */
-{
-    cmsg_info   sinfo;
-    cmsg_info   *info;
-    char        pre[MAX_MSG_LEN]; //actual message text
-    unsigned    line;
-    unsigned    column;
-
-    info = &sinfo;
-    info->msgnum = msgnum;
-    CMsgSetClass( info, msgnum );
-    line = 0;
-    column = 0;
-    CGetMsg( info->msgtxt, msgnum );
-    info->line = line;
-    info->column = column;
-    info->fname = NULL;
-    FmtCMsg( pre, info );
-    printf( "%s%s\n", pre,info->msgtxt );
-}
-
-void DumpAllMsg( void ) {
-#define MSG_DEF( name, group, kind, level, group_index ) DoMsgInfo( name );
-    MSG_DEFS
-#undef MSG_DEF
-}
-#endif
 
 static struct ErrPostList *NewPostList( FrontRun& front, postlist_type type )
 /***********************************************************

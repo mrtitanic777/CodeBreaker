@@ -37,10 +37,3 @@
 extern void             CGMemInit( BackRun& back, pointer trmemhdl );
 extern void             CGMemFini( BackRun& back );
 extern mem_out_action   SetMemOut( BackRun& back, mem_out_action what );
-#if defined( TRMEM ) && defined( _M_IX86 )
-extern  pointer         _CGAlloc( size_t, _trmem_who );
-extern  void            _CGFree( pointer, _trmem_who );
-#endif
-#ifdef TRMEM
-extern void             DumpMem( void );
-#endif

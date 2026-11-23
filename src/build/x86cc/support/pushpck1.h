@@ -30,32 +30,10 @@
 ****************************************************************************/
 
 
-#if defined( __WATCOMC__ )
-    #pragma pack(__push,1)
-#elif defined( _CFE ) || defined( __SUNPRO_C ) || defined( __sun )
-    #if !defined( _NO_PRAGMA_PUSH_PACK )
-        #define _NO_PRAGMA_PUSH_PACK
-    #endif
-    #pragma pack(1)
-#elif defined( MAC )
-    #if defined( __MWERKS__ )
-        #pragma options align= packed
-    #else
-        #error "Need a push/pack for this Mac compiler"
-    #endif
-#elif defined( _MSC_VER )
+#if defined( _MSC_VER )
     #pragma warning(disable:4103)
-    #pragma pack(push,1)
-#elif defined( __clang__ )
     #pragma pack(push,1)
 #else
     #pragma pack(push,1)
 #endif
 
-#if defined( _NO_PRAGMA_PUSH_PACK )
-    #if defined( _PUSH_PACK )
-        #error Tried to push a pack at too great a depth
-    #else
-        #define _PUSH_PACK
-    #endif
-#endif

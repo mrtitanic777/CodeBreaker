@@ -39,6 +39,4 @@ extern void     DFAbbrevDef( BackRun& back );
 extern void     DFOutReg( BackRun& back, dw_loc_id locid, name *reg );
 extern void     DFOutRegInd( BackRun& back, dw_loc_id locid, name *reg );
 extern uint     DFStkReg( BackRun& back );
-#if _TARGET_INTEL
 extern uint     DFDisplayReg( BackRun& back );
-#endif

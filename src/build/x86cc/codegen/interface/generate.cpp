@@ -241,7 +241,6 @@ static  void            PostOptimize( BackRun& back )
     }
     MergeIndex(back);
     if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
-#if !_TARGET_RISC
         /*
          * Calling Conditions() at this point has nice optimization effect,
          * but doesn't working correctly right now. It optimizes conditions
@@ -249,17 +248,6 @@ static  void            PostOptimize( BackRun& back )
          * generates XOR's which will trash cond. codes. Either Conditions()
          * either riscifier must be fixed to handle this situation.
          */
-    #if 0
-        /*
-         * et rid of unused conditions on variables level
-         * to decrease number of referenced vars in LdStAlloc() and Score()
-         */
-        if( _IsntTargetModel( CGSW_X86_STATEMENT_COUNTING ) ) {
-            Conditions();
-            DeadInstructions(); /* cleanup junk after Conditions() */
-        }
-    #endif
-#endif
 //        OptCloseMoves();  /* todo: merge constant moves before riscifier */
         LdStAlloc(back);
         Score(back);
@@ -276,14 +264,12 @@ static  void            PostOptimize( BackRun& back )
         DeadInstructions(back); /* cleanup junk after Score() */
         if( !back.data.BlockByBlock )
             LoopRegInvariant(back);
-#if !_TARGET_RISC
         /*
          * Get rid of remaining unused conditions on register level.
          */
         if( _IsntTargetModel( CGSW_X86_STATEMENT_COUNTING ) ) {
             Conditions(back);
         }
-#endif
     }
     FPExpand(back);
     if( _IsntModel( CGSW_GEN_NO_OPTIMIZATION ) ) {
@@ -661,7 +647,6 @@ void    Generate( BackRun& back, bool routine_done )
         return;
     back.data.HaveLiveInfo = false;
     back.data.HaveDominatorInfo = false;
-#if _TARGET_RISC == 0 && ( _TARGET & _TARG_370 ) == 0
     /*
      * if we want to go fast, generate statement at a time
      */
@@ -678,7 +663,6 @@ void    Generate( BackRun& back, bool routine_done )
         }
         return;
     }
-#endif
     /*
      * if we couldn't get the whole procedure in memory, generate part of it
      */
@@ -774,11 +758,7 @@ void    Generate( BackRun& back, bool routine_done )
     }
     FreeProc(back);
     back.data.HaveLiveInfo = false;
-#if _TARGET_INTEL
     if( _IsTargetModel( CGSW_X86_NEW_P5_PROFILING ) ) {
         FlushQueue(back);
     }
-#else
-    FlushQueue();
-#endif
 }

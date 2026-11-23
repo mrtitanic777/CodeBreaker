@@ -234,11 +234,6 @@ static  void    FlowConflicts( BackRun& back, instruction *first, instruction *l
     alive.regs          = last->head.live.regs;
     alive.out_of_block  = last->head.live.out_of_block;
     alive.within_block  = last->head.live.within_block;
-#if _TARGET & _TARG_AXP
-    if( blk == HeadBlock ) {
-        HW_TurnOn( alive.regs, CurrProc->state.parm.used );
-    }
-#endif
     ins = last;
     for( ;; ) {
         /*

@@ -98,25 +98,13 @@ typedef enum {
         ( (op1)*OP1_MUL | (op2)*OP2_MUL | \
         ANY*RESULT_MUL | NONE | SETS_CC )
 
-#define _SidSC( op1, op2 )      \
-        ( (op1)*OP1_MUL | (op2)*OP2_MUL | \
-        ANY*RESULT_MUL | NONE | SETS_SC )
 
-#define _SidPP( op1, op2 )      \
-        ( (op1)*OP1_MUL | (op2)*OP2_MUL | \
-        ANY*RESULT_MUL | NONE | PRESERVE )
 
 #define _Un( op, res, match )   \
         ( (op)*OP1_MUL | ANY*OP2_MUL | \
         (res)*RESULT_MUL | (match) )
 
-#define _UnCC( op, res, match ) \
-        ( (op)*OP1_MUL | ANY*OP2_MUL | \
-        (res)*RESULT_MUL | (match) | SETS_CC )
 
-#define _UnSC( op, res, match ) \
-        ( (op)*OP1_MUL | ANY*OP2_MUL | \
-        (res)*RESULT_MUL | (match) | SETS_SC )
 
 #define _UnPP( op, res, match ) \
         ( (op)*OP1_MUL | ANY*OP2_MUL | \

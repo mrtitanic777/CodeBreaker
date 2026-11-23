@@ -1,9 +1,6 @@
-#ifndef A_BIT_SET_DEFINED
 typedef unsigned a_bit_set;
 #define A_BIT_SET_DEFINED
-#endif
 
-#define _GBit_SIZE 128
 
 typedef struct global_bit_set {
 	a_bit_set	_0;
@@ -36,12 +33,6 @@ typedef struct global_bit_set {
 
 #define _GBitInit( set, val ) _GBitSet( set, val, val, val, val )
 
-#define _GBitIter( routine, set ) { \
-			(routine)( (set)._0 ); \
-			(routine)( (set)._1 ); \
-			(routine)( (set)._2 ); \
-			(routine)( (set)._3 ); \
-		}
 
 #define _GBitOverlap( a, b ) ( \
 			( (a)._0 & (b)._0 ) || \
@@ -76,7 +67,6 @@ typedef struct global_bit_set {
 			(a)._3 |= (b)._3; \
 		}
 
-#define _GBitScalar( a ) ( (a)._0 )
 
 #ifdef _GBit_DEFINE_BITNEXT
 static void _GBitNext( global_bit_set *set ) {

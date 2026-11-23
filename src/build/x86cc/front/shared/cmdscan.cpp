@@ -203,13 +203,6 @@ void CmdScanSwitchBegin(        // REMEMBER START OF SWITCH
 }
 
 
-#if 0
-void CmdScanSwitchBackup(       // BACK UP SCANNER TO START OF SWITCH
-    void )
-{
-    cmd.curr_ptr = cmd.switch_ptr;
-}
-#endif
 
 
 size_t CmdScanQuotedString(     // SCAN AN OPTION
@@ -330,9 +323,5 @@ void CmdScanSkipWhiteSpace(     // SKIP OVER WHITE SPACES
 
 bool CmdScanSwitchChar( int c )
 {
-#ifdef __UNIX__
-    return( c == '-' );
-#else
     return( c == '-' || c == '/' );
-#endif
 }

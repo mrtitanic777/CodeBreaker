@@ -123,35 +123,7 @@ static void ChunkSaveStrWord( FrontRun& front, STRCHUNK *pch, const char *str )
     ChunkSaveChar( front, pch, ' ' );
 }
 
-#ifdef FDEBUG
-void DumpToken( void )
-{
-    if( DebugFlag >= 3 ) {
-        printf( "%2d: ", CurToken );
-        if( CurToken == T_ID ) {
-            printf( "%s\n", Buffer );
-        } else if( CurToken == T_STRING ) {
-            printf( "\"%s\"\n", Buffer );
-        } else if( CurToken == T_CONSTANT ) {
-            printf( "%lld\n", Constant64.u._64[0] );
-        } else {
-            printf( "'%s'\n", TokenString[CurToken] );
-        }
-    }
-}
-#endif
 
-#if 0
-void DumpTypeCounts( void )
-{
-    int     i;
-
-    for( i = 0; i < DATA_TYPE_BOOL_TO_VOID; ++i ) {
-        printf( "%3u %s\n", CTypeCounts[i], CTypeNames[i] );
-    }
-    printf( "%u pointer nodes\n", CTypeCounts[TYPE_POINTER] );
-}
-#endif
 
 static TYPEPTR TrueType( FrontRun& front, TYPEPTR typ )
 {

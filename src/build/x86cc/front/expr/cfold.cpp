@@ -379,13 +379,8 @@ int64 LongValue64( FrontRun& front, TREEPTR leaf )
             __Strtold( flt->string, &ld, &endptr );
         }
         CMemFree( front, flt );
-#ifdef _LONG_DOUBLE_
-        __LDI8( &ld, &value );
-        return( value );
-#else
         value.u._64[0] = (uint_64)(int_64)ld.u.value;
         return( value );
-#endif
     default:
         sign = false;
         val32 = 0;
@@ -518,11 +513,6 @@ static void CastFloatValue( FrontRun& front, TREEPTR leaf, DATA_TYPE newtype )
     FLOATVAL    *flt;
     char        *endptr;
     long_double ld;
-#ifdef _LONG_DOUBLE_
-    double      doubleval;
-    float       floatval;
-    int64       value;
-#endif
 
     if( leaf->op.opr == OPR_PUSHFLOAT ) {
         flt = leaf->op.u2.float_value;
@@ -534,21 +524,9 @@ static void CastFloatValue( FrontRun& front, TREEPTR leaf, DATA_TYPE newtype )
     } else {    // integer
         switch( leaf->op.u1.const_type ) {
         case TYP_LONG64:
-#ifdef _LONG_DOUBLE_
-            value = leaf->op.u2.long64_value;
-            __I8LD( &value, &ld );
-#else
             ld.u.value = (double)(int_64)leaf->op.u2.long64_value.u._64[0];
-#endif
             break;
         case TYP_ULONG64:
-#ifdef _LONG_DOUBLE_
-            value = leaf->op.u2.long64_value;
-            __U8LD( &value, &ld );
-#else
-  #if 0
-            ld.u.value = (double)leaf->op.u2.ulong64_value.u._64[0];
-  #else
             /*
              * temporary fix for missing uint_64 -> double conversion in OW code generator for RISC
              * it is valid for two's complement integers
@@ -557,8 +535,6 @@ static void CastFloatValue( FrontRun& front, TREEPTR leaf, DATA_TYPE newtype )
             if( (int_64)leaf->op.u2.ulong64_value.u._64[0] < 0 ) {
                 ld.u.value += U64_DOUBLE_CORRECTION;
             }
-  #endif
-#endif
             break;
         case TYP_CHAR:
         case TYP_SHORT:
@@ -567,21 +543,13 @@ static void CastFloatValue( FrontRun& front, TREEPTR leaf, DATA_TYPE newtype )
             /*
              * signed types
              */
-#ifdef _LONG_DOUBLE_
-            __I4LD( leaf->op.u2.long_value, &ld );
-#else
             ld.u.value = (double)leaf->op.u2.long_value;
-#endif
             break;
         default:
             /*
              * unsigned types
              */
-#ifdef _LONG_DOUBLE_
-            __U4LD( leaf->op.u2.ulong_value, &ld );
-#else
             ld.u.value = (double)(int_64)leaf->op.u2.ulong_value;
-#endif
             break;
         }
         flt = static_cast<FLOATVAL *>(CMemAlloc( front, sizeof( FLOATVAL ) ));
@@ -591,18 +559,9 @@ static void CastFloatValue( FrontRun& front, TREEPTR leaf, DATA_TYPE newtype )
     leaf->op.u1.const_type = newtype;
     switch( newtype ) {
     case TYP_FLOAT:
-#ifdef _LONG_DOUBLE_
-        __iLDFS( &ld, &floatval );
-        __iFSLD( &floatval, &ld );
-#else
         ld.u.value = (float)ld.u.value;
-#endif
         break;
     case TYP_DOUBLE:
-#ifdef _LONG_DOUBLE_
-        __iLDFD( &ld, &doubleval );
-        __iFDLD( &doubleval, &ld );
-#endif
         break;
     }
     flt->len = 0;
@@ -617,10 +576,6 @@ void MakeBinaryFloat( FrontRun& front, TREEPTR opnd )
     FLOATVAL    *flt;
     char        *endptr;
     long_double ld;
-#ifdef _LONG_DOUBLE_
-    double      doubleval;
-    float       floatval;
-#endif
 
     if( opnd->op.opr == OPR_PUSHINT ) {
         CastFloatValue( front, opnd, TYP_DOUBLE );
@@ -629,17 +584,8 @@ void MakeBinaryFloat( FrontRun& front, TREEPTR opnd )
     if( flt->len != 0 ) {
         __Strtold( flt->string, &ld, &endptr );
         if( flt->type == TYP_FLOAT ) {
-#ifdef _LONG_DOUBLE_
-            __iLDFS( &ld, &floatval );
-            __iFSLD( &floatval, &ld );
-#else
             ld.u.value = (float)ld.u.value;
-#endif
         } else if( flt->type == TYP_DOUBLE ) {
-#ifdef _LONG_DOUBLE_
-        __iLDFD( &ld, &doubleval );
-        __iFDLD( &doubleval, &ld );
-#endif
         }
         flt->ld = ld;
         flt->len = 0;
@@ -650,15 +596,11 @@ void MakeBinaryFloat( FrontRun& front, TREEPTR opnd )
 
 static int FltCmp( ld_stk_ptr ld1, ld_stk_ptr ld2 )
 {
-#ifdef _LONG_DOUBLE_
-    return( __FLDC( ld1, ld2 ) );
-#else
     if( ld1->u.value == ld2->u.value )
         return( 0 );
     if( ld1->u.value <  ld2->u.value )
         return( -1 );
     return( 1 );
-#endif
 }
 
 
@@ -684,11 +626,7 @@ static int DoFloatOp( FrontRun& front, TREEPTR op1, TREEPTR tree, TREEPTR op2 )
         ld1 = op1->op.u2.float_value->ld;
         typ1 = TypeOf( op1 );
     } else {
-#ifdef _LONG_DOUBLE_
-        __I4LD( 0, &ld1 );
-#else
         ld1.u.value = 0;
-#endif
         typ1 = TypeOf( op2 );           // default to same type
     }
 
@@ -729,48 +667,23 @@ static int DoFloatOp( FrontRun& front, TREEPTR op1, TREEPTR tree, TREEPTR op2 )
         FreeExprNode( front, op2 );
         return( 1 );
     case OPR_ADD:
-#ifdef _LONG_DOUBLE_
-        __FLDA( &ld1, &ld2, &result );
-#else
         result.u.value = ld1.u.value + ld2.u.value;
-#endif
         break;
     case OPR_SUB:
-#ifdef _LONG_DOUBLE_
-        __FLDS( &ld1, &ld2, &result );
-#else
         result.u.value = ld1.u.value - ld2.u.value;
-#endif
         break;
     case OPR_MUL:
-#ifdef _LONG_DOUBLE_
-        __FLDM( &ld1, &ld2, &result );
-#else
         result.u.value = ld1.u.value * ld2.u.value;
-#endif
         break;
     case OPR_DIV:
-#ifdef _LONG_DOUBLE_
-        if( ld2.exponent == 0 && ld2.high_word == 0 && ld2.low_word == 0 ) {
-            result = ld2;
-        } else {
-            __FLDD( &ld1, &ld2, &result );
-        }
-#else
         if( ld2.u.value == 0.0 ) {
             result.u.value = 0.0;
         } else {
             result.u.value = ld1.u.value / ld2.u.value;
         }
-#endif
         break;
     case OPR_NEG:
-#ifdef _LONG_DOUBLE_
-        result = ld2;
-        result.exponent ^= 0x8000;
-#else
         result.u.value = - ld2.u.value;
-#endif
         break;
     default:
         return( 0 );
@@ -844,11 +757,7 @@ static int_32 LongValue( FrontRun& front, TREEPTR leaf )
             __Strtold( flt->string, &ld, &endptr );
         }
         CMemFree( front, flt );
-#ifdef _LONG_DOUBLE_
-        value = __LDI4( &ld );
-#else
         value = (int_32)ld.u.value;
-#endif
         break;
     default:
         value = 0;
@@ -951,11 +860,7 @@ static bool IsConstantZero( FrontRun& front, TREEPTR tree )
         } else {
             __Strtold( flt->string, &ld, &endptr );
         }
-#ifdef _LONG_DOUBLE_
-        __I4LD( 0, &ldzero );
-#else
         ldzero.u.value = 0;
-#endif
         return( FltCmp( &ld, &ldzero ) == 0 );
     }
 }

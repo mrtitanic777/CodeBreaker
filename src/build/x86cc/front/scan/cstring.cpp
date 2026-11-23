@@ -49,16 +49,7 @@ static FILE *OpenUnicodeFile( FrontRun& front, const char *filename )
     FILE        *fp;
     char        fullpath[_MAX_PATH];
 
-#if defined(__QNX__)
-    _searchenv( filename, "ETC_PATH", fullpath );
-    if( fullpath[0] == '\0' ) {
-        #define ETC "/etc/"
-        strcpy( fullpath, ETC );
-        strcpy( fullpath + LENLIT( ETC ), filename );
-    }
-#else
     _searchenv( filename, "PATH", fullpath );
-#endif
     fp = NULL;
     if( fullpath[0] != '\0' ) {
         fp = front.held->fopen( fullpath, "r" );
@@ -182,10 +173,6 @@ static target_size RemoveEscapes( FrontRun& front, char *buf, const char *inbuf,
                 c = EncodeWchar( front, c );
                 WRITE_BYTE( c );
                 c = c >> 8;
-#if _CPU == 370
-            } else {
-                _ASCIIOUT( c );
-#endif
             }
         }
         WRITE_BYTE( c );
@@ -284,7 +271,6 @@ TREEPTR StringLeaf( FrontRun& front, string_flags flags )
 
     strlit = NULL;
     new_lit = GetLiteral(front);
-#if _INTEL_CPU
     if( front.cvars.TargetSwitches & CGSW_X86_BIG_DATA ) {
         if( !front.cvars.CompFlags.strings_in_code_segment ) {
             if( new_lit->length > front.cvars.DataThreshold ) {
@@ -292,13 +278,10 @@ TREEPTR StringLeaf( FrontRun& front, string_flags flags )
             }
         }
     }
-#endif
     if( front.cvars.CompFlags.wide_char_string )
         flags |= STRLIT_WIDE;
-#if _INTEL_CPU
     if( flags & STRLIT_FAR )
         front.cvars.CompFlags.far_strings = true;
-#endif
     hash = CalcStringHash( new_lit );
     if( TOGGLE( reuse_duplicate_strings ) ) {
         for( strlit = front.cvars.StringHash[hash]; strlit != NULL; strlit = strlit->next_string ) {

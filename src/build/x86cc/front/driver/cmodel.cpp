@@ -38,9 +38,6 @@
 #include <ctype.h>
 #include "cmacadd.h"
 #include "toggles.h"
-#ifdef DEVBUILD
-    #include "togglesd.h"
-#endif
 #include "frontrun.hpp"
 
 
@@ -322,9 +319,6 @@ void InitModInfo( FrontRun& front )
     front.cvars.CompFlags.check_truncated_fnames            = true;
 
     memset( &front.toggles.PragmaToggles, 0, sizeof( front.toggles.PragmaToggles ) );
-#ifdef DEVBUILD
-    memset( &PragmaDbgToggles, 0, sizeof( PragmaDbgToggles ) );
-#endif
     TOGGLE( check_stack ) = true;
     TOGGLE( unreferenced ) = true;
     TOGGLE( reuse_duplicate_strings ) = true;

@@ -6,7 +6,6 @@
  * enumerations C's: the value computed on the underlying integer, kept as the enumeration. */
 #ifndef CB_WCC_CXX_H
 #define CB_WCC_CXX_H
-#ifdef __cplusplus
 
 #include <type_traits>
 
@@ -65,5 +64,4 @@ constexpr E operator--(E& a, int) { E was = a; --a; return was; }
 
 }  // namespace
 
-#endif
 #endif

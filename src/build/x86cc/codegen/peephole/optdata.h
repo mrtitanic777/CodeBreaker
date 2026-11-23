@@ -48,7 +48,4 @@ struct OptdataState {
 
 #endif
 //      pointer         *CodeLblFrl;
-#if( OPTIONS & SAVINGS )
-extern  uint            Savings;
-#endif
 

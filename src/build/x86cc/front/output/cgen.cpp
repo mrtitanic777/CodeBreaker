@@ -45,9 +45,6 @@
 #ifdef __SEH__
 #include "tryblock.h"
 #endif
-#ifdef DEVBUILD
-#include "togglesd.h"
-#endif
 #include "frontrun.hpp"
 
 
@@ -99,33 +96,6 @@ static  cg_op   const CC2CGOp[] = {
     #undef pick1
 };
 
-#ifdef HEAP_SIZE_STAT
-
-#include <malloc.h>
-
-struct heap_stat {
-    int     free;
-    int     used;
-};
-
-static int heap_size( struct heap_stat *stat )
-{
-    struct _heapinfo    h_info;
-    int                 heap_status;
-
-    h_info._pentry = NULL;
-    stat->free = 0;
-    stat->used = 0;
-    for( ; (heap_status = _heapwalk( &h_info )) == _HEAPOK; ) {
-        if( h_info._useflag ) {
-            stat->used += h_info._size;
-        } else {
-            stat->free += h_info._size;
-        }
-    }
-    return( heap_status );
-}
-#endif
 
 static void DefineLabels( FrontRun& front, OPNODE *node )
 {
@@ -308,7 +278,6 @@ static void ReturnExpression( FrontRun& front, OPNODE *node, cg_name expr )
 
 static cg_type DataPointerType( OPNODE *node )
 {
-#if _INTEL_CPU
     cg_type     dtype;
 
     if( Far16Pointer( node->flags ) ) {
@@ -323,12 +292,6 @@ static cg_type DataPointerType( OPNODE *node )
         dtype = TY_POINTER;
     }
     return( dtype );
-#else /* _RISC_CPU */
-
-    /* unused parameters */ (void)node;
-
-    return( TY_POINTER );
-#endif
 }
 
 static cg_name ForceVolatileFloat( FrontRun& front, cg_name name, TYPEPTR typ )
@@ -492,45 +455,9 @@ static void GenerateTryBlock( FrontRun& front, TREEPTR tree )
 }
 #endif  /* __SEH__ */
 
-#if _RISC_CPU
-static void GenVaStart( cg_name op1, cg_name offset )
-/****************************************************
- * MIPS version is similar to Alpha, except we point va_list.__base
- * to the first vararg and va_list.__offset initially to zero.
- * Strictly speaking we don't need va_list.__offset.
- */
-{
-    cg_name     name;
-  #if _CPU == _PPC
-  #elif _CPU == _AXP
-    cg_name     baseptr;
-  #elif _CPU == _MIPS
-    cg_name     baseptr;
-  #endif
-
-  #if _CPU == _PPC
-    /* unused parameters */ (void)offset;
-
-    name = CGUnary( O_VA_START, op1, TY_POINTER );
-  #elif _CPU == _AXP
-    baseptr = CGVarargsBasePtr( TY_POINTER );
-    name = CGLVAssign( op1, baseptr, TY_POINTER );
-    name = CGBinary( O_PLUS, name, CGInteger( TARGET_POINTER, TY_INTEGER ), TY_POINTER );
-    name = CGAssign( name, offset, TY_INTEGER );
-  #elif _CPU == _MIPS
-    baseptr = CGVarargsBasePtr( TY_POINTER );
-    name = CGBinary( O_PLUS, baseptr, offset, TY_POINTER );
-    name = CGLVAssign( op1, name, TY_POINTER );
-    name = CGBinary( O_PLUS, name, CGInteger( TARGET_POINTER, TY_INTEGER ), TY_POINTER );
-    name = CGAssign( name, CGInteger( 0, TY_INTEGER ), TY_INTEGER );
-  #endif
-    CGDone( name );
-}
-#endif  /* _RISC_CPU */
 
 static cg_type CodePtrType( type_modifiers flags )
 {
-#if _INTEL_CPU
     cg_type     dtype;
 
     if( flags & FLAG_FAR ) {
@@ -541,12 +468,6 @@ static cg_type CodePtrType( type_modifiers flags )
         dtype = TY_CODE_PTR;
     }
     return( dtype );
-#else /* _RISC_CPU */
-
-    /* unused parameters */ (void)flags;
-
-    return( TY_CODE_PTR );
-#endif
 }
 
 static cg_name PushSym( FrontRun& front, OPNODE *node )
@@ -598,12 +519,6 @@ static cg_name PushSymAddr( FrontRun& front, OPNODE *node )
         name = CGTempName( *front.back, sym.u1.return_var, dtype );
     } else {
         name = CGFEName( *front.back, (CGSYM_HANDLE)node->u2.sym_handle, dtype );
-#if 0
-        if( (sym.mods & FLAG_VOLATILE)
-          || (sym.flags & SYM_USED_IN_PRAGMA) ) {
-            name = CGVolatile( name );
-        }
-#endif
         if( sym.flags & SYM_USED_IN_PRAGMA ) {
             name = CGVolatile( name );
         }
@@ -624,11 +539,6 @@ static cg_name PushRValue( FrontRun& front, OPNODE *node, cg_name name )
         }
         name = CGUnary( *front.back, O_POINTS, name, CGenType( front, typ ) );
     } else {
-#if 0
-        if( node->flags & OPFLAG_VOLATILE ) {
-            name = CGVolatile( name );
-        }
-#endif
     }
     return( name );
 }
@@ -719,13 +629,6 @@ static cg_name DoAddSub( FrontRun& front, cg_name op1, OPNODE *node, cg_name op2
     typ = node->u2.result_type;
     SKIP_TYPEDEFS( typ );
     name = CGBinary( *front.back, CGOperator[node->opr], op1, op2, CGenType( front, typ ) );
-#if 0
-    if( typ->decl_type == TYP_POINTER ) {
-        if( typ->u.p.decl_flags & FLAG_VOLATILE ) {
-            name = CGVolatile( name );
-        }
-    }
-#endif
     return( name );
 }
 static cg_name PushConstant( FrontRun& front, OPNODE *node )
@@ -785,10 +688,8 @@ target_size EmitBytes( FrontRun& front, STR_HANDLE strlit )
 
 static segment_id StringSegment( FrontRun& front, STR_HANDLE strlit )
 {
-#if _INTEL_CPU
     if( strlit->flags & STRLIT_FAR )
         return( front.cvars.FarStringSegId );
-#endif
     if( strlit->flags & STRLIT_CONST )
         return( SEG_CODE );
     return( SEG_CONST );
@@ -1110,10 +1011,8 @@ static void CDoAutoDecl( FrontRun& front, SYM_HANDLE sym_handle )
                 CGAutoDecl( *front.back, (CGSYM_HANDLE)sym_handle, dtype );
             }
         }
-#if _CPU != 370
         if( ! front.cvars.CompFlags.debug_info_some )
             emit_extra_info = false;
-#endif
         if( emit_debug_info || emit_extra_info ) {
             if( front.cgen.Saved_CurFunc == SYM_NULL ) {  /* if we are not inlining */
                 if( front.cvars.GenSwitches & CGSW_GEN_DBG_LOCALS ) {
@@ -1148,7 +1047,6 @@ static void CDoParmDecl( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
     }
 }
 
-#ifndef REVERSE
 static void ParmReverse( FrontRun& front, SYM_HANDLE sym_handle )
 {
     SYMPTR      sym;
@@ -1160,7 +1058,6 @@ static void ParmReverse( FrontRun& front, SYM_HANDLE sym_handle )
     }
     CDoParmDecl( front, sym, sym_handle );
 }
-#endif
 
 static bool DoFuncDefn( FrontRun& front, SYM_HANDLE funcsym_handle )
 {
@@ -1172,7 +1069,6 @@ static bool DoFuncDefn( FrontRun& front, SYM_HANDLE funcsym_handle )
     front.cvars.CurFunc = &front.cvars.CurFuncSym;
     SymGet( front, front.cvars.CurFunc, funcsym_handle );
     front.cvars.CurFuncHandle = funcsym_handle;
-#if _INTEL_CPU
     if( ! front.cvars.CompFlags.zu_switch_used ) {
         if( front.cvars.CurFunc->mods & FLAG_FARSS ) {      /* function use far stack */
             front.cvars.TargetSwitches |= CGSW_X86_FLOATING_SS;
@@ -1180,7 +1076,6 @@ static bool DoFuncDefn( FrontRun& front, SYM_HANDLE funcsym_handle )
             front.cvars.TargetSwitches &= ~ CGSW_X86_FLOATING_SS;
         }
     }
-#endif
     ret_type = ReturnType( front, CGenType( front, front.cvars.CurFunc->sym_type->object ) );
     CGProcDecl( *front.back, (CGSYM_HANDLE)funcsym_handle, ret_type );
 #if _CPU == 386
@@ -1216,7 +1111,6 @@ static bool DoFuncDefn( FrontRun& front, SYM_HANDLE funcsym_handle )
     parms_reversed = false;
     if( front.cvars.CurFunc->u.func.parms != SYM_NULL ) {
         SYMPTR              psym;
-#ifndef REVERSE
         aux_info            *inf;
         SYM_ENTRY           sym;
 
@@ -1225,16 +1119,13 @@ static bool DoFuncDefn( FrontRun& front, SYM_HANDLE funcsym_handle )
             ParmReverse( front, front.cvars.CurFunc->u.func.parms );
             parms_reversed = true;
         } else {
-#endif
             for( sym_handle = front.cvars.CurFunc->u.func.parms; sym_handle != SYM_NULL; sym_handle = psym->handle ) {
                 psym = SymGetPtr( front, sym_handle );
                 if( psym->sym_type->decl_type == TYP_DOT_DOT_DOT )
                     break;
                 CDoParmDecl( front, psym, sym_handle );
             }
-#ifndef REVERSE
         }
-#endif
     }
     CGLastParm(*front.back);
     CDoAutoDecl( front, front.cvars.CurFunc->u.func.locals );
@@ -1566,17 +1457,6 @@ static void EmitNodes( FrontRun& front, TREEPTR tree )
             PushCGName( TryAbnormalTermination(front) );
             break;
 #endif
-#if _RISC_CPU
-        case OPR_VASTART:
-            op2 = PopCGName();          // - get offset of parm
-            op1 = PopCGName();          // - get address of va_list
-            GenVaStart( op1, op2 );
-            break;
-        case OPR_ALLOCA:
-            op1 = PopCGName();          // - get size
-            PushCGName( CGUnary( O_STACK_ALLOC, op1, TY_POINTER ) );
-            break;
-#endif
         default:
            {
              char        msgbuf[MAX_MSG_LEN];
@@ -1830,13 +1710,7 @@ static void EmitSyms( FrontRun& front )
           && ( sym.sym_type->decl_type != TYP_FUNCTION )
           && ( (sym.flags & SYM_TEMP) == 0 )
           && ( sym.attribs.stg_class != SC_TYPEDEF ) ) {
-#if _CPU == 370
-            if( sym.attribs.stg_class != SC_EXTERN || (sym.flags & SYM_REFERENCED) ) {
-                DBModSym( (CGSYM_HANDLE)sym_handle, TY_DEFAULT );
-            }
-#else
             DBModSym( *front.back, (CGSYM_HANDLE)sym_handle, TY_DEFAULT );
-#endif
         }
     }
 }
@@ -1895,16 +1769,9 @@ void DoCompile( FrontRun& front )
     if( setjmp( env ) == 0 ) {
         front.cvars.Environment = JMPBUF_PTR( env );
         if( BELoad( NULL ) ) {
-#if _INTEL_CPU
             if( ! front.cvars.CompFlags.zu_switch_used ) {
                 front.cvars.TargetSwitches &= ~ CGSW_X86_FLOATING_SS;
             }
-#endif
-#ifdef DEVBUILD
-            if( TOGGLEDBG( dump_cg ) ) {
-                GenSwitches |= CGSW_GEN_ECHO_API_CALLS;
-            }
-#endif
             if( front.cvars.CompFlags.rent ) {
                 front.cvars.GenSwitches |= CGSW_GEN_POSITION_INDEPENDANT;
             }
@@ -2027,7 +1894,6 @@ cg_type PtrType( TYPEPTR typ, type_modifiers flags )
     if( typ->decl_type == TYP_FUNCTION ) {
         dtype = CodePtrType( flags );
     } else {
-#if _INTEL_CPU
         if( flags & FLAG_FAR ) {
             dtype = TY_LONG_POINTER;
         } else if( flags & FLAG_HUGE ) {
@@ -2037,9 +1903,6 @@ cg_type PtrType( TYPEPTR typ, type_modifiers flags )
         } else {
             dtype = TY_POINTER;
         }
-#else /* _RISC_CPU */
-        dtype = TY_POINTER;
-#endif
     }
     return( dtype );
 }

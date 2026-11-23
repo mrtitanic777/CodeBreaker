@@ -57,11 +57,7 @@
 #include "frontrun.hpp"
 
 
-#ifdef DEVBUILD
-    #define DbgNever()  (FEMessage( FEMSG_FATAL, "should never execute this" __location ))
-#else
     #define DbgNever()
-#endif
 
 namespace {
 
@@ -177,14 +173,12 @@ static void checkPacking( unsigned *p )
     *p = VerifyPackAmount( *p );
 }
 
-#if _INTEL_CPU
 static void checkDataThreshold( unsigned *p )
 {
     if( *p > TARGET_INT_MAX ) {
         *p = 256;
     }
 }
-#endif
 
 static void checkOENumber( unsigned *p )
 {
@@ -690,11 +684,6 @@ static void AnalyseAnyTargetOptions( FrontRun& front, OPT_STORAGE *data )
         SetSignedChar(front);
         front.cvars.CompFlags.signed_char = true;
     }
-#ifdef DEVBUILD
-    if( data->lc ) {
-        GenSwitches |= CGSW_GEN_ECHO_API_CALLS;
-    }
-#endif
     if( data->oa ) {
         front.cvars.GenSwitches |= CGSW_GEN_RELAX_ALIAS;
     }
@@ -838,19 +827,6 @@ static void AnalyseAnyTargetOptions( FrontRun& front, OPT_STORAGE *data )
     if( data->zs ) {
         front.cvars.CompFlags.check_syntax = true;
     }
-#ifdef DEVBUILD
-    if( data->tp ) {
-        OPT_STRING *str;
-        while( (str = data->tp_value) != NULL ) {
-            data->tp_value = str->next;
-            SetToggleFlag( str->data, 1, false );
-            CMemFree( str );
-        }
-    }
-    if( data->zi ) {
-        CompFlags.extra_stats_wanted = true;
-    }
-#endif
     SetCharacterEncoding( front, data );
     CBanner(front);
 }
@@ -1017,16 +993,6 @@ void GenCOptions( FrontRun& front, char **cmdline )
     ProcOptions( front, &data, FEGetEnv( front, "WCC" ) );
 #elif _CPU == 386
     ProcOptions( front, &data, FEGetEnv( front, "WCC386" ) );
-#elif _CPU == _AXP
-    ProcOptions( &data, FEGetEnv( "WCCAXP" ) );
-#elif _CPU == _PPC
-    ProcOptions( &data, FEGetEnv( "WCCPPC" ) );
-#elif _CPU == _MIPS
-    ProcOptions( &data, FEGetEnv( "WCCMPS" ) );
-#elif _CPU == _SPARC
-    ProcOptions( &data, FEGetEnv( "WCCSPC" ) );
-#else
-    #error Compiler environment variable not_ configured
 #endif
     for( ;*cmdline != NULL; ++cmdline ) {
         ProcOptions( front, &data, *cmdline );

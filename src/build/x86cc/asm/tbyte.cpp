@@ -42,15 +42,10 @@
 #include "tbyte.h"
 #include "watcom.h"
 
-#include "clibext.h"
 #include "asmrun.hpp"
 
 
-#ifdef _M_I86
-#define CONSTU32(x)     x ## UL
-#else
 #define CONSTU32(x)     x ## U
-#endif
 
 typedef unsigned __int64 u64;
 typedef unsigned_32 u32;

@@ -211,7 +211,6 @@ void    TellFreeAllLabels( BackRun& back )
   optbegin
     unfreed = false;
     while( back.optdata.Handles != NULL ) {
-#ifndef PRODUCTION
         if( _TstStatus( back.optdata.Handles, CODELABEL )
          && back.optdata.Handles->lbl.sym == NULL
          && !_TstStatus( back.optdata.Handles, REDIRECTION )
@@ -219,7 +218,6 @@ void    TellFreeAllLabels( BackRun& back )
             _Zoiks( ZOIKS_001 );
             unfreed = true;
         }
-#endif
         ReallyScrapLabel( back, back.optdata.Handles );
     }
   optend
@@ -249,11 +247,9 @@ void    KillLblRedirects( BackRun& back )
     label_handle    lbl;
 
   optbegin
-#if  OPTIONS & SHORT_JUMPS
     for( lbl = back.optdata.Handles; lbl != NULL; lbl = lbl->lbl.link ) {
         lbl->redirect = NULL;
     }
-#endif
     TellUnreachLabels(back);        // a little too conservative - stop gap
   optend
 }

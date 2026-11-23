@@ -109,64 +109,6 @@ namespace {
 
 
                                     /* checked for escapes when copied into Temp */
-#if 0
-static int findArchRegIndex( hw_reg_set regs, reg_cls cls )
-{
-    hw_reg_set  save_regs;
-    int         i;
-
-    if( cls & SEG_IDX ) {
-        save_regs = regs;
-    }
-    HW_CTurnOff( regs, HW_SEGS );
-    if( cls & GPR_IDX ) {
-        for( i = ARCH_GPR_START; i < ARCH_GPR_END; i++ ) {
-            if( HW_Equal( regs, RegsTab[i].hw_reg ) ) {
-                return( i );
-            }
-        }
-    }
-    if( cls & FPR_IDX ) {
-        for( i = ARCH_FPR_START; i < ARCH_FPR_END; i++ ) {
-            if( HW_Equal( regs, RegsTab[i].hw_reg ) ) {
-                return( i );
-            }
-        }
-    }
-    if( cls & SEG_IDX ) {
-        HW_COnlyOn( save_regs, HW_SEGS );
-        for( i = ARCH_SEG_START; i < ARCH_SEG_END; i++ ) {
-            if( HW_Equal( save_regs, RegsTab[i].hw_reg ) ) {
-                return( i );
-            }
-        }
-    }
-    return( -1 );
-}
-
-hw_reg_set GetArchReg( int idx, reg_cls cls )
-{
-    if( cls & GPRB_IDX ) {
-        return( RegsTab[ARCH_BYTE_START + idx].hw_reg );
-    }
-    if( cls & GPRW_IDX ) {
-        return( RegsTab[ARCH_WORD_START + idx].hw_reg );
-    }
-    if( cls & GPRD_IDX ) {
-        return( RegsTab[ARCH_DWORD_START + idx].hw_reg );
-    }
-    if( cls & FPR_IDX ) {
-        return( RegsTab[ARCH_FPR_START + idx].hw_reg );
-    }
-    if( cls & SEG_IDX ) {
-        return( RegsTab[ARCH_SEG_START + idx].hw_reg );
-    }
-    if( cls & GPR_IDX ) {
-        return( RegsTab[ARCH_GPR_START + idx].hw_reg );
-    }
-    return( HW_EMPTY );
-}
-#endif
 
 /* routines that maintain instruction buffers*/
 
@@ -664,7 +606,6 @@ static  void    LayMF( BackRun& back, name *op )
     }
 }
 
-#if 1
 static  void    DoP5RegisterDivide( BackRun& back, instruction *ins )
 /****************************************************/
 {
@@ -934,7 +875,6 @@ static  void    DoP5Divide( BackRun& back, instruction *ins )
     back.x86proc.StackDepth -= WORD_SIZE;
 #endif
 }
-#endif
 
 
 static  void    SetCC( BackRun& back )
@@ -1964,7 +1904,6 @@ void    GenObjCode( BackRun& back, instruction *ins )
 
     gen = G( ins );
     if( gen != G_NO ) {
-#if 1
         // fixme - should be _IsTargetModel
         if( _IsTargetModel( CGSW_X86_P5_DIVIDE_CHECK ) ) {
             if( ins->head.opcode == OP_DIV && _IsFloating( ins->type_class ) ) {
@@ -1972,7 +1911,6 @@ void    GenObjCode( BackRun& back, instruction *ins )
                 return;
             }
         }
-#endif
         result = ins->result;
         if( ins->num_operands != 0 ) {
             left = ins->operands[0];

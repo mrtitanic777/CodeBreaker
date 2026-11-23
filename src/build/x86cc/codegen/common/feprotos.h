@@ -42,20 +42,5 @@
 #include "cgfertns.h"
 #undef  CGCALLBACKDEF
 
-#ifdef _CGDLL
-
-typedef struct fe_interface {
-    #define CGCALLBACKDEF( a, b, c ) b _CGCALLBACKAPI (*a) c;
-    #include "cgfertns.h"
-    #undef  CGCALLBACKDEF
-} fe_interface;
-
-extern fe_interface *FEFuncTable;
-
-#ifdef BY_CG
-#include "feprotos.gh"
-#endif
-
-#endif
 
 #endif

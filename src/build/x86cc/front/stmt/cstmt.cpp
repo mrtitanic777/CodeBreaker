@@ -197,9 +197,7 @@ void GenFunctionNode( FrontRun& front, SYM_HANDLE sym_handle )
  * breakpoints in inlined function code
  * of cause it can be some hidden bug in OW code, but happen with VS2022 only
  */
-#ifdef _WIN64
 __declspec(noinline)
-#endif
 LABEL_INDEX NextLabel( FrontRun& front )
 {
     return( ++front.cvars.LabelIndex );
@@ -765,15 +763,7 @@ static void AddCaseLabel( FrontRun& front, signed_64 value )
     char            buffer[12];
 
     prev_ce = NULL;
-#if 0
-    leaf.u.ulong_konst = value;
-    leaf.data_type = SwitchStack->case_type;
-    SetLeafType( &leaf, 1 );
-//    converted_value = value & SwitchStack->case_mask;
-    converted_value = leaf.u.ulong_konst;
-#else
     converted_value = value;
-#endif
     old_value = converted_value;
     U64Inc( old_value ); /* make old_value different */
     for( ce = front.cstmt.SwitchStack->case_list; ce != NULL; ce = ce->next_case ) {
@@ -1033,13 +1023,6 @@ static void EndSwitch( FrontRun& front )
 //    if( sw->case_list == NULL ) {
 //        CWarn1( ERR_EMPTY_SWITCH );
 //    }
-#if 0
-    for( ; (ce = sw->case_list) != NULL; ) {
-        sw->case_list = ce->next_case;
-        CMemFree( ce );
-    }
-    CMemFree( sw );
-#endif
 }
 
 
@@ -1178,12 +1161,6 @@ void Statement( FrontRun& front )
     struct return_info  return_info;
     SYM_ENTRY           sym;
 
-#ifdef DEVBUILD
-    if( DebugFlag >= 1 ) {
-        printf( "***** line %u, func=%s\n", TokenLoc.line, CurFunc->name );
-        PrintStats();
-    }
-#endif
     ++front.cvars.FuncCount;
     return_info.with = RETURN_WITH_NONE; /* indicate no return statements */
     return_info.with_expr = false;

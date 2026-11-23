@@ -41,9 +41,7 @@
 #include "optmac.h"
 #include "memlimit.h"
 #include "onexit.h"
-#include "dumpio.h"
 #include "memmgt.h"
-#include "trmem.h"
 #include "backrun.hpp"
 
 
@@ -55,67 +53,20 @@ namespace {
 }  // namespace
 
 
-#ifdef _CHUNK_TRACKING
-static uint             Chunks;
-#endif
 
-#ifdef TRMEM
-
-static _trmem_hdl       TrHdl = _TRMEM_HDL_NONE;
-static bool             local_init;
-
-static void PrintLine( void *handle, const char *buff, size_t len )
-/*****************************************************************/
-{
-    /* unused parameters */ (void)handle; (void)len;
-
-    fprintf( stderr, "%s\n", buff );
-}
-
-#endif /* TRMEM */
 
 void    CGMemInit( BackRun& back, pointer trmemhdl )
 /***********************************/
 {
     _SysReInit();
     back.memmgt.MemOut = MO_FATAL;
-#ifdef TRMEM
-    if( trmemhdl == NULL ) {
-        TrHdl = _trmem_open( _SysAlloc, _SysFree, _TRMEM_NO_REALLOC, _TRMEM_NO_STRDUP,
-                              NULL, PrintLine, _TRMEM_DEF );
-        local_init = true;
-    } else {
-        TrHdl = trmemhdl;
-        local_init = false;
-    }
-#else
     /* unused parameters */ (void)trmemhdl;
-#endif
-#ifdef _CHUNK_TRACKING
-    Chunks = 0;
-#endif
     CalcMemLimit(back);
 }
 
 void    CGMemFini( BackRun& back )
 /***********************/
 {
-#ifdef TRMEM
-    const char  *envvar;
-
-    if( local_init ) {
-        envvar = FEGetEnv( "TRQUIET" );
-        if( envvar == NULL ) {
-            _trmem_prt_list( TrHdl );
-        }
-        _trmem_close( TrHdl );
-    }
-#endif
-#ifdef _CHUNK_TRACKING
-    if( Chunks != 0 ) {
-        _Zoiks( ZOIKS_002 );
-    }
-#endif
     MemFini(back);
 }
 
@@ -130,28 +81,15 @@ mem_out_action    SetMemOut( BackRun& back, mem_out_action what )
     return( old );
 }
 
-#if defined( TRMEM ) && defined( _M_IX86 )
-pointer _CGAlloc( size_t size, _trmem_who who )
-#else
 pointer CGAlloc( BackRun& back, size_t size )
-#endif
 /******************************************/
 {
     pointer     chunk;
 
     _MemLow;
     for( ;; ) {
-#if defined( TRMEM ) && defined( _M_IX86 )
-        chunk = _trmem_alloc( size, who, TrHdl );
-#elif defined( TRMEM )
-        chunk = _trmem_alloc( size, NULL, TrHdl );
-#else
         chunk = _SysAlloc( back, size );
-#endif
         if( chunk != NULL ) {
-#ifdef _CHUNK_TRACKING
-            ++Chunks;
-#endif
             _AlignmentCheck( chunk, 8 );
             return( chunk );
         }
@@ -167,47 +105,11 @@ pointer CGAlloc( BackRun& back, size_t size )
     return( NULL );
 }
 
-#if defined( TRMEM )
-TRMEMAPI( CGAlloc )
-pointer CGAlloc( size_t size )
-/****************************/
-{
-    return( _CGAlloc( size, _TRMEM_WHO( 1 ) ) );
-}
-#endif
 
-#if defined( TRMEM ) && defined( _M_IX86 )
-void    _CGFree( pointer chunk, _trmem_who who )
-#else
 void    CGFree( BackRun& back, pointer chunk )
-#endif
 /*******************************************/
 {
-#ifdef _CHUNK_TRACKING
-    --Chunks;
-#endif
-#if defined( TRMEM ) && defined( _M_IX86 )
-    _trmem_free( chunk, who, TrHdl );
-#elif defined( TRMEM )
-    _trmem_free( chunk, NULL, TrHdl );
-#else
     _SysFree( back, chunk );
-#endif
 }
 
-#if defined( TRMEM )
-TRMEMAPI( CGFree )
-void    CGFree( pointer chunk )
-/*****************************/
-{
-    _CGFree( chunk, _TRMEM_WHO( 2 ) );
-}
-#endif
 
-#ifdef TRMEM
-void    DumpMem( void )
-/*********************/
-{
-    _trmem_prt_usage( TrHdl );
-}
-#endif

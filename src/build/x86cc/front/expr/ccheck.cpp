@@ -1058,15 +1058,11 @@ static typecheck_err TypeCheck( FrontRun& front, TYPEPTR typ1, TYPEPTR typ2, SYM
     /*
      * "char *s" and "char s[]" differs only by FLAG_WAS_ARRAY, ignore it too
      */
-#if _INTEL_CPU
     if( front.cvars.TargetSwitches & CGSW_X86_BIG_DATA ) {
         ptr_mask = ~(FLAG_FAR  | FLAG_WAS_ARRAY | MASK_LANGUAGES);
     } else {
         ptr_mask = ~(FLAG_NEAR | FLAG_WAS_ARRAY | MASK_LANGUAGES);
     }
-#else /* _RISC_CPU */
-    ptr_mask = ~(FLAG_NEAR | FLAG_WAS_ARRAY | MASK_LANGUAGES);
-#endif
     for( ;; ) {
         /*
          * skip typedefs, go into enum base

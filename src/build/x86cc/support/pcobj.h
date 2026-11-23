@@ -34,7 +34,6 @@
 #define PCOBJ_H
 
 
-#define IS_2_BYTES      0x80        /* bit set indicating 2 byte value */
 
 #include "pushpck1.h"
 /*
@@ -54,7 +53,6 @@ enum {
     LIB_FULL_PAGE       = 0xff
 };
 
-#define DIC_REC_SIZE    512U        /* record size of dictionary entry */
 
 /*
  *  INTEL Segment Alignment Specifiers - A field
@@ -137,7 +135,6 @@ enum {
     GRP_ADDR            = 0xfa,     /* load time addr for the group     */
 };
 
-#define TARGET_NO_DISPL(x)  ((x) | 4) /* frame without displacement       */
 
 /*
  *  INTEL Object Record Types
@@ -312,7 +309,6 @@ typedef struct omf_coment_dep {
     uint_8          name_len;
 } omf_coment_dep;
 
-#define EASY_OMF_SIGNATURE  "80386"
 
 /*
     this is the data that is given in the object file to determine the

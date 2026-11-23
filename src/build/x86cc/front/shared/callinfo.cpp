@@ -35,36 +35,12 @@
 #include "callinfo.h"
 #include "frontrun.hpp"
 
-#if defined( BY_C_FRONT_END )
-    #define AUX_MEMALLOC        CMemAlloc
     #define AUX_STRALLOC        CMemStrdup
-    #define AUX_MEMFREE         CMemFree
     #define DEFAULT_CALLINFO    WatcallInfo
-#elif defined( BY_CPP_FRONT_END )
-    #define AUX_MEMALLOC        CMemAlloc
-    #define AUX_STRALLOC        CMemStrdup
-    #define AUX_MEMFREE         CMemFree
-    #define DEFAULT_CALLINFO    WatcallInfo
-#elif defined( BY_FORTRAN_FRONT_END )
-    #define AUX_MEMALLOC        FMemAlloc
-    #define AUX_STRALLOC        FMemStrdup
-    #define AUX_MEMFREE         FMemFree
-    #define DEFAULT_CALLINFO    FortranInfo
-#else
-    #error "Unknown front end"
-#endif
 
 
-#if _INTEL_CPU
 
 
-#else /* _RISC_CPU */
-
-static hw_reg_set WatcallParms[] = {
-    HW_D( HW_EMPTY )
-};
-
-#endif
 
 namespace {
 
@@ -74,7 +50,6 @@ namespace {
 }  // namespace
 
 
-#if _INTEL_CPU
 
 
 void AuxInfoInit( FrontRun& front, int flag_stdatnum )
@@ -379,14 +354,12 @@ void SetAuxStackConventions( FrontRun& front )
 }
   #endif
 
-#endif /* _INTEL_CPU */
 
 int IsAuxParmsBuiltIn( FrontRun& front, hw_reg_set *parms )
 /***************************************/
 {
     if( parms == front.callinfo_file.WatcallParms ) {
         return( true );
-#if _INTEL_CPU
     } else if( parms == front.callinfo_file.StackParms ) {
         return( true );
     } else if( parms == front.callinfo_file.FastcallParms ) {
@@ -397,7 +370,6 @@ int IsAuxParmsBuiltIn( FrontRun& front, hw_reg_set *parms )
     } else if( parms == front.callinfo_file.MetaWareParms ) {
         return( true );
   #endif
-#endif
     } else if( parms == NULL ) {
         return( true );
     } else {
@@ -411,14 +383,9 @@ void SetAuxWatcallInfo( FrontRun& front )
     front.callinfo.DftCallConv         = &DEFAULT_CALLINFO;
 
     WatcallInfo.cclass        = FECALL_GEN_NONE;
-#if _INTEL_CPU
     WatcallInfo.cclass_target = FECALL_X86_NONE;
-#endif
     WatcallInfo.code    = NULL;
     WatcallInfo.parms   = front.callinfo_file.WatcallParms;
-#if _CPU == 370
-    WatcallInfo.linkage = &DefaultLinkage;
-#endif
     HW_CAsgn( WatcallInfo.returns, HW_EMPTY );
     HW_CAsgn( WatcallInfo.streturn, HW_EMPTY );
     HW_CAsgn( WatcallInfo.save, HW_FULL );

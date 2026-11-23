@@ -44,11 +44,6 @@ typedef struct fcb_struct {                 /* file control block structure */
     const unsigned char     *src_ptr;       /* pointer to next character in buffer */
     const unsigned char     *src_end;       /* pointer to end of buffer */
     unsigned char           *src_buf;       /* source buffer */
-#if   _CPU ==  370  // just use for 370
-    unsigned                colum;          /* start reading at colum  */
-    unsigned                trunc;          /* stop  reading at trunc  */
-    unsigned                prevcount;      /* leftovers from prev read */
-#endif
     long                    rseekpos;       /* if closed because of too many files reopen */
     src_file_type           typ;            /* source file type */
     bool                    no_eol;         /* set if no EOL before EOF */

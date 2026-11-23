@@ -35,20 +35,7 @@
 #define _CGCALLBACKAPI
 #define _CGAPI
 
-#if defined( _CGDLL )
 
-#if defined( __NT__ )
-#define _CGDLLEXPORT    __stdcall __export
-#elif defined( __OS2__ )
-#define _CGDLLEXPORT    __syscall __export
-#else
-#error Unsupported OS
-#endif
 
-#else
-
-#define _CGDLLEXPORT
-
-#endif
 
 #endif

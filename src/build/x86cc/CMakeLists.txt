@@ -4,13 +4,13 @@
 # bld/: the objects of wccd.dll / wccd386.dll, from their link maps) and each target's generated headers into generated/<t>/,
 # with cbnames.h: every global of that compiler renamed wcci86_* / wcc386_*, force-included, so both compilers and wlink link
 # into one program. The include folders and defines are OpenWatcom's own build's for an NT x64 host (cc/master.mif,
-# cg/mif/rules.mif, cg/intel/master.mif, build/mif/local.mif): the front end's, the code generator's (BY_CG), and those of the
+# cg/mif/rules.mif, cg/intel/master.mif, build/mif/local.mif): the front end's, the code generator's, and those of the
 # libraries both use (cfloat, dwarf/dw, owl).
 set(X "${CMAKE_CURRENT_LIST_DIR}")
 set(CB_WCC_ROOT "${X}")
 set(CB_WCC_DEFINES
   _BLDVER=1300 _CYEAR=2026 _BETAVER NDEBUG __FLAT__ _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS _STATIC_CPPLIB __NT__
-  WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0601 INCL_MSGTEXT $<IF:$<EQUAL:${CMAKE_SIZEOF_VOID_P},8>,__NT_X64__,__NT_386__>)
+  WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0601 $<IF:$<EQUAL:${CMAKE_SIZEOF_VOID_P},8>,__NT_X64__,__NT_386__>)
 
 function(cb_wcc target t prefix)
   set(X "${CB_WCC_ROOT}")
@@ -34,11 +34,10 @@ function(cb_wcc target t prefix)
             "${X}/owl" "${X}/dwarf" "${X}/comp_cfg/h" "${X}/front/shared" "${X}/support" "${X}/run")
   # the code generator (cg/mif/rules.mif, cg/intel/master.mif)
   set(back "${X}/generated/${t}" "${X}/codegen/x86/${t}" "${X}/codegen/x86/shared" "${X}/codegen/x86/x87" "${X}/owl" "${X}/codegen/analysis" "${X}/codegen/common" "${X}/codegen/debuginfo" "${X}/codegen/interface" "${X}/codegen/ir" "${X}/codegen/object" "${X}/codegen/optimize" "${X}/codegen/peephole" "${X}/codegen/regalloc" "${X}/codegen/schedule" "${X}/codegen/select" "${X}/codegen/support" "${X}/codegen/tree" "${X}/cfloat" "${X}/dwarf"
-           "${X}/comp_cfg/h" "${X}/trmem" "${X}/support" "${X}/run")
+           "${X}/comp_cfg/h" "${X}/support" "${X}/run")
   foreach(src IN LISTS sources)
     if(src MATCHES "/build/x86cc/(codegen|cfloat|dwarf|owl)/")
       set_property(SOURCE "${src}" TARGET_DIRECTORY ${target} PROPERTY INCLUDE_DIRECTORIES ${back})
-      set_property(SOURCE "${src}" TARGET_DIRECTORY ${target} APPEND PROPERTY COMPILE_DEFINITIONS BY_CG)
     else()
       set_property(SOURCE "${src}" TARGET_DIRECTORY ${target} PROPERTY INCLUDE_DIRECTORIES ${front})
     endif()

@@ -34,7 +34,6 @@
 #include "cvars.h"
 #include "asmstmt.h"
 
-#if _INTEL_CPU
 
 #include "target.h"
 #include "frontrun.hpp"
@@ -50,17 +49,3 @@ void AsmError( FrontRun& front, unsigned msg_number )
     CErr2p( front, ERR_ASSEMBLER_ERROR, AsmErrMsgs[msg_number] );
 }
 
-#else /* _RISC_CPU */
-
-void AsmError( const char *msg )
-{
-    CErr2p( ERR_ASSEMBLER_ERROR, msg );
-}
-
-void AsmWarning( const char *msg )
-/********************************/
-{
-    CWarn2p( ERR_ASSEMBLER_WARNING, msg );
-}
-
-#endif

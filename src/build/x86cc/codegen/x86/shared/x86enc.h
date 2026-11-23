@@ -115,7 +115,4 @@ extern void             GenPushC( BackRun& back, int_32 value );
 extern pointer          GenFar16Thunk( BackRun& back, pointer label, uint_16 parms_size, bool remove_parms );
 extern void             GenP5ProfilingProlog( BackRun& back, label_handle label );
 extern void             GenP5ProfilingEpilog( BackRun& back, label_handle label );
-#if 0
-extern void             GenProfilingCode( char *fe_name, label_handle *data, bool prolog );
-#endif
 #endif

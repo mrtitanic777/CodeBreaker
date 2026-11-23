@@ -704,15 +704,6 @@ static  void    doProfilingPrologEpilog( BackRun& back, label_handle label, bool
     }
 }
 
-#if 0
-void    GenProfilingCode( char *fe_name, label_handle *data, bool prolog )
-/************************************************************************/
-{
-    if( _IsTargetModel( CGSW_X86_NEW_P5_PROFILING ) ) {
-        doProfilingCode( fe_name, data, prolog );
-    }
-}
-#endif
 
 segment_id GenProfileData( BackRun& back, char *fe_name, label_handle *data, label_handle *stack )
 /**********************************************************************************

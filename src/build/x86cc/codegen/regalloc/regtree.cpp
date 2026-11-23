@@ -51,7 +51,6 @@ namespace {
 
 
 
-#if _TARGET_INTEL
 static bool HasSegRegs( reg_tree *tree )
 {
     hw_reg_set  *regs;
@@ -66,7 +65,6 @@ static bool HasSegRegs( reg_tree *tree )
     }
     return( false );
 }
-#endif
 
 
 static  reg_tree        *AllocRegTree( BackRun& back )
@@ -122,7 +120,6 @@ bool    RegTreeFrlFree( BackRun& back )
 static  void    CheckBigPointer( BackRun& back, reg_tree *tree )
 /***********************************************/
 {
-#if _TARGET_INTEL
 /* this routine is a sickening concession to the foolish design of the 8086
    (may all intel designers rot in hell forever, amen)
 
@@ -142,9 +139,6 @@ static  void    CheckBigPointer( BackRun& back, reg_tree *tree )
         FreeRegSet( back, tree->hi->regs );
         tree->hi->regs = NULL;
     }
-#else
-    /* unused parameters */ (void)tree;
-#endif
 }
 
 
@@ -181,11 +175,6 @@ static  void    BuildPossible( BackRun& back, reg_tree *tree )
                 *dst++ = *src;
             }
             *dst = *src;
-#ifdef DEVBUILD
-            if( dst - tree->regs >= REG_COUNT ) { /* '>=' 'coz no increment before 'break' */
-                Zoiks( ZOIKS_143 );
-            }
-#endif
         }
     }
 }

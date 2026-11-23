@@ -44,23 +44,7 @@
 #define PH_BUF_SIZE     32768
 #define PCH_SIGNATURE   (('H'<<24)|('C'<<16)|('P'<<8)|'W')     /* 'WPCH' */
 #define PCH_VERSION     0x0128
-#if defined(_M_I86)
-#define PCH_VERSION_HOST ( ( 1L << 16 ) | PCH_VERSION )
-#elif defined(_M_IX86)
-#define PCH_VERSION_HOST ( ( 2L << 16 ) | PCH_VERSION )
-#elif defined(__AXP__)
-#define PCH_VERSION_HOST ( ( 3L << 16 ) | PCH_VERSION )
-#elif defined(__PPC__)
-#define PCH_VERSION_HOST ( ( 4L << 16 ) | PCH_VERSION )
-#elif defined(__SPARC__)
-#define PCH_VERSION_HOST ( ( 5L << 16 ) | PCH_VERSION )
-#elif defined(__MIPS__)
-#define PCH_VERSION_HOST ( ( 6L << 16 ) | PCH_VERSION )
-#elif defined(_M_X64)
 #define PCH_VERSION_HOST ( ( 7L << 16 ) | PCH_VERSION )
-#else
-#define PCH_VERSION_HOST ( ( 128L << 16 ) | PCH_VERSION )
-#endif
 
 #define PCHGetUInt(p)           ((unsigned)(pointer_uint)(p))
 #define PCHSetUInt(v)           ((void *)(pointer_uint)((unsigned)(v)))
@@ -708,7 +692,6 @@ static void OutPutTypes( FrontRun& front )
     OutPutTypeIndexes(front);
 }
 
-#if _INTEL_CPU
 static void OutPutAuxInfo( FrontRun& front, aux_info *info )
 {
     hw_reg_set          *regs;
@@ -809,7 +792,6 @@ static void OutPutPragmaInfo( FrontRun& front )
         front.pchdr.PH_PragmaEntryCount++;
     }
 }
-#endif
 
 static void OutPutMacros( FrontRun& front )
 {
@@ -927,9 +909,7 @@ static void OutPutEverything( FrontRun& front )
     OutPutSegInfo(front);
     OutPutTypes(front);
     OutPutTags(front);
-#if _INTEL_CPU
     OutPutPragmaInfo(front);
-#endif
     OutPutSymHashTable(front);
     OutPutSymbols(front);
     OutPutMsgLevels(front);
@@ -1113,9 +1093,6 @@ static bool VerifyIncludes( FrontRun& front, const char *filename )
             }
             if( flist->mtime != mtime || mtime == 0 ) {
                 PCHNote( front, PCHDR_INCFILE_CHANGED, flist->name  );
-#if 0
-                printf( "%s old %d new %d\n", flist->name, flist->mtime, mtime );
-#endif
                 return( true );
             }
         }
@@ -1519,7 +1496,6 @@ static char *FixupTags( FrontRun& front, char *p, unsigned tag_count )
     return( p );
 }
 
-#if _INTEL_CPU
 static char *FixupAuxInfo( char *p, aux_info *info )
 {
     unsigned            len;
@@ -1572,7 +1548,6 @@ static char *FixupPragmaInfo( FrontRun& front, char *p, unsigned pragma_count, u
     CMemFree( front, info_array );
     return( p );
 }
-#endif
 
 static char *FixupMsgLevels( FrontRun& front, char *p, unsigned len )
 {
@@ -1629,9 +1604,7 @@ static int FixupDataStructures( FrontRun& front, char *p, pheader *pch )
     p = FixupSegInfo( front, p, pch->seg_count );
     p = FixupTypes( front, p, pch->type_count );
     p = FixupTags( front, p, pch->tag_count );
-#if _INTEL_CPU
     p = FixupPragmaInfo( front, p, pch->pragma_count, pch->pragma_entry_count );
-#endif
     p = FixupSymHashTable( front, p, pch->symhash_count );
     p = FixupSymbols( front, p, pch->symbol_count );
     p = FixupMsgLevels( front, p, pch->msglevel_len );

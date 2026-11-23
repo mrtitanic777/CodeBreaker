@@ -84,9 +84,6 @@ typedef enum {
 
     TY_FIRST_FREE,      /*  First user definable type */
 
-#if defined( BY_FORTRAN_FRONT_END )
-  #include "fetypes.h"
-#endif
 
     TY_LAST_FREE = 65530U - 1,
 
@@ -97,10 +94,5 @@ typedef enum {
 
 #define TY_HUGE_CODE_PTR TY_LONG_CODE_PTR  /* for now */
 
-#define MIN_OP          O_NOP
-#define O_FIRST_COND    O_EQ
-#define O_LAST_COND     O_GE
-#define O_FIRST_FLOW    O_FLOW_AND
-#define O_LAST_FLOW     O_FLOW_NOT
 
 #endif

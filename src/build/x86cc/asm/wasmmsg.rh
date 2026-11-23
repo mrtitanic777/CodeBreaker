@@ -30,52 +30,9 @@
 ****************************************************************************/
 
 
-#if defined( _STANDALONE_ )
-  #if defined( INCL_MSGTEXT )
-    // WASM, must be assigned dynamicaly
-  #elif defined( USE_WRESLIB )
-    // WASM
-    #define MSG_LANG_SPACING    13000
-  #else
-    // WASM
-    #define MSG_LANG_SPACING    13000
-  #endif
-#elif defined( INCL_MSGTEXT )
     // WCC or WPP, must be assigned dynamicaly
-#elif defined( USE_WRESLIB )
-    // WFC
-    #define MSG_LANG_SPACING    13000
-#else
-    // WFC
-    #define MSG_LANG_SPACING    13000
-#endif
 
-#if defined( _STANDALONE_ )
-  #if defined( INCL_MSGTEXT )
-    // WASM, must be assigned dynamicaly
-  #elif defined( USE_WRESLIB )
-    // WASM
-    #define MSG_SHARE_BASE      1
-    #define MSG_WASM_BASE       200
-    #define MSG_USAGE_BASE      600
-  #else
-    // WASM
-    #define MSG_SHARE_BASE      1
-    #define MSG_WASM_BASE       200
-    #define MSG_USAGE_BASE      600
-  #endif
-#elif defined( INCL_MSGTEXT )
     // WCC or WPP
     #define MSG_SHARE_BASE      0
-#elif defined( USE_WRESLIB )
-    // WFC
-    #define MSG_SHARE_BASE      12000
-#else
-    // WFC
-    #define MSG_SHARE_BASE      12000
-#endif
 
 #include "wasmcmsg.grh"
-#if defined( _STANDALONE_ )
-    #include "wasmsmsg.grh"
-#endif

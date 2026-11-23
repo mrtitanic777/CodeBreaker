@@ -74,14 +74,11 @@
 #define SCALE_FACTOR_8  0xC0
 
 #define FPE_MIN         0xD8
-#define FPE_MAX         0xDF
 
-#define SET_ADRSIZ( s, x )  ( s->prefix.adrsiz = (( x ) ^ ( s->use32 )) != 0 )
 #define SET_ADRSIZ_32( s )  ( s->prefix.adrsiz = ( s->use32 == 0 ) )
 #define SET_ADRSIZ_16( s )  ( s->prefix.adrsiz = ( s->use32 != 0 ) )
 #define SET_ADRSIZ_ON( s )  ( s->prefix.adrsiz = 1 )
 #define SET_ADRSIZ_OFF( s ) ( s->prefix.adrsiz = 0 )
-#define SET_OPSIZ( s, x )   ( s->prefix.opsiz = (( x ) ^ ( s->use32 )) != 0 )
 #define SET_OPSIZ_32( s )   ( s->prefix.opsiz = ( s->use32 == 0 ) )
 #define SET_OPSIZ_16( s )   ( s->prefix.opsiz = ( s->use32 != 0 ) )
 #define SET_OPSIZ_ON( s )   ( s->prefix.opsiz = 1 )
@@ -89,18 +86,11 @@
 
 #define IS_ADRSIZ_16( s )   ( ( s->use32 ^ s->prefix.adrsiz ) == 0 )
 #define IS_ADRSIZ_32( s )   ( ( s->use32 ^ s->prefix.adrsiz ) != 0 )
-#define IS_OPSIZ_16( s )    ( ( s->use32 ^ s->prefix.opsiz ) == 0 )
 #define IS_OPSIZ_32( s )    ( ( s->use32 ^ s->prefix.opsiz ) != 0 )
 
-#if defined( _STANDALONE_ )
-
-#define MEM_TYPE( op, typ ) ( (op) == MT_##typ || (op) == MT_S##typ )
-
-#else
 
 #define MEM_TYPE( op, typ ) ( (op) == MT_##typ )
 
-#endif
 
 /* global variables */
 extern asm_sym_handle   Frame;
@@ -120,16 +110,9 @@ extern void             SetFinalToken( token_buffer *tokbuf, token_idx i );
 extern bool             AsmScan( AsmRun& assembler, token_buffer *tokbuf, const char * );
 extern void             RadixSet( AsmRun& assembler, unsigned );
 
-#if defined( _STANDALONE_ )
-
-extern void             AsmCodeByte( unsigned char );
-extern void             AsmDataByte( unsigned char );
-
-#else
 
 #define AsmCodeByte( c )    AsmByte( assembler, c )
 #define AsmDataByte( c )    AsmByte( assembler, c )
 
-#endif
 
 #endif

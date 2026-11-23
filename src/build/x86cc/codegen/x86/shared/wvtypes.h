@@ -31,7 +31,6 @@
 
 
 #pragma once
-#if _TARGET_INTEL
 extern dbg_type         WVFtnType( BackRun& back, const char *name, dbg_ftn_type tipe );
 extern dbg_type         WVScalar( BackRun& back, const char *name, cg_type tipe );
 extern dbg_type         WVScope( BackRun& back, const char *name );
@@ -54,4 +53,3 @@ extern dbg_type         WVEndProc( BackRun& back, dbg_proc pr );
 extern void             WVTypesEof( BackRun& back );
 extern void             WVDmpCueInfo( BackRun& back, long_offset where );
 extern void             WVSrcCueLoc( BackRun& back  );
-#endif

@@ -44,6 +44,3 @@ pick( SCAN_NEWLINE,    ScanNewline        )  // '\n'
 pick( SCAN_WHITESPACE, ScanWhiteSpace     )  // all whitespace
 pick( SCAN_INVALID,    ScanInvalid        )  // all other characters
 pick( SCAN_EOF,        ScanEof            )  // end-of-file
-#ifdef CHAR_MACRO
-pick( SCAN_MACRO,      ScanMacroToken     )  // get next token from macro
-#endif

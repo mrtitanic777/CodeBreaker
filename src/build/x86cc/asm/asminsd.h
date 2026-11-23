@@ -31,33 +31,14 @@
 
 
 #pragma once
-#ifdef MKOPCODE
-
-#define ins(tok,op1,byte1_info,op2,op3,op_dir,rm_info,wds,opcode,rm_byte,cpu,prefix) tok,
-
-#if defined( _STANDALONE_ )
-    #define insa(tok,op1,byte1_info,op2,op3,op_dir,rm_info,wds,opcode,rm_byte,cpu,prefix) tok,
-#else
-    #define insa(tok,op1,byte1_info,op2,op3,op_dir,rm_info,wds,opcode,rm_byte,cpu,prefix)
-#endif
-
-const unsigned short AsmOpTable[] = {
-
-#else
 
 #define ins(tok,op1,byte1_info,op2,op3,op_dir,rm_info,wds,opcode,rm_byte,cpu,prefix) \
                 {tok,prefix,byte1_info,rm_info,wds,op3,op_dir,cpu,op1,op2,opcode,rm_byte},
 
-#if defined( _STANDALONE_ )
-    #define insa(tok,op1,byte1_info,op2,op3,op_dir,rm_info,wds,opcode,rm_byte,cpu,prefix) \
-                ins(tok,op1,byte1_info,op2,op3,op_dir,rm_info,wds,opcode,rm_byte,cpu,prefix)
-#else
     #define insa(tok,op1,byte1_info,op2,op3,op_dir,rm_info,wds,opcode,rm_byte,cpu,prefix)
-#endif
 
 const asm_ins   ASMI86FAR AsmOpTable[] = {
 
-#endif
 
 /*   tok                op1          b1_info op2           op3   op_dir rm_info wds opcode     rm_byte                   cpu     prefix  */
 

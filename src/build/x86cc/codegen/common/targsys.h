@@ -36,7 +36,6 @@
 /*  target processors (_HOST) */
 #define _TARG_8086      1
 #define _TARG_80386     2
-#define _TARG_370       4
 #define _TARG_PPC       8
 #define _TARG_AXP       16
 #define _TARG_MIPS      32
@@ -45,85 +44,25 @@
 #define _TARGET_RISC    (_TARGET & (_TARG_PPC | _TARG_AXP | _TARG_MIPS))
 
 /*  target character sets (_CSET) */
-#define _TARG_ASCII     1
-#define _TARG_EBCDIC    2
-#define _TARG_UTF8      3
 
 /*  target word ordering (_MEMORY) */
-#define _TARG_LOW_FIRST     1
-#define _TARG_HIGH_FIRST    2
 
 #include "deftarg.h"
 
 #if _TARGET & _TARG_8086
-    #define _TARG_CSET          _TARG_ASCII
     #define _TARG_INTEGER       16
-    #define _TARG_MEMORY        _TARG_LOW_FIRST
-    #define _TARG_IS_SEGMENTED  1
     #define WD                  U2
     #define SW                  I2
     #define WORD_SIZE           2
     #define REG_SIZE            2
     #define TY_WORD             TY_UINT_2
 #elif _TARGET & _TARG_80386
-    #define _TARG_CSET          _TARG_ASCII
     #define _TARG_INTEGER       32
-    #define _TARG_IS_SEGMENTED  1
-    #define _TARG_MEMORY        _TARG_LOW_FIRST
     #define WD                  U4
     #define SW                  I4
     #define WORD_SIZE           4
     #define REG_SIZE            4
     #define TY_WORD             TY_UINT_4
-#elif _TARGET & _TARG_370
-    #define _TARG_CSET          _TARG_EBCDIC
-    #define _TARG_INTEGER       32
-    #define _TARG_MEMORY        _TARG_HIGH_FIRST
-    #define WD                  U4
-    #define SW                  I4
-    #define WORD_SIZE           4
-    #define REG_SIZE            4
-    #define TY_WORD             TY_UINT_4
-#elif _TARGET & _TARG_PPC
-    #define _TARG_CSET          _TARG_ASCII
-    #define _TARG_INTEGER       32
-    #define _TARG_IS_SEGMENTED  0
-    #define _TARG_MEMORY        _TARG_LOW_FIRST
-    #define WD                  U4
-    #define SW                  I4
-    #define WORD_SIZE           4
-    #define REG_SIZE            4
-    #define _TARGET_PAGE_SIZE   4096            /* for stack crawling */
-    #define TY_WORD             TY_UINT_4
-    #define STACK_ALIGNMENT     16
-    #define STACK_HEADER_SIZE   24
-#elif _TARGET & _TARG_MIPS
-    #define _TARG_CSET          _TARG_ASCII
-    #define _TARG_INTEGER       32
-    #define _TARG_IS_SEGMENTED  0
-    #define _TARG_MEMORY        _TARG_LOW_FIRST
-    #define WD                  U4
-    #define SW                  I4
-    #define WORD_SIZE           4
-    #define REG_SIZE            4
-    #define _TARGET_PAGE_SIZE   4096            /* for stack crawling */
-    #define TY_WORD             TY_UINT_4
-    #define STACK_ALIGNMENT     16
-    #define STACK_HEADER_SIZE   24
-#elif _TARGET & _TARG_AXP
-    #define _TARG_CSET          _TARG_ASCII
-    #define _TARG_INTEGER       32
-    #define _TARG_IS_SEGMENTED  0
-    #define _TARG_MEMORY        _TARG_LOW_FIRST
-    #define WD                  U4
-    #define SW                  I4
-    #define WORD_SIZE           4
-    #define REG_SIZE            8
-    #define _TARGET_PAGE_SIZE   4096            /* for stack crawling */
-    #define TY_WORD             TY_UINT_4
-    #define STACK_ALIGNMENT     16
-#else
-    #error Unknown target processor!
 #endif
 
 #endif

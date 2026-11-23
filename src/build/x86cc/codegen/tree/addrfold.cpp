@@ -367,10 +367,6 @@ static        bool    AddToTypeLength( type_length x, type_length y ) {
     x += y; lx += ly;
     if( lx != x )
         return( false );
-#if _TARGET & _TARG_370
-    if( lx < 0 || lx >= 4096 )
-        return( false );
-#endif
     return( true );
 }
 
@@ -550,10 +546,6 @@ static  bool    ShiftToTypeLength( type_length x, uint_16 y )
     lx <<= y;
     if( lx != x )
         return( false );
-#if _TARGET & _TARG_370
-    if( lx < 0 || lx >= 4096 )
-        return( false );
-#endif
     return( true );
 }
 

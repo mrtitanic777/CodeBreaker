@@ -76,14 +76,8 @@
 
 #define IS_OPERAND( token ) ( IS_ID_OR_KEYWORD( token ) || token == T_CONSTANT )
 
-#ifdef DEVBUILD
-    #define DbgDefault( msg )   default: CFatal( msg __location )
-#else
     #define DbgDefault( msg )
-#endif
 
-#define Stack_forall( hdr, i ) \
-    for( i = hdr; i != NULL; i = *((void **)i) )
 
 
 
@@ -105,13 +99,6 @@ static int  const Prec[] = {     // table of token precedences
     #undef pick
 };
 
-#ifdef DEVBUILD
-static void CFatal( char *msg )
-/*****************************/
-{
-    FEMessage( FEMSG_FATAL, msg );
-}
-#endif
 
 static void *StackPush( void *hdr, void *elt )
 /********************************************/
@@ -368,14 +355,6 @@ static bool COperand( FrontRun& front )
             done = PpNextToken(front);
         }
         break;
-#if 0
-    case T_FALSE:
-    case T_TRUE:
-        Set64ValU32PP( p, CurToken == T_TRUE );
-        PushOperandCurLocation( p );
-        done = PpNextToken();
-        break;
-#endif
     case T_CONSTANT:
         switch( front.cvars.ConstType ) {
         case TYP_FLOAT:
@@ -898,63 +877,6 @@ static bool CStart( FrontRun& front )
     return( true );
 }
 
-#if 0
-static void stringize( char *s )
-/******************************/
-{
-    char    *d;
-
-    d = s;
-    while( *s != '\0' ) {
-        if( s[0] == '\\' ) {
-            if( s[1] == '\\'
-              || s[1] == '\"' ) {
-                s++;
-            }
-        }
-        *d++ = *s++;
-    }
-    *d = '\0';
-}
-
-TOKEN Process_Pragma( bool internal )
-/***********************************/
-{
-    PpNextToken();
-    if( CurToken == T_LEFT_PAREN ) {
-        PpNextToken();
-        if( CurToken == T_STRING ) {
-            char    *token_buf;
-
-            token_buf = CMemStrdup( Buffer );
-            PpNextToken();
-            if( CurToken == T_RIGHT_PAREN ) {
-                ppctl_t old_ppctl;
-
-                stringize( token_buf );
-                InsertReScanPragmaTokens( token_buf, internal );
-                // call CPragma()
-                old_ppctl = PPControl;
-                PPCTL_ENABLE_EOL();
-                CPragma();
-                PPControl = old_ppctl;
-            } else {
-                /* error, incorrect syntax of the operator _Pragma() */
-            }
-            CMemFree( (void *)token_buf );
-            PpNextToken();
-        } else {
-            /* error, incorrect syntax of the operator _Pragma() */
-        }
-    } else {
-        InsertToken( CurToken, Buffer, internal );
-        strcpy( Buffer, PPOPERATOR_PRAGMA );
-        TokenLen = LENLIT( PPOPERATOR_PRAGMA );
-        CurToken = T_ID;
-    }
-    return( CurToken );
-}
-#endif
 
 static bool ( *const CExpr[] )(FrontRun&) = { // table of functions to reduce expressions
     CStart,             /* Level 0 */

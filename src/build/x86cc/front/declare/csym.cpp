@@ -651,7 +651,6 @@ static void CheckDefined( FrontRun& front, SYMPTR sym, SYM_NAMEPTR name )
 
 static void CheckFunction( FrontRun& front, SYMPTR sym, SYM_NAMEPTR name )
 {
-#if _INTEL_CPU
     if( sym->attribs.stg_class == SC_STATIC ) {
         if( sym->flags & SYM_ADDR_TAKEN ) {
             if( front.cvars.CompFlags.using_overlays ) {
@@ -665,71 +664,8 @@ static void CheckFunction( FrontRun& front, SYMPTR sym, SYM_NAMEPTR name )
             }
         }
     }
-#else /* _RISC_CPU */
-
-    /* unused parameters */ (void)sym; (void)name;
-
-#endif
 }
 
-#if _CPU == 370
-/*** External name control for IBM 370 restrictions ***/
-struct xlist {
-    struct xlist    *next;
-    char            xname[8+1];
-};
-
-static  void InitExtName( struct xlist **where  )
-/*** Init extern name list***/
-{
-    *where = NULL;
-}
-
-static void CheckExtName( struct xlist **link, SYMPTR sym, SYM_NAMEPTR name )
-/****************************************************************************
- * Restricted extern names i.e 8 char upper check
- */
-{
-    struct xlist    *new_;
-    struct xlist    *curr;
-    int             i;
-    int             c;
-
-    new_ =  CMemAlloc( sizeof ( struct xlist ) );
-    for( i = 0; i < 8 && (c = name[i]) != 0; i++ ) {
-        new_->xname[i] = (char)tolower( c );
-    }
-    new_->xname[i} = '\0';
-    for( ; (curr = *link) != NULL; link = &curr->next ) {
-        int cmp;
-
-        cmp = strcmp( new_->xname, curr->xname );
-        if( cmp == 0 ) {
-            SetErrLoc( &sym->src_loc );
-            CErr3p( ERR_DUPLICATE_ID, name, new_->xname );
-            InitErrLoc();
-            CMemFree( new_ );
-            return;
-        } else if( cmp < 0 ) {
-            break;
-        }
-    }
-    new_->next = *link;
-    *link = new_;
-}
-
-static void FiniExtName( struct xlist *head )
-/*** Free xname list **********************/
-{
-    struct xlist    *next;
-
-    while( head != NULL ) {
-        next = head->next;
-        CMemFree( head );
-        head = next;
-    }
-}
-#endif /* IBM370 names */
 
 #define BUCKETS 7
 
@@ -858,10 +794,6 @@ static SYM_HASHPTR FreeSym( FrontRun& front )
     SYM_HANDLE      tail[BUCKETS];
     TYPEPTR         typ;
 
-  #if _CPU == 370
-    void            *xlist;
-    InitExtName( &xlist );
-  #endif
 
     for( bucket = 0; bucket < BUCKETS; ++bucket ) {
         head[bucket] = SYM_NULL;
@@ -980,16 +912,6 @@ void EndBlock( FrontRun& front )
 }
 
 
-#if 0
-static void DumpWeights( SYMPTR sym )
-{
-    if( DebugFlag > 0 ) {
-        for( ; sym != NULL; sym = sym->thread ) {
-            printf( "%4x: %s\n", sym->u.var.offset, sym->name );
-        }
-    }
-}
-#endif
 
 
 LABELPTR LkLabel( FrontRun& front, const char *name )
@@ -1030,29 +952,6 @@ void FreeLabels( FrontRun& front )
 }
 
 
-#if 0
-static void DoSymPurge( SYMPTR sym )
-{
-    SYMPTR  curr;
-    SYMPTR  temp;
-
-    if( (sym->flags & SYM_FUNCTION) && (sym != CurFunc) ) {
-        curr = sym->u.func.parms;
-        while( curr != NULL ) {
-            temp = curr->thread;
-            CMemFree( curr );
-            curr = temp;
-        }
-        curr = sym->u.func.locals;
-        while( curr != NULL ) {
-            temp = curr->thread;
-            CMemFree( curr );
-            curr = temp;
-        }
-    }
-    CMemFree( sym );
-}
-#endif
 
 
 void SymsPurge( FrontRun& front )
@@ -1069,70 +968,9 @@ void SymsPurge( FrontRun& front )
 //      PurgeTags( DeadTags );
     front.cvars.DeadTags = NULL;
 
-#if 0
-    {
-        id_hash_idx     hash;
-        SYMPTR          tmp_sym, sym;
-
-        for( hash = 0; hash < ID_HASH_SIZE; hash++ ) {
-            sym = HashTab[hash];
-            HashTab[hash] = NULL;
-            while( sym != NULL ) {
-                tmp_sym = sym->next_sym;
-                DoSymPurge( sym );
-                sym = tmp_sym;
-            }
-        }
-
-        while( (sym = GlobalSym) != SYM_NULL ) {
-            GlobalSym = sym->thread;
-            DoSymPurge( sym );
-        }
-
-        while( (sym = SpecialSyms) != SYM_NULL ) {
-            SpecialSyms = sym->thread;
-            DoSymPurge( sym );
-        }
-    }
-#endif
     TypesPurge();
 }
 
-#if 0           /* can't free these because they are in CPermArea */
-
-static void PurgeTags( TAGPTR tag_head )
-{
-    TAGPTR      tag;
-    FIELDPTR    field;
-    DATA_TYPE   tag_type;
-
-    for( ; (tag = tag_head) != NULL; ) {
-        tag_head = tag->next_tag;
-        tag_type = tag->sym_type->decl_type;
-        if( tag_type == TYP_STRUCT || tag_type == TYP_UNION ) {
-            for( ; (field = tag->u.field_list) != NULL; ) {
-                tag->u.field_list = field->next_field;
-                CMemFree( field );
-            }
-        } else {    /* tag_type == TYP_ENUM */
-            PurgeEnums( tag->u.enum_list );
-        }
-        CMemFree( tag );
-    }
-}
-
-
-static void PurgeEnums( ENUM_HANDLE list_head )
-{
-    ENUMPTR     ep;
-
-    for( ; (ep = list_head) != NULL; ) {
-        list_head = ep->thread;
-        CMemFree( ep );
-    }
-}
-
-#endif
 
 XREFPTR NewXref( FrontRun& front, XREFPTR next_xref )
 {

@@ -41,12 +41,7 @@
 #include "makeins.h"
 #include "objout.h"
 #include "dbsyms.h"
-#ifdef DEVBUILD
-#include "echoapi.h"
-#endif
-#if _TARGET_INTEL
 #include "wvsyms.h"
-#endif
 #include "dw.h"
 #include "dfsyms.h"
 #include "cvdbg.h"
@@ -90,15 +85,9 @@ uint    _CGAPI DBSrcFile( BackRun& back, cchar_ptr fname )
     fname_lst   *curr;
     fname_lst   **lnk;
 
-#ifdef DEVBUILD
-    EchoAPI( "DBSrcFile( %c )", fname );
-#endif
     index = 0;
     for( lnk = &back.dbsyms.DBFiles.lst; (curr = *lnk) != NULL; lnk = &curr->next ) {
         if( strcmp( fname, curr->fname ) == 0 ) {
-#ifdef DEVBUILD
-            EchoAPI( " -> %i\n", index );
-#endif
             return( index );
         }
         ++index;
@@ -110,9 +99,6 @@ uint    _CGAPI DBSrcFile( BackRun& back, cchar_ptr fname )
     strcpy( curr->fname, fname );
     ++back.dbsyms.DBFiles.count;
     *lnk = curr;
-#ifdef DEVBUILD
-    EchoAPI( " -> %i\n", index );
-#endif
     return( index );
 }
 
@@ -252,104 +238,6 @@ bool CueFind( BackRun& back, cue_idx cue, cue_state *ret )
     return( true );
 }
 
-#if 0
-static void CueLen( cue_ctl *ctl )
-/********************************/
-//Set map number to #cues with entry
-{
-    cue_ctl     *ctl;
-    cue_blk     *blk;
-    cue_state   *curr, *last;
-    int         diff;
-
-    if( ctl->count > 0 ) {
-        last = &ctl->start[0];
-    }
-    for( blk = ctl->head; blk != NULL; blk = blk->next ) {
-        if( blk->next == NULL ) {
-            end = ctl->next;
-        } else {
-            end = &blk->info[CUES_PER_BLK];
-        }
-        for( curr = &blk->info[0]; curr != end; ++curr ) {
-            last->map = curr->cue - last->cue;
-        }
-    }
-    last->map = ctl->state.cue- last->cue;
-}
-
-// the only time we can do this is if
-// the cue guy has seen all the cues and no cue numbers have been
-// released
-static cue_idx  CueFMap( cue_ctl *ctl, int fno, cue_idx map )
-/***********************************************************/
-//Map cues with same file together
-{
-    cue_ctl    *ctl;
-    cue_blk    *blk;
-    cue_state   *base, *curr, *last;
-    cue_idx    map;
-    cue_idx    len;
-
-    if( ctl->count > 0 ) {
-        curr = &ctl->start[0];
-        if( curr->fno == fno ) {
-            len =  curr->map;
-            curr->map = map;
-            map += len;
-        }
-    }
-    for( blk = ctl->head; blk != NULL; blk = blk->next ) {
-        if( blk->next == NULL ) {
-            end = ctl->next;
-        } else {
-            end = &blk->info[CUES_PER_BLK];
-        }
-        for( curr = &blk->info[0]; curr != end; ++curr ) {
-            if( curr->fno == fno ) {
-                len =  curr->map;
-                curr->map = map;
-                map += len;
-            }
-        }
-    }
-    return( map );
-}
-
-void CueMap( cue_ctl *ctl, cue_state *base )
-/******************************************/
-//Add a map number so cues from the same file
-//can be re-written on a continueum
-{
-    cue_ctl     *ctl;
-    cue_blk     *blk;
-    cue_state   *base, *curr, *last;
-    int         fno;
-    cue_idx     curr_idx;
-
-    ctl = &LineInfo;
-    CueLen( ctl ); /* add lengths */
-    curr_idx = 0;
-    for( fno = 0; fno <  DBFiles.count; ++fno ) {
-        curr_idx = CueFMap( ctl, fno, curr_idx );
-    }
-    return( true );
-}
-#endif
-#if 0
-void DmpCue( cue_idx cue  )
-{
-    cue_state   state;
-    const char  *fname;
-
-    if( CueFind( cue,  &state ) ) {
-        fname = SrcFNoFind( state.fno );
-        printf( "out %s %d %d\n" , fname, state.line, state.col );
-    } else {
-        printf( "bad cue %d\n", cue );
-    }
-}
-#endif
 static void SourceCueFini( BackRun& back, cue_ctl *ctl )
 /***************************************/
 {
@@ -380,10 +268,8 @@ void    InitDbgInfo( BackRun& back )
         DFInitDbgInfo(back);
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
         CVInitDbgInfo(back);
-#if _TARGET_INTEL
     } else {
         WVInitDbgInfo(back);
-#endif
     }
 }
 
@@ -397,10 +283,8 @@ void    FiniDbgInfo( BackRun& back )
         DFFiniDbgInfo();
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
         CVFiniDbgInfo();
-#if _TARGET_INTEL
     } else {
         WVFiniDbgInfo();
-#endif
     }
 }
 
@@ -408,9 +292,6 @@ void    FiniDbgInfo( BackRun& back )
 void    _CGAPI DBLineNum( BackRun& back, uint no )
 /*********************************/
 {
-#ifdef DEVBUILD
-    EchoAPI( "\nDBLineNum( %i )\n", no );
-#endif
     back.data.SrcLine = no;
 }
 
@@ -421,9 +302,6 @@ void _CGAPI     DBSrcCue( BackRun& back, uint fno, uint line, uint col )
     bool        hasxcue;
 //    const char  *fname;
 
-#ifdef DEVBUILD
-    EchoAPI( "\nDBsrcCue( %i, %i, %i )\n", fno, line, col );
-#endif
 //  fname = SrcFNoFind( fno );
 //  printf( "in %s %d %d\n", fname, line, col );
     hasxcue =  _IsntModel( CGSW_GEN_DBG_TYPES ); // Just OMF line nums
@@ -440,9 +318,6 @@ void _CGAPI     DBSrcCue( BackRun& back, uint fno, uint line, uint col )
 void _CGAPI DBGenStMem( BackRun& back, cg_sym_handle sym, dbg_loc loc )
 /******************************************************/
 {
-#ifdef DEVBUILD
-    EchoAPI( "DBGenStMem( %s,%i)\n", sym, loc );
-#endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
         DFGenStatic( back, sym, loc );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
@@ -483,9 +358,6 @@ void _CGAPI DBGenSym( BackRun& back, cg_sym_handle sym, dbg_loc loc, int scoped 
     fe_attr     attr;
     dbg_local   *lcl;
 
-#ifdef DEVBUILD
-    EchoAPI( "DBGenSym( %s, %i, %i )\n", sym, loc, scoped );
-#endif
     if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
         attr = FEAttr( *back.front, sym );
         if( (attr & FE_IMPORT) == 0 ) {
@@ -509,10 +381,8 @@ void _CGAPI DBGenSym( BackRun& back, cg_sym_handle sym, dbg_loc loc, int scoped 
                     DFGenStatic( back, sym, loc );
                 } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
                     CVGenStatic( back, sym, loc, false );
-#if _TARGET_INTEL
                 } else {
                     WVGenStatic( back, sym , loc );
-#endif
                 }
             }
         }
@@ -528,9 +398,6 @@ void    _CGAPI DBModSym( BackRun& back, cg_sym_handle sym, cg_type indirect )
 
     /* unused parameters */ (void)indirect;
 
-#ifdef DEVBUILD
-    EchoAPI( "DBModSym( %s, %t )\n",  sym, indirect );
-#endif
     if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
         attr = FEAttr( *back.front, sym );
         if( (attr & FE_IMPORT) == 0 ) {
@@ -552,19 +419,14 @@ void _CGAPI DBObject( BackRun& back, dbg_type tipe, dbg_loc loc, cg_type ptr_typ
 {
     /* unused parameters */ (void)ptr_type;
 
-#ifdef DEVBUILD
-    EchoAPI( "DBObject( %i, %i, %t )\n", tipe, loc, ptr_type );
-#endif
     back.data.CurrProc->targ.debug->obj_type = tipe;
     back.data.CurrProc->targ.debug->obj_loc = LocDupl( loc );
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
         //
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
         //
-#if _TARGET_INTEL
     } else {
         WVObjectPtr( back, ptr_type );
-#endif
     }
 }
 
@@ -578,9 +440,6 @@ void    DBAllocReg( name *reg, name *temp )
 void _CGAPI DBTypeDef( BackRun& back, cchar_ptr nm, dbg_type tipe )
 /**************************************************/
 {
-#ifdef DEVBUILD
-    EchoAPI( "DBTypeDef( %c, %t )\n", nm, tipe );
-#endif
     if( _IsModel( CGSW_GEN_DBG_DF ) ) {
         DFTypedef( back, nm, tipe );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
@@ -597,9 +456,6 @@ void    _CGAPI DBLocalSym( BackRun& back, cg_sym_handle sym, cg_type indirect )
 
     /* unused parameters */ (void)indirect;
 
-#ifdef DEVBUILD
-    EchoAPI( "DBLocalSym( %s, %t )\n", sym, indirect );
-#endif
     if( back.data.CurrProc->targ.debug != NULL ) {
         attr = FEAttr( *back.front, sym );
         if( (attr & FE_IMPORT) == 0 ) {
@@ -616,9 +472,6 @@ void    _CGAPI DBLocalType( BackRun& back, cg_sym_handle sym, bool kind )
 {
     dbg_local   *lcl;
 
-#ifdef DEVBUILD
-    EchoAPI( "DBLocalType( %s, %i)\n", sym, kind );
-#endif
     if( _IsModel( CGSW_GEN_DBG_LOCALS ) ) {
         if( _IsModel( CGSW_GEN_DBG_CV )
           || _IsModel( CGSW_GEN_DBG_DF ) ) {
@@ -669,9 +522,6 @@ dbg_block *DoDBBegBlock( BackRun& back, int fast_codegen )
 void _CGAPI     DBBegBlock( BackRun& back )
 /********************************/
 {
-#ifdef DEVBUILD
-    EchoAPI( "DBBegBlock()\n" );
-#endif
     DoDBBegBlock( back, 0 );
 }
 
@@ -681,9 +531,6 @@ void    DoDBEndBlock( BackRun& back, int fast_codegen )
 {
     dbg_block   *blk;
 
-#ifdef DEVBUILD
-    EchoAPI( "DBEndBlock()\n" );
-#endif
     if( back.data.CurrProc->targ.debug != NULL ) {
         blk = back.data.CurrProc->targ.debug->blk;
         if( !fast_codegen ) {
@@ -707,10 +554,8 @@ void    DbgSetBase( BackRun& back )
         /* nothing */
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
         CVSetBase();
-#if _TARGET_INTEL
     } else {
         WVSetBase(back);
-#endif
     }
 }
 
@@ -745,7 +590,6 @@ void    DbgRetLoc( BackRun& back )
     if( back.data.CurrProc->targ.debug->return_loc == NULL ) {
         loc = DBLocInit();
         loc = LocReg( back, loc, AllocRegName( back, back.data.CurrProc->state.return_reg ) );
-#if _TARGET_INTEL
         if( back.data.CurrProc->targ.return_points == NULL ) {
             /* nothing to do */
         } else if( back.data.CurrProc->state.attr & ROUTINE_ALLOCS_RETURN ) {
@@ -753,7 +597,6 @@ void    DbgRetLoc( BackRun& back )
         } else {
             loc->class_ = LOC_IND_REG + IND_CALLOC_NEAR;
         }
-#endif
         back.data.CurrProc->targ.debug->return_loc = loc;
     }
 }
@@ -871,10 +714,8 @@ void    DbgBlkEnd( BackRun& back, dbg_block *blk, offset lc )
         DFBlkEnd( back, blk, lc );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
         CVBlkEnd( back, blk, lc );
-#if _TARGET_INTEL
     } else {
         WVBlkEnd( back, blk, lc );
-#endif
     }
     CGFree( back, blk );
 }
@@ -899,10 +740,8 @@ void    DbgRtnEnd( BackRun& back, dbg_rtn *rtn, offset lc )
         DFRtnEnd( back, rtn, lc );
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
         CVRtnEnd( back, rtn, lc );
-#if _TARGET_INTEL
     } else {
         WVRtnEnd( back, rtn, lc );
-#endif
     }
     CGFree( back, rtn->blk );
     CGFree( back, rtn );

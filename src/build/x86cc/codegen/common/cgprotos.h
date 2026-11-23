@@ -40,20 +40,5 @@
 #include "cgfuntab.h"
 #undef CGAPIDEF
 
-#if defined( _CGDLL )
-
-typedef struct  cg_interface {
-#define CGAPIDEF( a, b, c )     b _CGAPI (*a) c;
-#include "cgfuntab.h"
-#undef  CGAPIDEF
-} cg_interface;
-
-extern  struct cg_interface *CGFuncTable;
-
-#ifndef BY_CG
-#include "cgprotos.gh"
-#endif
-
-#endif
 
 #endif

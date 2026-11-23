@@ -54,39 +54,9 @@ struct handle_blk {
     handle_blk          *next[1];
 };
 
-#ifdef DEVBUILD
-
-static struct {
-    unsigned    dump_handle : 1;
-} dbgFlag;
-
-static void initDbgHandle( void )
-{
-    if( getenv( "DW_DUMPHANDLE" ) ) {
-        dbgFlag.dump_handle = 1;
-    }
-}
-
-static void dbgAllocHandle( dw_handle h )
-{
-    if( dbgFlag.dump_handle ) {
-        printf( __FILE__ ": %09u+\n", h );
-        fflush( stdout );
-    }
-}
-
-static void dbgDefineHandle( dw_handle h )
-{
-    if( dbgFlag.dump_handle ) {
-        printf( __FILE__ ": %09u-\n", h );
-        fflush( stdout );
-    }
-}
-#else
 #define initDbgHandle()
 #define dbgAllocHandle( h )
 #define dbgDefineHandle( h )
-#endif
 
 void DW_InitHandles( BackRun& back, dw_client cli )
 {

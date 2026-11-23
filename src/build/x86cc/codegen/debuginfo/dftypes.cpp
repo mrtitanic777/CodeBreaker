@@ -240,21 +240,17 @@ static  dw_handle   MKBckVar( BackRun& back, back_handle bck, int off, dw_handle
     DWLocOp( back, back.dfsyms.Client, locid, DW_LOC_plus_uconst, off );
     dw_loc = DWLocFini( back, back.dfsyms.Client, locid );
     dw_segloc = NULL;
-#if _TARGET_INTEL
     if( _IsntTargetModel( CGSW_X86_FLAT_MODEL ) ) {
         locid = DWLocInit( back, back.dfsyms.Client );
         DWLocSym( back, back.dfsyms.Client, locid, (dw_sym_handle)bck, DW_W_LABEL_SEG );
         dw_segloc = DWLocFini( back, back.dfsyms.Client, locid );
     }
-#endif
     obj = DWVariable( back, back.dfsyms.Client, tipe, dw_loc, 0, dw_segloc, "__bck", 0, static_cast<dw_flags>(0) );
 
     DWLocTrash( back, back.dfsyms.Client, dw_loc );
-#if _TARGET_INTEL
     if( dw_segloc != NULL ) {
         DWLocTrash( back, back.dfsyms.Client, dw_segloc );
     }
-#endif
     return( obj );
 }
 
@@ -340,12 +336,8 @@ static dw_flags DFPtrClass( BackRun& back, cg_type ptr_type )
     dw_flags        flags;
 
     flags = DW_FLAG_NONE;
-#if _TARGET_INTEL
     if( (ptr_type == TY_POINTER || ptr_type == TY_CODE_PTR)
       && _IsTargetModel( CGSW_X86_FLAT_MODEL ) ) {
-#else
-    if( ptr_type == TY_POINTER || ptr_type == TY_CODE_PTR ) {
-#endif
         flags = DW_FLAG_PTR_TYPE_DEFAULT;
     } else {
         tipe_addr = TypeAddress( back, ptr_type );

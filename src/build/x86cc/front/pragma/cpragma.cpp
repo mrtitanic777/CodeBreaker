@@ -40,9 +40,6 @@
 #include "asmstmt.h"
 #include "scan.h"
 #include "toggles.h"
-#ifdef DEVBUILD
-    #include "togglesd.h"
-#endif
 
 #include "clibext.h"
 #include "frontrun.hpp"
@@ -62,9 +59,6 @@ typedef struct prag_stack {
     unsigned            value;
 } prag_stack;
 
-#ifdef DEVBUILD
-pragma_dbg_toggles      PragmaDbgToggles;
-#endif
 
 
 struct magic_words_data {
@@ -376,9 +370,6 @@ void CreateAux( FrontRun& front, const char *id )
 {
     front.pragdefn.CurrEntry = (aux_entry *)CMemAlloc( front, offsetof( aux_entry, name ) + strlen( id ) + 1 );
     strcpy( front.pragdefn.CurrEntry->name, id );
-#if _CPU == 370
-    CurrEntry->offset = -1;
-#endif
 }
 
 
@@ -469,19 +460,6 @@ void XferPragInfo( FrontRun& front, const char *from, const char *to )
 static void CopyLinkage( void )
 /*****************************/
 {
-#if _CPU == 370
-    linkage_regs *regs;
-
-    if( CurrInfo->linkage == &DefaultLinkage )
-        return;
-    if( CurrInfo->linkage == &OSLinkage )
-        return;
-    if( CurrInfo->linkage != CurrAlias->linkage )
-        return;
-    regs = (linkage_regs *)CMemAlloc( sizeof( linkage_regs ) );
-    memcpy( regs, CurrInfo->linkage, sizeof( linkage_regs ) );
-    CurrInfo->linkage = regs;
-#endif
 }
 
 
@@ -533,17 +511,6 @@ static void CopyObjName( FrontRun& front )
     front.pragdefn.CurrInfo->objname = CMemStrdup( front, front.pragdefn.CurrInfo->objname );
 }
 
-#if _CPU == _AXP
-static void CopyExceptRtn( void )
-/*******************************/
-{
-    if( CurrInfo->except_rtn == NULL )
-        return;
-    if( CurrInfo->except_rtn != CurrAlias->except_rtn )
-        return;
-    CurrInfo->except_rtn = CMemStrdup( CurrInfo->except_rtn );
-}
-#endif
 
 void PragmaAuxEnding( FrontRun& front )
 /**************************/
@@ -560,9 +527,6 @@ void PragmaAuxEnding( FrontRun& front )
         CopyLinkage();
         CopyCode(front);
         CopyObjName(front);
-#if _CPU == _AXP
-        CopyExceptRtn();
-#endif
         front.pragdefn.CurrInfo->use = 1;
         front.pragdefn.CurrEntry->info = front.pragdefn.CurrInfo;
     }
@@ -718,18 +682,6 @@ hw_reg_set *PragManyRegSets( FrontRun& front )
 void SetToggleFlag( FrontRun& front, char const *name, int func, bool push )
 /*********************************************************/
 {
-#ifdef DEVBUILD
-    #define pick( x ) \
-        if( strcmp( name, #x ) == 0 ) { \
-            if( func == -1 ) { \
-            } else { \
-                TOGGLEDBG( x ) = ( func != 0 ); \
-            } \
-            return; \
-        }
-    #include "togdefd.h"
-    #undef pick
-#endif
     #define pick( x ) \
         if( strcmp( name, #x ) == 0 ) { \
             if( func == -1 ) { \
@@ -1029,9 +981,7 @@ static void pragAllocText( FrontRun& front )
                 break;
             }
         }
-#if _INTEL_CPU
         front.cvars.CompFlags.multiple_code_segments = true;
-#endif
         MustRecog( front, T_RIGHT_PAREN );
     }
     PPCTL_DISABLE_MACROS();
@@ -1411,9 +1361,7 @@ static void pragCodeSeg( FrontRun& front )
         }
         MustRecog( front, T_RIGHT_PAREN );
         front.cvars.DefCodeSegment = tseg;
-#if _INTEL_CPU
         front.cvars.CompFlags.multiple_code_segments = true;
-#endif
     }
     PPCTL_DISABLE_MACROS();
 }

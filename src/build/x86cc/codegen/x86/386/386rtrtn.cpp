@@ -315,7 +315,5 @@ instruction     *rMAKEFNEG( BackRun& back, instruction *ins )
 }
 
 /* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
-#if _TARGET & _TARG_80386
 X386rtrtnState* x386rtrtn_make() { return new X386rtrtnState(); }
 void x386rtrtn_free(X386rtrtnState* part) { delete part; }
-#endif

@@ -53,16 +53,8 @@
 
 //#define FP80BIT_DEVELOPMENT
 
-#ifdef FP80BIT_DEVELOPMENT
-#define __FP80BIT(ld,d)                 ld
-#else
 #define __FP80BIT(ld,d)                 d
-#endif
 
 #define _IsPowerOfTwo( x )              ( ( (x) & ( 1 - (x) ) ) == (x) )
 
-#ifdef __AXP__
-#define _AlignmentCheck( ptr, size )    assert( (((unsigned)ptr) & ((size)-1)) == 0 )
-#else
 #define _AlignmentCheck( ptr, size )    {}
-#endif

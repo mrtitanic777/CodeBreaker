@@ -39,11 +39,7 @@
 #include "frontrun.hpp"
 
 
-#if defined( WATCOM_BIG_ENDIAN )
-#   define i64val(h,l) { h, l }
-#else
 #   define i64val(h,l) { l, h }
-#endif
 
 #if _CPU == 8086
 #define ENUM_INT    ENUM_S16
@@ -134,11 +130,6 @@ static ENUMPTR EnumLkAdd( FrontRun& front, TAGPTR tag )
     if( tag->u.enum_list == NULL ) {
         tag->u.enum_list = esym;
     }
-#if 0
-    if( CompFlags.emit_browser_info ) {
-        esym->xref = NewXref( NULL );
-    }
-#endif
     return( esym );
 }
 
@@ -351,22 +342,3 @@ void FreeEnums( FrontRun& front )
     }
 }
 
-#ifdef DEVBUILD
-
-void DumpEnumTable( void )
-{
-    ENUMPTR         esym;
-    id_hash_idx     hash;
-
-    puts( "ENUM TABLE DUMP" );
-    for( hash = 0; hash < ID_HASH_SIZE; hash++ ) {
-        for( esym = EnumTable[hash]; esym != NULL; esym = esym->next_enum ) {
-            if( CheckEqSymLevel( esym->parent ) ) {
-                printf( "%s = %lld\n", esym->name, esym->value.u._64[0] );
-            }
-        }
-        printf( "---------%d----------\n", hash );
-    }
-}
-
-#endif

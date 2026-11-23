@@ -50,13 +50,7 @@ static  ins_entry       *Redirect( BackRun& back, ins_entry *, ins_entry * );
 static  bool    LineLabel( ins_entry *label )
 /*******************************************/
 {
-#if _TARGET_RISC
-    if( _LblLine( label ) != 0 ) {
-        return( true );
-    }
-#else
     /* unused parameters */ (void)label;
-#endif
     return( false );
 }
 
@@ -122,11 +116,7 @@ static  bool    UnTangle1( BackRun& back, ins_entry *jmp, ins_entry **instr )
         return( false );
     if( _Class( c_jmp ) != OC_JCOND )
         return( false );
-#if( OPTIONS & SEGMENTED )
     if( _Label( c_jmp ) == _Label( *instr ) && !_ChkAttr( jmp, OC_ATTR_FAR ) ) {
-#else
-    if( _Label( c_jmp ) == _Label( *instr ) ) {
-#endif
         /* conditional jump around a jump*/
         _JmpCond( c_jmp ) = ReverseCondition( _JmpCond( c_jmp ) );
         cl = _ClassInfo( jmp );
@@ -161,10 +151,8 @@ static  bool    UnTangle2( BackRun& back, ins_entry *jmp, ins_entry **instr )
     }
     if( cl != OC_JMP )
         return( false );
-#if( OPTIONS & SEGMENTED )
     if( _ChkAttr( jmp, OC_ATTR_FAR ) )
         return( false );
-#endif
     if( _Label( *instr )->ins == NULL )
         return( false );
     if( _Label( jmp )->redirect == _Label( *instr ) )
@@ -399,11 +387,9 @@ void    OptPull( BackRun& back )
         break;
     case OC_JCOND:
     case OC_JMP:
-#if( OPTIONS & SHORT_JUMPS )
         if( !_ChkAttr( back.optdata.FirstIns, OC_ATTR_FAR ) ) {
             SetBranches(back);
         }
-#endif
         _SetStatus( _Label( back.optdata.FirstIns ), KEEPLABEL );
         break;
     }

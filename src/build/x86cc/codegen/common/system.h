@@ -32,28 +32,8 @@
 
 
 #pragma once
-#if defined( __BIG_ENDIAN__ )
-
-extern uint_16          TargetShort( uint_16 );
-extern uint_32          TargetBigInt( uint_32 );
-extern void             TargAddL( uint_32 *, uint_32 );
-extern void             TargAddW( uint_16 *, uint_16 );
 
 #define _IntToByte( value )             ((value) & 0xff)
-#define _IntToWord( value )             ((value) & 0xffff)
-#define _TargetShort( value )           TargetShort( value )
-#define _TargetBigInt( value )          TargetBigInt( value )
-#define _TargetOffset( value )          TargetOffset( value )
-#define _TargetLongInt( value )         TargetBigInt( value )
-#define _HostOffset( value )            TargetOffset( value )
-#define _HostShort( value )             TargetShort( value )
-#define _TargetAddL( targetw, value )   TargAddL( &targetw, value )
-#define _TargetAddW( targetw, value )   TargAddW( &targetw, value )
-
-#else
-
-#define _IntToByte( value )             ((value) & 0xff)
-#define _IntToWord( value )             ((value) & 0xffff)
 #define _TargetShort( value )           ( value )
 #define _TargetBigInt( value )          ( value )
 #define _TargetOffset( value )          ( value )
@@ -63,4 +43,3 @@ extern void             TargAddW( uint_16 *, uint_16 );
 #define _TargetAddL( targetw, value )   targetw += value
 #define _TargetAddW( targetw, value )   targetw += value
 
-#endif

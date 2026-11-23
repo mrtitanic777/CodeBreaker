@@ -264,54 +264,7 @@ bool    PropRegsOne( void )
  * call    A
  */
 {
-#if 0
-    block       *blk;
-    instruction *ins;
-    instruction *next;
-    name        *reg;
-    name        **opp;
-    bool        change;
-
-    change = false;
-    for( blk = HeadBlock; blk != NULL; blk = blk->next_block ) {
-        for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-            if( ins->head.opcode != OP_MOV )
-                continue;
-            reg = ins->operands[0];
-            if( FPSideEffect( ins ) )
-                continue;
-            if( reg->n.class_ != N_REGISTER )
-                continue;
-            next = ins->head.next;
-            if( next->head.opcode == OP_BLOCK )
-                break;
-            if( FPStackIns( next ) )
-                continue;
-            if( next->head.opcode == OP_LA )
-                continue;
-            if( next->head.opcode == OP_CAREFUL_LA )
-                continue;
-            if( next->num_operands != 1 ) {
-                if( next->num_operands <= OpcodeNumOperands( next ) )
-                    continue;
-                if( !IsSegReg( reg->r.reg ) )
-                    continue;
-                opp = &next->operands[next->num_operands - 1];
-            } else {
-                if( _IsConvert( next ) )
-                    continue;
-                opp = &next->operands[0];
-            }
-            if( *opp != ins->result )
-                continue;
-            *opp = reg;
-            change = true;
-        }
-    }
-    return( change );
-#else
     return( false );
-#endif
 }
 
 

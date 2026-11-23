@@ -47,11 +47,7 @@
 #include "backrun.hpp"
 
 
-#if _TARGET & _TARG_AXP
-    #define _ParmReg( x )       FirstReg( x )
-#else
     #define _ParmReg( x )       FirstReg( back, x )
-#endif
 
 instruction     *rMAKECALL( BackRun& back, instruction *ins )
 /*********************************************
@@ -94,17 +90,10 @@ instruction     *rMAKECALL( BackRun& back, instruction *ins )
         HW_TurnOn( all_regs, regs );
         PrefixIns( back, ins, new_ins );
     }
-#if _TARGET & _TARG_370
-    tmp = RAReg();
-    HW_TurnOn( all_regs, tmp );
-    tmp = LNReg();
-    HW_TurnOn( all_regs, tmp );
-#elif _TARGET & _TARG_80386
     {
     tmp = ReturnReg( back, WD, false );
     HW_TurnOn( all_regs, tmp );
     }
-#endif
     reg_name = AllocRegName( back, all_regs );
     lbl = RTLabel( back, rtindex );
     new_ins = NewIns( back, 3 );
@@ -115,12 +104,6 @@ instruction     *rMAKECALL( BackRun& back, instruction *ins )
     new_ins->operands[CALL_OP_ADDR] = AllocMemory( back, lbl, 0, CG_LBL, ins->type_class );
     new_ins->result = NULL;
     new_ins->num_operands = 2;         /* special case for OP_CALL*/
-#if _TARGET & _TARG_AXP
-    HW_CTurnOn( all_regs, HW_FULL );
-    HW_TurnOff( all_regs, SavedRegs() );
-    HW_CTurnOff( all_regs, HW_UNUSED );
-    HW_TurnOn( all_regs, ReturnAddrReg() );
-#endif
     new_ins->zap = (register_name *)AllocRegName( back, all_regs );   /* all parm regs could be zapped*/
     last_ins = new_ins;
     if( ins->result == NULL || _OpIsCondition( ins->head.opcode ) ) {

@@ -304,26 +304,6 @@ dbg_type    WVSubRange( BackRun& back, int_32 lo, int_32 hi, dbg_type base )
     return( back.data.TypeIdx );
 }
 
-#if 0
-static  void    ReverseDims( dbg_array ar )
-/*****************************************/
-{
-    dim_any     *curr;
-    dim_any     *next;
-    dim_any     *head;
-
-    curr = ar->list;
-    head = NULL;
-    while( curr != NULL ) {
-        next = curr->next;
-        curr->next = NULL;
-        curr->next = head;
-        head = curr;
-        curr = next;
-    }
-    ar->list = head;
-}
-#endif
 
 dbg_type    WVEndArray( BackRun& back, dbg_array ar )
 /************************************/

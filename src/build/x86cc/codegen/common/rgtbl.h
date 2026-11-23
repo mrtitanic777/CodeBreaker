@@ -78,23 +78,4 @@ extern hw_reg_set       SaveRegs( BackRun& back );
 extern hw_reg_set       MustSaveRegs( BackRun& back );
 extern hw_reg_set       ScratchReg( BackRun& back );
 
-#if _TARGET_INTEL
 extern hw_reg_set       ReturnReg( BackRun& back, type_class_def type_class, bool use_87 );
-#else
-extern hw_reg_set       ReturnReg( type_class_def type_class );
-extern reg_set_index    UsualPossible( type_class_def type_class );
-extern hw_reg_set       FrameBaseReg( void );
-extern hw_reg_set       FrameReg( void );
-extern int              GetArchIndex( hw_reg_set regs );
-extern const hw_reg_set *ParmRegs( void );
-extern const hw_reg_set *GPRegs( void );
-extern const hw_reg_set *FPRegs( void );
-extern hw_reg_set       SavedRegs( void );
-#if _TARGET & _TARG_370
-extern hw_reg_set       RAReg( void );
-extern hw_reg_set       LNReg( void );
-#endif
-#if _TARGET & _TARG_PPC
-extern hw_reg_set       TocReg( void );
-#endif
-#endif

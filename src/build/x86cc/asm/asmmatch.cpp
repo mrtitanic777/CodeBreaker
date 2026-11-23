@@ -34,9 +34,6 @@
 #include "asmglob.h"
 #include "asmalloc.h"
 #include "asmfixup.h"
-#if defined( _STANDALONE_ )
-  #include "directiv.h"
-#endif
 #include "asmrun.hpp"
 
 
@@ -68,22 +65,6 @@ static bool output( AsmRun& assembler, const asm_ins ASMI86FAR *ins )
     unsigned_8      tmp;
     fp_patches      patch = FPP_NONE;
 
-#if defined( _STANDALONE_ )
-    /*
-     * Output debug info - line numbers
-     */
-    if( Options.debug_info && !PhaseError && ( Parse_Pass != PASS_1 ) ) {
-        AddLinnumDataRef();
-    }
-
-    /*
-     * Check if FP is valid
-     */
-    if(( (ins->cpu & P_FPU_MASK) != P_NO87 ) && ( SWData.fpt == NO_FP_ALLOWED )) {
-        AsmError( NO_FP_WITH_FPC_SET );
-        return( RC_ERROR );
-    }
-#endif
 
     /*
      * Check if CPU and FPU is valid for output code
@@ -342,9 +323,6 @@ static bool output_data( AsmRun& assembler, OPNDTYPE determinant, operand_idx in
         return( RC_OK );
     }
 
-#if defined( _STANDALONE_ )
-    store_fixup( index );
-#endif
 
     if( determinant & OP_I8 ) {   // 8 bit
         out = 1;
@@ -708,16 +686,8 @@ static bool match_phase_3( AsmRun& assembler, bool *found, const asm_ins ASMI86F
             break;
         case OP_I:
             if( cur_opnd & asm_op2 ) {
-#if defined(_STANDALONE_)
-                long operand = Code->data[OPND2];
-#endif
                 if( last_opnd & OP_R8 ) {
                     // 8-bit register, so output 8-bit data
-#if defined(_STANDALONE_)
-                    if( Parse_Pass == PASS_1 && !InRange( operand, 1 ) ) {
-                        AsmWarn( 1, IMMEDIATE_CONSTANT_TOO_LARGE );
-                    }
-#endif
                     SET_OPSIZ_OFF( assembler.asmdefs.Code );
                     cur_opnd = OP_I8;
                     if( assembler.asmfixup.InsFixups[OPND2] != NULL ) {
@@ -725,11 +695,6 @@ static bool match_phase_3( AsmRun& assembler, bool *found, const asm_ins ASMI86F
                     }
                 } else if( last_opnd & OP_R16 ) {
                     // 16-bit register, so output 16-bit data
-#if defined(_STANDALONE_)
-                    if( Parse_Pass == PASS_1 && !InRange( operand, 2 ) ) {
-                        AsmWarn( 1, IMMEDIATE_CONSTANT_TOO_LARGE );
-                    }
-#endif
                     cur_opnd = OP_I16;
                 } else if( last_opnd & OP_R32 ) {
                     // 32-bit register, so output 32-bit data

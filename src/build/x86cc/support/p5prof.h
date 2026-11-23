@@ -30,9 +30,6 @@
 
 
 #pragma once
-#if defined( __WATCOMC__ ) && !defined( _COMDEF_H_INCLUDED )
- #include <_comdef.h>
-#endif
 
 typedef unsigned long reg_32;
 
@@ -68,27 +65,9 @@ typedef struct block_count_info {
 } block_count_info;
 #include "poppck.h"
 
-#define PROFILE_FLAG_DYNAMIC    '+'
 #define PROFILE_FLAG_END_GROUP  '-'
 #define PROFILE_FLAG_BLOCK      'b'
 #define PROFILE_LONG_FORMAT_LEN 20
 
 extern void *__ProfAlloc( unsigned long size );
 
-#if defined( __WATCOMC__ )
-
-_WCRTLINK extern void __ProfInit( void );
-_WCRTLINK extern void __ProfExitCriticalSection( void );
-_WCRTLINK extern void __ProfEnterCriticalSection( void );
-_WCRTLINK extern void __ProfEnable( void );
-_WCRTLINK extern void __ProfDisable( void );
-_WCRTLINK extern __int64 __P5_overhead( void );
-
-#if defined( _M_IX86 ) && !defined( _M_I86 )
-#pragma aux __ProfProlog "__PON" __parm __routine [] __modify []
-_WCRTLINK extern void __ProfProlog( new_P5_timing_info *block );
-#pragma aux __ProfEpilog "__POFF" __parm __routine [] __modify []
-_WCRTLINK extern void __ProfEpilog( new_P5_timing_info *block );
-#endif
-
-#endif

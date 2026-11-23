@@ -259,23 +259,6 @@ static  int             BlockSearch( BackRun& back, block *blk, instruction *ins
                 return( BLOCK_DEREFS );
             if( _IsReDefinedBy( curr, op ) )
                 return( BLOCK_REDEFS );
-#if 0
-            if( curr->head.opcode == OP_MOV &&
-                curr->operands[0] == op &&
-                curr->result != op ) {
-                parm_struct parms;
-                // we see mov t1 -> t2, and are trying to see if t1 has dominating
-                // derefs from this path on - this is true if t2 has dominating
-                // derefs from this path on - so we recurse (Yikes!)
-                parms.blk = blk;
-                parms.ins = curr;
-                parms.op = curr->result;
-                parms.forward = true;
-                if( FROM_SR_VALUE( SafeRecurseCG( (func_sr)DominatingDeref, &parms ), bool ) ) {
-                    return( BLOCK_DEREFS );
-                }
-            }
-#endif
         } else {
             if( _IsReDefinedBy( curr, op ) )
                 return( BLOCK_REDEFS );

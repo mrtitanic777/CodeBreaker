@@ -98,7 +98,6 @@ typedef struct asm_code {
     bool         mem_type_fixed  : 1;
 } asm_code;
 
-#define NO_PREFIX   0x00
 #define LOCK        0x01
 #define REP         0x02
 #define REPxx       0x03
@@ -144,12 +143,6 @@ extern const char           AsmChars[];
 
 extern const char           *const regs[3][4];
 
-#if defined( _STANDALONE_ )
-
-extern void     find_frame( asm_sym_handle sym );
-extern int      GetInsString( asm_token, char * );
-
-#endif
 
 extern int      OperandSize( AsmRun& assembler, OPNDTYPE opnd );
 extern bool     InRange( unsigned long val, unsigned bytes );

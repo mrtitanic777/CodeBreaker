@@ -441,13 +441,6 @@ instruction *   PushOneParm( BackRun& back, instruction *ins, name *curr,
 
     new_ins = MakeUnary( back, OP_PUSH, curr, NULL, type_class );
     SuffixIns( back, ins, new_ins );
-#if 0
-    if( curr->n.class_ == N_CONSTANT ) {
-        size = TypeClassSize[type_class];
-    } else {
-        size = curr->n.size;
-    }
-#endif
     return( new_ins );
 }
 

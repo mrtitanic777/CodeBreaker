@@ -31,11 +31,7 @@
 
 
 #pragma once
-#ifdef _M_I86
-#define ASMI86FAR   __far
-#else
 #define ASMI86FAR
-#endif
 
 #define RC_ERROR                true
 #define RC_OK                   false
@@ -44,17 +40,11 @@
 #define MAX_LINE_LEN            512     // there is no restriction for this number
 #define MAX_TOK_LEN             256
 #define MAX_ID_LEN              247
-#define MAX_MEMORY              1024
-#define MAX_LINE                1024
-#define MAX_PUB_SIZE            100     // max # of entries in pubdef record
-#define MAX_EXT_LENGTH          0x400   // max length ( in chars ) of extdef
 
 /* max_ledata_threshold = 1024 - 6 for the header, -6 for space for fixups */
 #define MAX_LEDATA_LEN          1024
-#define MAX_LEDATA_THRESHOLD    (MAX_LEDATA_LEN - 12)
 
 #define NULLC                   '\0'
-#define NULLS                   "\0"
 
 #define INVALID_IDX             (MAX_TOKEN_COUNT + 1)
 #define ISVALID_IDX(x)          ((x)<INVALID_IDX)

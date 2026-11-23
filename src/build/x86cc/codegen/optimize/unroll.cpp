@@ -51,7 +51,6 @@
 #include "blktrim.h"
 #include "unroll.h"
 #include "revcond.h"
-#include "dumpio.h"
 #include "backrun.hpp"
 
 
@@ -329,126 +328,6 @@ static int_32   UnrollCount( BackRun& back, block *loop_tail, bool *clean, bool 
     return( unroll_count );
 }
 
-#if 0
-static  bool    ReplaceName( name **pop, name *orig, name *new_name )
-/********************************************************************
- * Replace all occurrences of orig in *pop with new and return the new name.
- */
-{
-    name        *op;
-    type_length offset;
-
-    op = *pop;
-    if( op == NULL )
-        return( false );
-    switch( op->n.class_ ) {
-    case N_INDEXED:
-        if( op->i.index == orig ) {
-            *pop = ScaleIndex( new_name, op->i.base,
-                               op->i.constant,
-                               op->n.type_class, op->n.size,
-                               op->i.scale, op->i.index_flags );
-            return( true );
-        } else if( op->i.base == orig ) {
-            *pop = ScaleIndex( op->i.index, new_name, op->i.constant,
-                               op->n.type_class, op->n.size,
-                               op->i.scale, op->i.index_flags );
-        }
-        break;
-    case N_TEMP:
-        op = DeAlias( op );
-        if( op == orig ) {
-            offset = (*pop)->v.offset - op->v.offset;
-            *pop = TempOffset( new_name, offset, (*pop)->n.type_class );
-            return( true );
-        }
-        break;
-    default:
-        if( op == orig ) {
-            *pop = new_name;
-            return( true );
-        }
-    }
-    return( false );
-}
-
-static  void    ReplaceInductionVars( block *loop, instruction *ins_list,
-                                       int_32 scale )
-/*******************************************************
- * Replace all occurrences of an induction var in the loop with a new
- * temp, and add an instruction to initialize that temp onto the ins_list.
- * By the time we get here, everything should be either dead or a basic
- * induction var. Scale should be the ordinal of the iteration we are on,
- * starting at 1 and incrementing each time this is called on a copy of a
- * loop.
- */
-{
-    induction   *ind;
-    name        *temp;
-    name        *var;
-    instruction *ins;
-    instruction *new_ins;
-    block       *blk;
-    opcnt       i;
-    int_32      adjust;
-
-    for( ind = IndVarList; ind != NULL; ind = ind->next ) {
-        if( _IsV( ind, IV_DEAD ) )
-            continue;
-        var = ind->name;
-        temp = AllocTemp( var->n.type_class );
-        adjust = scale * ind->plus;
-        new_ins = MakeBinary( OP_ADD, var, AllocS32Const( adjust ),
-                            temp, temp->n.type_class );
-        for( blk = loop; blk != NULL; blk = blk->u.loop ) {
-            for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-                ReplaceName( &ins->result, var, temp );
-                for( i = 0; i < ins->num_operands; i++ ) {
-                    ReplaceName( &ins->operands[i], var, temp );
-                }
-            }
-        }
-        /*
-         * have to add this after we run the list replacing vars
-         */
-        PrefixIns( ins_list, new_ins );
-        new_ins = MakeMove( temp, var, temp->n.type_class );
-        SuffixIns( loop->ins.head.prev, new_ins );
-    }
-}
-
-void    DumpLoop( block *loop )
-{
-    block_edge  *edge;
-    block_num   i;
-
-    DumpLiteral( "Block\t\tBlock->u.loop\tBlock->loop_head" );
-    DumpNL();
-    DumpNL();
-    for( ; loop != NULL; loop = loop->u.loop ) {
-        DumpPtr( loop );
-        DumpLiteral( "\t\t" );
-        DumpPtr( loop->u.loop );
-        DumpLiteral( "\t\t" );
-        DumpPtr( loop->loop_head );
-        DumpNL();
-        DumpLiteral( "\tInputs: " );
-        for( edge = loop->input_edges; edge != NULL; edge = edge->next_source ) {
-            DumpPtr( edge->source );
-            DumpChar( ' ' );
-        }
-        DumpNL();
-        DumpLiteral( "\tDest: " );
-        edge = &loop->edge[0];
-        for( i = 0; i < loop->targets; i++ ) {
-            DumpPtr( edge->destination.u.blk );
-            DumpChar( ' ' );
-            edge++;
-        }
-        DumpNL();
-    }
-}
-#endif
 
 static  void    LinkBlocks( block *first, block *second )
 {
@@ -801,62 +680,6 @@ void    HoistCondition( BackRun& back, block *head )
     Zoiks( back, ZOIKS_113 );
 }
 
-#if 0
-void    HoistCondition( block **head, block *prehead )
-/*****************************************************
- * Munge the loop and prehead so that the condition is the first statement in
- * the loop. This only works for a loop which has no conditional blocks in it
- * other than the exit condition. To do this, we hoist each instruction from
- * the head and make a copy appended to both the prehead and blk (my quaint
- * notation for the block which jumps to the head and is not the prehead). We
- * return true if we were able to hoist the condition to the top, false otherwise.
- */
-{
-    block       *blk;
-    block_edge  *blk_edge;
-    instruction *ins;
-    instruction *next;
-    instruction *blk_ins;
-    instruction *prehead_ins;
-
-    for( blk_edge = (*head)->input_edges; blk_edge != NULL; blk_edge = blk_edge->next_source ) {
-        if( blk_edge->source != prehead ) {
-            break;
-        }
-    }
-    if( blk_edge == NULL )
-        return( false );
-    blk = MakeNonConditional( blk_edge->source, blk_edge );
-    blk_ins = blk->ins.head.prev;
-    prehead_ins = prehead->ins.head.prev;
-    blk = *head;
-    /*
-     * it should be either a simple jump or our (1 and only) cond. exit
-     */
-    if( !_IsBlkAttr( blk, BLK_JUMP | BLK_CONDITIONAL ) )
-        return( false );
-    /*
-     * the new head should have an input from prehead and one from the blk
-     * any more and we have to bail out
-     */
-    if( blk->inputs > 2 )
-        return( false );
-    /*
-     * transfer all instructions to prehead/blk
-     */
-    for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
-        if( _OpIsCondition( ins->head.opcode ) ) {
-            return( _IsBlkAttr( blk, BLK_LOOP_EXIT ) );
-        }
-        blk_ins = DupIns( blk_ins, ins, NULL, 0 );
-        next = ins->head.next;
-        RemoveIns( ins );
-        SuffixIns( prehead_ins, ins );
-        prehead_ins = ins;
-    }
-    return( false );
-}
-#endif
 
 static  void    MarkLoopHeader( BackRun& back, block *loop, block *header )
 /***********************************************************
@@ -1070,19 +893,12 @@ static  void    MakeWorldGoAround( BackRun& back, block *loop, loop_abstract *cl
 
 bool    Hoisted( block *head, instruction *compare )
 {
-#if 0
-    if( CanHoist( head ) ) {
-        HoistCondition( head );
-        return( true );
-    }
-#else
     if( _IsBlkAttr( head, BLK_CONDITIONAL ) ) {
         if( _OpIsCondition( head->ins.head.next->head.opcode )
           && compare == head->ins.head.next ) {
             return( true );
         }
     }
-#endif
     return( false );
 }
 

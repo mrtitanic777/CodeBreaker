@@ -42,9 +42,7 @@
 #define TARGET_NEAR_POINTER 2
 #define TARGET_FAR_POINTER  4
 #define TARGET_LONG         4
-#define TARGET_ULONG        4
 #define TARGET_LONG64       8
-#define TARGET_ULON64       8
 #define TARGET_UINT         2
 #define TARGET_FLOAT        4
 #define TARGET_DOUBLE       8
@@ -59,10 +57,6 @@
 #define TARGET_WCHAR        2
 #define TARGET_BITFIELD     8
 
-#define TARGET_CHAR_MAX     127
-#define TARGET_UCHAR_MAX    255U
-#define TARGET_SHORT_MAX    32767
-#define TARGET_USHORT_MAX   65535U
 #define TARGET_INT_MAX      32767
 #define TARGET_INT_MIN      (-32767-1)
 #define TARGET_UINT_MAX     65535U

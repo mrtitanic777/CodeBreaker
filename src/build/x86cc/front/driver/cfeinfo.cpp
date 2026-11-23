@@ -107,16 +107,10 @@ static const char *const VarParmFuncs[] = {
     ((1<<8) | (1<<9) | (1<<12) | (1<<13) | (1<<14) | (1<<17))
 
 #ifdef __SEH__
-  #if _CPU == 386
     extern hw_reg_set const TryParms[] = {
         HW_D( HW_EAX ),
         HW_D( HW_EMPTY )
     };
-  #else
-    hw_reg_set TryParms[] = {
-        HW_D( HW_EMPTY )
-    };
-  #endif
 #endif
 
 #if _CPU == 386
@@ -193,7 +187,6 @@ bool VarFunc( FrontRun& front, SYMPTR sym )
     return( false );
 }
 
-#if _INTEL_CPU
 
 static const inline_funcs *Flat( FrontRun& front, const inline_funcs *ifunc )
 {
@@ -282,7 +275,6 @@ static const inline_funcs *IF_Lookup( FrontRun& front, const char *name )
     }
     return( NULL );
 }
-#endif
 
 aux_info *GetLangInfo( FrontRun& front, type_modifiers flags )
 {
@@ -310,18 +302,7 @@ aux_info *GetLangInfo( FrontRun& front, type_modifiers flags )
 
 bool ParmsToBeReversed( type_modifiers flags, aux_info *inf )
 {
-#ifdef REVERSE
-    if( inf == &DefaultInfo ) {
-        inf = GetLangInfo( flags );
-    }
-    if( inf != NULL ) {
-        if( inf->cclass & FECALL_GEN_REVERSE_PARMS ) {
-            return( true );
-        }
-    }
-#else
     /* unused parameters */ (void)flags; (void)inf;
-#endif
     return( false );
 }
 namespace {
@@ -358,7 +339,6 @@ static aux_info *InfoLookup( FrontRun& front, SYMPTR sym )
                 return( inf );
             name += 8;
         }
-#if _INTEL_CPU
         {
             const inline_funcs  *ifunc;
 
@@ -402,7 +382,6 @@ static aux_info *InfoLookup( FrontRun& front, SYMPTR sym )
             inf->objname = WatcallInfo.objname;
             inf->use = 1;
         }
-#endif
     }
     return( inf );
 }
@@ -524,9 +503,6 @@ static call_class getCallClass( FrontRun& front, SYM_HANDLE sym_handle )
             }
         }
     }
-#ifdef REVERSE
-    cclass &= ~ FECALL_GEN_REVERSE_PARMS;
-#endif
     return( cclass );
 }
 
@@ -536,7 +512,6 @@ static call_class_target getCallClassTarget( FrontRun& front, SYM_HANDLE sym_han
  */
 {
     call_class_target   cclass_target;
-#if _INTEL_CPU
     aux_info            *inf;
     SYM_ENTRY           sym;
 
@@ -568,15 +543,7 @@ static call_class_target getCallClassTarget( FrontRun& front, SYM_HANDLE sym_han
                 cclass_target &= ~ FECALL_X86_FAR_CALL;
             }
             if( sym.mods & FLAG_LOADDS ) {
-  #if 0
-                if( TargetSystem == TS_WINDOWS ) {
-                    cclass_target |= FECALL_X86_PROLOG_FAT_WINDOWS;
-                } else {
-                    cclass_target |= FECALL_X86_LOAD_DS_ON_ENTRY;
-                }
-  #else
                 cclass_target |= FECALL_X86_LOAD_DS_ON_ENTRY;
-  #endif
             }
         }
         if( sym.flags & SYM_FUNC_NEEDS_THUNK ) {
@@ -595,11 +562,6 @@ static call_class_target getCallClassTarget( FrontRun& front, SYM_HANDLE sym_han
     if( front.cvars.CompFlags.st_switch_used ) {
         cclass_target |= FECALL_X86_TOUCH_STACK;
     }
-#else
-    /* unused parameters */ (void)sym_handle;
-
-    cclass_target = 0;
-#endif
     return( cclass_target );
 }
 
@@ -773,7 +735,6 @@ static const char *GetNamePattern( FrontRun& front, SYM_HANDLE sym_handle )
 #endif
         if( sym.flags & SYM_FUNCTION ) {
             pattern = inf->objname;
-#if _INTEL_CPU
             if( VarFunc( front, &sym ) ) {
                 if( inf == &DefaultInfo )
                     inf = front.callinfo.DftCallConv;
@@ -783,7 +744,6 @@ static const char *GetNamePattern( FrontRun& front, SYM_HANDLE sym_handle )
                     pattern = CdeclInfo.objname;
                 }
             }
-#endif
             if( pattern == NULL ) {
                 pattern =  const_cast<char *>(TS_CODE_MANGLE);
             }
@@ -879,7 +839,6 @@ static void addDefaultImports( FrontRun& front )
             control = CM_NULL;
         }
     }
-#if _INTEL_CPU
     if( front.cvars.CompFlags.emit_library_names ) {
         if( front.cvars.CompFlags.float_used ) {
             if( front.cvars.CompFlags.use_long_double ) {
@@ -914,17 +873,6 @@ static void addDefaultImports( FrontRun& front )
             }
         }
     }
-#else /* _RISC_CPU */
-    if( CompFlags.emit_library_names ) {
-        /*
-         * handle floating-point support
-         */
-        if( CompFlags.float_used ) {
-            AddExtRefN( "_fltused_" );
-        }
-    }
-#endif
-#if _INTEL_CPU
     if( front.cvars.CompFlags.main_has_parms ) {
   #if _CPU == 8086
         if( front.cvars.CompFlags.has_wchar_entry ) {
@@ -948,18 +896,12 @@ static void addDefaultImports( FrontRun& front )
         }
   #endif
     }
-#else /* _RISC_CPU */
-    if( CompFlags.main_has_parms ) {
-        AddExtRefN( "_argc" );
-    }
-#endif
     /*
      * handle default windowing app
      */
     if( front.cvars.CompFlags.bw_switch_used ) {
         AddExtRefN( front, "__init_default_win" );
     }
-#if _INTEL_CPU
     /*
      * handle NetWare
      */
@@ -988,7 +930,6 @@ static void addDefaultImports( FrontRun& front )
          */
         AddExtRefN( front, "__new_p5_profile" );
     }
-#endif
 }
 
 
@@ -1092,21 +1033,18 @@ CGPOINTER FEAuxInfo( FrontRun& front, CGPOINTER req_handle, aux_class request )
     switch( request ) {
     case FEINF_SOURCE_LANGUAGE:
         return( (CGPOINTER)FE_LANG_C );
-#if _INTEL_CPU
     case FEINF_STACK_SIZE_8087:
         return( (CGPOINTER)(pointer_uint)front.cvars.Stack87 );
     case FEINF_CODE_GROUP:
         return( (CGPOINTER)front.cvars.GenCodeGroup );
     case FEINF_DATA_GROUP:
         return( (CGPOINTER)front.cvars.DataSegName );
-#endif
     case FEINF_OBJECT_FILE_NAME:
         return( (CGPOINTER)ObjFileName(front) );
     case FEINF_REVISION_NUMBER:
         return( (CGPOINTER)(pointer_uint)II_REVISION );
     case FEINF_AUX_LOOKUP:
         return( req_handle );
-#if _INTEL_CPU
     case FEINF_PROEPI_DATA_SIZE:
         return( (CGPOINTER)(pointer_uint)front.cvars.ProEpiDataSize );
     case FEINF_DBG_PREDEF_SYM:
@@ -1132,7 +1070,6 @@ CGPOINTER FEAuxInfo( FrontRun& front, CGPOINTER req_handle, aux_class request )
     case FEINF_P5_PROF_SEG:
         return( (CGPOINTER)(pointer_uint)front.cvars.FunctionProfileSegId );
   #endif
-#endif
     case FEINF_SOURCE_NAME:
         return( (CGPOINTER)FNameFullPath( front, front.cvars.FNames ) );
     case FEINF_CALL_CLASS:
@@ -1168,17 +1105,14 @@ CGPOINTER FEAuxInfo( FrontRun& front, CGPOINTER req_handle, aux_class request )
         return( (CGPOINTER)&(((FNAMEPTR)req_handle)->mtime) );
     case FEINF_DEPENDENCY_NAME:
         return( (CGPOINTER)FNameFullPath( front, (FNAMEPTR)req_handle ) );
-#if _INTEL_CPU
     case FEINF_PEGGED_REGISTER:
         return( (CGPOINTER)SegPeggedReg( front, (segment_id)(pointer_uint)req_handle ) );
-#endif
     case FEINF_DBG_DWARF_PRODUCER:
         return( (CGPOINTER)DWARF_PRODUCER_ID );
     case FEINF_SAVE_REGS:
         sym.mods = static_cast<type_modifiers>(0);
         inf = FindInfo( front, &sym, req_handle );
         front.cfeinfo.FEAuxInfo_save_set = inf->save;
-#if _INTEL_CPU
         if( sym.mods & FLAG_SAVEREGS ) {
             HW_CTurnOn( front.cfeinfo.FEAuxInfo_save_set, HW_SEGS );
         }
@@ -1187,7 +1121,6 @@ CGPOINTER FEAuxInfo( FrontRun& front, CGPOINTER req_handle, aux_class request )
             HW_CTurnOff( front.cfeinfo.FEAuxInfo_save_set, HW_xSP );
         }
   #endif
-#endif
         return( (CGPOINTER)&front.cfeinfo.FEAuxInfo_save_set );
     case FEINF_RETURN_REG:
         inf = FindInfo( front, &sym, req_handle );
@@ -1196,7 +1129,6 @@ CGPOINTER FEAuxInfo( FrontRun& front, CGPOINTER req_handle, aux_class request )
         inf = FindInfo( front, &sym, req_handle );
         return( (CGPOINTER)inf->code );
     case FEINF_PARM_REGS:
-#if _INTEL_CPU
   #ifdef __SEH__
         if(( (SYM_HANDLE)req_handle == front.cvars.SymTryInit )
           || ( (SYM_HANDLE)req_handle == front.cvars.SymTryFini )
@@ -1205,7 +1137,6 @@ CGPOINTER FEAuxInfo( FrontRun& front, CGPOINTER req_handle, aux_class request )
             return( (CGPOINTER)TryParms );
         }
   #endif
-#endif
         inf = FindInfo( front, &sym, req_handle );
         if( req_handle != NULL ) {
             if( inf->code == NULL
@@ -1214,11 +1145,9 @@ CGPOINTER FEAuxInfo( FrontRun& front, CGPOINTER req_handle, aux_class request )
             }
         }
         return( (CGPOINTER)inf->parms );
-#if _INTEL_CPU
     case FEINF_STRETURN_REG:
         inf = FindInfo( front, &sym, req_handle );
         return( (CGPOINTER)&inf->streturn );
-#endif
     default:
         break;
     }

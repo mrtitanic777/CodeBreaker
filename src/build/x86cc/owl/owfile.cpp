@@ -126,7 +126,6 @@ static void doReloc( BackRun& back, owl_section_handle section, owl_reloc_info *
     section->num_relocs -= 1;
 }
 
-#define _SymIsDefined( s )              ( (s)->section != NULL )
 
 static void resolveRelativeRelocs( BackRun& back, owl_file_handle file ) {
 //*********************************************************

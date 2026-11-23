@@ -25,7 +25,5 @@ struct CfeinfoState {
     };
 #endif
     hw_reg_set FEAuxInfo_save_set;
-#if _INTEL_CPU
     unsigned char FEAuxInfo_Alignment[3] = { 2, 1, 1 };
-#endif
 };

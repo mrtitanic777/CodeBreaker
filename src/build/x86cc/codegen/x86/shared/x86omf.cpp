@@ -163,9 +163,7 @@ static bool         symIsExported( BackRun& back, cg_sym_handle );
 
 #define _CopyTrans( src, dst, len )        Copy( src, dst, len )
 
-#define _ARRAY( what, type )    (*(type *)((char *)(what)->array + (what)->used))
 #define _ARRAYOF( what, type )  ((type *)(what)->array)
-#define _CHGTYPE( what, type )  (*(type *)&(what))
 
 #define altCodeSegId    back.x86omf->codeSegId
 
@@ -480,18 +478,6 @@ static  byte    SegmentAttr( BackRun& back, byte align, seg_attr tipe, bool use_
         attr = SEG_ALGN_PARA;
     } else {
         attr = SEG_ALGN_PAGE;
-#if 0
-    /*
-     * align is a byte - how can it be bigger than 4k - BBB
-     */
-  #if _TARGET & _TARG_80386
-        if( _IsTargetModel( CGSW_X86_EZ_OMF ) ) {
-            if( align > 256 ) {
-                attr = SEG_ALGN_4K;
-            }
-        }
-  #endif
-#endif
     }
     if( tipe & COMMON ) {
         attr |= SEG_COMB_COMMON;
@@ -1261,17 +1247,8 @@ static void    objInit( BackRun& back )
     back.x86omf->CurrFNo = 0;
     OpenObj(back);
     names = InitArray( back, sizeof( byte ), MODEST_HDR, INCREMENT_HDR );
-#ifdef MULTI_THEADR
-    OutName( FEModuleName(), names );
-    PutObjOMFRec( CMD_THEADR, names );
-    if( _IsModel( CGSW_GEN_DBG_NUMBERS ) ) {
-        OutName( FEAuxInfo( NULL, FEINF_SOURCE_NAME ), names );
-        PutObjOMFRec( CMD_THEADR, names );
-    }
-#else
     OutName( back, static_cast<const char *>(FEAuxInfo( *back.front, NULL, FEINF_SOURCE_NAME )), names );
     PutObjOMFRec( back, CMD_THEADR, names );
-#endif
 #if _TARGET & _TARG_80386
     if( _IsTargetModel( CGSW_X86_EZ_OMF )
       || _IsTargetModel( CGSW_X86_FLAT_MODEL ) ) {
@@ -1358,10 +1335,6 @@ static void    objInit( BackRun& back )
         if( _IsModel( CGSW_GEN_DBG_LOCALS )
           || _IsModel( CGSW_GEN_DBG_TYPES ) ) {
             DFObjInitDbgInfo(back);
-#if 0 /* save for JimR and linker */
-        } else if( _IsModel( CGSW_GEN_DBG_NUMBERS ) ) {
-            DFObjLineInitDbgInfo();
-#endif
         }
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
         CVObjInitDbgInfo(back);
@@ -2147,19 +2120,7 @@ static  void    EndModule( BackRun& back )
      * 16-bit MODEND records. This causes us no pain, since we never need any
      * features provided by the 32-bit form anyway.
      */
-#if 0
- #if _TARGET & _TARG_80386
-    if( _IsntTargetModel( CGSW_X86_EZ_OMF ) ) {
-        cmd = CMD_MODEND32;
-    } else {
-        cmd = CMD_MODEND;
-    }
- #else
     cmd = CMD_MODEND;
- #endif
-#else
-    cmd = CMD_MODEND;
-#endif
     b = 0;                     /* non-main module, no start address*/
     tmp.used = sizeof( byte );
     tmp.array = &b;
@@ -2187,10 +2148,6 @@ static void    objFini( BackRun& back )
                 }
             }
             DFObjFiniDbgInfo( back, codesize );
-#if 0 /* save for Jimr */
-        } else if( _IsModel( CGSW_GEN_DBG_NUMBERS ) ) {
-            DFObjLineFini( );
-#endif
         }
     } else if( _IsModel( CGSW_GEN_DBG_CV ) ) {
         CVObjFiniDbgInfo();
@@ -2745,16 +2702,7 @@ static void DoFix( BackRun& back, omf_idx idx, bool rel, base_type base, fix_cla
       && ( F_CLASS( class_ ) != F_PTR ) ) {
         omf_idx     grp_idx;
 
-  #if 0
-        /* only generate a normal style fixup for now */
-        if( class_ & F_TLS ) {
-            grp_idx = TLSGIndex;
-        } else {
-            grp_idx = FlatGIndex;
-        }
-  #else
         grp_idx = back.x86omf->FlatGIndex;
-  #endif
         if( base == BASE_GRP ) {
             cursor->fixdat = FIXDAT_FRAME_GROUP + FIXDAT + BASE_SEG;
             OutIdx( back, grp_idx, &obj->fixes );

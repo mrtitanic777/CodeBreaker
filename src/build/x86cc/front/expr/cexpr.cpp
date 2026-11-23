@@ -200,7 +200,6 @@ op_flags OpFlags( type_modifiers flags )
         ops |= OPFLAG_VOLATILE;
     if( flags & FLAG_UNALIGNED )
         ops |= OPFLAG_UNALIGNED;
-#if _INTEL_CPU
     if( flags & FLAG_NEAR )
         ops |= OPFLAG_NEARPTR;
     if( flags & FLAG_FAR )
@@ -209,7 +208,6 @@ op_flags OpFlags( type_modifiers flags )
         ops |= OPFLAG_HUGEPTR;
     if( flags & FLAG_FAR16 )
         ops |= OPFLAG_FAR16PTR;
-#endif
     return( ops );
 }
 
@@ -224,7 +222,6 @@ type_modifiers FlagOps( op_flags ops )
         flags |= FLAG_VOLATILE;
     if( ops & OPFLAG_UNALIGNED )
         flags|= FLAG_UNALIGNED;
-#if _INTEL_CPU
     if( ops & OPFLAG_NEARPTR )
         flags |= FLAG_NEAR;
     if( ops & OPFLAG_FARPTR )
@@ -233,7 +230,6 @@ type_modifiers FlagOps( op_flags ops )
         flags |= FLAG_HUGE;
     if( Far16Pointer(ops) )
         flags |= FLAG_FAR16;
-#endif
     return( flags );
 }
 
@@ -590,11 +586,9 @@ static TREEPTR TakeRValue( FrontRun& front, TREEPTR tree, int void_ok )
             tree = ExprNode( front, NULL, OPR_ADDROF, tree );
             if( segid == SEG_STACK ) {
                 front.cvars.CompFlags.addr_of_auto_taken = true;
-#if _INTEL_CPU
                 if( front.cvars.TargetSwitches & CGSW_X86_FLOATING_SS ) {
                     decl_flags = (decl_flags & ~FLAG_NEAR) | FLAG_FAR;
                 }
-#endif
             }
             tree->u.expr_type = PtrNode( front, typ->object, decl_flags, segid );
         }
@@ -710,17 +704,6 @@ TREEPTR RValue( FrontRun& front, TREEPTR tree )
     return( tree );
 }
 
-#if 0
-static void CheckAddrOfArray( TYPEPTR typ )
-{
-    if( typ != NULL ) {
-        SKIP_TYPEDEFS( typ );
-        if( typ->decl_type == TYP_ARRAY ) {
-            CWarn1( ERR_ADDR_OF_ARRAY );
-        }
-    }
-}
-#endif
 
 //-----------------------------COPS------------------------------------
 
@@ -798,11 +781,9 @@ static TREEPTR AddrOp( FrontRun& front, TREEPTR tree )
         if( sym.attribs.stg_class == SC_AUTO ) {
             segid = SEG_STACK;
             front.cvars.CompFlags.addr_of_auto_taken = true;
-#if _INTEL_CPU
             if( front.cvars.TargetSwitches & CGSW_X86_FLOATING_SS ) {
                 modifiers |= FLAG_FAR;
             }
-#endif
         }
         typ = PtrNode( front, typ, modifiers & MASK_PTR, segid );
     } else if( tree->op.opr == OPR_POINTS ) {
@@ -1802,38 +1783,12 @@ static TREEPTR ExprId( FrontRun& front )
 }
 
 
-#if 0
-static bool LValueArray( TREEPTR tree )
-{
-    TYPEPTR     typ;
-
-    if( tree->op.opr == OPR_PUSHSTRING ) {
-        return( true );
-    } else if( IsLValue( tree ) ) {
-        return( true );
-    } else {
-        typ = tree->u.expr_type;
-        SKIP_TYPEDEFS( typ );
-        if( typ->decl_type == TYP_POINTER ) {
-            return( true );
-        }
-    }
-    return( false );
-}
-#endif
 
 static TREEPTR GenIndex( FrontRun& front, TREEPTR tree, TREEPTR index_expr )
 {
     TYPEPTR         typ;
     op_flags        tree_flags;
 
-#if 0
-    if( ! LValueArray( tree ) ) {
-        CErr1( ERR_CANT_TAKE_ADDR_OF_RVALUE );
-        FreeExprTree( index_expr );
-        return( ErrorNode( tree ) );
-    }
-#endif
     index_expr = RValue( front, index_expr );
     if( DataTypeOf( TypeOf( index_expr ) ) > TYP_ULONG64 ) {
         CErr1( front, ERR_EXPR_MUST_BE_INTEGRAL );
@@ -2055,145 +2010,7 @@ static TREEPTR GenNextParm( FrontRun& front, TREEPTR tree, TYPEPTR **plistptr )
 }
 
 
-#if _RISC_CPU
-/*
- * This really ought to be defined somewhere else...
- */
-  #if _CPU == _AXP
-    #define REG_SIZE    8
-  #else
-    #define REG_SIZE    4
-  #endif
-static TREEPTR GenVaStartNode( TREEPTR last_parm )
-/*************************************************
- * there should be 3 parms __builtin_va_start( list, parm_name, stdarg )
- * - first parm should be name of va_list
- * - second parm should be name of the parameter before the ...
- * - last_parm should be an integer 0 or 1 (0=>varargs, 1=>stdarg)
- */
-{
-    SYMPTR      sym;
-    SYM_HANDLE  sym_handle;
-    int         offset;
-    TREEPTR     parmsym;
-    TREEPTR     tree;
 
-    tree = NULL;
-    if( ExprLevel >= 2
-      && Token[ExprLevel] != T_LEFT_PAREN
-      && Token[ExprLevel-1] != T_LEFT_PAREN
-      && Token[ExprLevel-2] == T_LEFT_PAREN ) {
-        offset = 0;
-        if( last_parm->op.opr == OPR_PUSHINT ) {
-            /*
-             * check for varargs
-             */
-            if( CheckZeroConstant( last_parm ) ) {
-                offset = -REG_SIZE;
-            }
-        }
-        /*
-         * get name of parameter
-         */
-        parmsym = ValueStack[ExprLevel];
-        sym_handle = SYM_NULL;
-        if( parmsym->op.opr == OPR_PUSHSYM ) {
-            for( sym_handle = CurFunc->u.func.parms; sym_handle != SYM_NULL; sym_handle = sym->handle ) {
-                sym = SymGetPtr( sym_handle );
-                offset += _RoundUp( SizeOfArg( sym->sym_type ), REG_SIZE );
-                if( sym_handle == parmsym->op.u2.sym_handle ) {
-                    break;
-                }
-            }
-        }
-        if( offset == 0
-          || sym_handle == SYM_NULL ) {
-            /*
-             * error: name not found in symbol list
-             */
-            sym = SymGetPtr( parmsym->op.u2.sym_handle );
-            CErr2p( ERR_SYM_NOT_IN_PARM_LIST, SymName( sym, parmsym->op.u2.sym_handle ) );
-        }
-        FreeExprNode( parmsym );
-        tree = ValueStack[ExprLevel - 1];
-        if( tree->op.opr == OPR_PUSHSYM ) {
-            tree->op.opr = OPR_PUSHADDR;            /* want address of va_list */
-        }
-        tree->op.flags &= ~OPFLAG_RVALUE;
-        tree = ExprNode( tree, OPR_VASTART, IntLeaf( offset ) );
-        ExprLevel -= 2;
-    } else {
-        /*
-         * error
-         */
-    }
-    return( tree );
-}
-
-static TREEPTR GenAllocaNode( TREEPTR size_parm )
-{
-    /*
-     * there should be 1 parm __builtin_alloca( size )
-     */
-    TREEPTR     tree;
-
-    if( Token[ExprLevel] == T_LEFT_PAREN ) {
-        tree = ExprNode( NULL, OPR_ALLOCA, size_parm );
-        tree->u.expr_type = PtrNode( GetType( TYP_VOID ), FLAG_NONE, SEG_STACK );
-    } else {
-        /*
-         * error
-         */
-        tree = NULL;
-    }
-    return( tree );
-}
-#endif
-
-#if _CPU == _PPC
-static TREEPTR GenVaArgNode( TREEPTR last_parm )
-{
-    /*
-     * there should be 2 parms __builtin_va_arg( list, type_arg )
-     * - first parm should be name of va_list
-     * - last_parm should be an integer 0 or 1 (0=>varargs, 1=>stdarg)
-     */
-
-    TREEPTR     parmsym;
-    TREEPTR     tree;
-
-    tree = NULL;
-    if( ExprLevel >= 2
-      && Token[ExprLevel] != T_LEFT_PAREN
-      && Token[ExprLevel-1] != T_LEFT_PAREN
-      && Token[ExprLevel-2] == T_LEFT_PAREN ) {
-        if( last_parm->op.opr == OPR_PUSHINT ) {
-            /*
-             * check for varargs
-             */
-            if( CheckZeroConstant( last_parm ) ) {
-            }
-        }
-        /*
-         * get name of parameter
-         */
-        parmsym = ValueStack[ExprLevel];
-        FreeExprNode( parmsym );
-        tree = ValueStack[ExprLevel - 1];
-        if( tree->op.opr == OPR_PUSHSYM ) {
-            tree->op.opr = OPR_PUSHADDR;            /* want address of va_list */
-        }
-        tree->op.flags &= ~OPFLAG_RVALUE;
-        tree = ExprNode( tree, OPR_VASTART, IntLeaf( 0 ) );
-        ExprLevel -= 2;
-    } else {
-        /*
-         * error
-         */
-    }
-    return( tree );
-}
-#endif
 
 static TREEPTR GenFuncCall( FrontRun& front, TREEPTR last_parm )
 {
@@ -2282,11 +2099,6 @@ static TREEPTR GenFuncCall( FrontRun& front, TREEPTR last_parm )
         } else {
             if( functree->op.opr == OPR_FUNCNAME ) {
                 SymGet( front, &sym, functree->op.u2.sym_handle );
-#if 0
-                if( functree->op.u2.sym_handle == CurFuncHandle ) {
-                    recursive = true;
-                }
-#endif
                 sym_name = SymName( front, &sym, functree->op.u2.sym_handle );
                 if( (front.cvars.GenSwitches & CGSW_GEN_NO_OPTIMIZATION) == 0
                   && front.cvars.CompFlags.extensions_enabled ) {
@@ -2309,19 +2121,6 @@ static TREEPTR GenFuncCall( FrontRun& front, TREEPTR last_parm )
                         }
                     }
                 }
-#if _RISC_CPU
-                if( strcmp( sym_name, "__builtin_va_start" ) == 0 ) {
-                    return( GenVaStartNode( last_parm ) );
-                }
-                if( strcmp( sym_name, "__builtin_alloca" ) == 0 ) {
-                    return( GenAllocaNode( last_parm ) );
-                }
-    #if _CPU == _PPC
-                if( strcmp( sym_name, "__builtin_va_arg" ) == 0 ) {
-                    return( GenVaArgNode( last_parm ) );
-                }
-    #endif
-#endif
             }
         }
         if( !optimized ) {
@@ -2405,11 +2204,6 @@ static TREEPTR StartFunc( FrontRun& front, TREEPTR tree, TYPEPTR **plistptr )
         tree->op.opr = OPR_FUNCNAME;            /* change to funcname */
         sym_handle = tree->op.u2.sym_handle;
         SymGet( front, &sym, sym_handle );
-#if 0
-        if( tree->op.u2.sym_handle == CurFuncHandle ) {
-            recursive = true;
-        }
-#endif
         decl_flags = sym.mods;
         /*
          * is it OK to inline?

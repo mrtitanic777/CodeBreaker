@@ -33,10 +33,6 @@
 #ifndef __PDEFN2_H
 #define __PDEFN2_H
 
-#if _CPU == 370
-global  linkage_regs    DefaultLinkage;
-global  linkage_regs    OSLinkage;
-#endif
 global  hw_reg_set      const DefaultVarParms[];
 global  hw_reg_set      const RegBits[];
 global  char            const Registers[];

@@ -39,7 +39,6 @@
 #define TYPE_MPARM      unsigned char
 #define SIZE_MPARM      sizeof(TYPE_MPARM)
 #define GET_MPARM(p)    (*(TYPE_MPARM *)(p))
-#define SET_MPARM(p,v)  (*(TYPE_MPARM *)(p)=(v))
 
 #define GetMacroParmCount(m)    ((m)->u.parm_count - 1)
 #define MacroWithParenthesis(m) ((m)->u.parm_count > 0)
@@ -96,13 +95,3 @@ typedef struct  macro_entry {
     char                macro_name[1];  /* name, parms, and macro definition */
 } MEDEFN, *MEPTR;
 
-#if 0
-typedef struct  macro_stack {
-    struct macro_stack  *stacked_macro;
-    MEPTR               prev_macro;
-    char                **macro_parms;          /* pointer to array of actual parms */
-    char                *prev_ptr;
-    int                 macro_class;            /* T_MACRO or T_MACRO_PARM */
-    char                macro_definition[1];    /* copy of current macro definition */
-} MSTACK, *MSTACKPTR;
-#endif

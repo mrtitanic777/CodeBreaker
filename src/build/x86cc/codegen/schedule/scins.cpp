@@ -53,7 +53,6 @@ const opcode_entry  *ResetGenEntry( BackRun& back, instruction *ins )
     bool                dummy;
 
     try_ = FindGenEntry( back, ins, &dummy );
-#if _TARGET_INTEL
     /*
      * Real architectures are orthogonal and don't need to swap
      * op's. BBB
@@ -68,7 +67,6 @@ const opcode_entry  *ResetGenEntry( BackRun& back, instruction *ins )
         try_ = FindGenEntry( back, ins, &dummy );
         break;
     }
-#endif
     return( try_ );
 }
 

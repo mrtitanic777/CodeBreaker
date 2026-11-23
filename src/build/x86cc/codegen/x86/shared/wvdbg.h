@@ -47,43 +47,29 @@
 
 #define WT_ARRAY                0x20
 #define ARRAY_BYTE              0x00
-#define ARRAY_WORD              0x01
-#define ARRAY_LONG              0x02
 #define ARRAY_TYPE              0x03
 #define FORTRAN_TYPE_286        0x04
 #define FORTRAN_TYPE_386        0x05
 
 #define WT_SUBRANGE             0x30
 #define RANGE_BYTE              0x00
-#define RANGE_WORD              0x01
-#define RANGE_LONG              0x02
 
 #define WT_POINTER              0x40
 #define POINTER_NEAR_286        0x00
 #define POINTER_FAR_286         0x01
-#define POINTER_HUGE            0x02
 #define DEREF_NEAR_286          0x03
-#define DEREF_FAR_286           0x04
-#define DEREF_HUGE              0x05
 #define POINTER_NEAR_386        0x06
 #define POINTER_FAR_386         0x07
 #define DEREF_NEAR_386          0x08
-#define DEREF_FAR_386           0x09
 
 #define WT_ENUMERATED           0x50
 #define ENUM_LIST               0x00
 #define ENUM_BYTE               0x01
-#define ENUM_WORD               0x02
-#define ENUM_LONG               0x03
 
 #define WT_STRUCTURE            0x60
 #define STRUCT_LIST             0x00
 #define STRUCT_F_BYTE           0x01
-#define STRUCT_F_WORD           0x02
-#define STRUCT_F_LONG           0x03
 #define STRUCT_BF_BYTE          0x04
-#define STRUCT_BF_WORD          0x05
-#define STRUCT_BF_LONG          0x06
 #define STRUCT_F_LOC            0x07
 #define STRUCT_BF_LOC           0x08
 #define STRUCT_INHERIT          0x09
@@ -107,8 +93,6 @@
 
 #define WT_CHAR_BLOCK           0x80
 #define NAME_CHAR_BYTE          0x00
-#define NAME_CHAR_WORD          0x01
-#define NAME_CHAR_LONG          0x02
 #define NAME_CHAR_IND_286       0x03
 #define NAME_CHAR_IND_386       0x04
 #define NAME_CHAR_LOC           0x05
@@ -118,7 +102,6 @@
 #define SCALAR_UNSIGNED         0x10
 #define SCALAR_FLOAT            0x20
 #define SCALAR_VOID             0x30
-#define SCALAR_COMPLEX          0x40
 
 
 /* % */
@@ -144,7 +127,6 @@
 #define CODE_MEMBER_SCOPE       0x06
 
 #define NEW_BASE                0x30
-#define ADD_PREV_SEG            0x00
 #define SET_BASE_286            0x01
 #define SET_BASE_386            0x02
 
@@ -153,7 +135,6 @@
         #define POINTER_NEAR    POINTER_NEAR_286
         #define POINTER_FAR     POINTER_FAR_286
         #define DEREF_NEAR      DEREF_NEAR_286
-        #define DEREF_FAR       DEREF_FAR_286
         #define PROC_NEAR       PROC_NEAR_286
         #define PROC_FAR        PROC_FAR_286
         #define NAME_CHAR_IND   NAME_CHAR_IND_286
@@ -167,7 +148,6 @@
         #define POINTER_NEAR    POINTER_NEAR_386
         #define POINTER_FAR     POINTER_FAR_386
         #define DEREF_NEAR      DEREF_NEAR_386
-        #define DEREF_FAR       DEREF_FAR_386
         #define PROC_NEAR       PROC_NEAR_386
         #define PROC_FAR        PROC_FAR_386
         #define NAME_CHAR_IND   NAME_CHAR_IND_386

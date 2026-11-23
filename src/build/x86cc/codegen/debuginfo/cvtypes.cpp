@@ -1543,12 +1543,6 @@ static int  MkFlist( BackRun& back, dbg_struct st )
             if( field->vfunc.vfptr_off == 0 ) {
                 fld.a_vfunctab = static_cast<ct_vfunctab *>(StartType( out, LFG_VFUNCTAB ));
                 fld.a_vfunctab->type = field->vfunc.base;
-#if 0   // till cvpack is fixed
-            } else {
-                fld.a_vfuncoff = StartType( out, LFG_VFUNCOFF );
-                fld.a_vfuncoff->type = field->vfunc.base;
-                fld.a_vfuncoff->offset = field->vfunc.vfptr_off;
-#endif
             }
             len += EndSub( back, out );  /* write out subfield accum length */
             break;
@@ -1847,17 +1841,11 @@ dbg_type    CVEndProc( BackRun& back, dbg_proc pr )
         CGFree( back, parm );
     }
     EndTypeString( back, out );
-#if _TARGET_INTEL
     if( pr->call == TY_NEAR_CODE_PTR ) {
         call = CV_NEARC;
     } else {
         call = CV_FARC;
     }
-#elif  _TARGET & _TARG_AXP
-    call = CV_AXP;
-#else
-    call = CV_GENERIC;
-#endif
     if( pr->cls != DBG_NIL_TYPE ) {
         ct_mfunction *mfunction;
 

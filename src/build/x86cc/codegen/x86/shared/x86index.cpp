@@ -45,7 +45,6 @@
 #include "x86data.h"
 #include "x86segs.h"
 #include "x86table.h"
-#include "x86rtrn.h"
 #include "x86tls.h"
 #include "feprotos.h"
 #include "backrun.hpp"
@@ -344,20 +343,6 @@ void    FixSegments( BackRun& back )
     }
 }
 
-#if 0
-static  type_class_def  FltClass( instruction *ins )
-/***************************************************
- * return the floating point class (FL, FD or FS) of "ins",
- * or XX if it does not involve floating point.
- */
-{
-    if( _IsFloating( ins->type_class ) )
-        return( ins->type_class );
-    if( _IsFloating( _OpClass( ins ) ) )
-        return( _OpClass( ins ) );
-    return( XX );
-}
-#endif
 
 void    MergeIndex( BackRun& back )
 /*************************
@@ -426,34 +411,15 @@ void    FixChoices( BackRun& back )
  */
 {
     conflict_node       *conf;
-#if 0 /* 2007-07-10 RomanT -- This method is not used anymore */
-    name                *temp;
-    name                *alias;
-#else
     possible_for_alias  *aposs;
-#endif
 
     PropSegments(back);
     for( conf = back.data.ConfList; conf != NULL; conf = conf->next_conflict ) {
         if( _Isnt( conf, CST_VALID_SEGMENT ) ) {
             conf->possible = NoSegments( static_cast<reg_set_index>(conf->possible) );
-#if 0 /* 2007-07-10 RomanT -- This method is not used anymore */
-            temp = conf->name;
-            if( temp->n.class_ == N_TEMP ) {
-                alias = temp;
-                for( ;; ) {
-                    alias = alias->t.alias;
-                    alias->t.possible = NoSegments( alias->t.possible );
-                    if( alias == temp ) {
-                        break;
-                    }
-                }
-            }
-#else
             for( aposs = conf->possible_for_alias_list; aposs != NULL; aposs = aposs->next ) {
                 aposs->possible = NoSegments( static_cast<reg_set_index>(aposs->possible) );
             }
-#endif
         }
     }
 }
@@ -509,21 +475,5 @@ void    FixFPConsts( instruction *ins )
  * now it is useless due to wrong condition, always false (dead code)
  */
 {
-#if 0
-    opcnt               i;
-    type_class_def      type_class;
-
-    if( _IsTargetModel( CGSW_X86_CONST_IN_CODE ) ) {
-    } else if( _IsTargetModel( CGSW_X86_FLOATING_DS ) && _IsTargetModel( CGSW_X86_FLOATING_SS ) ) {
-    } else if( _IsTargetModel( CGSW_X86_FLOATING_DS ) && _IsTargetModel( CGSW_X86_FLOATING_SS ) ) {
-        type_class = FltClass( ins );
-        if( type_class != XX ) {
-            for( i = ins->num_operands; i-- > 0; ) {
-                ins->operands[i] = Addressable( ins->operands[i], type_class );
-            }
-        }
-    }
-#else
     /* unused parameters */ (void)ins;
-#endif
 }

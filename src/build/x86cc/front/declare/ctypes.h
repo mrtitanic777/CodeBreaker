@@ -216,7 +216,6 @@ typedef enum DATA_TYPE {
 } DATA_TYPE;
 
 #define DATA_TYPE_SIZE                  (TYP_ERROR - TYP_BOOL)
-#define DATA_TYPE_BOOL_TO_VOID          (TYP_VOID - TYP_BOOL + 1)
 #define DATA_TYPE_BOOL_TO_LONG_DOUBLE   (TYP_LONG_DOUBLE - TYP_BOOL + 1)
 
 // values for type->type_flags
@@ -522,7 +521,6 @@ typedef enum ppctl_t {
 } ppctl_t;
 
 #define PPCTL_ENABLE_ASM()          front.cvars.PPControl |= PPCTL_ASM
-#define PPCTL_DISABLE_ASM()         PPControl &= ~PPCTL_ASM
 #define PPCTL_ENABLE_EOL()          front.cvars.PPControl |= PPCTL_EOL
 #define PPCTL_DISABLE_EOL()         front.cvars.PPControl &= ~PPCTL_EOL
 #define PPCTL_ENABLE_MACROS()       front.cvars.PPControl &= ~PPCTL_NO_EXPAND

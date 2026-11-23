@@ -42,18 +42,14 @@
 #define BUFFSIZE        256U    /*  size of object code buffer */
 #define TOLERANCE       64U
 #define TRADEOFF        14      /*  minimum size of iterated for a new record */
-#define SYS_REC_SIZE    512     /*  size of physical output record */
                                 /*  must match NAMEPCO spec */
-#define MAXNAME         40      /*  INTEL's limit for a name (+len byte) */
 #define IMPORT_BASE     1       /*  start of import indexs */
-#define INDEX_SIZE      2       /*  maximum index size, in bytes */
 
 #define SEG_ALGN_BYTE    SEGATTR_A( BYTE )   /*    1-byte aligned, relocatable */
 #define SEG_ALGN_WORD    SEGATTR_A( WORD )   /*    2-byte aligned, relocatable */
 #define SEG_ALGN_PARA    SEGATTR_A( PARA )   /*   16-byte aligned, relocatable */
 #define SEG_ALGN_PAGE    SEGATTR_A( PAGE )   /*  256-byte aligned, relocatable */
 #define SEG_ALGN_DWORD   SEGATTR_A( DWORD )  /*    4-byte aligned, relocatable */
-#define SEG_ALGN_4K      SEGATTR_A( PAGE4K ) /*   4K-byte aligned, relocatable */
 #define SEG_COMB_PRIVATE SEGATTR_C( INVALID )    /*  non-combinable */
 #define SEG_COMB_NORMAL  SEGATTR_C( ADDOFF )     /*  normal */
 #define SEG_COMB_COMMON  SEGATTR_C( COMMON )     /*  common block */
@@ -71,14 +67,11 @@
 #define FIXDAT                  0x04    /*  background for fixdat byte */
 #define FIXDAT_FRAME_IMPLIED    0x50    /*  frame implied by target */
 #define FIXDAT_FRAME_GROUP      0x10    /*  frame is a group */
-#define FIXDAT_FRAME_SEG        0       /*  frame is segment */
 
 
 #define DEBUG_MAJOR_VERSION     1
 #define DEBUG_MINOR_VERSION     3
 /* various COMENT records to use */
-#define VERSION_COMMENT     CMT_P( LANGUAGE_TRANS )
-#define SOURCE_COMMENT      CMT_NP( COMPILER_OPTIONS )
 #define LINKER_COMMENT      CMT_NP( LINKER_DIRECTIVE )
 #define DISASM_COMMENT      CMT_NP( DISASM_DIRECTIVE )
 #define PHARLAP_OMF_COMMENT CMT_NP( EASY_OMF )

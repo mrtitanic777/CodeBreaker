@@ -55,9 +55,6 @@ enum scan_class {
 
 extern const unsigned char  TokValue[];
 
-#ifdef CHAR_MACRO
-static int              SavedCurrChar;      /* used when get tokens from macro */
-#endif
 
 static struct {
     unsigned short  chr;
@@ -99,9 +96,6 @@ static struct {
     '_',        SCAN_NAME,
     'L',        SCAN_WIDE,
     LCHR_EOF,   SCAN_EOF,
-#ifdef CHAR_MACRO
-    LCHR_MACRO, SCAN_MACRO,
-#endif
     '\0',       0
 };
 
@@ -220,13 +214,9 @@ mac_hash_idx CalcHashMacro( const char *id )
     if( *id == '\0' )
         return( 0 );
     hash = hashpjw( id, strlen( id ) );
-#if ( MACRO_HASH_SIZE > 0x0ff0 ) && ( MACRO_HASH_SIZE < 0x0fff )
     if( hash >= MACRO_HASH_SIZE ) {
         hash -= MACRO_HASH_SIZE;
     }
-#else
-    hash = hash % MACRO_HASH_SIZE;
-#endif
     return( (mac_hash_idx)hash );
 }
 
@@ -350,12 +340,6 @@ static TOKEN doScanName( FrontRun& front )
          */
         DoMacroExpansion( front, mentry );
         token = GetMacroToken(front);
-#if 0
-        if( MacroPtr != NULL ) {
-            SavedCurrChar = CurrChar;
-            CurrChar = LCHR_MACRO;
-        }
-#endif
         if( token == T_NULL ) {
             token = T_WHITE_SPACE;
         }
@@ -1303,16 +1287,6 @@ int ESCChar( FrontRun& front, escinp_fn ifn, escout_fn ofn, msg_codes *perr_msg 
         case 'v':
             c = ESCAPE_v;
             break;
-#ifdef __QNX__
-        case 'l':
-            /*
-             * for lazy QNX programmers
-             */
-            if( CompFlags.extensions_enabled ) {
-                c = ESCAPE_n;
-            }
-            break;
-#endif
         case '\\':
         case '\"':
         case '\'':
@@ -1322,9 +1296,6 @@ int ESCChar( FrontRun& front, escinp_fn ifn, escout_fn ofn, msg_codes *perr_msg 
             *perr_msg = ERR_INV_CHAR_CONSTANT;
             break;
         }
-#if _CPU == 370
-        _ASCIIOUT( c );
-#endif
         n = c;
         ifn(front);
     }
@@ -1481,10 +1452,6 @@ static TOKEN doScanCharConst( FrontRun& front, DATA_TYPE char_type )
                     U64ShiftLEq( &front.cvars.Constant64, 8 );
                     U64AddI32( &front.cvars.Constant64, ((c & 0xFF00) >> 8) );
                     c &= 0x00FF;
-#if _CPU == 370
-                } else {
-                    _ASCIIOUT( c );
-#endif
                 }
             }
             ++i;
@@ -1766,23 +1733,6 @@ static TOKEN ScanInvalid( FrontRun& front )
     return( token );
 }
 
-#ifdef CHAR_MACRO
-static TOKEN ScanMacroToken( void )
-/*********************************/
-{
-    TOKEN   token;
-
-    token = GetMacroToken();
-    if( token == T_NULL ) {
-        if( CompFlags.cpp_mode ) {
-            CppPrtChar( ' ' );
-        }
-        CurrChar = SavedCurrChar;
-        token = ScanToken();
-    }
-    return( token );
-}
-#endif
 
 static TOKEN ScanEof( FrontRun& front )
 /**************************/
@@ -1816,9 +1766,6 @@ TOKEN NextToken( FrontRun& front )
             }
         }
     } while( front.cvars.CurToken == T_WHITE_SPACE );
-#ifdef FDEBUG
-    DumpToken();
-#endif
     return( front.cvars.CurToken );
 }
 

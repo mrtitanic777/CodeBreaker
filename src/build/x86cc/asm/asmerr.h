@@ -33,64 +33,13 @@
 #ifndef _ASMERR_H_INCLUDED
 #define _ASMERR_H_INCLUDED
 
-#if defined( _STANDALONE_ )
-    #include "asminput.h"
-#endif
 
 #include "wasmmsg.h"
 
-#ifdef DEBUG_OUT
-    extern void DoDebugMsg( const char *format, ... );
-    #define DebugMsg( x ) DoDebugMsg x
-#else
     #define DebugMsg( x )
-#endif
 // use DebugMsg((....)) to call it
 
-#if defined( _STANDALONE_ )
-    extern int InternalError( const char *file, unsigned line );
-  #if defined( __WATCOMC__ )
-    #pragma aux InternalError __aborts
-  #endif
-  #ifdef DEBUG_OUT
-    #define DebugCurrLine() printf( "%s\n", CurrString );
-    #define AsmIntErr( x ) DebugCurrLine(); printf( "Internal error = %u\n", x )
-  #else
     #define DebugCurrLine()
-    #define AsmIntErr( x ) printf( "Internal error = %u\n", x )
-  #endif
-#else
-    #define DebugCurrLine()
-    #define AsmIntErr( x )
-#endif
 
-#ifdef _STANDALONE_
-
-extern bool MsgInit( void );
-extern bool MsgGet( unsigned, char * );
-extern void MsgFini( void );
-extern void OpenLstFile( void );
-extern void LstMsg( const char *format, ... );
-extern void PrintfUsage( void );
-extern void MsgPrintf( unsigned resourceid );
-extern void MsgPrintf1( unsigned resourceid, const char *token );
-extern int  PrintBanner( void );
-extern void AsmErr( unsigned msgnum, ... );
-extern void AsmWarn( int level, unsigned msgnum, ... );
-extern void AsmNote( int level, unsigned msgnum, ... );
-extern void _AsmNote( int level, unsigned msgnum, ... );
-extern void Fatal( unsigned msg, ... );
-#if defined( INCL_MSGTEXT )
-#elif defined( USE_WRESLIB )
-extern void MsgPutUsage( void );
-extern void MsgSubStr( char *, char *, char );
-extern void MsgChgeSpec( char *strptr, char specifier );
-#else
-extern void MsgPutUsage( void );
-extern void MsgSubStr( char *, char *, char );
-extern void MsgChgeSpec( char *strptr, char specifier );
-#endif
-
-#endif  /* _STANDALONE_ */
 
 #endif  /* _ASMERR_H_INCLUDED */

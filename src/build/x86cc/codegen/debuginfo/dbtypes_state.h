@@ -7,7 +7,6 @@
 #include "model.h"
 #include "types.h"
 #include "zoiks.h"
-#include "echoapi.h"
 #include "i64.h"
 #include "utils.h"
 #include "wvtypes.h"

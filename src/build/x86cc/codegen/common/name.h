@@ -45,7 +45,6 @@ typedef enum {
     N_CLASS_MAX
 } name_class_def;
 
-#define N_VISITED       0x80
 
 typedef enum {
     X_SEGMENTED     = 0x0001,

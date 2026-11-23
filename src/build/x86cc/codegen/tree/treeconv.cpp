@@ -67,16 +67,13 @@ static  bool    DemoteTree( BackRun& back, tn name, const type_def *tipe, bool j
                 demote_this_node = true;
                 break;
             case O_POINTS:
-#if _TARG_MEMORY == _TARG_LOW_FIRST
                 can_demote = true;
                 demote_this_node = true;
-#endif
                 break;
             }
             break;
         case TN_BINARY: /* go left, right*/
             switch( name->u1.t.op ) {
-#if _TARGET_INTEL
             case O_CONVERT:
                  /* Based pointer junk */
                  break;
@@ -86,7 +83,6 @@ static  bool    DemoteTree( BackRun& back, tn name, const type_def *tipe, bool j
                     name->u1.t.rite->tipe->length > tipe->length )
                     break;
                 /* fall throught */
-#endif
             case O_TIMES:
             case O_AND:
             case O_OR:

@@ -570,9 +570,6 @@ name    *AllocRegName( BackRun& back, hw_reg_set regs )
     new_r = AllocName( back, N_REGISTER, RegClass( back, regs ), 0 );
     new_r->r.reg = regs;
     new_r->r.reg_index = -1;
-#if _TARGET_RISC
-    new_r->r.arch_index = GetArchIndex( regs );
-#endif
     return( new_r );
 }
 

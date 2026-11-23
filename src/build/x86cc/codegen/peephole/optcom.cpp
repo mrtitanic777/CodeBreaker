@@ -161,10 +161,6 @@ static  bool    CommonInstr( BackRun& back, ins_entry *old, ins_entry *add )
             optreturn( false );
         if( _Label( old ) != _Label( add ) )
             optreturn( false );
-#if _TARGET_RISC
-        if( old->oc.oc_jcond.index != add->oc.oc_jcond.index )
-            return( false );
-#endif
         break;
     case OC_RET:
         if( _RetPop( old ) != _RetPop( add ) )

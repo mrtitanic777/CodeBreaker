@@ -31,35 +31,10 @@
 
 
 #pragma once
-#define MAX_MESSAGE_SIZE    128
 
-#if defined( _STANDALONE_ )
-  #if defined( INCL_MSGTEXT )
-    // WASM, must be assigned dynamicaly
-    #define MSG_SHARE_BASE      0
-
-enum {
-    MSG_WASM_BASE = MSG_SHARE_BASE
-    #define pick(c,e,j) + 1
-    #include "wasmc.msg"
-    #undef pick
-};
-
-enum {
-    MSG_USAGE_BASE = MSG_WASM_BASE
-    #define pick(c,e,j) + 1
-    #include "wasms.msg"
-    #undef pick
-};
-  #elif defined( USE_WRESLIB )
-  #else
-  #endif
-#endif
 
 #include "wasmmsg.rh"
 
-#if !defined( _STANDALONE_ )
-  #if defined( INCL_MSGTEXT )
     // WCC or WPP, must be assigned dynamicaly
 enum {
     MSG_LANG_SPACING = MSG_SHARE_BASE
@@ -67,7 +42,3 @@ enum {
     #include "wasmc.msg"
     #undef pick
 };
-  #elif defined( USE_WRESLIB )
-  #else
-  #endif
-#endif

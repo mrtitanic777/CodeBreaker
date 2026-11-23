@@ -32,7 +32,6 @@
 #include <stdlib.h>
 #include "autodept.h"
 
-#include "clibext.h"
 
 
 char *_getFilenameFullPath( char *buff, char const *name, size_t max )
@@ -44,16 +43,5 @@ char *_getFilenameFullPath( char *buff, char const *name, size_t max )
     if( p == NULL )
         p = (char *)name;
 
-#ifdef __UNIX__
-    if( (p[0] == '/' && p[1] == '/') && (name[0] != '/' || name[1] != '/') ) {
-        //
-        // if the _fullpath result has a node number and
-        // the user didn't specify one, strip the node number
-        // off before returning
-        //
-        p += 2;
-        while( *(p++) != '/' ) ;
-    }
-#endif
     return( p );
 }

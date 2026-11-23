@@ -70,9 +70,7 @@
 #define LOC_EXPR_IND        0x80
 #define LOC_IND_REG         0x50  // to be moved back to wvdbg.h
 #define IND_CALLOC_NEAR     0x00
-#define IND_CALLOC_FAR      0x01
 #define IND_RALLOC_NEAR     0x02
-#define IND_RALLOC_FAR      0x03
 
 #if _TARGET & _TARG_8086
     #define LOC_MEMORY      LOC_MEM_16

@@ -247,7 +247,5 @@ bool    ScRealRegister( name *reg )
 }
 
 /* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
-#if _TARGET & _TARG_8086
 ScoreFileState* score_file_make() { return new ScoreFileState(); }
 void score_file_free(ScoreFileState* part) { delete part; }
-#endif

@@ -1236,7 +1236,5 @@ hw_reg_set      FirstReg( BackRun& back, reg_set_index regs_idx )
 }
 
 /* the run makes and frees its copy of this file's variables (run/ files: see the run header) */
-#if _TARGET & _TARG_80386
 X386rgtblState* x386rgtbl_make() { return new X386rgtblState(); }
 void x386rgtbl_free(X386rgtblState* part) { delete part; }
-#endif

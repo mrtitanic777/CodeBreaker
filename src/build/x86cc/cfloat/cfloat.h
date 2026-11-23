@@ -47,9 +47,7 @@
 
 #define CFLOAT_SIZE (offsetof( cfloat, mant ) + 1)
 
-#ifdef __cplusplus
 extern "C" {
-#endif
 
 typedef struct cfloat STRUCT_cfloat( 1 ) cfloat;
 
@@ -123,6 +121,4 @@ extern  int         CFExp( cfloat *f );
 extern  void        CFInit( cfhandle h );
 extern  void        CFFini( BackRun& back, cfhandle h );
 
-#ifdef __cplusplus
 };
-#endif

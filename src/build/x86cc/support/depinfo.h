@@ -34,8 +34,6 @@
 #ifndef _DEPINFO_H_INCLUDED
 #define _DEPINFO_H_INCLUDED
 
-#define DEP_LIST_TYPE       0x79
-#define DEP_LIST_NAME       "EBWF_XFMMTUPPE"
 
 typedef struct {
     unsigned_32     time;           /* file's time taken from stat */

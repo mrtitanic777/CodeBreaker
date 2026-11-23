@@ -36,9 +36,7 @@
 #include "watcom.h"
 #include "i64.h"
 
-#ifdef __cplusplus
 extern "C" {
-#endif
 
 #define CMPMAXBITSIZE   64
 
@@ -46,9 +44,6 @@ extern "C" {
 #define NumSign( a )    ((a) & SIGN_BIT)
 #define NumBits( a )    ((a) & (SIGN_BIT-1))
 
-#ifdef fe_cfg
-#    include "fe_cfg.h"
-#endif
 
 typedef enum{
     CMP_VOID    = 0,    // comparison fine
@@ -74,8 +69,6 @@ cmp_result CheckMeaninglessCompare(
     signed_64 *high
 );
 
-#ifdef __cplusplus
 }
-#endif
 
 #endif // __ANALMEAN_H_

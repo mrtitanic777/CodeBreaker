@@ -227,12 +227,6 @@ static void formatSectionName( owl_section_handle section, char *buffer ) {
     unsigned            count;
 
     // this name stuff is SO hokey....
-#if 0  // mjc might fix right
-    count = strlen( section->name->text );
-    if( count <= 8 ){
-        memcpy( buffer, section->name->text, count );
-    } else {
-#endif
         name_offset = _OWLStringIndexToCOFFStringIndex( OWLStringOffset( section->name ) );
         buffer[ 0 ] = '/';
         count = 0;
@@ -243,9 +237,6 @@ static void formatSectionName( owl_section_handle section, char *buffer ) {
             count++;
         }
         memcpy( &buffer[ 1 ], curr + 1, count );
-#if 0
-    }
-#endif
 }
 
 static uint_32 sectionFlags( owl_section_type type ) {
@@ -697,11 +688,7 @@ static void emitSymbolTable( BackRun& back, owl_file_handle file ) {
         back.owcoff->lastBf = NULL;
         back.owcoff->lastFile = NULL;
         symbol_buffer = static_cast<coff_symbol *>(_ClientAlloc( back, file, symbol_table_size ));
-    #if 1
         memset( symbol_buffer, 0, symbol_table_size );
-    #else
-        memset( symbol_buffer, 0xBB, symbol_table_size );
-    #endif
         count = 0;
         for( symbol = file->symbol_table->head; symbol != NULL; symbol = symbol->next ) {
             if( symbol->flags & OWL_SYM_DEAD ) continue;

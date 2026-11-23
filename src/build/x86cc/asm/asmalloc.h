@@ -34,11 +34,5 @@
 
 #include "memfuncs.h"
 
-#if defined( _STANDALONE_ )
-
-extern void     MemInit( void );
-extern void     MemFini( void );
-
-#endif
 
 #endif

@@ -394,7 +394,6 @@ static SYM_HANDLE VarDecl( FrontRun& front, SYMPTR sym, stg_classes stg_class, d
             if( sym->attribs.declspec != DECLSPEC_NONE ) {
                 CErr1( front, ERR_INVALID_DECLSPEC );
             }
-#if _INTEL_CPU
             /*
              * Local variables in stack will be far when SS != DS (/zu)
              * (applies only to auto vars, functions params are handled
@@ -403,7 +402,6 @@ static SYM_HANDLE VarDecl( FrontRun& front, SYMPTR sym, stg_classes stg_class, d
             if( front.cvars.TargetSwitches & CGSW_X86_FLOATING_SS ) {
                 sym->mods |= FLAG_FAR;
             }
-#endif
         }
         /*
          * static class variables can be thread local also
@@ -443,7 +441,6 @@ static SYM_HANDLE VarDecl( FrontRun& front, SYMPTR sym, stg_classes stg_class, d
         if( CheckEqSymLevel( &old_sym ) || stg_class == SC_EXTERN ) {
             old_attrs = old_sym.mods;
             new_attrs = sym->mods;
-#if _INTEL_CPU
             /*
              * add default far/near flags depending on data model
              */
@@ -454,7 +451,6 @@ static SYM_HANDLE VarDecl( FrontRun& front, SYMPTR sym, stg_classes stg_class, d
                 old_attrs |= FLAG_NEAR;
                 new_attrs |= FLAG_NEAR;
             }
-#endif
             if( (new_attrs & ~MASK_FUNC) != (old_attrs & ~MASK_FUNC) ) {
                  CErr2p( front, ERR_MODIFIERS_DISAGREE, sym->name );
             }
@@ -1092,7 +1088,6 @@ static TYPEPTR Pointer( FrontRun& front, TYPEPTR typ, struct mod_info *info )
         }
         if( front.cvars.CurToken == T_TIMES ) {
             NextToken(front);
-#if _INTEL_CPU
             /*
              * * seg16 binds with * cause of IBM dorks, and so does far16
              */
@@ -1104,7 +1099,6 @@ static TYPEPTR Pointer( FrontRun& front, TYPEPTR typ, struct mod_info *info )
     #endif
                 NextToken(front);
             }
-#endif
             flags = info->modifier & ~FLAG_EXPORT;
             typ = BPtrNode( front, typ, flags, info->segid, sym_handle, info->based_kind );
             sym_handle = SYM_NULL;
@@ -1244,10 +1238,6 @@ void Declarator( FrontRun& front, SYMPTR sym, type_modifiers mod, TYPEPTR typ, d
         }
         sym->mods = info.modifier;
         sym->u.var.segid = info.segid;
-#if 0
-        if( modifier & FLAG_INTERRUPT )
-            sym->flags |= SYM_INTERRUPT_FN;
-#endif
         typ = DeclPart2( front, typ, info.modifier );
         sym->sym_type = typ;
     }
@@ -1793,28 +1783,3 @@ static void FreeParmList( FrontRun& front )
     }
 }
 
-#if _CPU == 370
-static bool IsIntComp( TYPEPTR ret1 )
-/************************************
- * what's target compatible between default int as ret type
- * and a later declaration
- */
-{
-    bool        ret;
-
-    SKIP_TYPEDEFS( ret1 );
-    switch( ret1->decl_type ) {
-    case TYP_CHAR:
-    case TYP_UCHAR:
-    case TYP_SHORT:
-    case TYP_USHORT:
-    case TYP_INT:
-    case TYP_LONG:
-        ret = true;
-        break;
-    default:
-       ret = false;
-    }
-    return( ret );
-}
-#endif

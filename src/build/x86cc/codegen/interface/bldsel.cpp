@@ -84,10 +84,6 @@ sel_handle  BGSelInit( BackRun& back )
     Set64ValZero( s_node->num_cases );
     s_node->other_wise = NULL;
     s_node->list = NULL;
-#ifdef DEVBUILD
-    s_node->useinfo.hdltype = NO_HANDLE;
-    s_node->useinfo.used = false;
-#endif
     return( s_node );
 }
 

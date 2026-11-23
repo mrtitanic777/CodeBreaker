@@ -53,15 +53,7 @@ struct ModelState {
 #define _IsTargetModel( mdl )   ( ( back.model.TargetModel & (mdl) ) != 0 )
 #define _IsntTargetModel( mdl ) ( ( back.model.TargetModel & (mdl) ) == 0 )
 
-#ifdef GET_CPU
     #define _CPULevel( v )  ( GET_CPU( back.model.CGProcessorVersion ) >= (v) )
-#else
-    #define _CPULevel( v )  ( back.model.CGProcessorVersion >= (v) )
-#endif
 
-#ifdef GET_FPU
     #define _FPULevel( v )  ((GET_FPU(back.model.CGProcessorVersion) & ~FPU_EMU) >= (v) )
     #define _IsEmulation()  ((back.model.CGProcessorVersion & FPU_EMU) != 0)
-#else
-    #define _FPULevel( v )  0
-#endif

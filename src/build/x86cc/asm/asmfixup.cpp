@@ -35,61 +35,9 @@
 #include "asmalloc.h"
 #include "asmfixup.h"
 #include "asminlin.h"
-#if defined( _STANDALONE_ )
-  #include "directiv.h"
-  #include "myassert.h"
-  #include "mangle.h"
-#endif
 #include "asmrun.hpp"
 
-#if defined( _STANDALONE_ )
-asmfixup_list   FixupList;
-#else
-#endif
 
-#if defined( _STANDALONE_ )
-
-static const char * const FPPatchName[] = {
-    #define pick_fp(enum,name,alt_name,win,alt_win,others,alt_others) name,
-    #include "fppatche.h"
-    #undef pick_fp
-};
-
-static const char * const FPPatchAltName[] = {
-    #define pick_fp(enum,name,alt_name,win,alt_win,others,alt_others) alt_name,
-    #include "fppatche.h"
-    #undef pick_fp
-};
-
-void add_frame( void )
-/*********************
- * determine the frame and frame datum for the fixup
- */
-{
-    asmfixup    *fixup;
-
-    if( Parse_Pass != PASS_1 ) {
-        fixup = InsFixups[Opnd_Count];
-        if( fixup == NULL )
-            return;
-        fixup->frame = Frame;
-    }
-}
-
-static void append_to_fixup_list_end( asmfixup *fixup )
-/******************************************************
- * add new fixup to the end of list
- */
-{
-    fixup->next_loc = NULL;
-    if( FixupList.head == NULL ) {
-        FixupList.head = fixup;
-    } else {
-        FixupList.tail->next_loc = fixup;
-    }
-    FixupList.tail = fixup;
-}
-#endif
 
 asmfixup *AddFixup( AsmRun& assembler, asm_sym_handle sym, fixup_types fixup_type, fixup_options fixup_option )
 /*******************************************************************************************
@@ -111,21 +59,6 @@ asmfixup *AddFixup( AsmRun& assembler, asm_sym_handle sym, fixup_types fixup_typ
         return( NULL );
     }
 
-#if defined( _STANDALONE_ )
-    fixup = MemAllocSafe( sizeof( asmfixup ) );
-    fixup->external = false;
-    fixup->fixup_loc = AsmCodeAddress;
-    fixup->sym = sym;
-    fixup->u_offset = sym->offset;
-    if( Modend ) {
-        fixup->fixup_seg = NULL;
-    } else {
-        fixup->fixup_seg = GetCurrSeg();
-    }
-    fixup->frame = Frame;                   // this is just a guess
-    fixup->next = sym->fixup;
-    sym->fixup = fixup;
-#else
     fixup = static_cast<asmfixup *>(MemAllocSafe( *assembler.front, sizeof( asmfixup ) ));
     fixup->external = false;
     fixup->fixup_loc = assembler.asminlin->AsmCodeAddress;
@@ -133,20 +66,12 @@ asmfixup *AddFixup( AsmRun& assembler, asm_sym_handle sym, fixup_types fixup_typ
     fixup->next = assembler.asminlin->FixupHead;
     assembler.asminlin->FixupHead = fixup;
     fixup->u_offset = 0;
-#endif
     fixup->fixup_type = fixup_type;
     fixup->fixup_option = fixup_option;
     assembler.asmfixup.InsFixups[assembler.asmdefs.Opnd_Count] = fixup;
     return( fixup );
 }
 
-#if defined( _STANDALONE_ )
-
-#define SkipFixup() \
-    fixup->next = sym->fixup; \
-    sym->fixup = fixup
-
-#else
 
 #define SkipFixup() \
     fixup->next = assembler.asminlin->FixupHead; \
@@ -166,7 +91,6 @@ static void PatchCodeBuffer( AsmRun& assembler, asmfixup *fixup, unsigned size )
     }
 }
 
-#endif
 
 static bool DoPatch( AsmRun& assembler, asm_sym_handle sym, asmfixup *fixup )
 /********************************************************/
@@ -174,50 +98,10 @@ static bool DoPatch( AsmRun& assembler, asm_sym_handle sym, asmfixup *fixup )
     long                disp;
     long                max_disp;
     unsigned            size;
-#if defined( _STANDALONE_ )
-    dir_node_handle     seg;
-
-    /*
-     * all relative fixups should occure only at first pass and they signal
-     * forward references they must be removed after patching or
-     * skiped ( next processed as normal fixup )
-     */
-    seg = GetSeg( sym );
-    if( seg == NULL || fixup->fixup_seg != seg ) {
-        /*
-         * can't backpatch if fixup location is in diff seg than symbol
-         */
-        SkipFixup();
-        return( RC_OK );
-    }
-    if( Parse_Pass == PASS_1 ) {
-        if( sym->mem_type == MT_FAR && fixup->fixup_option == OPTJ_CALL ) {
-            /*
-             * convert far call to near, only at first pass
-             */
-            PhaseError = true;
-            sym->offset++;
-            AsmByte( 0 );
-            MemFree( fixup );
-            return( RC_OK );
-        } else if( sym->mem_type == MT_NEAR ) {
-            /*
-             * near forward reference, only at first pass
-             */
-            switch( fixup->fixup_type ) {
-            case FIX_RELOFF32:
-            case FIX_RELOFF16:
-                MemFree( fixup );
-                return( RC_OK );
-            }
-        }
-    }
-#else
     if( fixup->name != sym->name ) {
         SkipFixup();
         return( RC_OK );
     }
-#endif
     size = 0;
     switch( fixup->fixup_type ) {
     case FIX_RELOFF32:
@@ -234,46 +118,11 @@ static bool DoPatch( AsmRun& assembler, asm_sym_handle sym, asmfixup *fixup )
         disp = fixup->u_offset + assembler.asminlin->AsmCodeAddress - fixup->fixup_loc - size;
         max_disp = (1UL << ((size * 8)-1)) - 1;
         if( disp > max_disp || disp < -(max_disp + 1) ) {
-#if defined( _STANDALONE_ )
-            PhaseError = true;
-            switch( size ) {
-            case 1:
-                switch( fixup->fixup_option ) {
-                case OPTJ_EXPLICIT:
-                    AsmError( JUMP_OUT_OF_RANGE );
-                    sym->fixup = NULL;
-                    return( RC_ERROR );
-                case OPTJ_EXTEND:
-                    sym->offset++;
-                    AsmByte( 0 );
-                    /* fall through */
-                case OPTJ_JXX:
-                    sym->offset++;
-                    AsmByte( 0 );
-                    /* fall through */
-                default:
-                    if( Code->use32 ) {
-                        sym->offset += 2;
-                        AsmByte( 0 );
-                        AsmByte( 0 );
-                    }
-                    sym->offset++;
-                    AsmByte( 0 );
-                    break;
-                }
-                break;
-            case 2:
-            case 4:
-                AsmWarn( 4, JUMP_OUT_OF_RANGE );
-                break;
-            }
-#else
             AsmError( *assembler.front, JUMP_OUT_OF_RANGE );
             assembler.asminlin->FixupHead = NULL;
             return( RC_ERROR );
         } else {
             PatchCodeBuffer( assembler, fixup, size );
-#endif
         }
         MemFree( *assembler.front, fixup );
         break;
@@ -293,13 +142,8 @@ bool BackPatch( AsmRun& assembler, asm_sym_handle sym )
     asmfixup    *fixup;
     asmfixup    *next;
 
-#if defined( _STANDALONE_ )
-    fixup = sym->fixup;
-    sym->fixup = NULL;
-#else
     fixup = assembler.asminlin->FixupHead;
     assembler.asminlin->FixupHead = NULL;
-#endif
     for( ; fixup != NULL; fixup = next ) {
         next = fixup->next;
         if( DoPatch( assembler, sym, fixup ) ) {
@@ -320,19 +164,8 @@ void mark_fixupp( AsmRun& assembler, OPNDTYPE determinant, operand_idx index )
     fixup = assembler.asmfixup.InsFixups[index];
     if( fixup != NULL ) {
         fixup->fixup_loc = assembler.asminlin->AsmCodeAddress;
-#if defined( _STANDALONE_ )
-        // fixup->offset = Code->data[index];
-        // Code->data[index] = 0; // fixme
-        if( fixup->fixup_type != FIX_SEG ) {
-            Code->data[index] += fixup->u_offset;
-        }
-        /*
-         * put the offset in the location instead of attaching it to the fixup
-         */
-#else
         fixup->u_offset = assembler.asmdefs.Code->data[index];
         assembler.asmdefs.Code->data[index] = 0;
-#endif
 
         switch( determinant ) {
         case OP_I16:
@@ -361,95 +194,10 @@ void mark_fixupp( AsmRun& assembler, OPNDTYPE determinant, operand_idx index )
     }
 }
 
-#if defined( _STANDALONE_ )
-
-bool store_fixup( operand_idx index )
-/************************************
- * Store the fixup information in a OMF output fixup record
- */
-{
-    asmfixup    *fixup;
-
-    if( Parse_Pass == PASS_1 )
-        return( RC_OK );
-    if( InsFixups[index] == NULL )
-        return( RC_OK );
-    fixup = InsFixups[index];
-    if( fixup == NULL )
-        return( RC_ERROR );
-    /*
-     * add new fixup to the end of list
-     */
-    append_to_fixup_list_end( fixup );
-    return( RC_OK );
-}
-
-static bool MakeFpFixup( const char *patch_name )
-/***********************************************/
-{
-    dir_node_handle dir;
-    asmfixup        *fixup;
-
-    for( dir = Tables[TAB_FPPATCH].head; dir != NULL; dir = dir->next ) {
-        if( strcmp( dir->sym.name, patch_name ) == 0 ) {
-            break;
-        }
-    }
-    if( dir == NULL ) {
-        dir = AllocD( patch_name );
-        if( dir != NULL ) {
-            dir_init( dir, TAB_FPPATCH );
-            GetSymInfo( &dir->sym );
-            dir->sym.offset = 0;
-            dir->sym.referenced = true;
-            dir->sym.mem_type = MT_FAR;
-            SetMangler( &dir->sym, GetMangler( "N" ), WASM_LANG_NONE );
-        }
-    }
-    if( dir != NULL ) {
-        if( Parse_Pass != PASS_1 ) {
-            fixup = MemAllocSafe( sizeof( asmfixup ) );
-            fixup->external = false;
-            fixup->fixup_loc = AsmCodeAddress;
-            fixup->fixup_seg = NULL;
-            fixup->sym = &dir->sym;
-            fixup->u_offset = 0;
-            fixup->frame = NULL;
-            fixup->next = dir->sym.fixup;
-            dir->sym.fixup = fixup;
-            fixup->fixup_type = FIX_FPPATCH;
-            fixup->fixup_option = OPTJ_NONE;
-            /*
-             * add new fixup to the end of list
-             */
-            append_to_fixup_list_end( fixup );
-        }
-        return( RC_OK );
-    }
-    return( RC_ERROR );
-}
-
-#endif
 
 bool AddFPPatchAndFixups( AsmRun& assembler, fp_patches patch )
 /******************************************/
 {
-#if defined( _STANDALONE_ )
-    const char  *patch_name;
-
-    patch_name = FPPatchName[patch];
-    if( MakeFpFixup( patch_name ) )
-        return( RC_ERROR );
-    if( patch == FPP_WAIT ) {
-        AsmCodeByte( OP_NOP );
-    } else {
-        AsmCodeByte( OP_WAIT );
-        patch_name = FPPatchAltName[patch];
-        if( patch_name != NULL ) {
-            return( MakeFpFixup( patch_name ) );
-        }
-    }
-#else
     asmfixup    *fixup;
 
     fixup = static_cast<asmfixup *>(MemAllocSafe( *assembler.front, sizeof( asmfixup ) ));
@@ -466,11 +214,9 @@ bool AddFPPatchAndFixups( AsmRun& assembler, fp_patches patch )
     } else {
         AsmCodeByte( OP_WAIT );
     }
-#endif
     return( RC_OK );
 }
 
-#if !defined( _STANDALONE_ )
 void AsmFiniRelocs( AsmRun& assembler )
 /************************/
 {
@@ -481,4 +227,3 @@ void AsmFiniRelocs( AsmRun& assembler )
         MemFree( *assembler.front, fixup );
     }
 }
-#endif

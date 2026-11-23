@@ -36,29 +36,15 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 
-#ifdef __cplusplus
 extern "C" {
-#endif
 
 #include "pushpck4.h"
 
-#if defined( __WATCOMC__ ) && defined( __386__ )
-#define IDEAPI                  __stdcall
-#else
 #define IDEAPI
-#endif
 
-#if defined( IDE_PGM ) || defined( __LINUX__ )
-#define IDEDLLENTRY
-#else
 #define IDEDLLENTRY             __declspec(dllexport)
-#endif
 
 #define IDE_CUR_DLL_VER         3
-#define IDE_CUR_INFO_VER2       2       //VERSION 2 (see below)
-#define IDE_CUR_INFO_VER3       3       //VERSION 3 (see below)
-#define IDE_CUR_INFO_VER4       4       //VERSION 4 (see below)
-#define IDE_CUR_INFO_VER5       5       //VERSION 5 (see below)
 #define IDE_CUR_INFO_VER        6
 
 typedef unsigned short  IDEBool;
@@ -102,7 +88,6 @@ enum {
         | ( 1 << IDEMSGSEV_NOTE_MSG )   \
         )
 
-#define IdeSeverityIs( s, m )   ((( 1 << (s) ) & (m) ) != 0 )
 
 #define IDE_INFO_READABLE       0x00000001
 #define IDE_INFO_HAS_SRC_FILE   0x00000002
@@ -118,10 +103,7 @@ enum {
 #define IDE_HAS_SRC_FILE( x )   ( ((x)->flags) & IDE_INFO_HAS_SRC_FILE )
 #define IDE_HAS_SRC_LINE( x )   ( ((x)->flags) & IDE_INFO_HAS_SRC_LINE )
 #define IDE_HAS_SRC_COL( x )    ( ((x)->flags) & IDE_INFO_HAS_SRC_COL )
-#define IDE_HAS_HELP( x )       ( ((x)->flags) & IDE_INFO_HAS_HELP )
 #define IDE_HAS_MSG_NUM( x )    ( ((x)->flags) & IDE_INFO_HAS_MSG_NUM )
-#define IDE_HAS_LNK_FILE( x )   ( ((x)->flags) & IDE_INFO_HAS_LNK_FILE )
-#define IDE_HAS_LNK_SYMBOL( x ) ( ((x)->flags) & IDE_INFO_HAS_LNK_SYMBOL )
 #define IDE_HAS_MSG_GRP( x )    ( ((x)->flags) & IDE_INFO_HAS_MSG_GRP )
 
 typedef struct IDEMsgInfo {             // IDE MESSAGE INFORMATION
@@ -223,26 +205,13 @@ typedef enum {
 typedef unsigned        IDEInfoType;
 #define IDE_GET_SOURCE_FILE     1
 #define IDE_GET_TARGET_FILE     2
-#define IDE_GET_OBJ_FILE        3
-#define IDE_GET_LIB_FILE        4
-#define IDE_GET_RES_FILE        5
 #define IDE_GET_ENV_VAR         6
-#define IDE_GET_AI              7
 
 // character values passed in the code parameter of IDEJavaSrcDepFile
 // callback function
-#define IDE_DEP_FILETYPE_SOURCE         'S'
-#define IDE_DEP_FILETYPE_TARGET         'T'
-#define IDE_DEP_FILETYPE_DEP_CLS        'C'
-#define IDE_DEP_FILETYPE_DEP_ZIP        'Z'
 
-#if defined( _WIN64 )
 typedef unsigned __int64 IDEGetInfoWParam;
 typedef unsigned __int64 IDEGetInfoLParam;
-#else
-typedef unsigned long IDEGetInfoWParam;
-typedef unsigned long IDEGetInfoLParam;
-#endif
 
 typedef IDEBool IDEAPI (*IDERunBatchFn)( IDECBHdl hdl, const char *cmdline,
                                 BatchFilter cb, void *cookie );
@@ -394,8 +363,6 @@ void IdeMsgStartDll             // START OF FORMATING FOR A DLL (EACH TIME)
 
 #include "poppck.h"
 
-#ifdef __cplusplus
 }
-#endif
 
 #endif

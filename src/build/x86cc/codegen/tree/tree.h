@@ -34,7 +34,6 @@
 #ifndef __TREE__H__
 #define __TREE__H__
 
-#include "useinfo.h"
 
 /* aligned */
 typedef enum {
@@ -77,9 +76,6 @@ typedef enum {
 } tn_class;
 
 typedef struct tree_node {
-#ifdef DEVBUILD
-    use_info                useinfo;
-#endif
     const struct type_def   *tipe;
     union {
         struct tree_node    *left;

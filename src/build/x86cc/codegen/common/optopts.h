@@ -31,9 +31,4 @@
 
 
 #pragma once
-#define         SEGMENTED       0x01
-#define         SHORT_JUMPS     0x02
-#define         SPEED           0x04
-#define         SAVINGS         0x08
 
-#define         OPTIONS         (SEGMENTED | SHORT_JUMPS)

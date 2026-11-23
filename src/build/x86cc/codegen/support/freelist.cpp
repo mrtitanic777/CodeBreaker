@@ -58,9 +58,6 @@ pointer AllocFrl( BackRun& back, pointer **head, size_t size )
         *head = static_cast<pointer *>(**head);
         back.data.FrlSize -= size;
     }
-#ifdef DEVBUILD
-    memset( new_frl, 0xda, size );
-#endif
     _AlignmentCheck( new_frl, 8 );
     return( new_frl );
 }
@@ -69,9 +66,6 @@ pointer AllocFrl( BackRun& back, pointer **head, size_t size )
 void    FrlFreeSize( BackRun& back, pointer **head, pointer *what, size_t size )
 /***************************************************************/
 {
-#ifdef DEVBUILD
-    memset( what, 0xdf, size );
-#endif
     back.data.FrlSize += size;
     *what = *head;
     *head = what;

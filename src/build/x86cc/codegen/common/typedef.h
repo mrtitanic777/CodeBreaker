@@ -43,20 +43,6 @@
 #elif _TARGET & _TARG_80386
     typedef int_32      type_length;
     #define MAX_TYPE_LENGTH 0x7fffffff
-#elif _TARGET & _TARG_370
-    typedef int_32      type_length;
-    #define MAX_TYPE_LENGTH 0x7fffffff
-#elif _TARGET & _TARG_PPC
-    typedef int_32      type_length;
-    #define MAX_TYPE_LENGTH 0x7fffffff
-#elif _TARGET & _TARG_AXP
-    typedef int_32      type_length;
-    #define MAX_TYPE_LENGTH 0x7fffffff
-#elif _TARGET & _TARG_MIPS
-    typedef int_32      type_length;
-    #define MAX_TYPE_LENGTH 0x7fffffff
-#else
-    #error Unknown target
 #endif
 
 typedef enum {
@@ -70,9 +56,6 @@ typedef struct type_def {
         cg_type         refno;
         type_length     length;
         type_attr       attr;
-#if _TARGET_RISC
-        type_length     align;
-#endif
 } type_def;
 
 #endif

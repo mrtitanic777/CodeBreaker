@@ -36,36 +36,6 @@
 #include "score.h"
 #include "backrun.hpp"
 
-#if 0
-static  void    RegDelete( score_hdl scoreboard, int index )
-/**********************************************************/
-{
-    score_hdl   scoreitem;
-    int         half;
-    list_head   **free_heads;
-
-    scoreitem = &scoreboard[index];
-    if( scoreitem->next_reg != scoreitem ) {
-        free_heads = (list_head **)&scoreboard[ScoreCount];
-        scoreitem->list = *free_heads;
-        *free_heads = (list_head *)**free_heads;
-        *scoreitem->list = NULL;
-    }
-    scoreitem->prev_reg->next_reg = scoreitem->next_reg;
-    scoreitem->next_reg->prev_reg = scoreitem->prev_reg;
-    scoreitem->next_reg = scoreitem;
-    scoreitem->prev_reg = scoreitem;
-    scoreitem->generation = 0;
-    half = ScoreList[index]->low;
-    if( half != NO_INDEX ) {
-        RegDelete( scoreboard, half );
-    }
-    half = ScoreList[index]->high;
-    if( half != NO_INDEX ) {
-        RegDelete( scoreboard, half );
-    }
-}
-#endif
 
 void    RegInsert( BackRun& back, score_hdl scoreboard, int dst_idx, int src_idx )
 /*****************************************************************/

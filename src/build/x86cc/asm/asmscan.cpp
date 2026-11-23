@@ -32,9 +32,6 @@
 
 
 #include "asmglob.h"
-#if defined( _STANDALONE_ )
-#include "directiv.h"
-#endif
 #include <ctype.h>
 #include "asmrun.hpp"
 
@@ -44,15 +41,7 @@ typedef union {
     long    l;
 } NUMBERFL;
 
-#ifdef DEBUG_OUT
-const char              *CurrString; // Current Input Line
-#endif
 
-#if defined( _STANDALONE_ )
-
-bool                    EnumDirective;
-
-#endif
 
 namespace {
 
@@ -315,11 +304,6 @@ static bool get_number( AsmRun& assembler, asm_tok *tok, const char **input, cha
         first_char_0 = false;
         dig_start = *input;
     }
-#if defined( _STANDALONE_ )
-    if( !Options.allow_c_octals ) {
-        first_char_0 = false;
-    }
-#endif
     tok->class_ = TC_NUM;
     if( base == 0 ) {
         if( base10 ) {
@@ -443,82 +427,6 @@ static bool get_id( asm_tok *tok, const char **input, char **output )
         }
     } else {
         tok->u.token = ins->token;
-#if defined( _STANDALONE_ )
-        switch( ins->token ) {
-        // MASM6 keywords
-        case T_FOR:
-        case T_FORC:
-            if( Options.mode & (MODE_MASM5 | MODE_TASM) ) {
-                return( RC_OK );
-            }
-            break;
-        // TASM keywords - initialization
-        case T_MASM:
-        case T_IDEAL:
-            if( (Options.mode_init & MODE_TASM) == 0 ) {
-                return( RC_OK );
-            }
-            break;
-        // TASM keywords
-        case T_ARG:
-        case T_ENUM:
-        case T_LOCALS:
-        case T_NOLOCALS:
-        case T_NOWARN:
-        case T_SMART:
-        case T_WARN:
-            if( (Options.mode & MODE_TASM) == 0 ) {
-                return( RC_OK );
-            }
-            break;
-        // TASM IDEAL keywords
-        case T_CODESEG:
-        case T_CONST:
-        case T_DATASEG:
-        case T_ERR:
-        case T_ERRIFB:
-        case T_ERRIFDEF:
-        case T_ERRIFDIF:
-        case T_ERRIFDIFI:
-        case T_ERRIFE:
-        case T_ERRIFIDN:
-        case T_ERRIFIDNI:
-        case T_ERRIFNB:
-        case T_ERRIFNDEF:
-        case T_EXITCODE:
-        case T_FARDATA:
-        case T_MODEL:
-        case T_P186:
-        case T_P286:
-        case T_P286N:
-        case T_P286P:
-        case T_P287:
-        case T_P386:
-        case T_P386P:
-        case T_P387:
-        case T_P486:
-        case T_P486P:
-        case T_P586:
-        case T_P586P:
-        case T_P686:
-        case T_P686P:
-        case T_P8086:
-        case T_P8087:
-        case T_PK3D:
-        case T_PMMX:
-        case T_PXMM:
-        case T_PXMM2:
-        case T_PXMM3:
-        case T_STACK:
-        case T_STARTUPCODE:
-        case T_UDATASEG:
-        case T_UFARDATA:
-            if( (Options.mode & MODE_IDEAL) == 0 ) {
-                return( RC_OK );
-            }
-            break;
-        }
-#endif
         tok->class_ = TC_INSTR;
         if( ins->opnd_type1 == OP_SPECIAL ) {
             switch( ins->rm_byte ) {
@@ -540,52 +448,18 @@ static bool get_id( asm_tok *tok, const char **input, char **output )
             case OP_UNARY_OPERATOR:
                 tok->class_ = TC_UNARY_OPERATOR;
                 break;
-#if defined( _STANDALONE_ )
-            case OP_RELATION_OPERATOR:
-                tok->class_ = TC_RELATION_OPERATOR;
-                break;
-#endif
             case OP_ARITH_OPERATOR:
                 tok->class_ = TC_ARITH_OPERATOR;
                 break;
             case OP_DIRECTIVE:
                 tok->class_ = TC_DIRECTIVE;
-#if defined( _STANDALONE_ )
-                if( ins->token == T_ENUM ) {
-                    EnumDirective = true;
-                }
-#endif
                 break;
-#if defined( _STANDALONE_ )
-            case OP_DIRECT_EXPR:
-                tok->class_ = TC_DIRECT_EXPR;
-                break;
-#endif
             }
         }
     }
     return( RC_OK );
 }
 
-#if defined( _STANDALONE_ )
-
-static bool get_comment( asm_tok *tok, const char **input, char **output )
-{
-    size_t  len;
-    /* save the whole line .. we need to check
-     * if the delim. char shows up 2 times */
-    len = strlen( *input );
-    tok->string_ptr = *output;
-    memcpy( *output, *input, len );
-    (*output) += len;
-    *(*output)++ = '\0';
-    *input += len;
-    tok->class_ = TC_STRING;
-    tok->u.value = 0;
-    return( RC_OK );
-}
-
-#endif
 
 static bool get_special_symbol( AsmRun& assembler, asm_tok *tok, const char **input, char **output )
 /*******************************************************************************/
@@ -630,34 +504,12 @@ static bool get_special_symbol( AsmRun& assembler, asm_tok *tok, const char **in
         cls = TC_CL_BRACKET;
         break;
     case ':' :
-#if defined( _STANDALONE_ )
-        if( (*input)[1] == '=' ) {
-            cls = TC_COLON_EQU;
-            *(*output)++ = *(*input)++;
-            break;
-        }
-#endif
         cls = TC_COLON;
         break;
     case '%' :
         cls = TC_PERCENT;
         break;
-#if defined( _STANDALONE_ )
-    case '=' :
-        tok->u.token = T_EQU2;
-        cls = TC_DIRECTIVE;
-        break;
-    case '}' :
-        cls = TC_CL_BRACE;
-        break;
-#endif
     case '{' :
-#if defined( _STANDALONE_ )
-        if( EnumDirective ) {
-            cls = TC_OP_BRACE;
-            break;
-        }
-#endif
     case '\'' :
     case '"' :
     case '<' :
@@ -675,38 +527,6 @@ static bool get_special_symbol( AsmRun& assembler, asm_tok *tok, const char **in
     return( RC_OK );
 }
 
-#if defined( _STANDALONE_ )
-static bool get_inc_path( asm_tok *tok, const char **input, char **output )
-/*************************************************************************/
-{
-    char symbol;
-
-    tok->class_ = TC_PATH;
-    tok->u.value = 0;
-    tok->string_ptr = *output;
-
-    while( isspace( **input ) )
-        (*input)++;
-
-    symbol = **input;
-
-    switch( symbol ) {
-    case '\'' :
-    case '"' :
-    case '<' :
-    case '{' :
-        /* string delimiters -- just get the path as a string */
-        return( get_string( tok, input, output ) );
-    default:
-        /* otherwise, just copy whatever is here */
-        while( **input && !isspace( **input )  ) {
-            *(*output)++ = *(*input)++;
-        }
-        *(*output)++ = '\0';
-        return( RC_OK );
-    }
-}
-#endif
 
 void SetFinalToken( token_buffer *tokbuf, token_idx count )
 {
@@ -731,12 +551,6 @@ bool AsmScan( AsmRun& assembler, token_buffer *tokbuf, const char *string )
     bool                base10;
     token_idx           i;
 
-#ifdef DEBUG_OUT
-    CurrString = string;
-#endif
-#if defined( _STANDALONE_ )
-    EnumDirective = false;
-#endif
 
     base10 = false;
     ptr = string;
@@ -772,24 +586,6 @@ bool AsmScan( AsmRun& assembler, token_buffer *tokbuf, const char *string )
                 SetFinalToken( tokbuf, i + 1 );
                 return( RC_ERROR );
             }
-#if defined( _STANDALONE_ )
-            if( tok[i].class_ == TC_DIRECTIVE ) {
-                if( tok[i].u.token == T_COMMENT ) {
-                    i++;
-                    if( i >= MAX_TOKEN_COUNT )
-                        break;
-                    get_comment( tok + i, &ptr, &output_ptr );
-                } else if( tok[i].u.token == T_INCLUDE || tok[i].u.token == T_INCLUDELIB ) {
-                    // this mess allows include directives with undelimited file names
-                    i++;
-                    if( i >= MAX_TOKEN_COUNT )
-                        break;
-                    get_inc_path( tok + i, &ptr, &output_ptr );
-                } else if( tok[i].u.token == T_DOT_RADIX ) {
-                    base10 = true;
-                }
-            }
-#endif
         } else if( isdigit( c ) ) {
             if( get_number( assembler, tok + i, &ptr, &output_ptr, base10 ) ) {
                 SetFinalToken( tokbuf, i + 1 );

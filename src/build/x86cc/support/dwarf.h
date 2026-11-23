@@ -35,9 +35,7 @@
 
 #include "pushpck1.h"
 
-#ifdef __cplusplus
 extern "C" {
-#endif
 
 /*
    All informations are derived from DWARF Debugging Information Format ( by
@@ -53,9 +51,7 @@ extern "C" {
  */
 #define DWARF_WATCOM_PRODUCER       DWARF_WATCOM_PRODUCER_V2
 
-#define DWARF_WATCOM_PRODUCER_V3    "V2.0 WATCOM"
 #define DWARF_WATCOM_PRODUCER_V2    "V1.0 WATCOM"
-#define DWARF_WATCOM_PRODUCER_V1    "WATCOM"
 
 typedef enum {
     VER_ERROR = -1,
@@ -311,11 +307,9 @@ typedef enum {
 #define REF_BEGIN_SCOPE         0x01
 #define REF_END_SCOPE           0x02
 #define REF_SET_FILE            0x03
-#define REF_SET_LINE            0x04
 #define REF_SET_COLUMN          0x05
 #define REF_ADD_LINE            0x06
 #define REF_ADD_COLUMN          0x07
-#define REF_COPY                0x08
 #define REF_CODE_BASE           0x10
 #define REF_COLUMN_RANGE        80
 
@@ -349,7 +343,6 @@ typedef enum {
 /* handy constants section */
 
 #define DWLINE_OPCODE_BASE      10
-#define DWLINE_OPCODE_BASE_V5   14
 
 /*
  * these next three constants do not have to be defined this way, but it
@@ -434,8 +427,6 @@ typedef struct {
     unsigned_32     debug_size;
 } _WCUNALIGNED pubnames_prologue;
 
-#ifdef __cplusplus
 };
-#endif
 #include "poppck.h"
 #endif

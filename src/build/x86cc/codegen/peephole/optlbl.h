@@ -35,9 +35,6 @@
 #include "offset.h"
 #include "rtclass.h"
 #include "objrep.h"
-#ifdef DEVBUILD
-#include "useinfo.h"
-#endif
 
 
 #define RTIDX2SYM(i)    ((cg_sym_handle)(pointer_uint)((i) + 1))
@@ -73,19 +70,11 @@ typedef struct label_def {
 } label_def;
 
 typedef struct code_lbl {
-#ifdef DEVBUILD
-    use_info                useinfo;
-#endif
     struct label_def        lbl;
     struct code_lbl         *alias;
     struct ins_entry        *ins;
     struct ins_entry        *refs;
-#if  OPTIONS & SHORT_JUMPS
     struct code_lbl         *redirect;
-#endif
-#if _TARGET_RISC
-    struct code_lbl         *ppc_alt_name;
-#endif
 #if _TARGET_RISC || (_TARGET & _TARG_80386)
     void                    *owl_symbol;
 #endif
@@ -95,11 +84,7 @@ typedef struct code_lbl {
 #define _ClrStatus( var, stat ) var->lbl.status &= ~(stat)
 #define _TstStatus( var, stat ) ((var->lbl.status & (stat)) != 0)
 
-#ifndef PRODUCTION
 #define _ValidLbl( lbl ) ValidLbl( lbl )
-#else
-#define _ValidLbl( lbl )
-#endif
 
 extern bool             ValidLbl( label_handle lbl );
 

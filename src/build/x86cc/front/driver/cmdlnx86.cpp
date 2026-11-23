@@ -44,9 +44,6 @@
 #include "frontrun.hpp"
 
 
-#if !_INTEL_CPU
-    #error cmdlx86.c - unsupported architecture
-#endif
 
 #if _CPU == 8086
     #define MX86    "M_I86"
@@ -60,11 +57,7 @@
     #define UIMX86  "_M_I386"
 #endif
 
-#ifdef DEVBUILD
-    #define DbgNever()  (FEMessage( FEMSG_FATAL, "should never execute this" __location ))
-#else
     #define DbgNever()
-#endif
 
 namespace {
 
@@ -137,31 +130,7 @@ static char *setTargetSystem( FrontRun& front, OPT_STORAGE *data )
     }
 
     if( target_name == NULL ) {
-#if defined( __NOVELL__ )
-        SetTargetName( &target_name, "NETWARE" );
-#elif defined( __QNX__ )
-        SetTargetName( &target_name, "QNX" );
-#elif defined( __LINUX__ )
-        SetTargetName( &target_name, "LINUX" );
-#elif defined( __HAIKU__ )
-        SetTargetName( &target_name, "HAIKU" );
-#elif defined( __SOLARIS__ ) || defined( __sun__ )
-        SetTargetName( &target_name, "SOLARIS" );
-#elif defined( __OSX__ ) || defined( __APPLE__ )
-        SetTargetName( &target_name, "OSX" );
-#elif defined( __OS2__ )
-        SetTargetName( &target_name, "OS2" );
-#elif defined( __NT__ )
         SetTargetName( front, &target_name, "NT" );
-#elif defined( __DOS__ )
-        SetTargetName( &target_name, "DOS" );
-#elif defined( __BSD__ )
-        SetTargetName( &target_name, "BSD" );
-#elif defined( __RDOS__ )
-        SetTargetName( &target_name, "RDOS" );
-#else
-        #error cmdlx86.c - Target OS not_ defined
-#endif
     }
 
     if( target_name != NULL ) {

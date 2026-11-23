@@ -34,16 +34,10 @@
 #ifndef _MEMFUNCS_H_INCLUDED
 #define _MEMFUNCS_H_INCLUDED
 
-#ifdef __cplusplus
     #include <cstddef>
-#else
-    #include <stddef.h>
-#endif
 #include "nsstd.h"
 
-#ifdef __cplusplus
 extern "C" {
-#endif
 
 extern void     *MemAlloc( FrontRun& front, NSSTD( size_t ) );
 extern void     *MemAllocSafe( FrontRun& front, NSSTD( size_t ) );
@@ -53,8 +47,6 @@ extern void     *MemRealloc( void *, NSSTD( size_t ) );
 extern void     *MemReallocSafe( void *, NSSTD( size_t ) );
 extern void     MemFree( FrontRun& front, void * );
 
-#ifdef __cplusplus
 }
-#endif
 
 #endif

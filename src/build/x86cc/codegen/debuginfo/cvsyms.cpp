@@ -226,10 +226,6 @@ void    CVObjInitDbgInfo( BackRun& back )
     #elif _TARGET & _TARG_80386
         cptr->machine = MACH_INTEL_80386;
         cptr->flags.f.Mode32 = true;
-    #elif _TARGET & _TARG_AXP
-        cptr->machine = MACH_DECALPHA;
-        cptr->flags.f.Mode32 = true;
-        cptr->flags.f.FloatPrecision = 1;
     #endif
         switch( GetMemModel(back) ) {
             case 'h':
@@ -320,7 +316,6 @@ void    CVOutBck( BackRun& back, cv_out *out, back_handle bck, offset add, dbg_t
 
 static  void FrameVar( cv_out *out, const char *nm, dbg_type tipe, int disp )
 /***  local rel to  frame  *************************************************/
-#if 1     // it seems like BPREL works for AXP so I'll give it a try
 {
 //#if _TARGET_INTEL
     cs_bprel   *ptr;
@@ -330,17 +325,6 @@ static  void FrameVar( cv_out *out, const char *nm, dbg_type tipe, int disp )
     ptr->type = tipe;
     CVPutStr( out, nm );
     EndSym( out );
-#elif 0
-//#elif _TARGET & _TARG_AXP
-    cs_regrel    *ptr;
-
-    ptr = StartSym(  out, SG_REGREL   );
-    ptr->offset = disp;
-    ptr->type = tipe;
-    ptr->reg = 0x48;   // not wired in need real frame reg.
-    CVPutStr( out, nm );
-    EndSym( out );
-#endif
 }
 
 void    CVOutSym( BackRun& back, cv_out *out, cg_sym_handle sym )
@@ -563,12 +547,6 @@ static  void DumpParms( BackRun& back, dbg_local *parm, dbg_local **locals )
         CGFree( back, parm );
     }
 //#if _TARGET & _TARG_AXP
-#if 0 // seems like it screws CVPACK on intel
-    NewBuff( out, CVSyms );
-    StartSym(  out, SG_ENDARG );
-    EndSym( out );
-    buffEnd( out );
-#endif
 }
 
 
@@ -641,11 +619,9 @@ void    CVProEnd( BackRun& back, dbg_rtn *rtn, offset lc )
     tipe = FEDbgType( *back.front, sym );
     ptr->proctype = tipe;
     ptr->flags.s = 0;
-#if _TARGET_INTEL
     if( (call_class_target)(pointer_uint)FindAuxInfoSym( sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR_CALL ) {
         ptr->flags.f.far_ret = true;
     }
-#endif
     if( rtn->obj_type != DBG_NIL_TYPE ) {
         name = static_cast<const char *>(FEAuxInfo( *back.front, sym, FEINF_CLASS_APPENDED_NAME ));
     } else {

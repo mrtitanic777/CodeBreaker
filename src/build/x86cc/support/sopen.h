@@ -32,25 +32,9 @@
 
 
 #pragma once
-#if defined( __WATCOMC__ ) && ( __WATCOMC__ < 1300 )
-    /* fix for OW 1.9 */
-    #include <share.h>
-    #define _sopen3             sopen
-    #define _sopen4             sopen
-#elif defined( __WATCOMC__ ) || !defined( __UNIX__ )
     #include <share.h>
     #define _sopen3             _sopen
     #define _sopen4             _sopen
-#else
-    #define _sopen3(a,b,c)      open(a,b)
-    #define _sopen4(a,b,c,d)    open(a,b,d)
-#endif
 #ifndef SH_COMPAT
-  #ifdef SH_DENYNO
     #define SH_COMPAT           SH_DENYNO
-  #elif defined( _SH_DENYNO )
-    #define SH_COMPAT           _SH_DENYNO
-  #else
-    #define SH_COMPAT           0
-  #endif
 #endif

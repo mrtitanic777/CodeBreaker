@@ -35,7 +35,6 @@
 #include "cvars.h"
 #include "frontrun.hpp"
 
-#define MAX_DIGIT 21
 
 namespace {
 
@@ -48,28 +47,6 @@ namespace {
 
 char *ftoa( FrontRun& front, FLOATVAL *flt )
 {
-#ifdef __WATCOMC__
-    CVT_INFO    cvt;
-    char        mant[MAX_DIGIT + 1];
-
-    cvt.flags = FPCVT_G_FMT | FPCVT_F_CVT | FPCVT_NO_TRUNC | FPCVT_LONG_DOUBLE;
-    cvt.scale = 1;
-    cvt.ndigits = MAX_DIGIT;
-    cvt.expwidth = 0;
-    cvt.expchar = 0;
-    __LDcvt( &flt->ld, &cvt, mant );
-    if( !isdigit( (unsigned char)*mant ) ) {
-        /*
-         * special magical thingy (nan, inf, ...)
-         */
-        strcpy( buf, mant );
-        return( buf );
-    }
-    if( *mant != '0' )
-        cvt.decimal_place--;
-    sprintf( buf, "%c%c.%sE%+1d", ( cvt.sign ) ? '-' : '+', *mant, mant + 1, cvt.decimal_place );
-#else
     sprintf( front.ftoa.buf, "%.19e", flt->ld.u.value );
-#endif
     return( front.ftoa.buf );
 }

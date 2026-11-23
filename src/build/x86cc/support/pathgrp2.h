@@ -12,8 +12,3 @@
 
 
 #pragma once
-#ifdef __WATCOMC__
-
-#include "_pathgr2.h"
-
-#endif

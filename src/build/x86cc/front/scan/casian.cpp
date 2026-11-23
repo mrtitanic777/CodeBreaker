@@ -40,14 +40,8 @@
  */
 #include "cvars.h"
 
-#if defined( __RDOS__ )
-/*
- * !TODO fix MBCS stuff
- */
-#elif defined( __WATCOMC__ ) || !defined( __UNIX__ )
     #include <mbstring.h>
     #include <mbctype.h>
-#endif
 
 #include "scan.h"
 #include "frontrun.hpp"
@@ -83,8 +77,6 @@ void SetDBChar( FrontRun& front, int character_set )
         setRange( front, 0xa1, 0xfe );
         break;
     case -1:
-#if defined( __RDOS__ )
-#elif defined( __WATCOMC__ ) || !defined( __UNIX__ )
         {
             unsigned    i;
 
@@ -95,7 +87,6 @@ void SetDBChar( FrontRun& front, int character_set )
                 }
             }
         }
-#endif
         break;
     }
 }

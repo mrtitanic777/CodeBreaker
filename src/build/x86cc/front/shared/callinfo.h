@@ -32,11 +32,6 @@
 #ifndef __CALLINFO_H__
 #define __CALLINFO_H__
 
-#if !defined( BY_C_FRONT_END ) && !defined( BY_CPP_FRONT_END ) && !defined( BY_FORTRAN_FRONT_END )
-
-#error "!!!! Call info - Unknown front end !!!!"
-
-#else
 
 #include "cgauxcc.h"
 #include "auxflags.h"
@@ -52,19 +47,7 @@ typedef struct aux_info {
         char                *objname;       // also used by pre-compiled header
         unsigned            use;            // use count
         aux_flags           flags;
-  #if defined( BY_C_FRONT_END )
         unsigned            index;          // for C pre-compiled header
-    #if _CPU == 370
-        linkage_regs        *linkage;
-    #endif
-    #if _CPU == _AXP
-        char                *except_rtn;
-    #endif
-  #elif defined( BY_CPP_FRONT_END )
-        unsigned            index;          // for C++ pre-compiled header
-  #elif defined( BY_FORTRAN_FRONT_END )
-        pass_by             *arg_info;
-  #endif
 } aux_info;
 
 #define DefaultInfo      front.callinfo.BuiltinAuxInfo[0]
@@ -96,7 +79,6 @@ extern int          IsAuxParmsBuiltIn( FrontRun& front, hw_reg_set *parms );
 extern int          IsAuxInfoBuiltIn( FrontRun& front, aux_info *inf );
 extern char         *VarNamePattern( FrontRun& front, aux_info *inf );
 
-#endif
 
 /* the variables of callinfo.h, one set for each run of the compiler (run/cbrun.hpp) */
 struct CallinfoState {

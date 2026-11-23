@@ -99,9 +99,6 @@ label_handle AddNewLabel( BackRun& back, ins_entry *new_ins, obj_length align )
     lbl = AskForNewLabel(back);
     oc.oc_handle.ref = NULL;
     oc.oc_handle.handle = lbl;
-#if _TARGET_RISC
-    oc.oc_handle.line = 0;
-#endif
     AddInstr( back, NewInstr( back, &oc ), new_ins );
     _SetStatus( lbl, DYINGLABEL );
   optreturn( lbl );
@@ -119,9 +116,6 @@ void    AddNewJump( BackRun& back, ins_entry *new_ins, label_handle lbl )
     oc.oc_handle.hdr.objlen = OptInsSize( back, OC_JMP, OC_DEST_NEAR );
     oc.oc_handle.ref = NULL;
     oc.oc_handle.handle = lbl;
-#if _TARGET_RISC
-    oc.oc_handle.line = 0;
-#endif
     AddInstr( back, NewInstr( back, &oc ), new_ins );
   optend
 }

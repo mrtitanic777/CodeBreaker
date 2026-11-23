@@ -688,10 +688,6 @@ instruction     *rSPLIT8BIN( BackRun& back, instruction *ins ) { return( ins ); 
 instruction     *rSPLIT8NEG( BackRun& back, instruction *ins ) { return( ins ); }
 instruction     *rSPLIT8TST( BackRun& back, instruction *ins ) { return( ins ); }
 instruction     *rSPLIT8CMP( BackRun& back, instruction *ins ) { return( ins ); }
-#if 0
-instruction     *rCLRHIGH_DW( instruction *ins ) { return( ins ); }
-instruction     *rSEX_DW( instruction *ins ) { return( ins ); }
-#endif
 instruction     *rCYPSHIFT( BackRun& back, instruction *ins ) { return( ins ); }
 instruction     *rBYTESHIFT( BackRun& back, instruction *ins ) { return( ins ); }
 instruction     *rMOVE8LOW( BackRun& back, instruction *ins ) { return( ins ); }

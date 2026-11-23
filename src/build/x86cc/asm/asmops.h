@@ -138,7 +138,5 @@ typedef struct asm_tok {
                                   || (cls) == TC_STRING_BRACE)
 
 #define IS_QUOTED_STRING_TOKEN( cls )   ((cls) == TC_STRING_SQUOTE || (cls) == TC_STRING_DQUOTE)
-#define STRING_TOKEN_DELIM( cls )       ((cls) == TC_STRING_SQUOTE ? '\'' \
-                                      : ((cls) == TC_STRING_DQUOTE ? '"' : 0))
 
 #endif

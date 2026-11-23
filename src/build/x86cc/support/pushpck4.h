@@ -30,32 +30,10 @@
 ****************************************************************************/
 
 
-#if defined( __WATCOMC__ )
-    #pragma pack(__push,4)
-#elif defined( _CFE ) || defined( __SUNPRO_C ) || defined( __sun )
-    #if !defined( _NO_PRAGMA_PUSH_PACK )
-        #define _NO_PRAGMA_PUSH_PACK
-    #endif
-    #pragma pack(4)
-#elif defined( MAC )
-    #if defined( __MWERKS__ )
-        #pragma options align= mac68k
-    #else
-        #error "Need a pshpk4.h for this Mac compiler"
-    #endif
-#elif defined( _MSC_VER )
+#if defined( _MSC_VER )
     #pragma warning(disable:4103)
-    #pragma pack(push,4)
-#elif defined( __clang__ )
     #pragma pack(push,4)
 #else
     #pragma pack(push,4)
 #endif
 
-#if defined( _NO_PRAGMA_PUSH_PACK )
-    #if defined( _PUSH_PACK )
-        #error Tried to push a pack at too great a depth
-    #else
-        #define _PUSH_PACK
-    #endif
-#endif

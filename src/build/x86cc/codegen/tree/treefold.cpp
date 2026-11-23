@@ -1453,10 +1453,6 @@ tn  FoldCompare( BackRun& back, cg_op opcode, tn left, tn rite, const type_def *
             }
             return( NULL );
         }
-#if _TARGET & _TARG_370
-        if( left->u1.t.rite->class_ != TN_CONS )
-            return( NULL );
-#endif
         if( left->u1.t.op != O_AND )
             return( NULL );
         if( opcode != O_EQ && opcode != O_NE )

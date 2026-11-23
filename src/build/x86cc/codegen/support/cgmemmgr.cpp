@@ -63,16 +63,7 @@ essentially no worst case performance scenario.
 #include "_cgstd.h"
 #include <stdlib.h>
 #include <stdio.h>
-#if defined( __NT__ )
     #include <windows.h>
-#elif defined( __DOS__ )
-    #include <i86.h>
-    #include "extender.h"
-    #include "dpmi.h"
-#elif defined( __QNX__ )
-    #include <sys/osinfo.h>
-    #include <sys/seginfo.h>
-#endif
 #include "roundmac.h"
 #include "_cg.h"
 #include "utils.h"
@@ -87,31 +78,17 @@ essentially no worst case performance scenario.
 #define MIN_SIZE        4   /* 16    (2 ^ 4) */
 #define MAX_CLASS       (MAX_SIZE - MIN_SIZE)
 
-#if defined( _M_X64 ) || defined( _M_ARM64 )
 #define MEM_WORD_SIZE   16  /* Needed to keep alignment. */
-#define MEMPTR_SIZE     8
 #define TAG_SIZE        8
-#else
-#define MEM_WORD_SIZE   8
-#define MEMPTR_SIZE     4
-#define TAG_SIZE        4
-#endif
 
-#if (1 << MIN_SIZE) < (TAG_SIZE + MEMPTR_SIZE)
-    #error "Free list will not fit into freed chunk"
-#endif
 
 #define MIN_ALLOC       _RoundUp( sizeof( frl ), MEM_WORD_SIZE )
 #define MAX_ALLOC       (1 << MAX_SIZE)
-#define _WALKTAG( free ) ((frl *)((char *)(free) + (free)->length ))
 
 typedef pointer_uint    tag;
 
 static pointer          MemFromSys( BackRun& back, size_t );
 
-#ifdef MEMORY_STATS
-static pointer_uint     PeakAlloc = 0;
-#endif
 
 
 /* Free list structure - length holds the size of memory block, which
@@ -159,15 +136,6 @@ namespace {
 
 
 
-#if  defined( __DOS__ ) || defined( __QNX__ )
-
-static  void    NotEnoughMem( void )
-/**********************************/
-{
-    FatalError( "Not enough memory to satisfy WCGMEMORY" );
-}
-
-#endif
 
 
 static int myatoi( const char *p )
@@ -210,51 +178,6 @@ static  void    CalcMemSize( BackRun& back )
             size_requested = myatoi( envvar ) * _1K;
         }
     }
-#if defined( __DOS__ )
-    {
-        MemorySize = 0;
-        if( _IsRational() ) {
-
-            dpmi_mem            mem_info;
-
-            DPMIGetFreeMemoryInformation( &mem_info );
-            memory_available = mem_info.largest_free - _1K;
-
-        } else { // PharLap or win386
-
-            if( _DPMI ) { // DPMI HOST
-
-                dpmi_mem    mem_info;
-
-                DPMIGetFreeMemoryInformation( &mem_info );
-                if( max_size_queried ) {
-                    memory_available = mem_info.largest_free;
-                } else {
-                    memory_available = ( mem_info.physical_pages / 2 ) * _4K;
-                    if( memory_available > _16M ) { // OS/2 reports 4G
-                        memory_available = mem_info.largest_free;
-                        if( memory_available > _16M ) {
-                            memory_available = _16M;
-                        }
-                    }
-                }
-            } else {
-                memory_available = *(char * __far *)_MK_FP( _psp, 0x60 ) - sbrk( 0 );
-            }
-            if( memory_available < _1M ) {
-                memory_available = _1M;
-            }
-        }
-        if( size_requested != 0 ) {
-            if( memory_available < size_requested ) {
-                NotEnoughMem();
-            }
-            MemorySize = size_requested;
-        } else {
-            MemorySize = memory_available;
-        }
-    }
-#elif defined( __NT__ )
     {
         MEMORYSTATUS    info;
 
@@ -266,36 +189,6 @@ static  void    CalcMemSize( BackRun& back )
             back.cgmemmgr->MemorySize = memory_available;
         }
     }
-#elif defined( __OS2__ )
-    if( size_requested != 0 ) {
-        MemorySize = size_requested;
-    } else {
-        MemorySize = _16M;
-    }
-    memory_available = _16M;
-#elif defined( __QNX__ )
-    {
-        struct _osinfo  data;
-
-        qnx_osinfo( 0, &data );
-        memory_available = (unsigned long)data.freememk * 1024;
-        if( size_requested != 0 ) {
-            if( memory_available < size_requested ) {
-                NotEnoughMem();
-            }
-            MemorySize = size_requested;
-        } else {
-            MemorySize = memory_available;
-        }
-    }
-#else
-    if( size_requested != 0 ) {
-        MemorySize = size_requested;
-    } else {
-        MemorySize = _16M;
-    }
-    memory_available = _16M;
-#endif
     if( max_size_queried || size_queried ) {
         sprintf( buff, "Maximum WCGMEMORY=%d\n", (int)( memory_available / _1K ) );
         FEMessage( *back.front, FEMSG_INFO, buff );
@@ -316,9 +209,7 @@ static  void    memInit( BackRun& back )
         back.cgmemmgr->Initialized = 1;
         back.cgmemmgr->AllocSize   = 0;
         back.cgmemmgr->_Blks       = NULL;
-#if !defined( __QNX__ )
         CalcMemSize(back);
-#endif
     }
 }
 
@@ -364,9 +255,6 @@ static pointer  GetFromFrl( BackRun& back, size_t amount, int frl_class )
 
     free = back.cgmemmgr->_FreeList[frl_class];
     if( free != NULL ) {
-#ifdef DEVBUILD
-        assert( (free->length & ALLOCATED) == 0 );
-#endif
         free->length |= ALLOCATED;
         back.cgmemmgr->_FreeList[frl_class] = free->link;
         return( free );
@@ -384,9 +272,6 @@ static pointer  GetFromBlk( BackRun& back, size_t amount )
     for( block = back.cgmemmgr->_Blks; block != NULL; block = block->next ) {
         if( block->free >= amount ) {
             alloc = (tag *)( (char *)block + block->size - block->free );
-#ifdef DEVBUILD
-            assert( *alloc == 0 );
-#endif
             *alloc = amount | ALLOCATED;
             block->free -= amount;
             return( ++alloc );
@@ -433,9 +318,6 @@ void     CgMemFree( BackRun& back, pointer p )
     tag     length;
 
     free   = (frl *)( (char *)p - TAG_SIZE );
-#ifdef DEVBUILD
-    assert( free->length & ALLOCATED );
-#endif
     free->length &= ~ALLOCATED;
     length = free->length;
     if( length > MAX_ALLOC ) {   // This was a full block
@@ -446,12 +328,6 @@ void     CgMemFree( BackRun& back, pointer p )
         blk    = header->block;
         blk->free += header->size + sizeof( blk_hdr );
         blk->size += header->size + sizeof( blk_hdr );
-#ifdef DEVBUILD
-        /*
-         * Must zero the memory for later checks in GetFromBlk
-         */
-        memset( header, 0, length + sizeof( blk_hdr ) );
-#endif
     } else {
         mem_class  = SizeToClass( length );
         free->link = back.cgmemmgr->_FreeList[mem_class];
@@ -481,11 +357,6 @@ pointer_uint     MemSize( BackRun& back )
     switch( back.cgmemmgr->Initialized ) {
     case 0:
         memInit(back);
-#if defined( __QNX__ )
-        /* fall through */
-    case 1:
-        CalcMemSize();
-#endif
     }
     return( back.cgmemmgr->MemorySize );
 }
@@ -509,10 +380,6 @@ static  pointer MemFromSys( BackRun& back, size_t amount )
     ptr = back.held->calloc( 1, size );
     if( ptr != NULL ) {
         back.cgmemmgr->AllocSize += size;
-#ifdef MEMORY_STATS
-        if( AllocSize > PeakAlloc )
-            PeakAlloc = AllocSize;
-#endif
         blk = static_cast<mem_blk *>(ptr);
         /*
          * If amount was zero, this block will be chopped up into
@@ -558,15 +425,6 @@ void MemFini( BackRun& back )
         next = curr->next;
         MemToSys( back, curr );
     }
-#ifdef MEMORY_STATS
-    {
-        char    buff[80];
-
-        sprintf( buff, "Peak WCG memory usage (KB): %d\n", (int)(PeakAlloc/_1K) );
-        FEMessage( FEMSG_INFO, buff );
-        PeakAlloc = 0;
-    }
-#endif
     back.cgmemmgr->Initialized = 0;
 }
 

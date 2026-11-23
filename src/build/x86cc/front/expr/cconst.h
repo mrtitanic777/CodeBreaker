@@ -31,9 +31,6 @@
 
 
 #pragma once
-#ifndef _CPU
-    #error _CPU macro not_ defined
-#endif
 
 #if _CPU != 8086
     /*
@@ -42,11 +39,7 @@
     #define __SEH__
 #endif
 
-#ifdef __UNIX__
-    #define FNAMECMPSTR             strcmp      /* for case sensitive file systems */
-#else
     #define FNAMECMPSTR             stricmp     /* for case insensitive file systems */
-#endif
 
 #define BUF_SIZE                    512
 

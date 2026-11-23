@@ -81,13 +81,6 @@ static int const GroupBase[grp_index_max] = {
     #undef GRP_DEF
 };
 
-#if 0
-static msg_type const MsgType[] = {
-    #define MSG_DEF( name, group, kind, level, group_index )  MSG_TYPE_##kind,
-    MSG_DEFS
-    #undef MSG_DEF
-};
-#endif
 
 static char const *const MsgPrefix[grp_index_max] = {
     #define GRP_DEF( name,prefix,num,index,eindex ) #prefix,
@@ -99,9 +92,6 @@ static char const EngUsageText[] = {
     #include "usage.gh"
 };
 
-#ifndef __msg_file_prefix
-#error no message file prefix
-#endif
 
 #define _mkstr( a ) #a
 #define _str( a ) _mkstr( a )
@@ -165,17 +155,6 @@ char const *CGetMsgPrefix( msg_codes msgnum )
     return( MsgPrefix[index] );
 }
 
-#if 0
-msg_type CGetMsgType( msg_codes msgnum )
-{
-    unsigned        msg_index;
-    msg_type        kind;
-
-    msg_index = GetMsgIndex( msgnum );
-    kind = MsgType[msg_index];
-    return( kind );
-}
-#endif
 
 char const *CGetMsgStr( FrontRun& front, msg_codes msgnum )
 {

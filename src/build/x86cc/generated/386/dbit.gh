@@ -1,7 +1,3 @@
-#ifndef A_BIT_SET_DEFINED
-typedef unsigned a_bit_set;
-#define A_BIT_SET_DEFINED
-#endif
 
 #define _DBit_SIZE 256
 
@@ -116,7 +112,6 @@ typedef struct dom_bit_set {
 			(a)._7 |= (b)._7; \
 		}
 
-#define _DBitScalar( a ) ( (a)._0 )
 
 #ifdef _DBit_DEFINE_BITNEXT
 static void _DBitNext( dom_bit_set *set ) {

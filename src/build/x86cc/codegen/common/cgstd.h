@@ -42,7 +42,6 @@
 
 #define _RoundUp( size, word )        ( ((size)+((word)-1)) & ~((word)-1) )
 
-#if !defined( BY_FORTRAN_FRONT_END )
 
     #define NULLCHAR        '\0'
 
@@ -52,6 +51,5 @@
     typedef double          reallong;
 //    typedef long double     realreallong;
 
-#endif
 
 #endif

@@ -35,19 +35,4 @@
  */
 
 #pragma once
-#if _CPU != 370
-    #define _ASCIIOUT( c )
-#elif  ' ' == 0x40   /* EBCDIC host */
-    #define _ASCIIOUT( c ) \
-        if( CompFlags.asciiout_used ) { \
-            extern char const etoatbl[]; \
-            c = etoatbl[c]; \
-        }
-#else
-    #define _ASCIIOUT( c ) \
-        if( !CompFlags.asciiout_used ) { \
-            extern char const atoetbl[]; \
-            c = atoetbl[c]; \
-        }
-#endif
 

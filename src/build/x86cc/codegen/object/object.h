@@ -30,12 +30,6 @@
 
 
 #pragma once
-#if 0
-extern  void            InitStackDepth(block*);
-extern  block           *FindBlockWithLbl( label_handle label );
-extern  void            Zoiks( int );
-extern  bool_maybe      ReDefinedBy( instruction *, name * );
-#endif
 
 extern  void            GenObject( BackRun& back );
 extern  void            SortBlocks( BackRun& back );

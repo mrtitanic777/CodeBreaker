@@ -100,20 +100,11 @@ void CTypeInit( FrontRun& front )
     InitTypeHashTables(front);
     for( base_type = static_cast<DATA_TYPE>(0); base_type < DATA_TYPE_SIZE; ++base_type ) {
         front.cvars.CTypeCounts[base_type] = 0;
-#if 0
-        if ( base_type == TYP_FCOMPLEX || base_type == TYP_DCOMPLEX || base_type == TYP_LDCOMPLEX ) {
-            BaseTypes[base_type] = ComplexDecl( TYP_STRUCT, false );
-            BaseTypes[base_type]->decl_type = base_type;
-        } else {
-#endif
             if( CTypeSizes[base_type] != 0 || base_type == TYP_VOID || base_type == TYP_DOT_DOT_DOT ) {
                 front.cvars.BaseTypes[base_type] = TypeNode( front, base_type, NULL );
             } else {
                 front.cvars.BaseTypes[base_type] = NULL;
             }
-#if 0
-        }
-#endif
     }
     SetPlainCharType( front, TYP_UCHAR );
     front.cvars.StringArrayType = NULL;
@@ -864,11 +855,6 @@ align_type GetTypeAlignment( FrontRun& front, TYPEPTR typ )
     }
     if( typ->decl_type == TYP_STRUCT || typ->decl_type == TYP_UNION ) {
         size = typ->u.tag->alignment;
-#if _CPU == _AXP
-        if( CompFlags.align_structs_on_qwords ) {
-            size = 8;
-        }
-#endif
     } else {
         size = (align_type)TypeSize( front, typ );
     }
@@ -1236,101 +1222,6 @@ static TYPEPTR StructDecl( FrontRun& front, DATA_TYPE decl_typ, bool packed )
  *     double _Imaginary __ow_imaginary;
  * }
  */
-#if 0
-static void GetComplexFieldTypeSpecifier( decl_info *info, DATA_TYPE data_type )
-{
-    info->stg = SC_NONE;      // indicate don't want any storage class specifiers
-    info->mod = FLAG_NONE;
-    info->decl_mod = FLAG_NONE;
-    info->decl = DECLSPEC_NONE;
-    info->naked = false;
-    info->segid = SEG_NULL;
-    info->typ = GetType( data_type );
-}
-
-
-static target_size GetComplexFields( TYPEPTR decl )
-{
-    target_size         start;
-    TYPEPTR             typ;
-    decl_state          state;
-    FIELDPTR            field;
-    target_size         struct_size;
-    target_size         next_offset;
-    align_type          worst_alignment;
-    decl_info           info;
-
-    start = 0;
-    worst_alignment = 1;
-
-    struct_size = start;
-    next_offset = start;
-
-
-    GetComplexFieldTypeSpecifier( &info, TYP_DOUBLE );
-
-    field = FieldCreate( "__ow_real" );
-    field->attrib = 0;
-    field->field_type = info.typ;
-
-    field = NewField( field, decl );
-
-    typ = info.typ;
-    state = DECL_STATE_NONE;
-
-    next_offset = FieldAlign( next_offset, field, &worst_alignment );
-    next_offset += SizeOfArg( field->field_type );
-    if( next_offset > struct_size )
-        struct_size = next_offset;
-
-    GetComplexFieldTypeSpecifier( &info, TYP_DIMAGINARY );
-
-    field = FieldCreate( "__ow_imaginary" );
-    field->attrib = 0;
-    field->field_type = info.typ;
-    field = NewField( field, decl );
-
-    typ = info.typ;
-    state = DECL_STATE_NONE;
-
-    next_offset = FieldAlign( next_offset, field, &worst_alignment );
-    next_offset += SizeOfArg( field->field_type );
-    if( next_offset > struct_size )
-        struct_size = next_offset;
-
-    decl->u.tag->alignment = worst_alignment;
-    struct_size = _RoundUp( struct_size, worst_alignment );
-    _CHECK_SIZE( struct_size );
-    return( struct_size );
-}
-
-
-static TYPEPTR ComplexDecl( DATA_TYPE decl_typ, bool packed )
-{
-    TYPEPTR     typ;
-    TAGPTR      tag;
-    align_type  saved_packamount;
-
-    saved_packamount = PackAmount;
-    if( packed )
-        PackAmount = 1;
-
-    tag = NullTag();
-
-    typ = tag->sym_type;
-    if( typ == NULL ) {
-        typ = TypeNode( decl_typ, NULL );
-        tag->sym_type = typ;
-    }
-
-    typ->u.tag = tag;
-    tag->u.field_list = NULL;
-    tag->size = GetComplexFields( typ );
-    PackAmount = saved_packamount;
-
-    return( typ );
-}
-#endif
 
 static void CheckBitfieldType( FrontRun& front, TYPEPTR typ )
 {
@@ -1689,16 +1580,4 @@ TYPEPTR GetIntTypeBySize( FrontRun& front, target_size size, bool sign, bool exa
 
 void TypesPurge( void )
 {
-#if 0
-    /*
-     * The type entries are in permanent memory, so they can't be freed
-     */
-    TYPEPTR     temp;
-
-    while( TypeHead != NULL ) {
-        temp = TypeHead->next_type;
-        CMemFree( TypeHead );
-        TypeHead = temp;
-    }
-#endif
 }

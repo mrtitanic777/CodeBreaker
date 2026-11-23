@@ -30,25 +30,10 @@
 ****************************************************************************/
 
 
-#if defined( __WATCOMC__ )
-    #pragma pack(__pop)
-#elif defined( _CFE ) || defined( __SUNPRO_C ) || defined( __sun )
-    #pragma pack()
-#elif defined( __MWERKS__ )
-    #pragma options align= reset
-#elif defined( _MSC_VER )
+#if defined( _MSC_VER )
     #pragma warning(disable:4103)
-    #pragma pack(pop)
-#elif defined( __clang__ )
     #pragma pack(pop)
 #else
     #pragma pack(pop)
 #endif
 
-#if defined ( _NO_PRAGMA_PUSH_PACK )
-    #if defined( _PUSH_PACK )
-        #undef _PUSH_PACK
-    #else
-        #error Tried to pop a pack without a successful push
-    #endif
-#endif

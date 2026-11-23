@@ -37,44 +37,17 @@
  * From CLIB
  */
 
-#ifdef __cplusplus
 extern "C" {
-#endif
 
 extern char             *_LpDllName;    /* pointer to dll name */
 
 
 /* the variables of clibint.h, one set for each run of the compiler (run/cbrun.hpp) */
 struct ClibintState {
-#ifdef __WATCOMC__
-#else /* !__WATCOMC__ */
     char **_argv;
-#endif
-#ifdef __WATCOMC__
-#else /* !__WATCOMC__ */
-    int _argc;
-#endif
 };
 
-#if defined( __WATCOMC__ )
 
-extern int              _fltused_;
-
-#if defined( _M_IX86 )
-
-extern int              _fltused_80bit_;
-#pragma aux _fltused_ "*"
-#pragma aux _fltused_80bit_  "*"
-
-extern unsigned char    _8087;
-extern unsigned char    _real87;
-
-#endif
-
-#endif
-
-#ifdef __cplusplus
 }
-#endif
 
 #endif /* _CLIBINT_H_INCLUDED */

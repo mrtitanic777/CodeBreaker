@@ -45,11 +45,6 @@ void MemtoBaseTemp( void )
 {
 }
 
-#if 0
-void CharsAndShortsToInts( void )
-{
-}
-#endif
 
 void FixCallIns( instruction * ins )
 {

@@ -34,24 +34,8 @@
 #include "_cgstd.h"
 #include "zoiks.h"
 #include "coderep.h"
-#include "onexit.h"
 #include "blips.h"
-#include "feprotos.h"
 
-#if 0
-static    int           TGCount;
-static    int           LPCount;
-static    int           URCount;
-static    int           SXCount;
-static    int           SCCount;
-static    int           EXCount;
-static    int           GRCount;
-static    int           IMCount;
-static    int           PSCount;
-static    int           PLCount;
-static    int           DGCount;
-static    bool          Zoiks2;
-#endif
 
 
 // static HANDLE        blipHandle;
@@ -61,37 +45,11 @@ static    bool          Zoiks2;
 void    InitBlip( void )
 /**********************/
 {
-#if 0
-    char        *src_name;
-
-    BlipsOn = false;
-    blipHandle = OpenFileMapping( FILE_MAP_WRITE, false, SHMEM_NAME );
-    if( blipHandle != NULL ) {
-        fileMapping = MapViewOfFile( blipHandle, FILE_MAP_WRITE, 0, 0, 0 );
-        if( fileMapping == NULL ) {
-            _Zoiks( ZOIKS_110 );
-            return;
-        }
-        BlipsOn = true;
-        src_name = FEAuxInfo( NULL, FEINF_SOURCE_NAME );
-        strncpy( &fileMapping->file_name[0], src_name, _MAX_PATH );
-        strcpy( &fileMapping->rtn_name[0], "" );
-        fileMapping->debug.debug_info = false;
-    }
-#endif
 }
 
 void    FiniBlip( void )
 /**********************/
 {
-#if 0
-    if( fileMapping != NULL ) {
-        UnmapViewOfFile( fileMapping );
-    }
-    if( blipHandle != NULL ) {
-        CloseHandle( blipHandle );
-    }
-#endif
 }
 
 bool    WantZoiks2( void )
@@ -171,12 +129,3 @@ void    DGBlip( void )
 {
 }
 
-#if 0
-static  void    CheckEvents( void )
-/*********************************/
-{
-    if( TBreak() ) {
-        FatalError( "Program interrupted from keyboard" );
-    }
-}
-#endif

@@ -41,9 +41,6 @@
 #include "types.h"
 #include "objout.h"
 #include "targetdb.h"
-#ifdef DEVBUILD
-#include "echoapi.h"
-#endif
 #include "regset.h"
 #include "rgtbl.h"
 #include "namelist.h"
@@ -133,15 +130,7 @@ cg_sym_handle   LocSimpStatic( dbg_loc loc )
 dbg_loc  _CGAPI DBLocInit( void )
 /*******************************/
 {
-#ifdef DEVBUILD
-    dbg_loc retn;
-    EchoAPI( "DBLocInit()" );
-    retn = NULL;
-    EchoAPI( " -> %i\n", retn );
-    return( retn );
-#else
     return( NULL );
-#endif
 }
 
 
@@ -170,31 +159,19 @@ dbg_loc _CGAPI DBLocTemp( BackRun& back, dbg_loc loc, temp_handle temp )
 {
     name        *tmp;
 
-#ifdef DEVBUILD
-    EchoAPI( "DBLocTemp( %i, %i )", loc, temp );
-#endif
     loc = LocCreate( back, loc, LOC_BP_OFFSET );
     tmp = DeAlias( (name *)temp );
     tmp->v.usage |= VAR_VOLATILE|NEEDS_MEMORY|USE_IN_ANOTHER_BLOCK|USE_ADDRESS;
     loc->u.be_sym = tmp;
-#ifdef DEVBUILD
-    EchoAPI( " -> %i\n", loc );
-#endif
     return( loc );
 }
 
 dbg_loc _CGAPI DBLocConst( BackRun& back, dbg_loc loc, uint_32 val )
 /***************************************************/
 {
-#ifdef DEVBUILD
-    EchoAPI( "DBLocConst( %i, %i  )", loc, val );
-#endif
 
     loc = LocCreate( back, loc, LOC_CONST_1 );
     loc->u.val = val;
-#ifdef DEVBUILD
-    EchoAPI( " -> %i\n", loc );
-#endif
     return( loc );
 }
 
@@ -204,9 +181,6 @@ dbg_loc _CGAPI DBLocOp( BackRun& back, dbg_loc loc, dbg_loc_op op, unsigned othe
 {
     unsigned    stkop;
 
-#ifdef DEVBUILD
-    EchoAPI( "DBLocOp( %i, %i, %i )", loc, op, other );
-#endif
     stkop = 0;
     switch( op ) {
     case DB_OP_POINTS:
@@ -276,9 +250,6 @@ dbg_loc _CGAPI DBLocOp( BackRun& back, dbg_loc loc, dbg_loc_op op, unsigned othe
         Zoiks( back, ZOIKS_083 );
         break;
     }
-#ifdef DEVBUILD
-    EchoAPI( " -> %i\n", loc );
-#endif
     return( loc );
 }
 
@@ -289,9 +260,6 @@ void _CGAPI DBLocFini( BackRun& back, dbg_loc loc )
     dbg_loc     *owner;
     dbg_loc     curr;
 
-#ifdef DEVBUILD
-    EchoAPI( "DBLocFini( %i )\n", loc );
-#endif
     owner = &loc;
     for( ;; ) {
         curr = *owner;

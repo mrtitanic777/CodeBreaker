@@ -403,16 +403,7 @@ static void AddrFold( FrontRun& front, TREEPTR tree, addrfold_info *info )
         if( tree->op.u2.float_value->len != 0 ) {
             info->offset = (target_ssize)atof( tree->op.u2.float_value->string );
         } else {
-#ifdef _LONG_DOUBLE_
-            long_double ld;
-            double d;
-
-            ld = tree->op.u2.float_value->ld;
-            __iLDFD( &ld, &d );
-            info->offset = (target_ssize)d;
-#else
             info->offset = (target_ssize)tree->op.u2.float_value->ld.u.value;
-#endif
         }
         if( info->offset != 0 )
             front.cvars.CompFlags.non_zero_data = true;
@@ -1247,16 +1238,7 @@ static void StoreFloat( FrontRun& front, DATA_TYPE dtype, target_size size )
         tree = SingleExpr(front);
         if( IsConstLeaf( tree ) ) {
             CastConstValue( front, tree, dtype );
-#ifdef _LONG_DOUBLE_
-            {
-                long_double ld;
-
-                ld = tree->op.u2.float_value->ld;
-                __iLDFD( &ld, &dq.u.double_value );
-            }
-#else
             dq.u.double_value = tree->op.u2.float_value->ld.u.value;
-#endif
         } else {
             CErr1( front, ERR_NOT_A_CONSTANT_EXPR );
         }

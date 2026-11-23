@@ -31,7 +31,6 @@
 ****************************************************************************/
 
 
-#if _INTEL_CPU
 mathfunc( "__LOG",   "log",     1, O_LOG ),
 mathfunc( "__COS",   "cos",     1, O_COS ),
 mathfunc( "__SIN",   "sin",     1, O_SIN ),
@@ -49,4 +48,3 @@ mathfunc( "__EXP",   "exp",     1, O_EXP ),
 mathfunc( "__LOG10", "log10",   1, O_LOG10 ),
 mathfunc( "__SINH",  "sinh",    1, O_SINH ),
 mathfunc( "__TANH",  "tanh",    1, O_TANH ),
-#endif

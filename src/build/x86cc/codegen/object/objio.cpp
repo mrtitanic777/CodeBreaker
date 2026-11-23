@@ -51,8 +51,6 @@
 
 #define INVALID_HANDLE  NULL
 
-#define BOUNDARY        64
-#define LIMIT           0x7FFFFFFF
 #define BIGGEST         0x7FFFFFFF
 #define MASK            0x80000000U
 

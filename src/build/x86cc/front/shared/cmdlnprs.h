@@ -34,9 +34,7 @@
 #ifndef __CMDLNPRS_H__
 #define __CMDLNPRS_H__
 
-#ifdef __cplusplus
 extern "C" {
-#endif
 
 // Standard Command-Line Parsing Routines
 
@@ -122,8 +120,6 @@ void BadCmdLineOption           // BAD TEXT DETECTED
     ( FrontRun& front )
 ;
 
-#ifdef __cplusplus
 };
-#endif
 
 #endif // __CMDLNPRS_H__

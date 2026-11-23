@@ -59,20 +59,12 @@
 #define OC_LDONE            (OC_INFO | OC_INFO_LDONE)
 #define OC_DEAD_JMP         (OC_INFO | OC_INFO_DEAD_JMP)
 
-#define NULL_COND           16
 #define MAX_OBJ_LEN         128
 
 #define _HasReloc( ins )    ((ins)->sym != NULL)
 
-#if _TARGET_INTEL
-#define MAX_INS             16      /*  max instruction size */
 #define MAX_SHORT_FWD       127
 #define MAX_SHORT_BWD       (128 - 2)
-#else
-#define MAX_INS             4
-#define MAX_SHORT_FWD       (1 << 23)
-#define MAX_SHORT_BWD       ((1 << 23) - 4)
-#endif
 
 typedef enum {
     /*
@@ -118,9 +110,6 @@ typedef struct oc_handle {
     oc_header               hdr;
     struct ins_entry        *ref;       // must be at this position, code rely on this (see also _LblRef macro in optmac.h)
     label_handle            handle;     // must be at this position, code rely on this (see also _Label macro in optmac.h)
-#if _TARGET_RISC
-    cg_linenum              line;
-#endif
 } oc_handle;
 
 typedef struct oc_debug {
@@ -138,10 +127,6 @@ typedef struct oc_jcond {
     struct ins_entry        *ref;       // must be at this position, code rely on this (see also _LblRef macro in optmac.h)
     label_handle            handle;     // must be at this position, code rely on this (see also _Label macro in optmac.h)
     cond_no                 cond;
-#if _TARGET_RISC
-    int                     index;
-    int                     index2;     // MIPS can do reg/reg cond branches
-#endif
 } oc_jcond;
 
 typedef struct oc_ret {
@@ -189,10 +174,6 @@ typedef union any_oc {
     struct oc_handle        oc_handle;
     struct oc_header        oc_header;
     struct oc_entry         oc_entry;
-#if _TARGET_RISC
-    struct oc_riscins       oc_rins;
-    struct oc_func_start    oc_func;
-#endif
 } any_oc;
 
 typedef struct ins_entry {

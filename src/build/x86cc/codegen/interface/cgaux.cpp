@@ -52,7 +52,6 @@ pointer FindAuxInfo( BackRun& back, name *name, aux_class request )
         return( FindAuxInfoSym( name->v.symbol, request ) );
     } else if( name->m.memory_type == CG_BACK ) {
         return( FindAuxInfoSym( AskForLblSym( back, ((back_handle)name->v.symbol)->lbl ), request ) );
-#if _TARGET_INTEL
     } else if( name->m.memory_type == CG_LBL && AskIfRTLabel( back, static_cast<label_handle>(name->v.symbol) ) ) {
         aux_handle  aux;
 
@@ -63,7 +62,6 @@ pointer FindAuxInfo( BackRun& back, name *name, aux_class request )
         } else {
             return( BEAuxInfo( back, aux, request ) );
         }
-#endif
     } else {
         /* return default aux info */
         return( FindAuxInfoSym( NULL, request ) );

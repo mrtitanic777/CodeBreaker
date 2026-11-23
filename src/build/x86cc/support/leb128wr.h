@@ -31,13 +31,9 @@
 
 
 #pragma once
-#ifdef __cplusplus
 extern "C" {
-#endif
 
 extern void     *EncodeSLEB128( void *h, void (*ofn)(void **h, unsigned char), long long value );
 extern void     *EncodeULEB128( void *h, void (*ofn)(void **h, unsigned char), unsigned long long value );
 
-#ifdef __cplusplus
 }
-#endif

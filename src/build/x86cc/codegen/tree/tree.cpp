@@ -66,12 +66,7 @@
 #include "feprotos.h"
 #include "cgprotos.h"
 
-#if _TARGET_INTEL
     #include "x86segs.h"
-#endif
-#ifdef DEVBUILD
-    #include "echoapi.h"
-#endif
 #include "backrun.hpp"
 
 
@@ -121,10 +116,6 @@ static  tn  NewTreeNode( BackRun& back )
 
     new_tn = static_cast<tn>(AllocFrl( back, &back.tree.TreeFrl, sizeof( tree_node ) ));
     new_tn->flags = TF_USED;
-#ifdef DEVBUILD
-    new_tn->useinfo.hdltype = NO_HANDLE;
-    new_tn->useinfo.used = false;
-#endif
     return( new_tn );
 }
 
@@ -167,11 +158,7 @@ tn  TGBitMask( BackRun& back, tn left, byte start, byte len, const type_def *tip
     new_tn = NewTreeNode(back);
     new_tn->u.left = left;
     new_tn->tipe = tipe;
-#if _TARGET & _TARG_370
-    new_tn->u1.b.start = tipe->length * 8 - start - len;
-#else
     new_tn->u1.b.start = start;
-#endif
     new_tn->u1.b.len = len;
     new_tn->u1.b.is_signed = false;
     new_tn->kids = left->kids + 1;
@@ -266,14 +253,6 @@ static const type_def   *ResultType( BackRun& back, tn left, tn rite, const type
     const type_def  *ltipe;
     const type_def  *rtipe;
 
-#if _TARGET & 0
-    if( tipe->length < WORD_SIZE ) {
-        if( tipe->attr & TYPE_SIGNED ) {
-            return( TypeAddress( TY_INTEGER ) );
-        }
-        return( TypeAddress( TY_UNSIGNED ) );
-    }
-#endif
     if( !demote_const && tipe->refno != TY_DEFAULT )
         return( tipe );
     if( left->class_ == TN_CONS ) {
@@ -292,9 +271,6 @@ static const type_def   *ResultType( BackRun& back, tn left, tn rite, const type
     if( tipe->refno == TY_DEFAULT ) {
         return( TypeOfTypeClass( back, mat_type_class[TypeClass( back, ltipe ) * XX + TypeClass( back, rtipe )] ) );
     }
-#if _TARGET & 0
-    return( tipe );
-#else
     if( left->tipe->length >= tipe->length )
         return( tipe );
     if( rite->class_ != TN_CONS )
@@ -320,10 +296,8 @@ static const type_def   *ResultType( BackRun& back, tn left, tn rite, const type
         }
     }
     return( left->tipe );
-#endif
 }
 
-#if _TARGET_INTEL
 static bool RHSLongPointer( tn rite )
 {
     if( rite->class_ == TN_LEAF && rite->u.addr->format == NF_ADDR ) {
@@ -345,7 +319,6 @@ static bool RHSLongPointer( tn rite )
     }
     return( false );
 }
-#endif
 
 
 tn  TGCompare( BackRun& back, cg_op opcode, tn left, tn rite, const type_def *tipe )
@@ -357,13 +330,6 @@ tn  TGCompare( BackRun& back, cg_op opcode, tn left, tn rite, const type_def *ti
     bool    can_demote;
 
     can_demote = true;
-#if _TARGET & _TARG_AXP
-    // FIXME: bad assumption being covered here
-    if( tipe->length < 4 ) {
-        tipe = TypeAddress( TY_INTEGER );
-        can_demote = false;
-    }
-#endif
     if( ( left->tipe == rite->tipe )
       && ( left->tipe != back.data.TypeBoolean )
       && ( (left->tipe->attr & ~TYPE_SIGNED) == (tipe->attr & ~TYPE_SIGNED) ) ) {
@@ -525,7 +491,6 @@ static const type_def   *BinResult( BackRun& back, cg_op opcode, tn *l, tn *r, c
         left = TGConvert( back, left, tipe );
         rite = TGConvert( back, rite, tipe );
         break;
-#if _TARGET_INTEL
     case O_CONVERT: /* based pointer junk */
         left = TGConvert( back, left, TypeAddress( back, TY_NEAR_POINTER ) );
         if( !RHSLongPointer( rite ) ) {
@@ -545,7 +510,6 @@ static const type_def   *BinResult( BackRun& back, cg_op opcode, tn *l, tn *r, c
             break;
         }
         break;
-#endif
     case O_PLUS: /* pointer arithmetic is a pain*/
         if( left->class_ == TN_CALL ) { /* address of return value*/
             tipe = back.data.TypePtr;
@@ -579,21 +543,6 @@ static const type_def   *BinResult( BackRun& back, cg_op opcode, tn *l, tn *r, c
                     left = TGConvert( back, left, tipe );
                 }
             } else { /* non pointer add */
-#if _TARGET & _TARG_370  /* don't want miss I4= I4 op I2 instructions */
-                if( tipe->refno == TY_INT_4 ) {
-                    if( commie && left->tipe->refno == TY_INT_2 ) {
-                        temp = rite;
-                        rite = left;
-                        left = temp;
-                    }
-                    if( rite->tipe->refno != TY_INT_2 ) {
-                        rite = TGConvert( rite, tipe );
-                    }
-                } else {
-                    rite = TGConvert( rite, tipe );
-                }
-                left = TGConvert( left, tipe );
-#else
                 rite = TGConvert( back, rite, tipe );
                 if( left->class_ == TN_LEAF ) {
                     if( NeedPtrConvert( left->u.addr, tipe ) ) {
@@ -602,7 +551,6 @@ static const type_def   *BinResult( BackRun& back, cg_op opcode, tn *l, tn *r, c
                 } else {
                     left = TGConvert( back, left, tipe );
                 }
-#endif
             }
         }
         break;
@@ -628,13 +576,7 @@ static const type_def   *BinResult( BackRun& back, cg_op opcode, tn *l, tn *r, c
         } else if( tipe->refno == TY_NEAR_POINTER ) {
             rite = TGConvert( back, rite, back.data.TypeNearInteger );
         } else {
-#if _TARGET & _TARG_370
-            if( tipe->refno != TY_INT_4 || rite->tipe->refno != TY_INT_2 ) {
-                 rite = TGConvert( rite, tipe );
-            }
-#else
             rite = TGConvert( back, rite, tipe );
-#endif
         }
         left = TGConvert( back, left, tipe );
         break;
@@ -649,20 +591,6 @@ static const type_def   *BinResult( BackRun& back, cg_op opcode, tn *l, tn *r, c
             left = TGConvert( back, left, tipe );
             rite = TGConvert( back, rite, tipe );
         }
-#elif _TARGET & _TARG_370
-        if( tipe->refno == TY_INT_4 ) {
-            if( commie && left->tipe->refno == TY_INT_2 ) {
-                temp = rite;
-                rite = left;
-                left = temp;
-            }
-            if( rite->tipe->refno != TY_INT_2 ) {
-                 rite = TGConvert( rite, tipe );
-            }
-        } else {
-            rite = TGConvert( rite, tipe );
-        }
-        left = TGConvert( left, tipe );
 #else
         left = TGConvert( back, left, tipe );
         rite = TGConvert( back, rite, tipe );
@@ -1567,14 +1495,6 @@ static  an  AddrGen( BackRun& back, tn node )
     base = TNFindBase( back, node );
     flags = node->flags;
     alignment = node->u1.t.alignment;
-#if _TARGET_RISC
-    if( alignment == 0 ) {
-        if( node->tipe->refno >= TY_FIRST_FREE ) {
-            // it's a user-defined struct/type
-            alignment = node->tipe->align;
-        }
-    }
-#endif
     retv = TreeGen( back, node );
     if( flags & TF_VOLATILE ) {
         if( retv->format != NF_BOOL ) {
@@ -1604,13 +1524,7 @@ static  an  TNCallback( BackRun& back, tn node )
     rtn = node->u.left->u.callback;
     parm = (callback_handle)node->u1.t.rite->u.handle;
     if( rtn != NULL ) {
-#ifdef DEVBUILD
-        EchoAPICallBack( node, rtn, parm, "started\n\n" );
-#endif
         rtn( back, parm );
-#ifdef DEVBUILD
-        EchoAPICallBack( node, rtn, parm, "ended\n\n" );
-#endif
     }
     FreeTreeNode( back, node->u.left );
     FreeTreeNode( back, node->u1.t.rite );
@@ -2034,7 +1948,6 @@ an  TNUnary( BackRun& back, tn node )
     return( retv );
 }
 
-#if _TARGET_INTEL
 static an   MakeBased( BackRun& back, an left, an rite, const type_def *tipe )
 /**************************************************************
  * Create a far pointer from the ashes of a near pointer on the left
@@ -2078,7 +1991,6 @@ static an   MakeBased( BackRun& back, an left, an rite, const type_def *tipe )
     temp->flags |= FL_STACKABLE;
     return( temp );
 }
-#endif
 
 
 an  TNBinary( BackRun& back, tn node )
@@ -2115,12 +2027,10 @@ an  TNBinary( BackRun& back, tn node )
     BurnTree( back, r );
     // end of ugly hack
 
-#if _TARGET_INTEL
     /* based pointer junk */
     if( node->u1.t.op == O_CONVERT ) {
         retv = MakeBased( back, left, rite, node->tipe );
     } else {
-#endif
         if( node->flags & TF_DEMOTED ) {
             was_address = SetAddress( back, false ); /* force it to be generated! */
             retv = BGBinary( back, node->u1.t.op, left, rite, node->tipe, false );
@@ -2129,9 +2039,7 @@ an  TNBinary( BackRun& back, tn node )
         } else {
             retv = BGBinary( back, node->u1.t.op, left, rite, node->tipe, true );
         }
-#if _TARGET_INTEL
     }
-#endif
     retv->flags |= FL_STACKABLE;
     return( retv );
 }
@@ -2347,13 +2255,6 @@ static  an  TNCall( BackRun& back, tn callhandle, bool ignore_return )
             if( aux_inline || call_inline ) {
                 parman = BGConvert( back, parman, tipe );
             } else {
-#if _TARGET & _TARG_AXP
-                // kludge coming - Microsoft wants U4's sign extended to 8-byte
-                // quantities when passed as parms to routines.
-                if( parman->tipe->length == 4 && (parman->tipe->attr & TYPE_SIGNED) == 0 ) {
-                    parman = BGConvert( parman, TypeAddress( TY_INT_4 ) );
-                }
-#endif
                 parman = BGConvert( back, parman, PassParmType( back, sym, tipe ) );
             }
         }

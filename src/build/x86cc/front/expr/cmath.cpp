@@ -519,7 +519,6 @@ static pointer_class PointerClass( FrontRun& front, TYPEPTR typ )
         ptrclass = PTRCLS_FAR16;
     } else if( flags & FLAG_HUGE ) {
         ptrclass = PTRCLS_HUGE;
-#if _INTEL_CPU
     } else {
         if( typ->decl_type == TYP_FUNCTION ) {
             if( front.cvars.TargetSwitches & CGSW_X86_BIG_CODE ) {
@@ -530,7 +529,6 @@ static pointer_class PointerClass( FrontRun& front, TYPEPTR typ )
                 ptrclass = PTRCLS_FAR;
             }
         }
-#endif
     }
     if( typ->decl_type == TYP_FUNCTION )
         ptrclass += PTRCLS_FUNC;
@@ -723,9 +721,7 @@ static int ReverseRelOp( int opr )
 static TREEPTR BaseConv( FrontRun& front, TYPEPTR typ1, TREEPTR op2 )
 {
     TYPEPTR         typ2;
-#if _INTEL_CPU
     type_modifiers  typ1_flags;
-#endif
     type_modifiers  typ2_flags;
 
     typ2 =  op2->u.expr_type;
@@ -737,12 +733,9 @@ static TREEPTR BaseConv( FrontRun& front, TYPEPTR typ1, TREEPTR op2 )
      * skip typedefs, go into enum base
      */
     typ2 = SkipTypeFluff( typ2 );
-#if _INTEL_CPU
     typ1_flags = typ1->u.p.decl_flags;
-#endif
     typ2_flags = typ2->u.p.decl_flags;
     if( typ1->decl_type == TYP_POINTER && typ2->decl_type == TYP_POINTER ) {
-#if _INTEL_CPU
         if( typ2_flags & FLAG_BASED ) {
             if( (typ1_flags & MASK_ALL_MEM_MODELS) == FLAG_NONE ) {
                 if( typ1->object->decl_type == TYP_FUNCTION ) {
@@ -759,7 +752,6 @@ static TREEPTR BaseConv( FrontRun& front, TYPEPTR typ1, TREEPTR op2 )
                 op2 = BasedPtrNode( front, typ2, op2 );
             }
         }
-#endif
     } else if( typ2->decl_type == TYP_POINTER ) {
         /*
          * If we're converting a based pointer to some larger arithmetic type,
@@ -1014,41 +1006,12 @@ static TREEPTR MulByConst( FrontRun& front, TREEPTR opnd, target_ssize amount )
 {
     TREEPTR     tree;
 
-#if 0
-    if( opnd->op.opr == OPR_PUSHINT ) {
-        switch( opnd->op.u1.const_type ) {
-        case TYP_LONG64:
-        case TYP_ULONG64:
-          {
-            signed_64   val64;
-
-            Set64ValI32( val64, amount );
-            U64MulEq( &opnd->op.u2.long64_value, &val64 );
-          } break;
-        default:
-            opnd->op.u2.long_value *= amount;
-        }
-        return( opnd );
-    }
-#else
     if( opnd->op.opr == OPR_PUSHINT ) {
         opnd->op.u2.long_value *= amount;
         return( opnd );
     }
-#endif
 
     switch( TypeOf( opnd )->decl_type ) {
-#if 0
-    case TYP_LONG64:
-    case TYP_ULONG64:
-      {
-        unsigned_64 val64;
-
-        Set64ValI32( val64, amount );
-        tree = ExprNode( opnd, OPR_MUL, Long64Leaf( &val64 ) );
-        tree->u.expr_type = GetType( TYP_LONG64 );
-      } break;
-#endif
     case TYP_LONG:
     case TYP_ULONG:
         tree = ExprNode( front, opnd, OPR_MUL, LongLeaf( front, amount ) );
@@ -1290,7 +1253,6 @@ TREEPTR AddOp( FrontRun& front, TREEPTR op1, TOKEN opr, TREEPTR op2 )
                  * make sure both pointers are same type
                  */
                 CompatiblePtrType( front, op1_tp, op2_tp, opr );
-#if _INTEL_CPU
                 if(( op1_tp->u.p.decl_flags & FLAG_HUGE ) ||
                    ( op2_tp->u.p.decl_flags & FLAG_HUGE ) ) {
                     result_type = LNG;
@@ -1300,7 +1262,6 @@ TREEPTR AddOp( FrontRun& front, TREEPTR op1, TOKEN opr, TREEPTR op2 )
                         result_type = LNG;
                     }
                 }
-#endif
             }
         }
     }
@@ -1328,13 +1289,11 @@ TREEPTR AddOp( FrontRun& front, TREEPTR op1, TOKEN opr, TREEPTR op2 )
             if( (result_type == INT) || (result_type == LNG) ) {
                 result = ExprNode( front, op1, TokenToOperator( opr ), op2 );
                 return( PtrSubtract( front, result, size, result_type ) );
-#if _INTEL_CPU
             } else if( (op1_tp->u.p.decl_flags & FLAG_HUGE)
               || IsHugeData() ) {
                 if( (op2_type != LNG) && (op2_type != ULN) ) {
                     op2 = CnvOp( front, op2, GetType( front, TYP_LONG ), true );
                 }
-#endif
             }
             op2 = MulByConst( front, op2, size );
         }
@@ -1349,14 +1308,12 @@ TREEPTR AddOp( FrontRun& front, TREEPTR op1, TOKEN opr, TREEPTR op2 )
             size = 1;
         }
         if( size != 1 ) {
-#if _INTEL_CPU
             if( (op2_tp->u.p.decl_flags & FLAG_HUGE)
               || IsHugeData() ) {
                 if( (op1_type != LNG ) && (op1_type != ULN) ) {
                     op2 = CnvOp( front, op2, GetType( front, TYP_LONG ), true );
                 }
             }
-#endif
             op1 = MulByConst( front, op1, size );
         }
     } else {
@@ -2008,60 +1965,6 @@ TREEPTR UMinus( FrontRun& front, TREEPTR opnd )
             }
         }
     }
-#if 0
-    switch( opnd->op.opr ) {
-    case OPR_ERROR:
-        break;
-    case OPR_PUSHINT:
-        switch( opnd->op.const_type ) {
-        case TYP_CHAR:
-        case TYP_UCHAR:
-            opnd->op.u2.long_value =  -(char)opnd->op.u2.long_value;
-            break;
-        case TYP_SHORT:
-        case TYP_USHORT:
-            opnd->op.u2.long_value = -(short)opnd->op.u2.long_value;
-            break;
-        case TYP_INT:
-            opnd->op.u2.long_value = -(target_int)opnd->op.u2.long_value;
-            break;
-        case TYP_UINT:
-            opnd->op.u2.long_value =
-                        (target_uint)( - (target_uint)opnd->op.u2.long_value);
-            break;
-        case TYP_LONG:
-        case TYP_ULONG:
-            opnd->op.u2.long_value = - opnd->op.u2.long_value;
-            break;
-        }
-        break;
-    case OPR_PUSHFLOAT:
-        flt = opnd->op.float_value;
-        if( flt->len != 0 ) {           // if still in string form
-            flt->string[0] ^= '+' ^ '-';// - change '+' to '-' and vice versa
-        } else {                        // else
-#ifdef _LONG_DOUBLE_
-            flt->ld.exponent ^= 0x8000;     // - flip binary sign bit
-#else
-            flt->ld.u.word[1] ^= 0x80000000;  // - flip sign
-#endif
-        }
-        break;
-    default:
-        t = DataTypeOf( TypeOf( opnd ) );
-        if( t == TYP_VOID )
-            break;
-        if( t >= TYP_POINTER ) {
-            CErr1( ERR_EXPR_MUST_BE_ARITHMETIC );
-            opnd = ErrorNode( opnd );
-        } else {
-            opnd = ExprNode( NULL, OPR_NEG, opnd );
-            opnd->u.expr_type = GetType( SubResult[t][t] );
-            opnd->op.u2.result_type = opnd->u.expr_type;
-        }
-        break;
-    }
-#endif
     return( opnd );
 }
 
@@ -2087,49 +1990,6 @@ TREEPTR UComplement( FrontRun& front, TREEPTR opnd )
             }
         }
     }
-#if 0
-    switch( opnd->op.opr ) {
-    case OPR_ERROR:
-        break;
-    case OPR_PUSHINT:
-        switch( opnd->op.const_type ) {
-        case TYP_CHAR:
-        case TYP_UCHAR:
-            opnd->op.u2.long_value = (char)~opnd->op.u2.long_value;
-            break;
-        case TYP_SHORT:
-        case TYP_USHORT:
-            opnd->op.u2.long_value = (short)~opnd->op.u2.long_value;
-            break;
-        case TYP_INT:
-            opnd->op.u2.long_value = (target_int)~opnd->op.u2.long_value;
-            break;
-        case TYP_UINT:
-            opnd->op.u2.ulong_value = (target_uint)~opnd->op.u2.ulong_value;
-            break;
-        case TYP_LONG:
-        case TYP_ULONG:
-            opnd->op.u2.ulong_value = ~opnd->op.u2.ulong_value;
-            break;
-        }
-        break;
-    default:
-        typ = opnd->u.expr_type;
-        SKIP_TYPEDEFS( typ );
-        t = DataTypeOf( typ );
-        if( t == TYP_VOID )
-            break;
-        if( t >= TYP_FLOAT ) {
-            CErr1( ERR_EXPR_MUST_BE_INTEGRAL );
-            opnd = ErrorNode( opnd );
-        } else {
-            opnd = ExprNode( NULL, OPR_COM, opnd );
-            opnd->u.expr_type = GetType( SubResult[t][t] );
-            opnd->op.u2.result_type = opnd->u.expr_type;
-        }
-        break;
-    }
-#endif
     return( opnd );
 }
 

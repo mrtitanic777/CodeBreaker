@@ -46,9 +46,6 @@
 typedef struct aux_entry {
     struct aux_entry    *next;
     aux_info            *info;         // also used by pre-compiled header
-#if _CPU == 370
-    int                 offset;
-#endif
     char                name[1];
 } aux_entry;
 
@@ -94,7 +91,5 @@ struct PragdefnState {
 #define REG_BUFF_SIZE           20
 
 #if _CPU == 386
-#define DEFAULT_PCH_NAME        "wcc386.pch"
 #else
-#define DEFAULT_PCH_NAME        "wcc.pch"
 #endif
