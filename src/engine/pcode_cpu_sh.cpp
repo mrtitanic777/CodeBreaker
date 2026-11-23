@@ -402,7 +402,7 @@ sh::RunResult run(sh::Bus& bus, std::uint32_t entry, const sh::RunOptions& optio
 }
 
 sh::RunResult call(sh::Bus& bus, std::uint32_t entry, const sh::RunOptions& options) {
-    return enabled(Core::SuperH) ? pcode_cpu::run(bus, entry, options) : sh::run(bus, entry, options);
+    return enabled() ? pcode_cpu::run(bus, entry, options) : sh::run(bus, entry, options);
 }
 
 }  // namespace cb::engine::pcode_cpu

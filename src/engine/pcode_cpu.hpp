@@ -32,21 +32,8 @@
 
 namespace cb::engine::pcode_cpu {
 
-// The CPU families with an adapter. A family's default (default_on) is the emulator only where its lanes' homebrew is judged with no verdict
-// differing from the own core's and no slower; the others run the own core unless CB_PCODE_EMU=1.
-enum class Core : std::uint8_t { Mos6502, Z80, M68000, Mips, R4300, Arm, SuperH, PowerPc };
-bool default_on(Core core);
-
-// Where a family's machines differ, the default is the machine's: the ARM's DS and 3DS are on the emulator and its GBA is not, the 68000's Genesis, 32X,
-// Neo Geo and Jaguar are and its Sega CD and CD-i are not.
-enum class M68kMachine : std::uint8_t { Genesis, Sega32x, NeoGeo, Jaguar, SegaCd, Cdi };
-bool default_on(emulate::arm::System system);
-bool default_on(M68kMachine machine);
-
-// Whether call() runs on the emulator: force() if set, else CB_PCODE_EMU ("0", "false", "no": off for every core; "1", "true", "yes": on for every
-// core), else the default given (enabled_by) or the core's (enabled).
-bool enabled_by(bool lane_default);
-bool enabled(Core core = Core::Mos6502);
+// Whether call() runs on the emulator, as every CPU family does by default: force() if set, else CB_PCODE_EMU ("0", "false", "no": the own cores, to compare).
+bool enabled();
 // Override the environment (tests flip it); std::nullopt goes back to the environment.
 void force(std::optional<bool> on);
 
@@ -69,10 +56,10 @@ emulate::z80::RunResult call(emulate::z80::Bus& bus, std::uint16_t entry, const 
 // device ranges and their log are the bus's), the 16 MB of bus memory is what instructions are decoded from, a page at a time current from the last run.
 // The call is made as JSR makes it; TRAP, CHK, TRAPV and STOP end the run with the fault the own core gives.
 emulate::m68k::RunResult run(emulate::m68k::Bus& bus, std::uint32_t entry, const emulate::m68k::RunOptions& options = {});
-emulate::m68k::RunResult call(emulate::m68k::Bus& bus, std::uint32_t entry, const emulate::m68k::RunOptions& options, M68kMachine machine);
+emulate::m68k::RunResult call(emulate::m68k::Bus& bus, std::uint32_t entry, const emulate::m68k::RunOptions& options = {});
 
 // The PlayStation's R3000A (emulate::mips::Bus), on mips32le.sla: the adapter carries the BIOS calls, the load delay slot, the faults, coprocessor 0 and the
-// GTE (the own core's). A branch in a branch's delay slot is the one thing the description cannot decode.
+// GTE (the own core's). A branch in a branch's delay slot, which the description cannot decode, is run one instruction at a time.
 emulate::mips::RunResult run(emulate::mips::Bus& bus, std::uint32_t entry, const emulate::mips::RunOptions& options = {});
 emulate::mips::RunResult call(emulate::mips::Bus& bus, std::uint32_t entry, const emulate::mips::RunOptions& options = {});
 

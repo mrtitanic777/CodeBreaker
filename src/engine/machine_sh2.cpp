@@ -210,7 +210,7 @@ vl::Effects effects_68k(const formats::sega32x::Rom& rom, std::uint32_t entry, c
     a68[0] = static_cast<std::uint32_t>(at(state, "a0"));
     options.d = d68;
     options.a = a68;
-    const emulate::m68k::RunResult run = pcode_cpu::call(bus, entry, options, pcode_cpu::M68kMachine::Sega32x);
+    const emulate::m68k::RunResult run = pcode_cpu::call(bus, entry, options);
     Bytes results, saved, status;
     put_word(results, run.d[0]);
     put_word(results, run.d[1]);
