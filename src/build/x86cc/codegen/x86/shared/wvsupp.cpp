@@ -73,7 +73,7 @@ static  uint    MultiReg( BackRun& back, register_name *reg )
     } else {
         BuffByte( back, RegTransWV( back, hw_reg ) );
         tmp = reg->reg;
-        HW_TurnOff( tmp, hw_reg );
+        HwTurnOff( tmp, hw_reg );
         BuffByte( back, RegTransWV( back, tmp ) );
         return( 2 );
     }

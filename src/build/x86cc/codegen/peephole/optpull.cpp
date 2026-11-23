@@ -51,10 +51,10 @@ bool    FindShort( BackRun& back, ins_entry *ins, ins_entry *end )
 /*************************************************/
 {
     for( ; ins != NULL && ins != end; ins = NextIns( back, ins ) ) {
-        if( _Class( ins ) == OC_LABEL ) {
-            if( _ChkAttr( ins, OC_ATTR_SHORT ) )
+        if( OcClass( ins ) == OC_LABEL ) {
+            if( ChkAttr( ins, OC_ATTR_SHORT ) )
                 return( true );
-            _ClrStatus( _Label( ins ), SHORTREACH );
+            ClrStatus( LabelOf( ins ), SHORTREACH );
         }
     }
     return( false );
@@ -69,7 +69,7 @@ static  void    DoCloneCode( BackRun& back, ins_entry *jmp, ins_entry *hoist )
 
     clone_point = PrevIns( back, jmp );
     for( ;; ) {
-        cl = _Class( hoist );
+        cl = OcClass( hoist );
         switch( cl ) {
         case OC_LABEL:
         case OC_INFO:
@@ -78,7 +78,7 @@ static  void    DoCloneCode( BackRun& back, ins_entry *jmp, ins_entry *hoist )
         default:
             clone = NewInstr( back, &hoist->oc );
             AddInstr( back, clone, clone_point );
-            if( _TransferClass( cl ) )
+            if( TransferClass( cl ) )
                 return;
             clone_point = clone;
             break;
@@ -117,28 +117,28 @@ void    CloneCode( BackRun& back, label_handle lbl )
     size = 0;
     hoist = NextIns( back, lbl_ins );
     for( next = hoist; next != NULL; next = NextIns( back, next ) ) {
-        cl = _Class( next );
+        cl = OcClass( next );
         if( cl == OC_CODE && CodeHasAbsPatch( &next->oc.oc_entry ) )
             return;
         if( cl != OC_LABEL ) {
-            size += _ObjLen( next );
+            size += ObjLen( next );
             if( size > MAX_CLONE_SIZE )
                 return;
-            if( _TransferClass( cl ) ) {
+            if( TransferClass( cl ) ) {
                 break;
             }
         }
     }
     if( next == NULL
-      || _Class( next ) == OC_JMP && _Label( next ) == lbl )
+      || OcClass( next ) == OC_JMP && LabelOf( next ) == lbl )
         return;
-    for( jmp = lbl->refs; jmp != NULL; jmp = _LblRef( jmp ) ) {
+    for( jmp = lbl->refs; jmp != NULL; jmp = LblRef( jmp ) ) {
         if( next == jmp )
             continue;
-        cl = _Class( jmp );
-        if( !_TransferClass( cl ) )
+        cl = OcClass( jmp );
+        if( !TransferClass( cl ) )
             continue;
-        max_size = _ObjLen( jmp );
+        max_size = ObjLen( jmp );
         if( size > max_size && FindShort( back, jmp, NULL ) )
             continue;
         if( back.data.OptForSize < 50 ) {
@@ -162,15 +162,15 @@ ins_entry       *IsolatedCode( BackRun& back, ins_entry *instr )
     for( ;; ) {
         if( next == NULL )
             { OptEnd( back ); return( next ); }
-        if( _Class( next ) == OC_LABEL )
+        if( OcClass( next ) == OC_LABEL )
             break;
-        _Savings( OPT_ISOLATED, _ObjLen( next ) );
-        if( _Class( next ) == OC_INFO ) {
+        _Savings( OPT_ISOLATED, ObjLen( next ) );
+        if( OcClass( next ) == OC_INFO ) {
             next = next->ins.next;
         } else {
             next = DelInstr( back, next );
         }
-        if( _Class( instr ) == OC_DEAD ) {
+        if( OcClass( instr ) == OC_DEAD ) {
             break;
         }
     }
@@ -190,13 +190,13 @@ bool    StraightenCode( BackRun& back, ins_entry *jump )
     obj_length  align;
 
   OptBegin( back );
-    hoist = _Label( jump )->ins;
+    hoist = LabelOf( jump )->ins;
     if( hoist == NULL )
         { OptEnd( back ); return( false ); }
     if( hoist == back.optdata.LastIns )
         { OptEnd( back ); return( false ); }
     cl = PrevClass( back, hoist );
-    if( !_TransferClass( cl ) )
+    if( !TransferClass( cl ) )
         { OptEnd( back ); return( false ); }
 
     end_hoist = NULL;
@@ -213,13 +213,13 @@ bool    StraightenCode( BackRun& back, ins_entry *jump )
                 { OptEnd( back ); return( false ); }
             break;
         }
-        cl = _Class( next );
-        if( end_hoist == NULL && _TransferClass( cl ) ) {
+        cl = OcClass( next );
+        if( end_hoist == NULL && TransferClass( cl ) ) {
             end_hoist = next;
         }
     }
 
-    align = _ObjLen( hoist );
+    align = ObjLen( hoist );
     insert = jump;
     for( ;; ) {
         if( hoist == NULL ) {
@@ -233,8 +233,8 @@ bool    StraightenCode( BackRun& back, ins_entry *jump )
         if( hoist == jump )
             { OptEnd( back ); return( false ); }
         insert = hoist;
-        cl = _Class( hoist );
-        if( _TransferClass( cl ) ) {
+        cl = OcClass( hoist );
+        if( TransferClass( cl ) ) {
             IsolatedCode( back, insert );
             break;
         }
@@ -242,8 +242,8 @@ bool    StraightenCode( BackRun& back, ins_entry *jump )
     }
     back.optdata.InsDelete = true;
     Untangle( back, next );
-    if( _Class( jump ) != OC_DEAD ) {
-        Untangle( back, _Label( jump )->ins );
+    if( OcClass( jump ) != OC_DEAD ) {
+        Untangle( back, LabelOf( jump )->ins );
     }
     { OptEnd( back ); return( true ); }
 }
@@ -258,10 +258,10 @@ void    CheckStraightenCode( BackRun& back, ins_entry  *lbl_ins )
 
   OptBegin( back );
     if( lbl_ins != NULL ) {
-        lbl = _Label( lbl_ins );
-        for( jmp = lbl->refs; jmp != NULL; jmp = _LblRef( jmp ) ) {
-            cl = _Class( jmp );
-            if( !_TransferClass( cl ) )
+        lbl = LabelOf( lbl_ins );
+        for( jmp = lbl->refs; jmp != NULL; jmp = LblRef( jmp ) ) {
+            cl = OcClass( jmp );
+            if( !TransferClass( cl ) )
                 continue;
             if( StraightenCode( back, jmp ) ) {
                 break;
@@ -278,14 +278,14 @@ void    CallRet( BackRun& back, ins_entry *instr )
     ins_entry   *lbl;
 
   OptBegin( back );
-    if( _ChkAttr( instr, OC_ATTR_POP ) )
+    if( ChkAttr( instr, OC_ATTR_POP ) )
         { OptEnd( back ); return; }
-    lbl = _Label( instr )->ins;
+    lbl = LabelOf( instr )->ins;
     if( lbl == NULL )
         { OptEnd( back ); return; }
     if( NextClass( back, lbl ) != OC_RET )
         { OptEnd( back ); return; }
-    _Savings( OPT_CALLTORET, _ObjLen( instr ) );
+    _Savings( OPT_CALLTORET, ObjLen( instr ) );
     DelInstr( back, instr );
   OptEnd( back );
 }
@@ -299,13 +299,13 @@ void    JmpRet( BackRun& back, ins_entry *instr )
   OptBegin( back );
     if( back.optdata.InsDelete )
         { OptEnd( back ); return; }
-    ret = _Label( instr )->ins;
+    ret = LabelOf( instr )->ins;
     if( ret == NULL )
         { OptEnd( back ); return; }
     ret = NextIns( back, ret );
     if( ret == NULL )
         { OptEnd( back ); return; }
-    if( _Class( ret ) != OC_RET )
+    if( OcClass( ret ) != OC_RET )
         { OptEnd( back ); return; }
     JmpToRet( back, instr, ret );
   OptEnd( back );

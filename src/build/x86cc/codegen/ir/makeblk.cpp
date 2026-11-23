@@ -52,7 +52,7 @@
 #include "backrun.hpp"
 
 
-#define BLOCK_SIZE(n)   (sizeof( block ) + (n - 1) * sizeof( block_edge ))
+inline unsigned long long BlockSize( unsigned short n ) { return (sizeof( block ) + (n - 1) * sizeof( block_edge )); }
 
 block   *MakeBlockInit( BackRun& back, block_num targets )
 /*****************************************/
@@ -60,7 +60,7 @@ block   *MakeBlockInit( BackRun& back, block_num targets )
     block       *blk;
     block_num   i;
 
-    blk = static_cast<block *>(CGAlloc( back, BLOCK_SIZE( targets ) ));
+    blk = static_cast<block *>(CGAlloc( back, BlockSize( targets ) ));
     blk->next_block = NULL;
     blk->prev_block = NULL;
     blk->label = NULL;
@@ -70,8 +70,8 @@ block   *MakeBlockInit( BackRun& back, block_num targets )
     blk->ins.head.prev = (instruction *)&blk->ins;
     blk->ins.head.opcode = OP_BLOCK;
     HW_CAsgn( blk->ins.head.live.regs, HW_EMPTY );
-    _LBitInit( blk->ins.head.live.within_block, EMPTY );
-    _GBitInit( blk->ins.head.live.out_of_block, EMPTY );
+    LBitInit( blk->ins.head.live.within_block, EMPTY );
+    GBitInit( blk->ins.head.live.out_of_block, EMPTY );
     blk->ins.blk = blk;
     blk->u.interval = NULL;
     blk->inputs = 0;
@@ -83,7 +83,7 @@ block   *MakeBlockInit( BackRun& back, block_num targets )
     blk->unroll_count = 0;
     blk->stack_depth = 0;
     blk->depth = 0;
-    _DBitInit( blk->dom.id, 0U );
+    DBitInit( blk->dom.id, 0U );
     for( i = 0; i < targets; i++ ) {
         blk->edge[i].source = blk;
         blk->edge[i].flags = BEF_NONE;
@@ -98,8 +98,8 @@ block   *MakeBlockCopy( BackRun& back, block_num targets, block *src, block_num 
 {
     block       *blk;
 
-    blk = static_cast<block *>(CGAlloc( back, BLOCK_SIZE( targets ) ));
-    Copy( src, blk, BLOCK_SIZE( src_targets ) );
+    blk = static_cast<block *>(CGAlloc( back, BlockSize( targets ) ));
+    memcpy( blk, src, BlockSize( src_targets ) );
     return( blk );
 }
 
@@ -219,7 +219,7 @@ void    GenBlock( BackRun& back, block_class class_, block_num targets )
         CGFree( back, back.data.CurrBlock );
         back.data.CurrBlock = new_blk;
     }
-    if( _IsBlkAttr( back.data.CurrBlock, BLK_BIG_LABEL ) )        /* the only one that sticks*/
+    if( IsBlkAttr( back.data.CurrBlock, BLK_BIG_LABEL ) )        /* the only one that sticks*/
         class_ |= BLK_BIG_LABEL;
     back.data.CurrBlock->class_ = class_;
     while( targets-- > 1 ) {
@@ -329,7 +329,7 @@ void    FixEdges( BackRun& back )
     block_edge  *edge;
 
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        if( !_IsBlkAttr( blk, BLK_BIG_JUMP ) ) {
+        if( !IsBlkAttr( blk, BLK_BIG_JUMP ) ) {
             for( i = blk->targets; i-- > 0; ) {
                 edge = &blk->edge[i];
                 dest = FindBlockWithLbl( back, edge->destination.u.lbl );
@@ -368,41 +368,41 @@ static void *LinkReturns( BackRun& back, void *arg )
     blk = FindBlockWithLbl( back, to_search );
 //    found = false;
     if( blk == NULL )
-        return( TO_SR_VALUE( false ) );
-    if( _IsBlkVisited( blk ) )
-        return( TO_SR_VALUE( true ) );
-    if( _IsBlkAttr( blk, BLK_LABEL_RETURN ) ) {
+        return( ToSrValue( false ) );
+    if( IsBlkVisited( blk ) )
+        return( ToSrValue( true ) );
+    if( IsBlkAttr( blk, BLK_LABEL_RETURN ) ) {
         for( i = blk->targets; i-- > 0; ) {
             if( blk->edge[i].destination.u.lbl == link_to ) {
                 /*
                  * kick out ... already linked
                  */
-                return( TO_SR_VALUE( true ) );
+                return( ToSrValue( true ) );
             }
         }
         blk = ReGenBlock( back, blk, link_to );
 //        found = true;
     } else {
-        _MarkBlkVisited( blk );
-        if( _IsBlkAttr( blk, BLK_CALL_LABEL ) ) {
+        MarkBlkVisited( blk );
+        if( IsBlkAttr( blk, BLK_CALL_LABEL ) ) {
             if( blk->next_block == NULL )
-                return( TO_SR_VALUE( false ) );
+                return( ToSrValue( false ) );
             back.makeblk.LinkReturnsParms[0] = link_to;
             back.makeblk.LinkReturnsParms[1] = blk->next_block->label;
-            if( !FROM_SR_VALUE( SafeRecurseCG( back, LinkReturns, NULL ), bool ) ) {
-                return( TO_SR_VALUE( false ) );
+            if( !FromSrValue<bool>( SafeRecurseCG( back, LinkReturns, NULL )) ) {
+                return( ToSrValue( false ) );
             }
         } else {
             for( i = blk->targets; i-- > 0; ) {
                 back.makeblk.LinkReturnsParms[0] = link_to;
                 back.makeblk.LinkReturnsParms[1] = blk->edge[i].destination.u.lbl;
-                if( !FROM_SR_VALUE( SafeRecurseCG( back, LinkReturns, NULL ), bool ) ) {
-                    return( TO_SR_VALUE( false ) );
+                if( !FromSrValue<bool>( SafeRecurseCG( back, LinkReturns, NULL )) ) {
+                    return( ToSrValue( false ) );
                 }
             }
         }
     }
-    return( TO_SR_VALUE( true ) );
+    return( ToSrValue( true ) );
 }
 
 bool        FixReturns( BackRun& back )
@@ -415,18 +415,18 @@ bool        FixReturns( BackRun& back )
     block       *other_blk;
 
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        if( _IsBlkAttr( blk, BLK_CALL_LABEL ) ) {
-            _MarkBlkVisited( blk );
+        if( IsBlkAttr( blk, BLK_CALL_LABEL ) ) {
+            MarkBlkVisited( blk );
             if( blk->next_block == NULL )
                 return( false );
-            _MarkBlkAttrSet( blk, BLK_RETURNED_TO );
+            MarkBlkAttrSet( blk, BLK_RETURNED_TO );
             back.makeblk.LinkReturnsParms[0] = blk->next_block->label;
             back.makeblk.LinkReturnsParms[1] = blk->edge[0].destination.u.lbl;
-            if( !FROM_SR_VALUE( LinkReturns( back, NULL ), bool ) ) {
+            if( !FromSrValue<bool>( LinkReturns( back, NULL )) ) {
                 return( false );
             }
             for( other_blk = back.data.HeadBlock; other_blk != NULL; other_blk = other_blk->next_block ) {
-                _MarkBlkUnVisited( other_blk );
+                MarkBlkUnVisited( other_blk );
             }
         }
     }
@@ -442,7 +442,7 @@ void    UnFixEdges( BackRun& back )
     block_edge  *edge;
 
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        if( !_IsBlkAttr( blk, BLK_BIG_JUMP ) ) {
+        if( !IsBlkAttr( blk, BLK_BIG_JUMP ) ) {
             for( i = blk->targets; i-- > 0; ) {
                 edge = &blk->edge[i];
                 if( edge->flags & BEF_DEST_IS_BLOCK ) {

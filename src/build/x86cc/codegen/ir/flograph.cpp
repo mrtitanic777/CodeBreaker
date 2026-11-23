@@ -53,7 +53,7 @@ static  void    Irreducable( BackRun& back )
     block       *blk;
 
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        _MarkBlkAttrClr( blk, BLK_ITERATIONS_KNOWN | BLK_LOOP_HEADER );
+        MarkBlkAttrClr( blk, BLK_ITERATIONS_KNOWN | BLK_LOOP_HEADER );
         blk->loop_head = NULL;
         blk->depth = 1;
     }
@@ -79,7 +79,7 @@ static  void    NoBlocksToSelf( BackRun& back )
                 /*
                  * set up new block to look like it was generated after blk
                  */
-                _SetBlkAttr( new_blk, BLK_JUMP );
+                SetBlkAttr( new_blk, BLK_JUMP );
                 new_blk->label = AskForNewLabel(back);
                 new_blk->edge[0].flags = BEF_BLOCK_LABEL_DIES;
                 new_blk->gen_blk_id = blk->gen_blk_id;
@@ -145,7 +145,7 @@ static  void    ReturnsToBottom( BackRun& back )
     }
     for( curr = last->prev_block; curr != NULL; curr = prev ) {
         prev = curr->prev_block;
-        if( _IsBlkAttr( curr, BLK_RETURN ) ) {
+        if( IsBlkAttr( curr, BLK_RETURN ) ) {
             if( prev != NULL ) {
                 prev->next_block = curr->next_block;
             }
@@ -164,9 +164,9 @@ static  void *MarkVisited( BackRun& back, block *blk )
 {
     block_num   i;
 
-    _MarkBlkVisited( blk );
+    MarkBlkVisited( blk );
     for( i = 0; i < blk->targets; ++i ) {
-        if( _IsBlkVisited( blk->edge[i].destination.u.blk ) )
+        if( IsBlkVisited( blk->edge[i].destination.u.blk ) )
             continue;
         SafeRecurseCG( back, (func_sr)MarkVisited, blk->edge[i].destination.u.blk );
     }
@@ -185,12 +185,12 @@ static  bool    DepthFirstSearch( BackRun& back )
     MarkVisited( back, back.data.HeadBlock );
     reducible = true;
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        if( !_IsBlkVisited( blk ) ) {
+        if( !IsBlkVisited( blk ) ) {
             blk->prev_block = back.data.BlockList;
             back.data.BlockList = blk;
             reducible = false;
         }
-        _MarkBlkUnVisited( blk );
+        MarkBlkUnVisited( blk );
     }
     return( reducible );
 }
@@ -487,7 +487,7 @@ static  void    NestingDepth( BackRun& back )
                                 if( blk->loop_head == NULL && blk != target ) {
                                     blk->loop_head = target;
                                 }
-                                _MarkBlkAttrSet( target, BLK_LOOP_HEADER );
+                                MarkBlkAttrSet( target, BLK_LOOP_HEADER );
                                 change = true;
                                 break;
                             }
@@ -540,10 +540,10 @@ static  bool    Degenerate( BackRun& back )
     block_edge  *edge;
 
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        if( !_IsBlkAttr( blk, BLK_LOOP_HEADER ) )
+        if( !IsBlkAttr( blk, BLK_LOOP_HEADER ) )
             continue;
         for( edge = blk->input_edges; edge != NULL; edge = edge->next_source ) {
-            if( _IsBlkAttr( edge->source, BLK_SELECT ) ) {
+            if( IsBlkAttr( edge->source, BLK_SELECT ) ) {
                 back.flograph.functionDegenerate = false;
                 FloodForward( back, edge->source, FlowDone, blk );
                 if( back.flograph.functionDegenerate ) {

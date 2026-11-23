@@ -64,10 +64,10 @@ static  bool    JustMoveLabel( BackRun& back, common_info *max, ins_entry *ins )
     if( PrevClass( back, max->start_del ) != OC_LABEL )
         { OptEnd( back ); return( false ); }
     lbl = PrevIns( back, max->start_del );
-    if( _ChkAttr( lbl, OC_ATTR_SHORT ) )
+    if( ChkAttr( lbl, OC_ATTR_SHORT ) )
         { OptEnd( back ); return( false ); }
     cl = PrevClass( back, lbl );
-    if( !_TransferClass( cl ) )
+    if( !TransferClass( cl ) )
         { OptEnd( back ); return( false ); }
     DeleteQueue( back, lbl );
     InsertQueue( back, lbl, PrevIns( back, max->start_com ) );
@@ -93,18 +93,18 @@ static  void    TransformJumps( BackRun& back, ins_entry *ins, ins_entry *first 
     oc_class            cl;
 
   OptBegin( back );
-    cl = _Class( ins );
+    cl = OcClass( ins );
     if( cl == OC_RET || cl == OC_NORET )
         { OptEnd( back ); return; }
-    lbl = _Label( ins )->ins;
+    lbl = LabelOf( ins )->ins;
     for( add = lbl; add != NULL; add = NextIns( back, add ) ) {
-        cl = _Class( add );
-        if( _TransferClass( cl ) )
+        cl = OcClass( add );
+        if( TransferClass( cl ) )
             break;
         if( cl == OC_LABEL ) {
-            if( _ChkAttr( add, OC_ATTR_SHORT ) )
+            if( ChkAttr( add, OC_ATTR_SHORT ) )
                 { OptEnd( back ); return; }
-            _ClrStatus( _Label( add ), SHORTREACH );
+            ClrStatus( LabelOf( add ), SHORTREACH );
         }
     }
     if( add == NULL || add == first || add == ins )
@@ -132,13 +132,13 @@ static  bool    CommonInstr( BackRun& back, ins_entry *old, ins_entry *add )
   OptBegin( back );
     if( IsModel( back, CGSW_GEN_NO_OPTIMIZATION ) )
         { OptEnd( back ); return( false ); }
-    if( _ClassInfo( add ) != _ClassInfo( old ) )
+    if( ClassInfo( add ) != ClassInfo( old ) )
         { OptEnd( back ); return( false ); }
-    if( _InsLen( add ) != _InsLen( old ) )
+    if( InsLen( add ) != InsLen( old ) )
         { OptEnd( back ); return( false ); }
-    if( _ObjLen( add ) != _ObjLen( old ) )
+    if( ObjLen( add ) != ObjLen( old ) )
         { OptEnd( back ); return( false ); }
-    switch( _Class( old ) ) {
+    switch( OcClass( old ) ) {
     case OC_BDATA:
         /* User may be doing stupid stuff like stringing together a bunch
          * of '__asm _emit x' or '__asm db x' statements which aren't complete
@@ -153,23 +153,23 @@ static  bool    CommonInstr( BackRun& back, ins_entry *old, ins_entry *add )
     case OC_CALL:
     case OC_LABEL:
     case OC_LREF:
-        if( _Label( old ) != _Label( add ) )
+        if( LabelOf( old ) != LabelOf( add ) )
             { OptEnd( back ); return( false ); }
         break;
     case OC_JCOND:
-        if( _JmpCond( old ) != _JmpCond( add ) )
+        if( JmpCond( old ) != JmpCond( add ) )
             { OptEnd( back ); return( false ); }
-        if( _Label( old ) != _Label( add ) )
+        if( LabelOf( old ) != LabelOf( add ) )
             { OptEnd( back ); return( false ); }
         break;
     case OC_RET:
-        if( _RetPop( old ) != _RetPop( add ) )
+        if( RetPop( old ) != RetPop( add ) )
             { OptEnd( back ); return( false ); }
         break;
     case OC_NORET:
         break;
     default:
-        if( !Equal( &add->oc.oc_entry.data, &old->oc.oc_entry.data, _InsLen( add ) - offsetof( oc_entry, data ) ) )
+        if( !( memcmp( &add->oc.oc_entry.data, &old->oc.oc_entry.data, InsLen( add ) - offsetof( oc_entry, data ) ) == 0 ) )
             { OptEnd( back ); return( false ); }
         break;
     }
@@ -187,12 +187,12 @@ static  void    FindCommon( BackRun& back, common_info *c, ins_entry *p1, ins_en
             break;
         c->start_com = p1;
         c->start_del = p2;
-        c->save += _ObjLen( p1 );
+        c->save += ObjLen( p1 );
         for( ;; ) {
             p1 = PrevIns( back, p1 );
             if( p1 == NULL )
                 { OptEnd( back ); return; }
-            if( _Class( p1 ) != OC_LABEL ) {
+            if( OcClass( p1 ) != OC_LABEL ) {
                 break;
             }
         }
@@ -217,7 +217,7 @@ bool    ComTail( BackRun& back, ins_entry *list, ins_entry *ins )
     obj_length          align;
 
   OptBegin( back );
-    align = (_Class( list ) == OC_LABEL) ? _ObjLen( list ) : 0;
+    align = (OcClass( list ) == OC_LABEL) ? ObjLen( list ) : 0;
     try_ = list;
     first = NULL;
     max.save = 0;
@@ -229,7 +229,7 @@ bool    ComTail( BackRun& back, ins_entry *list, ins_entry *ins )
                 first = try_;
             }
         }
-        try_ = _LblRef( try_ );
+        try_ = LblRef( try_ );
         if( try_ == NULL ) {
             break;
         }
@@ -274,9 +274,9 @@ bool    ComCode( BackRun& back, ins_entry *jmp )
   OptBegin( back );
     common = false;
     com = NULL;
-    new_ins = _Label( jmp )->ins;
+    new_ins = LabelOf( jmp )->ins;
     if( new_ins != NULL ) {
-        align = _ObjLen( new_ins );
+        align = ObjLen( new_ins );
         for( ;; ) {
             for( ;; ) {
                 new_ins = PrevIns( back, new_ins );
@@ -284,7 +284,7 @@ bool    ComCode( BackRun& back, ins_entry *jmp )
                     break;
                 if( new_ins == jmp )
                     break;
-                if( _Class( new_ins ) != OC_LABEL ) {
+                if( OcClass( new_ins ) != OC_LABEL ) {
                     break;
                 }
             }
@@ -299,7 +299,7 @@ bool    ComCode( BackRun& back, ins_entry *jmp )
                 break;
             com = PrevIns( back, DelInstr( back, com ) );
             common = true;
-            if( _Class( jmp ) == OC_DEAD ) {
+            if( OcClass( jmp ) == OC_DEAD ) {
                 { OptEnd( back ); return( common ); }
             }
         }
@@ -312,9 +312,9 @@ bool    ComCode( BackRun& back, ins_entry *jmp )
             Untangle( back, com );
         }
     }
-    if( _Class( jmp ) == OC_DEAD )
+    if( OcClass( jmp ) == OC_DEAD )
         { OptEnd( back ); return( common ); }
-    common |= ComTail( back, _Label( jmp )->refs, jmp );
+    common |= ComTail( back, LabelOf( jmp )->refs, jmp );
     { OptEnd( back ); return( common ); }
 }
 
@@ -327,14 +327,14 @@ void    TraceCommon( BackRun& back, ins_entry *lbl_ins )
 
   OptBegin( back );
     for( ;; ) {
-        ref = _Label( lbl_ins )->refs;
+        ref = LabelOf( lbl_ins )->refs;
         for( ;; ) {
             for( ;; ) {
                 if( ref == NULL )
                     { OptEnd( back ); return; }
                 ins = ref;
-                ref = _LblRef( ref );
-                if( _Class( ins ) == OC_JMP ) {
+                ref = LblRef( ref );
+                if( OcClass( ins ) == OC_JMP ) {
                     break;
                 }
             }

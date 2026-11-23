@@ -161,11 +161,11 @@ static bool         symIsExported( BackRun& back, cg_sym_handle );
 #define INCREMENT_PAT   10
 
 
-#define _CopyTrans( src, dst, len )        Copy( src, dst, len )
 
-#define _ARRAYOF( what, type )  ((type *)(what)->array)
+template <class T>
+inline T *ArrayOf( array_control *what ) { return (T *)what->array; }
 
-#define OMFNAMELEN(s)   *(unsigned char *)(s)
+inline unsigned char &OmfNameLen( char *s ) { return ( *(unsigned char *)(s) ); }
 
 enum {
     TIME_SEC_B  = 0,
@@ -308,7 +308,7 @@ static omf_idx GetNameIdx( BackRun& back, const char *name, const char *suff )
         strcpy( idxname, name );
         strcat( idxname, suff );
         for( owner = &back.x86omf->NameCache; (curr = *owner) != NULL; owner = &curr->next ) {
-            if( len == OMFNAMELEN( curr->name ) && strcmp( idxname, curr->name + 1 ) == 0 ) {
+            if( len == OmfNameLen( curr->name ) && strcmp( idxname, curr->name + 1 ) == 0 ) {
                 return( curr->idx );
             }
         }
@@ -343,7 +343,7 @@ static void PutObjOMFRec( BackRun& back, byte class_, array_control *actl )
     byte            cksum;
 
     if( actl->used > 0 ) {
-        blen = _TargetShort( actl->used + 1 );
+        blen = ( actl->used + 1 );
         cksum = class_;
         cksum += DoSum( static_cast<const byte *>((const void *)&blen), sizeof( blen ) );
         cksum += DoSum( static_cast<const byte *>(actl->array), actl->used );
@@ -364,7 +364,7 @@ static void PatchObj( BackRun& back, objhandle rec, objoffset roffset, const byt
     byte            inbuff[80];
 
     SeekGetObj( back, rec, 1, (byte *)&reclen, 2 );
-    reclen = _HostShort( reclen );
+    reclen = ( reclen );
     SeekGetObj( back, rec, roffset + 3, inbuff, len );
     SeekPutObj( back, rec, roffset + 3, buff, len );
     SeekGetObj( back, rec, 2 + reclen, &cksum, 1 );
@@ -393,12 +393,12 @@ static void FlushNames( BackRun& back )
     tmp.used = 0;
     dmp = ( back.x86omf->NameCacheDumped != NULL ) ? back.x86omf->NameCacheDumped->next : back.x86omf->NameCache;
     for( ; dmp != NULL; dmp = dmp->next ) {
-        len = OMFNAMELEN( dmp->name );
+        len = OmfNameLen( dmp->name );
         if( ( tmp.used + len ) > ( sizeof( buff ) - 1 ) ) {
             PutObjOMFRec( back, CMD_LNAMES, &tmp );
         }
         buff[tmp.used++] = len;
-        _CopyTrans( dmp->name + 1, buff + tmp.used, len );
+        memcpy( buff + tmp.used, dmp->name + 1, len );
         tmp.used += len;
         back.x86omf->NameCacheDumped = dmp;
     }
@@ -431,8 +431,8 @@ static  index_rec   *AskSegIndex( BackRun& back, segment_id segid )
     unsigned    i;
 
     for( i = 0; i < back.x86omf->SegInfo.used; ++i ) {
-        if( _ARRAYOF( &back.x86omf->SegInfo, index_rec )[i].segid == segid ) {
-            return( _ARRAYOF( &back.x86omf->SegInfo, index_rec ) + i );
+        if( ArrayOf<index_rec>( &back.x86omf->SegInfo)[i].segid == segid ) {
+            return( ArrayOf<index_rec>( &back.x86omf->SegInfo) + i );
         }
     }
     return( NULL );
@@ -453,7 +453,7 @@ static  void    ReallocArray( BackRun& back, array_control *arr, unsigned need )
         }
     }
     p = static_cast<byte *>(CGAlloc( back, arr->entry * new_len ));
-    Copy( arr->array, p, arr->entry * arr->used );
+    memcpy( p, arr->array, arr->entry * arr->used );
     CGFree( back, arr->array );
     arr->array = p;
     arr->alloc = new_len;
@@ -589,21 +589,21 @@ static  void    OutByte( BackRun& back, byte value, array_control *dest )
 static  void    OutShort( BackRun& back, uint_16 value, array_control *dest )
 /************************************************************/
 {
-    value = _TargetShort( value );
+    value = ( value );
     memcpy( allocOut( back, dest, sizeof( uint_16 ) ), &value, sizeof( uint_16 ) );
 }
 
 static  void    OutLongInt( BackRun& back, uint_32 value, array_control *dest )
 /**************************************************************/
 {
-    value = _TargetLongInt( value );
+    value = ( value );
     memcpy( allocOut( back, dest, sizeof( uint_32 ) ), &value, sizeof( uint_32 ) );
 }
 
 static  void    OutOffset( BackRun& back, offset value, array_control *dest )
 /************************************************************/
 {
-    value = _TargetOffset( value );
+    value = ( value );
     memcpy( allocOut( back, dest, sizeof( offset ) ), &value, sizeof( offset ) );
 }
 
@@ -614,7 +614,7 @@ static  void    OutOffset( BackRun& back, offset value, array_control *dest )
 static  void    OutLongOffset( BackRun& back, long_offset value, array_control *dest )
 /*********************************************************************/
 {
-    value = _TargetLongInt( value );
+    value = ( value );
     memcpy( allocOut( back, dest, sizeof( long_offset ) ), &value, sizeof( long_offset ) );
 }
 #endif
@@ -911,8 +911,8 @@ static segdef *AllocSegDefs( BackRun& back, const char *str )
 
     seg = static_cast<segdef *>(CGAlloc( back, sizeof( segdef ) ));
     seg->next = NULL;
-    seg->str = static_cast<char *>(CGAlloc( back, Length( str ) + 1 ));
-    CopyStr( str, seg->str );
+    seg->str = static_cast<char *>(CGAlloc( back, strlen( str ) + 1 ));
+    strcpy( seg->str, str );
     for( owner = &back.x86omf->SegDefs; *owner != NULL; ) {
         owner = &(*owner)->next;
     }
@@ -993,7 +993,7 @@ static  void    OutName( BackRun& back, const char *name, array_control *dest )
 {
     uint            len;
 
-    len = Length( name );
+    len = strlen( name );
     if( len >= 256 ) {
         len = 255;
         FEMessage( *back.front, FEMSG_INFO_PROC, const_cast<pointer>(static_cast<const void *>("Code generator truncated name, its length exceeds allowed maximum.")) );
@@ -1014,7 +1014,7 @@ static  void    OutString( BackRun& back, const char *name, array_control *dest 
 {
     uint    len;
 
-    len = Length( name );
+    len = strlen( name );
     OutBuffer( back, name, len, dest );
 }
 
@@ -1132,7 +1132,7 @@ static  void    DoSegGrpNames( BackRun& back, array_control *dgroup_def, array_c
     back.x86omf->SegmentIndex = 0;
     back.x86omf->PrivateIndexRO = 0;
     back.x86omf->PrivateIndexRW = 0;
-    CopyStr( static_cast<const char *>(FEAuxInfo( *back.front, NULL, FEINF_CODE_GROUP )), back.x86omf->CodeGroup );
+    strcpy( back.x86omf->CodeGroup, static_cast<const char *>(FEAuxInfo( *back.front, NULL, FEINF_CODE_GROUP )) );
     if( back.x86omf->CodeGroup[0] == NULLCHAR ) {
         back.x86omf->CodeGroupGIdx = 0;
     } else {
@@ -1143,7 +1143,7 @@ static  void    DoSegGrpNames( BackRun& back, array_control *dgroup_def, array_c
     if( dgroup == NULL ) {
         back.x86omf->NoDGroup = true;
     } else {
-        CopyStr( dgroup, back.x86omf->DataGroup );
+        strcpy( back.x86omf->DataGroup, dgroup );
     }
     if( back.x86omf->DataGroup[0] != NULLCHAR ) {
         back.model.TargetModel |= CGSW_X86_FLOATING_SS;
@@ -1914,18 +1914,12 @@ static  index_rec       *AskIndexRec( BackRun& back, uint_16 sidx )
     unsigned    i;
 
     for( i = 0; i < back.x86omf->SegInfo.used; ++i ) {
-        if( _ARRAYOF( &back.x86omf->SegInfo, index_rec )[i].sidx == sidx ) {
-            return( _ARRAYOF( &back.x86omf->SegInfo, index_rec ) + i );
+        if( ArrayOf<index_rec>( &back.x86omf->SegInfo)[i].sidx == sidx ) {
+            return( ArrayOf<index_rec>( &back.x86omf->SegInfo) + i );
         }
     }
     return( NULL );
 }
-
-#if _TARGET & _TARG_8086
-#define _TargetInt _TargetShort
-#else
-#define _TargetInt _TargetBigInt
-#endif
 
 static  void    FiniTarg( BackRun& back )
 /******************************/
@@ -1950,14 +1944,14 @@ static  void    FiniTarg( BackRun& back )
         PatchObj( back, obj->segfix, SEGDEF_ATTR, &attr, sizeof( attr ) );
     } else {
 #if _TARGET & _TARG_80386
-        size_s = _TargetInt( size_l );
+        size_s = ( size_l );
         PatchObj( back, obj->segfix, SEGDEF_SIZE, (byte *)&size_s, sizeof( size_s ) );
 #else /* SEG32DBG dwarf, codeview */
         if( rec->attr & SEG_USE_32 ) {
-            size_l = _TargetLongInt( size_l );
+            size_l = ( size_l );
             PatchObj( back, obj->segfix, SEGDEF_SIZE, (byte *)&size_l, sizeof( size_l ) );
         } else {
-            size_s = _TargetInt( size_l );
+            size_s = ( size_l );
             PatchObj( back, obj->segfix, SEGDEF_SIZE, (byte *)&size_s, sizeof( size_s ) );
         }
 #endif
@@ -2069,17 +2063,17 @@ static  void    DoPatch( BackRun& back, obj_patch *patch, offset lc )
     if( patch->attr & LONG_PATCH ) {
         if( patch->attr & ADD_PATCH ) {
             GetFromObj( back, patch->ref, patch->where, (byte *)&lword_val, sizeof( lword_val ) );
-            _TargetAddL( lword_val, lc );
+            lword_val += lc;
         } else {
-            lword_val = _TargetLongInt( lc );
+            lword_val = ( lc );
         }
         PatchObj( back, patch->ref, patch->where, (byte *)&lword_val, sizeof( lword_val ) );
     } else if( patch->attr & WORD_PATCH ) {
         if( patch->attr & ADD_PATCH ) {
             GetFromObj( back, patch->ref, patch->where, (byte *)&word_val, sizeof( word_val ) );
-            _TargetAddW( word_val, lc );
+            word_val += lc;
         } else {
-            word_val = _TargetShort( lc );
+            word_val = ( lc );
         }
         PatchObj( back, patch->ref, patch->where, (byte *)&word_val, sizeof( word_val ) );
     } else {
@@ -2143,8 +2137,8 @@ static void    objFini( BackRun& back )
 
             codesize = 0;
             for( i = 0; i < back.x86omf->SegInfo.used; ++i ) {
-                if( _ARRAYOF( &back.x86omf->SegInfo, index_rec )[i].obj != NULL ) {
-                    DoSegARange( back, &codesize, _ARRAYOF( &back.x86omf->SegInfo, index_rec ) + i );
+                if( ArrayOf<index_rec>( &back.x86omf->SegInfo)[i].obj != NULL ) {
+                    DoSegARange( back, &codesize, ArrayOf<index_rec>( &back.x86omf->SegInfo) + i );
                 }
             }
             DFObjFiniDbgInfo( back, codesize );
@@ -2161,8 +2155,8 @@ static void    objFini( BackRun& back )
      * Fini all segments.
      */
     for( i = 0; i < back.x86omf->SegInfo.used; ++i ) {
-        if( _ARRAYOF( &back.x86omf->SegInfo, index_rec )[i].obj != NULL ) {
-            back.x86omf->CurrSeg = _ARRAYOF( &back.x86omf->SegInfo, index_rec ) + i;
+        if( ArrayOf<index_rec>( &back.x86omf->SegInfo)[i].obj != NULL ) {
+            back.x86omf->CurrSeg = ArrayOf<index_rec>( &back.x86omf->SegInfo) + i;
             FiniTarg(back);
         }
     }
@@ -2545,7 +2539,7 @@ static void    outLabel( BackRun& back, label_handle lbl )
     lc = (offset)back.x86omf->CurrSeg->location;
     TellAddress( back, lbl, lc );
     for( i = back.x86omf->SegInfo.used; i-- > 0; ) {
-        obj = _ARRAYOF( &back.x86omf->SegInfo, index_rec )[i].obj;
+        obj = ArrayOf<index_rec>( &back.x86omf->SegInfo)[i].obj;
         if( obj != NULL ) { /* twas flushed and not redefined*/
             owner = &obj->tpatches;
             for( ;; ) {
@@ -2553,26 +2547,26 @@ static void    outLabel( BackRun& back, label_handle lbl )
                 if( tpatch == NULL )
                     break;
                 if( tpatch->lbl == lbl ) {
-                    patchptr = &_ARRAYOF( &obj->data, byte )[tpatch->patch.where];
+                    patchptr = &ArrayOf<byte>( &obj->data)[tpatch->patch.where];
                     if( tpatch->patch.attr & ADD_PATCH ) {
                         if( tpatch->patch.attr & LONG_PATCH ) {
                             uint_32 val;
 
-                            val = MGET_U32_UN( patchptr ) + lc;
-                            MPUT_32_UN( patchptr, val );
+                            val = GetU32Unaligned( patchptr ) + lc;
+                            PutU32Unaligned( patchptr, val );
                         } else if( tpatch->patch.attr & WORD_PATCH ) {
                             uint_16 val;
 
-                            val = MGET_U16_UN( patchptr ) + lc;
-                            MPUT_16_UN( patchptr, val );
+                            val = GetU16Unaligned( patchptr ) + lc;
+                            PutU16Unaligned( patchptr, val );
                         } else {
                             *(byte *)patchptr += lc;
                         }
                     } else {
                         if( tpatch->patch.attr & LONG_PATCH ) {
-                            MPUT_32_UN( patchptr, lc );
+                            PutU32Unaligned( patchptr, lc );
                         } else if( tpatch->patch.attr & WORD_PATCH ) {
-                            MPUT_16_UN( patchptr, lc );
+                            PutU16Unaligned( patchptr, lc );
                         } else {
                             *(byte *)patchptr = lc;
                         }
@@ -2587,7 +2581,7 @@ static void    outLabel( BackRun& back, label_handle lbl )
     }
     lbl_patches = static_cast<array_control *>(AskLblPatches( back, lbl ));
     for( i = 0; i < lbl_patches->used; i++ ) {
-        DoPatch( back, _ARRAYOF( lbl_patches, obj_patch ) + i, lc );
+        DoPatch( back, ArrayOf<obj_patch>( lbl_patches) + i, lc );
     }
     KillArray( back, lbl_patches );
     TellDonePatches( back, lbl );
@@ -2626,7 +2620,7 @@ static omf_fix_loc getOMFFixLoc( BackRun& back, fix_class class_ )
         return( LOC_BASE_OFFSET );
     }
 #endif
-    switch( F_CLASS( class_ ) ) {
+    switch( FixClass( class_ ) ) {
     case F_BASE:
         return( LOC_BASE );
 #if _TARGET & _TARG_8086
@@ -2677,7 +2671,7 @@ static void DoFix( BackRun& back, omf_idx idx, bool rel, base_type base, fix_cla
     byte        b;
 
     b = rel ? LOCAT_REL : LOCAT_ABS;
-    if( F_CLASS( class_ ) == F_PTR && back.x86omf->CurrSeg->data_in_code ) {
+    if( FixClass( class_ ) == F_PTR && back.x86omf->CurrSeg->data_in_code ) {
         back.x86omf->CurrSeg->data_ptr_in_code = true;
     }
     obj = back.x86omf->CurrSeg->obj;
@@ -2699,7 +2693,7 @@ static void DoFix( BackRun& back, omf_idx idx, bool rel, base_type base, fix_cla
 #if _TARGET & _TARG_80386
     if( IsTargetModel( back, CGSW_X86_FLAT_MODEL )
       && IsntTargetModel( back, CGSW_X86_EZ_OMF )
-      && ( F_CLASS( class_ ) != F_PTR ) ) {
+      && ( FixClass( class_ ) != F_PTR ) ) {
         omf_idx     grp_idx;
 
         grp_idx = back.x86omf->FlatGIndex;
@@ -2963,7 +2957,7 @@ static void    outDataShort( BackRun& back, uint_16 value )
 {
     SetPendingLine(back);
     CheckLEDataSize( back, sizeof( uint_16 ), true );
-    value = _TargetShort( value );
+    value = ( value );
     memcpy( allocOutData( back, sizeof( uint_16 ) ), &value, sizeof( uint_16 ) );
 }
 
@@ -2973,7 +2967,7 @@ static void    outDataLong( BackRun& back, uint_32 value )
 {
     SetPendingLine(back);
     CheckLEDataSize( back, sizeof( uint_32 ), true );
-    value = _TargetLongInt( value );
+    value = ( value );
     memcpy( allocOutData( back, sizeof( uint_32 ) ), &value, sizeof( uint_32 ) );
 }
 
@@ -3010,7 +3004,7 @@ static void    outReloc( BackRun& back, segment_id segid, fix_class class_, bool
     index_rec   *rec;
 
     rec = AskSegIndex( back, segid );
-    if( F_CLASS( class_ ) == F_BIG_OFFSET ) {
+    if( FixClass( class_ ) == F_BIG_OFFSET ) {
         CheckLEDataSize( back, 3 * sizeof( long_offset ), true );
     } else {
         CheckLEDataSize( back, 3 * sizeof( offset ), true );
@@ -3034,7 +3028,7 @@ static void    outImport( BackRun& back, cg_sym_handle sym, fix_class class_, bo
 
     attr = FEAttr( *back.front, sym );
 #if  _TARGET & _TARG_80386
-    if( !rel && F_CLASS( class_ ) == F_OFFSET && (attr & FE_PROC) ) {
+    if( !rel && FixClass( class_ ) == F_OFFSET && (attr & FE_PROC) ) {
         if( (call_class_target)(pointer_uint)FindAuxInfoSym( back, sym, FEINF_CALL_CLASS_TARGET ) & FECALL_X86_FAR16_CALL ) {
             class_ |= F_FAR16;
         }
@@ -3066,7 +3060,7 @@ static void    outRTImportRel( BackRun& back, rt_class rtindex, fix_class class_
 static void    outRTImport( BackRun& back, rt_class rtindex, fix_class class_ )
 /******************************************************/
 {
-    outRTImportRel( back, rtindex, class_, ( F_CLASS( class_ ) == F_OFFSET || F_CLASS( class_ ) == F_LDR_OFFSET ) );
+    outRTImportRel( back, rtindex, class_, ( FixClass( class_ ) == F_OFFSET || FixClass( class_ ) == F_LDR_OFFSET ) );
 }
 
 static void    outBckExport( BackRun& back, const char *name, bool is_export )

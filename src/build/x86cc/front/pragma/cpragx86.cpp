@@ -86,7 +86,7 @@ void PragmaInit( FrontRun& front )
 
     pragmaAuxInfoInit(front);
 
-    switch( GET_CPU( front.cvars.ProcRevision ) ) {
+    switch( GetCpu( front.cvars.ProcRevision ) ) {
     case CPU_86:    cpu = 0; break;
     case CPU_186:   cpu = 1; break;
     case CPU_286:   cpu = 2; break;
@@ -100,7 +100,7 @@ void PragmaInit( FrontRun& front )
     default:        cpu = 3; break;
 #endif
     }
-    switch( GET_FPU_LEVEL( front.cvars.ProcRevision ) ) {
+    switch( GetFpuLevel( front.cvars.ProcRevision ) ) {
     case FPU_NONE:  fpu = 0; break;
     case FPU_87:    fpu = 1; break;
 //    case FPU_287:   fpu = 2; break;
@@ -115,7 +115,7 @@ void PragmaInit( FrontRun& front )
     }
 
 #if _CPU == 8086
-    AsmEnvInit( *front.assembler, 0, cpu, fpu, GET_FPU_EMU( front.cvars.ProcRevision ) );
+    AsmEnvInit( *front.assembler, 0, cpu, fpu, GetFpuEmu( front.cvars.ProcRevision ) );
 #else
     AsmEnvInit( *front.assembler, 1, cpu, fpu, false );
 #endif
@@ -187,14 +187,14 @@ static void PragmaAuxEnd( FrontRun& front )
     if( !HW_CEqual( front.cpragx86.AuxInfo.save, HW_EMPTY ) ) {
         HW_CTurnOn( front.pragdefn.CurrInfo->save, HW_FULL );
         if( (front.cpragx86.AuxInfo.cclass_target & FECALL_X86_MODIFY_EXACT) == 0 && !front.cvars.CompFlags.save_restore_segregs ) {
-            HW_Asgn( default_flt_n_seg, WatcallInfo( front ).save );
+            HwAsgn( default_flt_n_seg, WatcallInfo( front ).save );
             HW_CAsgn( flt_n_seg, HW_FLTS );
             HW_CTurnOn( flt_n_seg, HW_SEGS );
-            HW_TurnOff( front.pragdefn.CurrInfo->save, flt_n_seg );
-            HW_OnlyOn( default_flt_n_seg, flt_n_seg );
-            HW_TurnOn( front.pragdefn.CurrInfo->save, default_flt_n_seg );
+            HwTurnOff( front.pragdefn.CurrInfo->save, flt_n_seg );
+            HwOnlyOn( default_flt_n_seg, flt_n_seg );
+            HwTurnOn( front.pragdefn.CurrInfo->save, default_flt_n_seg );
         }
-        HW_TurnOff( front.pragdefn.CurrInfo->save, front.cpragx86.AuxInfo.save );
+        HwTurnOff( front.pragdefn.CurrInfo->save, front.cpragx86.AuxInfo.save );
     }
     PragmaAuxEnding(front);
 }
@@ -204,7 +204,7 @@ bool GetPragmaAuxAlias( FrontRun& front )
     bool    isfar16;
 
     isfar16 = PragRecogId( front, "far16" );
-    if( IS_ID_OR_KEYWORD( front.cvars.CurToken ) ) {
+    if( IsIdOrKeyword( front.cvars.CurToken ) ) {
         front.pragdefn.CurrAlias = PragmaAuxAlias( front, front.cvars.Buffer );
         PPNextToken(front);
     }
@@ -277,7 +277,7 @@ static int AsmPtrType( FrontRun& front, TYPEPTR typ, type_modifiers flags )
 /********************************************************/
 {
 
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type == TYP_FUNCTION ) {
         return( AsmCodePtrType( front, flags ) );
     } else if( flags & (FLAG_FAR | FLAG_HUGE) ) {
@@ -303,7 +303,7 @@ static enum sym_type const AsmDataType[] = {
 static int AsmType( FrontRun& front, TYPEPTR typ, type_modifiers flags )
 /****************************************************/
 {
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     switch( typ->decl_type ) {
     case TYP_STRUCT:
     case TYP_UNION:
@@ -590,7 +590,7 @@ void AsmSysLine( FrontRun& front, const char *buff )
 /*********************************/
 {
 #if _CPU == 8086
-    AsmLine( *front.assembler, buff, GET_FPU_EMU( front.cvars.ProcRevision ) );
+    AsmLine( *front.assembler, buff, GetFpuEmu( front.cvars.ProcRevision ) );
 #else
     AsmLine( *front.assembler, buff, false );
 #endif
@@ -669,12 +669,12 @@ static bool GetByteSeq( FrontRun& front, aux_info *info )
                 break;
             if( fixword == FIXWORD_FLOAT ) {
 #if _CPU == 8086
-                if( GET_FPU_EMU( front.cvars.ProcRevision ) ) {
+                if( GetFpuEmu( front.cvars.ProcRevision ) ) {
                     use_fpu_emu = true;
                 }
 #endif
             } else { /* seg or offset */
-                if( !IS_ID_OR_KEYWORD( front.cvars.CurToken ) ) {
+                if( !IsIdOrKeyword( front.cvars.CurToken ) ) {
                     CErr1( front, ERR_EXPECTING_ID );
                 } else {
                     name = CMemStrdup( front, front.cvars.Buffer );
@@ -919,7 +919,7 @@ static void GetSaveInfo( FrontRun& front )
             front.cpragx86.AuxInfo.cclass |= FECALL_GEN_NO_MEMORY_CHANGED;
             have.f_nomemory = true;
         } else if( !have.f_list && PragRegSet(front) != T_NULL ) {
-            HW_TurnOn( front.cpragx86.AuxInfo.save, PragRegList(front) );
+            HwTurnOn( front.cpragx86.AuxInfo.save, PragRegList(front) );
             have.f_list = true;
         } else {
             break;

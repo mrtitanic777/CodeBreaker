@@ -80,7 +80,7 @@ void    KillMovAddrConsts( BackRun& back )
             for( i = ins->num_operands; i-- > 0; ) {
                 op = ins->operands[i];
                 if( op->n.class_ == N_CONSTANT && op->c.const_type == CONS_TEMP_ADDR ) {
-                    type_class = _OpClass( ins );
+                    type_class = OpClass( ins );
                     new_op = AllocTemp( back, type_class );
                     new_ins = MakeUnary( back, OP_LA, op->c.u.op, new_op, type_class );
                     ins->operands[i] = new_op;

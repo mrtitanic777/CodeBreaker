@@ -85,7 +85,7 @@ bool jmp( AsmRun& assembler, token_buffer *tokbuf, expr_list *opndx, int *flags 
             && sym->mem_type != MT_WORD
             && sym->mem_type != MT_DWORD
             && sym->mem_type != MT_FWORD
-            && !IS_JMPCALLF( assembler.asmdefs.Code->info.token ) ) {
+            && !IsJmpCallF( assembler.asmdefs.Code->info.token ) ) {
             addr = sym->addr;
             addr -= ( assembler.asminlin->AsmCodeAddress + 2 );  // calculate the displacement
             addr += assembler.asmdefs.Code->data[assembler.asmdefs.Opnd_Count];
@@ -128,7 +128,7 @@ bool jmp( AsmRun& assembler, token_buffer *tokbuf, expr_list *opndx, int *flags 
                     assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I16;
                     addr -= 1; // 16 bit displacement
                 }
-                if( IS_JMP( assembler.asmdefs.Code->info.token ) ) {
+                if( IsJmp( assembler.asmdefs.Code->info.token ) ) {
                     switch( assembler.asmdefs.Code->info.token ) {
                     case T_JMP:
                     case T_JMPF:
@@ -172,7 +172,7 @@ bool jmp( AsmRun& assembler, token_buffer *tokbuf, expr_list *opndx, int *flags 
                 break;
             }
 
-            if( (assembler.asmdefs.Code->info.cpu & P_CPU_MASK) < P_386 && IS_JMP( assembler.asmdefs.Code->info.token ) ) {
+            if( (assembler.asmdefs.Code->info.cpu & P_CPU_MASK) < P_386 && IsJmp( assembler.asmdefs.Code->info.token ) ) {
                 /* look into jump extension */
                 switch( assembler.asmdefs.Code->info.token ) {
                 case T_JMP:
@@ -234,7 +234,7 @@ bool jmp( AsmRun& assembler, token_buffer *tokbuf, expr_list *opndx, int *flags 
             case MT_FAR:
             case MT_EMPTY:
                 if( assembler.asmdefs.Opnd_Count == OPND2 ) {
-                    if( IS_OPSIZ_32( assembler.asmdefs.Code ) ) {
+                    if( IsOpsiz32( assembler.asmdefs.Code ) ) {
                         fixup_type = FIX_OFF32;
                         assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I32;
                     } else {
@@ -242,7 +242,7 @@ bool jmp( AsmRun& assembler, token_buffer *tokbuf, expr_list *opndx, int *flags 
                         assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I16;
                     }
                 } else {
-                    if( IS_OPSIZ_32( assembler.asmdefs.Code ) ) {
+                    if( IsOpsiz32( assembler.asmdefs.Code ) ) {
                         fixup_type = FIX_PTR32;
                         assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_J48;
                     } else {
@@ -433,7 +433,7 @@ bool ptr_operator( AsmRun& assembler, memtype mem_type, bool fix_mem_type )
             // most of the 386 instructions ( except MOVSX and MOVZX )
             // when we find WORD PTR
 
-            if( !IS_BRANCH( assembler.asmdefs.Code->info.token ) ) {
+            if( !IsBranch( assembler.asmdefs.Code->info.token ) ) {
                 if( assembler.asmdefs.Code->info.opnd_type[OPND1] == OP_MMX ) {
                 /* JBS 2001/02/19
                 no WORD operands for MMX instructions, only 64-bit or 128-bit
@@ -445,7 +445,7 @@ bool ptr_operator( AsmRun& assembler, memtype mem_type, bool fix_mem_type )
                     case T_MOVZX:
                         break;
                     default:
-                        SET_OPSIZ_ON( assembler.asmdefs.Code );
+                        SetOpsizOn( assembler.asmdefs.Code );
                         break;
                     }
                 }
@@ -461,7 +461,7 @@ bool ptr_operator( AsmRun& assembler, memtype mem_type, bool fix_mem_type )
              *          asmins.h, and then putting F_32 or F_16 to append
              *      opsize bytes when necessary ?
              */
-            if( !IS_BRANCH( assembler.asmdefs.Code->info.token ) ) {
+            if( !IsBranch( assembler.asmdefs.Code->info.token ) ) {
 
                 if( assembler.asmdefs.Code->info.opnd_type[OPND1] == OP_MMX ) {
                     /* JBS 2001/02/19
@@ -479,7 +479,7 @@ bool ptr_operator( AsmRun& assembler, memtype mem_type, bool fix_mem_type )
                         break;
                     default:
                         // OPSIZ prefix
-                        SET_OPSIZ_ON( assembler.asmdefs.Code );
+                        SetOpsizOn( assembler.asmdefs.Code );
                     }
                 }
             }

@@ -66,7 +66,7 @@ static  void    CopyAddr( an src, an dst )
     an  link;
 
     link = dst->link;
-    Copy( src, dst, sizeof( address_name ) );
+    memcpy( dst, src, sizeof( address_name ) );
     dst->link = link;
 }
 

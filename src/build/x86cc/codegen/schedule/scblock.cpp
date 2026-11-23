@@ -114,13 +114,13 @@ static  bool    RemDeadCode( BackRun& back, block *blk )
         /*
          * if result is a register and it dies after this instruction
          */
-        if( !_OpIsCall( ins->head.opcode )
+        if( !OpIsCall( ins->head.opcode )
           && !UnChangeable( ins )
           && !SideEffect( back, ins )
           && result != NULL
           && !ScConvert( back, ins )
           && result->n.class_ == N_REGISTER
-          && !HW_Ovlap( ins->head.next->head.live.regs, result->r.reg ) ) {
+          && !HwOvlap( ins->head.next->head.live.regs, result->r.reg ) ) {
             FreeIns( back, ins );
             change = true;
         }
@@ -163,9 +163,9 @@ bool    DoScore( BackRun& back, block *blk )
         /*
          * May all intel designers rot in hell forever and ever, amen
          */
-        if( _OpIsCondition( ins->head.opcode ) && ins->result == NULL ) {
+        if( OpIsCondition( ins->head.opcode ) && ins->result == NULL ) {
             if( had_condition ) {
-                _MarkBlkAttrSet( blk, BLK_MULTIPLE_EXITS );
+                MarkBlkAttrSet( blk, BLK_MULTIPLE_EXITS );
             }
             had_condition = true;
         }
@@ -223,7 +223,7 @@ bool    DoScore( BackRun& back, block *blk )
                 } else {
                     if( dst->n.class_ == N_REGISTER ) {
                         tmp = ins->zap->reg;
-                        HW_TurnOn( tmp, dst->r.reg );
+                        HwTurnOn( tmp, dst->r.reg );
                         RegKill( back, scoreboard, tmp );
                     } else {
                         ScoreInfo( back, &info, dst );
@@ -288,10 +288,10 @@ byte    HasZero( BackRun& back, score_hdl scoreboard, name *n )
             hi = back.score.ScoreList[i]->high;
             lo = back.score.ScoreList[i]->low;
             if( hi != NO_INDEX && lo != NO_INDEX ) {
-                if( _IsZero( HasZero( back, scoreboard, back.score.ScoreList[lo]->reg_name ) ) ) {
+                if( IsZeroBits( HasZero( back, scoreboard, back.score.ScoreList[lo]->reg_name ) ) ) {
                     bits |= LO_HALF;
                 }
-                if( _IsZero( HasZero( back, scoreboard, back.score.ScoreList[hi]->reg_name ) ) ) {
+                if( IsZeroBits( HasZero( back, scoreboard, back.score.ScoreList[hi]->reg_name ) ) ) {
                     bits |= HI_HALF;
                 }
             }

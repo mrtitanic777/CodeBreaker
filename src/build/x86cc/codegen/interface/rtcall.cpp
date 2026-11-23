@@ -67,7 +67,7 @@ instruction     *rMAKECALL( BackRun& back, instruction *ins )
     hw_reg_set          tmp;
     rt_class            rtindex;
 
-    if( !_IsConvert( ins ) ) {
+    if( !IsConvert( ins ) ) {
         rtindex = LookupRoutine( back, ins );
     } else { /* look it up again in case we ran out of memory during expansion*/
         rtindex = LookupConvertRoutine( back, ins );
@@ -86,12 +86,12 @@ instruction     *rMAKECALL( BackRun& back, instruction *ins )
                                 info->operand_class );
         ins->operands[1] = new_ins->result;
         MoveSegOp( back, ins, new_ins, 0 );
-        HW_TurnOn( all_regs, regs );
+        HwTurnOn( all_regs, regs );
         PrefixIns( back, ins, new_ins );
     }
     {
     tmp = ReturnReg( back, WD, false );
-    HW_TurnOn( all_regs, tmp );
+    HwTurnOn( all_regs, tmp );
     }
     reg_name = AllocRegName( back, all_regs );
     lbl = RTLabel( back, rtindex );
@@ -105,7 +105,7 @@ instruction     *rMAKECALL( BackRun& back, instruction *ins )
     new_ins->num_operands = 2;         /* special case for OP_CALL*/
     new_ins->zap = (register_name *)AllocRegName( back, all_regs );   /* all parm regs could be zapped*/
     last_ins = new_ins;
-    if( ins->result == NULL || _OpIsCondition( ins->head.opcode ) ) {
+    if( ins->result == NULL || OpIsCondition( ins->head.opcode ) ) {
         /* comparison, still need conditional jumps*/
         ins->operands[0] = AllocIntConst( back, 0 );
         ins->operands[1] = AllocIntConst( back, 1 );
@@ -117,7 +117,7 @@ instruction     *rMAKECALL( BackRun& back, instruction *ins )
     } else {
         regs = FirstReg( back, info->result );
         tmp = regs;
-        HW_TurnOn( tmp, new_ins->zap->reg );
+        HwTurnOn( tmp, new_ins->zap->reg );
         new_ins->zap = (register_name *)AllocRegName( back, tmp );
         reg_name = AllocRegName( back, regs );
         new_ins->result = reg_name;

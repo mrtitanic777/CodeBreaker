@@ -133,10 +133,14 @@ typedef struct asm_tok {
     } u;
 } asm_tok;
 
-#define IS_STRING_TOKEN( cls )      ((cls) == TC_STRING || (cls) == TC_STRING_SQUOTE \
-                                  || (cls) == TC_STRING_DQUOTE || (cls) == TC_STRING_ANGLE \
-                                  || (cls) == TC_STRING_BRACE)
+inline bool IsStringToken( tok_class cls )
+{
+    return ((cls) == TC_STRING ||
+        (cls) == TC_STRING_SQUOTE ||
+        (cls) == TC_STRING_DQUOTE ||
+        (cls) == TC_STRING_ANGLE ||
+        (cls) == TC_STRING_BRACE);
+}
 
-#define IS_QUOTED_STRING_TOKEN( cls )   ((cls) == TC_STRING_SQUOTE || (cls) == TC_STRING_DQUOTE)
 
 #endif

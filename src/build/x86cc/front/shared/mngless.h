@@ -41,8 +41,6 @@ extern "C" {
 #define CMPMAXBITSIZE   64
 
 #define SIGN_BIT        (0x80)
-#define NumSign( a )    ((a) & SIGN_BIT)
-#define NumBits( a )    ((a) & (SIGN_BIT-1))
 
 
 typedef enum{
@@ -70,5 +68,9 @@ cmp_result CheckMeaninglessCompare(
 );
 
 }
+
+
+inline int NumSign( int a ) { return ((a) & SIGN_BIT); }
+inline int NumBits( int a ) { return ((a) & (SIGN_BIT-1)); }
 
 #endif // __ANALMEAN_H_

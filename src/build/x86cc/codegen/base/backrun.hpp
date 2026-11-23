@@ -274,8 +274,8 @@ inline bool IsModel( const BackRun& back, cg_switches mdl ) { return ( back.mode
 inline bool IsntModel( const BackRun& back, cg_switches mdl ) { return ( back.model.Model & mdl ) == 0; }
 inline bool IsTargetModel( const BackRun& back, cg_target_switches mdl ) { return ( back.model.TargetModel & mdl ) != 0; }
 inline bool IsntTargetModel( const BackRun& back, cg_target_switches mdl ) { return ( back.model.TargetModel & mdl ) == 0; }
-inline bool CPULevel( const BackRun& back, proc_revision level ) { return GET_CPU( back.model.CGProcessorVersion ) >= level; }
-inline bool FPULevel( const BackRun& back, proc_revision level ) { return ( GET_FPU( back.model.CGProcessorVersion ) & ~FPU_EMU ) >= level; }
+inline bool CPULevel( const BackRun& back, proc_revision level ) { return GetCpu( back.model.CGProcessorVersion ) >= level; }
+inline bool FPULevel( const BackRun& back, proc_revision level ) { return ( GetFpu( back.model.CGProcessorVersion ) & ~FPU_EMU ) >= level; }
 inline bool IsEmulation( const BackRun& back ) { return ( back.model.CGProcessorVersion & FPU_EMU ) != 0; }
 
 inline void OptBegin( BackRun& back ) { ++back.optmac.InOptimizer; }

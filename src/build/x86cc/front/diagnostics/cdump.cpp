@@ -151,7 +151,7 @@ static TYPEPTR TrueType( FrontRun& front, TYPEPTR typ )
             /*
              * -zg, not -v
              */
-            SKIP_TYPEDEFS( typ );
+            SkipTypedefs( typ );
         }
     }
     return( typ );
@@ -311,7 +311,7 @@ static void DumpBaseType( FrontRun& front, TYPEPTR typ, STRCHUNK *pch )
             break;
         typ = obj;
     }
-    SKIP_DUMMY_TYPEDEFS( typ );
+    SkipDummyTypedefs( typ );
     if( typ->decl_type == TYP_TYPEDEF ) {
         SymGet( front, &sym, typ->u.typedefn );
         ChunkSaveStrWord( front, pch, SymName( front, &sym, typ->u.typedefn ) );

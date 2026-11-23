@@ -82,7 +82,7 @@ essentially no worst case performance scenario.
 #define TAG_SIZE        8
 
 
-#define MIN_ALLOC       _RoundUp( sizeof( frl ), MEM_WORD_SIZE )
+#define MIN_ALLOC       RoundUp( sizeof( frl ), MEM_WORD_SIZE )
 #define MAX_ALLOC       (1 << MAX_SIZE)
 
 typedef pointer_uint    tag;
@@ -293,7 +293,7 @@ pointer  CgMemAlloc( BackRun& back, size_t amount )
         memInit(back);
     if( amount == 0 )
         return( NULL );
-    amount = _RoundUp( amount + TAG_SIZE, MEM_WORD_SIZE );
+    amount = RoundUp( amount + TAG_SIZE, MEM_WORD_SIZE );
     if( amount > MAX_ALLOC ) {
         return( MemFromSys( back, amount ) );
     }
@@ -373,7 +373,7 @@ static  pointer MemFromSys( BackRun& back, size_t amount )
     /*
      * round up size to multiple of 64K
      */
-    size = _RoundUp( amount + sizeof( mem_blk ) + sizeof( blk_hdr ), _64K );
+    size = RoundUp( amount + sizeof( mem_blk ) + sizeof( blk_hdr ), _64K );
     /*
      * Need to clear memory for later assert() calls, and a compile reads what it never wrote as zero (run/cbrun.hpp)
      */

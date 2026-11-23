@@ -55,6 +55,6 @@
 
 #define __FP80BIT(ld,d)                 d
 
-#define _IsPowerOfTwo( x )              ( ( (x) & ( 1 - (x) ) ) == (x) )
+inline bool IsPowerOfTwo( unsigned int x ) { return ( ( (x) & ( 1 - (x) ) ) == (x) ); }
 
 #define _AlignmentCheck( ptr, size )    {}

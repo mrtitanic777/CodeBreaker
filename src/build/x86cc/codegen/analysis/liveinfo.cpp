@@ -65,7 +65,7 @@ static  void            GlobalConflictsFirst( BackRun& back )
         conf = *conf_owner;
         if( conf == NULL )
             break;
-        if( _Isnt( conf, CST_CONFLICT_ON_HOLD ) && ( conf->name->v.usage & USE_IN_ANOTHER_BLOCK ) ) {
+        if( LacksConflictState( conf, CST_CONFLICT_ON_HOLD ) && ( conf->name->v.usage & USE_IN_ANOTHER_BLOCK ) ) {
             *conf_owner = conf->next_conflict;
             *list_owner = conf;
             list_owner = &conf->next_conflict;
@@ -97,11 +97,11 @@ static  void    ExtendConflicts( BackRun& back, block *blk, conflict_node *first
 
     flow = blk->dataflow;
     for( conf = first_global; conf != NULL; conf = conf->next_conflict ) {
-        if( _Is( conf, CST_CONFLICT_ON_HOLD ) )
+        if( HasConflictState( conf, CST_CONFLICT_ON_HOLD ) )
             break;
         if( (conf->name->v.usage & USE_IN_ANOTHER_BLOCK) == 0 )
             break;
-        if( _GBitOverlap( conf->id.out_of_block, flow->out ) ) {
+        if( GBitOverlap( conf->id.out_of_block, flow->out ) ) {
             last_ins = blk->ins.head.prev;
             if( conf->ins_range.last != NULL ) {
                 InsNotBlock( back, conf->ins_range.last );
@@ -126,7 +126,7 @@ static  void    ExtendConflicts( BackRun& back, block *blk, conflict_node *first
                 }
             }
         }
-        if( _GBitOverlap( conf->id.out_of_block, flow->in ) ) {
+        if( GBitOverlap( conf->id.out_of_block, flow->in ) ) {
             first_ins = blk->ins.head.next;
             if( conf->ins_range.first != NULL) {
                 InsNotBlock( back, conf->ins_range.first );
@@ -160,17 +160,17 @@ static  void    AssignBit( conflict_node *conf, block *blk )
 {
     local_bit_set     bit;
 
-    if( _LBitEmpty( blk->available_bit ) ) {
-        _SetTrue( conf, CST_CONFLICT_ON_HOLD );
-    } else if( _Isnt( conf, CST_CONFLICT_ON_HOLD ) ) {
-        _LBitFirst( bit );
+    if( LBitEmpty( blk->available_bit ) ) {
+        SetTrue( conf, CST_CONFLICT_ON_HOLD );
+    } else if( LacksConflictState( conf, CST_CONFLICT_ON_HOLD ) ) {
+        LBitFirst( bit );
         for( ;; ) {
-            if( _LBitOverlap( blk->available_bit, bit ) )
+            if( LBitOverlap( blk->available_bit, bit ) )
                 break;
             _LBitNext( &bit );
         }
-        _LBitAssign( conf->id.within_block, bit );
-        _LBitTurnOff( blk->available_bit, bit );
+        LBitAssign( conf->id.within_block, bit );
+        LBitTurnOff( blk->available_bit, bit );
     }
 }
 
@@ -179,15 +179,15 @@ void    NowAlive( name *opnd, conflict_node *conf, name_set *alive, block *blk )
 /******************************************************************************/
 {
     if( opnd->n.class_ == N_REGISTER ) {
-        HW_TurnOn( alive->regs, opnd->r.reg );
+        HwTurnOn( alive->regs, opnd->r.reg );
     } else if( conf != NULL ) {
         if( opnd->v.usage & USE_IN_ANOTHER_BLOCK ) {
-            _GBitTurnOn( alive->out_of_block, conf->id.out_of_block );
+            GBitTurnOn( alive->out_of_block, conf->id.out_of_block );
         } else {
-            if( _LBitEmpty( conf->id.within_block ) ) {
+            if( LBitEmpty( conf->id.within_block ) ) {
                 AssignBit( conf, blk );
             }
-            _LBitTurnOn( alive->within_block, conf->id.within_block );
+            LBitTurnOn( alive->within_block, conf->id.within_block );
         }
     }
 }
@@ -197,18 +197,18 @@ void    NowDead( name *opnd, conflict_node *conf, name_set *alive, block *blk )
 /*****************************************************************************/
 {
     if( opnd->n.class_ == N_REGISTER ) {
-        HW_TurnOff( alive->regs, opnd->r.reg );
+        HwTurnOff( alive->regs, opnd->r.reg );
     } else if( conf != NULL ) {
         if( opnd->v.usage & USE_IN_ANOTHER_BLOCK ) {
             if( opnd->n.class_ != N_TEMP || opnd->t.alias == opnd ) {
-                _GBitTurnOff( alive->out_of_block, conf->id.out_of_block );
+                GBitTurnOff( alive->out_of_block, conf->id.out_of_block );
             }
         } else {
-            if( _LBitEmpty( conf->id.within_block ) ) {
+            if( LBitEmpty( conf->id.within_block ) ) {
                 AssignBit( conf, blk );
             }
             if( opnd->n.class_ != N_TEMP || opnd->t.alias == opnd ) {
-                _LBitTurnOff( alive->within_block, conf->id.within_block );
+                LBitTurnOff( alive->within_block, conf->id.within_block );
             }
         }
     }
@@ -272,7 +272,7 @@ static  void    FlowConflicts( BackRun& back, instruction *first, instruction *l
             /*
              * all memory names are operands of a call instruction
              */
-            _GBitTurnOn( alive.out_of_block, back.data.MemoryBits );
+            GBitTurnOn( alive.out_of_block, back.data.MemoryBits );
         }
         /*
          * Move information into current instruction
@@ -280,7 +280,7 @@ static  void    FlowConflicts( BackRun& back, instruction *first, instruction *l
          * previous instruction & this instruction)
          */
         ins->head.live.regs = alive.regs;
-        HW_TurnOn( ins->head.live.regs, back.data.CurrProc->state.unalterable );
+        HwTurnOn( ins->head.live.regs, back.data.CurrProc->state.unalterable );
 
         ins->head.live.out_of_block = alive.out_of_block;
         ins->head.live.within_block = alive.within_block;
@@ -293,7 +293,7 @@ static  void    FlowConflicts( BackRun& back, instruction *first, instruction *l
          * its previous value is not live in previous instructions
          * Same goes for a zapped register.
          */
-        HW_TurnOff( alive.regs, ins->zap->reg );
+        HwTurnOff( alive.regs, ins->zap->reg );
         opnd = ins->result;
         if( opnd != NULL ) {
             if( opnd->n.class_ == N_INDEXED ) {
@@ -390,10 +390,10 @@ void    UpdateLive( BackRun& back, instruction *first, instruction *last )
         ins = ins->head.next;
     }
     if( ins->head.next == ins->head.prev ) { /* 1 or 2 instructions*/
-        FlowConflicts( back, ins, ins, _BLOCK( ins ) );
+        FlowConflicts( back, ins, ins, BlockOf( ins ) );
     } else {
         if( first->head.opcode != OP_BLOCK )
             first = first->head.prev;
-        FlowConflicts( back, first, last, _BLOCK( ins ) );
+        FlowConflicts( back, first, last, BlockOf( ins ) );
     }
 }

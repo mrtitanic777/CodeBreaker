@@ -271,11 +271,11 @@ static  bool    NotByteMove( instruction *ins )
 static  bool    IsLDSES( instruction *ins, instruction *next )
 /************************************************************/
 {
-    if( G( ins ) != G_RM1 && G( ins ) != G_MOVAM )
+    if( InsGenerate( ins ) != G_RM1 && InsGenerate( ins ) != G_MOVAM )
         return( false );
     if( ins->type_class != WD && ins->type_class != SW )
         return( false );
-    if( G( next ) != G_SM1 )
+    if( InsGenerate( next ) != G_SM1 )
         return( false );
     return( true );
 }
@@ -298,18 +298,18 @@ static  void    CheckLDSES( BackRun& back, instruction *seg, instruction *reg, b
             /*
              * don't think we can get here - using one of DS|ES|SS|FS|GS as index reg?!?
              */
-            if( HW_Ovlap( reg->operands[0]->i.index->r.reg, seg->result->r.reg ) ) {
+            if( HwOvlap( reg->operands[0]->i.index->r.reg, seg->result->r.reg ) ) {
                 return;
             }
         } else {
-            if( HW_Ovlap( seg->operands[0]->i.index->r.reg, reg->result->r.reg ) ) {
+            if( HwOvlap( seg->operands[0]->i.index->r.reg, reg->result->r.reg ) ) {
                 return;
             }
         }
     }
     reg->u.gen_table = LDSES;
     tmp = reg->result->r.reg;
-    HW_TurnOn( tmp, seg->result->r.reg );
+    HwTurnOn( tmp, seg->result->r.reg );
     reg->result = AllocRegName( back, tmp );
     DoNothing( back, seg );
 }
@@ -390,8 +390,8 @@ void    OptSegs( BackRun& back )
                     /*
                      * check if instructions operate on correct halves
                      */
-                    if( HW_Equal( Low16Reg( full_reg ), next->result->r.reg )
-                      && HW_Equal( High16Reg( full_reg ), ins->result->r.reg )
+                    if( HwEqual( Low16Reg( full_reg ), next->result->r.reg )
+                      && HwEqual( High16Reg( full_reg ), ins->result->r.reg )
                        ) {
                         /*
                          * convert to "and fullreg, imm"

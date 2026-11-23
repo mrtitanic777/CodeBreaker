@@ -628,7 +628,7 @@ static cg_name DoAddSub( FrontRun& front, cg_name op1, OPNODE *node, cg_name op2
     TYPEPTR     typ;
 
     typ = node->u2.result_type;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     name = CGBinary( *front.back, CGOperator[node->opr], op1, op2, CGenType( front, typ ) );
     return( name );
 }
@@ -805,9 +805,9 @@ static cg_name DoIndirection( FrontRun& front, OPNODE *node, cg_name name )
 static cg_name ConvertPointer( FrontRun& front, OPNODE *node, cg_name name )
 {
 #if _CPU == 386
-    if( FAR16_PTRCLASS( node->u2.sp.old_ptrclass ) ) {
+    if( IsFar16PtrClass( node->u2.sp.old_ptrclass ) ) {
         name = CGUnary( *front.back, O_PTR_TO_NATIVE, name, TY_POINTER );
-    } else if( FAR16_PTRCLASS( node->u2.sp.new_ptrclass ) ) {
+    } else if( IsFar16PtrClass( node->u2.sp.new_ptrclass ) ) {
         name = CGUnary( *front.back, O_PTR_TO_FOREIGN, name, TY_POINTER );
     }
 #else
@@ -828,7 +828,7 @@ static call_handle InitFuncCall( FrontRun& front, OPNODE *node )
     dtype = CGenType( front, typ );
     name = CGFEName( *front.back, (CGSYM_HANDLE)node->u2.sym_handle, dtype );
 //    dtype = FESymType( sym );
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     return( CGInitCall( *front.back, name, CGenType( front, typ->object ), (CGSYM_HANDLE)node->u2.sym_handle ) );
 }
 
@@ -839,7 +839,7 @@ static call_handle InitIndFuncCall( FrontRun& front, OPNODE *node, cg_name name 
 
     sym = SymGetPtr( front, node->u2.sym_handle );
     typ = sym->sym_type;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     return( CGInitCall( *front.back, name, CGenType( front, typ->object ), (CGSYM_HANDLE)node->u2.sym_handle ) );
 }
 
@@ -861,7 +861,7 @@ static void DoSwitch( FrontRun& front, OPNODE *node, cg_name name )
 static bool IsStruct( TYPEPTR typ )
 /*********************************/
 {
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type == TYP_STRUCT
       || typ->decl_type == TYP_FCOMPLEX
       || typ->decl_type == TYP_DCOMPLEX
@@ -921,7 +921,7 @@ static void EmitSym( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
             DBEndName( *front.back, DBBegName( *front.back, sym->name, DBG_NIL_TYPE ), DBType( front, typ ) );
         }
     }
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     CGenType( front, typ );    /* create refno for ARRAY type, etc */
     if( sym->attribs.stg_class != SC_EXTERN &&  /* if not imported */
         sym->attribs.stg_class != SC_TYPEDEF ) {
@@ -991,7 +991,7 @@ static void CDoAutoDecl( FrontRun& front, SYM_HANDLE sym_handle )
                 emit_extra_info = true;
             }
             typ = sym.sym_type;
-            SKIP_TYPEDEFS( typ );
+            SkipTypedefs( typ );
             switch( typ->decl_type ) {
             case TYP_UNION:
             case TYP_STRUCT:
@@ -1033,7 +1033,7 @@ static void CDoParmDecl( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
     cg_type dtype;
 
     typ = sym->sym_type;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     dtype = CGenType( front, typ );
     CGParmDecl( *front.back, (CGSYM_HANDLE)sym_handle, dtype );
 #if _CPU == 386
@@ -1833,7 +1833,7 @@ cg_type CGenType( FrontRun& front, TYPEPTR typ )
     type_modifiers  flags;
     align_type      align;
 
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     switch( typ->decl_type ) {
 
     case TYP_FCOMPLEX:
@@ -1891,7 +1891,7 @@ cg_type PtrType( TYPEPTR typ, type_modifiers flags )
 {
     cg_type     dtype;
 
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type == TYP_FUNCTION ) {
         dtype = CodePtrType( flags );
     } else {

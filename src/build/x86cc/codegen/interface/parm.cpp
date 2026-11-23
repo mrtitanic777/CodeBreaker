@@ -52,7 +52,7 @@ hw_reg_set      ParmInLineReg( parm_state *state )
         state->curr_entry++;
     }
     regs = InLineParm( regs, state->used );
-    HW_TurnOn( state->used, regs );
+    HwTurnOn( state->used, regs );
     return( regs );
 }
 
@@ -64,16 +64,16 @@ type_length      ParmMem( BackRun& back, type_length length, type_length alignme
 
     word_size = REG_SIZE;
 #if _TARGET & _TARG_80386
-    if( _RoutineIsFar16( state->attr ) ) {
+    if( RoutineIsFar16( state->attr ) ) {
         // use 16-bit word size for rounding
         word_size >>= 1;
     }
 #endif
     offset = state->parm.offset;
     if( offset & ( alignment - 1 ) ) {
-        offset = _RoundUp( offset, alignment );
+        offset = RoundUp( offset, alignment );
     }
-    state->parm.offset = offset + _RoundUp( length, word_size );
+    state->parm.offset = offset + RoundUp( length, word_size );
     if( state->parm.offset > back.data.MaxStack ) {
         back.data.MaxStack = state->parm.offset;
     }

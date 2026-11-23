@@ -46,11 +46,11 @@
 #define PCH_VERSION     0x0128
 #define PCH_VERSION_HOST ( ( 7L << 16 ) | PCH_VERSION )
 
-#define PCHGetUInt(p)           ((unsigned)(pointer_uint)(p))
-#define PCHSetUInt(v)           ((void *)(pointer_uint)((unsigned)(v)))
+inline unsigned int PCHGetUInt( const void *p ) { return ((unsigned)(pointer_uint)(p)); }
+inline void *PCHSetUInt( unsigned v ) { return ((void *)(pointer_uint)((unsigned)(v))); }
 
 
-#define PCHAlign(p)             _RoundUp(p,sizeof(int))
+inline unsigned long long PCHAlign( size_t p ) { return RoundUp(p,sizeof(int)); }
 
 
 

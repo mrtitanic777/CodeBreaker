@@ -37,24 +37,9 @@ struct BackRun;
 inline void OptBegin( BackRun& back );
 inline void OptEnd( BackRun& back );
 
-#define _TransferClass(var) ((var) >= OC_JMP)
-//#define _TransferClass(var) ((var) == OC_JMP || (var) == OC_JMPI || (var) == OC_RET || (var) == OC_NORET || (var) == OC_IDATA)
+//#define TransferClass(var) ((var) == OC_JMP || (var) == OC_JMPI || (var) == OC_RET || (var) == OC_NORET || (var) == OC_IDATA)
 
-#define _Class(var)         static_cast<oc_class>(OC_BASE_CLASS(((ins_entry *)(var))->oc.oc_header.class_))
-#define _GetAttr(var)       OC_INFO_CLASS(((ins_entry *)(var))->oc.oc_header.class_)
-#define _ChkAttr(v1,v2)     ((((ins_entry *)(v1))->oc.oc_header.class_ & v2) != 0)
-#define _SetAttr(v1,v2)     ((ins_entry *)(v1))->oc.oc_header.class_ |= static_cast<oc_class>( v2 )
-#define _ChgClass(v1,v2)    ((ins_entry *)(v1))->oc.oc_header.class_ = static_cast<oc_class>(_GetAttr(v1) | v2)
-#define _ResetClass(v1,v2)  ((ins_entry *)(v1))->oc.oc_header.class_ = v2
 
-#define _Label(var)         (((ins_entry *)(var))->oc.oc_handle.handle)
-#define _LblRef(var)        (((ins_entry *)(var))->oc.oc_handle.ref)
-#define _LblLine(var)       (((ins_entry *)(var))->oc.oc_handle.line)
-#define _JmpCond(var)       (((ins_entry *)(var))->oc.oc_jcond.cond)
-#define _RetPop(var)        (((ins_entry *)(var))->oc.oc_ret.pops)
-#define _ObjLen(var)        (((ins_entry *)(var))->oc.oc_header.objlen)
-#define _InsLen(var)        (((ins_entry *)(var))->oc.oc_header.reclen)
-#define _ClassInfo(var)     (((ins_entry *)(var))->oc.oc_header.class_)
 
 /*  the next size seems to cover almost all optimizer entries that get allocated */
 #define OCENTRY_SIZE        (sizeof( ins_entry ))

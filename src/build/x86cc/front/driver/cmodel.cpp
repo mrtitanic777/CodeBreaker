@@ -125,7 +125,7 @@ static char *Def_Macro_Tokens( FrontRun& front, const char *str, bool multiple_t
         FiniPPScan( front, ppscan_mode );
     }
     MacroSegmentAddToken( front, &mlen, T_NULL );
-    if( IS_PPOPERATOR_DEFINED( mentry->macro_name ) ) {
+    if( IsPPOperatorDefined( mentry->macro_name ) ) {
         CErr1( front, ERR_CANT_DEFINE_DEFINED );
     } else {
         MacroDefine( front, mlen, mflags );

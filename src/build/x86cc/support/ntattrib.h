@@ -33,4 +33,4 @@
 #define _NT_ATTRIBUTES_MASK  (FILE_ATTRIBUTE_SYSTEM | FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_READONLY \
                                 | FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_ARCHIVE)
 
-#define NT2DOSATTR(a)       ((a) & _NT_ATTRIBUTES_MASK)
+inline unsigned long NtToDosAttr( unsigned long a ) { return ((a) & _NT_ATTRIBUTES_MASK); }

@@ -72,10 +72,10 @@
 /*
  * Borrow a few fields and bits to label trees with bits and link stuff
  */
-#define _INSBITS( ins )   _LBitScalar((ins)->head.live.within_block)
-#define _BLKBITS( blk )   _LBitScalar((blk)->available_bit)
-#define _INSLINK( ins )   (*(instruction **)&(ins)->u1.cse_link)
-#define _NAMELINK( op )   (*(instruction **)&(op)->v.conflict)
+inline unsigned int &InsBits( instruction *ins ) { return ( LBitScalar((ins)->head.live.within_block) ); }
+inline unsigned int &BlkBits( block *blk ) { return ( LBitScalar((blk)->available_bit) ); }
+inline instruction *&InsLink( instruction *ins ) { return (*(instruction **)&(ins)->u1.cse_link); }
+inline instruction *&NameLink( name *op ) { return (*(instruction **)&(op)->v.conflict); }
 
 
 
@@ -151,7 +151,7 @@ static  bool    FindDefnBlocks( BackRun& back, block *blk, instruction *cond, op
     for( edge = blk->input_edges; edge != NULL; edge = next_source ) {
         next_source = edge->next_source;
         input = edge->source;
-        if( !_IsBlkAttr( input, BLK_JUMP ) )
+        if( !IsBlkAttr( input, BLK_JUMP ) )
             continue;
         for( prev = input->ins.head.prev; prev->head.opcode != OP_BLOCK; prev = prev->head.prev ) {
             if( IsntReDefinedBy( back, prev, op ) )
@@ -172,7 +172,7 @@ static  bool    FindDefnBlocks( BackRun& back, block *blk, instruction *cond, op
                 }
             }
             new_cond = NewIns( back, 2 );
-            Copy( cond, new_cond, INS_SIZE );
+            memcpy( new_cond, cond, INS_SIZE );
             new_cond->head.prev = new_cond;
             new_cond->head.next = new_cond;
             new_cond->operands[i] = prev->operands[0];
@@ -180,9 +180,9 @@ static  bool    FindDefnBlocks( BackRun& back, block *blk, instruction *cond, op
             if( new_ins == NULL ) {
                 new_ins = new_cond;
             }
-            if( _OpIsCondition( new_ins->head.opcode ) ) {
-                if( _TrueIndex( new_ins ) == _FalseIndex( new_ins ) ) {
-                    new_dest_blk = blk->edge[_TrueIndex( new_ins )].destination.u.blk;
+            if( OpIsCondition( new_ins->head.opcode ) ) {
+                if( TrueIndex( new_ins ) == FalseIndex( new_ins ) ) {
+                    new_dest_blk = blk->edge[TrueIndex( new_ins )].destination.u.blk;
                     if( new_dest_blk != blk ) {
                         jump_edge = &input->edge[0];
                         RemoveInputEdge( jump_edge );
@@ -214,7 +214,7 @@ static  bool    StretchABlock( BackRun& back, block *blk )
     if( blk->ins.head.prev != blk->ins.head.next )
         return( false );
     ins = blk->ins.head.next;
-    if( !_OpIsCondition( ins->head.opcode ) )
+    if( !OpIsCondition( ins->head.opcode ) )
         return( false );
     op = ins->operands[0];
     i = 1;
@@ -271,7 +271,7 @@ bool    PropRegsOne( void )
 static  void    TreeBits( block *root )
 /**************************************
  * Label the partition (tree) with bits such that block A is the
- * ancestor of block B IFF _BLKBITS(A) & _BLKBITS(B) == _BLKBITS(A).
+ * ancestor of block B IFF BlkBits(A) & BlkBits(B) == BlkBits(A).
  * Simply speaking, we add a new bit for every node in the tree.
  * A child node gets its parents bit set plus one new one for itself.
  * This allows for simple ancestor, sibling, first common ancestor
@@ -286,17 +286,17 @@ static  void    TreeBits( block *root )
     block       **owner;
 
     next_bit = 1;
-    _BLKBITS( root ) = next_bit;
+    BlkBits( root ) = next_bit;
     do {
         change = false;
         for( blk = root->u.partition; blk != root; blk = blk->u.partition ) {
             daddy = blk->input_edges->source;
-            if( _BLKBITS( blk ) == 0
-              && _BLKBITS( daddy ) ) {
+            if( BlkBits( blk ) == 0
+              && BlkBits( daddy ) ) {
                 next_bit <<= 1;
                 if( next_bit == 0 )
                     break;
-                _BLKBITS( blk ) = _BLKBITS( daddy ) | next_bit;
+                BlkBits( blk ) = BlkBits( daddy ) | next_bit;
                 change = true;
             }
         }
@@ -312,9 +312,9 @@ static  void    TreeBits( block *root )
     for( ;; ) {
         blk = *owner;
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-            _INSBITS( ins ) = _BLKBITS( blk );
+            InsBits( ins ) = BlkBits( blk );
         }
-        if( _BLKBITS( blk ) == EMPTY ) {
+        if( BlkBits( blk ) == EMPTY ) {
             *owner = blk->u.partition;
         } else {
             owner = &blk->u.partition;
@@ -341,19 +341,19 @@ static  void    FindPartition( BackRun& back )
     block_num   i;
 
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        if( _IsBlkAttr( blk, BLK_BIG_LABEL )
+        if( IsBlkAttr( blk, BLK_BIG_LABEL )
           || blk->inputs != 1 ) {
-            _MarkBlkVisited( blk );
+            MarkBlkVisited( blk );
         }
         blk->u.partition = blk;
-        _BLKBITS( blk ) = EMPTY;
+        BlkBits( blk ) = EMPTY;
     }
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         edge = &blk->edge[0];
         for( i = blk->targets; i > 0; --i ) {
             if( edge->flags & BEF_DEST_IS_BLOCK ) {
                 oth = edge->destination.u.blk;
-                if( !_IsBlkVisited( oth )
+                if( !IsBlkVisited( oth )
                   && oth->inputs == 1 ) {
                     temp = oth->u.partition;
                     oth->u.partition = blk->u.partition;
@@ -364,7 +364,7 @@ static  void    FindPartition( BackRun& back )
         }
     }
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        if( _IsBlkVisited( blk ) ) {
+        if( IsBlkVisited( blk ) ) {
             TreeBits( blk );
         }
     }
@@ -379,11 +379,11 @@ void    SetCSEBits( instruction *ins, instruction *new_ins )
     a_bit_set   bits;
 
     if( ins->head.opcode == OP_BLOCK ) {
-        bits = _BLKBITS( _BLOCK( ins ) );
+        bits = BlkBits( BlockOf( ins ) );
     } else {
-        bits = _INSBITS( ins );
+        bits = InsBits( ins );
     }
-    _INSBITS( new_ins ) = bits;
+    InsBits( new_ins ) = bits;
 }
 
 
@@ -400,8 +400,8 @@ static  instruction *WhichIsAncestor( instruction *ins1, instruction *ins2 )
     a_bit_set   bits2;
     block       *blk;
 
-    bits1 = _INSBITS( ins1 );
-    bits2 = _INSBITS( ins2 );
+    bits1 = InsBits( ins1 );
+    bits2 = InsBits( ins2 );
     if( bits1 == bits2 ) {  /* same_block*/
         first = NULL;
         if( ins1 != ins2 ) {
@@ -425,7 +425,7 @@ static  instruction *WhichIsAncestor( instruction *ins1, instruction *ins2 )
     } else { /* find a hoist point*/
         bits1 &= bits2;
         blk = InsBlock( ins1 );
-        while( _BLKBITS( blk ) != bits1 ) {
+        while( BlkBits( blk ) != bits1 ) {
             blk = blk->u.partition;
         }
         for( first = blk->ins.head.prev; first->head.opcode == OP_NOP; first = first->head.prev ) {
@@ -438,7 +438,7 @@ static  instruction *WhichIsAncestor( instruction *ins1, instruction *ins2 )
          */
         for( ; ; first = first->head.prev ) {
             if( ( first->head.opcode != OP_SELECT )
-              && !_OpIsCondition( first->head.opcode ) ) {
+              && !OpIsCondition( first->head.opcode ) ) {
                 break;
             }
         }
@@ -455,7 +455,7 @@ static  void    CleanPartition( BackRun& back )
     block       *blk;
 
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        _MarkBlkUnVisited( blk );
+        MarkBlkUnVisited( blk );
         blk->u.partition = NULL;
     }
 }
@@ -472,7 +472,7 @@ static bool CanCrossBlocks( BackRun& back, instruction *ins1, instruction *ins2,
         return( true );
     if( op->n.class_ != N_TEMP )
         return( true );
-    if( _INSBITS( ins1 ) == _INSBITS( ins2 ) )
+    if( InsBits( ins1 ) == InsBits( ins2 ) )
         return( true );
     if( op->t.temp_flags & CROSSES_BLOCKS )
         return( true );
@@ -487,7 +487,7 @@ static  void    UseInOther( instruction *ins1, instruction *ins2, name *op )
  * instructions.  This may change it's USE_IN_ANOTHER_BLOCK status.
  */
 {
-    if( _INSBITS( ins1 ) != _INSBITS( ins2 ) ) {
+    if( InsBits( ins1 ) != InsBits( ins2 ) ) {
         if( op->n.class_ == N_MEMORY ) {
             op->v.usage |= USE_IN_ANOTHER_BLOCK;
         } else if( op->n.class_ == N_TEMP ) {
@@ -506,7 +506,7 @@ static  bool    UnOpsLiveFrom( BackRun& back, instruction *first, instruction *l
 
     for( ins = last->head.prev; ; ins = ins->head.prev ) {
         while( ins->head.opcode == OP_BLOCK ) {
-            ins = _BLOCK( ins )->input_edges->source->ins.head.prev;
+            ins = BlockOf( ins )->input_edges->source->ins.head.prev;
         }
         if( ins == first )
             break;
@@ -534,7 +534,7 @@ static  who_dies BinOpsLiveFrom( BackRun& back, instruction *first,
     if( result == NULL ) {
         for( ins = last->head.prev; ; ins = ins->head.prev ) {
             while( ins->head.opcode == OP_BLOCK ) {
-                ins = _BLOCK( ins )->input_edges->source->ins.head.prev;
+                ins = BlockOf( ins )->input_edges->source->ins.head.prev;
             }
             if( ins == first )
                 break;
@@ -548,7 +548,7 @@ static  who_dies BinOpsLiveFrom( BackRun& back, instruction *first,
         result_dies = false;
         for( ins = last->head.prev; ; ins = ins->head.prev ) {
             while( ins->head.opcode == OP_BLOCK ) {
-                ins = _BLOCK( ins )->input_edges->source->ins.head.prev;
+                ins = BlockOf( ins )->input_edges->source->ins.head.prev;
             }
             if( ins == first )
                 break;
@@ -588,7 +588,7 @@ static  bool            HoistLooksGood( BackRun& back, instruction *target, inst
         if( blk->inputs != 1 )
             Zoiks( back, ZOIKS_103 ); // because we're in a partition
         blk = blk->input_edges->source;
-        if( _IsBlkAttr( blk, BLK_SELECT ) )
+        if( IsBlkAttr( blk, BLK_SELECT ) )
             return( false );
         if( blk == target_blk ) {
             return( true );
@@ -621,7 +621,7 @@ static  instruction     *ProcessExpr( BackRun& back, instruction *ins1, instruct
     opcnt               i;
 
     dead_or_new_ins = NULL;
-    i = ( _OpIsBinary( ins1->head.opcode ) ) ? 1 : 0;
+    i = ( OpIsBinary( ins1->head.opcode ) ) ? 1 : 0;
     if( ins1->head.opcode == OP_CONVERT ) {
         if( ins1->base_type_class != ins2->base_type_class ) {
             return( NULL );
@@ -638,7 +638,7 @@ static  instruction     *ProcessExpr( BackRun& back, instruction *ins1, instruct
     }
     if( ins1->operands[0] != ins2->operands[0]
       || ins1->operands[i] != ins2->operands[i] ) {
-        if( !_OpCommutes( ins1->head.opcode ) )
+        if( !OpCommutes( ins1->head.opcode ) )
             return( NULL );
         if( ins1->operands[0] != ins2->operands[i]
           || ins1->operands[i] != ins2->operands[0] ) {
@@ -683,7 +683,7 @@ static  instruction     *ProcessExpr( BackRun& back, instruction *ins1, instruct
             type_class = ins1->type_class;
             temp = AllocTemp( back, type_class );
             temp->t.temp_flags |= CROSSES_BLOCKS;
-            if( _OpIsBinary( ins1->head.opcode ) ) {
+            if( OpIsBinary( ins1->head.opcode ) ) {
                 new_ins = MakeBinary( back, ins1->head.opcode, ins1->operands[0], ins1->operands[1], temp, type_class );
             } else {
                 new_ins = MakeUnary( back, ins1->head.opcode, ins1->operands[0], temp, type_class );
@@ -789,7 +789,7 @@ static  void    DeleteFromList( instruction **owner,
 */
 {
     while( *owner != ins ) {
-        owner = &_INSLINK( *owner );
+        owner = &InsLink( *owner );
     }
     *owner = new_;
 }
@@ -829,9 +829,9 @@ static  bool    DoOneOpcode( BackRun& back, opcode_defs opcode )
         break;
     }
     for( ins1 = back.cse.ExprHeads[opcode]; ins1 != NULL; ins1 = next1 ) {
-        next1 = _INSLINK( ins1 );
+        next1 = InsLink( ins1 );
         for( ins2 = next1; ins2 != NULL; ins2 = next2 ) {
-            next2 = _INSLINK( ins2 );
+            next2 = InsLink( ins2 );
             which_ins = ProcessExpr( back, ins1, ins2, signed_matters );
             if( which_ins != NULL ) {
                 change = true;
@@ -851,7 +851,7 @@ static  bool    DoOneOpcode( BackRun& back, opcode_defs opcode )
                     DeleteFromList( &back.cse.ExprHeads[opcode], ins2, next2 );
                     FreeIns( back, ins1 );
                     FreeIns( back, ins2 );
-                    _INSLINK( which_ins ) = back.cse.ExprHeads[opcode];
+                    InsLink( which_ins ) = back.cse.ExprHeads[opcode];
                     back.cse.ExprHeads[opcode] = which_ins;
                     next1 = which_ins;
                     break;
@@ -874,9 +874,9 @@ static  bool    DoDivides( BackRun& back )
 
     change = false;
     for( ins1 = back.cse.ExprHeads[OP_DIV]; ins1 != NULL; ins1 = next1 ) {
-        next1 = _INSLINK( ins1 );
+        next1 = InsLink( ins1 );
         for( ins2 = next1; ins2 != NULL; ins2 = next2 ) {
-            next2 = _INSLINK( ins2 );
+            next2 = InsLink( ins2 );
             if( ProcessDivide( back, ins1, ins2 ) ) {
                 DeleteFromList( &back.cse.ExprHeads[OP_DIV], ins1, next1 );
                 DeleteFromList( &back.cse.ExprHeads[OP_DIV], ins2, next2 );
@@ -901,7 +901,7 @@ static  void    CleanTableEntries( block *root )
     blk = root;
     for( ;; ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-            _INSLINK( ins ) = NULL;
+            InsLink( ins ) = NULL;
         }
         blk = blk->u.partition;
         if( blk == root ) {
@@ -933,8 +933,8 @@ static  bool    DoArithOps( BackRun& back, block *root )
     blk = root;
     for( ;; ) {
         for( ins = blk->ins.head.next; (opcode = ins->head.opcode) != OP_BLOCK; ins = ins->head.next ) {
-            i = ( _OpIsBinary( opcode ) ) ? 1 : 0;
-            if( _OpIsCSE( opcode )
+            i = ( OpIsBinary( opcode ) ) ? 1 : 0;
+            if( OpIsCSE( opcode )
               && !( back.cse.LeaveIndVars && Inducable( blk, ins ) )
               && ins->operands[0]->n.class_ != N_REGISTER
               && ins->operands[i]->n.class_ != N_REGISTER
@@ -944,12 +944,12 @@ static  bool    DoArithOps( BackRun& back, block *root )
                 if( IsReDefinedBy( back, ins, ins->operands[0] ) ) {
                     ins->ins_flags |= INS_DEFINES_OWN_OPERAND;
                 }
-                if( _OpIsBinary( opcode ) ) {
+                if( OpIsBinary( opcode ) ) {
                     if( IsReDefinedBy( back, ins, ins->operands[1] ) ) {
                         ins->ins_flags |= INS_DEFINES_OWN_OPERAND;
                     }
                 }
-                _INSLINK( ins ) = back.cse.ExprHeads[opcode];
+                InsLink( ins ) = back.cse.ExprHeads[opcode];
                 back.cse.ExprHeads[opcode] = ins;
             }
         }
@@ -983,7 +983,7 @@ static  bool    PropagateExprs( BackRun& back )
     change = false;
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         SXBlip();
-        if( _IsBlkVisited( blk ) ) {
+        if( IsBlkVisited( blk ) ) {
             change |= DoArithOps( back, blk );
         }
     }
@@ -1054,7 +1054,7 @@ static  bool    FixStructRet( BackRun& back, block *root )
     blk = root;
     for( ;; ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-            if( _OpIsCall( ins->head.opcode ) ) {
+            if( OpIsCall( ins->head.opcode ) ) {
                 if( ins->result != NULL
                   && ins->result->n.class_ == N_TEMP
                   && (ins->flags.u.call_flags & CALL_RETURNS_STRUCT)
@@ -1087,7 +1087,7 @@ static  bool    isMoveIns( instruction *ins )
 {
     if( ins->head.opcode == OP_MOV )
         return( true );
-    if( _IsConvert( ins )
+    if( IsConvert( ins )
       && ins->operands[0]->n.class_ == N_CONSTANT
       && ins->operands[0]->c.const_type == CONS_ABSOLUTE )
         return( true );
@@ -1132,8 +1132,8 @@ static void CreateLink( instruction *ins, name *link )
         link = link->i.index;
     }
     if( link->n.class_ != N_REGISTER ) {
-        _INSLINK( ins ) = _NAMELINK( link );
-        _NAMELINK( link ) = ins;
+        InsLink( ins ) = NameLink( link );
+        NameLink( link ) = ins;
     }
 }
 
@@ -1147,14 +1147,14 @@ static void RemoveLink( instruction *ins, name *link )
         link = link->i.index;
     }
     if( link->n.class_ != N_REGISTER ) {
-        last = (instruction **)&_NAMELINK( link );
-        for( curr = _NAMELINK( link ); curr != NULL; curr = _INSLINK( curr ) ) {
+        last = (instruction **)&NameLink( link );
+        for( curr = NameLink( link ); curr != NULL; curr = InsLink( curr ) ) {
             if( curr == ins ) {
-                *last = _INSLINK( ins );
-                _INSLINK( ins ) = NULL;
+                *last = InsLink( ins );
+                InsLink( ins ) = NULL;
                 break;
             }
-            last = &_INSLINK( curr );
+            last = &InsLink( curr );
         }
     }
 }
@@ -1242,7 +1242,7 @@ static  void    NullNameLink( name *op )
     switch( op->n.class_ ) {
     case N_MEMORY:
     case N_TEMP:
-        _NAMELINK( op ) = NULL;
+        NameLink( op ) = NULL;
         break;
     case N_INDEXED:
         NullNameLink( op->i.index );
@@ -1301,7 +1301,7 @@ static  bool    PropOpnd( BackRun& back, instruction *ins, name **op,
 
     opnd = *op;
     change = false;
-    for( ; definition != NULL; definition = _INSLINK( definition ) ) {
+    for( ; definition != NULL; definition = InsLink( definition ) ) {
         if( WhichIsAncestor( definition, ins ) == definition
           && UnOpsLiveFrom( back, definition, ins ) ) {
             defop = definition->operands[0];
@@ -1310,7 +1310,7 @@ static  bool    PropOpnd( BackRun& back, instruction *ins, name **op,
                 if( defop == opnd
                   && defres->n.class_ == N_TEMP
                   && is_opnd ) {
-                    if( ( _IsFloating( definition->type_class ) == _IsFloating( _OpClass( ins ) ) )
+                    if( ( IsFloating( definition->type_class ) == IsFloating( OpClass( ins ) ) )
                       && CanCrossBlocks( back, definition, ins, defres )
                       && !FPStackOp( back, defres ) ) {
                         UseInOther( definition, ins, defres );
@@ -1322,7 +1322,7 @@ static  bool    PropOpnd( BackRun& back, instruction *ins, name **op,
                 if( defres == opnd ) {
                     if( defres->n.class_ != N_INDEXED
                       && is_opnd ) {
-                        if( ( _IsFloating( definition->type_class ) == _IsFloating( _OpClass( ins ) ) )
+                        if( ( IsFloating( definition->type_class ) == IsFloating( OpClass( ins ) ) )
                           && CanCrossBlocks( back, definition, ins, defop )
                           && !FPStackOp( back, defop ) ) {
                             UseInOther( definition, ins, defop );
@@ -1435,7 +1435,7 @@ static  bool    PropMoves( BackRun& back, block *root, bool backward )
                         case N_CONSTANT:
                             break;
                         default:
-                            change |= PropOpnd( back, ins, &ins->operands[i], _NAMELINK( idx ), backward, true );
+                            change |= PropOpnd( back, ins, &ins->operands[i], NameLink( idx ), backward, true );
                             break;
                         }
                         break;
@@ -1443,7 +1443,7 @@ static  bool    PropMoves( BackRun& back, block *root, bool backward )
                     case N_REGISTER:
                         break;
                     default:
-                        change |= PropOpnd( back, ins, &ins->operands[i], _NAMELINK( ins->operands[i] ), backward, true );
+                        change |= PropOpnd( back, ins, &ins->operands[i], NameLink( ins->operands[i] ), backward, true );
                         break;
                     }
                 }
@@ -1452,7 +1452,7 @@ static  bool    PropMoves( BackRun& back, block *root, bool backward )
                         idx = ins->result->i.index;
                         if( idx->n.class_ != N_REGISTER ) {
                             RemoveLink( ins, ins->result );
-                            change |= PropOpnd( back, ins, &ins->result, _NAMELINK( idx ), backward, false );
+                            change |= PropOpnd( back, ins, &ins->result, NameLink( idx ), backward, false );
                             if( LinkableMove( back, ins ) ) {
                                 CreateLink( ins, ins->result );
                             }
@@ -1490,7 +1490,7 @@ static  bool    DoPropagateMoves( BackRun& back )
     change = false;
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         SXBlip();
-        if( _IsBlkVisited( blk ) ) {
+        if( IsBlkVisited( blk ) ) {
             do {
                 block_changed = false;
                 if( FixStructRet( back, blk ) ) {

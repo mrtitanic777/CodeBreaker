@@ -211,7 +211,7 @@ name    *IntEquivalent( BackRun& back, name *name )
     constant_defn       *floatval;
 
     floatval = GetFloat( back, name, FS );
-    return( AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, _TargetBigInt( U64LowLE( floatval->buffer.u64 ) ) ) ) );
+    return( AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, ( U64LowLE( floatval->buffer.u64 ) ) ) ) );
 }
 
 name    *Int64Equivalent( BackRun& back, name *name )
@@ -339,7 +339,7 @@ static  bool    CanLoadStringOps( BackRun& back, instruction *ins )
     if( IsTargetModel( back, CGSW_X86_FLOATING_ES ) ) {
        HW_CTurnOn( needs, HW_ES );
     }
-    return( !HW_Ovlap( needs, ins->head.live.regs ) );
+    return( !HwOvlap( needs, ins->head.live.regs ) );
 }
 
 static name *FakeIndex( BackRun& back, name *op, hw_reg_set index )
@@ -762,7 +762,7 @@ static  instruction     *SplitPush( BackRun& back, instruction *ins, type_length
     name                *op;
     name                *new_op = NULL;
 
-    size = _RoundUp( size, WORD_SIZE );
+    size = RoundUp( size, WORD_SIZE );
     op = ins->operands[0];
     first_ins = NULL;
     for( ;; ) {
@@ -836,7 +836,7 @@ instruction     *rDOLONGPUSH( BackRun& back, instruction *ins )
         /*
          * % mov CX,const will be the first if it's there so try for SUB SP,CX
          */
-        sub_sp = MakeBinary( back, OP_SUB, sp, AllocIntConst( back, _RoundUp( size, WORD_SIZE ) ), sp, WD );
+        sub_sp = MakeBinary( back, OP_SUB, sp, AllocIntConst( back, RoundUp( size, WORD_SIZE ) ), sp, WD );
         if( ins->result != NULL
           && HW_CEqual( ins->result->r.reg, HW_xCX ) ) {
             SuffixIns( back, ins, sub_sp );
@@ -909,10 +909,10 @@ instruction     *rTEMP2CONST( BackRun& back, instruction *ins )
     /*
      * copy instruction without operands
      */
-    Copy( ins, new_ins, sizeof( instruction ) );
+    memcpy( new_ins, ins, sizeof( instruction ) );
     for( i = ins->num_operands; i-- > 0; ) {
         op = ins->operands[i];
-        if( _ConstTemp( op ) ) {
+        if( ConstTemp( op ) ) {
             new_ins->operands[i] = static_cast<name *>(op->v.symbol);
         } else {
             new_ins->operands[i] = op;

@@ -39,7 +39,7 @@
 
 #define MACRO_ALIGN         sizeof( void * )
 
-#define macroSizeAlign(x)   _RoundUp( (x), MACRO_ALIGN )
+inline unsigned long long macroSizeAlign( unsigned long long x ) { return RoundUp( (x), MACRO_ALIGN ); }
 
          /* contains actual pointer to block of memory */
 
@@ -70,7 +70,7 @@ static void AllocMacroSegment( FrontRun& front, size_t minimum )
     struct macro_seg_list *msl;
     size_t amount;
 
-    amount = _RoundUp( minimum + 2, 0x8000 );
+    amount = RoundUp( minimum + 2, 0x8000 );
     front.cmacadd.MacroSegment = static_cast<MACADDR_T>(FEmalloc( front, amount ));
     front.cmacadd.MacroOffset = front.cmacadd.MacroSegment;
     front.cmacadd.MacroSegmentLimit = amount - 2;
@@ -221,7 +221,7 @@ void MacroSegmentAddToken(          // MacroSegment: ADD A TOKEN
 
     clen = *mlen;
     MacroReallocOverflow( front, clen + SIZE_MTOKEN, clen );
-    SET_MTOKEN( front.cmacadd.MacroOffset + clen, token );
+    SetMtoken( front.cmacadd.MacroOffset + clen, token );
     *mlen = clen + SIZE_MTOKEN;
 }
 

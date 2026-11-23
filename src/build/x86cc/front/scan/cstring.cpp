@@ -122,7 +122,11 @@ static int read_inp( FrontRun& front )
     return( *front.cstring.pbuf++ );
 }
 
-#define WRITE_BYTE(x) if( buf != NULL ) buf[olen] = x; ++olen
+inline void WriteByte( char *buf, target_size &olen, int x )
+{
+    if( buf != NULL ) buf[olen] = x;
+    ++olen;
+}
 
 static target_size RemoveEscapes( FrontRun& front, char *buf, const char *inbuf, target_size ilen )
 /*********************************************************************************
@@ -155,7 +159,7 @@ static target_size RemoveEscapes( FrontRun& front, char *buf, const char *inbuf,
             }
             front.cstring.pbuf--; // move pointer to first character after Escape sequence
             if( front.cvars.CompFlags.wide_char_string ) {
-                WRITE_BYTE( c );
+                WriteByte( buf, olen, c );
                 c = c >> 8;
             }
         } else {
@@ -163,19 +167,19 @@ static target_size RemoveEscapes( FrontRun& front, char *buf, const char *inbuf,
                 if( front.cvars.CompFlags.jis_to_unicode && front.cvars.CompFlags.wide_char_string ) {
                     c = (c << 8) + read_inp(front);
                     c = JIS2Unicode( c );
-                    WRITE_BYTE( c );
+                    WriteByte( buf, olen, c );
                     c = c >> 8;
                 } else {
-                    WRITE_BYTE( c );
+                    WriteByte( buf, olen, c );
                     c = read_inp(front);
                 }
             } else if( front.cvars.CompFlags.wide_char_string ) {
                 c = EncodeWchar( front, c );
-                WRITE_BYTE( c );
+                WriteByte( buf, olen, c );
                 c = c >> 8;
             }
         }
-        WRITE_BYTE( c );
+        WriteByte( buf, olen, c );
     }
     return( olen );
 }

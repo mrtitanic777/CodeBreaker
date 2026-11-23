@@ -56,7 +56,7 @@
 
 static const opcode_entry     DbgInfo[] = {
 /*           op1   op2   res   eq      verify          reg           gen             fu  */
-_OE( _None(                         ), V_NO,           RG_,          G_DEBUG,        FU_NO )
+_OE( NONE, V_NO,           RG_,          G_DEBUG,        FU_NO )
 };
 
 static  void    SrcFileNoInit( BackRun& back )

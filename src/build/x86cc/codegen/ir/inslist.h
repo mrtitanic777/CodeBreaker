@@ -36,7 +36,6 @@
 #include "zoiks.h"
 
 
-#define G(x)    (x)->u.gen_table->generate
 
 /* aligned */
 typedef int                     instruction_id;
@@ -92,12 +91,6 @@ typedef struct name_set {
         local_bit_set           within_block;
 } name_set;
 
-#define _NameSetInit( x ) \
-    { \
-        HW_CAsgn( x.regs, HW_EMPTY ); \
-        _LBitInit( x.within_block, EMPTY ); \
-        _GBitInit( x.out_of_block, EMPTY ); \
-    }
 
 typedef struct ins_header {
         struct instruction      *prev;
@@ -160,16 +153,8 @@ typedef struct instruction {
 #define MAX_OPS_PER_INS 4
 #define INS_SIZE        ( offsetof( instruction, operands ) + MAX_OPS_PER_INS * sizeof( name * ) )
 
-#define _TrueIndex( i )              ( (i)->flags.u.dest_idx & 0x0f )
-#define _FalseIndex( i )             ( ( (i)->flags.u.dest_idx & 0xf0 ) >> 4 )
-#define _SetBlockIndex( i, t, f )    (i)->flags.u.dest_idx = (t) | ( (f) << 4 )
 
-#define _IsConvert( ins )            ( (ins)->head.opcode == OP_CONVERT || \
-                                       (ins)->head.opcode == OP_ROUND )
 
-#define _OpClass( ins )              ( _IsConvert( ins ) \
-                                       ? (ins)->base_type_class \
-                                       : (ins)->type_class )
 
 inline void InsNotBlock( BackRun& back, instruction *ins )
 {
@@ -183,3 +168,16 @@ typedef enum {
     MB_TRUE     = true,
     MB_MAYBE    = 2
 } bool_maybe;
+
+inline const gentype &InsGenerate( instruction *x ) { return ( (x)->u.gen_table->generate ); }
+inline void NameSetInit( name_set &x )
+{
+    HW_CAsgn( x.regs, HW_EMPTY );
+    LBitInit( x.within_block, EMPTY );
+    GBitInit( x.out_of_block, EMPTY );
+}
+inline int TrueIndex( instruction *i ) { return ( (i)->flags.u.dest_idx & 0x0f ); }
+inline int FalseIndex( instruction *i ) { return ( ( (i)->flags.u.dest_idx & 0xf0 ) >> 4 ); }
+inline void SetBlockIndex( instruction *i, int t, int f ) { (i)->flags.u.dest_idx = (t) | ( (f) << 4 ); }
+inline bool IsConvert( instruction *ins ) { return ( (ins)->head.opcode == OP_CONVERT || (ins)->head.opcode == OP_ROUND ); }
+inline type_class_def &OpClass( instruction *ins ) { return ( IsConvert( ins ) ? (ins)->base_type_class : (ins)->type_class ); }

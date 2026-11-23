@@ -53,8 +53,8 @@ namespace {
 
 
 
-#define _TR_LINK( x )   x->u1.parm_list
-#define _PROC_LINK( x ) x->parms_list
+inline instruction *&TrLink( instruction *x ) { return ( x->u1.parm_list ); }
+inline instruction *&ProcLink( proc_def *x ) { return ( x->parms_list ); }
 
 
 static instruction *FindPreviousIns( instruction *curr )
@@ -71,9 +71,9 @@ static instruction *FindPreviousIns( instruction *curr )
 
     prev = curr->head.prev;
     if( prev->head.opcode == OP_BLOCK ) {
-        blk = _BLOCK( prev );
+        blk = BlockOf( prev );
         for( edge = blk->input_edges; edge != NULL; edge = edge->next_source ) {
-            if( _IsBlkMarked( edge->source ) ) {
+            if( IsBlkMarked( edge->source ) ) {
                 break;
             }
         }
@@ -181,11 +181,11 @@ static void DoTrans( BackRun& back, block *blk, instruction *call_ins )
     block_num   i;
     block_edge  *edge;
 
-    decl_ins = _PROC_LINK( back.data.CurrProc );
-    for( ins = _TR_LINK( call_ins ); ins != NULL; ins = next ) {
-        next = _TR_LINK( ins );
+    decl_ins = ProcLink( back.data.CurrProc );
+    for( ins = TrLink( call_ins ); ins != NULL; ins = next ) {
+        next = TrLink( ins );
         DoOneParm( back, ins, decl_ins, call_ins );
-        decl_ins = _TR_LINK( decl_ins );
+        decl_ins = TrLink( decl_ins );
     }
     /*
      * delete all instructions in this block from call instruction on
@@ -198,8 +198,8 @@ static void DoTrans( BackRun& back, block *blk, instruction *call_ins )
      * make blk jump to the block after the prologue
      */
     target = back.data.HeadBlock->edge[0].destination.u.blk;
-    _MarkBlkAttrClr( blk, BLK_CONDITIONAL | BLK_RETURN | BLK_SELECT );
-    _MarkBlkAttrSet( blk, BLK_JUMP );
+    MarkBlkAttrClr( blk, BLK_CONDITIONAL | BLK_RETURN | BLK_SELECT );
+    MarkBlkAttrSet( blk, BLK_JUMP );
     /*
      * remove blk from the input lists of any blocks which it might have
      * previously gone to
@@ -227,7 +227,7 @@ static bool SafePath( BackRun& back, instruction *ins )
     for( ; ins->head.opcode != OP_BLOCK ; ins = ins->head.next ) {
         if( SideEffect( back, ins ) )
             return( false );
-        if( _OpIsCall( ins->head.opcode ) )
+        if( OpIsCall( ins->head.opcode ) )
             return( false );
         for( i = 0; i < ins->num_operands; i++ ) {
             if( !SafeOp( ins->operands[i], false ) ) {
@@ -263,9 +263,9 @@ static block *SafeBlock( BackRun& back, block *blk )
     block       *dest;
     block       *safe;
 
-    if( _IsBlkMarked( blk ) )
+    if( IsBlkMarked( blk ) )
         return( NULL );
-    _MarkBlkMarked( blk );
+    MarkBlkMarked( blk );
     safe = NULL;
     if( SafePath( back, blk->ins.head.next ) ) {
         safe = blk;
@@ -277,7 +277,7 @@ static block *SafeBlock( BackRun& back, block *blk )
             }
         }
     }
-    _MarkBlkUnMarked( blk );
+    MarkBlkUnMarked( blk );
     return( safe );
 }
 
@@ -349,11 +349,11 @@ static bool     OkayToTransCall( BackRun& back, block *blk, instruction *call_in
     /*
      * check to make sure length of parm lists are the same
      */
-    parm = _TR_LINK( call_ins );
-    for( ins = _PROC_LINK( back.data.CurrProc ); ins != NULL; ins = _TR_LINK( ins ) ) {
+    parm = TrLink( call_ins );
+    for( ins = ProcLink( back.data.CurrProc ); ins != NULL; ins = TrLink( ins ) ) {
         if( parm == NULL )
             return( false );
-        parm = _TR_LINK( parm );
+        parm = TrLink( parm );
     }
     if( parm != NULL )
         return( false );
@@ -363,7 +363,7 @@ static bool     OkayToTransCall( BackRun& back, block *blk, instruction *call_in
      */
     ok = false;
     back.trecurse.ReturnValue = call_ins->result;
-    _MarkBlkMarked( blk );
+    MarkBlkMarked( blk );
     /*
      * if the call is in the return block, then there are no
      * paths out of this routine which do not go through it
@@ -371,7 +371,7 @@ static bool     OkayToTransCall( BackRun& back, block *blk, instruction *call_in
      * bother - better running out of stack than an infinite loop
      * (besides - certain codegen stuff needs a RET block)
      */
-    if( !_IsBlkAttr( blk, BLK_RETURN )
+    if( !IsBlkAttr( blk, BLK_RETURN )
       && SafePath( back, call_ins->head.next ) ) {
         ok = true;
         for( i = 0; i < blk->targets; i++ ) {
@@ -382,7 +382,7 @@ static bool     OkayToTransCall( BackRun& back, block *blk, instruction *call_in
             }
         }
     }
-    _MarkBlkUnMarked( blk );
+    MarkBlkUnMarked( blk );
     return( ok );
 }
 
@@ -398,8 +398,8 @@ void     TRAddParm( instruction *call_ins, instruction *parm_ins )
     if( call_ins == NULL
       || parm_ins == NULL )
         return;
-    _TR_LINK( parm_ins ) = static_cast<struct instruction *>((void *)_TR_LINK( call_ins ));
-    _TR_LINK( call_ins ) = static_cast<struct instruction *>((void *)parm_ins);
+    TrLink( parm_ins ) = static_cast<struct instruction *>((void *)TrLink( call_ins ));
+    TrLink( call_ins ) = static_cast<struct instruction *>((void *)parm_ins);
 }
 
 void     TRDeclareParm( BackRun& back, instruction *parm_ins )
@@ -410,8 +410,8 @@ void     TRDeclareParm( BackRun& back, instruction *parm_ins )
 {
     if( parm_ins == NULL )
         return;
-    _TR_LINK( parm_ins ) = static_cast<struct instruction *>((void *)_PROC_LINK( back.data.CurrProc ));
-    _PROC_LINK( back.data.CurrProc ) = static_cast<instruction *>((void *)parm_ins);
+    TrLink( parm_ins ) = static_cast<struct instruction *>((void *)ProcLink( back.data.CurrProc ));
+    ProcLink( back.data.CurrProc ) = static_cast<instruction *>((void *)parm_ins);
 }
 
 bool     TailRecursion( BackRun& back )
@@ -455,12 +455,12 @@ bool     TailRecursion( BackRun& back )
      */
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-            _TR_LINK( ins ) = NULL;
+            TrLink( ins ) = NULL;
         }
     }
-    for( ins = _PROC_LINK( back.data.CurrProc ); ins != NULL; ins = next ) {
-        next = _TR_LINK( ins );
-        _TR_LINK( ins ) = NULL;
+    for( ins = ProcLink( back.data.CurrProc ); ins != NULL; ins = next ) {
+        next = TrLink( ins );
+        TrLink( ins ) = NULL;
     }
     return( changed );
 }

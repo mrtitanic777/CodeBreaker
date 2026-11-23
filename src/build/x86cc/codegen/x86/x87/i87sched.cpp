@@ -116,19 +116,19 @@ static  int     InsMaxDepth( instruction *ins )
 static  fp_attr FPAttr( BackRun& back, instruction *ins )
 /****************************************/
 {
-    if( _OpIsCall( ins->head.opcode ) && ins->result != NULL ) {
+    if( OpIsCall( ins->head.opcode ) && ins->result != NULL ) {
         if( ins->result->n.class_ != N_REGISTER )
             return( POPS_ALL );
         if( !HW_COvlap( ins->result->r.reg, HW_FLTS ) )
             return( POPS_ALL );
         return static_cast<fp_attr>(( PUSHES + POPS_ALL ));
     }
-    if( G( ins ) == G_FCHOP )
+    if( InsGenerate( ins ) == G_FCHOP )
         return( NEEDS_ST0 );
-    if( !_GenIs8087( G( ins ) ) ) {
+    if( !GenIs8087( InsGenerate( ins ) ) ) {
         return( NEEDS_NOTHING );
     }
-    switch( G( ins ) ) {
+    switch( InsGenerate( ins ) ) {
     case G_RRFBINP:
     case G_RNFBINP:
         return static_cast<fp_attr>(( NEEDS_ST0+POPS+SETS_ST1 ));
@@ -175,7 +175,7 @@ static  fp_attr FPAttr( BackRun& back, instruction *ins )
 static const opcode_entry    *RegAction( instruction *ins )
 /*********************************************************/
 {
-    switch( G( ins ) ) {
+    switch( InsGenerate( ins ) ) {
     case G_MFLD:
         return( RFLD );
     case G_MCOMP:
@@ -264,7 +264,7 @@ static  fp_attr ResultToReg( BackRun& back, instruction *ins, temp_entry *temp, 
         attr &= ~POPS;
     } else {
         GetToTopOfStack( back, ins, VIRTUAL_0 );
-        if( G( ins ) == G_MFST ) {
+        if( InsGenerate( ins ) == G_MFST ) {
             ins->u.gen_table = RFST;
         } else {
             ins->u.gen_table = RFSTNP;
@@ -351,7 +351,7 @@ static instruction *OpToReg( BackRun& back, instruction *ins, temp_entry *temp, 
 /*****************************************************************************/
 {
     if( ins == temp->last && !temp->whole_block ) {
-        switch( G( ins ) ) {
+        switch( InsGenerate( ins ) ) {
         case G_MFLD:
             PushVirtualStack( back, ins );
             InsSTLoc( back, ins, VIRTUAL_0 ) = temp->actual_locn;
@@ -376,7 +376,7 @@ static instruction *OpToReg( BackRun& back, instruction *ins, temp_entry *temp, 
             break;
         case G_MNFBIN:
         case G_MRFBIN:
-            if( G( ins ) == G_MRFBIN ) {
+            if( InsGenerate( ins ) == G_MRFBIN ) {
                 ins->u.gen_table = RNFBINP;
             } else {
                 ins->u.gen_table = RRFBINP;
@@ -394,7 +394,7 @@ static instruction *OpToReg( BackRun& back, instruction *ins, temp_entry *temp, 
             PrefFLDOp( back, ins, OP_MEM, temp->actual_op );
             IncrementAll(back);
             temp->actual_locn = ACTUAL_0;
-            if( G( ins ) == G_MFLD ) {
+            if( InsGenerate( ins ) == G_MFLD ) {
 //                PushStack( ins );
                 ins->operands[0] = ST( back, ACTUAL_0 );
             } else {
@@ -626,7 +626,7 @@ static  void    CheckTemp( BackRun& back, instruction *ins, name *op, bool defin
     }
     if( op->v.usage & USE_ADDRESS )
         return;
-    if( !_GenIs8087( G( ins ) ) ) {
+    if( !GenIs8087( InsGenerate( ins ) ) ) {
         KillTempEntry( back, op );
     } else {
         DefUseTemp( back, op, ins, defined );
@@ -684,7 +684,7 @@ static  bool    StackBetween( BackRun& back, instruction *first, instruction *la
 
     enough = true;
     for( ins = first; ins != last; ins = ins->head.next ) {
-        if( ins->fp.u.stk_depth >= ( back.i87data.Max87Stk - 1 ) || _OpIsCall( ins->head.opcode ) ) {
+        if( ins->fp.u.stk_depth >= ( back.i87data.Max87Stk - 1 ) || OpIsCall( ins->head.opcode ) ) {
             enough = false;
         }
         ins->fp.u.stk_depth += inc;
@@ -726,7 +726,7 @@ static  bool    OKToCache( BackRun& back, temp_entry *temp ) {
             return( false );
         }
     }
-    return( _BLOCK( ins ) == back.i87sched_file.Entry );
+    return( BlockOf( ins ) == back.i87sched_file.Entry );
 }
 
 static  void    CacheTemps( BackRun& back, block *blk )
@@ -737,7 +737,7 @@ static  void    CacheTemps( BackRun& back, block *blk )
 
     back.i87sched_file.Entry = NULL;
     back.i87sched_file.Exit = NULL;
-    if( _IsBlkAttr( blk, BLK_LOOP_HEADER ) && blk->inputs == 2 && blk->targets == 2 ) {
+    if( IsBlkAttr( blk, BLK_LOOP_HEADER ) && blk->inputs == 2 && blk->targets == 2 ) {
         if( blk->edge[0].destination.u.blk == blk ) {
             back.i87sched_file.Exit = blk->edge[1].destination.u.blk;
             exit_edge = &blk->edge[1];
@@ -758,7 +758,7 @@ static  void    CacheTemps( BackRun& back, block *blk )
             }
         }
         if( back.i87sched_file.Entry != NULL ) {
-            if( _IsBlkAttr( back.i87sched_file.Entry, BLK_JUMP ) ) {
+            if( IsBlkAttr( back.i87sched_file.Entry, BLK_JUMP ) ) {
                 if( back.i87sched_file.Exit->inputs != 1 ) {
                     back.i87sched_file.Exit = AddPreBlock( back, back.i87sched_file.Exit );
                     MoveEdge( exit_edge, back.i87sched_file.Exit );
@@ -797,7 +797,7 @@ static  void    CacheTemps( BackRun& back, block *blk )
         } else {
             if( !temp->defined )
                 continue; // I'm not sure if these save anything
-            if( temp->defined && G( temp->first ) != G_MFST )
+            if( temp->defined && InsGenerate( temp->first ) != G_MFST )
                 continue;
             if( RegAction( temp->last ) == NULL )
                 continue;
@@ -929,13 +929,13 @@ bool    FPFreeIns( BackRun& back, instruction *ins )
 
     for( temp = back.i87sched.TempList; temp != NULL; temp = temp->next ) {
         if( temp->whole_block ) {
-            if( G( ins ) == G_MFST &&
+            if( InsGenerate( ins ) == G_MFST &&
                 temp->actual_op == ins->result ) {
                 return( true ); // will likely merge into the previous op
             }
         } else if( ins == temp->first && temp->defined ) {
             return( true );
-        } else if( ins == temp->last && G( ins ) == G_MFLD ) {
+        } else if( ins == temp->last && InsGenerate( ins ) == G_MFLD ) {
             return( true );
         }
     }

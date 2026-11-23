@@ -147,7 +147,7 @@ static token_idx array_element( AsmRun& assembler, asm_sym_handle sym, asm_sym_h
             if( tokbuf->tokens[cur_pos+1].class_ == TC_RES_ID
               && tokbuf->tokens[cur_pos+1].u.token == T_DUP ) {
                 cur_pos = dup_array( assembler, sym, struct_sym, tokbuf, cur_pos, no_of_bytes );
-                if( ISINVALID_IDX( cur_pos ) )
+                if( IsInvalidIdx( cur_pos ) )
                     return( INVALID_IDX );
                 break;
             }
@@ -482,7 +482,7 @@ static token_idx dup_array( AsmRun& assembler, asm_sym_handle sym, asm_sym_handl
             for( ; count > 0; --count ) {
                 /* in case there was a "," inside the dup */
                 returned_pos = array_element( assembler, sym, struct_sym, tokbuf, cur_pos, no_of_bytes );
-                if( ISINVALID_IDX( returned_pos ) ) {
+                if( IsInvalidIdx( returned_pos ) ) {
                     return( INVALID_IDX );
                 }
             }
@@ -492,7 +492,7 @@ static token_idx dup_array( AsmRun& assembler, asm_sym_handle sym, asm_sym_handl
             }
         } else {
             returned_pos = array_element( assembler, sym, struct_sym, tokbuf, cur_pos, no_of_bytes );
-            if( ISINVALID_IDX( returned_pos ) )
+            if( IsInvalidIdx( returned_pos ) )
                 return( INVALID_IDX );
             if( tokbuf->tokens[returned_pos].class_ != TC_CL_BRACKET ) {
                 /* array_element hit TC_FINAL so stop */
@@ -517,7 +517,7 @@ bool data_init( AsmRun& assembler, token_buffer *tokbuf, token_idx sym_loc, toke
     asm_sym_handle  sym = NULL;
     asm_sym_handle  struct_sym = NULL;
 
-    if( ISVALID_IDX( sym_loc ) ) {
+    if( IsValidIdx( sym_loc ) ) {
         sym = AsmLookup( assembler, tokbuf->tokens[sym_loc].string_ptr );
         if( sym == NULL ) {
             return( RC_ERROR );
@@ -558,7 +558,7 @@ bool data_init( AsmRun& assembler, token_buffer *tokbuf, token_idx sym_loc, toke
 
     if( assembler.asmdata->More_Array_Element ) {
         assembler.asmdata->More_Array_Element = false;
-    } else if( ISVALID_IDX( sym_loc ) ) {
+    } else if( IsValidIdx( sym_loc ) ) {
         if( sym->state != SYM_UNDEFINED ) {
             // redefine label
             AsmError( *assembler.front, SYMBOL_ALREADY_DEFINED );
@@ -568,7 +568,7 @@ bool data_init( AsmRun& assembler, token_buffer *tokbuf, token_idx sym_loc, toke
         sym->mem_type = mem_type;
         BackPatch( assembler, sym );
     }
-    if( ISINVALID_IDX( dup_array( assembler, sym, struct_sym, tokbuf, initializer_loc + 1, no_of_bytes ) ) ) {
+    if( IsInvalidIdx( dup_array( assembler, sym, struct_sym, tokbuf, initializer_loc + 1, no_of_bytes ) ) ) {
         return( RC_ERROR );
     }
     return( RC_OK );
@@ -582,7 +582,7 @@ bool NextArrayElement( AsmRun& assembler, token_buffer *tokbuf, bool *next )
     if( assembler.asmdata->More_Array_Element ) {
         assembler.asmdata->More_Array_Element = false;
         rc = dup_array( assembler, NULL, NULL, tokbuf, 0, assembler.asmdata->Last_Element_Size );
-        if( ISINVALID_IDX( rc ) )
+        if( IsInvalidIdx( rc ) )
             return( RC_ERROR );
         *next = true;
     }

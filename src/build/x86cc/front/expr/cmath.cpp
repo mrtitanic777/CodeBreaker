@@ -464,7 +464,7 @@ TYPEPTR TypeOf( TREEPTR node )
     TYPEPTR     typ;
 
     typ = node->u.expr_type;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     return( typ );
 }
 
@@ -507,7 +507,7 @@ static pointer_class PointerClass( FrontRun& front, TYPEPTR typ )
 
     flags = typ->u.p.decl_flags;
     typ = typ->object;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     ptrclass = PTRCLS_NEAR;                // assume NEAR
     if( (flags & FLAG_INTERRUPT) == FLAG_INTERRUPT ) {
         ptrclass = PTRCLS_INTERRUPT;       // can't have huge functions
@@ -540,7 +540,7 @@ pointer_class ExprTypeClass( FrontRun& front, TYPEPTR typ )
     TYPEPTR     savtyp;
 
     savtyp = typ;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type == TYP_POINTER ) {
         return( PointerClass( front, savtyp ) );
     }
@@ -790,7 +790,7 @@ static TREEPTR BoolConv( FrontRun& front, TYPEPTR typ, TREEPTR tree )
     if( tree->op.opr == OPR_ERROR ) {
         return( ErrorNode( front, tree ) );
     }
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     /*
      * Non-boolean types need to be converted to _Bool; _Bool expressions
      * also need to be converted unless they're constants.
@@ -1106,7 +1106,7 @@ static TREEPTR ArrayPlusConst( FrontRun& front, TREEPTR op1, TREEPTR op2 )
     if( op2->op.opr == OPR_PUSHINT ) {
         if( op1->op.opr == OPR_PUSHADDR ) {
             typ = op1->u.expr_type;
-            SKIP_TYPEDEFS( typ );
+            SkipTypedefs( typ );
             if( typ->decl_type == TYP_ARRAY ) {
 
                 op2->op.u2.long_value *= SizeOfArg( front, typ->object );
@@ -1130,7 +1130,7 @@ static TREEPTR ArrayMinusConst( FrontRun& front, TREEPTR op1, TREEPTR op2 )
     if( op2->op.opr == OPR_PUSHINT ) {
         if( op1->op.opr == OPR_PUSHADDR ) {
             typ = op1->u.expr_type;
-            SKIP_TYPEDEFS( typ );
+            SkipTypedefs( typ );
             if( typ->decl_type == TYP_ARRAY ) {
                 op2->op.u2.long_value =
                         (- op2->op.u2.long_value) * SizeOfArg( front, typ->object );
@@ -1493,7 +1493,7 @@ TREEPTR AsgnOp( FrontRun& front, TREEPTR op1, TOKEN opr, TREEPTR op2 )
         op1_ptrclass = ExprTypeClass( front, typ );
         op2_ptrclass = ExprTypeClass( front, op2->u.expr_type );
         if( op1_ptrclass != op2_ptrclass ) {
-            if( FAR16_PTRCLASS( op1_ptrclass ) || FAR16_PTRCLASS( op2_ptrclass ) ) {
+            if( IsFar16PtrClass( op1_ptrclass ) || IsFar16PtrClass( op2_ptrclass ) ) {
                 /*
                  * if far16 pointer
                  */
@@ -1610,11 +1610,11 @@ TREEPTR ShiftOp( FrontRun& front, TREEPTR op1, TOKEN opr, TREEPTR op2 )
 
 bool IsFuncPtr( TYPEPTR typ )
 {
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type != TYP_POINTER )
         return( false );
     typ = typ->object;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type != TYP_FUNCTION )
         return( false );
     return( true );
@@ -1636,8 +1636,8 @@ bool IsPtrConvSafe( FrontRun& front, TREEPTR src, TYPEPTR newtyp, TYPEPTR oldtyp
     type_modifiers      new_flags;
     type_modifiers      old_flags;
 
-    SKIP_TYPEDEFS( oldtyp );
-    SKIP_TYPEDEFS( newtyp );
+    SkipTypedefs( oldtyp );
+    SkipTypedefs( newtyp );
     assert( oldtyp->decl_type == TYP_POINTER );
     assert( newtyp->decl_type == TYP_POINTER );
     /*
@@ -1701,7 +1701,7 @@ TREEPTR CnvOp( FrontRun& front, TREEPTR opnd, TYPEPTR newtyp, bool cast_op )
 
     if( opnd->op.opr == OPR_ERROR )
         return( opnd );
-    SKIP_TYPEDEFS( newtyp );
+    SkipTypedefs( newtyp );
     opr = opnd->op.opr;
     if( newtyp->decl_type == TYP_VOID ) {
         typ = TypeOf( opnd );
@@ -1845,7 +1845,7 @@ convert:                                /* moved here */
                     new_ptrclass = ExprTypeClass( front, newtyp );
                     old_ptrclass = ExprTypeClass( front, typ );
                     if( new_ptrclass != old_ptrclass
-                      && ( FAR16_PTRCLASS( new_ptrclass ) || FAR16_PTRCLASS( old_ptrclass ) ) ) {
+                      && ( IsFar16PtrClass( new_ptrclass ) || IsFar16PtrClass( old_ptrclass ) ) ) {
                         /*
                          * foreign pointers
                          */
@@ -1923,7 +1923,7 @@ TREEPTR FixupAss( FrontRun& front, TREEPTR opnd, TYPEPTR newtyp )
         new_ptrclass = ExprTypeClass( front, newtyp );
         old_ptrclass = ExprTypeClass( front, typ );
         if( new_ptrclass != old_ptrclass
-          && ( FAR16_PTRCLASS( new_ptrclass ) || FAR16_PTRCLASS( old_ptrclass ) ) ) {
+          && ( IsFar16PtrClass( new_ptrclass ) || IsFar16PtrClass( old_ptrclass ) ) ) {
             /*
              * if far16 pointer
              */
@@ -1977,7 +1977,7 @@ TREEPTR UComplement( FrontRun& front, TREEPTR opnd )
     opnd = RValue( front, opnd );
     if( opnd->op.opr != OPR_ERROR ) {
         typ = opnd->u.expr_type;
-        SKIP_TYPEDEFS( typ );
+        SkipTypedefs( typ );
         t = DataTypeOf( typ );
         if( t != TYP_VOID ) {
             if( t >= TYP_FLOAT ) {
@@ -2036,9 +2036,9 @@ TYPEPTR TernType( FrontRun& front, TREEPTR true_part, TREEPTR false_part )
     DATA_TYPE        dtype1, dtype2;
 
     typ1 = true_part->u.expr_type;
-    SKIP_TYPEDEFS( typ1 );
+    SkipTypedefs( typ1 );
     typ2 = false_part->u.expr_type;
-    SKIP_TYPEDEFS( typ2 );
+    SkipTypedefs( typ2 );
     /*
      *  (type1) : (type1)                           -> (type1)
      *  nb. structs, unions, and identical pointers are handled here

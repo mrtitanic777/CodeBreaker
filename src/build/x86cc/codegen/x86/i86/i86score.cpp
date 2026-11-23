@@ -189,12 +189,12 @@ bool    ScAddOk( BackRun& back, hw_reg_set reg1, hw_reg_set reg2 )
  * these registers.
  */
 {
-    if( HW_Ovlap( reg1, back.data.CurrProc->state.unalterable ) ) {
+    if( HwOvlap( reg1, back.data.CurrProc->state.unalterable ) ) {
         if( !HW_CEqual( reg1, HW_DS ) && !HW_CEqual( reg1, HW_SS ) ) {
             return( false );
         }
     }
-    if( HW_Ovlap( reg2, back.data.CurrProc->state.unalterable ) ) {
+    if( HwOvlap( reg2, back.data.CurrProc->state.unalterable ) ) {
         if( !HW_CEqual( reg2, HW_DS ) && !HW_CEqual( reg2, HW_SS ) ) {
             return( false );
         }
@@ -211,9 +211,9 @@ bool    ScConvert( BackRun& back, instruction *ins )
 {
     hw_reg_set  tmp;
 
-    if( G( ins ) == G_SIGNEX ) {
+    if( InsGenerate( ins ) == G_SIGNEX ) {
         tmp = HighReg( back, ins->result->r.reg );
-        if( !HW_Ovlap( ins->head.next->head.live.regs, tmp ) ) {
+        if( !HwOvlap( ins->head.next->head.live.regs, tmp ) ) {
             FreeIns( back, ins ); /* get rid of the pesky cwd or cbw instruction!*/
             return( true );
         }

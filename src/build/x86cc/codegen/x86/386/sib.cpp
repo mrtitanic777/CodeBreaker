@@ -95,8 +95,8 @@ static  bool    LivesAfterIns( instruction *ins, name *reg )
     name        *res;
     hw_reg_set  live_later;
 
-    HW_Asgn( live_later, ins->head.next->head.live.regs );
-    HW_OnlyOn( live_later, reg->r.reg );
+    HwAsgn( live_later, ins->head.next->head.live.regs );
+    HwOnlyOn( live_later, reg->r.reg );
     if( HW_CEqual( live_later, HW_EMPTY ) )
         return( false );
     res = ins->result;
@@ -104,7 +104,7 @@ static  bool    LivesAfterIns( instruction *ins, name *reg )
         return( true );
     if( res->n.class_ != N_REGISTER )
         return( true );
-    if( HW_Subset( res->r.reg, live_later ) )
+    if( HwSubset( res->r.reg, live_later ) )
         return( false );
     return( true );
 }
@@ -117,12 +117,12 @@ static bool BadUse( name *reg, name *test, name **pindex, bool * is_base )
     hw_reg_set  base_name;
 
     if( test->n.class_ == N_REGISTER ) {
-        if( HW_Ovlap( test->r.reg, reg->r.reg ) ) {
+        if( HwOvlap( test->r.reg, reg->r.reg ) ) {
             return( true );
         }
     }
     if( test->n.class_ == N_INDEXED ) {
-        HW_Asgn( idx_name, test->i.index->r.reg );
+        HwAsgn( idx_name, test->i.index->r.reg );
         HW_CTurnOff( idx_name, HW_SEGS );
         base_name = idx_name;
         if( test->i.index_flags & X_HIGH_BASE ) {
@@ -130,13 +130,13 @@ static bool BadUse( name *reg, name *test, name **pindex, bool * is_base )
         } else if( test->i.index_flags & X_LOW_BASE ) {
             idx_name = High64Reg( idx_name );
         }
-        HW_TurnOff( base_name, idx_name );
-        if( HW_Equal( idx_name, reg->r.reg ) ) {
+        HwTurnOff( base_name, idx_name );
+        if( HwEqual( idx_name, reg->r.reg ) ) {
             *pindex = test;
-        } else if( HW_Equal( base_name, reg->r.reg ) ) {
+        } else if( HwEqual( base_name, reg->r.reg ) ) {
             *is_base = true;
             *pindex = test;
-        } else if( HW_Ovlap( test->i.index->r.reg, reg->r.reg ) ) {
+        } else if( HwOvlap( test->i.index->r.reg, reg->r.reg ) ) {
             return( true );
         }
     }
@@ -151,23 +151,23 @@ static  mod_info        Modifies( instruction *next, name *reg,
     mod_info    modifies;
 
     modifies = MODIFIES_NOTHING;
-    if( HW_Ovlap( next->zap->reg, base_reg ) ) {
+    if( HwOvlap( next->zap->reg, base_reg ) ) {
         modifies |= MODIFIES_BASE;
     }
-    if( HW_Ovlap( next->zap->reg, other_reg ) ) {
+    if( HwOvlap( next->zap->reg, other_reg ) ) {
         modifies |= MODIFIES_BASE;
     }
-    if( HW_Ovlap( next->zap->reg, reg->r.reg ) ) {
+    if( HwOvlap( next->zap->reg, reg->r.reg ) ) {
         modifies |= MODIFIES_REG;
     }
     if( next->result != NULL && next->result->n.class_ == N_REGISTER ) {
-        if( HW_Ovlap( next->result->r.reg, other_reg ) ) {
+        if( HwOvlap( next->result->r.reg, other_reg ) ) {
             modifies |= MODIFIES_BASE;
         }
-        if( HW_Ovlap( next->result->r.reg, base_reg ) ) {
+        if( HwOvlap( next->result->r.reg, base_reg ) ) {
             modifies |= MODIFIES_BASE;
         }
-        if( HW_Ovlap( next->result->r.reg, reg->r.reg ) ) {
+        if( HwOvlap( next->result->r.reg, reg->r.reg ) ) {
             modifies |= MODIFIES_REG;
         }
     }
@@ -192,7 +192,7 @@ instruction     *SIBPossibleIndex( instruction *ins, name *reg,
     for( ;; ) {
         if( next->head.opcode == OP_BLOCK )
             return( NULL );
-        if( !HW_Ovlap( next->head.live.regs, reg->r.reg ) )
+        if( !HwOvlap( next->head.live.regs, reg->r.reg ) )
             return( NULL );
         *pindex = NULL;
         *pbase = false;
@@ -234,7 +234,7 @@ instruction     *SIBPossibleIndex( instruction *ins, name *reg,
     if( !*dies ) {
         if( next->result != NULL && next->result->n.class_ == N_REGISTER ) {
             if( modifies == MODIFIES_REG ) {
-                if( HW_Equal( next->result->r.reg, reg->r.reg ) ) {
+                if( HwEqual( next->result->r.reg, reg->r.reg ) ) {
                     *dies = true;
                     modifies = MODIFIES_NOTHING;
                 }

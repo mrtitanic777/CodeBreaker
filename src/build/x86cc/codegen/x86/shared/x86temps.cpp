@@ -88,7 +88,7 @@ static  void    AssignPushLocals( BackRun& back ) {
             dst = ins->result;
             if( src->n.class_ != N_REGISTER )
                 break;
-            if( _IsFloating( src->n.type_class ) )
+            if( IsFloating( src->n.type_class ) )
                 break;
             if( dst->n.class_ != N_TEMP )
                 break;

@@ -91,7 +91,7 @@ name    *LowPart( BackRun& back, name *tosplit, type_class_def type_class )
                 Zoiks( back, ZOIKS_125 );
             } else { /* FD */
                 floatval = GetFloat( back, tosplit, FD );
-                new_part = AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, _TargetLongInt( U64LowLE( floatval->buffer.u64 ) ) ) );
+                new_part = AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, ( U64LowLE( floatval->buffer.u64 ) ) ) );
             }
         } else if( tosplit->c.const_type == CONS_ADDRESS ) {
             new_part = AddrConst( back, tosplit->c.u.op, (segment_id)tosplit->c.lo.u.int_value, CONS_OFFSET );
@@ -165,7 +165,7 @@ name    *HighPart( BackRun& back, name *tosplit, type_class_def type_class )
                 Zoiks( back, ZOIKS_125 );
             } else { /* FD */
                 floatval = GetFloat( back, tosplit, FD );
-                new_part = AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, _TargetLongInt( U64HighLE( floatval->buffer.u64 ) ) ) );
+                new_part = AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, ( U64HighLE( floatval->buffer.u64 ) ) ) );
             }
         } else if( tosplit->c.const_type == CONS_ADDRESS ) {
             new_part = AddrConst( back, tosplit->c.u.op, (segment_id)tosplit->c.lo.u.int_value, CONS_SEGMENT );
@@ -342,17 +342,17 @@ static  void    Split8Name( BackRun& back, instruction *ins, name *tosplit, eigh
         switch( ins->type_class ) {
         case I8:
         case U8:
-            out->low      = AllocIntConst( back, _TargetShort( tosplit->c.lo.u.uint_value & 0xffff ) );
-            out->mid_low  = AllocIntConst( back, _TargetShort( tosplit->c.lo.u.uint_value >> 16 ) );
-            out->mid_high = AllocIntConst( back, _TargetShort( tosplit->c.hi.u.uint_value & 0xffff ) );
-            out->high     = AllocIntConst( back, _TargetShort( tosplit->c.hi.u.uint_value >> 16 ) );
+            out->low      = AllocIntConst( back, ( tosplit->c.lo.u.uint_value & 0xffff ) );
+            out->mid_low  = AllocIntConst( back, ( tosplit->c.lo.u.uint_value >> 16 ) );
+            out->mid_high = AllocIntConst( back, ( tosplit->c.hi.u.uint_value & 0xffff ) );
+            out->high     = AllocIntConst( back, ( tosplit->c.hi.u.uint_value >> 16 ) );
             break;
         case FD:
             floatval = GetFloat( back, tosplit, FD );
-            out->low      = AllocIntConst( back, _TargetShort( U64Word( floatval->buffer.u64, 0 ) ) );
-            out->mid_low  = AllocIntConst( back, _TargetShort( U64Word( floatval->buffer.u64, 1 ) ) );
-            out->mid_high = AllocIntConst( back, _TargetShort( U64Word( floatval->buffer.u64, 2 ) ) );
-            out->high     = AllocIntConst( back, _TargetShort( U64Word( floatval->buffer.u64, 3 ) ) );
+            out->low      = AllocIntConst( back, ( U64Word( floatval->buffer.u64, 0 ) ) );
+            out->mid_low  = AllocIntConst( back, ( U64Word( floatval->buffer.u64, 1 ) ) );
+            out->mid_high = AllocIntConst( back, ( U64Word( floatval->buffer.u64, 2 ) ) );
+            out->high     = AllocIntConst( back, ( U64Word( floatval->buffer.u64, 3 ) ) );
             break;
         default:
             Zoiks( back, ZOIKS_136 );
@@ -529,8 +529,8 @@ instruction     *rSPLIT8TST( BackRun& back, instruction *ins )
 
     Split8Name( back, ins, ins->operands[0], &left );
     Split8Name( back, ins, ins->operands[1], &rite );
-    true_idx = _TrueIndex( ins );
-    false_idx = _FalseIndex( ins );
+    true_idx = TrueIndex( ins );
+    false_idx = FalseIndex( ins );
     opcode = ins->head.opcode;
     lo_ins = MakeCondition( back, opcode, left.low, rite.low, true_idx, false_idx, U2 );
     switch( opcode ) {
@@ -579,8 +579,8 @@ instruction     *rSPLIT8CMP( BackRun& back, instruction *ins )
  */
     Split8Name( back, ins, ins->operands[0], &left );
     Split8Name( back, ins, ins->operands[1], &rite );
-    true_idx = _TrueIndex( ins );
-    false_idx = _FalseIndex( ins );
+    true_idx = TrueIndex( ins );
+    false_idx = FalseIndex( ins );
     high_type_class = HalfClass[HalfClass[ins->type_class]];
     i = 0;
     switch( ins->head.opcode ) {
@@ -943,8 +943,8 @@ instruction     *rINTCOMP( BackRun& back, instruction *ins )
     half_type_class = HalfClass[ins->type_class];
     left = ins->operands[0];
     rite = ins->operands[1];
-    true_idx = _TrueIndex( ins );
-    false_idx = _FalseIndex( ins );
+    true_idx = TrueIndex( ins );
+    false_idx = FalseIndex( ins );
     if( ins->head.opcode == OP_CMP_EQUAL ) {
         first_idx = false_idx;
     } else {

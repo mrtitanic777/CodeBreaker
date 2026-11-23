@@ -34,18 +34,8 @@
 #pragma once
 #include "dominati.h"
 
-#define _IsBlkAttr( b, a )      ( ((b)->class_ & (a)) != 0 )
-#define _MarkBlkAttrClr( b, a ) ( (b)->class_ &= ~(a) )
-#define _MarkBlkAttrSet( b, a ) ( (b)->class_ |=  (a) )
-#define _SetBlkAttr( b, a )     ( (b)->class_  =  (a) )
 
-#define _IsBlkVisited( b )      _IsBlkAttr( b, BLK_BLOCK_VISITED )
-#define _MarkBlkUnVisited( b )  _MarkBlkAttrClr( b, BLK_BLOCK_VISITED )
-#define _MarkBlkVisited( b )    _MarkBlkAttrSet( b, BLK_BLOCK_VISITED )
 
-#define _IsBlkMarked( b )       _IsBlkAttr( b, BLK_BLOCK_MARKED )
-#define _MarkBlkUnMarked( b )   _MarkBlkAttrClr( b, BLK_BLOCK_MARKED )
-#define _MarkBlkMarked( b )     _MarkBlkAttrSet( b, BLK_BLOCK_MARKED )
 
 /* aligned */
 
@@ -129,7 +119,6 @@ typedef struct block_ins {
     struct block            *blk;
 } block_ins;
 
-#define _BLOCK( ins ) ( ( (block_ins *)ins)->blk )
 
 typedef struct cc_control   *cc_handle;
 typedef struct score        *score_hdl;
@@ -168,3 +157,15 @@ typedef struct block {
     uint_32                 unroll_count;
     struct block_edge       edge[1];
 } block;
+
+inline bool IsBlkAttr( block *b, block_class a ) { return ( ((b)->class_ & (a)) != 0 ); }
+inline void MarkBlkAttrClr( block *b, block_class a ) { (b)->class_ &= ~(a); }
+inline void MarkBlkAttrSet( block *b, block_class a ) { (b)->class_ |= (a); }
+inline void SetBlkAttr( block *b, block_class a ) { (b)->class_ = (a); }
+inline bool IsBlkVisited( block *b ) { return IsBlkAttr( b, BLK_BLOCK_VISITED ); }
+inline void MarkBlkUnVisited( block *b ) { MarkBlkAttrClr( b, BLK_BLOCK_VISITED ); }
+inline void MarkBlkVisited( block *b ) { MarkBlkAttrSet( b, BLK_BLOCK_VISITED ); }
+inline bool IsBlkMarked( block *b ) { return IsBlkAttr( b, BLK_BLOCK_MARKED ); }
+inline void MarkBlkUnMarked( block *b ) { MarkBlkAttrClr( b, BLK_BLOCK_MARKED ); }
+inline void MarkBlkMarked( block *b ) { MarkBlkAttrSet( b, BLK_BLOCK_MARKED ); }
+inline block *&BlockOf( instruction *ins ) { return ( ( (block_ins *)ins)->blk ); }

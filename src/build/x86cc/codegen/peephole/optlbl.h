@@ -37,11 +37,11 @@
 #include "objrep.h"
 
 
-#define RTIDX2SYM(i)    ((cg_sym_handle)(pointer_uint)((i) + 1))
-#define SYM2RTIDX(s)    ((rt_class)(pointer_uint)(s) - 1)
+inline symbol *RtIdxToSym( rt_class i ) { return ((cg_sym_handle)(pointer_uint)((i) + 1)); }
+inline int SymToRtIdx( symbol *s ) { return ((rt_class)(pointer_uint)(s) - 1); }
 
-#define SYM2IMPHDL(s)   ((import_handle)(pointer_uint)(s))
-#define IMPHDL2SYM(i)   ((cg_sym_handle)(pointer_uint)(i))
+inline int SymToImpHdl( symbol *s ) { return ((import_handle)(pointer_uint)(s)); }
+inline symbol *ImpHdlToSym( int i ) { return ((cg_sym_handle)(pointer_uint)(i)); }
 
 typedef enum {
     CODELABEL           = 0x0001,
@@ -80,11 +80,10 @@ typedef struct code_lbl {
 #endif
 } code_lbl;
 
-#define _SetStatus( var, stat ) var->lbl.status |= (stat)
-#define _ClrStatus( var, stat ) var->lbl.status &= ~(stat)
-#define _TstStatus( var, stat ) ((var->lbl.status & (stat)) != 0)
+inline void SetStatus( code_lbl *var, status_bits stat ) { var->lbl.status |= (stat); }
+inline void ClrStatus( code_lbl *var, status_bits stat ) { var->lbl.status &= ~(stat); }
+inline bool TstStatus( code_lbl *var, status_bits stat ) { return ((var->lbl.status & (stat)) != 0); }
 
-#define _ValidLbl( lbl ) ValidLbl( lbl )
 
 extern bool             ValidLbl( label_handle lbl );
 

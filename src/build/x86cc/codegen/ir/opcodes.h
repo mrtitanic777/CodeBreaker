@@ -64,44 +64,35 @@ typedef enum {
 #define LAST_OP                 OP_BLOCK
 
 
-#define _OpIsBinary( op )       ( (op) >= FIRST_BINARY_OP && \
-                                  (op) <= LAST_BINARY_OP )
+inline bool OpIsBinary( opcode_defs op ) { return ( (op) >= FIRST_BINARY_OP && (op) <= LAST_BINARY_OP ); }
 
 
 
-#define _OpIsCSE( op )          ( (op) >= FIRST_CSE_OP && \
-                                  (op) <= LAST_CSE_OP )
+inline bool OpIsCSE( opcode_defs op ) { return ( (op) >= FIRST_CSE_OP && (op) <= LAST_CSE_OP ); }
 
-#define _OpIsBit( op )          ( (op) >= FIRST_BIT_OP && \
-                                  (op) <= LAST_BIT_OP )
+inline bool OpIsBit( opcode_defs op ) { return ( (op) >= FIRST_BIT_OP && (op) <= LAST_BIT_OP ); }
 
-#define _OpIsIFunc( op )        ( (op) >= FIRST_IFUNC && \
-                                  (op) <= LAST_IFUNC )
+inline bool OpIsIFunc( opcode_defs op ) { return ( (op) >= FIRST_IFUNC && (op) <= LAST_IFUNC ); }
 
-#define _OpIsBinIFunc( op )     ( (op) >= FIRST_BINARY_IFUNC && \
-                                  (op) <= LAST_BINARY_IFUNC )
 
-#define _OpIsUnIFunc( op )      ( (op) >= FIRST_UNARY_IFUNC && \
-                                  (op) <= LAST_UNARY_IFUNC )
 
-#define _OpIsCompare( op )      ( (op) >= FIRST_COMPARISON && \
-                                  (op) <= LAST_COMPARISON )
+inline bool OpIsCompare( opcode_defs op ) { return ( (op) >= FIRST_COMPARISON && (op) <= LAST_COMPARISON ); }
 
-#define _OpIsCondition( op )    ( (op) >= FIRST_CONDITION && \
-                                  (op) <= LAST_CONDITION )
+inline bool OpIsCondition( opcode_defs op ) { return ( (op) >= FIRST_CONDITION && (op) <= LAST_CONDITION ); }
 
-#define _OpIsJump( op )         ( _OpIsCondition( op ) || (op) == OP_SELECT )
+inline bool OpIsJump( opcode_defs op ) { return ( OpIsCondition( op ) || (op) == OP_SELECT ); }
 
-#define _OpIsCall( op )         ( (op) == OP_CALL || (op) == OP_CALL_INDIRECT )
+inline bool OpIsCall( opcode_defs op ) { return ( (op) == OP_CALL || (op) == OP_CALL_INDIRECT ); }
 
-#define _OpCommutes( op )       ( ( (op) == OP_ADD ) \
-                               || ( (op) == OP_MUL ) \
-                               || ( (op) == OP_AND ) \
-                               || ( (op) == OP_OR ) \
-                               || ( (op) == OP_XOR ) )
+inline bool OpCommutes( opcode_defs op )
+{
+    return ( ( (op) == OP_ADD ) ||
+        ( (op) == OP_MUL ) ||
+        ( (op) == OP_AND ) ||
+        ( (op) == OP_OR ) ||
+        ( (op) == OP_XOR ) );
+}
 
-#define _OpIsShift( op )        ( (op) == OP_RSHIFT || (op) == OP_LSHIFT )
 
-#define _OpIsSet( op )          ( (op) >= FIRST_SET_OP && (op) <= LAST_SET_OP )
 
 #endif

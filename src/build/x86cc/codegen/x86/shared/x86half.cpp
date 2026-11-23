@@ -66,10 +66,10 @@ bool    IndexOverlaps( instruction *ins, opcnt i )
 
 #if _TARGET & _TARG_8086
     #define LONG_WORD       U4
-    #define HIGH_WORD(x)    ((((x)->c.lo.u.uint_value) >> 16) & 0xffff)
+inline unsigned int HighWord( name *x ) { return ((((x)->c.lo.u.uint_value) >> 16) & 0xffff); }
 #else
     #define LONG_WORD       U8
-    #define HIGH_WORD( x )  ((x)->c.hi.u.uint_value)
+inline unsigned int &HighWord( name *x ) { return ((x)->c.hi.u.uint_value); }
 #endif
 
 
@@ -176,7 +176,7 @@ instruction     *rSPLITMOVE( BackRun& back, instruction *ins )
         ins->result = HighPart( back, ins->result, ins->type_class );
         if( new_ins->result->n.class_ == N_REGISTER
          && ins->operands[0]->n.class_ == N_REGISTER
-         && HW_Ovlap( new_ins->result->r.reg, ins->operands[0]->r.reg ) ) {
+         && HwOvlap( new_ins->result->r.reg, ins->operands[0]->r.reg ) ) {
             SuffixIns( back, ins, new_ins );
             new_ins = ins;
         } else {
@@ -236,8 +236,8 @@ instruction     *rSPLITCMP( BackRun& back, instruction *ins )
     low_type_class  = Unsigned[high_type_class];
     left = ins->operands[0];
     right = ins->operands[1];
-    true_idx = _TrueIndex( ins );
-    false_idx = _FalseIndex( ins );
+    true_idx = TrueIndex( ins );
+    false_idx = FalseIndex( ins );
     switch( ins->head.opcode ) {
     case OP_BIT_TEST_TRUE:
         high = MakeCondition( back, ins->head.opcode,
@@ -301,7 +301,7 @@ instruction     *rSPLITCMP( BackRun& back, instruction *ins )
         if( high_type_class == WD
           && right->n.class_ == N_CONSTANT
           && right->c.const_type == CONS_ABSOLUTE
-          && HIGH_WORD( right ) == 0 ) {
+          && HighWord( right ) == 0 ) {
             high = NULL;
         } else {
             high = MakeCondition( back, OP_CMP_LESS,
@@ -325,8 +325,8 @@ instruction     *rSPLITCMP( BackRun& back, instruction *ins )
         if( high_type_class == WD
           && right->n.class_ == N_CONSTANT
           && right->c.const_type == CONS_ABSOLUTE
-          && HIGH_WORD( right ) == 0 ) {
-            _SetBlockIndex( not_equal, true_idx, NO_JUMP );
+          && HighWord( right ) == 0 ) {
+            SetBlockIndex( not_equal, true_idx, NO_JUMP );
             high = NULL;
         } else {
             high = MakeCondition( back, OP_CMP_GREATER,

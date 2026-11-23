@@ -39,7 +39,6 @@
 
 #define DOUBLE_DIGITS   17
 #define FRLSIZE         (CFLOAT_SIZE + DOUBLE_DIGITS)
-#define NEXT_BLOCK(x)   (((mem_blk *)(x))->next)
 
 typedef struct {
     void        *next;
@@ -51,6 +50,8 @@ void    CFInit( cfhandle h )
     h->head = NULL;
 }
 
+
+inline void *&NextMemBlock( void *x ) { return (((mem_blk *)(x))->next); }
 
 cfloat  *CFAlloc( BackRun& back, cfhandle h, size_t size )
 /*****************************************/
@@ -64,7 +65,7 @@ cfloat  *CFAlloc( BackRun& back, cfhandle h, size_t size )
              * unhook it and return the first element
              */
             result = static_cast<cfloat *>(h->head);
-            h->head = NEXT_BLOCK( result );
+            h->head = NextMemBlock( result );
         } else {
             result = static_cast<cfloat *>(h->alloc( back, size ));
         }
@@ -89,7 +90,7 @@ void    CFFree( BackRun& back, cfhandle h, cfloat *f )
 /*************************************/
 {
     if( f->alloc == FRLSIZE ) {
-        NEXT_BLOCK( f ) = h->head;
+        NextMemBlock( f ) = h->head;
         h->head = f;
     } else {
         h->free( back, f );
@@ -102,7 +103,7 @@ void    CFFini( BackRun& back, cfhandle h )
     void    *ptr;
 
     while( (ptr = h->head) != NULL ) {
-        h->head = NEXT_BLOCK( ptr );
+        h->head = NextMemBlock( ptr );
         h->free( back, ptr );
     }
 }

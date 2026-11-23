@@ -4,41 +4,26 @@ typedef struct local_bit_set {
 	a_bit_set	_0;
 } local_bit_set;
 
-#define _LBitAssign( dst, src ) { \
-			(dst)._0 = (src)._0; \
-		}
+inline void LBitAssign( local_bit_set &dst, const local_bit_set &src ) { (dst)._0 = (src)._0; }
 
-#define _LBitEmpty( set ) ( \
-			(set)._0 == 0  )
+inline bool LBitEmpty( const local_bit_set &set ) { return ( (set)._0 == 0 ); }
 
-#define _LBitSet( dst, a ) { \
-			(dst)._0 = (a_bit_set)a; \
-		}
+inline void LBitSet( local_bit_set &dst, a_bit_set a ) { (dst)._0 = (a_bit_set)a; }
 
-#define _LBitFirst( set ) _LBitSet( set, 1 )
+inline void LBitFirst( local_bit_set &set ) { LBitSet( set, 1 ); }
 
-#define _LBitInit( set, val ) _LBitSet( set, val )
+inline void LBitInit( local_bit_set &set, a_bit_set val ) { LBitSet( set, val ); }
 
 
-#define _LBitOverlap( a, b ) ( \
-			( (a)._0 & (b)._0 ) )
+inline bool LBitOverlap( const local_bit_set &a, const local_bit_set &b ) { return ( ( ( (a)._0 & (b)._0 ) ) ) != 0; }
 
-#define _LBitSame( a, b ) ( \
-			( (a)._0 == (b)._0 ) )
 
-#define _LBitTurnOff( a, b ) { \
-			(a)._0 &= ~(b)._0; \
-		}
+inline void LBitTurnOff( local_bit_set &a, const local_bit_set &b ) { (a)._0 &= ~(b)._0; }
 
-#define _LBitIntersect( a, b ) { \
-			(a)._0 &= (b)._0; \
-		}
 
-#define _LBitTurnOn( a, b ) { \
-			(a)._0 |= (b)._0; \
-		}
+inline void LBitTurnOn( local_bit_set &a, const local_bit_set &b ) { (a)._0 |= (b)._0; }
 
-#define _LBitScalar( a ) ( (a)._0 )
+inline unsigned int &LBitScalar( local_bit_set &a ) { return ( (a)._0 ); }
 
 #ifdef _LBit_DEFINE_BITNEXT
 static void _LBitNext( local_bit_set *set ) {

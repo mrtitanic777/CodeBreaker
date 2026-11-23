@@ -322,7 +322,7 @@ instruction     *OneMemRef( BackRun& back, instruction *ins ) {
             return( ins );
         if( ins->type_class == XX )
             return( ins );
-        if( _IsConvert( ins ) && ins->type_class > ins->base_type_class ) {
+        if( IsConvert( ins ) && ins->type_class > ins->base_type_class ) {
             ResTemp( back, ins );
         } else {
             OpTemp( back, ins, 0, 0 );

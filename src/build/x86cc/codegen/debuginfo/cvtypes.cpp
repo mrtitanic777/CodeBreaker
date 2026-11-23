@@ -114,7 +114,7 @@ static  void  *AlignBuff( cv_out *out )
     ptr = out->ptr;
     len = ptr - out->buff;
 //    len4 = ((len+CV_ALIGN-1)& -CV_ALIGN);
-    len = _RoundUp( len, CV_ALIGN ) - len;
+    len = RoundUp( len, CV_ALIGN ) - len;
     for( ; len > 0; --len ) {
         *ptr = (LF_PAD0 | len);
         ++ptr;
@@ -291,12 +291,14 @@ static lf_values   LFIntType( BackRun& back, int size )
     return( itipe );
 }
 
+template <class To>
+inline To& LvalueCast( byte &what ) { return *((To *)&what); }
+
 void CVPutINum( cv_out *out, int_32 num )
 /***************************************/
 {
     byte       *ptr;
 
-#define LC( what, to )   *((to *)&what)
     if( num >= 0 && num < 0x00008000 ) {
         *((u2*)out->ptr) = num;  /* out num as is */
         out->ptr += sizeof( u2 );
@@ -304,24 +306,23 @@ void CVPutINum( cv_out *out, int_32 num )
     }
     ptr = out->ptr;
     if( num >= -128 && num <= 127 ) {
-        LC( ptr[0],u2 ) = LF_CHAR;
-        LC( ptr[2],u1 ) = num;
+        LvalueCast<u2>( ptr[0] ) = LF_CHAR;
+        LvalueCast<u1>( ptr[2] ) = num;
         ptr += sizeof(u2) + sizeof( u1 );
     } else if( num >= -32768 && num <= 32767 ) {
-        LC( ptr[0],u2 ) = LF_SHORT;
-        LC( ptr[2],u2 ) = num;
+        LvalueCast<u2>( ptr[0] ) = LF_SHORT;
+        LvalueCast<u2>( ptr[2] ) = num;
         ptr += sizeof(u2) + sizeof( u2 );
     } else if( num > 0 && num <= 0x0000ffff ) {
-        LC( ptr[0],u2 ) = LF_USHORT;
-        LC( ptr[2],u2 ) = num;
+        LvalueCast<u2>( ptr[0] ) = LF_USHORT;
+        LvalueCast<u2>( ptr[2] ) = num;
         ptr += sizeof(u2) + sizeof( u2 );
     } else {
-        LC( ptr[0],u2 ) = LF_LONG;
-        LC( ptr[2],u4 ) = num;
+        LvalueCast<u2>( ptr[0] ) = LF_LONG;
+        LvalueCast<u4>( ptr[2] ) = num;
         ptr += sizeof(u2) + sizeof( u4 );
     }
     out->ptr = ptr;
-#undef LC
 }
 
 void        CVPutINum64( cv_out *out, signed_64 val )
@@ -329,18 +330,16 @@ void        CVPutINum64( cv_out *out, signed_64 val )
 {
     byte       *ptr;
 
-#define LC( what, to )   *((to *)&what)
     if( I64High( val ) == 0 || I64High( val ) == -1 ) {
         CVPutINum( out, I64Low( val ) );
     } else {
         ptr = out->ptr;
-        LC( ptr[0],u2 ) = LF_QUADWORD;
-        LC( ptr[2],u4 ) = U64Low( val );
-        LC( ptr[6],u4 ) = U64High( val );
+        LvalueCast<u2>( ptr[0] ) = LF_QUADWORD;
+        LvalueCast<u4>( ptr[2] ) = U64Low( val );
+        LvalueCast<u4>( ptr[6] ) = U64High( val );
         ptr += sizeof( u2 ) + sizeof( u8 );
         out->ptr = ptr;
     }
-#undef LC
 }
 
 void        CVPutStr( cv_out *out, const char *str )

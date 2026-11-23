@@ -2110,7 +2110,7 @@ static  bool    FunctionModifiesSP( BackRun& back, tn call )
 
     sym = (cg_sym_handle)call->u.left->u1.t.rite;
     pregs = static_cast<hw_reg_set *>(FindAuxInfoSym( back, sym, FEINF_SAVE_REGS ));
-    if( !HW_Ovlap( *pregs, StackReg() ) ) {
+    if( !HwOvlap( *pregs, StackReg() ) ) {
         return( true );
     }
     return( false );

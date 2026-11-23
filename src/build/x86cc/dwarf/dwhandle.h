@@ -48,9 +48,6 @@ typedef struct reloc_chain {
 
 #define _ValidateHandle(__h)    _Assert(__h >= FIRST_HANDLE && __h <= HANDLE_MASK)
 
-#define GET_HANDLE_LOCATION(__c)        (((__c)->reloc.u.offset & 1) ? (__c)->reloc.u.offset >> 1 : 0)
-#define SET_HANDLE_LOCATION(__c,__o)    (__c)->reloc.u.offset = (1 | (__o << 1))
-#define IS_FORWARD_LOCATION(__c)        (((__c)->reloc.u.offset & 1) == 0)
 
 typedef struct {
     struct {
@@ -106,5 +103,10 @@ extern dw_handle        DW_GetHandle( BackRun& back, dw_client cli );
 extern void             DW_SetHandleLocation( BackRun& back, dw_client, dw_handle );
 extern void             DW_HandleReference( BackRun& back, dw_client, dw_handle, dw_sectnum );
 extern void             DW_HandleWriteOffset( BackRun& back, dw_client, dw_handle, dw_sectnum );
+
+
+inline unsigned int GetHandleLocation( handle_common *c ) { return (((c)->reloc.u.offset & 1) ? (c)->reloc.u.offset >> 1 : 0); }
+inline void SetHandleLocation( handle_common *c, unsigned int o ) { (c)->reloc.u.offset = (1 | (o << 1)); }
+inline bool IsForwardLocation( handle_common *c ) { return (((c)->reloc.u.offset & 1) == 0); }
 
 #endif

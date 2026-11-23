@@ -90,7 +90,7 @@ static  int     CountSegOvers( BackRun& back )
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( OpcodeNumOperands( ins ) == ins->num_operands && ( back.x86opseg.ZPageType == ZP_USES_DS
-               || ( G( ins ) != G_MOVAM && G( ins ) != G_MOVMA ) ) ) {
+               || ( InsGenerate( ins ) != G_MOVAM && InsGenerate( ins ) != G_MOVMA ) ) ) {
                 for( i = OpcodeNumOperands( ins ); i-- > 0; ) {
                     overs += Overs( back, ins->operands[i] );
                 }

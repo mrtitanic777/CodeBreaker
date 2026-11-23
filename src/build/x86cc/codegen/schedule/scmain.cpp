@@ -69,19 +69,19 @@ static  void    ScoreSeed( BackRun& back, block *blk, block *son, byte index )
     instruction     *cmp;
     byte            which;
 
-    if( !_IsBlkAttr( blk, BLK_CONDITIONAL ) )
+    if( !IsBlkAttr( blk, BLK_CONDITIONAL ) )
         return;
-    if( _IsBlkAttr( blk, BLK_MULTIPLE_EXITS ) )
+    if( IsBlkAttr( blk, BLK_MULTIPLE_EXITS ) )
         return;
     for( cmp = blk->ins.head.prev; cmp->head.opcode == OP_NOP; ) {
         cmp = cmp->head.prev;
     }
     switch( cmp->head.opcode ) {
     case OP_CMP_EQUAL:
-        which = _TrueIndex( cmp );
+        which = TrueIndex( cmp );
         break;
     case OP_CMP_NOT_EQUAL:
-        which = _FalseIndex( cmp );
+        which = FalseIndex( cmp );
         break;
     default:
         return;
@@ -112,7 +112,7 @@ static  void    CopyList( BackRun& back, score_hdl frm, score_hdl to,
         next = to[i].next_reg;
         for( first = *frm[i].list; first != NULL; first = first->next ) {
             new_sc = NewScListEntry(back);
-            Copy( &first->info, &new_sc->info, sizeof( score_info ) );
+            memcpy( &new_sc->info, &first->info, sizeof( score_info ) );
             new_sc->next = *next->list;
             *next->list = new_sc;
         }
@@ -153,7 +153,7 @@ static  void *ScoreDescendants( BackRun& back, block *blk )
 
     for( i = blk->targets; i-- > 0; ) {
         son = blk->edge[i].destination.u.blk;
-        if( ( son->inputs == 1 ) && !_IsBlkVisited( son ) ) {
+        if( ( son->inputs == 1 ) && !IsBlkVisited( son ) ) {
             son->u1.scoreboard = static_cast<score_hdl>(ScAlloc( back, back.score.ScoreCount * sizeof( score ) + ( back.score.ScoreCount + 1 ) * sizeof( list_head ) ));
             ScoreClear( back, son->u1.scoreboard );
             for( ;; ) {
@@ -163,8 +163,8 @@ static  void *ScoreDescendants( BackRun& back, block *blk )
                     break;
                 UpdateLive( back, son->ins.head.next, son->ins.head.prev );
             }
-            _MarkBlkVisited( son );
-            _MarkBlkMarked( son );
+            MarkBlkVisited( son );
+            MarkBlkMarked( son );
             SafeRecurseCG( back, (func_sr)ScoreDescendants, son );
             FreeScoreBoard( back, son->u1.scoreboard );
             ScFree( back, son->u1.scoreboard );
@@ -174,12 +174,12 @@ static  void *ScoreDescendants( BackRun& back, block *blk )
     HW_CAsgn( regs, HW_EMPTY );
     for( i = blk->targets; i-- > 0; ) {
         son = blk->edge[i].destination.u.blk;
-        if( _IsBlkMarked( son ) ) {
-            HW_TurnOn( regs, son->ins.head.next->head.live.regs );
-            _MarkBlkUnMarked( son );
+        if( IsBlkMarked( son ) ) {
+            HwTurnOn( regs, son->ins.head.next->head.live.regs );
+            MarkBlkUnMarked( son );
         }
     }
-    HW_TurnOn( blk->ins.head.live.regs, regs );
+    HwTurnOn( blk->ins.head.live.regs, regs );
     UpdateLive( back, blk->ins.head.next, blk->ins.head.prev );
     return( NULL );
 }
@@ -212,7 +212,7 @@ static  void    ScoreRoutine( BackRun& back )
         MakeLiveInfo(back);
 //        change = false;
         for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-            if( !_IsBlkVisited( blk ) ) {
+            if( !IsBlkVisited( blk ) ) {
                 blk->u1.scoreboard = static_cast<score_hdl>(ScAlloc( back, back.score.ScoreCount * sizeof( score ) + ( back.score.ScoreCount + 1 ) * sizeof( list_head ) ));
                 ScoreClear( back, blk->u1.scoreboard );
                 for( ;; ) {
@@ -222,7 +222,7 @@ static  void    ScoreRoutine( BackRun& back )
                         break;
                     UpdateLive( back, blk->ins.head.next, blk->ins.head.prev );
                 }
-                _MarkBlkVisited( blk );
+                MarkBlkVisited( blk );
                 ScoreDescendants( back, blk );
                 FreeScoreBoard( back, blk->u1.scoreboard );
                 ScFree( back, blk->u1.scoreboard );

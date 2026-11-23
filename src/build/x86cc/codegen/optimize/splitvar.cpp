@@ -62,13 +62,13 @@ static  block   *FindUnMarkedInstance( BackRun& back )
     data_flow_def       *flow;
 
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        if( _IsBlkVisited( blk ) )
+        if( IsBlkVisited( blk ) )
             continue;
         flow = blk->dataflow;
-        if( _GBitOverlap( back.splitvar.Id, flow->in )
-          || _GBitOverlap( back.splitvar.Id, flow->out )
-          || _GBitOverlap( back.splitvar.Id, flow->def )
-          || _GBitOverlap( back.splitvar.Id, flow->use ) ) {
+        if( GBitOverlap( back.splitvar.Id, flow->in )
+          || GBitOverlap( back.splitvar.Id, flow->out )
+          || GBitOverlap( back.splitvar.Id, flow->def )
+          || GBitOverlap( back.splitvar.Id, flow->use ) ) {
             break;
         }
     }
@@ -82,7 +82,7 @@ static  void    NotVisited( BackRun& back )
     block       *blk;
 
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        _MarkBlkUnVisited( blk );
+        MarkBlkUnVisited( blk );
         blk->blk_id = 0;
     }
 }
@@ -155,7 +155,7 @@ static  bool    Split1Var( BackRun& back, conflict_node *conf )
 
     NotVisited(back);
     back.splitvar.Instance = 0;
-    _GBitAssign( back.splitvar.Id, conf->id.out_of_block );
+    GBitAssign( back.splitvar.Id, conf->id.out_of_block );
     for( ;; ) {
         unlabeled = FindUnMarkedInstance(back);
         if( unlabeled == NULL )
@@ -182,7 +182,7 @@ static  void    CleanUp( BackRun& back )
 
     blk_id = 1;
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        _MarkBlkUnVisited( blk );
+        MarkBlkUnVisited( blk );
         blk->blk_id = blk_id++;
     }
 }
@@ -196,24 +196,24 @@ static  void *MarkInstance( BackRun& back, block *blk )
     data_flow_def       *flow;
     global_bit_set      *bitp;
 
-    if( _IsBlkVisited( blk ) )
+    if( IsBlkVisited( blk ) )
         return( NULL );
-    _MarkBlkVisited( blk );
+    MarkBlkVisited( blk );
     blk->blk_id = back.splitvar.Instance;
     flow = blk->dataflow;
-    if( _GBitOverlap( flow->in, back.splitvar.Id ) ) {
+    if( GBitOverlap( flow->in, back.splitvar.Id ) ) {
         for( edge = blk->input_edges; edge != NULL; edge = edge->next_source ) {
             bitp = &edge->source->dataflow->out;
-            if( _GBitOverlap( *bitp, back.splitvar.Id ) ) {
+            if( GBitOverlap( *bitp, back.splitvar.Id ) ) {
                 SafeRecurseCG( back, (func_sr)MarkInstance, edge->source );
             }
         }
     }
-    if( _GBitOverlap( flow->out, back.splitvar.Id ) ) {
+    if( GBitOverlap( flow->out, back.splitvar.Id ) ) {
         edge = &blk->edge[0];
         for( i = blk->targets; i > 0; --i ) {
             bitp = &edge->destination.u.blk->dataflow->in;
-            if( _GBitOverlap( *bitp, back.splitvar.Id ) ) {
+            if( GBitOverlap( *bitp, back.splitvar.Id ) ) {
                 SafeRecurseCG( back, (func_sr)MarkInstance, edge->destination.u.blk );
             }
             ++edge;
@@ -239,15 +239,15 @@ static  void *MarkInstance( BackRun& back, block *blk )
                 continue;
             if( op->n.class_ != N_TEMP )
                 continue;
-            if( _Is( conf, CST_CONF_VISITED ) )
+            if( HasConflictState( conf, CST_CONF_VISITED ) )
                 continue;
-            _SetFalse( conf, CST_CONFLICT_ON_HOLD );
-            if( _GBitEmpty( conf->id.out_of_block ) )
+            SetFalse( conf, CST_CONFLICT_ON_HOLD );
+            if( GBitEmpty( conf->id.out_of_block ) )
                 continue;
             if( op->t.alias == op )
                 Split1Var( back, conf );
-            _GBitInit( conf->id.out_of_block, EMPTY );
-            _SetTrue( conf, CST_CONFLICT_ON_HOLD | CST_CONF_VISITED );
+            GBitInit( conf->id.out_of_block, EMPTY );
+            SetTrue( conf, CST_CONFLICT_ON_HOLD | CST_CONF_VISITED );
         }
         if( !MoreConflicts(back) ) {
             break;

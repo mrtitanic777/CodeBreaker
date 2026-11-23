@@ -81,7 +81,7 @@ static bool okToPrintMsg( FrontRun& front, msg_codes msgnum, int *plevel )
     unsigned    msg_index;
 
     msg_index = GetMsgIndex( msgnum );
-    if( IS_MSGIDX_INVALID( msg_index ) )
+    if( IsMsgidxInvalid( msg_index ) )
         return( false );
     ok = front.cerrs.msg_level[msg_index].enabled;
     level = front.cerrs.msg_level[msg_index].level;

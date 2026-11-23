@@ -114,9 +114,9 @@ block   *SplitBlock( BackRun& back, block *blk, instruction *ins )
     new_blk->prev_block = blk;
     blk->next_block = new_blk;
     new_blk->next_block->prev_block = new_blk;
-    _MarkBlkAttrClr( blk, BLK_CONDITIONAL | BLK_RETURN | BLK_SELECT | BLK_LOOP_EXIT | BLK_UNKNOWN_DESTINATION );
-    _MarkBlkAttrSet( blk, BLK_JUMP );
-    _MarkBlkAttrClr( new_blk, BLK_LOOP_HEADER );
+    MarkBlkAttrClr( blk, BLK_CONDITIONAL | BLK_RETURN | BLK_SELECT | BLK_LOOP_EXIT | BLK_UNKNOWN_DESTINATION );
+    MarkBlkAttrSet( blk, BLK_JUMP );
+    MarkBlkAttrClr( new_blk, BLK_LOOP_HEADER );
     new_blk->inputs = 0;
     new_blk->input_edges = NULL;
     new_blk->blk_id = BLK_ID_NONE;

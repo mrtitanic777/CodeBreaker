@@ -148,7 +148,7 @@ bool    DoVerify( BackRun& back, vertype kind, instruction *ins )
         break;
     case V_OP2HIGH_W_FFFF_REG:
         if( op1->n.class_ == N_REGISTER
-          && HW_Ovlap( op1->r.reg, HW_xBP ) )
+          && HwOvlap( op1->r.reg, HW_xBP ) )
             break;
     case V_OP2HIGH_W_FFFF:
         if( op2->c.const_type == CONS_ABSOLUTE
@@ -157,7 +157,7 @@ bool    DoVerify( BackRun& back, vertype kind, instruction *ins )
         break;
     case V_OP2HIGH_W_ZERO_REG:
         if( op1->n.class_ == N_REGISTER
-          && HW_Ovlap( op1->r.reg, HW_xBP ) )
+          && HwOvlap( op1->r.reg, HW_xBP ) )
             break;
     case V_OP2HIGH_W_ZERO:
         if( op2->c.const_type == CONS_ABSOLUTE
@@ -295,7 +295,7 @@ bool    DoVerify( BackRun& back, vertype kind, instruction *ins )
         /* Always allow cases like ax<-al which is just a simple mov or xor */
         if( op1->n.class_ == N_REGISTER
           && RegClass( back, result->r.reg ) == U2
-          && HW_Equal( op1->r.reg, Low16Reg( result->r.reg ) ) ) {
+          && HwEqual( op1->r.reg, Low16Reg( result->r.reg ) ) ) {
             return( true );
         }
         /* On P6 architecture, 'and' will cause a partial register stall with
@@ -307,7 +307,7 @@ bool    DoVerify( BackRun& back, vertype kind, instruction *ins )
         if( back.data.OptForSize > 50 )
             break;
         if( result->n.class_ == N_REGISTER ) {
-            if( HW_Ovlap( result->r.reg, HW_xBP ) ) {
+            if( HwOvlap( result->r.reg, HW_xBP ) ) {
                 break;
             }
         }

@@ -44,6 +44,5 @@
 // MACRO DEFINITIONS
 
 //#define _MemoryDeferredFree( ptr )  CMemDeferredFree( ptr )
-#define _FatalAbort( msg )          CFatal( msg )
 
 #endif

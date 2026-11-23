@@ -12,133 +12,148 @@ typedef struct dom_bit_set {
 	a_bit_set	_7;
 } dom_bit_set;
 
-#define _DBitAssign( dst, src ) { \
-			(dst)._0 = (src)._0; \
-			(dst)._1 = (src)._1; \
-			(dst)._2 = (src)._2; \
-			(dst)._3 = (src)._3; \
-			(dst)._4 = (src)._4; \
-			(dst)._5 = (src)._5; \
-			(dst)._6 = (src)._6; \
-			(dst)._7 = (src)._7; \
-		}
+inline void DBitAssign( dom_bit_set &dst, const dom_bit_set &src )
+{
+    (dst)._0 = (src)._0;
+    (dst)._1 = (src)._1;
+    (dst)._2 = (src)._2;
+    (dst)._3 = (src)._3;
+    (dst)._4 = (src)._4;
+    (dst)._5 = (src)._5;
+    (dst)._6 = (src)._6;
+    (dst)._7 = (src)._7;
+}
 
-#define _DBitEmpty( set ) ( \
-			(set)._0 == 0 && \
-			(set)._1 == 0 && \
-			(set)._2 == 0 && \
-			(set)._3 == 0 && \
-			(set)._4 == 0 && \
-			(set)._5 == 0 && \
-			(set)._6 == 0 && \
-			(set)._7 == 0  )
+inline bool DBitEmpty( const dom_bit_set &set )
+{
+    return ( (set)._0 == 0 &&
+        (set)._1 == 0 &&
+        (set)._2 == 0 &&
+        (set)._3 == 0 &&
+        (set)._4 == 0 &&
+        (set)._5 == 0 &&
+        (set)._6 == 0 &&
+        (set)._7 == 0 );
+}
 
-#define _DBitSet( dst, a, b, c, d, e, f, g, h ) { \
-			(dst)._0 = (a_bit_set)a; \
-			(dst)._1 = (a_bit_set)b; \
-			(dst)._2 = (a_bit_set)c; \
-			(dst)._3 = (a_bit_set)d; \
-			(dst)._4 = (a_bit_set)e; \
-			(dst)._5 = (a_bit_set)f; \
-			(dst)._6 = (a_bit_set)g; \
-			(dst)._7 = (a_bit_set)h; \
-		}
+inline void DBitSet( dom_bit_set &dst, a_bit_set a, a_bit_set b, a_bit_set c, a_bit_set d, a_bit_set e, a_bit_set f, a_bit_set g, a_bit_set h )
+{
+    (dst)._0 = (a_bit_set)a;
+    (dst)._1 = (a_bit_set)b;
+    (dst)._2 = (a_bit_set)c;
+    (dst)._3 = (a_bit_set)d;
+    (dst)._4 = (a_bit_set)e;
+    (dst)._5 = (a_bit_set)f;
+    (dst)._6 = (a_bit_set)g;
+    (dst)._7 = (a_bit_set)h;
+}
 
-#define _DBitFirst( set ) _DBitSet( set, 1, 0, 0, 0, 0, 0, 0, 0 )
+inline void DBitFirst( dom_bit_set &set ) { DBitSet( set, 1, 0, 0, 0, 0, 0, 0, 0 ); }
 
-#define _DBitInit( set, val ) _DBitSet( set, val, val, val, val, val, val, val, val )
+inline void DBitInit( dom_bit_set &set, a_bit_set val )
+{
+    DBitSet( set, val, val, val, val, val, val, val, val );
+}
 
-#define _DBitIter( run, routine, set ) { \
-			(routine)( run, (set)._0 ); \
-			(routine)( run, (set)._1 ); \
-			(routine)( run, (set)._2 ); \
-			(routine)( run, (set)._3 ); \
-			(routine)( run, (set)._4 ); \
-			(routine)( run, (set)._5 ); \
-			(routine)( run, (set)._6 ); \
-			(routine)( run, (set)._7 ); \
-		}
+inline void DBitIter( BackRun &run, void (*routine)( BackRun &, unsigned int ), const dom_bit_set &set )
+{
+    (routine)( run, (set)._0 );
+    (routine)( run, (set)._1 );
+    (routine)( run, (set)._2 );
+    (routine)( run, (set)._3 );
+    (routine)( run, (set)._4 );
+    (routine)( run, (set)._5 );
+    (routine)( run, (set)._6 );
+    (routine)( run, (set)._7 );
+}
 
-#define _DBitOverlap( a, b ) ( \
-			( (a)._0 & (b)._0 ) || \
-			( (a)._1 & (b)._1 ) || \
-			( (a)._2 & (b)._2 ) || \
-			( (a)._3 & (b)._3 ) || \
-			( (a)._4 & (b)._4 ) || \
-			( (a)._5 & (b)._5 ) || \
-			( (a)._6 & (b)._6 ) || \
-			( (a)._7 & (b)._7 ) )
+CB_ALWAYS_INLINE bool DBitOverlap( const dom_bit_set &a, const dom_bit_set &b )
+{
+    return ( ( (a)._0 & (b)._0 ) ||
+        ( (a)._1 & (b)._1 ) ||
+        ( (a)._2 & (b)._2 ) ||
+        ( (a)._3 & (b)._3 ) ||
+        ( (a)._4 & (b)._4 ) ||
+        ( (a)._5 & (b)._5 ) ||
+        ( (a)._6 & (b)._6 ) ||
+        ( (a)._7 & (b)._7 ) );
+}
 
-#define _DBitSame( a, b ) ( \
-			( (a)._0 == (b)._0 ) && \
-			( (a)._1 == (b)._1 ) && \
-			( (a)._2 == (b)._2 ) && \
-			( (a)._3 == (b)._3 ) && \
-			( (a)._4 == (b)._4 ) && \
-			( (a)._5 == (b)._5 ) && \
-			( (a)._6 == (b)._6 ) && \
-			( (a)._7 == (b)._7 ) )
+inline bool DBitSame( const dom_bit_set &a, const dom_bit_set &b )
+{
+    return ( ( (a)._0 == (b)._0 ) &&
+        ( (a)._1 == (b)._1 ) &&
+        ( (a)._2 == (b)._2 ) &&
+        ( (a)._3 == (b)._3 ) &&
+        ( (a)._4 == (b)._4 ) &&
+        ( (a)._5 == (b)._5 ) &&
+        ( (a)._6 == (b)._6 ) &&
+        ( (a)._7 == (b)._7 ) );
+}
 
-#define _DBitTurnOff( a, b ) { \
-			(a)._0 &= ~(b)._0; \
-			(a)._1 &= ~(b)._1; \
-			(a)._2 &= ~(b)._2; \
-			(a)._3 &= ~(b)._3; \
-			(a)._4 &= ~(b)._4; \
-			(a)._5 &= ~(b)._5; \
-			(a)._6 &= ~(b)._6; \
-			(a)._7 &= ~(b)._7; \
-		}
+inline void DBitTurnOff( dom_bit_set &a, const dom_bit_set &b )
+{
+    (a)._0 &= ~(b)._0;
+    (a)._1 &= ~(b)._1;
+    (a)._2 &= ~(b)._2;
+    (a)._3 &= ~(b)._3;
+    (a)._4 &= ~(b)._4;
+    (a)._5 &= ~(b)._5;
+    (a)._6 &= ~(b)._6;
+    (a)._7 &= ~(b)._7;
+}
 
-#define _DBitIntersect( a, b ) { \
-			(a)._0 &= (b)._0; \
-			(a)._1 &= (b)._1; \
-			(a)._2 &= (b)._2; \
-			(a)._3 &= (b)._3; \
-			(a)._4 &= (b)._4; \
-			(a)._5 &= (b)._5; \
-			(a)._6 &= (b)._6; \
-			(a)._7 &= (b)._7; \
-		}
+inline void DBitIntersect( dom_bit_set &a, const dom_bit_set &b )
+{
+    (a)._0 &= (b)._0;
+    (a)._1 &= (b)._1;
+    (a)._2 &= (b)._2;
+    (a)._3 &= (b)._3;
+    (a)._4 &= (b)._4;
+    (a)._5 &= (b)._5;
+    (a)._6 &= (b)._6;
+    (a)._7 &= (b)._7;
+}
 
-#define _DBitTurnOn( a, b ) { \
-			(a)._0 |= (b)._0; \
-			(a)._1 |= (b)._1; \
-			(a)._2 |= (b)._2; \
-			(a)._3 |= (b)._3; \
-			(a)._4 |= (b)._4; \
-			(a)._5 |= (b)._5; \
-			(a)._6 |= (b)._6; \
-			(a)._7 |= (b)._7; \
-		}
+inline void DBitTurnOn( dom_bit_set &a, const dom_bit_set &b )
+{
+    (a)._0 |= (b)._0;
+    (a)._1 |= (b)._1;
+    (a)._2 |= (b)._2;
+    (a)._3 |= (b)._3;
+    (a)._4 |= (b)._4;
+    (a)._5 |= (b)._5;
+    (a)._6 |= (b)._6;
+    (a)._7 |= (b)._7;
+}
 
 
 #ifdef _DBit_DEFINE_BITNEXT
 static void _DBitNext( dom_bit_set *set ) {
 
     if( set->_0 & 0x80000000 ) {
-	_DBitSet( *set, 0, 1, 0, 0, 0, 0, 0, 0 );
+	DBitSet( *set, 0, 1, 0, 0, 0, 0, 0, 0 );
     } else {
 	if( set->_1 & 0x80000000 ) {
-	    _DBitSet( *set, 0, 0, 1, 0, 0, 0, 0, 0 );
+	    DBitSet( *set, 0, 0, 1, 0, 0, 0, 0, 0 );
 	} else {
 	    if( set->_2 & 0x80000000 ) {
-		_DBitSet( *set, 0, 0, 0, 1, 0, 0, 0, 0 );
+		DBitSet( *set, 0, 0, 0, 1, 0, 0, 0, 0 );
 	    } else {
 		if( set->_3 & 0x80000000 ) {
-		    _DBitSet( *set, 0, 0, 0, 0, 1, 0, 0, 0 );
+		    DBitSet( *set, 0, 0, 0, 0, 1, 0, 0, 0 );
 		} else {
 		    if( set->_4 & 0x80000000 ) {
-			_DBitSet( *set, 0, 0, 0, 0, 0, 1, 0, 0 );
+			DBitSet( *set, 0, 0, 0, 0, 0, 1, 0, 0 );
 		    } else {
 			if( set->_5 & 0x80000000 ) {
-			    _DBitSet( *set, 0, 0, 0, 0, 0, 0, 1, 0 );
+			    DBitSet( *set, 0, 0, 0, 0, 0, 0, 1, 0 );
 			} else {
 			    if( set->_6 & 0x80000000 ) {
-				_DBitSet( *set, 0, 0, 0, 0, 0, 0, 0, 1 );
+				DBitSet( *set, 0, 0, 0, 0, 0, 0, 0, 1 );
 			    } else {
 				if( set->_7 & 0x80000000 ) {
-				    _DBitSet( *set, 0, 0, 0, 0, 0, 0, 0, 0 );
+				    DBitSet( *set, 0, 0, 0, 0, 0, 0, 0, 0 );
 				} else {
 				    (*set)._0 <<= 1;
 				    (*set)._1 <<= 1;

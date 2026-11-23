@@ -57,9 +57,9 @@ static  bool    Jmp_to_lbl( BackRun& back, ins_entry *instr )
 /********************************************/
 {
   OptBegin( back );
-    if( _Class( instr ) != OC_JMP )
+    if( OcClass( instr ) != OC_JMP )
         { OptEnd( back ); return( false ); }
-    if( _Label( instr ) != back.optrel.Handle )
+    if( LabelOf( instr ) != back.optrel.Handle )
         { OptEnd( back ); return( false ); }
     { OptEnd( back ); return( true ); }
 }
@@ -80,22 +80,22 @@ static  bool    CanReach( BackRun& back, label_handle lbl, ins_entry **add_ptr,
 
     add = NULL;
     jmp = NULL;
-    if( _TstStatus( lbl, UNREACHABLE ) ) {
+    if( TstStatus( lbl, UNREACHABLE ) ) {
         /* can't do anything with it */
     } else if( lbl->lbl.address == ADDR_UNKNOWN ) {
-        if( _TstStatus( lbl, SHORTREACH ) )
+        if( TstStatus( lbl, SHORTREACH ) )
             return( true );
         obj_len = OptInsSize( back, OC_JMP, OC_DEST_SHORT );
         lbl_ins = back.optrel.Handle->ins;
         for( instr = NextIns( back, back.optdata.FirstIns ); instr != NULL; instr = NextIns( back, instr ) ) {
-            obj_len += _ObjLen( instr );
+            obj_len += ObjLen( instr );
             if( obj_len > MAX_SHORT_FWD )
                 break;
             if( Jmp_to_lbl( back, instr ) ) {
                 jmp = instr;
             } else {
-                cl = _Class( instr );
-                if( _TransferClass( cl ) ) {
+                cl = OcClass( instr );
+                if( TransferClass( cl ) ) {
                     add = instr;
                 }
             }
@@ -122,12 +122,12 @@ static  void    HndlRedirect( BackRun& back, label_handle new_lbl )
   OptBegin( back );
     redir = back.optrel.Handle->redirect;
     if( redir != NULL && redir != new_lbl ) {
-        _ClrStatus( redir, REDIRECTION );
+        ClrStatus( redir, REDIRECTION );
         TryScrapLabel( back, redir );
     }
     back.optrel.Handle->redirect = new_lbl;
     if( new_lbl != NULL ) {
-        _SetStatus( new_lbl, REDIRECTION );
+        SetStatus( new_lbl, REDIRECTION );
     }
   OptEnd( back );
 }
@@ -177,12 +177,12 @@ static  void    BigBranch( BackRun& back, ins_entry *add, ins_entry *jmp )
     } else if( add != NULL && IsntModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
         /* add a jump that's in range*/
         AddNewJump( back, add, back.optrel.Handle );
-        _Savings( OPT_JUMPS, -_ObjLen( NextIns( add ) ) );
+        _Savings( OPT_JUMPS, -ObjLen( NextIns( add ) ) );
         HndlRedirect( back, AddNewLabel( back, add, 0 ) );
         ChgLblRef( back, back.optdata.FirstIns, back.optrel.Handle->redirect );
     } else {
         /* reverse the branch*/
-        _JmpCond( back.optdata.FirstIns ) = ReverseCondition( _JmpCond( back.optdata.FirstIns ) );
+        JmpCond( back.optdata.FirstIns ) = ReverseCondition( JmpCond( back.optdata.FirstIns ) );
         AddNewJump( back, back.optdata.FirstIns, back.optrel.Handle );
         ChgLblRef( back, back.optdata.FirstIns, AddNewLabel( back, NextIns( back, back.optdata.FirstIns ), 0 ) );
         HndlRedirect( back, AddNewLabel( back, back.optdata.FirstIns, 0 ) );
@@ -200,28 +200,28 @@ static  void    SetShort( BackRun& back )
 
   OptBegin( back );
     floating = false;
-    if( _ChkAttr( back.optdata.FirstIns, OC_ATTR_FLOAT ) ) {
+    if( ChkAttr( back.optdata.FirstIns, OC_ATTR_FLOAT ) ) {
         floating = true;
     }
-    size = OptInsSize( back, static_cast<oc_class>(_Class( back.optdata.FirstIns )), OC_DEST_SHORT );
-    if( _Class( back.optdata.FirstIns ) == OC_JMP ) {
-        _Savings( OPT_JUMPS, _ObjLen( FirstIns ) - size );
-        _ObjLen( back.optdata.FirstIns ) = size;
-        _ResetClass( back.optdata.FirstIns, OC_JMP );
+    size = OptInsSize( back, static_cast<oc_class>(OcClass( back.optdata.FirstIns )), OC_DEST_SHORT );
+    if( OcClass( back.optdata.FirstIns ) == OC_JMP ) {
+        _Savings( OPT_JUMPS, ObjLen( FirstIns ) - size );
+        ObjLen( back.optdata.FirstIns ) = size;
+        ResetClass( back.optdata.FirstIns, OC_JMP );
         if( floating ) {
-            _SetAttr( back.optdata.FirstIns, OC_ATTR_FLOAT );
+            SetAttr( back.optdata.FirstIns, OC_ATTR_FLOAT );
         }
     } else {
-        _Savings( OPT_JCONDS, _ObjLen( FirstIns ) - size );
-        _ObjLen( back.optdata.FirstIns ) = size;
-        _ResetClass( back.optdata.FirstIns, OC_JCOND );
+        _Savings( OPT_JCONDS, ObjLen( FirstIns ) - size );
+        ObjLen( back.optdata.FirstIns ) = size;
+        ResetClass( back.optdata.FirstIns, OC_JCOND );
         if( floating ) {
-            _SetAttr( back.optdata.FirstIns, OC_ATTR_FLOAT );
+            SetAttr( back.optdata.FirstIns, OC_ATTR_FLOAT );
         }
     }
-    l_ins = _Label( back.optdata.FirstIns )->ins;
+    l_ins = LabelOf( back.optdata.FirstIns )->ins;
     if( l_ins != NULL ) {
-        _SetAttr( l_ins, OC_ATTR_SHORT );
+        SetAttr( l_ins, OC_ATTR_SHORT );
     }
   OptEnd( back );
 }
@@ -237,16 +237,16 @@ void    SetBranches( BackRun& back )
   bool          was_keep;
 
   OptBegin( back );
-    back.optrel.Handle = _Label( back.optdata.FirstIns );
+    back.optrel.Handle = LabelOf( back.optdata.FirstIns );
     if( CanReach( back, back.optrel.Handle, &add, &jmp ) ) {
-        _SetStatus( back.optrel.Handle, SHORTREACH );
+        SetStatus( back.optrel.Handle, SHORTREACH );
         HndlRedirect( back, NULL );
         SetShort(back);
     } else {
-        if( _ChkAttr( back.optdata.FirstIns, OC_ATTR_SHORT ) ) {
+        if( ChkAttr( back.optdata.FirstIns, OC_ATTR_SHORT ) ) {
             /* HAS to be a short branch */
             next = NextIns( back, back.optdata.FirstIns );
-            if( _Class(next) == OC_JMP && CanReach(back, _Label(next), NULL, NULL) ) {
+            if( OcClass(next) == OC_JMP && CanReach(back, LabelOf(next), NULL, NULL) ) {
                 /* we have:
                         Jcond   L1
                         JMP     L2
@@ -255,14 +255,14 @@ void    SetBranches( BackRun& back )
                         J~cond  L2
                         JMP     L1
                 */
-                _JmpCond( back.optdata.FirstIns ) =
-                                ReverseCondition( _JmpCond( back.optdata.FirstIns ) );
-                was_keep = _TstStatus( back.optrel.Handle, KEEPLABEL );
-                _SetStatus( back.optrel.Handle, KEEPLABEL );
-                ChgLblRef( back, back.optdata.FirstIns, _Label( next ) );
+                JmpCond( back.optdata.FirstIns ) =
+                                ReverseCondition( JmpCond( back.optdata.FirstIns ) );
+                was_keep = TstStatus( back.optrel.Handle, KEEPLABEL );
+                SetStatus( back.optrel.Handle, KEEPLABEL );
+                ChgLblRef( back, back.optdata.FirstIns, LabelOf( next ) );
                 ChgLblRef( back, next, back.optrel.Handle );
                 if( !was_keep ) {
-                    _ClrStatus( back.optrel.Handle, KEEPLABEL );
+                    ClrStatus( back.optrel.Handle, KEEPLABEL );
                 }
             } else {
                 BigBranch( back, add, jmp );

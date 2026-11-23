@@ -105,7 +105,7 @@ bool    CreateBreak( BackRun& back )
             break;
         if( (blk->edge[0].flags & BEF_BLOCK_LABEL_DIES) == 0
           && blk != back.data.HeadBlock ) {
-            _MarkBlkVisited( blk );
+            MarkBlkVisited( blk );
             ++pending;
         } else if( pending == 0 ) {
             break_blk = blk;
@@ -114,8 +114,8 @@ bool    CreateBreak( BackRun& back )
         for( i = blk->targets; i > 0; --i ) {
             if( edge->flags & BEF_DEST_IS_BLOCK ) {
                 if( edge->flags & BEF_DEST_LABEL_DIES ) {
-                    if( _IsBlkVisited( edge->destination.u.blk ) ) {
-                        _MarkBlkUnVisited( edge->destination.u.blk );
+                    if( IsBlkVisited( edge->destination.u.blk ) ) {
+                        MarkBlkUnVisited( edge->destination.u.blk );
                         if( --pending == 0 ) {
                             back_break_blk = blk->next_block;
                         }
@@ -153,7 +153,7 @@ bool    CreateBreak( BackRun& back )
     back.breakrtn.Curr = back.data.CurrBlock;
     back.breakrtn.Tail = back.data.BlockList;
     exit_blk = MakeBlockInit( back, 1 );
-    _SetBlkAttr( exit_blk, BLK_UNKNOWN_DESTINATION );
+    SetBlkAttr( exit_blk, BLK_UNKNOWN_DESTINATION );
     exit_blk->gen_blk_id = back.data.BlockList->gen_blk_id + 1;
     exit_blk->blk_id = back.data.BlockList->blk_id + 1;
     exit_blk->prev_block = break_blk->prev_block;
@@ -202,7 +202,7 @@ bool    CreateBreak( BackRun& back )
         FreeABlock( back, exit_blk );
     }
 
-    _MarkBlkAttrSet( back.data.HeadBlock, BLK_BIG_LABEL );
+    MarkBlkAttrSet( back.data.HeadBlock, BLK_BIG_LABEL );
     back.breakrtn.HaveBreak = true;
     /*
      * change any branches to HeadBlock from a block after break_blk into
@@ -223,7 +223,7 @@ bool    CreateBreak( BackRun& back )
      * screw up if it is.
      */
     blk = MakeBlockInit( back, 1 );
-    _SetBlkAttr( blk, BLK_BIG_LABEL | BLK_JUMP );
+    SetBlkAttr( blk, BLK_BIG_LABEL | BLK_JUMP );
     blk->label = back.data.HeadBlock->label;
     blk->ins.head.line_num = back.data.HeadBlock->ins.head.line_num;
     blk->gen_blk_id = 0;
@@ -235,7 +235,7 @@ bool    CreateBreak( BackRun& back )
     PointEdge( edge, back.data.HeadBlock );
     blk->prev_block = NULL;
     blk->next_block = back.data.HeadBlock;
-    _MarkBlkAttrClr( back.data.HeadBlock, BLK_BIG_LABEL );
+    MarkBlkAttrClr( back.data.HeadBlock, BLK_BIG_LABEL );
     back.data.HeadBlock->ins.head.line_num = 0;
     back.data.HeadBlock->label = AskForNewLabel(back);
     back.data.HeadBlock->prev_block = blk;

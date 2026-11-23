@@ -153,7 +153,7 @@ void    RegKill( BackRun& back, score_hdl scoreboard, hw_reg_set regs )
         entry = *back.score.ScoreList;
         free_heads = (list_head **)&scoreboard[back.score.ScoreCount];
         for( i = back.score.ScoreCount; i > 0; --i ) {
-            if( HW_Ovlap( entry->reg, regs ) ) {
+            if( HwOvlap( entry->reg, regs ) ) {
                 if( scoreboard->list != NULL ) {
                     if( scoreboard->next_reg == scoreboard ) {
                         ScoreFreeList( back, scoreboard );
@@ -171,7 +171,7 @@ void    RegKill( BackRun& back, score_hdl scoreboard, hw_reg_set regs )
             } else {
                 for( owner = scoreboard->list; (curr_list = *owner) != NULL; ) {
                     if( curr_list->info.reg_index != NO_INDEX
-                      && HW_Ovlap( back.score.ScoreList[curr_list->info.reg_index]->reg, regs ) ) {
+                      && HwOvlap( back.score.ScoreList[curr_list->info.reg_index]->reg, regs ) ) {
                         *owner = curr_list->next;
                         FreeScListEntry( back, curr_list );
                     } else {

@@ -54,7 +54,6 @@ struct handle_blk {
     handle_blk          *next[1];
 };
 
-#define initDbgHandle()
 #define dbgAllocHandle( h )
 #define dbgDefineHandle( h )
 
@@ -71,7 +70,6 @@ void DW_InitHandles( BackRun& back, dw_client cli )
     }
     cli->handles.extra_carver = DW_CarveCreate( back, cli, sizeof( handle_extra ), 32 );
     cli->handles.chain_carver = DW_CarveCreate( back, cli, sizeof( reloc_chain ), 16 );
-    initDbgHandle();
 }
 
 
@@ -130,7 +128,7 @@ dw_handle DW_NewHandle( BackRun& back, dw_client cli )
     elm_num = cli->handles.num_handles;
     if( ( elm_num % BLOCK_SIZE ) == 0 ) { /* time to allocate a new block */
         if( elm_num >= BLOCK_SIZE * ( 1UL << ( 8 * sizeof( dw_index_t ) ) ) ) {
-            _Abort( ABORT_TOO_MANY_HANDLES );
+            AbortDwarf( cli, ABORT_TOO_MANY_HANDLES );
         }
         newBlock( back, cli );
     }
@@ -148,7 +146,7 @@ static handle_blk *getIndex( dw_client cli, uint index )
     handle_blk      *blk;
     handle_blk      **left_edge;
 
-    _Assert( index * BLOCK_SIZE <= cli->handles.num_handles );
+    _Assert( index * BlockSize <= cli->handles.num_handles );
     _Assert( cli->handles.max_height > 0 );
     /*
         Since the index is already in the list, this loop will always
@@ -238,8 +236,8 @@ void DW_HandleWriteOffset( BackRun& back, dw_client cli, dw_handle hdl, dw_sectn
     dw_sect_offs    offset;
 
     c = DW_GetCommon( cli, hdl );
-    offset = GET_HANDLE_LOCATION( c );
-    if( IS_FORWARD_LOCATION( c ) ) {
+    offset = GetHandleLocation( c );
+    if( IsForwardLocation( c ) ) {
         /* add forward reference */
         chain = static_cast<reloc_chain *>(DW_CarveAlloc( back, cli, cli->handles.chain_carver ));
         chain->section = sect;
@@ -264,7 +262,7 @@ void DW_SetHandleLocation( BackRun& back, dw_client cli, dw_handle hdl )
     dbgDefineHandle( hdl );
     --cli->handles.forward;
     offset = InfoSectionOffset( back, cli );
-    SET_HANDLE_LOCATION( c, offset );
+    SetHandleLocation( c, offset );
     /* if forward references exist, update them */
     if( cur != NULL ) {
         memset( used, 0, sizeof( used ) );
@@ -288,7 +286,7 @@ dw_sect_offs DWENTRY DWGetHandleLocation( dw_client cli, dw_handle hdl )
 
     _ValidateHandle( hdl );
     c = DW_GetCommon( cli, hdl );
-    return( GET_HANDLE_LOCATION( c ) );
+    return( GetHandleLocation( c ) );
 }
 
 dw_handle DW_LabelNewHandle( BackRun& back, dw_client cli )
@@ -296,7 +294,7 @@ dw_handle DW_LabelNewHandle( BackRun& back, dw_client cli )
     dw_handle       new_hdl;
 
     new_hdl = DW_NewHandle( back, cli );
-    SET_HANDLE_LOCATION( DW_GetCommon( cli, new_hdl ), InfoSectionOffset( back, cli ) );
+    SetHandleLocation( DW_GetCommon( cli, new_hdl ), InfoSectionOffset( back, cli ) );
     dbgDefineHandle( new_hdl );
     --cli->handles.forward;
     return( new_hdl );

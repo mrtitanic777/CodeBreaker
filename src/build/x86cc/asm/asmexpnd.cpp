@@ -44,7 +44,7 @@ bool ExpandTheWorld( AsmRun& assembler, token_buffer *tokbuf, token_idx start_po
     /* unused parameters */ (void)early_only;
 
     val = EvalExpr( assembler, tokbuf, start_pos, tokbuf->count, flag_msg );
-    if( ISINVALID_IDX( val ) )
+    if( IsInvalidIdx( val ) )
         return( RC_ERROR );
     tokbuf->count = val;
     return( RC_OK );

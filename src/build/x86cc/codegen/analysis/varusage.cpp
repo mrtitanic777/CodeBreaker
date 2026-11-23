@@ -62,7 +62,7 @@ static  void    Use( name *op, block *blk, var_usage usage )
     } else {
         op->v.block_usage |= USE_IN_ANOTHER_BLOCK;
         if( op->v.conflict != NULL ) {
-            _GBitTurnOn( blk->dataflow->use, op->v.conflict->id.out_of_block );
+            GBitTurnOn( blk->dataflow->use, op->v.conflict->id.out_of_block );
         }
     }
     op->v.block_usage |= usage;
@@ -125,7 +125,7 @@ static  void    Define( name *op, block *blk )
     op->v.block_usage |= DEF_WITHIN_BLOCK;
     if( op->v.conflict == NULL )
         return;
-    _GBitTurnOn( blk->dataflow->def, op->v.conflict->id.out_of_block );
+    GBitTurnOn( blk->dataflow->def, op->v.conflict->id.out_of_block );
 }
 
 
@@ -143,9 +143,9 @@ static  void    UseDefGlobals( BackRun& back, block *blk )
             usage = conf->name->v.block_usage;
             Use( conf->name, blk, static_cast<var_usage>(EMPTY) );
             Define( conf->name, blk );
-            _GBitTurnOn( blk->dataflow->def, conf->id.out_of_block );
+            GBitTurnOn( blk->dataflow->def, conf->id.out_of_block );
             if( ( usage & DEF_WITHIN_BLOCK ) == 0 ) {
-                _GBitTurnOn( blk->dataflow->use, conf->id.out_of_block );
+                GBitTurnOn( blk->dataflow->use, conf->id.out_of_block );
             }
         }
     }
@@ -445,13 +445,13 @@ void    FindReferences( BackRun& back )
         if( curr->dataflow == NULL ) {
             curr->dataflow = static_cast<struct data_flow_def *>(CGAlloc( back, sizeof( data_flow_def ) ));
         }
-        _GBitInit( curr->dataflow->def         , EMPTY );
-        _GBitInit( curr->dataflow->use         , EMPTY );
-        _GBitInit( curr->dataflow->in          , EMPTY );
-        _GBitInit( curr->dataflow->out         , EMPTY );
-        _GBitInit( curr->dataflow->call_exempt , EMPTY );
-        _GBitInit( curr->dataflow->need_load   , EMPTY );
-        _GBitInit( curr->dataflow->need_store  , EMPTY );
+        GBitInit( curr->dataflow->def         , EMPTY );
+        GBitInit( curr->dataflow->use         , EMPTY );
+        GBitInit( curr->dataflow->in          , EMPTY );
+        GBitInit( curr->dataflow->out         , EMPTY );
+        GBitInit( curr->dataflow->call_exempt , EMPTY );
+        GBitInit( curr->dataflow->need_load   , EMPTY );
+        GBitInit( curr->dataflow->need_store  , EMPTY );
     }
     SearchDefUse(back);
 }

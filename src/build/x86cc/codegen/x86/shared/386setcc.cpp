@@ -56,7 +56,7 @@ static  instruction     *SetToConst( block *blk, signed_64 *pcons ) {
     }
     if( ins->head.opcode != OP_MOV )
         return( NULL );
-    if( _IsFloating( ins->type_class ) )
+    if( IsFloating( ins->type_class ) )
         return( NULL );
     for( next = ins->head.next; next->head.opcode == OP_NOP; ) {
         next = next->head.next;
@@ -99,19 +99,19 @@ static  bool    FindFlowOut( BackRun& back, block *blk ) {
     name                *konst;
     type_class_def      type_class;
 
-    for( ins = blk->ins.head.prev; !_OpIsCondition( ins->head.opcode ); ) {
+    for( ins = blk->ins.head.prev; !OpIsCondition( ins->head.opcode ); ) {
         ins = ins->head.prev;
     }
 //    prev = ins->head.prev;
     if( back.data.TypeClassSize[ins->type_class] > WORD_SIZE )
         return( false );
-    true_blk = blk->edge[_TrueIndex( ins )].destination.u.blk;
+    true_blk = blk->edge[TrueIndex( ins )].destination.u.blk;
     if( true_blk->inputs != 1 )
         return( false );
     if( true_blk->targets != 1 )
         return( false );
 
-    false_blk = blk->edge[_FalseIndex( ins )].destination.u.blk;
+    false_blk = blk->edge[FalseIndex( ins )].destination.u.blk;
     if( false_blk->inputs != 1 )
         return( false );
     if( false_blk->targets != 1 )
@@ -122,7 +122,7 @@ static  bool    FindFlowOut( BackRun& back, block *blk ) {
         return( false );
     if( join_blk->inputs != 2 )
         return( false );
-    if( _IsBlkAttr( join_blk, BLK_UNKNOWN_DESTINATION ) )
+    if( IsBlkAttr( join_blk, BLK_UNKNOWN_DESTINATION ) )
         return( false );
 
     ins0 = SetToConst( false_blk, &false_cons );
@@ -184,8 +184,8 @@ static  bool    FindFlowOut( BackRun& back, block *blk ) {
     new_edge->next_source = NULL;
     join_blk->input_edges = new_edge;
     join_blk->inputs = 1;
-    _MarkBlkAttrClr( blk, BLK_CONDITIONAL );
-    _MarkBlkAttrSet( blk, BLK_JUMP );
+    MarkBlkAttrClr( blk, BLK_CONDITIONAL );
+    MarkBlkAttrSet( blk, BLK_JUMP );
     return( true );
 }
 
@@ -199,7 +199,7 @@ bool    SetOnCondition( BackRun& back )
         return( false );
     change = false;
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        if( _IsBlkAttr( blk, BLK_CONDITIONAL ) ) {
+        if( IsBlkAttr( blk, BLK_CONDITIONAL ) ) {
             change |= FindFlowOut( back, blk );
         }
     }
@@ -211,7 +211,7 @@ reg_set_index   SpecialPossible( instruction *ins )
 {
     if( ins->result == NULL )
         return( RL_ );
-    if( _OpIsCondition( ins->head.opcode ) )
+    if( OpIsCondition( ins->head.opcode ) )
         return( RL_BYTE );
     return( RL_ );
 }

@@ -39,7 +39,7 @@ typedef enum {
     NOT_VOLATILE = 0x80
 } vertype;
 
-#define NVI( v ) (NOT_VOLATILE | (v))
+inline constexpr vertype NotVolatileIf( vertype v ) { return (NOT_VOLATILE | (v)); }
 
 typedef enum {
     #define _G_( x ) x

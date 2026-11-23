@@ -32,7 +32,7 @@
 
 #pragma once
 #define FAKE_NULL               ((back_handle)(pointer_uint)1)
-#define PTR_INT( x )            ((pointer_uint)(x))
-#define IS_REAL_BACK( bck )     ((PTR_INT(bck) & 1) == 0)
-#define TO_REAL_BACK( bck )     ((back_handle)(pointer_uint)(PTR_INT(bck) & ~((pointer_uint)1)))
-#define TO_FAKE_BACK( bck )     ((back_handle)(pointer_uint)(PTR_INT(bck) | 1))
+inline unsigned long long PtrInt( bck_info *x ) { return ((pointer_uint)(x)); }
+inline bool IsRealBack( bck_info *bck ) { return ((PtrInt(bck) & 1) == 0); }
+inline bck_info *ToRealBack( bck_info *bck ) { return ((back_handle)(pointer_uint)(PtrInt(bck) & ~((pointer_uint)1))); }
+inline bck_info *ToFakeBack( bck_info *bck ) { return ((back_handle)(pointer_uint)(PtrInt(bck) | 1)); }

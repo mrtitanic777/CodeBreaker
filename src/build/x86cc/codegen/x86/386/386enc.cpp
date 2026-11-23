@@ -182,7 +182,7 @@ byte    DoIndex( BackRun& back, hw_reg_set regs )
     byte i;
 
     for( i = 0; i < sizeof( IndexTab ) / sizeof( IndexTab[0] ); i++ ) {
-        if( HW_Equal( regs, IndexTab[i] ) ) {
+        if( HwEqual( regs, IndexTab[i] ) ) {
             return( i << S_RMR_RM );
         }
     }
@@ -478,7 +478,7 @@ static  void    LayIdxModRM( BackRun& back, name *op )
             base_reg = Low64Reg( idx_reg );
         }
     }
-    HW_TurnOff( idx_reg, base_reg );
+    HwTurnOff( idx_reg, base_reg );
     if( HW_CEqual( idx_reg, HW_ESP )
       && HW_CEqual( base_reg, HW_EMPTY ) ) {
         HW_CAsgn( base_reg, HW_ESP );

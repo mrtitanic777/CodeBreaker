@@ -197,7 +197,7 @@ static const dw_sectnum inSect[] = {
     DW_DEBUG_MACINFO
 };
 
-#define SECTION_COUNT   ARRAY_SIZE( inSect )
+#define SECTION_COUNT   ArraySize( inSect )
 
 static int createBrowseFile( FrontRun& front, FILE *browseFile )
 {

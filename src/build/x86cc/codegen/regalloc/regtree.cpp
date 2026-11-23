@@ -395,7 +395,7 @@ static  bool    PartIntersect( BackRun& back, reg_tree *part,
                 if( !HW_CEqual( curr, HW_EMPTY ) ) {
                     dst = part->regs;
                     for( j = REG_COUNT; j > 0; --j ) {
-                        if( HW_Equal( *dst, curr ) ) {
+                        if( HwEqual( *dst, curr ) ) {
                             break;
                         }
                         ++dst;
@@ -422,7 +422,7 @@ static  bool    PartIntersect( BackRun& back, reg_tree *part,
                 for( j = REG_COUNT; j > 0; --j ) {
                     if( !HW_CEqual( *dst, HW_EMPTY ) ) {
                         tmp = rtn( back, *dst );
-                        if( HW_Equal( curr, tmp ) ) {
+                        if( HwEqual( curr, tmp ) ) {
                             break;
                         }
                     }

@@ -49,10 +49,28 @@
 #include "cfcb.h"
 #include "csegid.h"
 #include "ctokens.h"
+
+inline unsigned char &GetMtoken( const char *p ) { return (*(TYPE_MTOKEN *)(p)); }
+
+inline void SetMtoken( char *p, TOKEN v ) { *(TYPE_MTOKEN *)(p)=(v); }
+
+inline unsigned char &GetMparm( const char *p ) { return (*(TYPE_MPARM *)(p)); }
+
+inline int GetMacroParmCount( macro_entry *m ) { return ((m)->u.parm_count - 1); }
+
+inline bool MacroWithParenthesis( macro_entry *m ) { return ((m)->u.parm_count > 0); }
+
+inline bool MacroIsSpecial( macro_entry *m ) { return ((m)->macro_defn == 0); }
+
+inline bool MacroHasVarArgs( macro_entry *m ) { return (((m)->macro_flags & MFLAG_HAS_VAR_ARGS) != 0); }
 #include "cerrs.h"
 #include "cmsg.h"
 #include "cgswitch.h"
 #include "pragdefn.h"
+
+inline bool IsKeyword( TOKEN t ) { return (t >= FIRST_KEYWORD && t <= LAST_KEYWORD); }
+
+inline bool IsIdOrKeyword( TOKEN t ) { return (t == T_ID || t >= FIRST_KEYWORD && t <= LAST_KEYWORD); }
 
 
 #define MAX_LEVEL       1024
@@ -60,7 +78,7 @@
 #define ERRLIMIT_NOMAX  ((unsigned)-1)
 
 #define MSGIDX_INVALID  (-1)
-#define IS_MSGIDX_INVALID(m)  ((int)(m) == MSGIDX_INVALID)
+inline bool IsMsgidxInvalid( unsigned int m ) { return ((int)(m) == MSGIDX_INVALID); }
 
 /* whether a symbol, tag or hash entry is of the current lex level of the run (the bodies are in frontrun.hpp) */
 struct FrontRun;
@@ -69,22 +87,22 @@ template< class Entry > inline bool CheckLtSymLevel( const FrontRun& front, cons
 
 
 /* Macros to skip all typedefs and arrive at the underlying type */
-#define SKIP_TYPEDEFS( typeptr )                    \
-    while( typeptr->decl_type == TYP_TYPEDEF ) {    \
-        typeptr = typeptr->object;                  \
-    }
-#define SKIP_DUMMY_TYPEDEFS( typeptr )              \
-    while( typeptr->decl_type == TYP_TYPEDEF && (typeptr->type_flags & TF2_DUMMY_TYPEDEF) ) { \
-        typeptr = typeptr->object;                  \
-    }
-#define SKIP_ENUM( typeptr )                        \
-    if( typeptr->decl_type == TYP_ENUM ) {          \
-        typeptr = typeptr->object;                  \
-    }
-#define SKIP_ARRAYS( typeptr )                      \
-    while( typeptr->decl_type == TYP_ARRAY ) {      \
-        typeptr = typeptr->object;                  \
-    }
+inline void SkipTypedefs( type_definition *&typeptr )
+{
+    while( typeptr->decl_type == TYP_TYPEDEF ) { typeptr = typeptr->object; }
+}
+inline void SkipDummyTypedefs( type_definition *&typeptr )
+{
+    while( typeptr->decl_type == TYP_TYPEDEF && (typeptr->type_flags & TF2_DUMMY_TYPEDEF) ) { typeptr = typeptr->object; }
+}
+inline void SkipEnum( type_definition *&typeptr )
+{
+    if( typeptr->decl_type == TYP_ENUM ) { typeptr = typeptr->object; }
+}
+inline void SkipArrays( type_definition *&typeptr )
+{
+    while( typeptr->decl_type == TYP_ARRAY ) { typeptr = typeptr->object; }
+}
 
 typedef enum {
     SEGTYPE_CODE       = 1,             /* #pragma code_seg("segname","class") */

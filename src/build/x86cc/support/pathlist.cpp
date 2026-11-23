@@ -28,11 +28,11 @@ char *GetPathElement( const char *path_list, const char *end, char **path )
     is_blank = true;
     while( path_list != end && (c = *path_list) != '\0' ) {
         path_list++;
-        if( IS_INCLUDE_LIST_SEP( c ) ) {
+        if( IsIncludeListSep( c ) ) {
             if( !is_blank ) {
                 break;
             }
-        } else if( IS_DIR_SEP( c ) ) {
+        } else if( IsDirSep( c ) ) {
             is_blank = false;
             *(*path)++ = DIR_SEP;
         } else if( !is_blank ) {

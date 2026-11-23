@@ -38,7 +38,7 @@
 #include "walloca.h"
 #include "supportrun.hpp"
 
-#define _NLONGS( x )    ( ( (x) + 31 ) / 32 )
+inline int NLongs( int x ) { return ( ( (x) + 31 ) / 32 ); }
 
 static void emitHeaderInit( FILE *fp, int size, char *prefix, char *type_name )
 //*****************************************************************************
@@ -54,7 +54,7 @@ static void emitHeaderInit( FILE *fp, int size, char *prefix, char *type_name )
     fprintf( fp, "#endif\n\n" );
     fprintf( fp, "#define %s_SIZE %d\n\n", prefix, size );
     fprintf( fp, "typedef struct %s {\n", type_name );
-    for( i = 0; i < _NLONGS( size ); i++ ) {
+    for( i = 0; i < NLongs( size ); i++ ) {
         fprintf( fp, "\ta_bit_set\t_%d;\n", i );
     }
     fprintf( fp, "} %s;\n\n", type_name );
@@ -70,7 +70,7 @@ static void emitAssign( FILE *fp, int size, char *prefix, char *type_name )
 
     fprintf( fp, "#define %sAssign( dst, src ) { \\\n", prefix );
     // fprintf( fp, "\t\t\t%s *srcp = &(src); \\\n\t\t\t%s *dstp = &(dst); \\\n", type_name, type_name );
-    for( i = 0; i < _NLONGS( size ); i++ ) {
+    for( i = 0; i < NLongs( size ); i++ ) {
         fprintf( fp, "\t\t\t(dst)._%d = (src)._%d; \\\n", i, i );
     }
     fprintf( fp, "\t\t}\n\n" );
@@ -84,9 +84,9 @@ static void emitEmpty( FILE *fp, int size, char *prefix, char *type_name )
     /* unused parameters */ (void)type_name;
 
     fprintf( fp, "#define %sEmpty( set ) ( \\\n", prefix );
-    for( i = 0; i < _NLONGS( size ); i++ ) {
+    for( i = 0; i < NLongs( size ); i++ ) {
         fprintf( fp, "\t\t\t(set)._%d == 0 %s\n", i,
-                        ( i == ( _NLONGS( size ) - 1 ) ) ? " )" : "&& \\" );
+                        ( i == ( NLongs( size ) - 1 ) ) ? " )" : "&& \\" );
     }
     fprintf( fp, "\n" );
 }
@@ -101,20 +101,20 @@ static void emitSet( FILE *fp, int size, char *prefix, char *type_name )
 
     fprintf( fp, "#define %sSet( dst, ", prefix );
     c = 'a';
-    for( i = 0; i < _NLONGS( size ); i++ ) {
-        fprintf( fp, "%c%s", c++, ( i == ( _NLONGS( size ) - 1 ) ) ? " ) { \\\n" : ", " );
+    for( i = 0; i < NLongs( size ); i++ ) {
+        fprintf( fp, "%c%s", c++, ( i == ( NLongs( size ) - 1 ) ) ? " ) { \\\n" : ", " );
     }
-    for( c = 'a', i = 0; i < _NLONGS( size ); i++, c++ ) {
+    for( c = 'a', i = 0; i < NLongs( size ); i++, c++ ) {
         fprintf( fp, "\t\t\t(dst)._%d = (a_bit_set)%c; \\\n", i, c );
     }
     fprintf( fp, "\t\t}\n\n" );
     fprintf( fp, "#define %sFirst( set ) %sSet( set, 1", prefix, prefix );
-    for( i = 1; i < _NLONGS( size ); i++ ) {
+    for( i = 1; i < NLongs( size ); i++ ) {
         fprintf( fp, ", 0" );
     }
     fprintf( fp, " )\n\n" );
     fprintf( fp, "#define %sInit( set, val ) %sSet( set, val", prefix, prefix );
-    for( i = 1; i < _NLONGS( size ); i++ ) {
+    for( i = 1; i < NLongs( size ); i++ ) {
         fprintf( fp, ", val" );
     }
     fprintf( fp, " )\n\n" );
@@ -128,7 +128,7 @@ static void emitIter( FILE *fp, int size, char *prefix, char *type_name )
     /* unused parameters */ (void)type_name;
 
     fprintf( fp, "#define %sIter( routine, set ) { \\\n", prefix );
-    for( i = 0; i < _NLONGS( size ); i++ ) {
+    for( i = 0; i < NLongs( size ); i++ ) {
         fprintf( fp, "\t\t\t(routine)( (set)._%d ); \\\n", i );
     }
     fprintf( fp, "\t\t}\n\n" );
@@ -142,7 +142,7 @@ static void emitOverlap( FILE *fp, int size, char *prefix, char *type_name )
     /* unused parameters */ (void)type_name;
 
     fprintf( fp, "#define %sOverlap( a, b ) ( \\\n", prefix );
-    for( i = 0; i < _NLONGS( size ) - 1; i++ ) {
+    for( i = 0; i < NLongs( size ) - 1; i++ ) {
         fprintf( fp, "\t\t\t( (a)._%d & (b)._%d ) || \\\n", i, i );
     }
     fprintf( fp, "\t\t\t( (a)._%d & (b)._%d ) )\n\n", i, i );
@@ -156,7 +156,7 @@ static void emitSame( FILE *fp, int size, char *prefix, char *type_name )
     /* unused parameters */ (void)type_name;
 
     fprintf( fp, "#define %sSame( a, b ) ( \\\n", prefix );
-    for( i = 0; i < _NLONGS( size ) - 1; i++ ) {
+    for( i = 0; i < NLongs( size ) - 1; i++ ) {
         fprintf( fp, "\t\t\t( (a)._%d == (b)._%d ) && \\\n", i, i );
     }
     fprintf( fp, "\t\t\t( (a)._%d == (b)._%d ) )\n\n", i, i );
@@ -170,7 +170,7 @@ static void emitIntersect( FILE *fp, int size, char *prefix, char *type_name )
     /* unused parameters */ (void)type_name;
 
     fprintf( fp, "#define %sIntersect( a, b ) { \\\n", prefix );
-    for( i = 0; i < _NLONGS( size ); i++ ) {
+    for( i = 0; i < NLongs( size ); i++ ) {
         fprintf( fp, "\t\t\t(a)._%d &= (b)._%d; \\\n", i, i );
     }
     fprintf( fp, "\t\t}\n\n" );
@@ -184,7 +184,7 @@ static void emitTurnOff( FILE *fp, int size, char *prefix, char *type_name )
     /* unused parameters */ (void)type_name;
 
     fprintf( fp, "#define %sTurnOff( a, b ) { \\\n", prefix );
-    for( i = 0; i < _NLONGS( size ); i++ ) {
+    for( i = 0; i < NLongs( size ); i++ ) {
         fprintf( fp, "\t\t\t(a)._%d &= ~(b)._%d; \\\n", i, i );
     }
     fprintf( fp, "\t\t}\n\n" );
@@ -198,7 +198,7 @@ static void emitTurnOn( FILE *fp, int size, char *prefix, char *type_name )
     /* unused parameters */ (void)type_name;
 
     fprintf( fp, "#define %sTurnOn( a, b ) { \\\n", prefix );
-    for( i = 0; i < _NLONGS( size ); i++ ) {
+    for( i = 0; i < NLongs( size ); i++ ) {
         fprintf( fp, "\t\t\t(a)._%d |= (b)._%d; \\\n", i, i );
     }
     fprintf( fp, "\t\t}\n\n" );
@@ -234,10 +234,10 @@ static void doSet( FILE *fp, int indent, int size, char *prefix, char *var, int 
     int         i;
     char        *ptr;
 
-    buffer = static_cast<char *>(alloca( strlen( var ) + strlen( prefix ) + _NLONGS( size ) * 3 + 100 ));
+    buffer = static_cast<char *>(alloca( strlen( var ) + strlen( prefix ) + NLongs( size ) * 3 + 100 ));
     sprintf( buffer, "%sSet( *%s, ", prefix, var );
     ptr = buffer + strlen( buffer );
-    for( i = 0; i < _NLONGS( size ) - 1; i++ ) {
+    for( i = 0; i < NLongs( size ) - 1; i++ ) {
         sprintf( ptr, "%d, ", ( i == which_long ) ? 1 : 0 );
         ptr += 3;
     }
@@ -251,7 +251,7 @@ static void doShift( FILE *fp, int indent, int size, char *var )
     int         i;
     char        buffer[ 80 ];
 
-    for( i = 0; i < _NLONGS( size ); i++ ) {
+    for( i = 0; i < NLongs( size ); i++ ) {
         sprintf( buffer, "(*%s)._%d <<= 1;", var, i );
         emitStmt( fp, indent, buffer );
     }
@@ -260,7 +260,7 @@ static void doShift( FILE *fp, int indent, int size, char *var )
 static void checkOtherBits( FILE *fp, int indent, int size, char *prefix, char *var, int which_long ) {
 //*****************************************************************************************************
 
-    if( which_long >= _NLONGS( size ) ) {
+    if( which_long >= NLongs( size ) ) {
         doShift( fp, indent, size, var );
     } else {
         char    buffer[ 80 ];

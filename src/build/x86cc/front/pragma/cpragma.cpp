@@ -260,7 +260,7 @@ bool PragRecogId( FrontRun& front, const char *what )
     bool        ok;
     const char  *p;
 
-    ok = IS_ID_OR_KEYWORD( front.cvars.CurToken );
+    ok = IsIdOrKeyword( front.cvars.CurToken );
     if( ok ) {
         p = SkipUnderscorePrefix( front, front.cvars.Buffer );
         ok = ( p != NULL && stricmp( p, what ) == 0 );
@@ -276,7 +276,7 @@ bool PragRecogName( FrontRun& front, const char *what )
 {
     bool    ok;
 
-    ok = IS_ID_OR_KEYWORD( front.cvars.CurToken );
+    ok = IsIdOrKeyword( front.cvars.CurToken );
     if( ok ) {
         ok = pragmaNameRecog( front, what );
         if( ok ) {
@@ -298,21 +298,21 @@ bool GetPragmaAuxAliasInfo( FrontRun& front )
 /********************************/
 {
     if( front.cvars.CurToken != T_LEFT_PAREN )          /* #pragma aux symbol ..... */
-        return( IS_ID_OR_KEYWORD( front.cvars.CurToken ) );
+        return( IsIdOrKeyword( front.cvars.CurToken ) );
     PPNextToken(front);
-    if( !IS_ID_OR_KEYWORD( front.cvars.CurToken ) )     /* error */
+    if( !IsIdOrKeyword( front.cvars.CurToken ) )     /* error */
         return( false );
     LookAhead(front);
     if( front.cvars.LAToken == T_RIGHT_PAREN ) {        /* #pragma aux (alias) symbol ..... */
         front.pragdefn.CurrAlias = PragmaAuxAlias( front, front.cvars.SavedId );
         advanceToken(front);
         PPNextToken(front);
-        return( IS_ID_OR_KEYWORD( front.cvars.CurToken ) );
+        return( IsIdOrKeyword( front.cvars.CurToken ) );
     } else if( front.cvars.LAToken == T_COMMA ) {       /* #pragma aux (symbol, alias) */
         SetCurrInfo( front, front.cvars.SavedId );
         advanceToken(front);
         PPNextToken(front);
-        if( !IS_ID_OR_KEYWORD( front.cvars.CurToken ) )
+        if( !IsIdOrKeyword( front.cvars.CurToken ) )
             return( false );                /* error */
         GetPragmaAuxAlias(front);
         return( false );                    /* process no more! */
@@ -641,7 +641,7 @@ hw_reg_set PragRegList( FrontRun& front )
     if( close != T_NULL ) {
         while( PPNextToken(front) != close ) {
             reg = PragReg(front);
-            HW_TurnOn( res, reg );
+            HwTurnOn( res, reg );
             if( front.cvars.CurToken == close ) {
                 break;
             }
@@ -713,7 +713,7 @@ static void pragOptions( FrontRun& front, int func )
     PPCtlEnableMacros( front );
     PPNextToken(front);
     if( ExpectingToken( front, T_LEFT_PAREN ) ) {
-        for( PPNextToken(front); IS_ID_OR_KEYWORD( front.cvars.CurToken ); PPNextToken(front) ) {
+        for( PPNextToken(front); IsIdOrKeyword( front.cvars.CurToken ); PPNextToken(front) ) {
             SetToggleFlag( front, front.cvars.Buffer, func, true );
         }
         MustRecog( front, T_RIGHT_PAREN );
@@ -770,7 +770,7 @@ void AddLibraryName( FrontRun& front, const char *libname, char priority )
 static void GetLibraryNames( FrontRun& front )
 /********************************/
 {
-    while( IS_ID_OR_KEYWORD( front.cvars.CurToken ) || front.cvars.CurToken == T_STRING ) {
+    while( IsIdOrKeyword( front.cvars.CurToken ) || front.cvars.CurToken == T_STRING ) {
         AddLibraryName( front, front.cvars.Buffer, USER_LIB_PRIO );
         PPNextToken(front);
     }
@@ -885,7 +885,7 @@ static void pragPack( FrontRun& front )
         if( front.cvars.CurToken == T_CONSTANT ) {
             SetPackAmount( front, U32FetchTrunc( front.cvars.Constant64 ) );
             PPNextToken(front);
-        } else if( IS_ID_OR_KEYWORD( front.cvars.CurToken ) ) {
+        } else if( IsIdOrKeyword( front.cvars.CurToken ) ) {
             getPackArgs(front);
         } else if( front.cvars.CurToken == T_RIGHT_PAREN ) {
             front.cvars.PackAmount = front.cvars.GblPackAmount;
@@ -1067,7 +1067,7 @@ static void warnChangeLevel( FrontRun& front, unsigned level, msg_codes msgnum )
     if( msgnum == 0 )
         return;
     msg_index = GetMsgIndex( msgnum );
-    if( IS_MSGIDX_INVALID( msg_index ) ) {
+    if( IsMsgidxInvalid( msg_index ) ) {
         CWarn2( front, ERR_PRAG_WARNING_BAD_MESSAGE, msgnum );
         return;
     }
@@ -1113,7 +1113,7 @@ void WarnEnableDisable( FrontRun& front, bool enabled, msg_codes msgnum )
     if( msgnum == 0 )
         return;
     msg_index = GetMsgIndex( msgnum );
-    if( IS_MSGIDX_INVALID( msg_index ) ) {
+    if( IsMsgidxInvalid( msg_index ) ) {
         CWarn2( front, ERR_PRAG_WARNING_BAD_MESSAGE, msgnum );
         return;
     }
@@ -1307,7 +1307,7 @@ static void pragIntrinsic( FrontRun& front, int intrinsic )
     PPCtlEnableMacros( front );
     PPNextToken(front);
     if( ExpectingToken( front, T_LEFT_PAREN ) ) {
-        for( PPNextToken(front); IS_ID_OR_KEYWORD( front.cvars.CurToken ); PPNextToken(front) ) {
+        for( PPNextToken(front); IsIdOrKeyword( front.cvars.CurToken ); PPNextToken(front) ) {
             sym_handle = SymLook( front, CalcHashID( front.cvars.Buffer ), front.cvars.Buffer );
             if( sym_handle != SYM_NULL ) {
                 SymGet( front, &sym, sym_handle );
@@ -1639,13 +1639,13 @@ static void pragExtRef( FrontRun& front )
     if( front.cvars.CurToken == T_LEFT_PAREN ) {
         do {
             PPNextToken(front);
-            if( !IS_ID_OR_KEYWORD( front.cvars.CurToken ) && front.cvars.CurToken != T_STRING )
+            if( !IsIdOrKeyword( front.cvars.CurToken ) && front.cvars.CurToken != T_STRING )
                 break;
             parseExtRef(front);
             PPNextToken(front);
         } while( front.cvars.CurToken == T_COMMA );
         MustRecog( front, T_RIGHT_PAREN );
-    } else if( IS_ID_OR_KEYWORD( front.cvars.CurToken ) || front.cvars.CurToken == T_STRING ) {
+    } else if( IsIdOrKeyword( front.cvars.CurToken ) || front.cvars.CurToken == T_STRING ) {
         parseExtRef(front);
         PPNextToken(front);
     }
@@ -1735,7 +1735,7 @@ void CPragma( FrontRun& front )
     front.cvars.CompFlags.in_pragma = true;
     check_end = true;
     PPNextToken(front);
-    if( IS_ID_OR_KEYWORD( front.cvars.CurToken ) && pragmaNameRecog( front, "include_alias" ) ) {
+    if( IsIdOrKeyword( front.cvars.CurToken ) && pragmaNameRecog( front, "include_alias" ) ) {
         pragIncludeAlias(front);
     } else if( front.cvars.CompFlags.cpp_mode ) {
         if( front.cvars.CompFlags.cpp_output ) {
@@ -1749,7 +1749,7 @@ void CPragma( FrontRun& front )
             }
             PPCtlDisableMacros( front );
         }
-    } else if( IS_ID_OR_KEYWORD( front.cvars.CurToken ) ) {
+    } else if( IsIdOrKeyword( front.cvars.CurToken ) ) {
         if( pragmaNameRecog( front, "on" ) ) {
             pragOptions( front, 1 );
         } else if( pragmaNameRecog( front, "off" ) ) {

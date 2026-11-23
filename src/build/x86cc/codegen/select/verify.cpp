@@ -57,8 +57,8 @@ static  bool    SameLocation( name *n1, name *n2 )
     loc1 = base->t.location + n1->v.offset - base->v.offset;
     base = DeAlias( n2 );
     loc2 = base->t.location + n2->v.offset - base->v.offset;
-    if( _IsFloating( n1->n.type_class )
-      || _IsFloating( n2->n.type_class ) ) {
+    if( IsFloating( n1->n.type_class )
+      || IsFloating( n2->n.type_class ) ) {
         if( n1->n.type_class != n2->n.type_class ) {
             return( false );
         }
@@ -73,13 +73,13 @@ static  bool    NextCmp( instruction *ins )
     instruction *next;
 
     next = ins->head.next;
-    if( !_OpIsCondition( next->head.opcode ) )
+    if( !OpIsCondition( next->head.opcode ) )
         return( false );
     if( IsNop( next->table ) )
         return( true );
     if( next->u.gen_table == NULL )
         return( false );
-    if( G( next ) != G_NO )
+    if( InsGenerate( next ) != G_NO )
         return( false );
     return( true );
 }
@@ -172,7 +172,7 @@ static  bool    Op2Pow2( BackRun& back, instruction *ins )
     if( log == -1 )
         return( false );
     if( log == ( ( back.data.TypeClassSize[ins->type_class] * 8 ) - 1 ) ) {
-        if( _IsSigned( ins->type_class ) ) {
+        if( IsSigned( ins->type_class ) ) {
             return( false );
         }
     }

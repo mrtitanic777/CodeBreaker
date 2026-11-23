@@ -40,8 +40,6 @@
 #include "callinfo.h"
 
 
-#define IS_KEYWORD(t)           (t >= FIRST_KEYWORD && t <= LAST_KEYWORD)
-#define IS_ID_OR_KEYWORD(t)     (t == T_ID || t >= FIRST_KEYWORD && t <= LAST_KEYWORD)
 
 typedef struct aux_entry {
     struct aux_entry    *next;

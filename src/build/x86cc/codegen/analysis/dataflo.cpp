@@ -150,12 +150,12 @@ static  global_bit_set AssignGlobalBits( BackRun& back, name_class_def class_,
     name                *opnd;
 
     if( class_ == N_TEMP ) {
-        _GBitInit( all_used, EMPTY );
+        GBitInit( all_used, EMPTY );
         if( !back.dataflo.MoreUseInOtherTemps )
             return( all_used );
         back.dataflo.MoreUseInOtherTemps = false;
     }
-    _GBitInit( all_used, EMPTY );
+    GBitInit( all_used, EMPTY );
     for( opnd = back.data.Names[class_]; opnd != NULL; opnd = opnd->n.next_name ) {
         if( ( opnd->v.usage & (USE_MEMORY | USE_ADDRESS) ) ) {
             opnd->v.usage |= NEEDS_MEMORY | USE_MEMORY;
@@ -164,19 +164,19 @@ static  global_bit_set AssignGlobalBits( BackRun& back, name_class_def class_,
             if( class_ == N_TEMP ) {
                 actual_name = DeAlias( actual_name );
             }
-            if( _GBitEmpty( *bit ) && ( class_ == N_MEMORY ) ) {
+            if( GBitEmpty( *bit ) && ( class_ == N_MEMORY ) ) {
                 actual_name->v.usage |= NEEDS_MEMORY | USE_MEMORY;
             } else {
                 conf = actual_name->v.conflict;
                 if( conf == NULL && first_time ) {
                     conf = AddConflictNode( back, actual_name );
                 }
-                if( conf != NULL && _Isnt( conf, CST_CONFLICT_ON_HOLD ) && _GBitEmpty( conf->id.out_of_block ) ) {
-                    _GBitAssign( conf->id.out_of_block, *bit );
-                    _GBitTurnOn( all_used, *bit );
+                if( conf != NULL && LacksConflictState( conf, CST_CONFLICT_ON_HOLD ) && GBitEmpty( conf->id.out_of_block ) ) {
+                    GBitAssign( conf->id.out_of_block, *bit );
+                    GBitTurnOn( all_used, *bit );
                     _GBitNext( bit );
-                    if( _GBitEmpty( conf->id.out_of_block ) ) {
-                        _SetTrue( conf, CST_CONFLICT_ON_HOLD );
+                    if( GBitEmpty( conf->id.out_of_block ) ) {
+                        SetTrue( conf, CST_CONFLICT_ON_HOLD );
                         back.dataflo.MoreUseInOtherTemps = true;
                     }
                 }
@@ -214,7 +214,7 @@ void    MakeConflicts( BackRun& back )
 
     CheckGlobals(back);
     back.dataflo.MoreUseInOtherTemps = true;
-    _GBitFirst( bit );
+    GBitFirst( bit );
     if( !back.data.BlockByBlock ) {
         RoughSortTemps(back);
     }
@@ -229,10 +229,10 @@ bool    MoreConflicts( BackRun& back )
 {
     global_bit_set     bit;
 
-    _GBitFirst( bit );
-    _GBitInit( back.data.MemoryBits, EMPTY );
+    GBitFirst( bit );
+    GBitInit( back.data.MemoryBits, EMPTY );
     bit = AssignGlobalBits( back, N_TEMP, &bit, false );
-    if( !_GBitEmpty( bit ) ) {
+    if( !GBitEmpty( bit ) ) {
         PropagateConflicts(back);
         return( true );
     } else {
@@ -265,15 +265,15 @@ void    SetInOut( BackRun& back, block *blk )
 {
     if( back.data.BlockByBlock ) {
         blk->dataflow->in  = blk->dataflow->use;
-        _GBitTurnOn( blk->dataflow->in, blk->dataflow->def );
-        _GBitAssign( blk->dataflow->out, blk->dataflow->in );
+        GBitTurnOn( blk->dataflow->in, blk->dataflow->def );
+        GBitAssign( blk->dataflow->out, blk->dataflow->in );
     }
-    if( _IsBlkAttr( blk, BLK_RETURN ) ) {
-        HW_TurnOn( blk->ins.head.live.regs, back.data.CurrProc->state.return_reg );
+    if( IsBlkAttr( blk, BLK_RETURN ) ) {
+        HwTurnOn( blk->ins.head.live.regs, back.data.CurrProc->state.return_reg );
     }
-    _LBitInit( blk->ins.head.live.within_block, EMPTY );
-    _GBitAssign( blk->ins.head.live.out_of_block, blk->dataflow->out );
-    _LBitInit( blk->available_bit, ~EMPTY );
+    LBitInit( blk->ins.head.live.within_block, EMPTY );
+    GBitAssign( blk->ins.head.live.out_of_block, blk->dataflow->out );
+    LBitInit( blk->available_bit, ~EMPTY );
 }
 
 
@@ -302,31 +302,31 @@ static  void    LiveAnalysis( block *tail, global_bit_set memory_bits )
             /*   The OUT set of a return block includes any globals*/
             /*   defined within the procedure*/
 
-            if( _IsBlkAttr( blk, BLK_RETURN | BLK_LABEL_RETURN ) ) {
+            if( IsBlkAttr( blk, BLK_RETURN | BLK_LABEL_RETURN ) ) {
                 new_gbs = memory_bits;
             } else {
-                _GBitInit( new_gbs, EMPTY );
+                GBitInit( new_gbs, EMPTY );
             }
-            if( !_IsBlkAttr( blk, BLK_BIG_JUMP ) ) {
+            if( !IsBlkAttr( blk, BLK_BIG_JUMP ) ) {
                 for( i = blk->targets; i-- > 0; ) {
                     target = blk->edge[i].destination.u.blk;
 
                     /*   new OUT = union of successors' IN*/
 
-                    _GBitTurnOn( new_gbs, target->dataflow->in );
+                    GBitTurnOn( new_gbs, target->dataflow->in );
                 }
             }
-            if( !_GBitSame( data->out, new_gbs ) ) {
+            if( !GBitSame( data->out, new_gbs ) ) {
                 data->out = new_gbs;
                 change = true;
             }
 
             /*   new IN == ( new OUT - DEF ) union USE*/
 
-            _GBitTurnOff( new_gbs, data->def );
-            _GBitTurnOn( new_gbs, data->use );
-            if( !_GBitSame( data->in, new_gbs ) ) {
-                _GBitAssign( data->in, new_gbs );
+            GBitTurnOff( new_gbs, data->def );
+            GBitTurnOn( new_gbs, data->use );
+            if( !GBitSame( data->in, new_gbs ) ) {
+                GBitAssign( data->in, new_gbs );
                 change = true;
             }
         }

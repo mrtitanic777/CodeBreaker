@@ -33,17 +33,10 @@
 #pragma once
 #define TYPE_MTOKEN     unsigned char
 #define SIZE_MTOKEN     sizeof(TYPE_MTOKEN)
-#define GET_MTOKEN(p)   (*(TYPE_MTOKEN *)(p))
-#define SET_MTOKEN(p,v) (*(TYPE_MTOKEN *)(p)=(v))
 
 #define TYPE_MPARM      unsigned char
 #define SIZE_MPARM      sizeof(TYPE_MPARM)
-#define GET_MPARM(p)    (*(TYPE_MPARM *)(p))
 
-#define GetMacroParmCount(m)    ((m)->u.parm_count - 1)
-#define MacroWithParenthesis(m) ((m)->u.parm_count > 0)
-#define MacroIsSpecial(m)       ((m)->macro_defn == 0)
-#define MacroHasVarArgs(m)      (((m)->macro_flags & MFLAG_HAS_VAR_ARGS) != 0)
 
 typedef enum special_macros {
     #define pick(s,i,f)     i,

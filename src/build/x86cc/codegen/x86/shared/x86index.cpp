@@ -71,19 +71,19 @@ instruction     *NeedIndex( BackRun& back, instruction *ins )
         name = ins->operands[ins->num_operands - 1];
         conf = NameConflict( back, ins, name );
         if( conf != NULL
-          && _Isnt( conf, CST_NEEDS_SEGMENT_SPLIT ) ) {
-            _SetTrue( conf, CST_NEEDS_SEGMENT );
+          && LacksConflictState( conf, CST_NEEDS_SEGMENT_SPLIT ) ) {
+            SetTrue( conf, CST_NEEDS_SEGMENT );
             MarkSegment( back, ins, name );
         } else if( name->n.class_ != N_REGISTER ) {
             if( conf != NULL ) {
-                _SetFalse( conf, CST_NEEDS_SEGMENT );
-                _SetTrue( conf, CST_WAS_SEGMENT );
+                SetFalse( conf, CST_NEEDS_SEGMENT );
+                SetTrue( conf, CST_WAS_SEGMENT );
             }
             temp = AllocTemp( back, U2 );
             ins->operands[ins->num_operands - 1] = temp;
             PrefixIns( back, ins, MakeMove( back, name, temp, U2 ) );
             MarkSegment( back, ins, temp );
-            _SetTrue( NameConflict( back, ins, temp ), CST_SEGMENT_SPLIT );
+            SetTrue( NameConflict( back, ins, temp ), CST_SEGMENT_SPLIT );
             ins = ins->head.prev;
         }
     }
@@ -91,7 +91,7 @@ instruction     *NeedIndex( BackRun& back, instruction *ins )
     if( index != NULL ) {
         temp = IndexToTemp( back, ins, index );
         conf = NameConflict( back, ins, temp );
-        _SetTrue( conf, CST_INDEX_SPLIT );
+        SetTrue( conf, CST_INDEX_SPLIT );
         if( HasTrueBase( index )
           && index->i.base->n.class_ == N_TEMP ) {
             MarkIndex( back, ins, temp, true );
@@ -145,11 +145,11 @@ bool    IndexOkay( BackRun& back, instruction *ins, name *index )
     conf = NameConflict( back, ins, name );
     if( conf == NULL )
         return( false );
-    if( _Is( conf, CST_NEEDS_INDEX_SPLIT ) ) {
-        _SetFalse( conf, CST_NEEDS_INDEX );
+    if( HasConflictState( conf, CST_NEEDS_INDEX_SPLIT ) ) {
+        SetFalse( conf, CST_NEEDS_INDEX );
         return( false );
     } else {
-        _SetTrue( conf, CST_NEEDS_INDEX );
+        SetTrue( conf, CST_NEEDS_INDEX );
         ins->head.state = OPERANDS_NEED_WORK;
         ins->u2.index_needs = MarkIndex( back, ins, name, is_temp_index );
         return( true );
@@ -276,7 +276,7 @@ void    AddSegment( BackRun& back, instruction *ins )
             ins->num_operands++;
         }
         if( conf != NULL ) {
-            _SetTrue( conf, CST_SEGMENT_SPLIT );
+            SetTrue( conf, CST_SEGMENT_SPLIT );
         }
     }
 }
@@ -394,7 +394,7 @@ static  void    Merge( BackRun& back, name **pname, instruction *ins )
 
     index = *pname;
     tmp = index->i.index->r.reg;
-    HW_TurnOn( tmp, ins->operands[ins->num_operands - 1]->r.reg );
+    HwTurnOn( tmp, ins->operands[ins->num_operands - 1]->r.reg );
     reg = AllocRegName( back, tmp );
     *pname = ScaleIndex( back, reg, index->i.base, index->i.constant,
                          index->n.type_class, index->n.size,
@@ -415,7 +415,7 @@ void    FixChoices( BackRun& back )
 
     PropSegments(back);
     for( conf = back.data.ConfList; conf != NULL; conf = conf->next_conflict ) {
-        if( _Isnt( conf, CST_VALID_SEGMENT ) ) {
+        if( LacksConflictState( conf, CST_VALID_SEGMENT ) ) {
             conf->possible = NoSegments( static_cast<reg_set_index>(conf->possible) );
             for( aposs = conf->possible_for_alias_list; aposs != NULL; aposs = aposs->next ) {
                 aposs->possible = NoSegments( static_cast<reg_set_index>(aposs->possible) );
@@ -438,8 +438,8 @@ static  void    PropSegments( BackRun& back )
     bool                change;
 
     for( src = back.data.ConfList; src != NULL; src = src->next_conflict ) {
-        if( _Is( src, CST_VALID_SEGMENT ) ) {
-            _SetTrue( src, CST_WAS_SEGMENT );
+        if( HasConflictState( src, CST_VALID_SEGMENT ) ) {
+            SetTrue( src, CST_WAS_SEGMENT );
         }
     }
     for( change = true; change; ) {
@@ -449,11 +449,11 @@ static  void    PropSegments( BackRun& back )
                 if( ins->head.opcode == OP_MOV ) {
                     dst = NameConflict( back, ins, ins->result );
                     if( dst != NULL
-                      && _Is( dst, CST_WAS_SEGMENT ) ) {
+                      && HasConflictState( dst, CST_WAS_SEGMENT ) ) {
                         src = NameConflict( back, ins, ins->operands[0] );
                         if( src != NULL
-                          && _Isnt( src, CST_WAS_SEGMENT ) ) {
-                            _SetTrue( src, CST_WAS_SEGMENT );
+                          && LacksConflictState( src, CST_WAS_SEGMENT ) ) {
+                            SetTrue( src, CST_WAS_SEGMENT );
                             change = true;
                         }
                     }

@@ -227,6 +227,6 @@ instruction     *MakeCondition( BackRun& back, opcode_defs opcode,
     instruction *cond;
 
     cond = MakeNary( back, opcode, left, right, NULL, type_class, XX, 2 );
-    _SetBlockIndex( cond, t, f );
+    SetBlockIndex( cond, t, f );
     return( cond );
 }

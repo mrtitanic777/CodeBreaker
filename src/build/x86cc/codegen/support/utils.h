@@ -31,11 +31,7 @@
 
 #pragma once
 
-#define Copy(s,d,l)     memcpy((d), (s), (l))
-#define Equal(s1,s2,l)  (memcmp((s1), (s2), (l)) == 0)
-#define CopyStr(s,d)    strcpy((d), (s))
-#define CopyStrEnd(s,d) strcpy((d), (s)) + strlen((d))
-#define Length(s)       strlen((s))
+inline char *CopyStrEnd( const char *s, char *d ) { return strcpy((d), (s)) + strlen((d)); }
 
 
 extern uint_32  CountBits( uint_32 value );

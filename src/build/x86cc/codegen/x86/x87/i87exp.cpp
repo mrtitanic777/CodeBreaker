@@ -373,7 +373,7 @@ static  void    PrefixChop( BackRun& back, instruction *ins )
 
     if( ins->head.opcode == OP_ROUND )
         return;
-    if( _IsFloating( ins->result->n.type_class ) )
+    if( IsFloating( ins->result->n.type_class ) )
         return;
     new_ins = MakeUnary( back, OP_MOV, back.i87exp->ST0, back.i87exp->ST0, FD );
     new_ins->u.gen_table = FCHOP;
@@ -389,7 +389,7 @@ static    int     WantsChop( instruction *ins )
 {
     if( ins->head.opcode == OP_ROUND )
         return( false );
-    if( _IsFloating( ins->result->n.type_class ) )
+    if( IsFloating( ins->result->n.type_class ) )
         return( false );
     return( true );
 }
@@ -438,7 +438,7 @@ static  instruction     *ExpCall( BackRun& back, instruction *ins )
     return( new_ins );
 }
 
-#define _Move( src, dst ) ( dst + src*RES_NONE )
+inline constexpr int MoveClass( operand_type src, result_type dst ) { return ( dst + src*RES_NONE ); }
 
 static instruction  *ExpMove( BackRun& back, instruction *ins, operand_type src,
                                 result_type dst )
@@ -446,12 +446,12 @@ static instruction  *ExpMove( BackRun& back, instruction *ins, operand_type src,
     Expand a floating point move "ins" using classifications "src" and "dst".
 */
 {
-    switch( _Move( src, dst ) ) {
-    case _Move( OP_STK1, RES_STK0 ):
-    case _Move( OP_STK1, RES_MEM ):
+    switch( MoveClass( src, dst ) ) {
+    case MoveClass( OP_STK1, RES_STK0 ):
+    case MoveClass( OP_STK1, RES_MEM ):
         Zoiks( back, ZOIKS_008 );
         break;
-    case _Move( OP_MEM , RES_MEM ):
+    case MoveClass( OP_MEM , RES_MEM ):
         PrefixFLDOp( back, ins, src, 0 );
         /*
         PrefixChop( ins );
@@ -473,10 +473,10 @@ static instruction  *ExpMove( BackRun& back, instruction *ins, operand_type src,
             ins = SuffixFSTPRes( back, ins );
         }
         break;
-    case _Move( OP_STK0, RES_STK0 ):
+    case MoveClass( OP_STK0, RES_STK0 ):
         DoNothing( back, ins );
         break;
-    case _Move( OP_STK0, RES_MEM  ):
+    case MoveClass( OP_STK0, RES_MEM  ):
         if( IsModel( back, CGSW_GEN_FPU_ROUNDING_INLINE ) ) {
             if( WantsChop( ins ) ) {
                 ins->u.gen_table = MFSTRND;
@@ -490,10 +490,10 @@ static instruction  *ExpMove( BackRun& back, instruction *ins, operand_type src,
             ins->u.gen_table = MFST;
         }
         break;
-    case _Move( OP_MEM , RES_STK0 ):
+    case MoveClass( OP_MEM , RES_STK0 ):
         ins->u.gen_table = MFLD;
         break;
-    case _Move( OP_CONS, RES_STK0 ):
+    case MoveClass( OP_CONS, RES_STK0 ):
         if( CFTest( ins->operands[0]->c.u.cfval ) != 0 ) {
             ins->u.gen_table = FLD1;
         } else {
@@ -501,7 +501,7 @@ static instruction  *ExpMove( BackRun& back, instruction *ins, operand_type src,
         }
         ins->result = back.i87exp->ST0;
         break;
-    case _Move( OP_CONS, RES_MEM ):
+    case MoveClass( OP_CONS, RES_MEM ):
         PrefixFLDOp( back, ins, src, 0 );
         DoNothing( back, ins );
         ins = SuffixFSTPRes( back, ins );
@@ -539,16 +539,16 @@ static  instruction     *ExpPush( BackRun& back, instruction *ins, operand_type 
         const hw_reg_set    *idx;
 
         HW_CAsgn( avail_index, HW_IDX16 );
-        HW_TurnOff( avail_index, ins->head.live.regs );
+        HwTurnOff( avail_index, ins->head.live.regs );
         idx = IdxRegs();
         for( ;; ) {
             if( HW_CEqual( *idx, HW_EMPTY ) ) {
                 HW_CAsgn( avail_index, HW_xBP );
                 break;
             }
-            if( HW_Subset( avail_index, *idx ) ) {
+            if( HwSubset( avail_index, *idx ) ) {
                 HW_CAsgn( avail_index, HW_SS );
-                HW_TurnOn( avail_index, *idx );
+                HwTurnOn( avail_index, *idx );
                 break;
             }
             ++idx;
@@ -596,7 +596,7 @@ static  instruction     *ExpPush( BackRun& back, instruction *ins, operand_type 
 }
 
 
-#define _OPS( op1, op2 ) ( op1 + op2*OP_NONE )
+inline constexpr int OpsClass( operand_type op1, operand_type op2 ) { return ( op1 + op2*OP_NONE ); }
 
 static void ExpBinFunc( BackRun& back, instruction *ins, operand_type op1, operand_type op2 )
 /*****************************************************************************
@@ -604,33 +604,33 @@ static void ExpBinFunc( BackRun& back, instruction *ins, operand_type op1, opera
     atan2, etc using classifications "op1" and "op2".
 */
 {
-    switch( _OPS( op1, op2 ) ) {
-    case _OPS( OP_STK1, OP_STK1 ):
-    case _OPS( OP_MEM , OP_STK1 ):
-    case _OPS( OP_CONS, OP_STK1 ):
-    case _OPS( OP_STK1, OP_MEM  ):
-    case _OPS( OP_STK1, OP_CONS ):
-    case _OPS( OP_CONS, OP_CONS ):
+    switch( OpsClass( op1, op2 ) ) {
+    case OpsClass( OP_STK1, OP_STK1 ):
+    case OpsClass( OP_MEM , OP_STK1 ):
+    case OpsClass( OP_CONS, OP_STK1 ):
+    case OpsClass( OP_STK1, OP_MEM  ):
+    case OpsClass( OP_STK1, OP_CONS ):
+    case OpsClass( OP_CONS, OP_CONS ):
         Zoiks( back, ZOIKS_010 );
         break;
-    case _OPS( OP_STK0, OP_MEM  ):
-    case _OPS( OP_STK0, OP_CONS ):
+    case OpsClass( OP_STK0, OP_MEM  ):
+    case OpsClass( OP_STK0, OP_CONS ):
         PrefixFLDOp( back, ins, op2, 1 );
         PrefFXCH( back, ins, 1 );
         break;
-    case _OPS( OP_STK1, OP_STK0 ):
+    case OpsClass( OP_STK1, OP_STK0 ):
         PrefFXCH( back, ins, 1 );
         break;
-    case _OPS( OP_STK0, OP_STK0 ):
-    case _OPS( OP_MEM , OP_STK0 ):
-    case _OPS( OP_CONS, OP_STK0 ):
+    case OpsClass( OP_STK0, OP_STK0 ):
+    case OpsClass( OP_MEM , OP_STK0 ):
+    case OpsClass( OP_CONS, OP_STK0 ):
         PrefixFLDOp( back, ins, op1, 0 );
         break;
-    case _OPS( OP_STK0, OP_STK1 ):
+    case OpsClass( OP_STK0, OP_STK1 ):
         break;
-    case _OPS( OP_MEM , OP_MEM  ):
-    case _OPS( OP_CONS, OP_MEM  ):
-    case _OPS( OP_MEM , OP_CONS ):
+    case OpsClass( OP_MEM , OP_MEM  ):
+    case OpsClass( OP_CONS, OP_MEM  ):
+    case OpsClass( OP_MEM , OP_CONS ):
         PrefixFLDOp( back, ins, op2, 1 );
         PrefixFLDOp( back, ins, op1, 0 );
         break;
@@ -663,51 +663,51 @@ static void ExpBinary( BackRun& back, instruction *ins, operand_type op1, operan
 {
     /* expand a binary floating point instruction. op1 is the implied locn.*/
 
-    switch( _OPS( op1, op2 ) ) {
-    case _OPS( OP_STK1, OP_STK1 ):
-    case _OPS( OP_MEM , OP_STK1 ):
-    case _OPS( OP_CONS, OP_STK1 ):
-    case _OPS( OP_STK1, OP_MEM  ):
-    case _OPS( OP_STK1, OP_CONS ):
-    case _OPS( OP_CONS, OP_CONS ):
+    switch( OpsClass( op1, op2 ) ) {
+    case OpsClass( OP_STK1, OP_STK1 ):
+    case OpsClass( OP_MEM , OP_STK1 ):
+    case OpsClass( OP_CONS, OP_STK1 ):
+    case OpsClass( OP_STK1, OP_MEM  ):
+    case OpsClass( OP_STK1, OP_CONS ):
+    case OpsClass( OP_CONS, OP_CONS ):
 /*   case 0,6,7,8,9,11,16,21,24:*/
         Zoiks( back, ZOIKS_010 );
         break;
-    case _OPS( OP_STK0, OP_STK0 ):
+    case OpsClass( OP_STK0, OP_STK0 ):
         ins->u.gen_table = GenTab( ins, RNFBIN );
         break;
-    case _OPS( OP_STK1, OP_STK0 ):
+    case OpsClass( OP_STK1, OP_STK0 ):
         ins->u.gen_table = GenTab( ins, RNFBINP );
         break;
-    case _OPS( OP_MEM , OP_STK0 ):
+    case OpsClass( OP_MEM , OP_STK0 ):
         ins->u.gen_table = GenTab( ins, MRFBIN );
         break;
-    case _OPS( OP_CONS, OP_STK0 ):
+    case OpsClass( OP_CONS, OP_STK0 ):
         PrefixFLDOp( back, ins, op1, 0 );
         ins->u.gen_table = GenTab( ins, RRFBINP );
         ins->operands[0] = back.i87exp->ST1;
         break;
-    case _OPS( OP_STK0, OP_STK1 ):
+    case OpsClass( OP_STK0, OP_STK1 ):
         ins->u.gen_table = GenTab( ins, RRFBINP );
         ExchangeOps( ins );
         break;
-    case _OPS( OP_STK0, OP_MEM  ):
+    case OpsClass( OP_STK0, OP_MEM  ):
         ins->u.gen_table = GenTab( ins, MNFBIN );
         ExchangeOps( ins );
         break;
-    case _OPS( OP_MEM , OP_MEM  ):
-    case _OPS( OP_CONS, OP_MEM  ):
+    case OpsClass( OP_MEM , OP_MEM  ):
+    case OpsClass( OP_CONS, OP_MEM  ):
         PrefixFLDOp( back, ins, op1, 0 );
         ins->u.gen_table = GenTab( ins, MNFBIN );
         ExchangeOps( ins );
         break;
-    case _OPS( OP_STK0, OP_CONS ):
+    case OpsClass( OP_STK0, OP_CONS ):
         PrefixFLDOp( back, ins, op2, 1 );
         ins->u.gen_table = GenTab( ins, RNFBINP );
         ins->operands[0] = back.i87exp->ST1;
         ins->operands[1] = back.i87exp->ST0;
         break;
-    case _OPS( OP_MEM , OP_CONS ):
+    case OpsClass( OP_MEM , OP_CONS ):
         PrefixFLDOp( back, ins, op2, 1 );
         ins->u.gen_table = GenTab( ins, MRFBIN );
         break;
@@ -730,13 +730,13 @@ static  void    RevOtherCond( block *blk, instruction *ins )
     block_num   i;
     block       *target;
 
-    _MarkBlkVisited( blk );
+    MarkBlkVisited( blk );
     for( ;; ) {
         ins = ins->head.next;
         if( ins->head.opcode == OP_BLOCK ) {
             for( i = blk->targets; i-- > 0; ) {
                 target = blk->edge[i].destination.u.blk;
-                if( !_IsBlkVisited( target ) ) {
+                if( !IsBlkVisited( target ) ) {
                     RevOtherCond( target, (instruction *)&target->ins );
                 }
             }
@@ -744,7 +744,7 @@ static  void    RevOtherCond( block *blk, instruction *ins )
         }
         if( ( ins->u.gen_table->op_type & MASK_CC ) != PRESERVE )
             break;
-        if( _OpIsCondition( ins->head.opcode ) && IsNop( ins->table ) ) { /* used cond codes of original ins */
+        if( OpIsCondition( ins->head.opcode ) && IsNop( ins->table ) ) { /* used cond codes of original ins */
             RevCond( ins );
             ins->table = FNOP;
             ins->u.gen_table = FNOP;
@@ -783,50 +783,50 @@ static void ExpCompare( BackRun& back, instruction *ins, operand_type op1, opera
             AllocALocal( back, back.i87data.FPStatWord );
         }
     }
-    switch( _OPS( op1, op2 ) ) {
-    case _OPS( OP_STK1, OP_STK1 ):
-    case _OPS( OP_MEM , OP_STK1 ):
-    case _OPS( OP_CONS, OP_STK1 ):
-    case _OPS( OP_STK1, OP_MEM  ):
-    case _OPS( OP_STK1, OP_CONS ):
-    case _OPS( OP_CONS, OP_CONS ):
+    switch( OpsClass( op1, op2 ) ) {
+    case OpsClass( OP_STK1, OP_STK1 ):
+    case OpsClass( OP_MEM , OP_STK1 ):
+    case OpsClass( OP_CONS, OP_STK1 ):
+    case OpsClass( OP_STK1, OP_MEM  ):
+    case OpsClass( OP_STK1, OP_CONS ):
+    case OpsClass( OP_CONS, OP_CONS ):
 /*   case 0,6,7,8,9,11,16,21,24:*/
         Zoiks( back, ZOIKS_012 );
         break;
-    case _OPS( OP_STK0, OP_STK0 ):
+    case OpsClass( OP_STK0, OP_STK0 ):
         ins->u.gen_table = RCOMP;
         break;
-    case _OPS( OP_STK1, OP_STK0 ):
+    case OpsClass( OP_STK1, OP_STK0 ):
         ins->u.gen_table = FCOMPP;
         RevFPCond( back, ins );
         break;
-    case _OPS( OP_MEM , OP_STK0 ):
+    case OpsClass( OP_MEM , OP_STK0 ):
         ins->u.gen_table = MCOMP;
         RevFPCond( back, ins );
         break;
-    case _OPS( OP_CONS, OP_STK0 ):
+    case OpsClass( OP_CONS, OP_STK0 ):
         PrefixFLDOp( back, ins, op1, 0 );
         ins->u.gen_table = FCOMPP;
         break;
-    case _OPS( OP_STK0, OP_STK1 ):
+    case OpsClass( OP_STK0, OP_STK1 ):
         ins->u.gen_table = FCOMPP;
         break;
-    case _OPS( OP_STK0, OP_MEM  ):
+    case OpsClass( OP_STK0, OP_MEM  ):
         ins->u.gen_table = MCOMP;
         ExchangeOps( ins );
         break;
-    case _OPS( OP_MEM , OP_MEM  ):
-    case _OPS( OP_CONS, OP_MEM  ):
+    case OpsClass( OP_MEM , OP_MEM  ):
+    case OpsClass( OP_CONS, OP_MEM  ):
         PrefixFLDOp( back, ins, op1, 0 );
         ins->u.gen_table = MCOMP;
         ExchangeOps( ins );
         break;
-    case _OPS( OP_STK0, OP_CONS ):
+    case OpsClass( OP_STK0, OP_CONS ):
         PrefixFLDOp( back, ins, op2, 1 );
         ins->u.gen_table = FCOMPP;
         RevFPCond( back, ins );
         break;
-    case _OPS( OP_MEM , OP_CONS ):
+    case OpsClass( OP_MEM , OP_CONS ):
         PrefixFLDOp( back, ins, op2, 1 );
         ins->u.gen_table = MCOMP;
         RevFPCond( back, ins );
@@ -847,7 +847,7 @@ static instruction *ExpandFPIns( BackRun& back, instruction *ins, operand_type o
     8087 instructions.
 */
 {
-    if( !_Is87Ins( ins ) )
+    if( !Is87Ins( ins ) )
         return( ins );
     if( op2 != OP_NONE ) {
         switch( ins->head.opcode ) {
@@ -975,7 +975,7 @@ static result_type CheckFPRes( BackRun& back, instruction *ins )
     int             reg_num;
     result_type     res_type;
 
-    if( _OpIsCondition( ins->head.opcode ) ) {
+    if( OpIsCondition( ins->head.opcode ) ) {
         res_type = RES_NONE;
     } else {
         reg_num = FPRegNum( ins->result );
@@ -1031,9 +1031,9 @@ static  void    Expand( BackRun& back )
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( DoesSomething( ins ) ) {
-                if( _OpIsCall( ins->head.opcode ) ) {
+                if( OpIsCall( ins->head.opcode ) ) {
                     ins = ExpCall( back, ins );
-                } else if( G( ins ) == G_UNKNOWN ) {
+                } else if( InsGenerate( ins ) == G_UNKNOWN ) {
                     ins = DoExpand( back, ins );
                 }
             }
@@ -1048,10 +1048,10 @@ void    NoPopRBin( instruction *ins )
     that does not pop the stack. For example FMULP ST(1),ST  -> FMUL ST(1),ST
 */
 {
-    if( G( ins ) == G_RRFBINP ) {
+    if( InsGenerate( ins ) == G_RRFBINP ) {
         ins->u.gen_table = GenTab( ins, RRFBIND );
         ins->stk_exit++;
-    } else if( G( ins ) == G_RNFBINP ) {
+    } else if( InsGenerate( ins ) == G_RNFBINP ) {
         ins->u.gen_table = GenTab( ins, RNFBIND );
         ins->stk_exit++;
     }
@@ -1064,14 +1064,14 @@ void    NoPopBin( instruction *ins )
     that does not pop the stack. For example FMULP ST(1),ST  -> FMUL X
 */
 {
-    if( G( ins ) == G_RRFBINP ) {
+    if( InsGenerate( ins ) == G_RRFBINP ) {
         if( ins->operands[0]->n.class_ == N_REGISTER ) {
             ins->u.gen_table = GenTab( ins, RRFBIN );
         } else {
             ins->u.gen_table = GenTab( ins, MRFBIN );
         }
         ins->stk_exit++;
-    } else if( G( ins ) == G_RNFBINP ) {
+    } else if( InsGenerate( ins ) == G_RNFBINP ) {
         if( ins->operands[0]->n.class_ == N_REGISTER ) {
             ins->u.gen_table = GenTab( ins, RNFBIN );
         } else {
@@ -1088,10 +1088,10 @@ void    ToPopBin( instruction *ins )
     that pops the stack. For example FSUB ST,ST(1) -> FSUBRP ST(1),ST
 */
 {
-    if( G( ins ) == G_RRFBIN ) {
+    if( InsGenerate( ins ) == G_RRFBIN ) {
         ins->u.gen_table = GenTab( ins, RNFBINP );
         ins->stk_exit--;
-    } else if( G( ins ) == G_RNFBIN ) {
+    } else if( InsGenerate( ins ) == G_RNFBIN ) {
         ins->u.gen_table = GenTab( ins, RRFBINP );
         ins->stk_exit--;
     }
@@ -1104,7 +1104,7 @@ void    ReverseFPGen( instruction *ins )
     For example FSUB ST(1)  -> FSUBR ST(1)
 */
 {
-    switch( G( ins ) ) {
+    switch( InsGenerate( ins ) ) {
     case G_RRFBIN:
         ins->u.gen_table = GenTab( ins, RNFBIN );
         break;
@@ -1150,10 +1150,10 @@ void    NoPop( instruction *ins )
     Turn an FSTP instruction into FST.
 */
 {
-    if( G( ins ) == G_MFST ) {
+    if( InsGenerate( ins ) == G_MFST ) {
         ins->u.gen_table = MFSTNP;
         ins->stk_exit++;
-    } else if( G( ins ) == G_RFST ) {
+    } else if( InsGenerate( ins ) == G_RFST ) {
         ins->u.gen_table = RFSTNP;
         ins->stk_exit++;
     }
@@ -1165,9 +1165,9 @@ void    NoMemBin( instruction *ins )
     FADD x  ==>  FADD ST(0) for example
 */
 {
-    if( G( ins ) == G_MRFBIN ) {
+    if( InsGenerate( ins ) == G_MRFBIN ) {
         ins->u.gen_table = GenTab( ins, RRFBIN );
-    } else if( G( ins ) == G_MNFBIN ) {
+    } else if( InsGenerate( ins ) == G_MNFBIN ) {
         ins->u.gen_table = GenTab( ins, RNFBIN );
     }
 }

@@ -198,10 +198,10 @@ static void     ScoreInsert( BackRun& back, score_hdl scoreboard, int i, score_i
 
     if( info->class_ == SC_N_VOLATILE )
         return;
-    if( HW_Ovlap( back.score.ScoreList[i]->reg, back.data.CurrProc->state.unalterable ) )
+    if( HwOvlap( back.score.ScoreList[i]->reg, back.data.CurrProc->state.unalterable ) )
         return;
     new_sc = NewScListEntry(back);
-    Copy( info, &new_sc->info, sizeof( score_info ) );
+    memcpy( &new_sc->info, info, sizeof( score_info ) );
     new_sc->next = *scoreboard[i].list;
     *scoreboard[i].list = new_sc;
     for( j = back.score.ScoreCount; j-- > 0; ) {
@@ -383,7 +383,7 @@ void    ScoreKillInfo( BackRun& back, score_hdl scoreboard, name *op, score_info
     last_offset = info->offset + op->n.size;
     entry = back.score.ScoreList[0];
     for( i = back.score.ScoreCount; i > 0; --i ) {
-        if( !HW_Subset( except, entry->reg ) ) {
+        if( !HwSubset( except, entry->reg ) ) {
             for( owner = scoreboard->list; (curr = *owner) != NULL; ) {
                 /*
                  * Currently looking at memory

@@ -43,11 +43,8 @@
 /*
  * these are for size which is power of 2
  */
-#define __ROUND_DOWN_SIZE(__x,__amt)                ((__x)&(~((__amt)-1)))
-#define __ROUND_UP_SIZE(__x,__amt)                  (((__x)+((__amt)-1))&(~((__amt)-1)))
+inline unsigned long long RoundUpSize( unsigned long long x, unsigned long long amt ) { return (((x)+((amt)-1))&(~((amt)-1))); }
 
-#define __ROUND_DOWN_SIZE_EVEN(__x)                 __ROUND_DOWN_SIZE(__x,2)
-#define __ROUND_UP_SIZE_EVEN(__x)                   __ROUND_UP_SIZE(__x,2)
 
 
 

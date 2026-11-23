@@ -59,12 +59,9 @@ typedef enum {
         ROUTINE_NEEDS_BP_CHAIN          = 0x00100000,
 } call_attributes;
 
-#define _RoutineIsLong( x ) \
-        ( ( (x) & ROUTINE_CLASS_MASK ) == ROUTINE_LONG )
-#define _RoutineIsInterrupt( x ) \
-        ( ( (x) & ROUTINE_CLASS_MASK ) == ROUTINE_INTERRUPT )
-#define _RoutineIsFar16( x ) \
-        ( ( (x) & ROUTINE_CLASS_MASK ) == ROUTINE_FAR16 )
+inline bool RoutineIsLong( call_attributes x ) { return ( ( (x) & ROUTINE_CLASS_MASK ) == ROUTINE_LONG ); }
+inline bool RoutineIsInterrupt( call_attributes x ) { return ( ( (x) & ROUTINE_CLASS_MASK ) == ROUTINE_INTERRUPT ); }
+inline bool RoutineIsFar16( call_attributes x ) { return ( ( (x) & ROUTINE_CLASS_MASK ) == ROUTINE_FAR16 ); }
 
 typedef struct {
         char                    wasted_space;

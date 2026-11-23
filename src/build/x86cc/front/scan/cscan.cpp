@@ -47,8 +47,8 @@ static inline bool diagnose_lex_error( FrontRun& front )
     return ( front.cvars.SkipLevel == front.cvars.NestLevel ) && ( front.cvars.PPControl & PPCTL_NO_LEX_ERRORS ) == 0;
 }
 
-static inline int HexBin( FrontRun& front, int c ) { return ( front.scan.CharSet[c] & C_HX ) ? HEX2BIN( c ) : DEC2BIN( c ); }
-#define OCTAL(c)                ((c) >= '0' && (c) <= '7')
+static inline int HexBin( FrontRun& front, int c ) { return ( front.scan.CharSet[c] & C_HX ) ? HexToBin( c ) : DecToBin( c ); }
+inline bool IsOctal( int c ) { return ((c) >= '0' && (c) <= '7'); }
 
 enum scan_class {
     #define pick(e,p) e,
@@ -406,8 +406,8 @@ static TOKEN doScanFloat( FrontRun& front, bool hex )
         }
     }
     token = T_CONSTANT;
-    if( ONE_CASE_EQUAL( c, 'E' )
-      || hex && ONE_CASE_EQUAL( c, 'P' ) ) {
+    if( OneCaseEqual( c, 'E' )
+      || hex && OneCaseEqual( c, 'P' ) ) {
         c = WriteBufferCharNextChar( front, c );
         if( c == '+'
           || c == '-' ) {
@@ -421,10 +421,10 @@ static TOKEN doScanFloat( FrontRun& front, bool hex )
             c = WriteBufferCharNextChar( front, c );
         }
     }
-    if( ONE_CASE_EQUAL( c, 'F' ) ) {
+    if( OneCaseEqual( c, 'F' ) ) {
         WriteBufferCharNextChar( front, c );
         front.cvars.ConstType = TYP_FLOAT;
-    } else if( ONE_CASE_EQUAL( c, 'L' ) ) {
+    } else if( OneCaseEqual( c, 'L' ) ) {
         WriteBufferCharNextChar( front, c );
         if( front.cvars.CompFlags.use_long_double ) {
             front.cvars.ConstType = TYP_LONG_DOUBLE;
@@ -489,9 +489,9 @@ static TOKEN doScanPPNumber( FrontRun& front )
         if( (front.scan.CharSet[c] & (C_AL | C_DI))
           || c == '.' ) {
             WriteBufferChar( front, c );
-        } else if( ( ONE_CASE_EQUAL( prevc, 'E' )
+        } else if( ( OneCaseEqual( prevc, 'E' )
           || ( front.cvars.CompVars.cstd > STD_C89 )
-          && ONE_CASE_EQUAL( prevc, 'P' ) )
+          && OneCaseEqual( prevc, 'P' ) )
           && ( c == '+' || c == '-' ) ) {
             WriteBufferChar( front, c );
             if( front.cvars.CompFlags.extensions_enabled ) {
@@ -576,7 +576,7 @@ static TOKEN doScanNum( FrontRun& front )
     Set64ValZero( front.cvars.Constant64 );
     if( front.cvars.CurrChar == '0' ) {
         c = front.cvars.NextChar(front);
-        if( ONE_CASE_EQUAL( c, 'X' ) ) {
+        if( OneCaseEqual( c, 'X' ) ) {
             bad_token_type = ERR_INVALID_HEX_CONSTANT;
             c = WriteBufferCharNextChar( front, c );
             while( front.scan.CharSet[c] & (C_HX | C_DI) ) {
@@ -585,7 +585,7 @@ static TOKEN doScanNum( FrontRun& front )
 
             if( front.cvars.CompVars.cstd > STD_C89 ) {
                 if( c == '.'
-                  || ONE_CASE_EQUAL( c, 'P' ) ) {
+                  || OneCaseEqual( c, 'P' ) ) {
                     return( doScanFloat( front, true ) );
                 }
             }
@@ -613,7 +613,7 @@ static TOKEN doScanNum( FrontRun& front )
                     }
                 }
             }
-        } else if( ONE_CASE_EQUAL( c, 'B' )
+        } else if( OneCaseEqual( c, 'B' )
           && ( front.cvars.CompFlags.extensions_enabled
           || ( front.cvars.CompVars.cstd >= STD_C23 ) ) ) {
             bad_token_type = ERR_INVALID_BINARY_CONSTANT;
@@ -640,7 +640,7 @@ static TOKEN doScanNum( FrontRun& front )
                     unsigned char   ch;
 
                     ch = *(unsigned char *)curr++;
-                    if( U64Cnv2( &front.cvars.Constant64, DEC2BIN( ch ) ) ) {
+                    if( U64Cnv2( &front.cvars.Constant64, DecToBin( ch ) ) ) {
                         overflow = true;
                     }
                 }
@@ -662,7 +662,7 @@ static TOKEN doScanNum( FrontRun& front )
                 c = WriteBufferCharNextChar( front, c );
             }
             if( c == '.'
-              || ONE_CASE_EQUAL( c, 'E' ) ) {
+              || OneCaseEqual( c, 'E' ) ) {
                 return( doScanFloat( front, false ) );
             }
             if( digit89 ) {
@@ -680,7 +680,7 @@ static TOKEN doScanNum( FrontRun& front )
                     unsigned char   ch;
 
                     ch = *(unsigned char *)curr++;
-                    if( U64Cnv8( &front.cvars.Constant64, DEC2BIN( ch ) ) ) {
+                    if( U64Cnv8( &front.cvars.Constant64, DecToBin( ch ) ) ) {
                         overflow = true;
                     }
                 }
@@ -697,7 +697,7 @@ static TOKEN doScanNum( FrontRun& front )
             c = WriteBufferCharNextChar( front, c );
         }
         if( c == '.'
-          || ONE_CASE_EQUAL( c, 'E' ) ) {
+          || OneCaseEqual( c, 'E' ) ) {
             return( doScanFloat( front, false ) );
         }
         curr = front.cvars.Buffer;
@@ -706,7 +706,7 @@ static TOKEN doScanNum( FrontRun& front )
             unsigned char   ch;
 
             ch = *(unsigned char *)curr++;
-            if( U64Cnv10( &front.cvars.Constant64, DEC2BIN( ch ) ) ) {
+            if( U64Cnv10( &front.cvars.Constant64, DecToBin( ch ) ) ) {
                 overflow = true;
             }
         }
@@ -715,23 +715,23 @@ static TOKEN doScanNum( FrontRun& front )
      * collect suffix
      */
     suffix = SUFF_NONE;
-    if( ONE_CASE_EQUAL( c, 'U' ) ) {
+    if( OneCaseEqual( c, 'U' ) ) {
         suffix |= SUFF_U;
         c = WriteBufferCharNextChar( front, c );
     }
-    if( ONE_CASE_EQUAL( c, 'L' ) ) {
+    if( OneCaseEqual( c, 'L' ) ) {
         c = WriteBufferCharNextChar( front, c );
-        if( ONE_CASE_EQUAL( c, 'L' ) ) {
+        if( OneCaseEqual( c, 'L' ) ) {
             suffix |= SUFF_LL;
             c = WriteBufferCharNextChar( front, c );
         } else {
             suffix |= SUFF_L;
         }
-        if( ONE_CASE_EQUAL( c, 'U' ) ) {
+        if( OneCaseEqual( c, 'U' ) ) {
             suffix |= SUFF_U;
             c = WriteBufferCharNextChar( front, c );
         }
-    } else if( ONE_CASE_EQUAL( c, 'I' ) ) {
+    } else if( OneCaseEqual( c, 'I' ) ) {
         c = WriteBufferCharNextChar( front, c );
         if( c == '6' ) {
             c = WriteBufferCharNextChar( front, c );
@@ -1241,16 +1241,16 @@ int ESCChar( FrontRun& front, escinp_fn ifn, escout_fn ofn, msg_codes *perr_msg 
     int         c;
 
     c = ifn(front);
-    if( OCTAL( c ) ) {
+    if( IsOctal( c ) ) {
         /*
          * get octal escape sequence
          */
         n = 0;
         i = 3;
-        while( i-- > 0 && OCTAL( c ) ) {
+        while( i-- > 0 && IsOctal( c ) ) {
             if( ofn != NULL )
                 ofn( front, c );
-            n = n * 8 + DEC2BIN( c );
+            n = n * 8 + DecToBin( c );
             c = ifn(front);
         }
     } else if( c == 'x' ) {

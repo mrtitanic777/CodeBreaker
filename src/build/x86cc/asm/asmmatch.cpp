@@ -176,21 +176,21 @@ static bool output( AsmRun& assembler, const asm_ins ASMI86FAR *ins )
      * Output operand size prefix
      */
     if( ins->cpu & NO_OPPRFX ) {
-        SET_OPSIZ_OFF( rCode );
+        SetOpsizOff( rCode );
     }
     switch( ins->byte1_info ) {
     case F_16:
         if( rCode->use32 ) {
-            SET_OPSIZ_ON( rCode );
+            SetOpsizOn( rCode );
         }
         break;
     case F_32:
         if( !rCode->use32 ) {
-            SET_OPSIZ_ON( rCode );
+            SetOpsizOn( rCode );
         }
         break;
     case F_660F:
-        SET_OPSIZ_ON( rCode );
+        SetOpsizOn( rCode );
         break;
     case F_0F:
     case F_0F0F:
@@ -285,7 +285,7 @@ static bool output( AsmRun& assembler, const asm_ins ASMI86FAR *ins )
         }
         tmp = ins->rm_byte | rCode->info.rm_byte;
         AsmByte( assembler, tmp );
-        if( IS_ADRSIZ_32( rCode ) ) {
+        if( IsAdrsiz32( rCode ) ) {
             switch( tmp & NOT_BIT_345 ) {
             case 0x04:
                  // mod = 00, r/m = 100
@@ -342,7 +342,7 @@ static bool output_data( AsmRun& assembler, OPNDTYPE determinant, operand_idx in
             out = 1;
             break;
         case MOD_00:
-            if( IS_ADRSIZ_32( assembler.asmdefs.Code ) ) {
+            if( IsAdrsiz32( assembler.asmdefs.Code ) ) {
                 switch( assembler.asmdefs.Code->info.rm_byte & BIT_012 ) {
                 case S_I_B:
                     if( (assembler.asmdefs.Code->sib & BIT_012) != D32 ) {
@@ -359,7 +359,7 @@ static bool output_data( AsmRun& assembler, OPNDTYPE determinant, operand_idx in
             }
             break;
         case MOD_10:  // mode = 10
-            if( IS_ADRSIZ_32( assembler.asmdefs.Code ) ) {
+            if( IsAdrsiz32( assembler.asmdefs.Code ) ) {
                 out = 4;
             } else {
                 out = 2;
@@ -441,7 +441,7 @@ bool match_phase_1( AsmRun& assembler )
             AsmError( *assembler.front, INVALID_INSTRUCTION_WITH_CURRENT_CPU_SETTING );
             return( RC_ERROR );
         } else {
-            SET_OPSIZ_OFF( assembler.asmdefs.Code );
+            SetOpsizOff( assembler.asmdefs.Code );
         }
     }
 
@@ -509,7 +509,7 @@ bool match_phase_1( AsmRun& assembler )
         case OP_R16:
             if( cur_opnd & asm_op1 ) {
                 temp_opsiz = assembler.asmdefs.Code->prefix.opsiz;
-                SET_OPSIZ_OFF( assembler.asmdefs.Code );
+                SetOpsizOff( assembler.asmdefs.Code );
                 rc = match_phase_2( assembler, &found, &ins );
                 if( found )
                     return( rc );
@@ -681,7 +681,7 @@ static bool match_phase_3( AsmRun& assembler, bool *found, const asm_ins ASMI86F
             break;
         case OP_R16:
             if( cur_opnd & asm_op2 ) {
-                SET_OPSIZ_OFF( assembler.asmdefs.Code );
+                SetOpsizOff( assembler.asmdefs.Code );
                 if( output( assembler, ins ) )
                     return( RC_ERROR );
                 return( output_data( assembler, last_opnd, OPND1 ) );
@@ -691,7 +691,7 @@ static bool match_phase_3( AsmRun& assembler, bool *found, const asm_ins ASMI86F
             if( cur_opnd & asm_op2 ) {
                 if( last_opnd & OP_R8 ) {
                     // 8-bit register, so output 8-bit data
-                    SET_OPSIZ_OFF( assembler.asmdefs.Code );
+                    SetOpsizOff( assembler.asmdefs.Code );
                     cur_opnd = OP_I8;
                     if( assembler.asmfixup.InsFixups[OPND2] != NULL ) {
                         assembler.asmfixup.InsFixups[OPND2]->fixup_type = FIX_LOBYTE;
@@ -701,22 +701,22 @@ static bool match_phase_3( AsmRun& assembler, bool *found, const asm_ins ASMI86F
                     cur_opnd = OP_I16;
                 } else if( last_opnd & OP_R32 ) {
                     // 32-bit register, so output 32-bit data
-                    SET_OPSIZ_32( assembler.asmdefs.Code );
+                    SetOpsiz32( assembler.asmdefs.Code );
                     cur_opnd = OP_I32;
                 } else if( last_opnd & OP_M_ANY ) {
                     /* there is no reason this should be only for T_MOV */
                     switch( OperandSize( assembler, last_opnd ) ) {
                     case 1:
                         cur_opnd = OP_I8;
-                        SET_OPSIZ_OFF( assembler.asmdefs.Code );
+                        SetOpsizOff( assembler.asmdefs.Code );
                         break;
                     case 2:
                         cur_opnd = OP_I16;
-                        SET_OPSIZ_16( assembler.asmdefs.Code );
+                        SetOpsiz16( assembler.asmdefs.Code );
                         break;
                     case 4:
                         cur_opnd = OP_I32;
-                        SET_OPSIZ_32( assembler.asmdefs.Code );
+                        SetOpsiz32( assembler.asmdefs.Code );
                         break;
                     default:
                         AsmError( *assembler.front, INVALID_INSTRUCTION_OPERANDS );

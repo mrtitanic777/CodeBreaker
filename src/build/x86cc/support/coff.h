@@ -109,9 +109,7 @@ typedef struct {
 
 #define COFF_SYM_EX_SIZE sizeof(coff_symbol_ex)
 
-#define _CoffSymType( complex, simple )         ( ( (complex) << 4 ) | (simple) )
-#define _CoffBaseType( sym_type )               ( (sym_type) & 0xf )
-#define _CoffComplexType( sym_type )            ( ( (sym_type) >> 4 ) & 0xf )
+inline int CoffSymType( int complex, int simple ) { return ( ( (complex) << 4 ) | (simple) ); }
 
 typedef struct {
     uint_32     bf;

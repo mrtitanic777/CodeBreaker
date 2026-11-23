@@ -88,7 +88,7 @@ name    *LowPart( BackRun& back, name *tosplit, type_class_def type_class )
                 Zoiks( back, ZOIKS_129 );
             } else { /* FD */
                 floatval = GetFloat( back, tosplit, FD );
-                new_part = AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, _TargetLongInt( U64LowLE( floatval->buffer.u64 ) ) ) );
+                new_part = AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, ( U64LowLE( floatval->buffer.u64 ) ) ) );
             }
         } else if( tosplit->c.const_type == CONS_ADDRESS ) {
             new_part = AddrConst( back, tosplit->c.u.op, (segment_id)tosplit->c.lo.u.int_value, CONS_OFFSET );
@@ -241,7 +241,7 @@ name    *HighPart( BackRun& back, name *tosplit, type_class_def type_class )
                 Zoiks( back, ZOIKS_129 );
             } else { /* FD */
                 floatval = GetFloat( back, tosplit, FD );
-                new_part = AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, _TargetLongInt( U64HighLE( floatval->buffer.u64 ) ) ) );
+                new_part = AllocConst( back, CFCnvU32F( back, &back.cfloat.cgh, ( U64HighLE( floatval->buffer.u64 ) ) ) );
             }
         } else if( tosplit->c.const_type == CONS_ADDRESS ) {
             new_part = AddrConst( back, tosplit->c.u.op, (segment_id)tosplit->c.lo.u.int_value, CONS_SEGMENT );
@@ -454,8 +454,8 @@ instruction     *rMAKEU4( BackRun& back, instruction *ins )
 
     left = ins->operands[0];
     rite = ins->operands[1];
-    true_idx = _TrueIndex( ins );
-    false_idx = _FalseIndex( ins );
+    true_idx = TrueIndex( ins );
+    false_idx = FalseIndex( ins );
     if( ins->head.opcode == OP_CMP_NOT_EQUAL ) {
         low = MakeCondition( back, ins->head.opcode, OffsetPart( back, left ),
                              OffsetPart( back, rite ), true_idx, NO_JUMP, U4 );
@@ -592,8 +592,8 @@ instruction     *rINTCOMP( BackRun& back, instruction *ins )
         CnvOpToInt( back, ins, 1 );
         right = ins->operands[1];
     }
-    true_idx = _TrueIndex( ins );
-    false_idx = _FalseIndex( ins );
+    true_idx = TrueIndex( ins );
+    false_idx = FalseIndex( ins );
     first_idx = ( ins->head.opcode == OP_CMP_EQUAL ) ? false_idx : true_idx;
     if( rite_is_zero ) {
         high = MakeCondition( back, OP_BIT_TEST_TRUE,
@@ -651,7 +651,7 @@ instruction     *rCONVERT_UP( BackRun& back, instruction *ins )
     // Fixed wrong type of temp.variable (must have sign of source operand).
     // Now it goes: U1/2->U4->U8/I8, I1/2->I4->U8/I8.
     //
-    type_class = ( _IsSigned( ins->base_type_class ) ) ? I4 : U4;
+    type_class = ( IsSigned( ins->base_type_class ) ) ? I4 : U4;
     temp = AllocTemp( back, type_class );
     ins1 = MakeConvert( back, ins->operands[0], temp, type_class, ins->base_type_class );
     DupSegOp( back, ins, ins1, 0 );    // 2005-09-25 RomanT (bug #341)

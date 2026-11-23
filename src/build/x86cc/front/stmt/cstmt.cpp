@@ -379,7 +379,7 @@ static void ReturnStmt( FrontRun& front, SYM_HANDLE func_result_handle, struct r
         TYPEPTR     func_type;
 
         func_type = front.cvars.CurFunc->sym_type->object;
-        SKIP_TYPEDEFS( func_type );
+        SkipTypedefs( func_type );
         tree = RValue( front, Expr(front) );
         CheckRetType( front, tree );
         tree = FixupAss( front, tree, func_type );
@@ -414,7 +414,7 @@ static void SetFuncReturnNode( FrontRun& front, TREEPTR tree )
 
     typ = front.cvars.CurFunc->sym_type->object;
     tree->u.expr_type = typ;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type == TYP_STRUCT
       || typ->decl_type == TYP_UNION ) {
         tree->right = LeafNode( front, OPR_NOP );      // place holder
@@ -429,7 +429,7 @@ static void CheckRetValue( FrontRun& front )
 
     typ = front.cvars.CurFunc->sym_type;
     typ = typ->object;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type != TYP_VOID ) {
         CWarn2p( front, ERR_MISSING_RETURN_VALUE, front.cvars.CurFunc->name );
     }
@@ -980,7 +980,7 @@ static void SwitchStmt( FrontRun& front )
     front.cstmt.SwitchStack = sw;
     tree = RValue( front, BracketExpr(front) );
     typ = TypeOf( tree );
-    SKIP_ENUM( typ );
+    SkipEnum( typ );
     switch( typ->decl_type ) {
     case TYP_BOOL:
     case TYP_USHORT:
@@ -1137,7 +1137,7 @@ static void FixupC99MainReturn( FrontRun& front, SYM_HANDLE func_result_handle, 
 
     /* In C99 mode, return statement need not be explicit for main()... */
     main_type = front.cvars.CurFunc->sym_type->object;
-    SKIP_TYPEDEFS( main_type );
+    SkipTypedefs( main_type );
     /* ... as long as return type is compatible with int */
     if( main_type->decl_type == TYP_INT ) {
         tree = IntLeaf( front, 0 );    /* zero is the default return value */

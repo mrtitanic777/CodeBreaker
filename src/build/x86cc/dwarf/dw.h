@@ -48,7 +48,6 @@
 /* max storage req'd in LEB128 form to store a 32 bit int/uint */
 #define MAX_LEB128      5
 
-#define GET_SEGMENT_SIZE(c)     (((c)->segment_size == 0) ? 2 : (c)->segment_size)
 
 
 

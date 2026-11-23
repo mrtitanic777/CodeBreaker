@@ -130,7 +130,7 @@ bool FoldIntoIndex( BackRun& back, instruction *ins )
             break;
         sib.ins = next;
         sib.offset = 0;
-        if( !HW_Equal( base_reg, HW_EMPTY ) && IsTargetModel( back, CGSW_X86_INDEXED_GLOBALS )
+        if( !HwEqual( base_reg, HW_EMPTY ) && IsTargetModel( back, CGSW_X86_INDEXED_GLOBALS )
          && sib.index->i.base != NULL
          && sib.index->i.base->n.class_ == N_MEMORY )
             break;
@@ -138,7 +138,7 @@ bool FoldIntoIndex( BackRun& back, instruction *ins )
          * Hey, we found a good one as long as reg dies immediately after it and we
          * don't need to save the base register slot for INDEXED GLOBALS
          */
-        if( HW_Equal( base_reg, HW_EMPTY ) ) {
+        if( HwEqual( base_reg, HW_EMPTY ) ) {
             sib.flags = sib.index->i.index_flags;
             if( cons_add ) {
                 int value;
@@ -164,8 +164,8 @@ bool FoldIntoIndex( BackRun& back, instruction *ins )
                 if( ins->operands[0] == ins->result ) {
                     sib.reg = sib.index->i.index;
                 } else {
-                    HW_Asgn( tmp, sib.index->i.index->r.reg );
-                    HW_TurnOff( tmp, ins->result->r.reg );
+                    HwAsgn( tmp, sib.index->i.index->r.reg );
+                    HwTurnOff( tmp, ins->result->r.reg );
                     /*
                      * following line is to prevent turning
                      * "shl r1,n -> r2; op i -> base[r1 + r2]"
@@ -175,18 +175,18 @@ bool FoldIntoIndex( BackRun& back, instruction *ins )
                      * stuff can't (currently) deal with same reg being
                      * both base and index.
                      */
-                    if( HW_Ovlap( tmp, other_reg ) )
+                    if( HwOvlap( tmp, other_reg ) )
                         break;
 
-                    HW_TurnOn( tmp, other_reg );
+                    HwTurnOn( tmp, other_reg );
                     sib.reg = AllocRegName( back, tmp );
                     tmp = Low64Reg( tmp );
                     if( sib.flags & X_LOW_BASE ) {
-                        if( HW_Equal( tmp, other_reg ) ) {
+                        if( HwEqual( tmp, other_reg ) ) {
                             sib.flags ^= ( X_HIGH_BASE | X_LOW_BASE );
                         }
                     } else if( sib.flags & X_HIGH_BASE ) {
-                        if( !HW_Equal( tmp, other_reg ) ) {
+                        if( !HwEqual( tmp, other_reg ) ) {
                             sib.flags ^= ( X_HIGH_BASE | X_LOW_BASE );
                         }
                     }
@@ -203,19 +203,19 @@ bool FoldIntoIndex( BackRun& back, instruction *ins )
             if( sib.scale != SCALE_NONE )
                 break;
             if( ins->operands[0] == ins->result ) {
-                HW_Asgn( tmp, base_reg );
-                HW_TurnOn( tmp, sib.index->i.index->r.reg );
+                HwAsgn( tmp, base_reg );
+                HwTurnOn( tmp, sib.index->i.index->r.reg );
             } else {
-                HW_Asgn( tmp, sib.index->i.index->r.reg );
+                HwAsgn( tmp, sib.index->i.index->r.reg );
                 HW_COnlyOn( tmp, HW_SEGS );
-                HW_TurnOn( tmp, other_reg );
-                HW_TurnOn( tmp, base_reg );
+                HwTurnOn( tmp, other_reg );
+                HwTurnOn( tmp, base_reg );
             }
             sib.reg = AllocRegName( back, tmp );
             sib.flags |= X_HIGH_BASE;
         }
         curr_sib = static_cast<sib_info *>(CGAlloc( back, sizeof( sib_info ) ));
-        Copy( &sib, curr_sib, sizeof( sib_info ) );
+        memcpy( curr_sib, &sib, sizeof( sib_info ) );
         curr_sib->next = sib_head;
         sib_head = curr_sib;
     } while( !dies && !modifies );

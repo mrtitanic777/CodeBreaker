@@ -57,15 +57,15 @@ static bool             AssignDominatorBits( BackRun& back )
     dom_bit_set id;
 
     back.dominate.ReturnBlock = NULL;
-    _DBitFirst( id );
+    DBitFirst( id );
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        if( _IsBlkAttr( blk, BLK_RETURN ) ) {
+        if( IsBlkAttr( blk, BLK_RETURN ) ) {
             if( back.dominate.ReturnBlock != NULL )
                 return( false );
             back.dominate.ReturnBlock = blk;
         }
-        _DBitAssign( blk->dom.id, id );
-        if( _DBitEmpty( id ) )
+        DBitAssign( blk->dom.id, id );
+        if( DBitEmpty( id ) )
             return( false );
         _DBitNext( &id );
     }
@@ -90,43 +90,43 @@ bool CalcDominatorInfo( BackRun& back )
     have_info = false;
     if( AssignDominatorBits(back) ) {
         have_info = true;
-        _DBitInit( full_set, ~0U );
+        DBitInit( full_set, ~0U );
         for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-            _DBitAssign( blk->dom.dominator,      full_set );
-            _DBitAssign( blk->dom.post_dominator, full_set );
+            DBitAssign( blk->dom.dominator,      full_set );
+            DBitAssign( blk->dom.post_dominator, full_set );
         }
-        _DBitAssign( back.data.HeadBlock->dom.dominator, back.data.HeadBlock->dom.id );
-        _DBitAssign( back.dominate.ReturnBlock->dom.post_dominator, back.dominate.ReturnBlock->dom.id );
+        DBitAssign( back.data.HeadBlock->dom.dominator, back.data.HeadBlock->dom.id );
+        DBitAssign( back.dominate.ReturnBlock->dom.post_dominator, back.dominate.ReturnBlock->dom.id );
         do {
             change = false;
             for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
                 if( blk != back.data.HeadBlock ) {
-                    _DBitAssign( old_dominator, blk->dom.dominator );
-                    _DBitAssign( predecessors, full_set );
+                    DBitAssign( old_dominator, blk->dom.dominator );
+                    DBitAssign( predecessors, full_set );
                     for( edge = blk->input_edges; edge != NULL; edge = edge->next_source ) {
-                        _DBitAssign( temp_bits, full_set );
-                        _DBitTurnOff( temp_bits, edge->source->dom.dominator );
-                        _DBitTurnOff( predecessors, temp_bits );
+                        DBitAssign( temp_bits, full_set );
+                        DBitTurnOff( temp_bits, edge->source->dom.dominator );
+                        DBitTurnOff( predecessors, temp_bits );
                     }
-                    _DBitTurnOn( predecessors, blk->dom.id );
-                    _DBitAssign( blk->dom.dominator, predecessors );
-                    if( !_DBitSame( blk->dom.dominator, old_dominator ) ) {
+                    DBitTurnOn( predecessors, blk->dom.id );
+                    DBitAssign( blk->dom.dominator, predecessors );
+                    if( !DBitSame( blk->dom.dominator, old_dominator ) ) {
                         change = true;
                     }
                 }
                 if( blk != back.dominate.ReturnBlock ) {
-                    _DBitAssign( old_dominator, blk->dom.post_dominator );
-                    _DBitAssign( successors, full_set );
+                    DBitAssign( old_dominator, blk->dom.post_dominator );
+                    DBitAssign( successors, full_set );
                     edge = &blk->edge[0];
                     for( i = 0; i < blk->targets; i++ ) {
-                        _DBitAssign( temp_bits, full_set );
-                        _DBitTurnOff( temp_bits, edge->destination.u.blk->dom.post_dominator );
-                        _DBitTurnOff( successors, temp_bits );
+                        DBitAssign( temp_bits, full_set );
+                        DBitTurnOff( temp_bits, edge->destination.u.blk->dom.post_dominator );
+                        DBitTurnOff( successors, temp_bits );
                         edge++;
                     }
-                    _DBitTurnOn( successors, blk->dom.id );
-                    _DBitAssign( blk->dom.post_dominator, successors );
-                    if( !_DBitSame( blk->dom.post_dominator, old_dominator ) ) {
+                    DBitTurnOn( successors, blk->dom.id );
+                    DBitAssign( blk->dom.post_dominator, successors );
+                    if( !DBitSame( blk->dom.post_dominator, old_dominator ) ) {
                         change = true;
                     }
                 }

@@ -78,18 +78,18 @@ void CLIWriteU8( BackRun& back, dw_client cli, dw_sectnum sect, uint_8 data )
 void BufWriteU16( dw_client cli, void *buf, uint_16 data )
 {
     if( cli->big_endian ) {
-        MPUT_BE_16_UN( buf, data );
+        PutBeU16Unaligned( buf, data );
     } else {
-        MPUT_LE_16_UN( buf, data );
+        PutLeU16Unaligned( buf, data );
     }
 }
 
 void BufWriteU32( dw_client cli, void *buf, uint_32 data )
 {
     if( cli->big_endian ) {
-        MPUT_BE_32_UN( buf, data );
+        PutBeU32Unaligned( buf, data );
     } else {
-        MPUT_LE_32_UN( buf, data );
+        PutLeU32Unaligned( buf, data );
     }
 }
 
@@ -98,9 +98,9 @@ void CLIWriteU16( BackRun& back, dw_client cli, dw_sectnum sect, uint_16 data )
     char            buf[sizeof( uint_16 )];
 
     if( cli->big_endian ) {
-        MPUT_BE_16( buf, data );
+        PutBeU16( buf, data );
     } else {
-        MPUT_LE_16( buf, data );
+        PutLeU16( buf, data );
     }
     CLIWrite( back, cli, sect, buf, sizeof( buf ) );
 }
@@ -110,9 +110,9 @@ void CLIWriteU32( BackRun& back, dw_client cli, dw_sectnum sect, uint_32 data )
     char            buf[sizeof( uint_32 )];
 
     if( cli->big_endian ) {
-        MPUT_BE_32( buf, data );
+        PutBeU32( buf, data );
     } else {
-        MPUT_LE_32( buf, data );
+        PutLeU32( buf, data );
     }
     CLIWrite( back, cli, sect, buf, sizeof( buf ) );
 }

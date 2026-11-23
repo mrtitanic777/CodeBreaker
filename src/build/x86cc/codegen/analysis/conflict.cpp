@@ -66,8 +66,8 @@ conflict_node   *AddConflictNode( BackRun& back, name *opnd )
     new_cn->name           = opnd;
     new_cn->next_conflict  = back.data.ConfList;
     new_cn->next_for_name  = opnd->v.conflict;
-    _GBitInit( new_cn->id.out_of_block, EMPTY );
-    _LBitInit( new_cn->id.within_block, EMPTY );
+    GBitInit( new_cn->id.out_of_block, EMPTY );
+    LBitInit( new_cn->id.within_block, EMPTY );
     new_cn->start_block    = NULL;
     new_cn->ins_range.first= NULL;
     new_cn->ins_range.last = NULL;
@@ -96,7 +96,7 @@ conflict_node   *AddConflictNode( BackRun& back, name *opnd )
         if( opnd->m.memory_type == CG_FE ) {
             attr = FEAttr( *back.front, static_cast<cg_sym_handle>(opnd->v.symbol) );
             if( (attr & FE_CONSTANT) || ( ( (attr & (FE_GLOBAL | FE_VISIBLE)) == 0 ) && IsModel( back, CGSW_GEN_RELAX_ALIAS ) ) ) {
-                _SetTrue( new_cn, CST_OK_ACROSS_CALLS );
+                SetTrue( new_cn, CST_OK_ACROSS_CALLS );
             }
         }
         opnd->v.conflict = new_cn;
@@ -372,7 +372,7 @@ void    FreeAConflict( BackRun& back, conflict_node *conf )
     conflict_node       *prev;
 
     if( conf->start_block != NULL ) {
-        _LBitTurnOn( conf->start_block->available_bit, conf->id.within_block );
+        LBitTurnOn( conf->start_block->available_bit, conf->id.within_block );
     }
     opnd = conf->name;
     prev = opnd->v.conflict;
@@ -407,7 +407,7 @@ void    FreeAConflict( BackRun& back, conflict_node *conf )
     }
     if( opnd->n.class_ == N_TEMP ) {
         opnd->t.u.blk_id = BLK_ID_NONE;
-        if( !_FrontEndTmp( opnd )
+        if( !FrontEndTmp( opnd )
           && opnd->v.conflict == NULL
           && ( opnd->v.usage & USE_IN_ANOTHER_BLOCK ) == 0
           && conf->start_block != NULL

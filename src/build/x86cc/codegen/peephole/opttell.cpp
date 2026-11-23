@@ -61,7 +61,7 @@ void    TellAddress( BackRun& back, label_handle lbl, offset addr )
 /**************************************************/
 {
   OptBegin( back );
-    _ValidLbl( lbl );
+    ValidLbl( lbl );
     lbl->lbl.address = addr;
   OptEnd( back );
 }
@@ -71,7 +71,7 @@ void    TellDonePatches( BackRun& back, label_handle lbl )
 /*****************************************/
 {
   OptBegin( back );
-    _ValidLbl( lbl );
+    ValidLbl( lbl );
     lbl->lbl.patches = NULL;
   OptEnd( back );
 }
@@ -81,25 +81,25 @@ void    TellReachedLabel( BackRun& back, label_handle lbl )
 /******************************************/
 {
   OptBegin( back );
-    _ValidLbl( lbl );
-    _SetStatus( lbl, REACHED );
+    ValidLbl( lbl );
+    SetStatus( lbl, REACHED );
   OptEnd( back );
 }
 
 void    TellProcLabel( label_handle lbl )
 /***************************************/
 {
-    _ValidLbl( lbl );
-    _SetStatus( lbl, PROCEDURE );
+    ValidLbl( lbl );
+    SetStatus( lbl, PROCEDURE );
 }
 
 void    TellCommonLabel( BackRun& back, label_handle lbl, import_handle imphdl )
 /***************************************************************/
 {
   OptBegin( back );
-    _ValidLbl( lbl );
-    lbl->lbl.sym = IMPHDL2SYM( imphdl );
-    _SetStatus( lbl, COMMON_LBL );
+    ValidLbl( lbl );
+    lbl->lbl.sym = ImpHdlToSym( imphdl );
+    SetStatus( lbl, COMMON_LBL );
   OptEnd( back );
 }
 
@@ -108,8 +108,8 @@ void    TellKeepLabel( BackRun& back, label_handle lbl )
 /***************************************/
 {
   OptBegin( back );
-    _ValidLbl( lbl );
-    _SetStatus( lbl, KEEPLABEL );
+    ValidLbl( lbl );
+    SetStatus( lbl, KEEPLABEL );
   OptEnd( back );
 }
 
@@ -119,9 +119,9 @@ void    TellNoSymbol( BackRun& back, label_handle lbl )
 {
   OptBegin( back );
     if( lbl != NULL ) {
-        _ValidLbl( lbl );
+        ValidLbl( lbl );
         lbl->lbl.sym = NULL;
-        if( _TstStatus( lbl, CODELABEL ) ) {
+        if( TstStatus( lbl, CODELABEL ) ) {
             GenKillLabel( back, lbl );
         }
     }
@@ -153,7 +153,7 @@ void    TellScrapLabel( BackRun& back, label_handle lbl )
 {
   OptBegin( back );
     /* data labels in the code segment can't get freed until the end */
-    if( _TstStatus( lbl, CODELABEL ) ) {
+    if( TstStatus( lbl, CODELABEL ) ) {
         ReallyScrapLabel( back, lbl );
     }
   OptEnd( back );
@@ -164,8 +164,8 @@ void    TellCondemnedLabel( BackRun& back, label_handle lbl )
 /********************************************/
 {
   OptBegin( back );
-    _ValidLbl( lbl );
-    _SetStatus( lbl, CONDEMNED );
+    ValidLbl( lbl );
+    SetStatus( lbl, CONDEMNED );
   OptEnd( back );
 }
 
@@ -177,8 +177,8 @@ static  label_handle    NextCondemned( BackRun& back, label_handle lbl )
     for( ;; ) {
         if( lbl == NULL )
             break;
-        if( _TstStatus( lbl, CONDEMNED ) ) {
-            _ClrStatus( lbl, CONDEMNED );
+        if( TstStatus( lbl, CONDEMNED ) ) {
+            ClrStatus( lbl, CONDEMNED );
             break;
         }
         lbl = lbl->lbl.link;
@@ -211,9 +211,9 @@ void    TellFreeAllLabels( BackRun& back )
   OptBegin( back );
     unfreed = false;
     while( back.optdata.Handles != NULL ) {
-        if( _TstStatus( back.optdata.Handles, CODELABEL )
+        if( TstStatus( back.optdata.Handles, CODELABEL )
          && back.optdata.Handles->lbl.sym == NULL
-         && !_TstStatus( back.optdata.Handles, REDIRECTION )
+         && !TstStatus( back.optdata.Handles, REDIRECTION )
          && !unfreed ) {
             Zoiks( back, ZOIKS_001 );
             unfreed = true;
@@ -235,7 +235,7 @@ void    TellUnreachLabels( BackRun& back )
   OptBegin( back );
     for( lbl = back.optdata.Handles; lbl != NULL; lbl = lbl->lbl.link ) {
         if( lbl->lbl.address != ADDR_UNKNOWN ) {
-            _SetStatus( lbl, UNREACHABLE );
+            SetStatus( lbl, UNREACHABLE );
         }
     }
   OptEnd( back );

@@ -79,7 +79,7 @@ type_class_def  AddCallBlock( BackRun& back, cg_sym_handle sym, const type_def *
     }
     NewProc( back, FELexLevel( sym ) );
     EnLink( back, AskForSymLabel( back, sym, CG_FE ) );
-    _MarkBlkAttrSet( back.data.CurrBlock, BLK_BIG_LABEL );
+    MarkBlkAttrSet( back.data.CurrBlock, BLK_BIG_LABEL );
     back.data.CurrProc->label = back.data.CurrBlock->label;
     type_class = InitCallState( back, tipe );
     AddIns( back, MakeNop(back) );
@@ -226,7 +226,7 @@ name    *DoParmDecl( BackRun& back, cg_sym_handle sym, const type_def *tipe, hw_
      * them specially to stop the optimizer from eliminating the writes (don't
      * create temps normally used with simple types).
      */
-    if( _RoutineIsInterrupt( back.data.CurrProc->state.attr ) && HW_CEqual( reg, HW_EMPTY ) ) {
+    if( RoutineIsInterrupt( back.data.CurrProc->state.attr ) && HW_CEqual( reg, HW_EMPTY ) ) {
         no_temp = true;
         temp->v.usage |= USE_ADDRESS;
     }

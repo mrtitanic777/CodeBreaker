@@ -161,7 +161,7 @@ typedef enum {
     F_ALT_DLLIMP    = 0x40, /* special trigger value */
 } fix_class;
 
-#define F_CLASS(c)  (c & F_MASK)
+inline fix_class FixClass( fix_class c ) { return (c & F_MASK); }
 
 typedef enum {
     AP_HAVE_VALUE           = 0x01,

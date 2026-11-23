@@ -57,9 +57,9 @@ static  instruction     *CompareIns( block *blk )
 {
     instruction         *last;
 
-    if( _IsBlkAttr( blk, BLK_CONDITIONAL ) ) {
+    if( IsBlkAttr( blk, BLK_CONDITIONAL ) ) {
         for( last = blk->ins.head.prev; last->head.opcode != OP_BLOCK; last = last->head.prev ) {
-            if( _OpIsCompare( last->head.opcode ) ) {
+            if( OpIsCompare( last->head.opcode ) ) {
                 return( last );
             }
         }
@@ -215,7 +215,7 @@ static  bool            LastBlock( BackRun& back, block *blk, bool forward )
 /***********************************************************/
 {
     if( forward ) {
-        if( _IsBlkAttr( blk, BLK_RETURN ) ) {
+        if( IsBlkAttr( blk, BLK_RETURN ) ) {
             return( true );
         }
     } else {
@@ -291,12 +291,12 @@ static  void            *DominatingDeref( BackRun& back, parm_struct *parms )
     result = BlockSearch( back, parms->blk, NextIns( parms->ins, parms->forward ), parms->op, parms->forward );
     switch( result ) {
     case BLOCK_DEREFS:
-        return( TO_SR_VALUE( true ) );
+        return( ToSrValue( true ) );
     case BLOCK_REDEFS:
-        return( TO_SR_VALUE( false ) );
+        return( ToSrValue( false ) );
     }
     if( LastBlock( back, parms->blk, parms->forward ) || (parms->op->v.usage & USE_IN_ANOTHER_BLOCK) == 0 )
-        return( TO_SR_VALUE( false ) );
+        return( ToSrValue( false ) );
     stk = InitStack(back);
     PushTargets( back, stk, parms->blk, parms->forward );
     for( dominated = true; dominated; ) {
@@ -304,7 +304,7 @@ static  void            *DominatingDeref( BackRun& back, parm_struct *parms )
             break;
         edge = Pop( back, stk );
         blk = EdgeBlock( edge, parms->forward );
-        if( _IsBlkVisited( blk ) )
+        if( IsBlkVisited( blk ) )
             continue;
         result = BlockSearch( back, blk, FirstIns( blk, parms->forward ), parms->op, parms->forward );
         switch( result ) {
@@ -326,10 +326,10 @@ static  void            *DominatingDeref( BackRun& back, parm_struct *parms )
                 dominated = false;
             }
         }
-        _MarkBlkVisited( blk );
+        MarkBlkVisited( blk );
     }
     FiniStack( back, stk );
-    return( TO_SR_VALUE( dominated ) );
+    return( ToSrValue( dominated ) );
 }
 
 static void     FloodDown( BackRun& back, block *blk, block_class bits )
@@ -340,8 +340,8 @@ static void     FloodDown( BackRun& back, block *blk, block_class bits )
 
     stk = InitStack(back);
     for( ;; ) {
-        if( _IsBlkAttr( blk, bits ) ) {
-            _MarkBlkAttrSet( blk, bits );
+        if( IsBlkAttr( blk, bits ) ) {
+            MarkBlkAttrSet( blk, bits );
             PushTargets( back, stk, blk, true );
         }
         if( Empty( stk ) )
@@ -358,7 +358,7 @@ static  bool            BlockSideEffect( BackRun& back, block *blk )
     instruction         *ins;
 
     for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-        if( _OpIsCall( ins->head.opcode ) )
+        if( OpIsCall( ins->head.opcode ) )
             return( true );
         if( SideEffect( back, ins ) ) {
             return( true );
@@ -377,11 +377,11 @@ static  bool            EdgeHasSideEffect( BackRun& back, block *blk, instructio
     block_edge          *edge;
 
     if( cmp_result ) {
-        taken = blk->edge[_TrueIndex( cmp )].destination.u.blk;
-        elim = blk->edge[_FalseIndex( cmp )].destination.u.blk;
+        taken = blk->edge[TrueIndex( cmp )].destination.u.blk;
+        elim = blk->edge[FalseIndex( cmp )].destination.u.blk;
     } else {
-        taken = blk->edge[_FalseIndex( cmp )].destination.u.blk;
-        elim = blk->edge[_TrueIndex( cmp )].destination.u.blk;
+        taken = blk->edge[FalseIndex( cmp )].destination.u.blk;
+        elim = blk->edge[TrueIndex( cmp )].destination.u.blk;
     }
     MarkBlkAllUnVisited( back );
     FloodDown( back, taken, BLK_BLOCK_VISITED );
@@ -393,7 +393,7 @@ static  bool            EdgeHasSideEffect( BackRun& back, block *blk, instructio
      * the other edge of the graph (the edge which is taken).
      */
     for( side_effect = false; !side_effect; ) {
-        if( !_IsBlkVisited( elim ) ) {
+        if( !IsBlkVisited( elim ) ) {
             if( BlockSideEffect( back, elim ) ) {
                 side_effect = true;
                 break;
@@ -401,7 +401,7 @@ static  bool            EdgeHasSideEffect( BackRun& back, block *blk, instructio
             // should add something here which cuts out if we see a
             // deref of the temp we are searching for - a call to
             // BlockSearch with the appropriate parms should do
-            _MarkBlkVisited( elim );
+            MarkBlkVisited( elim );
             PushTargets( back, stk, elim, true );
         }
         if( Empty( stk ) )
@@ -427,10 +427,10 @@ static  bool            NullProp( BackRun& back, block *blk )
         return( false );
     switch( cmp->head.opcode ) {
     case OP_CMP_EQUAL:
-        dest_idx = _FalseIndex( cmp );
+        dest_idx = FalseIndex( cmp );
         break;
     case OP_CMP_NOT_EQUAL:
-        dest_idx = _TrueIndex( cmp );
+        dest_idx = TrueIndex( cmp );
         break;
     default:
         return( false );
@@ -447,7 +447,7 @@ static  bool            NullProp( BackRun& back, block *blk )
     parms.op = *ptr;
     parms.forward = true;
     MarkBlkAllUnVisited( back );
-    if( FROM_SR_VALUE( DominatingDeref( back, &parms ), bool ) ) {
+    if( FromSrValue<bool>( DominatingDeref( back, &parms )) ) {
         if( !EdgeHasSideEffect( back, blk, cmp, cmp->head.opcode == OP_CMP_NOT_EQUAL ) ) {
             // only nuke the edge if the code we are removing
             // does not have a side effect or if the dominators are before the compare
@@ -457,7 +457,7 @@ static  bool            NullProp( BackRun& back, block *blk )
     }
     parms.forward = false;
     MarkBlkAllUnVisited( back );
-    if( FROM_SR_VALUE( DominatingDeref( back, &parms ), bool ) ) {
+    if( FromSrValue<bool>( DominatingDeref( back, &parms )) ) {
         KillCondBlk( back, blk, cmp, dest_idx );
         return( true );
     }

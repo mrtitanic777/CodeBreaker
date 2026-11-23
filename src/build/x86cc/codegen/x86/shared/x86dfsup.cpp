@@ -123,7 +123,7 @@ void   DFOutReg( BackRun& back, dw_loc_id locid, name *reg )
         dw_reg =  RegTransDW( back, hw_low );
         DWLocReg( back, back.dfsyms.Client, locid, dw_reg );
         DWLocPiece( back, back.dfsyms.Client, locid, WD );
-        HW_TurnOff( hw_reg, hw_low );
+        HwTurnOff( hw_reg, hw_low );
         dw_reg = RegTransDW( back, hw_reg );
         DWLocReg( back, back.dfsyms.Client, locid, dw_reg );
         DWLocPiece( back, back.dfsyms.Client, locid, WD );

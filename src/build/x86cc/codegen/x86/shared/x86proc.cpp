@@ -64,7 +64,7 @@
 #include "backrun.hpp"
 
 
-#define WORDS_COUNT(size)   (((size) + WORD_SIZE - 1) / WORD_SIZE)
+inline int WordsCount( int size ) { return (((size) + WORD_SIZE - 1) / WORD_SIZE); }
 
 static CB_ALWAYS_INLINE bool WindowsCheap( BackRun& back )
 {
@@ -102,7 +102,7 @@ static CB_ALWAYS_INLINE bool CheapFrame( BackRun& back )
 
 static CB_ALWAYS_INLINE bool FarRetOnStack( BackRun& back )
 {
-    return _RoutineIsLong( back.data.CurrProc->state.attr )
+    return RoutineIsLong( back.data.CurrProc->state.attr )
         && (back.data.CurrProc->state.attr & ROUTINE_NEVER_RETURNS_ABORTS) == 0;
 }
 
@@ -185,7 +185,7 @@ static  bool    ScanInstructions( BackRun& back )
                     back.x86proc_file.ParmsReferenced = true;
                 }
             }
-            if( _OpIsCall( ins->head.opcode ) ) {
+            if( OpIsCall( ins->head.opcode ) ) {
                 if( ins->head.opcode == OP_CALL_INDIRECT ) {
                     back.data.CurrProc->contains_call = true;
                 } else {
@@ -272,10 +272,10 @@ static  block *ScanForLabelReturn( BackRun& back, block *blk )
     block       *son;
     block_num   i;
 
-    if( _IsBlkAttr( blk, BLK_RETURN | BLK_CALL_LABEL ) )
+    if( IsBlkAttr( blk, BLK_RETURN | BLK_CALL_LABEL ) )
         return( NULL );
     blk->edge[0].flags |= BEF_DOWN_ONE_CALL;
-    if( _IsBlkAttr( blk, BLK_LABEL_RETURN ) )
+    if( IsBlkAttr( blk, BLK_LABEL_RETURN ) )
         return( blk );
     for( i = 0; i < blk->targets; ++i ) {
         son = blk->edge[i].destination.u.blk;
@@ -302,7 +302,7 @@ static  bool    ScanLabelCalls( BackRun& back )
     block   *blk;
 
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        if( !_IsBlkAttr( blk, BLK_CALL_LABEL ) )
+        if( !IsBlkAttr( blk, BLK_CALL_LABEL ) )
             continue;
         if( ScanForLabelReturn( back, blk->edge[0].destination.u.blk ) == NULL ) {
             return( false );
@@ -421,7 +421,7 @@ static  void    EmitNameInCode( BackRun& back )
     if( sym == NULL )
         return;
     name = FEName( *back.front, sym );
-    len = Length( name );
+    len = strlen( name );
     lbl = AskForNewLabel(back);
     TellKeepLabel( back, lbl );
     CodeLabel( back, lbl, 0 );
@@ -433,7 +433,7 @@ static  void    EmitNameInCode( BackRun& back )
 static  int ProEpiDataSize( BackRun& back )
 /********************************/
 {
-    return( _RoundUp( (int)(pointer_uint)FEAuxInfo( *back.front, NULL, FEINF_PROEPI_DATA_SIZE ), WORD_SIZE ) );
+    return( RoundUp( (int)(pointer_uint)FEAuxInfo( *back.front, NULL, FEINF_PROEPI_DATA_SIZE ), WORD_SIZE ) );
 }
 
 
@@ -541,7 +541,7 @@ static  void    AllocStack( BackRun& back )
     /*
      * keep stack aligned
      */
-    size = _RoundUp( back.data.CurrProc->locals.size, WORD_SIZE );
+    size = RoundUp( back.data.CurrProc->locals.size, WORD_SIZE );
     back.data.CurrProc->locals.size = size;
     if( back.data.BlockByBlock ) {
         GenUnkSub( back, HW_xSP, &back.data.CurrProc->targ.prolog_loc );
@@ -653,7 +653,7 @@ static  void    DoEnter( BackRun& back, level_depth level )
     /*
      * keep stack aligned
      */
-    size = _RoundUp( back.data.CurrProc->locals.size, WORD_SIZE );
+    size = RoundUp( back.data.CurrProc->locals.size, WORD_SIZE );
     back.data.CurrProc->locals.size = size;
 
     back.data.CurrProc->parms.base += WORD_SIZE;
@@ -733,13 +733,13 @@ static  void    CalcUsedRegs( BackRun& back )
             result = ins->result;
             if( result != NULL
               && result->n.class_ == N_REGISTER ) {
-                HW_TurnOn( used, result->r.reg );
+                HwTurnOn( used, result->r.reg );
             }
             /*
              * place holder for big label doesn't really zap anything
              */
             if( ins->head.opcode != OP_NOP ) {
-                HW_TurnOn( used, ins->zap->reg );
+                HwTurnOn( used, ins->zap->reg );
                 if( HW_COvlap( ins->zap->reg, HW_xSP ) ) {
                     back.data.CurrProc->prolog_state |= PST_RESET_SP;
                 }
@@ -750,7 +750,7 @@ static  void    CalcUsedRegs( BackRun& back )
       || back.data.CurrProc->targ.sp_align ) {
         HW_CTurnOff( used, HW_xBP );
     }
-    HW_TurnOn( back.data.CurrProc->state.used, used );
+    HwTurnOn( back.data.CurrProc->state.used, used );
 }
 
 
@@ -769,10 +769,10 @@ static  int Push( BackRun& back, hw_reg_set to_push )
     for( i = 0; i < sizeof( PushRegs ) / sizeof( PushRegs[0] ) - 1; i++ ) {
         if( HW_CEqual( to_push, HW_EMPTY ) )
             break;
-        if( HW_Ovlap( PushRegs[i], to_push ) ) {
+        if( HwOvlap( PushRegs[i], to_push ) ) {
             QuickSave( back, PushRegs[i], OP_PUSH );
             size += WORD_SIZE;
-            HW_TurnOff( to_push, PushRegs[i] );
+            HwTurnOff( to_push, PushRegs[i] );
         }
     }
     return( size );
@@ -791,9 +791,9 @@ static  void        Pop( BackRun& back, hw_reg_set to_pop )
     for( i = sizeof( PushRegs ) / sizeof( PushRegs[0] ) - 1; i-- > 0 ; ) {
         if( HW_CEqual( to_pop, HW_EMPTY ) )
             break;
-        if( HW_Ovlap( PushRegs[i], to_pop ) ) {
+        if( HwOvlap( PushRegs[i], to_pop ) ) {
             QuickSave( back, PushRegs[i], OP_POP );
-            HW_TurnOff( to_pop, PushRegs[i] );
+            HwTurnOff( to_pop, PushRegs[i] );
         }
     }
 }
@@ -822,7 +822,7 @@ bool    EpilogIsLeaveOnly( BackRun& back )
 
     if( IsntTargetModel( back, CGSW_X86_MSC8 ) || !CPULevel( back, CPU_186 ) )
         return( false );
-    if( _RoutineIsInterrupt( back.data.CurrProc->state.attr ) || ChainFrame( back ) )
+    if( RoutineIsInterrupt( back.data.CurrProc->state.attr ) || ChainFrame( back ) )
         return( false );
     if( (back.data.CurrProc->state.attr & ROUTINE_NEEDS_PROLOG) == 0 )
         return( false );
@@ -843,7 +843,7 @@ static  void    DoEpilog( BackRun& back )
     bool    is_long;
     type_length size;
 
-    if( _RoutineIsInterrupt( back.data.CurrProc->state.attr ) ) {
+    if( RoutineIsInterrupt( back.data.CurrProc->state.attr ) ) {
         PopAll(back);
     } else {
         to_pop = SaveRegs(back);
@@ -911,8 +911,8 @@ static  void    DoEpilog( BackRun& back )
         }
     }
 
-    is_long = ( _RoutineIsLong( back.data.CurrProc->state.attr )
-                || _RoutineIsFar16( back.data.CurrProc->state.attr ) );
+    is_long = ( RoutineIsLong( back.data.CurrProc->state.attr )
+                || RoutineIsFar16( back.data.CurrProc->state.attr ) );
 #if _TARGET & _TARG_80386
     if( back.data.CurrProc->prolog_state & PST_PROLOG_THUNK ) {
         QuickSave( back, HW_xSP, OP_POP );
@@ -923,7 +923,7 @@ static  void    DoEpilog( BackRun& back )
     }
 #endif
 
-    if( _RoutineIsInterrupt( back.data.CurrProc->state.attr ) ) {
+    if( RoutineIsInterrupt( back.data.CurrProc->state.attr ) ) {
         GenIRET(back);
     } else if( back.data.CurrProc->state.attr & ROUTINE_REMOVES_PARMS ) {
         GenReturn( back, back.data.CurrProc->parms.size, is_long );
@@ -970,7 +970,7 @@ void    AddCacheRegs( BackRun& back )
         back.data.CurrProc->targ.sp_align = true;
     } else if( !DoBpChain( back )
       && IsntTargetModel( back, CGSW_X86_WINDOWS )
-      && !_RoutineIsInterrupt( back.data.CurrProc->state.attr ) ) {
+      && !RoutineIsInterrupt( back.data.CurrProc->state.attr ) ) {
         /*
          * We cannot make EBP available under Windows because the SS
          * selector might not cover the data segment and so we cannot use
@@ -994,13 +994,13 @@ static unsigned returnAddressStackSize( BackRun& back )
 {
     unsigned    size;
 
-    if( _RoutineIsInterrupt( back.data.CurrProc->state.attr ) ) {
+    if( RoutineIsInterrupt( back.data.CurrProc->state.attr ) ) {
         size = 0;
     } else if( back.data.CurrProc->state.attr & ROUTINE_NEVER_RETURNS_ABORTS ) {
         size = 0;
-    } else if( _RoutineIsLong( back.data.CurrProc->state.attr ) ) {
+    } else if( RoutineIsLong( back.data.CurrProc->state.attr ) ) {
         size = 2 * WORD_SIZE;
-    } else if( _RoutineIsFar16( back.data.CurrProc->state.attr ) ) {
+    } else if( RoutineIsFar16( back.data.CurrProc->state.attr ) ) {
         size = 2 * WORD_SIZE;
     } else {
         size = WORD_SIZE;
@@ -1041,7 +1041,7 @@ void    GenProlog( BackRun& back )
         origlabel = label = back.data.CurrProc->label;
 
 #if _TARGET & _TARG_80386
-        if( _RoutineIsFar16( back.data.CurrProc->state.attr ) ) {
+        if( RoutineIsFar16( back.data.CurrProc->state.attr ) ) {
             label = GenFar16Thunk( back, back.data.CurrProc->label, back.data.CurrProc->parms.size,
                         ( back.data.CurrProc->state.attr & ROUTINE_REMOVES_PARMS ) != 0 );
 //            CurrProc->label = label; /* ugly mess if following are combined */
@@ -1099,7 +1099,7 @@ void    GenProlog( BackRun& back )
             /*
              * don't do anything - empty prologue
              */
-        } else if( _RoutineIsInterrupt( back.data.CurrProc->state.attr ) ) {
+        } else if( RoutineIsInterrupt( back.data.CurrProc->state.attr ) ) {
             ret_size = -PushAll(back);
             back.data.CurrProc->targ.base_adjust = 0;
             MoveParms(back);
@@ -1185,7 +1185,7 @@ void    GenProlog( BackRun& back )
     SetOP( back, old_segid ); }
 
     if( back.data.CurrProc->prolog_state & PST_EXPORT ) {
-        OutDLLExport( back, WORDS_COUNT( back.data.CurrProc->parms.size ), AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) ) );
+        OutDLLExport( back, WordsCount( back.data.CurrProc->parms.size ), AskForLblSym( back, static_cast<label_handle>(back.data.CurrProc->label) ) );
     }
 }
 
@@ -1285,7 +1285,7 @@ type_length PushSize( type_length len )
 {
     if( len < WORD_SIZE )
         return( WORD_SIZE );
-    return( _RoundUp( len, WORD_SIZE ) );
+    return( RoundUp( len, WORD_SIZE ) );
 }
 
 

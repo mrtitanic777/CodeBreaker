@@ -100,7 +100,7 @@ static  name    **Enregister( BackRun& back, instruction *ins )
     /*
      * only RISCify CMPs, TESTs, and MOVs when optimizing for size
      */
-    if( back.x86ldstr.PreferSize && !_OpIsCondition( ins->head.opcode ) )
+    if( back.x86ldstr.PreferSize && !OpIsCondition( ins->head.opcode ) )
         return( NULL );
     for( i = ins->num_operands; i-- > 0; ) {
         switch( ins->operands[i]->n.class_ ) {
@@ -112,7 +112,7 @@ static  name    **Enregister( BackRun& back, instruction *ins )
             break;
         }
     }
-    if( ins->result != NULL && !_OpIsCondition( ins->head.opcode ) ) {
+    if( ins->result != NULL && !OpIsCondition( ins->head.opcode ) ) {
         switch( ins->result->n.class_ ) {
         case N_INDEXED:
         case N_MEMORY:
@@ -162,9 +162,9 @@ static const hw_reg_set *FindRegister( BackRun& back, instruction *ins )
         return( NULL );
     }
     except = ins->head.live.regs;
-    HW_TurnOn( except, ins->zap->reg );
+    HwTurnOn( except, ins->zap->reg );
     if( ins->result != NULL && ins->result->n.class_ == N_REGISTER ) {
-        HW_TurnOn( except, ins->result->r.reg );
+        HwTurnOn( except, ins->result->r.reg );
     }
     regs = *rover_ptr;
     if( regs == NULL ) {
@@ -190,7 +190,7 @@ static const hw_reg_set *FindRegister( BackRun& back, instruction *ins )
         if( HW_CEqual( *regs, HW_EMPTY ) ) {
             regs = start;
         }
-        if( !HW_Ovlap( *curregs, except ) ) {
+        if( !HwOvlap( *curregs, except ) ) {
             *rover_ptr = regs;  /* next run will use next register */
             break;
         }
@@ -341,8 +341,8 @@ static  void    RestoreMem16Move( BackRun& back, instruction *ins )
         return;
     if( ins->result->n.class_ == N_REGISTER && other->result->n.class_ == N_REGISTER ) {
         full = HW_EMPTY;
-        HW_TurnOn( full, other->result->r.reg );
-        HW_TurnOn( full, ins->result->r.reg );
+        HwTurnOn( full, other->result->r.reg );
+        HwTurnOn( full, ins->result->r.reg );
         ins->result = AllocRegName( back, full );
         ins->type_class = U2;
         FreeIns( back, other );
@@ -461,7 +461,7 @@ static bool CanCompressOperand( instruction *ins, name **popnd )
     name        *op;
 
     reg = (*popnd)->r.reg;
-    if( HW_Ovlap( reg, ins->head.next->head.live.regs ) ) {
+    if( HwOvlap( reg, ins->head.next->head.live.regs ) ) {
         return( false );
     }
     /*
@@ -471,7 +471,7 @@ static bool CanCompressOperand( instruction *ins, name **popnd )
     for( i = 0; i < ins->num_operands; i++ ) {
         if( &ins->operands[i] != popnd ) {
             op = ins->operands[i];
-            if( op->n.class_ == N_REGISTER && HW_Ovlap( op->r.reg, reg ) ) {
+            if( op->n.class_ == N_REGISTER && HwOvlap( op->r.reg, reg ) ) {
                 return( false );
             }
         }
@@ -483,11 +483,11 @@ static bool CanCompressOperand( instruction *ins, name **popnd )
     if( op != NULL ) {
         switch( op->n.class_ ) {
         case N_REGISTER:
-            if( HW_Ovlap( op->r.reg, reg ) )
+            if( HwOvlap( op->r.reg, reg ) )
                 return( false );
             break;
         case N_INDEXED:
-            if( HW_Ovlap( op->i.index->r.reg, reg ) )
+            if( HwOvlap( op->i.index->r.reg, reg ) )
                 return( false );
             break;
         default:
@@ -507,7 +507,7 @@ static bool     CanCompressResult( instruction *ins,
     name        *op;
 
     reg = ins->result->r.reg;
-    if( HW_Ovlap( reg, next->head.next->head.live.regs ) ) {
+    if( HwOvlap( reg, next->head.next->head.live.regs ) ) {
         return( false );
     }
     if( popnd != NULL ) {
@@ -520,7 +520,7 @@ static bool     CanCompressResult( instruction *ins,
     } else {
         for( i = 0; i < ins->num_operands; ++i ) {
             op = ins->operands[i];
-            if( op->n.class_ == N_REGISTER && HW_Ovlap( op->r.reg, reg ) ) {
+            if( op->n.class_ == N_REGISTER && HwOvlap( op->r.reg, reg ) ) {
                 return( false );
             }
         }

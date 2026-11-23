@@ -61,13 +61,12 @@
 *
 ****************************************************************************/
 
-#define TEST_UNC(x)         ((x)[0] == '\\' && (x)[1] == '\\')
-#define TEST_DRIVE(x)       (isalpha( (x)[0] ) && (x)[1] == ':')
+inline bool IsUncPath( const char *x ) { return ((x)[0] == '\\' && (x)[1] == '\\'); }
+inline bool HasDrive( const char *x ) { return (isalpha( (x)[0] ) && (x)[1] == ':'); }
 
-#define CHAR2DRIVE(x)       (tolower(x) - 'a')
 
     #define PC '\\'
-    #define ISPS(c)   ((c)==PC || (c)=='/')
+inline bool IsPathSepChar( int c ) { return ((c)==PC || (c)=='/'); }
 
 /****************************************************************************
 *
@@ -133,19 +132,19 @@ void  _splitpath2( char const *inp, char *outp, char **drive, char **path, char 
      * process node/drive/UNC specification
      */
     startp = inp;
-    if( TEST_UNC( inp ) ) {
+    if( IsUncPath( inp ) ) {
         inp += 2;
         for( ;; ) {
             if( *inp == '\0' )
                 break;
-            if( ISPS( *inp ) )
+            if( IsPathSepChar( *inp ) )
                 break;
             if( *inp == '.' )
                 break;
             inp++;
         }
         outp = pcopy( drive, outp, startp, inp );
-    } else if( TEST_DRIVE( inp ) ) {
+    } else if( HasDrive( inp ) ) {
         /*
          * process drive specification
          */
@@ -180,7 +179,7 @@ void  _splitpath2( char const *inp, char *outp, char **drive, char **path, char 
             continue;
         }
         inp++;
-        if( ISPS( ch ) ) {
+        if( IsPathSepChar( ch ) ) {
             fnamep = inp;
             dotp = NULL;
         }
@@ -546,7 +545,7 @@ static int is_directory( const char *name )
         prev_ch = curr_ch;
         curr_ch = *name;
         if( curr_ch == '\0' ) {
-            if( ISPS( prev_ch )
+            if( IsPathSepChar( prev_ch )
               || prev_ch == ':' ){
                 /* directory, need add "*.*" */
                 return( 2 );
@@ -572,9 +571,9 @@ static int is_directory( const char *name )
 void GETNTDIRINFOXX( struct DIRENTXX *dirp, LPWIN32_FIND_DATA ffd )
 /*****************************************************************/
 {
-    DTAXXX_TSTAMP_OF( dirp->d_dta ) = __NT_filetime_to_timet( &ffd->ftLastWriteTime );
+    DtaTimeOf( dirp->d_dta ) = __NT_filetime_to_timet( &ffd->ftLastWriteTime );
     MAKEDOSDTXX( &ffd->ftLastWriteTime, &dirp->d_date, &dirp->d_time );
-    dirp->d_attr = NT2DOSATTR( ffd->dwFileAttributes );
+    dirp->d_attr = NtToDosAttr( ffd->dwFileAttributes );
     dirp->d_size = ffd->nFileSizeLow;
     strncpy( dirp->d_name, ffd->cFileName, NAME_MAX );
     dirp->d_name[NAME_MAX] = 0;
@@ -587,7 +586,7 @@ static DIRXX *__opendir( const char *dirname, DIRXX *dirp )
     HANDLE              osffh;
 
     if( dirp->d_first != _DIR_CLOSED ) {
-        FindClose( DTAXXX_HANDLE_OF( dirp->d_dta ) );
+        FindClose( DtaHandleOf( dirp->d_dta ) );
         dirp->d_first = _DIR_CLOSED;
     }
     osffh = FindFirstFile( dirname, &ffd );
@@ -595,7 +594,7 @@ static DIRXX *__opendir( const char *dirname, DIRXX *dirp )
         errno = ENOENT;
         return( NULL );
     }
-    DTAXXX_HANDLE_OF( dirp->d_dta ) = osffh;
+    DtaHandleOf( dirp->d_dta ) = osffh;
     GETNTDIRINFOXX( dirp, &ffd );
     dirp->d_first = _DIR_ISFIRST;
     return( dirp );
@@ -636,7 +635,7 @@ DIRXX *OPENDIRXX( SupportRun& support, const char *dirname )
     }
     dirp = static_cast<DIR *>(support.held->malloc( sizeof( *dirp ) ));
     if( dirp == NULL ) {
-        FindClose( DTAXXX_HANDLE_OF( tmp.d_dta ) );
+        FindClose( DtaHandleOf( tmp.d_dta ) );
         errno = ENOMEM;
         return( NULL );
     }
@@ -656,7 +655,7 @@ struct DIRENTXX *READDIRXX( DIRXX *dirp )
     if( dirp->d_first == _DIR_ISFIRST ) {
         dirp->d_first = _DIR_NOTFIRST;
     } else {
-        if( FindNextFileA( DTAXXX_HANDLE_OF( dirp->d_dta ), &ffd ) == 0 ) {
+        if( FindNextFileA( DtaHandleOf( dirp->d_dta ), &ffd ) == 0 ) {
             errno = ENOENT;
             return( NULL );
         }
@@ -673,7 +672,7 @@ int CLOSEDIRXX( SupportRun& support, DIRXX *dirp )
         errno = ERANGE;
         return( -1 );
     }
-    if( FindClose( DTAXXX_HANDLE_OF( dirp->d_dta ) ) == 0 ) {
+    if( FindClose( DtaHandleOf( dirp->d_dta ) ) == 0 ) {
         return( -1 );
     }
     dirp->d_first = _DIR_CLOSED;

@@ -208,7 +208,7 @@ static bool StackOp( instruction *ins )
         op = ins->operands[i];
         if( op->n.class_ == N_INDEXED )
             op = op->i.index;
-        if(op->n.class_ == N_REGISTER && HW_Ovlap(sp,op->r.reg)) {
+        if(op->n.class_ == N_REGISTER && HwOvlap(sp,op->r.reg)) {
             return( true );
         }
     }
@@ -217,7 +217,7 @@ static bool StackOp( instruction *ins )
         return( false );
     if( op->n.class_ == N_INDEXED )
         op = op->i.index;
-    if( op->n.class_ == N_REGISTER && HW_Ovlap(sp,op->r.reg) )
+    if( op->n.class_ == N_REGISTER && HwOvlap(sp,op->r.reg) )
         return( true );
     return( false );
 }
@@ -301,7 +301,7 @@ static bool HiddenDependancy( BackRun& back, instruction *ins, name *op )
             continue;
         if( op->n.class_ != N_REGISTER )
             continue;
-        if( HW_Ovlap( full, op->r.reg ) )
+        if( HwOvlap( full, op->r.reg ) )
             return( true );
         op = ins->operands[i];
     }
@@ -317,7 +317,7 @@ static dep_type CheckOneOp( BackRun& back, instruction *ins_i, instruction *ins_
     if( op->n.class_ == N_INDEXED && op->i.index != NULL ) {
         if( ins_linked
             && (ins_i->ins_flags & INS_INDEX_ADJUST)
-            && HW_Ovlap( ins_i->result->r.reg, op->i.index->r.reg )
+            && HwOvlap( ins_i->result->r.reg, op->i.index->r.reg )
             && OkToSlide( back, ins_j, op ) ) {
             return(DEP_NONE);
         }
@@ -367,7 +367,7 @@ static dep_type DataDependant( BackRun& back, instruction *ins_i,
             return( ret );
         }
     }
-    if( IsModel( back, CGSW_GEN_FORTRAN_ALIASING ) && _OpIsCall( ins_j->head.opcode ) ) {
+    if( IsModel( back, CGSW_GEN_FORTRAN_ALIASING ) && OpIsCall( ins_j->head.opcode ) ) {
         if( !ins_linked )
             return( DEP_OP );
         /*
@@ -376,7 +376,7 @@ static dep_type DataDependant( BackRun& back, instruction *ins_i,
          * Therefore, they must be made dependant on the call.
          */
         for( ins_j = ins_j->head.next; ins_j->head.opcode != OP_BLOCK; ins_j = ins_j->head.next ) {
-            if( _OpIsCall( ins_j->head.opcode ) )
+            if( OpIsCall( ins_j->head.opcode ) )
                 break;
             if( ins_j->head.opcode == OP_NOP && ins_j->result != NULL ) {
                 ret = DataDependant( back, ins_i, ins_j, ins_linked );
@@ -413,7 +413,7 @@ static bool ImplicitDependancy( instruction *imp, instruction *ins )
         return( false );
     if( !IsSegReg( op->r.reg ) )
         return( false );
-    if( _OpIsCall( ins->head.opcode ) )
+    if( OpIsCall( ins->head.opcode ) )
         return( true );
     for( i = ins->num_operands; i-- > 0; ) {
         op = ins->operands[i];
@@ -440,9 +440,9 @@ bool InsOrderDependant( BackRun& back, instruction *ins_i, instruction *ins_j )
 {
     if( ins_j->head.opcode == OP_NOP && ins_j->result == NULL && !DoesSomething( ins_j ) )
         return( true );
-    if( _OpIsJump( ins_i->head.opcode ) )
+    if( OpIsJump( ins_i->head.opcode ) )
         return( true );
-    if( _OpIsCall( ins_i->head.opcode ) ) {
+    if( OpIsCall( ins_i->head.opcode ) ) {
         if( (ins_i->flags.u.call_flags & CALL_READS_NO_MEMORY) == 0
           && ins_j->result != NULL
           && IsVisibleToCall( back, ins_i, ins_j->result, false ) )
@@ -463,7 +463,7 @@ bool InsOrderDependant( BackRun& back, instruction *ins_i, instruction *ins_j )
                 return( true );
             }
         }
-        if( _OpIsCall( ins_j->head.opcode ) ) {
+        if( OpIsCall( ins_j->head.opcode ) ) {
             return( true );
         }
     }
@@ -507,8 +507,8 @@ static  bool    InsUsesCC( instruction *ins )
     case OP_EXT_MUL:
         return( true );
     }
-    if( _OpIsCondition( ins->head.opcode ) ) {
-        if( G( ins ) == G_NO ) {
+    if( OpIsCondition( ins->head.opcode ) ) {
+        if( InsGenerate( ins ) == G_NO ) {
             /*
              * Any conditional whose gen table entry is pointing at a G_NO
              * is not going to generate a comparision operation, and is
@@ -750,12 +750,12 @@ static scale_typ ScaleAdjust( BackRun& back, name *op, hw_reg_set reg )
     if( op->n.class_ != N_INDEXED )
         return( SCALE_INVALID );
     idx_reg = op->i.index->r.reg;
-    if( !HW_Ovlap( idx_reg, reg ) )
+    if( !HwOvlap( idx_reg, reg ) )
         return( SCALE_INVALID );
     if( (op->i.index_flags & X_HIGH_BASE)
-      && HW_Ovlap( HighReg( back, idx_reg ), reg )
+      && HwOvlap( HighReg( back, idx_reg ), reg )
       || (op->i.index_flags & X_LOW_BASE)
-      && HW_Ovlap( LowReg( back, idx_reg ), reg ) ) {
+      && HwOvlap( LowReg( back, idx_reg ), reg ) ) {
         return( SCALE_NONE );
     }
     return( op->i.scale );

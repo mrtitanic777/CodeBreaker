@@ -649,7 +649,7 @@ static bool TryOpen( FrontRun& front, const char *path, pgroup2 *ff, src_file_ty
      */
     p = fd.dir + strlen( fd.dir );
     if( fd.dir[0] != '\0' ) {
-        if( !IS_PATH_SEP( p[-1] ) ) {
+        if( !IsPathSep( p[-1] ) ) {
             *p++ = DIR_SEP;
         }
     }
@@ -697,7 +697,7 @@ FNAMEPTR AddFlist( FrontRun& front, char const *filename )
     }
     if( flist == NULL ) {
         len1 = strlen( filename ) + 1;
-        if( HAS_PATH( filename ) || front.cvars.DependHeaderPath == NULL ) {
+        if( HasPath( filename ) || front.cvars.DependHeaderPath == NULL ) {
             len2 = 0;
             flist = (FNAMEPTR)CMemAlloc( front, offsetof( fname_list, name ) + len1 );
         } else {
@@ -1171,7 +1171,7 @@ static bool doOpenSrcFile( FrontRun& front, pgroup2 *fp, pgroup2 *fa, src_file_t
         }
         return( false );
     }
-    if( fp->drive[0] != '\0' || IS_DIR_SEP( fp->dir[0] ) ) {
+    if( fp->drive[0] != '\0' || IsDirSep( fp->dir[0] ) ) {
         /*
          * try absolute path
          * if drive letter given or path from root given
@@ -1223,13 +1223,13 @@ static bool doOpenSrcFile( FrontRun& front, pgroup2 *fp, pgroup2 *fa, src_file_t
             p = fd.buffer;
             do {
                 ++s;
-                if( IS_PATH_LIST_SEP( c ) )
+                if( IsPathListSep( c ) )
                     break;
                 *p++ = c;
             } while( (c = *s) != '\0' );
             if( p != fd.buffer ) {
                 c = p[-1];
-                if( !IS_PATH_SEP( c ) ) {
+                if( !IsPathSep( c ) ) {
                     *p++ = DIR_SEP;
                 }
             }

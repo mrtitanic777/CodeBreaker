@@ -163,7 +163,7 @@ char const *CGetMsgStr( FrontRun& front, msg_codes msgnum )
 
     msg_index = GetMsgIndex( msgnum );
     p = NULL;
-    if( !IS_MSGIDX_INVALID( msg_index ) ) {
+    if( !IsMsgidxInvalid( msg_index ) ) {
         if( front.cmsg.internationalData == NULL ) {
             p = EMsgArray[msg_index];
         } else if( msg_index < front.cmsg.internationalData->errors_count ) {

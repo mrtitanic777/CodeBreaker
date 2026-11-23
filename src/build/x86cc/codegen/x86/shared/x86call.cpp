@@ -84,7 +84,7 @@ static  void    Far16Parms( BackRun& back, cn call )
     parm_size = 0;
     state = call->state;
     for( parm = call->parms; parm != NULL; parm = parm->next ) {
-        parm_size += _RoundUp( parm->name->tipe->length, 2 );
+        parm_size += RoundUp( parm->name->tipe->length, 2 );
     }
     parmlist = SAllocTemp( back, XX, parm_size );
     parmlist->v.usage |= NEEDS_MEMORY | USE_IN_ANOTHER_BLOCK | USE_ADDRESS;
@@ -93,7 +93,7 @@ static  void    Far16Parms( BackRun& back, cn call )
         parm->name->u.i.ins->result = STempOffset( back, parmlist, offset,
                                                  TypeClass( back, parm->name->tipe ),
                                                  parm->name->tipe->length );
-        offset += _RoundUp( parm->name->tipe->length, 2 );
+        offset += RoundUp( parm->name->tipe->length, 2 );
     }
     for( parm = call->parms; parm != NULL; parm = next ) {
         next = parm->next;
@@ -104,9 +104,9 @@ static  void    Far16Parms( BackRun& back, cn call )
     eax = AllocRegName( back, HW_EAX );
     ecx = AllocRegName( back, HW_ECX );
     esi = AllocRegName( back, HW_ESI );
-    HW_TurnOn( state->parm.used, eax->r.reg );
-    HW_TurnOn( state->parm.used, ecx->r.reg );
-    HW_TurnOn( state->parm.used, esi->r.reg );
+    HwTurnOn( state->parm.used, eax->r.reg );
+    HwTurnOn( state->parm.used, ecx->r.reg );
+    HwTurnOn( state->parm.used, esi->r.reg );
     ins = MakeMove( back, AllocS32Const( back, parm_size ), ecx, WD );
     AddIns( back, ins );
     ins = MakeUnary( back, OP_LA, parmlist, esi, WD );
@@ -163,7 +163,7 @@ an      BGCall( BackRun& back, cn call, bool use_return, bool aux_inline )
      * pass a pointer to result as the first parm
      */
     if( call_ins->type_class == XX ) {
-        if( _RoutineIsFar16( state->attr ) ) {
+        if( RoutineIsFar16( state->attr ) ) {
             if( state->attr & ROUTINE_ALLOCS_RETURN ) {
                 HW_CAsgn( state->return_reg, HW_EAX );
             } else {
@@ -177,7 +177,7 @@ an      BGCall( BackRun& back, cn call, bool use_return, bool aux_inline )
                 ret_ptr = AllocRegName( back, state->return_reg );
             }
             ret_ins = MakeUnary( back, OP_LA, result, ret_ptr, WD );
-            HW_TurnOn( state->parm.used, state->return_reg );
+            HwTurnOn( state->parm.used, state->return_reg );
             call_ins->flags.u.call_flags |= CALL_RETURNS_STRUCT;
         }
     }
@@ -185,7 +185,7 @@ an      BGCall( BackRun& back, cn call, bool use_return, bool aux_inline )
       && (state->attr & ROUTINE_NEEDS_DS_LOADED) ) {
         HW_CTurnOn( state->parm.used, HW_DS );
     }
-    if( _RoutineIsFar16( state->attr ) ) {
+    if( RoutineIsFar16( state->attr ) ) {
 #if _TARGET & _TARG_80386
         Far16Parms( back, call );
 #endif
@@ -213,7 +213,7 @@ an      BGCall( BackRun& back, cn call, bool use_return, bool aux_inline )
     if( state->attr & ROUTINE_NEVER_RETURNS_NORETURN ) {
         call_ins->flags.u.call_flags |= CALL_NORETURN;
     }
-    if( _RoutineIsInterrupt( state->attr ) ) {
+    if( RoutineIsInterrupt( state->attr ) ) {
         call_ins->flags.u.call_flags |= CALL_INTERRUPT | CALL_POPS_PARMS;
     }
     if( state->attr & ROUTINE_NEEDS_BP_CHAIN ) {
@@ -252,7 +252,7 @@ an      BGCall( BackRun& back, cn call, bool use_return, bool aux_inline )
         return_reg = state->return_reg;
         zap_reg = call_ins->zap->reg;
         HW_CTurnOn( zap_reg, HW_FLTS );
-        HW_OnlyOn( return_reg, zap_reg );
+        HwOnlyOn( return_reg, zap_reg );
         call_ins->result = AllocRegName( back, return_reg );
         reg_name = AllocRegName( back, state->return_reg );
         AddCall( back, call_ins, call );
@@ -302,7 +302,7 @@ void    BGProcDecl( BackRun& back, cg_sym_handle sym, const type_def *tipe )
                     temp = AllocTemp( back, WD );
                     temp->v.usage |= USE_IN_ANOTHER_BLOCK;
                     AddIns( back, MakeMove( back, AllocRegName( back, reg ), temp, WD ) );
-                    HW_TurnOn( back.data.CurrProc->state.parm.used, reg );
+                    HwTurnOn( back.data.CurrProc->state.parm.used, reg );
                 }
                 back.data.CurrProc->targ.return_points = temp;
             }

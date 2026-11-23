@@ -535,7 +535,7 @@ static void StorePointer( FrontRun& front, TYPEPTR typ, target_size size )
             dq.flags |= Q_NEAR_POINTER;
         } else {
             typ2 = typ->object;
-            SKIP_TYPEDEFS( typ2 );
+            SkipTypedefs( typ2 );
             if( typ2->decl_type == TYP_FUNCTION ) {
                 dq.flags |= Q_CODE_POINTER;
             } else if( TypeSize( front, typ ) == TARGET_FAR_POINTER ) {
@@ -981,7 +981,7 @@ static void InitUnion( FrontRun& front, TYPEPTR typ, TYPEPTR ctyp )
      */
     for( field = typ->u.tag->u.field_list; field != NULL; field = field->next_field ) {
         ftyp = field->field_type;
-        SKIP_TYPEDEFS( ftyp );
+        SkipTypedefs( ftyp );
         if( field->name[0] != '\0' )
             break;
         if( ftyp->decl_type == TYP_STRUCT )
@@ -1120,7 +1120,7 @@ void InitSymData( FrontRun& front, TYPEPTR typ, TYPEPTR ctyp, int level )
 static bool CharArray( FrontRun& front, TYPEPTR typ )
 {
     if( front.cvars.CurToken == T_STRING ) {
-        SKIP_TYPEDEFS( typ );
+        SkipTypedefs( typ );
         if( typ->decl_type == TYP_CHAR
           || typ->decl_type == TYP_UCHAR ) {
             return( true );
@@ -1133,7 +1133,7 @@ static bool CharArray( FrontRun& front, TYPEPTR typ )
 static bool WCharArray( FrontRun& front, TYPEPTR typ )
 {
     if( front.cvars.CurToken == T_STRING ) {
-        SKIP_TYPEDEFS( typ );
+        SkipTypedefs( typ );
         if( typ->decl_type == TYP_SHORT
           || typ->decl_type == TYP_USHORT ) {
             return( true );
@@ -1276,7 +1276,7 @@ void StaticInit( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
      * Follow chain of typedefs/structs/arrays
      */
     for( ;; ) {
-        SKIP_TYPEDEFS( typ );
+        SkipTypedefs( typ );
         if( typ->decl_type == TYP_ARRAY ) {
             /*
              * Remember innermost array type
@@ -1334,7 +1334,7 @@ void StaticInit( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
              * Create new array types as necessary
              */
             for( ;; ) {
-                SKIP_TYPEDEFS( typ );
+                SkipTypedefs( typ );
                 if( typ->decl_type != TYP_ARRAY )
                     break;
                 sym->sym_type = ArrayNode( front, sym->sym_type );
@@ -1401,11 +1401,11 @@ static void InitStructField( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle,
     FIELDPTR    ufield;
 
     typ = field->field_type;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type == TYP_UNION ) {
         ufield = typ->u.tag->u.field_list;
         typ = ufield->field_type;
-        SKIP_TYPEDEFS( typ );
+        SkipTypedefs( typ );
     }
     opnd = VarLeaf( front, sym, sym_handle );
     opnd = ExprNode( front, opnd, OPR_DOT, UIntLeaf( front, base + field->offset ) );
@@ -1476,7 +1476,7 @@ static bool SimpleUnion( TYPEPTR typ )
 
     field = typ->u.tag->u.field_list;
     typ = field->field_type;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     switch( typ->decl_type ) {
     case TYP_ARRAY:
     case TYP_STRUCT:
@@ -1499,7 +1499,7 @@ static bool SimpleStruct( TYPEPTR typ )
     }
     for( field = typ->u.tag->u.field_list; field != NULL; field = field->next_field ) {
         typ = field->field_type;
-        SKIP_TYPEDEFS( typ );
+        SkipTypedefs( typ );
         switch( typ->decl_type ) {
         case TYP_UNION:
             if( SimpleUnion( typ ) ) {
@@ -1541,7 +1541,7 @@ static void InitArrayVar( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle, TY
     target_size dim;
 
     typ2 = typ->object;
-    SKIP_TYPEDEFS( typ2 );
+    SkipTypedefs( typ2 );
     switch( typ2->decl_type ) {
     case TYP_CHAR:
     case TYP_UCHAR:
@@ -1711,7 +1711,7 @@ void VarDeclEquals( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
         SymReplace( front, sym, sym_handle );
         front.cvars.SrcLoc = front.cvars.TokenLoc;
         typ = sym->sym_type;
-        SKIP_TYPEDEFS( typ );
+        SkipTypedefs( typ );
         /*
          * check for { before checking for array, struct or union
          */

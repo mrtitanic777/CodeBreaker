@@ -66,7 +66,7 @@ static  void    InitVisitedTemps( BackRun& back )
     }
     if( IsModel( back, CGSW_GEN_NO_OPTIMIZATION ) ) {
         for( op = back.data.Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
-            if( _FrontEndTmp( op ) ) {
+            if( FrontEndTmp( op ) ) {
                 op->t.temp_flags |= VISITED;
             }
         }
@@ -96,7 +96,7 @@ static  bool            FreeUselessIns( BackRun& back, block *tail, bool just_th
 
     change = false;
     for( blk = tail; blk != NULL; blk = blk->prev_block ) {
-        if( just_the_loop && !_IsBlkAttr( blk, BLK_IN_LOOP ) ) {
+        if( just_the_loop && !IsBlkAttr( blk, BLK_IN_LOOP ) ) {
             for( ins = blk->ins.head.prev; ins->head.opcode != OP_BLOCK; ins = ins->head.prev ) {
                 ins->ins_flags &= ~INS_VISITED;
             }
@@ -253,7 +253,7 @@ static  bool    CheckUseful( BackRun& back, instruction *ins )
     opcode = ins->head.opcode;
     change = false;
     res = ins->result;
-    if( !_OpIsJump( opcode )
+    if( !OpIsJump( opcode )
      && opcode != OP_PUSH
      && opcode != OP_POP
      && opcode != OP_NOP
@@ -312,7 +312,7 @@ static  void            FindUsefulIns( BackRun& back, block * tail, bool just_th
 
     if( just_the_loop ) {
         for( blk = tail; blk != NULL; blk = blk->prev_block ) {
-            if( !_IsBlkAttr( blk, BLK_IN_LOOP ) ) {
+            if( !IsBlkAttr( blk, BLK_IN_LOOP ) ) {
                 for( ins = blk->ins.head.prev; ins->head.opcode != OP_BLOCK; ins = ins->head.prev ) {
                     MarkOpsUseful( ins );
                     if( ins->result != NULL ) {
@@ -325,7 +325,7 @@ static  void            FindUsefulIns( BackRun& back, block * tail, bool just_th
     do {
         change = false;
         for( blk = tail; blk != NULL; blk = blk->prev_block ) {
-            if( !just_the_loop || _IsBlkAttr( blk, BLK_IN_LOOP ) ) {
+            if( !just_the_loop || IsBlkAttr( blk, BLK_IN_LOOP ) ) {
                 for( ins = blk->ins.head.prev; ins->head.opcode != OP_BLOCK; ins = ins->head.prev ) {
                     if( !in_regalloc || DoesSomething( ins ) ) {
                         change |= CheckUseful( back, ins );

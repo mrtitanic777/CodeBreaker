@@ -39,7 +39,6 @@
     #define DebugMsg( x )
 // use DebugMsg((....)) to call it
 
-    #define DebugCurrLine()
 
 
 #endif  /* _ASMERR_H_INCLUDED */

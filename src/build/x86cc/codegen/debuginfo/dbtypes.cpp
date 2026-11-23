@@ -465,7 +465,7 @@ dbg_struct _CGAPI DBBegNameStruct( BackRun& back, cchar_ptr nm, cg_type tipe, bo
     uint        n_len;
     dbg_struct  st;
 
-    n_len = Length( nm );
+    n_len = strlen( nm );
     st = static_cast<dbg_struct>(CGAlloc( back, sizeof( struct_list ) + n_len ));
     strcpy( st->name, nm );
     st->num = 0;
@@ -507,7 +507,7 @@ static  field_member     *CreateMember( BackRun& back, const char *nm, byte strt
     uint          n_len;
     field_member *field;
 
-    n_len = Length( nm );
+    n_len = strlen( nm );
     field = static_cast<field_member *>(CGAlloc( back, sizeof( field_member ) + n_len ));
     strcpy( field->name, nm );
     field->attr = attr;
@@ -574,7 +574,7 @@ void _CGAPI DBAddStField( BackRun& back, dbg_struct st, dbg_loc loc, cchar_ptr n
     uint          n_len;
     field_stfield *field;
 
-    n_len = Length( nm );
+    n_len = strlen( nm );
     field = static_cast<field_stfield *>(CGAlloc( back, sizeof( field_stfield ) + n_len ));
     strcpy( field->name, nm );
     field->entry.field_type = FIELD_STFIELD;
@@ -591,7 +591,7 @@ void _CGAPI DBAddMethod( BackRun& back, dbg_struct st, dbg_loc loc, uint attr,
     uint          n_len;
     field_method *field;
 
-    n_len = Length( nm );
+    n_len = strlen( nm );
     field = static_cast<field_method *>(CGAlloc( back, sizeof( field_method ) + n_len ));
     strcpy( field->name, nm );
     field->entry.field_type = FIELD_METHOD;
@@ -609,7 +609,7 @@ void _CGAPI DBAddNestedType( BackRun& back, dbg_struct st, cchar_ptr nm, dbg_typ
     uint          n_len;
     field_nested *field;
 
-    n_len = Length( nm );
+    n_len = strlen( nm );
     field = static_cast<field_nested *>(CGAlloc( back, sizeof( field_nested ) + n_len ));
     strcpy( field->name, nm );
     field->entry.field_type = FIELD_NESTED;
@@ -703,7 +703,7 @@ void _CGAPI DBAddConst( BackRun& back, dbg_enum en, cchar_ptr nm, int_32 val )
     const_entry *cons;
     uint        len;
 
-    len = Length( nm );
+    len = strlen( nm );
     cons = static_cast<const_entry *>(CGAlloc( back, sizeof( const_entry ) + len ));
     strcpy( cons->name, nm );
     cons->len = len;
@@ -719,7 +719,7 @@ void _CGAPI DBAddConst64( BackRun& back, dbg_enum en, cchar_ptr nm, signed_64  v
     const_entry *cons;
     uint        len;
 
-    len = Length( nm );
+    len = strlen( nm );
     cons = static_cast<const_entry *>(CGAlloc( back, sizeof( const_entry ) + len ));
     strcpy( cons->name, nm );
     cons->len = len;

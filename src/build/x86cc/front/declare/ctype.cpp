@@ -762,7 +762,7 @@ static FIELDPTR NewField( FrontRun& front, FIELDPTR new_field, TYPEPTR decl )
     ++front.cvars.FieldCount;
     typ = new_field->field_type;
     if( typ != NULL ) {
-        SKIP_TYPEDEFS( typ );
+        SkipTypedefs( typ );
     }
     if( new_field->name[0] == '\0' ) {
         /*
@@ -829,7 +829,7 @@ static TYPEPTR EnumFieldType( FrontRun& front, TYPEPTR ftyp, bool plain_int,
     if( plain_int ) {
         data_type = TYP_INT;    /* default to signed bit fields */
     } else {
-        SKIP_TYPEDEFS( ftyp );
+        SkipTypedefs( ftyp );
         if( ftyp->decl_type == TYP_ENUM ) {
             ftyp = ftyp->object;
         }
@@ -882,7 +882,7 @@ static target_size FieldAlign( FrontRun& front, target_size next_offset, FIELDPT
     }
     if( align != 1 ) {
         old_offset = next_offset;
-        next_offset = _RoundUp( next_offset, align );
+        next_offset = RoundUp( next_offset, align );
         if( front.cvars.CompFlags.slack_byte_warning && (next_offset - old_offset) ) {
             CWarn2( front, ERR_SLACK_ADDED, (unsigned)( next_offset - old_offset ) );
         }
@@ -1102,7 +1102,7 @@ static target_size GetFields( FrontRun& front, TYPEPTR decl )
                         /*
                          * no bits have been used; align to base type
                          */
-                        next_offset = _RoundUp( next_offset, scalar_size );
+                        next_offset = RoundUp( next_offset, scalar_size );
                     }
                     bits_total = scalar_size * CHAR_BIT;
                     bits_available = bits_total;
@@ -1147,7 +1147,7 @@ static target_size GetFields( FrontRun& front, TYPEPTR decl )
     }
     ClearFieldHashTable( front, decl->u.tag );
     decl->u.tag->alignment = worst_alignment;
-    struct_size = _RoundUp( struct_size, worst_alignment );
+    struct_size = RoundUp( struct_size, worst_alignment );
     CheckStructSize( front, struct_size );
     NextToken(front);
     front.ctype.GetFields_struct_level--;
@@ -1232,12 +1232,12 @@ static void CheckBitfieldType( FrontRun& front, TYPEPTR typ )
     /*
      * skip typedefs
      */
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( front.cvars.CompFlags.extensions_enabled ) {
         /*
          * go into enum base
          */
-        SKIP_ENUM( typ );
+        SkipEnum( typ );
     }
     switch( typ->decl_type ) {
     case TYP_BOOL:
@@ -1467,7 +1467,7 @@ target_size TypeSizeEx( FrontRun& front, TYPEPTR typ, bitfield_width *pFieldWidt
 
     if( typ == NULL )
         return( 0 );
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     switch( typ->decl_type ) {
     case TYP_CHAR:
     case TYP_UCHAR:
@@ -1508,7 +1508,7 @@ target_size TypeSizeEx( FrontRun& front, TYPEPTR typ, bitfield_width *pFieldWidt
             size = TARGET_POINTER;
         } else {
             typ = typ->object;
-            SKIP_TYPEDEFS( typ );
+            SkipTypedefs( typ );
             if( typ->decl_type == TYP_FUNCTION ) {
                 size = front.cvars.CodePtrSize;
             } else {
@@ -1570,7 +1570,7 @@ TYPEPTR GetIntTypeBySize( FrontRun& front, target_size size, bool sign, bool exa
 
     if( size ) {
         type_list = ( sign ) ? s_types : u_types;
-        for( i = 0; i < ARRAY_SIZE( s_types ); ++i ) {
+        for( i = 0; i < ArraySize( s_types ); ++i ) {
             type_id = type_list[i];
             if( size == CTypeSizes[type_id] || !exact && ( size < CTypeSizes[type_id] ) ) {
                 typ = GetType( front, type_id );

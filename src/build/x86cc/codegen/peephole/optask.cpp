@@ -82,8 +82,8 @@ label_handle AskForRTLabel( BackRun& back, rt_class rtindex )
     label_handle    new_lbl;
 
   OptBegin( back );
-    new_lbl = DoAskForLabel( back, RTIDX2SYM( rtindex ) );
-    _SetStatus( new_lbl, RUNTIME );
+    new_lbl = DoAskForLabel( back, RtIdxToSym( rtindex ) );
+    SetStatus( new_lbl, RUNTIME );
     { OptEnd( back ); return( new_lbl ); }
 }
 
@@ -99,7 +99,7 @@ label_handle AskForLabel( BackRun& back, cg_sym_handle sym )
     if( sym != NULL ) {
         attr = FEAttr( *back.front, sym );
         if( attr & FE_UNIQUE ) {
-            _SetStatus( new_lbl, UNIQUE );
+            SetStatus( new_lbl, UNIQUE );
         }
     }
     { OptEnd( back ); return( new_lbl ); }
@@ -110,8 +110,8 @@ bool    AskIfReachedLabel( BackRun& back, label_handle lbl )
 /*******************************************/
 {
   OptBegin( back );
-    _ValidLbl( lbl );
-    { OptEnd( back ); return( _TstStatus( lbl, REACHED ) ); }
+    ValidLbl( lbl );
+    { OptEnd( back ); return( TstStatus( lbl, REACHED ) ); }
 }
 
 
@@ -119,8 +119,8 @@ bool    AskIfRTLabel( BackRun& back, label_handle lbl )
 /**************************************/
 {
   OptBegin( back );
-    _ValidLbl( lbl );
-    { OptEnd( back ); return( _TstStatus( lbl, RUNTIME ) ); }
+    ValidLbl( lbl );
+    { OptEnd( back ); return( TstStatus( lbl, RUNTIME ) ); }
 }
 
 
@@ -128,8 +128,8 @@ bool    AskIfUniqueLabel( BackRun& back, label_handle lbl )
 /******************************************/
 {
   OptBegin( back );
-    _ValidLbl( lbl );
-    { OptEnd( back ); return( _TstStatus( lbl, UNIQUE ) ); }
+    ValidLbl( lbl );
+    { OptEnd( back ); return( TstStatus( lbl, UNIQUE ) ); }
 }
 
 
@@ -137,8 +137,8 @@ bool    AskIfCommonLabel( BackRun& back, label_handle lbl )
 /******************************************/
 {
   OptBegin( back );
-    _ValidLbl( lbl );
-    { OptEnd( back ); return( _TstStatus( lbl, COMMON_LBL ) ); }
+    ValidLbl( lbl );
+    { OptEnd( back ); return( TstStatus( lbl, COMMON_LBL ) ); }
 }
 
 
@@ -146,7 +146,7 @@ offset  AskAddress( BackRun& back, label_handle lbl )
 /************************************/
 {
   OptBegin( back );
-    _ValidLbl( lbl );
+    ValidLbl( lbl );
     { OptEnd( back ); return( lbl->lbl.address ); }
 }
 
@@ -155,7 +155,7 @@ pointer AskLblPatches( BackRun& back, label_handle lbl )
 /***************************************/
 {
   OptBegin( back );
-    _ValidLbl( lbl );
+    ValidLbl( lbl );
     if( lbl->lbl.patches == NULL ) {
         lbl->lbl.patches = static_cast<obj_patch *>(InitPatches(back));
     }
@@ -167,6 +167,6 @@ cg_sym_handle   AskForLblSym( BackRun& back, label_handle lbl )
 /**********************************************/
 {
   OptBegin( back );
-    _ValidLbl( lbl );
+    ValidLbl( lbl );
     { OptEnd( back ); return( lbl->lbl.sym ); }
 }

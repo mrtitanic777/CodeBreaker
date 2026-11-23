@@ -130,9 +130,9 @@ void    CalcSavings( BackRun& back, conflict_node *conf )
      && ( conf->name->v.usage & ( NEEDS_MEMORY | USE_ADDRESS ) ) ) {
         CalcLoadStore( back, conf );
     }
-    if( _Is( conf, CST_CONFLICT_ON_HOLD ) ) {
+    if( HasConflictState( conf, CST_CONFLICT_ON_HOLD ) ) {
         conf->savings = 0;
-    } else if( conf->available == 0 && _Isnt( conf, CST_NEEDS_INDEX | CST_NEEDS_SEGMENT ) ) {
+    } else if( conf->available == 0 && LacksConflictState( conf, CST_NEEDS_INDEX | CST_NEEDS_SEGMENT ) ) {
         conf->savings = 0;
     } else if( conf->ins_range.first == conf->ins_range.last ) {
         conf->savings = 0;             /* don't try - the world screws up*/

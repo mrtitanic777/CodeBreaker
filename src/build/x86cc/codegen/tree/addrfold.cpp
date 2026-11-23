@@ -89,7 +89,7 @@ typedef enum {
 
 #define ___     UNEXPECTED
 
-#define _HaveMode( action )     ( (action) >= IL )
+inline bool HaveMode( mode_action action ) { return ( (action) >= IL ); }
 
 static const mode_action    AddTable[][9] = {
 /***************************************/
@@ -487,7 +487,7 @@ an      AddrPlus( BackRun& back, an l_addr, an r_addr, const type_def *tipe )
             AddrFree( back, addr );
             return( NULL );
         }
-        if( _HaveMode( action ) ) {
+        if( HaveMode( action ) ) {
             break;
         }
     }

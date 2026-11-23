@@ -447,7 +447,7 @@ void    BGBigLabel( BackRun& back, back_handle bck )
         Generate( back, false );
     }
     EnLink( back, bck->lbl );
-    _MarkBlkAttrSet( back.data.CurrBlock, BLK_BIG_LABEL );
+    MarkBlkAttrSet( back.data.CurrBlock, BLK_BIG_LABEL );
     back.data.HaveCurrBlock = true;
     BigLabel(back);
 }

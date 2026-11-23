@@ -60,7 +60,7 @@ bool     IsTrickyPointerConv( BackRun& back, instruction *ins )
 */
 {
     if( (ins->head.opcode == OP_CONVERT)
-      && _IsPointer( ins->type_class ) ) {
+      && IsPointerClass( ins->type_class ) ) {
         if( ins->base_type_class == U2
           && back.data.TypeClassSize[ins->type_class] > WORD_SIZE ) {
             return( true );
@@ -89,7 +89,7 @@ static  bool    RelocConst( name *op ) {
 static bool ActiveCompare( instruction *ins ) {
 /*********************************************/
 
-    if( _FalseIndex( ins ) == _TrueIndex( ins ) )
+    if( FalseIndex( ins ) == TrueIndex( ins ) )
         return( false );
     /* if unexpanded OR expanded and not just placeholder conditional */
     if( ins->table == NULL )
@@ -161,9 +161,9 @@ static  instruction *CmpRelocZero( BackRun& back, instruction *ins, opcnt c, opc
     if( c != 1 )
         truth = !truth;
     if( truth ) {
-        _SetBlockIndex( ins, _TrueIndex(ins), _TrueIndex(ins) );
+        SetBlockIndex( ins, TrueIndex(ins), TrueIndex(ins) );
     } else {
-        _SetBlockIndex( ins, _FalseIndex(ins), _FalseIndex(ins) );
+        SetBlockIndex( ins, FalseIndex(ins), FalseIndex(ins) );
     }
     return( KillCompare( back, ins, AllocIntConst( back, truth ? FETrue() : 0 ) ) );
 }
@@ -185,9 +185,9 @@ static  instruction *StraightLine( BackRun& back, instruction *ins, tn fold, boo
     if( result->c.lo.u.int_value == 0 )
         is_true = !is_true;
     if( is_true ) {
-        _SetBlockIndex( ins, _TrueIndex(ins), _TrueIndex(ins) );
+        SetBlockIndex( ins, TrueIndex(ins), TrueIndex(ins) );
     } else {
-        _SetBlockIndex( ins, _FalseIndex(ins), _FalseIndex(ins) );
+        SetBlockIndex( ins, FalseIndex(ins), FalseIndex(ins) );
     }
     return( KillCompare( back, ins, result ) );
 }
@@ -211,7 +211,7 @@ static  instruction    *FoldAbsolute( BackRun& back, instruction *ins ) {
     float_handle    cf_value;
 
     tipe = TypeOfTypeClass( back, ins->type_class );
-    left_tipe = TypeOfTypeClass( back, _OpClass( ins ) );
+    left_tipe = TypeOfTypeClass( back, OpClass( ins ) );
     num_operands = OpcodeNumOperands( ins );
     left = NULL;
     rite = NULL;
@@ -358,7 +358,7 @@ static  instruction    *FoldAbsolute( BackRun& back, instruction *ins ) {
     case OP_AND:
     case OP_XOR:
         /* for commutative op's prefer constant on right */
-        if( _IsPointer( ins->type_class ) )
+        if( IsPointerClass( ins->type_class ) )
             break;
         tmp = ins->operands[0];
         if( tmp->n.class_ == N_CONSTANT

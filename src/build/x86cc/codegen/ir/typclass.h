@@ -40,7 +40,7 @@ typedef enum {
     ER
 } type_class_def;
 
-#define _IsI64( c ) ( (c) >= U8 && (c) <= I8 )
-#define _IsFloating( c ) ( (c) >= FS && (c) <= FL )
-#define _IsPointer( c ) ( (c) == PT || (c) == CP )
-#define _IsIntegral( c ) ( (c) >= U1 && (c) <= PT )
+inline bool IsI64( type_class_def c ) { return ( (c) >= U8 && (c) <= I8 ); }
+inline bool IsFloating( type_class_def c ) { return ( (c) >= FS && (c) <= FL ); }
+inline bool IsPointerClass( type_class_def c ) { return ( (c) == PT || (c) == CP ); }
+inline bool IsIntegral( type_class_def c ) { return ( (c) >= U1 && (c) <= PT ); }

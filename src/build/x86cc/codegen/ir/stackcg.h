@@ -31,8 +31,9 @@
 
 
 #pragma once
-#define TO_SR_VALUE(x)      ((void *)(pointer_uint)(x))
-#define FROM_SR_VALUE(x,t)  ((t)(pointer_uint)(x))
+inline void *ToSrValue( bool x ) { return ((void *)(pointer_uint)(x)); }
+template <class T>
+inline T FromSrValue( void *x ) { return (T)(pointer_uint)x; }
 
 typedef void    *(*func_sr)(BackRun&, void *);
 

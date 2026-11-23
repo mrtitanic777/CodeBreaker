@@ -52,7 +52,7 @@ static  instruction     *FindOneCond( block *blk )
 
     cond = NULL;
     for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-        if( _OpIsCondition( ins->head.opcode ) ) {
+        if( OpIsCondition( ins->head.opcode ) ) {
             if( cond != NULL )
                 return( NULL );
             cond = ins;
@@ -75,13 +75,13 @@ static  void    MarkReachableBlocks( BackRun& back )
     do {
         change = false;
         for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-            if( _IsBlkVisited( blk )
-              || _IsBlkAttr( blk, BLK_BIG_LABEL | BLK_SELECT ) ) {
-                _MarkBlkVisited( blk );
+            if( IsBlkVisited( blk )
+              || IsBlkAttr( blk, BLK_BIG_LABEL | BLK_SELECT ) ) {
+                MarkBlkVisited( blk );
                 for( i = blk->targets; i-- > 0; ) {
                     son = blk->edge[i].destination.u.blk;
-                    if( !_IsBlkVisited( son ) ) {
-                        _MarkBlkVisited( son );
+                    if( !IsBlkVisited( son ) ) {
+                        MarkBlkVisited( son );
                         change = true;
                     }
                 }
@@ -225,18 +225,18 @@ void    MoveHead( BackRun& back, block *old, block *new_ )
 {
     block       *blk;
 
-    if( !_IsBlkAttr( old, BLK_LOOP_HEADER ) )
+    if( !IsBlkAttr( old, BLK_LOOP_HEADER ) )
         return;
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( blk->loop_head == old ) {
             blk->loop_head = new_;
         }
     }
-    if( _IsBlkAttr( old, BLK_LOOP_HEADER ) )
-        _MarkBlkAttrSet( new_, BLK_LOOP_HEADER );
-    if( _IsBlkAttr( old, BLK_ITERATIONS_KNOWN ) )
-        _MarkBlkAttrSet( new_, BLK_ITERATIONS_KNOWN );
-    _MarkBlkAttrClr( old, BLK_LOOP_HEADER | BLK_ITERATIONS_KNOWN );
+    if( IsBlkAttr( old, BLK_LOOP_HEADER ) )
+        MarkBlkAttrSet( new_, BLK_LOOP_HEADER );
+    if( IsBlkAttr( old, BLK_ITERATIONS_KNOWN ) )
+        MarkBlkAttrSet( new_, BLK_ITERATIONS_KNOWN );
+    MarkBlkAttrClr( old, BLK_LOOP_HEADER | BLK_ITERATIONS_KNOWN );
     new_->iterations = old->iterations;
     new_->loop_head = old->loop_head;
     old->loop_head = new_;
@@ -257,7 +257,7 @@ static  bool    Retarget( BackRun& back, block *blk )
     blk->input_edges = NULL;
     for( ; edge != NULL; edge = next ) {
         next = edge->next_source;
-        if( _IsBlkAttr( edge->source, BLK_SELECT | BLK_LABEL_RETURN ) ) {
+        if( IsBlkAttr( edge->source, BLK_SELECT | BLK_LABEL_RETURN ) ) {
             success = false;   /* let the optimizer do it later on*/
             edge->next_source = blk->input_edges;
             blk->input_edges = edge;
@@ -290,8 +290,8 @@ static  void    JoinBlocks( BackRun& back, block *jump, block *target )
      */
     label = target->label;
     target->label = jump->label;
-    if( _IsBlkAttr( jump, BLK_BIG_LABEL ) )
-        _MarkBlkAttrSet( target, BLK_BIG_LABEL );
+    if( IsBlkAttr( jump, BLK_BIG_LABEL ) )
+        MarkBlkAttrSet( target, BLK_BIG_LABEL );
     jump->label = label;
     line_num = target->ins.head.line_num;
     target->ins.head.line_num = jump->ins.head.line_num;
@@ -354,13 +354,13 @@ static  bool    SameTarget( BackRun& back, block *blk )
     targ2 = blk->edge[1].destination.u.blk;
     if( targ1 != targ2 )
         return( false );
-    if( _IsBlkAttr( targ1, BLK_UNKNOWN_DESTINATION )
-      || _IsBlkAttr( targ2, BLK_UNKNOWN_DESTINATION ) ) {
+    if( IsBlkAttr( targ1, BLK_UNKNOWN_DESTINATION )
+      || IsBlkAttr( targ2, BLK_UNKNOWN_DESTINATION ) ) {
         return( false );
     }
     RemoveEdge( &blk->edge[1] );
     ins = blk->ins.head.prev;
-    while( !_OpIsCondition( ins->head.opcode ) ) {
+    while( !OpIsCondition( ins->head.opcode ) ) {
         ins = ins->head.prev;
     }
     FreeIns( back, ins );
@@ -386,37 +386,37 @@ static  bool    DoBlockTrim( BackRun& back )
         MarkReachableBlocks(back);
         for( blk = back.data.HeadBlock->next_block; blk != NULL; blk = next ) {
             next = blk->next_block;
-            if( !_IsBlkVisited( blk )
-              && !_IsBlkAttr( blk, BLK_UNKNOWN_DESTINATION ) ) {
+            if( !IsBlkVisited( blk )
+              && !IsBlkAttr( blk, BLK_UNKNOWN_DESTINATION ) ) {
                 while( blk->input_edges != NULL ) {
                     RemoveInputEdge( blk->input_edges );
                 }
                 RemoveBlock( back, blk );
                 change = true;
-            } else if( _IsBlkAttr( blk, BLK_CONDITIONAL ) ) {
+            } else if( IsBlkAttr( blk, BLK_CONDITIONAL ) ) {
                 if( SameTarget( back, blk ) ) {
-                    _MarkBlkAttrClr( blk, BLK_CONDITIONAL );
-                    _MarkBlkAttrSet( blk, BLK_JUMP );
+                    MarkBlkAttrClr( blk, BLK_CONDITIONAL );
+                    MarkBlkAttrSet( blk, BLK_JUMP );
                     change = true;
                 }
-            } else if( _IsBlkAttr( blk, BLK_JUMP ) ) {
+            } else if( IsBlkAttr( blk, BLK_JUMP ) ) {
                 target = blk->edge[0].destination.u.blk;
                 if( target != blk
-                  && !_IsBlkAttr( target, BLK_UNKNOWN_DESTINATION ) ) {
+                  && !IsBlkAttr( target, BLK_UNKNOWN_DESTINATION ) ) {
                     for( ins = blk->ins.head.next; ins->head.opcode == OP_NOP; ins = ins->head.next ) {
                         if( ins->flags.u.nop_flags & (NOP_DBGINFO | NOP_DBGINFO_START) ) {
                             break;
                         }
                     }
                     if( ins->head.opcode == OP_BLOCK ) { /* was an empty block*/
-                        if( !_IsBlkAttr( blk, BLK_BIG_LABEL ) ) {
+                        if( !IsBlkAttr( blk, BLK_BIG_LABEL ) ) {
                             change |= Retarget( back, blk );
                         }
                     } else if( target->inputs == 1
-                      && !_IsBlkAttr( target, BLK_BIG_LABEL )
+                      && !IsBlkAttr( target, BLK_BIG_LABEL )
                       && ( CountIns( blk ) + CountIns( target ) ) <= INS_PER_BLOCK ) {
-                        if( !_IsBlkAttr( blk, BLK_RETURNED_TO | BLK_BIG_LABEL )
-                          && !_IsBlkAttr( target, BLK_CALL_LABEL ) ) {
+                        if( !IsBlkAttr( blk, BLK_RETURNED_TO | BLK_BIG_LABEL )
+                          && !IsBlkAttr( target, BLK_CALL_LABEL ) ) {
                             JoinBlocks( back, blk, target );
                             change = true;
                         }
@@ -449,8 +449,8 @@ void KillCondBlk( BackRun& back, block *blk, instruction *ins, cond_dst_idx dest
 
     RemoveInputEdge( &blk->edge[0] );
     RemoveInputEdge( &blk->edge[1] );
-    _MarkBlkAttrClr( blk, BLK_CONDITIONAL );
-    _MarkBlkAttrSet( blk, BLK_JUMP );
+    MarkBlkAttrClr( blk, BLK_CONDITIONAL );
+    MarkBlkAttrSet( blk, BLK_JUMP );
     blk->targets = 1;
     dest_blk = blk->edge[dest_idx].destination.u.blk;
     edge = &blk->edge[0];
@@ -470,14 +470,14 @@ bool    DeadBlocks( BackRun& back )
 
     change = false;
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        if( _IsBlkAttr( blk, BLK_CONDITIONAL ) ) {
+        if( IsBlkAttr( blk, BLK_CONDITIONAL ) ) {
             ins = FindOneCond( blk );
             if( ins == NULL )
                 continue;
             if( ins->result != NULL )
                 continue;
-            dest_idx = _TrueIndex( ins );
-            if( dest_idx != _FalseIndex( ins ) )
+            dest_idx = TrueIndex( ins );
+            if( dest_idx != FalseIndex( ins ) )
                 continue;
             KillCondBlk( back, blk, ins, dest_idx );
             change = true;

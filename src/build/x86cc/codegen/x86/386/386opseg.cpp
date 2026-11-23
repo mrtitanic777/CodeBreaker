@@ -59,10 +59,10 @@ static  void    CheckName( BackRun& back, name **pop, name *gblreg )
         if( op->i.base != NULL && op->i.base->n.class_ == N_MEMORY &&
             !SegIsCS( back, op->i.base ) ) {
             tmp =  gblreg->r.reg;
-            HW_TurnOn( tmp, op->i.index->r.reg );
+            HwTurnOn( tmp, op->i.index->r.reg );
             index = AllocRegName( back, tmp );
             tmp = High64Reg( index->r.reg );
-            if( HW_Equal( tmp, gblreg->r.reg ) ) {
+            if( HwEqual( tmp, gblreg->r.reg ) ) {
                 flags = X_HIGH_BASE;
             } else {
                 flags = X_LOW_BASE;

@@ -33,13 +33,11 @@
 #ifndef _ASMDEFS_H_INCLUDED
 #define _ASMDEFS_H_INCLUDED
 
-#define IS_CALL( inst )     ( inst == T_CALL || inst == T_CALLF )
-#define IS_JMP( inst )      ( inst >= T_JA && inst <= T_JZ )
-#define IS_BRANCH( inst )   ( IS_JMP( inst ) || IS_CALL( inst ) )
-#define IS_JMPCALLF( inst )  ( inst == T_CALLF || inst == T_JMPF )
-#define IS_JMPCALLN( inst )  ( inst == T_CALL || inst == T_JMP )
-#define IS_ANY_BRANCH( inst )    \
-            ( IS_BRANCH( inst ) || ( ( inst >= T_LOOP ) && ( inst <= T_LOOPZW ) ) )
+inline bool IsCall( asm_token inst ) { return ( inst == T_CALL || inst == T_CALLF ); }
+inline bool IsJmp( asm_token inst ) { return ( inst >= T_JA && inst <= T_JZ ); }
+inline bool IsBranch( asm_token inst ) { return ( IsJmp( inst ) || IsCall( inst ) ); }
+inline bool IsJmpCallF( asm_token inst ) { return ( inst == T_CALLF || inst == T_JMPF ); }
+inline bool IsAnyBranch( asm_token inst ) { return ( IsBranch( inst ) || ( ( inst >= T_LOOP ) && ( inst <= T_LOOPZW ) ) ); }
 
 #define MOD_00          0x00
 #define MOD_01          0x40
@@ -75,18 +73,18 @@
 
 #define FPE_MIN         0xD8
 
-#define SET_ADRSIZ_32( s )  ( s->prefix.adrsiz = ( s->use32 == 0 ) )
-#define SET_ADRSIZ_16( s )  ( s->prefix.adrsiz = ( s->use32 != 0 ) )
-#define SET_ADRSIZ_ON( s )  ( s->prefix.adrsiz = 1 )
-#define SET_ADRSIZ_OFF( s ) ( s->prefix.adrsiz = 0 )
-#define SET_OPSIZ_32( s )   ( s->prefix.opsiz = ( s->use32 == 0 ) )
-#define SET_OPSIZ_16( s )   ( s->prefix.opsiz = ( s->use32 != 0 ) )
-#define SET_OPSIZ_ON( s )   ( s->prefix.opsiz = 1 )
-#define SET_OPSIZ_OFF( s )  ( s->prefix.opsiz = 0 )
+inline void SetAdrsiz32( asm_code *s ) { s->prefix.adrsiz = ( s->use32 == 0 ); }
+inline void SetAdrsiz16( asm_code *s ) { s->prefix.adrsiz = ( s->use32 != 0 ); }
+inline void SetAdrsizOn( asm_code *s ) { s->prefix.adrsiz = 1; }
+inline void SetAdrsizOff( asm_code *s ) { s->prefix.adrsiz = 0; }
+inline void SetOpsiz32( asm_code *s ) { s->prefix.opsiz = ( s->use32 == 0 ); }
+inline void SetOpsiz16( asm_code *s ) { s->prefix.opsiz = ( s->use32 != 0 ); }
+inline void SetOpsizOn( asm_code *s ) { s->prefix.opsiz = 1; }
+inline void SetOpsizOff( asm_code *s ) { s->prefix.opsiz = 0; }
 
-#define IS_ADRSIZ_16( s )   ( ( s->use32 ^ s->prefix.adrsiz ) == 0 )
-#define IS_ADRSIZ_32( s )   ( ( s->use32 ^ s->prefix.adrsiz ) != 0 )
-#define IS_OPSIZ_32( s )    ( ( s->use32 ^ s->prefix.opsiz ) != 0 )
+inline bool IsAdrsiz16( asm_code *s ) { return ( ( s->use32 ^ s->prefix.adrsiz ) == 0 ); }
+inline bool IsAdrsiz32( asm_code *s ) { return ( ( s->use32 ^ s->prefix.adrsiz ) != 0 ); }
+inline bool IsOpsiz32( asm_code *s ) { return ( ( s->use32 ^ s->prefix.opsiz ) != 0 ); }
 
 
 #define MEM_TYPE( op, typ ) ( (op) == MT_##typ )

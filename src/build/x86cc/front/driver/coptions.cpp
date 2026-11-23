@@ -57,7 +57,6 @@
 #include "frontrun.hpp"
 
 
-    #define DbgNever()
 
 namespace {
 
@@ -224,7 +223,7 @@ static bool checkSTD( FrontRun& front, unsigned *value )
 
 static void checkPrologSize( unsigned *p )
 {
-    *p = _RoundUp( *p, TARGET_UINT );
+    *p = RoundUp( *p, TARGET_UINT );
 }
 
 static void checkErrorLimit( unsigned *p )
@@ -384,7 +383,6 @@ static void SetCharacterEncoding( FrontRun& front, OPT_STORAGE *data )
     case OPT_ENUM_char_set_default:
         break;
     default:
-        DbgNever();
         break;
     }
 }
@@ -434,7 +432,6 @@ static void AnalyseAnyTargetOptions( FrontRun& front, OPT_STORAGE *data )
         front.cvars.WngLevel = WLEVEL_DEFAULT;
         break;
     default:
-        DbgNever();
         break;
     }
     switch( data->file_83 ) {
@@ -446,7 +443,6 @@ static void AnalyseAnyTargetOptions( FrontRun& front, OPT_STORAGE *data )
         front.cvars.CompFlags.check_truncated_fnames = true;
         break;
     default:
-        DbgNever();
         break;
     }
     switch( data->opt_level ) {
@@ -467,7 +463,6 @@ static void AnalyseAnyTargetOptions( FrontRun& front, OPT_STORAGE *data )
     case OPT_ENUM_opt_level_default:
         break;
     default:
-        DbgNever();
         break;
     }
     switch( data->opt_size_time ) {
@@ -483,7 +478,6 @@ static void AnalyseAnyTargetOptions( FrontRun& front, OPT_STORAGE *data )
         front.cvars.OptSize = 50;
         break;
     default:
-        DbgNever();
         break;
     }
     switch( data->cstd ) {
@@ -497,7 +491,6 @@ static void AnalyseAnyTargetOptions( FrontRun& front, OPT_STORAGE *data )
     case OPT_ENUM_cstd_default:
         break;
     default:
-        DbgNever();
         break;
     }
     switch( data->iso ) {
@@ -515,7 +508,6 @@ static void AnalyseAnyTargetOptions( FrontRun& front, OPT_STORAGE *data )
         front.cvars.CompFlags.non_iso_compliant_names_enabled = true;
         break;
     default:
-        DbgNever();
         break;
     }
     // following must precede processing of data->oe
@@ -559,7 +551,6 @@ static void AnalyseAnyTargetOptions( FrontRun& front, OPT_STORAGE *data )
     case OPT_ENUM_debug_info_default:
         break;
     default:
-        DbgNever();
         break;
     }
 
@@ -576,7 +567,6 @@ static void AnalyseAnyTargetOptions( FrontRun& front, OPT_STORAGE *data )
         /* default set in CmdSysInit() */
         break;
     default:
-        DbgNever();
         break;
     }
 

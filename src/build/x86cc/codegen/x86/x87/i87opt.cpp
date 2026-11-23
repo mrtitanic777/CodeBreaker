@@ -114,15 +114,15 @@ static  bool    CanPushImmed( BackRun& back, pn parm, int *num_parms )
                 ++*num_parms;
                 ins = addr->u.i.ins;
                 for( next = ins->head.next; next->head.opcode != OP_BLOCK; next = next->head.next ) {
-                    if( _OpIsCall( next->head.opcode ) )
+                    if( OpIsCall( next->head.opcode ) )
                         return( false );
-                    if( _OpIsIFunc( next->head.opcode ) ) {
+                    if( OpIsIFunc( next->head.opcode ) ) {
                         if( FPStkReq( back, next ) != 0 ) {
                             return( false );
                         }
                     }
                 }
-                if( _BLOCK( next ) != back.data.CurrBlock ) {
+                if( BlockOf( next ) != back.data.CurrBlock ) {
                     return( false );
                 }
             }
@@ -240,12 +240,12 @@ static bool PushDelayedIfRedefinition( BackRun& back, instruction *ins, pn parm,
                 }
             }
         }
-        if( _BLOCK( next ) == back.data.CurrBlock )
+        if( BlockOf( next ) == back.data.CurrBlock )
             break;
-        if( _BLOCK( next )->next_block == NULL ) {
+        if( BlockOf( next )->next_block == NULL ) {
             next = back.data.CurrBlock->ins.head.next;
         } else {
-            next = _BLOCK( next )->next_block->ins.head.next;
+            next = BlockOf( next )->next_block->ins.head.next;
         }
     }
     return( false );
@@ -358,7 +358,7 @@ static const opcode_entry    FSINCOS[] = {
 _OE(                         PRESERVE, V_NO,           RG_,          G_FSINCOS,      FU_TRIG )
 };
 
-#define _OTHER( x ) ( (x) == OP_SIN ? OP_COS : OP_SIN )
+inline opcode_defs OtherTrigOp( opcode_defs x ) { return ( (x) == OP_SIN ? OP_COS : OP_SIN ); }
 
 static  bool    FSinCos( BackRun& back, instruction *ins1 )
 /********************************************
@@ -375,40 +375,40 @@ static  bool    FSinCos( BackRun& back, instruction *ins1 )
     ins2 = ins1->head.next;
     ins3 = ins2->head.next;
     ins4 = ins3->head.next;
-    if( G( ins1 ) == G_MFLD ) {
+    if( InsGenerate( ins1 ) == G_MFLD ) {
         if( ins2->head.opcode != OP_SIN && ins2->head.opcode != OP_COS ) {
             return( false );
         }
-        if( G( ins3 ) != G_MFLD ) {
+        if( InsGenerate( ins3 ) != G_MFLD ) {
             return( false );
         }
         if( ins1->operands[0] != ins3->operands[0] ) {
             return( false );
         }
-        if( ins4->head.opcode != _OTHER( ins2->head.opcode ) ) {
+        if( ins4->head.opcode != OtherTrigOp( ins2->head.opcode ) ) {
             return( false );
         }
-    } else if( G( ins1 ) == G_RFLD ) {
+    } else if( InsGenerate( ins1 ) == G_RFLD ) {
         if( ins2->head.opcode != OP_SIN && ins2->head.opcode != OP_COS ) {
             return( false );
         }
-        if( G( ins3 ) != G_RFLD ) {
+        if( InsGenerate( ins3 ) != G_RFLD ) {
             return( false );
         }
         if( FPRegNum( ins1->operands[0] ) != FPRegNum( ins3->operands[0] ) - 1 ) {
             return( false );
         }
-        if( ins4->head.opcode != _OTHER( ins2->head.opcode ) ) {
+        if( ins4->head.opcode != OtherTrigOp( ins2->head.opcode ) ) {
             return( false );
         }
     } else if( ins1->head.opcode == OP_SIN ) {
-        if( G( ins2 ) != G_RFLD ) {
+        if( InsGenerate( ins2 ) != G_RFLD ) {
             return( false );
         }
         if( FPRegNum( ins2->operands[0] ) != 1 ) {
             return( false );
         }
-        if( ins3->head.opcode != _OTHER( ins1->head.opcode ) ) {
+        if( ins3->head.opcode != OtherTrigOp( ins1->head.opcode ) ) {
             return( false );
         }
         ins4 = ins3;
@@ -490,9 +490,9 @@ static  instruction    *To86Move( BackRun& back, instruction *ins, instruction *
     for( regs = RegSetList(back, RL_MOVE); ; ++regs ) {
         if( HW_CEqual( *regs, HW_EMPTY ) )
             return( ret );
-        if( HW_Ovlap( *regs, next->head.live.regs ) )
+        if( HwOvlap( *regs, next->head.live.regs ) )
             continue;
-        if( HW_Ovlap( *regs, ins->head.live.regs ) )
+        if( HwOvlap( *regs, ins->head.live.regs ) )
             continue;
         reg = AllocRegName( back, *regs );
         break;
@@ -542,7 +542,7 @@ static  bool    RedundantStore( BackRun& back, instruction *ins )
 
     for( next = ins->head.next; next->head.opcode != OP_BLOCK; next = next->head.next ) {
         if( next->result == ins->result ) {
-            if( G( next ) == G_MFSTNP || G( next ) == G_MFST ) {
+            if( InsGenerate( next ) == G_MFSTNP || InsGenerate( next ) == G_MFST ) {
                 return( true );
             }
         }
@@ -569,8 +569,8 @@ static  instruction    *Opt87Sequence( BackRun& back, instruction *ins, bool *ag
     ret = ins->head.next;
     if( next == ins )
         return( ret );
-    if( G( ins ) == G_RFLD && FPRegNum( ins->operands[0] ) == 0 ) {
-        if( G( next ) == G_MFST ) {
+    if( InsGenerate( ins ) == G_RFLD && FPRegNum( ins->operands[0] ) == 0 ) {
+        if( InsGenerate( next ) == G_MFST ) {
             /*
              * FLD ST, FSTP X ===> FST X
              */
@@ -582,7 +582,7 @@ static  instruction    *Opt87Sequence( BackRun& back, instruction *ins, bool *ag
                 NoPop( next );
             }
             *again = true;
-        } else if( G( next ) == G_RFST ) {
+        } else if( InsGenerate( next ) == G_RFST ) {
             /*
              * FLD ST, FSTP ST(i) ===> FST ST(i-1)
              */
@@ -596,7 +596,7 @@ static  instruction    *Opt87Sequence( BackRun& back, instruction *ins, bool *ag
                 NoPop( next );
             }
             *again = true;
-        } else if( G( next ) == G_RNFBINP || G( next ) == G_RRFBINP ) {
+        } else if( InsGenerate( next ) == G_RNFBINP || InsGenerate( next ) == G_RRFBINP ) {
             /*
              * FLD ST, FopP ST(i),ST ==> Fop ST(i-1),ST
              */
@@ -610,16 +610,16 @@ static  instruction    *Opt87Sequence( BackRun& back, instruction *ins, bool *ag
                 ret = next;
             }
             *again = true;
-        } else if( G( next ) == G_FXCH && FPRegNum( next->result ) == 1 ) {
+        } else if( InsGenerate( next ) == G_FXCH && FPRegNum( next->result ) == 1 ) {
             FreeIns( back, next );
             *again = true;
             ret = ins;
         }
-    } else if( G( ins ) == G_RFLD || G( ins ) == G_MFLD ) {
-        if( ( G( next ) == G_RRFBINP || G( next ) == G_RNFBINP ) ) {
-            if( G( ins ) == G_MFLD ) {
+    } else if( InsGenerate( ins ) == G_RFLD || InsGenerate( ins ) == G_MFLD ) {
+        if( ( InsGenerate( next ) == G_RRFBINP || InsGenerate( next ) == G_RNFBINP ) ) {
+            if( InsGenerate( ins ) == G_MFLD ) {
                 type_class = ins->operands[0]->n.type_class;
-                if( !_IsFloating( type_class ) ) {
+                if( !IsFloating( type_class ) ) {
                     return( ret ); /* need convert! */
                 }
             }
@@ -639,9 +639,9 @@ static  instruction    *Opt87Sequence( BackRun& back, instruction *ins, bool *ag
                 *again = true;
                 ret = next;
             }
-        } else if( G( next ) == G_RFLD || G( next ) == G_MFLD ) {
-            if( G( ins ) == G_MFLD
-              && G( next ) == G_MFLD
+        } else if( InsGenerate( next ) == G_RFLD || InsGenerate( next ) == G_MFLD ) {
+            if( InsGenerate( ins ) == G_MFLD
+              && InsGenerate( next ) == G_MFLD
               && ins->operands[0] == next->operands[0] ) {
                 /*
                  * FLD X, FLD X ==> FLD X, FLD ST(0)
@@ -657,17 +657,17 @@ static  instruction    *Opt87Sequence( BackRun& back, instruction *ins, bool *ag
                 third = Next87Ins( next );
                 if( third == next )
                     return( ret );
-                if( G( third ) == G_FXCH && FPRegNum( third->result ) == 1 ) {
+                if( InsGenerate( third ) == G_FXCH && FPRegNum( third->result ) == 1 ) {
                     FreeIns( back, third );
                     if( FPRegNum( next->operands[0] ) != 0 ) {
                         ins->head.next->head.prev = ins->head.prev;
                         ins->head.prev->head.next = ins->head.next;
                         SuffixIns( back, next, ins );
-                        if( G( ins ) == G_RFLD ) {
+                        if( InsGenerate( ins ) == G_RFLD ) {
                             st_reg = FPRegNum( ins->operands[0] );
                             ins->operands[0] = ST( back, st_reg + 1 );
                         }
-                        if( G( next ) == G_RFLD ) {
+                        if( InsGenerate( next ) == G_RFLD ) {
                             st_reg = FPRegNum( next->operands[0] );
                             next->operands[0] = ST( back, st_reg - 1 );
                         }
@@ -678,12 +678,12 @@ static  instruction    *Opt87Sequence( BackRun& back, instruction *ins, bool *ag
                     *again = true;
                 }
             }
-        } else if( G( ins ) == G_MFLD ) {
-            if( G( next ) == G_MFST ) {
+        } else if( InsGenerate( ins ) == G_MFLD ) {
+            if( InsGenerate( next ) == G_MFST ) {
                 if( ins->operands[0]->n.type_class == next->result->n.type_class ) {
                     ret = To86Move( back, ins, next );
                 }
-            } else if( G( next ) == G_MRFBIN || G( next ) == G_MNFBIN ) {
+            } else if( InsGenerate( next ) == G_MRFBIN || InsGenerate( next ) == G_MNFBIN ) {
                 if( ins->operands[0] == next->operands[0] ) {
                     /*
                      * FLD X, FOP X ==> FLD X, FOP ST
@@ -696,10 +696,10 @@ static  instruction    *Opt87Sequence( BackRun& back, instruction *ins, bool *ag
                 }
             }
         }
-    } else if( G( ins ) == G_MFST || G( ins ) == G_RFST ) {
-        if( G( next ) == G_MFLD
+    } else if( InsGenerate( ins ) == G_MFST || InsGenerate( ins ) == G_RFST ) {
+        if( InsGenerate( next ) == G_MFLD
           && ( next->operands[0] == ins->result )
-          && _IsFloating( ins->result->n.type_class )
+          && IsFloating( ins->result->n.type_class )
           && !IsVolatile( ins->result ) ) {
             /*
              * FSTP X, FLD X ==> FST X
@@ -712,7 +712,7 @@ static  instruction    *Opt87Sequence( BackRun& back, instruction *ins, bool *ag
                 NoPop( ins );
             }
             *again = true;
-        } else if( G( next ) == G_RFLD
+        } else if( InsGenerate( next ) == G_RFLD
           && FPRegNum( next->operands[0] ) + 1 == FPRegNum( ins->result ) ) {
             /*
              * FSTP ST(i), FLD ST(i-1) ==> FST ST(i)
@@ -722,8 +722,8 @@ static  instruction    *Opt87Sequence( BackRun& back, instruction *ins, bool *ag
             *again = true;
             ret = ins;
         }
-    } else if( G( ins ) == G_FXCH ) {
-        if( G( next ) == G_FXCH ) {
+    } else if( InsGenerate( ins ) == G_FXCH ) {
+        if( InsGenerate( next ) == G_FXCH ) {
             /*
              * FXCH ST(i) FXCH ST(i) => nothing
              */
@@ -734,7 +734,7 @@ static  instruction    *Opt87Sequence( BackRun& back, instruction *ins, bool *ag
                 ret = next;
             }
         } else {
-            if( G( next ) == G_RRFBINP || G( next ) == G_RNFBINP ) {
+            if( InsGenerate( next ) == G_RRFBINP || InsGenerate( next ) == G_RNFBINP ) {
                 if( FPRegNum( ins->result ) == FPRegNum( next->operands[0] ) ) {
                     /*
                      * FXCH ST(i), FopP ST(i),ST -> FopRP ST(i),ST
@@ -746,8 +746,8 @@ static  instruction    *Opt87Sequence( BackRun& back, instruction *ins, bool *ag
                 }
             }
         }
-    } else if( G( ins ) == G_MFSTNP ) {
-        if( G( next ) == G_MFLD && ins->result == next->operands[0] ) {
+    } else if( InsGenerate( ins ) == G_MFSTNP ) {
+        if( InsGenerate( next ) == G_MFLD && ins->result == next->operands[0] ) {
             /*
              * FST X, FLD X => FST X, FLD ST
              */
@@ -759,8 +759,8 @@ static  instruction    *Opt87Sequence( BackRun& back, instruction *ins, bool *ag
             ret = BackUpAndFree( back, ins, ins, NULL );
             *again = true;
         }
-    } else if( G( ins ) == G_RNFBIN || G( ins ) == G_RRFBIN ) {
-        if( G( next ) == G_RFST && next->result == ins->operands[0] ) {
+    } else if( InsGenerate( ins ) == G_RNFBIN || InsGenerate( ins ) == G_RRFBIN ) {
+        if( InsGenerate( next ) == G_RFST && next->result == ins->operands[0] ) {
             ToPopBin( ins );
             FreeIns( back, next );
             *again = true;
@@ -789,7 +789,7 @@ static void    Opt8087( BackRun& back )
         again = false;
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
             next = ins->head.next;
-            if( _GenIs8087( G( ins ) ) ) {
+            if( GenIs8087( InsGenerate( ins ) ) ) {
                 if( !FSinCos( back, ins ) ) {
                     next = Opt87Sequence( back, ins, &again );
                 }
@@ -825,6 +825,6 @@ bool    FPDivIsADog( BackRun& back, type_class_def type_class )
 /**********************************************/
 {
 
-    return( FPULevel( back, FPU_87 ) && _IsFloating( type_class ) );
+    return( FPULevel( back, FPU_87 ) && IsFloating( type_class ) );
 }
 

@@ -66,8 +66,8 @@ typedef struct {
 
 #define EXPONENT_BIAS 0x3FFF
 
-#define SET_SIGN(x,y) if( y < 0 ) x->e |= 0x8000
-#define U96ISNOTZERO(x) (x.m32[0] || x.m32[1] || x.m32[2])
+inline void SetSign( TB_LD *x, int y ) { if( y < 0 ) x->e |= 0x8000; }
+inline bool U96IsNotZero( u96 x ) { return (x.m32[0] || x.m32[1] || x.m32[2]); }
 
 #define MAX_EXP_INDEX 13
 
@@ -423,7 +423,7 @@ TB_LD * strtotb( AsmRun& assembler, const char *p, TB_LD * ld, bool negative )
             } else if( *p != '0' ) {
                 memcpy(&value, &value_tmp, sizeof(value));
                 exp1 = 0;
-            } else if( U96ISNOTZERO(value) ) {
+            } else if( U96IsNotZero(value) ) {
                 exp1++;
             }
         }
@@ -469,7 +469,7 @@ TB_LD * strtotb( AsmRun& assembler, const char *p, TB_LD * ld, bool negative )
         default :
             ld->m = 0;
             ld->e = 0;
-            SET_SIGN(ld, sign);
+            SetSign(ld, sign);
             return ld;
         }
         while ( (unsigned int)(*p - '0') < 10u )
@@ -480,7 +480,7 @@ TB_LD * strtotb( AsmRun& assembler, const char *p, TB_LD * ld, bool negative )
     }
     exp_value += exponent;
     TB_create(assembler, &value, exp_value, ld);
-    SET_SIGN(ld, sign);
+    SetSign(ld, sign);
     return ld;
 }
 

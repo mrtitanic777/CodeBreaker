@@ -134,10 +134,10 @@ void    Wait8087( BackRun& back )
         past_jump = false;
         for( ins = blk->ins.head.next; ; ins = ins->head.next ) {
             for( ; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-                if( _OpIsCall( ins->head.opcode ) )
+                if( OpIsCall( ins->head.opcode ) )
                     break;
-                gen = G( ins );
-                if( _GenIs8087( gen ) ) {
+                gen = InsGenerate( ins );
+                if( GenIs8087( gen ) ) {
                     last_non_fpins = NULL;
                     switch( gen ) {
                     case G_MFLD:
@@ -159,7 +159,7 @@ void    Wait8087( BackRun& back )
                         break;
                     }
                 } else {
-                    if( past_jump || _OpIsJump( ins->head.opcode ) ) {
+                    if( past_jump || OpIsJump( ins->head.opcode ) ) {
                         past_jump = true;
                     } else {
                         last_non_fpins = ins;

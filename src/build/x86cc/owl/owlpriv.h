@@ -114,12 +114,21 @@ struct owl_section_info {
     } x;
 };
 
-#define _ClientAlloc( run, a, b )           ((a)->info->client_funcs.alloc( run, b ))
-#define _ClientFree( run, a, b )            ((a)->info->client_funcs.free( run, b ))
-#define _ClientWrite( run, a, b, c )        ((a)->info->client_funcs.write( run, (a)->client_handle, b, c ))
-#define _ClientWriteFile( run, a, b, c, d ) ((a)->info->client_funcs.write( run, b, c, d ))
-#define _ClientLabelName( a, b )        ((a)->info->client_funcs.lbl_name( b ))
-#define _ClientLabelDone( a, b )        ((a)->info->client_funcs.lbl_done( b ))
+inline void *ClientAlloc( BackRun &run, owl_file_info *a, size_t b ) { return ((a)->info->client_funcs.alloc( run, b )); }
+inline void ClientFree( BackRun &run, owl_file_info *a, void *b ) { (a)->info->client_funcs.free( run, b ); }
+inline int ClientWrite( BackRun &run, owl_file_info *a, const char *b, size_t c )
+{
+    return ((a)->info->client_funcs.write( run, (a)->client_handle, b, c ));
+}
 
 
 extern void OWLENTRY OWLSectionFree( BackRun& back, owl_section_handle section );
+
+inline bool OwlLinkageGlobal( owl_sym_linkage x ) { return ( (x) == OWL_SYM_GLOBAL || (x) == OWL_SYM_WEAK || (x) == OWL_SYM_UNDEFINED ); }
+
+inline bool OwlMetaSymbol( owl_sym_type x ) { return ( (x) == OWL_TYPE_SECTION || (x) == OWL_TYPE_FILE ); }
+
+inline bool OwlSectionBSS( owl_section_info *x ) { return ( ( (x)->type & OWL_SEC_ATTR_BSS ) ) != 0; }
+
+inline bool OwlSectionComdat( owl_section_info *x ) { return ( ( (x)->type & OWL_SEC_ATTR_COMDAT ) ) != 0; }
+

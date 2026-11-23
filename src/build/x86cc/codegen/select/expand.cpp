@@ -64,7 +64,7 @@ static instruction  *DoReduce( BackRun& back, instruction *ins, const opcode_ent
         return( Reduce( back, ins ) );
     zap_all = ins->zap->reg;
     for( zap = RegSetList(back, RegList[try_->reg_set].zap); !HW_CEqual( *zap, HW_EMPTY ); ++zap ) {
-        HW_TurnOn( zap_all, *zap );
+        HwTurnOn( zap_all, *zap );
     }
     ins->zap = (register_name *)AllocRegName( back, zap_all );
     if( has_index || ins->num_operands > OpcodeNumOperands( ins ) ) {
@@ -76,10 +76,11 @@ static instruction  *DoReduce( BackRun& back, instruction *ins, const opcode_ent
 }
 
 
+inline bool AnyMul( operand_types ops, unsigned int mul ) { return ( ( ops & (ANY*mul) ) == (ANY*mul) ); }
+
 static  bool    VerifyRegs( BackRun& back, instruction *ins, operand_types ops )
 /***************************************************************/
 {
-#define _Any( ops, mul )        ( ( ops & (ANY*mul) ) == (ANY*mul) )
 
     const opcode_entry  *try_;
     const hw_reg_set    *possible;
@@ -102,12 +103,12 @@ static  bool    VerifyRegs( BackRun& back, instruction *ins, operand_types ops )
     } else if( need->result != RL_ ) {
         if( name->n.class_ != N_REGISTER ) {
             result_index = need->result;
-        } else if( !_Any( try_->op_type, RESULT_MUL ) ) {
+        } else if( !AnyMul( try_->op_type, RESULT_MUL ) ) {
             regs = name->r.reg;
             for( possible = RegSetList(back, need->result); ; ++possible ) {
                 if( HW_CEqual( *possible, HW_EMPTY ) )
                     return( false );
-                if( HW_Equal( *possible, regs ) ) {
+                if( HwEqual( *possible, regs ) ) {
                     break;
                 }
             }
@@ -122,12 +123,12 @@ static  bool    VerifyRegs( BackRun& back, instruction *ins, operand_types ops )
         name = ins->operands[0];
         if( name->n.class_ != N_REGISTER ) {
             left_index = need->left;
-        } else if( !_Any( try_->op_type, OP1_MUL ) ) {
+        } else if( !AnyMul( try_->op_type, OP1_MUL ) ) {
             regs = name->r.reg;
             for( possible = RegSetList(back, need->left); ; ++possible ) {
                 if( HW_CEqual( *possible, HW_EMPTY ) )
                     return( false );
-                if( HW_Equal( *possible, regs ) ) {
+                if( HwEqual( *possible, regs ) ) {
                     break;
                 }
             }
@@ -142,12 +143,12 @@ static  bool    VerifyRegs( BackRun& back, instruction *ins, operand_types ops )
         name = ins->operands[1];
         if( name->n.class_ != N_REGISTER ) {
             right_index = need->right;
-        } else if( !_Any( try_->op_type, OP2_MUL ) ) {
+        } else if( !AnyMul( try_->op_type, OP2_MUL ) ) {
             regs = name->r.reg;
             for( possible = RegSetList(back, need->right); ; ++possible ) {
                 if( HW_CEqual( *possible, HW_EMPTY ) )
                     return( false );
-                if( HW_Equal( *possible, regs ) ) {
+                if( HwEqual( *possible, regs ) ) {
                     break;
                 }
             }
@@ -337,7 +338,7 @@ void    FixGenEntry( BackRun& back, instruction *ins )
 
     old = ins->u.gen_table;
     FindGenEntry( back, ins, &dummy );
-    if( G( ins ) >= FIRST_REDUCT ) {
+    if( InsGenerate( ins ) >= FIRST_REDUCT ) {
         ins->u.gen_table = old;
     }
     ins->head.state = INS_NEEDS_WORK;

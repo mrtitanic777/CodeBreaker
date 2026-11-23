@@ -48,7 +48,7 @@
 
 #define FIRST_USER_SEGMENT      10000
 
-#define CONSTANT( decl_flags )  ((decl_flags & MASK_CV_QUALIFIERS) == FLAG_CONST)
+inline bool IsConstant( type_modifiers decl_flags ) { return ((decl_flags & MASK_CV_QUALIFIERS) == FLAG_CONST); }
 
 typedef struct user_seg {
     struct user_seg *next;
@@ -310,7 +310,7 @@ void SetSegment( FrontRun& front, SYMPTR sym )
 
   #if _CPU == 8086
     if( (sym->mods & FLAG_FAR) && front.cvars.CompFlags.zc_switch_used ) {
-        if( CONSTANT( sym->mods )
+        if( IsConstant( sym->mods )
           || (sym->attribs.stg_class == SC_STATIC && (sym->flags & SYM_TEMP)) ) {
             sym->u.var.segid = SEG_CODE;
             return;
@@ -319,7 +319,7 @@ void SetSegment( FrontRun& front, SYMPTR sym )
   #else /* _CPU == 386 */
     if( !front.cvars.CompFlags.rent ) {
         if( (sym->mods & FLAG_FAR) || (front.cvars.TargetSwitches & CGSW_X86_FLAT_MODEL) ) {
-           if( CONSTANT( sym->mods ) && front.cvars.CompFlags.zc_switch_used ) {
+           if( IsConstant( sym->mods ) && front.cvars.CompFlags.zc_switch_used ) {
                 sym->u.var.segid = SEG_CODE;
                 return;
            }
@@ -397,8 +397,8 @@ static const spc_info *InitFiniLookup( const char *name )
     int     i;
     int     j;
 
-    for( j = 0; j < ARRAY_SIZE( InitFiniSegs ); j++ ) {
-        for( i = 0; i < ARRAY_SIZE( InitFiniSegs[0] ); i++ ) {
+    for( j = 0; j < ArraySize( InitFiniSegs ); j++ ) {
+        for( i = 0; i < ArraySize( InitFiniSegs[0] ); i++ ) {
             if( strcmp( InitFiniSegs[j][i].name, name ) == 0 ) {
                 return( &InitFiniSegs[j][0] );
             }
@@ -416,7 +416,7 @@ static segment_id AddSeg( FrontRun& front, const char *segname, const char *clas
     hw_reg_set      reg;
     const char      *p;
 
-    for( i = 0; i < ARRAY_SIZE( front.cinfo->Predefined_Segs ); i++ ) {
+    for( i = 0; i < ArraySize( front.cinfo->Predefined_Segs ); i++ ) {
         if( strcmp( segname, front.cinfo->Predefined_Segs[i].name ) == 0 ) {
             return( front.cinfo->Predefined_Segs[i].segid );
         }
@@ -467,7 +467,7 @@ segment_id AddSegName( FrontRun& front, const char *segname, const char *class_n
 
     initfini = InitFiniLookup( segname );
     if( initfini != NULL ) {
-        for( i = 0; i < ARRAY_SIZE( InitFiniSegs[0] ); i++ ) {
+        for( i = 0; i < ArraySize( InitFiniSegs[0] ); i++ ) {
             AddSeg( front, initfini[i].name, initfini[i].class_name, initfini[i].segtype );
         }
     }
@@ -553,7 +553,7 @@ void SetSegSymHandle( FrontRun& front, SYM_HANDLE sym_handle, segment_id segid )
 {
     int     i;
 
-    for( i = 0; i < ARRAY_SIZE( front.cinfo->Predefined_Segs ); i++ ) {
+    for( i = 0; i < ArraySize( front.cinfo->Predefined_Segs ); i++ ) {
         if( front.cinfo->Predefined_Segs[i].segid == segid ) {
             front.cinfo->Predefined_Segs[i].sym_handle = sym_handle;
             break;
@@ -567,7 +567,7 @@ SYM_HANDLE SegSymHandle( FrontRun& front, segment_id segid )
     int             i;
     user_seg        *useg;
 
-    for( i = 0; i < ARRAY_SIZE( front.cinfo->Predefined_Segs ); i++ ) {
+    for( i = 0; i < ArraySize( front.cinfo->Predefined_Segs ); i++ ) {
         if( front.cinfo->Predefined_Segs[i].segid == segid ) {
             return( front.cinfo->Predefined_Segs[i].sym_handle );
         }

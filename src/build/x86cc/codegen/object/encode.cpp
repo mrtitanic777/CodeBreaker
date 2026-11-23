@@ -116,8 +116,8 @@ static  void    DoCondJump( BackRun& back, instruction *cond )
     if( blk->next_block != NULL ) {
         dest_next = blk->next_block->label;
     }
-    dest_false = LocateLabel( cond, _FalseIndex( cond ) );
-    dest_true = LocateLabel( cond, _TrueIndex( cond ) );
+    dest_false = LocateLabel( cond, FalseIndex( cond ) );
+    dest_true = LocateLabel( cond, TrueIndex( cond ) );
     if( dest_next != NULL ) {
         if( dest_true == dest_next && dest_false != NULL ) {
             FlipCond( cond );
@@ -151,9 +151,9 @@ void    GenCondJump( BackRun& back, instruction *cond )
     label_handle    dest;
 
     if( cond->result == NULL ) {
-        if( _TrueIndex( cond ) == _FalseIndex( cond ) ) {
+        if( TrueIndex( cond ) == FalseIndex( cond ) ) {
             /* conditional jump not required - both branches go to same place*/
-            dest = LocateLabel( cond, _FalseIndex( cond ) );
+            dest = LocateLabel( cond, FalseIndex( cond ) );
             if( dest != NULL ) {
                 GenJumpLabel( back, dest );
             }

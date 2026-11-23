@@ -50,5 +50,3 @@ typedef enum {
 
 #define MAX_8087_REG    7
 
-#define _Is87Ins( ins ) ( _IsFloating( (ins)->type_class ) \
-                       || _IsFloating( (ins)->base_type_class ) )

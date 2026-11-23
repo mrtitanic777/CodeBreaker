@@ -30,7 +30,7 @@ static void GrowBuffer( FrontRun& front, size_t size )
 {
     char    *newBuffer;
 
-    size = _RoundUp( size, BUF_SIZE );
+    size = RoundUp( size, BUF_SIZE );
     newBuffer = static_cast<char *>(CMemAlloc( front, size ));
     memcpy( newBuffer, front.cvars.Buffer, front.cscanbuf.BufferSize );
     CMemFree( front, (void *)front.cvars.Buffer );

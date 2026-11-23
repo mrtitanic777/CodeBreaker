@@ -62,10 +62,6 @@ typedef enum {
 } i_flags;
 
 #define X_BASE          (X_HIGH_BASE+X_LOW_BASE)
-#define HasTrueBase( op ) \
-                ( (op)->i.base != NULL && ((op)->i.index_flags & X_FAKE_BASE) == 0 )
-#define HasAlignment( op ) \
-                ( (op)->i.index_flags & (X_ALIGNED_1|X_ALIGNED_2|X_ALIGNED_4|X_ALIGNED_8) )
 
 typedef enum {
     USE_WITHIN_BLOCK        = 0x001,
@@ -212,8 +208,8 @@ typedef union name {
     union name              *_n;
 } name;
 
-#define _FrontEndTmp( op )  ( ((op)->t.temp_flags & CONST_TEMP) == 0 && \
-                                (op)->v.symbol != NULL )
+inline bool HasTrueBase( name *op ) { return ( (op)->i.base != NULL && ((op)->i.index_flags & X_FAKE_BASE) == 0 ); }
+inline bool FrontEndTmp( name *op ) { return ( ((op)->t.temp_flags & CONST_TEMP) == 0 && (op)->v.symbol != NULL ); }
+inline bool ConstTemp( name *op ) { return ( ( (op)->n.class_ == N_TEMP ) && ( (op)->t.temp_flags & CONST_TEMP ) ); }
 
-#define _ConstTemp( op )    ( ( (op)->n.class_ == N_TEMP ) && \
-                                ( (op)->t.temp_flags & CONST_TEMP ) )
+

@@ -56,7 +56,7 @@ ins_entry       *NewInstr( BackRun& back, any_oc *oc )
     }
     instr->ins.prev = NULL;
     instr->ins.next = NULL;
-    Copy( oc, &instr->oc, oc->oc_header.reclen );
+    memcpy( &instr->oc, oc, oc->oc_header.reclen );
     { OptEnd( back ); return( instr ); }
 }
 
@@ -90,9 +90,9 @@ label_handle AddNewLabel( BackRun& back, ins_entry *new_ins, obj_length align )
 
   OptBegin( back );
     if( NextClass( back, new_ins ) == OC_LABEL )
-        { OptEnd( back ); return( _Label( NextIns( back, new_ins ) ) ); }
-    if( new_ins != NULL && _Class( new_ins ) == OC_LABEL )
-        { OptEnd( back ); return( _Label( new_ins ) ); }
+        { OptEnd( back ); return( LabelOf( NextIns( back, new_ins ) ) ); }
+    if( new_ins != NULL && OcClass( new_ins ) == OC_LABEL )
+        { OptEnd( back ); return( LabelOf( new_ins ) ); }
     oc.oc_handle.hdr.class_ = OC_LABEL;
     oc.oc_handle.hdr.reclen = sizeof( oc_handle );
     oc.oc_handle.hdr.objlen = align;
@@ -100,7 +100,7 @@ label_handle AddNewLabel( BackRun& back, ins_entry *new_ins, obj_length align )
     oc.oc_handle.ref = NULL;
     oc.oc_handle.handle = lbl;
     AddInstr( back, NewInstr( back, &oc ), new_ins );
-    _SetStatus( lbl, DYINGLABEL );
+    SetStatus( lbl, DYINGLABEL );
   { OptEnd( back ); return( lbl ); }
 }
 

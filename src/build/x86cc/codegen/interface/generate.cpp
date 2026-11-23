@@ -306,7 +306,7 @@ static  void    FreeExtraTemps( BackRun& back, name *last, block_id blk_id )
         if( temp == last )
             break;
         if( (temp->v.usage & USE_IN_ANOTHER_BLOCK) == 0
-          && !_FrontEndTmp( temp )
+          && !FrontEndTmp( temp )
           && temp->t.u.blk_id == blk_id ) {
             *owner = temp->n.next_name;
             FreeAName( back, temp );
@@ -327,7 +327,7 @@ static  void    ForceTempsMemory( BackRun& back )
     for( op = back.data.Names[N_TEMP]; op != back.data.LastTemp; op = next ) {
         next = op->n.next_name;
         if( (op->v.usage & USE_IN_ANOTHER_BLOCK)
-          || _FrontEndTmp( op ) ) {
+          || FrontEndTmp( op ) ) {
             op = DeAlias( op );
             op->v.usage |= NEEDS_MEMORY | USE_MEMORY;
             while( op->v.conflict != NULL ) {
@@ -371,7 +371,7 @@ static  void    BlockToCode( BackRun& back, bool partly_done )
         back.data.HeadBlock->next_block->prev_block = NULL;
     }
     /* Kludge - need a pointer to the next block for CALL_LABEL - puke! */
-    if( _IsBlkAttr( back.data.HeadBlock, BLK_CALL_LABEL ) ) {
+    if( IsBlkAttr( back.data.HeadBlock, BLK_CALL_LABEL ) ) {
         back.data.HeadBlock->u2.next = back.data.HeadBlock->next_block;
     }
     back.data.HeadBlock->next_block = NULL;
@@ -454,7 +454,7 @@ static  void    BlockToCode( BackRun& back, bool partly_done )
 
     /* generate the code for the block*/
 
-    if( _IsBlkAttr( back.data.CurrBlock, BLK_RETURN ) ) {
+    if( IsBlkAttr( back.data.CurrBlock, BLK_RETURN ) ) {
         GenObject(back);
         FiniStackMap(back);
         FreeProc(back);
@@ -514,7 +514,7 @@ static  void    FreeExtraSyms( BackRun& back, name *last )
         if( temp == last )
             break;
         if( (temp->v.usage & USE_IN_ANOTHER_BLOCK) == 0
-          && !_FrontEndTmp( temp ) ) {
+          && !FrontEndTmp( temp ) ) {
             *owner = temp->n.next_name;
             FreeAName( back, temp );
         } else {
@@ -560,12 +560,12 @@ static  void    ForceConflictsMemory( BackRun& back )
 
     ParmPropagate(back);
     for( conf = back.data.ConfList; conf != NULL; conf = conf->next_conflict ) {
-        _SetFalse( conf, CST_NEEDS_INDEX_SPLIT | CST_NEEDS_SEGMENT_SPLIT );
+        SetFalse( conf, CST_NEEDS_INDEX_SPLIT | CST_NEEDS_SEGMENT_SPLIT );
     }
     for( conf = back.data.ConfList; conf != NULL; conf = next ) {
         next = conf->next_conflict;
-        if( !_GBitEmpty( conf->id.out_of_block )
-          || ( conf->name->n.class_ == N_TEMP && _FrontEndTmp( conf->name ) )
+        if( !GBitEmpty( conf->id.out_of_block )
+          || ( conf->name->n.class_ == N_TEMP && FrontEndTmp( conf->name ) )
           || ( conf->name->n.class_ == N_MEMORY && conf->name->v.symbol != NULL )
           || (conf->name->v.usage & USE_IN_ANOTHER_BLOCK) ) {
             next = InMemory( back, conf );

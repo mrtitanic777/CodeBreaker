@@ -39,8 +39,6 @@
 #define OC_INFO_SHIFT       5
 
 #define OC_BASE_MASK        ((1 << OC_INFO_SHIFT) - 1)
-#define OC_BASE_CLASS(x)    ((x)&OC_BASE_MASK)  /* get base from class */
-#define OC_INFO_CLASS(x)    ((x)&~OC_BASE_MASK) /* get info from class */
 
 #define OC_INFO_LINE        (0 << OC_INFO_SHIFT)
 #define OC_INFO_LDONE       (1 << OC_INFO_SHIFT)
@@ -61,7 +59,6 @@
 
 #define MAX_OBJ_LEN         128
 
-#define _HasReloc( ins )    ((ins)->sym != NULL)
 
 #define MAX_SHORT_FWD       127
 #define MAX_SHORT_BWD       (128 - 2)
@@ -180,4 +177,7 @@ typedef struct ins_entry {
     struct ins_link         ins;
     union any_oc            oc;
 } ins_entry;
+
+inline int OcBaseClass( oc_class x ) { return ((x)&OC_BASE_MASK); }   /* get base from class */
+inline int OcInfoClass( oc_class x ) { return ((x)&~OC_BASE_MASK); }   /* get info from class */
 

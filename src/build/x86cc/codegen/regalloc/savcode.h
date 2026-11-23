@@ -35,9 +35,9 @@
 #ifdef _InRegAssgn
 
 #define _UpdateLive( ins, conf, reg_name ) \
-             if( ( _GBitOverlap( ins->head.live.out_of_block, conf->id.out_of_block ) ) \
-              || ( _LBitOverlap( ins->head.live.within_block, conf->id.within_block ) ) ) { \
-                 HW_TurnOn( ins->head.live.regs, reg_name->r.reg ); \
+             if( ( GBitOverlap( ins->head.live.out_of_block, conf->id.out_of_block ) ) \
+              || ( LBitOverlap( ins->head.live.within_block, conf->id.within_block ) ) ) { \
+                 HwTurnOn( ins->head.live.regs, reg_name->r.reg ); \
              }
 
 #define _Equal( op1, op2 ) ContainedIn( op1, op2 )
@@ -138,7 +138,7 @@
     blk = conf->start_block;
     ins = conf->ins_range.first;
     last = false;
-    if( _LBitOverlap( conf->ins_range.first->head.live.within_block, conf->id.within_block ) ) {
+    if( LBitOverlap( conf->ins_range.first->head.live.within_block, conf->id.within_block ) ) {
         flows_in = true;
     } else {
         flows_in = false;
@@ -158,11 +158,11 @@
                 break;
             next = ins->head.next;
             /*  reload volatile names after calls */
-            if( _OpIsCall( ins->head.opcode ) ) {
+            if( OpIsCall( ins->head.opcode ) ) {
                 if( ( ( opnd->v.usage & USE_ADDRESS )
                    || ( ( opnd->v.usage & NEEDS_MEMORY )
-                        && _Isnt( conf, CST_OK_ACROSS_CALLS ) ) )
-                        && !_GBitOverlap( conf->id.out_of_block, flow->call_exempt ) ) {
+                        && LacksConflictState( conf, CST_OK_ACROSS_CALLS ) ) )
+                        && !GBitOverlap( conf->id.out_of_block, flow->call_exempt ) ) {
                     if( (ins->flags.u.call_flags & CALL_WRITES_NO_MEMORY) == 0
                      || ( opnd->n.class_ == N_TEMP
                        && ( opnd->v.usage & USE_ADDRESS ) ) ) {
@@ -170,7 +170,7 @@
                     }
                     if( ( last_defn != NULL
                        || ( ( opnd->v.usage & USE_IN_ANOTHER_BLOCK )
-                          && _GBitOverlap( conf->id.out_of_block, flow->in ) ) )
+                          && GBitOverlap( conf->id.out_of_block, flow->in ) ) )
                      && ( ( (ins->flags.u.call_flags & CALL_WRITES_NO_MEMORY) == 0 )
                        || ( (ins->flags.u.call_flags & CALL_READS_NO_MEMORY) == 0 )
                        || ( opnd->n.class_ == N_TEMP
@@ -235,9 +235,9 @@
                 InsNotBlock( back, blk->ins.head.prev );
                 if( final_defn->id > blk->ins.head.prev->id ) {
                     final_defn = blk->ins.head.prev;
-                    if( _IsBlkAttr( blk, BLK_CONDITIONAL | BLK_SELECT ) ) {
+                    if( IsBlkAttr( blk, BLK_CONDITIONAL | BLK_SELECT ) ) {
                         final_defn = blk->ins.head.next;
-                        while( !_OpIsJump( final_defn->head.opcode ) ) {
+                        while( !OpIsJump( final_defn->head.opcode ) ) {
                             final_defn = final_defn->head.next;
                         }
                         final_defn = final_defn->head.prev;
@@ -250,20 +250,20 @@
             }
 #endif
             if( (instruction *)&blk->ins == blk->ins.head.next ) {
-                if( _GBitOverlap( conf->id.out_of_block, flow->need_store ) ) {
+                if( GBitOverlap( conf->id.out_of_block, flow->need_store ) ) {
                     _SuffixStore( back, (instruction *)&blk->ins, reg_name, opnd, class_ );
                 }
-                if( _GBitOverlap( conf->id.out_of_block, flow->need_load ) ) {
+                if( GBitOverlap( conf->id.out_of_block, flow->need_load ) ) {
                     _SuffixLoad( back, (instruction *)&blk->ins, opnd, reg_name, class_ );
                 }
             } else {
-                if( _GBitOverlap( conf->id.out_of_block, flow->need_store ) ) {
+                if( GBitOverlap( conf->id.out_of_block, flow->need_store ) ) {
                     _SuffixStore( back, final_defn, reg_name, opnd, class_ );
 #ifndef _InRegAssgn
                     /* unused parameters */ (void)final_defn;
 #endif
                 }
-                if( _GBitOverlap( conf->id.out_of_block, flow->need_load ) ) {
+                if( GBitOverlap( conf->id.out_of_block, flow->need_load ) ) {
 #ifdef _InRegAssgn
                     if( first_use->head.prev == final_defn->head.next ) {
                         if( first_use->head.prev->head.opcode != OP_BLOCK ) {

@@ -150,11 +150,11 @@ static  void    DoImpPtr( BackRun& back, cg_sym_handle sym, fix_class class_, of
 {
     SetUpObj( back, true );
     OutImport( back, sym, class_, false );
-    if( F_CLASS( class_ ) == F_BASE ) {
+    if( FixClass( class_ ) == F_BASE ) {
         OutFarSeg( back, 0 );
     } else {
         OutFarOff( back, plus );
-        if( F_CLASS( class_ ) == F_PTR ) {
+        if( FixClass( class_ ) == F_PTR ) {
             OutFarSeg( back, 0 );
         }
     }
@@ -187,15 +187,15 @@ void    OutLblPatch( BackRun& back, label_handle lbl, fix_class class_, offset p
         OutPatch( back, lbl, ADD_PATCH | _OFFSET_PATCH );
         val = 0;
     }
-    if( F_CLASS( class_ ) == F_BASE ) {
+    if( FixClass( class_ ) == F_BASE ) {
         OutFarSeg( back, 0 );
     } else {
-        if( F_CLASS( class_ ) == F_BIG_OFFSET ) {
+        if( FixClass( class_ ) == F_BIG_OFFSET ) {
             OutDataLong( back, val + plus );
         } else {
             OutFarOff( back, val + plus );
         }
-        if( F_CLASS( class_ ) == F_PTR ) {
+        if( FixClass( class_ ) == F_PTR ) {
             OutFarSeg( back, 0 );
         }
     }

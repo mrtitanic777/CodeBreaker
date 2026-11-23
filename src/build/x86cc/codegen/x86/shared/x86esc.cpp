@@ -292,7 +292,7 @@ static  void    ExpandCJ( BackRun& back, any_oc *oc )
 
     class_ = oc->oc_header.class_;
     objlen = oc->oc_header.objlen;
-    if( OC_BASE_CLASS( class_ ) == OC_JCOND ) {
+    if( OcBaseClass( class_ ) == OC_JCOND ) {
         if( objlen == OptInsSize( back, OC_JCOND, OC_DEST_NEAR ) ) {
             if( CPULevel( back, CPU_386 ) ) {
                 OutJCondNear( back, oc->oc_jcond.cond );
@@ -306,14 +306,14 @@ static  void    ExpandCJ( BackRun& back, any_oc *oc )
             OutJCond( back, oc->oc_jcond.cond );
             OutShortDisp( back, oc->oc_jcond.handle );
         }
-    } else if( OC_BASE_CLASS( class_ ) == OC_JMP && objlen == OptInsSize( back, OC_JMP, OC_DEST_SHORT ) ) {
+    } else if( OcBaseClass( class_ ) == OC_JMP && objlen == OptInsSize( back, OC_JMP, OC_DEST_SHORT ) ) {
         OutJShort( back );
         OutShortDisp( back, oc->oc_handle.handle );
     } else {
         if( class_ & OC_ATTR_FAR ) {
             f = F_PTR;
             rel = false;
-            if( OC_BASE_CLASS( class_ ) == OC_CALL ) {
+            if( OcBaseClass( class_ ) == OC_CALL ) {
                 if( objlen == OptInsSize( back, OC_CALL, OC_DEST_CHEAP ) ) {
                     f = F_OFFSET;
                     rel = true;
@@ -328,7 +328,7 @@ static  void    ExpandCJ( BackRun& back, any_oc *oc )
         } else {
             f = F_OFFSET;
             rel = true;
-            if( OC_BASE_CLASS( class_ ) == OC_CALL ) {
+            if( OcBaseClass( class_ ) == OC_CALL ) {
                 OutCNear( back );
             } else {
                 OutJNear( back );
@@ -362,14 +362,14 @@ static  void    OutCodeDisp( BackRun& back, label_handle lbl, fix_class f,
 
     sym = AskForLblSym( back, lbl );
     if( AskIfRTLabel( back, lbl ) ) {
-        OutRTImport( back, static_cast<rt_class>(SYM2RTIDX( sym )), f );
+        OutRTImport( back, static_cast<rt_class>(SymToRtIdx( sym )), f );
         if( class_ & OC_ATTR_FAR ) {
             OutFarD( back, 0, 0 );
         } else {
             OutFarOff( back, 0 );
         }
     } else if( AskIfCommonLabel( back, lbl ) ) {
-        OutSpecialCommon( back, SYM2IMPHDL( sym ), f, rel );
+        OutSpecialCommon( back, SymToImpHdl( sym ), f, rel );
         OutFarOff( back, 0 );
     } else if( sym != NULL && UseImportForm( back, FEAttr( *back.front, sym ) ) ) { /* 90-05-22 */
         OutImport( back, sym, f, rel );
@@ -475,11 +475,11 @@ static  label_handle ExpandObj( BackRun& back, byte *cur, int explen )
             memcpy( &lbl, cur, sizeof( pointer ) );
             cur += sizeof( pointer );
             if( AskIfRTLabel( back, lbl ) ) {
-                OutRTImportRel( back, static_cast<rt_class>(SYM2RTIDX( AskForLblSym( back, lbl ) )), F_OFFSET, false );
+                OutRTImportRel( back, static_cast<rt_class>(SymToRtIdx( AskForLblSym( back, lbl ) )), F_OFFSET, false );
                 val = 0;
             } else {
                 if( AskIfCommonLabel( back, lbl ) ) {
-                    OutSpecialCommon( back, SYM2IMPHDL( AskForLblSym( back, lbl ) ), class_, rel );
+                    OutSpecialCommon( back, SymToImpHdl( AskForLblSym( back, lbl ) ), class_, rel );
                 } else {
                     OutReloc( back, segid, class_, rel );
                 }
@@ -543,7 +543,7 @@ void    OutputOC( BackRun& back, any_oc *oc, any_oc *next_lbl )
     offset          lc;
     byte            *ptr;
 
-    base = static_cast<oc_class>(OC_BASE_CLASS( oc->oc_header.class_ ));
+    base = static_cast<oc_class>(OcBaseClass( oc->oc_header.class_ ));
     if( base == OC_NORET )
         return;
     if( base != OC_LABEL ) {
@@ -589,10 +589,10 @@ void    OutputOC( BackRun& back, any_oc *oc, any_oc *next_lbl )
         lbl = oc->oc_handle.handle;
         sym = AskForLblSym( back, lbl );
         if( AskIfRTLabel( back, lbl ) ) {
-            OutRTImport( back, static_cast<rt_class>(SYM2RTIDX( sym )), F_OFFSET );
+            OutRTImport( back, static_cast<rt_class>(SymToRtIdx( sym )), F_OFFSET );
             lc = 0;
         } else if( AskIfCommonLabel( back, lbl ) ) {
-            OutSpecialCommon( back, SYM2IMPHDL( sym ), F_OFFSET, false );
+            OutSpecialCommon( back, SymToImpHdl( sym ), F_OFFSET, false );
             lc = 0;
         } else if( sym != NULL && UseImportForm( back, FEAttr( *back.front, sym ) ) ) {
             OutImport( back, sym, F_OFFSET, false );
@@ -661,7 +661,7 @@ void    OutputOC( BackRun& back, any_oc *oc, any_oc *next_lbl )
         }
         break;
     case OC_INFO:
-        base = static_cast<oc_class>(OC_INFO_CLASS( oc->oc_header.class_ ));
+        base = static_cast<oc_class>(OcInfoClass( oc->oc_header.class_ ));
         switch( base ) {
         case OC_INFO_LINE:
             OutLineNum( back, oc->oc_linenum.line, oc->oc_linenum.label_line );

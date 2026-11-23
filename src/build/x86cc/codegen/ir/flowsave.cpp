@@ -66,12 +66,12 @@ static bool OpRefsReg( name *op, hw_reg_set reg )
 {
     switch( op->n.class_ ) {
     case N_REGISTER:
-        if( HW_Ovlap( op->r.reg, reg ) )
+        if( HwOvlap( op->r.reg, reg ) )
             return( true );
         break;
     case N_INDEXED:
         assert( op->i.index->n.class_ == N_REGISTER );
-        if( HW_Ovlap( op->i.index->r.reg, reg ) )
+        if( HwOvlap( op->i.index->r.reg, reg ) )
             return( true );
         break;
     }
@@ -95,7 +95,7 @@ static bool BlockUses( block *blk, hw_reg_set reg )
                 return( true );
             }
         }
-        if( ins->head.opcode != OP_NOP && HW_Ovlap( ins->zap->reg, reg ) ) {
+        if( ins->head.opcode != OP_NOP && HwOvlap( ins->zap->reg, reg ) ) {
             return( true );
         }
     }
@@ -107,7 +107,7 @@ static bool     InLoop( block *blk )
 {
     if( blk->loop_head != NULL )
         return( true );
-    if( _IsBlkAttr( blk, BLK_LOOP_HEADER ) )
+    if( IsBlkAttr( blk, BLK_LOOP_HEADER ) )
         return( true );
     return( false );
 }
@@ -117,12 +117,12 @@ static void DoFix( BackRun& back, block *blk )
 {
     block_num   i;
 
-    if( _IsBlkVisited( blk ) )
+    if( IsBlkVisited( blk ) )
         return;
-    if( _IsBlkAttr( blk, BLK_RETURN ) )
+    if( IsBlkAttr( blk, BLK_RETURN ) )
         Zoiks( back, ZOIKS_140 );
     blk->stack_depth += WORD_SIZE;
-    _MarkBlkVisited( blk );
+    MarkBlkVisited( blk );
     for( i = 0; i < blk->targets; i++ ) {
         DoFix( back, blk->edge[i].destination.u.blk );
     }
@@ -140,8 +140,8 @@ static void FixStackDepth( BackRun& back, block *save, block *restore )
     block_num   i;
 
     MarkBlkAllUnVisited( back );
-    _MarkBlkVisited( restore );
-    _MarkBlkVisited( save );
+    MarkBlkVisited( restore );
+    MarkBlkVisited( save );
     if( save != restore ) {
         restore->stack_depth += WORD_SIZE;
         for( i = 0; i < save->targets; i++ ) {
@@ -171,7 +171,7 @@ static int CountRegs( hw_reg_set regs )
 
     count = 0;
     for( curr = PushRegs; !HW_CEqual( *curr, HW_EMPTY ); ++curr ) {
-        if( HW_Ovlap( *curr, regs ) ) {
+        if( HwOvlap( *curr, regs ) ) {
             count++;
         }
     }
@@ -200,7 +200,7 @@ static int CountDomBits( BackRun& back, dom_bit_set *dbits )
 /*******************************************/
 {
     back.flowsave.bitCount = 0;
-    _DBitIter( back, DoCountBits, *dbits );
+    DBitIter( back, DoCountBits, *dbits );
     return( back.flowsave.bitCount );
 }
 
@@ -209,12 +209,12 @@ static void GetRegUsage( BackRun& back, reg_flow_info *info )
 {
     block       *blk;
 
-    _DBitInit( info->dom_usage, ~0U );
-    _DBitInit( info->post_dom_usage, ~0U );
+    DBitInit( info->dom_usage, ~0U );
+    DBitInit( info->post_dom_usage, ~0U );
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         if( BlockUses( blk, info->reg ) ) {
-            _DBitIntersect( info->dom_usage, blk->dom.dominator );
-            _DBitIntersect( info->post_dom_usage, blk->dom.post_dominator );
+            DBitIntersect( info->dom_usage, blk->dom.dominator );
+            DBitIntersect( info->post_dom_usage, blk->dom.post_dominator );
         }
     }
 }
@@ -224,15 +224,15 @@ static bool PairOk( block *save, block *restore, reg_flow_info *info, int curr_r
 {
     int                 i;
 
-    if( !_DBitOverlap( save->dom.id, info[curr_reg].dom_usage ) )
+    if( !DBitOverlap( save->dom.id, info[curr_reg].dom_usage ) )
         return( false );
-    if( !_DBitOverlap( restore->dom.id, info[curr_reg].post_dom_usage ) )
+    if( !DBitOverlap( restore->dom.id, info[curr_reg].post_dom_usage ) )
         return( false );
-    if( !_DBitOverlap( save->dom.id, restore->dom.dominator ) )
+    if( !DBitOverlap( save->dom.id, restore->dom.dominator ) )
         return( false );
-    if( !_DBitOverlap( restore->dom.id, save->dom.post_dominator ) )
+    if( !DBitOverlap( restore->dom.id, save->dom.post_dominator ) )
         return( false );
-    if( _IsBlkAttr( restore, BLK_CONDITIONAL | BLK_SELECT ) )
+    if( IsBlkAttr( restore, BLK_CONDITIONAL | BLK_SELECT ) )
         return( false );
     if( InLoop( save ) || InLoop( restore ) )
         return( false );
@@ -245,14 +245,14 @@ static bool PairOk( block *save, block *restore, reg_flow_info *info, int curr_r
             return( false );
         if( info[i].save != save && info[i].restore == restore )
             return( false );
-        if( _DBitOverlap( info[i].save->dom.dominator, save->dom.id ) ) {
+        if( DBitOverlap( info[i].save->dom.dominator, save->dom.id ) ) {
             // save dominates info[i].save - now check that restore postdominate
-            if( _DBitOverlap( info[i].restore->dom.post_dominator, restore->dom.id ) ) {
+            if( DBitOverlap( info[i].restore->dom.post_dominator, restore->dom.id ) ) {
                 continue;
             }
-        } else if( _DBitOverlap( info[i].save->dom.id, save->dom.dominator ) ) {
+        } else if( DBitOverlap( info[i].save->dom.id, save->dom.dominator ) ) {
             // info[i].save dominates save, now make sure info[i].restore postdom's restore
-            if( _DBitOverlap( info[i].restore->dom.id, restore->dom.post_dominator ) ) {
+            if( DBitOverlap( info[i].restore->dom.id, restore->dom.post_dominator ) ) {
                 continue;
             }
         }
@@ -296,9 +296,9 @@ void FlowSave( BackRun& back, hw_reg_set *preg )
     InitBlockArray(back);
     curr_push = PushRegs;
     for( curr_reg = 0; curr_reg < num_regs; curr_reg++ ) {
-        while( !HW_Ovlap( *curr_push, *preg ) )
+        while( !HwOvlap( *curr_push, *preg ) )
             curr_push++;
-        HW_Asgn( reg_info[curr_reg].reg, *curr_push );
+        HwAsgn( reg_info[curr_reg].reg, *curr_push );
         reg_info[curr_reg].save = NULL;
         reg_info[curr_reg].restore = NULL;
         if( HW_COvlap( *curr_push, HW_xBP ) )
@@ -328,7 +328,7 @@ void FlowSave( BackRun& back, hw_reg_set *preg )
         // in the normal prolog sequence
         save = reg_info[curr_reg].save;
         restore = reg_info[curr_reg].restore;
-        if( ( save != NULL && save != back.data.HeadBlock ) && ( restore != NULL && !_IsBlkAttr( restore, BLK_RETURN ) ) ) {
+        if( ( save != NULL && save != back.data.HeadBlock ) && ( restore != NULL && !IsBlkAttr( restore, BLK_RETURN ) ) ) {
             reg_type_class = WD;
             if( IsSegReg( reg_info[curr_reg].reg ) ) {
                 reg_type_class = U2;
@@ -340,8 +340,8 @@ void FlowSave( BackRun& back, hw_reg_set *preg )
             ins->num_operands = 0;
             ResetGenEntry( back, ins );
             SuffixIns( back, restore->ins.head.prev, ins );
-            HW_TurnOff( *preg, reg_info[curr_reg].reg );
-            HW_TurnOn( back.flowsave.flowedRegs, reg_info[curr_reg].reg );
+            HwTurnOff( *preg, reg_info[curr_reg].reg );
+            HwTurnOn( back.flowsave.flowedRegs, reg_info[curr_reg].reg );
             FixStackDepth( back, save, restore );
         }
         curr_push++;
@@ -352,5 +352,5 @@ void FlowSave( BackRun& back, hw_reg_set *preg )
 void FlowRestore( BackRun& back, hw_reg_set *preg )
 /**********************************/
 {
-    HW_TurnOff( *preg, back.flowsave.flowedRegs );
+    HwTurnOff( *preg, back.flowsave.flowedRegs );
 }

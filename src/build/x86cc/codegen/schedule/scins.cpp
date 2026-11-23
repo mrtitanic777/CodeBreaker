@@ -179,7 +179,7 @@ static  bool    TryOldIndex( BackRun& back, score_hdl scoreboard, instruction *i
              */
 //            if( opp != &ins->result ||
             if( *opp != ins->result ||
-                !HW_Ovlap( reg_name->r.reg, ins->zap->reg ) ) {
+                !HwOvlap( reg_name->r.reg, ins->zap->reg ) ) {
                 index = ScaleIndex( back, reg_name,
                                     op->i.base,
                                     op->i.constant,
@@ -215,9 +215,9 @@ static  bool    TryRegOp( BackRun& back, score_hdl scoreboard, instruction *ins,
     if( op->n.class_ == N_REGISTER ) {
         live = ins->head.next->head.live.regs;
         this_reg = &scoreboard[op->r.reg_index];
-        if( !HW_Ovlap( live, op->r.reg ) ) {
+        if( !HwOvlap( live, op->r.reg ) ) {
             for( curr_reg = this_reg->next_reg; curr_reg != this_reg; curr_reg = curr_reg->next_reg ) {
-                if( HW_Ovlap( live, back.score.ScoreList[curr_reg->index]->reg )
+                if( HwOvlap( live, back.score.ScoreList[curr_reg->index]->reg )
                 && curr_reg->generation < this_reg->generation
                 && ChangeIns( back, ins, back.score.ScoreList[curr_reg->index]->reg_name, opp, CHANGE_GEN ) ) {
                      return( true );
@@ -234,14 +234,14 @@ static  bool    TryRegOp( BackRun& back, score_hdl scoreboard, instruction *ins,
     } else {
         ScoreInfo( back, &info, op );
         if( info.class_ == SC_N_CONSTANT ) {
-            if( _OpIsCondition( ins->head.opcode ) &&
+            if( OpIsCondition( ins->head.opcode ) &&
                 info.symbol.u.p == NULL && info.offset == 0 ) {
                 /*
                  * don't change cmp x,0
                  */
                 return( false );
             }
-            if( _IsFloating( ins->type_class ) ) {
+            if( IsFloating( ins->type_class ) ) {
                 /*
                  * careful -- info->offset is NOT right for FP consts!
                  */
@@ -312,7 +312,7 @@ void    ScoreMakeEqual( BackRun& back, score_hdl scoreboard, name *op1, name *op
              * NB: reg can never have the value x[reg]
              */
             if( info.reg_index == NO_INDEX
-                || !HW_Ovlap( op2->r.reg, back.score.ScoreList[info.reg_index]->reg ) ) {
+                || !HwOvlap( op2->r.reg, back.score.ScoreList[info.reg_index]->reg ) ) {
                 ScoreAssign( back, scoreboard, op2_index, &info );
             }
         }
@@ -358,7 +358,7 @@ bool    ScoreMove( BackRun& back, score_hdl scoreboard, instruction *ins )
                  * NB: reg can never have the value x[reg]
                  */
                 if( info.reg_index == NO_INDEX
-                  || !HW_Ovlap( dst->r.reg, back.score.ScoreList[info.reg_index]->reg ) ) {
+                  || !HwOvlap( dst->r.reg, back.score.ScoreList[info.reg_index]->reg ) ) {
                     if( !FPIsConvert( back, ins ) ) {
                         ScoreAssign( back, scoreboard, dst_index, &info );
                     }

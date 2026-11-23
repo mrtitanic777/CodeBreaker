@@ -35,7 +35,6 @@
 
 #include <setjmp.h>
 
-#define _Abort( __reason )      longjmp( cli->exception_handler,  __reason )
 
 enum _Abort_reasons {
     ABORT_INVALID_LANGUAGE = 1,

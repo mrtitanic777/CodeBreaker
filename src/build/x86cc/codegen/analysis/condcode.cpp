@@ -111,9 +111,9 @@ static void DoMarkUsedCC( block *blk )
     if( ins != NULL ) {
         ins->ins_flags |= INS_CC_USED;
     } else {
-        _MarkBlkVisited( blk );
+        MarkBlkVisited( blk );
         for( edge = blk->input_edges; edge != NULL; edge = edge->next_source ) {
-            if( !_IsBlkVisited( edge->source ) ) {
+            if( !IsBlkVisited( edge->source ) ) {
                 DoMarkUsedCC( edge->source );
             }
         }
@@ -152,18 +152,18 @@ static  bool    Traverse( BackRun& back, block *blk, name *zero )
     cc->ins = NULL;
     jumps = 0;
     for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-        if( _OpIsJump( ins->head.opcode ) ) {
+        if( OpIsJump( ins->head.opcode ) ) {
             ++jumps;
         }
         cc_affect = ins->u.gen_table->op_type & MASK_CC;
         // Compares and setcc instructions go through the same
         // tables - compares set condition code, but setcc does not
         // so we kludge it right here. BBB - June 28, 1995
-        if( _OpIsCompare( ins->head.opcode ) && ins->result != NULL ) {
+        if( OpIsCompare( ins->head.opcode ) && ins->result != NULL ) {
             // we still want to kill off compare for this set instruction if
             // possible
             if( UselessCompare( ins, cc, zero ) ) {
-                if( G( ins ) != G_NO ) {
+                if( InsGenerate( ins ) != G_NO ) {
                     change = true;
                     DoNothing( back, ins );
                     MarkUsedCC( back, blk );
@@ -174,7 +174,7 @@ static  bool    Traverse( BackRun& back, block *blk, name *zero )
         if( VolatileIns( ins ) || cc_affect == NO_CC ) {
             cc->state = UNKNOWN_STATE;
         } else if( cc_affect == SETS_SC ) { /* sets SIGNED conditions */
-            if( !_OpIsBit( ins->head.opcode ) &&
+            if( !OpIsBit( ins->head.opcode ) &&
                 ( ins->ins_flags & INS_DEMOTED ) ) {
                 cc->state = EQUALITY_CONDITIONS_SET;
             } else {
@@ -191,12 +191,12 @@ static  bool    Traverse( BackRun& back, block *blk, name *zero )
             }
             cc->ins = ins;
         } else if( cc_affect == SETS_CC ) {       /* includes compares*/
-            if( _OpIsCompare( ins->head.opcode ) ) {
+            if( OpIsCompare( ins->head.opcode ) ) {
                 if( UselessCompare( ins, cc, zero ) ) {
                     DoNothing( back, ins );
                     change = true;
                     MarkUsedCC( back, blk );
-                } else if( G( ins ) != G_NO ) {
+                } else if( InsGenerate( ins ) != G_NO ) {
                     cc->state = CONDITIONS_SET;
                     cc->result_op = NULL;
                     cc->op_type = ins->type_class;
@@ -205,7 +205,7 @@ static  bool    Traverse( BackRun& back, block *blk, name *zero )
                     cc->ins = ins;
                 }
             } else {
-                if( !_OpIsBit( ins->head.opcode ) &&
+                if( !OpIsBit( ins->head.opcode ) &&
                     ( ins->ins_flags & INS_DEMOTED ) ) {
                     cc->state = EQUALITY_CONDITIONS_SET;
                 } else {
@@ -357,7 +357,7 @@ void    Conditions( BackRun& back )
         cc->ins = NULL;
         cc->op_type = XX;
         blk->u1.cc = cc;
-        _MarkBlkUnVisited( blk );
+        MarkBlkUnVisited( blk );
     }
     FlowConditions(back);
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {

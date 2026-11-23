@@ -33,6 +33,7 @@
 #ifndef CGSTD_H_INCLUDED
 #define CGSTD_H_INCLUDED
 
+#include <concepts>
 #include <limits.h>
 #include <stddef.h>
 #include <string.h>
@@ -40,7 +41,8 @@
 #include "bool.h"
 
 
-#define _RoundUp( size, word )        ( ((size)+((word)-1)) & ~((word)-1) )
+template <std::integral Tsize, std::integral Tword>
+inline auto RoundUp( Tsize size, Tword word ) -> decltype( ((size)+((word)-1)) & ~((word)-1) ) { return ( ((size)+((word)-1)) & ~((word)-1) ); }
 
 
     #define NULLCHAR        '\0'

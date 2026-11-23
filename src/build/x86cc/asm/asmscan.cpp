@@ -328,7 +328,7 @@ static bool get_number( AsmRun& assembler, asm_tok *tok, const char **input, cha
         //AsmError( INVALID_NUMBER_DIGIT );
         /* swallow remainder of token */
         c = *(unsigned char *)ptr;
-        while( IS_VALID_ID_CHAR( c ) ) {
+        while( IsValidIdChar( c ) ) {
             c = *(unsigned char *)(++ptr);
         }
         tok->class_ = TC_BAD_NUM;
@@ -390,7 +390,7 @@ static bool get_id( asm_tok *tok, const char **input, char **output )
     for( ; ; ) {
         c = *(unsigned char *)*input;
         /* if character is part of a valid name, add it */
-        if( IS_VALID_ID_CHAR( c ) ) {
+        if( IsValidIdChar( c ) ) {
             *(*output)++ = *(*input)++;
         } else if( c == '\\' ) {
             *(*output)++ = *(*input)++;
@@ -579,7 +579,7 @@ bool AsmScan( AsmRun& assembler, token_buffer *tokbuf, const char *string )
             return( RC_OK );
         }
 
-        if( IS_VALID_ID_CHAR_FIRST( c )
+        if( IsValidIdCharFirst( c )
           || c == '\\'
           || ( c == '.' && i == 0 ) ) {
             if( get_id( tok + i, &ptr, &output_ptr ) ) {

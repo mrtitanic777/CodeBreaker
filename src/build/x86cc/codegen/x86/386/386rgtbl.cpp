@@ -799,11 +799,11 @@ bool    IsIndexReg( BackRun& back, hw_reg_set reg, type_class_def type_class, bo
     /* unused parameters */ (void)is_temp_index;
 
     for( list = RegSetList(back, IndexSets[type_class]); !HW_CEqual( *list, HW_EMPTY ); ++list ) {
-        if( HW_Equal( *list, reg ) ) {
+        if( HwEqual( *list, reg ) ) {
             break;
         }
     }
-    return( HW_Equal( *list, reg ) );
+    return( HwEqual( *list, reg ) );
 }
 
 static  type_class_def  NotFloatRegClass( BackRun& back, hw_reg_set regs )
@@ -814,7 +814,7 @@ static  type_class_def  NotFloatRegClass( BackRun& back, hw_reg_set regs )
 
     for( type_class = U1; type_class < XX; ++type_class ) {
         for( possible = RegSetList(back, ClassSets[type_class]); !HW_CEqual( *possible, HW_EMPTY ); ++possible ) {
-            if( HW_Equal( *possible, regs ) ) {
+            if( HwEqual( *possible, regs ) ) {
                 return( type_class );
             }
         }
@@ -839,7 +839,7 @@ type_class_def  RegClass( BackRun& back, hw_reg_set regs )
         if( HW_CEqual( regs, HW_ST0 ) )
             return( __FP80BIT(FL,FD) );
         for( possible = STIReg; !HW_CEqual( *possible, HW_EMPTY ); ++possible ) {
-            if( HW_Equal( regs, *possible ) ) {
+            if( HwEqual( regs, *possible ) ) {
                 return( __FP80BIT(FL,FD) );
             }
         }
@@ -866,11 +866,11 @@ bool    IndexRegOk( BackRun& back, hw_reg_set reg, bool is_temp_index )
         list = RegSetList(back, RL_LONG_INDEX);
     }
     for( ; !HW_CEqual( *list, HW_EMPTY ); ++list ) {
-        if( HW_Equal( *list, reg ) ) {
+        if( HwEqual( *list, reg ) ) {
             break;
         }
     }
-    return( HW_Equal( *list, reg ) );
+    return( HwEqual( *list, reg ) );
 }
 
 
@@ -883,7 +883,7 @@ bool    IsSegReg( hw_reg_set regs )
 
     tmp = regs;
     HW_COnlyOn( tmp, HW_SEGS );
-    return( HW_Equal( tmp, regs ) );
+    return( HwEqual( tmp, regs ) );
 }
 
 
@@ -988,7 +988,7 @@ hw_reg_set      High48Reg( hw_reg_set regs )
 
     high = Low48Reg( regs );
     if( !HW_CEqual( high, HW_EMPTY ) ) {
-        HW_TurnOff( regs, high );
+        HwTurnOff( regs, high );
         return( regs );
     }
     return( high );
@@ -1005,10 +1005,10 @@ hw_reg_set      Low64Reg( hw_reg_set regs )
     if( HW_CEqual( regs, HW_EMPTY ) )
         return( HW_EMPTY );
     for( order = Reg64Order; !HW_CEqual( *order, HW_EMPTY ); ++order ) {
-        if( HW_Ovlap( *order, regs ) ) {
+        if( HwOvlap( *order, regs ) ) {
             low = regs;
-            HW_OnlyOn( low, *order );
-            if( HW_Equal( low, regs ) ) {
+            HwOnlyOn( low, *order );
+            if( HwEqual( low, regs ) ) {
                 low = HW_EMPTY;
             }
             return( low );
@@ -1027,7 +1027,7 @@ hw_reg_set      High64Reg( hw_reg_set regs )
 
     high = Low64Reg( regs );
     if( !HW_CEqual( high, HW_EMPTY ) ) {
-        HW_TurnOff( regs, high );
+        HwTurnOff( regs, high );
         return( regs );
     }
     return( high );
@@ -1104,12 +1104,12 @@ bool    IsRegClass( BackRun& back, hw_reg_set regs, type_class_def type_class )
 {
     const hw_reg_set    *list;
 
-    for( list = RegSetList(back, IsSets[type_class]); !HW_Equal( *list, HW_EMPTY ); ++list ) {
-        if( HW_Equal( *list, regs ) ) {
+    for( list = RegSetList(back, IsSets[type_class]); !HwEqual( *list, HW_EMPTY ); ++list ) {
+        if( HwEqual( *list, regs ) ) {
             break;
         }
     }
-    return( !HW_Equal( *list, HW_EMPTY ) );
+    return( !HwEqual( *list, HW_EMPTY ) );
 }
 
 

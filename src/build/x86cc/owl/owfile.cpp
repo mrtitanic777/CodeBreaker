@@ -122,7 +122,7 @@ static void doReloc( BackRun& back, owl_section_handle section, owl_reloc_info *
     data = (data&~bit_mask)|(((displacement&bit_mask)+(data&bit_mask))&bit_mask);
     OWLBufferWrite( back, section->buffer, (char *)&data, 4 );
     OWLBufferSeek( section->buffer, old_loc );
-    _ClientFree( back, section->file, reloc );
+    ClientFree( back, section->file, reloc );
     section->num_relocs -= 1;
 }
 
@@ -184,7 +184,7 @@ static void resolveLabelNames( BackRun& back, owl_file_handle file ) {
 
     index = 0;
     for( sym = file->symbol_table->head; sym != NULL; sym = sym->next ) {
-        if( _OwlMetaSymbol( sym->type ) ) continue;
+        if( OwlMetaSymbol( sym->type ) ) continue;
         if( sym->name == NULL ) {
             /*
              * Really checking to make sure sym has no special info attached
@@ -192,7 +192,7 @@ static void resolveLabelNames( BackRun& back, owl_file_handle file ) {
              */
             if( sym->num_relocs == 0 && sym->x.func == NULL ) {
                 sym->flags |= OWL_SYM_DEAD;
-                if( _OwlLinkageGlobal(sym->linkage) ) {
+                if( OwlLinkageGlobal(sym->linkage) ) {
                     file->symbol_table->num_global_symbols--;
                 } else {
                     file->symbol_table->num_local_symbols--;
@@ -252,7 +252,7 @@ static void resolveComdefSymbols( BackRun& back, owl_file_handle file ) {
         if( comdefSection( curr ) ) {
             sym = curr->comdat_sym;
             size = curr->size;
-            if( _OwlLinkageGlobal(curr->sym->linkage) ) {
+            if( OwlLinkageGlobal(curr->sym->linkage) ) {
                 file->symbol_table->num_global_symbols--;
             } else {
                 file->symbol_table->num_local_symbols--;
@@ -293,5 +293,5 @@ void OWLENTRY OWLFileFini( BackRun& back, owl_file_handle file ) {
     OWLSymbolTableFini( back, file->symbol_table );
     OWLStringFini( back, file->string_table );
     deleteFile( file->info, file );
-    _ClientFree( back, file, file );
+    ClientFree( back, file, file );
 }

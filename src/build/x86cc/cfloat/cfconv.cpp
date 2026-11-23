@@ -38,7 +38,7 @@
 #include "backrun.hpp"
 
 
-#define _HiBitOn( x )   (((x) & 0x80000000) != 0)
+inline bool HiBitOn( unsigned int x ) { return (((x) & 0x80000000) != 0); }
 
 #define I16DIGITS       5
 #define I32DIGITS       10
@@ -176,7 +176,7 @@ static signed_64    CFGetDec64( const char *str )
 
     Set64ValZero( number );
     Set64ValU32( ten, 10 );
-    while( _IsDigit( *str ) ) {
+    while( IsDigit( *str ) ) {
         U64MulEq( &number, &ten );
         Set64ValU32( temp, *str++ - '0' );
         U64AddEq( &number, &temp );
@@ -190,7 +190,7 @@ static signed_32    CFGetDec32( const char *str )
     signed_32   number;
 
     number = 0;
-    while( _IsDigit( *str ) ) {
+    while( IsDigit( *str ) ) {
         number = number * 10 + *str++ - '0';
     }
     return( number );
@@ -202,7 +202,7 @@ static signed_16    CFGetDec16( const char *str )
     signed_16   number;
 
     number = 0;
-    while( _IsDigit( *str ) ) {
+    while( IsDigit( *str ) ) {
         number = number * 10 + *str++ - '0';
     }
     return( number );
@@ -267,7 +267,7 @@ static void     DoConvert( cfloat *f, const char *str )
     /*
      * scan before decimal point
      */
-    while( _IsDigit( *str ) ) {
+    while( IsDigit( *str ) ) {
         f->mant[len++] = *str++;
         expon++;
     }
@@ -276,7 +276,7 @@ static void     DoConvert( cfloat *f, const char *str )
         /*
          * scan after decimal point
          */
-        while( _IsDigit( *str ) ) {
+        while( IsDigit( *str ) ) {
             f->mant[len++] = *str++;
         }
     }
@@ -469,7 +469,7 @@ cfloat  *CFCnvI64F( BackRun& back, cfhandle h, unsigned_32 lo32, unsigned_32 hi3
     cfloat      *result;
 
     neg = false;
-    if( _HiBitOn( hi32 ) ) {
+    if( HiBitOn( hi32 ) ) {
         /*
          * take the two's complement
          */

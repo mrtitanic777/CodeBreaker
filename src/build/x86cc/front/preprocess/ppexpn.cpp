@@ -41,40 +41,46 @@
 #include "frontrun.hpp"
 
 
-#define I64isNegPP(a)       I64isNeg((a).u.sval)
-#define U64isZeroPP(a)      U64isZero((a).u.uval)
-#define U64isntZeroPP(a)    U64isntZero((a).u.uval)
-#define U64isEqPP(a,b)      U64isEq((a).u.uval,(b).u.uval)
+inline bool I64isNegPP( const ppvalue &a ) { return I64isNeg((a).u.sval); }
+inline bool U64isZeroPP( const ppvalue &a ) { return U64isZero((a).u.uval); }
+inline bool U64isntZeroPP( const ppvalue &a ) { return U64isntZero((a).u.uval); }
+inline bool U64isEqPP( const ppvalue &a, const ppvalue &b ) { return U64isEq((a).u.uval,(b).u.uval); }
 
-#define U64LowPP(a)         U64Low((a).u.uval)
+inline unsigned int &U64LowPP( ppvalue &a ) { return ( U64Low((a).u.uval) ); }
 
-#define Set64ValZeroPP(a)   Set64ValZero((a).u.uval)
-#define Set64Val1mPP(a)     Set64Val1m((a).u.uval)
-#define Set64ValU32PP(a,b)  Set64ValU32((a).u.uval,(b))
+inline void Set64ValZeroPP( ppvalue &a ) { Set64ValZero((a).u.uval); }
+inline void Set64Val1mPP( ppvalue &a ) { Set64Val1m((a).u.uval); }
+inline void Set64ValU32PP( ppvalue &a, bool b ) { Set64ValU32((a).u.uval,(b)); }
 
-#define U64CmpPP(a,b)       U64Cmp(&((a).u.uval),&((b).u.uval))
-#define I64CmpPP(a,b)       I64Cmp(&((a).u.sval),&((b).u.sval))
-#define U64CmpU32PP(a,b)    U64CmpU32((a).u.uval,(b))
+inline int U64CmpPP( ppvalue &a, ppvalue &b ) { return U64Cmp(&((a).u.uval),&((b).u.uval)); }
+inline int I64CmpPP( ppvalue &a, ppvalue &b ) { return I64Cmp(&((a).u.sval),&((b).u.sval)); }
+inline int U64CmpU32PP( const ppvalue &a, int b ) { return U64CmpU32((a).u.uval,(b)); }
 
-#define U64AddEqPP(a,b)     U64AddEq(&((a).u.uval),&((b).u.uval))
-#define U64SubEqPP(a,b)     U64SubEq(&((a).u.uval),&((b).u.uval))
-#define U64MulEqPP(a,b)     U64MulEq(&((a).u.uval),&((b).u.uval))
-#define U64NegEqPP(a)       U64NegEq(&((a).u.uval))
-#define U64AndEqPP(a,b)     U64AndEq((a).u.uval,(b).u.uval)
-#define U64OrEqPP(a,b)      U64OrEq((a).u.uval,(b).u.uval)
-#define U64XorEqPP(a,b)     U64XorEq((a).u.uval,(b).u.uval)
-#define U64NotEqPP(a)       U64NotEq((a).u.uval)
+inline void U64AddEqPP( ppvalue &a, ppvalue &b ) { U64AddEq(&((a).u.uval),&((b).u.uval)); }
+inline void U64SubEqPP( ppvalue &a, ppvalue &b ) { U64SubEq(&((a).u.uval),&((b).u.uval)); }
+inline void U64MulEqPP( ppvalue &a, ppvalue &b ) { U64MulEq(&((a).u.uval),&((b).u.uval)); }
+inline void U64NegEqPP( ppvalue &a ) { U64NegEq(&((a).u.uval)); }
+inline void U64AndEqPP( ppvalue &a, const ppvalue &b ) { U64AndEq((a).u.uval,(b).u.uval); }
+inline void U64OrEqPP( ppvalue &a, const ppvalue &b ) { U64OrEq((a).u.uval,(b).u.uval); }
+inline void U64XorEqPP( ppvalue &a, const ppvalue &b ) { U64XorEq((a).u.uval,(b).u.uval); }
+inline void U64NotEqPP( ppvalue &a ) { U64NotEq((a).u.uval); }
 
-#define I64ShiftREqPP(a,b)  I64ShiftREq(&((a).u.sval),(b))
-#define U64ShiftREqPP(a,b)  U64ShiftREq(&((a).u.uval),(b))
-#define U64ShiftLEqPP(a,b)  U64ShiftLEq(&((a).u.uval),(b))
+inline void I64ShiftREqPP( ppvalue &a, unsigned int b ) { I64ShiftREq(&((a).u.sval),(b)); }
+inline void U64ShiftREqPP( ppvalue &a, unsigned int b ) { U64ShiftREq(&((a).u.uval),(b)); }
+inline void U64ShiftLEqPP( ppvalue &a, unsigned int b ) { U64ShiftLEq(&((a).u.uval),(b)); }
 
-#define U64DivPP(a,b,c,d)   U64Div(&((a).u.uval),&((b).u.uval),&((c).u.uval),&((d).u.uval))
-#define I64DivPP(a,b,c,d)   I64Div(&((a).u.sval),&((b).u.sval),&((c).u.sval),&((d).u.sval))
+inline void U64DivPP( ppvalue &a, ppvalue &b, ppvalue &c, ppvalue &d )
+{
+    U64Div(&((a).u.uval),&((b).u.uval),&((c).u.uval),&((d).u.uval));
+}
+inline void I64DivPP( ppvalue &a, ppvalue &b, ppvalue &c, ppvalue &d )
+{
+    I64Div(&((a).u.sval),&((b).u.sval),&((c).u.sval),&((d).u.sval));
+}
 
-#define LAST_TOKEN_PREC     ARRAY_SIZE( Prec )
+#define LAST_TOKEN_PREC     ArraySize( Prec )
 
-#define IS_OPERAND( token ) ( IS_ID_OR_KEYWORD( token ) || token == T_CONSTANT )
+inline bool IsOperand( TOKEN token ) { return ( IsIdOrKeyword( token ) || token == T_CONSTANT ); }
 
     #define DbgDefault( msg )
 
@@ -254,15 +260,15 @@ static bool PopOperand( FrontRun& front, ppvalue *p, loc_info *loc )
 static bool CheckToken( FrontRun& front, TOKEN prev_token )
 /****************************************/
 {
-    if( IS_OPERAND( prev_token )
-      && IS_OPERAND( front.cvars.CurToken ) ) {
+    if( IsOperand( prev_token )
+      && IsOperand( front.cvars.CurToken ) ) {
         CErr1( front, ERR_CONSECUTIVE_OPERANDS );  // can't have 2 operands in a row
         return( true );
     }
     if( ( front.cvars.CurToken == T_PLUS )
       || ( front.cvars.CurToken == T_MINUS ) ) {
         if( ( prev_token != T_RIGHT_PAREN )
-          && ( !IS_OPERAND( prev_token )
+          && ( !IsOperand( prev_token )
           || prev_token == T_START ) ) {
             if( front.cvars.CurToken == T_PLUS ) {
                 front.cvars.CurToken = T_UNARY_PLUS;
@@ -325,7 +331,7 @@ static bool COperand( FrontRun& front )
         loc.locn = front.cvars.SrcFileLoc; // need this to store result
         loc.pos = front.ppexpn.Pos;
         front.ppexpn.Pos++;
-        if( IS_PPOPERATOR_DEFINED( front.cvars.Buffer ) ) {
+        if( IsPPOperatorDefined( front.cvars.Buffer ) ) {
             ppctl_t old_ppctl;
 
             old_ppctl = front.cvars.PPControl;
@@ -927,7 +933,7 @@ static void PrecedenceParse( FrontRun& front, ppvalue *p )
     prec_operator = 0;
     done = false;
     while( !done ) {
-        if( IS_OPERAND( front.cvars.CurToken ) ) {
+        if( IsOperand( front.cvars.CurToken ) ) {
             done = COperand(front); // get operand and read next token
         } else if( front.cvars.CurToken == T_LEFT_PAREN ) {
             PushCurToken( front, Prec[T_LEFT_PAREN] ); // always push left paren

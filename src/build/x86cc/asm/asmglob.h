@@ -40,6 +40,7 @@
 #include <time.h>
 #include <setjmp.h>
 #include "watcom.h"
+#include <ctype.h>
 #include "bool.h"
 #include "asmconst.h"
 #include "asmerr.h"
@@ -54,15 +55,8 @@
 #define SCRAP_INSTRUCTION       3
 #define INDIRECT_JUMP           4
 
-#define CMPSIM(s,c)     strcmp( s, c )
-#define CMPSIMBEG(sb,c) strncmp( sb, c, strlen( c ) )
-#define CMPSIMEND(se,c) strcmp( se - strlen( c ), c )
 
-#define CMPLIT(s,c)     strcmp( s, c )
-#define CMPLITBEG(sb,c) strncmp( sb, c, sizeof( c ) - 1 )
-#define CMPLITEND(se,c) strcmp( se - ( sizeof( c ) - 1 ), c )
 
-#define CATSTR(s,c,l)   strncpy( s, c, l ) + l
 
 #define BIT_012                 0x07
 #define BIT_345                 0x38
@@ -77,8 +71,8 @@
 #define BYTE_8                  8
 #define BYTE_10                 10
 
-#define IS_VALID_ID_CHAR_FIRST(ch)  (isalpha(ch) || ch=='_' || ch=='@' || ch=='$' || ch=='?')
-#define IS_VALID_ID_CHAR(ch)        (isalnum(ch) || ch=='_' || ch=='@' || ch=='$' || ch=='?')
+inline bool IsValidIdCharFirst( int ch ) { return (isalpha(ch) || ch=='_' || ch=='@' || ch=='$' || ch=='?'); }
+inline bool IsValidIdChar( int ch ) { return (isalnum(ch) || ch=='_' || ch=='@' || ch=='$' || ch=='?'); }
 
 enum fpe {
     DO_FP_EMULATION,

@@ -49,15 +49,15 @@
 
 #define ALLOC_FLAG      1
 
-#define BLK_HDR_SIZE    __ROUND_UP_SIZE( sizeof( mem_blk ), MEM_ALIGN )
-#define BLK_SIZE(s)     (BLK_HDR_SIZE + (s))
-#define BLK_DATA(m,x)   ((char *)(m) + BLK_HDR_SIZE + (x))
+#define BLK_HDR_SIZE    RoundUpSize( sizeof( mem_blk ), MEM_ALIGN )
+inline unsigned long long BlkSize( unsigned long long s ) { return (BLK_HDR_SIZE + (s)); }
+inline char *BlkData( mem_blk *m, size_t x ) { return ((char *)(m) + BLK_HDR_SIZE + (x)); }
 
-#define MCB_HDR_SIZE    __ROUND_UP_SIZE( sizeof( MCB ), MEM_ALIGN )
-#define MCB_SIZE(s)     (MCB_HDR_SIZE + (s))
-#define MCB_DATA(m,x)   ((char *)(m) + MCB_HDR_SIZE + (x))
-#define MCB_FROM_C(p)   ((MCB *)((char *)(p) - MCB_HDR_SIZE))
-#define MCB_NEXT(x)     ((MCB *)((char *)(x) + ((x)->size & ~ALLOC_FLAG)))
+#define MCB_HDR_SIZE    RoundUpSize( sizeof( MCB ), MEM_ALIGN )
+inline unsigned long long McbSize( size_t s ) { return (MCB_HDR_SIZE + (s)); }
+inline char *McbData( mem_block *m, int x ) { return ((char *)(m) + MCB_HDR_SIZE + (x)); }
+inline mem_block *McbFromC( void *p ) { return ((MCB *)((char *)(p) - MCB_HDR_SIZE)); }
+inline mem_block *McbNext( mem_block *x ) { return ((MCB *)((char *)(x) + ((x)->size & ~ALLOC_FLAG))); }
 
 /*
  * Size of permanent area. Needs to be reasonably big to satisfy
@@ -156,14 +156,14 @@ static void AllocPermArea( FrontRun& front )
 {
     for( front.cmemmgr.PermSize = MAX_PERM_SIZE; front.cmemmgr.PermSize != 0; front.cmemmgr.PermSize -= 0x20 ) {
         mem_blk *blk;
-        blk = static_cast<mem_blk *>(front.held->calloc( 1, BLK_SIZE( front.cmemmgr.PermSize + sizeof( blk->size ) ) ));
+        blk = static_cast<mem_blk *>(front.held->calloc( 1, BlkSize( front.cmemmgr.PermSize + sizeof( blk->size ) ) ));
         if( blk != NULL ) {
             blk->next = front.cmemmgr.Blks;
             front.cmemmgr.Blks = blk;
             blk->ptr = front.cmemmgr.PermPtr;
             blk->size = front.cmemmgr.PermSize;
-            ((MCB *)BLK_DATA( blk, front.cmemmgr.PermSize ))->size = PERM_BLK_END;    /* null length tag */
-            front.cmemmgr.PermPtr = BLK_DATA( blk, 0 );
+            ((MCB *)BlkData( blk, front.cmemmgr.PermSize ))->size = PERM_BLK_END;    /* null length tag */
+            front.cmemmgr.PermPtr = BlkData( blk, 0 );
             front.cmemmgr.PermAvail = front.cmemmgr.PermSize;
             return;
         }
@@ -197,7 +197,7 @@ static void Ccoalesce( MCB *mcb1 )
     MCB *mcb2;
 
     for( ;; ) {
-        mcb2 = MCB_NEXT( mcb1 );
+        mcb2 = McbNext( mcb1 );
         /*
          * quit if next block not free
          * or if no more blocks follow in permanet block
@@ -218,28 +218,28 @@ static void *CFastAlloc( FrontRun& front, size_t size )
     size_t      mcb_size;
     MCB         *mcb;
 
-    size = MCB_SIZE( size );
+    size = McbSize( size );
     if( size < sizeof( MCB ) )
         size = sizeof( MCB );
-    mcb_size = _RoundUp( size, MEM_ALIGN );
+    mcb_size = RoundUp( size, MEM_ALIGN );
     /*
      * search free list before getting memory from permanent area
      */
     for( mcb = front.cmemmgr.CFreeList.prev; mcb != &front.cmemmgr.CFreeList; mcb = mcb->prev ) {
         Ccoalesce( mcb );
         if( mcb->size >= mcb_size ) {
-            if( mcb->size - mcb_size > MCB_SIZE( 0 ) ) {
+            if( mcb->size - mcb_size > McbSize( 0 ) ) {
                 /*
                  * block is big enough to split it
                  */
                 mcb->size -= mcb_size;
-                mcb = MCB_NEXT( mcb );
+                mcb = McbNext( mcb );
                 mcb->size = mcb_size;
             } else {
                 removeMCBfromFreeList( mcb );
             }
             mcb->size |= ALLOC_FLAG;      /* indicate block allocated */
-            return( MCB_DATA( mcb, 0 ) );
+            return( McbData( mcb, 0 ) );
         }
     }
     if( mcb_size > front.cmemmgr.PermAvail )
@@ -247,7 +247,7 @@ static void *CFastAlloc( FrontRun& front, size_t size )
     front.cmemmgr.PermAvail -= mcb_size;
     mcb = (MCB *)( front.cmemmgr.PermPtr + front.cmemmgr.PermAvail );
     mcb->size = mcb_size | ALLOC_FLAG;
-    return( MCB_DATA( mcb, 0 ) );
+    return( McbData( mcb, 0 ) );
 }
 
 
@@ -305,8 +305,8 @@ void *CMemRealloc( FrontRun& front, void *old_p, size_t size )
     if( old_p == NULL )
         return( CMemAlloc( front, size ) );
 
-    mcb = MCB_FROM_C( old_p );
-    old_size = ((mcb)->size & ~ALLOC_FLAG) - MCB_SIZE( 0 );
+    mcb = McbFromC( old_p );
+    old_size = ((mcb)->size & ~ALLOC_FLAG) - McbSize( 0 );
     if( size > old_size ) {
         p = CMemAlloc( front, size );
         memcpy( p, old_p, old_size );
@@ -340,7 +340,7 @@ static enum cmem_kind CMemKind( FrontRun& front, const char *p )
             /*
              * check if dynamic memory (from end of block)
              */
-            if( p < BLK_DATA( blk, size ) ) {
+            if( p < BlkData( blk, size ) ) {
                 return( CMEM_MEM );
             }
         }
@@ -362,10 +362,10 @@ void CMemFree( FrontRun& front, void *p )
      */
     if( p != NULL && ( front.cvars.PCH_Start == NULL || (char *)p < front.cvars.PCH_Start || (char *)p >= front.cvars.PCH_End ) ) {
         if( CMemKind( front, static_cast<const char *>(p) ) == CMEM_MEM ) {
-            mcb = MCB_FROM_C( p );
+            mcb = McbFromC( p );
             if( (char *)mcb == front.cmemmgr.PermPtr + front.cmemmgr.PermAvail ) {
                 front.cmemmgr.PermAvail += mcb->size & ~ALLOC_FLAG;
-                mcb = MCB_NEXT( mcb );
+                mcb = McbNext( mcb );
                 if( (mcb->size & ALLOC_FLAG) == 0 ) {
                     if( (char *)mcb == front.cmemmgr.PermPtr + front.cmemmgr.PermAvail ) {
                         front.cmemmgr.PermAvail += mcb->size;
@@ -386,7 +386,7 @@ void *CPermAlloc( FrontRun& front, size_t size )
 {
     void    *p;
 
-    size = _RoundUp( size, MEM_ALIGN );
+    size = RoundUp( size, MEM_ALIGN );
     if( size > front.cmemmgr.PermAvail ) {
         if( size <= MAX_PERM_SIZE ) {
             /*

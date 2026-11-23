@@ -242,7 +242,7 @@ static bool mem2code( AsmRun& assembler, unsigned char ss, asm_token index, asm_
         // direct memory
         // clear the rightmost 3 bits
         mod_field = MOD_00;
-        if( IS_ADRSIZ_32( rCode ) ) {
+        if( IsAdrsiz32( rCode ) ) {
             rm_field = D32;
         } else {
             if( !InRange( rCode->data[assembler.asmdefs.Opnd_Count], 2 ) ) {
@@ -489,7 +489,7 @@ static bool idata_float( AsmRun& assembler, long value )
     default:
         break;
     }
-    SET_OPSIZ_32( assembler.asmdefs.Code );
+    SetOpsiz32( assembler.asmdefs.Code );
     assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I32;
     assembler.asmdefs.Code->data[assembler.asmdefs.Opnd_Count] = value;
     return( RC_OK );
@@ -543,7 +543,7 @@ static bool process_jumps( AsmRun& assembler, token_buffer *tokbuf, expr_list *o
 static bool segm_override_jumps( AsmRun& assembler, token_buffer *tokbuf, expr_list *opndx )
 /***********************************************************************/
 {
-    if( ISVALID_IDX( opndx->override ) ) {
+    if( IsValidIdx( opndx->override ) ) {
         if( tokbuf->tokens[opndx->override].class_ == TC_REG ) {
             assembler.asmdefs.Code->prefix.seg = static_cast<prefix_reg>(AsmOpTable[AsmOpcode[tokbuf->tokens[opndx->override].u.token].position].opcode);
         } else {
@@ -555,7 +555,7 @@ static bool segm_override_jumps( AsmRun& assembler, token_buffer *tokbuf, expr_l
 static bool segm_override_idata( AsmRun& assembler, token_buffer *tokbuf, expr_list *opndx )
 /***********************************************************************/
 {
-    if( ISVALID_IDX( opndx->override ) ) {
+    if( IsValidIdx( opndx->override ) ) {
         if( tokbuf->tokens[opndx->override].class_ == TC_REG ) {
             assembler.asmdefs.Code->prefix.seg = static_cast<prefix_reg>(AsmOpTable[AsmOpcode[tokbuf->tokens[opndx->override].u.token].position].opcode);
         } else {
@@ -567,7 +567,7 @@ static bool segm_override_idata( AsmRun& assembler, token_buffer *tokbuf, expr_l
 static bool segm_override_memory( AsmRun& assembler, token_buffer *tokbuf, expr_list *opndx )
 /************************************************************************/
 {
-    if( ISVALID_IDX( opndx->override ) ) {
+    if( IsValidIdx( opndx->override ) ) {
         if( tokbuf->tokens[opndx->override].class_ == TC_REG ) {
             assembler.asmdefs.Code->prefix.seg = static_cast<prefix_reg>(AsmOpTable[AsmOpcode[tokbuf->tokens[opndx->override].u.token].position].opcode);
         } else {
@@ -613,14 +613,14 @@ static bool idata_nofixup( AsmRun& assembler, expr_list *opndx )
                     op_type = OP_I8;
                 } else if( opndx->mem_type == MT_WORD ) {
                     op_type = OP_I16;
-                    SET_OPSIZ_16( assembler.asmdefs.Code );
+                    SetOpsiz16( assembler.asmdefs.Code );
                 } else if( opndx->mem_type == MT_DWORD ) {
                     op_type = OP_I32;
-                    SET_OPSIZ_32( assembler.asmdefs.Code );
+                    SetOpsiz32( assembler.asmdefs.Code );
                 } else {
                     // FIXME !!
                     op_type = OP_I32;
-                    SET_OPSIZ_32( assembler.asmdefs.Code );
+                    SetOpsiz32( assembler.asmdefs.Code );
                 }
                 break;
             }
@@ -631,7 +631,7 @@ static bool idata_nofixup( AsmRun& assembler, expr_list *opndx )
                     op_type = OP_I32;
                 }
             } else if( (unsigned long)value > USHRT_MAX ) {
-                SET_OPSIZ_32( assembler.asmdefs.Code );
+                SetOpsiz32( assembler.asmdefs.Code );
                 if( (int_8)value == (int_32)value ) {
                     op_type = OP_I8;
                 } else {
@@ -777,8 +777,8 @@ static bool idata_fixup( AsmRun& assembler, token_buffer *tokbuf, expr_list *opn
 
     sym32 = assembler.asmdefs.Code->use32;
     if( opndx->instr != T_NULL ) {
-        if( ISVALID_IDX( opndx->base_reg )
-            || ISVALID_IDX( opndx->idx_reg ) ) {
+        if( IsValidIdx( opndx->base_reg )
+            || IsValidIdx( opndx->idx_reg ) ) {
             AsmError( *assembler.front, INVALID_MEMORY_POINTER );
             return( RC_ERROR );
         }
@@ -808,12 +808,12 @@ static bool idata_fixup( AsmRun& assembler, token_buffer *tokbuf, expr_list *opn
             if( type == 4 ) {
                 assembler.asmdefs.Code->mem_type = MT_DWORD;
                 assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I32;
-                SET_OPSIZ_32( assembler.asmdefs.Code );
+                SetOpsiz32( assembler.asmdefs.Code );
                 break;
             } else if( type == 2 ) {
                 assembler.asmdefs.Code->mem_type = MT_WORD;
                 assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I16;
-                SET_OPSIZ_16( assembler.asmdefs.Code );
+                SetOpsiz16( assembler.asmdefs.Code );
                 break;
             }
         }
@@ -823,8 +823,8 @@ static bool idata_fixup( AsmRun& assembler, token_buffer *tokbuf, expr_list *opn
                 assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I8;
                 break;
             } else if( opndx->mem_type == MT_EMPTY ) {
-                SET_OPSIZ_OFF( assembler.asmdefs.Code );
-                if( IS_OPSIZ_32( assembler.asmdefs.Code ) ) {
+                SetOpsizOff( assembler.asmdefs.Code );
+                if( IsOpsiz32( assembler.asmdefs.Code ) ) {
                     assembler.asmdefs.Code->mem_type = MT_DWORD;
                     assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I32;
                     sym32 = true;
@@ -837,18 +837,18 @@ static bool idata_fixup( AsmRun& assembler, token_buffer *tokbuf, expr_list *opn
         if( ( assembler.asmdefs.Code->info.token == T_PUSHD ) || sym32 ) {
             assembler.asmdefs.Code->mem_type = MT_DWORD;
             assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I32;
-            SET_OPSIZ_32( assembler.asmdefs.Code );
+            SetOpsiz32( assembler.asmdefs.Code );
             break;
         }
         assembler.asmdefs.Code->mem_type = MT_WORD;
         /* fall through */
     case MT_WORD:
         assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I16;
-        SET_OPSIZ_16( assembler.asmdefs.Code );
+        SetOpsiz16( assembler.asmdefs.Code );
         break;
     case MT_DWORD:
         assembler.asmdefs.Code->info.opnd_type[assembler.asmdefs.Opnd_Count] = OP_I32;
-        SET_OPSIZ_32( assembler.asmdefs.Code );
+        SetOpsiz32( assembler.asmdefs.Code );
         break;
     default:
         break;
@@ -858,7 +858,7 @@ static bool idata_fixup( AsmRun& assembler, token_buffer *tokbuf, expr_list *opn
     } else {
         if( assembler.asmdefs.Code->mem_type == MT_BYTE ) {
             fixup_type = FIX_LOBYTE;
-        } else if( IS_OPSIZ_32( assembler.asmdefs.Code ) ) {
+        } else if( IsOpsiz32( assembler.asmdefs.Code ) ) {
             fixup_type = ( sym32 ) ? FIX_OFF32 : FIX_OFF16;
         } else {
             if( sym32 ) {
@@ -920,7 +920,7 @@ static bool memory_operand( AsmRun& assembler, token_buffer *tokbuf, expr_list *
             return( RC_ERROR );
         }
     }
-    if( ISVALID_IDX( opndx->base_reg ) ) {
+    if( IsValidIdx( opndx->base_reg ) ) {
         base = tokbuf->tokens[opndx->base_reg].u.token;
         switch( base ) {     // check for base registers
         case T_EAX:
@@ -936,20 +936,20 @@ static bool memory_operand( AsmRun& assembler, token_buffer *tokbuf, expr_list *
                 AsmError( *assembler.front, CANNOT_USE_386_ADDRESSING_MODE_WITH_CURRENT_CPU_SETTING );
                 return( RC_ERROR );
             }
-            SET_ADRSIZ_32( assembler.asmdefs.Code );
+            SetAdrsiz32( assembler.asmdefs.Code );
             break;
         case T_BX:
         case T_BP:
         case T_SI:
         case T_DI:
-            SET_ADRSIZ_16( assembler.asmdefs.Code );
+            SetAdrsiz16( assembler.asmdefs.Code );
             break;
         default:
             AsmError( *assembler.front, INVALID_MEMORY_POINTER );
             return( RC_ERROR );
         }
     }
-    if( ISVALID_IDX( opndx->idx_reg ) ) {
+    if( IsValidIdx( opndx->idx_reg ) ) {
         index = tokbuf->tokens[opndx->idx_reg].u.token;
         switch( index ) {     // check for index registers
         case T_EAX:
@@ -965,13 +965,13 @@ static bool memory_operand( AsmRun& assembler, token_buffer *tokbuf, expr_list *
                 AsmError( *assembler.front, CANNOT_USE_386_ADDRESSING_MODE_WITH_CURRENT_CPU_SETTING );
                 return( RC_ERROR );
             }
-            SET_ADRSIZ_32( assembler.asmdefs.Code );
+            SetAdrsiz32( assembler.asmdefs.Code );
             break;
         case T_BX:
         case T_BP:
         case T_SI:
         case T_DI:
-            SET_ADRSIZ_16( assembler.asmdefs.Code );
+            SetAdrsiz16( assembler.asmdefs.Code );
             break;
         default:
             AsmError( *assembler.front, INVALID_MEMORY_POINTER );
@@ -986,10 +986,10 @@ static bool memory_operand( AsmRun& assembler, token_buffer *tokbuf, expr_list *
                 return( RC_ERROR );
             }
         }
-        if( IS_ADRSIZ_32( assembler.asmdefs.Code ) ) {
+        if( IsAdrsiz32( assembler.asmdefs.Code ) ) {
             if( ( assembler.asmdefs.Code->info.cpu & P_CPU_MASK ) >= P_386 ) {
                 if( !assembler.asmdefs.Code->use32 )
-                    SET_ADRSIZ_ON( assembler.asmdefs.Code );
+                    SetAdrsizOn( assembler.asmdefs.Code );
                 switch( index ) {
                 case T_ESP:
                 case T_BX:
@@ -1001,7 +1001,7 @@ static bool memory_operand( AsmRun& assembler, token_buffer *tokbuf, expr_list *
                     return( RC_ERROR );
                 default:
                     if( !assembler.asmdefs.Code->use32 )
-                        SET_ADRSIZ_ON( assembler.asmdefs.Code );
+                        SetAdrsizOn( assembler.asmdefs.Code );
                     switch( opndx->scale ) {
                     case 1:
                         // ss = 00
@@ -1097,17 +1097,17 @@ static bool process_address( AsmRun& assembler, token_buffer *tokbuf, expr_list 
         return( memory_operand( assembler, tokbuf, opndx ) );
     } else {                          // direct operand
         if( opndx->instr != T_NULL ) { // OFFSET ..., SEG ...
-            if( IS_ANY_BRANCH( assembler.asmdefs.Code->info.token ) ) {  // jumps/call processing
+            if( IsAnyBranch( assembler.asmdefs.Code->info.token ) ) {  // jumps/call processing
                 return( process_jumps( assembler, tokbuf, opndx, jmp_flags ) );
             } else {
                 return( idata_operand( assembler, tokbuf, opndx ) );
             }
         } else {                      // direct operand only
             if( opndx->sym == NULL ) {       // without symbol
-                if( ISVALID_IDX( opndx->override ) ) {
+                if( IsValidIdx( opndx->override ) ) {
                     // direct absolute memory without fixup ... DS:[0]
                     return( memory_operand( assembler, tokbuf, opndx ) );
-                } else if( IS_ANY_BRANCH( assembler.asmdefs.Code->info.token ) ) {  // jumps/call processing
+                } else if( IsAnyBranch( assembler.asmdefs.Code->info.token ) ) {  // jumps/call processing
                     return( process_jumps( assembler, tokbuf, opndx, jmp_flags ) );
                 } else {
                     return( idata_operand( assembler, tokbuf, opndx ) );  // error ????
@@ -1116,7 +1116,7 @@ static bool process_address( AsmRun& assembler, token_buffer *tokbuf, expr_list 
                 if( ( opndx->sym->state == SYM_UNDEFINED ) && !opndx->explicit_ ) {
                     // undefined symbol, it is not possible to determine
                     // operand type and size
-                    if( IS_ANY_BRANCH( assembler.asmdefs.Code->info.token ) ) {  // jumps/call processing
+                    if( IsAnyBranch( assembler.asmdefs.Code->info.token ) ) {  // jumps/call processing
                         return( process_jumps( assembler, tokbuf, opndx, jmp_flags ) );
                     } else {
                         switch( assembler.asmdefs.Code->info.token ) {
@@ -1142,7 +1142,7 @@ static bool process_address( AsmRun& assembler, token_buffer *tokbuf, expr_list 
                         } else if( opndx->mbr != NULL ) { // structure or structure member
                             return( memory_operand( assembler, tokbuf, opndx ) );
                         } else {
-                            if( IS_ANY_BRANCH( assembler.asmdefs.Code->info.token ) ) {  // jumps/call processing
+                            if( IsAnyBranch( assembler.asmdefs.Code->info.token ) ) {  // jumps/call processing
                                 return( process_jumps( assembler, tokbuf, opndx, jmp_flags ) );
                             }
                             return( idata_operand( assembler, tokbuf, opndx ) );
@@ -1163,7 +1163,7 @@ static bool process_address( AsmRun& assembler, token_buffer *tokbuf, expr_list 
 static bool process_const( AsmRun& assembler, token_buffer *tokbuf, expr_list *opndx, int *jmp_flags )
 /*********************************************************************************/
 {
-    if( IS_ANY_BRANCH( assembler.asmdefs.Code->info.token ) )    // jumps/call processing
+    if( IsAnyBranch( assembler.asmdefs.Code->info.token ) )    // jumps/call processing
         return( process_jumps( assembler, tokbuf, opndx, jmp_flags ) );
     if( ( assembler.asmdefs.Code->info.token == T_IMUL )
         && ( assembler.asmdefs.Code->info.opnd_type[OPND1] & OP_R ) ) {
@@ -1210,7 +1210,7 @@ static bool process_reg( AsmRun& assembler, token_buffer *tokbuf, expr_list *opn
     case OP_R16:
         assembler.asmdefs.Code->info.opcode |= W_BIT;             // set w-bit
         if( assembler.asmdefs.Code->use32 )
-            SET_OPSIZ_ON( assembler.asmdefs.Code );
+            SetOpsizOn( assembler.asmdefs.Code );
         break;
     case OP_MMX:
         break;
@@ -1249,7 +1249,7 @@ static bool process_reg( AsmRun& assembler, token_buffer *tokbuf, expr_list *opn
         }
         assembler.asmdefs.Code->info.opcode |= W_BIT;             // set w-bit
         if( !assembler.asmdefs.Code->use32 )
-            SET_OPSIZ_ON( assembler.asmdefs.Code );
+            SetOpsizOn( assembler.asmdefs.Code );
         break;
     case OP_TR:                 // Test registers
         switch( tokbuf->tokens[opndx->base_reg].u.token ) {
@@ -1330,8 +1330,8 @@ bool AsmParse( AsmRun& assembler, token_buffer *tokbuf, const char *curline )
     rCode->info.rm_byte   = 0;
     rCode->prefix.ins     = T_NULL;
     rCode->prefix.seg     = PREFIX_EMPTY;
-    SET_ADRSIZ_OFF( rCode );
-    SET_OPSIZ_OFF( rCode );
+    SetAdrsizOff( rCode );
+    SetOpsizOff( rCode );
     rCode->mem_type       = MT_EMPTY;
     rCode->mem_type_fixed = false;
     rCode->extended_ins   = EMPTY;
@@ -1542,17 +1542,17 @@ static void SizeString( AsmRun& assembler, unsigned op_size )
         assembler.asmdefs.Code->mem_type = MT_BYTE;
         assembler.asmdefs.Code->info.opcode &= NOT_W_BIT;
         if( assembler.asmdefs.Code->use32 )
-            SET_OPSIZ_OFF( assembler.asmdefs.Code );
+            SetOpsizOff( assembler.asmdefs.Code );
         break;
     case 2:
         assembler.asmdefs.Code->mem_type = MT_WORD;
         assembler.asmdefs.Code->info.opcode |= W_BIT;
-        SET_OPSIZ_16( assembler.asmdefs.Code );
+        SetOpsiz16( assembler.asmdefs.Code );
         break;
     case 4:
         assembler.asmdefs.Code->mem_type = MT_DWORD;
         assembler.asmdefs.Code->info.opcode |= W_BIT;
-        SET_OPSIZ_32( assembler.asmdefs.Code );
+        SetOpsiz32( assembler.asmdefs.Code );
         break;
     }
 }
@@ -1584,7 +1584,7 @@ static bool check_size( AsmRun& assembler )
                 assembler.asmdefs.Code->info.opcode &= NOT_W_BIT;         // clear w-bit
             case OP_EAX:
                 if( assembler.asmdefs.Code->use32 ) {
-                    SET_OPSIZ_OFF( assembler.asmdefs.Code );
+                    SetOpsizOff( assembler.asmdefs.Code );
                 }
                 break;
             }
@@ -1599,7 +1599,7 @@ static bool check_size( AsmRun& assembler )
                 assembler.asmdefs.Code->info.opcode &= NOT_W_BIT;         // clear w-bit
             case OP_EAX:
                 if( assembler.asmdefs.Code->use32 ) {
-                    SET_OPSIZ_OFF( assembler.asmdefs.Code );
+                    SetOpsizOff( assembler.asmdefs.Code );
                 }
             }
         }
@@ -1706,7 +1706,7 @@ static bool check_size( AsmRun& assembler )
                 state = RC_ERROR;
             }
             if( assembler.asmdefs.Code->use32 ) {
-                SET_OPSIZ_OFF( assembler.asmdefs.Code );     // - don't need opnd size prefix
+                SetOpsizOff( assembler.asmdefs.Code );     // - don't need opnd size prefix
             }
             break;
         case 2:
@@ -1726,11 +1726,11 @@ static bool check_size( AsmRun& assembler )
         switch( op1_size ) {
         case 2:
             if( assembler.asmdefs.Code->use32 )
-                SET_OPSIZ_ON( assembler.asmdefs.Code );
+                SetOpsizOn( assembler.asmdefs.Code );
             break;
         case 4:
             if( assembler.asmdefs.Code->use32 )
-                SET_OPSIZ_OFF( assembler.asmdefs.Code );
+                SetOpsizOff( assembler.asmdefs.Code );
             break;
         default:
             AsmError( *assembler.front, INVALID_SIZE );
@@ -1768,14 +1768,14 @@ static bool check_size( AsmRun& assembler )
         if( op1 & OP_SR ) {
             op2_size = OperandSize( assembler, op2 );
             if( ( op2_size == 2 ) || ( op2_size == 4 ) ) {
-//                SET_OPSIZ_OFF( Code );
+//                SetOpsizOff( Code );
                 return( state );
             }
         } else if( op2 & OP_SR ) {
             op1_size = OperandSize( assembler, op1 );
             if( ( op1_size == 2 ) || ( op1_size == 4 ) ) {
 //                if( op1 == OP_M )
-//                    SET_OPSIZ_OFF( Code );
+//                    SetOpsizOff( Code );
                 return( state );
             }
         } else if( ( op1 == OP_M ) || ( op2 == OP_M ) ) {
@@ -1783,16 +1783,16 @@ static bool check_size( AsmRun& assembler )
             rm_byte = assembler.asmdefs.Code->info.rm_byte;
             if( assembler.asmdefs.Code->info.opnd_type[OPND1] & OP_A ) {
                 rm_byte = ( rm_byte & BIT_67 ) | ( ( rm_byte & BIT_012 ) << 3 ) | ( ( rm_byte & BIT_345 ) >> 3 );
-                if( IS_ADRSIZ_32( assembler.asmdefs.Code ) && ( rm_byte == D32 )
-                    || IS_ADRSIZ_16( assembler.asmdefs.Code ) && ( rm_byte == D16 ) ) {
+                if( IsAdrsiz32( assembler.asmdefs.Code ) && ( rm_byte == D32 )
+                    || IsAdrsiz16( assembler.asmdefs.Code ) && ( rm_byte == D16 ) ) {
                     // DS:[d32] or DS:[d16] can use MOV Mem with Acc (short form)
                 } else {
                     // we have to change OP_A to OP_R
                     assembler.asmdefs.Code->info.opnd_type[OPND1] &= ~OP_A;
                 }
             } else if( assembler.asmdefs.Code->info.opnd_type[OPND2] & OP_A ) {
-                if( IS_ADRSIZ_32( assembler.asmdefs.Code ) && ( rm_byte == D32 )
-                    || IS_ADRSIZ_16( assembler.asmdefs.Code ) && ( rm_byte == D16 ) ) {
+                if( IsAdrsiz32( assembler.asmdefs.Code ) && ( rm_byte == D32 )
+                    || IsAdrsiz16( assembler.asmdefs.Code ) && ( rm_byte == D16 ) ) {
                     // DS:[d32] or DS:[d16] can use MOV Mem with Acc (short form)
                 } else {
                     // we have to change OP_A to OP_R
@@ -1800,7 +1800,7 @@ static bool check_size( AsmRun& assembler )
                 }
             }
         } else if( ( op1 & OP_SPEC_REG ) || ( op2 & OP_SPEC_REG ) ) {
-            SET_OPSIZ_OFF( assembler.asmdefs.Code );
+            SetOpsizOff( assembler.asmdefs.Code );
             return( state );
         }
         /* fall through */
@@ -1861,7 +1861,7 @@ static bool check_size( AsmRun& assembler )
                         assembler.asmdefs.Code->mem_type = MT_WORD;
                         assembler.asmdefs.Code->info.opcode |= W_BIT;
                         if( assembler.asmdefs.Code->use32 )
-                            SET_OPSIZ_ON( assembler.asmdefs.Code );
+                            SetOpsizOn( assembler.asmdefs.Code );
                         break;
                     case 4:
                         assembler.asmdefs.Code->mem_type = MT_DWORD;

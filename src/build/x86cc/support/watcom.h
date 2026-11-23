@@ -68,26 +68,6 @@
  *          a copy of the data and leave the original intact, then use the SWAPNC_XX
  *          macros.
  */
-#define SWAPNC_16(w)    (\
-                            (((w) & 0x000000FFUL) << 8) |\
-                            (((w) & 0x0000FF00UL) >> 8)\
-                        )
-#define SWAPNC_32(w)    (\
-                            (((w) & 0x000000FFUL) << 24) |\
-                            (((w) & 0x0000FF00UL) << 8) |\
-                            (((w) & 0x00FF0000UL) >> 8) |\
-                            (((w) & 0xFF000000UL) >> 24)\
-                        )
-#define SWAPNC_64(w)    (\
-                            (((w) & 0x00000000000000FFULL) << 56) |\
-                            (((w) & 0x000000000000FF00ULL) << 40) |\
-                            (((w) & 0x0000000000FF0000ULL) << 24) |\
-                            (((w) & 0x00000000FF000000ULL) << 8) |\
-                            (((w) & 0x000000FF00000000ULL) >> 8) |\
-                            (((w) & 0x0000FF0000000000ULL) >> 24) |\
-                            (((w) & 0x00FF000000000000ULL) >> 40) |\
-                            (((w) & 0xFF00000000000000ULL) >> 56)\
-                        )
 
     /* Macros to get little-endian data */
     /* Macros to get big-endian data */
@@ -96,9 +76,6 @@
     #define CONV_LE_32(w)
     #define CONV_LE_64(w)
     /* Macros to convert big-endian data in place */
-    #define CONV_BE_16(w)   (w) = SWAPNC_16((w))
-    #define CONV_BE_32(w)   (w) = SWAPNC_32((w))
-    #define CONV_BE_64(w)   (w) = SWAPNC_64((w))
     /* Macros to swap byte order */
 
 /********************************************************************
@@ -107,7 +84,6 @@
  *
  ********************************************************************/
 
-#define MGET_XX(t,p)    (*(t*)(p))
 
 /*
  * Macros for get/put data (endian neutral)
@@ -122,8 +98,6 @@
 
 
 
-    #define MPUT_LE_16(p,w)     MGET_XX(uint_16,(p)) = (w)
-    #define MPUT_LE_32(p,w)     MGET_XX(uint_32,(p)) = (w)
 
     /*
      * Macros for big-endian data (little-endian host)
@@ -131,8 +105,6 @@
 
 
 
-    #define MPUT_BE_16(p,w)     MGET_XX(uint_16,(p)) = SWAPNC_16((w))
-    #define MPUT_BE_32(p,w)     MGET_XX(uint_32,(p)) = SWAPNC_32((w))
 
 
 
@@ -142,55 +114,15 @@
  *
  ********************************************************************/
 
-#define __U8A0(x)           (((uint_8*)(x))[0])
-#define __U8A1(x)           (((uint_8*)(x))[1])
-#define __U8A2(x)           (((uint_8*)(x))[2])
-#define __U8A3(x)           (((uint_8*)(x))[3])
-#define __U16G0(x)          ((uint_8)(uint_16)(x))
-#define __U16G1(x)          ((uint_8)(((uint_16)(x)) >> 8))
-#define __U32G0(x)          ((uint_8)(uint_32)(x))
-#define __U32G1(x)          ((uint_8)(((uint_32)(x)) >> 8))
-#define __U32G2(x)          ((uint_8)(((uint_32)(x)) >> 16))
-#define __U32G3(x)          ((uint_8)(((uint_32)(x)) >> 24))
-#define __U16S0(x)          ((uint_16)(x))
-#define __U16S1(x)          (((uint_16)(x)) << 8)
-#define __U32S0(x)          ((uint_32)(x))
-#define __U32S1(x)          (((uint_32)(x)) << 8)
-#define __U32S2(x)          (((uint_32)(x)) << 16)
-#define __U32S3(x)          (((uint_32)(x)) << 24)
-#define __S16S0(x)          ((int_16)(x))
-#define __S16S1(x)          (((int_16)(x)) << 8)
-#define __S32S0(x)          ((int_32)(x))
-#define __S32S1(x)          (((int_32)(x)) << 8)
-#define __S32S2(x)          (((int_32)(x)) << 16)
-#define __S32S3(x)          (((int_32)(x)) << 24)
 
 /*
  * Macros for get/put data (endian neutral)
  */
 
-#define MGET_U16_UN(p)  ( __U16S0(__U8A0((p))) \
-                        | __U16S1(__U8A1((p))) )
-#define MGET_U32_UN(p)  ( __U32S0(__U8A0((p))) \
-                        | __U32S1(__U8A1((p))) \
-                        | __U32S2(__U8A2((p))) \
-                        | __U32S3(__U8A3((p))) )
 //#define MGET_U64_UN(p)
 
-#define MGET_S16_UN(p)  ( __S16S0(__U8A0((p))) \
-                        | __S16S1(__U8A1((p))) )
-#define MGET_S32_UN(p)  ( __S32S0(__U8A0((p))) \
-                        | __S32S1(__U8A1((p))) \
-                        | __S32S2(__U8A2((p))) \
-                        | __S32S3(__U8A3((p))) )
 //#define MGET_S64_UN(p)
 
-#define MPUT_16_UN(p,w) { __U8A0((p)) = __U16G0((w)); \
-                          __U8A1((p)) = __U16G1((w)); }
-#define MPUT_32_UN(p,w) { __U8A0((p)) = __U32G0((w)); \
-                          __U8A1((p)) = __U32G1((w)); \
-                          __U8A2((p)) = __U32G2((w)); \
-                          __U8A3((p)) = __U32G3((w)); }
 //#define MPUT_LE_64_UN(p,w)
 
 
@@ -198,56 +130,20 @@
      * Macros for little-endian data (little-endian host)
      */
 
-    #define MGET_LE_U16_UN(p)   ( __U16S0(__U8A0((p))) \
-                                | __U16S1(__U8A1((p))) )
-    #define MGET_LE_U32_UN(p)   ( __U32S0(__U8A0((p))) \
-                                | __U32S1(__U8A1((p))) \
-                                | __U32S2(__U8A2((p))) \
-                                | __U32S3(__U8A3((p))) )
 //    #define MGET_LE_U64_UN(p)
 
-    #define MGET_LE_S16_UN(p)   ( __S16S0(__U8A0((p))) \
-                                | __S16S1(__U8A1((p))) )
-    #define MGET_LE_S32_UN(p)   ( __S32S0(__U8A0((p))) \
-                                | __S32S1(__U8A1((p))) \
-                                | __S32S2(__U8A2((p))) \
-                                | __S32S3(__U8A3((p))) )
 //    #define MGET_LE_S64_UN(p)
 
-    #define MPUT_LE_16_UN(p,w)  { __U8A0((p)) = __U16G0((w)); \
-                                  __U8A1((p)) = __U16G1((w)); }
-    #define MPUT_LE_32_UN(p,w)  { __U8A0((p)) = __U32G0((w)); \
-                                  __U8A1((p)) = __U32G1((w)); \
-                                  __U8A2((p)) = __U32G2((w)); \
-                                  __U8A3((p)) = __U32G3((w)); }
 //    #define MPUT_LE_64_UN(p,w)
 
     /*
      * Macros for big-endian data (little-endian host)
      */
 
-    #define MGET_BE_U16_UN(p)   ( __U16S1(__U8A0((p))) \
-                                | __U16S0(__U8A1((p))) )
-    #define MGET_BE_U32_UN(p)   ( __U32S3(__U8A0((p))) \
-                                | __U32S2(__U8A1((p))) \
-                                | __U32S1(__U8A2((p))) \
-                                | __U32S0(__U8A3((p))) )
 //    #define MGET_BE_U64_UN(p)
 
-    #define MGET_BE_S16_UN(p)   ( __S16S1(__U8A0((p))) \
-                                | __S16S0(__U8A1((p))) )
-    #define MGET_BE_S32_UN(p)   ( __S32S3(__U8A0((p))) \
-                                | __S32S2(__U8A1((p))) \
-                                | __S32S1(__U8A2((p))) \
-                                | __S32S0(__U8A3((p))) )
 //    #define MGET_BE_U64_UN(p)
 
-    #define MPUT_BE_16_UN(p,w)  { __U8A0((p)) = __U16G1((w)); \
-                                  __U8A1((p)) = __U16G0((w)); }
-    #define MPUT_BE_32_UN(p,w)  { __U8A0((p)) = __U32G3((w)); \
-                                  __U8A1((p)) = __U32G2((w)); \
-                                  __U8A2((p)) = __U32G1((w)); \
-                                  __U8A3((p)) = __U32G0((w)); }
 //    #define MPUT_BE_64_UN(p,w)
 
 
@@ -305,6 +201,76 @@ typedef signed char         signed_8;
 typedef signed short        signed_16;
 typedef signed int          signed_32;
 typedef unsigned_64         signed_64;
+
+
+inline unsigned long SwapBytes16( unsigned long w ) { return ( (((w) & 0x000000FFUL) << 8) | (((w) & 0x0000FF00UL) >> 8) ); }
+inline unsigned long SwapBytes32( unsigned long w )
+{
+    return ( (((w) & 0x000000FFUL) << 24) | (((w) & 0x0000FF00UL) << 8) | (((w) & 0x00FF0000UL) >> 8) | (((w) & 0xFF000000UL) >> 24) );
+}
+template <class T>
+inline T& MemAs( void *p ) { return *(T *)p; }
+inline void PutLeU16( void *p, uint_16 w ) { MemAs<uint_16>( p ) = w; }
+inline void PutLeU32( void *p, uint_32 w ) { MemAs<uint_32>( p ) = w; }
+inline void PutBeU16( void *p, uint_16 w ) { MemAs<uint_16>( p ) = SwapBytes16( w ); }
+inline void PutBeU32( void *p, uint_32 w ) { MemAs<uint_32>( p ) = SwapBytes32( w ); }
+inline unsigned char &U8At0( void *x ) { return (((uint_8*)(x))[0]); }
+inline unsigned char &U8At1( void *x ) { return (((uint_8*)(x))[1]); }
+inline unsigned char &U8At2( void *x ) { return (((uint_8*)(x))[2]); }
+inline unsigned char &U8At3( void *x ) { return (((uint_8*)(x))[3]); }
+inline unsigned char U16Byte0( uint_16 x ) { return ((uint_8)(uint_16)(x)); }
+inline unsigned char U16Byte1( uint_16 x ) { return ((uint_8)(((uint_16)(x)) >> 8)); }
+inline unsigned char U32Byte0( uint_32 x ) { return ((uint_8)(uint_32)(x)); }
+inline unsigned char U32Byte1( uint_32 x ) { return ((uint_8)(((uint_32)(x)) >> 8)); }
+inline unsigned char U32Byte2( uint_32 x ) { return ((uint_8)(((uint_32)(x)) >> 16)); }
+inline unsigned char U32Byte3( uint_32 x ) { return ((uint_8)(((uint_32)(x)) >> 24)); }
+inline unsigned short U16Place0( unsigned char x ) { return ((uint_16)(x)); }
+inline int U16Place1( unsigned char x ) { return (((uint_16)(x)) << 8); }
+inline unsigned int U32Place0( unsigned char x ) { return ((uint_32)(x)); }
+inline unsigned int U32Place1( unsigned char x ) { return (((uint_32)(x)) << 8); }
+inline unsigned int U32Place2( unsigned char x ) { return (((uint_32)(x)) << 16); }
+inline unsigned int U32Place3( unsigned char x ) { return (((uint_32)(x)) << 24); }
+inline int GetU16Unaligned( void *p ) { return ( U16Place0(U8At0((p))) | U16Place1(U8At1((p))) ); }
+inline unsigned int GetU32Unaligned( void *p )
+{
+    return ( U32Place0(U8At0((p))) | U32Place1(U8At1((p))) | U32Place2(U8At2((p))) | U32Place3(U8At3((p))) );
+}
+inline void PutU16Unaligned( void *p, uint_16 w )
+{
+    U8At0((p)) = U16Byte0((w));
+    U8At1((p)) = U16Byte1((w));
+}
+inline void PutU32Unaligned( void *p, uint_32 w )
+{
+    U8At0((p)) = U32Byte0((w));
+    U8At1((p)) = U32Byte1((w));
+    U8At2((p)) = U32Byte2((w));
+    U8At3((p)) = U32Byte3((w));
+}
+inline void PutLeU16Unaligned( void *p, unsigned short w )
+{
+    U8At0((p)) = U16Byte0((w));
+    U8At1((p)) = U16Byte1((w));
+}
+inline void PutLeU32Unaligned( void *p, unsigned int w )
+{
+    U8At0((p)) = U32Byte0((w));
+    U8At1((p)) = U32Byte1((w));
+    U8At2((p)) = U32Byte2((w));
+    U8At3((p)) = U32Byte3((w));
+}
+inline void PutBeU16Unaligned( void *p, unsigned short w )
+{
+    U8At0((p)) = U16Byte1((w));
+    U8At1((p)) = U16Byte0((w));
+}
+inline void PutBeU32Unaligned( void *p, unsigned int w )
+{
+    U8At0((p)) = U32Byte3((w));
+    U8At1((p)) = U32Byte2((w));
+    U8At2((p)) = U32Byte1((w));
+    U8At3((p)) = U32Byte0((w));
+}
 
 #endif
 

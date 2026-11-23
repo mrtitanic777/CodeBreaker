@@ -58,10 +58,10 @@ static  name    *FindPiece( BackRun& back, hw_reg_set opnd, hw_reg_set frm, hw_r
     hw_reg_set  tmp;
     name        *piece;
 
-    HW_Asgn( to_piece, to );
-    HW_Asgn( frm_piece, frm );
+    HwAsgn( to_piece, to );
+    HwAsgn( frm_piece, frm );
     for( ;; ) {
-        if( HW_Equal( frm_piece, opnd ) ) {
+        if( HwEqual( frm_piece, opnd ) ) {
             piece = AllocRegName( back, to_piece );
             if( piece->r.reg_index == -1 ) {
                 return( NULL );
@@ -70,12 +70,12 @@ static  name    *FindPiece( BackRun& back, hw_reg_set opnd, hw_reg_set frm, hw_r
         if( HW_CEqual( to_piece, HW_EMPTY ) )
             return( NULL );
         tmp = LowReg( back, frm_piece );
-        if( HW_Subset( opnd, tmp ) ) {
+        if( HwSubset( opnd, tmp ) ) {
             frm_piece = tmp;
             to_piece = LowReg( back, to_piece );
         } else {
             tmp = HighReg( back, frm_piece );
-            if( HW_Subset( opnd, tmp ) ) {
+            if( HwSubset( opnd, tmp ) ) {
                 frm_piece = tmp;
                 to_piece = HighReg( back, to_piece );
             } else {
@@ -100,7 +100,7 @@ static  bool    CanChange( BackRun& back, instruction **pins,
     ins = *pins;
     if( ins->head.opcode == OP_CONVERT
      && ins->operands[0]->n.class_ == N_REGISTER
-     && HW_Ovlap( frm->r.reg, ins->operands[0]->r.reg ) ) {
+     && HwOvlap( frm->r.reg, ins->operands[0]->r.reg ) ) {
         opnd = FindPiece( back, ins->operands[0]->r.reg, frm->r.reg, to->r.reg );
         if( opnd == NULL )
             return( false );
@@ -118,7 +118,7 @@ static  bool    CanChange( BackRun& back, instruction **pins,
                  * it might be possible to do the FindPiece trick like above
                  * but not in general.
                  */
-                if( HW_Ovlap( frm->r.reg, opnd->r.reg ) ) {
+                if( HwOvlap( frm->r.reg, opnd->r.reg ) ) {
                     return( false );
                 }
             }
@@ -139,7 +139,7 @@ static  bool    CanChange( BackRun& back, instruction **pins,
                                                          opnd->i.scale,
                                                          opnd->i.index_flags );
                 } else if( opnd->i.index->n.class_ == N_REGISTER ) {
-                    if( HW_Ovlap( opnd->i.index->r.reg, frm->r.reg ) ) {
+                    if( HwOvlap( opnd->i.index->r.reg, frm->r.reg ) ) {
                         return( false );
                     }
                 }
@@ -166,7 +166,7 @@ static  bool    CantChange( BackRun& back, instruction **pins, name *frm, name *
 
     num_operands = (*pins)->num_operands;
     new_ins = NewIns( back, num_operands );
-    Copy( *pins, new_ins, offsetof( instruction, operands ) + num_operands * sizeof( name * ) );
+    memcpy( new_ins, *pins, offsetof( instruction, operands ) + num_operands * sizeof( name * ) );
     if( CanChange( back, pins, frm, to, new_ins ) )
         return( false );
     new_ins->head.next = new_ins;
@@ -182,9 +182,9 @@ static  bool    Modifies( name *Y, name *Z, name *result )
         return( false );
     if( result->n.class_ != N_REGISTER )
         return( false );
-    if( HW_Ovlap( result->r.reg, Z->r.reg ) )
+    if( HwOvlap( result->r.reg, Z->r.reg ) )
         return( true );
-    if( HW_Ovlap( result->r.reg, Y->r.reg ) )
+    if( HwOvlap( result->r.reg, Y->r.reg ) )
         return( true );
     return( false );
 }
@@ -193,10 +193,10 @@ static  bool    UsedIn( name *op, name *reg )
 /*******************************************/
 {
     if( op->n.class_ == N_REGISTER ) {
-        return( HW_Ovlap( op->r.reg, reg->r.reg ) );
+        return( HwOvlap( op->r.reg, reg->r.reg ) );
     } else if( op->n.class_ == N_INDEXED ) {
         if( op->i.index->n.class_ == N_REGISTER ) {
-            if( HW_Ovlap( op->i.index->r.reg, reg->r.reg ) ) {
+            if( HwOvlap( op->i.index->r.reg, reg->r.reg ) ) {
                 return( true );
             }
         }
@@ -243,17 +243,17 @@ static  bool    ThrashDown( BackRun& back, instruction *ins )
     for( oth_ins = ins->head.prev; ; oth_ins = oth_ins->head.prev ) {
         if( oth_ins->head.opcode == OP_BLOCK )
             return( false );
-        if( _OpIsCall( oth_ins->head.opcode ) )
+        if( OpIsCall( oth_ins->head.opcode ) )
             return( false );
-        if( HW_Ovlap( oth_ins->head.next->head.live.regs, Z->r.reg) ) {
-            return( false );
-        }
-        if( !HW_Subset( oth_ins->head.next->head.live.regs, Y->r.reg ) ) {
+        if( HwOvlap( oth_ins->head.next->head.live.regs, Z->r.reg) ) {
             return( false );
         }
-        if( HW_Ovlap( oth_ins->zap->reg, Y->r.reg ) )
+        if( !HwSubset( oth_ins->head.next->head.live.regs, Y->r.reg ) ) {
             return( false );
-        if( HW_Ovlap( oth_ins->zap->reg, Z->r.reg ) )
+        }
+        if( HwOvlap( oth_ins->zap->reg, Y->r.reg ) )
+            return( false );
+        if( HwOvlap( oth_ins->zap->reg, Z->r.reg ) )
             return( false );
         if( oth_ins->result == Y )
             break;
@@ -270,7 +270,7 @@ static  bool    ThrashDown( BackRun& back, instruction *ins )
             }
         }
     }
-    if( HW_Ovlap( oth_ins->head.live.regs, Z->r.reg ) ) {
+    if( HwOvlap( oth_ins->head.live.regs, Z->r.reg ) ) {
         if( !ChangeIns(back, oth_ins,Z,&oth_ins->result,CHANGE_GEN) )
             return(false);
         FreeIns( back, ins );
@@ -315,11 +315,11 @@ static  bool    ThrashUp( BackRun& back, instruction *ins )
     for( oth_ins = ins->head.next; ; oth_ins = oth_ins->head.next ) {
         if( oth_ins->head.opcode == OP_BLOCK )
             return( false );
-        if( _OpIsCall( oth_ins->head.opcode ) )
+        if( OpIsCall( oth_ins->head.opcode ) )
             return( false );
-        if( HW_Ovlap( oth_ins->zap->reg, Y->r.reg ) )
+        if( HwOvlap( oth_ins->zap->reg, Y->r.reg ) )
             return( false );
-        if( HW_Ovlap( oth_ins->zap->reg, Z->r.reg ) )
+        if( HwOvlap( oth_ins->zap->reg, Z->r.reg ) )
             return( false );
         if( oth_ins->result == Z )
             break;
@@ -339,9 +339,9 @@ static  bool    ThrashUp( BackRun& back, instruction *ins )
     for( thrsh_ins = oth_ins->head.next; ; thrsh_ins = thrsh_ins->head.next ) {
         if( thrsh_ins->head.opcode == OP_BLOCK )
             return( false );
-        if( HW_Ovlap( thrsh_ins->zap->reg, Y->r.reg ) )
+        if( HwOvlap( thrsh_ins->zap->reg, Y->r.reg ) )
             return( false );
-        if( HW_Ovlap( thrsh_ins->zap->reg, Z->r.reg ) )
+        if( HwOvlap( thrsh_ins->zap->reg, Z->r.reg ) )
             return( false );
         if( (thrsh_ins->head.opcode == OP_MOV)
             && (thrsh_ins->operands[0] == Z)
@@ -373,7 +373,7 @@ bool    RegThrash( BackRun& back, block *blk )
         if( ins->head.opcode == OP_MOV
          && !UnChangeable( ins )
          && ins->operands[0]->n.class_ == N_REGISTER
-         && !HW_Ovlap( ins->head.next->head.live.regs, ins->operands[0]->r.reg )
+         && !HwOvlap( ins->head.next->head.live.regs, ins->operands[0]->r.reg )
          && ins->result->n.class_ == N_REGISTER ) {
             if( ThrashDown( back, ins ) || ThrashUp( back, ins ) ) {
                 UpdateLive( back, blk->ins.head.next, blk->ins.head.prev );

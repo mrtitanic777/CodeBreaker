@@ -52,7 +52,7 @@
 #include "backrun.hpp"
 
 
-#define OP2VAL( ins ) ( (ins)->operands[1]->c.lo.u.int_value )
+inline int &Op2Value( instruction *ins ) { return ( (ins)->operands[1]->c.lo.u.int_value ); }
 
 
 
@@ -168,7 +168,7 @@ static  ONE_OP  DoAdd;
 static  bool    DoAdd( BackRun& back, instruction *a, instruction *b )
 /*****************************************************/
 {
-    return( MergeTwo( back, a, b, OP2VAL( a ) + OP2VAL( b ) ) );
+    return( MergeTwo( back, a, b, Op2Value( a ) + Op2Value( b ) ) );
 }
 
 
@@ -176,7 +176,7 @@ static  ONE_OP  DoMul;
 static  bool    DoMul( BackRun& back, instruction *a, instruction *b )
 /*****************************************************/
 {
-    return( MergeTwo( back, a,b, OP2VAL( a ) * OP2VAL( b ) ) );
+    return( MergeTwo( back, a,b, Op2Value( a ) * Op2Value( b ) ) );
 }
 
 
@@ -184,7 +184,7 @@ static  ONE_OP  DoAnd;
 static  bool    DoAnd( BackRun& back, instruction *a, instruction *b )
 /*****************************************************/
 {
-    return( MergeTwo( back, a,b, OP2VAL( a ) & OP2VAL( b ) ) );
+    return( MergeTwo( back, a,b, Op2Value( a ) & Op2Value( b ) ) );
 }
 
 
@@ -192,7 +192,7 @@ static  ONE_OP  DoOr;
 static  bool    DoOr( BackRun& back, instruction *a, instruction *b )
 /****************************************************/
 {
-    return( MergeTwo( back, a,b, OP2VAL( a ) | OP2VAL( b ) ) );
+    return( MergeTwo( back, a,b, Op2Value( a ) | Op2Value( b ) ) );
 }
 
 
@@ -207,8 +207,8 @@ static bool AndOr( BackRun& back, instruction *and_ins, instruction *or_ins )
         return( false );
     if( or_ins->operands[0] != or_ins->result )
         return( false );
-    new_and = OP2VAL( and_ins ) & ~OP2VAL( or_ins );
-    if( new_and == OP2VAL( and_ins ) )
+    new_and = Op2Value( and_ins ) & ~Op2Value( or_ins );
+    if( new_and == Op2Value( and_ins ) )
         return( false );
     mask = AllocS32Const( back, new_and );
     if( !InsChangeable( back, and_ins, mask, &and_ins->operands[1] ) )
@@ -232,8 +232,8 @@ static bool OrAnd( BackRun& back, instruction *or_ins, instruction *and_ins )
         return( false );
     if( and_ins->operands[0] != and_ins->result )
         return( false );
-    or_ = OP2VAL( or_ins );
-    and_ = OP2VAL( and_ins );
+    or_ = Op2Value( or_ins );
+    and_ = Op2Value( and_ins );
     if( ( and_ & or_ ) == and_ ) { // the AND bits are a subset of the OR bits
         or_ins->operands[0] = AllocS32Const( back, and_ );
         or_ins->num_operands = 1;
@@ -244,7 +244,7 @@ static bool OrAnd( BackRun& back, instruction *or_ins, instruction *and_ins )
         return( true );
     } else {
         new_or = or_ & and_;
-        if( new_or == OP2VAL( or_ins ) )
+        if( new_or == Op2Value( or_ins ) )
             return( false );
         mask = AllocS32Const( back, new_or );
         if( !InsChangeable( back, or_ins, mask, &or_ins->operands[1] ) )
@@ -267,7 +267,7 @@ static bool OrAndOr( BackRun& back, instruction *a, instruction *b )
         return( false );
     a->head.opcode = OP_AND;
     b->head.opcode = OP_OR;
-    and_val = OP2VAL( a ) & OP2VAL( b );
+    and_val = Op2Value( a ) & Op2Value( b );
     mask = AllocS32Const( back, and_val );
     if( InsChangeable( back, a, b->operands[1], &a->operands[1] ) &&
         InsChangeable( back, b, mask, &b->operands[1] ) ) {
@@ -298,7 +298,7 @@ static bool AndOrAnd( BackRun& back, instruction *a, instruction *b )
         return( false );
     a->head.opcode = OP_OR;
     b->head.opcode = OP_AND;
-    or_val = OP2VAL( a ) | OP2VAL( b );
+    or_val = Op2Value( a ) | Op2Value( b );
     mask = AllocS32Const( back, or_val );
     if( InsChangeable( back, a, b->operands[1], &a->operands[1] ) &&
         InsChangeable( back, b, mask, &b->operands[1] ) ) {
@@ -392,7 +392,7 @@ static bool OpConst( instruction *ins )
         return( false );
     if( op->c.const_type != CONS_ABSOLUTE )
         return( false );
-    if( !_IsIntegral( ins->type_class ) )
+    if( !IsIntegral( ins->type_class ) )
         return( false );
     return( true );
 }
@@ -592,9 +592,9 @@ static bool DoConversionOps( BackRun& back, instruction *ins, bool *change, inst
                  *
                  * pointer conversions are too dangerous to fold
                  */
-                if( _IsPointer( next->type_class ) || _IsPointer( next->base_type_class ) )
+                if( IsPointerClass( next->type_class ) || IsPointerClass( next->base_type_class ) )
                     return( false );
-                if( _IsPointer( ins->type_class ) )
+                if( IsPointerClass( ins->type_class ) )
                     return( false );
                 /*
                  * watch for converting down - bad to fold
@@ -634,7 +634,7 @@ static bool ReferencedBy( BackRun& back, instruction *ins, name *op )
     opcnt       i;
     name        *curr;
 
-    if( _OpIsCall( ins->head.opcode ) ) {
+    if( OpIsCall( ins->head.opcode ) ) {
         if( IsVisibleToCall( back, ins, op, false ) ) {
             return( true );
         }

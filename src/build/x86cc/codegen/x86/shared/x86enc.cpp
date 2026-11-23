@@ -211,7 +211,7 @@ static void     TransferIns( BackRun& back )
         }
         back.pcencode.Temp.data[j++] = back.pcencode.Inst[i];
     }
-    Copy( &back.pcencode.Inst[i], &back.pcencode.Temp.data[j], back.x86enc.ICur - i );
+    memcpy( &back.pcencode.Temp.data[j], &back.pcencode.Inst[i], back.x86enc.ICur - i );
     back.pcencode.Temp.hdr.reclen += back.x86enc.ICur;
     back.pcencode.Temp.hdr.objlen += back.pcencode.ILen;
 }
@@ -310,7 +310,7 @@ static reg_idx  SegTrans( BackRun& back, hw_reg_set regs )
 
     HW_COnlyOn( regs, HW_SEGS );
     for( i = ARCH_SEG_START; i < ARCH_SEG_END; i++ ) {
-        if( HW_Equal( regs, RegsTab[i].hw_reg ) ) {
+        if( HwEqual( regs, RegsTab[i].hw_reg ) ) {
             return( RegsTab[i].idx );
         }
     }
@@ -327,7 +327,7 @@ reg_idx  RegTrans( BackRun& back, hw_reg_set regs )
 
     HW_CTurnOff( regs, HW_SEGS );
     for( i = ARCH_GPR_START; i < ARCH_GPR_END; i++ ) {
-        if( HW_Equal( regs, RegsTab[i].hw_reg ) ) {
+        if( HwEqual( regs, RegsTab[i].hw_reg ) ) {
             return( RegsTab[i].idx );
         }
     }
@@ -341,7 +341,7 @@ static int FPRegTrans( hw_reg_set reg )
     int         i;
 
     for( i = ARCH_FPR_START; i < ARCH_FPR_END; i++ ) {
-        if( HW_Equal( reg, RegsTab[i].hw_reg ) ) {
+        if( HwEqual( reg, RegsTab[i].hw_reg ) ) {
             return( RegsTab[i].idx );
         }
     }
@@ -356,7 +356,7 @@ dw_regs RegTransDW( BackRun& back, hw_reg_set reg )
     int         i;
 
     for( i = ARCH_IDX_START; i < ARCH_IDX_END; i++ ) {
-        if( HW_Equal( reg, RegsTab[i].hw_reg ) ) {
+        if( HwEqual( reg, RegsTab[i].hw_reg ) ) {
             return( RegsTab[i].dw_idx );
         }
     }
@@ -373,7 +373,7 @@ int RegTransWV( BackRun& back, hw_reg_set reg )
     int         i;
 
     for( i = ARCH_IDX_START; i < ARCH_IDX_END; i++ ) {
-        if( HW_Equal( reg, RegsTab[i].hw_reg ) ) {
+        if( HwEqual( reg, RegsTab[i].hw_reg ) ) {
             return( RegsTab[i].wv_idx );
         }
     }
@@ -414,7 +414,7 @@ int     CountFPRegs( hw_reg_set regs )
 
     count = 0;
     for( i = ARCH_FPR_START; i < ARCH_FPR_END; i++ ) {
-        if( HW_Ovlap( regs, RegsTab[i].hw_reg ) ) {
+        if( HwOvlap( regs, RegsTab[i].hw_reg ) ) {
             ++count;
         }
     }
@@ -440,7 +440,7 @@ static bool     NeedOpndSize( instruction *ins )
     default:
         break;
     }
-    if( _OpIsCondition( ins->head.opcode ) )
+    if( OpIsCondition( ins->head.opcode ) )
         return( true );
     if( ins->ins_flags & INS_CC_USED )
         return( true );
@@ -464,8 +464,8 @@ static bool     NeedOpndSize( instruction *ins )
             return( true );
         result_reg = ins->result->r.reg;
         full_reg = FullReg( result_reg );
-        HW_TurnOff( full_reg, result_reg );
-        if( HW_Ovlap( full_reg, next->head.live.regs ) )
+        HwTurnOff( full_reg, result_reg );
+        if( HwOvlap( full_reg, next->head.live.regs ) )
             return( true );
         break;
     default:
@@ -632,7 +632,7 @@ static  void    DoP5RegisterDivide( BackRun& back, instruction *ins )
     reverse = false;
     pop = false;
     dest = false;
-    switch( G( ins ) ) {
+    switch( InsGenerate( ins ) ) {
     case G_RRFBIN:
         reverse = true;
         break;
@@ -672,8 +672,8 @@ static  void    DoP5RegisterDivide( BackRun& back, instruction *ins )
     GenJumpLabel( back, lbl_2 );
     CodeLabel( back, lbl, 0 );
     Format( back, OC_CODE );
-    LayInitial( back, ins, G( ins ) );
-    LayOpndSize( back, ins, G( ins ) );
+    LayInitial( back, ins, InsGenerate( ins ) );
+    LayOpndSize( back, ins, InsGenerate( ins ) );
     LayST( back, ins->operands[0] );
     Finalize( back );
     CodeLabel( back, lbl_2, 0 );
@@ -733,7 +733,7 @@ static  void    DoP5MemoryDivide( BackRun& back, instruction *ins )
         LayOpword( back, 0x30ff );
         LayModRM( back, ins->operands[0] );
 #endif
-        if( G( ins ) == G_MRFBIN ) {
+        if( InsGenerate( ins ) == G_MRFBIN ) {
             rtindex = RT_FDIV_MEM32R;
         } else {
             rtindex = RT_FDIV_MEM32;
@@ -780,7 +780,7 @@ static  void    DoP5MemoryDivide( BackRun& back, instruction *ins )
         LayModRM( back, low );
         back.x86proc.StackDepth -= WORD_SIZE;
 #endif
-        if( G( ins ) == G_MRFBIN ) {
+        if( InsGenerate( ins ) == G_MRFBIN ) {
             rtindex = RT_FDIV_MEM64R;
         } else {
             rtindex = RT_FDIV_MEM64;
@@ -798,8 +798,8 @@ static  void    DoP5MemoryDivide( BackRun& back, instruction *ins )
     if( seg != NULL ) {
         GenSeg( back, seg->r.reg );
     }
-    LayInitial( back, ins, G( ins ) );
-    LayOpndSize( back, ins, G( ins ) );
+    LayInitial( back, ins, InsGenerate( ins ) );
+    LayOpndSize( back, ins, InsGenerate( ins ) );
     LayMF( back, ins->operands[0] );
     LayModRM( back, ins->operands[0] );
     Finalize( back );
@@ -851,7 +851,7 @@ static  void    DoP5Divide( BackRun& back, instruction *ins )
         AddByte( back, 0x1f );        /* pop ds    */
         Finalize( back );
     }
-    switch( G( ins ) ) {
+    switch( InsGenerate( ins ) ) {
     case G_RRFBIN:
     case G_RNFBIN:
     case G_RRFBIND:
@@ -1059,7 +1059,7 @@ void    GenSeg( BackRun& back, hw_reg_set regs )
     }
     if( IsEmulation( back ) ) {
         for( i = ARCH_SEG_START; i < ARCH_SEG_END; i++ ) {
-            if( HW_Equal( segreg, RegsTab[i].hw_reg ) ) {
+            if( HwEqual( segreg, RegsTab[i].hw_reg ) ) {
                 SetFPPatchSegm( back, RegsTab[i].idx );
                 break;
             }
@@ -1298,12 +1298,12 @@ void    AddSData( BackRun& back, int_32 value, type_class_def type_class )
         && ( ( value & 0xff80 ) == 0xff80
           || ( value & 0xff80 ) == 0 ) ) {
         back.pcencode.Inst[KEY] |= B_KEY_S;
-        AddByte( back, _IntToByte( value ) );
+        AddByte( back, IntToByte( value ) );
     } else if( ( type_class == U4 || type_class == I4 )
         && ( ( value & 0xffffff80 ) == 0xffffff80
           || ( value & 0xffffff80 ) == 0 ) ) {
         back.pcencode.Inst[KEY] |= B_KEY_S;
-        AddByte( back, _IntToByte( value ) );
+        AddByte( back, IntToByte( value ) );
     } else {
         AddWData( back, value, type_class );
     }
@@ -1884,7 +1884,7 @@ static bool CleanupDiesAtLeave( BackRun& back, instruction *ins )
             }
         }
     }
-    if( !_IsBlkAttr( _BLOCK( next ), BLK_RETURN ) )
+    if( !IsBlkAttr( BlockOf( next ), BLK_RETURN ) )
         return( false );
     return( EpilogIsLeaveOnly(back) );
 }
@@ -1902,11 +1902,11 @@ void    GenObjCode( BackRun& back, instruction *ins )
     opcnt       i;
     bool        opnd_size;
 
-    gen = G( ins );
+    gen = InsGenerate( ins );
     if( gen != G_NO ) {
         // fixme - should be _IsTargetModel
         if( IsTargetModel( back, CGSW_X86_P5_DIVIDE_CHECK ) ) {
-            if( ins->head.opcode == OP_DIV && _IsFloating( ins->type_class ) ) {
+            if( ins->head.opcode == OP_DIV && IsFloating( ins->type_class ) ) {
                 DoP5Divide( back, ins );
                 return;
             }
@@ -2535,7 +2535,7 @@ void    GenObjCode( BackRun& back, instruction *ins )
         }
     }
     AdjustStackDepth( back, ins );
-    if( _OpIsCondition( ins->head.opcode ) ) {
+    if( OpIsCondition( ins->head.opcode ) ) {
         EndBlockProfiling();
         GenCondJump( back, ins );
     }

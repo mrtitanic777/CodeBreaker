@@ -104,7 +104,7 @@ void AuxInfoInit( FrontRun& front, int flag_stdatnum )
     CdeclInfo( front ).objname = AUX_STRALLOC( front, "_*" );
 
     HW_CAsgn( CdeclInfo( front ).returns, HW_EMPTY );
-    HW_TurnOn( CdeclInfo( front ).save, full_no_segs );
+    HwTurnOn( CdeclInfo( front ).save, full_no_segs );
     HW_CTurnOff( CdeclInfo( front ).save, HW_FLTS );
   #if _CPU == 8086
     HW_CAsgn( CdeclInfo( front ).streturn, HW_AX );
@@ -141,7 +141,7 @@ void AuxInfoInit( FrontRun& front, int flag_stdatnum )
 
     HW_CAsgn( PascalInfo( front ).returns, HW_EMPTY );
     HW_CAsgn( PascalInfo( front ).streturn, HW_EMPTY );
-    HW_TurnOn( PascalInfo( front ).save, full_no_segs );
+    HwTurnOn( PascalInfo( front ).save, full_no_segs );
     HW_CTurnOff( PascalInfo( front ).save, HW_FLTS );
   #if _CPU == 8086
     HW_CTurnOff( PascalInfo( front ).save, HW_ABCD );
@@ -180,7 +180,7 @@ void AuxInfoInit( FrontRun& front, int flag_stdatnum )
     }
 
     HW_CAsgn( StdcallInfo( front ).returns, HW_EMPTY );
-    HW_TurnOn( StdcallInfo( front ).save, full_no_segs );
+    HwTurnOn( StdcallInfo( front ).save, full_no_segs );
     HW_CTurnOff( StdcallInfo( front ).save, HW_FLTS );
   #if _CPU == 8086
     HW_CAsgn( StdcallInfo( front ).streturn, HW_AX );
@@ -202,7 +202,7 @@ void AuxInfoInit( FrontRun& front, int flag_stdatnum )
     FastcallInfo( front ).parms = front.callinfo_file.FastcallParms;
     HW_CAsgn( FastcallInfo( front ).returns, HW_EMPTY );
     HW_CAsgn( FastcallInfo( front ).streturn, HW_EMPTY );
-    HW_TurnOn( FastcallInfo( front ).save, full_no_segs );
+    HwTurnOn( FastcallInfo( front ).save, full_no_segs );
     HW_CTurnOff( FastcallInfo( front ).save, HW_FLTS );
     FastcallInfo( front ).cclass = cclass |
                          //FECALL_GEN_REVERSE_PARMS |
@@ -263,7 +263,7 @@ void AuxInfoInit( FrontRun& front, int flag_stdatnum )
     HW_CAsgn( OptlinkInfo( front ).returns, HW_EMPTY );
 //    HW_CAsgn( OptlinkInfo.returns, HW_FLTS );
     HW_CAsgn( OptlinkInfo( front ).streturn, HW_EMPTY );
-    HW_TurnOn( OptlinkInfo( front ).save, full_no_segs );
+    HwTurnOn( OptlinkInfo( front ).save, full_no_segs );
     HW_CTurnOff( OptlinkInfo( front ).save, HW_FLTS );
   #if _CPU == 8086
     HW_CTurnOff( OptlinkInfo( front ).save, HW_ABCD );
@@ -297,7 +297,7 @@ void AuxInfoInit( FrontRun& front, int flag_stdatnum )
 
     HW_CAsgn( SyscallInfo( front ).returns, HW_EMPTY );
     HW_CAsgn( SyscallInfo( front ).streturn, HW_EMPTY );
-    HW_TurnOn( SyscallInfo( front ).save, full_no_segs );
+    HwTurnOn( SyscallInfo( front ).save, full_no_segs );
     HW_CTurnOff( SyscallInfo( front ).save, HW_FLTS );
   #if _CPU == 8086
     HW_CTurnOff( SyscallInfo( front ).save, HW_ABCD );

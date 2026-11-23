@@ -143,7 +143,7 @@ bool VarParm( SYMPTR sym )
 
     if( sym->flags & SYM_FUNCTION ) {
         fn_typ = sym->sym_type;
-        SKIP_TYPEDEFS( fn_typ );
+        SkipTypedefs( fn_typ );
         if( fn_typ->u.fn.parms != NULL ) {
             for( parm_types = fn_typ->u.fn.parms; (typ = *parm_types) != NULL; parm_types++ ) {
                 if( typ->decl_type == TYP_DOT_DOT_DOT ) {
@@ -208,7 +208,7 @@ static const inline_funcs *IF_Lookup( FrontRun& front, const char *name )
 {
     const inline_funcs  *ifunc;
 
-    if( !GET_FPU_FPC( front.cvars.ProcRevision ) ) {
+    if( !GetFpuFpc( front.cvars.ProcRevision ) ) {
         for( ifunc = _8087_Functions; ifunc->name != NULL; ifunc++ ) {
             if( strcmp( ifunc->name, name ) == 0 ) {
                 return( Flat( front, ifunc ) );
@@ -424,7 +424,7 @@ aux_info *FindInfo( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
     }
     if( inf == &DefaultInfo( front ) ) {
         typ = sym->sym_type;
-        SKIP_DUMMY_TYPEDEFS( typ );
+        SkipDummyTypedefs( typ );
         if( typ->decl_type == TYP_TYPEDEF ) {
             SymGet( front, &sym_typedef, typ->u.typedefn );
             if( sym_typedef.name != NULL ) {
@@ -692,7 +692,7 @@ static unsigned GetParmsSize( FrontRun& front, SYM_HANDLE sym_handle )
 
     SymGet( front, &sym, sym_handle );
     fn_typ = sym.sym_type;
-    SKIP_TYPEDEFS( fn_typ );
+    SkipTypedefs( fn_typ );
     if( fn_typ->decl_type == TYP_FUNCTION ) {
         if( fn_typ->u.fn.parms != NULL ) {
             for( parm_types = fn_typ->u.fn.parms; (typ = *parm_types) != NULL; parm_types++ ) {
@@ -701,11 +701,11 @@ static unsigned GetParmsSize( FrontRun& front, SYM_HANDLE sym_handle )
                     break;
                 }
 
-                SKIP_TYPEDEFS( typ );
+                SkipTypedefs( typ );
                 if( typ->decl_type == TYP_VOID )
                     break;
 
-                parm_size = _RoundUp( TypeSize( front, typ ), TARGET_INT );
+                parm_size = RoundUp( TypeSize( front, typ ), TARGET_INT );
                 total_parm_size += parm_size;
             }
         }
@@ -857,14 +857,14 @@ static void addDefaultImports( FrontRun& front )
   #endif
         if( front.cvars.CompFlags.pgm_used_8087
           || front.cvars.CompFlags.float_used ) {
-            if( GET_FPU_EMU( front.cvars.ProcRevision ) ) {
+            if( GetFpuEmu( front.cvars.ProcRevision ) ) {
   #if _CPU == 8086
                 AddExtRefN( front, "__init_87_emulator" );
   #else /* _CPU == 386 */
                 AddExtRefN( front, "__init_387_emulator" );
   #endif
             }
-            if( !GET_FPU_FPC( front.cvars.ProcRevision ) ) {
+            if( !GetFpuFpc( front.cvars.ProcRevision ) ) {
                 if( front.cvars.Stack87 == 4 ) {
                     AddExtRefN( front, "__old_8087" );
                 } else {

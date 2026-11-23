@@ -42,8 +42,8 @@
 #include "frontrun.hpp"
 
 
-#define TOKEN2BOOL(t)   ((bool)(t))
-#define BOOL2TOKEN(b)   ((TOKEN)(b))
+inline bool TokenToBool( TOKEN t ) { return ((bool)(t)); }
+inline TOKEN BoolToToken( bool b ) { return ((TOKEN)(b)); }
 
 
 static const struct mathfuncs {
@@ -109,7 +109,7 @@ static TREEPTR CallNode( FrontRun& front, TREEPTR func, TREEPTR parms, TYPEPTR f
     tree->u.expr_type = func_result_type;
     tree->op.u2.result_type = func_result_type;
     typ = func_result_type;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type != TYP_VOID
       && TypeSize( front, typ ) == 0 ) {
         CErr1( front, ERR_INCOMPLETE_EXPR_TYPE );
@@ -126,7 +126,7 @@ static TYPEPTR Far16Type( FrontRun& front, TYPEPTR typ )
     TYPEPTR     typ2;
 
     typ2 = typ;
-    SKIP_TYPEDEFS( typ2 );
+    SkipTypedefs( typ2 );
     if( typ2->decl_type == TYP_ENUM ) {
         typ2 = typ2->object;
     }
@@ -150,7 +150,7 @@ static TREEPTR FarPtr16Cvt( FrontRun& front, TREEPTR newparm  )
     pointer_class   op2_ptrclass;
 
     parmtyp = newparm->u.expr_type;
-    SKIP_TYPEDEFS( parmtyp );
+    SkipTypedefs( parmtyp );
     if( parmtyp->decl_type == TYP_POINTER ) {
         op1_ptrclass = PTRCLS_FAR16;
         op2_ptrclass = ExprTypeClass( front, newparm->u.expr_type );
@@ -489,7 +489,7 @@ static void IncSymWeight( FrontRun& front, SYMPTR sym )
 static bool IsStruct( TYPEPTR typ )
 /*********************************/
 {
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     return( typ->decl_type == TYP_STRUCT || typ->decl_type == TYP_UNION );
 }
 
@@ -551,7 +551,7 @@ static TREEPTR TakeRValue( FrontRun& front, TREEPTR tree, int void_ok )
         }
     }
     typ = tree->u.expr_type;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type == TYP_VOID ) {
         if( ! void_ok ) {
             CErr1( front, ERR_EXPR_HAS_VOID_TYPE );
@@ -808,7 +808,7 @@ static TREEPTR FarPtrCvt( FrontRun& front, SYMPTR sym, SYM_HANDLE sym_handle )
     TREEPTR         tree;
 
     typ = sym->sym_type;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type == TYP_POINTER ) {
         if( typ->u.p.decl_flags & FLAG_FAR ) {
             tree = VarLeaf( front, sym, sym_handle );
@@ -836,7 +836,7 @@ static TREEPTR MakeFarOp( FrontRun& front, TREEPTR based_sym, TREEPTR tree )
     TYPEPTR     typ;
 
     typ = tree->u.expr_type;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     typ = PtrNode( front, typ->object, FLAG_FAR, SEG_NULL );
     tree = ExprNode( front, based_sym, OPR_FARPTR, tree );
     tree->u.expr_type = typ;
@@ -880,16 +880,16 @@ TREEPTR BasedPtrNode( FrontRun& front, TYPEPTR ptrtyp, TREEPTR tree )
         TYPEPTR     old;
 
         old = tree->u.expr_type;
-        SKIP_TYPEDEFS( old );
+        SkipTypedefs( old );
         sym = SymGetPtr( front, sym_handle );
         based_sym = VarLeaf( front, sym, sym_handle );
         based_sym->op.opr = OPR_PUSHSYM;
         typ = sym->sym_type;
-        SKIP_TYPEDEFS( typ );
+        SkipTypedefs( typ );
         if( typ->u.p.decl_flags & FLAG_BASED ) {
             based_sym = BasedPtrNode( front, typ, based_sym );
             typ = based_sym->u.expr_type;
-            SKIP_TYPEDEFS( typ );
+            SkipTypedefs( typ );
         }
         old = PtrNode( front, old->object, typ->u.p.decl_flags, SEG_NULL );
         tree = ExprNode( front, based_sym, OPR_ADD, tree );
@@ -974,7 +974,7 @@ static TREEPTR PtrOp( FrontRun& front, TREEPTR tree )
     if( tree->op.opr == OPR_ERROR )
         return( tree );
     typ = tree->u.expr_type;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type != TYP_POINTER ) {
         CErr1( front, ERR_EXPR_MUST_BE_POINTER_TO );
         return( ErrorNode( front, tree ) );
@@ -983,7 +983,7 @@ static TREEPTR PtrOp( FrontRun& front, TREEPTR tree )
     tree = CheckBasedPtr( front, tree, typ, &flags );
     tree = ExprNode( front, tree, OPR_POINTS, NULL );
     typ = typ->object;
-//    SKIP_TYPEDEFS( typ );
+//    SkipTypedefs( typ );
     tree->u.expr_type = typ;
     tree->op.u2.result_type = ptrtyp;
     tree->op.flags = OpFlags( flags );
@@ -1006,7 +1006,7 @@ FIELDPTR SearchFields( TYPEPTR *class_typ, target_size *field_offset, const char
     tag = (*class_typ)->u.tag;
     for( field = tag->u.field_list; field != NULL; field = field->next_field ) {
         typ = field->field_type;
-        SKIP_TYPEDEFS( typ );
+        SkipTypedefs( typ );
         if( field->name[0] == '\0' ) {  /* if nameless field */
             if( typ->decl_type == TYP_STRUCT
               || typ->decl_type == TYP_UNION ) {
@@ -1034,7 +1034,7 @@ static TYPEPTR Ptr2Struct( TYPEPTR typ )
         return( NULL );
     }
     typ = typ->object;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type == TYP_STRUCT
       || typ->decl_type == TYP_UNION ) {
         return( typ );
@@ -1059,7 +1059,7 @@ static TREEPTR DotOp( FrontRun& front, TREEPTR tree )
     if( tree->op.opr == OPR_ERROR )
         return( tree );
     typ = tree->u.expr_type;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type != TYP_STRUCT
       && typ->decl_type != TYP_UNION ) {
         CErr1( front, ERR_MUST_BE_STRUCT_OR_UNION );
@@ -1112,7 +1112,7 @@ static TREEPTR ArrowOp( FrontRun& front, TREEPTR tree )
     if( tree->op.opr == OPR_ERROR )
         return( tree );
     typ = tree->u.expr_type;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( Ptr2Struct( typ ) == NULL ) {
         CErr1( front, ERR_MUST_BE_PTR_TO_STRUCT_OR_UNION );
         return( ErrorNode( front, tree ) );
@@ -1122,7 +1122,7 @@ static TREEPTR ArrowOp( FrontRun& front, TREEPTR tree )
     }
     tree = CheckBasedPtr( front, tree, typ, &flags );
     typ = typ->object;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     get_typ = typ;
     offset = 0;
     field = SearchFields( &get_typ, &offset, front.cvars.Buffer );
@@ -1298,7 +1298,7 @@ static TREEPTR GetExpr( FrontRun& front )
                 MustRecog( front, T_COLON );
                 break;
             case TC_TERNARY_DONE:
-                front.cvars.CompFlags.meaningless_stmt &= TOKEN2BOOL( front.cvars.Token[front.cvars.ExprLevel] );
+                front.cvars.CompFlags.meaningless_stmt &= TokenToBool( front.cvars.Token[front.cvars.ExprLevel] );
                 --front.cvars.ExprLevel;
                 tree = TernOp( front, front.cvars.ValueStack[front.cvars.ExprLevel], op1, tree );
                 front.cvars.CompFlags.pending_dead_code = false;
@@ -1461,7 +1461,7 @@ static TREEPTR GetExpr( FrontRun& front )
             break;
         case TC_COLON:
             tree = ColonOp( front, tree );
-            front.cvars.CurToken = BOOL2TOKEN( front.cvars.CompFlags.meaningless_stmt );
+            front.cvars.CurToken = BoolToToken( front.cvars.CompFlags.meaningless_stmt );
             curclass = TC_TERNARY_DONE;
             break;
         case TC_OR_OR:
@@ -1607,7 +1607,7 @@ static TREEPTR ExprOpnd( FrontRun& front )
                 NextToken(front);
                 typ = TypeName(front);
                 if( typ != NULL ) {
-                    SKIP_TYPEDEFS( typ );
+                    SkipTypedefs( typ );
                     switch( typ->decl_type ) {
                     case TYP_FLOAT:
                     case TYP_DOUBLE:
@@ -1683,9 +1683,9 @@ static TREEPTR ExprOpnd( FrontRun& front )
 #define FLOAT_PLUS_ONE "+1.0"
                 tree = LeafNode( front, OPR_PUSHFLOAT );
                 tree->op.u1.const_type = TYP_DIMAGINARY;
-                flt = static_cast<FLOATVAL *>(CMemAlloc( front, sizeof( FLOATVAL ) - 1 + LENLIT( FLOAT_PLUS_ONE ) + 1 ));
+                flt = static_cast<FLOATVAL *>(CMemAlloc( front, sizeof( FLOATVAL ) - 1 + LiteralLength( FLOAT_PLUS_ONE ) + 1 ));
                 strcpy( flt->string, FLOAT_PLUS_ONE );
-                flt->len = LENLIT( FLOAT_PLUS_ONE );
+                flt->len = LiteralLength( FLOAT_PLUS_ONE );
                 flt->type = TYP_DIMAGINARY;
                 flt->next = NULL;
                 tree->op.u2.float_value = flt;
@@ -1696,7 +1696,7 @@ static TREEPTR ExprOpnd( FrontRun& front )
             break;
         default:
             if( !IsPPCtlNormal( front )
-              && IS_KEYWORD( front.cvars.CurToken ) ) {
+              && IsKeyword( front.cvars.CurToken ) ) {
                 tree = ExprId(front);
             } else {
                 CErr1( front, ERR_MISSING_OPERAND );
@@ -1734,7 +1734,7 @@ static TREEPTR ExprId( FrontRun& front )
     int         count;
 
     if( !IsPPCtlNormal( front ) ) {
-        if( IS_PPOPERATOR_DEFINED( front.cvars.Buffer ) ) {
+        if( IsPPOperatorDefined( front.cvars.Buffer ) ) {
             ppctl_t old_ppctl;
 
             old_ppctl = front.cvars.PPControl;
@@ -1799,7 +1799,7 @@ static TREEPTR GenIndex( FrontRun& front, TREEPTR tree, TREEPTR index_expr )
         CWarn1( front, ERR_PLAIN_CHAR_SUBSCRIPT );
     }
     typ = tree->u.expr_type;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type == TYP_ARRAY ) {
         tree_flags = tree->op.flags;  /* get modifiers of array obj */
     } else if( typ->decl_type == TYP_POINTER ) {
@@ -1815,7 +1815,7 @@ static TREEPTR GenIndex( FrontRun& front, TREEPTR tree, TREEPTR index_expr )
         tree_flags = OPFLAG_NONE;
     }
     typ = typ->object;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     /*
      * Some crappy little optimization that probably does nothing
      */
@@ -1860,14 +1860,14 @@ static TREEPTR IndexOp( FrontRun& front, TREEPTR tree, TREEPTR index_expr )
 
     if( tree->op.opr != OPR_ERROR ) {
         typ = tree->u.expr_type;
-        SKIP_TYPEDEFS( typ );
+        SkipTypedefs( typ );
         if( typ->decl_type == TYP_ARRAY ) {
             tree = ArrayIndex( front, tree, index_expr );
         } else if( typ->decl_type == TYP_POINTER ) {
             tree = GenIndex( front, RValue( front, tree ), index_expr );
         } else {                    /* try index[array] */
             typ = index_expr->u.expr_type;
-            SKIP_TYPEDEFS( typ );
+            SkipTypedefs( typ );
             if( typ->decl_type == TYP_ARRAY ) {
                 tree = ArrayIndex( front, index_expr, tree );
             } else if( typ->decl_type == TYP_POINTER ) {
@@ -1987,7 +1987,7 @@ static TREEPTR GenNextParm( FrontRun& front, TREEPTR tree, TYPEPTR **plistptr )
             tree = FixupAss( front, tree, typ );
         } else if( typ->decl_type == TYP_POINTER ) {
             typ2 = typ->object;
-            SKIP_TYPEDEFS( typ );
+            SkipTypedefs( typ );
             if( typ2->decl_type != TYP_FUNCTION ) {
                 if( typ->u.p.decl_flags & FLAG_NEAR ) {
                     if( front.cvars.DataPtrSize == TARGET_FAR_POINTER ) {
@@ -2000,7 +2000,7 @@ static TREEPTR GenNextParm( FrontRun& front, TREEPTR tree, TYPEPTR **plistptr )
     }
     if( typ->decl_type == TYP_POINTER )
         typ = typ->object;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type == TYP_DOUBLE
       || typ->decl_type == TYP_LONG_DOUBLE
       || typ->decl_type == TYP_FLOAT ) {
@@ -2041,7 +2041,7 @@ static TREEPTR GenFuncCall( FrontRun& front, TREEPTR last_parm )
         sym_name = SymName( front, &sym, functree->op.u2.sym_handle );
         flags = sym.mods;
         typ = typ->object;
-        SKIP_TYPEDEFS( typ );
+        SkipTypedefs( typ );
         if( typ->decl_type == TYP_DOUBLE
           || typ->decl_type == TYP_LONG_DOUBLE
           || typ->decl_type == TYP_FLOAT ) {
@@ -2193,12 +2193,12 @@ static TREEPTR StartFunc( FrontRun& front, TREEPTR tree, TYPEPTR **plistptr )
     decl_flags = FLAG_NONE;
     typ = tree->u.expr_type;
     orig_typ = typ;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type == TYP_POINTER ) {
         tree = PtrOp( front, RValue( front, tree ) );
         typ = tree->u.expr_type;
         orig_typ = typ;
-        SKIP_TYPEDEFS( typ );
+        SkipTypedefs( typ );
     }
     if( tree->op.opr == OPR_PUSHADDR ) {        /* direct call */
         tree->op.opr = OPR_FUNCNAME;            /* change to funcname */
@@ -2292,7 +2292,7 @@ static TREEPTR StartFunc( FrontRun& front, TREEPTR tree, TYPEPTR **plistptr )
         if( opr == OPR_CALL ) {
 #endif
             typ = typ->object; /* get return type */
-            SKIP_TYPEDEFS( typ );
+            SkipTypedefs( typ );
             if( (sym.flags & SYM_TEMP) == 0 ) {
                 SetDiagSymbol( front, &sym, sym_handle );
             }
@@ -2582,7 +2582,7 @@ static TREEPTR SizeofOp( FrontRun& front, TYPEPTR typ )
     }
     size = SizeOfArg( front, typ );
     if( size == 0 ) {
-        SKIP_TYPEDEFS( typ );
+        SkipTypedefs( typ );
         if( typ->decl_type == TYP_VOID ) {
             CErr1( front, ERR_EXPR_HAS_VOID_TYPE );
         } else {

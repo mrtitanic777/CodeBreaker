@@ -39,7 +39,7 @@
 #include "backrun.hpp"
 
 
-#define _NEXT( list, offset ) (*((void **)((char *)list + offset)))
+inline void *&NextOf( void *list, unsigned int offset ) { return (*((void **)((char *)list + offset))); }
 
 static  void            ShellSort( BackRun& back, void **array, unsigned length,
                                    bool (*before)(BackRun&, void *,void *) );
@@ -54,8 +54,8 @@ static  void    *BuildList( void **array, unsigned next_offset, unsigned length 
     owner = &list;
     for( ; length != 0; --length ) {
         *owner = *array;
-        _NEXT( *owner, next_offset ) = NULL;
-        owner = &_NEXT( *owner, next_offset );
+        NextOf( *owner, next_offset ) = NULL;
+        owner = &NextOf( *owner, next_offset );
         ++array;
     }
     return( list );
@@ -76,15 +76,15 @@ static  void            *MergeList( BackRun& back, void *list1, void *list2,
     while( list1 != NULL && list2 != NULL ) {
         if( (*before)( back, list1, list2 ) ) {
             *owner = list1;
-            owner = &_NEXT( list1, next_offset );
-            next = _NEXT( list1, next_offset );
-            _NEXT( list1, next_offset ) = NULL;
+            owner = &NextOf( list1, next_offset );
+            next = NextOf( list1, next_offset );
+            NextOf( list1, next_offset ) = NULL;
             list1 = next;
         } else {
             *owner = list2;
-            owner = &_NEXT( list2, next_offset );
-            next = _NEXT( list2, next_offset );
-            _NEXT( list2, next_offset ) = NULL;
+            owner = &NextOf( list2, next_offset );
+            next = NextOf( list2, next_offset );
+            NextOf( list2, next_offset ) = NULL;
             list2 = next;
         }
     }
@@ -117,7 +117,7 @@ static  void            *DoSortList( BackRun& back, void *list, unsigned next_of
             return( list ); /* FATAL ERROR! */
         list2 = list;
         for( i = mid; i > 0; --i ) {
-            list2 = _NEXT( list2, next_offset );
+            list2 = NextOf( list2, next_offset );
         }
         list = DoSortList( back, list, next_offset, before, mid );
         list2 = DoSortList( back, list2, next_offset, before, length - mid );
@@ -127,7 +127,7 @@ static  void            *DoSortList( BackRun& back, void *list, unsigned next_of
         parray = array;
         for( i = length; i > 0; --i ) {
             *parray++ = list2;
-            list2 = _NEXT( list2, next_offset );
+            list2 = NextOf( list2, next_offset );
         }
         ShellSort( back, array, length, before );
         list = BuildList( array, next_offset, length );
@@ -175,7 +175,7 @@ void *SortList( BackRun& back, void *list, unsigned next_offset, bool (*before)(
     mem_out_action      old_memout;
 
     length = 0;
-    for( list2 = list; list2 != NULL; list2 = _NEXT( list2, next_offset ) ) {
+    for( list2 = list; list2 != NULL; list2 = NextOf( list2, next_offset ) ) {
         ++length;
     }
     if( length > 1 ) {

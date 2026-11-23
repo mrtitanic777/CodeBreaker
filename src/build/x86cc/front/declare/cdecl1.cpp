@@ -102,7 +102,7 @@ static void FuncDefn( FrontRun& front, SYMPTR sym )
         CErr2p( front, ERR_SYM_ALREADY_DEFINED, sym->name );
     }
     typ = sym->sym_type->object;                /* get return type */
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
 
     if( typ->decl_type != TYP_VOID ) {
         if( TypeSize( front, typ ) == 0 ) {
@@ -265,7 +265,7 @@ static void  ArgPromotion( FrontRun& front, SYMPTR sym )
      * perform default argument promotions
      */
     typ = arg_typ;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
 
     switch( typ->decl_type ) {
     case TYP_ENUM:
@@ -386,10 +386,10 @@ static void CheckProtoType( FrontRun& front )
     TYPEPTR     typ2;
 
     typ1 = front.cvars.CurFunc->sym_type;
-    SKIP_TYPEDEFS( typ1 );
+    SkipTypedefs( typ1 );
     ret1 = typ1->object;
     typ2 = front.cvars.PrevProtoType;
-    SKIP_TYPEDEFS( typ2 );
+    SkipTypedefs( typ2 );
     ret2 = typ2->object;
     typ1->object = NULL;
     typ2->object = NULL;
@@ -439,7 +439,7 @@ static void AddParms( FrontRun& front )
              * float and generate an assignment statement.
              */
             typ = parm->sym.sym_type;
-            SKIP_TYPEDEFS( typ );
+            SkipTypedefs( typ );
 
             switch( typ->decl_type ) {
             case TYP_CHAR:
@@ -527,7 +527,7 @@ static void CheckParms( FrontRun& front )
     front.cvars.CurFunc->u.func.locals = SYM_NULL;
     front.cvars.CurFunc->u.func.parms = SYM_NULL;
     typ = *(front.cvars.CurFunc->sym_type->u.fn.parms);
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type != TYP_VOID ) {
         prev_sym_handle = SYM_NULL;
         prev_parm = NULL;

@@ -43,17 +43,19 @@
 
 #define BUF_SIZE                    512
 
-#define LENLIT(c)                   (sizeof( c ) - 1)
+template <size_t N>
+constexpr size_t LiteralLength( const char (&)[N] ) { return N - 1; }
 
 #define PPOPERATOR_DEFINED          "defined"
 #define PPOPERATOR_PRAGMA           "_Pragma"
 
-#define IS_PPOPERATOR_DEFINED(s)    (strcmp(s, PPOPERATOR_DEFINED) == 0)
+inline bool IsPPOperatorDefined( const char *s ) { return (strcmp(s, PPOPERATOR_DEFINED) == 0); }
 /* whether the token (its text and length) is the _Pragma operator, where the run's language has it (the bodies of these two are in frontrun.hpp) */
 struct FrontRun;
 CB_ALWAYS_INLINE bool IsPPOperatorPragma( const FrontRun& front, const char *s, size_t length );
 
-#define ARRAY_SIZE(x)               (sizeof( x ) / sizeof( *x ))
+template <class T, size_t N>
+constexpr size_t ArraySize( T (&)[N] ) { return N; }
 
 inline bool IsHugeData( const FrontRun& front );
 

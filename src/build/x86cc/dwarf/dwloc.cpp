@@ -40,16 +40,6 @@
 #include "backrun.hpp"
 
 
-#define ADD_ADDR( cli, loc, amt )                   \
-    {                                               \
-        dw_loc_offs             __old;              \
-                                                    \
-        __old = (loc)->addr;                        \
-        (loc)->addr += (amt);                       \
-        if( loc->addr < __old ) {                   \
-            _Abort( ABORT_LOC_EXPR_TOO_LONG );      \
-        }                                           \
-    }
 
 typedef uint_16                 dw_loc_offs;
 
@@ -153,6 +143,14 @@ void DWENTRY DWLocSetLabel( dw_client cli, dw_loc_id loc, dw_loc_label label )
 }
 
 
+inline void AddAddr( dw_client_s *cli, dw_loc_id_s *loc, dw_loc_offs amt )
+{
+    dw_loc_offs old;
+    old = loc->addr;
+    loc->addr += amt;
+    if( loc->addr < old ) { AbortDwarf( cli, ABORT_LOC_EXPR_TOO_LONG ); }
+}
+
 static loc_op *nextOp( BackRun& back, dw_client cli, dw_loc_id loc, uint_8 op_code, uint extra_size )
 {
     loc_op          *new_;
@@ -168,7 +166,7 @@ static loc_op *nextOp( BackRun& back, dw_client cli, dw_loc_id loc, uint_8 op_co
     new_->size = extra_size;
     new_->next = NULL;
     new_->op_code = op_code;
-    ADD_ADDR( cli, loc, 1 );
+    AddAddr( cli, loc, 1 );
     return( new_ );
 }
 
@@ -198,11 +196,11 @@ void DWENTRY DWLocReg( BackRun& back, dw_client cli, dw_loc_id loc, uint reg )
     dw_loc_offs     len;
 
     if( reg < 32 ) {
-        op = nextOp( back, cli, loc, DW_OP_reg( reg ), 0 );
+        op = nextOp( back, cli, loc, DwOpReg( reg ), 0 );
     } else {
         len = (dw_loc_offs)( WriteULEB128( buf, reg ) - buf );
         op = nextOp( back, cli, loc, DW_OP_regx, len );
-        ADD_ADDR( cli, loc, len );
+        AddAddr( cli, loc, len );
         memcpy( op->data, buf, len );
     }
 }
@@ -215,7 +213,7 @@ void DWENTRY DWLocPiece( BackRun& back, dw_client cli, dw_loc_id loc, uint size 
 
     len = (dw_loc_offs)( WriteULEB128( buf, size ) - buf );
     op = nextOp( back, cli, loc, DW_OP_piece, len );
-    ADD_ADDR( cli, loc, len );
+    AddAddr( cli, loc, len );
     memcpy( op->data, buf, len );
 }
 
@@ -227,7 +225,7 @@ void DWENTRY DWLocStatic( BackRun& back, dw_client cli, dw_loc_id loc, dw_sym_ha
     op = nextOp( back, cli, loc, DW_OP_addr, sizeof( dw_sym_reloc ) );
     ++loc->num_syms;
     write_sym_reloc( op->data, sym, DW_W_STATIC );
-    ADD_ADDR( cli, loc, cli->offset_size );
+    AddAddr( cli, loc, cli->offset_size );
 }
 
 void DWENTRY DWLocSym( BackRun& back, dw_client cli, dw_loc_id loc, dw_sym_handle sym, dw_reloc_type kind )
@@ -239,9 +237,9 @@ void DWENTRY DWLocSym( BackRun& back, dw_client cli, dw_loc_id loc, dw_sym_handl
     write_sym_reloc( op->data, sym, kind );
     if( kind == DW_W_SEGMENT
       || kind == DW_W_LABEL_SEG ) { ///TODO :better linkage
-        ADD_ADDR( cli, loc, GET_SEGMENT_SIZE( cli ) );
+        AddAddr( cli, loc, GetSegmentSize( cli ) );
     } else {
-        ADD_ADDR( cli, loc, cli->offset_size );
+        AddAddr( cli, loc, cli->offset_size );
     }
 }
 
@@ -256,7 +254,7 @@ void DWENTRY DWLocSegment( BackRun& back, dw_client cli, dw_loc_id loc, dw_sym_h
     */
     ++loc->num_syms;
     write_sym_reloc( op->data, sym, DW_W_SEGMENT );
-    ADD_ADDR( cli, loc, GET_SEGMENT_SIZE( cli ) ); // size of info written u2
+    AddAddr( cli, loc, GetSegmentSize( cli ) ); // size of info written u2
 }
 
 
@@ -270,15 +268,15 @@ void DWENTRY DWLocConstU( BackRun& back, dw_client cli, dw_loc_id loc, dw_uconst
 
     /* determine how we'll store this thing */
     if( value < 32UL ) {
-        nextOp( back, cli, loc, DW_OP_lit( value ), 0 );
+        nextOp( back, cli, loc, DwOpLit( value ), 0 );
     } else if( value < 256UL ) {
         op = nextOp( back, cli, loc, DW_OP_const1u, 1 );
         op->data[0] = (uint_8)value;
-        ADD_ADDR( cli, loc, 1 );
+        AddAddr( cli, loc, 1 );
     } else if( value < 16384UL ) {
         op = nextOp( back, cli, loc, DW_OP_const2u, sizeof( uint_16 ) );
         BufWriteU16( cli, op->data, (uint_16)value );
-        ADD_ADDR( cli, loc, sizeof( uint_16 ) );
+        AddAddr( cli, loc, sizeof( uint_16 ) );
     } else if( value < ( 1UL << 21 ) ) {
         /* will only take 3 bytes to encode in ULEB128 form */
         end = WriteULEB128( buf, value );
@@ -287,11 +285,11 @@ void DWENTRY DWLocConstU( BackRun& back, dw_client cli, dw_loc_id loc, dw_uconst
         op->data[0] = buf[0];
         op->data[1] = buf[1];
         op->data[2] = buf[2];
-        ADD_ADDR( cli, loc, 3 );
+        AddAddr( cli, loc, 3 );
     } else {
         op = nextOp( back, cli, loc, DW_OP_const4u, sizeof( uint_32 ) );
         BufWriteU32( cli, op->data, value );
-        ADD_ADDR( cli, loc, 4 );
+        AddAddr( cli, loc, 4 );
     }
 }
 
@@ -307,28 +305,28 @@ void DWENTRY DWLocConstS( BackRun& back, dw_client cli, dw_loc_id loc, dw_sconst
     /* determine how we'll store this thing */
     if( 0 <= value
       && value < 32L ) {
-        nextOp( back, cli, loc, DW_OP_lit( value ), 0 );
+        nextOp( back, cli, loc, DwOpLit( value ), 0 );
     } else if( -128L <= value
       && value < 128L ) {
         op = nextOp( back, cli, loc, DW_OP_const1s, 1 );
         op->data[0] = (int_8)value;
-        ADD_ADDR( cli, loc, 1 );
+        AddAddr( cli, loc, 1 );
     } else if( -16384L <= value
       && value < 16384L ) {
         op = nextOp( back, cli, loc, DW_OP_const2s, sizeof( int_16 ) );
         BufWriteU16( cli, op->data, (int_16)value );
-        ADD_ADDR( cli, loc, sizeof( int_16 ) );
+        AddAddr( cli, loc, sizeof( int_16 ) );
     } else {
         /* test length of LEB128 form before using DW_OP_const4s */
         len = (dw_loc_offs)( WriteSLEB128( buf, value ) - buf );
         if( len > 3 ) {
             op = nextOp( back, cli, loc, DW_OP_const4s, sizeof( int_32 ) );
             BufWriteU32( cli, op->data, value );
-            ADD_ADDR( cli, loc, sizeof( int_32 ) );
+            AddAddr( cli, loc, sizeof( int_32 ) );
         } else {
             op = nextOp( back, cli, loc, DW_OP_consts, len );
             memcpy( op->data, buf, len );
-            ADD_ADDR( cli, loc, len );
+            AddAddr( cli, loc, len );
         }
     }
 }
@@ -346,7 +344,7 @@ void DWENTRY DWLocOp0( BackRun& back, dw_client cli, dw_loc_id loc, dw_loc_op us
 {
     _Validate( loc != NULL );
     if( user_op >= DW_LOC_max )
-        _Abort( ABORT_ILLEGAL_LOC_OP );
+        AbortDwarf( cli, ABORT_ILLEGAL_LOC_OP );
     nextOp( back, cli, loc, translateOp[user_op], 0 );
 }
 
@@ -365,7 +363,7 @@ void DWENTRY DWLocOp( BackRun& back, dw_client cli, dw_loc_id loc, dw_loc_op use
     _Validate( loc != NULL );
 
     if( user_op >= DW_LOC_max )
-        _Abort( ABORT_ILLEGAL_LOC_OP );
+        AbortDwarf( cli, ABORT_ILLEGAL_LOC_OP );
     op_code = translateOp[user_op];
     va_start( args, user_op );
     switch( user_op ) {
@@ -374,39 +372,39 @@ void DWENTRY DWLocOp( BackRun& back, dw_client cli, dw_loc_id loc, dw_loc_op use
     case DW_LOC_pick:
         op = nextOp( back, cli, loc, op_code, 1 );
         op->data[0] = (uint_8)va_arg( args, int );
-        ADD_ADDR( cli, loc, 1 );
+        AddAddr( cli, loc, 1 );
         break;
     case DW_LOC_plus_uconst:
         len = (dw_loc_offs)( WriteULEB128( buf, va_arg( args, dw_uconst ) ) - buf );
         op = nextOp( back, cli, loc, op_code, len );
         memcpy( op->data, buf, len );
-        ADD_ADDR( cli, loc, len );
+        AddAddr( cli, loc, len );
         break;
     case DW_LOC_skip:
     case DW_LOC_bra:
         op = nextOp( back, cli, loc, op_code, sizeof( label ) );
         label = va_arg( args, dw_loc_label );
         memcpy( op->data, &label, sizeof( label ) );
-        ADD_ADDR( cli, loc, sizeof( int_16 ) );
+        AddAddr( cli, loc, sizeof( int_16 ) );
         break;
     case DW_LOC_fbreg:
         len = (dw_loc_offs)( WriteSLEB128( buf, va_arg( args, dw_sconst ) ) - buf );
         op = nextOp( back, cli, loc, op_code, len );
         memcpy( op->data, buf, len );
-        ADD_ADDR( cli, loc, len );
+        AddAddr( cli, loc, len );
         break;
     case DW_LOC_breg:
         reg = va_arg( args, uint );
         end = buf;
         if( reg < 32 ) {
-            op_code = DW_OP_breg( reg );
+            op_code = DwOpBreg( reg );
         } else {
             end = WriteULEB128( end, reg );
         }
         len = (dw_loc_offs)( WriteSLEB128( end, va_arg( args, dw_sconst ) ) - buf );
         op = nextOp( back, cli, loc, op_code, len );
         memcpy( op->data, buf, len );
-        ADD_ADDR( cli, loc, len );
+        AddAddr( cli, loc, len );
         break;
     default:
         nextOp( back, cli, loc, op_code, 0 );
@@ -432,7 +430,7 @@ dw_loc_handle DWENTRY DWLocFini( BackRun& back, dw_client cli, dw_loc_id loc )
         + (uint_32)( 1 + sizeof( uint_16 ) ) * ( loc->num_syms + 1 )
         + loc->addr + loc->num_syms * sizeof( dw_sym_reloc );
     if( size != (uint_16)size )
-        _Abort( ABORT_LOC_EXPR_TOO_LONG );
+        AbortDwarf( cli, ABORT_LOC_EXPR_TOO_LONG );
     result = static_cast<dw_loc_handle>(CLIAlloc( back, cli, size ));
     result->next = cli->debug_loc.handles;
     cli->debug_loc.handles = result;
@@ -454,20 +452,20 @@ dw_loc_handle DWENTRY DWLocFini( BackRun& back, dw_client cli, dw_loc_id loc )
             jump_offset = (int_32)label->addr - (int_32)addr;
             if( jump_offset < -32768
               || jump_offset > 32767 ) {
-                _Abort( ABORT_LOC_JUMP_OUT_OF_RANGE );
+                AbortDwarf( cli, ABORT_LOC_JUMP_OUT_OF_RANGE );
             }
-            MPUT_16_UN( p, (int_16)jump_offset );
+            PutU16Unaligned( p, (int_16)jump_offset );
             p += sizeof( int_16 );
             break;
         case DW_OP_addr:
-            MPUT_16_UN( base_of_block, ( p - base_of_block ) - sizeof( uint_16 ) );
+            PutU16Unaligned( base_of_block, ( p - base_of_block ) - sizeof( uint_16 ) );
             read_sym_reloc( cur_op->data, &reloc_info );
             if( reloc_info.kind == DW_W_SEGMENT
               || reloc_info.kind == DW_W_LABEL_SEG ) { ///TODO :better linkage
                 /* it was a DWLocSegment() */
                 int segment_size;
 
-                segment_size = GET_SEGMENT_SIZE( cli );
+                segment_size = GetSegmentSize( cli );
                 switch( segment_size ) {
                 case 1:
                     p[-1] = DW_OP_const1u;
@@ -479,7 +477,7 @@ dw_loc_handle DWENTRY DWLocFini( BackRun& back, dw_client cli, dw_loc_id loc )
                     p[-1] = DW_OP_const4u;
                     break;
                 default:
-                    _Abort( ABORT_SEG_SIZE_NOT_SET );
+                    AbortDwarf( cli, ABORT_SEG_SIZE_NOT_SET );
                 }
                 addr += segment_size;
             } else {
@@ -498,7 +496,7 @@ dw_loc_handle DWENTRY DWLocFini( BackRun& back, dw_client cli, dw_loc_id loc )
             break;
         }
     }
-    MPUT_16_UN( base_of_block, ( p - base_of_block ) - sizeof( uint_16 ) );
+    PutU16Unaligned( base_of_block, ( p - base_of_block ) - sizeof( uint_16 ) );
 
     DW_CarveFreeChain( cli->debug_loc.label_carver, loc->labels );
     CLIFree( back, cli, loc );
@@ -545,7 +543,7 @@ uint_32 DW_EmitLocExpr( BackRun& back, dw_client cli, dw_sectnum sect, size_t si
     bytes_left = expr_size;
     p = loc->u.expr.expr;
     while( bytes_left ) {
-        size_of_block = MGET_U16_UN( p );
+        size_of_block = GetU16Unaligned( p );
         p += sizeof( uint_16 );
         CLIWrite( back, cli, sect, p, size_of_block );
         bytes_left -= size_of_block;
@@ -555,7 +553,7 @@ uint_32 DW_EmitLocExpr( BackRun& back, dw_client cli, dw_sectnum sect, size_t si
             CLIReloc( back, cli, sect, reloc_info.kind, reloc_info.sym );
             if( reloc_info.kind == DW_W_SEGMENT
               || reloc_info.kind == DW_W_LABEL_SEG ) { //TODO :better linkage
-                bytes_left -= GET_SEGMENT_SIZE( cli );
+                bytes_left -= GetSegmentSize( cli );
             } else {
                 bytes_left -= cli->offset_size;
             }

@@ -363,7 +363,7 @@ static  void    AllocNewLocal( BackRun& back, name *temp )
     stack_temp  st_temp;
     bool        any_references;
 
-    size = _RoundUp( temp->n.size, REG_SIZE ); /* align size*/
+    size = RoundUp( temp->n.size, REG_SIZE ); /* align size*/
     if( (temp->v.usage & (USE_IN_ANOTHER_BLOCK | USE_ADDRESS)) == 0
      && temp->t.u.blk_id != BLK_ID_NONE ) {
         CalcRange( back, &st_temp, temp );

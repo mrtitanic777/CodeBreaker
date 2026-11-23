@@ -87,9 +87,6 @@ typedef enum {
 
 /* Location operation encodings: section 7.7, figure 23 */
 
-#define DW_OP_lit( __x )        ((dw_op)((__x) + 0x30))     // valid for 0..31 only
-#define DW_OP_reg( __x )        ((dw_op)((__x) + 0x50))     // valid for 0..31 only
-#define DW_OP_breg( __x )       ((dw_op)((__x) + 0x70))     // valid for 0..31 only
 
 #include "dwloccl.h"
 
@@ -429,4 +426,10 @@ typedef struct {
 
 };
 #include "poppck.h"
+
+inline dw_op DwOpLit( int x ) { return ((dw_op)((x) + 0x30)); }   // valid for 0..31 only
+inline dw_op DwOpLit( unsigned int x ) { return ((dw_op)((x) + 0x30)); }
+inline dw_op DwOpReg( unsigned int x ) { return ((dw_op)((x) + 0x50)); }   // valid for 0..31 only
+inline dw_op DwOpBreg( unsigned int x ) { return ((dw_op)((x) + 0x70)); }   // valid for 0..31 only
+
 #endif

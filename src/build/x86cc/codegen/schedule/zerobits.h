@@ -38,29 +38,25 @@ typedef enum {
 } zero_bits;
 
 /*  is the operand all zero? */
-#define _IsZero( bits ) ( ( (bits) & ( LO_HALF | HI_HALF ) ) == \
-                          ( LO_HALF | HI_HALF ) )
+inline bool IsZeroBits( unsigned char bits ) { return ( ( (bits) & ( LO_HALF | HI_HALF ) ) == ( LO_HALF | HI_HALF ) ); }
+inline bool IsZeroBits( zero_bits bits ) { return ( ( (bits) & ( LO_HALF | HI_HALF ) ) == ( LO_HALF | HI_HALF ) ); }
 
 /*  is the low half of the operand zero? */
-#define _LoZero( bits ) ( ( ( (bits) & LO_HALF ) != 0 ) \
-                        && ( ( (bits) & IS_BYTE ) == 0  ) )
+inline bool LoZero( zero_bits bits ) { return ( ( ( (bits) & LO_HALF ) != 0 ) && ( ( (bits) & IS_BYTE ) == 0 ) ); }
 
 /*  is the high half of the operand zero? */
-#define _HiZero( bits ) ( ( ( (bits) & HI_HALF ) != 0 ) \
-                        && ( ( (bits) & IS_BYTE ) == 0  ) )
+inline bool HiZero( zero_bits bits ) { return ( ( ( (bits) & HI_HALF ) != 0 ) && ( ( (bits) & IS_BYTE ) == 0 ) ); }
 
-#define _IsByte( l, r )  ( ( l & IS_BYTE ) || ( r & IS_BYTE ) )
+inline bool IsByte( zero_bits l, zero_bits r ) { return ( ( l & IS_BYTE ) || ( r & IS_BYTE ) ); }
 
 /*  is the high part of one operand zero and the low part of the other zero */
-#define _OpposZero( l, r ) ( ( _IsByte( l, r ) == 0 ) \
-                           && ( ( l & r       ) == 0 ) \
-                           &&   _IsZero( (l) | (r) )      )
+inline bool OpposZero( zero_bits l, zero_bits r ) { return ( ( IsByte( l, r ) == 0 ) && ( ( l & r ) == 0 ) && IsZeroBits( (l) | (r) ) ); }
 
 
 /*  are both high parts zero or both low parts zero? */
-/*  screws up if _IsZero( l ) | _IsZero( r ) */
-#define _MatchZero( l, r ) ( _LoZero( l & r ) || _HiZero( l & r ) )
-#define _ZeroHalf( l, r )  ( l & r )
+/*  screws up if IsZeroBits( l ) | IsZeroBits( r ) */
+inline bool MatchZero( zero_bits l, zero_bits r ) { return ( LoZero( l & r ) || HiZero( l & r ) ); }
+inline zero_bits ZeroHalf( zero_bits l, zero_bits r ) { return ( l & r ); }
 
 /*  bits must be either LO_HALF or HI_HALF */
-#define _OtherHalf( bits ) ( ~bits & ( HI_HALF | LO_HALF ) )
+inline zero_bits OtherHalf( zero_bits bits ) { return ( ~bits & ( HI_HALF | LO_HALF ) ); }

@@ -35,6 +35,8 @@
 #include "i87data.h"
 #include "fppatch.h"
 
+inline bool Is87Ins( instruction *ins ) { return ( IsFloating( (ins)->type_class ) || IsFloating( (ins)->base_type_class ) ); }
+
 
 /* i87exp.c*/
 extern instruction      *PrefFLDOp( BackRun& back, instruction *ins, operand_type op, name *opnd );

@@ -137,7 +137,7 @@ static  bool  ZapsTemp( BackRun& back, name *result, name *op, bool for_index )
             hw_reg_set      tmp;
 
             tmp = DisplayReg(back);
-            return( HW_Ovlap( result->r.reg, tmp ) );
+            return( HwOvlap( result->r.reg, tmp ) );
         }
     default:
         Zoiks( back, ZOIKS_023 );
@@ -166,7 +166,7 @@ static bool_maybe   ZapsTheOp( BackRun& back, name *result, name *op )
         return( ZapsTemp( back, result, op, false ) ? MB_TRUE : MB_FALSE );
     case N_REGISTER:
         if( result->n.class_ == N_REGISTER
-          && HW_Ovlap( result->r.reg, op->r.reg ) )
+          && HwOvlap( result->r.reg, op->r.reg ) )
             return( MB_TRUE );
         return( MB_FALSE );
     case N_CONSTANT:
@@ -316,7 +316,7 @@ bool_maybe  ReDefinedBy( BackRun& back, instruction *ins, name *op )
     bool_maybe  zaps;
 
     if( op->n.class_ == N_REGISTER ) {
-        if( HW_Ovlap( ins->zap->reg, op->r.reg ) ) {
+        if( HwOvlap( ins->zap->reg, op->r.reg ) ) {
             return( MB_TRUE );
         }
     }
@@ -327,7 +327,7 @@ bool_maybe  ReDefinedBy( BackRun& back, instruction *ins, name *op )
     zaps = ZapsTheOp( back, ins->result, op );
     if( zaps != MB_FALSE )
         return( zaps );
-    if( !_OpIsCall( ins->head.opcode ) )
+    if( !OpIsCall( ins->head.opcode ) )
         return( MB_FALSE );
     return( VisibleToCall( back, ins, op, true ) );
 }

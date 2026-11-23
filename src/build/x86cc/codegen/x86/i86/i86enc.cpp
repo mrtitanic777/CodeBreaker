@@ -82,7 +82,7 @@ byte    DoIndex( BackRun& back, hw_reg_set regs )
     int i;
 
     for( i = 0; i < sizeof( IndexTab ) / sizeof( IndexTab[0] ); i++ ) {
-        if( HW_Equal( regs, IndexTab[i] ) ) {
+        if( HwEqual( regs, IndexTab[i] ) ) {
             return( i << S_RMR_RM );
         }
     }
@@ -373,7 +373,7 @@ void    LayModRM( BackRun& back, name *op )
             } else if( op->i.base->n.class_ == N_MEMORY ) {
                 tmp = CalcSegment( back, static_cast<cg_sym_handle>(op->i.base->v.symbol),
                                   op->i.base->m.memory_type );
-                HW_TurnOn( regs, tmp );
+                HwTurnOn( regs, tmp );
                 if( HW_COvlap( regs, HW_SS ) ) {
                     switch( back.x86opseg.ZPageType ) {
                     case ZP_USES_SS:

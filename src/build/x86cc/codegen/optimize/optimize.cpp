@@ -69,7 +69,7 @@ static const opcode_attr OpAttrs[LAST_OP - FIRST_OP + 1] = {
 };
 
 
-#define _IsntIns( ins, attr )      ((OpAttrs[ins->head.opcode] & attr) == 0)
+inline bool IsntIns( instruction *ins, opcode_attr attr ) { return ((OpAttrs[ins->head.opcode] & attr) == 0); }
 
 
 static  bool    ReDefinesOps( BackRun& back, instruction *of, instruction *ins )
@@ -119,18 +119,18 @@ static  instruction     *CanMoveAfter( BackRun& back, instruction *ins )
 {
     instruction *next;
 
-    if( _IsntIns( ins, PUSHABLE ) )
+    if( IsntIns( ins, PUSHABLE ) )
         return( NULL );
     if( ins->operands[0] != ins->result )
         return( NULL );
     if( ins->operands[1]->n.class_ != N_CONSTANT )
         return( NULL );
-    if( _IsFloating( ins->type_class ) )
+    if( IsFloating( ins->type_class ) )
         return( NULL );
-    if( _IsFloating( ins->base_type_class ) )
+    if( IsFloating( ins->base_type_class ) )
         return( NULL );
     for( next = ins->head.next; next != NULL; next = next->head.next ) {
-        if( _IsntIns( next, SWAPABLE ) )
+        if( IsntIns( next, SWAPABLE ) )
             break;
         if( !CanReorder( back, ins, next ) ) {
             break;
@@ -225,7 +225,7 @@ void    DeadTemps( BackRun& back )
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
             next = ins->head.next;
-            if( !SideEffect( back, ins ) && _IsntIns( ins, SIDE_EFFECT )
+            if( !SideEffect( back, ins ) && IsntIns( ins, SIDE_EFFECT )
              && ins->result != NULL
              && ins->result->n.class_ == N_TEMP
              && ( ins->result->v.usage & (USE_ADDRESS | HAS_MEMORY | USE_WITHIN_BLOCK | USE_IN_ANOTHER_BLOCK) ) == 0 ) {
@@ -257,19 +257,21 @@ static  bool    IsDeadIns( BackRun& back, block *blk, instruction *ins, instruct
     conf = FindConflictNode( back, op, blk, ins );
     if( conf == NULL )
         return( false );
-    if( _LBitEmpty( conf->id.within_block )
-      && _GBitEmpty( conf->id.out_of_block ) ) {
+    if( LBitEmpty( conf->id.within_block )
+      && GBitEmpty( conf->id.out_of_block ) ) {
         return( false );
     }
-    if( _LBitOverlap( conf->id.within_block, next->head.live.within_block ) ) {
+    if( LBitOverlap( conf->id.within_block, next->head.live.within_block ) ) {
         return( false );
     }
-    if( _GBitOverlap( conf->id.out_of_block, next->head.live.out_of_block ) ) {
+    if( GBitOverlap( conf->id.out_of_block, next->head.live.out_of_block ) ) {
         return( false );
     }
     return( true );
 }
 
+
+inline instruction *&InsKillLink( instruction *ins ) { return ( ( ins )->u1.cse_link ); }
 
 void    AxeDeadCode( BackRun& back )
 /******************************
@@ -291,7 +293,6 @@ void    AxeDeadCode( BackRun& back )
     /*
      * Reuse field, it's useless for killed instruction
      */
-    #define _INS_KILL_LINK( ins )  ( ins )->u1.cse_link
 
     for( ;; ) {
         kill = NULL;
@@ -302,16 +303,16 @@ void    AxeDeadCode( BackRun& back )
                 if( IsDeadIns( back, blk, ins, next ) ) {
                     ins->result = NULL;
                     change = true;
-                    if( _IsntIns( ins, SIDE_EFFECT ) ) {
+                    if( IsntIns( ins, SIDE_EFFECT ) ) {
                        /*
                         * 2005-05-18 RomanT
                         * Do not free instruction immediately, or conflict
                         * edges will point to nowhere. Add them to kill list.
                         */
-                        _INS_KILL_LINK( ins ) = kill;
+                        InsKillLink( ins ) = kill;
                         kill = ins;
-                    } else if( _OpIsCondition( ins->head.opcode ) ) {
-                        _SetBlockIndex( ins, NO_JUMP, NO_JUMP );
+                    } else if( OpIsCondition( ins->head.opcode ) ) {
+                        SetBlockIndex( ins, NO_JUMP, NO_JUMP );
                     }
                 }
             }
@@ -323,7 +324,7 @@ void    AxeDeadCode( BackRun& back )
          * Now it's safe to free instructions without problems with edges
          */
         for( ; kill != NULL; kill = next ) {
-            next = _INS_KILL_LINK( kill );
+            next = InsKillLink( kill );
             FreeIns( back, kill );
         }
         NullConflicts( back, static_cast<var_usage>(EMPTY) );

@@ -41,7 +41,7 @@
 #include "frontrun.hpp"
 
 
-#define HasVarArgs(m)       (((m) & MFLAG_HAS_VAR_ARGS) != 0)
+inline bool HasVarArgs( macro_flags m ) { return (((m) & MFLAG_HAS_VAR_ARGS) != 0); }
 
 
 static void    CSkip( FrontRun& front );
@@ -458,7 +458,7 @@ static MEPTR GrabTokens( FrontRun& front, int parm_count, macro_flags mflags, MP
         if( front.cvars.CurToken != T_WHITE_SPACE ) {
             if( prev_non_ws_token == T_MACRO_SHARP && front.cvars.CurToken != T_MACRO_PARM && front.cvars.CurToken != T_MACRO_VAR_PARM ) {
                 CErr1( front, ERR_MUST_BE_MACRO_PARM );
-//                SET_MTOKEN( MacroOffset + mlen - SIZE_MTOKEN, T_SHARP );
+//                SetMtoken( MacroOffset + mlen - SIZE_MTOKEN, T_SHARP );
             }
             prev_non_ws_token = front.cvars.CurToken;
         }
@@ -500,7 +500,7 @@ MEPTR MacroScan( FrontRun& front )
         ExpectIdentifier(front);
         return( NULL );
     }
-    if( IS_PPOPERATOR_DEFINED( front.cvars.Buffer ) ) {
+    if( IsPPOperatorDefined( front.cvars.Buffer ) ) {
         CErr1( front, ERR_CANT_DEFINE_DEFINED );
         return( NULL );
     }
@@ -730,7 +730,7 @@ bool MacroDel( FrontRun& front, const char *name )
     mac_hash_idx    hash;
 
     ret = false;
-    if( IS_PPOPERATOR_DEFINED( name ) ) {
+    if( IsPPOperatorDefined( name ) ) {
         CErr2p( front, ERR_CANT_UNDEF_THESE_NAMES, name  );
         return( ret );
     }
@@ -937,7 +937,7 @@ TOKEN Process_Pragma( FrontRun& front )
     } else {
         InsertToken( front, front.cvars.CurToken, front.cvars.Buffer );
         strcpy( front.cvars.Buffer, PPOPERATOR_PRAGMA );
-        front.cvars.TokenLen = LENLIT( PPOPERATOR_PRAGMA );
+        front.cvars.TokenLen = LiteralLength( PPOPERATOR_PRAGMA );
         front.cvars.CurToken = T_ID;
     }
     return( front.cvars.CurToken );

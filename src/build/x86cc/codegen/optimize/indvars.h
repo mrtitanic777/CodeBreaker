@@ -44,13 +44,7 @@ typedef enum {
         IV_NOREPLACE    = 0x0100, /* can't be replaced due to aliases */
 } ind_var_state;
 
-#define _IsV( var, bits )               (((var)->state & (bits) ) != 0)
-#define _IsntV( var, bits )             (((var)->state & (bits) ) == 0)
-#define _SetV( var, bits )              (var)->state |= (bits);
-#define _ClrV( var, bits )              (var)->state &= ~(bits);
 
-#define _ChkLoopUsage(x,b)              (((x)->v.block_usage & (var_usage)(b)) != 0)
-#define _SetLoopUsage(x,b)              ((x)->v.block_usage = (var_usage)(b))
 
 typedef int_16              invar_id;
 typedef struct invariant {              /*  an invariant list is */
@@ -93,3 +87,11 @@ typedef enum {
         VU_INVARIANT_ADDRESS    = 0x04,
         VU_VARIED_ONCE          = 0x08
 } variance;
+
+inline bool HasVarState( induction *var, ind_var_state bits ) { return (((var)->state & (bits) ) != 0); }
+inline bool LacksVarState( induction *var, ind_var_state bits ) { return (((var)->state & (bits) ) == 0); }
+inline bool LacksVarState( induction *var, int bits ) { return (((var)->state & (bits) ) == 0); }
+inline void SetVarState( induction *var, ind_var_state bits ) { (var)->state |= (bits); }
+inline void ClrVarState( induction *var, ind_var_state bits ) { (var)->state &= ~(bits); }
+inline bool ChkLoopUsage( name *x, variance b ) { return (((x)->v.block_usage & (var_usage)(b)) != 0); }
+inline var_usage &SetLoopUsage( name *x, int b ) { return ((x)->v.block_usage = (var_usage)(b)); }

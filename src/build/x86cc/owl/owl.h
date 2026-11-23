@@ -73,7 +73,6 @@ typedef enum {
     OWL_SYM_WEAK,
 } owl_sym_linkage;
 
-#define _OwlLinkageGlobal( x )  ( (x) == OWL_SYM_GLOBAL || (x) == OWL_SYM_WEAK || (x) == OWL_SYM_UNDEFINED )
 
 typedef enum {
     OWL_TYPE_FUNCTION,
@@ -82,7 +81,6 @@ typedef enum {
     OWL_TYPE_FILE,              // internal - ditto
 } owl_sym_type;
 
-#define _OwlMetaSymbol( x )     ( (x) == OWL_TYPE_SECTION || (x) == OWL_TYPE_FILE )
 
 typedef enum {
     OWL_FORMAT_ELF,
@@ -127,8 +125,6 @@ typedef enum {
     OWL_SECTION_COMDAT_PDATA    = OWL_SEC_ATTR_COMDAT | OWL_SEC_ATTR_DATA | OWL_SEC_ATTR_PERM_READ,
 } owl_section_type;
 
-#define _OwlSectionBSS( x )             ( (x)->type & OWL_SEC_ATTR_BSS )
-#define _OwlSectionComdat( x )          ( (x)->type & OWL_SEC_ATTR_COMDAT )
 
 typedef enum {
     OWL_FILE_OBJECT,

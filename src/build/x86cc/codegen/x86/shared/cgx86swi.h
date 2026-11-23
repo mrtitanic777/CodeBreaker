@@ -65,24 +65,42 @@ typedef enum {
 #define CPU_MASK        0x000f
 #define FPU_MASK        0x00f0
 
-#define GET_CPU( r )       ((r) & CPU_MASK)
-#define GET_FPU( r )       ((r) & FPU_MASK)
-#define GET_FPU_LEVEL( r ) (((r) & FPU_MASK)&~FPU_EMU)
+inline int GetCpu( proc_revision r ) { return ((r) & CPU_MASK); }
+inline unsigned int GetCpu( unsigned int r ) { return ((r) & CPU_MASK); }
+inline int GetFpu( proc_revision r ) { return ((r) & FPU_MASK); }
+inline unsigned int GetFpu( unsigned int r ) { return ((r) & FPU_MASK); }
+inline unsigned int GetFpuLevel( unsigned int r ) { return (((r) & FPU_MASK)&~FPU_EMU); }
 
-#define SET_PROC( r, v, m ) \
-    { \
-        proc_revision   new_rev; \
-        new_rev = static_cast<proc_revision>(v); \
-        (r) &= static_cast<proc_revision>(~(m)); \
-        (r) |= new_rev; \
-    }
-#define SET_CPU( r, v ) SET_PROC( r, v, CPU_MASK );
-#define SET_FPU( r, v ) SET_PROC( r, v, FPU_MASK );
+inline void SetProc( proc_revision &r, proc_revision v, int m )
+{
+    proc_revision new_rev;
+    new_rev = static_cast<proc_revision>(v);
+    (r) &= static_cast<proc_revision>(~(m));
+    (r) |= new_rev;
+}
+inline void SetProc( unsigned int &r, proc_revision v, int m )
+{
+    proc_revision new_rev;
+    new_rev = static_cast<proc_revision>(v);
+    (r) &= static_cast<proc_revision>(~(m));
+    (r) |= new_rev;
+}
+inline void SetProc( unsigned int &r, unsigned int v, int m )
+{
+    proc_revision new_rev;
+    new_rev = static_cast<proc_revision>(v);
+    (r) &= static_cast<proc_revision>(~(m));
+    (r) |= new_rev;
+}
+inline void SetCpu( proc_revision &r, proc_revision v ) { SetProc( r, v, CPU_MASK ); }
+inline void SetCpu( unsigned int &r, proc_revision v ) { SetProc( r, v, CPU_MASK ); }
+inline void SetFpu( unsigned int &r, proc_revision v ) { SetProc( r, v, FPU_MASK ); }
+inline void SetFpu( unsigned int &r, unsigned int v ) { SetProc( r, v, FPU_MASK ); }
 
-#define SET_FPU_LEVEL( r, v ) SET_FPU( r, (v) | ( GET_FPU( r ) & FPU_EMU ) )
-#define SET_FPU_EMU( r )      SET_FPU( r, GET_FPU( r ) | FPU_EMU )
-#define SET_FPU_INLINE( r )   SET_FPU( r, GET_FPU( r ) & ~FPU_EMU )
-#define SET_FPU_FPC( r )      SET_FPU( r, FPU_NONE )
+inline void SetFpuLevel( unsigned int &r, proc_revision v ) { SetFpu( r, (v) | ( GetFpu( r ) & FPU_EMU ) ); }
+inline void SetFpuEmu( unsigned int &r ) { SetFpu( r, GetFpu( r ) | FPU_EMU ); }
+inline void SetFpuInline( unsigned int &r ) { SetFpu( r, GetFpu( r ) & ~FPU_EMU ); }
+inline void SetFpuFpc( unsigned int &r ) { SetFpu( r, FPU_NONE ); }
 
-#define GET_FPU_EMU( r )      ( ( GET_FPU( r ) & FPU_EMU ) != FPU_NONE )
-#define GET_FPU_FPC( r )      ( GET_FPU( r ) == FPU_NONE )
+inline bool GetFpuEmu( unsigned int r ) { return ( ( GetFpu( r ) & FPU_EMU ) != FPU_NONE ); }
+inline bool GetFpuFpc( unsigned int r ) { return ( GetFpu( r ) == FPU_NONE ); }

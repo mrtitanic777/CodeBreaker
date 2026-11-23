@@ -40,7 +40,7 @@
 
 #define MAX_SIG_DIGITS  17
 
-#define _IsDigit(ch)    (ch >= '0' && ch <= '9')
+inline bool IsDigit( char ch ) { return (ch >= '0' && ch <= '9'); }
 
 extern  unsigned_32     U32ModDiv( unsigned_32 *, unsigned_32 );
 extern  int             CFOrder( cfloat *f1, cfloat *f2 );

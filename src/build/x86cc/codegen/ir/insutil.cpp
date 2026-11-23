@@ -86,7 +86,7 @@ static void RenumFrom( BackRun& back, instruction *ins )
                     return;
                 ins->id = id;
             }
-            blk = _BLOCK( ins )->next_block;
+            blk = BlockOf( ins )->next_block;
             if( blk == NULL )
                 break;
             ins = blk->ins.head.next;
@@ -112,7 +112,7 @@ static void     ResetConfInfo( BackRun& back )
     conflict_info       *info;
 
     for( info = back.insutil->ConflictInfo; info->conf != NULL; ++info ) {
-        _SetFalse( info->conf, CST_CONF_VISITED );
+        SetFalse( info->conf, CST_CONF_VISITED );
     }
 }
 
@@ -121,7 +121,7 @@ static  conflict_info   *AddConfInfo( BackRun& back, conflict_node *conf )
 {
     conflict_info       *info;
 
-    if( _Is( conf, CST_CONF_VISITED ) ) {
+    if( HasConflictState( conf, CST_CONF_VISITED ) ) {
         for( info = back.insutil->ConflictInfo; ; ++info ) {
             if( info->conf == conf ) {
                 break;
@@ -130,7 +130,7 @@ static  conflict_info   *AddConfInfo( BackRun& back, conflict_node *conf )
     } else {
         info = &back.insutil->ConflictInfo[back.insutil->CurrInfo++];
         info->conf = conf;
-        _SetTrue( conf, CST_CONF_VISITED );
+        SetTrue( conf, CST_CONF_VISITED );
     }
     return( info );
 }
@@ -228,7 +228,7 @@ void    PrefixInsRenum( BackRun& back, instruction *ins, instruction *pref, bool
              */
             next = ins;
             for (;;) {
-                blk = _BLOCK( next )->next_block;
+                blk = BlockOf( next )->next_block;
                 if( blk == NULL ) {
                     Zoiks( back, ZOIKS_141 );
                     break;
@@ -360,7 +360,7 @@ block *InsBlock( instruction *ins )
 {
     while( ins->head.opcode != OP_BLOCK )
         ins = ins->head.next;
-    return( _BLOCK( ins ) );
+    return( BlockOf( ins ) );
 }
 
 void    ReplIns( BackRun& back, instruction *ins, instruction *new_ins )

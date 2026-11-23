@@ -73,7 +73,8 @@ static char const * const text_msg_no[] =
 #   undef _IdeMsgSeverity
 };
 
-#define _ARRAY_SIZE( a ) ( sizeof(a) / sizeof( (a)[0] ) )
+template <class T, size_t N>
+constexpr size_t ArraySize( T (&)[N] ) { return N; }
 
 
 typedef struct {                // CONSTRUCTION ELEMENT
@@ -190,7 +191,7 @@ void IdeMsgFormat               // FORMAT A MESSAGE
     assert( info != NULL );
     assert( buffer != NULL );
     assert( bsize != 0 );
-    assert( info->severity < _ARRAY_SIZE( text_severity ) );
+    assert( info->severity < ArraySize( text_severity ) );
     if( IDE_IS_READABLE( info ) ) {
         switch( info->severity ) {
           case IDEMSGSEV_ERROR :

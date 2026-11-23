@@ -342,7 +342,7 @@ static bool is_optr( token_buffer *tokbuf, token_idx i )
     case TC_OP_BRACKET:
         return( false );
     default:
-        if( IS_STRING_TOKEN( tokbuf->tokens[i].class_ ) ) {
+        if( IsStringToken( tokbuf->tokens[i].class_ ) ) {
             return( false );
         }
     }
@@ -432,21 +432,21 @@ static void index_connect( expr_list *tok_1, expr_list *tok_2 )
 /*************************************************************/
 /* Connects the register lists */
 {
-    if( ISINVALID_IDX( tok_1->base_reg ) ) {
-        if( ISVALID_IDX( tok_2->base_reg ) ) {
+    if( IsInvalidIdx( tok_1->base_reg ) ) {
+        if( IsValidIdx( tok_2->base_reg ) ) {
             tok_1->base_reg = tok_2->base_reg;
             tok_2->base_reg = INVALID_IDX;
-        } else if( ISVALID_IDX( tok_2->idx_reg )
+        } else if( IsValidIdx( tok_2->idx_reg )
           && ( tok_2->scale == 1 ) ) {
             tok_1->base_reg = tok_2->idx_reg;
             tok_2->idx_reg = INVALID_IDX;
         }
     }
-    if( ISINVALID_IDX( tok_1->idx_reg ) ) {
-        if( ISVALID_IDX( tok_2->idx_reg ) ) {
+    if( IsInvalidIdx( tok_1->idx_reg ) ) {
+        if( IsValidIdx( tok_2->idx_reg ) ) {
             tok_1->idx_reg = tok_2->idx_reg;
             tok_1->scale = tok_2->scale;
-        } else if( ISVALID_IDX( tok_2->base_reg ) ) {
+        } else if( IsValidIdx( tok_2->base_reg ) ) {
             tok_1->idx_reg = tok_2->base_reg;
             tok_1->scale = 1;
         }
@@ -464,11 +464,11 @@ static void MakeConst( expr_list *token )
     if( token->mbr != NULL ) {
         return;
     }
-    if( ISVALID_IDX( token->base_reg ) )
+    if( IsValidIdx( token->base_reg ) )
         return;
-    if( ISVALID_IDX( token->idx_reg ) )
+    if( IsValidIdx( token->idx_reg ) )
         return;
-    if( ISVALID_IDX( token->override ) )
+    if( IsValidIdx( token->override ) )
         return;
     token->instr = T_NULL;
     token->type = EXPR_CONST;
@@ -750,18 +750,18 @@ static bool calculate( AsmRun& assembler, expr_list *token_1, expr_list *token_2
 
             fix_struct_value( token_1 );
             fix_struct_value( token_2 );
-            if( ISVALID_IDX( token_2->base_reg )
-              || ISVALID_IDX( token_2->idx_reg ) ) {
+            if( IsValidIdx( token_2->base_reg )
+              || IsValidIdx( token_2->idx_reg ) ) {
                 if( assembler.asmeval->error_msg )
                     AsmError( *assembler.front, ILLEGAL_USE_OF_REGISTER );
                 token_1->type = EXPR_UNDEF;
                 return( RC_ERROR );
             }
-            if( ISINVALID_IDX( token_2->label ) ) {
+            if( IsInvalidIdx( token_2->label ) ) {
                 token_1->value -= token_2->value;
                 token_1->indirect |= token_2->indirect;
             } else {
-                if( ISINVALID_IDX( token_1->label ) ) {
+                if( IsInvalidIdx( token_1->label ) ) {
                     if( assembler.asmeval->error_msg )
                         AsmError( *assembler.front, SYNTAX_ERROR );
                     token_1->type = EXPR_UNDEF;
@@ -779,8 +779,8 @@ static bool calculate( AsmRun& assembler, expr_list *token_1, expr_list *token_2
                 token_1->value -= token_2->value;
                 token_1->label = INVALID_IDX;
                 token_1->sym = NULL;
-                if( ISINVALID_IDX( token_1->base_reg )
-                  && ISINVALID_IDX( token_1->idx_reg ) ) {
+                if( IsInvalidIdx( token_1->base_reg )
+                  && IsInvalidIdx( token_1->idx_reg ) ) {
                     token_1->type = EXPR_CONST;
                     token_1->indirect = false;
                 } else {
@@ -815,7 +815,7 @@ static bool calculate( AsmRun& assembler, expr_list *token_1, expr_list *token_2
          *                             also only segment or group is
          *                             allowed. )
          */
-        if( ISVALID_IDX( token_2->override ) ) {
+        if( IsValidIdx( token_2->override ) ) {
             /* Error */
             if( assembler.asmeval->error_msg )
                 AsmError( *assembler.front, MORE_THAN_ONE_OVERRIDE );
@@ -825,8 +825,8 @@ static bool calculate( AsmRun& assembler, expr_list *token_1, expr_list *token_2
 
         if( token_1->type == EXPR_REG ) {
 
-            if( ISVALID_IDX( token_1->base_reg )
-              && ISVALID_IDX( token_1->idx_reg ) ) {
+            if( IsValidIdx( token_1->base_reg )
+              && IsValidIdx( token_1->idx_reg ) ) {
                 if( assembler.asmeval->error_msg )
                     AsmError( *assembler.front, ILLEGAL_USE_OF_REGISTER );
                 token_1->type = EXPR_UNDEF;
@@ -840,11 +840,11 @@ static bool calculate( AsmRun& assembler, expr_list *token_1, expr_list *token_2
             case T_MOVS:
             case T_CMPS:
             case T_SCAS:
-                if( ISVALID_IDX( token_2->base_reg ) ) {
+                if( IsValidIdx( token_2->base_reg ) ) {
                     reg_token = tokbuf->tokens[token_2->base_reg].u.token;
                     if( (reg_token == T_DI)
                       || (reg_token == T_EDI) ) {
-                        if( ISVALID_IDX( token_1->base_reg )
+                        if( IsValidIdx( token_1->base_reg )
                           && tokbuf->tokens[token_1->base_reg].u.token == T_ES ) {
                             token_1->base_reg = token_2->override;
                             break;
@@ -1418,7 +1418,7 @@ static bool is_expr1( AsmRun& assembler, token_buffer *tokbuf, token_idx i )
         return( true );
     case TC_PATH:
     default:
-        if( IS_STRING_TOKEN( tokbuf->tokens[i].class_ ) ) {
+        if( IsStringToken( tokbuf->tokens[i].class_ ) ) {
             return( true );
         }
         break;
@@ -1504,7 +1504,7 @@ static bool is_expr2( AsmRun& assembler, token_buffer *tokbuf, token_idx i )
         return( true );
     case TC_PATH:
     default:
-        if( IS_STRING_TOKEN( tokbuf->tokens[i].class_ ) ) {
+        if( IsStringToken( tokbuf->tokens[i].class_ ) ) {
             return( true );
         }
         break;
@@ -1575,7 +1575,7 @@ static token_idx fix( AsmRun& assembler, expr_list *res, token_buffer *tokbuf, t
 
     MakeConst( res );
     if( res->type == EXPR_CONST ) {
-        if( ISVALID_IDX( res->override ) ) {
+        if( IsValidIdx( res->override ) ) {
             tokbuf->tokens[start++] = tokbuf->tokens[res->override];
             tokbuf->tokens[start++].class_ = TC_COLON;
         }
@@ -1591,7 +1591,7 @@ static token_idx fix( AsmRun& assembler, expr_list *res, token_buffer *tokbuf, t
     } else if( res->type == EXPR_REG
       && !res->indirect ) {
 
-        if( ISVALID_IDX( res->override ) ) {
+        if( IsValidIdx( res->override ) ) {
             tokbuf->tokens[start++] = tokbuf->tokens[res->override];
             tokbuf->tokens[start++].class_ = TC_COLON;
             tokbuf->tokens[ start++ ].class_ = TC_OP_SQ_BRACKET;
@@ -1609,7 +1609,7 @@ static token_idx fix( AsmRun& assembler, expr_list *res, token_buffer *tokbuf, t
 //            tokbuf->tokens[start].string_ptr = ")";
 //            tokbuf->tokens[start++].class = TC_CL_BRACKET;
         }
-        if( ISVALID_IDX( res->override ) ) {
+        if( IsValidIdx( res->override ) ) {
             tokbuf->tokens[ start++ ].class_ = TC_CL_SQ_BRACKET;
         }
 
@@ -1626,22 +1626,22 @@ static token_idx fix( AsmRun& assembler, expr_list *res, token_buffer *tokbuf, t
             size++;
         }
 
-        if( ISVALID_IDX( res->override ) ) {
+        if( IsValidIdx( res->override ) ) {
             size += 2;
         }
         need_number = true;
         if( res->scale != 1 ) {
             size += 2;          // [ reg * 2 ] == 2 tokens more than [ reg ]
         }
-        if( ISVALID_IDX( res->base_reg ) ) {
+        if( IsValidIdx( res->base_reg ) ) {
             size += 3;                  // e.g. [ ax ] == 3 tokens
             need_number = false;
         }
-        if( ISVALID_IDX( res->idx_reg ) ) {
+        if( IsValidIdx( res->idx_reg ) ) {
             size += 3;                  // e.g. [ ax ] == 3 tokens
             need_number = false;
         }
-        if( ISVALID_IDX( res->label ) ) {
+        if( IsValidIdx( res->label ) ) {
             need_number = false;
         }
         if( res->value != 0 ) {
@@ -1666,7 +1666,7 @@ static token_idx fix( AsmRun& assembler, expr_list *res, token_buffer *tokbuf, t
                 tokbuf->tokens[i + diff] = tokbuf->tokens[i];
             }
 
-            for( i = 0; ISVALID_IDX( assembler.asmeval->TakeOut[i].idx ); i++ ) {
+            for( i = 0; IsValidIdx( assembler.asmeval->TakeOut[i].idx ); i++ ) {
                 if( assembler.asmeval->TakeOut[i].idx > end ) {
                     assembler.asmeval->TakeOut[i].idx += diff;
                 }
@@ -1721,24 +1721,24 @@ static token_idx fix( AsmRun& assembler, expr_list *res, token_buffer *tokbuf, t
             tokbuf->tokens[start++].u.token = T_PTR;
         }
 
-        if( ISVALID_IDX( res->override ) ) {
+        if( IsValidIdx( res->override ) ) {
             tokbuf->tokens[start++] = assembler.asmeval->Store[res->override - old_start];
             tokbuf->tokens[start++].class_ = TC_COLON;
         }
 
-        if( ISVALID_IDX( res->label )
+        if( IsValidIdx( res->label )
           && res->type != EXPR_REG ) {
             tokbuf->tokens[start++] = assembler.asmeval->Store[res->label - old_start];
         }
 
-        if( ISVALID_IDX( res->base_reg ) ) {
+        if( IsValidIdx( res->base_reg ) ) {
             tokbuf->tokens[start++].class_ = TC_OP_SQ_BRACKET;
             tokbuf->tokens[start].class_ = TC_REG;
             tokbuf->tokens[start].string_ptr = assembler.asmeval->Store[res->base_reg-old_start].string_ptr;
             tokbuf->tokens[start++].u.value = assembler.asmeval->Store[res->base_reg-old_start].u.value;
             tokbuf->tokens[start++].class_ = TC_CL_SQ_BRACKET;
         }
-        if( ISVALID_IDX( res->idx_reg ) ) {
+        if( IsValidIdx( res->idx_reg ) ) {
             tokbuf->tokens[start++].class_ = TC_OP_SQ_BRACKET;
             tokbuf->tokens[start].class_ = TC_REG;
             tokbuf->tokens[start].string_ptr = assembler.asmeval->Store[res->idx_reg-old_start].string_ptr;
@@ -1785,7 +1785,7 @@ static void fix_final( AsmRun& assembler, token_buffer *tokbuf )
 
     for( i = 0;; i++ ) {
         if( dup_count == 0
-          && ISINVALID_IDX( assembler.asmeval->TakeOut[i].idx ) )
+          && IsInvalidIdx( assembler.asmeval->TakeOut[i].idx ) )
             break;
         if( assembler.asmeval->TakeOut[i].close_bracket ) {
             tokbuf->tokens[assembler.asmeval->TakeOut[i].idx].class_ = TC_CL_BRACKET;

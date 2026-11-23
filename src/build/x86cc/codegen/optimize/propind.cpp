@@ -145,7 +145,7 @@ static  bool    DoProp( BackRun& back, block *blk ) {
              */
 
             if( ins->head.opcode == OP_ADD &&
-                !_IsPointer( ins->type_class ) &&  /* 2004-11-04  RomanT */
+                !IsPointerClass( ins->type_class ) &&  /* 2004-11-04  RomanT */
                 ( op->n.class_ != N_CONSTANT ||
                 op->c.const_type != CONS_ABSOLUTE ) ) {
                 if( ins->operands[0]->n.class_ != N_CONSTANT ||

@@ -82,7 +82,7 @@ static void freeRelocs( BackRun& back, owl_file_handle file, owl_reloc_info *rel
 
     for( ptr = relocs; ptr != NULL; ptr = next ) {
         next = ptr->next;
-        _ClientFree( back, file, ptr );
+        ClientFree( back, file, ptr );
     }
 }
 
@@ -91,7 +91,7 @@ owl_section_handle OWLENTRY OWLSectionInit( BackRun& back, owl_file_handle file,
 
     owl_section_handle          section;
 
-    section = static_cast<owl_section_handle>(_ClientAlloc( back, file, sizeof( owl_section_info ) ));
+    section = static_cast<owl_section_handle>(ClientAlloc( back, file, sizeof( owl_section_info ) ));
     section->file = file;
     section->name = OWLStringAdd( back, file->string_table, name );
     section->type = type;
@@ -146,6 +146,6 @@ void OWLENTRY OWLSectionFree( BackRun& back, owl_section_handle section ) {
     if( section->first_reloc != NULL ) {
         freeRelocs( back, file, section->first_reloc );
     }
-    _ClientFree( back, file, section );
+    ClientFree( back, file, section );
     _Log(( file, "OWLSectionFree( %x )\n", section ));
 }

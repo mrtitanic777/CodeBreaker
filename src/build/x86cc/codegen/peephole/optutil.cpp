@@ -48,7 +48,7 @@ ins_entry       *ValidIns( BackRun& back, ins_entry *instr )
     for( ;; ) {
         if( instr == NULL )
             break;
-        if( _Class( instr ) != OC_DEAD )
+        if( OcClass( instr ) != OC_DEAD )
             break;
         instr = instr->ins.next;
     }
@@ -62,7 +62,7 @@ ins_entry       *PrevIns( BackRun& back, ins_entry *instr )
   OptBegin( back );
     if( instr == NULL ) {
         instr = back.optdata.LastIns;
-    } else if( _Class( instr ) == OC_DEAD ) {
+    } else if( OcClass( instr ) == OC_DEAD ) {
         instr = NULL;
     } else {
         instr = instr->ins.prev;
@@ -70,7 +70,7 @@ ins_entry       *PrevIns( BackRun& back, ins_entry *instr )
     for( ;; ) {
         if( instr == NULL )
             break;
-        if( _Class( instr ) != OC_INFO )
+        if( OcClass( instr ) != OC_INFO )
             break;
         instr = instr->ins.prev;
     }
@@ -86,7 +86,7 @@ oc_class        PrevClass( BackRun& back, ins_entry *instr )
   OptBegin( back );
     instr = PrevIns( back, instr );
     if( instr != NULL ) {
-        class_ = _Class( instr );
+        class_ = OcClass( instr );
     } else {
         class_ = OC_DEAD;
     }
@@ -100,7 +100,7 @@ ins_entry       *NextIns( BackRun& back, ins_entry *instr )
   OptBegin( back );
     if( instr == NULL ) {
         instr = back.optdata.FirstIns;
-    } else if( _Class( instr ) == OC_DEAD ) {
+    } else if( OcClass( instr ) == OC_DEAD ) {
         instr = NULL;
     } else {
         instr = instr->ins.next;
@@ -108,7 +108,7 @@ ins_entry       *NextIns( BackRun& back, ins_entry *instr )
     for( ;; ) {
         if( instr == NULL )
             break;
-        if( _Class( instr ) != OC_INFO )
+        if( OcClass( instr ) != OC_INFO )
             break;
         instr = instr->ins.next;
     }
@@ -124,7 +124,7 @@ oc_class        NextClass( BackRun& back, ins_entry *instr )
   OptBegin( back );
     instr = NextIns( back, instr );
     if( instr != NULL ) {
-        class_ = _Class( instr );
+        class_ = OcClass( instr );
     } else {
         class_ = OC_DEAD;
     }
@@ -137,24 +137,24 @@ void    AddInstr( BackRun& back, ins_entry *instr, ins_entry *insert )
 {
   OptBegin( back );
     InsertQueue( back, instr, insert );
-    switch( _Class( instr ) ) {
+    switch( OcClass( instr ) ) {
     case OC_LABEL:
-        _ValidLbl( _Label( instr ) );
+        ValidLbl( LabelOf( instr ) );
         AddLblDef( back, instr );
         break;
     case OC_LREF:
     case OC_CALL:
     case OC_JCOND:
     case OC_JMP:
-        _ValidLbl( _Label( instr ) );
+        ValidLbl( LabelOf( instr ) );
         AddLblRef( back, instr );
         break;
     case OC_RET:
-        _LblRef( instr ) = back.optdata.RetList;
+        LblRef( instr ) = back.optdata.RetList;
         back.optdata.RetList = instr;
         break;
     case OC_NORET:
-        _LblRef( instr ) = back.optdata.NoRetList;
+        LblRef( instr ) = back.optdata.NoRetList;
         back.optdata.NoRetList = instr;
         break;
     }
@@ -172,9 +172,9 @@ void    DelRef( BackRun& back, ins_entry **owner, ins_entry *instr )
         curr = *owner;
         if( curr == instr )
             break;
-        owner = (ins_entry **)&_LblRef( curr );
+        owner = (ins_entry **)&LblRef( curr );
     }
-    *owner = _LblRef( curr );
+    *owner = LblRef( curr );
   OptEnd( back );
 }
 
@@ -197,10 +197,10 @@ static  ins_entry *DelInstr_Helper( BackRun& back, ins_entry *old )
     ins_entry   *next;
 
     UnLinkInstr( back, old );
-    switch( _Class( old ) ) {
+    switch( OcClass( old ) ) {
     case OC_LABEL:
-        if( _Label( old ) != NULL ) {
-            _ValidLbl( _Label( old ) );
+        if( LabelOf( old ) != NULL ) {
+            ValidLbl( LabelOf( old ) );
         }
         DelLblDef( back, old );
         next = ValidIns( back, old->ins.next );
@@ -210,7 +210,7 @@ static  ins_entry *DelInstr_Helper( BackRun& back, ins_entry *old )
             IsolatedCode( back, PrevIns( back, next ) );
             break;
         case OC_JCOND:
-            Untangle( back, _Label( PrevIns( back, next ) )->ins );
+            Untangle( back, LabelOf( PrevIns( back, next ) )->ins );
             break;
         }
         break;
@@ -218,7 +218,7 @@ static  ins_entry *DelInstr_Helper( BackRun& back, ins_entry *old )
     case OC_CALL:
     case OC_JCOND:
     case OC_JMP:
-        _ValidLbl( _Label( old ) );
+        ValidLbl( LabelOf( old ) );
         DelLblRef( back, old );
         break;
     case OC_RET:
@@ -228,12 +228,12 @@ static  ins_entry *DelInstr_Helper( BackRun& back, ins_entry *old )
         DelRef( back, &back.optdata.NoRetList, old );
         break;
     }
-    _ResetClass( old, OC_DEAD );
+    ResetClass( old, OC_DEAD );
     next = ValidIns( back, old->ins.next );
     for( ;; ) {
         if( next == NULL )
             return( NULL );
-        if( _Class( next ) != OC_INFO )
+        if( OcClass( next ) != OC_INFO )
             break;
         next = next->ins.next;
     }
@@ -247,7 +247,7 @@ static  ins_entry *DelInstr_Helper( BackRun& back, ins_entry *old )
 ins_entry       *DelInstr( BackRun& back, ins_entry *old )
 /*****************************************/
 {
-    if( _Class( old ) != OC_DEAD ) {
+    if( OcClass( old ) != OC_DEAD ) {
         return static_cast<ins_entry *>(( SafeRecurseCG( back, (func_sr)DelInstr_Helper, old ) ));
     }
     return( ValidIns( back, old->ins.next ) );

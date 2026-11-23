@@ -35,9 +35,14 @@
 
 #include "leb128wr.h"
 
-#define WriteSLEB128(h,v)   (unsigned char *)EncodeSLEB128((h), OutputLEB128, (v))
-#define WriteULEB128(h,v)   (unsigned char *)EncodeULEB128((h), OutputLEB128, (v))
 
 extern void     OutputLEB128( void **h, unsigned char byte );
+
+
+inline unsigned char *WriteSLEB128( unsigned char *h, long long v ) { return (unsigned char *)EncodeSLEB128((h), OutputLEB128, (v)); }
+inline unsigned char *WriteULEB128( unsigned char *h, unsigned long long v )
+{
+    return (unsigned char *)EncodeULEB128((h), OutputLEB128, (v));
+}
 
 #endif

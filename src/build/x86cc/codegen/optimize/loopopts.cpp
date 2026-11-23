@@ -181,13 +181,13 @@ block    *AddPreBlock( BackRun& back, block *postblk )
     /*
      * set up new block to look like it was generated after postblk
      */
-    _SetBlkAttr( preblk, BLK_JUMP );
+    SetBlkAttr( preblk, BLK_JUMP );
     preblk->label = postblk->label;
     preblk->gen_blk_id = postblk->gen_blk_id;
     preblk->ins.head.line_num = postblk->ins.head.line_num;
     preblk->loop_head = postblk->loop_head; /**/
     preblk->depth = postblk->depth;
-    if( _IsBlkAttr( postblk, BLK_LOOP_HEADER ) ) {
+    if( IsBlkAttr( postblk, BLK_LOOP_HEADER ) ) {
         /*
          * we don't always add this block before a loop header
          * for instance, in the floating point scheduling stuff
@@ -234,16 +234,16 @@ static bool     IsPreHeader( BackRun& back, block *test )
         return( false );
     if( test->edge[0].destination.u.blk != back.loopopts.Head )
         return( false );
-    if( _IsBlkAttr( test, BLK_IN_LOOP ) )
+    if( IsBlkAttr( test, BLK_IN_LOOP ) )
         return( false );
     /*
      * check that no other block outside the loop branches into the loop
      */
     for( other = back.data.HeadBlock; other != NULL; other = other->next_block ) {
         if( other != test
-          && !_IsBlkAttr( other, BLK_IN_LOOP ) ) {
+          && !IsBlkAttr( other, BLK_IN_LOOP ) ) {
             for( i = other->targets; i-- > 0; ) {
-                if( _IsBlkAttr( other->edge[i].destination.u.blk, BLK_IN_LOOP ) ) {
+                if( IsBlkAttr( other->edge[i].destination.u.blk, BLK_IN_LOOP ) ) {
                     return( false );
                 }
             }
@@ -294,7 +294,7 @@ static void     PreHeader( BackRun& back )
         for( edge = back.loopopts.Head->input_edges; edge != NULL; edge = next ) {
             next = edge->next_source;
             if( edge->source != back.loopopts.PreHead
-              && !_IsBlkAttr( edge->source, BLK_IN_LOOP ) ) {
+              && !IsBlkAttr( edge->source, BLK_IN_LOOP ) ) {
                 MoveEdge( edge, back.loopopts.PreHead );
             }
         }
@@ -315,7 +315,7 @@ void     MarkLoop( BackRun& back )
     back.loopopts.Loop = NULL;
     for( other_blk = back.data.HeadBlock; other_blk != NULL; other_blk = other_blk->next_block ) {
         if( InLoop( back, other_blk ) ) {
-            _MarkBlkAttrSet( other_blk, BLK_IN_LOOP );
+            MarkBlkAttrSet( other_blk, BLK_IN_LOOP );
             other_blk->u.loop = back.loopopts.Loop;
             back.loopopts.Loop = other_blk;
         }
@@ -323,8 +323,8 @@ void     MarkLoop( BackRun& back )
     for( other_blk = back.loopopts.Loop; other_blk != NULL; other_blk = other_blk->u.loop ) {
         edge = &other_blk->edge[0];
         for( i = other_blk->targets; i > 0; --i ) {
-            if( !_IsBlkAttr( edge->destination.u.blk, BLK_IN_LOOP ) ) {
-                _MarkBlkAttrSet( other_blk, BLK_LOOP_EXIT );
+            if( !IsBlkAttr( edge->destination.u.blk, BLK_IN_LOOP ) ) {
+                MarkBlkAttrSet( other_blk, BLK_LOOP_EXIT );
             }
             ++edge;
         }
@@ -341,7 +341,7 @@ void     UnMarkLoop( BackRun& back )
     block       *blk;
 
     for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-        _MarkBlkAttrClr( blk, BLK_IN_LOOP | BLK_LOOP_EXIT );
+        MarkBlkAttrClr( blk, BLK_IN_LOOP | BLK_LOOP_EXIT );
         blk->u.loop = NULL;
     }
 }
@@ -370,8 +370,8 @@ void     MakeJumpBlock( block *cond_blk, block_edge *exit_edge )
 
     RemoveInputEdge( &cond_blk->edge[0] );
     RemoveInputEdge( &cond_blk->edge[1] );
-    _MarkBlkAttrClr( cond_blk, BLK_CONDITIONAL );
-    _MarkBlkAttrSet( cond_blk, BLK_JUMP );
+    MarkBlkAttrClr( cond_blk, BLK_CONDITIONAL );
+    MarkBlkAttrSet( cond_blk, BLK_JUMP );
     cond_blk->targets = 1;
     edge = &cond_blk->edge[0];
     edge->flags = exit_edge->flags;
@@ -399,16 +399,16 @@ static bool     KillOneTrippers( BackRun& back )
             if( blk->edge[i].flags & BEF_ONE_ITER_EXIT ) {
                 for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
                     next = ins->head.next;
-                    if( _OpIsCondition( ins->head.opcode )
+                    if( OpIsCondition( ins->head.opcode )
                       && ins->result == NULL ) {
                         FreeIns( back, ins );
                     }
                 }
-                if( _IsBlkAttr( blk, BLK_LOOP_HEADER ) ) {
-                    _MarkBlkAttrClr( blk, BLK_LOOP_HEADER );
+                if( IsBlkAttr( blk, BLK_LOOP_HEADER ) ) {
+                    MarkBlkAttrClr( blk, BLK_LOOP_HEADER );
                     loop_head = blk;
                 } else {
-                    _MarkBlkAttrClr( blk->loop_head, BLK_LOOP_HEADER );
+                    MarkBlkAttrClr( blk->loop_head, BLK_LOOP_HEADER );
                     loop_head = blk->loop_head;
                 }
                 for( curr = back.data.HeadBlock; curr != NULL; curr = curr->next_block ) {
@@ -434,10 +434,10 @@ void     UnMarkInvariants( BackRun& back )
     name        *op;
 
     for( op = back.data.Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
-        _SetLoopUsage( op, 0 );
+        SetLoopUsage( op, 0 );
     }
     for( op = back.data.Names[N_MEMORY]; op != NULL; op = op->n.next_name ) {
-        _SetLoopUsage( op, 0 );
+        SetLoopUsage( op, 0 );
     }
 }
 
@@ -450,7 +450,7 @@ static void     ZapRegister( BackRun& back, hw_reg_set regs )
     name        *other;
 
     for( other = back.data.Names[N_REGISTER]; other != NULL; other=other->n.next_name ) {
-        if( HW_Ovlap( other->r.reg, regs ) ) {
+        if( HwOvlap( other->r.reg, regs ) ) {
             other->r.reg_index++;
         }
     }
@@ -467,10 +467,10 @@ static void     ZapTemp( name *op )
     alias = op;
     for( ;; ) {
         if( TempsOverlap( alias, op ) ) {
-            if( _ChkLoopUsage( alias, VU_INVARIANT ) ) {
-                _SetLoopUsage( alias, VU_VARIANT | VU_VARIED_ONCE );
+            if( ChkLoopUsage( alias, VU_INVARIANT ) ) {
+                SetLoopUsage( alias, VU_VARIANT | VU_VARIED_ONCE );
             } else {
-                _SetLoopUsage( alias, VU_VARIANT );
+                SetLoopUsage( alias, VU_VARIANT );
             }
             /*
              * if temp is defined once within multiple loops, we want to make
@@ -499,10 +499,10 @@ static void     ZapMemory( BackRun& back, name *op )
 
     for( other = back.data.Names[N_MEMORY]; other != NULL; other=other->n.next_name ) {
         if( other->v.symbol == op->v.symbol ) {
-            if( _ChkLoopUsage( other, VU_INVARIANT ) ) {
-                _SetLoopUsage( other, VU_VARIANT | VU_VARIED_ONCE );
+            if( ChkLoopUsage( other, VU_INVARIANT ) ) {
+                SetLoopUsage( other, VU_VARIANT | VU_VARIED_ONCE );
             } else {
-                _SetLoopUsage( other, VU_VARIANT );
+                SetLoopUsage( other, VU_VARIANT );
             }
         }
     }
@@ -530,16 +530,16 @@ void     MarkInvariants( BackRun& back )
 
     for( op = back.data.Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
         if( op->v.usage & VAR_VOLATILE ) {
-            _SetLoopUsage( op, 0 );
+            SetLoopUsage( op, 0 );
         } else {
-            _SetLoopUsage( op, VU_INVARIANT );
+            SetLoopUsage( op, VU_INVARIANT );
         }
     }
     for( op = back.data.Names[N_MEMORY]; op != NULL; op = op->n.next_name ) {
         if( op->v.usage & VAR_VOLATILE ) {
-            _SetLoopUsage( op, 0 );
+            SetLoopUsage( op, 0 );
         } else {
-            _SetLoopUsage( op, VU_INVARIANT );
+            SetLoopUsage( op, VU_INVARIANT );
         }
     }
     for( op = back.data.Names[N_REGISTER]; op != NULL; op = op->n.next_name ) {
@@ -550,7 +550,7 @@ void     MarkInvariants( BackRun& back )
     back.loopopts_file->MemChangedInLoop = false;
     for( blk = back.loopopts.Loop; blk != NULL; blk = blk->u.loop ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-            if( _OpIsCall( ins->head.opcode )
+            if( OpIsCall( ins->head.opcode )
               && (ins->flags.u.call_flags & CALL_WRITES_NO_MEMORY) == 0 ) {
                 back.loopopts_file->MemChangedInLoop = true;
                 have_call = true;
@@ -600,12 +600,12 @@ void     MarkInvariants( BackRun& back )
         if( IsntModel( back, CGSW_GEN_FORTRAN_ALIASING ) ) {
             for( op = back.data.Names[N_TEMP]; op != NULL; op = op->n.next_name ) {
                 if( op->v.usage & USE_ADDRESS ) {
-                    _SetLoopUsage( op, VU_VARIANT );
+                    SetLoopUsage( op, VU_VARIANT );
                 }
             }
             for( op = back.data.Names[N_MEMORY]; op != NULL; op = op->n.next_name ) {
                 if( !NameIsConstant( back, op ) ) {
-                    _SetLoopUsage( op, VU_VARIANT );
+                    SetLoopUsage( op, VU_VARIANT );
                 }
             }
         } else { /* could only be have_call */
@@ -615,7 +615,7 @@ void     MarkInvariants( BackRun& back )
                 switch( op->m.memory_type ) {
                 case CG_FE:
                     if( FEAttr( *back.front, static_cast<cg_sym_handle>(op->v.symbol) ) & FE_VISIBLE ) {
-                        _SetLoopUsage( op, VU_VARIANT );
+                        SetLoopUsage( op, VU_VARIANT );
                     }
                     break;
                 case CG_BACK:
@@ -623,7 +623,7 @@ void     MarkInvariants( BackRun& back )
                 case CG_TBL:
                     break;
                 default:
-                    _SetLoopUsage( op, VU_VARIANT );
+                    SetLoopUsage( op, VU_VARIANT );
                     break;
                 }
             }
@@ -653,7 +653,7 @@ bool     InvariantOp( BackRun& back, name *op )
         return( true );
     case N_MEMORY:
     case N_TEMP:
-        return( _ChkLoopUsage( op, VU_INVARIANT ) );
+        return( ChkLoopUsage( op, VU_INVARIANT ) );
     case N_INDEXED:
         if( op->i.index_flags & X_VOLATILE )
             return( false );
@@ -721,10 +721,10 @@ bool     Hoistable( BackRun& back, instruction *ins, block *blk )
     big_const = false;
     if( blk != NULL
       && back.loopopts_file->LoopProtected
-      && _IsBlkMarked( blk ) ) {
+      && IsBlkMarked( blk ) ) {
         will_execute = true;
     }
-    if( _IsFloating( ins->type_class )
+    if( IsFloating( ins->type_class )
       && IsntModel( back, CGSW_GEN_I_MATH_INLINE ) ) {
         dangerous = true;
     } else {
@@ -739,8 +739,8 @@ bool     Hoistable( BackRun& back, instruction *ins, block *blk )
             }
         }
     }
-    if( _IsFloating( ins->type_class )
-      || _IsI64( ins->type_class ) ) {
+    if( IsFloating( ins->type_class )
+      || IsI64( ins->type_class ) ) {
         big_const = true;
     }
     switch( ins->head.opcode ) {
@@ -832,20 +832,20 @@ static void     UpdateLoopLiveInfo( BackRun& back, instruction *ins )
     block       *blk;
     opcnt       i;
 
-    HW_Asgn( reg, ins->result->r.reg );
+    HwAsgn( reg, ins->result->r.reg );
     for( i = 0; i < ins->num_operands; ++i ) {
         if( ins->operands[i]->n.class_ == N_REGISTER ) {
-            HW_TurnOn( reg, ins->operands[i]->r.reg );
+            HwTurnOn( reg, ins->operands[i]->r.reg );
         }
     }
     for( ; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-        HW_TurnOn( ins->head.live.regs, reg );
+        HwTurnOn( ins->head.live.regs, reg );
     }
-    HW_TurnOn( ins->head.live.regs, reg );
+    HwTurnOn( ins->head.live.regs, reg );
     for( blk = back.loopopts.Loop; blk != NULL; blk = blk->u.loop ) {
         ins = (instruction *)&blk->ins;
         do {
-            HW_TurnOn( ins->head.live.regs, reg );
+            HwTurnOn( ins->head.live.regs, reg );
             ins = ins->head.next;
         } while( ins->head.opcode != OP_BLOCK );
     }
@@ -1048,11 +1048,11 @@ static induction    *AddIndVar( BackRun& back, instruction *ins,
         new_ind->state = static_cast<ind_var_state>(EMPTY);
         if( prev == NULL ) {
             new_ind->basic = new_ind;
-            _SetV( new_ind, IV_BASIC | IV_TOP );
+            SetVarState( new_ind, IV_BASIC | IV_TOP );
         } else {
             new_ind->basic = prev->basic;
-            _ClrV( prev, IV_TOP );
-            _SetV( new_ind, IV_TOP );
+            ClrVarState( prev, IV_TOP );
+            SetVarState( new_ind, IV_TOP );
         }
         new_ind->use_count = 0;
         new_ind->index_use_count = 0;
@@ -1074,13 +1074,13 @@ static induction    *AddIndVar( BackRun& back, instruction *ins,
         for( alias = back.loopopts.IndVarList; alias != NULL; alias = alias->next ) {
             if( alias == new_ind )
                 continue;
-            if( _IsV( alias, IV_ALIAS ) )
+            if( HasVarState( alias, IV_ALIAS ) )
                 continue;
             if( DifferentIV( alias, new_ind ) != MB_FALSE )
                 continue;
             new_ind->alias = alias->alias;
             alias->alias = new_ind;
-            _SetV( new_ind, IV_ALIAS );
+            SetVarState( new_ind, IV_ALIAS );
             break;
         }
     }
@@ -1107,16 +1107,16 @@ static induction    *FindOrAddIndVar( BackRun& back, name *op, type_class_def ty
     var1 = FindIndVar( back, DeAlias( op ) );
     if( var1 == NULL )
         return( NULL );
-    if( _IsV( var1, IV_DEAD )
-      || _IsntV( var1, IV_BASIC ) )
+    if( HasVarState( var1, IV_DEAD )
+      || LacksVarState( var1, IV_BASIC ) )
         return( NULL );
     var2 = AddIndVar( back, var1->ins, op, var1->prev, var1->invar, var1->ivtimes,
                       var1->lasttimes, var1->times, var1->plus,
                       var1->plus2, 1, type_class );
-    if( _IsV( var1, IV_SURVIVED ) )
-        _SetV( var2, IV_SURVIVED );
-    if( _IsV( var1, IV_INTRODUCED ) )
-        _SetV( var2, IV_INTRODUCED );
+    if( HasVarState( var1, IV_SURVIVED ) )
+        SetVarState( var2, IV_SURVIVED );
+    if( HasVarState( var1, IV_INTRODUCED ) )
+        SetVarState( var2, IV_INTRODUCED );
     return( var2 );
 }
 
@@ -1197,8 +1197,8 @@ bool    Inducable( block *blk, instruction *ins )
       && ins->head.opcode != OP_SUB ) {
         return( false );
     }
-    if( _IsFloating( ins->type_class )
-      || _IsI64( ins->type_class ) ) {
+    if( IsFloating( ins->type_class )
+      || IsI64( ins->type_class ) ) {
         return( false );
     }
     if( ins->type_class == PT ) {
@@ -1275,10 +1275,10 @@ static  bool    KillIndVars( BackRun& back, instruction *ins )
     killed = false;
     for( var = back.loopopts.IndVarList; var != NULL; var = var->next ) {
         if( var->ins != ins ) {
-            if( _IsntV( var, IV_SURVIVED ) ) {
+            if( LacksVarState( var, IV_SURVIVED ) ) {
                 if( IsReDefinedBy( back, ins, var->name ) ) {
                     killed = true;
-                    _SetV( var, IV_DEAD );
+                    SetVarState( var, IV_DEAD );
                 }
             }
         }
@@ -1309,7 +1309,7 @@ static  void    CheckNonBasic( BackRun& back, instruction *ins, induction *var,
 
     if( var == NULL )
         return;
-    if( _IsV( var, IV_DEAD ) )
+    if( HasVarState( var, IV_DEAD ) )
         return;
     if( ins->result->n.class_ != N_TEMP
       && ins->result->n.class_ != N_MEMORY )
@@ -1318,7 +1318,7 @@ static  void    CheckNonBasic( BackRun& back, instruction *ins, induction *var,
       && ( ins->head.opcode == OP_DIV
       || ins->head.opcode == OP_LSHIFT ) )
         return;
-    if( _IsV( var, IV_BASIC ) ) {
+    if( HasVarState( var, IV_BASIC ) ) {
         plus = 0;
         plus2 = 0;
         times = 1;
@@ -1392,7 +1392,7 @@ static  void    CheckInvariant( BackRun& back, instruction *ins, induction *var,
 
     if( var == NULL )
         return;
-    if( _IsV( var, IV_DEAD ) )
+    if( HasVarState( var, IV_DEAD ) )
         return;
     if( ins->result->n.class_ != N_TEMP
       && ins->result->n.class_ != N_MEMORY ) {
@@ -1404,7 +1404,7 @@ static  void    CheckInvariant( BackRun& back, instruction *ins, induction *var,
     plus = var->plus;
     plus2 = var->plus2;
     times = var->times;
-    if( _IsV( var, IV_BASIC ) ) {
+    if( HasVarState( var, IV_BASIC ) ) {
         times = 1;
         plus = 0;
         plus2 = 0;
@@ -1500,12 +1500,12 @@ static  void    ChkIVUses( BackRun& back, induction *var, name *op )
       || usage == IVU_USED_AS_OPERAND ) {
         var->use_count++;
         if( usage == IVU_USED_AS_OPERAND ) {
-            _SetV( var, IV_USED );
+            SetVarState( var, IV_USED );
         }
     }
     if( usage == IVU_USED_AS_INDEX ) {
         var->index_use_count++;
-        _SetV( var, IV_INDEXED );
+        SetVarState( var, IV_INDEXED );
     }
     if( usage == IVU_USED_AS_INDEX ) {
         op = op->i.index;
@@ -1513,7 +1513,7 @@ static  void    ChkIVUses( BackRun& back, induction *var, name *op )
     }
     if( usage == IVU_USED_AS_OPERAND ) {
         if( op != var->name ) {
-            _SetV( var, IV_NOREPLACE );
+            SetVarState( var, IV_NOREPLACE );
         }
     }
 }
@@ -1526,7 +1526,7 @@ static  void    MarkUses( BackRun& back, instruction *ins )
     opcnt       i;
 
     for( var = back.loopopts.IndVarList; var != NULL; var = var->next ) {
-        if( _IsV( var, IV_SURVIVED ) )
+        if( HasVarState( var, IV_SURVIVED ) )
             continue;
         if( ins == var->ins )
             continue;
@@ -1556,8 +1556,8 @@ static  void    MarkSurvivors( BackRun& back )
         }
     }
     for( var = back.loopopts.IndVarList; var != NULL; var = var->next ) {
-        if( _IsntV( var, IV_DEAD ) ) {
-            _SetV( var, IV_SURVIVED );
+        if( LacksVarState( var, IV_DEAD ) ) {
+            SetVarState( var, IV_SURVIVED );
         }
     }
 }
@@ -1609,25 +1609,25 @@ static  void    MergeVars( BackRun& back )
     induction   *other;
 
     for( var = back.loopopts.IndVarList; var != NULL; var = var->next ) {
-        if( _IsntV( var, IV_TOP ) )
+        if( LacksVarState( var, IV_TOP ) )
             continue;
-        if( _IsV( var, IV_DEAD ) )
+        if( HasVarState( var, IV_DEAD ) )
             continue;
-        if( _IsV( var , IV_BASIC | IV_ALIAS ) )
+        if( HasVarState( var , IV_BASIC | IV_ALIAS ) )
             continue;
         varblock = InsBlock( var->ins );
         for( other = var->next; other != NULL; other = other->next ) {
-            if( _IsntV( other, IV_TOP ) )
+            if( LacksVarState( other, IV_TOP ) )
                 continue;
-            if( _IsV( other, IV_DEAD ) )
+            if( HasVarState( other, IV_DEAD ) )
                 continue;
-            if( _IsV( other , IV_BASIC | IV_ALIAS ) )
+            if( HasVarState( other , IV_BASIC | IV_ALIAS ) )
                 continue;
             if( DifferentIV( var, other ) != MB_MAYBE )
                 continue;
-            if( _IsV( other, IV_USED ) )
+            if( HasVarState( other, IV_USED ) )
                 continue;
-            if( _IsntV( other, IV_INDEXED ) )
+            if( LacksVarState( other, IV_INDEXED ) )
                 continue;
             otherblock = InsBlock( other->ins );
             if( otherblock != varblock )
@@ -1669,8 +1669,8 @@ static  void    ScanNonBasic( BackRun& back, instruction *ins )
 
     if( KillIndVars( back, ins ) )
         return;
-    if( _IsFloating( ins->type_class )
-      || _IsI64( ins->type_class ) )
+    if( IsFloating( ins->type_class )
+      || IsI64( ins->type_class ) )
         return;
     if( ins->head.opcode == OP_MOV ) {
         var = FindIndVar( back, ins->operands[0] );
@@ -1750,8 +1750,8 @@ static  void    ScanBasic( BackRun& back, instruction *ins )
     if( ins->head.opcode != OP_ADD
       && ins->head.opcode != OP_SUB )
         return;
-    if( _IsFloating( ins->type_class )
-      || _IsI64( ins->type_class ) )
+    if( IsFloating( ins->type_class )
+      || IsI64( ins->type_class ) )
         return;
     if( ins->type_class == PT )
         return;
@@ -2019,13 +2019,13 @@ static  void *MarkDown( BackRun& back, block *blk )
 {
     block_num   i;
 
-    if( !_IsBlkAttr( blk, BLK_IN_LOOP ) )
+    if( !IsBlkAttr( blk, BLK_IN_LOOP ) )
         return( NULL );
     if( blk == back.loopopts.Head )
         return( NULL );
-    if( !_IsBlkMarked( blk ) )
+    if( !IsBlkMarked( blk ) )
         return( NULL );
-    _MarkBlkUnMarked( blk );
+    MarkBlkUnMarked( blk );
     for( i = blk->targets; i-- > 0; ) {
         SafeRecurseCG( back, (func_sr)MarkDown, blk->edge[i].destination.u.blk );
     }
@@ -2053,17 +2053,17 @@ static  void    LabelDown( BackRun& back, instruction *frum,
     }
     if( frum == avoiding )
         return;
-    blk = _BLOCK( frum );
+    blk = BlockOf( frum );
     edge = &blk->edge[0];
     for( i = blk->targets; i > 0; --i ) {
         blk = edge->destination.u.blk;
         if( ( go_around
           || blk != back.loopopts.Head )
-          && _IsBlkAttr( blk, BLK_IN_LOOP ) ) {
+          && IsBlkAttr( blk, BLK_IN_LOOP ) ) {
             ins = blk->ins.head.next;
             if( ins->head.opcode == OP_BLOCK
               || (ins->ins_flags & INS_VISITED) == 0 ) {
-                _MarkBlkVisited( blk );
+                MarkBlkVisited( blk );
             }
             ++edge;
         }
@@ -2090,8 +2090,8 @@ static  bool    PathFrom( BackRun& back, instruction *frum, instruction *to,
     do {
         change = false;
         for( blk = back.loopopts.Loop; blk != NULL; blk = blk->u.loop ) {
-            if( _IsBlkVisited( blk ) ) {
-                _MarkBlkUnVisited( blk );
+            if( IsBlkVisited( blk ) ) {
+                MarkBlkUnVisited( blk );
                 change = true;
                 LabelDown( back, blk->ins.head.next, avoiding, go_around );
             }
@@ -2103,7 +2103,7 @@ static  bool    PathFrom( BackRun& back, instruction *frum, instruction *to,
         foundpath = false;
     }
     for( blk = back.loopopts.Loop; blk != NULL; blk = blk->u.loop ) {
-        _MarkBlkUnVisited( blk );
+        MarkBlkUnVisited( blk );
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             ins->ins_flags &= ~INS_VISITED;
         }
@@ -2138,13 +2138,13 @@ static  void    MarkWillExecBlocks( BackRun& back )
     instruction *nop;
 
     for( blk = back.loopopts.Loop; blk != NULL; blk = blk->u.loop ) {
-        _MarkBlkMarked( blk );
+        MarkBlkMarked( blk );
     }
     /*
      * First, prune some blocks we know won't necessarily execute
      */
     for( blk = back.loopopts.Loop; blk != NULL; blk = blk->u.loop ) {
-        if( !_IsBlkAttr( blk, BLK_LOOP_EXIT ) )
+        if( !IsBlkAttr( blk, BLK_LOOP_EXIT ) )
             continue;
         for( i = blk->targets; i-- > 0; ) {
             MarkDown( back, blk->edge[i].destination.u.blk );
@@ -2156,7 +2156,7 @@ static  void    MarkWillExecBlocks( BackRun& back )
             continue;
         for( i = blk->targets; i-- > 0; ) {
             if( blk->edge[i].destination.u.blk->inputs == 1 ) {
-                _MarkBlkUnMarked( blk->edge[i].destination.u.blk );
+                MarkBlkUnMarked( blk->edge[i].destination.u.blk );
             }
         }
     }
@@ -2172,14 +2172,14 @@ static  void    MarkWillExecBlocks( BackRun& back )
     }
 
     for( blk = back.loopopts.Loop; blk != NULL; blk = blk->u.loop ) {
-        if( !_IsBlkMarked( blk ) )
+        if( !IsBlkMarked( blk ) )
             continue;
         if( blk->ins.head.next == (instruction *)&blk->ins ) {
-            _MarkBlkUnMarked( blk );
+            MarkBlkUnMarked( blk );
             continue;
         }
         if( PathFrom( back, back.loopopts.Head->ins.head.prev, back.loopopts.Head->ins.head.next, blk->ins.head.next, true ) ) {
-            _MarkBlkUnMarked( blk );
+            MarkBlkUnMarked( blk );
         }
     }
     if( nop != NULL ) {
@@ -2194,7 +2194,7 @@ static  void    UnMarkWillExecBlocks( BackRun& back )
     block       *blk;
 
     for( blk = back.loopopts.Loop; blk != NULL; blk = blk->u.loop ) {
-        _MarkBlkUnMarked( blk );
+        MarkBlkUnMarked( blk );
     }
 }
 
@@ -2289,7 +2289,7 @@ instruction     *DupIns( BackRun& back, instruction *blk_end, instruction *ins,
 
     new_ins = NewIns( back, ins->num_operands );
     num_operands = ins->num_operands;
-    Copy( ins, new_ins, offsetof( instruction, operands ) + num_operands * sizeof( name * ) );
+    memcpy( new_ins, ins, offsetof( instruction, operands ) + num_operands * sizeof( name * ) );
     for( i = 0; i < num_operands; ++i ) {
         AdjustOp( back, blk_end, &new_ins->operands[i], var, adjust );
     }
@@ -2349,9 +2349,9 @@ static  induction       *FindReplacement( BackRun& back, induction *var )
         return( NULL );
     log2rep = 0;
     for( other = back.loopopts.IndVarList; other != NULL; other = other->next ) {
-        if( _IsV( other, IV_DEAD ) )
+        if( HasVarState( other, IV_DEAD ) )
             continue;
-        if( _IsntV( other, ( IV_INTRODUCED | EMPTY ) ) )
+        if( LacksVarState( other, ( IV_INTRODUCED | EMPTY ) ) )
             continue;
         if( other == var )
             continue;
@@ -2398,7 +2398,7 @@ bool    AnalyseLoop( BackRun& back, induction *var, bool *ponecond,
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( var == NULL
               || ins != var->ins ) {
-                if( !_OpIsCondition( ins->head.opcode )
+                if( !OpIsCondition( ins->head.opcode )
                   || ins->result != NULL ) {
                     if( var != NULL ) {
                         for( i = ins->num_operands; i-- > 0; ) {
@@ -2417,7 +2417,7 @@ bool    AnalyseLoop( BackRun& back, induction *var, bool *ponecond,
                         }
                     }
                 } else {
-                    if( _IsBlkAttr( blk, BLK_LOOP_EXIT ) ) {
+                    if( IsBlkAttr( blk, BLK_LOOP_EXIT ) ) {
                         if( *pcond == NULL ) {
                             *pcond = ins;
                             *ponecond = true;
@@ -2485,8 +2485,8 @@ static  name    *InitialValue( BackRun& back, name *op )
     other = back.loopopts.PreHead->ins.head.prev;
     for( ;; ) {
         if( other->head.opcode == OP_BLOCK ) {
-            blk = _BLOCK( other );
-            if( _IsBlkAttr( blk, BLK_IN_LOOP ) )
+            blk = BlockOf( other );
+            if( IsBlkAttr( blk, BLK_IN_LOOP ) )
                 return( NULL );
             if( blk->inputs != 1 )
                 return( NULL );
@@ -2524,7 +2524,7 @@ bool    CalcFinalValue( BackRun& back, induction *var, block *blk, instruction *
     int_32          remd;
     int_32          dist;
 
-    if( _IsV( var, IV_DEAD ) )
+    if( HasVarState( var, IV_DEAD ) )
         return( false );
     if( ins == NULL )
         return( false );
@@ -2538,8 +2538,8 @@ bool    CalcFinalValue( BackRun& back, induction *var, block *blk, instruction *
         ins->operands[1] = temp;
         RevCond( ins );
     }
-    if( _IsBlkAttr( blk->edge[_TrueIndex( ins )].destination.u.blk, BLK_IN_LOOP ) ) {
-        _SetBlockIndex( ins, _FalseIndex( ins ), _TrueIndex( ins ) );
+    if( IsBlkAttr( blk->edge[TrueIndex( ins )].destination.u.blk, BLK_IN_LOOP ) ) {
+        SetBlockIndex( ins, FalseIndex( ins ), TrueIndex( ins ) );
         FlipCond( ins );
     }
     if( ins->head.opcode == OP_CMP_NOT_EQUAL )
@@ -2609,7 +2609,7 @@ bool    CalcFinalValue( BackRun& back, induction *var, block *blk, instruction *
     }
     if( InstructionWillExec( back, var->ins ) ) {
         back.loopopts.Head->iterations = ( *final - *initial ) / incr;
-        _MarkBlkAttrSet( back.loopopts.Head, BLK_ITERATIONS_KNOWN );
+        MarkBlkAttrSet( back.loopopts.Head, BLK_ITERATIONS_KNOWN );
     }
     return( true );
 }
@@ -2635,17 +2635,17 @@ static  bool    FinalValue( BackRun& back, instruction *ins, block *blk, inducti
     if( !CalcFinalValue( back, var, blk, ins, &final, &initial ) ) {
         return( false );
     }
-    dest = blk->edge[_TrueIndex( ins )].destination.u.blk;
-    if( _IsBlkAttr( dest, BLK_UNKNOWN_DESTINATION ) )
+    dest = blk->edge[TrueIndex( ins )].destination.u.blk;
+    if( IsBlkAttr( dest, BLK_UNKNOWN_DESTINATION ) )
         return( false );
-    if( _IsBlkAttr( dest, BLK_LOOP_HEADER ) )
+    if( IsBlkAttr( dest, BLK_LOOP_HEADER ) )
         return( false );
 //    type_class = var->name->n.type_class;
     type_class = ins->type_class;
     assert( TypeClassSize[type_class] == TypeClassSize[var->name->n.type_class] );
     op = AllocS32Const( back, final );
     other = MakeCondition( back, OP_CMP_EQUAL, var->name, op,
-                           _TrueIndex( ins ), _FalseIndex( ins ), type_class );
+                           TrueIndex( ins ), FalseIndex( ins ), type_class );
     ReplIns( back, ins, other );
     if( dest->inputs == 1 ) {
         /*
@@ -2709,7 +2709,7 @@ static  bool    ConstOverflowsType( BackRun& back, const signed_64 *val, type_cl
         return( false );
     len = back.data.TypeClassSize[type_class] * 8;
     Set64Val1p( one );
-    if( _IsSigned( type_class ) ) {
+    if( IsSigned( type_class ) ) {
         /*
          * signed type of length 'len' bits
          */
@@ -2897,7 +2897,7 @@ static  void    Replace( BackRun& back, induction *var, induction *replacement )
     }
     for( blk = back.loopopts.Loop; blk != NULL; blk = blk->u.loop ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-            if( _OpIsCompare( ins->head.opcode ) ) {
+            if( OpIsCompare( ins->head.opcode ) ) {
                 if( !ReplUses( back, var, replacement, ins, type_class ) ) {
                     return;
                 }
@@ -2907,7 +2907,7 @@ static  void    Replace( BackRun& back, induction *var, induction *replacement )
     if( free_ins ) {
         FreeIns( back, var->ins );
     }
-    _SetV( var, IV_DEAD );
+    SetVarState( var, IV_DEAD );
 }
 
 
@@ -2931,7 +2931,7 @@ static  bool    DoLoopInvariant( BackRun& back, bool(*rtn)(BackRun&) )
      */
     for( depth = 1; depth <= max_depth; ++depth ) {
         for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-            if( _IsBlkAttr( blk, BLK_LOOP_HEADER )
+            if( IsBlkAttr( blk, BLK_LOOP_HEADER )
               && blk->depth == depth ) {
                 LPBlip();
                 back.loopopts.Head = blk;
@@ -2975,15 +2975,15 @@ static  bool    FindRegInvariants( BackRun& back )
                 continue;
             if( ins->result->n.class_ != N_REGISTER )
                 continue;
-            if( HW_Ovlap( ins->result->r.reg, back.loopopts.Head->ins.head.next->head.live.regs ) )
+            if( HwOvlap( ins->result->r.reg, back.loopopts.Head->ins.head.next->head.live.regs ) )
                 continue;
             if( ins->result->r.reg_index != 1 )
                 continue;
             if( SideEffect( back, ins ) )
                 continue;
-            if( _OpIsCall( ins->head.opcode ) )
+            if( OpIsCall( ins->head.opcode ) )
                 continue;
-            if( _OpIsCondition( ins->head.opcode ) )
+            if( OpIsCondition( ins->head.opcode ) )
                 continue;
             for( i = 0; i < ins->num_operands; ++i ) {
                 if( !HW_CEqual( ins->zap->reg, HW_EMPTY ) )
@@ -3037,14 +3037,14 @@ static  bool    FindInvariants( BackRun& back )
                 op = ins->result;
                 if( ( op->n.class_ == N_TEMP
                   || op->n.class_ == N_MEMORY )
-                  && _ChkLoopUsage( op, VU_VARIED_ONCE )
+                  && ChkLoopUsage( op, VU_VARIED_ONCE )
                   && (op->v.usage & USE_IN_ANOTHER_BLOCK) == 0
                   && !back.data.BlockByBlock ) {
                     SuffixPreHeader( back, ins );
                     if( op->n.class_ == N_TEMP ) {
                         op->t.temp_flags |= ( CROSSES_BLOCKS | ONE_DEFINITION );
                     }
-                    _SetLoopUsage( op, VU_INVARIANT );
+                    SetLoopUsage( op, VU_INVARIANT );
                     FPNotStack( op );
                 } else {
                     temp = AllocTemp( back, op->n.type_class );
@@ -3108,7 +3108,7 @@ void    LoopEnregister( BackRun& back )
      */
     for( depth = MaxDepth(back); depth >= 1; --depth ) {
         for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-            if( _IsBlkAttr( blk, BLK_LOOP_HEADER )
+            if( IsBlkAttr( blk, BLK_LOOP_HEADER )
               && blk->depth == depth ) {
                 back.loopopts.Head = blk;
                 MarkLoop(back);
@@ -3134,15 +3134,15 @@ static  void    ElimIndVars( BackRun& back )
 
     for( var = back.loopopts.IndVarList; var != NULL; var = next ) {
         next = var->next;
-        if( _IsntV( var, IV_BASIC | IV_INTRODUCED ) ) {
-            _SetV( var, IV_DEAD );
+        if( LacksVarState( var, IV_BASIC | IV_INTRODUCED ) ) {
+            SetVarState( var, IV_DEAD );
         }
     }
     for( var = back.loopopts.IndVarList; var != NULL; var = next ) {
         next = var->next;
-        if( _IsntV( var, IV_NOREPLACE )
-          && _IsntV( var, IV_DEAD )
-          && _IsV( var, IV_BASIC ) ) {
+        if( LacksVarState( var, IV_NOREPLACE )
+          && LacksVarState( var, IV_DEAD )
+          && HasVarState( var, IV_BASIC ) ) {
             replacement = FindReplacement( back, var );
             if( replacement != NULL ) {
                 Replace( back, var, replacement );
@@ -3176,14 +3176,14 @@ static  bool    ReduceVar( BackRun& back, induction *var )
     induction           *new_ind;
     instruction         *ins;
 
-    if( _IsntV( var, IV_TOP ) )
+    if( LacksVarState( var, IV_TOP ) )
         return( false );
-    if( _IsV( var, IV_DEAD ) )
+    if( HasVarState( var, IV_DEAD ) )
         return( false );
     while( var->ins->num_operands == 1 ) {
         var = FindIndVar( back, var->ins->operands[0] );
     }
-    if( _IsV( var, IV_BASIC | IV_ALIAS ) )
+    if( HasVarState( var, IV_BASIC | IV_ALIAS ) )
         return( false );
     if( IsAddressMode( var ) )
         return( false );
@@ -3217,7 +3217,7 @@ static  bool    ReduceVar( BackRun& back, induction *var )
                      var->basic, var->invar, var->ivtimes,
                      var->lasttimes, var->times,
                      var->plus, var->plus2, 1, ins->type_class );
-    _SetV( new_ind, IV_INTRODUCED );
+    SetVarState( new_ind, IV_INTRODUCED );
     return( true );
 }
 
@@ -3287,12 +3287,12 @@ static  bool    TwistLoop( BackRun& back, block_list *header_list, bool unroll )
     }
     loop_edge = &cond_blk->edge[0];
     exit_edge = &cond_blk->edge[1];
-    if( !_IsBlkAttr( loop_edge->destination.u.blk, BLK_IN_LOOP ) ) {
+    if( !IsBlkAttr( loop_edge->destination.u.blk, BLK_IN_LOOP ) ) {
         loop_edge = &cond_blk->edge[1];
         exit_edge = &cond_blk->edge[0];
     }
     if( unroll
-      && _IsBlkAttr( back.loopopts.Head, BLK_ITERATIONS_KNOWN )
+      && IsBlkAttr( back.loopopts.Head, BLK_ITERATIONS_KNOWN )
       && back.loopopts.Head->iterations == 1 ) {
         if( cond_blk != back.loopopts.Head
           || back.loopopts.Loop->u.loop == NULL ) {
@@ -3314,7 +3314,7 @@ static  bool    TwistLoop( BackRun& back, block_list *header_list, bool unroll )
 
             }
             for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
-                if( _IsBlkAttr( blk, BLK_IN_LOOP ) ) {
+                if( IsBlkAttr( blk, BLK_IN_LOOP ) ) {
                     PropIndexes( back, blk );
                 }
             }
@@ -3354,11 +3354,11 @@ static  bool    TwistLoop( BackRun& back, block_list *header_list, bool unroll )
                 }
             }
 //            DupNoncondInstrs( cond_blk, cond, PreHead );
-            _MarkBlkAttrClr( back.loopopts.PreHead, BLK_JUMP );
-            _MarkBlkAttrSet( back.loopopts.PreHead, BLK_CONDITIONAL );
+            MarkBlkAttrClr( back.loopopts.PreHead, BLK_JUMP );
+            MarkBlkAttrSet( back.loopopts.PreHead, BLK_CONDITIONAL );
             dupcond = MakeCondition( back, cond->head.opcode, cond->operands[0],
-                                     cond->operands[1], _TrueIndex( cond ),
-                                     _FalseIndex( cond ), cond->type_class );
+                                     cond->operands[1], TrueIndex( cond ),
+                                     FalseIndex( cond ), cond->type_class );
             SuffixPreHeader( back, dupcond );
             edge = &back.loopopts.PreHead->edge[0];
             edge->flags = BEF_DEST_IS_BLOCK;
@@ -3378,8 +3378,8 @@ static  bool    TwistLoop( BackRun& back, block_list *header_list, bool unroll )
             }
             new_head->loop_head = back.loopopts.Head->loop_head;
             back.loopopts.Head->loop_head = new_head;
-            _MarkBlkAttrClr( back.loopopts.Head, BLK_LOOP_HEADER );
-            _MarkBlkAttrSet( new_head, BLK_LOOP_HEADER );
+            MarkBlkAttrClr( back.loopopts.Head, BLK_LOOP_HEADER );
+            MarkBlkAttrSet( new_head, BLK_LOOP_HEADER );
             back.loopopts.Head = new_head;
         }
     }
@@ -3427,7 +3427,7 @@ static  bool    DoInduction( BackRun& back, block_list *header, bool reduce, boo
      * do all loops inside this loop separately
      */
     for( curr_block.blk = back.data.HeadBlock; curr_block.blk != NULL; curr_block.blk = curr_block.blk->next_block ) {
-        if( _IsBlkAttr( curr_block.blk, BLK_LOOP_HEADER )
+        if( IsBlkAttr( curr_block.blk, BLK_LOOP_HEADER )
           && curr_block.blk->loop_head == header->blk ) {
             curr_block.next = header;
             change |= DoInduction( back, &curr_block, reduce, unroll );
@@ -3446,7 +3446,7 @@ static  bool    DoInduction( BackRun& back, block_list *header, bool reduce, boo
     if( header->blk != NULL ) {
         LPBlip();
         while( list != NULL ) {
-            _SetV( list, IV_DEAD );
+            SetVarState( list, IV_DEAD );
             list = list->next;
         }
         back.loopopts.Head = header->blk;
@@ -3472,9 +3472,9 @@ static  bool    DoInduction( BackRun& back, block_list *header, bool reduce, boo
             MergeVars(back);
             if( ReduceInStrength(back) ) {
                 change = true;
-                _MarkBlkAttrSet( back.loopopts.PreHead, BLK_IN_LOOP );
+                MarkBlkAttrSet( back.loopopts.PreHead, BLK_IN_LOOP );
                 LoopInsDead(back);
-                _MarkBlkAttrClr( back.loopopts.PreHead, BLK_IN_LOOP );
+                MarkBlkAttrClr( back.loopopts.PreHead, BLK_IN_LOOP );
             }
             FreeBadVars(back);
             ElimIndVars(back);

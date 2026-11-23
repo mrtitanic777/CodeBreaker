@@ -112,7 +112,7 @@ static  type_class_def  FindMaxClass( BackRun& back, name *cons, int *prefs )
                 if( ins->operands[i] == cons ) {
                     ++*prefs;
                     if( (int)ins->type_class >= type_class ) {
-                        type_class = _OpClass( ins );
+                        type_class = OpClass( ins );
                     }
                 }
             }
@@ -146,7 +146,7 @@ static  bool    ReplaceConst( BackRun& back, name *cons, name *temp, type_class_
     change = false;
     for( blk = back.cachecon.Head; blk != NULL; blk = back.cachecon.Next( back, blk ) ) {
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-            type_class = Unsigned[_OpClass( ins )];
+            type_class = Unsigned[OpClass( ins )];
             num_operands = CountOps( ins, cons );
             for( i = 0; i < num_operands; ++i ) {
                 if( ins->operands[i] == cons  ) {
@@ -154,7 +154,7 @@ static  bool    ReplaceConst( BackRun& back, name *cons, name *temp, type_class_
                         ins->operands[i] = temp;
                         change = true;
                     } else {
-                        if( _IsIntegral( type_class ) && _IsIntegral( tmp_class ) ) {
+                        if( IsIntegral( type_class ) && IsIntegral( tmp_class ) ) {
                             ins->operands[i] = TempOffset( back, temp, 0, type_class );
                             change = true;
                         }
@@ -247,7 +247,7 @@ void            MemConstTemp( BackRun& back, conflict_node *conf )
     }
     if( other == NULL )
         return;
-    if( !_ConstTemp( other ) )
+    if( !ConstTemp( other ) )
         return;
     if( other->v.conflict == NULL )
         return;

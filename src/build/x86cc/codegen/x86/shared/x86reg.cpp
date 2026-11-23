@@ -46,7 +46,7 @@
 #include "backrun.hpp"
 
 
-#define _NPX( x ) (((x) & ROUTINE_NO_8087_RETURNS) == 0)
+inline bool ReturnsInNPX( call_attributes x ) { return (((x) & ROUTINE_NO_8087_RETURNS) == 0); }
 
 type_class_def  CallState( BackRun& back, aux_handle aux, const type_def *tipe, call_state *state )
 /**********************************************************************************/
@@ -64,13 +64,13 @@ type_class_def  CallState( BackRun& back, aux_handle aux, const type_def *tipe, 
     state->unalterable = FixedRegs(back);
     pregs = static_cast<hw_reg_set *>(FEAuxInfo( *back.front, aux, FEINF_SAVE_REGS ));
     HW_CAsgn( state->modify, HW_FULL );
-    HW_TurnOff( state->modify, *pregs );
+    HwTurnOff( state->modify, *pregs );
     HW_CTurnOff( state->modify, HW_UNUSED );
     state->used = state->modify;     /* anything not saved is used*/
     tmp = state->used;
-    HW_TurnOff( tmp, StackReg() );
+    HwTurnOff( tmp, StackReg() );
     HW_CTurnOff( tmp, HW_xBP ); /* should be able to call routine which modifies [E]BP */
-    if( HW_Ovlap( state->unalterable, tmp ) ) {
+    if( HwOvlap( state->unalterable, tmp ) ) {
         FEMessage( *back.front, FEMSG_BAD_SAVE, aux );
     }
     state->attr = ROUTINE_REMOVES_PARMS;
@@ -167,7 +167,7 @@ type_class_def  CallState( BackRun& back, aux_handle aux, const type_def *tipe, 
     parm_dst = &parms[0];
     for( parm_src = static_cast<hw_reg_set *>(FEAuxInfo( *back.front, aux, FEINF_PARM_REGS )); !HW_CEqual( *parm_src, HW_EMPTY ); ++parm_src ) {
         *parm_dst = *parm_src;
-        if( HW_Ovlap( *parm_dst, state->unalterable ) ) {
+        if( HwOvlap( *parm_dst, state->unalterable ) ) {
             FEMessage( *back.front, FEMSG_BAD_SAVE, aux );
         }
         HW_CTurnOff( *parm_dst, HW_UNUSED );
@@ -177,7 +177,7 @@ type_class_def  CallState( BackRun& back, aux_handle aux, const type_def *tipe, 
     *parm_dst = *parm_src;
     i++;
     state->parm.table = static_cast<hw_reg_set *>(CGAlloc( back, i*sizeof( hw_reg_set ) ));
-    Copy( parms, state->parm.table, i * sizeof( hw_reg_set ) );
+    memcpy( state->parm.table, parms, i * sizeof( hw_reg_set ) );
     HW_CAsgn( state->parm.used, HW_EMPTY );
     state->parm.curr_entry = state->parm.table;
     state->parm.offset  = 0;
@@ -193,7 +193,7 @@ type_class_def  CallState( BackRun& back, aux_handle aux, const type_def *tipe, 
         }
         if( (state->attr & ROUTINE_ALLOCS_RETURN) == 0 ) {
             tmp = ReturnReg( back, WD, false );
-            HW_TurnOn( state->modify, tmp );
+            HwTurnOn( state->modify, tmp );
         }
     } else {
         if( cclass_target & FECALL_X86_SPECIAL_RETURN ) {
@@ -201,7 +201,7 @@ type_class_def  CallState( BackRun& back, aux_handle aux, const type_def *tipe, 
             state->return_reg = *pregs;
             state->attr |= ROUTINE_HAS_SPECIAL_RETURN;
         } else {
-            state->return_reg = ReturnReg( back, type_class, _NPX( state->attr ) );
+            state->return_reg = ReturnReg( back, type_class, ReturnsInNPX( state->attr ) );
         }
     }
     UpdateReturn( back, state, tipe, type_class, aux );
@@ -215,7 +215,7 @@ void    UpdateReturn( BackRun& back, call_state *state, const type_def *tipe, ty
     hw_reg_set  normal;
 
     if( FPULevel( back, FPU_87 )
-      && _NPX( state->attr )
+      && ReturnsInNPX( state->attr )
       && (tipe->attr & TYPE_FLOAT) ) {
         HW_COnlyOn( state->return_reg, HW_ST0 );
     } else {
@@ -228,12 +228,12 @@ void    UpdateReturn( BackRun& back, call_state *state, const type_def *tipe, ty
         HW_CAsgn( state->return_reg, HW_EMPTY );
         state->attr &= ~ROUTINE_HAS_SPECIAL_RETURN;
     } else if( type_class == XX ) {
-        normal = ReturnReg( back, WD, _NPX( state->attr ) );
-        if( HW_Equal( state->return_reg, normal ) )
+        normal = ReturnReg( back, WD, ReturnsInNPX( state->attr ) );
+        if( HwEqual( state->return_reg, normal ) )
             return;
         if( HW_CEqual( state->return_reg, HW_EMPTY ) )
             return;
-//        if( !HW_Ovlap( state->return_reg, state->unalterable )
+//        if( !HwOvlap( state->return_reg, state->unalterable )
 //          && IsRegClass( state->return_reg, WD ) )
 //            return;
         if( IsRegClass( back, state->return_reg, WD ) )
@@ -242,10 +242,10 @@ void    UpdateReturn( BackRun& back, call_state *state, const type_def *tipe, ty
         state->return_reg = normal;
         state->attr &= ~ROUTINE_HAS_SPECIAL_RETURN;
     } else {
-        normal = ReturnReg( back, type_class, _NPX( state->attr ) );
-        if( HW_Equal( state->return_reg, normal ) )
+        normal = ReturnReg( back, type_class, ReturnsInNPX( state->attr ) );
+        if( HwEqual( state->return_reg, normal ) )
             return;
-//        if( !HW_Ovlap( state->return_reg, state->unalterable )
+//        if( !HwOvlap( state->return_reg, state->unalterable )
 //          && IsRegClass( state->return_reg, type_class ) )
 //            return;
         if( IsRegClass( back, state->return_reg, type_class ) )
@@ -265,11 +265,11 @@ hw_reg_set      CallZap( BackRun& back, call_state *state )
 
     zap = state->modify;
     if( (state->attr & ROUTINE_MODIFY_EXACT) == 0 ) {
-        HW_TurnOn( zap, state->parm.used );
-        HW_TurnOn( zap, state->return_reg );
+        HwTurnOn( zap, state->parm.used );
+        HwTurnOn( zap, state->return_reg );
         zap = FullReg( zap );
-        tmp = ReturnReg( back, WD, _NPX( state->attr ) );
-        HW_TurnOn( zap, tmp );
+        tmp = ReturnReg( back, WD, ReturnsInNPX( state->attr ) );
+        HwTurnOn( zap, tmp );
     }
     return( zap );
 }
@@ -282,26 +282,26 @@ hw_reg_set      MustSaveRegs( BackRun& back )
     hw_reg_set  tmp;
 
     HW_CAsgn( save, HW_FULL );
-    HW_TurnOff( save, back.data.CurrProc->state.modify );
+    HwTurnOff( save, back.data.CurrProc->state.modify );
     HW_CTurnOff( save, HW_UNUSED );
     if( back.data.CurrProc->state.attr & ROUTINE_MODIFY_EXACT ) {
-        HW_TurnOff( save, back.data.CurrProc->state.return_reg );
+        HwTurnOff( save, back.data.CurrProc->state.return_reg );
     } else {
         tmp = back.data.CurrProc->state.parm.used;
-        HW_TurnOn( tmp, back.data.CurrProc->state.return_reg );
+        HwTurnOn( tmp, back.data.CurrProc->state.return_reg );
         tmp = FullReg( tmp );
-        HW_TurnOff( save, tmp );
+        HwTurnOff( save, tmp );
     }
     tmp = StackReg();
-    HW_TurnOff( save, tmp );
+    HwTurnOff( save, tmp );
     if( HW_CEqual( back.data.CurrProc->state.return_reg, HW_EMPTY ) ) {
-        tmp = ReturnReg( back, WD, _NPX( back.data.CurrProc->state.attr ) );
-        HW_TurnOff( save, tmp );
+        tmp = ReturnReg( back, WD, ReturnsInNPX( back.data.CurrProc->state.attr ) );
+        HwTurnOff( save, tmp );
     }
     tmp = back.data.CurrProc->state.unalterable;
-    HW_TurnOff( tmp, DisplayReg(back) );
-    HW_TurnOff( tmp, StackReg() );
-    HW_TurnOff( save, tmp );
+    HwTurnOff( tmp, DisplayReg(back) );
+    HwTurnOff( tmp, StackReg() );
+    HwTurnOff( save, tmp );
     return( save );
 }
 
@@ -310,7 +310,7 @@ hw_reg_set      SaveRegs( BackRun& back )
 {
     hw_reg_set  save;
     save = MustSaveRegs(back);
-    HW_OnlyOn( save, back.data.CurrProc->state.used );
+    HwOnlyOn( save, back.data.CurrProc->state.used );
     return( save );
 }
 

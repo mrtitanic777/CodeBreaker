@@ -31,7 +31,6 @@
 
 
 #pragma once
-#define _IsSigned( type )       (Unsigned[type] != type)
 
 extern const type_class_def     Unsigned[];
 extern const type_class_def     Signed[];
@@ -56,3 +55,5 @@ extern name             *OffsetPart( BackRun& back, name *tosplit );
 extern name             *SegmentPart( BackRun& back, name *tosplit );
 
 extern bool             UnChangeable( instruction *ins );
+
+inline bool IsSigned( type_class_def type ) { return (Unsigned[type] != type); }

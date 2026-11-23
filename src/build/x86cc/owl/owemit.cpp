@@ -99,7 +99,7 @@ static void doNewReloc( BackRun& back, owl_section_handle section, owl_symbol_ha
 
     owl_reloc_info      *reloc;
 
-    reloc = static_cast<owl_reloc_info *>(_ClientAlloc( back, section->file, sizeof( owl_reloc_info ) ));
+    reloc = static_cast<owl_reloc_info *>(ClientAlloc( back, section->file, sizeof( owl_reloc_info ) ));
     reloc->symbol = sym;
     reloc->type = type;
     reloc->location = offset;

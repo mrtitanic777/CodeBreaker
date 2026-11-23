@@ -77,7 +77,7 @@ static  bool    ovTemp( name *op1, name *op2 )
 static  bool    ovReg( name *op1, name *op2 )
 /*******************************************/
 {
-    return( HW_Ovlap( op1->r.reg, op2->r.reg ) );
+    return( HwOvlap( op1->r.reg, op2->r.reg ) );
 }
 
 static  bool    ovIndex( name *op1, name *op2 )

@@ -140,7 +140,7 @@ cg_init_info _CGAPI     BEInitCg( BackRun& back, cg_switches switches,
     }
 #elif  _TARGET & _TARG_80386
     if( !CPULevel( back, CPU_386 ) ) {
-        SET_CPU( proc, CPU_386 );
+        SetCpu( proc, CPU_386 );
     }
     proc &= ~FPU_EMU;   /* don't need funny fixups for 386 */
 #endif
@@ -342,10 +342,10 @@ name * cg_internal LkAddBackUserTemp( BackRun& back, cg_sym_handle sym, name *te
 {
     back_handle bck;
 
-    back.intrface->NewBackReturn = TO_FAKE_BACK( (back_handle)temp );
+    back.intrface->NewBackReturn = ToFakeBack( (back_handle)temp );
     bck = FEBack( *back.front, sym );
     back.intrface->NewBackReturn = NULL;
-    return( (name *)TO_REAL_BACK( bck ) );
+    return( (name *)ToRealBack( bck ) );
 }
 
 name * cg_internal SymBackUserTemp( BackRun& back, cg_sym_handle sym )
@@ -354,7 +354,7 @@ name * cg_internal SymBackUserTemp( BackRun& back, cg_sym_handle sym )
     back_handle bck;
 
     bck = FEBack( *back.front, sym );
-    return( (name *)TO_REAL_BACK( bck ) );
+    return( (name *)ToRealBack( bck ) );
 }
 
 static void AllocMoreBckInfo( BackRun& back )
@@ -403,7 +403,7 @@ back_handle _CGAPI      BENewBack( BackRun& back, cg_sym_handle sym )
     } else {
         bck->segid = FESegID( *back.front, sym );
     }
-    if( !IS_REAL_BACK( bck ) )
+    if( !IsRealBack( bck ) )
         Zoiks( back, ZOIKS_067 );
     return( bck );
 }
@@ -411,7 +411,7 @@ back_handle _CGAPI      BENewBack( BackRun& back, cg_sym_handle sym )
 void _CGAPI     BEFiniBack( BackRun& back, back_handle bck )
 /*******************************************/
 {
-    if( IS_REAL_BACK( bck ) ) {
+    if( IsRealBack( bck ) ) {
         TellNoSymbol( back, bck->lbl );
     }
 }
@@ -419,7 +419,7 @@ void _CGAPI     BEFiniBack( BackRun& back, back_handle bck )
 void _CGAPI     BEFreeBack( BackRun& back, back_handle bck )
 /*******************************************/
 {
-    if( IS_REAL_BACK( bck ) ) {
+    if( IsRealBack( bck ) ) {
 //        CGFree( bck );
         uback_info      *p;
 
@@ -581,7 +581,7 @@ cg_name _CGAPI CGBackName( BackRun& back, back_handle bck, cg_type tipe )
 /********************************************************/
 {
 
-    if( !IS_REAL_BACK( bck ) )
+    if( !IsRealBack( bck ) )
         Zoiks( back, ZOIKS_068 );
 
     return( TGLeaf( back, BGName( back, CG_BACK, bck, TypeAddress( back, tipe ) ) ) );
@@ -862,7 +862,7 @@ cg_name * _CGAPI CGDuplicate( BackRun& back, cg_name name )
 void _CGAPI     DGLabel( BackRun& back, back_handle bck )
 /****************************************/
 {
-    if( !IS_REAL_BACK( bck ) )
+    if( !IsRealBack( bck ) )
         Zoiks( back, ZOIKS_068 );
     DGBlip();
     DataLabel( back, bck->lbl );
@@ -873,7 +873,7 @@ void _CGAPI     DGBackPtr( BackRun& back, back_handle bck, segment_id segid,
                             int_32 offset, cg_type tipe )
 /***********************************************************/
 {
-    if( !IS_REAL_BACK( bck ) )
+    if( !IsRealBack( bck ) )
         Zoiks( back, ZOIKS_068 );
     DGBlip();
     BackPtr( back, bck, segid, offset, TypeAddress( back, tipe ) );
@@ -1011,7 +1011,7 @@ uint_32 _CGAPI      DGBackTell( BackRun& back, back_handle bck )
 /***********************************************/
 {
 
-    if( !IS_REAL_BACK( bck ) )
+    if( !IsRealBack( bck ) )
         Zoiks( back, ZOIKS_068 );
 
     return( AskAddress( back, bck->lbl ) );

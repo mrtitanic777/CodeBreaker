@@ -248,7 +248,7 @@ dw_handle DWENTRY DWBeginSubroutine(
     /* AT_external */
     DW_Info8( back, cli, (flags & DW_FLAG_SUB_STATIC) == 0 );
     /* AT_inline */
-    DW_Info8( back, cli, GET_FLAG_INLINE( flags ) );
+    DW_Info8( back, cli, GetFlagInline( flags ) );
     /* AT_calling_convention */
     if( flags & DW_FLAG_MAIN ) {
         DW_Info8( back, cli, DW_CC_program );
@@ -258,7 +258,7 @@ dw_handle DWENTRY DWBeginSubroutine(
     /* AT_prototyped */
     DW_Info8( back, cli, (flags & DW_FLAG_PROTOTYPED) != 0 );
     /* AT_virtuality */
-    DW_Info8( back, cli, GET_FLAG_VIRTUAL( flags ) );
+    DW_Info8( back, cli, GetFlagVirtual( flags ) );
     /* AT_artificial */
     DW_Info8( back, cli, (flags & DW_FLAG_ARTIFICIAL) != 0 );
     if( flags & DW_FLAG_DECLARATION ) {
@@ -277,7 +277,7 @@ dw_handle DWENTRY DWBeginSubroutine(
         DW_InfoReloc( back, cli, DW_W_HIGH_PC );
     }
     /* AT_address_class */
-    DW_Info8( back, cli, GET_FLAG_PTR_TYPE( flags ) );
+    DW_Info8( back, cli, GetFlagPtrType( flags ) );
     /* AT_frame_base */
     if( frame_base_loc != NULL ){
         DW_InfoEmitLocExpr( back, cli, sizeof( uint_8 ),frame_base_loc );
@@ -331,7 +331,7 @@ dw_handle DWENTRY DWBeginEntryPoint(
     /* AT_low_pc */
     DW_InfoReloc( back, cli, DW_W_LOW_PC );
     /* AT_address_class */
-    DW_Info8( back, cli, GET_FLAG_PTR_TYPE( flags ) );
+    DW_Info8( back, cli, GetFlagPtrType( flags ) );
     /* AT_name */
     DW_InfoString( back, cli, name );
     DW_EndDIE( cli );
@@ -360,7 +360,7 @@ static void MemFuncCommon(
     /* AT_declaration */
     DW_Info8( back, cli, (flags & DW_FLAG_DECLARATION) != 0 );
     /* AT_inline */
-    DW_Info8( back, cli, GET_FLAG_INLINE( flags ) );
+    DW_Info8( back, cli, GetFlagInline( flags ) );
 }
 
 dw_handle DWENTRY DWBeginMemFuncDecl(
@@ -473,7 +473,7 @@ dw_handle DWENTRY DWFormalParameter(
         DW_InfoBytes( back, cli, value, len );
         break;
     default:
-        _Abort( ABORT_INVALID_DEFAULT_VALUE );
+        AbortDwarf( cli, ABORT_INVALID_DEFAULT_VALUE );
         break;
     }
     va_end( args );

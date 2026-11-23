@@ -47,9 +47,9 @@
 #include "dwhandle.h"
 
 
-#define GET_FLAG_PTR_TYPE(f)    ((uint_8)(((f) & DW_FLAG_PTR_TYPE_MASK) >> DW_FLAG_PTR_TYPE_SHIFT))
-#define GET_FLAG_INLINE(f)      ((uint_8)(((f) & DW_FLAG_INLINE_MASK) >> DW_FLAG_INLINE_SHIFT))
-#define GET_FLAG_VIRTUAL(f)     ((uint_8)(((f) & DW_FLAG_VIRTUAL_MASK) >> DW_FLAG_VIRTUAL_SHIFT))
+inline unsigned char GetFlagPtrType( dw_flags f ) { return ((uint_8)(((f) & DW_FLAG_PTR_TYPE_MASK) >> DW_FLAG_PTR_TYPE_SHIFT)); }
+inline unsigned char GetFlagInline( dw_flags f ) { return ((uint_8)(((f) & DW_FLAG_INLINE_MASK) >> DW_FLAG_INLINE_SHIFT)); }
+inline unsigned char GetFlagVirtual( dw_flags f ) { return ((uint_8)(((f) & DW_FLAG_VIRTUAL_MASK) >> DW_FLAG_VIRTUAL_SHIFT)); }
 
 
 struct handles_private {
@@ -143,5 +143,10 @@ inline void CLISeek( BackRun& back, dw_client cli, dw_sectnum sect, dw_out_offse
 inline dw_out_offset CLITell( BackRun& back, dw_client cli, dw_sectnum sect ) { return cli->funcs.cli_tell( back, sect ); }
 inline void *CLIAlloc( BackRun& back, dw_client cli, size_t size ) { return cli->funcs.cli_alloc( back, size ); }
 inline void CLIFree( BackRun& back, dw_client cli, void *block ) { cli->funcs.cli_free( back, block ); }
+
+
+inline int GetSegmentSize( dw_client_s *c ) { return (((c)->segment_size == 0) ? 2 : (c)->segment_size); }
+
+[[noreturn]] inline void AbortDwarf( dw_client_s *cli, int reason ) { longjmp( cli->exception_handler, reason ); }
 
 #endif

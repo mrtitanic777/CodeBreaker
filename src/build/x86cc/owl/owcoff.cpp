@@ -45,10 +45,10 @@ static uint_16 const cpuTypes[] = {
     #undef OWL_CPU
 };
 
-#define _OWLIndexToCOFFIndex( x )       ( (x) + FIRST_USER_SECTION )
-#define _OWLStringIndexToCOFFStringIndex( x )   ( (x) + 4 )
+inline unsigned int OWLIndexToCOFFIndex( unsigned int x ) { return ( (x) + FIRST_USER_SECTION ); }
+inline int OWLStringIndexToCOFFStringIndex( int x ) { return ( (x) + 4 ); }
 
-#define _FuncHasDebugInfo( y )          ( (y)->x.func != NULL )
+inline bool FuncHasDebugInfo( owl_symbol_info *y ) { return ( (y)->x.func != NULL ); }
 
 static unsigned numFuncAuxSymbols( owl_func_info *info ){
 //*******************************************************
@@ -150,7 +150,7 @@ static void calcLineNumSymbolIndices( BackRun& back, owl_file_handle file ) {
     for( sym = file->symbol_table->head; sym != NULL; sym = sym->next ) {
         if( sym->flags & OWL_SYM_DEAD ) continue;
         if( sym->type != OWL_TYPE_FUNCTION ) continue;
-        if( _FuncHasDebugInfo( sym ) ) {
+        if( FuncHasDebugInfo( sym ) ) {
             // Symbol has some sort of debugging info
             //      - patch up index in first linenum record
             assert( sym->section != NULL );
@@ -170,7 +170,7 @@ static unsigned numSymbols( owl_file_handle file ) {
 static unsigned numSections( owl_file_handle file ) {
 //***************************************************
 
-    return( _OWLIndexToCOFFIndex( file->next_index ) );
+    return( OWLIndexToCOFFIndex( file->next_index ) );
 }
 
 static unsigned numRelocs( owl_section_handle section ) {
@@ -215,7 +215,7 @@ static void emitFileHeader( BackRun& back, owl_file_handle file ) {
     if( file->type == OWL_FILE_EXE || file->type == OWL_FILE_DLL ) {
         header.flags |= COFF_IMAGE_FILE_EXECUTABLE_IMAGE;
     }
-    _ClientWrite( back, file, (const char *)&header, sizeof( header ) );
+    ClientWrite( back, file, (const char *)&header, sizeof( header ) );
 }
 
 static void formatSectionName( owl_section_handle section, char *buffer ) {
@@ -227,7 +227,7 @@ static void formatSectionName( owl_section_handle section, char *buffer ) {
     unsigned            count;
 
     // this name stuff is SO hokey....
-        name_offset = _OWLStringIndexToCOFFStringIndex( OWLStringOffset( section->name ) );
+        name_offset = OWLStringIndexToCOFFStringIndex( OWLStringOffset( section->name ) );
         buffer[ 0 ] = '/';
         count = 0;
         curr = &name[ 7 ];
@@ -326,14 +326,14 @@ static void emitSectionHeaders( BackRun& back, owl_file_handle file ) {
 
     section_table_size = numSections( file ) * sizeof( coff_section_header );
     if( section_table_size != 0 ) {
-        section_table = static_cast<coff_section_header *>(_ClientAlloc( back, file, section_table_size ));
+        section_table = static_cast<coff_section_header *>(ClientAlloc( back, file, section_table_size ));
         count = 0;
         for( curr = file->sections; curr != NULL; curr = curr->next ) {
             formatSectionHeader( curr, &section_table[ curr->index ] );
             curr->index = count++;
         }
-        _ClientWrite( back, file, (const char *)section_table, section_table_size );
-        _ClientFree( back, file, section_table );
+        ClientWrite( back, file, (const char *)section_table, section_table_size );
+        ClientFree( back, file, section_table );
     }
 }
 
@@ -438,7 +438,7 @@ static void formatSectionSymbol( owl_symbol_info *symbol,
 
     section = symbol->x.section;
     buffer->name.u.non_name.zeros = 0;
-    buffer->name.u.non_name.offset = _OWLStringIndexToCOFFStringIndex( OWLStringOffset( symbol->name ) );
+    buffer->name.u.non_name.offset = OWLStringIndexToCOFFStringIndex( OWLStringOffset( symbol->name ) );
     buffer->value = 0;
     buffer->sec_num = _CoffSectionIndex( section->index );
     buffer->type = COFF_IMAGE_SYM_DTYPE_NULL;
@@ -451,7 +451,7 @@ static void formatSectionSymbol( owl_symbol_info *symbol,
     aux->checksum = 0;
     aux->number = 0;
     aux->selection = COFF_IMAGE_COMDAT_SELECT_UNKNOWN;
-    if( _OwlSectionComdat( section ) ){
+    if( OwlSectionComdat( section ) ){
         if( section->comdat_dep != NULL ){
             aux->selection = COFF_IMAGE_COMDAT_SELECT_ASSOCIATIVE;
             aux->number = _CoffSectionIndex( section->comdat_dep->index );
@@ -575,10 +575,10 @@ static void formatFunctionSymbol( BackRun& back, owl_symbol_info *symbol,
     owl_func_file               *curr;
 
     buffer->name.u.non_name.zeros = 0;
-    buffer->name.u.non_name.offset = _OWLStringIndexToCOFFStringIndex( OWLStringOffset( symbol->name ) );
+    buffer->name.u.non_name.offset = OWLStringIndexToCOFFStringIndex( OWLStringOffset( symbol->name ) );
     buffer->value = symbol->offset;
     buffer->sec_num = _CoffSectionIndex( symbol->section->index );
-    buffer->type = _CoffSymType( COFF_IMAGE_SYM_DTYPE_FUNCTION, COFF_IMAGE_SYM_TYPE_NULL );
+    buffer->type = CoffSymType( COFF_IMAGE_SYM_DTYPE_FUNCTION, COFF_IMAGE_SYM_TYPE_NULL );
     buffer->storage_class = storageClass( symbol->linkage );
     buffer->num_aux = 0;
     info = symbol->x.func;
@@ -635,10 +635,10 @@ static void formatOneSymbol( BackRun& back, owl_symbol_info *symbol,
         break;
     case OWL_TYPE_OBJECT:
         buffer->name.u.non_name.zeros = 0;
-        buffer->name.u.non_name.offset = _OWLStringIndexToCOFFStringIndex( OWLStringOffset( symbol->name ) );
+        buffer->name.u.non_name.offset = OWLStringIndexToCOFFStringIndex( OWLStringOffset( symbol->name ) );
         buffer->value = symbol->offset;
         buffer->sec_num = ( ( symbol->section != NULL ) ? _CoffSectionIndex(symbol->section->index) : COFF_IMAGE_SYM_UNDEFINED );
-        buffer->type = _CoffSymType( complexType[ symbol->type ], COFF_IMAGE_SYM_DTYPE_NULL );
+        buffer->type = CoffSymType( complexType[ symbol->type ], COFF_IMAGE_SYM_DTYPE_NULL );
         buffer->storage_class = storageClass( symbol->linkage );
         buffer->num_aux = 0;
         if( symbol->linkage == OWL_SYM_WEAK ){
@@ -666,7 +666,7 @@ static void formatComdatSymbol( owl_symbol_handle symbol,
 //**************************************************************************
 
     buffer->name.u.non_name.zeros = 0;
-    buffer->name.u.non_name.offset = _OWLStringIndexToCOFFStringIndex( OWLStringOffset( symbol->name ) );
+    buffer->name.u.non_name.offset = OWLStringIndexToCOFFStringIndex( OWLStringOffset( symbol->name ) );
     buffer->value = 0;
     buffer->sec_num = COFF_IMAGE_SYM_UNDEFINED;
     buffer->type = COFF_IMAGE_SYM_DTYPE_NULL;
@@ -687,7 +687,7 @@ static void emitSymbolTable( BackRun& back, owl_file_handle file ) {
         back.owcoff->lastFunc = NULL;
         back.owcoff->lastBf = NULL;
         back.owcoff->lastFile = NULL;
-        symbol_buffer = static_cast<coff_symbol *>(_ClientAlloc( back, file, symbol_table_size ));
+        symbol_buffer = static_cast<coff_symbol *>(ClientAlloc( back, file, symbol_table_size ));
         memset( symbol_buffer, 0, symbol_table_size );
         count = 0;
         for( symbol = file->symbol_table->head; symbol != NULL; symbol = symbol->next ) {
@@ -699,8 +699,8 @@ static void emitSymbolTable( BackRun& back, owl_file_handle file ) {
                 count += 1;
             }
         }
-        _ClientWrite( back, file, (const char *)symbol_buffer, symbol_table_size );
-        _ClientFree( back, file, symbol_buffer );
+        ClientWrite( back, file, (const char *)symbol_buffer, symbol_table_size );
+        ClientFree( back, file, symbol_buffer );
     }
 }
 
@@ -712,7 +712,7 @@ static void prepareStringTable( BackRun& back, owl_file_handle file ) {
     // we need to emit the string table to a buffer so that we can get offsets via OWLStringOffset
     // this will be freed in emitStringTable below
     size = OWLStringTableSize( file->string_table );
-    file->x.coff.string_table = static_cast<coff_string_table *>(_ClientAlloc( back, file, sizeof( coff_string_table ) + size - 1 ));
+    file->x.coff.string_table = static_cast<coff_string_table *>(ClientAlloc( back, file, sizeof( coff_string_table ) + size - 1 ));
     file->x.coff.string_table->size = size + 4;
     OWLStringEmit( file->string_table, file->x.coff.string_table->buffer );
 }
@@ -720,8 +720,8 @@ static void prepareStringTable( BackRun& back, owl_file_handle file ) {
 static void emitStringTable( BackRun& back, owl_file_handle file ) {
 //***************************************************
 
-    _ClientWrite( back, file, (const char *)file->x.coff.string_table, sizeof( coff_string_table ) + file->x.coff.string_table->size - 5 );
-    _ClientFree( back, file, file->x.coff.string_table );
+    ClientWrite( back, file, (const char *)file->x.coff.string_table, sizeof( coff_string_table ) + file->x.coff.string_table->size - 5 );
+    ClientFree( back, file, file->x.coff.string_table );
 }
 
 static void emitReloc( BackRun& back, owl_file_handle file, owl_reloc_info *reloc, _WCUNALIGNED coff_reloc *buffer ) {
@@ -740,10 +740,10 @@ static void emitSectionPadding( BackRun& back, owl_section_info *curr ) {
 
     padding = curr->x.coff.alignment_padding;
     if( padding != 0 ) {
-        buffer = static_cast<char *>(_ClientAlloc( back, curr->file, padding ));
+        buffer = static_cast<char *>(ClientAlloc( back, curr->file, padding ));
         memset( buffer, 0, padding );
-        _ClientWrite( back, curr->file, buffer, padding );
-        _ClientFree( back, curr->file, buffer );
+        ClientWrite( back, curr->file, buffer, padding );
+        ClientFree( back, curr->file, buffer );
     }
 }
 
@@ -758,19 +758,19 @@ static void emitSectionData( BackRun& back, owl_file_handle file ) {
 
     for( curr = file->sections; curr != NULL; curr = curr->next ) {
         emitSectionPadding( back, curr );
-        if( !_OwlSectionBSS( curr ) ) {
+        if( !OwlSectionBSS( curr ) ) {
             OWLBufferEmit( back, curr->buffer );
         }
         if( curr->first_reloc != NULL ) {
             relocs_size = sizeof( coff_reloc ) * curr->num_relocs;
-            reloc_buffer = static_cast<coff_reloc *>(_ClientAlloc( back, file, relocs_size ));
+            reloc_buffer = static_cast<coff_reloc *>(ClientAlloc( back, file, relocs_size ));
             next_reloc = reloc_buffer;
             for( reloc = curr->first_reloc; reloc != NULL; reloc = reloc->next ) {
                 emitReloc( back, file, reloc, next_reloc );
                 next_reloc++;
             }
-            _ClientWrite( back, file, (const char *)reloc_buffer, relocs_size );
-            _ClientFree( back, file, reloc_buffer );
+            ClientWrite( back, file, (const char *)reloc_buffer, relocs_size );
+            ClientFree( back, file, reloc_buffer );
         }
         // now emit linenumbers
         if( curr->num_linenums != 0 ) {

@@ -185,7 +185,7 @@ instruction *Reduce( BackRun& back, instruction *ins )
 /*************************************/
 {
     ins->head.state = INS_NEEDS_WORK;
-    return( ReduceTab[G( ins ) - FIRST_REDUCT]( back, ins ) );
+    return( ReduceTab[InsGenerate( ins ) - FIRST_REDUCT]( back, ins ) );
 }
 
 
@@ -223,7 +223,7 @@ instruction     *rMOVOP1TEMP( BackRun& back, instruction *ins )
     type_class_def      type_class;
     name                *name;
 
-    type_class = _OpClass( ins );
+    type_class = OpClass( ins );
     name = AllocTemp( back, type_class );
     new_ins = MakeMove( back, ins->operands[0], name, type_class );
     ins->operands[0] = name;
@@ -255,7 +255,7 @@ instruction      *rOP1REG( BackRun& back, instruction *ins )
     name                *name1;
     type_class_def      type_class;
 
-    type_class = _OpClass( ins );
+    type_class = OpClass( ins );
     name1 = AllocTemp( back, type_class );
     new_ins = MakeMove( back, ins->operands[0], name1, type_class );
     ins->operands[0] = name1;
@@ -274,7 +274,7 @@ instruction      *rOP2REG( BackRun& back, instruction *ins )
     name                *name1;
     type_class_def      type_class;
 
-    type_class = _OpClass( ins );
+    type_class = OpClass( ins );
     name1 = AllocTemp( back, type_class );
     new_ins = MakeMove( back, ins->operands[1], name1, type_class );
     ins->operands[1] = name1;
@@ -350,7 +350,7 @@ instruction      *rOP1RESREG( BackRun& back, instruction *ins )
     name                *name2;
 
     name1 = AllocRegName( back, Op1Reg( back, ins ) );
-    new_ins = MakeMove( back, ins->operands[0], name1, _OpClass( ins ) );
+    new_ins = MakeMove( back, ins->operands[0], name1, OpClass( ins ) );
     ins->operands[0] = name1;
     MoveSegOp( back, ins, new_ins, 0 );
     PrefixIns( back, ins, new_ins );
@@ -370,12 +370,12 @@ static  bool    CanUseOp1( instruction *ins, name *op1 )
 
     if( op1->n.class_ != N_REGISTER )
         return( false );
-    if( HW_Ovlap( op1->r.reg, ins->head.next->head.live.regs ) )
+    if( HwOvlap( op1->r.reg, ins->head.next->head.live.regs ) )
         return( false );
     if( ins->result->n.class_ == N_INDEXED ) {
         name2 = ins->result->i.index;
         if( name2->n.class_ == N_REGISTER ) {
-            if( HW_Ovlap( name2->r.reg, op1->r.reg ) ) {
+            if( HwOvlap( name2->r.reg, op1->r.reg ) ) {
                 return( false );
             }
         }
@@ -494,7 +494,7 @@ instruction      *rCLRHI_R( BackRun& back, instruction *ins )
     high = HighReg( back, res->r.reg );
     if( op->n.class_ == N_INDEXED
       && ( ( op->i.index->n.class_ == N_REGISTER
-      && HW_Ovlap( op->i.index->r.reg, res->r.reg ) ) /* (1) */
+      && HwOvlap( op->i.index->r.reg, res->r.reg ) ) /* (1) */
       || ( CheckIndecies( back, ins, res->r.reg, HW_EMPTY, NULL ) == MB_MAYBE ) ) ) { /* 2 */
         /* (1) would have gen'd movzd  eax,[eax]
          * (2) avoid incorrect reduction of "cnv [foo] => BX" to
@@ -505,14 +505,14 @@ instruction      *rCLRHI_R( BackRun& back, instruction *ins )
     } else if( !HW_CEqual( high, HW_EMPTY )
       && half_type_class == type_class ) {
         if( op->n.class_ == N_REGISTER
-          && HW_Equal( op->r.reg, high ) ) {
+          && HwEqual( op->r.reg, high ) ) {
             /* look out for movzd ax,ah */
             new_ins = NULL;
         } else {
             new_ins = MoveConst( back, 0, HighPart( back, res, type_class ), type_class );
         }
     } else if( op->n.class_ == N_REGISTER
-      && HW_Ovlap( op->r.reg, res->r.reg ) ) {
+      && HwOvlap( op->r.reg, res->r.reg ) ) {
         /* would have gen'd movzd eax,ah */
         new_ins = NULL;
     } else {
@@ -534,7 +534,7 @@ instruction      *rCLRHI_R( BackRun& back, instruction *ins )
             break;
         }
         high = res->r.reg;
-        HW_TurnOff( high, ins->result->r.reg );
+        HwTurnOff( high, ins->result->r.reg );
         new_ins = MakeNop(back);
         new_ins->zap = (register_name *)AllocRegName( back, high );
         SuffixIns( back, ins, new_ins ); // don't cause high part to be live on entry
@@ -815,7 +815,7 @@ instruction      *rCMPTRUE( BackRun& back, instruction *ins )
 /********************************************/
 {
     DoNothing( back, ins );
-    _SetBlockIndex( ins, _TrueIndex( ins ), _TrueIndex( ins ) );
+    SetBlockIndex( ins, TrueIndex( ins ), TrueIndex( ins ) );
     return( ins );
 }
 
@@ -824,7 +824,7 @@ instruction      *rCMPFALSE( BackRun& back, instruction *ins )
 /*********************************************/
 {
     DoNothing( back, ins );
-    _SetBlockIndex( ins, _FalseIndex( ins ), _FalseIndex( ins ) );
+    SetBlockIndex( ins, FalseIndex( ins ), FalseIndex( ins ) );
     return( ins );
 }
 

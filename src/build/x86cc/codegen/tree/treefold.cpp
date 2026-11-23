@@ -47,7 +47,7 @@
 #include "backrun.hpp"
 
 
-#define HasBigConst( t )       ( ( (t)->attr & TYPE_FLOAT ) || (t)->length == 8 )
+inline bool HasBigConst( const type_def *t ) { return ( ( (t)->attr & TYPE_FLOAT ) || (t)->length == 8 ); }
 
 static const cg_op RevOpcode[] = {
     O_EQ,    /* O_EQ*/
@@ -64,8 +64,8 @@ static const cg_op RevOpcode[] = {
  */
 
 #define SIGN_BIT        (0x8000)
-#define NumSign( a )    ((a) & SIGN_BIT)
-#define NumBits( a )    ((a) & 0x7fff)
+inline int NumSign( int a ) { return ((a) & SIGN_BIT); }
+inline int NumBits( int a ) { return ((a) & 0x7fff); }
 
 typedef enum {
     CMP_VOID    = 0,    /* comparison can't be folded */
@@ -310,7 +310,7 @@ int     GetLog2( uint_32 value )
     uint_32     count;
     int         log;
 
-    if( _IsPowerOfTwo( value ) && value != 0 ) {
+    if( IsPowerOfTwo( value ) && value != 0 ) {
         log = 0;
         count = 1;
         for( ;; ) {

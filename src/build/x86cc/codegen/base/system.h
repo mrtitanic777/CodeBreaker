@@ -33,13 +33,5 @@
 
 #pragma once
 
-#define _IntToByte( value )             ((value) & 0xff)
-#define _TargetShort( value )           ( value )
-#define _TargetBigInt( value )          ( value )
-#define _TargetOffset( value )          ( value )
-#define _TargetLongInt( value )         ( value )
-#define _HostOffset( value )            ( value )
-#define _HostShort( value )             ( value )
-#define _TargetAddL( targetw, value )   targetw += value
-#define _TargetAddW( targetw, value )   targetw += value
+inline int IntToByte( int value ) { return ((value) & 0xff); }
 

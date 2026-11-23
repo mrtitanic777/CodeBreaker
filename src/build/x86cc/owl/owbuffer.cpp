@@ -68,7 +68,7 @@ static void binFini( BackRun& back, owl_buffer *buffer ) {
 
     for( i = 0; i < NUM_BINS; i++ ) {
         if( buffer->bins[i] == NULL ) break;
-        _ClientFree( back, buffer->file, buffer->bins[i] );
+        ClientFree( back, buffer->file, buffer->bins[i] );
     }
 }
 
@@ -80,10 +80,10 @@ static void bufferCollapse( BackRun& back, owl_buffer *buffer ) {
     unsigned            i;
 
     assert( buffer->size == ( buffer->bin_size * NUM_BINS ) );
-    bin = static_cast<char *>(_ClientAlloc( back, buffer->file, buffer->size ));
+    bin = static_cast<char *>(ClientAlloc( back, buffer->file, buffer->size ));
     for( dst = bin, i = 0; i < NUM_BINS; i++ ) {
         memcpy( dst, buffer->bins[i], buffer->bin_size );
-        _ClientFree( back, buffer->file, buffer->bins[i] );
+        ClientFree( back, buffer->file, buffer->bins[i] );
         buffer->bins[i] = NULL;
         dst += buffer->bin_size;
     }
@@ -113,7 +113,7 @@ static void bufferFill( BackRun& back, owl_buffer *buffer, const char *data, siz
     assert( bufferBinBytesLeft( buffer ) >= len );
     index = buffer->location / buffer->bin_size;
     if( buffer->bins[index] == NULL ) {
-        buffer->bins[index] = static_cast<char *>(_ClientAlloc( back, buffer->file, buffer->bin_size ));
+        buffer->bins[index] = static_cast<char *>(ClientAlloc( back, buffer->file, buffer->bin_size ));
     }
     location = &buffer->bins[index][buffer->location % buffer->bin_size];
     if( ( buffer->location + len ) > buffer->size ) {
@@ -169,7 +169,7 @@ owl_buffer * OWLENTRY OWLBufferInit( BackRun& back, owl_file_handle file ) {
 
     owl_buffer          *buffer;
 
-    buffer = static_cast<owl_buffer *>(_ClientAlloc( back, file, sizeof( owl_buffer ) ));
+    buffer = static_cast<owl_buffer *>(ClientAlloc( back, file, sizeof( owl_buffer ) ));
     buffer->location = 0;
     buffer->size = 0;
     buffer->bin_size = INITIAL_BIN_SIZE;
@@ -182,7 +182,7 @@ void OWLENTRY OWLBufferFini( BackRun& back, owl_buffer *buffer ) {
 //*************************************************
 
     binFini( back, buffer );
-    _ClientFree( back, buffer->file, buffer );
+    ClientFree( back, buffer->file, buffer );
 }
 
 void OWLENTRY OWLBufferWrite( BackRun& back, owl_buffer *buffer, const char *src, size_t len )
@@ -248,7 +248,7 @@ void OWLENTRY OWLBufferEmit( BackRun& back, owl_buffer *buffer ) {
 
     last_bin = buffer->size / buffer->bin_size;
     for( i = 0; i < last_bin; i++ ) {
-        _ClientWrite( back, buffer->file, buffer->bins[i], buffer->bin_size );
+        ClientWrite( back, buffer->file, buffer->bins[i], buffer->bin_size );
     }
-    _ClientWrite( back, buffer->file, buffer->bins[i], buffer->size % buffer->bin_size );
+    ClientWrite( back, buffer->file, buffer->bins[i], buffer->size % buffer->bin_size );
 }

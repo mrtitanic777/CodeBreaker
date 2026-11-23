@@ -254,7 +254,7 @@ typedef struct {
 
 // symbol info field contents
 
-#define ELF32_ST_INFO(b,t)      (((b)<<4)+((t)&0x0f))   // make a new st_info
+inline int Elf32StInfo( unsigned short b, unsigned short t ) { return (((b)<<4)+((t)&0x0f)); }   // make a new st_info
 
 
 // bind subfield contents
@@ -297,7 +297,7 @@ typedef struct {
 
 // r_info field contents
 
-#define ELF32_R_INFO(s,t)       (((s)<<8)+(unsigned_8)(t))      // make a new r_info
+inline unsigned int Elf32RInfo( unsigned int s, unsigned int t ) { return (((s)<<8)+(unsigned_8)(t)); }   // make a new r_info
 
 
 // relocation types.

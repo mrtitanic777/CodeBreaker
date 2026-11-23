@@ -150,7 +150,7 @@ inline bool CheckLtSymLevel( const FrontRun& front, const Entry *entry ) { retur
 CB_ALWAYS_INLINE bool IsPPOperatorPragma( const FrontRun& front, const char *s, size_t length )
 {
     return ( front.cvars.CompFlags.extensions_enabled || front.cvars.CompVars.cstd > STD_C89 )
-        && length == LENLIT( PPOPERATOR_PRAGMA )
+        && length == LiteralLength( PPOPERATOR_PRAGMA )
         && strcmp( s, PPOPERATOR_PRAGMA ) == 0;
 }
 inline bool IsHugeData( const FrontRun& front )

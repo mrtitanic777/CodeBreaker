@@ -47,5 +47,5 @@
 #define NULLC                   '\0'
 
 #define INVALID_IDX             (MAX_TOKEN_COUNT + 1)
-#define ISVALID_IDX(x)          ((x)<INVALID_IDX)
-#define ISINVALID_IDX(x)        ((x)>=INVALID_IDX)
+inline bool IsValidIdx( unsigned char x ) { return ((x)<INVALID_IDX); }
+inline bool IsInvalidIdx( unsigned char x ) { return ((x)>=INVALID_IDX); }

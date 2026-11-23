@@ -174,8 +174,8 @@ dw_handle DWENTRY DWRefPCH( BackRun& back, dw_client cli, uint_32 ref )
 
 void DW_WriteAddressClass( BackRun& back, dw_client cli, dw_flags flags )
 {
-    if( GET_FLAG_PTR_TYPE( flags ) ) {
-        DW_Info8( back, cli, GET_FLAG_PTR_TYPE( flags ) );
+    if( GetFlagPtrType( flags ) ) {
+        DW_Info8( back, cli, GetFlagPtrType( flags ) );
     }
 }
 

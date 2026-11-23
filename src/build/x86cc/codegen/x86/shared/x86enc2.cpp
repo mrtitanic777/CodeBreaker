@@ -136,7 +136,7 @@ unsigned DepthAlign( BackRun& back, unsigned depth )
 
     if( back.x86enc2.DepthAlign_AlignArray[0] == 0 || depth == PROC_ALIGN ) {
         unsigned char *align_info_bytes = static_cast<unsigned char *>(FEAuxInfo( *back.front, NULL, FEINF_CODE_LABEL_ALIGNMENT ));
-        Copy( align_info_bytes, back.x86enc2.DepthAlign_AlignArray, align_info_bytes[0] + 1 );
+        memcpy( back.x86enc2.DepthAlign_AlignArray, align_info_bytes, align_info_bytes[0] + 1 );
     }
     if( back.data.OptForSize > 0 )
         return( 1 );
@@ -704,14 +704,14 @@ static  void    DoCodeBytes( BackRun& back, const void *src, byte_seq_len len, o
         addlen = 1;
     }
     while( len + addlen > MAX_OBJ_LEN ) {
-        Copy( src, oc->oc_entry.data, MAX_OBJ_LEN );
+        memcpy( oc->oc_entry.data, src, MAX_OBJ_LEN );
         InputOC( back, oc );
         src = (char *)src + MAX_OBJ_LEN;
         len -= MAX_OBJ_LEN;
     }
     oc->oc_entry.hdr.reclen = offsetof( oc_entry, data ) + len + addlen;
     oc->oc_entry.hdr.objlen = len + addlen;
-    Copy( src, oc->oc_entry.data, len );
+    memcpy( oc->oc_entry.data, src, len );
     if( addlen )
         oc->oc_entry.data[len] = (byte)len;
     InputOC( back, oc );

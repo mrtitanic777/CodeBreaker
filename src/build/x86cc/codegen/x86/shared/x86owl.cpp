@@ -149,7 +149,7 @@ static const char *labelName( BackRun& back, label_handle label )
 
     sym = AskForLblSym( back, label );
     if( AskIfRTLabel( back, label ) )
-        return( AskRTName( back, static_cast<rt_class>(SYM2RTIDX( sym )) ) );
+        return( AskRTName( back, static_cast<rt_class>(SymToRtIdx( sym )) ) );
     if( sym != NULL )
         return( symbolName( back, sym ) );
     return( NULL );
@@ -271,7 +271,7 @@ static owl_reloc_type relocType( BackRun& back, fix_class class_, bool relative 
     if( class_ & (F_TLS | F_FAR16) ) {
         owlUnsupported( back, "OWL x86 MVP does not support TLS or far16 relocations" );
     }
-    switch( F_CLASS( class_ ) ) {
+    switch( FixClass( class_ ) ) {
     case F_OFFSET:
     case F_BIG_OFFSET:
         return( relative ? OWL_RELOC_BRANCH_REL : OWL_RELOC_WORD );
@@ -680,7 +680,7 @@ static void owlOutRTImportRel( BackRun& back, rt_class index, fix_class class_, 
 
 static void owlOutRTImport( BackRun& back, rt_class index, fix_class class_ )
 {
-    owlOutRTImportRel( back, index, class_, F_CLASS( class_ ) == F_OFFSET || F_CLASS( class_ ) == F_LDR_OFFSET );
+    owlOutRTImportRel( back, index, class_, FixClass( class_ ) == F_OFFSET || FixClass( class_ ) == F_LDR_OFFSET );
 }
 
 static void owlOutBckExport( BackRun& back, const char *name, bool is_export )

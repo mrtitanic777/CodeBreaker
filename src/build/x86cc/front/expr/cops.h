@@ -31,7 +31,6 @@
 
 
 #pragma once
-#define IsConstLeaf(opnd)   (opnd->op.opr==OPR_PUSHINT||opnd->op.opr==OPR_PUSHFLOAT)
 
 typedef enum ops {
     #define pick1(enum,dump,cgenum) enum,
@@ -61,7 +60,6 @@ typedef enum {
     OPFLAG_UNALIGNED   = 0x80,          // pointer points to unaligned data
     OPFLAG_MEM_MODEL =  OPFLAG_NEARPTR | OPFLAG_FARPTR | OPFLAG_HUGEPTR | OPFLAG_FAR16PTR,
 } op_flags;
-#define Far16Pointer(flags)   ((flags & OPFLAG_FAR16PTR) == OPFLAG_FAR16PTR)
 
 typedef enum    pointer_class {
     PTRCLS_NEAR = 0,
@@ -80,7 +78,6 @@ typedef enum    pointer_class {
 } pointer_class;
 
 #define PTRCLS_FUNC             PTRCLS_FUNC_NEAR
-#define FAR16_PTRCLASS(cls)     ((cls == PTRCLS_FAR16) || (cls == PTRCLS_FUNC_FAR16))
 
 #define MAX_INLINE_DEPTH  3             // how deep to inline
 typedef enum {
@@ -211,3 +208,7 @@ extern int      WalkExprTree( FrontRun& front, TREEPTR,
                     void (*postfix_operator)(FrontRun&, TREEPTR) );
 extern void     CastConstValue(FrontRun& front, TREEPTR,DATA_TYPE);
 extern void     MakeBinaryFloat(FrontRun& front, TREEPTR);
+
+inline bool IsConstLeaf( expr_node *opnd ) { return (opnd->op.opr==OPR_PUSHINT||opnd->op.opr==OPR_PUSHFLOAT); }
+inline bool Far16Pointer( op_flags flags ) { return ((flags & OPFLAG_FAR16PTR) == OPFLAG_FAR16PTR); }
+inline bool IsFar16PtrClass( pointer_class cls ) { return ((cls == PTRCLS_FAR16) || (cls == PTRCLS_FUNC_FAR16)); }

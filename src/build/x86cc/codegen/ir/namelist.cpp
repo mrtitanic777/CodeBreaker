@@ -563,7 +563,7 @@ name    *AllocRegName( BackRun& back, hw_reg_set regs )
         return( back.namelist.NullReg );
     }
     for( new_r = back.data.Names[N_REGISTER]; new_r != NULL; new_r = new_r->n.next_name ) {
-        if( HW_Equal( new_r->r.reg, regs ) ) {
+        if( HwEqual( new_r->r.reg, regs ) ) {
             return( new_r );
         }
     }

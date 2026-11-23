@@ -54,7 +54,7 @@ namespace {
 
 void Check_Struct_Union_Enum( FrontRun& front, TYPEPTR typ )
 {
-    SKIP_DUMMY_TYPEDEFS( typ );
+    SkipDummyTypedefs( typ );
     switch( typ->decl_type ) {
     case TYP_STRUCT:
     case TYP_UNION:
@@ -141,9 +141,9 @@ static void CmpFuncDecls( FrontRun& front, SYMPTR new_sym, SYMPTR old_sym )
      * skip over TYPEDEF's
      */
     type_new = new_sym->sym_type;
-    SKIP_TYPEDEFS( type_new );
+    SkipTypedefs( type_new );
     type_old = old_sym->sym_type;
-    SKIP_TYPEDEFS( type_old );
+    SkipTypedefs( type_old );
     /*
      * diagnostics for function, target=old and source=new
      */
@@ -159,8 +159,8 @@ static void CmpFuncDecls( FrontRun& front, SYMPTR new_sym, SYMPTR old_sym )
         /*
          * skip over typedef's
          */
-        SKIP_TYPEDEFS( ret_new );
-        SKIP_TYPEDEFS( ret_old );
+        SkipTypedefs( ret_new );
+        SkipTypedefs( ret_old );
         /*
          * don't reorder this expression
          * return value used in forward
@@ -545,13 +545,13 @@ new_var:
         old_sym_handle = SYM_NULL;
         sym->flags |= SYM_DEFINED;
         typ = sym->sym_type;
-        SKIP_DUMMY_TYPEDEFS( typ );
+        SkipDummyTypedefs( typ );
         if( typ->decl_type == TYP_TYPEDEF ) {
             SymGet( front, &sym2, typ->u.typedefn );
             if( sym->u.var.segid == SEG_NULL && sym2.u.var.segid != SEG_NULL ) {
                 sym->u.var.segid = sym2.u.var.segid;
             }
-            SKIP_TYPEDEFS( typ );
+            SkipTypedefs( typ );
         }
         if( typ->decl_type == TYP_VOID ) {
             CErr2p( front, ERR_VAR_CANT_BE_VOID, sym->name );
@@ -622,14 +622,14 @@ static SYM_HANDLE InitDeclarator( FrontRun& front, SYMPTR sym, decl_info const *
     /*
      * skip over typedef's
      */
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( info->stg == SC_TYPEDEF ) {
         if( front.cvars.CompFlags.extensions_enabled ) {
             old_sym_handle = SymLook( front, sym->u1.hash, sym->name );
             if( old_sym_handle != SYM_NULL ) {
                 SymGet( front, &old_sym, old_sym_handle );
                 otyp = old_sym.sym_type;        /* skip typedefs */
-                SKIP_TYPEDEFS( otyp );
+                SkipTypedefs( otyp );
                 if( old_sym.attribs.stg_class == SC_TYPEDEF &&
                     CheckEqSymLevel( front, &old_sym ) && CheckIdenticalType( front, typ, otyp ) ) {
                     return( SYM_NULL );        /* indicate already in symbol tab */
@@ -954,7 +954,7 @@ static TYPEPTR Pointer( FrontRun& front, TYPEPTR typ, struct mod_info *info )
         SYMPTR      symp;
 
         ptr_typ = typ;
-        SKIP_DUMMY_TYPEDEFS( ptr_typ );
+        SkipDummyTypedefs( ptr_typ );
         if( ptr_typ->decl_type == TYP_TYPEDEF ) {
             symp = SymGetPtr( front, ptr_typ->u.typedefn );
             if( info->modifier & FLAG_BASED ) {
@@ -998,7 +998,7 @@ static TYPEPTR Pointer( FrontRun& front, TYPEPTR typ, struct mod_info *info )
 
                     SymGet( front, &sym, sym_handle );
                     sym_typ = sym.sym_type;
-                    SKIP_TYPEDEFS( sym_typ );
+                    SkipTypedefs( sym_typ );
                     if( use_seg ) {
                         info->based_kind = BASED_VARSEG;
                         if( sym_typ->decl_type != TYP_POINTER ) {
@@ -1422,7 +1422,7 @@ static TYPEPTR DeclPart3( FrontRun& front, TYPEPTR typ, type_modifiers mod )
         TYPEPTR     typ2;
 
         typ2 = typ;
-        SKIP_TYPEDEFS( typ2 );
+        SkipTypedefs( typ2 );
         if( typ2->decl_type == TYP_ARRAY ) {
             CErr1( front, ERR_FUNCTION_CANT_RETURN_AN_ARRAY );
         } else if( typ2->decl_type == TYP_FUNCTION ) {
@@ -1484,7 +1484,7 @@ void AdjParmType( FrontRun& front, SYMPTR sym )
     TYPEPTR     typ;
 
     typ = sym->sym_type;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type == TYP_FUNCTION ) {
         sym->sym_type = PtrNode( front, sym->sym_type, sym->mods, SEG_CODE );
         sym->mods = FLAG_NONE;
@@ -1538,7 +1538,7 @@ static TYPEPTR *GetProtoType( FrontRun& front, decl_info *first )
         sym->name = const_cast<char *>("");
         Declarator( front, sym, mod, typ, state );
         typ = sym->sym_type;
-        SKIP_TYPEDEFS( typ );
+        SkipTypedefs( typ );
         if( typ->decl_type == TYP_VOID ) {
             char    buffer[20];
             char    *name;
@@ -1662,7 +1662,7 @@ TYPEPTR *MakeParmList( FrontRun& front, parm_list *parm, bool reversed )
 static bool VoidType( TYPEPTR typ )
 {
     if( typ != NULL ) {
-        SKIP_TYPEDEFS( typ );
+        SkipTypedefs( typ );
         if( typ->decl_type == TYP_VOID ) {
             return( true );
         }

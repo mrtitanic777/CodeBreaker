@@ -82,7 +82,7 @@ obj_length  OptInsSize( BackRun& back, oc_class class_, oc_dest_attr attr )
     obj_length  i;
 
     i = 0;
-    switch( OC_BASE_CLASS( class_ ) ) {
+    switch( OcBaseClass( class_ ) ) {
     case OC_CALL:
         break;
     case OC_JMP:

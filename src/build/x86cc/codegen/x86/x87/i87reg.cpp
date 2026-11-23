@@ -131,7 +131,7 @@ void SetFPParmsUsed( call_state *state, int parms )
 {
     HW_CTurnOff( state->parm.used, HW_FLTS );
     while( parms-- > 0 ) {
-        HW_TurnOn( state->parm.used, GetFPReg( parms ) );
+        HwTurnOn( state->parm.used, GetFPReg( parms ) );
     }
 }
 
@@ -197,7 +197,7 @@ static  bool    AssignFPResult( BackRun& back, block *blk, instruction *ins, int
         return( false );
     if( op->v.usage & (USE_ADDRESS | USE_IN_ANOTHER_BLOCK) )
         return( false );
-    if( !_IsFloating( op->n.type_class ) )
+    if( !IsFloating( op->n.type_class ) )
         return( false );
     if( *stk_level < 0 )
         return( false );
@@ -227,7 +227,7 @@ static  void    AssignFPOps( instruction *ins, int *stk_level )
 
     /* Now check operands ... bump down stack level for each*/
     /* top of stack operand that will be popped (may be more than one)*/
-    if( _OpIsCall( ins->head.opcode ) ) {
+    if( OpIsCall( ins->head.opcode ) ) {
         *stk_level -= CountFPRegs( ins->operands[CALL_OP_USED]->r.reg );
     } else {
         old_level = *stk_level;
@@ -253,7 +253,7 @@ static  void    SetStackLevel( instruction *ins, int *stk_level )
     Returns true if a call ignores a return value in ST(0)
 */
 {
-    if( !_OpIsCall( ins->head.opcode ) )
+    if( !OpIsCall( ins->head.opcode ) )
         return;
     if( !HW_CEqual( ins->result->r.reg, HW_ST0 ) )
         return;
@@ -396,7 +396,7 @@ static  void    CnvResult( BackRun& back, instruction *ins )
 
 static  void    FPConvert( BackRun& back )
 /****************************
-    Make sure all operands of _IsFloating() instructions are a type that
+    Make sure all operands of IsFloating() instructions are a type that
     may be used in an FLD or FST instruction.
 
 */
@@ -409,7 +409,7 @@ static  void    FPConvert( BackRun& back )
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = next ) {
             next = ins->head.next;
             if( ins->head.opcode == OP_CONVERT ) {
-                if( _Is87Ins( ins ) ) {
+                if( Is87Ins( ins ) ) {
                     CnvOperand( back, ins );
                     CnvResult( back, ins );
                 }
@@ -486,7 +486,7 @@ static  void    FPAlloc( BackRun& back )
             SetStackLevel( ins, &stk_level );
             AssignFPOps( ins, &stk_level );
         }
-        if( _IsBlkAttr( blk, BLK_RETURN ) && stk_level == 1 ) {
+        if( IsBlkAttr( blk, BLK_RETURN ) && stk_level == 1 ) {
             stk_level = 0;
         }
         if( stk_level != 0 ) {
@@ -555,9 +555,9 @@ static  void    StackShortLivedTemps( BackRun& back )
             continue;
         if( ins2 == NULL )
             continue;
-        if( !_Is87Ins( ins1 ) )
+        if( !Is87Ins( ins1 ) )
             continue;
-        if( !_Is87Ins( ins2 ) )
+        if( !Is87Ins( ins2 ) )
             continue;
         if( ins1->ins_flags & INS_PARAMETER )
             continue;
@@ -687,7 +687,7 @@ void    FPInitStkReq( BackRun& back )
 int     FPStkReq( BackRun& back, instruction *ins )
 /**********************************/
 {
-    if( !_OpIsIFunc( ins->head.opcode ) )
+    if( !OpIsIFunc( ins->head.opcode ) )
         return( 0 );
     if( FPULevel( back, FPU_387 ) ) {
         return( back.i87reg.StackReq387[ins->head.opcode - FIRST_IFUNC] );
@@ -702,9 +702,9 @@ bool    FPStackIns( BackRun& back, instruction *ins )
 {
     if( !FPULevel( back, FPU_87 ) )
         return( false );
-    if( _OpIsCall( ins->head.opcode ) )
+    if( OpIsCall( ins->head.opcode ) )
         return( true );
-    if( _Is87Ins( ins ) )
+    if( Is87Ins( ins ) )
         return( true );
     return( false );
 }
@@ -723,9 +723,9 @@ bool    FPSideEffect( BackRun& back, instruction *ins )
     if( !FPULevel( back, FPU_87 ) )
         return( false );
     /* calls require a clean stack */
-    if( _OpIsCall( ins->head.opcode ) )
+    if( OpIsCall( ins->head.opcode ) )
         return( true );
-    if( !_Is87Ins( ins ) )
+    if( !Is87Ins( ins ) )
         return( false );
     has_fp_reg = false;
     for( i = ins->num_operands; i-- > 0; ) {
@@ -760,7 +760,7 @@ type_class_def  FPInsClass( BackRun& back, instruction *ins )
 {
     if( !FPULevel( back, FPU_87 ) )
         return( XX );
-    if( !_Is87Ins( ins ) )
+    if( !Is87Ins( ins ) )
         return( XX );
     return( FD );
 }
@@ -775,7 +775,7 @@ void    FPSetStack( name *name )
         return;
     if( name->v.usage & USE_IN_ANOTHER_BLOCK )
         return;
-    if( !_IsFloating( name->n.type_class ) )
+    if( !IsFloating( name->n.type_class ) )
         return;
     name->t.temp_flags |= CAN_STACK;
 }
@@ -834,7 +834,7 @@ bool    FPIsConvert( BackRun& back, instruction *ins )
     res_type_class = ins->result->n.type_class;
     if( op_type_class == res_type_class )
         return( false );
-    if( _Is87Ins( ins ) )
+    if( Is87Ins( ins ) )
         return( true );
     return( false );
 }

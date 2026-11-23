@@ -50,8 +50,8 @@ namespace {
 
 
 
-#define COST( s, t ) ( ( (s)*size + (t)*time ) / TOTAL_WEIGHT )
-#define _NEXTCON( c ) (*(conflict_node**)&((c)->tree))
+inline uint Cost( uint size, uint time, int s, int t ) { return ( s * size + t * time ) / TOTAL_WEIGHT; }
+inline conflict_node *&NextCon( conflict_node *c ) { return (*(conflict_node**)&((c)->tree)); }
 
 void    InitWeights( BackRun& back, uint size )
 /*****************************************
@@ -76,26 +76,26 @@ void    InitWeights( BackRun& back, uint size )
 
 
     if( CPULevel( back, CPU_486 ) /* or 586 */ ) {
-        SetCost( back.regsave.Save.load_cost, COST( 3,1 ) );
-        SetCost( back.regsave.Save.store_cost, COST( 3,1 ) );
-        SetCost( back.regsave.Save.use_save, COST( 1,1 ) );
-        SetCost( back.regsave.Save.def_save, COST( 1,1 ) );
-        SetCost( back.regsave.Save.push_cost, COST( 1,1 ) );
-        SetCost( back.regsave.Save.pop_cost, COST( 1,1 ) );
+        SetCost( back.regsave.Save.load_cost, Cost( size, time, 3,1 ) );
+        SetCost( back.regsave.Save.store_cost, Cost( size, time, 3,1 ) );
+        SetCost( back.regsave.Save.use_save, Cost( size, time, 1,1 ) );
+        SetCost( back.regsave.Save.def_save, Cost( size, time, 1,1 ) );
+        SetCost( back.regsave.Save.push_cost, Cost( size, time, 1,1 ) );
+        SetCost( back.regsave.Save.pop_cost, Cost( size, time, 1,1 ) );
     } else if( CPULevel( back, CPU_386 ) ) {
-        SetCost( back.regsave.Save.load_cost, COST( 3,4 ) );
-        SetCost( back.regsave.Save.store_cost, COST( 3,2 ) );
-        SetCost( back.regsave.Save.use_save, COST( 1,(4-2) ) );
-        SetCost( back.regsave.Save.def_save, COST( 1,2 ) );
-        SetCost( back.regsave.Save.push_cost, COST( 1,2 ) );
-        SetCost( back.regsave.Save.pop_cost, COST( 1,4 ) );
+        SetCost( back.regsave.Save.load_cost, Cost( size, time, 3,4 ) );
+        SetCost( back.regsave.Save.store_cost, Cost( size, time, 3,2 ) );
+        SetCost( back.regsave.Save.use_save, Cost( size, time, 1,(4-2) ) );
+        SetCost( back.regsave.Save.def_save, Cost( size, time, 1,2 ) );
+        SetCost( back.regsave.Save.push_cost, Cost( size, time, 1,2 ) );
+        SetCost( back.regsave.Save.pop_cost, Cost( size, time, 1,4 ) );
     } else { // how about some 286 and 186 timings!
-        SetCost( back.regsave.Save.load_cost, COST( 3,17 ) );
-        SetCost( back.regsave.Save.store_cost, COST( 3,18 ) );
-        SetCost( back.regsave.Save.use_save, COST( 1,(18-3) ) );
-        SetCost( back.regsave.Save.def_save, COST( 1,18 ) );
-        SetCost( back.regsave.Save.push_cost, COST( 1,11 ) );
-        SetCost( back.regsave.Save.pop_cost, COST( 1,8 ) );
+        SetCost( back.regsave.Save.load_cost, Cost( size, time, 3,17 ) );
+        SetCost( back.regsave.Save.store_cost, Cost( size, time, 3,18 ) );
+        SetCost( back.regsave.Save.use_save, Cost( size, time, 1,(18-3) ) );
+        SetCost( back.regsave.Save.def_save, Cost( size, time, 1,18 ) );
+        SetCost( back.regsave.Save.push_cost, Cost( size, time, 1,11 ) );
+        SetCost( back.regsave.Save.pop_cost, Cost( size, time, 1,8 ) );
     }
     back.regsave.Save.index_save     = back.regsave.Save.load_cost[WD];
 }
@@ -116,15 +116,15 @@ bool    WorthProlog( BackRun& back, conflict_node *conf, hw_reg_set reg )
 
     type_class = conf->name->n.type_class;
     must_save = MustSaveRegs(back);
-    if( back.data.BlockByBlock || HW_Ovlap( reg, back.data.GivenRegisters ) ||
-       !HW_Ovlap( reg, must_save ) ) {
+    if( back.data.BlockByBlock || HwOvlap( reg, back.data.GivenRegisters ) ||
+       !HwOvlap( reg, must_save ) ) {
         cost = 0;
     } else {
         cost = back.regsave.Save.pop_cost[type_class] + back.regsave.Save.push_cost[type_class];
     }
     op = conf->name;
     savings = conf->savings;
-    if( _ConstTemp( op ) ) {
+    if( ConstTemp( op ) ) {
         /* adjust for the initial load */
         cost += Weight( back, back.regsave.Save.load_cost[type_class] + back.regsave.Save.def_save[type_class], conf->start_block );
         /* Adjust by a fudge factor */
@@ -155,9 +155,9 @@ void        ConstSavings( BackRun& back )
         for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
             if( ins->head.opcode != OP_MOV )
                 continue;
-            if( !_ConstTemp(ins->operands[0]) )
+            if( !ConstTemp(ins->operands[0]) )
                 continue;
-            if( !_ConstTemp(ins->result) )
+            if( !ConstTemp(ins->result) )
                 continue;
             conf = NameConflict( back, ins, ins->operands[0] );
             if( conf == NULL )
@@ -165,45 +165,45 @@ void        ConstSavings( BackRun& back )
             other = NameConflict( back, ins, ins->result );
             if( other == NULL )
                 continue;
-            if( _Isnt( conf, CST_SAVINGS_JUST_CALCULATED ) )
+            if( LacksConflictState( conf, CST_SAVINGS_JUST_CALCULATED ) )
                 continue;
-            if( _Isnt( other, CST_SAVINGS_CALCULATED ) )
+            if( LacksConflictState( other, CST_SAVINGS_CALCULATED ) )
                 continue;
-            _NEXTCON( conf ) = other;
+            NextCon( conf ) = other;
         }
     }
     for( conf = back.data.ConfList; conf != NULL; conf = conf->next_conflict ) {
-        if( _Is( conf, CST_SAVINGS_JUST_CALCULATED ) && _ConstTemp( conf->name ) ) {
-            for( other=_NEXTCON(conf); other != NULL; other=_NEXTCON(other) ) {
+        if( HasConflictState( conf, CST_SAVINGS_JUST_CALCULATED ) && ConstTemp( conf->name ) ) {
+            for( other=NextCon(conf); other != NULL; other=NextCon(other) ) {
                 conf->savings += other->savings;
-                if( _Is( other, CST_CONF_VISITED ) ) {
+                if( HasConflictState( other, CST_CONF_VISITED ) ) {
                     break;
                 }
             }
-            _SetTrue( conf, CST_CONF_VISITED ); /* already summed down the list */
+            SetTrue( conf, CST_CONF_VISITED ); /* already summed down the list */
         }
     }
     for( conf = back.data.ConfList; conf != NULL; conf = conf->next_conflict ) {
-        _NEXTCON( conf ) = NULL;
-        _SetFalse( conf, CST_CONF_VISITED );
+        NextCon( conf ) = NULL;
+        SetFalse( conf, CST_CONF_VISITED );
     }
     back.x86regsv.MaxConstSave = 0;
     for( conf = back.data.ConfList; conf != NULL; conf = conf->next_conflict ) {
-        if( !_ConstTemp( conf->name ) )
+        if( !ConstTemp( conf->name ) )
             continue;
-        _SetFalse( conf, CST_SAVINGS_JUST_CALCULATED );
-        if( _Isnt( conf, CST_SAVINGS_CALCULATED ) )
+        SetFalse( conf, CST_SAVINGS_JUST_CALCULATED );
+        if( LacksConflictState( conf, CST_SAVINGS_CALCULATED ) )
             continue;
         if( conf->savings < back.x86regsv.MaxConstSave )
             continue;
         back.x86regsv.MaxConstSave = conf->savings;
     }
     for( conf = back.data.ConfList; conf != NULL; conf = conf->next_conflict ) {
-        if( _ConstTemp( conf->name ) )
+        if( ConstTemp( conf->name ) )
             continue;
-        if( _Isnt( conf, CST_SAVINGS_JUST_CALCULATED ) )
+        if( LacksConflictState( conf, CST_SAVINGS_JUST_CALCULATED ) )
             continue;
-        _SetFalse( conf, CST_SAVINGS_JUST_CALCULATED );
+        SetFalse( conf, CST_SAVINGS_JUST_CALCULATED );
         if( conf->savings != 0 ) {
             conf->savings += back.x86regsv.MaxConstSave;
         }

@@ -60,8 +60,8 @@ static  void    PullQueue( BackRun& back )
         OptPull(back);
         if( back.optdata.FirstIns == NULL )
             break;
-        if( _Class( back.optdata.FirstIns ) == OC_LABEL ) {
-            if( UniqueLabel( back, _Label( back.optdata.FirstIns ) ) ) {
+        if( OcClass( back.optdata.FirstIns ) == OC_LABEL ) {
+            if( UniqueLabel( back, LabelOf( back.optdata.FirstIns ) ) ) {
                 /*
                  * take off extra byte added when the ins went into queue
                  */
@@ -72,8 +72,8 @@ static  void    PullQueue( BackRun& back )
              * symbols dump out first. They might be FE_COMMON labels.
              */
             be_lbls = NULL;
-            owner = &_Label( back.optdata.FirstIns );
-            for( lbl = _Label( back.optdata.FirstIns ); lbl != NULL; lbl = next ) {
+            owner = &LabelOf( back.optdata.FirstIns );
+            for( lbl = LabelOf( back.optdata.FirstIns ); lbl != NULL; lbl = next ) {
                 next = lbl->alias;
                 if( lbl->lbl.sym != NULL ) {
                     *owner = lbl;
@@ -87,22 +87,22 @@ static  void    PullQueue( BackRun& back )
         }
         for( ;; ) {
             next_ins = NextIns( back, back.optdata.FirstIns );
-            if( next_ins != NULL && _Class( next_ins ) == OC_LABEL ) {
+            if( next_ins != NULL && OcClass( next_ins ) == OC_LABEL ) {
                 OutputOC( back, &back.optdata.FirstIns->oc, &next_ins->oc );
             } else {
                 OutputOC( back, &back.optdata.FirstIns->oc, NULL );
             }
-            cl = _Class( back.optdata.FirstIns );
+            cl = OcClass( back.optdata.FirstIns );
             if( cl != OC_LABEL )
                 break;
-            lbl = _Label( back.optdata.FirstIns );
+            lbl = LabelOf( back.optdata.FirstIns );
             lbl->ins = NULL;
             next = lbl->alias;
             if( next == NULL )
                 break;
             lbl->alias = NULL;
             TryScrapLabel( back, lbl );
-            _Label( back.optdata.FirstIns ) = next;
+            LabelOf( back.optdata.FirstIns ) = next;
         }
         DelInstr( back, back.optdata.FirstIns );
         FreePendingDeletes(back);
@@ -111,7 +111,7 @@ static  void    PullQueue( BackRun& back )
          * flow instruction since things may be bypassing the control
          * flow optimizer.
          */
-        if( _TransferClass( cl ) )
+        if( TransferClass( cl ) )
             break;
         if( back.optdata.FirstIns == NULL ) {
             break;
@@ -130,10 +130,10 @@ static  bool    LDone( BackRun& back, any_oc *oc )
     if( oc->oc_header.class_ != OC_LDONE )
         { OptEnd( back ); return( false ); }
     lbl = oc->oc_handle.handle;
-    _ValidLbl( lbl );
-    if( !_TstStatus( lbl, CODELABEL ) )
+    ValidLbl( lbl );
+    if( !TstStatus( lbl, CODELABEL ) )
         { OptEnd( back ); return( false ); }
-    _SetStatus( lbl, DYINGLABEL );
+    SetStatus( lbl, DYINGLABEL );
     TryScrapLabel( back, lbl );
     { OptEnd( back ); return( true ); }
 }
@@ -146,10 +146,10 @@ void    InputOC( BackRun& back, any_oc *oc )
   OptBegin( back );
     PSBlip();
     if( !LDone( back, oc ) ) {
-        if( OC_BASE_CLASS( oc->oc_header.class_ ) != OC_INFO
-         && OC_BASE_CLASS( oc->oc_header.class_ ) != OC_LABEL ) {
+        if( OcBaseClass( oc->oc_header.class_ ) != OC_INFO
+         && OcBaseClass( oc->oc_header.class_ ) != OC_LABEL ) {
             cl = PrevClass( back, NULL );
-            if( _TransferClass( cl ) ) {
+            if( TransferClass( cl ) ) {
                 { OptEnd( back ); return; } /*dead code*/
             }
         }
@@ -157,9 +157,9 @@ void    InputOC( BackRun& back, any_oc *oc )
             PullQueue(back);
         }
         AddInstr( back, NewInstr( back, oc ), back.optdata.LastIns );
-        switch( _Class( back.optdata.LastIns ) ) {
+        switch( OcClass( back.optdata.LastIns ) ) {
         case OC_LABEL:
-            if( _TstStatus( _Label( back.optdata.LastIns ), UNIQUE ) ) {
+            if( TstStatus( LabelOf( back.optdata.LastIns ), UNIQUE ) ) {
                 /*
                  * Unique labels might need an addition byte of spacing
                  */
@@ -170,7 +170,7 @@ void    InputOC( BackRun& back, any_oc *oc )
         case OC_JCOND:
         case OC_JMP:
         case OC_CALL:
-            _ClrStatus( _Label( back.optdata.LastIns ), DYINGLABEL );
+            ClrStatus( LabelOf( back.optdata.LastIns ), DYINGLABEL );
             break;
         }
         OptPush(back);
@@ -243,7 +243,6 @@ void    FiniQueue( BackRun& back )
   OptBegin( back );
     { segment_id old_segid = ChangeOP( back, AskCodeSeg(back) );
         EmptyQueue(back);
-        _DumpSavings();
     SetOP( back, old_segid ); }
   OptEnd( back );
 }

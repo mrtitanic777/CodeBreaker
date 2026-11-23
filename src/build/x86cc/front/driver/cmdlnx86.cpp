@@ -57,7 +57,6 @@
     #define UIMX86  "_M_I386"
 #endif
 
-    #define DbgNever()
 
 namespace {
 
@@ -125,7 +124,6 @@ static char *setTargetSystem( FrontRun& front, OPT_STORAGE *data )
     case OPT_ENUM_win_default:
         break;
     default:
-        DbgNever();
         break;
     }
 
@@ -179,28 +177,27 @@ static void setIntelArchitecture( FrontRun& front, OPT_STORAGE *data )
     switch( data->arch_i86 ) {
     case OPT_ENUM_arch_i86_default:
     case OPT_ENUM_arch_i86__0:
-        SET_CPU( front.cvars.ProcRevision, CPU_86 );
+        SetCpu( front.cvars.ProcRevision, CPU_86 );
         break;
     case OPT_ENUM_arch_i86__1:
-        SET_CPU( front.cvars.ProcRevision, CPU_186 );
+        SetCpu( front.cvars.ProcRevision, CPU_186 );
         break;
     case OPT_ENUM_arch_i86__2:
-        SET_CPU( front.cvars.ProcRevision, CPU_286 );
+        SetCpu( front.cvars.ProcRevision, CPU_286 );
         break;
     case OPT_ENUM_arch_i86__3:
-        SET_CPU( front.cvars.ProcRevision, CPU_386 );
+        SetCpu( front.cvars.ProcRevision, CPU_386 );
         break;
     case OPT_ENUM_arch_i86__4:
-        SET_CPU( front.cvars.ProcRevision, CPU_486 );
+        SetCpu( front.cvars.ProcRevision, CPU_486 );
         break;
     case OPT_ENUM_arch_i86__5:
-        SET_CPU( front.cvars.ProcRevision, CPU_586 );
+        SetCpu( front.cvars.ProcRevision, CPU_586 );
         break;
     case OPT_ENUM_arch_i86__6:
-        SET_CPU( front.cvars.ProcRevision, CPU_686 );
+        SetCpu( front.cvars.ProcRevision, CPU_686 );
         break;
     default:
-        DbgNever();
         break;
     }
 #else
@@ -209,36 +206,35 @@ static void setIntelArchitecture( FrontRun& front, OPT_STORAGE *data )
      */
     switch( data->arch_386 ) {
     case OPT_ENUM_arch_386__3s:
-        SET_CPU( front.cvars.ProcRevision, CPU_386 );
+        SetCpu( front.cvars.ProcRevision, CPU_386 );
         break;
     case OPT_ENUM_arch_386__3r:
         front.cvars.CompFlags.register_conventions = true;
-        SET_CPU( front.cvars.ProcRevision, CPU_386 );
+        SetCpu( front.cvars.ProcRevision, CPU_386 );
         break;
     case OPT_ENUM_arch_386__4s:
-        SET_CPU( front.cvars.ProcRevision, CPU_486 );
+        SetCpu( front.cvars.ProcRevision, CPU_486 );
         break;
     case OPT_ENUM_arch_386__4r:
         front.cvars.CompFlags.register_conventions = true;
-        SET_CPU( front.cvars.ProcRevision, CPU_486 );
+        SetCpu( front.cvars.ProcRevision, CPU_486 );
         break;
     case OPT_ENUM_arch_386__5s:
-        SET_CPU( front.cvars.ProcRevision, CPU_586 );
+        SetCpu( front.cvars.ProcRevision, CPU_586 );
         break;
     case OPT_ENUM_arch_386__5r:
         front.cvars.CompFlags.register_conventions = true;
-        SET_CPU( front.cvars.ProcRevision, CPU_586 );
+        SetCpu( front.cvars.ProcRevision, CPU_586 );
         break;
     case OPT_ENUM_arch_386__6s:
-        SET_CPU( front.cvars.ProcRevision, CPU_686 );
+        SetCpu( front.cvars.ProcRevision, CPU_686 );
         break;
     case OPT_ENUM_arch_386_default:
     case OPT_ENUM_arch_386__6r:
         front.cvars.CompFlags.register_conventions = true;
-        SET_CPU( front.cvars.ProcRevision, CPU_686 );
+        SetCpu( front.cvars.ProcRevision, CPU_686 );
         break;
     default:
-        DbgNever();
         break;
     }
     /*
@@ -256,25 +252,24 @@ static void setIntelArchitecture( FrontRun& front, OPT_STORAGE *data )
      */
     switch( data->intel_fpu_level ) {
     case OPT_ENUM_intel_fpu_level_fp6:
-        SET_FPU_LEVEL( front.cvars.ProcRevision, FPU_686 );
+        SetFpuLevel( front.cvars.ProcRevision, FPU_686 );
         break;
     case OPT_ENUM_intel_fpu_level_fp5:
-        SET_FPU_LEVEL( front.cvars.ProcRevision, FPU_586 );
+        SetFpuLevel( front.cvars.ProcRevision, FPU_586 );
         break;
 #if _CPU == 386
     case OPT_ENUM_intel_fpu_level_default:
 #endif
     case OPT_ENUM_intel_fpu_level_fp3:
-        SET_FPU_LEVEL( front.cvars.ProcRevision, FPU_387 );
+        SetFpuLevel( front.cvars.ProcRevision, FPU_387 );
         break;
 #if _CPU == 8086
     case OPT_ENUM_intel_fpu_level_default:
 #endif
     case OPT_ENUM_intel_fpu_level_fp2:
-        SET_FPU_LEVEL( front.cvars.ProcRevision, FPU_87 );
+        SetFpuLevel( front.cvars.ProcRevision, FPU_87 );
         break;
     default:
-        DbgNever();
         break;
     }
     /*
@@ -286,21 +281,20 @@ static void setIntelArchitecture( FrontRun& front, OPT_STORAGE *data )
 #if _CPU == 386
         if( front.cvars.TargetSystem != TS_WINDOWS ) {
 #endif
-            SET_FPU_EMU( front.cvars.ProcRevision );
+            SetFpuEmu( front.cvars.ProcRevision );
             break;
 #if _CPU == 386
         }
         /* fall through */
 #endif
     case OPT_ENUM_intel_fpu_model_fpi87:
-        SET_FPU_INLINE( front.cvars.ProcRevision );
+        SetFpuInline( front.cvars.ProcRevision );
         break;
     case OPT_ENUM_intel_fpu_model_fpc:
-        SET_FPU_FPC( front.cvars.ProcRevision );
+        SetFpuFpc( front.cvars.ProcRevision );
         front.cvars.CompFlags.op_switch_used = false;
         break;
     default:
-        DbgNever();
         break;
     }
     /*
@@ -339,7 +333,6 @@ static void setIntelArchitecture( FrontRun& front, OPT_STORAGE *data )
     case OPT_ENUM_fp_rounding_default:
         break;
     default:
-        DbgNever();
         break;
     }
 }
@@ -376,7 +369,6 @@ static void SetDftCallConv( FrontRun& front, OPT_STORAGE *data )
         front.callinfo.DftCallConv = &WatcallInfo( front );
         break;
     default:
-        DbgNever();
         break;
     }
 }
@@ -451,7 +443,7 @@ static void SetFinalTargetSystem( FrontRun& front, OPT_STORAGE *data, char *targ
         break;
     }
 
-    if( GET_CPU( front.cvars.ProcRevision ) < CPU_386 ) {
+    if( GetCpu( front.cvars.ProcRevision ) < CPU_386 ) {
         /*
          * issue warning message if /zf[f|p] or /zg[f|p] spec'd?
          */
@@ -518,7 +510,6 @@ static void SetDebugInfoFormat( FrontRun& front, OPT_STORAGE *data )
         front.cvars.GenSwitches |= CGSW_GEN_DBG_DF;
         break;
     default:
-        DbgNever();
         break;
     }
 }
@@ -657,7 +648,7 @@ static void PreDefine_UMIX86_Macro( FrontRun& front )
     unsigned    cpu;
     char        buff[32];
 
-    switch( GET_CPU( front.cvars.ProcRevision ) ) {
+    switch( GetCpu( front.cvars.ProcRevision ) ) {
     case CPU_86:        cpu = 0;   break;
     case CPU_186:       cpu = 100; break;
     case CPU_286:       cpu = 200; break;
@@ -883,7 +874,7 @@ static void MacroDefs( FrontRun& front, OPT_STORAGE *data )
         DefSwitchMacro( front, "EC" );
     }
 
-    switch( GET_CPU( front.cvars.ProcRevision ) ) {
+    switch( GetCpu( front.cvars.ProcRevision ) ) {
     case CPU_86:
         DefSwitchMacro( front, "0" );
         break;
@@ -911,7 +902,7 @@ static void MacroDefs( FrontRun& front, OPT_STORAGE *data )
 
     PreDefine_UMIX86_Macro(front);
 
-    switch( GET_FPU_LEVEL( front.cvars.ProcRevision ) ) {
+    switch( GetFpuLevel( front.cvars.ProcRevision ) ) {
     case FPU_87:
         DefSwitchMacro( front, "FP2" );
         break;
@@ -927,10 +918,10 @@ static void MacroDefs( FrontRun& front, OPT_STORAGE *data )
     default:
         break;
     }
-    if( GET_FPU_FPC( front.cvars.ProcRevision ) ) {
+    if( GetFpuFpc( front.cvars.ProcRevision ) ) {
         DefSwitchMacro( front, "FPC" );
     } else {
-        if( GET_FPU_EMU( front.cvars.ProcRevision ) ) {
+        if( GetFpuEmu( front.cvars.ProcRevision ) ) {
             DefSwitchMacro( front, "FPI" );
         } else {
             DefSwitchMacro( front, "FPI87" );
@@ -1011,7 +1002,7 @@ static void Define_Memory_Model( FrontRun& front, OPT_STORAGE *data )
         break;
 #endif
     default:
-        DbgNever();
+        break;
     }
 
     /*
@@ -1069,7 +1060,6 @@ static void Define_Memory_Model( FrontRun& front, OPT_STORAGE *data )
     case OPT_ENUM_ds_peg_default:
         break;
     default:
-        DbgNever();
         break;
     }
     /*
@@ -1078,7 +1068,7 @@ static void Define_Memory_Model( FrontRun& front, OPT_STORAGE *data )
      * FS segment register is used by 32-bit FLAT memory model
      * except Windows 32-bit Extender
      */
-    if( GET_CPU( front.cvars.ProcRevision ) >= CPU_386 ) {
+    if( GetCpu( front.cvars.ProcRevision ) >= CPU_386 ) {
 #if _CPU == 8086
         bit |= CGSW_X86_FLOATING_FS;
 #else
@@ -1100,13 +1090,12 @@ static void Define_Memory_Model( FrontRun& front, OPT_STORAGE *data )
     case OPT_ENUM_fs_peg_default:
         break;
     default:
-        DbgNever();
         break;
     }
     /*
      * setup GS segment register floating
      */
-    if( GET_CPU( front.cvars.ProcRevision ) >= CPU_386 ) {
+    if( GetCpu( front.cvars.ProcRevision ) >= CPU_386 ) {
         bit |= CGSW_X86_FLOATING_GS;
     }
     switch( data->gs_peg ) {
@@ -1121,14 +1110,13 @@ static void Define_Memory_Model( FrontRun& front, OPT_STORAGE *data )
     case OPT_ENUM_gs_peg_default:
         break;
     default:
-        DbgNever();
         break;
     }
 
     front.cvars.TargetSwitches &= ~(CGSW_X86_FLAT_MODEL | CGSW_X86_BIG_CODE | CGSW_X86_BIG_DATA | CGSW_X86_CHEAP_POINTER);
     front.cvars.TargetSwitches |= static_cast<cg_target_switches>(bit);
 
-    if( GET_CPU( front.cvars.ProcRevision ) < CPU_386 ) {
+    if( GetCpu( front.cvars.ProcRevision ) < CPU_386 ) {
         /*
          * issue warning message if /zf[f|p] or /zg[f|p] spec'd?
          */
@@ -1147,12 +1135,12 @@ static void Define_Memory_Model( FrontRun& front, OPT_STORAGE *data )
             strcpy( front.cvars.CLIB_Name, "1clibdl?" );
         }
     }
-    if( GET_FPU_FPC( front.cvars.ProcRevision ) ) {
+    if( GetFpuFpc( front.cvars.ProcRevision ) ) {
         strcpy( front.cvars.MATHLIB_Name, "5math?" );
         front.cvars.EmuLib_Name = NULL;
     } else {
         strcpy( front.cvars.MATHLIB_Name, "7math87?" );
-        if( GET_FPU_EMU( front.cvars.ProcRevision ) ) {
+        if( GetFpuEmu( front.cvars.ProcRevision ) ) {
             front.cvars.EmuLib_Name = const_cast<char *>("8emu87");
         } else {
             front.cvars.EmuLib_Name = const_cast<char *>("8noemu87");
@@ -1171,7 +1159,7 @@ static void Define_Memory_Model( FrontRun& front, OPT_STORAGE *data )
     } else {
         strcpy( front.cvars.CLIB_Name, "1clib3?" );     /* There is only 1 CLIB now! */
     }
-    if( GET_FPU_FPC( front.cvars.ProcRevision ) ) {
+    if( GetFpuFpc( front.cvars.ProcRevision ) ) {
         if( front.cvars.CompFlags.br_switch_used ) {
             strcpy( front.cvars.MATHLIB_Name, "5mth?dll" );
         } else {
@@ -1184,7 +1172,7 @@ static void Define_Memory_Model( FrontRun& front, OPT_STORAGE *data )
         } else {
             strcpy( front.cvars.MATHLIB_Name, "7math387?" );
         }
-        if( GET_FPU_EMU( front.cvars.ProcRevision ) ) {
+        if( GetFpuEmu( front.cvars.ProcRevision ) ) {
             front.cvars.EmuLib_Name = const_cast<char *>("8emu387");
         } else {
             front.cvars.EmuLib_Name = const_cast<char *>("8noemu387");

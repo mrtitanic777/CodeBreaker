@@ -58,22 +58,22 @@ void    RetAftrCall( BackRun& back, ins_entry *ret_instr )
     if( PrevClass( back, call_instr ) != OC_CALL )
         { OptEnd( back ); return; }
     call_instr = PrevIns( back, call_instr );
-    if( _ChkAttr( call_instr, OC_ATTR_POP ) )
+    if( ChkAttr( call_instr, OC_ATTR_POP ) )
         { OptEnd( back ); return; }
-    if( _ChkAttr( ret_instr, OC_ATTR_POP ) )
+    if( ChkAttr( ret_instr, OC_ATTR_POP ) )
         { OptEnd( back ); return; }
-    if( ( _ChkAttr( call_instr, OC_ATTR_FAR ) ^ _ChkAttr( ret_instr, OC_ATTR_FAR ) ) != 0 )
+    if( ( ChkAttr( call_instr, OC_ATTR_FAR ) ^ ChkAttr( ret_instr, OC_ATTR_FAR ) ) != 0 )
         { OptEnd( back ); return; }
     back.optdata.InsDelete = true;
-    _ChgClass( call_instr, OC_JMP );
+    ChgClass( call_instr, OC_JMP );
     /* NB! this code assumes that we aren't making the instruction longer */
-    if( _ObjLen( call_instr ) == OptInsSize( back, OC_CALL, OC_DEST_CHEAP ) ) {
-        _ObjLen( call_instr ) = OptInsSize( back, OC_JMP, OC_DEST_NEAR );
-        _ClassInfo( call_instr ) &= ~OC_ATTR_FAR;
-    } else if( _ObjLen( call_instr ) == OptInsSize( back, OC_CALL, OC_DEST_FAR ) ) {
-        _ObjLen( call_instr ) = OptInsSize( back, OC_JMP, OC_DEST_FAR );
+    if( ObjLen( call_instr ) == OptInsSize( back, OC_CALL, OC_DEST_CHEAP ) ) {
+        ObjLen( call_instr ) = OptInsSize( back, OC_JMP, OC_DEST_NEAR );
+        ClassInfo( call_instr ) &= ~OC_ATTR_FAR;
+    } else if( ObjLen( call_instr ) == OptInsSize( back, OC_CALL, OC_DEST_FAR ) ) {
+        ObjLen( call_instr ) = OptInsSize( back, OC_JMP, OC_DEST_FAR );
     } else {
-        _ObjLen( call_instr ) = OptInsSize( back, OC_JMP, OC_DEST_NEAR );
+        ObjLen( call_instr ) = OptInsSize( back, OC_JMP, OC_DEST_NEAR );
     }
     IsolatedCode( back, call_instr );
     Untangle( back, PrevIns( back, call_instr ) );
@@ -87,7 +87,7 @@ void    JmpToRet( BackRun& back, ins_entry *instr, ins_entry *ret )
   OptBegin( back );
     ret = NewInstr( back, &ret->oc );
     AddInstr( back, ret, instr );
-    _Savings( OPT_JMPTORET, _ObjLen( instr ) - _ObjLen( ret ) );
+    _Savings( OPT_JMPTORET, ObjLen( instr ) - ObjLen( ret ) );
     DelInstr( back, instr );
     RetAftrCall( back, ret );
   OptEnd( back );
@@ -105,15 +105,15 @@ bool    RetAftrLbl( BackRun& back, ins_entry *ret )
   OptBegin( back );
     change = false;
     if( PrevClass( back, ret ) == OC_LABEL ) {
-        lbl = _Label( PrevIns( back, ret ) );
+        lbl = LabelOf( PrevIns( back, ret ) );
         for( ref = lbl->refs; ref != NULL; ref = next ) {
-            next = _LblRef( ref );
-            if( _Class( ref ) == OC_JMP ) {
+            next = LblRef( ref );
+            if( OcClass( ref ) == OC_JMP ) {
                 JmpToRet( back, ref, ret );
                 change = true;
-            } else if( _Class( ref ) == OC_CALL ) {
-                if( !_ChkAttr( ret, OC_ATTR_POP ) ) {
-                    _Savings( OPT_CALLTORET, _ObjLen( ref ) );
+            } else if( OcClass( ref ) == OC_CALL ) {
+                if( !ChkAttr( ret, OC_ATTR_POP ) ) {
+                    _Savings( OPT_CALLTORET, ObjLen( ref ) );
                     DelInstr( back, ref );
                     change = true;
                 }
@@ -130,17 +130,17 @@ void    MultiLineNums( BackRun& back, ins_entry *ins )
     ins_entry   *prev;
 
   OptBegin( back );
-    if( _ClassInfo( ins ) == OC_LINENUM ) {
+    if( ClassInfo( ins ) == OC_LINENUM ) {
         prev = ins->ins.prev;
         for( ;; ) {
             if( prev == NULL )
                 break;
-            if( _Class( prev ) != OC_INFO )
+            if( OcClass( prev ) != OC_INFO )
                 break;
-            if( _ClassInfo( prev ) == OC_LINENUM ) {
+            if( ClassInfo( prev ) == OC_LINENUM ) {
                 ins = prev->ins.next;
                 UnLinkInstr( back, prev );
-                _ResetClass( prev, OC_DEAD );
+                ResetClass( prev, OC_DEAD );
                 prev = ins->ins.prev;
             } else {
                 prev = prev->ins.prev;

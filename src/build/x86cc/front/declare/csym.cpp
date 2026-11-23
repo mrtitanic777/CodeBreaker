@@ -583,7 +583,7 @@ static void CheckReference( FrontRun& front, SYMPTR sym, SYM_NAMEPTR name )
                 }
             } else if( (sym->flags & SYM_ASSIGNED) == 0 ) {
                 typ = sym->sym_type;
-                SKIP_TYPEDEFS( typ );
+                SkipTypedefs( typ );
                 if( sym->attribs.stg_class != SC_STATIC && typ->decl_type != TYP_ARRAY ) {
                     CWarn2p( front, ERR_SYM_NOT_ASSIGNED, name );
                 }
@@ -608,7 +608,7 @@ static void CheckIncomplete( FrontRun& front, SYMPTR sym, SYM_NAMEPTR name )
                 }
             }
             typ = sym->sym_type;
-            SKIP_TYPEDEFS( typ );
+            SkipTypedefs( typ );
             if( SizeOfArg( front, typ ) == 0 && typ->decl_type != TYP_FUNCTION
               && typ->decl_type != TYP_DOT_DOT_DOT ) {
                 if( sym->attribs.stg_class != SC_EXTERN ) {
@@ -816,7 +816,7 @@ static SYM_HASHPTR FreeSym( FrontRun& front )
                      */
                     if( sym.attribs.stg_class == SC_NONE ) {
                         typ = sym.sym_type;
-                        SKIP_TYPEDEFS( typ );
+                        SkipTypedefs( typ );
                         if( typ->decl_type == TYP_ARRAY ) {
                             if( typ->u.array->dimension == 0 ) {
                                 typ->u.array->dimension = 1;

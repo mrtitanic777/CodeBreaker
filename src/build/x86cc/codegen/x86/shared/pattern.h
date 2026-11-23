@@ -74,43 +74,54 @@ typedef enum {
 
 } operand_types;
 
-#define _Bin( op1, op2, res, match )    \
-        ( (op1)*OP1_MUL | (op2)*OP2_MUL | \
-        (res)*RESULT_MUL | (match) )
+inline constexpr unsigned int BinPattern( unsigned int op1, unsigned int op2, unsigned int res, int match )
+{
+    return ( (op1)*OP1_MUL | (op2)*OP2_MUL | (res)*RESULT_MUL | (match) );
+}
+inline constexpr unsigned int BinPattern( unsigned int op1, unsigned int op2, unsigned int res, operand_types match )
+{
+    return ( (op1)*OP1_MUL | (op2)*OP2_MUL | (res)*RESULT_MUL | (match) );
+}
 
-#define _BinSC( op1, op2, res, match )  \
-        ( (op1)*OP1_MUL | (op2)*OP2_MUL | \
-        (res)*RESULT_MUL | (match) | SETS_SC )
+inline constexpr unsigned int BinPatternSC( unsigned int op1, unsigned int op2, unsigned int res, operand_types match )
+{
+    return ( (op1)*OP1_MUL | (op2)*OP2_MUL | (res)*RESULT_MUL | (match) | SETS_SC );
+}
 
-#define _BinPP( op1, op2, res, match )  \
-        ( (op1)*OP1_MUL | (op2)*OP2_MUL | \
-        (res)*RESULT_MUL | (match) |  PRESERVE )
+inline constexpr unsigned int BinPatternPP( unsigned int op1, unsigned int op2, unsigned int res, operand_types match )
+{
+    return ( (op1)*OP1_MUL | (op2)*OP2_MUL | (res)*RESULT_MUL | (match) | PRESERVE );
+}
 
-#define _BinCC( op1, op2, res, match )  \
-        ( (op1)*OP1_MUL | (op2)*OP2_MUL | \
-        (res)*RESULT_MUL | (match) | SETS_CC )
+inline constexpr unsigned int BinPatternCC( unsigned int op1, unsigned int op2, unsigned int res, operand_types match )
+{
+    return ( (op1)*OP1_MUL | (op2)*OP2_MUL | (res)*RESULT_MUL | (match) | SETS_CC );
+}
 
-#define _Side( op1, op2 )       \
-        ( (op1)*OP1_MUL | (op2)*OP2_MUL | \
-        ANY*RESULT_MUL | NONE )
+inline constexpr unsigned int SidePattern( unsigned int op1, unsigned int op2 )
+{
+    return ( (op1)*OP1_MUL | (op2)*OP2_MUL | ANY*RESULT_MUL | NONE );
+}
 
-#define _SidCC( op1, op2 )      \
-        ( (op1)*OP1_MUL | (op2)*OP2_MUL | \
-        ANY*RESULT_MUL | NONE | SETS_CC )
-
-
-
-#define _Un( op, res, match )   \
-        ( (op)*OP1_MUL | ANY*OP2_MUL | \
-        (res)*RESULT_MUL | (match) )
-
+inline constexpr unsigned int SidePatternCC( unsigned int op1, unsigned int op2 )
+{
+    return ( (op1)*OP1_MUL | (op2)*OP2_MUL | ANY*RESULT_MUL | NONE | SETS_CC );
+}
 
 
-#define _UnPP( op, res, match ) \
-        ( (op)*OP1_MUL | ANY*OP2_MUL | \
-        (res)*RESULT_MUL | (match) | PRESERVE )
 
-#define _None() NONE
+inline constexpr unsigned int UnPattern( unsigned int op, unsigned int res, operand_types match )
+{
+    return ( (op)*OP1_MUL | ANY*OP2_MUL | (res)*RESULT_MUL | (match) );
+}
+
+
+
+inline constexpr unsigned int UnPatternPP( unsigned int op, unsigned int res, operand_types match )
+{
+    return ( (op)*OP1_MUL | ANY*OP2_MUL | (res)*RESULT_MUL | (match) | PRESERVE );
+}
+
 
 #define _OE(t,v,r,g,f) { static_cast<operand_types>( t ), v, g, r, f }
 

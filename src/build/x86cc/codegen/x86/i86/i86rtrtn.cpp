@@ -249,7 +249,7 @@ instruction     *rMAKECALL( BackRun& back, instruction *ins )
     type_class_def      parm2_class;
     rt_class            rtindex;
 
-    if( !_IsConvert( ins ) ) {
+    if( !IsConvert( ins ) ) {
         rtindex = CheckForPCS( ins, LookupRoutine( back, ins ) );
     } else {
         /*
@@ -262,7 +262,7 @@ instruction     *rMAKECALL( BackRun& back, instruction *ins )
     regs = FirstReg( back, info->left );
     all_regs = regs;
     tmp = ReturnReg( back, WD, false );
-    HW_TurnOn( all_regs, tmp );
+    HwTurnOn( all_regs, tmp );
     left_ins = MakeMove( back, ins->operands[0], AllocRegName( back, regs ), info->operand_class );
     ins->operands[0] = left_ins->result;
     MoveSegOp( back, ins, left_ins, 0 );
@@ -339,7 +339,7 @@ instruction     *rMAKECALL( BackRun& back, instruction *ins )
             }
             ins->operands[1] = new_ins->result;
             MoveSegOp( back, ins, new_ins, 0 );
-            HW_TurnOn( all_regs, regs );
+            HwTurnOn( all_regs, regs );
             PrefixIns( back, ins, new_ins );
         }
     } else if( OpcodeNumOperands( ins ) == 2 ) {
@@ -393,7 +393,7 @@ instruction     *rMAKECALL( BackRun& back, instruction *ins )
     if( ins->result != NULL ) {
         regs = FirstReg( back, info->result );
         tmp = regs;
-        HW_TurnOn( tmp, new_ins->zap->reg );
+        HwTurnOn( tmp, new_ins->zap->reg );
         new_ins->zap = &AllocRegName( back, tmp )->r;
         reg_name = AllocRegName( back, regs );
         new_ins->result = reg_name;

@@ -32,4 +32,3 @@
 
 #pragma once
 #define _Savings( v1, v2 )
-#define _DumpSavings()

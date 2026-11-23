@@ -115,7 +115,7 @@ void    GenObject( BackRun& back )
             next_block = blk->next_block;
             if( blk->label != back.data.CurrProc->label && blk->label != NULL ) {
                 last_line = DumpLineNum( back, blk->ins.head.line_num, last_line, true );
-                if( _IsBlkAttr( blk, BLK_ITERATIONS_KNOWN ) && blk->iterations >= 10 ) {
+                if( IsBlkAttr( blk, BLK_ITERATIONS_KNOWN ) && blk->iterations >= 10 ) {
                     align = DepthAlign( back, DEEP_LOOP_ALIGN );
                 } else {
                     align = DepthAlign( back, blk->depth );
@@ -150,7 +150,7 @@ void    GenObject( BackRun& back )
                 }
             }
             EndBlockProfiling();
-            if( _IsBlkAttr( blk, BLK_JUMP | BLK_BIG_JUMP ) ) {
+            if( IsBlkAttr( blk, BLK_JUMP | BLK_BIG_JUMP ) ) {
                 if( back.data.BlockByBlock
                  || next_block == NULL
                  || blk->edge[0].destination.u.lbl != next_block->label ) {
@@ -161,10 +161,10 @@ void    GenObject( BackRun& back )
                         GenJumpLabel( back, blk->edge[0].destination.u.lbl );
                     }
                 }
-            } else if( _IsBlkAttr( blk, BLK_RETURN ) ) {
+            } else if( IsBlkAttr( blk, BLK_RETURN ) ) {
                 FiniZeroPage(back);
                 GenEpilog(back);
-            } else if( _IsBlkAttr( blk, BLK_CALL_LABEL ) ) {
+            } else if( IsBlkAttr( blk, BLK_CALL_LABEL ) ) {
                 GenCallLabel( back, blk->edge[0].destination.u.blk );
                 if( back.data.BlockByBlock ) {
                     if( next_block == NULL ) {
@@ -173,10 +173,10 @@ void    GenObject( BackRun& back )
                         GenJumpLabel( back, next_block->label );
                     }
                 }
-            } else if( _IsBlkAttr( blk, BLK_LABEL_RETURN ) ) {
+            } else if( IsBlkAttr( blk, BLK_LABEL_RETURN ) ) {
                 GenLabelReturn(back);
             }
-            if( !_IsBlkAttr( blk, BLK_LABEL_RETURN ) ) { /* maybe pointer to dead label */
+            if( !IsBlkAttr( blk, BLK_LABEL_RETURN ) ) { /* maybe pointer to dead label */
                 for( j = blk->targets; j-- > 0; ) {
                     lbl = blk->edge[j].destination.u.lbl;
                     TellReachedLabel( back, lbl );
@@ -323,7 +323,7 @@ static  instruction     *FindCondition( block *blk )
     instruction         *cond;
 
     for( cond = blk->ins.head.prev; cond->head.opcode != OP_BLOCK; cond = cond->head.prev ) {
-        if( _OpIsCondition( cond->head.opcode ) ) {
+        if( OpIsCondition( cond->head.opcode ) ) {
             return( cond );
         }
     }
@@ -339,7 +339,7 @@ static  int     PointerHeuristic( BackRun& back, block *blk, instruction *cond )
     /* unused parameters */ (void)blk;
 
     prediction = DNA;
-    if( _IsPointer( cond->type_class ) ) {
+    if( IsPointerClass( cond->type_class ) ) {
         switch( cond->head.opcode ) {
         case OP_CMP_EQUAL:
             prediction = NOT_TAKEN;
@@ -366,12 +366,12 @@ static  int     OpcodeHeuristic( BackRun& back, block *blk, instruction *cond )
     op2 = cond->operands[1];
     switch( cond->head.opcode ) {
     case OP_CMP_NOT_EQUAL:
-        if( _IsFloating( cond->type_class ) ) {
+        if( IsFloating( cond->type_class ) ) {
             prediction = TAKEN;
         }
         break;
     case OP_CMP_EQUAL:
-        if( _IsFloating( cond->type_class ) ) {
+        if( IsFloating( cond->type_class ) ) {
             prediction = NOT_TAKEN;
         }
         break;
@@ -412,7 +412,7 @@ static  int     Want( instruction *cond, int index )
     int         prediction;
 
     prediction = TAKEN;
-    if( _TrueIndex( cond ) == 0 ) {
+    if( TrueIndex( cond ) == 0 ) {
         if( index == 1 ) {
             prediction = NOT_TAKEN;
         }
@@ -430,7 +430,7 @@ static  bool    BlockContainsCall( block *blk )
     instruction         *ins;
 
     for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
-        if( _OpIsCall( ins->head.opcode ) ) {
+        if( OpIsCall( ins->head.opcode ) ) {
             return( true );
         }
     }
@@ -458,18 +458,18 @@ static  void    FloodDown( BackRun& back, block *from, flood_down_func func, voi
     MarkBlkAllAttrClr( back, BLK_FLOODED );
     stack = EdgeStackInit(back);
     PushTargets( back, stack, from );
-    _MarkBlkAttrSet( from, BLK_FLOODED );
+    MarkBlkAttrSet( from, BLK_FLOODED );
     while( !EdgeStackEmpty( static_cast<edge_stack *>(stack) ) ) {
         edge = EdgeStackPop( back, static_cast<edge_stack *>(stack) );
         dest = edge->destination.u.blk;
-        if( _IsBlkAttr( dest, BLK_FLOODED ) )
+        if( IsBlkAttr( dest, BLK_FLOODED ) )
             continue;
         decision = func( back, dest, static_cast<flood_info *>(parm) );
         if( decision == ABORT )
             continue;
         if( decision == STOP )
             break;
-        _MarkBlkAttrSet( dest, BLK_FLOODED );
+        MarkBlkAttrSet( dest, BLK_FLOODED );
         PushTargets( back, stack, dest );
     }
     EdgeStackFini( back, static_cast<edge_stack *>(stack) );
@@ -480,7 +480,7 @@ static  flood_decision PDFloodFunc( BackRun& back, block *blk, flood_info *info 
 {
     if( blk == info->dominator )
         return( ABORT );
-    if( _IsBlkAttr( blk, BLK_RETURN ) ) {
+    if( IsBlkAttr( blk, BLK_RETURN ) ) {
         info->post_dominates = false;
         return( STOP );
     }
@@ -536,10 +536,10 @@ static  int     CallHeuristic( BackRun& back, block *blk, instruction *cond )
 static  bool    LoopApplies( block *blk )
 /***************************************/
 {
-    if( _IsBlkAttr( blk, BLK_LOOP_HEADER ) )
+    if( IsBlkAttr( blk, BLK_LOOP_HEADER ) )
         return( true );
-    if( _IsBlkAttr( blk, BLK_JUMP ) ) {
-        if( _IsBlkAttr( blk->edge[0].destination.u.blk, BLK_LOOP_HEADER ) ) {
+    if( IsBlkAttr( blk, BLK_JUMP ) ) {
+        if( IsBlkAttr( blk->edge[0].destination.u.blk, BLK_LOOP_HEADER ) ) {
             return( true );
         }
     }
@@ -666,10 +666,10 @@ static  int     StoreHeuristic( BackRun& back, block *blk, instruction *cond )
 static  bool    ReturnApplies( block *blk )
 /*****************************************/
 {
-    if( _IsBlkAttr( blk, BLK_RETURN ) )
+    if( IsBlkAttr( blk, BLK_RETURN ) )
         return( true );
-    if( _IsBlkAttr( blk, BLK_JUMP ) ) {
-        if( _IsBlkAttr( blk->edge[0].destination.u.blk, BLK_RETURN ) ) {
+    if( IsBlkAttr( blk, BLK_JUMP ) ) {
+        if( IsBlkAttr( blk->edge[0].destination.u.blk, BLK_RETURN ) ) {
             return( true );
         }
     }
@@ -724,9 +724,9 @@ static  block   *Predictor( BackRun& back, block *blk )
             prediction = ptr( back, blk, cond );
             switch( prediction ) {
             case TAKEN:
-                return( blk->edge[_TrueIndex( cond )].destination.u.blk );
+                return( blk->edge[TrueIndex( cond )].destination.u.blk );
             case NOT_TAKEN:
-                return( blk->edge[_FalseIndex( cond )].destination.u.blk );
+                return( blk->edge[FalseIndex( cond )].destination.u.blk );
             }
         }
     }
@@ -735,6 +735,8 @@ static  block   *Predictor( BackRun& back, block *blk )
      */
     return( blk->edge[0].destination.u.blk );
 }
+
+inline constexpr int Munge( int a, int b ) { return ( ( (a) << 8 ) + (b) ); }
 
 static  block   *BestFollower( BackRun& back, block_queue *unplaced, block *blk )
 /****************************************************************/
@@ -750,7 +752,7 @@ static  block   *BestFollower( BackRun& back, block_queue *unplaced, block *blk 
     case BLK_SELECT:
         for( i = 0; i < blk->targets; i++ ) {
             best = blk->edge[i].destination.u.blk;
-            if( !_IsBlkVisited( best ) ) {
+            if( !IsBlkVisited( best ) ) {
                 return( best );
             }
         }
@@ -763,21 +765,20 @@ static  block   *BestFollower( BackRun& back, block_queue *unplaced, block *blk 
          * we run branch prediction if neither is placed, or return NULL
          * if both have been placed.
          */
-        #define _Munge( a, b )  ( ( (a) << 8 ) + (b) )
-        switch( _Munge( _IsBlkVisited( blk->edge[0].destination.u.blk ), _IsBlkVisited( blk->edge[1].destination.u.blk ) ) ) {
-        case _Munge( 0, 0 ):
+        switch( Munge( IsBlkVisited( blk->edge[0].destination.u.blk ), IsBlkVisited( blk->edge[1].destination.u.blk ) ) ) {
+        case Munge( 0, 0 ):
             /*
              * get some branch prediction going here
              */
             best = Predictor( back, blk );
             break;
-        case _Munge( 1, 0 ):
+        case Munge( 1, 0 ):
             best = blk->edge[1].destination.u.blk;
             break;
-        case _Munge( 0, 1 ):
+        case Munge( 0, 1 ):
             best = blk->edge[0].destination.u.blk;
             break;
-        case _Munge( 1, 1 ):
+        case Munge( 1, 1 ):
             best = NULL;
             break;
         }
@@ -791,7 +792,7 @@ static  block   *BestFollower( BackRun& back, block_queue *unplaced, block *blk 
             }
         }
         assert( best != NULL );
-        assert( _IsBlkAttr( best, BLK_RETURNED_TO ) );
+        assert( IsBlkAttr( best, BLK_RETURNED_TO ) );
         break;
     }
     return( best );
@@ -826,24 +827,24 @@ void    SortBlocks( BackRun& back )
     for( curr = back.data.HeadBlock; curr != NULL; curr = next ) {
         next = curr->next_block;
         BQAdd( &unplaced, curr );
-        if( _IsBlkAttr( curr, BLK_RETURNED_TO ) ) {
+        if( IsBlkAttr( curr, BLK_RETURNED_TO ) ) {
             /*
              * blocks which are returned to by a call_label routine
              * should not be placed because they are special cased in
              * BestFollower to come out directly after the CALL_LABEL
              * block
              */
-            _MarkBlkVisited( curr );
+            MarkBlkVisited( curr );
         }
 //        ret_block = curr;
     }
     while( !BQEmpty( &unplaced ) ) {
         curr = BQRemove( &unplaced, NULL );
-        if( _IsBlkVisited( curr ) )
+        if( IsBlkVisited( curr ) )
             continue;
         for( ;; ) {
             BQAdd( &placed, curr );
-            _MarkBlkVisited( curr );
+            MarkBlkVisited( curr );
             curr = BestFollower( back, &unplaced, curr );
             if( curr == NULL )
                 break;

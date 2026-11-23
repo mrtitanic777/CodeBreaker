@@ -70,10 +70,10 @@ hw_reg_set  ParmReg( BackRun& back, type_class_def type_class, type_length len, 
     for( ; !HW_CEqual( *state->parm.curr_entry, HW_EMPTY ); state->parm.curr_entry++ ) {
         for( reg_set = possible; !HW_CEqual( *reg_set, HW_EMPTY ); ++reg_set ) {
             regs = *reg_set;
-            if( !HW_Ovlap( regs, state->parm.used ) ) {
-                if( HW_Subset( *state->parm.curr_entry, regs ) ) {
-                    HW_TurnOn( state->parm.used, regs );
-                    HW_TurnOn( state->parm.used, ParmRegConflicts( regs ) );
+            if( !HwOvlap( regs, state->parm.used ) ) {
+                if( HwSubset( *state->parm.curr_entry, regs ) ) {
+                    HwTurnOn( state->parm.used, regs );
+                    HwTurnOn( state->parm.used, ParmRegConflicts( regs ) );
                     return( regs );
                 }
             }

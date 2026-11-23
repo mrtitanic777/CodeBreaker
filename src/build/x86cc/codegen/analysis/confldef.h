@@ -111,8 +111,10 @@ typedef struct conflict_node {  /*  target independent */
         possible_for_alias      *possible_for_alias_list;
 } conflict_node;
 
-#define _SetTrue( node, bit )   node->state |= (bit)
-#define _SetFalse( node, bit )  node->state &= ~(bit)
+inline void SetTrue( conflict_node *node, conflict_state bit ) { node->state |= (bit); }
+inline void SetFalse( conflict_node *node, conflict_state bit ) { node->state &= ~(bit); }
 
-#define _Is( node, bit )        ((node->state & (bit)) != 0)
-#define _Isnt( node, bit )      ((node->state & (bit)) == 0)
+inline bool HasConflictState( conflict_node *node, conflict_state bit ) { return ((node->state & (bit)) != 0); }
+inline bool HasConflictState( conflict_node *node, int bit ) { return ((node->state & (bit)) != 0); }
+inline bool LacksConflictState( conflict_node *node, conflict_state bit ) { return ((node->state & (bit)) == 0); }
+inline bool LacksConflictState( conflict_node *node, int bit ) { return ((node->state & (bit)) == 0); }

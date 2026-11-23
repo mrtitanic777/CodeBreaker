@@ -140,7 +140,7 @@ static cmp_type InUnion( FrontRun& front, TYPEPTR typ1, TYPEPTR typ2, bool rever
 
 static bool CheckParmPromotion( FrontRun& front, TYPEPTR typ )
 {
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     switch( typ->decl_type ) {
     case TYP_BOOL:
     case TYP_CHAR:
@@ -167,8 +167,8 @@ static bool CheckParmPromotion( FrontRun& front, TYPEPTR typ )
 
 TYPEPTR  SkipTypeFluff( TYPEPTR typ )
 {
-    SKIP_TYPEDEFS( typ );
-    SKIP_ENUM( typ );
+    SkipTypedefs( typ );
+    SkipEnum( typ );
     return( typ );
 }
 
@@ -193,9 +193,9 @@ static cmp_type CompatibleStructs( FrontRun& front, TAGPTR tag1, TAGPTR tag2 )
         return( NO );
     for( ; field1 != NULL && field2 != NULL; ) {
         typ1 = field1->field_type;
-        SKIP_TYPEDEFS( typ1 );
+        SkipTypedefs( typ1 );
         typ2 = field2->field_type;
-        SKIP_TYPEDEFS( typ2 );
+        SkipTypedefs( typ2 );
         if( !CheckIdenticalType( front, typ1, typ2 ) ) {
             if( ( typ1->decl_type == TYP_STRUCT && typ2->decl_type == TYP_STRUCT )
               || ( typ1->decl_type == TYP_UNION && typ2->decl_type == TYP_UNION ) ) {
@@ -450,7 +450,7 @@ static cmp_type DoCompatibleType( FrontRun& front, TYPEPTR typ1, TYPEPTR typ2, i
 
         if( !CheckIdenticalType( front, typ, typ2 ) ) {
             ret_val = NO;
-            SKIP_ARRAYS( typ );
+            SkipArrays( typ );
             if( CheckIdenticalType( front, typ, typ2 ) ) {
                 ret_val = PM;
             }
@@ -460,7 +460,7 @@ static cmp_type DoCompatibleType( FrontRun& front, TYPEPTR typ1, TYPEPTR typ2, i
 
         if( !CheckIdenticalType( front, typ, typ1 ) ) {
             ret_val = NO;
-            SKIP_ARRAYS( typ );
+            SkipArrays( typ );
             if( CheckIdenticalType( front, typ, typ1 ) ) {
                 ret_val = PM;
             }
@@ -498,7 +498,7 @@ static cmp_type DoCompatibleType( FrontRun& front, TYPEPTR typ1, TYPEPTR typ2, i
     return( ret_val );
 }
 
-#define SUBNOT( a, b, on )  ( ( (a&on)|(b&on) )^(a&on) )
+inline type_modifiers SubNot( type_modifiers a, type_modifiers b, type_modifiers on ) { return ( ( (a&on)|(b&on) )^(a&on) ); }
 
 static cmp_type CompatibleType( FrontRun& front, TYPEPTR typ1, TYPEPTR typ2, bool assignment, bool null_ptr  )
 {
@@ -534,7 +534,7 @@ static cmp_type CompatibleType( FrontRun& front, TYPEPTR typ1, TYPEPTR typ2, boo
           && !null_ptr ) {
             type_modifiers  subnot;
 
-            subnot = SUBNOT( typ1_flags, typ2_flags, MASK_QUALIFIERS );
+            subnot = SubNot( typ1_flags, typ2_flags, MASK_QUALIFIERS );
             if( subnot ) {  // allow void * =  unaligned *
                 if( subnot & (MASK_QUALIFIERS & ~FLAG_UNALIGNED) ) {
                     ret_pq = PQ;
@@ -633,7 +633,7 @@ static void CompareParms( FrontRun& front, TYPEPTR *master, TREEPTR parms, bool 
         }
     }
     for( parm_num = 1, parm = parms; ( typ1 != NULL ) && ( parm != NULL ); parm = parm->left, ++parm_num ) {
-        SKIP_TYPEDEFS( typ1 );
+        SkipTypedefs( typ1 );
         /*
          * TODO is crap needed or has it been done
          */
@@ -694,7 +694,7 @@ void CheckCallParms( FrontRun& front )
             callsite = callnode->left;      // point to OPR_FUNCNAME node
             SymGet( front, &sym, callsite->op.u2.sym_handle );
             typ = sym.sym_type;
-            SKIP_TYPEDEFS( typ );
+            SkipTypedefs( typ );
             if( (sym.flags & SYM_TEMP) == 0 )
                 SetDiagSymbol( front, &sym, callsite->op.u2.sym_handle );
             SetErrLoc( front, &nextcall->src_loc );
@@ -849,10 +849,10 @@ static bool IsPtrtoFunc( TYPEPTR typ )
     bool    ret;
 
     ret = false;
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     if( typ->decl_type == TYP_POINTER ) {
         typ = typ->object;
-        SKIP_TYPEDEFS( typ );
+        SkipTypedefs( typ );
         if( typ->decl_type == TYP_FUNCTION ) {
             ret = true;
         }
@@ -862,7 +862,7 @@ static bool IsPtrtoFunc( TYPEPTR typ )
 
 static bool IsPointer( TYPEPTR typ )
 {
-    SKIP_TYPEDEFS( typ );
+    SkipTypedefs( typ );
     return( typ->decl_type == TYP_POINTER );
 }
 

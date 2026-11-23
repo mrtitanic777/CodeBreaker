@@ -65,10 +65,10 @@ typedef enum charset_flags {
 /* ASCII */
 #define HEX_MASK        0x20
 #define HEX_BASE        'a'
-#define ONE_CASE( c )   ((c)|'\x20')
-#define ONE_CASE_EQUAL( a, b )  (ONE_CASE( a ) == ONE_CASE( b ))
-#define DEC2BIN( c )            ((c) - '0')
-#define HEX2BIN( c )            (((c) | HEX_MASK) - HEX_BASE + 10)
+inline int OneCase( int c ) { return ((c)|'\x20'); }
+inline bool OneCaseEqual( int a, char b ) { return (OneCase( a ) == OneCase( b )); }
+inline int DecToBin( int c ) { return ((c) - '0'); }
+inline int HexToBin( int c ) { return (((c) | HEX_MASK) - HEX_BASE + 10); }
 
 
 #ifndef CB_STATE_SCAN_H
