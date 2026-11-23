@@ -34,7 +34,7 @@ namespace cb::engine::pcode_cpu {
 
 // Whether call() runs on the emulator, as every CPU family does by default: force() if set, else CB_PCODE_EMU ("0", "false", "no": the own cores, to compare).
 bool enabled();
-// The same for a lane still too slow on the emulator to be its default (the Game Boy, the Vectrex, the Intellivision, the SNES, the PC Engine): only force(true) or CB_PCODE_EMU=1 puts it there.
+// The same for a lane still too slow on the emulator to be its default (the WonderSwan, the PlayStation 4 and 5, the Xbox One): only force(true) or CB_PCODE_EMU=1 puts it there.
 bool enabled_when_asked();
 // Override the environment (tests flip it); std::nullopt goes back to the environment.
 void force(std::optional<bool> on);

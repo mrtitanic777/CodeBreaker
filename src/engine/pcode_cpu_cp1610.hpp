@@ -14,7 +14,7 @@ namespace cb::engine::pcode_cpu {
 // The run on the emulator, always.
 emulate::cp1610::RunResult run(emulate::cp1610::Bus& bus, std::uint16_t entry, const emulate::cp1610::RunOptions& options = {});
 
-// emulate::cp1610::run or run(), by enabled_when_asked(): the emulator is about twice as slow as the own core here, so it runs only when CB_PCODE_EMU asks for it.
+// emulate::cp1610::run or run(), by enabled().
 emulate::cp1610::RunResult call(emulate::cp1610::Bus& bus, std::uint16_t entry, const emulate::cp1610::RunOptions& options = {});
 
 }  // namespace cb::engine::pcode_cpu
