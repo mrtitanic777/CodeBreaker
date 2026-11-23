@@ -98,7 +98,7 @@ std::string Program::mname(std::string_view name, std::span<const ir::TypeP> par
         base += '_';
         const bool classes = by_class_.contains(std::string(name));
         for (const ir::TypeP& p : params) base += classes ? exact_code(jmodel::erase(p)) : type_code(jmodel::erase(p));
-    } else if (static_names_.contains(std::string(name))) {   // Java keeps fields and methods apart; C has one name for both
+    } else if (name == "init" || name == "new" || name == "finit" || name == "clinit" || static_names_.contains(std::string(name))) {   // Java keeps fields and methods apart, and a method may be named as the functions C makes for a class
         base += "_m";
     }
     return base;

@@ -1678,6 +1678,91 @@ int64_t jrt_System_currentTimeMillis_(void) {
 #endif
 }
 bool jrt_Double_isInfinite_D(double v) { return v == INFINITY || v == -INFINITY; }
+int64_t jrt_Long_parseLong_Str(jstring* s) {
+	jrt_nn(s);
+	int32_t i = s->len > 0 && (s->s[0] == '-' || s->s[0] == '+') ? 1 : 0;
+	const bool negative = s->len > 0 && s->s[0] == '-';
+	uint64_t v = 0;
+	const uint64_t limit = negative ? (uint64_t)1 << 63 : ((uint64_t)1 << 63) - 1;
+	bool good = i < s->len;
+	for (; good && i < s->len; ++i) {
+		const unsigned digit = (unsigned)s->s[i] - '0';
+		good = digit <= 9 && v <= (limit - digit) / 10;
+		if (good) v = v * 10 + digit;
+	}
+	if (!good) jrt_throw_new(&jrt_NumberFormatException_class, "For input string");
+	return negative ? (int64_t)(0 - v) : (int64_t)v;
+}
+float jrt_Float_parseFloat_Str(jstring* s) { return (float)jrt_Double_parseDouble_Str(s); }
+jobject* jrt_Character_valueOf_C(char16_t c) { return jrt_box_C(c); }
+int64_t jrt_System_nanoTime_(void) { return (int64_t)((double)clock() * (1000000000.0 / CLOCKS_PER_SEC)); }
+void jrt_System_exit_I(int32_t status) {
+	fflush(NULL);
+	exit(status);
+}
+jobject* jrt_Object_new_(void) { return (jobject*)jrt_alloc(&jrt_Object_class); }
+jstring* jrt_String_replace_OO(jstring* s, jobject* target, jobject* with) {
+	jrt_nn(s);
+	jstring* from = jrt_str_O((jobject*)jrt_nn(target));
+	jstring* to = jrt_str_O((jobject*)jrt_nn(with));
+	jrt_StringBuilder* out = jrt_StringBuilder_new_();
+	int32_t at = 0;
+	if (from->len == 0) {                                    /* an empty target: the new text around every character */
+		for (; at < s->len; ++at) {
+			jrt_StringBuilder_append_Str(out, to);
+			jrt_StringBuilder_append_Str(out, jrt_String_substring_II(s, at, at + 1));
+		}
+		jrt_StringBuilder_append_Str(out, to);
+		return jrt_StringBuilder_toString_(out);
+	}
+	for (int32_t i = 0; i + from->len <= s->len;) {
+		if (memcmp(s->s + i, from->s, (size_t)from->len * sizeof(char16_t)) != 0) {
+			++i;
+			continue;
+		}
+		jrt_StringBuilder_append_Str(out, jrt_String_substring_II(s, at, i));
+		jrt_StringBuilder_append_Str(out, to);
+		i += from->len;
+		at = i;
+	}
+	jrt_StringBuilder_append_Str(out, jrt_String_substring_I(s, at));
+	return jrt_StringBuilder_toString_(out);
+}
+int32_t jrt_String_lastIndexOf_Str(jstring* s, jstring* t) {
+	jrt_nn(s);
+	jrt_nn(t);
+	for (int32_t i = s->len - t->len; i >= 0; --i) {
+		if (memcmp(s->s + i, t->s, (size_t)t->len * sizeof(char16_t)) == 0) return i;
+	}
+	return -1;
+}
+void jrt_Arrays_fill_BAB(jarray* a, int8_t v) {
+	for (int32_t i = 0; i < JLEN(a); ++i) ((int8_t*)a->data)[i] = v;
+}
+/* Arrays.sort(a, comparator): a merge sort, so equal elements keep their order as Java's do */
+void jrt_Arrays_sort_OAO(jarray* a, jobject* comparator) {
+	const int32_t n = JLEN(a);
+	jarray* spare = jrt_new_array(sizeof(jobject*), n);          /* (a collected array: what it holds stays reachable) */
+	jobject** from = (jobject**)a->data;
+	jobject** into = (jobject**)spare->data;
+	for (int32_t width = 1; width < n; width *= 2) {
+		for (int32_t low = 0; low < n; low += 2 * width) {
+			const int32_t mid = low + width < n ? low + width : n;
+			const int32_t high = low + 2 * width < n ? low + 2 * width : n;
+			int32_t l = low, r = mid, k = low;
+			while (l < mid && r < high) {
+				const bool right = comparator ? jrt_Comparator_compare_OO(comparator, from[l], from[r]) > 0 : jrt_natural(from[l], from[r]) > 0;
+				into[k++] = right ? from[r++] : from[l++];
+			}
+			while (l < mid) into[k++] = from[l++];
+			while (r < high) into[k++] = from[r++];
+		}
+		jobject** swapped = from;
+		from = into;
+		into = swapped;
+	}
+	if (from != (jobject**)a->data) memcpy(a->data, from, (size_t)n * sizeof(jobject*));
+}
 jobject* jrt_HashSet_new_O(jobject* from) {                  /* Java's size for a copy */
 	const int32_t wanted = (int32_t)((float)jrt_Collection_size_(from) / 0.75f) + 1;
 	return add_all(jrt_HashSet_new_I(wanted > 16 ? wanted : 16), from);

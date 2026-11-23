@@ -200,6 +200,14 @@ int32_t jrt_Double_compare_DD(double a, double b);
 int32_t jrt_Double_hashCode_D(double v);
 int64_t jrt_Double_doubleToRawLongBits_D(double v);
 jstring* jrt_Integer_toString_II(int32_t v, int32_t radix);
+int64_t jrt_Long_parseLong_Str(jstring* s);
+float jrt_Float_parseFloat_Str(jstring* s);
+jobject* jrt_Character_valueOf_C(char16_t c);
+int64_t jrt_System_nanoTime_(void);
+_Noreturn void jrt_System_exit_I(int32_t status);
+jobject* jrt_Object_new_(void);
+jstring* jrt_String_replace_OO(jstring* s, jobject* target, jobject* with);
+int32_t jrt_String_lastIndexOf_Str(jstring* s, jstring* t);
 int64_t jrt_Double_doubleToLongBits_D(double v);
 double jrt_Double_longBitsToDouble_J(int64_t bits);
 int32_t jrt_Float_floatToIntBits_F(float v);
@@ -291,6 +299,9 @@ void jrt_Arrays_sort_CA(jarray* a);
 void jrt_Arrays_sort_IA(jarray* a);
 void jrt_Arrays_sort_DA(jarray* a);
 void jrt_Arrays_fill_IA(jarray* a, int32_t v);
+#define jrt_Arrays_fill_IAI jrt_Arrays_fill_IA
+void jrt_Arrays_fill_BAB(jarray* a, int8_t v);
+void jrt_Arrays_sort_OAO(jarray* a, jobject* comparator);
 void jrt_Arrays_fill_IAIII(jarray* a, int32_t from, int32_t to, int32_t v);
 void jrt_Arrays_fill_JAIIJ(jarray* a, int32_t from, int32_t to, int64_t v);
 void jrt_Arrays_fill_DAIID(jarray* a, int32_t from, int32_t to, double v);
@@ -479,6 +490,13 @@ bool jrt_Collection_contains_O(jobject* c, jobject* x);
 bool jrt_Collection_remove_O(jobject* c, jobject* x);
 void jrt_Collection_clear_(jobject* c);
 bool jrt_Collection_addAll_O(jobject* c, jobject* from);
+#define jrt_LinkedList_new_ jrt_ArrayList_new_
+#define jrt_LinkedList_size_ jrt_Collection_size_
+#define jrt_LinkedList_add_O jrt_Collection_add_O
+#define jrt_LinkedList_get_I jrt_List_get_I
+#define jrt_LinkedList_remove_I jrt_List_remove_I
+#define jrt_AbstractSet_removeAll_O jrt_Collection_removeAll_O
+#define jrt_AbstractCollection_addAll_O jrt_Collection_addAll_O
 bool jrt_Collection_removeAll_O(jobject* c, jobject* other);
 jobject* jrt_TreeSet_first_(jobject* s);
 int64_t jrt_System_currentTimeMillis_(void);

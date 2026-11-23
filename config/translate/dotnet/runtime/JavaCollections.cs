@@ -88,6 +88,14 @@ public static partial class JLib
         return true;
     }
 
+    // Java's Set.addAll: whether the set grew.
+    public static bool AddAll<T>(ICollection<T> into, IEnumerable<T> from)
+    {
+        int before = into.Count;
+        foreach (T x in new List<T>(from)) into.Add(x);
+        return into.Count != before;
+    }
+
     public static T First<T>(SortedSet<T> set) => set.Count != 0 ? set.Min : throw new InvalidOperationException();
     public static T Last<T>(SortedSet<T> set) => set.Count != 0 ? set.Max : throw new InvalidOperationException();
 
@@ -98,6 +106,30 @@ public static partial class JLib
         if (from < 0 || to > a.Length) throw new IndexOutOfRangeException();
         T item = (T)Convert.ChangeType(value, typeof(T));
         for (int i = from; i < to; i++) a[i] = item;
+    }
+
+    public static float ParseFloat(string text) => (float)double.Parse(text.Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture);
+
+    // Throwable.toString: the class's name, then the message if it has one
+    public static string ThrowableText(Exception e)
+    {
+        string message = Message(e);
+        string name = e.GetType().FullName;
+        return message == null ? name : name + ": " + message;
+    }
+
+    // Arrays.sort(a, comparator): equal elements keep their order
+    public static void SortWith<T>(T[] a, Comparison<T> by)
+    {
+        var order = new int[a.Length];
+        for (int i = 0; i < order.Length; i++) order[i] = i;
+        var held = (T[])a.Clone();
+        Array.Sort(order, (x, y) =>
+        {
+            int c = by(held[x], held[y]);
+            return c != 0 ? c : x.CompareTo(y);
+        });
+        for (int i = 0; i < a.Length; i++) a[i] = held[order[i]];
     }
 
     // Integer.toString(v, radix): lower-case digits, a minus sign

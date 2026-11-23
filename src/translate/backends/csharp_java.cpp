@@ -772,7 +772,7 @@ std::optional<std::string> JavaLibrary::type_name(cs::Context& w, const ir::Type
 
 bool JavaLibrary::keep_interface(const ir::TypeP& t) {
     const std::string* q = cj_qual(t);
-    return q == nullptr || (*q != "java.io.Serializable" && *q != "java.lang.Cloneable" && *q != "java.util.RandomAccess");
+    return q == nullptr || (*q != "java.io.Serializable" && *q != "java.lang.Cloneable" && *q != "java.util.RandomAccess" && *q != "java.util.Comparator");   // (a Comparator is a C# delegate: a class of one converts to it)
 }
 
 // ---- declarations -------------------------------------------------------------------------------------------------------------
@@ -867,6 +867,13 @@ std::vector<std::string> JavaLibrary::method_mods(cs::Context& w, ir::MethodDecl
     if (c.kind == "interface") return cj_has(mods, "static") ? std::vector<std::string>{"static"} : std::vector<std::string>{};
     std::vector<std::string> out = access(mods, c);
     if (m.kind == "ctor") return out;
+    if (m.name == "equals" && m.params.size() == 1 && !cj_has(mods, "static")) {   // equals(Thing) is an overload: it overrides nothing of Object's
+        const std::string* compared = cj_qual(ir::get<ir::Param>(m.params[0])->type);
+        if (compared == nullptr || *compared != "java.lang.Object") {
+            if (cj_has(mods, "abstract")) out.push_back("abstract");
+            return out;
+        }
+    }
     if (cj_has(mods, "static")) {
         out.push_back("static");
         return out;
@@ -907,6 +914,8 @@ bool JavaLibrary::closeable(cs::Context& w, const ir::ClassDecl& start) const {
 std::string JavaLibrary::method_name(cs::Context& w, ir::MethodDecl& m, ir::ClassDecl& c) {
     const std::string name = m.name.value_or("");
     const std::size_t n = m.params.size();
+    const std::string* compared = name == "equals" && n == 1 ? cj_qual(ir::get<ir::Param>(m.params[0])->type) : nullptr;
+    if (name == "equals" && n == 1 && (compared == nullptr || *compared != "java.lang.Object")) return cs::ident(name);   // (an overload, not Object's)
     if (const auto object_name = cj_object_method(name, n)) return std::string(*object_name);
     if (name == "main" && cj_has(m.mods, "static") && n == 1) return "Main";
     if (name == "compareTo" && n == 1 &&
@@ -921,8 +930,12 @@ std::string JavaLibrary::method_name(cs::Context& w, ir::MethodDecl& m, ir::Clas
 std::string JavaLibrary::member_name(cs::Context& w, const ir::Sym& s) {
     if (s.kind == ir::SymKind::Method) {
         const std::size_t n = s.params.size();
-        if (const auto object_name = cj_object_method(s.name, n)) return std::string(*object_name);
         const ir::ClassDecl* c = s.owner ? w.program().class_named(*s.owner) : nullptr;
+        if (c != nullptr && s.name == "equals" && n == 1) {
+            const std::string* compared = cj_qual(s.params[0]);
+            if (compared == nullptr || *compared != "java.lang.Object") return cs::ident(s.name);
+        }
+        if (const auto object_name = cj_object_method(s.name, n)) return std::string(*object_name);
         if (c != nullptr) {
             if (s.name == "compareTo" && n == 1) return "CompareTo";
             if (s.name == "close" && n == 0 && closeable(w, *c)) return "Dispose";
@@ -986,6 +999,9 @@ std::vector<Node*> JavaLibrary::arrange_members(cs::Context& w, ir::ClassDecl& c
         if (f == nullptr || f->init == nullptr || cj_has(f->mods, "static")) return false;
         const std::vector<Node*> nodes = cj_own_nodes(f->init);
         return std::any_of(nodes.begin(), nodes.end(), [&](Node* n) {
+            if (ir::is<ir::This>(n)) return true;   // (a field read from another's initialiser, or a method of this object)
+            if (const ir::Name* read = ir::get<ir::Name>(n); read != nullptr && read->sym && read->sym->kind == ir::SymKind::Field && !read->sym->is_static) return true;
+            if (const ir::Call* call = ir::get<ir::Call>(n); call != nullptr && call->target == nullptr && call->sym && !call->sym->is_static) return true;
             const ir::New* made = ir::get<ir::New>(n);
             if (made == nullptr) return false;
             const ir::ClassDecl* target = nullptr;
@@ -1242,6 +1258,12 @@ std::vector<std::string> JavaLibrary::extra_members(cs::Context& w, ir::ClassDec
     if (c.kind != "class" && c.kind != "record") return {};
     for (const ir::TypeP& i : c.implements) {
         const std::string* q = cj_qual(i);
+        if (q != nullptr && *q == "java.util.Comparator") {   // handed over wherever Java wants a Comparator
+            const auto& args = std::get<ir::ClassType>(i->body).args;
+            const std::string item = args.empty() ? std::string("object") : w.ctype(args[0]);
+            w.add_using("System");
+            return {"public static implicit operator Comparison<" + item + ">(" + cs::ident(c.name.value_or("")) + " by) => by.compare;"};
+        }
         if (q == nullptr || *q != "java.lang.Iterable") continue;
         const auto& args = std::get<ir::ClassType>(i->body).args;
         const std::string item = args.empty() ? std::string("object") : w.ctype(args[0]);
@@ -1791,10 +1813,32 @@ std::optional<Ex> JavaLibrary::call(cs::Context& w, Node* e, bool statement) {
         const auto family = cj_family().find(owner);
         const bool collection = family != cj_family().end() || owner == "java.util.Collection";
         if (collection && call.target != nullptr && s->name == "removeAll" && call.args.size() == 1) return helper("RemoveAll", {call.target, call.args[0]});
+        if (call.target != nullptr && s->name == "addAll" && call.args.size() == 1) {   // (javac may name AbstractCollection: what counts is what it is called on)
+            const std::string* on = cj_qual(call.target->type);
+            const auto kind = on != nullptr ? cj_family().find(*on) : cj_family().end();
+            if (kind != cj_family().end() && kind->second == "Set") return helper("AddAll", {call.target, call.args[0]});
+        }
         if (owner == "java.util.TreeSet" && call.target != nullptr && call.args.empty() && s->name == "first") return helper("First", {call.target});
         if (owner == "java.util.TreeSet" && call.target != nullptr && call.args.empty() && s->name == "last") return helper("Last", {call.target});
         if (owner == "java.util.Arrays" && s->name == "fill" && call.args.size() == 4) return helper("FillRange", call.args);
         if (owner == "java.lang.Integer" && s->is_static && s->name == "toString" && call.args.size() == 2) return helper("ToRadix", call.args);
+        if (owner == "java.lang.Float" && s->is_static && s->name == "parseFloat" && call.args.size() == 1) return helper("ParseFloat", call.args);
+        if (owner == "java.lang.Float" && s->is_static && s->name == "floatToRawIntBits" && call.args.size() == 1) {
+            w.add_using("System");
+            return Ex{"BitConverter.SingleToInt32Bits(" + w.expr(call.args[0]).text + ")", cs::kPrimary};
+        }
+        if (owner == "java.lang.Throwable" && s->name == "toString" && call.args.empty() && call.target != nullptr) return helper("ThrowableText", {call.target});
+        if (owner == "java.util.Arrays" && s->name == "sort" && call.args.size() == 2) {   // stable, as Java's is for objects
+            w.program().use_runtime("JavaRt");
+            w.program().use_runtime("JavaCollections");
+            const std::string* by = cj_qual(call.args[1]->type);
+            const bool own = by != nullptr && w.program().class_named(*by) != nullptr;
+            const std::string comparer = w.wrap(call.args[1], cs::kPrimary) + (own ? ".compare" : "");
+            const auto* array = std::get_if<ir::ArrayType>(&call.args[0]->type->body);
+            if (array == nullptr) throw Decline("library", "Arrays.sort of what is not an array");
+            w.add_using("System");
+            return Ex{"JLib.SortWith(" + w.expr(call.args[0]).text + ", new Comparison<" + w.ctype(array->elem) + ">(" + comparer + "))", cs::kPrimary};
+        }
     }
     if (owner == "java.lang.Character" && s->name == "getType" && call.args.size() == 1 && w.ctype(call.args[0]->type) == "char") {
         w.program().use_runtime("JavaCharTypes");
