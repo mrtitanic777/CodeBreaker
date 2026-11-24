@@ -8,6 +8,7 @@
 #include <cctype>
 #include <cstdlib>
 #include <format>
+#include <map>
 #include <optional>
 #include <cstring>
 #include <mutex>
@@ -481,12 +482,8 @@ A64End run_a64(ea::Cpu& cpu, u64 max_steps, bool description_only) {
     };
 
     A64End end;
-    u64 emu_steps = 0, adapter_steps = 0;
-    // The abort the lane reports for the data access at `addr` (what the first interpreter said, and so does the lane).
-    const auto abort_text = [&](bool store, u64 addr) {
-        if (!store) return std::format("data abort: read at {:#x}", addr);
-        return std::format("data abort: {} at {:#x}", memory.mapped(addr) ? "write to read-only memory" : "write", addr);
-    };
+    u64 emu_steps = 0, adapter_steps = 0, own_steps = 0;
+    std::map<std::string, u64> own_counts;   // (what the own core was handed, by mnemonic: the data aborts)
     const auto hex = [](u64 v) { return std::format("{:#x}", v); };
     while (true) {
         if (regs.pc == ea::kReturnAddress) {
@@ -507,7 +504,7 @@ A64End run_a64(ea::Cpu& cpu, u64 max_steps, bool description_only) {
         const u32 word = static_cast<u32>(code[0]) | static_cast<u32>(code[1]) << 8 | static_cast<u32>(code[2]) << 16 | static_cast<u32>(code[3]) << 24;
         const Route* route = &route_for(word, emu, description_only);
         const unsigned rd = word & 31, rn = (word >> 5) & 31, rt2 = (word >> 10) & 31, rs = (word >> 16) & 31;
-        std::string fault;   // a data access nothing answers: the abort the lane reports
+        bool replay = false;   // a data access nothing answers: the own core makes the abort and its partial effects
         switch (route->kind) {
             case Kind::Nop:
                 regs.pc += 4;
@@ -601,7 +598,7 @@ A64End run_a64(ea::Cpu& cpu, u64 max_steps, bool description_only) {
                     ++adapter_steps;
                     continue;
                 }
-                fault = abort_text(true, x_of(rd) & ~u64{63});
+                replay = true;
                 break;
             }
             case Kind::Fp: {

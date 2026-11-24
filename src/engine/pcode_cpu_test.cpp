@@ -87,24 +87,6 @@ CB_TEST("engine.pcode_cpu.runs_random_programs_as_the_own_core_does", [] {
         (own.end == m::End::Stopped ? stopped : returned) += 1;
         const bool memory_same = ma == mb;
         if (!same_run(own, emu) || !memory_same) {
-            if (fs::get_env("CB_SMALL_DBG")) {   // TEMP bisect
-                for (std::uint64_t k = 1; k <= 200; ++k) {
-                    options.max_steps = k;
-                    Bytes xa = image, xb = image;
-                    const m::RunResult ra = go(false, xa), rb = go(true, xb);
-                    if (!same_run(ra, rb) || xa != xb || ra.regs.pc != rb.regs.pc) {
-                        options.max_steps = k - 1;
-                        Bytes ya = image;
-                        const m::RunResult pre = go(false, ya);
-                        std::printf("  BISECT run %d step %llu: before: %s; bytes at pc:", n, (unsigned long long)k, describe(pre).c_str());
-                        for (int i = 0; i < 4; ++i) std::printf(" %02X", ya[(pre.regs.pc + i) & 0xFFFF]);
-                        std::printf("; after own %s / emu %s", describe(ra).c_str(), describe(rb).c_str());
-                        std::fputc(10, stdout);
-                        break;
-                    }
-                }
-                options.max_steps = 200;
-            }
             if (++different <= 8) std::printf("  run %d differs\n    own: %s\n    emu: %s\n    memory %s\n", n, describe(own).c_str(), describe(emu).c_str(), memory_same ? "same" : "DIFFERS");
         }
     }
