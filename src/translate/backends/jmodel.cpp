@@ -54,6 +54,7 @@ struct Library {
             {"java.util.TreeMap", {"java.util.Map"}},
             {"java.lang.Exception", {"java.lang.Throwable"}},
             {"java.lang.Error", {"java.lang.Throwable"}},
+            {"java.lang.OutOfMemoryError", {"java.lang.Error"}},
             {"java.lang.RuntimeException", {"java.lang.Exception"}},
             {"java.lang.IllegalArgumentException", {"java.lang.RuntimeException"}},
             {"java.lang.IllegalStateException", {"java.lang.RuntimeException"}},

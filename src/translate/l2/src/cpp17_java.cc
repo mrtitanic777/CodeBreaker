@@ -2001,7 +2001,12 @@ E Method::x_cond(const NodeP& e) {
     TypeP et = type(e);
     std::string t = (et && et->kind != "null") ? p.ct(et) : (a.second != "nullptr_t" ? a.second : b.second);
     std::string ac = conv(a.first, a.second, t);
-    return E("(" + c + " ? " + ac + " : " + conv(b.first, b.second, t) + ")", t);
+    std::string bc = conv(b.first, b.second, t);
+    if (is_ref(t)) {   // (a ?: needs one type for both sides: a branch of a subclass is made the base)
+        if (a.second != t && a.second != "nullptr_t") ac = t + "(" + ac + ")";
+        if (b.second != t && b.second != "nullptr_t") bc = t + "(" + bc + ")";
+    }
+    return E("(" + c + " ? " + ac + " : " + bc + ")", t);
 }
 
 E Method::x_cast(const NodeP& e) {
@@ -2076,7 +2081,7 @@ std::string Method::args(const std::vector<NodeP>& as, const Strs& params, const
 
 E Method::x_call(const NodeP& e) {
     SymP s = sym(e);
-    if (!s || skind(s) != "method") throw Decline("call " + (s ? skind(s) : std::string("unresolved")));
+    if (!s || skind(s) != "method") throw Decline("call " + (s ? skind(s) + " " + sname(s) : std::string("unresolved")));
     auto cs = p.call_sig(s);
     std::string want = p.ct(type(e));
     NodeP t = node(e, "target");

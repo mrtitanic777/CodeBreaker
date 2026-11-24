@@ -102,6 +102,11 @@ std::string type_code(const ir::TypeP& type);
 const Code* library_static(std::string_view owner, std::string_view name);
 // The superclasses the runtime's Throwable stands for.
 bool is_library_throwable(std::string_view qname);
+// A runtime collection a class of the program may extend: its struct and the prefix of its Object methods in the runtime (jrt_list_toString); empty for any other.
+struct RuntimeBase {
+    std::string_view cstruct, objects;
+};
+std::optional<RuntimeBase> runtime_collection_base(std::string_view qname);
 // Elements stored in a jarray: the C type, or jobject* for a class pointer.
 std::string array_store(std::string_view element_ctype);
 

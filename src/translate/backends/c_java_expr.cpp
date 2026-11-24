@@ -114,9 +114,28 @@ bool MethodWriter::is_sub(std::string_view src, std::string_view dst) const {
 }
 
 // `code` of C type `src` where a `dst` is wanted: numeric conversions, boxing and unboxing, checked casts.
-std::string MethodWriter::conv(const std::string& code, std::string_view src, std::string_view dst) const {
-    if (src == dst || dst == "void" || dst.empty() || src.empty()) return code;
+// Whether text has an assignment outside every bracket: a cast in front of it would bind to the place alone.
+static bool assigns_at_top(const std::string& code) {
+    int depth = 0;
+    for (std::size_t i = 0; i < code.size(); ++i) {
+        const char c = code[i];
+        if (c == '(' || c == '[' || c == '{') ++depth;
+        else if (c == ')' || c == ']' || c == '}') --depth;
+        else if (c == '"' || c == '\'') {   // (a literal: skipped)
+            for (++i; i < code.size() && code[i] != c; ++i) {
+                if (code[i] == '\\') ++i;
+            }
+        } else if (c == '=' && depth == 0 && i > 0 && i + 1 < code.size() && code[i + 1] != '=' && std::string_view("=!<>").find(code[i - 1]) == std::string_view::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
+std::string MethodWriter::conv(const std::string& given, std::string_view src, std::string_view dst) const {
+    if (src == dst || dst == "void" || dst.empty() || src.empty()) return given;
     if (src == "nullptr_t") return "NULL";
+    const std::string code = assigns_at_top(given) ? "(" + given + ")" : given;
     if (is_prim_c(dst) && is_prim_c(src)) {
         if ((src == "double" || src == "float") && is_integral(dst)) {   // Java saturates
             if (dst == "int64_t") return std::format("jrt_d2l({})", code);

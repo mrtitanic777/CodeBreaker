@@ -176,6 +176,44 @@ public static class JavaRt
         return int.Parse(s, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
     }
 
+    // Integer.parseInt(s, radix): digits and letters of the radix, a leading sign, nothing else
+    public static int ParseInt(string s, int radix)
+    {
+        if (s == null) throw new FormatException("Cannot parse null string: null");
+        string why = "For input string: \"" + s + "\"" + (radix == 10 ? "" : " under radix " + radix);
+        if (radix < 2 || radix > 36 || s.Length == 0) throw new FormatException(why);
+        int at = 0;
+        bool negative = false;
+        if (s[0] == '-' || s[0] == '+')
+        {
+            negative = s[0] == '-';
+            at = 1;
+            if (s.Length == 1) throw new FormatException(why);
+        }
+        long value = 0;
+        for (; at < s.Length; at++)
+        {
+            char c = s[at];
+            int digit = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'z' ? c - 'a' + 10 : c >= 'A' && c <= 'Z' ? c - 'A' + 10 : -1;
+            if (digit < 0 || digit >= radix) throw new FormatException(why);
+            value = value * radix + digit;
+            if (value > 2147483648L) throw new FormatException(why);
+        }
+        if (negative) value = -value;
+        if (value > int.MaxValue || value < int.MinValue) throw new FormatException(why);
+        return (int)value;
+    }
+
+    // String.getBytes(): UTF-8 as Java's default charset is, with ? for what cannot be encoded
+    public static sbyte[] GetBytes(string s)
+    {
+        var enc = Encoding.GetEncoding("utf-8", new EncoderReplacementFallback("?"), DecoderFallback.ReplacementFallback);
+        byte[] bytes = enc.GetBytes(s);
+        var signed = new sbyte[bytes.Length];
+        for (int i = 0; i < bytes.Length; i++) signed[i] = unchecked((sbyte)bytes[i]);
+        return signed;
+    }
+
     public static double ParseDouble(string s) => double.Parse(s.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture);
 
     public static int CompareTo(string a, string b)
@@ -288,6 +326,19 @@ public static class JavaRt
     }
 
     public static void Sort<T>(List<T> l) where T : IComparable<T> => Sort(l, (x, y) => x.CompareTo(y));
+
+    // a list of Object (a raw List): sorted by what the elements are, as Comparable
+    public static void Sort(List<object> l) => Sort(l, CompareObjects);
+
+    static int CompareObjects(object a, object b)
+    {
+        if (a == null || b == null) throw new NullReferenceException();
+        if (a is string x && b is string y) return CompareTo(x, y);
+        if (a is double d && b is double e) return CompareDouble(d, e);
+        if (a is float f && b is float g) return CompareDouble(f, g);
+        if (a is IComparable c) return c.CompareTo(b);
+        throw new InvalidCastException("class " + a.GetType().Name + " cannot be cast to class java.lang.Comparable");
+    }
 
     static void MergeSort<T>(T[] a, T[] tmp, int lo, int hi, Comparison<T> cmp)
     {

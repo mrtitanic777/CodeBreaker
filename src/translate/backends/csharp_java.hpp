@@ -60,6 +60,7 @@ public:
     std::vector<std::string> class_mods(cs::Context& w, ir::ClassDecl& c) override;
     std::vector<std::string> field_mods(cs::Context& w, ir::FieldDecl& f, ir::ClassDecl& c) override;
     std::vector<std::string> method_mods(cs::Context& w, ir::MethodDecl& m, ir::ClassDecl& c) override;
+    std::vector<std::string> method_mods_plain(cs::Context& w, ir::MethodDecl& m, ir::ClassDecl& c);
     std::string method_name(cs::Context& w, ir::MethodDecl& m, ir::ClassDecl& c) override;
     std::string member_name(cs::Context& w, const ir::Sym& s) override;
     // Java's initialisation order: instance initialisers after the base constructor (moved into the constructors, where the base
@@ -109,6 +110,8 @@ private:
     std::string kept_null(cs::Context& w, ir::Node* e);       // the expression as a `T?`, its null kept
     std::optional<std::string> unboxed_read(cs::Context& w, ir::Node* e);
     std::unordered_set<const ir::Node*> null_reads_;          // the reads that can give a null
+    bool list_over_array_ = false;                            // an Arrays.asList over an existing array: a set through such a list would have to reach it
+    std::unordered_set<std::string> stored_arrays_;           // the array types some code stores into (Arrays.asList over one is declined)
     std::unordered_set<const ir::Node*> read_as_is_;          // those being written with their null kept (or assigned to)
 
     // A class Java declares in a method (a local or anonymous one), as C# has none: a member of the class around it, with a field

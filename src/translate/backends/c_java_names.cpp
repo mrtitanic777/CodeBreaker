@@ -327,6 +327,12 @@ bool is_library_throwable(std::string_view qname) {
     return qname == "java.lang.Throwable" || names.contains(qname);
 }
 
+std::optional<RuntimeBase> runtime_collection_base(std::string_view qname) {
+    if (qname == "java.util.ArrayList") return RuntimeBase{"jrt_ArrayList", "list"};
+    if (qname == "java.util.HashMap") return RuntimeBase{"jrt_HashMap", "map"};
+    return std::nullopt;
+}
+
 std::string array_store(std::string_view element_ctype) {
     if (is_pointer_ctype(element_ctype) && element_ctype != kStr && element_ctype != kArr && element_ctype != kSb) return "jobject*";
     return std::string(element_ctype);

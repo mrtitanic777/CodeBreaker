@@ -162,10 +162,17 @@ Sig Program::sig(const ClassInfo& cls, const ir::Node* method) const {
 
 std::optional<std::string> Program::base_struct(const ClassInfo& cls) const {
     if (cls.kind == "enum") return "jrt_Enum";
-    if (cls.base && !cls.base->empty() && *cls.base != jmodel::kObject) {
+    if (cls.base && !cls.base->empty() && *cls.base != jmodel::kObject && *cls.base != "java.lang.Number") {   // (a Number is held as an Object)
         if (const ClassInfo* b = model_->info(*cls.base)) return b->cname;
         if (is_library_throwable(*cls.base)) return "jrt_Throwable";
         if (*cls.base == "java.lang.Enum") return "jrt_Enum";
+        if (const auto runtime = runtime_collection_base(*cls.base)) {   // its object begins with the runtime's; what the runtime calls through its own tables it cannot see overridden
+            for (const ir::Node* mn : cls.methods()) {
+                const ir::MethodDecl& m = method_of(mn);
+                if (m.kind == "method" && !is_static(m) && !is_object_method(m)) throw Decline("a class overriding a method of the runtime class " + *cls.base + ": " + m.name.value_or(""));
+            }
+            return std::string(runtime->cstruct);
+        }
         throw Decline("extends the runtime class " + *cls.base);
     }
     return std::nullopt;
@@ -173,7 +180,7 @@ std::optional<std::string> Program::base_struct(const ClassInfo& cls) const {
 
 std::string Program::base_class_ref(const ClassInfo& cls) const {
     if (cls.kind == "enum") return "&jrt_Enum_class";
-    if (cls.base && !cls.base->empty() && *cls.base != jmodel::kObject) return class_ref(*cls.base);
+    if (cls.base && !cls.base->empty() && *cls.base != jmodel::kObject && *cls.base != "java.lang.Number") return class_ref(*cls.base);
     return "&jrt_Object_class";
 }
 
@@ -256,6 +263,9 @@ std::array<std::string, 3> Program::object_slots(const ClassInfo& cls) const {
         const ClassInfo* c = model_->info(*q);
         if (c == nullptr) {
             if (is_library_throwable(*q)) impl[0] = "jrt_Throwable_toString";
+            if (const auto runtime = runtime_collection_base(*q)) {
+                for (std::size_t i = 0; i < 3; ++i) impl[i] = std::format("jrt_{}_{}", runtime->objects, i == 0 ? "toString" : i == 1 ? "equals" : "hashCode");
+            }
             if (*q == "java.lang.Enum") impl[0] = "jrt_Enum_toString";
             break;
         }
@@ -650,7 +660,17 @@ Lines Program::tables(const ClassInfo& cls) {
     for (const Slot& s : slots(cls)) slot_text += std::format(", ({} (*)({})){}", s.r, join_commas(with_self(s.ps)), s.impl);
     out.push_back(std::format("static const struct {}_vt {}_vt_ = {{{}{}}};", cls.cname, cls.cname, objs, slot_text));
     std::vector<std::string> itabs;
+    std::vector<std::string> from_runtime;   // the interfaces a runtime collection the class extends already answers
+    for (std::optional<std::string> up = cls.base; up && !up->empty() && *up != jmodel::kObject;) {
+        const ClassInfo* b = model_->info(*up);
+        if (b == nullptr) {
+            if (runtime_collection_base(*up)) from_runtime = model_->ancestors(*up);
+            break;
+        }
+        up = b->base;
+    }
     for (const std::string& q : all_ifaces(cls)) {
+        if (std::find(from_runtime.begin(), from_runtime.end(), q) != from_runtime.end()) continue;
         const std::vector<IMethod> ms = iface_methods(q);
         if (q == "java.lang.Comparable" && !find_impl(cls, "compareTo", 1)) continue;   // an enum's: jrt_natural compares by ordinal
         std::string impls;

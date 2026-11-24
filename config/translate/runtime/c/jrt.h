@@ -90,7 +90,7 @@ JRT_EXC(Throwable) JRT_EXC(Exception) JRT_EXC(Error) JRT_EXC(RuntimeException) J
 JRT_EXC(IllegalStateException) JRT_EXC(ArithmeticException) JRT_EXC(NullPointerException) JRT_EXC(ClassCastException)
 JRT_EXC(UnsupportedOperationException) JRT_EXC(IndexOutOfBoundsException) JRT_EXC(ArrayIndexOutOfBoundsException)
 JRT_EXC(StringIndexOutOfBoundsException) JRT_EXC(NegativeArraySizeException) JRT_EXC(NumberFormatException)
-JRT_EXC(NoSuchElementException) JRT_EXC(IOException)
+JRT_EXC(NoSuchElementException) JRT_EXC(IOException) JRT_EXC(OutOfMemoryError)
 
 /* ---- strings */
 jstring* jrt_str(const char16_t* s, int32_t n);
@@ -130,6 +130,7 @@ jstring* jrt_String_valueOf_A(jarray* chars);
 jstring* jrt_String_new_(void);
 jstring* jrt_String_new_Str(jstring* s);
 jstring* jrt_String_new_CAII(jarray* chars, int32_t at, int32_t n);
+jstring* jrt_String_format_A(jstring* fmt, jarray* args);
 jstring* jrt_String_format(jstring* fmt, int n, ...);   /* n jobject* (boxed) */
 jstring* jrt_String_join(jstring* sep, jobject* parts);
 int32_t jrt_string_case(jstring* s, int n, jstring* const* labels);   /* a switch on a String: the label it equals, or -1; null throws */
@@ -144,6 +145,7 @@ int32_t jrt_string_case(jstring* s, int n, jstring* const* labels);   /* a switc
 #define jrt_String_indexOf_C jrt_String_indexOf_I
 #define jrt_String_new_CA jrt_String_new_A
 #define jrt_String_valueOf_CA jrt_String_new_A
+#define jrt_String_valueOf_CAII jrt_String_new_CAII
 
 /* ---- boxes */
 typedef struct jrt_Integer { jobject hdr; int32_t value; } jrt_Integer;
@@ -185,11 +187,27 @@ jstring* jrt_Integer_toString_I(int32_t v);
 jstring* jrt_Integer_toHexString_I(int32_t v);
 jstring* jrt_Integer_toBinaryString_I(int32_t v);
 int32_t jrt_Integer_parseInt_Str(jstring* s);
+int32_t jrt_Integer_parseInt_StrI(jstring* s, int32_t radix);
 int32_t jrt_Integer_compare_II(int32_t a, int32_t b);
 int32_t jrt_Integer_sum_II(int32_t a, int32_t b);
 int32_t jrt_Integer_max_II(int32_t a, int32_t b);
 int32_t jrt_Integer_min_II(int32_t a, int32_t b);
 jobject* jrt_Integer_valueOf_I(int32_t v);
+jobject* jrt_Long_valueOf_J(int64_t v);
+jobject* jrt_Double_valueOf_D(double v);
+jobject* jrt_Float_valueOf_F(float v);
+#define jrt_Integer_new_I jrt_Integer_valueOf_I
+#define jrt_Long_new_J jrt_Long_valueOf_J
+#define jrt_Double_new_D jrt_Double_valueOf_D
+#define jrt_Float_new_F jrt_Float_valueOf_F
+#define jrt_Character_new_C jrt_Character_valueOf_C
+jobject* jrt_Byte_valueOf_B(int8_t v);
+jobject* jrt_Short_valueOf_S(int16_t v);
+jobject* jrt_Boolean_valueOf_Z(bool v);
+jobject* jrt_Byte_new_B(int8_t v);
+jobject* jrt_Short_new_S(int16_t v);
+jobject* jrt_Boolean_new_Z(bool v);
+jarray* jrt_String_getBytes_(jstring* s);
 #define jrt_Integer_hashCode_I(v) ((int32_t)(v))
 int32_t jrt_Integer_bitCount_I(int32_t v);
 jstring* jrt_Long_toString_J(int64_t v);
@@ -313,6 +331,12 @@ void jrt_Arrays_fill_CAIIC(jarray* a, int32_t from, int32_t to, char16_t v);
 void jrt_Arrays_fill_ZAIIZ(jarray* a, int32_t from, int32_t to, bool v);
 void jrt_Arrays_fill_OAIIO(jarray* a, int32_t from, int32_t to, jobject* v);
 jstring* jrt_Arrays_toString_IA(jarray* a);
+jstring* jrt_Arrays_toString_CA(jarray* a);
+jstring* jrt_Arrays_toString_OA(jarray* a);
+jstring* jrt_Arrays_toString_JA(jarray* a);
+jstring* jrt_Arrays_toString_DA(jarray* a);
+jstring* jrt_Arrays_toString_ZA(jarray* a);
+jstring* jrt_Arrays_toString_BA(jarray* a);
 void jrt_System_arraycopy(jobject* src, int32_t sp, jobject* dst, int32_t dp, int32_t n);
 #define jrt_System_arraycopy_OIOII(s, sp, d, dp, n) jrt_System_arraycopy((jobject*)(s), (sp), (jobject*)(d), (dp), (n))
 
@@ -472,6 +496,9 @@ typedef struct jrt_HashMap {
 } jrt_HashMap;
 typedef struct jrt_MapSet { jobject hdr; jrt_HashMap* m; int kind; } jrt_MapSet;   /* 0 keys 1 values 2 entries; a HashSet is kind 0 */
 extern const jclass jrt_ArrayList_class, jrt_HashMap_class, jrt_MapSet_class, jrt_node_class;
+/* what a class of the program that extends ArrayList or HashMap keeps of Object's methods */
+jstring* jrt_list_toString(jobject* o); bool jrt_list_equals(jobject* a, jobject* b); int32_t jrt_list_hashCode(jobject* o);
+jstring* jrt_map_toString(jobject* o); bool jrt_map_equals(jobject* a, jobject* b); int32_t jrt_map_hashCode(jobject* o);
 jobject* jrt_ArrayList_new_(void);
 jobject* jrt_ArrayList_new_I(int32_t n);
 jobject* jrt_ArrayList_new_O(jobject* c);
@@ -492,6 +519,9 @@ bool jrt_Collection_remove_O(jobject* c, jobject* x);
 void jrt_Collection_clear_(jobject* c);
 bool jrt_Collection_addAll_O(jobject* c, jobject* from);
 #define jrt_LinkedList_new_ jrt_ArrayList_new_
+#define jrt_LinkedList_new_O jrt_ArrayList_new_O
+int32_t jrt_List_indexOf_O(jobject* o, jobject* x);
+#define jrt_ArrayList_indexOf_O jrt_List_indexOf_O
 #define jrt_LinkedList_size_ jrt_Collection_size_
 #define jrt_LinkedList_add_O jrt_Collection_add_O
 #define jrt_LinkedList_get_I jrt_List_get_I

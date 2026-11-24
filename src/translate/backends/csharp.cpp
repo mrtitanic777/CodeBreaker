@@ -595,6 +595,13 @@ std::string ident(std::string_view name) {
     return out;
 }
 
+// A namespace as written: a segment that is a C# keyword (java.lang.ref) is escaped.
+static std::string namespace_text(std::string_view ns) {
+    std::vector<std::string> parts;
+    for (const std::string_view part : text::split(ns, '.')) parts.push_back(ident(part));
+    return text::join(parts, ".");
+}
+
 bool is_string(const ir::TypeP& t) {
     const std::string* n = class_of(t);
     return n != nullptr && (*n == "System.String" || *n == "java.lang.String");
@@ -914,6 +921,7 @@ std::string Writer::short_name(const std::string& qname) {
         Lines relp;
         for (auto it = chain.rbegin(); it != chain.rend(); ++it) relp.push_back(ident((*it)->name.value_or("")));
         const std::string rel = text::join(relp, ".");
+        if (java_ && ns.starts_with("java.") && (rel == "Stack" || rel == "Queue") && ns != namespace_of(cls_)) return "global::" + namespace_text(ns) + "." + rel;   // (.NET has one of the name in System.Collections.Generic)
         if (!ns.empty() && ns != namespace_of(cls_)) usings_.insert(ns);
         // inside the class itself or its outer classes, the nested name alone
         for (const ir::ClassDecl* cur = cls_; cur != nullptr; cur = cur->outer ? prog_.class_named(*cur->outer) : nullptr) {
@@ -964,7 +972,7 @@ std::string Writer::unit_text() {
         }
         while (!lines.empty() && lines.back().empty()) lines.pop_back();
         if (!ns.empty()) {
-            body.push_back("namespace " + ns);
+            body.push_back("namespace " + namespace_text(ns));
             body.emplace_back("{");
             for (const std::string& l : lines) body.push_back(l.empty() ? std::string() : "    " + l);
             body.emplace_back("}");
@@ -987,7 +995,7 @@ std::string Writer::unit_text() {
             const auto* cd = ir::get<ir::ClassDecl>(c);
             return cd != nullptr && namespace_of(cd).starts_with(x + ".");
         });
-        if (!parent_of_own) head.push_back("using " + x + ";");
+        if (!parent_of_own) head.push_back("using " + namespace_text(x) + ";");
     }
     head.emplace_back();
     extend(head, body);

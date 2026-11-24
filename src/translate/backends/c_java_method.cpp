@@ -156,6 +156,10 @@ Lines MethodWriter::ctor_call(const ir::CtorCall& call, std::string_view ind) {
     }
     if (!ci_->base || ci_->base->empty() || *ci_->base == jmodel::kObject) return {};
     const ClassInfo* b = p_.model().info(*ci_->base);
+    if (b == nullptr && runtime_collection_base(*ci_->base)) {   // (a runtime collection made empty: all zero is its empty state)
+        if (!call.args.empty()) throw Decline("super(...) of the runtime class " + *ci_->base + " with arguments");
+        return {};
+    }
     if (b == nullptr) {   // a runtime Throwable
         std::vector<std::string> as;
         for (std::size_t i = 0; i < call.args.size(); ++i) {

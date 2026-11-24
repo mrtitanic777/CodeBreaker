@@ -54,6 +54,12 @@ public final class Class<T> {
         return name;
     }
 
+    public String getCanonicalName() {
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < name.length(); i++) b.append(name.charAt(i) == '$' ? '.' : name.charAt(i));
+        return b.toString();
+    }
+
     public String getSimpleName() {
         int cut = name.length();
         while (cut > 0 && name.charAt(cut - 1) != '.' && name.charAt(cut - 1) != '$') cut--;

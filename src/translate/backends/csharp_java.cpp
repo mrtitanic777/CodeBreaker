@@ -28,7 +28,7 @@ const std::unordered_map<std::string_view, std::string_view>& cj_types() {
         {"java.lang.CharSequence", "string"}, {"java.lang.StringBuilder", "System.Text.StringBuilder"},
         {"java.lang.StringBuffer", "System.Text.StringBuilder"}, {"java.lang.Math", "Math"}, {"java.lang.StrictMath", "Math"},
         {"java.lang.System", "Console"}, {"java.lang.Throwable", "Exception"}, {"java.lang.Exception", "Exception"},
-        {"java.lang.RuntimeException", "Exception"}, {"java.lang.Error", "Exception"},
+        {"java.lang.RuntimeException", "Exception"}, {"java.lang.Error", "Exception"}, {"java.lang.OutOfMemoryError", "OutOfMemoryException"},
         {"java.lang.ArithmeticException", "ArithmeticException"}, {"java.lang.NullPointerException", "NullReferenceException"},
         {"java.lang.ArrayIndexOutOfBoundsException", "IndexOutOfRangeException"},
         {"java.lang.IndexOutOfBoundsException", "ArgumentOutOfRangeException"},
@@ -102,7 +102,7 @@ const std::unordered_map<std::string, std::string>& cj_family() {
             {"java.lang.String", "String"}, {"java.lang.StringBuilder", "StringBuilder"}, {"java.lang.StringBuffer", "StringBuilder"},
             {"java.lang.AbstractStringBuilder", "StringBuilder"}, {"java.lang.Object", "Object"}, {"java.lang.Math", "Math"},
             {"java.lang.StrictMath", "Math"}, {"java.lang.Integer", "Integer"}, {"java.lang.Long", "Long"}, {"java.lang.Double", "Double"},
-            {"java.lang.Float", "Float"}, {"java.lang.Boolean", "Boolean"}, {"java.lang.Character", "Character"},
+            {"java.lang.Float", "Float"}, {"java.lang.Boolean", "Boolean"}, {"java.lang.Character", "Character"}, {"java.lang.Byte", "Byte"}, {"java.lang.Short", "Short"},
             {"java.lang.System", "System"}, {"java.lang.Thread", "Thread"}, {"java.io.PrintStream", "PrintStream"},
             {"java.util.Arrays", "Arrays"}, {"java.util.Collections", "Collections"}, {"java.util.Random", "Random"},
             {"java.lang.Throwable", "Throwable"}, {"java.lang.Exception", "Throwable"}, {"java.lang.RuntimeException", "Throwable"},
@@ -398,6 +398,26 @@ void JavaLibrary::prepare(cs::Program& program) {
                 abstract_copy.typeparams = m->typeparams;
                 program.add_member(c, ir::make(program.arena(), std::move(abstract_copy), ir::TypeP{}, mn->line, mn->col));
                 have.insert(key);
+            }
+        }
+    }
+    for (Node* cn : classes) {   // the arrays something stores into: a list made over one (Arrays.asList) would have to see it
+        for (Node* n : ir::walk(cn)) {
+            const auto stored = [&](Node* target) {
+                const ir::Index* at = target != nullptr ? ir::get<ir::Index>(cs::strip(target)) : nullptr;
+                if (at != nullptr && at->arr != nullptr && at->arr->type) stored_arrays_.insert(ir::to_text(*at->arr->type));
+            };
+            if (const ir::Assign* a = ir::get<ir::Assign>(n)) stored(a->target);
+            if (const ir::Unary* u = ir::get<ir::Unary>(n); u != nullptr && (u->op == "++" || u->op == "--")) stored(u->x);
+            if (const ir::Call* c = ir::get<ir::Call>(n); c != nullptr && c->sym != nullptr) {
+                const std::string owner = c->sym->owner.value_or("");
+                const std::size_t into = owner == "java.lang.System" && c->sym->name == "arraycopy" ? 2 : 0;
+                if (((owner == "java.util.Arrays" && (c->sym->name == "fill" || c->sym->name == "sort" || c->sym->name == "setAll")) || into == 2) && c->args.size() > into &&
+                    c->args[into]->type) {
+                    stored_arrays_.insert(ir::to_text(*c->args[into]->type));
+                }
+                if (owner == "java.util.Arrays" && c->sym->name == "asList" && c->args.size() == 1 && c->args[0]->type && c->args[0]->type->kind() == "array")
+                    list_over_array_ = true;
             }
         }
     }
@@ -723,7 +743,14 @@ std::optional<std::string> JavaLibrary::type_name(cs::Context& w, const ir::Type
     const std::string& q = std::get<ir::ClassType>(t->body).name;
     const std::vector<ir::TypeP>& type_args = std::get<ir::ClassType>(t->body).args;
     if ((q == "java.lang.Class" || q == "java.lang.reflect.Constructor") && w.program().class_named(q) != nullptr) return q == "java.lang.Class" ? "global::java.lang.Class" : "global::java.lang.reflect.Constructor";
-    if (w.program().class_named(q) != nullptr) return std::nullopt;
+    if (const ir::ClassDecl* own = w.program().class_named(q); own != nullptr) {
+        if (type_args.empty() && !own->typeparams.empty()) {   // a raw use of a generic class of the program: its arguments are Object
+            ir::ClassType filled = std::get<ir::ClassType>(t->body);
+            filled.args.assign(own->typeparams.size(), ir::class_type("java.lang.Object"));
+            return w.ctype(ir::make_type(std::move(filled)));
+        }
+        return std::nullopt;
+    }
     if (cj_is_null_box(t)) return std::string(cj_types().at(q)) + "?";
     const auto ctypes = [&] {
         std::vector<std::string> out;
@@ -744,7 +771,16 @@ std::optional<std::string> JavaLibrary::type_name(cs::Context& w, const ir::Type
         throw Decline("type", "the raw type " + ir::to_text(*t));
     }
     if (const auto f = cj_functions().find(q); f != cj_functions().end()) {
-        const std::vector<std::string> args = f->second.arguments(ctypes());
+        std::vector<std::string> given = ctypes();
+        if (given.empty()) {   // a raw use: the type arguments are Object
+            static const std::unordered_map<std::string_view, std::size_t> raw = {
+                {"java.util.function.Function", 2}, {"java.util.function.BiFunction", 3}, {"java.util.function.Supplier", 1},
+                {"java.util.function.Consumer", 1}, {"java.util.function.BiConsumer", 2}, {"java.util.function.Predicate", 1},
+                {"java.util.function.BiPredicate", 2}, {"java.util.function.IntFunction", 1}, {"java.util.function.ToIntFunction", 1},
+                {"java.util.Comparator", 1}};
+            if (const auto r = raw.find(q); r != raw.end()) given.assign(r->second, "object");
+        }
+        const std::vector<std::string> args = f->second.arguments(given);
         if (f->second.generic == "Action" && args.empty()) return "Action";
         w.add_using("System");
         return std::string(f->second.generic) + "<" + text::join(args, ", ") + ">";
@@ -768,6 +804,10 @@ std::optional<std::string> JavaLibrary::type_name(cs::Context& w, const ir::Type
         if ((name == "IComparable" || name == "IEnumerable") && !type_args.empty()) {
             if (name == "IEnumerable") w.add_using("System.Collections.Generic");
             return name + "<" + text::join(ctypes(), ", ") + ">";
+        }
+        if (name == "IEnumerable") {   // a raw Iterable: of Object
+            w.add_using("System.Collections.Generic");
+            return "IEnumerable<object>";
         }
         if (name.find('.') == std::string::npos && std::isupper(static_cast<unsigned char>(name[0])) != 0) w.add_using("System");
         return name;
@@ -868,7 +908,47 @@ bool JavaLibrary::overrides(cs::Context& w, const ir::ClassDecl& c, const ir::Me
     return w.program().overrides(c, m);
 }
 
+namespace {
+
+// Whether the type names a class of the program that C# keeps internal: a top-level class that is not public, or a private nested one.
+bool cj_hides(cs::Context& w, const ir::TypeP& t) {
+    if (!t) return false;
+    if (const auto* a = std::get_if<ir::ArrayType>(&t->body)) return cj_hides(w, a->elem);
+    const auto* c = std::get_if<ir::ClassType>(&t->body);
+    if (c == nullptr) return false;
+    if (const ir::ClassDecl* own = w.program().class_named(c->name); own != nullptr && !own->outer && !cj_has(own->mods, "public")) return true;
+    return std::any_of(c->args.begin(), c->args.end(), [&](const ir::TypeP& x) { return cj_hides(w, x); });
+}
+
+}  // namespace
+
 std::vector<std::string> JavaLibrary::method_mods(cs::Context& w, ir::MethodDecl& m, ir::ClassDecl& c) {
+    std::vector<std::string> out = method_mods_plain(w, m, c);
+    // a public member may not show a type less public than itself (C# CS0051): it is made internal, unless an interface or a base fixes its access
+    const bool open = std::find(out.begin(), out.end(), "public") != out.end() || std::find(out.begin(), out.end(), "protected") != out.end();
+    if (!open || c.kind == "interface" || std::find(out.begin(), out.end(), "override") != out.end()) return out;
+    bool hides = cj_hides(w, m.ret);
+    for (Node* p : m.params) hides = hides || cj_hides(w, ir::get<ir::Param>(p)->type);
+    if (!hides) return out;
+    for (const ir::TypeP& i : c.implements) {   // (a method of an interface of the program stays public)
+        const std::string* q = cj_qual(i);
+        const ir::ClassDecl* face = q != nullptr ? w.program().class_named(*q) : nullptr;
+        if (face == nullptr) continue;
+        for (Node* member : w.program().members(const_cast<ir::ClassDecl&>(*face))) {
+            const ir::MethodDecl* d = ir::get<ir::MethodDecl>(member);
+            if (d != nullptr && d->name == m.name && d->params.size() == m.params.size()) return out;
+        }
+    }
+    std::vector<std::string> lowered;
+    for (const std::string& x : out) {
+        if (x == "public" || x == "protected" || x == "internal") continue;
+        lowered.push_back(x);
+    }
+    lowered.insert(lowered.begin(), "internal");
+    return lowered;
+}
+
+std::vector<std::string> JavaLibrary::method_mods_plain(cs::Context& w, ir::MethodDecl& m, ir::ClassDecl& c) {
     const std::vector<std::string>& mods = m.mods;
     if (c.kind == "interface") return cj_has(mods, "static") ? std::vector<std::string>{"static"} : std::vector<std::string>{};
     std::vector<std::string> out = access(mods, c);
@@ -1928,6 +2008,8 @@ void JavaLibrary::check_list_change(const ir::Call& call) const {
     const bool resizes = !utility && (s.name == "add" || s.name == "addAll" || s.name == "remove" || s.name == "removeAll" || s.name == "removeIf" ||
                                       s.name == "retainAll" || s.name == "clear");
     const bool writes = utility || s.name == "set" || s.name == "sort" || s.name == "replaceAll";
+    if (limit == "fixed" && writes && list_over_array_)   // (the C# list is a copy of the array, which Java's would write through to)
+        throw Decline("fixed-list", "changing a list made over an array (" + s.name + " on Arrays.asList): Java writes through to the array, a C# copy would not");
     if (resizes || (limit == "immutable" && writes)) {
         throw Decline("fixed-list", "changing a list Java refuses to change (" + s.name + " on " +
                                         (limit == "fixed" ? "Arrays.asList" : "an immutable list") + "): Java throws, a C# List would not");
@@ -2044,7 +2126,10 @@ std::optional<Ex> JavaLibrary::stream_call(cs::Context& w, Node* e) {
     }
     if (owner == "java.util.Arrays" && s.name == "asList") {
         if (call.args.size() == 1 && call.args[0]->type && call.args[0]->type->kind() == "array") {
-            throw Decline("library", "Arrays.asList over an existing array: Java's list writes through to it");
+            // the list reads the array as it is later: a copy is the same while nothing in the program ever stores into an array of this type
+            if (stored_arrays_.contains(ir::to_text(*call.args[0]->type))) throw Decline("library", "Arrays.asList over an existing array: Java's list writes through to it");
+            w.add_using("System.Collections.Generic");
+            return Ex{"new List<" + result_arg(0) + ">(" + w.expr(call.args[0]).text + ")", cs::kPrimary};
         }
         w.add_using("System.Collections.Generic");
         const std::string type = result_arg(0);
@@ -2066,8 +2151,9 @@ std::optional<Ex> JavaLibrary::stream_call(cs::Context& w, Node* e) {
     if (call.target != nullptr && ((s.name == "equals" && call.args.size() == 1) || (s.name == "hashCode" && call.args.empty()))) {
         const auto fam = cj_family().find(owner);
         const std::optional<std::string> held = concrete(call.target);
-        if (fam != cj_family().end() && (fam->second == "Map" || fam->second == "Set") && held && *held != "java.util.TreeMap" && *held != "java.util.TreeSet" &&
-            *held != "java.util.Hashtable") {
+        const bool list = fam != cj_family().end() && fam->second == "List" && owner != "java.lang.Iterable";   // (a list is equal when its elements are, in order)
+        if (list || (fam != cj_family().end() && (fam->second == "Map" || fam->second == "Set") && held && *held != "java.util.TreeMap" && *held != "java.util.TreeSet" &&
+                     *held != "java.util.Hashtable")) {
             uses();
             if (s.name == "hashCode") return Ex{"JLib.Hash(" + w.expr(call.target).text + ")", cs::kPrimary};
             return Ex{"JLib.Equal(" + w.expr(call.target).text + ", " + arguments() + ")", cs::kPrimary};
@@ -2247,6 +2333,7 @@ std::optional<Ex> JavaLibrary::new_object(cs::Context& w, Node* e) {
         return Ex{"new " + tn + "(" + joined() + ")", cs::kPrimary};
     }
     if (*q == "java.lang.Object") return Ex{"new object()", cs::kPrimary};
+    if (cj_is_box(t) && args.size() == 1 && !cs::is_string(args[0]->type)) return Ex{"((" + tn + ")" + w.wrap(args[0], cs::kUnary) + ")", cs::kPrimary};   // (a box of a number: the number)
     throw Decline("library", "new " + *q + ": no C# mapping");
 }
 

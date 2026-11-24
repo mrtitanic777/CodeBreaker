@@ -340,6 +340,7 @@ struct String : Object {
 	ref<String> repeat(int32_t n) { std::u16string r; for (int32_t i = 0; i < n; ++i) r += s; return str(r); }
 	ref<String> concat(const ref<String>& t) { return str(s + nn(t)->s); }
 	ref<Array<char16_t>> toCharArray();
+	ref<Array<int8_t>> getBytes();
 	ref<Array<ref<String>>> split(const ref<String>& re);
 	ref<IntStream> chars();
 	ref<String> intern();
@@ -351,6 +352,7 @@ struct String : Object {
 	static ref<String> valueOf(char16_t v) { return str(std::u16string(1, v)); }
 	static ref<String> valueOf(const ref<Object>& o) { return o ? o->toString() : lit(u"null"); }
 	static ref<String> valueOf(const ref<Array<char16_t>>& a);
+	static ref<String> valueOf(const ref<Array<char16_t>>& a, int32_t offset, int32_t count);
 	template <class... A> static ref<String> format(const ref<String>& f, A... a);
 	template <class... A> ref<String> formatted(A... a);
 	static ref<String> join(const ref<Object>& sep, const ref<Object>& parts);
@@ -417,6 +419,7 @@ struct Throwable : Object {
 	struct Name : Base { const char16_t* jclass_() const override { return QName; } };
 JRT_THROWABLE(Exception, Throwable, u"java.lang.Exception")
 JRT_THROWABLE(Error, Throwable, u"java.lang.Error")
+JRT_THROWABLE(OutOfMemoryError, Error, u"java.lang.OutOfMemoryError")
 JRT_THROWABLE(RuntimeException, Exception, u"java.lang.RuntimeException")
 JRT_THROWABLE(IllegalArgumentException, RuntimeException, u"java.lang.IllegalArgumentException")
 JRT_THROWABLE(IllegalStateException, RuntimeException, u"java.lang.IllegalStateException")
@@ -916,7 +919,27 @@ template <class T> ref<Array<T>> new_array_n(std::initializer_list<int32_t> give
 	return new_array_levels<T>(sizes, 0);
 }
 
+// UTF-8, as Java's default charset writes it: a surrogate pair is one character, a lone surrogate a ?
+inline ref<Array<int8_t>> String::getBytes() {
+	std::vector<int8_t> bytes;
+	for (size_t i = 0; i < s.size(); ++i) {
+		uint32_t c = s[i];
+		if (c >= 0xD800 && c <= 0xDBFF && i + 1 < s.size() && s[i + 1] >= 0xDC00 && s[i + 1] <= 0xDFFF) { c = 0x10000 + ((c - 0xD800) << 10) + (s[i + 1] - 0xDC00); ++i; }
+		else if (c >= 0xD800 && c <= 0xDFFF) c = '?';
+		if (c < 0x80) bytes.push_back((int8_t)c);
+		else if (c < 0x800) { bytes.push_back((int8_t)(0xC0 | (c >> 6))); bytes.push_back((int8_t)(0x80 | (c & 0x3F))); }
+		else if (c < 0x10000) { bytes.push_back((int8_t)(0xE0 | (c >> 12))); bytes.push_back((int8_t)(0x80 | ((c >> 6) & 0x3F))); bytes.push_back((int8_t)(0x80 | (c & 0x3F))); }
+		else { bytes.push_back((int8_t)(0xF0 | (c >> 18))); bytes.push_back((int8_t)(0x80 | ((c >> 12) & 0x3F))); bytes.push_back((int8_t)(0x80 | ((c >> 6) & 0x3F))); bytes.push_back((int8_t)(0x80 | (c & 0x3F))); }
+	}
+	auto r = new_array<int8_t>((int32_t)bytes.size());
+	std::copy(bytes.begin(), bytes.end(), r->a.begin());
+	return r;
+}
 inline ref<Array<char16_t>> String::toCharArray() { auto r = new_array<char16_t>((int32_t)s.size()); std::copy(s.begin(), s.end(), r->a.begin()); return r; }
+inline ref<String> String::valueOf(const ref<Array<char16_t>>& a, int32_t offset, int32_t count) {
+	if (offset < 0 || count < 0 || offset > nn(a)->length - count) raise_msg(std::make_shared<StringIndexOutOfBoundsException>(), u"offset " + sv(offset) + u", count " + sv(count) + u", length " + sv(a->length));
+	return str(std::u16string(a->a.begin() + offset, a->a.begin() + offset + count));
+}
 inline ref<String> String::valueOf(const ref<Array<char16_t>>& a) { return str(std::u16string(nn(a)->a.begin(), a->a.end())); }
 inline void String::ctor_(const ref<Array<char16_t>>& a) { s.assign(nn(a)->a.begin(), a->a.end()); }
 inline void String::ctor_(const ref<Array<char16_t>>& a, int32_t off, int32_t n) { s.assign(nn(a)->a.begin() + off, a->a.begin() + off + n); }
@@ -1251,6 +1274,30 @@ struct ImmutableList : ArrayList {
 	void clear() override { raise_new<UnsupportedOperationException>(nullptr); }
 	void sort(ref<Comparator>) override { raise_new<UnsupportedOperationException>(nullptr); }
 };
+// Arrays.asList: a list of a fixed size over the array itself, so a set is seen in the array and a change of size throws, as in Java.
+template <class T> struct ArrayView : List {
+	ref<Array<ref<T>>> arr;
+#ifdef JRT_CYCLES
+	gc::Tracked gc_tracked_{this};
+	void trace_(gc::Tracer& t) override { t(arr); }
+	void clear_() override { arr = nullptr; }
+#endif
+	const char16_t* jclass_() const override { return u"java.util.Arrays.ArrayList"; }
+	void check(int32_t i) { if (i < 0 || i >= size()) raise_msg(std::make_shared<IndexOutOfBoundsException>(), u"Index " + sv(i) + u" out of bounds for length " + sv(size())); }
+	int32_t size() override { return arr->length; }
+	O get(int32_t i) override { check(i); return O(arr->a[i]); }
+	O set(int32_t i, O x) override { check(i); O old = O(arr->a[i]); arr->a[i] = cast<T>(x); return old; }
+	bool remove(O) override { raise_new<UnsupportedOperationException>(u"remove"); }
+	void clear() override { raise_new<UnsupportedOperationException>(nullptr); }
+};
+struct FixedList : ArrayList {   // (Arrays.asList of separate values)
+	const char16_t* jclass_() const override { return u"java.util.Arrays.ArrayList"; }
+	bool add(O) override { raise_new<UnsupportedOperationException>(nullptr); }
+	void add(int32_t, O) override { raise_new<UnsupportedOperationException>(nullptr); }
+	O remove(int32_t) override { raise_new<UnsupportedOperationException>(u"remove"); }
+	bool remove(O) override { raise_new<UnsupportedOperationException>(u"remove"); }
+	void clear() override { raise_new<UnsupportedOperationException>(nullptr); }
+};
 inline ref<List> List::of() { return std::make_shared<ImmutableList>(); }
 template <class... A> ref<List> List::of(A... a) { auto l = std::make_shared<ImmutableList>(); l->v = {O(a)...}; for (auto& x : l->v) if (!x) raise_npe(); return l; }
 inline ref<List> List::copyOf(ref<Collection> c) { auto l = std::make_shared<ImmutableList>(); for (O x : *nn(c)) l->v.push_back(x); return l; }
@@ -1281,7 +1328,8 @@ struct Arrays {
 	template <class T> static ref<Array<T>> copyOfRange(const ref<Array<T>>& a, int32_t b, int32_t e) { auto r = new_array<T>(e - b); for (int32_t i = b; i < e && i < nn(a)->length; ++i) r->a[i - b] = a->a[i]; return r; }
 	template <class T> static bool equals(const ref<Array<T>>& a, const ref<Array<T>>& b) { if (a == b) return true; if (!a || !b) return false; return a->a == b->a; }
 	template <class T> static int32_t hashCode(const ref<Array<T>>& a) { if (!a) return 0; int32_t h = 1; for (auto& x : a->a) h = 31 * h + hash_of(x); return h; }
-	template <class... A> static ref<List> asList(A... a) { auto l = std::make_shared<ArrayList>(); l->v = {O(a)...}; return l; }
+	template <class T> static ref<List> asList(const ref<Array<ref<T>>>& arr) { nn(arr); auto l = std::make_shared<ArrayView<T>>(); l->arr = arr; return l; }
+	template <class... A> static ref<List> asList(A... a) { auto l = std::make_shared<FixedList>(); l->v = {O(a)...}; return l; }
 	template <class T> static ref<struct Stream> stream(const ref<Array<T>>& a);
 	static ref<IntStream> stream(const ref<Array<int32_t>>& a);
 	template <class T> static int32_t binarySearch(const ref<Array<T>>& a, T key) {

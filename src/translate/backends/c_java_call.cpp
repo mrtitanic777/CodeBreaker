@@ -97,7 +97,16 @@ std::string MethodWriter::args(std::span<ir::Node* const> list, const std::vecto
 Code MethodWriter::lib_call(const ir::Node& n, const ir::Call& k) {
     const ir::Sym& s = *k.sym;
     if (!s.owner) throw Decline("a library call with no owner");
-    const std::string& s_owner = *s.owner;
+    std::string s_owner = *s.owner;
+    if (const ClassInfo* held = p_.model().info(s_owner)) {   // a method a class of the program takes from the runtime collection it extends
+        std::optional<std::string> up = held->base;
+        while (up && !up->empty()) {
+            const ClassInfo* b = p_.model().info(*up);
+            if (b == nullptr) break;
+            up = b->base;
+        }
+        if (up && runtime_collection_base(*up)) s_owner = *up;
+    }
     std::string owner = std::string(jmodel::runtime_name(s_owner).value_or(after_dot(s_owner)));
     if (s_owner == "java.util.Map.Entry") owner = "MapEntry";
     if ((s_owner == "java.util.List" || s_owner == "java.util.Set" || s_owner == "java.util.Map") && s.name == "of") {
@@ -115,7 +124,13 @@ Code MethodWriter::lib_call(const ir::Node& n, const ir::Call& k) {
     if ((s_owner == "java.lang.String" && s.name == "format") || to_stream || formatted) {
         const std::size_t first = formatted ? 0 : 1;   // (`text.formatted(a)`: the text is the receiver)
         if (k.args.size() < first) throw Decline("String.format without a format");
-        if (k.args.size() == first + 1 && kind_of(type_of(k.args[first])) == "array") throw Decline("a format given its arguments as an array");
+        // one argument that is an array of objects is the argument list; an array of numbers is one argument
+        bool as_array = false;
+        if (k.args.size() == first + 1 && kind_of(type_of(k.args[first])) == "array") {
+            const ir::TypeP held = type_of(k.args[first]);
+            const auto* arr = std::get_if<ir::ArrayType>(&held->body);
+            as_array = arr != nullptr && arr->elem && arr->elem->kind() == "class";
+        }
         if (!formatted && kind_of(type_of(k.args[0])) != "class") throw Decline("a format with a Locale");
         if (!formatted && class_name(type_of(k.args[0])) != "java.lang.String") throw Decline("a format with a Locale");
         std::string stream;
@@ -124,9 +139,10 @@ Code MethodWriter::lib_call(const ir::Node& n, const ir::Call& k) {
         std::vector<std::string> values;
         for (std::size_t i = first; i < k.args.size(); ++i) {
             const Code c = expr(k.args[i]);
-            values.push_back(conv(c.code, c.ctype, kObj));
+            values.push_back(as_array ? c.code : conv(c.code, c.ctype, kObj));
         }
-        const std::string text = std::format("jrt_String_format({}, {}{})", conv(format.code, format.ctype, kStr), values.size(), comma_list(values));
+        const std::string text = as_array ? std::format("jrt_String_format_A({}, {})", conv(format.code, format.ctype, kStr), values[0])
+                                          : std::format("jrt_String_format({}, {}{})", conv(format.code, format.ctype, kStr), values.size(), comma_list(values));
         if (to_stream) return {std::format("jrt_print_to({}, {})", stream, text), "void*"};
         return {text, std::string(kStr)};
     }

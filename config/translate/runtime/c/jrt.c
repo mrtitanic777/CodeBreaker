@@ -237,6 +237,7 @@ const jrt_Throwable_vt jrt_Throwable_vt_ = {{jrt_Throwable_toString, jrt_Object_
 const jclass jrt_Throwable_class = {"java.lang.Throwable", &jrt_Object_class, sizeof(jrt_Throwable), &jrt_Throwable_vt_, 0, 0, 0};
 EXC(Exception, "java.lang.Exception", Throwable)
 EXC(Error, "java.lang.Error", Throwable)
+EXC(OutOfMemoryError, "java.lang.OutOfMemoryError", Error)
 EXC(RuntimeException, "java.lang.RuntimeException", Exception)
 EXC(IllegalArgumentException, "java.lang.IllegalArgumentException", RuntimeException)
 EXC(IllegalStateException, "java.lang.IllegalStateException", RuntimeException)
@@ -467,6 +468,35 @@ jstring* jrt_String_trim_(jstring* s) {
 jstring* jrt_String_replace_CC(jstring* s, char16_t a, char16_t b) { jstring* r = jrt_str(((jstring*)jrt_nn(s))->s, s->len); for (int32_t i = 0; i < r->len; ++i) if (r->s[i] == a) r->s[i] = b; return r; }
 jstring* jrt_String_repeat_I(jstring* s, int32_t n) { jstring* r = jrt_str(0, ((jstring*)jrt_nn(s))->len * n); for (int32_t i = 0; i < n; ++i) memcpy(r->s + i * s->len, s->s, (size_t)s->len * 2); return r; }
 jstring* jrt_String_toString_(jstring* s) { return (jstring*)jrt_nn(s); }
+/* the text as UTF-8, Java's default: a surrogate pair is one character, a lone surrogate a ? */
+jarray* jrt_String_getBytes_(jstring* s) {
+	const jstring* t = (const jstring*)jrt_nn(s);
+	int32_t n = 0;
+	for (int32_t pass = 0; pass < 2; ++pass) {
+		jarray* a = pass ? jrt_new_array(1, n) : NULL;
+		int8_t* out = a ? (int8_t*)a->data : NULL;
+		int32_t k = 0;
+		for (int32_t i = 0; i < t->len; ++i) {
+			uint32_t c = t->s[i];
+			if (c >= 0xD800 && c <= 0xDBFF && i + 1 < t->len && t->s[i + 1] >= 0xDC00 && t->s[i + 1] <= 0xDFFF) {
+				c = 0x10000 + ((c - 0xD800) << 10) + (t->s[i + 1] - 0xDC00);
+				++i;
+			} else if (c >= 0xD800 && c <= 0xDFFF) {
+				c = '?';
+			}
+			uint8_t b[4];
+			int32_t m = 0;
+			if (c < 0x80) { b[m++] = (uint8_t)c; }
+			else if (c < 0x800) { b[m++] = (uint8_t)(0xC0 | (c >> 6)); b[m++] = (uint8_t)(0x80 | (c & 0x3F)); }
+			else if (c < 0x10000) { b[m++] = (uint8_t)(0xE0 | (c >> 12)); b[m++] = (uint8_t)(0x80 | ((c >> 6) & 0x3F)); b[m++] = (uint8_t)(0x80 | (c & 0x3F)); }
+			else { b[m++] = (uint8_t)(0xF0 | (c >> 18)); b[m++] = (uint8_t)(0x80 | ((c >> 12) & 0x3F)); b[m++] = (uint8_t)(0x80 | ((c >> 6) & 0x3F)); b[m++] = (uint8_t)(0x80 | (c & 0x3F)); }
+			for (int32_t j = 0; j < m; ++j) { if (out) out[k] = (int8_t)b[j]; ++k; }
+		}
+		if (pass) return a;
+		n = k;
+	}
+	return NULL;
+}
 jarray* jrt_String_toCharArray_(jstring* s) { jarray* a = jrt_new_array(2, ((jstring*)jrt_nn(s))->len); memcpy(a->data, s->s, (size_t)s->len * 2); return a; }
 jstring* jrt_String_new_A(jarray* a) { return jrt_str((const char16_t*)((jarray*)jrt_nn(a))->data, a->length); }
 jstring* jrt_String_valueOf_A(jarray* a) { return jrt_String_new_A(a); }
@@ -588,6 +618,7 @@ static _Noreturn void format_error(const char* what, char conv) {
 	jrt_throw_new(&jrt_IllegalArgumentException_class, m);
 }
 static bool is_integral_box(const jobject* a) { return a->cls == &jrt_Integer_class || a->cls == &jrt_Long_class || a->cls == &jrt_Short_class || a->cls == &jrt_Byte_class; }
+static jstring* format_with(jstring* fmt, int n, jobject** args);
 jstring* jrt_String_format(jstring* fmt, int n, ...) {
 	va_list ap;
 	jobject* args[64];
@@ -595,6 +626,14 @@ jstring* jrt_String_format(jstring* fmt, int n, ...) {
 	va_start(ap, n);
 	for (int i = 0; i < n; ++i) args[i] = va_arg(ap, jobject*);
 	va_end(ap);
+	return format_with(fmt, n, args);
+}
+/* String.format(fmt, Object[]): the array's elements are the arguments */
+jstring* jrt_String_format_A(jstring* fmt, jarray* a) {
+	jrt_nn(a);
+	return format_with(fmt, a->length, (jobject**)a->data);
+}
+static jstring* format_with(jstring* fmt, int n, jobject** args) {
 	jrt_StringBuilder* out = jrt_StringBuilder_new_();
 	jstring* f = (jstring*)jrt_nn(fmt);
 	int next = 0, last = -1;
@@ -851,11 +890,48 @@ bad: {
 		jrt_throw(e);
 	}
 }
+int32_t jrt_Integer_parseInt_StrI(jstring* s, int32_t radix) {
+	jrt_nn(s);
+	int32_t i = 0;
+	bool neg = false;
+	long long v = 0;
+	if (radix < 2 || radix > 36) goto bad;
+	if (s->len > 0 && (s->s[0] == '-' || s->s[0] == '+')) { neg = s->s[0] == '-'; i = 1; }
+	if (i >= s->len) goto bad;
+	for (; i < s->len; ++i) {
+		int32_t c = s->s[i], d = -1;
+		if (c >= '0' && c <= '9') d = c - '0';
+		else if (c >= 'a' && c <= 'z') d = c - 'a' + 10;
+		else if (c >= 'A' && c <= 'Z') d = c - 'A' + 10;
+		if (d < 0 || d >= radix) goto bad;
+		v = v * radix + d;
+		if (v > 2147483648LL) goto bad;
+	}
+	if (neg) v = -v;
+	if (v > JRT_INT_MAX || v < JRT_INT_MIN) goto bad;
+	return (int32_t)v;
+bad: {
+		jstring* m = jrt_concat(3, str8("For input string: \""), s, str8("\""));
+		if (radix != 10) m = jrt_concat(3, m, str8(" under radix "), jrt_str_I(radix));
+		jobject* e = (jobject*)jrt_alloc(&jrt_NumberFormatException_class);
+		((jrt_Throwable*)e)->message = m;
+		jrt_throw(e);
+	}
+}
 int32_t jrt_Integer_compare_II(int32_t a, int32_t b) { return a < b ? -1 : (a == b ? 0 : 1); }
 int32_t jrt_Integer_sum_II(int32_t a, int32_t b) { return (int32_t)((uint32_t)a + (uint32_t)b); }
 int32_t jrt_Integer_max_II(int32_t a, int32_t b) { return a > b ? a : b; }
 int32_t jrt_Integer_min_II(int32_t a, int32_t b) { return a < b ? a : b; }
 jobject* jrt_Integer_valueOf_I(int32_t v) { return jrt_box_I(v); }
+jobject* jrt_Long_valueOf_J(int64_t v) { return jrt_box_J(v); }
+jobject* jrt_Double_valueOf_D(double v) { return jrt_box_D(v); }
+jobject* jrt_Float_valueOf_F(float v) { return jrt_box_F(v); }
+jobject* jrt_Byte_valueOf_B(int8_t v) { return jrt_box_B(v); }
+jobject* jrt_Short_valueOf_S(int16_t v) { return jrt_box_S(v); }
+jobject* jrt_Boolean_valueOf_Z(bool v) { return jrt_box_Z(v); }
+jobject* jrt_Byte_new_B(int8_t v) { return jrt_box_B(v); }
+jobject* jrt_Short_new_S(int16_t v) { return jrt_box_S(v); }
+jobject* jrt_Boolean_new_Z(bool v) { return jrt_box_Z(v); }
 int32_t jrt_Integer_bitCount_I(int32_t v) { uint32_t u = (uint32_t)v; int n = 0; while (u) { n += u & 1; u >>= 1; } return n; }
 jstring* jrt_Long_toString_J(int64_t v) { return jrt_str_J(v); }
 jstring* jrt_Long_toHexString_J(int64_t v) { return radix((uint64_t)v, 4); }
@@ -993,6 +1069,54 @@ jstring* jrt_Arrays_toString_IA(jarray* a) {
 	jrt_StringBuilder_append_C(b, ']');
 	return jrt_StringBuilder_toString_(b);
 }
+jstring* jrt_Arrays_toString_CA(jarray* a) {
+	if (!a) return str8("null");
+	jrt_StringBuilder* b = jrt_StringBuilder_new_();
+	jrt_StringBuilder_append_C(b, '[');
+	for (int32_t i = 0; i < a->length; ++i) { if (i) sb_add8(b, ", "); jrt_StringBuilder_append_C(b, ((char16_t*)a->data)[i]); }
+	jrt_StringBuilder_append_C(b, ']');
+	return jrt_StringBuilder_toString_(b);
+}
+jstring* jrt_Arrays_toString_OA(jarray* a) {
+	if (!a) return str8("null");
+	jrt_StringBuilder* b = jrt_StringBuilder_new_();
+	jrt_StringBuilder_append_C(b, '[');
+	for (int32_t i = 0; i < a->length; ++i) { if (i) sb_add8(b, ", "); jrt_StringBuilder_append_Str(b, jrt_str_O(((jobject**)a->data)[i])); }
+	jrt_StringBuilder_append_C(b, ']');
+	return jrt_StringBuilder_toString_(b);
+}
+jstring* jrt_Arrays_toString_JA(jarray* a) {
+	if (!a) return str8("null");
+	jrt_StringBuilder* b = jrt_StringBuilder_new_();
+	jrt_StringBuilder_append_C(b, '[');
+	for (int32_t i = 0; i < a->length; ++i) { if (i) sb_add8(b, ", "); jrt_StringBuilder_append_Str(b, jrt_str_J(((int64_t*)a->data)[i])); }
+	jrt_StringBuilder_append_C(b, ']');
+	return jrt_StringBuilder_toString_(b);
+}
+jstring* jrt_Arrays_toString_DA(jarray* a) {
+	if (!a) return str8("null");
+	jrt_StringBuilder* b = jrt_StringBuilder_new_();
+	jrt_StringBuilder_append_C(b, '[');
+	for (int32_t i = 0; i < a->length; ++i) { if (i) sb_add8(b, ", "); jrt_StringBuilder_append_Str(b, jrt_str_D(((double*)a->data)[i])); }
+	jrt_StringBuilder_append_C(b, ']');
+	return jrt_StringBuilder_toString_(b);
+}
+jstring* jrt_Arrays_toString_ZA(jarray* a) {
+	if (!a) return str8("null");
+	jrt_StringBuilder* b = jrt_StringBuilder_new_();
+	jrt_StringBuilder_append_C(b, '[');
+	for (int32_t i = 0; i < a->length; ++i) { if (i) sb_add8(b, ", "); jrt_StringBuilder_append_Str(b, jrt_str_Z(((bool*)a->data)[i])); }
+	jrt_StringBuilder_append_C(b, ']');
+	return jrt_StringBuilder_toString_(b);
+}
+jstring* jrt_Arrays_toString_BA(jarray* a) {
+	if (!a) return str8("null");
+	jrt_StringBuilder* b = jrt_StringBuilder_new_();
+	jrt_StringBuilder_append_C(b, '[');
+	for (int32_t i = 0; i < a->length; ++i) { if (i) sb_add8(b, ", "); jrt_StringBuilder_append_I(b, ((int8_t*)a->data)[i]); }
+	jrt_StringBuilder_append_C(b, ']');
+	return jrt_StringBuilder_toString_(b);
+}
 void jrt_System_arraycopy(jobject* src, int32_t sp, jobject* dst, int32_t dp, int32_t n) {
 	jarray *s = (jarray*)jrt_nn(src), *d = (jarray*)jrt_nn(dst);
 	if (n < 0 || sp < 0 || dp < 0 || sp + n > s->length || dp + n > d->length) jrt_aioobe(sp + n, s->length);
@@ -1108,6 +1232,13 @@ static const jrt_Iterable_vt list_vt = {{coll_toString, list_equals, list_hashCo
 static const jitab list_itabs[] = {{&jrt_Iterable_class, &list_vt}, {&jrt_Collection_class, &list_vt}, {&jrt_List_class, &list_vt}};
 const jclass jrt_ArrayList_class = {"java.util.ArrayList", &jrt_Object_class, sizeof(jrt_ArrayList), &list_vt, JRT_ITABS(list_itabs), 0};
 
+/* a class of the program may extend ArrayList or HashMap: its object begins with the runtime's, so what holds one is checked by class chain */
+static bool is_al(jobject* c) { return c->cls == &jrt_ArrayList_class || jrt_instanceof(c, &jrt_ArrayList_class); }
+static bool is_hm(jobject* c) { return c->cls == &jrt_HashMap_class || jrt_instanceof(c, &jrt_HashMap_class); }
+#define LOAD(m) ((m)->load > 0 ? (m)->load : 0.75f)   /* (a map made by a subclass starts all zero) */
+jstring* jrt_list_toString(jobject* o) { return coll_toString(o); }
+bool jrt_list_equals(jobject* a, jobject* b) { return list_equals(a, b); }
+int32_t jrt_list_hashCode(jobject* o) { return list_hashCode(o); }
 jobject* jrt_ArrayList_new_(void) { return (jobject*)jrt_alloc(&jrt_ArrayList_class); }
 jobject* jrt_ArrayList_new_I(int32_t n) { (void)n; return jrt_ArrayList_new_(); }
 static void al_add(jrt_ArrayList* l, int32_t at, jobject* x) {
@@ -1157,7 +1288,7 @@ static jrt_HashMap* as_map(jobject* o) { return (jrt_HashMap*)jrt_cast((jobject*
 static void map_entries(jrt_HashMap* m, jobject*** out, int32_t* n);
 bool jrt_Collection_add_O(jobject* c, jobject* x) {
 	jrt_nn(c);
-	if (c->cls == &jrt_ArrayList_class) { jrt_ArrayList* l = (jrt_ArrayList*)c; resizable(l); al_add(l, l->size, x); return true; }
+	if (is_al(c)) { jrt_ArrayList* l = (jrt_ArrayList*)c; resizable(l); al_add(l, l->size, x); return true; }
 	if (c->cls == &jrt_MapSet_class) {
 		jrt_MapSet* s = (jrt_MapSet*)c;
 		if (s->kind != 0 || s->m->immutable) jrt_throw_new(&jrt_UnsupportedOperationException_class, 0);
@@ -1169,7 +1300,7 @@ bool jrt_Collection_add_O(jobject* c, jobject* x) {
 }
 int32_t jrt_Collection_size_(jobject* c) {
 	jrt_nn(c);
-	if (c->cls == &jrt_ArrayList_class) return ((jrt_ArrayList*)c)->size;
+	if (is_al(c)) return ((jrt_ArrayList*)c)->size;
 	if (c->cls == &jrt_MapSet_class) return ((jrt_MapSet*)c)->m->count;
 	jrt_throw_new(&jrt_UnsupportedOperationException_class, "size");
 }
@@ -1178,7 +1309,7 @@ jobject* jrt_Collection_iterator_(jobject* c) {
 	jrt_nn(c);
 	jrt_Iter* it = (jrt_Iter*)jrt_alloc(&iter_class);
 	it->src = c;
-	if (c->cls == &jrt_ArrayList_class) {
+	if (is_al(c)) {
 		jrt_ArrayList* l = (jrt_ArrayList*)c;
 		it->n = l->size;
 		it->items = (jobject**)malloc(sizeof(jobject*) * (l->size ? l->size : 1));
@@ -1206,7 +1337,7 @@ bool jrt_Collection_contains_O(jobject* c, jobject* x) {
 }
 bool jrt_Collection_remove_O(jobject* c, jobject* x) {
 	jrt_nn(c);
-	if (c->cls == &jrt_ArrayList_class) { int32_t i = jrt_List_indexOf_O(c, x); if (i < 0) return false; jrt_List_remove_I(c, i); return true; }
+	if (is_al(c)) { int32_t i = jrt_List_indexOf_O(c, x); if (i < 0) return false; jrt_List_remove_I(c, i); return true; }
 	if (c->cls == &jrt_MapSet_class) {
 		jrt_MapSet* s = (jrt_MapSet*)c;
 		if (s->m->immutable) jrt_throw_new(&jrt_UnsupportedOperationException_class, 0);
@@ -1218,7 +1349,7 @@ bool jrt_Collection_remove_O(jobject* c, jobject* x) {
 }
 void jrt_Collection_clear_(jobject* c) {
 	jrt_nn(c);
-	if (c->cls == &jrt_ArrayList_class) {
+	if (is_al(c)) {
 		jrt_ArrayList* l = (jrt_ArrayList*)c;
 		if (l->fixed && l->size == 0) return;   /* (Java's clear of an empty fixed list removes nothing, so it does not throw) */
 		resizable(l);
@@ -1283,7 +1414,7 @@ static jstring* coll_toString(jobject* o) {
 	return jrt_StringBuilder_toString_(b);
 }
 static bool list_equals(jobject* a, jobject* b) {
-	if (!b || b->cls != &jrt_ArrayList_class) return false;
+	if (!b || !is_al(b)) return false;
 	jrt_ArrayList *x = (jrt_ArrayList*)a, *y = (jrt_ArrayList*)b;
 	if (x->size != y->size) return false;
 	for (int32_t i = 0; i < x->size; ++i) if (!jrt_Objects_equals_OO(x->items[i], y->items[i])) return false;
@@ -1303,7 +1434,7 @@ static void map_walk(jrt_HashMap* m, jobject*** out, int32_t* n);
 static jrt_node* map_find(jrt_HashMap* m, jobject* k);
 static bool map_equals(jobject* a, jobject* b) {
 	if (a == b) return true;
-	if (!b || b->cls != &jrt_HashMap_class) return false;
+	if (!b || !is_hm(b)) return false;
 	jrt_HashMap *x = (jrt_HashMap*)a, *y = (jrt_HashMap*)b;
 	if (x->count != y->count) return false;
 	jobject** es;
@@ -1333,6 +1464,9 @@ static int32_t map_hashCode(jobject* o) {   /* (a sum: the same in any order) */
 }
 static const jobject_vt map_vt = {map_toString, map_equals, map_hashCode};
 static const jitab map_itabs[] = {{&jrt_Map_class, &map_vt}};
+jstring* jrt_map_toString(jobject* o) { return map_toString(o); }
+bool jrt_map_equals(jobject* a, jobject* b) { return map_equals(a, b); }
+int32_t jrt_map_hashCode(jobject* o) { return map_hashCode(o); }
 const jclass jrt_HashMap_class = {"java.util.HashMap", &jrt_Object_class, sizeof(jrt_HashMap), &map_vt, JRT_ITABS(map_itabs), 0};
 static jstring* node_toString(jobject* o) { jrt_node* e = (jrt_node*)o; return jrt_concat(3, jrt_str_O(e->key), str8("="), jrt_str_O(e->value)); }
 static const jobject_vt node_vt = {node_toString, node_equals, node_hashCode};
@@ -1398,7 +1532,7 @@ jobject* jrt_LinkedHashMap_new_O(jobject* from) { jobject* m = jrt_LinkedHashMap
 jobject* jrt_TreeMap_new_(void) { return (jobject*)new_map(2); }
 jobject* jrt_TreeMap_new_O(jobject* x) {                     /* the two constructors of one argument: a map to copy, or a Comparator */
 	jrt_HashMap* m = new_map(2);
-	if (x && x->cls == &jrt_HashMap_class) jrt_Map_putAll_O((jobject*)m, x);
+	if (x && is_hm(x)) jrt_Map_putAll_O((jobject*)m, x);
 	else m->cmp = x;
 	return (jobject*)m;
 }
@@ -1434,7 +1568,7 @@ static void resize(jrt_HashMap* m) {                         /* Java's: the firs
 	if (old) { n = old * 2; if (old >= 16) next = m->threshold << 1; }
 	else if (m->threshold > 0) n = m->threshold;
 	else { n = 16; next = 12; }
-	m->threshold = next ? next : (int32_t)((float)n * m->load);
+	m->threshold = next ? next : (int32_t)((float)n * LOAD(m));
 	jrt_node** t = (jrt_node**)calloc((size_t)n, sizeof(jrt_node*));
 	for (int32_t i = 0; i < old; ++i) {                 /* each bin split in two, its order kept, as Java does */
 		jrt_node *lo = 0, *loT = 0, *hi = 0, *hiT = 0;
@@ -1611,7 +1745,7 @@ void jrt_Map_putAll_O(jobject* o, jobject* from) {
 	mutable_map(m);
 	if (m->kind != 2 && src->count > 0) {                /* Java sizes the table for what is coming */
 		if (!m->cap) {
-			const int32_t wanted = (int32_t)ceil(src->count / (double)m->load);
+			const int32_t wanted = (int32_t)ceil(src->count / (double)LOAD(m));
 			if (wanted > m->threshold) m->threshold = table_size_for(wanted);
 		} else {
 			while (src->count > m->threshold && m->cap < (1 << 30)) resize(m);
@@ -1806,7 +1940,7 @@ jobject* jrt_LinkedHashSet_new_IF(int32_t capacity, float load) { return view(jr
 jobject* jrt_LinkedHashSet_new_O(jobject* from) { return add_all(jrt_LinkedHashSet_new_(), from); }
 jobject* jrt_TreeSet_new_(void) { return view(jrt_TreeMap_new_(), 0); }
 jobject* jrt_TreeSet_new_O(jobject* x) {                     /* a collection to copy, or a Comparator */
-	if (x && (x->cls == &jrt_ArrayList_class || x->cls == &jrt_MapSet_class)) return add_all(jrt_TreeSet_new_(), x);
+	if (x && (is_al(x) || x->cls == &jrt_MapSet_class)) return add_all(jrt_TreeSet_new_(), x);
 	return view(jrt_TreeMap_new_O(x), 0);
 }
 jobject* jrt_Set_of(int n, ...) {
