@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <cstring>
 #include "decompile/engine/core/cpp/context.hh"
 #include "decompile/engine/core/cpp/slghsymbol.hh"
 #include "decompile/engine/core/cpp/translate.hh"
@@ -27,6 +28,7 @@ ConstructState::ConstructState(void)
   parent = (ConstructState *)0;
   length = 0;
   offset = 0;
+  std::memset(&hand,0,sizeof(hand));	// (a constructor that exports nothing must not show what an earlier parse left here)
 }
 
 /// The array holding pointers to child nodes is preallocated.
@@ -38,6 +40,7 @@ ConstructState::ConstructState(int4 numOperands)
   parent = (ConstructState *)0;
   length = 0;
   offset = 0;
+  std::memset(&hand,0,sizeof(hand));	// (a constructor that exports nothing must not show what an earlier parse left here)
   resolve = new ConstructState *[numOperands];
   for(int4 i=0;i<numOperands;++i)
     resolve[i] = (ConstructState *)0;

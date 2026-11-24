@@ -201,6 +201,7 @@ private:
   void printOpError(OpTpl *op,Constructor *ct,int4 err1,int4 err2,const string &message);
   int4 recoverSize(const ConstTpl &sizeconst,Constructor *ct);
   bool checkOpMisuse(OpTpl *op,Constructor *ct);
+  bool checkOperandExports(OpTpl *op,Constructor *ct);
   bool sizeRestriction(OpTpl *op,Constructor *ct);
   bool checkConstructorSection(Constructor *ct,ConstructTpl *cttpl);
   bool hasLargeTemporary(OpTpl *op);

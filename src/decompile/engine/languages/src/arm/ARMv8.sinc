@@ -2237,8 +2237,8 @@ vZ:    "t"  is TMode=1 & ((thv_c2222=0 & (thv_c1515  = thv_c1414)) | (thv_c2222=
 vZ:    "e"  is TMode=1 & ((thv_c2222=0 & (thv_c1515 != thv_c1414)) | (thv_c2222=1 & (thv_c1515  = thv_c1414))) & (thv_c1313=1) { }
 vZ:    ""   is TMode=1 &                                                                                          thv_c1313=0  { }
 
-VPmask:            is TMode=1 & thv_c2222=1 & thv_c1315=0 { }
-VPmask:  vX^vY^vZ  is TMode=1 & vX & vY & vZ { }
+VPmask:            is TMode=1 & thv_c2222=1 & thv_c1315=0 { local m:1 = 8; export m; }
+VPmask:  vX^vY^vZ  is TMode=1 & vX & vY & vZ & thv_c2222 & thv_c1315 { local m:1 = (thv_c2222 << 3) | thv_c1315; export m; }
 
 
 ######
