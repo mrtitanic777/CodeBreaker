@@ -192,7 +192,7 @@ bool defined_arm_operands(const Insn& i) {
             if (i.op == Op::Str && pc(i.rd)) return false;
             if (i.op == Op::Ldr && pc(i.rd) && (i.size != 4 || i.wb || !i.pre)) return false;
             return !(!i.imm_form && pc(i.rm));
-        case Op::Ldm: case Op::Stm: return !pc(i.rn) && !(i.op == Op::Stm && (i.list & 0x8000));
+        case Op::Ldm: case Op::Stm: return !pc(i.rn) && !(i.op == Op::Stm && (i.list & 0x8000)) && !(i.hat && i.wb && !(i.op == Op::Ldm && (i.list & 0x8000)));   // (the user-register forms have no write-back: bit 21 is should-be-zero)
         case Op::B: case Op::Bl: case Op::Swi: case Op::Mrs: case Op::Msr: case Op::Bkpt: case Op::Pld: case Op::Mcr: case Op::Mrc: case Op::Ext: return true;
         case Op::Blx: return i.target.has_value() || !pc(i.rm);
         case Op::Bx: return !pc(i.rm);

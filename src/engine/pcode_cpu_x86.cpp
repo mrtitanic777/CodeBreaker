@@ -151,6 +151,8 @@ struct Machine {
 };
 
 // The bit of EFLAGS each of the description's flag registers is (IOPL is a field, bits 12 and 13).
+constexpr unsigned kPhysicalBits = 52;
+constexpr u64 kPhysicalMask = (u64{1} << kPhysicalBits) - 1;
 constexpr unsigned kFlagBit[21] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20, 21};
 
 Machine* acquire(int bits, std::unique_ptr<Machine>& own) {
@@ -225,6 +227,8 @@ public:
         emu_.setPageSource([this](u64 address, std::uint8_t* out, std::size_t size) { return image_bytes(address, out, size); });
         emu_.onRead([this](std::string_view space, u64 address, unsigned size, u64& value) {
             if (!is_ram(space)) return false;
+            const bool beyond = (address >> kPhysicalBits) != 0;   // (Unicorn's memory has 52 address bits: an address above them reads what its low 52 bits do)
+            if (beyond) address &= kPhysicalMask;
             if (!mapped(address, size)) {
                 if (fault_ == 0) fault_ = kErrReadUnmapped;
                 value = 0;
@@ -239,11 +243,14 @@ public:
                 e_captured_ = true;
                 e_value_ = emu_.readValue(address, size);
             }
-            return false;
+            if (beyond) value = emu_.readValue(address, size);
+            return beyond;
         });
-        emu_.onWrite([this](std::string_view space, u64 address, unsigned size, u64) {
+        emu_.onWrite([this](std::string_view space, u64 address, unsigned size, u64 value) {
             if (!is_ram(space)) return false;
             if (fault_ != 0) return true;   // (an instruction that faulted stores nothing more)
+            const bool beyond = (address >> kPhysicalBits) != 0;
+            if (beyond) address &= kPhysicalMask;
             if (!mapped(address, size)) {
                 fault_ = kErrWriteUnmapped;
                 return true;
@@ -255,7 +262,8 @@ public:
                 st.size = size;
                 emu_.read(address, st.old, size);
             }
-            return false;
+            if (beyond) emu_.writeValue(address, size, value);
+            return beyond;
         });
         emu_.onBadInstruction([this](sl::Emulator&, u64 pc) { return bad_instruction(pc); });
         emu_.onUserOp([this](sl::Emulator&, const std::string& name, const std::vector<u64>& args, u64& result) { return user_op(name, args, result); });

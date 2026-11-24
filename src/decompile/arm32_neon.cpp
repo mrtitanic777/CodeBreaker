@@ -55,6 +55,10 @@ std::optional<NeonTransfer> neon_transfer(std::uint32_t w) {
             default: return std::nullopt;
         }
         if (t.selem > 1 && size == 3) return std::nullopt;
+        const unsigned align = bits(w, 4, 2);   // (ARM ARM A8.8.320-A8.8.334: the alignments a structure of this many registers has)
+        const bool no_align_bit1 = type == 7 || type == 6 || type == 4 || type == 5;   // VLD1 of one or three registers, VLD3: align<1> set is UNDEFINED
+        const bool no_align_11 = type == 10 || type == 8 || type == 9;                 // VLD1 of two registers, VLD2 of one: align == 11 is UNDEFINED
+        if ((no_align_bit1 && (align & 2)) || (no_align_11 && align == 3)) return std::nullopt;
         if (t.d + (t.regs - 1) + (t.selem - 1) * t.inc > 31) return std::nullopt;
         t.bytes = 8 * t.regs * t.selem;
         return t;
@@ -66,6 +70,8 @@ std::optional<NeonTransfer> neon_transfer(std::uint32_t w) {
         t.kind = NeonTransfer::AllLanes;
         if (bits(w, 6, 2) == 3 && n != 3) return std::nullopt;
         t.ebytes = 1u << bits(w, 6, 2);
+        const unsigned a = bits(w, 4, 1);   // (the alignment bit: VLD1 of bytes and VLD3 have none, VLD4 of words has the 16-byte one the description does not read)
+        if ((n == 0 && bits(w, 6, 2) == 0 && a) || (n == 2 && a) || (n == 3 && bits(w, 6, 2) == 3)) return std::nullopt;
         const unsigned spaced = bits(w, 5, 1);
         if (n == 0) {   // VLD1: one register, or two with T
             t.regs = spaced ? 2 : 1;
@@ -91,6 +97,10 @@ std::optional<NeonTransfer> neon_transfer(std::uint32_t w) {
         default: t.lane = bits(w, 7, 1); t.inc = bits(w, 6, 1) ? 2 : 1; break;
     }
     if (n == 0 && t.inc == 2) return std::nullopt;   // (VLD1 and VST1 have one register)
+    const unsigned ia = bits(w, 4, 4);   // (index_align: the bits an element of this size and structure leaves to the alignment must be what the manual says, or the encoding is UNDEFINED)
+    if ((n == 0 && ((size == 0 && (ia & 1)) || (size == 2 && ((ia & 3) == 1 || (ia & 3) == 2)))) || (n == 1 && size == 2 && (ia & 2)) ||
+        (n == 2 && ((size < 2 && (ia & 1)) || (size == 2 && (ia & 3)))) || (n == 3 && size == 2 && (ia & 3) == 3))
+        return std::nullopt;
     if (n == 0) t.inc = 1;
     if (t.d + (t.selem - 1) * t.inc > 31) return std::nullopt;
     t.bytes = t.selem * t.ebytes;
@@ -114,7 +124,10 @@ bool vfp_move_immediate(std::uint32_t w) {
 
 std::optional<Insn> decode_neon(std::uint32_t w, bool thumb, std::uint32_t pc, std::uint32_t word_as_held, Arch arch) {
     if (arch < Arch::V7A) return std::nullopt;
-    const bool transfer = neon_transfer(w).has_value();
+    std::optional<NeonTransfer> moved = neon_transfer(w);
+    // (Thumb only: the ARMv7 description reads no 16-bit element in VST4 to one lane, so that instruction has no reading to run on there; the interpreter stops at it as not run)
+    if (moved && thumb && !moved->load && moved->kind == NeonTransfer::Lane && moved->selem == 4 && moved->ebytes == 2) moved.reset();
+    const bool transfer = moved.has_value();
     const bool immediate = neon_modified_immediate(w);
     const bool vfp = vfp_move_immediate(w) && (thumb ? (w >> 28) == 14 : (w >> 28) != 15);
     const std::optional<NeonDp> dp = neon_dp(w, thumb);

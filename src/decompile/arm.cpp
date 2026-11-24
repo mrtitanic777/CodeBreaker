@@ -461,7 +461,7 @@ std::optional<Insn> decode_thumb32_int(std::uint16_t a, std::uint16_t b, std::ui
         return i;
     }
     if ((a & 0xFFF0) == 0xF3C0 || (a & 0xFFF0) == 0xF340 || (a & 0xFFF0) == 0xF360) {   // UBFX, SBFX, BFI, BFC
-        if ((b & 0x8000) || rd == 15 || rd == 13) return std::nullopt;
+        if ((b & 0x8000) || (b & 0x20) || rd == 15 || rd == 13) return std::nullopt;   // (bit 5 is should-be-zero)
         const unsigned lsb = ((b >> 12) & 7) << 2 | ((b >> 6) & 3), field = b & 31;
         i.op = Op::Ext;
         i.rd = static_cast<std::uint8_t>(rd);
