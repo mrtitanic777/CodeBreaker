@@ -208,9 +208,12 @@ AddrSpace *ConstTpl::fixSpace(const ParserWalker &walker) const
       const FixedHandle &hand(walker.getFixedHandle(value.handle_index));
       switch(select) {
       case v_space:
-	if (hand.offset_space == (AddrSpace *)0)
-	  return hand.space;
-	return hand.temp_space;
+	{
+	  AddrSpace *spc = (hand.offset_space == (AddrSpace *)0) ? hand.space : hand.temp_space;
+	  if (spc == (AddrSpace *)0)	// An operand that exports nothing, named as a value: the description has no meaning for this encoding
+	    throw BadDataError("Instruction operand has no value");
+	  return spc;
+	}
       default:
 	break;
       }

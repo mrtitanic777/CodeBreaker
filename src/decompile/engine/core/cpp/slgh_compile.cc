@@ -416,6 +416,37 @@ bool ConsistencyChecker::checkOpMisuse(OpTpl *op,Constructor *ct)
   return true;
 }
 
+/// \brief Check that no operand of the given operator names a subtable that exports nothing
+///
+/// A subtable none of whose Constructors has an \b export statement hands its parent no Varnode.
+/// An operator that takes such an operand as a value (a user operation's argument, say, which no size
+/// rule looks at) would be built with a handle that has no address space, and the translator would
+/// fail on an instruction that matched the Constructor. So it is an error here.
+/// \param op is the given operator
+/// \param ct is the Constructor owning the operator
+/// \return \b false if an operand exports nothing
+bool ConsistencyChecker::checkOperandExports(OpTpl *op,Constructor *ct)
+
+{
+  for(int4 i=-1;i<op->numInput();++i) {
+    VarnodeTpl *vn = (i < 0) ? op->getOut() : op->getIn(i);
+    if (vn == (VarnodeTpl *)0) continue;
+    const ConstTpl &sizeconst(vn->getSize());
+    if (sizeconst.getType() != ConstTpl::handle) continue;
+    OperandSymbol *opsym = ct->getOperand(sizeconst.getHandleIndex());
+    if (opsym->getSize() != -1) continue;
+    SubtableSymbol *tabsym = dynamic_cast<SubtableSymbol *>(opsym->getDefiningSymbol());
+    if (tabsym == (SubtableSymbol *)0) continue;
+    map<SubtableSymbol *,int4>::const_iterator iter = sizemap.find(tabsym);
+    if (iter == sizemap.end() || (*iter).second != -1) continue;
+    ostringstream msg;
+    msg << "Operand '" << opsym->getName() << "' is used as a value but its table '" << tabsym->getName() << "' exports nothing";
+    compiler->reportError(compiler->getLocation(ct), msg.str());
+    return false;
+  }
+  return true;
+}
+
 /// \brief Make sure the given operator meets size restrictions
 ///
 /// Many SLEIGH operators require that inputs and/or outputs are the
@@ -995,6 +1026,8 @@ bool ConsistencyChecker::checkConstructorSection(Constructor *ct,ConstructTpl *c
 
   for(iter=ops.begin();iter!=ops.end();++iter) {
     if (!sizeRestriction(*iter,ct))
+      testresult = false;
+    if (!checkOperandExports(*iter,ct))
       testresult = false;
     if (!checkOpMisuse(*iter,ct))
       testresult = false;

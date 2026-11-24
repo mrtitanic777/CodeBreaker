@@ -332,6 +332,13 @@ struct Emulator::Impl {
     Trace trace;
     UserOpHook userHook;
     WideUserOpHook wideUserHook;
+    struct BoundOp {
+        UserOpHandler fn = nullptr;
+        void* context = nullptr;
+    };
+    std::vector<BoundOp> bound;   // by user operation number (bindUserOp); empty when nothing is bound
+    std::unique_ptr<std::uint8_t[]> boundScratch;   // the inputs of a bound call, then its output (made by the first bindUserOp)
+    bool callBound(const BoundOp& b, const VarnodeData* v, const VarnodeData* out, unsigned nIn, std::size_t index);
     BadInstructionHook badHook;
 
     Impl() = default;
@@ -803,6 +810,7 @@ struct Emulator::Impl {
             if (out) put(*out, segmentShift ? ((segment & 0xffff) << segmentShift) + (offset & 0xffff) : offset);
             return;
         }
+        if (index < bound.size() && bound[index].fn && callBound(bound[index], v, out, op.nIn, index)) return;
         const std::string& name = index < userOps.size() ? userOps[index] : (unnamedOp = "userop" + std::to_string(index));
         std::vector<std::uint64_t> args;
         for (unsigned i = 1; i < op.nIn; ++i) args.push_back(get(v[i]));
@@ -1156,10 +1164,43 @@ struct Emulator::Impl {
     }
 };
 
+// A user operation with a handler bound to its number: no name, no allocation. `v` is the operation's number then its inputs (`nIn` counts the number). False: not served this
+// way (too many inputs, a value over the widest the emulator takes) and the hooks are asked as before; true: the handler ran, or declined and is counted.
+bool Emulator::Impl::callBound(const BoundOp& b, const VarnodeData* v, const VarnodeData* out, unsigned nIn, std::size_t index) {
+    if (nIn - 1 > UserOpCall::kMaxArgs || (out && out->size > wide::kMax)) return false;
+    std::uint8_t* const scratch = boundScratch.get();
+    UserOpCall call;
+    call.nIn = nIn - 1;
+    for (unsigned i = 0; i < call.nIn; ++i) {
+        if (v[1 + i].size > wide::kMax) return false;
+        call.inSize[i] = v[1 + i].size;
+        call.in[i] = scratch + i * wide::kMax;
+        getW(v[1 + i], scratch + i * wide::kMax);
+    }
+    std::uint8_t* const result = scratch + UserOpCall::kMaxArgs * wide::kMax;
+    if (out) {
+        call.outSize = out->size;
+        call.out = result;
+        std::memset(result, 0, out->size);
+    }
+    ++hookCalls;
+    if (b.fn(*self, call, b.context)) {
+        if (out) putW(*out, result);
+    } else {
+        ++unimpl[index < userOps.size() ? userOps[index] : "userop" + std::to_string(index)];
+        if (out) {
+            std::memset(result, 0, out->size);
+            putW(*out, result);
+        }
+    }
+    return true;
+}
+
 void Emulator::Impl::callOtherWide(const Decoded& d, const Op& op) {
     const VarnodeData* v = &d.vn[op.first];
     const VarnodeData* out = op.hasOut ? v++ : nullptr;
     const std::size_t index = static_cast<std::size_t>(v[0].offset);
+    if (index < bound.size() && bound[index].fn && callBound(bound[index], v, out, op.nIn, index)) return;
     const std::string& name = index < userOps.size() ? userOps[index] : (unnamedOp = "userop" + std::to_string(index));
     bool served = false;
     wide::Byte result[wide::kMax] = {};
@@ -1642,6 +1683,15 @@ const std::string& Emulator::lastError() const { return impl_->error; }
 void Emulator::onTrace(Trace trace) { impl_->trace = std::move(trace); }
 void Emulator::onUserOp(UserOpHook hook) { impl_->userHook = std::move(hook); }
 void Emulator::onUserOpWide(WideUserOpHook hook) { impl_->wideUserHook = std::move(hook); }
+std::size_t Emulator::userOpCount() const { return impl_->userOps.size(); }
+const std::string& Emulator::userOpName(std::size_t index) const { return impl_->userOps.at(index); }
+void Emulator::bindUserOp(std::size_t index, UserOpHandler handler, void* context) {
+    if (index >= impl_->userOps.size()) throw std::out_of_range("no such user operation");
+    if (impl_->bound.size() < impl_->userOps.size()) impl_->bound.resize(impl_->userOps.size());
+    if (!impl_->boundScratch) impl_->boundScratch.reset(new std::uint8_t[(UserOpCall::kMaxArgs + 1) * wide::kMax]);
+    impl_->bound[index] = {handler, context};
+}
+void Emulator::clearUserOpBindings() { impl_->bound.clear(); }
 bool Emulator::evaluateWideOp(unsigned opcode, std::uint8_t* out, std::size_t outSize, const std::uint8_t* a, std::size_t aSize, const std::uint8_t* c, std::size_t cSize,
                               bool& divideByZero) {
     return wide::evaluateAny(opcode, out, outSize, a, aSize, c, cSize, divideByZero);

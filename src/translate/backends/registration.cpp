@@ -63,4 +63,12 @@ void register_java_back_end(Registry& r) {
                   {{"c", "judge-c-java", "each corpus program run as C and as Java: 184 of 187 C programs equivalent; the C++ programs 7 of 9, two refused", {"cxx", "jdk"}, false}}});
 }
 
+// Java as Rust on the Rust runtime (backends/rust_java).
+void register_rust_back_end(Registry& r) {
+    r.add(BackEnd{"rust",
+                  "backends/rust_java",
+                  {{"java", "translate_file", "writes the program as Rust, runs it beside the Java program (javac and the JVM, rustc), and compares what they print and their exit code",
+                    {"jdk", "rustc"}, true}}});
+}
+
 }  // namespace cb::translate::registry

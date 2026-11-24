@@ -71,7 +71,7 @@ CB_TEST("translate.registry.the_standard_registry_holds_every_front_end_and_back
 
 CB_TEST("translate.registry.the_published_paths_are_the_table_written_by_hand_before", [] {
     const std::vector<cap::Path>& paths = cap::paths();
-    CB_CHECK_EQ(paths.size(), std::size_t{6});
+    CB_CHECK_EQ(paths.size(), std::size_t{7});   // (with java to rust, which sorts after java to csharp)
     CB_CHECK(paths[0].from == "csharp" && paths[0].to == "cpp17" && paths[0].judge == "judge-cs-cpp");
     CB_CHECK_EQ(paths[0].proof,
                 "builds the C++17 translation, runs it beside the C# program (csc and the installed .NET), and compares what they print and their exit code");
@@ -92,12 +92,12 @@ CB_TEST("translate.registry.the_published_paths_are_the_table_written_by_hand_be
 
 CB_TEST("translate.registry.the_published_languages_are_the_table_written_by_hand_before", [] {
     const std::vector<cap::Language>& langs = cap::languages();
-    CB_CHECK_EQ(langs.size(), std::size_t{6});
-    const char* ids[] = {"c", "cpp03", "cpp17", "csharp", "java", "python"};
-    const char* names[] = {"C", "C++03", "C++17", "C#", "Java", "Python"};
-    const bool back[] = {true, true, true, true, true, false};
-    const std::vector<std::string> ext[] = {{".c", ".h"}, {}, {}, {".cs"}, {".java"}, {".py"}};
-    for (std::size_t i = 0; i < 6; ++i) {
+    CB_CHECK_EQ(langs.size(), std::size_t{7});
+    const char* ids[] = {"c", "cpp03", "cpp17", "csharp", "java", "python", "rust"};
+    const char* names[] = {"C", "C++03", "C++17", "C#", "Java", "Python", "Rust"};
+    const bool back[] = {true, true, true, true, true, false, true};
+    const std::vector<std::string> ext[] = {{".c", ".h"}, {}, {}, {".cs"}, {".java"}, {".py"}, {}};
+    for (std::size_t i = 0; i < 7; ++i) {
         CB_CHECK_EQ(langs[i].id, ids[i]);
         CB_CHECK_EQ(langs[i].name, names[i]);
         CB_CHECK_EQ(langs[i].back_end, back[i]);

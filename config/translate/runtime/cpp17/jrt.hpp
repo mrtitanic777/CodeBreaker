@@ -100,7 +100,7 @@ struct Object : std::enable_shared_from_this<Object> {
 	virtual int32_t hashCode() { return (int32_t)(((uintptr_t)this) >> 4); }
 };
 
-template <class T> ref<T> self(T* p) { return std::dynamic_pointer_cast<T>(p->shared_from_this()); }
+template <class T> ref<T> self(T* p) { return ref<T>(p->shared_from_this(), p); }   // (shares the owner, points at p: no cast to search)
 
 #ifdef JRT_CYCLES
 namespace gc {
@@ -1171,6 +1171,15 @@ struct Collection : Iterable {
 	bool containsAll(ref<Collection> c) { for (O x : *nn(c)) if (!contains(x)) return false; return true; }
 	ref<Stream> stream();
 	ref<Array<O>> toArray() { auto r = new_array<O>(size()); int32_t i = 0; for (O x : *this) (*r)[i++] = x; return r; }
+	// into a when it has room (a null just after the last, if there is space), else into a new array of the size
+	template <class T> ref<Array<ref<T>>> toArray(const ref<Array<ref<T>>>& a) {
+		const int32_t n = size();
+		ref<Array<ref<T>>> r = nn(a)->length >= n ? a : new_array<ref<T>>(n);
+		int32_t i = 0;
+		for (O x : *this) r->a[i++] = cast<T>(x);
+		if (r->length > n) r->a[n] = nullptr;
+		return r;
+	}
 	ref<String> toString() override {
 		std::u16string r = u"[";
 		bool first = true;
@@ -1344,10 +1353,12 @@ struct MapEntry : Object {
 	O key, value;
 	int32_t hash = 0;
 	ref<MapEntry> next;
+	ref<MapEntry> after;                                          // LinkedHashMap: the next in insertion order
+	MapEntry* before = nullptr;                                   // ... and the one before (not owned)
 #ifdef JRT_CYCLES
 	gc::Tracked gc_tracked_{this};
-	void trace_(gc::Tracer& t) override { t(key); t(value); t(next); }
-	void clear_() override { key = nullptr; value = nullptr; next = nullptr; }
+	void trace_(gc::Tracer& t) override { t(key); t(value); t(next); t(after); }
+	void clear_() override { key = nullptr; value = nullptr; next = nullptr; after = nullptr; }
 #endif
 	const char16_t* jclass_() const override { return u"java.util.HashMap.Node"; }
 	O getKey() { return key; }
@@ -1407,12 +1418,31 @@ struct HashMap : Map {
 	int32_t threshold = 0;                                        // as Java's: the capacity asked for until there is a table
 	float load = 0.75f;
 	bool tree_bin = false;                                        // a bin Java would have made a tree: its order is not reproducible
-	std::vector<ref<MapEntry>> order;
+	ref<MapEntry> head;                                           // LinkedHashMap: insertion order, linked through the entries
+	MapEntry* tail = nullptr;
 #ifdef JRT_CYCLES
 	gc::Tracked gc_tracked_{this};
-	void trace_(gc::Tracer& t) override { for (auto& x : table) t(x); for (auto& x : order) t(x); }
-	void clear_() override { table.clear(); order.clear(); count = 0; }
+	void trace_(gc::Tracer& t) override { for (auto& x : table) t(x); t(head); }
+	void clear_() override { table.clear(); head = nullptr; tail = nullptr; count = 0; }
 #endif
+	void link_last(const ref<MapEntry>& n) {
+		n->before = tail;
+		if (tail) tail->after = n; else head = n;
+		tail = n.get();
+	}
+	void release_order() {                                        // one link at a time: a long chain let go at once would recurse as deep
+		ref<MapEntry> e = std::move(head);
+		while (e) { ref<MapEntry> n = std::move(e->after); e->before = nullptr; e = std::move(n); }
+		tail = nullptr;
+	}
+	~HashMap() override { release_order(); }
+	void unlink(MapEntry* e) {
+		ref<MapEntry> held = e->after;
+		if (e->before) e->before->after = held; else head = held;
+		if (held) held->before = e->before; else tail = e->before;
+		e->after = nullptr;
+		e->before = nullptr;
+	}
 	const char16_t* jclass_() const override { return u"java.util.HashMap"; }
 	void ctor_() {}
 	static int32_t capacity_for(int32_t n) { int32_t c = 1; while (c < n) c <<= 1; return c; }
@@ -1428,12 +1458,13 @@ struct HashMap : Map {
 		if (s > 0) { double wanted = std::ceil(s / (double)load); if ((int32_t)wanted > threshold) threshold = capacity_for((int32_t)wanted); }
 		putAll(m);
 	}
-	ref<MapEntry> find(const O& k) {
+	MapEntry* find_entry(const O& k) {                            // (walked by plain pointers: no count of owners changes)
 		if (table.empty()) return nullptr;
 		int32_t h = hash_key(k);
-		for (auto e = table[h & (table.size() - 1)]; e; e = e->next) if (e->hash == h && same_key(e->key, k)) return e;
+		for (MapEntry* e = table[h & (table.size() - 1)].get(); e; e = e->next.get()) if (e->hash == h && same_key(e->key, k)) return e;
 		return nullptr;
 	}
+	ref<MapEntry> find(const O& k) { MapEntry* e = find_entry(k); return e ? self(e) : nullptr; }
 	void resize() {
 		size_t n;
 		int32_t next = 0;
@@ -1458,11 +1489,11 @@ struct HashMap : Map {
 		table.swap(t);
 	}
 	int32_t size() override { return count; }
-	O get(O k) override { auto e = find(k); return e ? e->value : nullptr; }
-	bool containsKey(O k) override { return find(k) != nullptr; }
+	O get(O k) override { MapEntry* e = find_entry(k); return e ? e->value : nullptr; }
+	bool containsKey(O k) override { return find_entry(k) != nullptr; }
 	O put(O k, O v) override {
 		if (table.empty()) resize();
-		auto e = find(k);
+		MapEntry* e = find_entry(k);
 		if (e) { O o = e->value; e->value = v; return o; }
 		auto n = std::make_shared<MapEntry>();
 		n->key = k; n->value = v; n->hash = hash_key(k);
@@ -1475,7 +1506,7 @@ struct HashMap : Map {
 			t->next = n;
 			if (bin >= 7) grown_bin();
 		}
-		if (linked) order.push_back(n);
+		if (linked) link_last(n);
 		if (++count > threshold) resize();
 		return nullptr;
 	}
@@ -1488,7 +1519,7 @@ struct HashMap : Map {
 			if (e->hash == h && same_key(e->key, k)) {
 				if (prev) prev->next = e->next; else table[i] = e->next;
 				--count;
-				if (linked) order.erase(std::find(order.begin(), order.end(), e));
+				if (linked) unlink(e.get());
 				return e->value;
 			}
 		}
@@ -1510,14 +1541,14 @@ struct HashMap : Map {
 		n->next = table[i];
 		table[i] = n;
 		if (bin >= 7) grown_bin();
-		if (linked) order.push_back(n);
+		if (linked) link_last(n);
 		++count;
 	}
-	void clear() override { for (auto& t : table) t = nullptr; count = 0; order.clear(); tree_bin = false; }
+	void clear() override { for (auto& t : table) t = nullptr; count = 0; release_order(); tree_bin = false; }
 	std::vector<ref<MapEntry>> entries() override {
 		if (tree_bin) raise_new<UnsupportedOperationException>(u"this HashMap has a bin Java keeps as a tree: its order cannot be reproduced");
-		if (linked) return order;
 		std::vector<ref<MapEntry>> r;
+		if (linked) { for (ref<MapEntry> e = head; e; e = e->after) r.push_back(e); return r; }
 		for (auto& head : table) for (auto e = head; e; e = e->next) r.push_back(e);
 		return r;
 	}
@@ -1987,8 +2018,16 @@ inline std::u16string format_args(const std::u16string& f, const std::vector<Fmt
 	}
 	return out;
 }
+template <class T> void fmt_one(std::vector<FmtArg>& out, const T& x) { out.push_back(fa(x)); }
+// an array of objects given alone is the arguments themselves, as Java's varargs take it
+template <class T> void fmt_one(std::vector<FmtArg>& out, const ref<Array<ref<T>>>& all) {
+	if (!all) return;
+	for (auto& x : all->a) out.push_back(fa(O(x)));
+}
 template <class... A> ref<String> String::format(const ref<String>& f, A... a) {
-	std::vector<FmtArg> args{fa(a)...};
+	std::vector<FmtArg> args;
+	if constexpr (sizeof...(A) == 1) (fmt_one(args, a), ...);
+	else args = {fa(a)...};
 	return str(format_args(nn(f)->s, args));
 }
 

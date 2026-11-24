@@ -15,6 +15,7 @@
 #include "java/apimap.hpp"
 #include "java/frontend.hpp"
 #include "translate/backends/c_java.hpp"
+#include "translate/backends/rust_java.hpp"
 #include "translate/backends/cpp17.hpp"
 #include "translate/backends/csharp.hpp"
 #include "translate/backends/csharp_java.hpp"
@@ -371,6 +372,16 @@ Result tf_java(const std::string& to, const stdfs::path& input, const stdfs::pat
             return result;
         }
         run_it = [&native_run, exe = *built.exe] { return native_run(exe); };
+    } else if (to == "rust") {
+        backends::rust_java::BuildOptions options;
+        options.main = text::replace_all(main_class.binary, "$", ".");
+        const backends::rust_java::Built built = backends::rust_java::build(arena, units, judged / "rust", options);
+        if (!built.exe) {
+            result.verdict = built.why.starts_with("Decline:") ? Verdict::Refused : Verdict::CompileFailed;
+            result.detail = built.why;
+            return result;
+        }
+        run_it = [&native_run, exe = *built.exe] { return native_run(exe); };
     } else if (to == "cpp17") {
         const auto cxx = judge_cs_cpp::find_cxx("");
         if (!cxx) throw Error("translating Java to C++17 needs a C++17 compiler (g++, clang++ or Visual Studio's cl): none found");
@@ -448,12 +459,19 @@ Result tf_java(const std::string& to, const stdfs::path& input, const stdfs::pat
                              "  gcc -std=c11 -fwrapv -O1 -I runtime " + name + ".c runtime/jrt.c -o " + name + " -lm\n"
                              "  clang -std=c11 -fwrapv -O1 -I runtime " + name + ".c runtime/jrt.c -o " + name + "\n");
         result.files.push_back(stdfs::relative(note, out));
+    } else if (to == "rust") {
+        tf_copy(judged / "rust" / "program.rs", out / (name + ".rs"), result.files, out);
+        tf_copy(judged / "rust" / "runtime" / "jrt.rs", out / "runtime" / "jrt.rs", result.files, out);
+        const stdfs::path note = out / "BUILD.txt";
+        fs::write_text(note, "The Rust translation of " + name + ".java.\n\nIt builds with rustc (edition 2021); the runtime it includes is in runtime/.\n\n"
+                             "  rustc --edition 2021 -O " + name + ".rs -o " + name + "\n");
+        result.files.push_back(stdfs::relative(note, out));
     } else if (to == "cpp17") {
         tf_write_cpp17(judged / "cpp", name, {"jrt.hpp"}, {name + ".cpp"}, out, result);
     } else {
         for (const stdfs::path& p : csharp_files) tf_copy(p, out / p.filename(), result.files, out);
     }
-    const std::string_view language = to == "c" ? "C" : to == "cpp17" ? "C++17" : "C#";
+    const std::string_view language = to == "c" ? "C" : to == "rust" ? "Rust" : to == "cpp17" ? "C++17" : "C#";
     result.checked = std::format("The Java program and its {} translation printed the same output and exited with the same code.", language);
     return result;
 }
@@ -462,7 +480,7 @@ Result tf_java(const std::string& to, const stdfs::path& input, const stdfs::pat
 
 bool can_run(const capability::Path& path) {
     return (path.from == "csharp" && (path.to == "cpp17" || path.to == "csharp")) || (path.from == "python" && path.to == "cpp17") ||
-           (path.from == "java" && (path.to == "c" || path.to == "cpp17" || path.to == "csharp"));
+           (path.from == "java" && (path.to == "c" || path.to == "cpp17" || path.to == "csharp" || path.to == "rust"));
 }
 
 Result run(const capability::Path& path, const stdfs::path& input, const stdfs::path& out, const stdfs::path& work, const judge_cs_cpp::Environment& environment) {
@@ -474,7 +492,7 @@ Result run(const capability::Path& path, const stdfs::path& input, const stdfs::
     if (path.from == "csharp" && path.to == "cpp17") result = tf_csharp_cpp17(absolute_input, out, absolute_work, environment);
     else if (path.from == "csharp" && path.to == "csharp") result = tf_csharp_csharp(absolute_input, out, absolute_work, environment);
     else if (path.from == "python" && path.to == "cpp17") result = tf_python_cpp17(absolute_input, out, absolute_work, environment);
-    else if (path.from == "java" && (path.to == "c" || path.to == "cpp17" || path.to == "csharp")) result = tf_java(path.to, absolute_input, out, absolute_work, environment);
+    else if (path.from == "java" && (path.to == "c" || path.to == "cpp17" || path.to == "csharp" || path.to == "rust")) result = tf_java(path.to, absolute_input, out, absolute_work, environment);
     else throw Error("no way to translate " + path.from + " to " + path.to + " is wired");
     if (result.verdict != Verdict::Agrees) result.files.clear();
     return result;

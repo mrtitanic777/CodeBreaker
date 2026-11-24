@@ -7,7 +7,7 @@
 namespace cb::translate::registry {
 
 Registry::Registry()
-    : names_{{"c", "C"}, {"cpp03", "C++03"}, {"cpp17", "C++17"}, {"csharp", "C#"}, {"java", "Java"}, {"python", "Python"}} {}
+    : names_{{"c", "C"}, {"cpp03", "C++03"}, {"cpp17", "C++17"}, {"csharp", "C#"}, {"java", "Java"}, {"python", "Python"}, {"rust", "Rust"}} {}
 
 void Registry::add(FrontEnd front_end) { front_ends_.push_back(std::move(front_end)); }
 void Registry::add(BackEnd back_end) { back_ends_.push_back(std::move(back_end)); }
@@ -63,6 +63,7 @@ const Registry& standard() {
         register_csharp_back_end(r);
         register_csharp_cpp17_back_end(r);
         register_java_back_end(r);
+        register_rust_back_end(r);
         return r;
     }();
     return registry;

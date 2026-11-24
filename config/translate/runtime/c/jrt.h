@@ -570,6 +570,14 @@ bool jrt_Double_isInfinite_D(double v);
 #define jrt_List_addAll_O jrt_Collection_addAll_O
 #define jrt_List_removeAll_O jrt_Collection_removeAll_O
 jobject* jrt_Collection_iterator_(jobject* c);
+jarray* jrt_Collection_toArray_OA(jobject* c, jarray* a);
+#define jrt_List_toArray_OA jrt_Collection_toArray_OA
+#define jrt_ArrayList_toArray_OA jrt_Collection_toArray_OA
+#define jrt_LinkedList_toArray_OA jrt_Collection_toArray_OA
+#define jrt_Set_toArray_OA jrt_Collection_toArray_OA
+#define jrt_HashSet_toArray_OA jrt_Collection_toArray_OA
+#define jrt_LinkedHashSet_toArray_OA jrt_Collection_toArray_OA
+#define jrt_TreeSet_toArray_OA jrt_Collection_toArray_OA
 jobject* jrt_List_get_I(jobject* l, int32_t i);
 jobject* jrt_List_set_IO(jobject* l, int32_t i, jobject* x);
 void jrt_List_add_IO(jobject* l, int32_t i, jobject* x);

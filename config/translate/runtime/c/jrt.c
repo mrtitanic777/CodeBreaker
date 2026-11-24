@@ -8,16 +8,26 @@
 
 /* ---------------------------------------------------------------------------------------- the collector
  * Mark and sweep, and it never moves anything. Every block this file allocates has a header and is listed. A collection starts when
- * what was allocated since the last one passes the limit (32 MB, or what was live then, whichever is more), so a short program
+ * what was allocated since the last one passes the limit (32 MB, or twice what was live then, whichever is more), so a short program
  * never has one. The roots are the registers, the stack and the program's writable static data; a word that points into a block keeps
  * it (interior pointers too), and a kept block's words are read the same way, except text, which holds no pointers. Reading
  * conservatively can only keep something too long, never free what is in use. Where the static data cannot be found (not Windows or
  * Linux), nothing is collected: the program runs as it would with no collector. JRT_GC_STRESS=N collects every N allocations.
  */
-typedef struct gc_block { size_t size; uint32_t atomic, marked; } gc_block;   /* 16 bytes: what follows is aligned for anything */
+typedef struct gc_block { size_t size; uint16_t atomic; uint8_t marked, used; uint32_t spare; } gc_block;   /* 16 bytes: what follows is aligned for anything */
 enum { GC_MIN_LIMIT = 32 * 1024 * 1024 };
-static gc_block** gc_all;
+static gc_block** gc_all;   /* the large blocks, each from the C library */
 static size_t gc_count, gc_cap, gc_since, gc_live, gc_limit = GC_MIN_LIMIT;
+
+/* Small blocks live in pages of one size each, so finding the block a word points into is a search of the pages (few) and a division,
+ * and a freed block is reused at once from its size's free list. */
+enum { GC_PAGE = 1 << 20, GC_CLASSES = 15 };
+static const uint32_t gc_slots[GC_CLASSES] = {32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048, 3072, 4096};   /* (with the header) */
+typedef struct gc_page { char* base; uint32_t slot, made, cls; } gc_page;
+static gc_page* gc_pages;
+static size_t gc_page_count, gc_page_cap;
+static gc_block* gc_free[GC_CLASSES];
+static size_t gc_filling[GC_CLASSES];   /* (the page each size fills now, by its place in the table plus one; 0: none) */
 static gc_block** gc_marks;
 static size_t gc_mark_count, gc_mark_cap;
 static const char* gc_stack_base;
@@ -32,16 +42,33 @@ static void gc_oom(void) { fprintf(stderr, "out of memory\n"); exit(3); }
 #define GC_READS_ANYTHING
 #endif
 
+static gc_block* gc_holds(gc_block* b, uintptr_t p) {   /* b, when p points into it (one past the end counts: a loop's end pointer) */
+	const uintptr_t start = (uintptr_t)(b + 1);
+	return b->used && p >= start && p <= start + b->size ? b : 0;
+}
+
 static gc_block* gc_find(uintptr_t p) {
-	size_t lo = 0, hi = gc_count;
+	size_t lo = 0, hi = gc_page_count;
+	while (lo < hi) {
+		size_t mid = lo + (hi - lo) / 2;
+		if ((uintptr_t)gc_pages[mid].base <= p) lo = mid + 1; else hi = mid;
+	}
+	if (lo > 0) {
+		const gc_page* g = &gc_pages[lo - 1];
+		const uintptr_t at = p - (uintptr_t)g->base;
+		if (at < (uintptr_t)g->made * g->slot) {
+			const size_t i = at / g->slot;
+			gc_block* b = gc_holds((gc_block*)(g->base + i * g->slot), p);
+			if (!b && i > 0) b = gc_holds((gc_block*)(g->base + (i - 1) * g->slot), p);   /* (just past the block before) */
+			return b;
+		}
+	}
+	lo = 0, hi = gc_count;
 	while (lo < hi) {
 		size_t mid = lo + (hi - lo) / 2;
 		if ((uintptr_t)gc_all[mid] <= p) lo = mid + 1; else hi = mid;
 	}
-	if (lo == 0) return 0;
-	gc_block* b = gc_all[lo - 1];
-	const uintptr_t start = (uintptr_t)(b + 1);
-	return p >= start && p <= start + b->size ? b : 0;   /* (one past the end counts: a loop's end pointer) */
+	return lo == 0 ? 0 : gc_holds(gc_all[lo - 1], p);
 }
 
 static void gc_keep(uintptr_t word) {
@@ -115,9 +142,42 @@ GC_READS_ANYTHING static void gc_collect(void) {
 		else free(b);
 	}
 	gc_count = kept;
+	for (int c = 0; c < GC_CLASSES; ++c) gc_free[c] = 0;
+	for (size_t k = 0; k < gc_page_count; ++k) {
+		const gc_page* g = &gc_pages[k];
+		for (uint32_t i = 0; i < g->made; ++i) {
+			gc_block* b = (gc_block*)(g->base + (size_t)i * g->slot);
+			if (b->used && b->marked) { b->marked = 0; gc_live += b->size; continue; }
+			b->used = 0;
+			*(gc_block**)(b + 1) = gc_free[g->cls];
+			gc_free[g->cls] = b;
+		}
+	}
 	gc_since = 0;
-	gc_limit = gc_live > GC_MIN_LIMIT ? gc_live : GC_MIN_LIMIT;
+	gc_limit = 2 * gc_live > GC_MIN_LIMIT ? 2 * gc_live : GC_MIN_LIMIT;   /* (the next collection after twice what is live: the work of one is paid by as much allocated) */
 	gc_busy = 0;
+}
+
+/* a page for blocks of class c, kept in the table in order of address */
+static gc_page* gc_new_page(int c) {
+	char* base = (char*)malloc(GC_PAGE);
+	if (!base) gc_oom();
+	if (gc_page_count == gc_page_cap) {
+		gc_page_cap = gc_page_cap ? gc_page_cap * 2 : 64;
+		gc_pages = (gc_page*)realloc(gc_pages, gc_page_cap * sizeof(gc_page));
+		if (!gc_pages) gc_oom();
+	}
+	size_t at = gc_page_count;
+	while (at > 0 && (uintptr_t)gc_pages[at - 1].base > (uintptr_t)base) {
+		gc_pages[at] = gc_pages[at - 1];
+		--at;
+	}
+	gc_pages[at] = (gc_page){base, gc_slots[c], 0, (uint32_t)c};
+	++gc_page_count;
+	for (int k = 0; k < GC_CLASSES; ++k)   /* (the pages after it moved along by one) */
+		if (gc_filling[k] && gc_filling[k] - 1 >= at) ++gc_filling[k];
+	gc_filling[c] = at + 1;
+	return &gc_pages[at];
 }
 
 static void* gc_alloc(size_t size, int atomic, int zero) {
@@ -127,11 +187,32 @@ static void* gc_alloc(size_t size, int atomic, int zero) {
 		gc_until = gc_stress;
 	}
 	if (gc_since >= gc_limit || (gc_stress > 0 && --gc_until <= 0)) { gc_until = gc_stress; gc_collect(); }
+	gc_since += size;
+	int c = 0;
+	while (c < GC_CLASSES && gc_slots[c] < sizeof(gc_block) + size) ++c;
+	if (c < GC_CLASSES) {
+		gc_block* b = gc_free[c];
+		if (b) {
+			gc_free[c] = *(gc_block**)(b + 1);
+		} else {
+			gc_page* g = gc_filling[c] ? &gc_pages[gc_filling[c] - 1] : 0;
+			if (!g || (size_t)(g->made + 1) * g->slot > GC_PAGE) g = gc_new_page(c);
+			b = (gc_block*)(g->base + (size_t)g->made * g->slot);
+			++g->made;
+		}
+		b->size = size;
+		b->atomic = (uint16_t)atomic;
+		b->marked = 0;
+		b->used = 1;
+		if (zero) memset(b + 1, 0, size);
+		return b + 1;
+	}
 	gc_block* b = (gc_block*)(zero ? calloc(1, sizeof(gc_block) + size) : malloc(sizeof(gc_block) + size));
 	if (!b) gc_oom();
 	b->size = size;
-	b->atomic = (uint32_t)atomic;
+	b->atomic = (uint16_t)atomic;
 	b->marked = 0;
+	b->used = 1;
 	if (gc_count == gc_cap) {
 		gc_cap = gc_cap ? gc_cap * 2 : 1024;
 		gc_all = (gc_block**)realloc(gc_all, gc_cap * sizeof(gc_block*));
@@ -139,7 +220,6 @@ static void* gc_alloc(size_t size, int atomic, int zero) {
 	}
 	/* (kept in order of address only during a collection: gc_find is not used between them) */
 	gc_all[gc_count++] = b;
-	gc_since += size;
 	return b + 1;
 }
 
@@ -1305,6 +1385,15 @@ int32_t jrt_Collection_size_(jobject* c) {
 	jrt_throw_new(&jrt_UnsupportedOperationException_class, "size");
 }
 bool jrt_Collection_isEmpty_(jobject* c) { return jrt_Collection_size_(c) == 0; }
+/* c.toArray(a): into a when it has room (a null just after the last, if there is space), else into a new array of the size */
+jarray* jrt_Collection_toArray_OA(jobject* c, jarray* a) {
+	int32_t n = jrt_Collection_size_(c);
+	jarray* r = ((jarray*)jrt_nn(a))->length >= n ? a : jrt_new_array((int32_t)sizeof(jobject*), n);
+	int32_t i = 0;
+	for (jobject* it = jrt_Collection_iterator_(c); jrt_Iterator_hasNext_(it);) JA(jobject*, r, i++) = jrt_Iterator_next_(it);
+	if (r->length > n) JA(jobject*, r, n) = NULL;
+	return r;
+}
 jobject* jrt_Collection_iterator_(jobject* c) {
 	jrt_nn(c);
 	jrt_Iter* it = (jrt_Iter*)jrt_alloc(&iter_class);

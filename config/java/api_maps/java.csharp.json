@@ -146,6 +146,8 @@
     "List.contains/1": {"maps": {"csharp": {"target": "{t}.Contains({0})", "kind": "direct"}}},
     "List.indexOf/1": {"maps": {"csharp": {"target": "{t}.IndexOf({0})", "kind": "direct"}}},
     "List.clear/0": {"maps": {"csharp": {"target": "{t}.Clear()", "kind": "direct"}}},
+    "List.toArray/1": {"maps": {"csharp": {"target": "JavaRt.ToArray({t}, {0})", "kind": "shim"}}},
+    "Set.toArray/1": {"maps": {"csharp": {"target": "JavaRt.ToArray({t}, {0})", "kind": "shim"}}},
     "List.addAll/1": {"maps": {"csharp": {"stmt": "{t}.AddRange({0})", "target": "", "kind": "direct"}}},
     "List.toString/0": {"maps": {"csharp": {"target": "JavaRt.Str({t})", "kind": "shim"}}},
     "List.sort/1": {"maps": {"csharp": {"stmt": "JavaRt.Sort({t}, {0})", "target": "", "kind": "shim", "note": "Java's sort is stable"}}},

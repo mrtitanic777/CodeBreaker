@@ -161,6 +161,25 @@ public:
     using WideUserOpHook = std::function<bool(Emulator& self, const std::string& name, const std::vector<std::vector<std::uint8_t>>& args, std::vector<std::uint8_t>& result)>;
     void onUserOpWide(WideUserOpHook hook);
 
+    // A user operation served by its number, with no name looked at while a program runs (what an instruction set's table of lane operations is bound to, once, when the
+    // emulator is made: engine/pcode_ops.hpp resolves each name of the description to a handler and calls bindUserOp). A bound operation is served before onUserOp and
+    // onUserOpWide are asked, whatever the sizes of its values (a value of at most 8 bytes is given as that many bytes too, least significant first), so there is one form
+    // of handler for narrow and wide arguments. It costs no allocation per call. An operation with more than kMaxArgs inputs, or a value over 256 bytes, is not served this
+    // way (it goes to the hooks as before). A handler that returns false counts the operation in unimplementedOps() as a hook that declined.
+    struct UserOpCall {
+        static constexpr unsigned kMaxArgs = 8;
+        unsigned nIn = 0;                                 // inputs, not counting the operation's own number
+        unsigned inSize[kMaxArgs] = {};                   // bytes of each input
+        const std::uint8_t* in[kMaxArgs] = {};            // each input's bytes, least significant first
+        unsigned outSize = 0;                             // bytes of the output; 0: the operation has none
+        std::uint8_t* out = nullptr;                      // the output, cleared before the call, to be filled the same way
+    };
+    using UserOpHandler = bool (*)(Emulator& self, UserOpCall& call, void* context);
+    std::size_t userOpCount() const;                      // the description's user operations, numbered from 0
+    const std::string& userOpName(std::size_t index) const;
+    void bindUserOp(std::size_t index, UserOpHandler handler, void* context = nullptr);   // a null handler unbinds
+    void clearUserOpBindings();
+
     // The bytes at pc are no instruction of the description (undocumented opcodes ...): the host may carry the instruction out itself
     // (it sets the registers and pc, via bus access below if it needs memory-mapped I/O) and return true; the step counts as executed.
     using BadInstructionHook = std::function<bool(Emulator& self, std::uint64_t pc)>;
