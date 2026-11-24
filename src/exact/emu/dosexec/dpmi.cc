@@ -86,9 +86,28 @@ static int64_t floordiv(int64_t a, int64_t b) {
 }
 
 void Host::attach() {
-    uc_err e = UC.mem_map(ctx.uc, HOSTB, HOSTTOP - HOSTB, UC_PROT_ALL);   // host tables + extended pool
-    (void)e;                                                              // (already mapped: a re-attach)
+    if (ctx.high.empty()) {                                               // (not empty: a re-attach)
+        ctx.high.assign(size_t(HOSTTOP - HOSTB), 0);                      // host tables + extended pool
+        uc_err e = UC.mem_map_ptr(ctx.uc, HOSTB, HOSTTOP - HOSTB, UC_PROT_ALL, ctx.high.data());
+        if (e != UC_ERR_OK) throw uc_error(e);
+    }
     ctx.wr(ENTRY, Bytes{0xCD, 0xFF});                                     // the mode-switch entry: INT FFh
+}
+
+void Host::copy_from(const Host &o) {
+    pm = o.pm;
+    ldt_used = o.ldt_used;
+    next_ldt = o.next_ldt;
+    mem = o.mem;
+    pool = o.pool;
+    next_handle = o.next_handle;
+    scratch_ds = o.scratch_ds;
+    scratch_es = o.scratch_es;
+    pm_vec = o.pm_vec;
+    exc_vec = o.exc_vec;
+    client32 = o.client32;
+    vif = o.vif;
+    segsel = o.segsel;
 }
 
 bool Host::handle(int intno) {

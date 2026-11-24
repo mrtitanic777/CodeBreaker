@@ -30,7 +30,9 @@ bool load_unicorn(const wchar_t *dll, char *err, size_t errlen) {
            get(u, "uc_ctl", UC.ctl, err, errlen) &&
            get(u, "uc_mem_map", UC.mem_map, err, errlen) && get(u, "uc_mem_map_ptr", UC.mem_map_ptr, err, errlen) &&
            get(u, "uc_emu_start", UC.emu_start, err, errlen) && get(u, "uc_emu_stop", UC.emu_stop, err, errlen) &&
-           get(u, "uc_hook_add", UC.hook_add, err, errlen) && get(u, "uc_strerror", UC.strerror, err, errlen);
+           get(u, "uc_hook_add", UC.hook_add, err, errlen) && get(u, "uc_strerror", UC.strerror, err, errlen) &&
+           get(u, "uc_context_alloc", UC.context_alloc, err, errlen) && get(u, "uc_context_save", UC.context_save, err, errlen) &&
+           get(u, "uc_context_restore", UC.context_restore, err, errlen);
 }
 
 }  // namespace cbd

@@ -142,19 +142,30 @@ bool run_session(const Context& ctx, const stdfs::path& work, std::string_view h
     fs::make_dirs(work);
     clear_session_files(work, false);
     write_dos_text(work / "M.H", header);
-    DosRunSpec spec;
-    for (const BatchFiles::File& file : files) {
-        write_dos_text(work / (file.stem + ".C"), "#include \"m.h\"\n\n" + file.text + "\n");
-        spec.commands.push_back(std::format("cl /nologo /c /W0 {} /Fo{}.OBJ {}.C > {}.TXT", flags, file.stem, file.stem, file.stem));
-        spec.artifacts.push_back(file.stem + ".OBJ");
-    }
-    spec.mounts = {{"c", ctx.tools.home(compiler)}, {"d", work}};
-    spec.work = work;
-    spec.variables = {{"PATH", "C:\\BIN"}, {"INCLUDE", "C:\\INCLUDE"}, {"LIB", "C:\\LIB"}};
-    const DosRunResult ran = ctx.runner.run(spec);
-    if (!ran.why.empty()) throw ToolError("dos", 0, "", "the DOS executive could not complete the compile: " + ran.why);
+    // Every file is compiled under one name, so that one command line serves them all and the executive's kept start of the compiler applies (exec.cc).
+    static constexpr std::string_view kOneName = "R00";
     std::error_code ec;
-    return stdfs::is_regular_file(work / "done.txt", ec);
+    bool all_ended = true;
+    for (const BatchFiles::File& file : files) {
+        write_dos_text(work / std::format("{}.C", kOneName), "#include \"m.h\"\n\n" + file.text + "\n");
+        DosRunSpec spec;
+        spec.commands = {std::format("cl /nologo /c /W0 {} /Fo{}.OBJ {}.C > {}.TXT", flags, kOneName, kOneName, kOneName)};
+        spec.artifacts = {std::format("{}.OBJ", kOneName)};
+        spec.mounts = {{"c", ctx.tools.home(compiler)}, {"d", work}};
+        spec.work = work;
+        spec.variables = {{"PATH", "C:\\BIN"}, {"INCLUDE", "C:\\INCLUDE"}, {"LIB", "C:\\LIB"}};
+        stdfs::remove(work / "done.txt", ec);
+        const DosRunResult ran = ctx.runner.run(spec);
+        const bool stuck = ran.why.find("time limit") != std::string::npos;   // (this file never ended: no verdict for it, and the others still get theirs)
+        if (!ran.why.empty() && !stuck) throw ToolError("dos", 0, "", "the DOS executive could not complete the compile: " + ran.why);
+        all_ended = all_ended && !stuck;
+        for (const char* type : {".C", ".OBJ", ".TXT"}) {
+            const stdfs::path made = work / (std::string(kOneName) + type);
+            if (stdfs::is_regular_file(made, ec)) stdfs::rename(made, work / (file.stem + type), ec);
+        }
+        if (!stuck && !stdfs::is_regular_file(work / "done.txt", ec)) return false;   // (cut off: the files after it have no verdict)
+    }
+    return all_ended;
 }
 
 // The code a compiler's object file holds: the public function's, or (no name) the first code segment's. An object that cannot be read
