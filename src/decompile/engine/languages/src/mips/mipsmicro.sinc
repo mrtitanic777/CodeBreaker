@@ -400,8 +400,8 @@ EXT_SA: val						is mic_sa [ val = mic_sa << 0; ] {export *[const]:1 val; }
 
 EXT_SA9: val					is micb_sa9 [ val = micb_sa9+1; ] { export *[const]:1 val; }
 
-DIDISP:							is mic_rs32_0=0 {}
-DIDISP: mic_rs32_0				is mic_rs32_0 {}
+DIDISP:							is mic_rs32_0=0 { export 0:1; }
+DIDISP: mic_rs32_0				is mic_rs32_0 { export *[const]:1 mic_rs32_0; }
 
 RTIMP:							is mic_rt32_5=31 {}
 RTIMP: mic_rt32_5", "			is mic_rt32_5 {}
@@ -412,19 +412,19 @@ SIZEQ: val						is micb_size & micb_pos [ val = micb_size + 1 - micb_pos; ] { ex
 SIZEQLG: val					is micb_size & micb_pos [ val = micb_size + 1 - micb_pos + 32; ] { export *[const]:1 val; }
 POSHI: val						is micb_pos [ val = micb_pos+32; ] { export *[const]:1 val; }
 
-CPSEL:							is micb_sel=0 {}
-CPSEL: ", "micb_sel				is micb_sel {}
+CPSEL:							is micb_sel=0 { export 0:1; }
+CPSEL: ", "micb_sel				is micb_sel { export *[const]:1 micb_sel; }
 
-STYPE:							is mic_stype=0 {}
-STYPE: val						is mic_stype [ val = mic_stype << 0; ] {}
+STYPE:							is mic_stype=0 { export 0:1; }
+STYPE: val						is mic_stype [ val = mic_stype << 0; ] { export *[const]:1 val; }
 
 SDB16: mic_code4				is mic_code4 & REL6=0	{ export *[const]:1 mic_code4; }
 SDB16: mic_code4r6				is mic_code4r6 & REL6=1 { export *[const]:1 mic_code4r6; }
 
 SA32: val						is micb_sa [ val = micb_sa+32; ] { export *[const]:1 val; }
 
-COP2CC:							is mic_cc=0 {}
-COP2CC: val", "					is mic_cc [ val = mic_cc << 0; ] {}
+COP2CC:							is mic_cc=0 { export 0:1; }
+COP2CC: val", "					is mic_cc [ val = mic_cc << 0; ] { export *[const]:1 val; }
 
 LOAD_S8:						is ext_t4=8 {}
 LOAD_S8:						is ext_t4 { MemSrcCast(s8,tsp); tsp = tsp+$(REGSIZE); }

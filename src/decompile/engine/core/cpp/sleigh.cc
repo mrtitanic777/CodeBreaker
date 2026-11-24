@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+#include <cstring>
 #include "decompile/engine/core/cpp/sleigh.hh"
 #include "decompile/engine/core/cpp/loadimage.hh"
 
@@ -713,14 +714,11 @@ void Sleigh::resolveHandles(ParserContext &pos) const
     }
     if (oper >= numoper) {	// Finished processing constructor
       ConstructTpl *templ = ct->getTempl();
-      if (templ != (ConstructTpl *)0) {
-	HandleTpl *res = templ->getResult();
-	if (res != (HandleTpl *)0)	// Pop up handle to containing operand
-	  res->fix(walker.getParentHandle(),walker);
-	// If we need an indicator that the constructor exports nothing try
-        // else
-	//   walker.getParentHandle().setInvalid();
-      }
+      HandleTpl *res = (templ != (ConstructTpl *)0) ? templ->getResult() : (HandleTpl *)0;
+      if (res != (HandleTpl *)0)	// Pop up handle to containing operand
+	res->fix(walker.getParentHandle(),walker);
+      else
+	std::memset(&walker.getParentHandle(),0,sizeof(FixedHandle));	// Exports nothing: say so (the state is reused, and a stale handle here was an operand with a wild address space)
       walker.popOperand();
     }
   }

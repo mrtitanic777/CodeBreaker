@@ -2729,6 +2729,18 @@ Rn_VPR128.D.imm_neon_uimm1: Rn_VPR128.D^"["^imm_neon_uimm1^"]" is Rn_VPR128.D & 
 
 Re_VPR128.H.vIndexHL: Re_VPR128.H^"["^vIndexHL^"]" is Re_VPR128.H & vIndexHL { }
 
+# The 32-bit group of Vm that a dot product by element names: Vm.2H[index] for BFDOT, Vm.4B[index] for SUDOT and USDOT.
+# The register is M:Rm (Re_VPR128) and the index is H:L. (Re_VPR128.H.vIndexHL above exports nothing and reaches only the
+# 1 bit index of FCMLA's S form, so a constructor that named it as a value had a handle with no space.)
+vIndexHL32: val is b_21 & b_11 [ val = b_11 << 1 | b_21; ] { export *[const]:8 val; }
+@if DATA_ENDIAN == "little"
+Re_VPR128.dot.sel: Re_VPR128, val is Re_VPR128 & b_21 & b_11 [ val = 0x5000 + 32*Re_VPR128 + (b_11 * 2 + b_21) * 4; ] { export *[register]:4 val; }
+@else
+Re_VPR128.dot.sel: Re_VPR128, val is Re_VPR128 & b_21 & b_11 [ val = 0x501c + 32*Re_VPR128 - (b_11 * 2 + b_21) * 4; ] { export *[register]:4 val; }
+@endif
+Re_VPR128.2H.vIndexHL32: vRe_VPR128^".2H["^vIndexHL32^"]" is Re_VPR128 & vRe_VPR128 & vIndexHL32 & Re_VPR128.dot.sel { export Re_VPR128.dot.sel; }
+Re_VPR128.4B.vIndexHL32: vRe_VPR128^".4B["^vIndexHL32^"]" is Re_VPR128 & vRe_VPR128 & vIndexHL32 & Re_VPR128.dot.sel { export Re_VPR128.dot.sel; }
+
 @if DATA_ENDIAN == "little"
 Re_VPR128Lo.H.sel: Re_VPR128Lo, val is Re_VPR128Lo & b_2223=2 & b_2121 & b_1111 [ val = 0x5000 + 32*Re_VPR128Lo + (b_1111 * 2 + b_2121)*2; ] { export *[register]:2 val; }
 Re_VPR128Lo.H.sel: Re_VPR128Lo, val is Re_VPR128Lo & b_2223=1 & b_2121 & b_1111 & b_2020 [ val = 0x5000 + 32*Re_VPR128Lo + (b_1111*4 + b_2121*2 + b_2020)*2; ] { export *[register]:2 val; }

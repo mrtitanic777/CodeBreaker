@@ -1,0 +1,18 @@
+# A tiny description with the defect the translator once crashed on: a table that exports nothing (Mode, display only) named as a value in p-code. The SLEIGH compiler of this
+# checkout refuses it ("Operand 'Mode' is used as a value but its table 'Mode' exports nothing"), so exportless.sla was made with a copy of the compiler without that check:
+#   engine.pcode_translator.a_description_that_names_an_exportless_table_as_a_value_is_a_bad_instruction (pcode_translator_crash_test.cpp) runs it.
+# Bytes: 0x21 is "good", 0x01 and 0x11 are "bad m0" and "bad m1" (their p-code uses the exportless operand), 0x02 is "fine".
+define endian=little;
+define alignment=1;
+define space ram type=ram_space size=2 default;
+define space register type=register_space size=1;
+define register offset=0 size=1 [ a b ];
+define token op8(8) f1=(0,3) f2=(4,7);
+define pcodeop uses;
+
+Mode: "m0" is f2=0 { }
+Mode: "m1" is f2=1 { }
+
+:good is f1=1 & f2=2 { a = 1; }
+:bad Mode is f1=1 & Mode { a = uses(Mode); }
+:fine is f1=2 & f2=0 { b = 2; }
