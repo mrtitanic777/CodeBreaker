@@ -1,8 +1,12 @@
 // translate/backends/c_java.hpp -- C out for Java programs (docs/TRANSLATOR_DESIGN.md, phase 6), beside backends/c (which writes
 // the decompiler's C).
 //
-// A whole Java program from L2 as one C11 translation unit on the runtime codebreaker/translate/runtime/c (jrt.h, jrt.c), in the
-// faithful tier of the design's table:
+// A whole Java program from L2 as C11 on the runtime codebreaker/translate/runtime/c (jrt.h, jrt.c), in the faithful tier of the
+// design's table. The files mirror the Java program's: for each top-level class Foo (in the folder of its package) a Foo.h, with its
+// struct, function table and the declarations the other files call, and a Foo.c, with its code and static data; the classes nested in
+// Foo (and its local and anonymous ones) stay with it. jprogram.h holds what all of them share (a typedef for each class, the string
+// literals more than one file uses), jprogram.c the definitions of those, jmain.c the entry point. Each .c is compiled on its own.
+//
 //
 //   * a class is a struct whose first member is its superclass's struct (`B super_;`), so a pointer to it is a pointer to each
 //     base; its fields follow;
@@ -26,10 +30,10 @@
 // instanceof patterns). What it cannot write is a `Decline`; the judge (translate/javajudge) reports that program as refused.
 //
 //     Arena arena;  std::vector<ir::Node*> units = ...;               // Unit nodes, as the Java front end makes them
-//     std::string c = c_java::program(arena, units);                  // the program's C text (units are lowered in place)
-//     c_java::Built b = c_java::build(arena, units, out_dir);         // ... and compiled against the runtime
+//     std::vector<c_java::File> c = c_java::files(arena, units);      // the program's files (units are lowered in place)
+//     c_java::Built b = c_java::build(arena, units, out_dir);         // ... written, compiled side by side and linked with the runtime
 //
-// The modules: c_java.cpp (the entry points), c_java_names.cpp (C names, types and literals), c_java_program.cpp (the program's
+// The modules: c_java.cpp (the entry points, the build), c_java_names.cpp (C names, types and literals), c_java_program.cpp (the program's
 // classes: structs, tables, prototypes), c_java_method.cpp (members: constructors, initialisers), c_java_stmt.cpp (statements),
 // c_java_expr.cpp and c_java_call.cpp (expressions, calls and `new`), c_java_closure.cpp (lambdas and method references).
 // c_java_internal.hpp is what they share.
@@ -41,6 +45,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "core/arena.hpp"
 #include "translate/backends/cpp03.hpp"
@@ -60,25 +65,42 @@ inline constexpr std::string_view kFlags[] = {"-std=c11", "-fwrapv", "-O1", "-w"
 // The folder of the C runtime (jrt.h, jrt.c) in the checkout this program belongs to. NotFoundError when there is none.
 std::filesystem::path default_runtime_dir();
 
-// The C text of the whole program `units` (Unit nodes of one Java program). The modern forms C has no word for are lowered
+// One file of the program: its path under the program's folder (with `/`) and its text.
+struct File {
+    std::string path;
+    std::string text;
+};
+
+// The files of the whole program `units` (Unit nodes of one Java program). The modern forms C has no word for are lowered
 // first, in the units' own arena (`arena`: the one they were made in). `main` is the class whose main runs when the environment
 // names none. Throws Decline.
+std::vector<File> files(Arena& arena, std::span<ir::Node* const> units, const std::optional<std::string>& main = std::nullopt);
+
+// The same files as one text, each under a line `// ==== path ====` (the goldens' form).
 std::string program(Arena& arena, std::span<ir::Node* const> units, const std::optional<std::string>& main = std::nullopt);
 
 struct BuildOptions {
     std::filesystem::path runtime_dir;               // empty: default_runtime_dir()
     std::optional<std::filesystem::path> compiler;   // empty: kClang if it exists, else gcc
     std::chrono::seconds timeout{600};
+    int jobs = 0;                                    // compilers at a time; 0: one for each core, at most 8
 };
 
 // What building a program gave: the executable, or why not (a decline, or the compiler's first error).
 struct Built {
     std::optional<std::filesystem::path> exe;
     std::string why;
+    std::filesystem::path sources;                   // the folder the files were written to (out/src)
+    std::vector<std::filesystem::path> files;        // the files, relative to `sources`
 };
 
-// Write the program as C under `out` (program.c) and compile it with clang (else the host's gcc) against the runtime into
-// out/program.exe. A decline is a Built with no exe.
+// Write the program's files under `out` (out/src), compile each .c on its own with clang (else the host's gcc), up to `jobs` at a
+// time, together with the runtime's, and link them into out/program.exe. A decline is a Built with no exe.
 Built build(Arena& arena, std::span<ir::Node* const> units, const std::filesystem::path& out, const BuildOptions& options = {});
+
+// Hand a built program over: its files and the runtime's under `out`, with a BUILD.txt and a CMakeLists.txt that build them. Returns what
+// it wrote, relative to `out`.
+std::vector<std::filesystem::path> install(const Built& built, const std::string& name, const std::filesystem::path& out,
+                                           const std::filesystem::path& runtime_dir = {});
 
 }  // namespace cb::translate::backends::c_java

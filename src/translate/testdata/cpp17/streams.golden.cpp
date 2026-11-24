@@ -1,5 +1,7 @@
-// written by CodeBreaker's C++17 back end (codebreaker/translate/backends/cpp17.py) from the
-// Java program's L2; it runs on jrt.hpp, the Java library in C++17.
+// ==== jrt_program.hpp ====
+// written by CodeBreaker's C++17 back end from the Java program's L2; it runs on jrt.hpp, the Java library in C++17.
+// Every file of the program starts from this one: the runtime, and a declaration of each class.
+#pragma once
 #include "jrt.hpp"
 
 using jrt::ref;
@@ -32,6 +34,9 @@ using jrt::ToIntFunction;
 
 struct Streams;
 struct Streams_Person;
+// ==== Streams.hpp ====
+#pragma once
+#include "jrt_program.hpp"
 
 struct Streams : virtual Object {
 	const char16_t* jclass_() const override { return u"Streams"; }
@@ -60,6 +65,9 @@ struct Streams_Person : virtual Object {
 	virtual bool equals(ref<Object> o);
 	Streams_Person() {}
 };
+
+// ==== Streams.cpp ====
+#include "Streams.hpp"
 
 Streams::Streams() {
 }
@@ -227,6 +235,10 @@ bool Streams_Person::equals(ref<Object> o) {
 	return jrt::Objects::equals(this->name_, jrt::nn(that)->name_) && this->age_ == jrt::nn(that)->age_;
 }
 
+// ==== main.cpp ====
+// the program's entry: the class named by JRT_MAIN, else the first with a main
+#include "jrt_program.hpp"
+#include "Streams.hpp"
 
 int main(int argc, char** argv) {
 	const char* which = std::getenv("JRT_MAIN");

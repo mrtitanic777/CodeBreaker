@@ -1559,33 +1559,48 @@ struct LinkedHashMap : HashMap {
 };
 struct TreeMap : Map {
 	ref<Comparator> cmp;
-	std::vector<ref<MapEntry>> v;                                 // kept sorted
+	struct Before {                                               // the map's own order: its comparator, else the keys' natural order
+		TreeMap* owner;
+		bool operator()(const O& a, const O& b) const { return compare_with(owner->cmp, a, b) < 0; }
+	};
+	std::map<O, ref<MapEntry>, Before> tree{Before{this}};        // a balanced tree: a change costs the log of the size
 #ifdef JRT_CYCLES
 	gc::Tracked gc_tracked_{this};
-	void trace_(gc::Tracer& t) override { t(cmp); for (auto& x : v) t(x); }
-	void clear_() override { cmp = nullptr; v.clear(); }
+	void trace_(gc::Tracer& t) override { t(cmp); for (auto& x : tree) t(x.second); }
+	void clear_() override { cmp = nullptr; tree.clear(); }
 #endif
 	const char16_t* jclass_() const override { return u"java.util.TreeMap"; }
 	void ctor_() {}
 	void ctor_(ref<Comparator> c) { cmp = c; }
-	size_t lower(const O& k) { return std::lower_bound(v.begin(), v.end(), k, [&](const ref<MapEntry>& e, const O& x) { return compare_with(cmp, e->key, x) < 0; }) - v.begin(); }
-	ref<MapEntry> find(const O& k) { if (!k && !cmp) raise_npe(); size_t i = lower(k); return i < v.size() && compare_with(cmp, v[i]->key, k) == 0 ? v[i] : nullptr; }
-	int32_t size() override { return (int32_t)v.size(); }
-	O get(O k) override { auto e = find(k); return e ? e->value : nullptr; }
-	bool containsKey(O k) override { return find(k) != nullptr; }
+	MapEntry* find_entry(const O& k) {
+		if (!k && !cmp) raise_npe();
+		auto at = tree.find(k);
+		return at == tree.end() ? nullptr : at->second.get();
+	}
+	ref<MapEntry> find(const O& k) { if (!k && !cmp) raise_npe(); auto at = tree.find(k); return at == tree.end() ? nullptr : at->second; }
+	int32_t size() override { return (int32_t)tree.size(); }
+	O get(O k) override { MapEntry* e = find_entry(k); return e ? e->value : nullptr; }
+	bool containsKey(O k) override { return find_entry(k) != nullptr; }
 	O put(O k, O val) override {
 		if (!k && !cmp) raise_npe();
-		size_t i = lower(k);
-		if (i < v.size() && compare_with(cmp, v[i]->key, k) == 0) { O o = v[i]->value; v[i]->value = val; return o; }
+		auto at = tree.lower_bound(k);
+		if (at != tree.end() && compare_with(cmp, at->first, k) == 0) { O o = at->second->value; at->second->value = val; return o; }   // (the first key stays, as Java's)
 		auto n = std::make_shared<MapEntry>(); n->key = k; n->value = val;
-		v.insert(v.begin() + i, n);
+		tree.emplace_hint(at, k, n);
 		return nullptr;
 	}
-	O remove(O k) override { size_t i = lower(k); if (i < v.size() && compare_with(cmp, v[i]->key, k) == 0) { O o = v[i]->value; v.erase(v.begin() + i); return o; } return nullptr; }
-	void clear() override { v.clear(); }
-	std::vector<ref<MapEntry>> entries() override { return v; }
-	O firstKey() { if (v.empty()) raise_new<NoSuchElementException>(nullptr); return v.front()->key; }
-	O lastKey() { if (v.empty()) raise_new<NoSuchElementException>(nullptr); return v.back()->key; }
+	O remove(O k) override {
+		if (!k && !cmp) raise_npe();
+		auto at = tree.find(k);
+		if (at == tree.end()) return nullptr;
+		O o = at->second->value;
+		tree.erase(at);
+		return o;
+	}
+	void clear() override { tree.clear(); }
+	std::vector<ref<MapEntry>> entries() override { std::vector<ref<MapEntry>> r; r.reserve(tree.size()); for (auto& x : tree) r.push_back(x.second); return r; }
+	O firstKey() { if (tree.empty()) raise_new<NoSuchElementException>(nullptr); return tree.begin()->first; }
+	O lastKey() { if (tree.empty()) raise_new<NoSuchElementException>(nullptr); return tree.rbegin()->first; }
 };
 template <class... A> ref<Map> Map::of(A... a) {
 	auto m = std::make_shared<HashMap>();

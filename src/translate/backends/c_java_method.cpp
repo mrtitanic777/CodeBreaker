@@ -24,7 +24,7 @@ Lines MethodWriter::define() {
     Lines out;
     if (m.kind == "ctor") {
         const std::string name = p_.ctor_name(*ci_, node_);
-        out.push_back(std::format("static void {}({}) {{", name, join_commas(p_.ctor_params(*ci_, m))));
+        out.push_back(std::format("void {}({}) {{", name, join_commas(p_.ctor_params(*ci_, m))));
         for (const ir::Node* pn : m.params) {
             const ir::Param& param = param_of(pn);
             vars_[ident(need_sym(param.sym, "a parameter").name)] = p_.ct(param.type);
@@ -85,7 +85,7 @@ Lines MethodWriter::define() {
         out.emplace_back("}");
         out.emplace_back("");
         // X_new: allocate, then run the constructor
-        out.push_back(std::format("static {}* {}({}) {{", ci_->cname, text::replace_first(name, "_init", "_new"),
+        out.push_back(std::format("{}* {}({}) {{", ci_->cname, text::replace_first(name, "_init", "_new"),
                                   decl_params(p_.new_params(*ci_, &m))));
         if (p_.needs_clinit(*ci_)) out.push_back(std::format("\t{}_clinit();", ci_->cname));
         out.push_back(std::format("\t{}* o = ({}*)jrt_alloc(&{}_class);", ci_->cname, ci_->cname, ci_->cname));
@@ -127,7 +127,7 @@ Lines MethodWriter::define() {
     }
     const std::string fname = is_object_method(m) && !static_ ? std::format("{}_{}", ci_->cname, *m.name)
                                                               : std::format("{}_{}", ci_->cname, p_.mname(m.name.value_or(""), s.eps));
-    out.push_back(std::format("static {} {}({}) {{", s.r, fname, decl_params(params)));
+    out.push_back(std::format("{} {}({}) {{", s.r, fname, decl_params(params)));
     if (static_ && p_.needs_clinit(*ci_)) out.push_back(std::format("\t{}_clinit();", ci_->cname));
     out.insert(out.end(), entry.begin(), entry.end());
     Lines statements;
@@ -200,7 +200,7 @@ Lines MethodWriter::anon_new() {
         }
     }
     Lines out;
-    out.push_back(std::format("static {}* {}_new({}) {{", ci_->cname, ci_->cname, decl_params(params)));
+    out.push_back(std::format("{}* {}_new({}) {{", ci_->cname, ci_->cname, decl_params(params)));
     if (p_.needs_clinit(*ci_)) out.push_back(std::format("\t{}_clinit();", ci_->cname));
     out.push_back(std::format("\t{}* o = ({}*)jrt_alloc(&{}_class);", ci_->cname, ci_->cname, ci_->cname));
     if (ci_->needs_outer) out.emplace_back("\to->outer_ = outer_in;");
@@ -227,7 +227,7 @@ Lines MethodWriter::finit() {
             stmts(body_statements(*m), body, "\t");
         }
     }
-    Lines out = {std::format("static void {}_finit({}* self) {{", ci_->cname, ci_->cname)};
+    Lines out = {std::format("void {}_finit({}* self) {{", ci_->cname, ci_->cname)};
     out.insert(out.end(), body.begin(), body.end());
     out.emplace_back("}");
     out.emplace_back("");
@@ -236,7 +236,7 @@ Lines MethodWriter::finit() {
 
 Lines MethodWriter::clinit() {
     static_ = true;
-    Lines out = {std::format("static void {}_clinit(void) {{", ci_->cname), std::format("\tif ({}_inited_) return;", ci_->cname),
+    Lines out = {std::format("void {}_clinit(void) {{", ci_->cname), std::format("\tif ({}_inited_) return;", ci_->cname),
                  std::format("\t{}_inited_ = true;", ci_->cname)};
     const ClassInfo* base = ci_->base ? p_.model().info(*ci_->base) : nullptr;
     if (base != nullptr && p_.needs_clinit(*base)) out.push_back(std::format("\t{}_clinit();", base->cname));

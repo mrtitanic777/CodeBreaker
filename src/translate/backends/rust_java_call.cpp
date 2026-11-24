@@ -217,6 +217,14 @@ const std::unordered_map<std::string, std::string>& library_table() {
             if (std::string_view(e) != "boolean") t.emplace("Arrays.sort(" + a + ")", "Arrays_sort($1)");
         }
         add("Arrays.toString(String[])", "Arrays_toString($1)");
+        add("Integer.hashCode(int)", "$1.jhash()");
+        add("Long.hashCode(long)", "$1.jhash()");
+        add("Double.hashCode(double)", "$1.jhash()");
+        add("Boolean.hashCode(boolean)", "$1.jhash()");
+        add("Character.hashCode(char)", "$1.jhash()");
+        add("Short.hashCode(short)", "$1.jhash()");
+        add("Byte.hashCode(byte)", "$1.jhash()");
+        add("Float.hashCode(float)", "$1.jhash()");
         // the boxed numbers and java.util: lists (ArrayList), sets (HashSet), maps (HashMap), their iterators and entries
         add("Integer.valueOf(int)", "Some($1)");
         add("Integer.valueOf(String)", "Some(Integer_parseInt($1))");
@@ -240,6 +248,7 @@ const std::unordered_map<std::string, std::string>& library_table() {
         add("List.iterator()", "$0.nn().iterator()");
         add("List.addAll(Collection)", "$0.nn().addAll($1)");
         add("List.toString()", "$0.nn().toString()");
+        add("List.sort(Comparator)", "$0.nn().sort_natural($1)");
         add("Set.add(Object)", "$0.nn().add($1)");
         add("Set.contains(Object)", "$0.nn().contains($1)");
         add("Set.remove(Object)", "$0.nn().remove_obj($1)");
@@ -274,11 +283,21 @@ const std::unordered_map<std::string, std::string>& library_table() {
 }  // namespace
 
 std::vector<std::string> Writer::call_args(std::span<ir::Node* const> args, const std::vector<ir::TypeP>& params, bool varargs) {
-    (void)varargs;
     std::vector<std::string> out;
+    // a call with a variable number of arguments packs the extra ones into an array (unless it was given the array itself)
+    const bool pack = varargs && !params.empty() &&
+                      !(args.size() == params.size() && (kind_of(type_of(args.back())) == "array" || kind_of(type_of(args.back())) == "null"));
+    const std::size_t fixed = pack ? params.size() - 1 : params.size();
     for (std::size_t i = 0; i < args.size(); ++i) {
-        const ir::TypeP want = i < params.size() ? params[i] : (params.empty() ? ir::TypeP() : params.back());
+        if (pack && i >= fixed) break;
+        const ir::TypeP want = i < fixed ? params[i] : (params.empty() ? ir::TypeP() : params.back());
         out.push_back(as_arg(args[i], want));
+    }
+    if (pack) {
+        const ir::TypeP elem = elem_of(params.back());
+        std::vector<std::string> items;
+        for (std::size_t i = fixed; i < args.size(); ++i) items.push_back(as_arg(args[i], elem));
+        out.push_back(items.empty() ? "array_of::<" + p_.rtype(elem) + ">(&[])" : "array_of(&[" + join(items) + "])");
     }
     return out;
 }
@@ -292,7 +311,7 @@ Code Writer::method_call(const ir::Node& n, const ir::Call& k) {
     const ClassInfo& dc = *match->cls;
     std::vector<ir::TypeP> params;
     for (const ir::Node* pn : m.params) params.push_back(param_of(pn).type);
-    const std::vector<std::string> args = call_args(k.args, params, false);
+    const std::vector<std::string> args = call_args(k.args, params, s.varargs);
     const ir::TypeP type = n.type ? n.type : s.ret;
     const ir::Node* target = strip_paren(k.target);
     if (is_static(m)) return mk(p_.holder(dc) + "::" + p_.mname(m) + "(" + join(args) + ")", type);
@@ -356,6 +375,55 @@ Code Writer::lib_call(const ir::Node& n, const ir::Call& k) {
     }
     if (owner == "java.lang.Throwable" || p_.is_lib_throwable(owner)) owner = "java.lang.Throwable";
     if (owner == "java.lang.AbstractStringBuilder") owner = "java.lang.StringBuilder";   // (where the methods of a StringBuilder are declared)
+    if (const std::string_view box = boxed_kind(ir::class_type(owner)); !box.empty() && !s.is_static && k.target != nullptr) {   // a method of a box
+        const ir::TypeP type = n.type ? n.type : s.ret;
+        const Code recv = expr(k.target);
+        const std::string value = receiver_text(recv) + ".unbox()";
+        if (s.name == "equals" && k.args.size() == 1) return mk("box_equals(" + recv.text + ", " + conv(expr(k.args[0]), ir::class_type(owner)).text + ")", type);
+        if (s.name == "toString" && k.args.empty()) return mk("String_valueOf(" + value + ")", type);
+        if (s.name == "hashCode" && k.args.empty()) return mk(value + ".jhash()", type);
+        if (s.name == "compareTo" && k.args.size() == 1) {
+            const std::string other = conv(expr(k.args[0]), ir::class_type(owner)).text;
+            const std::string fn = box == "i32" ? "Integer_compare" : box == "i64" ? "Long_compare" : box == "f64" ? "Double_compare" : "";
+            if (fn.empty()) throw Decline("compareTo on a " + owner);
+            return mk(fn + "(" + value + ", " + receiver_text(mk(other, ir::class_type(owner))) + ".unbox())", type);
+        }
+        if (s.name.size() > 5 && s.name.ends_with("Value") && k.args.empty()) {   // intValue(), doubleValue() ...
+            static const std::map<std::string, std::string> kinds = {{"int", "i32"}, {"long", "i64"}, {"double", "f64"}, {"float", "f32"}, {"short", "i16"}, {"byte", "i8"}, {"boolean", "bool"}, {"char", "u16"}};
+            const auto it = kinds.find(s.name.substr(0, s.name.size() - 5));
+            if (it != kinds.end()) return conv(mk(value, prim_by_kind(box)), prim_by_kind(it->second));
+        }
+    }
+    if (owner == "java.util.Objects") {
+        const ir::TypeP type = n.type ? n.type : s.ret;
+        // anything goes in as it is: the runtime's equality and hash codes take what the program has
+        std::vector<Code> given;
+        for (const ir::Node* a : k.args) given.push_back(expr(a));
+        const auto hashed = [](const Code& c) { return receiver_text(c) + ".jhash()"; };
+        if (s.name == "equals" && given.size() == 2) return mk("Objects_equals(" + given[0].text + ", " + given[1].text + ")", type);
+        if (s.name == "hashCode" && given.size() == 1) return mk(hashed(given[0]), type);
+        if (s.name == "toString" && given.size() == 1) return mk("String_valueOf(" + given[0].text + ")", type);
+        if (s.name == "requireNonNull" && given.size() == 1) return mk("Objects_requireNonNull(" + given[0].text + ")", type);
+        if (s.name == "hash") {
+            std::vector<std::string> items;
+            if (given.size() == 1 && kind_of(given[0].type) == "array") throw Decline("Objects.hash of an array");
+            for (const Code& c : given) items.push_back(hashed(c));
+            return mk("Objects_hash(&[" + join(items) + "])", type);
+        }
+        throw Decline("Objects." + s.name);
+    }
+    const ir::TypeP result_type = n.type ? n.type : s.ret;
+    if ((owner == "java.util.List" && s.name == "of") || (owner == "java.util.Arrays" && s.name == "asList")) {
+        const ir::TypeP& type = result_type;
+        const auto* ct = std::get_if<ir::ClassType>(&type->body);
+        if (ct == nullptr || ct->args.size() != 1) throw Decline(owner + "." + s.name + " whose element type is not known");
+        if (k.args.size() == 1 && kind_of(type_of(k.args[0])) == "array") throw Decline(owner + "." + s.name + " of an array");
+        std::vector<std::string> items;
+        for (const ir::Node* a : k.args) items.push_back(conv(expr(a), ct->args[0]).text);
+        return mk("ArrayList::<" + p_.rtype(ct->args[0]) + ">::of(vec![" + join(items) + "])", type);
+    }
+    if (owner == "java.util.Collections" && (s.name == "sort" || s.name == "reverse") && k.args.size() == 1)
+        return mk("Collections_" + s.name + "(" + expr(k.args[0]).text + ")", result_type);
     std::string family;   // the java.util collection the owner is, by the name the table uses
     if (owner == "java.util.List" || owner == "java.util.ArrayList" || owner == "java.util.Collection" || owner == "java.util.AbstractList") family = "List";
     else if (owner == "java.util.Set" || owner == "java.util.HashSet" || owner == "java.util.LinkedHashSet") family = "Set";
@@ -544,7 +612,7 @@ Code Writer::on(const ir::Node& n, const ir::New& k) {
     if (!p_.is_concrete(*cls)) throw Decline("new of the abstract class " + cls->qname);
     std::vector<ir::TypeP> params;
     for (const ir::Node* pn : method_of(match->method).params) params.push_back(param_of(pn).type);
-    const std::vector<std::string> args = call_args(k.args, params, false);
+    const std::vector<std::string> args = call_args(k.args, params, s.varargs);
     return mk(p_.obj_name(*cls) + "::new" + p_.ctor_suffix(*cls, match->method) + "(" + join(args) + ")", ir::class_type(cls->qname));
 }
 

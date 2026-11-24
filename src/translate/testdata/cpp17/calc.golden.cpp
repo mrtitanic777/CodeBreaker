@@ -1,7 +1,9 @@
-// written by CodeBreaker's C++17 back end (codebreaker/translate/backends/cpp17.py) from the
-// Java program's L2; it runs on jrt.hpp, the Java library in C++17.
+// ==== jrt_program.hpp ====
+// written by CodeBreaker's C++17 back end from the Java program's L2; it runs on jrt.hpp, the Java library in C++17.
+// Every file of the program starts from this one: the runtime, and a declaration of each class.
 // these classes can form a reference cycle, which the runtime's cycle collector frees: Calc
 #define JRT_CYCLES
+#pragma once
 #include "jrt.hpp"
 
 using jrt::ref;
@@ -18,6 +20,9 @@ struct Base;
 struct Sub;
 struct CalcMain;
 struct Calc;
+// ==== Base.hpp ====
+#pragma once
+#include "jrt_program.hpp"
 
 struct Base : virtual Object {
 	const char16_t* jclass_() const override { return u"Base"; }
@@ -31,53 +36,8 @@ struct Base : virtual Object {
 	void finit_();
 };
 
-struct Sub : Base {
-	const char16_t* jclass_() const override { return u"Sub"; }
-	jrt::gc::Tracked gc_tracked_{this};
-	void trace_(jrt::gc::Tracer& t) override;
-	void clear_() override;
-	int32_t extra{};
-	void ctor_(int32_t var1);
-	static int32_t build(int32_t var0);
-	void finit_();
-};
-
-struct CalcMain : virtual Object {
-	const char16_t* jclass_() const override { return u"CalcMain"; }
-	jrt::gc::Tracked gc_tracked_{this};
-	void trace_(jrt::gc::Tracer& t) override;
-	void clear_() override;
-	CalcMain();
-	static void main(ref<Array<ref<String>>> args);
-};
-
-struct Calc : virtual Object {
-	const char16_t* jclass_() const override { return u"Calc"; }
-	jrt::gc::Tracked gc_tracked_{this};
-	void trace_(jrt::gc::Tracer& t) override;
-	void clear_() override;
-	static inline int32_t total{};
-	static inline ref<Array<int32_t>> table{};
-	ref<Array<int32_t>> cells{};
-	ref<List> items{};
-	ref<String> name{};
-	static inline bool inited_ = false;
-	static void clinit_();
-	void ctor_();
-	virtual int32_t fill(int32_t var1);
-	static int64_t mix(int64_t var0, int32_t var2);
-	static float wrap(float var0);
-	virtual ref<String> label(int32_t var1);
-	virtual int32_t guarded(int32_t var1);
-	virtual int32_t cleanup(int32_t var1);
-	virtual int32_t search(int32_t var1);
-	static int32_t sum(ref<Array<int32_t>> var0);
-	static int32_t sums(int32_t var0);
-	static int32_t tabled(int32_t var0);
-	static int32_t made(int32_t var0);
-	virtual int32_t count(int32_t var1);
-	void finit_();
-};
+// ==== Base.cpp ====
+#include "Base.hpp"
 
 void Base::trace_(jrt::gc::Tracer& t) {
 	(void)t;
@@ -98,6 +58,26 @@ void Base::ctor_(int32_t var1, int32_t var2) {
 void Base::finit_() {
 	this->scale = 2;
 }
+
+// ==== Sub.hpp ====
+#pragma once
+#include "jrt_program.hpp"
+#include "Base.hpp"
+
+struct Sub : Base {
+	const char16_t* jclass_() const override { return u"Sub"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
+	int32_t extra{};
+	void ctor_(int32_t var1);
+	static int32_t build(int32_t var0);
+	void finit_();
+};
+
+// ==== Sub.cpp ====
+#include "Sub.hpp"
+#include "Base.hpp"
 
 void Sub::trace_(jrt::gc::Tracer& t) {
 	Base::trace_(t);
@@ -120,6 +100,24 @@ int32_t Sub::build(int32_t var0) {
 void Sub::finit_() {
 	this->extra = 7;
 }
+
+// ==== CalcMain.hpp ====
+#pragma once
+#include "jrt_program.hpp"
+
+struct CalcMain : virtual Object {
+	const char16_t* jclass_() const override { return u"CalcMain"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
+	CalcMain();
+	static void main(ref<Array<ref<String>>> args);
+};
+
+// ==== CalcMain.cpp ====
+#include "CalcMain.hpp"
+#include "Calc.hpp"
+#include "Sub.hpp"
 
 void CalcMain::trace_(jrt::gc::Tracer& t) {
 	(void)t;
@@ -153,6 +151,42 @@ void CalcMain::main(ref<Array<ref<String>>> args) {
 	}
 	jrt::nn(jrt::System::out_())->println(jrt::concat(jrt::lit(u"total="), (Calc::clinit_(), Calc::total), jrt::lit(u" name="), jrt::nn(c)->name));
 }
+
+// ==== Calc.hpp ====
+#pragma once
+#include "jrt_program.hpp"
+
+struct Calc : virtual Object {
+	const char16_t* jclass_() const override { return u"Calc"; }
+	jrt::gc::Tracked gc_tracked_{this};
+	void trace_(jrt::gc::Tracer& t) override;
+	void clear_() override;
+	static inline int32_t total{};
+	static inline ref<Array<int32_t>> table{};
+	ref<Array<int32_t>> cells{};
+	ref<List> items{};
+	ref<String> name{};
+	static inline bool inited_ = false;
+	static void clinit_();
+	void ctor_();
+	virtual int32_t fill(int32_t var1);
+	static int64_t mix(int64_t var0, int32_t var2);
+	static float wrap(float var0);
+	virtual ref<String> label(int32_t var1);
+	virtual int32_t guarded(int32_t var1);
+	virtual int32_t cleanup(int32_t var1);
+	virtual int32_t search(int32_t var1);
+	static int32_t sum(ref<Array<int32_t>> var0);
+	static int32_t sums(int32_t var0);
+	static int32_t tabled(int32_t var0);
+	static int32_t made(int32_t var0);
+	virtual int32_t count(int32_t var1);
+	void finit_();
+};
+
+// ==== Calc.cpp ====
+#include "Calc.hpp"
+#include "Base.hpp"
 
 void Calc::trace_(jrt::gc::Tracer& t) {
 	t(cells);
@@ -317,6 +351,10 @@ void Calc::clinit_() {
 	Calc::total = (*jrt::nn(Calc::table))[1] * 2;
 }
 
+// ==== main.cpp ====
+// the program's entry: the class named by JRT_MAIN, else the first with a main
+#include "jrt_program.hpp"
+#include "CalcMain.hpp"
 
 int main(int argc, char** argv) {
 	const char* which = std::getenv("JRT_MAIN");

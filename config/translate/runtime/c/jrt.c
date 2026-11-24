@@ -1740,8 +1740,15 @@ jobject* jrt_Map_remove_O(jobject* o, jobject* k) {
 		*p = e->next;
 	} else {
 		const int32_t at = tree_at(m, e->key);
-		memmove(m->table + at, m->table + at + 1, (size_t)(m->count - at - 1) * sizeof(jrt_node*));
-		m->table[m->count - 1] = 0;
+		if (at < m->count / 2) {   /* the nearer end moves: taking the first (a queue of block updates) moves nothing */
+			memmove(m->table + 1, m->table, (size_t)at * sizeof(jrt_node*));
+			m->table[0] = 0;
+			++m->table;
+			--m->cap;
+		} else {
+			memmove(m->table + at, m->table + at + 1, (size_t)(m->count - at - 1) * sizeof(jrt_node*));
+			m->table[m->count - 1] = 0;
+		}
 	}
 	if (e->before) e->before->after = e->after; else m->head = e->after;
 	if (e->after) e->after->before = e->before; else m->tail = e->before;

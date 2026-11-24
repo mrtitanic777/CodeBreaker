@@ -187,7 +187,7 @@ void Writer::emit_local(const ir::Node&, const ir::Local& k, Lines& out, std::si
     const bool mut = assigned_.contains(name);
     std::string line = indent_of(depth) + "let " + (mut ? "mut " : "") + name + ": " + rt;
     if (k.init != nullptr) line += " = " + value_of(k.init, type);
-    else if (has_try_) line += " = Default::default()";
+    else line += " = Default::default()";   // (Rust cannot see that every path assigns it before it is read)
     out.push_back(line + ";");
 }
 
@@ -487,6 +487,7 @@ void Writer::emit_switch(const ir::Switch& k, Lines& out, std::size_t depth) {
     };
     std::vector<Arm> arms;
     Arm pending;
+    bool fall = false;   // some case runs on into the next
     for (std::size_t i = 0; i < k.cases.size(); ++i) {
         const auto* c = ir::get<ir::Case>(k.cases[i]);
         if (c == nullptr) throw Decline("a switch member that is not a case");
@@ -495,13 +496,43 @@ void Writer::emit_switch(const ir::Switch& k, Lines& out, std::size_t depth) {
         const bool last = i + 1 == k.cases.size();
         if (c->body.empty() && !last) continue;   // labels sharing the next body
         pending.body = c->body;
-        if (!pending.body.empty() && !last && !terminates(pending.body.back())) throw Decline("a switch case that falls through into the next");
-        // the final break is the end of the arm
-        if (!pending.body.empty()) {
-            if (const auto* br = ir::get<ir::Break>(pending.body.back()); br != nullptr && !br->label) pending.body.pop_back();
-        }
+        if (!pending.body.empty() && !last && !terminates(pending.body.back())) fall = true;
         arms.push_back(std::move(pending));
         pending = Arm();
+    }
+    if (fall) {   // the arms in order, each run from where the match enters to the next break
+        Target ft;
+        ft.kind = Target::Kind::Switch;
+        ft.label = "l" + std::to_string(++labels_);
+        ft.labeled_block = true;
+        targets_.push_back(ft);
+        Lines body;
+        const std::size_t d = depth + 1;
+        std::size_t default_at = arms.size();
+        for (std::size_t i = 0; i < arms.size(); ++i)
+            if (arms[i].is_default) default_at = i;
+        body.push_back(indent_of(d) + "let start = match " + wrap(on_enum ? mk_code(wrap(receiver(k.expr), kAtom) + "." + p_.fields_fn(*enum_class) + "().enum_ordinal.get()", ir::i32_type()) : expr(k.expr), kLow) + " {");
+        for (std::size_t i = 0; i < arms.size(); ++i)
+            if (!arms[i].patterns.empty()) body.push_back(indent_of(d + 1) + join(arms[i].patterns, " | ") + " => " + std::to_string(i) + ",");
+        body.push_back(indent_of(d + 1) + "_ => " + std::to_string(default_at) + ",");
+        body.push_back(indent_of(d) + "};");
+        for (std::size_t i = 0; i < arms.size(); ++i) {
+            if (arms[i].body.empty()) continue;
+            body.push_back(indent_of(d) + "if start <= " + std::to_string(i) + " {");
+            stmts(arms[i].body, body, d + 1);
+            body.push_back(indent_of(d) + "}");
+        }
+        const Target done = targets_.back();
+        targets_.pop_back();
+        out.push_back(ind + "'" + done.label + ": {");
+        out.insert(out.end(), body.begin(), body.end());
+        out.push_back(ind + "}");
+        return;
+    }
+    for (Arm& a : arms) {   // the final break is the end of the arm
+        if (!a.body.empty()) {
+            if (const auto* br = ir::get<ir::Break>(a.body.back()); br != nullptr && !br->label) a.body.pop_back();
+        }
     }
     bool block = false;   // a break that is not the arm's last statement needs somewhere to go
     for (const Arm& a : arms)
@@ -686,12 +717,12 @@ Lines Writer::ctor_call(const ir::CtorCall& call) {
         std::vector<ir::TypeP> params;
         for (const ir::Node* pn : method_of(match->method).params) params.push_back(param_of(pn).type);
         std::vector<std::string> args = {"this"};
-        for (const std::string& a : call_args(call.args, params, false)) args.push_back(a);
+        for (const std::string& a : call_args(call.args, params, sym.varargs)) args.push_back(a);
         return {p_.holder(*match->cls) + "::init" + p_.ctor_suffix(*match->cls, match->method) + "(" + join(args) + ");"};
         (void)target;
         (void)is_this;
     }
-    if (owner == "java.lang.Object" || owner == "java.lang.Enum") return {};
+    if (owner == "java.lang.Object" || owner == "java.lang.Enum" || owner == "java.lang.Record") return {};
     if (p_.is_lib_throwable(owner)) {
         std::vector<std::string> args = {"this"};
         std::string fn;

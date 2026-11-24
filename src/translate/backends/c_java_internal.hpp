@@ -7,6 +7,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <set>
 #include <span>
 #include <string>
 #include <string_view>
@@ -149,8 +150,8 @@ public:
     Program(const Program&) = delete;
     Program& operator=(const Program&) = delete;
 
-    // The program's C text.
-    std::string write();
+    // The program's files: a header and a source for each top-level class, the shared header, the entry point.
+    std::vector<File> write();
 
     jmodel::Model& model() { return *model_; }
     // The arena of the nodes this writer makes itself (the assignments of initialisers, the lambdas of method references); the
@@ -174,6 +175,8 @@ public:
     bool needs_clinit(const ClassInfo& cls) const;
     // The class whose C type is `ctype` (`X*`), or null.
     ClassInfo* class_of_ctype(std::string_view ctype) const;
+    // Note that the file being written uses a value of C type `ctype`: if that is a class of the program, the file needs its header.
+    void touch(std::string_view ctype);
 
     // ---- the table of virtual slots
     // The slots of class `cls`, base slots first.
@@ -203,7 +206,7 @@ public:
 
 private:
     std::vector<ClassInfo*> ordered() const;
-    Lines struct_of(const ClassInfo& cls);
+    Lines struct_of(const ClassInfo& cls, Lines& data);
     Lines prototypes(const ClassInfo& cls);
     Lines definitions(const ClassInfo& cls);
     Lines tables(const ClassInfo& cls);
@@ -212,6 +215,9 @@ private:
     std::unique_ptr<jmodel::Model> model_;
     std::optional<std::string> main_;
     OrderedMap<std::string, std::string> lits_;                       // literal text -> slot name
+    std::unordered_map<std::string, std::set<std::size_t>> lit_units_;   // slot name -> the files that use it
+    std::unordered_map<std::size_t, std::set<const ClassInfo*>> used_;   // file -> the classes whose values its code handles
+    std::size_t unit_ = 0;                                            // the file being written (for lit_units_)
     std::unordered_set<std::string> overloaded_;
     std::unordered_set<std::string> by_class_;       // overloads whose codes alone are the same
     std::unordered_set<std::string> static_names_;   // static fields and enum constants: a method of the same name is written apart

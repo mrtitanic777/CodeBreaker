@@ -1,5 +1,7 @@
-// written by CodeBreaker's C++17 back end (codebreaker/translate/backends/cpp17.py) from the
-// Java program's L2; it runs on jrt.hpp, the Java library in C++17.
+// ==== jrt_program.hpp ====
+// written by CodeBreaker's C++17 back end from the Java program's L2; it runs on jrt.hpp, the Java library in C++17.
+// Every file of the program starts from this one: the runtime, and a declaration of each class.
+#pragma once
 #include "jrt.hpp"
 
 using jrt::ref;
@@ -23,6 +25,9 @@ struct Zoo_Dog;
 struct Zoo_Cat;
 struct Zoo_Pair;
 struct Zoo_Empty;
+// ==== Zoo.hpp ====
+#pragma once
+#include "jrt_program.hpp"
 
 struct Zoo : virtual Object {
 	const char16_t* jclass_() const override { return u"Zoo"; }
@@ -84,6 +89,9 @@ struct Zoo_Empty : RuntimeException {
 	void ctor_(ref<String> m);
 	void finit_();
 };
+
+// ==== Zoo.cpp ====
+#include "Zoo.hpp"
 
 Zoo::Zoo() {
 }
@@ -237,6 +245,10 @@ void Zoo_Empty::ctor_(ref<String> m) {
 void Zoo_Empty::finit_() {
 }
 
+// ==== main.cpp ====
+// the program's entry: the class named by JRT_MAIN, else the first with a main
+#include "jrt_program.hpp"
+#include "Zoo.hpp"
 
 int main(int argc, char** argv) {
 	const char* which = std::getenv("JRT_MAIN");

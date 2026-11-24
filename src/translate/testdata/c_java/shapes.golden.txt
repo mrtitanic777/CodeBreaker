@@ -1,5 +1,9 @@
+// ==== jprogram.h ====
 /* written by CodeBreaker's C back end for Java (cb/translate/backends/c_java) from
    the program's L2; it runs on jrt.h / jrt.c, the Java library in C. */
+#ifndef JPROGRAM_H
+#define JPROGRAM_H
+
 #include "jrt.h"
 
 typedef struct Shapes Shapes;
@@ -7,12 +11,14 @@ typedef struct Shapes_Circle Shapes_Circle;
 typedef struct Shapes_Rect Shapes_Rect;
 typedef struct Shapes_Square Shapes_Square;
 typedef struct Shapes_Size Shapes_Size;
-extern const jclass Shapes_class;
-extern const jclass Shapes_Shape_class;
-extern const jclass Shapes_Circle_class;
-extern const jclass Shapes_Rect_class;
-extern const jclass Shapes_Square_class;
-extern const jclass Shapes_Size_class;
+
+#endif
+// ==== Shapes.h ====
+/* Shapes.h -- Shapes and the classes nested in it: its structs and function tables, and what the other files of the program call. */
+#ifndef SHAPES_H
+#define SHAPES_H
+
+#include "jprogram.h"
 
 struct Shapes {
 	jobject hdr_;
@@ -21,12 +27,33 @@ struct Shapes_vt {
 	jobject_vt o_;
 };
 
+extern const jclass Shapes_class;
+void Shapes_init(Shapes* self);
+Shapes* Shapes_new(void);
+Shapes_Size* Shapes_classify(double);
+jstring* Shapes_sizeWord(int32_t);
+int32_t Shapes_sides(jobject*);
+int32_t Shapes_rectArea(int32_t, int32_t);
+bool Shapes_sameRect(int32_t, int32_t);
+jstring* Shapes_rectText(int32_t, int32_t);
+int32_t Shapes_rectHash(int32_t, int32_t);
+jstring* Shapes_dayKind(jstring*);
+int32_t Shapes_countKinds(int32_t);
+void Shapes_main(jarray*);
+void Shapes_finit(Shapes* self);
+
 struct Shapes_Shape_vt {
 	jobject_vt o_;
 	double (*area)(jobject*);
 	jstring* (*describe)(jobject*);
 	jstring* (*name)(jobject*);
 };
+
+extern const jclass Shapes_Shape_class;
+jstring* Shapes_Shape_describe(jobject*);
+static inline double Shapes_Shape_area_i(jobject* o) { return ((const struct Shapes_Shape_vt*)jrt_ivt(o, &Shapes_Shape_class))->area(o); }
+static inline jstring* Shapes_Shape_describe_i(jobject* o) { return ((const struct Shapes_Shape_vt*)jrt_ivt(o, &Shapes_Shape_class))->describe(o); }
+static inline jstring* Shapes_Shape_name_i(jobject* o) { return ((const struct Shapes_Shape_vt*)jrt_ivt(o, &Shapes_Shape_class))->name(o); }
 
 struct Shapes_Circle {
 	jobject hdr_;
@@ -38,6 +65,20 @@ struct Shapes_Circle_vt {
 	jstring* (*name)(jobject*);
 	double (*r)(jobject*);
 };
+
+extern const jclass Shapes_Circle_class;
+void Shapes_Circle_init(Shapes_Circle* self, double r);
+Shapes_Circle* Shapes_Circle_new(double r);
+double Shapes_Circle_area(jobject*);
+jstring* Shapes_Circle_name(jobject*);
+double Shapes_Circle_r(jobject*);
+jstring* Shapes_Circle_toString(jobject*);
+int32_t Shapes_Circle_hashCode(jobject*);
+bool Shapes_Circle_equals(jobject*, jobject*);
+void Shapes_Circle_finit(Shapes_Circle* self);
+static inline double Shapes_Circle_area_v(jobject* o) { return ((const struct Shapes_Circle_vt*)jrt_vt(o))->area(o); }
+static inline jstring* Shapes_Circle_name_v(jobject* o) { return ((const struct Shapes_Circle_vt*)jrt_vt(o))->name(o); }
+static inline double Shapes_Circle_r_v(jobject* o) { return ((const struct Shapes_Circle_vt*)jrt_vt(o))->r(o); }
 
 struct Shapes_Rect {
 	jobject hdr_;
@@ -52,6 +93,22 @@ struct Shapes_Rect_vt {
 	int32_t (*h)(jobject*);
 };
 
+extern const jclass Shapes_Rect_class;
+void Shapes_Rect_init(Shapes_Rect* self, int32_t w, int32_t h);
+Shapes_Rect* Shapes_Rect_new(int32_t w, int32_t h);
+double Shapes_Rect_area(jobject*);
+jstring* Shapes_Rect_name(jobject*);
+int32_t Shapes_Rect_w(jobject*);
+int32_t Shapes_Rect_h(jobject*);
+jstring* Shapes_Rect_toString(jobject*);
+int32_t Shapes_Rect_hashCode(jobject*);
+bool Shapes_Rect_equals(jobject*, jobject*);
+void Shapes_Rect_finit(Shapes_Rect* self);
+static inline double Shapes_Rect_area_v(jobject* o) { return ((const struct Shapes_Rect_vt*)jrt_vt(o))->area(o); }
+static inline jstring* Shapes_Rect_name_v(jobject* o) { return ((const struct Shapes_Rect_vt*)jrt_vt(o))->name(o); }
+static inline int32_t Shapes_Rect_w_v(jobject* o) { return ((const struct Shapes_Rect_vt*)jrt_vt(o))->w(o); }
+static inline int32_t Shapes_Rect_h_v(jobject* o) { return ((const struct Shapes_Rect_vt*)jrt_vt(o))->h(o); }
+
 struct Shapes_Square {
 	jobject hdr_;
 	int32_t side;
@@ -63,17 +120,41 @@ struct Shapes_Square_vt {
 	int32_t (*side)(jobject*);
 };
 
+extern const jclass Shapes_Square_class;
+void Shapes_Square_init(Shapes_Square* self, int32_t side);
+Shapes_Square* Shapes_Square_new(int32_t side);
+double Shapes_Square_area(jobject*);
+jstring* Shapes_Square_name(jobject*);
+int32_t Shapes_Square_side(jobject*);
+jstring* Shapes_Square_toString(jobject*);
+int32_t Shapes_Square_hashCode(jobject*);
+bool Shapes_Square_equals(jobject*, jobject*);
+void Shapes_Square_finit(Shapes_Square* self);
+static inline double Shapes_Square_area_v(jobject* o) { return ((const struct Shapes_Square_vt*)jrt_vt(o))->area(o); }
+static inline jstring* Shapes_Square_name_v(jobject* o) { return ((const struct Shapes_Square_vt*)jrt_vt(o))->name(o); }
+static inline int32_t Shapes_Square_side_v(jobject* o) { return ((const struct Shapes_Square_vt*)jrt_vt(o))->side(o); }
+
 struct Shapes_Size {
 	jrt_Enum super_;
 };
 struct Shapes_Size_vt {
 	jobject_vt o_;
 };
-static Shapes_Size* Shapes_Size_SMALL;
-static Shapes_Size* Shapes_Size_MEDIUM;
-static Shapes_Size* Shapes_Size_LARGE;
-static jarray* Shapes_Size_values_;
-static bool Shapes_Size_inited_;
+extern Shapes_Size* Shapes_Size_SMALL;
+extern Shapes_Size* Shapes_Size_MEDIUM;
+extern Shapes_Size* Shapes_Size_LARGE;
+
+extern const jclass Shapes_Size_class;
+void Shapes_Size_init(Shapes_Size* self, jstring* name_in, int32_t ordinal_in);
+Shapes_Size* Shapes_Size_new(jstring* name_in, int32_t ordinal_in);
+void Shapes_Size_finit(Shapes_Size* self);
+void Shapes_Size_clinit(void);
+jarray* Shapes_Size_values(void);
+
+#endif
+// ==== Shapes.c ====
+/* Shapes.c -- the code and static data of Shapes and the classes nested in it. */
+#include "Shapes.h"
 
 static jstring* lit_1;
 static jstring* lit_2;
@@ -113,77 +194,23 @@ static jstring* lit_35;
 static jstring* lit_36;
 static jstring* lit_37;
 
-static void Shapes_init(Shapes* self);
-static Shapes* Shapes_new(void);
-static Shapes_Size* Shapes_classify(double);
-static jstring* Shapes_sizeWord(int32_t);
-static int32_t Shapes_sides(jobject*);
-static int32_t Shapes_rectArea(int32_t, int32_t);
-static bool Shapes_sameRect(int32_t, int32_t);
-static jstring* Shapes_rectText(int32_t, int32_t);
-static int32_t Shapes_rectHash(int32_t, int32_t);
-static jstring* Shapes_dayKind(jstring*);
-static int32_t Shapes_countKinds(int32_t);
-static void Shapes_main(jarray*);
-static void Shapes_finit(Shapes* self);
-static jstring* Shapes_Shape_describe(jobject*);
-static void Shapes_Circle_init(Shapes_Circle* self, double r);
-static Shapes_Circle* Shapes_Circle_new(double r);
-static double Shapes_Circle_area(jobject*);
-static jstring* Shapes_Circle_name(jobject*);
-static double Shapes_Circle_r(jobject*);
-static jstring* Shapes_Circle_toString(jobject*);
-static int32_t Shapes_Circle_hashCode(jobject*);
-static bool Shapes_Circle_equals(jobject*, jobject*);
-static void Shapes_Circle_finit(Shapes_Circle* self);
-static void Shapes_Rect_init(Shapes_Rect* self, int32_t w, int32_t h);
-static Shapes_Rect* Shapes_Rect_new(int32_t w, int32_t h);
-static double Shapes_Rect_area(jobject*);
-static jstring* Shapes_Rect_name(jobject*);
-static int32_t Shapes_Rect_w(jobject*);
-static int32_t Shapes_Rect_h(jobject*);
-static jstring* Shapes_Rect_toString(jobject*);
-static int32_t Shapes_Rect_hashCode(jobject*);
-static bool Shapes_Rect_equals(jobject*, jobject*);
-static void Shapes_Rect_finit(Shapes_Rect* self);
-static void Shapes_Square_init(Shapes_Square* self, int32_t side);
-static Shapes_Square* Shapes_Square_new(int32_t side);
-static double Shapes_Square_area(jobject*);
-static jstring* Shapes_Square_name(jobject*);
-static int32_t Shapes_Square_side(jobject*);
-static jstring* Shapes_Square_toString(jobject*);
-static int32_t Shapes_Square_hashCode(jobject*);
-static bool Shapes_Square_equals(jobject*, jobject*);
-static void Shapes_Square_finit(Shapes_Square* self);
-static void Shapes_Size_init(Shapes_Size* self, jstring* name_in, int32_t ordinal_in);
-static Shapes_Size* Shapes_Size_new(jstring* name_in, int32_t ordinal_in);
-static void Shapes_Size_finit(Shapes_Size* self);
-static void Shapes_Size_clinit(void);
-static jarray* Shapes_Size_values(void);
-static inline double Shapes_Shape_area_i(jobject* o) { return ((const struct Shapes_Shape_vt*)jrt_ivt(o, &Shapes_Shape_class))->area(o); }
-static inline jstring* Shapes_Shape_describe_i(jobject* o) { return ((const struct Shapes_Shape_vt*)jrt_ivt(o, &Shapes_Shape_class))->describe(o); }
-static inline jstring* Shapes_Shape_name_i(jobject* o) { return ((const struct Shapes_Shape_vt*)jrt_ivt(o, &Shapes_Shape_class))->name(o); }
-static inline double Shapes_Circle_area_v(jobject* o) { return ((const struct Shapes_Circle_vt*)jrt_vt(o))->area(o); }
-static inline jstring* Shapes_Circle_name_v(jobject* o) { return ((const struct Shapes_Circle_vt*)jrt_vt(o))->name(o); }
-static inline double Shapes_Circle_r_v(jobject* o) { return ((const struct Shapes_Circle_vt*)jrt_vt(o))->r(o); }
-static inline double Shapes_Rect_area_v(jobject* o) { return ((const struct Shapes_Rect_vt*)jrt_vt(o))->area(o); }
-static inline jstring* Shapes_Rect_name_v(jobject* o) { return ((const struct Shapes_Rect_vt*)jrt_vt(o))->name(o); }
-static inline int32_t Shapes_Rect_w_v(jobject* o) { return ((const struct Shapes_Rect_vt*)jrt_vt(o))->w(o); }
-static inline int32_t Shapes_Rect_h_v(jobject* o) { return ((const struct Shapes_Rect_vt*)jrt_vt(o))->h(o); }
-static inline double Shapes_Square_area_v(jobject* o) { return ((const struct Shapes_Square_vt*)jrt_vt(o))->area(o); }
-static inline jstring* Shapes_Square_name_v(jobject* o) { return ((const struct Shapes_Square_vt*)jrt_vt(o))->name(o); }
-static inline int32_t Shapes_Square_side_v(jobject* o) { return ((const struct Shapes_Square_vt*)jrt_vt(o))->side(o); }
-static void Shapes_init(Shapes* self) {
+Shapes_Size* Shapes_Size_SMALL;
+Shapes_Size* Shapes_Size_MEDIUM;
+Shapes_Size* Shapes_Size_LARGE;
+static jarray* Shapes_Size_values_;
+static bool Shapes_Size_inited_;
+
+void Shapes_init(Shapes* self) {
 	Shapes_finit(self);
 }
 
-static Shapes* Shapes_new(void) {
+Shapes* Shapes_new(void) {
 	Shapes* o = (Shapes*)jrt_alloc(&Shapes_class);
 	Shapes_init(o);
 	return o;
 }
 
-static Shapes_Size* Shapes_classify(double area) {
+Shapes_Size* Shapes_classify(double area) {
 	if (area < 10) {
 		return (Shapes_Size_clinit(), Shapes_Size_SMALL);
 	}
@@ -193,7 +220,7 @@ static Shapes_Size* Shapes_classify(double area) {
 	return (Shapes_Size_clinit(), Shapes_Size_LARGE);
 }
 
-static jstring* Shapes_sizeWord(int32_t k) {
+jstring* Shapes_sizeWord(int32_t k) {
 	Shapes_Size* s = (Shapes_Size*)jrt_cast((jobject*)JA(jobject*, Shapes_Size_values(), jrt_Math_floorMod_II(k, 3)), &Shapes_Size_class);
 	{
 		jstring* j2x_sw1 = NULL;
@@ -228,7 +255,7 @@ static jstring* Shapes_sizeWord(int32_t k) {
 	}
 }
 
-static int32_t Shapes_sides(jobject* o) {
+int32_t Shapes_sides(jobject* o) {
 	Shapes_Square* sq = NULL;
 	if (jrt_instanceof((jobject*)o, &Shapes_Square_class) && (jobject*)(sq = (Shapes_Square*)jrt_cast((jobject*)o, &Shapes_Square_class)) != (jobject*)NULL) {
 		return 4 + Shapes_Square_side_v((jobject*)sq) * 0;
@@ -245,26 +272,26 @@ static int32_t Shapes_sides(jobject* o) {
 	return -1;
 }
 
-static int32_t Shapes_rectArea(int32_t w, int32_t h) {
+int32_t Shapes_rectArea(int32_t w, int32_t h) {
 	Shapes_Rect* r = Shapes_Rect_new(jrt_Math_abs_I(w) % 1000, jrt_Math_abs_I(h) % 1000);
 	return jrt_d2i(Shapes_Rect_area_v((jobject*)r));
 }
 
-static bool Shapes_sameRect(int32_t a, int32_t b) {
+bool Shapes_sameRect(int32_t a, int32_t b) {
 	Shapes_Rect* jrt_o1 = NULL;
 	Shapes_Rect* jrt_o2 = NULL;
 	return (jrt_o1 = Shapes_Rect_new(a & 15, b & 15), jrt_o2 = Shapes_Rect_new(b & 15, a & 15), jrt_equals((jobject*)jrt_o1, (jobject*)jrt_o2));
 }
 
-static jstring* Shapes_rectText(int32_t a, int32_t b) {
+jstring* Shapes_rectText(int32_t a, int32_t b) {
 	return jrt_toString((jobject*)Shapes_Rect_new(a & 255, b & 255));
 }
 
-static int32_t Shapes_rectHash(int32_t a, int32_t b) {
+int32_t Shapes_rectHash(int32_t a, int32_t b) {
 	return jrt_hashCode((jobject*)Shapes_Rect_new(a & 255, b & 255));
 }
 
-static jstring* Shapes_dayKind(jstring* day) {
+jstring* Shapes_dayKind(jstring* day) {
 	{
 		jstring* j2x_sw3 = NULL;
 		{
@@ -293,7 +320,7 @@ static jstring* Shapes_dayKind(jstring* day) {
 	}
 }
 
-static int32_t Shapes_countKinds(int32_t n) {
+int32_t Shapes_countKinds(int32_t n) {
 	jobject* shapes = jrt_ArrayList_new_();
 	{
 		int32_t i = 0;
@@ -339,7 +366,7 @@ static int32_t Shapes_countKinds(int32_t n) {
 	return total;
 }
 
-static void Shapes_main(jarray* args) {
+void Shapes_main(jarray* args) {
 	Shapes_Circle* volatile jrt_o1 = NULL;
 	Shapes_Rect* volatile jrt_o2 = NULL;
 	Shapes_Square* volatile jrt_o3 = NULL;
@@ -394,55 +421,55 @@ static void Shapes_main(jarray* args) {
 	jrt_PrintStream_println_I(jrt_System_out, Shapes_countKinds(10));
 }
 
-static void Shapes_finit(Shapes* self) {
+void Shapes_finit(Shapes* self) {
 }
 
-static jstring* Shapes_Shape_describe(jobject* self_) {
+jstring* Shapes_Shape_describe(jobject* self_) {
 	jobject* self = self_;
 	jstring* jrt_o1 = NULL;
 	jstring* jrt_o2 = NULL;
 	return (jrt_o1 = Shapes_Shape_name_i((jobject*)self), jrt_o2 = jrt_String_format(jrt_lit(&lit_21, u"%.2f", 4), 1, jrt_box_D(Shapes_Shape_area_i((jobject*)self))), jrt_concat(3, jrt_str_O((jobject*)jrt_o1), jrt_lit(&lit_22, u" with area ", 11), jrt_str_O((jobject*)jrt_o2)));
 }
 
-static void Shapes_Circle_init(Shapes_Circle* self, double r) {
+void Shapes_Circle_init(Shapes_Circle* self, double r) {
 	Shapes_Circle_finit(self);
 	self->r = r;
 }
 
-static Shapes_Circle* Shapes_Circle_new(double r) {
+Shapes_Circle* Shapes_Circle_new(double r) {
 	Shapes_Circle* o = (Shapes_Circle*)jrt_alloc(&Shapes_Circle_class);
 	Shapes_Circle_init(o, r);
 	return o;
 }
 
-static double Shapes_Circle_area(jobject* self_) {
+double Shapes_Circle_area(jobject* self_) {
 	Shapes_Circle* self = (Shapes_Circle*)self_;
 	return JRT_PI * self->r * self->r;
 }
 
-static jstring* Shapes_Circle_name(jobject* self_) {
+jstring* Shapes_Circle_name(jobject* self_) {
 	Shapes_Circle* self = (Shapes_Circle*)self_;
 	return jrt_lit(&lit_23, u"circle", 6);
 }
 
-static double Shapes_Circle_r(jobject* self_) {
+double Shapes_Circle_r(jobject* self_) {
 	Shapes_Circle* self = (Shapes_Circle*)self_;
 	return self->r;
 }
 
-static jstring* Shapes_Circle_toString(jobject* self_) {
+jstring* Shapes_Circle_toString(jobject* self_) {
 	Shapes_Circle* self = (Shapes_Circle*)self_;
 	return jrt_concat(4, jrt_lit(&lit_24, u"Circle[", 7), jrt_lit(&lit_25, u"r=", 2), jrt_str_D(self->r), jrt_lit(&lit_26, u"]", 1));
 }
 
-static int32_t Shapes_Circle_hashCode(jobject* self_) {
+int32_t Shapes_Circle_hashCode(jobject* self_) {
 	Shapes_Circle* self = (Shapes_Circle*)self_;
 	int32_t h = 0;
 	h = 31 * h + jrt_Double_hashCode_D(self->r);
 	return h;
 }
 
-static bool Shapes_Circle_equals(jobject* self_, jobject* o) {
+bool Shapes_Circle_equals(jobject* self_, jobject* o) {
 	Shapes_Circle* self = (Shapes_Circle*)self_;
 	if (!(jrt_instanceof((jobject*)o, &Shapes_Circle_class))) {
 		return false;
@@ -451,10 +478,10 @@ static bool Shapes_Circle_equals(jobject* self_, jobject* o) {
 	return jrt_Double_compare_DD(self->r, ((Shapes_Circle*)jrt_nn(that))->r) == 0;
 }
 
-static void Shapes_Circle_finit(Shapes_Circle* self) {
+void Shapes_Circle_finit(Shapes_Circle* self) {
 }
 
-static void Shapes_Rect_init(Shapes_Rect* self, int32_t w, int32_t h) {
+void Shapes_Rect_init(Shapes_Rect* self, int32_t w, int32_t h) {
 	Shapes_Rect_finit(self);
 	if (w < 0 || h < 0) {
 		jrt_throw((jobject*)jrt_new_throwable(&jrt_IllegalArgumentException_class, jrt_lit(&lit_27, u"negative side", 13), NULL));
@@ -463,38 +490,38 @@ static void Shapes_Rect_init(Shapes_Rect* self, int32_t w, int32_t h) {
 	self->h = h;
 }
 
-static Shapes_Rect* Shapes_Rect_new(int32_t w, int32_t h) {
+Shapes_Rect* Shapes_Rect_new(int32_t w, int32_t h) {
 	Shapes_Rect* o = (Shapes_Rect*)jrt_alloc(&Shapes_Rect_class);
 	Shapes_Rect_init(o, w, h);
 	return o;
 }
 
-static double Shapes_Rect_area(jobject* self_) {
+double Shapes_Rect_area(jobject* self_) {
 	Shapes_Rect* self = (Shapes_Rect*)self_;
 	return (double)(self->w * self->h);
 }
 
-static jstring* Shapes_Rect_name(jobject* self_) {
+jstring* Shapes_Rect_name(jobject* self_) {
 	Shapes_Rect* self = (Shapes_Rect*)self_;
 	return jrt_lit(&lit_28, u"rect", 4);
 }
 
-static int32_t Shapes_Rect_w(jobject* self_) {
+int32_t Shapes_Rect_w(jobject* self_) {
 	Shapes_Rect* self = (Shapes_Rect*)self_;
 	return self->w;
 }
 
-static int32_t Shapes_Rect_h(jobject* self_) {
+int32_t Shapes_Rect_h(jobject* self_) {
 	Shapes_Rect* self = (Shapes_Rect*)self_;
 	return self->h;
 }
 
-static jstring* Shapes_Rect_toString(jobject* self_) {
+jstring* Shapes_Rect_toString(jobject* self_) {
 	Shapes_Rect* self = (Shapes_Rect*)self_;
 	return jrt_concat(6, jrt_lit(&lit_29, u"Rect[", 5), jrt_lit(&lit_30, u"w=", 2), jrt_str_I(self->w), jrt_lit(&lit_31, u", h=", 4), jrt_str_I(self->h), jrt_lit(&lit_26, u"]", 1));
 }
 
-static int32_t Shapes_Rect_hashCode(jobject* self_) {
+int32_t Shapes_Rect_hashCode(jobject* self_) {
 	Shapes_Rect* self = (Shapes_Rect*)self_;
 	int32_t h = 0;
 	h = 31 * h + jrt_Integer_hashCode_I(self->w);
@@ -502,7 +529,7 @@ static int32_t Shapes_Rect_hashCode(jobject* self_) {
 	return h;
 }
 
-static bool Shapes_Rect_equals(jobject* self_, jobject* o) {
+bool Shapes_Rect_equals(jobject* self_, jobject* o) {
 	Shapes_Rect* self = (Shapes_Rect*)self_;
 	if (!(jrt_instanceof((jobject*)o, &Shapes_Rect_class))) {
 		return false;
@@ -511,48 +538,48 @@ static bool Shapes_Rect_equals(jobject* self_, jobject* o) {
 	return self->w == ((Shapes_Rect*)jrt_nn(that))->w && self->h == ((Shapes_Rect*)jrt_nn(that))->h;
 }
 
-static void Shapes_Rect_finit(Shapes_Rect* self) {
+void Shapes_Rect_finit(Shapes_Rect* self) {
 }
 
-static void Shapes_Square_init(Shapes_Square* self, int32_t side) {
+void Shapes_Square_init(Shapes_Square* self, int32_t side) {
 	Shapes_Square_finit(self);
 	self->side = side;
 }
 
-static Shapes_Square* Shapes_Square_new(int32_t side) {
+Shapes_Square* Shapes_Square_new(int32_t side) {
 	Shapes_Square* o = (Shapes_Square*)jrt_alloc(&Shapes_Square_class);
 	Shapes_Square_init(o, side);
 	return o;
 }
 
-static double Shapes_Square_area(jobject* self_) {
+double Shapes_Square_area(jobject* self_) {
 	Shapes_Square* self = (Shapes_Square*)self_;
 	return (double)(self->side * self->side);
 }
 
-static jstring* Shapes_Square_name(jobject* self_) {
+jstring* Shapes_Square_name(jobject* self_) {
 	Shapes_Square* self = (Shapes_Square*)self_;
 	return jrt_lit(&lit_32, u"square", 6);
 }
 
-static int32_t Shapes_Square_side(jobject* self_) {
+int32_t Shapes_Square_side(jobject* self_) {
 	Shapes_Square* self = (Shapes_Square*)self_;
 	return self->side;
 }
 
-static jstring* Shapes_Square_toString(jobject* self_) {
+jstring* Shapes_Square_toString(jobject* self_) {
 	Shapes_Square* self = (Shapes_Square*)self_;
 	return jrt_concat(4, jrt_lit(&lit_33, u"Square[", 7), jrt_lit(&lit_34, u"side=", 5), jrt_str_I(self->side), jrt_lit(&lit_26, u"]", 1));
 }
 
-static int32_t Shapes_Square_hashCode(jobject* self_) {
+int32_t Shapes_Square_hashCode(jobject* self_) {
 	Shapes_Square* self = (Shapes_Square*)self_;
 	int32_t h = 0;
 	h = 31 * h + jrt_Integer_hashCode_I(self->side);
 	return h;
 }
 
-static bool Shapes_Square_equals(jobject* self_, jobject* o) {
+bool Shapes_Square_equals(jobject* self_, jobject* o) {
 	Shapes_Square* self = (Shapes_Square*)self_;
 	if (!(jrt_instanceof((jobject*)o, &Shapes_Square_class))) {
 		return false;
@@ -561,26 +588,26 @@ static bool Shapes_Square_equals(jobject* self_, jobject* o) {
 	return self->side == ((Shapes_Square*)jrt_nn(that))->side;
 }
 
-static void Shapes_Square_finit(Shapes_Square* self) {
+void Shapes_Square_finit(Shapes_Square* self) {
 }
 
-static void Shapes_Size_init(Shapes_Size* self, jstring* name_in, int32_t ordinal_in) {
+void Shapes_Size_init(Shapes_Size* self, jstring* name_in, int32_t ordinal_in) {
 	((jrt_Enum*)self)->name = name_in;
 	((jrt_Enum*)self)->ordinal = ordinal_in;
 	Shapes_Size_finit(self);
 }
 
-static Shapes_Size* Shapes_Size_new(jstring* name_in, int32_t ordinal_in) {
+Shapes_Size* Shapes_Size_new(jstring* name_in, int32_t ordinal_in) {
 	Shapes_Size_clinit();
 	Shapes_Size* o = (Shapes_Size*)jrt_alloc(&Shapes_Size_class);
 	Shapes_Size_init(o, name_in, ordinal_in);
 	return o;
 }
 
-static void Shapes_Size_finit(Shapes_Size* self) {
+void Shapes_Size_finit(Shapes_Size* self) {
 }
 
-static void Shapes_Size_clinit(void) {
+void Shapes_Size_clinit(void) {
 	if (Shapes_Size_inited_) return;
 	Shapes_Size_inited_ = true;
 	Shapes_Size_SMALL = Shapes_Size_new(jrt_lit(&lit_35, u"SMALL", 5), 0);
@@ -592,7 +619,7 @@ static void Shapes_Size_clinit(void) {
 	JA(jobject*, Shapes_Size_values_, 2) = (jobject*)Shapes_Size_LARGE;
 }
 
-static jarray* Shapes_Size_values(void) {
+jarray* Shapes_Size_values(void) {
 	Shapes_Size_clinit();
 	return jrt_array_clone(Shapes_Size_values_);
 }
@@ -620,6 +647,10 @@ const jclass Shapes_Square_class = {"Shapes$Square", &jrt_Object_class, sizeof(S
 static const struct Shapes_Size_vt Shapes_Size_vt_ = {{jrt_Enum_toString, jrt_Object_equals, jrt_Object_hashCode}};
 const jclass Shapes_Size_class = {"Shapes$Size", &jrt_Enum_class, sizeof(Shapes_Size), &Shapes_Size_vt_, 0, 0, 0};
 
+// ==== jmain.c ====
+/* jmain.c -- the program's entry point: JRT_MAIN names the class whose main runs, else the program's own. */
+#include "jprogram.h"
+#include "Shapes.h"
 
 int main(int argc, char** argv) {
 	const char* which = getenv("JRT_MAIN");

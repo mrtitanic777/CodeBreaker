@@ -66,6 +66,11 @@ Score judge_program(const dotnet::Sdk& sdk, const Environment& environment, cons
 // false: it did not compile.
 bool build_program(const Cxx& cxx, const std::filesystem::path& runtime, const std::filesystem::path& source, const std::filesystem::path& exe, std::string& log);
 
+// Build the sources of one program, written under `root` (which, like `runtime`, is on the include path), into `exe`: one compiler process for
+// each source, up to `jobs` at once, then the link. `log` is the compiler's output. false: it did not build.
+bool build_sources(const Cxx& cxx, const std::filesystem::path& runtime, const std::filesystem::path& root, const std::vector<std::filesystem::path>& sources,
+                   const std::filesystem::path& exe, std::string& log, unsigned jobs = 8);
+
 // The score table: a markdown table, one row per program.
 std::string table(const std::vector<Score>& scores);
 

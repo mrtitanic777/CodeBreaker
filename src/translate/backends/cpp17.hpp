@@ -21,6 +21,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "core/arena.hpp"
 #include "core/ordered_map.hpp"
@@ -53,10 +54,23 @@ using UnitText = native_l2::Cpp17Unit;
 // A Unit of the Python front end as a module. A unit that does not say its language is the Python front end's.
 UnitText write_unit(const native_l2::Library& lib, const ir::Node& unit);
 
-// The C++17 text of a whole Java program (its Unit nodes). The modern forms C++17 has no word for (a switch on a string, an
-// instanceof pattern) are lowered first, in the units' own arena `arena`; for-each and switch expressions stay as they are, C++17
-// writes them. `main` is the main class's name.
+// The C++17 of a whole Java program (its Unit nodes), as the files of a program: for each Java top-level class `pkg.Foo`, `pkg/Foo.hpp`
+// (its declaration, with its nested classes) and `pkg/Foo.cpp` (its method bodies), a shared `jrt_program.hpp` (the runtime and a
+// declaration of every class) and `main.cpp`. The modern forms C++17 has no word for (a switch on a string, an instanceof pattern)
+// are lowered first, in the units' own arena `arena`; for-each and switch expressions stay as they are, C++17 writes them. `main` is
+// the main class's name. `program` is the files' text in one string, each under a `// ==== path ====` line (what the goldens hold).
 std::string program(const native_l2::Library& lib, Arena& arena, std::span<ir::Node* const> units,
                     const std::optional<std::string>& main = std::nullopt);
+
+struct File {
+    std::string path;   // relative, with `/`
+    std::string text;
+};
+std::vector<File> split_files(std::string_view text);
+std::vector<File> program_files(const native_l2::Library& lib, Arena& arena, std::span<ir::Node* const> units,
+                                const std::optional<std::string>& main = std::nullopt);
+
+// Writes the files under `folder`; the paths of the sources (.cpp) among them, to be compiled together.
+std::vector<std::filesystem::path> write_files(const std::vector<File>& files, const std::filesystem::path& folder);
 
 }  // namespace cb::translate::backends::cpp17

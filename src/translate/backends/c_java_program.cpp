@@ -2,10 +2,12 @@
 // structs, function tables and interface tables, and the whole translation unit (see c_java.hpp).
 
 #include <algorithm>
+#include <cctype>
 #include <format>
 #include <map>
 #include <set>
 
+#include "core/fs.hpp"
 #include "core/text.hpp"
 #include "translate/backends/c_java_internal.hpp"
 #include "translate/desugar.hpp"
@@ -197,6 +199,7 @@ bool Program::is_throwable(const ClassInfo& cls) const {
 std::string Program::lit(std::string_view text) {
     const std::string key(text);
     if (!lits_.contains(key)) lits_.insert_or_assign(key, std::format("lit_{}", lits_.size() + 1));
+    lit_units_[lits_.at(key)].insert(unit_);
     const Utf16Literal u = utf16_literal(text);
     return std::format("jrt_lit(&{}, {}, {})", lits_.at(key), u.text, u.length);
 }
@@ -219,6 +222,10 @@ ClassInfo* Program::class_of_ctype(std::string_view ctype) const {
     if (!ctype.ends_with('*')) return nullptr;
     const auto it = by_cname_.find(std::string(ctype.substr(0, ctype.size() - 1)));
     return it == by_cname_.end() ? nullptr : it->second;
+}
+
+void Program::touch(std::string_view ctype) {
+    if (const ClassInfo* cls = class_of_ctype(ctype)) used_[unit_].insert(cls);
 }
 
 bool Program::has_ctor(const ClassInfo& cls) const {
@@ -468,23 +475,191 @@ std::vector<ClassInfo*> Program::ordered() const {
     return out;
 }
 
-std::string Program::write() {
-    const std::vector<ClassInfo*> order = ordered();
-    Lines structs, protos, tables_, defs;
-    const auto append = [](Lines& to, Lines&& from) { to.insert(to.end(), std::make_move_iterator(from.begin()), std::make_move_iterator(from.end())); };
-    for (const ClassInfo* cls : order) append(structs, struct_of(*cls));
-    for (const ClassInfo* cls : order) append(protos, prototypes(*cls));
-    for (const ClassInfo* cls : order) append(defs, definitions(*cls));
-    for (const ClassInfo* cls : order) append(tables_, tables(*cls));
-    Lines head = {"/* written by CodeBreaker's C back end for Java (cb/translate/backends/c_java) from",
-                  "   the program's L2; it runs on jrt.h / jrt.c, the Java library in C. */", "#include \"jrt.h\"", ""};
-    for (const ClassInfo* cls : order) {
-        if (cls->kind != "interface") head.push_back(std::format("typedef struct {} {};", cls->cname, cls->cname));
+// The class a file is named for: the outermost one a class sits in (nested, local and anonymous classes stay with it, as in Java).
+static const ClassInfo* top_of(const ClassInfo* cls) {
+    while (cls->outer != nullptr) cls = cls->outer;
+    return cls;
+}
+
+// The classes whose C names a piece of C text mentions: a name is a class's own, or one that begins with it up to an underscore
+// (`Foo_class`, `Foo_bar_v`, `struct Foo_vt`).
+static void mentioned(std::string_view text, const std::unordered_map<std::string_view, const ClassInfo*>& names, std::set<const ClassInfo*>& out) {
+    const auto word = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_'; };
+    for (std::size_t i = 0; i < text.size();) {
+        if (!word(text[i])) {
+            ++i;
+            continue;
+        }
+        std::size_t end = i;
+        while (end < text.size() && word(text[end])) ++end;
+        const std::string_view token = text.substr(i, end - i);
+        for (std::size_t cut = 1; cut <= token.size(); ++cut) {
+            if (cut != token.size() && token[cut] != '_') continue;
+            if (const auto found = names.find(token.substr(0, cut)); found != names.end()) out.insert(found->second);
+        }
+        i = end;
     }
-    for (const ClassInfo* cls : order) head.push_back(std::format("extern const jclass {}_class;", cls->cname));
-    head.emplace_back("");
-    Lines literals;
-    for (const auto& entry : lits_) literals.push_back(std::format("static jstring* {};", entry.second));
+}
+
+// `net/minecraft/Foo` -> `NET_MINECRAFT_FOO`
+static std::string include_guard(std::string_view path) {
+    std::string guard;
+    for (const char c : path) guard += std::isalnum(static_cast<unsigned char>(c)) != 0 ? static_cast<char>(std::toupper(static_cast<unsigned char>(c))) : '_';
+    return guard;
+}
+
+namespace {
+
+// What one class contributes to the files it sits in.
+struct Piece {
+    Lines header;    // structs, table types, declarations of its static data and functions, the virtual-call helpers
+    Lines data;      // its static data
+    Lines lambdas;   // the closure records of its lambdas
+    Lines defs;      // its functions
+    Lines tables;    // its function table, interface tables and class object
+};
+
+// One class file: Foo.h and Foo.c for the top-level class Foo and the classes nested in it.
+struct Unit {
+    const ClassInfo* top = nullptr;
+    std::string stem;                     // `Foo`
+    std::string dir;                      // `net/minecraft/`, or empty
+    std::vector<std::size_t> members;     // indexes into the program's class order
+    std::set<std::size_t> bases;          // the other units whose structs these classes embed
+    std::string path() const { return dir + stem; }
+};
+
+}  // namespace
+
+std::vector<File> Program::write() {
+    const std::vector<ClassInfo*> order = ordered();
+    std::vector<Piece> pieces(order.size());
+    std::vector<Unit> units;
+    std::unordered_map<const ClassInfo*, std::size_t> unit_of_top, unit_of;   // unit_of: class -> its unit
+    std::vector<std::size_t> unit_at(order.size());
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        const ClassInfo* top = top_of(order[i]);
+        auto [at, fresh] = unit_of_top.emplace(top, units.size());
+        if (fresh) {
+            Unit unit;
+            unit.top = top;
+            unit.stem = top->cname;
+            unit.dir = text::replace_all(top->package, ".", "/");
+            if (!unit.dir.empty()) unit.dir += '/';
+            units.push_back(std::move(unit));
+        }
+        unit_at[i] = at->second;
+        unit_of[order[i]] = at->second;
+        units[at->second].members.push_back(i);
+    }
+    const auto move_tail = [](Lines& from, std::size_t keep) {
+        Lines tail(std::make_move_iterator(from.begin() + static_cast<std::ptrdiff_t>(keep)), std::make_move_iterator(from.end()));
+        from.resize(keep);
+        return tail;
+    };
+    // the phases run over all classes in turn (what a program declines is found in the order it always was)
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        unit_ = unit_at[i];
+        pieces[i].header = struct_of(*order[i], pieces[i].data);
+    }
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        unit_ = unit_at[i];
+        const std::size_t before = vfuncs.size();
+        const Lines protos = prototypes(*order[i]);
+        pieces[i].header.push_back(std::format("extern const jclass {}_class;", order[i]->cname));
+        pieces[i].header.insert(pieces[i].header.end(), protos.begin(), protos.end());
+        const Lines helpers = move_tail(vfuncs, before);
+        pieces[i].header.insert(pieces[i].header.end(), helpers.begin(), helpers.end());
+        pieces[i].header.emplace_back("");
+    }
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        unit_ = unit_at[i];
+        const std::size_t before = lambdas.size();
+        pieces[i].defs = definitions(*order[i]);
+        pieces[i].lambdas = move_tail(lambdas, before);
+    }
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        unit_ = unit_at[i];
+        pieces[i].tables = tables(*order[i]);
+    }
+
+    // the struct a class embeds is in the header of its base's file
+    for (std::size_t i = 0; i < order.size(); ++i) {
+        const ClassInfo& cls = *order[i];
+        if (cls.kind == "interface" || cls.kind == "enum" || !cls.base) continue;
+        const ClassInfo* base = model_->info(*cls.base);
+        if (base == nullptr) continue;
+        if (const std::size_t from = unit_at[i], to = unit_of.at(base); from != to) units[from].bases.insert(to);
+    }
+    {   // one file's header cannot wait on another's that waits on it
+        std::vector<int> state(units.size(), 0);
+        std::function<void(std::size_t)> visit = [&](std::size_t u) {
+            if (state[u] == 2) return;
+            if (state[u] == 1) throw Decline("the classes of " + units[u].stem + " extend classes that extend back into them");
+            state[u] = 1;
+            for (const std::size_t b : units[u].bases) visit(b);
+            state[u] = 2;
+        };
+        for (std::size_t u = 0; u < units.size(); ++u) visit(u);
+    }
+
+    std::unordered_map<std::string_view, const ClassInfo*> names;
+    for (const ClassInfo* cls : order) names.emplace(cls->cname, cls);
+    const auto include = [](std::string_view path) { return std::format("#include \"{}.h\"", path); };
+
+    // string literals: one used by a single file is that file's own, the others are shared
+    std::vector<Lines> own_literals(units.size());
+    Lines shared_literals, shared_externs;
+    for (const auto& entry : lits_) {
+        const std::string& slot = entry.second;
+        const std::set<std::size_t>& users = lit_units_[slot];
+        if (users.size() == 1) {
+            own_literals[*users.begin()].push_back(std::format("static jstring* {};", slot));
+        } else {
+            shared_externs.push_back(std::format("extern jstring* {};", slot));
+            shared_literals.push_back(std::format("jstring* {};", slot));
+        }
+    }
+
+    std::vector<File> classes;
+    std::string all_text;   // (to find what the files ask of the runtime's helpers)
+    for (std::size_t u = 0; u < units.size(); ++u) {
+        const Unit& unit = units[u];
+        const std::string guard = include_guard(unit.path()) + "_H";
+        const std::string nested = unit.members.size() > 1 ? " and the classes nested in it" : "";
+        Lines header = {std::format("/* {}.h -- {}{}: its structs and function tables, and what the other files of the program call. */", unit.path(), unit.stem, nested),
+                        "#ifndef " + guard, "#define " + guard, "", "#include \"jprogram.h\""};
+        for (const std::size_t b : unit.bases) header.push_back(include(units[b].path()));
+        header.emplace_back("");
+        for (const std::size_t i : unit.members) header.insert(header.end(), pieces[i].header.begin(), pieces[i].header.end());
+        header.emplace_back("#endif");
+        classes.push_back({unit.path() + ".h", text::join(header, "\n") + "\n"});
+
+        Lines body = own_literals[u];
+        if (!body.empty()) body.emplace_back("");
+        for (const std::size_t i : unit.members) body.insert(body.end(), pieces[i].data.begin(), pieces[i].data.end());
+        body.emplace_back("");
+        for (const std::size_t i : unit.members) {
+            body.insert(body.end(), pieces[i].lambdas.begin(), pieces[i].lambdas.end());
+            body.insert(body.end(), pieces[i].defs.begin(), pieces[i].defs.end());
+        }
+        for (const std::size_t i : unit.members) body.insert(body.end(), pieces[i].tables.begin(), pieces[i].tables.end());
+        const std::string body_text = text::join(body, "\n");
+        std::set<const ClassInfo*> used;
+        mentioned(body_text, names, used);
+        if (const auto handled = used_.find(u); handled != used_.end()) used.insert(handled->second.begin(), handled->second.end());
+        std::set<std::size_t> others;   // (the files in a fixed order, whatever the order of the classes' addresses)
+        for (const ClassInfo* cls : used) {
+            if (const std::size_t other = unit_of.at(cls); other != u) others.insert(other);
+        }
+        Lines source = {std::format("/* {}.c -- the code and static data of {}{}. */", unit.path(), unit.stem, nested), include(unit.path())};
+        for (const std::size_t other : others) source.push_back(include(units[other].path()));
+        source.emplace_back("");
+        classes.push_back({unit.path() + ".c", text::join(source, "\n") + "\n" + body_text + "\n"});
+        all_text += body_text;
+    }
+
+    // the entry point
     std::vector<const ClassInfo*> mains;
     for (const ClassInfo* cls : order) {
         for (const ir::Node* mn : cls->methods()) {
@@ -495,26 +670,63 @@ std::string Program::write() {
             }
         }
     }
-    Lines tail = {"", "int main(int argc, char** argv) {"};
+    Lines entry = {"/* jmain.c -- the program's entry point: JRT_MAIN names the class whose main runs, else the program's own. */", "#include \"jprogram.h\""};
+    std::set<std::size_t> main_units;
+    for (const ClassInfo* cls : mains) main_units.insert(unit_of.at(cls));
+    for (const std::size_t u : main_units) entry.push_back(include(units[u].path()));
+    entry.insert(entry.end(), {"", "int main(int argc, char** argv) {"});
     if (!mains.empty()) {
-        tail.emplace_back("\tconst char* which = getenv(\"JRT_MAIN\");");
+        entry.emplace_back("\tconst char* which = getenv(\"JRT_MAIN\");");
         for (const ClassInfo* cls : mains) {
-            tail.push_back(std::format("\tif (which && strcmp(which, \"{}\") == 0) return jrt_run_main({}_main, argc, argv);",
-                                       after_dot(cls->qname), cls->cname));
+            entry.push_back(std::format("\tif (which && strcmp(which, \"{}\") == 0) return jrt_run_main({}_main, argc, argv);",
+                                        after_dot(cls->qname), cls->cname));
         }
-        tail.push_back(std::format("\treturn jrt_run_main({}_main, argc, argv);", main_ && !main_->empty() ? *main_ : mains[0]->cname));
+        entry.push_back(std::format("\treturn jrt_run_main({}_main, argc, argv);", main_ && !main_->empty() ? *main_ : mains[0]->cname));
     } else {
-        tail.emplace_back("\treturn 0;");
+        entry.emplace_back("\treturn 0;");
     }
-    tail.emplace_back("}");
-    Lines all;
-    for (const Lines* part : {&head, &structs, &literals}) all.insert(all.end(), part->begin(), part->end());
-    all.emplace_back("");
-    for (const Lines* part : {&protos, &vfuncs, &lambdas, &defs, &tables_, &tail}) all.insert(all.end(), part->begin(), part->end());
-    return text::join(all, "\n") + "\n";
+    entry.emplace_back("}");
+
+    // what every file shares: the runtime, a typedef for each class, the string literals more than one file uses
+    Lines shared = {"/* written by CodeBreaker's C back end for Java (cb/translate/backends/c_java) from",
+                    "   the program's L2; it runs on jrt.h / jrt.c, the Java library in C. */",
+                    "#ifndef JPROGRAM_H", "#define JPROGRAM_H", "", "#include \"jrt.h\"", ""};
+    for (const ClassInfo* cls : order) {
+        if (cls->kind != "interface") shared.push_back(std::format("typedef struct {} {};", cls->cname, cls->cname));
+    }
+    shared.emplace_back("");
+    if (!shared_externs.empty()) {
+        shared.insert(shared.end(), shared_externs.begin(), shared_externs.end());
+        shared.emplace_back("");
+    }
+    Lines shared_source = {"/* jprogram.c -- what the files of the program share. */", "#include \"jprogram.h\"", ""};
+    shared_source.insert(shared_source.end(), shared_literals.begin(), shared_literals.end());
+    // Java's Unicode categories are a large table: only a program that asks for them carries it
+    if (all_text.find("jrt_Character_getType_C(") != std::string::npos) {
+        const std::string table = fs::read_text(default_runtime_dir().parent_path() / "java_char_types.inc");
+        shared.emplace_back("int32_t jrt_Character_getType_C(char16_t c);");
+        shared.emplace_back("");
+        shared_source.push_back("static const uint16_t jrt_char_types[] = {\n" + table + "};");
+        shared_source.push_back("int32_t jrt_Character_getType_C(char16_t c) {");
+        shared_source.push_back("\tsize_t low = 0, high = sizeof(jrt_char_types) / sizeof(jrt_char_types[0]) / 2;");
+        shared_source.push_back("\twhile (high - low > 1) {");
+        shared_source.push_back("\t\tconst size_t middle = low + (high - low) / 2;");
+        shared_source.push_back("\t\tif (jrt_char_types[middle * 2] <= c) low = middle; else high = middle;");
+        shared_source.push_back("\t}");
+        shared_source.push_back("\treturn jrt_char_types[low * 2 + 1];");
+        shared_source.push_back("}");
+    }
+    shared.emplace_back("#endif");
+    std::vector<File> files;
+    files.push_back({"jprogram.h", text::join(shared, "\n") + "\n"});
+    if (shared_source.size() > 3) files.push_back({"jprogram.c", text::join(shared_source, "\n") + "\n"});
+    for (File& f : classes) files.push_back(std::move(f));
+    files.push_back({"jmain.c", text::join(entry, "\n") + "\n"});
+    return files;
 }
 
-Lines Program::struct_of(const ClassInfo& cls) {
+// The class's structs and the declarations of its static data (for its header); `data` gets the definitions of that data (for its source).
+Lines Program::struct_of(const ClassInfo& cls, Lines& data) {
     Lines out;
     if (cls.kind == "interface") {
         out.push_back(std::format("struct {}_vt {{", cls.cname));
@@ -550,15 +762,18 @@ Lines Program::struct_of(const ClassInfo& cls) {
         } else {
             init = (f.type && f.type->is_prim()) ? "0" : "NULL";
         }
-        out.push_back(std::format("static {} {}_{} = {};", ct(f.type), cls.cname, ident(f.sym->name), init));
+        out.push_back(std::format("extern {} {}_{};", ct(f.type), cls.cname, ident(f.sym->name)));
+        data.push_back(std::format("{} {}_{} = {};", ct(f.type), cls.cname, ident(f.sym->name), init));
     }
     for (const ir::Node* x : cls.members()) {
         if (const auto* ec = ir::get<ir::EnumConst>(x)) {
-            out.push_back(std::format("static {}* {}_{};", cls.cname, cls.cname, ident(need_sym(ec->sym, "an enum constant").name)));
+            const std::string name = ident(need_sym(ec->sym, "an enum constant").name);
+            out.push_back(std::format("extern {}* {}_{};", cls.cname, cls.cname, name));
+            data.push_back(std::format("{}* {}_{};", cls.cname, cls.cname, name));
         }
     }
-    if (cls.kind == "enum") out.push_back(std::format("static jarray* {}_values_;", cls.cname));
-    if (needs_clinit(cls)) out.push_back(std::format("static bool {}_inited_;", cls.cname));
+    if (cls.kind == "enum") data.push_back(std::format("static jarray* {}_values_;", cls.cname));
+    if (needs_clinit(cls)) data.push_back(std::format("static bool {}_inited_;", cls.cname));
     out.emplace_back("");
     return out;
 }
@@ -573,7 +788,7 @@ Lines Program::prototypes(const ClassInfo& cls) {
             std::vector<std::string> all;
             if (!is_static(m)) all.emplace_back(kObj);
             all.insert(all.end(), s.ps.begin(), s.ps.end());
-            out.push_back(std::format("static {} {}_{}({});", s.r, cls.cname, mname(m.name.value_or(""), s.eps), decl_params(all)));
+            out.push_back(std::format("{} {}_{}({});", s.r, cls.cname, mname(m.name.value_or(""), s.eps), decl_params(all)));
         }
         for (const IMethod& x : iface_methods(cls.qname)) {
             std::string params, args;
@@ -587,8 +802,8 @@ Lines Program::prototypes(const ClassInfo& cls) {
         const ir::MethodDecl& m = method_of(mn);
         if (m.kind == "ctor") {
             const std::string init = ctor_name(cls, mn);
-            out.push_back(std::format("static void {}({});", init, join_commas(ctor_params(cls, m))));
-            out.push_back(std::format("static {}* {}({});", cls.cname, text::replace_first(init, "_init", "_new"),
+            out.push_back(std::format("void {}({});", init, join_commas(ctor_params(cls, m))));
+            out.push_back(std::format("{}* {}({});", cls.cname, text::replace_first(init, "_init", "_new"),
                                       decl_params(new_params(cls, &m))));
             continue;
         }
@@ -596,18 +811,18 @@ Lines Program::prototypes(const ClassInfo& cls) {
         const Sig s = sig(cls, mn);
         const std::string name = std::format("{}_{}", cls.cname, mname(m.name.value_or(""), s.eps));
         if (is_static(m)) {
-            out.push_back(std::format("static {} {}({});", s.r, name, decl_params(s.ps)));
+            out.push_back(std::format("{} {}({});", s.r, name, decl_params(s.ps)));
         } else if (is_object_method(m)) {
             const std::string_view r = *m.name == "toString" ? kStr : *m.name == "equals" ? std::string_view("bool") : std::string_view("int32_t");
-            out.push_back(std::format("static {} {}_{}({});", r, cls.cname, *m.name, join_commas(with_self(s.ps))));
+            out.push_back(std::format("{} {}_{}({});", r, cls.cname, *m.name, join_commas(with_self(s.ps))));
         } else {
-            out.push_back(std::format("static {} {}({});", s.r, name, join_commas(with_self(s.ps))));
+            out.push_back(std::format("{} {}({});", s.r, name, join_commas(with_self(s.ps))));
         }
     }
-    if (!has_ctor(cls)) out.push_back(std::format("static {}* {}_new({});", cls.cname, cls.cname, decl_params(new_params(cls, nullptr))));
-    out.push_back(std::format("static void {}_finit({}* self);", cls.cname, cls.cname));
-    if (needs_clinit(cls)) out.push_back(std::format("static void {}_clinit(void);", cls.cname));
-    if (cls.kind == "enum") out.push_back(std::format("static jarray* {}_values(void);", cls.cname));
+    if (!has_ctor(cls)) out.push_back(std::format("{}* {}_new({});", cls.cname, cls.cname, decl_params(new_params(cls, nullptr))));
+    out.push_back(std::format("void {}_finit({}* self);", cls.cname, cls.cname));
+    if (needs_clinit(cls)) out.push_back(std::format("void {}_clinit(void);", cls.cname));
+    if (cls.kind == "enum") out.push_back(std::format("jarray* {}_values(void);", cls.cname));
     const ClassInfo* base = cls.base ? model_->info(*cls.base) : nullptr;
     for (const Slot& s : slots(cls)) {
         if (base != nullptr && base->kind != "interface") {
@@ -638,7 +853,7 @@ Lines Program::definitions(const ClassInfo& cls) {
     append(MethodWriter(*this, &cls).finit());
     if (needs_clinit(cls)) append(MethodWriter(*this, &cls).clinit());
     if (cls.kind == "enum") {
-        out.push_back(std::format("static jarray* {}_values(void) {{", cls.cname));
+        out.push_back(std::format("jarray* {}_values(void) {{", cls.cname));
         out.push_back(std::format("\t{}_clinit();", cls.cname));
         out.push_back(std::format("\treturn jrt_array_clone({}_values_);", cls.cname));
         out.emplace_back("}");

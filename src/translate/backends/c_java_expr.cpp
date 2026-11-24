@@ -80,6 +80,7 @@ Code MethodWriter::expr(const ir::Node* e) {
             // Java evaluates operands left to right; C does not say: the operands whose order shows are taken into temporaries
             const std::string pre = order_ ? sequenced(e) : std::string();
             Code r = on(*e, k);
+            p_.touch(r.ctype);   // (a chain `a->b->c` needs the struct of each link, which the text may never name)
             if (!pre.empty()) r.code = std::format("({}, {})", pre, r.code);
             return r;
         } else {

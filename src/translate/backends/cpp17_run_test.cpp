@@ -17,6 +17,7 @@
 #include "core/process.hpp"
 #include "core/testing.hpp"
 #include "core/text.hpp"
+#include "translate/backends/cpp17.hpp"
 
 namespace {
 
@@ -149,8 +150,12 @@ void prints_what_the_jvm_printed(const std::string& name) {
     cb::fs::ScopedTempDir work("cb_cpp17_jvm");
     const std::string exe = cb::fs::to_text(work.path() / (name + ".exe"));
     cb::process::ProcessSpec build;
-    build.argv = {"g++", "-std=c++17", "-fwrapv", "-w", "-O0", "-I" + cb::fs::to_text(cb::testing::data_path("../config/translate/runtime/cpp17")), "-x", "c++", "-o", exe,
-                  cb::fs::to_text(data / (name + ".golden.cpp"))};
+    // the golden is the program's files, each under its marker line: written out, the sources are built together
+    const std::vector<std::filesystem::path> sources = cb::translate::backends::cpp17::write_files(
+        cb::translate::backends::cpp17::split_files(cb::fs::read_text(data / (name + ".golden.cpp"))), work.path() / "src");
+    build.argv = {"g++", "-std=c++17", "-fwrapv", "-w", "-O0", "-I" + cb::fs::to_text(cb::testing::data_path("../config/translate/runtime/cpp17")),
+                  "-I" + cb::fs::to_text(work.path() / "src"), "-o", exe};
+    for (const auto& s : sources) build.argv.push_back(cb::fs::to_text(s));
     build.timeout = std::chrono::seconds(300);
     const auto built = cb::process::run(build);
     CB_CHECK(built.exit_code == 0);
@@ -173,12 +178,18 @@ CB_TEST("translate.cpp17.the_java_runtime_builds_and_runs_with_msvc", [] {
     }
     const std::filesystem::path data = cb::testing::data_path("translate/testdata/cpp17");
     cb::fs::ScopedTempDir work("cb_cpp17_msvc");
+    // a Java program is its files (the golden holds them under marker lines); the C++ test file is one source
     const auto build_and_run = [&](const std::string& name, const std::filesystem::path& source) {
         const std::string exe = cb::fs::to_text(work.path() / (name + ".exe"));
+        cb::fs::make_dirs(work.path() / name);
+        std::vector<std::filesystem::path> sources = {source};
+        if (source.string().ends_with(".golden.cpp"))
+            sources = cb::translate::backends::cpp17::write_files(cb::translate::backends::cpp17::split_files(cb::fs::read_text(source)), work.path() / name);
         cb::process::ProcessSpec build;
         build.argv = {"cl", "/nologo", "/std:c++17", "/EHsc", "/utf-8", "/permissive-", "/bigobj", "/w", "/Od",
-                      "/I" + cb::fs::to_text(cb::testing::data_path("../config/translate/runtime/cpp17")), "/Fe" + exe,
-                      "/Fo" + cb::fs::to_text(work.path() / (name + ".obj")), "/TP", cb::fs::to_text(source)};
+                      "/I" + cb::fs::to_text(cb::testing::data_path("../config/translate/runtime/cpp17")), "/I" + cb::fs::to_text(work.path() / name), "/Fe" + exe,
+                      "/Fo" + cb::fs::to_text(work.path() / name) + "\\", "/TP"};
+        for (const auto& s : sources) build.argv.push_back(cb::fs::to_text(s));
         build.cwd = work.path();
         build.err = cb::process::Capture::Merge;
         build.timeout = std::chrono::minutes(5);

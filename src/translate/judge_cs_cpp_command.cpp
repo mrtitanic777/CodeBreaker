@@ -1,6 +1,9 @@
 #include "translate/judge_cs_cpp_command.hpp"
 
 #include <algorithm>
+#include <atomic>
+#include <mutex>
+#include <thread>
 #include <format>
 
 #include "core/arena.hpp"
@@ -98,6 +101,104 @@ bool build(const Cxx& cxx, const stdfs::path& runtime, const stdfs::path& source
 
 bool build_program(const Cxx& cxx, const stdfs::path& runtime, const stdfs::path& source, const stdfs::path& exe, std::string& log) {
     return build(cxx, runtime, source, exe, log);
+}
+
+// Build the sources of one program (written under `root`, which is also on the include path, as is the runtime) into `exe`: a compiler process for
+// each source (a batch of them when there are many), up to `jobs` at once, then the link. `log` is the compiler's output. false: it did not build.
+bool build_sources(const Cxx& cxx, const stdfs::path& runtime, const stdfs::path& root, const std::vector<stdfs::path>& sources, const stdfs::path& exe, std::string& log,
+                   unsigned jobs) {
+    if (sources.size() == 1 && sources[0].parent_path() == root && cxx.kind != Compiler::Msvc) return build(cxx, runtime, sources[0], exe, log);
+    const stdfs::path objects = root / "obj";
+    fs::make_dirs(objects);
+    if (cxx.kind == Compiler::Msvc) {
+        // cl compiles the sources side by side itself (/MP)
+        std::string list;
+        for (const stdfs::path& s : sources) list += "\"" + fs::to_text(s) + "\"\r\n";
+        fs::write_text(root / "sources.rsp", list);
+        const stdfs::path bat = root / "build.cmd";
+        fs::write_text(bat, std::format("@echo off\r\ncall \"{}\" >nul\r\ncl /nologo /std:c++17 /EHsc /utf-8 /permissive- /bigobj /MP{} /W3/wd4244 /wd4267 /wd4018 /wd4146 /wd4309 /wd4305 /I\"{}\" /I\"{}\" /Fe\"{}\" /Fo\"{}\\\\\" @\"{}\"\r\n",
+                                        fs::to_text(*vcvars()), jobs, fs::to_text(runtime), fs::to_text(root), fs::to_text(exe), fs::to_text(objects), fs::to_text(root / "sources.rsp")));
+        process::ProcessSpec spec;
+        spec.argv = {"cmd", "/c", fs::to_text(bat)};
+        spec.err = process::Capture::Merge;
+        spec.cwd = root;
+        spec.timeout = std::chrono::duration_cast<std::chrono::milliseconds>(kBuildTimeout);
+        const process::ProcessResult r = process::run(spec);
+        log = std::string(as_text(r.out));
+        return r.exit_code == 0 && is_file(exe);
+    }
+    // Reading the runtime costs a compiler process seconds, and a program of hundreds of classes would read it hundreds of times: past a
+    // few sources each, a process builds a batch of them (one source that includes the batch's), the batches' sizes balanced. A
+    // program of a few sources is built one source to a process, which also shows that each source stands on its own.
+    const std::vector<std::string> flags = {"-std=c++17", "-fwrapv", "-w", "-O1", "-Wa,-mbig-obj", "-I", fs::to_text(runtime), "-I", fs::to_text(root)};
+    std::vector<stdfs::path> units = sources;
+    if (sources.size() > static_cast<std::size_t>(jobs) * 4) {
+        const std::size_t batches = static_cast<std::size_t>(jobs) * 4;
+        std::vector<std::pair<std::uintmax_t, const stdfs::path*>> by_size;
+        for (const stdfs::path& s : sources) {
+            std::error_code ec;
+            by_size.emplace_back(stdfs::file_size(s, ec), &s);
+        }
+        std::stable_sort(by_size.begin(), by_size.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+        std::vector<std::uintmax_t> load(batches, 0);
+        std::vector<std::string> text(batches);
+        for (const auto& [size, source] : by_size) {
+            const std::size_t k = static_cast<std::size_t>(std::min_element(load.begin(), load.end()) - load.begin());
+            load[k] += size + 1;
+            text[k] += "#include \"" + source->lexically_relative(root).generic_string() + "\"\n";
+        }
+        units.clear();
+        for (std::size_t k = 0; k < batches; k++) {
+            units.push_back(objects / ("batch" + std::to_string(k) + ".cpp"));
+            fs::write_text(units.back(), text[k]);
+        }
+    }
+    std::vector<stdfs::path> objs;
+    for (std::size_t i = 0; i < units.size(); i++) objs.push_back(objects / (std::to_string(i) + ".o"));
+    std::atomic<std::size_t> next{0};
+    std::atomic<bool> failed{false};
+    std::mutex lock;
+    std::string errors;
+    const auto work = [&] {
+        for (;;) {
+            const std::size_t i = next.fetch_add(1);
+            if (i >= units.size() || failed) return;
+            process::ProcessSpec spec;
+            spec.err = process::Capture::Merge;
+            spec.timeout = std::chrono::duration_cast<std::chrono::milliseconds>(kBuildTimeout);
+            spec.cwd = root;
+            spec.argv = {fs::to_text(cxx.exe)};
+            spec.argv.insert(spec.argv.end(), flags.begin(), flags.end());
+            spec.argv.insert(spec.argv.end(), {"-c", "-o", fs::to_text(objs[i]), fs::to_text(units[i])});
+            const process::ProcessResult r = process::run(spec);
+            if (r.exit_code != 0 || !is_file(objs[i])) {
+                std::lock_guard<std::mutex> guard(lock);
+                errors += std::string(as_text(r.out));   // (the compiler's messages name the file, and the one a batch included)
+                failed = true;
+            }
+        }
+    };
+    std::vector<std::thread> pool;
+    const unsigned n = std::max(1u, std::min<unsigned>(jobs, static_cast<unsigned>(units.size())));
+    for (unsigned k = 0; k < n; k++) pool.emplace_back(work);
+    for (std::thread& t : pool) t.join();
+    if (failed) {
+        log = errors;
+        return false;
+    }
+    // the objects are many: the link names them in a file (a command line is not long enough)
+    std::string list;
+    for (const stdfs::path& o : objs) list += "\"" + o.generic_string() + "\"\n";
+    fs::write_text(objects / "objects.rsp", list);
+    process::ProcessSpec link;
+    link.err = process::Capture::Merge;
+    link.timeout = std::chrono::duration_cast<std::chrono::milliseconds>(kBuildTimeout);
+    link.cwd = root;
+    link.argv = {fs::to_text(cxx.exe), "-o", fs::to_text(exe), "@" + fs::to_text(objects / "objects.rsp")};
+    if (cxx.kind == Compiler::Gcc) link.argv.push_back("-static");
+    const process::ProcessResult r = process::run(link);
+    log = std::string(as_text(r.out));
+    return r.exit_code == 0 && is_file(exe);
 }
 
 std::optional<Cxx> find_cxx(const std::string& want) {

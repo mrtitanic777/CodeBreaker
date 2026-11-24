@@ -75,7 +75,7 @@ void check_text(const std::string& got, const std::string& golden_file) {
 void check_corpus(const std::string& name) {
     cb::Arena arena;
     std::vector<ir::Node*> units = corpus_units(arena, name);
-    check_text(cj::program(arena, units), "c_java/" + name + ".golden.c");
+    check_text(cj::program(arena, units), "c_java/" + name + ".golden.txt");
 }
 
 void check_declined(const std::string& name) {
@@ -105,17 +105,17 @@ CB_TEST("translate.c_java.corpus.textstats", [] { check_corpus("textstats"); });
 CB_TEST("translate.c_java.own.zoo", [] {
     cb::Arena arena;
     std::vector<ir::Node*> units = own_units(arena, "zoo");
-    check_text(cj::program(arena, units), "c_java/zoo/golden.c");
+    check_text(cj::program(arena, units), "c_java/zoo/golden.txt");
 });
 CB_TEST("translate.c_java.own.mix", [] {
     cb::Arena arena;
     std::vector<ir::Node*> units = own_units(arena, "mix");
-    check_text(cj::program(arena, units), "c_java/mix/golden.c");
+    check_text(cj::program(arena, units), "c_java/mix/golden.txt");
 });
 CB_TEST("translate.c_java.own.names", [] {
     cb::Arena arena;
     std::vector<ir::Node*> units = own_units(arena, "names");
-    check_text(cj::program(arena, units), "c_java/names/golden.c");
+    check_text(cj::program(arena, units), "c_java/names/golden.txt");
 });
 
 // The programs the back end does not write say why.
@@ -218,6 +218,44 @@ CB_TEST("translate.c_java.build_declined", [] {
 // The C runtime's collector. Its own check: garbage goes, what a static or only the stack holds stays. Then real programs with a collection at
 // every allocation (JRT_GC_STRESS=1): a block freed too early would change what they print, which is held to what the JVM printed.
 namespace {
+// A golden's files written under dir/src: the text is each file under a line `// ==== path ====`.
+std::vector<std::string> write_golden_files(const std::string& golden_file, const std::filesystem::path& dir) {
+    std::vector<std::string> sources;
+    std::string path, text;
+    const auto flush = [&] {
+        if (path.empty()) return;
+        cb::fs::write_text(dir / "src" / cb::fs::from_text(path), text);
+        if (path.ends_with(".c")) sources.push_back(cb::fs::to_text(dir / "src" / cb::fs::from_text(path)));
+    };
+    const std::string whole = cb::text::replace_all(cb::fs::read_text(data(golden_file)), "\r\n", "\n");
+    for (const std::string_view line : cb::text::lines(whole)) {
+        if (line.starts_with("// ==== ") && line.ends_with(" ====")) {
+            flush();
+            path = std::string(line.substr(8, line.size() - 13));
+            text.clear();
+        } else {
+            text += std::string(line) + "\n";
+        }
+    }
+    flush();
+    return sources;
+}
+
+// The program of a golden built with the runtime: every file in one compiler run.
+std::optional<std::string> built_from_golden(const std::string& golden_file, const std::filesystem::path& dir) {
+    const std::filesystem::path clang = cb::fs::from_text(std::string(cj::kClang));
+    if (!std::filesystem::is_regular_file(clang)) return std::nullopt;
+    const std::filesystem::path runtime = cb::testing::data_path("../config/translate/runtime/c");
+    const std::string exe = cb::fs::to_text(dir / "program.exe");
+    cb::process::ProcessSpec build;
+    build.argv = {cb::fs::to_text(clang), "-std=c11", "-fwrapv", "-O1", "-w", "-I" + cb::fs::to_text(runtime), "-I" + cb::fs::to_text(dir / "src"), "-o", exe};
+    for (const std::string& source : write_golden_files(golden_file, dir)) build.argv.push_back(source);
+    build.argv.push_back(cb::fs::to_text(runtime / "jrt.c"));
+    build.timeout = std::chrono::seconds(120);
+    CB_CHECK(cb::process::run(build).exit_code == 0);
+    return exe;
+}
+
 std::optional<std::string> built_with_runtime(const std::filesystem::path& source, const std::filesystem::path& dir) {
     const std::filesystem::path clang = cb::fs::from_text(std::string(cj::kClang));
     if (!std::filesystem::is_regular_file(clang)) return std::nullopt;
@@ -233,7 +271,7 @@ std::optional<std::string> built_with_runtime(const std::filesystem::path& sourc
 
 void runs_as_the_jvm_under_stress(const std::string& name, const std::string& golden) {
     cb::fs::ScopedTempDir dir;
-    const auto exe = built_with_runtime(data(golden), dir.path());
+    const auto exe = built_from_golden(golden, dir.path());
     if (!exe) return;
     const std::string want = cb::text::replace_all(cb::fs::read_text(data("cpp17/" + name + ".jvm.txt")), "\r\n", "\n");
     for (const bool stress : {false, true}) {
@@ -257,12 +295,12 @@ CB_TEST("translate.c_java.collector.frees_garbage_and_keeps_what_is_reachable", 
     spec.timeout = std::chrono::seconds(120);
     CB_CHECK(cb::process::run(spec).exit_code == 0);
 });
-CB_TEST("translate.c_java.collector.bank_runs_under_stress", [] { runs_as_the_jvm_under_stress("bank", "c_java/bank.golden.c"); });
-CB_TEST("translate.c_java.collector.calc_runs_under_stress", [] { runs_as_the_jvm_under_stress("calc", "c_java/calc.golden.c"); });
-CB_TEST("translate.c_java.collector.generics_runs_under_stress", [] { runs_as_the_jvm_under_stress("generics", "c_java/generics.golden.c"); });
-CB_TEST("translate.c_java.collector.shapes_runs_under_stress", [] { runs_as_the_jvm_under_stress("shapes", "c_java/shapes.golden.c"); });
-CB_TEST("translate.c_java.collector.textstats_runs_under_stress", [] { runs_as_the_jvm_under_stress("textstats", "c_java/textstats.golden.c"); });
-CB_TEST("translate.c_java.collector.mix_runs_under_stress", [] { runs_as_the_jvm_under_stress("mix", "c_java/mix/golden.c"); });
-CB_TEST("translate.c_java.collector.names_runs_under_stress", [] { runs_as_the_jvm_under_stress("names", "c_java/names/golden.c"); });
-CB_TEST("translate.c_java.collector.zoo_runs_under_stress", [] { runs_as_the_jvm_under_stress("zoo", "c_java/zoo/golden.c"); });
-CB_TEST("translate.c_java.collector.t17_runs_under_stress", [] { runs_as_the_jvm_under_stress("t17", "c_java/t17.golden.c"); });
+CB_TEST("translate.c_java.collector.bank_runs_under_stress", [] { runs_as_the_jvm_under_stress("bank", "c_java/bank.golden.txt"); });
+CB_TEST("translate.c_java.collector.calc_runs_under_stress", [] { runs_as_the_jvm_under_stress("calc", "c_java/calc.golden.txt"); });
+CB_TEST("translate.c_java.collector.generics_runs_under_stress", [] { runs_as_the_jvm_under_stress("generics", "c_java/generics.golden.txt"); });
+CB_TEST("translate.c_java.collector.shapes_runs_under_stress", [] { runs_as_the_jvm_under_stress("shapes", "c_java/shapes.golden.txt"); });
+CB_TEST("translate.c_java.collector.textstats_runs_under_stress", [] { runs_as_the_jvm_under_stress("textstats", "c_java/textstats.golden.txt"); });
+CB_TEST("translate.c_java.collector.mix_runs_under_stress", [] { runs_as_the_jvm_under_stress("mix", "c_java/mix/golden.txt"); });
+CB_TEST("translate.c_java.collector.names_runs_under_stress", [] { runs_as_the_jvm_under_stress("names", "c_java/names/golden.txt"); });
+CB_TEST("translate.c_java.collector.zoo_runs_under_stress", [] { runs_as_the_jvm_under_stress("zoo", "c_java/zoo/golden.txt"); });
+CB_TEST("translate.c_java.collector.t17_runs_under_stress", [] { runs_as_the_jvm_under_stress("t17", "c_java/t17.golden.txt"); });

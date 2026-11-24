@@ -22,6 +22,12 @@ bool names_runtime_type(std::string_view name) {
 
 std::string_view lower_kind(std::string_view kind) { return kind; }
 
+// A library interface whose methods the program writes as its own (a class that is Comparable has a compareTo), so that nothing of the runtime needs it.
+bool is_marker_interface(const std::string& qname) {
+    return qname == "java.lang.Comparable" || qname == "java.lang.AutoCloseable" || qname == "java.io.Closeable" || qname == "java.io.Serializable" ||
+           qname == "java.lang.Cloneable";
+}
+
 bool is_abstract(const ClassInfo& cls) { return cls.kind == "interface" || has_mod(cls.decl->mods, "abstract"); }
 
 // A method without a body that a class must have implemented.
@@ -99,30 +105,44 @@ Program::Program(Arena& arena, std::span<ir::Node* const> units, std::string mai
 }
 
 void Program::check_supported() {
+    std::vector<std::string> libraries;   // classes of the library whose source the program reads (java.io's streams ...): the runtime has no word for them
+    std::set<std::string> reasons;   // (what the classes need that is not written, all of it: a program is declined with the list)
     for (const auto& [qname, cls] : model_->classes()) {
-        if (qname.starts_with("java.")) throw Decline("the library class " + qname + " (a getClass() or a type the runtime has no word for)");
-        if (cls->local || cls->anon) throw Decline("a local or anonymous class (" + qname + ")");
-        if (cls->kind == "record" || cls->kind == "annotation") throw Decline("a " + cls->kind + " (" + qname + ")");
-        for (const ir::Node* member : cls->members())
-            if (const auto* ec = ir::get<ir::EnumConst>(member); ec != nullptr && ec->body != nullptr) throw Decline("an enum constant with a body of its own (" + qname + ")");
-        if (cls->inner || cls->needs_outer) throw Decline("an inner class that holds its outer instance (" + qname + ")");
-        if (!cls->decl->typeparams.empty() || !cls->decl->tparams.empty()) throw Decline("a generic class (" + qname + ")");
-        if (names_runtime_type(cls->cname)) throw Decline("a class named like a runtime type (" + qname + ")");
-        if (cls->kind != "enum" && cls->base && *cls->base != "java.lang.Object" && model_->info(*cls->base) == nullptr && !is_lib_throwable(*cls->base))
-            throw Decline("a class extending the library class " + *cls->base);
-        for (const std::string& i : cls->ifaces)
-            if (model_->info(i) == nullptr) throw Decline("a class implementing the library interface " + i);
-        for (const ir::Node* mn : cls->methods()) {
-            const ir::MethodDecl& m = method_of(mn);
-            if (!m.typeparams.empty() || !m.tparams.empty()) throw Decline("a generic method (" + m.name.value_or("") + ")");
-            const std::string kind = m.kind.value_or("method");
-            if (kind != "method" && kind != "ctor" && kind != "static_init" && kind != "init") throw Decline("a member of kind " + kind);
-            if (kind == "method" && !m.params.empty() && m.sym && m.sym->varargs && m.name != "main") throw Decline("a method with a variable number of arguments");
-        }
-        for (const ir::Node* member : cls->members())
-            if (ir::is<ir::ClassDecl>(member) || ir::is<ir::Property>(member)) {
-                if (ir::is<ir::Property>(member)) throw Decline("a property");
+        try {
+            if (qname.starts_with("java.")) {
+                libraries.push_back(qname);
+                continue;
             }
+            if (cls->local || cls->anon) throw Decline("a local or anonymous class (" + qname + ")");
+            if (cls->kind == "annotation") throw Decline("an annotation (" + qname + ")");
+            for (const ir::Node* member : cls->members())
+                if (const auto* ec = ir::get<ir::EnumConst>(member); ec != nullptr && ec->body != nullptr) throw Decline("an enum constant with a body of its own (" + qname + ")");
+            if (cls->inner || cls->needs_outer) throw Decline("an inner class that holds its outer instance (" + qname + ")");
+            if (!cls->decl->typeparams.empty() || !cls->decl->tparams.empty()) throw Decline("a generic class (" + qname + ")");
+            if (names_runtime_type(cls->cname)) throw Decline("a class named like a runtime type (" + qname + ")");
+            if (cls->kind != "enum" && cls->kind != "record" && cls->base && *cls->base != "java.lang.Object" && model_->info(*cls->base) == nullptr && !is_lib_throwable(*cls->base))
+                throw Decline("a class extending the library class " + *cls->base);
+            for (const std::string& i : cls->ifaces)
+                if (model_->info(i) == nullptr && !is_marker_interface(i)) throw Decline("a class implementing the library interface " + i);
+            for (const ir::Node* mn : cls->methods()) {
+                const ir::MethodDecl& m = method_of(mn);
+                if (!m.typeparams.empty() || !m.tparams.empty()) throw Decline("a generic method (" + m.name.value_or("") + ")");
+                const std::string kind = m.kind.value_or("method");
+                if (kind != "method" && kind != "ctor" && kind != "static_init" && kind != "init") throw Decline("a member of kind " + kind);
+            }
+            for (const ir::Node* member : cls->members())
+                if (ir::is<ir::ClassDecl>(member) || ir::is<ir::Property>(member)) {
+                    if (ir::is<ir::Property>(member)) throw Decline("a property");
+                }
+        } catch (const Decline& d) {
+            reasons.insert(d.what());
+        }
+    }
+    if (!libraries.empty()) reasons.insert("the program uses " + std::to_string(libraries.size()) + " library classes the runtime has no word for (" + libraries[0] + " ...)");
+    if (!reasons.empty()) {
+        std::vector<std::string> list(reasons.begin(), reasons.end());
+        if (list.size() > 12) list.resize(12);
+        throw Decline(join(list, "; "));
     }
 }
 
@@ -214,7 +234,7 @@ std::vector<const ClassInfo*> Program::ancestors(const ClassInfo& cls) const {
     return out;
 }
 
-bool Program::is_concrete(const ClassInfo& cls) const { return (cls.kind == "class" || cls.kind == "enum") && !is_abstract(cls) && !static_only(cls); }
+bool Program::is_concrete(const ClassInfo& cls) const { return (cls.kind == "class" || cls.kind == "enum" || cls.kind == "record") && !is_abstract(cls) && !static_only(cls); }
 
 std::vector<const ClassInfo*> Program::subclasses_of(const ClassInfo& cls) const {
     std::vector<const ClassInfo*> out;
@@ -382,7 +402,8 @@ Lines Program::trait_text(const ClassInfo& cls) {
     std::vector<std::string> supers;
     if (const ClassInfo* base = base_class(cls)) supers.push_back(trait_name(*base));
     else if (cls.base && is_lib_throwable(*cls.base)) supers.push_back("Throwable");
-    for (const std::string& i : cls.ifaces) supers.push_back(trait_name(*model_->info(i)));
+    for (const std::string& i : cls.ifaces)
+        if (model_->info(i) != nullptr) supers.push_back(trait_name(*model_->info(i)));
     if (supers.empty()) supers.push_back("Object");
     // two unrelated supertraits that declare one method make a call through this trait ambiguous in Rust
     std::map<std::string, std::string> declared;
@@ -655,7 +676,7 @@ Lines Program::concrete_text(const ClassInfo& cls) {
         }
         const std::string suffix = ctor_suffix(cls, mn);
         out.push_back("    pub fn new" + suffix + "(" + join(ps) + ") -> Ref<dyn " + trait_name(cls) + "> {");
-        out.push_back("        let this: &'static " + obj + " = Box::leak(Box::new(" + obj + "::default()));");
+        out.push_back("        let this: &'static " + obj + " = gc_new(" + obj + "::default());");
         if (cls.kind == "enum") {
             out.push_back("        this." + fields_fn(cls) + "().enum_name.set(name);");
             out.push_back("        this." + fields_fn(cls) + "().enum_ordinal.set(ordinal);");

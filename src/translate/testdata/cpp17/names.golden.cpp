@@ -1,5 +1,7 @@
-// written by CodeBreaker's C++17 back end (codebreaker/translate/backends/cpp17.py) from the
-// Java program's L2; it runs on jrt.hpp, the Java library in C++17.
+// ==== jrt_program.hpp ====
+// written by CodeBreaker's C++17 back end from the Java program's L2; it runs on jrt.hpp, the Java library in C++17.
+// Every file of the program starts from this one: the runtime, and a declaration of each class.
+#pragma once
 #include "jrt.hpp"
 
 using jrt::ref;
@@ -12,6 +14,9 @@ using jrt::String;
 using jrt::Supplier;
 
 struct Names;
+// ==== Names.hpp ====
+#pragma once
+#include "jrt_program.hpp"
 
 struct Names : virtual Object {
 	const char16_t* jclass_() const override { return u"Names"; }
@@ -19,6 +24,9 @@ struct Names : virtual Object {
 	static int32_t sizeof_(int32_t auto_);
 	static void main(ref<Array<ref<String>>> args);
 };
+
+// ==== Names.cpp ====
+#include "Names.hpp"
 
 Names::Names() {
 }
@@ -42,6 +50,10 @@ void Names::main(ref<Array<ref<String>>> args) {
 	jrt::nn(jrt::System::out_())->println((j2xo1 = jrt::cast<Integer>(jrt::nn(sr)->get()), j2xo2 = jrt::nn(twice)->applyAsInt(1), j2xo3 = Names::sizeof_(4), j2xo4 = jrt::nn(s)->length(), j2xo5 = (int32_t)(jrt::nn(s)->charAt(1)), jrt::concat(j2xo1, jrt::lit(u" "), j2xo2, jrt::lit(u" "), j2xo3, jrt::lit(u" "), j2xo4, jrt::lit(u" "), j2xo5)));
 }
 
+// ==== main.cpp ====
+// the program's entry: the class named by JRT_MAIN, else the first with a main
+#include "jrt_program.hpp"
+#include "Names.hpp"
 
 int main(int argc, char** argv) {
 	const char* which = std::getenv("JRT_MAIN");

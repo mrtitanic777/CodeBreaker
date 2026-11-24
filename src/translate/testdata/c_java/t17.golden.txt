@@ -1,5 +1,9 @@
+// ==== jprogram.h ====
 /* written by CodeBreaker's C back end for Java (cb/translate/backends/c_java) from
    the program's L2; it runs on jrt.h / jrt.c, the Java library in C. */
+#ifndef JPROGRAM_H
+#define JPROGRAM_H
+
 #include "jrt.h"
 
 typedef struct Modern Modern;
@@ -7,12 +11,14 @@ typedef struct Modern_Point Modern_Point;
 typedef struct Modern_Sq Modern_Sq;
 typedef struct Modern_Circ Modern_Circ;
 typedef struct Modern_Color Modern_Color;
-extern const jclass Modern_class;
-extern const jclass Modern_Point_class;
-extern const jclass Modern_Shape_class;
-extern const jclass Modern_Sq_class;
-extern const jclass Modern_Circ_class;
-extern const jclass Modern_Color_class;
+
+#endif
+// ==== Modern.h ====
+/* Modern.h -- Modern and the classes nested in it: its structs and function tables, and what the other files of the program call. */
+#ifndef MODERN_H
+#define MODERN_H
+
+#include "jprogram.h"
 
 struct Modern {
 	jobject hdr_;
@@ -20,6 +26,17 @@ struct Modern {
 struct Modern_vt {
 	jobject_vt o_;
 };
+
+extern const jclass Modern_class;
+void Modern_init(Modern* self);
+Modern* Modern_new(void);
+int32_t Modern_area(jobject*);
+jstring* Modern_name(Modern_Color*);
+int32_t Modern_sum(jobject*);
+int32_t Modern_squares(int32_t);
+jstring* Modern_words(jstring*);
+void Modern_main(jarray*);
+void Modern_finit(Modern* self);
 
 struct Modern_Point {
 	jobject hdr_;
@@ -33,9 +50,25 @@ struct Modern_Point_vt {
 	int32_t (*y)(jobject*);
 };
 
+extern const jclass Modern_Point_class;
+void Modern_Point_init(Modern_Point* self, int32_t x, int32_t y);
+Modern_Point* Modern_Point_new(int32_t x, int32_t y);
+int32_t Modern_Point_dist2(jobject*);
+int32_t Modern_Point_x(jobject*);
+int32_t Modern_Point_y(jobject*);
+jstring* Modern_Point_toString(jobject*);
+int32_t Modern_Point_hashCode(jobject*);
+bool Modern_Point_equals(jobject*, jobject*);
+void Modern_Point_finit(Modern_Point* self);
+static inline int32_t Modern_Point_dist2_v(jobject* o) { return ((const struct Modern_Point_vt*)jrt_vt(o))->dist2(o); }
+static inline int32_t Modern_Point_x_v(jobject* o) { return ((const struct Modern_Point_vt*)jrt_vt(o))->x(o); }
+static inline int32_t Modern_Point_y_v(jobject* o) { return ((const struct Modern_Point_vt*)jrt_vt(o))->y(o); }
+
 struct Modern_Shape_vt {
 	jobject_vt o_;
 };
+
+extern const jclass Modern_Shape_class;
 
 struct Modern_Sq {
 	jobject hdr_;
@@ -46,6 +79,16 @@ struct Modern_Sq_vt {
 	int32_t (*side)(jobject*);
 };
 
+extern const jclass Modern_Sq_class;
+void Modern_Sq_init(Modern_Sq* self, int32_t side);
+Modern_Sq* Modern_Sq_new(int32_t side);
+int32_t Modern_Sq_side(jobject*);
+jstring* Modern_Sq_toString(jobject*);
+int32_t Modern_Sq_hashCode(jobject*);
+bool Modern_Sq_equals(jobject*, jobject*);
+void Modern_Sq_finit(Modern_Sq* self);
+static inline int32_t Modern_Sq_side_v(jobject* o) { return ((const struct Modern_Sq_vt*)jrt_vt(o))->side(o); }
+
 struct Modern_Circ {
 	jobject hdr_;
 	int32_t r;
@@ -55,17 +98,37 @@ struct Modern_Circ_vt {
 	int32_t (*r)(jobject*);
 };
 
+extern const jclass Modern_Circ_class;
+void Modern_Circ_init(Modern_Circ* self, int32_t r);
+Modern_Circ* Modern_Circ_new(int32_t r);
+int32_t Modern_Circ_r(jobject*);
+jstring* Modern_Circ_toString(jobject*);
+int32_t Modern_Circ_hashCode(jobject*);
+bool Modern_Circ_equals(jobject*, jobject*);
+void Modern_Circ_finit(Modern_Circ* self);
+static inline int32_t Modern_Circ_r_v(jobject* o) { return ((const struct Modern_Circ_vt*)jrt_vt(o))->r(o); }
+
 struct Modern_Color {
 	jrt_Enum super_;
 };
 struct Modern_Color_vt {
 	jobject_vt o_;
 };
-static Modern_Color* Modern_Color_RED;
-static Modern_Color* Modern_Color_GREEN;
-static Modern_Color* Modern_Color_BLUE;
-static jarray* Modern_Color_values_;
-static bool Modern_Color_inited_;
+extern Modern_Color* Modern_Color_RED;
+extern Modern_Color* Modern_Color_GREEN;
+extern Modern_Color* Modern_Color_BLUE;
+
+extern const jclass Modern_Color_class;
+void Modern_Color_init(Modern_Color* self, jstring* name_in, int32_t ordinal_in);
+Modern_Color* Modern_Color_new(jstring* name_in, int32_t ordinal_in);
+void Modern_Color_finit(Modern_Color* self);
+void Modern_Color_clinit(void);
+jarray* Modern_Color_values(void);
+
+#endif
+// ==== Modern.c ====
+/* Modern.c -- the code and static data of Modern and the classes nested in it. */
+#include "Modern.h"
 
 static jstring* lit_1;
 static jstring* lit_2;
@@ -88,48 +151,12 @@ static jstring* lit_18;
 static jstring* lit_19;
 static jstring* lit_20;
 
-static void Modern_init(Modern* self);
-static Modern* Modern_new(void);
-static int32_t Modern_area(jobject*);
-static jstring* Modern_name(Modern_Color*);
-static int32_t Modern_sum(jobject*);
-static int32_t Modern_squares(int32_t);
-static jstring* Modern_words(jstring*);
-static void Modern_main(jarray*);
-static void Modern_finit(Modern* self);
-static void Modern_Point_init(Modern_Point* self, int32_t x, int32_t y);
-static Modern_Point* Modern_Point_new(int32_t x, int32_t y);
-static int32_t Modern_Point_dist2(jobject*);
-static int32_t Modern_Point_x(jobject*);
-static int32_t Modern_Point_y(jobject*);
-static jstring* Modern_Point_toString(jobject*);
-static int32_t Modern_Point_hashCode(jobject*);
-static bool Modern_Point_equals(jobject*, jobject*);
-static void Modern_Point_finit(Modern_Point* self);
-static void Modern_Sq_init(Modern_Sq* self, int32_t side);
-static Modern_Sq* Modern_Sq_new(int32_t side);
-static int32_t Modern_Sq_side(jobject*);
-static jstring* Modern_Sq_toString(jobject*);
-static int32_t Modern_Sq_hashCode(jobject*);
-static bool Modern_Sq_equals(jobject*, jobject*);
-static void Modern_Sq_finit(Modern_Sq* self);
-static void Modern_Circ_init(Modern_Circ* self, int32_t r);
-static Modern_Circ* Modern_Circ_new(int32_t r);
-static int32_t Modern_Circ_r(jobject*);
-static jstring* Modern_Circ_toString(jobject*);
-static int32_t Modern_Circ_hashCode(jobject*);
-static bool Modern_Circ_equals(jobject*, jobject*);
-static void Modern_Circ_finit(Modern_Circ* self);
-static void Modern_Color_init(Modern_Color* self, jstring* name_in, int32_t ordinal_in);
-static Modern_Color* Modern_Color_new(jstring* name_in, int32_t ordinal_in);
-static void Modern_Color_finit(Modern_Color* self);
-static void Modern_Color_clinit(void);
-static jarray* Modern_Color_values(void);
-static inline int32_t Modern_Point_dist2_v(jobject* o) { return ((const struct Modern_Point_vt*)jrt_vt(o))->dist2(o); }
-static inline int32_t Modern_Point_x_v(jobject* o) { return ((const struct Modern_Point_vt*)jrt_vt(o))->x(o); }
-static inline int32_t Modern_Point_y_v(jobject* o) { return ((const struct Modern_Point_vt*)jrt_vt(o))->y(o); }
-static inline int32_t Modern_Sq_side_v(jobject* o) { return ((const struct Modern_Sq_vt*)jrt_vt(o))->side(o); }
-static inline int32_t Modern_Circ_r_v(jobject* o) { return ((const struct Modern_Circ_vt*)jrt_vt(o))->r(o); }
+Modern_Color* Modern_Color_RED;
+Modern_Color* Modern_Color_GREEN;
+Modern_Color* Modern_Color_BLUE;
+static jarray* Modern_Color_values_;
+static bool Modern_Color_inited_;
+
 struct Lambda1 {
 	jobject hdr_;
 };
@@ -210,17 +237,17 @@ static jobject* Lambda5_new(void) {
 	return (jobject*)o;
 }
 
-static void Modern_init(Modern* self) {
+void Modern_init(Modern* self) {
 	Modern_finit(self);
 }
 
-static Modern* Modern_new(void) {
+Modern* Modern_new(void) {
 	Modern* o = (Modern*)jrt_alloc(&Modern_class);
 	Modern_init(o);
 	return o;
 }
 
-static int32_t Modern_area(jobject* s) {
+int32_t Modern_area(jobject* s) {
 	Modern_Sq* q = NULL;
 	if (jrt_instanceof((jobject*)s, &Modern_Sq_class) && (jobject*)(q = (Modern_Sq*)jrt_cast((jobject*)s, &Modern_Sq_class)) != (jobject*)NULL) {
 		int32_t jrt_o1 = 0;
@@ -236,7 +263,7 @@ static int32_t Modern_area(jobject* s) {
 	return 0;
 }
 
-static jstring* Modern_name(Modern_Color* c) {
+jstring* Modern_name(Modern_Color* c) {
 	{
 		jstring* j2x_sw1 = NULL;
 		switch (jrt_Enum_ordinal_(c)) {
@@ -270,7 +297,7 @@ static jstring* Modern_name(Modern_Color* c) {
 	}
 }
 
-static int32_t Modern_sum(jobject* xs) {
+int32_t Modern_sum(jobject* xs) {
 	int32_t s = 0;
 	{
 		jobject* j2x_it3 = jrt_List_iterator_(xs);
@@ -282,11 +309,11 @@ static int32_t Modern_sum(jobject* xs) {
 	return s;
 }
 
-static int32_t Modern_squares(int32_t n) {
+int32_t Modern_squares(int32_t n) {
 	return jrt_IntStream_sum_(jrt_IntStream_map_O(jrt_IntStream_rangeClosed_II(1, jrt_Math_abs_I(n) % 50), Lambda1_new()));
 }
 
-static jstring* Modern_words(jstring* s) {
+jstring* Modern_words(jstring* s) {
 	{
 		jstring* j2x_sw4 = NULL;
 		{
@@ -310,7 +337,7 @@ static jstring* Modern_words(jstring* s) {
 	}
 }
 
-static void Modern_main(jarray* args) {
+void Modern_main(jarray* args) {
 	jobject* xs = jrt_ArrayList_new_();
 	{
 		int32_t i = 0;
@@ -351,42 +378,42 @@ static void Modern_main(jarray* args) {
 	jrt_PrintStream_println_O(jrt_System_out, m);
 }
 
-static void Modern_finit(Modern* self) {
+void Modern_finit(Modern* self) {
 }
 
-static void Modern_Point_init(Modern_Point* self, int32_t x, int32_t y) {
+void Modern_Point_init(Modern_Point* self, int32_t x, int32_t y) {
 	Modern_Point_finit(self);
 	self->x = x;
 	self->y = y;
 }
 
-static Modern_Point* Modern_Point_new(int32_t x, int32_t y) {
+Modern_Point* Modern_Point_new(int32_t x, int32_t y) {
 	Modern_Point* o = (Modern_Point*)jrt_alloc(&Modern_Point_class);
 	Modern_Point_init(o, x, y);
 	return o;
 }
 
-static int32_t Modern_Point_dist2(jobject* self_) {
+int32_t Modern_Point_dist2(jobject* self_) {
 	Modern_Point* self = (Modern_Point*)self_;
 	return self->x * self->x + self->y * self->y;
 }
 
-static int32_t Modern_Point_x(jobject* self_) {
+int32_t Modern_Point_x(jobject* self_) {
 	Modern_Point* self = (Modern_Point*)self_;
 	return self->x;
 }
 
-static int32_t Modern_Point_y(jobject* self_) {
+int32_t Modern_Point_y(jobject* self_) {
 	Modern_Point* self = (Modern_Point*)self_;
 	return self->y;
 }
 
-static jstring* Modern_Point_toString(jobject* self_) {
+jstring* Modern_Point_toString(jobject* self_) {
 	Modern_Point* self = (Modern_Point*)self_;
 	return jrt_concat(6, jrt_lit(&lit_10, u"Point[", 6), jrt_lit(&lit_11, u"x=", 2), jrt_str_I(self->x), jrt_lit(&lit_12, u", y=", 4), jrt_str_I(self->y), jrt_lit(&lit_13, u"]", 1));
 }
 
-static int32_t Modern_Point_hashCode(jobject* self_) {
+int32_t Modern_Point_hashCode(jobject* self_) {
 	Modern_Point* self = (Modern_Point*)self_;
 	int32_t h = 0;
 	h = 31 * h + jrt_Integer_hashCode_I(self->x);
@@ -394,7 +421,7 @@ static int32_t Modern_Point_hashCode(jobject* self_) {
 	return h;
 }
 
-static bool Modern_Point_equals(jobject* self_, jobject* o) {
+bool Modern_Point_equals(jobject* self_, jobject* o) {
 	Modern_Point* self = (Modern_Point*)self_;
 	if (!(jrt_instanceof((jobject*)o, &Modern_Point_class))) {
 		return false;
@@ -403,38 +430,38 @@ static bool Modern_Point_equals(jobject* self_, jobject* o) {
 	return self->x == ((Modern_Point*)jrt_nn(that))->x && self->y == ((Modern_Point*)jrt_nn(that))->y;
 }
 
-static void Modern_Point_finit(Modern_Point* self) {
+void Modern_Point_finit(Modern_Point* self) {
 }
 
-static void Modern_Sq_init(Modern_Sq* self, int32_t side) {
+void Modern_Sq_init(Modern_Sq* self, int32_t side) {
 	Modern_Sq_finit(self);
 	self->side = side;
 }
 
-static Modern_Sq* Modern_Sq_new(int32_t side) {
+Modern_Sq* Modern_Sq_new(int32_t side) {
 	Modern_Sq* o = (Modern_Sq*)jrt_alloc(&Modern_Sq_class);
 	Modern_Sq_init(o, side);
 	return o;
 }
 
-static int32_t Modern_Sq_side(jobject* self_) {
+int32_t Modern_Sq_side(jobject* self_) {
 	Modern_Sq* self = (Modern_Sq*)self_;
 	return self->side;
 }
 
-static jstring* Modern_Sq_toString(jobject* self_) {
+jstring* Modern_Sq_toString(jobject* self_) {
 	Modern_Sq* self = (Modern_Sq*)self_;
 	return jrt_concat(4, jrt_lit(&lit_14, u"Sq[", 3), jrt_lit(&lit_15, u"side=", 5), jrt_str_I(self->side), jrt_lit(&lit_13, u"]", 1));
 }
 
-static int32_t Modern_Sq_hashCode(jobject* self_) {
+int32_t Modern_Sq_hashCode(jobject* self_) {
 	Modern_Sq* self = (Modern_Sq*)self_;
 	int32_t h = 0;
 	h = 31 * h + jrt_Integer_hashCode_I(self->side);
 	return h;
 }
 
-static bool Modern_Sq_equals(jobject* self_, jobject* o) {
+bool Modern_Sq_equals(jobject* self_, jobject* o) {
 	Modern_Sq* self = (Modern_Sq*)self_;
 	if (!(jrt_instanceof((jobject*)o, &Modern_Sq_class))) {
 		return false;
@@ -443,38 +470,38 @@ static bool Modern_Sq_equals(jobject* self_, jobject* o) {
 	return self->side == ((Modern_Sq*)jrt_nn(that))->side;
 }
 
-static void Modern_Sq_finit(Modern_Sq* self) {
+void Modern_Sq_finit(Modern_Sq* self) {
 }
 
-static void Modern_Circ_init(Modern_Circ* self, int32_t r) {
+void Modern_Circ_init(Modern_Circ* self, int32_t r) {
 	Modern_Circ_finit(self);
 	self->r = r;
 }
 
-static Modern_Circ* Modern_Circ_new(int32_t r) {
+Modern_Circ* Modern_Circ_new(int32_t r) {
 	Modern_Circ* o = (Modern_Circ*)jrt_alloc(&Modern_Circ_class);
 	Modern_Circ_init(o, r);
 	return o;
 }
 
-static int32_t Modern_Circ_r(jobject* self_) {
+int32_t Modern_Circ_r(jobject* self_) {
 	Modern_Circ* self = (Modern_Circ*)self_;
 	return self->r;
 }
 
-static jstring* Modern_Circ_toString(jobject* self_) {
+jstring* Modern_Circ_toString(jobject* self_) {
 	Modern_Circ* self = (Modern_Circ*)self_;
 	return jrt_concat(4, jrt_lit(&lit_16, u"Circ[", 5), jrt_lit(&lit_17, u"r=", 2), jrt_str_I(self->r), jrt_lit(&lit_13, u"]", 1));
 }
 
-static int32_t Modern_Circ_hashCode(jobject* self_) {
+int32_t Modern_Circ_hashCode(jobject* self_) {
 	Modern_Circ* self = (Modern_Circ*)self_;
 	int32_t h = 0;
 	h = 31 * h + jrt_Integer_hashCode_I(self->r);
 	return h;
 }
 
-static bool Modern_Circ_equals(jobject* self_, jobject* o) {
+bool Modern_Circ_equals(jobject* self_, jobject* o) {
 	Modern_Circ* self = (Modern_Circ*)self_;
 	if (!(jrt_instanceof((jobject*)o, &Modern_Circ_class))) {
 		return false;
@@ -483,26 +510,26 @@ static bool Modern_Circ_equals(jobject* self_, jobject* o) {
 	return self->r == ((Modern_Circ*)jrt_nn(that))->r;
 }
 
-static void Modern_Circ_finit(Modern_Circ* self) {
+void Modern_Circ_finit(Modern_Circ* self) {
 }
 
-static void Modern_Color_init(Modern_Color* self, jstring* name_in, int32_t ordinal_in) {
+void Modern_Color_init(Modern_Color* self, jstring* name_in, int32_t ordinal_in) {
 	((jrt_Enum*)self)->name = name_in;
 	((jrt_Enum*)self)->ordinal = ordinal_in;
 	Modern_Color_finit(self);
 }
 
-static Modern_Color* Modern_Color_new(jstring* name_in, int32_t ordinal_in) {
+Modern_Color* Modern_Color_new(jstring* name_in, int32_t ordinal_in) {
 	Modern_Color_clinit();
 	Modern_Color* o = (Modern_Color*)jrt_alloc(&Modern_Color_class);
 	Modern_Color_init(o, name_in, ordinal_in);
 	return o;
 }
 
-static void Modern_Color_finit(Modern_Color* self) {
+void Modern_Color_finit(Modern_Color* self) {
 }
 
-static void Modern_Color_clinit(void) {
+void Modern_Color_clinit(void) {
 	if (Modern_Color_inited_) return;
 	Modern_Color_inited_ = true;
 	Modern_Color_RED = Modern_Color_new(jrt_lit(&lit_18, u"RED", 3), 0);
@@ -514,7 +541,7 @@ static void Modern_Color_clinit(void) {
 	JA(jobject*, Modern_Color_values_, 2) = (jobject*)Modern_Color_BLUE;
 }
 
-static jarray* Modern_Color_values(void) {
+jarray* Modern_Color_values(void) {
 	Modern_Color_clinit();
 	return jrt_array_clone(Modern_Color_values_);
 }
@@ -540,6 +567,10 @@ const jclass Modern_Circ_class = {"Modern$Circ", &jrt_Object_class, sizeof(Moder
 static const struct Modern_Color_vt Modern_Color_vt_ = {{jrt_Enum_toString, jrt_Object_equals, jrt_Object_hashCode}};
 const jclass Modern_Color_class = {"Modern$Color", &jrt_Enum_class, sizeof(Modern_Color), &Modern_Color_vt_, 0, 0, 0};
 
+// ==== jmain.c ====
+/* jmain.c -- the program's entry point: JRT_MAIN names the class whose main runs, else the program's own. */
+#include "jprogram.h"
+#include "Modern.h"
 
 int main(int argc, char** argv) {
 	const char* which = getenv("JRT_MAIN");
