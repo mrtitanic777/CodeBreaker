@@ -1730,7 +1730,17 @@ void rd_board_compare(RdDraw& d, const BoardLayout& b, const Model& m) {
         if (FAILED(d.rt->CreateSolidColorBrush(rd_token_color(pal, kinds[k]), owned[k].put()))) return;
         brushes[static_cast<int>(kinds[k])] = owned[k].get();
     }
-    const auto side = [&](const Rect& head, const Rect& area, const wchar_t* title, const std::vector<std::string>& lines, const std::vector<std::vector<preview::Span>>& spans, const std::string& note, int which) {
+    float advance = kCodeCharWidth;   // (the font's own, for the marks behind differing bytes)
+    if (IDWriteTextFormat* f = d.painter_format(3, kCodeFontSize, DWRITE_FONT_WEIGHT_NORMAL, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR, false)) {
+        ComPtr<IDWriteTextLayout> probe;
+        if (SUCCEEDED(d.painter.dwrite()->CreateTextLayout(L"MMMMMMMMMM", 10, f, 1000.0f, 30.0f, probe.put()))) {
+            DWRITE_TEXT_METRICS tm{};
+            probe->GetMetrics(&tm);
+            if (tm.width > 0) advance = tm.width / 10.0f;
+        }
+    }
+    const auto side = [&](const Rect& head, const Rect& area, const wchar_t* title, const std::vector<std::string>& lines, const std::vector<std::vector<preview::Span>>& spans, const std::string& note, int which,
+                          const std::vector<std::vector<std::uint8_t>>* differ = nullptr) {
         d.text(title, Rect{head.x + 2, head.y, head.w * 0.5f, head.h}, 0, 12, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text2);
         if (!lines.empty()) d.text(widen(board::count_words(lines.size()) + " lines"), Rect{head.x + head.w * 0.5f, head.y, head.w * 0.5f - 2, head.h}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text3, DWRITE_TEXT_ALIGNMENT_TRAILING);
         d.fill(area, 4, pal.dark ? rd_color(0x1F1F1F) : rd_color(0xF6F6F6));
@@ -1743,16 +1753,35 @@ void rd_board_compare(RdDraw& d, const BoardLayout& b, const Model& m) {
         const float top = area.y + 4 - (scroll - static_cast<float>(first) * kCodeLineHeight);
         d.rt->PushAxisAlignedClip(rd_rect(area), D2D1_ANTIALIAS_MODE_ALIASED);
         static const std::vector<preview::Span> none;
-        for (std::size_t i = first, k = 0; i < lines.size() && top + static_cast<float>(k) * kCodeLineHeight < area.bottom(); ++i, ++k)
-            rd_code_line(d, lines[i], i < spans.size() ? spans[i] : none, area.x + 8, top + static_cast<float>(k) * kCodeLineHeight, brushes);
+        for (std::size_t i = first, k = 0; i < lines.size() && top + static_cast<float>(k) * kCodeLineHeight < area.bottom(); ++i, ++k) {
+            const float y = top + static_cast<float>(k) * kCodeLineHeight;
+            if (differ != nullptr && i < differ->size())
+                for (const std::uint8_t column : (*differ)[i])
+                    d.fill(Rect{area.x + 8 + (6.0f + 3.0f * static_cast<float>(column)) * advance - 1, y + 2, 2 * advance + 2, kCodeLineHeight - 3}, 2, rd_alpha(pal.error, pal.dark ? 0.45f : 0.28f));
+            rd_code_line(d, lines[i], i < spans.size() ? spans[i] : none, area.x + 8, y, brushes);
+        }
         d.rt->PopAxisAlignedClip();
         rd_scrollbar(d, area, static_cast<float>(lines.size()) * kCodeLineHeight + 8, scroll);
     };
-    side(p.source_head, p.source, L"Generated C", c.source, c.source_spans, c.source_note, 0);
-    side(p.assembly_head, p.assembly, L"Original assembly", c.assembly, c.assembly_spans, c.assembly_note, 1);
-    std::string footer = "For reading side by side: the recompiled bytes are not kept, and lines do not pair up one to one.";
-    if (!c.source.empty() && !c.source_note.empty()) footer = "C: " + c.source_note + "  " + footer;
-    if (!c.assembly.empty() && !c.assembly_note.empty()) footer = "Assembly: " + c.assembly_note + "  " + footer;
+    const bool show_bytes = m.board_compare_bytes && c.bytes.has_value();
+    const bool bytes_hot = c.bytes && m.hot == Control::BoardCompareBytes;
+    d.fill(p.bytes, 12, show_bytes ? rd_alpha(pal.accent, 0.34f) : bytes_hot ? pal.subtle : D2D1::ColorF(0, 0, 0, 0));
+    d.stroke(p.bytes, 12, show_bytes ? pal.accent : pal.stroke2);
+    d.text(L"Bytes", p.bytes, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, !c.bytes ? pal.text3 : show_bytes ? pal.text : pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+    std::string footer;
+    if (show_bytes) {
+        side(p.source_head, p.source, L"Recompiled bytes", c.bytes->built.lines, c.bytes->built.spans, {}, 0, &c.bytes->built.differ);
+        side(p.assembly_head, p.assembly, L"Original bytes", c.bytes->original.lines, c.bytes->original.spans, {}, 1, &c.bytes->original.differ);
+        footer = "Measured: " + board::count_words(c.bytes->differing) + " of " + board::count_words(c.bytes->compared) + " compared bytes differ. Marked: different. Green: filled in by the linker or loader, so not compared.";
+        if (!c.bytes->same_length) footer += " The lengths differ: the start and end are lined up.";
+    } else {
+        side(p.source_head, p.source, L"Generated C", c.source, c.source_spans, c.source_note, 0);
+        side(p.assembly_head, p.assembly, L"Original assembly", c.assembly, c.assembly_spans, c.assembly_note, 1);
+        footer = c.bytes ? "For reading side by side: lines do not pair up one to one. Bytes shows the measured difference."
+                         : "For reading side by side: lines do not pair up one to one. This function's recompiled bytes were not recorded.";
+        if (!c.source.empty() && !c.source_note.empty()) footer = "C: " + c.source_note + "  " + footer;
+        if (!c.assembly.empty() && !c.assembly_note.empty()) footer = "Assembly: " + c.assembly_note + "  " + footer;
+    }
     d.text(widen(footer), p.footer, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
 }
 

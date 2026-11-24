@@ -118,6 +118,47 @@ CB_TEST("app.board_c_compare.the_original_is_read_from_its_own_bytes", [] {
     CB_CHECK(!c_original_code({}, "LE", "f", R"({"f": {"verdict": "different"}})").has_value());
 });
 
+CB_TEST("app.board_c_compare.a_byte_diff_marks_what_differs_and_not_what_the_linker_fills", [] {
+    const std::uint8_t built[] = {0x8B, 0xC3, 0xE8, 1, 2, 3, 4, 0xC3}, original[] = {0x8B, 0xC1, 0xE8, 9, 9, 9, 9, 0xC3};
+    const std::uint8_t mask[] = {0, 0, 0, 1, 1, 1, 1, 0};
+    const CByteDiff same = c_byte_diff(built, mask, original, mask);
+    CB_CHECK(same.same_length);
+    CB_CHECK_EQ(same.compared, std::uint64_t{4});
+    CB_CHECK_EQ(same.differing, std::uint64_t{1});
+    CB_CHECK_EQ(same.built.lines[0], "0000  8B C3 E8 01 02 03 04 C3");
+    CB_CHECK(same.built.differ[0] == (std::vector<std::uint8_t>{1}));
+    CB_CHECK(same.original.differ[0] == (std::vector<std::uint8_t>{1}));
+    CB_CHECK_EQ(same.built.spans[0].size(), std::size_t{4});   // the linker's bytes are dim
+    CB_CHECK_EQ(same.built.spans[0][0].start, std::uint32_t{6 + 3 * 3});
+
+    const std::uint8_t longer[] = {0x55, 0x90, 0x90, 0xC3}, shorter[] = {0x55, 0xC3};
+    const std::uint8_t none4[4] = {}, none2[2] = {};
+    const CByteDiff lengths = c_byte_diff(longer, none4, shorter, none2);
+    CB_CHECK(!lengths.same_length);
+    CB_CHECK(lengths.built.differ[0] == (std::vector<std::uint8_t>{1, 2}));   // the start and the end line up, the middle is extra
+    CB_CHECK(lengths.original.differ[0].empty());
+    CB_CHECK_EQ(lengths.differing, std::uint64_t{2});
+    CB_CHECK_EQ(lengths.compared, std::uint64_t{4});
+
+    const std::uint8_t many[33] = {};
+    const std::uint8_t many_mask[33] = {};
+    CB_CHECK_EQ(c_byte_diff(many, many_mask, many, many_mask).built.lines.size(), std::size_t{3});
+});
+
+CB_TEST("app.board_c_compare.a_bytes_file_is_read_and_bad_entries_are_no_diff", [] {
+    constexpr std::string_view kBytes = R"({"f": {"built": "8bc3", "built_mask": "0000", "original": "8bc1", "original_mask": "0000"},
+        "short": {"built": "8bc3", "built_mask": "00", "original": "8bc1", "original_mask": "0000"},
+        "odd": {"built": "8bc", "built_mask": "0000", "original": "8bc1", "original_mask": "0000"}})";
+    const std::optional<CByteDiff> f = parse_c_byte_diff(kBytes, "f");
+    CB_CHECK(f.has_value());
+    CB_CHECK_EQ(f->differing, std::uint64_t{1});
+    CB_CHECK(!parse_c_byte_diff(kBytes, "short").has_value());
+    CB_CHECK(!parse_c_byte_diff(kBytes, "odd").has_value());
+    CB_CHECK(!parse_c_byte_diff(kBytes, "absent").has_value());
+    CB_CHECK(!parse_c_byte_diff("{\"half", "f").has_value());
+    CB_CHECK_EQ(c_bytes_file_name("abc"), "ba7816bf8f01cfea.bytes.json");
+});
+
 struct CCompareFixture {
     Board board;
     Index index;

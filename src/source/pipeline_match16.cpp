@@ -30,6 +30,7 @@
 #include "symbols/wine16.hpp"
 #include "symbols/workbench.hpp"
 #include "verify/lanes/win16.hpp"
+#include "source/match_bytes.hpp"
 #include "verify/verdicts.hpp"
 
 namespace cb::source::pipeline {
@@ -425,6 +426,18 @@ int match16_command(World& world, const stdfs::path& module, const cli::Args& ar
                            {"flags", used == run.result.setting.end() ? std::string() : used->second.compiler + " " + used->second.switches}};
         }
         fs::write_text(fs::from_text(*json_file), json::dump(j, json::Style::Pretty));
+    }
+    if (const auto bytes_file = args.value("bytes")) {
+        std::map<std::string, MatchBytes> kept;
+        for (const am16::Function& f : run.functions) {
+            const auto verdict = run.result.verdicts.find(f.name);
+            const auto code = run.result.code.find(f.name);
+            if (verdict == run.result.verdicts.end() || code == run.result.code.end() || !code->second) continue;
+            if (verdict->second.match != verify::ByteMatch::SameSize && verdict->second.match != verify::ByteMatch::Different) continue;
+            const am16::Masked built = m16p_trim(*code->second);
+            kept.emplace(f.name, MatchBytes{built.code, built.mask, f.original.code, f.original.mask});
+        }
+        fs::write_text(fs::from_text(*bytes_file), match_bytes_json(kept));
     }
     return 0;
 }

@@ -188,6 +188,7 @@ PageHit hit_test_board(const BoardLayout& b, const Model& m, float x, float y) {
             if (panel.prev.contains(x, y)) return {Control::BoardComparePrev, -1};
             if (panel.next.contains(x, y)) return {Control::BoardCompareNext, -1};
         }
+        if (panel.bytes.contains(x, y)) return {Control::BoardCompareBytes, -1};
         if (panel.outline.contains(x, y)) return {};
     }
     if (m.board_view == 0 && m.board_leaders_open) {   // the list of closest functions is over the columns and the drawer
@@ -397,6 +398,12 @@ void board_close_compare(Model& m) {
     m.board_compare_at = -1;
 }
 
+void board_toggle_compare_bytes(Model& m) {
+    if (!m.board_compare || !m.board_compare->bytes) return;
+    m.board_compare_bytes = !m.board_compare_bytes;
+    m.board_compare_scroll = {};
+}
+
 void board_compare_step(Model& m, int delta) {
     if (!m.board || !m.board_index || m.board_compare_list.empty()) return;
     const int at = std::clamp(m.board_compare_at + delta, 0, static_cast<int>(m.board_compare_list.size()) - 1);
@@ -500,7 +507,8 @@ BoardCompareLayout layout_board_compare(const BoardLayout& b) {
     p.next = {p.close.x - 4 - 28, p.outline.y + 4, 28, 26};
     p.prev = {p.next.x - 2 - 28, p.outline.y + 4, 28, 26};
     p.position = {p.prev.x - 6 - 84, p.outline.y + 4, 84, 26};
-    p.title = {p.outline.x + kInset, p.outline.y + 4, std::max(0.0f, p.position.x - 6 - p.outline.x - kInset), kTitleH - 4};
+    p.bytes = {p.position.x - 6 - 62, p.outline.y + 5, 62, 24};
+    p.title = {p.outline.x + kInset, p.outline.y + 4, std::max(0.0f, p.bytes.x - 6 - p.outline.x - kInset), kTitleH - 4};
     p.footer = {p.outline.x + kInset, p.outline.bottom() - kFooterH, std::max(0.0f, p.outline.w - 2 * kInset), kFooterH - 4};
     const float width = std::max(0.0f, (p.outline.w - 2 * kInset - kGap) / 2);
     const float head_y = p.outline.y + kTitleH + 2, code_y = head_y + kHeadH;
@@ -514,7 +522,9 @@ BoardCompareLayout layout_board_compare(const BoardLayout& b) {
 
 float board_compare_max_scroll(const BoardCompareLayout& panel, const Model& m, int side) {
     if (!m.board_compare) return 0;
-    const std::size_t lines = side == 0 ? m.board_compare->source.size() : m.board_compare->assembly.size();
+    const bool bytes = m.board_compare_bytes && m.board_compare->bytes;
+    const std::size_t lines = bytes ? (side == 0 ? m.board_compare->bytes->built.lines.size() : m.board_compare->bytes->original.lines.size())
+                                    : (side == 0 ? m.board_compare->source.size() : m.board_compare->assembly.size());
     return std::max(0.0f, static_cast<float>(lines) * kCodeLineHeight + 8 - (side == 0 ? panel.source.h : panel.assembly.h));
 }
 

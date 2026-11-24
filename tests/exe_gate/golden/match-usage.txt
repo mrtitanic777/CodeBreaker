@@ -13,6 +13,7 @@ options:
       --flags SWITCHES  the compiler's switches (default: /O2 /Gz)
       --try             go through several sets of switches and report the best for each function
       --json FILE       write each function's result there
+      --bytes FILE      write each near miss's compiled and original bytes there
       --compiler NAME   a 16-bit module: the only compiler to try (msc6 or msvc152)
       --first N         a 16-bit module: only its first N functions
       --choose          a 16-bit module: find the switches again though an earlier run remembered them

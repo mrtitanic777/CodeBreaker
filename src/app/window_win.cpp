@@ -1921,6 +1921,10 @@ void WwApp::activate_page(Control c, int index) {
             board_close_compare(model_);
             invalidate();
             break;
+        case Control::BoardCompareBytes:
+            board_toggle_compare_bytes(model_);
+            invalidate();
+            break;
         case Control::BoardComparePrev:
             board_compare_step(model_, -1);
             invalidate();
@@ -3727,11 +3731,15 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
         board_load_decks(m);
         board_rebuild_stacks(m);
         if (state == "board-orphans") board_toggle_orphans(m);
-        if ((state == "board-leaders" || state == "board-leaders-compare" || state == "board-leaders-search") && m.board_scores) {   // (read here: a screenshot has no message loop)
+        if ((state == "board-leaders" || state == "board-leaders-compare" || state == "board-leaders-bytes" || state == "board-leaders-search") && m.board_scores) {   // (read here: a screenshot has no message loop)
             const std::atomic<bool> go{false};
             if (std::optional<board::CLeaders> read = board::build_c_leaders(m.board->root, *m.board_scores, go)) m.board_leaders = std::make_shared<const board::CLeaders>(std::move(*read));
             m.board_leaders_open = true;
             if (state == "board-leaders-compare") board_open_leader(m, 0);
+            if (state == "board-leaders-bytes") {
+                board_open_leader(m, 0);
+                board_toggle_compare_bytes(m);
+            }
             if (state == "board-leaders-search") {   // --board-focus: the words
                 m.board_leaders_query = board_focus_name.empty() ? "lzread" : board_focus_name;
                 board_search_leaders(m);
@@ -4446,7 +4454,7 @@ int run(std::span<const std::string> args, bool no_command_given) {
         } else if (!a.starts_with("--") && open_file.empty()) {
             open_file = a;
         } else {
-            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout|functions|check|compare|palette|board|board-expanded|board-flow|board-trace|board-library|board-library-hover|board-library-function|board-filter|board-inspect|board-hover|board-orphans|board-leaders|board-leaders-compare|board-leaders-search|board-compare|board-c-identical|board-c-near|board-c-nocompile|board-c-unscored|board-deck|board-empty|board-scanning] [--board FOLDER] [--theme light|dark] [--size WxH] [--scale N]] [--board IMAGE] [--board-scan IMAGE [--board-out FOLDER]] [--board-trace TRACE --board-trace-disk IMAGE --board-out FOLDER]\n");
+            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout|functions|check|compare|palette|board|board-expanded|board-flow|board-trace|board-library|board-library-hover|board-library-function|board-filter|board-inspect|board-hover|board-orphans|board-leaders|board-leaders-compare|board-leaders-bytes|board-leaders-search|board-compare|board-c-identical|board-c-near|board-c-nocompile|board-c-unscored|board-deck|board-empty|board-scanning] [--board FOLDER] [--theme light|dark] [--size WxH] [--scale N]] [--board IMAGE] [--board-scan IMAGE [--board-out FOLDER]] [--board-trace TRACE --board-trace-disk IMAGE --board-out FOLDER]\n");
             return 2;
         }
     }

@@ -106,7 +106,7 @@ enum class Control {
     // a filter by C result (index: board::CView)
     BoardCView,
     // the function compare panel
-    BoardCompareClose, BoardComparePrev, BoardCompareNext,
+    BoardCompareClose, BoardComparePrev, BoardCompareNext, BoardCompareBytes,
     // the whole OS's closest functions: the button, the list's close, a row (its rank)
     BoardLeaders, BoardLeadersClose, BoardLeaderRow, BoardLeadersSearch, BoardLeadersExport
 };
@@ -322,6 +322,7 @@ struct Model {
     std::array<float, 2> board_compare_scroll{};                // its C and its assembly, DIPs
     std::vector<board::CCompareItem> board_compare_list;        // what previous and next go through
     int board_compare_at = -1;
+    bool board_compare_bytes = false;                           // the panel shows the two sides' bytes rather than C and assembly
     std::shared_ptr<const board::CLeaders> board_leaders;       // the whole OS's closest functions, as last read
     bool board_leaders_open = false, board_leaders_busy = false;
     float board_leaders_scroll = 0;

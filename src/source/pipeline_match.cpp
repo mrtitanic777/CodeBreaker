@@ -37,6 +37,7 @@
 #include "source/pipeline_match16.hpp"
 #include "source/pipeline_period.hpp"
 #include "source/pipeline_ppc.hpp"
+#include "source/match_bytes.hpp"
 #include "source/pipeline_world.hpp"
 #include "symbols/libraries/coff.hpp"
 #include "verify/lanes/win32.hpp"
@@ -165,6 +166,7 @@ struct MatchVerdict {
     double share = 0.0;      // of the bytes outside the masked places, the share that are the original's
     std::size_t size = 0;    // the compiled function's, padding aside
     std::size_t original = 0;
+    std::optional<MatchBytes> bytes;   // kept when asked for: a miss's two sides
 };
 
 // identical / same size / different, and the share of bytes equal outside the masked places.
@@ -189,7 +191,7 @@ MatchVerdict match_compare(MatchCode built, const MatchCode& original) {
 }
 
 // Every function of the module compiled with CL.EXE under `flags` and compared: {function: verdict}, in the module's order.
-std::vector<std::pair<std::string, MatchVerdict>> match_run(World& world, const stdfs::path& module, const stdfs::path& cl, const std::string& flags, const stdfs::path& work) {
+std::vector<std::pair<std::string, MatchVerdict>> match_run(World& world, const stdfs::path& module, const stdfs::path& cl, const std::string& flags, const stdfs::path& work, bool keep_bytes) {
     const std::shared_ptr<const verify::lanes::Kind> lane = world.kit().win32_lane();
     if (!lane) throw UsageError("the 32-bit lane is not set up here (OpenWatcom and the native decompiler)");
     const std::unique_ptr<verify::lanes::Prepared> prepared = lane->prepare(module, work / "source");
@@ -249,6 +251,10 @@ std::vector<std::pair<std::string, MatchVerdict>> match_run(World& world, const 
             v.original = original == originals.end() ? 0 : original->second.bytes.size();
         } else if (const std::optional<MatchCode> mine = match_object_function(*objects[i], names[i])) {
             v = match_compare(*mine, original->second);
+            if (keep_bytes && (v.match == verify::ByteMatch::SameSize || v.match == verify::ByteMatch::Different)) {
+                MatchCode trimmed = match_trimmed(*mine);
+                v.bytes = MatchBytes{std::move(trimmed.bytes), std::move(trimmed.mask), original->second.bytes, original->second.mask};
+            }
         } else {
             v.match = verify::ByteMatch::NoCompile;
             v.original = original->second.bytes.size();
@@ -284,20 +290,21 @@ int match_command(World& world, const cli::Args& args) {
         std::size_t size = 0, original = 0;
         std::string flags;
         std::size_t rank = 0;
+        std::optional<MatchBytes> bytes;
     };
     std::vector<std::string> order;   // the functions, in the module's order
     std::map<std::string, Best> best;
     const auto rank_of = [](verify::ByteMatch m) { return static_cast<std::size_t>(std::find(verify::kByteMatches.begin(), verify::kByteMatches.end(), m) - verify::kByteMatches.begin()); };
     for (const std::string& set : sets) {
-        const auto results = match_run(world, *path, cl, set, work);
+        auto results = match_run(world, *path, cl, set, work, args.value("bytes").has_value());
         std::size_t identical = 0;
-        for (const auto& [name, v] : results) {
+        for (auto& [name, v] : results) {
             if (v.match == verify::ByteMatch::Identical) ++identical;
             const std::size_t rank = rank_of(v.match);
             const auto have = best.find(name);
             if (have == best.end()) order.push_back(name);
             if (have == best.end() || rank < have->second.rank || (rank == have->second.rank && v.share > have->second.share))
-                best[name] = Best{v.match, v.share, v.size, v.original, set, rank};
+                best[name] = Best{v.match, v.share, v.size, v.original, set, rank, std::move(v.bytes)};
         }
         if (sets.size() > 1) cb::out("  {:<16} {} identical\n", set, identical);
     }
@@ -324,6 +331,12 @@ int match_command(World& world, const cli::Args& args) {
             j[name] = Json{{"verdict", std::string(verify::word(b.match))}, {"share", b.share}, {"size", b.size}, {"original", b.original}, {"flags", b.flags}};
         }
         fs::write_text(fs::from_text(*json_file), json::dump(j, json::Style::Pretty));
+    }
+    if (const auto bytes_file = args.value("bytes")) {
+        std::map<std::string, MatchBytes> kept;
+        for (auto& [name, b] : best)
+            if (b.bytes) kept.emplace(name, std::move(*b.bytes));
+        fs::write_text(fs::from_text(*bytes_file), match_bytes_json(kept));
     }
     return 0;
 }
@@ -626,6 +639,7 @@ cli::Command match(const Environment& environment) {
                            cli::Option{"--flags", "", "the compiler's switches (default: /O2 /Gz)", cli::Arg::Value, "SWITCHES"},
                            cli::Option{"--try", "", "go through several sets of switches and report the best for each function", cli::Arg::Flag},
                            cli::Option{"--json", "", "write each function's result there", cli::Arg::Value, "FILE"},
+                           cli::Option{"--bytes", "", "write each near miss's compiled and original bytes there", cli::Arg::Value, "FILE"},
                            cli::Option{"--compiler", "", "a 16-bit module: the only compiler to try (msc6 or msvc152)", cli::Arg::Value, "NAME"},
                            cli::Option{"--first", "", "a 16-bit module: only its first N functions", cli::Arg::Value, "N"},
                            cli::Option{"--choose", "", "a 16-bit module: find the switches again though an earlier run remembered them", cli::Arg::Flag},

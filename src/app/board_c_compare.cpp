@@ -11,6 +11,7 @@
 
 #include "app/board_c_functions.hpp"
 #include "core/capstone_api.hpp"
+#include "core/crypto.hpp"
 #include "core/fs.hpp"
 #include "core/json.hpp"
 #include "core/text.hpp"
@@ -247,6 +248,89 @@ CCodeSlice c_function_assembly(std::string_view asm_text, std::string_view label
     return out;
 }
 
+namespace {
+
+// `bytes` as the lines of one side; `differs[i]`: byte i is a difference.
+CByteSide c_byte_side(ByteView bytes, ByteView mask, const std::vector<char>& differs) {
+    constexpr std::size_t kPerLine = 16, kHexAt = 6;
+    CByteSide side;
+    for (std::size_t at = 0; at < bytes.size(); at += kPerLine) {
+        std::string line = std::format("{:04X}  ", at);
+        std::vector<preview::Span> spans;
+        std::vector<std::uint8_t> columns;
+        for (std::size_t c = 0; c < kPerLine && at + c < bytes.size(); ++c) {
+            line += std::format("{:02X} ", bytes[at + c]);
+            if (at + c < mask.size() && mask[at + c] != 0) spans.push_back({static_cast<std::uint32_t>(kHexAt + c * 3), 2, preview::Tok::Comment});
+            if (differs[at + c]) columns.push_back(static_cast<std::uint8_t>(c));
+        }
+        line.pop_back();
+        side.lines.push_back(std::move(line));
+        side.spans.push_back(std::move(spans));
+        side.differ.push_back(std::move(columns));
+    }
+    return side;
+}
+
+}  // namespace
+
+CByteDiff c_byte_diff(ByteView built, ByteView built_mask, ByteView original, ByteView original_mask) {
+    CByteDiff out;
+    out.same_length = built.size() == original.size();
+    const auto masked = [](ByteView mask, std::size_t i) { return i < mask.size() && mask[i] != 0; };
+    const auto equal = [&](std::size_t b, std::size_t o) { return masked(built_mask, b) || masked(original_mask, o) || built[b] == original[o]; };
+    std::vector<char> built_differs(built.size(), 0), original_differs(original.size(), 0);
+    if (out.same_length) {
+        for (std::size_t i = 0; i < built.size(); ++i) {
+            if (masked(built_mask, i) || masked(original_mask, i)) continue;
+            ++out.compared;
+            if (built[i] != original[i]) {
+                built_differs[i] = original_differs[i] = 1;
+                ++out.differing;
+            }
+        }
+    } else {
+        const std::size_t shorter = std::min(built.size(), original.size());
+        std::size_t start = 0, end = 0;
+        while (start < shorter && equal(start, start)) ++start;
+        while (end < shorter - start && equal(built.size() - 1 - end, original.size() - 1 - end)) ++end;
+        for (std::size_t i = start; i + end < built.size(); ++i) built_differs[i] = masked(built_mask, i) ? 0 : 1;
+        for (std::size_t i = start; i + end < original.size(); ++i) original_differs[i] = masked(original_mask, i) ? 0 : 1;
+        const auto count = [](const std::vector<char>& v) { return static_cast<std::uint64_t>(std::count(v.begin(), v.end(), char{1})); };
+        out.differing = std::max(count(built_differs), count(original_differs));
+        std::uint64_t free_built = 0, free_original = 0;
+        for (std::size_t i = 0; i < built.size(); ++i) free_built += masked(built_mask, i) ? 0 : 1;
+        for (std::size_t i = 0; i < original.size(); ++i) free_original += masked(original_mask, i) ? 0 : 1;
+        out.compared = std::max(free_built, free_original);
+    }
+    out.built = c_byte_side(built, built_mask, built_differs);
+    out.original = c_byte_side(original, original_mask, original_differs);
+    return out;
+}
+
+std::optional<CByteDiff> parse_c_byte_diff(std::string_view text, std::string_view function) {
+    Json all;
+    if (!json::try_parse(text, all) || !all.is_object()) return std::nullopt;
+    const auto entry = all.find(std::string(function));
+    if (entry == all.end() || !entry->is_object()) return std::nullopt;
+    const auto field = [&](const char* key) -> std::optional<Bytes> {
+        const auto it = entry->find(key);
+        if (it == entry->end() || !it->is_string()) return std::nullopt;
+        try {
+            return crypto::from_hex(it->get<std::string>());
+        } catch (const std::exception&) {
+            return std::nullopt;
+        }
+    };
+    const auto built = field("built"), built_mask = field("built_mask"), original = field("original"), original_mask = field("original_mask");
+    if (!built || !built_mask || !original || !original_mask || built_mask->size() != built->size() || original_mask->size() != original->size()) return std::nullopt;
+    return c_byte_diff(*built, *built_mask, *original, *original_mask);
+}
+
+std::string c_bytes_file_name(std::string_view rel) {
+    std::string name = c_functions_file_name(rel);
+    return name.substr(0, name.size() - 5) + ".bytes.json";
+}
+
 CCodeSlice c_disassemble(ByteView code, std::uint64_t address, int bits) {
     const auto& cs = disasm::capstone::api();
     csh handle = 0;
@@ -350,6 +434,12 @@ CFunctionCompare load_c_compare(const Board& board, const Index& index, std::uin
     } else {
         out.assembly_note = "The listing labels code by address, and this function is known only by name.";
     }
+    try {
+        const std::string rel = scored.empty() ? converted->rel : scored;
+        const std::filesystem::path bytes_file = board.root / "c_scores" / c_bytes_file_name(rel);
+        std::error_code ec;
+        if (std::filesystem::is_regular_file(bytes_file, ec)) out.bytes = parse_c_byte_diff(fs::read_text(bytes_file), function);
+    } catch (const std::exception&) {}   // (the scorer has it open: the panel says the bytes are not there)
     out.source = std::move(source.lines);
     out.source_spans = preview::highlight(preview::lang_for(".c"), out.source);
     out.assembly_spans = preview::highlight(preview::lang_for(".asm"), out.assembly);

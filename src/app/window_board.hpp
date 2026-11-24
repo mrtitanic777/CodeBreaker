@@ -114,6 +114,8 @@ void board_open_compare(Model& model, int row);
 void board_close_compare(Model& model);
 // To the function `delta` stops along the list it was opened from (the ends stay).
 void board_compare_step(Model& model, int delta);
+// Between the code and the bytes; only where this function's bytes were kept.
+void board_toggle_compare_bytes(Model& model);
 // The whole OS's closest functions. Toggling open says whether they need reading (never read, or the scores have moved on).
 bool board_toggle_leaders(Model& model);
 void board_close_leaders(Model& model);
@@ -132,7 +134,7 @@ struct BoardLeadersLayout {
 };
 BoardLeadersLayout layout_board_leaders(const BoardLayout& layout, const Model& model);
 struct BoardCompareLayout {
-    Rect outline, title, close, prev, next, position, source_head, assembly_head, source, assembly, footer;
+    Rect outline, title, close, prev, next, position, bytes, source_head, assembly_head, source, assembly, footer;
 };
 BoardCompareLayout layout_board_compare(const BoardLayout& layout);
 // The most a side scrolls. `side`: 0 the C, 1 the assembly.

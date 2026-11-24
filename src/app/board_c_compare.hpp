@@ -47,6 +47,24 @@ std::uint64_t c_function_end(const std::vector<std::uint64_t>& starts, std::uint
 // The original's code of `function`, from the program's bytes and its results file (the text of c_scores/<hash>.json). nullopt when it cannot be placed.
 std::optional<CCodeSlice> c_original_code(ByteView file, std::string_view format, std::string_view function, std::string_view results);
 
+// One side of a byte diff, sixteen bytes a line: "0010  8B 44 24 ...". Linker-filled bytes are dim (their spans); `differ` lists each line's differing byte columns.
+struct CByteSide {
+    std::vector<std::string> lines;
+    std::vector<std::vector<preview::Span>> spans;
+    std::vector<std::vector<std::uint8_t>> differ;
+};
+struct CByteDiff {
+    CByteSide built, original;
+    std::uint64_t differing = 0, compared = 0;   // bytes outside what the linker fills in (of the longer side, when the lengths differ)
+    bool same_length = true;
+};
+// At one length, byte by byte. At two lengths the common start and end are lined up, and everything between them differs.
+CByteDiff c_byte_diff(ByteView built, ByteView built_mask, ByteView original, ByteView original_mask);
+// `function`'s diff from the text of a `match --bytes` file. nullopt when it is not there.
+std::optional<CByteDiff> parse_c_byte_diff(std::string_view text, std::string_view function);
+// "<first 16 hex of the rel's SHA-256>.bytes.json"
+std::string c_bytes_file_name(std::string_view rel);
+
 // One stop of the compare panel's previous and next.
 struct CCompareItem {
     std::uint32_t card = 0;
@@ -58,6 +76,7 @@ struct CFunctionCompare {
     std::vector<std::string> source, assembly;
     std::vector<std::vector<preview::Span>> source_spans, assembly_spans;
     std::string source_note, assembly_note;   // why a side is empty, or that it was cut
+    std::optional<CByteDiff> bytes;           // when the scorer kept this function's recompiled bytes
 };
 // What the conversion of this card (or a copy of it) left for `function`. `measure`: the words of its measured result.
 CFunctionCompare load_c_compare(const Board& board, const Index& index, std::uint32_t card, const CScores* scores, std::string_view function, std::string_view measure);
