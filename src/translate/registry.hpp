@@ -103,5 +103,6 @@ void register_cpp17_back_end(Registry&);      // the L2 core's C++17 writer
 void register_csharp_back_end(Registry&);     // backends/csharp (+ csharp_java)
 void register_csharp_cpp17_back_end(Registry&);
 void register_java_back_end(Registry&);       // backends/java: C and C++ as Java
+void register_rust_back_end(Registry&);       // backends/rust_java: Java as Rust
 
 }  // namespace cb::translate::registry
