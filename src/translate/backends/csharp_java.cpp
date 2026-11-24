@@ -1800,6 +1800,15 @@ std::optional<Ex> JavaLibrary::call(cs::Context& w, Node* e, bool statement) {
     const ir::SymP& s = call.sym;
     if (s == nullptr) return std::nullopt;
     const std::string owner = s->owner.value_or("");
+    if (s->name == "clone" && call.args.empty() && call.target != nullptr && call.target->type && call.target->type->kind() == "array")   // a copy of an array: shallow, as Java's
+        return Ex{"((" + w.ctype(call.target->type) + ")" + w.wrap(call.target, cs::kUnary) + ".Clone())", cs::kPrimary};
+    if (s->name == "containsKey" && call.args.size() == 1 && call.target != nullptr && call.target->type && call.args[0]->type) {   // a key of another type: not there
+        const auto* held = std::get_if<ir::ClassType>(&call.target->type->body);
+        if (held != nullptr && !held->args.empty() && ir::to_text(*held->args[0]) != ir::to_text(*call.args[0]->type) && w.program().class_named(owner) == nullptr) {
+            w.program().use_runtime("JavaRt");
+            return Ex{"JavaRt.ContainsKey(" + w.expr(call.target).text + ", " + w.expr(call.args[0]).text + ")", cs::kPrimary};
+        }
+    }
     if ((owner == "java.lang.Class" || owner == "java.lang.reflect.Constructor") && s->ret && s->ret->kind() == "typevar" && !reflect_casting_.contains(e)) {
         reflect_casting_.insert(e);   // (an object in C#: the type Java knows it to be)
         const std::string made = w.expr(e, statement).text;

@@ -275,6 +275,14 @@ public static class JavaRt
     public static bool Add<T>(ICollection<T> c, T x) { c.Add(x); return true; }
     public static T Set<T>(IList<T> l, int i, T x) { T old = l[i]; l[i] = x; return old; }
     public static T RemoveAt<T>(IList<T> l, int i) { T old = l[i]; l.RemoveAt(i); return old; }
+    // c.toArray(a): into a when it has room (a null just after the last, if there is space), else into a new array of the size
+    public static T[] ToArray<T, E>(ICollection<E> c, T[] a) {
+        T[] r = a.Length >= c.Count ? a : new T[c.Count];
+        int i = 0;
+        foreach (E x in c) r[i++] = (T)(object)x;
+        if (r.Length > c.Count) r[c.Count] = default;
+        return r;
+    }
 
     // map.get: a key it does not hold is Java's null, and a number read from that null throws.
     // A class with no toString of its own prints as Java's Object.toString does.
@@ -301,6 +309,13 @@ public static class JavaRt
         return default!;
     }
     public static V GetOrDefault<K, V>(IDictionary<K, V> m, K k, V d) => m.TryGetValue(k, out V v) ? v : d;
+
+    // containsKey takes any object in Java: a key of another type is simply not there
+    public static bool ContainsKey<K, V>(IDictionary<K, V> m, object k)
+    {
+        if (k == null) return default(K) == null && m.ContainsKey(default!);   // (a map of Java's may hold a null key)
+        return k is K key && m.ContainsKey(key);
+    }
 
     public static V Put<K, V>(IDictionary<K, V> m, K k, V v)
     {
