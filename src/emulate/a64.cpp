@@ -872,6 +872,25 @@ std::optional<std::string> Cpu::step() {
             }
             break;
         }
+        case da::Op::LdStAtomic: {   // CAS{A}{L}{B,H} and CASP{A}{L}: compare Rs (and Rs+1) with memory, store Rt (and Rt+1) if equal, and put what memory held in Rs (and Rs+1)
+            const bool pair = bits(23, 1) == 0;
+            const unsigned size = pair ? 2 + bits(30, 1) : bits(30, 2);
+            const unsigned bytes = 1u << size, rs = bits(16, 5), count = pair ? 2 : 1;
+            if (pair && (((rs | rd) & 1) != 0)) return stop(std::format("undefined instruction {:08x} at {:#x}", w, R.pc));
+            const u64 mask = bytes == 8 ? ~0ull : (1ull << (8 * bytes)) - 1;
+            const u64 addr = XSP(rn);
+            u64 old[2] = {0, 0};
+            bool equal = true;
+            for (unsigned i = 0; i < count; ++i) {
+                if (!load(addr + i * bytes, bytes, old[i])) return fault_read(addr + i * bytes);
+                equal = equal && (X(rs + i) & mask) == old[i];
+            }
+            if (equal)
+                for (unsigned i = 0; i < count; ++i)
+                    if (!mem_->write(addr + i * bytes, bytes, X(rd + i) & mask)) return fault_write(addr + i * bytes);
+            for (unsigned i = 0; i < count; ++i) setX(rs + i, old[i], size == 3);
+            break;
+        }
         // ---- scalar floating point ----
         case da::Op::Fp1Src: {
             const unsigned ftype = bits(22, 2), opcode = bits(15, 6);

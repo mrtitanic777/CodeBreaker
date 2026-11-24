@@ -52,13 +52,35 @@ std::size_t n3ds_file_offset(const stdfs::path&, std::uint32_t address) { return
 
 }  // namespace
 
-CB_TEST("engine.pcode_cpu.the_gba_lane_runs_homebrew_the_same_on_both_cores", [] { compare_homebrew("gba", "gba", ".gba", gba_file_offset); });
+// What the adapter handed to the own core in the runs since the counts were cleared: nothing, now; a run that did is listed by kind.
+void report_handover(const char* lane) {
+    const engine::pcode_cpu::ArmHandover& handover = engine::pcode_cpu::arm_handover();
+    std::uint64_t handed = 0;
+    for (const auto& [kind, steps] : handover.by_class) {
+        handed += steps;
+        std::printf("  handed to the own core: %llu x %s\n", static_cast<unsigned long long>(steps), kind.c_str());
+    }
+    std::printf("pcode_cpu %s: %llu steps on the emulator's side, %llu handed to the own core\n", lane, static_cast<unsigned long long>(handover.steps), static_cast<unsigned long long>(handed));
+    CB_CHECK_EQ(handed, 0u);
+}
 
-CB_TEST("engine.pcode_cpu.the_nds_lane_runs_homebrew_the_same_on_both_cores", [] { compare_homebrew("nds", "nds", ".nds", nds_file_offset); });
+CB_TEST("engine.pcode_cpu.the_gba_lane_runs_homebrew_the_same_on_both_cores", [] {
+    engine::pcode_cpu::arm_handover() = {};
+    compare_homebrew("gba", "gba", ".gba", gba_file_offset);
+    report_handover("gba");
+});
+
+CB_TEST("engine.pcode_cpu.the_nds_lane_runs_homebrew_the_same_on_both_cores", [] {
+    engine::pcode_cpu::arm_handover() = {};
+    compare_homebrew("nds", "nds", ".nds", nds_file_offset);
+    report_handover("nds");
+});
 
 CB_TEST("engine.pcode_cpu.the_3ds_lane_runs_homebrew_the_same_on_both_cores", [] {
+    engine::pcode_cpu::arm_handover() = {};
     compare_homebrew("n3ds", "3ds", ".3dsx", n3ds_file_offset);
     compare_homebrew("n3ds", "3ds", ".elf", n3ds_file_offset);
+    report_handover("n3ds");
 });
 
 CB_TEST("engine.pcode_cpu.the_vita_lane_runs_homebrew_the_same_on_both_cores", [] {
@@ -77,6 +99,7 @@ CB_TEST("engine.pcode_cpu.the_vita_lane_runs_homebrew_the_same_on_both_cores", [
     }
     std::printf("pcode_cpu vita: %llu steps on the emulator's side, %llu handed to the own core, %llu runs ended at a refused instruction\n",
                 static_cast<unsigned long long>(handover.steps), static_cast<unsigned long long>(handed), static_cast<unsigned long long>(refused));
+    CB_CHECK_EQ(handed, 0u);
 });
 
 // A tool, not a check: CB_GBA_TRACE=<rom>,<hex entry> (state 0 of the lane: registers zero, memory as the cartridge leaves it) finds the first instruction after which the
@@ -469,10 +492,10 @@ bool defined_operands(const da::Insn& i, std::uint32_t w) {
 }
 
 // One random instruction of the ARMv7-A that the own core's decoder reads, as bytes (Thumb: one or two halfwords; ARM: a word), and its text.
-std::string random_instruction(std::mt19937& rng, bool thumb, Bytes& out, da::Arch arch = da::Arch::V7A, std::uint32_t where = kVitaCode) {
+std::string random_instruction(std::mt19937& rng, bool thumb, Bytes& out, da::Arch arch = da::Arch::V7A, std::uint32_t where = kVitaCode, bool wide = false) {
     for (;;) {
         if (thumb) {
-            const std::uint32_t a = rng() % 4 == 0 ? 0xE800u + rng() % 0x1800u : rng() % 0xE800u, b = rng() & 0xFFFF;
+            const std::uint32_t a = wide ? 0xE800u + (rng() % 24) * 0x100u + rng() % 0x100u : rng() % 4 == 0 ? 0xE800u + rng() % 0x1800u : rng() % 0xE800u, b = rng() & 0xFFFF;   // (wide: only 32-bit instructions, every family of them alike)
             const std::optional<da::Insn> insn = da::decode_thumb(static_cast<std::uint16_t>(a), static_cast<std::uint16_t>(b), kVitaCode | 1, da::Arch::V7A);
             if (!insn || (insn->length == 2 && a >= 0xE800)) continue;
             if (insn->op == da::Op::Ext && insn->ext == da::t2::kIt) continue;   // (the programs put their own)
@@ -484,7 +507,35 @@ std::string random_instruction(std::mt19937& rng, bool thumb, Bytes& out, da::Ar
             }
             return da::text(*insn);
         }
-        const std::uint32_t w = static_cast<std::uint32_t>(rng());
+        std::uint32_t w = static_cast<std::uint32_t>(rng());
+        if (wide) {   // (wide: the ARM families the plain random words rarely reach, the condition mostly "always")
+            struct Family {
+                std::uint32_t mask, value;
+            };
+            static constexpr Family kFamilies[] = {
+                {0x0E000000, 0x08000000},   // LDM, STM
+                {0x0C000000, 0x04000000},   // LDR, STR, LDRB, STRB
+                {0x0E000090, 0x00000090},   // halfword, signed and doubleword transfers, SWP, multiplies
+                {0x0F000010, 0x06000010},   // the media instructions
+                {0x0F000010, 0x07000010},
+                {0x0F9000F0, 0x01000050},   // QADD, QSUB, QDADD, QDSUB
+                {0x0F9000F0, 0x01000080},   // SMLAxy, SMULxy
+                {0x0FE000F0, 0x00000090},   // MUL, MLA
+                {0x0F8000F0, 0x00800090},   // long multiplies
+                {0x0E000000, 0x02000000},   // data processing, immediate
+                {0x0E000010, 0x00000000},   // data processing, shifted by an immediate
+                {0x0E000090, 0x00000010},   // data processing, shifted by a register
+                {0x0FB00000, 0x03000000},   // MOVW, MOVT
+                {0x0FFFFFFF, 0x01000000},
+                {0xFF100000, 0xF4000000},   // Advanced SIMD structure stores and loads
+                {0xFF100000, 0xF4000000},
+                {0xFE800090, 0xF2800010},   // Advanced SIMD one register and a modified immediate
+                {0x0FB00EF0, 0x0EB00A00},   // VMOV (immediate)
+            };
+            const Family& f = kFamilies[rng() % std::size(kFamilies)];
+            w = (w & ~f.mask) | f.value;
+            if (rng() % 8 != 0 && (w >> 28) != 15) w = (w & 0x0FFFFFFF) | 0xE0000000u;
+        }
         const std::optional<da::Insn> insn = da::decode_arm(w, where, arch);
         if (!insn || !defined_operands(*insn, w)) continue;
         for (unsigned k = 0; k < 4; ++k) out.push_back(static_cast<std::uint8_t>(w >> (8 * k)));
@@ -499,6 +550,7 @@ struct VitaCase {
     std::array<std::uint32_t, 4> a{};
     std::array<std::uint32_t, 8> s{};
     unsigned seed = 0;   // (what the data and stack are filled from)
+    std::uint64_t max_steps = 64;
 };
 
 // The case on both cores: results and the bytes each changed.
@@ -517,7 +569,7 @@ void run_vita_case(const VitaCase& one, emulate::arm::RunResult result[2], Chang
     options.s = one.s;
     options.sp = kVitaStack + 0x800;
     options.return_address = kVitaReturn;
-    options.max_steps = 64;
+    options.max_steps = one.max_steps;
     const std::uint32_t entry = kVitaCode | (one.thumb ? 1u : 0u);
     for (int core = 0; core < 2; ++core) {
         ar::Bus bus(ar::System::Vita);
@@ -529,9 +581,9 @@ void run_vita_case(const VitaCase& one, emulate::arm::RunResult result[2], Chang
 
 // Programs of random instructions (Thumb ones with IT blocks of their own; `single`: one instruction, or one IT block, after a compare that sets the flags) run on both
 // cores from random registers and memory; every result field and each byte changed is compared.
-void compare_vita_random(const char* title, bool thumb, bool single, unsigned count) {
+void compare_vita_random(const char* title, bool thumb, bool single, unsigned count, bool wide = false) {
     namespace ar = emulate::arm;
-    std::mt19937 rng(thumb ? (single ? 31 : 32) : 33);
+    std::mt19937 rng(thumb ? (single ? 31 : 32) + (wide ? 100 : 0) : 33);
     unsigned runs = 0, differing = 0;
     std::map<std::string, unsigned> per_instruction, ends;   // (how the runs ended: a test whose runs all stop at once proves nothing)
     for (unsigned n = 0; n < count; ++n) {
@@ -549,10 +601,10 @@ void compare_vita_random(const char* title, bool thumb, bool single, unsigned co
                 const unsigned mask = 1 + rng() % 15;
                 put(static_cast<std::uint16_t>(0xBF00 | first << 4 | mask));
                 texts += std::format("it {:x} {:x}; ", first, mask);
-                for (unsigned inner = 0, left = 4 - std::countr_zero(mask); inner < left; ++inner) texts += random_instruction(rng, true, code) + "; ";
+                for (unsigned inner = 0, left = 4 - std::countr_zero(mask); inner < left; ++inner) texts += random_instruction(rng, true, code, da::Arch::V7A, kVitaCode, wide) + "; ";
                 continue;
             }
-            texts += random_instruction(rng, thumb, code) + "; ";
+            texts += random_instruction(rng, thumb, code, da::Arch::V7A, kVitaCode, wide) + "; ";
         }
         if (thumb) {
             put(0x4770);   // bx lr
@@ -600,6 +652,12 @@ CB_TEST("engine.pcode_cpu.vita_thumb_instructions_run_as_the_own_core_does", [] 
 
 CB_TEST("engine.pcode_cpu.vita_thumb_programs_run_as_the_own_core_does", [] { compare_vita_random("vita thumb programs", true, false, 10000); });
 
+CB_TEST("engine.pcode_cpu.vita_thumb32_instructions_run_as_the_own_core_does", [] { compare_vita_random("vita thumb 32-bit instructions", true, true, 40000, true); });
+
+CB_TEST("engine.pcode_cpu.vita_thumb32_programs_run_as_the_own_core_does", [] { compare_vita_random("vita thumb 32-bit programs", true, false, 20000, true); });
+
+CB_TEST("engine.pcode_cpu.vita_arm_families_run_as_the_own_core_does", [] { compare_vita_random("vita arm families", false, true, 40000, true); });
+
 CB_TEST("engine.pcode_cpu.vita_arm_instructions_run_as_the_own_core_does", [] { compare_vita_random("vita arm instructions", false, true, 10000); });
 
 // A tool, not a check: CB_ARM_CASE=<thumb|arm>,<hex code>,<a0>,<a1>,<a2>,<a3>,<s0>...<s7>,<seed> (the values in hex, the seed in decimal; what a failure of the random
@@ -643,6 +701,38 @@ CB_TEST("engine.pcode_cpu.arm_tool_runs_one_vita_case_on_both_cores", [] {
                     result[core].r[5], result[core].r[6], result[core].r[7], result[core].r[13], result[core].r[14], result[core].r[15], memory[core].size());
     }
     std::printf("  differences: %s\n", describe_arm(result[0], result[1], memory[0], memory[1]).c_str());
+    if (describe_arm(result[0], result[1], memory[0], memory[1]).empty()) return;
+    // the first step after which the two cores differ, and the instruction it ran (as the own core's state said it was)
+    std::mt19937 fill(one.seed * 7919u + 17u);
+    Bytes data(0x4000), stack(0x1000);
+    for (std::uint8_t& b : data) b = static_cast<std::uint8_t>(fill());
+    for (std::uint8_t& b : stack) b = static_cast<std::uint8_t>(fill());
+    const auto byte_at = [&](std::uint32_t address) -> std::uint8_t {
+        if (address >= kVitaCode && address - kVitaCode < one.code.size()) return one.code[address - kVitaCode];
+        if (address >= kVitaData && address - kVitaData < data.size()) return data[address - kVitaData];
+        if (address >= kVitaStack && address - kVitaStack < stack.size()) return stack[address - kVitaStack];
+        return 0;
+    };
+    std::uint32_t before_pc = kVitaCode;
+    bool before_thumb = one.thumb;
+    for (std::uint64_t n = 1; n <= 64; ++n) {
+        VitaCase part = one;
+        part.max_steps = n;
+        ar::RunResult r[2];
+        Changes m[2];
+        run_vita_case(part, r, m);
+        const std::string what = describe_arm(r[0], r[1], m[0], m[1]);
+        if (!what.empty()) {
+            std::uint32_t w = 0;
+            for (unsigned k = 0; k < 4; ++k) w |= static_cast<std::uint32_t>(byte_at((before_pc & ~1u) + k)) << (8 * k);
+            const std::optional<da::Insn> insn = before_thumb ? da::decode_thumb(static_cast<std::uint16_t>(w), static_cast<std::uint16_t>(w >> 16), (before_pc & ~1u) | 1, da::Arch::V7A) : da::decode_arm(w, before_pc & ~3u, da::Arch::V7A);
+            std::printf("  first difference at step %llu, running %08X (%s, word %08X): %s | %s\n", static_cast<unsigned long long>(n), before_pc, before_thumb ? "thumb" : "arm", w,
+                        insn ? da::text(*insn).c_str() : "?", what.c_str());
+            break;
+        }
+        before_pc = r[0].r[15];
+        before_thumb = (r[0].cpsr & 0x20) != 0;
+    }
 });
 
 // ---- the 3DO's ARM60 (big-endian words on the DS's ARM7 map, the machine_threedo lane) ------------------------------------------------------------------------------

@@ -72,7 +72,7 @@ std::optional<std::uint32_t> Bus::peek(std::uint32_t address, unsigned size) con
         for (unsigned i = 0; i < size; ++i) v |= static_cast<std::uint32_t>(r.data[(base + i) % r.data.size()]) << (8 * i);
         return v;
     }
-    return std::nullopt;
+    return 0u;   // (an address no range holds reads 0 and logs nothing)
 }
 
 std::span<std::uint8_t> Bus::bytes(std::uint32_t lo) {

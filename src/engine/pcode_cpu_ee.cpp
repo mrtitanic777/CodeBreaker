@@ -1,6 +1,6 @@
 // cb-unity: alone (file-local names that other files in a batch also use)
 // engine/pcode_cpu_ee.cpp -- the PlayStation 2 lane's Emotion Engine on the one p-code emulator: emulate::ee::run's call, on languages/mips64le.sla and the shared run of
-// pcode_cpu_mipsle.cpp. What the run does is the own core's start (the registers a function is called with, Status as the kernel leaves it) and end (the result's fields).
+// pcode_cpu_mipsle.cpp. What the run does is the lane's own start (the registers a function is called with, Status as the kernel leaves it) and end (the result's fields).
 #include "engine/pcode_cpu_ee.hpp"
 
 #include "engine/pcode_cpu_mipsle.hpp"

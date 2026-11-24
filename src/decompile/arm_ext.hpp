@@ -35,6 +35,8 @@ std::string text(int row, std::uint32_t word, std::uint32_t pc, const AddressLab
 std::optional<std::uint32_t> assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels, Arch arch);
 // What the interpreter does with the row.
 Sem semantics(int row);
+// The number of rows (the rows are numbered from 0).
+int row_count();
 // The row's mnemonic ("vadd.f32").
 std::string_view mnemonic(int row);
 // Does the row use the condition field (false for the unconditional space)?
@@ -49,6 +51,37 @@ bool conditional(int row);
 namespace cb::decompile::arm::t2 {
 
 inline constexpr int kIt = 1000, kCbz = 1001, kCbnz = 1002, kHint = 1010, kExtend = 1020, kMovt = 1030, kUbfx = 1031, kSbfx = 1032, kBfi = 1033, kExtend32 = 1040, kOpaque = 1100;
+// The Advanced SIMD structure loads and stores, one register and a modified immediate, and VMOV (immediate) of the VFP (decompile/arm32_neon.cpp).
+inline constexpr int kNeon = 1300;
+// The 32-bit integer instructions decode_more reads (decompile/arm32_thumb.cpp; the fields are in the comments there and in emulate/arm32_exec.cpp).
+inline constexpr int kOrn = 1200, kPkh = 1201, kAdr = 1202, kSsatT = 1203, kUsatT = 1204, kSsat16T = 1205, kUsat16T = 1206, kMls = 1207, kNop32 = 1208, kLdrexT = 1209,
+                     kStrexT = 1210, kLdrexdT = 1211, kStrexdT = 1212, kTb = 1213;
+// Whether an ARM-state instruction names its registers as the manual defines it (the pc as an operand of a data-processing instruction that shifts by a register, as the
+// base of a block transfer or of an access that writes the base back, a base that is also the register loaded or stored with write-back ...: UNPREDICTABLE). The ARMv7-A
+// decoder reads only the defined ones.
+bool defined_arm_operands(const Insn& insn);
+// A structure load or store as its fields: the register list, the element, the bytes it moves.
+struct NeonTransfer {
+    enum Kind { Multiple, Lane, AllLanes } kind = Multiple;
+    bool load = false;
+    unsigned rn = 0, rm = 0;      // the base register; the offset register (15: no write-back, 13: by the bytes moved)
+    unsigned d = 0;               // the first D register
+    unsigned regs = 1;            // registers a multiple-structure transfer names in each step; AllLanes: the registers of VLD1
+    unsigned selem = 1;           // elements in a structure (1 to 4)
+    unsigned inc = 1;             // the step between the registers of a structure
+    unsigned ebytes = 1;          // bytes of an element
+    unsigned lane = 0;            // Lane: the element number
+    unsigned bytes = 0;           // the bytes it moves
+};
+// The ARM word a Thumb Advanced SIMD instruction means (the data-processing and the load and store forms are ARM's with the first byte changed; the coprocessor space is the same).
+std::uint32_t neon_arm_word(std::uint16_t a, std::uint16_t b);
+std::optional<NeonTransfer> neon_transfer(std::uint32_t arm_word);
+bool neon_modified_immediate(std::uint32_t arm_word);
+bool vfp_move_immediate(std::uint32_t arm_word);
+// The instruction when its ARM word is one of those (`word_as_held`: the instruction as the code holds it, for `Insn::word`), or nullopt.
+std::optional<Insn> decode_neon(std::uint32_t arm_word, bool thumb, std::uint32_t pc, std::uint32_t word_as_held, Arch arch);
+// The 32-bit Thumb instruction `a`, `b` that decode_thumb32_int does not read, as one the interpreter runs, or nullopt.
+std::optional<Insn> decode_more(std::uint16_t a, std::uint16_t b, std::uint32_t pc_tagged);
 
 bool is_32bit(std::uint16_t first);
 // The instruction at `a` (and `b` for a 32-bit one) running at `pc`, or nullopt where Thumb-1 decoding is what is wanted.

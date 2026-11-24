@@ -1,12 +1,14 @@
 // engine/pcode_cpu_arm.cpp -- the ARM lanes' CPU on the one p-code emulator: emulate::arm::run's call, on languages/ARM4t_le.sla (the GBA, the DS's ARM7), ARM5t_le.sla (the DS's
 // ARM9), ARM6_le.sla (the 3DS), ARM7_le.sla (the Vita) and ARM4t_be.sla (the 3DO: big-endian words).
 //
-// Carried here: the state (ARM or Thumb: the description's TMode context follows BX, loads into the pc and BLX), the software interrupts (logged with their
-// number and r0-r3, then answered as the BIOS does by the own core's own answer), the imported functions of the Vita (logged by name, answered 0), bus errors (a fetch,
-// load or store of an address nothing answers), IT blocks (kept here: an instruction in one is skipped or run under a context that stops the 16-bit data-processing
-// instructions from setting the flags), and the registers and flags as the own core hands them back. What the own core refuses stays refused (a 32-bit Thumb instruction
-// it only decodes). A few instructions run on the own core, counted in engine/pcode_cpu_arm.hpp: coprocessor 15, instructions fetched from hardware, and the
-// instructions the description gives another result (the manual leaves them open) or does not read.
+// Carried here: the state (ARM or Thumb: the description's TMode context follows BX, loads into the pc, BLX and, from the ARMv7, an ARM data-processing write of the pc), the
+// software interrupts (logged with their number and r0-r3, then answered as the BIOS does by the own core's own answer), the imported functions of the Vita (logged by name,
+// answered 0), bus errors (a fetch, load or store of an address nothing answers; a block transfer or an Advanced SIMD transfer that has a word nothing answers does nothing),
+// IT blocks (kept here: an instruction in one is skipped or run under a context that stops the 16-bit data-processing instructions from setting the flags), coprocessor 15
+// and the preload hint (the machine's registers are the bus's), and the registers and flags as the own core hands them back. What the own core refuses stays refused (a
+// 32-bit Thumb instruction it only decodes, an encoding the manual leaves UNPREDICTABLE). Where the description is wrong the adapter does the work itself, and says so at
+// the place: the saturating and absolute-difference instructions, LDRSB (literal) and the pc-based halfword and doubleword transfers, LDRD (literal)'s register order and
+// negative offset, a block transfer that lists its base. Nothing runs on the own core.
 #include <algorithm>
 #include <array>
 #include <bit>
@@ -26,6 +28,8 @@
 #include "engine/pcode_cpu.hpp"
 #include "engine/pcode_cpu_arm.hpp"
 #include "engine/pcode_cpu_internal.hpp"
+#include "engine/pcode_neon_arm32.hpp"
+#include "engine/pcode_ops_arm32.hpp"
 
 namespace cb::engine::pcode_cpu {
 
@@ -48,6 +52,10 @@ struct ArmMirror {
     std::unordered_map<std::uint32_t, ArmCodePage> pages;
     std::uint32_t run = 0;
     bool configured = false;
+    pcode_ops::Arm32Context ops;   // what the bound operations (engine/pcode_ops_arm32) read of the run
+    std::array<sl::Emulator::RegRef, 32> d_regs{};   // d0-d31 and the floating point status register, found once (the ARMv7 description)
+    sl::Emulator::RegRef fpscr{};
+    bool vfp_found = false;
 };
 
 // One mirror for each emulator (each description holds its own memory).
@@ -102,6 +110,7 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
     ArmMirror& mir = arm_mirror(&emu);
     if (!mir.configured) {   // (the state is the run's own: nothing a decode set for another address is kept)
         emu.keepAddressContext(false);
+        pcode_ops::bind_arm32(emu, &mir.ops);   // (the description's named operations the table serves, by number)
         mir.configured = true;
     }
     ++mir.run;
@@ -165,10 +174,17 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
     };
 
     std::optional<std::uint32_t> bus_error, odd_half, odd_byte;
-    std::uint32_t current_word = 0;   // the instruction about to run
     bool signed_half = false;   // the instruction about to run is an LDRSH
     bool block_transfer = false;   // ... an LDM or STM
-    bool dword_transfer = false;   // ... an LDRD or STRD
+    bool dword_transfer = false;   // ... an LDRD or STRD (or an exclusive pair)
+    bool neon_access = false;          // ... an Advanced SIMD load or store (the bytes are moved one at a time, from any address)
+    bool exclusive_transfer = false;   // ... an exclusive load or store, or a table branch (a word read from an address that is not aligned is not rotated)
+    std::uint32_t base_slot = 0, base_loaded = 0;   // ... an LDM or STM with write-back that lists its base: the slot the base's word is at, and (an LDM) the word it loaded
+    bool base_listed_load = false;
+    std::optional<std::uint32_t> last_write_address;   // ... the address of the last store it made
+    std::optional<std::uint32_t> dword_raw;   // ... the address the program gave it (a failing access reports this one, whichever of its words fails)
+    bool negative_literal = false;   // ... a Thumb LDRD of the pc-relative form with the offset subtracted (the description always adds it)
+    std::uint32_t literal_base = 0;
     bool vfp_transfer = false;     // ... a VFP load or store
     std::uint32_t block_start = 0; // an LDM or STM: the lowest word it transfers (the own core goes up from it, so its first failing access is the one nearest above)
     std::optional<std::uint32_t> fault_pc;
@@ -176,12 +192,20 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
     std::optional<bool> mode_switch;
     emu.onRead([&](std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t& value) {
         if (!is_ram(space)) return false;
-        const std::uint32_t raw = static_cast<std::uint32_t>(addr);
+        std::uint32_t raw = static_cast<std::uint32_t>(addr);
+        if (neon_access) {   // (every byte is there: checked before the step)
+            std::uint64_t v = 0;
+            for (unsigned k = 0; k < size && k < 8; ++k) v |= static_cast<std::uint64_t>(bus.read(raw + k, 1)) << (8 * k);
+            value = v;
+            return true;
+        }
+        if (negative_literal && size == 8) raw = 2 * literal_base - raw;
+        if (dword_transfer && !dword_raw) dword_raw = raw;
         if (size == 8) {   // (a VFP double: two words)
             const std::uint32_t first = vfp_transfer ? raw : raw & ~3u;   // (the own core's VFP transfers do not align)
             for (unsigned k = 0; k < 2; ++k)
                 if (!bus.mapped(first + 4 * k)) {
-                    if (!bus_error) bus_error = raw + 4 * k;   // (as the program gave it)
+                    if (!bus_error) bus_error = dword_transfer ? raw : raw + 4 * k;   // (as the program gave it)
                     value = 0;
                     return true;
                 }
@@ -191,12 +215,13 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
         const bool byte_load = size == 2 && (raw & 1) != 0 && signed_half;   // (a signed halfword load from an odd address is a signed byte load)
         const std::uint32_t a = byte_load || vfp_transfer ? raw : raw & ~(size - 1);   // (the own core's accesses are aligned, the VFP's not)
         if (!bus.mapped(a)) {
-            if (!bus_error || (block_transfer && a - block_start < *bus_error - block_start)) bus_error = block_transfer ? a : raw;   // (a single transfer reports the address as the program gave it, a block transfer the first word's that fails going up)
+            if (!bus_error || (block_transfer && a - block_start < *bus_error - block_start)) bus_error = block_transfer ? a : dword_transfer ? *dword_raw : raw;   // (a single transfer reports the address as the program gave it, a block transfer the first word's that fails going up)
             value = 0;
             return true;
         }
         value = bus.read(a, byte_load ? 1 : size);
-        if (size == 4 && (raw & 3) != 0 && !block_transfer && !dword_transfer && !vfp_transfer) {   // (a word load from an unaligned address rotates the aligned word: the description does not; LDM just aligns)
+        if (base_listed_load && a == base_slot) base_loaded = static_cast<std::uint32_t>(value);
+        if (size == 4 && (raw & 3) != 0 && !block_transfer && !dword_transfer && !vfp_transfer && !exclusive_transfer) {   // (a word load from an unaligned address rotates the aligned word: the description does not; LDM just aligns)
             const unsigned rotate = 8 * (raw & 3);
             value = ((value >> rotate) | (value << (32 - rotate))) & 0xFFFFFFFFu;
         }
@@ -210,11 +235,32 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
     });
     emu.onWrite([&](std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t value) {
         if (!is_ram(space)) return false;
+        if (neon_access) {
+            for (unsigned k = 0; k < size && k < 8; ++k) {
+                const std::uint32_t at = static_cast<std::uint32_t>(addr) + k;
+                bus.write(at, 1, static_cast<std::uint32_t>(value >> (8 * k)) & 0xFF);
+                const auto page = mir.pages.find(at & ~(kArmPage - 1));
+                if (page != mir.pages.end() && page->second.run == mir.run) {   // (the program may run what it wrote)
+                    const std::uint32_t word_at = at & ~3u, word = bus.mapped(word_at) ? bus.read(word_at, 4) : 0;
+                    std::uint8_t bytes[4];
+                    for (unsigned b = 0; b < 4; ++b) bytes[b] = static_cast<std::uint8_t>(word >> (big_endian ? 24 - 8 * b : 8 * b));
+                    std::memcpy(page->second.bytes.data() + (word_at & (kArmPage - 1)), bytes, 4);
+                    emu.write(word_at, bytes, 4);
+                }
+            }
+            return true;
+        }
+        if (dword_transfer && !dword_raw) {   // (a pair of words: both must be there, or neither is written)
+            dword_raw = static_cast<std::uint32_t>(addr);
+            const std::uint32_t first = static_cast<std::uint32_t>(addr) & ~3u;
+            if (size == 4 && (!bus.mapped(first) || !bus.mapped(first + 4))) bus_error = dword_raw;
+        }
+        if (dword_transfer && bus_error) return true;
         if (size == 8) {   // (a VFP double: two words)
             const std::uint32_t first = vfp_transfer ? static_cast<std::uint32_t>(addr) : static_cast<std::uint32_t>(addr) & ~3u;
             for (unsigned k = 0; k < 2; ++k)
                 if (!bus.mapped(first + 4 * k)) {
-                    if (!bus_error) bus_error = static_cast<std::uint32_t>(addr) + 4 * k;
+                    if (!bus_error) bus_error = dword_transfer ? static_cast<std::uint32_t>(addr) : static_cast<std::uint32_t>(addr) + 4 * k;
                     return true;
                 }
             for (unsigned k = 0; k < 2; ++k) {
@@ -237,6 +283,7 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
             return true;
         }
         bus.write(a, size, static_cast<std::uint32_t>(value));
+        last_write_address = a;
         const auto page = mir.pages.find(a & ~(kArmPage - 1));
         if (page != mir.pages.end() && page->second.run == mir.run) {   // (the program may run what it wrote)
             for (std::uint32_t w = a & ~3u; w < a + size; w += 4) {
@@ -249,25 +296,7 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
         }
         return true;
     });
-    emu.onUserOp([&](sl::Emulator&, const std::string& name, const std::vector<std::uint64_t>& args, std::uint64_t& result) {
-        if (name == "hasExclusiveAccess") {   // (one processor runs: the exclusive monitor always holds, as the own core has it)
-            result = 1;
-            return true;
-        }
-        if (name == "VectorSignedToFloat" || name == "VectorUnsignedToFloat") {   // the VFP's integer to float (the description leaves it a name): a double or a single by the word's size field
-            const std::uint32_t source = static_cast<std::uint32_t>(args.at(0));
-            const double v = name == "VectorSignedToFloat" ? static_cast<double>(static_cast<std::int32_t>(source)) : static_cast<double>(source);
-            result = (current_word >> 8 & 3) == 3 ? std::bit_cast<std::uint64_t>(v) : std::bit_cast<std::uint32_t>(static_cast<float>(v));
-            return true;
-        }
-        if (name == "VectorFloatToSigned" || name == "VectorFloatToUnsigned") {   // ... and float to integer: toward zero, saturating, a NaN 0
-            const double v = (current_word >> 8 & 3) == 3 ? std::bit_cast<double>(args.at(0)) : static_cast<double>(std::bit_cast<float>(static_cast<std::uint32_t>(args.at(0))));
-            if (name == "VectorFloatToSigned")
-                result = std::isnan(v) ? 0u : static_cast<std::uint32_t>(v >= 2147483647.0 ? INT32_MAX : v <= -2147483648.0 ? INT32_MIN : static_cast<std::int32_t>(v));
-            else
-                result = std::isnan(v) || v <= 0 ? 0u : v >= 4294967295.0 ? 0xFFFFFFFFu : static_cast<std::uint32_t>(v);
-            return true;
-        }
+    emu.onUserOp([&](sl::Emulator&, const std::string& name, const std::vector<std::uint64_t>& args, std::uint64_t&) {
         if (name == "setISAMode") {   // (SetThumbMode's: TB, then this)
             if (!mode_switch) mode_switch = !args.empty() && (args[0] & 1) != 0;   // (the first: the description sets it back to ARM after a call for the decompiler's sake)
         }
@@ -379,29 +408,89 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
         out.end = ar::End::Stopped;
         out.fault = ar::Fault{kind, pc, address, {}, 0};
     };
-    // One instruction by the own core, on the registers as they stand (the coprocessor 15 accesses of the DS: the hardware the bus answers).
-    const auto delegate = [&](std::uint32_t pc, bool in_thumb, const char* why) -> std::optional<ar::Fault> {
-        ++arm_handover().by_class[why];
-        for (unsigned i = 0; i < 15; ++i) scratch.r[i] = static_cast<std::uint32_t>(emu.reg(arm_r[i]));
-        scratch.r[15] = pc;
-        bool n, z, c, v;
-        flags(n, z, c, v);
-        scratch.cpsr = (static_cast<unsigned>(emu.reg("cpsr")) & 0xDF) | (in_thumb ? 0x20u : 0u) | (n ? 0x80000000u : 0u) | (z ? 0x40000000u : 0u) | (c ? 0x20000000u : 0u) |
-                       (v ? 0x10000000u : 0u) | (emu.reg("Q") != 0 ? 0x08000000u : 0u);
-        const std::optional<ar::Fault> fault = scratch.step();
-        for (unsigned i = 0; i < 15; ++i) emu.setReg(arm_r[i], scratch.r[i]);
-        emu.setReg("NG", (scratch.cpsr >> 31) & 1);
-        emu.setReg("ZR", (scratch.cpsr >> 30) & 1);
-        emu.setReg("CY", (scratch.cpsr >> 29) & 1);
-        emu.setReg("OV", (scratch.cpsr >> 28) & 1);
-        emu.setReg("Q", (scratch.cpsr >> 27) & 1);
-        emu.setPc(scratch.r[15]);
-        if (const bool now_thumb = (scratch.cpsr & 0x20) != 0; now_thumb != thumb) {   // (a load into the pc can change the state)
-            thumb = now_thumb;
-            emu.setContext("TMode", thumb ? 1 : 0);
-            emu.setReg("TB", thumb ? 1 : 0);
+    // The saturating instructions run by the adapter itself (ARM ARM A8.8: QADD QSUB QDADD QDSUB, SSAT USAT SSAT16 USAT16): the description computes the sum or the shifted value
+    // in the width of the register and saturates what is left of it (the overflow is already gone), and its Thumb SSAT passes the field without the 1 it stands for. A
+    // register-only instruction: it reads and writes the registers and Q. True: it was one of them and has run.
+    static const std::vector<bool> host_rows = [] {   // (the ARM rows the adapter runs itself)
+        std::vector<bool> rows(static_cast<std::size_t>(da::ext::row_count()), false);
+        for (int row = 0; row < da::ext::row_count(); ++row) {
+            const std::string_view name = da::ext::mnemonic(row);
+            rows[static_cast<std::size_t>(row)] = name == "ssat" || name == "usat" || name == "ssat16" || name == "usat16" || name == "usad8" || name == "usada8";
         }
-        return fault;
+        return rows;
+    }();
+    const auto host_candidate = [&](const da::Insn& in, bool in_thumb) {
+        switch (in.op) {
+            case da::Op::Qadd: case da::Op::Qsub: case da::Op::Qdadd: case da::Op::Qdsub: return true;
+            case da::Op::Ext:
+                if (in.ext >= da::t2::kSsatT && in.ext <= da::t2::kUsat16T) return in_thumb;
+                return in.ext >= 0 && in.ext < da::t2::kIt && host_rows[static_cast<std::size_t>(in.ext)] && (!in_thumb || in.imm != 0);
+            default: return false;
+        }
+    };
+    const auto host_saturating = [&](const da::Insn& in, bool in_thumb) -> bool {
+        const auto reg = [&](unsigned k) -> std::uint32_t { return k < 15 ? static_cast<std::uint32_t>(emu.reg(arm_r[k])) : 0; };
+        const auto put = [&](unsigned k, std::uint32_t v) {
+            if (k < 15) emu.setReg(arm_r[k], v);
+        };
+        const auto clamp = [&](std::int64_t v, std::int64_t low, std::int64_t high) {
+            if (v < low || v > high) emu.setReg("Q", 1);
+            return static_cast<std::uint32_t>(std::clamp(v, low, high));
+        };
+        const auto shifted = [&](unsigned rm, bool asr, unsigned amount) -> std::int64_t {   // (the operand of SSAT and USAT: an arithmetic shift by 0 is by 32)
+            const std::int32_t v = static_cast<std::int32_t>(reg(rm));
+            return asr ? v >> (amount == 0 ? 31 : amount) : static_cast<std::int32_t>(static_cast<std::uint32_t>(v) << amount);
+        };
+        const auto halves = [&](unsigned rm, unsigned rd, std::int64_t low, std::int64_t high) {
+            const std::uint32_t v = reg(rm);
+            const std::uint32_t lo = clamp(static_cast<std::int16_t>(v), low, high), hi = clamp(static_cast<std::int16_t>(v >> 16), low, high);
+            put(rd, (lo & 0xFFFFu) | hi << 16);
+        };
+        switch (in.op) {
+            case da::Op::Qadd: case da::Op::Qsub: case da::Op::Qdadd: case da::Op::Qdsub: {
+                const std::int64_t m = static_cast<std::int32_t>(reg(in.rm));
+                std::int64_t n = static_cast<std::int32_t>(reg(in.rn));
+                if (in.op == da::Op::Qdadd || in.op == da::Op::Qdsub) n = static_cast<std::int32_t>(clamp(n * 2, INT32_MIN, INT32_MAX));
+                put(in.rd, clamp(in.op == da::Op::Qadd || in.op == da::Op::Qdadd ? m + n : m - n, INT32_MIN, INT32_MAX));
+                return true;
+            }
+            case da::Op::Ext: break;
+            default: return false;
+        }
+        if (in_thumb && in.ext >= da::t2::kSsatT && in.ext <= da::t2::kUsat16T) {
+            const bool is_signed = in.ext == da::t2::kSsatT || in.ext == da::t2::kSsat16T;
+            const std::int64_t high = is_signed ? (std::int64_t{1} << (in.imm - 1)) - 1 : (std::int64_t{1} << in.imm) - 1, low = is_signed ? -(std::int64_t{1} << (in.imm - 1)) : 0;
+            if (in.ext == da::t2::kSsat16T || in.ext == da::t2::kUsat16T) halves(in.rn, in.rd, low, high);
+            else put(in.rd, clamp(shifted(in.rn, in.shift == da::Shift::Asr, in.amount), low, high));
+            return true;
+        }
+        const std::uint32_t w = in_thumb ? in.imm : in.word;   // (the ARM word a Thumb ARMv6 instruction means is in imm)
+        if (in.ext < 0 || in.ext >= da::t2::kIt || (in_thumb && w == 0)) return false;
+        const std::string_view name = da::ext::mnemonic(in.ext);
+        if (name == "ssat" || name == "usat") {
+            const bool is_signed = name == "ssat";
+            const unsigned bits = ((w >> 16) & 31) + (is_signed ? 1 : 0);
+            const std::int64_t high = is_signed ? (std::int64_t{1} << (bits - 1)) - 1 : (std::int64_t{1} << bits) - 1, low = is_signed ? -(std::int64_t{1} << (bits - 1)) : 0;
+            put((w >> 12) & 15, clamp(shifted(w & 15, (w >> 6) & 1, (w >> 7) & 31), low, high));
+            return true;
+        }
+        if (name == "usad8" || name == "usada8") {   // the sum of the absolute differences of the four bytes (the description subtracts bytes and takes the absolute value of the wrapped byte)
+            std::uint32_t sum = name == "usada8" ? reg((w >> 12) & 15) : 0;
+            const std::uint32_t x = reg(w & 15), y = reg((w >> 8) & 15);
+            for (unsigned k = 0; k < 32; k += 8) {
+                const std::int32_t a = static_cast<std::int32_t>(x >> k & 0xFF), b = static_cast<std::int32_t>(y >> k & 0xFF);
+                sum += static_cast<std::uint32_t>(a > b ? a - b : b - a);
+            }
+            put((w >> 16) & 15, sum);
+            return true;
+        }
+        if (name == "ssat16" || name == "usat16") {
+            const bool is_signed = name == "ssat16";
+            const unsigned bits = ((w >> 16) & 15) + (is_signed ? 1 : 0);
+            halves(w & 15, (w >> 12) & 15, is_signed ? -(std::int64_t{1} << (bits - 1)) : 0, is_signed ? (std::int64_t{1} << (bits - 1)) - 1 : (std::int64_t{1} << bits) - 1);
+            return true;
+        }
+        return false;
     };
     while (steps < options.max_steps) {
         const std::uint32_t pc = static_cast<std::uint32_t>(emu.pc());
@@ -437,15 +526,12 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
             break;
         }
         const bool whole_here = load_page(pc), whole_next = load_page(pc + 3);
-        if (big_endian && ((!whole_here && !plain_word(pc & ~3u)) || (!whole_next && (pc + 3) / kArmPage != pc / kArmPage && !plain_word((pc + 3) & ~3u)))) {   // fetched from hardware (the 3DO's Clio): the own core reads it as the machine does
-            if (const std::optional<ar::Fault> fault = delegate(pc, thumb, "an instruction fetched from hardware")) {
-                out.end = ar::End::Stopped;
-                out.fault = *fault;
-                fault_pc = pc;
-                break;
-            }
-            ++steps;
-            continue;
+        std::optional<std::uint32_t> fetched;   // the word of an instruction fetched from hardware
+        if (big_endian && ((!whole_here && !plain_word(pc & ~3u)) || (!whole_next && (pc + 3) / kArmPage != pc / kArmPage && !plain_word((pc + 3) & ~3u)))) {   // fetched from hardware (the 3DO's Clio): the word is read as the machine answers it (one logged read) and given to the emulator for this step
+            const std::uint32_t word = bus.read(pc & ~3u, 4);
+            const std::uint8_t bytes[4] = {static_cast<std::uint8_t>(word >> 24), static_cast<std::uint8_t>(word >> 16), static_cast<std::uint8_t>(word >> 8), static_cast<std::uint8_t>(word)};
+            emu.write(pc & ~3u, bytes, 4);
+            fetched = word;
         }
         std::optional<da::Insn> insn;
         if (thumb) {
@@ -453,7 +539,7 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
             const std::uint32_t b = (a >> 11) == 0x1E || (bus.arch() >= da::Arch::V7A && a >= 0xE800) ? bus.read((pc & ~1u) + 2, 2) : 0;
             insn = da::decode_thumb(static_cast<std::uint16_t>(a), static_cast<std::uint16_t>(b), pc | 1, bus.arch());
         } else {
-            insn = da::decode_arm(bus.read(pc & ~3u, 4), pc, bus.arch());
+            insn = da::decode_arm(fetched ? *fetched : bus.read(pc & ~3u, 4), pc, bus.arch());
         }
         if (!insn) {
             stop(ar::Fault::Kind::NoInstruction, pc, 0);
@@ -503,6 +589,54 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
                 break;
             }
         }
+        if (host_candidate(*insn, is_thumb_insn)) {
+            flags(n, z, c, v);
+            if (is_thumb_insn || passes(insn->cond, n, z, c, v)) {   // (an ARM word's condition; a Thumb one's is the IT block's, settled above)
+                if (host_saturating(*insn, is_thumb_insn)) {
+                    emu.setPc(pc + insn->length);
+                    ++steps;
+                    continue;
+                }
+            } else {
+                emu.setPc(pc + insn->length);
+                ++steps;
+                continue;
+            }
+        }
+        if (insn->op == da::Op::Ext && insn->ext == da::t2::kNeon && bus.arch() >= da::Arch::V7A) {   // an Advanced SIMD data-processing instruction or a transfer to or from the scalars: the lane library's (the description names these operations and leaves out the destination of an accumulating one and the saturation of a result)
+            if (const std::optional<da::t2::NeonDp> simd = da::t2::neon_dp(insn->imm, is_thumb_insn)) {
+                flags(n, z, c, v);
+                if (is_thumb_insn || passes(insn->cond, n, z, c, v)) {
+                    if (!mir.vfp_found) {
+                        for (unsigned i = 0; i < 32; ++i) mir.d_regs[i] = emu.regRef("d" + std::to_string(i));
+                        mir.fpscr = emu.regRef("fpscr");
+                        mir.vfp_found = true;
+                    }
+                    pcode_neon_arm32::Regs regs;
+                    const std::uint32_t used = pcode_neon_arm32::reads(*simd);
+                    std::uint64_t before[32];
+                    for (unsigned i = 0; i < 32; ++i)
+                        if ((used >> i) & 1) before[i] = regs.d[i] = emu.reg(mir.d_regs[i]);
+                    const bool pair = simd->op == da::t2::NeonOp::VMovPair;
+                    if (simd->op == da::t2::NeonOp::MovToScalar || simd->op == da::t2::NeonOp::DupCore || (pair && !simd->u)) {
+                        regs.r[simd->rt] = static_cast<std::uint32_t>(emu.reg(arm_r[simd->rt]));
+                        if (pair) regs.r[simd->idx] = static_cast<std::uint32_t>(emu.reg(arm_r[simd->idx]));
+                    }
+                    const std::uint32_t raised = pcode_neon_arm32::run(*simd, regs);
+                    for (unsigned i = 0; i < 32; ++i)
+                        if (((used >> i) & 1) && regs.d[i] != before[i]) emu.setReg(mir.d_regs[i], regs.d[i]);
+                    if (simd->op == da::t2::NeonOp::MovFromScalar) emu.setReg(arm_r[simd->rt], regs.r[simd->rt]);
+                    if (pair && simd->u) {
+                        emu.setReg(arm_r[simd->rt], regs.r[simd->rt]);
+                        emu.setReg(arm_r[simd->idx], regs.r[simd->idx]);
+                    }
+                    if (raised != 0) emu.setReg(mir.fpscr, emu.reg(mir.fpscr) | raised);
+                }
+                emu.setPc(pc + insn->length);
+                ++steps;
+                continue;
+            }
+        }
         const bool user_block = (insn->op == da::Op::Ldm || insn->op == da::Op::Stm) && insn->hat && !(insn->op == da::Op::Ldm && (insn->list & 0x8000));
         if (insn->op == da::Op::Swi || insn->op == da::Op::Bl || user_block) flags(n, z, c, v);
         if (user_block && passes(insn->cond, n, z, c, v)) {   // LDM and STM of the user registers: the own core does not run them, and the lane says so alike
@@ -510,6 +644,16 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
             out.fault = ar::Fault{ar::Fault::Kind::NotRun, pc, 0, insn->op == da::Op::Ldm ? "ldm^" : "stm^", 0};
             fault_pc = pc;
             break;
+        }
+        if (!is_thumb_insn && ((static_cast<unsigned>(insn->op) < 16 && insn->s && insn->rd == 15 && insn->op != da::Op::Tst && insn->op != da::Op::Teq && insn->op != da::Op::Cmp && insn->op != da::Op::Cmn) ||
+                               (insn->op == da::Op::Ldm && insn->hat && (insn->list & 0x8000))) && bank_of(mode) == 0) {   // (a return from an exception in a mode that has none: UNPREDICTABLE)
+            flags(n, z, c, v);
+            if (passes(insn->cond, n, z, c, v)) {
+                out.end = ar::End::Stopped;
+                out.fault = ar::Fault{ar::Fault::Kind::NotRun, pc, 0, "exception return outside an exception mode", 0};
+                fault_pc = pc;
+                break;
+            }
         }
         if (insn->op == da::Op::Swi && passes(insn->cond, n, z, c, v)) {   // a BIOS call: logged and answered as the own core does
             ar::BiosCall call;
@@ -534,49 +678,117 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
             ++steps;
             continue;
         }
-        if (insn->op == da::Op::Mcr || insn->op == da::Op::Mrc || insn->op == da::Op::Pld) {   // coprocessor 15: the bus's hardware, answered by the own core
-            if (const std::optional<ar::Fault> fault = delegate(pc, thumb, "coprocessor 15 and PLD")) {
+        if (insn->op == da::Op::Mcr || insn->op == da::Op::Mrc || insn->op == da::Op::Pld) {   // coprocessor 15 and the preload hint: the adapter's own semantics (the machine's registers are the bus's)
+            flags(n, z, c, v);
+            if (is_thumb_insn || passes(insn->cond, n, z, c, v)) {   // (a Thumb instruction's condition is the IT block's, settled above)
+                if (insn->op != da::Op::Pld) {
+                    if (insn->cp != 15) {   // (the one coprocessor there is)
+                        out.end = ar::End::Stopped;
+                        out.fault = ar::Fault{ar::Fault::Kind::NotRun, pc, 0, std::format("{} p{}", insn->op == da::Op::Mcr ? "mcr" : "mrc", insn->cp), 0};
+                        break;
+                    }
+                    const std::uint32_t reg = static_cast<std::uint32_t>(insn->opc1) << 12 | static_cast<std::uint32_t>(insn->crn) << 8 | static_cast<std::uint32_t>(insn->crm) << 4 | insn->opc2;
+                    if (insn->op == da::Op::Mcr) {
+                        const std::uint32_t value = insn->rd == 15 ? pc + 8 : static_cast<std::uint32_t>(emu.reg(arm_r[insn->rd]));
+                        bus.log_access(ar::BusAccess::Kind::Write, 4, ar::kNdsCp15Base | reg, value);
+                        bus.cp15_write(reg, value);
+                    } else {
+                        const std::uint32_t value = bus.cp15_read(reg);
+                        bus.log_access(ar::BusAccess::Kind::Read, 4, ar::kNdsCp15Base | reg, value);
+                        if (insn->rd == 15) {   // (the flags take the top four bits)
+                            emu.setReg("NG", (value >> 31) & 1);
+                            emu.setReg("ZR", (value >> 30) & 1);
+                            emu.setReg("CY", (value >> 29) & 1);
+                            emu.setReg("OV", (value >> 28) & 1);
+                        } else {
+                            emu.setReg(arm_r[insn->rd], value);
+                        }
+                    }
+                }
+            }
+            emu.setPc(pc + insn->length);
+            ++steps;
+            continue;
+        }
+        if (is_thumb_insn && insn->length == 4 && insn->op == da::Op::Ldr && insn->rn == 15 && insn->size == 1 && insn->sign && insn->rd < 15) {   // LDRSB (literal)
+            // by the adapter: the description reads the word at the address and takes the byte it holds as the address of the byte it loads (a second indirection)
+            const std::uint32_t base = (pc + 4) & ~3u, at = insn->up ? base + insn->imm : base - insn->imm;
+            if (!bus.mapped(at)) {
                 out.end = ar::End::Stopped;
-                out.fault = *fault;
+                out.fault = ar::Fault{ar::Fault::Kind::BusError, pc, at, {}, 0};
                 fault_pc = pc;
                 break;
             }
+            emu.setReg(arm_r[insn->rd], static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int8_t>(bus.read(at, 1)))));
+            emu.setPc(pc + 4);
+            ++steps;
+            continue;
+        }
+        if (insn->op == da::Op::Bkpt) {   // a breakpoint is not run: the run stops at it
+            out.end = ar::End::Stopped;
+            out.fault = ar::Fault{ar::Fault::Kind::NotRun, pc, 0, "bkpt", 0};
+            fault_pc = pc;
+            break;
+        }
+        if (!is_thumb_insn && (insn->op == da::Op::Ldr || insn->op == da::Op::Str) && insn->rn == 15 && (insn->size == 2 || insn->size == 8 || insn->sign) && insn->imm_form) {
+            // ARM state, a halfword, signed byte or doubleword transfer on the pc (the literal pool): by the adapter. The description reads the address it computes twice over a register
+            // it has just changed, and a store of the pair goes to address 0. The address is the pc (this instruction plus 8) plus or minus the offset.
+            flags(n, z, c, v);
+            if (passes(insn->cond, n, z, c, v)) {
+                ++arm_handover().by_class["ARM-state halfword, signed or doubleword transfer on the pc (the adapter's own)"];
+                const std::uint32_t base = pc + 8, at = insn->up ? base + insn->imm : base - insn->imm, address = insn->pre ? at : base;
+                const unsigned size = insn->size == 8 ? 4 : insn->size;
+                const std::uint32_t first = insn->size == 8 ? address & ~3u : address & ~(size - 1);
+                if (!bus.mapped(first) || (insn->size == 8 && !bus.mapped(first + 4))) {
+                    out.end = ar::End::Stopped;
+                    out.fault = ar::Fault{ar::Fault::Kind::BusError, pc, address, {}, 0};
+                    fault_pc = pc;
+                    break;
+                }
+                if (insn->op == da::Op::Str) {
+                    const auto value = [&](unsigned k) { return k == 15 ? pc + 12 : static_cast<std::uint32_t>(emu.reg(arm_r[k])); };
+                    if (insn->size == 8) {
+                        emu.busWrite(first, 4, value(insn->rd), "ram");
+                        emu.busWrite(first + 4, 4, value(insn->rd + 1u), "ram");
+                    } else {
+                        const std::uint32_t word = value(insn->rd);
+                        emu.busWrite(first, size, size == 4 ? word : word & ((1u << (8 * size)) - 1), "ram");
+                    }
+                } else if (insn->size == 8) {
+                    const std::uint32_t low = bus.read(first, 4), high = bus.read(first + 4, 4);
+                    emu.setReg(arm_r[insn->rd], low);
+                    emu.setReg(arm_r[insn->rd + 1u], high);
+                } else {
+                    std::uint32_t loaded;
+                    if (insn->size == 1) loaded = static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int8_t>(bus.read(address, 1))));
+                    else if (insn->sign) loaded = (address & 1) ? static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int8_t>(bus.read(address, 1)))) : static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int16_t>(bus.read(address, 2))));
+                    else loaded = da::rotate_right(bus.read(first, 2), (address & 1) ? 8 : 0);
+                    if (insn->rd < 15) emu.setReg(arm_r[insn->rd], loaded);
+                }
+            }
+            emu.setPc(pc + 4);
             ++steps;
             continue;
         }
         const bool arm_row = insn->op == da::Op::Ext && insn->ext >= 0 && insn->ext < da::t2::kIt;   // (a row of the ARM table: in Thumb, the VFP's encodings; the Thumb-only ones are above 1000)
-        // What the description does otherwise than the own core, in cases the manual leaves open: the own core's result is kept by handing the one instruction to it.
-        const char* handed = nullptr;
-        if (insn->op == da::Op::Stm && insn->wb && insn->rn < 15 && ((insn->list >> insn->rn) & 1)) handed = "stm with the base in the list";   // (the base is stored as written back, unless it is the first register)
-        if (insn->op == da::Op::Ldm && insn->wb && insn->rn < 15 && ((insn->list >> insn->rn) & 1)) handed = "ldm with the base in the list";   // (the base is loaded, not written back)
-        if (insn->op == da::Op::Str && (insn->wb || !insn->pre) && insn->rn < 15 && insn->rn == insn->rd) handed = "store of the base register with write-back";   // (the manual leaves the value stored open)
-        if (!is_thumb_insn && (insn->op == da::Op::Ldr || insn->op == da::Op::Str) && insn->rn == 15 && (insn->size == 2 || insn->size == 8 || insn->sign)) handed = "ARM-state halfword, signed or doubleword load or store with the pc as base";   // (the description reads another address)
-        if (bus.arch() >= da::Arch::V7A && !is_thumb_insn && arm_row && !da::ext::mnemonic(insn->ext).starts_with('v'))
-            handed = "ARMv6 media instruction in ARM state (the description leaves the saturation helpers to the machine, and the own core refuses some of the family)";
-        if (handed) {
-            if (const std::optional<ar::Fault> fault = delegate(pc, thumb, handed)) {
-                out.end = ar::End::Stopped;
-                out.fault = *fault;
-                fault_pc = pc;
-                break;
-            }
-            ++steps;
-            continue;
-        }
         bus_error.reset();
         odd_half.reset();
         odd_byte.reset();
         signed_half = insn->size == 2 && insn->sign;
         const std::uint32_t ext_word = is_thumb_insn && insn->length == 4 ? insn->word << 16 | insn->word >> 16 : insn->word;   // (a Thumb word is held with its halves swapped)
+        const bool t32_memory = insn->op == da::Op::Ext && is_thumb_insn && insn->ext >= da::t2::kLdrexT && insn->ext <= da::t2::kTb;   // (the exclusive ones, the table branches)
         const bool memory_op = insn->op == da::Op::Ldr || insn->op == da::Op::Str || insn->op == da::Op::Ldm || insn->op == da::Op::Stm || insn->op == da::Op::Swp ||
-                               arm_row;   // (the exclusive loads and the VFP's transfers)
+                               arm_row || t32_memory;   // (the exclusive loads and the VFP's transfers)
         std::array<std::uint32_t, 15> before_regs{};
         unsigned touched = 0;   // the registers the transfer can change
         if (memory_op) {   // (an access that fails leaves the registers as they were: the description has written back and loaded zeros by then)
-            if (insn->op == da::Op::Ext) {
+            if (t32_memory) {
+                touched = 0x7FFF;
+            } else if (insn->op == da::Op::Ext) {
                 touched = 3u << (ext_word >> 12 & 15) | 1u << (ext_word >> 16 & 15);   // (Rt and the pair of LDREXD, the base)
             } else {
                 if (insn->op == da::Op::Ldm || insn->op == da::Op::Stm) touched = static_cast<unsigned>(insn->list) & 0x7FFF;
+                else if (is_thumb_insn && insn->size == 8) touched = 1u << insn->rd | 1u << insn->rs;   // (Thumb LDRD: the two registers it names)
                 else if (insn->rd < 15) touched = 3u << insn->rd;   // (LDRD: the pair)
                 if (insn->rn < 15) touched |= 1u << insn->rn;
             }
@@ -590,10 +802,55 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
             const std::uint32_t base = insn->rn < 15 ? before_regs[insn->rn] : pc + (thumb ? 4u : 8u);
             const std::uint32_t low = insn->up ? (insn->pre ? base + 4 : base) : (insn->pre ? base - 4 * count : base - 4 * count + 4);
             block_start = low & ~3u;
+            if (insn->wb && insn->rn < 15 && ((insn->list >> insn->rn) & 1)) {   // a base that is listed: where its word is
+                base_slot = block_start + 4 * static_cast<std::uint32_t>(std::popcount(static_cast<unsigned>(insn->list) & ((1u << insn->rn) - 1)));
+                base_listed_load = insn->op == da::Op::Ldm;
+            } else {
+                base_listed_load = false;
+            }
+        } else {
+            base_listed_load = false;
         }
-        dword_transfer = (insn->op == da::Op::Ldr || insn->op == da::Op::Str) && insn->size == 8;
-        vfp_transfer = arm_row && da::ext::mnemonic(insn->ext).starts_with('v');
-        current_word = ext_word;
+        bool cond_ok = true;   // (the condition of an ARM word, asked where a fix-up after the step needs it)
+        if (!is_thumb_insn && insn->cond != 14 && (block_transfer || (insn->op == da::Op::Str && (insn->wb || !insn->pre) && insn->rn == insn->rd))) {
+            flags(n, z, c, v);
+            cond_ok = passes(insn->cond, n, z, c, v);
+        }
+        if (block_transfer && cond_ok) {   // (a block transfer that has a word nothing answers does nothing: it can be restarted, and the manual leaves the words that came before UNKNOWN)
+            const std::uint32_t count = static_cast<std::uint32_t>(std::popcount(static_cast<unsigned>(insn->list) & 0xFFFFu));
+            for (std::uint32_t k = 0; k < count && !bus_error; ++k)
+                if (!bus.mapped(block_start + 4 * k)) bus_error = block_start + 4 * k;
+            if (bus_error) {
+                out.end = ar::End::Stopped;
+                out.fault = ar::Fault{ar::Fault::Kind::BusError, pc, *bus_error, {}, 0};
+                fault_pc = pc;
+                break;
+            }
+        }
+        neon_access = false;
+        if (insn->op == da::Op::Ext && insn->ext == da::t2::kNeon) {
+            if (const std::optional<da::t2::NeonTransfer> t = da::t2::neon_transfer(insn->imm)) {   // (nothing is moved unless every byte is there)
+                neon_access = true;
+                const std::uint32_t base_address = static_cast<std::uint32_t>(emu.reg(arm_r[t->rn]));
+                for (unsigned k = 0; k < t->bytes; ++k)
+                    if (!bus.mapped(base_address + k)) {
+                        out.end = ar::End::Stopped;
+                        out.fault = ar::Fault{ar::Fault::Kind::BusError, pc, base_address + k, {}, 0};
+                        fault_pc = pc;
+                        break;
+                    }
+                if (out.end == ar::End::Stopped) break;
+            }
+        }
+        last_write_address.reset();
+        dword_raw.reset();
+        negative_literal = is_thumb_insn && insn->op == da::Op::Ldr && insn->size == 8 && insn->rn == 15 && !insn->up;
+        literal_base = (pc + 4) & ~3u;
+        dword_transfer = ((insn->op == da::Op::Ldr || insn->op == da::Op::Str) && insn->size == 8) || (t32_memory && (insn->ext == da::t2::kLdrexdT || insn->ext == da::t2::kStrexdT));
+        const std::string_view row_name = arm_row ? da::ext::mnemonic(insn->ext) : std::string_view();
+        exclusive_transfer = t32_memory || row_name.starts_with("ldrex") || row_name.starts_with("strex");
+        vfp_transfer = arm_row && row_name.starts_with('v');
+        mir.ops.word = ext_word;
         not_run.reset();
         mode_switch.reset();
         // The carry flag of a Thumb-2 logical instruction with the S bit as the own core has it: the shifter's carry out of a register operand, the flag as it was for an
@@ -604,7 +861,7 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
                                                                insn->op == da::Op::Bic || insn->op == da::Op::Mvn || insn->op == da::Op::Tst || insn->op == da::Op::Teq)) {
             const bool carry_in = emu.reg(arm_status[2]) != 0;
             if (insn->imm_form) {
-                carry_after = carry_in;
+                carry_after = insn->rot != 0 ? (insn->imm >> 31) != 0 : carry_in;   // (ThumbExpandImm_C: the rotated ones' carry out is bit 31)
             } else if (insn->rm < 15 && (!insn->shift_by_reg || insn->rs < 15)) {
                 const std::uint32_t value = static_cast<std::uint32_t>(emu.reg(arm_r[insn->rm]));
                 const std::uint32_t amount = insn->shift_by_reg ? static_cast<std::uint32_t>(emu.reg(arm_r[insn->rs])) & 0xFF : insn->amount;
@@ -618,21 +875,16 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
                 }
             }
         }
+        const bool alu_pc_write = static_cast<unsigned>(insn->op) < 16 && !thumb && bus.arch() >= da::Arch::V7A && insn->rd == 15 && !insn->s;
+        std::uint64_t cpsr_before = 0;
+        if (alu_pc_write) cpsr_before = emu.reg(arm_status[4]);
         const sl::Emulator::Status status = emu.step();
         if (status != sl::Emulator::Status::Ok) {
             if (status == sl::Emulator::Status::Error) {   // (the description's p-code failed: not an instruction the own core refuses)
                 out.end = ar::End::Stopped;
                 out.fault = ar::Fault{ar::Fault::Kind::NotRun, pc, 0, emu.lastError(), 0};
-            } else if (status == sl::Emulator::Status::BadInstruction) {   // an encoding the own core's decoder reads and the description does not: the own core runs it
-                const std::string text = da::text(*insn);
-                if (const std::optional<ar::Fault> fault = delegate(pc, thumb, ("not in the description: " + text.substr(0, text.find(' '))).c_str())) {
-                    out.end = ar::End::Stopped;
-                    out.fault = *fault;
-                    fault_pc = pc;
-                    break;
-                }
-                ++steps;
-                continue;
+            } else if (status == sl::Emulator::Status::BadInstruction) {   // an encoding the own core's decoder reads and the description does not (the 3DS: the VFP registers d16-d31, which VFPv2 has not): no instruction on this machine
+                stop(ar::Fault::Kind::NoInstruction, pc, 0);
             } else {
                 stop(ar::Fault::Kind::NoInstruction, pc, 0);
             }
@@ -640,11 +892,9 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
         }
         if (carry_after) emu.setReg(arm_status[2], *carry_after ? 1 : 0);
         if (bus_error) {
-            // (an LDM that fails part way has loaded the registers whose words came before the one that failed, as the own core goes up the block)
-            const std::uint32_t loaded = insn->op == da::Op::Ldm ? (*bus_error - block_start) / 4 : 0;
+            // (an LDM that fails part way has loaded nothing: the instruction can be restarted, and the manual leaves the registers it would have loaded UNKNOWN)
             for (unsigned i = 0; i < 15; ++i)
-                if (((touched >> i) & 1) && !(insn->op == da::Op::Ldm && ((insn->list >> i) & 1) && static_cast<std::uint32_t>(std::popcount(static_cast<unsigned>(insn->list) & ((1u << i) - 1))) < loaded))
-                    emu.setReg(arm_r[i], before_regs[i]);
+                if ((touched >> i) & 1) emu.setReg(arm_r[i], before_regs[i]);
             out.end = ar::End::Stopped;
             out.fault = ar::Fault{ar::Fault::Kind::BusError, pc, *bus_error, {}, 0};
             fault_pc = pc;   // (the pc stays at the instruction that failed)
@@ -655,18 +905,44 @@ ar::RunResult run(ar::Bus& bus, std::uint32_t entry, const ar::RunOptions& optio
             out.fault = ar::Fault{ar::Fault::Kind::NotRun, pc, 0, *not_run, 0};
             break;
         }
-        if (odd_half && insn->size == 2 && insn->rd < 15) {   // LDRH / LDRSH from an odd address
+        if (cond_ok && block_transfer && insn->wb && insn->rn < 15 && ((insn->list >> insn->rn) & 1)) {   // the base of a block transfer that is also in its list (ARM ARM leaves the result open; the own core's: a load keeps the word it loaded, a store keeps the written-back base unless the base is the first register listed)
+            if (insn->op == da::Op::Ldm) {
+                emu.setReg(arm_r[insn->rn], base_loaded);
+            } else {
+                const std::uint32_t count = static_cast<std::uint32_t>(std::popcount(static_cast<unsigned>(insn->list) & 0xFFFFu));
+                const std::uint32_t written_back = insn->up ? before_regs[insn->rn] + 4 * count : before_regs[insn->rn] - 4 * count;
+                emu.busWrite(base_slot, 4, insn->rn != std::countr_zero(static_cast<unsigned>(insn->list)) ? written_back : before_regs[insn->rn], "ram");
+                emu.setReg(arm_r[insn->rn], written_back);
+            }
+        }
+        if (cond_ok && insn->op == da::Op::Str && (insn->wb || !insn->pre) && insn->rn < 15 && insn->rn == insn->rd && insn->size != 8 && last_write_address) {   // a store of the base register with write-back: the value read before the base changed
+            const std::uint32_t mask = insn->size >= 4 ? 0xFFFFFFFFu : (1u << (8 * insn->size)) - 1;
+            emu.busWrite(*last_write_address, insn->size, before_regs[insn->rn] & mask, "ram");
+        }
+        if (is_thumb_insn && insn->op == da::Op::Ldr && insn->size == 8 && insn->rn == 15) {   // LDRD (literal): the description puts the high word in the first register and the low in the second
+            const std::uint64_t first = emu.reg(arm_r[insn->rd]);
+            emu.setReg(arm_r[insn->rd], emu.reg(arm_r[insn->rs]));
+            emu.setReg(arm_r[insn->rs], first);
+        }
+        if (odd_half && insn->op == da::Op::Ldr && insn->size == 2 && insn->rd < 15) {   // LDRH / LDRSH from an odd address
             const std::uint32_t result = insn->sign ? static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int8_t>(*odd_byte))) : *odd_half;
             emu.setReg(arm_r[insn->rd], result);
         }
         // the state after the instruction: BX and loads into the pc say it; a BLX by an immediate changes it
         bool next_thumb = thumb;
+        if (alu_pc_write) {   // (ARMv7: ALUWritePC takes the state from bit 0 of the value; the description's SUB to the pc copies the saved status register as the form that returns from an exception does)
+            if (emu.reg(arm_status[4]) != cpsr_before) {
+                emu.setReg(arm_status[4], cpsr_before);
+                mode_switch = (static_cast<std::uint32_t>(emu.pc()) & 1) != 0;
+            }
+        }
         if (insn->op == da::Op::Bx) next_thumb = emu.reg(arm_status[5]) != 0;   // (on the ARMv4T only BX changes the state, and the description records it in TB: MOV and LDR to the pc ignore bit 0)
-        else if (v5 && mode_switch && ((insn->op == da::Op::Ldr && insn->rd == 15) || (insn->op == da::Op::Ldm && (insn->list & 0x8000)) || (insn->op == da::Op::Blx && !insn->target)))
-            next_thumb = *mode_switch;   // (on the ARMv5 a load into the pc, POP and BLX by a register take the state from bit 0)
+        else if (v5 && mode_switch && ((insn->op == da::Op::Ldr && insn->rd == 15) || (insn->op == da::Op::Ldm && (insn->list & 0x8000)) || (insn->op == da::Op::Blx && !insn->target) ||
+                                                       (static_cast<unsigned>(insn->op) < 16 && !thumb && bus.arch() >= da::Arch::V7A && insn->rd == 15 && !insn->s)))
+            next_thumb = *mode_switch;   // (on the ARMv5 a load into the pc, POP and BLX by a register take the state from bit 0, and from the ARMv7 an ARM data-processing write of the pc)
         else if (insn->op == da::Op::Blx && insn->target) next_thumb = (*insn->target & 1) != 0;   // (BLX by an immediate: to the other state, the decoder's target says which)
         else if (insn->op == da::Op::Bl && insn->target && passes(insn->cond, n, z, c, v) && insn->length == 4 && !thumb && (insn->word >> 28) == 0xF) next_thumb = true;
-        else if (thumb && insn->word >> 11 == 0x1D) next_thumb = false;   // BLX (immediate) in Thumb
+        else if (thumb && insn->length == 2 && insn->word >> 11 == 0x1D) next_thumb = false;   // BLX (immediate) in Thumb
         if (next_thumb != thumb) {
             thumb = next_thumb;
             emu.setContext("TMode", thumb ? 1 : 0);

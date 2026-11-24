@@ -1,6 +1,8 @@
 // emulate/powerpc.cpp -- see powerpc.hpp.
 #include "emulate/powerpc.hpp"
 
+#include "emulate/powerpc_fpu.hpp"
+
 #include <algorithm>
 #include <bit>
 #include <cmath>
@@ -89,6 +91,13 @@ double to_double(std::uint64_t bits) { return std::bit_cast<double>(bits); }
 std::uint64_t to_bits(double x) { return std::bit_cast<std::uint64_t>(x); }
 
 double round_to_single(double x) { return static_cast<double>(static_cast<float>(x)); }
+
+double arithmetic_nan(double result, std::span<const double> operands) {
+    if (!std::isnan(result)) return result;
+    for (const double x : operands)
+        if (std::isnan(x)) return to_double(to_bits(x) | 0x0008000000000000ull);   // (quieted, its sign and payload kept)
+    return to_double(kQuietNan);
+}
 
 namespace {
 
@@ -299,24 +308,32 @@ void memory_op(Machine& m, unsigned op, std::uint32_t w, unsigned rt, unsigned r
 
 void record_cr0(Machine& m, std::uint64_t v) {   // CR0 from a result, as a signed 64-bit number
     const std::int64_t s = s64(v);
-    m.set_cr(0, s < 0 ? 8 : s > 0 ? 4 : 2);
+    m.set_cr(0, (s < 0 ? 8 : s > 0 ? 4 : 2) | (m.so ? 1 : 0));
 }
 
-void compare_signed(Machine& m, unsigned field, std::int64_t a, std::int64_t b) { m.set_cr(field, a < b ? 8 : a > b ? 4 : 2); }
-void compare_unsigned(Machine& m, unsigned field, std::uint64_t a, std::uint64_t b) { m.set_cr(field, a < b ? 8 : a > b ? 4 : 2); }
+void compare_signed(Machine& m, unsigned field, std::int64_t a, std::int64_t b) { m.set_cr(field, (a < b ? 8 : a > b ? 4 : 2) | (m.so ? 1 : 0)); }
+void compare_unsigned(Machine& m, unsigned field, std::uint64_t a, std::uint64_t b) { m.set_cr(field, (a < b ? 8 : a > b ? 4 : 2) | (m.so ? 1 : 0)); }
 
-void arithmetic(Machine& m, unsigned xo, unsigned rt, unsigned ra, unsigned rb, bool rc) {
+// Whether x + y + carry (carry 0 or 1) leaves the range of a signed 64-bit number.
+bool add_overflows(std::uint64_t x, std::uint64_t y, unsigned carry) {   // (the add-with-carry overflow flag)
+    const std::uint64_t sum = x + y + carry;
+    return (((x ^ sum) & (y ^ sum)) >> 63) != 0;
+}
+
+void arithmetic(Machine& m, unsigned xo, unsigned rt, unsigned ra, unsigned rb, bool rc, bool oe) {
     auto& r = m.r;
     const std::uint64_t a = r[ra], b = r[rb];
     std::uint64_t v = 0;
+    bool overflow = false;   // what XER[OV] becomes when `oe`
     auto carried = [&](std::uint64_t x, std::uint64_t y, unsigned cin) {
         const auto [sum, out] = add_with_carry(x, y, cin);
         m.ca = out;
+        overflow = add_overflows(x, y, cin);
         return sum;
     };
     switch (xo) {
-        case 266: v = a + b; break;                           // add
-        case 40: v = b - a; break;                            // subf
+        case 266: v = a + b; overflow = add_overflows(a, b, 0); break;                    // add
+        case 40: v = b - a; overflow = add_overflows(b, ~a, 1); break;                    // subf
         case 10: v = carried(a, b, 0); break;                 // addc
         case 8: v = carried(~a, b, 1); break;                 // subfc
         case 138: v = carried(a, b, m.ca); break;             // adde
@@ -325,60 +342,74 @@ void arithmetic(Machine& m, unsigned xo, unsigned rt, unsigned ra, unsigned rb, 
         case 200: v = carried(~a, 0, m.ca); break;            // subfze
         case 234: v = carried(a, kM64, m.ca); break;          // addme
         case 232: v = carried(~a, kM64, m.ca); break;         // subfme
-        case 104: v = 0 - a; break;                           // neg
-        case 235: v = static_cast<std::uint64_t>(s32(a) * s32(b)); break;                          // mullw
+        case 104: v = 0 - a; overflow = a == (std::uint64_t{1} << 63); break;             // neg
+        case 235: {                                                                        // mullw
+            const std::int64_t p = s32(a) * s32(b);
+            v = static_cast<std::uint64_t>(p);
+            overflow = p != s32(static_cast<std::uint64_t>(p));
+            break;
+        }
         case 75: v = static_cast<std::uint64_t>((s32(a) * s32(b)) >> 32) & kM32; break;           // mulhw
         case 11: v = ((a & kM32) * (b & kM32)) >> 32; break;                                       // mulhwu
-        case 233: v = static_cast<std::uint64_t>(s64(a) * s64(b)); break;                          // mulld (the low 64 bits)
+        case 233: {                                                                                // mulld (the low 64 bits)
+            v = static_cast<std::uint64_t>(s64(a) * s64(b));
+            overflow = static_cast<std::uint64_t>(mul_high(s64(a), s64(b))) != static_cast<std::uint64_t>(s64(v) >> 63);
+            break;
+        }
         case 73: v = static_cast<std::uint64_t>(mul_high(s64(a), s64(b))); break;                    // mulhd
         case 9: v = mul_high(a, b); break;                                                          // mulhdu
         case 491: {                                                                                // divw
             const std::int64_t x = s32(a), y = s32(b);
-            v = (y == 0 || (x == -0x80000000ll && y == -1)) ? 0 : static_cast<std::uint64_t>(x / y) & kM32;
+            overflow = y == 0 || (x == -0x80000000ll && y == -1);
+            v = overflow ? 0 : static_cast<std::uint64_t>(x / y) & kM32;
             break;
         }
-        case 459: v = (b & kM32) == 0 ? 0 : (a & kM32) / (b & kM32); break;                        // divwu
+        case 459: overflow = (b & kM32) == 0; v = overflow ? 0 : (a & kM32) / (b & kM32); break;   // divwu
         case 489: {                                                                                // divd
             const std::int64_t x = s64(a), y = s64(b);
-            v = (y == 0 || (x == std::numeric_limits<std::int64_t>::min() && y == -1)) ? 0 : static_cast<std::uint64_t>(x / y);
+            overflow = y == 0 || (x == std::numeric_limits<std::int64_t>::min() && y == -1);
+            v = overflow ? 0 : static_cast<std::uint64_t>(x / y);
             break;
         }
-        case 457: v = b == 0 ? 0 : a / b; break;                                                   // divdu
+        case 457: overflow = b == 0; v = overflow ? 0 : a / b; break;                              // divdu
         default: throw Fault(StopReason::Unsupported);
     }
     r[rt] = v;
+    if (oe) {
+        m.ov = overflow;
+        if (overflow) m.so = true;
+    }
     if (rc) record_cr0(m, v);
+}
+
+// The floating-point unit's result into a register (not written when an enabled exception stops it).
+void put_float(Machine& m, unsigned rt, const fpu::Result& r) {
+    if (r.written) m.f[rt] = r.bits;
 }
 
 void float_other(Machine& m, std::uint32_t w, unsigned xo, unsigned rt, unsigned ra, unsigned rb) {
     auto& f = m.f;
-    const double b = to_double(f[rb]);
     switch (xo) {
         case 72: f[rt] = f[rb]; break;                                         // fmr
         case 40: f[rt] = f[rb] ^ (std::uint64_t{1} << 63); break;              // fneg
         case 264: f[rt] = f[rb] & ~(std::uint64_t{1} << 63); break;            // fabs
         case 136: f[rt] = f[rb] | (std::uint64_t{1} << 63); break;             // fnabs
-        case 12: f[rt] = to_bits(round_to_single(b)); break;                   // frsp
+        case 12: put_float(m, rt, fpu::execute(m.fpscr, fpu::Op::Frsp, true, 0, f[rb], 0)); break;                      // frsp
         case 0:
-        case 32: {                                                             // fcmpu, fcmpo
-            const double a = to_double(f[ra]);
-            m.set_cr(rt >> 2, (std::isnan(a) || std::isnan(b)) ? 1 : a < b ? 8 : a > b ? 4 : 2);
-            break;
-        }
-        case 14:
-        case 15: f[rt] = static_cast<std::uint64_t>(to_integer(b, 32, xo == 15)) & kM32; break;     // fctiw, fctiwz
-        case 814:
-        case 815: f[rt] = static_cast<std::uint64_t>(to_integer(b, 64, xo == 815)); break;          // fctid, fctidz
-        case 846: f[rt] = to_bits(static_cast<double>(s64(f[rb]))); break;                          // fcfid
-        case 583: f[rt] = 0; break;                                                                 // mffs: no status is kept
-        case 711:
-        case 134:
-        case 70:
-        case 38:
-        case 64: break;                                                                             // status register moves
+        case 32: m.set_cr(rt >> 2, fpu::compare(m.fpscr, f[ra], f[rb], xo == 32)); break;                             // fcmpu, fcmpo
+        case 14: put_float(m, rt, fpu::execute(m.fpscr, fpu::Op::Fctiw, false, 0, f[rb], 0)); break;                     // fctiw
+        case 15: put_float(m, rt, fpu::execute(m.fpscr, fpu::Op::Fctiwz, false, 0, f[rb], 0)); break;                    // fctiwz
+        case 814: put_float(m, rt, fpu::execute(m.fpscr, fpu::Op::Fctid, false, 0, f[rb], 0)); break;                    // fctid
+        case 815: put_float(m, rt, fpu::execute(m.fpscr, fpu::Op::Fctidz, false, 0, f[rb], 0)); break;                   // fctidz
+        case 846: put_float(m, rt, fpu::execute(m.fpscr, fpu::Op::Fcfid, false, 0, f[rb], 0)); break;                    // fcfid
+        case 583: f[rt] = fpu::move_from(m.fpscr); break;                                                              // mffs
+        case 711: fpu::move_to_fields(m.fpscr, (w >> 17) & 0xFF, f[rb]); break;                                        // mtfsf
+        case 134: fpu::move_to_field_immediate(m.fpscr, rt >> 2, (w >> 12) & 0xF); break;                              // mtfsfi
+        case 70: fpu::set_bit(m.fpscr, rt, false); break;                                                              // mtfsb0
+        case 38: fpu::set_bit(m.fpscr, rt, true); break;                                                               // mtfsb1
+        case 64: m.set_cr(rt >> 2, fpu::move_to_cr_from_field(m.fpscr, ra >> 2)); break;                               // mcrfs
         default: throw Fault(StopReason::Unsupported);
     }
-    (void)w;
 }
 
 void floating(Machine& m, unsigned op, std::uint32_t w, unsigned rt, unsigned ra, unsigned rb) {
@@ -387,32 +418,31 @@ void floating(Machine& m, unsigned op, std::uint32_t w, unsigned rt, unsigned ra
     const unsigned xo5 = (w >> 1) & 31;
     const unsigned xo = (w >> 1) & 0x3FF;
     const bool single = op == 59;
-    const double a = to_double(f[ra]), b = to_double(f[rb]), c = to_double(f[rc5]);
-    double v = 0;
+    fpu::Op what;
     switch (xo5) {
-        case 21: v = a + b; break;
-        case 20: v = a - b; break;
-        case 25: v = a * c; break;
-        case 18:
-            v = b != 0 ? a / b : (a == 0 || std::isnan(a)) ? nan_value() : std::copysign(std::numeric_limits<double>::infinity(), a) * std::copysign(1.0, b);
-            break;
-        case 29: v = a * c + b; break;
-        case 28: v = a * c - b; break;
-        case 31: v = -(a * c + b); break;
-        case 30: v = -(a * c - b); break;
-        case 22: v = b >= 0 ? std::sqrt(b) : nan_value(); break;
-        case 24: v = b != 0 ? 1.0 / b : std::copysign(std::numeric_limits<double>::infinity(), b); break;
-        case 26: v = b > 0 ? 1.0 / std::sqrt(b) : (b == 0 ? std::numeric_limits<double>::infinity() : nan_value()); break;
+        case 21: what = fpu::Op::Add; break;
+        case 20: what = fpu::Op::Sub; break;
+        case 25: what = fpu::Op::Mul; break;
+        case 18: what = fpu::Op::Div; break;
+        case 29: what = fpu::Op::Madd; break;
+        case 28: what = fpu::Op::Msub; break;
+        case 31: what = fpu::Op::Nmadd; break;
+        case 30: what = fpu::Op::Nmsub; break;
+        case 22: what = fpu::Op::Sqrt; break;
+        case 24: what = fpu::Op::Res; break;
+        case 26: what = fpu::Op::Rsqrte; break;
         default:
             if (xo5 == 23 && !single) {   // fsel
-                f[rt] = a >= 0.0 ? f[rc5] : f[rb];
+                f[rt] = to_double(f[ra]) >= 0.0 ? f[rc5] : f[rb];
                 return;
             }
             if (single) throw Fault(StopReason::Unsupported);
             float_other(m, w, xo, rt, ra, rb);
             return;
     }
-    f[rt] = to_bits(single ? round_to_single(v) : v);
+    const fpu::Result r = fpu::execute(m.fpscr, what, single, f[ra], f[rb], f[rc5]);
+    if (!r.written) return;
+    f[rt] = r.bits;
     if (single && m.paired_singles) m.ps1[rt] = f[rt];   // (Gekko: the single-precision operations fill both halves)
 }
 
@@ -423,10 +453,11 @@ void extended(Machine& m, std::uint32_t w, unsigned rt, unsigned ra, unsigned rb
     const std::uint64_t base = ra ? r[ra] : 0;
     if (const auto load = indexed_load(xo)) {
         const std::uint32_t ea = static_cast<std::uint32_t>(base + r[rb]);
+        const std::uint64_t index = r[rb];   // (the target may be the index register: the address was formed from the index it had)
         std::uint64_t v = m.read(ea, load->size);
         if (load->swap) v = swap_bytes(v, load->size);
         r[rt] = load->sign ? sign_extend(v, 8 * load->size) : v;
-        if (load->update) r[ra] = base + r[rb];
+        if (load->update) r[ra] = base + index;
         if (xo == 20 || xo == 84) m.reserve = ea;   // lwarx, ldarx: a reservation
         return;
     }
@@ -446,9 +477,9 @@ void extended(Machine& m, std::uint32_t w, unsigned rt, unsigned ra, unsigned rb
     if (xo == 150 || xo == 214) {   // stwcx., stdcx.: stored while the reservation lwarx/ldarx made holds (one processor: it does, until this)
         if (m.reserve) {
             m.write(static_cast<std::uint32_t>(base + r[rb]), xo == 150 ? 4 : 8, r[rt]);
-            m.set_cr(0, 2);
+            m.set_cr(0, 2 | (m.so ? 1 : 0));
         } else {
-            m.set_cr(0, 0);
+            m.set_cr(0, m.so ? 1 : 0);
         }
         m.reserve.reset();
         return;
@@ -475,7 +506,7 @@ void extended(Machine& m, std::uint32_t w, unsigned rt, unsigned ra, unsigned rb
             r[rt] = m.gqr[spr - 912];
             return;
         }
-        r[rt] = spr == 8 ? m.lr : spr == 9 ? m.ctr : spr == 1 ? std::uint64_t{m.ca} << 29 : 0;   // time base and the like read as zero
+        r[rt] = spr == 8 ? m.lr : spr == 9 ? m.ctr : spr == 1 ? (std::uint64_t{m.ca} << 29) | (std::uint64_t{m.ov} << 30) | (std::uint64_t{m.so} << 31) : 0;   // time base and the like read as zero
         return;
     }
     if (xo == 467) {   // mtspr
@@ -490,6 +521,8 @@ void extended(Machine& m, std::uint32_t w, unsigned rt, unsigned ra, unsigned rb
             m.ctr = r[rt];
         } else if (spr == 1) {
             m.ca = ((r[rt] >> 29) & 1) != 0;
+            m.ov = ((r[rt] >> 30) & 1) != 0;
+            m.so = ((r[rt] >> 31) & 1) != 0;
         }
         return;
     }
@@ -583,7 +616,7 @@ void extended(Machine& m, std::uint32_t w, unsigned rt, unsigned ra, unsigned rb
     } else if (xo == 986) {   // extsw
         v = sign_extend(r[rt], 32);
     } else {
-        arithmetic(m, xo & 0x1FF, rt, ra, rb, rc);
+        arithmetic(m, xo & 0x1FF, rt, ra, rb, rc, (w & 0x400) != 0);
         return;
     }
     r[ra] = v;
@@ -872,14 +905,6 @@ void paired_memory(Machine& m, bool store, bool update, std::uint32_t ea, unsign
     if (update) m.r[ra] = ea;
 }
 
-double divide_like_hardware(double a, double b) {
-    return b != 0 ? a / b : (a == 0 || std::isnan(a)) ? nan_value() : std::copysign(std::numeric_limits<double>::infinity(), a) * std::copysign(1.0, b);
-}
-
-double reciprocal_like_hardware(double x) { return x != 0 ? 1.0 / x : std::copysign(std::numeric_limits<double>::infinity(), x); }
-
-double reciprocal_square_root(double x) { return x > 0 ? 1.0 / std::sqrt(x) : (x == 0 ? std::numeric_limits<double>::infinity() : nan_value()); }
-
 // Opcode 4: the paired-single arithmetic, compares, merges and the indexed quantized loads and stores.
 void paired_single(Machine& m, std::uint32_t w, unsigned rt, unsigned ra, unsigned rb) {
     const unsigned rc5 = (w >> 6) & 31;
@@ -887,13 +912,14 @@ void paired_single(Machine& m, std::uint32_t w, unsigned rt, unsigned ra, unsign
     auto& f = m.f;
     auto& g = m.ps1;
     constexpr std::uint64_t kSign = std::uint64_t{1} << 63;
-    const double a0 = to_double(f[ra]), a1 = to_double(g[ra]), b0 = to_double(f[rb]), b1 = to_double(g[rb]);
-    const double c0 = to_double(f[rc5]), c1 = to_double(g[rc5]);
-    const auto set = [&](double x0, double x1) {
-        f[rt] = to_bits(round_to_single(x0));
-        g[rt] = to_bits(round_to_single(x1));
+    const std::uint64_t a0 = f[ra], a1 = g[ra], b0 = f[rb], b1 = g[rb], c0 = f[rc5], c1 = g[rc5];
+    const auto pair = [&](fpu::Op what, std::uint64_t x0, std::uint64_t y0, std::uint64_t z0, std::uint64_t x1, std::uint64_t y1, std::uint64_t z1) {
+        const fpu::Pair r = fpu::execute_paired(m.fpscr, what, x0, y0, z0, x1, y1, z1);
+        if (r.first.written) f[rt] = r.first.bits;
+        if (r.second.written) g[rt] = r.second.bits;
     };
-    const auto compare = [&](double x, double y) { m.set_cr(rt >> 2, (std::isnan(x) || std::isnan(y)) ? 1 : x < y ? 8 : x > y ? 4 : 2); };
+    const auto quiet_single = [](std::uint64_t bits) { return to_bits(round_to_single(to_double(bits))); };   // (a value copied through unchanged, as a single)
+    const auto compare = [&](std::uint64_t x, std::uint64_t y, bool ordered) { m.set_cr(rt >> 2, fpu::compare(m.fpscr, x, y, ordered)); };
 
     if (xo6 == 6 || xo6 == 7 || xo6 == 38 || xo6 == 39) {   // psq_lx psq_stx psq_lux psq_stux
         const std::uint32_t ea = static_cast<std::uint32_t>((ra ? m.r[ra] : 0) + m.r[rb]);
@@ -901,8 +927,8 @@ void paired_single(Machine& m, std::uint32_t w, unsigned rt, unsigned ra, unsign
         return;
     }
     switch (xo10) {
-        case 0: case 32: compare(a0, b0); return;                                    // ps_cmpu0, ps_cmpo0
-        case 64: case 96: compare(a1, b1); return;                                   // ps_cmpu1, ps_cmpo1
+        case 0: case 32: compare(a0, b0, xo10 == 32); return;                        // ps_cmpu0, ps_cmpo0
+        case 64: case 96: compare(a1, b1, xo10 == 96); return;                       // ps_cmpu1, ps_cmpo1
         case 40: f[rt] = f[rb] ^ kSign; g[rt] = g[rb] ^ kSign; return;               // ps_neg
         case 72: f[rt] = f[rb]; g[rt] = g[rb]; return;                               // ps_mr
         case 136: f[rt] = f[rb] | kSign; g[rt] = g[rb] | kSign; return;              // ps_nabs
@@ -919,26 +945,34 @@ void paired_single(Machine& m, std::uint32_t w, unsigned rt, unsigned ra, unsign
         default: break;
     }
     switch (xo5) {
-        case 18: set(divide_like_hardware(a0, b0), divide_like_hardware(a1, b1)); return;   // ps_div
-        case 20: set(a0 - b0, a1 - b1); return;                                             // ps_sub
-        case 21: set(a0 + b0, a1 + b1); return;                                             // ps_add
+        case 18: pair(fpu::Op::Div, a0, b0, 0, a1, b1, 0); return;                           // ps_div
+        case 20: pair(fpu::Op::Sub, a0, b0, 0, a1, b1, 0); return;                           // ps_sub
+        case 21: pair(fpu::Op::Add, a0, b0, 0, a1, b1, 0); return;                           // ps_add
         case 23:                                                                            // ps_sel
-            f[rt] = a0 >= 0.0 ? f[rc5] : f[rb];
-            g[rt] = a1 >= 0.0 ? g[rc5] : g[rb];
+            f[rt] = to_double(a0) >= 0.0 ? f[rc5] : f[rb];
+            g[rt] = to_double(a1) >= 0.0 ? g[rc5] : g[rb];
             return;
-        case 24: set(reciprocal_like_hardware(b0), reciprocal_like_hardware(b1)); return;   // ps_res
-        case 25: set(a0 * c0, a1 * c1); return;                                             // ps_mul
-        case 26: set(reciprocal_square_root(b0), reciprocal_square_root(b1)); return;       // ps_rsqrte
-        case 28: set(a0 * c0 - b0, a1 * c1 - b1); return;                                   // ps_msub
-        case 29: set(a0 * c0 + b0, a1 * c1 + b1); return;                                   // ps_madd
-        case 30: set(-(a0 * c0 - b0), -(a1 * c1 - b1)); return;                             // ps_nmsub
-        case 31: set(-(a0 * c0 + b0), -(a1 * c1 + b1)); return;                             // ps_nmadd
-        case 10: set(a0 + b1, c1); return;                                                  // ps_sum0
-        case 11: set(c0, a0 + b1); return;                                                  // ps_sum1
-        case 12: set(a0 * c0, a1 * c0); return;                                             // ps_muls0
-        case 13: set(a0 * c1, a1 * c1); return;                                             // ps_muls1
-        case 14: set(a0 * c0 + b0, a1 * c0 + b1); return;                                   // ps_madds0
-        case 15: set(a0 * c1 + b0, a1 * c1 + b1); return;                                   // ps_madds1
+        case 24: pair(fpu::Op::Res, 0, b0, 0, 0, b1, 0); return;                             // ps_res
+        case 25: pair(fpu::Op::Mul, a0, 0, c0, a1, 0, c1); return;                           // ps_mul
+        case 26: pair(fpu::Op::Rsqrte, 0, b0, 0, 0, b1, 0); return;                          // ps_rsqrte
+        case 28: pair(fpu::Op::Msub, a0, b0, c0, a1, b1, c1); return;                        // ps_msub
+        case 29: pair(fpu::Op::Madd, a0, b0, c0, a1, b1, c1); return;                        // ps_madd
+        case 30: pair(fpu::Op::Nmsub, a0, b0, c0, a1, b1, c1); return;                       // ps_nmsub
+        case 31: pair(fpu::Op::Nmadd, a0, b0, c0, a1, b1, c1); return;                       // ps_nmadd
+        case 10: {                                                                          // ps_sum0: ps0 = a0 + b1, ps1 = c1
+            const fpu::Result r = fpu::execute(m.fpscr, fpu::Op::Add, true, a0, b1, 0);
+            if (r.written) f[rt] = r.bits, g[rt] = quiet_single(c1);
+            return;
+        }
+        case 11: {                                                                          // ps_sum1: ps0 = c0, ps1 = a0 + b1
+            const fpu::Result r = fpu::execute(m.fpscr, fpu::Op::Add, true, a0, b1, 0);
+            if (r.written) f[rt] = quiet_single(c0), g[rt] = r.bits;
+            return;
+        }
+        case 12: pair(fpu::Op::Mul, a0, 0, c0, a1, 0, c0); return;                           // ps_muls0
+        case 13: pair(fpu::Op::Mul, a0, 0, c1, a1, 0, c1); return;                           // ps_muls1
+        case 14: pair(fpu::Op::Madd, a0, b0, c0, a1, b1, c0); return;                        // ps_madds0
+        case 15: pair(fpu::Op::Madd, a0, b0, c1, a1, b1, c1); return;                        // ps_madds1
         default: throw Fault(StopReason::Unsupported);
     }
 }
@@ -1085,6 +1119,8 @@ void step(Machine& m, std::uint32_t w) {
         if (w & 1) record_cr0(m, v);
     } else if (op == 59 || op == 63) {
         floating(m, op, w, rt, ra, rb);
+        const unsigned xo10 = (w >> 1) & 0x3FF;
+        if ((w & 1) && !(op == 63 && (xo10 == 0 || xo10 == 32 || xo10 == 64))) m.set_cr(1, fpu::cr1_of(m.fpscr));   // a record form: CR1 from FX, FEX, VX, OX
     } else if (op == 3 || op == 2) {   // twi, tdi: a trap is taken only if its test holds
         const bool wide = op == 2;
         const std::int64_t a = wide ? s64(r[ra]) : s32(r[ra]), b = s64(simm);
@@ -1092,6 +1128,8 @@ void step(Machine& m, std::uint32_t w) {
         if (trap_taken(rt, a, b, ua, ub)) throw Fault(StopReason::Trap);
     } else if (m.paired_singles && op == 4) {   // Gekko: the paired singles
         paired_single(m, w, rt, ra, rb);
+        const unsigned pxo = (w >> 1) & 0x3FF, pxo6 = (w >> 1) & 63;
+        if ((w & 1) && pxo != 0 && pxo != 32 && pxo != 64 && pxo != 96 && pxo6 != 6 && pxo6 != 7 && pxo6 != 38 && pxo6 != 39 && pxo != 1014) m.set_cr(1, fpu::cr1_of(m.fpscr));   // a record form: CR1
     } else if (m.paired_singles && (op == 56 || op == 57 || op == 60 || op == 61)) {   // psq_l psq_lu psq_st psq_stu
         paired_displacement(m, op, w, rt, ra);
     } else if (op == 17) {   // sc
@@ -1104,84 +1142,81 @@ void step(Machine& m, std::uint32_t w) {
 
 // ---- the branch log --------------------------------------------------------------------------------------------------
 
-namespace {
-
 // The branch log of run(branches=true), for an input generator (verify/guided): each conditional branch -- (address, taken,
 // compare) -- where compare is what the last compare into the condition field it tests compared, or none when that field
 // was last set some other way. A register's "where" is the memory it was last loaded from, if nothing has written it since.
-class BranchLog {
+CompareTracker::Pending CompareTracker::before(const Machine& m, std::uint32_t w) {
+    const unsigned op = w >> 26;
+    const unsigned rt = (w >> 21) & 31, ra = (w >> 16) & 31, rb = (w >> 11) & 31;
+    const unsigned xo = (w >> 1) & 0x3FF;
+    const auto& r = m.r;
+    Pending p;
+    p.cr = m.cr;
+    if (op == 10 || op == 11 || (op == 31 && (xo == 0 || xo == 32))) {
+        const unsigned size = (rt & 1) ? 8 : 4;
+        const std::uint64_t mask = size == 8 ? kM64 : kM32;
+        Compare c;
+        c.size = size;
+        c.a = r[ra] & mask;
+        c.a_from = where(ra, size);
+        if (op == 11) {
+            c.b = sign_extend(w & 0xFFFF, 16) & mask;
+        } else if (op == 10) {
+            c.b = w & 0xFFFF;
+        } else {
+            c.b = r[rb] & mask;
+            c.b_from = where(rb, size);
+        }
+        p.compare = std::pair<unsigned, Compare>{rt >> 2, c};
+    } else if ((op == 16 || (op == 19 && xo == 16)) && (rt & 0x14) != 0x14) {
+        if (!(rt & 16)) p.branch = ra >> 2;   // (the field it tests; none: the counter alone)
+    } else if (load_spec(op) || (op == 58 && ((w & 3) == 0 || (w & 3) == 2))) {
+        p.size = load_spec(op) ? load_spec(op)->size : ((w & 3) == 0 ? 8 : 4);
+        const std::uint64_t d = sign_extend(w & (op == 58 ? 0xFFFC : 0xFFFF), 16);
+        p.address = static_cast<std::uint32_t>((ra ? r[ra] : 0) + d);
+        p.load_reg = rt;
+    }
+    return p;
+}
+
+void CompareTracker::after(const Machine& m, std::uint32_t pc, std::uint32_t w, const Pending& p) {
+    const unsigned op = w >> 26;
+    const unsigned rt = (w >> 21) & 31, ra = (w >> 16) & 31;
+    const unsigned xo = (w >> 1) & 0x3FF;
+    if (p.compare) {
+        field_[p.compare->first] = p.compare->second;
+    } else if (p.cr != m.cr) {   // a field set by something else
+        for (unsigned f = 0; f < 8; ++f) {
+            if (((p.cr ^ m.cr) >> (28 - 4 * f)) & 0xF) field_[f].reset();
+        }
+    }
+    if (op == 16 || (op == 19 && xo == 16)) {
+        if ((rt & 0x14) != 0x14 && events.size() < kCap) {
+            events.push_back({pc, m.pc != pc + 4, p.branch ? field_[*p.branch] : std::nullopt});
+        }
+    } else if (!p.compare) {
+        if (!(store_spec(op) && !store_spec(op)->update)) loaded_[rt].reset();   // (a plain store writes no register)
+        loaded_[ra].reset();
+        if (p.size != 0 && p.load_reg != ra) loaded_[p.load_reg] = Loaded{p.address, p.size};
+    }
+}
+
+std::optional<std::uint32_t> CompareTracker::where(unsigned reg, unsigned size) const {
+    const auto& at = loaded_[reg];
+    if (!at || at->size < size) return std::nullopt;
+    return static_cast<std::uint32_t>(at->address + (at->size > size ? at->size - size : 0));
+}
+
+namespace {
+
+// The interpreter's branch log: the tracker around one interpreted instruction.
+class BranchLog : public CompareTracker {
 public:
-    static constexpr std::size_t kCap = 4096;
-    std::vector<BranchEvent> events;
-
     void step(Machine& m, std::uint32_t pc, std::uint32_t w) {
-        const unsigned op = w >> 26;
-        const unsigned rt = (w >> 21) & 31, ra = (w >> 16) & 31, rb = (w >> 11) & 31;
-        const unsigned xo = (w >> 1) & 0x3FF;
-        auto& r = m.r;
-        std::optional<std::pair<unsigned, Compare>> compare;   // (field, what it compared)
-        std::optional<unsigned> branch;                        // the field a branch tests
-        std::optional<Loaded> load;
-        unsigned load_reg = 0;
-        if (op == 10 || op == 11 || (op == 31 && (xo == 0 || xo == 32))) {
-            const unsigned size = (rt & 1) ? 8 : 4;
-            const std::uint64_t mask = size == 8 ? kM64 : kM32;
-            Compare c;
-            c.size = size;
-            c.a = r[ra] & mask;
-            c.a_from = where(ra, size);
-            if (op == 11) {
-                c.b = sign_extend(w & 0xFFFF, 16) & mask;
-            } else if (op == 10) {
-                c.b = w & 0xFFFF;
-            } else {
-                c.b = r[rb] & mask;
-                c.b_from = where(rb, size);
-            }
-            compare = std::pair<unsigned, Compare>{rt >> 2, c};
-        } else if ((op == 16 || (op == 19 && xo == 16)) && (rt & 0x14) != 0x14) {
-            if (!(rt & 16)) branch = ra >> 2;   // (the field it tests; none: the counter alone)
-        } else if (load_spec(op) || (op == 58 && ((w & 3) == 0 || (w & 3) == 2))) {
-            const unsigned size = load_spec(op) ? load_spec(op)->size : ((w & 3) == 0 ? 8 : 4);
-            const std::uint64_t d = sign_extend(w & (op == 58 ? 0xFFFC : 0xFFFF), 16);
-            load = Loaded{static_cast<std::uint32_t>((ra ? r[ra] : 0) + d), size};
-            load_reg = rt;
-        }
-        const std::uint32_t cr = m.cr;
-        step_one(m, w);
-        if (compare) {
-            field_[compare->first] = compare->second;
-        } else if (cr != m.cr) {   // a field set by something else
-            for (unsigned f = 0; f < 8; ++f) {
-                if (((cr ^ m.cr) >> (28 - 4 * f)) & 0xF) field_[f].reset();
-            }
-        }
-        if (op == 16 || (op == 19 && xo == 16)) {
-            if ((rt & 0x14) != 0x14 && events.size() < kCap) {
-                events.push_back({pc, m.pc != pc + 4, branch ? field_[*branch] : std::nullopt});
-            }
-        } else if (!compare) {
-            if (!(store_spec(op) && !store_spec(op)->update)) loaded_[rt].reset();   // (a plain store writes no register)
-            loaded_[ra].reset();
-            if (load && load_reg != ra) loaded_[load_reg] = load;
-        }
+        const Pending pending = before(m, w);
+        powerpc::step(m, w);
+        after(m, pc, w, pending);
     }
-
-private:
-    struct Loaded {
-        std::uint32_t address;
-        unsigned size;
-    };
-    static void step_one(Machine& m, std::uint32_t w) { powerpc::step(m, w); }
-
-    std::optional<std::uint32_t> where(unsigned reg, unsigned size) const {
-        const auto& at = loaded_[reg];
-        if (!at || at->size < size) return std::nullopt;
-        return static_cast<std::uint32_t>(at->address + (at->size > size ? at->size - size : 0));
-    }
-
-    std::array<std::optional<Compare>, 8> field_{};
-    std::array<std::optional<Loaded>, 32> loaded_{};
 };
 
 }  // namespace

@@ -47,6 +47,7 @@
 
 #include "core/bytes.hpp"
 #include "decompile/arm.hpp"
+#include "decompile/arm32_neon_dp.hpp"
 #include "emulate/paged_memory.hpp"
 #include "emulate/run.hpp"
 
@@ -211,6 +212,8 @@ public:
     // The VFP's single register `n` (0-63; a double d is the pair 2d, 2d+1) and its status register, for the tools that compare two cores.
     std::uint32_t vfp_single(unsigned n) const { return vfp_[n & 63]; }
     std::uint32_t vfp_status() const { return fpscr_; }
+    void set_vfp_single(unsigned n, std::uint32_t value) { vfp_[n & 63] = value; }   // (a test's way to start from given registers)
+    void set_vfp_status(std::uint32_t value) { fpscr_ = value; }
 
     // Start at `address`: bit 0 set is Thumb state, clear is ARM.
     void jump_to(std::uint32_t address);
@@ -248,6 +251,10 @@ private:
     std::optional<Fault> execute_parallel(const decompile::arm::Insn& insn, unsigned rd, unsigned rn, unsigned rm);   // the parallel add and subtract (a Fault: not one)
     std::optional<Fault> execute_thumb_ext(const decompile::arm::Insn& insn, std::uint32_t at);   // IT, CBZ, the 16-bit extensions and the Thumb VFP words
     std::optional<Fault> execute_vfp(const decompile::arm::Insn& insn, std::uint32_t at);   // ... and the VFP rows   // the ARMv6 rows of decompile/arm_ext
+    std::optional<Fault> execute_t32(const decompile::arm::Insn& insn, std::uint32_t at);   // the Thumb integer instructions of decompile/arm32_thumb.cpp (emulate/arm32_exec.cpp)
+    std::optional<Fault> execute_neon_dp(const decompile::arm::t2::NeonDp& op, std::uint32_t at);   // the data-processing instructions and the core transfers (emulate/arm32_neon_dp.cpp)
+    std::optional<Fault> execute_neon(const decompile::arm::Insn& insn, std::uint32_t at);   // the structure loads and stores, modified immediates and VMOV immediate (emulate/arm32_neon.cpp)
+    bool execute_media_more(const decompile::arm::Insn& insn, std::uint32_t word);          // the ARMv6 media rows execute_ext has no case of (emulate/arm32_exec.cpp)
     void branch_interworking(std::uint32_t address);   // a load into the pc: ARMv5 takes the state from bit 0
     std::uint32_t saturate(std::int64_t value);       // to 32 bits, setting the Q flag when it clipped
 

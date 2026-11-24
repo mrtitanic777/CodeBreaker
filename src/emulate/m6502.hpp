@@ -27,6 +27,7 @@
 #include <optional>
 #include <span>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "core/bytes.hpp"
@@ -86,6 +87,9 @@ public:
     // What an instruction fetched from `address` would find, without touching a device or logging: the quiet memory behind a callback (RAM the
     // machine keeps in its own state), else the Bus's memory (a logged device range's address is its memory too: reading a device is an effect).
     std::uint8_t peek(std::uint16_t address) const;
+
+    // The address ranges whose reads are logged (a device: reading it is an effect, and an instruction fetched from it is logged like any other read).
+    std::vector<std::pair<std::uint16_t, std::uint16_t>> logged_reads() const;
 
     std::span<std::uint8_t> memory() { return ram_; }
     std::span<const std::uint8_t> memory() const { return ram_; }

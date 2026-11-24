@@ -358,8 +358,12 @@ std::uint32_t Cpu::operand_register(const da::Insn& insn, unsigned n, bool shift
 }
 
 void Cpu::write_register(const da::Insn& insn, unsigned n, std::uint32_t value) {
-    if (n == 15) branch(value & (insn.thumb() ? ~1u : ~3u));
-    else r[n] = value;
+    if (n == 15) {
+        if (static_cast<unsigned>(insn.op) < 16 && !insn.thumb() && bus_->arch() >= da::Arch::V7A) branch_interworking(value);   // (ALUWritePC: from ARMv7 an ARM data-processing write of the pc takes the state from bit 0)
+        else branch(value & (insn.thumb() ? ~1u : ~3u));
+    } else {
+        r[n] = value;
+    }
 }
 
 Cpu::Shifted Cpu::shift(da::Shift type, std::uint32_t v, std::uint32_t amount, bool, bool rrx) const {
@@ -386,7 +390,7 @@ Cpu::Shifted Cpu::shift(da::Shift type, std::uint32_t v, std::uint32_t amount, b
 }
 
 Cpu::Shifted Cpu::shifter(const da::Insn& insn) const {
-    if (insn.imm_form) return {insn.imm, (insn.thumb() || insn.rot == 0) ? flag_c() : (insn.imm >> 31) != 0};
+    if (insn.imm_form) return {insn.imm, insn.rot == 0 ? flag_c() : (insn.imm >> 31) != 0};   // (a rotated immediate's carry out is its bit 31, in both states: ARMExpandImm_C and ThumbExpandImm_C)
     const std::uint32_t v = operand_register(insn, insn.rm, insn.shift_by_reg);
     const std::uint32_t amount = insn.shift_by_reg ? (r[insn.rs] & 0xFF) : insn.amount;
     return shift(insn.shift, v, amount, insn.shift_by_reg, insn.rrx);
@@ -458,6 +462,7 @@ std::optional<Fault> Cpu::execute(const da::Insn& i) {
         }
         if (!logical) result = sum.value;
         const bool exception_return = i.s && !test && i.rd == 15 && !i.thumb();
+        if (exception_return && bank_of(cpsr) == 0) return Fault{Fault::Kind::NotRun, at, 0, "exception return outside an exception mode", 0};   // (UNPREDICTABLE in User and System mode: no saved status register)
         if (i.s && !exception_return) {
             set_nz(result);
             if (logical) cpsr = (cpsr & ~0x20000000u) | (b.carry ? 0x20000000u : 0u);
@@ -499,15 +504,16 @@ std::optional<Fault> Cpu::execute(const da::Insn& i) {
                 const std::uint32_t first = address & ~3u;
                 if (!bus_->mapped(first) || !bus_->mapped(first + 4)) return bus_error(address);
                 const bool wb = i.pre ? i.wb : true;
+                const unsigned second = i.thumb() ? i.rs : i.rd + 1u;   // (Thumb names the pair's second register; ARM's is the next one)
                 if (i.op == da::Op::Str) {
                     bus_->write(first, 4, r[i.rd]);
-                    bus_->write(first + 4, 4, r[i.rd + 1]);
+                    bus_->write(first + 4, 4, r[second]);
                     if (wb && i.rn != 15) r[i.rn] = indexed;
                 } else {
                     const std::uint32_t low = bus_->read(first, 4), high = bus_->read(first + 4, 4);
                     if (wb && i.rn != 15) r[i.rn] = indexed;
                     r[i.rd] = low;
-                    r[i.rd + 1] = high;
+                    r[second] = high;
                 }
                 return std::nullopt;
             }
@@ -534,7 +540,7 @@ std::optional<Fault> Cpu::execute(const da::Insn& i) {
                 if (address & 1) v = da::rotate_right(v, 8);
             }
             if (write_back && i.rn != 15) r[i.rn] = indexed;
-            if (i.rd == 15 && v5() && !i.thumb()) branch_interworking(v);   // (ARMv5: a load into the pc takes the state from bit 0)
+            if (i.rd == 15 && v5()) branch_interworking(v);   // (ARMv5: a load into the pc takes the state from bit 0, in Thumb too: LoadWritePC)
             else write_register(i, i.rd, v);
             return std::nullopt;
         }
@@ -547,8 +553,11 @@ std::optional<Fault> Cpu::execute(const da::Insn& i) {
             else low = i.pre ? base - 4 * count : base - 4 * count + 4;
             const std::uint32_t new_base = i.up ? base + 4 * count : base - 4 * count;
             if (i.hat && !(load && (i.list & 0x8000))) return Fault{Fault::Kind::NotRun, at, 0, load ? "ldm^" : "stm^", 0};
+            if (i.hat && bank_of(cpsr) == 0) return Fault{Fault::Kind::NotRun, at, 0, "exception return outside an exception mode", 0};
             std::uint32_t address = low & ~3u;
             const unsigned first = static_cast<unsigned>(std::countr_zero(static_cast<unsigned>(i.list)));
+            for (unsigned k = 0; k < count; ++k)   // (a block transfer with a word nothing answers does nothing: the instruction can be restarted, and the manual leaves what came before UNKNOWN)
+                if (!bus_->mapped(address + 4 * k)) return bus_error(address + 4 * k);
             for (unsigned reg = 0; reg < 16; ++reg) {
                 if (!((i.list >> reg) & 1)) continue;
                 if (!bus_->mapped(address)) return bus_error(address);
@@ -654,7 +663,9 @@ std::optional<Fault> Cpu::execute(const da::Insn& i) {
             }
             return std::nullopt;
         }
-        case da::Op::Ext: return i.thumb() ? execute_thumb_ext(i, at) : execute_ext(i, at);
+        case da::Op::Ext:
+            if (i.ext == da::t2::kNeon) return execute_neon(i, at);
+            return i.thumb() ? execute_thumb_ext(i, at) : execute_ext(i, at);
         case da::Op::Bkpt: return Fault{Fault::Kind::NotRun, at, 0, "bkpt", 0};
         case da::Op::Swi: return Fault{Fault::Kind::Swi, at, 0, {}, i.imm};
         case da::Op::Mrs: r[i.rd] = i.spsr ? spsr() : cpsr; return std::nullopt;
@@ -688,7 +699,7 @@ std::optional<Fault> Cpu::execute_ext(const da::Insn& i, std::uint32_t at) {
     const auto swap32 = [](std::uint32_t v) { return v >> 24 | (v >> 8 & 0xFF00u) | (v << 8 & 0xFF0000u) | v << 24; };
     const auto half = [](std::uint32_t v, bool top) { return static_cast<std::int32_t>(static_cast<std::int16_t>(top ? v >> 16 : v)); };
     const auto load = [&](unsigned size, std::uint32_t address, std::uint32_t& out) -> std::optional<Fault> {
-        if (!bus_->mapped(address)) return Fault{Fault::Kind::BusError, at, address, {}, 0};
+        if (!bus_->mapped(address & ~(size - 1))) return Fault{Fault::Kind::BusError, at, address, {}, 0};
         out = bus_->read(address & ~(size - 1), size);
         return std::nullopt;
     };
@@ -713,7 +724,7 @@ std::optional<Fault> Cpu::execute_ext(const da::Insn& i, std::uint32_t at) {
         }
         case ex::Sem::Strex: case ex::Sem::Strexb: case ex::Sem::Strexh: {
             const unsigned size = ex::semantics(i.ext) == ex::Sem::Strex ? 4 : ex::semantics(i.ext) == ex::Sem::Strexb ? 1 : 2;
-            if (!bus_->mapped(r[rn16])) return Fault{Fault::Kind::BusError, at, r[rn16], {}, 0};
+            if (!bus_->mapped(r[rn16] & ~(size - 1))) return Fault{Fault::Kind::BusError, at, r[rn16], {}, 0};
             bus_->write(r[rn16] & ~(size - 1), size, r[rm0]);
             r[rd12] = 0;   // (the exclusive monitor always succeeds: one processor runs)
             return std::nullopt;
@@ -782,6 +793,7 @@ std::optional<Fault> Cpu::execute_ext(const da::Insn& i, std::uint32_t at) {
             return std::nullopt;
         }
         default:
+            if (execute_media_more(i, w)) return std::nullopt;
             if (const std::optional<Fault> fault = execute_parallel(i, rd12, rn16, rm0)) return execute_vfp(i, at);
             return std::nullopt;
     }
@@ -1057,9 +1069,10 @@ std::optional<Fault> Cpu::execute_thumb_ext(const da::Insn& i, std::uint32_t at)
     }
     if (i.ext >= 0 && i.ext < 1000) {
         da::Insn arm_form = i;
-        arm_form.word = (i.word << 16) | (i.word >> 16);
+        arm_form.word = i.imm != 0 ? i.imm : (i.word << 16) | (i.word >> 16);   // (an ARMv6 instruction of the Thumb tables carries the ARM word it means in imm)
         return execute_ext(arm_form, at);
     }
+    if (i.ext >= t2::kOrn && i.ext <= t2::kTb) return execute_t32(i, at);
     const std::string text = da::text(i);
     return Fault{Fault::Kind::NotRun, at, 0, "thumb2 " + text.substr(0, text.find(' ')), 0};
 }

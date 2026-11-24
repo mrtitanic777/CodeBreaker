@@ -14,8 +14,7 @@
 // integer, branch, condition-register and floating-point instructions, as compilers for 32-bit-address PowerPC targets
 // use it -- 64-bit registers and arithmetic, effective addresses cut to 32 bits, big-endian memory.
 //
-// What it does not do, and says so: vector instructions (the run ends "exception:unsupported"), overflow recording
-// (XER[OV] is never set), floating-point status and rounding modes other than round-to-nearest, and anything privileged.
+// What it does not do, and says so: vector instructions (the run ends "exception:unsupported"), and anything privileged. Floating point is the manual's (powerpc_fpu.hpp): the rounding modes, the status register and its exceptions, with the record form's CR1.
 //
 // Nintendo's PowerPC 750 family (the GameCube's Gekko, the Wii's Broadway, the Wii U's Espresso) runs the same interpreter with `paired_singles`
 // set: opcode 4 and the psq loads and stores are then Gekko's paired-single instructions (they stay unsupported for the Xbox 360, where opcode 4
@@ -89,7 +88,10 @@ std::uint64_t rotl32(std::uint64_t v, unsigned n);   // the low word rotated, n 
 std::uint64_t sign_extend(std::uint64_t v, unsigned bits);   // from `bits` wide to 64
 double to_double(std::uint64_t bits);
 std::uint64_t to_bits(double x);
-double round_to_single(double x);                    // rounded to single precision (still held as a double); overflow gives infinity
+double round_to_single(double x);
+// The NaN a floating arithmetic operation leaves (the manual's rule, not the host's): a NaN among the operands (in the order the instruction looks at them) as a quiet NaN, else for an
+// invalid operation the default quiet NaN, positive.
+double arithmetic_nan(double result, std::span<const double> operands);                    // rounded to single precision (still held as a double); overflow gives infinity
 
 // ---- memory ------------------------------------------------------------------------------------------------------
 
@@ -157,7 +159,9 @@ public:
     std::uint32_t lr = 0;
     std::uint64_t ctr = 0;
     std::uint32_t cr = 0;
+    std::uint32_t fpscr = 0;             // the floating-point status and control register (powerpc_fpu.hpp)
     bool ca = false;                     // XER[CA]
+    bool so = false, ov = false;         // XER[SO], XER[OV]: the overflow of the arithmetic with OE set, and its sticky summary (CR0 and the compares carry SO)
     std::uint32_t pc = 0;
     std::optional<std::uint32_t> reserve;   // the address lwarx/ldarx reserved
 
@@ -232,6 +236,33 @@ struct BranchEvent {
     std::uint32_t address = 0;
     bool taken = false;
     std::optional<Compare> compare;      // none: the field the branch tests was last set some other way
+};
+
+// What the compares and loads that ran say about each conditional branch: the branch log's bookkeeping, apart from the core that runs the instructions (the interpreter's
+// run and the one on the emulator share it). before() is told the registers an instruction is about to run on, after() the registers it left.
+class CompareTracker {
+public:
+    static constexpr std::size_t kCap = 4096;
+    std::vector<BranchEvent> events;
+
+    struct Pending {
+        std::optional<std::pair<unsigned, Compare>> compare;   // (field, what it compared)
+        std::optional<unsigned> branch;                        // the field a branch tests
+        std::uint32_t address = 0;                             // where a load reads (when `size` is not 0)
+        unsigned size = 0, load_reg = 0;
+        std::uint32_t cr = 0;                                  // the condition register before
+    };
+    Pending before(const Machine& m, std::uint32_t w);
+    void after(const Machine& m, std::uint32_t pc, std::uint32_t w, const Pending& pending);
+
+private:
+    struct Loaded {
+        std::uint32_t address;
+        unsigned size;
+    };
+    std::optional<std::uint32_t> where(unsigned reg, unsigned size) const;
+    std::array<std::optional<Compare>, 8> field_{};
+    std::array<std::optional<Loaded>, 32> loaded_{};
 };
 
 // The PowerPC shadow, kept up beside the run (the path explorer's): stepped before each instruction, told of

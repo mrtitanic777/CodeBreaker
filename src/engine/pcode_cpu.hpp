@@ -81,9 +81,9 @@ emulate::arm::RunResult call(emulate::arm::Bus& bus, std::uint32_t entry, const 
 emulate::sh2::RunResult run(emulate::sh2::Bus& bus, std::uint32_t entry, const emulate::sh2::RunOptions& options = {});
 emulate::sh2::RunResult call(emulate::sh2::Bus& bus, std::uint32_t entry, const emulate::sh2::RunOptions& options = {});
 
-// The PowerPC lanes' (the GameCube, Wii, Wii U, PlayStation 3) function runs, on ppc_64_isa_altivec_be.sla: the integer, branch and condition-register instructions on the
-// description with the Machine as the memory, the rest (floating point and paired singles, vector, system calls, reservations, special registers) as the interpreter runs
-// it. call() gives a run that wants calls out, a path, a branch log or a shadow (the lane judge's) to the interpreter.
+// The PowerPC lanes' (the GameCube, Wii, Wii U, PlayStation 3) function runs, on ppc_64_isa_altivec_be.sla (engine/pcode_cpu_ppc.cpp): every instruction runs on the emulator, the
+// description's where it has one, the adapter's on the emulator's registers where it has none (paired singles, the special registers, the floating arithmetic); the Machine is the
+// memory. The lane judge's runs (calls out, a path, a branch log, absent code, a shadow) are made there too. call() is run() where the emulator is on, else the interpreter's run.
 emulate::powerpc::RunResult run(std::span<const emulate::powerpc::Region> regions, std::uint32_t entry, std::span<const std::uint64_t> args = {},
                                 const emulate::powerpc::RunOptions& options = {});
 emulate::powerpc::RunResult call(std::span<const emulate::powerpc::Region> regions, std::uint32_t entry, std::span<const std::uint64_t> args = {},
