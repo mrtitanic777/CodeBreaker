@@ -106,6 +106,9 @@ public:
         (void)module; (void)rva;
         return std::nullopt;
     }
+    // Readable names for the module's C++ methods, by address: a virtual table's slot function is <Class>__vf_<slot>
+    // (analyze::classes). Empty by default; where a module's virtual tables are found, its methods are named so over sub_<address>.
+    virtual std::map<Va, std::string> class_method_names(const std::filesystem::path& module) { (void)module; return {}; }
 };
 class NoKnowledge : public Knowledge {};
 

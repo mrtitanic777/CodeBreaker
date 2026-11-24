@@ -106,6 +106,17 @@ PeDescription describe32(const std::filesystem::path& module, const formats::pe:
     const std::set<std::string> imported = x86 ? knowledge.imported_names(module) : std::set<std::string>{};
     if (x86) {
         out.names = function_names(image, functions, imported);
+        // A function in a virtual table reads as its class and slot (MainWindow__vf_3), not sub_<address>; only the sub_ defaults
+        // are replaced, so an export keeps its own name. Isolated: a module whose class analysis fails keeps the sub_ names.
+        try {
+            const std::map<Va, std::string> methods = knowledge.class_method_names(module);
+            if (!methods.empty())
+                for (auto& [va, name] : out.names)
+                    if (name.starts_with("sub_"))
+                        if (const auto it = methods.find(va); it != methods.end()) name = it->second;
+        } catch (const std::exception& e) {
+            log::warn(std::format("describe32: {}: class names not found ({}); methods are named sub_<address>", module.filename().string(), e.what()));
+        }
     } else {   // PowerPC: what run-time type information names
         for (Va va : functions) {
             const auto own = ppc ? ppc->names.find(va) : std::map<Va, std::string>::const_iterator{};

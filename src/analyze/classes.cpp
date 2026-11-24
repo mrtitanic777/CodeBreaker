@@ -4,9 +4,12 @@
 #include <format>
 #include <set>
 
+#include "analyze/conventions.hpp"
 #include "analyze/dispatch.hpp"
+#include "analyze/image.hpp"
 #include "analyze/strings.hpp"
 #include "core/text.hpp"
+#include "formats/pe.hpp"
 
 namespace cb::analyze::classes {
 
@@ -520,6 +523,53 @@ std::vector<Class> hierarchy(const Image& image, const Model& model, std::span<c
         result.push_back(std::move(w.c));
     }
     return result;
+}
+
+namespace {
+
+// `name` as a C identifier: `::` becomes `__`, anything else that is not a letter, digit or underscore becomes `_`, and a leading
+// digit is pushed back by one. An empty name is `class`.
+std::string cl_identifier(std::string_view name) {
+    std::string out;
+    for (std::size_t i = 0; i < name.size(); ++i) {
+        const char ch = name[i];
+        if (ch == ':' && i + 1 < name.size() && name[i + 1] == ':') {
+            out += "__";
+            ++i;
+            continue;
+        }
+        const bool ok = ch == '_' || (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+        out += ok ? ch : '_';
+    }
+    if (out.empty()) return "class";
+    if (out[0] >= '0' && out[0] <= '9') out.insert(out.begin(), '_');
+    return out;
+}
+
+}  // namespace
+
+std::map<Va, std::string> method_names(std::span<const Class> classes) {
+    std::map<Va, std::string> out;
+    std::map<std::string, Va> owner;   // a spelled class name -> the table that first took it
+    for (const Class& c : classes) {
+        std::string name = cl_identifier(c.name);
+        if (const auto it = owner.find(name); it != owner.end() && it->second != c.vtable) name += "_" + cl_hex(c.vtable);
+        owner.try_emplace(name, c.vtable);
+        for (std::size_t slot = 0; slot < c.methods.size(); ++slot) out.try_emplace(c.methods[slot], std::format("{}__vf_{}", name, slot));
+    }
+    return out;
+}
+
+std::map<Va, std::string> module_method_names(const std::filesystem::path& module) {
+    try {
+        Image image = image::load_pe(formats::pe::Image::open(module));
+        const call_graph::Graph graph = call_graph::build(image);
+        const ConventionFacts facts = conventions::summary(conventions::functions(image, graph));
+        const Model model = build_model(Inputs{image, graph, facts});
+        return method_names(hierarchy(image, model, {}));
+    } catch (const std::exception&) {   // isolation boundary: a module whose class analysis fails is named sub_<address> as before
+        return {};
+    }
 }
 
 // ---- exception handling -----------------------------------------------------------------------------------------------------

@@ -5,6 +5,7 @@
 #include <set>
 
 #include "analyze/call_graph.hpp"
+#include "analyze/classes.hpp"
 #include "analyze/conventions.hpp"
 #include "analyze/image.hpp"
 #include "analyze/structures.hpp"
@@ -316,6 +317,7 @@ struct CorpusEnvironment::Impl {
                 return std::nullopt;
             }
         }
+        std::map<dsc::Va, std::string> class_method_names(const std::filesystem::path& module) override { return analyze::classes::module_method_names(module); }
 
     private:
         static std::optional<std::int64_t> widen(const std::optional<std::uint32_t>& v) { return v ? std::optional<std::int64_t>(*v) : std::nullopt; }

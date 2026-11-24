@@ -358,3 +358,44 @@ CB_TEST("analyze.classes.the_report", [] {
     CB_CHECK_EQ(a.text[3], "message map 403400 of Foo:");
     CB_CHECK_EQ(a.text[4], "    ON_COMMAND(100, OnFoo)");
 });
+
+CB_TEST("analyze.classes.method_names_are_the_class_and_the_slot", [] {
+    cl::Class a;
+    a.vtable = 0x403010;
+    a.name = "Outer::Inner";   // a run-time-type-information name: :: becomes __
+    a.methods = {0x401000, 0x401010, 0x401020};
+    cl::Class b;
+    b.vtable = 0x403030;
+    b.name = "class_403030";   // the binary names it nothing: the placeholder is already a C name
+    b.methods = {0x401020, 0x401040};   // its first slot is a's third: a base's virtual it does not override
+    const std::vector<cl::Class> classes = {a, b};
+    const std::map<Va, std::string> names = cl::method_names(classes);
+    CB_CHECK_EQ(names.at(0x401000), "Outer__Inner__vf_0");
+    CB_CHECK_EQ(names.at(0x401010), "Outer__Inner__vf_1");
+    CB_CHECK_EQ(names.at(0x401020), "Outer__Inner__vf_2");   // the first table that holds a function wins
+    CB_CHECK_EQ(names.at(0x401040), "class_403030__vf_1");
+});
+
+CB_TEST("analyze.classes.two_classes_named_the_same_are_told_apart", [] {
+    cl::Class a;
+    a.vtable = 0x1000;
+    a.name = "Widget";
+    a.methods = {0x401000};
+    cl::Class b;
+    b.vtable = 0x2000;
+    b.name = "Widget";
+    b.methods = {0x402000};
+    const std::vector<cl::Class> classes = {a, b};
+    const std::map<Va, std::string> names = cl::method_names(classes);
+    CB_CHECK_EQ(names.at(0x401000), "Widget__vf_0");
+    CB_CHECK_EQ(names.at(0x402000), "Widget_2000__vf_0");   // the second keeps its table address in the name
+});
+
+CB_TEST("analyze.classes.names_the_methods_of_a_real_module", [] {
+    Program p;
+    const cl::Model model = cl::build_model(p.inputs());
+    const std::map<Va, std::string> names = cl::method_names(cl::hierarchy(p.image, model, {}));
+    CB_CHECK_EQ(names.at(kGetMap), "Foo__vf_0");
+    CB_CHECK_EQ(names.at(kC), "Foo__vf_1");   // kC is also in a later table; Foo's is first by address
+    CB_CHECK_EQ(names.at(kD), "Foo__vf_2");
+});

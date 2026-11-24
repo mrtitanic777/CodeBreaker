@@ -5,6 +5,7 @@
 
 #include "store/knowledge_proposals.hpp"
 #include "analyze/call_graph.hpp"
+#include "analyze/classes.hpp"
 #include "analyze/conventions.hpp"
 #include "analyze/image.hpp"
 #include "analyze/structures.hpp"
@@ -308,6 +309,7 @@ public:
     std::optional<std::int64_t> pe_function_pop(const stdfs::path& module, std::uint32_t rva) override {
         return widen(sizes_.pe_function_pop(module, rva));
     }
+    std::map<decompile::describe::Va, std::string> class_method_names(const stdfs::path& module) override { return analyze::classes::module_method_names(module); }
 
 private:
     static std::optional<std::int64_t> widen(const std::optional<std::uint32_t>& v) { return v ? std::optional<std::int64_t>(*v) : std::nullopt; }

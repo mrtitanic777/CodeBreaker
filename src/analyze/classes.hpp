@@ -19,6 +19,7 @@
 #pragma once
 
 #include <cstdint>
+#include <filesystem>
 #include <map>
 #include <optional>
 #include <span>
@@ -130,6 +131,15 @@ struct Class : core16::ClassRecord {
 };
 // The classes by table address. `structures` are those recovered for the module.
 std::vector<Class> hierarchy(const Image& image, const Model& model, std::span<const structures::Structure> structures);
+
+// Readable C names for the functions a module's virtual tables hold, by address: the function in slot <n> of class C's table is
+// `C__vf_<n>`, where C is the class's run-time type information name (or class_<table> when the binary does not name it). A function
+// in more than one table -- a base's virtual that a derived class does not override -- takes the name of the first table, in
+// table-address order. Two classes the binary names the same are told apart by their table address. For naming the decompiled
+// source, so a method reads as its class and slot instead of sub_<address>.
+std::map<Va, std::string> method_names(std::span<const Class> classes);
+// The same for a module on disk: its virtual tables found and named. Empty for a file with no tables, or one this cannot read.
+std::map<Va, std::string> module_method_names(const std::filesystem::path& module);
 
 // ---- exception handling -----------------------------------------------------------------------------------------------------
 
