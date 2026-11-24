@@ -1937,6 +1937,28 @@ void WwApp::activate_page(Control c, int index) {
             if (board_toggle_leaders(model_)) start_leaders();
             invalidate();
             break;
+        case Control::BoardHistory:
+            board_toggle_history(model_);
+            invalidate();
+            break;
+        case Control::BoardHistoryClose:
+            board_close_history(model_);
+            invalidate();
+            break;
+        case Control::BoardHistorySnapshot:   // the scores as they are now, kept to compare with later
+            if (model_.board) {
+                try {
+                    const std::chrono::zoned_time now{std::chrono::current_zone(), std::chrono::floor<std::chrono::seconds>(std::chrono::system_clock::now())};
+                    const std::string name = board::c_snapshot_name(now.get_local_time());
+                    board::save_c_snapshot(model_.board->root, name, fs::read_text(model_.board->root / "c_scores.tsv"));
+                    board_history_refresh(model_);
+                    model_.status_text = "Snapshot of the scores kept: " + board::c_snapshot_words(name);
+                } catch (const std::exception& e) {
+                    model_.status_text = std::string("The snapshot could not be kept: ") + e.what();
+                }
+                invalidate();
+            }
+            break;
         case Control::BoardLeadersClose:
             board_close_leaders(model_);
             invalidate();
@@ -2047,6 +2069,8 @@ void WwApp::scroll_page(float x, float y, int lines) {
         const int side = x >= panel.assembly.x ? 1 : 0;
         float& scroll = model_.board_compare_scroll[static_cast<std::size_t>(side)];
         scroll = std::clamp(scroll - step * 2, 0.0f, board_compare_max_scroll(panel, model_, side));
+    } else if (model_.page == Page::Board && model_.board_view == 0 && model_.board_history_open && layout_board_history(compute_board_layout(layout_, model_), model_).outline.contains(x, y)) {   // what changed
+        model_.board_history_scroll = std::clamp(model_.board_history_scroll - step * 2, 0.0f, layout_board_history(compute_board_layout(layout_, model_), model_).max_scroll);
     } else if (model_.page == Page::Board && model_.board_view == 0 && model_.board_leaders_open && layout_board_leaders(compute_board_layout(layout_, model_), model_).outline.contains(x, y)) {   // the closest functions
         model_.board_leaders_scroll = std::clamp(model_.board_leaders_scroll - step * 2, 0.0f, layout_board_leaders(compute_board_layout(layout_, model_), model_).max_scroll);
     } else if (model_.page == Page::Board && model_.board_inspecting && compute_board_layout(layout_, model_).drawer.contains(x, y)) {   // the X-Ray drawer
@@ -3516,6 +3540,11 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 invalidate();
                 return 0;
             }
+            if (wp == VK_ESCAPE && model_.page == Page::Board && model_.board_history_open) {
+                board_close_history(model_);
+                invalidate();
+                return 0;
+            }
             if (wp == VK_ESCAPE && model_.page == Page::Board && model_.board_leaders_open) {
                 board_close_leaders(model_);
                 invalidate();
@@ -3731,6 +3760,7 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
         board_load_decks(m);
         board_rebuild_stacks(m);
         if (state == "board-orphans") board_toggle_orphans(m);
+        if (state == "board-history") board_toggle_history(m);   // (read only: a screenshot takes no snapshot)
         if ((state == "board-leaders" || state == "board-leaders-compare" || state == "board-leaders-bytes" || state == "board-leaders-search") && m.board_scores) {   // (read here: a screenshot has no message loop)
             const std::atomic<bool> go{false};
             if (std::optional<board::CLeaders> read = board::build_c_leaders(m.board->root, *m.board_scores, go)) m.board_leaders = std::make_shared<const board::CLeaders>(std::move(*read));
@@ -4454,7 +4484,7 @@ int run(std::span<const std::string> args, bool no_command_given) {
         } else if (!a.starts_with("--") && open_file.empty()) {
             open_file = a;
         } else {
-            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout|functions|check|compare|palette|board|board-expanded|board-flow|board-trace|board-library|board-library-hover|board-library-function|board-filter|board-inspect|board-hover|board-orphans|board-leaders|board-leaders-compare|board-leaders-bytes|board-leaders-search|board-compare|board-c-identical|board-c-near|board-c-nocompile|board-c-unscored|board-deck|board-empty|board-scanning] [--board FOLDER] [--theme light|dark] [--size WxH] [--scale N]] [--board IMAGE] [--board-scan IMAGE [--board-out FOLDER]] [--board-trace TRACE --board-trace-disk IMAGE --board-out FOLDER]\n");
+            err_text("usage: codebreaker app [FILE] [--screenshot OUT.png [--state welcome|idle|working|done|unsupported|failed|language|translating|tools|settings|advanced|recent|batch|preview|dragout|functions|check|compare|palette|board|board-expanded|board-flow|board-trace|board-library|board-library-hover|board-library-function|board-filter|board-inspect|board-hover|board-orphans|board-history|board-leaders|board-leaders-compare|board-leaders-bytes|board-leaders-search|board-compare|board-c-identical|board-c-near|board-c-nocompile|board-c-unscored|board-deck|board-empty|board-scanning] [--board FOLDER] [--theme light|dark] [--size WxH] [--scale N]] [--board IMAGE] [--board-scan IMAGE [--board-out FOLDER]] [--board-trace TRACE --board-trace-disk IMAGE --board-out FOLDER]\n");
             return 2;
         }
     }
