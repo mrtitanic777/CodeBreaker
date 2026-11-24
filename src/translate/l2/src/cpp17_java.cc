@@ -2029,6 +2029,12 @@ E Method::x_instanceof(const NodeP& e) {
 
 // The arguments of a call, each converted to its parameter's C++ type; a program's varargs packed into
 // the array, a library's passed one by one (the runtime's are variadic templates).
+// Whether this expression reads a field or an array element, which a call could overwrite, rather than a local or a temporary that outlasts the call.
+static bool read_from_storage(const std::string& code) {
+    if (code.empty() || code.back() == ')') return false;
+    return code.find("->") != std::string::npos || code.find("::") != std::string::npos || code.back() == ']';
+}
+
 std::string Method::args(const std::vector<NodeP>& as, const Strs& params, const SymP& s) {
     bool varargs = s && py::truthy(s->varargs) && !params.empty();
     bool lib = s && !p.model->method_decl(s).second;
@@ -2062,7 +2068,8 @@ std::string Method::args(const std::vector<NodeP>& as, const Strs& params, const
         std::string want = i < params.size() ? params[i] : std::string();
         NodeP a = strip_paren(as[i]);
         E v = (is(a, "Lambda") || is(a, "MethodRef")) ? functional(a) : expr(as[i]);
-        out.push_back(conv(v.first, v.second, want));
+        std::string passed = conv(v.first, v.second, want);
+        out.push_back(!lib && is_ref(want) && read_from_storage(passed) ? "jrt::kept(" + passed + ")" : passed);
     }
     return join(out, ", ");
 }
@@ -2110,7 +2117,9 @@ E Method::x_call(const NodeP& e) {
     } else {
         E r = receiver(t, s);
         if (sowner(s) == OBJECT && sname(s) == "getClass") throw Decline("getClass");
-        code = ((r.first == "this" || r.first == "self_" || !t) ? r.first : "jrt::nn(" + r.first + ")") + "->" + name + "(" + a + ")";
+        // (a method of the program may clear the very field it was called through, as a screen closing itself does)
+        const std::string held = tt && p.model->of_type(tt) && read_from_storage(r.first) ? "jrt::kept(" + r.first + ")" : r.first;
+        code = ((r.first == "this" || r.first == "self_" || !t) ? r.first : "jrt::nn(" + held + ")") + "->" + name + "(" + a + ")";
         if (r.first == "this") code = "this->" + name + "(" + a + ")";
     }
     if (cs.ret != want && is_ref(want) && is_ref(cs.ret) && !p.is_sub_ct(cs.ret, want))

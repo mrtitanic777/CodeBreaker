@@ -226,6 +226,8 @@ template <class T, class U> ref<T> cast(const ref<U>& o);
 template <class T, class U> ref<T> as(const ref<U>& o) { return std::dynamic_pointer_cast<T>(o); }
 template <class T, class U> bool isa(const ref<U>& o) { return o && std::dynamic_pointer_cast<T>(o) != nullptr; }
 template <class T> T* nn(const ref<T>& p) { if (!p) raise_npe(); return p.get(); }
+// A reference held for the length of a call: the call may clear the field it was read from, and in Java the object lives on while it is in use.
+template <class T> ref<T> kept(const ref<T>& p) { return p; }
 
 // ------------------------------------------------------------------------------------------- bits
 // Written out, so every compiler builds them the same way (the callers have ruled out zero where it matters).

@@ -197,11 +197,11 @@ ref<String> TextStats::caesar(ref<String> s, int32_t k) {
 void TextStats::main(ref<Array<ref<String>>> args) {
 	clinit_();
 	ref<Array<ref<String>>> lines = jrt::nn(TextStats::POEM)->split(jrt::lit(u"\n"));
-	jrt::nn(jrt::System::out_())->println(jrt::concat(jrt::nn(lines)->length, jrt::lit(u" lines, "), TextStats::vowels(TextStats::POEM), jrt::lit(u" vowels")));
+	jrt::nn(jrt::System::out_())->println(jrt::concat(jrt::nn(lines)->length, jrt::lit(u" lines, "), TextStats::vowels(jrt::kept(TextStats::POEM)), jrt::lit(u" vowels")));
 	for (ref<String> line : jrt::in(lines)) {
 		jrt::nn(jrt::System::out_())->println(jrt::concat(jrt::nn(line)->length(), jrt::lit(u": "), TextStats::reverseWords(line)));
 	}
-	jrt::nn(jrt::System::out_())->println(TextStats::histogram(TextStats::POEM));
+	jrt::nn(jrt::System::out_())->println(TextStats::histogram(jrt::kept(TextStats::POEM)));
 	ref<String> j2xo1{};
 	int32_t j2xo2{};
 	int64_t j2xo3{};

@@ -309,7 +309,7 @@ Generics_Pair::Generics_Pair(ref<Object> first, ref<Object> second) {
 }
 
 ref<Generics_Pair> Generics_Pair::swap() {
-	return std::make_shared<Generics_Pair>(this->second_, this->first_);
+	return std::make_shared<Generics_Pair>(jrt::kept(this->second_), jrt::kept(this->first_));
 }
 
 ref<Object> Generics_Pair::first() {
