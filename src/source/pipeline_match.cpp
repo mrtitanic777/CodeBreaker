@@ -646,6 +646,7 @@ cli::Command match(const Environment& environment) {
                            cli::Option{"--sdk", "", "a 16-bit module: also say the Windows calls through the SDK's prototypes", cli::Arg::Flag},
                            cli::Option{"--no-fold", "", "a 16-bit module: do not fold the decompiler's temporaries back", cli::Arg::Flag},
                            cli::Option{"--search", "", "a 16-bit module: ROUNDS of rewrites of the last bytes of the near misses", cli::Arg::Value, "ROUNDS"},
+                           cli::Option{"--replay", "", "a 16-bit module: compile each function once, as an earlier --json run found it", cli::Arg::Value, "FILE"},
                            cli::Option{"--wine", "", "a 16-bit module: also type the imports as Wine's .spec files do", cli::Arg::Flag}},
                           {},
                           {},

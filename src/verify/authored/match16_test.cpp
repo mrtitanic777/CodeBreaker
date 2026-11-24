@@ -310,3 +310,46 @@ CB_TEST("verify.match16.misuse", [] {
     in.toolchain = &chain;
     CB_CHECK_THROWS_AS(cb::UsageError, (void)m16::run(in));   // no compiler
 });
+
+CB_TEST("verify.match16.a_replay_compiles_each_function_once_and_agrees", [] {
+    // f0 is identical only said fold+far under /AM; f1 only plain; f2 never compiles; g is in another segment
+    std::vector<Function> fns = {m16t_fn("f0", 1, 0x00), m16t_fn("f1", 1, 0x10), m16t_fn("f2", 1, 0x20), m16t_fn("g", 2, 0x00)};
+    FakeChain chain;
+    chain.compilers_flags = {"/AM", "/Od"};
+    for (const Function& f : fns) chain.originals[f.name] = f.original;
+    chain.identical = {{"f0", {"/AM|fold+far"}}, {"f1", {"/AM|plain"}}, {"g", {"/Od|far"}}};
+    m16::Inputs in;
+    in.functions = fns;
+    in.variants = m16t_variants({"fold", "far"}, fns);
+    for (m16::Variant& v : in.variants) v.texts["f2"] = "does not compile";
+    in.compilers = {"cc"};
+    in.toolchain = &chain;
+    const m16::Result full = m16::run(in);
+    const std::size_t full_compiles = chain.asked.size();
+
+    std::map<std::string, m16::Known> known;
+    for (const Function& f : fns) known[f.name] = {full.setting.at(f.name), full.winner.at(f.name)};
+    chain.asked.clear();
+    const m16::Result again = m16::replay(in, known);
+    for (const Function& f : fns) {
+        CB_CHECK(again.verdicts.at(f.name).match == full.verdicts.at(f.name).match);
+        CB_CHECK_EQ(again.verdicts.at(f.name).differing, full.verdicts.at(f.name).differing);
+        CB_CHECK(again.setting.at(f.name) == full.setting.at(f.name));
+        CB_CHECK_EQ(again.winner.at(f.name), full.winner.at(f.name));
+        CB_CHECK_EQ(again.texts.at(f.name), full.texts.at(f.name));
+    }
+    CB_CHECK(again.code.at("f0").has_value() && !again.code.at("f2").has_value());
+    CB_CHECK(again.chosen.at(1) == full.setting.at("f0"));
+    // one compile for each (setting, header) that some function won with, not every way under every setting
+    std::set<std::string> groups;
+    for (const Function& f : fns) groups.insert(full.setting.at(f.name).switches + "|" + full.winner.at(f.name));
+    CB_CHECK_EQ(chain.asked.size(), groups.size());
+    CB_CHECK(chain.asked.size() < full_compiles);
+
+    std::map<std::string, m16::Known> missing = known;
+    missing.erase("g");
+    CB_CHECK_THROWS_AS(cb::UsageError, m16::replay(in, missing));
+    std::map<std::string, m16::Known> searched = known;
+    searched["f1"].way = "search";
+    CB_CHECK_THROWS_AS(cb::UsageError, m16::replay(in, searched));
+});

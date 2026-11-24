@@ -365,6 +365,59 @@ Result run(const Inputs& in) {
     return r;
 }
 
+Result replay(const Inputs& in, const std::map<std::string, Known>& known) {
+    if (in.toolchain == nullptr) throw UsageError("match16: no toolchain");
+    Toolchain& chain = *in.toolchain;
+    Result r;
+    std::map<std::string, const Function*> by_name;
+    for (const Function& f : in.functions) {
+        by_name[f.name] = &f;
+        r.segment[f.name] = f.segment;
+    }
+    r.files = source_files(in.functions, platforms::Decoder::open(platforms::Arch::X86, 16, false));
+    const auto variant_named = [&](const std::string& name) -> const Variant* {
+        for (const Variant& v : in.variants) {
+            if (v.name == name) return &v;
+        }
+        return nullptr;
+    };
+    std::map<std::pair<Setting, std::string>, std::vector<std::string>> groups;   // (setting, header) -> its functions, in the module's order
+    for (const Function& f : in.functions) {
+        const auto k = known.find(f.name);
+        if (k == known.end()) throw UsageError("--replay: " + f.name + " is not in the results file");
+        const Variant* way = variant_named(k->second.way);
+        if (way == nullptr) throw UsageError("--replay: " + f.name + "'s way of saying it (" + k->second.way + ") cannot be said again");
+        r.setting[f.name] = k->second.setting;
+        r.winner[f.name] = k->second.way;
+        groups[{k->second.setting, way->header}].push_back(f.name);
+    }
+    for (const auto& [key, names] : groups) {
+        Compilation request{key.first.compiler, key.first.switches, key.second, {}, &r.files};
+        for (const std::string& fn : names) request.sources.emplace_back(fn, variant_named(r.winner.at(fn))->texts.at(fn));
+        const std::map<std::string, std::optional<Masked>> built = chain.compile(request);
+        for (const std::string& fn : names) {
+            const auto it = built.find(fn);
+            const std::optional<Masked>* code = it != built.end() && it->second ? &it->second : nullptr;
+            r.verdicts[fn] = code != nullptr ? chain.distance(**code, by_name.at(fn)->original) : Verdict{ByteMatch::NoCompile, 0, 0};
+            r.code[fn] = code != nullptr ? *code : std::nullopt;
+        }
+    }
+    if (in.identify) {   // (the compiler's run-time library: linked, not written)
+        r.library = in.identify(in.functions);
+        for (const auto& [fn, name] : r.library) {
+            const auto it = r.verdicts.find(fn);
+            if (it == r.verdicts.end() || it->second.match != ByteMatch::Identical) r.verdicts[fn] = {ByteMatch::Identified, 0, by_name.at(fn)->original.code.size()};
+        }
+    }
+    std::map<std::uint32_t, std::vector<Setting>> by_segment;
+    for (const Function& f : in.functions) by_segment[f.segment].push_back(r.setting.at(f.name));
+    for (const auto& [seg, votes] : by_segment)
+        r.chosen[seg] = m16_first_greatest(votes, [&](const Setting& v) { return std::count(votes.begin(), votes.end(), v); });
+    for (const Function& f : in.functions) r.texts[f.name] = variant_named(r.winner.at(f.name))->texts.at(f.name);
+    for (const auto& [fn, s] : r.setting) r.settings.insert(s);
+    return r;
+}
+
 // ---- the report -----------------------------------------------------------------------------------------------------------------------
 
 std::vector<std::string> report_lines(std::string_view module_name, const Result& result) {

@@ -147,6 +147,16 @@ struct Result {
 
 Result run(const Inputs& inputs);
 
+// What an earlier run found for a function: the setting it was judged under and the way of saying it that came nearest.
+struct Known {
+    Setting setting;
+    std::string way;
+};
+// A rerun from what an earlier run found, without its search: each function said its winning way and compiled once, under its setting,
+// together with the other functions of that setting (so a source file is compiled whole, as before). UsageError for a function `known`
+// does not name, or a way of saying it that cannot be said again (a searched rewrite is not kept).
+Result replay(const Inputs& inputs, const std::map<std::string, Known>& known);
+
 // What a run prints: the counts by verdict under the settings used, which way of saying won the identical ones, and the eight nearest
 // misses. `module_name` is the file's name.
 std::vector<std::string> report_lines(std::string_view module_name, const Result& result);

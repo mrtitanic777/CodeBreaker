@@ -398,6 +398,21 @@ Match16Run run_match16(World& world, const stdfs::path& module, const Match16Opt
     in.identify = [msvc152](std::span<const am16::Function> fns) { return m16p_identify(msvc152, fns); };
     in.search_rounds = options.search;
     in.log = log;
+    if (options.replay) {
+        const Json earlier = json::load(*options.replay);
+        if (!earlier.is_object()) throw UsageError("--replay: " + fs::to_text(*options.replay) + " is not a results file");
+        std::map<std::string, am16::Known> known;
+        for (auto it = earlier.begin(); it != earlier.end(); ++it) {
+            const Json& e = it.value();
+            if (!e.is_object() || !e.contains("flags") || !e.contains("variant") || !e["flags"].is_string() || !e["variant"].is_string()) continue;
+            const std::string flags = e["flags"].get<std::string>();
+            const std::size_t space = flags.find(' ');
+            if (space == std::string::npos) continue;
+            known[it.key()] = {{flags.substr(0, space), flags.substr(space + 1)}, e["variant"].get<std::string>()};
+        }
+        run.result = am16::replay(in, known);
+        return run;
+    }
     run.result = am16::run(in);
     return run;
 }
@@ -412,6 +427,7 @@ int match16_command(World& world, const stdfs::path& module, const cli::Args& ar
     options.fold = !args.flag("no-fold");
     options.wine = args.flag("wine");
     options.search = static_cast<int>(args.integer<std::int64_t>("search").value_or(0));
+    if (const auto replay = args.value("replay")) options.replay = fs::from_text(*replay);
     const Match16Run run = run_match16(world, module, options, [](std::string_view line) { cb::out("{}\n", line); });
     for (const std::string& line : am16::report_lines(fs::to_text(module.filename()), run.result)) cb::out("{}\n", line);
     if (const auto json_file = args.value("json")) {
@@ -423,6 +439,7 @@ int match16_command(World& world, const stdfs::path& module, const cli::Args& ar
                            {"differing", v.differing},
                            {"total", v.total},
                            {"segment", segment == run.result.segment.end() ? 0U : segment->second},
+                           {"variant", run.result.winner.contains(name) ? run.result.winner.at(name) : std::string()},
                            {"flags", used == run.result.setting.end() ? std::string() : used->second.compiler + " " + used->second.switches}};
         }
         fs::write_text(fs::from_text(*json_file), json::dump(j, json::Style::Pretty));

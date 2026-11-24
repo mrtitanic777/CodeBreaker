@@ -31,6 +31,7 @@ struct Match16Options {
     bool fold = true;                      // fold the decompiler's temporaries back (and join far parameters, split the frame)
     bool wine = false;                     // type the imports as Wine's .spec files do
     int search = 0;                        // rounds of rewrites of the last bytes of the near misses
+    std::optional<std::filesystem::path> replay;   // an earlier `--json`: each function compiled once, as it found
 };
 
 struct Match16Run {
