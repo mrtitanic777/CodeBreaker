@@ -103,6 +103,8 @@ public:
     virtual std::string wrap(ir::Node* expr, int prec, bool right = false) = 0;
     // `expr` as a value of type `type`: a char from an int, as Java converts a constant implicitly.
     virtual std::string coerce(ir::Node* expr, const ir::TypeP& type) = 0;
+    // The class being written.
+    virtual ir::ClassDecl* current_class() = 0;
     // A `using` the unit needs.
     virtual void add_using(std::string_view ns) = 0;
 };
@@ -155,6 +157,28 @@ public:
     virtual void record(Context&, const ir::SymP&, ir::Node* /*init*/) {}
     // A lambda of this type (the node's: the interface it is written for).
     virtual void check_lambda(Context&, ir::Lambda&, const ir::TypeP& /*type*/) {}
+    // The class that holds a lambda of this type, where a C# delegate cannot be one (an interface of the program); nothing for a delegate.
+    virtual std::optional<std::string> lambda_class(Context&, const ir::TypeP&) { return std::nullopt; }
+    // Does the program catch a negative array size, so that the exception must carry the source language's message?
+    virtual bool checks_array_sizes() const { return false; }
+    // A method reference as the lambda it stands for, where C# has no method group for it; null for "as written".
+    virtual ir::Node* method_ref(Context&, ir::Node*) { return nullptr; }
+    // `this` (or `Outer.this`) as C# reaches it, where it is an enclosing instance; nothing for plain `this`.
+    virtual std::optional<std::string> this_text(Context&, ir::Node*) { return std::nullopt; }
+    // The word a class of this kind is declared with, where it is not the source's own (a Java record is a C# class).
+    virtual std::optional<std::string> class_keyword(const ir::ClassDecl&) { return std::nullopt; }
+    // A name that reads something other than a local of the method being written (a local a class declared in a method copied in).
+    virtual std::optional<std::string> name_text(Context&, ir::Node*) { return std::nullopt; }
+    // A compound assignment or ++/--, where the target needs more than C#'s own operator (a Java box that may be null).
+    virtual std::optional<Ex> update(Context&, ir::Node*) { return std::nullopt; }
+    // Is this class, declared in a method, written as a member of the class around it?
+    virtual bool local_class(const ir::Node* /*decl*/) const { return false; }
+    // Lines of C# a class needs that its source does not say (what a Java Iterable owes .NET's foreach).
+    virtual std::vector<std::string> extra_members(Context&, ir::ClassDecl&) { return {}; }
+    // Is this enum written as a class (a Java enum of objects, with fields, methods or constructor arguments)?
+    virtual bool enum_as_class(const ir::ClassDecl&) const { return false; }
+    // The label of constant `name` in a switch over this type, where the switch is on something else than the value itself.
+    virtual std::optional<std::string> enum_case(const ir::TypeP& /*scrutinee*/, const std::string& /*name*/) const { return std::nullopt; }
 };
 
 // A library for a language, made once per Program.
@@ -205,6 +229,11 @@ public:
     // A member a library adds to a class (an abstract copy of an interface method). Kept here, never added to the
     // caller's tree: the units outlive the program, and a node in arena() must not be reachable from them.
     void add_member(const ir::ClassDecl& c, ir::Node* member) { added_[&c].push_back(member); }
+    // A class a library adds inside `c` (one Java declares in a method): written with c's members and found by its name.
+    void add_class(const ir::ClassDecl& c, ir::Node* class_node) {
+        add_member(c, class_node);
+        index(class_node);
+    }
     // A class's members as written: its own, then those added to it.
     std::vector<ir::Node*> members(const ir::ClassDecl& c) const {
         std::vector<ir::Node*> out(c.members.begin(), c.members.end());

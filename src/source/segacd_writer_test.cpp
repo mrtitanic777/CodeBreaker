@@ -60,6 +60,7 @@ CB_TEST("source.segacd_writer.a_raw_image_is_written_from_its_system_area", [] {
     const Bytes boot = img::system_area();
     const image_writer::Written r = write(formats::segacd::parse(img::raw(boot)), "raw.bin", dir.path());
     CB_CHECK(r.same);
+    CB_CHECK(r.built);   // (a failed rebuild fails here, not in the read below)
     CB_CHECK(fs::read_file(*r.built) == boot);   // what it builds back is the cooked system area
     CB_CHECK(fs::read_text(r.source).find("of a 2352-byte-sector image") != std::string::npos);
 });

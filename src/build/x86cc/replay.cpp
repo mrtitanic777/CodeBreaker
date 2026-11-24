@@ -77,7 +77,7 @@ Outcome one(const stdfs::path& case_dir, const stdfs::path& blobs, const stdfs::
     const nlohmann::json c = nlohmann::json::parse(fs::read_text(case_dir / "case.json"));
     const std::string program = c.value("program", std::string());
     if (program != "wcc" && program != "wcc386") throw Error("x86cc replay: " + o.id + " is not a compile (" + program + ")");
-    const stdfs::path root = stdfs::absolute(scratch) / o.id;   // (absolute: the compile runs inside the case's folder)
+    const stdfs::path root = stdfs::absolute(scratch).lexically_normal() / o.id;   // (absolute: the compile runs inside the case's folder)
     std::error_code ec;
     stdfs::remove_all(root, ec);
     fs::make_dirs(root / "cwd");

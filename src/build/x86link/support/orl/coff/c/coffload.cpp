@@ -81,7 +81,7 @@ constexpr FlagMap<unsigned_32, orl_sec_flags> sec_flag_map[] = {
     { COFF_IMAGE_SCN_MEM_SHARED,            ORL_SEC_FLAG_SHARED },
     { COFF_IMAGE_SCN_MEM_EXECUTE,           ORL_SEC_FLAG_EXECUTE_PERMISSION },
     { COFF_IMAGE_SCN_MEM_READ,              ORL_SEC_FLAG_READ_PERMISSION },
-    { COFF_IMAGE_SCN_MEM_WRITE,             ORL_SEC_FLAG_WRITE_PERMISSION },
+    { static_cast<unsigned_32>( COFF_IMAGE_SCN_MEM_WRITE ), ORL_SEC_FLAG_WRITE_PERMISSION },   // (0x80000000: the enumerator is an int to a compiler that checks the narrowing)
 };
 
 orl_machine_type machine_type_of( unsigned_16 cpu_type )

@@ -1,0 +1,307 @@
+/****************************************************************************
+*
+*                            Open Watcom Project
+*
+* Copyright (c) 2002-2026 The Open Watcom Contributors. All Rights Reserved.
+*    Portions Copyright (c) 1983-2002 Sybase, Inc. All Rights Reserved.
+*
+*  ========================================================================
+*
+*    This file contains Original Code and/or Modifications of Original
+*    Code as defined in and that are subject to the Sybase Open Watcom
+*    Public License version 1.0 (the 'License'). You may not use this file
+*    except in compliance with the License. BY USING THIS FILE YOU AGREE TO
+*    ALL TERMS AND CONDITIONS OF THE LICENSE. A copy of the License is
+*    provided with the Original Code and Modifications, and is also
+*    available at www.sybase.com/developer/opensource.
+*
+*    The Original Code and all software distributed under the License are
+*    distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+*    EXPRESS OR IMPLIED, AND SYBASE AND ALL CONTRIBUTORS HEREBY DISCLAIM
+*    ALL SUCH WARRANTIES, INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF
+*    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR
+*    NON-INFRINGEMENT. Please see the License for the specific language
+*    governing rights and limitations under the License.
+*
+*  ========================================================================
+*
+* Description:  WHEN YOU FIGURE OUT WHAT THIS FILE DOES, PLEASE
+*               DESCRIBE IT HERE!
+*
+****************************************************************************/
+
+
+#include "_cgstd.h"
+#include "coderep.h"
+#include "procdef.h"
+#include "score.h"
+#include "zerobits.h"
+#include "makeins.h"
+#include "namelist.h"
+#include "regset.h"
+#include "expand.h"
+#include "split.h"
+#include "insutil.h"
+#include "insdead.h"
+#include "backrun.hpp"
+
+
+static  bool    CheckIns( BackRun& back, instruction **pins )
+/********************************************/
+{
+    bool                ok;
+    const opcode_entry  *try_;
+    instruction         *ins;
+    bool                dummy;
+    opcnt               i;
+
+    ins = *pins;
+    ok = true;
+    if( ins != NULL ) {
+        for( i = ins->num_operands; i-- > 0; ) {
+            if( ins->operands[i]->n.class_ == N_REGISTER &&
+                ins->operands[i]->r.reg_index == -1 ) {
+                ok = false;
+            }
+        }
+        if( ok && ins->result != NULL ) {
+            if( ins->result->n.class_ == N_REGISTER &&
+                ins->result->r.reg_index == -1 ) {
+                ok = false;
+            }
+        }
+        if( ok ) {
+            try_ = FindGenEntry( back, ins, &dummy );
+            if( try_ == NULL ) {
+                ok = false;
+            } else if( try_->generate >= G_UNKNOWN ) {
+                ok = false;
+            } else {
+                ins->table = try_;
+                ins->u.gen_table = try_;
+            }
+        }
+    }
+    if( !ok ) {
+        ins->head.next = ins;
+        ins->head.prev = ins;
+        FreeIns( back, ins );
+        *pins = NULL;
+    }
+    return( ok );
+}
+
+
+static  name    *NonZeroPart( BackRun& back, name *op, zero_bits z, type_class_def type_class )
+/******************************************************************************/
+{
+    if( z & LO_HALF ) {
+        return( HighPart( back, op, HalfClass[type_class] ) );
+    } else if( z & HI_HALF ) {
+        return( LowPart( back, op, HalfClass[type_class] ) );
+    } else {
+        return( op );
+    }
+}
+
+
+static  zero_bits       AZeroHalf( zero_bits l, zero_bits r )
+/***********************************************************/
+{
+    zero_bits   zhalf;
+
+    zhalf = l & LO_HALF;
+    if( zhalf )
+        return( zhalf );
+    zhalf = l & HI_HALF;
+    if( zhalf )
+        return( zhalf );
+    zhalf = r & LO_HALF;
+    if( zhalf )
+        return( zhalf );
+    zhalf = r & HI_HALF;
+    return( zhalf );
+}
+
+static  instruction     *MakeClear( BackRun& back, name *res, type_class_def type_class )
+/************************************************************************/
+{
+    if( res->n.class_ == N_REGISTER ) { /* since there's a R_MAKEXORRR*/
+        return( MakeBinary( back, OP_XOR, res, res, res, type_class ) );
+    } else {
+        return( MakeMove( back, AllocIntConst( back, 0 ), res, type_class ) );
+    }
+}
+
+
+bool    ScoreZero( BackRun& back, score_hdl scoreboard, instruction **pins )
+/***********************************************************/
+{
+    instruction         *ins;
+    bool                change;
+    type_class_def      type_class;
+    type_class_def      half_type_class;
+    zero_bits           op1zpart;
+    zero_bits           op2zpart;
+    zero_bits           zeropart;
+    zero_bits           nonzeropart;
+    name                *op1;
+    name                *op2;
+    name                *res;
+    instruction         *ins1;
+    instruction         *ins2;
+    name                *tmp1;
+    name                *tmp2;
+    name                *tmp3;
+    name                *tmp4;
+
+
+
+    ins = *pins;
+    if( ins->num_operands != 2 )
+        return( false );
+    if( ins->result == NULL )
+        return( false );
+    if( ( ins->head.opcode != OP_ADD && ins->head.opcode != OP_AND
+       && ins->head.opcode != OP_OR && ins->head.opcode != OP_XOR
+       && ins->head.opcode != OP_SUB ) )
+        return( false );
+    if( ins->ins_flags & INS_CC_USED )
+        return( false );
+    if( VolatileIns( ins ) )
+        return( false );
+    op1 = ins->operands[0];
+    op2 = ins->operands[1];
+    res = ins->result;
+    if( op1->n.size != op2->n.size )
+        return( false );
+    if( res->n.size != op2->n.size )
+        return( false );
+    type_class = ins->type_class;
+    op1zpart = static_cast<zero_bits>(HasZero( back, scoreboard, op1 ));
+    op2zpart = static_cast<zero_bits>(HasZero( back, scoreboard, op2 ));
+    half_type_class = HalfClass[type_class];
+    ins1 = NULL;
+    ins2 = NULL;
+    change = false;
+    switch( ins->head.opcode ) {
+    case OP_ADD:
+        if( IsZeroBits( op1zpart ) && IsZeroBits( op2zpart ) ) {
+            ins1 = MakeClear( back, res, type_class );
+        } else if( IsZeroBits( op1zpart ) ) {
+            ins1 = MakeMove( back, op2, res, type_class );
+        } else if( IsZeroBits( op2zpart ) ) {
+            ins1 = MakeMove( back, op1, res, type_class );
+        } else if( OpposZero( op1zpart, op2zpart ) ) {
+            tmp1 = NonZeroPart( back, op1, op1zpart, half_type_class );
+            tmp2 = NonZeroPart( back, res, op1zpart, half_type_class );
+            tmp3 = NonZeroPart( back, op2, op2zpart, half_type_class );
+            tmp4 = NonZeroPart( back, res, op2zpart, half_type_class );
+            if( tmp1 == 0 || tmp2 == 0 || tmp3 == 0 || tmp4 == 0 )
+                return( false );
+            ins1 = MakeMove( back, tmp1, tmp2, half_type_class );
+            ins2 = MakeMove( back, tmp3, tmp4, half_type_class );
+        } else {
+            zeropart = ZeroHalf( op1zpart, op2zpart );
+            if( LoZero( zeropart ) ) {
+                nonzeropart = OtherHalf( zeropart );
+                tmp1 = NonZeroPart( back, res, nonzeropart, half_type_class );
+                tmp2 = NonZeroPart( back, op1, zeropart, half_type_class );
+                tmp3 = NonZeroPart( back, op2, zeropart, half_type_class );
+                tmp4 = NonZeroPart( back, res, zeropart, half_type_class );
+                if( tmp1 == 0 || tmp2 == 0 || tmp3 == 0 || tmp4 == 0 )
+                    return( false );
+                ins2 = MakeClear( back, tmp1, half_type_class );
+                ins1 = MakeBinary( back, OP_ADD, tmp2, tmp3, tmp4, half_type_class );
+            }
+        }
+        break;
+    case OP_SUB:
+        if( IsZeroBits( op1zpart ) && IsZeroBits( op2zpart ) ) {
+            ins1 = MakeClear( back, res, type_class );
+        } else if( IsZeroBits( op2zpart ) ) {
+            ins1 = MakeMove( back, op1, res, type_class );
+        } else if( IsZeroBits( op1zpart ) ) {
+            ins1 = MakeUnary( back, OP_NEGATE, op2, res, type_class );
+        }
+        break;
+    case OP_AND:
+        if( IsZeroBits( op1zpart ) || IsZeroBits( op2zpart ) || OpposZero( op1zpart,op2zpart ) ) {
+            ins1 = MakeClear( back, res, type_class );
+        } else {
+            zeropart = AZeroHalf( op1zpart, op2zpart );
+            if( zeropart ) {
+                nonzeropart = OtherHalf( zeropart );
+                tmp1 = NonZeroPart( back, res, nonzeropart, half_type_class );
+                tmp2 = NonZeroPart( back, op1, zeropart, half_type_class );
+                tmp3 = NonZeroPart( back, op2, zeropart, half_type_class );
+                tmp4 = NonZeroPart( back, res, zeropart, half_type_class );
+                if( tmp1 == 0 || tmp2 == 0 || tmp3 == 0 || tmp4 == 0 )
+                    return( false );
+                ins1 = MakeClear( back, tmp1, half_type_class );
+                ins2 = MakeBinary( back, OP_AND, tmp2, tmp3, tmp4, half_type_class );
+            }
+        }
+        break;
+    case OP_OR:
+    case OP_XOR:
+        if( IsZeroBits( op1zpart ) && IsZeroBits( op2zpart ) ) {
+            if( op1 == res || op2 == res ) { /* result already has zero*/
+                *pins = ins->head.next;
+                FreeIns( back, ins );
+                change = true;
+            } else {
+                ins1 = MakeClear( back, res, type_class );
+            }
+        } else if( IsZeroBits( op1zpart ) ) {
+            ins1 = MakeMove( back, op2, res, type_class );
+        } else if( IsZeroBits( op2zpart ) ) {
+            ins1 = MakeMove( back, op1, res, type_class );
+        } else if( OpposZero( op1zpart, op2zpart ) ) {
+            tmp1 = NonZeroPart( back, op1, op1zpart, half_type_class );
+            tmp2 = NonZeroPart( back, res, op1zpart, half_type_class );
+            tmp3 = NonZeroPart( back, op2, op2zpart, half_type_class );
+            tmp4 = NonZeroPart( back, res, op2zpart, half_type_class );
+            if( tmp1 == 0 || tmp2 == 0 || tmp3 == 0 || tmp4 == 0 )
+                return( false );
+            ins1 = MakeMove( back, tmp1, tmp2, half_type_class );
+            ins2 = MakeMove( back, tmp3, tmp4, half_type_class );
+        } else if( MatchZero( op1zpart, op2zpart ) ) {
+            zeropart = ZeroHalf( op1zpart, op2zpart );
+            nonzeropart = OtherHalf( zeropart );
+            tmp1 = NonZeroPart( back, res, nonzeropart, half_type_class );
+            tmp2 = NonZeroPart( back, op1, zeropart, half_type_class );
+            tmp3 = NonZeroPart( back, op2, zeropart, half_type_class );
+            tmp4 = NonZeroPart( back, res, zeropart, half_type_class );
+            if( tmp1 == 0 || tmp2 == 0 || tmp3 == 0 || tmp4 == 0 )
+                return( false );
+            ins2 = MakeClear( back, tmp1, half_type_class );
+            ins1 = MakeBinary( back, ins->head.opcode, tmp2, tmp3, tmp4, half_type_class );
+        }
+        break;
+    }
+    if( !CheckIns( back, &ins1 ) && ins2 != NULL ) {
+        ins2->head.next = ins2;
+        ins2->head.prev = ins2;
+        FreeIns( back, ins2 );
+        ins2 = NULL;
+    }
+    if( !CheckIns( back, &ins2 ) && ins1 != NULL ) {
+        ins1->head.next = ins1;
+        ins1->head.prev = ins1;
+        FreeIns( back, ins1 );
+        ins1 = NULL;
+    }
+    if( ins1 == NULL && ins2 == NULL )
+        return( change );
+    if( ins2 != NULL ) {
+        SuffixIns( back, ins, ins2 );
+        *pins = ins2;
+    }
+    if( ins1 != NULL ) {
+        SuffixIns( back, ins, ins1 );
+        *pins = ins1;
+    }
+    FreeIns( back, ins );
+    return( true );
+}

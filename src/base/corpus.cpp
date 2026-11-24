@@ -324,6 +324,11 @@ stdfs::path Corpus::resolve(std::string_view name) const {
     throw NotFoundError(fs::from_text(name), 2, "no such module in the corpus");
 }
 
+const std::vector<std::string>& le_module_extensions() {
+    static const std::vector<std::string> extensions = {".vxd", ".386", ".pdr", ".sys", ".drv", ".exe"};
+    return extensions;
+}
+
 std::vector<stdfs::path> Corpus::modules(std::optional<Lane> only, const std::vector<std::string>& extensions) const {
     std::vector<std::pair<std::pair<std::uint64_t, std::string>, stdfs::path>> keyed;
     for (const auto& entry : *index()) {

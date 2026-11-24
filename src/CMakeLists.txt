@@ -253,9 +253,14 @@ else()
   target_link_libraries(cb_core PUBLIC Threads::Threads ${CMAKE_DL_LIBS})   # (std::thread; dlopen for the engine libraries)
   find_package(OpenSSL REQUIRED)
   target_link_libraries(cb_core PUBLIC OpenSSL::Crypto)   # (core/crypto_cipher_posix.cpp: random bytes, AES/DES, RSA; Windows uses CNG)
+endif()
+if(NOT MSVC)   # (GCC, on Linux and MinGW alike; the MSVC linker, and clang-cl's, searches every library whole)
   # The static libraries reach into one another in a cycle; GNU ld reads each archive once, in command-line order, so the
   # executables' libraries are linked as one group (every archive is searched again until nothing is left undefined).
   set(CMAKE_CXX_LINK_EXECUTABLE "<CMAKE_CXX_COMPILER> <FLAGS> <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> -Wl,--start-group <LINK_LIBRARIES> -Wl,--end-group")
+  # (MinGW's CMake puts the libraries into the response file with the objects, which leaves the group above empty: the objects
+  # alone go there, the libraries stay on the command line inside it)
+  set(CMAKE_CXX_USE_RESPONSE_FILE_FOR_LIBRARIES 0)
 endif()
 # core16_types.hpp: the records of the core16 cycle (header only; its test sits beside it, not in an area)
 get_property(CB_TESTS_BEFORE_CORE16 GLOBAL PROPERTY CB_TEST_SOURCES)
@@ -583,7 +588,7 @@ target_link_libraries(cb_cmds PRIVATE cb_symbols cb_recompile cb_java cb_xna cb_
 cb_copy_prebuilt_dlls(cb_cmds)
 
 # cb_state_cmds: the proof harness of the commands that read and write the state folder (names, knowledge, coverage, progress, facts, origin,
-# driver-services, migrate-state) with the Environment the command table will give them (app/state_cmds_main.cpp). Not built by default.
+# driver-services) with the Environment the command table will give them (app/state_cmds_main.cpp). Not built by default.
 add_executable(cb_state_cmds EXCLUDE_FROM_ALL app/state_cmds_main.cpp)
 cb_apply_flags(cb_state_cmds)
 target_link_libraries(cb_state_cmds PRIVATE cb_ui cb_symbols cb_knowledge cb_engine cb_analyze cb_coverage cb_store cb_verify cb_core)

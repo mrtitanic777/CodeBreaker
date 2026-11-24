@@ -1,6 +1,6 @@
 // engine/function_store.hpp -- the function store: every function of every module, and what was made of it.
 //
-//     FunctionStore store("state/functions.sqlite", "state/db");
+//     FunctionStore store("<state>/functions.sqlite", "<state>/db");
 //     store.add_module(sha, "kernel32.dll", path, "pe");
 //     store.record_many(sha, "decompile", rev, profile, {{.addr = "1:7cd4", .name = "_f", .source = c, .sig = sig, .verdict = ...}});
 //     auto best = store.best(sha, profile, {"decompile"});            // the best candidate of each function, by class

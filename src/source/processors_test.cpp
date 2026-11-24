@@ -110,5 +110,40 @@ CB_TEST("source.processors.the_one_assembler_rebuilds_what_the_one_disassembler_
     CB_CHECK(assemble_described(find("sm83"), "\tCPL\n\tCP L\n", ".").data == (Bytes{0x2F, 0xBD}));
 });
 
+CB_TEST("source.processors.an_operand_may_be_an_expression_of_names_and_address_functions", [] {
+    const Processor& v810 = find("v810");
+    // the halves of an address: written as an expression, as hi() / lo(), or as the number the description reads
+    const Bytes high = assemble_described(v810, "\t.org 0x7000000\n\tmovhi 0x6,r0,r8\n", ".").data;
+    CB_CHECK(assemble_described(v810, "\t.equ VIP, 0x5f800\n\t.org 0x7000000\n\tmovhi (VIP+0x8000)>>16,r0,r8\n", ".").data == high);
+    CB_CHECK(assemble_described(v810, "\t.equ VIP, 0x5f800\n\t.org 0x7000000\n\tmovhi hi(VIP),r0,r8\n", ".").data == high);
+    const Bytes low = assemble_described(v810, "\t.org 0x7000000\n\tld.h -0x800[r8],r9\n", ".").data;
+    CB_CHECK(assemble_described(v810, "\t.equ VIP, 0x5f800\n\t.org 0x7000000\n\tld.h lo(VIP)[r8],r9\n", ".").data == low);
+    CB_CHECK(assemble_described(v810, "\t.org 0x7000000\n\tld.h lo(0x5f800)[r8],r9\n", ".").data == low);
+    // ca65's .loword / .hiword / .bankbyte, shifts and masks, under the register widths of a `.context`
+    const Processor& w65816 = find("65816");
+    const std::string wide = "\t.org 0x8000\n\t.context m16=1 x16=1\n\t.equ far, 0x123456\n";
+    CB_CHECK(assemble_described(w65816, wide + "\tLDA #.loword(far)\n", ".").data == (Bytes{0xA9, 0x56, 0x34}));
+    CB_CHECK(assemble_described(w65816, wide + "\tLDA #.hiword(far)\n", ".").data == (Bytes{0xA9, 0x12, 0x00}));
+    CB_CHECK(assemble_described(w65816, wide + "\tLDA #.bankbyte(far)\n", ".").data == (Bytes{0xA9, 0x12, 0x00}));
+    CB_CHECK(assemble_described(w65816, wide + "\tLDA #(far>>8)&0xFF\n", ".").data == (Bytes{0xA9, 0x34, 0x00}));
+    CB_CHECK(assemble_described(w65816, wide + "\tLDA #far&0xFFFF\n", ".").data == (Bytes{0xA9, 0x56, 0x34}));
+    // `.context` keeps the variable a later one leaves out
+    CB_CHECK(assemble_described(w65816, "\t.org 0x8000\n\t.context m16=1\n\t.context x16=1\n\tLDA #0x1234\n\tLDX #0x1234\n", ".").data ==
+             (Bytes{0xA9, 0x34, 0x12, 0xA2, 0x34, 0x12}));
+    // a name that is not defined still fails, as a parse error
+    CB_CHECK_THROWS_AS(ParseError, (void)assemble_described(w65816, wide + "\tLDA #.loword(nowhere)\n", "."));
+    CB_CHECK_THROWS_AS(ParseError, (void)assemble_described(v810, "\t.org 0x7000000\n\tmovhi hi(nowhere),r0,r8\n", "."));
+    // text that only looks like an expression is left alone: a parenthesised address is a memory operand, not a sum
+    CB_CHECK(assemble_described(find("z80"), "\tLD A,(0x1234)\n\tJP (HL)\n", ".").data == (Bytes{0x3A, 0x34, 0x12, 0xE9}));
+    CB_CHECK(assemble_described(find("6502"), "\tLDA (0x10),Y\n\tLDA 0x1234,X\n", ".").data == (Bytes{0xB1, 0x10, 0xBD, 0x34, 0x12}));
+});
+
+CB_TEST("source.processors.a_forward_long_label_keeps_its_size_between_passes", [] {
+    // `jml far` and `lda far` are four bytes whether the label is known yet or not
+    const Image image = assemble_described(find("65816"), "\t.org 0x008000\n\tjml far\n\tlda far\n\t.org 0x018000\nfar:\n\tnop\n", ".");
+    CB_CHECK_EQ(image.data.size(), 9u);   // (the origin moves the address, not the bytes)
+    CB_CHECK((Bytes(image.data.begin(), image.data.begin() + 8) == Bytes{0x5C, 0x00, 0x80, 0x01, 0xAF, 0x00, 0x80, 0x01}));
+});
+
 }  // namespace
 }  // namespace cb::source::processors

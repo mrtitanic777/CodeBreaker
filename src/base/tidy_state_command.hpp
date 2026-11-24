@@ -1,4 +1,4 @@
-// base/tidy_state_command.hpp -- `codebreaker tidy-state`: how big state/ is, part by part, and what of it is stale, gone.
+// base/tidy_state_command.hpp -- `codebreaker tidy-state`: how big the state folder is, part by part, and what of it is stale, gone.
 //
 //     codebreaker tidy-state                 the sizes, and the stale removed
 //     codebreaker tidy-state --dry           the sizes, and what would be removed

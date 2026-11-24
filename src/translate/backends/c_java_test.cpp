@@ -6,7 +6,7 @@
 // named as C keywords, `$` in names, non-ASCII strings). The goldens were read through, and `zoo`, `mix` and `names` were built
 // with clang and run beside the JVM: the output is the JVM's (expected.txt).
 //
-// The programs the back end declines (feat, minecraft, modernlib, streams) are declined here for the same reason.
+// The programs the back end declines (feat, minecraft) are declined here for the same reason.
 //
 // Behaviour the goldens pin down:
 //   * the first line of the C text names the C++ module;
@@ -121,8 +121,11 @@ CB_TEST("translate.c_java.own.names", [] {
 // The programs the back end does not write say why.
 CB_TEST("translate.c_java.declines.feat", [] { check_declined("feat"); });
 CB_TEST("translate.c_java.declines.minecraft", [] { check_declined("minecraft"); });
-CB_TEST("translate.c_java.declines.modernlib", [] { check_declined("modernlib"); });
-CB_TEST("translate.c_java.declines.streams", [] { check_declined("streams"); });
+CB_TEST("translate.c_java.modernlib_is_written", [] {   // (held to the JVM by translate.capability's Library)
+    cb::Arena arena;
+    std::vector<ir::Node*> units = corpus_units(arena, "modernlib");
+    CB_CHECK(!cj::program(arena, units).empty());
+});
 
 // The main class names the program's entry when the environment names none.
 CB_TEST("translate.c_java.main_class", [] {
@@ -262,3 +265,4 @@ CB_TEST("translate.c_java.collector.textstats_runs_under_stress", [] { runs_as_t
 CB_TEST("translate.c_java.collector.mix_runs_under_stress", [] { runs_as_the_jvm_under_stress("mix", "c_java/mix/golden.c"); });
 CB_TEST("translate.c_java.collector.names_runs_under_stress", [] { runs_as_the_jvm_under_stress("names", "c_java/names/golden.c"); });
 CB_TEST("translate.c_java.collector.zoo_runs_under_stress", [] { runs_as_the_jvm_under_stress("zoo", "c_java/zoo/golden.c"); });
+CB_TEST("translate.c_java.collector.t17_runs_under_stress", [] { runs_as_the_jvm_under_stress("t17", "c_java/t17.golden.c"); });

@@ -50,14 +50,16 @@ namespace {
 sl::Emulator& emulator_for(m::Variant variant) { return emulator_named(variant == m::Variant::Cmos ? "65c02.sla" : "6502.sla"); }
 }  // namespace
 
-bool default_on(Core core) { return core == Core::Mos6502 || core == Core::Z80; }   // the lanes proven with no verdict differing
-
-bool enabled(Core core) {
+bool enabled() {
     if (const int f = g_force.load(); f >= 0) return f == 1;
     const std::optional<std::string> env = cb::fs::get_env("CB_PCODE_EMU");
-    if (env && (*env == "0" || *env == "false" || *env == "no")) return false;
-    if (env && (*env == "1" || *env == "true" || *env == "yes")) return true;   // CB_PCODE_EMU=1: every core the emulator can run, the defaults aside
-    return default_on(core);
+    return !(env && (*env == "0" || *env == "false" || *env == "no"));
+}
+
+bool enabled_when_asked() {
+    if (const int f = g_force.load(); f >= 0) return f == 1;
+    const std::optional<std::string> env = cb::fs::get_env("CB_PCODE_EMU");
+    return env && (*env == "1" || *env == "true" || *env == "yes");
 }
 
 void force(std::optional<bool> on) { g_force = on ? (*on ? 1 : 0) : -1; }
@@ -137,20 +139,25 @@ m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options)
     m::RunResult out;
     out.end = m::End::Limit;
     std::uint64_t steps = 0;
+    emu.setPin(emu.regRef("SH"), 1);   // (the description's SP is 16 bits wide: the chip's S wraps within page 1: kept so after every instruction)
+    struct Unpin {
+        sl::Emulator& e;
+        ~Unpin() { e.clearPin(); }
+    } unpin{emu};
     while (steps < options.max_steps) {
         if (emu.pc() == m::kReturnAddress) {
             out.end = m::End::Return;
             break;
         }
-        const sl::Emulator::Status status = emu.step();
-        if (status == sl::Emulator::Status::BadInstruction || status == sl::Emulator::Status::Error) {
+        // (a run of instructions at once: it ends where a device was touched, code bytes changed or the return address was reached, which is where this looks)
+        const sl::Emulator::BlockResult ran = emu.runBlocks(options.max_steps - steps, true, m::kReturnAddress);
+        steps += ran.executed;
+        if (ran.status == sl::Emulator::Status::BadInstruction || ran.status == sl::Emulator::Status::Error) {
             const std::uint16_t pc = static_cast<std::uint16_t>(emu.pc());
             out.end = m::End::Stopped;
             out.fault = m::Fault{static_cast<std::uint8_t>(emu.readValue(pc, 1)), pc};
             break;
         }
-        ++steps;
-        if (emu.reg("SH") != 1) emu.setReg("SH", 1);   // (the description's SP is 16 bits wide: the chip's S wraps within page 1)
         if (bus.log().size() != seen) {   // a device was touched: it may have changed the memory under the code
             sync();
             seen = bus.log().size();
@@ -282,6 +289,16 @@ z::RunResult run(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options)
         emu.write(first, shadow.data() + first, last - first + 1);
     };
 
+    // R counts the instruction fetches: its low seven bits, two for a prefixed instruction (the description has no fetch count of its own)
+    emu.setCounter(emu.regRef("R"), 0x7F, [&shadow](std::uint64_t at) -> std::uint64_t {
+        const std::uint8_t first = shadow[at & 0xFFFF];
+        return (first == 0xDD || first == 0xFD || first == 0xCB || first == 0xED) ? 2u : 1u;
+    });
+    struct Uncount {
+        sl::Emulator& e;
+        ~Uncount() { e.clearCounter(); }
+    } uncount{emu};
+
     z::RunResult out;
     out.end = z::End::Limit;
     std::uint64_t steps = 0;
@@ -298,18 +315,15 @@ z::RunResult run(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options)
             break;
         }
         touched = false;
-        {   // R counts the instruction fetches: its low seven bits, two for a prefixed instruction (the description has no fetch count of its own)
-            const std::uint8_t first = shadow[pc];
-            const std::uint64_t r = emu.reg("R");
-            emu.setReg("R", (r & 0x80) | ((r + ((first == 0xDD || first == 0xFD || first == 0xCB || first == 0xED) ? 2u : 1u)) & 0x7F));
-        }
-        const sl::Emulator::Status status = emu.step();
-        if (status == sl::Emulator::Status::BadInstruction || status == sl::Emulator::Status::Error) {
+        // (a run of instructions at once, R counted for each by the emulator; it ends where a device was touched or a HALT ran, which is where this looks; an instruction at a
+        // time when the caller wants to see every pc)
+        const sl::Emulator::BlockResult ran = emu.runBlocks(options.before_step ? 1 : options.max_steps - steps, true, z::kReturnAddress);
+        steps += ran.executed;
+        if (ran.status == sl::Emulator::Status::BadInstruction || ran.status == sl::Emulator::Status::Error) {
             out.end = z::End::Stopped;
             out.fault = z::Fault{z::Fault::Kind::Undecodable, pc};
             break;
         }
-        ++steps;
         if (touched) sync();
     }
     z::Registers& r = out.regs;
@@ -344,6 +358,6 @@ z::RunResult run(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options)
     return out;
 }
 
-z::RunResult call(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options) { return enabled(Core::Z80) ? pcode_cpu::run(bus, entry, options) : z::run(bus, entry, options); }
+z::RunResult call(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : z::run(bus, entry, options); }
 
 }  // namespace cb::engine::pcode_cpu

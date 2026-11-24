@@ -6,9 +6,19 @@
  * enumerations C's: the value computed on the underlying integer, kept as the enumeration. */
 #ifndef CB_WCC_CXX_H
 #define CB_WCC_CXX_H
-#ifdef __cplusplus
 
 #include <type_traits>
+
+/* (the memory a compile allocates and the files it opens are its run's: cbrun.hpp, Held) */
+#include <stdio.h>
+#include <stdlib.h>
+#include <malloc.h>
+
+#if defined( _MSC_VER )
+    #define CB_ALWAYS_INLINE __forceinline
+#else
+    #define CB_ALWAYS_INLINE inline __attribute__(( always_inline ))
+#endif
 
 namespace {   // (internal linkage: each target's objects keep the instantiations of their own enumerations; no merging between wcc and wcc386)
 namespace cb_wcc_cxx {
@@ -54,5 +64,4 @@ constexpr E operator--(E& a, int) { E was = a; --a; return was; }
 
 }  // namespace
 
-#endif
 #endif

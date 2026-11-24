@@ -54,7 +54,28 @@ Lines MethodWriter::define() {
                         break;
                     }
                 }
-                if (implicit != nullptr) out.push_back(std::format("\t{}(({}*)self);", p_.ctor_name(*b, implicit), b->cname));
+                // javac's constructor of an anonymous class takes the arguments of its `new` and hands them to the base
+                const ir::Node* chosen = nullptr;
+                if (ci_->anon && !m.params.empty()) {
+                    for (const ir::Node* x : b->methods()) {
+                        const ir::MethodDecl& c = method_of(x);
+                        if (c.kind != "ctor" || c.params.size() != m.params.size()) continue;
+                        bool same = true;
+                        for (std::size_t i = 0; i < c.params.size(); ++i) same = same && p_.ct(param_of(c.params[i]).type) == p_.ct(param_of(m.params[i]).type);
+                        if (same) {
+                            chosen = x;
+                            break;
+                        }
+                    }
+                    if (chosen == nullptr) throw Decline("the base constructor of an anonymous class");
+                }
+                if (chosen != nullptr) {
+                    std::string forwarded;
+                    for (const ir::Node* pn : m.params) forwarded += ", " + ident(need_sym(param_of(pn).sym, "a parameter").name);
+                    out.push_back(std::format("\t{}(({}*)self{});", p_.ctor_name(*b, chosen), b->cname, forwarded));
+                } else if (implicit != nullptr) {
+                    out.push_back(std::format("\t{}(({}*)self);", p_.ctor_name(*b, implicit), b->cname));
+                }
             }
         }
         if (!delegated) out.push_back(std::format("\t{}_finit(self);", ci_->cname));
@@ -135,6 +156,10 @@ Lines MethodWriter::ctor_call(const ir::CtorCall& call, std::string_view ind) {
     }
     if (!ci_->base || ci_->base->empty() || *ci_->base == jmodel::kObject) return {};
     const ClassInfo* b = p_.model().info(*ci_->base);
+    if (b == nullptr && runtime_collection_base(*ci_->base)) {   // (a runtime collection made empty: all zero is its empty state)
+        if (!call.args.empty()) throw Decline("super(...) of the runtime class " + *ci_->base + " with arguments");
+        return {};
+    }
     if (b == nullptr) {   // a runtime Throwable
         std::vector<std::string> as;
         for (std::size_t i = 0; i < call.args.size(); ++i) {
@@ -267,7 +292,7 @@ Lines MethodWriter::clinit() {
 
 std::string MethodWriter::constant(const ir::FieldDecl& field) {
     const Code c = expr(field.init);
-    return conv(c.code, c.ctype, p_.ct(field.type));
+    return conv_to(c, field.type, p_.ct(field.type));
 }
 
 }  // namespace cb::translate::backends::c_java::detail

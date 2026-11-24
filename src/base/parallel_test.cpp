@@ -98,6 +98,31 @@ CB_TEST("base.parallel.slots_hold_at_least_one_and_no_more_than_the_workers", []
     CB_CHECK(s.held() >= 1);   // an empty temp folder: nothing else holds its slots
 });
 
+CB_TEST("base.parallel.a_running_job_grows_into_free_slots_up_to_the_workers", [] {
+    CleanEnv env;
+    fs::ScopedTempDir dir("cbslots");
+    const budget::Limits l = limits_in(dir, 2);
+    budget::Slots first(l, 1, 1);
+    CB_CHECK_EQ(first.held(), 1);
+    CB_CHECK(!first.grow(1e9));          // no processors that idle: stays as it is
+    CB_CHECK_EQ(first.held(), 1);
+    CB_CHECK(first.grow(0));
+    CB_CHECK_EQ(first.count(), 2);
+    CB_CHECK(!first.grow(0));            // every worker's slot is held
+    CB_CHECK_EQ(first.held(), 2);
+});
+
+CB_TEST("base.parallel.a_job_does_not_grow_into_a_slot_another_holds", [] {
+    CleanEnv env;
+    fs::ScopedTempDir dir("cbslots");
+    const budget::Limits l = limits_in(dir, 2);
+    budget::Slots mine(l, 1, 1);
+    budget::Slots theirs(l, 1, 1);
+    CB_CHECK_EQ(mine.held() + theirs.held(), 2);
+    CB_CHECK(!mine.grow(0));
+    CB_CHECK_EQ(mine.held(), 1);
+});
+
 CB_TEST("base.parallel.a_slot_in_use_is_not_given_twice_and_is_given_back", [] {
     CleanEnv env;
     fs::ScopedTempDir dir("cbslots");

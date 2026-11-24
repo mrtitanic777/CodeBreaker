@@ -14,7 +14,7 @@ what another had already worked out.
 
 | | Part | Today | The end state |
 |---|---|---|---|
-| 1 | **Program database** | a binary's knowledge is scattered: describe's text files, `/*@P`/`/*@S` notes inside the C, state/cache, the function store, loose JSON in state/ | one database per binary: bytes, segments, functions, L1 and L2, names, types, prototypes, signatures, verdicts -- every tool reads it and writes back to it |
+| 1 | **Program database** | a binary's knowledge is scattered: describe's text files, `/*@P`/`/*@S` notes inside the C, <state>/cache, the function store, loose JSON in <state>/ | one database per binary: bytes, segments, functions, L1 and L2, names, types, prototypes, signatures, verdicts -- every tool reads it and writes back to it |
 | 2 | **Incremental engine** | scripts call scripts; each tool caches on its own | each step declares what it reads and makes; the engine recomputes only what changed, in parallel by itself; caching is what the engine *is*, not something added |
 | 3 | **L2 the only form of code** | the decompiler prints C, c_text rewrites it with regexes, L2 rides beside it | the decompiler writes L2; every pass is a tree pass; C, C++, ... are back ends; nothing parses C text back |
 | 4 | **One lane interface** | Platform descriptors exist (platforms/); lanes still wire loader, CPU, convention, emulator, compiler, packager each their own way | every platform fills the same six slots; the judge, the database and the UI work with any platform unchanged |
@@ -36,8 +36,8 @@ A **fact** is anything known about a binary: a function's start, its prototype, 
 compiled object, its verdict. Each fact is made by one **step** from other facts, and records the
 version of the step's code and the hashes of what it was made from. When a fact is asked for, the
 engine returns it if those still match, else recomputes it -- and, through the same rule, only what
-depends on what changed. This replaces state/cache (its generations become step versions), the
-describe text files, the notes inside C, and most of state/.
+depends on what changed. This replaces <state>/cache (its generations become step versions), the
+describe text files, the notes inside C, and most of <state>/.
 
 The database is SQLite per binary (<state>/db/<sha>.sqlite): tables for facts by kind, blobs for
 large ones, kept to the facts of the current step versions (part of the size rule that
@@ -156,7 +156,7 @@ the cap); test_plumbing and test_frozen pass.
 **What phase A leaves for B and after.** ne.module is one step because describe, the decompiler
 and c_text are one call today (compilable16); splitting them into facts of their own is phase C's
 (L2 as the fact). The inner caches of the stages (compilable16, gate16_original, masm, the
-decompiler's) are still state/cache: the engine is the outer layer, and each goes as its stage
+decompiler's) are still <state>/cache: the engine is the outer layer, and each goes as its stage
 becomes a step. The function store is not yet the verdict table. The engine runs in the process
 that asks; phase B makes it the service, with its versions and memos kept across asks.
 
@@ -545,10 +545,10 @@ ask. ui/service.py is its client and the query layer under all of them.
 **What it is.** An HTTP+JSON server on 127.0.0.1, threaded, at a port fixed for the state folder
 (the setting `service_port`, else 20000 + a CRC of the folder's path mod 20000; the next one up
 when another program holds it), bound exclusively (SO_EXCLUSIVEADDRUSE on Windows, where two
-sockets may otherwise share a port). Its record is state/service/service.json (pid, port, root,
-state folder, started); its token state/service/token, a new secret each start, which every
+sockets may otherwise share a port). Its record is <state>/service/service.json (pid, port, root,
+state folder, started); its token <state>/service/token, a new secret each start, which every
 request carries as X-CodeBreaker-Token (and the Host must be 127.0.0.1 or localhost); its log
-state/service/serve.log. On exit it stops its jobs and takes the record and the token away.
+<state>/service/serve.log. On exit it stops its jobs and takes the record and the token away.
 
     GET  /ping   -> {pid, port, root, state, started, idle_minutes, idle_for, calls, busy, jobs, stale}
     POST /call   {"name": N, "args": {...}, "owner": CLIENT}
@@ -759,7 +759,7 @@ given a path of its own; an older store's bodies and hand-given names are carrie
 first time it is opened). describe.py fetches its import names and argument sizes through
 the API; the emulator's 32-bit stand-in reads its out-parameters' types through kb.prototype.
 
-Generated caches gone: state/prototypes.json, state/api16*.json, state/xdk/*.pickle (tidy-state
+Generated caches gone: <state>/prototypes.json, <state>/api16*.json, <state>/xdk/*.pickle (tidy-state
 no longer knows them, so old copies go), and the corpus's apiarity/*.json is no longer written
 (a file still there is read into the base once, per module). The `runtime_library.learn`,
 `ordinals.collect` and `driver_services.generate` writers still write their JSON files, and the
@@ -857,7 +857,7 @@ export calls the same (lz32: 11 alike with the original's, version.dll: 10). War
 **One function store.** store/functions.py keeps its API (the UI, the MCP server, the ledger and the
 module writer read it), and a module's tables -- function, candidate, verdict, text, identified,
 built, variant -- are now in that binary's program database (<state>/db/<sha>.sqlite, the engine's
-file): the verdict table is the database's. The store's own file (state/functions.sqlite) is their
+file): the verdict table is the database's. The store's own file (<state>/functions.sqlite) is their
 index: the modules (sha, name, path, kind), the profiles and a summary per module (functions,
 verdicts, the latest class of each function, the profiles judged under) kept as each module is
 written, so what is asked across the corpus (overview, the ledger's stamps, progress) reads one
@@ -892,7 +892,7 @@ change to one function's code judges that one, one that does not compile is not 
 with the build's files gone builds again there and judges all); test_platforms (every lane
 platform's steps named); test_ui, test_mcp, test_service, test_plumbing, test_frozen, test_verification, test_whole_module, test_drivers, test_dos, test_powerpc, test_knowledge, test_symbols, test_analysis and tests/java/test_kind pass; tools/check_imports passes, tools/tidy reports nothing in these files (its findings are in c_text, describe, windows16 and translate/backends/c.py, other work).
 
-**Left.** The inner caches of the stages (state/cache: masm, msc6, the period compiler's in
+**Left.** The inner caches of the stages (<state>/cache: masm, msc6, the period compiler's in
 verify/authored/match, origin16, and the 16-bit gate's and the decompiler's, which are other work
 now) are still base/cache.py: the lanes' steps are the outer layer, as phase A's were, and each
 goes as its stage becomes steps of its own. (Since 2026-10-31 the 16-bit compiler object cache has
@@ -1010,7 +1010,7 @@ nothing recorded outside a step).
 
 **Left.** What a program of its own reads is not seen (the native decompiler reads the description
 a step wrote; the 16-bit gate's processes are pool.run's and are seen). The stages' inner caches
-(state/cache: c_text's, the decompiler's) are keyed as before -- a fact made again after a piece
+(<state>/cache: c_text's, the decompiler's) are keyed as before -- a fact made again after a piece
 changed may take the inner cache's answer, as the lz32 run's 1.7s decompile did; they go as the
 stages become steps. A long-lived process keeps a kind's values as first read (store._tables)
 while its hashes follow other processes' writes: the service should own the one open base.

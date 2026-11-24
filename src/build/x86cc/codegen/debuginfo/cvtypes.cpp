@@ -1,0 +1,1878 @@
+/****************************************************************************
+*
+*                            Open Watcom Project
+*
+* Copyright (c) 2002-2026 The Open Watcom Contributors. All Rights Reserved.
+*    Portions Copyright (c) 1983-2002 Sybase, Inc. All Rights Reserved.
+*
+*  ========================================================================
+*
+*    This file contains Original Code and/or Modifications of Original
+*    Code as defined in and that are subject to the Sybase Open Watcom
+*    Public License version 1.0 (the 'License'). You may not use this file
+*    except in compliance with the License. BY USING THIS FILE YOU AGREE TO
+*    ALL TERMS AND CONDITIONS OF THE LICENSE. A copy of the License is
+*    provided with the Original Code and Modifications, and is also
+*    available at www.sybase.com/developer/opensource.
+*
+*    The Original Code and all software distributed under the License are
+*    distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+*    EXPRESS OR IMPLIED, AND SYBASE AND ALL CONTRIBUTORS HEREBY DISCLAIM
+*    ALL SUCH WARRANTIES, INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF
+*    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR
+*    NON-INFRINGEMENT. Please see the License for the specific language
+*    governing rights and limitations under the License.
+*
+*  ========================================================================
+*
+* Description:  Emit CodeView type information.
+*
+****************************************************************************/
+
+
+#include "_cgstd.h"
+#include "coderep.h"
+#include "cgmem.h"
+#include "zoiks.h"
+#include "cvdbg.h"
+#include "data.h"
+#include "types.h"
+#include "utils.h"
+#include "objout.h"
+#include "cvsyms.h"
+#include "cvtypes.h"
+#include "dbsupp.h"
+#include "i64.h"
+#include "feprotos.h"
+#include "cgprotos.h"
+#include "backrun.hpp"
+
+
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+/* (struct CvtypesState: cvtypes_state.h) */
+
+}  // namespace
+
+
+
+static const struct lf_info LFInfo[LFG_LAST] = {
+    #define _LFMAC( n, N, c )    { sizeof( lf_##n ), static_cast<lf_values>( c ) },
+    #include "cv4types.h"
+    #undef _LFMAC
+};
+
+static  void    BuffWrite( BackRun& back, cv_out *out, void *to )
+/************************************************/
+{
+    unsigned    len;
+
+    { segment_id old_segid = ChangeOP( back, out->segid );
+        len = static_cast<byte *>(to) - out->beg;
+        DataBytes( back, len, out->beg );
+        out->beg = static_cast<byte *>(to);
+    SetOP( back, old_segid ); }
+}
+
+static  void   BuffSkip( cv_out *out, void *to )
+/**********************************************/
+{
+    out->beg = static_cast<byte *>(to);
+}
+
+static  void    buffEnd( BackRun& back, cv_out *out )
+/************************************/
+{
+    unsigned    len;
+
+    { segment_id old_segid = ChangeOP( back, out->segid );
+        len = out->ptr - out->beg;
+        DataBytes( back, len, out->beg );
+    SetOP( back, old_segid ); }
+}
+
+static  void    *BuffInc( cv_out *out, int size )
+/***********************************************/
+{
+    void    *ptr;
+
+    ptr = out->ptr;
+    out->ptr += size;
+    return( ptr );
+}
+
+static  void  *AlignBuff( cv_out *out )
+/**************************************
+ * round out->ptr up to align size
+ */
+{
+    int     len;
+//    int     len4;
+    byte    *ptr;
+
+    ptr = out->ptr;
+    len = ptr - out->buff;
+//    len4 = ((len+CV_ALIGN-1)& -CV_ALIGN);
+    len = RoundUp( len, CV_ALIGN ) - len;
+    for( ; len > 0; --len ) {
+        *ptr = (LF_PAD0 | len);
+        ++ptr;
+    }
+    out->ptr = ptr;
+    return( ptr );
+}
+
+
+static  void    SegReloc( BackRun& back, segment_id segid, cg_sym_handle sym )
+/*************************************************************/
+{
+    { segment_id old_segid = ChangeOP( back, segid );
+        FEPtrBase( back, sym );
+    SetOP( back, old_segid ); }
+}
+
+static  void    *StartType( cv_out *out, lfg_index what )
+/*******************************************************/
+{
+    lf_common   *ptr;
+
+    ptr = reinterpret_cast<lf_common *>(out->ptr);
+    out->ptr += LFInfo[what].size;
+    ptr->code = LFInfo[what].code;
+    ++ptr; /* start of ct_... */
+    return( ptr );
+}
+
+static  void    NewTypeString( BackRun& back, cv_out *out )
+/******************************************/
+{
+    out->segid = back.cvdbg.CVTypes;
+    out->ptr = &out->buff[sizeof( u2 )];  /*skip length*/
+    out->beg = out->buff;
+}
+
+static  void    NewType( cv_out *out )
+/************************************/
+{
+    out->ptr = out->buff;   /* no length field */
+    out->beg = out->buff;
+}
+
+static  int  EndSub( BackRun& back, cv_out *out )
+/*********************************
+ * write out a member of a subfield (don't write a length)
+ * return length so it can be backpatched to list head
+ * reset buff to start
+ */
+{
+    unsigned        len;
+//    long_offset     here;
+
+    AlignBuff( out );
+    len = out->ptr - out->buff;
+    if( IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
+        { segment_id old_segid = ChangeOP( back, back.cvdbg.CVTypes );
+//            here = AskBigLocation();
+            DataBytes( back, len, out->buff );
+        SetOP( back, old_segid ); }
+    }
+    out->ptr = out->buff;
+    return( len );
+}
+
+static  long_offset   EndTypeString( BackRun& back, cv_out *out )
+/************************************************/
+{
+    unsigned        len;
+    long_offset     here = 0;
+
+    if( IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
+        AlignBuff( out );
+        len = out->ptr - out->buff;
+        *(reinterpret_cast<u2 *>(&out->buff[0])) = len - sizeof( u2 );  /* set type rec len*/
+        { segment_id old_segid = ChangeOP( back, back.cvdbg.CVTypes );
+            here = AskBigLocation(back);
+            DataBytes( back, len, out->buff );
+        SetOP( back, old_segid ); }
+    }
+    return( here );
+}
+
+void    CVEndType( cv_out *out )
+/******************************/
+{
+    int     len;
+
+    AlignBuff( out );
+    len = out->ptr - out->buff;
+    *(reinterpret_cast<u2 *>(&out->buff[0])) = len-sizeof( u2 );  /* set type rec len*/
+}
+
+static  void    PatchLen( BackRun& back, long_offset where, u2 what )
+/*****************************************************
+ * back patch field list length
+ */
+{
+    long_offset         here;
+
+    { segment_id old_segid = ChangeOP( back, back.cvdbg.CVTypes );
+        here = AskBigLocation(back);
+        SetBigLocation( back, where );
+        DataShort( back, what );
+        SetBigLocation( back, here );
+    SetOP( back, old_segid ); }
+}
+
+static  void PutFld2( cv_out *out, short num )
+/********************************************/
+{
+    *(reinterpret_cast<short*>(out->ptr)) = num;  /* set an imbedded num */
+    out->ptr += sizeof( short );
+}
+
+static void PutFldSized( cv_out *out, int size, uint_32 val )
+/***********************************************************/
+{
+    switch( size ) {
+    case 1:
+        *out->ptr = val;  /* out 1 */
+        out->ptr += sizeof( u1 );
+        break;
+    case 2:
+        *(reinterpret_cast<u2*>(out->ptr)) = val;  /* out 2 */
+        out->ptr += sizeof( u2 );
+        break;
+    case 4:
+        *(reinterpret_cast<u4*>(out->ptr)) = val;   /* out 4 */
+        out->ptr += sizeof( u4 );
+        break;
+    }
+}
+
+static void PutLFInt( cv_out *out, cv_psize size, uint_32 val )
+/*************************************************************/
+{
+    switch( size ) {
+    case CV_IB1:
+        *out->ptr = val;  /* out 1 */
+        out->ptr += sizeof( u1 );
+        break;
+    case CV_IB2:
+        *(reinterpret_cast<u2*>(out->ptr)) = val;  /* out 2 */
+        out->ptr += sizeof( u2 );
+        break;
+    case CV_IB4:
+        *(reinterpret_cast<u4*>(out->ptr)) = val;   /* out 4 */
+        out->ptr += sizeof( u4 );
+        break;
+    }
+}
+
+static lf_values   LFIntType( BackRun& back, int size )
+/**************************************/
+{
+    lf_values itipe ;
+
+    switch( size ) {
+    case 4:
+        itipe = LF_TINT4;
+        break;
+    case 2:
+        itipe = LF_TSHORT;
+        break;
+    case 1:
+        itipe = LF_TCHAR;
+        break;
+    default:
+        itipe = static_cast<lf_values>(0);
+        Zoiks( back, ZOIKS_106 ); /* bad pointer */
+    }
+    return( itipe );
+}
+
+template <class To>
+inline To& LvalueCast( byte &what ) { return *reinterpret_cast<To *>(&what); }
+
+void CVPutINum( cv_out *out, int_32 num )
+/***************************************/
+{
+    byte       *ptr;
+
+    if( num >= 0 && num < 0x00008000 ) {
+        *(reinterpret_cast<u2*>(out->ptr)) = num;  /* out num as is */
+        out->ptr += sizeof( u2 );
+        return;
+    }
+    ptr = out->ptr;
+    if( num >= -128 && num <= 127 ) {
+        LvalueCast<u2>( ptr[0] ) = LF_CHAR;
+        LvalueCast<u1>( ptr[2] ) = num;
+        ptr += sizeof(u2) + sizeof( u1 );
+    } else if( num >= -32768 && num <= 32767 ) {
+        LvalueCast<u2>( ptr[0] ) = LF_SHORT;
+        LvalueCast<u2>( ptr[2] ) = num;
+        ptr += sizeof(u2) + sizeof( u2 );
+    } else if( num > 0 && num <= 0x0000ffff ) {
+        LvalueCast<u2>( ptr[0] ) = LF_USHORT;
+        LvalueCast<u2>( ptr[2] ) = num;
+        ptr += sizeof(u2) + sizeof( u2 );
+    } else {
+        LvalueCast<u2>( ptr[0] ) = LF_LONG;
+        LvalueCast<u4>( ptr[2] ) = num;
+        ptr += sizeof(u2) + sizeof( u4 );
+    }
+    out->ptr = ptr;
+}
+
+void        CVPutINum64( cv_out *out, signed_64 val )
+/***************************************************/
+{
+    byte       *ptr;
+
+    if( I64High( val ) == 0 || I64High( val ) == -1 ) {
+        CVPutINum( out, I64Low( val ) );
+    } else {
+        ptr = out->ptr;
+        LvalueCast<u2>( ptr[0] ) = LF_QUADWORD;
+        LvalueCast<u4>( ptr[2] ) = U64Low( val );
+        LvalueCast<u4>( ptr[6] ) = U64High( val );
+        ptr += sizeof( u2 ) + sizeof( u8 );
+        out->ptr = ptr;
+    }
+}
+
+void        CVPutStr( cv_out *out, const char *str )
+/**************************************************/
+{
+    size_t      len;
+
+    len = strlen( str );
+    if( len > 255 )
+        len = 255;
+    *(out->ptr++) = len;
+    memcpy( out->ptr, str, len );
+    out->ptr += len;
+}
+
+void        CVPutNullStr( cv_out *out )
+/*************************************/
+{
+    *(out->ptr++) = 0;
+}
+
+
+static  lf_values   LFSignedSize( int_32 num )
+/********************************************/
+{
+    cv_primitive    index;
+
+    index.s = 0;
+    index.f.mode = CV_DIRECT;
+    index.f.type = CV_SIGNED;
+    if( num >= -128 && num <= 127 ) {
+        index.f.size = CV_IB1;
+    } else if( num >= -32768 && num <= 32767 ) {
+        index.f.size = CV_IB2;
+    } else {
+        index.f.size =  CV_IB4;
+    }
+    return static_cast<lf_values>(( index.s ));
+}
+
+static  lf_values    LFSignedRange( int_32 lo, int_32 hi )
+/********************************************************/
+{
+    cv_primitive    index;
+
+    index.s = 0;
+    index.f.mode = CV_DIRECT;
+    index.f.type = CV_SIGNED;
+    if( lo >= -128 && hi <= 127 ) {
+        index.f.size = CV_IB1;
+    } else if( lo >= -32768 && hi <= 32767 ) {
+         index.f.size = CV_IB2;
+    } else {
+         index.f.size =  CV_IB4;
+    }
+    return static_cast<lf_values>(( index.s ));
+}
+
+dbg_type    CVFtnType( const char *name, dbg_ftn_type tipe )
+/**********************************************************/
+{
+    unsigned        size;
+    cv_primitive    index;
+
+    /* unused parameters */ (void)name;
+
+    index.s = 0;
+    index.f.mode = CV_DIRECT;
+    index.f.type = CV_COMPLEX;
+    size = (tipe & 0x0f)+1;
+    if( size == 4 ) {
+        index.f.size = CV_RC32;
+    } else if( size == 8 ) {
+        index.f.size = CV_RC32;
+    }
+    return( index.s );
+}
+
+#define MAX_REAL_NAME  7
+static char const RealNames[MAX_REAL_NAME][17] = {
+    "int",
+    "unsigned int",
+    "signed int",
+    "char",
+    "__int64",
+    "unsigned __int64",
+    "signed __int64",
+};
+
+dbg_type    CVScalar( BackRun& back, const char *name, cg_type tipe )
+/****************************************************/
+{
+    const type_def      *tipe_addr;
+    int                 length;
+    cv_primitive        index;
+    int                 count;
+
+    index.s = 0;  /* set bits to 0 */
+    if( strcmp( name, "__segment" ) == 0 ) {
+        index.s = LF_TSEGMENT;
+    } else if( strcmp( name, "void" ) == 0 ) {
+        index.s = LF_TVOID;
+    } else {
+        tipe_addr = TypeAddress( back, tipe );
+        length = tipe_addr->length;
+        index.f.mode =  CV_DIRECT;
+        if( tipe_addr->attr & TYPE_FLOAT ) {
+            index.f.type = CV_REAL;
+            if( length == 4 ) {
+                index.f.size  =  CV_RC32;
+            } else if( length == 8 ) {
+                index.f.size = CV_RC64;
+            }
+        } else {
+            for( count = 0; count < MAX_REAL_NAME; ++count ) {
+                if( strcmp( name, RealNames[count] ) == 0 ) {
+                    index.f.type =  CV_REALLYINT;
+                    if( length == 1 ) {
+                        index.f.size = 0; /* assume char (could be wide char )*/
+                    } else {
+                        if( (tipe_addr->attr & TYPE_SIGNED) == 0 ) {
+                            ++length;
+                        }
+                        index.f.size = length;
+                    }
+                    return( index.s );
+                }
+            }
+            if( tipe_addr->attr & TYPE_SIGNED ) {
+                index.f.type =  CV_SIGNED;
+            } else {
+                index.f.type = CV_UNSIGNED;
+            }
+            switch( length ) {
+            case 1:
+                index.f.size = CV_IB1;
+                break;
+            case 2:
+                index.f.size = CV_IB2;
+                break;
+            case 4:
+                index.f.size = CV_IB4;
+                break;
+            case 8:
+                index.f.size = CV_IB8;
+                break;
+            }
+        }
+    }
+    return( index.s );
+}
+
+enum scope_name {
+    SCOPE_TYPEDEF = 0,
+    SCOPE_STRUCT  = 1,
+    SCOPE_UNION   = 2,
+    SCOPE_ENUM    = 3,
+    SCOPE_CLASS   = 4,
+    SCOPE_MAX
+};
+
+static char const ScopeNames[SCOPE_MAX][7] = {
+    "",
+    "struct",
+    "union",
+    "enum",
+    "class"
+};
+
+char const *CVScopeName( dbg_type scope )
+{
+    return( ScopeNames[scope] );
+}
+
+dbg_type    CVScope( const char *name )
+/*************************************/
+{
+    enum scope_name index;
+
+    for( index = static_cast<enum scope_name>(0); index < SCOPE_MAX; ++index ) {
+        if( strcmp( name, ScopeNames[index] ) == 0 ) {
+            break;
+        }
+    }
+    return( index );
+}
+
+
+void    CVDumpName( BackRun& back, dbg_name name, dbg_type tipe )
+/************************************************/
+{
+    cv_out          out[1];
+    ct_modifier     *mod;
+    long_offset     here;
+
+    /*
+     * we are going to loose the name so a fix is needed in the interface
+     */
+    if( tipe == DBG_FWD_TYPE ) {
+        NewTypeString( back, out );
+        tipe = ++back.data.TypeIdx;
+        name->refno = tipe;
+        if( IsModel( back, CGSW_GEN_DBG_TYPES ) ) {
+            mod = static_cast<ct_modifier *>(StartType( out, LFG_MODIFIER ));
+            mod->attr.s = 0;
+            mod->index = tipe;
+            here = EndTypeString( back, out );
+            name->dpatch.segid = back.cvdbg.CVTypes;
+            name->dpatch.offset = 2 + here + offsetof(lf_modifier, f.index ) ;
+        }
+    }
+    name->refno = tipe;
+}
+
+void CVBackRefType( BackRun& back, dbg_name name, dbg_type tipe )
+/************************************************/
+{
+    long_offset     here;
+
+    { segment_id old_segid = ChangeOP( back, name->dpatch.segid );
+        here = AskBigLocation(back);
+        SetBigLocation( back, name->dpatch.offset );
+        DataShort( back, tipe );
+        SetBigLocation( back, here );
+    SetOP( back, old_segid ); }
+    name->refno = tipe;
+}
+
+dbg_type    CVArray( BackRun& back, dbg_type dims, dbg_type base )
+/*************************************************/
+{
+    cv_out          out[1];
+    ct_dimarray     *array;
+    dbg_type        ret;
+
+    /*
+     * Need the length to make things simple
+     */
+    NewTypeString( back, out );
+    ret = ++back.data.TypeIdx;
+    array = static_cast<ct_dimarray *>(StartType( out, LFG_DIMARRAY ));
+    array->utype = base;
+    array->diminfo = dims;
+    CVPutNullStr( out );
+    EndTypeString( back, out );
+    return( ret );
+}
+
+dbg_type    CVArraySize( BackRun& back, offset size, uint_32 hi, dbg_type base )
+/***************************************************************/
+{
+    cv_out      out[1];
+    ct_array    *array;
+    dbg_type    ret;
+
+    /*
+     * Need the length to make things simple
+     */
+    NewTypeString( back, out );
+    ret = ++back.data.TypeIdx;
+    array = static_cast<ct_array *>(StartType( out, LFG_ARRAY ));
+    array->elemtype = base;
+    array->idxtype  = LFSignedSize( hi );
+    CVPutINum( out, size );
+    CVPutNullStr( out );
+    EndTypeString( back, out );
+    return( ret );
+}
+
+static  lf_values   ArrayDim( BackRun& back, uint_32 hi )
+/*****************************************
+ * Make 1 dim array bound
+ */
+{
+    cv_out          out[1];
+    ct_dimconu      *dim;
+    cv_primitive    index;
+    lf_values       ret;
+
+    NewTypeString( back, out );
+    ret = static_cast<lf_values>(++back.data.TypeIdx);
+    dim = static_cast<ct_dimconu *>(StartType( out, LFG_DIMCONU ));
+    index.s = LFSignedSize( hi );
+    dim->rank = 1;
+    dim->index = index.s;
+    PutLFInt( out, static_cast<cv_psize>(index.f.size), hi );
+    EndTypeString( back, out );
+    return( ret );
+}
+
+dbg_type    CVCharBlock( BackRun& back, uint_32 len )
+/************************************/
+{
+    return( CVArraySize( back, len, len, LF_TRCHAR ) );
+}
+
+static dbg_type  OutBckSym( BackRun& back, back_handle bck, int off, dbg_type tipe )
+/*******************************************************************/
+{
+    cv_out          out[1];
+
+    NewTypeString( back, out );
+    StartType( out, LFG_REFSYM );
+    CVOutBck( back, out, bck, off, tipe );
+    return( ++back.data.TypeIdx );
+}
+
+static dbg_type  OutBckCon( BackRun& back, int val, dbg_type tipe )
+/**************************************************/
+{
+    cv_out          out[1];
+
+    NewTypeString( back, out );
+    StartType( out, LFG_REFSYM );
+    CVOutSymICon( back, out, "_bck_con", val, tipe );
+    return( ++back.data.TypeIdx );
+}
+
+dbg_type    CVIndCharBlock( BackRun& back, back_handle len, cg_type len_type, int off )
+/**********************************************************************/
+{
+    dbg_type        itipe;
+    dbg_type        symref;
+    cv_out          out[1];
+    ct_dimvaru      *dim;
+    cv_primitive    index;
+    lf_values       ret;
+    const type_def  *tipe_addr;
+
+    tipe_addr = TypeAddress( back, len_type );
+    itipe = LFIntType( back, tipe_addr->length );
+    symref = OutBckSym( back, len, off, itipe );
+    NewTypeString( back, out );
+    ret = static_cast<lf_values>(++back.data.TypeIdx);
+    dim = static_cast<ct_dimvaru *>(StartType( out, LFG_DIMVARU ));
+    index.s = itipe;
+    dim->rank = 1;
+    dim->index = index.s;
+    PutFld2( out, symref );
+    EndTypeString( back, out );
+    ret = static_cast<lf_values>(CVArray( back, ret, LF_TCHAR ));
+    return( ret );
+}
+
+enum fold_state {
+    EXPR_NONE     = 0x00,
+    EXPR_NAME     = 0x01,
+    EXPR_SYM      = 0x02,
+    EXPR_VAR      = (EXPR_NAME | EXPR_SYM ),
+};
+
+typedef struct {
+    union {
+        cg_sym_handle   sym;
+        name            *name;
+    } u;
+    int         o;
+    enum fold_state state;
+} fold_leaf;
+
+enum{ MAX_FOLD_EXPR = 10 };
+typedef struct {
+    fold_leaf   *stk;
+    fold_leaf   ops[MAX_FOLD_EXPR];
+    bool        error;
+} fold_expr;
+
+static  void    DoLocFold( dbg_loc loc, fold_expr *what )
+/*******************************************************/
+{
+    offset      disp;
+    fold_leaf   tmp;
+    fold_leaf   *stk;
+
+    if( loc->next != NULL ) {
+        DoLocFold( loc->next, what );
+    }
+    if( what->error ) {
+        return;
+    }
+    stk = what->stk;
+    if( stk <= what->ops ) {
+        what->error = true;
+        return;
+    }
+    switch( loc->class_ & 0xf0 ) {
+    case LOC_CONSTANT:
+    case LOC_BP_OFFSET:
+        --stk;
+        if( (loc->class_ & 0xf0) == LOC_BP_OFFSET ) {
+            stk[0].u.name  = static_cast<name *>(loc->u.be_sym->v.symbol);
+            stk[0].state = EXPR_NAME;
+            stk[0].o = 0;
+        } else {
+            if( loc->class_ == LOC_MEMORY ) {
+                stk[0].u.sym = loc->u.fe_sym;
+                stk[0].state = EXPR_SYM;
+            } else {
+                stk[0].u.sym = 0;
+                disp = loc->u.val;
+                stk[0].o = disp;
+                stk[0].state = EXPR_NONE;
+            }
+        }
+        break;
+    case LOC_OPER:
+        switch( loc->class_ & 0x0f ) {
+        case LOP_ADD:
+            if( (stk[0].state & stk[1].state) & EXPR_VAR ) {
+                what->error = true;
+                return;
+            }
+            if( stk[1].state & EXPR_VAR ) {
+                stk[0].u = stk[1].u;
+                stk[0].state |= stk[1].state;
+            }
+            stk[0].o += stk[1].o;
+            ++stk;
+            break;
+        case LOP_XCHG:
+            tmp = stk[0];
+            stk[0] = stk[1];
+            stk[1] = tmp;
+            break;
+        default:
+           what->error = true;
+           break;
+        }
+        break;
+    default:
+       what->error = true;
+       break;
+    }
+    what->stk = stk;
+}
+
+static bool FoldExpr( dbg_loc loc, fold_leaf *ret )
+/*************************************************/
+{
+    fold_expr      expr;
+
+    expr.stk = &expr.ops[MAX_FOLD_EXPR];
+    expr.error = false;
+    DoLocFold( loc, &expr );
+    if( !expr.error ) {
+        if( expr.stk == &expr.ops[MAX_FOLD_EXPR - 1] ) {
+            *ret = expr.ops[MAX_FOLD_EXPR - 1];
+            return( true );
+        }
+    }
+    return( false );
+}
+
+dbg_type    CVLocCharBlock( BackRun& back, dbg_loc loc, cg_type len_type )
+/*********************************************************/
+{
+    dbg_type        itipe;
+    dbg_type        symref;
+    cv_out          out[1];
+    ct_dimvaru      *dim;
+    lf_values       ret;
+    const type_def  *tipe_addr;
+    fold_leaf       tmp;
+
+    tipe_addr = TypeAddress( back, len_type );
+    itipe = LFIntType( back, tipe_addr->length );
+    if( FoldExpr( loc, &tmp ) ) {
+        if( tmp.state & EXPR_NAME ) {
+            NewTypeString( back, out );
+            symref = ++back.data.TypeIdx;
+            StartType( out, LFG_REFSYM );
+            CVOutLocal( back, out, tmp.u.name, tmp.o, itipe );
+        } else {
+            symref = OutBckSym( back, FEBack( *back.front, tmp.u.sym ), tmp.o, itipe );
+        }
+    } else {
+        symref = OutBckCon( back, 1, itipe );
+    }
+    NewTypeString( back, out );
+    ret = static_cast<lf_values>(++back.data.TypeIdx);
+    dim = static_cast<ct_dimvaru *>(StartType( out, LFG_DIMVARU ));
+    dim->rank = 1;
+    dim->index = itipe;
+    PutFld2( out, symref );
+    EndTypeString( back, out );
+    ret = static_cast<lf_values>(CVArray( back, ret, LF_TRCHAR ));
+    return( ret );
+}
+
+dbg_type    CVFtnArray( BackRun& back, back_handle dims, cg_type lo_bound_tipe,
+                 cg_type num_elems_tipe, int off, dbg_type base )
+/***************************************************************/
+{
+    dbg_type        itipe;
+    dbg_type        symref[2];
+    cv_out          out[1];
+    ct_dimvarlu     *dim;
+    lf_values       ret;
+    const type_def  *tipe_addr;
+
+    /* unused parameters */ (void)num_elems_tipe;
+
+    tipe_addr = TypeAddress( back, lo_bound_tipe );
+    itipe = LFIntType( back, tipe_addr->length );
+    symref[0] = OutBckSym( back, dims, off, itipe );
+    symref[1] = OutBckSym( back, dims, off+tipe_addr->length, itipe );
+    NewTypeString( back, out );
+    ret = static_cast<lf_values>(++back.data.TypeIdx);
+    dim = static_cast<ct_dimvarlu *>(StartType( out, LFG_DIMVARLU ));
+    dim->rank = 1;
+    dim->index = itipe;
+    PutFld2( out, symref[0] );
+    PutFld2( out, symref[1] );
+    EndTypeString( back, out );
+    ret = static_cast<lf_values>(CVArray( back, ret, base ));
+    return( ret );
+}
+
+
+dbg_type    CVIntArray( BackRun& back, uint_32 hi, dbg_type base )
+/*************************************************/
+{
+    cv_out          out[1];
+    ct_dimarray     *array;
+    dbg_type        ret;
+    lf_values       dim;
+
+    /*
+     * Need the length to make things simple
+     */
+    dim = ArrayDim( back, hi );
+    NewTypeString( back, out );
+    ret = ++back.data.TypeIdx;
+    array = static_cast<ct_dimarray *>(StartType( out, LFG_DIMARRAY ));
+    array->utype = base;
+    array->diminfo = dim;
+    CVPutNullStr( out );
+    EndTypeString( back, out );
+    return( ret );
+}
+
+
+static  lf_values   ArrayDimL( BackRun& back, int_32 low, int_32 hi )
+/*****************************************************
+ * Make 1 dim array bound
+ */
+{
+    cv_out          out[1];
+    ct_dimconlu     *dim;
+    cv_primitive    index;
+    lf_values       ret;
+
+    NewTypeString( back, out );
+    ret = static_cast<lf_values>(++back.data.TypeIdx);
+    dim = static_cast<ct_dimconlu *>(StartType( out, LFG_DIMCONLU ));
+    index.s = LFSignedRange( low, hi );
+    dim->rank = 1;
+    dim->index = index.s;
+    PutLFInt( out, static_cast<cv_psize>(index.f.size), static_cast<offset>(low) );
+    PutLFInt( out, static_cast<cv_psize>(index.f.size), static_cast<offset>(hi) );
+    EndTypeString( back, out );
+    return( ret );
+}
+
+static  dbg_type    CVDimVarLU( BackRun& back, dbg_array ar )
+/********************************************/
+{
+    cv_out          out[1];
+    ct_dimvarlu     *var;
+    dbg_type        itipe;
+    dbg_type        symref[2];
+    const type_def  *tipe_addr;
+    dim_any         *dim;
+
+    NewTypeString( back, out );
+    var = static_cast<ct_dimvarlu *>(StartType( out, LFG_DIMVARLU ));
+    var->rank = ar->num;
+    var->index = LF_TINT4;
+    tipe_addr = NULL;
+    itipe = 0;
+    while( (dim = ar->list) != NULL ) {
+        ar->list = dim->next;
+        switch( dim->kind ) {
+        case DIM_VAR:
+            if( tipe_addr == NULL ) {
+                tipe_addr = TypeAddress( back, dim->u.var.lo_bound_tipe );
+                itipe = LFIntType( back, tipe_addr->length );
+            }
+            symref[0] = OutBckSym( back, dim->u.var.dims, dim->u.var.off, itipe );
+            symref[1] = OutBckSym( back, dim->u.var.dims, dim->u.var.off + tipe_addr->length, itipe );
+            break;
+        case DIM_CON:
+            symref[0] = OutBckCon( back, dim->u.con.lo, dim->u.con.idx );
+            symref[1] = OutBckCon( back, dim->u.con.hi, dim->u.con.idx );
+            break;
+        default:
+            symref[0] = 0;
+            symref[1] = 0;
+            Zoiks( back, ZOIKS_106 ); /* bad pointer */
+            break;
+
+        }
+        PutFld2( out, symref[0] );
+        PutFld2( out, symref[1] );
+        CGFree( back, dim  );
+    }
+    EndTypeString( back, out );
+    return( ++back.data.TypeIdx );
+}
+
+static  dbg_type    CVDimConLU( BackRun& back, dbg_array ar )
+/********************************************/
+{
+    cv_out          out[1];
+    ct_dimconlu     *con;
+    dim_any         *dim;
+
+    NewTypeString( back, out );
+    con = static_cast<ct_dimconlu *>(StartType( out, LFG_DIMCONLU ));
+    con->rank = ar->num;
+    con->index = LF_TINT4;
+    while( (dim = ar->list) != NULL ) {
+        ar->list = dim->next;
+        switch( dim->kind ) {
+        case DIM_CON:
+            PutFldSized( out, 4, dim->u.con.lo );
+            PutFldSized( out, 4, dim->u.con.hi );
+            break;
+        default:
+            Zoiks( back, ZOIKS_106 ); /* bad pointer */
+            break;
+
+        }
+        CGFree( back, dim );
+    }
+    EndTypeString( back, out );
+    return( ++back.data.TypeIdx );
+}
+
+dbg_type    CVEndArray( BackRun& back, dbg_array ar )
+/************************************/
+{
+    dbg_type        dims;
+
+    if( ar->is_variable ) {
+        dims = CVDimVarLU( back, ar );
+    } else {
+        dims = CVDimConLU( back, ar );
+    }
+    return( CVArray( back, dims, ar->base ) );
+}
+
+dbg_type   CVSubRange( BackRun& back, int_32 lo, int_32 hi, dbg_type base )
+/***********************************************************
+ * not supported by CV
+ */
+{
+    /* unused parameters */ (void)base;
+
+    return( ArrayDimL( back, lo, hi ) );
+}
+
+static  cv_ptrtype  PtrClass( BackRun& back, cg_type ptr_type )
+/**********************************************/
+{
+    const type_def  *tipe_addr;
+    cv_ptrtype      ret = static_cast<cv_ptrtype>(0);
+
+    tipe_addr = TypeAddress( back, ptr_type );
+    switch( tipe_addr->refno ) {
+    case TY_HUGE_POINTER:
+        ret = CV_HUGE;
+        break;
+    case TY_LONG_POINTER:
+    case TY_LONG_CODE_PTR:
+        if( tipe_addr->length == 6 ) {
+            ret = CV_FAR32;
+        } else {
+            ret = CV_FAR;
+        }
+        break;
+    case TY_NEAR_POINTER:
+    case TY_NEAR_CODE_PTR:
+        if( tipe_addr->length == 4 ) {
+            ret = CV_NEAR32;
+        } else {
+            ret = CV_NEAR;
+        }
+        break;
+    }
+    return( ret );
+}
+
+static  dbg_type    MkPtr( BackRun& back, cg_type ptr_type, dbg_type base, cv_ptrmode mode )
+/***************************************************************************/
+{
+    cv_out      out[1];
+    dbg_type    ret;
+    ct_pointer  *cvptr;
+
+    NewTypeString( back, out );
+    ret = ++back.data.TypeIdx;
+    cvptr = static_cast<ct_pointer *>(StartType( out, LFG_POINTER ));
+    cvptr->attr.s = 0;
+    cvptr->attr.f.mode = mode;
+    cvptr->attr.f.type = PtrClass( back, ptr_type );
+    cvptr->type = base;
+    EndTypeString( back, out );
+    return( ret );
+}
+
+dbg_type    CVDereference( BackRun& back, cg_type ptr_type, dbg_type base )
+/**********************************************************/
+{
+    return( MkPtr( back, ptr_type, base, CV_REF ) );
+}
+
+dbg_type    CVPtr( BackRun& back, cg_type ptr_type, dbg_type base )
+/**************************************************/
+{
+    dbg_type        ret;
+    cv_primitive    index;
+
+    index.s = base;
+    if( index.s < CV_FIRST_USER_TYPE
+     && index.s > LF_TSEGMENT && index.f.mode == 0 ) {
+        switch( PtrClass( back, ptr_type ) ) {
+        case CV_NEAR:
+            index.f.mode =  CV_NEARP;
+            break;
+        case CV_FAR:
+            index.f.mode =  CV_FARP;
+            break;
+        case CV_HUGE:
+            index.f.mode =  CV_HUGEP;
+            break;
+        case CV_NEAR32:
+            index.f.mode =  CV_NEAR32P;
+            break;
+        case CV_FAR32:
+            index.f.mode =  CV_FAR32P;
+            break;
+        default:
+            Zoiks( back, ZOIKS_106 ); /* bad pointer */
+        }
+        ret = index.s;
+    } else {
+        ret = MkPtr( back, ptr_type, base, CV_PTR );
+    }
+    return( ret );
+}
+
+
+static  dbg_type    CVBasedPtrK( BackRun& back, cg_type ptr_type, dbg_type base,
+                            cg_sym_handle sym, cv_based_kind kind )
+/*****************************************************************/
+{
+    cv_out          out[1];
+    dbg_type        ret;
+    ct_pointer      *cvptr;
+//    cv_ptrtype      ptype;
+    void            *ptr1;
+    void            *ptr2;
+
+    /* unused parameters */ (void)ptr_type;
+
+    /*
+     * TODO: Need to do somthing about segments
+     * TODO: Need to do somthing about BasePtr
+     */
+    NewTypeString( back, out );
+    ret = ++back.data.TypeIdx;
+//    ptype = PtrClass( ptr_type );
+    cvptr = static_cast<ct_pointer *>(StartType( out, LFG_POINTER ));
+    cvptr->attr.s = 0;
+    cvptr->attr.f.mode = CV_PTR;
+    cvptr->type = base;
+    switch( kind ) {
+    case BASED_SELF:
+        cvptr->attr.f.type = CV_BASESELF;
+        CVEndType( out );
+        break;
+    case BASED_VOID:
+        cvptr->attr.f.type = CV_BASETYPE;
+        PutLFInt( out, CV_IB2, LF_TVOID );
+        CVPutNullStr( out );
+        CVEndType( out );
+        break;
+    case BASED_SEG:
+        cvptr->attr.f.type = CV_BASESEG;
+        ptr1 = out->ptr;
+        PutLFInt( out, CV_IB2, 0 );
+        ptr2 = out->ptr;
+        CVEndType( out );
+        BuffWrite( back, out, ptr1);
+        SegReloc( back, back.cvdbg.CVTypes, sym );
+        BuffSkip( out, ptr2 );
+        break;
+    case BASED_VALUE:
+        cvptr->attr.f.type = CV_BASEVAL;
+        ptr1 = out->beg;
+        out->beg = out->ptr;
+        CVOutSym( back, out, sym );
+        out->beg = static_cast<byte *>(ptr1);
+        CVEndType( out );
+        break;
+    }
+    buffEnd( back, out );
+    return( ret );
+}
+
+enum based_leaf_kind {
+    SYM_NOT,
+    SYM_SYM,
+    SYM_IND,
+    SYM_ZERO,
+};
+
+typedef struct {
+    cg_sym_handle s;
+    enum based_leaf_kind kind;
+    bool indirect;
+} based_leaf;
+
+#define MAX_OPS 2
+
+enum based_state {
+    IS_NONE,
+    IS_SEG,
+    IS_VALUE,
+    IS_VOID,
+    IS_SELF,
+    IS_ERROR,
+};
+
+typedef struct {
+    based_leaf      *stk;
+    based_leaf      ops[MAX_OPS];
+    cg_sym_handle   sym;
+    int             count;
+    enum based_state state;
+} based_expr;
+
+static  void    DoLocBase( dbg_loc loc, based_expr *what )
+/********************************************************/
+{
+    offset      disp;
+    based_leaf  tmp;
+    based_leaf  *stk;
+
+    if( loc->next != NULL ) {
+        DoLocBase( loc->next, what );
+    }
+    if( what->state == IS_ERROR ) {
+        return;
+    }
+    stk = what->stk;
+    switch( loc->class_ & 0xf0 ) {
+    case LOC_CONSTANT:
+    case LOC_BP_OFFSET:
+        if( what->count < MAX_OPS ) {
+            ++what->count;
+            --stk;
+        } else {
+            what->state = IS_ERROR;
+            return;
+        }
+        if( (loc->class_ & 0xf0) == LOC_BP_OFFSET ) {
+            stk[0].s  = static_cast<cg_sym_handle>(loc->u.be_sym->v.symbol);
+            stk[0].kind = SYM_SYM;
+        } else {
+            if( loc->class_ == LOC_MEMORY ) {
+                stk[0].s = loc->u.fe_sym;
+                stk[0].kind = SYM_SYM;
+            } else {
+                disp = loc->u.val;
+                if( disp == 0 ) {
+                    stk[0].kind = SYM_ZERO;
+                } else {
+                    what->state = IS_ERROR;
+                }
+            }
+        }
+        what->stk = stk;
+        break;
+    case LOC_OPER:
+        if( what->count == 0 ) {
+            what->state = IS_ERROR;
+        }
+        switch( loc->class_ & 0x0f ) {
+        case LOP_IND_2:
+        case LOP_IND_4:
+        case LOP_IND_ADDR_16:
+        case LOP_IND_ADDR_32:
+            if( stk[0].kind == SYM_SYM ) {
+                stk[0].kind = SYM_IND;
+                what->state = IS_VALUE;
+                what->sym = stk[0].s;
+            } else {
+                 what->state = IS_ERROR;
+            }
+            break;
+        case LOP_MK_FP:
+            switch( stk[0].kind ) {
+            case SYM_ZERO:
+                what->state = IS_SELF;
+                if( what->count == 2 ) {
+                    switch( stk[1].kind ) {
+                    case SYM_ZERO:
+                        what->state = IS_VOID;
+                        break;
+                    case SYM_SYM:
+                        what->state = IS_SEG;
+                        what->sym= stk[1].s;
+                        break;
+                    case SYM_IND:
+                        what->state = IS_VALUE;
+                        what->sym= stk[1].s;
+                        break;
+                    default:
+                       what->state = IS_ERROR;
+                    }
+                } else if( what->count != 1 ) {
+                   what->state = IS_ERROR;
+                }
+               break;
+            case SYM_IND:
+                what->sym= stk[0].s;
+                if( what->count == 2 ) {
+                    if( stk[1].kind == SYM_SYM ) {
+                        what->state = IS_VALUE;
+                    } else {
+                        what->state = IS_ERROR;
+                    }
+                } else if( what->count != 1 ) {
+                   what->state = IS_ERROR;
+                }
+               break;
+            default:
+               what->state = IS_ERROR;
+               break;
+            }
+            break;
+        case LOP_XCHG:
+            if( what->count >= 2 ) {
+                tmp = stk[0];
+                stk[0] = stk[1];
+                stk[1] = tmp;
+            }
+            break;
+        }
+        break;
+    default:
+       what->state = IS_ERROR;
+       break;
+    }
+}
+
+dbg_type    CVBasedPtr( BackRun& back, cg_type ptr_type, dbg_type base, dbg_loc loc_segment )
+/****************************************************************************/
+{
+    based_expr     expr;
+    uint           based_kind;
+    dbg_type       ret;
+
+    expr.stk = &expr.ops[MAX_OPS];
+    expr.count = 0;
+    expr.state = IS_NONE;
+    expr.sym = NULL;;
+    DoLocBase( loc_segment, &expr );
+    based_kind = 0;
+    switch( expr.state ) {
+    case IS_ERROR:
+        expr.sym = NULL;
+        /* fall through */
+    case IS_NONE:
+    case IS_VOID:
+        based_kind = BASED_VOID;
+        break;
+    case IS_SELF:
+        based_kind = BASED_SELF;
+        break;
+    case IS_SEG:
+        based_kind = BASED_SEG;
+        break;
+    case IS_VALUE:
+        based_kind = BASED_VALUE;
+        break;
+    }
+    ret = CVBasedPtrK( back, ptr_type, base, expr.sym, static_cast<cv_based_kind>(based_kind) );
+    return( ret );
+}
+
+static void MkBits( BackRun& back, field_any *field )
+/************************************/
+{
+    lf_values       biti;
+    ct_bitfield     *bit;
+    cv_out          out[1];
+
+    for( ; field != NULL; field= field->entry.next ) {
+        if( field->entry.field_type == FIELD_OFFSET ) {
+            if( field->member.b_len != 0 ) {
+                NewTypeString( back, out );
+                biti = static_cast<lf_values>(++back.data.TypeIdx);
+                bit = static_cast<ct_bitfield *>(StartType( out, LFG_BITFIELD ));
+                bit->length = field->member.b_len;
+                bit->position = field->member.b_strt;
+                bit->type = field->member.base;
+                EndTypeString( back, out );
+                field->member.base = biti;
+            }
+        }
+    }
+}
+
+static cv_access WVCVAccess( uint attr )
+{
+    cv_access ret = static_cast<cv_access>(0);
+
+    switch( attr ) {
+    case FIELD_PUBLIC:
+        ret = CV_PUBLIC;
+        break;
+    case FIELD_PROTECTED:
+        ret = CV_PROTECTED;
+        break;
+    case FIELD_PRIVATE:
+        ret = CV_PRIVATE;
+        break;
+    }
+    return( ret );
+}
+
+static cv_mprop WVCVMProp( uint kind )
+{
+    cv_mprop ret = static_cast<cv_mprop>(0);
+
+    switch( kind ) {
+    case METHOD_VANILLA:
+        ret = CV_VANILLA;
+        break;
+    case METHOD_STATIC:
+        ret = CV_STATIC;
+        break;
+    case METHOD_VIRTUAL:
+        ret = CV_INTROVIRT;
+        break;
+    case METHOD_FRIEND:
+        ret = CV_FRIEND;
+        break;
+    }
+    return( ret );
+}
+
+static   cv_vtshape   CVVTShape( BackRun& back, cg_type ptr_type )
+/*************************************************/
+{
+    const type_def  *tipe_addr;
+    cv_vtshape      ret = static_cast<cv_vtshape>(0);
+
+    tipe_addr = TypeAddress( back, ptr_type );
+    switch( tipe_addr->refno ) {
+    case TY_HUGE_POINTER:
+        ret = CV_VTFAR;
+        break;
+    case TY_LONG_POINTER:
+    case TY_LONG_CODE_PTR:
+        if( tipe_addr->length == 6 ) {
+            ret = CV_VTFAR32;
+        } else {
+            ret = CV_VTFAR;
+        }
+        break;
+    case TY_NEAR_POINTER:
+    case TY_NEAR_CODE_PTR:
+        if( tipe_addr->length == 4 ) {
+            ret = CV_VTNEAR32;
+        } else {
+            ret = CV_VTNEAR;
+        }
+        break;
+    }
+    return( ret );
+}
+
+static lf_values MkVTShape( BackRun& back, cv_out *out, field_vfunc *vf )
+/********************************************************/
+{
+    lf_values       vshape;
+    ct_vtshape      *vt;
+    unsigned char   val;
+    int             count;
+    cv_vtshape      shape;
+
+    NewTypeString( back, out );
+    vt = static_cast<ct_vtshape *>(StartType( out, LFG_VTSHAPE ));
+    vt->count = vf->vft_size;
+    shape = CVVTShape( back, vf->vft_cgtype );
+    val = 0;
+    for( count = 0; count < vf->vft_size; ++count ) {
+        if( (count & 1) == 0 ) {
+            val = shape << 4;
+        } else {
+            val |= shape;
+            PutLFInt( out, CV_IB1, val );
+        }
+    }
+    if( (count & 1) ) {
+        PutLFInt( out, CV_IB1, val );
+    }
+    EndTypeString( back, out );
+    vshape = static_cast<lf_values>(++back.data.TypeIdx);
+    vf->base = CVPtr( back, vf->vft_cgtype, vshape );
+    return( vshape );
+}
+
+static int  MkFlist( BackRun& back, dbg_struct st )
+/**********************************/
+{
+    field_any         *field;
+    field_any         *old;
+    cv_out            out[1];
+    ct_subfield_ptrs  fld;
+    cv_mlist          *a_mlist;
+    long_offset       fstart;
+    offset            disp;
+    u2                len;
+    int               count;
+//    int               mlist;
+
+    NewTypeString( back, out );
+    StartType( out, LFG_FIELDLIST);
+    fstart = EndTypeString( back, out );
+    len = 2; /* size of code */
+    count = 0;
+//    mlist = TypeIdx;
+    NewType( out ); /* reset buff for subfields */
+    old = st->list;
+    for( field = old; field != NULL; field = field->entry.next ) {
+        switch( field->entry.field_type ) {
+        case FIELD_INHERIT:
+            if( field->bclass.u.adjustor->class_ == LOC_CONST_1 ) {
+                disp = field->bclass.u.adjustor->u.val;
+                switch( field->bclass.kind ) {
+                case INHERIT_DBASE:
+                    fld.a_bclass = static_cast<ct_bclass *>(StartType( out, LFG_BCLASS ));
+                    fld.a_bclass->type = field->bclass.base;
+                    fld.a_bclass->attr.s = 0; /* zero bits */
+                    fld.a_bclass->attr.f.access = CV_PUBLIC;
+                    CVPutINum( out, disp );
+                    break;
+                case INHERIT_VBASE:
+                case INHERIT_IVBASE:
+                    if( field->bclass.kind == INHERIT_VBASE ) {
+                        fld.a_vbclass = static_cast<ct_vbclass *>(StartType( out, LFG_VBCLASS ));
+                    } else {
+                        fld.a_vbclass = static_cast<ct_vbclass *>(StartType( out, LFG_IVBCLASS ));
+                    }
+                    fld.a_vbclass->btype = field->bclass.base;
+                    fld.a_vbclass->vtype = st->vtbl_type;
+                    fld.a_vbclass->attr.s = 0; /* zero bits */
+                    fld.a_vbclass->attr.f.access = CV_PUBLIC;
+                    CVPutINum( out, st->vtbl_off );
+                    CVPutINum( out, disp );
+                }
+                len += EndSub( back, out );  /* write out subfield accum length */
+            }
+            ++count;
+            DBLocFini( back, field->bclass.u.adjustor );
+            break;
+        case FIELD_METHOD:{
+            field_any        *curr;
+            int               count1;
+
+            count1 = 1;
+            for( curr = field->entry.next; curr != NULL; curr = curr->entry.next ) {
+                if( curr->entry.field_type != FIELD_METHOD )
+                    break;
+                if( strcmp( curr->method.name, field->method.name ) != 0 )
+                    break;
+                ++count1;
+                field = curr;
+            }
+            fld.a_method = static_cast<ct_method *>(StartType( out, LFG_METHOD ));
+            fld.a_method->count = count1;
+            fld.a_method->mList = ++back.data.TypeIdx;
+            CVPutStr( out, field->method.name );
+            len += EndSub( back, out );  /* write out subfield accum length */
+            break ;
+        }
+        case FIELD_NESTED:
+            fld.a_nestedtype = static_cast<ct_nestedtype *>(StartType( out, LFG_NESTEDTYPE ));
+            fld.a_nestedtype->index = field->nested.base;
+            CVPutStr( out, field->nested.name );
+            len += EndSub( back, out );  /* write out subfield accum length */
+            break;
+        case FIELD_VFUNC:
+            if( field->vfunc.vfptr_off == 0 ) {
+                fld.a_vfunctab = static_cast<ct_vfunctab *>(StartType( out, LFG_VFUNCTAB ));
+                fld.a_vfunctab->type = field->vfunc.base;
+            }
+            len += EndSub( back, out );  /* write out subfield accum length */
+            break;
+        case FIELD_LOC:
+            disp = LocSimpField( field->member.u.loc );
+            if( disp != NO_OFFSET ) {
+                ++count;
+                fld.a_member = static_cast<ct_member *>(StartType( out, LFG_MEMBER ));
+                fld.a_member->type = field->member.base;
+                fld.a_member->attr.s = 0; /* zero bits */
+                fld.a_member->attr.f.access = WVCVAccess( field->member.attr );
+                CVPutINum( out, disp );
+                CVPutStr( out, field->member.name );
+                len += EndSub( back, out );  /* write out subfield accum length */
+            }
+            DBLocFini( back, field->member.u.loc );
+            break;
+        case FIELD_STFIELD:
+            fld.a_stmember = static_cast<ct_stmember *>(StartType( out, LFG_STMEMBER ));
+            fld.a_stmember->type = field->stfield.base;
+            fld.a_stmember->attr.s = 0; /* zero bits */
+            fld.a_stmember->attr.f.access = WVCVAccess( field->stfield.attr );
+            DBLocFini( back, field->stfield.loc );
+            CVPutStr( out, field->stfield.name );
+            len += EndSub( back, out );  /* write out subfield accum length */
+            break;
+        case FIELD_OFFSET:
+            ++count;
+            fld.a_member = static_cast<ct_member *>(StartType( out, LFG_MEMBER ));
+            fld.a_member->type = field->member.base;
+            fld.a_member->attr.s = 0; /* zero bits */
+            fld.a_member->attr.f.access = WVCVAccess( field->member.attr );
+            CVPutINum( out, field->member.u.off );
+            CVPutStr( out, field->member.name );
+            len += EndSub( back, out );  /* write out subfield accum length */
+            break;
+        }
+    }
+    PatchLen( back, fstart, len ); /* fill in length */
+    for( field = old; field != NULL; field = field->entry.next ) {
+        if( field->entry.field_type == FIELD_METHOD ) {
+            field_any       *curr;
+
+            NewTypeString( back, out );
+            a_mlist = static_cast<cv_mlist *>(StartType( out, LFG_METHODLIST ));
+            for( ;; ) {
+                a_mlist->attr.s = 0; /* zero bits */
+                a_mlist->attr.f.access = WVCVAccess( field->method.attr );
+                a_mlist->attr.f.mprop = WVCVMProp( field->method.kind );
+                a_mlist->type = field->method.base;
+                if( field->method.kind == METHOD_VIRTUAL ) {
+                    if( field->method.u.loc->class_ == LOC_CONST_1 ) {
+                        disp = field->method.u.loc->u.val;
+                    } else {
+                        disp = NO_OFFSET;
+                    }
+                    PutLFInt( out, CV_IB4, disp );
+                }
+                DBLocFini( back, field->method.u.loc );
+                curr = field->entry.next;
+                if( curr == NULL )
+                    break;
+                if( curr->entry.field_type != FIELD_METHOD )
+                    break;
+                if( strcmp( curr->method.name, field->method.name ) != 0 )
+                    break;
+                field = curr;
+//                curr = curr->entry.next; // it looks like useless code
+                a_mlist = static_cast<cv_mlist *>(BuffInc( out, sizeof( *a_mlist ) ));
+            }
+            EndTypeString( back, out );
+        }
+    }
+    for( ; old != NULL; old = field ) {
+        field = old->entry.next;
+        CGFree( back, old );
+    }
+    return( count );
+}
+
+static  field_any  *UnLinkMethod( field_any **owner, const char *name )
+/**********************************************************************
+ * UnLink method with name
+ */
+{
+    field_any    *curr;
+
+    for( ; (curr = *owner) != NULL; owner = &(*owner)->entry.next ) {
+        if( curr->entry.field_type == FIELD_METHOD ) {
+            if( strcmp( curr->method.name, name ) == 0 ) {
+                *owner = curr->entry.next;
+                break;
+            }
+        }
+    }
+    return( curr );
+}
+
+static  int   SortMethods( dbg_struct st )
+/****************************************/
+{
+    field_any  *curr;
+    field_any  *next;
+    field_any  *add;
+    int        overops;
+
+    overops = 0;
+    for( curr = st->list; curr != NULL; curr = curr->entry.next ) {
+        if( curr->entry.field_type == FIELD_METHOD ) {
+            add = UnLinkMethod( &curr->entry.next, curr->method.name );
+            if( add != NULL ) {
+                overops = 1;
+                next = curr->entry.next;
+                curr->entry.next = add;
+                add->entry.next = next;
+            }
+        }
+    }
+    return( overops );
+}
+
+static int  FlistCount( field_any *field )
+/****************************************/
+{
+    int               count;
+    offset            disp;
+
+    count = 0;
+    for( ; field != NULL; field = field->entry.next ) {
+        switch( field->entry.field_type ) {
+        case FIELD_INHERIT:
+        case FIELD_METHOD:
+        case FIELD_OFFSET:
+        case FIELD_NESTED:
+        case FIELD_STFIELD:
+            ++count;
+            break;
+        case FIELD_LOC:
+            disp = LocSimpField( field->member.u.loc );
+            if( disp != NO_OFFSET ) {
+                ++count;
+            }
+            break;
+        case FIELD_VFUNC:
+            if( field->vfunc.vfptr_off == 0 ) {
+                ++count;
+            }
+            break;
+        }
+    }
+    return( count );
+}
+
+dbg_type    CVEndStruct( BackRun& back, dbg_struct st )
+/**************************************/
+{
+    lf_values       flisti;
+    lf_values       hd;
+    lf_values       vshape;
+    int             count;
+    cv_out          out[1];
+
+    if( st->vtbl_type != DBG_NIL_TYPE ) {
+        lf_values   vtbl_type;
+
+        vtbl_type  = static_cast<lf_values>(CVArraySize( back, 0, 0, st->vtbl_type )); /* fake p@[0] vtbl */
+        vtbl_type = static_cast<lf_values>(MkPtr( back, st->ptr_type, vtbl_type, CV_PTR ));
+        st->vtbl_type = vtbl_type;
+    }
+    MkBits(  back, st->list );
+    if( st->vf != NULL ) {
+        vshape = MkVTShape( back, out, st->vf );
+    } else {
+        vshape = static_cast<lf_values>(0);
+    }
+    NewTypeString( back, out );
+    hd = static_cast<lf_values>(++back.data.TypeIdx);
+    flisti = static_cast<lf_values>(++back.data.TypeIdx);
+    count = FlistCount( st->list );
+    if( st->is_struct ) {
+        ct_structure *head;
+
+        head = static_cast<ct_structure *>(StartType( out, LFG_STRUCTURE ));
+//        head->count  = st->num;
+        head->count  = count;
+        head->field = flisti;
+        head->property.s = 0;
+        head->property.f.cnested = st->is_cnested;
+        head->property.f.isnested = st->is_nested;
+        head->property.f.overops = SortMethods( st );
+        head->dList = 0;
+        head->vshape = vshape;
+    } else {
+        ct_union     *head;
+
+        head = static_cast<ct_union *>(StartType( out, LFG_UNION ));
+        head->count  = st->num;
+        head->field = flisti;
+        head->property.s = 0;
+        head->property.f.cnested = st->is_cnested;
+        head->property.f.isnested = st->is_nested;
+    }
+    CVPutINum( out, st->size );
+    CVPutStr( out, st->name );
+    EndTypeString( back, out );
+    count = MkFlist( back, st );
+    return( hd );
+}
+
+static  const_entry  *RevEnums( const_entry *cons )
+/*************************************************/
+{
+    const_entry *head;
+    const_entry *next;
+
+    head = NULL;
+    for( ; cons != NULL; cons = next ) {
+        next = cons->next;
+        cons->next = head;
+        head = cons;
+    }
+    return( head );
+}
+
+dbg_type    CVEndEnum( BackRun& back, dbg_enum en )
+/**********************************/
+{
+    const_entry     *cons;
+    const_entry     *next;
+    lf_values       fList;
+    ct_enumerate    *mem;
+    ct_enum         *head;
+    lf_values       headi;
+    int             count;
+    long_offset     fstart;
+    u2              len;
+    cv_out          out[1];
+
+    NewTypeString( back, out );
+    fList = static_cast<lf_values>(++back.data.TypeIdx);
+    StartType( out, LFG_FIELDLIST );
+    fstart = EndTypeString( back, out );
+    len = 2;
+    en->list  = RevEnums( en->list );
+    count = 0;
+    NewType( out ); /* reset buff for subfields */
+    for( cons = en->list; cons != NULL; cons = cons->next ) {
+        mem = static_cast<ct_enumerate *>(StartType( out, LFG_ENUMERATE ));
+        mem->attr.s = 0;
+        CVPutINum64( out, cons->val );
+        CVPutStr( out, cons->name );
+        len += EndSub( back, out );  /* write out subfield accum length */
+        ++count;
+    }
+    PatchLen( back, fstart, len ); /* fill in length */
+    NewTypeString( back, out );
+    headi = static_cast<lf_values>(++back.data.TypeIdx);
+    head = static_cast<ct_enum *>(StartType( out, LFG_ENUM ));
+    head->count = count;
+    head->type = CVScalar( back, "", en->tipe );
+    head->fList  = fList;
+    head->property.s = 0;
+    CVPutNullStr( out );
+    EndTypeString( back, out );
+    if( en->is_nested ) {
+        for( cons = en->list; cons != NULL; cons = cons->next ) {
+            CVSymIConst64( back, cons->name, cons->val, headi );
+        }
+    }
+    for( cons = en->list; cons != NULL; cons = next ) {
+        next = cons->next;
+        CGFree( back, cons );
+    }
+    return( headi );
+}
+
+
+dbg_type    CVEndProc( BackRun& back, dbg_proc pr )
+/**********************************/
+{
+    parm_entry  *parm;
+    parm_entry  *next;
+    ct_arglist  *args;
+    lf_values   arglist;
+    cv_calls    call;
+    lf_values   proci;
+    cv_out      out[1];
+
+    NewTypeString( back, out );
+    arglist = static_cast<lf_values>(++back.data.TypeIdx);
+    args = static_cast<ct_arglist *>(StartType( out, LFG_ARGLIST ));
+    args->argcount = pr->num;
+    for( parm = pr->list; parm != NULL; parm = next ) {
+        next = parm->next;
+        PutFld2( out, parm->tipe );
+        CGFree( back, parm );
+    }
+    EndTypeString( back, out );
+    if( pr->call == TY_NEAR_CODE_PTR ) {
+        call = CV_NEARC;
+    } else {
+        call = CV_FARC;
+    }
+    if( pr->cls != DBG_NIL_TYPE ) {
+        ct_mfunction *mfunction;
+
+        if( pr->this_ == DBG_NIL_TYPE ) {
+            pr->this_ = LF_TVOID;
+        }
+        NewTypeString( back, out );
+        proci = static_cast<lf_values>(++back.data.TypeIdx);
+        mfunction = static_cast<ct_mfunction *>(StartType( out, LFG_MFUNCTION ));
+        mfunction->rvtype = pr->ret;
+        mfunction->class_idx = pr->cls;
+        mfunction->thisptr = pr->this_;
+        mfunction->call = call;
+        mfunction->res = 0;
+        mfunction->parms = pr->num;
+        mfunction->arglist = arglist;
+        mfunction->thisadjust = 0; /* always zero for watcom */
+    } else {
+        ct_procedure *procedure;
+
+        NewTypeString( back, out );
+        proci = static_cast<lf_values>(++back.data.TypeIdx);
+        procedure = static_cast<ct_procedure *>(StartType( out, LFG_PROCEDURE ));
+        procedure->rvtype = pr->ret;
+        procedure->call = call;
+        procedure->res = 0;
+        procedure->parms = pr->num;
+        procedure->arglist = arglist;
+    }
+    EndTypeString( back, out );
+    return( proci );
+}

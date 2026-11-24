@@ -9,7 +9,8 @@ namespace cb::translate::registry {
 void register_c_back_end(Registry& r) {
     r.add(BackEnd{"c",
                   "backends/c_java",
-                  {{"java", "javajudge", "Shapes, Generics, Bank and TextStats run alike as Java and as C11; Streams is refused", {"jdk", "cxx"}, false}}});
+                  {{"java", "translate_file", "builds the C translation, runs it beside the Java program (javac and the JVM), and compares what they print and their exit code",
+                    {"jdk", "cc"}, true}}});
 }
 
 // The C++03 back end writes a Java conversion's bodies; C# reaches it through the Java declaration skeleton (dotnet/cs2cpp).
@@ -29,7 +30,8 @@ void register_cpp03_back_end(Registry& r) {
 void register_cpp17_back_end(Registry& r) {
     r.add(BackEnd{"cpp17",
                   "l2 core cpp17",
-                  {{"java", "javajudge", "five modern programs, 635 cases, each run as Java and as C++17", {"jdk", "cxx", "l2"}, false},
+                  {{"java", "translate_file", "builds the C++17 translation, runs it beside the Java program (javac and the JVM), and compares what they print and their exit code",
+                    {"jdk", "cxx", "l2"}, true},
                    {"python", "judge-py-cpp",
                     "builds the C++17 translation, runs it beside the Python module (CPython), and compares the answer of every run_* function",
                     {"python", "cxx", "l2"}, true}}});
@@ -41,7 +43,8 @@ void register_csharp_back_end(Registry& r) {
                   "backends/csharp",
                   {{"csharp", "judge-cs-cpp", "writes the program as C# again, runs both (csc and the installed .NET), and compares what they print and their exit code",
                     {"dotnet"}, true},
-                   {"java", "javajudge", "four of four programs run alike as Java and as C#", {"jdk", "dotnet"}, false}}});
+                   {"java", "translate_file", "writes the program as C#, runs it beside the Java program (javac and the JVM), and compares what they print and their exit code",
+                    {"jdk", "dotnet"}, true}}});
 }
 
 // C# as C++17 on its own runtime (csrt.hpp): the emitter the plan folds into the L2 core's C++17 writer.

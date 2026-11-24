@@ -95,6 +95,7 @@ const std::vector<std::pair<std::string, std::string>>& lib() {
             {"java.lang.AbstractStringBuilder", "StringBuilder"}, {"java.lang.Math", "Math"},
             {"java.lang.StrictMath", "Math"}, {"java.lang.System", "System"}, {"java.lang.Comparable", "Comparable"},
             {"java.lang.Iterable", "Iterable"}, {"java.lang.Runnable", "Runnable"}, {"java.lang.Enum", "Enum"},
+            {"java.lang.AutoCloseable", "AutoCloseable"}, {"java.io.Closeable", "AutoCloseable"}, {"java.util.Random", "Random"},
             {"java.lang.Record", "Object"}, {"java.lang.Throwable", "Throwable"}, {"java.io.PrintStream", "PrintStream"},
             {"java.util.List", "List"}, {"java.util.ArrayList", "ArrayList"}, {"java.util.LinkedList", "LinkedList"},
             {"java.util.Collection", "Collection"}, {"java.util.Iterator", "Iterator"}, {"java.util.Map", "Map"},
@@ -326,18 +327,20 @@ bool is_constant(NodeP n) {
            (is(n, "Select") && is(node(n, "obj"), "TypeName") && sym(n) && skind(sym(n)) == "enumconst");
 }
 
-bool leaves_walk(const NodeP& n, int loops, const std::set<std::string>& labels) {
+bool leaves_walk(const NodeP& n, int loops, const std::set<std::string>& labels, int switches = 0) {
     if (is(n, "Return")) return true;
     if (is(n, "Break") || is(n, "Continue")) {
         std::string l = str(raw(n, "label"));
-        return !l.empty() ? !labels.count(l) : loops == 0;
+        if (!l.empty()) return !labels.count(l);
+        return is(n, "Break") ? loops + switches == 0 : loops == 0;   // (a switch holds a break, not a continue)
     }
     if (is(n, "Lambda") || is(n, "ClassDecl") || is(n, "LocalClass")) return false;
-    int inner = loops + ((is(n, "While") || is(n, "DoWhile") || is(n, "For") || is(n, "ForEach") || is(n, "Switch")) ? 1 : 0);
+    int inner = loops + ((is(n, "While") || is(n, "DoWhile") || is(n, "For") || is(n, "ForEach")) ? 1 : 0);
+    int inner_switches = switches + (is(n, "Switch") ? 1 : 0);
     std::set<std::string> labs = labels;
     if (is(n, "Labeled")) labs.insert(str(raw(n, "label")));
     for (auto& c : children(n))
-        if (leaves_walk(c, inner, labs)) return true;
+        if (leaves_walk(c, inner, labs, inner_switches)) return true;
     return false;
 }
 
@@ -403,6 +406,30 @@ struct Method : Emitter {
     bool uses_self = false;
     std::map<std::string, std::string> captures;
     bool is_static;
+    // A try whose finally or close runs after the body: a jump that leaves it records where it was going, and goes on after that code has run.
+    struct Way {
+        std::string kind, label;
+    };
+    struct Guard {
+        int id;
+        int breaks, loops;
+        std::size_t labels;
+        std::vector<Way> ways;
+    };
+    std::vector<Guard> guards;
+    // a lambda or switch expression is a C++ lambda: its own return leaves only that, never a try around it
+    struct Apart {
+        std::vector<Guard>& held;
+        std::vector<Guard> kept;
+        explicit Apart(std::vector<Guard>& g) : held(g), kept(std::move(g)) { held.clear(); }
+        ~Apart() { held = std::move(kept); }
+    };
+    std::vector<std::string> open_labels;
+    int break_depth = 0, loop_depth = 0;
+    void jump(const std::string& kind, const std::string& label, const std::string& value, Strs& out, const std::string& ind);
+    void guarded(const std::function<void(Strs&, const std::string&)>& inner,
+                 const std::function<void(Strs&, const std::string&, const std::string&)>& after, Strs& out, const std::string& ind);
+    void resources_from(const NodeP& s, std::size_t at, Strs& out, const std::string& ind);
     Method(Program& prog, ClassInfo* c, const NodeP& md);
 
     Strs define(bool two, bool clinit);
@@ -428,6 +455,7 @@ struct Method : Emitter {
     void switch_(const NodeP& s, Strs& out, const std::string& ind);
     void try_(const NodeP& s, Strs& out, const std::string& ind);
     void try_catch(const NodeP& s, Strs& out, const std::string& ind);
+    void try_body(const NodeP& s, Strs& out, const std::string& ind);
     E expr(const NodeP& e);
     std::string sequenced(const NodeP& e);
     std::string conv(const std::string& code, const std::string& src, const std::string& dst);
@@ -726,9 +754,15 @@ Strs Program::reference_fields(ClassInfo* c) {
     return out;
 }
 
+// The name Java gives the class at run time: a member class is Outer$Inner.
+static std::string binary_name(const ClassInfo* c) {
+    if (!c->outer || c->local || c->anon || c->qname.rfind(c->outer->qname + ".", 0) != 0) return py::strip_chars(c->qname, "<>");
+    return binary_name(c->outer) + "$" + c->qname.substr(c->outer->qname.size() + 1);
+}
+
 Strs Program::struct_(ClassInfo* c) {
     Strs L{"struct " + c->cname + " : " + join(bases(c), ", ") + " {"};
-    L.push_back("\tconst char16_t* jclass_() const override { return " + u16(py::strip_chars(c->qname, "<>")) + "; }");
+    L.push_back("\tconst char16_t* jclass_() const override { return " + u16(binary_name(c)) + "; }");
     if (c->needs_outer) L.push_back("\t" + ct(mk_type("class", c->outer->qname)) + " outer_;");
     for (auto& cap : c->captures) L.push_back("\t" + ct(cap.second) + " cap_" + ident(cap.first) + "{};");
     if (collected && c->kind != "interface") {
@@ -806,6 +840,37 @@ Strs Program::struct_(ClassInfo* c) {
             if (has) {
                 L.push_back("\tusing " + b->cname + "::" + ident(n) + ";");
                 break;
+            }
+        }
+    }
+    if (c->kind != "interface") {   // Java lets a base class's method be the one an interface asks for; in C++ the two are separate until one forwards
+        std::set<std::string> have;
+        for (auto& m : c->methods()) have.insert(str(raw(m, "name")) + "/" + std::to_string(nodes(m, "params").size()));
+        auto an = model->ancestors(c->qname);
+        for (size_t i = 1; i < an.size(); i++) {
+            ClassInfo* iface = model->info(an[i]);
+            if (!iface || iface->kind != "interface") continue;
+            for (auto& im : iface->methods()) {
+                if (str(raw(im, "kind")) != "method" || node(im, "body") || (sym(im) && sstatic(sym(im)))) continue;
+                const std::string name = str(raw(im, "name"));
+                const size_t arity = nodes(im, "params").size();
+                if (!have.insert(name + "/" + std::to_string(arity)).second) continue;
+                ClassInfo* giver = nullptr;
+                for (size_t k = 1; k < an.size() && !giver; k++) {
+                    ClassInfo* b = model->info(an[k]);
+                    if (!b || b->kind == "interface") continue;
+                    for (auto& bm : b->methods(&name)) {
+                        if (str(raw(bm, "kind")) == "method" && node(bm, "body") && nodes(bm, "params").size() == arity && !(sym(bm) && sstatic(sym(bm)))) giver = b;
+                    }
+                }
+                if (!giver || model->is_sub(giver->qname, iface->qname)) continue;
+                auto sg = sig(iface, im);
+                Strs params, given;
+                for (size_t a = 0; a < sg.first.size(); a++) {
+                    params.push_back(sg.first[a] + " a" + std::to_string(a));
+                    given.push_back("a" + std::to_string(a));
+                }
+                L.push_back("\t" + sg.second + " " + ident(name) + "(" + join(params, ", ") + ") override { return " + giver->cname + "::" + ident(name) + "(" + join(given, ", ") + "); }");
             }
         }
     }
@@ -908,7 +973,10 @@ Strs Method::define(bool two, bool clinit) {
             auto c = ctor_call(first, "\t", two);
             L.insert(L.end(), c.begin(), c.end());
         } else if (!ci->base.empty() && ci->base != OBJECT && ci->kind != "enum" && two) {
-            L.push_back("\t" + p.cls_name(ci->base) + "::ctor_();");
+            Strs forwarded;   // javac's constructor of an anonymous class takes the base's arguments and passes them on
+            if (ci->anon)
+                for (auto& prm : nodes(m, "params")) forwarded.push_back(ident(sname(sym(prm))));
+            L.push_back("\t" + p.cls_name(ci->base) + "::ctor_(" + join(forwarded, ", ") + ");");
         }
         if (!delegated) {
             if (two) L.push_back("\tfinit_();");
@@ -1061,6 +1129,13 @@ void Method::block(const NodeP& s, Strs& out, const std::string& ind) {
 void Method::loop_nested(const NodeP& body, Strs& out, const std::string& ind) {
     std::string lab = cont_next;
     cont_next.clear();
+    ++break_depth;
+    ++loop_depth;
+    struct Leave {
+        int& b;
+        int& l;
+        ~Leave() { --b; --l; }
+    } leave{break_depth, loop_depth};
     if (lab.empty()) {
         block(body, out, ind);
         return;
@@ -1173,21 +1248,26 @@ void Method::stmt_(const NodeP& s, Strs& out, const std::string& ind) {
             }
         }
         if (cont) cont_next = lab;
-        stmt(node(s, "body"), out, ind);
+        open_labels.push_back(lab);
+        try {
+            stmt(node(s, "body"), out, ind);
+        } catch (...) {
+            open_labels.pop_back();
+            throw;
+        }
+        open_labels.pop_back();
         if (brk) out.push_back(ind + lab + "_brk:;");
     } else if (k == "Return") {
         NodeP e = node(s, "expr");
-        if (!e) out.push_back(ind + "return;");
+        if (!e) jump("Return", "", "", out, ind);
         else {
             E v = expr(e);
-            out.push_back(ind + "return " + conv(v.first, v.second, ret) + ";");
+            jump("Return", "", conv(v.first, v.second, ret), out, ind);
         }
     } else if (k == "Break") {
-        std::string l = str(raw(s, "label"));
-        out.push_back(ind + (!l.empty() ? "goto " + l + "_brk;" : "break;"));
+        jump("Break", str(raw(s, "label")), "", out, ind);
     } else if (k == "Continue") {
-        std::string l = str(raw(s, "label"));
-        out.push_back(ind + (!l.empty() ? "goto " + l + "_cont;" : "continue;"));
+        jump("Continue", str(raw(s, "label")), "", out, ind);
     } else if (k == "Throw") {
         out.push_back(ind + "jrt::raise(" + expr(node(s, "expr")).first + ");");
     } else if (k == "Switch") {
@@ -1206,7 +1286,7 @@ void Method::stmt_(const NodeP& s, Strs& out, const std::string& ind) {
         // declared at the top level (Model)
     } else if (k == "Yield") {
         E v = expr(node(s, "expr"));
-        out.push_back(ind + "return " + conv(v.first, v.second, ret) + ";");
+        jump("Return", "", conv(v.first, v.second, ret), out, ind);
     } else if (k == "CtorCall") {
         throw Decline("constructor call not first");
     } else {
@@ -1338,10 +1418,26 @@ std::pair<std::string, ClassInfo*> Method::switch_head(const NodeP& e) {
 }
 
 void Method::switch_(const NodeP& s, Strs& out, const std::string& ind) {
-    auto h = switch_head(node(s, "expr"));
+    TypeP subject = type(node(s, "expr"));
+    const bool on_text = subject && subject->kind == "class" && tname(subject) == "java.lang.String";
+    std::pair<std::string, ClassInfo*> h{"", nullptr};
+    if (on_text) {   // C++ cases are numbers: each label is its place in the list, and falling through works as Java's does
+        Strs labels;
+        for (auto& c : nodes(s, "cases"))
+            for (auto& lab : nodes(c, "labels")) labels.push_back(expr(lab).first);
+        h.first = "jrt::string_case(" + expr(strip_paren(node(s, "expr"))).first + ", {" + join(labels, ", ") + "})";
+    } else {
+        h = switch_head(node(s, "expr"));
+    }
     out.push_back(ind + "switch (" + h.first + ") {");
+    int label_number = 0;
+    ++break_depth;
+    struct Leave {
+        int& b;
+        ~Leave() { --b; }
+    } leave{break_depth};
     for (auto& c : nodes(s, "cases")) {
-        for (auto& lab : nodes(c, "labels")) out.push_back(ind + "case " + case_label(lab, h.second) + ":");
+        for (auto& lab : nodes(c, "labels")) out.push_back(ind + "case " + (on_text ? std::to_string(label_number++) : case_label(lab, h.second)) + ":");
         if (py::truthy(raw(c, "default"))) out.push_back(ind + "default:");
         out.push_back(ind + "{");
         auto saved = vars;
@@ -1352,39 +1448,89 @@ void Method::switch_(const NodeP& s, Strs& out, const std::string& ind) {
     out.push_back(ind + "}");
 }
 
-void Method::try_(const NodeP& s, Strs& out, const std::string& ind) {
-    auto& res = nodes(s, "resources");
-    if (!res.empty()) {
-        out.push_back(ind + "{");
-        std::string inner = ind + "\t";
-        auto saved = vars;
-        Strs names;
-        for (auto& r : res) {
-            if (is(r, "Local")) {
-                stmt(r, out, inner);
-                names.push_back(ident(sname(sym(r))));
-            } else {
-                E v = expr(node(r, "expr"));
-                temps++;
-                std::string n = "j2x_res" + std::to_string(temps);
-                out.push_back(inner + "auto " + n + " = " + v.first + ";");
-                names.push_back(n);
-            }
-        }
-        for (auto& n : names) {         // closed in reverse order of opening: the guards' order
-            temps++;
-            out.push_back(inner + "jrt::Finally j2x_close" + std::to_string(temps) + "([&] { if (" + n + ") " + n + "->close(); });");
-        }
-        if (!nodes(s, "catches").empty() || node(s, "final")) throw Decline("try-with-resources with catch or finally");
-        block(node(s, "body"), out, ind);
-        vars = saved;
-        out.push_back(ind + "}");
+// A return, break or continue. One that leaves a guarded try records its way and goes to the code that must run first.
+void Method::jump(const std::string& kind, const std::string& label, const std::string& value, Strs& out, const std::string& ind) {
+    bool crosses = false;
+    if (!guards.empty()) {
+        const Guard& g = guards.back();
+        if (kind == "Return") crosses = true;
+        else if (!label.empty()) crosses = std::find(open_labels.begin() + static_cast<std::ptrdiff_t>(g.labels), open_labels.end(), label) == open_labels.end();
+        else crosses = kind == "Break" ? break_depth == g.breaks : loop_depth == g.loops;
+    }
+    if (!crosses) {
+        if (kind == "Return") out.push_back(ind + (value.empty() ? std::string("return;") : "return " + value + ";"));
+        else if (kind == "Break") out.push_back(ind + (!label.empty() ? "goto " + label + "_brk;" : "break;"));
+        else out.push_back(ind + (!label.empty() ? "goto " + label + "_cont;" : "continue;"));
         return;
     }
+    Guard& g = guards.back();
+    std::size_t way = 0;
+    while (way < g.ways.size() && (g.ways[way].kind != kind || g.ways[way].label != label)) ++way;
+    if (way == g.ways.size()) g.ways.push_back(Way{kind, label});
+    const std::string id = std::to_string(g.id);
+    out.push_back(ind + "{");
+    if (!value.empty()) out.push_back(ind + "\tj2x_value" + id + " = " + value + ";");
+    out.push_back(ind + "\tj2x_way" + id + " = " + std::to_string(way + 1) + ";");
+    out.push_back(ind + "\tgoto j2x_done" + id + ";");
+    out.push_back(ind + "}");
+}
+
+// The body under a catch-all; then `after` (given the name of what was thrown), which rethrows it; then each recorded jump goes on its way.
+void Method::guarded(const std::function<void(Strs&, const std::string&)>& inner,
+                     const std::function<void(Strs&, const std::string&, const std::string&)>& after, Strs& out, const std::string& ind) {
+    const int number = ++temps;
+    const std::string id = std::to_string(number);
+    guards.push_back(Guard{number, break_depth, loop_depth, open_labels.size(), {}});
+    Strs body;
+    try {
+        inner(body, ind + "\t\t");
+    } catch (...) {
+        guards.pop_back();
+        throw;
+    }
+    const std::vector<Way> ways = std::move(guards.back().ways);
+    guards.pop_back();
+    const std::string in = ind + "\t";
+    const std::string thrown = "j2x_thrown" + id;
+    out.push_back(ind + "{");
+    if (!ways.empty()) out.push_back(in + "int j2x_way" + id + " = 0;");
+    if (ret != "void" && std::any_of(ways.begin(), ways.end(), [](const Way& w) { return w.kind == "Return"; }))
+        out.push_back(in + ret + " j2x_value" + id + "{};");
+    out.push_back(in + "std::exception_ptr " + thrown + ";");
+    out.push_back(in + "try {");
+    out.insert(out.end(), body.begin(), body.end());
+    out.push_back(in + "} catch (...) {");
+    out.push_back(in + "\t" + thrown + " = std::current_exception();");
+    out.push_back(in + "}");
+    if (!ways.empty()) out.push_back(in + "j2x_done" + id + ":;");
+    after(out, in, thrown);
+    for (std::size_t w = 0; w < ways.size(); ++w) {
+        out.push_back(in + "if (j2x_way" + id + " == " + std::to_string(w + 1) + ") {");
+        const bool value = ways[w].kind == "Return" && ret != "void";
+        jump(ways[w].kind, ways[w].label, value ? "j2x_value" + id : std::string(), out, in + "\t");
+        out.push_back(in + "}");
+    }
+    out.push_back(ind + "}");
+}
+
+void Method::try_(const NodeP& s, Strs& out, const std::string& ind) {
     NodeP fin = node(s, "final");
     if (fin) {
         std::vector<NodeP> parts{node(s, "body")};
         for (auto& c : nodes(s, "catches")) parts.push_back(node(c, "body"));
+        const auto all = walk(fin);
+        const bool labelled = std::any_of(all.begin(), all.end(), [](const NodeP& n) { return is(n, "Labeled"); });
+        if (labelled || (leaves(parts) && !simple_finally(fin))) {
+            guarded([&](Strs& o, const std::string& i) { try_catch(s, o, i); },
+                    [&](Strs& o, const std::string& i, const std::string& thrown) {
+                        o.push_back(i + "{");
+                        block(fin, o, i);
+                        o.push_back(i + "}");
+                        o.push_back(i + "if (" + thrown + ") std::rethrow_exception(" + thrown + ");");
+                    },
+                    out, ind);
+            return;
+        }
         if (!leaves(parts)) {
             // no jump out: the finally on the exceptional way out (then rethrown) and after, written twice
             out.push_back(ind + "try {");
@@ -1398,7 +1544,6 @@ void Method::try_(const NodeP& s, Strs& out, const std::string& ind) {
             out.push_back(ind + "}");
             return;
         }
-        if (!simple_finally(fin)) throw Decline("a finally left by a jump that can itself throw or jump");
         out.push_back(ind + "{");
         temps++;
         Strs f;
@@ -1413,16 +1558,53 @@ void Method::try_(const NodeP& s, Strs& out, const std::string& ind) {
     try_catch(s, out, ind);
 }
 
+// A try's body with its resources: the last opened is closed first, one that fails to open still closes those before it, and a close that
+// throws while another exception is on its way is added to that exception as suppressed. The try's catches and finally run after the closes.
+void Method::try_body(const NodeP& s, Strs& out, const std::string& ind) {
+    if (nodes(s, "resources").empty()) {
+        block(node(s, "body"), out, ind);
+        return;
+    }
+    auto saved = vars;
+    resources_from(s, 0, out, ind);
+    vars = saved;
+}
+
+void Method::resources_from(const NodeP& s, std::size_t at, Strs& out, const std::string& ind) {
+    auto& res = nodes(s, "resources");
+    if (at == res.size()) {
+        block(node(s, "body"), out, ind);
+        return;
+    }
+    const NodeP& r = res[at];
+    const std::string inner = ind + "\t";
+    out.push_back(ind + "{");
+    std::string n;
+    if (is(r, "Local")) {
+        stmt(r, out, inner);
+        n = ident(sname(sym(r)));
+    } else {
+        E v = expr(node(r, "expr"));
+        temps++;
+        n = "j2x_res" + std::to_string(temps);
+        out.push_back(inner + "auto " + n + " = " + v.first + ";");
+    }
+    guarded([&](Strs& o, const std::string& i) { resources_from(s, at + 1, o, i); },
+            [&](Strs& o, const std::string& i, const std::string& thrown) { o.push_back(i + "jrt::close_resource(" + n + ", " + thrown + ");"); },
+            out, inner);
+    out.push_back(ind + "}");
+}
+
 void Method::try_catch(const NodeP& s, Strs& out, const std::string& ind) {
     auto& catches = nodes(s, "catches");
     if (catches.empty()) {
         out.push_back(ind + "{");
-        block(node(s, "body"), out, ind);
+        try_body(s, out, ind);
         out.push_back(ind + "}");
         return;
     }
     out.push_back(ind + "try {");
-    block(node(s, "body"), out, ind);
+    try_body(s, out, ind);
     temps++;
     std::string t = "j2x_t" + std::to_string(temps);
     out.push_back(ind + "} catch (jrt::JavaThrow& " + t + ") {");
@@ -1567,7 +1749,15 @@ E Method::x_lit(const NodeP& e) {
         return E(float_text(f, ""), "double");
     }
     if (k == "u16") return E(char_lit(v), "char16_t");
-    if (v.is_str()) return E("jrt::lit(" + u16(v.str()) + ")", "ref<" + p.rt("String") + ">");
+    if (v.is_str()) {
+        const std::string& held = v.str();
+        if (held.find('\0') != std::string::npos) {   // (a NUL inside: a C string would end there, so the length is said)
+            std::size_t units = 0;
+            for (unsigned char c : held) units += (c & 0xC0) != 0x80 ? (c >= 0xF0 ? 2 : 1) : 0;
+            return E("jrt::str(std::u16string(" + u16(held) + ", " + std::to_string(units) + "))", "ref<" + p.rt("String") + ">");
+        }
+        return E("jrt::lit(" + u16(held) + ")", "ref<" + p.rt("String") + ">");
+    }
     throw Decline("literal " + py::repr(v));
 }
 
@@ -1688,7 +1878,13 @@ E Method::x_unary(const NodeP& e) {
     E v = expr(node(e, "x"));
     std::string op = str(raw(e, "op"));
     if (op == "++" || op == "--") {
-        if (is_ref(v.second)) throw Decline("++ on a box");
+        if (is_ref(v.second)) {   // a box is replaced by a new one; the place is named once, so what it is made of runs once
+            TypeP held = type(node(e, "x"));
+            const char* number = held && held->kind == "class" ? box(tname(held)) : nullptr;
+            if (!number) throw Decline("++ on a box");
+            return E("jrt::box_step<" + std::string(number) + ">(" + v.first + ", " + (op == "++" ? "1" : "-1") + ", " +
+                         (py::truthy(raw(e, "postfix")) ? "true" : "false") + ")", v.second);
+        }
         return E(py::truthy(raw(e, "postfix")) ? v.first + op : op + v.first, v.second);
     }
     v = unboxed(v.first, v.second, type(node(e, "x")));
@@ -1752,17 +1948,17 @@ E Method::x_concat(const NodeP& e) {
 
 E Method::x_assign(const NodeP& e) {
     NodeP tg = node(e, "target");
-    E t = expr(tg);
+    E place_code = expr(tg);
     E v = expr(node(e, "value"));
-    const std::string& tt = t.second;
+    const std::string& place_type = place_code.second;
     std::string op = str(raw(e, "op"));
-    if (raw(e, "op").is_none()) return E(t.first + " = " + conv(v.first, v.second, tt), tt);
-    if (tt == "ref<" + p.rt("String") + ">" && op == "+") return E(t.first + " = jrt::concat(" + t.first + ", " + v.first + ")", tt);
+    if (raw(e, "op").is_none()) return E(place_code.first + " = " + conv(v.first, v.second, place_type), place_type);
+    if (place_type == "ref<" + p.rt("String") + ">" && op == "+") return E(place_code.first + " = jrt::concat(" + place_code.first + ", " + v.first + ")", place_type);
     NodeP st = strip_paren(tg);
-    bool plain = is(st, "Name") || (is(st, "Select") && (is(node(st, "obj"), "This") || is(node(st, "obj"), "TypeName")));
-    if (is_ref(tt)) throw Decline("compound assignment to a box");
+    bool simple = is(st, "Name") || (is(st, "Select") && (is(node(st, "obj"), "This") || is(node(st, "obj"), "TypeName")));
     v = unboxed(v.first, v.second, type(node(e, "value")));
     const std::string& vt = v.second;
+    const auto update = [&](const E& t, const std::string& tt, bool plain) -> E {
     if ((op == "/" || op == "%") && integral(tt) && integral(vt)) {
         if (!plain) throw Decline("integer /= on a complex target");
         std::string wide = (tt == "int64_t" || vt == "int64_t") ? "int64_t" : "int32_t";
@@ -1787,6 +1983,15 @@ E Method::x_assign(const NodeP& e) {
         return E(t.first + " = (" + tt + ")std::fmod(" + t.first + ", " + v.first + ")", tt);
     }
     return E(t.first + " " + op + "= " + v.first, tt);
+    };
+    if (!is_ref(place_type)) return update(place_code, place_type, simple);
+    // a box: the place is found once, its number read (a null throws), the right side worked out, and a new box put there
+    TypeP held = type(tg);
+    const char* number = held && held->kind == "class" ? box(tname(held)) : nullptr;
+    if (!number) throw Decline("compound assignment to a box");
+    const std::string old = "j2x_old" + std::to_string(++temps);
+    const E step = update(E(old, number), number, true);
+    return E("jrt::box_update<" + std::string(number) + ">(" + place_code.first + ", [&](" + number + "& " + old + ") { " + step.first + "; })", place_type);
 }
 
 E Method::x_cond(const NodeP& e) {
@@ -1796,7 +2001,12 @@ E Method::x_cond(const NodeP& e) {
     TypeP et = type(e);
     std::string t = (et && et->kind != "null") ? p.ct(et) : (a.second != "nullptr_t" ? a.second : b.second);
     std::string ac = conv(a.first, a.second, t);
-    return E("(" + c + " ? " + ac + " : " + conv(b.first, b.second, t) + ")", t);
+    std::string bc = conv(b.first, b.second, t);
+    if (is_ref(t)) {   // (a ?: needs one type for both sides: a branch of a subclass is made the base)
+        if (a.second != t && a.second != "nullptr_t") ac = t + "(" + ac + ")";
+        if (b.second != t && b.second != "nullptr_t") bc = t + "(" + bc + ")";
+    }
+    return E("(" + c + " ? " + ac + " : " + bc + ")", t);
 }
 
 E Method::x_cast(const NodeP& e) {
@@ -1824,6 +2034,12 @@ E Method::x_instanceof(const NodeP& e) {
 
 // The arguments of a call, each converted to its parameter's C++ type; a program's varargs packed into
 // the array, a library's passed one by one (the runtime's are variadic templates).
+// Whether this expression reads a field or an array element, which a call could overwrite, rather than a local or a temporary that outlasts the call.
+static bool read_from_storage(const std::string& code) {
+    if (code.empty() || code.back() == ')') return false;
+    return code.find("->") != std::string::npos || code.find("::") != std::string::npos || code.back() == ']';
+}
+
 std::string Method::args(const std::vector<NodeP>& as, const Strs& params, const SymP& s) {
     bool varargs = s && py::truthy(s->varargs) && !params.empty();
     bool lib = s && !p.model->method_decl(s).second;
@@ -1857,14 +2073,15 @@ std::string Method::args(const std::vector<NodeP>& as, const Strs& params, const
         std::string want = i < params.size() ? params[i] : std::string();
         NodeP a = strip_paren(as[i]);
         E v = (is(a, "Lambda") || is(a, "MethodRef")) ? functional(a) : expr(as[i]);
-        out.push_back(conv(v.first, v.second, want));
+        std::string passed = conv(v.first, v.second, want);
+        out.push_back(!lib && is_ref(want) && read_from_storage(passed) ? "jrt::kept(" + passed + ")" : passed);
     }
     return join(out, ", ");
 }
 
 E Method::x_call(const NodeP& e) {
     SymP s = sym(e);
-    if (!s || skind(s) != "method") throw Decline("call " + (s ? skind(s) : std::string("unresolved")));
+    if (!s || skind(s) != "method") throw Decline("call " + (s ? skind(s) + " " + sname(s) : std::string("unresolved")));
     auto cs = p.call_sig(s);
     std::string want = p.ct(type(e));
     NodeP t = node(e, "target");
@@ -1905,7 +2122,9 @@ E Method::x_call(const NodeP& e) {
     } else {
         E r = receiver(t, s);
         if (sowner(s) == OBJECT && sname(s) == "getClass") throw Decline("getClass");
-        code = ((r.first == "this" || r.first == "self_" || !t) ? r.first : "jrt::nn(" + r.first + ")") + "->" + name + "(" + a + ")";
+        // (a method of the program may clear the very field it was called through, as a screen closing itself does)
+        const std::string held = tt && p.model->of_type(tt) && read_from_storage(r.first) ? "jrt::kept(" + r.first + ")" : r.first;
+        code = ((r.first == "this" || r.first == "self_" || !t) ? r.first : "jrt::nn(" + held + ")") + "->" + name + "(" + a + ")";
         if (r.first == "this") code = "this->" + name + "(" + a + ")";
     }
     if (cs.ret != want && is_ref(want) && is_ref(cs.ret) && !p.is_sub_ct(cs.ret, want))
@@ -1939,6 +2158,7 @@ E Method::x_new(const NodeP& e) {
     std::string name = p.cls_name(tname(t));
     if (c && c->needs_outer) {
         std::string outer = node(e, "outer") ? expr(node(e, "outer")).first : outer_of(c->outer->qname).first;
+        if (node(e, "outer") && !is(strip_paren(node(e, "outer")), "This")) outer = "jrt::nonnull(" + outer + ")";   // (Java throws on `null.new Inner()`)
         if (outer == "this") outer = "jrt::self(this)";
         return E("[&] { auto o_ = std::make_shared<" + name + ">(); o_->outer_ = " + outer + "; o_->ctor_(" + a + "); return o_; }()",
                  "ref<" + name + ">");
@@ -1949,7 +2169,10 @@ E Method::x_new(const NodeP& e) {
 
 E Method::new_local(ClassInfo* c, const NodeP& e) {
     Strs sets;
-    if (c->needs_outer) sets.push_back("o_->outer_ = " + std::string(this_x() == "this" ? "jrt::self(this)" : this_x()) + ";");
+    if (c->needs_outer) {   // the instance of the class it was declared in, which need not be the class making it
+        std::string outer = c->outer ? outer_of(c->outer->qname).first : this_x();
+        sets.push_back("o_->outer_ = " + (outer == "this" ? std::string("jrt::self(this)") : outer) + ";");
+    }
     for (auto& cap : c->captures) {
         E v = x_name_of(cap.first, cap.second);
         sets.push_back("o_->cap_" + ident(cap.first) + " = " + v.first + ";");
@@ -1992,10 +2215,11 @@ E Method::x_newarray(const NodeP& e) {
         std::string inner = re::rx("^ref<(?:jrt::)?Array<(.*)>>$").match(elem).group(1);
         return E("jrt::new_array2<" + inner + ">(" + dims[0] + ", " + dims[1] + ")", c);
     }
-    throw Decline("array of " + std::to_string(dims.size()) + " dimensions");
+    return E("jrt::new_array_n<" + elem + ">({" + join(dims, ", ") + "})", c);
 }
 
 E Method::x_switchexpr(const NodeP& e) {
+    Apart apart(guards);
     std::string t = p.ct(type(e));
     NodeP se = node(e, "expr");
     TypeP st = type(se);
@@ -2075,6 +2299,7 @@ std::string Method::capture_list(bool inner_uses_self) {
 }
 
 E Method::x_lambda(const NodeP& e) {
+    Apart apart(guards);
     std::string iface = p.cls_name(tname(type(e)));
     std::string nm, r;
     Strs ps;

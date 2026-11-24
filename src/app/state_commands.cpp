@@ -25,26 +25,18 @@
 #include "formats/pe.hpp"
 #include "knowledge/store.hpp"
 #include "store/functions.hpp"
-#include "store/migrate_state.hpp"
 #include "symbols/driver_services.hpp"
 #include "symbols/environment.hpp"
 #include "symbols/names.hpp"
 #include "ui/mcp_server.hpp"
 #include "ui/mcp_wiring.hpp"
 #include "ui/progress_store.hpp"
-#include "verify/reconstruct.hpp"
 
 namespace cb::app {
 
 namespace {
 
 namespace stdfs = std::filesystem;
-
-// `migrate-state`'s verifier settings: what Reconstructor::profiles() says of the lanes this machine has.
-struct MigrateProfiles {
-    std::unique_ptr<engine::LaneKit> kit;
-    verify::reconstruct::Kinds kinds;
-};
 
 // What proposing names reads of a module: the facts that could name each function (the analyses), and the decompiler's C for some. The kit that
 // holds the decompiler is made when the first of them is asked.
@@ -190,23 +182,6 @@ std::vector<cli::Command> state_commands(const config::Config& config, const std
         out.push_back(symbols::driver_services::command(env));
     }
 
-    // migrate-state [--dry] [--state DIR]
-    {
-        const auto mine = std::make_shared<MigrateProfiles>();
-        store::migrate::Services services;
-        services.state_dir = config.state();
-        const config::Config* settings = &config;
-        services.verifier_profiles = [mine, settings]() -> std::map<std::string, store::migrate::Verifier> {
-            std::map<std::string, store::migrate::Verifier> result;
-            if (!mine->kit) {
-                mine->kit = std::make_unique<engine::LaneKit>(*settings);
-                mine->kit->add_lanes(mine->kinds);
-            }
-            for (const auto& [kind, profile] : verify::reconstruct::profiles_of(mine->kinds)) result[kind] = {profile.digest, profile.settings};
-            return result;
-        };
-        out.push_back(store::migrate::command(services));
-    }
     return out;
 }
 

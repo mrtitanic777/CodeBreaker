@@ -102,6 +102,11 @@ std::string type_code(const ir::TypeP& type);
 const Code* library_static(std::string_view owner, std::string_view name);
 // The superclasses the runtime's Throwable stands for.
 bool is_library_throwable(std::string_view qname);
+// A runtime collection a class of the program may extend: its struct and the prefix of its Object methods in the runtime (jrt_list_toString); empty for any other.
+struct RuntimeBase {
+    std::string_view cstruct, objects;
+};
+std::optional<RuntimeBase> runtime_collection_base(std::string_view qname);
 // Elements stored in a jarray: the C type, or jobject* for a class pointer.
 std::string array_store(std::string_view element_ctype);
 
@@ -156,6 +161,7 @@ public:
     std::string cname(std::string_view qname) const;
     // A method's name in C: its own, or with its parameter codes when the program overloads it.
     std::string mname(std::string_view name, std::span<const ir::TypeP> params) const;
+    std::string exact_code(const ir::TypeP& type) const;
     std::string ct(const ir::TypeP& type) const;
     // &X_class of a class or interface, program or runtime.
     std::string class_ref(std::string_view qname) const;
@@ -178,7 +184,11 @@ public:
     std::vector<IMethod> iface_methods(std::string_view qname) const;
     std::vector<std::string> all_ifaces(const ClassInfo& cls) const;
     // The function implementing an interface method in class `cls` (its own or a base's, or an interface's default), if any.
-    std::optional<std::string> find_impl(const ClassInfo& cls, std::string_view java_name, std::size_t parameters) const;
+    // `slot`, when given, picks among overloads of one length: the method of exactly that slot name first, then (a generic one, whose erased
+    // parameters differ from the interface's) any of that length.
+    std::optional<std::string> find_impl(const ClassInfo& cls, std::string_view java_name, std::size_t parameters, const std::string* slot = nullptr) const;
+    std::optional<std::string> find_impl_of(const ClassInfo& cls, std::string_view java_name, std::size_t parameters, const std::string* slot) const;
+    Lines lambda_tables(const std::string& name, const ClassInfo& iface, std::string_view java_name, std::size_t parameters) const;
 
     // ---- constructors
     std::string ctor_name(const ClassInfo& cls, const ir::Node* ctor) const;
@@ -203,6 +213,8 @@ private:
     std::optional<std::string> main_;
     OrderedMap<std::string, std::string> lits_;                       // literal text -> slot name
     std::unordered_set<std::string> overloaded_;
+    std::unordered_set<std::string> by_class_;       // overloads whose codes alone are the same
+    std::unordered_set<std::string> static_names_;   // static fields and enum constants: a method of the same name is written apart
     std::unordered_map<const ClassInfo*, std::vector<Slot>> slots_;   // per class, made on first use
     std::unordered_map<std::string, ClassInfo*> by_cname_;            // `X` -> the class (first of that name)
 };
@@ -235,6 +247,8 @@ public:
     // ---- expressions -> (code, C type) (c_java_expr.cpp)
     Code expr(const ir::Node* e);
     std::string conv(const std::string& code, std::string_view src, std::string_view dst) const;
+    // A value put in a place of Java type `type`: a constant given to a Short, Byte or Character is boxed as that, not as an int.
+    std::string conv_to(const Code& value, const ir::TypeP& type, std::string_view dst) const;
 
     // ---- closures (c_java_closure.cpp)
     Code closure(const ir::Node* e);
@@ -264,9 +278,16 @@ private:
     void jump(bool is_break, const std::optional<std::string>& label, Lines& out, std::string_view ind);
     std::string case_label(const ir::Node* label, const ClassInfo* enum_class);
     void try_catch(const ir::Try& s, Lines& out, std::string_view ind);
+    // A try's body inside its resources, from the `at`-th on.
+    void try_body(const ir::Try& s, std::size_t at, Lines& out, std::string_view ind);
+    std::string close_call(const std::string& resource, const ir::TypeP& type);
+    bool must_finish(std::size_t depth) const;   // a handler since `depth` has a finally or a resource
+    // What a jump out of the handlers since `depth` does, innermost first: each is popped, then its finally or close runs.
+    void unwind(std::size_t depth, Lines& out, std::string_view ind);
 
     // expressions
     std::string sequenced(const ir::Node* e);
+    bool concat_in_turn(const ir::Concat& k) const;
     bool is_sub(std::string_view src, std::string_view dst) const;
     Code this_ref();
     Code outer_of(std::string_view qname);
@@ -321,9 +342,14 @@ private:
     struct Handler {
         std::string name;
         std::size_t loops = 0;
+        const ir::Node* finally_body = nullptr;   // what a jump out of it runs: a finally,
+        std::string close;                        // or the closing of a resource
+        std::size_t real_loops = 0;               // the loops around it, without the switches (what a continue counts)
     };
     std::vector<Handler> tries_;              // the handlers open around the statement
+    std::unordered_map<std::string, std::size_t> label_depth_;   // how many handlers were open at each label
     std::size_t loops_ = 0;
+    std::size_t real_loops_ = 0;
     bool vol_ = false;                        // locals volatile (the function has a try)
     std::unordered_map<std::string, std::string> captures_;
     bool static_ = false;

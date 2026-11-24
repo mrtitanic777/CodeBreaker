@@ -17,6 +17,7 @@
 // KERNEL.
 #pragma once
 
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <map>
@@ -69,7 +70,10 @@ private:
     void load() const;
 
     std::filesystem::path folder_;
-    mutable std::once_flag loaded_;
+    // (not a std::once_flag: after a call_once whose callable threw, MinGW-w64's libstdc++ blocks every later call_once of the
+    // process for good; this is the same once-until-it-succeeds, and a failed load is tried again)
+    mutable std::mutex load_mutex_;
+    mutable std::atomic<bool> loaded_{false};
     mutable std::map<std::string, Exports> modules_;   // by module name in capitals
 };
 

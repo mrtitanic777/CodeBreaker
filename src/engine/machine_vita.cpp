@@ -11,6 +11,7 @@
 #include "emulate/arm.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
+#include "engine/pcode_cpu.hpp"
 #include "formats/read.hpp"
 #include "platforms/vita.hpp"
 #include "formats/vita.hpp"
@@ -135,7 +136,7 @@ vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::Stat
                  static_cast<std::uint32_t>(at(state, "a3"))};
     options.s[0] = static_cast<std::uint32_t>(at(state, "s0"));
     const std::uint32_t address = (loaded->program.address_of(entry).value_or(entry) + loaded->base) | 1;   // (Thumb)
-    const emulate::arm::RunResult run = emulate::arm::run(bus, address, options);
+    const emulate::arm::RunResult run = pcode_cpu::call(bus, address, options);
 
     std::map<std::uint32_t, std::uint8_t> was(before.begin(), before.end());
     std::vector<std::string> changed;

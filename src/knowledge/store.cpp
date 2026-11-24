@@ -150,11 +150,6 @@ std::filesystem::path Store::default_path(const DataFolders& folders) {
     return folders.index;
 }
 
-std::filesystem::path Store::in_state(const std::filesystem::path& state_dir) {
-    if (const std::optional<std::string> env = fs::get_env("CB_KNOWLEDGE_DB"); env && !env->empty()) return fs::from_text(*env);
-    return state_dir / "db" / "knowledge.v2.sqlite";
-}
-
 // ---- the kept text ------------------------------------------------------------------------------------------------------
 //
 //     <kept>/given.jsonl                  {"platform":..,"kind":..,"key":..,"value":<json>,"source":..}   a row given
@@ -205,7 +200,7 @@ bool Store::keeps_text() const {
 
 void Store::keep_line(std::string_view file_name, const std::string& line) {
     const std::filesystem::path& kept = sources_.folders().kept;
-    if (kept.empty() || !keeps_text()) return;   // (a store of its own -- a test's, a migration's -- keeps nothing in config/)
+    if (kept.empty() || !keeps_text()) return;   // (a store of its own -- a test's -- keeps nothing in config/)
     fs::make_dirs(kept);
     std::ofstream out(kept / std::string(file_name), std::ios::binary | std::ios::app);
     out << line << '\n';
@@ -216,7 +211,7 @@ void Store::keep_line(std::string_view file_name, const std::string& line) {
 
 void Store::carry_kept() {
     const std::filesystem::path& kept = sources_.folders().kept;
-    if (kept.empty() || !keeps_text()) return;   // (a store of its own -- a test's, a migration's -- keeps nothing in config/)
+    if (kept.empty() || !keeps_text()) return;   // (a store of its own -- a test's -- keeps nothing in config/)
     std::lock_guard lock(mutex_);
     const std::string stamp = kept_stamp(kept);
     if (stamp.empty()) {   // no files yet: what this base learned and was given is written out, once

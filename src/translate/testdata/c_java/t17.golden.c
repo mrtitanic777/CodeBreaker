@@ -223,15 +223,15 @@ static Modern* Modern_new(void) {
 static int32_t Modern_area(jobject* s) {
 	Modern_Sq* q = NULL;
 	if (jrt_instanceof((jobject*)s, &Modern_Sq_class) && (jobject*)(q = (Modern_Sq*)jrt_cast((jobject*)s, &Modern_Sq_class)) != (jobject*)NULL) {
-		int32_t o1 = 0;
-		int32_t o2 = 0;
-		return (o1 = Modern_Sq_side_v((jobject*)q), o2 = Modern_Sq_side_v((jobject*)q), o1 * o2);
+		int32_t jrt_o1 = 0;
+		int32_t jrt_o2 = 0;
+		return (jrt_o1 = Modern_Sq_side_v((jobject*)q), jrt_o2 = Modern_Sq_side_v((jobject*)q), jrt_o1 * jrt_o2);
 	}
 	Modern_Circ* c = NULL;
 	if (jrt_instanceof((jobject*)s, &Modern_Circ_class) && (jobject*)(c = (Modern_Circ*)jrt_cast((jobject*)s, &Modern_Circ_class)) != (jobject*)NULL) {
-		int32_t o3 = 0;
-		int32_t o4 = 0;
-		return (o3 = 3 * Modern_Circ_r_v((jobject*)c), o4 = Modern_Circ_r_v((jobject*)c), o3 * o4);
+		int32_t jrt_o3 = 0;
+		int32_t jrt_o4 = 0;
+		return (jrt_o3 = 3 * Modern_Circ_r_v((jobject*)c), jrt_o4 = Modern_Circ_r_v((jobject*)c), jrt_o3 * jrt_o4);
 	}
 	return 0;
 }
@@ -319,24 +319,24 @@ static void Modern_main(jarray* args) {
 		}
 	}
 	jobject* twice = Lambda2_new();
-	int32_t o1 = 0;
-	jobject* o2 = NULL;
-	int32_t o3 = 0;
-	jrt_PrintStream_println_Str(jrt_System_out, (o1 = Modern_sum(xs), o2 = jrt_Function_apply_O(twice, jrt_box_I(21)), o3 = Modern_squares(10), jrt_concat(5, jrt_str_I(o1), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)o2), jrt_lit(&lit_7, u" ", 1), jrt_str_I(o3))));
-	Modern_Point* o4 = NULL;
-	int32_t o5 = 0;
-	Modern_Point* o6 = NULL;
-	Modern_Point* o7 = NULL;
-	bool o8 = 0;
-	jrt_PrintStream_println_Str(jrt_System_out, (o4 = Modern_Point_new(3, 4), o5 = Modern_Point_dist2_v((jobject*)Modern_Point_new(3, 4)), o8 = (o6 = Modern_Point_new(1, 2), o7 = Modern_Point_new(1, 2), jrt_equals((jobject*)o6, (jobject*)o7)), jrt_concat(5, jrt_str_O((jobject*)o4), jrt_lit(&lit_7, u" ", 1), jrt_str_I(o5), jrt_lit(&lit_7, u" ", 1), jrt_str_Z(o8))));
-	int32_t o9 = 0;
-	int32_t o10 = 0;
-	jstring* o11 = NULL;
-	jstring* o12 = NULL;
-	jrt_PrintStream_println_Str(jrt_System_out, (o9 = Modern_area((jobject*)Modern_Sq_new(4)), o10 = Modern_area((jobject*)Modern_Circ_new(2)), o11 = Modern_name((Modern_Color_clinit(), Modern_Color_BLUE)), o12 = Modern_words(jrt_lit(&lit_3, u"b", 1)), jrt_concat(7, jrt_str_I(o9), jrt_lit(&lit_7, u" ", 1), jrt_str_I(o10), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)o11), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)o12))));
-	jobject* o13 = NULL;
-	jobject* o14 = NULL;
-	jrt_PrintStream_println_Str(jrt_System_out, (o13 = jrt_Stream_map_O(jrt_Stream_filter_O(jrt_Collection_stream_(xs), Lambda4_new()), Lambda3_new()), o14 = jrt_Collectors_joining_O((jobject*)jrt_lit(&lit_8, u",", 1)), (jstring*)jrt_cast((jobject*)jrt_Stream_collect_O(o13, o14), &jrt_String_class)));
+	jstring* jrt_o1 = NULL;
+	jstring* jrt_o2 = NULL;
+	jstring* jrt_o3 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o1 = jrt_str_I(Modern_sum(xs)), jrt_o2 = jrt_str_O((jobject*)jrt_Function_apply_O(twice, jrt_box_I(21))), jrt_o3 = jrt_str_I(Modern_squares(10)), jrt_concat(5, jrt_o1, jrt_lit(&lit_7, u" ", 1), jrt_o2, jrt_lit(&lit_7, u" ", 1), jrt_o3)));
+	jstring* jrt_o4 = NULL;
+	jstring* jrt_o5 = NULL;
+	Modern_Point* jrt_o6 = NULL;
+	Modern_Point* jrt_o7 = NULL;
+	jstring* jrt_o8 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o4 = jrt_str_O((jobject*)Modern_Point_new(3, 4)), jrt_o5 = jrt_str_I(Modern_Point_dist2_v((jobject*)Modern_Point_new(3, 4))), jrt_o8 = jrt_str_Z((jrt_o6 = Modern_Point_new(1, 2), jrt_o7 = Modern_Point_new(1, 2), jrt_equals((jobject*)jrt_o6, (jobject*)jrt_o7))), jrt_concat(5, jrt_o4, jrt_lit(&lit_7, u" ", 1), jrt_o5, jrt_lit(&lit_7, u" ", 1), jrt_o8)));
+	int32_t jrt_o9 = 0;
+	int32_t jrt_o10 = 0;
+	jstring* jrt_o11 = NULL;
+	jstring* jrt_o12 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o9 = Modern_area((jobject*)Modern_Sq_new(4)), jrt_o10 = Modern_area((jobject*)Modern_Circ_new(2)), jrt_o11 = Modern_name((Modern_Color_clinit(), Modern_Color_BLUE)), jrt_o12 = Modern_words(jrt_lit(&lit_3, u"b", 1)), jrt_concat(7, jrt_str_I(jrt_o9), jrt_lit(&lit_7, u" ", 1), jrt_str_I(jrt_o10), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)jrt_o11), jrt_lit(&lit_7, u" ", 1), jrt_str_O((jobject*)jrt_o12))));
+	jobject* jrt_o13 = NULL;
+	jobject* jrt_o14 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o13 = jrt_Stream_map_O(jrt_Stream_filter_O(jrt_Collection_stream_(xs), Lambda4_new()), Lambda3_new()), jrt_o14 = jrt_Collectors_joining_O((jobject*)jrt_lit(&lit_8, u",", 1)), (jstring*)jrt_cast((jobject*)jrt_Stream_collect_O(jrt_o13, jrt_o14), &jrt_String_class)));
 	jobject* m = jrt_HashMap_new_();
 	{
 		jarray* j2x_a7 = jrt_String_split_Str(jrt_lit(&lit_9, u"x y x z y x", 11), jrt_lit(&lit_7, u" ", 1));
@@ -523,22 +523,22 @@ static const struct Modern_vt Modern_vt_ = {{jrt_Object_toString, jrt_Object_equ
 const jclass Modern_class = {"Modern", &jrt_Object_class, sizeof(Modern), &Modern_vt_, 0, 0, 0};
 
 static const struct Modern_Point_vt Modern_Point_vt_ = {{Modern_Point_toString, Modern_Point_equals, Modern_Point_hashCode}, (int32_t (*)(jobject*))Modern_Point_dist2, (int32_t (*)(jobject*))Modern_Point_x, (int32_t (*)(jobject*))Modern_Point_y};
-const jclass Modern_Point_class = {"Modern.Point", &jrt_Object_class, sizeof(Modern_Point), &Modern_Point_vt_, 0, 0, 0};
+const jclass Modern_Point_class = {"Modern$Point", &jrt_Object_class, sizeof(Modern_Point), &Modern_Point_vt_, 0, 0, 0};
 
-const jclass Modern_Shape_class = {"Modern.Shape", 0, 0, 0, 0, 0, 1};
+const jclass Modern_Shape_class = {"Modern$Shape", 0, 0, 0, 0, 0, 1};
 
 static const struct Modern_Sq_vt Modern_Sq_vt_ = {{Modern_Sq_toString, Modern_Sq_equals, Modern_Sq_hashCode}, (int32_t (*)(jobject*))Modern_Sq_side};
 static const struct Modern_Shape_vt Modern_Sq_as_Shape = {{Modern_Sq_toString, Modern_Sq_equals, Modern_Sq_hashCode}};
 static const jitab Modern_Sq_itabs[] = {{&Modern_Shape_class, &Modern_Sq_as_Shape}};
-const jclass Modern_Sq_class = {"Modern.Sq", &jrt_Object_class, sizeof(Modern_Sq), &Modern_Sq_vt_, JRT_ITABS(Modern_Sq_itabs), 0};
+const jclass Modern_Sq_class = {"Modern$Sq", &jrt_Object_class, sizeof(Modern_Sq), &Modern_Sq_vt_, JRT_ITABS(Modern_Sq_itabs), 0};
 
 static const struct Modern_Circ_vt Modern_Circ_vt_ = {{Modern_Circ_toString, Modern_Circ_equals, Modern_Circ_hashCode}, (int32_t (*)(jobject*))Modern_Circ_r};
 static const struct Modern_Shape_vt Modern_Circ_as_Shape = {{Modern_Circ_toString, Modern_Circ_equals, Modern_Circ_hashCode}};
 static const jitab Modern_Circ_itabs[] = {{&Modern_Shape_class, &Modern_Circ_as_Shape}};
-const jclass Modern_Circ_class = {"Modern.Circ", &jrt_Object_class, sizeof(Modern_Circ), &Modern_Circ_vt_, JRT_ITABS(Modern_Circ_itabs), 0};
+const jclass Modern_Circ_class = {"Modern$Circ", &jrt_Object_class, sizeof(Modern_Circ), &Modern_Circ_vt_, JRT_ITABS(Modern_Circ_itabs), 0};
 
 static const struct Modern_Color_vt Modern_Color_vt_ = {{jrt_Enum_toString, jrt_Object_equals, jrt_Object_hashCode}};
-const jclass Modern_Color_class = {"Modern.Color", &jrt_Enum_class, sizeof(Modern_Color), &Modern_Color_vt_, 0, 0, 0};
+const jclass Modern_Color_class = {"Modern$Color", &jrt_Enum_class, sizeof(Modern_Color), &Modern_Color_vt_, 0, 0, 0};
 
 
 int main(int argc, char** argv) {

@@ -136,6 +136,7 @@ CB_TEST("source.nes_writer.a_cartridge_without_chr_or_with_a_trainer", [] {
     const std::string config = fs::read_text(*r.config);
     CB_CHECK(config.find("TRAINER: start = $7000, size = $0200") != std::string::npos);
     CB_CHECK(config.find("CHR:") == std::string::npos);
+    CB_CHECK(r.built);   // (a failed rebuild fails here, not in the read below)
     CB_CHECK(fs::read_file(*r.built) == image);
 });
 

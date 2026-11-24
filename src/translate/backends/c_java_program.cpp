@@ -32,7 +32,11 @@ void helper_params(const std::vector<std::string>& ps, std::string& params, std:
     args = join_commas(a);
 }
 
-std::string class_text_name(const ClassInfo& cls) { return std::string(text::trim(cls.qname, "<>")); }
+// The name Java gives the class at run time: a member class is Outer$Inner.
+std::string class_text_name(const ClassInfo& cls) {
+    if (cls.outer == nullptr || cls.local || cls.anon || !cls.qname.starts_with(cls.outer->qname + ".")) return std::string(text::trim(cls.qname, "<>"));
+    return class_text_name(*cls.outer) + "$" + cls.qname.substr(cls.outer->qname.size() + 1);
+}
 
 bool names_object_method(const std::optional<std::string>& name) {
     return name && (*name == "toString" || *name == "equals" || *name == "hashCode");
@@ -47,19 +51,42 @@ Program::Program(Arena& arena, std::span<ir::Node* const> units, std::optional<s
     model_->name_anonymous();
     // a method name the program declares with more than one parameter list is written with its parameter codes
     std::map<std::string, std::set<std::string>> signatures;
+    std::map<std::string, std::map<std::string, std::set<std::string>>> exact;   // name: its codes: the parameter classes behind them
     for (const auto& [qname, cls] : model_->classes()) {
         by_cname_.emplace(cls->cname, cls);
+        for (const ir::Node* x : cls->members()) {
+            if (const auto* f = ir::get<ir::FieldDecl>(x); f != nullptr && f->sym && f->sym->is_static) static_names_.insert(f->sym->name);
+            if (const auto* e = ir::get<ir::EnumConst>(x); e != nullptr && e->sym) static_names_.insert(e->sym->name);
+        }
         for (const ir::Node* mn : cls->methods()) {
             const ir::MethodDecl& m = method_of(mn);
             if (m.kind != "method") continue;
             std::vector<std::string> codes;
             for (const ir::Node* pn : m.params) codes.push_back(type_code(jmodel::erase(param_of(pn).type)));
             signatures[m.name.value_or("")].insert(join_commas(codes));
+            std::string classes;
+            for (const ir::Node* pn : m.params) classes += exact_code(jmodel::erase(param_of(pn).type)) + ",";
+            exact[m.name.value_or("")][join_commas(codes)].insert(std::move(classes));
         }
     }
     for (const auto& [name, sigs] : signatures) {
         if (sigs.size() > 1) overloaded_.insert(name);
     }
+    for (const auto& [name, by_code] : exact) {   // foo(Item) and foo(Block) have one code: those are told apart by their classes
+        if (std::any_of(by_code.begin(), by_code.end(), [](const auto& entry) { return entry.second.size() > 1; })) {
+            overloaded_.insert(name);
+            by_class_.insert(name);
+        }
+    }
+}
+
+// A parameter's code, naming its class where the code alone says only "an object".
+std::string Program::exact_code(const ir::TypeP& type) const {
+    std::string code = type_code(type);
+    ir::TypeP inner = type;
+    while (inner && kind_of(inner) == "array") inner = elem_of(inner);
+    if ((code == "O" || code == "OA") && inner && kind_of(inner) == "class") code += ident(after_dot(class_name(inner)));
+    return code;
 }
 
 // ---- names and types
@@ -73,7 +100,10 @@ std::string Program::mname(std::string_view name, std::span<const ir::TypeP> par
     std::string base = ident(name);
     if (overloaded_.contains(std::string(name))) {
         base += '_';
-        for (const ir::TypeP& p : params) base += type_code(jmodel::erase(p));
+        const bool classes = by_class_.contains(std::string(name));
+        for (const ir::TypeP& p : params) base += classes ? exact_code(jmodel::erase(p)) : type_code(jmodel::erase(p));
+    } else if (name == "init" || name == "new" || name == "finit" || name == "clinit" || static_names_.contains(std::string(name))) {   // Java keeps fields and methods apart, and a method may be named as the functions C makes for a class
+        base += "_m";
     }
     return base;
 }
@@ -132,10 +162,17 @@ Sig Program::sig(const ClassInfo& cls, const ir::Node* method) const {
 
 std::optional<std::string> Program::base_struct(const ClassInfo& cls) const {
     if (cls.kind == "enum") return "jrt_Enum";
-    if (cls.base && !cls.base->empty() && *cls.base != jmodel::kObject) {
+    if (cls.base && !cls.base->empty() && *cls.base != jmodel::kObject && *cls.base != "java.lang.Number") {   // (a Number is held as an Object)
         if (const ClassInfo* b = model_->info(*cls.base)) return b->cname;
         if (is_library_throwable(*cls.base)) return "jrt_Throwable";
         if (*cls.base == "java.lang.Enum") return "jrt_Enum";
+        if (const auto runtime = runtime_collection_base(*cls.base)) {   // its object begins with the runtime's; what the runtime calls through its own tables it cannot see overridden
+            for (const ir::Node* mn : cls.methods()) {
+                const ir::MethodDecl& m = method_of(mn);
+                if (m.kind == "method" && !is_static(m) && !is_object_method(m)) throw Decline("a class overriding a method of the runtime class " + *cls.base + ": " + m.name.value_or(""));
+            }
+            return std::string(runtime->cstruct);
+        }
         throw Decline("extends the runtime class " + *cls.base);
     }
     return std::nullopt;
@@ -143,7 +180,7 @@ std::optional<std::string> Program::base_struct(const ClassInfo& cls) const {
 
 std::string Program::base_class_ref(const ClassInfo& cls) const {
     if (cls.kind == "enum") return "&jrt_Enum_class";
-    if (cls.base && !cls.base->empty() && *cls.base != jmodel::kObject) return class_ref(*cls.base);
+    if (cls.base && !cls.base->empty() && *cls.base != jmodel::kObject && *cls.base != "java.lang.Number") return class_ref(*cls.base);
     return "&jrt_Object_class";
 }
 
@@ -165,6 +202,9 @@ std::string Program::lit(std::string_view text) {
 }
 
 bool Program::needs_clinit(const ClassInfo& cls) const {
+    if (cls.base) {   // making or using a class initialises the classes it extends first
+        if (const ClassInfo* base = model_->info(*cls.base); base != nullptr && needs_clinit(*base)) return true;
+    }
     for (const ir::Node* x : cls.members()) {
         if (const auto* m = ir::get<ir::MethodDecl>(x); m != nullptr && m->kind == "static_init") return true;
         if (const auto* f = ir::get<ir::FieldDecl>(x); f != nullptr && f->sym && f->sym->is_static && f->init != nullptr &&
@@ -223,6 +263,9 @@ std::array<std::string, 3> Program::object_slots(const ClassInfo& cls) const {
         const ClassInfo* c = model_->info(*q);
         if (c == nullptr) {
             if (is_library_throwable(*q)) impl[0] = "jrt_Throwable_toString";
+            if (const auto runtime = runtime_collection_base(*q)) {
+                for (std::size_t i = 0; i < 3; ++i) impl[i] = std::format("jrt_{}_{}", runtime->objects, i == 0 ? "toString" : i == 1 ? "equals" : "hashCode");
+            }
             if (*q == "java.lang.Enum") impl[0] = "jrt_Enum_toString";
             break;
         }
@@ -254,7 +297,7 @@ std::vector<IMethod> Program::iface_methods(std::string_view qname) const {
             return {IMethod{"hasNext", {}, "bool", "hasNext", {}}, IMethod{"next", {}, std::string(kObj), "next", {}}};
         if (qname == "java.lang.Comparable")
             return {IMethod{"compareTo", {std::string(kObj)}, "int32_t", "compareTo", {ir::typevar_type("T")}}};
-        if (qname == "java.lang.CharSequence") return {};
+        if (qname == "java.lang.CharSequence" || qname == "java.lang.AutoCloseable" || qname == "java.io.Closeable") return {};
         throw Decline("interface " + std::string(qname));
     }
     std::vector<IMethod> out;
@@ -290,13 +333,21 @@ std::vector<std::string> Program::all_ifaces(const ClassInfo& cls) const {
     return out;
 }
 
-std::optional<std::string> Program::find_impl(const ClassInfo& cls, std::string_view java_name, std::size_t parameters) const {
+std::optional<std::string> Program::find_impl(const ClassInfo& cls, std::string_view java_name, std::size_t parameters, const std::string* slot) const {
+    if (slot != nullptr) {
+        if (auto exact = find_impl_of(cls, java_name, parameters, slot)) return exact;
+    }
+    return find_impl_of(cls, java_name, parameters, nullptr);
+}
+
+std::optional<std::string> Program::find_impl_of(const ClassInfo& cls, std::string_view java_name, std::size_t parameters, const std::string* slot) const {
     const auto implementing = [&](const ClassInfo& c) -> std::optional<std::string> {
         for (const ir::Node* mn : c.methods()) {
             const ir::MethodDecl& m = method_of(mn);
             if (m.kind == "method" && m.name == java_name && has_body(m) && m.params.size() == parameters && !is_static(m)) {
                 const Sig s = sig(c, mn);
-                return std::format("{}_{}", c.cname, mname(*m.name, s.eps));
+                const std::string name = mname(*m.name, s.eps);
+                if (slot == nullptr || name == *slot) return std::format("{}_{}", c.cname, name);
             }
         }
         return std::nullopt;
@@ -316,14 +367,49 @@ std::optional<std::string> Program::find_impl(const ClassInfo& cls, std::string_
     return std::nullopt;
 }
 
+// The interface tables of a lambda: its function in the one abstract slot, each default method in its own, for the interface and those it extends.
+Lines Program::lambda_tables(const std::string& name, const ClassInfo& iface, std::string_view java_name, std::size_t parameters) const {
+    Lines out;
+    std::vector<std::string> all{iface.qname}, itabs;
+    for (std::string& q : all_ifaces(iface)) all.push_back(std::move(q));
+    int number = 0;
+    for (const std::string& q : all) {
+        std::string impls;
+        for (const IMethod& x : iface_methods(q)) {
+            std::string impl = name + "_fn";
+            if (x.java != java_name || x.eps.size() != parameters) {
+                std::optional<std::string> found = find_impl(iface, x.java, x.eps.size(), &x.name);
+                if (!found) throw Decline(std::format("a lambda of {} leaves {} without a body", iface.qname, x.java));
+                impl = std::move(*found);
+            }
+            impls += std::format(", ({} (*)({})){}", x.r, join_commas(with_self(x.ps)), impl);
+        }
+        const ClassInfo* qi = model_->info(q);
+        const std::string vt = qi != nullptr ? std::format("struct {}_vt", qi->cname) : std::format("jrt_{}_vt", after_dot(q));
+        const std::string table = std::format("{}_vt{}", name, number++);
+        out.push_back(std::format("static const {} {} = {{{{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}}{}}};", vt, table, impls));
+        itabs.push_back(std::format("{{{}, &{}}}", class_ref(q), table));
+    }
+    out.push_back(std::format("static const jitab {}_itabs[] = {{{}}};", name, join_commas(itabs)));
+    return out;
+}
+
 // ---- constructors
 std::string Program::ctor_name(const ClassInfo& cls, const ir::Node* ctor) const {
     std::size_t n = 0;
     for (const ir::Node* x : cls.methods()) n += method_of(x).kind == "ctor";
     if (n <= 1) return cls.cname + "_init";
     CB_ASSERT(ctor != nullptr, "a class with several constructors names the one it means");
-    std::string codes;
-    for (const ir::Node* pn : method_of(ctor).params) codes += type_code(jmodel::erase(param_of(pn).type));
+    const auto codes_of = [&](const ir::Node* c, bool classes) {
+        std::string text;
+        for (const ir::Node* pn : method_of(c).params) text += classes ? exact_code(jmodel::erase(param_of(pn).type)) : type_code(jmodel::erase(param_of(pn).type));
+        return text;
+    };
+    bool classes = false;   // (two constructors with one code are told apart by their parameters' classes)
+    for (const ir::Node* x : cls.methods()) {
+        classes = classes || (x != ctor && method_of(x).kind == "ctor" && method_of(x).params.size() == method_of(ctor).params.size() && codes_of(x, false) == codes_of(ctor, false));
+    }
+    std::string codes = codes_of(ctor, classes);
     return std::format("{}_init_{}", cls.cname, codes.empty() ? "V" : codes);
 }
 
@@ -574,12 +660,22 @@ Lines Program::tables(const ClassInfo& cls) {
     for (const Slot& s : slots(cls)) slot_text += std::format(", ({} (*)({})){}", s.r, join_commas(with_self(s.ps)), s.impl);
     out.push_back(std::format("static const struct {}_vt {}_vt_ = {{{}{}}};", cls.cname, cls.cname, objs, slot_text));
     std::vector<std::string> itabs;
+    std::vector<std::string> from_runtime;   // the interfaces a runtime collection the class extends already answers
+    for (std::optional<std::string> up = cls.base; up && !up->empty() && *up != jmodel::kObject;) {
+        const ClassInfo* b = model_->info(*up);
+        if (b == nullptr) {
+            if (runtime_collection_base(*up)) from_runtime = model_->ancestors(*up);
+            break;
+        }
+        up = b->base;
+    }
     for (const std::string& q : all_ifaces(cls)) {
+        if (std::find(from_runtime.begin(), from_runtime.end(), q) != from_runtime.end()) continue;
         const std::vector<IMethod> ms = iface_methods(q);
         if (q == "java.lang.Comparable" && !find_impl(cls, "compareTo", 1)) continue;   // an enum's: jrt_natural compares by ordinal
         std::string impls;
         for (const IMethod& x : ms) {
-            std::optional<std::string> impl = find_impl(cls, x.java, x.eps.size());
+            std::optional<std::string> impl = find_impl(cls, x.java, x.eps.size(), &x.name);
             const bool is_abstract = std::find(cls.decl->mods.begin(), cls.decl->mods.end(), "abstract") != cls.decl->mods.end();
             if (!impl && is_abstract) impl = "0";   // never reached: an instance is of a subclass, whose own table is found first
             if (!impl) throw Decline(std::format("{} does not implement {}.{}", cls.cname, q, x.java));

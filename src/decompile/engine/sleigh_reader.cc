@@ -52,7 +52,7 @@ public:
 // The way out of an instruction, from its p-code.
 class FlowOf : public ghidra::PcodeEmit {
 public:
-    FlowOf(std::uint64_t here, std::uint64_t next) : here_(here), next_(next) {}
+    FlowOf(std::uint64_t here, std::uint64_t next, std::uint64_t unit = 1) : here_(here), next_(next), unit_(unit) {}   // (unit: the bytes of one address of the code space)
     void dump(const ghidra::Address&, ghidra::OpCode op, ghidra::VarnodeData*, ghidra::VarnodeData* vars, ghidra::int4) override {
         // A conditional branch to the instruction itself (a repeat: LDIR, REP MOVS) or to the next one, with more p-code after it (ARM's
         // condition on any instruction, a conditional RET's test), is no way out: it makes the way out after it conditional. With
@@ -65,16 +65,16 @@ public:
         const bool label = vars != nullptr && vars[0].space->getType() == ghidra::IPTR_CONSTANT;
         switch (op) {
             case ghidra::CPUI_BRANCH:
-                if (!label) set(Flow::Jump, vars[0].offset);
+                if (!label) set(Flow::Jump, vars[0].offset / unit_);   // (a fixed address of a word-addressed space comes as bytes)
                 break;
             case ghidra::CPUI_CBRANCH:
                 if (label) conditional = true;
                 else {
-                    set(Flow::Branch, vars[0].offset);
-                    if (vars[0].offset == here_ || vars[0].offset == next_) pending_ = true;
+                    set(Flow::Branch, vars[0].offset / unit_);
+                    if (vars[0].offset / unit_ == here_ || vars[0].offset / unit_ == next_) pending_ = true;
                 }
                 break;
-            case ghidra::CPUI_CALL: set(Flow::Call, vars[0].offset); break;
+            case ghidra::CPUI_CALL: set(Flow::Call, vars[0].offset / unit_); break;
             case ghidra::CPUI_CALLIND: set(Flow::CallIndirect, std::nullopt); break;
             case ghidra::CPUI_RETURN: set(Flow::Return, std::nullopt); break;
             case ghidra::CPUI_BRANCHIND: set(Flow::Indirect, std::nullopt); break;
@@ -96,7 +96,7 @@ private:
         flow = f;
         target = t;
     }
-    std::uint64_t here_, next_;
+    std::uint64_t here_, next_, unit_;
     bool pending_ = false;
 };
 
@@ -143,14 +143,14 @@ Reader::~Reader() = default;
 
 Instruction Reader::at(const std::uint8_t* code, std::size_t size, std::uint64_t base, std::uint64_t address) const {
     std::lock_guard hold(impl_->lock);
-    impl_->window.set(code, size, base);
+    const std::uint64_t unit = static_cast<std::uint64_t>(impl_->trans->getDefaultCodeSpace()->getWordSize());
+    impl_->window.set(code, size, base * unit);   // (the translator's addresses are bytes, in a word-addressed space too)
     if (impl_->seen_code != code || impl_->seen_size != size || impl_->seen_base != base) {
         impl_->trans->forgetParses();
         impl_->parsed.clear();
         impl_->seen_code = code, impl_->seen_size = size, impl_->seen_base = base;
     }
     ghidra::AddrSpace* space = impl_->trans->getDefaultCodeSpace();
-    const std::uint64_t unit = static_cast<std::uint64_t>(space->getWordSize());
     Instruction ins;
     ins.address = address;
     const std::uint64_t at = (address - base) * unit;
@@ -164,12 +164,12 @@ Instruction Reader::at(const std::uint8_t* code, std::size_t size, std::uint64_t
     impl_->parsed[address] = here;
     Text text;
     try {
-        const ghidra::Address addr(space, address);
+        const ghidra::Address addr(space, address * unit);
         ins.length = static_cast<std::size_t>(impl_->trans->printAssembly(text, addr));
         ins.mnemonic = text.mnemonic;
         ins.operands = text.operands;
         if (at + ins.length > size) return Instruction{address};
-        FlowOf flow(address, address + ins.length / unit);
+        FlowOf flow(address, address + ins.length / unit, unit);
         impl_->trans->oneInstruction(flow, addr);
         ins.flow = flow.result();
         ins.target = flow.target;
@@ -188,16 +188,16 @@ std::vector<Instruction> Reader::read(const std::uint8_t* code, std::size_t size
 std::vector<Instruction> Reader::read(const std::uint8_t* code, std::size_t size, std::uint64_t base, std::size_t count,
                                       const std::vector<std::pair<std::string, int>>& context) const {
     std::lock_guard hold(impl_->lock);
-    impl_->window.set(code, size, base);
+    ghidra::AddrSpace* space = impl_->trans->getDefaultCodeSpace();
+    // an address in the space's units (a word-addressed processor counts words, not bytes); the translator's own addresses are bytes
+    const std::uint64_t unit = static_cast<std::uint64_t>(space->getWordSize());
+    impl_->window.set(code, size, base * unit);
     impl_->trans->forgetParses();   // (other bytes may have been read at these addresses before)
     impl_->parsed.clear();
-    ghidra::AddrSpace* space = impl_->trans->getDefaultCodeSpace();
-    // an address in the space's units (a word-addressed processor counts words, not bytes)
-    const std::uint64_t unit = static_cast<std::uint64_t>(space->getWordSize());
     if (!context.empty() && size != 0) {
         try {
             for (const auto& [variable, value] : context) {
-                impl_->context.setVariableRegion(variable, ghidra::Address(space, base), ghidra::Address(space, base + (size + 15) / unit), static_cast<ghidra::uintm>(value));
+                impl_->context.setVariableRegion(variable, ghidra::Address(space, base * unit), ghidra::Address(space, base * unit + size + 15), static_cast<ghidra::uintm>(value));
             }
         } catch (const ghidra::LowlevelError& e) {
             throw std::runtime_error(std::string("context: ") + e.explain);
@@ -209,11 +209,11 @@ std::vector<Instruction> Reader::read(const std::uint8_t* code, std::size_t size
         ins.address = base + at / unit;
         Text text;
         try {
-            const ghidra::Address addr(space, base + at / unit);
+            const ghidra::Address addr(space, base * unit + at);
             ins.length = static_cast<std::size_t>(impl_->trans->printAssembly(text, addr));   // (in bytes, whatever the space's unit)
             ins.mnemonic = text.mnemonic;
             ins.operands = text.operands;
-            FlowOf flow(base + at / unit, base + (at + ins.length) / unit);
+            FlowOf flow(base + at / unit, base + (at + ins.length) / unit, unit);
             impl_->trans->oneInstruction(flow, addr);
             ins.flow = flow.result();
             ins.target = flow.target;

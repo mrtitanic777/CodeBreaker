@@ -35,14 +35,14 @@ struct Shapes : virtual Object {
 };
 
 struct Shapes_Shape : virtual Object {
-	const char16_t* jclass_() const override { return u"Shapes.Shape"; }
+	const char16_t* jclass_() const override { return u"Shapes$Shape"; }
 	virtual double area() = 0;
 	virtual ref<String> describe();
 	virtual ref<String> name() = 0;
 };
 
 struct Shapes_Circle : virtual Object, virtual Shapes_Shape {
-	const char16_t* jclass_() const override { return u"Shapes.Circle"; }
+	const char16_t* jclass_() const override { return u"Shapes$Circle"; }
 	double r_{};
 	Shapes_Circle(double r);
 	virtual double area();
@@ -55,7 +55,7 @@ struct Shapes_Circle : virtual Object, virtual Shapes_Shape {
 };
 
 struct Shapes_Rect : virtual Object, virtual Shapes_Shape {
-	const char16_t* jclass_() const override { return u"Shapes.Rect"; }
+	const char16_t* jclass_() const override { return u"Shapes$Rect"; }
 	int32_t w_{};
 	int32_t h_{};
 	void ctor_(int32_t w, int32_t h);
@@ -70,7 +70,7 @@ struct Shapes_Rect : virtual Object, virtual Shapes_Shape {
 };
 
 struct Shapes_Square : virtual Object, virtual Shapes_Shape {
-	const char16_t* jclass_() const override { return u"Shapes.Square"; }
+	const char16_t* jclass_() const override { return u"Shapes$Square"; }
 	int32_t side_{};
 	Shapes_Square(int32_t side);
 	virtual double area();
@@ -83,7 +83,7 @@ struct Shapes_Square : virtual Object, virtual Shapes_Shape {
 };
 
 struct Shapes_Size : Enum {
-	const char16_t* jclass_() const override { return u"Shapes.Size"; }
+	const char16_t* jclass_() const override { return u"Shapes$Size"; }
 	static inline ref<Shapes_Size> SMALL;
 	static inline ref<Shapes_Size> MEDIUM;
 	static inline ref<Shapes_Size> LARGE;

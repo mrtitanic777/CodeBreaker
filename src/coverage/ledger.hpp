@@ -161,7 +161,7 @@ std::string percent(std::int64_t a, std::int64_t b);
 // Rows of columns, the first left-aligned and the rest right-aligned, trailing blanks cut; the first row is the head.
 std::vector<std::string> table(const std::vector<std::string>& head, const std::vector<std::vector<std::string>>& rows);
 std::vector<std::string> render(const Report& report, bool every = false);
-// "measured", "part measured", "not measured now" or "untouched".
+// "measured", "part measured", "no code" (in the store, nothing in it to measure), "not measured now" or "untouched".
 std::string_view state_of(const Row& row);
 // One row per module, CRLF line ends; -> how many.
 std::size_t write_csv(const Report& report, const std::filesystem::path& path);

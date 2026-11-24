@@ -91,7 +91,7 @@ void unpack(const std::filesystem::path& xex, const std::filesystem::path& out);
 // Where unpacked images are kept (cb::paths will own this; callers pass it), and what unpacks them (the engine; a test may
 // hand its own).
 struct Tools {
-    std::filesystem::path unpacked_dir;   // state/unpacked/xex
+    std::filesystem::path unpacked_dir;   // <state>/unpacked/xex
     Unpacker unpacker = unpack;
 };
 

@@ -1,0 +1,56 @@
+/****************************************************************************
+*
+*                            Open Watcom Project
+*
+* Copyright (c) 2002-2025 The Open Watcom Contributors. All Rights Reserved.
+*    Portions Copyright (c) 1983-2002 Sybase, Inc. All Rights Reserved.
+*
+*  ========================================================================
+*
+*    This file contains Original Code and/or Modifications of Original
+*    Code as defined in and that are subject to the Sybase Open Watcom
+*    Public License version 1.0 (the 'License'). You may not use this file
+*    except in compliance with the License. BY USING THIS FILE YOU AGREE TO
+*    ALL TERMS AND CONDITIONS OF THE LICENSE. A copy of the License is
+*    provided with the Original Code and Modifications, and is also
+*    available at www.sybase.com/developer/opensource.
+*
+*    The Original Code and all software distributed under the License are
+*    distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+*    EXPRESS OR IMPLIED, AND SYBASE AND ALL CONTRIBUTORS HEREBY DISCLAIM
+*    ALL SUCH WARRANTIES, INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF
+*    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR
+*    NON-INFRINGEMENT. Please see the License for the specific language
+*    governing rights and limitations under the License.
+*
+*  ========================================================================
+*
+* Description:  internal DTA structure declaration
+*               definition of macros for manipulation with structure members
+*
+****************************************************************************/
+
+/*
+ * DTA in directory/find structure is used only by DOS version of appropriate
+ * functions. If DOS LFN version of _dos_find... functions are used then
+ * conversion between LFN DTA <=> SFN DTA is made if access DOS
+ * "find first/next" SFN functions.
+ * For other systems it is used internaly to hold auxiliary data
+ * The length of DTA is 21 bytes, that any internal structure must
+ * respect this limit
+ */
+
+#pragma once
+
+#include "pushpck1.h"
+typedef struct __nt_dta {
+    HANDLE      handle;
+    time_t      time;
+    unsigned    attr;
+} __nt_dta;
+#include "poppck.h"
+
+inline void *&DtaHandleOf( char *x ) { return ((reinterpret_cast<__nt_dta *>(x))->handle); }
+inline long long &DtaTimeOf( char *x ) { return ((reinterpret_cast<__nt_dta *>(x))->time); }
+
+

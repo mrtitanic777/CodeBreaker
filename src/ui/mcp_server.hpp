@@ -14,9 +14,9 @@
 //
 //     reading     nothing changes: triage, describe, inspect, strings, hex_dump, resource, modules, coverage, progress, functions,
 //                 function, names, identify, demangle, commands, command_help; the code itself: disasm, xrefs; what was made:
-//                 reach_results, projects, project, source_tree, read_file (only inside Converted/, state/, this checkout and the source
+//                 reach_results, projects, project, source_tree, read_file (only inside Converted/, the state folder, this checkout and the source
 //                 tree); worked out on asking, kept an hour: decompile_function, compare_versions, diff_function
-//     jobs        any command of `codebreaker` run as a process of its own, below normal priority, its output kept in state/ui_jobs/:
+//     jobs        any command of `codebreaker` run as a process of its own, below normal priority, its output kept in <state>/ui_jobs/:
 //                 run_command, jobs, job, job_file, stop_job. At most two at a time, at most one `measure`.
 //     writing     name_function: give a function's body a name in the function store; every module holding the same body then has it
 //

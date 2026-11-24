@@ -56,13 +56,18 @@ std::string MethodWriter::args(std::span<ir::Node* const> list, const std::vecto
     if (sym && sym->varargs && !params.empty()) {
         bool direct = false;
         if (list.size() == params.size()) {
-            const std::string_view last = kind_of(type_of(list.back()));
+            const ir::TypeP given = type_of(list.back());
+            const std::string_view last = kind_of(given);
             direct = last == "array" || last == "null";
+            // an int[] given to `T...` is one element, not the array of them
+            if (last == "array" && !sym->params.empty() && kind_of(sym->params.back()) == "array" && !prim_ctype(kind_of(elem_of(given))).empty() &&
+                prim_ctype(kind_of(elem_of(sym->params.back()))).empty())
+                direct = false;
         }
         packed = !direct;
     }
     if (packed) {
-        if (lib) throw Decline("library varargs " + sym->name);
+        if (lib && !(sym->owner == "java.util.Arrays" && sym->name == "asList")) throw Decline("library varargs " + sym->name);
         const std::size_t fixed = params.size() - 1;
         std::vector<std::string> head;
         for (std::size_t i = 0; i < std::min(fixed, list.size()); ++i) head.push_back(converted(list[i], params[i]));
@@ -92,10 +97,21 @@ std::string MethodWriter::args(std::span<ir::Node* const> list, const std::vecto
 Code MethodWriter::lib_call(const ir::Node& n, const ir::Call& k) {
     const ir::Sym& s = *k.sym;
     if (!s.owner) throw Decline("a library call with no owner");
-    const std::string& s_owner = *s.owner;
+    std::string s_owner = *s.owner;
+    if (const ClassInfo* held = p_.model().info(s_owner)) {   // a method a class of the program takes from the runtime collection it extends
+        std::optional<std::string> up = held->base;
+        while (up && !up->empty()) {
+            const ClassInfo* b = p_.model().info(*up);
+            if (b == nullptr) break;
+            up = b->base;
+        }
+        if (up && runtime_collection_base(*up)) s_owner = *up;
+    }
     std::string owner = std::string(jmodel::runtime_name(s_owner).value_or(after_dot(s_owner)));
     if (s_owner == "java.util.Map.Entry") owner = "MapEntry";
     if ((s_owner == "java.util.List" || s_owner == "java.util.Set" || s_owner == "java.util.Map") && s.name == "of") {
+        if (k.args.size() == 1 && s_owner != "java.util.Map" && kind_of(type_of(k.args[0])) == "array" && s.varargs)
+            throw Decline(owner + ".of of an array");
         std::vector<std::string> values;
         for (const ir::Node* a : k.args) {
             const Code c = expr(a);
@@ -103,16 +119,32 @@ Code MethodWriter::lib_call(const ir::Node& n, const ir::Call& k) {
         }
         return {std::format("jrt_{}_of({}{})", owner, values.size(), comma_list(values)), std::string(kObj)};
     }
-    if (s_owner == "java.lang.String" && s.name == "format") {
-        if (k.args.empty()) throw Decline("String.format without a format");
-        std::vector<std::string> values;
-        for (std::size_t i = 1; i < k.args.size(); ++i) {
-            const Code c = expr(k.args[i]);
-            values.push_back(conv(c.code, c.ctype, kObj));
+    const bool to_stream = s_owner == "java.io.PrintStream" && (s.name == "printf" || s.name == "format");
+    const bool formatted = s_owner == "java.lang.String" && s.name == "formatted";
+    if ((s_owner == "java.lang.String" && s.name == "format") || to_stream || formatted) {
+        const std::size_t first = formatted ? 0 : 1;   // (`text.formatted(a)`: the text is the receiver)
+        if (k.args.size() < first) throw Decline("String.format without a format");
+        // one argument that is an array of objects is the argument list; an array of numbers is one argument
+        bool as_array = false;
+        if (k.args.size() == first + 1 && kind_of(type_of(k.args[first])) == "array") {
+            const ir::TypeP held = type_of(k.args[first]);
+            const auto* arr = std::get_if<ir::ArrayType>(&held->body);
+            as_array = arr != nullptr && arr->elem && arr->elem->kind() == "class";
         }
-        const Code format = expr(k.args[0]);
-        return {std::format("jrt_String_format({}, {}{})", conv(format.code, format.ctype, kStr), values.size(), comma_list(values)),
-                std::string(kStr)};
+        if (!formatted && kind_of(type_of(k.args[0])) != "class") throw Decline("a format with a Locale");
+        if (!formatted && class_name(type_of(k.args[0])) != "java.lang.String") throw Decline("a format with a Locale");
+        std::string stream;
+        if (to_stream) stream = receiver(k.target, k.sym).code;
+        const Code format = formatted ? receiver(k.target, k.sym) : expr(k.args[0]);
+        std::vector<std::string> values;
+        for (std::size_t i = first; i < k.args.size(); ++i) {
+            const Code c = expr(k.args[i]);
+            values.push_back(as_array ? c.code : conv(c.code, c.ctype, kObj));
+        }
+        const std::string text = as_array ? std::format("jrt_String_format_A({}, {})", conv(format.code, format.ctype, kStr), values[0])
+                                          : std::format("jrt_String_format({}, {}{})", conv(format.code, format.ctype, kStr), values.size(), comma_list(values));
+        if (to_stream) return {std::format("jrt_print_to({}, {})", stream, text), "void*"};
+        return {text, std::string(kStr)};
     }
     // toString, equals and hashCode of any object go through the runtime's dispatch
     if ((s.name == "toString" || s.name == "equals" || s.name == "hashCode") && s.params.size() == (s.name == "equals" ? 1u : 0u) &&
@@ -162,6 +194,11 @@ Code MethodWriter::on(const ir::Node& n, const ir::Call& k) {
     const ClassInfo* owner = p_.model().info(s.owner.value_or(""));
     if (!target && owner != nullptr && owner->kind == "enum" && s.name == "values" && k.args.empty())
         return {std::format("{}_values()", owner->cname), std::string(kArr)};
+    if (!target && owner != nullptr && owner->kind == "enum" && s.name == "valueOf" && k.args.size() == 1) {
+        const Code name = expr(k.args[0]);
+        return {std::format("(({}*)jrt_Enum_valueOf({}_values(), \"{}\", {}))", owner->cname, owner->cname, owner->qname, conv(name.code, name.ctype, kStr)),
+                owner->cname + "*"};
+    }
     if (!target) return lib_call(n, k);
     const ClassInfo* mci = target->cls;
     const ir::MethodDecl& m2 = method_of(target->method);
@@ -229,7 +266,14 @@ Code MethodWriter::on(const ir::Node& n, const ir::New& k) {
     }
     const std::string as = args(k.args, parameter_types, k.sym);
     std::vector<std::string> pre;
-    if (cls->needs_outer) pre.push_back(k.outer != nullptr ? expr(k.outer).code : outer_of(cls->outer->qname).code);
+    if (cls->needs_outer) {
+        if (k.outer != nullptr) {   // `missing.new Inner()` throws
+            const Code outer = expr(k.outer);
+            pre.push_back(std::format("({})jrt_nn({})", outer.ctype, outer.code));
+        } else {
+            pre.push_back(outer_of(cls->outer->qname).code);
+        }
+    }
     const std::string name = target ? text::replace_first(p_.ctor_name(*cls, target->method), "_init", "_new") : cls->cname + "_new";
     if (!as.empty()) pre.push_back(as);
     return {std::format("{}({})", name, join_commas(pre)), cls->cname + "*"};
@@ -265,7 +309,7 @@ Code MethodWriter::lib_new(const ir::Node& n, const ir::New& k) {
 // new of a local or anonymous class: the enclosing instance and the captured locals come first.
 Code MethodWriter::new_class(const ClassInfo* cls, const ir::Node&, const ir::New& k) {
     std::vector<std::string> pre;
-    if (cls->needs_outer) pre.push_back(this_ref().code);
+    if (cls->needs_outer) pre.push_back(outer_of(cls->outer->qname).code);   // (made inside itself, its outer is its own outer)
     for (const jmodel::Capture& c : cls->captures) {
         ir::Node* name = ir::make(scratch(), ir::Name{.sym = ir::make_sym(ir::SymKind::Local, c.name)}, c.type);
         pre.push_back(on(*name, *ir::get<ir::Name>(name)).code);
@@ -321,7 +365,9 @@ Code MethodWriter::on(const ir::Node& n, const ir::NewArray& k) {
         const std::string inner = array_store(p_.ct(elem_of(elem)));
         return {std::format("jrt_new_array2(sizeof({}), {}, {})", inner, dims[0], dims[1]), std::string(kArr)};
     }
-    throw Decline(std::format("array of {} dimensions", dims.size()));
+    ir::TypeP leaf = type;   // what the innermost arrays given a size hold (with `new T[a][b][]`, null arrays)
+    for (std::size_t i = 0; i < dims.size(); ++i) leaf = elem_of(leaf);
+    return {std::format("jrt_new_array_n(sizeof({}), {}, (int32_t[]){{{}}})", array_store(p_.ct(leaf)), dims.size(), join_commas(dims)), std::string(kArr)};
 }
 
 }  // namespace cb::translate::backends::c_java::detail

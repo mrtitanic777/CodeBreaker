@@ -1,0 +1,172 @@
+/****************************************************************************
+*
+*                            Open Watcom Project
+*
+* Copyright (c) 2002-2024 The Open Watcom Contributors. All Rights Reserved.
+*    Portions Copyright (c) 1983-2002 Sybase, Inc. All Rights Reserved.
+*
+*  ========================================================================
+*
+*    This file contains Original Code and/or Modifications of Original
+*    Code as defined in and that are subject to the Sybase Open Watcom
+*    Public License version 1.0 (the 'License'). You may not use this file
+*    except in compliance with the License. BY USING THIS FILE YOU AGREE TO
+*    ALL TERMS AND CONDITIONS OF THE LICENSE. A copy of the License is
+*    provided with the Original Code and Modifications, and is also
+*    available at www.sybase.com/developer/opensource.
+*
+*    The Original Code and all software distributed under the License are
+*    distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+*    EXPRESS OR IMPLIED, AND SYBASE AND ALL CONTRIBUTORS HEREBY DISCLAIM
+*    ALL SUCH WARRANTIES, INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF
+*    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR
+*    NON-INFRINGEMENT. Please see the License for the specific language
+*    governing rights and limitations under the License.
+*
+*  ========================================================================
+*
+* Description:  WHEN YOU FIGURE OUT WHAT THIS FILE DOES, PLEASE
+*               DESCRIBE IT HERE!
+*
+****************************************************************************/
+
+
+#include "_cgstd.h"
+#include "optwif.h"
+#include "objout.h"
+#include "feprotos.h"
+#include "backrun.hpp"
+
+
+static  label_handle DoAskForLabel( BackRun& back, cg_sym_handle sym )
+/**************************************************/
+{
+    label_handle    new_lbl;
+
+  OptBegin( back );
+    new_lbl = static_cast<label_handle>(CGAlloc( back, sizeof( code_lbl ) ));
+    new_lbl->lbl.link    = back.optdata.Handles;
+    back.optdata.Handles = new_lbl;
+    new_lbl->lbl.sym     = sym;
+    new_lbl->lbl.address = ADDR_UNKNOWN;
+    new_lbl->lbl.patches = NULL;
+    new_lbl->lbl.status  = static_cast<status_bits>(0);
+    new_lbl->alias       = NULL;
+    new_lbl->ins         = NULL;
+    new_lbl->refs        = NULL;
+    new_lbl->redirect    = NULL;
+#if _TARGET_RISC || (_TARGET & _TARG_80386)
+    new_lbl->owl_symbol   = NULL;
+#endif
+    { OptEnd( back ); return( new_lbl ); }
+}
+
+
+label_handle AskForNewLabel( BackRun& back )
+/*********************************/
+{
+    label_handle    new_lbl;
+
+  OptBegin( back );
+    new_lbl = DoAskForLabel( back, NULL );
+    /* the DYINGLABEL bit will cause unused labels to be scrapped*/
+    /* without the LDONE travelling through the optimizer queue*/
+    new_lbl->lbl.status = CODELABEL | DYINGLABEL;
+    { OptEnd( back ); return( new_lbl ); }
+}
+
+
+label_handle AskForRTLabel( BackRun& back, rt_class rtindex )
+/********************************************/
+{
+    label_handle    new_lbl;
+
+  OptBegin( back );
+    new_lbl = DoAskForLabel( back, RtIdxToSym( rtindex ) );
+    SetStatus( new_lbl, RUNTIME );
+    { OptEnd( back ); return( new_lbl ); }
+}
+
+
+label_handle AskForLabel( BackRun& back, cg_sym_handle sym )
+/*******************************************/
+{
+    label_handle    new_lbl;
+    fe_attr         attr;
+
+  OptBegin( back );
+    new_lbl = DoAskForLabel( back, sym );
+    if( sym != NULL ) {
+        attr = FEAttr( *back.front, sym );
+        if( attr & FE_UNIQUE ) {
+            SetStatus( new_lbl, UNIQUE );
+        }
+    }
+    { OptEnd( back ); return( new_lbl ); }
+}
+
+
+bool    AskIfReachedLabel( BackRun& back, label_handle lbl )
+/*******************************************/
+{
+  OptBegin( back );
+    ValidLbl( lbl );
+    { OptEnd( back ); return( TstStatus( lbl, REACHED ) ); }
+}
+
+
+bool    AskIfRTLabel( BackRun& back, label_handle lbl )
+/**************************************/
+{
+  OptBegin( back );
+    ValidLbl( lbl );
+    { OptEnd( back ); return( TstStatus( lbl, RUNTIME ) ); }
+}
+
+
+bool    AskIfUniqueLabel( BackRun& back, label_handle lbl )
+/******************************************/
+{
+  OptBegin( back );
+    ValidLbl( lbl );
+    { OptEnd( back ); return( TstStatus( lbl, UNIQUE ) ); }
+}
+
+
+bool    AskIfCommonLabel( BackRun& back, label_handle lbl )
+/******************************************/
+{
+  OptBegin( back );
+    ValidLbl( lbl );
+    { OptEnd( back ); return( TstStatus( lbl, COMMON_LBL ) ); }
+}
+
+
+offset  AskAddress( BackRun& back, label_handle lbl )
+/************************************/
+{
+  OptBegin( back );
+    ValidLbl( lbl );
+    { OptEnd( back ); return( lbl->lbl.address ); }
+}
+
+
+pointer AskLblPatches( BackRun& back, label_handle lbl )
+/***************************************/
+{
+  OptBegin( back );
+    ValidLbl( lbl );
+    if( lbl->lbl.patches == NULL ) {
+        lbl->lbl.patches = static_cast<obj_patch *>(InitPatches(back));
+    }
+    { OptEnd( back ); return( lbl->lbl.patches ); }
+}
+
+
+cg_sym_handle   AskForLblSym( BackRun& back, label_handle lbl )
+/**********************************************/
+{
+  OptBegin( back );
+    ValidLbl( lbl );
+    { OptEnd( back ); return( lbl->lbl.sym ); }
+}

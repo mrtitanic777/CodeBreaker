@@ -958,13 +958,13 @@ N_0txx: r0",@"^N_0  is r0 & N_0 { tmp:4 = N_0; export tmp; }
 #	$(T_FLAG) = ($(Q_FLAG)==$(M_FLAG));
 #@endif # DIV1_ORIGINAL_IS_BROKEN
 # DIV1_WITH_FORWARD_BRANCHES_WORKS_OK
-	local Rm:4 = M_0t;
 	local Rn:4 = N_0t;
 	local old_Q:1 = $(Q_FLAG);
 	$(Q_FLAG) = ((0x80000000 & Rn)!=0);
-	local tmp2:4 = Rm;
 	Rn = Rn << 1;
 	Rn = Rn | zext($(T_FLAG));
+	N_0t = Rn;
+	local tmp2:4 = M_0t;   # (read after the shift: with the same register on both sides the divisor is the shifted dividend, as in the manual's code)
 	local tmp0:4 = Rn;
 	local tmp1:1 = 0;
 
@@ -2028,8 +2028,9 @@ define pcodeop mac_wOp;
 # arch    arch_sh_up
 :mov.b M_0t,N_0t_at_neg     is OP_0=0x2 & N_0t_at_neg & M_0t & OP_1=0x4 {
 
+	local value:4 = M_0t;   # (read before the register is decremented: MOV.B R0,@-R0 stores the old R0)
 	N_0t_at_neg = N_0t_at_neg - 1;
-	*:1 ( N_0t_at_neg ) = M_0t:1;
+	*:1 ( N_0t_at_neg ) = value:1;
 }
 
 
@@ -2039,8 +2040,9 @@ define pcodeop mac_wOp;
 # arch    arch_sh_up
 :mov.w M_0t,N_0t_at_neg     is OP_0=0x2 & N_0t_at_neg & M_0t & OP_1=0x5 {
 
+	local value:4 = M_0t;
 	N_0t_at_neg = N_0t_at_neg - 2;
-	*:2 ( N_0t_at_neg ) = M_0t:2;
+	*:2 ( N_0t_at_neg ) = value:2;
 }
 
 
@@ -2050,8 +2052,9 @@ define pcodeop mac_wOp;
 # arch    arch_sh_up
 :mov.l M_0t,N_0t_at_neg     is OP_0=0x2 & N_0t_at_neg & M_0t & OP_1=0x6 {
 
+	local value:4 = M_0t;
 	N_0t_at_neg = N_0t_at_neg - 4;
-	*:4 ( N_0t_at_neg ) = M_0t;
+	*:4 ( N_0t_at_neg ) = value;
 }
 
 
@@ -2061,8 +2064,9 @@ define pcodeop mac_wOp;
 # arch    arch_sh_up
 :mov.b M_0t_at,N_0t         is OP_0=0x6 & N_0t & M_0t_at & OP_1=0x4 {
 
-	N_0t = sext( *:1 ( M_0t_at ) );
+	local value:4 = sext( *:1 ( M_0t_at ) );
 	M_0t_at = M_0t_at + 1;
+	N_0t = value;   # (last: MOV.B @R1+,R1 leaves the loaded byte)
 }
 
 
@@ -2072,8 +2076,9 @@ define pcodeop mac_wOp;
 # arch    arch_sh_up
 :mov.w M_0t_at,N_0t         is OP_0=0x6 & N_0t & M_0t_at & OP_1=0x5 {
 
-	N_0t = sext( *:2 ( M_0t_at ) );
+	local value:4 = sext( *:2 ( M_0t_at ) );
 	M_0t_at = M_0t_at + 2;
+	N_0t = value;
 }
 
 
@@ -2083,8 +2088,9 @@ define pcodeop mac_wOp;
 # arch    arch_sh_up
 :mov.l M_0t_at,N_0t         is OP_0=0x6 & N_0t & M_0t_at & OP_1=0x6 {
 
-	N_0t = *:4 ( M_0t_at );
+	local value:4 = *:4 ( M_0t_at );
 	M_0t_at = M_0t_at + 4;
+	N_0t = value;
 }
 
 

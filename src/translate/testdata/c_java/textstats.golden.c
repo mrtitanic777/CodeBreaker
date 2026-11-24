@@ -259,22 +259,22 @@ static void TextStats_main(jarray* args) {
 		}
 	}
 	jrt_PrintStream_println_Str(jrt_System_out, TextStats_histogram(TextStats_POEM));
-	jstring* o1 = NULL;
-	int32_t o2 = 0;
-	int64_t o3 = 0;
-	jrt_PrintStream_println_Str(jrt_System_out, (o1 = TextStats_sortedDigits(907153), o2 = TextStats_mix(12345, 678), o3 = TextStats_mixLong(-987654321LL, 9), jrt_concat(5, jrt_str_O((jobject*)o1), jrt_lit(&lit_1, u" ", 1), jrt_str_I(o2), jrt_lit(&lit_1, u" ", 1), jrt_str_J(o3))));
-	int32_t o4 = 0;
-	int32_t o5 = 0;
-	int32_t o6 = 0;
-	jrt_PrintStream_println_Str(jrt_System_out, (o4 = TextStats_safeDiv(17, 5), o5 = TextStats_safeDiv(3, 0), o6 = TextStats_safeDiv(JRT_INT_MIN, -1), jrt_concat(5, jrt_str_I(o4), jrt_lit(&lit_1, u" ", 1), jrt_str_I(o5), jrt_lit(&lit_1, u" ", 1), jrt_str_I(o6))));
-	int32_t o7 = 0;
-	int32_t o8 = 0;
-	int32_t o9 = 0;
-	jrt_PrintStream_println_Str(jrt_System_out, (o7 = TextStats_saturate(3.5), o8 = TextStats_saturate(-1.0e+300), o9 = TextStats_saturate(NAN), jrt_concat(5, jrt_str_I(o7), jrt_lit(&lit_1, u" ", 1), jrt_str_I(o8), jrt_lit(&lit_1, u" ", 1), jrt_str_I(o9))));
-	int32_t o10 = 0;
-	bool o11 = 0;
-	jstring* o12 = NULL;
-	jrt_PrintStream_println_Str(jrt_System_out, (o10 = TextStats_firstPair(12), o11 = TextStats_isPalindrome(jrt_lit(&lit_6, u"A man, a plan, a canal: Panama", 30)), o12 = TextStats_caesar(jrt_lit(&lit_7, u"Hello, World", 12), 29), jrt_concat(5, jrt_str_I(o10), jrt_lit(&lit_1, u" ", 1), jrt_str_Z(o11), jrt_lit(&lit_1, u" ", 1), jrt_str_O((jobject*)o12))));
+	jstring* jrt_o1 = NULL;
+	int32_t jrt_o2 = 0;
+	int64_t jrt_o3 = 0;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o1 = TextStats_sortedDigits(907153), jrt_o2 = TextStats_mix(12345, 678), jrt_o3 = TextStats_mixLong(-987654321LL, 9), jrt_concat(5, jrt_str_O((jobject*)jrt_o1), jrt_lit(&lit_1, u" ", 1), jrt_str_I(jrt_o2), jrt_lit(&lit_1, u" ", 1), jrt_str_J(jrt_o3))));
+	int32_t jrt_o4 = 0;
+	int32_t jrt_o5 = 0;
+	int32_t jrt_o6 = 0;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o4 = TextStats_safeDiv(17, 5), jrt_o5 = TextStats_safeDiv(3, 0), jrt_o6 = TextStats_safeDiv(JRT_INT_MIN, -1), jrt_concat(5, jrt_str_I(jrt_o4), jrt_lit(&lit_1, u" ", 1), jrt_str_I(jrt_o5), jrt_lit(&lit_1, u" ", 1), jrt_str_I(jrt_o6))));
+	int32_t jrt_o7 = 0;
+	int32_t jrt_o8 = 0;
+	int32_t jrt_o9 = 0;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o7 = TextStats_saturate(3.5), jrt_o8 = TextStats_saturate(-1.0e+300), jrt_o9 = TextStats_saturate(NAN), jrt_concat(5, jrt_str_I(jrt_o7), jrt_lit(&lit_1, u" ", 1), jrt_str_I(jrt_o8), jrt_lit(&lit_1, u" ", 1), jrt_str_I(jrt_o9))));
+	int32_t jrt_o10 = 0;
+	bool jrt_o11 = 0;
+	jstring* jrt_o12 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o10 = TextStats_firstPair(12), jrt_o11 = TextStats_isPalindrome(jrt_lit(&lit_6, u"A man, a plan, a canal: Panama", 30)), jrt_o12 = TextStats_caesar(jrt_lit(&lit_7, u"Hello, World", 12), 29), jrt_concat(5, jrt_str_I(jrt_o10), jrt_lit(&lit_1, u" ", 1), jrt_str_Z(jrt_o11), jrt_lit(&lit_1, u" ", 1), jrt_str_O((jobject*)jrt_o12))));
 	int32_t x = JRT_INT_MAX;
 	x++;
 	int64_t big = JRT_LONG_MAX;

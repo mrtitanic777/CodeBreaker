@@ -81,6 +81,7 @@ CB_TEST("source.dreamcast_writer.a_scrambled_program_is_written_descrambled_and_
     CB_CHECK(has(source, "scrambled on the disc and written here descrambled"));
     // the rebuilt disc holds the program scrambled, as the original does
     const dc::Disc original = dc::read(dir.path() / "game.iso");
+    CB_CHECK(r.built);   // (a failed rebuild fails here, not in the read below)
     const dc::Disc rebuilt = dc::read(*r.built);
     CB_CHECK(rebuilt.scrambled);
     CB_CHECK(rebuilt.first_read == original.first_read);

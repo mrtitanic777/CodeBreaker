@@ -21,7 +21,7 @@ void make_file(const stdfs::path& p, std::size_t size) {
     fs::write_text(p, std::string(size, 'x'));
 }
 
-// A state/ and a Converted/ with one of everything the rules look at.
+// A state folder and a Converted/ with one of everything the rules look at.
 struct Fixture {
     fs::ScopedTempDir dir{"cbtidy"};
     tidy_state::Layout layout;
@@ -129,7 +129,7 @@ CB_TEST("base.tidy_state.dry_run_reports_and_removes_nothing", [] {
     CB_CHECK(stdfs::exists(f.layout.state / "fingerprints.sqlite"));
     CB_CHECK(stdfs::exists(f.layout.state / "somebodys_notes.txt"));
     CB_CHECK(stdfs::exists(f.layout.converted / "oldprog" / "build" / "a.obj"));
-    CB_CHECK(out.find("state/ now") == std::string::npos);   // a dry run does not report an after
+    CB_CHECK(out.find("state folder now") == std::string::npos);   // a dry run does not report an after
 });
 
 CB_TEST("base.tidy_state.run_removes_the_stale_and_keeps_the_rest", [] {
@@ -155,7 +155,7 @@ CB_TEST("base.tidy_state.run_removes_the_stale_and_keeps_the_rest", [] {
     // stray things are listed and kept
     CB_CHECK(stdfs::exists(f.layout.state / "somebodys_notes.txt"));
     CB_CHECK(out.find("kept; --stray removes them") != std::string::npos);
-    CB_CHECK(out.find("state/ now ") != std::string::npos);
+    CB_CHECK(out.find("state folder now ") != std::string::npos);
 });
 
 CB_TEST("base.tidy_state.stray_and_keep_builds_options", [] {

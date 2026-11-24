@@ -11,6 +11,7 @@
 #include "emulate/arm.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
+#include "engine/pcode_cpu.hpp"
 #include "formats/read.hpp"
 #include "platforms/n3ds.hpp"
 #include "formats/n3ds.hpp"
@@ -155,17 +156,16 @@ void map_hardware(emulate::arm::Bus& bus) {
     bus.map(0x1FF80000, 0x1FF82FFF, read, write);   // the kernel's configuration and shared pages, the thread-local storage
 }
 
-vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::State& state) {
+}  // namespace n3ds_lane_detail
+
+void n3ds_prepare(const stdfs::path& path, std::uint32_t entry, const verify::lanes::State& state, emulate::arm::Bus& bus, emulate::arm::RunOptions& options, std::uint32_t& address) {
+    using namespace n3ds_lane_detail;
     const std::shared_ptr<const Loaded> loaded = load(path);
-    emulate::arm::Bus bus(emulate::arm::System::N3ds);
     bus.set_regions(loaded->regions);
     map_hardware(bus);
     bus.cp15_write(0xD03, 0x1FF82000);   // the thread-local storage pointer (c13, c0, 3)
     if (const std::int64_t seed = at(state, "fill"); seed != 0)
         for (std::size_t i = 0; i < kWorkBytes; ++i) bus.memory().write(kWork + static_cast<std::uint32_t>(i), 1, fill_byte(i, seed));
-    const auto before = bus.memory().changes(1 << 20);
-
-    emulate::arm::RunOptions options;
     options.max_steps = kSteps;
     options.sp = kStack;
     options.return_address = kReturn;
@@ -173,8 +173,18 @@ vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::Stat
     options.a = {static_cast<std::uint32_t>(at(state, "a0")), static_cast<std::uint32_t>(at(state, "a1")), static_cast<std::uint32_t>(at(state, "a2")),
                  static_cast<std::uint32_t>(at(state, "a3"))};
     options.s[0] = static_cast<std::uint32_t>(at(state, "s0"));
-    const std::uint32_t address = loaded->program.address_of(entry).value_or(entry);
-    const emulate::arm::RunResult run = emulate::arm::run(bus, address, options);
+    address = loaded->program.address_of(entry).value_or(entry);
+}
+
+namespace n3ds_lane_detail {
+
+vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::State& state) {
+    emulate::arm::Bus bus(emulate::arm::System::N3ds);
+    emulate::arm::RunOptions options;
+    std::uint32_t address = 0;
+    n3ds_prepare(path, entry, state, bus, options, address);
+    const auto before = bus.memory().changes(1 << 20);
+    const emulate::arm::RunResult run = pcode_cpu::call(bus, address, options);
 
     std::map<std::uint32_t, std::uint8_t> was(before.begin(), before.end());
     std::vector<std::string> changed;

@@ -16,7 +16,7 @@ J2CTool, the deterministic Java -> C++03 transpiler, is `codebreaker/java` since
 | the PySide6 window | the terminal interface (`ui`): `java <tool>` from its command palette |
 | its Build button | `codebreaker java build SLN` (settings.json `msbuild`) |
 | environment variables and fixed paths (XEDK, JAVA_HOME, J2X_CC, ...) | settings.json: `xbox360_sdk`, `java`, `host_cxx`, `msbuild`, `java_overlays` |
-| `BUGFIX_LEDGER.md` in the checkout | `state/java/BUGFIX_LEDGER.md` |
+| `BUGFIX_LEDGER.md` in the checkout | `<state>/java/BUGFIX_LEDGER.md` |
 | `tests/` (pytest) | `tests/java/`, run by `tests/test_java.py` in the gate |
 
 On CodeBreaker's path a folder of Java source is a module of the `java` kind (verify/lanes/java.py): its

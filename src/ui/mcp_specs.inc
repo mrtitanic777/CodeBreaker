@@ -56,7 +56,7 @@ terminal's, each MCP server's), each with its owner; else this server's.)DOC", K
          {{"job_id", ParamType::String, std::nullopt}, {"offset", ParamType::Integer, std::string_view(R"JSON(0)JSON")}, {"tail", ParamType::Integer, std::string_view(R"JSON(0)JSON")}}},
         {"job_file", "job_file", R"DOC(The file a job wrote (a decompile's C), from character `offset`.)DOC", Kind::Reading,
          {{"job_id", ParamType::String, std::nullopt}, {"offset", ParamType::Integer, std::string_view(R"JSON(0)JSON")}, {"length", ParamType::Integer, std::string_view(R"JSON(60000)JSON")}}},
-        {"reach_results", "reach_results", R"DOC(The results `reach` kept (state/reach/<run>.json). Without `run`, the runs there are. With
+        {"reach_results", "reach_results", R"DOC(The results `reach` kept (<state>/reach/<run>.json). Without `run`, the runs there are. With
 it, the programs found: what each is, its platform and lane, and for those judged the tally;
 `platform` and `find` (part of a path) narrow it, plus a count per platform.)DOC", Kind::Reading,
          {{"run", ParamType::String, std::string_view(R"JSON("")JSON")}, {"platform", ParamType::String, std::string_view(R"JSON("")JSON")}, {"judged_only", ParamType::Boolean, std::string_view(R"JSON(false)JSON")}, {"find", ParamType::String, std::string_view(R"JSON("")JSON")}, {"offset", ParamType::Integer, std::string_view(R"JSON(0)JSON")}, {"limit", ParamType::Integer, std::string_view(R"JSON(100)JSON")}}},
@@ -69,7 +69,7 @@ the original's file name, its kind and the commands run on it.)DOC", Kind::Readi
 each marked source, notes (.md, .txt) or built (a build's output or working folder); counts
 of each, source first.)DOC", Kind::Reading,
          {{"module", ParamType::String, std::nullopt}, {"find", ParamType::String, std::string_view(R"JSON("")JSON")}}},
-        {"read_file", "read_file", R"DOC(A text file from a project folder, the source tree, state/ or this checkout, from character
+        {"read_file", "read_file", R"DOC(A text file from a project folder, the source tree, the state folder or this checkout, from character
 `offset` (a binary file: use hex_dump).)DOC", Kind::Reading,
          {{"path", ParamType::String, std::nullopt}, {"offset", ParamType::Integer, std::string_view(R"JSON(0)JSON")}, {"length", ParamType::Integer, std::string_view(R"JSON(40000)JSON")}}},
         {"decompile_function", "decompile_function", R"DOC(One function decompiled now, without starting a job: a 32-bit x86 function by itself (cached

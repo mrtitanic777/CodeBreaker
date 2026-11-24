@@ -1,7 +1,12 @@
 define endian=big;
 define alignment=2;
-define space ram type=ram_space wordsize=2 size=2 default;
+# (size=3: the translator counts addresses in bytes, a 64 K word memory is 128 K of them)
+define space ram type=ram_space wordsize=2 size=3 default;
 define space register type=register_space size=2;
+
+# The CP1610 (the Intellivision's CPU). Memory is words: an address counts words, a decle (a ROM word, 10 bits) is one word and an instruction is one to three of them.
+# A register is a word; R6 is the stack pointer and R7 the program counter (reading R7 gives the address of the word after the instruction's first one, and writing it jumps).
+# Flags: S (sign) Z (zero) O (overflow) C (carry; after a subtraction or comparison, set when there was NO borrow) and I (interrupts enabled).
 
 define register offset=0x00 size=2 [ R0 R1 R2 R3 R4 R5 R6 R7 ];
 define register offset=0x10 size=1 [ I C O Z S ];
@@ -14,12 +19,12 @@ define token opcode_word (16)
 	reg0_2             = (0, 2)
 	reg0_1             = (0, 1)
 	operation_size     = (2, 2)
-	
+
 	branch_sign        = (5, 5)
 	branch_external    = (4, 4)
 	branch_condition   = (0, 3)
 	external_condition = (0, 3)
-	
+
 	opcode6_9          = (6, 9)
 	opcode3_9          = (3, 9)
 	opcode2_9          = (2, 9)
@@ -40,9 +45,10 @@ define token double16 (32)
 	value_hi  = (0, 7)
 ;
 
-define token immediate16 (16)
-	imm16  = (0, 15)
-	addr16 = (0, 15)
+# An operand decle is ten bits wide: an immediate, a direct address or a branch displacement is its low ten bits, as the ROM gives them.
+define token immediate10 (16)
+	imm10  = (0, 9)
+	addr10 = (0, 9)
 ;
 
 define context contextreg
@@ -56,29 +62,36 @@ attach variables [ reg24_25      ] [ R4 R5 R6 R7             ];
 ################################################################
 
 jmpdest16:     reloc is address_hi & address_lo [ reloc = (address_hi << 10) + address_lo;   ] { export *:2 reloc;                         }
-branchdest16:  reloc is branch_sign=0 ; imm16   [ reloc = inst_start + 2 + imm16;            ] { export *:2 reloc;                         }
-branchdest16:  reloc is branch_sign=1 ; imm16   [ reloc = inst_start + 2 + (imm16 ^ 0xFFFF); ] { export *:2 reloc;                         }
+branchdest16:  reloc is branch_sign=0 ; imm10   [ reloc = inst_start + 2 + imm10;            ] { export *:2 reloc;                         }
+branchdest16:  reloc is branch_sign=1 ; imm10   [ reloc = inst_start + 1 - imm10;            ] { export *:2 reloc;                         }
 splitimm16:    split is value_hi & value_lo     [ split = (value_hi << 8) + value_lo;        ] { local tmp:2 = split & 0xFFFF; export tmp; }
 
-impliedval16: reg3_5 is reg3_5 & (target3_5=0 | target3_5=1 | target3_5=2 | target3_5=3 | target3_5=7) & doublebyte=0 {
-	local tmp:2 = *:2 reg3_5;
+# The word an indirect access reads, through the pointer register the instruction names. @R1 to @R3 leave the pointer alone, @R4 and @R5 count up after the
+# access, @R6 (the stack) counts down before it. After SDBD a read through @R1 to @R5 takes two words (the low eight bits of each: the first is the low byte), and
+# @R4 and @R5 count up by two; @R6 reads one word as ever. (@R7 is an immediate: the instructions below that name it.)
+impliedval16: reg3_5 is reg3_5 & (target3_5=1 | target3_5=2 | target3_5=3) & doublebyte=0 {
+	local ptr:3 = zext(reg3_5);
+	local tmp:2 = *:2 ptr;
 	export tmp;
 }
 
 impliedval16: reg3_5 is reg3_5 & (target3_5=4 | target3_5=5) & doublebyte=0 {
-	local tmp:2 = *:2 reg3_5;
+	local ptr:3 = zext(reg3_5);
+	local tmp:2 = *:2 ptr;
 	reg3_5 = reg3_5 + 1;
 	export tmp;
 }
 
-impliedval16: reg3_5 is reg3_5 & target3_5=6 & doublebyte=0 {
+impliedval16: reg3_5 is reg3_5 & target3_5=6 {
 	reg3_5 = reg3_5 - 1;
-	local tmp:2 = *:2 reg3_5;
+	local ptr:3 = zext(reg3_5);
+	local tmp:2 = *:2 ptr;
 	export tmp;
 }
 
 impliedval16: reg3_5 is reg3_5 & (target3_5=4 | target3_5=5) & doublebyte=1 {
-	local val:4 = *:4 reg3_5;
+	local ptr:3 = zext(reg3_5);
+	local val:4 = *:4 ptr;
 	local low:1 = val(2);
 	local high:1 = val(0);
 	local tmp:2 = (zext(high) << 8) | zext(low);
@@ -86,28 +99,32 @@ impliedval16: reg3_5 is reg3_5 & (target3_5=4 | target3_5=5) & doublebyte=1 {
 	export tmp;
 }
 
-impliedval16: reg3_5 is reg3_5 & target3_5=6 & doublebyte=1 {
-	reg3_5 = reg3_5 - 2;
-	local val:4 = *:4 reg3_5;
+impliedval16: reg3_5 is reg3_5 & (target3_5=1 | target3_5=2 | target3_5=3) & doublebyte=1 {
+	local ptr:3 = zext(reg3_5);
+	local val:4 = *:4 ptr;
 	local low:1 = val(2);
 	local high:1 = val(0);
 	local tmp:2 = (zext(high) << 8) | zext(low);
 	export tmp;
 }
 
-impliedval16: reg3_5 is reg3_5 & (target3_5=0 | target3_5=1 | target3_5=2 | target3_5=3 | target3_5=7) & doublebyte=1 {
-	local val:2 = *:1 reg3_5;
-	val = (zext(val) << 8) | zext(val);
-	export val;
-}
-
-checkbranch:  is reg0_2=7 { goto [R7]; }
+# Writing R7 jumps. The value read from R7 is the address of the word after the instruction's first.
+checkbranch:  is reg0_2=7 { local target:3 = zext(R7); goto [target]; }
 checkbranch:  is reg0_2 {}
 regval0_2:    is reg0_2=7 {
-	local tmp:2 = inst_next / 2;
+	local start:3 = inst_start;
+	local next:3 = (start >> 1) + 1;
+	local tmp:2 = next:2;
 	export tmp;
 }
 regval0_2:    is reg0_2 { export reg0_2; }
+regval3_5:    is reg3_5=7 {
+	local start:3 = inst_start;
+	local next:3 = (start >> 1) + 1;
+	local tmp:2 = next:2;
+	export tmp;
+}
+regval3_5:    is reg3_5 { export reg3_5; }
 
 cc: ""    is branch_external=0 & branch_condition=0  { local tmp:1 = 1; export tmp; }
 cc: "C"   is branch_external=0 & branch_condition=1  { export C; }
@@ -122,38 +139,30 @@ cc: "NOV" is branch_external=0 & branch_condition=10 { local tmp = !O; export tm
 cc: "MI"  is branch_external=0 & branch_condition=11 { export S; }
 cc: "NEQ" is branch_external=0 & branch_condition=12 { local tmp = !Z; export tmp; }
 cc: "GE"  is branch_external=0 & branch_condition=13 { local tmp = S == O; export tmp; }
-cc: "GT"  is branch_external=0 & branch_condition=14 { local tmp = (Z == 0) || (S == O); export tmp; }
+cc: "GT"  is branch_external=0 & branch_condition=14 { local tmp = (Z == 0) && (S == O); export tmp; }
 cc: "ESC" is branch_external=0 & branch_condition=15 { local tmp = S == C; export tmp; }
 
 ################################################################
 
 macro resultFlags(value) {
 	Z = value == 0;
-	S = value s< 0; 
+	S = value s< 0;
 }
 
-macro addition(first_w, first_r, second) {
-	local tmpC = carry(first_r, second);
-	local tmpO = scarry(first_r, second);
-	first_w = first_r + second;
-	C = tmpC;
-	O = tmpO;
-	resultFlags(first_w);
+# first + second into `result`, with all four flags.
+macro addition(first, second, result) {
+	result = first + second;
+	C = carry(first, second);
+	O = scarry(first, second);
+	resultFlags(result);
 }
 
-macro comparison(first, second) {
-	local __val__ = first - second;
+# first - second into `result`: C is set when there is no borrow.
+macro subtraction(first, second, result) {
+	result = first - second;
+	C = second <= first;
 	O = sborrow(first, second);
-	C = first < second; 
-	resultFlags(__val__);
-}
-
-macro subtraction(first_w, first_r, second) {
-	local __val__ = first_r - second;
-	O = sborrow(first_r, second);
-	C = first_r < second; 
-	resultFlags(__val__);
-	first_w = __val__;
+	resultFlags(result);
 }
 
 ################################################################
@@ -163,44 +172,62 @@ define pcodeop SoftwareInterrupt;
 
 ################################################################
 
-:ADD addr16, reg0_2 is opcode3_9=0x0058 & reg0_2 & regval0_2 & checkbranch ; addr16 {
-	local ptr:2 = addr16;
-	addition(reg0_2, regval0_2, *:2 ptr);
+:ADD addr10, reg0_2 is opcode3_9=0x0058 & reg0_2 & regval0_2 & checkbranch ; addr10 {
+	local ptr:3 = addr10;
+	local first:2 = regval0_2;
+	local second:2 = *:2 ptr;
+	local result:2 = 0;
+	addition(first, second, result);
+	reg0_2 = result;
 	build checkbranch;
 }
 
 :ADD@ impliedval16, reg0_2 is opcode6_9=0x000B & reg0_2 & regval0_2 & checkbranch & impliedval16 {
-	addition(reg0_2, regval0_2, impliedval16);
+	local first:2 = regval0_2;
+	local second:2 = impliedval16;
+	local result:2 = 0;
+	addition(first, second, result);
+	reg0_2 = result;
 	build checkbranch;
 }
 
 :ADCR reg0_2 is opcode3_9=0x0005 & reg0_2 & regval0_2 & checkbranch {
-	local oldC = zext(C);
-	addition(reg0_2, regval0_2, oldC);
+	local first:2 = regval0_2;
+	local second:2 = zext(C);
+	local result:2 = 0;
+	addition(first, second, result);
+	reg0_2 = result;
 	build checkbranch;
 }
 
-:ADDR reg3_5, reg0_2 is opcode6_9=0x0003 & reg3_5 & reg0_2 & regval0_2 & checkbranch {
-	addition(reg0_2, regval0_2, reg3_5);
+:ADDR reg3_5, reg0_2 is opcode6_9=0x0003 & reg3_5 & regval3_5 & reg0_2 & regval0_2 & checkbranch {
+	local first:2 = regval0_2;
+	local second:2 = regval3_5;
+	local result:2 = 0;
+	addition(first, second, result);
+	reg0_2 = result;
 	build checkbranch;
 }
 
-:AND addr16, reg0_2 is opcode3_9=0x0070 & reg0_2 & regval0_2 & checkbranch ; addr16 {
-	local ptr:2 = addr16;
-	reg0_2 = regval0_2 & *:2 ptr;
-	resultFlags(reg0_2);
+:AND addr10, reg0_2 is opcode3_9=0x0070 & reg0_2 & regval0_2 & checkbranch ; addr10 {
+	local ptr:3 = addr10;
+	local result:2 = regval0_2 & *:2 ptr;
+	reg0_2 = result;
+	resultFlags(result);
 	build checkbranch;
 }
 
 :AND@ impliedval16, reg0_2 is opcode6_9=0x000E & reg0_2 & regval0_2 & checkbranch & impliedval16 {
-	reg0_2 = regval0_2 & impliedval16;
-	resultFlags(reg0_2);
+	local result:2 = regval0_2 & impliedval16;
+	reg0_2 = result;
+	resultFlags(result);
 	build checkbranch;
 }
 
-:ANDR reg3_5, reg0_2 is opcode6_9=0x0006 & reg3_5 & reg0_2 & regval0_2 & checkbranch {
-	reg0_2 = regval0_2 & reg3_5;
-	resultFlags(reg0_2);
+:ANDR reg3_5, reg0_2 is opcode6_9=0x0006 & reg3_5 & regval3_5 & reg0_2 & regval0_2 & checkbranch {
+	local result:2 = regval0_2 & regval3_5;
+	reg0_2 = result;
+	resultFlags(result);
 	build checkbranch;
 }
 
@@ -208,9 +235,11 @@ define pcodeop SoftwareInterrupt;
 	if (cc) goto branchdest16;
 }
 
+# An external-condition branch reads its pins as low: the conditions 8 to 15 (pin low) are taken, 0 to 7 are not.
 :BEXT branchdest16, external_condition is (opcode6_9=0x0008 & branch_external=1 & external_condition) ... & branchdest16 {
-	goto branchdest16;
-}  
+	local pins:1 = external_condition;
+	if (pins >= 8) goto branchdest16;
+}
 
 :CLRC is opcode0_9=0x0006 {
 	C = 0;
@@ -218,32 +247,44 @@ define pcodeop SoftwareInterrupt;
 
 :CLRR reg0_2 is opcode6_9=0x0007 & reg0_2 & (target0_2=target3_5) & checkbranch {
 	reg0_2 = 0;
-	resultFlags(reg0_2);
+	Z = 1;
+	S = 0;
 	build checkbranch;
 }
 
-:CMP addr16, reg0_2 is opcode3_9=0x0068 & reg0_2 ; addr16  {
-	local ptr:2 = addr16;
-	comparison(reg0_2, *:2 ptr);
+:CMP addr10, reg0_2 is opcode3_9=0x0068 & reg0_2 & regval0_2 ; addr10  {
+	local ptr:3 = addr10;
+	local first:2 = regval0_2;
+	local second:2 = *:2 ptr;
+	local result:2 = 0;
+	subtraction(first, second, result);
 }
 
-:CMP@ impliedval16, reg0_2 is opcode6_9=0x000D & reg0_2 & impliedval16 {
-	comparison(reg0_2, impliedval16);
+:CMP@ impliedval16, reg0_2 is opcode6_9=0x000D & reg0_2 & regval0_2 & impliedval16 {
+	local first:2 = regval0_2;
+	local second:2 = impliedval16;
+	local result:2 = 0;
+	subtraction(first, second, result);
 }
 
-:CMPR reg3_5, reg0_2 is opcode6_9=0x0005 & reg3_5 & reg0_2 {
-	comparison(reg0_2, reg3_5);
+:CMPR reg3_5, reg0_2 is opcode6_9=0x0005 & reg3_5 & regval3_5 & reg0_2 & regval0_2 {
+	local first:2 = regval0_2;
+	local second:2 = regval3_5;
+	local result:2 = 0;
+	subtraction(first, second, result);
 }
 
 :COMR reg0_2 is opcode3_9=0x0003 & reg0_2 & regval0_2 & checkbranch {
-	reg0_2 = ~regval0_2;
-	resultFlags(reg0_2);
+	local result:2 = ~regval0_2;
+	reg0_2 = result;
+	resultFlags(result);
 	build checkbranch;
 }
 
 :DECR reg0_2 is opcode3_9=0x0002 & reg0_2 & regval0_2 & checkbranch {
-	reg0_2 = regval0_2 - 1;
-	resultFlags(reg0_2);
+	local result:2 = regval0_2 - 1;
+	reg0_2 = result;
+	resultFlags(result);
 	build checkbranch;
 }
 
@@ -257,7 +298,7 @@ define pcodeop SoftwareInterrupt;
 
 :GSWD reg0_1 is opcode2_9=0x000C & reg0_1 {
 	local mask:2 = (zext(S) << 7) + (zext(Z) << 6) + (zext(O) << 5) + (zext(C) << 4);
-	reg0_1 = (mask << 8) + mask; 
+	reg0_1 = (mask << 8) + mask;
 }
 
 :HLT is opcode0_9=0x0000 {
@@ -265,8 +306,9 @@ define pcodeop SoftwareInterrupt;
 }
 
 :INCR reg0_2 is opcode3_9=0x0001 & reg0_2 & regval0_2 & checkbranch {
-	reg0_2 = regval0_2 + 1;
-	resultFlags(reg0_2);
+	local result:2 = regval0_2 + 1;
+	reg0_2 = result;
+	resultFlags(result);
 	build checkbranch;
 }
 
@@ -284,101 +326,124 @@ define pcodeop SoftwareInterrupt;
 	goto jmpdest16;
 }
 
-:JR reg3_5 is opcode6_9=0x0002 & reg3_5 & reg0_2 & reg0_2=7 {
-	reg0_2 = reg3_5;
-	resultFlags(reg0_2);
-	return [reg0_2];
+# MOVR into R7: the register's value becomes the program counter (with R4 or R5 it is a return).
+:JR reg3_5 is opcode6_9=0x0002 & reg3_5 & regval3_5 & reg0_2 & reg0_2=7 {
+	local value:2 = regval3_5;
+	R7 = value;
+	resultFlags(value);
+	local target:3 = zext(R7);
+	return [target];
 }
 
-:JSR reg24_25, jmpdest16 is opcode0_9=0x0004 ; jump_type=0 & reg24_25 & jmpdest16 {
-	reg24_25 = inst_next;
+:JSR reg24_25, jmpdest16 is opcode0_9=0x0004 ; jump_type=0 & target24_25<3 & reg24_25 & jmpdest16 {
+	local start:3 = inst_start;
+	local next:3 = (start >> 1) + 3;
+	reg24_25 = next:2;
 	call jmpdest16;
 }
 
-:JSRD reg24_25, jmpdest16 is opcode0_9=0x0004 ; jump_type=2 & reg24_25 & jmpdest16 {
+:JSRD reg24_25, jmpdest16 is opcode0_9=0x0004 ; jump_type=2 & target24_25<3 & reg24_25 & jmpdest16 {
 	I = 0;
-	reg24_25 = inst_next;
+	local start:3 = inst_start;
+	local next:3 = (start >> 1) + 3;
+	reg24_25 = next:2;
 	call jmpdest16;
 }
 
-:JSRE reg24_25, jmpdest16 is opcode0_9=0x0004 ; jump_type=1 & reg24_25 & jmpdest16 {
+:JSRE reg24_25, jmpdest16 is opcode0_9=0x0004 ; jump_type=1 & target24_25<3 & reg24_25 & jmpdest16 {
 	I = 1;
-	reg24_25 = inst_next;
+	local start:3 = inst_start;
+	local next:3 = (start >> 1) + 3;
+	reg24_25 = next:2;
 	call jmpdest16;
 }
 
-:MOVR reg3_5, reg0_2 is opcode6_9=0x0002 & reg0_2 & reg3_5 & checkbranch {
-	reg0_2 = reg3_5;
-	resultFlags(reg0_2);
+:MOVR reg3_5, reg0_2 is opcode6_9=0x0002 & reg0_2 & reg3_5 & regval3_5 & checkbranch {
+	local value:2 = regval3_5;
+	reg0_2 = value;
+	resultFlags(value);
 	build checkbranch;
 }
 
-:MVI addr16, reg0_2 is opcode3_9=0x0050 & reg0_2 & checkbranch ; addr16 {
-	local ptr:2 = addr16;
-	reg0_2 = *(*:2 ptr);
+:MVI addr10, reg0_2 is opcode3_9=0x0050 & reg0_2 & checkbranch ; addr10 {
+	local ptr:3 = addr10;
+	local value:2 = *:2 ptr;
+	reg0_2 = value;
+	resultFlags(value);
 	build checkbranch;
 }
 
 :MVI@ impliedval16, reg0_2 is opcode6_9=0x000A & reg0_2 & impliedval16 & checkbranch {
-	reg0_2 = impliedval16;
+	local value:2 = impliedval16;
+	reg0_2 = value;
+	resultFlags(value);
 	build checkbranch;
 }
 
-:MVO reg0_2, addr16 is opcode3_9=0x0048 & reg0_2 ; addr16 {
-	local ptr:2 = addr16;
-	*ptr = reg0_2;
+:MVO reg0_2, addr10 is opcode3_9=0x0048 & reg0_2 & regval0_2 ; addr10 {
+	local ptr:3 = addr10;
+	local value:2 = regval0_2;
+	*:2 ptr = value;
 }
 
-:MVO@ reg0_2, reg3_5 is opcode6_9=0x0009 & reg0_2 & reg3_5 & (reg3_5=4 | reg3_5=5) & checkbranch {
-	local ptr:2 = reg3_5; 
-	*ptr = reg0_2;
+# MVO@ through @R4 or @R5 counts the pointer up after the write (through @R6 it is PSHR below; @R1 to @R3 leave it).
+:MVO@ reg0_2, reg3_5 is opcode6_9=0x0009 & reg0_2 & regval0_2 & reg3_5 & (target3_5=4 | target3_5=5) {
+	local ptr:3 = zext(reg3_5);
+	local value:2 = regval0_2;
+	*:2 ptr = value;
 	reg3_5 = reg3_5 + 1;
-	build checkbranch;
 }
 
-:MVO@ reg0_2, reg3_5 is opcode6_9=0x0009 & reg0_2 & reg3_5 & checkbranch {
-	local ptr:2 = reg3_5; 
-	*ptr = reg0_2;
-	build checkbranch;
+:MVO@ reg0_2, reg3_5 is opcode6_9=0x0009 & reg0_2 & regval0_2 & reg3_5 & (target3_5=1 | target3_5=2 | target3_5=3) {
+	local ptr:3 = zext(reg3_5);
+	local value:2 = regval0_2;
+	*:2 ptr = value;
 }
 
-:MVOI reg0_2 is opcode3_9=0x004F & reg0_2 ; imm16 {
-	local tmp:2 = inst_start + 2;
-	*tmp = reg0_2;
+# Through @R7 (the word after the instruction): the register goes to the immediate's own place, in the ROM.
+:MVOI reg0_2 is opcode3_9=0x004F & reg0_2 & regval0_2 ; imm10 {
+	local start:3 = inst_start;
+	local ptr:3 = (start >> 1) + 1;
+	local value:2 = regval0_2;
+	*:2 ptr = value;
 }
 
 :NEGR reg0_2 is opcode3_9=0x0004 & reg0_2 & regval0_2 & checkbranch {
-	local tmp = regval0_2 ^ 0xFFFF;
-	local tmpC = carry(tmp, 1);
-	local tmpO = scarry(tmp, 1);
-	reg0_2 = -regval0_2;
-	C = tmpC;
-	O = tmpO;
-	resultFlags(reg0_2);
+	local first:2 = 0;
+	local second:2 = regval0_2;
+	local result:2 = 0;
+	subtraction(first, second, result);
+	reg0_2 = result;
 	build checkbranch;
 }
 
 :NOP is opcode1_9=0x001A {
 }
 
-:NOPP is opcode6_9=0x0008 & branch_external=0 & branch_condition=8 ; imm16 {
+:NOPP is opcode6_9=0x0008 & branch_external=0 & branch_condition=8 ; imm10 {
 }
 
-:PSHR reg0_2 is opcode6_9=0x0009 & reg0_2 & reg3_5 & reg3_5=6 {
-	local ptr:2 = reg3_5;
-	*ptr = reg0_2;
+:PSHR reg0_2 is opcode6_9=0x0009 & reg0_2 & regval0_2 & reg3_5 & reg3_5=6 {
+	local ptr:3 = zext(reg3_5);
+	local value:2 = regval0_2;
+	*:2 ptr = value;
 	reg3_5 = reg3_5 + 1;
 }
 
-:PULR reg0_2 is opcode6_9=0x000A & impliedval16 & reg0_2 & reg3_5=6 {
-	reg0_2 = impliedval16;
+:PULR reg0_2 is opcode6_9=0x000A & impliedval16 & reg0_2 & reg3_5 & reg3_5=6 & checkbranch {
+	local value:2 = impliedval16;
+	reg0_2 = value;
+	resultFlags(value);
+	build checkbranch;
 }
 
-:RSWD reg0_2 is opcode3_9=0x0007 & reg0_2 {
-	C = (reg0_2 & 0b00001000) != 0;
-	O = (reg0_2 & 0b00010000) != 0;
-	Z = (reg0_2 & 0b00100000) != 0;
-	S = (reg0_2 & 0b01000000) != 0;
+# The flags come from bits 7 to 4 of the register: S Z O C.
+:RSWD reg0_2 is opcode3_9=0x0007 & reg0_2 & regval0_2 {
+	local value:2 = regval0_2;
+	C = (value & 0x0010) != 0;
+	O = (value & 0x0020) != 0;
+	Z = (value & 0x0040) != 0;
+	S = (value & 0x0080) != 0;
 }
 
 :SDBD is opcode0_9=0x0001 [ doublebyte=1; globalset(inst_next, doublebyte); ] {
@@ -392,19 +457,31 @@ define pcodeop SoftwareInterrupt;
 	SoftwareInterrupt();
 }
 
-:SUB addr16, reg0_2 is opcode3_9=0x0060 & reg0_2 & regval0_2 & checkbranch ; addr16 {
-	local ptr:2 = addr16;
-	subtraction(reg0_2, regval0_2, *:2 ptr);
+:SUB addr10, reg0_2 is opcode3_9=0x0060 & reg0_2 & regval0_2 & checkbranch ; addr10 {
+	local ptr:3 = addr10;
+	local first:2 = regval0_2;
+	local second:2 = *:2 ptr;
+	local result:2 = 0;
+	subtraction(first, second, result);
+	reg0_2 = result;
 	build checkbranch;
 }
 
 :SUB@ impliedval16, reg0_2 is opcode6_9=0x000C & reg0_2 & regval0_2 & checkbranch & impliedval16 {
-	subtraction(reg0_2, regval0_2, impliedval16);
+	local first:2 = regval0_2;
+	local second:2 = impliedval16;
+	local result:2 = 0;
+	subtraction(first, second, result);
+	reg0_2 = result;
 	build checkbranch;
 }
 
-:SUBR reg3_5, reg0_2 is opcode6_9=0x0004 & reg3_5 & reg0_2 & regval0_2 & checkbranch {
-	subtraction(reg0_2, regval0_2, reg3_5);
+:SUBR reg3_5, reg0_2 is opcode6_9=0x0004 & reg3_5 & regval3_5 & reg0_2 & regval0_2 & checkbranch {
+	local first:2 = regval0_2;
+	local second:2 = regval3_5;
+	local result:2 = 0;
+	subtraction(first, second, result);
+	reg0_2 = result;
 	build checkbranch;
 }
 
@@ -412,245 +489,248 @@ define pcodeop SoftwareInterrupt;
 	TerminateCurrentInterrupt();
 }
 
-:TSTR reg0_2 is opcode6_9=0x0002 & reg0_2 & (target0_2=target3_5) {
-	resultFlags(reg0_2);
+:TSTR reg0_2 is opcode6_9=0x0002 & reg0_2 & regval0_2 & (target0_2=target3_5) {
+	local value:2 = regval0_2;
+	resultFlags(value);
 }
 
-:XOR addr16, reg0_2 is opcode3_9=0x0078 & reg0_2 & regval0_2 & checkbranch ; addr16 {
-	local ptr:2 = addr16;
-	reg0_2 = regval0_2 ^ *:2 ptr;
-	resultFlags(reg0_2);
+:XOR addr10, reg0_2 is opcode3_9=0x0078 & reg0_2 & regval0_2 & checkbranch ; addr10 {
+	local ptr:3 = addr10;
+	local result:2 = regval0_2 ^ *:2 ptr;
+	reg0_2 = result;
+	resultFlags(result);
 	build checkbranch;
 }
 
 :XOR@ impliedval16, reg0_2 is opcode6_9=0x000F & reg0_2 & regval0_2 & checkbranch & impliedval16 {
-	reg0_2 = regval0_2 ^ impliedval16;
-	resultFlags(reg0_2);
+	local result:2 = regval0_2 ^ impliedval16;
+	reg0_2 = result;
+	resultFlags(result);
 	build checkbranch;
 }
 
-:XORR reg3_5, reg0_2 is opcode6_9=0x0007 & reg3_5 & reg0_2 & regval0_2 & checkbranch {
-	reg0_2 = regval0_2 ^ reg3_5;
-	resultFlags(reg0_2);
+:XORR reg3_5, reg0_2 is opcode6_9=0x0007 & reg3_5 & regval3_5 & reg0_2 & regval0_2 & checkbranch {
+	local result:2 = regval0_2 ^ regval3_5;
+	reg0_2 = result;
+	resultFlags(result);
 	build checkbranch;
 }
 
-:RLC reg0_2, 1 is opcode3_9=0x000A & reg0_2 & regval0_2 & checkbranch {
-	local tmpC = (regval0_2 & 0x8000) != 0;
-	local tmpS = (regval0_2 & 0x4000) != 0;
-	reg0_2 = (regval0_2 << 1) + zext(C);
-	C = tmpC;
-	S = tmpS;
-	Z = reg0_2 == 0;
+# Shifts and rotates of R0 to R3, by one (bit 2 clear) or two (bit 2 set). SLL SLR SAR leave C and O alone, SWAP sets S and Z from the low byte of the result.
+# The ones that name a C (SLLC SARC RLC RRC) take it from the last bit out; a rotate goes through C.
+
+:RLC reg0_1, 1 is operation_size=0 & opcode3_9=0x000A & reg0_1 {
+	local value:2 = reg0_1;
+	local result:2 = (value << 1) | zext(C);
+	C = (value & 0x8000) != 0;
+	reg0_1 = result;
+	resultFlags(result);
+}
+
+:RRC reg0_1, 1 is operation_size=0 & opcode3_9=0x000E & reg0_1 {
+	local value:2 = reg0_1;
+	local result:2 = (value >> 1) | (zext(C) << 15);
+	C = (value & 0x0001) != 0;
+	reg0_1 = result;
+	resultFlags(result);
+}
+
+:SAR reg0_1, 1 is operation_size=0 & opcode3_9=0x000D & reg0_1 {
+	local result:2 = reg0_1 s>> 1;
+	reg0_1 = result;
+	resultFlags(result);
+}
+
+:SARC reg0_1, 1 is operation_size=0 & opcode3_9=0x000F & reg0_1 {
+	local value:2 = reg0_1;
+	local result:2 = value s>> 1;
+	C = (value & 0x0001) != 0;
+	reg0_1 = result;
+	resultFlags(result);
+}
+
+:SLL reg0_1, 1 is operation_size=0 & opcode3_9=0x0009 & reg0_1 {
+	local result:2 = reg0_1 << 1;
+	reg0_1 = result;
+	resultFlags(result);
+}
+
+:SLLC reg0_1, 1 is operation_size=0 & opcode3_9=0x000B & reg0_1 {
+	local value:2 = reg0_1;
+	local result:2 = value << 1;
+	C = (value & 0x8000) != 0;
+	O = ((value ^ result) & 0x8000) != 0;
+	reg0_1 = result;
+	resultFlags(result);
+}
+
+:SLR reg0_1, 1 is operation_size=0 & opcode3_9=0x000C & reg0_1 {
+	local result:2 = reg0_1 >> 1;
+	reg0_1 = result;
+	resultFlags(result);
+}
+
+:SWAP reg0_1, 1 is operation_size=0 & opcode3_9=0x0008 & reg0_1 {
+	local value:2 = reg0_1;
+	local result:2 = (value << 8) | (value >> 8);
+	reg0_1 = result;
+	S = (result & 0x0080) != 0;
+	Z = (result & 0x00FF) == 0;
+}
+
+:RLC reg0_1, 2 is operation_size=1 & opcode3_9=0x000A & reg0_1 {
+	local value:2 = reg0_1;
+	local result:2 = (value << 2) | (zext(C) << 1) | (value >> 15);
+	C = (value & 0x4000) != 0;
+	reg0_1 = result;
+	resultFlags(result);
+}
+
+:RRC reg0_1, 2 is operation_size=1 & opcode3_9=0x000E & reg0_1 {
+	local value:2 = reg0_1;
+	local result:2 = (value >> 2) | (zext(C) << 14) | ((value & 0x0001) << 15);
+	C = (value & 0x0002) != 0;
+	reg0_1 = result;
+	resultFlags(result);
+}
+
+:SAR reg0_1, 2 is operation_size=1 & opcode3_9=0x000D & reg0_1 {
+	local result:2 = reg0_1 s>> 2;
+	reg0_1 = result;
+	resultFlags(result);
+}
+
+:SARC reg0_1, 2 is operation_size=1 & opcode3_9=0x000F & reg0_1 {
+	local value:2 = reg0_1;
+	local result:2 = value s>> 2;
+	C = (value & 0x0002) != 0;
+	reg0_1 = result;
+	resultFlags(result);
+}
+
+:SLL reg0_1, 2 is operation_size=1 & opcode3_9=0x0009 & reg0_1 {
+	local result:2 = reg0_1 << 2;
+	reg0_1 = result;
+	resultFlags(result);
+}
+
+:SLLC reg0_1, 2 is operation_size=1 & opcode3_9=0x000B & reg0_1 {
+	local value:2 = reg0_1;
+	local result:2 = value << 2;
+	C = (value & 0x4000) != 0;
+	O = ((value ^ result) & 0x8000) != 0;
+	reg0_1 = result;
+	resultFlags(result);
+}
+
+:SLR reg0_1, 2 is operation_size=1 & opcode3_9=0x000C & reg0_1 {
+	local result:2 = reg0_1 >> 2;
+	reg0_1 = result;
+	resultFlags(result);
+}
+
+:SWAP reg0_1, 2 is operation_size=1 & opcode3_9=0x0008 & reg0_1 {
+	local value:2 = reg0_1;
+	local result:2 = (value & 0x00FF) * 0x0101;
+	reg0_1 = result;
+	S = (result & 0x0080) != 0;
+	Z = (result & 0x00FF) == 0;
+}
+
+# The immediates: ADDI SUBI CMPI MVII ANDI XORI are the memory instructions through @R7 (the word after the instruction). After SDBD the immediate is two decles, the
+# low eight bits of each, the first the low byte.
+
+:ADDI "#"imm10, reg0_2 is doublebyte=0 & opcode3_9=0x005F & reg0_2 & regval0_2 & checkbranch ; imm10 {
+	local first:2 = regval0_2;
+	local second:2 = imm10;
+	local result:2 = 0;
+	addition(first, second, result);
+	reg0_2 = result;
 	build checkbranch;
 }
 
-:RRC reg0_2, 1 is opcode3_9=0x000E & reg0_2 & regval0_2 & checkbranch {
-	local tmpC = (regval0_2 & 0x0001) != 0;
-	local tmpS = (regval0_2 & 0x0100) != 0;
-	reg0_2 = (regval0_2 >> 1) | (zext(C) << 15);
-	C = tmpC;
-	S = tmpS;
-	Z = reg0_2 == 0;
+:ANDI "#"imm10, reg0_2 is doublebyte=0 & opcode3_9=0x0077 & reg0_2 & regval0_2 & checkbranch ; imm10 {
+	local result:2 = regval0_2 & imm10;
+	reg0_2 = result;
+	resultFlags(result);
 	build checkbranch;
 }
 
-:SAR reg0_2, 1 is opcode3_9=0x000D & reg0_2 & regval0_2 & checkbranch {
-	local tmpS = (regval0_2 & 0x0100) != 0;
-	reg0_2 = regval0_2 s>> 1;
-	S = tmpS;
-	Z = reg0_2 == 0;
+:CMPI "#"imm10, reg0_2 is doublebyte=0 & opcode3_9=0x006F & reg0_2 & regval0_2 ; imm10 {
+	local first:2 = regval0_2;
+	local second:2 = imm10;
+	local result:2 = 0;
+	subtraction(first, second, result);
+}
+
+:MVII "#"imm10, reg0_2 is doublebyte=0 & opcode3_9=0x0057 & reg0_2 & checkbranch ; imm10 {
+	local value:2 = imm10;
+	reg0_2 = value;
+	resultFlags(value);
 	build checkbranch;
 }
 
-:SARC reg0_2, 1 is opcode3_9=0x000F & reg0_2 & regval0_2 & checkbranch {
-	local tmpC = (regval0_2 & 0x0001) != 0;
-	local tmpS = (regval0_2 & 0x0100) != 0;
-	reg0_2 = regval0_2 s>> 1;
-	C = tmpC;
-	S = tmpS;
-	Z = reg0_2 == 0;
+:SUBI "#"imm10, reg0_2 is doublebyte=0 & opcode3_9=0x0067 & reg0_2 & regval0_2 & checkbranch ; imm10 {
+	local first:2 = regval0_2;
+	local second:2 = imm10;
+	local result:2 = 0;
+	subtraction(first, second, result);
+	reg0_2 = result;
 	build checkbranch;
 }
 
-:SLL reg0_2, 1 is opcode3_9=0x0009 & reg0_2 & regval0_2 & checkbranch {
-	local tmpS = (regval0_2 & 0x4000) != 0;
-	reg0_2 = regval0_2 << 1;
-	S = tmpS;
-	Z = reg0_2 == 0;
-	build checkbranch;
-}
-
-:SLLC reg0_2, 1 is opcode3_9=0x000B & reg0_2 & regval0_2 & checkbranch {
-	local tmpC = (regval0_2 & 0x8000) != 0;
-	local tmpS = (regval0_2 & 0x4000) != 0;
-	reg0_2 = regval0_2 << 1;
-	C = tmpC;
-	S = tmpS;
-	Z = reg0_2 == 0;
-	build checkbranch;
-} 
-
-:SLR reg0_2, 1 is opcode3_9=0x000C & reg0_2 & regval0_2 & checkbranch {
-	local tmpS = (regval0_2 & 0x0100) != 0;
-	reg0_2 = regval0_2 >> 1;
-	S = tmpS;
-	Z = reg0_2 == 0;
-	build checkbranch;
-} 
-
-:SWAP reg0_2, 1 is opcode3_9=0x0008 & reg0_2 & regval0_2 & checkbranch {
-	local tmpS = (regval0_2 & 0x8000) != 0;
-	local tmp = (regval0_2 << 8) & 0xFF00;
-	reg0_2 = tmp | ((regval0_2 >> 8) & 0x00FF);
-	S = tmpS;
-	build checkbranch;
-}
-
-with : operation_size=1 {
-
-:RLC reg0_2, 2 is opcode3_9=0x000A & reg0_2 & regval0_2 & checkbranch {
-	local tmpC = (regval0_2 & 0x8000) != 0;
-	local tmpO = (regval0_2 & 0x4000) != 0;
-	local tmpS = (regval0_2 & 0x2000) != 0;
-	reg0_2 = (regval0_2 << 2) + (zext(C) << 1) + zext(O);
-	C = tmpC;
-	O = tmpO;
-	S = tmpS;
-	Z = reg0_2 == 0;
-	build checkbranch;
-}
-
-:RRC reg0_2, 2 is opcode3_9=0x000E & reg0_2 & regval0_2 & checkbranch {
-	local tmpC = (regval0_2 & 0x0001) != 0;
-	local tmpO = (regval0_2 & 0x0002) != 0;
-	local tmpS = (regval0_2 & 0x0200) != 0;
-	reg0_2 = (regval0_2 >> 2) | (zext(C) << 14) | (zext(O) << 15);
-	C = tmpC;
-	O = tmpO;
-	S = tmpS;
-	Z = reg0_2 == 0;
-	build checkbranch;
-}
-
-:SAR reg0_2, 2 is opcode3_9=0x000D & reg0_2 & regval0_2 & checkbranch {
-	local tmpS = (regval0_2 & 0x0200) != 0;
-	reg0_2 = regval0_2 s>> 2;
-	S = tmpS;
-	Z = reg0_2 == 0;
-	build checkbranch;
-}
-
-:SARC reg0_2, 2 is opcode3_9=0x000F & reg0_2 & regval0_2 & checkbranch {
-	local tmpC = (regval0_2 & 0x0001) != 0;
-	local tmpO = (regval0_2 & 0x0002) != 0;
-	local tmpS = (regval0_2 & 0x0200) != 0;
-	reg0_2 = regval0_2 s>> 2;
-	C = tmpC;
-	O = tmpO;
-	S = tmpS;
-	Z = reg0_2 == 0;
-	build checkbranch;
-}
-
-:SLL reg0_2, 2 is opcode3_9=0x0009 & reg0_2 & regval0_2 & checkbranch {
-	local tmpS = (regval0_2 & 0x2000) != 0;
-	reg0_2 = regval0_2 << 2;
-	S = tmpS;
-	Z = reg0_2 == 0;
-	build checkbranch;
-}
-
-:SLLC reg0_2, 2 is opcode3_9=0x000B & reg0_2 & regval0_2 & checkbranch {
-	local tmpC = (regval0_2 & 0x8000) != 0;
-	local tmpO = (regval0_2 & 0x4000) != 0;
-	local tmpS = (regval0_2 & 0x2000) != 0;
-	reg0_2 = regval0_2 << 2;
-	C = tmpC;
-	O = tmpO;
-	S = tmpS;
-	Z = reg0_2 == 0;
-	build checkbranch;
-}
-
-:SLR reg0_2, 2 is opcode3_9=0x000C & reg0_2 & regval0_2 & checkbranch {
-	local tmpS = (regval0_2 & 0x0200) != 0;
-	reg0_2 = regval0_2 >> 2;
-	S = tmpS;
-	Z = reg0_2 == 0;
-	build checkbranch;
-}
-
-:SWAP reg0_2, 2 is opcode3_9=0x0008 & reg0_2 & regval0_2 & checkbranch {
-	local tmpS = (regval0_2 & 0x0080) != 0;
-	reg0_2 = (regval0_2 << 8) | (regval0_2 & 0x00FF);
-	S = tmpS;
-	build checkbranch;
-}
-
-}
-
-:ADDI "#"imm16, reg0_2 is opcode3_9=0x005F & reg0_2 & regval0_2 & checkbranch ; imm16 {
-	addition(reg0_2, regval0_2, imm16);
-	build checkbranch;
-}
-
-:ANDI "#"imm16, reg0_2 is opcode3_9=0x0077 & reg0_2 & regval0_2 & checkbranch ; imm16 {
-	reg0_2 = reg0_2 & imm16;
-	resultFlags(reg0_2);
-	build checkbranch;
-}
-
-:CMPI "#"imm16, reg0_2 is opcode3_9=0x006F & reg0_2 ; imm16 {
-	comparison(reg0_2, imm16);
-}
-
-:MVII "#"imm16, reg0_2 is opcode3_9=0x0057 & reg0_2 & checkbranch ; imm16 {
-	reg0_2 = imm16;
-	build checkbranch;
-}
-
-:SUBI "#"imm16, reg0_2 is opcode3_9=0x0067 & reg0_2 & regval0_2 & checkbranch ; imm16 {
-	subtraction(reg0_2, regval0_2, imm16);
-	build checkbranch;
-}
-
-:XORI "#"imm16, reg0_2 is opcode3_9=0x007F & reg0_2 & regval0_2 & checkbranch ; imm16 {
-	reg0_2 = regval0_2 ^ imm16;
-	resultFlags(reg0_2);
+:XORI "#"imm10, reg0_2 is doublebyte=0 & opcode3_9=0x007F & reg0_2 & regval0_2 & checkbranch ; imm10 {
+	local result:2 = regval0_2 ^ imm10;
+	reg0_2 = result;
+	resultFlags(result);
 	build checkbranch;
 }
 
 with : doublebyte=1 {
 
 :ADDI "#"splitimm16, reg0_2 is opcode3_9=0x005F & reg0_2 & regval0_2 & checkbranch ; splitimm16 {
-	addition(reg0_2, regval0_2, splitimm16);
+	local first:2 = regval0_2;
+	local second:2 = splitimm16;
+	local result:2 = 0;
+	addition(first, second, result);
+	reg0_2 = result;
 	build checkbranch;
 }
 
 :ANDI "#"splitimm16, reg0_2 is opcode3_9=0x0077 & reg0_2 & regval0_2 & checkbranch ; splitimm16 {
-	reg0_2 = regval0_2 & splitimm16;
-	resultFlags(reg0_2);
+	local result:2 = regval0_2 & splitimm16;
+	reg0_2 = result;
+	resultFlags(result);
 	build checkbranch;
 }
 
-:CMPI "#"splitimm16, reg0_2 is opcode3_9=0x006F & reg0_2 ; splitimm16 {
-	comparison(reg0_2, splitimm16);
+:CMPI "#"splitimm16, reg0_2 is opcode3_9=0x006F & reg0_2 & regval0_2 ; splitimm16 {
+	local first:2 = regval0_2;
+	local second:2 = splitimm16;
+	local result:2 = 0;
+	subtraction(first, second, result);
 }
 
 :MVII "#"splitimm16, reg0_2 is opcode3_9=0x0057 & reg0_2 & checkbranch ; splitimm16 {
-	reg0_2 = splitimm16;
+	local value:2 = splitimm16;
+	reg0_2 = value;
+	resultFlags(value);
 	build checkbranch;
 }
 
 :SUBI "#"splitimm16, reg0_2 is opcode3_9=0x0067 & reg0_2 & regval0_2 & checkbranch ; splitimm16 {
-	subtraction(reg0_2, regval0_2, splitimm16);
+	local first:2 = regval0_2;
+	local second:2 = splitimm16;
+	local result:2 = 0;
+	subtraction(first, second, result);
+	reg0_2 = result;
 	build checkbranch;
 }
 
 :XORI "#"splitimm16, reg0_2 is opcode3_9=0x007F & reg0_2 & regval0_2 & checkbranch ; splitimm16 {
-	reg0_2 = regval0_2 ^ splitimm16;
-	resultFlags(reg0_2);
+	local result:2 = regval0_2 ^ splitimm16;
+	reg0_2 = result;
+	resultFlags(result);
 	build checkbranch;
 }
 

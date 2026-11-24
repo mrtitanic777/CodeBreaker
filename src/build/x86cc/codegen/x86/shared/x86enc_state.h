@@ -1,0 +1,41 @@
+/* x86enc_state.h -- the variables of x86enc.cpp for one run of the compiler: the run holds them as a member (see the run header) */
+#pragma once
+#include "_cgstd.h"
+#include "coderep.h"
+#include "optmain.h"
+#include "pccode.h"
+#include "system.h"
+#include "pcencode.h"
+#include "zoiks.h"
+#include "zeropage.h"
+#include "cgaux.h"
+#include "p5prof.h"
+#include "data.h"
+#include "display.h"
+#include "rtrtn.h"
+#include "utils.h"
+#include "x86objd.h"
+#include "objout.h"
+#include "dbsyms.h"
+#include "objprof.h"
+#include "x86enc2.h"
+#include "encode.h"
+#include "object.h"
+#include "x86proc.h"
+#include "targetin.h"
+#include "x87.h"
+#include "x86esc.h"
+#include "rgtbl.h"
+#include "split.h"
+#include "namelist.h"
+#include "fixindex.h"
+#include "x86segs.h"
+#include "x86enc.h"
+#include "x86split.h"
+#include "x86opcod.h"
+#include "feprotos.h"
+
+struct X86encState {
+    byte ICur;   /* cursor for writing into Inst */
+    byte IEsc;   /* number of initial bytes that must be */
+};

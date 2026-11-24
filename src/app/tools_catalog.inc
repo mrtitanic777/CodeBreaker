@@ -83,5 +83,4 @@
     {"settings", "Settings report", "Maintenance", "Shows every setting and whether the file or folder it names is there.", "", "", "settings", true},
     {"cache", "Cache", "Maintenance", "Shows what the cache keeps, or prunes it, or clears it.", "", "Do=Show sizes:--stats|Prune:--prune|Clear everything:--clear", "cache {choice}", true},
     {"tidy-state", "Tidy up", "Maintenance", "Shows how big the working folder is and removes what is stale in it.", "", "Do=Only look:--dry|Tidy up:", "tidy-state {choice}", true},
-    {"migrate-state", "Carry over old results", "Maintenance", "Moves what the earlier version kept (results, the knowledge base) to where this one reads it.", "", "Do=Only look:--dry|Move them:", "migrate-state {choice}", true},
     {"serve", "Background service", "Maintenance", "Shows or stops the background process that answers the assistant tools.", "", "Do=Show status:--status|Stop it:--stop", "serve {choice}", true},

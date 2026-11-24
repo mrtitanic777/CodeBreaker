@@ -122,6 +122,8 @@ int run(const Options& options, const Services& services) {
         std::vector<std::filesystem::path> of_kind = services.modules(kind);
         paths.insert(paths.end(), of_kind.begin(), of_kind.end());
     }
+    std::set<std::string> listed;   // (a DOS program with a Windows or driver image is listed by both lanes: it is one module)
+    std::erase_if(paths, [&](const std::filesystem::path& p) { return !listed.insert(p.generic_string()).second; });
     if (options.only)
         std::erase_if(paths, [&](const std::filesystem::path& p) { return !options.only->contains(file_name_lower(p)); });
 
@@ -145,8 +147,9 @@ int run(const Options& options, const Services& services) {
         if (!options.again && is_done.contains(path.generic_string())) {
             const auto judged = services.store.best(id->sha, id->profile);
             bool all = true;
+            const bool driver = services.reconstruct.kind_name(path) == std::optional<std::string>("le");
             for (const std::string& a : services.store.addresses(id->sha))
-                if (!judged.contains(a)) {
+                if (!judged.contains(a) && (!driver || a.find(':') != std::string::npos)) {   // (see Ledger::counts)
                     all = false;
                     break;
                 }

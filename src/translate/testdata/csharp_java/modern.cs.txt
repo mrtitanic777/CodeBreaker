@@ -11,19 +11,19 @@ public class Library
     {
     }
 
-    enum Genre
+    internal enum Genre
     {
         NOVEL,
         POETRY,
         SCIENCE
     }
 
-    interface Priced
+    internal interface Priced
     {
         int price();
     }
 
-    abstract class Item : Priced, IComparable<Item>
+    internal abstract class Item : Priced, IComparable<Item>
     {
         protected internal string title;
         internal static int created;
@@ -49,7 +49,7 @@ public class Library
         public abstract int price();
     }
 
-    class Book : Item
+    internal class Book : Item
     {
         internal Genre genre;
         internal int pages;
@@ -81,7 +81,7 @@ public class Library
         }
     }
 
-    class Magazine : Item
+    internal class Magazine : Item
     {
         internal int issue;
 
@@ -106,7 +106,7 @@ public class Library
         }
     }
 
-    class Ledger : IDisposable
+    internal class Ledger : IDisposable
     {
         internal Ledger()
         {
@@ -221,7 +221,7 @@ public class Library
         List<Item> cheap = filter(items, x => x.price() < 1500);
         List<string> names = map(cheap, x => x.title.ToUpperInvariant());
         Console.WriteLine("cheap: " + JavaRt.Str(names) + " of " + Item.created);
-        IDictionary<string, int> totals = new SortedDictionary<string, int>();
+        IDictionary<string, int> totals = new SortedDictionary<string, int>(JLib.Order<string>());
         foreach (Item i in items)
         {
             string k = i.kind();
@@ -239,10 +239,23 @@ public class Library
         int[][] grid = new int[][] { new int[] { 1, 2, 3 }, new int[] { -1, 9, 9 }, new int[] { 4, 9, 6 } };
         Console.WriteLine("pair " + findPair(grid, 9) + " " + findPair(grid, 7));
         Console.WriteLine("parse " + parse("123") + " " + parse("12x"));
-        using (var l = new Ledger())
         {
-            l.add("open");
-            l.add("close");
+            var l = new Ledger();
+            Exception j_thrown1 = null;
+            try
+            {
+                l.add("open");
+                l.add("close");
+            }
+            catch (Exception j_caught1)
+            {
+                j_thrown1 = j_caught1;
+                throw;
+            }
+            finally
+            {
+                JLib.CloseResource(l, j_thrown1);
+            }
         }
         double half = 0.5;
         double big = 10000000000.0;

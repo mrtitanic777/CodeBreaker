@@ -218,7 +218,7 @@ static bool DoCOMGroup(Link& link,  void *_seg, void *_write )
 {
     seg_leader  *seg = static_cast<seg_leader *>( _seg );
     COMWrite    *write = static_cast<COMWrite *>( _write );
-    COMLeader   leader = { write->chop + SEG_GROUP_DELTA( seg ), write->written };
+    COMLeader   leader = { static_cast<soffset>( write->chop + SEG_GROUP_DELTA( seg ) ), write->written };
 
     RingLookup( seg->pieces, bind_link( link, WriteSegData ), &leader );
     return( false );

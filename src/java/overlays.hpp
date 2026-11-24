@@ -18,7 +18,7 @@
 //   the emitter/runtime/reference and delete the overlay. MANIFEST.md in each project dir records what each overlay
 //   is and whether it is slated for migration.
 //
-// The folder that holds every project's overlays (settings `java_overlays`, else state/java/overlays) is passed in
+// The folder that holds every project's overlays (settings `java_overlays`, there is no default folder) is passed in
 // by the caller as `overlays_root`.
 #pragma once
 

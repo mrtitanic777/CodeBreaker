@@ -4,13 +4,13 @@
 # bld/: the objects of wccd.dll / wccd386.dll, from their link maps) and each target's generated headers into generated/<t>/,
 # with cbnames.h: every global of that compiler renamed wcci86_* / wcc386_*, force-included, so both compilers and wlink link
 # into one program. The include folders and defines are OpenWatcom's own build's for an NT x64 host (cc/master.mif,
-# cg/mif/rules.mif, cg/intel/master.mif, build/mif/local.mif): the front end's, the code generator's (BY_CG), and those of the
+# cg/mif/rules.mif, cg/intel/master.mif, build/mif/local.mif): the front end's, the code generator's, and those of the
 # libraries both use (cfloat, dwarf/dw, owl).
 set(X "${CMAKE_CURRENT_LIST_DIR}")
 set(CB_WCC_ROOT "${X}")
 set(CB_WCC_DEFINES
   _BLDVER=1300 _CYEAR=2026 _BETAVER NDEBUG __FLAT__ _CRT_SECURE_NO_WARNINGS _CRT_NONSTDC_NO_WARNINGS _STATIC_CPPLIB __NT__
-  WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0601 INCL_MSGTEXT $<IF:$<EQUAL:${CMAKE_SIZEOF_VOID_P},8>,__NT_X64__,__NT_386__>)
+  WIN32_LEAN_AND_MEAN _WIN32_WINNT=0x0601 $<IF:$<EQUAL:${CMAKE_SIZEOF_VOID_P},8>,__NT_X64__,__NT_386__>)
 
 function(cb_wcc target t prefix)
   set(X "${CB_WCC_ROOT}")
@@ -26,32 +26,27 @@ function(cb_wcc target t prefix)
   if(MSVC)
     target_compile_options(${target} PRIVATE /W0 /utf-8 /permissive- "/FI${X}/generated/${t}/cbnames.h" "/FI${X}/comp_cfg/h/cbcxx.h")
   else()
-    # (__SEH__: MinGW's x64 GCC defines it; MSVC and the C build never did, and cc/c/cgen.cpp's try-block code is under it)
+    # (__SEH__: MinGW's x64 GCC defines it; MSVC and the C build never did, and front/output/cgen.cpp's try-block code is under it)
     target_compile_options(${target} PRIVATE -w -U__SEH__ "SHELL:-include ${X}/generated/${t}/cbnames.h" "SHELL:-include ${X}/comp_cfg/h/cbcxx.h")
   endif()
-  # the front end: cc, fe_misc, the inline assembler (wasm), watcom/c (cc/master.mif)
-  set(front "${X}/generated/${t}" "${X}/cc/${t}" "${X}/cc/h" "${X}/cg/intel/${t}/h" "${X}/cg/intel/h" "${X}/cg/h" "${X}/wasm/h"
-            "${X}/owl/h" "${X}/dwarf/dw/h" "${X}/comp_cfg/h" "${X}/fe_misc/h" "${X}/watcom/h" "${X}/watcom/c")
+  # the front end: front, the inline assembler (asm), support (cc/master.mif)
+  set(front "${X}/generated/${t}" "${X}/front/target/${t}" "${X}/front/declare" "${X}/front/diagnostics" "${X}/front/driver" "${X}/front/expr" "${X}/front/memory" "${X}/front/output" "${X}/front/pragma" "${X}/front/precompiled" "${X}/front/preprocess" "${X}/front/scan" "${X}/front/stmt" "${X}/codegen/x86/${t}" "${X}/codegen/x86/shared" "${X}/codegen/x86/x87" "${X}/codegen/analysis" "${X}/codegen/base" "${X}/codegen/debuginfo" "${X}/codegen/interface" "${X}/codegen/ir" "${X}/codegen/object" "${X}/codegen/optimize" "${X}/codegen/peephole" "${X}/codegen/regalloc" "${X}/codegen/schedule" "${X}/codegen/select" "${X}/codegen/support" "${X}/codegen/tree" "${X}/asm"
+            "${X}/owl" "${X}/dwarf" "${X}/comp_cfg/h" "${X}/front/shared" "${X}/support" "${X}/run")
   # the code generator (cg/mif/rules.mif, cg/intel/master.mif)
-  set(back "${X}/generated/${t}" "${X}/cg/intel/${t}/h" "${X}/cg/intel/h" "${X}/owl/h" "${X}/cg/h" "${X}/cfloat/h" "${X}/dwarf/dw/h"
-           "${X}/comp_cfg/h" "${X}/trmem" "${X}/watcom/h" "${X}/watcom/c")
-  # the libraries both use (cfloat, dwarf/dw, owl): their own headers
-  set(libs "${X}/generated/${t}" "${X}/cfloat/h" "${X}/dwarf/dw/h" "${X}/owl/h" "${X}/watcom/h" "${X}/watcom/c")
+  set(back "${X}/generated/${t}" "${X}/codegen/x86/${t}" "${X}/codegen/x86/shared" "${X}/codegen/x86/x87" "${X}/owl" "${X}/codegen/analysis" "${X}/codegen/base" "${X}/codegen/debuginfo" "${X}/codegen/interface" "${X}/codegen/ir" "${X}/codegen/object" "${X}/codegen/optimize" "${X}/codegen/peephole" "${X}/codegen/regalloc" "${X}/codegen/schedule" "${X}/codegen/select" "${X}/codegen/support" "${X}/codegen/tree" "${X}/cfloat" "${X}/dwarf"
+           "${X}/comp_cfg/h" "${X}/support" "${X}/run")
   foreach(src IN LISTS sources)
-    if(src MATCHES "/cg/")
+    if(src MATCHES "/build/x86cc/(codegen|cfloat|dwarf|owl)/")
       set_property(SOURCE "${src}" TARGET_DIRECTORY ${target} PROPERTY INCLUDE_DIRECTORIES ${back})
-      set_property(SOURCE "${src}" TARGET_DIRECTORY ${target} APPEND PROPERTY COMPILE_DEFINITIONS BY_CG)
-    elseif(src MATCHES "/(cfloat|dwarf|owl)/")
-      set_property(SOURCE "${src}" TARGET_DIRECTORY ${target} PROPERTY INCLUDE_DIRECTORIES ${libs})
     else()
       set_property(SOURCE "${src}" TARGET_DIRECTORY ${target} PROPERTY INCLUDE_DIRECTORIES ${front})
     endif()
   endforeach()
-  set_property(SOURCE "${X}/cc/c/cmsg.cpp" TARGET_DIRECTORY ${target} APPEND PROPERTY COMPILE_DEFINITIONS __msg_file_prefix=${prefix})
+  set_property(SOURCE "${X}/front/diagnostics/cmsg.cpp" TARGET_DIRECTORY ${target} APPEND PROPERTY COMPILE_DEFINITIONS __msg_file_prefix=${prefix})
   if(MSVC)
-    set_property(SOURCE "${X}/fe_misc/c/intlload.cpp" TARGET_DIRECTORY ${target} APPEND PROPERTY COMPILE_OPTIONS "/FI${X}/cc/h/fesupp.h")
+    set_property(SOURCE "${X}/front/shared/intlload.cpp" TARGET_DIRECTORY ${target} APPEND PROPERTY COMPILE_OPTIONS "/FI${X}/front/driver/fesupp.h")
   else()
-    set_property(SOURCE "${X}/fe_misc/c/intlload.cpp" TARGET_DIRECTORY ${target} APPEND PROPERTY COMPILE_OPTIONS "-include${X}/cc/h/fesupp.h")
+    set_property(SOURCE "${X}/front/shared/intlload.cpp" TARGET_DIRECTORY ${target} APPEND PROPERTY COMPILE_OPTIONS "-include${X}/front/driver/fesupp.h")
   endif()
 endfunction()
 

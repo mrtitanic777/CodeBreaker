@@ -205,11 +205,11 @@ static void Zoo_main(jarray* args) {
 			jrt_PrintStream_println_Str(jrt_System_out, Zoo_Animal_greet_i((jobject*)a));
 		}
 	}
-	volatile int32_t o1 = 0;
-	volatile int32_t o2 = 0;
-	Zoo_Pair* volatile o3 = NULL;
-	volatile int32_t o4 = 0;
-	jrt_PrintStream_println_Str(jrt_System_out, (o1 = Zoo_Base_made, o2 = ((Zoo_Dog*)jrt_nn(((Zoo_Dog*)jrt_cast((jobject*)jrt_List_get_I(zoo, 0), &Zoo_Dog_class))))->barks, o3 = Zoo_Pair_new(jrt_lit(&lit_4, u"x", 1), 2), o4 = Zoo_sumTo(4), jrt_concat(7, jrt_str_I(o1), jrt_lit(&lit_5, u" ", 1), jrt_str_I(o2), jrt_lit(&lit_5, u" ", 1), jrt_str_O((jobject*)o3), jrt_lit(&lit_5, u" ", 1), jrt_str_I(o4))));
+	jstring* volatile jrt_o1 = NULL;
+	jstring* volatile jrt_o2 = NULL;
+	jstring* volatile jrt_o3 = NULL;
+	jstring* volatile jrt_o4 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o1 = jrt_str_I(Zoo_Base_made), jrt_o2 = jrt_str_I(((Zoo_Dog*)jrt_nn(((Zoo_Dog*)jrt_cast((jobject*)jrt_List_get_I(zoo, 0), &Zoo_Dog_class))))->barks), jrt_o3 = jrt_str_O((jobject*)Zoo_Pair_new(jrt_lit(&lit_5, u"x", 1), 2)), jrt_o4 = jrt_str_I(Zoo_sumTo(4)), jrt_concat(7, jrt_o1, jrt_lit(&lit_4, u" ", 1), jrt_o2, jrt_lit(&lit_4, u" ", 1), jrt_o3, jrt_lit(&lit_4, u" ", 1), jrt_o4)));
 	{
 		jrt_try f5;
 		jrt_push(&f5);
@@ -241,7 +241,10 @@ static void Zoo_main(jarray* args) {
 	jobject* volatile m = jrt_LinkedHashMap_new_();
 	jrt_Map_put_OO(m, (jobject*)jrt_lit(&lit_8, u"one", 3), jrt_box_I(1));
 	jrt_Map_put_OO(m, (jobject*)jrt_lit(&lit_9, u"two", 3), jrt_box_I(2));
-	jrt_PrintStream_println_Str(jrt_System_out, jrt_concat(5, jrt_str_O((jobject*)m), jrt_lit(&lit_5, u" ", 1), jrt_str_I(Zoo_pick(5)), jrt_lit(&lit_5, u" ", 1), jrt_str_O((jobject*)jrt_String_format(jrt_lit(&lit_10, u"%5.2f|%d", 8), 2, jrt_box_D(3.14159), jrt_box_I(42)))));
+	jstring* volatile jrt_o7 = NULL;
+	jstring* volatile jrt_o8 = NULL;
+	jstring* volatile jrt_o9 = NULL;
+	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o7 = jrt_str_O((jobject*)m), jrt_o8 = jrt_str_I(Zoo_pick(5)), jrt_o9 = jrt_str_O((jobject*)jrt_String_format(jrt_lit(&lit_10, u"%5.2f|%d", 8), 2, jrt_box_D(3.14159), jrt_box_I(42))), jrt_concat(5, jrt_o7, jrt_lit(&lit_4, u" ", 1), jrt_o8, jrt_lit(&lit_4, u" ", 1), jrt_o9)));
 	jobject* volatile byLen = Lambda1_new();
 	jobject* volatile ws = jrt_ArrayList_new_O(jrt_List_of(3, (jobject*)jrt_lit(&lit_11, u"ccc", 3), (jobject*)jrt_lit(&lit_12, u"a", 1), (jobject*)jrt_lit(&lit_13, u"bb", 2)));
 	jrt_List_sort_O(ws, byLen);
@@ -253,9 +256,9 @@ static void Zoo_finit(Zoo* self) {
 
 static jstring* Zoo_Animal_greet(jobject* self_) {
 	jobject* self = self_;
-	jstring* o1 = NULL;
-	jstring* o2 = NULL;
-	return (o1 = Zoo_Animal_name_i((jobject*)self), o2 = Zoo_Animal_sound_i((jobject*)self), jrt_concat(3, jrt_str_O((jobject*)o1), jrt_lit(&lit_14, u" says ", 6), jrt_str_O((jobject*)o2)));
+	jstring* jrt_o1 = NULL;
+	jstring* jrt_o2 = NULL;
+	return (jrt_o1 = Zoo_Animal_name_i((jobject*)self), jrt_o2 = Zoo_Animal_sound_i((jobject*)self), jrt_concat(3, jrt_str_O((jobject*)jrt_o1), jrt_lit(&lit_14, u" says ", 6), jrt_str_O((jobject*)jrt_o2)));
 }
 
 static void Zoo_Base_init(Zoo_Base* self, jstring* n) {
@@ -390,28 +393,28 @@ static void Zoo_Empty_finit(Zoo_Empty* self) {
 static const struct Zoo_vt Zoo_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}};
 const jclass Zoo_class = {"Zoo", &jrt_Object_class, sizeof(Zoo), &Zoo_vt_, 0, 0, 0};
 
-const jclass Zoo_Animal_class = {"Zoo.Animal", 0, 0, 0, 0, 0, 1};
+const jclass Zoo_Animal_class = {"Zoo$Animal", 0, 0, 0, 0, 0, 1};
 
 static const struct Zoo_Base_vt Zoo_Base_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (jstring* (*)(jobject*))Zoo_Base_name, (void (*)(jobject*))Zoo_Base_describe};
 static const struct Zoo_Animal_vt Zoo_Base_as_Animal = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (jstring* (*)(jobject*))0, (jstring* (*)(jobject*))Zoo_Animal_greet, (jstring* (*)(jobject*))Zoo_Base_name};
 static const jitab Zoo_Base_itabs[] = {{&Zoo_Animal_class, &Zoo_Base_as_Animal}};
-const jclass Zoo_Base_class = {"Zoo.Base", &jrt_Object_class, sizeof(Zoo_Base), &Zoo_Base_vt_, JRT_ITABS(Zoo_Base_itabs), 0};
+const jclass Zoo_Base_class = {"Zoo$Base", &jrt_Object_class, sizeof(Zoo_Base), &Zoo_Base_vt_, JRT_ITABS(Zoo_Base_itabs), 0};
 
 static const struct Zoo_Dog_vt Zoo_Dog_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (jstring* (*)(jobject*))Zoo_Base_name, (void (*)(jobject*))Zoo_Dog_describe, (jstring* (*)(jobject*))Zoo_Dog_sound};
 static const struct Zoo_Animal_vt Zoo_Dog_as_Animal = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (jstring* (*)(jobject*))Zoo_Dog_sound, (jstring* (*)(jobject*))Zoo_Animal_greet, (jstring* (*)(jobject*))Zoo_Base_name};
 static const jitab Zoo_Dog_itabs[] = {{&Zoo_Animal_class, &Zoo_Dog_as_Animal}};
-const jclass Zoo_Dog_class = {"Zoo.Dog", &Zoo_Base_class, sizeof(Zoo_Dog), &Zoo_Dog_vt_, JRT_ITABS(Zoo_Dog_itabs), 0};
+const jclass Zoo_Dog_class = {"Zoo$Dog", &Zoo_Base_class, sizeof(Zoo_Dog), &Zoo_Dog_vt_, JRT_ITABS(Zoo_Dog_itabs), 0};
 
 static const struct Zoo_Cat_vt Zoo_Cat_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (jstring* (*)(jobject*))Zoo_Base_name, (void (*)(jobject*))Zoo_Base_describe, (jstring* (*)(jobject*))Zoo_Cat_sound};
 static const struct Zoo_Animal_vt Zoo_Cat_as_Animal = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}, (jstring* (*)(jobject*))Zoo_Cat_sound, (jstring* (*)(jobject*))Zoo_Animal_greet, (jstring* (*)(jobject*))Zoo_Base_name};
 static const jitab Zoo_Cat_itabs[] = {{&Zoo_Animal_class, &Zoo_Cat_as_Animal}};
-const jclass Zoo_Cat_class = {"Zoo.Cat", &Zoo_Base_class, sizeof(Zoo_Cat), &Zoo_Cat_vt_, JRT_ITABS(Zoo_Cat_itabs), 0};
+const jclass Zoo_Cat_class = {"Zoo$Cat", &Zoo_Base_class, sizeof(Zoo_Cat), &Zoo_Cat_vt_, JRT_ITABS(Zoo_Cat_itabs), 0};
 
 static const struct Zoo_Pair_vt Zoo_Pair_vt_ = {{Zoo_Pair_toString, Zoo_Pair_equals, Zoo_Pair_hashCode}, (jstring* (*)(jobject*))Zoo_Pair_a, (int32_t (*)(jobject*))Zoo_Pair_b};
-const jclass Zoo_Pair_class = {"Zoo.Pair", &jrt_Object_class, sizeof(Zoo_Pair), &Zoo_Pair_vt_, 0, 0, 0};
+const jclass Zoo_Pair_class = {"Zoo$Pair", &jrt_Object_class, sizeof(Zoo_Pair), &Zoo_Pair_vt_, 0, 0, 0};
 
 static const struct Zoo_Empty_vt Zoo_Empty_vt_ = {{jrt_Throwable_toString, jrt_Object_equals, jrt_Object_hashCode}, (jstring* (*)(jobject*))jrt_Throwable_getMessage};
-const jclass Zoo_Empty_class = {"Zoo.Empty", &jrt_RuntimeException_class, sizeof(Zoo_Empty), &Zoo_Empty_vt_, 0, 0, 0};
+const jclass Zoo_Empty_class = {"Zoo$Empty", &jrt_RuntimeException_class, sizeof(Zoo_Empty), &Zoo_Empty_vt_, 0, 0, 0};
 
 
 int main(int argc, char** argv) {

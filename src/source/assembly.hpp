@@ -10,7 +10,7 @@
 // has -- assemblers choose between equivalent encodings, and a different choice moves everything behind it. That is
 // checked rather than assumed: every distinct instruction text is assembled once, at a place of its own in a probe
 // file, and its bytes are read back from the object file. What the probe has established is remembered in a file
-// (state/assembly_probes.json), so a text is assembled once however many programs use it.
+// (<state>/assembly_probes.json), so a text is assembled once however many programs use it.
 //
 // The assembler and linker are OpenWatcom's, given as `Tools` (where they are, the environment they run in).
 #pragma once

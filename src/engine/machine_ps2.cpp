@@ -11,6 +11,7 @@
 #include "emulate/ee.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
+#include "engine/pcode_cpu_ee.hpp"
 #include "formats/read.hpp"
 #include "platforms/ps2.hpp"
 #include "formats/ps2.hpp"
@@ -107,7 +108,7 @@ vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::Stat
     options.max_steps = kSteps;
     for (std::size_t i = 0; i < 4; ++i) options.a[i] = static_cast<std::uint32_t>(at(state, i == 0 ? "a0" : i == 1 ? "a1" : i == 2 ? "a2" : "a3"));
     options.s[0] = static_cast<std::uint32_t>(at(state, "s0"));
-    const emulate::ee::RunResult run = emulate::ee::run(bus, entry, options);
+    const emulate::ee::RunResult run = pcode_cpu::call(bus, entry, options);
     std::map<std::uint32_t, std::uint8_t> was(before.begin(), before.end());
     std::vector<std::string> changed;
     for (const auto& [address, value] : bus.memory().changes(1 << 20)) {

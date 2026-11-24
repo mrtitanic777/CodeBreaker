@@ -1,6 +1,7 @@
 // translate/backends/c_java_stmt.cpp -- statements in the C back end for Java: blocks, locals, the loops, labelled jumps, switch,
 // and try/catch/finally over the runtime's handler chain (see c_java.hpp).
 
+#include <array>
 #include <format>
 
 #include "core/text.hpp"
@@ -27,6 +28,7 @@ void MethodWriter::block(const ir::Node* s, Lines& out, std::string_view ind) {
 void MethodWriter::loop_body(const ir::Node* body, Lines& out, std::string_view ind) {
     const std::optional<std::string> label = std::exchange(cont_next_, std::nullopt);
     ++loops_;
+    ++real_loops_;
     if (!label) {
         block(body, out, ind);
     } else {
@@ -38,6 +40,7 @@ void MethodWriter::loop_body(const ir::Node* body, Lines& out, std::string_view 
         out.push_back(std::format("{}\t{}_cont:;", ind, *label));
     }
     --loops_;
+    --real_loops_;
 }
 
 void MethodWriter::stmt(const ir::Node* s, Lines& out, std::string_view ind) {
@@ -80,6 +83,29 @@ std::string MethodWriter::pops(std::size_t depth) const {
     return out;
 }
 
+bool MethodWriter::must_finish(std::size_t depth) const {
+    for (std::size_t i = depth; i < tries_.size(); ++i) {
+        if (tries_[i].finally_body != nullptr || !tries_[i].close.empty()) return true;
+    }
+    return false;
+}
+
+void MethodWriter::unwind(std::size_t depth, Lines& out, std::string_view ind) {
+    const std::vector<Handler> open = tries_;
+    while (tries_.size() > depth) {   // what runs here is outside the handler it belongs to: a throw from it goes further out
+        const Handler h = tries_.back();
+        tries_.pop_back();
+        out.push_back(std::format("{}jrt_pop(&{});", ind, h.name));
+        if (!h.close.empty()) out.push_back(std::format("{}{}", ind, h.close));
+        if (h.finally_body != nullptr) {
+            out.push_back(std::format("{}{{", ind));
+            block(h.finally_body, out, ind);
+            out.push_back(std::format("{}}}", ind));
+        }
+    }
+    tries_ = open;
+}
+
 template <class K> void MethodWriter::emit(const ir::Node& n, const K&, Lines&, std::string_view) {
     throw Decline("statement " + std::string(ir::kind_name(n)));
 }
@@ -99,7 +125,7 @@ void MethodWriter::emit(const ir::Node&, const ir::Local& k, Lines& out, std::st
         return;
     }
     const Code init = expr(k.init);
-    out.push_back(std::string(ind) + decl(ct, name, conv(init.code, init.ctype, ct)));
+    out.push_back(std::string(ind) + decl(ct, name, conv_to(init, k.type, ct)));
 }
 
 void MethodWriter::emit(const ir::Node&, const ir::ExprStmt& k, Lines& out, std::string_view ind) {
@@ -160,20 +186,35 @@ void MethodWriter::emit(const ir::Node&, const ir::Labeled& k, Lines& out, std::
         if (const auto* c = ir::get<ir::Continue>(n); c != nullptr && c->label == k.label) continued = true;
     });
     if (continued) cont_next_ = label;
+    label_depth_[label] = tries_.size();
     stmt(body, out, ind);
     if (broken) out.push_back(std::format("{}{}_brk:;", ind, label));
 }
 
 void MethodWriter::emit(const ir::Node&, const ir::Return& k, Lines& out, std::string_view ind) {
-    const std::string unwind = pops(0);
+    const std::string popped = pops(0);
+    if (must_finish(0)) {   // the value is worked out first; the finallys and closes run after it, and may not see their own names change it
+        const std::string inner = std::string(ind) + "\t";
+        out.push_back(std::format("{}{{", ind));
+        std::string result;
+        if (k.expr != nullptr) {
+            const Code value = expr(k.expr);
+            result = std::format("jrt_r{}", ++temps_);
+            out.push_back(std::format("{}{} {} = {};", inner, ret_, result, conv(value.code, value.ctype, ret_)));
+        }
+        unwind(0, out, inner);
+        out.push_back(result.empty() ? inner + "return;" : std::format("{}return {};", inner, result));
+        out.push_back(std::format("{}}}", ind));
+        return;
+    }
     if (k.expr == nullptr) {
-        out.push_back(std::format("{}{}return;", ind, unwind));
+        out.push_back(std::format("{}{}return;", ind, popped));
         return;
     }
     const Code value = expr(k.expr);
     const std::string v = conv(value.code, value.ctype, ret_);
-    if (!unwind.empty()) {
-        out.push_back(std::format("{}{{ {} r_ = {}; {}return r_; }}", ind, ret_, v, unwind));   // the value survives the handlers' pops
+    if (!popped.empty()) {
+        out.push_back(std::format("{}{{ {} r_ = {}; {}return r_; }}", ind, ret_, v, popped));   // the value survives the handlers' pops
     } else {
         out.push_back(std::format("{}return {};", ind, v));
     }
@@ -181,16 +222,21 @@ void MethodWriter::emit(const ir::Node&, const ir::Return& k, Lines& out, std::s
 
 void MethodWriter::jump(bool is_break, const std::optional<std::string>& label, Lines& out, std::string_view ind) {
     const bool labelled = label && !label->empty();
-    std::string unwind;
-    if (!labelled) {   // the handlers opened inside the loop
-        std::size_t outside = 0;
-        for (const Handler& h : tries_) outside += h.loops < loops_;
-        unwind = pops(outside);
-    } else {
-        unwind = !tries_.empty() ? pops(0) : "";
+    std::size_t outside = 0;   // the handlers that stay open: those around the loop, or around the label
+    if (!labelled) {
+        for (const Handler& h : tries_) outside += is_break ? h.loops < loops_ : h.real_loops < real_loops_;   // (a switch holds a break, not a continue)
+    } else if (const auto at = label_depth_.find(*label); at != label_depth_.end()) {
+        outside = at->second;
     }
     const std::string word = labelled ? std::format("goto {}_{};", *label, is_break ? "brk" : "cont") : (is_break ? "break;" : "continue;");
-    out.push_back(std::format("{}{}{}", ind, unwind, word));
+    if (must_finish(outside)) {
+        out.push_back(std::format("{}{{", ind));
+        unwind(outside, out, std::string(ind) + "\t");
+        out.push_back(std::format("{}\t{}", ind, word));
+        out.push_back(std::format("{}}}", ind));
+        return;
+    }
+    out.push_back(std::format("{}{}{}", ind, pops(outside), word));
 }
 
 void MethodWriter::emit(const ir::Node&, const ir::Break& k, Lines& out, std::string_view ind) { jump(true, k.label, out, ind); }
@@ -242,7 +288,22 @@ void MethodWriter::emit(const ir::Node&, const ir::Switch& k, Lines& out, std::s
     std::string x = scrutinee.code;
     const ir::TypeP type = type_of(k.expr);
     const ClassInfo* enum_class = p_.model().of_type(type);
-    if (enum_class != nullptr && enum_class->kind == "enum") {
+    const bool on_string = class_name(type) == "java.lang.String";
+    std::size_t string_case = 0;   // a switch on a String is on the place of the label it equals
+    if (on_string) {
+        std::vector<std::string> labels;
+        for (const ir::Node* cn : k.cases) {
+            const auto* c = ir::get<ir::Case>(cn);
+            if (c == nullptr) throw Decline("a switch member that is not a case");
+            for (const ir::Node* label : c->labels) {
+                const Code text = expr(cpp03::strip_paren(label));
+                labels.push_back(conv(text.code, text.ctype, kStr));
+            }
+        }
+        x = labels.empty() ? std::format("jrt_string_case({}, 0, NULL)", x)
+                           : std::format("jrt_string_case({}, {}, (jstring*[]){{{}}})", x, labels.size(), join_commas(labels));
+        enum_class = nullptr;
+    } else if (enum_class != nullptr && enum_class->kind == "enum") {
         x = std::format("jrt_Enum_ordinal_({})", x);
     } else if (scrutinee.ctype == kObj) {   // a boxed value: switch on what it holds
         const std::string_view letter = box_letter(class_name(type));
@@ -257,7 +318,8 @@ void MethodWriter::emit(const ir::Node&, const ir::Switch& k, Lines& out, std::s
         for (const ir::Node* cn : k.cases) {
             const auto* c = ir::get<ir::Case>(cn);
             if (c == nullptr) throw Decline("a switch member that is not a case");
-            for (const ir::Node* label : c->labels) out.push_back(std::format("{}case {}:", ind, case_label(label, enum_class)));
+            for (const ir::Node* label : c->labels)
+                out.push_back(std::format("{}case {}:", ind, on_string ? std::to_string(string_case++) : case_label(label, enum_class)));
             if (c->is_default) out.push_back(std::format("{}default:", ind));
             out.push_back(std::format("{}{{", ind));
             const auto saved = vars_;
@@ -271,7 +333,6 @@ void MethodWriter::emit(const ir::Node&, const ir::Switch& k, Lines& out, std::s
 }
 
 void MethodWriter::emit(const ir::Node&, const ir::Try& k, Lines& out, std::string_view ind) {
-    if (!k.resources.empty()) throw Decline("try-with-resources");
     if (k.finally_body == nullptr) {
         try_catch(k, out, ind);
         return;
@@ -282,14 +343,18 @@ void MethodWriter::emit(const ir::Node&, const ir::Try& k, Lines& out, std::stri
         if (cc == nullptr) throw Decline("a catch that is not a Catch");
         bodies.push_back(cc->body);
     }
-    if (cpp03::leaves(bodies)) throw Decline("a finally left by a jump");
+    // A finally is written once for each way out, so a C label in it would be defined twice; and written at a jump inside a deeper loop,
+    // a `break` of its own would leave the wrong loop.
+    const std::array<const ir::Node*, 1> finally_only{k.finally_body};
+    if (any_node(k.finally_body, [](const ir::Node* x) { return ir::is<ir::Labeled>(x); })) throw Decline("a label in a finally");
+    if (cpp03::leaves(bodies) && cpp03::leaves(finally_only)) throw Decline("a finally that jumps, around a body that jumps");
     // the finally runs after the body and its catches, or, when something escapes them, before the exception goes on
     const std::string f = std::format("f{}", ++temps_);
     out.push_back(std::format("{}{{", ind));
     out.push_back(std::format("{}\tjrt_try {};", ind, f));
     out.push_back(std::format("{}\tjrt_push(&{});", ind, f));
     out.push_back(std::format("{}\tif (setjmp({}.jb) == 0) {{", ind, f));
-    tries_.push_back(Handler{f, loops_});
+    tries_.push_back(Handler{f, loops_, k.finally_body, {}, real_loops_});
     try_catch(k, out, std::string(ind) + "\t\t");
     tries_.pop_back();
     out.push_back(std::format("{}\t\tjrt_pop(&{});", ind, f));
@@ -302,10 +367,75 @@ void MethodWriter::emit(const ir::Node&, const ir::Try& k, Lines& out, std::stri
     out.push_back(std::format("{}}}", ind));
 }
 
+// `r.close()` for a resource: through the table of the program's class or interface that declares it.
+std::string MethodWriter::close_call(const std::string& resource, const ir::TypeP& type) {
+    for (const std::string& q : p_.model().ancestors(std::string(class_name(type)))) {
+        const ClassInfo* c = p_.model().info(q);
+        if (c == nullptr) continue;
+        for (const ir::Node* mn : c->methods("close")) {
+            const ir::MethodDecl& m = method_of(mn);
+            if (!m.params.empty() || is_static(m)) continue;
+            const std::string name = p_.mname("close", p_.sig(*c, mn).eps);
+            if (c->kind == "interface") return std::format("{}_{}_i((jobject*){})", c->cname, name, resource);
+            return std::format("{}_{}_v((jobject*){})", slot_owner(c, name)->cname, name, resource);
+        }
+    }
+    throw Decline("a resource of a library class");
+}
+
+// Each resource is open around the ones after it and the body. Leaving normally or by a jump closes it; an exception closes it too, and
+// what that close throws is added to the exception as suppressed. A null resource is not closed.
+void MethodWriter::try_body(const ir::Try& s, std::size_t at, Lines& out, std::string_view ind) {
+    if (at == s.resources.size()) {
+        block(s.body, out, ind);
+        return;
+    }
+    const auto saved = vars_;
+    const std::string i1 = std::string(ind) + "\t", i2 = i1 + "\t", i3 = i2 + "\t";
+    out.push_back(std::format("{}{{", i1));
+    const ir::Node* r = s.resources[at];
+    std::string name;
+    ir::TypeP type;
+    if (const auto* local = ir::get<ir::Local>(r)) {
+        stmt(r, out, i2);
+        name = ident(need_sym(local->sym, "a resource").name);
+        type = local->type;
+    } else {   // `try (existing)`
+        if (const auto* written = ir::get<ir::ExprStmt>(r)) r = written->expr;
+        const Code value = expr(r);
+        type = type_of(r);
+        name = std::format("res{}", ++temps_);
+        const std::string ct = p_.ct(type);
+        out.push_back(i2 + decl(ct, name, conv(value.code, value.ctype, ct)));
+    }
+    const std::string call = close_call(name, type);
+    const std::string h = std::format("h{}", ++temps_), c = std::format("c{}", ++temps_);
+    out.push_back(std::format("{}jrt_try {};", i2, h));
+    out.push_back(std::format("{}jrt_push(&{});", i2, h));
+    out.push_back(std::format("{}if (setjmp({}.jb) == 0) {{", i2, h));
+    tries_.push_back(Handler{h, loops_, nullptr, std::format("if ({} != NULL) {};", name, call), real_loops_});
+    try_body(s, at + 1, out, i2);
+    tries_.pop_back();
+    out.push_back(std::format("{}jrt_pop(&{});", i3, h));
+    out.push_back(std::format("{}}} else {{", i2));
+    out.push_back(std::format("{}jrt_pop(&{});", i3, h));
+    out.push_back(std::format("{}if ({} != NULL) {{", i3, name));
+    out.push_back(std::format("{}\tjrt_try {};", i3, c));
+    out.push_back(std::format("{}\tjrt_push(&{});", i3, c));
+    out.push_back(std::format("{}\tif (setjmp({}.jb) == 0) {{ {}; jrt_pop(&{}); }}", i3, c, call, c));
+    out.push_back(std::format("{}\telse {{ jrt_pop(&{}); jrt_Throwable_addSuppressed_O({}.ex, {}.ex); }}", i3, c, h, c));
+    out.push_back(std::format("{}}}", i3));
+    out.push_back(std::format("{}jrt_throw({}.ex);", i3, h));
+    out.push_back(std::format("{}}}", i2));
+    out.push_back(std::format("{}if ({} != NULL) {};", i2, name, call));
+    out.push_back(std::format("{}}}", i1));
+    vars_ = saved;
+}
+
 void MethodWriter::try_catch(const ir::Try& s, Lines& out, std::string_view ind) {
     if (s.catches.empty()) {
         out.push_back(std::format("{}{{", ind));
-        block(s.body, out, ind);
+        try_body(s, 0, out, ind);
         out.push_back(std::format("{}}}", ind));
         return;
     }
@@ -314,8 +444,8 @@ void MethodWriter::try_catch(const ir::Try& s, Lines& out, std::string_view ind)
     out.push_back(std::format("{}\tjrt_try {};", ind, t));
     out.push_back(std::format("{}\tjrt_push(&{});", ind, t));
     out.push_back(std::format("{}\tif (setjmp({}.jb) == 0) {{", ind, t));
-    tries_.push_back(Handler{t, loops_});
-    block(s.body, out, std::string(ind) + "\t");
+    tries_.push_back(Handler{t, loops_, nullptr, {}, real_loops_});
+    try_body(s, 0, out, std::string(ind) + "\t");
     tries_.pop_back();
     out.push_back(std::format("{}\t\tjrt_pop(&{});", ind, t));
     out.push_back(std::format("{}\t}} else {{", ind));

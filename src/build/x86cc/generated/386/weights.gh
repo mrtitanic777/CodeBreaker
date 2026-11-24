@@ -3,11 +3,8 @@
 #define FIRST_SCALE   1
 #define LAST_INDEX    4
 #define LAST_SCALE    1
-#define LEN_MAX       19
 #define LEN_MIN       2
-#define LEN_MASK      0xa0ffc
 #define KEYWORD_HASH_MASK  0x7f
-#define KEYWORD_HASH_EXTRA
 
 #define W_0      0
 #define W_1     35
@@ -71,8 +68,5 @@
 #define W_X      0
 #define W_Y      0
 #define W_Z      0
-#define W_00h      0
-#define W_DOLLAR      0
-#define W_BACK_QUOTE      0
 #define W__     32
 #define W_UNKNOWN      0

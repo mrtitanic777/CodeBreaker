@@ -62,6 +62,19 @@ void Bus::write(std::uint32_t address, unsigned size, std::uint32_t value) {
     }
 }
 
+std::optional<std::uint32_t> Bus::peek(std::uint32_t address, unsigned size) const {
+    const std::uint32_t a = (address & mask_) & ~(size - 1);
+    for (const Range& r : ranges_) {
+        if (a < r.lo || a > r.hi) continue;
+        if (r.data.empty() || r.logged) return std::nullopt;
+        std::uint32_t v = 0;
+        const std::size_t base = (a - r.lo) % r.data.size();
+        for (unsigned i = 0; i < size; ++i) v |= static_cast<std::uint32_t>(r.data[(base + i) % r.data.size()]) << (8 * i);
+        return v;
+    }
+    return std::nullopt;
+}
+
 std::span<std::uint8_t> Bus::bytes(std::uint32_t lo) {
     for (Range& r : ranges_) {
         if (r.lo == lo && !r.data.empty()) return r.data;

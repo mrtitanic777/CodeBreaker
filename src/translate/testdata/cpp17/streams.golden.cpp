@@ -49,7 +49,7 @@ struct Streams : virtual Object {
 };
 
 struct Streams_Person : virtual Object {
-	const char16_t* jclass_() const override { return u"Streams.Person"; }
+	const char16_t* jclass_() const override { return u"Streams$Person"; }
 	ref<String> name_{};
 	int32_t age_{};
 	Streams_Person(ref<String> name, int32_t age);

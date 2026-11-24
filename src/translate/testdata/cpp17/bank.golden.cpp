@@ -43,7 +43,7 @@ struct Bank : virtual Object {
 };
 
 struct Bank_InsufficientFunds : Exception {
-	const char16_t* jclass_() const override { return u"Bank.InsufficientFunds"; }
+	const char16_t* jclass_() const override { return u"Bank$InsufficientFunds"; }
 	jrt::gc::Tracked gc_tracked_{this};
 	void trace_(jrt::gc::Tracer& t) override;
 	void clear_() override;
@@ -53,7 +53,7 @@ struct Bank_InsufficientFunds : Exception {
 };
 
 struct Bank_Account : virtual Object {
-	const char16_t* jclass_() const override { return u"Bank.Account"; }
+	const char16_t* jclass_() const override { return u"Bank$Account"; }
 	jrt::gc::Tracked gc_tracked_{this};
 	void trace_(jrt::gc::Tracer& t) override;
 	void clear_() override;
@@ -71,7 +71,7 @@ struct Bank_Account : virtual Object {
 };
 
 struct Bank_Checking : Bank_Account {
-	const char16_t* jclass_() const override { return u"Bank.Checking"; }
+	const char16_t* jclass_() const override { return u"Bank$Checking"; }
 	jrt::gc::Tracked gc_tracked_{this};
 	void trace_(jrt::gc::Tracer& t) override;
 	void clear_() override;
@@ -84,7 +84,7 @@ struct Bank_Checking : Bank_Account {
 };
 
 struct Bank_Savings : Bank_Account {
-	const char16_t* jclass_() const override { return u"Bank.Savings"; }
+	const char16_t* jclass_() const override { return u"Bank$Savings"; }
 	jrt::gc::Tracked gc_tracked_{this};
 	void trace_(jrt::gc::Tracer& t) override;
 	void clear_() override;

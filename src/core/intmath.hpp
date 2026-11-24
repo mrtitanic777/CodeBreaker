@@ -42,6 +42,12 @@ constexpr std::optional<T> checked_add(T a, T b) {
     }
 }
 
+// (a divisor that is never zero where it is used: the zero operands have returned before any division, but a compiler
+// that sees a literal zero argument and does not remove the branch warns "potential divide by 0" (MSVC C4723, an error
+// at /WX); this keeps the divisor from being that constant, and divides by the operand itself otherwise)
+template <std::integral T>
+constexpr T nonzero(T v) { return v == 0 ? static_cast<T>(1) : v; }
+
 template <std::integral T>
 constexpr std::optional<T> checked_mul(T a, T b) {
     if (a == 0 || b == 0) return static_cast<T>(0);
@@ -50,10 +56,10 @@ constexpr std::optional<T> checked_mul(T a, T b) {
         constexpr T hi = std::numeric_limits<T>::max();
         if (a == -1) return b == lo ? std::nullopt : std::optional<T>(static_cast<T>(-b));
         if (b == -1) return a == lo ? std::nullopt : std::optional<T>(static_cast<T>(-a));
-        if (a > 0 ? (b > 0 ? a > hi / b : b < lo / a) : (b > 0 ? a < lo / b : a < hi / b)) return std::nullopt;
+        if (a > 0 ? (b > 0 ? a > hi / nonzero(b) : b < lo / nonzero(a)) : (b > 0 ? a < lo / nonzero(b) : a < hi / nonzero(b))) return std::nullopt;
         return static_cast<T>(a * b);
     } else {
-        if (a > std::numeric_limits<T>::max() / b) return std::nullopt;
+        if (a > std::numeric_limits<T>::max() / nonzero(b)) return std::nullopt;
         return static_cast<T>(a * b);
     }
 }

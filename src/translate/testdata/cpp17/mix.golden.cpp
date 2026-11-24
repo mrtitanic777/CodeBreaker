@@ -48,7 +48,7 @@ struct Mix : virtual Object {
 };
 
 struct Mix_Color : Enum {
-	const char16_t* jclass_() const override { return u"Mix.Color"; }
+	const char16_t* jclass_() const override { return u"Mix$Color"; }
 	jrt::gc::Tracked gc_tracked_{this};
 	void trace_(jrt::gc::Tracer& t) override;
 	void clear_() override;
@@ -68,7 +68,7 @@ struct Mix_Color : Enum {
 };
 
 struct Mix_Shape : virtual Object {
-	const char16_t* jclass_() const override { return u"Mix.Shape"; }
+	const char16_t* jclass_() const override { return u"Mix$Shape"; }
 	virtual double area() = 0;
 	template <class L> struct Of;
 };
@@ -79,7 +79,7 @@ template <class L> struct Mix_Shape::Of : Mix_Shape {
 };
 
 struct Mix_Inner : virtual Object {
-	const char16_t* jclass_() const override { return u"Mix.Inner"; }
+	const char16_t* jclass_() const override { return u"Mix$Inner"; }
 	ref<Mix> outer_;
 	jrt::gc::Tracked gc_tracked_{this};
 	void trace_(jrt::gc::Tracer& t) override;
@@ -91,7 +91,7 @@ struct Mix_Inner : virtual Object {
 };
 
 struct Mix_Box : virtual Object {
-	const char16_t* jclass_() const override { return u"Mix.Box"; }
+	const char16_t* jclass_() const override { return u"Mix$Box"; }
 	jrt::gc::Tracked gc_tracked_{this};
 	void trace_(jrt::gc::Tracer& t) override;
 	void clear_() override;
@@ -201,7 +201,7 @@ void Mix::thrower(int32_t x) {
 void Mix::main(ref<Array<ref<String>>> args) {
 	clinit_();
 	auto m = std::make_shared<Mix>();
-	auto in = [&] { auto o_ = std::make_shared<Mix_Inner>(); o_->outer_ = m; o_->ctor_(3); return o_; }();
+	auto in = [&] { auto o_ = std::make_shared<Mix_Inner>(); o_->outer_ = jrt::nonnull(m); o_->ctor_(3); return o_; }();
 	int32_t j2xo1{};
 	int32_t j2xo2{};
 	int32_t j2xo3{};

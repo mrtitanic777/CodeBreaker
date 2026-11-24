@@ -256,11 +256,54 @@ const Code* library_static(std::string_view owner, std::string_view name) {
         std::string_view owner, name;
         Code code;
     };
-    static const std::array<Entry, 11> table = {{
+    static const std::array<Entry, 54> table = {{
         {"java.lang.Integer", "MAX_VALUE", {"JRT_INT_MAX", "int32_t"}},
         {"java.lang.Integer", "MIN_VALUE", {"JRT_INT_MIN", "int32_t"}},
         {"java.lang.Long", "MAX_VALUE", {"JRT_LONG_MAX", "int64_t"}},
         {"java.lang.Long", "MIN_VALUE", {"JRT_LONG_MIN", "int64_t"}},
+        {"java.lang.Short", "MAX_VALUE", {"((int16_t)32767)", "int16_t"}},
+        {"java.lang.Short", "MIN_VALUE", {"((int16_t)-32768)", "int16_t"}},
+        {"java.lang.Byte", "MAX_VALUE", {"((int8_t)127)", "int8_t"}},
+        {"java.lang.Byte", "MIN_VALUE", {"((int8_t)-128)", "int8_t"}},
+        {"java.lang.Character", "MAX_VALUE", {"((char16_t)0xFFFF)", "char16_t"}},
+        {"java.lang.Character", "MIN_VALUE", {"((char16_t)0)", "char16_t"}},
+        {"java.lang.Character", "UNASSIGNED", {"((int8_t)0)", "int8_t"}},
+        {"java.lang.Character", "UPPERCASE_LETTER", {"((int8_t)1)", "int8_t"}},
+        {"java.lang.Character", "LOWERCASE_LETTER", {"((int8_t)2)", "int8_t"}},
+        {"java.lang.Character", "TITLECASE_LETTER", {"((int8_t)3)", "int8_t"}},
+        {"java.lang.Character", "MODIFIER_LETTER", {"((int8_t)4)", "int8_t"}},
+        {"java.lang.Character", "OTHER_LETTER", {"((int8_t)5)", "int8_t"}},
+        {"java.lang.Character", "NON_SPACING_MARK", {"((int8_t)6)", "int8_t"}},
+        {"java.lang.Character", "ENCLOSING_MARK", {"((int8_t)7)", "int8_t"}},
+        {"java.lang.Character", "COMBINING_SPACING_MARK", {"((int8_t)8)", "int8_t"}},
+        {"java.lang.Character", "DECIMAL_DIGIT_NUMBER", {"((int8_t)9)", "int8_t"}},
+        {"java.lang.Character", "LETTER_NUMBER", {"((int8_t)10)", "int8_t"}},
+        {"java.lang.Character", "OTHER_NUMBER", {"((int8_t)11)", "int8_t"}},
+        {"java.lang.Character", "SPACE_SEPARATOR", {"((int8_t)12)", "int8_t"}},
+        {"java.lang.Character", "LINE_SEPARATOR", {"((int8_t)13)", "int8_t"}},
+        {"java.lang.Character", "PARAGRAPH_SEPARATOR", {"((int8_t)14)", "int8_t"}},
+        {"java.lang.Character", "CONTROL", {"((int8_t)15)", "int8_t"}},
+        {"java.lang.Character", "FORMAT", {"((int8_t)16)", "int8_t"}},
+        {"java.lang.Character", "PRIVATE_USE", {"((int8_t)18)", "int8_t"}},
+        {"java.lang.Character", "SURROGATE", {"((int8_t)19)", "int8_t"}},
+        {"java.lang.Character", "DASH_PUNCTUATION", {"((int8_t)20)", "int8_t"}},
+        {"java.lang.Character", "START_PUNCTUATION", {"((int8_t)21)", "int8_t"}},
+        {"java.lang.Character", "END_PUNCTUATION", {"((int8_t)22)", "int8_t"}},
+        {"java.lang.Character", "CONNECTOR_PUNCTUATION", {"((int8_t)23)", "int8_t"}},
+        {"java.lang.Character", "OTHER_PUNCTUATION", {"((int8_t)24)", "int8_t"}},
+        {"java.lang.Character", "MATH_SYMBOL", {"((int8_t)25)", "int8_t"}},
+        {"java.lang.Character", "CURRENCY_SYMBOL", {"((int8_t)26)", "int8_t"}},
+        {"java.lang.Character", "MODIFIER_SYMBOL", {"((int8_t)27)", "int8_t"}},
+        {"java.lang.Character", "OTHER_SYMBOL", {"((int8_t)28)", "int8_t"}},
+        {"java.lang.Character", "INITIAL_QUOTE_PUNCTUATION", {"((int8_t)29)", "int8_t"}},
+        {"java.lang.Character", "FINAL_QUOTE_PUNCTUATION", {"((int8_t)30)", "int8_t"}},
+        {"java.lang.Float", "NaN", {"((float)NAN)", "float"}},
+        {"java.lang.Float", "POSITIVE_INFINITY", {"((float)INFINITY)", "float"}},
+        {"java.lang.Float", "NEGATIVE_INFINITY", {"((float)-INFINITY)", "float"}},
+        {"java.lang.Float", "MAX_VALUE", {"3.4028234663852886e38f", "float"}},
+        {"java.lang.Float", "MIN_VALUE", {"1.4e-45f", "float"}},
+        {"java.lang.Double", "MAX_VALUE", {"1.7976931348623157e308", "double"}},
+        {"java.lang.Double", "MIN_VALUE", {"4.9e-324", "double"}},
         {"java.lang.Math", "PI", {"JRT_PI", "double"}},
         {"java.lang.Math", "E", {"JRT_E", "double"}},
         {"java.lang.Double", "NaN", {"NAN", "double"}},
@@ -282,6 +325,12 @@ bool is_library_throwable(std::string_view qname) {
         return out;
     }();
     return qname == "java.lang.Throwable" || names.contains(qname);
+}
+
+std::optional<RuntimeBase> runtime_collection_base(std::string_view qname) {
+    if (qname == "java.util.ArrayList") return RuntimeBase{"jrt_ArrayList", "list"};
+    if (qname == "java.util.HashMap") return RuntimeBase{"jrt_HashMap", "map"};
+    return std::nullopt;
 }
 
 std::string array_store(std::string_view element_ctype) {

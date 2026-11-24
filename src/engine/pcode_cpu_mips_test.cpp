@@ -8,6 +8,7 @@
 #include <vector>
 
 #include "base/config.hpp"
+#include "core/cpu_time.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
@@ -146,7 +147,8 @@ CB_TEST("engine.pcode_cpu.mips_instructions_run_as_the_own_core_does", [] {
     unsigned shown = 0;
     for (const auto& [k, c] : by_kind)
         if (++shown <= 60) std::printf("    %s %u of %u: %s\n", k.c_str(), c, tried[k], example[k].c_str());
-    CB_CHECK_EQ(different, known_class);
+    CB_CHECK_EQ(different, 0u);
+    CB_CHECK_EQ(known_class, 0u);
 });
 
 CB_TEST("engine.pcode_cpu.the_ps1_lane_runs_homebrew_the_same_on_both_cores", [] {
@@ -213,9 +215,9 @@ CB_TEST("engine.pcode_cpu.the_ps1_lane_runs_homebrew_the_same_on_both_cores", []
                 verify::lanes::Effects e[2];
                 for (int core = 0; core < 2; ++core) {
                     MipsForced forced(core == 1);
-                    const auto start = std::chrono::steady_clock::now();
+                    const double start = cb::thread_cpu_seconds();
                     e[core] = spec.effects(entry.path(), address, state);
-                    seconds[core] += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+                    seconds[core] += (cb::thread_cpu_seconds() - start);
                 }
                 ++runs;
                 if (e[0] == e[1]) continue;

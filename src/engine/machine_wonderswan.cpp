@@ -9,6 +9,7 @@
 #include "emulate/unicorn_uc.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
+#include "engine/pcode_cpu_x86.hpp"
 #include "formats/read.hpp"
 #include "platforms/wonderswan.hpp"
 #include "formats/wonderswan.hpp"
@@ -69,7 +70,7 @@ int reg(const char* name) { return uni::x86_register(name).value(); }
 
 vl::Effects ws_effects(const stdfs::path& path, std::uint32_t entry, const vl::State& state) {
     const formats::wonderswan::Rom rom = formats::wonderswan::read(path);
-    const std::unique_ptr<core16::Uc> uc = uni::open_x86(16);
+    const std::unique_ptr<core16::Uc> uc = pcode_cpu::open_x86(16);   // (Unicorn, unless the one emulator is asked for: pcode_cpu_x86.hpp)
     uc->mem_map(0, formats::wonderswan::kEnd);
     const Bytes mem = rom.memory();
     uc->mem_write(rom.base(), ByteView(mem).subspan(rom.base(), rom.mapped()));

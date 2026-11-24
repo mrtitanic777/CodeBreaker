@@ -81,7 +81,9 @@ Lane lane_of(NewHeader sig) {
         case NewHeader::Pe: return Lane::Pe;
         case NewHeader::Ne: return Lane::Ne;
         case NewHeader::Le:
-        case NewHeader::Lx: return Lane::Le;
+        case NewHeader::Lx:
+        case NewHeader::W3:   // (a bundle of LE drivers: its code is theirs, not the DOS stub's)
+        case NewHeader::W4: return Lane::Le;
         default: return Lane::Dos;
     }
 }

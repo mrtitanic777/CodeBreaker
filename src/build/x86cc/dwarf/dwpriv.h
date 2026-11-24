@@ -1,0 +1,152 @@
+/****************************************************************************
+*
+*                            Open Watcom Project
+*
+* Copyright (c) 2025-2026 The Open Watcom Contributors. All Rights Reserved.
+*    Portions Copyright (c) 1983-2002 Sybase, Inc. All Rights Reserved.
+*
+*  ========================================================================
+*
+*    This file contains Original Code and/or Modifications of Original
+*    Code as defined in and that are subject to the Sybase Open Watcom
+*    Public License version 1.0 (the 'License'). You may not use this file
+*    except in compliance with the License. BY USING THIS FILE YOU AGREE TO
+*    ALL TERMS AND CONDITIONS OF THE LICENSE. A copy of the License is
+*    provided with the Original Code and Modifications, and is also
+*    available at www.sybase.com/developer/opensource.
+*
+*    The Original Code and all software distributed under the License are
+*    distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+*    EXPRESS OR IMPLIED, AND SYBASE AND ALL CONTRIBUTORS HEREBY DISCLAIM
+*    ALL SUCH WARRANTIES, INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF
+*    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR
+*    NON-INFRINGEMENT. Please see the License for the specific language
+*    governing rights and limitations under the License.
+*
+*  ========================================================================
+*
+* Description:  WHEN YOU FIGURE OUT WHAT THIS FILE DOES, PLEASE
+*               DESCRIBE IT HERE!
+*
+****************************************************************************/
+
+
+#ifndef DWPRIV_H_INCLUDED
+#define DWPRIV_H_INCLUDED
+
+#include <assert.h>
+#include <string.h>
+#include "dw.h"
+#include "dwassert.h"
+#include "dwarf.h"
+#include "dwabort.h"
+#include "dwline.h"
+#include "dwdie.h"
+#include "dwabbrev.h"
+#include "dwcarve.h"
+#include "dwhandle.h"
+
+
+inline unsigned char GetFlagPtrType( dw_flags f ) { return (static_cast<uint_8>(((f) & DW_FLAG_PTR_TYPE_MASK) >> DW_FLAG_PTR_TYPE_SHIFT)); }
+inline unsigned char GetFlagInline( dw_flags f ) { return (static_cast<uint_8>(((f) & DW_FLAG_INLINE_MASK) >> DW_FLAG_INLINE_SHIFT)); }
+inline unsigned char GetFlagVirtual( dw_flags f ) { return (static_cast<uint_8>(((f) & DW_FLAG_VIRTUAL_MASK) >> DW_FLAG_VIRTUAL_SHIFT)); }
+
+
+struct handles_private {
+    uint_32             num_handles;
+    uint_32             forward;  // number of forward refs out
+    struct handle_blk   *block_head[MAX_HANDLE_HEIGHT];
+    struct handle_blk   **block_tail[MAX_HANDLE_HEIGHT];
+    union handle_extra  *extra_list;
+    carve_t             extra_carver;
+    carve_t             chain_carver;
+    uint_8              max_height;
+};
+
+
+struct debug_line_private {
+    dw_include_stack    *include_stack;
+    dw_include          *files;
+    dw_addr_offset      addr;
+    dw_linenum          line;
+    dw_column           column;
+    uint_8              is_stmt : 1;
+    uint_8              end_sequence : 1;
+};
+
+struct debug_abbrev_private {
+    uint_8              emitted[AB_BITVECT_SIZE];
+};
+
+struct types_private {
+    dw_size_t           byte_size;      // these used in enumerations.
+    dw_sect_offs        offset;
+};
+
+struct die_private {
+    die_tree            *tree;
+};
+
+struct debug_loc_private {
+    dw_loc_handle       handles;
+    carve_t             label_carver;
+};
+
+struct decl_private {
+    uint                file;
+    dw_linenum          line;
+    dw_column           column;
+    uint_8              changed;
+};
+
+struct references_private {
+    struct delayed_ref *delayed;
+    carve_t             delay_carver;
+    uint                scope;
+    uint                delayed_file;
+    dw_linenum          line;
+    dw_column           column;
+};
+
+struct dw_client_s {
+    jmp_buf                     exception_handler;
+    dw_funcs                    funcs;
+    char                        *producer_name;
+    struct handles_private      handles;
+    struct debug_line_private   debug_line;
+    struct types_private        types;
+    struct die_private          die;
+    struct debug_loc_private    debug_loc;
+    struct references_private   references;
+    dw_out_offset               section_base[DW_DEBUG_MAX];
+    struct decl_private         decl;
+    dw_langnum                  language;
+    dw_handle                   defset;
+    dw_sym_handle               abbrev_sym;
+    dw_sym_handle               dbg_pch;
+    struct debug_abbrev_private debug_abbrev;
+    uint_8                      compiler_options;
+    uint_8                      offset_size;
+    uint_8                      segment_size;
+    bool                        big_endian;
+};
+
+/* what the client of the library (the code generator) is asked to do: its callbacks, with the run it is given (they read members of
+ * dw_client_s, so they come after it) */
+template< class... Args >
+inline void CLIReloc( BackRun& back, dw_client cli, dw_sectnum sect, dw_reloc_type type, Args... args )
+{
+    cli->funcs.cli_reloc( back, sect, type, args... );
+}
+inline void CLIWrite( BackRun& back, dw_client cli, dw_sectnum sect, const void *block, size_t size ) { cli->funcs.cli_write( back, sect, block, size ); }
+inline void CLISeek( BackRun& back, dw_client cli, dw_sectnum sect, dw_out_offset offset, int type ) { cli->funcs.cli_seek( back, sect, offset, type ); }
+inline dw_out_offset CLITell( BackRun& back, dw_client cli, dw_sectnum sect ) { return cli->funcs.cli_tell( back, sect ); }
+inline void *CLIAlloc( BackRun& back, dw_client cli, size_t size ) { return cli->funcs.cli_alloc( back, size ); }
+inline void CLIFree( BackRun& back, dw_client cli, void *block ) { cli->funcs.cli_free( back, block ); }
+
+
+inline int GetSegmentSize( dw_client_s *c ) { return (((c)->segment_size == 0) ? 2 : (c)->segment_size); }
+
+[[noreturn]] inline void AbortDwarf( dw_client_s *cli, int reason ) { longjmp( cli->exception_handler, reason ); }
+
+#endif

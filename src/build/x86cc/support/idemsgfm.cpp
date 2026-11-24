@@ -1,0 +1,249 @@
+/****************************************************************************
+*
+*                            Open Watcom Project
+*
+*    Portions Copyright (c) 1983-2002 Sybase, Inc. All Rights Reserved.
+*
+*  ========================================================================
+*
+*    This file contains Original Code and/or Modifications of Original
+*    Code as defined in and that are subject to the Sybase Open Watcom
+*    Public License version 1.0 (the 'License'). You may not use this file
+*    except in compliance with the License. BY USING THIS FILE YOU AGREE TO
+*    ALL TERMS AND CONDITIONS OF THE LICENSE. A copy of the License is
+*    provided with the Original Code and Modifications, and is also
+*    available at www.sybase.com/developer/opensource.
+*
+*    The Original Code and all software distributed under the License are
+*    distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+*    EXPRESS OR IMPLIED, AND SYBASE AND ALL CONTRIBUTORS HEREBY DISCLAIM
+*    ALL SUCH WARRANTIES, INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF
+*    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR
+*    NON-INFRINGEMENT. Please see the License for the specific language
+*    governing rights and limitations under the License.
+*
+*  ========================================================================
+*
+* Description:  IDE messages formating functions
+*
+****************************************************************************/
+
+
+#include <assert.h>
+#include <string.h>
+#include <stdio.h>
+
+#include "idedll.h"
+#include "supportrun.hpp"
+
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+/* (struct IdemsgfmState: idemsgfm_state.h) */
+
+}  // namespace
+
+
+
+#define TEXT_SEVERITY_WARNING   "Warning!"
+#define TEXT_SEVERITY_ERROR     "Error!"
+#define TEXT_SEVERITY_NOTE      "Note!"
+#define TEXT_SEVERITY_NOTE_MSG  ""
+#define TEXT_SEVERITY_BANNER    ""
+#define TEXT_SEVERITY_DEBUG     "Debug!"
+
+static char const * const text_severity[] =
+{
+#   define _IdeMsgSeverity(a) TEXT_SEVERITY_ ## a
+    __IdeMsgSeverity
+#   undef _IdeMsgSeverity
+};
+
+#define TEXT_MSG_NO_WARNING   "W"
+#define TEXT_MSG_NO_ERROR     "E"
+#define TEXT_MSG_NO_NOTE      "N"
+#define TEXT_MSG_NO_NOTE_MSG  "N"
+#define TEXT_MSG_NO_BANNER    "B"
+#define TEXT_MSG_NO_DEBUG     "D"
+
+static char const * const text_msg_no[] =
+{
+#   define _IdeMsgSeverity(a) TEXT_MSG_NO_ ## a
+    __IdeMsgSeverity
+#   undef _IdeMsgSeverity
+};
+
+template <class T, size_t N>
+constexpr size_t ArraySize( T (&)[N] ) { return N; }
+
+
+typedef struct {                // CONSTRUCTION ELEMENT
+    char* buffer;               // - buffer
+    size_t bsize;               // - buffer size
+    size_t used;                // - amount used
+} CONSTRUCTION;
+
+
+static void concatText          // CONCATENATE TEXT
+    ( CONSTRUCTION* ct          // - construction info
+    , char const *text )        // - text to be appended
+{
+    size_t size = strlen( text ) + 1;
+    size_t left = ct->bsize - ct->used;
+    if( size > left ) {
+        size = left;
+    }
+    if( size >= 1 ) {
+        char* tgt = &ct->buffer[ ct->used ];
+        -- size;
+        tgt[ size ] = '\0';
+        if( size != 0 ) {
+            ct->used += size;
+            memcpy( tgt, text, size );
+        }
+    }
+}
+
+
+static void concatBlank         // CONCATENATE BLANK, IF NOT AT START
+    ( CONSTRUCTION* ct )        // - construction info
+{
+    if( 0 != ct->used ) {
+        concatText( ct, " " );
+    }
+}
+
+
+static void concat3DigitNumber  // CONCATENATE 3 DIGIT NUMBER
+    ( CONSTRUCTION* ct          // - construction info
+    , unsigned number )         // - the number
+{
+    char buf[32];
+
+    sprintf( buf, "%u", number + ( number > 999 ? 10000 : 1000 ) );
+    concatText( ct, buf + 1 );
+}
+
+
+static void concatNumber        // CONCATENATE NUMBER
+    ( CONSTRUCTION* ct          // - construction info
+    , unsigned number )         // - the number
+{
+    char buf[32];
+
+    sprintf( buf, "%u", number );
+    concatText( ct, buf );
+}
+
+
+static void concatSeverity      // CONCATENATE SEVERITY MESSAGE
+    ( CONSTRUCTION* ct          // - construction info
+    , IDEMsgInfo const * info ) // - message information
+{
+    concatBlank( ct );
+    concatText( ct, text_severity[ info->severity ] );
+}
+
+
+static void concatMsgNumber     // CONCATENATE MESSAGE NUMBER
+    ( CONSTRUCTION* ct          // - construction info
+    , IDEMsgInfo const * info ) // - message information
+{
+    if( IDE_HAS_MSG_NUM( info ) ) {
+        concatBlank( ct );
+        if( IDE_HAS_MSG_GRP( info ) ) {
+            if( '\0' == info->msg_group[0] ) {
+                concatText( ct, text_msg_no[ info->severity ] );
+                concat3DigitNumber( ct, info->msg_no );
+            } else {
+                concatText( ct, info->msg_group );
+                concatText( ct, "-" );
+                concat3DigitNumber( ct, info->msg_no & 255 );
+            }
+        } else {
+            concatText( ct, text_msg_no[ info->severity ] );
+            concat3DigitNumber( ct, info->msg_no );
+        }
+        concatText( ct, ":" );
+    }
+}
+
+
+
+
+// The "displayer" parameter is no longer required
+//
+void IdeMsgFormat               // FORMAT A MESSAGE
+    ( IDECBHdl handle           // - handle for requestor
+    , IDEMsgInfo const * info   // - message information
+    , char * buffer             // - buffer
+    , size_t bsize              // - buffer size
+    , IDEMsgInfoFn displayer )  // - display function
+{
+    CONSTRUCTION ct;            // - construction info
+
+    /* unused parameters */ (void)handle; (void)displayer;
+    // ********** displayer CAN BE REMOVED **********
+
+    ct.buffer = buffer;
+    ct.bsize = bsize;
+    ct.used = 0;
+    assert( info != NULL );
+    assert( buffer != NULL );
+    assert( bsize != 0 );
+    assert( info->severity < ArraySize( text_severity ) );
+    if( IDE_IS_READABLE( info ) ) {
+        switch( info->severity ) {
+          case IDEMSGSEV_ERROR :
+          case IDEMSGSEV_WARNING :
+          case IDEMSGSEV_DEBUG :
+            if( IDE_HAS_SRC_LINE( info ) ) {
+                concatText( &ct, "(" );
+                concatNumber( &ct, info->src_line );
+                if( IDE_HAS_SRC_COL( info ) ) {
+                    concatText( &ct, "," );
+                    concatNumber( &ct, info->src_col );
+                }
+                concatText( &ct, "):" );
+            }
+            concatSeverity( &ct, info );
+            concatMsgNumber( &ct, info );
+            break;
+          case IDEMSGSEV_NOTE :
+            concatText( &ct, " " );
+            break;
+        }
+    } else {
+        switch( info->severity ) {
+          case IDEMSGSEV_ERROR :
+          case IDEMSGSEV_WARNING :
+          case IDEMSGSEV_NOTE :
+          case IDEMSGSEV_DEBUG :
+            if( IDE_HAS_SRC_FILE( info ) ) {
+                concatText( &ct, info->src_file );
+                if( IDE_HAS_SRC_LINE( info ) ) {
+                    concatText( &ct, "(" );
+                    concatNumber( &ct, info->src_line );
+                    concatText( &ct, "):" );
+                }
+            }
+            concatSeverity( &ct, info );
+            concatMsgNumber( &ct, info );
+            if( IDE_HAS_SRC_COL( info ) ) {
+                concatText( &ct, " col(" );
+                concatNumber( &ct, info->src_col );
+                concatText( &ct, ")" );
+            }
+            break;
+        }
+    }
+    concatBlank( &ct );
+    concatText( &ct, info->msg );
+}
+
+
+void IdeMsgStartDll             // START OF FORMATING FOR A DLL (EACH TIME)
+    ( SupportRun& support )
+{
+    support.idemsgfm.contextual_file[0] = '\0';
+}

@@ -34,7 +34,7 @@ public:
     static Database open(const std::filesystem::path& file,
                          std::chrono::milliseconds busy_timeout = std::chrono::seconds(10));
     // Open a file that exists for reading only: the file is never created, changed or checkpointed, which is how a store of another
-    // writer (a state folder being migrated) is read. IoError when there is no such file.
+    // writer is read. IoError when there is no such file.
     static Database open_readonly(const std::filesystem::path& file, std::chrono::milliseconds busy_timeout = std::chrono::seconds(10));
     Database(Database&&) noexcept;
     Database& operator=(Database&&) noexcept;

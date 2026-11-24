@@ -1195,9 +1195,11 @@ void Run::go() {
 
     // the environment block, and after its strings the program's own path, as DOS gives it
     int envseg = ENVSEG;
-    std::wstring rel = relpath(abspath(exe), abspath(workdir));
+    // (a program on another Windows drive than the work folder is outside it: it goes by its file name)
+    std::wstring rel = same_drive(exe, workdir) ? relpath(abspath(exe), abspath(workdir)) : basename(exe);
     wchar_t exe_drive = L'C';
     for (const auto &d : drives) {   // (the drive the program is on: CL finds its passes beside C:\BIN\CL.EXE)
+        if (!same_drive(exe, d.second)) continue;
         std::wstring r = relpath(abspath(exe), abspath(d.second));
         if (r.compare(0, 2, L"..") != 0 && !(r.size() > 1 && r[1] == L':')) {
             rel = r;

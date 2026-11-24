@@ -295,6 +295,8 @@ class ContextInternal : public ContextDatabase {
 public:
   ContextInternal(void) { size = 0; }
   virtual ~ContextInternal(void) {}
+  /// CodeBreaker: drop every value set for particular addresses (what an instruction's globalset left), keeping the defaults.
+  void clearChangePoints(void) { database.clear(); trackbase.clear(); }
   virtual int4 getContextSize(void) const { return size; }
   virtual void registerVariable(const string &nm,int4 sbit,int4 ebit);
 
@@ -326,6 +328,7 @@ public:
   ContextCache(ContextDatabase *db);	///< Construct given a context database
   ContextDatabase *getDatabase(void) const { return database; }		///< Retrieve the encapsulated database object
   void allowSet(bool val) { allowset = val; }		///< Toggle whether setContext() calls are ignored
+  void forget(void) { curspace = (AddrSpace *)0; }	///< CodeBreaker: the database's ranges changed, so the blob held here may be gone
   void getContext(const Address &addr,uintm *buf) const;	///< Retrieve the context blob for the given address
   void setContext(const Address &addr,int4 num,uintm mask,uintm value);
   void setContext(const Address &addr1,const Address &addr2,int4 num,uintm mask,uintm value);

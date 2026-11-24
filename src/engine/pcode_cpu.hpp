@@ -23,20 +23,19 @@
 
 #include "emulate/m6502.hpp"
 #include "emulate/m68k.hpp"
+#include "emulate/arm.hpp"
 #include "emulate/mips.hpp"
 #include "emulate/r4300.hpp"
+#include "emulate/powerpc.hpp"
+#include "emulate/sh2.hpp"
 #include "emulate/z80.hpp"
 
 namespace cb::engine::pcode_cpu {
 
-// The CPU families with an adapter. A family's default (default_on) is the emulator only where its lanes' homebrew is judged with no verdict
-// differing from the own core's and no slower; the others run the own core unless CB_PCODE_EMU=1.
-enum class Core : std::uint8_t { Mos6502, Z80, M68000, Mips, R4300, Arm, SuperH, PowerPc };
-bool default_on(Core core);
-
-// Whether call() runs on the emulator: force() if set, else CB_PCODE_EMU ("0", "false", "no": off for every core; "1", "true", "yes": on for every
-// core), else the core's default.
-bool enabled(Core core = Core::Mos6502);
+// Whether call() runs on the emulator, as every CPU family does by default: force() if set, else CB_PCODE_EMU ("0", "false", "no": the own cores, to compare).
+bool enabled();
+// The same for a lane still too slow on the emulator to be its default (the WonderSwan, the PlayStation 4 and 5, the Xbox One): only force(true) or CB_PCODE_EMU=1 puts it there.
+bool enabled_when_asked();
 // Override the environment (tests flip it); std::nullopt goes back to the environment.
 void force(std::optional<bool> on);
 
@@ -62,7 +61,7 @@ emulate::m68k::RunResult run(emulate::m68k::Bus& bus, std::uint32_t entry, const
 emulate::m68k::RunResult call(emulate::m68k::Bus& bus, std::uint32_t entry, const emulate::m68k::RunOptions& options = {});
 
 // The PlayStation's R3000A (emulate::mips::Bus), on mips32le.sla: the adapter carries the BIOS calls, the load delay slot, the faults, coprocessor 0 and the
-// GTE (the own core's). A branch in a branch's delay slot is the one thing the description cannot decode.
+// GTE (the own core's). A branch in a branch's delay slot, which the description cannot decode, is run one instruction at a time.
 emulate::mips::RunResult run(emulate::mips::Bus& bus, std::uint32_t entry, const emulate::mips::RunOptions& options = {});
 emulate::mips::RunResult call(emulate::mips::Bus& bus, std::uint32_t entry, const emulate::mips::RunOptions& options = {});
 
@@ -70,5 +69,24 @@ emulate::mips::RunResult call(emulate::mips::Bus& bus, std::uint32_t entry, cons
 // faults, coprocessor 0 and the FPU.
 emulate::r4300::RunResult run(emulate::r4300::Bus& bus, std::uint32_t entry, const emulate::r4300::RunOptions& options = {});
 emulate::r4300::RunResult call(emulate::r4300::Bus& bus, std::uint32_t entry, const emulate::r4300::RunOptions& options = {});
+
+// The Game Boy Advance's ARM7TDMI (emulate::arm::Bus of System::Gba), on ARM4t_le.sla: ARM and Thumb state, the BIOS calls and bus errors are carried by the
+// adapter. call() gives every other machine (the DS, the 3DS, the Vita) to the own core.
+emulate::arm::RunResult run(emulate::arm::Bus& bus, std::uint32_t entry, const emulate::arm::RunOptions& options = {});
+emulate::arm::RunResult call(emulate::arm::Bus& bus, std::uint32_t entry, const emulate::arm::RunOptions& options = {});
+
+// The SuperH lanes' SH-2 (the Saturn, the 32X; emulate::sh2::Bus) on sh-2.sla and SH-4 (the Dreamcast) on SuperH4_le.sla: a delayed branch and its slot are one step of
+// the emulator, the faults, the on-chip registers and the bus's devices are the adapter's and the bus's; what the descriptions leave out (the SH-4's FPU, banks and
+// cache instructions) runs as the own core runs it.
+emulate::sh2::RunResult run(emulate::sh2::Bus& bus, std::uint32_t entry, const emulate::sh2::RunOptions& options = {});
+emulate::sh2::RunResult call(emulate::sh2::Bus& bus, std::uint32_t entry, const emulate::sh2::RunOptions& options = {});
+
+// The PowerPC lanes' (the GameCube, Wii, Wii U, PlayStation 3) function runs, on ppc_64_isa_altivec_be.sla: the integer, branch and condition-register instructions on the
+// description with the Machine as the memory, the rest (floating point and paired singles, vector, system calls, reservations, special registers) as the interpreter runs
+// it. call() gives a run that wants calls out, a path, a branch log or a shadow (the lane judge's) to the interpreter.
+emulate::powerpc::RunResult run(std::span<const emulate::powerpc::Region> regions, std::uint32_t entry, std::span<const std::uint64_t> args = {},
+                                const emulate::powerpc::RunOptions& options = {});
+emulate::powerpc::RunResult call(std::span<const emulate::powerpc::Region> regions, std::uint32_t entry, std::span<const std::uint64_t> args = {},
+                                 const emulate::powerpc::RunOptions& options = {});
 
 }  // namespace cb::engine::pcode_cpu

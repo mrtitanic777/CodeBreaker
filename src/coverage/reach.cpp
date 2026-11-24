@@ -616,7 +616,7 @@ cli::Command command(const Services& services) {
         cli::Option{"--judge", "", "judge the programs picked (the platform's lane, in a process of its own)", cli::Arg::Flag},
         cli::Option{"--timeout", "", "seconds before a judged program is stopped", cli::Arg::Value, "S", "300"},
         cli::Option{"--containers", "", "programs taken out of each container", cli::Arg::Value, "N", "20"},
-        cli::Option{"--name", "", "the run: state/reach/<name>.json", cli::Arg::Value, "RUN", "reach"},
+        cli::Option{"--name", "", "the run: <state>/reach/<name>.json", cli::Arg::Value, "RUN", "reach"},
         cli::Option{"--again", "", "measure programs measured before with these tools too", cli::Arg::Flag},
         cli::Option{"--max-size", "", "KB: larger programs are not judged", cli::Arg::Value, "KB", "4096"},
         cli::Option{"--report", "", "print the last results again (the run named by the first argument or --name)", cli::Arg::Flag},

@@ -18,7 +18,7 @@ Code starts the server itself, over stdio, one copy per session.
   claude mcp add --scope user codebreaker -- C:/path/to/CodeBreaker/build/codebreaker.exe mcp
   ```
 
-  This works from any folder: `codebreaker.exe` finds the corpus, Converted/ and state/ from the
+  This works from any folder: `codebreaker.exe` finds the corpus, Converted/ and the state folder from the
   checkout it was built in.
 
 A session keeps the server it started with: after changing the MCP server, start a new session (or
@@ -29,7 +29,7 @@ for claude.ai on the web and the phone.
 
 **Over HTTP.** `codebreaker mcp --http PORT` serves the same tools over streamable HTTP at
 `http://127.0.0.1:PORT/mcp`. Every request must carry `Authorization: Bearer <token>`; the token
-is CB_MCP_TOKEN, or one made once and kept in `state/mcp/http_token.txt` (delete the file for a new
+is CB_MCP_TOKEN, or one made once and kept in `<state>/mcp/http_token.txt` (delete the file for a new
 one). `--host H` listens somewhere other than 127.0.0.1; `--allow-host NAME` answers to another
 Host name, such as a tunnel's.
 
@@ -91,7 +91,7 @@ A module is a corpus name (`lz32.dll`) or a path.
 | `progress()` | What a running sweep is doing: rate, recent modules, workers, a rough ETA. |
 
 The coverage ledger behind coverage, modules and progress takes minutes when cold. It is worked out
-in the background and kept in `state/mcp/ledger.json`; a server started later answers from that
+in the background and kept in `<state>/mcp/ledger.json`; a server started later answers from that
 copy, says how old it is, and works out a fresh one.
 
 ### The file itself
@@ -124,7 +124,7 @@ copy, says how old it is, and works out a fresh one.
 | `source_tree(module, find?)` | Where the module's source sits in the product's source tree and why, each file marked source, notes or built, with counts. |
 | `projects(find?)`, `project(name, find?)` | The project folders under Converted/ and what was done in each. |
 | `reach_results(run?, platform?, judged_only?, find?, offset?, limit?)` | The saved `reach` runs and the programs they found and judged. |
-| `read_file(path, offset?, length?)` | A text file from a project folder, the source tree, state/ or this checkout. |
+| `read_file(path, offset?, length?)` | A text file from a project folder, the source tree, the state folder or this checkout. |
 
 ### Two builds
 

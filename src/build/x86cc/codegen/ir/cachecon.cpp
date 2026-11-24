@@ -1,0 +1,266 @@
+/****************************************************************************
+*
+*                            Open Watcom Project
+*
+* Copyright (c) 2002-2024 The Open Watcom Contributors. All Rights Reserved.
+*    Portions Copyright (c) 1983-2002 Sybase, Inc. All Rights Reserved.
+*
+*  ========================================================================
+*
+*    This file contains Original Code and/or Modifications of Original
+*    Code as defined in and that are subject to the Sybase Open Watcom
+*    Public License version 1.0 (the 'License'). You may not use this file
+*    except in compliance with the License. BY USING THIS FILE YOU AGREE TO
+*    ALL TERMS AND CONDITIONS OF THE LICENSE. A copy of the License is
+*    provided with the Original Code and Modifications, and is also
+*    available at www.sybase.com/developer/opensource.
+*
+*    The Original Code and all software distributed under the License are
+*    distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+*    EXPRESS OR IMPLIED, AND SYBASE AND ALL CONTRIBUTORS HEREBY DISCLAIM
+*    ALL SUCH WARRANTIES, INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF
+*    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR
+*    NON-INFRINGEMENT. Please see the License for the specific language
+*    governing rights and limitations under the License.
+*
+*  ========================================================================
+*
+* Description:  WHEN YOU FIGURE OUT WHAT THIS FILE DOES, PLEASE
+*               DESCRIBE IT HERE!
+*
+****************************************************************************/
+
+
+#include "_cgstd.h"
+#include "coderep.h"
+#include "stackcg.h"
+#include "makeins.h"
+#include "foldins.h"
+#include "convins.h"
+#include "data.h"
+#include "namelist.h"
+#include "regalloc.h"
+#include "rgtbl.h"
+#include "split.h"
+#include "insutil.h"
+#include "optab.h"
+#include "cachecon.h"
+#include "backrun.hpp"
+
+
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+/* (struct CacheconState: cachecon_state.h) */
+
+}  // namespace
+
+
+
+static  opcnt   CountOps( instruction *ins, name *cons )
+/******************************************************/
+{
+    opcnt   num_operands;
+
+    switch( ins->head.opcode ) {
+    case OP_LSHIFT:
+    case OP_RSHIFT:
+        num_operands = 1;
+        break;
+    case OP_ADD:
+    case OP_SUB:
+        if( IsStackReg( ins->result ) ) {
+            num_operands = 0;
+        } else if( cons->c.lo.u.int_value == 1 ) {
+            num_operands = 1;
+        } else {
+            num_operands = ins->num_operands;
+        }
+        break;
+    case OP_CALL:
+    case OP_CALL_INDIRECT:
+        /* operands of a call are special, and never should use CONST_TEMP's */
+        num_operands = 0;
+        break;
+    default:
+        num_operands = ins->num_operands;
+        break;
+    }
+    return( num_operands );
+}
+
+
+static  type_class_def  FindMaxClass( BackRun& back, name *cons, int *prefs )
+/*************************************************************
+
+    Run through the instructions and find the maximimum class of
+    all instructions in which "cons" is used.
+*/
+{
+    block               *blk;
+    instruction         *ins;
+    opcnt               i;
+    int                 type_class;
+    opcnt               num_operands;
+
+    type_class = -1;
+    *prefs = 0;
+    for( blk = back.cachecon.Head; blk != NULL; blk = back.cachecon.Next( back, blk ) ) {
+        for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
+            num_operands = CountOps( ins, cons );
+            for( i = 0; i < num_operands; ++i ) {
+                if( ins->operands[i] == cons ) {
+                    ++*prefs;
+                    if( static_cast<int>(ins->type_class) >= type_class ) {
+                        type_class = OpClass( ins );
+                    }
+                }
+            }
+        }
+    }
+    if( type_class == -1 )
+        type_class = XX;
+    // return( Unsigned[type_class] );
+    // why? BBB - June 28, 1995
+    return static_cast<type_class_def>(( type_class ));
+}
+
+
+static  bool    ReplaceConst( BackRun& back, name *cons, name *temp, type_class_def tmp_class )
+/*******************************************************************************
+
+     Replace all occurences of "cons" with "temp".  As a hack, we
+     never replace the operands of a shift, since it's always
+     better to do a shift by a constant on both the 370 and x86
+     architectures.
+*/
+{
+    block               *blk;
+    instruction         *ins;
+    opcnt               i;
+    type_class_def      type_class;
+    bool                change;
+    opcnt               num_operands;
+
+
+    change = false;
+    for( blk = back.cachecon.Head; blk != NULL; blk = back.cachecon.Next( back, blk ) ) {
+        for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
+            type_class = Unsigned[OpClass( ins )];
+            num_operands = CountOps( ins, cons );
+            for( i = 0; i < num_operands; ++i ) {
+                if( ins->operands[i] == cons  ) {
+                    if( type_class == temp->n.type_class ) {
+                        ins->operands[i] = temp;
+                        change = true;
+                    } else {
+                        if( IsIntegral( type_class ) && IsIntegral( tmp_class ) ) {
+                            ins->operands[i] = TempOffset( back, temp, 0, type_class );
+                            change = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return( change );
+}
+
+
+void    ConstToTemp( BackRun& back, block *pre, block *head, block*(*next)(BackRun&, block*) )
+/********************************************************************
+
+    Turn constant referneces into temp references so that they can
+    get register allocated.
+*/
+{
+    name                *cons;
+    name                *temp;
+    type_class_def      type_class;
+    int                 num_refs;
+
+    back.cachecon.Head = head;
+    back.cachecon.Next = next;
+    for( cons = back.data.Names[N_CONSTANT]; cons != NULL; cons = cons->n.next_name ) {
+        if( cons->c.const_type == CONS_TEMP_ADDR )
+            continue;
+        type_class = FindMaxClass( back, cons, &num_refs );
+        if( type_class == XX )
+            continue;
+        if( head == back.data.HeadBlock && num_refs < 2 )
+            continue;
+        temp = AllocTemp( back, type_class );
+        temp->t.temp_flags |= CONST_TEMP;
+        temp->v.symbol = cons;
+        if( !ReplaceConst( back, cons, temp, type_class ) )
+            continue;
+        temp->v.usage |= USE_IN_ANOTHER_BLOCK;
+        SuffixIns( back, pre->ins.head.prev, MakeMove( back, cons, temp, type_class ) );
+    }
+}
+
+void            MemConstTemp( BackRun& back, conflict_node *conf )
+/**************************************************
+
+    We've decided to put a CONST_TEMP into memory. Go through the
+    instruction list and change all occurences back into the original
+    constant reference. Also, do the same for any other CONST_TEMP
+    temporaries whose only purpose is to define this one.
+*/
+{
+    block               *blk;
+    instruction         *ins;
+    opcnt               i;
+    name                *other;
+    name                *temp;
+    instruction         *folded;
+
+    temp = conf->name;
+    other = NULL;
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
+        for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
+            for( i = 0; i < ins->num_operands; ++i ) {
+                if( ins->operands[i]->n.class_ != N_TEMP )
+                    continue;
+                if( DeAlias( ins->operands[i] ) != temp )
+                    continue;
+                ins->head.state = INS_NEEDS_WORK;
+                ins->operands[i] = static_cast<name *>(ins->operands[i]->v.symbol);
+                if( ins->head.opcode == OP_CONVERT ) {
+                    ins = DoConversion( back, ins );
+                }
+            }
+            if( ins->result != NULL && ins->result->n.class_ == N_TEMP ) {
+                if( DeAlias( ins->result ) == temp ) {
+                    other = ins->operands[0];
+                    ins->head.opcode = OP_NOP;
+                    ins->num_operands = 0;
+                    ins->result = NULL;
+                    DoNothing( back, ins );
+                }
+            }
+            folded = FoldIns( back, ins );
+            if( folded != NULL ) {
+                ins = folded;
+            }
+        }
+    }
+    if( other == NULL )
+        return;
+    if( !ConstTemp( other ) )
+        return;
+    if( other->v.conflict == NULL )
+        return;
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
+        for( ins = blk->ins.head.next; ins->head.opcode != OP_BLOCK; ins = ins->head.next ) {
+            for( i = 0; i < ins->num_operands; ++i ) {
+                if( ins->operands[i]->n.class_ != N_TEMP )
+                    continue;
+                if( DeAlias( ins->operands[i] ) == other ) {
+                    return;
+                }
+            }
+        }
+    }
+    SafeRecurseCG( back, reinterpret_cast<func_sr>(InMemory), other->v.conflict );
+}

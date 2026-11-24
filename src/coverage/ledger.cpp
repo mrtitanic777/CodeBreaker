@@ -34,7 +34,7 @@ struct LedgerLane {
 std::optional<LedgerLane> ledger_lane_of(std::string_view kind) {
     if (kind == "pe") return LedgerLane{base::Lane::Pe, kLedgerSwept};
     if (kind == "ne") return LedgerLane{base::Lane::Ne, kLedgerSwept};
-    if (kind == "le") return LedgerLane{base::Lane::Le, {".vxd", ".386", ".pdr", ".sys", ".drv", ".exe"}};
+    if (kind == "le") return LedgerLane{base::Lane::Le, base::le_module_extensions()};
     if (kind == "dos") return LedgerLane{base::Lane::Dos, {".exe", ".com", ".sys", ".vxd", ".386"}};
     return std::nullopt;
 }
@@ -238,7 +238,9 @@ Counts Ledger::counts(const std::string& sha, const std::optional<std::string>& 
     // every known function and its class: the best candidate's, and no-source for one nothing has been judged for
     std::map<std::string, engine::Best> best;
     if (digest && !digest->empty()) best = store_->best(sha, *digest);
-    const std::vector<std::string> addrs = store_->addresses(sha);
+    std::vector<std::string> addrs = store_->addresses(sha);
+    // (a driver's functions are object:offset; a bundle judged as a DOS program before it had the driver lane left plain addresses behind)
+    if (kind == "le") std::erase_if(addrs, [](const std::string& a) { return a.find(':') == std::string::npos; });
     std::map<std::string, verify::Class> classes;
     Counts c;
     for (const std::string& a : addrs) {
@@ -252,7 +254,7 @@ Counts Ledger::counts(const std::string& sha, const std::optional<std::string>& 
     for (verify::Class built : verify::kClassBuilt) c.compiled += c.classes.at(built);
     std::set<std::string> decompiled;
     for (const engine::Candidate& cand : store_->candidates(sha, digest.value_or("")))
-        if (ledger_has_text(cand.source)) decompiled.insert(cand.addr);
+        if (ledger_has_text(cand.source) && classes.contains(cand.addr)) decompiled.insert(cand.addr);
     c.decompiled = static_cast<std::int64_t>(decompiled.size());
     std::error_code ec;
     if (!path.empty() && stdfs::is_regular_file(path, ec)) {

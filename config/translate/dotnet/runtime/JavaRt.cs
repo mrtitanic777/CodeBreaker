@@ -30,9 +30,27 @@ public static class JavaRt
             case float f: return Str(f);
             case bool b: return Str(b);
             case System.Collections.IDictionary m: return MapStr(m);
-            case System.Collections.IList l: return ListStr(l);
-            default: return o.ToString() ?? "null";
+            case System.Collections.IList l when !(o is Array): return ListStr(l);
+            case System.Collections.ICollection c when !(o is Array): return CollectionStr(c);     // (a TreeSet)
         }
+        if (HasNoText(o)) return ObjectText(o);
+        Type type = o.GetType();
+        if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(KeyValuePair<,>))      // a Map.Entry
+            return Str(type.GetProperty("Key")!.GetValue(o)) + "=" + Str(type.GetProperty("Value")!.GetValue(o));
+        return o.ToString() ?? "null";
+    }
+
+    static string CollectionStr(System.Collections.ICollection c)
+    {
+        var sb = new StringBuilder("[");
+        bool first = true;
+        foreach (object x in c)
+        {
+            if (!first) sb.Append(", ");
+            first = false;
+            sb.Append(Str(x));
+        }
+        return sb.Append(']').ToString();
     }
 
     static string ListStr(System.Collections.IList l)
@@ -158,6 +176,44 @@ public static class JavaRt
         return int.Parse(s, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture);
     }
 
+    // Integer.parseInt(s, radix): digits and letters of the radix, a leading sign, nothing else
+    public static int ParseInt(string s, int radix)
+    {
+        if (s == null) throw new FormatException("Cannot parse null string: null");
+        string why = "For input string: \"" + s + "\"" + (radix == 10 ? "" : " under radix " + radix);
+        if (radix < 2 || radix > 36 || s.Length == 0) throw new FormatException(why);
+        int at = 0;
+        bool negative = false;
+        if (s[0] == '-' || s[0] == '+')
+        {
+            negative = s[0] == '-';
+            at = 1;
+            if (s.Length == 1) throw new FormatException(why);
+        }
+        long value = 0;
+        for (; at < s.Length; at++)
+        {
+            char c = s[at];
+            int digit = c >= '0' && c <= '9' ? c - '0' : c >= 'a' && c <= 'z' ? c - 'a' + 10 : c >= 'A' && c <= 'Z' ? c - 'A' + 10 : -1;
+            if (digit < 0 || digit >= radix) throw new FormatException(why);
+            value = value * radix + digit;
+            if (value > 2147483648L) throw new FormatException(why);
+        }
+        if (negative) value = -value;
+        if (value > int.MaxValue || value < int.MinValue) throw new FormatException(why);
+        return (int)value;
+    }
+
+    // String.getBytes(): UTF-8 as Java's default charset is, with ? for what cannot be encoded
+    public static sbyte[] GetBytes(string s)
+    {
+        var enc = Encoding.GetEncoding("utf-8", new EncoderReplacementFallback("?"), DecoderFallback.ReplacementFallback);
+        byte[] bytes = enc.GetBytes(s);
+        var signed = new sbyte[bytes.Length];
+        for (int i = 0; i < bytes.Length; i++) signed[i] = unchecked((sbyte)bytes[i]);
+        return signed;
+    }
+
     public static double ParseDouble(string s) => double.Parse(s.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture);
 
     public static int CompareTo(string a, string b)
@@ -220,7 +276,30 @@ public static class JavaRt
     public static T Set<T>(IList<T> l, int i, T x) { T old = l[i]; l[i] = x; return old; }
     public static T RemoveAt<T>(IList<T> l, int i) { T old = l[i]; l.RemoveAt(i); return old; }
 
-    public static V Get<K, V>(IDictionary<K, V> m, K k) => m.TryGetValue(k, out V v) ? v : default!;
+    // map.get: a key it does not hold is Java's null, and a number read from that null throws.
+    // A class with no toString of its own prints as Java's Object.toString does.
+    static readonly Dictionary<Type, bool> PlainText = new Dictionary<Type, bool>();
+
+    public static bool HasNoText(object o)
+    {
+        Type t = o.GetType();
+        if (t.IsPrimitive || t.IsEnum || t.Assembly == typeof(object).Assembly) return false;
+        if (!PlainText.TryGetValue(t, out bool plain))
+        {
+            plain = t.GetMethod("ToString", Type.EmptyTypes)?.DeclaringType == typeof(object);
+            PlainText[t] = plain;
+        }
+        return plain;
+    }
+
+    public static string ObjectText(object o) => o.GetType().FullName.Replace('+', '$') + "@" + ((uint)o.GetHashCode()).ToString("x");
+
+    public static V Get<K, V>(IDictionary<K, V> m, K k)
+    {
+        if (m.TryGetValue(k, out V v)) return v;
+        if (typeof(V).IsValueType && Nullable.GetUnderlyingType(typeof(V)) == null) throw new NullReferenceException();
+        return default!;
+    }
     public static V GetOrDefault<K, V>(IDictionary<K, V> m, K k, V d) => m.TryGetValue(k, out V v) ? v : d;
 
     public static V Put<K, V>(IDictionary<K, V> m, K k, V v)
@@ -247,6 +326,19 @@ public static class JavaRt
     }
 
     public static void Sort<T>(List<T> l) where T : IComparable<T> => Sort(l, (x, y) => x.CompareTo(y));
+
+    // a list of Object (a raw List): sorted by what the elements are, as Comparable
+    public static void Sort(List<object> l) => Sort(l, CompareObjects);
+
+    static int CompareObjects(object a, object b)
+    {
+        if (a == null || b == null) throw new NullReferenceException();
+        if (a is string x && b is string y) return CompareTo(x, y);
+        if (a is double d && b is double e) return CompareDouble(d, e);
+        if (a is float f && b is float g) return CompareDouble(f, g);
+        if (a is IComparable c) return c.CompareTo(b);
+        throw new InvalidCastException("class " + a.GetType().Name + " cannot be cast to class java.lang.Comparable");
+    }
 
     static void MergeSort<T>(T[] a, T[] tmp, int lo, int hi, Comparison<T> cmp)
     {

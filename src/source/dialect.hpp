@@ -54,6 +54,8 @@ public:
     std::string fallback(std::string_view code) const;
     // `STA.w x`: an absolute form of a zero-page address, for a dialect that has one (DASM); empty when it has none for the mnemonic.
     std::string forced_absolute(std::string_view mnemonic, std::string_view operand) const;
+    // `LDA f:x,x`: the 24-bit form of an address below $10000, for a dialect that has one (ca65's 65816); empty when it has none for the mnemonic.
+    std::string forced_long(std::string_view mnemonic, std::string_view operand, bool indexed) const;
     // One instruction text (no indent) as the dialect writes it.
     std::string instruction(std::string_view text) const;
     // `name:` as the dialect defines a label.

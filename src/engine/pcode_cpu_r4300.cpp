@@ -47,6 +47,47 @@ bool is_branch(std::uint32_t w) {
     return op == 0x01 || (op >= 0x02 && op <= 0x07) || (op >= 0x14 && op <= 0x17) || (op == 0x11 && ((w >> 21) & 31) == 8);
 }
 
+// A branch read on its own, for a branch that sits in another's delay slot: the description takes a branch and its slot as one step, and cannot say what such a pair does.
+struct Branch {
+    bool taken = false;
+    std::uint32_t target = 0;
+    bool likely = false;
+    int link = -1;   // the register given the return address
+};
+
+std::optional<Branch> read_branch(std::uint32_t w, std::uint32_t at, std::uint64_t rs_value, std::uint64_t rt_value, std::uint32_t fcsr) {
+    const unsigned op = w >> 26, rt = (w >> 16) & 31;
+    const std::int64_t a = static_cast<std::int64_t>(rs_value);
+    const std::uint32_t relative = at + 4 + (static_cast<std::uint32_t>(static_cast<std::int32_t>(static_cast<std::int16_t>(w & 0xFFFF))) << 2);
+    const std::uint32_t absolute = ((at + 4) & 0xF0000000u) | ((w & 0x03FFFFFFu) << 2);
+    switch (op) {
+        case 0x00:
+            if ((w & 0x3F) == 0x08) return Branch{true, static_cast<std::uint32_t>(rs_value), false, -1};
+            if ((w & 0x3F) == 0x09) return Branch{true, static_cast<std::uint32_t>(rs_value), false, static_cast<int>((w >> 11) & 31)};
+            return std::nullopt;
+        case 0x01:
+            switch (rt) {
+                case 0: case 2: return Branch{a < 0, relative, rt == 2, -1};
+                case 1: case 3: return Branch{a >= 0, relative, rt == 3, -1};
+                case 16: case 18: return Branch{a < 0, relative, rt == 18, 31};
+                case 17: case 19: return Branch{a >= 0, relative, rt == 19, 31};
+                default: return std::nullopt;   // (the trap instructions of this opcode)
+            }
+        case 0x02: return Branch{true, absolute, false, -1};
+        case 0x03: return Branch{true, absolute, false, 31};
+        case 0x04: case 0x14: return Branch{rs_value == rt_value, relative, op == 0x14, -1};
+        case 0x05: case 0x15: return Branch{rs_value != rt_value, relative, op == 0x15, -1};
+        case 0x06: case 0x16: return Branch{a <= 0, relative, op == 0x16, -1};
+        case 0x07: case 0x17: return Branch{a > 0, relative, op == 0x17, -1};
+        case 0x11: {
+            if (((w >> 21) & 31) != 8) return std::nullopt;
+            const bool condition = (fcsr & (1u << 23)) != 0;
+            return Branch{(rt & 1) != 0 ? condition : !condition, relative, (rt & 2) != 0, -1};
+        }
+        default: return std::nullopt;
+    }
+}
+
 // The size of the memory access an opcode makes (0: none) and whether it must be aligned to it.
 unsigned access_size(unsigned op) {
     switch (op) {
@@ -119,11 +160,12 @@ rc::RunResult run(rc::Bus& bus, std::uint32_t entry, const rc::RunOptions& optio
         }
     } unhook{emu};
 
-    const auto reg = [&](unsigned i) { return emu.reg(kNames[i]); };
+    const auto& refs = reg_refs(emu, kNames);
+    const auto reg = [&](unsigned i) { return emu.reg(refs[i]); };
     const auto set_reg = [&](unsigned i, std::uint64_t v) {
-        if (i != 0) emu.setReg(kNames[i], v);
+        if (i != 0) emu.setReg(refs[i], v);
     };
-    for (unsigned i = 1; i < 32; ++i) emu.setReg(kNames[i], 0);
+    for (unsigned i = 1; i < 32; ++i) emu.setReg(refs[i], 0);
     for (unsigned i = 0; i < 4; ++i) set_reg(4 + i, sx32(options.a[i]));
     for (unsigned i = 0; i < 8; ++i) set_reg(16 + i, sx32(options.s[i]));
     for (unsigned i = 0; i < 8; ++i) set_reg(8 + i, sx32(options.t[i]));
@@ -152,7 +194,14 @@ rc::RunResult run(rc::Bus& bus, std::uint32_t entry, const rc::RunOptions& optio
         return (static_cast<std::uint32_t>(memory[phys]) << 24) | (static_cast<std::uint32_t>(memory[phys + 1]) << 16) | (static_cast<std::uint32_t>(memory[phys + 2]) << 8) |
                static_cast<std::uint32_t>(memory[phys + 3]);
     };
+    // A branch in a delay slot, one instruction at a time as the own core runs it: `follow` is where the instruction now running hands over to, `then` the one after it.
+    std::optional<std::uint32_t> follow, then;
     while (steps < options.max_steps) {
+        if (follow) {
+            emu.setPc(sx32(*follow));
+            follow.reset();
+        }
+        std::swap(follow, then);
         const std::uint32_t pc = static_cast<std::uint32_t>(emu.pc());
         if (pc == rc::kReturnAddress) {
             out.end = rc::End::Return;
@@ -279,6 +328,23 @@ rc::RunResult run(rc::Bus& bus, std::uint32_t entry, const rc::RunOptions& optio
                 continue;
             }
         }
+        if (is_branch(word) && (follow || is_branch(slot_word))) {
+            if (const std::optional<Branch> branch = read_branch(word, pc, reg((word >> 21) & 31), reg((word >> 16) & 31), static_cast<std::uint32_t>(emu.reg("fcsr")))) {
+                const std::uint32_t sequential = follow ? *follow : pc + 4;   // what runs next if this branch changes nothing
+                follow.reset();
+                if (branch->link > 0) set_reg(static_cast<unsigned>(branch->link), sx32(pc + 8));
+                ++steps;
+                if (branch->taken) {
+                    emu.setPc(sx32(sequential));
+                    then = branch->target;
+                } else if (branch->likely) {
+                    emu.setPc(sx32(sequential + 4));   // (the slot is skipped)
+                } else {
+                    emu.setPc(sx32(sequential));
+                }
+                continue;
+            }
+        }
         const bool half = is_branch(word) && steps + 1 >= options.max_steps;
         int link_reg = -1;
         if (is_branch(word)) {
@@ -325,7 +391,7 @@ rc::RunResult run(rc::Bus& bus, std::uint32_t entry, const rc::RunOptions& optio
             if (*raised == rc::Fault::Kind::Syscall || *raised == rc::Fault::Kind::Break) ++steps;
             break;
         }
-        emu.setReg("zero", 0);
+        emu.setReg(refs[0], 0);
         if (is_branch(word) && !half) {
             const std::optional<decompile::mips::Insn> insn = decompile::mips::decode_word(word, pc, decompile::mips::Variant::R4300);
             const bool skipped = insn && insn->likely && static_cast<std::uint32_t>(emu.pc()) == pc + 8;   // (a branch likely not taken: its slot did not run)
@@ -344,6 +410,6 @@ rc::RunResult run(rc::Bus& bus, std::uint32_t entry, const rc::RunOptions& optio
     return out;
 }
 
-rc::RunResult call(rc::Bus& bus, std::uint32_t entry, const rc::RunOptions& options) { return enabled(Core::R4300) ? pcode_cpu::run(bus, entry, options) : rc::run(bus, entry, options); }
+rc::RunResult call(rc::Bus& bus, std::uint32_t entry, const rc::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : rc::run(bus, entry, options); }
 
 }  // namespace cb::engine::pcode_cpu

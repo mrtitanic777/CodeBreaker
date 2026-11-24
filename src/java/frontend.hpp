@@ -45,6 +45,7 @@ struct DumpTools {
     std::filesystem::path treedump_source;            // TreeDump.java
     std::filesystem::path state;                      // the folder the compiled TreeDump is kept in (<state>/translate)
     std::vector<std::filesystem::path> classpath;     // the jars (and the stand-ins' folder) the program is attributed against
+    std::filesystem::path library;                    // CodeBreaker's Java library in Java (java/io ...): those a program uses are translated with it
 };
 
 // The Java sources under `java_dir`, sorted.

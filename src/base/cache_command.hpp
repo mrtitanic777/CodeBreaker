@@ -22,8 +22,8 @@ struct CommandEnvironment {
     std::function<void(Cache&)> declare_kinds;      // says who makes each kind (Cache::declare_kind); none: every kind is of one generation
 };
 
-// The cache folders and caps of a configuration: state/cache (cache_max_gb, default 2), and the build cache (the setting build_cache, else
-// the main checkout's state/build_cache; build_cache_max_gb, default 6). CB_NO_CACHE turns the cache off.
+// The cache folders and caps of a configuration: <state>/cache (cache_max_gb, default 2), and the build cache (the setting build_cache, else
+// <state>/build_cache; build_cache_max_gb, default 6). CB_NO_CACHE turns the cache off.
 Config settings_of(const cb::config::Config& configuration);
 
 cli::Command command(const CommandEnvironment& environment);

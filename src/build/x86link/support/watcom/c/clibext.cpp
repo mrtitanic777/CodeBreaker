@@ -32,7 +32,7 @@
 //   bootstrap tools use only single-byte encoding: no multi-byte or wide character support is dealt with.
 //
 // The functions of Watcom's C library that other C libraries lack, for the one configuration wlink is built in
-// (not Open Watcom itself, not a Unix host): the plain C-library branches and, with _MSC_VER, the Windows ones.
+// (not Open Watcom itself, not a Unix host): the plain C-library branches and, with _WIN32 (MSVC, clang-cl, MinGW), the Windows ones.
 
 #include <algorithm>
 #include <array>
@@ -45,7 +45,7 @@
 #include <string>
 #include <string_view>
 
-#if defined( _MSC_VER )
+#if defined( _WIN32 )
     #include <windows.h>
     #include "_dtaxxx.h"
     #include "ntext.h"
@@ -191,7 +191,7 @@ void  _splitpath2( char const *inp, char *outp, char **drive, char **path, char 
 *
 ****************************************************************************/
 
-#if defined( _MSC_VER )
+#if defined( _WIN32 )
 
 char *_cmdname( char *name )
 {
@@ -226,7 +226,7 @@ char *_cmdname( char *name )
 *
 ****************************************************************************/
 
-#if defined( _MSC_VER )
+#if defined( _WIN32 )
 
 int _bgetcmd( char *buffer, int len )
 {
@@ -320,9 +320,9 @@ int (_bgetcmd)( char *buffer, int len )
     return total;
 }
 
-#endif  /* !_MSC_VER */
+#endif  /* !_WIN32 */
 
-#if defined( _MSC_VER )
+#if defined( _WIN32 )
 
 /****************************************************************************
 *
@@ -1038,7 +1038,7 @@ unsigned sleep( unsigned time )
     return 0;
 }
 
-#endif /* _MSC_VER */
+#endif /* _WIN32 */
 
 /****************************************************************************
 *
@@ -1060,7 +1060,7 @@ wres_lang_id _WResLanguage( void )
 char *get_dllname( char *buf, int len )
 {
     *buf = '\0';
-#ifdef _MSC_VER
+#ifdef _WIN32
     HMODULE hnd = nullptr;
     GetModuleHandleEx( GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, reinterpret_cast<LPCTSTR>( &optind ), &hnd );
     GetModuleFileName( hnd, buf, len );

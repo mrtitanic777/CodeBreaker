@@ -4,7 +4,7 @@
 //
 // reach asks the platform registry what a file is, the function store for the tally of what `measure` made of a program (filed under the
 // program's identity, which the verifier's lanes say), and this executable to measure; the settings give the state folder (results under
-// state/reach) and the checkout (the tools' revision is its git HEAD). The function store and the lanes are made when the first tally is asked
+// <state>/reach) and the checkout (the tools' revision is its git HEAD). The function store and the lanes are made when the first tally is asked
 // for, and the store is opened read-only.
 #pragma once
 

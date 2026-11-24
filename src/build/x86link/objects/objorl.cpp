@@ -277,7 +277,7 @@ bool CheckFlags(Link& link,  orl_file_handle filehdl )
         break;
     }
     test = (typemask | link.LinkState) & LS_HAVE_MACHTYPE_MASK;
-    test &= test - 1;           /* turn off one bit */
+    test = static_cast<stateflag>( test & ( test - 1 ) );           /* turn off one bit */
     if( test != 0 ) {           /* multiple bits were turned on. */
         LnkMsg(link,  WRN+MSG_MACHTYPE_DIFFERENT, "s", link.CurrMod->u1.source->infile->name.u.ptr );
     } else {

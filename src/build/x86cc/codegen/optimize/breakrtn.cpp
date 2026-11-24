@@ -1,0 +1,289 @@
+/****************************************************************************
+*
+*                            Open Watcom Project
+*
+* Copyright (c) 2002-2026 The Open Watcom Contributors. All Rights Reserved.
+*    Portions Copyright (c) 1983-2002 Sybase, Inc. All Rights Reserved.
+*
+*  ========================================================================
+*
+*    This file contains Original Code and/or Modifications of Original
+*    Code as defined in and that are subject to the Sybase Open Watcom
+*    Public License version 1.0 (the 'License'). You may not use this file
+*    except in compliance with the License. BY USING THIS FILE YOU AGREE TO
+*    ALL TERMS AND CONDITIONS OF THE LICENSE. A copy of the License is
+*    provided with the Original Code and Modifications, and is also
+*    available at www.sybase.com/developer/opensource.
+*
+*    The Original Code and all software distributed under the License are
+*    distributed on an 'AS IS' basis, WITHOUT WARRANTY OF ANY KIND, EITHER
+*    EXPRESS OR IMPLIED, AND SYBASE AND ALL CONTRIBUTORS HEREBY DISCLAIM
+*    ALL SUCH WARRANTIES, INCLUDING WITHOUT LIMITATION, ANY WARRANTIES OF
+*    MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, QUIET ENJOYMENT OR
+*    NON-INFRINGEMENT. Please see the License for the specific language
+*    governing rights and limitations under the License.
+*
+*  ========================================================================
+*
+* Description:  Handle break and return statements.
+*
+****************************************************************************/
+
+
+#include "_cgstd.h"
+#include "coderep.h"
+#include "cgmem.h"
+#include "data.h"
+#include "makeblk.h"
+#include "nullprop.h"
+#include "blktrim.h"
+#include "breakrtn.h"
+#include "edge.h"
+#include "backrun.hpp"
+
+
+
+
+namespace {
+
+/* the statics of this file, one set for each run of the compiler */
+/* (struct BreakrtnState: breakrtn_state.h) */
+
+}  // namespace
+
+
+
+static void     FreeBranchOuts( BackRun& back )
+/************************************/
+{
+    edge_list   *next;
+    edge_list   *curr;
+
+    for( curr = back.breakrtn.BranchOuts; curr != NULL; curr = next ) {
+        next = curr->next;
+        CGFree( back, curr );
+    }
+}
+
+
+bool    CreateBreak( BackRun& back )
+/*************************/
+{
+    block       *blk;
+    block       *break_blk;
+    block       *back_break_blk;
+    block       *exit_blk;
+    block_edge  *edge;
+    block_edge  *next_edge;
+    block_num   i;
+    int         pending;
+    edge_list   *exit_edge;
+
+    if( back.data.HeadBlock == NULL ) {
+        return( false );
+    }
+    if( IsntModel( back, CGSW_GEN_FORTRAN_ALIASING ) ) {
+        return( false );
+    }
+    if( !FixReturns(back) ) {
+        return( false );
+    }
+    FixEdges(back);
+    /*
+     * Run through the blocks and find a place (break_blk) where no previous
+     * blocks are branched to from later blocks. IE: there are no backward branches
+     * around break_blk.
+     */
+    MarkBlkAllUnVisited( back );
+    break_blk = NULL;
+    back_break_blk = NULL;
+    pending = 0;
+    back.breakrtn.BranchOuts = NULL;
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
+        if( AskIfReachedLabel( back, blk->label )
+          && blk != back.data.HeadBlock )
+            break;
+        if( (blk->edge[0].flags & BEF_BLOCK_LABEL_DIES) == 0
+          && blk != back.data.HeadBlock ) {
+            MarkBlkVisited( blk );
+            ++pending;
+        } else if( pending == 0 ) {
+            break_blk = blk;
+        }
+        edge = &blk->edge[0];
+        for( i = blk->targets; i > 0; --i ) {
+            if( edge->flags & BEF_DEST_IS_BLOCK ) {
+                if( edge->flags & BEF_DEST_LABEL_DIES ) {
+                    if( IsBlkVisited( edge->destination.u.blk ) ) {
+                        MarkBlkUnVisited( edge->destination.u.blk );
+                        if( --pending == 0 ) {
+                            back_break_blk = blk->next_block;
+                        }
+                    }
+                }
+            }
+            ++edge;
+        }
+    }
+    /*
+     * clean up the BLOCK_VISITED flags
+     */
+    MarkBlkAllUnVisited( back );
+    if( back_break_blk != NULL ) {
+        /*
+         * always better to break on a back edge
+         */
+        break_blk = back_break_blk;
+    }
+    if( break_blk == NULL ) {
+        break_blk = back.data.HeadBlock;
+    }
+    if( break_blk == back.data.HeadBlock ) {
+        break_blk = break_blk->next_block;
+    }
+    if( break_blk == NULL ) {
+        UnFixEdges(back);
+        return( false );
+    }
+    /*
+     * create a new block and link it after break_blk. Point Break to the rest
+     * of the blocks and unhook them from the block list.
+     */
+    back.breakrtn.Break = break_blk;
+    back.breakrtn.Curr = back.data.CurrBlock;
+    back.breakrtn.Tail = back.data.BlockList;
+    exit_blk = MakeBlockInit( back, 1 );
+    SetBlkAttr( exit_blk, BLK_UNKNOWN_DESTINATION );
+    exit_blk->gen_blk_id = back.data.BlockList->gen_blk_id + 1;
+    exit_blk->blk_id = back.data.BlockList->blk_id + 1;
+    exit_blk->prev_block = break_blk->prev_block;
+    exit_blk->next_block = NULL;
+    break_blk->prev_block->next_block = exit_blk;
+    break_blk->prev_block = NULL;
+    back.data.BlockList = exit_blk;
+    /*
+     * run throuch all the blocks before break_blk, and create a 'BranchOut' for
+     * and edge that goes to a block after break_blk
+     */
+    for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
+        edge = &blk->edge[0];
+        for( i = blk->targets; i > 0; --i ) {
+            if( (edge->flags & BEF_DEST_IS_BLOCK) == 0
+              || edge->destination.u.blk->gen_blk_id >= break_blk->gen_blk_id ) {
+                exit_edge = static_cast<edge_list *>(CGAlloc( back, sizeof( edge_list ) ));
+                exit_edge->edge = edge;
+                exit_edge->next = back.breakrtn.BranchOuts;
+                exit_edge->gen_blk_id = blk->gen_blk_id;
+                back.breakrtn.BranchOuts = exit_edge;
+            }
+            ++edge;
+        }
+    }
+    /*
+     * now, point all 'BranchOuts' at the new 'exit' block, saving their original
+     * labels in the 'lbl' field of the exit_list
+     */
+    for( exit_edge = back.breakrtn.BranchOuts; exit_edge != NULL; exit_edge = exit_edge->next ) {
+        edge = exit_edge->edge;
+        if( edge->flags & BEF_DEST_IS_BLOCK ) {
+            exit_edge->lbl = edge->destination.u.blk->label;
+            RemoveInputEdge( edge );
+        } else {
+            exit_edge->lbl = edge->destination.u.lbl;
+        }
+        edge->flags |= BEF_DEST_IS_BLOCK;
+        PointEdge( edge, exit_blk );
+    }
+
+    if( exit_blk->inputs == 0 ) {
+        back.data.BlockList = exit_blk->prev_block;
+        back.data.BlockList->next_block = NULL;
+        exit_blk->prev_block = NULL;
+        FreeABlock( back, exit_blk );
+    }
+
+    MarkBlkAttrSet( back.data.HeadBlock, BLK_BIG_LABEL );
+    back.breakrtn.HaveBreak = true;
+    /*
+     * change any branches to HeadBlock from a block after break_blk into
+     * a label (~DEST_IS_BLOCK) branch.
+     */
+    for( edge = back.data.HeadBlock->input_edges; edge != NULL; edge = next_edge ) {
+        next_edge = edge->next_source;
+        if( edge->source->gen_blk_id >= break_blk->gen_blk_id ) {
+            RemoveInputEdge( edge );
+            edge->destination.u.lbl = edge->destination.u.blk->label;
+            edge->flags &= ~BEF_DEST_IS_BLOCK;
+        }
+    }
+    /*
+     * Now, set up a new HeadBlock, and redirect all unknowns branches to it.
+     * Known branches may still go to the old HeadBlock. This is so that
+     * HeadBlock will not be a loop header. The loop optimizer will
+     * screw up if it is.
+     */
+    blk = MakeBlockInit( back, 1 );
+    SetBlkAttr( blk, BLK_BIG_LABEL | BLK_JUMP );
+    blk->label = back.data.HeadBlock->label;
+    blk->ins.head.line_num = back.data.HeadBlock->ins.head.line_num;
+    blk->gen_blk_id = 0;
+    blk->blk_id = 0;
+    blk->targets = 1;
+    edge = &blk->edge[0];
+    edge->flags = BEF_DEST_IS_BLOCK;
+    edge->source = blk;
+    PointEdge( edge, back.data.HeadBlock );
+    blk->prev_block = NULL;
+    blk->next_block = back.data.HeadBlock;
+    MarkBlkAttrClr( back.data.HeadBlock, BLK_BIG_LABEL );
+    back.data.HeadBlock->ins.head.line_num = 0;
+    back.data.HeadBlock->label = AskForNewLabel(back);
+    back.data.HeadBlock->prev_block = blk;
+    back.data.HeadBlock = blk;
+    return( true );
+}
+
+
+void    RemoveBreak( BackRun& back )
+/*************************/
+{
+    back.data.HeadBlock = back.breakrtn.Break;
+    back.data.CurrBlock = back.breakrtn.Curr;
+    back.data.BlockList = back.breakrtn.Tail;
+    back.breakrtn.Tail = NULL;
+    back.breakrtn.HaveBreak = false;
+    UnFixEdges(back);
+}
+
+
+void    FixBreak( BackRun& back )
+/**********************/
+{
+    block       *blk;
+    edge_list   *exit_edge;
+
+    for( exit_edge = back.breakrtn.BranchOuts; exit_edge != NULL; exit_edge = exit_edge->next ) {
+        for( blk = back.data.HeadBlock; blk != NULL; blk = blk->next_block ) {
+            if( blk->gen_blk_id == exit_edge->gen_blk_id ) {
+                RemoveInputEdge( exit_edge->edge );
+                exit_edge->edge->destination.u.lbl = exit_edge->lbl;
+                exit_edge->edge->flags &= ~BEF_DEST_IS_BLOCK;
+                break;
+            }
+        }
+    }
+    UnFixEdges(back);
+    FreeBranchOuts(back);
+}
+
+block   *TailBlocks( BackRun& back )
+/*************************/
+{
+    return( back.breakrtn.Tail );
+}
+
+bool    BreakExists( BackRun& back )
+/*************************/
+{
+    return( back.breakrtn.HaveBreak );
+}

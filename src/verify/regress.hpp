@@ -55,7 +55,7 @@ enum class Tier { All15, Setup, Install, Slow };
 std::string_view word(Tier tier);
 std::optional<Tier> tier_named(std::string_view name);
 
-// MINI.CAB's modules (state/mini/original), and Setup's own programs (state/setup/original), upper case.
+// MINI.CAB's modules (<win95_boot>/mini/original), and Setup's own programs (<win95_boot>/setup/original), upper case.
 const std::vector<std::string>& all15_names();
 const std::vector<std::string>& setup_names();
 
@@ -141,7 +141,7 @@ struct Services {
     std::function<std::vector<std::string>(Tier tier)> missing;
     // Where the run's own folder is made (the built images; gone at the end).
     std::filesystem::path work;
-    // Where the run's locks are made (empty: no locks). Runs on one checkout share the module build folders (state/build/<name>) and a
+    // Where the run's locks are made (empty: no locks). Runs on one checkout share the module build folders (<state>/build/<name>) and a
     // boot's tag names its disk and screenshots: a run takes the build lock while it builds, and a tag's lock while that boot runs, and
     // waits ("waiting for regress run pid N") when another run has them. The locks are the system's: a killed run's goes with it.
     std::filesystem::path lock_dir;

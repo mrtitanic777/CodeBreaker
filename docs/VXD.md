@@ -25,7 +25,7 @@ What a run does:
 1. Builds each named driver (a corpus file name, extension optional) with `build_le`, and with
    `--vmm32` the corpus `VMM32.VXD` (VMM alone, a W3) with `build_w3`. `--retail` takes the corpus
    files as they are.
-2. Copies the installed disk into a run folder of its own (`state/vxdboot/runs/<tag>_*`, src/base/runs.cpp;
+2. Copies the installed disk into a run folder of its own (`<state>/vxdboot/runs/<tag>_*`, src/base/runs.cpp;
    a killed run's is swept by the next run once a day old) and writes
    the files into the copy with `formats/media.put` (FAT16/FAT32 in Python: no WSL, no mtools):
    - a driver the corpus keeps in `WINDOWS\SYSTEM` goes to `WINDOWS\SYSTEM\VMM32\NAME.VXD` --
@@ -47,7 +47,7 @@ What a run does:
 4. Reads `BOOTLOG.TXT` from the copy and prints, for each driver named, what the log says of it
    (`LoadSuccess SYSCRITINITSUCCESS DEVICEINITSUCCESS INITCOMPLETESUCCESS`, or the phase it
    stopped in, or that it was never loaded), then deletes the run folder. The last screen and
-   the log are kept: `state/vxdboot/shots/<tag>.png`, `<tag>.bootlog.txt` -- one of each per tag
+   the log are kept: `<state>/vxdboot/shots/<tag>.png`, `<tag>.bootlog.txt` -- one of each per tag
    (`rebuilt` or `retail` unless `--tag` names another), the run before's overwritten.
 
 `--bisect` boots each half of a failing set, and the halves of a half that fails, down to the

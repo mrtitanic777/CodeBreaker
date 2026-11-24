@@ -518,6 +518,13 @@ std::function<std::vector<std::string>(ByteView)> KitEnvironment::import_lines(c
 
 // {function key: {name, library}} of the functions of a 32-bit module that belong to a runtime library: by signature, the thunk compiler's stubs, and for a
 // module that is itself a runtime library its exports. A 16-bit module's are found among the functions its describer finds, keyed as the 16-bit lane keys them.
+std::set<decompile::decompiler::Va> KitEnvironment::runtime_functions(const stdfs::path& module) {
+    std::set<decompile::decompiler::Va> out;
+    for (const auto& [address, what] : identify(module))
+        if (address.find(':') == std::string::npos) out.insert(static_cast<decompile::decompiler::Va>(std::stoul(address, nullptr, 16)));
+    return out;
+}
+
 std::map<std::string, std::pair<std::string, std::string>> KitEnvironment::identify(const stdfs::path& module) {
     std::map<std::string, std::pair<std::string, std::string>> out;
     const std::optional<base::Lane> lane = impl_->corpus.lane(module);

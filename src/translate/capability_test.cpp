@@ -4,6 +4,7 @@
 #include "translate/capability.hpp"
 
 #include <algorithm>
+#include <iostream>
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
@@ -87,6 +88,125 @@ CB_TEST("translate.capability.csharp_source_can_become_cpp17_and_csharp_and_the_
     // every target of the languages table is listed once, Original first
     CB_CHECK_EQ(list.size(), cap::languages().size() + 1);
     CB_CHECK(list.front().id == "original");
+});
+
+CB_TEST("translate.capability.java_source_becomes_c_only_when_both_programs_agree", [] {
+    const cap::Path* path = cap::find_path("java", "c");
+    CB_CHECK(path != nullptr);
+    if (path == nullptr || !cap::missing_tool(*path).empty()) return;   // (no JDK or C compiler here)
+    const stdfs::path work = capt_work("java-c");
+    cb::fs::write_text(work / "Streams.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/cpp03/streams/src/000_Streams.java")));
+    const tf::Result r = capt_run("java", "c", work / "Streams.java", work / "out", work / "scratch");
+    CB_CHECK(r.verdict == tf::Verdict::Agrees);
+    if (r.verdict != tf::Verdict::Agrees) std::cerr << r.detail.substr(0, 1000) << std::endl;
+    for (const char* file : {"Streams.c", "runtime/jrt.c", "runtime/jrt.h", "BUILD.txt"}) CB_CHECK(stdfs::is_regular_file(work / "out" / file));
+    // a class with no main has nothing to run beside its translation, so nothing is handed over
+    cb::fs::write_text(work / "Quiet.java", "public class Quiet { int x; }\n");
+    const tf::Result quiet = capt_run("java", "c", work / "Quiet.java", work / "out2", work / "scratch2");
+    CB_CHECK(quiet.verdict == tf::Verdict::BadInput);
+    CB_CHECK(quiet.detail.find("no main") != std::string::npos);
+    CB_CHECK(quiet.files.empty());
+    std::error_code ec;
+    stdfs::remove_all(work, ec);
+});
+
+CB_TEST("translate.capability.java_source_becomes_cpp17_and_csharp_when_both_programs_agree", [] {
+    const stdfs::path work = capt_work("java-others");
+    cb::fs::write_text(work / "Streams.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/cpp03/streams/src/000_Streams.java")));
+    cb::fs::write_text(work / "Shapes.java", "public class Shapes {\n    interface Shape { double area(); }\n"
+                                             "    static class Square implements Shape { final double width; Square(double w) { width = w; } public double area() { return width * width; } }\n"
+                                             "    public static void main(String[] args) {\n        Shape s = new Square(1.5);\n        System.out.println(s.area());\n    }\n}\n");
+    cb::fs::write_text(work / "StreamKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/c_java/streamkit/StreamKit.java")));
+    cb::fs::write_text(work / "Recs.java",
+                       "import java.util.*;\n"
+                       "public class Recs {\n"
+                       "    record P(String name, int age, double w, long id, boolean on, char c) {}\n"
+                       "    public static void main(String[] args) {\n"
+                       "        P a = new P(\"Ada\", 36, 1.5, 5000000000L, true, 'x');\n"
+                       "        P b = new P(\"Ada\", 36, 1.5, 5000000000L, true, 'x');\n"
+                       "        P n = new P(null, -1, Double.NaN, -1L, false, 'y');\n"
+                       "        System.out.println(a + \" \" + a.hashCode() + \" \" + a.equals(b) + \" \" + a.equals(n) + \" \" + a.equals(null));\n"
+                       "        System.out.println(n + \" \" + n.hashCode() + \" \" + n.equals(new P(null, -1, Double.NaN, -1L, false, 'y')));\n"
+                       "        System.out.println(Optional.of(a.age()) + \" \" + Optional.empty() + \" \" + Optional.ofNullable(n.name()).isPresent());\n"
+                       "        List<P> ps = new ArrayList<>();\n        ps.add(a);\n        ps.add(n);\n"
+                       "        ps.sort(Comparator.comparingInt(P::age).reversed());\n"
+                       "        System.out.println(ps.get(0).age() + \" \" + ps.stream().mapToInt(P::age).max().getAsInt());\n"
+                       "    }\n"
+                       "}\n");
+    cb::fs::write_text(work / "CollectionKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/CollectionKit.java")));
+    cb::fs::write_text(work / "LocalKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/LocalKit.java")));
+    cb::fs::write_text(work / "LibraryKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/LibraryKit.java")));
+    cb::fs::write_text(work / "BoxKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/BoxKit.java")));
+    cb::fs::write_text(work / "HeldKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/HeldKit.java")));
+    cb::fs::write_text(work / "AnonLibKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/csharp_java/kit/AnonLibKit.java")));
+    cb::fs::write_text(work / "TryKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/c_java/trykit/TryKit.java")));
+    cb::fs::write_text(work / "JumpKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/c_java/trykit/JumpKit.java")));
+    cb::fs::write_text(work / "SwitchTry.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/c_java/trykit/SwitchTry.java")));
+    cb::fs::write_text(work / "BoxStep.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/c_java/trykit/BoxStep.java")));
+    cb::fs::write_text(work / "DataKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/c_java/trykit/DataKit.java")));
+    cb::fs::write_text(work / "ExtKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/c_java/trykit/ExtKit.java")));
+    cb::fs::write_text(work / "LibKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/c_java/trykit/LibKit.java")));
+    cb::fs::write_text(work / "AsListKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/c_java/trykit/AsListKit.java")));
+    cb::fs::write_text(work / "ReflectKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/c_java/trykit/ReflectKit.java")));
+    cb::fs::write_text(work / "ClientKit.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/c_java/trykit/ClientKit.java")));
+    cb::fs::write_text(work / "Printable.java", cb::fs::read_text(cb::testing::data_path("java/decompiler/testdata/oracle/Printable.java")));
+    const std::pair<const char*, const char*> cases[] = {{"cpp17", "Streams"}, {"csharp", "Shapes"}, {"csharp", "Streams"}, {"csharp", "StreamKit"}, {"csharp", "Recs"}, {"csharp", "CollectionKit"}, {"csharp", "LocalKit"}, {"csharp", "LibraryKit"}, {"csharp", "BoxKit"},
+                                                         {"cpp17", "StreamKit"}, {"cpp17", "CollectionKit"}, {"cpp17", "LocalKit"}, {"cpp17", "LibraryKit"}, {"cpp17", "Library"},
+                                                         {"c", "TryKit"}, {"cpp17", "TryKit"}, {"csharp", "TryKit"}, {"cpp17", "JumpKit"}, {"csharp", "JumpKit"}, {"c", "SwitchTry"}, {"csharp", "HeldKit"}, {"csharp", "AnonLibKit"}, {"c", "ClientKit"}, {"cpp17", "ClientKit"}, {"csharp", "ClientKit"}, {"c", "ReflectKit"}, {"cpp17", "ReflectKit"}, {"csharp", "ReflectKit"}, {"c", "DataKit"}, {"cpp17", "DataKit"}, {"csharp", "DataKit"}, {"c", "LibKit"}, {"cpp17", "LibKit"}, {"c", "AsListKit"}, {"cpp17", "AsListKit"}, {"csharp", "LibKit"}, {"c", "ExtKit"}, {"cpp17", "ExtKit"}, {"csharp", "ExtKit"}, {"c", "BoxStep"}, {"cpp17", "BoxStep"}, {"csharp", "BoxStep"}, {"c", "BoxKit"}, {"cpp17", "BoxKit"}, {"c", "JumpKit"}, {"c", "Printable"}, {"cpp17", "Printable"}, {"csharp", "Printable"}, {"c", "CollectionKit"}, {"c", "LocalKit"}, {"c", "LibraryKit"}, {"c", "Library"}};
+    cb::fs::write_text(work / "Library.java", cb::fs::read_text(cb::testing::data_path("translate/testdata/cpp03/modernlib/src/000_Library.java")));
+    for (const auto& [to, program] : cases) {
+        const cap::Path* path = cap::find_path("java", to);
+        CB_CHECK(path != nullptr);
+        if (path == nullptr || !cap::missing_tool(*path).empty()) continue;   // (no JDK, C++ compiler or .NET SDK here)
+        const std::string id = to;
+        const std::string run = id + "-" + program;
+        const tf::Result r = capt_run("java", id, work / (std::string(program) + ".java"), work / ("out-" + run), work / ("scratch-" + run));
+        if (r.verdict != tf::Verdict::Agrees) std::cerr << id << ": " << r.detail.substr(0, 1800) << std::endl;
+        CB_CHECK(r.verdict == tf::Verdict::Agrees);
+        CB_CHECK(!r.files.empty());
+    }
+    // Java throws on adding to Arrays.asList; a C# List would not, so the program is refused rather than changed
+    if (const cap::Path* path = cap::find_path("java", "csharp"); path != nullptr && cap::missing_tool(*path).empty()) {
+        cb::fs::write_text(work / "Fixed.java", "import java.util.*;\npublic class Fixed {\n    public static void main(String[] args) {\n"
+                                                "        List<Integer> l = Arrays.asList(1, 2);\n        l.add(3);\n        System.out.println(l);\n    }\n}\n");
+        const tf::Result fixed = capt_run("java", "csharp", work / "Fixed.java", work / "out-fixed", work / "scratch-fixed");
+        CB_CHECK(fixed.verdict == tf::Verdict::Refused);
+        CB_CHECK(fixed.detail.find("Arrays.asList") != std::string::npos);
+        // C#'s list over an array is a copy: a set through it, which Java writes into the array, is refused
+        const tf::Result over = capt_run("java", "csharp", work / "AsListKit.java", work / "out-over", work / "scratch-over");
+        CB_CHECK(over.verdict == tf::Verdict::Refused);
+        CB_CHECK(over.detail.find("writes through") != std::string::npos);
+        // a null held in a collection of numbers stays a null: the collection is of `int?`
+        cb::fs::write_text(work / "NullHeld.java", "import java.util.*;\npublic class NullHeld {\n    public static void main(String[] args) {\n"
+                                                   "        List<Integer> l = new ArrayList<>();\n        l.add(null);\n        System.out.println(l);\n    }\n}\n");
+        const tf::Result held = capt_run("java", "csharp", work / "NullHeld.java", work / "out-held", work / "scratch-held");
+        CB_CHECK(held.verdict == tf::Verdict::Agrees);
+        // a bin Java keeps as a tree has an order the translation cannot promise: the run fails and nothing is handed over
+        cb::fs::write_text(work / "TreeBin.java",
+                           "import java.util.*;\npublic class TreeBin {\n    static class K { final int id; K(int id) { this.id = id; }\n"
+                           "        @Override public int hashCode() { return 7; }\n        @Override public boolean equals(Object o) { return o instanceof K && ((K) o).id == id; }\n"
+                           "        @Override public String toString() { return \"k\" + id; } }\n    public static void main(String[] args) {\n"
+                           "        Map<K, Integer> m = new HashMap<>();\n        for (int i = 0; i < 12; i++) m.put(new K(i), i);\n        System.out.println(m.size());\n"
+                           "        for (K k : m.keySet()) System.out.println(k);\n    }\n}\n");
+        const tf::Result tree = capt_run("java", "csharp", work / "TreeBin.java", work / "out-tree", work / "scratch-tree");
+        CB_CHECK(tree.verdict == tf::Verdict::Differs);
+        CB_CHECK(tree.files.empty());
+        // Java shuffles Set.of on every run: a walk of one has no order to match, so nothing is handed over
+        cb::fs::write_text(work / "Shuffled.java", "import java.util.*;\npublic class Shuffled {\n    public static void main(String[] args) {\n"
+                                                   "        for (String s : Set.of(\"a\", \"b\", \"c\")) System.out.println(s);\n    }\n}\n");
+        const tf::Result shuffled = capt_run("java", "csharp", work / "Shuffled.java", work / "out-shuffled", work / "scratch-shuffled");
+        CB_CHECK(shuffled.verdict != tf::Verdict::Agrees);
+        CB_CHECK(shuffled.files.empty());
+        // Java copies a captured local in before the base constructor runs, C# after: a base that calls back into the class is refused
+        cb::fs::write_text(work / "Early.java", "public class Early {\n    abstract static class Base { Base() { System.out.println(name()); } abstract String name(); }\n"
+                                                "    public static void main(String[] args) {\n        String held = args.length == 0 ? \"seen\" : \"other\";\n"
+                                                "        new Base() { @Override String name() { return held; } };\n    }\n}\n");
+        const tf::Result early = capt_run("java", "csharp", work / "Early.java", work / "out-early", work / "scratch-early");
+        CB_CHECK(early.verdict == tf::Verdict::Refused);
+        CB_CHECK(early.files.empty());
+    }
+    std::error_code ec;
+    stdfs::remove_all(work, ec);
 });
 
 CB_TEST("translate.capability.python_source_goes_to_cpp17_only", [] {

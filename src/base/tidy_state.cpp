@@ -26,7 +26,7 @@ constexpr std::string_view kRunTools[] = {"phase3", "vxdboot", "record16"};
 // The fingerprints' own file of before they were in the cache.
 constexpr std::string_view kOldCaches[] = {"fingerprints.sqlite"};
 
-// Folders and files of the runs of before run folders were: {folder under state/, name prefix, name suffix}.
+// Folders and files of the runs of before run folders were: {folder under the state folder, name prefix, name suffix}.
 struct OldRunPattern {
     std::string_view folder, prefix, suffix;
 };
@@ -207,7 +207,7 @@ int run(const Layout& layout, const Options& options, const CacheHooks& cache) {
 #ifdef _WIN32
     std::replace(state_text.begin(), state_text.end(), '/', '\\');
 #endif
-    cb::out("state/ ({}): {}\n", state_text, gb_text(total));
+    cb::out("state folder ({}): {}\n", state_text, gb_text(total));
     for (std::size_t i = 0; i < before.size() && i < kPartsShown; ++i)
         cb::out("  {:<28} {:>10}\n", before[i].path.filename().string(), gb_text(before[i].bytes));
     const std::vector<stdfs::path> builds = build_folders(layout);
@@ -243,7 +243,7 @@ int run(const Layout& layout, const Options& options, const CacheHooks& cache) {
                 cb::out("removed cache {}: old generation(s) {}\n", pruned.kind, text::join(pruned.generations, ", "));
         std::uint64_t after = 0;
         for (const Part& p : parts(layout)) after += p.bytes;
-        cb::out("state/ now {}", gb_text(after));
+        cb::out("state folder now {}", gb_text(after));
         if (cache.max_bytes) cb::out(" (the cache's cap: {}, setting cache_max_gb)", gb_text(cache.max_bytes()));
         cb::out("\n");
     }

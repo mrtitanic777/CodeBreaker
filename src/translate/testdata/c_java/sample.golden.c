@@ -174,10 +174,10 @@ static void FixtureMain_main(jarray* args) {
 			int32_t j2x_i2 = 0;
 			for (; j2x_i2 < JLEN(j2x_a1); j2x_i2++) {
 				double d = JA(double, j2x_a1, j2x_i2);
-				double o1 = 0;
-				int32_t o2 = 0;
-				float o3 = 0;
-				jrt_PrintStream_println_Str(jrt_System_out, (o1 = d, o2 = MathHelper_floor_double(d), o3 = MathHelper_sqrt_float((float)(jrt_Math_abs_D(d))), jrt_concat(6, jrt_lit(&lit_1, u"floor(", 6), jrt_str_D(o1), jrt_lit(&lit_2, u")=", 2), jrt_str_I(o2), jrt_lit(&lit_3, u" sqrt=", 6), jrt_str_F(o3))));
+				double jrt_o1 = 0;
+				int32_t jrt_o2 = 0;
+				float jrt_o3 = 0;
+				jrt_PrintStream_println_Str(jrt_System_out, (jrt_o1 = d, jrt_o2 = MathHelper_floor_double(d), jrt_o3 = MathHelper_sqrt_float((float)(jrt_Math_abs_D(d))), jrt_concat(6, jrt_lit(&lit_1, u"floor(", 6), jrt_str_D(jrt_o1), jrt_lit(&lit_2, u")=", 2), jrt_str_I(jrt_o2), jrt_lit(&lit_3, u" sqrt=", 6), jrt_str_F(jrt_o3))));
 			}
 		}
 	}

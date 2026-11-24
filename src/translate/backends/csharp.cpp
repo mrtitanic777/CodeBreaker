@@ -460,6 +460,22 @@ bool loop_has_break(const std::vector<Node*>& body) {
     return found;
 }
 
+// Whether a return, break or continue in this code goes somewhere outside it.
+bool jumps_out(Node* n, int loops, std::set<std::string> labels, int switches = 0) {
+    if (n == nullptr) return false;
+    if (ir::is<ir::Return>(n)) return true;
+    if (const auto* b = ir::get<ir::Break>(n)) return b->label ? !labels.contains(*b->label) : loops + switches == 0;
+    if (const auto* c = ir::get<ir::Continue>(n)) return c->label ? !labels.contains(*c->label) : loops == 0;   // (a switch holds a break, not a continue)
+    if (ir::is<ir::Lambda>(n) || ir::is<ir::ClassDecl>(n) || ir::is<ir::LocalClass>(n)) return false;
+    if (ir::is<ir::While>(n) || ir::is<ir::DoWhile>(n) || ir::is<ir::For>(n) || ir::is<ir::ForEach>(n)) ++loops;
+    if (ir::is<ir::Switch>(n)) ++switches;
+    if (const auto* l = ir::get<ir::Labeled>(n); l != nullptr && l->label) labels.insert(*l->label);
+    for (Node* c : ir::children(*n)) {
+        if (jumps_out(c, loops, labels, switches)) return true;
+    }
+    return false;
+}
+
 bool abrupt(const std::vector<Node*>& stmts);
 
 // Does this statement never fall off its end?
@@ -579,6 +595,13 @@ std::string ident(std::string_view name) {
     return out;
 }
 
+// A namespace as written: a segment that is a C# keyword (java.lang.ref) is escaped.
+static std::string namespace_text(std::string_view ns) {
+    std::vector<std::string> parts;
+    for (const std::string_view part : text::split(ns, '.')) parts.push_back(ident(part));
+    return text::join(parts, ".");
+}
+
 bool is_string(const ir::TypeP& t) {
     const std::string* n = class_of(t);
     return n != nullptr && (*n == "System.String" || *n == "java.lang.String");
@@ -665,6 +688,7 @@ public:
 
     // ---- Context
     Program& program() override { return prog_; }
+    ir::ClassDecl* current_class() override { return cls_; }
     const std::string& lang() const override { return lang_; }
     std::string ctype(const TypeP& t) override;
     Ex expr(Node* e, bool statement = false) override;
@@ -727,6 +751,7 @@ private:
     void local_stmt(const ir::Local& s, Lines& out, const std::string& ind);
     void catch_clause(const ir::Catch& c, const TypeP& t, Lines& out, const std::string& ind);
     void using_stmt(std::span<Node* const> res, Node* body, Lines& out, const std::string& ind);
+    int try_helpers_ = 0;   // numbers the names a lowered try declares: C# forbids reusing one in a scope inside
     void try_stmt(const ir::Try& s, Lines& out, const std::string& ind);
     void switch_stmt(const ir::Switch& s, Lines& out, const std::string& ind);
     std::vector<Node*> initializers(const std::vector<Node*>& in);
@@ -752,6 +777,7 @@ private:
     std::map<std::string, std::pair<bool, bool>> labels_;                // a Java label -> its uses (break, continue)
     std::unordered_map<const Node*, std::string> loop_labels_;           // a loop -> its label; lookup only
     std::unordered_set<std::string> locals_;
+    TypeP yield_type_;                                                   // inside a switch-expression arm that is a block: what it yields
     std::vector<std::unordered_set<std::string>> block_names_;           // the locals each enclosing block declares (all of the block)
     std::vector<std::map<std::string, std::string>> scopes_;             // a local's name -> the name it is written with
     std::unordered_map<const Node*, InitGroup> init_uses_;               // the use of a hoisted initialiser's local -> what it stands for
@@ -875,6 +901,8 @@ std::string Writer::class_name(const TypeP&, const ir::ClassType& c) {
         Lines parts;
         for (const TypeP& a : c.args) parts.push_back(ctype(a));
         simple += "<" + text::join(parts, ", ") + ">";
+    } else if (java_ && cls_ != nullptr && cls_->qname == c.name && !cls_->typeparams.empty()) {   // a raw use inside the class (javac's record equals): its own T
+        simple += "<" + text::join(cls_->typeparams, ", ") + ">";
     }
     return simple + suffix;
 }
@@ -885,7 +913,7 @@ std::string Writer::short_name(const std::string& qname) {
         std::vector<ir::ClassDecl*> chain{c};
         while (chain.back()->outer) {
             ir::ClassDecl* o = prog_.class_named(*chain.back()->outer);
-            if (o == nullptr) break;
+            if (o == nullptr || (java_ && !o->typeparams.empty())) break;   // (inside a generic class its members are named alone: the name takes its T)
             chain.push_back(o);
         }
         const ir::ClassDecl& top = *chain.back();
@@ -893,6 +921,7 @@ std::string Writer::short_name(const std::string& qname) {
         Lines relp;
         for (auto it = chain.rbegin(); it != chain.rend(); ++it) relp.push_back(ident((*it)->name.value_or("")));
         const std::string rel = text::join(relp, ".");
+        if (java_ && ns.starts_with("java.") && (rel == "Stack" || rel == "Queue") && ns != namespace_of(cls_)) return "global::" + namespace_text(ns) + "." + rel;   // (.NET has one of the name in System.Collections.Generic)
         if (!ns.empty() && ns != namespace_of(cls_)) usings_.insert(ns);
         // inside the class itself or its outer classes, the nested name alone
         for (const ir::ClassDecl* cur = cls_; cur != nullptr; cur = cur->outer ? prog_.class_named(*cur->outer) : nullptr) {
@@ -943,7 +972,7 @@ std::string Writer::unit_text() {
         }
         while (!lines.empty() && lines.back().empty()) lines.pop_back();
         if (!ns.empty()) {
-            body.push_back("namespace " + ns);
+            body.push_back("namespace " + namespace_text(ns));
             body.emplace_back("{");
             for (const std::string& l : lines) body.push_back(l.empty() ? std::string() : "    " + l);
             body.emplace_back("}");
@@ -966,7 +995,7 @@ std::string Writer::unit_text() {
             const auto* cd = ir::get<ir::ClassDecl>(c);
             return cd != nullptr && namespace_of(cd).starts_with(x + ".");
         });
-        if (!parent_of_own) head.push_back("using " + x + ";");
+        if (!parent_of_own) head.push_back("using " + namespace_text(x) + ";");
     }
     head.emplace_back();
     extend(head, body);
@@ -1044,7 +1073,8 @@ Lines Writer::class_decl_body(ir::ClassDecl& c, const std::string& ind) {
     if (kind.empty()) throw Decline("class-kind", "a " + c.kind.value_or(""));
     if (java_) lib().check_class(*this, c);
     const std::vector<std::string> mods = class_mods(c);
-    std::string head = ind + mods_text(mods) + std::string(kind) + " " + ident(c.name.value_or("")) + tparams_text(c.typeparams, c.tparams);
+    const std::optional<std::string> keyword = java_ ? lib().class_keyword(c) : std::nullopt;
+    std::string head = ind + mods_text(mods) + (keyword ? *keyword : std::string(kind)) + " " + ident(c.name.value_or("")) + tparams_text(c.typeparams, c.tparams);
     ir::MethodDecl* primary = nullptr;
     Node* primary_node = nullptr;
     for (Node* m : c.members) {
@@ -1064,10 +1094,12 @@ Lines Writer::class_decl_body(ir::ClassDecl& c, const std::string& ind) {
         }
     }
     Lines bases;
-    if (ckind == "enum") {
+    const bool object_enum = java_ && ckind == "enum" && lib().enum_as_class(c);
+    if (object_enum) bases.emplace_back("JEnum");
+    if (ckind == "enum" && !object_enum) {
         if (c.extends) bases.push_back(ctype(c.extends));
     } else {
-        if (c.extends) {
+        if (c.extends && !object_enum) {
             std::string b = ctype(c.extends);
             if (primary != nullptr) {
                 // the base class takes the arguments of the primary constructor's base call
@@ -1110,7 +1142,7 @@ Lines Writer::class_decl_body(ir::ClassDecl& c, const std::string& ind) {
     }
     lines.push_back(ind + "{");
     const std::string inner = ind + "    ";
-    if (ckind == "enum") {
+    if (ckind == "enum" && !object_enum) {
         std::vector<Node*> consts;
         std::vector<Node*> rest;
         for (Node* m : members) (ir::is<ir::EnumConst>(m) ? consts : rest).push_back(m);
@@ -1133,6 +1165,9 @@ Lines Writer::class_decl_body(ir::ClassDecl& c, const std::string& ind) {
         extend(lines, written);
         first = false;
     }
+    if (java_) {
+        for (const std::string& extra : lib().extra_members(*this, c)) lines.push_back(inner + extra);
+    }
     lines.push_back(ind + "}");
     return lines;
 }
@@ -1154,7 +1189,7 @@ Lines Writer::member(Node* m, ir::ClassDecl& c, const std::string& ind) {
 Lines Writer::field(Node* node, ir::ClassDecl& c, const std::string& ind) {
     auto& f = *ir::get<ir::FieldDecl>(node);
     const std::vector<std::string> mods = java_ ? lib().field_mods(*this, f, c) : f.mods;
-    std::string line = ind + mods_text(mods) + ctype(f.type) + " " + ident(f.sym->name);
+    std::string line = ind + mods_text(mods) + ctype(f.type) + " " + member_name(*f.sym);
     Node* init = prog_.has_init_override(node) ? prog_.init_override(node) : f.init;
     if (init != nullptr) {
         method_ = nullptr;
@@ -1547,6 +1582,50 @@ void Writer::catch_clause(const ir::Catch& c, const TypeP& t, Lines& out, const 
 
 void Writer::using_stmt(std::span<Node* const> res, Node* body, Lines& out, const std::string& ind) {
     Node* r = res[0];
+    if (java_) {   // C#'s `using` lets a throwing Dispose replace the exception on its way; Java keeps that one and adds the close's to it as suppressed
+        prog_.use_runtime("JavaRt");
+        prog_.use_runtime("JavaCollections");
+        usings_.insert("System");
+        Scope held(*this);
+        const std::string inner = ind + "    ";
+        out.push_back(ind + "{");
+        std::string name;
+        if (const auto* local = ir::get<ir::Local>(r)) {
+            const std::string init = coerce(local->init, local->type);
+            Node* made = strip(local->init);
+            const std::string type = ir::is<ir::New>(made) && type_of(local->init) == local->type ? "var" : ctype(local->type);
+            name = declare(local->sym->name, true);
+            out.push_back(inner + type + " " + name + " = " + init + ";");
+        } else if (const auto* given = ir::get<ir::ExprStmt>(r)) {
+            const std::string value = expr(given->expr).text;
+            name = declare("j_resource" + std::to_string(try_helpers_ + 1), true);
+            out.push_back(inner + "var " + name + " = " + value + ";");
+        } else {
+            throw Decline("using", "a resource " + describe(r));
+        }
+        const std::string thrown = declare("j_thrown" + std::to_string(++try_helpers_), true);
+        const std::string caught = declare("j_caught" + std::to_string(try_helpers_), true);
+        out.push_back(inner + "Exception " + thrown + " = null;");
+        out.push_back(inner + "try");
+        if (res.size() > 1) {
+            out.push_back(inner + "{");
+            using_stmt(res.subspan(1), body, out, inner + "    ");
+            out.push_back(inner + "}");
+        } else {
+            block_into(body, out, inner);
+        }
+        out.push_back(inner + "catch (Exception " + caught + ")");
+        out.push_back(inner + "{");
+        out.push_back(inner + "    " + thrown + " = " + caught + ";");
+        out.push_back(inner + "    throw;");
+        out.push_back(inner + "}");
+        out.push_back(inner + "finally");
+        out.push_back(inner + "{");
+        out.push_back(inner + "    JLib.CloseResource(" + name + ", " + thrown + ");");
+        out.push_back(inner + "}");
+        out.push_back(ind + "}");
+        return;
+    }
     std::string head;
     const auto* loc = ir::get<ir::Local>(r);
     std::optional<Scope> scope;
@@ -1573,6 +1652,36 @@ void Writer::using_stmt(std::span<Node* const> res, Node* body, Lines& out, cons
 }
 
 void Writer::try_stmt(const ir::Try& s, Lines& out, const std::string& ind) {
+    if (java_ && s.finally_body != nullptr && jumps_out(s.finally_body, 0, {})) {   // C# forbids leaving a finally: it is written after the try
+        bool body_jumps = jumps_out(s.body, 0, {});
+        for (Node* c : s.catches) body_jumps = body_jumps || jumps_out(c, 0, {});
+        if (body_jumps) throw Decline("finally", "a finally that returns or jumps, around a body that also does");
+        usings_.insert("System");
+        Scope held(*this);
+        const std::string thrown = declare("j_thrown" + std::to_string(++try_helpers_), true);
+        const std::string caught = declare("j_caught" + std::to_string(try_helpers_), true);
+        const std::string inner = ind + "    ";
+        out.push_back(ind + "{");
+        out.push_back(inner + "Exception " + thrown + " = null;");
+        out.push_back(inner + "try");
+        if (s.resources.empty() && s.catches.empty()) {
+            block_into(s.body, out, inner);
+        } else {
+            ir::Try without = s;
+            without.finally_body = nullptr;
+            out.push_back(inner + "{");
+            try_stmt(without, out, inner + "    ");
+            out.push_back(inner + "}");
+        }
+        out.push_back(inner + "catch (Exception " + caught + ")");
+        out.push_back(inner + "{");
+        out.push_back(inner + "    " + thrown + " = " + caught + ";");
+        out.push_back(inner + "}");
+        block_into(s.finally_body, out, inner);
+        out.push_back(inner + "if (" + thrown + " != null) throw " + thrown + ";");
+        out.push_back(ind + "}");
+        return;
+    }
     if (!s.resources.empty() && s.catches.empty() && s.finally_body == nullptr) {
         using_stmt(s.resources, s.body, out, ind);
         return;
@@ -1604,6 +1713,9 @@ std::string Writer::case_label(Node* lab0, Node* scrutinee) {
     Node* lab = strip(lab0);
     if (const auto* sel = ir::get<ir::Select>(lab)) {
         if (sel->sym && sel->sym->kind == ir::SymKind::EnumConst) {
+            if (java_ && scrutinee != nullptr) {
+                if (auto number = lib().enum_case(type_of(scrutinee), sel->sym->name)) return *number;
+            }
             return ctype(ir::class_type(sel->sym->owner.value_or(""))) + "." + ident(sel->sym->name);
         }
     }
@@ -1616,7 +1728,8 @@ std::string Writer::case_label(Node* lab0, Node* scrutinee) {
 }
 
 void Writer::switch_stmt(const ir::Switch& s, Lines& out, const std::string& ind) {
-    out.push_back(ind + "switch (" + expr(s.expr).text + ")");
+    const bool by_number = java_ && lib().enum_case(type_of(s.expr), "").has_value();   // (an enum of objects: C# cases need constants)
+    out.push_back(ind + "switch (" + (by_number ? wrap(s.expr, kPrimary) + ".JOrdinal" : expr(s.expr).text) + ")");
     out.push_back(ind + "{");
     for (std::size_t i = 0; i < s.cases.size(); ++i) {
         const auto* c = ir::get<ir::Case>(s.cases[i]);
@@ -1810,11 +1923,18 @@ void Writer::stmt(Node* s, Lines& out, const std::string& ind) {
         out.push_back(ind + "Debug.Assert(" + cond(x->cond) + ");");
         return;
     }
-    if (ir::is<ir::LocalClass>(s)) throw Decline("local-class", "a class declared in a method");
+    if (const auto* x = ir::get<ir::LocalClass>(s)) {
+        if (java_ && lib().local_class(x->decl)) return;   // (written as a member of the class around it)
+        throw Decline("local-class", "a class declared in a method");
+    }
     if (ir::is<ir::CtorCall>(s)) throw Decline("ctor-call", "a constructor call that is not the first statement");
     if (const auto* x = ir::get<ir::Switch>(s)) return switch_stmt(*x, out, ind);
     if (const auto* x = ir::get<ir::Try>(s)) return try_stmt(*x, out, ind);
-    if (ir::is<ir::Yield>(s)) throw Decline("yield", "a switch-expression arm with statements");
+    if (const auto* x = ir::get<ir::Yield>(s)) {
+        if (!yield_type_) throw Decline("yield", "a switch-expression arm with statements");
+        out.push_back(ind + "return " + coerce(x->expr, yield_type_) + ";");   // (the arm is a function of its own)
+        return;
+    }
     if (const auto* x = ir::get<ir::YieldReturn>(s)) {
         out.push_back(ind + "yield return " + expr(x->expr).text + ";");
         return;
@@ -1860,6 +1980,10 @@ std::string Writer::coerce(Node* e, const TypeP& t) {
     }
     if (java_) {
         if (auto got = lib().coerce(*this, e, t)) return *got;
+        // a constant arm of ?: narrowed to a byte, short or char: C# types the whole expression int unless each arm is cast
+        if (const auto* choice = ir::get<ir::Cond>(strip(e)); choice != nullptr && tp && ep && (tp == ir::Prim::I8 || tp == ir::Prim::I16 || tp == ir::Prim::U16)) {
+            return "(" + expr(choice->cond).text + " ? (" + ctype(t) + ")(" + expr(choice->then).text + ") : (" + ctype(t) + ")(" + expr(choice->orelse).text + "))";
+        }
     }
     return expr(e).text;
 }
@@ -2051,6 +2175,9 @@ Ex Writer::dispatch(Node* e) {
     }
     if (const auto* x = ir::get<ir::Name>(e)) {
         if (!x->sym) throw Decline("name", "a name with no symbol");
+        if (java_) {
+            if (auto held = lib().name_text(*this, e)) return {*held, kPrimary};
+        }
         return {lookup(x->sym->name), kPrimary};
     }
     if (const auto* x = ir::get<ir::Lit>(e)) return literal(*x, e->type);
@@ -2067,11 +2194,14 @@ Ex Writer::dispatch(Node* e) {
         if (th != nullptr && !th->qualifier && !shadowed(s->name)) return {member_name(*s), kPrimary};   // this.x, where no local hides x
         if (ir::is<ir::TypeName>(x->obj) && cls_ != nullptr) {
             const std::string* tn = class_of(type_of(x->obj));
-            if (tn != nullptr && cls_->qname && *tn == *cls_->qname) return {ident(s->name), kPrimary};   // a static of this class
+            if (tn != nullptr && cls_->qname && *tn == *cls_->qname) return {member_name(*s), kPrimary};   // a static of this class
         }
         return {wrap(x->obj, kPrimary) + "." + member_name(*s), kPrimary};
     }
     if (const auto* x = ir::get<ir::This>(e)) {
+        if (java_) {
+            if (auto outer = lib().this_text(*this, e)) return {*outer, kPrimary};
+        }
         if (x->qualifier && cls_ != nullptr) {
             const std::string* qn = class_of(x->qualifier);
             if (qn == nullptr || qn->empty() || !cls_->qname || *qn != *cls_->qname) throw Decline("outer-this", "an outer instance (Outer.this)");
@@ -2083,12 +2213,18 @@ Ex Writer::dispatch(Node* e) {
     if (const auto* x = ir::get<ir::Length>(e)) return {wrap(x->arr, kPrimary) + ".Length", kPrimary};
     if (const auto* x = ir::get<ir::Index>(e)) {
         if (x->sym && java_) throw Decline("indexer", "an indexer from Java");
+        if (java_) {
+            if (auto held = lib().name_text(*this, e)) return {*held, kPrimary};   // (an element that may be null, read as a number)
+        }
         Lines is;
         for (Node* i : ir::statements(x->index)) is.push_back(expr(i).text);
         return {wrap(x->arr, kPrimary) + "[" + text::join(is, ", ") + "]", kPrimary};
     }
     if (const auto* x = ir::get<ir::Unary>(e)) {
         const std::string& op = x->op;
+        if (java_ && (op == "++" || op == "--")) {
+            if (auto got = lib().update(*this, e)) return *got;
+        }
         if ((op == "++" || op == "--") && x->postfix) return {wrap(x->x, kPrimary) + op, kPrimary};
         std::string v = wrap(x->x, kUnary);
         if ((op == "-" || op == "+") && v.starts_with(op)) v = "(" + v + ")";   // - -x, not --x
@@ -2133,6 +2269,9 @@ Ex Writer::dispatch(Node* e) {
         return {text::join(texts, " + "), kAdd};
     }
     if (const auto* x = ir::get<ir::Assign>(e)) {
+        if (java_ && x->op) {
+            if (auto got = lib().update(*this, e)) return *got;
+        }
         const std::string target = wrap(x->target, kUnary);
         if (!x->op) return {target + " = " + coerce(x->value, type_of(x->target)), kAssign};
         const std::string op = *x->op + "=";
@@ -2158,6 +2297,9 @@ Ex Writer::dispatch(Node* e) {
         return {c + " ? " + a + " : " + b, kCond};
     }
     if (const auto* x = ir::get<ir::Cast>(e)) {
+        if (java_) {
+            if (auto held = lib().name_text(*this, e)) return {*held, kPrimary};   // ((Integer)o, which may be null, read as a number)
+        }
         const std::string tn = ctype(e->type);
         std::string v = wrap(x->x, kUnary);
         if (v.starts_with("-") || v.starts_with("+")) v = "(" + v + ")";
@@ -2166,6 +2308,15 @@ Ex Writer::dispatch(Node* e) {
         return {t, kUnary};
     }
     if (const auto* x = ir::get<ir::InstanceOf>(e)) {
+        if (java_ && x->binding == nullptr) {   // `o instanceof Box`, of a generic class: any Box<...>
+            const std::string* tested = class_of(x->test);
+            const ir::ClassDecl* generic = tested != nullptr ? prog_.class_named(*tested) : nullptr;
+            if (generic != nullptr && generic != cls_ && !generic->typeparams.empty() && std::get<ir::ClassType>(x->test->body).args.empty()) {
+                prog_.use_runtime("JavaRt");
+                prog_.use_runtime("JavaCollections");
+                return {"JLib.IsGeneric(" + expr(x->x).text + ", typeof(" + short_name(*tested) + "<" + std::string(generic->typeparams.size() - 1, ',') + ">))", kPrimary};
+            }
+        }
         std::string t = wrap(x->x, kRel) + " is " + ctype(x->test);
         if (x->binding != nullptr) {
             const auto* bl = ir::get<ir::Local>(x->binding);
@@ -2190,18 +2341,31 @@ Ex Writer::dispatch(Node* e) {
         Lines names;
         for (Node* p : x->params) names.push_back(declare(ir::get<ir::Param>(p)->sym->name, true));
         const std::string ps = names.size() == 1 ? names[0] : "(" + text::join(names, ", ") + ")";
+        const auto made = [&](std::string written) -> Ex {   // (a lambda of an interface of the program is an object of that interface)
+            if (java_) {
+                if (auto holder = lib().lambda_class(*this, e->type)) return {"new " + *holder + "(" + written + ")", kPrimary};
+            }
+            return {std::move(written), kAssign};
+        };
         if (ir::is<ir::Block>(x->body)) {
             Lines out;
             block_into(x->body, out, "");
             // on lines of its own, re-indented by the caller's line
-            return {ps + " =>\n" + text::join(out, "\n"), kAssign};
+            return made(ps + " =>\n" + text::join(out, "\n"));
         }
-        return {ps + " => " + expr(x->body).text, kAssign};
+        return made(ps + " => " + expr(x->body).text);
     }
     if (const auto* x = ir::get<ir::MethodRef>(e)) {
+        if (java_) {
+            if (Node* lambda = lib().method_ref(*this, e)) return dispatch(lambda);
+        }
         if (x->mode == "new") throw Decline("method-ref", "a constructor reference");
         if (ir::is<ir::TypeName>(x->target) && !x->sym->is_static) throw Decline("method-ref", "an unbound method reference (Type::instanceMethod)");
-        return {wrap(x->target, kPrimary) + "." + member_name(*x->sym), kPrimary};
+        std::string group = wrap(x->target, kPrimary) + "." + member_name(*x->sym);
+        if (java_) {
+            if (auto holder = lib().lambda_class(*this, e->type)) group = "new " + *holder + "(" + group + ")";
+        }
+        return {std::move(group), kPrimary};
     }
     if (const auto* x = ir::get<ir::SwitchExpr>(e)) {
         Lines arms;
@@ -2213,6 +2377,24 @@ Ex Writer::dispatch(Node* e) {
             if (const auto* y = ir::get<ir::Yield>(b)) val = coerce(y->expr, e->type);
             else if (const auto* t = ir::get<ir::Throw>(b)) val = "throw " + expr(t->expr).text;
             else if (const auto* es = ir::get<ir::ExprStmt>(b)) val = expr(es->expr).text;
+            else if (java_ && ir::is<ir::Block>(b)) {   // C# arms are expressions: a block is a function called on the spot, its `yield` that function's return
+                struct Restore {
+                    std::unordered_set<std::string>& names;
+                    std::unordered_set<std::string> saved_names;
+                    TypeP& yielded;
+                    TypeP saved_type;
+                    ~Restore() {
+                        names = std::move(saved_names);
+                        yielded = std::move(saved_type);
+                    }
+                } restore{locals_, locals_, yield_type_, yield_type_};
+                yield_type_ = e->type;
+                Scope scope(*this);
+                Lines body;
+                block_into(b, body, "");
+                usings_.insert("System");
+                val = "((Func<" + ctype(e->type) + ">)(() =>\n" + text::join(body, "\n") + "))()";
+            }
             else throw Decline("switch-expression", "a switch-expression arm " + describe(b));
             Lines pats;
             if (c->is_default) {
@@ -2222,14 +2404,15 @@ Ex Writer::dispatch(Node* e) {
             }
             arms.push_back(text::join(pats, " or ") + " => " + val);
         }
-        return {wrap(x->expr, kPrimary) + " switch { " + text::join(arms, ", ") + " }", kPrimary};
+        const bool by_number = java_ && lib().enum_case(type_of(x->expr), "").has_value();
+        return {wrap(x->expr, kPrimary) + (by_number ? ".JOrdinal" : "") + " switch { " + text::join(arms, ", ") + " }", kPrimary};
     }
     if (const auto* x = ir::get<ir::New>(e)) {
-        if (x->body != nullptr) throw Decline("anonymous-class", "an anonymous class");
-        if (x->outer != nullptr) throw Decline("inner-class", "an inner class made on an outer instance");
+        if (x->body != nullptr && !java_) throw Decline("anonymous-class", "an anonymous class");
         if (java_) {
             if (auto got = lib().new_object(*this, e)) return *got;
         }
+        if (x->outer != nullptr) throw Decline("inner-class", "an inner class made on an outer instance");
         return {"new " + ctype(e->type) + "(" + args_text(x->args, x->sym.get()) + ")", kPrimary};
     }
     if (const auto* x = ir::get<ir::NewArray>(e)) {
@@ -2252,8 +2435,23 @@ Ex Writer::dispatch(Node* e) {
         std::size_t n = 1;
         TypeP base = x->elem;
         if (arr != nullptr) std::tie(n, base) = ir::dims(t);
+        if (java_ && x->dims.size() > 1) {   // Java's arrays of arrays, each its own: C# has no one expression for them
+            prog_.use_runtime("JavaRt");
+            prog_.use_runtime("JavaCollections");
+            Lines ds;
+            for (Node* d : x->dims) ds.push_back(expr(d).text);
+            return {"JLib.Jagged<" + ctype(t) + ">(" + text::join(ds, ", ") + ")", kPrimary};
+        }
         std::string sizes;
-        for (Node* d : x->dims) sizes += "[" + expr(d).text + "]";
+        for (Node* d : x->dims) {
+            std::string size = expr(d).text;
+            if (java_ && lib().checks_array_sizes() && !ir::is<ir::Lit>(strip(d))) {   // (the program reads the message: Java's is the size)
+                prog_.use_runtime("JavaRt");
+                prog_.use_runtime("JavaCollections");
+                size = "JLib.ArraySize(" + size + ")";
+            }
+            sizes += "[" + size + "]";
+        }
         std::string rest;
         for (std::size_t i = x->dims.size(); i < n; ++i) rest += "[]";
         return {"new " + ctype(base) + sizes + rest, kPrimary};
@@ -2289,7 +2487,11 @@ const std::vector<File>& Program::files() {
         out.push_back({name + ".cs", w.unit_text()});
     }
     for (const std::string& r : runtime_) {   // (a set: by name)
-        out.push_back({r + ".cs", text::replace_all(fs::read_text(options_.runtime_dir / (r + ".cs")), "\r\n", "\n")});
+        std::string runtime_text = fs::read_text(options_.runtime_dir / (r + ".cs"));
+        if (r == "JavaCharTypes") {   // (the one table of Java's Unicode categories, which the C and C++ translations carry too)
+            runtime_text = text::replace_all(runtime_text, "/*JAVA_CHAR_TYPES*/", fs::read_text(options_.runtime_dir.parent_path().parent_path() / "runtime" / "java_char_types.inc"));
+        }
+        out.push_back({r + ".cs", text::replace_all(runtime_text, "\r\n", "\n")});
     }
     files_ = std::move(out);
     return *files_;

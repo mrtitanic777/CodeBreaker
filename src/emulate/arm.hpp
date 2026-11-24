@@ -131,9 +131,15 @@ public:
     // A big-endian system (the 3DO's ARM60): the memory holds each aligned word with its bytes reversed (the caller loads it that way, so a
     // word access sees the program's value), and a byte access goes to the byte `address ^ 3` of it, a halfword to `address ^ 2`.
     void set_big_endian(bool on) { big_endian_ = on; }
+    bool big_endian() const { return big_endian_; }
 
     // Does an address reach memory, a register, or a mapped range?
     bool mapped(std::uint32_t address) const;
+    // The bytes of `size` at an address when they are plain memory of the Game Boy Advance (the ROM, EWRAM or IWRAM) or the DS (its RAMs and TCMs), with no mapped
+    // hardware over them: read without a log or a call; null otherwise.
+    const std::uint8_t* plain_block(std::uint32_t address, std::size_t size);
+    // The same for the paged memory of the 3DS and the Vita, copied out (false when hardware is mapped over it or an address is nothing's).
+    bool copy_block(std::uint32_t address, std::uint8_t* out, std::size_t size);
     // `size` is 1, 2 or 4 and the address is aligned to it (the CPU aligns; a read of an address that is not mapped reads 0).
     std::uint32_t read(std::uint32_t address, unsigned size);
     void write(std::uint32_t address, unsigned size, std::uint32_t value);
@@ -202,6 +208,10 @@ public:
     bool flag_c() const { return cpsr & 0x20000000; }
     bool flag_v() const { return cpsr & 0x10000000; }
 
+    // The VFP's single register `n` (0-63; a double d is the pair 2d, 2d+1) and its status register, for the tools that compare two cores.
+    std::uint32_t vfp_single(unsigned n) const { return vfp_[n & 63]; }
+    std::uint32_t vfp_status() const { return fpscr_; }
+
     // Start at `address`: bit 0 set is Thumb state, clear is ARM.
     void jump_to(std::uint32_t address);
     // Switch the mode (the banked registers) and set the whole of the CPSR.
@@ -235,6 +245,7 @@ private:
     bool condition(unsigned cond) const;
     bool v5() const { return bus_->arch() >= decompile::arm::Arch::V5TE; }
     std::optional<Fault> execute_ext(const decompile::arm::Insn& insn, std::uint32_t at);
+    std::optional<Fault> execute_parallel(const decompile::arm::Insn& insn, unsigned rd, unsigned rn, unsigned rm);   // the parallel add and subtract (a Fault: not one)
     std::optional<Fault> execute_thumb_ext(const decompile::arm::Insn& insn, std::uint32_t at);   // IT, CBZ, the 16-bit extensions and the Thumb VFP words
     std::optional<Fault> execute_vfp(const decompile::arm::Insn& insn, std::uint32_t at);   // ... and the VFP rows   // the ARMv6 rows of decompile/arm_ext
     void branch_interworking(std::uint32_t address);   // a load into the pc: ARMv5 takes the state from bit 0
@@ -286,5 +297,9 @@ cb::emulate::Run record(const RunResult& result);
 
 // run + record: the platform's runner.
 cb::emulate::Run recorded(Bus& bus, std::uint32_t entry, const RunOptions& options = {});
+
+// The BIOS's answer to a software interrupt, as run() gives it (Div, DivArm, Sqrt, CpuSet and CpuFastSet are done as the BIOS does them, any other call returns 0 in r0):
+// it reads and writes `cpu`'s registers r0-r3 and the bus's memory. For the p-code adapter (engine/pcode_cpu_arm.cpp).
+void bios_answer(Cpu& cpu, std::uint32_t function);
 
 }  // namespace cb::emulate::arm

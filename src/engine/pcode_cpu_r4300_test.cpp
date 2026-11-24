@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "base/config.hpp"
+#include "core/cpu_time.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
@@ -27,6 +28,79 @@ struct R4300Forced {
 };
 
 }  // namespace
+
+// A branch in the delay slot of a taken branch: the first target runs one instruction, then the second branch lands.
+CB_TEST("engine.pcode_cpu.r4300_branch_in_a_delay_slot_runs_the_same_on_both_cores", [] {
+    const std::uint32_t words[] = {0x10000003, 0x10000005, 0x24080001, 0x00000000, 0x24090002, 0x240A0003, 0x00000000, 0x240B0004, 0x03E00008, 0x00000000};
+    Bytes rdram(0x10000, 0);
+    for (std::size_t i = 0; i < std::size(words); ++i)
+        for (unsigned b = 0; b < 4; ++b) rdram[0x1000 + i * 4 + b] = static_cast<std::uint8_t>(words[i] >> (24 - 8 * b));
+    emulate::r4300::RunOptions options;
+    options.max_steps = 100;
+    options.sp = 0x8000F000;
+    emulate::r4300::Bus own_bus{ByteView(rdram)};
+    const emulate::r4300::RunResult own = emulate::r4300::run(own_bus, 0x80001000, options);
+    emulate::r4300::Bus emu_bus{ByteView(rdram)};
+    const emulate::r4300::RunResult emu = engine::pcode_cpu::run(emu_bus, 0x80001000, options);
+    std::printf("r4300 nested branch: own end %d fault %d steps %llu t0-t3 %llx %llx %llx %llx; emulator end %d fault %d steps %llu t0-t3 %llx %llx %llx %llx\n", static_cast<int>(own.end),
+                own.fault ? static_cast<int>(own.fault->kind) : -1, static_cast<unsigned long long>(own.steps), static_cast<unsigned long long>(own.r[8]), static_cast<unsigned long long>(own.r[9]),
+                static_cast<unsigned long long>(own.r[10]), static_cast<unsigned long long>(own.r[11]), static_cast<int>(emu.end), emu.fault ? static_cast<int>(emu.fault->kind) : -1,
+                static_cast<unsigned long long>(emu.steps), static_cast<unsigned long long>(emu.r[8]), static_cast<unsigned long long>(emu.r[9]), static_cast<unsigned long long>(emu.r[10]),
+                static_cast<unsigned long long>(emu.r[11]));
+    CB_CHECK(own.end == emu.end);
+    CB_CHECK(own.fault.has_value() == emu.fault.has_value());
+    CB_CHECK(own.r == emu.r);
+    CB_CHECK(own.steps == emu.steps);
+});
+
+// Every kind of branch in a slot, taken and not: random pairs and chains of branches over a field of register writes, on both cores.
+CB_TEST("engine.pcode_cpu.r4300_random_branches_in_delay_slots_run_the_same_on_both_cores", [] {
+    std::uint32_t seed = 0x4300;
+    const auto next = [&] { return seed = seed * 1664525u + 1013904223u; };
+    const auto branch = [&](unsigned index) {
+        const std::uint32_t offset = (next() >> 8) % 24;   // forward, inside the field
+        const unsigned rs = 8 + (next() >> 8) % 4, rt = 8 + (next() >> 8) % 4;
+        const std::uint32_t rel = offset & 0xFFFF;
+        switch ((next() >> 8) % 16) {
+            case 0: return 0x10000000u | (rs << 21) | (rt << 16) | rel;   // BEQ
+            case 1: return 0x14000000u | (rs << 21) | (rt << 16) | rel;   // BNE
+            case 2: return 0x18000000u | (rs << 21) | rel;                // BLEZ
+            case 3: return 0x1C000000u | (rs << 21) | rel;                // BGTZ
+            case 4: return 0x50000000u | (rs << 21) | (rt << 16) | rel;   // BEQL
+            case 5: return 0x54000000u | (rs << 21) | (rt << 16) | rel;   // BNEL
+            case 6: return 0x58000000u | (rs << 21) | rel;                // BLEZL
+            case 7: return 0x5C000000u | (rs << 21) | rel;                // BGTZL
+            case 8: return 0x04000000u | (rs << 21) | rel;                // BLTZ
+            case 9: return 0x04010000u | (rs << 21) | rel;                // BGEZ
+            case 10: return 0x04020000u | (rs << 21) | rel;               // BLTZL
+            case 11: return 0x04030000u | (rs << 21) | rel;               // BGEZL
+            case 12: return 0x04100000u | (rs << 21) | rel;               // BLTZAL
+            case 13: return 0x04130000u | (rs << 21) | rel;               // BGEZALL
+            case 14: return 0x08000000u | ((0x1000u + (index + offset) * 4) >> 2);   // J
+            default: return 0x45000000u | (((next() >> 8) & 3) << 16) | rel;         // BC1F, BC1T, BC1FL, BC1TL
+        }
+    };
+    unsigned differ = 0;
+    constexpr unsigned kField = 64, kRuns = 2000;
+    for (unsigned run = 0; run < kRuns; ++run) {
+        Bytes rdram(0x10000, 0);
+        for (unsigned i = 0; i < kField; ++i) {
+            const std::uint32_t word = (next() >> 8) % 2 == 0 ? branch(i) : (0x24100000u + (((next() >> 8) % 8) << 16) + (i + 1));   // or ADDIU $s0-$s7 = a mark
+            for (unsigned b = 0; b < 4; ++b) rdram[0x1000 + i * 4 + b] = static_cast<std::uint8_t>(word >> (24 - 8 * b));
+        }
+        emulate::r4300::RunOptions options;
+        options.max_steps = 200;
+        options.sp = 0x8000F000;
+        for (unsigned i = 0; i < 4; ++i) options.t[i] = next() % 3 == 0 ? 0 : next();
+        emulate::r4300::Bus own_bus{ByteView(rdram)};
+        const emulate::r4300::RunResult own = emulate::r4300::run(own_bus, 0x80001000, options);
+        emulate::r4300::Bus emu_bus{ByteView(rdram)};
+        const emulate::r4300::RunResult emu = engine::pcode_cpu::run(emu_bus, 0x80001000, options);
+        if (own.end != emu.end || own.r != emu.r || own.steps != emu.steps || own.fault.has_value() != emu.fault.has_value()) ++differ;
+    }
+    std::printf("r4300 random branches in delay slots: %u runs, %u differ\n", kRuns, differ);
+    CB_CHECK(differ == 0);
+});
 
 CB_TEST("engine.pcode_cpu.the_n64_lane_runs_homebrew_the_same_on_both_cores", [] {
     fs::ScopedTempDir dir("cb_pcode_r4300_n64");
@@ -89,9 +163,9 @@ CB_TEST("engine.pcode_cpu.the_n64_lane_runs_homebrew_the_same_on_both_cores", []
                 verify::lanes::Effects e[2];
                 for (int core = 0; core < 2; ++core) {
                     R4300Forced forced(core == 1);
-                    const auto start = std::chrono::steady_clock::now();
+                    const double start = cb::thread_cpu_seconds();
                     e[core] = spec.effects(entry.path(), address, state);
-                    seconds[core] += std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+                    seconds[core] += (cb::thread_cpu_seconds() - start);
                 }
                 ++runs;
                 if (e[0] == e[1]) continue;
