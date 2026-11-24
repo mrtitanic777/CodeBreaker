@@ -37,6 +37,7 @@ struct BoardLayout {
     Rect group_copies, filter_row;     // the cards: Group copies, and the active filters' row (empty when there are none)
     Rect c_summary;                    // the cards: the whole OS's measured C result (empty with no score table)
     Rect c_leaders;                    // on it: the whole OS's closest functions
+    Rect c_history;                    // and what changed since the last snapshot
     std::array<Rect, board::kCViews> c_pills{};   // the cards: the filters by C result
     Rect map;                          // Map, on the selected card's strip
     std::array<Rect, 3> chips{};       // Flow and Trace: Imports, Installs, References
@@ -133,6 +134,18 @@ struct BoardLeadersLayout {
     float max_scroll = 0;
 };
 BoardLeadersLayout layout_board_leaders(const BoardLayout& layout, const Model& model);
+// What changed since the newest snapshot of the scores (toggling opens or closes the list; it is read again each time it opens).
+void board_toggle_history(Model& model);
+void board_close_history(Model& model);
+void board_history_refresh(Model& model);
+inline constexpr float kHistoryRowHeight = 26;
+struct BoardHistoryLayout {
+    Rect outline, title, close, snapshot, head, list;
+    int first = 0;
+    std::vector<Rect> rows;
+    float max_scroll = 0;
+};
+BoardHistoryLayout layout_board_history(const BoardLayout& layout, const Model& model);
 struct BoardCompareLayout {
     Rect outline, title, close, prev, next, position, bytes, source_head, assembly_head, source, assembly, footer;
 };

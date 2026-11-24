@@ -1042,6 +1042,50 @@ void rd_board_leaders(RdDraw& d, const BoardLayout& b, const Model& m) {
     rd_scrollbar(d, l.list, static_cast<float>(shown.size()) * kLeaderRowHeight, std::clamp(m.board_leaders_scroll, 0.0f, l.max_scroll));
 }
 
+// What changed since the newest snapshot: a program a row, the biggest change first.
+void rd_board_history(RdDraw& d, const BoardLayout& b, const Model& m) {
+    const RdPalette& pal = d.pal;
+    const BoardHistoryLayout l = layout_board_history(b, m);
+    d.fill(l.outline, 6, pal.dark ? rd_color(0x303030) : rd_color(0xFFFFFF));
+    d.stroke(l.outline, 6, rd_alpha(pal.text, 0.25f));
+    const board::CHistory* h = m.board_history.get();
+    std::string title = "Changes in the measured C scores";
+    if (h != nullptr && !h->snapshot.empty()) title = "Since " + board::c_snapshot_words(h->snapshot) + ": " + board::c_history_words(*h);
+    d.text(widen(title), l.title, 0, 14, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+    if (m.hot == Control::BoardHistorySnapshot) d.fill(l.snapshot, 12, pal.subtle);
+    d.stroke(l.snapshot, 12, pal.stroke2);
+    d.text(L"Take a snapshot", l.snapshot, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+    if (m.hot == Control::BoardHistoryClose) d.fill(l.close, 4, pal.subtle);
+    d.text(L"×", l.close, 0, 16, DWRITE_FONT_WEIGHT_NORMAL, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+    if (h == nullptr || h->snapshot.empty()) {
+        d.text(L"No snapshot yet. Take one to keep today's scores, and this list will show what changes after it.", Rect{l.list.x + 6, l.list.y + 8, l.list.w - 12, 24}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+        return;
+    }
+    const float program_w = l.head.w * 0.40f, before_w = l.head.w * 0.17f, now_w = l.head.w * 0.17f;
+    const auto columns = [&](const Rect& r, const std::wstring& program, const std::wstring& before, const std::wstring& now, const std::wstring& change, float size, D2D1_COLOR_F program_color, D2D1_COLOR_F change_color) {
+        d.text(program, Rect{r.x + 6, r.y, program_w - 10, r.h}, 0, size, DWRITE_FONT_WEIGHT_NORMAL, program_color);
+        d.text(before, Rect{r.x + program_w, r.y, before_w - 8, r.h}, 0, size, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+        d.text(now, Rect{r.x + program_w + before_w, r.y, now_w - 8, r.h}, 0, size, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+        d.text(change, Rect{r.x + program_w + before_w + now_w, r.y, std::max(0.0f, r.w - program_w - before_w - now_w - 8), r.h}, 0, size, DWRITE_FONT_WEIGHT_NORMAL, change_color);
+    };
+    columns(l.head, L"Program", L"Identical then", L"Identical now", L"Change", 11, pal.text3, pal.text3);
+    if (h->changes.empty()) {
+        d.text(L"No program's score has changed since then.", Rect{l.list.x + 6, l.list.y + 8, l.list.w - 12, 24}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+        return;
+    }
+    d.rt->PushAxisAlignedClip(rd_rect(l.list), D2D1_ANTIALIAS_MODE_ALIASED);
+    for (std::size_t i = 0; i < l.rows.size(); ++i) {
+        const board::CHistoryRow& row = h->changes[static_cast<std::size_t>(l.first) + i];
+        const std::int64_t delta = row.delta();
+        const std::wstring then = row.scored_before ? widen(board::count_words(row.identical_before)) : L"not scored";
+        const std::wstring now = widen(board::count_words(row.identical_now) + " of " + board::count_words(row.functions_now));
+        const std::wstring change = !row.scored_before ? L"newly scored" : widen((delta > 0 ? "+" : "-") + board::count_words(static_cast<std::uint64_t>(delta > 0 ? delta : -delta)));
+        columns(l.rows[i], widen(row.program), then, now, change, 12, pal.text, !row.scored_before ? pal.text3 : delta > 0 ? pal.ok : pal.error);
+    }
+    d.rt->PopAxisAlignedClip();
+    rd_scrollbar(d, l.list, static_cast<float>(h->changes.size()) * kHistoryRowHeight, std::clamp(m.board_history_scroll, 0.0f, l.max_scroll));
+}
+
 void rd_board(RdDraw& d, const Layout& l, const Model& m) {
     const RdPalette& pal = d.pal;
     const BoardLayout b = compute_board_layout(l, m);
@@ -1248,12 +1292,16 @@ void rd_board(RdDraw& d, const Layout& l, const Model& m) {
             const std::array<D2D1_COLOR_F, 5> hues{pal.ok, pal.accent, rd_alpha(pal.text2, 0.55f), pal.error, rd_color(0x7A5FC0)};
             const auto parts = board::c_summary_parts(s);
             d.fill(b.c_summary, 6, pal.subtle);
-            d.text(widen(board::c_summary_words(s)), Rect{b.c_summary.x + 10, b.c_summary.y + 2, std::max(0.0f, b.c_leaders.x - 8 - b.c_summary.x - 10), 18}, 0, 11, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+            d.text(widen(board::c_summary_words(s)), Rect{b.c_summary.x + 10, b.c_summary.y + 2, std::max(0.0f, b.c_history.x - 8 - b.c_summary.x - 10), 18}, 0, 11, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
             const bool leaders_hot = m.hot == Control::BoardLeaders;
             d.fill(b.c_leaders, 9, m.board_leaders_open ? rd_alpha(pal.accent, 0.34f) : leaders_hot ? rd_alpha(pal.text, 0.10f) : D2D1::ColorF(0, 0, 0, 0));
             d.stroke(b.c_leaders, 9, m.board_leaders_open ? pal.accent : pal.stroke2);
             d.text(L"Closest functions", b.c_leaders, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, m.board_leaders_open ? pal.text : pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
             if (m.focus == Control::BoardLeaders) d.stroke(b.c_leaders, 9, pal.text, 2.0f);
+            const bool history_hot = m.hot == Control::BoardHistory;
+            d.fill(b.c_history, 9, m.board_history_open ? rd_alpha(pal.accent, 0.34f) : history_hot ? rd_alpha(pal.text, 0.10f) : D2D1::ColorF(0, 0, 0, 0));
+            d.stroke(b.c_history, 9, m.board_history_open ? pal.accent : pal.stroke2);
+            d.text(L"History", b.c_history, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, m.board_history_open ? pal.text : pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
             const float line = b.c_summary.y + 21;
             const float bar_w = std::min(220.0f, b.c_summary.w * 0.22f);
             const Rect bar{b.c_summary.x + 10, line + 5, bar_w, 6};
@@ -1347,6 +1395,7 @@ void rd_board(RdDraw& d, const Layout& l, const Model& m) {
     }
     if (b.drawer.w > 0 && m.board_inspector) rd_inspector(d, b, m);
     if (m.board_view == 0 && m.board_leaders_open) rd_board_leaders(d, b, m);
+    if (m.board_view == 0 && m.board_history_open) rd_board_history(d, b, m);
     if (m.board_view == 0 && m.board_compare) rd_board_compare(d, b, m);
     if (m.board_drag >= 0 && static_cast<std::size_t>(m.board_drag) < m.board->cards.size()) {
         const Rect ghost{m.board_drag_x - b.column_width / 2, m.board_drag_y - 12, b.column_width, kBoardCardHeight};

@@ -57,6 +57,7 @@ BoardLayout compute_board_layout(const Layout& shell, const Model& model) {
         if (model.board_scores) {
             b.c_summary = {b.card.x + kPad, top, b.card.w - 2 * kPad, kCSummaryH};
             b.c_leaders = {b.c_summary.right() - 6 - 128, b.c_summary.y + 3, 128, 18};
+            b.c_history = {b.c_leaders.x - 6 - 72, b.c_summary.y + 3, 72, 18};
             top += kCSummaryH + 6;
         }
         b.group_copies = {right - kGroupW, top, kGroupW, kPillH};
@@ -191,6 +192,12 @@ PageHit hit_test_board(const BoardLayout& b, const Model& m, float x, float y) {
         if (panel.bytes.contains(x, y)) return {Control::BoardCompareBytes, -1};
         if (panel.outline.contains(x, y)) return {};
     }
+    if (m.board_view == 0 && m.board_history_open) {   // what changed since the snapshot is over the columns and the drawer
+        const BoardHistoryLayout list = layout_board_history(b, m);
+        if (list.close.contains(x, y)) return {Control::BoardHistoryClose, -1};
+        if (list.snapshot.contains(x, y)) return {Control::BoardHistorySnapshot, -1};
+        if (list.outline.contains(x, y)) return {};
+    }
     if (m.board_view == 0 && m.board_leaders_open) {   // the list of closest functions is over the columns and the drawer
         const BoardLeadersLayout list = layout_board_leaders(b, m);
         if (list.close.contains(x, y)) return {Control::BoardLeadersClose, -1};
@@ -241,6 +248,7 @@ PageHit hit_test_board(const BoardLayout& b, const Model& m, float x, float y) {
             if (b.signal_pills[i].contains(x, y)) return {Control::BoardSignalType, static_cast<int>(i)};
         if (b.group_copies.contains(x, y)) return {Control::BoardGroupCopies, -1};
         if (b.c_leaders.contains(x, y)) return {Control::BoardLeaders, -1};
+        if (b.c_history.contains(x, y)) return {Control::BoardHistory, -1};
         for (std::size_t i = 0; i < b.c_pills.size(); ++i)
             if (b.c_pills[i].contains(x, y)) return {Control::BoardCView, static_cast<int>(i) + 1};
         if (b.filter_row.contains(x, y)) {
@@ -418,6 +426,7 @@ bool board_toggle_leaders(Model& m) {
     if (!m.board || !m.board_scores) return false;
     m.board_leaders_open = !m.board_leaders_open;
     m.board_leaders_scroll = 0;
+    if (m.board_leaders_open) board_close_history(m);   // (one list at a time)
     return m.board_leaders_open && !m.board_leaders_busy && (!m.board_leaders || m.board_leaders->scored != m.board_scores->scored);
 }
 
@@ -425,6 +434,49 @@ void board_close_leaders(Model& m) {
     m.board_leaders_open = false;
     m.board_leaders_scroll = 0;
     if (m.focus == Control::BoardLeadersSearch) m.focus = Control::None;
+}
+
+void board_close_history(Model& m) {
+    m.board_history_open = false;
+    m.board_history_scroll = 0;
+}
+
+void board_history_refresh(Model& m) {
+    if (!m.board || !m.board_scores) return;
+    const auto latest = board::load_latest_c_snapshot(m.board->root);
+    const std::optional<board::CScores> before = latest ? board::parse_c_scores(latest->second) : std::nullopt;
+    m.board_history = std::make_shared<const board::CHistory>(before ? board::diff_c_scores(*before, *m.board_scores, latest->first) : board::CHistory{});
+}
+
+void board_toggle_history(Model& m) {
+    if (!m.board || !m.board_scores) return;
+    m.board_history_open = !m.board_history_open;
+    m.board_history_scroll = 0;
+    if (!m.board_history_open) return;
+    board_close_leaders(m);
+    board_history_refresh(m);
+}
+
+BoardHistoryLayout layout_board_history(const BoardLayout& b, const Model& m) {
+    BoardHistoryLayout l;
+    l.outline = b.tableau;
+    l.close = {l.outline.right() - 34, l.outline.y + 4, 28, 26};
+    l.snapshot = {l.close.x - 6 - 112, l.outline.y + 5, 112, 24};
+    l.title = {l.outline.x + 12, l.outline.y + 4, std::max(0.0f, l.snapshot.x - 8 - l.outline.x - 12), 26};
+    l.head = {l.outline.x + 8, l.outline.y + 32, std::max(0.0f, l.outline.w - 16), 20};
+    l.list = {l.head.x, l.head.bottom(), l.head.w, std::max(0.0f, l.outline.bottom() - 6 - l.head.bottom())};
+    if (!m.board_history) return l;
+    const std::size_t count = m.board_history->changes.size();
+    l.max_scroll = std::max(0.0f, static_cast<float>(count) * kHistoryRowHeight - l.list.h);
+    const float scroll = std::clamp(m.board_history_scroll, 0.0f, l.max_scroll);
+    l.first = static_cast<int>(scroll / kHistoryRowHeight);
+    const float offset = l.list.y - (scroll - static_cast<float>(l.first) * kHistoryRowHeight);
+    for (std::size_t i = static_cast<std::size_t>(l.first); i < count; ++i) {
+        const float y = offset + static_cast<float>(i - static_cast<std::size_t>(l.first)) * kHistoryRowHeight;
+        if (y >= l.list.bottom()) break;
+        l.rows.push_back({l.list.x, y, l.list.w, kHistoryRowHeight - 1});
+    }
+    return l;
 }
 
 const std::vector<board::CLeader>& board_leader_rows(const Model& m) {
@@ -667,6 +719,7 @@ bool board_refresh_scores(Model& m) {
     if (m.board_c_view != board::CView::All)
         for (std::size_t i = 0; i < board::kPileCount; ++i)   // (a column a filter has just reached; one the person turned stays turned)
             if (!m.board_stacks[i].done.empty() && m.board_stacks[i].todo.empty()) m.board_show_done[i] = true;
+    if (m.board_history_open) board_history_refresh(m);
     if (!before.empty() && m.status_text.ends_with(before)) m.status_text.replace(m.status_text.size() - before.size(), before.size(), board::c_score_words(*m.board_scores));
     if (m.board_inspecting && m.board_selected >= 0) {
         const float scroll = m.board_inspect_scroll;
@@ -700,6 +753,8 @@ void board_load_decks(Model& m) {
     board_clear_c_view(m);
     board_close_compare(m);
     board_close_leaders(m);
+    board_close_history(m);
+    m.board_history.reset();
     m.board_leaders.reset();
     m.board_leaders_query.clear();
     m.board_leaders_found.clear();
