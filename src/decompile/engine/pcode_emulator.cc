@@ -25,6 +25,7 @@
 #include "decompile/engine/core/cpp/opbehavior.hh"
 #include "decompile/engine/core/cpp/pcoderaw.hh"
 #include "decompile/engine/core/cpp/sleigh.hh"
+#include "decompile/engine/pcode_wide_float.hh"
 
 namespace cb::decompile::sleigh {
 namespace {
@@ -198,6 +199,7 @@ struct Op {
     bool hasOut;
     unsigned nIn;
     std::size_t first;   // into Decoded::vn: the output (if any), then the inputs
+    bool wide = false;   // a varnode of the operation is wider than 8 bytes: it runs by the wide path (set when the instruction is decoded)
 };
 
 // How to reach a varnode without looking anything up: a constant, or the bytes of a register or temporary inside one page (the pointers hold while the page does: the
@@ -205,13 +207,14 @@ struct Op {
 struct Slot {
     std::uint8_t* ptr = nullptr;   // direct: the bytes
     std::uint64_t value = 0;       // constant: its value
-    std::uint8_t size = 0;
-    std::uint8_t kind = 0;         // 0 look it up, 1 constant, 2 direct
+    std::uint16_t size = 0;
+    std::uint8_t kind = 0;         // 0 look it up, 1 constant, 2 direct, 3 direct and wider than 8 bytes (only the wide path reads it)
     bool big = false;
 };
 
 struct Decoded {
     std::size_t length = 0;   // bytes
+    bool wide = false;        // some operation has a varnode wider than 8 bytes
     std::vector<Op> ops;
     std::vector<VarnodeData> vn;
     std::vector<Slot> slots;  // by vn
@@ -226,6 +229,12 @@ public:
         Op op{opc, outvar != nullptr, static_cast<unsigned>(isize), d_.vn.size()};
         if (outvar) d_.vn.push_back(*outvar);
         for (ghidra::int4 i = 0; i < isize; ++i) d_.vn.push_back(vars[i]);
+        if (opc != ghidra::CPUI_BRANCH && opc != ghidra::CPUI_CBRANCH && opc != ghidra::CPUI_CALL && opc != ghidra::CPUI_BRANCHIND && opc != ghidra::CPUI_CALLIND &&
+            opc != ghidra::CPUI_RETURN) {
+            for (std::size_t i = op.first; i < d_.vn.size(); ++i)
+                if (d_.vn[i].size > 8) op.wide = true;
+        }
+        if (op.wide) d_.wide = true;
         d_.ops.push_back(op);
     }
 
@@ -322,6 +331,7 @@ struct Emulator::Impl {
     WriteHook writeHook;
     Trace trace;
     UserOpHook userHook;
+    WideUserOpHook wideUserHook;
     BadInstructionHook badHook;
 
     Impl() = default;
@@ -441,6 +451,81 @@ struct Emulator::Impl {
         if (m.hooked && writeHook && ++hookCalls && writeHook(m.space->getName(), a, size, size >= 8 ? v : v & ((std::uint64_t{1} << (8 * size)) - 1))) return;
         putValueBytes(m, a, size, v);
     }
+
+    // ---- values wider than 8 bytes, as `wide::Byte` arrays least significant byte first whatever the space's byte order. Memory is read and written in address order; a
+    // hook sees the access as the one or more accesses of at most 8 bytes it can take (8 bytes each from the lowest address, the rest in a last short one: a 16-byte
+    // access is two of 8, a 10-byte one is 8 and 2), each valued in the space's own byte order as the 8-byte accesses of the narrow path are, and serves each on its own
+    // (a hook that declines one leaves it to the page map).
+    void readBytesRaw(const SpaceMem& m, std::uint64_t a, std::size_t n, wide::Byte* dst) const {
+        for (std::size_t i = 0; i < n;) {
+            const std::uint64_t at = a + i;
+            const std::size_t in = static_cast<std::size_t>(at & (kPageSize - 1));
+            const std::size_t k = std::min<std::size_t>(n - i, static_cast<std::size_t>(kPageSize) - in);
+            if (const Page* p = m.find(at >> kPageBits)) std::memcpy(dst + i, p->d.data() + in, k);
+            else std::memset(dst + i, 0, k);
+            i += k;
+        }
+    }
+    void writeBytesRaw(SpaceMem& m, std::uint64_t a, const wide::Byte* src, std::size_t n) {
+        for (std::size_t i = 0; i < n;) {
+            const std::uint64_t at = a + i;
+            const std::size_t in = static_cast<std::size_t>(at & (kPageSize - 1));
+            const std::size_t k = std::min<std::size_t>(n - i, static_cast<std::size_t>(kPageSize) - in);
+            Page* p = const_cast<Page*>(m.find(at >> kPageBits));
+            if (!p) {
+                std::size_t z = 0;
+                while (z < k && src[i + z] == 0) ++z;
+                if (z == k) {   // (a page that does not exist reads zeros)
+                    i += k;
+                    continue;
+                }
+                p = m.make(at >> kPageBits);
+            }
+            if (p->code)
+                for (std::size_t j = 0; j < k; ++j)
+                    if (p->d[in + j] != src[i + j] && p->decoded[in + j]) noteCodeWrite(at + j);
+            std::memcpy(p->d.data() + in, src + i, k);
+            i += k;
+        }
+    }
+    void readSpaceBytes(SpaceMem& m, std::uint64_t unitOff, std::size_t n, wide::Byte* value) {
+        const std::uint64_t a = m.space->wrapOffset(unitOff) * m.word;
+        wide::Byte memory[wide::kMax];
+        if (m.hooked && readHook) {
+            for (std::size_t off = 0; off < n; off += 8) {
+                const std::size_t len = std::min<std::size_t>(8, n - off);
+                std::uint64_t v = 0;
+                ++hookCalls;
+                if (readHook(m.space->getName(), a + off, static_cast<unsigned>(len), v)) {
+                    for (std::size_t j = 0; j < len; ++j) memory[off + (m.big ? len - 1 - j : j)] = static_cast<wide::Byte>(v >> (8 * j));
+                } else {
+                    readBytesRaw(m, a + off, len, memory + off);
+                }
+            }
+        } else {
+            readBytesRaw(m, a, n, memory);
+        }
+        if (m.big) for (std::size_t i = 0; i < n; ++i) value[i] = memory[n - 1 - i];
+        else std::memcpy(value, memory, n);
+    }
+    void writeSpaceBytes(SpaceMem& m, std::uint64_t unitOff, std::size_t n, const wide::Byte* value) {
+        const std::uint64_t a = m.space->wrapOffset(unitOff) * m.word;
+        wide::Byte memory[wide::kMax];
+        if (m.big) for (std::size_t i = 0; i < n; ++i) memory[i] = value[n - 1 - i];
+        else std::memcpy(memory, value, n);
+        if (m.hooked && writeHook) {
+            for (std::size_t off = 0; off < n; off += 8) {
+                const std::size_t len = std::min<std::size_t>(8, n - off);
+                std::uint64_t v = 0;
+                for (std::size_t j = 0; j < len; ++j) v |= std::uint64_t{memory[off + (m.big ? len - 1 - j : j)]} << (8 * j);
+                ++hookCalls;
+                if (!writeHook(m.space->getName(), a + off, static_cast<unsigned>(len), v)) writeBytesRaw(m, a + off, memory + off, len);
+            }
+            return;
+        }
+        writeBytesRaw(m, a, memory, n);
+    }
+
     // The varnodes handed to get and put are elements of the instruction being run: its slots say how to reach each.
     const VarnodeData* vnBase = nullptr;
     const Slot* slotBase = nullptr;
@@ -477,6 +562,37 @@ struct Emulator::Impl {
         }
         writeSpace(mem[static_cast<std::size_t>(v.space->getIndex())], v.offset, v.size, value);
     }
+    // ---- the wide path: a varnode of any size up to wide::kMax as bytes, least significant first (constants are the 64-bit values the p-code can hold, zero extended)
+    void getW(const VarnodeData& v, wide::Byte* out) {
+        const Slot& s = slotBase[&v - vnBase];
+        const std::size_t n = v.size;
+        if (n > wide::kMax) throw ghidra::LowlevelError("a varnode of " + std::to_string(n) + " bytes is wider than the emulator takes (" + std::to_string(wide::kMax) + ")");
+        if (s.kind == 3) {
+            if (s.big) for (std::size_t i = 0; i < n; ++i) out[i] = s.ptr[n - 1 - i];
+            else std::memcpy(out, s.ptr, n);
+        } else if (n <= 8) {
+            wide::fromU64(out, n, get(v));
+        } else if (s.kind == 1) {
+            wide::fromU64(out, n, s.value);
+        } else {
+            readSpaceBytes(mem[static_cast<std::size_t>(v.space->getIndex())], v.offset, n, out);
+        }
+    }
+    void putW(const VarnodeData& v, const wide::Byte* in) {
+        const Slot& s = slotBase[&v - vnBase];
+        const std::size_t n = v.size;
+        if (s.kind == 3) {
+            if (s.big) for (std::size_t i = 0; i < n; ++i) s.ptr[i] = in[n - 1 - i];
+            else std::memcpy(s.ptr, in, n);
+        } else if (n <= 8) {
+            put(v, wide::asCount(in, n < 8 ? n : 8));
+        } else {
+            writeSpaceBytes(mem[static_cast<std::size_t>(v.space->getIndex())], v.offset, n, in);
+        }
+    }
+    void callOtherWide(const Decoded& d, const Op& op);
+    // One operation with a varnode over 8 bytes (everything but the branches).
+    void execWideOp(const Decoded& d, const Op& op);
     // Slots for a decoded instruction.
     void resolve(Decoded& d) {
         d.slots.assign(d.vn.size(), Slot{});
@@ -489,15 +605,15 @@ struct Emulator::Impl {
                 continue;
             }
             SpaceMem& m = mem[static_cast<std::size_t>(v.space->getIndex())];
-            if (m.hooked || m.isCode || v.size == 0 || v.size > 8) continue;
+            if (m.hooked || m.isCode || v.size == 0 || v.size > wide::kMax) continue;
             const std::uint64_t a = m.space->wrapOffset(v.offset) * m.word;
             const std::uint64_t off = a & (kPageSize - 1);
             if (off + v.size > kPageSize) continue;
             Page* p = const_cast<Page*>(m.find(a >> kPageBits));
             if (!p) p = m.make(a >> kPageBits);
-            s.kind = 2;
+            s.kind = v.size > 8 ? 3 : 2;
             s.ptr = p->d.data() + off;
-            s.size = static_cast<std::uint8_t>(v.size);
+            s.size = static_cast<std::uint16_t>(v.size);
             s.big = m.big;
         }
     }
@@ -784,6 +900,7 @@ struct Emulator::Impl {
     // Translates the instruction into a flat item when all of its p-code is simple; false: execute() runs it.
     bool flatten(const Decoded& d, BItem& item) {
         item.ops.clear();
+        if (d.wide) return false;   // (a varnode over 8 bytes: execute() runs it by the wide path)
         for (std::size_t i = 0; i < d.ops.size(); ++i) {
             const Op& op = d.ops[i];
             const std::size_t in0 = op.first + (op.hasOut ? 1 : 0);
@@ -876,8 +993,11 @@ struct Emulator::Impl {
 
     Emulator* self = nullptr;
 
-    // ---- one instruction; returns false with `error` set on failure
-    bool execute(const Decoded& d) {
+    // ---- one instruction; returns false with `error` set on failure. An instruction with a varnode wider than 8 bytes is run by the instantiation that has the wide path
+    // (chosen once per instruction, from a flag set when it was decoded); every other instruction runs the loop without it.
+    bool execute(const Decoded& d) { return d.wide ? executeOps<true>(d) : executeOps<false>(d); }
+    template <bool Wide>
+    bool executeOps(const Decoded& d) {
         const std::uint64_t unit = mem[static_cast<std::size_t>(codeIndex)].word;
         std::uint64_t next = pcValue + d.length / unit;
         std::size_t i = 0;
@@ -895,6 +1015,13 @@ struct Emulator::Impl {
         try {
             while (i < d.ops.size()) {
                 const Op& op = d.ops[i];
+                if constexpr (Wide) {
+                    if (op.wide) {
+                        execWideOp(d, op);
+                        ++i;
+                        continue;
+                    }
+                }
                 const VarnodeData* v = &d.vn[op.first];
                 const VarnodeData* out = op.hasOut ? v++ : nullptr;
                 std::size_t follow = i + 1;
@@ -1028,6 +1155,75 @@ struct Emulator::Impl {
         return true;
     }
 };
+
+void Emulator::Impl::callOtherWide(const Decoded& d, const Op& op) {
+    const VarnodeData* v = &d.vn[op.first];
+    const VarnodeData* out = op.hasOut ? v++ : nullptr;
+    const std::size_t index = static_cast<std::size_t>(v[0].offset);
+    const std::string& name = index < userOps.size() ? userOps[index] : (unnamedOp = "userop" + std::to_string(index));
+    bool served = false;
+    wide::Byte result[wide::kMax] = {};
+    if (wideUserHook) {
+        std::vector<std::vector<std::uint8_t>> args;
+        for (unsigned i = 1; i < op.nIn; ++i) {
+            args.emplace_back(v[i].size);
+            getW(v[i], args.back().data());
+        }
+        std::vector<std::uint8_t> value(out ? out->size : 0, 0);
+        ++hookCalls;
+        served = wideUserHook(*self, name, args, value);
+        if (served && out) {
+            if (value.size() > wide::kMax) throw ghidra::LowlevelError("a user operation gave a value wider than the emulator takes");
+            std::memcpy(result, value.data(), std::min<std::size_t>(value.size(), out->size));
+        }
+    } else {   // (the narrow hook: the low 8 bytes of each argument, and a result that is zero extended)
+        std::vector<std::uint64_t> args;
+        for (unsigned i = 1; i < op.nIn; ++i) args.push_back(get(v[i]));
+        std::uint64_t value = 0;
+        if (userHook) {
+            ++hookCalls;
+            served = userHook(*self, name, args, value);
+        }
+        if (served) wide::fromU64(result, out ? std::min<std::size_t>(out->size, wide::kMax) : 0, value);
+    }
+    if (!served) ++unimpl[name];
+    if (out) putW(*out, result);
+}
+
+void Emulator::Impl::execWideOp(const Decoded& d, const Op& op) {
+    const VarnodeData* v = &d.vn[op.first];
+    const VarnodeData* out = op.hasOut ? v++ : nullptr;
+    switch (op.opc) {
+        case ghidra::CPUI_LOAD: {
+            SpaceMem& m = mem[static_cast<std::size_t>(v[0].getSpaceFromConst()->getIndex())];
+            if (out->size > wide::kMax) throw ghidra::LowlevelError("a load of " + std::to_string(out->size) + " bytes is wider than the emulator takes");
+            wide::Byte value[wide::kMax];
+            readSpaceBytes(m, get(v[1]), out->size, value);
+            putW(*out, value);
+            return;
+        }
+        case ghidra::CPUI_STORE: {
+            SpaceMem& m = mem[static_cast<std::size_t>(v[0].getSpaceFromConst()->getIndex())];
+            wide::Byte value[wide::kMax];
+            getW(v[2], value);
+            writeSpaceBytes(m, get(v[1]), v[2].size, value);
+            return;
+        }
+        case ghidra::CPUI_CALLOTHER: callOtherWide(d, op); return;
+        default: break;
+    }
+    if (!out || op.nIn < 1 || op.nIn > 2) throw ghidra::LowlevelError(std::string("wide p-code operation with unexpected operands: ") + ghidra::get_opname(op.opc));
+    wide::Byte a[wide::kMax], c[wide::kMax], r[wide::kMax];
+    getW(v[0], a);
+    if (op.nIn == 2) getW(v[1], c);
+    if (out->size > wide::kMax) throw ghidra::LowlevelError("a varnode of " + std::to_string(out->size) + " bytes is wider than the emulator takes");
+    bool divideByZero = false;
+    if (!wide::evaluateAny(op.opc, r, out->size, a, v[0].size, c, op.nIn == 2 ? v[1].size : 0, divideByZero))
+        throw ghidra::LowlevelError(std::string("p-code operation without a wide behaviour: ") + ghidra::get_opname(op.opc) + " (output " + std::to_string(out->size) + " bytes, input " +
+                                    std::to_string(v[0].size) + ")");
+    if (divideByZero) throw ghidra::LowlevelError(op.opc == ghidra::CPUI_INT_DIV || op.opc == ghidra::CPUI_INT_SDIV ? "Divide by 0" : "Remainder by 0");
+    putW(*out, r);
+}
 
 Emulator::Emulator(const std::filesystem::path& sla, const std::vector<std::pair<std::string, int>>& context) : impl_(std::make_unique<Impl>()) {
     initialize_once();
@@ -1200,6 +1396,21 @@ void Emulator::readRegs(const RegRef& from, std::uint8_t* out, std::size_t size)
         else std::memset(out + i, 0, n);
         i += n;
     }
+}
+
+void Emulator::readRegWide(const RegRef& ref, std::uint8_t* out) const {
+    readRegs(ref, out, ref.size);
+    if (impl_->mem[ref.space].big) std::reverse(out, out + ref.size);
+}
+
+void Emulator::writeRegWide(const RegRef& ref, const std::uint8_t* data) {
+    if (!impl_->mem[ref.space].big) {
+        writeRegs(ref, data, ref.size);
+        return;
+    }
+    std::vector<std::uint8_t> reversed(data, data + ref.size);
+    std::reverse(reversed.begin(), reversed.end());
+    writeRegs(ref, reversed.data(), ref.size);
 }
 
 void Emulator::writeRegs(const RegRef& to, const std::uint8_t* data, std::size_t size) {
@@ -1430,6 +1641,11 @@ std::uint64_t Emulator::steps() const { return impl_->stepCount; }
 const std::string& Emulator::lastError() const { return impl_->error; }
 void Emulator::onTrace(Trace trace) { impl_->trace = std::move(trace); }
 void Emulator::onUserOp(UserOpHook hook) { impl_->userHook = std::move(hook); }
+void Emulator::onUserOpWide(WideUserOpHook hook) { impl_->wideUserHook = std::move(hook); }
+bool Emulator::evaluateWideOp(unsigned opcode, std::uint8_t* out, std::size_t outSize, const std::uint8_t* a, std::size_t aSize, const std::uint8_t* c, std::size_t cSize,
+                              bool& divideByZero) {
+    return wide::evaluateAny(opcode, out, outSize, a, aSize, c, cSize, divideByZero);
+}
 void Emulator::onBadInstruction(BadInstructionHook hook) { impl_->badHook = std::move(hook); }
 std::uint64_t Emulator::busRead(std::uint64_t addr, unsigned size, std::string_view space) {
     SpaceMem& m = impl_->space(space);

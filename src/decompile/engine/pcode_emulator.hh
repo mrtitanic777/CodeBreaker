@@ -10,8 +10,10 @@
 //
 // Memory is a sparse page map per address space (ram, io ... whatever the description declares), byte addressed. Reads of memory
 // never written give 0. The hooks (memory-mapped I/O) see every access of a processor space except the registers' and the
-// translator's temporaries'; a hook that returns false leaves the access to the page map. Nothing of the decompiler core shows
-// through this header.
+// translator's temporaries'; a hook that returns false leaves the access to the page map. A varnode may be wider than 8 bytes (up
+// to 256: vector registers, the 128-bit temporaries of a widening multiply, the x87's 10 bytes): an instruction that has one runs by
+// a separate wide path chosen when it is decoded, with every integer operation at any width and the extended float. Nothing of the
+// decompiler core shows through this header.
 #pragma once
 
 #include <cstddef>
@@ -69,6 +71,12 @@ public:
     // Memory-mapped I/O: called for every read/write the p-code makes (not for load/write/read above) in a processor space other
     // than the registers'. addr is the byte address. Return true when the hook served the access (a read's `value` is then the
     // result, a write is not stored).
+    //
+    // A p-code access wider than 8 bytes (a vector register's LOAD or STORE, the x87's 10 bytes) reaches the same hooks as the accesses of at most 8 bytes that make it up, in
+    // address order: the pieces are 8 bytes each from the lowest address and a last one for what is left (16 bytes: two of 8; 10 bytes: 8 then 2). Each piece is valued as an
+    // access of its size in the space's own byte order is: in a little-endian space the lowest address holds the least significant byte of `value`, in a big-endian one the
+    // most significant (so a big-endian vector's first piece is its high half). Each piece is served or declined on its own; a declined piece is read from or written to the
+    // page map. The hooks never see a size above 8.
     using ReadHook = std::function<bool(std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t& value)>;
     using WriteHook = std::function<bool(std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t value)>;
     void onRead(ReadHook hook);
@@ -92,6 +100,10 @@ public:
     // instruction it may have to undo.
     void readRegs(const RegRef& from, std::uint8_t* out, std::size_t size) const;
     void writeRegs(const RegRef& to, const std::uint8_t* data, std::size_t size);
+    // A register (or the bytes from it on) of any size as a value: `ref.size` bytes, LEAST significant byte first whatever the register space's byte order (readRegs and
+    // writeRegs copy the bytes as the space holds them: reversed for a big-endian space). What an adapter uses for a vector register.
+    void readRegWide(const RegRef& ref, std::uint8_t* out) const;
+    void writeRegWide(const RegRef& ref, const std::uint8_t* data);
     // Every register of at most 8 bytes that is not part of a bigger one (the ones a trace shows), in the description's order.
     // parts = true: every register of at most 8 bytes, the parts too (Z80's A and F as well as AF, x86's flags).
     const std::vector<Register>& registers(bool parts = false) const;
@@ -122,6 +134,11 @@ public:
     static void setBlocksOverride(int mode);
     // One p-code operation on values, by the form blocks run (writtenOut) or by the description's behaviour table: what the test compares. False: no such form.
     bool evaluateOp(unsigned opcode, int sizeOut, int sizeIn, std::uint64_t a, std::uint64_t c, std::uint64_t& result, bool writtenOut) const;
+    // The same for the wide path (values of up to 256 bytes, least significant byte first; a float operation has 10-byte, x87, values on at least one side): the operation `opcode`
+    // with inputs `a` (aSize bytes) and `c` (cSize bytes; a shift count or a SUBPIECE's byte offset) into `out` (outSize bytes). False: no such operation or size. A division by
+    // zero is reported in `divideByZero` (the output is then untouched).
+    static bool evaluateWideOp(unsigned opcode, std::uint8_t* out, std::size_t outSize, const std::uint8_t* a, std::size_t aSize, const std::uint8_t* c, std::size_t cSize,
+                               bool& divideByZero);
     RunResult run(std::uint64_t n);                   // up to n instructions; stops early at a stop address, a bad instruction or an error
     void addStop(std::uint64_t pc);                   // run() stops before executing an instruction at pc (a step() never does)
     void clearStops();
@@ -137,6 +154,12 @@ public:
     // false) is counted in unimplementedOps() and gives 0; nothing throws. "segment" (x86 real mode) is built in.
     using UserOpHook = std::function<bool(Emulator& self, const std::string& name, const std::vector<std::uint64_t>& args, std::uint64_t& result)>;
     void onUserOp(UserOpHook hook);
+    // The same for a user operation with a value wider than 8 bytes (a vector register as an argument or the result): `args` are the inputs as byte arrays, LEAST
+    // significant byte first, each of its varnode's size; `result` is sized to the output (empty without one) and is to be filled the same way. When this hook is set it
+    // serves every user operation that has such a value (a return of false counts the operation in unimplementedOps()); operations whose values are all of at most 8 bytes
+    // go to onUserOp as before. Without it a wide value reaches onUserOp as its low 8 bytes and a wide result is that value zero extended.
+    using WideUserOpHook = std::function<bool(Emulator& self, const std::string& name, const std::vector<std::vector<std::uint8_t>>& args, std::vector<std::uint8_t>& result)>;
+    void onUserOpWide(WideUserOpHook hook);
 
     // The bytes at pc are no instruction of the description (undocumented opcodes ...): the host may carry the instruction out itself
     // (it sets the registers and pc, via bus access below if it needs memory-mapped I/O) and return true; the step counts as executed.
