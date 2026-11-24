@@ -1370,9 +1370,8 @@ CB_TEST("engine.pcode_cpu.wide_instructions_of_the_powerpc_description_run_on_th
 
 // A user operation with a wide value reaches the wide hook whole (and the narrow one as the low 8 bytes); a wide result is the hook's bytes.
 CB_TEST("engine.pcode_cpu.a_user_operation_with_wide_values_reaches_the_wide_hook", [] {
-    sl::Emulator& emu = engine::pcode_cpu::emulator_named("ppc_64_isa_altivec_be.sla");
-    emu.onRead({});
-    emu.onWrite({});
+    // (an emulator of its own: the thread's shared one has the PowerPC adapter's lane operations bound, which are served before any hook)
+    sl::Emulator emu(config::current().checkout_root() / "src" / "decompile" / "engine" / "languages" / "ppc_64_isa_altivec_be.sla", {});
     const std::uint32_t vaddubm = 0x10000000u | (0u << 21) | (1u << 16) | (2u << 11) | 512;   // vaddubs vr0, vr1, vr2: a named operation (no p-code) in this description
     const Bytes code = {static_cast<std::uint8_t>(vaddubm >> 24), static_cast<std::uint8_t>(vaddubm >> 16), static_cast<std::uint8_t>(vaddubm >> 8), static_cast<std::uint8_t>(vaddubm)};
     const Bytes x = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16}, y(16, 1);
