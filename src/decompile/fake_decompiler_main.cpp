@@ -8,6 +8,9 @@
 //     FAKE_DECOMPILER_NOTES=1         writes a global, a pointer and a structure note before each body
 //     FAKE_DECOMPILER_L2=<file>       writes the file's text as the function's L2 note
 //     FAKE_DECOMPILER_FAIL=<hex>      writes a `decompile failed` body for that function
+//     FAKE_DECOMPILER_LONG=<hex>      writes the "too many instructions" failure for that function unless CB_MAX_INSTRUCTIONS gives room
+//     FAKE_DECOMPILER_SLEEP_MS=<n>    waits that long on each function (to see progress while it works)
+// It notes each function it finishes in CB_PROGRESS_FILE, as the real one does.
 #if defined(_WIN32)
 #include <windows.h>
 #else
@@ -15,8 +18,10 @@
 #include <unistd.h>
 #endif
 
+#include <chrono>
 #include <cstdio>
 #include <cstdlib>
+#include <thread>
 #include <fstream>
 #include <iostream>
 #include <set>
@@ -108,17 +113,33 @@ int main(int argc, char** argv) {
         l2_text = all.str();
     }
     const unsigned long long fail = env("FAKE_DECOMPILER_FAIL").empty() ? ~0ULL : hex(env("FAKE_DECOMPILER_FAIL"));
+    const unsigned long long long_one = env("FAKE_DECOMPILER_LONG").empty() || !env("CB_MAX_INSTRUCTIONS").empty() ? ~0ULL : hex(env("FAKE_DECOMPILER_LONG"));
+    const int sleep_ms = std::atoi(env("FAKE_DECOMPILER_SLEEP_MS").c_str());
+    const std::string progress_file = env("CB_PROGRESS_FILE");
+    const auto note_finished = [&] {
+        if (progress_file.empty()) return;
+        std::ofstream(progress_file, std::ios::binary | std::ios::app) << '\n';   // (opened and closed each time: the caller reads it meanwhile)
+    };
     for (const auto& [va, name] : todo) {
         std::printf("/*@@ %s %llx */\n", name.c_str(), va);
         std::fflush(stdout);
         if (die.count(va) != 0) return 3;
+        if (sleep_ms > 0) std::this_thread::sleep_for(std::chrono::milliseconds(sleep_ms));
         if (va == fail) {
             std::printf("/* decompile failed: nothing here */\n");
+            note_finished();
+            continue;
+        }
+        if (va == long_one) {
+            std::printf("/* decompile failed: Flow exceeded maximum allowable instructions */\n");
+            note_finished();
             continue;
         }
         if (env("FAKE_DECOMPILER_NOTES") == "1") std::printf("/*@G %llx 4 4 */\n/*@P %s_p 4 */\n/*@S struct_%s 8 0:4:int4 4:4:int4 */\n", va, name.c_str(), name.c_str());
         if (!l2_text.empty()) std::printf("/*@L2 %s */\n", l2_text.c_str());
         std::printf("int %s(void)\n{\n  return %llu;\n}\n", name.c_str(), va);
+        std::fflush(stdout);
+        note_finished();
     }
     return 0;
 }

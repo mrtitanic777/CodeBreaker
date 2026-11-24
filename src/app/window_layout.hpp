@@ -8,6 +8,7 @@
 #pragma once
 
 #include <array>
+#include <chrono>
 #include <cstddef>
 #include <deque>
 #include <memory>
@@ -195,6 +196,7 @@ struct Model {
     std::string file_name;             // the program being converted
     std::string stage_label;           // "Disassembling"
     std::string detail;                // "17 of 39 functions"
+    std::string elapsed;               // Working: how long the run has taken so far, a running clock ("12:04"); empty before it starts
     int percent = 0;
     std::vector<std::string> stream;   // Working: the character stream's lines to draw behind the progress (CharStream::visible)
     bool stream_cursor = false;        // its block cursor is showing (it blinks)
@@ -381,7 +383,7 @@ struct Layout {
     // the idle group inside the drop area
     Rect plus, drop_line1, drop_line2, browse;
     // the working / done group inside the drop area
-    Rect file_icon, file_name, bar, bar_label, bar_percent, detail, cancel;
+    Rect file_icon, file_name, bar, bar_label, bar_percent, detail, elapsed, cancel;
     // the right card's group
     Rect language_label, language_combo, output_label, field, open_folder, copy_path, hint;
     // the Source card's preview (empty unless Extras::preview): the file list on the left, the code on the right
@@ -421,6 +423,12 @@ struct Extras {
     int tab = 0;                       // the Source card's tab (SourceTab): the Files tab has the path row, the others give its room to their view
 };
 Extras extras_for(const Model& model, View view);
+
+// A run's time so far as a clock that ticks each second: "0:07", "12:04", "1:02:03".
+std::string elapsed_clock(std::chrono::seconds taken);
+// A finished run's time in words: "7 s", "12 min 4 s", "1 h 2 min".
+std::string took_words(std::chrono::seconds taken);
+
 Layout compute_layout(View view, float width, float height, float rail = 0, const Extras& extras = {});
 
 // The control at a point, None over nothing. Only the controls that exist in `view` (a disabled one is still found: `enabled` says whether it acts).

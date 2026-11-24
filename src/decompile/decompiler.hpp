@@ -33,6 +33,7 @@
 #undef far
 #endif
 
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <functional>
@@ -328,9 +329,13 @@ public:
     // The arena the L2 documents of everything this made are nodes of.
     const std::shared_ptr<Arena>& arena() const { return arena_; }
 
-    // Told how many functions the native program has finished of how many it was given (a window's progress bar): once at the start
-    // (0 of n), after each chunk of kChunk functions, and at the end. Called from the thread that runs the decompiler; none by default.
+    // Told how many functions the native program has finished of how many it was given (a window's progress bar): at the start (0 of n),
+    // about once a second while it works (each process notes every function it finishes), and at the end. Called from the thread that
+    // runs the decompiler; none by default.
     void set_progress(std::function<void(std::size_t done, std::size_t total)> progress) { progress_ = std::move(progress); }
+    // Told when a pass of its own begins ("large": the functions too long for the first pass, again with room) and ends (""), so a
+    // window can say which job the count is of.
+    void set_phase(std::function<void(std::string_view phase)> phase) { phase_ = std::move(phase); }
 
 private:
     struct NativeOutput {
@@ -366,6 +371,8 @@ private:
     std::shared_ptr<Arena> arena_ = std::make_shared<Arena>();
     std::mutex arena_lock_;
     std::function<void(std::size_t, std::size_t)> progress_;
+    std::function<void(std::string_view)> phase_;
+    mutable std::atomic<std::uint64_t> progress_runs_{0};   // (each run of the native program its own folder of progress notes)
     std::once_flag kinds_once_;
     mutable std::mutex stamp_lock_;
     mutable std::optional<std::string> language_stamp_;

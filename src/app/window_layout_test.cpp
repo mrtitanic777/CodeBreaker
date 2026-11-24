@@ -11,6 +11,24 @@ namespace {
 
 bool wl_near(float a, float b) { return std::fabs(a - b) < 0.01f; }
 
+CB_TEST("app.window_layout.the_running_clock_and_the_time_taken", [] {
+    using std::chrono::seconds;
+    CB_CHECK_EQ(elapsed_clock(seconds{0}), "0:00");
+    CB_CHECK_EQ(elapsed_clock(seconds{7}), "0:07");
+    CB_CHECK_EQ(elapsed_clock(seconds{12 * 60 + 4}), "12:04");
+    CB_CHECK_EQ(elapsed_clock(seconds{3600 + 2 * 60 + 3}), "1:02:03");
+    CB_CHECK_EQ(elapsed_clock(seconds{-5}), "0:00");
+    CB_CHECK_EQ(took_words(seconds{7}), "7 s");
+    CB_CHECK_EQ(took_words(seconds{12 * 60 + 4}), "12 min 4 s");
+    CB_CHECK_EQ(took_words(seconds{3600 + 2 * 60 + 3}), "1 h 2 min");
+    // Working: the clock sits at the right end of the detail line, beside it and not over it
+    const Layout l = compute_layout(View::Working, 1180, 700);
+    CB_CHECK(l.elapsed.w > 0);
+    CB_CHECK(wl_near(l.elapsed.y, l.detail.y));
+    CB_CHECK(l.detail.right() <= l.elapsed.x + 0.01f);
+    CB_CHECK(wl_near(l.elapsed.right(), l.bar.right()));
+});
+
 CB_TEST("app.window_layout.one_card_the_page_s_whole_width_program_then_source_in_its_place", [] {
     const Layout l = compute_layout(View::Idle, 1180, 700);
     CB_CHECK(wl_near(l.title_bar.h, 48));

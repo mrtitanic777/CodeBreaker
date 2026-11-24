@@ -540,6 +540,43 @@ CB_TEST("decompile.decompiler.run_chunks", [] {
     CB_CHECK(dt_has(f.runs()[0] + f.runs()[1] + f.runs()[2], "threads=1"));
 });
 
+CB_TEST("decompile.decompiler.progress_is_told_while_the_program_works", [] {
+    Fixture f;
+    vector<std::pair<dc::Va, string>> functions;
+    for (int i = 0; i < 12; ++i) functions.emplace_back(0x401000 + 0x10 * i, "f" + std::to_string(i));
+    f.describe(functions);
+    cb::fs::set_env("FAKE_DECOMPILER_SLEEP_MS", "200");   // (2.4 seconds in all: the count is read about every quarter second)
+    std::vector<std::size_t> seen;
+    f.decompiler.set_progress([&](std::size_t done, std::size_t total) {
+        CB_CHECK_EQ(total, std::size_t{12});
+        seen.push_back(done);
+    });
+    const dc::Run r = f.decompiler.run(f.description);
+    cb::fs::set_env("FAKE_DECOMPILER_SLEEP_MS", std::nullopt);
+    f.decompiler.set_progress(nullptr);
+    CB_CHECK_EQ(r.texts.size(), std::size_t{12});
+    CB_CHECK(!seen.empty() && seen.front() == 0 && seen.back() == 12);
+    bool part_way = false;
+    for (const std::size_t n : seen) part_way = part_way || (n > 0 && n < 12);
+    CB_CHECK(part_way);                                       // (not just 0, then all of them)
+    CB_CHECK(std::is_sorted(seen.begin(), seen.end()));       // (never backwards)
+    for (const auto& entry : std::filesystem::directory_iterator(f.description.parent_path()))
+        CB_CHECK(!cb::fs::to_text(entry.path().filename()).starts_with("progress-"));   // (the notes are gone)
+});
+
+CB_TEST("decompile.decompiler.the_large_functions_are_a_phase_of_their_own", [] {
+    Fixture f;
+    f.describe({{0x401000, "small"}, {0x401010, "huge"}});
+    cb::fs::set_env("FAKE_DECOMPILER_LONG", "401010");
+    std::vector<string> phases;
+    f.decompiler.set_phase([&](std::string_view p) { phases.emplace_back(p); });
+    const dc::Run r = f.decompiler.run(f.description);
+    cb::fs::set_env("FAKE_DECOMPILER_LONG", std::nullopt);
+    f.decompiler.set_phase(nullptr);
+    CB_CHECK_EQ(r.texts.at("huge"), "int huge(void)\n{\n  return " + std::to_string(0x401010) + ";\n}");   // (made the second time, with room)
+    CB_CHECK(phases == (std::vector<string>{"large", ""}));
+});
+
 CB_TEST("decompile.decompiler.run_threads_by_hand", [] {
     Fixture f({}, "4");   // the setting says: one process, four threads of its own, as it says
     vector<std::pair<dc::Va, string>> functions;

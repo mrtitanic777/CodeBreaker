@@ -3,8 +3,22 @@
 #include "app/window_pages.hpp"
 
 #include <algorithm>
+#include <format>
 
 namespace cb::app::window {
+
+std::string elapsed_clock(std::chrono::seconds taken) {
+    const long long s = std::max<long long>(0, taken.count());
+    if (s >= 3600) return std::format("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60);
+    return std::format("{}:{:02}", s / 60, s % 60);
+}
+
+std::string took_words(std::chrono::seconds taken) {
+    const long long s = std::max<long long>(0, taken.count());
+    if (s >= 3600) return std::format("{} h {} min", s / 3600, s / 60 % 60);
+    if (s >= 60) return std::format("{} min {} s", s / 60, s % 60);
+    return std::format("{} s", s);
+}
 
 namespace {
 
@@ -149,7 +163,8 @@ Layout compute_layout(View view, float width, float height, float rail, const Ex
         l.bar_label = {cx - bar_w / 2, y, bar_w - 56, 19};
         l.bar_percent = {cx + bar_w / 2 - 56, y, 56, 19};
         y += 19 + 6;
-        l.detail = {cx - bar_w / 2, y, bar_w, 16};
+        l.detail = {cx - bar_w / 2, y, bar_w - 72, 16};
+        l.elapsed = {cx + bar_w / 2 - 72, y, 72, 16};   // the running clock, at the line's right end under the percentage
         y += 16 + 24;
         l.cancel = centered(cx, y, 96.0f, kButtonHeight);
     }

@@ -493,6 +493,22 @@ Decompiler::NativeOutput Decompiler::resuming(const std::filesystem::path& descr
     }
 }
 
+namespace {
+
+// The functions the processes of one run have noted as finished: a line each in their files of `folder` (a process started again
+// after a death notes on in the same file, so a function it does again counts twice: the caller keeps the count to the total).
+std::size_t noted_finished(const std::filesystem::path& folder) {
+    std::size_t lines = 0;
+    std::error_code ec;
+    for (std::filesystem::directory_iterator it(folder, ec), end; !ec && it != end; it.increment(ec)) {
+        if (!it->is_regular_file(ec)) continue;
+        lines += static_cast<std::size_t>(it->file_size(ec));   // (a note is one byte: "\n")
+    }
+    return lines;
+}
+
+}  // namespace
+
 // Run the native program on the description; chunks of functions as processes of their own. -> (stdout, stderr, whether every
 // function was attempted)
 Decompiler::NativeOutput Decompiler::run_native(const std::filesystem::path& description, std::span<const Va> only,
@@ -522,8 +538,38 @@ Decompiler::NativeOutput Decompiler::run_native(const std::filesystem::path& des
     }
     if (wanted.empty()) return {};   // (no code: a font or resource-only module)
     if (progress_) progress_(0, wanted.size());
+    // each process notes the functions it finishes in a file of this run's own folder: the count reaches the window while it works
+    const std::filesystem::path notes = description.parent_path() / std::format("progress-{:x}-{}", static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()) ^ reinterpret_cast<std::uintptr_t>(this), progress_runs_.fetch_add(1));
+    std::error_code notes_ec;
+    std::filesystem::remove_all(notes, notes_ec);
+    std::filesystem::create_directories(notes, notes_ec);
+    struct NotesGone {
+        std::filesystem::path folder;
+        ~NotesGone() {
+            std::error_code ec;
+            std::filesystem::remove_all(folder, ec);
+        }
+    } notes_gone{notes};
+    const auto noted = [&] { return std::min(wanted.size(), noted_finished(notes)); };
     if (!threads.empty() || wanted.size() <= kChunk) {   // (set by hand: as it says)
-        NativeOutput whole_run = resuming(description, !only.empty(), env, wanted);
+        env["CB_PROGRESS_FILE"] = fs::to_text(notes / "whole.txt");
+        NativeOutput whole_run;
+        std::exception_ptr failed;
+        std::atomic<bool> finished{false};
+        std::thread runner([&] {
+            try {
+                whole_run = resuming(description, !only.empty(), env, wanted);
+            } catch (...) {
+                failed = std::current_exception();
+            }
+            finished = true;
+        });
+        while (!finished) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(250));
+            if (progress_ && !finished) progress_(noted(), wanted.size());
+        }
+        runner.join();
+        if (failed) std::rethrow_exception(failed);
         if (progress_) progress_(wanted.size(), wanted.size());
         return whole_run;
     }
@@ -548,7 +594,9 @@ Decompiler::NativeOutput Decompiler::run_native(const std::filesystem::path& des
     const auto work = [&] {
         for (std::size_t i = next.fetch_add(1); i < chunks.size(); i = next.fetch_add(1)) {
             try {
-                parts[i] = resuming(description, true, env, chunks[i]);
+                std::map<std::string, std::string> chunk_env = env;
+                chunk_env["CB_PROGRESS_FILE"] = fs::to_text(notes / std::format("chunk-{}.txt", i));
+                parts[i] = resuming(description, true, chunk_env, chunks[i]);
             } catch (...) {   // (handed to the caller below, once every process has ended)
                 failed[i] = std::current_exception();
             }
@@ -581,8 +629,14 @@ Decompiler::NativeOutput Decompiler::run_native(const std::filesystem::path& des
             }
         };
         while (chunks_done < chunks.size()) {
-            changed.wait_for(hold, std::chrono::seconds(2));
+            changed.wait_for(hold, std::chrono::seconds(1));
             tell_finished();
+            if (progress_ && chunks_told < chunks.size()) {   // (between chunks: what the processes have noted)
+                const std::size_t now = std::max(functions_told, noted());
+                hold.unlock();
+                progress_(now, wanted.size());
+                hold.lock();
+            }
             hold.unlock();
             if (next.load() < chunks.size() && (static_cast<std::size_t>(slots.count()) > workers.threads.size() || slots.grow()))
                 workers.threads.emplace_back(work);
@@ -698,6 +752,13 @@ Decompiler::Texts Decompiler::run_whole(const std::filesystem::path& description
         }
     }
     if (!large.empty() && !(max_instructions && *max_instructions)) {   // longer than a wrong start would run: again, with room
+        if (phase_) phase_("large");
+        struct PhaseEnds {
+            const std::function<void(std::string_view)>& phase;
+            ~PhaseEnds() {
+                if (phase) phase("");
+            }
+        } phase_ends{phase_};
         const Texts more = run_functions(description, large, kLargeInstructionLimit, l2);
         for (const auto& [name, text] : more.texts) result.texts.insert_or_assign(name, text);
         for (const std::string& n : more.order)

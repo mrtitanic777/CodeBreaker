@@ -324,6 +324,10 @@ CB_TEST("app.convert.a_32_bit_dll_is_disassembled_and_decompiled", [] {
     CB_CHECK(stdfs::exists(done.output / "lz32_part01.c"));
     CB_CHECK(stdfs::exists(done.output / "SOURCE_FILES.txt"));
     CB_CHECK(stdfs::exists(done.output / "lz32.dll.asm"));
+    // the built program: assembled from that source, the original byte for byte, with a note of how it was made
+    CB_CHECK(stdfs::exists(done.output / "build" / "lz32.dll"));
+    CB_CHECK(fs::read_file(done.output / "build" / "lz32.dll") == fs::read_file(f.input));
+    CB_CHECK(fs::read_text(done.output / "build" / "BUILD.txt").find("It is the original program byte for byte") != std::string::npos);
     bool counted = false;   // real counts from the decompiler: functions of the total
     for (const Progress& p : f.seen) counted = counted || (p.state == State::Decompiling && p.total > 0 && p.done == p.total);
     CB_CHECK(counted);

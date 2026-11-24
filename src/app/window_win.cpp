@@ -109,6 +109,8 @@ constexpr UINT_PTR kWwMinuteTimer = 5;     // the Recent list's "when" words are
 constexpr UINT kWwMinuteMs = 30000;
 constexpr UINT_PTR kWwScoresTimer = 17;    // the Board looks for new rows in its score table
 constexpr UINT kWwScoresMs = 5000;
+constexpr UINT_PTR kWwClockTimer = 18;     // while a conversion runs: its running clock ticks (once a second, animations on or off)
+constexpr UINT kWwClockMs = 1000;
 constexpr UINT_PTR kWwFlowTimer = 6;       // while Flow, Trace or Library shows: the projected-call dots move
 constexpr UINT kWwFlowFrameMs = 33;
 constexpr wchar_t kWwClass[] = L"CodeBreakerWindow";
@@ -511,6 +513,7 @@ private:
     std::vector<std::string> stream_waiting_;        // lines from the worker not yet handed to the stream (under lock_: latest_ keeps only the newest report)
     CharStream stream_;                              // the character stream (UI thread)
     std::chrono::steady_clock::time_point stream_tick_{};
+    std::chrono::steady_clock::time_point run_started_{};   // when the current run began: the running clock counts from here
     std::uint32_t stream_frames_ = 0;
     std::chrono::steady_clock::time_point fade_start_{}, welcome_start_{};   // the fades (fade_frame)
     bool card_fading_ = false;
@@ -2127,6 +2130,7 @@ void WwApp::reset_to_idle(const std::string& status) {
     model_ = std::move(m);
     stream_.clear();
     KillTimer(hwnd_, kWwStreamTimer);
+    KillTimer(hwnd_, kWwClockTimer);
     relayout();
     invalidate();
 }
@@ -2174,6 +2178,9 @@ void WwApp::begin_run() {
     model_.queue_scroll = 0;
     taskbar_.set(Taskbar::State::Indeterminate);
     KillTimer(hwnd_, kWwTaskbarTimer);
+    run_started_ = std::chrono::steady_clock::now();   // the running clock starts with the work
+    model_.elapsed = elapsed_clock(std::chrono::seconds{0});
+    SetTimer(hwnd_, kWwClockTimer, kWwClockMs, nullptr);
     if (ww_animations_on()) {
         stream_tick_ = std::chrono::steady_clock::now();
         stream_frames_ = 0;
@@ -2973,6 +2980,10 @@ void WwApp::present_item(const batch::Item& item, const std::string& stage, cons
             model_.output_path = narrow(item.output.wstring());
             model_.done_note = std::to_string(item.files) + (item.files == 1 ? " file written." : " files written.");
             if (!item.checked.empty()) model_.done_note += " Checked: " + item.checked;
+            if (std::error_code ec; stdfs::is_regular_file(item.output / "build" / item.file.filename(), ec))   // the program assembled from its source
+                model_.done_note += " Built: build\\" + narrow(item.file.filename().wstring()) + ".";
+            if (queue_.total() == 1 && run_started_ != std::chrono::steady_clock::time_point{})   // one file: how long it took, counted from when the work began
+                model_.done_note += " Took " + took_words(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - run_started_)) + ".";
             model_.status_text = "Done";
             load_preview_folder(item.output, fs::to_text(item.file.stem()));
             load_functions(item.output, item.functions, item.file, item.can_recheck);
@@ -3379,6 +3390,18 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 if (model_.page == Page::Board && !IsIconic(hwnd_) && board_refresh_scores(model_)) {
                     relayout();
                     invalidate();
+                }
+                return 0;
+            }
+            if (wp == kWwClockTimer) {   // the run's clock moves on a second
+                if (model_.view != View::Working) {
+                    KillTimer(hwnd_, kWwClockTimer);
+                    return 0;
+                }
+                std::string now = elapsed_clock(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - run_started_));
+                if (now != model_.elapsed) {
+                    model_.elapsed = std::move(now);
+                    if (!IsIconic(hwnd_)) invalidate();
                 }
                 return 0;
             }
@@ -3888,6 +3911,7 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
         m.file_name = "Bank.cs";
         m.stage_label = std::string(convert::state_label(convert::State::Translating));
         m.detail = "9 of 14 functions";
+        m.elapsed = "0:48";
         m.percent = 31;
         m.status_text = "Translating Bank.cs to C++17";
         // a frame of the character stream (sample text in the shape the translator writes)
@@ -3903,6 +3927,7 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
         m.file_name = "setup.exe";
         m.stage_label = std::string(convert::state_label(convert::State::Decompiling));
         m.detail = "17 of 39 functions";
+        m.elapsed = "3:12";
         m.percent = 62;
         m.status_text = "Converting setup.exe";
         // a frame of the character stream (sample text in the shape the writers produce: the file's bytes, then its assembly source)

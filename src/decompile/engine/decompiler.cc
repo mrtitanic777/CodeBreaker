@@ -2582,6 +2582,15 @@ int main(int argc, char** argv) {
     return 1;
   }
 
+  // CB_PROGRESS_FILE: a line appended for each function finished, so the caller can count them while this works
+  FILE* progress = nullptr;
+  if (const char* p = std::getenv("CB_PROGRESS_FILE"); p != nullptr && *p) progress = std::fopen(p, "ab");
+  auto note_finished = [progress] {
+    if (progress == nullptr) return;
+    std::fputc('\n', progress);
+    std::fflush(progress);
+  };
+
   if (governor::threads == 1) {
     // One thread: each function's marker is written before it is analysed, so a process that
     // dies on a function shows which (codebreaker/decompile/decompiler.py: _run_resuming)
@@ -2589,7 +2598,11 @@ int main(int argc, char** argv) {
     try {
       Analysis a;
       setUp(a, d);
-      for (size_t i = 0; i < a.todo.size(); ++i) decompileOne(a, d, i, std::cout);
+      for (size_t i = 0; i < a.todo.size(); ++i) {
+        decompileOne(a, d, i, std::cout);
+        std::cout.flush();
+        note_finished();
+      }
       if (!a.errs.str().empty()) std::fprintf(stderr, "%s\n", a.errs.str().c_str());
     } catch (LowlevelError& e) {
       std::fprintf(stderr, "FAIL: %s\n", e.explain.c_str());
@@ -2630,6 +2643,7 @@ int main(int argc, char** argv) {
         for (; written < total && ready[written]; ++written) {
           std::fwrite(text[written].data(), 1, text[written].size(), stdout);
           std::string().swap(text[written]);
+          note_finished();
         }
         std::fflush(stdout);
       }

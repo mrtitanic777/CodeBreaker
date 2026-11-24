@@ -1669,7 +1669,7 @@ void rd_queue(RdDraw& d, const Layout& l) {
     d.rt->PopAxisAlignedClip();
     rd_scrollbar(d, q.area, q.content_height, m.queue_scroll);
     d.button(Control::Cancel, l.cancel, L"Cancel all", L'\xE711', true);
-    d.text(widen("Drop more files to add them to the list. " + m.queue_note + "."), l.hint, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+    d.text(widen("Drop more files to add them to the list. " + m.queue_note + (m.elapsed.empty() ? std::string() : " \xC2\xB7 " + m.elapsed + " so far") + "."), l.hint, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
 }
 
 // The output folder's box: its path, and a dashed accent outline while the pointer is over it or the folder is being dragged out of it (it is the drag source).
@@ -1975,6 +1975,7 @@ void rd_program_card(RdDraw& d, View view, const Layout& l) {
         d.text(widen(model.stage_label), l.bar_label, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
         d.text(widen(std::to_string(model.percent) + "%"), l.bar_percent, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
         d.text(widen(model.detail), l.detail, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+        if (!model.elapsed.empty()) d.text(widen(model.elapsed), l.elapsed, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
         d.button(Control::Cancel, l.cancel, L"Cancel", L'\xE711', true);
     } else {
         // the idle group: the round "+" button (it opens the file picker) and two lines

@@ -112,17 +112,62 @@ void cv_keep_dos_side_files(const stdfs::path& scratch, const stdfs::path& work)
     }
 }
 
+// The program the writer assembled from its source to check itself, kept as the conversion's built program: <work>/build/<the input's own
+// name>, with BUILD.txt saying how it was made, whether it is the original byte for byte, and what it still needs to run. Nothing when the
+// assembler built nothing.
+void cv_keep_built(const std::optional<stdfs::path>& image, bool same, const stdfs::path& input, const stdfs::path& work) {
+    if (!image || !stdfs::is_regular_file(*image)) return;
+    const stdfs::path folder = work / "build";
+    stdfs::create_directories(folder);
+    const std::string name = fs::to_text(input.filename());
+    const std::string asm_name = cv_lower(name) + ".asm";
+    stdfs::copy_file(*image, folder / input.filename(), stdfs::copy_options::overwrite_existing);
+    std::string note = std::format("{} in this folder was assembled from {}, the program's reconstructed assembly source beside this folder,\n"
+                                   "by CodeBreaker's assembler at the end of the conversion.\n\n",
+                                   name, asm_name);
+    note += same ? "It is the original program byte for byte: it runs exactly as the original does.\n"
+                 : "It is NOT the original byte for byte: the assembler built it, but some bytes differ, so it may not run as the original does.\n";
+    note += std::format("\nTo build it again, in the folder above this one:\n\n    codebreaker nasm -f bin -o build\\{} {}\n\n", name, asm_name);
+    note += "To run it, it needs what the original needs beside it: the DLLs it loads and any plugin folders (a Qt program's platforms\\, for\n"
+            "one), copied from where the original is installed.\n\n"
+            "The .c files are a readable reconstruction of the same program. They are not what this program was built from, and they do not\n"
+            "build it yet.\n";
+    fs::write_text(folder / "BUILD.txt", note);
+}
+
 // ---- Windows and DOS programs ------------------------------------------------------------------------------------------------
 
 enum class CvMz { Pe, Ne, Le, Dos };
+
+// The words under the progress bar while the decompiler works: which job, how far, and once it has taken a while, for how long.
+std::string cv_decompile_words(std::string_view phase, std::size_t done, std::size_t total, std::chrono::steady_clock::duration taken) {
+    std::string words = phase == "large" ? std::format("Large functions, retried: {} of {}", done, total) : std::format("{} of {} functions", done, total);
+    const auto seconds = std::chrono::duration_cast<std::chrono::seconds>(taken).count();
+    if (seconds >= 20 && done < total) words += seconds < 60 ? std::format(" \xC2\xB7 {} s", seconds) : std::format(" \xC2\xB7 {} min {} s", seconds / 60, seconds % 60);
+    return words;
+}
 
 // The functions decompiled, as the decompiler counts them, reach the reporter.
 void cv_decompile(Reporter& r, const config::Config& config, const stdfs::path& input, const stdfs::path& work) {
     engine::LaneKit kit(config);
     decompile::decompiler::Decompiler& decompiler = kit.decompiler();
-    decompiler.set_progress([&r](std::size_t done, std::size_t total) { r.count(done, total, std::format("{} of {} functions", done, total)); });
+    std::string phase;
+    auto since = std::chrono::steady_clock::now();
+    std::size_t last_total = 0;
+    decompiler.set_phase([&](std::string_view p) {
+        phase = std::string(p);
+        since = std::chrono::steady_clock::now();
+    });
+    decompiler.set_progress([&](std::size_t done, std::size_t total) {
+        if (total != last_total) {   // (another run of the decompiler: its own clock)
+            last_total = total;
+            since = std::chrono::steady_clock::now();
+        }
+        r.count(done, total, cv_decompile_words(phase, done, total, std::chrono::steady_clock::now() - since));
+    });
     const decompile::decompiler::AsC c = decompiler.as_c(input);
     decompiler.set_progress(nullptr);
+    decompiler.set_phase(nullptr);
     r.check();
     if (c.files.empty()) fs::write_text(work / (cv_lower(fs::to_text(input.stem())) + ".c"), c.text);
     for (const auto& [name, text] : c.files) fs::write_text(work / name, text);   // (a program as the source files it was made of)
@@ -152,20 +197,26 @@ Route cv_mz_route(CvMz kind, std::string route_name) {
                 source::pe_writer::Options o;
                 o.find_stub = tools.stub_finder();
                 o.say = say;
-                cv_keep(source::pe_writer::reconstruct(input, scratch, o).source, work);
+                const source::pe_writer::Result done = source::pe_writer::reconstruct(input, scratch, o);
+                cv_keep(done.source, work);
+                cv_keep_built(done.image, done.same, input, work);
                 break;
             }
             case CvMz::Ne: {
                 source::ne_writer::Options o;
                 o.find_stub = tools.stub_finder();
                 o.say = say;
-                cv_keep(source::ne_writer::reconstruct(input, scratch, o).source, work);
+                const source::ne_writer::Result done = source::ne_writer::reconstruct(input, scratch, o);
+                cv_keep(done.source, work);
+                cv_keep_built(done.image, done.same, input, work);
                 break;
             }
             case CvMz::Le: {
                 source::le_writer::Options o;
                 o.say = say;
-                cv_keep(source::le_writer::reconstruct(input, scratch, o).source, work);
+                const source::le_writer::Result done = source::le_writer::reconstruct(input, scratch, o);
+                cv_keep(done.source, work);
+                cv_keep_built(done.image, done.same, input, work);
                 break;
             }
             case CvMz::Dos: {
