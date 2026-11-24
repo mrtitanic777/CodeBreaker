@@ -26,7 +26,7 @@ tar -xf "%REL%\%NAME%.tar" -C "%REL%" || exit /b 1
 del /q "%REL%\%NAME%.tar"
 
 mkdir "%OUT%\bin"
-for %%F in (codebreaker.exe decompiler.exe pcodecheck.exe unicorn.dll capstone.dll libz3.dll) do copy /y "%EXE%\%%F" "%OUT%\bin\" >nul || exit /b 1
+for %%F in (codebreaker.exe cb_lane_worker.exe cb_observe_worker.exe decompiler.exe pcodecheck.exe unicorn.dll capstone.dll libz3.dll) do copy /y "%EXE%\%%F" "%OUT%\bin\" >nul || exit /b 1
 mkdir "%OUT%\src\third_party\bin" 2>nul
 copy /y "%ROOT%\src\third_party\bin\*" "%OUT%\src\third_party\bin\" >nul
 
