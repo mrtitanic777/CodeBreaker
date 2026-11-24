@@ -114,8 +114,12 @@ Judgement compare(const Run& original, const Run& translation, std::span<const s
     for (std::size_t i = 0; i < std::max(al.size(), bl.size()); ++i) {
         const std::string_view x = i < al.size() ? al[i] : "<end>", y = i < bl.size() ? bl[i] : "<end>";
         if (x != y) {
-            return {Verdict::Divergent, std::format("line {}: original {}, translation {}", i + 1,
-                                                    quoted(head(x, kLineShown)), quoted(head(y, kLineShown)))};
+            std::string why = std::format("line {}: original {}, translation {}", i + 1, quoted(head(x, kLineShown)), quoted(head(y, kLineShown)));
+            // (a translation that stopped early says how: its exit code, which names a crash, and what it wrote to stderr)
+            if (original.exit != translation.exit)
+                why += std::format("; exit code {}, translation {}", exit_text(original.exit), exit_text(translation.exit));
+            if (original.exit != translation.exit && !translation.err.empty()) why += "; stderr " + quoted(tail(translation.err, kLineShown));
+            return {Verdict::Divergent, why};
         }
     }
     return {Verdict::Divergent, std::format("exit code {}, translation {}", exit_text(original.exit),

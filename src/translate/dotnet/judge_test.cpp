@@ -56,6 +56,10 @@ CB_TEST("translate.judge.compare_divergent", [] {
     // one is shorter
     CB_CHECK_EQ(jd::compare(ran("a\nb\n"), ran("a\n")).detail, std::string("line 2: original 'b', translation '<end>'"));
     CB_CHECK_EQ(jd::compare(ran("a\nb"), ran("a\nb\nc")).detail, std::string("line 3: original '<end>', translation 'c'"));
+    // a translation that crashed before writing anything: how it ended, so a crash is named
+    jd::Run crashed = ran("", 3221225477u);
+    crashed.err = "fault";
+    CB_CHECK_EQ(jd::compare(ran("a\n"), crashed).detail, std::string("line 1: original 'a', translation ''; exit code 0, translation 3221225477; stderr 'fault'"));
     // the same output, a different exit code
     j = jd::compare(ran("a", 0), ran("a", 1));
     CB_CHECK(j.verdict == jd::Verdict::Divergent);
