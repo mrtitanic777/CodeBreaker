@@ -36,15 +36,29 @@ bool ran_on_unicorn(const core16::Uc& uc);
 // returned object goes, which must be before `uc` does.
 std::shared_ptr<void> hook_syscall(core16::Uc& uc, std::function<void(core16::Uc&)> hook);
 
+// A whole vector register (YMM0..15, 32 bytes) of the emulator's engine (a Unicorn engine has the low 16 bytes: the rest read as zero and are not written).
+Bytes read_ymm(core16::Uc& uc, unsigned index);
+void write_ymm(core16::Uc& uc, unsigned index, ByteView bytes);
+
 // A vector register (the low 128 bits of XMM0..15) of either engine: for the tests and the lanes that compare them.
 Bytes read_xmm(core16::Uc& uc, unsigned index);
 void write_xmm(core16::Uc& uc, unsigned index, ByteView bytes);
+
+// How the engine of this thread treats what Unicorn does not do right. VEX-encoded instructions (AVX, AVX2, F16C, FMA) are the architecture's by default: three operands, 256-bit
+// registers. Unicorn's decoder reads the VEX prefix and runs the instruction as the legacy one of the same opcode (two operands, 128 bits: the VEX register operand and length
+// bits are ignored); `vex_as_unicorn` does the same on the emulator, which is what the tests that compare the two engines run with.
+struct X86Options {
+    bool vex_as_unicorn = false;
+    bool x87_on_description = false;   // run the x87 float instructions on the description (it keeps no top of stack, tag word or exception flags: not Unicorn's results)
+};
+X86Options& x86_options();
 
 // What the engines of this thread did: runs started, instructions the description ran, runs that went to Unicorn by reason, the opcodes the description could not decode (their
 // first three bytes), user operations nothing served.
 struct X86Stats {
     std::uint64_t runs = 0;
     std::uint64_t steps = 0;
+    std::uint64_t vex = 0;                // VEX-encoded instructions the description ran
     bool count_tail = false;              // count the instructions Unicorn runs after a hand-off (a hook on each: slow; for the tests that report the share)
     std::uint64_t tail_steps = 0;
     std::map<std::string, std::uint64_t> handoffs;

@@ -29,6 +29,12 @@ using u64 = std::uint64_t;
 
 int reg(const char* name) { return *uu::x86_register(name); }
 
+// Unicorn runs a VEX-encoded instruction as the legacy one of the same opcode: the tests that compare the engines with it ask the emulator to do the same (the architecture's own AVX is
+// tested in pcode_cpu_x86_avx_test.cpp, against the host's instructions).
+struct VexLikeUnicorn {
+    VexLikeUnicorn() { pc::x86_options().vex_as_unicorn = true; }
+};
+
 constexpr u64 kCode64 = 0x400000, kData64 = 0x500000, kStack64 = 0x600000, kSize64 = 0x10000;
 
 // What a run left behind, as the lanes compare it.
@@ -58,6 +64,7 @@ struct Scenario {
 };
 
 Outcome run(const Scenario& s, bool emulator) {
+    const VexLikeUnicorn vex;
     const bool wide = s.bits == 64;
     std::unique_ptr<core16::Uc> uc = emulator ? pc::open_x86_emulator(s.bits) : uu::open_x86(s.bits);
     Outcome out;
@@ -499,6 +506,7 @@ void report_stats(const char* lane) {
 // The lanes' homebrew on both engines: every program's functions in every state of the lane on Unicorn and on the emulator, and each function judged against copies with one of its first
 // bytes turned over, the verdicts compared. (An ELF is a plain file: a function's first bytes are where its segment puts them.)
 CB_TEST("engine.pcode_cpu.the_playstation_4_lane_runs_homebrew_the_same_on_both_engines", [] {
+    const VexLikeUnicorn vex;
     pc::x86_stats().clear();
     pc::x86_stats().count_tail = fs::get_env("CB_X86_COUNT_TAIL").value_or("") == "1";   // (a hook on every instruction Unicorn runs: not for the timing)
     engine::pcode_compare::compare_homebrew("ps4", "ps4", ".elf", orbis_offset);
@@ -506,6 +514,7 @@ CB_TEST("engine.pcode_cpu.the_playstation_4_lane_runs_homebrew_the_same_on_both_
 });
 
 CB_TEST("engine.pcode_cpu.the_playstation_5_lane_runs_homebrew_the_same_on_both_engines", [] {
+    const VexLikeUnicorn vex;
     pc::x86_stats().clear();
     pc::x86_stats().count_tail = fs::get_env("CB_X86_COUNT_TAIL").value_or("") == "1";   // (a hook on every instruction Unicorn runs: not for the timing)
     engine::pcode_compare::compare_homebrew("ps5", "ps5", ".elf", orbis_offset);
@@ -515,6 +524,7 @@ CB_TEST("engine.pcode_cpu.the_playstation_5_lane_runs_homebrew_the_same_on_both_
 // (The Xbox One's programs are in a .msixbundle, a zip whose members are compressed: a function's first bytes are nowhere in the file, so no edited copies are judged; the functions'
 // effects are compared.)
 CB_TEST("engine.pcode_cpu.the_xbox_one_lane_runs_homebrew_the_same_on_both_engines", [] {
+    const VexLikeUnicorn vex;
     pc::x86_stats().clear();
     pc::x86_stats().count_tail = fs::get_env("CB_X86_COUNT_TAIL").value_or("") == "1";   // (a hook on every instruction Unicorn runs: not for the timing)
     engine::pcode_compare::compare_homebrew("xboxone", "xboxone", ".msixbundle", [](const std::filesystem::path&, std::uint32_t) -> std::size_t { return SIZE_MAX; });
@@ -588,6 +598,7 @@ struct HookedResult {
 };
 
 HookedResult hooked_run(bool emulator, bool stop_at_stub, const Bytes& code) {
+    const VexLikeUnicorn vex;
     std::unique_ptr<core16::Uc> uc = emulator ? pc::open_x86_emulator(64) : uu::open_x86(64);
     constexpr u64 kStub = 0x70000000;
     uc->mem_map(kCode64, kSize64);
@@ -733,6 +744,7 @@ struct Lockstep {
 };
 
 Lockstep open_lockstep(const Scenario& s, bool emulator) {
+    const VexLikeUnicorn vex;
     Lockstep l;
     l.bits = s.bits;
     const bool wide = s.bits == 64;
@@ -936,7 +948,15 @@ CB_TEST("engine.pcode_cpu.x86_64_rcr_of_a_64_bit_register_runs_as_unicorn_does",
                 s.regs[2] = 0x45;
                 s.regs[7] = kStack64 + 0x8000;
                 s.flags = flags;
-                if (!(run(s, false) == run(s, true))) ++different;
+                const Outcome a = run(s, false), b = run(s, true);
+                // (OF after a rotate by more than one bit is undefined: the processor leaves it, Unicorn works one out and the description keeps what it had; the random tests excuse it the same way)
+                Outcome excused = b;
+                if (code[1] != 0xD1 && code[code.size() - 1] != 0xD1) excused.flags = (b.flags & ~u64{0x800}) | (a.flags & 0x800);
+                if (!(a == excused)) {
+                    bool flags_only = false;
+                    std::printf("  rcr %s flags %llX value %llX: %s\n", hex_of(code, 4).c_str(), static_cast<unsigned long long>(flags), static_cast<unsigned long long>(value), describe(a, b, true, flags_only).c_str());
+                    ++different;
+                }
             }
     CB_CHECK_EQ(different, 0u);
 });

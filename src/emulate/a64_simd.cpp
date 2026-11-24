@@ -51,6 +51,47 @@ i64 smin_of(unsigned bits) { return bits >= 64 ? std::numeric_limits<i64>::min()
 i64 clamp_signed(i64 v, unsigned bits) { return std::clamp(v, smin_of(bits), smax_of(bits)); }
 u64 clamp_unsigned(i64 v, unsigned bits) { return v < 0 ? 0 : (static_cast<u64>(v) > mask_bits(bits) ? mask_bits(bits) : static_cast<u64>(v)); }
 
+// 64-bit lane arithmetic whose result does not fit 64 bits: the saturating adds and subtracts, and the right shifts that round.
+i64 sat_add_s64(i64 a, i64 b) {
+    const u64 r = static_cast<u64>(a) + static_cast<u64>(b);
+    if (((static_cast<u64>(a) ^ r) & (static_cast<u64>(b) ^ r)) >> 63) return a < 0 ? std::numeric_limits<i64>::min() : std::numeric_limits<i64>::max();
+    return static_cast<i64>(r);
+}
+i64 sat_sub_s64(i64 a, i64 b) {
+    const u64 r = static_cast<u64>(a) - static_cast<u64>(b);
+    if (((static_cast<u64>(a) ^ static_cast<u64>(b)) & (static_cast<u64>(a) ^ r)) >> 63) return a < 0 ? std::numeric_limits<i64>::min() : std::numeric_limits<i64>::max();
+    return static_cast<i64>(r);
+}
+// a >> s (arithmetic or logical, s from 1 to 64), plus the last bit shifted out when `round`: (a + 2^(s-1)) >> s without the carry out of the top
+u64 shift_right_rounding(u64 a, unsigned s, bool is_signed, unsigned ebits, bool round) {
+    const i64 sa = is_signed ? sext(a, ebits) : static_cast<i64>(a & mask_bits(ebits));
+    u64 r;
+    if (s >= 64) r = is_signed && sa < 0 ? ~0ull : 0;
+    else r = is_signed ? static_cast<u64>(sa >> s) : static_cast<u64>(sa) >> s;
+    if (round) r += s - 1 >= 64 ? 0 : (static_cast<u64>(sa) >> (s - 1)) & 1;
+    return r;
+}
+
+// FMULX (the manual's FPMulX): zero times infinity is 2.0 with the XOR of the signs; a NaN operand is processed as every Arm floating-point operation does (a signaling NaN of the
+// first operand, then of the second, then a quiet NaN of the first, then of the second, quieted; the default NaN when FPCR.DN is set); anything else is the product.
+template <class T>
+T fmulx_lane(T x, T y, bool default_nan) {
+    const auto signaling = [](T v) {
+        using I = std::conditional_t<sizeof(T) == 4, std::uint32_t, u64>;
+        const I bits = std::bit_cast<I>(v);
+        const I quiet = I{1} << (std::numeric_limits<T>::digits - 2);
+        return std::isnan(v) && (bits & quiet) == 0;
+    };
+    if (std::isnan(x) || std::isnan(y)) {
+        if (default_nan) return std::numeric_limits<T>::quiet_NaN();
+        const T pick = signaling(x) ? x : signaling(y) ? y : std::isnan(x) ? x : y;
+        using I = std::conditional_t<sizeof(T) == 4, std::uint32_t, u64>;
+        return std::bit_cast<T>(static_cast<I>(std::bit_cast<I>(pick) | (I{1} << (std::numeric_limits<T>::digits - 2))));
+    }
+    if ((std::isinf(x) && y == 0) || (x == 0 && std::isinf(y))) return std::signbit(x) != std::signbit(y) ? T(-2) : T(2);
+    return x * y;
+}
+
 struct Fields {
     std::uint32_t w;
     unsigned q() const { return (w >> 30) & 1; }
@@ -212,8 +253,8 @@ std::optional<std::string> run_simd(Registers& R, Memory& mem, const da::Insn& i
                 case 7: {
                     u64 v = get(n, ebytes, index);
                     if (imm4 == 5) v = static_cast<u64>(sext(v, 8 * ebytes));
-                    if (!f.q() || imm4 == 7) v &= mask_bits(8 * ebytes);
-                    if (!f.q() && imm4 == 5) v &= 0xFFFFFFFFull;
+                    if (imm4 == 7) v &= mask_bits(8 * ebytes);          // umov
+                    else if (!f.q()) v &= 0xFFFFFFFFull;               // smov to a W register
                     if (rd != 31) R.x[rd] = v;
                     return std::nullopt;
                 }
@@ -329,7 +370,7 @@ std::optional<std::string> run_simd(Registers& R, Memory& mem, const da::Insn& i
                             case (0u << 6) | (1u << 5) | 25: v = std::fma(-x, y, acc); break;                                         // fmls
                             case (0u << 6) | (0u << 5) | 26: v = x + y; break;
                             case (0u << 6) | (1u << 5) | 26: v = x - y; break;
-                            case (0u << 6) | (0u << 5) | 27: v = x * y; break;                                                         // fmulx
+                            case (0u << 6) | (0u << 5) | 27: v = fmulx_lane<T>(x, y, (R.fpcr >> 25) & 1); break;                         // fmulx
                             case (1u << 6) | (0u << 5) | 27: v = x * y; break;
                             case (1u << 6) | (0u << 5) | 26: v = x + y; break;                                                         // faddp
                             case (1u << 6) | (0u << 5) | 31: v = x / y; break;
@@ -405,9 +446,9 @@ std::optional<std::string> run_simd(Registers& R, Memory& mem, const da::Insn& i
                     case 32 | 2: r = (a + b + 1) >> 1; break;                                      // urhadd
                     case 4: r = static_cast<u64>((sa - sb) >> 1); break;                           // shsub
                     case 32 | 4: r = (a - b) >> 1; break;                                          // uhsub
-                    case 1: r = static_cast<u64>(clamp_signed(sa + sb, bitsz)); break;             // sqadd
-                    case 5: r = static_cast<u64>(clamp_signed(sa - sb, bitsz)); break;             // sqsub
-                    case 32 | 1: r = std::min<u64>(a + b, mask_bits(bitsz)); break;                // uqadd
+                    case 1: r = bitsz == 64 ? static_cast<u64>(sat_add_s64(sa, sb)) : static_cast<u64>(clamp_signed(sa + sb, bitsz)); break;   // sqadd
+                    case 5: r = bitsz == 64 ? static_cast<u64>(sat_sub_s64(sa, sb)) : static_cast<u64>(clamp_signed(sa - sb, bitsz)); break;   // sqsub
+                    case 32 | 1: r = bitsz == 64 ? (a + b < a ? ~0ull : a + b) : std::min<u64>(a + b, mask_bits(bitsz)); break;   // uqadd
                     case 32 | 5: r = a > b ? a - b : 0; break;                                     // uqsub
                     case 8:
                     case 32 | 8: {   // sshl / ushl: the shift is the low byte of b, signed
@@ -486,7 +527,7 @@ std::optional<std::string> run_simd(Registers& R, Memory& mem, const da::Insn& i
                 if (opcode == 4 || opcode == 6) {
                     const u64 x = get(n, wb, i), y = get(m, wb, i);
                     u64 s = opcode == 4 ? x + y : x - y;
-                    if (u) s += u64{1} << (wbits - 1);
+                    if (u) s += u64{1} << (nb - 1);   // (the rounding constant is half of the narrow lane's range)
                     put(out, eb, hi ? i + n_elems : i, (s >> nb) & mask_bits(nb));
                     continue;
                 }
@@ -794,12 +835,10 @@ std::optional<std::string> run_simd(Registers& R, Memory& mem, const da::Insn& i
                         const u64 a = get(n, e, i), acc = get(d, e, i);
                         u64 r;
                         const bool rounding = opcode == 4 || opcode == 6;
-                        const u64 round = rounding && right > 0 ? (u64{1} << (right - 1)) : 0;
                         if (opcode == 10 && !u) r = a << left;                                           // shl
                         else if (opcode == 10) r = ((a << left) & mask_bits(ebits)) | (acc & mask_bits(left));    // sli
                         else if (opcode == 8) r = right >= ebits ? acc : ((a >> right) | (acc & ~(mask_bits(ebits) >> right))) & mask_bits(ebits);   // sri
-                        else if (u) r = right >= 64 ? 0 : (a + round) >> right;                          // ushr usra urshr ursra
-                        else r = static_cast<u64>((sext(a, ebits) + static_cast<i64>(round)) >> std::min<unsigned>(right, 63));
+                        else r = shift_right_rounding(a, right, u == 0, ebits, rounding);               // sshr ssra srshr srsra ushr usra urshr ursra
                         if (opcode == 2 || opcode == 6) r += acc;
                         put(out, e, i, r & mask_bits(ebits));
                     }
@@ -892,12 +931,12 @@ std::optional<std::string> run_simd(Registers& R, Memory& mem, const da::Insn& i
                 for (unsigned i = 0; i < count; ++i) {
                     if (dbl) {
                         const double a = std::bit_cast<double>(get(n, 8, i)), b = std::bit_cast<double>(get(e, 8, idx)), acc = std::bit_cast<double>(get(d, 8, i));
-                        const double r = opcode == 1 ? std::fma(a, b, acc) : opcode == 5 ? std::fma(-a, b, acc) : a * b;
+                        const double r = opcode == 1 ? std::fma(a, b, acc) : opcode == 5 ? std::fma(-a, b, acc) : u ? fmulx_lane<double>(a, b, (R.fpcr >> 25) & 1) : a * b;
                         put(out, 8, i, std::bit_cast<u64>(r));
                     } else {
                         const float a = std::bit_cast<float>(static_cast<u32>(get(n, 4, i))), b = std::bit_cast<float>(static_cast<u32>(get(e, 4, idx))),
                                     acc = std::bit_cast<float>(static_cast<u32>(get(d, 4, i)));
-                        const float r = opcode == 1 ? std::fma(a, b, acc) : opcode == 5 ? std::fma(-a, b, acc) : a * b;
+                        const float r = opcode == 1 ? std::fma(a, b, acc) : opcode == 5 ? std::fma(-a, b, acc) : u ? fmulx_lane<float>(a, b, (R.fpcr >> 25) & 1) : a * b;
                         put(out, 4, i, std::bit_cast<u32>(r));
                     }
                 }
@@ -953,6 +992,12 @@ std::optional<std::string> run_simd(Registers& R, Memory& mem, const da::Insn& i
             const unsigned opcode = f.bits(11, 5), u = f.u();
             if (opcode >= 24) {
                 const bool dbl = f.bits(22, 1), a = f.bits(23, 1);
+                if (u == 0 && a == 0 && opcode == 27) {   // fmulx, in the operands' own precision
+                    const bool dn = (R.fpcr >> 25) & 1;
+                    if (dbl) R.v[rd] = {std::bit_cast<u64>(fmulx_lane<double>(std::bit_cast<double>(get(n, 8, 0)), std::bit_cast<double>(get(m, 8, 0)), dn)), 0};
+                    else R.v[rd] = {std::bit_cast<u32>(fmulx_lane<float>(std::bit_cast<float>(static_cast<u32>(get(n, 4, 0))), std::bit_cast<float>(static_cast<u32>(get(m, 4, 0))), dn)), 0};
+                    return std::nullopt;
+                }
                 const double x = dbl ? std::bit_cast<double>(get(n, 8, 0)) : std::bit_cast<float>(static_cast<u32>(get(n, 4, 0))),
                              y = dbl ? std::bit_cast<double>(get(m, 8, 0)) : std::bit_cast<float>(static_cast<u32>(get(m, 4, 0)));
                 bool t = false;
@@ -960,7 +1005,6 @@ std::optional<std::string> run_simd(Registers& R, Memory& mem, const da::Insn& i
                 double v = 0;
                 bool value = false;
                 switch (key) {
-                    case 27: case (1u << 6) | 27: v = x * y; value = true; break;
                     case (1u << 6) | (1u << 5) | 26: v = std::fabs(x - y); value = true; break;
                     case 28: t = x == y; break;
                     case (1u << 6) | 28: t = x >= y; break;
@@ -1036,7 +1080,7 @@ std::optional<std::string> run_simd(Registers& R, Memory& mem, const da::Insn& i
                     case (1u << 6) | 28: iv = to_int(std::round(x), false); break;
                     default: return unsupported("scalar conversion");
                 }
-                R.v[rd] = {iv, 0};
+                R.v[rd] = {iv & mask_bits(bt), 0};
                 return std::nullopt;
             }
             const i64 sa = static_cast<i64>(get(n, 8, 0));
@@ -1076,8 +1120,8 @@ std::optional<std::string> run_simd(Registers& R, Memory& mem, const da::Insn& i
             const u64 a = get(n, 1u << sz, 0), acc = get(d, 1u << sz, 0);
             u64 r;
             switch (opcode) {
-                case 0: r = u ? (right >= 64 ? 0 : a >> right) : static_cast<u64>(static_cast<i64>(a) >> std::min(right, 63u)); break;
-                case 2: r = acc + (u ? a >> right : static_cast<u64>(static_cast<i64>(a) >> std::min(right, 63u))); break;
+                case 0: case 4: r = shift_right_rounding(a, right, u == 0, ebits, opcode == 4); break;               // sshr ushr srshr urshr
+                case 2: case 6: r = acc + shift_right_rounding(a, right, u == 0, ebits, opcode == 6); break;       // ssra usra srsra ursra
                 case 10: r = u ? ((a << left) | (acc & mask_bits(left))) : a << left; break;
                 case 8: r = (a >> right) | (acc & ~(~0ull >> right)); break;
                 case 28:

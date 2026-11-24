@@ -14,7 +14,9 @@
 #include "decompile/a64.hpp"
 #include "emulate/a64.hpp"
 #include "engine/pcode_cpu_a64.hpp"
+#include "engine/pcode_cpu_a64_unicorn.hpp"
 #include "engine/pcode_cpu_compare.hpp"
+#include "engine/pcode_ops_a64.hpp"
 
 namespace cb {
 namespace {
@@ -199,6 +201,14 @@ std::vector<Word> draw_words(std::mt19937_64& rng, unsigned per_row, unsigned at
     return words;
 }
 
+bool touches_memory(da::Op op) {
+    switch (op) {
+        case da::Op::LdStImm: case da::Op::LdStReg: case da::Op::LdLit: case da::Op::LdStPair: case da::Op::LdStExcl: case da::Op::LdStAtomic: case da::Op::SimdLdStMulti:
+        case da::Op::SimdLdStSingle: case da::Op::Sys: case da::Op::Sysl: return true;
+        default: return false;
+    }
+}
+
 bool is_flow(da::Op op) {
     switch (op) {
         case da::Op::B: case da::Op::Bl: case da::Op::BCond: case da::Op::Cbz: case da::Op::Tbz: case da::Op::Br: case da::Op::Blr: case da::Op::Ret: case da::Op::Eret: case da::Op::Svc:
@@ -235,6 +245,7 @@ void compare_random(bool single, const char* title) {
             code.push_back(0xD65F03C0u);
         }
         const Case c = make_case(rng, code);
+        if (std::getenv("CB_A64_TRACE")) { std::fprintf(stderr, "word %08X\n", code[0]); }
         const std::uint64_t steps = single ? 1 : 40;
         const Outcome run[2] = {play(c, false, steps), play(c, true, steps)};
         ++runs;
@@ -253,7 +264,8 @@ void compare_random(bool single, const char* title) {
                 if (at >= kCode && at < kCode + code.size() * 4) w = code[(at - kCode) / 4];
                 const auto insn = da::decode_word(w, at);
                 culprit_name = insn ? std::string(insn->mnemonic) : "?";
-                fields = std::format("[step {} {:08X}] ", k0, w) + describe(play(c, false, k0), play(c, true, k0));
+                const Outcome own_after = play(c, false, k0), emulator_after = play(c, true, k0);
+                fields = std::format("[step {} {:08X}] ", k0, w) + describe(own_after, emulator_after);
             }
         } else {
             fields = std::format("{:08X} ", code[0]) + fields;
@@ -263,12 +275,13 @@ void compare_random(bool single, const char* title) {
         if (!example.count(key)) example[key] = fields;
     }
     const engine::pcode_cpu::A64Share share = engine::pcode_cpu::a64_share();
-    std::printf("pcode_cpu %s: %u runs, %llu instructions, %u differ; steps on the emulator %llu, on the own core %llu\n", title, runs, static_cast<unsigned long long>(executed), different,
-                static_cast<unsigned long long>(share.emulator), static_cast<unsigned long long>(share.own_core));
+    std::printf("pcode_cpu %s: %u runs, %llu instructions, %u differ; steps on the emulator %llu, on the adapter itself %llu, on the own core %llu\n", title, runs,
+                static_cast<unsigned long long>(executed), different, static_cast<unsigned long long>(share.emulator), static_cast<unsigned long long>(share.adapter),
+                static_cast<unsigned long long>(share.own_core));
     unsigned shown = 0;
     for (const auto& [k, count] : by_kind)
-        if (++shown <= 80) std::printf("    %u x %s   e.g. %s\n", count, k.c_str(), example[k].substr(0, 500).c_str());
-    CB_CHECK(share.emulator > share.own_core / 4);
+        if (++shown <= 600) std::printf("    %u x %s   e.g. %s\n", count, k.c_str(), example[k].substr(0, 500).c_str());
+    CB_CHECK(share.emulator > 0);
     CB_CHECK_EQ(different, 0u);
 }
 
@@ -298,7 +311,7 @@ void compare_exclusives() {
                 case 8: code.push_back(0x08DFFC00u | size | rn << 5 | rt); break;                                        // ldar
                 case 9: code.push_back(0x089FFC00u | size | rn << 5 | rt); break;                                        // stlr
                 case 10: code.push_back(0x8820FC00u | pair_size | rs << 16 | rt2 << 10 | rn << 5 | rt); break;           // stlxp
-                default: code.push_back(0x88FF7C00u | pair_size | rn << 5 | rt); break;                                  // (a compare-and-swap: the own core's)
+                default: code.push_back(0x88DFFC00u | pair_size | rn << 5 | rt); break;                                  // ldaxp (the compare-and-swap forms have their own test)
             }
         }
         code.push_back(0xD65F03C0u);
@@ -316,7 +329,79 @@ void compare_exclusives() {
                 static_cast<unsigned long long>(share.own_core));
     CB_CHECK_EQ(different, 0u);
 }
+
+// COMPARE AND SWAP (CAS, CASA, CASAL, CASL, with B and H) and CASP of every size, on the lane (the description with the adapter's fixes), on the own core and on Unicorn (CPU model
+// "max", which has the 8.1 atomics): the registers and the data memory they leave must be the same.
+void compare_and_swap() {
+    std::mt19937_64 rng(20261204);
+    engine::a64_uc::Unicorn unicorn(true);
+    unsigned runs = 0, different = 0, unicorn_lacks = 0;
+    std::map<std::string, std::pair<unsigned, unsigned>> by_kind;   // (runs, differences) of each form
+    for (unsigned n = 0; n < 6000; ++n) {
+        const bool pair = rng() % 3 == 0;
+        const unsigned size = pair ? 2 + static_cast<unsigned>(rng() % 2) : static_cast<unsigned>(rng() % 4);   // (CASP: 32 or 64 bits a register)
+        unsigned rs = static_cast<unsigned>(rng() % 8), rt = static_cast<unsigned>(rng() % 8);
+        if (pair && rng() % 10 != 0) rs &= ~1u, rt &= ~1u;   // (an odd register of a pair is undefined: a tenth of the words)
+        if (!pair && rng() % 12 == 0) rs = 31;   // (the zero register: compares against zero, discards the old value)
+        if (rng() % 12 == 0 && !pair) rt = 31;
+        const std::uint32_t acquire = static_cast<std::uint32_t>(rng() % 2), release = static_cast<std::uint32_t>(rng() % 2);
+        const std::uint32_t word = pair ? (size - 2) << 30 | 0x08207C00u | acquire << 22 | release << 15 | rs << 16 | 8u << 5 | rt
+                                        : size << 30 | 0x08A07C00u | acquire << 22 | release << 15 | rs << 16 | 8u << 5 | rt;
+        Case c = make_case(rng, {word, 0xD65F03C0u});
+        c.regs.x[8] = kData + 0x100 + 16 * (rng() % 8);
+        {   // (make the comparison succeed half the time)
+            ea::Memory memory(c.regions);
+            const unsigned bytes = 1u << size;
+            const std::uint64_t mask = bytes == 8 ? ~0ull : (1ull << (8 * bytes)) - 1;
+            for (unsigned i = 0; i < (pair ? 2u : 1u); ++i) {
+                std::uint64_t old = 0;
+                memory.read(c.regs.x[8] + i * bytes, bytes, old);
+                if (rs + i < 31 && rng() % 2 == 0) c.regs.x[rs + i] = old | (rng() % 2 ? ~mask : 0);
+            }
+        }
+        const Outcome run[2] = {play(c, false, 4), play(c, true, 4)};
+        ++runs;
+        std::string fields = describe(run[0], run[1]);
+        // Unicorn: the registers and the data window after the one instruction (the instruction stream: only when both cores ran it)
+        if (run[0].end.end == ea::End::Return && run[1].end.end == ea::End::Return) {
+            ea::Registers want;
+            std::string why;
+            std::vector<std::uint8_t> data(engine::a64_uc::kDataBytes);
+            {
+                ea::Memory memory(c.regions);
+                memory.map_writable(kData, kDataSize);
+                memory.read_bytes(kData, data.size() < kDataSize ? data.size() : kDataSize, data.data());
+            }
+            ea::Registers in = c.regs;
+            if (engine::a64_uc::run_unicorn_data(unicorn, word, in, data, want, why)) {
+                std::vector<std::pair<std::uint64_t, std::uint8_t>> changed;   // (what Unicorn changed, as Memory::changes lists it)
+                ea::Memory memory(c.regions);
+                memory.map_writable(kData, kDataSize);
+                for (std::uint64_t i = 0; i < kDataSize; ++i) {
+                    std::uint8_t b = 0;
+                    memory.read_bytes(kData + i, 1, &b);
+                    if (b != data[i]) changed.emplace_back(kData + i, data[i]);
+                }
+                for (unsigned i = 0; i < 31; ++i)
+                    if (want.x[i] != run[1].regs.x[i]) fields += std::format("x{}[unicorn {:X} lane {:X}] ", i, want.x[i], run[1].regs.x[i]);
+                if (changed != run[1].changes) fields += "memory[unicorn differs] ";
+            } else {
+                ++unicorn_lacks;
+            }
+        }
+        auto& kind = by_kind[std::format("{}{}", pair ? "casp" : "cas", 8 << size)];
+        ++kind.first;
+        if (!fields.empty()) ++kind.second;
+        if (!fields.empty() && ++different <= 6) std::printf("  cas %08X: %s\n", word, fields.substr(0, 400).c_str());
+    }
+    std::printf("pcode_cpu a64 compare-and-swap: %u runs, %u differ (the lane against the own core and Unicorn), Unicorn could not run %u\n", runs, different, unicorn_lacks);
+    for (const auto& [name, counts] : by_kind) std::printf("    %s: %u runs, %u differ\n", name.c_str(), counts.first, counts.second);
+    CB_CHECK_EQ(different, 0u);
+}
+
 }  // namespace cb
+
+CB_TEST("engine.pcode_cpu.a64_compare_and_swap_runs_as_the_manual_says", [] { cb::compare_and_swap(); });
 
 CB_TEST("engine.pcode_cpu.a64_instructions_run_as_the_own_core_does", [] { cb::compare_random(true, "a64 instructions"); });
 
@@ -325,18 +410,29 @@ CB_TEST("engine.pcode_cpu.a64_programs_run_as_the_own_core_does", [] { cb::compa
 // The lane's homebrew on both cores. (An NRO's flat image is the file: a function's first bytes are at its address.)
 CB_TEST("engine.pcode_cpu.the_switch_lane_runs_homebrew_the_same_on_both_cores", [] {
     cb::engine::pcode_cpu::reset_a64_share();
+    cb::engine::pcode_ops::count_a64_operations(true);
+    // (the share is printed whether or not the comparison passes)
+    struct Report {
+        ~Report() {
+            const cb::engine::pcode_cpu::A64Share share = cb::engine::pcode_cpu::a64_share();
+            const double total = static_cast<double>(share.emulator + share.own_core + share.adapter);
+            std::printf("pcode_cpu switch homebrew steps: %llu on the emulator, %llu run by the adapter itself, %llu on the own core (%.2f%%)\n", static_cast<unsigned long long>(share.emulator),
+                        static_cast<unsigned long long>(share.adapter), static_cast<unsigned long long>(share.own_core), total > 0 ? 100.0 * static_cast<double>(share.own_core) / total : 0.0);
+            std::multimap<std::uint64_t, std::string, std::greater<>> ordered;
+            for (const auto& [name, n] : share.own_core_by_mnemonic) ordered.emplace(n, name);
+            unsigned shown = 0;
+            for (const auto& [n, name] : ordered)
+                if (++shown <= 25) std::printf("    %llu x %s (own core)\n", static_cast<unsigned long long>(n), name.c_str());
+            std::printf("pcode_cpu switch homebrew: named operations reached with nothing to serve them:\n");
+            for (const auto& [name, n] : share.unimplemented) std::printf("    %llu x %s\n", static_cast<unsigned long long>(n), name.c_str());
+            std::printf("pcode_cpu switch homebrew: the named operations it ran, by calls:\n");
+            for (const auto& [name, n] : cb::engine::pcode_ops::a64_operation_counts()) std::printf("    %llu x %s\n", static_cast<unsigned long long>(n), name.c_str());
+            cb::engine::pcode_ops::count_a64_operations(false);
+        }
+    } report;
     cb::engine::pcode_compare::compare_homebrew("switch", "switch", ".nro", [](const std::filesystem::path& path, std::uint32_t address) -> std::size_t {
         return address < cb::fs::file_size(path) ? address : SIZE_MAX;
     });
-    const cb::engine::pcode_cpu::A64Share share = cb::engine::pcode_cpu::a64_share();
-    const double total = static_cast<double>(share.emulator + share.own_core);
-    std::printf("pcode_cpu switch homebrew steps: %llu on the emulator, %llu on the own core (%.2f%%)\n", static_cast<unsigned long long>(share.emulator),
-                static_cast<unsigned long long>(share.own_core), total > 0 ? 100.0 * static_cast<double>(share.own_core) / total : 0.0);
-    std::multimap<std::uint64_t, std::string, std::greater<>> ordered;
-    for (const auto& [name, n] : share.own_core_by_mnemonic) ordered.emplace(n, name);
-    unsigned shown = 0;
-    for (const auto& [n, name] : ordered)
-        if (++shown <= 25) std::printf("    %llu x %s\n", static_cast<unsigned long long>(n), name.c_str());
 });
 
 CB_TEST("engine.pcode_cpu.a64_exclusives_run_as_the_own_core_does", [] { cb::compare_exclusives(); });

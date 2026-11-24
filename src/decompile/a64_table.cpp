@@ -393,6 +393,17 @@ void add_memory_rows(Builder& b) {
             b.add("ldxp", Op::LdStExcl, head + "0 1 1 11111 0 aaaaa nnnnn ttttt", r2 + ",MX");
             b.add("ldaxp", Op::LdStExcl, head + "0 1 1 11111 1 aaaaa nnnnn ttttt", r2 + ",MX");
         }
+        // compare and swap (the 8.1 atomics): CAS{A}{L}{B,H} Rs, Rt, [Xn] and CASP{A}{L} Rs, Rs+1, Rt, Rt+1, [Xn]
+        const std::string rs = size == 3 ? "Xs" : "Ws";
+        const std::pair<const char*, const char*> orderings[] = {{"cas", "00"}, {"casa", "10"}, {"casl", "01"}, {"casal", "11"}};
+        for (const auto& [name, order] : orderings) {   // (L is the acquire bit, o0 the release bit)
+            const std::string pattern = head + "1 " + order[0] + " 1 sssss " + order[1] + " 11111 nnnnn ttttt";
+            b.add(name + suffix, Op::LdStAtomic, pattern, rs + "," + r + ",MX");
+            if (size >= 2) {
+                const std::string pair_head = std::string("0") + (size == 3 ? "1" : "0") + " 001000 0 " + order[0] + " 1 sssss " + order[1] + " 11111 nnnnn ttttt";
+                b.add("casp" + std::string(name + 3), Op::LdStAtomic, pair_head, rs + "," + r + ",MX");
+            }
+        }
     }
 }
 

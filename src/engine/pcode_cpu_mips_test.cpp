@@ -17,6 +17,7 @@
 #include "formats/psx.hpp"
 #include "engine/lane_kit.hpp"
 #include "engine/pcode_cpu.hpp"
+#include "engine/pcode_ops_mips.hpp"
 #include "verify/lanes/image_lane.hpp"
 
 using namespace cb;
@@ -240,4 +241,41 @@ CB_TEST("engine.pcode_cpu.the_ps1_lane_runs_homebrew_the_same_on_both_cores", []
     std::printf("  edited programs judged %u: own core equivalent %u divergent %u, emulator equivalent %u divergent %u, verdicts disagreeing %u\n", judged, verdicts[0][0], verdicts[0][1], verdicts[1][0], verdicts[1][1], disagree);
     CB_CHECK_EQ(differ, 0u);
     CB_CHECK_EQ(disagree, 0u);
+});
+
+// The adapter's own GTE (engine/pcode_ops_mips.cpp) against the lane's core on random registers: every data and control register read after a write, and each command the core has
+// code for, from random register files and command words (shift, saturation and matrix selects). 0 differences.
+CB_TEST("engine.pcode_cpu.the_adapters_gte_does_what_the_lane_core_does", [] {
+    std::mt19937 rng(20261123);
+    mp::Bus bus;
+    unsigned compared = 0, different = 0;
+    for (unsigned n = 0; n < 4000; ++n) {
+        mp::Cpu cpu(bus);
+        engine::pcode_ops_mips::Gte gte;
+        for (unsigned i = 0; i < 32; ++i) {
+            const std::uint32_t v = static_cast<std::uint32_t>(rng()) >> (rng() % 4 == 0 ? 16 : 0);
+            cpu.gte_data[i] = v;
+            gte.data[i] = v;
+            const std::uint32_t c = static_cast<std::uint32_t>(rng()) >> (rng() % 3 == 0 ? 16 : 0);
+            cpu.gte_control[i] = c;
+            gte.control[i] = c;
+        }
+        for (unsigned i = 0; i < 32; ++i) {   // (a write, then every register read)
+            const std::uint32_t v = static_cast<std::uint32_t>(rng());
+            mp::gte_set_register(cpu, i, v);
+            engine::pcode_ops_mips::gte_set_register(gte, i, v);
+        }
+        for (unsigned i = 0; i < 32; ++i) {
+            ++compared;
+            if (mp::gte_register(cpu, i) != engine::pcode_ops_mips::gte_register(gte, i) || mp::gte_control_register(cpu, i) != engine::pcode_ops_mips::gte_control_register(gte, i)) ++different;
+        }
+        static const char* const kCommands[] = {"nclip", "avsz3", "avsz4", "sqr", "op", "gpf", "gpl", "mvmva", "rtps", "ncds"};
+        const char* name = kCommands[rng() % std::size(kCommands)];
+        const std::uint32_t command = static_cast<std::uint32_t>(rng()) & 0x1FFFFFF;
+        const bool a = mp::gte_run_command(cpu, command, name), b = engine::pcode_ops_mips::gte_run_command(gte, command, name);
+        ++compared;
+        if (a != b || cpu.gte_data != gte.data || cpu.gte_control != gte.control) ++different;
+    }
+    std::printf("pcode_cpu gte: %u comparisons, %u differ\n", compared, different);
+    CB_CHECK_EQ(different, 0u);
 });

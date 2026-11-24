@@ -8,6 +8,7 @@
 #include "core/error.hpp"
 #include "core/text.hpp"
 #include "emulate/shadow.hpp"
+#include "engine/pcode_cpu_ppc.hpp"
 
 namespace cb::verify::lanes {
 namespace {
@@ -105,7 +106,7 @@ guided::Observation observation_of(const epp::RunResult& r) {
 // One run of the original on `v` with its branches logged, or nothing when it could not be run at all (one run of many: the others go on).
 std::optional<epp::RunResult> observed_run(const Lane::Context& context, std::uint32_t va, Span span, const Vector& v, epp::Shadow* shadow) {
     try {
-        return epp::run(regions_of(v), va, arguments_of(v), options_of(v, &context.ext_original, span, context.memory.alone, true, context.memory.images[0], shadow));
+        return engine::pcode_cpu::call(engine::pcode_ops_ppc::Flavor::Xenon, regions_of(v), va, arguments_of(v), options_of(v, &context.ext_original, span, context.memory.alone, true, context.memory.images[0], shadow));
     } catch (const Error&) {
         return std::nullopt;
     }
@@ -322,7 +323,7 @@ compare::Fingerprint PowerPcLane::fingerprint(const epp::PageImage& shared, std:
                                               const std::optional<Span>& span, bool novalue) {
     epp::RunResult r;
     try {
-        r = epp::run(regions_of(v), entry, arguments_of(v), options_of(v, &externs, span, shared, false, images.front()));
+        r = engine::pcode_cpu::call(engine::pcode_ops_ppc::Flavor::Xenon, regions_of(v), entry, arguments_of(v), options_of(v, &externs, span, shared, false, images.front()));
     } catch (const Error& e) {   // (this input is not an observation: the comparer goes on to the next)
         compare::Fingerprint fp;
         fp.err = e.what();

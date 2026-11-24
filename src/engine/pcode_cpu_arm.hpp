@@ -1,5 +1,5 @@
 // engine/pcode_cpu_arm.hpp -- what the ARM adapter (engine/pcode_cpu_arm.cpp) hands to the own core (emulate/arm), counted: for a test or a report to say how much of what
-// runs does not run on the one emulator. The run and call themselves are declared in engine/pcode_cpu.hpp.
+// runs does not run on the one emulator. Nothing is handed now; the counts stay so that a test says so (and the refused runs are still listed). The run and call themselves are declared in engine/pcode_cpu.hpp.
 #pragma once
 
 #include <cstdint>

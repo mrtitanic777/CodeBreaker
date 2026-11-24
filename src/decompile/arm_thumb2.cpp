@@ -42,12 +42,13 @@ std::string target_name(std::uint32_t target, const AddressLabels& labels) {
 // Capstone's text of the 32-bit instruction at `pc`.
 std::string capstone_text(const Insn& insn) {
     namespace cs = cb::disasm::capstone;
-    thread_local csh handle = 0;
+    thread_local csh handle = 0, arm_handle = 0;
     try {
         const cs::Api& api = cs::api();
         if (handle == 0) cs::check(api.cs_open(CS_ARCH_ARM, static_cast<cs_mode>(CS_MODE_THUMB), &handle), "cs_open");
+        if (!insn.thumb() && arm_handle == 0) cs::check(api.cs_open(CS_ARCH_ARM, static_cast<cs_mode>(CS_MODE_ARM), &arm_handle), "cs_open");
         cs_insn* out = nullptr;
-        const std::size_t count = api.cs_disasm(handle, insn.raw.data(), insn.length, insn.pc, 1, &out);
+        const std::size_t count = api.cs_disasm(insn.thumb() ? handle : arm_handle, insn.raw.data(), insn.length, insn.pc, 1, &out);
         std::string text;
         if (count == 1) {
             text = out[0].mnemonic;
@@ -157,10 +158,15 @@ std::optional<Insn> decode(std::uint16_t a, std::uint16_t b, std::uint32_t pc_ta
         const std::uint32_t w = static_cast<std::uint32_t>(a) << 16 | b;
         const int row = ext::find_arm(w, arch);
         if (row >= 0) {
-            i.ext = static_cast<std::int16_t>(row);
-            return i;
+            const std::string_view name = ext::mnemonic(row);
+            const bool on_pc = (name.starts_with("vldm") || name.starts_with("vstm")) && ((w >> 16) & 15) == 15;   // (a block transfer on the pc is UNPREDICTABLE in Thumb)
+            if (!on_pc) {
+                i.ext = static_cast<std::int16_t>(row);
+                return i;
+            }
         }
     }
+    if (std::optional<Insn> more = decode_more(a, b, pc_tagged)) return more;
     i.ext = kOpaque;
     return i;
 }
@@ -179,7 +185,7 @@ std::string text(const Insn& i, const AddressLabels& labels) {
     if (row >= kExtend && row < kExtend + static_cast<int>(std::size(kExtends)))
         return std::format("{} {}, {}", kExtends[row - kExtend].name, register_name(i.rd), register_name(i.rm));
     if (row >= 0 && row < 1000) {
-        const std::uint32_t w = (i.word << 16) | (i.word >> 16);
+        const std::uint32_t w = i.imm != 0 ? i.imm : (i.word << 16) | (i.word >> 16);   // (an ARMv6 instruction of the Thumb tables: the ARM word it means is in imm)
         return ext::text(row, w, i.pc, labels);
     }
     return capstone_text(i);

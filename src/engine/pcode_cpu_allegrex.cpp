@@ -1,6 +1,6 @@
 // cb-unity: alone (file-local names that other files in a batch also use)
 // engine/pcode_cpu_allegrex.cpp -- the PSP lane's Allegrex on the one p-code emulator: emulate::allegrex::run's call, on languages/mips32le.sla and the shared run of
-// pcode_cpu_mipsle.cpp. What the run does is the own core's start (the registers a function is called with) and end (the result's fields).
+// pcode_cpu_mipsle.cpp. What the run does is the lane's own start (the registers a function is called with) and end (the result's fields).
 #include "engine/pcode_cpu_allegrex.hpp"
 
 #include "engine/pcode_cpu_mipsle.hpp"

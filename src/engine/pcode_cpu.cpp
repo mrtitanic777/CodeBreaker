@@ -16,6 +16,7 @@
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "decompile/engine/pcode_emulator.hh"
+#include "decompile/m6502.hpp"
 
 namespace cb::engine::pcode_cpu {
 
@@ -79,21 +80,52 @@ m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options)
     emu.flushDecoded();
     emu.clearStops();
 
+    // Code fetched from a device range: the own core reads every byte of the instruction through the bus (the device answers, the read is logged, and what the device
+    // answers is what runs). The page map the emulator decodes from shows such a range as an opcode the description has no instruction for, so the run stops before
+    // an instruction there and the adapter makes the instruction as the own core does (device_step below).
+    const std::vector<std::pair<std::uint16_t, std::uint16_t>> logged = bus.logged_reads();
+    std::uint8_t poison = 0;
+    bool poisoned = false;
+    if (!logged.empty() && options.variant == m::Variant::Nmos) {   // (the CMOS description may run what its table calls undocumented)
+        const auto& table = decompile::m6502::opcode_table(options.variant);
+        for (unsigned op = 0; op < 256 && !poisoned; ++op)
+            if (!table[op]) {
+                poison = static_cast<std::uint8_t>(op);
+                poisoned = true;
+            }
+    }
+    const auto is_logged = [&](std::uint32_t index) {
+        for (const auto& [lo, hi] : logged)
+            if (index >= lo && index <= hi) return true;
+        return false;
+    };
     const auto put = [&](std::uint32_t index, std::uint8_t value) {   // one byte of the page map, to every mirror
         shadow[index] = value;
+        const std::uint8_t shown = poisoned && is_logged(index) ? poison : value;
         for (std::uint32_t base = 0; base < 0x10000; base += window)
-            if (base + index < 0x10000) emu.write(base + index, &value, 1);
+            if (base + index < 0x10000) emu.write(base + index, &shown, 1);
+    };
+    if (poisoned)
+        for (const auto& [lo, hi] : logged)
+            for (std::uint32_t a = lo; a <= hi && a < window; ++a) put(a, shadow[a]);
+    const sl::Emulator::RegRef sh_ref = emu.regRef("SH");
+    // The stack as the chip keeps it: S wraps within page 1. The description's pointer is 16 bits, so a push that goes below page 1 (S=0, a JSR's second byte) or a pull that
+    // goes above it (S=$FF) would touch page 0 or 2; the pointer's high byte is 0 or 2 then, and no other instruction runs with it so (it is set back to 1 after each one).
+    const auto stack_address = [&](std::uint16_t at, bool write) -> std::uint16_t {
+        const std::uint64_t high = emu.reg(sh_ref);
+        if (write ? (high == 0 && (at >> 8) == 0) : (high == 2 && (at >> 8) == 2)) return static_cast<std::uint16_t>(write ? at + 0x100 : at - 0x100);
+        return at;
     };
     emu.onRead([&](std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t& value) {
         if (!is_ram(space)) return false;
         value = 0;
-        for (unsigned i = 0; i < size; ++i) value |= static_cast<std::uint64_t>(bus.read(static_cast<std::uint16_t>(addr + i))) << (8 * i);
+        for (unsigned i = 0; i < size; ++i) value |= static_cast<std::uint64_t>(bus.read(stack_address(static_cast<std::uint16_t>(addr + i), false))) << (8 * i);
         return true;
     });
     emu.onWrite([&](std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t value) {
         if (!is_ram(space)) return false;
         for (unsigned i = 0; i < size; ++i) {
-            const std::uint16_t at = static_cast<std::uint16_t>(addr + i);
+            const std::uint16_t at = stack_address(static_cast<std::uint16_t>(addr + i), true);
             bus.write(at, static_cast<std::uint8_t>(value >> (8 * i)));
             const std::uint32_t index = at & bus.address_mask();
             if (const std::uint8_t now = bus.peek(at); now != shadow[index]) put(index, now);   // (a store into RAM that code runs from)
@@ -154,6 +186,37 @@ m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options)
         steps += ran.executed;
         if (ran.status == sl::Emulator::Status::BadInstruction || ran.status == sl::Emulator::Status::Error) {
             const std::uint16_t pc = static_cast<std::uint16_t>(emu.pc());
+            if (poisoned && is_logged(pc & bus.address_mask())) {   // (an instruction fetched from a device range)
+                const auto& table = decompile::m6502::opcode_table(options.variant);
+                const std::uint8_t opcode = bus.read(pc);
+                if (!table[opcode]) {
+                    out.end = m::End::Stopped;
+                    out.fault = m::Fault{opcode, pc};
+                    break;
+                }
+                const unsigned size = decompile::m6502::instruction_size(table[opcode]->mode);
+                std::uint8_t bytes[3] = {opcode, 0, 0};
+                for (unsigned i = 1; i < size; ++i) bytes[i] = bus.read(static_cast<std::uint16_t>(pc + i));
+                emu.write(pc, bytes, size);
+                const sl::Emulator::Status status = emu.step();
+                for (unsigned i = 0; i < size; ++i) {   // (the page map as it was)
+                    const std::uint32_t index = static_cast<std::uint16_t>(pc + i) & bus.address_mask();
+                    const std::uint8_t shown = is_logged(index) ? poison : shadow[index];
+                    emu.write(static_cast<std::uint16_t>(pc + i), &shown, 1);
+                }
+                emu.setReg(sh_ref, 1);
+                if (status != sl::Emulator::Status::Ok) {
+                    out.end = m::End::Stopped;
+                    out.fault = m::Fault{opcode, pc};
+                    break;
+                }
+                ++steps;
+                if (bus.log().size() != seen) {
+                    sync();
+                    seen = bus.log().size();
+                }
+                continue;
+            }
             out.end = m::End::Stopped;
             out.fault = m::Fault{static_cast<std::uint8_t>(emu.readValue(pc, 1)), pc};
             break;
