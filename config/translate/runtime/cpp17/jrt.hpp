@@ -2018,8 +2018,16 @@ inline std::u16string format_args(const std::u16string& f, const std::vector<Fmt
 	}
 	return out;
 }
+template <class T> void fmt_one(std::vector<FmtArg>& out, const T& x) { out.push_back(fa(x)); }
+// an array of objects given alone is the arguments themselves, as Java's varargs take it
+template <class T> void fmt_one(std::vector<FmtArg>& out, const ref<Array<ref<T>>>& all) {
+	if (!all) return;
+	for (auto& x : all->a) out.push_back(fa(O(x)));
+}
 template <class... A> ref<String> String::format(const ref<String>& f, A... a) {
-	std::vector<FmtArg> args{fa(a)...};
+	std::vector<FmtArg> args;
+	if constexpr (sizeof...(A) == 1) (fmt_one(args, a), ...);
+	else args = {fa(a)...};
 	return str(format_args(nn(f)->s, args));
 }
 
