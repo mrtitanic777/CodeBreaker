@@ -69,7 +69,7 @@ struct SettingsLayout {
     Rect advanced_row;
 };
 inline constexpr float kSettingRowHeight = 60;
-inline constexpr float kSettingsMaxWidth = 760;
+inline constexpr float kSettingsMaxWidth = 1100;   // the rows fill the card (the scroll bar at its edge); only a very wide window stops them
 SettingsLayout compute_settings_layout(const Layout& shell, const Model& model);
 
 // A part of a page under a point: a control and which one (tool row, field).

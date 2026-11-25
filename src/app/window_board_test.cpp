@@ -408,6 +408,17 @@ CB_TEST("app.window_board.orphans_decks_and_the_batch_follow_what_is_shown", [] 
     CB_CHECK_EQ(m.board_decks.size(), builtin);
 });
 
+CB_TEST("app.window_board.with_no_signal_kinds_group_copies_shares_the_automation_row", [] {
+    Model m = wb_signals();
+    const BoardLayout with = compute_board_layout(wb_shell(m), m);
+    m.board_signals = nullptr;   // nothing found yet: no row of signal kinds
+    const BoardLayout b = compute_board_layout(wb_shell(m), m);
+    CB_CHECK(std::abs(b.group_copies.y - b.orphans_button.y) < 0.5f && b.group_copies.right() < b.orphans_button.x);
+    CB_CHECK(b.filter_row.right() <= b.group_copies.x);
+    CB_CHECK(b.tableau.y < with.tableau.y);   // the row it had alone goes to the cards
+    CB_CHECK(hit_test_board(b, m, b.group_copies.x + 2, b.group_copies.y + 2).control == Control::BoardGroupCopies);
+});
+
 CB_TEST("app.window_board.the_automation_buttons_are_hit_and_leave_the_filters_room", [] {
     Model m = wb_signals();
     board_load_decks(m);

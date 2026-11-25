@@ -60,25 +60,30 @@ BoardLayout compute_board_layout(const Layout& shell, const Model& model) {
             b.c_history = {b.c_leaders.x - 6 - 72, b.c_summary.y + 3, 72, 18};
             top += kCSummaryH + 6;
         }
-        b.group_copies = {right - kGroupW, top, kGroupW, kPillH};
-        if (model.board_signals) {
+        if (model.board_signals) {   // the signal kinds, with Group copies at the row's end
+            b.group_copies = {right - kGroupW, top, kGroupW, kPillH};
             const float room = b.group_copies.x - 8 - (b.card.x + kPad);
             const float width = std::min(92.0f, (room + 4) / static_cast<float>(board::kSignalTypes));
             for (std::size_t i = 0; i < b.signal_pills.size(); ++i)
                 b.signal_pills[i] = {b.card.x + kPad + static_cast<float>(i) * width, top, width - 4, kPillH};
+            top += kPillH + 6;
         }
-        top += kPillH + 6;
         b.batch_button = {right - 126, top, 126, kPillH};
         b.export_button = {b.batch_button.x - 6 - 66, top, 66, kPillH};
         b.decks_button = {b.export_button.x - 6 - 66, top, 66, kPillH};
         b.orphans_button = {b.decks_button.x - 6 - 92, top, 92, kPillH};
+        float row_end = b.orphans_button.x;   // (no signal kinds: Group copies leads this row, not a row of its own)
+        if (!model.board_signals) {
+            b.group_copies = {b.orphans_button.x - 6 - kGroupW, top, kGroupW, kPillH};
+            row_end = b.group_copies.x;
+        }
         float filters_x = b.card.x + kPad;
         if (model.board_scores) {
-            const float width = std::min(kCPillW, std::max(0.0f, b.orphans_button.x - 8 - filters_x + 4) / static_cast<float>(board::kCViews));
+            const float width = std::min(kCPillW, std::max(0.0f, row_end - 8 - filters_x + 4) / static_cast<float>(board::kCViews));
             for (std::size_t i = 0; i < b.c_pills.size(); ++i) b.c_pills[i] = {filters_x + static_cast<float>(i) * width, top, width - 4, kPillH};
             filters_x += static_cast<float>(b.c_pills.size()) * width + 4;
         }
-        b.filter_row = {filters_x, top, std::max(0.0f, b.orphans_button.x - 8 - filters_x), kPillH};
+        b.filter_row = {filters_x, top, std::max(0.0f, row_end - 8 - filters_x), kPillH};
         top += kPillH + 6;
     }
     float bottom = b.card.bottom() - 12;
