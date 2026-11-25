@@ -162,9 +162,10 @@ void chunk(std::vector<unsigned char>& o, const char* type, const std::vector<un
 }
 
 // PNG, RGBA 8-bit, stored (uncompressed) deflate blocks -- a valid file every decoder reads
-bool write(BufferedImage* img, const std::string& format, File* f) {
-	if (!img || !f || img->w <= 0 || img->h <= 0) return false;
-	(void)format;
+// The image as PNG bytes (empty when it has no pixels or cannot be packed).
+static std::vector<unsigned char> encodePng(BufferedImage* img) {
+	std::vector<unsigned char> out;
+	if (!img || img->w <= 0 || img->h <= 0) return out;
 	std::vector<unsigned char> raw;
 	raw.reserve((size_t)(img->w * 4 + 1) * img->h);
 	for (int y = 0; y < img->h; ++y) {
@@ -179,9 +180,8 @@ bool write(BufferedImage* img, const std::string& format, File* f) {
 	}
 	std::vector<unsigned char> z(raw.size() + 5 * (raw.size() / 65535 + 1) + 16);
 	int zn = zlibDeflateStored(&raw[0], (int)raw.size(), &z[0], (int)z.size());
-	if (zn < 0) return false;
+	if (zn < 0) return std::vector<unsigned char>();
 	z.resize((size_t)zn);
-	std::vector<unsigned char> out;
 	static const unsigned char sig[8] = {137, 80, 78, 71, 13, 10, 26, 10};
 	out.insert(out.end(), sig, sig + 8);
 	std::vector<unsigned char> ihdr;
@@ -190,11 +190,28 @@ bool write(BufferedImage* img, const std::string& format, File* f) {
 	chunk(out, "IHDR", ihdr);
 	chunk(out, "IDAT", z);
 	chunk(out, "IEND", std::vector<unsigned char>());
+	return out;
+}
+
+bool write(BufferedImage* img, const std::string& format, File* f) {
+	(void)format;
+	if (!f) return false;
+	const std::vector<unsigned char> out = encodePng(img);
+	if (out.empty()) return false;
 	FILE* fp = std::fopen(f->path.c_str(), "wb");
 	if (!fp) return false;
 	bool ok = std::fwrite(&out[0], 1, out.size(), fp) == out.size();
 	std::fclose(fp);
 	return ok;
+}
+
+bool write(BufferedImage* img, const std::string& format, OutputStream* os) {
+	(void)format;
+	if (!os) return false;
+	const std::vector<unsigned char> out = encodePng(img);
+	if (out.empty()) return false;
+	os->write(&out[0], (int)out.size());
+	return true;
 }
 
 } // namespace ImageIO

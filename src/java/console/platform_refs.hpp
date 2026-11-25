@@ -85,6 +85,9 @@ std::string runnable_ctor_args(const ir::JClass& cls);
 // The 360 entry point for a Runnable game shell with no static main (Indev): run ordered static init, construct the
 // shell (NULL AWT args + display size), then call its Runnable run() -- the same thing the Java applet's thread does.
 std::string generate_runnable_entry_point(const ir::JClass& cls);
+// The PC entry for such a shell: ordered static init, the shell made with NULL AWT args and the window's size (854x480
+// unless Common.h defines SCREEN_WIDTH/HEIGHT), run(), then the wait for its non-daemon threads (as generate_pc_entry_point).
+std::string generate_pc_runnable_entry_point(const ir::JClass& cls);
 
 // Classify every reference so NONE can silently fail to integrate (the GLU flat-world bug: a GLU.reference.cpp existed
 // but its GLU.reference.h did NOT, so emit_references -- which keys off .h -- never emitted it and the game kept the

@@ -320,7 +320,7 @@ endif()
 
 # (zlib for the jar and PNG readers of java/console is the cb_zlib above)
 cb_area(java)
-target_link_libraries(cb_java PUBLIC cb_core cb_base cb_translate cb_decompile PRIVATE cb_zlib)   # (cb_base: the configuration the tools are made from; cb_decompile: the Minecraft decompiler of `java decompile` -- static libraries may be cyclic)
+target_link_libraries(cb_java PUBLIC cb_core cb_base cb_translate cb_decompile cb_formats PRIVATE cb_zlib)   # (cb_base: the configuration the tools are made from; cb_decompile: the Minecraft decompiler of `java decompile`; cb_formats: the imports of a built PC program, whose runtime DLLs are copied beside it -- static libraries may be cyclic)
 
 
 # The decompiler engine (decompile/engine): cb_decompiler, and decompiler.exe and pcodecheck.exe, which cb::decompile and

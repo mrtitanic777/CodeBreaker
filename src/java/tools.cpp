@@ -30,6 +30,7 @@
 #include "java/ledger.hpp"
 #include "java/paths.hpp"
 #include "java/port.hpp"
+#include "formats/pe.hpp"
 #include "java/probe.hpp"
 #include "java/production.hpp"
 #include "java/projects/minecraft/achievements.hpp"
@@ -882,51 +883,15 @@ int port_tool(const ContextP& ctx, const cli::Args& a) {
         }
     } else {
         begin("Building with CMake");
-        const stdfs::path build_dir = p.project / "build";
-        bool have_cmake = want_build;
-        try {
-            if (want_build) have_cmake = process::run({.argv = {"cmake", "--version"}}).exit_code == 0;
-        } catch (const std::exception&) {
-            have_cmake = false;
-        }
         if (!want_build) {
             jt_out("  skipped: --no-build (the CMakeLists.txt is written; build it with any CMake)");
-        } else if (!have_cmake) {
-            jt_out("  skipped: CMake is not installed (the CMakeLists.txt is written; build it with any CMake)");
         } else {
             cb::flush_out();
-            process::ProcessResult r = process::run({.argv = {"cmake", "-S", jt_native(p.project), "-B", jt_native(build_dir)},
-                                                    .out = process::Capture::Inherit, .err = process::Capture::Inherit});
-            stdfs::path built_dir = build_dir;
-            process::ProcessSpec build{.argv = {"cmake", "--build", jt_native(build_dir), "--config", "Release"}, .out = process::Capture::Inherit, .err = process::Capture::Inherit};
-            // The SDL2 CMake found is MinGW's (a MinGW-w64 prefix: msys2's mingw64, ...) while the generator is another compiler's: its headers and
-            // libraries are not that compiler's (MSVC stops at MinGW's winnt.h). The build is then made with that prefix's own gcc and make.
-            if (r.exit_code == 0) {
-                if (const std::optional<stdfs::path> mingw = port_mingw_prefix(build_dir)) {
-                    const stdfs::path bin = *mingw / "bin";
-                    jt_out(std::format("  SDL2 is MinGW's ({}): building with its compiler", jt_native(*mingw)));
-                    built_dir = p.project / "build-mingw";
-                    // (a cache of another generator in it, an earlier build's: CMake refuses to switch; the folder is the port's, made again)
-                    std::error_code ec;
-                    if (stdfs::is_regular_file(built_dir / "CMakeCache.txt", ec) &&
-                        fs::read_text(built_dir / "CMakeCache.txt").find("CMAKE_GENERATOR:INTERNAL=MinGW Makefiles") == std::string::npos) {
-                        stdfs::remove(built_dir / "CMakeCache.txt", ec);
-                        stdfs::remove_all(built_dir / "CMakeFiles", ec);
-                    }
-                    const std::map<std::string, std::string> env{{"PATH", jt_native(bin) + ";" + fs::get_env("PATH").value_or("")}};
-                    cb::flush_out();
-                    r = process::run({.argv = {"cmake", "-S", jt_native(p.project), "-B", jt_native(built_dir), "-G", "MinGW Makefiles",
-                                               "-DCMAKE_C_COMPILER=" + jt_native(bin / "gcc.exe"), "-DCMAKE_CXX_COMPILER=" + jt_native(bin / "g++.exe"),
-                                               "-DCMAKE_MAKE_PROGRAM=" + jt_native(bin / "mingw32-make.exe"), "-DCMAKE_BUILD_TYPE=Release"},
-                                      .env = env,
-                                      .out = process::Capture::Inherit,
-                                      .err = process::Capture::Inherit});
-                    build = {.argv = {"cmake", "--build", jt_native(built_dir), "--parallel"}, .env = env, .out = process::Capture::Inherit, .err = process::Capture::Inherit};
-                }
-            }
-            if (r.exit_code == 0) r = process::run(build);
-            jt_out(r.exit_code == 0 ? std::string("  built") : std::format("  the build FAILED (exit {})", r.exit_code));
-            if (r.exit_code != 0) code = kProblem;
+            const PcBuild b = build_pc_project(p.project, false);
+            if (b.status == PcBuild::Status::NoCMake) jt_out("  skipped: CMake is not installed (the CMakeLists.txt is written; build it with any CMake)");
+            else if (b.status == PcBuild::Status::Built) jt_out("  built" + (b.exe.empty() ? std::string() : ": " + jt_native(b.exe)));
+            else jt_out(std::format("  the build FAILED (exit {})", b.exit_code));
+            if (b.status == PcBuild::Status::Failed) code = kProblem;
         }
     }
     jt_out("100%  Done");
@@ -935,6 +900,130 @@ int port_tool(const ContextP& ctx, const cli::Args& a) {
 }
 
 }  // namespace
+
+namespace {
+
+// The DLLs of `bin` the program needs, followed through their own imports (SDL2.dll, libstdc++-6.dll, libvorbisfile-3.dll -> libvorbis-0.dll ...),
+// copied beside it so it starts outside the MinGW shell. A DLL Windows has in System32 is never copied (msys2 ships its own opengl32.dll, Mesa's
+// software renderer). The names copied, in order.
+std::vector<std::string> pc_copy_runtime(const stdfs::path& exe, const stdfs::path& bin) {
+    std::vector<std::string> copied;
+    std::set<std::string> seen;
+    std::vector<stdfs::path> todo = {exe};
+    std::error_code ec;
+    const stdfs::path system = fs::from_text(fs::get_env("SystemRoot").value_or("C:\\Windows")) / "System32";
+    while (!todo.empty()) {
+        const stdfs::path file = todo.back();
+        todo.pop_back();
+        std::vector<formats::pe::ImportModule> modules;
+        try {
+            modules = formats::pe::Image::open(file).import_table(false);
+        } catch (const std::exception&) {
+            continue;
+        }
+        for (const formats::pe::ImportModule& m : modules) {
+            const std::string low = text::lower(m.module);
+            if (!seen.insert(low).second) continue;
+            const stdfs::path from = bin / m.module;
+            if (!stdfs::is_regular_file(from, ec)) continue;
+            if (stdfs::is_regular_file(system / m.module, ec)) continue;   // (a system DLL msys2 also ships, Mesa's opengl32.dll: Windows' own is used)
+            stdfs::copy_file(from, exe.parent_path() / m.module, stdfs::copy_options::overwrite_existing, ec);
+            if (!ec) copied.push_back(m.module);
+            todo.push_back(from);
+        }
+    }
+    return copied;
+}
+
+}  // namespace
+
+PcBuild build_pc_project(const stdfs::path& project, bool quiet) {
+    PcBuild out;
+    try {
+        if (process::run({.argv = {"cmake", "--version"}}).exit_code != 0) out.status = PcBuild::Status::NoCMake;
+    } catch (const std::exception&) {
+        out.status = PcBuild::Status::NoCMake;
+    }
+    if (out.status == PcBuild::Status::NoCMake) return out;
+    // quiet: what the tools print is kept in <project>/build.log (its last lines are the result's), not shown
+    std::string log;
+    const auto run = [&](process::ProcessSpec spec) {
+        if (quiet) {
+            spec.out = process::Capture::Collect;
+            spec.err = process::Capture::Merge;
+        } else {
+            spec.out = process::Capture::Inherit;
+            spec.err = process::Capture::Inherit;
+        }
+        process::ProcessResult r = process::run(spec);
+        if (quiet) log.append(reinterpret_cast<const char*>(r.out.data()), r.out.size());
+        return r;
+    };
+    const stdfs::path build_dir = project / "build";
+    std::optional<stdfs::path> mingw_bin;
+    process::ProcessResult r = run({.argv = {"cmake", "-S", jt_native(project), "-B", jt_native(build_dir)}});
+    stdfs::path built_dir = build_dir;
+    process::ProcessSpec build{.argv = {"cmake", "--build", jt_native(build_dir), "--config", "Release"}};
+    // The SDL2 CMake found is MinGW's (a MinGW-w64 prefix: msys2's mingw64, ...) while the generator is another compiler's: its headers and
+    // libraries are not that compiler's (MSVC stops at MinGW's winnt.h). The build is then made with that prefix's own gcc and make.
+    if (r.exit_code == 0) {
+        if (const std::optional<stdfs::path> mingw = port_mingw_prefix(build_dir)) {
+            const stdfs::path bin = *mingw / "bin";
+            mingw_bin = bin;
+            if (!quiet) jt_out(std::format("  SDL2 is MinGW's ({}): building with its compiler", jt_native(*mingw)));
+            built_dir = project / "build-mingw";
+            // (a cache of another generator in it, an earlier build's: CMake refuses to switch; the folder is the port's, made again)
+            std::error_code ec;
+            if (stdfs::is_regular_file(built_dir / "CMakeCache.txt", ec) &&
+                fs::read_text(built_dir / "CMakeCache.txt").find("CMAKE_GENERATOR:INTERNAL=MinGW Makefiles") == std::string::npos) {
+                stdfs::remove(built_dir / "CMakeCache.txt", ec);
+                stdfs::remove_all(built_dir / "CMakeFiles", ec);
+            }
+            const std::map<std::string, std::string> env{{"PATH", jt_native(bin) + ";" + fs::get_env("PATH").value_or("")}};
+            if (!quiet) cb::flush_out();
+            r = run({.argv = {"cmake", "-S", jt_native(project), "-B", jt_native(built_dir), "-G", "MinGW Makefiles",
+                              "-DCMAKE_C_COMPILER=" + jt_native(bin / "gcc.exe"), "-DCMAKE_CXX_COMPILER=" + jt_native(bin / "g++.exe"),
+                              "-DCMAKE_MAKE_PROGRAM=" + jt_native(bin / "mingw32-make.exe"), "-DCMAKE_BUILD_TYPE=Release"},
+                     .env = env});
+            build = {.argv = {"cmake", "--build", jt_native(built_dir), "--parallel"}, .env = env};
+        }
+    }
+    if (r.exit_code == 0) r = run(build);
+    out.exit_code = static_cast<int>(r.exit_code);
+    out.status = r.exit_code == 0 ? PcBuild::Status::Built : PcBuild::Status::Failed;
+    if (out.status == PcBuild::Status::Built) {   // the program: the first .exe the build left in its folder (MSVC's under Release/)
+        std::error_code ec;
+        for (const stdfs::path& dir : {built_dir, built_dir / "Release"}) {
+            for (stdfs::directory_iterator it(dir, ec), end; !ec && it != end && out.exe.empty(); it.increment(ec))
+                if (it->is_regular_file(ec) && text::lower(fs::to_text(it->path().extension())) == ".exe") out.exe = it->path();
+            ec.clear();
+            if (!out.exe.empty()) break;
+        }
+        if (!out.exe.empty() && mingw_bin) {
+            const std::vector<std::string> dlls = pc_copy_runtime(out.exe, *mingw_bin);
+            const std::string line = std::format("{} runtime DLL(s) copied beside {}: {}", dlls.size(), jt_native(out.exe.filename()), text::join(dlls, ", "));
+            if (quiet) log += line + "\n";
+            else jt_out("  " + line);
+        }
+    }
+    if (quiet) {
+        out.log = project / "build.log";
+        fs::write_text(out.log, log);
+        // the result's lines: the compiler's first errors, else the last lines
+        const std::vector<std::string_view> lines = text::split(log, '\n');
+        std::string errors;
+        int kept = 0;
+        for (std::size_t i = 0; i < lines.size() && kept < 6; ++i)
+            if (lines[i].find("error") != std::string_view::npos) {
+                errors += std::string(text::trim(lines[i], " \t\r")) + "\n";
+                ++kept;
+            }
+        if (errors.empty())
+            for (std::size_t i = lines.size() > 8 ? lines.size() - 8 : 0; i < lines.size(); ++i) errors += std::string(text::trim(lines[i], " \t\r")) + "\n";
+        out.tail = errors;
+    }
+    return out;
+}
 
 run::Tools make_tools(const Environment& environment) {
     const ContextP ctx = std::make_shared<Context>(environment);

@@ -145,6 +145,12 @@ CB_TEST("java.platform_refs.runnable_entry_constructs_with_default_arguments", [
     // no constructor: no arguments
     CB_CHECK_EQ(pr::runnable_ctor_args(refs_runnable("Bare")), "");
     CB_CHECK(refs_has(pr::generate_runnable_entry_point(refs_runnable("Bare")), "new Bare();"));
+    // the PC entry: SDL's main, none of the 360's (D3D device, heap watchdog)
+    const std::string pc = pr::generate_pc_runnable_entry_point(shell);
+    CB_CHECK(refs_has(pc, "Minecraft* _game = new Minecraft(NULL, NULL, SCREEN_WIDTH, SCREEN_HEIGHT, false, 0, 0, NULL);"));
+    CB_CHECK(refs_has(pc, "_game->run();") && refs_has(pc, "j2xThreadsWait();") && refs_has(pc, "SDL_SetMainReady();"));
+    CB_CHECK(refs_has(pc, "#define SCREEN_WIDTH 854"));
+    CB_CHECK(!refs_has(pc, "HeapTrack") && !refs_has(pc, "Display::create") && !refs_has(pc, "@NAME@"));
 });
 
 CB_TEST("java.platform_refs.platform_names", [] {

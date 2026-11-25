@@ -3,6 +3,7 @@
 #define IMAGEIO_H
 #include "BufferedImage.h"
 #include "InputStream.h"
+#include "OutputStream.h"
 #include <string>
 class URL;
 class File;
@@ -13,5 +14,6 @@ namespace ImageIO {
 	BufferedImage* read(File* f);
 	BufferedImage* decode(const unsigned char* data, unsigned size);   // PNG bytes -> image, or NULL
 	bool write(BufferedImage* img, const std::string& format, File* f);   // PNG (screenshots)
+	bool write(BufferedImage* img, const std::string& format, OutputStream* os);   // PNG into a stream (Indev's new FileOutputStream(file))
 }
 #endif // IMAGEIO_H

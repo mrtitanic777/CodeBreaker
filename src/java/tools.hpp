@@ -19,6 +19,7 @@
 // A line that reports a problem is written to stderr; the result of a tool, to stdout.
 #pragma once
 
+#include <filesystem>
 #include <functional>
 #include <span>
 #include <string>
@@ -38,6 +39,19 @@ run::Tools make_tools(const Environment& environment);
 
 // The `java` command with every tool wired.
 cli::Command command(const Environment& environment);
+
+// The PC build of a converted project (the CMakeLists.txt `java port` writes): CMake configures it in <project>/build and builds it -- with the
+// MinGW-w64 prefix's own gcc and make in <project>/build-mingw when the SDL2 CMake found is MinGW's. `quiet`: what the tools print is kept in
+// <project>/build.log instead of shown, and its errors (else its last lines) are `tail`.
+struct PcBuild {
+    enum class Status { Built, Failed, NoCMake };
+    Status status = Status::Failed;
+    int exit_code = 0;
+    std::filesystem::path exe;   // Built: the program
+    std::filesystem::path log;   // quiet: the build's log
+    std::string tail;            // quiet: the lines that say what went wrong
+};
+PcBuild build_pc_project(const std::filesystem::path& project, bool quiet);
 
 // `codebreaker java <tool> ...`: `args` are the words after `java`.
 int main(const std::vector<std::string>& args, const Environment& environment);

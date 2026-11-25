@@ -9,7 +9,8 @@
 //
 //   a C# or Python source file, with a language asked for                   Opening, Translating (through the hub), Checking (both run, outputs compared)
 //   a Java game's folder: a RetroMCP workspace (or any folder inside it),   Opening (the source root, jar, libraries and entry found: java/port.hpp),
-//   a decompiled game folder with its source, a Java source tree            Translating (the whole source to C++03 for PC, with Content: `java port`)
+//   a decompiled game folder with its source, a Java source tree            Translating (the whole source to C++03 for PC, with Content: `java port`),
+//                                                                           Writing, then Building (CMake, in the output folder: the program)
 //
 // Anything else is Unsupported, with what identification says it is.
 #include <algorithm>
@@ -547,7 +548,7 @@ std::optional<Plan> cv_plan_java_folder(const stdfs::path& input, const std::str
     Route route;
     route.name = "java-port";
     route.stages = {State::Opening, State::Translating};
-    route.weights = {{State::Opening, 2}, {State::Translating, 90}};
+    route.weights = {{State::Opening, 2}, {State::Translating, 20}, {State::Building, 70}};
     route.run = [p](Reporter& r, const stdfs::path& input, const stdfs::path& work) {
         r.enter(State::Opening);
         r.count(1, 1, p.entry_class.empty() ? fs::to_text(p.java_src->filename()) : "entry " + p.entry_class);
@@ -563,6 +564,26 @@ std::optional<Plan> cv_plan_java_folder(const stdfs::path& input, const std::str
                    ? std::format("Converted the whole RetroMCP workspace (Minecraft {}): {} Java files from {}, against {} libraries.", p.mc_version, p.java_files,
                                  fs::to_text(*p.java_src), p.libraries.size())
                    : std::string());
+    };
+    // Building: the C++ is compiled where it now lies (<out>/<name>, with CMake: java::tools::build_pc_project), so its build folder stays usable
+    route.build = [p](Reporter& r, const stdfs::path& out) {
+        const stdfs::path project = out / p.name;
+        r.count(0, 1, "CMake: " + p.name);
+        const java::tools::PcBuild b = java::tools::build_pc_project(project, true);
+        r.check();
+        const std::string converted = p.kind == java::port::SourceKind::RetroMcpWorkspace
+                                          ? std::format("Converted the whole RetroMCP workspace (Minecraft {}): {} Java files. ", p.mc_version, p.java_files)
+                                          : std::format("Converted {} Java files. ", p.java_files);
+        switch (b.status) {
+            case java::tools::PcBuild::Status::NoCMake:
+                throw std::runtime_error("CMake is not installed, so the converted C++ was not built (its CMakeLists.txt is written).");
+            case java::tools::PcBuild::Status::Failed:
+                throw std::runtime_error(std::format("The converted C++ did not build (exit {}; the log is {}):\n{}", b.exit_code, fs::to_text(b.log), b.tail));
+            case java::tools::PcBuild::Status::Built:
+                r.count(1, 1, b.exe.empty() ? std::string("built") : fs::to_text(b.exe.filename()));
+                r.note(converted + "Built " + (b.exe.empty() ? fs::to_text(project) : fs::to_text(b.exe)) + ".");
+                break;
+        }
     };
     plan.route = std::move(route);
     return plan;

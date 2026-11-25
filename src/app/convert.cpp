@@ -25,6 +25,7 @@ std::string_view state_name(State state) {
         case State::Translating: return "translating";
         case State::Checking: return "checking";
         case State::Writing: return "writing";
+        case State::Building: return "building";
         case State::Done: return "done";
         case State::Unsupported: return "unsupported";
         case State::Failed: return "failed";
@@ -44,6 +45,7 @@ std::string_view state_label(State state) {
         case State::Translating: return "Translating";
         case State::Checking: return "Checking";
         case State::Writing: return "Writing the source";
+        case State::Building: return "Building";
         case State::Done: return "Done";
         case State::Unsupported: return "Cannot convert this file";
         case State::Failed: return "Something went wrong";
@@ -52,7 +54,7 @@ std::string_view state_label(State state) {
     return "";
 }
 
-bool is_stage(State state) { return state >= State::Identifying && state <= State::Writing; }
+bool is_stage(State state) { return state >= State::Identifying && state <= State::Building; }
 bool is_final(State state) { return state >= State::Done; }
 
 double default_weight(State stage) {
@@ -65,6 +67,7 @@ double default_weight(State stage) {
         case State::Translating: return 30;
         case State::Checking: return 40;
         case State::Writing: return 8;
+        case State::Building: return 40;
         default: return 0;
     }
 }
@@ -180,12 +183,13 @@ public:
     void preview(std::string_view line) override { push(std::string(line.substr(0, kCvLineWidth))); }
 
     // The stages that will be passed through (Identifying first, Writing last) and their weights.
-    void set_route(const std::vector<State>& stages, const std::map<State, double>& weights) {
+    void set_route(const std::vector<State>& stages, const std::map<State, double>& weights, bool builds = false) {
         order_.clear();
         order_.push_back(State::Identifying);
         for (const State s : stages)
-            if (s != State::Identifying && s != State::Writing) order_.push_back(s);
+            if (s != State::Identifying && s != State::Writing && s != State::Building) order_.push_back(s);
         order_.push_back(State::Writing);
+        if (builds) order_.push_back(State::Building);
         total_weight_ = 0;
         for (const State s : order_) total_weight_ += weight_of(s, weights);
         weights_ = weights;
@@ -367,7 +371,7 @@ Outcome convert(const Request& request, const Planner& planner, const ProgressFn
             } else {
                 const Route& route = *plan.route;
                 outcome.route = route.name;
-                machine.set_route(route.stages, route.weights);
+                machine.set_route(route.stages, route.weights, static_cast<bool>(route.build));
                 if (request.out_dir) {
                     const stdfs::path parent = request.out_dir->parent_path().empty() ? stdfs::path(".") : request.out_dir->parent_path();
                     out = unique_output_folder(parent, request.out_dir->filename().string());
@@ -409,12 +413,26 @@ Outcome convert(const Request& request, const Planner& planner, const ProgressFn
                         }
                         machine.count(++done, files.size(), rel.generic_string());
                     }
-                    outcome.state = State::Done;
-                    outcome.output = out;
-                    outcome.files = files.size();
-                    outcome.checked = machine.noted();
-                    outcome.functions = machine.recorded();
-                    outcome.can_recheck = machine.can_recheck();
+                    if (route.build) {   // Building: in the output folder itself; a failure keeps the source and says so
+                        machine.enter(State::Building);
+                        try {
+                            route.build(machine, out);
+                        } catch (const Cancelled&) {
+                            throw;
+                        } catch (const std::exception& e) {
+                            outcome.state = State::Failed;
+                            outcome.message = std::string(e.what()) + " The source is in " + std::string(reinterpret_cast<const char*>(out.u8string().c_str())) + ".";
+                            out_made = false;   // (kept: the source is good, only its build is not)
+                        }
+                    }
+                    if (outcome.state != State::Failed) {
+                        outcome.state = State::Done;
+                        outcome.output = out;
+                        outcome.files = files.size();
+                        outcome.checked = machine.noted();
+                        outcome.functions = machine.recorded();
+                        outcome.can_recheck = machine.can_recheck();
+                    }
                 }
             }
         }

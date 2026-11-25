@@ -16,6 +16,8 @@
 //     Checking       only after Translating where the translator can prove the result: the translation is built and run beside the original and
 //                    what both print is compared; the run is Done only when they agree (translate/translate_file.hpp)
 //     Writing        the source is written into the output folder
+//     Building       only for routes that build what they wrote (a Java game's C++): built in the output folder itself, so the build
+//                    folder there stays usable (a build that fails ends Failed; the source stays, and the message says where)
 //
 // and ends in exactly one of Done, Unsupported (CodeBreaker has no way to convert this file; `Outcome::what` says what it is), Failed
 // (something went wrong; `message` says what) or Cancelled. Which stages a file passes through is decided by its Route (planner), not by
@@ -57,6 +59,7 @@ enum class State {
     Translating,
     Checking,
     Writing,
+    Building,
     Done,
     Unsupported,
     Failed,
@@ -66,7 +69,7 @@ enum class State {
 // "identifying", "unpacking" ... "done", "unsupported", "failed", "cancelled": stable names for logs, the command line and tests.
 std::string_view state_name(State state);
 // What a person is told, in plain words: "Identifying the file", "Unpacking", "Opening", "Disassembling", "Decompiling", "Translating", "Checking",
-// "Writing the source".
+// "Writing the source", "Building".
 std::string_view state_label(State state);
 // Identifying .. Writing.
 bool is_stage(State state);
@@ -145,6 +148,8 @@ struct Route {
     std::vector<State> stages;                // some of Unpacking, Opening, Disassembling, Decompiling, in order; Writing is always last, added by the machine
     std::map<State, double> weights;          // the share of the run a stage takes; those not named have the default (see default_weight)
     std::function<void(Reporter&, const std::filesystem::path& input, const std::filesystem::path& work)> run;
+    // Set: the Building stage after Writing, run on the output folder once every file is in it (throws to fail the run).
+    std::function<void(Reporter&, const std::filesystem::path& out)> build;
 };
 
 // What identification found: a sentence for the person ("a PNG image"), and the route when CodeBreaker can convert it.

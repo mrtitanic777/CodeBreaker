@@ -77,6 +77,34 @@ CB_TEST("app.convert.the_stages_come_in_order_and_the_percentage_only_goes_up", 
     CB_CHECK(!stdfs::exists(f.root / "prog.partial"));   // the staging folder is gone
 });
 
+CB_TEST("app.convert.a_route_that_builds_builds_in_the_output_folder_after_writing", [] {
+    CvFixture f;
+    Route route = cv_test_route({State::Opening});
+    stdfs::path built_in;
+    route.build = [&built_in](Reporter& r, const stdfs::path& out) {
+        CB_CHECK(stdfs::exists(out / "out.c"));   // every file is in place before the build
+        built_in = out;
+        r.count(1, 1, "game.exe");
+        r.note("Built game.exe.");
+    };
+    const Outcome done = convert(f.request(), cv_test_planner(route), f.listener(), f.cancel);
+    CB_CHECK(done.state == State::Done);
+    const std::vector<State> expected = {State::Identifying, State::Opening, State::Writing, State::Building, State::Done};
+    CB_CHECK(done.stages == expected);
+    CB_CHECK(built_in == f.root / "prog" && done.output == built_in);
+    CB_CHECK_EQ(done.checked, "Built game.exe.");
+    CB_CHECK(f.percent_never_goes_down());
+
+    // a build that fails: the run fails, says why and where the source is, and the source stays
+    CvFixture g;
+    Route failing = cv_test_route({State::Opening});
+    failing.build = [](Reporter&, const stdfs::path&) { throw std::runtime_error("The converted C++ did not build."); };
+    const Outcome broken = convert(g.request(), cv_test_planner(failing), nullptr, g.cancel);
+    CB_CHECK(broken.state == State::Failed);
+    CB_CHECK(broken.message.starts_with("The converted C++ did not build. The source is in "));
+    CB_CHECK(stdfs::exists(g.root / "prog" / "out.c"));
+});
+
 CB_TEST("app.convert.stages_a_file_does_not_need_are_left_out", [] {
     CvFixture f;
     const Outcome done = convert(f.request(), cv_test_planner(cv_test_route({State::Opening, State::Disassembling})), f.listener(), f.cancel);
@@ -498,6 +526,7 @@ CB_TEST("app.convert.a_retromcp_workspace_folder_is_converted_whole", [] {
     for (const stdfs::path& dropped : {mc, mc / "src" / "net" / "minecraft" / "client", root}) {
         const Plan plan = standard_planner()(dropped);
         CB_CHECK(plan.route.has_value() && plan.route->name == "java-port");
+        CB_CHECK(plan.route.has_value() && static_cast<bool>(plan.route->build));   // and the C++ is built after it is written
         CB_CHECK(plan.what.starts_with("RetroMCP workspace (Minecraft in-20100213, 2 Java files)"));
         CB_CHECK_EQ(plan.output_name, "in_20100213");   // named after the game, not after the folder dropped
     }
