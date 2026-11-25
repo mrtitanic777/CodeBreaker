@@ -35,6 +35,15 @@ std::string ps_leaf(std::string_view path) {
     return std::string(slash == std::string_view::npos ? path : path.substr(slash + 1));
 }
 
+// The class a function's name says it is a virtual function of: `Widget__vf_3` is Widget's (analyze::classes::method_names).
+std::string ps_class_of(std::string_view name) {
+    const std::size_t at = name.rfind("__vf_");
+    if (at == std::string_view::npos || at == 0 || at + 5 >= name.size()) return {};
+    for (std::size_t k = at + 5; k < name.size(); ++k)
+        if (name[k] < '0' || name[k] > '9') return {};
+    return std::string(name.substr(0, at));
+}
+
 // `foo.obj` as the C file it was compiled from.
 std::string ps_c_name(std::string_view object) {
     std::string name = text::lower(ps_leaf(object));
@@ -222,8 +231,8 @@ Split plan(std::span<const Function> functions, std::span<const Module> modules,
         if (!members.empty()) out.units.push_back({std::move(file), tier, std::move(members)});
     };
     std::vector<std::size_t> own;
-    std::map<std::string, std::vector<std::size_t>> placed;
-    std::vector<std::string> placed_order;
+    std::map<std::string, std::vector<std::size_t>> placed, by_class;
+    std::vector<std::string> placed_order, class_order;
     for (std::size_t i = 0; i < functions.size(); ++i) {
         const Function& f = functions[i];
         const Module* module = nullptr;
@@ -238,11 +247,15 @@ Split plan(std::span<const Function> functions, std::span<const Module> modules,
             const std::string file = ps_c_name(module->name);
             if (!placed.contains(file)) placed_order.push_back(file);
             placed[file].push_back(i);
+        } else if (const std::string cls = ps_class_of(f.name); !cls.empty()) {
+            if (!by_class.contains(cls)) class_order.push_back(cls);
+            by_class[cls].push_back(i);
         } else {
             own.push_back(i);
         }
     }
     for (const std::string& file : placed_order) keep(file, Tier::Proven, placed[file]);
+    for (const std::string& cls : class_order) keep(cls + ".c", Tier::Class, by_class[cls]);
     if (!own.empty()) {
         std::vector<Function> rest;
         rest.reserve(own.size());
@@ -281,12 +294,14 @@ std::vector<std::pair<std::string, std::string>> source_files(std::string_view s
     out.emplace_back(base + ".h", std::format("{}#ifndef {}\n#define {}\n{}\n#endif\n", title, guard, guard, rest));
     std::string manifest = std::format("{}: its source files, and how far each is known.\n\n"
                                        "proven      the program's own debug information names this object and its code\n"
+                                       "class       one C++ class's virtual functions, from its virtual table; the class's name, not the original's file\n"
                                        "best guess  neighbouring functions that call and share data most; NOT the original's file\n"
                                        "runtime     import stubs and the compiler's library\n\n",
                                        base);
     for (const Unit& unit : split.units) {
-        const char* tier = unit.tier == Tier::Proven ? "proven" : unit.tier == Tier::Runtime ? "runtime" : "best guess";
+        const char* tier = unit.tier == Tier::Proven ? "proven" : unit.tier == Tier::Class ? "class" : unit.tier == Tier::Runtime ? "runtime" : "best guess";
         const char* said = unit.tier == Tier::Proven       ? "named by the program's debug information"
+                           : unit.tier == Tier::Class      ? "the virtual functions of one C++ class, from its virtual table; the file's name is the class's"
                            : unit.tier == Tier::Runtime    ? "import stubs and the compiler's library"
                                                            : "a best guess at a source file: its name and its edges are not the original's";
         std::string body = std::format("/* {} -- {} */\n\n#include \"{}.h\"\n", unit.file, said, base);

@@ -54,6 +54,28 @@ CB_TEST("decompile.pe_split.library_code_is_the_runtime_file", [] {
     CB_CHECK(runtime_module("startup\\obj\\i386\\crt0.obj") && runtime_module("KERNEL32.dll") && !runtime_module("worker.obj"));
 });
 
+CB_TEST("decompile.pe_split.a_classes_virtual_functions_are_its_own_file", [] {
+    std::vector<Function> f = pst_two_files();
+    f[1].name = "Widget__vf_0";
+    f[4].name = "Widget__vf_2";
+    f[5].name = "Outer__Inner__vf_1";
+    f[2].name = "sub__vf_x";   // (not a slot number: no class)
+    const Split s = plan(f, {}, {}, "t");
+    CB_CHECK(s.units.size() >= 3);
+    CB_CHECK_EQ(s.units[0].file, std::string("Widget.c"));
+    CB_CHECK(s.units[0].tier == Tier::Class && s.units[0].functions == std::vector<std::size_t>{1, 4});
+    CB_CHECK_EQ(s.units[1].file, std::string("Outer__Inner.c"));
+    CB_CHECK(s.units[1].functions == std::vector<std::size_t>{5});
+    for (std::size_t k = 2; k < s.units.size(); ++k) CB_CHECK(s.units[k].tier == Tier::BestGuess);
+    // debug information comes first: a class's function in a named object stays in that object's file
+    const std::vector<Module> modules = {{"widget.obj", {{0x1010, 0x10}}}};
+    const Split proven = plan(f, modules, {}, "t");
+    CB_CHECK_EQ(proven.units[0].file, std::string("widget.c"));
+    CB_CHECK(proven.units[1].file == "Widget.c" && proven.units[1].functions == std::vector<std::size_t>{4});
+    const auto files = source_files("t", "/* t */\n", s, f);
+    CB_CHECK(files.back().second.find("class       Widget.c") != std::string::npos);
+});
+
 CB_TEST("decompile.pe_split.every_function_is_written_once", [] {
     const std::vector<Function> f = pst_two_files();
     const auto files = source_files("t", "/* t */\n\nint x;\n", plan(f, {}, {}, "t"), f);

@@ -6,6 +6,8 @@
 // A linker keeps each object's code together, so a source file is a run of neighbouring functions. Two tiers:
 //
 //   proven      the program's own CodeView debug information (NB09, NB11) lists each object and the code it holds
+//   class       the methods of one C++ class, its virtual table's functions (named <Class>__vf_<slot> by analyze::classes):
+//               a class's code is one object, but the file's name is the class's, not the original's
 //   best guess  nothing in the binary says: the runs that call and share data most among themselves. Measured on 25
 //               Win32 SDK samples built with Visual C++ 2.0 (1,929 functions, 149 boundaries, the linker's maps the
 //               answer): 51% of the boundaries found, 45% of those proposed right. A grouping to read, not the original's
@@ -47,7 +49,7 @@ struct Module {
     std::vector<std::pair<Va, std::uint32_t>> code;
 };
 
-enum class Tier { Proven, BestGuess, Runtime };
+enum class Tier { Proven, Class, BestGuess, Runtime };
 
 struct Unit {
     std::string file;
