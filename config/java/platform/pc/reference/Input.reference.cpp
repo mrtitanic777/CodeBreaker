@@ -20,6 +20,8 @@ bool g_repeat = false;
 int g_w = 854, g_h = 480;
 int g_x = 0, g_y = 0, g_dx = 0, g_dy = 0, g_wheel = 0;
 bool g_grabbed = false;
+bool g_awt_look = false;                                  // the AWT cursor is hidden (Mouse.setNativeCursor with a cursor)
+int g_awt_dx = 0, g_awt_dy = 0;                           // raw motion since the last Robot move
 
 // SDL scancode -> LWJGL key code (0: none)
 int lwjgl(SDL_Scancode s) {
@@ -123,6 +125,10 @@ void setDisplaySize(int w, int h) {
 	if (h > 0) g_h = h;
 }
 
+bool awtLooking() { return g_awt_look; }
+void awtMotion(int* dx, int* dy) { *dx = g_awt_dx; *dy = g_awt_dy; }
+void awtRecentred() { g_awt_dx = g_awt_dy = 0; }
+
 void onEvent(const SDL_Event* e) {
 	switch (e->type) {
 	case SDL_KEYDOWN:
@@ -136,6 +142,10 @@ void onEvent(const SDL_Event* e) {
 		break;
 	}
 	case SDL_MOUSEMOTION:
+		if (g_awt_look) {
+			g_awt_dx += e->motion.xrel;
+			g_awt_dy += e->motion.yrel;
+		}
 		g_x = e->motion.x;
 		g_y = g_h - 1 - e->motion.y;                     // LWJGL's origin is bottom-left
 		g_dx += e->motion.xrel;
@@ -224,7 +234,11 @@ void destroy() {}
 bool isCreated() { return true; }
 
 void setNativeCursor(const void* cursor) {
-	if (!std::getenv("J2X_HIDDEN")) SDL_ShowCursor(cursor ? SDL_DISABLE : SDL_ENABLE);
+	// a cursor (Indev's empty one) means the game is looking around: relative mode hides and holds the pointer and gives raw motion;
+	// NULL gives the cursor back (a menu). A J2X_HIDDEN test run never takes the person's mouse.
+	g_awt_look = cursor != 0;
+	g_awt_dx = g_awt_dy = 0;
+	if (!std::getenv("J2X_HIDDEN")) SDL_SetRelativeMouseMode(cursor ? SDL_TRUE : SDL_FALSE);
 }
 
 void setGrabbed(bool grabbed) {

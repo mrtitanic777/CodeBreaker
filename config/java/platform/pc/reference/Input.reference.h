@@ -11,6 +11,12 @@ union SDL_Event;
 namespace Input {
 	void onEvent(const SDL_Event* e);       // Display.cpp: every SDL event
 	void setDisplaySize(int w, int h);      // window size, for Mouse's bottom-left origin
+	// The AWT mouse-look (Indev: Robot recentres the pointer, MouseInfo reads it): while the game hides its cursor to play, the mouse is in
+	// SDL's relative mode and the pointer is where Robot last put it plus the raw motion since -- not the desktop cursor, whose reads and
+	// re-centring race Windows' own updates (a stuttering camera).
+	bool awtLooking();                      // the game's cursor is hidden: it is looking around
+	void awtMotion(int* dx, int* dy);       // the raw motion since the last Robot move (not consumed)
+	void awtRecentred();                    // Robot moved the pointer: the motion starts again from there
 }
 
 namespace Keyboard {

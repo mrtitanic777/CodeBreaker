@@ -27,11 +27,35 @@ int j2xDisplayHeight() { return Display::getHeight(); }
 // MouseHelper looks around with (it recentres the pointer every frame). A J2X_HIDDEN test run never moves the person's mouse.
 int j2xWindowScreenX() { int x = 0, y = 0; if (g_win) SDL_GetWindowPosition(g_win, &x, &y); return x; }
 int j2xWindowScreenY() { int x = 0, y = 0; if (g_win) SDL_GetWindowPosition(g_win, &x, &y); return y; }
-// (hidden: the pointer rests at the window's centre, so the person's own mouse never turns the camera of a test run)
-int j2xPointerX() { int x = 0, y = 0; if (std::getenv("J2X_HIDDEN")) return j2xWindowScreenX() + Display::getWidth() / 2; SDL_GetGlobalMouseState(&x, &y); return x; }
-int j2xPointerY() { int x = 0, y = 0; if (std::getenv("J2X_HIDDEN")) return j2xWindowScreenY() + Display::getHeight() / 2; SDL_GetGlobalMouseState(&x, &y); return y; }
+// While the game looks around (its cursor hidden: Input::awtLooking) the pointer is where Robot last put it plus the raw motion since
+// (SDL's relative mode), and Robot's move only sets that place: reading the desktop cursor and warping it back each frame raced
+// Windows' own cursor updates and stuttered the camera. Otherwise (menus) it is the desktop cursor. A J2X_HIDDEN test run never reads
+// or moves the person's mouse: its pointer rests at the window's centre, moved only by scripted motion.
+static int g_robot_x = 0, g_robot_y = 0;
+static bool g_robot_set = false;
+static bool j2xPointerVirtual() { return Input::awtLooking() || std::getenv("J2X_HIDDEN") != 0; }
+static void j2xPointerAt(int* x, int* y) {
+	if (j2xPointerVirtual()) {
+		if (!g_robot_set) {
+			g_robot_x = j2xWindowScreenX() + Display::getWidth() / 2;
+			g_robot_y = j2xWindowScreenY() + Display::getHeight() / 2;
+		}
+		int dx = 0, dy = 0;
+		Input::awtMotion(&dx, &dy);
+		*x = g_robot_x + dx;
+		*y = g_robot_y + dy;
+	} else {
+		SDL_GetGlobalMouseState(x, y);
+	}
+}
+int j2xPointerX() { int x = 0, y = 0; j2xPointerAt(&x, &y); return x; }
+int j2xPointerY() { int x = 0, y = 0; j2xPointerAt(&x, &y); return y; }
 void j2xRobotMouseMove(int x, int y) {
-	if (!std::getenv("J2X_HIDDEN") && g_win && (SDL_GetWindowFlags(g_win) & SDL_WINDOW_INPUT_FOCUS)) SDL_WarpMouseGlobal(x, y);   // (only while the game has the focus)
+	g_robot_x = x;
+	g_robot_y = y;
+	g_robot_set = true;
+	Input::awtRecentred();
+	if (!j2xPointerVirtual() && g_win && (SDL_GetWindowFlags(g_win) & SDL_WINDOW_INPUT_FOCUS)) SDL_WarpMouseGlobal(x, y);   // (a menu: the real cursor)
 }
 
 namespace Display {

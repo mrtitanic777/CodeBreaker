@@ -324,9 +324,15 @@ struct JObject {
 
 // unbox a String: `(String)o`, `String s = o` -> the boxed string (empty if o didn't box one).
 inline JavaString::JavaString(const JObject& o) : std::string(o.s), _null(o.kind == 0) {}   // (String)null is null
+// A String[] is boxed in its own slot (kind 6, `sa`), so `(String[])o` reads it from there; any other array type has none.
+// FIXED BUG string-array-unbox: `(String[])o` came back empty, so every crafting recipe whose shape is a String[] (Indev's
+// tools, weapons and armour: 45 of its 64) was 0 x 0 and never matched.
+template<class T> inline void j2xUnboxStringArray(JArray<T>&, const JArray<JavaString>&) {}
+inline void j2xUnboxStringArray(JArray<JavaString>& out, const JArray<JavaString>& boxed) { out = boxed; }
 // unbox a boxed array: `(int[])o` -> the stored JArray (empty if o didn't box a JArray<T>).
 template<class T> JArray<T>::JArray(const JObject& o) : _buf(0), length(0) {
-	if (o.kind == 5 && o.p && o.ti && *o.ti == typeid(JArray<T>)) *this = *(const JArray<T>*)o.p;
+	if (o.kind == 6) j2xUnboxStringArray(*this, o.sa);
+	else if (o.kind == 5 && o.p && o.ti && *o.ti == typeid(JArray<T>)) *this = *(const JArray<T>*)o.p;
 }
 // unbox a boxed Map: `(Map)o` -> the stored JMap (empty if o didn't box a JMap<K,V>).
 template<class K, class V> JMap<K, V>::JMap(const JObject& o) : _null(o.kind == 0) {   // (Map)null is null
