@@ -38,7 +38,8 @@ CB_TEST("app.window_pages.the_rail_is_64_wide_with_three_items_and_the_cards_sta
 
 CB_TEST("app.window_pages.the_tools_page_is_a_list_card_and_a_tool_card", [] {
     const Layout shell = compute_layout(View::Idle, 1180, 700, kRailWidth);
-    const Model m = wp_tools_model();
+    Model m = wp_tools_model();
+    m.tool_output_shown = true;   // (the pane shown: its place under the bar)
     const ToolsLayout t = compute_tools_layout(shell, m);
     CB_CHECK(wp_near(t.list_card.w, kToolListWidth));
     CB_CHECK(t.form_card.x > t.list_card.right() && wp_near(1180 - t.form_card.right(), 24));
@@ -92,6 +93,25 @@ CB_TEST("app.window_pages.a_tool_is_a_drop_box_a_row_of_choice_buttons_run_and_o
     CB_CHECK(compute_tools_layout(shell, m).form.fields[0].browse_folder.w == 0);
 });
 
+CB_TEST("app.window_pages.the_output_is_hidden_until_its_button_shows_it_and_the_clock_sits_beside_it", [] {
+    const Layout shell = compute_layout(View::Idle, 1180, 700, kRailWidth);
+    Model m = wp_tools_model();
+    m.tool_result = "C:\\Games\\a1.2.6-converted";
+    ToolsLayout t = compute_tools_layout(shell, m);
+    CB_CHECK(!m.tool_output_shown && t.output.w == 0 && t.output.h == 0);   // hidden at first
+    CB_CHECK(wp_near(t.output_toggle.right(), t.form_title.right()) && wp_near(t.output_toggle.y, t.run.y));
+    CB_CHECK(t.elapsed.w > 0 && t.elapsed.right() < t.output_toggle.x && t.run_note.right() <= t.elapsed.x);
+    CB_CHECK(t.run_note.x > t.open_folder.right());
+    CB_CHECK(hit_test_tools(t, m, t.output_toggle.x + 4, t.output_toggle.y + 4).control == Control::ToolOutputToggle);
+    CB_CHECK(hit_test_tools(t, m, t.form_title.x + 20, t.bar.bottom() + 40).control != Control::OutputPane);   // no pane to scroll
+    const std::vector<PageHit> order = focus_order_tools(m);
+    CB_CHECK(std::find(order.begin(), order.end(), PageHit({Control::ToolOutputToggle, -1})) != order.end());
+    m.tool_output_shown = true;
+    t = compute_tools_layout(shell, m);
+    CB_CHECK(t.output.h > 100 && t.output.y > t.bar.bottom() && t.output.bottom() <= t.form_card.bottom());
+    CB_CHECK(hit_test_tools(t, m, t.output.x + 20, t.output.y + 20).control == Control::OutputPane);
+});
+
 CB_TEST("app.window_pages.a_form_stacks_its_fields_and_a_switch_has_its_label_beside_it", [] {
     const Model m = wp_tools_model();
     const FormLayout f = layout_form({100, 100, 400, 0}, m.tool_fields, 0);
@@ -113,7 +133,7 @@ CB_TEST("app.window_pages.tab_visits_the_page_and_ends_at_the_rail", [] {
     const std::vector<PageHit> order = focus_order_tools(m);
     CB_CHECK(order.front().control == Control::ToolSearch);
     CB_CHECK(order[1] == PageHit({Control::ToolRow, 0}));
-    CB_CHECK(order[order.size() - 5].control == Control::Run);
+    CB_CHECK(order[order.size() - 6].control == Control::Run && order[order.size() - 5].control == Control::ToolOutputToggle);
     CB_CHECK(order.back().control == Control::NavSettings);
     std::size_t browse = 0;
     for (const PageHit& h : order) browse += h.control == Control::FieldBrowse;

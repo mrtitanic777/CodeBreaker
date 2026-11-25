@@ -123,9 +123,12 @@ ToolsLayout compute_tools_layout(const Layout& shell, const Model& m) {
         t.open_folder = {t.run.right() + 8, t.run.y, 136, 32};
         note_x = t.open_folder.right() + 12;
     }
-    t.run_note = {note_x, t.run.y, std::max(0.0f, t.form_title.right() - note_x), 32};
+    t.output_toggle = {t.form_title.right() - kOutputToggleWidth, t.run.y, kOutputToggleWidth, 32};
+    t.elapsed = {t.output_toggle.x - 12 - kElapsedWidth, t.run.y, kElapsedWidth, 32};
+    t.run_note = {note_x, t.run.y, std::max(0.0f, t.elapsed.x - 8 - note_x), 32};
     t.bar = {t.fields_area.x, t.run.bottom() + 16, t.form_title.w, 3};
-    t.output = {t.fields_area.x, t.bar.bottom() + 10, t.form_title.w, std::max(0.0f, t.form_card.bottom() - 20 - (t.bar.bottom() + 10))};
+    if (m.tool_output_shown)
+        t.output = {t.fields_area.x, t.bar.bottom() + 10, t.form_title.w, std::max(0.0f, t.form_card.bottom() - 20 - (t.bar.bottom() + 10))};
     return t;
 }
 
@@ -233,9 +236,10 @@ PageHit hit_test_tools(const ToolsLayout& t, const Model& m, float x, float y) {
     if (m.tool_selected < 0) return {};
     if (t.run.contains(x, y)) return {Control::Run, -1};
     if (t.open_folder.w > 0 && t.open_folder.contains(x, y)) return {Control::OpenResult, -1};
+    if (t.output_toggle.contains(x, y)) return {Control::ToolOutputToggle, -1};
     for (std::size_t i = 0; i < t.choice_buttons.size(); ++i)
         if (t.choice_buttons[i].contains(x, y)) return {Control::ToolChoice, static_cast<int>(i)};
-    if (t.output.contains(x, y)) return {Control::OutputPane, -1};
+    if (t.output.w > 0 && t.output.contains(x, y)) return {Control::OutputPane, -1};
     return pg_hit_form(t.form, m.tool_fields, t.form_card, x, y);
 }
 
@@ -277,6 +281,7 @@ std::vector<PageHit> focus_order_tools(const Model& m) {
             for (std::size_t i = 0; i < m.tool_choices.size(); ++i) order.push_back({Control::ToolChoice, static_cast<int>(i)});
         order.push_back({Control::Run, -1});
         if (!m.tool_result.empty() && !m.tool_running) order.push_back({Control::OpenResult, -1});
+        order.push_back({Control::ToolOutputToggle, -1});
     }
     pg_add_rail(order);
     return order;

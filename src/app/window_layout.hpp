@@ -85,7 +85,7 @@ enum class Control {
     // the navigation rail, and the Tools and Settings pages (window_pages.hpp): a field, a tool or a setting is named by Model::*_index beside the Control
     NavConvert, NavTools, NavSettings, ToolSearch, ToolRow, Field, FieldBrowse, Run, OutputPane,
     // the Tools page: a button of the tool's one choice (its index), Browse for a folder in a drop box that takes a file or a folder, Open folder
-    ToolChoice, FieldBrowseFolder, OpenResult,
+    ToolChoice, FieldBrowseFolder, OpenResult, ToolOutputToggle,
     // the Settings page: the Advanced row, Back from Advanced, and Locate... on a row of what this computer cannot convert yet (its index)
     SettingsAdvanced, SettingsBack, Locate,
     // the Convert page's lists: a recent conversion and its Remove (Model::hot_index is the row), a file of the preview, the code view, the output box
@@ -285,6 +285,8 @@ struct Model {
     int tool_percent = -1;                                      // -1: the command prints none (an indeterminate bar); 0..100
     std::string tool_output;                                    // the output pane's text
     std::string tool_note;                                      // beside Run: "Running...", "Finished", "Stopped", "Exit code 1"
+    std::string tool_elapsed;                                   // how long the run has taken ("3:12"): counts while it runs, then stays
+    bool tool_output_shown = false;                             // the output pane is shown (its button toggles it; hidden at first)
     bool tool_done = false;                                     // a run has finished (the bar is full)
     float tool_phase = 0;                                       // 0..1, moves the indeterminate bar
     float output_scroll = 0;                                    // lines scrolled up from the end

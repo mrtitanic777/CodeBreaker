@@ -483,7 +483,8 @@ private:
     std::map<int, tools::Values> tool_values_;       // what has been entered, per tool
     std::unique_ptr<tools::Run> run_;                // the tool running now (one at a time)
     int last_run_tool_ = -1;                         // the tool whose run the output belongs to
-    std::string last_output_, last_note_, last_result_;
+    std::string last_output_, last_note_, last_result_, last_elapsed_;
+    std::chrono::steady_clock::time_point tool_started_{};
     std::optional<std::vector<std::string>> modules_;   // the work folder's modules (read the first time a module tool needs them)
     bool last_done_ = false;
     int last_percent_ = -1;
@@ -1137,6 +1138,7 @@ void WwApp::select_tool(int tool) {
     model_.tool_running = this_run && run_ != nullptr;
     model_.tool_percent = this_run ? last_percent_ : -1;
     model_.tool_result = this_run ? last_result_ : std::string();
+    model_.tool_elapsed = this_run ? last_elapsed_ : std::string();
     model_.output_scroll = 0;
     model_.focus = Control::ToolRow;
     model_.focus_index = tool;
@@ -1156,6 +1158,9 @@ void WwApp::run_tool() {
     last_done_ = false;
     last_percent_ = -1;
     last_result_.clear();
+    tool_started_ = std::chrono::steady_clock::now();
+    last_elapsed_ = elapsed_clock(std::chrono::seconds{0});
+    model_.tool_elapsed = last_elapsed_;
     model_.tool_result.clear();
     model_.tool_running = true;
     model_.tool_output.clear();
@@ -1183,6 +1188,7 @@ void WwApp::poll_tool() {
     const tools::RunState s = run_->state();
     last_output_ = s.failure.empty() ? s.output : "Could not start: " + s.failure + "\n";
     last_percent_ = s.percent;
+    last_elapsed_ = elapsed_clock(std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - tool_started_));
     phase_ = std::fmod(phase_ + 0.045f, 2.0f);
     if (!s.running) {
         last_done_ = true;
@@ -1200,6 +1206,7 @@ void WwApp::poll_tool() {
         model_.tool_done = last_done_;
         model_.tool_running = run_ != nullptr;
         model_.tool_result = last_result_;
+        model_.tool_elapsed = last_elapsed_;
         model_.tool_phase = phase_ <= 1.0f ? phase_ : 2.0f - phase_;
         model_.output_scroll = 0;
     }
@@ -2022,6 +2029,14 @@ void WwApp::activate_page(Control c, int index) {
         case Control::FieldBrowse: browse_field(index); break;
         case Control::FieldBrowseFolder: browse_field(index, true); break;
         case Control::OpenResult: open_result(); break;
+        case Control::ToolOutputToggle:
+            model_.tool_output_shown = !model_.tool_output_shown;
+            model_.output_scroll = 0;
+            model_.focus = Control::ToolOutputToggle;
+            model_.focus_index = -1;
+            relayout();
+            invalidate();
+            break;
         case Control::ToolChoice:
             if (model_.tool_selected >= 0 && index >= 0 && index < static_cast<int>(model_.tool_choices.size())) {
                 model_.tool_choice = index;
@@ -3858,8 +3873,9 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
         m.chrome_alpha = 0;
         return m;
     }
-    if (state == "tools") {   // a tool selected, its form filled in, a run finished (sample text: the screenshot shows no one's own files)
+    if (state == "tools" || state == "tools-output") {   // a tool selected, its form filled in, a run finished (sample text: the screenshot shows no one's own files)
         m.page = Page::Tools;
+        m.tool_output_shown = state == "tools-output";
         m.status_text = "Done";
         ww_fill_tool_rows(m);
         const tools::Tool* t = tools::find("java-port");
@@ -3870,6 +3886,7 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
         m.tool_done = true;
         m.tool_percent = 100;
         m.tool_note = "Finished";
+        m.tool_elapsed = "4:37";
         m.tool_result = "C:\\Games\\Minecraft\\a1.2.6-converted";
         m.tool_output =
             "C:\\Games\\Minecraft\\a1.2.6.jar -> C++ for Xbox 360\n  input: a game jar\n  0%  Decompiling Minecraft a1.2.6\n 14%  Converting the Java to C++\n"

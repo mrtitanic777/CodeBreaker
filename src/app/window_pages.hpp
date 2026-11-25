@@ -35,6 +35,8 @@ inline constexpr float kToolHeadingHeight = 32;
 inline constexpr float kToolListWidth = 340;
 inline constexpr float kDropBoxHeight = 84;
 inline constexpr float kChoiceButtonHeight = 32;
+inline constexpr float kOutputToggleWidth = 136;   // "Hide output" with its glyph
+inline constexpr float kElapsedWidth = 64;        // "1:02:03"
 
 // The fields stacked in `area`, the first at the top moved up by `scroll`.
 FormLayout layout_form(const Rect& area, const std::vector<FieldItem>& fields, float scroll);
@@ -47,7 +49,8 @@ struct ToolsLayout {
     FormLayout form;
     Rect choice_label;                 // the choice's label, then one button per choice (empty when the tool has none)
     std::vector<Rect> choice_buttons;
-    Rect run, open_folder, run_note, bar, output;   // open_folder: empty until a run has left a result folder
+    Rect run, open_folder, run_note, bar, output;   // open_folder: empty until a run has left a result folder; output: empty while hidden
+    Rect elapsed, output_toggle;                    // at the right of Run's row: the run's clock, then the button that shows or hides the output
 };
 // A choice button's width for its words (the layout knows no fonts: about 7.5 DIPs a character at 14 px, and room around them).
 float choice_button_width(const std::string& label);

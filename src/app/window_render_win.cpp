@@ -512,6 +512,10 @@ void rd_tools(RdDraw& d, const Layout& l, const Model& m, Painter& painter) {
         if (enabled && m.focus == Control::Run) d.stroke(Rect{r.x - 3, r.y - 3, r.w + 6, r.h + 6}, 6, pal.text, 2.0f);
         d.text(widen(m.tool_note), t.run_note, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
     }
+    // the run's clock, then the button that shows or hides the output pane
+    if (!m.tool_elapsed.empty())
+        d.text(widen(m.tool_elapsed), t.elapsed, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, m.tool_running ? pal.text : pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
+    d.button(Control::ToolOutputToggle, t.output_toggle, m.tool_output_shown ? L"Hide output" : L"Show output", L'\xE756', true);
     // the thin progress bar: determinate when the command prints percentages, else a moving segment while it runs, full when it has finished
     {
         d.fill(t.bar, 1.5f, rd_alpha(pal.text3, 0.3f));
@@ -523,8 +527,8 @@ void rd_tools(RdDraw& d, const Layout& l, const Model& m, Painter& painter) {
             if (f > 0) d.fill(Rect{t.bar.x, t.bar.y, std::max(3.0f, t.bar.w * f), t.bar.h}, 1.5f, pal.accent);
         }
     }
-    // the output pane: monospace, the most recent lines that fit (scrolled up by output_scroll lines)
-    {
+    // the output pane, when shown: monospace, the most recent lines that fit (scrolled up by output_scroll lines)
+    if (t.output.w > 0 && t.output.h > 0) {
         const Rect& o = t.output;
         d.fill(o, 6, pal.dark ? rd_color(0x1F1F1F) : rd_color(0xF6F6F6));
         d.stroke(o, 6, pal.stroke2);
