@@ -19,7 +19,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
 
 file(GLOB J2X_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
-add_executable({name} ${J2X_SOURCES})
+add_executable({name} WIN32 ${J2X_SOURCES})   # (WIN32: a windowed program, no console beside it; main() is still the entry)
 target_include_directories({name} PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options({name} PRIVATE -w -fpermissive)
@@ -36,6 +36,9 @@ target_link_libraries({name} PRIVATE OpenGL::GL OpenGL::GLU)
 target_link_libraries({name} PRIVATE vorbisfile vorbis ogg)   # the game's .ogg sounds and music
 if(WIN32)
   target_link_libraries({name} PRIVATE ws2_32)
+  if(MSVC)
+    target_link_options({name} PRIVATE /ENTRY:mainCRTStartup)   # (a windowed program whose entry is main, not WinMain)
+  endif()
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Content")

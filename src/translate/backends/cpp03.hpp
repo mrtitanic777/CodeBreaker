@@ -212,7 +212,7 @@ protected:
     Code write_name(const ir::Name& e);
     Code write_select(const ir::Node& e, const ir::Select& s);
     Code write_length(const ir::Length& e);
-    Code write_index(const ir::Index& e);
+    Code write_index(const ir::Node& node, const ir::Index& e);
     Code write_unary(const ir::Node& e, const ir::Unary& u);
     Code write_concat(const ir::Concat& e);
     Code write_assign(const ir::Assign& e);
@@ -262,6 +262,7 @@ protected:
     int temps_ = 0;
     int arg_temps_ = 0;                                     // _j2xarg_N owned temporaries hoisted
     bool owning_ = false;
+    bool lvalue_ = false;                                   // the expression being written is assigned to (an Index there stays an lvalue)
     std::optional<std::set<std::string, std::less<>>> owned_scalar_;
 
 };

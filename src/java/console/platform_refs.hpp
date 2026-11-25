@@ -80,7 +80,8 @@ std::string generate_pc_entry_point(std::string_view main_class);
 // Default arguments to construct the Runnable game shell from the entry point: NULL for every reference parameter (no
 // AWT frame/canvas/applet on the console), the display size for the first two int parameters, false for booleans, 0
 // for other primitives. Uses the widest constructor.
-std::string runnable_ctor_args(const ir::JClass& cls);
+// `canvas`: a Canvas parameter gets `new Canvas()` (the PC entry: the canvas is the SDL window), not NULL.
+std::string runnable_ctor_args(const ir::JClass& cls, bool canvas = false);
 
 // The 360 entry point for a Runnable game shell with no static main (Indev): run ordered static init, construct the
 // shell (NULL AWT args + display size), then call its Runnable run() -- the same thing the Java applet's thread does.

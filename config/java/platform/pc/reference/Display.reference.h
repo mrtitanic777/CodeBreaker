@@ -25,7 +25,7 @@ namespace Display {
 	void setTitle(const std::string& title);
 	void setFullscreen(bool full);
 	void setVSyncEnabled(bool on);
-	inline void setParent(...) {}
+	void setParent(const void* parent);   // a game in a canvas (an applet's): closing the window ends the program, as the applet's frame did
 	inline void setIcon(...) {}
 	void sync(int fps);
 	inline void setResizable(...) {}

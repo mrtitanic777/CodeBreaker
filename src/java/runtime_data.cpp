@@ -589,7 +589,10 @@ void Runtime::build_stubs() {
         .trailer = {"inline Graphics* j2xSharedGraphics() { static Graphics _g; return &_g; }"}});
     add_class_stub("Cursor.h", {.name = "Cursor"});
     put_file("Class.h", verbatim::kClassHeader);
-    add_class_stub("Robot.h", {.name = "Robot", .void_methods = {"mouseMove"}});
+    add_class_stub("Robot.h", {
+        .name = "Robot",
+        .extra = {"void mouseMove(int x, int y) { J2X_ROBOT_MOUSE_MOVE(x, y); }"},
+        .prelude = {"#ifndef J2X_ROBOT_MOUSE_MOVE", "#define J2X_ROBOT_MOUSE_MOVE(x, y) ((void)(x), (void)(y))", "#endif"}});
     add_class_stub("URL.h", {
         .name = "URL",
         .ret_methods = {{"openConnection", "URLConnection*", "J2X_URL_OPEN_CONNECTION(this)"},
@@ -671,8 +674,9 @@ void Runtime::build_stubs() {
             {"getGraphics", "Graphics*", "0"}},
         .includes = {"Point"},
         .forward_decls = {"Graphics"},
-        .extra = {"Point* getLocationOnScreen() { static Point _p; return &_p; }"},
-        .prelude = {"#ifndef J2X_COMPONENT_WIDTH", "#define J2X_COMPONENT_WIDTH() 0", "#define J2X_COMPONENT_HEIGHT() 0", "#endif"}});
+        .extra = {"Point* getLocationOnScreen() { static Point _p; _p.x = J2X_COMPONENT_SCREEN_X(); _p.y = J2X_COMPONENT_SCREEN_Y(); return &_p; }"},
+        .prelude = {"#ifndef J2X_COMPONENT_WIDTH", "#define J2X_COMPONENT_WIDTH() 0", "#define J2X_COMPONENT_HEIGHT() 0", "#endif",
+                    "#ifndef J2X_COMPONENT_SCREEN_X", "#define J2X_COMPONENT_SCREEN_X() 0", "#define J2X_COMPONENT_SCREEN_Y() 0", "#endif"}});
     add_class_stub("FileDialog.h", {
         .name = "FileDialog",
         .void_methods = {"setVisible", "setMode", "setDirectory", "setFile", "setFilenameFilter", "setLocationRelativeTo"},
@@ -681,7 +685,8 @@ void Runtime::build_stubs() {
     add_class_stub("PointerInfo.h", {
         .name = "PointerInfo",
         .includes = {"Point"},
-        .extra = {"Point* getLocation() { static Point _p; return &_p; }"}});
+        .extra = {"Point* getLocation() { static Point _p; _p.x = J2X_POINTER_X(); _p.y = J2X_POINTER_Y(); return &_p; }"},
+        .prelude = {"#ifndef J2X_POINTER_X", "#define J2X_POINTER_X() 0", "#define J2X_POINTER_Y() 0", "#endif"}});
     add_ns_stub("MouseInfo.h", {
         .name = "MouseInfo",
         .ret_fns = {{"getPointerInfo", "PointerInfo", "PointerInfo()"}},

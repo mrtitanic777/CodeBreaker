@@ -78,9 +78,9 @@ CB_TEST("java.minecraft.package.the_console_fixes_run_only_on_the_console", [] {
     cb::Arena arena;
     const std::vector<cb::translate::ir::Node*> units;
     const pr::Patched other = m.ir_patches(arena, units, "pc");
-    CB_CHECK(!other.sound && !other.applet && !other.render);
+    CB_CHECK(!other.sound && other.applet && !other.render);   // (the applet ping is gone on every platform: no applet anywhere)
     const pr::Patched none = m.ir_patches(arena, units, std::nullopt);
-    CB_CHECK(!none.sound && !none.applet && !none.render);
+    CB_CHECK(!none.sound && none.applet && !none.render);
     const pr::Patched console = m.ir_patches(arena, units, "xbox360");
     CB_CHECK(console.sound && console.applet && console.render);
     CB_CHECK_EQ(console.sound->sites, std::size_t{0});

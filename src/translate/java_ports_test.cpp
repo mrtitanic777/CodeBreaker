@@ -170,6 +170,24 @@ CB_TEST("java.emitted.a_cast_argument_is_not_a_grouping_cast_and_a_list_result_k
     CB_CHECK(!jpo_has(cpp, "PathPoint"));                       // the mis-typed hoist is gone
 });
 
+// A byte[] is an unsigned-char buffer, but reading an element gives a Java byte: signed. Indev's flood fill compares its 255 markers
+// with `(byte)255` (-1); unsigned, they never matched, the markers stayed in the world, and the spawn search met block 255 and crashed.
+CB_TEST("java.emitted.a_byte_array_element_read_is_a_signed_byte", [] {
+    if (!jpo_ready("emitted-cpp")) return;
+    const JpoConverted done = jpo_convert({{"Fill.java", "public class Fill { public byte[] b = new byte[4];\n"
+                                                         " public boolean same(int i, int v) { byte m = (byte)v; return this.b[i] == m; }\n"
+                                                         " public int value(int i) { return this.b[i]; }\n"
+                                                         " public int masked(int i) { return this.b[i] & 255; }\n"
+                                                         " public void put(int i, int v) { this.b[i] = (byte)v; this.b[i]++; } }"}});
+    const std::string& cpp = done.cpp.at("Fill");
+    CB_CHECK(jpo_has(cpp, "((signed char)this->b[i]) == m"));      // -1 == -1, as in Java
+    CB_CHECK(jpo_has(cpp, "return ((signed char)this->b[i]);"));   // sign-extended, as in Java
+    CB_CHECK(jpo_has(cpp, "((signed char)this->b[i]) & 255"));      // the same 0..255 either way
+    CB_CHECK(jpo_has(cpp, "this->b[i] = "));                        // an assignment's target stays the element
+    CB_CHECK(jpo_has(cpp, "this->b[i]++"));
+    CB_CHECK(!jpo_has(cpp, "((signed char)this->b[i]) = "));   // (never an assignment to the cast)
+});
+
 // a transitive `this((Block)var1, 1)` delegation threads the argument through the X-typed overload.
 CB_TEST("java.emitted.a_transitive_delegation_with_a_cast_argument_threads_blockid", [] {
     if (!jpo_ready("emitted-cpp")) return;

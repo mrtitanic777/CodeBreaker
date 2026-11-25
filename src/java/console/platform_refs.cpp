@@ -217,7 +217,7 @@ int main(int argc, char** argv) {
     return refs_fill(std::string(kTemplate), {{"@MAIN@", main_class}});
 }
 
-std::string runnable_ctor_args(const ir::JClass& cls) {
+std::string runnable_ctor_args(const ir::JClass& cls, bool canvas) {
     // The widest constructor: the first of the longest parameter lists.
     const ir::Method* widest = nullptr;
     for (const ir::Method* ctor : cls.constructors()) {
@@ -238,7 +238,7 @@ std::string runnable_ctor_args(const ir::JClass& cls) {
         } else if (kPrimitives.contains(t.name) && !t.is_array()) {
             args.push_back("0");
         } else {
-            args.push_back("NULL");
+            args.push_back(canvas && t.name == "Canvas" && !t.is_array() ? "new Canvas()" : "NULL");
         }
     }
     return text::join(args, ", ");
@@ -292,7 +292,7 @@ std::string generate_pc_runnable_entry_point(const ir::JClass& cls) {
 #include "Thread.h"
 #include "j2x_init.h"
 #include "@NAME@.h"
-#define SDL_MAIN_HANDLED
+@CANVAS@#define SDL_MAIN_HANDLED
 #include <SDL2/SDL.h>
 #include <string>
 #ifdef _WIN32
@@ -328,7 +328,11 @@ int main(int, char**) {
     return 0;
 }
 )cpp";
-    return refs_fill(std::string(kTemplate), {{"@NAME@", cls.name}, {"@ARGS@", runnable_ctor_args(cls)}});
+    // on PC the shell is drawn in a canvas that is the SDL window (its size, its place on the screen: the AWT mouse Indev looks
+    // around with needs one), not in none
+    const std::string args = runnable_ctor_args(cls, true);
+    const bool canvas = args.find("new Canvas()") != std::string::npos;
+    return refs_fill(std::string(kTemplate), {{"@NAME@", cls.name}, {"@ARGS@", args}, {"@CANVAS@", canvas ? "#include \"Canvas.h\"\n" : ""}});
 }
 
 Audit audit_references(const stdfs::path& reference_dir) {

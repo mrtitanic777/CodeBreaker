@@ -165,11 +165,9 @@ std::string trace_guest_throws(std::string_view text) {
 
 std::string finalize_emitted(std::string_view text_in, const Options& options) {
     std::string text = emit::std_transforms::sanitize_reserved_members(text_in);
-    if (options.gl_to_d3d9) {
-        // the project's last word (Minecraft: GL picking -> a raycast), BEFORE the namespace rename
-        if (options.project != nullptr) text = options.project->finalize_text(std::move(text), "xbox360");
-        text = convert_gl_to_d3d9(text);
-    }
+    // the project's last word (Minecraft: its memory line in gigabytes; on the console GL picking -> a raycast), BEFORE the namespace rename
+    if (options.project != nullptr) text = options.project->finalize_text(std::move(text), options.gl_to_d3d9 ? "xbox360" : "pc_opengl");
+    if (options.gl_to_d3d9) text = convert_gl_to_d3d9(text);
     if (options.trace_throws) text = trace_guest_throws(text);   // tag every throw with its site: throws are no-op landmines here
     text = text::replace_all(text, "'\\u0000'", "'\\0'");
     text = fin_replace_bare_objects(text);

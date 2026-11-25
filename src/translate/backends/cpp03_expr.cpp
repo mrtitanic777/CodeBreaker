@@ -67,7 +67,7 @@ Code Writer::dispatch(const ir::Node* e) {
     }
     if (const auto* x = ir::get<ir::Select>(e)) return write_select(*e, *x);
     if (const auto* x = ir::get<ir::Length>(e)) return write_length(*x);
-    if (const auto* x = ir::get<ir::Index>(e)) return write_index(*x);
+    if (const auto* x = ir::get<ir::Index>(e)) return write_index(*e, *x);
     if (const auto* x = ir::get<ir::Unary>(e)) return write_unary(*e, *x);
     if (const auto* x = ir::get<ir::Binary>(e)) return write_binary(*e, *x);
     if (const auto* x = ir::get<ir::Concat>(e)) return write_concat(*x);
@@ -254,16 +254,25 @@ Code Writer::write_length(const ir::Length& e) {
     return {expr(e.arr).code + ".length", "int"};
 }
 
-Code Writer::write_index(const ir::Index& e) {
+Code Writer::write_index(const ir::Node& node, const ir::Index& e) {
+    const bool target = lvalue_;
+    lvalue_ = false;   // (the array and the index inside are values)
     const Code a = expr(e.arr);
     const Code i = expr(e.index);
-    return {a.code + "[" + i.code + "]", array_element(a.ctype)};
+    const std::string element = array_element(a.ctype);
+    // A byte[] is an unsigned-char buffer, but an element READ is a Java byte: signed. Without the cast, `b[i] == (byte)-1` compares 255
+    // with -1 (Indev's flood fill never cleared its 255 markers: a world with block 255 in it, and a crash at spawn), and `int v = b[i]`
+    // or `b[i] < 0` differ for every byte >= 128. As an assignment's target it stays the plain element.
+    if (!target && kind_of(node) == "i8" && element == "unsigned char") return {"((signed char)" + a.code + "[" + i.code + "])", "signed char"};
+    return {a.code + "[" + i.code + "]", element};
 }
 
 Code Writer::write_unary(const ir::Node& e, const ir::Unary& u) {
-    const Code x = expr(u.x);
-    if (u.postfix) return {x.code + u.op, x.ctype};
     const bool incdec = u.op == "++" || u.op == "--";
+    lvalue_ = u.postfix || incdec;   // (++ and -- change their operand)
+    const Code x = expr(u.x);
+    lvalue_ = false;
+    if (u.postfix) return {x.code + u.op, x.ctype};
     return {u.op + x.code, incdec ? x.ctype : ctype(e.type)};
 }
 
@@ -306,7 +315,9 @@ Code Writer::write_concat(const ir::Concat& e) {
 }
 
 Code Writer::write_assign(const ir::Assign& e) {
+    lvalue_ = true;
     const Code t = expr(e.target);
+    lvalue_ = false;
     const Code v = expr(e.value);
     if (!e.op) return {t.code + " = " + unbox(coerce(v.code, t.ctype), v.ctype, t.ctype), t.ctype};
     const ir::TypeP target_type = detail::type_of(e.target);

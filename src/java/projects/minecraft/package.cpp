@@ -11,6 +11,8 @@
 #include "java/projects/minecraft/controller_nav.hpp"
 #include "java/projects/minecraft/edition.hpp"
 #include "java/projects/minecraft/keybind_mark.hpp"
+#include "java/projects/minecraft/memory_text.hpp"
+#include "java/projects/minecraft/music_guard.hpp"
 #include "java/projects/minecraft/platform_coverage.hpp"
 #include "java/projects/minecraft/profiles/minecraft_alpha.hpp"
 #include "java/projects/minecraft/profiles/minecraft_beta.hpp"
@@ -61,14 +63,18 @@ std::optional<std::string> Minecraft::profile_for(std::string_view edition_name,
 
 Patched Minecraft::ir_patches(Arena& arena, const std::vector<translate::ir::Node*>& units, std::optional<std::string_view> platform) {
     Patched patched;
+    // every platform: there is no applet to ping minecraft.net from (the PC entry makes the game with a NULL applet), and Indev's
+    // setLevel sets the world only when that ping passes -- "Create" went back to the menu
+    patched.applet = applet_ping::patch(units);
     if (!mc_on_console(platform)) return patched;
     patched.sound = sound_fix::patch(arena, units);
-    patched.applet = applet_ping::patch(units);
     patched.render = render_fix::patch(arena, units);
     return patched;
 }
 
 std::string Minecraft::finalize_text(std::string text, std::optional<std::string_view> platform) const {
+    text = memory_text::rewrite(text);   // every platform: "of 125GB", not "of 128599MB"
+    text = music_guard::rewrite(text);   // every platform: a game whose music was never downloaded plays without it
     if (!mc_on_console(platform)) return text;
     return raycast::convert_gl_pick_to_raycast(text);
 }

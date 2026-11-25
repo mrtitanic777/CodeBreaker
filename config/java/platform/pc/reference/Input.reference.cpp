@@ -4,6 +4,7 @@
 #include <SDL2/SDL.h>
 #include <deque>
 #include <cstring>
+#include <cstdlib>
 
 namespace {
 
@@ -169,6 +170,7 @@ namespace Keyboard {
 void create() {}
 void destroy() {}
 bool isCreated() { return true; }
+
 void enableRepeatEvents(bool enable) { g_repeat = enable; }
 bool isKeyDown(int key) { return key > 0 && key < 256 && g_down[key]; }
 
@@ -221,9 +223,13 @@ void create() {}
 void destroy() {}
 bool isCreated() { return true; }
 
+void setNativeCursor(const void* cursor) {
+	if (!std::getenv("J2X_HIDDEN")) SDL_ShowCursor(cursor ? SDL_DISABLE : SDL_ENABLE);
+}
+
 void setGrabbed(bool grabbed) {
 	g_grabbed = grabbed;
-	SDL_SetRelativeMouseMode(grabbed ? SDL_TRUE : SDL_FALSE);
+	if (!std::getenv("J2X_HIDDEN")) SDL_SetRelativeMouseMode(grabbed ? SDL_TRUE : SDL_FALSE);   // (a hidden test run never takes the mouse)
 	g_dx = g_dy = 0;
 }
 
@@ -233,7 +239,7 @@ void setCursorPosition(int x, int y) {
 	g_x = x;
 	g_y = y;
 	SDL_Window* w = SDL_GetMouseFocus();
-	if (w && !g_grabbed) SDL_WarpMouseInWindow(w, x, g_h - 1 - y);
+	if (w && !g_grabbed && !std::getenv("J2X_HIDDEN")) SDL_WarpMouseInWindow(w, x, g_h - 1 - y);
 }
 
 int getDX() { int d = g_dx; g_dx = 0; return d; }

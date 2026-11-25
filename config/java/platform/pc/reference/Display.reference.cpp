@@ -17,10 +17,22 @@ namespace {
 	bool g_close = false;
 	bool g_active = true;
 	bool g_full = false;
+	bool g_parented = false;
 }
 
 int j2xDisplayWidth() { return Display::getWidth(); }    // AWT components report the window (stdafx.h)
 int j2xDisplayHeight() { return Display::getHeight(); }
+
+// The AWT mouse (stdafx.h): the window's place on the screen, the pointer on the screen, and Robot.mouseMove -- what Indev's
+// MouseHelper looks around with (it recentres the pointer every frame). A J2X_HIDDEN test run never moves the person's mouse.
+int j2xWindowScreenX() { int x = 0, y = 0; if (g_win) SDL_GetWindowPosition(g_win, &x, &y); return x; }
+int j2xWindowScreenY() { int x = 0, y = 0; if (g_win) SDL_GetWindowPosition(g_win, &x, &y); return y; }
+// (hidden: the pointer rests at the window's centre, so the person's own mouse never turns the camera of a test run)
+int j2xPointerX() { int x = 0, y = 0; if (std::getenv("J2X_HIDDEN")) return j2xWindowScreenX() + Display::getWidth() / 2; SDL_GetGlobalMouseState(&x, &y); return x; }
+int j2xPointerY() { int x = 0, y = 0; if (std::getenv("J2X_HIDDEN")) return j2xWindowScreenY() + Display::getHeight() / 2; SDL_GetGlobalMouseState(&x, &y); return y; }
+void j2xRobotMouseMove(int x, int y) {
+	if (!std::getenv("J2X_HIDDEN") && g_win && (SDL_GetWindowFlags(g_win) & SDL_WINDOW_INPUT_FOCUS)) SDL_WarpMouseGlobal(x, y);   // (only while the game has the focus)
+}
 
 namespace Display {
 
@@ -48,7 +60,7 @@ void create() {
 	int w = g_mode.getWidth() > 0 ? g_mode.getWidth() : 854;
 	int h = g_mode.getHeight() > 0 ? g_mode.getHeight() : 480;
 	g_win = SDL_CreateWindow(g_title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, w, h,
-	                         SDL_WINDOW_OPENGL | SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE);
+	                         SDL_WINDOW_OPENGL | (std::getenv("J2X_HIDDEN") ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN) | SDL_WINDOW_RESIZABLE);   // (J2X_HIDDEN: a test run off-screen)
 	if (!g_win) {
 		std::fprintf(stderr, "[display] SDL_CreateWindow failed: %s\n", SDL_GetError());
 		return;
@@ -58,6 +70,8 @@ void create() {
 	SDL_GL_SetSwapInterval(1);
 	Input::setDisplaySize(w, h);
 }
+
+void setParent(const void* parent) { g_parented = parent != 0; }
 
 void destroy() {
 	if (g_ctx) SDL_GL_DeleteContext(g_ctx);
@@ -71,6 +85,9 @@ void processMessages() {
 	while (SDL_PollEvent(&e)) {
 		if (e.type == SDL_QUIT) {
 			g_close = true;
+			// a game drawn in a canvas never reads isCloseRequested (Indev's loop asks only without one): the window closing ends
+			// the program, as closing the applet's frame ended the JVM
+			if (g_parented) std::exit(0);
 		} else if (e.type == SDL_WINDOWEVENT) {
 			if (e.window.event == SDL_WINDOWEVENT_FOCUS_GAINED) g_active = true;
 			else if (e.window.event == SDL_WINDOWEVENT_FOCUS_LOST) g_active = false;
@@ -118,7 +135,7 @@ static void run_command(const std::string& cmd) {
 	char a[64] = {0};
 	int x = 0, y = 0;
 	if (std::sscanf(cmd.c_str(), "click %d %d", &x, &y) == 2) {
-		SDL_WarpMouseInWindow(g_win, x, y);
+		if (!std::getenv("J2X_HIDDEN")) SDL_WarpMouseInWindow(g_win, x, y);   // (hidden: the person's mouse is left alone; the event carries x, y)
 		SDL_Event e;
 		std::memset(&e, 0, sizeof(e));
 		e.type = SDL_MOUSEMOTION; e.motion.x = x; e.motion.y = y;

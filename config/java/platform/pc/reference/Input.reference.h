@@ -57,7 +57,7 @@ namespace Mouse {
 	void create();
 	void destroy();
 	bool isCreated();
-	inline void setNativeCursor(...) {}
+	void setNativeCursor(const void* cursor);   // a cursor (Indev's empty one while playing) hides the pointer; NULL shows it
 	void setGrabbed(bool grabbed);
 	bool isGrabbed();
 	void setCursorPosition(int x, int y);
