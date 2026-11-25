@@ -603,7 +603,10 @@ void Runtime::build_stubs() {
             {"getPort", "int", "-1"}, {"getDefaultPort", "int", "-1"}, {"toURI", "void*", "0"}},
         .ctors = false,
         .forward_decls = {"InputStream", "URLConnection"},
-        .extra = {"std::string _j2xpath;", "explicit URL(...) {}   // explicit: a string reaches URL only through the path ctor below", "URL(const std::string& p) : _j2xpath(p) {}", "const std::string& j2xResourcePath() const { return _j2xpath; }"},
+        .extra = {"std::string _j2xpath;", "explicit URL(...) {}   // explicit: a string reaches URL only through the path ctor below", "URL(const std::string& p) : _j2xpath(p) {}",
+                  // new URL(context, spec): a spec with its own scheme stands alone, else it replaces what follows the context's last '/'
+                  "URL(URL* c, const std::string& s) : _j2xpath(s.find(\"://\") != std::string::npos || !c ? s : c->_j2xpath.substr(0, c->_j2xpath.rfind('/') + 1) + s) {}",
+                  "const std::string& j2xResourcePath() const { return _j2xpath; }"},
         .prelude = {"#ifndef J2X_URL_OPEN_CONNECTION", "#define J2X_URL_OPEN_CONNECTION(u) 0", "#define J2X_URL_OPEN_STREAM(u) 0", "#endif"}});
     add_canonical("DecimalFormat.h");
     add_class_stub("ImageObserver.h", {.name = "ImageObserver"});

@@ -19,6 +19,7 @@
 #include "java/console/assets.hpp"
 #include "java/console/platform_config.hpp"
 #include "java/console/project_layout.hpp"
+#include "java/console/retromcp.hpp"
 #include "java/console/project_scan.hpp"
 #include "java/console/sdk.hpp"
 #include "java/console/vcxproj.hpp"
@@ -840,6 +841,15 @@ int port_tool(const ContextP& ctx, const cli::Args& a) {
         as.normalize_png = xbox;
         const console::assets::RunResult res = console::assets::run(*p.jar, p.project / "Content", as);
         jt_out(std::format("  {} asset(s) -> {}", res.written.size(), jt_native(p.project / "Content")));
+        // a RetroMCP workspace's downloaded sounds and music (game/assets, by its index) as the minecraft.net/resources/ tree the game
+        // asks for: the PC network layer serves it from Content/resources (Network.cpp)
+        if (p.kind == port::SourceKind::RetroMcpWorkspace) {
+            if (const std::optional<console::retromcp::Workspace> ws = console::retromcp::find(p.input)) {
+                const console::retromcp::ResourceCopy rc = console::retromcp::copy_resources(*ws, p.project / "Content" / "resources");
+                jt_out(std::format("  {} sound and music file(s) -> {}{}", rc.copied, jt_native(p.project / "Content" / "resources"),
+                                   rc.missing > 0 ? std::format("  ({} the workspace never downloaded: they stay silent)", rc.missing) : std::string()));
+            }
+        }
     }
 
     int code = kOk;

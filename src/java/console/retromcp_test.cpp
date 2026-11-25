@@ -107,4 +107,34 @@ CB_TEST("java.console.retromcp.the_server_project_and_what_is_not_a_workspace", 
     CB_CHECK(m && m->version == "b1.7.3" && m->launcher_main.empty());
 });
 
+CB_TEST("java.console.retromcp.the_downloaded_sounds_are_copied_by_their_names", [] {
+    fs::ScopedTempDir tmp("cbrmcp");
+    const stdfs::path root = tmp.path() / "ws";
+    rm_make_workspace(root);
+    fs::write_text(root / "conf" / "version.json", R"({"id": "in-20100213", "assetIndex": {"id": "20100212"}})");
+    const stdfs::path assets = root / "minecraft" / "game" / "assets";
+    fs::write_text(assets / "indexes" / "20100212.json",
+                   R"({"objects": {"newsound/step/grass1.ogg": {"hash": "aa11", "size": 3}, "sound/step/stone1.ogg": {"hash": "bb22", "size": 4},
+                                   "../escape.ogg": {"hash": "cc33", "size": 1}},
+                       "custom": {"music/calm1.ogg": {"hash": "dd44", "size": 9, "url": "https://example.invalid/dd44"}}})");
+    fs::write_text(assets / "objects" / "aa" / "aa11", "one");
+    fs::write_text(assets / "objects" / "bb" / "bb22", "four");
+    fs::write_text(assets / "objects" / "cc" / "cc33", "x");
+    const std::optional<retromcp::Workspace> w = retromcp::find(root / "minecraft");
+    CB_CHECK(w && w->asset_index && *w->asset_index == assets / "indexes" / "20100212.json");
+    if (!w) return;
+    const stdfs::path dest = tmp.path() / "Content" / "resources";
+    const retromcp::ResourceCopy c = retromcp::copy_resources(*w, dest);
+    CB_CHECK_EQ(c.copied, std::size_t{2});
+    CB_CHECK_EQ(c.missing, std::size_t{1});   // the music RetroMCP never downloaded
+    CB_CHECK_EQ(fs::read_text(dest / "newsound" / "step" / "grass1.ogg"), "one");
+    CB_CHECK_EQ(fs::read_text(dest / "sound" / "step" / "stone1.ogg"), "four");
+    CB_CHECK(!stdfs::exists(tmp.path() / "Content" / "escape.ogg"));   // never outside the folder
+    // an index with nothing in it ({}): nothing
+    fs::ScopedTempDir bare("cbrmcp");
+    rm_make_workspace(bare.path());
+    const auto b = retromcp::find(bare.path());
+    CB_CHECK(b && b->asset_index && retromcp::copy_resources(*b, bare.path() / "out").copied == 0);
+});
+
 }  // namespace

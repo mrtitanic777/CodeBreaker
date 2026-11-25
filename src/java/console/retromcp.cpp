@@ -214,7 +214,60 @@ std::optional<Workspace> find(const stdfs::path& dropped) {
         }
     }
     w.entry_class = find_entry_class(w.java_src);
+
+    // the asset index: version.json's assetIndex id under the project's game/assets/indexes, else the one index there is
+    std::string index_id;
+    if (rm_is_file(manifest)) {
+        try {
+            const nlohmann::json j = nlohmann::json::parse(fs::read_text(manifest));
+            if (j.contains("assetIndex") && j["assetIndex"].is_object() && j["assetIndex"].contains("id") && j["assetIndex"]["id"].is_string())
+                index_id = j["assetIndex"]["id"].get<std::string>();
+        } catch (const std::exception&) {
+        }
+    }
+    const stdfs::path indexes = w.project / "game" / "assets" / "indexes";
+    if (!index_id.empty() && rm_is_file(indexes / (index_id + ".json"))) {
+        w.asset_index = indexes / (index_id + ".json");
+    } else {
+        std::vector<stdfs::path> found;
+        std::error_code ec;
+        for (stdfs::directory_iterator it(indexes, ec), end; !ec && it != end; it.increment(ec))
+            if (it->is_regular_file(ec) && text::lower(fs::to_text(it->path().extension())) == ".json") found.push_back(it->path());
+        if (found.size() == 1) w.asset_index = found.front();
+    }
     return w;
+}
+
+ResourceCopy copy_resources(const Workspace& workspace, const stdfs::path& dest) {
+    ResourceCopy done;
+    if (!workspace.asset_index) return done;
+    nlohmann::json index;
+    try {
+        index = nlohmann::json::parse(fs::read_text(*workspace.asset_index));
+    } catch (const std::exception&) {
+        return done;
+    }
+    const stdfs::path objects = workspace.asset_index->parent_path().parent_path() / "objects";
+    // "objects" is the index's own list; RetroMCP's indexes keep what it adds (the music) under "custom"
+    for (const char* section : {"objects", "custom"}) {
+        if (!index.contains(section) || !index[section].is_object()) continue;
+        for (const auto& [name, entry] : index[section].items()) {
+            if (!entry.is_object() || !entry.contains("hash") || !entry["hash"].is_string()) continue;
+            const std::string hash = entry["hash"].get<std::string>();
+            if (hash.size() < 3 || name.empty() || name.find("..") != std::string::npos || name.front() == '/') continue;   // (never outside dest)
+            const stdfs::path from = objects / hash.substr(0, 2) / hash;
+            if (!rm_is_file(from)) {
+                ++done.missing;
+                continue;
+            }
+            const stdfs::path to = dest / fs::from_text(name);
+            std::error_code ec;
+            stdfs::create_directories(to.parent_path(), ec);
+            stdfs::copy_file(from, to, stdfs::copy_options::overwrite_existing, ec);
+            if (!ec) ++done.copied;
+        }
+    }
+    return done;
 }
 
 }  // namespace cb::java::console::retromcp

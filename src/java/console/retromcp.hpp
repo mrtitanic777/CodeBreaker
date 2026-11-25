@@ -11,7 +11,9 @@
 //         src/<packages>/*.java                 the source the person builds and edits -- the one that is converted
 //         src_original/                         the source as decompiled, kept to diff against (never converted)
 //         jars/deobfuscated.jar                 the game's classes and resources, remapped (textures, sounds: the game's Content)
-//         md5/original.md5, bin/, game/         the class checksums, Eclipse's output, the game's run folder (assets)
+//         md5/original.md5, bin/, game/         the class checksums, Eclipse's output, the game's run folder
+//         game/assets/indexes/<id>.json         the sounds and music the launcher downloaded: name -> hash (version.json's assetIndex)
+//         game/assets/objects/<h2>/<hash>       ... their files, by hash
 //         .classpath .project minecraft.iml     the IDE projects (the libraries are ../libraries)
 //
 // find() climbs from the folder a person dropped (the root, the project, or any folder inside either) to the root, and resolves every part
@@ -38,7 +40,18 @@ struct Workspace {
     std::string version;                               // "in-20100213": options.cfg's setup=, else version.json's id
     std::string launcher_main;                         // version.json's mainClass ("org.mcphackers.launchwrapper.Launch")
     std::string entry_class;                           // the game's own entry in the source: a main(String[]) class, else an Applet
+    std::optional<std::filesystem::path> asset_index;  // project/game/assets/indexes/<version.json's assetIndex id>.json (else the only one)
 };
+
+// What copy_resources did: the files copied, and the ones the index names that were never downloaded (RetroMCP fetches music at launch).
+struct ResourceCopy {
+    std::size_t copied = 0;
+    std::size_t missing = 0;
+};
+
+// The workspace's downloaded sounds and music under `dest` by their own names (newsound/step/grass1.ogg ...), from the asset index's
+// objects: the tree the game's minecraft.net/resources/ held. Nothing when the workspace has no index.
+ResourceCopy copy_resources(const Workspace& workspace, const std::filesystem::path& dest);
 
 // The closest folder at or above `dir` (at most 8 up) that is a RetroMCP workspace's root: options.cfg with a setup= line or conf/version.json,
 // and a project folder (minecraft or minecraft_server) holding Java source in src/. nullopt when there is none.

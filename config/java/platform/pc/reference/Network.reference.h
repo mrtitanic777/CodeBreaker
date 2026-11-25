@@ -2,6 +2,8 @@
 // (connect / getResponseCode / getInputStream throw IOException), so the game's own handlers and
 // finally blocks run as written (ThreadDownloadImage disconnects the connection it opened). Skins, the
 // resource index and the login check are servers that no longer answer anyway.
+// One address answers: early Minecraft's http://www.minecraft.net/resources/ (its listing and its files), served from
+// the resources/ folder the converter fills from the game's own downloaded sounds (Network.cpp).
 #ifndef NETWORK_H
 #define NETWORK_H
 class URL;
