@@ -767,10 +767,25 @@ int port_tool(const ContextP& ctx, const cli::Args& a) {
         ctx->use_libraries(p.libraries);
     }
     for (std::size_t i = 0; i < p.steps.size(); ++i) jt_out(std::format("  {}. {}", i + 1, p.steps[i]));
+    // Each step's share of the bar is what it takes, not an equal slice: the build is most of a run, then a decompile, then the conversion.
+    // A step that reports its own progress (the build's "[ 42%]") moves the bar inside its share.
+    std::vector<double> share;
+    for (const std::string& s : p.steps) share.push_back(port::step_weight(s));
+    double total = 0;
+    for (const double w : share) total += w;
     std::size_t step = 0;
+    double done_before = 0;   // the weight of the steps before the current one
+    int last_percent = 0;
+    const auto mark = [&](double inside) {   // the bar at `inside` (0..1) of the current step; never backwards, 100 is Done's
+        const double w = step > 0 && step - 1 < share.size() ? share[step - 1] : 0;
+        const int at = total > 0 ? static_cast<int>((done_before + w * std::clamp(inside, 0.0, 1.0)) * 100.0 / total) : 0;
+        last_percent = std::max(last_percent, std::min(99, at));
+        return last_percent;
+    };
     const auto begin = [&](std::string_view what) {
-        jt_out(std::format("{:>3}%  {}", step * 100 / (p.steps.size() + 1), what));
+        if (step > 0 && step - 1 < share.size()) done_before += share[step - 1];
         ++step;
+        jt_out(std::format("{:>3}%  {}", mark(0), what));
         cb::flush_out();
     };
 
@@ -887,7 +902,16 @@ int port_tool(const ContextP& ctx, const cli::Args& a) {
             jt_out("  skipped: --no-build (the CMakeLists.txt is written; build it with any CMake)");
         } else {
             cb::flush_out();
-            const PcBuild b = build_pc_project(p.project, false);
+            // the build's own "[ 42%] Building CXX object ..." becomes the bar inside this step: " 71%  Building CXX object ..."
+            const PcBuild b = build_pc_project(p.project, false, [&](std::string_view line) {
+                if (const int pct = build_percent_of_line(line); pct >= 0) {
+                    const std::size_t close = line.find(']');
+                    jt_out(std::format("{:>3}%  {}", mark(pct / 100.0), text::trim(line.substr(close + 1))));
+                } else {
+                    jt_out(std::string(line));
+                }
+                cb::flush_out();
+            });
             if (b.status == PcBuild::Status::NoCMake) jt_out("  skipped: CMake is not installed (the CMakeLists.txt is written; build it with any CMake)");
             else if (b.status == PcBuild::Status::Built) jt_out("  built" + (b.exe.empty() ? std::string() : ": " + jt_native(b.exe)));
             else jt_out(std::format("  the build FAILED (exit {})", b.exit_code));
@@ -937,7 +961,22 @@ std::vector<std::string> pc_copy_runtime(const stdfs::path& exe, const stdfs::pa
 
 }  // namespace
 
-PcBuild build_pc_project(const stdfs::path& project, bool quiet) {
+int build_percent_of_line(std::string_view line) {
+    std::size_t i = 0;
+    if (line.empty() || line[0] != '[') return -1;
+    ++i;
+    while (i < line.size() && line[i] == ' ') ++i;
+    int value = 0, digits = 0;
+    while (i < line.size() && line[i] >= '0' && line[i] <= '9' && digits < 4) {
+        value = value * 10 + (line[i] - '0');
+        ++i;
+        ++digits;
+    }
+    if (digits == 0 || i + 1 >= line.size() || line[i] != '%' || line[i + 1] != ']' || value > 100) return -1;
+    return value;
+}
+
+PcBuild build_pc_project(const stdfs::path& project, bool quiet, const std::function<void(std::string_view)>& on_line) {
     PcBuild out;
     try {
         if (process::run({.argv = {"cmake", "--version"}}).exit_code != 0) out.status = PcBuild::Status::NoCMake;
@@ -945,23 +984,45 @@ PcBuild build_pc_project(const stdfs::path& project, bool quiet) {
         out.status = PcBuild::Status::NoCMake;
     }
     if (out.status == PcBuild::Status::NoCMake) return out;
-    // quiet: what the tools print is kept in <project>/build.log (its last lines are the result's), not shown
+    // Every line the tools print goes to `on_line` as it comes (the build's own "[ 42%]" is its progress); quiet: kept in <project>/build.log
+    // (its errors are the result's), else printed.
     std::string log;
+    struct Ran {
+        std::uint32_t exit_code = 1;
+    };
+    const auto line_out = [&](std::string_view line) {
+        if (quiet) log.append(line).append("\n");
+        if (on_line) on_line(line);
+        else if (!quiet) jt_out(std::string(line));
+    };
     const auto run = [&](process::ProcessSpec spec) {
-        if (quiet) {
-            spec.out = process::Capture::Collect;
-            spec.err = process::Capture::Merge;
-        } else {
-            spec.out = process::Capture::Inherit;
-            spec.err = process::Capture::Inherit;
+        spec.out = process::Capture::Collect;
+        spec.err = process::Capture::Merge;
+        Ran ran;
+        process::Process child = process::start(spec);
+        Bytes buffer(4096);
+        std::string partial;
+        for (;;) {
+            const std::size_t n = child.read(process::Process::Stream::Out, ByteSpan(buffer.data(), buffer.size()));
+            if (n == 0) break;
+            for (std::size_t i = 0; i < n; ++i) {
+                const char c = static_cast<char>(buffer[i]);
+                if (c == '\r') continue;
+                if (c != '\n') {
+                    partial += c;
+                    continue;
+                }
+                line_out(partial);
+                partial.clear();
+            }
         }
-        process::ProcessResult r = process::run(spec);
-        if (quiet) log.append(reinterpret_cast<const char*>(r.out.data()), r.out.size());
-        return r;
+        if (!partial.empty()) line_out(partial);
+        if (const std::optional<std::uint32_t> code = child.wait()) ran.exit_code = *code;
+        return ran;
     };
     const stdfs::path build_dir = project / "build";
     std::optional<stdfs::path> mingw_bin;
-    process::ProcessResult r = run({.argv = {"cmake", "-S", jt_native(project), "-B", jt_native(build_dir)}});
+    Ran r = run({.argv = {"cmake", "-S", jt_native(project), "-B", jt_native(build_dir)}});
     stdfs::path built_dir = build_dir;
     process::ProcessSpec build{.argv = {"cmake", "--build", jt_native(build_dir), "--config", "Release"}};
     // The SDL2 CMake found is MinGW's (a MinGW-w64 prefix: msys2's mingw64, ...) while the generator is another compiler's: its headers and
@@ -970,7 +1031,7 @@ PcBuild build_pc_project(const stdfs::path& project, bool quiet) {
         if (const std::optional<stdfs::path> mingw = port_mingw_prefix(build_dir)) {
             const stdfs::path bin = *mingw / "bin";
             mingw_bin = bin;
-            if (!quiet) jt_out(std::format("  SDL2 is MinGW's ({}): building with its compiler", jt_native(*mingw)));
+            line_out(std::format("SDL2 is MinGW's ({}): building with its compiler", jt_native(*mingw)));
             built_dir = project / "build-mingw";
             // (a cache of another generator in it, an earlier build's: CMake refuses to switch; the folder is the port's, made again)
             std::error_code ec;
@@ -980,7 +1041,6 @@ PcBuild build_pc_project(const stdfs::path& project, bool quiet) {
                 stdfs::remove_all(built_dir / "CMakeFiles", ec);
             }
             const std::map<std::string, std::string> env{{"PATH", jt_native(bin) + ";" + fs::get_env("PATH").value_or("")}};
-            if (!quiet) cb::flush_out();
             r = run({.argv = {"cmake", "-S", jt_native(project), "-B", jt_native(built_dir), "-G", "MinGW Makefiles",
                               "-DCMAKE_C_COMPILER=" + jt_native(bin / "gcc.exe"), "-DCMAKE_CXX_COMPILER=" + jt_native(bin / "g++.exe"),
                               "-DCMAKE_MAKE_PROGRAM=" + jt_native(bin / "mingw32-make.exe"), "-DCMAKE_BUILD_TYPE=Release"},
@@ -1002,8 +1062,7 @@ PcBuild build_pc_project(const stdfs::path& project, bool quiet) {
         if (!out.exe.empty() && mingw_bin) {
             const std::vector<std::string> dlls = pc_copy_runtime(out.exe, *mingw_bin);
             const std::string line = std::format("{} runtime DLL(s) copied beside {}: {}", dlls.size(), jt_native(out.exe.filename()), text::join(dlls, ", "));
-            if (quiet) log += line + "\n";
-            else jt_out("  " + line);
+            line_out(line);
         }
     }
     if (quiet) {

@@ -2,6 +2,8 @@
 // unpacking of a source jar.
 #include "java/port.hpp"
 
+#include "java/tools.hpp"
+
 #include "core/crypto.hpp"
 #include "core/fs.hpp"
 #include "core/io.hpp"
@@ -190,6 +192,25 @@ CB_TEST("java.port.a_retromcp_workspace_is_converted_whole_from_any_folder_insid
         CB_CHECK(pt_has(p, "for PC") && pt_has(p, "Content") && !pt_has(p, "Decompile"));
     }
     CB_CHECK(plan(mc / "src", Platform::Pc, dir.path() / "out").root == dir.path() / "out");
+});
+
+CB_TEST("java.port.the_bar_gives_each_step_its_real_share", [] {
+    // a RetroMCP workspace's run on PC: convert, Content, build -- the build is most of it, so the bar is not at the half when it begins
+    const std::vector<std::string> steps = {"Convert the Java to C++ for PC", "Copy the game's textures and resources into Content",
+                                            "Build it with CMake (when CMake is installed)"};
+    double total = 0;
+    for (const std::string& s : steps) total += step_weight(s);
+    const double build_starts = (step_weight(steps[0]) + step_weight(steps[1])) / total;
+    CB_CHECK(build_starts < 0.3);
+    CB_CHECK(step_weight("Decompile Minecraft a1.2.6 to Java") > step_weight("Convert the Java to C++ for PC"));
+    CB_CHECK(step_weight("Build the solution (when MSBuild is set up)") == step_weight("Build it with CMake (when CMake is installed)"));
+    // the build's own progress lines, which move the bar inside the build's share
+    CB_CHECK_EQ(tools::build_percent_of_line("[ 84%] Building CXX object CMakeFiles/game.dir/RenderSpider.cpp.obj"), 84);
+    CB_CHECK_EQ(tools::build_percent_of_line("[100%] Linking CXX executable game.exe"), 100);
+    CB_CHECK_EQ(tools::build_percent_of_line("[  0%] Building CXX object a.obj"), 0);
+    CB_CHECK_EQ(tools::build_percent_of_line("-- Configuring done (9.9s)"), -1);
+    CB_CHECK_EQ(tools::build_percent_of_line("[ 84] no percent"), -1);
+    CB_CHECK_EQ(tools::build_percent_of_line(""), -1);
 });
 
 }  // namespace

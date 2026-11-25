@@ -77,6 +77,15 @@ std::string_view kind_title(SourceKind kind) {
     return "something that is not a Java program";
 }
 
+double step_weight(std::string_view step) {
+    if (step.starts_with("Build")) return 60;
+    if (step.starts_with("Decompile")) return 30;
+    if (step.starts_with("Convert")) return 15;
+    if (step.find("audio") != std::string_view::npos) return 8;
+    if (step.starts_with("Unpack")) return 2;
+    return 3;
+}
+
 std::string version_from_name(std::string_view stem) {
     const std::string s = text::lower(stem);
     for (std::size_t i = 0; i < s.size(); ++i) {

@@ -58,6 +58,10 @@ struct Plan {
 // The plan for `input`. `out_root` replaces the default solution folder.
 Plan plan(const std::filesystem::path& input, Platform platform, const std::optional<std::filesystem::path>& out_root = std::nullopt);
 
+// A step's share of the run (Plan::steps' words), for the progress bar: the build is most of it (60), a decompile 30, the conversion 15, the
+// audio banks 8, anything else 3, unpacking 2. Equal slices put the bar at the half while the build had barely begun.
+double step_weight(std::string_view step);
+
 // A Minecraft version id in a jar's file stem ("a1.2.6", "minecraft-b1.7.3", "c0.30_01c", "inf-20100618", "1.2.5"); "" when there is none.
 std::string version_from_name(std::string_view stem);
 

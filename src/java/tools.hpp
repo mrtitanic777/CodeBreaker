@@ -23,6 +23,7 @@
 #include <functional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/config.hpp"
@@ -51,7 +52,10 @@ struct PcBuild {
     std::filesystem::path log;   // quiet: the build's log
     std::string tail;            // quiet: the lines that say what went wrong
 };
-PcBuild build_pc_project(const std::filesystem::path& project, bool quiet);
+// `on_line`: every line CMake and the compiler print, as it comes (else, not quiet, they are printed).
+PcBuild build_pc_project(const std::filesystem::path& project, bool quiet, const std::function<void(std::string_view)>& on_line = {});
+// The percentage a build line begins with ("[ 42%] Building CXX object ..."): -1 when it does not.
+int build_percent_of_line(std::string_view line);
 
 // `codebreaker java <tool> ...`: `args` are the words after `java`.
 int main(const std::vector<std::string>& args, const Environment& environment);

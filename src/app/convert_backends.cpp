@@ -569,7 +569,13 @@ std::optional<Plan> cv_plan_java_folder(const stdfs::path& input, const std::str
     route.build = [p](Reporter& r, const stdfs::path& out) {
         const stdfs::path project = out / p.name;
         r.count(0, 1, "CMake: " + p.name);
-        const java::tools::PcBuild b = java::tools::build_pc_project(project, true);
+        // the build's own "[ 42%] Building CXX object ..." lines are the stage's count (no count would leave the bar where Building began)
+        const java::tools::PcBuild b = java::tools::build_pc_project(project, true, [&r](std::string_view line) {
+            if (const int pct = java::tools::build_percent_of_line(line); pct >= 0) {
+                const std::size_t close = line.find(']');
+                r.count(static_cast<std::uint64_t>(pct), 100, text::trim(line.substr(close + 1)));
+            }
+        });
         r.check();
         const std::string converted = p.kind == java::port::SourceKind::RetroMcpWorkspace
                                           ? std::format("Converted the whole RetroMCP workspace (Minecraft {}): {} Java files. ", p.mc_version, p.java_files)
