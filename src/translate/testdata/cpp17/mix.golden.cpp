@@ -1,7 +1,9 @@
-// written by CodeBreaker's C++17 back end (codebreaker/translate/backends/cpp17.py) from the
-// Java program's L2; it runs on jrt.hpp, the Java library in C++17.
+// ==== jrt_program.hpp ====
+// written by CodeBreaker's C++17 back end from the Java program's L2; it runs on jrt.hpp, the Java library in C++17.
+// Every file of the program starts from this one: the runtime, and a declaration of each class.
 // these classes can form a reference cycle, which the runtime's cycle collector frees: Mix_Box
 #define JRT_CYCLES
+#pragma once
 #include "jrt.hpp"
 
 using jrt::ref;
@@ -24,6 +26,9 @@ struct Mix_Shape;
 struct Mix_Inner;
 struct Mix_Box;
 struct Mix_anon1;
+// ==== Mix.hpp ====
+#pragma once
+#include "jrt_program.hpp"
 
 struct Mix : virtual Object {
 	const char16_t* jclass_() const override { return u"Mix"; }
@@ -110,6 +115,9 @@ struct Mix_anon1 : virtual Object, virtual Mix_Shape {
 	virtual double area();
 	void finit_();
 };
+
+// ==== Mix.cpp ====
+#include "Mix.hpp"
 
 void Mix::trace_(jrt::gc::Tracer& t) {
 	(void)t;
@@ -395,6 +403,10 @@ double Mix_anon1::area() {
 void Mix_anon1::finit_() {
 }
 
+// ==== main.cpp ====
+// the program's entry: the class named by JRT_MAIN, else the first with a main
+#include "jrt_program.hpp"
+#include "Mix.hpp"
 
 int main(int argc, char** argv) {
 	const char* which = std::getenv("JRT_MAIN");

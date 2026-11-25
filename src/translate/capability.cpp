@@ -10,6 +10,7 @@
 #include "core/text.hpp"
 #include "decompile/jar.hpp"
 #include "translate/backends/c_java.hpp"
+#include "translate/backends/go_java.hpp"
 #include "translate/backends/rust_java.hpp"
 #include "translate/dotnet/package.hpp"
 #include "translate/judge_cs_cpp_command.hpp"
@@ -103,6 +104,7 @@ bool cap_has_jdk() {
 std::string cap_check_tool(const std::string& tool) {
     if (tool == "jdk") return cap_has_jdk() ? std::string() : "a Java JDK (java and javac)";
     if (tool == "cc") return cap_is_file(fs::from_text(std::string(backends::c_java::kClang))) || cap_on_path("gcc") ? std::string() : "a C compiler (clang or gcc)";
+    if (tool == "go") return backends::go_java::find_go() ? std::string() : "the Go toolchain (go)";
     if (tool == "rustc") return backends::rust_java::find_rustc() ? std::string() : "the Rust compiler (rustc)";
     if (tool == "dotnet") {
         const auto sdk = dotnet::Sdk::find();
@@ -235,7 +237,7 @@ std::vector<Target> targets_for_decompiled(std::string_view language) {
 
 const Target* find_target(const std::vector<Target>& list, std::string_view text) {
     std::string want = text::lower(text);
-    static const std::map<std::string, std::string> aliases = {{"c++17", "cpp17"}, {"c++03", "cpp03"}, {"c#", "csharp"}, {"cs", "csharp"}, {"py", "python"}, {"rs", "rust"}};
+    static const std::map<std::string, std::string> aliases = {{"c++17", "cpp17"}, {"c++03", "cpp03"}, {"c#", "csharp"}, {"cs", "csharp"}, {"py", "python"}, {"rs", "rust"}, {"golang", "go"}};
     if (const auto it = aliases.find(want); it != aliases.end()) want = it->second;
     for (const Target& t : list)
         if (t.id == want || text::lower(t.name) == want) return &t;

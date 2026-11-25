@@ -5,6 +5,7 @@
 #include <format>
 #include <functional>
 #include <sstream>
+#include <thread>
 
 #include "core/arena.hpp"
 #include "core/error.hpp"
@@ -15,6 +16,7 @@
 #include "java/apimap.hpp"
 #include "java/frontend.hpp"
 #include "translate/backends/c_java.hpp"
+#include "translate/backends/go_java.hpp"
 #include "translate/backends/rust_java.hpp"
 #include "translate/backends/cpp17.hpp"
 #include "translate/backends/csharp.hpp"
@@ -68,6 +70,38 @@ void tf_write_cpp17(const stdfs::path& built_dir, const std::string& name, const
                          "  clang++ -std=c++17 -fwrapv -O1 -I runtime " + name + ".cpp -o " + name + "\n"
                          "  cl /std:c++17 /EHsc /utf-8 /bigobj /I runtime " + name + ".cpp\n");
     result.files.push_back(stdfs::relative(note, out));
+}
+
+// A Java program's C++17: the files of its classes in their package folders, the runtime header, and how to build them.
+void tf_write_cpp17_program(const std::vector<backends::cpp17::File>& program, const std::string& name, const stdfs::path& out, Result& result) {
+    const stdfs::path runtime = config::current().checkout_root() / "config" / "translate" / "runtime" / "cpp17";
+    std::string sources;
+    for (const backends::cpp17::File& f : program) {
+        const stdfs::path to = out / fs::from_text(f.path);
+        fs::make_dirs(to.parent_path());
+        fs::write_text(to, f.text);
+        result.files.push_back(stdfs::relative(to, out));
+        if (to.extension() == ".cpp") sources += f.path + "\n";
+    }
+    tf_copy(runtime / "jrt.hpp", out / "runtime" / "jrt.hpp", result.files, out);
+    const auto note = [&](const char* file, const std::string& text) {
+        fs::write_text(out / file, text);
+        result.files.push_back(stdfs::path(file));
+    };
+    note("sources.txt", sources);
+    note("CMakeLists.txt", "cmake_minimum_required(VERSION 3.16)\nproject(" + name + " CXX)\n\nset(CMAKE_CXX_STANDARD 17)\nset(CMAKE_CXX_STANDARD_REQUIRED ON)\n"
+                           "file(STRINGS sources.txt SOURCES)\nadd_executable(" + name + " ${SOURCES})\ntarget_include_directories(" + name + " PRIVATE runtime .)\n"
+                           "if(MSVC)\n  target_compile_options(" + name + " PRIVATE /utf-8 /bigobj /permissive- /wd4244 /wd4267 /wd4018 /wd4146 /wd4309 /wd4305)\n"
+                           "else()\n  target_compile_options(" + name + " PRIVATE -fwrapv -w -O1)\n  if(MINGW)\n    target_compile_options(" + name + " PRIVATE -Wa,-mbig-obj)\n  endif()\nendif()\n");
+    note("BUILD.txt", "The C++17 translation of " + name + ".java.\n\nEach Java class is a header and a source (Foo.hpp, Foo.cpp) in the folder of its package, as the Java had it; jrt_program.hpp\n"
+                      "declares every class, and main.cpp starts the program. It builds with any C++17 compiler; the runtime it needs is in runtime/.\n"
+                      "The sources compile independently, so build them in parallel:\n\n"
+                      "  cmake -S . -B build -DCMAKE_BUILD_TYPE=Release\n  cmake --build build --parallel\n\n"
+                      "(a program of many classes builds faster with -DCMAKE_UNITY_BUILD=ON: a compiler then reads the runtime once for a batch of sources)\n\n"
+                      "or with the compiler alone (sources.txt lists the .cpp files; this one compiles them one after the other):\n\n"
+                      "  g++ -std=c++17 -fwrapv -O1 -I runtime -I . @sources.txt -o " + name + "\n"
+                      "  clang++ -std=c++17 -fwrapv -O1 -I runtime -I . @sources.txt -o " + name + "\n"
+                      "  cl /std:c++17 /EHsc /utf-8 /bigobj /MP /I runtime /I . @sources.txt\n");
 }
 
 // ---- C# -> C++17 -----------------------------------------------------------------------------------------------------------------------
@@ -358,20 +392,22 @@ Result tf_java(const std::string& to, const stdfs::path& input, const stdfs::pat
     // write and build the translation; `run_it` then runs it
     std::function<dj::Run()> run_it;
     std::vector<stdfs::path> csharp_files;
+    std::vector<backends::cpp17::File> cpp_files;
     const auto native_run = [&main_class](const stdfs::path& exe) {
         process::ProcessSpec native;
         native.argv = {fs::to_text(exe)};
         native.env["JRT_MAIN"] = main_class.simple;
         return tf_java_run(std::move(native));
     };
+    backends::c_java::Built c_built;   // (the files of the C translation, handed over once it agrees)
     if (to == "c") {
-        const backends::c_java::Built built = backends::c_java::build(arena, units, judged / "c");
-        if (!built.exe) {
-            result.verdict = built.why.starts_with("Decline:") ? Verdict::Refused : Verdict::CompileFailed;
-            result.detail = built.why;
+        c_built = backends::c_java::build(arena, units, judged / "c");
+        if (!c_built.exe) {
+            result.verdict = c_built.why.starts_with("Decline:") ? Verdict::Refused : Verdict::CompileFailed;
+            result.detail = c_built.why;
             return result;
         }
-        run_it = [&native_run, exe = *built.exe] { return native_run(exe); };
+        run_it = [&native_run, exe = *c_built.exe] { return native_run(exe); };
     } else if (to == "rust") {
         backends::rust_java::BuildOptions options;
         options.main = text::replace_all(main_class.binary, "$", ".");
@@ -382,24 +418,34 @@ Result tf_java(const std::string& to, const stdfs::path& input, const stdfs::pat
             return result;
         }
         run_it = [&native_run, exe = *built.exe] { return native_run(exe); };
+    } else if (to == "go") {
+        backends::go_java::BuildOptions options;
+        options.main = text::replace_all(main_class.binary, "$", ".");
+        const backends::go_java::Built built = backends::go_java::build(arena, units, judged / "go", options);
+        if (!built.exe) {
+            result.verdict = built.why.starts_with("Decline:") ? Verdict::Refused : Verdict::CompileFailed;
+            result.detail = built.why;
+            return result;
+        }
+        run_it = [&native_run, exe = *built.exe] { return native_run(exe); };
     } else if (to == "cpp17") {
         const auto cxx = judge_cs_cpp::find_cxx("");
         if (!cxx) throw Error("translating Java to C++17 needs a C++17 compiler (g++, clang++ or Visual Studio's cl): none found");
-        std::string text_of_program;
         try {
             const native_l2::Library library = native_l2::Library::builtin();
-            text_of_program = backends::cpp17::program(library, arena, units);
+            cpp_files = backends::cpp17::program_files(library, arena, units);
         } catch (const backends::cpp17::Decline& declined) {
             result.verdict = Verdict::Refused;
             result.detail = std::string("Decline: ") + declined.what();
             return result;
         }
-        const stdfs::path written = judged / "cpp" / (name + ".cpp");
-        fs::make_dirs(written.parent_path());
-        fs::write_text(written, text_of_program);
-        const stdfs::path exe = judged / "cpp" / (name + ".exe");
+        // a header and a source for each Java class: the sources are compiled side by side, one compiler for each
+        const stdfs::path folder = judged / "cpp";
+        const std::vector<stdfs::path> cpp_sources = backends::cpp17::write_files(cpp_files, folder);
+        const stdfs::path exe = folder / (name + ".exe");
         std::string log;
-        if (!judge_cs_cpp::build_program(*cxx, backends::cpp17::runtime_dir(), written, exe, log)) {
+        const unsigned jobs = std::clamp(std::thread::hardware_concurrency(), 1u, 8u);
+        if (!judge_cs_cpp::build_sources(*cxx, backends::cpp17::runtime_dir(), folder, cpp_sources, exe, log, jobs)) {
             result.verdict = Verdict::CompileFailed;
             result.detail = dj::first_errors(log);
             return result;
@@ -451,14 +497,7 @@ Result tf_java(const std::string& to, const stdfs::path& input, const stdfs::pat
     }
 
     if (to == "c") {
-        tf_copy(judged / "c" / "program.c", out / (name + ".c"), result.files, out);
-        const stdfs::path runtime = backends::c_java::default_runtime_dir();
-        for (const char* file : {"jrt.h", "jrt.c"}) tf_copy(runtime / file, out / "runtime" / file, result.files, out);
-        const stdfs::path note = out / "BUILD.txt";
-        fs::write_text(note, "The C translation of " + name + ".java.\n\nIt builds with a C11 compiler; the runtime it needs is in runtime/.\n\n"
-                             "  gcc -std=c11 -fwrapv -O1 -I runtime " + name + ".c runtime/jrt.c -o " + name + " -lm\n"
-                             "  clang -std=c11 -fwrapv -O1 -I runtime " + name + ".c runtime/jrt.c -o " + name + "\n");
-        result.files.push_back(stdfs::relative(note, out));
+        for (const stdfs::path& file : backends::c_java::install(c_built, name, out)) result.files.push_back(file);
     } else if (to == "rust") {
         tf_copy(judged / "rust" / "program.rs", out / (name + ".rs"), result.files, out);
         tf_copy(judged / "rust" / "runtime" / "jrt.rs", out / "runtime" / "jrt.rs", result.files, out);
@@ -466,12 +505,21 @@ Result tf_java(const std::string& to, const stdfs::path& input, const stdfs::pat
         fs::write_text(note, "The Rust translation of " + name + ".java.\n\nIt builds with rustc (edition 2021); the runtime it includes is in runtime/.\n\n"
                              "  rustc --edition 2021 -O " + name + ".rs -o " + name + "\n");
         result.files.push_back(stdfs::relative(note, out));
+    } else if (to == "go") {
+        tf_copy(judged / "go" / "program.go", out / (name + ".go"), result.files, out);
+        tf_copy(judged / "go" / "go.mod", out / "go.mod", result.files, out);
+        for (const stdfs::directory_entry& e : stdfs::directory_iterator(judged / "go" / "jrt"))
+            if (e.path().extension() == ".go") tf_copy(e.path(), out / "jrt" / e.path().filename(), result.files, out);
+        const stdfs::path note = out / "BUILD.txt";
+        fs::write_text(note, "The Go translation of " + name + ".java.\n\nIt builds with Go 1.21 or later and nothing else; the runtime it imports is in jrt/.\n\n"
+                             "  go build -o " + name + " " + name + ".go\n");
+        result.files.push_back(stdfs::relative(note, out));
     } else if (to == "cpp17") {
-        tf_write_cpp17(judged / "cpp", name, {"jrt.hpp"}, {name + ".cpp"}, out, result);
+        tf_write_cpp17_program(cpp_files, name, out, result);
     } else {
         for (const stdfs::path& p : csharp_files) tf_copy(p, out / p.filename(), result.files, out);
     }
-    const std::string_view language = to == "c" ? "C" : to == "rust" ? "Rust" : to == "cpp17" ? "C++17" : "C#";
+    const std::string_view language = to == "c" ? "C" : to == "rust" ? "Rust" : to == "go" ? "Go" : to == "cpp17" ? "C++17" : "C#";
     result.checked = std::format("The Java program and its {} translation printed the same output and exited with the same code.", language);
     return result;
 }
@@ -480,7 +528,7 @@ Result tf_java(const std::string& to, const stdfs::path& input, const stdfs::pat
 
 bool can_run(const capability::Path& path) {
     return (path.from == "csharp" && (path.to == "cpp17" || path.to == "csharp")) || (path.from == "python" && path.to == "cpp17") ||
-           (path.from == "java" && (path.to == "c" || path.to == "cpp17" || path.to == "csharp" || path.to == "rust"));
+           (path.from == "java" && (path.to == "c" || path.to == "cpp17" || path.to == "csharp" || path.to == "rust" || path.to == "go"));
 }
 
 Result run(const capability::Path& path, const stdfs::path& input, const stdfs::path& out, const stdfs::path& work, const judge_cs_cpp::Environment& environment) {
@@ -492,7 +540,7 @@ Result run(const capability::Path& path, const stdfs::path& input, const stdfs::
     if (path.from == "csharp" && path.to == "cpp17") result = tf_csharp_cpp17(absolute_input, out, absolute_work, environment);
     else if (path.from == "csharp" && path.to == "csharp") result = tf_csharp_csharp(absolute_input, out, absolute_work, environment);
     else if (path.from == "python" && path.to == "cpp17") result = tf_python_cpp17(absolute_input, out, absolute_work, environment);
-    else if (path.from == "java" && (path.to == "c" || path.to == "cpp17" || path.to == "csharp" || path.to == "rust")) result = tf_java(path.to, absolute_input, out, absolute_work, environment);
+    else if (path.from == "java" && (path.to == "c" || path.to == "cpp17" || path.to == "csharp" || path.to == "rust" || path.to == "go")) result = tf_java(path.to, absolute_input, out, absolute_work, environment);
     else throw Error("no way to translate " + path.from + " to " + path.to + " is wired");
     if (result.verdict != Verdict::Agrees) result.files.clear();
     return result;

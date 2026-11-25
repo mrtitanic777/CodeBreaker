@@ -104,5 +104,6 @@ void register_csharp_back_end(Registry&);     // backends/csharp (+ csharp_java)
 void register_csharp_cpp17_back_end(Registry&);
 void register_java_back_end(Registry&);       // backends/java: C and C++ as Java
 void register_rust_back_end(Registry&);       // backends/rust_java: Java as Rust
+void register_go_back_end(Registry&);         // backends/go_java: Java as Go
 
 }  // namespace cb::translate::registry

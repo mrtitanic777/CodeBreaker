@@ -22,6 +22,7 @@
 //   - try/finally through a scope guard (jrt::Finally) when a jump leaves the try, else written twice.
 // It declines (Decline) what it cannot write; the judge (javajudge.py) reports a declined program as refused.
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <functional>
 #include <unordered_map>
@@ -495,6 +496,7 @@ struct Program {
     std::unique_ptr<jm::Model> model;
     std::string main;
     std::set<std::string> cnames, used, method_names;
+    std::set<std::string> seen;   // the C++ types the expressions of the file being written have
 
     Program(std::vector<NodeP> us, const std::string& mn) : units(std::move(us)), main(mn) {
         model.reset(new jm::Model(units));
@@ -628,33 +630,127 @@ struct Program {
     }
 
     // ---------------------------------------------------------------- the program
+    // One Java top-level class and the classes inside it (members, local and anonymous): they share one header and one source, as
+    // they share one file in Java. Classes that inherit from each other in a circle (through their nested classes) share one pair.
+    struct Group {
+        std::vector<ClassInfo*> classes;   // in the program's order: a base before what extends it
+        std::set<int> bases;               // the groups whose classes these extend or implement
+        std::string path;                  // the file's path without its extension, `pkg/Name`
+    };
+
+    static ClassInfo* top_of(ClassInfo* c) {
+        while (c->outer) c = c->outer;
+        return c;
+    }
+
+    // Every identifier of `text` that names a class of the program: the groups it needs complete.
+    void mentioned(const std::string& text, const std::map<std::string, int>& group_of, std::set<int>& out) {
+        std::size_t i = 0;
+        while (i < text.size()) {
+            const unsigned char ch = static_cast<unsigned char>(text[i]);
+            if (std::isalpha(ch) || ch == '_') {
+                std::size_t j = i + 1;
+                while (j < text.size() && (std::isalnum(static_cast<unsigned char>(text[j])) || text[j] == '_')) j++;
+                auto it = group_of.find(text.substr(i, j - i));
+                if (it != group_of.end()) out.insert(it->second);
+                i = j;
+            } else {
+                i++;
+            }
+        }
+    }
+
+    // The program as files, each under a `// ==== path ====` line: the shared header, a header and a source for every top-level
+    // class (in its package's folder), and main.cpp.
     std::string write() {
         auto ord = ordered();
         auto cyc = model->cycles();
         collected = !cyc.empty();
-        Strs body, defs;
+
+        // the groups: one per top-level class, in the order they first appear
+        std::vector<Group> groups;
+        std::map<std::string, int> index_of;   // a top-level class's cname -> its group
         for (auto* c : ord) {
-            auto s = struct_(c);
-            body.insert(body.end(), s.begin(), s.end());
+            ClassInfo* t = top_of(c);
+            auto it = index_of.find(t->cname);
+            if (it == index_of.end()) {
+                it = index_of.emplace(t->cname, static_cast<int>(groups.size())).first;
+                groups.emplace_back();
+            }
+            groups[it->second].classes.push_back(c);
         }
-        for (auto* c : ord) {
-            auto d = definitions(c);
-            defs.insert(defs.end(), d.begin(), d.end());
+        std::map<std::string, int> group_of;   // any class's cname -> its group
+        for (std::size_t g = 0; g < groups.size(); g++)
+            for (auto* c : groups[g].classes) group_of[c->cname] = static_cast<int>(g);
+        for (std::size_t g = 0; g < groups.size(); g++)
+            for (auto* c : groups[g].classes) {
+                std::vector<std::string> sup(c->ifaces.begin(), c->ifaces.end());
+                if (!c->base.empty()) sup.push_back(c->base);
+                for (auto& q : sup)
+                    if (ClassInfo* b = model->info(q)) {
+                        int to = group_of[b->cname];
+                        if (to != static_cast<int>(g)) groups[g].bases.insert(to);
+                    }
+            }
+        merge_circles(groups, group_of, ord);
+
+        // each group's files: the definitions first, for they say which classes the source needs complete
+        std::vector<std::string> headers(groups.size()), sources(groups.size());
+        std::set<std::string> taken;
+        std::set<std::string> reserved = {"jrt_program", "main"};
+        for (std::size_t g = 0; g < groups.size(); g++) {
+            if (groups[g].classes.empty()) continue;
+            ClassInfo* t = top_of(groups[g].classes[0]);
+            std::string folder = t->package.empty() ? std::string() : py::replace(t->package, ".", "/") + "/";
+            std::string path = folder + t->cname;
+            std::string key = path;
+            for (char& ch : key) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            while (reserved.count(path) || !taken.insert(key).second) {   // (file systems that ignore case: two classes must not share a name)
+                path += "_";
+                key += "_";
+            }
+            groups[g].path = path;
         }
-        Strs head = {"// written by CodeBreaker's C++17 back end (codebreaker/translate/backends/cpp17.py) from the",
-                     "// Java program's L2; it runs on jrt.hpp, the Java library in C++17."};
-        if (collected) {
-            head.push_back("// these classes can form a reference cycle, which the runtime's cycle collector frees: " + join(cyc, ", "));
-            head.push_back("#define JRT_CYCLES");
+        for (std::size_t g = 0; g < groups.size(); g++) {
+            Group& grp = groups[g];
+            if (grp.classes.empty()) continue;
+            Strs head = {"#pragma once", "#include \"jrt_program.hpp\"", ""};
+            Strs inside;
+            for (auto* c : grp.classes) {
+                auto s = struct_(c);
+                inside.insert(inside.end(), s.begin(), s.end());
+            }
+            Strs body, in_header;
+            seen.clear();
+            for (auto* c : grp.classes) {
+                auto d = definitions(c, in_header);
+                body.insert(body.end(), d.begin(), d.end());
+            }
+            for (int b : grp.bases) head.insert(head.begin() + 2, "#include \"" + groups[b].path + ".hpp\"");
+            std::stable_sort(head.begin() + 2, head.end() - 1);
+            Strs hfile = head;
+            hfile.insert(hfile.end(), inside.begin(), inside.end());
+            hfile.insert(hfile.end(), in_header.begin(), in_header.end());
+            headers[g] = join(hfile, "\n") + "\n";
+
+            // the source needs complete every class it names, and every class whose value it handles
+            std::string text = join(body, "\n");
+            for (auto& s : seen) text += " " + s;
+            std::set<int> need;
+            mentioned(text, group_of, need);
+            need.erase(static_cast<int>(g));
+            for (std::size_t k = 0; k < groups.size(); k++)
+                if (groups[k].classes.empty()) need.erase(static_cast<int>(k));
+            std::vector<std::string> includes;
+            for (int n : need) includes.push_back("#include \"" + groups[n].path + ".hpp\"");
+            std::sort(includes.begin(), includes.end());
+            Strs sfile = {"#include \"" + grp.path + ".hpp\""};
+            sfile.insert(sfile.end(), includes.begin(), includes.end());
+            sfile.push_back("");
+            sfile.insert(sfile.end(), body.begin(), body.end());
+            sources[g] = join(sfile, "\n") + "\n";
         }
-        head.push_back("#include \"jrt.hpp\"");
-        head.push_back("");
-        head.push_back("using jrt::ref;");
-        for (auto& n : used)
-            if (!cnames.count(n)) head.push_back("using jrt::" + n + ";");
-        head.push_back("");
-        for (auto* c : ord) head.push_back("struct " + c->cname + ";");
-        head.push_back("");
+
         std::vector<ClassInfo*> mains;
         for (auto* c : ord)
             for (auto& m : c->methods())
@@ -662,23 +758,104 @@ struct Program {
                     mains.push_back(c);
                     break;
                 }
-        Strs tail = {"", "int main(int argc, char** argv) {"};
+        Strs entry = {"// the program's entry: the class named by JRT_MAIN, else the first with a main"};
+        std::set<std::string> entry_includes;
+        for (auto* c : mains) entry_includes.insert("#include \"" + groups[group_of[c->cname]].path + ".hpp\"");
+        entry.push_back("#include \"jrt_program.hpp\"");
+        entry.insert(entry.end(), entry_includes.begin(), entry_includes.end());
+        entry.push_back("");
+        entry.push_back("int main(int argc, char** argv) {");
         if (!mains.empty()) {
             std::string pick = !main.empty() ? main : mains[0]->cname;
-            tail.push_back("\tconst char* which = std::getenv(\"JRT_MAIN\");");
+            entry.push_back("\tconst char* which = std::getenv(\"JRT_MAIN\");");
             for (auto* c : mains)
-                tail.push_back("\tif (which && std::strcmp(which, \"" + py::rsplit(c->qname, ".", 1).back() +
-                               "\") == 0) return jrt::run_main(&" + c->cname + "::main, argc, argv);");
-            tail.push_back("\treturn jrt::run_main(&" + pick + "::main, argc, argv);");
+                entry.push_back("\tif (which && std::strcmp(which, \"" + py::rsplit(c->qname, ".", 1).back() +
+                                "\") == 0) return jrt::run_main(&" + c->cname + "::main, argc, argv);");
+            entry.push_back("\treturn jrt::run_main(&" + pick + "::main, argc, argv);");
         } else {
-            tail.push_back("\treturn 0;");
+            entry.push_back("\treturn 0;");
         }
-        tail.push_back("}");
-        Strs all = head;
-        all.insert(all.end(), body.begin(), body.end());
-        all.insert(all.end(), defs.begin(), defs.end());
-        all.insert(all.end(), tail.begin(), tail.end());
-        return join(all, "\n") + "\n";
+        entry.push_back("}");
+
+        Strs shared = {"// written by CodeBreaker's C++17 back end from the Java program's L2; it runs on jrt.hpp, the Java library in C++17.",
+                       "// Every file of the program starts from this one: the runtime, and a declaration of each class."};
+        if (collected) {
+            shared.push_back("// these classes can form a reference cycle, which the runtime's cycle collector frees: " + join(cyc, ", "));
+            shared.push_back("#define JRT_CYCLES");
+        }
+        shared.push_back("#pragma once");
+        shared.push_back("#include \"jrt.hpp\"");
+        shared.push_back("");
+        shared.push_back("using jrt::ref;");
+        for (auto& n : used)
+            if (!cnames.count(n)) shared.push_back("using jrt::" + n + ";");
+        shared.push_back("");
+        for (auto* c : ord) shared.push_back("struct " + c->cname + ";");
+
+        std::string out;
+        auto file = [&out](const std::string& path, const std::string& text) {
+            out += "// ==== " + path + " ====\n" + text;
+            if (!text.empty() && text.back() != '\n') out += '\n';
+        };
+        file("jrt_program.hpp", join(shared, "\n") + "\n");
+        for (std::size_t g = 0; g < groups.size(); g++) {
+            if (groups[g].classes.empty()) continue;
+            file(groups[g].path + ".hpp", headers[g]);
+            file(groups[g].path + ".cpp", sources[g]);
+        }
+        file("main.cpp", join(entry, "\n") + "\n");
+        return out;
+    }
+
+    // Groups whose classes extend one another in a circle cannot include each other's headers: they become one.
+    void merge_circles(std::vector<Group>& groups, std::map<std::string, int>& group_of, const std::vector<ClassInfo*>& ord) {
+        std::map<ClassInfo*, std::size_t> position;
+        for (std::size_t i = 0; i < ord.size(); i++) position[ord[i]] = i;
+        const int n = static_cast<int>(groups.size());
+        std::vector<int> number(n, -1), low(n, 0), component(n, -1);
+        std::vector<bool> on(n, false);
+        std::vector<int> stack;
+        int counter = 0, components = 0;
+        std::function<void(int)> visit = [&](int v) {
+            number[v] = low[v] = counter++;
+            stack.push_back(v);
+            on[v] = true;
+            for (int w : groups[v].bases) {
+                if (number[w] < 0) {
+                    visit(w);
+                    low[v] = std::min(low[v], low[w]);
+                } else if (on[w]) {
+                    low[v] = std::min(low[v], number[w]);
+                }
+            }
+            if (low[v] == number[v]) {
+                int w;
+                do {
+                    w = stack.back();
+                    stack.pop_back();
+                    on[w] = false;
+                    component[w] = components;
+                } while (w != v);
+                components++;
+            }
+        };
+        for (int v = 0; v < n; v++)
+            if (number[v] < 0) visit(v);
+        std::vector<int> first(components, -1);   // the earliest group of each circle holds the rest
+        for (int v = 0; v < n; v++)
+            if (first[component[v]] < 0) first[component[v]] = v;
+        std::vector<Group> merged(n);
+        for (int v = 0; v < n; v++) {
+            Group& to = merged[first[component[v]]];
+            to.classes.insert(to.classes.end(), groups[v].classes.begin(), groups[v].classes.end());
+            for (int b : groups[v].bases)
+                if (first[component[b]] != first[component[v]]) to.bases.insert(first[component[b]]);
+        }
+        for (auto& m : merged)   // back into the program's order
+            std::stable_sort(m.classes.begin(), m.classes.end(), [&](ClassInfo* a, ClassInfo* b) { return position.at(a) < position.at(b); });
+        groups = std::move(merged);
+        for (int v = 0; v < n; v++)
+            for (auto* c : groups[v].classes) group_of[c->cname] = v;
     }
 
     std::vector<ClassInfo*> ordered() {
@@ -737,7 +914,7 @@ struct Program {
     }
 
     Strs struct_(ClassInfo* c);
-    Strs definitions(ClassInfo* c);
+    Strs definitions(ClassInfo* c, Strs& in_header);
     bool collected = false;   // the program can form a cycle: its classes list their references for the collector
     Strs reference_fields(ClassInfo* c);
 };
@@ -898,13 +1075,18 @@ Strs Program::struct_(ClassInfo* c) {
     return L;
 }
 
-Strs Program::definitions(ClassInfo* c) {
+// The definitions of a class, for its source file; `in_header` gets what a header must hold: a template is instantiated where it is used.
+Strs Program::definitions(ClassInfo* c, Strs& in_header) {
     Strs L;
     bool two = two_phase(c);
     bool clinit = needs_clinit(c);
     if (collected && c->kind != "interface") {
         const bool has_base = !c->base.empty() && c->base != OBJECT;
         const Strs held = reference_fields(c);
+        // the collector converts each held reference to an Object*, which needs the class of what it holds complete
+        for (auto& cap : c->captures) seen.insert(ct(cap.second));
+        for (auto& f : c->fields())
+            if (sym(f) && !sstatic(sym(f))) seen.insert(ct(type(f)));
         L.push_back("void " + c->cname + "::trace_(jrt::gc::Tracer& t) {");
         if (has_base) L.push_back("\t" + cls_name(c->base) + "::trace_(t);");
         if (!has_base && held.empty()) L.push_back("\t(void)t;");
@@ -926,10 +1108,11 @@ Strs Program::definitions(ClassInfo* c) {
         for (auto& m : c->methods()) any_ctor = any_ctor || str(raw(m, "kind")) == "ctor";
         if (!any_ctor) {                // an anonymous class: the super's constructor
             std::string base = (!c->base.empty() && c->base != OBJECT) ? cls_name(c->base) : std::string();
-            L.push_back("template <class... A> void " + c->cname + "::ctor_(A&&... a) {");
-            if (!base.empty() && !model->is_interface(c->base)) L.push_back("\t" + base + "::ctor_(std::forward<A>(a)...);");
-            L.push_back("\tfinit_();");
-            L.push_back("}");
+            in_header.push_back("template <class... A> void " + c->cname + "::ctor_(A&&... a) {");
+            if (!base.empty() && !model->is_interface(c->base)) in_header.push_back("\t" + base + "::ctor_(std::forward<A>(a)...);");
+            in_header.push_back("\tfinit_();");
+            in_header.push_back("}");
+            in_header.push_back("");
         }
         auto f = Method(*this, c, nullptr).finit();
         L.insert(L.end(), f.begin(), f.end());
@@ -1641,7 +1824,10 @@ void Method::try_catch(const NodeP& s, Strs& out, const std::string& ind) {
 // ---- expressions -> (code, C++ type)
 E Method::expr(const NodeP& e) {
     auto it = subst.find(e.get());
-    if (it != subst.end()) return it->second;
+    if (it != subst.end()) {
+        p.seen.insert(it->second.second);
+        return it->second;
+    }
     static const std::set<std::string> known = {"Paren", "Lit",    "Name",   "This",     "Select",     "TypeName",
                                                 "Length", "Index", "Unary",  "Binary",   "Concat",     "Assign",
                                                 "Cond",  "Cast",   "InstanceOf", "Call", "New", "NewArray",
@@ -1650,6 +1836,7 @@ E Method::expr(const NodeP& e) {
     if (!known.count(k)) throw Decline("expression " + k);
     std::string pre = order ? sequenced(e) : std::string();
     E r = x(e);
+    p.seen.insert(r.second);   // (its class must be complete where the code is written: a member of it may be used)
     if (!pre.empty()) return E("(" + pre + ", " + r.first + ")", r.second);
     return r;
 }

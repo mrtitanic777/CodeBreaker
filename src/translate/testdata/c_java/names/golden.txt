@@ -1,9 +1,20 @@
+// ==== jprogram.h ====
 /* written by CodeBreaker's C back end for Java (cb/translate/backends/c_java) from
    the program's L2; it runs on jrt.h / jrt.c, the Java library in C. */
+#ifndef JPROGRAM_H
+#define JPROGRAM_H
+
 #include "jrt.h"
 
 typedef struct Names Names;
-extern const jclass Names_class;
+
+#endif
+// ==== Names.h ====
+/* Names.h -- Names: its structs and function tables, and what the other files of the program call. */
+#ifndef NAMES_H
+#define NAMES_H
+
+#include "jprogram.h"
 
 struct Names {
 	jobject hdr_;
@@ -12,14 +23,22 @@ struct Names_vt {
 	jobject_vt o_;
 };
 
+extern const jclass Names_class;
+void Names_init(Names* self);
+Names* Names_new(void);
+int32_t Names_sizeof_(int32_t);
+void Names_main(jarray*);
+void Names_finit(Names* self);
+
+#endif
+// ==== Names.c ====
+/* Names.c -- the code and static data of Names. */
+#include "Names.h"
+
 static jstring* lit_1;
 static jstring* lit_2;
 
-static void Names_init(Names* self);
-static Names* Names_new(void);
-static int32_t Names_sizeof_(int32_t);
-static void Names_main(jarray*);
-static void Names_finit(Names* self);
+
 struct Lambda1 {
 	jobject hdr_;
 	int32_t cap_register_;
@@ -60,21 +79,21 @@ static jobject* Lambda2_new(int32_t c_register_) {
 	return (jobject*)o;
 }
 
-static void Names_init(Names* self) {
+void Names_init(Names* self) {
 	Names_finit(self);
 }
 
-static Names* Names_new(void) {
+Names* Names_new(void) {
 	Names* o = (Names*)jrt_alloc(&Names_class);
 	Names_init(o);
 	return o;
 }
 
-static int32_t Names_sizeof_(int32_t auto_) {
+int32_t Names_sizeof_(int32_t auto_) {
 	return auto_ * 2;
 }
 
-static void Names_main(jarray* args) {
+void Names_main(jarray* args) {
 	int32_t register_ = 7;
 	int32_t self_ = 3;
 	int32_t a_b = 5;
@@ -89,12 +108,16 @@ static void Names_main(jarray* args) {
 	jrt_PrintStream_println_Str(jrt_System_out, (jrt_o1 = jrt_str_O((jobject*)jrt_Supplier_get_(sr)), jrt_o2 = jrt_str_I(jrt_IntUnaryOperator_applyAsInt_I(twice, 1)), jrt_o3 = jrt_str_I(Names_sizeof_(4)), jrt_o4 = jrt_str_I(jrt_String_length_(s)), jrt_o5 = jrt_str_I((int32_t)(jrt_String_charAt_I(s, 1))), jrt_concat(9, jrt_o1, jrt_lit(&lit_2, u" ", 1), jrt_o2, jrt_lit(&lit_2, u" ", 1), jrt_o3, jrt_lit(&lit_2, u" ", 1), jrt_o4, jrt_lit(&lit_2, u" ", 1), jrt_o5)));
 }
 
-static void Names_finit(Names* self) {
+void Names_finit(Names* self) {
 }
 
 static const struct Names_vt Names_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}};
 const jclass Names_class = {"Names", &jrt_Object_class, sizeof(Names), &Names_vt_, 0, 0, 0};
 
+// ==== jmain.c ====
+/* jmain.c -- the program's entry point: JRT_MAIN names the class whose main runs, else the program's own. */
+#include "jprogram.h"
+#include "Names.h"
 
 int main(int argc, char** argv) {
 	const char* which = getenv("JRT_MAIN");

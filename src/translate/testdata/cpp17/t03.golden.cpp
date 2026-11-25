@@ -1,7 +1,9 @@
-// written by CodeBreaker's C++17 back end (codebreaker/translate/backends/cpp17.py) from the
-// Java program's L2; it runs on jrt.hpp, the Java library in C++17.
+// ==== jrt_program.hpp ====
+// written by CodeBreaker's C++17 back end from the Java program's L2; it runs on jrt.hpp, the Java library in C++17.
+// Every file of the program starts from this one: the runtime, and a declaration of each class.
 // these classes can form a reference cycle, which the runtime's cycle collector frees: Calc
 #define JRT_CYCLES
+#pragma once
 #include "jrt.hpp"
 
 using jrt::ref;
@@ -16,6 +18,9 @@ using jrt::String;
 struct Base;
 struct Sub;
 struct Calc;
+// ==== Base.hpp ====
+#pragma once
+#include "jrt_program.hpp"
 
 struct Base : virtual Object {
 	const char16_t* jclass_() const override { return u"Base"; }
@@ -29,6 +34,34 @@ struct Base : virtual Object {
 	void finit_();
 };
 
+// ==== Base.cpp ====
+#include "Base.hpp"
+
+void Base::trace_(jrt::gc::Tracer& t) {
+	(void)t;
+}
+void Base::clear_() {
+}
+
+void Base::ctor_(int32_t var1) {
+	finit_();
+	this->size = var1 * this->scale;
+}
+
+void Base::ctor_(int32_t var1, int32_t var2) {
+	this->ctor_(var1);
+	this->scale += var2;
+}
+
+void Base::finit_() {
+	this->scale = 2;
+}
+
+// ==== Sub.hpp ====
+#pragma once
+#include "jrt_program.hpp"
+#include "Base.hpp"
+
 struct Sub : Base {
 	const char16_t* jclass_() const override { return u"Sub"; }
 	jrt::gc::Tracked gc_tracked_{this};
@@ -39,6 +72,36 @@ struct Sub : Base {
 	static int32_t build(int32_t var0);
 	void finit_();
 };
+
+// ==== Sub.cpp ====
+#include "Sub.hpp"
+#include "Base.hpp"
+
+void Sub::trace_(jrt::gc::Tracer& t) {
+	Base::trace_(t);
+}
+void Sub::clear_() {
+	Base::clear_();
+}
+
+void Sub::ctor_(int32_t var1) {
+	Base::ctor_(var1 + 1);
+	finit_();
+	this->extra += this->size;
+}
+
+int32_t Sub::build(int32_t var0) {
+	auto var1 = jrt::make<Sub>(var0);
+	return jrt::nn(var1)->extra * 3 + jrt::nn(var1)->size;
+}
+
+void Sub::finit_() {
+	this->extra = 7;
+}
+
+// ==== Calc.hpp ====
+#pragma once
+#include "jrt_program.hpp"
 
 struct Calc : virtual Object {
 	const char16_t* jclass_() const override { return u"Calc"; }
@@ -68,47 +131,9 @@ struct Calc : virtual Object {
 	void finit_();
 };
 
-void Base::trace_(jrt::gc::Tracer& t) {
-	(void)t;
-}
-void Base::clear_() {
-}
-
-void Base::ctor_(int32_t var1) {
-	finit_();
-	this->size = var1 * this->scale;
-}
-
-void Base::ctor_(int32_t var1, int32_t var2) {
-	this->ctor_(var1);
-	this->scale += var2;
-}
-
-void Base::finit_() {
-	this->scale = 2;
-}
-
-void Sub::trace_(jrt::gc::Tracer& t) {
-	Base::trace_(t);
-}
-void Sub::clear_() {
-	Base::clear_();
-}
-
-void Sub::ctor_(int32_t var1) {
-	Base::ctor_(var1 + 1);
-	finit_();
-	this->extra += this->size;
-}
-
-int32_t Sub::build(int32_t var0) {
-	auto var1 = jrt::make<Sub>(var0);
-	return jrt::nn(var1)->extra * 3 + jrt::nn(var1)->size;
-}
-
-void Sub::finit_() {
-	this->extra = 7;
-}
+// ==== Calc.cpp ====
+#include "Calc.hpp"
+#include "Base.hpp"
 
 void Calc::trace_(jrt::gc::Tracer& t) {
 	t(cells);
@@ -273,6 +298,9 @@ void Calc::clinit_() {
 	Calc::total = (*jrt::nn(Calc::table))[1] * 2;
 }
 
+// ==== main.cpp ====
+// the program's entry: the class named by JRT_MAIN, else the first with a main
+#include "jrt_program.hpp"
 
 int main(int argc, char** argv) {
 	return 0;

@@ -537,6 +537,7 @@ std::optional<std::uint32_t> assemble(std::string_view line, std::uint32_t pc, c
     return std::nullopt;
 }
 
+int row_count() { return static_cast<int>(rows().size()); }
 Sem semantics(int row) { return rows()[static_cast<std::size_t>(row)].sem; }
 std::string_view mnemonic(int row) { return rows()[static_cast<std::size_t>(row)].name; }
 bool conditional(int row) { return !rows()[static_cast<std::size_t>(row)].uncond; }

@@ -391,7 +391,11 @@ Code Writer::on(const ir::Node& n, const ir::Binary& k) {
     }
     if (op == "==" || op == "!=") {
         const ir::TypeP lt0 = type_of(k.left), rt0 = type_of(k.right);
-        if (!boxed_kind(lt0).empty() && !boxed_kind(rt0).empty()) throw Decline("== on two boxed numbers compares references");
+        if (!boxed_kind(lt0).empty() && !boxed_kind(rt0).empty()) {   // two boxes: the same object, which for the cached small ones is the same value
+            if (boxed_kind(lt0) != boxed_kind(rt0)) throw Decline("== on boxes of two kinds");
+            const std::string test = "box_same(" + expr(k.left).text + ", " + expr(k.right).text + ")";
+            return op == "==" ? mk(test, ir::bool_type()) : mk("!" + test, ir::bool_type(), kUnary);
+        }
         const ir::TypeP lt = kind_of(rt0) == "null" ? lt0 : eff(lt0), rt = kind_of(lt0) == "null" ? rt0 : eff(rt0);
         const bool l_null = kind_of(lt) == "null", r_null = kind_of(rt) == "null";
         const std::string_view lk = kind_of(lt), rk = kind_of(rt);

@@ -4,8 +4,8 @@
 //     RunResult r = engine::pcode_cpu::call(bus, entry, options);   // as emulate::v810::run, on the core chosen by CB_PCODE_EMU
 //
 // The Bus (emulate/v810: memory ranges, devices and their log) is the emulator's read and write hook, so every data access goes through Bus::read and Bus::write as the own core
-// makes it; instructions are fetched from the bus's memory a word at a time. The integer instructions, the branches, jr / jal / jmp and the loads and stores run on the
-// description. What it does not carry is the own core's: the floating-point instructions (the reserved-operand, zero-divide, overflow and underflow flags), the bit strings,
+// makes it; instructions are fetched through the bus a word at a time. The integer instructions, the branches, jr / jal / jmp and the loads and stores run on the
+// description. What it does not carry is the adapter's own semantics (pcode_ops_v810.cpp): the floating-point instructions (the reserved-operand, zero-divide, overflow and underflow flags), the bit strings,
 // ldsr / stsr, caxi, a divide by zero, trap / reti / halt, and an undefined pattern.
 #pragma once
 

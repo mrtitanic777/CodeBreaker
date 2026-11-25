@@ -1,11 +1,12 @@
 // cb-unity: alone (file-local names that other files in a batch also use)
 // engine/pcode_cpu_mipsle.cpp -- the run the Allegrex and the Emotion Engine share (pcode_cpu_mipsle.hpp).
 //
-// The registers live in one place at a time: the emulator while the description runs instructions, the own core's Cpu while it does. A switch copies the 32 registers and
-// HI/LO across (the rest of the own core's state, the 128-bit halves, the second multiplier, the FPU and coprocessors 0 and 2, only ever lives in the Cpu). Before an
-// instruction goes to the description the adapter looks at it and at the registers it reads: the instruction must be one the description carries the same way, and must
-// not fault; otherwise it is the own core's, which also gives the fault. An access the machine does not answer is found out by the hook, after the fact: the registers
-// the instruction could have written are put back and the own core runs it again.
+// The registers live in the lane's record (emulate::mipsle::Cpu: the machines' Port reads and writes it, and it keeps what the description has no place for: the 128-bit
+// halves, the second multiplier, the FPU and coprocessors 0 and 2). Before an instruction goes to the description the adapter looks at it and at the registers it reads: the
+// instruction must be one the description carries the same way, and must not fault; the description is then given the registers the instruction reads (and the one it may leave as
+// it is) and the result is taken back. Everything else is the adapter's own semantics (pcode_ops_mipsle::step), which also give the faults: an access the machine does not answer
+// is found out by the hook, after the fact, and nothing the description made is taken. A branch and its delay slot are one step of the description when the slot is an instruction
+// of its own and clear of the branch's registers; DSLLV, DSRLV and DSRAV are given the count masked to six bits (the description shifts by all of rs).
 #include <array>
 #include <cstring>
 #include <string>
@@ -13,6 +14,7 @@
 #include "decompile/engine/pcode_emulator.hh"
 #include "engine/pcode_cpu_internal.hpp"
 #include "engine/pcode_cpu_mipsle.hpp"
+#include "engine/pcode_ops_mipsle.hpp"
 
 namespace cb::engine::pcode_cpu {
 
@@ -170,10 +172,11 @@ MipsLeEnd run_mipsle(ml::Cpu& cpu, const MipsLeMachine& machine, u32 return_addr
     } else {
         acc = emu.regRef("ac0");
     }
-    const auto gr = [&](unsigned i) { return ee ? emu.reg(refs[i]) : sx32(static_cast<u32>(emu.reg(refs[i]))); };
-    const auto to_emu = [&] {
-        for (unsigned i = 1; i < 32; ++i) emu.setReg(refs[i], cpu.r[i]);
-        emu.setReg(refs[0], 0);
+    emu.setReg(refs[0], 0);
+    // The registers live in the own record (cpu): the instruction the description runs gets the ones it reads and gives back the one it writes (and HI and LO for the multiplier).
+    const auto push = [&](unsigned i) { emu.setReg(refs[i], cpu.r[i]); };
+    const auto pull = [&](unsigned i) { cpu.r[i] = ee ? emu.reg(refs[i]) : sx32(static_cast<u32>(emu.reg(refs[i]))); };
+    const auto push_hilo = [&] {
         if (ee) {
             emu.setReg(hi_ref, cpu.hi[0]);
             emu.setReg(lo_ref, cpu.lo[0]);
@@ -181,9 +184,7 @@ MipsLeEnd run_mipsle(ml::Cpu& cpu, const MipsLeMachine& machine, u32 return_addr
             emu.setReg(acc, static_cast<u64>(static_cast<u32>(cpu.hi[0])) << 32 | static_cast<u32>(cpu.lo[0]));
         }
     };
-    const auto from_emu = [&] {
-        for (unsigned i = 1; i < 32; ++i) cpu.r[i] = gr(i);
-        cpu.r[0] = 0;
+    const auto pull_hilo = [&] {
         if (ee) {
             cpu.hi[0] = emu.reg(hi_ref);
             cpu.lo[0] = emu.reg(lo_ref);
@@ -193,19 +194,11 @@ MipsLeEnd run_mipsle(ml::Cpu& cpu, const MipsLeMachine& machine, u32 return_addr
             cpu.lo[0] = sx32(static_cast<u32>(a));
         }
     };
-    bool in_emu = false;
-    const auto use_emu = [&] {
-        if (!in_emu) to_emu();
-        in_emu = true;
-    };
-    const auto use_cpu = [&] {
-        if (in_emu) from_emu();
-        in_emu = false;
-    };
 
-    // Whether the description may run the instruction on the registers as they stand (they are the emulator's).
+    // Whether the description may run the instruction on the registers as they stand: it must not fault.
     const auto fine = [&](u32 w, const Info& info) {
         const unsigned op = w >> 26, rs = (w >> 21) & 31, rt = (w >> 16) & 31;
+        const auto gr = [&](unsigned i) { return cpu.r[i]; };
         switch (info.kind) {
             case Kind::Add32: {
                 const std::int32_t a = static_cast<std::int32_t>(gr(rs)), b = op == 0 ? static_cast<std::int32_t>(gr(rt)) : static_cast<std::int32_t>(simm16(w));
@@ -228,20 +221,21 @@ MipsLeEnd run_mipsle(ml::Cpu& cpu, const MipsLeMachine& machine, u32 return_addr
                 const u32 address = static_cast<u32>(gr(rs)) + static_cast<u32>(simm16(w));
                 return address % info.size == 0;
             }
-            case Kind::VarShift64: return gr(rs) < 64;
+            case Kind::VarShift64: return gr(rs) < 64 || rs != rt;   // (past 63 the count is masked: in a register of its own)
             case Kind::JumpReg: return (static_cast<u32>(gr(rs)) & 3) == 0;
             default: return true;
         }
     };
+
     // Whether a branch is taken, from the registers as they stand.
     const auto taken = [&](u32 w, const Info& info) {
         const unsigned op = w >> 26, rs = (w >> 21) & 31, rt = (w >> 16) & 31;
         if (info.kind == Kind::JumpReg || op == 2 || op == 3) return true;
-        const i64 a = static_cast<i64>(gr(rs));
+        const i64 a = static_cast<i64>(cpu.r[rs]);
         switch (op) {
             case 0x01: return (rt & 1) ? a >= 0 : a < 0;
-            case 0x04: case 0x14: return gr(rs) == gr(rt);
-            case 0x05: case 0x15: return gr(rs) != gr(rt);
+            case 0x04: case 0x14: return cpu.r[rs] == cpu.r[rt];
+            case 0x05: case 0x15: return cpu.r[rs] != cpu.r[rt];
             case 0x06: case 0x16: return a <= 0;
             default: return a > 0;
         }
@@ -258,77 +252,90 @@ MipsLeEnd run_mipsle(ml::Cpu& cpu, const MipsLeMachine& machine, u32 return_addr
             break;
         }
         const u32 pc = cpu.pc;
-        bool own = true;
-        u32 word = 0, slot_word = 0;
-        Info info, slot;
-        if (cpu.next_pc == pc + 4 && (pc & 3) == 0 && !machine.is_stub(pc)) {
+        std::optional<u32> word;   // the instruction, when it was read without the machine's log
+        if ((pc & 3) == 0 && !machine.is_stub(pc)) {
             u64 v = 0;
-            if (machine.peek(pc, 4, v)) {
-                word = static_cast<u32>(v);
-                info = classify(word, ee);
-                if (info.kind == Kind::Branch || info.kind == Kind::JumpReg) {
-                    u64 s = 0;   // a branch and its delay slot go together; the slot must be an instruction of its own and clear of the branch's registers
-                    if (cpu.steps + 2 <= max_steps && !machine.is_stub(pc + 4) && machine.peek(pc + 4, 4, s)) {
-                        slot_word = static_cast<u32>(s);
-                        slot = classify(slot_word, ee);
-                        const int slot_destination = destination(slot_word, slot);
-                        const unsigned brs = (word >> 21) & 31, brt = (word >> 16) & 31, srs = (slot_word >> 21) & 31, srt = (slot_word >> 16) & 31;
-                        // (a branch that links through the register it reads, BLTZAL $ra or JALR $ra, $ra: the processor reads it before the link is written, the description after)
-                        own = slot.kind == Kind::Own || slot.kind == Kind::Branch || slot.kind == Kind::JumpReg || (info.link != 0 && brs == info.link) ||
-                              (slot_destination > 0 && (static_cast<unsigned>(slot_destination) == brs || static_cast<unsigned>(slot_destination) == brt)) ||
-                              (info.link != 0 && (srs == info.link || srt == info.link));
+            if (machine.peek(pc, 4, v)) word = static_cast<u32>(v);
+        }
+        if (word && cpu.next_pc == pc + 4) {
+            const Info info = classify(*word, ee);
+            if (info.kind == Kind::Branch || info.kind == Kind::JumpReg) {
+                // a branch and its delay slot go together, as one step of the description; the slot must be an instruction of its own and clear of the branch's registers
+                u64 sv = 0;
+                if (cpu.steps + 2 <= max_steps && !machine.is_stub(pc + 4) && machine.peek(pc + 4, 4, sv)) {
+                    const u32 w = *word, sw = static_cast<u32>(sv);
+                    const Info slot = classify(sw, ee);
+                    const int slot_destination = destination(sw, slot);
+                    const unsigned brs = (w >> 21) & 31, brt = (w >> 16) & 31, srs = (sw >> 21) & 31, srt = (sw >> 16) & 31;
+                    // (a branch that links through the register it reads, BLTZAL $ra or JALR $ra, $ra: the processor reads it before the link is written, the description after)
+                    const bool apart = slot.kind != Kind::Own && slot.kind != Kind::VarShift64 && slot.kind != Kind::Branch && slot.kind != Kind::JumpReg && !(info.link != 0 && brs == info.link) &&
+                                       !(slot_destination > 0 && (static_cast<unsigned>(slot_destination) == brs || static_cast<unsigned>(slot_destination) == brt)) &&
+                                       !(info.link != 0 && (srs == info.link || srt == info.link));
+                    if (apart && fine(w, info) && fine(sw, slot)) {
+                        const bool goes = taken(w, info);
+                        push(brs);
+                        push(brt);
+                        push(srs);
+                        push(srt);
+                        if (slot_destination > 0) push(static_cast<unsigned>(slot_destination));
+                        if (info.link != 0) push(info.link);
+                        const unsigned sfn = sw & 63;
+                        const bool slot_hilo = (sw >> 26) == 0 && ((sfn >= 0x10 && sfn <= 0x13) || (sfn >= 0x18 && sfn <= 0x1B));
+                        if (slot_hilo) push_hilo();
+                        const std::uint8_t code[8] = {static_cast<std::uint8_t>(w), static_cast<std::uint8_t>(w >> 8), static_cast<std::uint8_t>(w >> 16), static_cast<std::uint8_t>(w >> 24),
+                                                      static_cast<std::uint8_t>(sw), static_cast<std::uint8_t>(sw >> 8), static_cast<std::uint8_t>(sw >> 16), static_cast<std::uint8_t>(sw >> 24)};
+                        const u64 at = ee ? sx32(pc) : pc;
+                        emu.write(at, code, 8);
+                        emu.setPc(at);
+                        failed = false;
+                        if (emu.step() == sl::Emulator::Status::Ok && !failed) {
+                            if (info.link != 0) pull(info.link);
+                            if (slot_destination > 0) pull(static_cast<unsigned>(slot_destination));
+                            if (slot_hilo) pull_hilo();
+                            const u32 next = static_cast<u32>(emu.pc());
+                            cpu.pc = next;
+                            cpu.next_pc = next + 4;
+                            cpu.steps += info.likely && !goes ? 1 : 2;
+                                    continue;
+                        }
                     }
-                } else {
-                    own = info.kind == Kind::Own;
                 }
             }
         }
-        if (!own) {
-            use_emu();
-            own = !fine(word, info) || ((info.kind == Kind::Branch || info.kind == Kind::JumpReg) && !fine(slot_word, slot));
-        }
-        if (!own) {
-            const bool pair = info.kind == Kind::Branch || info.kind == Kind::JumpReg;
-            const bool touches = info.kind == Kind::Load || info.kind == Kind::Store || slot.kind == Kind::Load || slot.kind == Kind::Store;
-            const unsigned saved_at[4] = {31, (word >> 16) & 31, (word >> 11) & 31, (slot_word >> 16) & 31};
-            u64 saved[4] = {};
-            if (touches)
-                for (unsigned i = 0; i < 4; ++i) saved[i] = emu.reg(refs[saved_at[i]]);
-            const bool goes = pair ? taken(word, info) : false;
-            std::uint8_t code[8] = {static_cast<std::uint8_t>(word), static_cast<std::uint8_t>(word >> 8), static_cast<std::uint8_t>(word >> 16), static_cast<std::uint8_t>(word >> 24),
-                                    static_cast<std::uint8_t>(slot_word), static_cast<std::uint8_t>(slot_word >> 8), static_cast<std::uint8_t>(slot_word >> 16),
-                                    static_cast<std::uint8_t>(slot_word >> 24)};
-            const u64 at = ee ? sx32(pc) : pc;
-            emu.write(at, code, pair ? 8 : 4);   // (the slot only with its branch: the bytes after a plain instruction are the next one's)
-            emu.setPc(at);
-            failed = false;
-            const sl::Emulator::Status status = emu.step();
-            if (status == sl::Emulator::Status::Error) {   // (the description failed half way: the state is not the instruction's)
-                use_cpu();
-                end.kind = MipsLeEnd::Kind::Stopped;
-                end.fault = ml::Fault{ml::Fault::Kind::NoInstruction, pc, 0, {}, 0};
-                break;
+        if (word) {
+            const Info info = classify(*word, ee);
+            if (info.kind != Kind::Own && info.kind != Kind::Branch && info.kind != Kind::JumpReg && fine(*word, info)) {
+                const u32 w = *word;
+                const unsigned rs = (w >> 21) & 31, rt = (w >> 16) & 31;
+                const unsigned fn = w & 63;
+                const bool hilo = (w >> 26) == 0 && ((fn >= 0x10 && fn <= 0x13) || (fn >= 0x18 && fn <= 0x1B));
+                const int d = destination(w, info);
+                push(rs);
+                push(rt);
+                if (info.kind == Kind::VarShift64) emu.setReg(refs[rs], cpu.r[rs] & 63);   // (DSLLV, DSRLV and DSRAV shift by the low six bits of rs: the description by all of it)
+                if (d > 0) push(static_cast<unsigned>(d));   // (MOVZ and MOVN write it, or not)
+                if (hilo) push_hilo();
+                const std::uint8_t code[4] = {static_cast<std::uint8_t>(w), static_cast<std::uint8_t>(w >> 8), static_cast<std::uint8_t>(w >> 16), static_cast<std::uint8_t>(w >> 24)};
+                const u64 at = ee ? sx32(pc) : pc;
+                emu.write(at, code, 4);
+                emu.setPc(at);
+                failed = false;
+                if (emu.step() == sl::Emulator::Status::Ok && !failed) {   // (an access nothing answers, or a word the description does not decode: nothing is taken, and the own semantics run it)
+                    if (d > 0) pull(static_cast<unsigned>(d));
+                    if (hilo) pull_hilo();
+                    ++cpu.steps;
+                    cpu.pc = cpu.next_pc;
+                    cpu.next_pc += 4;
+                    continue;
+                }
             }
-            if (status == sl::Emulator::Status::Ok && !failed) {
-                emu.setReg(refs[0], 0);
-                const u32 next = static_cast<u32>(emu.pc());
-                cpu.pc = next;
-                cpu.next_pc = next + 4;
-                cpu.steps += pair ? (info.likely && !goes ? 1 : 2) : 1;
-                continue;
-            }
-            if (touches)   // (an access nothing answers: what the instruction wrote is put back, and the own core makes the fault)
-                for (unsigned i = 0; i < 4; ++i) emu.setReg(refs[saved_at[i]], saved[i]);
-            // (a word the description does not decode: nothing ran)
         }
-        use_cpu();
-        if (std::optional<ml::Fault> fault = cpu.step()) {
+        if (std::optional<ml::Fault> fault = pcode_ops_mipsle::step(cpu, word)) {
             end.kind = MipsLeEnd::Kind::Stopped;
             end.fault = std::move(fault);
             break;
         }
     }
-    use_cpu();
     return end;
 }
 

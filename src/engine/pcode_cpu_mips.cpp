@@ -3,8 +3,9 @@
 // What the description leaves to the machine is carried here, one piece at a time: the BIOS calls (a jump to $A0, $B0 or $C0 is logged with its arguments and
 // answered with 0; syscall with $a0 of 1 or 2 is Enter/ExitCriticalSection), the load delay slot (a loaded register gets its value after the next instruction),
 // the faults (an unaligned or unmapped fetch, load or store, ADD/ADDI/SUB overflow, break, syscall, and any word the R3000A has no instruction for), and the
-// memory: the RAM's three views (KUSEG, KSEG0, KSEG1) are mirrored for instruction fetch, every data access goes through the Bus. The GTE and coprocessor 0
-// are NOT carried yet: those instructions end the run as "not run", which the own core does only for the GTE commands it has no code for.
+// memory: the RAM's three views (KUSEG, KSEG0, KSEG1) are mirrored for instruction fetch, every data access goes through the Bus. The GTE's registers and the commands
+// the lane's core has code for (NCLIP AVSZ3 AVSZ4 SQR OP GPF GPL MVMVA) are the adapter's own (pcode_ops_mips.cpp), bound to the description's coprocessor operations; the
+// others end the run as "not run", as the lane's core's do.
 #include <algorithm>
 #include <array>
 #include <cstring>
@@ -15,6 +16,7 @@
 #include "decompile/mips.hpp"
 #include "engine/pcode_cpu.hpp"
 #include "engine/pcode_cpu_internal.hpp"
+#include "engine/pcode_ops_mips.hpp"
 
 namespace cb::engine::pcode_cpu {
 
@@ -124,12 +126,9 @@ mp::RunResult run(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& optio
         }
         return true;
     });
-    // The coprocessors the description leaves to the machine: the GTE's registers and commands are the own core's (emulate/mips.hpp's gte_*), coprocessor 0's are
+    // The coprocessors the description leaves to the machine: the GTE's registers and commands are the adapter's own (pcode_ops_mips), coprocessor 0's are
     // the 32 words a program moves to and from.
-    thread_local mp::Bus gte_bus;
-    thread_local mp::Cpu gte(gte_bus);
-    gte.gte_data = {};
-    gte.gte_control = {};
+    pcode_ops_mips::Gte gte;
     std::array<std::uint32_t, 32> cop0{};
     emu.onUserOp([&](sl::Emulator&, const std::string& name, const std::vector<std::uint64_t>& args, std::uint64_t& result) {
         std::string lower = name;
@@ -139,15 +138,15 @@ mp::RunResult run(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& optio
         if (lower == "setisamode") return true;   // (the description marks each jump's ISA mode: there is one)
         if (lower.find("syscall") != std::string::npos) raised = mp::Fault::Kind::Syscall;
         else if (lower.find("break") != std::string::npos || lower == "trap") raised = mp::Fault::Kind::Break;
-        else if (lower == "getcopreg") result = mp::gte_register(gte, copreg());
+        else if (lower == "getcopreg") result = pcode_ops_mips::gte_register(gte, copreg());
         else if (lower == "setcopreg" && args.size() >= 3) {
-            mp::gte_set_register(gte, copreg(), static_cast<std::uint32_t>(args[2]));
-        } else if (lower == "getcopcontrolword") result = mp::gte_control_register(gte, copreg());
-        else if (lower == "setcopcontrolword" && args.size() >= 3) gte.gte_control[copreg()] = static_cast<std::uint32_t>(args[2]);
+            pcode_ops_mips::gte_set_register(gte, copreg(), static_cast<std::uint32_t>(args[2]));
+        } else if (lower == "getcopcontrolword") result = pcode_ops_mips::gte_control_register(gte, copreg());
+        else if (lower == "setcopcontrolword" && args.size() >= 3) gte.control[copreg()] = static_cast<std::uint32_t>(args[2]);
         else if (lower == "copfunction" && args.size() >= 2) {
             const std::uint32_t command_word = (0x12u << 26) | (1u << 25) | static_cast<std::uint32_t>(args[1] & 0x1FFFFFFu);
             const std::optional<decompile::mips::Insn> cmd = decompile::mips::decode_word(command_word, 0);
-            if (!cmd || cmd->form != decompile::mips::Form::Command || !mp::gte_run_command(gte, static_cast<std::uint32_t>(cmd->imm), cmd->mnemonic)) {
+            if (!cmd || cmd->form != decompile::mips::Form::Command || !pcode_ops_mips::gte_run_command(gte, static_cast<std::uint32_t>(cmd->imm), cmd->mnemonic)) {
                 raised = mp::Fault::Kind::NotRun;
                 raised_text = cmd ? cmd->mnemonic : "cop2";
             }
@@ -323,7 +322,7 @@ mp::RunResult run(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& optio
                 break;
             }
             if ((slot_word >> 26) == 0x32) {   // LWC2 in the slot: made here (with the branch's link in place), the slot then runs as a NOP
-                mp::gte_set_register(gte, (slot_word >> 16) & 31, bus.read(reg((slot_word >> 21) & 31) + static_cast<std::uint32_t>(sext16(slot_word)), 4));
+                pcode_ops_mips::gte_set_register(gte, (slot_word >> 16) & 31, bus.read(reg((slot_word >> 21) & 31) + static_cast<std::uint32_t>(sext16(slot_word)), 4));
                 slot_done = true;
             }
             if (link_reg > 0) set_reg(static_cast<unsigned>(link_reg), before);
@@ -360,7 +359,7 @@ mp::RunResult run(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& optio
         }
         if ((word >> 26) == 0x32) {   // LWC2: the description gives the coprocessor the register's contents, not its number, so the load is made here
             const std::uint32_t address = reg((word >> 21) & 31) + static_cast<std::uint32_t>(sext16(word));
-            mp::gte_set_register(gte, (word >> 16) & 31, bus.read(address, 4));
+            pcode_ops_mips::gte_set_register(gte, (word >> 16) & 31, bus.read(address, 4));
             if (pending.reg >= 0) set_reg(static_cast<unsigned>(pending.reg), pending.value);
             pending.reg = -1;
             emu.setPc(pc + 4);
@@ -457,8 +456,8 @@ mp::RunResult run(mp::Bus& bus, std::uint32_t entry, const mp::RunOptions& optio
     const std::uint64_t ac = emu.reg("ac0");
     out.hi = static_cast<std::uint32_t>(ac >> 32);
     out.lo = static_cast<std::uint32_t>(ac);
-    out.gte_data = gte.gte_data;
-    out.gte_control = gte.gte_control;
+    out.gte_data = gte.data;
+    out.gte_control = gte.control;
     out.steps = steps;
     out.io.assign(bus.log().begin() + static_cast<std::ptrdiff_t>(log_start), bus.log().end());
     out.bios = std::move(bios);

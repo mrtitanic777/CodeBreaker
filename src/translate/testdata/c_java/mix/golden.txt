@@ -1,5 +1,9 @@
+// ==== jprogram.h ====
 /* written by CodeBreaker's C back end for Java (cb/translate/backends/c_java) from
    the program's L2; it runs on jrt.h / jrt.c, the Java library in C. */
+#ifndef JPROGRAM_H
+#define JPROGRAM_H
+
 #include "jrt.h"
 
 typedef struct Mix Mix;
@@ -7,12 +11,14 @@ typedef struct Mix_Color Mix_Color;
 typedef struct Mix_Inner Mix_Inner;
 typedef struct Mix_Box Mix_Box;
 typedef struct Mix_anon1 Mix_anon1;
-extern const jclass Mix_class;
-extern const jclass Mix_Color_class;
-extern const jclass Mix_Shape_class;
-extern const jclass Mix_Inner_class;
-extern const jclass Mix_Box_class;
-extern const jclass Mix_anon1_class;
+
+#endif
+// ==== Mix.h ====
+/* Mix.h -- Mix and the classes nested in it: its structs and function tables, and what the other files of the program call. */
+#ifndef MIX_H
+#define MIX_H
+
+#include "jprogram.h"
 
 struct Mix {
 	jobject hdr_;
@@ -21,11 +27,23 @@ struct Mix {
 struct Mix_vt {
 	jobject_vt o_;
 };
-static int32_t Mix_LIMIT = 10;
-static int32_t Mix_counter = 0;
-static int64_t Mix_total = 5LL;
-static jstring* Mix_label = NULL;
-static bool Mix_inited_;
+extern int32_t Mix_LIMIT;
+extern int32_t Mix_counter;
+extern int64_t Mix_total;
+extern jstring* Mix_label;
+
+extern const jclass Mix_class;
+void Mix_init(Mix* self);
+Mix* Mix_new(void);
+int32_t Mix_fib(int32_t);
+int32_t Mix_sw(int32_t);
+jstring* Mix_name(jstring*);
+jarray* Mix_grid(int32_t);
+int64_t Mix_mix(int64_t, int32_t, double, char16_t, int8_t);
+void Mix_thrower(int32_t);
+void Mix_main(jarray*);
+void Mix_finit(Mix* self);
+void Mix_clinit(void);
 
 struct Mix_Color {
 	jrt_Enum super_;
@@ -35,16 +53,28 @@ struct Mix_Color_vt {
 	jobject_vt o_;
 	int32_t (*weight)(jobject*);
 };
-static Mix_Color* Mix_Color_RED;
-static Mix_Color* Mix_Color_GREEN;
-static Mix_Color* Mix_Color_BLUE;
-static jarray* Mix_Color_values_;
-static bool Mix_Color_inited_;
+extern Mix_Color* Mix_Color_RED;
+extern Mix_Color* Mix_Color_GREEN;
+extern Mix_Color* Mix_Color_BLUE;
+
+extern const jclass Mix_Color_class;
+void Mix_Color_init_V(Mix_Color* self, jstring* name_in, int32_t ordinal_in);
+Mix_Color* Mix_Color_new_V(jstring* name_in, int32_t ordinal_in);
+void Mix_Color_init_I(Mix_Color* self, jstring* name_in, int32_t ordinal_in, int32_t w);
+Mix_Color* Mix_Color_new_I(jstring* name_in, int32_t ordinal_in, int32_t w);
+int32_t Mix_Color_weight(jobject*);
+void Mix_Color_finit(Mix_Color* self);
+void Mix_Color_clinit(void);
+jarray* Mix_Color_values(void);
+static inline int32_t Mix_Color_weight_v(jobject* o) { return ((const struct Mix_Color_vt*)jrt_vt(o))->weight(o); }
 
 struct Mix_Shape_vt {
 	jobject_vt o_;
 	double (*area)(jobject*);
 };
+
+extern const jclass Mix_Shape_class;
+static inline double Mix_Shape_area_i(jobject* o) { return ((const struct Mix_Shape_vt*)jrt_ivt(o, &Mix_Shape_class))->area(o); }
 
 struct Mix_Inner {
 	jobject hdr_;
@@ -56,6 +86,13 @@ struct Mix_Inner_vt {
 	int32_t (*get)(jobject*);
 };
 
+extern const jclass Mix_Inner_class;
+void Mix_Inner_init(Mix_Inner* self, int32_t v);
+Mix_Inner* Mix_Inner_new(Mix* outer_in, int32_t v);
+int32_t Mix_Inner_get(jobject*);
+void Mix_Inner_finit(Mix_Inner* self);
+static inline int32_t Mix_Inner_get_v(jobject* o) { return ((const struct Mix_Inner_vt*)jrt_vt(o))->get(o); }
+
 struct Mix_Box {
 	jobject hdr_;
 	jobject* item;
@@ -65,6 +102,13 @@ struct Mix_Box_vt {
 	jobject* (*get)(jobject*);
 };
 
+extern const jclass Mix_Box_class;
+void Mix_Box_init(Mix_Box* self, jobject* item);
+Mix_Box* Mix_Box_new(jobject* item);
+jobject* Mix_Box_get(jobject*);
+void Mix_Box_finit(Mix_Box* self);
+static inline jobject* Mix_Box_get_v(jobject* o) { return ((const struct Mix_Box_vt*)jrt_vt(o))->get(o); }
+
 struct Mix_anon1 {
 	jobject hdr_;
 };
@@ -72,6 +116,18 @@ struct Mix_anon1_vt {
 	jobject_vt o_;
 	double (*area)(jobject*);
 };
+
+extern const jclass Mix_anon1_class;
+void Mix_anon1_init(Mix_anon1* self);
+Mix_anon1* Mix_anon1_new(void);
+double Mix_anon1_area(jobject*);
+void Mix_anon1_finit(Mix_anon1* self);
+static inline double Mix_anon1_area_v(jobject* o) { return ((const struct Mix_anon1_vt*)jrt_vt(o))->area(o); }
+
+#endif
+// ==== Mix.c ====
+/* Mix.c -- the code and static data of Mix and the classes nested in it. */
+#include "Mix.h"
 
 static jstring* lit_1;
 static jstring* lit_2;
@@ -93,42 +149,17 @@ static jstring* lit_17;
 static jstring* lit_18;
 static jstring* lit_19;
 
-static void Mix_init(Mix* self);
-static Mix* Mix_new(void);
-static int32_t Mix_fib(int32_t);
-static int32_t Mix_sw(int32_t);
-static jstring* Mix_name(jstring*);
-static jarray* Mix_grid(int32_t);
-static int64_t Mix_mix(int64_t, int32_t, double, char16_t, int8_t);
-static void Mix_thrower(int32_t);
-static void Mix_main(jarray*);
-static void Mix_finit(Mix* self);
-static void Mix_clinit(void);
-static void Mix_Color_init_V(Mix_Color* self, jstring* name_in, int32_t ordinal_in);
-static Mix_Color* Mix_Color_new_V(jstring* name_in, int32_t ordinal_in);
-static void Mix_Color_init_I(Mix_Color* self, jstring* name_in, int32_t ordinal_in, int32_t w);
-static Mix_Color* Mix_Color_new_I(jstring* name_in, int32_t ordinal_in, int32_t w);
-static int32_t Mix_Color_weight(jobject*);
-static void Mix_Color_finit(Mix_Color* self);
-static void Mix_Color_clinit(void);
-static jarray* Mix_Color_values(void);
-static void Mix_Inner_init(Mix_Inner* self, int32_t v);
-static Mix_Inner* Mix_Inner_new(Mix* outer_in, int32_t v);
-static int32_t Mix_Inner_get(jobject*);
-static void Mix_Inner_finit(Mix_Inner* self);
-static void Mix_Box_init(Mix_Box* self, jobject* item);
-static Mix_Box* Mix_Box_new(jobject* item);
-static jobject* Mix_Box_get(jobject*);
-static void Mix_Box_finit(Mix_Box* self);
-static void Mix_anon1_init(Mix_anon1* self);
-static Mix_anon1* Mix_anon1_new(void);
-static double Mix_anon1_area(jobject*);
-static void Mix_anon1_finit(Mix_anon1* self);
-static inline int32_t Mix_Color_weight_v(jobject* o) { return ((const struct Mix_Color_vt*)jrt_vt(o))->weight(o); }
-static inline double Mix_Shape_area_i(jobject* o) { return ((const struct Mix_Shape_vt*)jrt_ivt(o, &Mix_Shape_class))->area(o); }
-static inline int32_t Mix_Inner_get_v(jobject* o) { return ((const struct Mix_Inner_vt*)jrt_vt(o))->get(o); }
-static inline jobject* Mix_Box_get_v(jobject* o) { return ((const struct Mix_Box_vt*)jrt_vt(o))->get(o); }
-static inline double Mix_anon1_area_v(jobject* o) { return ((const struct Mix_anon1_vt*)jrt_vt(o))->area(o); }
+int32_t Mix_LIMIT = 10;
+int32_t Mix_counter = 0;
+int64_t Mix_total = 5LL;
+jstring* Mix_label = NULL;
+static bool Mix_inited_;
+Mix_Color* Mix_Color_RED;
+Mix_Color* Mix_Color_GREEN;
+Mix_Color* Mix_Color_BLUE;
+static jarray* Mix_Color_values_;
+static bool Mix_Color_inited_;
+
 struct Lambda1 {
 	jobject hdr_;
 };
@@ -177,25 +208,25 @@ static jobject* Lambda3_new(void) {
 	return (jobject*)o;
 }
 
-static void Mix_init(Mix* self) {
+void Mix_init(Mix* self) {
 	Mix_finit(self);
 }
 
-static Mix* Mix_new(void) {
+Mix* Mix_new(void) {
 	Mix_clinit();
 	Mix* o = (Mix*)jrt_alloc(&Mix_class);
 	Mix_init(o);
 	return o;
 }
 
-static int32_t Mix_fib(int32_t n) {
+int32_t Mix_fib(int32_t n) {
 	Mix_clinit();
 	int32_t jrt_o1 = 0;
 	int32_t jrt_o2 = 0;
 	return (n < 2 ? n : (jrt_o1 = Mix_fib(n - 1), jrt_o2 = Mix_fib(n - 2), jrt_o1 + jrt_o2));
 }
 
-static int32_t Mix_sw(int32_t k) {
+int32_t Mix_sw(int32_t k) {
 	Mix_clinit();
 	switch (k) {
 	case 1:
@@ -218,7 +249,7 @@ static int32_t Mix_sw(int32_t k) {
 	return k;
 }
 
-static jstring* Mix_name(jstring* s) {
+jstring* Mix_name(jstring* s) {
 	Mix_clinit();
 	{
 		jstring* j2x_s2 = (s);
@@ -234,7 +265,7 @@ static jstring* Mix_name(jstring* s) {
 	}
 }
 
-static jarray* Mix_grid(int32_t n) {
+jarray* Mix_grid(int32_t n) {
 	Mix_clinit();
 	jarray* g = jrt_new_array2(sizeof(int32_t), n, n);
 	{
@@ -251,7 +282,7 @@ static jarray* Mix_grid(int32_t n) {
 	return g;
 }
 
-static int64_t Mix_mix(int64_t a, int32_t b, double c, char16_t ch, int8_t by) {
+int64_t Mix_mix(int64_t a, int32_t b, double c, char16_t ch, int8_t by) {
 	Mix_clinit();
 	int64_t r = a << ((b & 7) & 63);
 	r ^= jrt_d2i(c);
@@ -260,7 +291,7 @@ static int64_t Mix_mix(int64_t a, int32_t b, double c, char16_t ch, int8_t by) {
 	return r % 1000 + (b / 3);
 }
 
-static void Mix_thrower(int32_t x) {
+void Mix_thrower(int32_t x) {
 	Mix_clinit();
 	if (x > 2) {
 		jrt_throw((jobject*)jrt_new_throwable(&jrt_IllegalStateException_class, jrt_concat(2, jrt_lit(&lit_6, u"big ", 4), jrt_str_I(x)), NULL));
@@ -270,7 +301,7 @@ static void Mix_thrower(int32_t x) {
 	}
 }
 
-static void Mix_main(jarray* args) {
+void Mix_main(jarray* args) {
 	Mix_clinit();
 	Mix* volatile m = Mix_new();
 	Mix_Inner* volatile in = Mix_Inner_new((Mix*)jrt_nn(m), 3);
@@ -402,53 +433,53 @@ static void Mix_main(jarray* args) {
 	jrt_PrintStream_println_Str(jrt_System_out, jrt_concat(5, jrt_str_I(k), jrt_lit(&lit_9, u" ", 1), jrt_str_C(c), jrt_lit(&lit_9, u" ", 1), jrt_str_Z((k > 5 && c != u'z' || k == 0))));
 }
 
-static void Mix_finit(Mix* self) {
+void Mix_finit(Mix* self) {
 	self->base = 4;
 }
 
-static void Mix_clinit(void) {
+void Mix_clinit(void) {
 	if (Mix_inited_) return;
 	Mix_inited_ = true;
 	Mix_label = jrt_lit(&lit_16, u"mix", 3);
 	Mix_counter = 3;
 }
 
-static void Mix_Color_init_V(Mix_Color* self, jstring* name_in, int32_t ordinal_in) {
+void Mix_Color_init_V(Mix_Color* self, jstring* name_in, int32_t ordinal_in) {
 	((jrt_Enum*)self)->name = name_in;
 	((jrt_Enum*)self)->ordinal = ordinal_in;
 	Mix_Color_init_I(self, name_in, ordinal_in, 1);
 }
 
-static Mix_Color* Mix_Color_new_V(jstring* name_in, int32_t ordinal_in) {
+Mix_Color* Mix_Color_new_V(jstring* name_in, int32_t ordinal_in) {
 	Mix_Color_clinit();
 	Mix_Color* o = (Mix_Color*)jrt_alloc(&Mix_Color_class);
 	Mix_Color_init_V(o, name_in, ordinal_in);
 	return o;
 }
 
-static void Mix_Color_init_I(Mix_Color* self, jstring* name_in, int32_t ordinal_in, int32_t w) {
+void Mix_Color_init_I(Mix_Color* self, jstring* name_in, int32_t ordinal_in, int32_t w) {
 	((jrt_Enum*)self)->name = name_in;
 	((jrt_Enum*)self)->ordinal = ordinal_in;
 	Mix_Color_finit(self);
 	self->w = w;
 }
 
-static Mix_Color* Mix_Color_new_I(jstring* name_in, int32_t ordinal_in, int32_t w) {
+Mix_Color* Mix_Color_new_I(jstring* name_in, int32_t ordinal_in, int32_t w) {
 	Mix_Color_clinit();
 	Mix_Color* o = (Mix_Color*)jrt_alloc(&Mix_Color_class);
 	Mix_Color_init_I(o, name_in, ordinal_in, w);
 	return o;
 }
 
-static int32_t Mix_Color_weight(jobject* self_) {
+int32_t Mix_Color_weight(jobject* self_) {
 	Mix_Color* self = (Mix_Color*)self_;
 	return self->w;
 }
 
-static void Mix_Color_finit(Mix_Color* self) {
+void Mix_Color_finit(Mix_Color* self) {
 }
 
-static void Mix_Color_clinit(void) {
+void Mix_Color_clinit(void) {
 	if (Mix_Color_inited_) return;
 	Mix_Color_inited_ = true;
 	Mix_Color_RED = Mix_Color_new_V(jrt_lit(&lit_17, u"RED", 3), 0);
@@ -460,66 +491,66 @@ static void Mix_Color_clinit(void) {
 	JA(jobject*, Mix_Color_values_, 2) = (jobject*)Mix_Color_BLUE;
 }
 
-static jarray* Mix_Color_values(void) {
+jarray* Mix_Color_values(void) {
 	Mix_Color_clinit();
 	return jrt_array_clone(Mix_Color_values_);
 }
 
-static void Mix_Inner_init(Mix_Inner* self, int32_t v) {
+void Mix_Inner_init(Mix_Inner* self, int32_t v) {
 	Mix_Inner_finit(self);
 	self->v = v + self->outer_->base;
 }
 
-static Mix_Inner* Mix_Inner_new(Mix* outer_in, int32_t v) {
+Mix_Inner* Mix_Inner_new(Mix* outer_in, int32_t v) {
 	Mix_Inner* o = (Mix_Inner*)jrt_alloc(&Mix_Inner_class);
 	o->outer_ = outer_in;
 	Mix_Inner_init(o, v);
 	return o;
 }
 
-static int32_t Mix_Inner_get(jobject* self_) {
+int32_t Mix_Inner_get(jobject* self_) {
 	Mix_Inner* self = (Mix_Inner*)self_;
 	return self->v * 2;
 }
 
-static void Mix_Inner_finit(Mix_Inner* self) {
+void Mix_Inner_finit(Mix_Inner* self) {
 }
 
-static void Mix_Box_init(Mix_Box* self, jobject* item) {
+void Mix_Box_init(Mix_Box* self, jobject* item) {
 	Mix_Box_finit(self);
 	self->item = item;
 }
 
-static Mix_Box* Mix_Box_new(jobject* item) {
+Mix_Box* Mix_Box_new(jobject* item) {
 	Mix_Box* o = (Mix_Box*)jrt_alloc(&Mix_Box_class);
 	Mix_Box_init(o, item);
 	return o;
 }
 
-static jobject* Mix_Box_get(jobject* self_) {
+jobject* Mix_Box_get(jobject* self_) {
 	Mix_Box* self = (Mix_Box*)self_;
 	return self->item;
 }
 
-static void Mix_Box_finit(Mix_Box* self) {
+void Mix_Box_finit(Mix_Box* self) {
 }
 
-static void Mix_anon1_init(Mix_anon1* self) {
+void Mix_anon1_init(Mix_anon1* self) {
 	Mix_anon1_finit(self);
 }
 
-static Mix_anon1* Mix_anon1_new(void) {
+Mix_anon1* Mix_anon1_new(void) {
 	Mix_anon1* o = (Mix_anon1*)jrt_alloc(&Mix_anon1_class);
 	Mix_anon1_init(o);
 	return o;
 }
 
-static double Mix_anon1_area(jobject* self_) {
+double Mix_anon1_area(jobject* self_) {
 	Mix_anon1* self = (Mix_anon1*)self_;
 	return 2.5 * (Mix_clinit(), Mix_LIMIT);
 }
 
-static void Mix_anon1_finit(Mix_anon1* self) {
+void Mix_anon1_finit(Mix_anon1* self) {
 }
 
 static const struct Mix_vt Mix_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}};
@@ -541,6 +572,10 @@ static const struct Mix_Shape_vt Mix_anon1_as_Shape = {{jrt_Object_toString, jrt
 static const jitab Mix_anon1_itabs[] = {{&Mix_Shape_class, &Mix_anon1_as_Shape}};
 const jclass Mix_anon1_class = {"Mix_anon1", &jrt_Object_class, sizeof(Mix_anon1), &Mix_anon1_vt_, JRT_ITABS(Mix_anon1_itabs), 0};
 
+// ==== jmain.c ====
+/* jmain.c -- the program's entry point: JRT_MAIN names the class whose main runs, else the program's own. */
+#include "jprogram.h"
+#include "Mix.h"
 
 int main(int argc, char** argv) {
 	const char* which = getenv("JRT_MAIN");

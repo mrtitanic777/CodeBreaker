@@ -1,9 +1,20 @@
+// ==== jprogram.h ====
 /* written by CodeBreaker's C back end for Java (cb/translate/backends/c_java) from
    the program's L2; it runs on jrt.h / jrt.c, the Java library in C. */
+#ifndef JPROGRAM_H
+#define JPROGRAM_H
+
 #include "jrt.h"
 
 typedef struct TextStats TextStats;
-extern const jclass TextStats_class;
+
+#endif
+// ==== TextStats.h ====
+/* TextStats.h -- TextStats: its structs and function tables, and what the other files of the program call. */
+#ifndef TEXTSTATS_H
+#define TEXTSTATS_H
+
+#include "jprogram.h"
 
 struct TextStats {
 	jobject hdr_;
@@ -11,8 +22,30 @@ struct TextStats {
 struct TextStats_vt {
 	jobject_vt o_;
 };
-static jstring* TextStats_POEM = NULL;
-static bool TextStats_inited_;
+extern jstring* TextStats_POEM;
+
+extern const jclass TextStats_class;
+void TextStats_init(TextStats* self);
+TextStats* TextStats_new(void);
+int32_t TextStats_vowels(jstring*);
+jstring* TextStats_histogram(jstring*);
+jstring* TextStats_reverseWords(jstring*);
+jstring* TextStats_sortedDigits(int32_t);
+int32_t TextStats_mix(int32_t, int32_t);
+int64_t TextStats_mixLong(int64_t, int32_t);
+int32_t TextStats_safeDiv(int32_t, int32_t);
+int32_t TextStats_saturate(double);
+int32_t TextStats_firstPair(int32_t);
+bool TextStats_isPalindrome(jstring*);
+jstring* TextStats_caesar(jstring*, int32_t);
+void TextStats_main(jarray*);
+void TextStats_finit(TextStats* self);
+void TextStats_clinit(void);
+
+#endif
+// ==== TextStats.c ====
+/* TextStats.c -- the code and static data of TextStats. */
+#include "TextStats.h"
 
 static jstring* lit_1;
 static jstring* lit_2;
@@ -23,34 +56,21 @@ static jstring* lit_6;
 static jstring* lit_7;
 static jstring* lit_8;
 
-static void TextStats_init(TextStats* self);
-static TextStats* TextStats_new(void);
-static int32_t TextStats_vowels(jstring*);
-static jstring* TextStats_histogram(jstring*);
-static jstring* TextStats_reverseWords(jstring*);
-static jstring* TextStats_sortedDigits(int32_t);
-static int32_t TextStats_mix(int32_t, int32_t);
-static int64_t TextStats_mixLong(int64_t, int32_t);
-static int32_t TextStats_safeDiv(int32_t, int32_t);
-static int32_t TextStats_saturate(double);
-static int32_t TextStats_firstPair(int32_t);
-static bool TextStats_isPalindrome(jstring*);
-static jstring* TextStats_caesar(jstring*, int32_t);
-static void TextStats_main(jarray*);
-static void TextStats_finit(TextStats* self);
-static void TextStats_clinit(void);
-static void TextStats_init(TextStats* self) {
+jstring* TextStats_POEM = NULL;
+static bool TextStats_inited_;
+
+void TextStats_init(TextStats* self) {
 	TextStats_finit(self);
 }
 
-static TextStats* TextStats_new(void) {
+TextStats* TextStats_new(void) {
 	TextStats_clinit();
 	TextStats* o = (TextStats*)jrt_alloc(&TextStats_class);
 	TextStats_init(o);
 	return o;
 }
 
-static int32_t TextStats_vowels(jstring* s) {
+int32_t TextStats_vowels(jstring* s) {
 	TextStats_clinit();
 	int32_t n = 0;
 	{
@@ -88,7 +108,7 @@ static int32_t TextStats_vowels(jstring* s) {
 	return n;
 }
 
-static jstring* TextStats_histogram(jstring* s) {
+jstring* TextStats_histogram(jstring* s) {
 	TextStats_clinit();
 	jarray* counts = jrt_new_array(sizeof(int32_t), 26);
 	{
@@ -112,7 +132,7 @@ static jstring* TextStats_histogram(jstring* s) {
 	return jrt_toString((jobject*)sb);
 }
 
-static jstring* TextStats_reverseWords(jstring* s) {
+jstring* TextStats_reverseWords(jstring* s) {
 	TextStats_clinit();
 	jarray* parts = jrt_String_split_Str(jrt_String_trim_(s), jrt_lit(&lit_1, u" ", 1));
 	jrt_StringBuilder* sb = jrt_StringBuilder_new_();
@@ -131,25 +151,25 @@ static jstring* TextStats_reverseWords(jstring* s) {
 	return jrt_toString((jobject*)sb);
 }
 
-static jstring* TextStats_sortedDigits(int32_t v) {
+jstring* TextStats_sortedDigits(int32_t v) {
 	TextStats_clinit();
 	jarray* cs = jrt_String_toCharArray_(jrt_Integer_toString_I(v));
 	jrt_Arrays_sort_CA(cs);
 	return jrt_String_new_CA(cs);
 }
 
-static int32_t TextStats_mix(int32_t a, int32_t b) {
+int32_t TextStats_mix(int32_t a, int32_t b) {
 	TextStats_clinit();
 	int32_t h = a * -1640531535 + (b << 7) - (jrt_ushr_I(b, 3)) + (a >> 5);
 	return h ^ (jrt_ushr_I(h, 16));
 }
 
-static int64_t TextStats_mixLong(int64_t a, int32_t s) {
+int64_t TextStats_mixLong(int64_t a, int32_t s) {
 	TextStats_clinit();
 	return (a << (s & 63)) ^ (jrt_ushr_J(a, ((s + 3) & 63))) ^ (a * 1000003LL);
 }
 
-static int32_t TextStats_safeDiv(int32_t a, int32_t b) {
+int32_t TextStats_safeDiv(int32_t a, int32_t b) {
 	TextStats_clinit();
 	{
 		jrt_try t1;
@@ -169,12 +189,12 @@ static int32_t TextStats_safeDiv(int32_t a, int32_t b) {
 	}
 }
 
-static int32_t TextStats_saturate(double d) {
+int32_t TextStats_saturate(double d) {
 	TextStats_clinit();
 	return jrt_d2i((d * 1000000000.0));
 }
 
-static int32_t TextStats_firstPair(int32_t n) {
+int32_t TextStats_firstPair(int32_t n) {
 	TextStats_clinit();
 	int32_t found = -1;
 	{
@@ -201,7 +221,7 @@ static int32_t TextStats_firstPair(int32_t n) {
 	return found;
 }
 
-static bool TextStats_isPalindrome(jstring* s) {
+bool TextStats_isPalindrome(jstring* s) {
 	TextStats_clinit();
 	int32_t i = 0;
 	int32_t j = jrt_String_length_(s) - 1;
@@ -221,7 +241,7 @@ static bool TextStats_isPalindrome(jstring* s) {
 	return true;
 }
 
-static jstring* TextStats_caesar(jstring* s, int32_t k) {
+jstring* TextStats_caesar(jstring* s, int32_t k) {
 	TextStats_clinit();
 	jrt_StringBuilder* sb = jrt_StringBuilder_new_();
 	int32_t shift = jrt_Math_floorMod_II(k, 26);
@@ -244,7 +264,7 @@ static jstring* TextStats_caesar(jstring* s, int32_t k) {
 	return jrt_toString((jobject*)sb);
 }
 
-static void TextStats_main(jarray* args) {
+void TextStats_main(jarray* args) {
 	TextStats_clinit();
 	jarray* lines = jrt_String_split_Str(TextStats_POEM, jrt_lit(&lit_2, u"\n", 1));
 	jrt_PrintStream_println_Str(jrt_System_out, jrt_concat(4, jrt_str_I(JLEN(lines)), jrt_lit(&lit_3, u" lines, ", 8), jrt_str_I(TextStats_vowels(TextStats_POEM)), jrt_lit(&lit_4, u" vowels", 7)));
@@ -283,10 +303,10 @@ static void TextStats_main(jarray* args) {
 	jrt_PrintStream_println_Str(jrt_System_out, jrt_concat(11, jrt_str_D(1.0 / 3), jrt_lit(&lit_1, u" ", 1), jrt_str_D(100.0), jrt_lit(&lit_1, u" ", 1), jrt_str_D(1.0e-05), jrt_lit(&lit_1, u" ", 1), jrt_str_D(12345678.9), jrt_lit(&lit_1, u" ", 1), jrt_str_F((float)(0.1)), jrt_lit(&lit_1, u" ", 1), jrt_str_D(-0.0)));
 }
 
-static void TextStats_finit(TextStats* self) {
+void TextStats_finit(TextStats* self) {
 }
 
-static void TextStats_clinit(void) {
+void TextStats_clinit(void) {
 	if (TextStats_inited_) return;
 	TextStats_inited_ = true;
 	TextStats_POEM = jrt_lit(&lit_8, u"Shall I compare thee\nto a summer's day?\nThou art more lovely\nand more temperate.\n", 81);
@@ -295,6 +315,10 @@ static void TextStats_clinit(void) {
 static const struct TextStats_vt TextStats_vt_ = {{jrt_Object_toString, jrt_Object_equals, jrt_Object_hashCode}};
 const jclass TextStats_class = {"TextStats", &jrt_Object_class, sizeof(TextStats), &TextStats_vt_, 0, 0, 0};
 
+// ==== jmain.c ====
+/* jmain.c -- the program's entry point: JRT_MAIN names the class whose main runs, else the program's own. */
+#include "jprogram.h"
+#include "TextStats.h"
 
 int main(int argc, char** argv) {
 	const char* which = getenv("JRT_MAIN");

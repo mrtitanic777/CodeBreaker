@@ -2,8 +2,8 @@
 //
 // What the translation leans on, and how Java's behaviour is kept:
 //
-//   * a reference is `Option<&'static T>`: one machine word (two for a trait object), `Copy`, null is `None`. Objects are made
-//     once and never freed while the program runs (the C runtime does the same), so a value can be passed, stored and returned
+//   * a reference is `Option<&'static T>`: one machine word (two for a trait object), `Copy`, null is `None`. Objects are made in the
+//     runtime's heap and freed by its collector when nothing reaches them, so a value can be passed, stored and returned
 //     without ownership bookkeeping, and `this` is just `self`. A class is a trait object (`Ref<dyn Animal>`); a call on a
 //     reference goes through `.nn()`, which throws NullPointerException for null.
 //   * a String is `Str`: Java's UTF-16 text, immutable, shared, nullable. Its methods carry the Java names.
@@ -14,7 +14,8 @@
 //     errors (null, bounds, division, casts, number formats) are made here.
 //   * `Cat` is Java's string conversion (`"" + x`), so concatenation, `append` and `println` take any value.
 //
-// Nothing here uses unsafe code or a crate.
+// Memory is reclaimed by a conservative collector over the runtime's own heap (see "memory" below); that and the buffers it serves are the only
+// unsafe code. No crate is used.
 #![allow(dead_code, non_snake_case, non_camel_case_types, non_upper_case_globals, unused_macros, unused_imports, unused_variables, unreachable_code)]
 
 use std::any::Any;
@@ -22,6 +23,399 @@ use std::cell::{Cell, RefCell};
 use std::io::Write;
 
 // ---- the macros (before everything that uses them) ----
+
+
+// ---- memory: a conservative mark-and-sweep collector ---------------------------------------------------------------------------------------
+//
+// Objects, arrays, strings and the buffers of the collections are made here, in blocks of this module's own heap, so that a program that makes
+// garbage as it runs does not grow without bound, while the generated code stays free of ownership: a reference is still a plain `&'static`.
+//
+//   * small blocks (up to 2 KB) come from 1 MB chunks, each cut into blocks of one size class; a block is found from any address inside it (a
+//     reference to a field of an object points into the middle of it); bigger blocks are made one by one and kept in an ordered map.
+//   * a collection starts at an allocation of generated code (`gc_new`, `new_array`, a concatenation, a string method ... see `gc_poll`) once as
+//     many bytes have been made since the last one as were live after it (64 MB at least). The runtime's own allocations never start one, so a
+//     function of this file that holds a fresh object only in a Rust `Vec` is never interrupted.
+//   * the roots are the stack of the program's thread, the registers (callee-saved ones are spilled to the stack first) and the ranges the
+//     runtime registers (the static fields, the exception being thrown). Every word of a root and of a reached block that holds the address of
+//     a block keeps that block: nothing needs to tell the collector where a reference is.
+//   * a block holds no destructors: what is made here is plain data (`Cell`s, words, the buffers of `GcVec`), and a swept block is just reused.
+//     A chunk with nothing live in it goes back to the system.
+//
+// The scan reads the stack and the blocks as words, which is why this one part of the runtime is `unsafe`. It is written for x86-64; elsewhere
+// `gc_poll` does nothing and the program keeps what it makes, as before.
+use std::alloc::{GlobalAlloc, Layout, System as SysAlloc};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::Mutex;
+
+const CHUNK: usize = 1 << 20;
+const CLASSES: [usize; 14] = [16, 32, 48, 64, 96, 128, 192, 256, 384, 512, 768, 1024, 1536, 2048];
+
+struct Chunk {
+    bs: usize,
+    n: usize,
+    alloc: Vec<u64>,
+    mark: Vec<u64>,
+    cursor: usize,
+    free: usize,
+}
+struct Heap {
+    chunks: std::collections::HashMap<usize, Chunk>,
+    by_class: Vec<Vec<usize>>,
+    hint: Vec<usize>,
+    large: std::collections::BTreeMap<usize, (usize, bool)>,
+    roots: Vec<(usize, usize)>,
+    stack_base: usize,
+    lo: usize,
+    hi: usize,
+}
+static HEAP: Mutex<Option<Heap>> = Mutex::new(None);
+static SINCE: AtomicUsize = AtomicUsize::new(0);
+static THRESHOLD: AtomicUsize = AtomicUsize::new(64 << 20);
+static ENABLED: AtomicBool = AtomicBool::new(false);
+pub static COLLECTIONS: AtomicUsize = AtomicUsize::new(0);
+
+fn heap_of(g: &mut Option<Heap>) -> &mut Heap {
+    g.get_or_insert_with(|| Heap {
+        chunks: std::collections::HashMap::new(),
+        by_class: vec![Vec::new(); CLASSES.len()],
+        hint: vec![0; CLASSES.len()],
+        large: std::collections::BTreeMap::new(),
+        roots: Vec::new(),
+        stack_base: 0,
+        lo: usize::MAX,
+        hi: 0,
+    })
+}
+fn bit(v: &[u64], i: usize) -> bool {
+    v[i / 64] >> (i % 64) & 1 != 0
+}
+fn set_bit(v: &mut [u64], i: usize) {
+    v[i / 64] |= 1 << (i % 64);
+}
+
+// A zeroed block of at least `size` bytes, 16-aligned, that lives until a collection finds nothing pointing into it.
+pub fn gc_alloc_internal(size: usize) -> *mut u8 {
+    let mut guard = HEAP.lock().unwrap_or_else(|e| e.into_inner());
+    let heap = heap_of(&mut guard);
+    let size = size.max(1);
+    SINCE.fetch_add(size, Ordering::Relaxed);
+    if size > CLASSES[CLASSES.len() - 1] {
+        let size = (size + 15) & !15;
+        let p = unsafe { SysAlloc.alloc_zeroed(Layout::from_size_align(size, 16).unwrap()) };
+        if p.is_null() {
+            throw_out_of_memory();
+        }
+        heap.large.insert(p as usize, (size, false));
+        heap.lo = heap.lo.min(p as usize);
+        heap.hi = heap.hi.max(p as usize + size);
+        return p;
+    }
+    let class = CLASSES.iter().position(|c| *c >= size).unwrap();
+    loop {
+        let at = heap.hint[class];
+        if at >= heap.by_class[class].len() {
+            let p = unsafe { SysAlloc.alloc_zeroed(Layout::from_size_align(CHUNK, CHUNK).unwrap()) };
+            if p.is_null() {
+                throw_out_of_memory();
+            }
+            let bs = CLASSES[class];
+            let n = CHUNK / bs;
+            heap.chunks.insert(p as usize, Chunk { bs, n, alloc: vec![0; n / 64 + 1], mark: vec![0; n / 64 + 1], cursor: 0, free: n });
+            heap.by_class[class].push(p as usize);
+            heap.lo = heap.lo.min(p as usize);
+            heap.hi = heap.hi.max(p as usize + CHUNK);
+            continue;
+        }
+        let base = heap.by_class[class][at];
+        let ch = heap.chunks.get_mut(&base).unwrap();
+        if ch.free == 0 {
+            heap.hint[class] += 1;
+            continue;
+        }
+        let mut w = ch.cursor / 64;
+        while w < ch.alloc.len() {
+            if ch.alloc[w] != !0 {
+                let idx = w * 64 + (!ch.alloc[w]).trailing_zeros() as usize;
+                if idx < ch.n {
+                    set_bit(&mut ch.alloc, idx);
+                    ch.cursor = idx;
+                    ch.free -= 1;
+                    let p = (base + idx * ch.bs) as *mut u8;
+                    unsafe { std::ptr::write_bytes(p, 0, ch.bs) };
+                    return p;
+                }
+            }
+            w += 1;
+        }
+        ch.free = 0;
+    }
+}
+
+fn throw_out_of_memory() -> ! {
+    eprintln!("Exception in thread \"main\" java.lang.OutOfMemoryError: Java heap space");
+    std::process::exit(1)
+}
+
+pub fn gc_new_internal<T>(v: T) -> &'static T {
+    assert!(std::mem::align_of::<T>() <= 16);
+    let p = gc_alloc_internal(std::mem::size_of::<T>()) as *mut T;
+    unsafe {
+        p.write(v);
+        &*p
+    }
+}
+// The same, where a collection may come first (nothing of the caller's is held in a Rust container then).
+pub fn gc_new<T>(v: T) -> &'static T {
+    gc_poll();
+    gc_new_internal(v)
+}
+pub fn gc_slice<T: Copy>(items: &[T]) -> &'static [T] {
+    if items.is_empty() {
+        return &[];
+    }
+    let p = gc_alloc_internal(std::mem::size_of_val(items)) as *mut T;
+    unsafe {
+        std::ptr::copy_nonoverlapping(items.as_ptr(), p, items.len());
+        std::slice::from_raw_parts(p, items.len())
+    }
+}
+fn gc_cells<T: Copy>(n: usize, mut f: impl FnMut(usize) -> T) -> &'static [Cell<T>] {
+    if n == 0 {
+        return &[];
+    }
+    let p = gc_alloc_internal(n * std::mem::size_of::<Cell<T>>()) as *mut Cell<T>;
+    unsafe {
+        for i in 0..n {
+            p.add(i).write(Cell::new(f(i)));
+        }
+        std::slice::from_raw_parts(p, n)
+    }
+}
+
+// A range of memory outside this heap (a static field's cell) that holds references.
+pub fn register_root(addr: usize, len: usize) {
+    let mut guard = HEAP.lock().unwrap_or_else(|e| e.into_inner());
+    heap_of(&mut guard).roots.push((addr, len));
+}
+
+// A collection, if enough has been made since the last one.
+#[inline]
+pub fn gc_poll() {
+    if SINCE.load(Ordering::Relaxed) >= THRESHOLD.load(Ordering::Relaxed) && ENABLED.load(Ordering::Relaxed) {
+        collect();
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+#[inline(never)]
+fn spill_registers(buf: &mut [usize; 32]) {
+    // the callee-saved registers of Windows and of System V: a reference one of them holds is found on the stack
+    unsafe {
+        std::arch::asm!(
+            "mov [{0}], rbx", "mov [{0} + 8], rbp", "mov [{0} + 16], rdi", "mov [{0} + 24], rsi",
+            "mov [{0} + 32], r12", "mov [{0} + 40], r13", "mov [{0} + 48], r14", "mov [{0} + 56], r15",
+            "movups [{0} + 64], xmm6", "movups [{0} + 80], xmm7", "movups [{0} + 96], xmm8", "movups [{0} + 112], xmm9",
+            "movups [{0} + 128], xmm10", "movups [{0} + 144], xmm11", "movups [{0} + 160], xmm12", "movups [{0} + 176], xmm13",
+            "movups [{0} + 192], xmm14", "movups [{0} + 208], xmm15",
+            in(reg) buf.as_mut_ptr(), options(nostack)
+        );
+    }
+}
+
+fn mark_word(heap: &mut Heap, addr: usize, work: &mut Vec<(usize, usize)>) {
+    if addr < heap.lo || addr >= heap.hi {
+        return;
+    }
+    if let Some(ch) = heap.chunks.get_mut(&(addr & !(CHUNK - 1))) {
+        let idx = (addr & (CHUNK - 1)) / ch.bs;
+        if idx < ch.n && bit(&ch.alloc, idx) && !bit(&ch.mark, idx) {
+            set_bit(&mut ch.mark, idx);
+            work.push(((addr & !(CHUNK - 1)) + idx * ch.bs, ch.bs));
+        }
+        return;
+    }
+    if let Some((start, entry)) = heap.large.range_mut(..=addr).next_back() {
+        if addr < *start + entry.0 && !entry.1 {
+            entry.1 = true;
+            work.push((*start, entry.0));
+        }
+    }
+}
+fn scan_range(heap: &mut Heap, from: usize, to: usize, work: &mut Vec<(usize, usize)>) {
+    let mut p = (from + 7) & !7;
+    while p + 8 <= to {
+        let word = unsafe { std::ptr::read_volatile(p as *const usize) };
+        mark_word(heap, word, work);
+        p += 8;
+    }
+}
+
+// Mark everything reachable from the roots, free the rest.
+#[inline(never)]
+pub fn collect() {
+    #[cfg(target_arch = "x86_64")]
+    {
+        let mut regs = [0usize; 32];
+        spill_registers(&mut regs);
+        let low = std::hint::black_box(&regs) as *const _ as usize;
+        let mut guard = HEAP.lock().unwrap_or_else(|e| e.into_inner());
+        let heap = heap_of(&mut guard);
+        if heap.stack_base == 0 || low >= heap.stack_base {
+            return;
+        }
+        COLLECTIONS.fetch_add(1, Ordering::Relaxed);
+        let mut work: Vec<(usize, usize)> = Vec::new();
+        let base = heap.stack_base;
+        scan_range(heap, low, base, &mut work);
+        let roots = heap.roots.clone();
+        for (addr, len) in roots {
+            scan_range(heap, addr, addr + len, &mut work);
+        }
+        while let Some((start, size)) = work.pop() {
+            scan_range(heap, start, start + size, &mut work);
+        }
+        // sweep: what was not marked is free
+        let mut live = 0usize;
+        let mut empty: Vec<usize> = Vec::new();
+        for (base, ch) in heap.chunks.iter_mut() {
+            let count: usize = ch.mark.iter().map(|w| w.count_ones() as usize).sum();
+            ch.alloc.copy_from_slice(&ch.mark);
+            for w in ch.mark.iter_mut() {
+                *w = 0;
+            }
+            ch.free = ch.n - count;
+            ch.cursor = 0;
+            live += count * ch.bs;
+            if count == 0 {
+                empty.push(*base);
+            }
+        }
+        for base in empty {
+            heap.chunks.remove(&base);
+            unsafe { SysAlloc.dealloc(base as *mut u8, Layout::from_size_align(CHUNK, CHUNK).unwrap()) };
+        }
+        let chunks = &heap.chunks;
+        for list in heap.by_class.iter_mut() {
+            list.retain(|b| chunks.contains_key(b));
+        }
+        for h in heap.hint.iter_mut() {
+            *h = 0;
+        }
+        let dead: Vec<usize> = heap.large.iter().filter(|(_, v)| !v.1).map(|(k, _)| *k).collect();
+        for k in dead {
+            let (size, _) = heap.large.remove(&k).unwrap();
+            unsafe { SysAlloc.dealloc(k as *mut u8, Layout::from_size_align(size, 16).unwrap()) };
+        }
+        for v in heap.large.values_mut() {
+            v.1 = false;
+            live += v.0;
+        }
+        SINCE.store(0, Ordering::Relaxed);
+        THRESHOLD.store((live).max(64 << 20), Ordering::Relaxed);
+    }
+}
+
+// The program's thread calls this first: the collector may run from then on, and knows where its stack ends.
+pub fn gc_enable(stack_top: usize) {
+    let mut guard = HEAP.lock().unwrap_or_else(|e| e.into_inner());
+    heap_of(&mut guard).stack_base = stack_top;
+    ENABLED.store(cfg!(target_arch = "x86_64"), Ordering::Relaxed);
+}
+
+// A growable array of plain values in this heap (the buffer of a list, a builder, a map).
+pub struct GcVec<T: Copy + 'static> {
+    ptr: Cell<*mut T>,
+    len: Cell<usize>,
+    cap: Cell<usize>,
+}
+impl<T: Copy + 'static> GcVec<T> {
+    pub fn new() -> Self {
+        GcVec { ptr: Cell::new(std::ptr::null_mut()), len: Cell::new(0), cap: Cell::new(0) }
+    }
+    pub fn from_slice(items: &[T]) -> Self {
+        let v = GcVec::new();
+        v.extend_from_slice(items);
+        v
+    }
+    pub fn len(&self) -> usize {
+        self.len.get()
+    }
+    fn reserve(&self, extra: usize) {
+        let need = self.len.get() + extra;
+        if need <= self.cap.get() {
+            return;
+        }
+        let cap = need.max(self.cap.get() * 2).max(4);
+        let p = gc_alloc_internal(cap * std::mem::size_of::<T>()) as *mut T;
+        unsafe {
+            if self.len.get() > 0 {
+                std::ptr::copy_nonoverlapping(self.ptr.get(), p, self.len.get());
+            }
+        }
+        self.ptr.set(p);
+        self.cap.set(cap);
+    }
+    pub fn push(&self, v: T) {
+        self.reserve(1);
+        unsafe { self.ptr.get().add(self.len.get()).write(v) };
+        self.len.set(self.len.get() + 1);
+    }
+    pub fn get(&self, i: usize) -> T {
+        assert!(i < self.len.get());
+        unsafe { *self.ptr.get().add(i) }
+    }
+    pub fn set(&self, i: usize, v: T) {
+        assert!(i < self.len.get());
+        unsafe { self.ptr.get().add(i).write(v) };
+    }
+    pub fn insert(&self, i: usize, v: T) {
+        assert!(i <= self.len.get());
+        self.reserve(1);
+        unsafe {
+            let p = self.ptr.get();
+            std::ptr::copy(p.add(i), p.add(i + 1), self.len.get() - i);
+            p.add(i).write(v);
+        }
+        self.len.set(self.len.get() + 1);
+    }
+    pub fn remove(&self, i: usize) -> T {
+        assert!(i < self.len.get());
+        unsafe {
+            let p = self.ptr.get();
+            let v = *p.add(i);
+            std::ptr::copy(p.add(i + 1), p.add(i), self.len.get() - i - 1);
+            self.len.set(self.len.get() - 1);
+            v
+        }
+    }
+    pub fn clear(&self) {
+        self.len.set(0);
+    }
+    pub fn extend_from_slice(&self, items: &[T]) {
+        self.reserve(items.len());
+        unsafe { std::ptr::copy_nonoverlapping(items.as_ptr(), self.ptr.get().add(self.len.get()), items.len()) };
+        self.len.set(self.len.get() + items.len());
+    }
+    pub fn resize(&self, n: usize, fill: T) {
+        if n > self.len.get() {
+            self.reserve(n - self.len.get());
+            for i in self.len.get()..n {
+                unsafe { self.ptr.get().add(i).write(fill) };
+            }
+        }
+        self.len.set(n);
+    }
+    pub fn to_vec(&self) -> Vec<T> {
+        if self.len.get() == 0 {
+            return Vec::new();
+        }
+        unsafe { std::slice::from_raw_parts(self.ptr.get(), self.len.get()) }.to_vec()
+    }
+    pub fn assign(&self, items: &[T]) {
+        self.len.set(0);
+        self.extend_from_slice(items);
+    }
+}
 
 // A reference as another type it converts to (a class as its base or interface).
 macro_rules! up {
@@ -36,7 +430,7 @@ macro_rules! jstatic {
         pub struct $name;
         impl $name {
             fn cell() -> &'static std::cell::Cell<$t> {
-                thread_local! { static CELL: &'static std::cell::Cell<$t> = Box::leak(Box::new(std::cell::Cell::new($init))); }
+                thread_local! { static CELL: &'static std::cell::Cell<$t> = static_cell(std::cell::Cell::new($init)); }
                 CELL.with(|c| *c)
             }
             pub fn get() -> $t {
@@ -54,6 +448,7 @@ macro_rules! cat {
     ($($x:expr),+ $(,)?) => {{
         let mut v: Vec<u16> = Vec::new();
         $( Cat::cat(&$x, &mut v); )+
+        gc_poll();
         Str::from_units(v)
     }};
 }
@@ -84,6 +479,13 @@ pub fn same<T: ?Sized, U: ?Sized>(a: Option<&'static T>, b: Option<&'static U>) 
     }
 }
 
+
+// The cell of a static field: outside the collected heap, and a root of it.
+pub fn static_cell<T>(cell: Cell<T>) -> &'static Cell<T> {
+    let c: &'static Cell<T> = Box::leak(Box::new(cell));
+    register_root(c as *const Cell<T> as usize, std::mem::size_of::<Cell<T>>());
+    c
+}
 
 // ---- Object ---------------------------------------------------------------------------------------------------------------
 
@@ -131,7 +533,7 @@ thread_local! {
 
 // A string literal: one object per text, as Java's constant pool makes it (so `==` on two literals is true).
 pub fn lit(text: &'static str) -> Str {
-    INTERNED.with(|m| *m.borrow_mut().entry(text).or_insert_with(|| Str::from_rs(text)))
+    INTERNED.with(|m| *m.borrow_mut().entry(text).or_insert_with(|| Str::permanent(text)))
 }
 
 fn is_ws(c: u16) -> bool {
@@ -141,6 +543,11 @@ fn is_ws(c: u16) -> bool {
 impl Str {
     pub const NULL: Str = Str(None);
     pub fn from_units(v: Vec<u16>) -> Str {
+        Str(Some(gc_slice(&v)))
+    }
+    // text that is never freed (a literal)
+    pub fn permanent(s: &str) -> Str {
+        let v: Vec<u16> = s.encode_utf16().collect();
         Str(Some(Box::leak(v.into_boxed_slice())))
     }
     pub fn from_rs(s: &str) -> Str {
@@ -653,7 +1060,7 @@ impl PrintStream {
 // ---- arrays ---------------------------------------------------------------------------------------------------------------
 
 pub struct JArray<T: Copy + 'static> {
-    cells: Box<[Cell<T>]>,
+    cells: &'static [Cell<T>],
 }
 pub type Arr<T> = Option<&'static JArray<T>>;
 
@@ -698,10 +1105,10 @@ pub fn new_array<T: Copy + Default + 'static>(n: i32) -> Arr<T> {
     if n < 0 {
         throw_new("java.lang.NegativeArraySizeException", Some(n.to_string()));
     }
-    Some(Box::leak(Box::new(JArray { cells: (0..n).map(|_| Cell::new(T::default())).collect() })))
+    Some(gc_new(JArray { cells: gc_cells(n as usize, |_| T::default()) }))
 }
 pub fn array_of<T: Copy + 'static>(items: &[T]) -> Arr<T> {
-    Some(Box::leak(Box::new(JArray { cells: items.iter().map(|v| Cell::new(*v)).collect() })))
+    Some(gc_new_internal(JArray { cells: gc_cells(items.len(), |i| items[i]) }))
 }
 pub fn new_array2<T: Copy + Default + 'static>(a: i32, b: i32) -> Arr<Arr<T>> {
     let outer = new_array::<Arr<T>>(a);
@@ -759,7 +1166,7 @@ impl JInt for i64 {
 // ---- StringBuilder --------------------------------------------------------------------------------------------------------
 
 pub struct StringBuilder {
-    v: RefCell<Vec<u16>>,
+    v: GcVec<u16>,
 }
 fn sb_index(i: i32, n: usize) -> usize {
     if i < 0 || i as usize >= n {
@@ -769,82 +1176,84 @@ fn sb_index(i: i32, n: usize) -> usize {
 }
 impl StringBuilder {
     pub fn new() -> Ref<StringBuilder> {
-        Some(Box::leak(Box::new(StringBuilder { v: RefCell::new(Vec::new()) })))
+        Some(gc_new(StringBuilder { v: GcVec::new() }))
     }
     pub fn from_str(s: Str) -> Ref<StringBuilder> {
-        Some(Box::leak(Box::new(StringBuilder { v: RefCell::new(s.u().to_vec()) })))
+        Some(gc_new(StringBuilder { v: GcVec::from_slice(s.u()) }))
     }
     pub fn append<T: Cat>(&'static self, x: T) -> Ref<StringBuilder> {
-        x.cat(&mut self.v.borrow_mut());
+        let mut piece = Vec::new();
+        x.cat(&mut piece);
+        self.v.extend_from_slice(&piece);
         Some(self)
     }
     pub fn append_chars(&'static self, x: Arr<u16>) -> Ref<StringBuilder> {
-        self.v.borrow_mut().extend(x.units());
+        self.v.extend_from_slice(&x.units());
         Some(self)
     }
     pub fn length(&'static self) -> i32 {
-        self.v.borrow().len() as i32
+        self.v.len() as i32
     }
     pub fn isEmpty(&'static self) -> bool {
-        self.v.borrow().is_empty()
+        self.v.len() == 0
     }
     pub fn charAt(&'static self, i: i32) -> u16 {
-        let v = self.v.borrow();
-        v[sb_index(i, v.len())]
+        self.v.get(sb_index(i, self.v.len()))
     }
     pub fn setCharAt(&'static self, i: i32, c: u16) {
-        let mut v = self.v.borrow_mut();
-        let k = sb_index(i, v.len());
-        v[k] = c;
+        self.v.set(sb_index(i, self.v.len()), c);
     }
     pub fn deleteCharAt(&'static self, i: i32) -> Ref<StringBuilder> {
-        let mut v = self.v.borrow_mut();
-        let k = sb_index(i, v.len());
-        v.remove(k);
+        self.v.remove(sb_index(i, self.v.len()));
         Some(self)
     }
     pub fn delete(&'static self, a: i32, b: i32) -> Ref<StringBuilder> {
-        let mut v = self.v.borrow_mut();
+        let mut v = self.v.to_vec();
         let n = v.len();
         let b = (b.max(0) as usize).min(n);
         if a < 0 || a as usize > b {
             throw_new("java.lang.StringIndexOutOfBoundsException", Some(format!("start {}, end {}, length {}", a, b, n)));
         }
         v.drain(a as usize..b);
+        self.v.assign(&v);
         Some(self)
     }
     pub fn insert<T: Cat>(&'static self, at: i32, x: T) -> Ref<StringBuilder> {
         let mut piece = Vec::new();
         x.cat(&mut piece);
-        let mut v = self.v.borrow_mut();
+        let mut v = self.v.to_vec();
         if at < 0 || at as usize > v.len() {
             throw_new("java.lang.StringIndexOutOfBoundsException", Some(format!("offset {}, length {}", at, v.len())));
         }
         let tail = v.split_off(at as usize);
         v.extend(piece);
         v.extend(tail);
+        self.v.assign(&v);
         Some(self)
     }
     pub fn reverse(&'static self) -> Ref<StringBuilder> {
-        self.v.borrow_mut().reverse();
+        let mut v = self.v.to_vec();
+        v.reverse();
+        self.v.assign(&v);
         Some(self)
     }
     pub fn setLength(&'static self, n: i32) {
-        self.v.borrow_mut().resize(n.max(0) as usize, 0);
+        self.v.resize(n.max(0) as usize, 0);
     }
     pub fn indexOf(&'static self, s: Str) -> i32 {
-        Str::from_units(self.v.borrow().clone()).indexOf_str(s)
+        Str::from_units(self.v.to_vec()).indexOf_str(s)
     }
     pub fn substring(&'static self, a: i32) -> Str {
-        Str::from_units(self.v.borrow().clone()).substring(a)
+        Str::from_units(self.v.to_vec()).substring(a)
     }
     pub fn substring2(&'static self, a: i32, b: i32) -> Str {
-        Str::from_units(self.v.borrow().clone()).substring2(a, b)
+        Str::from_units(self.v.to_vec()).substring2(a, b)
     }
 }
 impl Object for StringBuilder {
     fn toString(&'static self) -> Str {
-        Str::from_units(self.v.borrow().clone())
+        gc_poll();
+        Str::from_units(self.v.to_vec())
     }
     fn class_name(&'static self) -> &'static str {
         "java.lang.StringBuilder"
@@ -970,7 +1379,7 @@ fn lib_chain(name: &'static str) -> &'static [&'static str] {
 }
 impl LibException {
     pub fn make(name: &'static str, message: Str, cause: Ref<dyn Throwable>) -> &'static LibException {
-        let e: &'static LibException = Box::leak(Box::new(LibException { data: ThrowableData::default(), name, chain: lib_chain(name) }));
+        let e: &'static LibException = gc_new_internal(LibException { data: ThrowableData::default(), name, chain: lib_chain(name) });
         e.data.message.set(message);
         e.data.cause.set(cause);
         e
@@ -1014,7 +1423,7 @@ pub fn new_exception_cause(name: &'static str, cause: Ref<dyn Throwable>) -> Ref
 // What an unwind carries when Java code throws: a marker; the exception itself waits in `THROWN` (a reference is not Send).
 pub struct Thrown;
 thread_local! {
-    static THROWN: Cell<Option<&'static dyn Throwable>> = Cell::new(None);
+    static THROWN: &'static Cell<Option<&'static dyn Throwable>> = static_cell(Cell::new(None));
 }
 fn take_thrown() -> &'static dyn Throwable {
     THROWN.with(|t| t.take()).expect("a Java exception in flight")
@@ -1075,6 +1484,8 @@ pub fn check_cast(o: Ref<dyn Object>, name: &str, from: &str) {
 // JVM does (an exception nobody caught is reported and exits 1).
 pub fn run(main: impl FnOnce() + Send + 'static) -> ! {
     let worker = std::thread::Builder::new().stack_size(256 << 20).spawn(move || {
+        let top = 0usize;
+        gc_enable(std::hint::black_box(&top) as *const usize as usize + 128);
         let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(main));
         flush_stdout();
         match r {
@@ -1858,15 +2269,94 @@ impl<T: ?Sized + Object> JNull for Option<&'static T> {
         None
     }
 }
+// `==` on two boxes: Java makes one box per value from -128 to 127 (and per char up to 127, and for the booleans) and a new one otherwise, so the
+// same value is the same box only in that range. (Two names of one big box compare unequal here, which Java says are equal.)
+pub trait BoxCache: Copy + PartialEq {
+    fn cached(self) -> bool;
+}
+macro_rules! box_cache_ints {
+    ($($t:ty),*) => { $( impl BoxCache for $t { fn cached(self) -> bool { (-128..=127).contains(&(self as i64)) } } )* };
+}
+box_cache_ints!(i8, i16, i32, i64, u16);
+impl BoxCache for bool {
+    fn cached(self) -> bool {
+        true
+    }
+}
+impl BoxCache for f64 {
+    fn cached(self) -> bool {
+        false
+    }
+}
+impl BoxCache for f32 {
+    fn cached(self) -> bool {
+        false
+    }
+}
+pub fn box_equals<T: PartialEq>(a: Option<T>, b: Option<T>) -> bool {
+    match a {
+        None => throw_new("java.lang.NullPointerException", None),
+        Some(x) => b == Some(x),
+    }
+}
+pub fn box_same<T: BoxCache>(a: Option<T>, b: Option<T>) -> bool {
+    match (a, b) {
+        (None, None) => true,
+        (Some(x), Some(y)) => x == y && x.cached(),
+        _ => false,
+    }
+}
+
+pub fn Objects_equals<T: JEq>(a: T, b: T) -> bool {
+    a.jeq(&b)
+}
+pub fn Objects_requireNonNull<T: JEq + JNull>(a: T) -> T {
+    if a.jeq(&T::null()) {
+        throw_new("java.lang.NullPointerException", None);
+    }
+    a
+}
+pub fn Objects_hash(hashes: &[i32]) -> i32 {
+    hashes.iter().fold(1i32, |h, e| h.wrapping_mul(31).wrapping_add(*e))
+}
+
+// natural order (Comparable): numbers, characters, booleans and Strings
+pub trait JOrd {
+    fn jcmp(&self, other: &Self) -> i32;
+}
+macro_rules! ord_prims {
+    ($($t:ty),*) => { $(
+        impl JOrd for $t {
+            fn jcmp(&self, o: &Self) -> i32 {
+                (*self > *o) as i32 - (*self < *o) as i32
+            }
+        }
+        impl JOrd for Option<$t> {
+            fn jcmp(&self, o: &Self) -> i32 {
+                match (self, o) {
+                    (Some(a), Some(b)) => a.jcmp(b),
+                    _ => throw_new("java.lang.NullPointerException", None),
+                }
+            }
+        }
+    )* };
+}
+ord_prims!(i8, i16, i32, i64, u16, bool, f64, f32);
+impl JOrd for Str {
+    fn jcmp(&self, o: &Self) -> i32 {
+        self.compareTo(*o)
+    }
+}
+
 // ---- java.util.ArrayList and its iterator ---------------------------------------------------------------------------------------------
 
 pub struct JIter<T: Copy + 'static> {
-    items: Vec<T>,
+    items: &'static [T],
     at: Cell<usize>,
 }
 impl<T: Copy + 'static> JIter<T> {
     pub fn of(items: Vec<T>) -> Ref<JIter<T>> {
-        Some(Box::leak(Box::new(JIter { items, at: Cell::new(0) })))
+        Some(gc_new_internal(JIter { items: gc_slice(&items), at: Cell::new(0) }))
     }
     pub fn hasNext(&'static self) -> bool {
         self.at.get() < self.items.len()
@@ -1884,7 +2374,7 @@ impl<T: Copy + 'static> JIter<T> {
 }
 
 pub struct ArrayList<T: Copy + 'static> {
-    v: RefCell<Vec<T>>,
+    v: GcVec<T>,
 }
 fn list_index(i: i32, n: usize) -> usize {
     if i < 0 || i as usize >= n {
@@ -1894,64 +2384,81 @@ fn list_index(i: i32, n: usize) -> usize {
 }
 impl<T: Copy + 'static> ArrayList<T> {
     pub fn new() -> Ref<ArrayList<T>> {
-        Some(Box::leak(Box::new(ArrayList { v: RefCell::new(Vec::new()) })))
+        Some(gc_new(ArrayList { v: GcVec::new() }))
     }
     pub fn of(items: Vec<T>) -> Ref<ArrayList<T>> {
-        Some(Box::leak(Box::new(ArrayList { v: RefCell::new(items) })))
+        Some(gc_new_internal(ArrayList { v: GcVec::from_slice(&items) }))
     }
     pub fn add(&'static self, x: T) -> bool {
-        self.v.borrow_mut().push(x);
+        self.v.push(x);
         true
     }
     pub fn add_at(&'static self, i: i32, x: T) {
-        let mut v = self.v.borrow_mut();
-        if i < 0 || i as usize > v.len() {
-            throw_new("java.lang.IndexOutOfBoundsException", Some(format!("Index: {}, Size: {}", i, v.len())));
+        if i < 0 || i as usize > self.v.len() {
+            throw_new("java.lang.IndexOutOfBoundsException", Some(format!("Index: {}, Size: {}", i, self.v.len())));
         }
-        v.insert(i as usize, x);
+        self.v.insert(i as usize, x);
     }
     pub fn get(&'static self, i: i32) -> T {
-        let v = self.v.borrow();
-        v[list_index(i, v.len())]
+        self.v.get(list_index(i, self.v.len()))
     }
     pub fn set(&'static self, i: i32, x: T) -> T {
-        let mut v = self.v.borrow_mut();
-        let k = list_index(i, v.len());
-        std::mem::replace(&mut v[k], x)
+        let k = list_index(i, self.v.len());
+        let old = self.v.get(k);
+        self.v.set(k, x);
+        old
     }
     pub fn size(&'static self) -> i32 {
-        self.v.borrow().len() as i32
+        self.v.len() as i32
     }
     pub fn isEmpty(&'static self) -> bool {
-        self.v.borrow().is_empty()
+        self.v.len() == 0
     }
     pub fn clear(&'static self) {
-        self.v.borrow_mut().clear();
+        self.v.clear();
     }
     pub fn remove_at(&'static self, i: i32) -> T {
-        let mut v = self.v.borrow_mut();
-        let k = list_index(i, v.len());
-        v.remove(k)
+        let k = list_index(i, self.v.len());
+        self.v.remove(k)
     }
     pub fn iterator(&'static self) -> Ref<JIter<T>> {
-        JIter::of(self.v.borrow().clone())
+        JIter::of(self.v.to_vec())
     }
     pub fn addAll(&'static self, other: Ref<ArrayList<T>>) -> bool {
-        let items = other.nn().v.borrow().clone();
+        let items = other.nn().v.to_vec();
         let changed = !items.is_empty();
-        self.v.borrow_mut().extend(items);
+        self.v.extend_from_slice(&items);
         changed
     }
     pub fn items(&'static self) -> Vec<T> {
-        self.v.borrow().clone()
+        self.v.to_vec()
     }
+}
+impl<T: Copy + JOrd + 'static> ArrayList<T> {
+    // list.sort(null): the natural order, stable
+    pub fn sort_natural(&'static self, comparator: Ref<()>) {
+        if comparator.is_some() {
+            throw_new("java.lang.UnsupportedOperationException", Some("a comparator".into()));
+        }
+        let mut items = self.v.to_vec();
+        items.sort_by(|a, b| a.jcmp(b).cmp(&0));
+        self.v.assign(&items);
+    }
+}
+pub fn Collections_sort<T: Copy + JOrd + 'static>(list: Ref<ArrayList<T>>) {
+    list.nn().sort_natural(None);
+}
+pub fn Collections_reverse<T: Copy + 'static>(list: Ref<ArrayList<T>>) {
+    let mut items = list.nn().v.to_vec();
+    items.reverse();
+    list.nn().v.assign(&items);
 }
 impl<T: Copy + JEq + 'static> ArrayList<T> {
     pub fn indexOf(&'static self, x: T) -> i32 {
-        self.v.borrow().iter().position(|e| e.jeq(&x)).map_or(-1, |i| i as i32)
+        (0..self.v.len()).find(|i| self.v.get(*i).jeq(&x)).map_or(-1, |i| i as i32)
     }
     pub fn lastIndexOf(&'static self, x: T) -> i32 {
-        self.v.borrow().iter().rposition(|e| e.jeq(&x)).map_or(-1, |i| i as i32)
+        (0..self.v.len()).rev().find(|i| self.v.get(*i).jeq(&x)).map_or(-1, |i| i as i32)
     }
     pub fn contains(&'static self, x: T) -> bool {
         self.indexOf(x) >= 0
@@ -1959,7 +2466,7 @@ impl<T: Copy + JEq + 'static> ArrayList<T> {
     pub fn remove_obj(&'static self, x: T) -> bool {
         let at = self.indexOf(x);
         if at >= 0 {
-            self.v.borrow_mut().remove(at as usize);
+            self.v.remove(at as usize);
         }
         at >= 0
     }
@@ -1977,7 +2484,7 @@ fn join_items<T: Cat>(items: &[T], open: char, close: char) -> Str {
 }
 impl<T: Copy + Cat + 'static> Object for ArrayList<T> {
     fn toString(&'static self) -> Str {
-        join_items(&self.v.borrow(), '[', ']')
+        join_items(&self.v.to_vec(), '[', ']')
     }
     fn class_name(&'static self) -> &'static str {
         "java.util.ArrayList"
@@ -1997,66 +2504,118 @@ impl<T: Copy + Cat + 'static> Object for ArrayList<T> {
 //
 // Java walks its table bucket by bucket (a key's bucket is its spread hash masked by the table size, the table doubling when it is three
 // quarters full and never shrinking), each bucket in the order its keys came in. The entries are kept in the order they came in, and
-// that walk is made when somebody asks for the order.
+// that walk is made when somebody asks for the order. Lookup is its own open-addressing table over the entries (all of it in the collected heap).
 
-struct JKey<K>(K);
-impl<K: JHash> std::hash::Hash for JKey<K> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write_i32(self.0.jhash());
-    }
+struct MapInner<K: Copy + 'static, V: Copy + 'static> {
+    slots: GcVec<Option<(K, V, i32)>>,   // in the order the keys were first put (a removed key leaves a hole)
+    index: GcVec<u32>,                   // 0: empty, 1: removed, n + 2: the entry in slot n
+    cap: Cell<usize>,                    // Java's table size
+    live: Cell<usize>,
+    used: Cell<usize>,                   // index cells that are not empty (removed ones too)
 }
-impl<K: JEq> PartialEq for JKey<K> {
-    fn eq(&self, o: &Self) -> bool {
-        self.0.jeq(&o.0)
-    }
+fn spread(h: i32) -> usize {
+    let h = h as u32;
+    (h ^ (h >> 16)) as usize
 }
-impl<K: JEq> Eq for JKey<K> {}
-
-struct MapInner<K: Copy, V: Copy> {
-    slots: Vec<Option<(K, V, i32)>>,   // in the order the keys were first put (a removed key leaves a hole)
-    index: std::collections::HashMap<JKey<K>, usize>,
-    cap: usize,
-    live: usize,
-}
-impl<K: Copy + JEq + JHash, V: Copy> MapInner<K, V> {
+impl<K: Copy + JEq + JHash + 'static, V: Copy + 'static> MapInner<K, V> {
     fn new() -> Self {
-        MapInner { slots: Vec::new(), index: std::collections::HashMap::new(), cap: 16, live: 0 }
+        MapInner { slots: GcVec::new(), index: GcVec::new(), cap: Cell::new(16), live: Cell::new(0), used: Cell::new(0) }
     }
-    fn put(&mut self, k: K, v: V) -> Option<V> {
-        if let Some(&at) = self.index.get(&JKey(k)) {
-            let slot = self.slots[at].as_mut().unwrap();
-            return Some(std::mem::replace(&mut slot.1, v));
+    fn find(&self, k: K, h: i32) -> Option<(usize, usize)> {
+        let n = self.index.len();
+        if n == 0 {
+            return None;
         }
-        self.slots.push(Some((k, v, k.jhash())));
-        self.index.insert(JKey(k), self.slots.len() - 1);
-        self.live += 1;
-        if self.live * 4 > self.cap * 3 {
-            self.cap *= 2;
+        let mask = n - 1;
+        let mut pos = spread(h) & mask;
+        loop {
+            let e = self.index.get(pos);
+            if e == 0 {
+                return None;
+            }
+            if e >= 2 {
+                if let Some((sk, _, sh)) = self.slots.get(e as usize - 2) {
+                    if sh == h && sk.jeq(&k) {
+                        return Some((pos, e as usize - 2));
+                    }
+                }
+            }
+            pos = (pos + 1) & mask;
+        }
+    }
+    // the entries again, without the holes, in a table big enough for them
+    fn rebuild(&self) {
+        let entries: Vec<(K, V, i32)> = self.slots.to_vec().into_iter().flatten().collect();
+        let mut size = 16;
+        while size * 3 < (entries.len() + 1) * 4 * 2 {
+            size *= 2;
+        }
+        self.slots.clear();
+        self.index.clear();
+        self.index.resize(size, 0);
+        for e in entries {
+            self.slots.push(Some(e));
+            self.place(e.2, self.slots.len() - 1);
+        }
+        self.used.set(self.slots.len());
+    }
+    fn place(&self, h: i32, slot: usize) {
+        let mask = self.index.len() - 1;
+        let mut pos = spread(h) & mask;
+        while self.index.get(pos) >= 2 {
+            pos = (pos + 1) & mask;
+        }
+        self.index.set(pos, slot as u32 + 2);
+    }
+    fn put(&self, k: K, v: V) -> Option<V> {
+        let h = k.jhash();
+        if let Some((_, slot)) = self.find(k, h) {
+            let (sk, old, sh) = self.slots.get(slot).unwrap();
+            self.slots.set(slot, Some((sk, v, sh)));
+            return Some(old);
+        }
+        if self.index.len() == 0 || (self.used.get() + 1) * 4 > self.index.len() * 3 || self.slots.len() > self.live.get() * 2 + 16 {
+            self.rebuild();
+        }
+        self.slots.push(Some((k, v, h)));
+        let mask = self.index.len() - 1;
+        let mut pos = spread(h) & mask;
+        while self.index.get(pos) >= 2 {
+            pos = (pos + 1) & mask;
+        }
+        if self.index.get(pos) == 0 {
+            self.used.set(self.used.get() + 1);
+        }
+        self.index.set(pos, self.slots.len() as u32 + 1);
+        self.live.set(self.live.get() + 1);
+        if self.live.get() * 4 > self.cap.get() * 3 {
+            self.cap.set(self.cap.get() * 2);
         }
         None
     }
     fn get(&self, k: K) -> Option<V> {
-        self.index.get(&JKey(k)).map(|&at| self.slots[at].as_ref().unwrap().1)
+        self.find(k, k.jhash()).map(|(_, slot)| self.slots.get(slot).unwrap().1)
     }
-    fn remove(&mut self, k: K) -> Option<V> {
-        let at = self.index.remove(&JKey(k))?;
-        self.live -= 1;
-        self.slots[at].take().map(|s| s.1)
+    fn remove(&self, k: K) -> Option<V> {
+        let (pos, slot) = self.find(k, k.jhash())?;
+        self.index.set(pos, 1);
+        self.live.set(self.live.get() - 1);
+        let old = self.slots.get(slot).unwrap().1;
+        self.slots.set(slot, None);
+        Some(old)
     }
-    fn clear(&mut self) {
+    fn clear(&self) {
         self.slots.clear();
         self.index.clear();
-        self.live = 0;
+        self.live.set(0);
+        self.used.set(0);
     }
     // the entries in the order a Java HashMap yields them (or, linked, as they came in)
     fn ordered(&self, linked: bool) -> Vec<(K, V)> {
-        let mut live: Vec<&(K, V, i32)> = self.slots.iter().flatten().collect();
+        let mut live: Vec<(K, V, i32)> = self.slots.to_vec().into_iter().flatten().collect();
         if !linked {
-            let mask = self.cap - 1;
-            live.sort_by_key(|e| {
-                let h = e.2 as u32;
-                ((h ^ (h >> 16)) as usize) & mask
-            });
+            let mask = self.cap.get() - 1;
+            live.sort_by_key(|e| spread(e.2) & mask);
         }
         live.into_iter().map(|e| (e.0, e.1)).collect()
     }
@@ -2093,79 +2652,73 @@ impl<K: Copy + Cat + 'static, V: Copy + Cat + 'static> Object for MapEntry<K, V>
 }
 
 pub struct HashMap<K: Copy + 'static, V: Copy + 'static> {
-    m: RefCell<MapInner<K, V>>,
+    m: MapInner<K, V>,
     linked: bool,
 }
 impl<K: Copy + JEq + JHash + 'static, V: Copy + JNull + 'static> HashMap<K, V> {
     pub fn new() -> Ref<HashMap<K, V>> {
-        Some(Box::leak(Box::new(HashMap { m: RefCell::new(MapInner::new()), linked: false })))
+        Some(gc_new(HashMap { m: MapInner::new(), linked: false }))
     }
     pub fn new_linked() -> Ref<HashMap<K, V>> {
-        Some(Box::leak(Box::new(HashMap { m: RefCell::new(MapInner::new()), linked: true })))
+        Some(gc_new(HashMap { m: MapInner::new(), linked: true }))
     }
     pub fn put(&'static self, k: K, v: V) -> V {
-        self.m.borrow_mut().put(k, v).unwrap_or_else(V::null)
+        self.m.put(k, v).unwrap_or_else(V::null)
     }
     pub fn get(&'static self, k: K) -> V {
-        self.m.borrow().get(k).unwrap_or_else(V::null)
+        self.m.get(k).unwrap_or_else(V::null)
     }
     pub fn getOrDefault(&'static self, k: K, d: V) -> V {
-        self.m.borrow().get(k).unwrap_or(d)
+        self.m.get(k).unwrap_or(d)
     }
     pub fn containsKey(&'static self, k: K) -> bool {
-        self.m.borrow().get(k).is_some()
+        self.m.get(k).is_some()
     }
     pub fn remove(&'static self, k: K) -> V {
-        self.m.borrow_mut().remove(k).unwrap_or_else(V::null)
+        self.m.remove(k).unwrap_or_else(V::null)
     }
     pub fn putIfAbsent(&'static self, k: K, v: V) -> V {
-        let have = self.m.borrow().get(k);
-        match have {
+        match self.m.get(k) {
             Some(old) => old,
             None => {
-                self.m.borrow_mut().put(k, v);
+                self.m.put(k, v);
                 V::null()
             }
         }
     }
     pub fn size(&'static self) -> i32 {
-        self.m.borrow().live as i32
+        self.m.live.get() as i32
     }
     pub fn isEmpty(&'static self) -> bool {
-        self.m.borrow().live == 0
+        self.m.live.get() == 0
     }
     pub fn clear(&'static self) {
-        self.m.borrow_mut().clear();
+        self.m.clear();
     }
     pub fn keySet(&'static self) -> Ref<HashSet<K>> {
-        let keys: Vec<K> = self.m.borrow().ordered(self.linked).into_iter().map(|e| e.0).collect();
+        let keys: Vec<K> = self.m.ordered(self.linked).into_iter().map(|e| e.0).collect();
         HashSet::from_ordered(keys)
     }
     pub fn values(&'static self) -> Ref<ArrayList<V>> {
-        ArrayList::of(self.m.borrow().ordered(self.linked).into_iter().map(|e| e.1).collect())
+        ArrayList::of(self.m.ordered(self.linked).into_iter().map(|e| e.1).collect())
     }
 }
 impl<K: Copy + JEq + JHash + Cat + 'static, V: Copy + JNull + Cat + 'static> HashMap<K, V> {
     pub fn entrySet(&'static self) -> Ref<HashSet<Ref<MapEntry<K, V>>>> {
-        let entries: Vec<Ref<MapEntry<K, V>>> = self
-            .m
-            .borrow()
-            .ordered(self.linked)
-            .into_iter()
-            .map(|(k, v)| -> Ref<MapEntry<K, V>> { Some(Box::leak(Box::new(MapEntry { k, v }))) })
-            .collect();
+        let entries: Vec<Ref<MapEntry<K, V>>> =
+            self.m.ordered(self.linked).into_iter().map(|(k, v)| -> Ref<MapEntry<K, V>> { Some(gc_new_internal(MapEntry { k, v })) }).collect();
         HashSet::from_ordered(entries)
     }
 }
 impl<K: Copy + JEq + JHash + 'static, V: Copy + JEq + 'static> HashMap<K, V> {
     pub fn containsValue(&'static self, v: V) -> bool {
-        self.m.borrow().slots.iter().flatten().any(|e| e.1.jeq(&v))
+        self.m.slots.to_vec().into_iter().flatten().any(|e| e.1.jeq(&v))
     }
 }
 impl<K: Copy + JEq + JHash + Cat + 'static, V: Copy + Cat + 'static> Object for HashMap<K, V> {
     fn toString(&'static self) -> Str {
         let mut v: Vec<u16> = vec!['{' as u16];
-        for (i, (k, val)) in self.m.borrow().ordered(self.linked).into_iter().enumerate() {
+        for (i, (k, val)) in self.m.ordered(self.linked).into_iter().enumerate() {
             if i > 0 {
                 push_str(&mut v, ", ");
             }
@@ -2191,49 +2744,49 @@ impl<K: Copy + JEq + JHash + Cat + 'static, V: Copy + Cat + 'static> Object for 
 }
 
 pub struct HashSet<T: Copy + 'static> {
-    m: RefCell<MapInner<T, ()>>,
+    m: MapInner<T, ()>,
     linked: bool,
 }
 impl<T: Copy + JEq + JHash + 'static> HashSet<T> {
     pub fn new() -> Ref<HashSet<T>> {
-        Some(Box::leak(Box::new(HashSet { m: RefCell::new(MapInner::new()), linked: false })))
+        Some(gc_new(HashSet { m: MapInner::new(), linked: false }))
     }
     pub fn new_linked() -> Ref<HashSet<T>> {
-        Some(Box::leak(Box::new(HashSet { m: RefCell::new(MapInner::new()), linked: true })))
+        Some(gc_new(HashSet { m: MapInner::new(), linked: true }))
     }
     // a set that keeps the order of what it was made from (a view of a map's keys)
     pub fn from_ordered(items: Vec<T>) -> Ref<HashSet<T>> {
-        let mut inner = MapInner::new();
+        let set = gc_new_internal(HashSet { m: MapInner::new(), linked: true });
         for x in items {
-            inner.put(x, ());
+            set.m.put(x, ());
         }
-        Some(Box::leak(Box::new(HashSet { m: RefCell::new(inner), linked: true })))
+        Some(set)
     }
     pub fn add(&'static self, x: T) -> bool {
-        self.m.borrow_mut().put(x, ()).is_none()
+        self.m.put(x, ()).is_none()
     }
     pub fn contains(&'static self, x: T) -> bool {
-        self.m.borrow().get(x).is_some()
+        self.m.get(x).is_some()
     }
     pub fn remove_obj(&'static self, x: T) -> bool {
-        self.m.borrow_mut().remove(x).is_some()
+        self.m.remove(x).is_some()
     }
     pub fn size(&'static self) -> i32 {
-        self.m.borrow().live as i32
+        self.m.live.get() as i32
     }
     pub fn isEmpty(&'static self) -> bool {
-        self.m.borrow().live == 0
+        self.m.live.get() == 0
     }
     pub fn clear(&'static self) {
-        self.m.borrow_mut().clear();
+        self.m.clear();
     }
     pub fn iterator(&'static self) -> Ref<JIter<T>> {
-        JIter::of(self.m.borrow().ordered(self.linked).into_iter().map(|e| e.0).collect())
+        JIter::of(self.m.ordered(self.linked).into_iter().map(|e| e.0).collect())
     }
 }
 impl<T: Copy + JEq + JHash + Cat + 'static> Object for HashSet<T> {
     fn toString(&'static self) -> Str {
-        let items: Vec<T> = self.m.borrow().ordered(self.linked).into_iter().map(|e| e.0).collect();
+        let items: Vec<T> = self.m.ordered(self.linked).into_iter().map(|e| e.0).collect();
         join_items(&items, '[', ']')
     }
     fn class_name(&'static self) -> &'static str {

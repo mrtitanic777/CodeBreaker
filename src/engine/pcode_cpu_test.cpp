@@ -91,8 +91,9 @@ CB_TEST("engine.pcode_cpu.runs_random_programs_as_the_own_core_does", [] {
         }
     }
     std::printf("pcode_cpu random programs: %u runs (%u ended stopped), %u differ\n", runs, stopped, different);
-    // What is left (0.5%): stack pushes at S=0 (the description's SP is 16 bits: a JSR there pushes its second byte below page 1) and code run
-    // from inside a device range (the own core's instruction fetches are logged as device reads). Neither occurs in a lane's functions.
+    // The stack's page wrap (a push at S=0, a pull at S=$FF) and code fetched from a device range are carried by the adapter now. What is left (3 of 1500, 0.2%) has not been
+    // traced to its instruction: all three have the decimal flag set and end with the flags apart (the own core runs ADC and SBC in binary unless RunOptions::decimal, the
+    // description by the D flag); that is a guess, not a finding.
     CB_CHECK(different * 100 <= runs);
 });
 

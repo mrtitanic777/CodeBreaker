@@ -1403,13 +1403,14 @@ CB_TEST("java.cpp17.the_program_runs_as_the_jvm_runs_it", [] {
     Arena arena;
     const std::vector<translate::ir::Node*> units = java::frontend::lower_program(arena, src, jpo_front().tools);
     CB_CHECK_EQ(units.size(), std::size_t{1});
-    const std::string text = translate::backends::cpp17::program(*lib, arena, units);
+    const std::string text = translate::backends::cpp17::program(*lib, arena, units);   // (every file of the program, under its marker line)
     // the idioms the back end is for: lambdas, range-for, a switch expression as a lambda, real constructors for a record
     CB_CHECK(jpo_has(text, "jrt::fn<Function>(") && jpo_has(text, "jrt::each<int32_t>(xs)") && jpo_has(text, "[&]() -> ref<String> {") &&
              jpo_has(text, "std::make_shared<Modern_Point>("));
-    fs::write_text(work.path() / "program.cpp", text);
     std::vector<std::string> args(std::begin(translate::backends::cpp17::kFlags), std::end(translate::backends::cpp17::kFlags));
-    args.insert(args.end(), {"-I", fs::to_text(translate::backends::cpp17::runtime_dir()), "program.cpp", "-o", "program.exe"});
+    args.insert(args.end(), {"-I", fs::to_text(translate::backends::cpp17::runtime_dir()), "-I", "."});
+    for (const stdfs::path& s : translate::backends::cpp17::write_files(translate::backends::cpp17::split_files(text), work.path())) args.push_back(fs::to_text(s));
+    args.insert(args.end(), {"-o", "program.exe"});
     const std::string failed = jpo_gxx(args, work.path());
     CB_CHECK_EQ(failed, std::string());
     if (!failed.empty()) {
@@ -1500,9 +1501,10 @@ void corpus_runs_as_the_jvm(const std::string& name, const std::string& main_cla
     {
         Arena arena;
         const std::vector<translate::ir::Node*> units = java::frontend::lower_program(arena, src, jpo_front().tools);
-        fs::write_text(work.path() / "program.cpp", translate::backends::cpp17::program(*lib, arena, units));
         std::vector<std::string> args(std::begin(translate::backends::cpp17::kFlags), std::end(translate::backends::cpp17::kFlags));
-        args.insert(args.end(), {"-I", fs::to_text(translate::backends::cpp17::runtime_dir()), "program.cpp", "-o", "program.exe"});
+        args.insert(args.end(), {"-I", fs::to_text(translate::backends::cpp17::runtime_dir()), "-I", "."});
+        for (const stdfs::path& s : translate::backends::cpp17::write_files(translate::backends::cpp17::program_files(*lib, arena, units), work.path())) args.push_back(fs::to_text(s));
+        args.insert(args.end(), {"-o", "program.exe"});
         const std::string failed = jpo_gxx(args, work.path());
         CB_CHECK_EQ(failed, std::string());
         if (failed.empty()) {

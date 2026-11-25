@@ -71,4 +71,12 @@ void register_rust_back_end(Registry& r) {
                     {"jdk", "rustc"}, true}}});
 }
 
+// Java as Go on the Go runtime (backends/go_java).
+void register_go_back_end(Registry& r) {
+    r.add(BackEnd{"go",
+                  "backends/go_java",
+                  {{"java", "translate_file", "writes the program as Go, runs it beside the Java program (javac and the JVM, go build), and compares what they print and their exit code",
+                    {"jdk", "go"}, true}}});
+}
+
 }  // namespace cb::translate::registry

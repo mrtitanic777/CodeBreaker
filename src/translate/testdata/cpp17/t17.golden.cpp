@@ -1,5 +1,7 @@
-// written by CodeBreaker's C++17 back end (codebreaker/translate/backends/cpp17.py) from the
-// Java program's L2; it runs on jrt.hpp, the Java library in C++17.
+// ==== jrt_program.hpp ====
+// written by CodeBreaker's C++17 back end from the Java program's L2; it runs on jrt.hpp, the Java library in C++17.
+// Every file of the program starts from this one: the runtime, and a declaration of each class.
+#pragma once
 #include "jrt.hpp"
 
 using jrt::ref;
@@ -27,6 +29,9 @@ struct Modern_Shape;
 struct Modern_Sq;
 struct Modern_Circ;
 struct Modern_Color;
+// ==== Modern.hpp ====
+#pragma once
+#include "jrt_program.hpp"
 
 struct Modern : virtual Object {
 	const char16_t* jclass_() const override { return u"Modern"; }
@@ -92,6 +97,9 @@ struct Modern_Color : Enum {
 	void ctor_(ref<String> name_in, int32_t ordinal_in);
 	void finit_();
 };
+
+// ==== Modern.cpp ====
+#include "Modern.hpp"
 
 Modern::Modern() {
 }
@@ -309,6 +317,10 @@ ref<Modern_Color> Modern_Color::valueOf(ref<String> n) {
 	jrt::raise_msg(std::make_shared<jrt::IllegalArgumentException>(), u"No enum constant Modern.Color." + n->s);
 }
 
+// ==== main.cpp ====
+// the program's entry: the class named by JRT_MAIN, else the first with a main
+#include "jrt_program.hpp"
+#include "Modern.hpp"
 
 int main(int argc, char** argv) {
 	const char* which = std::getenv("JRT_MAIN");

@@ -1,20 +1,24 @@
 // engine/pcode_cpu_tlcs900.cpp -- the Neo Geo Pocket lane's TLCS-900/H on the one p-code emulator: emulate::tlcs900::run's call, on languages/tlcs900.sla (see the header).
 //
 // What is where. The registers the emulator runs on are the current bank (XWA XBC XDE XHL), XIX XIY XIZ XSP, the flags S Z H V N C and the pc. Everything else of the
-// own core's Registers (the other three banks, F', the status register's other bits, the DMA control registers) is kept here, and the two are made one again whenever
-// the run goes from one to the other. An instruction runs on the emulator when its description gives the own core's result and it names registers of the current bank
-// only (the description keeps the banks in storage of their own, as a register code names them, apart from the current one); the others run on the own core
-// (emulate::tlcs900::Cpu::step) on the registers as they stand. On the emulator: moves, push and pop, jumps, calls and returns, LINK and UNLK, ADD SUB CP AND OR XOR,
-// INC and DEC, NEG CPL, EXTZ EXTS, MUL MULS, shifts by a count, the bit instructions and the carry-flag ones, SCC, DJNZ, EX, LDA and PAA. On the own core: the status
+// lane's Registers (the other three banks, F', the status register's other bits, the DMA control registers) is kept here, and the two are made one again whenever
+// the run goes from one to the other. An instruction runs on the emulator when its description gives the processor's result and it names registers of the current bank
+// only (the description keeps the banks in storage of their own, as a register code names them, apart from the current one); the others run on the adapter's own semantics
+// (pcode_ops_tlcs900::step) on the registers as they stand. On the emulator: moves, push and pop, jumps, calls and returns, LINK and UNLK, ADD SUB CP AND OR XOR,
+// INC and DEC, NEG CPL, EXTZ EXTS, MUL MULS, shifts by a count, the bit instructions and the carry-flag ones, SCC, DJNZ, EX, LDA and PAA. On the adapter's own semantics: the status
 // register and F as operands, the register bank switches, SWI, HALT, RETI and EI, ADC and SBC (their overflow flag), DIV and DIVS, the rotates, the decimal and bit-field
 // instructions (DAA MIRR MULA BS1F BS1B MINC MDEC RLD RRD), the block moves and compares, the DMA control registers, the bit instructions on a byte register (the bit
-// number wraps at 8) and TSET on memory (the description reads the byte twice). The description's flags that differ from the own core's are put right after the
-// instruction: no half carry or parity for a long, and INC and DEC of a word or long register keep every flag.
+// number wraps at 8) and TSET on memory (the description reads the byte twice). The description's flags that differ from the processor's are put right after the
+// instruction: no half carry or parity for a long, and INC and DEC of a word or long register keep every flag. Nothing goes to the lane's old core.
 //
-// The bytes of an instruction are read through the Bus as the own core reads them (twelve, one at a time), so the log of device accesses is the same.
+// The bytes of an instruction are read through the Bus as the processor reads them (twelve, one at a time), once for each instruction, so the log of device accesses is the same.
 #include "engine/pcode_cpu_tlcs900.hpp"
 
 #include <array>
+#include <format>
+#include <map>
+#include <cstdio>
+#include "core/fs.hpp"
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -23,6 +27,7 @@
 #include "decompile/tlcs900.hpp"
 #include "engine/pcode_cpu.hpp"
 #include "engine/pcode_cpu_internal.hpp"
+#include "engine/pcode_ops_tlcs900.hpp"
 
 namespace cb::engine::pcode_cpu {
 
@@ -98,8 +103,8 @@ t::RunResult run(t::Bus& bus, std::uint32_t entry, const t::RunOptions& options)
     } unhook{emu};
 
     // the registers as the own core starts a function
-    t::Cpu own(bus);   // (its registers hold the whole state while the run is on the own core)
-    own.on_swi = options.on_swi;
+    pcode_ops_tlcs900::Host host;   // (what the adapter's own semantics keep besides the registers)
+    host.on_swi = options.on_swi;
     t::Registers g;
     g.sr = options.sr;
     g.xwa() = options.xwa;
@@ -159,11 +164,6 @@ t::RunResult run(t::Bus& bus, std::uint32_t entry, const t::RunOptions& options)
 
     t::RunResult result;
     std::uint64_t steps = 0;
-    // the own core reads the instruction again, through the Bus: when that is a logged range the second reading is no access of the program, and is left out of the log
-    struct Repeat {
-        std::size_t at, count;
-    };
-    std::vector<Repeat> repeats;
     std::vector<t::SoftwareInterrupt> swis;
     while (steps < options.max_steps) {
         const std::uint32_t pc = g_valid ? g.pc : static_cast<std::uint32_t>(emu.pc());
@@ -176,10 +176,8 @@ t::RunResult run(t::Bus& bus, std::uint32_t entry, const t::RunOptions& options)
             options.on_instruction(g);
         }
         // the instruction's bytes as the own core reads them
-        const std::size_t before_fetch = bus.log().size();
         Bytes window(12);
         for (unsigned k = 0; k < window.size(); ++k) window[k] = static_cast<std::uint8_t>(bus.read((pc + k) & 0xFFFFFF, 1));
-        const std::size_t fetched = bus.log().size() - before_fetch;
         const std::optional<dt::Insn> insn = dt::decode(window, 0, pc);
         bool ran = false;
         if (insn && emulated(*insn)) {
@@ -206,22 +204,22 @@ t::RunResult run(t::Bus& bus, std::uint32_t entry, const t::RunOptions& options)
             }
         }
         if (ran) continue;
-        // the own core: one instruction (a block move is its whole run), on the registers as they stand
+        // the adapter's own semantics (pcode_ops_tlcs900): one instruction (a block move is its whole run), on the registers as they stand
         if (!g_valid) to_g();
-        own.regs = g;
-        own.steps = 0;
-        own.swis.clear();
-        const std::size_t own_start = bus.log().size();
-        const std::optional<t::Fault> fault = own.step();
-        if (fetched != 0) repeats.push_back({own_start, fetched});
+        host.steps = 0;
+        host.swis.clear();
+        t::Registers working = g;
+        std::optional<t::Fault> fault;
+        if (!insn) fault = t::Fault{g.pc, std::format("undefined instruction at {:06X}", g.pc)};
+        else fault = pcode_ops_tlcs900::step(host, working, bus, *insn);
         if (fault) {
             result.end = t::End::Stopped;
             result.fault = fault;
             break;
         }
-        g = own.regs;
-        steps += own.steps;
-        swis.insert(swis.end(), own.swis.begin(), own.swis.end());
+        g = working;
+        steps += host.steps;
+        swis.insert(swis.end(), host.swis.begin(), host.swis.end());
         g_valid = true;
         emu_valid = false;
     }
@@ -230,14 +228,7 @@ t::RunResult run(t::Bus& bus, std::uint32_t entry, const t::RunOptions& options)
     result.regs = g;
     result.steps = steps;
     result.swis = std::move(swis);
-    for (std::size_t i = logged_before, next = 0; i < bus.log().size(); ++i) {
-        if (next < repeats.size() && i == repeats[next].at) {
-            i += repeats[next].count - 1;
-            ++next;
-            continue;
-        }
-        result.io.push_back(bus.log()[i]);
-    }
+    result.io.assign(bus.log().begin() + static_cast<std::ptrdiff_t>(logged_before), bus.log().end());
     return result;
 }
 

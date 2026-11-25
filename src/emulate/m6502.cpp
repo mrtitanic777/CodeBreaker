@@ -119,6 +119,13 @@ std::uint8_t Bus::peek(std::uint16_t address) const {
     return ram_[address];
 }
 
+std::vector<std::pair<std::uint16_t, std::uint16_t>> Bus::logged_reads() const {
+    std::vector<std::pair<std::uint16_t, std::uint16_t>> out;
+    for (const Range& r : ranges_)
+        if (r.logged && r.reads) out.emplace_back(r.lo, r.hi);
+    return out;
+}
+
 void Bus::write(std::uint16_t address, std::uint8_t value) {
     address &= mask_;
     for (const Range& r : ranges_) {

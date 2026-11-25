@@ -308,6 +308,8 @@ std::optional<Insn> decode_arm(std::uint32_t w, std::uint32_t pc, Arch arch) {
         fill_raw(e);
         return e;
     };
+    if (arch >= Arch::V7A)
+        if (auto n = t2::decode_neon(w, false, pc, w, arch)) return n;   // (Advanced SIMD, VMOV immediate)
     if (cond == 15) {
         if (auto e = from_ext(w)) return e;
         return arch >= Arch::V5TE ? decode_unconditional(w, pc) : std::nullopt;
@@ -364,6 +366,7 @@ std::optional<Insn> decode_arm(std::uint32_t w, std::uint32_t pc, Arch arch) {
         default: break;
     }
     if (!ok) return std::nullopt;
+    if (arch >= Arch::V7A && !t2::defined_arm_operands(i)) return std::nullopt;   // (an encoding the ARMv7 manual leaves UNPREDICTABLE is not an instruction)
     set_flow(i);
     return i;
 }
@@ -417,6 +420,15 @@ std::optional<Insn> decode_thumb32_int(std::uint16_t a, std::uint16_t b, std::ui
             i.rd = static_cast<std::uint8_t>(d);
             return d != 15;
         }
+        if (op4 == 3) {   // ORN
+            if (d == 15 || n == 15) return false;
+            i.op = Op::Ext;
+            i.ext = t2::kOrn;
+            i.s = s;
+            i.rn = static_cast<std::uint8_t>(n);
+            i.rd = static_cast<std::uint8_t>(d);
+            return true;
+        }
         if (map[op4] < 0) return false;
         i.op = static_cast<Op>(map[op4]);
         i.s = s;
@@ -430,6 +442,7 @@ std::optional<Insn> decode_thumb32_int(std::uint16_t a, std::uint16_t b, std::ui
             else return false;
             i.rd = 0;
         } else if (n == 15 && i.op == Op::Orr) {   // ORR with no first operand is MOV
+            if (d == 15) return false;   // (MOV to the pc: UNPREDICTABLE)
             i.op = Op::Mov;
             i.rn = 0;
         } else if (d == 15 || n == 15) {
@@ -448,7 +461,7 @@ std::optional<Insn> decode_thumb32_int(std::uint16_t a, std::uint16_t b, std::ui
         return i;
     }
     if ((a & 0xFFF0) == 0xF3C0 || (a & 0xFFF0) == 0xF340 || (a & 0xFFF0) == 0xF360) {   // UBFX, SBFX, BFI, BFC
-        if ((b & 0x8000) || rd == 15 || rd == 13) return std::nullopt;
+        if ((b & 0x8000) || (b & 0x20) || rd == 15 || rd == 13) return std::nullopt;   // (bit 5 is should-be-zero)
         const unsigned lsb = ((b >> 12) & 7) << 2 | ((b >> 6) & 3), field = b & 31;
         i.op = Op::Ext;
         i.rd = static_cast<std::uint8_t>(rd);
@@ -495,58 +508,25 @@ std::optional<Insn> decode_thumb32_int(std::uint16_t a, std::uint16_t b, std::ui
     }
     // data processing, shifted register
     if ((a & 0xFE00) == 0xEA00 && !(b & 0x8000)) {
+        if (((a >> 5) & 15) == 6) {   // PKHBT, PKHTB
+            if ((a & 0x10) || (b & 0x10) || rn == 13 || rn == 15 || rd == 13 || rd == 15 || (b & 15) == 13 || (b & 15) == 15) return std::nullopt;
+            const bool tb = (b >> 5) & 1;
+            const unsigned amount = ((b >> 12) & 7) << 2 | ((b >> 6) & 3);
+            i.op = Op::Ext;
+            i.ext = t2::kPkh;
+            i.rn = static_cast<std::uint8_t>(rn);
+            i.rd = static_cast<std::uint8_t>(rd);
+            i.rm = b & 15;
+            i.shift = tb ? Shift::Asr : Shift::Lsl;
+            i.amount = static_cast<std::uint8_t>(tb && amount == 0 ? 32 : amount);
+            return i;
+        }
         if (!data_op((a >> 5) & 15, (a >> 4) & 1, rn, rd)) return std::nullopt;
         shifted();
         if (i.rm == 15 || i.rm == 13) return std::nullopt;
         return i;
     }
-    // load and store, one register
-    if ((a >> 9) == 0x7C) {
-        const bool sign = (a >> 8) & 1, imm12 = (a >> 7) & 1, load = (a >> 4) & 1;
-        const unsigned size = (a >> 5) & 3;
-        if (size == 3 || (!load && sign) || (rt == 15 && !load) || rt == 13) return std::nullopt;
-        if (rt == 15 && size != 2) return std::nullopt;   // (PLD, PLI)
-        i.op = load ? Op::Ldr : Op::Str;
-        i.size = static_cast<std::uint8_t>(size == 0 ? 1 : size == 1 ? 2 : 4);
-        i.sign = sign;
-        i.rd = static_cast<std::uint8_t>(rt);
-        i.rn = static_cast<std::uint8_t>(rn);
-        if (rn == 15) {   // a literal load of a word
-            if (!load || sign || size != 2) return std::nullopt;
-            i.imm_form = true;
-            i.pre = true;
-            i.up = imm12;   // (the U bit takes bit 7's place)
-            i.imm = b & 0xFFF;
-            set_flow(i);
-            return i;
-        }
-        if (imm12) {
-            i.imm_form = true;
-            i.pre = true;
-            i.up = true;
-            i.imm = b & 0xFFF;
-        } else if ((b & 0x0800) != 0) {
-            const bool p = (b >> 10) & 1, u = (b >> 9) & 1, wback = (b >> 8) & 1;
-            if ((p && u && !wback) || (!p && !wback)) return std::nullopt;   // (LDRT and STRT, undefined)
-            i.imm_form = true;
-            i.pre = p;
-            i.up = u;
-            i.wb = wback;
-            i.imm = b & 0xFF;
-        } else if ((b & 0x0FC0) == 0) {
-            i.imm_form = false;
-            i.pre = true;
-            i.up = true;
-            i.rm = b & 15;
-            i.shift = Shift::Lsl;
-            i.amount = static_cast<std::uint8_t>((b >> 4) & 3);
-            if (i.rm == 15 || i.rm == 13) return std::nullopt;
-        } else {
-            return std::nullopt;
-        }
-        set_flow(i);
-        return i;
-    }
+    // (the loads and stores of one register are decode_more's: decompile/arm32_thumb.cpp)
     // block transfers: LDM, STM (POP.W and PUSH.W are the ones on the stack pointer)
     if ((a >> 9) == 0x74 && !((a >> 6) & 1) && (((a >> 7) & 3) == 1 || ((a >> 7) & 3) == 2)) {
         const bool load = (a >> 4) & 1, down = ((a >> 7) & 3) == 2;
@@ -1060,7 +1040,7 @@ std::string thumb_text(const Insn& i, const AddressLabels& labels) {
 
 std::string text(const Insn& insn, const AddressLabels& labels) {
     if (insn.thumb() && insn.length == 4 && insn.ext == t2::kOpaque) return t2::text(insn, labels);   // (a 32-bit instruction the interpreter runs, written as the disassembler does)
-    if (insn.op == Op::Ext) return insn.thumb() ? t2::text(insn, labels) : ext::text(insn.ext, insn.word, insn.pc, labels);
+    if (insn.op == Op::Ext) return insn.thumb() || insn.ext >= 1000 ? t2::text(insn, labels) : ext::text(insn.ext, insn.word, insn.pc, labels);
     return insn.thumb() ? thumb_text(insn, labels) : arm_text(insn, labels);
 }
 

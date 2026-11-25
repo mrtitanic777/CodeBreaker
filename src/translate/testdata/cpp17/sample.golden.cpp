@@ -1,5 +1,7 @@
-// written by CodeBreaker's C++17 back end (codebreaker/translate/backends/cpp17.py) from the
-// Java program's L2; it runs on jrt.hpp, the Java library in C++17.
+// ==== jrt_program.hpp ====
+// written by CodeBreaker's C++17 back end from the Java program's L2; it runs on jrt.hpp, the Java library in C++17.
+// Every file of the program starts from this one: the runtime, and a declaration of each class.
+#pragma once
 #include "jrt.hpp"
 
 using jrt::ref;
@@ -12,6 +14,9 @@ struct AxisAlignedBB;
 struct MathHelper;
 struct FixtureMain;
 struct Vec3D;
+// ==== sample/AxisAlignedBB.hpp ====
+#pragma once
+#include "jrt_program.hpp"
 
 struct AxisAlignedBB : virtual Object {
 	const char16_t* jclass_() const override { return u"sample.AxisAlignedBB"; }
@@ -26,36 +31,8 @@ struct AxisAlignedBB : virtual Object {
 	AxisAlignedBB() {}
 };
 
-struct MathHelper : virtual Object {
-	const char16_t* jclass_() const override { return u"sample.MathHelper"; }
-	static inline ref<Array<float>> SIN_TABLE{};
-	static inline bool inited_ = false;
-	static void clinit_();
-	MathHelper();
-	static float sqrt_float(float var0);
-	static int32_t floor_double(double var0);
-};
-
-struct FixtureMain : virtual Object {
-	const char16_t* jclass_() const override { return u"sample.FixtureMain"; }
-	FixtureMain();
-	static void main(ref<Array<ref<String>>> args);
-};
-
-struct Vec3D : virtual Object {
-	const char16_t* jclass_() const override { return u"sample.Vec3D"; }
-	static inline int32_t nextVector = 0;
-	static inline ref<Array<ref<Vec3D>>> vectorList{};
-	double xCoord{};
-	double yCoord{};
-	double zCoord{};
-	static inline bool inited_ = false;
-	static void clinit_();
-	Vec3D(double var1, double var3, double var5);
-	virtual ref<Vec3D> subtract(ref<Vec3D> var1);
-	virtual ref<Vec3D> getIntermediateWithXValue(ref<Vec3D> var1, double var2);
-	Vec3D() {}
-};
+// ==== sample/AxisAlignedBB.cpp ====
+#include "sample/AxisAlignedBB.hpp"
 
 AxisAlignedBB::AxisAlignedBB(double var1, double var3, double var5, double var7, double var9, double var11) {
 	this->minX = var1;
@@ -72,6 +49,23 @@ bool AxisAlignedBB::intersectsWith(ref<AxisAlignedBB> var1) {
 	}
 	return jrt::nn(var1)->maxY > this->minY && jrt::nn(var1)->minY < this->maxY;
 }
+
+// ==== sample/MathHelper.hpp ====
+#pragma once
+#include "jrt_program.hpp"
+
+struct MathHelper : virtual Object {
+	const char16_t* jclass_() const override { return u"sample.MathHelper"; }
+	static inline ref<Array<float>> SIN_TABLE{};
+	static inline bool inited_ = false;
+	static void clinit_();
+	MathHelper();
+	static float sqrt_float(float var0);
+	static int32_t floor_double(double var0);
+};
+
+// ==== sample/MathHelper.cpp ====
+#include "sample/MathHelper.hpp"
 
 MathHelper::MathHelper() {
 	clinit_();
@@ -96,6 +90,22 @@ void MathHelper::clinit_() {
 		(*jrt::nn(MathHelper::SIN_TABLE))[var0] = (float)(jrt::Math::sin((double)var0 * jrt::Math::PI * 2.0 / 65536.0));
 	}
 }
+
+// ==== sample/FixtureMain.hpp ====
+#pragma once
+#include "jrt_program.hpp"
+
+struct FixtureMain : virtual Object {
+	const char16_t* jclass_() const override { return u"sample.FixtureMain"; }
+	FixtureMain();
+	static void main(ref<Array<ref<String>>> args);
+};
+
+// ==== sample/FixtureMain.cpp ====
+#include "sample/FixtureMain.hpp"
+#include "sample/AxisAlignedBB.hpp"
+#include "sample/MathHelper.hpp"
+#include "sample/Vec3D.hpp"
 
 FixtureMain::FixtureMain() {
 }
@@ -124,6 +134,28 @@ void FixtureMain::main(ref<Array<ref<String>>> args) {
 	jrt::nn(jrt::System::out_())->println(jrt::concat(jrt::lit(u"pool "), (Vec3D::clinit_(), Vec3D::nextVector), jrt::lit(u" "), jrt::nn((Vec3D::clinit_(), Vec3D::vectorList))->length));
 }
 
+// ==== sample/Vec3D.hpp ====
+#pragma once
+#include "jrt_program.hpp"
+
+struct Vec3D : virtual Object {
+	const char16_t* jclass_() const override { return u"sample.Vec3D"; }
+	static inline int32_t nextVector = 0;
+	static inline ref<Array<ref<Vec3D>>> vectorList{};
+	double xCoord{};
+	double yCoord{};
+	double zCoord{};
+	static inline bool inited_ = false;
+	static void clinit_();
+	Vec3D(double var1, double var3, double var5);
+	virtual ref<Vec3D> subtract(ref<Vec3D> var1);
+	virtual ref<Vec3D> getIntermediateWithXValue(ref<Vec3D> var1, double var2);
+	Vec3D() {}
+};
+
+// ==== sample/Vec3D.cpp ====
+#include "sample/Vec3D.hpp"
+
 Vec3D::Vec3D(double var1, double var3, double var5) {
 	clinit_();
 	this->xCoord = var1;
@@ -149,6 +181,10 @@ void Vec3D::clinit_() {
 	Vec3D::vectorList = jrt::new_array<ref<Vec3D>>(256);
 }
 
+// ==== main.cpp ====
+// the program's entry: the class named by JRT_MAIN, else the first with a main
+#include "jrt_program.hpp"
+#include "sample/FixtureMain.hpp"
 
 int main(int argc, char** argv) {
 	const char* which = std::getenv("JRT_MAIN");

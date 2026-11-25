@@ -4,8 +4,8 @@
 //     RunResult r = engine::pcode_cpu::call(bus, entry, options);   // as emulate::allegrex::run, on the core chosen by CB_PCODE_EMU
 //
 // There is no description of the Allegrex: languages/mips32le.sla, the closest MIPS, runs the integer instructions (see pcode_cpu_mipsle.hpp for which) with the Bus as its memory,
-// and the own core runs the rest: the FPU and the VFPU's not-run end, CLZ CLO MADD MSUB MAX MIN, EXT INS SEB SEH WSBH BITREV ROTR, the unaligned loads and stores, LL and SC,
-// SYSCALL and the faults, and the imported functions' stubs the Bus answers.
+// and the adapter's own semantics (pcode_ops_mipsle.cpp) run the rest: the FPU and the VFPU's not-run end, CLZ CLO MADD MSUB MAX MIN, EXT INS SEB SEH WSBH BITREV ROTR, the unaligned
+// loads and stores, LL and SC, SYSCALL and the faults, and the imported functions' stubs the Bus answers.
 #pragma once
 
 #include "emulate/allegrex.hpp"

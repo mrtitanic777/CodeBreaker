@@ -102,6 +102,9 @@ CB_TEST("translate.rust_java.zoo_classes_interfaces_inheritance_and_virtual_call
 CB_TEST("translate.rust_java.errs_exceptions_and_jumps_out_of_try", [] { rj_translates("Errs"); });
 CB_TEST("translate.rust_java.lists_maps_and_sets_iterate_as_java_does", [] { rj_translates("Lists"); });
 CB_TEST("translate.rust_java.edge_cases_of_java_arithmetic_text_and_evaluation_order", [] { rj_translates("Edge"); });
+CB_TEST("translate.rust_java.memory_is_reclaimed_while_a_program_makes_gigabytes_of_garbage", [] { rj_translates("Churn"); });
+CB_TEST("translate.rust_java.varargs_switch_fallthrough_and_box_identity", [] { rj_translates("Misc2"); });
+CB_TEST("translate.rust_java.records_with_compact_constructors_and_interfaces", [] { rj_translates("Recs"); });
 CB_TEST("translate.rust_java.deep_recursion_has_room", [] { rj_translates("Deep"); });
 CB_TEST("translate.rust_java.enums_with_fields_switches_values_and_valueof", [] { rj_translates("Enums"); });
 
@@ -116,12 +119,12 @@ CB_TEST("translate.rust_java.declines_what_it_cannot_write", [] {
     CB_CHECK(boxy.verdict == tf::Verdict::Refused);
     CB_CHECK(boxy.detail.find("Decline") != std::string::npos && boxy.detail.find("generic") != std::string::npos);
     CB_CHECK(boxy.files.empty());
-    cb::fs::write_text(work / "Fallthrough.java",
-                       "public class Fallthrough {\n    public static void main(String[] args) {\n        int x = args.length;\n"
-                       "        switch (x) { case 0: System.out.println(\"a\"); case 1: System.out.println(\"b\"); break; default: break; }\n    }\n}\n");
-    const tf::Result fall = rj_run(work / "Fallthrough.java", work / "out2", work / "scratch2");
-    CB_CHECK(fall.verdict == tf::Verdict::Refused);
-    CB_CHECK(fall.detail.find("falls through") != std::string::npos);
+    cb::fs::write_text(work / "Anon.java",
+                       "public class Anon {\n    interface Greeter { String hi(); }\n    public static void main(String[] args) {\n"
+                       "        Greeter g = new Greeter() { public String hi() { return \"hi\"; } };\n        System.out.println(g.hi());\n    }\n}\n");
+    const tf::Result anon = rj_run(work / "Anon.java", work / "out2", work / "scratch2");
+    CB_CHECK(anon.verdict == tf::Verdict::Refused);
+    CB_CHECK(anon.detail.find("anonymous") != std::string::npos);
     std::error_code ec;
     stdfs::remove_all(work, ec);
 });
@@ -140,5 +143,5 @@ CB_TEST("translate.rust_java.declines_records_and_lambdas_with_a_reason", [] {
         why = d.what();
     }
     CB_CHECK(!why.empty());
-    CB_CHECK(why.find("record") != std::string::npos || why.find("anonymous") != std::string::npos || why.find("generic") != std::string::npos);
+    CB_CHECK(why.find("record") != std::string::npos || why.find("anonymous") != std::string::npos || why.find("generic") != std::string::npos || why.find("Lambda") != std::string::npos || why.find("library type") != std::string::npos);
 });

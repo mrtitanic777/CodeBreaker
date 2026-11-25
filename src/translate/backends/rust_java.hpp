@@ -4,7 +4,7 @@
 // A whole Java program from L2 as one Rust source file on the runtime config/translate/runtime/rust/jrt.rs, which the program includes by path
 // (`#[path = "runtime/jrt.rs"] mod jrt;`):
 //
-//   * a reference is `Option<&'static T>` (jrt.rs says why: objects are made once and not freed while the program runs), so values are Copy
+//   * a reference is `Option<&'static T>` (jrt.rs says how they are kept: a conservative collector over the runtime's own heap frees what nothing reaches), so values are Copy
 //     and `this` is `self`; a Java class is a trait (`Ref<dyn Animal>` is a variable of type Animal), its fields a data struct
 //     (`AnimalData`, in `Cell`s), and each class that can be made a concrete struct (`AnimalObj`) holding the data of every class it extends;
 //   * an instance method is a trait method; its body is an associated function of the class's data struct taking `this`, which is what
