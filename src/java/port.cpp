@@ -8,6 +8,7 @@
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "java/console/project_scan.hpp"
+#include "java/console/retromcp.hpp"
 #include "java/console/zip_archive.hpp"
 
 namespace cb::java::port {
@@ -68,6 +69,7 @@ std::string_view kind_title(SourceKind kind) {
     switch (kind) {
         case SourceKind::JavaTree: return "a Java source folder";
         case SourceKind::GameFolder: return "a decompiled game folder";
+        case SourceKind::RetroMcpWorkspace: return "a RetroMCP workspace";
         case SourceKind::SourceJar: return "a jar of Java source";
         case SourceKind::ClassJar: return "a game jar";
         case SourceKind::Unknown: break;
@@ -129,7 +131,26 @@ Plan plan(const stdfs::path& input_in, Platform platform, const std::optional<st
     p.root = out_root ? stdfs::absolute(*out_root, ec).lexically_normal() : p.input.parent_path() / (fs::to_text(p.input.filename().stem()) + "-converted");
     p.project = p.root / p.name;
 
-    if (stdfs::is_directory(p.input, ec)) {
+    const std::optional<console::retromcp::Workspace> workspace =
+        stdfs::exists(p.input, ec) && !(stdfs::is_regular_file(p.input, ec) && pt_is_jar(p.input)) ? console::retromcp::find(p.input) : std::nullopt;
+    if (workspace) {
+        // a RetroMCP workspace, dropped anywhere inside: the project's whole src/ (never src_original), its jar, the libraries, the version
+        p.kind = SourceKind::RetroMcpWorkspace;
+        p.workspace = workspace->root;
+        p.java_src = workspace->java_src;
+        p.java_files = workspace->java_files;
+        p.jar = workspace->jar;
+        p.libraries = workspace->libraries;
+        p.entry_class = workspace->entry_class;
+        p.mc_version = workspace->version;
+        const console::project_scan::Resolved r = console::project_scan::resolve(workspace->project);
+        p.resources = r.resources;
+        p.lang = r.lang;
+        // the project is named after the version it was set up with (in-20100213 -> in_20100213), else the project folder
+        p.name = project_name(p.mc_version.empty() ? fs::to_text(workspace->project.filename()) : p.mc_version);
+        if (!out_root) p.root = workspace->root / (fs::to_text(workspace->project.filename()) + "-converted");
+        p.project = p.root / p.name;
+    } else if (stdfs::is_directory(p.input, ec)) {
         const console::project_scan::Resolved r = console::project_scan::resolve(p.input);
         p.java_src = r.java_src;
         p.jar = r.jar;

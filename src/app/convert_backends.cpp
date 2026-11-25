@@ -8,6 +8,8 @@
 //                                                                           the route of its own kind)
 //
 //   a C# or Python source file, with a language asked for                   Opening, Translating (through the hub), Checking (both run, outputs compared)
+//   a Java game's folder: a RetroMCP workspace (or any folder inside it),   Opening (the source root, jar, libraries and entry found: java/port.hpp),
+//   a decompiled game folder with its source, a Java source tree            Translating (the whole source to C++03 for PC, with Content: `java port`)
 //
 // Anything else is Unsupported, with what identification says it is.
 #include <algorithm>
@@ -31,6 +33,8 @@
 #include "formats/detect.hpp"
 #include "formats/media.hpp"
 #include "formats/pe.hpp"
+#include "java/port.hpp"
+#include "java/tools.hpp"
 #include "source/dos_writer.hpp"
 #include "source/le_writer.hpp"
 #include "source/ne_writer.hpp"
@@ -517,9 +521,57 @@ Plan cv_plan_source(const cap::Language& language, const std::string& target) {
     return plan;
 }
 
+// ---- a Java game's folder ----------------------------------------------------------------------------------------------------------------
+
+// A folder with a Java game's source (java/port.hpp finds it: a RetroMCP workspace from any folder inside it, a decompiled game folder, a source
+// tree) is converted whole: `java port` for PC, without the build, into the work folder. A folder with no Java source has no plan here.
+std::optional<Plan> cv_plan_java_folder(const stdfs::path& input, const std::string& target) {
+    std::error_code ec;
+    if (!stdfs::is_directory(input, ec)) return std::nullopt;
+    const java::port::Plan p = java::port::plan(input, java::port::Platform::Pc);
+    if (!p.problem.empty() || !p.java_src) return std::nullopt;   // (no source in it: a game folder that would need the network to decompile)
+    Plan plan;
+    switch (p.kind) {
+        case java::port::SourceKind::RetroMcpWorkspace:
+            plan.what = std::format("RetroMCP workspace (Minecraft {}, {} Java files)", p.mc_version.empty() ? "?" : p.mc_version, p.java_files);
+            break;
+        case java::port::SourceKind::GameFolder: plan.what = "decompiled game folder (Java source)"; break;
+        default: plan.what = "folder of Java source code"; break;
+    }
+    const std::string t = cv_lower(target);
+    if (!(t.empty() || t == "original" || t == "cpp03" || t == "c++03" || t == "c++")) {
+        plan.refusal = "A Java game's folder is converted to C++03 (choose Original or C++03); other languages are not available for a whole game yet.";
+        return plan;
+    }
+    plan.output_name = p.name;
+    Route route;
+    route.name = "java-port";
+    route.stages = {State::Opening, State::Translating};
+    route.weights = {{State::Opening, 2}, {State::Translating, 90}};
+    route.run = [p](Reporter& r, const stdfs::path& input, const stdfs::path& work) {
+        r.enter(State::Opening);
+        r.count(1, 1, p.entry_class.empty() ? fs::to_text(p.java_src->filename()) : "entry " + p.entry_class);
+        r.enter(State::Translating);
+        r.count(0, 1, std::format("{} Java files", p.java_files));
+        // the port writes <work>/<name>/... (the C++, its CMakeLists.txt, Content); the build is left to the person
+        const std::vector<std::string> args = {"port", fs::to_text(input), "--platform", "pc", "--out", fs::to_text(work), "--no-build"};
+        const int code = java::tools::main(args, java::tools::Environment{config::current()});
+        r.check();
+        if (code != 0) throw std::runtime_error(std::format("The Java to C++ conversion stopped (exit {}); run `codebreaker java port` on the folder for the details.", code));
+        r.count(1, 1, std::format("{} Java files", p.java_files));
+        r.note(p.kind == java::port::SourceKind::RetroMcpWorkspace
+                   ? std::format("Converted the whole RetroMCP workspace (Minecraft {}): {} Java files from {}, against {} libraries.", p.mc_version, p.java_files,
+                                 fs::to_text(*p.java_src), p.libraries.size())
+                   : std::string());
+    };
+    plan.route = std::move(route);
+    return plan;
+}
+
 // The plan with a language asked for.
 Plan cv_plan_for(const stdfs::path& input, const std::string& target) {
     const bool original = target.empty() || cv_lower(target) == "original";
+    if (std::optional<Plan> java_folder = cv_plan_java_folder(input, target)) return std::move(*java_folder);
     if (const cap::Language* language = cap::language_of_file(input)) return cv_plan_source(*language, original ? std::string("original") : target);
     Plan plan = cv_plan(input);
     if (original || !plan.route) return plan;   // (Original is today's behaviour; a file with no route is refused as before)

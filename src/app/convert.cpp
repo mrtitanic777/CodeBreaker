@@ -348,15 +348,17 @@ Outcome convert(const Request& request, const Planner& planner, const ProgressFn
         if (request.input.empty() || !stdfs::exists(request.input, ec)) {
             outcome.state = State::Failed;
             outcome.message = "The file was not found: " + request.input.string();
-        } else if (stdfs::is_directory(request.input, ec)) {
-            outcome.state = State::Unsupported;
-            outcome.what = "folder";
-            outcome.message = "This is a folder. CodeBreaker converts one file at a time: pick the program itself.";
         } else {
-            if (progress) machine.stream_hex(request.input);
+            // a folder is converted only when a route takes it whole (a Java game's folder); otherwise it is refused as one
+            const bool folder = stdfs::is_directory(request.input, ec);
+            if (progress && !folder) machine.stream_hex(request.input);
             Plan plan = planner(request.input);
             outcome.what = plan.what;
-            if (!plan.route) {
+            if (!plan.route && folder && plan.refusal.empty()) {
+                outcome.state = State::Unsupported;
+                outcome.what = "folder";
+                outcome.message = "This is a folder. CodeBreaker converts one file at a time: pick the program itself.";
+            } else if (!plan.route) {
                 outcome.state = State::Unsupported;
                 if (!plan.refusal.empty()) outcome.message = plan.refusal;
                 else
@@ -370,11 +372,12 @@ Outcome convert(const Request& request, const Planner& planner, const ProgressFn
                     const stdfs::path parent = request.out_dir->parent_path().empty() ? stdfs::path(".") : request.out_dir->parent_path();
                     out = unique_output_folder(parent, request.out_dir->filename().string());
                 } else {
+                    const std::string stem = plan.output_name.empty() ? request.input.stem().string() : plan.output_name;
                     if (request.converted_root.empty()) {   // (no "converted" setting: next to the input, <name>-converted)
                         const stdfs::path beside = request.input.parent_path().empty() ? stdfs::path(".") : request.input.parent_path();
-                        out = unique_output_folder(beside, request.input.stem().string() + plan.folder_suffix + "-converted");
+                        out = unique_output_folder(beside, stem + plan.folder_suffix + "-converted");
                     } else {
-                        out = unique_output_folder(request.converted_root, request.input.stem().string() + plan.folder_suffix);
+                        out = unique_output_folder(request.converted_root, stem + plan.folder_suffix);
                     }
                 }
                 staging = out;

@@ -1,4 +1,5 @@
-// app/convert.hpp -- the conversion pipeline behind the CodeBreaker window and `codebreaker convert`: one file in, a folder of source code out.
+// app/convert.hpp -- the conversion pipeline behind the CodeBreaker window and `codebreaker convert`: one file in (or a Java game's folder: a
+// RetroMCP workspace, a decompiled game, a Java source tree), a folder of source code out.
 //
 //     convert::Request request{.input = "game.gb", .converted_root = "Converted"};
 //     convert::Outcome done = convert::convert(request, convert::standard_planner(config), report, cancel);
@@ -152,6 +153,7 @@ struct Plan {
     std::optional<Route> route;               // none: Unsupported
     std::string refusal;                      // none: the sentence to show instead of "This looks like ... CodeBreaker cannot convert it." (a target that is not supported)
     std::string folder_suffix;                // added to the output folder's name when it is made from the file's name: "_cpp17" gives Converted/Bank_cpp17
+    std::string output_name;                  // the output folder's name instead of the input's stem (a folder dropped deep inside a game: the game's)
 };
 using Planner = std::function<Plan(const std::filesystem::path& input)>;
 

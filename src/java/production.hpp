@@ -11,6 +11,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "base/config.hpp"
 #include "java/assembly.hpp"
@@ -21,9 +22,11 @@ namespace cb::java::production {
 
 // The JDK's java, as the settings and the environment give it.
 std::optional<std::filesystem::path> find_java(const cb::config::Config& config);
-// The tools the front end runs javac with. `javac` is empty when no JDK was found.
-frontend::DumpTools dump_tools(const cb::config::Config& config, const JavaData& data);
+// The tools the front end runs javac with. `javac` is empty when no JDK was found. `libraries` are the program's own jars (a RetroMCP workspace's
+// libraries/), on the classpath after the ones of setting java_libs.
+frontend::DumpTools dump_tools(const cb::config::Config& config, const JavaData& data, const std::vector<std::filesystem::path>& libraries = {});
 // The transpiler over `data`, with that front end (the tools are looked for when a conversion asks for them).
-std::unique_ptr<assembly::Assembly> make_assembly(const cb::config::Config& config, const JavaData& data);
+std::unique_ptr<assembly::Assembly> make_assembly(const cb::config::Config& config, const JavaData& data,
+                                                  const std::vector<std::filesystem::path>& libraries = {});
 
 }  // namespace cb::java::production

@@ -486,5 +486,33 @@ CB_TEST("app.convert.the_picker_and_the_hint_take_source_files_too", [] {
     CB_CHECK(drop_hint().find(".exe") != std::string::npos);
 });
 
+// A RetroMCP workspace made in the test (the shape of one, nothing of the game): dropped at any folder inside it, Convert takes the whole game.
+CB_TEST("app.convert.a_retromcp_workspace_folder_is_converted_whole", [] {
+    fs::ScopedTempDir dir{"cb_convert_rmcp"};
+    const stdfs::path root = dir.path() / "ws";
+    fs::write_text(root / "options.cfg", "setup=in-20100213\n");
+    fs::write_text(root / "conf" / "version.json", R"({"id": "in-20100213"})");
+    const stdfs::path mc = root / "minecraft";
+    fs::write_text(mc / "src" / "net" / "minecraft" / "client" / "MinecraftApplet.java", "package net.minecraft.client;\npublic class MinecraftApplet extends Applet {}");
+    fs::write_text(mc / "src" / "util" / "MathHelper.java", "package util;\npublic class MathHelper {}");
+    for (const stdfs::path& dropped : {mc, mc / "src" / "net" / "minecraft" / "client", root}) {
+        const Plan plan = standard_planner()(dropped);
+        CB_CHECK(plan.route.has_value() && plan.route->name == "java-port");
+        CB_CHECK(plan.what.starts_with("RetroMCP workspace (Minecraft in-20100213, 2 Java files)"));
+        CB_CHECK_EQ(plan.output_name, "in_20100213");   // named after the game, not after the folder dropped
+    }
+    const Plan other = standard_planner("csharp")(mc);
+    CB_CHECK(!other.route && other.refusal.find("C++03") != std::string::npos);
+
+    // a folder with no Java source is still refused as a folder
+    CvFixture f;
+    Request r = f.request();
+    r.input = f.dir.path() / "empty";
+    fs::make_dirs(r.input);
+    const Outcome done = convert(r, standard_planner(), nullptr, f.cancel);
+    CB_CHECK(done.state == State::Unsupported);
+    CB_CHECK_EQ(done.what, "folder");
+});
+
 }  // namespace
 }  // namespace cb::app::convert

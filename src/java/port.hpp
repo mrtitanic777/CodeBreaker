@@ -3,6 +3,8 @@
 // One input, whatever a person has at hand:
 //     a Java source folder           (.java files under it)                 converted as it is
 //     a decompiled game folder       (jars/, src/, resources/ ... under it) its source, jar, sounds and language file found by project_scan
+//     a RetroMCP workspace           (options.cfg, conf/, libraries/, minecraft/src ...: the folder or any folder inside it) its whole source,
+//                                    jar, libraries, version and entry class found by console/retromcp (src_original is never converted)
 //     a source .jar                  (.java entries)                        unpacked, then converted
 //     a game .jar                    (classes only)                         decompiled first (its Minecraft version read from the file name)
 // and one choice: PC (OpenGL/SDL, a CMake project) or Xbox 360 (a Visual Studio solution with the platform config, Content, the XACT audio banks and
@@ -29,7 +31,7 @@ std::optional<Platform> parse_platform(std::string_view text);
 std::string_view platform_id(Platform platform);
 std::string_view platform_title(Platform platform);   // "PC" or "Xbox 360"
 
-enum class SourceKind { JavaTree, GameFolder, SourceJar, ClassJar, Unknown };
+enum class SourceKind { JavaTree, GameFolder, RetroMcpWorkspace, SourceJar, ClassJar, Unknown };
 std::string_view kind_title(SourceKind kind);
 
 struct Plan {
@@ -40,7 +42,12 @@ struct Plan {
     std::optional<std::filesystem::path> jar;          // the game's jar: its textures and resources become Content
     std::optional<std::filesystem::path> resources;    // the .ogg sound tree
     std::optional<std::filesystem::path> lang;         // a language file (achievement names)
-    std::string mc_version;                            // ClassJar: the Minecraft version to decompile ("" when the name does not say)
+    std::string mc_version;                            // ClassJar: the Minecraft version to decompile ("" when the name does not say);
+                                                       // RetroMcpWorkspace: the version it was set up with (it picks the target profile)
+    std::optional<std::filesystem::path> workspace;    // RetroMcpWorkspace: the workspace's root (options.cfg, conf/, libraries/)
+    std::vector<std::filesystem::path> libraries;      // RetroMcpWorkspace: the jars the source is built against (the front end's classpath)
+    std::string entry_class;                           // RetroMcpWorkspace: the game's entry class in the source ("net.minecraft.client.MinecraftApplet")
+    std::size_t java_files = 0;                        // RetroMcpWorkspace: the .java files of the source root
     std::string name;                                  // the project's name: an identifier made from the input's name
     std::filesystem::path root;                        // the solution folder: <input's folder>/<input's stem>-converted
     std::filesystem::path project;                     // root / name: the converted source and its project

@@ -80,7 +80,7 @@ public:
     // The transpiler. Its front end finds the JDK and the libraries when it runs.
     assembly::Assembly& assembly() {
         if (!assembly_) {
-            assembly_ = production::make_assembly(config(), data_);
+            assembly_ = production::make_assembly(config(), data_, libraries_);
         }
         return *assembly_;
     }
@@ -107,12 +107,15 @@ public:
     }
 
     // The JDK: the java the decompiler finds, and javac beside it (else on PATH); the libraries the game is attributed against.
-    frontend::DumpTools dump_tools() { return production::dump_tools(config(), data_); }
+    frontend::DumpTools dump_tools() { return production::dump_tools(config(), data_, libraries_); }
+    // The program's own library jars (a RetroMCP workspace's), for the front end's classpath: set before the transpiler is first asked for.
+    void use_libraries(std::vector<stdfs::path> libraries) { libraries_ = std::move(libraries); }
 
 private:
     Environment env_;
     JavaData data_;
     std::unique_ptr<assembly::Assembly> assembly_;
+    std::vector<stdfs::path> libraries_;
 };
 
 using ContextP = std::shared_ptr<Context>;
@@ -751,8 +754,17 @@ int port_tool(const ContextP& ctx, const cli::Args& a) {
     }
     const std::string platform_id(port::platform_id(*platform));
     const bool xbox = *platform == port::Platform::Xbox360;
+    const bool want_build = !a.flag("no-build");
     jt_out(std::format("{} -> C++ for {}", jt_native(p.input), port::platform_title(*platform)));
     jt_out(std::format("  input: {}", port::kind_title(p.kind)));
+    if (p.kind == port::SourceKind::RetroMcpWorkspace) {
+        jt_out(std::format("  workspace: {} (Minecraft {})", jt_native(*p.workspace), p.mc_version.empty() ? "?" : p.mc_version));
+        jt_out(std::format("  source: {} ({} .java file(s))", jt_native(*p.java_src), p.java_files));
+        if (p.jar) jt_out("  jar: " + jt_native(*p.jar));
+        jt_out(std::format("  libraries: {} jar(s)", p.libraries.size()));
+        jt_out("  entry: " + (p.entry_class.empty() ? std::string("(none found)") : p.entry_class));
+        ctx->use_libraries(p.libraries);
+    }
     for (std::size_t i = 0; i < p.steps.size(); ++i) jt_out(std::format("  {}. {}", i + 1, p.steps[i]));
     std::size_t step = 0;
     const auto begin = [&](std::string_view what) {
@@ -855,7 +867,9 @@ int port_tool(const ContextP& ctx, const cli::Args& a) {
         const stdfs::path msbuild = ctx->config().path("msbuild").value_or(stdfs::path{});
         std::error_code ec;
         const stdfs::path sln = p.root / (p.name + ".sln");
-        if (msbuild.empty() || !stdfs::is_regular_file(msbuild, ec)) {
+        if (!want_build) {
+            jt_out("  skipped: --no-build");
+        } else if (msbuild.empty() || !stdfs::is_regular_file(msbuild, ec)) {
             jt_out("  skipped: MSBuild is not set up (Settings: msbuild)");
         } else if (!stdfs::is_regular_file(sln, ec)) {
             jt_out("  skipped: no solution was written (" + jt_native(sln) + ")");
@@ -869,13 +883,15 @@ int port_tool(const ContextP& ctx, const cli::Args& a) {
     } else {
         begin("Building with CMake");
         const stdfs::path build_dir = p.project / "build";
-        bool have_cmake = true;
+        bool have_cmake = want_build;
         try {
-            have_cmake = process::run({.argv = {"cmake", "--version"}}).exit_code == 0;
+            if (want_build) have_cmake = process::run({.argv = {"cmake", "--version"}}).exit_code == 0;
         } catch (const std::exception&) {
             have_cmake = false;
         }
-        if (!have_cmake) {
+        if (!want_build) {
+            jt_out("  skipped: --no-build (the CMakeLists.txt is written; build it with any CMake)");
+        } else if (!have_cmake) {
             jt_out("  skipped: CMake is not installed (the CMakeLists.txt is written; build it with any CMake)");
         } else {
             cb::flush_out();

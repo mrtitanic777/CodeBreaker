@@ -163,5 +163,34 @@ CB_TEST("java.port.what_is_not_a_java_program_is_said", [] {
     CB_CHECK(plan(dir.path() / "broken.jar", Platform::Pc).problem.find("cannot be read") != std::string::npos);
 });
 
+CB_TEST("java.port.a_retromcp_workspace_is_converted_whole_from_any_folder_inside_it", [] {
+    fs::ScopedTempDir dir{"cb_port_rmcp"};
+    const stdfs::path root = dir.path() / "ws";
+    fs::write_text(root / "options.cfg", "setup=in-20100213\n");
+    fs::write_text(root / "conf" / "version.json", R"({"id": "in-20100213", "mainClass": "org.mcphackers.launchwrapper.Launch"})");
+    fs::write_text(root / "libraries" / "org" / "lwjgl" / "lwjgl-2.9.4.jar", "PK");
+    const stdfs::path mc = root / "minecraft";
+    fs::write_text(mc / "src" / "net" / "minecraft" / "client" / "MinecraftApplet.java", "package net.minecraft.client;\npublic class MinecraftApplet extends Applet {}");
+    fs::write_text(mc / "src" / "util" / "MathHelper.java", "package util;\npublic class MathHelper {}");
+    fs::write_text(mc / "src_original" / "util" / "MathHelper.java", "package util;\npublic class MathHelper {}");
+    pt_write_jar(mc / "jars" / "deobfuscated.jar", {{"terrain.png", "png"}, {"util/MathHelper.class", "cafe"}});
+    for (const stdfs::path& dropped : {mc, mc / "src" / "net" / "minecraft", root, mc / "src_original"}) {
+        const Plan p = plan(dropped, Platform::Pc);
+        CB_CHECK(p.problem.empty());
+        CB_CHECK(p.kind == SourceKind::RetroMcpWorkspace);
+        CB_CHECK(p.workspace && *p.workspace == root);
+        CB_CHECK(p.java_src && *p.java_src == mc / "src");
+        CB_CHECK_EQ(p.java_files, std::size_t{2});
+        CB_CHECK(p.jar && *p.jar == mc / "jars" / "deobfuscated.jar");
+        CB_CHECK_EQ(p.libraries.size(), std::size_t{1});
+        CB_CHECK_EQ(p.mc_version, "in-20100213");
+        CB_CHECK_EQ(p.entry_class, "net.minecraft.client.MinecraftApplet");
+        CB_CHECK_EQ(p.name, "in_20100213");
+        CB_CHECK(p.root == root / "minecraft-converted" && p.project == p.root / "in_20100213");
+        CB_CHECK(pt_has(p, "for PC") && pt_has(p, "Content") && !pt_has(p, "Decompile"));
+    }
+    CB_CHECK(plan(mc / "src", Platform::Pc, dir.path() / "out").root == dir.path() / "out");
+});
+
 }  // namespace
 }  // namespace cb::java::port

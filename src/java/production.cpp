@@ -1,5 +1,7 @@
 #include "java/production.hpp"
 
+#include <algorithm>
+
 #include "core/fs.hpp"
 #include "decompile/jar.hpp"
 #include "java/probe.hpp"
@@ -14,7 +16,7 @@ std::optional<stdfs::path> find_java(const cb::config::Config& config) {
     return decompile::jar::find_java(s);
 }
 
-frontend::DumpTools dump_tools(const cb::config::Config& config, const JavaData& data) {
+frontend::DumpTools dump_tools(const cb::config::Config& config, const JavaData& data, const std::vector<stdfs::path>& libraries) {
     frontend::DumpTools tools;
     if (const std::optional<stdfs::path> java = find_java(config)) {
         tools.java = *java;
@@ -31,6 +33,8 @@ frontend::DumpTools dump_tools(const cb::config::Config& config, const JavaData&
     toolchain.java = tools.java;
     const std::string libs = config.text("java_libs");
     if (!libs.empty()) toolchain.libraries = probe::list_libraries(fs::from_text(libs));
+    for (const stdfs::path& jar : libraries)
+        if (std::find(toolchain.libraries.begin(), toolchain.libraries.end(), jar) == toolchain.libraries.end()) toolchain.libraries.push_back(jar);
     toolchain.shim_sources = data.path({"probe_shims"});
     if (!toolchain.libraries.empty()) {
         if (const auto shims = probe::compile_shims(config.state() / "translate", toolchain)) tools.classpath.push_back(*shims);
@@ -39,9 +43,9 @@ frontend::DumpTools dump_tools(const cb::config::Config& config, const JavaData&
     return tools;
 }
 
-std::unique_ptr<assembly::Assembly> make_assembly(const cb::config::Config& config, const JavaData& data) {
-    return std::make_unique<assembly::Assembly>(data, [config, data](Arena& arena, const stdfs::path& java_dir) {
-        return frontend::lower_program(arena, java_dir, dump_tools(config, data));
+std::unique_ptr<assembly::Assembly> make_assembly(const cb::config::Config& config, const JavaData& data, const std::vector<stdfs::path>& libraries) {
+    return std::make_unique<assembly::Assembly>(data, [config, data, libraries](Arena& arena, const stdfs::path& java_dir) {
+        return frontend::lower_program(arena, java_dir, dump_tools(config, data, libraries));
     });
 }
 
