@@ -38,7 +38,9 @@ struct Stream {
 		int bit = 0;
 		long n = ov_read_float(&vf, &pcm, 4096, &bit);
 		if (n <= 0) return false;
-		buf.erase(buf.begin(), buf.begin() + (long)at);
+		// `at` counts stereo FRAMES, two floats each: dropping only `at` floats replayed half of every chunk (music at half speed)
+		// and slid the samples by half a frame, swapping left and right at each refill (a fast clicking)
+		buf.erase(buf.begin(), buf.begin() + (long)(2 * at));
 		at = 0;
 		for (long i = 0; i < n; ++i) {
 			buf.push_back(pcm[0][i]);
