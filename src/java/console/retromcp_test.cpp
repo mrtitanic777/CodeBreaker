@@ -130,6 +130,35 @@ CB_TEST("java.console.retromcp.the_downloaded_sounds_are_copied_by_their_names",
     CB_CHECK_EQ(fs::read_text(dest / "newsound" / "step" / "grass1.ogg"), "one");
     CB_CHECK_EQ(fs::read_text(dest / "sound" / "step" / "stone1.ogg"), "four");
     CB_CHECK(!stdfs::exists(tmp.path() / "Content" / "escape.ogg"));   // never outside the folder
+    // with a fetcher: the music the workspace never downloaded is fetched from its url, checked by hash, kept in the workspace, copied
+    fs::write_text(assets / "indexes" / "20100212.json",
+                   R"({"objects": {"newsound/step/grass1.ogg": {"hash": "aa11", "size": 3}},
+                       "custom": {"music/calm1.ogg": {"hash": "3a01be17246d588caf9a649f8a04e3e5d629db94", "size": 5, "url": "https://example.invalid/calm1"},
+                                  "music/calm2.ogg": {"hash": "0000000000000000000000000000000000000000", "size": 5, "url": "https://example.invalid/calm2"},
+                                  "index.txt": {"hash": "1111111111111111111111111111111111111111", "size": 1, "url": "https://example.invalid/index"}}})");
+    std::vector<std::string> asked;
+    const retromcp::Fetch fake = [&asked](const std::string& url) {
+        asked.push_back(url);
+        return std::string("music");   // SHA-1 3a01be17... for calm1; not calm2's hash
+    };
+    const std::optional<retromcp::Workspace> w2 = retromcp::find(root);
+    CB_CHECK(w2.has_value());
+    if (w2) {
+        const stdfs::path dest2 = tmp.path() / "Content2" / "resources";
+        const retromcp::ResourceCopy f = retromcp::copy_resources(*w2, dest2, fake);
+        CB_CHECK(asked == std::vector<std::string>({"https://example.invalid/calm1", "https://example.invalid/calm2"}));   // (never index.txt)
+        CB_CHECK_EQ(f.fetched, std::size_t{1});
+        CB_CHECK_EQ(f.copied, std::size_t{2});
+        CB_CHECK_EQ(f.missing, std::size_t{1});    // calm2 (its bytes were not the index's); index.txt is no sound, so not missed
+        CB_CHECK_EQ(f.failed.size(), std::size_t{1});
+        CB_CHECK_EQ(fs::read_text(dest2 / "music" / "calm1.ogg"), "music");
+        CB_CHECK(stdfs::is_regular_file(assets / "objects" / "3a" / "3a01be17246d588caf9a649f8a04e3e5d629db94"));   // kept in the workspace
+        CB_CHECK(!stdfs::exists(dest2 / "music" / "calm2.ogg"));
+        asked.clear();
+        retromcp::copy_resources(*w2, dest2, fake);   // fetched once: the second run finds it in the workspace
+        CB_CHECK(asked == std::vector<std::string>({"https://example.invalid/calm2"}));
+    }
+
     // an index with nothing in it ({}): nothing
     fs::ScopedTempDir bare("cbrmcp");
     rm_make_workspace(bare.path());

@@ -21,6 +21,7 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <vector>
@@ -43,15 +44,23 @@ struct Workspace {
     std::optional<std::filesystem::path> asset_index;  // project/game/assets/indexes/<version.json's assetIndex id>.json (else the only one)
 };
 
-// What copy_resources did: the files copied, and the ones the index names that were never downloaded (RetroMCP fetches music at launch).
+// What copy_resources did: the files copied, those fetched first (and stored in the workspace), and the ones still missing.
 struct ResourceCopy {
     std::size_t copied = 0;
+    std::size_t fetched = 0;
     std::size_t missing = 0;
+    std::vector<std::string> failed;   // "music/calm1.ogg: <why>": a fetch that failed or whose bytes were not the index's
 };
 
-// The workspace's downloaded sounds and music under `dest` by their own names (newsound/step/grass1.ogg ...), from the asset index's
-// objects: the tree the game's minecraft.net/resources/ held. Nothing when the workspace has no index.
-ResourceCopy copy_resources(const Workspace& workspace, const std::filesystem::path& dest);
+// The body at a URL (http::get); throws when there is none.
+using Fetch = std::function<std::string(const std::string& url)>;
+
+// The workspace's sounds and music under `dest` by their own names (newsound/step/grass1.ogg ...), from the asset index's objects: the
+// tree the game's minecraft.net/resources/ held. Nothing when the workspace has no index.
+// `fetch` set: an entry the workspace never downloaded that names its own url (RetroMCP's "custom" section: Indev's music, where its
+// launcher fetches it from) and is a sound (.ogg, .wav, .mus) is fetched, checked against the index's SHA-1, and stored in the workspace's
+// game/assets/objects as RetroMCP's launcher would, then copied. Without it nothing leaves the computer.
+ResourceCopy copy_resources(const Workspace& workspace, const std::filesystem::path& dest, const Fetch& fetch = {});
 
 // The closest folder at or above `dir` (at most 8 up) that is a RetroMCP workspace's root: options.cfg with a setup= line or conf/version.json,
 // and a project folder (minecraft or minecraft_server) holding Java source in src/. nullopt when there is none.

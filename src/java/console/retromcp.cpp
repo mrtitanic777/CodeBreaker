@@ -7,6 +7,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "core/crypto.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 
@@ -135,6 +136,12 @@ std::vector<stdfs::path> rm_libraries(const stdfs::path& libraries) {
     return out;
 }
 
+// A sound or music file by its name (what the game's resources hold); an index's other entries (index.txt) are never fetched.
+bool rm_is_sound(std::string_view name) {
+    const std::string low = text::lower(name);
+    return low.ends_with(".ogg") || low.ends_with(".wav") || low.ends_with(".mus");
+}
+
 // The dotted class name of a source file under the source root.
 std::string rm_class_name(const stdfs::path& file, const stdfs::path& java_src) {
     stdfs::path rel = file.lexically_relative(java_src);
@@ -238,7 +245,7 @@ std::optional<Workspace> find(const stdfs::path& dropped) {
     return w;
 }
 
-ResourceCopy copy_resources(const Workspace& workspace, const stdfs::path& dest) {
+ResourceCopy copy_resources(const Workspace& workspace, const stdfs::path& dest, const Fetch& fetch) {
     ResourceCopy done;
     if (!workspace.asset_index) return done;
     nlohmann::json index;
@@ -256,8 +263,23 @@ ResourceCopy copy_resources(const Workspace& workspace, const stdfs::path& dest)
             const std::string hash = entry["hash"].get<std::string>();
             if (hash.size() < 3 || name.empty() || name.find("..") != std::string::npos || name.front() == '/') continue;   // (never outside dest)
             const stdfs::path from = objects / hash.substr(0, 2) / hash;
+            if (!rm_is_file(from) && fetch && entry.contains("url") && entry["url"].is_string() && rm_is_sound(name)) {
+                try {
+                    const std::string body = fetch(entry["url"].get<std::string>());
+                    const Bytes bytes(body.begin(), body.end());
+                    if (crypto::to_hex(crypto::sha1(bytes)) != text::lower(hash)) {
+                        done.failed.push_back(name + ": what came back is not the file the index names (its SHA-1 differs)");
+                    } else {
+                        fs::make_dirs(from.parent_path());
+                        fs::write_file(from, ByteView(bytes.data(), bytes.size()));
+                        ++done.fetched;
+                    }
+                } catch (const std::exception& e) {
+                    done.failed.push_back(name + ": " + e.what());
+                }
+            }
             if (!rm_is_file(from)) {
-                ++done.missing;
+                if (rm_is_sound(name)) ++done.missing;   // (an index.txt the game never reads is not missed)
                 continue;
             }
             const stdfs::path to = dest / fs::from_text(name);

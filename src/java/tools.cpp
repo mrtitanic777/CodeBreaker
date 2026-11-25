@@ -10,6 +10,7 @@
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
+#include "core/http.hpp"
 #include "core/log.hpp"
 #include "core/process.hpp"
 #include "core/text.hpp"
@@ -845,9 +846,17 @@ int port_tool(const ContextP& ctx, const cli::Args& a) {
         // asks for: the PC network layer serves it from Content/resources (Network.cpp)
         if (p.kind == port::SourceKind::RetroMcpWorkspace) {
             if (const std::optional<console::retromcp::Workspace> ws = console::retromcp::find(p.input)) {
-                const console::retromcp::ResourceCopy rc = console::retromcp::copy_resources(*ws, p.project / "Content" / "resources");
-                jt_out(std::format("  {} sound and music file(s) -> {}{}", rc.copied, jt_native(p.project / "Content" / "resources"),
-                                   rc.missing > 0 ? std::format("  ({} the workspace never downloaded: they stay silent)", rc.missing) : std::string()));
+                // what the workspace never downloaded (Indev's music: RetroMCP's launcher fetches it from the address the index names) is
+                // fetched the same way, checked against the index's hash, and kept in the workspace so it is fetched once
+                const console::retromcp::Fetch fetch = [](const std::string& url) {
+                    const Bytes body = http::get(url);
+                    return std::string(body.begin(), body.end());
+                };
+                const console::retromcp::ResourceCopy rc = console::retromcp::copy_resources(*ws, p.project / "Content" / "resources", fetch);
+                for (const std::string& f : rc.failed) jt_out("  not fetched: " + f);
+                jt_out(std::format("  {} sound and music file(s) -> {}{}{}", rc.copied, jt_native(p.project / "Content" / "resources"),
+                                   rc.fetched > 0 ? std::format("  ({} fetched into the workspace first)", rc.fetched) : std::string(),
+                                   rc.missing > 0 ? std::format("  ({} still missing: they stay silent)", rc.missing) : std::string()));
             }
         }
     }
