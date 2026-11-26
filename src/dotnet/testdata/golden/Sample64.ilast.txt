@@ -1,0 +1,924 @@
+method 06000001 MarkerAttribute::.ctor
+ILFunction MarkerAttribute..ctor {
+	param this : Sample.MarkerAttribute(Index=-1, LoadCount=2, AddressCount=0, StoreCount=1)
+	param text : System.String(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			call Attribute..ctor(ldloc this)
+			stobj System.String(delayex.ldflda <Text>k__BackingField(ldloc this), ldloc text)
+			leave IL_0000 (nop)
+		}
+
+	}
+}
+
+method 06000002 MarkerAttribute::.ctor
+ILFunction MarkerAttribute..ctor {
+	param this : Sample.MarkerAttribute(Index=-1, LoadCount=4, AddressCount=0, StoreCount=1)
+	param number : System.Int32(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+	param type : System.Type(Index=1, LoadCount=1, AddressCount=0, StoreCount=1)
+	param rest : System.Object[](Index=2, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			call Attribute..ctor(ldloc this)
+			stobj System.Int32(delayex.ldflda <Number>k__BackingField(ldloc this), ldloc number)
+			stobj System.Type(delayex.ldflda <Kind>k__BackingField(ldloc this), ldloc type)
+			stobj System.Object[](delayex.ldflda <Rest>k__BackingField(ldloc this), ldloc rest)
+			leave IL_0000 (nop)
+		}
+
+	}
+}
+
+method 06000003 MarkerAttribute::get_Text
+ILFunction get_Text {
+	param this : Sample.MarkerAttribute(Index=-1, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			leave IL_0000 (ldobj System.String(delayex.ldflda <Text>k__BackingField(ldloc this)))
+		}
+
+	}
+}
+
+method 06000004 MarkerAttribute::get_Number
+ILFunction get_Number {
+	param this : Sample.MarkerAttribute(Index=-1, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			leave IL_0000 (ldobj System.Int32(delayex.ldflda <Number>k__BackingField(ldloc this)))
+		}
+
+	}
+}
+
+method 06000005 MarkerAttribute::get_Kind
+ILFunction get_Kind {
+	param this : Sample.MarkerAttribute(Index=-1, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			leave IL_0000 (ldobj System.Type(delayex.ldflda <Kind>k__BackingField(ldloc this)))
+		}
+
+	}
+}
+
+method 06000006 MarkerAttribute::get_Rest
+ILFunction get_Rest {
+	param this : Sample.MarkerAttribute(Index=-1, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			leave IL_0000 (ldobj System.Object[](delayex.ldflda <Rest>k__BackingField(ldloc this)))
+		}
+
+	}
+}
+
+method 0600000b Circle::add_Changed
+ILFunction add_Changed {
+	param this : Sample.Circle(Index=-1, LoadCount=2, AddressCount=0, StoreCount=1)
+	param value : System.EventHandler(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+	local V_0 : System.EventHandler(Index=0, LoadCount=2, AddressCount=0, StoreCount=3) init used
+	local V_1 : System.EventHandler(Index=1, LoadCount=3, AddressCount=0, StoreCount=2) init used
+	local V_2 : System.EventHandler(Index=2, LoadCount=1, AddressCount=0, StoreCount=2) init used
+
+	//IL_0010: Unknown result type (might be due to invalid IL or missing references)
+	//IL_0016: Expected O, but got Unknown
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			stloc V_0(ldobj System.EventHandler(delayex.ldflda Changed(ldloc this)))
+			br IL_0007
+		}
+
+		Block IL_0007 (incoming: 2) {
+			stloc V_1(ldloc V_0)
+			stloc V_2(conv unknown->none <invalid>(castclass System.EventHandler(call Combine(ldloc V_1, ldloc value))))
+			stloc V_0(call CompareExchange(ldflda Changed(ldloc this), ldloc V_2, ldloc V_1))
+			if (comp.o(ldloc V_0 != ldloc V_1)) br IL_0007
+			br IL_0028
+		}
+
+		Block IL_0028 (incoming: 1) {
+			leave IL_0000 (nop)
+		}
+
+	}
+}
+
+method 0600000c Circle::remove_Changed
+ILFunction remove_Changed {
+	param this : Sample.Circle(Index=-1, LoadCount=2, AddressCount=0, StoreCount=1)
+	param value : System.EventHandler(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+	local V_0 : System.EventHandler(Index=0, LoadCount=2, AddressCount=0, StoreCount=3) init used
+	local V_1 : System.EventHandler(Index=1, LoadCount=3, AddressCount=0, StoreCount=2) init used
+	local V_2 : System.EventHandler(Index=2, LoadCount=1, AddressCount=0, StoreCount=2) init used
+
+	//IL_0010: Unknown result type (might be due to invalid IL or missing references)
+	//IL_0016: Expected O, but got Unknown
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			stloc V_0(ldobj System.EventHandler(delayex.ldflda Changed(ldloc this)))
+			br IL_0007
+		}
+
+		Block IL_0007 (incoming: 2) {
+			stloc V_1(ldloc V_0)
+			stloc V_2(conv unknown->none <invalid>(castclass System.EventHandler(call Remove(ldloc V_1, ldloc value))))
+			stloc V_0(call CompareExchange(ldflda Changed(ldloc this), ldloc V_2, ldloc V_1))
+			if (comp.o(ldloc V_0 != ldloc V_1)) br IL_0007
+			br IL_0028
+		}
+
+		Block IL_0028 (incoming: 1) {
+			leave IL_0000 (nop)
+		}
+
+	}
+}
+
+method 0600000d Circle::.ctor
+ILFunction Circle..ctor {
+	param this : Sample.Circle(Index=-1, LoadCount=2, AddressCount=0, StoreCount=1)
+	param radius : System.Double(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			call Object..ctor(ldloc this)
+			stobj System.Double(delayex.ldflda radius(ldloc this), ldloc radius)
+			leave IL_0000 (nop)
+		}
+
+	}
+}
+
+method 0600000e Circle::get_Area
+ILFunction get_Area {
+	param this : Sample.Circle(Index=-1, LoadCount=2, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			leave IL_0000 (binary.mul.f8(binary.mul.f8(ldc.f8 3.14159265358979, ldobj System.Double(delayex.ldflda radius(ldloc this))), ldobj System.Double(delayex.ldflda radius(ldloc this))))
+		}
+
+	}
+}
+
+method 0600000f Circle::get_Radius
+ILFunction get_Radius {
+	param this : Sample.Circle(Index=-1, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			leave IL_0000 (ldobj System.Double(delayex.ldflda radius(ldloc this)))
+		}
+
+	}
+}
+
+method 06000010 Circle::set_Radius
+ILFunction set_Radius {
+	param this : Sample.Circle(Index=-1, LoadCount=3, AddressCount=0, StoreCount=1)
+	param value : System.Double(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+	stack S_0 : System.Object(LoadCount=2, AddressCount=0, StoreCount=1) uninit unused
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			stobj System.Double(delayex.ldflda radius(ldloc this), ldloc value)
+			stloc S_0(ldobj System.EventHandler(delayex.ldflda Changed(ldloc this)))
+			if (comp.o(ldloc S_0 != ldnull)) br IL_0012
+			br IL_0010
+		}
+
+		Block IL_0012 (incoming: 1) {
+			callvirt Invoke(conv o->unknown <invalid>(ldloc S_0), ldloc this, ldobj System.EventArgs(ldsflda Empty))
+			leave IL_0000 (nop)
+		}
+
+		Block IL_0010 (incoming: 1) {
+			nop.pop
+			leave IL_0000 (nop)
+		}
+
+	}
+}
+
+method 06000011 Circle::Describe
+ILFunction Describe {
+	param this : Sample.Circle(Index=-1, LoadCount=1, AddressCount=0, StoreCount=1)
+	param detail : System.Int32(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+	local V_0 : System.Runtime.CompilerServices.DefaultInterpolatedStringHandler(Index=0, LoadCount=0, AddressCount=5, StoreCount=1) init used
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			if (comp.i4.signed(ldloc detail > ldc.i4 0)) br IL_000a
+			br IL_0004
+		}
+
+		Block IL_000a (incoming: 1) {
+			stobj System.Runtime.CompilerServices.DefaultInterpolatedStringHandler(ldloca V_0, newobj DefaultInterpolatedStringHandler..ctor(ldc.i4 9, ldc.i4 2))
+			call AppendLiteral(ldloca V_0, ldstr "circle r=")
+			call AppendFormatted(ldloca V_0, ldobj System.Double(delayex.ldflda radius(ldloc this)))
+			call AppendFormatted(ldloca V_0, ldstr "cm")
+			leave IL_0000 (call ToStringAndClear(ldloca V_0))
+		}
+
+		Block IL_0004 (incoming: 1) {
+			leave IL_0000 (ldstr "circle")
+		}
+
+	}
+}
+
+method 06000012 Circle::CompareTo
+ILFunction CompareTo {
+	param this : Sample.Circle(Index=-1, LoadCount=1, AddressCount=0, StoreCount=1)
+	param other : Sample.Circle(Index=0, LoadCount=2, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			if (comp.o(ldloc other == ldnull)) br IL_0015
+			br IL_0003
+		}
+
+		Block IL_0015 (incoming: 1) {
+			leave IL_0000 (ldc.i4 1)
+		}
+
+		Block IL_0003 (incoming: 1) {
+			leave IL_0000 (call CompareTo(ldflda radius(ldloc this), ldobj System.Double(delayex.ldflda radius(ldloc other))))
+		}
+
+	}
+}
+
+method 06000013 Circle::get_Item
+ILFunction get_Item {
+	param this : Sample.Circle(Index=-1, LoadCount=0, AddressCount=0, StoreCount=1)
+	param index : System.Int32(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			leave IL_0000 (ldobj System.Int32(delayex.ldelema System.Int32(ldobj System.Int32[](ldsflda Primes), binary.rem.signed.i4(ldloc index, conv i->i4 (ldlen.i(ldobj System.Int32[](ldsflda Primes)))))))
+		}
+
+	}
+}
+
+method 06000014 Circle::op_Addition
+ILFunction op_Addition {
+	param a : Sample.Circle(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+	param b : Sample.Circle(Index=1, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			leave IL_0000 (newobj Circle..ctor(binary.add.f8(ldobj System.Double(delayex.ldflda radius(ldloc a)), ldobj System.Double(delayex.ldflda radius(ldloc b)))))
+		}
+
+	}
+}
+
+method 06000015 Circle::.cctor
+ILFunction Circle..cctor {
+	stack S_0 : System.Object(LoadCount=2, AddressCount=0, StoreCount=1) uninit unused
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			stloc S_0(newarr System.Int32(ldc.i4 10))
+			call InitializeArray(ldloc S_0, conv o->unknown <invalid>(ldmembertoken 6341DA6106ADABFB52202E479ABE276558D68889931BC59F0F18BAD87C14C2DC))
+			stobj System.Int32[](ldsflda Primes, ldloc S_0)
+			leave IL_0000 (nop)
+		}
+
+	}
+}
+
+method 06000016 Box`1::Map
+ILFunction Map {
+	param this : Sample.Box`1[[`0]](Index=-1, LoadCount=1, AddressCount=0, StoreCount=1)
+	param f : System.Func`2[[`0],[``0]](Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			leave IL_0000 (callvirt Invoke(ldloc f, ldobj `0(delayex.ldflda Item(ldloc this))))
+		}
+
+	}
+}
+
+method 06000017 Box`1::.ctor
+ILFunction Box..ctor {
+	param this : Sample.Box`1[[`0]](Index=-1, LoadCount=2, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			stobj System.Collections.Generic.List`1[[System.Collections.Generic.KeyValuePair`2[[System.String],[`0[]]]]](delayex.ldflda History(ldloc this), newobj List..ctor())
+			call Object..ctor(ldloc this)
+			leave IL_0000 (nop)
+		}
+
+	}
+}
+
+method 0600001a Code::Loops
+ILFunction Loops {
+	param n : System.Int32(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+	param total : System.Int32&(Index=1, LoadCount=2, AddressCount=0, StoreCount=1)
+	param note : System.String&(Index=2, LoadCount=1, AddressCount=0, StoreCount=1)
+	readonly param limit : System.Int64&(Index=3, LoadCount=1, AddressCount=0, StoreCount=1)
+	local V_0 : System.Int32(Index=0, LoadCount=7, AddressCount=1, StoreCount=7) init used
+	local V_1 : System.Int32(Index=1, LoadCount=5, AddressCount=0, StoreCount=3) init used
+	local V_2 : System.Int32(Index=2, LoadCount=1, AddressCount=0, StoreCount=2) init used
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			stloc V_0(ldc.i4 0)
+			stloc V_1(ldc.i4 0)
+			br IL_0047
+		}
+
+		Block IL_0047 (incoming: 2) {
+			if (comp.i4.signed(ldloc V_1 < ldloc n)) br IL_0006
+			br IL_004b
+		}
+
+		Block IL_0006 (incoming: 1) {
+			stloc V_2(binary.rem.signed.i4(ldloc V_1, ldc.i4 5))
+			switch (ldloc V_2) {
+				case [0..1): br IL_0022
+				case [1..2): br IL_0028
+				case [2..3): br IL_002e
+				case [3..4): br IL_0036
+				case [long.MinValue..0),[4..long.MaxValue]: br IL_0020
+			}
+		}
+
+		Block IL_0022 (incoming: 1) {
+			stloc V_0(binary.add.i4(ldloc V_0, ldloc V_1))
+			br IL_0043
+		}
+
+		Block IL_0028 (incoming: 1) {
+			stloc V_0(binary.sub.i4(ldloc V_0, ldc.i4 1))
+			br IL_0043
+		}
+
+		Block IL_002e (incoming: 1) {
+			stloc V_0(binary.bit.xor.i4(ldloc V_0, binary.bit.shl.i4(ldloc V_1, ldc.i4 2)))
+			br IL_0043
+		}
+
+		Block IL_0036 (incoming: 1) {
+			stloc V_0(binary.mul.i4(ldloc V_0, ldc.i4 3))
+			br IL_0043
+		}
+
+		Block IL_0020 (incoming: 1) {
+			br IL_003c
+		}
+
+		Block IL_003c (incoming: 1) {
+			stloc V_0(conv i8->i4 (binary.bit.and.i8(conv i4->i8 <sign extend>(ldloc V_0), ldobj System.Int64(ldloc limit))))
+			br IL_0043
+		}
+
+		Block IL_0043 (incoming: 5) {
+			stloc V_1(binary.add.i4(ldloc V_1, ldc.i4 1))
+			br IL_0047
+		}
+
+		Block IL_004b (incoming: 1) {
+			stobj System.Int32(ldloc total, binary.add.i4(ldobj System.Int32(ldloc total), ldloc V_0))
+			stobj System.Object(ldloc note, call Concat(ldstr "sum: ", call ToString(ldloca V_0)))
+			leave IL_0000 (ldloc V_0)
+		}
+
+	}
+}
+
+method 0600001b Code::Guarded
+ILFunction Guarded {
+	param o : System.Object(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+	local V_0 : System.String(Index=0, LoadCount=1, AddressCount=0, StoreCount=4) init used
+	stack S_0 : System.Object(LoadCount=2, AddressCount=0, StoreCount=1) uninit unused
+	stack S_1 : System.Int32(LoadCount=1, AddressCount=0, StoreCount=2) uninit unused
+	exception stack E_45 : System.Object(LoadCount=1, AddressCount=0, StoreCount=1) uninit unused
+	exception stack E_65 : System.Exception(LoadCount=0, AddressCount=0, StoreCount=1) uninit unused
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			.try BlockContainer {
+				Block IL_0000 (incoming: 1) {
+					.try BlockContainer {
+						Block IL_0000 (incoming: 1) {
+							.try BlockContainer {
+								Block IL_0000 (incoming: 1) {
+									stloc V_0(callvirt Describe(castclass Sample.IShape(ldloc o), ldc.i4 1))
+									br IL_004a
+								}
+
+							} catch E_45 : [MinimalCorlibType Object] when (BlockContainer {
+								Block IL_000f (incoming: 1) {
+									stloc S_0(isinst System.InvalidCastException(ldloc E_45))
+									if (comp.o(ldloc S_0 != ldnull)) br IL_001b
+									br IL_0017
+								}
+
+								Block IL_001b (incoming: 1) {
+									stloc S_1(comp.i4.unsigned(comp.i4.signed(callvirt get_Length(callvirt get_Message(ldloc S_0)) > ldc.i4 3) > ldc.i4 0))
+									br IL_002b
+								}
+
+								Block IL_0017 (incoming: 1) {
+									nop.pop
+									stloc S_1(ldc.i4 0)
+									br IL_002b
+								}
+
+								Block IL_002b (incoming: 2) {
+									leave IL_000f (ldloc S_1)
+								}
+
+							}) BlockContainer {
+								Block IL_002d (incoming: 1) {
+									nop.pop
+									stloc V_0(ldstr "cast")
+									br IL_004a
+								}
+
+							}
+						}
+
+					} finally BlockContainer {
+						Block IL_0036 (incoming: 1) {
+							call WriteLine(ldstr "inner")
+							leave IL_0036 (nop)
+						}
+
+					}
+				}
+
+			} catch E_65 : [MinimalCorlibType Exception] when (ldc.i4 1) BlockContainer {
+				Block IL_0041 (incoming: 1) {
+					nop.pop
+					stloc V_0(ldstr "other")
+					br IL_004a
+				}
+
+			}
+		}
+
+		Block IL_004a (incoming: 3) {
+			leave IL_0000 (ldloc V_0)
+		}
+
+	}
+}
+
+method 0600001c Code::Pointer
+ILFunction Pointer {
+	param p : System.Int32*(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+	param array : System.Int32[](Index=1, LoadCount=1, AddressCount=0, StoreCount=1)
+	local V_0 : System.Int32*(Index=0, LoadCount=1, AddressCount=0, StoreCount=3) init used
+	pinned local V_1 : System.Int32[](Index=1, LoadCount=2, AddressCount=0, StoreCount=2) init used
+	stack S_0 : System.Object(LoadCount=2, AddressCount=0, StoreCount=1) uninit unused
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			stloc S_0(ldloc array)
+			stloc V_1(ldloc S_0)
+			if (comp.o(ldloc S_0 == ldnull)) br IL_000a
+			br IL_0005
+		}
+
+		Block IL_0005 (incoming: 1) {
+			if (conv i->i4 (ldlen.i(ldloc V_1))) br IL_000f
+			br IL_000a
+		}
+
+		Block IL_000f (incoming: 1) {
+			stloc V_0(conv ref->u (ldelema System.Int32(ldloc V_1, ldc.i4 0)))
+			br IL_0018
+		}
+
+		Block IL_000a (incoming: 2) {
+			stloc V_0(conv i4->u <zero extend>(ldc.i4 0))
+			br IL_0018
+		}
+
+		Block IL_0018 (incoming: 2) {
+			leave IL_0000 (binary.add.i4(binary.add.i4(ldobj System.Int32(ldloc p), ldobj System.Int32(ldloc V_0)), sizeof Sample.Overlay))
+		}
+
+	}
+}
+
+method 0600001d Code::Later
+ILFunction Later {
+	param x : System.Int32(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+	local V_0 : Sample.Code+<Later>d__3(Index=0, LoadCount=0, AddressCount=6, StoreCount=1) init used
+
+	//IL_0002: Unknown result type (might be due to invalid IL or missing references)
+	//IL_0007: Unknown result type (might be due to invalid IL or missing references)
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			stobj System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1[[System.Int32]](delayex.ldflda <>t__builder(ldloca V_0), call Create())
+			stobj System.Int32(delayex.ldflda x(ldloca V_0), ldloc x)
+			stobj System.Int32(delayex.ldflda <>1__state(ldloca V_0), ldc.i4 -1)
+			call Start(ldflda <>t__builder(ldloca V_0), ldloca V_0)
+			leave IL_0000 (call get_Task(ldflda <>t__builder(ldloca V_0)))
+		}
+
+	}
+}
+
+method 0600001e Code::Count
+ILFunction Count {
+	param to : System.Int32(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+	stack S_0 : System.Object(LoadCount=2, AddressCount=0, StoreCount=1) uninit unused
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			stloc S_0(newobj <Count>d__4..ctor(ldc.i4 -2))
+			stobj System.Int32(delayex.ldflda <>3__to(ldloc S_0), ldloc to)
+			leave IL_0000 (ldloc S_0)
+		}
+
+	}
+}
+
+method 0600001f Code::Pick
+ILFunction Pick {
+	param a : ``0(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+	param b : ``0(Index=1, LoadCount=1, AddressCount=0, StoreCount=1)
+	param first : System.Boolean(Index=2, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			if (ldloc first) br IL_0005
+			br IL_0003
+		}
+
+		Block IL_0005 (incoming: 1) {
+			leave IL_0000 (ldloc a)
+		}
+
+		Block IL_0003 (incoming: 1) {
+			leave IL_0000 (ldloc b)
+		}
+
+	}
+}
+
+method 06000020 Code::UsePick
+ILFunction UsePick {
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			leave IL_0000 (binary.add.i4(call Pick(ldc.i4 1, ldc.i4 2, ldc.i4 1), callvirt get_Length(call Pick(ldstr "a", ldstr "b", ldc.i4 0))))
+		}
+
+	}
+}
+
+method 06000021 Code::Big
+ILFunction Big {
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			leave IL_0000 (ldc.i8 81985529216487017)
+		}
+
+	}
+}
+
+method 06000022 Code::Closure
+ILFunction Closure {
+	param k : System.Int32(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+	stack S_0 : System.Object(LoadCount=2, AddressCount=0, StoreCount=1) uninit unused
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			stloc S_0(newobj <>c__DisplayClass8_0..ctor())
+			stobj System.Int32(delayex.ldflda k(ldloc S_0), ldloc k)
+			leave IL_0000 (newobj Func..ctor(ldloc S_0, ldftn <Closure>b__0))
+		}
+
+	}
+}
+
+method 06000023 Nested`1::.ctor
+ILFunction Nested..ctor {
+	param this : Sample.Box`1+Nested`1[[`0],[`1]](Index=-1, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			call Object..ctor(ldloc this)
+			leave IL_0000 (nop)
+		}
+
+	}
+}
+
+method 06000024 <>c__DisplayClass8_0::.ctor
+ILFunction <>c__DisplayClass8_0..ctor {
+	param this : Sample.Code+<>c__DisplayClass8_0(Index=-1, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			call Object..ctor(ldloc this)
+			leave IL_0000 (nop)
+		}
+
+	}
+}
+
+method 06000025 <>c__DisplayClass8_0::<Closure>b__0
+ILFunction <Closure>b__0 {
+	param this : Sample.Code+<>c__DisplayClass8_0(Index=-1, LoadCount=1, AddressCount=0, StoreCount=1)
+	param x : System.Int32(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			leave IL_0000 (binary.add.i4(ldloc x, ldobj System.Int32(delayex.ldflda k(ldloc this))))
+		}
+
+	}
+}
+
+method 06000026 <Count>d__4::.ctor
+ILFunction <Count>d__4..ctor {
+	param this : Sample.Code+<Count>d__4(Index=-1, LoadCount=3, AddressCount=0, StoreCount=1)
+	param <>1__state : System.Int32(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			call Object..ctor(ldloc this)
+			stobj System.Int32(delayex.ldflda <>1__state(ldloc this), ldloc <>1__state)
+			stobj System.Int32(delayex.ldflda <>l__initialThreadId(ldloc this), call get_CurrentManagedThreadId())
+			leave IL_0000 (nop)
+		}
+
+	}
+}
+
+method 06000027 <Count>d__4::System.IDisposable.Dispose
+ILFunction System.IDisposable.Dispose {
+	param this : Sample.Code+<Count>d__4(Index=-1, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			stobj System.Int32(delayex.ldflda <>1__state(ldloc this), ldc.i4 -2)
+			leave IL_0000 (nop)
+		}
+
+	}
+}
+
+method 06000028 <Count>d__4::MoveNext
+ILFunction MoveNext {
+	param this : Sample.Code+<Count>d__4(Index=-1, LoadCount=11, AddressCount=0, StoreCount=1)
+	local V_0 : System.Int32(Index=0, LoadCount=2, AddressCount=0, StoreCount=2) init used
+	local V_1 : System.Int32(Index=1, LoadCount=1, AddressCount=0, StoreCount=2) init used
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			stloc V_0(ldobj System.Int32(delayex.ldflda <>1__state(ldloc this)))
+			if (comp.i4(ldloc V_0 == ldc.i4 0)) br IL_0010
+			br IL_000a
+		}
+
+		Block IL_0010 (incoming: 1) {
+			stobj System.Int32(delayex.ldflda <>1__state(ldloc this), ldc.i4 -1)
+			stobj System.Int32(delayex.ldflda <i>5__2(ldloc this), ldc.i4 0)
+			br IL_004c
+		}
+
+		Block IL_000a (incoming: 1) {
+			if (comp.i4(ldloc V_0 == ldc.i4 1)) br IL_0035
+			br IL_000e
+		}
+
+		Block IL_0035 (incoming: 1) {
+			stobj System.Int32(delayex.ldflda <>1__state(ldloc this), ldc.i4 -1)
+			stloc V_1(ldobj System.Int32(delayex.ldflda <i>5__2(ldloc this)))
+			stobj System.Int32(delayex.ldflda <i>5__2(ldloc this), binary.add.i4(ldloc V_1, ldc.i4 1))
+			br IL_004c
+		}
+
+		Block IL_004c (incoming: 2) {
+			if (comp.i4.signed(ldobj System.Int32(delayex.ldflda <i>5__2(ldloc this)) < ldobj System.Int32(delayex.ldflda to(ldloc this)))) br IL_0020
+			br IL_005a
+		}
+
+		Block IL_0020 (incoming: 1) {
+			stobj System.Int32(delayex.ldflda <>2__current(ldloc this), ldobj System.Int32(delayex.ldflda <i>5__2(ldloc this)))
+			stobj System.Int32(delayex.ldflda <>1__state(ldloc this), ldc.i4 1)
+			leave IL_0000 (ldc.i4 1)
+		}
+
+		Block IL_005a (incoming: 1) {
+			leave IL_0000 (ldc.i4 0)
+		}
+
+		Block IL_000e (incoming: 1) {
+			leave IL_0000 (ldc.i4 0)
+		}
+
+	}
+}
+
+method 06000029 <Count>d__4::System.Collections.Generic.IEnumerator<System.Int32>.get_Current
+ILFunction System.Collections.Generic.IEnumerator<System.Int32>.get_Current {
+	param this : Sample.Code+<Count>d__4(Index=-1, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			leave IL_0000 (ldobj System.Int32(delayex.ldflda <>2__current(ldloc this)))
+		}
+
+	}
+}
+
+method 0600002a <Count>d__4::System.Collections.IEnumerator.Reset
+ILFunction System.Collections.IEnumerator.Reset {
+	param this : Sample.Code+<Count>d__4(Index=-1, LoadCount=0, AddressCount=0, StoreCount=1)
+
+	//IL_0000: Unknown result type (might be due to invalid IL or missing references)
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			throw(newobj NotSupportedException..ctor())
+		}
+
+	}
+}
+
+method 0600002b <Count>d__4::System.Collections.IEnumerator.get_Current
+ILFunction System.Collections.IEnumerator.get_Current {
+	param this : Sample.Code+<Count>d__4(Index=-1, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			leave IL_0000 (box System.Int32(ldobj System.Int32(delayex.ldflda <>2__current(ldloc this))))
+		}
+
+	}
+}
+
+method 0600002c <Count>d__4::System.Collections.Generic.IEnumerable<System.Int32>.GetEnumerator
+ILFunction System.Collections.Generic.IEnumerable<System.Int32>.GetEnumerator {
+	param this : Sample.Code+<Count>d__4(Index=-1, LoadCount=5, AddressCount=0, StoreCount=1)
+	local V_0 : Sample.Code+<Count>d__4(Index=0, LoadCount=2, AddressCount=0, StoreCount=3) init used
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			if (comp.i4(ldobj System.Int32(delayex.ldflda <>1__state(ldloc this)) != ldc.i4 -2)) br IL_0022
+			br IL_000a
+		}
+
+		Block IL_000a (incoming: 1) {
+			if (comp.i4(ldobj System.Int32(delayex.ldflda <>l__initialThreadId(ldloc this)) != call get_CurrentManagedThreadId())) br IL_0022
+			br IL_0017
+		}
+
+		Block IL_0022 (incoming: 2) {
+			stloc V_0(newobj <Count>d__4..ctor(ldc.i4 0))
+			br IL_0029
+		}
+
+		Block IL_0017 (incoming: 1) {
+			stobj System.Int32(delayex.ldflda <>1__state(ldloc this), ldc.i4 0)
+			stloc V_0(ldloc this)
+			br IL_0029
+		}
+
+		Block IL_0029 (incoming: 2) {
+			stobj System.Int32(delayex.ldflda to(ldloc V_0), ldobj System.Int32(delayex.ldflda <>3__to(ldloc this)))
+			leave IL_0000 (ldloc V_0)
+		}
+
+	}
+}
+
+method 0600002d <Count>d__4::System.Collections.IEnumerable.GetEnumerator
+ILFunction System.Collections.IEnumerable.GetEnumerator {
+	param this : Sample.Code+<Count>d__4(Index=-1, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			leave IL_0000 (call System.Collections.Generic.IEnumerable<System.Int32>.GetEnumerator(ldloc this))
+		}
+
+	}
+}
+
+method 0600002e <Later>d__3::MoveNext
+ILFunction MoveNext {
+	param this : Sample.Code+<Later>d__3&(Index=-1, LoadCount=13, AddressCount=0, StoreCount=1)
+	local V_0 : System.Int32(Index=0, LoadCount=1, AddressCount=0, StoreCount=4) init used
+	local V_1 : System.Int32(Index=1, LoadCount=1, AddressCount=0, StoreCount=2) init used
+	local V_2 : System.Runtime.CompilerServices.TaskAwaiter(Index=2, LoadCount=1, AddressCount=3, StoreCount=3) init used
+	local V_3 : System.Exception(Index=3, LoadCount=1, AddressCount=0, StoreCount=2) init used
+	stack S_0 : ?&(LoadCount=1, AddressCount=0, StoreCount=1) uninit unused
+	stack S_1 : ?&(LoadCount=1, AddressCount=0, StoreCount=1) uninit unused
+	stack S_2 : System.Int32(LoadCount=2, AddressCount=0, StoreCount=1) uninit unused
+	stack S_3 : ?&(LoadCount=1, AddressCount=0, StoreCount=1) uninit unused
+	stack S_4 : System.Int32(LoadCount=2, AddressCount=0, StoreCount=1) uninit unused
+	exception stack E_109 : System.Exception(LoadCount=1, AddressCount=0, StoreCount=1) uninit unused
+
+	//IL_0040: Unknown result type (might be due to invalid IL or missing references)
+	//IL_0045: Unknown result type (might be due to invalid IL or missing references)
+	//IL_004c: Unknown result type (might be due to invalid IL or missing references)
+	//IL_0010: Unknown result type (might be due to invalid IL or missing references)
+	//IL_0015: Unknown result type (might be due to invalid IL or missing references)
+	//IL_0029: Unknown result type (might be due to invalid IL or missing references)
+	//IL_002a: Unknown result type (might be due to invalid IL or missing references)
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			stloc V_0(ldobj System.Int32(delayex.ldflda <>1__state(ldloc this)))
+			br IL_0007
+		}
+
+		Block IL_0007 (incoming: 1) {
+			.try BlockContainer {
+				Block IL_0007 (incoming: 1) {
+					if (comp.i4(ldloc V_0 == ldc.i4 0)) br IL_003f
+					br IL_000a
+				}
+
+				Block IL_003f (incoming: 1) {
+					stloc V_2(ldobj System.Runtime.CompilerServices.TaskAwaiter(delayex.ldflda <>u__1(ldloc this)))
+					stloc S_0(ldflda <>u__1(ldloc this))
+					stobj System.Runtime.CompilerServices.TaskAwaiter(ldloc S_0, default.value System.Runtime.CompilerServices.TaskAwaiter)
+					stloc S_1(ldloc this)
+					stloc S_2(ldc.i4 -1)
+					stloc V_0(ldloc S_2)
+					stobj System.Int32(delayex.ldflda <>1__state(ldloc S_1), ldloc S_2)
+					br IL_005b
+				}
+
+				Block IL_000a (incoming: 1) {
+					stloc V_2(callvirt GetAwaiter(call Delay(ldc.i4 1)))
+					if (call get_IsCompleted(conv ref->unknown <invalid>(ldloca V_2))) br IL_005b
+					br IL_001f
+				}
+
+				Block IL_005b (incoming: 2) {
+					call GetResult(conv ref->unknown <invalid>(ldloca V_2))
+					stloc V_1(binary.mul.i4(ldobj System.Int32(delayex.ldflda x(ldloc this)), ldc.i4 2))
+					br IL_0084
+				}
+
+				Block IL_001f (incoming: 1) {
+					stloc S_3(ldloc this)
+					stloc S_4(ldc.i4 0)
+					stloc V_0(ldloc S_4)
+					stobj System.Int32(delayex.ldflda <>1__state(ldloc S_3), ldloc S_4)
+					stobj System.Runtime.CompilerServices.TaskAwaiter(delayex.ldflda <>u__1(ldloc this), ldloc V_2)
+					call AwaitUnsafeOnCompleted(ldflda <>t__builder(ldloc this), ldloca V_2, ldloc this)
+					br IL_0098
+				}
+
+			} catch E_109 : [MinimalCorlibType Exception] when (ldc.i4 1) BlockContainer {
+				Block IL_006d (incoming: 1) {
+					stloc V_3(ldloc E_109)
+					stobj System.Int32(delayex.ldflda <>1__state(ldloc this), ldc.i4 -2)
+					call SetException(ldflda <>t__builder(ldloc this), ldloc V_3)
+					br IL_0098
+				}
+
+			}
+		}
+
+		Block IL_0084 (incoming: 1) {
+			stobj System.Int32(delayex.ldflda <>1__state(ldloc this), ldc.i4 -2)
+			call SetResult(ldflda <>t__builder(ldloc this), ldloc V_1)
+			br IL_0098
+		}
+
+		Block IL_0098 (incoming: 3) {
+			leave IL_0000 (nop)
+		}
+
+	}
+}
+
+method 0600002f <Later>d__3::SetStateMachine
+ILFunction SetStateMachine {
+	param this : Sample.Code+<Later>d__3&(Index=-1, LoadCount=1, AddressCount=0, StoreCount=1)
+	param stateMachine : System.Runtime.CompilerServices.IAsyncStateMachine(Index=0, LoadCount=1, AddressCount=0, StoreCount=1)
+
+	BlockContainer {
+		Block IL_0000 (incoming: 1) {
+			call SetStateMachine(ldflda <>t__builder(ldloc this), ldloc stateMachine)
+			leave IL_0000 (nop)
+		}
+
+	}
+}
+

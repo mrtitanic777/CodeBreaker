@@ -70,6 +70,15 @@ Not ported, as nothing CodeBreaker does needs them: PDB writing (`DebugInfo/`), 
   WinForms, WPF's PresentationFramework, Microsoft.VisualBasic, XNA 3.1's Framework and Game, Roslyn's Microsoft.CodeAnalysis.CSharp
   and ICSharpCode.Decompiler itself. Found on the way: our SRM ordered child namespaces differently from SRM's NamespaceCache (fixed).
   Not yet ported: ExtensionInfo (C# 14 extension blocks), the PDB's extra type information, DecompilerSettings.
+- Stage 4 (done 2026-11-26): the IL AST, `dotnet/decompiler/il` (about 14,000 lines): ILInstruction and every instruction class of
+  Instructions.cs (written by hand in five families: control flow, expressions, memory, advanced, patterns), ILVariable, the visitors
+  (one dispatch over the opcode, as C++ has no virtual generic methods), Match/ListMatch, ILReader and BlockBuilder, with
+  TaskType, TypeUtils, LongSet and UnionFind. The ILAst lives in an ILArena per method (upstream relies on the garbage collector).
+  `testdata/oracle/DecompilerDump ilast` writes ILSpy's own ILReader output; ours matches it byte for byte on the test assemblies
+  (the checked-in golden), on all 112 of ILSpy's own Pretty test cases that build with Roslyn 4 (174,000 lines, 6,377 methods) and on
+  ten real assemblies: CoreLib 9 (958,000 lines, 37,093 methods, 2.4 s against ILSpy's 4.5 s), System.Linq, System.Text.Json,
+  System.Private.Xml, mscorlib 2.0 and 4.0, System.Core, WinForms, Microsoft.VisualBasic and XNA 3.1's Framework.
+  Not yet ported: debug information (PDB local names), ILFunction/Block.RunTransforms and ILInstruction.Extract (stage 6).
 
 ## How each stage is proved
 
