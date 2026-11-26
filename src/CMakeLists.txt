@@ -635,3 +635,17 @@ target_link_libraries(cb_port PUBLIC ${CB_PROCESS_LIBS})
 target_link_libraries(cb_ui PUBLIC ${CB_SOCKET_LIBS})
 
 cb_replace_running(codebreaker)
+
+# The .NET port's work in progress (dotnet/**/*.cxx, tests *_test.cxx): built only where -DCB_DOTNET_WIP=ON (work/ilspy-port's private
+# build), so a piece not yet finished never breaks another build. A finished piece is renamed .cpp and joins cb_area(dotnet) above.
+option(CB_DOTNET_WIP "build the .NET port's work in progress (dotnet/**/*.cxx)" OFF)
+if(CB_DOTNET_WIP)
+  file(GLOB_RECURSE cb_dotnet_wip CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/dotnet/*.cxx")
+  set(cb_dotnet_wip_tests ${cb_dotnet_wip})
+  list(FILTER cb_dotnet_wip EXCLUDE REGEX "_test\.cxx$")
+  list(FILTER cb_dotnet_wip_tests INCLUDE REGEX "_test\.cxx$")
+  target_sources(cb_dotnet PRIVATE ${cb_dotnet_wip})
+  if(TARGET cb_tests_dotnet)
+    target_sources(cb_tests_dotnet PRIVATE ${cb_dotnet_wip_tests})
+  endif()
+endif()

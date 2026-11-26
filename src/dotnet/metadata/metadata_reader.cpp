@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <format>
+#include <unordered_map>
 
 namespace cb::dotnet::metadata {
 namespace {
@@ -299,45 +300,95 @@ std::vector<CustomAttributeHandle> MetadataReader::get_custom_attributes(EntityH
 
 // ---- the namespace tree --------------------------------------------------------------------------------------------------
 
-NamespaceDefinitionHandle MetadataReader::namespace_for(const std::string& full_name) const {
-    NamespaceDefinitionHandle current{1};
-    if (full_name.empty()) return current;
-    std::size_t start = 0;
-    while (true) {
-        const std::size_t dot = full_name.find('.', start);
-        const std::string prefix = full_name.substr(0, dot);
-        NamespaceDefinitionHandle found;
-        for (const NamespaceDefinitionHandle c : namespaces_[current.index - 1].namespaces)
-            if (namespaces_[c.index - 1].full_name == prefix) found = c;
-        if (found.is_nil()) {
-            NamespaceNode n;
-            n.full_name = prefix;
-            n.name = full_name.substr(start, dot == std::string::npos ? std::string::npos : dot - start);
-            n.parent = current;
-            namespaces_.push_back(std::move(n));
-            found = NamespaceDefinitionHandle{static_cast<std::uint32_t>(namespaces_.size())};
-            namespaces_[current.index - 1].namespaces.push_back(found);
+// As SRM's NamespaceCache builds it, which decides the order of a namespace's child namespaces: first the namespaces that have types,
+// in the order of their first type (TypeDef rows, then ExportedType rows; a namespace spelled at two #Strings offsets gets the second
+// one's types after all of the first one's); then each of them, in that order, is linked to its parent, and a parent without types of
+// its own is made (and linked upward) when its first child is linked.
+void MetadataReader::build_namespaces() const {
+    struct Builder {
+        std::string full_name;
+        std::vector<TypeDefinitionHandle> types;
+        std::vector<ExportedTypeHandle> exported_types;
+    };
+    std::vector<Builder> table(1);   // the root: offset 0, ""
+    std::unordered_map<std::uint32_t, std::size_t> by_offset{{0, 0}};
+    const auto builder_of = [&](StringHandle ns) -> Builder& {
+        const auto [it, added] = by_offset.try_emplace(ns.offset(), table.size());
+        if (added) table.push_back(Builder{std::string(get_string(ns)), {}, {}});
+        return table[it->second];
+    };
+    for (const TypeDefinitionHandle t : type_definitions()) {
+        const TypeDefinition d = get_type_definition(t);
+        if (d.is_nested()) continue;
+        builder_of(d.namespace_()).types.push_back(t);
+    }
+    for (const ExportedTypeHandle e : exported_types()) {
+        const ExportedType d = get_exported_type(e);
+        if (d.implementation().kind() == HandleKind::ExportedType) continue;   // a nested exported type
+        builder_of(d.namespace_()).exported_types.push_back(e);
+    }
+    const auto last_segment = [](const std::string& full_name) {
+        const std::size_t dot = full_name.rfind('.');
+        return dot == std::string::npos ? full_name : full_name.substr(dot + 1);
+    };
+    // the namespaces with types, one per name
+    std::unordered_map<std::string, std::uint32_t> real;   // full name -> handle index
+    std::vector<std::uint32_t> real_order;
+    for (Builder& b : table) {
+        if (const auto it = real.find(b.full_name); it != real.end()) {
+            NamespaceNode& n = namespaces_[it->second - 1];
+            n.types.insert(n.types.end(), b.types.begin(), b.types.end());
+            n.exported_types.insert(n.exported_types.end(), b.exported_types.begin(), b.exported_types.end());
+            continue;
         }
-        current = found;
-        if (dot == std::string::npos) return current;
-        start = dot + 1;
+        NamespaceNode n;
+        n.full_name = b.full_name;
+        n.name = last_segment(b.full_name);
+        n.types = std::move(b.types);
+        n.exported_types = std::move(b.exported_types);
+        namespaces_.push_back(std::move(n));
+        const auto index = static_cast<std::uint32_t>(namespaces_.size());
+        real.emplace(namespaces_.back().full_name, index);
+        real_order.push_back(index);
+    }
+    // the parents, made where they have no types of their own
+    std::vector<std::uint32_t> virtual_namespaces;
+    const auto link = [&](std::uint32_t child, std::uint32_t parent) {
+        namespaces_[child - 1].parent = NamespaceDefinitionHandle{parent};
+        namespaces_[parent - 1].namespaces.push_back(NamespaceDefinitionHandle{child});
+    };
+    for (const std::uint32_t real_child : real_order) {
+        std::string child_name = namespaces_[real_child - 1].full_name;
+        std::uint32_t child = real_child;
+        for (;;) {
+            const std::size_t last_index = child_name.rfind('.');
+            if (last_index == std::string::npos && child_name.empty()) break;
+            const std::string parent_name = last_index == std::string::npos ? std::string() : child_name.substr(0, last_index);
+            if (const auto it = real.find(parent_name); it != real.end()) {
+                link(child, it->second);
+                break;
+            }
+            const auto v = std::find_if(virtual_namespaces.begin(), virtual_namespaces.end(),
+                                        [&](std::uint32_t i) { return namespaces_[i - 1].full_name == parent_name; });
+            if (v != virtual_namespaces.end()) {
+                link(child, *v);
+                break;
+            }
+            NamespaceNode n;
+            n.full_name = parent_name;
+            n.name = last_segment(parent_name);
+            namespaces_.push_back(std::move(n));
+            const auto virtual_parent = static_cast<std::uint32_t>(namespaces_.size());
+            link(child, virtual_parent);
+            virtual_namespaces.push_back(virtual_parent);
+            child_name = parent_name;
+            child = virtual_parent;
+        }
     }
 }
 
 const MetadataReader::NamespaceNode& MetadataReader::namespace_node(NamespaceDefinitionHandle h) const {
-    std::call_once(namespaces_once_, [&] {
-        namespaces_.push_back(NamespaceNode{});   // the root
-        for (const TypeDefinitionHandle t : type_definitions()) {
-            const TypeDefinition d = get_type_definition(t);
-            if (d.is_nested()) continue;
-            namespaces_[namespace_for(std::string(get_string(d.namespace_()))).index - 1].types.push_back(t);
-        }
-        for (const ExportedTypeHandle e : exported_types()) {
-            const ExportedType d = get_exported_type(e);
-            if (d.implementation().kind() == HandleKind::ExportedType) continue;   // a nested type
-            namespaces_[namespace_for(std::string(get_string(d.namespace_()))).index - 1].exported_types.push_back(e);
-        }
-    });
+    std::call_once(namespaces_once_, [&] { build_namespaces(); });
     if (h.index == 0 || h.index > namespaces_.size()) throw UsageError("dotnet metadata: a namespace handle of another module");
     return namespaces_[h.index - 1];
 }

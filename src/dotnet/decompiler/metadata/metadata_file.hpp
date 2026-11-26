@@ -13,16 +13,21 @@
 
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "core/bytes.hpp"
+#include "dotnet/decompiler/typesystem/full_type_name.hpp"
 #include "dotnet/metadata/pe_reader.hpp"
 
 namespace cb::dotnet::decompiler::metadata {
 
 namespace srm = cb::dotnet::metadata;
+
+class MethodSemanticsLookup;
+class PropertyAndEventBackingFieldLookup;
 
 // ICSharpCode.Decompiler.TargetRuntime
 enum class TargetRuntime : std::uint8_t { Unknown, Net_1_0, Net_1_1, Net_2_0, Net_4_0 };
@@ -61,6 +66,13 @@ public:
     virtual const std::vector<srm::SectionHeader>& section_headers() const;
     virtual const srm::CorHeader* cor_header() const { return nullptr; }
 
+    // The top-level type of that name (nil for none), and the exported type (a forwarder) of that name (nil for none).
+    srm::TypeDefinitionHandle get_type_definition(const typesystem::TopLevelTypeName& type_name) const;
+    srm::ExportedTypeHandle get_type_forwarder(const typesystem::FullTypeName& type_name) const;
+    // The file's accessor index and backing-field index (method_semantics_lookup.hpp), made the first time they are asked for.
+    const MethodSemanticsLookup& method_semantics_lookup() const;
+    const PropertyAndEventBackingFieldLookup& property_and_event_backing_field_lookup() const;
+
 protected:
     MetadataFile(Kind kind, std::filesystem::path file_name, const srm::MetadataReader* metadata)
         : kind_(kind), file_name_(std::move(file_name)), metadata_(metadata) {}
@@ -70,6 +82,10 @@ private:
     std::filesystem::path file_name_;
     const srm::MetadataReader* metadata_;
     mutable std::optional<std::string> name_, full_name_;
+    struct Lookups;   // (the lazily made indexes)
+    Lookups& lookups() const;
+    mutable std::once_flag lookups_once_;
+    mutable std::shared_ptr<Lookups> lookups_;
 };
 
 class PEFile final : public MetadataFile {

@@ -1,0 +1,456 @@
+options 1fffa7
+module "Sample" full="Sample, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" version=1.0.0.0 main=1 file=1
+module "corlib" full="corlib" version=0.0.0.0 main=0 file=0
+known Object System.Object@corlib
+known DBNull System.DBNull@corlib
+known Boolean System.Boolean@corlib
+known Char System.Char@corlib
+known SByte System.SByte@corlib
+known Byte System.Byte@corlib
+known Int16 System.Int16@corlib
+known UInt16 System.UInt16@corlib
+known Int32 System.Int32@corlib
+known UInt32 System.UInt32@corlib
+known Int64 System.Int64@corlib
+known UInt64 System.UInt64@corlib
+known Single System.Single@corlib
+known Double System.Double@corlib
+known Decimal System.Decimal@corlib
+known DateTime System.DateTime@corlib
+known String System.String@corlib
+known Void System.Void@corlib
+known Type System.Type@corlib
+known Array System.Array@corlib
+known Attribute System.Attribute@corlib
+known ValueType System.ValueType@corlib
+known Enum System.Enum@corlib
+known Delegate System.Delegate@corlib
+known MulticastDelegate System.MulticastDelegate@corlib
+known Exception System.Exception@corlib
+known IntPtr System.IntPtr@corlib
+known UIntPtr System.UIntPtr@corlib
+known IEnumerable System.Collections.IEnumerable@corlib
+known IEnumerator System.Collections.IEnumerator@corlib
+known IEnumerableOfT System.Collections.Generic.IEnumerable`1@corlib
+known IEnumeratorOfT System.Collections.Generic.IEnumerator`1@corlib
+known ICollection System.Collections.ICollection@corlib
+known ICollectionOfT System.Collections.Generic.ICollection`1@corlib
+known IList System.Collections.IList@corlib
+known IListOfT System.Collections.Generic.IList`1@corlib
+known IReadOnlyCollectionOfT System.Collections.Generic.IReadOnlyCollection`1@corlib
+known IReadOnlyListOfT System.Collections.Generic.IReadOnlyList`1@corlib
+known Task System.Threading.Tasks.Task@corlib
+known TaskOfT System.Threading.Tasks.Task`1@corlib
+known ValueTask System.Threading.Tasks.ValueTask@corlib
+known ValueTaskOfT System.Threading.Tasks.ValueTask`1@corlib
+known NullableOfT System.Nullable`1@corlib
+known IDisposable System.IDisposable@corlib
+known IAsyncDisposable System.IAsyncDisposable@corlib
+known INotifyCompletion System.Runtime.CompilerServices.INotifyCompletion@corlib
+known ICriticalNotifyCompletion System.Runtime.CompilerServices.ICriticalNotifyCompletion@corlib
+known TypedReference System.TypedReference@corlib
+known IFormattable System.IFormattable@corlib
+known FormattableString System.FormattableString@corlib
+known DefaultInterpolatedStringHandler System.Runtime.CompilerServices.DefaultInterpolatedStringHandler@corlib
+known SpanOfT System.Span`1@corlib
+known ReadOnlySpanOfT System.ReadOnlySpan`1@corlib
+known MemoryOfT System.Memory`1@corlib
+known Unsafe System.Runtime.CompilerServices.Unsafe@corlib
+known IAsyncEnumerableOfT System.Collections.Generic.IAsyncEnumerable`1@corlib
+known IAsyncEnumeratorOfT System.Collections.Generic.IAsyncEnumerator`1@corlib
+known Index System.Index@corlib
+known Range System.Range@corlib
+asmattr unknown:System.Runtime.CompilerServices.CompilationRelaxationsAttribute:null ctor=fake Constructor unknown:System.Runtime.CompilerServices.CompilationRelaxationsAttribute:null..ctor(System.Int32@corlib):System.Void@corlib err=0 (System.Int32@corlib=Int32:8) {}
+asmattr unknown:System.Runtime.CompilerServices.RuntimeCompatibilityAttribute:null ctor=fake Constructor unknown:System.Runtime.CompilerServices.RuntimeCompatibilityAttribute:null..ctor():System.Void@corlib err=0 () {Property WrapNonExceptionThrows:System.Boolean@corlib=True}
+asmattr unknown:System.Diagnostics.DebuggableAttribute:null ctor=fake Constructor unknown:System.Diagnostics.DebuggableAttribute:null..ctor(unknown:System.Diagnostics.DebuggableAttribute+DebuggingModes:value):System.Void@corlib err=1 () {}
+asmattr unknown:System.CLSCompliantAttribute:null ctor=fake Constructor unknown:System.CLSCompliantAttribute:null..ctor(System.Boolean@corlib):System.Void@corlib err=0 (System.Boolean@corlib=False) {}
+asmattr unknown:System.Runtime.Versioning.TargetFrameworkAttribute:null ctor=fake Constructor unknown:System.Runtime.Versioning.TargetFrameworkAttribute:null..ctor(System.String@corlib):System.Void@corlib err=0 (System.String@corlib=".NETCoreApp,Version=v9.0") {Property FrameworkDisplayName:System.String@corlib=".NET 9.0"}
+asmattr unknown:System.Reflection.AssemblyCompanyAttribute:null ctor=fake Constructor unknown:System.Reflection.AssemblyCompanyAttribute:null..ctor(System.String@corlib):System.Void@corlib err=0 (System.String@corlib="Sample") {}
+asmattr unknown:System.Reflection.AssemblyConfigurationAttribute:null ctor=fake Constructor unknown:System.Reflection.AssemblyConfigurationAttribute:null..ctor(System.String@corlib):System.Void@corlib err=0 (System.String@corlib="Release") {}
+asmattr unknown:System.Reflection.AssemblyFileVersionAttribute:null ctor=fake Constructor unknown:System.Reflection.AssemblyFileVersionAttribute:null..ctor(System.String@corlib):System.Void@corlib err=0 (System.String@corlib="1.0.0.0") {}
+asmattr unknown:System.Reflection.AssemblyInformationalVersionAttribute:null ctor=fake Constructor unknown:System.Reflection.AssemblyInformationalVersionAttribute:null..ctor(System.String@corlib):System.Void@corlib err=0 (System.String@corlib="1.0.0") {}
+asmattr unknown:System.Reflection.AssemblyProductAttribute:null ctor=fake Constructor unknown:System.Reflection.AssemblyProductAttribute:null..ctor(System.String@corlib):System.Void@corlib err=0 (System.String@corlib="Sample") {}
+asmattr unknown:System.Reflection.AssemblyTitleAttribute:null ctor=fake Constructor unknown:System.Reflection.AssemblyTitleAttribute:null..ctor(System.String@corlib):System.Void@corlib err=0 (System.String@corlib="Sample") {}
+asmattr unknown:System.Security.Permissions.SecurityPermissionAttribute:null ctor=null err=0 (unknown:System.Security.Permissions.SecurityAction:null=Int32:8) {Property SkipVerification:System.Boolean@corlib=True}
+asmattr unknown:System.Reflection.AssemblyVersionAttribute:null ctor=null err=0 (System.String@corlib="1.0.0.0") {}
+modattr unknown:System.Security.UnverifiableCodeAttribute:null ctor=fake Constructor unknown:System.Security.UnverifiableCodeAttribute:null..ctor():System.Void@corlib err=0 () {}
+modattr unknown:System.Runtime.CompilerServices.RefSafetyRulesAttribute:null ctor=fake Constructor unknown:System.Runtime.CompilerServices.RefSafetyRulesAttribute:null..ctor(System.Int32@corlib):System.Void@corlib err=0 (System.Int32@corlib=Int32:11) {}
+modattr Sample.MarkerAttribute@Sample ctor=metadata Constructor Sample.MarkerAttribute@Sample..ctor(System.String@corlib):System.Void@corlib err=0 (System.String@corlib="module") {}
+ns "" name="" types=2
+  ns "Sample" name="Sample" types=9
+type <Module> kind=Class acc=Internal static=0 abstract=0 sealed=0 reftype=ref byreflike=0 readonly=0 record=0 ktc=None nullctx=Oblivious ext=0 meta="<Module>" decl=-
+type Sample.MarkerAttribute kind=Class acc=Public static=0 abstract=0 sealed=1 reftype=ref byreflike=0 readonly=0 record=0 ktc=None nullctx=Oblivious ext=0 meta="MarkerAttribute" decl=-
+  base System.Attribute@corlib
+  attr unknown:System.AttributeUsageAttribute:null ctor=fake Constructor unknown:System.AttributeUsageAttribute:null..ctor(unknown:System.AttributeTargets:value):System.Void@corlib err=1 () {}
+  field <Text>k__BackingField type=System.String@corlib acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=1 volatile=0 const=0 rro=0
+    attr unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null ctor=fake Constructor unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null..ctor():System.Void@corlib err=0 () {}
+  field <Number>k__BackingField type=System.Int32@corlib acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=1 volatile=0 const=0 rro=0
+    attr unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null ctor=fake Constructor unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null..ctor():System.Void@corlib err=0 () {}
+  field <Kind>k__BackingField type=System.Type@corlib acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=1 volatile=0 const=0 rro=0
+    attr unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null ctor=fake Constructor unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null..ctor():System.Void@corlib err=0 () {}
+  field <Rest>k__BackingField type=System.Object@corlib[] acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=1 volatile=0 const=0 rro=0
+    attr unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null ctor=fake Constructor unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null..ctor():System.Void@corlib err=0 () {}
+  field Weight type=System.Double@corlib acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  method .ctor kind=Constructor acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Void@corlib
+    param 0 text type=System.String@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+  method .ctor kind=Constructor acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Void@corlib
+    param 0 number type=System.Int32@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+    param 1 type type=System.Type@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+    param 2 rest type=System.Object@corlib[] ref=None params=1 opt=0 hasconst=0 scoped=0
+  property Text kind=Property acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 get=1 set=0 indexer=0 rro=0 ret=System.String@corlib getter=get_Text setter=-
+  property Number kind=Property acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 get=1 set=0 indexer=0 rro=0 ret=System.Int32@corlib getter=get_Number setter=-
+  property Kind kind=Property acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 get=1 set=0 indexer=0 rro=0 ret=System.Type@corlib getter=get_Kind setter=-
+  property Rest kind=Property acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 get=1 set=0 indexer=0 rro=0 ret=System.Object@corlib[] getter=get_Rest setter=-
+type Sample.Colour kind=Enum acc=Public static=0 abstract=0 sealed=1 reftype=value byreflike=0 readonly=0 record=0 ktc=None nullctx=Oblivious ext=0 meta="Colour" decl=- enumtype=System.Byte@corlib
+  base System.Enum@corlib
+  field value__ type=System.Byte@corlib acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  field Red type=Sample.Colour@Sample acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=1 rro=0 value=Byte:1
+  field Green type=Sample.Colour@Sample acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=1 rro=0 value=Byte:2
+  field Blue type=Sample.Colour@Sample acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=1 rro=0 value=Byte:4
+  method .ctor kind=Constructor acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=0 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Void@corlib
+type Sample.Access kind=Enum acc=Public static=0 abstract=0 sealed=1 reftype=value byreflike=0 readonly=0 record=0 ktc=None nullctx=Oblivious ext=0 meta="Access" decl=- enumtype=System.Int64@corlib
+  base System.Enum@corlib
+  attr unknown:System.FlagsAttribute:null ctor=fake Constructor unknown:System.FlagsAttribute:null..ctor():System.Void@corlib err=0 () {}
+  field value__ type=System.Int64@corlib acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  field None type=Sample.Access@Sample acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=1 rro=0 value=Int64:0
+  field Read type=Sample.Access@Sample acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=1 rro=0 value=Int64:1
+  field Write type=Sample.Access@Sample acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=1 rro=0 value=Int64:2
+  field All type=Sample.Access@Sample acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=1 rro=0 value=Int64:3
+  method .ctor kind=Constructor acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=0 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Void@corlib
+type Sample.IShape kind=Interface acc=Public static=0 abstract=1 sealed=0 reftype=ref byreflike=0 readonly=0 record=0 ktc=None nullctx=Oblivious ext=0 meta="IShape" decl=-
+  base System.Object@corlib
+  method Describe kind=Method acc=Public static=0 abstract=1 sealed=0 virtual=0 override=0 overridable=1 explicit=0 ext=0 body=0 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.String@corlib
+    param 0 detail type=System.Int32@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+  property Area kind=Property acc=Public static=0 abstract=1 sealed=0 virtual=0 override=0 overridable=1 explicit=0 get=1 set=0 indexer=0 rro=0 ret=System.Double@corlib getter=get_Area setter=-
+  event Changed acc=Public static=0 abstract=1 sealed=0 virtual=0 override=0 overridable=1 explicit=0 add=add_Changed remove=remove_Changed invoke=- ret=unknown:System.EventHandler:null
+type Sample.Overlay kind=Struct acc=Public static=0 abstract=0 sealed=1 reftype=value byreflike=0 readonly=0 record=0 ktc=None nullctx=Oblivious ext=0 meta="Overlay" decl=-
+  base System.ValueType@corlib
+  attr unknown:System.Runtime.InteropServices.StructLayoutAttribute:null ctor=null err=0 (unknown:System.Runtime.InteropServices.LayoutKind:null=Int32:2) {Property Pack:System.Int32@corlib=Int32:4, Property Size:System.Int32@corlib=Int32:16}
+  field Low type=System.Int32@corlib acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+    attr unknown:System.Runtime.InteropServices.FieldOffsetAttribute:null ctor=null err=0 (System.Int32@corlib=Int32:0) {}
+  field High type=System.Int32@corlib acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+    attr unknown:System.Runtime.InteropServices.FieldOffsetAttribute:null ctor=null err=0 (System.Int32@corlib=Int32:4) {}
+  field Both type=System.Int64@corlib acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+    attr unknown:System.Runtime.InteropServices.FieldOffsetAttribute:null ctor=null err=0 (System.Int32@corlib=Int32:0) {}
+  field Real type=System.Double@corlib acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+    attr unknown:System.Runtime.InteropServices.FieldOffsetAttribute:null ctor=null err=0 (System.Int32@corlib=Int32:8) {}
+    attr unknown:System.Runtime.InteropServices.MarshalAsAttribute:null ctor=null err=0 (unknown:System.Runtime.InteropServices.UnmanagedType:null=Int32:12) {}
+  method .ctor kind=Constructor acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=0 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Void@corlib
+type Sample.Circle kind=Class acc=Public static=0 abstract=0 sealed=0 reftype=ref byreflike=0 readonly=0 record=0 ktc=None nullctx=Oblivious ext=0 meta="Circle" decl=-
+  base System.Object@corlib
+  base Sample.IShape@Sample
+  base unknown:System.IComparable`1:ref<Sample.Circle@Sample>
+  attr unknown:System.Reflection.DefaultMemberAttribute:null ctor=fake Constructor unknown:System.Reflection.DefaultMemberAttribute:null..ctor(System.String@corlib):System.Void@corlib err=0 (System.String@corlib="Item") {}
+  attr Sample.MarkerAttribute@Sample ctor=metadata Constructor Sample.MarkerAttribute@Sample..ctor(System.Int32@corlib, System.Type@corlib, System.Object@corlib[]):System.Void@corlib err=0 (System.Int32@corlib=Int32:7, System.Type@corlib=type:unknown:System.Collections.Generic.List`1:null<System.Int32@corlib>, System.Object@corlib[]=[System.String@corlib="a", System.Int32@corlib=Int32:2, Sample.Colour@Sample=Byte:2, System.String@corlib=null]) {Field Weight:System.Double@corlib=double:1.5}
+  field Unit type=System.String@corlib acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=1 rro=0 value="cm"
+  field Pi type=System.Double@corlib acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=1 rro=0 value=double:3.14159265358979
+  field Primes type=System.Int32@corlib[] acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=1 volatile=0 const=0 rro=0
+  field radius type=System.Double@corlib acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  field Changed type=unknown:System.EventHandler:ref acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+    attr unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null ctor=fake Constructor unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null..ctor():System.Void@corlib err=0 () {}
+  method .ctor kind=Constructor acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Void@corlib
+    param 0 radius type=System.Double@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+  method Describe kind=Method acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.String@corlib
+    param 0 detail type=System.Int32@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+    local 0 System.Runtime.CompilerServices.DefaultInterpolatedStringHandler@corlib
+  method CompareTo kind=Method acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Int32@corlib
+    param 0 other type=Sample.Circle@Sample ref=None params=0 opt=0 hasconst=0 scoped=0
+  method op_Addition kind=Operator acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=Sample.Circle@Sample
+    param 0 a type=Sample.Circle@Sample ref=None params=0 opt=0 hasconst=0 scoped=0
+    param 1 b type=Sample.Circle@Sample ref=None params=0 opt=0 hasconst=0 scoped=0
+  method .cctor kind=Constructor acc=Private static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Void@corlib
+  property Area kind=Property acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 get=1 set=0 indexer=0 rro=0 ret=System.Double@corlib getter=get_Area setter=-
+  property Radius kind=Property acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 get=1 set=1 indexer=0 rro=0 ret=System.Double@corlib getter=get_Radius setter=set_Radius
+  property Item kind=Indexer acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 get=1 set=0 indexer=1 rro=0 ret=System.Int32@corlib getter=get_Item setter=-
+    param 0 index type=System.Int32@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+  event Changed acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 add=add_Changed remove=remove_Changed invoke=- ret=unknown:System.EventHandler:null
+type Sample.Box`1 kind=Class acc=Public static=0 abstract=0 sealed=0 reftype=ref byreflike=0 readonly=0 record=0 ktc=None nullctx=Oblivious ext=0 meta="Box`1" decl=-
+  tp 0 T owner=TypeDefinition var=Invariant class=1 struct=0 new=1 unmanaged=0 allowsref=0 nullc=Oblivious
+    constraint Sample.IShape@Sample
+    constraint System.Object@corlib
+    ebc System.Object@corlib
+    eis Sample.IShape@Sample
+  base System.Object@corlib
+  field Item type=!0:T acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  field History type=unknown:System.Collections.Generic.List`1:ref<unknown:System.Collections.Generic.KeyValuePair`2:value<System.String@corlib,!0:T[]>> acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  method Map kind=Method acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=!!0:TResult
+    tp 0 TResult owner=Method var=Invariant class=0 struct=1 new=1 unmanaged=0 allowsref=0 nullc=Oblivious
+      constraint System.ValueType@corlib
+      constraint System.ValueType@corlib
+      ebc System.ValueType@corlib
+    param 0 f type=unknown:System.Func`2:ref<!0:T,!!0:TResult> ref=None params=0 opt=0 hasconst=0 scoped=0
+  method .ctor kind=Constructor acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Void@corlib
+type Sample.Native kind=Class acc=Public static=1 abstract=1 sealed=1 reftype=ref byreflike=0 readonly=0 record=0 ktc=None nullctx=Oblivious ext=0 meta="Native" decl=-
+  base System.Object@corlib
+  method Ticks kind=Method acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=0 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.UInt32@corlib
+    attr unknown:System.Runtime.InteropServices.DllImportAttribute:null ctor=null err=0 (System.String@corlib="kernel32.dll") {Property EntryPoint:System.String@corlib="GetTickCount", Property SetLastError:System.Boolean@corlib=True}
+  method MessageBoxW kind=Method acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=0 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Int32@corlib
+    param 0 hwnd type=special:NInt ref=None params=0 opt=0 hasconst=0 scoped=0
+    param 1 text type=System.String@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+      attr unknown:System.Runtime.InteropServices.MarshalAsAttribute:null ctor=null err=0 (unknown:System.Runtime.InteropServices.UnmanagedType:null=Int32:21) {}
+    param 2 caption type=System.String@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+    param 3 type type=System.UInt32@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+    attr unknown:System.Runtime.InteropServices.DllImportAttribute:null ctor=null err=0 (System.String@corlib="user32.dll") {Property CharSet:unknown:System.Runtime.InteropServices.CharSet:null=Int32:3}
+type Sample.Code kind=Class acc=Public static=1 abstract=1 sealed=1 reftype=ref byreflike=0 readonly=0 record=0 ktc=None nullctx=Oblivious ext=0 meta="Code" decl=-
+  base System.Object@corlib
+  method Loops kind=Method acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Int32@corlib
+    param 0 n type=System.Int32@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+    param 1 total type=System.Int32@corlib& ref=Ref params=0 opt=0 hasconst=0 scoped=0
+    param 2 note type=System.String@corlib& ref=Out params=0 opt=0 hasconst=0 scoped=0
+    param 3 limit type=System.Int64@corlib& ref=In params=0 opt=0 hasconst=0 scoped=0
+    local 0 System.Int32@corlib
+    local 1 System.Int32@corlib
+    local 2 System.Int32@corlib
+  method Guarded kind=Method acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.String@corlib
+    param 0 o type=System.Object@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+    local 0 System.String@corlib
+  method Pointer kind=Method acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Int32@corlib
+    param 0 p type=System.Int32@corlib* ref=None params=0 opt=0 hasconst=0 scoped=0
+    param 1 array type=System.Int32@corlib[] ref=None params=0 opt=0 hasconst=0 scoped=0
+    local 0 System.Int32@corlib*
+    local 1 System.Int32@corlib[] pinned
+  method Later kind=Method acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Threading.Tasks.Task`1@corlib<System.Int32@corlib>
+    param 0 x type=System.Int32@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+    attr unknown:System.Runtime.CompilerServices.AsyncStateMachineAttribute:null ctor=fake Constructor unknown:System.Runtime.CompilerServices.AsyncStateMachineAttribute:null..ctor(System.Type@corlib):System.Void@corlib err=0 (System.Type@corlib=type:Sample.Code+<Later>d__3@Sample) {}
+    local 0 Sample.Code+<Later>d__3@Sample
+  method Count kind=Method acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Collections.Generic.IEnumerable`1@corlib<System.Int32@corlib>
+    param 0 to type=System.Int32@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+    attr unknown:System.Runtime.CompilerServices.IteratorStateMachineAttribute:null ctor=fake Constructor unknown:System.Runtime.CompilerServices.IteratorStateMachineAttribute:null..ctor(System.Type@corlib):System.Void@corlib err=0 (System.Type@corlib=type:Sample.Code+<Count>d__4@Sample) {}
+  method Pick kind=Method acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=!!0:T
+    tp 0 T owner=Method var=Invariant class=0 struct=0 new=0 unmanaged=0 allowsref=0 nullc=Oblivious
+      constraint System.Object@corlib
+      ebc System.Object@corlib
+    param 0 a type=!!0:T ref=None params=0 opt=0 hasconst=0 scoped=0
+    param 1 b type=!!0:T ref=None params=0 opt=0 hasconst=0 scoped=0
+    param 2 first type=System.Boolean@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+  method UsePick kind=Method acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Int32@corlib
+  method Big kind=Method acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Int64@corlib
+  method Closure kind=Method acc=Public static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=unknown:System.Func`2:ref<System.Int32@corlib,System.Int32@corlib>
+    param 0 k type=System.Int32@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+type <PrivateImplementationDetails> kind=Class acc=Internal static=0 abstract=0 sealed=1 reftype=ref byreflike=0 readonly=0 record=0 ktc=None nullctx=Oblivious ext=0 meta="<PrivateImplementationDetails>" decl=-
+  base System.Object@corlib
+  attr unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null ctor=fake Constructor unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null..ctor():System.Void@corlib err=0 () {}
+  field 6341DA6106ADABFB52202E479ABE276558D68889931BC59F0F18BAD87C14C2DC type=<PrivateImplementationDetails>+__StaticArrayInitTypeSize=40@Sample acc=Internal static=1 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=1 volatile=0 const=0 rro=0
+type Sample.Box`1+Nested`1 kind=Class acc=Public static=0 abstract=0 sealed=0 reftype=ref byreflike=0 readonly=0 record=0 ktc=None nullctx=Oblivious ext=0 meta="Nested`1" decl=Sample.Box`1
+  tp 1 U owner=TypeDefinition var=Invariant class=0 struct=0 new=0 unmanaged=0 allowsref=0 nullc=Oblivious
+    constraint System.Object@corlib
+    ebc System.Object@corlib
+  base System.Object@corlib
+  field Table type=unknown:System.Collections.Generic.Dictionary`2:ref<!0:T,!1:U> acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  method .ctor kind=Constructor acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Void@corlib
+type Sample.Code+<>c__DisplayClass8_0 kind=Class acc=Private static=0 abstract=0 sealed=1 reftype=ref byreflike=0 readonly=0 record=0 ktc=None nullctx=Oblivious ext=0 meta="<>c__DisplayClass8_0" decl=Sample.Code
+  base System.Object@corlib
+  attr unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null ctor=fake Constructor unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null..ctor():System.Void@corlib err=0 () {}
+  field k type=System.Int32@corlib acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  method .ctor kind=Constructor acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Void@corlib
+  method <Closure>b__0 kind=Method acc=Internal static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Int32@corlib
+    param 0 x type=System.Int32@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+type Sample.Code+<Count>d__4 kind=Class acc=Private static=0 abstract=0 sealed=1 reftype=ref byreflike=0 readonly=0 record=0 ktc=None nullctx=Oblivious ext=0 meta="<Count>d__4" decl=Sample.Code
+  base System.Object@corlib
+  base System.Collections.Generic.IEnumerable`1@corlib<System.Int32@corlib>
+  base System.Collections.IEnumerable@corlib
+  base System.Collections.Generic.IEnumerator`1@corlib<System.Int32@corlib>
+  base System.Collections.IEnumerator@corlib
+  base System.IDisposable@corlib
+  attr unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null ctor=fake Constructor unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null..ctor():System.Void@corlib err=0 () {}
+  field <>1__state type=System.Int32@corlib acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  field <>2__current type=System.Int32@corlib acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  field <>l__initialThreadId type=System.Int32@corlib acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  field to type=System.Int32@corlib acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  field <>3__to type=System.Int32@corlib acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  field <i>5__2 type=System.Int32@corlib acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  method .ctor kind=Constructor acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Void@corlib
+    param 0 <>1__state type=System.Int32@corlib ref=None params=0 opt=0 hasconst=0 scoped=0
+    attr unknown:System.Diagnostics.DebuggerHiddenAttribute:null ctor=fake Constructor unknown:System.Diagnostics.DebuggerHiddenAttribute:null..ctor():System.Void@corlib err=0 () {}
+  method System.IDisposable.Dispose kind=Method acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=1 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Void@corlib
+    attr unknown:System.Diagnostics.DebuggerHiddenAttribute:null ctor=fake Constructor unknown:System.Diagnostics.DebuggerHiddenAttribute:null..ctor():System.Void@corlib err=0 () {}
+    impl fake Method System.IDisposable@corlib.Dispose():System.Void@corlib
+  method MoveNext kind=Method acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Boolean@corlib
+    impl fake Method System.Collections.IEnumerator@corlib.MoveNext():System.Boolean@corlib
+    local 0 System.Int32@corlib
+    local 1 System.Int32@corlib
+  method System.Collections.IEnumerator.Reset kind=Method acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=1 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Void@corlib
+    attr unknown:System.Diagnostics.DebuggerHiddenAttribute:null ctor=fake Constructor unknown:System.Diagnostics.DebuggerHiddenAttribute:null..ctor():System.Void@corlib err=0 () {}
+    impl fake Method System.Collections.IEnumerator@corlib.Reset():System.Void@corlib
+  method System.Collections.Generic.IEnumerable<System.Int32>.GetEnumerator kind=Method acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=1 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Collections.Generic.IEnumerator`1@corlib!<System.Int32@corlib>
+    attr unknown:System.Diagnostics.DebuggerHiddenAttribute:null ctor=fake Constructor unknown:System.Diagnostics.DebuggerHiddenAttribute:null..ctor():System.Void@corlib err=0 () {}
+    impl specialized Method System.Collections.Generic.IEnumerable`1@corlib<System.Int32@corlib>.GetEnumerator():System.Collections.Generic.IEnumerator`1@corlib<System.Int32@corlib>
+    local 0 Sample.Code+<Count>d__4@Sample
+  method System.Collections.IEnumerable.GetEnumerator kind=Method acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=1 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Collections.IEnumerator@corlib!
+    attr unknown:System.Diagnostics.DebuggerHiddenAttribute:null ctor=fake Constructor unknown:System.Diagnostics.DebuggerHiddenAttribute:null..ctor():System.Void@corlib err=0 () {}
+    impl fake Method System.Collections.IEnumerable@corlib.GetEnumerator():System.Collections.IEnumerator@corlib
+  property System.Collections.Generic.IEnumerator<System.Int32>.Current kind=Property acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=1 get=1 set=0 indexer=0 rro=0 ret=System.Int32@corlib getter=System.Collections.Generic.IEnumerator<System.Int32>.get_Current setter=-
+    impl specialized Property System.Collections.Generic.IEnumerator`1@corlib<System.Int32@corlib>.Current():System.Int32@corlib
+  property System.Collections.IEnumerator.Current kind=Property acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=1 get=1 set=0 indexer=0 rro=0 ret=System.Object@corlib getter=System.Collections.IEnumerator.get_Current setter=-
+    impl fake Property System.Collections.IEnumerator@corlib.Current():System.Object@corlib
+type Sample.Code+<Later>d__3 kind=Struct acc=Private static=0 abstract=0 sealed=1 reftype=value byreflike=0 readonly=0 record=0 ktc=None nullctx=Oblivious ext=0 meta="<Later>d__3" decl=Sample.Code
+  base System.ValueType@corlib
+  base unknown:System.Runtime.CompilerServices.IAsyncStateMachine:null
+  attr unknown:System.Runtime.InteropServices.StructLayoutAttribute:null ctor=null err=0 (unknown:System.Runtime.InteropServices.LayoutKind:null=Int32:3) {}
+  attr unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null ctor=fake Constructor unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null..ctor():System.Void@corlib err=0 () {}
+  field <>1__state type=System.Int32@corlib acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  field <>t__builder type=unknown:System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1:value<System.Int32@corlib> acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  field x type=System.Int32@corlib acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  field <>u__1 type=unknown:System.Runtime.CompilerServices.TaskAwaiter:value acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 readonly=0 volatile=0 const=0 rro=0
+  method MoveNext kind=Method acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Void@corlib
+    impl fake Method unknown:System.Runtime.CompilerServices.IAsyncStateMachine:null.MoveNext():System.Void@corlib
+    local 0 System.Int32@corlib
+    local 1 System.Int32@corlib
+    local 2 unknown:System.Runtime.CompilerServices.TaskAwaiter:value
+    local 3 System.Exception@corlib
+  method SetStateMachine kind=Method acc=Private static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=1 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Void@corlib
+    param 0 stateMachine type=unknown:System.Runtime.CompilerServices.IAsyncStateMachine:ref! ref=None params=0 opt=0 hasconst=0 scoped=0
+    attr unknown:System.Diagnostics.DebuggerHiddenAttribute:null ctor=fake Constructor unknown:System.Diagnostics.DebuggerHiddenAttribute:null..ctor():System.Void@corlib err=0 () {}
+    impl fake Method unknown:System.Runtime.CompilerServices.IAsyncStateMachine:null.SetStateMachine(unknown:System.Runtime.CompilerServices.IAsyncStateMachine:ref):System.Void@corlib
+  method .ctor kind=Constructor acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=0 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Void@corlib
+type <PrivateImplementationDetails>+__StaticArrayInitTypeSize=40 kind=Struct acc=Internal static=0 abstract=0 sealed=1 reftype=value byreflike=0 readonly=0 record=0 ktc=None nullctx=Oblivious ext=0 meta="__StaticArrayInitTypeSize=40" decl=<PrivateImplementationDetails>
+  base System.ValueType@corlib
+  attr unknown:System.Runtime.InteropServices.StructLayoutAttribute:null ctor=null err=0 (unknown:System.Runtime.InteropServices.LayoutKind:null=Int32:2) {Property Pack:System.Int32@corlib=Int32:1, Property Size:System.Int32@corlib=Int32:40}
+  method .ctor kind=Constructor acc=Public static=0 abstract=0 sealed=0 virtual=0 override=0 overridable=0 explicit=0 ext=0 body=0 init=0 rro=0 thisro=0 accessor=0 owner=- ret=System.Void@corlib
+ref 0a000001 fake Constructor unknown:System.Runtime.CompilerServices.CompilationRelaxationsAttribute:null..ctor(System.Int32@corlib):System.Void@corlib
+ref 0a000002 fake Constructor unknown:System.Runtime.CompilerServices.RuntimeCompatibilityAttribute:null..ctor():System.Void@corlib
+ref 0a000003 fake Constructor unknown:System.Diagnostics.DebuggableAttribute:null..ctor(unknown:System.Diagnostics.DebuggableAttribute+DebuggingModes:value):System.Void@corlib
+ref 0a000004 fake Constructor unknown:System.CLSCompliantAttribute:null..ctor(System.Boolean@corlib):System.Void@corlib
+ref 0a000005 fake Constructor unknown:System.Runtime.Versioning.TargetFrameworkAttribute:null..ctor(System.String@corlib):System.Void@corlib
+ref 0a000006 fake Constructor unknown:System.Reflection.AssemblyCompanyAttribute:null..ctor(System.String@corlib):System.Void@corlib
+ref 0a000007 fake Constructor unknown:System.Reflection.AssemblyConfigurationAttribute:null..ctor(System.String@corlib):System.Void@corlib
+ref 0a000008 fake Constructor unknown:System.Reflection.AssemblyFileVersionAttribute:null..ctor(System.String@corlib):System.Void@corlib
+ref 0a000009 fake Constructor unknown:System.Reflection.AssemblyInformationalVersionAttribute:null..ctor(System.String@corlib):System.Void@corlib
+ref 0a00000a fake Constructor unknown:System.Reflection.AssemblyProductAttribute:null..ctor(System.String@corlib):System.Void@corlib
+ref 0a00000b fake Constructor unknown:System.Reflection.AssemblyTitleAttribute:null..ctor(System.String@corlib):System.Void@corlib
+ref 0a00000c fake Constructor unknown:System.Security.Permissions.SecurityPermissionAttribute:null..ctor(unknown:System.Security.Permissions.SecurityAction:value):System.Void@corlib
+ref 0a00000d fake Constructor unknown:System.Security.UnverifiableCodeAttribute:null..ctor():System.Void@corlib
+ref 0a00000e fake Constructor unknown:System.Runtime.CompilerServices.RefSafetyRulesAttribute:null..ctor(System.Int32@corlib):System.Void@corlib
+ref 0a00000f fake Constructor unknown:System.AttributeUsageAttribute:null..ctor(unknown:System.AttributeTargets:value):System.Void@corlib
+ref 0a000010 fake Constructor unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null..ctor():System.Void@corlib
+ref 0a000011 fake Constructor unknown:System.ParamArrayAttribute:null..ctor():System.Void@corlib
+ref 0a000012 fake Constructor unknown:System.FlagsAttribute:null..ctor():System.Void@corlib
+ref 0a000013 fake Constructor unknown:System.Reflection.DefaultMemberAttribute:null..ctor(System.String@corlib):System.Void@corlib
+ref 0a000014 fake Constructor unknown:System.Runtime.CompilerServices.IsReadOnlyAttribute:null..ctor():System.Void@corlib
+ref 0a000015 fake Constructor unknown:System.Runtime.CompilerServices.AsyncStateMachineAttribute:null..ctor(System.Type@corlib):System.Void@corlib
+ref 0a000016 fake Constructor unknown:System.Runtime.CompilerServices.IteratorStateMachineAttribute:null..ctor(System.Type@corlib):System.Void@corlib
+ref 0a000017 fake Method System.IDisposable@corlib.Dispose():System.Void@corlib
+ref 0a000018 fake Method System.Collections.IEnumerator@corlib.MoveNext():System.Boolean@corlib
+ref 0a000019 specialized Method System.Collections.Generic.IEnumerator`1@corlib<System.Int32@corlib>.get_Current():System.Int32@corlib
+ref 0a00001a fake Method System.Collections.IEnumerator@corlib.Reset():System.Void@corlib
+ref 0a00001b fake Method System.Collections.IEnumerator@corlib.get_Current():System.Object@corlib
+ref 0a00001c specialized Method System.Collections.Generic.IEnumerable`1@corlib<System.Int32@corlib>.GetEnumerator():System.Collections.Generic.IEnumerator`1@corlib<System.Int32@corlib>
+ref 0a00001d fake Constructor unknown:System.Runtime.CompilerServices.NullableAttribute:null..ctor(System.Byte@corlib):System.Void@corlib
+ref 0a00001e fake Method System.Collections.IEnumerable@corlib.GetEnumerator():System.Collections.IEnumerator@corlib
+ref 0a00001f fake Constructor unknown:System.Diagnostics.DebuggerHiddenAttribute:null..ctor():System.Void@corlib
+ref 0a000020 fake Method unknown:System.Runtime.CompilerServices.IAsyncStateMachine:null.MoveNext():System.Void@corlib
+ref 0a000021 fake Method unknown:System.Runtime.CompilerServices.IAsyncStateMachine:null.SetStateMachine(unknown:System.Runtime.CompilerServices.IAsyncStateMachine:ref):System.Void@corlib
+ref 0a000022 fake Constructor System.Attribute@corlib..ctor():System.Void@corlib
+ref 0a000023 fake Method System.Delegate@corlib.Combine(System.Delegate@corlib, System.Delegate@corlib):System.Delegate@corlib
+ref 0a000024 fake Method unknown:System.Threading.Interlocked:null.CompareExchange<!!0:!!0>(!!0:!!0&, !!0:!!0, !!0:!!0):!!0:!!0
+ref 0a000025 fake Method System.Delegate@corlib.Remove(System.Delegate@corlib, System.Delegate@corlib):System.Delegate@corlib
+ref 0a000026 fake Constructor System.Object@corlib..ctor():System.Void@corlib
+ref 0a000027 fake Field unknown:System.EventArgs:null.Empty:unknown:System.EventArgs:ref
+ref 0a000028 fake Method unknown:System.EventHandler:null.Invoke(System.Object@corlib, unknown:System.EventArgs:ref):System.Void@corlib
+ref 0a000029 fake Constructor System.Runtime.CompilerServices.DefaultInterpolatedStringHandler@corlib..ctor(System.Int32@corlib, System.Int32@corlib):System.Void@corlib
+ref 0a00002a fake Method System.Runtime.CompilerServices.DefaultInterpolatedStringHandler@corlib.AppendLiteral(System.String@corlib):System.Void@corlib
+ref 0a00002b fake Method System.Runtime.CompilerServices.DefaultInterpolatedStringHandler@corlib.AppendFormatted<!!0:!!0>(!!0:!!0):System.Void@corlib
+ref 0a00002c fake Method System.Runtime.CompilerServices.DefaultInterpolatedStringHandler@corlib.AppendFormatted(System.String@corlib):System.Void@corlib
+ref 0a00002d fake Method System.Runtime.CompilerServices.DefaultInterpolatedStringHandler@corlib.ToStringAndClear():System.String@corlib
+ref 0a00002e fake Method System.Double@corlib.CompareTo(System.Double@corlib):System.Int32@corlib
+ref 0a00002f fake Method unknown:System.Runtime.CompilerServices.RuntimeHelpers:null.InitializeArray(System.Array@corlib, unknown:System.RuntimeFieldHandle:value):System.Void@corlib
+ref 0a000030 specialized Field Sample.Box`1@Sample<!0:!0>.Item:!0:!0
+ref 0a000031 specialized Method unknown:System.Func`2:ref<!0:!0,!!0:!!0>.Invoke(!0:!0):!!0:!!0
+ref 0a000032 specialized Constructor unknown:System.Collections.Generic.List`1:ref<unknown:System.Collections.Generic.KeyValuePair`2:value<System.String@corlib,unknown:System.Collections.Generic.KeyValuePair`2:value<System.String@corlib,!0:!0[]>[]>>..ctor():System.Void@corlib
+ref 0a000033 specialized Field Sample.Box`1@Sample<!0:!0>.History:unknown:System.Collections.Generic.List`1:ref<unknown:System.Collections.Generic.KeyValuePair`2:value<System.String@corlib,!0:!0[]>>
+ref 0a000034 fake Method System.Int32@corlib.ToString():System.String@corlib
+ref 0a000035 fake Method System.String@corlib.Concat(System.String@corlib, System.String@corlib):System.String@corlib
+ref 0a000036 fake Method System.Exception@corlib.get_Message():System.String@corlib
+ref 0a000037 fake Method System.String@corlib.get_Length():System.Int32@corlib
+ref 0a000038 fake Method unknown:System.Console:null.WriteLine(System.String@corlib):System.Void@corlib
+ref 0a000039 specialized Method unknown:System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1:value<System.Int32@corlib>.Create():unknown:System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1:value<System.Int32@corlib>
+ref 0a00003a specialized Method unknown:System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1:value<System.Int32@corlib>.Start<!!0:!!0>(!!0:!!0&):System.Void@corlib
+ref 0a00003b specialized Method unknown:System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1:value<System.Int32@corlib>.get_Task():System.Threading.Tasks.Task`1@corlib<System.Int32@corlib>
+ref 0a00003c specialized Constructor unknown:System.Func`2:ref<System.Int32@corlib,System.Int32@corlib>..ctor(System.Object@corlib, System.IntPtr@corlib):System.Void@corlib
+ref 0a00003d fake Method unknown:System.Environment:null.get_CurrentManagedThreadId():System.Int32@corlib
+ref 0a00003e fake Constructor unknown:System.NotSupportedException:null..ctor():System.Void@corlib
+ref 0a00003f fake Method System.Threading.Tasks.Task@corlib.Delay(System.Int32@corlib):System.Threading.Tasks.Task@corlib
+ref 0a000040 fake Method System.Threading.Tasks.Task@corlib.GetAwaiter():unknown:System.Runtime.CompilerServices.TaskAwaiter:value
+ref 0a000041 fake Method unknown:System.Runtime.CompilerServices.TaskAwaiter:null.get_IsCompleted():System.Boolean@corlib
+ref 0a000042 specialized Method unknown:System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1:value<System.Int32@corlib>.AwaitUnsafeOnCompleted<!!0:!!0,!!1:!!1>(!!0:!!0&, !!1:!!1&):System.Void@corlib
+ref 0a000043 fake Method unknown:System.Runtime.CompilerServices.TaskAwaiter:null.GetResult():System.Void@corlib
+ref 0a000044 specialized Method unknown:System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1:value<System.Int32@corlib>.SetException(System.Exception@corlib):System.Void@corlib
+ref 0a000045 specialized Method unknown:System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1:value<System.Int32@corlib>.SetResult(System.Int32@corlib):System.Void@corlib
+ref 0a000046 specialized Method unknown:System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1:value<System.Int32@corlib>.SetStateMachine(unknown:System.Runtime.CompilerServices.IAsyncStateMachine:ref):System.Void@corlib
+spec 2b000001 specialized Method unknown:System.Threading.Interlocked:null.CompareExchange<unknown:System.EventHandler:ref>(unknown:System.EventHandler:ref&, unknown:System.EventHandler:ref, unknown:System.EventHandler:ref):unknown:System.EventHandler:ref
+spec 2b000002 specialized Method System.Runtime.CompilerServices.DefaultInterpolatedStringHandler@corlib.AppendFormatted<System.Double@corlib>(System.Double@corlib):System.Void@corlib
+spec 2b000003 specialized Method unknown:System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1:value<System.Int32@corlib>.Start<Sample.Code+<Later>d__3@Sample>(Sample.Code+<Later>d__3@Sample&):System.Void@corlib
+spec 2b000004 specialized Method Sample.Code@Sample.Pick<System.Int32@corlib>(System.Int32@corlib, System.Int32@corlib, System.Boolean@corlib):System.Int32@corlib
+spec 2b000005 specialized Method Sample.Code@Sample.Pick<System.String@corlib>(System.String@corlib, System.String@corlib, System.Boolean@corlib):System.String@corlib
+spec 2b000006 specialized Method unknown:System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1:value<System.Int32@corlib>.AwaitUnsafeOnCompleted<unknown:System.Runtime.CompilerServices.TaskAwaiter:value,Sample.Code+<Later>d__3@Sample>(unknown:System.Runtime.CompilerServices.TaskAwaiter:value&, Sample.Code+<Later>d__3@Sample&):System.Void@corlib
+tref 01000001 unknown:System.Runtime.CompilerServices.CompilationRelaxationsAttribute:null
+tref 01000002 unknown:System.Runtime.CompilerServices.RuntimeCompatibilityAttribute:null
+tref 01000003 unknown:System.Diagnostics.DebuggableAttribute:null
+tref 01000004 unknown:System.Diagnostics.DebuggableAttribute+DebuggingModes:null
+tref 01000005 unknown:System.CLSCompliantAttribute:null
+tref 01000006 unknown:System.Runtime.Versioning.TargetFrameworkAttribute:null
+tref 01000007 unknown:System.Reflection.AssemblyCompanyAttribute:null
+tref 01000008 unknown:System.Reflection.AssemblyConfigurationAttribute:null
+tref 01000009 unknown:System.Reflection.AssemblyFileVersionAttribute:null
+tref 0100000a unknown:System.Reflection.AssemblyInformationalVersionAttribute:null
+tref 0100000b unknown:System.Reflection.AssemblyProductAttribute:null
+tref 0100000c unknown:System.Reflection.AssemblyTitleAttribute:null
+tref 0100000d unknown:System.Security.Permissions.SecurityAction:null
+tref 0100000e unknown:System.Security.Permissions.SecurityPermissionAttribute:null
+tref 0100000f unknown:System.Security.UnverifiableCodeAttribute:null
+tref 01000010 unknown:System.Runtime.CompilerServices.RefSafetyRulesAttribute:null
+tref 01000011 unknown:System.AttributeTargets:null
+tref 01000012 unknown:System.AttributeUsageAttribute:null
+tref 01000013 System.Attribute@corlib
+tref 01000014 unknown:System.Runtime.CompilerServices.CompilerGeneratedAttribute:null
+tref 01000015 System.Type@corlib
+tref 01000016 System.Object@corlib
+tref 01000017 unknown:System.ParamArrayAttribute:null
+tref 01000018 System.Enum@corlib
+tref 01000019 unknown:System.FlagsAttribute:null
+tref 0100001a unknown:System.EventHandler:null
+tref 0100001b System.ValueType@corlib
+tref 0100001c unknown:System.Reflection.DefaultMemberAttribute:null
+tref 0100001d unknown:System.Collections.Generic.List`1:null
+tref 0100001e unknown:System.IComparable`1:null
+tref 0100001f System.Runtime.CompilerServices.DefaultInterpolatedStringHandler@corlib
+tref 01000020 unknown:System.Collections.Generic.KeyValuePair`2:null
+tref 01000021 unknown:System.Func`2:null
+tref 01000022 unknown:System.Collections.Generic.Dictionary`2:null
+tref 01000023 unknown:System.Runtime.CompilerServices.IsReadOnlyAttribute:null
+tref 01000024 System.Exception@corlib
+tref 01000025 unknown:System.Runtime.CompilerServices.AsyncStateMachineAttribute:null
+tref 01000026 System.Threading.Tasks.Task`1@corlib
+tref 01000027 unknown:System.Runtime.CompilerServices.IteratorStateMachineAttribute:null
+tref 01000028 System.Collections.Generic.IEnumerable`1@corlib
+tref 01000029 System.IDisposable@corlib
+tref 0100002a System.Collections.IEnumerator@corlib
+tref 0100002b System.Collections.Generic.IEnumerator`1@corlib
+tref 0100002c unknown:System.Runtime.CompilerServices.NullableAttribute:null
+tref 0100002d System.Collections.IEnumerable@corlib
+tref 0100002e unknown:System.Diagnostics.DebuggerHiddenAttribute:null
+tref 0100002f unknown:System.Runtime.CompilerServices.IAsyncStateMachine:null
+tref 01000030 unknown:System.Runtime.CompilerServices.TaskAwaiter:null
+tref 01000031 unknown:System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1:null
+tref 01000032 System.Delegate@corlib
+tref 01000033 unknown:System.Threading.Interlocked:null
+tref 01000034 unknown:System.EventArgs:null
+tref 01000035 System.Double@corlib
+tref 01000036 System.Int32@corlib
+tref 01000037 unknown:System.Runtime.CompilerServices.RuntimeHelpers:null
+tref 01000038 System.Array@corlib
+tref 01000039 unknown:System.RuntimeFieldHandle:null
+tref 0100003a System.String@corlib
+tref 0100003b unknown:System.InvalidCastException:null
+tref 0100003c unknown:System.Console:null
+tref 0100003d unknown:System.Environment:null
+tref 0100003e unknown:System.NotSupportedException:null
+tref 0100003f System.Threading.Tasks.Task@corlib
+tspec 1b000001 unknown:System.IComparable`1:ref<Sample.Circle@Sample>
+tspec 1b000002 System.Collections.Generic.IEnumerator`1@corlib<System.Int32@corlib>
+tspec 1b000003 System.Collections.Generic.IEnumerable`1@corlib<System.Int32@corlib>
+tspec 1b000004 Sample.Box`1@Sample<!0:!0>
+tspec 1b000005 unknown:System.Func`2:ref<!0:!0,!!0:!!0>
+tspec 1b000006 unknown:System.Collections.Generic.List`1:ref<unknown:System.Collections.Generic.KeyValuePair`2:value<System.String@corlib,!0:!0[]>>
+tspec 1b000007 unknown:System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1:value<System.Int32@corlib>
+tspec 1b000008 unknown:System.Func`2:ref<System.Int32@corlib,System.Int32@corlib>

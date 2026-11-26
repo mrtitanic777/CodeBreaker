@@ -3,6 +3,11 @@
 
 #include "dotnet/decompiler/metadata/metadata_extensions.hpp"
 
+#include <unordered_map>
+
+#include "dotnet/decompiler/metadata/method_semantics_lookup.hpp"
+#include "dotnet/decompiler/srm_extensions.hpp"
+
 namespace cb::dotnet::decompiler::metadata {
 
 const std::string& MetadataFile::name() const {
@@ -96,6 +101,60 @@ srm::GenericParameterHandle MetadataGenericContext::get_generic_method_type_para
     const auto params = metadata_->get_method_definition(method_).get_generic_parameters();
     if (index >= static_cast<int>(params.size())) return {};
     return params[static_cast<std::size_t>(index)];
+}
+
+// ---- the lazily made indexes ---------------------------------------------------------------------------------------------
+
+struct MetadataFile::Lookups {
+    std::once_flag type_once, forwarder_once, semantics_once, backing_once;
+    std::unordered_map<typesystem::TopLevelTypeName, srm::TypeDefinitionHandle> types;
+    std::unordered_map<typesystem::FullTypeName, srm::ExportedTypeHandle> forwarders;
+    std::unique_ptr<MethodSemanticsLookup> semantics;
+    std::unique_ptr<PropertyAndEventBackingFieldLookup> backing_fields;
+};
+
+MetadataFile::Lookups& MetadataFile::lookups() const {
+    std::call_once(lookups_once_, [this] { lookups_ = std::make_shared<Lookups>(); });
+    return *lookups_;
+}
+
+srm::TypeDefinitionHandle MetadataFile::get_type_definition(const typesystem::TopLevelTypeName& type_name) const {
+    Lookups& l = lookups();
+    std::call_once(l.type_once, [&] {
+        const srm::MetadataReader& md = metadata();
+        for (const srm::TypeDefinitionHandle handle : md.type_definitions()) {
+            const srm::TypeDefinition td = md.get_type_definition(handle);
+            if (!td.get_declaring_type().is_nil()) continue;   // nested type
+            const std::string ns = td.namespace_().is_nil() ? std::string() : std::string(md.get_string(td.namespace_()));
+            int type_parameter_count = 0;
+            std::string name = typesystem::split_type_parameter_count_from_reflection_name(std::string(md.get_string(td.name())), type_parameter_count);
+            l.types[typesystem::TopLevelTypeName(ns, std::move(name), type_parameter_count)] = handle;
+        }
+    });
+    const auto it = l.types.find(type_name);
+    return it != l.types.end() ? it->second : srm::TypeDefinitionHandle();
+}
+
+srm::ExportedTypeHandle MetadataFile::get_type_forwarder(const typesystem::FullTypeName& type_name) const {
+    Lookups& l = lookups();
+    std::call_once(l.forwarder_once, [&] {
+        const srm::MetadataReader& md = metadata();
+        for (const srm::ExportedTypeHandle handle : md.exported_types()) l.forwarders[get_full_type_name(md.get_exported_type(handle), md)] = handle;
+    });
+    const auto it = l.forwarders.find(type_name);
+    return it != l.forwarders.end() ? it->second : srm::ExportedTypeHandle();
+}
+
+const MethodSemanticsLookup& MetadataFile::method_semantics_lookup() const {
+    Lookups& l = lookups();
+    std::call_once(l.semantics_once, [&] { l.semantics = std::make_unique<MethodSemanticsLookup>(metadata()); });
+    return *l.semantics;
+}
+
+const PropertyAndEventBackingFieldLookup& MetadataFile::property_and_event_backing_field_lookup() const {
+    Lookups& l = lookups();
+    std::call_once(l.backing_once, [&] { l.backing_fields = std::make_unique<PropertyAndEventBackingFieldLookup>(metadata()); });
+    return *l.backing_fields;
 }
 
 }  // namespace cb::dotnet::decompiler::metadata

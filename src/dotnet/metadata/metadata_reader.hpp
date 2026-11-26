@@ -691,7 +691,7 @@ private:
     bool column_in_order(TableIndex t, int column) const;
     mutable std::mutex order_mutex_;
     mutable std::array<std::array<std::int8_t, 10>, kTableCount> order_{};   // per column: 0 not yet known, 1 in order, 2 not
-    NamespaceDefinitionHandle namespace_for(const std::string& full_name) const;
+    void build_namespaces() const;
     mutable std::once_flag namespaces_once_;
     mutable std::vector<NamespaceNode> namespaces_;
     mutable std::once_flag nested_once_;

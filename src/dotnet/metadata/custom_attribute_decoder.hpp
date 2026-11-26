@@ -226,8 +226,9 @@ private:
             if (auto s = val.read_serialized_string()) a.value = std::move(*s);
             break;
         case SerializationTypeCode::Type: {
+            // a null name is a null Type (SRM hands the provider null, and ILSpy's provider gives null back for it)
             const std::optional<std::string> name = val.read_serialized_string();
-            a.value.template emplace<Type>(provider_.get_type_from_serialized_name(name.value_or(std::string())));
+            if (name) a.value.template emplace<Type>(provider_.get_type_from_serialized_name(*name));
             break;
         }
         case SerializationTypeCode::SZArray: {

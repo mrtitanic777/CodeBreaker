@@ -59,6 +59,17 @@ Not ported, as nothing CodeBreaker does needs them: PDB writing (`DebugInfo/`), 
   disassembler,il,output,typesystem,util}`, about 3,100 lines (and .NET's Unicode category table); `show_il` is `ilspycmd -il` byte for byte on the test assemblies and seven
   real ones up to CoreLib's 1.39 million lines, ten times as fast. .NET's own text rules it needs (Unicode categories, the "R" number
   format) are copied from .NET by `testdata/oracle/NetText` and proved on 16,000 values.
+- Stage 3 (done 2026-11-26): the type system, `dotnet/decompiler/typesystem` (about 12,000 lines): ILSpy's interfaces, the made types
+  (arrays, generic instances, tuples, function pointers, nullability ...) kept once each in a per-compilation arena, specialized and fake
+  members, the Metadata* entities, MetadataModule's resolution of references, attributes (custom ones decoded when read, the ones C#
+  writes from metadata flags made up), the compilation (SimpleCompilation, MinimalCorlib, merged namespaces) and DecompilerTypeSystem,
+  with the universal assembly resolver (`decompiler/metadata/universal_assembly_resolver`) and System.Reflection.Metadata's TypeName
+  parser (`dotnet/metadata/type_name`). `testdata/oracle/TypeSystemDump` writes ILSpy's own type system as text; ours matches it line
+  for line on the test assemblies (the checked-in golden, no references) and, with references resolved as ILSpy resolves them, on
+  System.Linq, System.Text.Json, System.Private.Xml, CoreLib 9 (190,000 lines), mscorlib 2.0 and 4.0, System.Core, System.Xml,
+  WinForms, WPF's PresentationFramework, Microsoft.VisualBasic, XNA 3.1's Framework and Game, Roslyn's Microsoft.CodeAnalysis.CSharp
+  and ICSharpCode.Decompiler itself. Found on the way: our SRM ordered child namespaces differently from SRM's NamespaceCache (fixed).
+  Not yet ported: ExtensionInfo (C# 14 extension blocks), the PDB's extra type information, DecompilerSettings.
 
 ## How each stage is proved
 
