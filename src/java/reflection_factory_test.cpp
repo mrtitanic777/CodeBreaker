@@ -123,6 +123,8 @@ CB_TEST("java.reflection_factory.a_class_without_the_constructor_is_left_out", [
     CB_CHECK(header_construction(pig, "EntityPig", 0) == Construction::New);
     CB_CHECK(header_construction(pig, "EntityPig", 2) == Construction::None);
     CB_CHECK(!header_has_two_phase_init(pig, "EntityPi", 1));
+    const std::string living = "class EntityLiving : public Entity {\npublic:\n\tEntityLiving();\n\tEntityLiving* j2xInit(World* var1);\n\tvirtual int getMaxHealth() = 0;\n};";
+    CB_CHECK(header_construction(living, "EntityLiving", 1) == Construction::None);   // abstract
     const Constructible only_flying = [](const std::string& cls, std::size_t argc) {
         return cls == "Packet10Flying" && argc == 0 ? Construction::New : Construction::None;
     };

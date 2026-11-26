@@ -223,6 +223,9 @@ bool header_has_two_phase_init(std::string_view header_text, std::string_view cl
 }
 
 Construction header_construction(std::string_view header_text, std::string_view cls, std::size_t argc) {
+    // an abstract class (a pure virtual `= 0;`) is not built at all: Java's newInstance() throws InstantiationException for it
+    // (Beta 1.9's EntityLiving is registered like the mobs)
+    if (header_text.find(") = 0;") != std::string_view::npos) return Construction::None;
     if (header_has_two_phase_init(header_text, cls, argc)) return Construction::TwoPhase;
     return header_has_constructor(header_text, cls, argc) ? Construction::New : Construction::None;
 }

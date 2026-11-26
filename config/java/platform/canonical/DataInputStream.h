@@ -15,16 +15,17 @@ class DataInputStream : public DataInput {
 	InputStream* _src;                 // STREAM mode: the socket source (may be NULL if the connect failed)
 	bool _streaming;                   // true -> network stream mode (read on demand); false -> file/drained mode
 	unsigned char _rbuf[4096]; int _rlen; int _rpos;
+	int _mark;                         // mark(): the position reset() returns to (-1: none)
 public:
 	// FILE mode: drain the whole stream up front, then parse the buffer.
-	DataInputStream(InputStream* in) : _src(0), _streaming(false), _rlen(0), _rpos(0) {
+	DataInputStream(InputStream* in) : _src(0), _streaming(false), _rlen(0), _rpos(0), _mark(-1) {
 		if (in) { unsigned char tmp[4096]; int n;
 			while ((n = in->read(tmp, 0, (int)sizeof(tmp))) > 0) _owned.insert(_owned.end(), tmp, tmp + n); }
 		data = _owned.empty() ? (const unsigned char*)0 : &_owned[0];
 		length = (int)_owned.size(); pos = 0;
 	}
 	// STREAM mode (network): DO NOT drain (a socket never EOFs) -- pull bytes on demand. The bool selects it.
-	DataInputStream(InputStream* in, bool /*streaming*/) : _src(in), _streaming(true), _rlen(0), _rpos(0) {
+	DataInputStream(InputStream* in, bool /*streaming*/) : _src(in), _streaming(true), _rlen(0), _rpos(0), _mark(-1) {
 		data = 0; length = 0; pos = 0;
 	}
 	virtual int readUnsignedByte() {
@@ -45,6 +46,15 @@ public:
 	int read(JArray<unsigned char>& b) {
 		int n = 0; for (; n < b.length && pos < length; ++n) b[n] = data[pos++];
 		return (n > 0) ? n : (b.length == 0 ? 0 : -1);
+	}
+	// mark(limit) / reset(): Beta's Packet.readPacket marks, then on a short read resets to try again when more bytes came. A file
+	// stream returns to the marked byte; a network stream to the marked byte of its receive buffer while the buffer still holds it.
+	bool markSupported() { return true; }
+	void mark(int /*readlimit*/) { _mark = _streaming ? _rpos : pos; }
+	void reset() {
+		if (_mark < 0) return;
+		if (_streaming) { if (_mark <= _rlen) _rpos = _mark; }
+		else pos = _mark;
 	}
 	void close() {}
 };

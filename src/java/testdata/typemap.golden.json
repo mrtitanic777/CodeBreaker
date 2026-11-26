@@ -289,6 +289,7 @@
   "IntBuffer",
   "InterruptedException",
   "Iterator",
+  "JDialog",
   "JFileChooser",
   "JOptionPane",
   "KeyEvent",

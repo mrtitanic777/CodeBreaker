@@ -88,6 +88,7 @@ const std::map<std::string, std::string, std::less<>>& external_packages() {
         {"Robot", "java.awt"},
         {"FileDialog", "java.awt"},
         {"JFileChooser", "javax.swing"},
+        {"JDialog", "javax.swing"},
         {"Cipher", "javax.crypto"}, {"CipherInputStream", "javax.crypto"}, {"SecretKey", "javax.crypto"}, {"SecretKeyFactory", "javax.crypto"},
         {"PBEKeySpec", "javax.crypto.spec"}, {"PBEParameterSpec", "javax.crypto.spec"}, {"GeneralSecurityException", "java.security"},                         // (early Indev's level load/save dialog)
         {"FileNameExtensionFilter", "javax.swing.filechooser"},
@@ -730,10 +731,16 @@ void Runtime::build_stubs() {
     add_class_stub("JFileChooser.h", {
         .name = "JFileChooser",
         .void_methods = {"setFileFilter", "setLocation", "setDialogTitle", "setCurrentDirectory", "setFileSelectionMode", "setAcceptAllFileFilterUsed"},
-        .ret_methods = {{"showOpenDialog", "int", "1"}, {"showSaveDialog", "int", "1"}, {"getSelectedFile", "File*", "0"}},
-        .includes = {"Point"},
+        .ret_methods = {{"showOpenDialog", "int", "1"}, {"showSaveDialog", "int", "1"}, {"getSelectedFile", "File*", "0"},
+            {"createDialog", "JDialog*", "new JDialog()"}},   // (Indev 20100130's chooser overrides it and dresses the dialog)
+        .includes = {"Point", "JDialog"},
         .forward_decls = {"File"},
         .extra = {"Point* getLocation() { static Point _p; return &_p; }", "static const int APPROVE_OPTION = 0;", "static const int CANCEL_OPTION = 1;"}});
+    // the chooser's dialog: never shown (the chooser answers CANCEL), so its window calls do nothing
+    add_class_stub("JDialog.h", {
+        .name = "JDialog",
+        .void_methods = {"setLocationRelativeTo", "setAlwaysOnTop", "addWindowFocusListener", "setVisible", "dispose", "toFront",
+            "setTitle", "setModal", "pack"}});
     add_class_stub("FileNameExtensionFilter.h", {.name = "FileNameExtensionFilter"});
     add_class_stub("PixelFormat.h", {   // (Beta 1.8: new PixelFormat().withDepthBits(24); the SDL window chooses its own)
         .name = "PixelFormat",
