@@ -84,6 +84,10 @@ bool is_pointer(std::string_view ctype);
 std::string array_element(std::string_view ctype);
 // The class a pointer type points to (`Block*` -> `Block`), if it is a plain class name.
 std::optional<std::string> pointee_class(std::string_view ctype);
+// Whether a cast between two of the program's classes crosses the hierarchy: neither is the other or extends or implements it
+// (a TileEntity to IInventory, which only its subclass implements). Such a cast is a dynamic_cast; a C-style one would
+// reinterpret the pointer. `find` gives the program's parsed class of a name (null: not the program's).
+bool is_cross_cast(std::string_view from, std::string_view to, const std::function<const jir::JClass*(std::string_view)>& find);
 
 // ---------------------------------------------------------------------------------------------- what the writers share
 // What the bodies of one conversion share: the converter's resolver and parsed classes, the runtime it will write beside them,

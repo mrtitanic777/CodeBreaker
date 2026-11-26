@@ -117,11 +117,22 @@ CB_TEST("java.reflection_factory.a_class_without_the_constructor_is_left_out", [
                              "\taddIdClassMapping(10, j2xClassOf(typeid(Packet10Flying)));\n"
                              "\taddIdClassMapping(11, j2xClassOf(typeid(Packet11PlayerPosition)));\n}\n"
                              "Packet* Packet::getNewPacket(Class* var1) {\n\treturn (Packet*)var1->newInstance();\n}\n";
-    const Constructible only_flying = [](const std::string& cls, std::size_t argc) { return cls == "Packet10Flying" && argc == 0; };
+    // the two-phase init counts, ahead of the X() every two-phase class has (Beta 1.6's EntityPig(World) -> j2xInit(World*))
+    const std::string pig = "class EntityPig : public EntityAnimal {\npublic:\n\tEntityPig();\n\tEntityPig* j2xInit(World* var1);\n};";
+    CB_CHECK(header_construction(pig, "EntityPig", 1) == Construction::TwoPhase);
+    CB_CHECK(header_construction(pig, "EntityPig", 0) == Construction::New);
+    CB_CHECK(header_construction(pig, "EntityPig", 2) == Construction::None);
+    CB_CHECK(!header_has_two_phase_init(pig, "EntityPi", 1));
+    const Constructible only_flying = [](const std::string& cls, std::size_t argc) {
+        return cls == "Packet10Flying" && argc == 0 ? Construction::New : Construction::None;
+    };
     const ProcessResult r = process(text, "Packet", Registrars{{"addIdClassMapping"}}, only_flying);
     CB_CHECK(r.text.find("return new Packet10Flying();") != std::string::npos);
     CB_CHECK(r.text.find("new Packet11PlayerPosition") == std::string::npos);
     CB_CHECK(r.text.find("// Packet11PlayerPosition: no constructor of 0 argument(s)") != std::string::npos);
+    const Constructible two_phase = [](const std::string&, std::size_t) { return Construction::TwoPhase; };
+    const ProcessResult t = process(text, "Packet", Registrars{{"addIdClassMapping"}}, two_phase);
+    CB_CHECK(t.text.find("return (new Packet10Flying())->j2xInit();") != std::string::npos);
 });
 
 CB_TEST("java.reflection_factory.process_details", [] {

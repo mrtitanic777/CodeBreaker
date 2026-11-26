@@ -363,6 +363,22 @@ std::string Writer::arm(const std::string& code, const std::string& ctype_of_arm
     return "(" + target + ")(" + code + ")";
 }
 
+static bool program_class_is_a(const std::function<const jir::JClass*(std::string_view)>& find, std::string_view a, std::string_view b,
+                               int depth = 0) {
+    if (a == b) return true;
+    const jir::JClass* cls = find(a);
+    if (cls == nullptr || depth > 64) return false;
+    if (cls->parent && program_class_is_a(find, *cls->parent, b, depth + 1)) return true;
+    for (const std::string& i : cls->interfaces)
+        if (program_class_is_a(find, i, b, depth + 1)) return true;
+    return false;
+}
+
+bool is_cross_cast(std::string_view from, std::string_view to, const std::function<const jir::JClass*(std::string_view)>& find) {
+    return from != to && find(from) != nullptr && find(to) != nullptr && !program_class_is_a(find, from, to) &&
+           !program_class_is_a(find, to, from);
+}
+
 Code Writer::write_cast(const ir::Node& e, const ir::Cast& c) {
     const Code x = expr(c.x);
     if (x.ctype.starts_with("JObject") && class_type(e.type) != nullptr && typemap::boxed_value_types().contains(e.type->simple()))
@@ -373,6 +389,13 @@ Code Writer::write_cast(const ir::Node& e, const ir::Cast& c) {
     if (const auto it = detail::saturating_casts().find(ct); it != detail::saturating_casts().end())   // Java's (int)/(long) of a float
         return {std::format("{}({})", it->second, x.code), ct};                                          // saturates; C++'s is undefined out of range
     if (e.type && e.type->is_prim() && !detail::is_simple_chain(x.code)) return {std::format("({})({})", ct, x.code), ct};   // grouped
+    // A cast across the hierarchy -- (IInventory)world.getBlockTileEntity(..): a TileEntity to an interface it does not
+    // implement, only its subclass does -- finds the object's IInventory part at run time. C++'s C-style cast between unrelated
+    // classes reinterprets the pointer: the TileEntity part called as the IInventory (Indev 20100128 crashed so, in
+    // TileEntityChest::readFromNBT, called for setInventorySlotContents). Up- and down-casts stay C-style (static).
+    const auto from = pointee_class(x.ctype), to = pointee_class(ct);
+    if (from && to && is_cross_cast(*from, *to, [this](std::string_view n) { return ctx_.parsed_class(n); }))
+        return {std::format("dynamic_cast<{}*>({})", *to, x.code), ct};
     return {"(" + ct + ")" + x.code, ct};   // as the text path: the reflection pass reads `(T*)recv->newInstance()`
 }
 

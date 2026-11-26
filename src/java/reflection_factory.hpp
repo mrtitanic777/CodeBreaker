@@ -55,8 +55,10 @@ struct ProcessResult {
     std::optional<Factory> factory;     // set when a factory was generated
 };
 
-// Whether a class has a constructor taking `argc` arguments (Java's newInstance() / getConstructor(...) succeed); unset: all do.
-using Constructible = std::function<bool(const std::string& cls, std::size_t argc)>;
+// How a class is built from `argc` arguments: not at all (Java's newInstance() / getConstructor(...) throw), by its constructor
+// (`new X(a0)`), or in two phases (`(new X())->j2xInit(a0)`: the constructor the emitter split so virtual calls in it dispatch).
+enum class Construction { None, New, TwoPhase };
+using Constructible = std::function<Construction(const std::string& cls, std::size_t argc)>;   // unset: every class by `new`
 
 // Rewrite the reflection sites in one .cpp (`registry` is its class name) to a generated factory, inserted after
 // the include block. A registered class that `constructible` says has no such constructor is left out: the factory answers NULL
@@ -66,6 +68,10 @@ ProcessResult process(std::string_view text, std::string_view registry, const Re
 // Whether a generated header `header_text` of class `cls` declares a constructor of `argc` parameters (none declared: only the
 // implicit no-argument one).
 bool header_has_constructor(std::string_view header_text, std::string_view cls, std::size_t argc);
+// Whether it declares the two-phase `cls* j2xInit(...)` of `argc` parameters.
+bool header_has_two_phase_init(std::string_view header_text, std::string_view cls, std::size_t argc);
+// How the class of that header is built from `argc` arguments (the two-phase init first: such a class also has `X()`).
+Construction header_construction(std::string_view header_text, std::string_view cls, std::size_t argc);
 
 // Rewrite the reflection sites of a NON-registry file to use the shared factories. Returns the new text and how
 // many sites it rewrote.

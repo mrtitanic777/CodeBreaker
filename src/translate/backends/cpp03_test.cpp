@@ -367,6 +367,29 @@ CB_TEST("translate.cpp03.text.types", [] {
     CB_CHECK_EQ(c3::pointee_class("Block*").value_or("-"), std::string("Block"));
     CB_CHECK(!c3::pointee_class("JList<Block*>").has_value());
     CB_CHECK(!c3::pointee_class("Block**").has_value());
+    {   // TileEntityChest extends TileEntity implements IInventory: TileEntity -> IInventory crosses; up and down do not
+        std::vector<jir::JClass> cls(4);
+        cls[0].name = "TileEntity";
+        cls[1].name = "IInventory";
+        cls[1].is_interface = true;
+        cls[2].name = "TileEntityChest";
+        cls[2].parent = "TileEntity";
+        cls[2].interfaces = {"IInventory"};
+        cls[3].name = "BigChest";
+        cls[3].parent = "TileEntityChest";
+        const auto find = [&cls](std::string_view n) -> const jir::JClass* {
+            for (const jir::JClass& c : cls)
+                if (c.name == n) return &c;
+            return nullptr;
+        };
+        CB_CHECK(c3::is_cross_cast("TileEntity", "IInventory", find));
+        CB_CHECK(c3::is_cross_cast("IInventory", "TileEntity", find));
+        CB_CHECK(!c3::is_cross_cast("TileEntity", "TileEntityChest", find));   // down
+        CB_CHECK(!c3::is_cross_cast("BigChest", "IInventory", find));          // up, through the parent's interface
+        CB_CHECK(!c3::is_cross_cast("IInventory", "BigChest", find));
+        CB_CHECK(!c3::is_cross_cast("TileEntity", "TileEntity", find));
+        CB_CHECK(!c3::is_cross_cast("Object", "IInventory", find));            // not the program's: as before
+    }
     const auto params = c3::split_params("int a, const JavaString& b, JMap<int, JavaString> m");
     CB_CHECK_EQ(params.size(), std::size_t(3));
     CB_CHECK_EQ(params[1].first, std::string("const JavaString&"));

@@ -181,28 +181,50 @@ bool Registrars::matches_line(std::string_view line) const {
 
 // ---- the passes -----------------------------------------------------------------------------------------
 
+// The parameter count of a declaration's `(...)` that `rest` starts with (nullopt: no closed list, or C's `...`).
+static std::optional<std::size_t> param_count(std::string_view rest) {
+    if (!rest.starts_with('(')) return std::nullopt;
+    const std::size_t close = rest.find(')');
+    if (close == std::string_view::npos) return std::nullopt;
+    const std::string_view params = text::trim(rest.substr(1, close - 1));
+    if (params == "...") return std::nullopt;
+    std::size_t n = params.empty() || params == "void" ? 0 : 1;
+    int depth = 0;
+    for (const char ch : params) {
+        if (ch == '<' || ch == '(') ++depth;
+        else if (ch == '>' || ch == ')') --depth;
+        else if (ch == ',' && depth == 0) ++n;
+    }
+    return n;
+}
+
 bool header_has_constructor(std::string_view header_text, std::string_view cls, std::size_t argc) {
     bool any = false;
     for (std::string_view line : text::lines(header_text)) {
         line = text::trim(line);
         if (line.starts_with("explicit ")) line = text::trim(line.substr(9));
         if (!line.starts_with(cls) || line.size() <= cls.size()) continue;
-        std::string_view rest = text::trim(line.substr(cls.size()));
-        if (!rest.starts_with('(')) continue;
-        const std::size_t close = rest.find(')');
-        if (close == std::string_view::npos) continue;
+        const std::string_view rest = text::trim(line.substr(cls.size()));
+        if (!rest.starts_with('(') || rest.find(')') == std::string_view::npos) continue;
         any = true;
-        const std::string_view params = text::trim(rest.substr(1, close - 1));
-        std::size_t n = params.empty() || params == "void" ? 0 : 1;
-        int depth = 0;
-        for (const char ch : params) {
-            if (ch == '<' || ch == '(') ++depth;
-            else if (ch == '>' || ch == ')') --depth;
-            else if (ch == ',' && depth == 0) ++n;
-        }
-        if (n == argc && params != "...") return true;
+        if (param_count(rest) == argc) return true;
     }
     return !any && argc == 0;   // (no constructor declared: the implicit no-argument one)
+}
+
+bool header_has_two_phase_init(std::string_view header_text, std::string_view cls, std::size_t argc) {
+    const std::string head = std::string(cls) + "* j2xInit";
+    for (std::string_view line : text::lines(header_text)) {
+        line = text::trim(line);
+        if (line.starts_with("virtual ")) line = text::trim(line.substr(8));
+        if (line.starts_with(head) && param_count(text::trim(line.substr(head.size()))) == argc) return true;
+    }
+    return false;
+}
+
+Construction header_construction(std::string_view header_text, std::string_view cls, std::size_t argc) {
+    if (header_has_two_phase_init(header_text, cls, argc)) return Construction::TwoPhase;
+    return header_has_constructor(header_text, cls, argc) ? Construction::New : Construction::None;
 }
 
 ProcessResult process(std::string_view text_in, std::string_view registry, const Registrars& registrars, const Constructible& constructible) {
@@ -243,11 +265,17 @@ ProcessResult process(std::string_view text_in, std::string_view registry, const
         "\tif (!c) return NULL;",
     };
     for (const std::string& x : concrete) {
-        if (constructible && !constructible(x, arg_types.size())) {   // Java's newInstance() throws for it; the registry answers null
+        const Construction how = constructible ? constructible(x, arg_types.size()) : Construction::New;
+        if (how == Construction::None) {   // Java's newInstance() throws for it; the registry answers null
             lines.push_back(std::format("\t// {}: no constructor of {} argument(s) -- newInstance() fails in Java too", x, arg_types.size()));
             continue;
         }
-        lines.push_back(std::format("\tif (*c == Class(typeid({}))) return new {}({});", x, x, callargs));
+        // FIXED BUG two-phase-factory: a class whose constructor became j2xInit (Beta's entities: EntityPig(World)) was left out,
+        // so every spawn got NULL and crashed in SpawnerAnimals.
+        if (how == Construction::TwoPhase)
+            lines.push_back(std::format("\tif (*c == Class(typeid({}))) return (new {}())->j2xInit({});", x, x, callargs));
+        else
+            lines.push_back(std::format("\tif (*c == Class(typeid({}))) return new {}({});", x, x, callargs));
     }
     lines.insert(lines.end(), {"\treturn NULL;", "}", ""});
     const std::string factory = text::join(lines, "\n");
@@ -344,7 +372,7 @@ RunResult run(const stdfs::path& out_dir, const Registrars& registrars) {
         if (!text || (!has(*text, "newInstance") && !has(*text, "_createByReflection("))) continue;
         const Constructible constructible = [&out_dir](const std::string& cls, std::size_t argc) {
             const auto header = textutil::try_read_text(out_dir / fs::from_text(cls + ".h"));
-            return !header || header_has_constructor(*header, cls, argc);   // (no header: no say, keep it)
+            return header ? header_construction(*header, cls, argc) : Construction::New;   // (no header: no say, keep it)
         };
         ProcessResult r = process(*text, f.substr(0, f.size() - 4), registrars, constructible);
         if (r.text != *text) write(f, r.text);

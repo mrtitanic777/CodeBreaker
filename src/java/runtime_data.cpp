@@ -366,7 +366,8 @@ void Runtime::build_stubs() {
             {"GL_QUERY_RESULT", 34918}, {"GL_QUERY_RESULT_AVAILABLE", 34919}, {"GL_QUERY_COUNTER_BITS", 34916}}});
     add_ns_stub("GL12.h", {
         .name = "GL12",
-        .constants = {{"GL_RESCALE_NORMAL", 32826}, {"GL_CLAMP_TO_EDGE", 33071}, {"GL_SMOOTH_POINT_SIZE_RANGE", 2834}}});
+        .constants = {{"GL_RESCALE_NORMAL", 32826}, {"GL_CLAMP_TO_EDGE", 33071}, {"GL_SMOOTH_POINT_SIZE_RANGE", 2834},
+            {"GL_BGR", 32992}, {"GL_BGRA", 32993}}});   // (Beta 1.2_02's screenshot: glReadPixels in BGR)
     add_ns_stub("NVFogDistance.h", {
         .name = "NVFogDistance",
         .constants = {{"GL_FOG_DISTANCE_MODE_NV", 34138}, {"GL_EYE_RADIAL_NV", 34139}, {"GL_EYE_PLANE_ABSOLUTE_NV", 34140}}});
@@ -733,7 +734,10 @@ void Runtime::build_stubs() {
         .forward_decls = {"File"},
         .extra = {"Point* getLocation() { static Point _p; return &_p; }", "static const int APPROVE_OPTION = 0;", "static const int CANCEL_OPTION = 1;"}});
     add_class_stub("FileNameExtensionFilter.h", {.name = "FileNameExtensionFilter"});
-    add_class_stub("PixelFormat.h", {.name = "PixelFormat"});
+    add_class_stub("PixelFormat.h", {   // (Beta 1.8: new PixelFormat().withDepthBits(24); the SDL window chooses its own)
+        .name = "PixelFormat",
+        .ret_methods = {{"withDepthBits", "PixelFormat*", "this"}, {"withStencilBits", "PixelFormat*", "this"},
+            {"withAlphaBits", "PixelFormat*", "this"}, {"withSamples", "PixelFormat*", "this"}, {"withBitsPerPixel", "PixelFormat*", "this"}}});
     add_class_stub("ContextAttribs.h", {.name = "ContextAttribs"});
     add_class_stub("Point.h", {.name = "Point", .extra = {"int x;", "int y;"}});
     add_class_stub("PointerInfo.h", {
