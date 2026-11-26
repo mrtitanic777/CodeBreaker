@@ -248,6 +248,7 @@ struct JObject {
 	JObject(double v) : kind(8), i((long long)v), d(v), p(0), ti(&typeid(double)) {}  // boxed Double
 	JObject(const char* v) : kind(v ? 4 : 0), i(0), d(0), s(v), p(0), ti(v ? &typeid(JavaString) : 0) {}
 	JObject(const JavaString& v) : kind(v.isNull() ? 0 : 4), i(0), d(0), s(v), p(0), ti(v.isNull() ? 0 : &typeid(JavaString)) {}   // a null String boxes to null
+	JObject(const std::string& v) : kind(4), i(0), d(0), s(v), p(0), ti(&typeid(JavaString)) {}   // text from a stream (readUTF): a String
 	// box a string-concat builder as its String (a varargs `Object...` element is often a `"x" + n`
 	// concat -> JCat; without this it needs two user conversions to reach JObject and silently degrades
 	// to the built-in comma operator in the JArrayInit chain -- GuiConnectFailed(..., "..." + host)).

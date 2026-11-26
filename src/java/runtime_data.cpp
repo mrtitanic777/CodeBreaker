@@ -476,11 +476,25 @@ void Runtime::build_stubs() {
         .name = "Logger",
         .void_methods = {"log", "info", "warning", "severe", "fine"},
         .extra = {"static Logger* getLogger(...) { return new Logger(); }"}});
+    // java.util.Calendar over the computer's clock (local time): get() answers the field, so Beta's date splashes ("Happy new year!",
+    // "Merry X-mas!", Notch's birthday) and the save dates are right. FIXED BUG calendar-zero: every field was 0.
     add_class_stub("Calendar.h", {
         .name = "Calendar",
         .void_methods = {"set", "setTime", "add"},
-        .ret_methods = {{"get", "int", "0"}, {"getTime", "void*", "0"}, {"getTimeInMillis", "long long", "0LL"}},
-        .extra = {"static Calendar* getInstance() { return new Calendar(); }", "static const int JANUARY = 0, FEBRUARY = 1, DECEMBER = 11, DATE = 5, MONTH = 2, YEAR = 1;"}});
+        .ret_methods = {{"getTime", "void*", "0"}},
+        .ctors = false,
+        .extra = {"long long _j2xms;",
+                  "Calendar() : _j2xms((long long)time(0) * 1000LL) {}",
+                  "static Calendar* getInstance() { return new Calendar(); }",
+                  "void setTimeInMillis(long long ms) { _j2xms = ms; }",
+                  "long long getTimeInMillis() { return _j2xms; }",
+                  "int get(int field) { time_t t = (time_t)(_j2xms / 1000LL); struct tm* lt = localtime(&t); if (!lt) return 0; "
+                  "switch (field) { case 1: return lt->tm_year + 1900; case 2: return lt->tm_mon; case 5: return lt->tm_mday; "
+                  "case 6: return lt->tm_yday + 1; case 7: return lt->tm_wday + 1; case 10: return lt->tm_hour % 12; case 11: return lt->tm_hour; "
+                  "case 12: return lt->tm_min; case 13: return lt->tm_sec; } return 0; }",
+                  "static const int JANUARY = 0, FEBRUARY = 1, DECEMBER = 11, YEAR = 1, MONTH = 2, DATE = 5, DAY_OF_MONTH = 5, DAY_OF_YEAR = 6, "
+                  "DAY_OF_WEEK = 7, HOUR = 10, HOUR_OF_DAY = 11, MINUTE = 12, SECOND = 13;"},
+        .prelude = {"#include <ctime>"}});
     add_class_stub("GregorianCalendar.h", {.name = "GregorianCalendar", .bases = {"Calendar"}, .includes = {"Calendar"}});
     add_class_stub("Clipboard.h", {
         .name = "Clipboard",
