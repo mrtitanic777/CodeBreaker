@@ -8,6 +8,7 @@ public class Plain extends Base {
     public static int computed = compute(2);
     public static int[] table = new int[]{1, 2, 3};
     public static byte[] raw = new byte[]{1, 2};
+    public static Foo[] made = new Foo[]{new Foo(), null};   // objects: filled in initStatics()
     public static int[][] grid = new int[][]{{1, 2}, {3}};
     public static Foo[] gapItems = new Foo[]{gapNull, null};
     public static int gapInit = gapMakeIt(1);

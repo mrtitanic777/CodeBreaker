@@ -17,6 +17,7 @@ Foo* Plain::s_made;
 int Plain::s_computed;
 JArray<int > Plain::s_table;
 JArray<unsigned char > Plain::s_raw;
+JArray<Foo* > Plain::s_made;
 JArray<JArray<int > > Plain::s_grid;
 JArray<Foo* > Plain::s_gapItems;
 int Plain::s_gapInit;
@@ -138,6 +139,8 @@ void Plain::initStatics()
 	// J2X-GAP: static field Plain.table was not translated (see the ledger)
 	throw new UnsupportedOperationException();
 	// J2X-GAP: static field Plain.raw was not translated (see the ledger)
+	throw new UnsupportedOperationException();
+	// J2X-GAP: static field Plain.made was not translated (see the ledger)
 	throw new UnsupportedOperationException();
 	// J2X-GAP: static field Plain.grid was not translated (see the ledger)
 	throw new UnsupportedOperationException();
