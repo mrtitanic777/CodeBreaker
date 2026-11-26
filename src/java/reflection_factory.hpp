@@ -18,6 +18,7 @@
 
 #include <cstddef>
 #include <filesystem>
+#include <functional>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -54,9 +55,17 @@ struct ProcessResult {
     std::optional<Factory> factory;     // set when a factory was generated
 };
 
+// Whether a class has a constructor taking `argc` arguments (Java's newInstance() / getConstructor(...) succeed); unset: all do.
+using Constructible = std::function<bool(const std::string& cls, std::size_t argc)>;
+
 // Rewrite the reflection sites in one .cpp (`registry` is its class name) to a generated factory, inserted after
-// the include block.
-ProcessResult process(std::string_view text, std::string_view registry, const Registrars& registrars = {});
+// the include block. A registered class that `constructible` says has no such constructor is left out: the factory answers NULL
+// for it, as Java's newInstance() throws and the registry's catch answers null (Alpha 1.0.7's Packet11PlayerPosition).
+ProcessResult process(std::string_view text, std::string_view registry, const Registrars& registrars = {}, const Constructible& constructible = {});
+
+// Whether a generated header `header_text` of class `cls` declares a constructor of `argc` parameters (none declared: only the
+// implicit no-argument one).
+bool header_has_constructor(std::string_view header_text, std::string_view cls, std::size_t argc);
 
 // Rewrite the reflection sites of a NON-registry file to use the shared factories. Returns the new text and how
 // many sites it rewrote.

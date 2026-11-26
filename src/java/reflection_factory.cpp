@@ -181,7 +181,31 @@ bool Registrars::matches_line(std::string_view line) const {
 
 // ---- the passes -----------------------------------------------------------------------------------------
 
-ProcessResult process(std::string_view text_in, std::string_view registry, const Registrars& registrars) {
+bool header_has_constructor(std::string_view header_text, std::string_view cls, std::size_t argc) {
+    bool any = false;
+    for (std::string_view line : text::lines(header_text)) {
+        line = text::trim(line);
+        if (line.starts_with("explicit ")) line = text::trim(line.substr(9));
+        if (!line.starts_with(cls) || line.size() <= cls.size()) continue;
+        std::string_view rest = text::trim(line.substr(cls.size()));
+        if (!rest.starts_with('(')) continue;
+        const std::size_t close = rest.find(')');
+        if (close == std::string_view::npos) continue;
+        any = true;
+        const std::string_view params = text::trim(rest.substr(1, close - 1));
+        std::size_t n = params.empty() || params == "void" ? 0 : 1;
+        int depth = 0;
+        for (const char ch : params) {
+            if (ch == '<' || ch == '(') ++depth;
+            else if (ch == '>' || ch == ')') --depth;
+            else if (ch == ',' && depth == 0) ++n;
+        }
+        if (n == argc && params != "...") return true;
+    }
+    return !any && argc == 0;   // (no constructor declared: the implicit no-argument one)
+}
+
+ProcessResult process(std::string_view text_in, std::string_view registry, const Registrars& registrars, const Constructible& constructible) {
     const std::string text(text_in);
     const auto world = world_arg_re().search(text);
     const auto plain = plain_re().search(text);
@@ -218,7 +242,13 @@ ProcessResult process(std::string_view text_in, std::string_view registry, const
         "{",
         "\tif (!c) return NULL;",
     };
-    for (const std::string& x : concrete) lines.push_back(std::format("\tif (*c == Class(typeid({}))) return new {}({});", x, x, callargs));
+    for (const std::string& x : concrete) {
+        if (constructible && !constructible(x, arg_types.size())) {   // Java's newInstance() throws for it; the registry answers null
+            lines.push_back(std::format("\t// {}: no constructor of {} argument(s) -- newInstance() fails in Java too", x, arg_types.size()));
+            continue;
+        }
+        lines.push_back(std::format("\tif (*c == Class(typeid({}))) return new {}({});", x, x, callargs));
+    }
     lines.insert(lines.end(), {"\treturn NULL;", "}", ""});
     const std::string factory = text::join(lines, "\n");
 
@@ -312,7 +342,11 @@ RunResult run(const stdfs::path& out_dir, const Registrars& registrars) {
     for (const std::string& f : files) {
         const auto text = read(f);
         if (!text || (!has(*text, "newInstance") && !has(*text, "_createByReflection("))) continue;
-        ProcessResult r = process(*text, f.substr(0, f.size() - 4), registrars);
+        const Constructible constructible = [&out_dir](const std::string& cls, std::size_t argc) {
+            const auto header = textutil::try_read_text(out_dir / fs::from_text(cls + ".h"));
+            return !header || header_has_constructor(*header, cls, argc);   // (no header: no say, keep it)
+        };
+        ProcessResult r = process(*text, f.substr(0, f.size() - 4), registrars, constructible);
         if (r.text != *text) write(f, r.text);
         if (r.sites != 0 && r.factory) {
             factories.push_back({r.factory->registry + "_createByReflection", r.factory->ret, r.factory->args});

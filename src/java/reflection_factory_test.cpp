@@ -103,6 +103,27 @@ CB_TEST("java.reflection_factory.registrars_match_lines", [] {
     CB_CHECK(!named.matches_line("addMapping;"));
 });
 
+// A registered class with no constructor of the factory's arity is left out (Java's newInstance() throws and the registry answers
+// null): Alpha 1.0.7's Packet11PlayerPosition has only Packet11PlayerPosition(double, double, double, boolean).
+CB_TEST("java.reflection_factory.a_class_without_the_constructor_is_left_out", [] {
+    CB_CHECK(header_has_constructor("class P {\npublic:\n\tP();\n\tvirtual ~P();\n};", "P", 0));
+    CB_CHECK(!header_has_constructor("class P {\npublic:\n\tP(double var1, double var3, bool var7);\n\tvirtual ~P();\n};", "P", 0));
+    CB_CHECK(header_has_constructor("class P {\npublic:\n\tP(double var1, double var3, bool var7);\n};", "P", 3));
+    CB_CHECK(header_has_constructor("class P {\npublic:\n\tvirtual ~P();\n};", "P", 0));    // none declared: the implicit one
+    CB_CHECK(!header_has_constructor("class P {\npublic:\n\tvirtual ~P();\n};", "P", 1));
+    CB_CHECK(header_has_constructor("class E {\n\texplicit E(World* w);\n};", "E", 1));
+    CB_CHECK(header_has_constructor("class M {\n\tM(JMap<int, int> m);\n};", "M", 1));   // a comma inside a template argument
+    const std::string text = "void Packet::initStatics() {\n"
+                             "\taddIdClassMapping(10, j2xClassOf(typeid(Packet10Flying)));\n"
+                             "\taddIdClassMapping(11, j2xClassOf(typeid(Packet11PlayerPosition)));\n}\n"
+                             "Packet* Packet::getNewPacket(Class* var1) {\n\treturn (Packet*)var1->newInstance();\n}\n";
+    const Constructible only_flying = [](const std::string& cls, std::size_t argc) { return cls == "Packet10Flying" && argc == 0; };
+    const ProcessResult r = process(text, "Packet", Registrars{{"addIdClassMapping"}}, only_flying);
+    CB_CHECK(r.text.find("return new Packet10Flying();") != std::string::npos);
+    CB_CHECK(r.text.find("new Packet11PlayerPosition") == std::string::npos);
+    CB_CHECK(r.text.find("// Packet11PlayerPosition: no constructor of 0 argument(s)") != std::string::npos);
+});
+
 CB_TEST("java.reflection_factory.process_details", [] {
     const Registrars reg{{"add"}};
     // nothing to rewrite: the text comes back (only resolved review tags would be dropped)
