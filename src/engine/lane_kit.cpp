@@ -28,6 +28,7 @@
 #include "formats/powerpc_image.hpp"
 #include "verify/lanes/win16.hpp"
 #include "verify/lanes/win32.hpp"
+#include "verify/lanes/win64.hpp"
 
 namespace cb::engine {
 
@@ -39,6 +40,14 @@ namespace {
 bool is_powerpc_image(const stdfs::path& p) {
     try {
         return formats::pe::Image::open(p).header().machine == formats::powerpc_image::kMachine;
+    } catch (const Error&) {
+        return false;
+    }
+}
+// A 64-bit Windows module: the x64 machine type.
+bool is_x64_image(const stdfs::path& p) {
+    try {
+        return formats::pe::Image::open(p).header().machine == formats::pe::kMachineX64;
     } catch (const Error&) {
         return false;
     }
@@ -205,6 +214,7 @@ void LaneKit::add_lanes(verify::reconstruct::Kinds& kinds) {
     if (auto lane = win16_lane()) kinds.add(std::move(lane), {.per_function = true});   // (a verdict holds while the function and what it reaches are unchanged)
     if (auto lane = driver_lane()) kinds.add(std::move(lane));                          // (one signature for every entry point: the driver's source)
     if (auto lane = powerpc_lane()) kinds.add(std::move(lane), verify::lanes::PowerPcLane::traits());
+    if (auto lane = win64_lane()) kinds.add(std::move(lane), verify::lanes::Win64Lane::traits());
     if (auto lane = dos_lane()) kinds.add(std::move(lane));                             // (the whole program is judged as one)
     register_all_lanes();
     for (const std::shared_ptr<const LaneRegistration>& registered : registered_lanes())   // (the machines the kit builds itself: no spec of their own in the table)
@@ -230,7 +240,7 @@ verify::reconstruct::Services LaneKit::reconstruct_services(const verify::recons
             return machine;
         }
         switch (*lane) {
-        case base::Lane::Pe: return is_powerpc_image(p) ? "powerpc" : "pe";
+        case base::Lane::Pe: return is_powerpc_image(p) ? "powerpc" : is_x64_image(p) ? "win64" : "pe";
         case base::Lane::Ne: return "ne";
         case base::Lane::Le: return "le";
         case base::Lane::Dos: return "dos";

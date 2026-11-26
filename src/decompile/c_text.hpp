@@ -185,6 +185,7 @@ struct Decompiled {
     std::map<std::string, FunctionNotes> notes;
     std::map<std::string, describe::NumberedImport> numbered;   // imports by number, as the description named them
     std::shared_ptr<Arena> arena;
+    std::map<Va, std::string> described;   // x64: every function the description names, the runtime library's (not decompiled) too
 };
 
 // ... and of a 16-bit module: the description holds each function's notes.
@@ -335,6 +336,19 @@ struct ModulePPC {
     describe::PowerPcFacts image;
 };
 ModulePPC compilable_powerpc(Services& services, const std::filesystem::path& module, const std::filesystem::path& outdir);
+
+// ---- x64 -----------------------------------------------------------------------------------------------------------------
+
+// An x64 module made compilable by Visual C++'s x64 compiler (c_text_x64.cpp). What the rebuilt functions reach that they do not
+// have is the original's, where the original has it: a global by its address, an import through its slot, a function not rebuilt
+// (the runtime library's) by its address -- so the rebuilt image is run beside the original.
+struct ModuleX64 {
+    translate::l2::Made made;                         // the header and each function's C, by address
+    std::map<std::string, std::uint64_t> outside;     // {name the C calls: where in the original} of what it reaches that is not rebuilt
+    std::set<std::string> novalue;                    // the functions the decompiler found to return nothing (written to return uint8)
+    std::uint64_t image_base = 0;
+};
+ModuleX64 compilable_x64(Services& services, const std::filesystem::path& module, const std::filesystem::path& outdir);
 
 // {name: number of arguments} for the functions in `names` that every call passes the same number of arguments to.
 std::map<std::string, std::int64_t> call_counts(const std::map<std::string, std::set<std::int64_t>>& calls,

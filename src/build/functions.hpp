@@ -59,6 +59,8 @@ using Reasons = OrderedMap<std::string, std::string>;         // {function name:
 const std::vector<std::string>& cflags16();
 // The PowerPC compiler's options.
 const std::vector<std::string>& cflags_powerpc();
+// The x64 compiler's: the same, for Visual C++'s x64 cl.
+const std::vector<std::string>& cflags_x64();
 
 // ---- texts ----------------------------------------------------------------------------------------------------------
 
@@ -178,6 +180,20 @@ struct Tools32 {
 // The Xbox 360 SDK's PowerPC compiler and linker.
 struct PowerPcTools {
     std::filesystem::path cl, link, lib;
+};
+
+// Visual C++'s x64 compiler and linker (Hostx64/x64): no library is linked, the rebuilt image reaches the original for the rest.
+struct X64Tools {
+    std::filesystem::path cl, link;
+};
+
+// A build with a Microsoft compiler and linker: the tools, the compiler's options, the linker's options of the machine, the library
+// linked last (none: empty), and the kind of object the cache keeps the compiles under.
+struct MsvcBuild {
+    std::filesystem::path cl, link, lib;
+    std::vector<std::string> cflags;
+    std::vector<std::string> link_flags;
+    std::string key;
 };
 
 struct Import16 {
@@ -323,6 +339,14 @@ public:
     BuiltPowerPc build_powerpc(const PowerPcTools& tools, std::string_view header, const Texts& texts,
                                std::span<const std::string> order, std::span<const std::string> externs,
                                const std::filesystem::path& outdir, std::uint64_t base, std::optional<int> jobs = std::nullopt);
+    // An x64 module's functions, one object each, linked into one DLL at `base` (fixed there: it is run beside the original).
+    BuiltPowerPc build_x64(const X64Tools& tools, std::string_view header, const Texts& texts, std::span<const std::string> order,
+                           const std::filesystem::path& outdir, std::uint64_t base, std::optional<int> jobs = std::nullopt);
+    // What both are: every function compiled on its own by a Microsoft compiler, the rejected ones replaced by stand-ins, `externs`
+    // each a function of its own that does nothing, and one DLL linked at `base`.
+    BuiltPowerPc build_msvc(const MsvcBuild& tools, std::string_view header, const Texts& texts, std::span<const std::string> order,
+                            std::span<const std::string> externs, const std::filesystem::path& outdir, std::uint64_t base,
+                            std::optional<int> jobs = std::nullopt);
 
     // The digest of each function's object ("stand-in:" in front of a stand-in's, "the original's" for a function left to
     // the original) in the last build of a folder; nullopt for a folder not built.

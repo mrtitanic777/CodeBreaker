@@ -845,6 +845,35 @@ CB_TEST("build.functions.build_powerpc_compiles_links_at_a_base_and_reads_the_ma
     CB_CHECK(failed.dropped.at("alpha").starts_with("link: "));
 });
 
+// x64: Visual C++'s x64 options (an undeclared call refused), the linker told the machine, no library and no externs, and the map's
+// 16-digit addresses read.
+CB_TEST("build.functions.build_x64_compiles_links_at_a_base_and_reads_16_digit_addresses", [] {
+    CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
+    Kit k;
+    k.flag("map.txt");
+    fs::write_text(k.dir.path() / "map.txt",
+                   " Address         Publics by Value              Rva+Base               Lib:Object\r\n"
+                   "\r\n"
+                   " 0001:00000000       alpha                      0000000150041000 f   f0000.obj\r\n"
+                   " 0001:00000040       unwanted                   0000000150041040 f   x.obj\r\n");
+    FunctionBuilder builder({});
+    const stdfs::path dir = k.work("out");
+    Texts texts = {{"alpha", fn("alpha")}};
+    const X64Tools tools{k.cc, k.wlink};
+    const BuiltPowerPc b = builder.build_x64(tools, "x64 header", texts, std::vector<std::string>{"alpha"}, dir, 0x150040000, 1);
+    CB_CHECK(b.dll.has_value());
+    CB_CHECK_EQ(b.where.size(), 1u);
+    CB_CHECK_EQ(b.where.at("alpha"), 0x150041000u);
+    CB_CHECK(b.dropped.empty());
+    CB_CHECK_EQ(fs::read_text(dir / "m.rsp"), "f0000.obj\n");   // (no externs object)
+    CB_CHECK(!stdfs::exists(dir / "externs.c"));
+    const std::string links = fs::read_text(dir / "links.txt");
+    CB_CHECK(links.find("/FIXED /MACHINE:X64 /OPT:NOREF") != std::string::npos);
+    CB_CHECK(links.find("/BASE:0x150040000 /OUT:m.dll @m.rsp") != std::string::npos);
+    CB_CHECK(links.find("XEX") == std::string::npos);
+    CB_CHECK(fs::read_text(dir / "calls.txt").find("/nologo /c /TC /O2 /GS- /Zl /Gy /W0 /we4013 /FIm.h /Fof0000.obj f0000.c") != std::string::npos);
+});
+
 CB_TEST("build.functions.a_cache_is_not_needed_to_build", [] {
     CB_WINDOWS_ONLY("its stand-in tools are .cmd/.bat files or Windows programs");
     Kit k;

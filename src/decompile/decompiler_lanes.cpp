@@ -504,8 +504,26 @@ c_text::Decompiled Decompiler::raw(const std::filesystem::path& module, std::spa
     std::vector<Va> starts(functions.begin(), functions.end());
     if (starts.empty() && machine != kMachineX86)   // (a PowerPC image states its starts)
         starts = lanes_stated_functions(*context_.environment, module, machine);
-    ModuleRun r = run_module(module, starts, outdir, RunOptions{.l2 = true, .write = false});
     c_text::Decompiled out;
+    if (machine == kMachineX64) {   // (the runtime library's functions described and named, not decompiled)
+        const formats::pe::Image image = formats::pe::Image::open(module);
+        const std::map<Va, LibraryFunction> identified = context_.environment->pe_library(module);
+        describe::PeDescription d = describe_module(module, image, starts, outdir);
+        (void)lanes_x64_library(d, identified);
+        std::vector<Va> own;
+        for (const Va va : starts)
+            if (!identified.contains(va)) own.push_back(va);
+        Run r = run(d.path, own, RunOptions{.l2 = true, .write = false});
+        out.arena = arena_;
+        out.texts = std::move(r.texts);
+        out.order = std::move(r.order);
+        out.by_va = std::move(r.by_va);
+        out.notes = std::move(r.notes);
+        out.numbered = std::move(d.by_number);
+        out.described = d.names;
+        return out;
+    }
+    ModuleRun r = run_module(module, starts, outdir, RunOptions{.l2 = true, .write = false});
     out.arena = arena_;
     out.texts = std::move(r.run.texts);
     out.order = std::move(r.run.order);

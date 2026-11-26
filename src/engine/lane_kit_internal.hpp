@@ -135,7 +135,7 @@ struct LaneKit::Impl {
     std::unique_ptr<source::assembly::Prober> prober_;
     std::optional<jobs::WorkerLauncher> launcher;
     std::unique_ptr<emulate::pcode::LifterSet> lifters_;
-    std::shared_ptr<const verify::lanes::Kind> win32_, win16_, driver_, java_, powerpc_, dos_;
+    std::shared_ptr<const verify::lanes::Kind> win32_, win16_, driver_, java_, powerpc_, dos_, win64_;
     std::map<std::string, std::shared_ptr<const verify::lanes::Kind>> machines_;   // "nes", "sms", "gb", "genesis", "ps1", "gba", "zx", "msx", "coleco", "cpc"
     std::shared_ptr<const symbols::driver_services::Table> driver_tables_;   // what the driver lane's spec points at
 };

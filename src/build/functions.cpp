@@ -1055,9 +1055,27 @@ std::string folder_fingerprint(const stdfs::path& folder) {
 
 }  // namespace
 
+const std::vector<std::string>& cflags_x64() {
+    // (/we4013: a call to a name nothing declares is an error, not an implicit `int` function the linker would leave unresolved)
+    static const std::vector<std::string> flags = {"/nologo", "/c", "/TC", "/O2", "/GS-", "/Zl", "/Gy", "/W0", "/we4013", "/FIm.h"};
+    return flags;
+}
+
 BuiltPowerPc FunctionBuilder::build_powerpc(const PowerPcTools& tools, std::string_view header, const Texts& texts,
                                             std::span<const std::string> order, std::span<const std::string> externs,
                                             const stdfs::path& outdir, std::uint64_t base, std::optional<int> jobs) {
+    return build_msvc({tools.cl, tools.link, tools.lib, cflags_powerpc(), {"/XEX:NO"}, "cl-ppc-object"}, header, texts, order, externs, outdir,
+                      base, jobs);
+}
+
+BuiltPowerPc FunctionBuilder::build_x64(const X64Tools& tools, std::string_view header, const Texts& texts, std::span<const std::string> order,
+                                        const stdfs::path& outdir, std::uint64_t base, std::optional<int> jobs) {
+    return build_msvc({tools.cl, tools.link, {}, cflags_x64(), {"/MACHINE:X64"}, "cl-x64-object"}, header, texts, order, {}, outdir, base, jobs);
+}
+
+BuiltPowerPc FunctionBuilder::build_msvc(const MsvcBuild& tools, std::string_view header, const Texts& texts,
+                                         std::span<const std::string> order, std::span<const std::string> externs,
+                                         const stdfs::path& outdir, std::uint64_t base, std::optional<int> jobs) {
     static const Regex cl_error(R"(\((\d+)\)\s*:\s*(?:fatal )?error (C\d+: [^\r\n]*))");
     BuildCache* cache = impl_->options.cache;
     // cl.exe reads INCLUDE and CL from the environment it is started in
@@ -1071,7 +1089,7 @@ BuiltPowerPc FunctionBuilder::build_powerpc(const PowerPcTools& tools, std::stri
         std::optional<std::string> key;
         if (cache) {
             if (const auto h = header_key(outdir))
-                key = KeyBuilder().add("cl-ppc-object").add(tool_inputs(ppc, "CL")).add(folder_key).add(cflags_powerpc()).add(*h).add(stem).add(text).finish();
+                key = KeyBuilder().add(tools.key).add(tool_inputs(ppc, "CL")).add(folder_key).add(tools.cflags).add(*h).add(stem).add(text).finish();
         }
         const stdfs::path object = outdir / (std::string(stem) + ".obj");
         if (key) {
@@ -1083,7 +1101,7 @@ BuiltPowerPc FunctionBuilder::build_powerpc(const PowerPcTools& tools, std::stri
         }
         write_source(outdir / (std::string(stem) + ".c"), std::string(text) + "\n");
         remove_quietly(object);
-        std::vector<std::string> args = cflags_powerpc();
+        std::vector<std::string> args = tools.cflags;
         args.push_back("/Fo" + std::string(stem) + ".obj");
         args.push_back(std::string(stem) + ".c");
         const process::ProcessResult r = run_tool(tools.cl, args, outdir, {}, std::chrono::minutes(10));
@@ -1139,19 +1157,20 @@ BuiltPowerPc FunctionBuilder::build_powerpc(const PowerPcTools& tools, std::stri
         std::vector<std::string> parts;
         int e = 0;
         for (const std::string& n : extern_names) parts.push_back(std::format("#pragma optimize(\"\", off)\nuint8 {}() {{ return {}; }}", n, e++));
-        (void)compile_ppc("externs", text::join(parts, "\n"));
+        if (!parts.empty()) (void)compile_ppc("externs", text::join(parts, "\n"));
     }
     impl_->note_objects(outdir, stems, dropped);
     std::vector<std::string> objects;
     for (const std::string& n : order)
         if (stems.contains(n)) objects.push_back(stems.at(n) + ".obj");
-    objects.push_back("externs.obj");
+    if (!extern_names.empty()) objects.push_back("externs.obj");
     write_source(outdir / "m.rsp", text::join(objects, "\n") + "\n");
     remove_quietly(outdir / "m.dll");
     remove_quietly(outdir / "m.map");
-    const std::vector<std::string> link_args = {"/nologo", "/DLL", "/NOENTRY", "/NODEFAULTLIB", "/FIXED", "/XEX:NO", "/OPT:NOREF",
-                                                "/OPT:NOICF", "/FORCE", "/IGNORE:4006,4088", "/MAP:m.map",
-                                                std::format("/BASE:0x{:X}", base), "/OUT:m.dll", "@m.rsp", fs::to_text(tools.lib)};
+    std::vector<std::string> link_args = {"/nologo", "/DLL", "/NOENTRY", "/NODEFAULTLIB", "/FIXED", "/OPT:NOREF", "/OPT:NOICF", "/FORCE",
+                                          "/IGNORE:4006,4088", "/MAP:m.map", std::format("/BASE:0x{:X}", base), "/OUT:m.dll", "@m.rsp"};
+    link_args.insert(link_args.begin() + 5, tools.link_flags.begin(), tools.link_flags.end());
+    if (!tools.lib.empty()) link_args.push_back(fs::to_text(tools.lib));
     const process::ProcessResult r = run_tool(tools.link, link_args, outdir, {}, kLinkTimeout);
     std::vector<std::string> live;
     for (const std::string& n : order)
@@ -1172,8 +1191,8 @@ BuiltPowerPc FunctionBuilder::build_powerpc(const PowerPcTools& tools, std::stri
     } catch (const IoError&) {
         // no map: no addresses
     }
-    // lines of the map: ` <seg>:<offset>  <symbol>  <address> `
-    static const Regex map_symbol(R"((?m)^ [0-9A-Fa-f]{4}:[0-9A-Fa-f]{8}\s+(\S+)\s+([0-9A-Fa-f]{8}) )");
+    // lines of the map: ` <seg>:<offset>  <symbol>  <address> ` (the address 8 digits for a 32-bit image, 16 for x64)
+    static const Regex map_symbol(R"((?m)^ [0-9A-Fa-f]{4}:[0-9A-Fa-f]{8}\s+(\S+)\s+([0-9A-Fa-f]{8}(?:[0-9A-Fa-f]{8})?) )");
     std::set<std::string> want(order.begin(), order.end());
     want.insert(extern_names.begin(), extern_names.end());
     map_symbol.for_each_match(map_text, [&](const RegexMatch& m) {

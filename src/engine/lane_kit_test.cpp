@@ -58,7 +58,7 @@ CB_TEST("engine.lane_kit.the_kit_is_made_of_the_settings_and_says_which_lanes_it
     std::set<std::string> machines;
     for (const auto& lane : registered_lanes()) machines.insert(lane->name);
     for (const std::string& name : names)
-        CB_CHECK(name == "pe" || name == "ne" || name == "le" || name == "powerpc" || name == "dos" || name == "java" || machines.contains(name));
+        CB_CHECK(name == "pe" || name == "ne" || name == "le" || name == "powerpc" || name == "dos" || name == "java" || name == "win64" || machines.contains(name));
     // every lane the registry has is a lane the kit can name, a built-in one among them
     for (const std::string& machine : machines) CB_CHECK(kit.lane_named(machine) != nullptr);
     CB_CHECK(std::find(names.begin(), names.end(), "gb") != names.end());   // (the machines need no tools but CodeBreaker's own)

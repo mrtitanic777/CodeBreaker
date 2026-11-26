@@ -426,6 +426,20 @@ written as NASM source by `source/pe64_writer` (over `source/x64_writer`) with `
 | user32.dll | not counted | rebuilds identical (39 s) |
 | ntdll.dll | 6,313 | rebuilds identical (2 min 13 s) |
 
+### As C, built with Visual C++ x64 and judged (the win64 lane, `codebreaker check`)
+
+The same programs as C (2026-11-26): the Microsoft runtime's functions identified by the x64 signatures (Visual C++ 14.16-14.51,
+the Universal CRT) and left to the original, every other function decompiled, compiled on its own with Visual C++ 14.51's x64 `cl`,
+linked into one DLL beside the original, and run beside the original's in Unicorn's x64 one function at a time (lane revision 6).
+Weak: equivalent with a limit (low coverage, a stand-in callee) or only ever faulting alike. Teeth on notepad: 70% of deliberately
+broken functions it had called verified are caught, 59% of the weak ones.
+
+| Program | Functions | Runtime library | Verified | Weak | Unverified | Does not compile | No source |
+|---|---|---|---|---|---|---|---|
+| notepad.exe | 386 | 24 (Visual C++ 14.38) | 117 | 136 | 65 | 31 | 13 |
+| cmd.exe | 665 | 23 | 143 | 266 | 148 | 65 | 20 |
+| calc.exe | 22 | 4 | 5 | 5 | 5 | 2 | 1 |
+
 ## PlayStation 4, PlayStation 5 and Xbox One / Series homebrew (the ps4, ps5 and xboxone lanes)
 
 Open-source homebrew with published source and a stated licence, binaries only (GitHub releases), kept in `GitHub/homebrew-samples/{ps4,ps5,xboxone}/` (never run on this machine,

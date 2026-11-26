@@ -76,6 +76,7 @@ public:
     std::shared_ptr<const verify::lanes::Kind> win16_lane();       // "ne"
     std::shared_ptr<const verify::lanes::Kind> driver_lane();      // "le"
     std::shared_ptr<const verify::lanes::Kind> powerpc_lane();     // "powerpc": the Xbox 360 compiler (settings powerpc_tools, powerpc_lib) is set up
+    std::shared_ptr<const verify::lanes::Kind> win64_lane();       // "win64": Visual C++'s x64 compiler (the setting msvc_x64, else the newest installed)
     std::shared_ptr<const verify::lanes::Kind> java_lane();        // "java"
     std::shared_ptr<const verify::lanes::Kind> dos_lane();         // "dos": real-mode programs, written back as assembly and compared whole; null without OpenWatcom's wasm and wlink
     // "nes", "sms", "gb", "genesis", "ps1", "gba", "zx", "msx", "coleco", "cpc": a cartridge, snapshot or tape written back by its machine's writer, rebuilt, and run beside the original's; null for another name.

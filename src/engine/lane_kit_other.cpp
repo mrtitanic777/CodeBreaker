@@ -6,6 +6,9 @@
 #include "formats/powerpc_image.hpp"
 #include "verify/lane_common.hpp"
 #include "verify/lanes/powerpc.hpp"
+#include "verify/lanes/win64.hpp"
+#include "knowledge/package.hpp"
+#include "symbols/prototypes.hpp"
 #include "engine/lane_kit_internal.hpp"
 #include "source/le_writer.hpp"
 #include "symbols/driver_services.hpp"
@@ -127,11 +130,47 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::powerpc_lane() {
     return impl_->powerpc_ = std::move(lane);
 }
 
+std::shared_ptr<const verify::lanes::Kind> LaneKit::win64_lane() {
+    {
+        std::lock_guard hold(impl_->lock);
+        if (impl_->win64_) return impl_->win64_;
+    }
+    Impl& i = *impl_;
+    // Visual C++'s x64 compiler: the setting `msvc_x64` (the folder of its cl.exe and link.exe), else the newest Visual Studio installed
+    std::optional<build::functions::X64Tools> tools;
+    if (const std::optional<stdfs::path> folder = i.config.path("msvc_x64")) {
+        std::error_code ec;
+        if (stdfs::is_regular_file(*folder / "cl.exe", ec) && stdfs::is_regular_file(*folder / "link.exe", ec)) tools = build::functions::X64Tools{*folder / "cl.exe", *folder / "link.exe"};
+    } else {
+        tools = verify::lanes::Win64Lane::find_tools();
+    }
+    if (!tools) return nullptr;
+    knowledge::Knowledge& kb = i.knowledge();
+    base::Corpus& corpus = *i.corpus;
+    verify::lanes::Win64Lane::Services services{i.decompiler(), i.builder(), std::move(*tools), nullptr, verify::lane_common::store_of(i.cache()), nullptr};
+    // how many arguments an import takes, as the Windows SDK declares it (a varargs function: the ones before the dots)
+    services.import_argc = [&kb](std::string_view name) -> std::optional<int> {
+        const symbols::prototypes::Prototype* p = kb.prototype("win64", name);
+        if (p == nullptr) return std::nullopt;
+        int n = 0;
+        for (const symbols::prototypes::Parameter& parameter : p->parameters) {
+            if (parameter.type == "..." || (p->parameters.size() == 1 && parameter.type == "void" && parameter.name.empty())) break;
+            ++n;
+        }
+        return n;
+    };
+    services.content_sha = [&corpus](const stdfs::path& p) { return corpus.sha(p); };
+    auto lane = std::make_shared<verify::lanes::Win64Lane>(std::move(services));
+    std::lock_guard hold(impl_->lock);
+    return impl_->win64_ = std::move(lane);
+}
+
 std::shared_ptr<const verify::lanes::Kind> LaneKit::lane_named(std::string_view name) {
     if (name == "pe") return win32_lane();
     if (name == "ne") return win16_lane();
     if (name == "le") return driver_lane();
     if (name == "powerpc") return powerpc_lane();
+    if (name == "win64") return win64_lane();
     if (name == "java") return java_lane();
     if (name == "dos") return dos_lane();
     if (auto machine = machine_lane(name)) return machine;
