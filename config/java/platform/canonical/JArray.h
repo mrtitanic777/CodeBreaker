@@ -21,6 +21,16 @@ public:
 	explicit JArray(int n) : _buf(n >= 0 ? new T[n > 0 ? n : 1]() : 0), length(n > 0 ? n : 0) {}
 	JArray(T* buf, int n) : _buf(buf), length(n) {}
 	JArray(const JObject& o);                    // unbox a boxed array; defined in JavaRT.h
+	// Java's array covariance: a DragonPart[] is an Entity[] (Beta 1.9's EntityDragon returns its parts so). An array of the base
+	// pointers, each converted (a base reached through multiple inheritance sits at its own address); a null array stays null.
+	// Written through, the converted array does not reach the original -- the game only reads these.
+	template<class U> JArray(const JArray<U*>& o) : _buf(0), length(0) {
+		U* const* src = o;
+		if (!src) return;
+		length = o.length;
+		_buf = new T[length > 0 ? length : 1]();
+		for (int i = 0; i < length; ++i) _buf[i] = src[i];
+	}
 	T& operator[](int i) { return (i >= 0 && i < length) ? _buf[i] : _oob(); }
 	const T& operator[](int i) const { return (i >= 0 && i < length) ? _buf[i] : _oob(); }
 	operator T*() { return _buf; }               // raw-pointer interop
