@@ -41,6 +41,13 @@ public:
 		return (double)(((long long)next(26) << 27) + (long long)next(27)) / (double)(1LL << 53);
 	}
 	float nextGaussian() { return nextFloat(); }   // PORT: approximate (not a true gaussian)
+	// Java's nextBytes: each nextInt() fills four bytes, low byte first (Alpha 1.0.10's multiplayer cipher salt). Any
+	// byte array (JArray<unsigned char>, JArray<signed char>): its length and its elements.
+	template<class A> void nextBytes(A& bytes) {
+		for (int i = 0, len = bytes.length; i < len;) {
+			for (int rnd = nextInt(), n = (len - i < 4 ? len - i : 4); n-- > 0; rnd >>= 8) bytes[i++] = (unsigned char)rnd;
+		}
+	}
 };
 
 #endif // RANDOM_H

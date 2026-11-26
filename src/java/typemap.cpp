@@ -116,7 +116,7 @@ const NameSet& runtime_headers() {
         "SocketException", "SoftReference", "SoundSystem", "SoundSystemConfig", "Stack", "StringReader",
         "StringWriter", "Sys", "TextArea", "Thread", "Throwable", "Toolkit", "Transferable", "URI", "URL",
         "URLConnection", "UnknownHostException", "UnsupportedOperationException", "WindowAdapter",
-        "WindowEvent", "WindowListener", "WritableRaster", "Writer", "ZipEntry", "ZipFile"};
+        "WindowEvent", "WindowFocusListener", "WindowListener", "WritableRaster", "Writer", "ZipEntry", "ZipFile"};
     return kSet;
 }
 

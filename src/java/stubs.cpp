@@ -17,7 +17,7 @@ const std::vector<SubsystemInfo>& table() {
           "CardLayout", "Color", "Component", "ComponentEvent", "ComponentListener", "Cursor", "Dimension",
           "Display", "DisplayMode", "FlowLayout", "FocusEvent", "FocusListener", "Font", "FontMetrics", "Frame",
           "GL11", "GL12", "GL15", "GLU", "Graphics", "GridBagLayout", "GridLayout", "ImageIO", "ImageObserver",
-          "Panel", "Robot", "ScreenShotHelper", "WindowAdapter", "WindowEvent", "WindowListener"}},
+          "Panel", "Robot", "ScreenShotHelper", "WindowAdapter", "WindowEvent", "WindowFocusListener", "WindowListener"}},
         {Subsystem::Audio, "audio", "Audio",
          "OpenAL/paulscode stubs that need a platform audio backend (sound effects, music, 3D positional audio).",
          "XACT3 (xact3.h, xact3wb.h) or XAudio2",

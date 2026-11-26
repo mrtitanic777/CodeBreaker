@@ -43,7 +43,7 @@ CB_TEST("java.stubs.table_shape", [] {
         members += s.members.size();
     }
     CB_CHECK_EQ(keys.size(), std::size_t{12});
-    CB_CHECK_EQ(members, std::size_t{131});   // (ConnectException counted in both)
+    CB_CHECK_EQ(members, std::size_t{132});   // (ConnectException counted in both)
 });
 
 }  // namespace

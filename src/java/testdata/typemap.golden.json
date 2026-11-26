@@ -366,6 +366,7 @@
   "UnsupportedOperationException",
   "WindowAdapter",
   "WindowEvent",
+  "WindowFocusListener",
   "WindowListener",
   "WritableRaster",
   "Writer",

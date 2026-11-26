@@ -159,6 +159,17 @@ CB_TEST("java.platform_refs.runnable_entry_constructs_with_default_arguments", [
     CB_CHECK(refs_has(pc, "_game->run();") && refs_has(pc, "j2xThreadsWait();") && refs_has(pc, "SDL_SetMainReady();"));
     CB_CHECK(refs_has(pc, "#define SCREEN_WIDTH 854"));
     CB_CHECK(!refs_has(pc, "HeapTrack") && !refs_has(pc, "Display::create") && !refs_has(pc, "@NAME@"));
+    CB_CHECK(!refs_has(pc, "@SESSION@") && !refs_has(pc, "_game->session"));   // no session field: nothing
+    // a shell with a session (Alpha's, inherited from Minecraft) gets the launcher's player before run()
+    jir::Field session_field;
+    session_field.name = "session";
+    session_field.type = refs_type("Session", 0);
+    jir::JClass impl = shell;
+    impl.inherited_fields = {&session_field};
+    const std::string alpha = pr::generate_pc_runnable_entry_point(impl);
+    CB_CHECK(refs_has(alpha, "if (_game->session == NULL) _game->session = new Session(JavaString(\"Player\"), JavaString(\"-\"));"));
+    CB_CHECK(refs_has(alpha, "#include \"Session.h\""));
+    CB_CHECK(alpha.find("_game->session = new") < alpha.find("_game->run();"));
 });
 
 CB_TEST("java.platform_refs.platform_names", [] {

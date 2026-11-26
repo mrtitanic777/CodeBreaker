@@ -131,9 +131,10 @@ const StrList kListenerMethods = {
     "keyPressed", "keyReleased", "keyTyped", "mouseClicked", "mousePressed", "mouseReleased", "mouseEntered", "mouseExited",
     "mouseMoved", "mouseDragged", "mouseWheelMoved", "windowClosing", "windowOpened", "windowClosed", "windowActivated",
     "windowDeactivated", "windowIconified", "windowDeiconified", "componentResized", "componentMoved", "componentShown",
-    "componentHidden", "focusGained", "focusLost"};
+    "componentHidden", "focusGained", "focusLost", "windowGainedFocus", "windowLostFocus"};
 constexpr auto kListeners = std::to_array<std::string_view>({"KeyListener", "MouseListener", "MouseMotionListener", "MouseWheelListener",
-                                                              "WindowListener", "ComponentListener", "FocusListener"});
+                                                              "WindowListener", "ComponentListener", "FocusListener",
+                                                              "WindowFocusListener"});   // (Indev's level-load dialog)
 constexpr auto kEvents = std::to_array<std::string_view>({"KeyEvent", "MouseEvent", "WindowEvent", "ComponentEvent", "FocusEvent", "InputEvent"});
 constexpr auto kLayouts = std::to_array<std::string_view>({"BorderLayout", "GridLayout", "FlowLayout", "CardLayout", "GridBagLayout"});
 constexpr auto kBuffers = std::to_array<std::string_view>({"FloatBuffer", "IntBuffer", "ByteBuffer"});

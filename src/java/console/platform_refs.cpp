@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <format>
 #include <system_error>
 
@@ -334,16 +335,30 @@ int main(int, char**) {
     j2x_initAll();
     DbgPrintF("[J2X] constructing @NAME@\n");
     @NAME@* _game = new @NAME@(@ARGS@);
-    _game->run();
+@SESSION@    _game->run();
     j2xThreadsWait();
     return 0;
 }
 )cpp";
+    // The launcher's part: it hands the game a player (Alpha's applet reads --username/--session into a Session; a shell
+    // built without the applet has none, and the first world dies making the player from it). A shell with a `session`
+    // field of a class type (its own or inherited) gets one for "Player" when nothing set it. FIXED BUG null-session
+    // (Alpha 1.0.x crashed in EntityPlayerSP's constructor, reading the null session's username).
+    std::string session_type;
+    const auto is_session = [](const ir::Field& f) {
+        return f.name == "session" && !f.is_static && !f.type.is_array() && !f.type.name.empty() && std::isupper(static_cast<unsigned char>(f.type.name[0])) != 0 && f.type.name != "String";
+    };
+    for (const ir::Field& f : cls.fields) if (session_type.empty() && is_session(f)) session_type = f.type.name;
+    for (const ir::Field* f : cls.inherited_fields) if (session_type.empty() && f != nullptr && is_session(*f)) session_type = f->type.name;
+    const std::string session = session_type.empty() ? std::string()
+        : "    if (_game->session == NULL) _game->session = new " + session_type + "(JavaString(\"Player\"), JavaString(\"-\"));   // (the launcher's player)\n";
     // on PC the shell is drawn in a canvas that is the SDL window (its size, its place on the screen: the AWT mouse Indev looks
     // around with needs one), not in none
     const std::string args = runnable_ctor_args(cls, true);
     const bool canvas = args.find("new Canvas()") != std::string::npos;
-    return refs_fill(std::string(kTemplate), {{"@NAME@", cls.name}, {"@ARGS@", args}, {"@CANVAS@", canvas ? "#include \"Canvas.h\"\n" : ""}});
+    std::string includes = canvas ? "#include \"Canvas.h\"\n" : "";
+    if (!session_type.empty()) includes += "#include \"" + session_type + ".h\"\n";
+    return refs_fill(std::string(kTemplate), {{"@NAME@", cls.name}, {"@ARGS@", args}, {"@CANVAS@", includes}, {"@SESSION@", session}});
 }
 
 Audit audit_references(const stdfs::path& reference_dir) {
