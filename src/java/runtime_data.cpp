@@ -86,6 +86,12 @@ const std::map<std::string, std::string, std::less<>>& external_packages() {
         {"Cursor", "java.awt"},
         {"Robot", "java.awt"},
         {"FileDialog", "java.awt"},
+        {"JFileChooser", "javax.swing"},
+        {"Cipher", "javax.crypto"}, {"CipherInputStream", "javax.crypto"}, {"SecretKey", "javax.crypto"}, {"SecretKeyFactory", "javax.crypto"},
+        {"PBEKeySpec", "javax.crypto.spec"}, {"PBEParameterSpec", "javax.crypto.spec"}, {"GeneralSecurityException", "java.security"},                         // (early Indev's level load/save dialog)
+        {"FileNameExtensionFilter", "javax.swing.filechooser"},
+        {"PixelFormat", "org.lwjgl.opengl"},                     // (Indev's Display.create(new PixelFormat(), new ContextAttribs(1, 2)))
+        {"ContextAttribs", "org.lwjgl.opengl"},
         {"Dimension", "java.awt"},
         {"Applet", "java.applet"},
         {"BorderLayout", "java.awt"},
@@ -623,6 +629,20 @@ void Runtime::build_stubs() {
     add_canonical("ByteArrayInputStream.h");
     add_class_stub("DataFormatException.h", {.name = "DataFormatException", .bases = {"Exception"}, .includes = {"Exception"}});
     add_class_stub("NoSuchAlgorithmException.h", {.name = "NoSuchAlgorithmException", .bases = {"Exception"}, .includes = {"Exception"}});
+    // javax.crypto, as early Alpha's multiplayer invite code uses it (a PBE cipher over the server address): no cipher -- the stream
+    // reads nothing, so the code is "not valid", which the game handles (it catches and answers false)
+    add_class_stub("GeneralSecurityException.h", {.name = "GeneralSecurityException", .bases = {"Exception"}, .includes = {"Exception"}});
+    add_class_stub("Cipher.h", {.name = "Cipher", .void_methods = {"init"}, .extra = {"static Cipher* getInstance(...) { return new Cipher(); }"}});
+    add_class_stub("SecretKey.h", {.name = "SecretKey"});
+    add_class_stub("SecretKeyFactory.h", {
+        .name = "SecretKeyFactory",
+        .ret_methods = {{"generateSecret", "SecretKey*", "0"}},
+        .forward_decls = {"SecretKey"},
+        .extra = {"static SecretKeyFactory* getInstance(...) { return new SecretKeyFactory(); }"}});
+    add_class_stub("PBEKeySpec.h", {.name = "PBEKeySpec"});
+    add_class_stub("PBEParameterSpec.h", {.name = "PBEParameterSpec"});
+    add_class_stub("CipherInputStream.h", {.name = "CipherInputStream", .bases = {"InputStream"}, .includes = {"InputStream"},
+                                            .extra = {"int read() { return -1; }"}});
     add_canonical("BigInteger.h");
     put_file("SoftReference.h", verbatim::kSoftReferenceHeader);
     put_file("InetAddress.h", verbatim::kInetAddressHeader);
@@ -687,6 +707,17 @@ void Runtime::build_stubs() {
         .name = "FileDialog",
         .void_methods = {"setVisible", "setMode", "setDirectory", "setFile", "setFilenameFilter", "setLocationRelativeTo"},
         .ret_methods = {{"getFile", "std::string", "std::string()"}, {"getDirectory", "std::string", "std::string()"}}});
+    // Swing's file chooser: no dialog -- showOpenDialog / showSaveDialog answer CANCEL_OPTION (1), so a level load or save is cancelled
+    add_class_stub("JFileChooser.h", {
+        .name = "JFileChooser",
+        .void_methods = {"setFileFilter", "setLocation", "setDialogTitle", "setCurrentDirectory", "setFileSelectionMode", "setAcceptAllFileFilterUsed"},
+        .ret_methods = {{"showOpenDialog", "int", "1"}, {"showSaveDialog", "int", "1"}, {"getSelectedFile", "File*", "0"}},
+        .includes = {"Point"},
+        .forward_decls = {"File"},
+        .extra = {"Point* getLocation() { static Point _p; return &_p; }", "static const int APPROVE_OPTION = 0;", "static const int CANCEL_OPTION = 1;"}});
+    add_class_stub("FileNameExtensionFilter.h", {.name = "FileNameExtensionFilter"});
+    add_class_stub("PixelFormat.h", {.name = "PixelFormat"});
+    add_class_stub("ContextAttribs.h", {.name = "ContextAttribs"});
     add_class_stub("Point.h", {.name = "Point", .extra = {"int x;", "int y;"}});
     add_class_stub("PointerInfo.h", {
         .name = "PointerInfo",

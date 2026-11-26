@@ -9,6 +9,7 @@ namespace Display {
 	void setDisplayMode(DisplayMode* mode);
 	void setDisplayMode(const DisplayMode& mode);
 	void create();
+	template<class P, class C> inline void create(P*, C*) { create(); }   // Display.create(new PixelFormat(), new ContextAttribs(1, 2)): the context the layer makes
 	template<class P> inline void create(P) { create(); }   // create(PixelFormat): SDL's depth/stencil
 	void destroy();
 	void update();                                      // present + pump input

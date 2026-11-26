@@ -29,7 +29,7 @@ namespace GL11 {
 	const int GL_NEVER = 0x0200, GL_LESS = 0x0201, GL_EQUAL = 0x0202, GL_LEQUAL = 0x0203, GL_GREATER = 0x0204,
 	          GL_NOTEQUAL = 0x0205, GL_GEQUAL = 0x0206, GL_ALWAYS = 0x0207;
 	const int GL_BACK = 0x0405, GL_FRONT = 0x0404, GL_FRONT_AND_BACK = 0x0408;
-	const int GL_LIGHT0 = 0x4000, GL_LIGHT1 = 0x4001, GL_LIGHT_MODEL_AMBIENT = 0x0B53;
+	const int GL_LIGHT0 = 0x4000, GL_LIGHT1 = 0x4001, GL_LIGHT_MODEL_AMBIENT = 0x0B53, GL_LIGHT_MODEL_LOCAL_VIEWER = 0x0B51;
 	const int GL_AMBIENT = 0x1200, GL_DIFFUSE = 0x1201, GL_SPECULAR = 0x1202, GL_POSITION = 0x1203,
 	          GL_AMBIENT_AND_DIFFUSE = 0x1602;
 	const int GL_FOG_START = 0x0B63, GL_FOG_END = 0x0B64, GL_FOG_MODE = 0x0B65, GL_FOG_COLOR = 0x0B66,
@@ -104,6 +104,7 @@ namespace GL11 {
 	void glLight(int light, int pname, FloatBuffer* params);
 	void glLightf(int light, int pname, float param);
 	void glLightModel(int pname, FloatBuffer* params);
+	void glLightModelf(int pname, float param);   // (early Indev's RenderHelper)
 	void glTexEnvi(int target, int pname, int param);
 	// textures
 	int  glGenTextures();
@@ -138,6 +139,7 @@ namespace GL11 {
 	void glTexCoordPointer(int size, int type, int stride, long long offset);
 	void glNormalPointer(int type, int stride, long long offset);
 	void glDrawArrays(int mode, int first, int count);
+	void glDrawElements(int mode, IntBuffer* indices);   // LWJGL's: the indices from position to limit, unsigned ints (early Indev's MD3 models)
 	// display lists
 	int  glGenLists(int n);
 	void glNewList(int list, int mode);

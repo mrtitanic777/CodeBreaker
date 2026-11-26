@@ -40,6 +40,7 @@
 #define NIOBUFFERS_H
 
 #include "stdafx.h"
+#include <cstring>          // memcpy
 #include "JArray.h"          // JArray<int> for IntBuffer::put(JArray<int>, off, len)
 
 class IntBuffer;
@@ -107,12 +108,20 @@ public:
 class ByteBuffer : public Buffer {
 public:
 	using Buffer::position; using Buffer::limit;   // un-hide the 0-arg getters
-	explicit ByteBuffer(NioBacking* b) : Buffer(b, 0) {}
+	explicit ByteBuffer(NioBacking* b) : Buffer(b, 0), _swap(false) {}
 	~ByteBuffer() {}
 
 	// java.nio.ByteBuffer.allocateDirect(n): fresh backing of n bytes (GLAllocation calls this).
 	static ByteBuffer* allocateDirect(int nbytes) { return new ByteBuffer(new NioBacking(nbytes)); }
-	ByteBuffer* order(int /*byteOrder*/) { return this; }      // ByteOrder.nativeOrder() -> no-op (ptr: the converter chains ->order()->asIntBuffer() and assigns to ByteBuffer*)
+	// ByteBuffer.wrap(bytes): a buffer over a copy of the array, position 0, limit its length (Indev's MD3Loader reads a model file so).
+	static ByteBuffer* wrap(const JArray<unsigned char>& a) {
+		ByteBuffer* b = new ByteBuffer(new NioBacking(a.length));
+		for (int i = 0; i < a.length; ++i) b->_b->bytes[i] = (char)a[i];
+		return b;
+	}
+	// order(ByteOrder.X): the multi-byte reads below swap when X is not the machine's own order (an MD3 model is little-endian, the Xbox
+	// 360 big). Asking for the native order (ByteOrder.nativeOrder(), every GPU scratch buffer) changes nothing.
+	ByteBuffer* order(int byteOrder) { _swap = (byteOrder == 0) != _nativeLittle(); return this; }   // (ptr: the converter chains ->order()->asIntBuffer())
 
 	ByteBuffer& clear()  { _posB = 0; _limB = _b ? _b->cap : 0; return *this; }
 	ByteBuffer& flip()   { _limB = _posB; _posB = 0; return *this; }
@@ -127,8 +136,12 @@ public:
 	int get(int idx) { return (_b && idx >= 0 && idx < _b->cap) ? (unsigned char)_b->bytes[idx] : 0; }
 	// 4-byte int put/get (relative + absolute byte index). NATIVE order to round-trip with IntBuffer
 	// over the same backing -- this is on-device scratch (GPU buffers), not serialized NBT.
-	int getInt() { if (_b && _posB + 4 <= _limB) { int v = *(int*)(_b->bytes + _posB); _posB += 4; return v; } return 0; }
-	int getInt(int idx) { return (_b && idx >= 0 && idx + 4 <= _b->cap) ? *(int*)(_b->bytes + idx) : 0; }
+	int getInt() { if (_b && _posB + 4 <= _limB) { int v = _ordered4(_b->bytes + _posB); _posB += 4; return v; } return 0; }
+	int getInt(int idx) { return (_b && idx >= 0 && idx + 4 <= _b->cap) ? _ordered4(_b->bytes + idx) : 0; }
+	short getShort() { if (_b && _posB + 2 <= _limB) { short v = _ordered2(_b->bytes + _posB); _posB += 2; return v; } return 0; }
+	short getShort(int idx) { return (_b && idx >= 0 && idx + 2 <= _b->cap) ? _ordered2(_b->bytes + idx) : (short)0; }
+	float getFloat() { int v = getInt(); float f; memcpy(&f, &v, 4); return f; }
+	float getFloat(int idx) { int v = getInt(idx); float f; memcpy(&f, &v, 4); return f; }
 	ByteBuffer& putInt(int v) { if (_b && _posB + 4 <= _b->cap) { *(int*)(_b->bytes + _posB) = v; _posB += 4; } return *this; }
 	ByteBuffer& putInt(int idx, int v) { if (_b && idx >= 0 && idx + 4 <= _b->cap) *(int*)(_b->bytes + idx) = v; return *this; }
 
@@ -148,6 +161,21 @@ public:
 	FloatBuffer* asFloatBuffer();
 
 	operator void*() { return base(); }                        // legacy interop (truthiness / raw ptr)
+private:
+	bool _swap;   // order() asked for the other byte order than the machine's (set in the constructor: C++03)
+	static bool _nativeLittle() { const unsigned int one = 1; return *(const unsigned char*)&one != 0; }
+	int _ordered4(const char* p) const {
+		int v; memcpy(&v, p, 4);
+		if (!_swap) return v;
+		const unsigned int u = (unsigned int)v;
+		return (int)((u >> 24) | ((u >> 8) & 0xFF00u) | ((u << 8) & 0xFF0000u) | (u << 24));
+	}
+	short _ordered2(const char* p) const {
+		short v; memcpy(&v, p, 2);
+		if (!_swap) return v;
+		const unsigned short u = (unsigned short)v;
+		return (short)((u >> 8) | (u << 8));
+	}
 };
 
 // --- java.nio.IntBuffer (view over a ByteBuffer's bytes) -----------------------

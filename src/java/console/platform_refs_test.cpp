@@ -85,12 +85,17 @@ CB_TEST("java.platform_refs.detect_runnable_game_class", [] {
     std::vector<jir::JClass> indev = {refs_class("Level"), refs_runnable("Minecraft")};
     const jir::JClass* found = pr::detect_runnable_game_class(indev);
     CB_CHECK(found == &indev[1]);
-    // Alpha/Beta: Minecraft is abstract and MinecraftImpl has a parent
+    // Alpha 1.0 (no static main): Minecraft is abstract, and its one concrete subclass is what is made
     jir::JClass abstract_shell = refs_runnable("Minecraft");
     abstract_shell.is_abstract = true;
-    jir::JClass impl = refs_runnable("MinecraftImpl");
+    jir::JClass impl = refs_class("MinecraftAppletImpl");
     impl.parent = "Minecraft";
-    CB_CHECK(pr::detect_runnable_game_class(std::vector<jir::JClass>{abstract_shell, impl}) == nullptr);
+    const std::vector<jir::JClass> alpha = {abstract_shell, impl};
+    CB_CHECK(pr::detect_runnable_game_class(alpha) == &alpha[1]);
+    jir::JClass impl2 = refs_class("MinecraftImpl");
+    impl2.parent = "Minecraft";
+    CB_CHECK(pr::detect_runnable_game_class(std::vector<jir::JClass>{abstract_shell, impl, impl2}) == nullptr);   // two: no answer
+    CB_CHECK(pr::detect_runnable_game_class(std::vector<jir::JClass>{abstract_shell}) == nullptr);                // none
     // a UI Runnable has a superclass
     jir::JClass gui = refs_runnable("GuiLoadLevel");
     gui.parent = "GuiScreen";

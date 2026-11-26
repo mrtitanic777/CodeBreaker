@@ -274,6 +274,7 @@ Summary Conversion::run() {
     say("[resolve] inheritance + MI forwards + type resolver...");
     corpus::resolve_inheritance(classes);
     corpus::compute_mi_forwards(classes);
+    corpus::compute_unhidden_overloads(classes);
     types::TypeResolver resolver =
         corpus::build_resolver(classes, {.value_types = options_.value_types, .profile = &chosen.type, .runtime = &services_.runtime, .markers = dropped.markers});
     // Classes whose constructor makes a virtual call that Java would dispatch to the override (Block's isOpaqueCube, Entity's entityInit):

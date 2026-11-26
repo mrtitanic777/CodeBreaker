@@ -16,6 +16,7 @@ namespace Display {
 	void setDisplayMode(DisplayMode* mode);
 	void setDisplayMode(const DisplayMode& mode);
 	void create();
+	template<class P, class C> inline void create(P*, C*) { create(); }   // Display.create(new PixelFormat(), new ContextAttribs(1, 2)): the context the layer makes
 	void destroy();
 	// frame
 	void update();          // LWJGL: pump input + present the backbuffer

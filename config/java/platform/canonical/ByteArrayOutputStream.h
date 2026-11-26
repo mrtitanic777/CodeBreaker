@@ -29,6 +29,8 @@ public:
 	}
 	void write(int b) { _ensure(count + 1); buf[count++] = (unsigned char)(b & 0xFF); }
 	void write(const unsigned char* b, int len) { _ensure(count + len); for (int i = 0; i < len; ++i) buf[count++] = b[i]; }
+	void write(const JArray<unsigned char>& b, int off, int len) { _ensure(count + len); for (int i = 0; i < len; ++i) buf[count++] = b[off + i]; }   // write(byte[], off, len)
+	void write(const JArray<unsigned char>& b) { write(b, 0, b.length); }
 	void flush() {}
 	void close() {}
 	int size() { return count; }

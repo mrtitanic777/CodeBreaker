@@ -90,6 +90,23 @@ CB_TEST("java.runtime.file_sets_match_golden", [] {
     }
 });
 
+// CB_REGOLD_RUNTIME=1: write testdata/runtime.golden.txt from what the runtime makes now (after a deliberate change to a stub, a
+// canonical header or a platform reference), then review its diff. Without the variable this does nothing.
+CB_TEST("java.runtime.regold_when_asked", [] {
+    if (!cb::fs::get_env("CB_REGOLD_RUNTIME")) return;
+    std::string out;
+    for (const char* config : {"generic-std-98", "nds-11", "none", "pc_opengl-17", "pc_windows-17", "ps3-11", "psp-03", "wii-14", "xbox360-03"})
+        for (const auto& [name, text] : rt_runtime().generate_files(rt_options(config)))
+            out += std::string("file|") + config + "|" + name + "|" + std::to_string(text.size()) + "|" + rt_digest(text) + "\n";
+    for (const auto& [cls, members] : rt_runtime().stub_members()) {
+        std::vector<std::string> methods;
+        for (const auto& [m, type] : members.methods) methods.push_back(m + "=" + type);
+        out += "members|" + cls + "|" + members.parent.value_or("") + "|" + cb::text::join(methods, ";") + "\n";
+    }
+    out += "unwired|" + cb::text::join(rt_runtime().unwired_canonicals(), ",") + "\n";
+    cb::fs::write_text(cb::testing::data_path("java/testdata/runtime.golden.txt"), out);
+});
+
 CB_TEST("java.runtime.stub_members_match_golden", [] {
     const RtGolden golden = rt_load_golden();
     const auto& made = rt_runtime().stub_members();

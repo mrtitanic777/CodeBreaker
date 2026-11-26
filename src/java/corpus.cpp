@@ -173,6 +173,37 @@ void resolve_inheritance(std::vector<ir::JClass>& classes) {
     }
 }
 
+void compute_unhidden_overloads(std::vector<ir::JClass>& classes) {
+    const auto by_name = cor_index(classes);
+    const auto signature = [](const ir::Method& m) {
+        std::string s;
+        for (const ir::Param& p : m.params) s += p.type.name + std::string(p.type.array_dims, '[') + ",";
+        return s;
+    };
+    for (ir::JClass& cls : classes) {
+        cls.unhidden_overloads.clear();
+        if (cls.is_interface || !cls.parent || by_name.find(*cls.parent) == by_name.end()) continue;
+        std::map<std::string, std::set<std::string>, std::less<>> own;   // name -> the parameter lists this class declares
+        for (const ir::Method& m : cls.methods)
+            if (!m.is_ctor) own[m.name].insert(signature(m));
+        std::set<std::string, std::less<>> needed;
+        std::set<std::string, std::less<>> guard;
+        auto it = by_name.find(*cls.parent);
+        while (it != by_name.end() && guard.insert(it->second->name).second) {
+            const ir::JClass& anc = *it->second;
+            if (anc.is_interface) break;
+            for (const ir::Method& m : anc.methods) {
+                if (m.is_ctor) continue;
+                const auto mine = own.find(m.name);
+                if (mine != own.end() && !mine->second.contains(signature(m))) needed.insert(m.name);
+            }
+            if (!anc.parent) break;
+            it = by_name.find(*anc.parent);
+        }
+        cls.unhidden_overloads.assign(needed.begin(), needed.end());
+    }
+}
+
 void compute_mi_forwards(std::vector<ir::JClass>& classes) {
     const auto by_name = cor_index(classes);
     // all methods from the implemented interfaces, transitively, in the order met (the first declaration of a name wins)

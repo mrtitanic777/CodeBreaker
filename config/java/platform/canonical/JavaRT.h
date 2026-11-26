@@ -149,6 +149,8 @@ struct StringBuilder {
 template<class T> struct JArrayInit {
 	std::vector<T> _v;
 	JArrayInit& operator,(const T& x) { _v.push_back(x); return *this; }
+	// `new String[]{"a", "b"}[i]`: an element of the array literal itself (Indev in-20100212's key names)
+	const T& operator[](int i) const { return _v[(std::size_t)i]; }
 	operator JArray<T>() const {
 		JArray<T> r((int)_v.size());
 		for (unsigned i = 0; i < _v.size(); ++i) r[(int)i] = _v[i];

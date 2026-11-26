@@ -68,6 +68,12 @@ void resolve_inheritance(std::vector<ir::JClass>& classes);
 // declaration (the signature's source) and the ancestor whose concrete implementation to call.
 void compute_mi_forwards(std::vector<ir::JClass>& classes);
 
+// C++'s overload hiding, undone: a class that declares a method name its ancestors (classes, not interfaces) also declare with
+// another parameter list would hide those overloads (EntityOtherPlayerMP overrides setPositionAndRotation(..., int), and
+// Entity's five-argument one is no longer callable on it). Each such name lands in the class's `unhidden_overloads`, written
+// `using Parent::name;` in its header.
+void compute_unhidden_overloads(std::vector<ir::JClass>& classes);
+
 // Each class's fields and method return types flattened over its parent chain (closer definitions win), so a chained
 // `recv.field.member` or `Class::s_field.member` gets `.` or `->` right by construction. The runtime's stub classes
 // (URL, File, Runtime, Applet, Node ...) are not in the corpus but their method results must resolve chains through them

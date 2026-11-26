@@ -141,6 +141,9 @@ struct JClass {
     std::vector<const Field*> inherited_fields;
     // Synthesised MI-diamond forwarding overrides (filled by the pipeline).
     std::vector<MiForward> mi_forwards;
+    // Inherited overloads this class's own methods would hide in C++ (filled by the pipeline): each is written
+    // `using <parent>::<name>;` -- Java inherits every overload a subclass does not override.
+    std::vector<std::string> unhidden_overloads;
     // Set by the source emitter: initStatics() has a non-empty body (deferred static field inits or static{} blocks),
     // so the pipeline adds the class to the ordered init driver.
     bool has_init_statics = false;

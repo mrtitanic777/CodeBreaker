@@ -106,6 +106,15 @@ std::string Writer::sequenced(const ir::Node* e) {
             c.code = "JavaString((" + c.code + ")._s)";
             c.ctype = "JavaString";
         }
+        if (c.ctype.ends_with("&") && !c.ctype.starts_with("const ")) {   // a reference (an NIO buffer's chain): held by address, not copied
+            std::string base = c.ctype.substr(0, c.ctype.size() - 1);
+            while (!base.empty() && base.back() == ' ') base.pop_back();
+            const std::string nm = std::format("j2xo{}", ++temps_);
+            pending_.push_back(std::format("{}* {} = NULL;", base, nm));
+            parts.push_back(nm + " = &(" + c.code + ")");
+            subst_[n] = Code{nm, base + "*"};
+            continue;
+        }
         std::string ct = detail::strip_const_ref(c.ctype);
         if (ct == "char*" || ct == "char *") ct = "JavaString";   // text: held as the String it is
         if (ct == "void" || ct.empty()) return "";

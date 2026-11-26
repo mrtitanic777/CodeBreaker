@@ -193,6 +193,11 @@ std::string render_class(const ir::JClass& cls, const types::TypeResolver& resol
         out.push_back("\tstatic void initStatics();");
     }
 
+    // the ancestors' other overloads of a name this class declares stay callable on it, as in Java
+    if (!cls.unhidden_overloads.empty() && cls.parent) {
+        for (const std::string& name : cls.unhidden_overloads) out.push_back(std::format("\tusing {}::{};", base_type_spelling(*cls.parent), name));
+    }
+
     // MI-diamond unification: forwarding overrides so an interface's pure-virtual that a base class already implements
     // concretely is satisfied in THIS class (concrete: NOT '= 0' like the interface's).
     if (!cls.mi_forwards.empty()) {

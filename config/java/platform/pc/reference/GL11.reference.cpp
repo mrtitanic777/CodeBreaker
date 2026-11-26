@@ -66,6 +66,7 @@ void glFog(int p, FloatBuffer* v) { ::glFogfv(p, (const GLfloat*)at(v)); }
 void glLight(int light, int p, FloatBuffer* v) { ::glLightfv(light, p, (const GLfloat*)at(v)); }
 void glLightf(int light, int p, float v) { ::glLightf(light, p, v); }
 void glLightModel(int p, FloatBuffer* v) { ::glLightModelfv(p, (const GLfloat*)at(v)); }
+void glLightModelf(int p, float v) { ::glLightModelf(p, v); }
 void glTexEnvi(int t, int p, int v) { ::glTexEnvi(t, p, v); }
 
 int glGenTextures() { GLuint id = 0; ::glGenTextures(1, &id); return (int)id; }
@@ -108,6 +109,7 @@ void glColorPointer(int size, int type, int stride, long long off) { ::glColorPo
 void glTexCoordPointer(int size, int type, int stride, long long off) { ::glTexCoordPointer(size, type, stride, (const void*)(size_t)off); }
 void glNormalPointer(int type, int stride, long long off) { ::glNormalPointer(type, stride, (const void*)(size_t)off); }
 void glDrawArrays(int mode, int first, int count) { ::glDrawArrays(mode, first, count); }
+void glDrawElements(int mode, IntBuffer* idx) { if (idx) ::glDrawElements(mode, idx->remaining(), GL_UNSIGNED_INT, at(idx)); }
 
 int glGenLists(int n) { return (int)::glGenLists(n); }
 void glNewList(int list, int mode) { ::glNewList((GLuint)list, mode); }

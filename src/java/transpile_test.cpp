@@ -52,10 +52,13 @@ stdfs::path trt_source() { return cb::testing::data_path("java/testdata/source")
 
 // testdata/convert.golden.json: the recorded convert() result on testdata/source with the same fake translator, three configurations:
 // the file set (a sha256 of each file's text; the report folder by name only), the progress lines, and the summary.
+// CB_REGOLD_CONVERT=1 writes the golden from what convert() makes now (after a deliberate change to the runtime or the emitter),
+// to review by its diff; the checks are then skipped.
 CB_TEST("java.transpile.convert_matches_golden", [] {
-    const Json golden = cb::json::load(cb::testing::data_path("java/testdata/convert.golden.json"));
+    Json golden = cb::json::load(cb::testing::data_path("java/testdata/convert.golden.json"));
+    const bool regold = cb::fs::get_env("CB_REGOLD_CONVERT").has_value();
     TrWorld world;
-    for (const Json& config : golden) {
+    for (Json& config : golden) {
         const std::string name = config["name"].get<std::string>();
         cb::fs::ScopedTempDir tmp("cbconvert");
         std::vector<std::string> messages;
@@ -76,6 +79,21 @@ CB_TEST("java.transpile.convert_matches_golden", [] {
             if (rel.starts_with("report/")) { files[rel] = ""; continue; }
             const std::string text = cb::fs::read_text(entry.path());
             files[rel] = cb::crypto::to_hex(cb::crypto::sha256(cb::Bytes(text.begin(), text.end())));
+        }
+        if (regold) {
+            config["files"] = Json::object();
+            for (const auto& [rel, sha] : files) config["files"][rel] = sha;
+            config["messages"] = messages;
+            Json& s = config["summary"];
+            s["parsed"] = summary.parsed;
+            s["headers"] = summary.headers;
+            s["sources"] = summary.sources;
+            s["markers"] = summary.markers;
+            s["rule_findings"] = summary.rule_findings;
+            s["events"] = summary.events;
+            s["high"] = summary.high;
+            s["tree_bodies"][0] = summary.methods_written;
+            continue;
         }
         const auto& want = config["files"];
         CB_CHECK_EQ(files.size(), want.size());
@@ -109,6 +127,7 @@ CB_TEST("java.transpile.convert_matches_golden", [] {
         CB_CHECK_EQ(summary.report.has_value(), config["args"]["write_report"].get<bool>());
         (void)name;
     }
+    if (regold) cb::fs::write_text(cb::testing::data_path("java/testdata/convert.golden.json"), cb::json::dump(golden, cb::json::Style::Compact) + "\n");
 });
 
 CB_TEST("java.transpile.standards", [] {

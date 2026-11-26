@@ -120,11 +120,22 @@ const ir::JClass* detect_runnable_game_class(std::span<const ir::JClass> classes
     const ir::JClass* found = nullptr;
     for (const ir::JClass& c : classes) {
         if (std::find(c.interfaces.begin(), c.interfaces.end(), "Runnable") == c.interfaces.end()) continue;
-        if (c.is_abstract || c.is_interface) continue;
+        if (c.is_interface) continue;
         if (c.parent && *c.parent != "Object") continue;
         if (c.method("run") == nullptr) continue;
+        const ir::JClass* shell = &c;
+        if (c.is_abstract) {
+            // an abstract shell (Alpha 1.0's Minecraft) is made as its one concrete subclass (MinecraftAppletImpl)
+            shell = nullptr;
+            for (const ir::JClass& sub : classes) {
+                if (sub.is_abstract || sub.is_interface || !sub.parent || *sub.parent != c.name) continue;
+                if (shell != nullptr) return nullptr;   // more than one: no answer
+                shell = &sub;
+            }
+            if (shell == nullptr) continue;
+        }
         if (found != nullptr) return nullptr;   // ambiguous
-        found = &c;
+        found = shell;
     }
     return found;
 }
