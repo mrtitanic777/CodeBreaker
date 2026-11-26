@@ -20,6 +20,7 @@
 #include <filesystem>
 #include <functional>
 #include <optional>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -99,6 +100,8 @@ struct RunResult {
 // Two passes over the .cpp files directly in out_dir: (1) generate a factory for each registry class from its
 // registration table; (2) rewrite reflection sites in OTHER files to reuse those factories via ReflectionFactory.h
 // (written when any factory exists). Files are rewritten in place. NotFoundError if out_dir is not a folder.
-RunResult run(const std::filesystem::path& out_dir, const Registrars& registrars = {});
+// `abstract_classes`: the classes Java declares abstract (newInstance() throws for them, so no factory builds one: Beta 1.9's
+// EntityMob is abstract through a method it inherits, which its header does not show).
+RunResult run(const std::filesystem::path& out_dir, const Registrars& registrars = {}, const std::set<std::string>& abstract_classes = {});
 
 }  // namespace cb::java::reflection_factory

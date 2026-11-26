@@ -352,7 +352,7 @@ std::string header_text(const std::vector<FactoryRef>& factories) {
     return text::join(lines, "\n");
 }
 
-RunResult run(const stdfs::path& out_dir, const Registrars& registrars) {
+RunResult run(const stdfs::path& out_dir, const Registrars& registrars, const std::set<std::string>& abstract_classes) {
     std::error_code ec;
     if (!stdfs::is_directory(out_dir, ec)) throw NotFoundError(out_dir, 0, "not a folder");
     std::vector<std::string> files;
@@ -373,7 +373,8 @@ RunResult run(const stdfs::path& out_dir, const Registrars& registrars) {
     for (const std::string& f : files) {
         const auto text = read(f);
         if (!text || (!has(*text, "newInstance") && !has(*text, "_createByReflection("))) continue;
-        const Constructible constructible = [&out_dir](const std::string& cls, std::size_t argc) {
+        const Constructible constructible = [&out_dir, &abstract_classes](const std::string& cls, std::size_t argc) {
+            if (abstract_classes.contains(cls)) return Construction::None;
             const auto header = textutil::try_read_text(out_dir / fs::from_text(cls + ".h"));
             return header ? header_construction(*header, cls, argc) : Construction::New;   // (no header: no say, keep it)
         };

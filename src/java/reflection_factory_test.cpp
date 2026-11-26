@@ -88,6 +88,19 @@ CB_TEST("java.reflection_factory.default_registrars", [] {
     expect_tree(tmp.path(), data("expected_default"));
 });
 
+// A class Java declares abstract is left out of the factory, though its header shows no pure virtual (Beta 1.9's EntityMob).
+CB_TEST("java.reflection_factory.abstract_classes_are_left_out", [] {
+    cb::fs::ScopedTempDir tmp("cbrefl");
+    copy_into(data("in_default"), tmp.path());
+    (void)run(tmp.path(), {}, {"Skeleton"});
+    std::string all;
+    for (const auto& e : std::filesystem::directory_iterator(tmp.path()))
+        if (e.path().extension() == ".cpp") all += cb::fs::read_text(e.path());
+    CB_CHECK(all.find("return new Zombie();") != std::string::npos);
+    CB_CHECK(all.find("return new Skeleton();") == std::string::npos);
+    CB_CHECK(all.find("// Skeleton: no constructor of 0 argument(s)") != std::string::npos);
+});
+
 CB_TEST("java.reflection_factory.registrars_match_lines", [] {
     CB_CHECK(Registrars{}.matches_line("\tregisterEntity(j2xClassOf(typeid(Pig)), 1);"));
     CB_CHECK(Registrars{}.matches_line("x.register (y)"));

@@ -339,7 +339,10 @@ Summary Conversion::run() {
     // Reflection factories: Java class-registry reflection (getConstructor/newInstance -> a NULL stub: the entity-spawn, tile-load and
     // packet-parse crash) becomes a real generated factory switch built from the registration table, and reuse sites (BlockSign,
     // SpawnerAnimals) call it through a shared header. It runs before the rules scan so the reflection-unsupported findings drop.
-    const reflection_factory::RunResult factories = reflection_factory::run(out_dir_, registrars_of(project));
+    std::set<std::string> abstract_classes;
+    for (const ir::JClass& c : classes)
+        if (c.is_abstract && !c.is_interface) abstract_classes.insert(c.name);
+    const reflection_factory::RunResult factories = reflection_factory::run(out_dir_, registrars_of(project), abstract_classes);
     if (factories.total_sites != 0) {
         say(std::format("[reflect] {} registries -> factories ({} classes), {} sites rewritten ({} reused)", factories.registries.size(), factories.total_classes,
                         factories.total_sites, factories.reused.size()));
