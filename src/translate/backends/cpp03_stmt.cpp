@@ -453,10 +453,23 @@ std::optional<std::string> Writer::kept_call(const ir::Node* e_) {
             if (data.thread_like.contains(name) || data.values.contains(name) || r_.extends_value_container(name) ||
                 !data.known.contains(name))
                 return std::nullopt;
-            const std::string code = expr(e).code;   // the call as written, for its method and arguments
+            // the call as written, for its method and arguments. Writing it may hold operands in sequenced temporaries
+            // (`(j2xo1 = new X(..), j2xo2 = .., j2xo1->m(j2xo2))`): when the form is not the plain one, the writer is put back as
+            // it was, so the statement's own writing evaluates them again. FIXED BUG kept-call-lost-temps: the temporaries stayed
+            // registered and the statement wrote `j2xo1->m(j2xo2)` with j2xo1 still NULL (every rail placed: BlockRail's
+            // (new RailLogic(..)).func_792_a(world.isBlockIndirectlyGettingPowered(..), b); RenderMinecart's chest).
+            const auto saved_subst = subst_;
+            const Lines saved_pending = pending_;
+            const int saved_temps = temps_;
+            const std::string code = expr(e).code;
             static const Regex written(R"(^\(?new ([^(]+)\((.*?)\)\)?->(\w+)\((.*)\)$)");
             const auto m = written.match(code);
-            if (!m || m->group(1) != name) return std::nullopt;
+            if (!m || m->group(1) != name) {
+                subst_ = saved_subst;
+                pending_ = saved_pending;
+                temps_ = saved_temps;
+                return std::nullopt;
+            }
             const std::string tmp = std::format("_j2xleak{}", leaks_++);
             const std::string decl = !m->group(2).empty() ? std::format("{} {}({});", name, tmp, m->group(2)) : std::format("{} {};", name, tmp);
             note(Category::Rule, Severity::Med, "leak-temp-stackified",
