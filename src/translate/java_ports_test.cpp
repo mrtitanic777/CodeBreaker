@@ -660,15 +660,22 @@ CB_TEST("java.platform.javamathsqrt_resolves_atan2_with_a_float_argument", [] {
 CB_TEST("java.platform.toggling_alpha_test_does_not_reset_the_alpha_ref", [] {
     const std::string text = fs::read_text(jpo_reference() / "GL11.reference.cpp");
     const std::regex assigns(R"(g_alphaRef\s*=)");
-    for (const char* signature : {"void glEnable(int cap)", "void glDisable(int cap)"}) CB_CHECK(!std::regex_search(jpo_func_body(text, signature), assigns));
-    CB_CHECK(std::regex_search(text, std::regex(R"(static float g_alphaRef = 0\.5f;)")));
+    // glEnable/glDisable go through _setCap; none of them touches the reference (GL keeps it as state of its own)
+    for (const char* signature : {"void glEnable(int cap)", "void glDisable(int cap)", "static void _setCap(int cap, bool on)"})
+        CB_CHECK(!std::regex_search(jpo_func_body(text, signature), assigns));
+    // GL's initial alpha test: GL_ALWAYS against 0 (a game that enables the test without glAlphaFunc keeps every fragment, as on GL)
+    CB_CHECK(std::regex_search(text, std::regex(R"(static float g_alphaRef = 0\.0f;)")));
+    CB_CHECK(std::regex_search(text, std::regex(R"(static int g_alphaFunc = GL_ALWAYS;)")));
 });
 
 CB_TEST("java.platform.the_viewport_height_comes_from_the_backbuffer_and_y_is_clamped", [] {
     const std::string text = fs::read_text(jpo_reference() / "GL11.reference.cpp");
     const std::string vp = jpo_func_body(text, "void glViewport(int x, int y, int w, int h)");
     CB_CHECK(!jpo_has(vp, "g_fbH ="));   // no longer captured from an arbitrary (0,0,w,h)
-    CB_CHECK(jpo_has(vp, "if (fy < 0) fy = 0;"));
+    CB_CHECK(jpo_has(vp, "_applyViewport();"));
+    const std::string apply = jpo_func_body(text, "static void _applyViewport()");
+    CB_CHECK(jpo_has(apply, "int y = g_fbH - g_vpY - g_vpH;"));   // GL's bottom-left origin flipped by the real backbuffer height
+    CB_CHECK(jpo_has(apply, "if (y < 0) { h += y; y = 0; }"));      // never a wrapped (huge unsigned) Y
     CB_CHECK(jpo_has(jpo_func_body(text, "void glSetDevice(IDirect3DDevice9* dev)"), "GetBackBuffer"));
 });
 
