@@ -414,6 +414,11 @@ target_link_libraries(cb_symbols PUBLIC cb_core cb_base cb_formats cb_knowledge 
 cb_area(xna)
 target_link_libraries(cb_xna PUBLIC cb_core cb_base cb_formats cb_java cb_decompile)   # (cb_base: the Converted project; cb_formats: PE and media images; cb_java: the PNG codec of the content converters; cb_decompile: the Xbox effect as HLSL -- static libraries may be cyclic)
 
+# .NET: the ECMA-335 metadata reader (dotnet/metadata) and the decompiler ported from ILSpy (dotnet/decompiler):
+# docs/DOTNET_DECOMPILER_PLAN.md.
+cb_area(dotnet)
+target_link_libraries(cb_dotnet PUBLIC cb_core cb_formats)
+
 # The translator's back ends, front ends and the whole-program judge; the interface's helpers (the window is
 # app/window_*: docs/CPP_DESIGN.md section 9).
 # pyfront: the Python parser the translator's Python front end reads programs with (translate/frontends/python/pyfront).

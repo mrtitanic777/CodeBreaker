@@ -1,0 +1,1206 @@
+cor runtime=2.5 metadata=25b4+1ee0 flags=1 entry=00000000 resources=0+0 strongname=0+0
+metadata version="v4.0.30319" kind=0 assembly=1
+heap UserString offset=1894 size=60
+heap String offset=d14 size=b7f
+heap Blob offset=1904 size=5dc
+heap Guid offset=18f4 size=10
+table 00 rows=1 rowsize=10 offset=100
+table 01 rows=63 rowsize=6 offset=10a
+table 02 rows=16 rowsize=14 offset=284
+table 04 rows=38 rowsize=6 offset=364
+table 06 rows=47 rowsize=14 offset=448
+table 08 rows=39 rowsize=6 offset=6da
+table 09 rows=8 rowsize=4 offset=7c4
+table 0a rows=70 rowsize=6 offset=7e4
+table 0b rows=9 rowsize=6 offset=988
+table 0c rows=50 rowsize=6 offset=9be
+table 0d rows=2 rowsize=4 offset=aea
+table 0e rows=1 rowsize=6 offset=af2
+table 0f rows=2 rowsize=8 offset=af8
+table 10 rows=4 rowsize=6 offset=b08
+table 11 rows=9 rowsize=2 offset=b20
+table 12 rows=2 rowsize=4 offset=b32
+table 14 rows=2 rowsize=6 offset=b3a
+table 15 rows=4 rowsize=4 offset=b46
+table 17 rows=10 rowsize=6 offset=b56
+table 18 rows=15 rowsize=6 offset=b92
+table 19 rows=9 rowsize=6 offset=bec
+table 1a rows=2 rowsize=2 offset=c22
+table 1b rows=8 rowsize=2 offset=c26
+table 1c rows=2 rowsize=8 offset=c36
+table 1d rows=1 rowsize=6 offset=c46
+table 20 rows=1 rowsize=22 offset=c4c
+table 23 rows=4 rowsize=20 offset=c62
+table 29 rows=5 rowsize=4 offset=cb2
+table 2a rows=5 rowsize=8 offset=cc6
+table 2b rows=6 rowsize=4 offset=cee
+table 2c rows=3 rowsize=4 offset=d06
+string 1 "__StaticArrayInitTypeSize=40"
+string 1e "<>c__DisplayClass8_0"
+string 33 "<Closure>b__0"
+string 41 "<>u__1"
+string 48 "Nested`1"
+string 51 "IComparable`1"
+string 5f "IEnumerable`1"
+string 6d "Task`1"
+string 74 "AsyncTaskMethodBuilder`1"
+string 8d "IEnumerator`1"
+string 9b "List`1"
+string a2 "Box`1"
+string a8 "Int32"
+string ae "<i>5__2"
+string b6 "Func`2"
+string bd "KeyValuePair`2"
+string cc "Dictionary`2"
+string d9 "<Later>d__3"
+string e5 "<Count>d__4"
+string f1 "<Module>"
+string fa "<PrivateImplementationDetails>"
+string 119 "6341DA6106ADABFB52202E479ABE276558D68889931BC59F0F18BAD87C14C2DC"
+string 15a "T"
+string 15c "U"
+string 15e "MessageBoxW"
+string 16a "value__"
+string 172 "get_Area"
+string 17b "b"
+string 17d "System.Collections.Generic"
+string 198 "get_CurrentManagedThreadId"
+string 1b3 "<>l__initialThreadId"
+string 1c8 "Read"
+string 1cd "Red"
+string 1d1 "Guarded"
+string 1d9 "add_Changed"
+string 1e5 "remove_Changed"
+string 1f4 "Interlocked"
+string 200 "AwaitUnsafeOnCompleted"
+string 217 "get_IsCompleted"
+string 227 "AppendFormatted"
+string 237 "<Kind>k__BackingField"
+string 24d "<Number>k__BackingField"
+string 265 "<Rest>k__BackingField"
+string 27b "<Text>k__BackingField"
+string 291 "get_Kind"
+string 29a "hwnd"
+string 29f "Describe"
+string 2a8 "Code"
+string 2ad "get_Message"
+string 2b9 "CompareExchange"
+string 2c9 "Invoke"
+string 2d0 "Table"
+string 2d6 "IEnumerable"
+string 2e2 "IDisposable"
+string 2ee "Double"
+string 2f5 "Circle"
+string 2fc "RuntimeFieldHandle"
+string 30f "System.Console"
+string 31e "Sample"
+string 325 "System.Runtime"
+string 334 "WriteLine"
+string 33e "Combine"
+string 346 "IAsyncStateMachine"
+string 359 "SetStateMachine"
+string 369 "stateMachine"
+string 376 "None"
+string 37b "IShape"
+string 382 "ValueType"
+string 38c "type"
+string 391 "Closure"
+string 399 "System.IDisposable.Dispose"
+string 3b4 "Create"
+string 3bb "Delegate"
+string 3c4 "<>1__state"
+string 3cf "Write"
+string 3d5 "note"
+string 3da "CompilerGeneratedAttribute"
+string 3f5 "UnverifiableCodeAttribute"
+string 40f "AttributeUsageAttribute"
+string 427 "DebuggableAttribute"
+string 43b "NullableAttribute"
+string 44d "AssemblyTitleAttribute"
+string 464 "AsyncStateMachineAttribute"
+string 47f "IteratorStateMachineAttribute"
+string 49d "TargetFrameworkAttribute"
+string 4b6 "DebuggerHiddenAttribute"
+string 4ce "AssemblyFileVersionAttribute"
+string 4eb "AssemblyInformationalVersionAttribute"
+string 511 "SecurityPermissionAttribute"
+string 52d "AssemblyConfigurationAttribute"
+string 54c "DefaultMemberAttribute"
+string 563 "MarkerAttribute"
+string 573 "RefSafetyRulesAttribute"
+string 58b "FlagsAttribute"
+string 59a "CompilationRelaxationsAttribute"
+string 5ba "AssemblyProductAttribute"
+string 5d3 "CLSCompliantAttribute"
+string 5e9 "ParamArrayAttribute"
+string 5fd "IsReadOnlyAttribute"
+string 611 "AssemblyCompanyAttribute"
+string 62a "RuntimeCompatibilityAttribute"
+string 648 "Blue"
+string 64d "value"
+string 653 "Native"
+string 65a "Remove"
+string 661 "f"
+string 663 "Big"
+string 667 "System.Threading"
+string 678 "System.Runtime.Versioning"
+string 692 "ToString"
+string 69b "High"
+string 6a0 "get_Length"
+string 6ab "Both"
+string 6b0 "Pi"
+string 6b3 "UsePick"
+string 6bb "get_Task"
+string 6c4 "Real"
+string 6c9 "AppendLiteral"
+string 6d7 "total"
+string 6dd "detail"
+string 6e4 "All"
+string 6e8 "kernel32.dll"
+string 6f5 "user32.dll"
+string 700 "Sample.dll"
+string 70b "get_Item"
+string 714 "System"
+string 71b "Enum"
+string 720 "Green"
+string 726 "SecurityAction"
+string 735 "System.Reflection"
+string 747 "op_Addition"
+string 753 "caption"
+string 75b "NotSupportedException"
+string 771 "SetException"
+string 77e "InvalidCastException"
+string 793 "CompareTo"
+string 79d "<>3__to"
+string 7a5 "Map"
+string 7a9 "ToStringAndClear"
+string 7ba "get_Number"
+string 7c5 "number"
+string 7cc "<>t__builder"
+string 7d9 "other"
+string 7df "DefaultInterpolatedStringHandler"
+string 800 "EventHandler"
+string 80d "Later"
+string 813 "TaskAwaiter"
+string 81f "GetAwaiter"
+string 82a "Pointer"
+string 832 "IEnumerator"
+string 83e "System.Collections.Generic.IEnumerable<System.Int32>.GetEnumerator"
+string 881 "System.Collections.IEnumerable.GetEnumerator"
+string 8ae ".ctor"
+string 8b4 ".cctor"
+string 8bb "Colour"
+string 8c2 "System.Diagnostics"
+string 8d5 "System.Runtime.CompilerServices"
+string 8f5 "DebuggingModes"
+string 904 "Primes"
+string 90b "EventArgs"
+string 915 "Ticks"
+string 91b "System.Threading.Tasks"
+string 932 "System.Security.Permissions"
+string 94e "System.Collections"
+string 961 "Loops"
+string 967 "RuntimeHelpers"
+string 976 "Access"
+string 97d "AttributeTargets"
+string 98e "get_Radius"
+string 999 "set_Radius"
+string 9a4 "radius"
+string 9ab "Concat"
+string 9b2 "Object"
+string 9b9 "System.Collections.IEnumerator.Reset"
+string 9de "Weight"
+string 9e5 "limit"
+string 9eb "Unit"
+string 9f0 "TResult"
+string 9f8 "GetResult"
+string a02 "SetResult"
+string a0c "Environment"
+string a18 "System.Collections.Generic.IEnumerator<System.Int32>.Current"
+string a55 "System.Collections.IEnumerator.Current"
+string a7c "System.Collections.Generic.IEnumerator<System.Int32>.get_Current"
+string abd "System.Collections.IEnumerator.get_Current"
+string ae8 "<>2__current"
+string af5 "GetTickCount"
+string b02 "Start"
+string b08 "get_Rest"
+string b11 "rest"
+string b16 "first"
+string b1c "MoveNext"
+string b25 "get_Text"
+string b2e "text"
+string b33 "Low"
+string b37 "index"
+string b3d "Delay"
+string b43 "Overlay"
+string b4b "InitializeArray"
+string b5b "array"
+string b61 "History"
+string b69 "System.Security"
+string b79 "Empty"
+userstring 1 "circle"
+userstring f "circle r="
+userstring 23 "cm"
+userstring 29 "sum: "
+userstring 35 "cast"
+userstring 3f "inner"
+userstring 4b "other"
+userstring 57 "a"
+userstring 5b "b"
+userstring 5f ""
+blob 1 20010108
+blob 6 200001
+blob a 2001011111
+blob 10 20010102
+blob 15 2001010e
+blob 1a 2001011135
+blob 20 2001011145
+blob 26 15127901121c
+blob 2d 2001011255
+blob 33 200002
+blob 37 151280ad0108
+blob 3e 20001300
+blob 43 20001c
+blob 47 151280a10108
+blob 4e 2000151280ad011300
+blob 58 20010105
+blob 5d 20001280a9
+blob 63 2001011280bd
+blob 6a 0703126912691269
+blob 73 00021280c91280c91280c9
+blob 7f 1001031e00101e001e001e00
+blob 8c 0a011269
+blob 91 061280d1
+blob 96 2002011c1280d1
+blob 9e 0701117d
+blob a3 2002010808
+blob a9 300101011e00
+blob b0 0a010d
+blob b4 20000e
+blob b8 2001080d
+blob bd 0002011280e11180e5
+blob c7 151220011300
+blob ce 061300
+blob d2 151280850213001e00
+blob dc 200113011300
+blob e3 1512750115118081020e1d1300
+blob f1 061512750115118081020e1d1300
+blob 100 0703080808
+blob 106 00020e0e0e
+blob 10c 07010e
+blob 110 200008
+blob 114 0001010e
+blob 119 07020f08451d08
+blob 121 0701113c
+blob 126 151180c50108
+blob 12d 0000151180c5011300
+blob 137 30010101101e00
+blob 13f 0a01113c
+blob 144 200015128099011300
+blob 14e 0a0108
+blob 152 0a010e
+blob 156 15128085020808
+blob 15e 2002011c18
+blob 164 000008
+blob 168 07020808
+blob 16d 07011238
+blob 172 070408081180c1128091
+blob 17d 00011280fd08
+blob 184 20001180c1
+blob 18a 30020201101e00101e01
+blob 195 0a021180c1113c
+blob 19d 200101128091
+blob 1a4 2001011300
+blob 1aa b03f5f7f11d50a3a
+blob 1b3 01
+blob 1b5 02
+blob 1b7 04
+blob 1b9 0000000000000000
+blob 1c2 0100000000000000
+blob 1cb 0200000000000000
+blob 1d4 0300000000000000
+blob 1dd 63006d00
+blob 1e2 112d4454fb210940
+blob 1eb 2e01808a53797374656d2e53656375726974792e5065726d697373696f6e732e53656375726974795065726d697373696f6e4174747269627574652c2053797374656d2e52756e74696d652c2056657273696f6e3d392e302e302e302c2043756c747572653d6e65757472616c2c205075626c69634b6579546f6b656e3d623033663566376631316435306133611501540210536b6970566572696669636174696f6e01
+blob 291 0c
+blob 293 15
+blob 295 060e
+blob 298 0608
+blob 29b 061255
+blob 29f 061d1c
+blob 2a3 060d
+blob 2a6 0605
+blob 2a9 06110c
+blob 2ad 060a
+blob 2b0 061110
+blob 2b4 061d08
+blob 2b8 061269
+blob 2bc 061140
+blob 2c0 06151280890213001301
+blob 2cb 06151180c50108
+blob 2d3 061180c1
+blob 2d8 2003010812551d1c
+blob 2e1 20001255
+blob 2e6 20001d1c
+blob 2eb 20000d
+blob 2ef 20010e08
+blob 2f4 2001011269
+blob 2fa 2001010d
+blob 2ff 200108121c
+blob 305 20010808
+blob 30a 0002121c121c121c
+blob 313 000001
+blob 317 3001011e00151280850213001e00
+blob 326 000009
+blob 32a 000408180e0e09
+blob 332 000408081008100e100a
+blob 33d 00010e1c
+blob 342 0002080f081d08
+blob 34a 000115128099010808
+blob 354 0001151280a1010808
+blob 35e 1001031e001e001e0002
+blob 369 00000a
+blob 36d 00011512808502080808
+blob 378 2000151280ad0108
+blob 381 28000e
+blob 385 280008
+blob 389 28001255
+blob 38e 28001d1c
+blob 393 28000d
+blob 397 28010808
+blob 39c 28001c
+blob 3a0 0100080000000000
+blob 3a9 01000100540216577261704e6f6e457863657074696f6e5468726f777301
+blob 3c8 0100020000000000
+blob 3d1 0100000000
+blob 3d7 0100182e4e4554436f72654170702c56657273696f6e3d76392e300100540e144672616d65776f726b446973706c61794e616d65082e4e455420392e30
+blob 415 01000653616d706c650000
+blob 421 01000752656c656173650000
+blob 42e 010007312e302e302e300000
+blob 43b 010005312e302e300000
+blob 446 01000000
+blob 44b 01001753616d706c652e436f64652b3c4c617465723e645f5f330000
+blob 468 01001753616d706c652e436f64652b3c436f756e743e645f5f340000
+blob 485 0100ff7f0000010054020d416c6c6f774d756c7469706c6501
+blob 49f 0100044974656d0000
+blob 4a9 01000700000080db53797374656d2e436f6c6c656374696f6e732e47656e657269632e4c69737460315b5b53797374656d2e496e7433322c2053797374656d2e52756e74696d652c2056657273696f6e3d392e302e302e302c2043756c747572653d6e65757472616c2c205075626c69634b6579546f6b656e3d623033663566376631316435306133615d5d2c2053797374656d2e436f6c6c656374696f6e732c2056657273696f6e3d392e302e302e302c2043756c747572653d6e65757472616c2c205075626c69634b6579546f6b656e3d62303366356637663131643530613361040000000e01610802000000550d53616d706c652e436f6c6f7572020eff0100530d06576569676874000000000000f83f
+blob 5bf 0100010000
+blob 5c5 01000b0000000000
+blob 5ce 0100066d6f64756c650000
+blob 5da -
+blob 5db -
+guid 1 bf3429b0-034f-4ba4-83a7-df31d7ebb3c8
+module gen=0 name="Sample.dll" mvid=bf3429b0-034f-4ba4-83a7-df31d7ebb3c8 enc=nil encbase=nil
+typeref 01000001 scope=23000001 ns="System.Runtime.CompilerServices" name="CompilationRelaxationsAttribute"
+typeref 01000002 scope=23000001 ns="System.Runtime.CompilerServices" name="RuntimeCompatibilityAttribute"
+typeref 01000003 scope=23000001 ns="System.Diagnostics" name="DebuggableAttribute"
+typeref 01000004 scope=01000003 ns="" name="DebuggingModes"
+typeref 01000005 scope=23000001 ns="System" name="CLSCompliantAttribute"
+typeref 01000006 scope=23000001 ns="System.Runtime.Versioning" name="TargetFrameworkAttribute"
+typeref 01000007 scope=23000001 ns="System.Reflection" name="AssemblyCompanyAttribute"
+typeref 01000008 scope=23000001 ns="System.Reflection" name="AssemblyConfigurationAttribute"
+typeref 01000009 scope=23000001 ns="System.Reflection" name="AssemblyFileVersionAttribute"
+typeref 0100000a scope=23000001 ns="System.Reflection" name="AssemblyInformationalVersionAttribute"
+typeref 0100000b scope=23000001 ns="System.Reflection" name="AssemblyProductAttribute"
+typeref 0100000c scope=23000001 ns="System.Reflection" name="AssemblyTitleAttribute"
+typeref 0100000d scope=23000001 ns="System.Security.Permissions" name="SecurityAction"
+typeref 0100000e scope=23000001 ns="System.Security.Permissions" name="SecurityPermissionAttribute"
+typeref 0100000f scope=23000001 ns="System.Security" name="UnverifiableCodeAttribute"
+typeref 01000010 scope=23000001 ns="System.Runtime.CompilerServices" name="RefSafetyRulesAttribute"
+typeref 01000011 scope=23000001 ns="System" name="AttributeTargets"
+typeref 01000012 scope=23000001 ns="System" name="AttributeUsageAttribute"
+typeref 01000013 scope=23000001 ns="System" name="Attribute"
+typeref 01000014 scope=23000001 ns="System.Runtime.CompilerServices" name="CompilerGeneratedAttribute"
+typeref 01000015 scope=23000001 ns="System" name="Type"
+typeref 01000016 scope=23000001 ns="System" name="Object"
+typeref 01000017 scope=23000001 ns="System" name="ParamArrayAttribute"
+typeref 01000018 scope=23000001 ns="System" name="Enum"
+typeref 01000019 scope=23000001 ns="System" name="FlagsAttribute"
+typeref 0100001a scope=23000001 ns="System" name="EventHandler"
+typeref 0100001b scope=23000001 ns="System" name="ValueType"
+typeref 0100001c scope=23000001 ns="System.Reflection" name="DefaultMemberAttribute"
+typeref 0100001d scope=23000002 ns="System.Collections.Generic" name="List`1"
+typeref 0100001e scope=23000001 ns="System" name="IComparable`1"
+typeref 0100001f scope=23000001 ns="System.Runtime.CompilerServices" name="DefaultInterpolatedStringHandler"
+typeref 01000020 scope=23000001 ns="System.Collections.Generic" name="KeyValuePair`2"
+typeref 01000021 scope=23000001 ns="System" name="Func`2"
+typeref 01000022 scope=23000002 ns="System.Collections.Generic" name="Dictionary`2"
+typeref 01000023 scope=23000001 ns="System.Runtime.CompilerServices" name="IsReadOnlyAttribute"
+typeref 01000024 scope=23000001 ns="System" name="Exception"
+typeref 01000025 scope=23000001 ns="System.Runtime.CompilerServices" name="AsyncStateMachineAttribute"
+typeref 01000026 scope=23000001 ns="System.Threading.Tasks" name="Task`1"
+typeref 01000027 scope=23000001 ns="System.Runtime.CompilerServices" name="IteratorStateMachineAttribute"
+typeref 01000028 scope=23000001 ns="System.Collections.Generic" name="IEnumerable`1"
+typeref 01000029 scope=23000001 ns="System" name="IDisposable"
+typeref 0100002a scope=23000001 ns="System.Collections" name="IEnumerator"
+typeref 0100002b scope=23000001 ns="System.Collections.Generic" name="IEnumerator`1"
+typeref 0100002c scope=23000001 ns="System.Runtime.CompilerServices" name="NullableAttribute"
+typeref 0100002d scope=23000001 ns="System.Collections" name="IEnumerable"
+typeref 0100002e scope=23000001 ns="System.Diagnostics" name="DebuggerHiddenAttribute"
+typeref 0100002f scope=23000001 ns="System.Runtime.CompilerServices" name="IAsyncStateMachine"
+typeref 01000030 scope=23000001 ns="System.Runtime.CompilerServices" name="TaskAwaiter"
+typeref 01000031 scope=23000001 ns="System.Runtime.CompilerServices" name="AsyncTaskMethodBuilder`1"
+typeref 01000032 scope=23000001 ns="System" name="Delegate"
+typeref 01000033 scope=23000003 ns="System.Threading" name="Interlocked"
+typeref 01000034 scope=23000001 ns="System" name="EventArgs"
+typeref 01000035 scope=23000001 ns="System" name="Double"
+typeref 01000036 scope=23000001 ns="System" name="Int32"
+typeref 01000037 scope=23000001 ns="System.Runtime.CompilerServices" name="RuntimeHelpers"
+typeref 01000038 scope=23000001 ns="System" name="Array"
+typeref 01000039 scope=23000001 ns="System" name="RuntimeFieldHandle"
+typeref 0100003a scope=23000001 ns="System" name="String"
+typeref 0100003b scope=23000001 ns="System" name="InvalidCastException"
+typeref 0100003c scope=23000004 ns="System" name="Console"
+typeref 0100003d scope=23000001 ns="System" name="Environment"
+typeref 0100003e scope=23000001 ns="System" name="NotSupportedException"
+typeref 0100003f scope=23000001 ns="System.Threading.Tasks" name="Task"
+typedef 02000001 flags=0 ns="" name="<Module>" base=nil declaring=nil layout=0,0
+  fields 
+  methods 
+  properties 
+  events 
+  nested 
+  interfaces 
+  generic 
+  methodimpls 
+  security 
+typedef 02000002 flags=100101 ns="Sample" name="MarkerAttribute" base=01000013 declaring=nil layout=0,0
+  fields 04000001 04000002 04000003 04000004 04000005
+  methods 06000001 06000002 06000003 06000004 06000005 06000006
+  properties 17000001 17000002 17000003 17000004
+  events 
+  nested 
+  interfaces 
+  generic 
+  methodimpls 
+  security 
+typedef 02000003 flags=101 ns="Sample" name="Colour" base=01000018 declaring=nil layout=0,0
+  fields 04000006 04000007 04000008 04000009
+  methods 
+  properties 
+  events 
+  nested 
+  interfaces 
+  generic 
+  methodimpls 
+  security 
+typedef 02000004 flags=101 ns="Sample" name="Access" base=01000018 declaring=nil layout=0,0
+  fields 0400000a 0400000b 0400000c 0400000d 0400000e
+  methods 
+  properties 
+  events 
+  nested 
+  interfaces 
+  generic 
+  methodimpls 
+  security 
+typedef 02000005 flags=1000a1 ns="Sample" name="IShape" base=nil declaring=nil layout=0,0
+  fields 
+  methods 06000007 06000008 06000009 0600000a
+  properties 17000005
+  events 14000001
+  nested 
+  interfaces 
+  generic 
+  methodimpls 
+  security 
+typedef 02000006 flags=100111 ns="Sample" name="Overlay" base=0100001b declaring=nil layout=4,16
+  fields 0400000f 04000010 04000011 04000012
+  methods 
+  properties 
+  events 
+  nested 
+  interfaces 
+  generic 
+  methodimpls 
+  security 
+typedef 02000007 flags=100001 ns="Sample" name="Circle" base=01000016 declaring=nil layout=0,0
+  fields 04000013 04000014 04000015 04000016 04000017
+  methods 0600000b 0600000c 0600000d 0600000e 0600000f 06000010 06000011 06000012 06000013 06000014 06000015
+  properties 17000006 17000007 17000008
+  events 14000002
+  nested 
+  interfaces 09000001=02000005 09000002=1b000001
+  generic 
+  methodimpls 
+  security 
+typedef 02000008 flags=100001 ns="Sample" name="Box`1" base=01000016 declaring=nil layout=0,0
+  fields 04000018 04000019
+  methods 06000016 06000017
+  properties 
+  events 
+  nested 0200000c
+  interfaces 
+  generic 2a000001
+  methodimpls 
+  security 
+typedef 02000009 flags=100181 ns="Sample" name="Native" base=01000016 declaring=nil layout=0,0
+  fields 
+  methods 06000018 06000019
+  properties 
+  events 
+  nested 
+  interfaces 
+  generic 
+  methodimpls 
+  security 
+typedef 0200000a flags=100181 ns="Sample" name="Code" base=01000016 declaring=nil layout=0,0
+  fields 
+  methods 0600001a 0600001b 0600001c 0600001d 0600001e 0600001f 06000020 06000021 06000022
+  properties 
+  events 
+  nested 0200000d 0200000e 0200000f
+  interfaces 
+  generic 
+  methodimpls 
+  security 
+typedef 0200000b flags=100 ns="" name="<PrivateImplementationDetails>" base=01000016 declaring=nil layout=0,0
+  fields 0400001a
+  methods 
+  properties 
+  events 
+  nested 02000010
+  interfaces 
+  generic 
+  methodimpls 
+  security 
+typedef 0200000c flags=100002 ns="" name="Nested`1" base=01000016 declaring=02000008 layout=0,0
+  fields 0400001b
+  methods 06000023
+  properties 
+  events 
+  nested 
+  interfaces 
+  generic 2a000002 2a000003
+  methodimpls 
+  security 
+typedef 0200000d flags=100103 ns="" name="<>c__DisplayClass8_0" base=01000016 declaring=0200000a layout=0,0
+  fields 0400001c
+  methods 06000024 06000025
+  properties 
+  events 
+  nested 
+  interfaces 
+  generic 
+  methodimpls 
+  security 
+typedef 0200000e flags=100103 ns="" name="<Count>d__4" base=01000016 declaring=0200000a layout=0,0
+  fields 0400001d 0400001e 0400001f 04000020 04000021 04000022
+  methods 06000026 06000027 06000028 06000029 0600002a 0600002b 0600002c 0600002d
+  properties 17000009 1700000a
+  events 
+  nested 
+  interfaces 09000003=1b000003 09000004=0100002d 09000005=1b000002 09000006=0100002a 09000007=01000029
+  generic 
+  methodimpls 19000001=06000027/0a000017 19000002=06000028/0a000018 19000003=06000029/0a000019 19000004=0600002a/0a00001a 19000005=0600002b/0a00001b 19000006=0600002c/0a00001c 19000007=0600002d/0a00001e
+  security 
+typedef 0200000f flags=100103 ns="" name="<Later>d__3" base=0100001b declaring=0200000a layout=0,0
+  fields 04000023 04000024 04000025 04000026
+  methods 0600002e 0600002f
+  properties 
+  events 
+  nested 
+  interfaces 09000008=0100002f
+  generic 
+  methodimpls 19000008=0600002e/0a000020 19000009=0600002f/0a000021
+  security 
+typedef 02000010 flags=115 ns="" name="__StaticArrayInitTypeSize=40" base=0100001b declaring=0200000b layout=1,40
+  fields 
+  methods 
+  properties 
+  events 
+  nested 
+  interfaces 
+  generic 
+  methodimpls 
+  security 
+field 04000001 flags=21 name="<Text>k__BackingField" sig=string owner=02000002 const=nil offset=-1 rva=0 marshal=nil
+field 04000002 flags=21 name="<Number>k__BackingField" sig=int32 owner=02000002 const=nil offset=-1 rva=0 marshal=nil
+field 04000003 flags=21 name="<Kind>k__BackingField" sig=T:01000015@12 owner=02000002 const=nil offset=-1 rva=0 marshal=nil
+field 04000004 flags=21 name="<Rest>k__BackingField" sig=object[] owner=02000002 const=nil offset=-1 rva=0 marshal=nil
+field 04000005 flags=6 name="Weight" sig=float64 owner=02000002 const=nil offset=-1 rva=0 marshal=nil
+field 04000006 flags=606 name="value__" sig=uint8 owner=02000003 const=nil offset=-1 rva=0 marshal=nil
+field 04000007 flags=8056 name="Red" sig=T:02000003@11 owner=02000003 const=0b000001 offset=-1 rva=0 marshal=nil
+field 04000008 flags=8056 name="Green" sig=T:02000003@11 owner=02000003 const=0b000002 offset=-1 rva=0 marshal=nil
+field 04000009 flags=8056 name="Blue" sig=T:02000003@11 owner=02000003 const=0b000003 offset=-1 rva=0 marshal=nil
+field 0400000a flags=606 name="value__" sig=int64 owner=02000004 const=nil offset=-1 rva=0 marshal=nil
+field 0400000b flags=8056 name="None" sig=T:02000004@11 owner=02000004 const=0b000004 offset=-1 rva=0 marshal=nil
+field 0400000c flags=8056 name="Read" sig=T:02000004@11 owner=02000004 const=0b000005 offset=-1 rva=0 marshal=nil
+field 0400000d flags=8056 name="Write" sig=T:02000004@11 owner=02000004 const=0b000006 offset=-1 rva=0 marshal=nil
+field 0400000e flags=8056 name="All" sig=T:02000004@11 owner=02000004 const=0b000007 offset=-1 rva=0 marshal=nil
+field 0400000f flags=6 name="Low" sig=int32 owner=02000006 const=nil offset=0 rva=0 marshal=nil
+field 04000010 flags=6 name="High" sig=int32 owner=02000006 const=nil offset=4 rva=0 marshal=nil
+field 04000011 flags=6 name="Both" sig=int64 owner=02000006 const=nil offset=0 rva=0 marshal=nil
+field 04000012 flags=1006 name="Real" sig=float64 owner=02000006 const=nil offset=8 rva=0 marshal=0c
+field 04000013 flags=8056 name="Unit" sig=string owner=02000007 const=0b000008 offset=-1 rva=0 marshal=nil
+field 04000014 flags=8056 name="Pi" sig=float64 owner=02000007 const=0b000009 offset=-1 rva=0 marshal=nil
+field 04000015 flags=36 name="Primes" sig=int32[] owner=02000007 const=nil offset=-1 rva=0 marshal=nil
+field 04000016 flags=1 name="radius" sig=float64 owner=02000007 const=nil offset=-1 rva=0 marshal=nil
+field 04000017 flags=1 name="Changed" sig=T:0100001a@12 owner=02000007 const=nil offset=-1 rva=0 marshal=nil
+field 04000018 flags=6 name="Item" sig=!0 owner=02000008 const=nil offset=-1 rva=0 marshal=nil
+field 04000019 flags=6 name="History" sig=T:0100001d@12<T:01000020@11<string,!0[]>> owner=02000008 const=nil offset=-1 rva=0 marshal=nil
+field 0400001a flags=133 name="6341DA6106ADABFB52202E479ABE276558D68889931BC59F0F18BAD87C14C2DC" sig=T:02000010@11 owner=0200000b const=nil offset=-1 rva=44b0 marshal=nil
+field 0400001b flags=6 name="Table" sig=T:01000022@12<!0,!1> owner=0200000c const=nil offset=-1 rva=0 marshal=nil
+field 0400001c flags=6 name="k" sig=int32 owner=0200000d const=nil offset=-1 rva=0 marshal=nil
+field 0400001d flags=1 name="<>1__state" sig=int32 owner=0200000e const=nil offset=-1 rva=0 marshal=nil
+field 0400001e flags=1 name="<>2__current" sig=int32 owner=0200000e const=nil offset=-1 rva=0 marshal=nil
+field 0400001f flags=1 name="<>l__initialThreadId" sig=int32 owner=0200000e const=nil offset=-1 rva=0 marshal=nil
+field 04000020 flags=1 name="to" sig=int32 owner=0200000e const=nil offset=-1 rva=0 marshal=nil
+field 04000021 flags=6 name="<>3__to" sig=int32 owner=0200000e const=nil offset=-1 rva=0 marshal=nil
+field 04000022 flags=1 name="<i>5__2" sig=int32 owner=0200000e const=nil offset=-1 rva=0 marshal=nil
+field 04000023 flags=6 name="<>1__state" sig=int32 owner=0200000f const=nil offset=-1 rva=0 marshal=nil
+field 04000024 flags=6 name="<>t__builder" sig=T:01000031@11<int32> owner=0200000f const=nil offset=-1 rva=0 marshal=nil
+field 04000025 flags=6 name="x" sig=int32 owner=0200000f const=nil offset=-1 rva=0 marshal=nil
+field 04000026 flags=1 name="<>u__1" sig=T:01000030@11 owner=0200000f const=nil offset=-1 rva=0 marshal=nil
+method 06000001 flags=1886 impl=0 rva=2048 name=".ctor" sig=20 g0 r1 void(string) owner=02000002
+  params 08000001
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=15 il=02282200000a02037d010000042a
+method 06000002 flags=1886 impl=0 rva=2057 name=".ctor" sig=20 g0 r3 void(int32, T:01000015@12, object[]) owner=02000002
+  params 08000002 08000003 08000004
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=29 il=02282200000a02037d0200000402047d0300000402057d040000042a
+method 06000003 flags=886 impl=0 rva=2074 name="get_Text" sig=20 g0 r0 string() owner=02000002
+  params 
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=8 il=027b010000042a
+method 06000004 flags=886 impl=0 rva=207c name="get_Number" sig=20 g0 r0 int32() owner=02000002
+  params 
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=8 il=027b020000042a
+method 06000005 flags=886 impl=0 rva=2084 name="get_Kind" sig=20 g0 r0 T:01000015@12() owner=02000002
+  params 
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=8 il=027b030000042a
+method 06000006 flags=886 impl=0 rva=208c name="get_Rest" sig=20 g0 r0 object[]() owner=02000002
+  params 
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=8 il=027b040000042a
+method 06000007 flags=dc6 impl=0 rva=0 name="get_Area" sig=20 g0 r0 float64() owner=02000005
+  params 
+  generic 
+  security 
+method 06000008 flags=5c6 impl=0 rva=0 name="Describe" sig=20 g0 r1 string(int32) owner=02000005
+  params 08000005
+  generic 
+  security 
+method 06000009 flags=dc6 impl=0 rva=0 name="add_Changed" sig=20 g0 r1 void(T:0100001a@12) owner=02000005
+  params 08000006
+  generic 
+  security 
+method 0600000a flags=dc6 impl=0 rva=0 name="remove_Changed" sig=20 g0 r1 void(T:0100001a@12) owner=02000005
+  params 08000007
+  generic 
+  security 
+method 0600000b flags=9e6 impl=0 rva=2094 name="add_Changed" sig=20 g0 r1 void(T:0100001a@12) owner=02000007
+  params 08000008
+  generic 
+  security 
+  body maxstack=3 init=1 locals=11000001 size=53 il=027b170000040a060b0703282300000a741a0000010c027c170000040807280100002b0a060733df2a
+method 0600000c flags=9e6 impl=0 rva=20cc name="remove_Changed" sig=20 g0 r1 void(T:0100001a@12) owner=02000007
+  params 08000009
+  generic 
+  security 
+  body maxstack=3 init=1 locals=11000001 size=53 il=027b170000040a060b0703282500000a741a0000010c027c170000040807280100002b0a060733df2a
+method 0600000d flags=1886 impl=0 rva=2101 name=".ctor" sig=20 g0 r1 void(float64) owner=02000007
+  params 0800000a
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=15 il=02282600000a02037d160000042a
+method 0600000e flags=9e6 impl=0 rva=2110 name="get_Area" sig=20 g0 r0 float64() owner=02000007
+  params 
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=25 il=23112d4454fb210940027b160000045a027b160000045a2a
+method 0600000f flags=886 impl=0 rva=2129 name="get_Radius" sig=20 g0 r0 float64() owner=02000007
+  params 
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=8 il=027b160000042a
+method 06000010 flags=886 impl=0 rva=2131 name="set_Radius" sig=20 g0 r1 void(float64) owner=02000007
+  params 0800000b
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=31 il=02037d16000004027b17000004252d02262a027e2700000a6f2800000a2a
+method 06000011 flags=1e6 impl=0 rva=2150 name="Describe" sig=20 g0 r1 string(int32) owner=02000007
+  params 0800000c
+  generic 
+  security 
+  body maxstack=3 init=1 locals=11000002 size=77 il=0316300672010000702a12001f0918282900000a1200720f000070282a00000a1200027b16000004280200002b12007223000070282c00000a1200282d00000a2a
+method 06000012 flags=1e6 impl=0 rva=219d name="CompareTo" sig=20 g0 r1 int32(T:02000007@12) owner=02000007
+  params 0800000d
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=24 il=032c12027c16000004037b16000004282e00000a2a172a
+method 06000013 flags=886 impl=0 rva=21b5 name="get_Item" sig=20 g0 r1 int32(int32) owner=02000007
+  params 0800000e
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=17 il=7e15000004037e150000048e695d942a
+method 06000014 flags=896 impl=0 rva=21c6 name="op_Addition" sig=00 g0 r2 T:02000007@12(T:02000007@12, T:02000007@12) owner=02000007
+  params 0800000f 08000010
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=20 il=027b16000004037b1600000458730d0000062a
+method 06000015 flags=1891 impl=0 rva=21da name=".cctor" sig=00 g0 r0 void() owner=02000007
+  params 
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=25 il=1f0a8d3600000125d01a000004282f00000a80150000042a
+method 06000016 flags=86 impl=0 rva=21f3 name="Map" sig=30 g1 r1 !!0(T:01000021@12<!0,!!0>) owner=02000008
+  params 08000011
+  generic 2a000004
+  security 
+  body maxstack=8 init=0 locals=nil size=14 il=03027b3000000a6f3100000a2a
+method 06000017 flags=1886 impl=0 rva=2201 name=".ctor" sig=20 g0 r0 void() owner=02000008
+  params 
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=19 il=02733200000a7d3300000a02282600000a2a
+method 06000018 flags=2096 impl=80 rva=0 name="Ticks" sig=00 g0 r0 uint32() owner=02000009
+  params 
+  generic 
+  security 
+  import flags=140 name="GetTickCount" module=1a000001
+method 06000019 flags=2096 impl=80 rva=0 name="MessageBoxW" sig=00 g0 r4 int32(intptr, string, string, uint32) owner=02000009
+  params 08000012 08000013 08000014 08000015
+  generic 
+  security 
+  import flags=104 name="MessageBoxW" module=1a000002
+method 0600001a flags=96 impl=0 rva=2214 name="Loops" sig=00 g0 r4 int32(int32, int32&, string&, int64&) owner=0200000a
+  params 08000016 08000017 08000018 08000019
+  generic 
+  security 
+  body maxstack=3 init=1 locals=11000003 size=114 il=160a160b2b41071b5d0c08450400000002000000080000000e000000160000002b1a0607580a2b1b0617590a2b1506071862610a2b0d06195a0a2b07066a054c5f690a0717580b070232bb03034a0658540472290000701200283400000a283500000a51062a
+method 0600001b flags=96 impl=0 rva=2288 name="Guarded" sig=00 g0 r1 string(object) owner=0200000a
+  params 0800001a
+  generic 
+  security 
+  body maxstack=2 init=1 locals=11000004 size=128 il=027405000002176f080000060ade3b753b000001252d0426162b106f3600000a6f3700000a19fe0216fe03fe112672350000700ade14723f000070283800000adc26724b0000700ade00062a
+  region 1 try=0+f handler=2d+9 catch=nil filter=f
+  region 2 try=0+36 handler=36+b catch=nil filter=ffffffff
+  region 0 try=0+41 handler=41+9 catch=01000024 filter=ffffffff
+method 0600001c flags=96 impl=0 rva=2308 name="Pointer" sig=00 g0 r2 int32(int32*, int32[]) owner=0200000a
+  params 0800001b 0800001c
+  generic 
+  security 
+  body maxstack=2 init=1 locals=11000005 size=49 il=03250b2c05078e692d0516e00a2b0907168f36000001e00a024a064a58fe1c06000002582a
+method 0600001d flags=96 impl=0 rva=233c name="Later" sig=00 g0 r1 T:01000026@12<int32>(int32) owner=0200000a
+  params 0800001d
+  generic 
+  security 
+  body maxstack=2 init=1 locals=11000006 size=67 il=1200283900000a7d240000041200027d250000041200157d2300000412007c240000041200280300002b12007c24000004283b00000a2a
+method 0600001e flags=96 impl=0 rva=237f name="Count" sig=00 g0 r1 T:01000028@12<int32>(int32) owner=0200000a
+  params 0800001e
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=16 il=1ffe732600000625027d210000042a
+method 0600001f flags=96 impl=0 rva=238f name="Pick" sig=10 g1 r3 !!0(!!0, !!0, bool) owner=0200000a
+  params 0800001f 08000020 08000021
+  generic 2a000005
+  security 
+  body maxstack=8 init=0 locals=nil size=8 il=042d02032a022a
+method 06000020 flags=96 impl=0 rva=2397 name="UsePick" sig=00 g0 r0 int32() owner=0200000a
+  params 
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=32 il=171817280400002b7257000070725b00007016280500002b6f3700000a582a
+method 06000021 flags=96 impl=0 rva=23b7 name="Big" sig=00 g0 r0 int64() owner=0200000a
+  params 
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=11 il=2169ceab89674523012a
+method 06000022 flags=96 impl=0 rva=23c2 name="Closure" sig=00 g0 r1 T:01000021@12<int32,int32>(int32) owner=0200000a
+  params 08000022
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=25 il=732400000625027d1c000004fe0625000006733c00000a2a
+method 06000023 flags=1886 impl=0 rva=23db name=".ctor" sig=20 g0 r0 void() owner=0200000c
+  params 
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=8 il=02282600000a2a
+method 06000024 flags=1886 impl=0 rva=23e3 name=".ctor" sig=20 g0 r0 void() owner=0200000d
+  params 
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=8 il=02282600000a2a
+method 06000025 flags=83 impl=0 rva=23eb name="<Closure>b__0" sig=20 g0 r1 int32(int32) owner=0200000d
+  params 08000023
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=10 il=03027b1c000004582a
+method 06000026 flags=1886 impl=0 rva=23f5 name=".ctor" sig=20 g0 r1 void(int32) owner=0200000e
+  params 08000024
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=26 il=02282600000a02037d1d00000402283d00000a7d1f0000042a
+method 06000027 flags=1e1 impl=0 rva=240f name="System.IDisposable.Dispose" sig=20 g0 r0 void() owner=0200000e
+  params 
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=10 il=021ffe7d1d0000042a
+method 06000028 flags=1e1 impl=0 rva=241c name="MoveNext" sig=20 g0 r0 bool() owner=0200000e
+  params 
+  generic 
+  security 
+  body maxstack=3 init=1 locals=11000007 size=104 il=027b1d0000040a062c0606172e27162a02157d1d00000402167d220000042b2c02027b220000047d1e00000402177d1d000004172a02157d1d000004027b220000040b020717587d22000004027b22000004027b2000000432c6162a
+method 06000029 flags=9e1 impl=0 rva=2484 name="System.Collections.Generic.IEnumerator<System.Int32>.get_Current" sig=20 g0 r0 int32() owner=0200000e
+  params 
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=8 il=027b1e0000042a
+method 0600002a flags=1e1 impl=0 rva=248c name="System.Collections.IEnumerator.Reset" sig=20 g0 r0 void() owner=0200000e
+  params 
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=7 il=733e00000a7a
+method 0600002b flags=9e1 impl=0 rva=2493 name="System.Collections.IEnumerator.get_Current" sig=20 g0 r0 object() owner=0200000e
+  params 
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=13 il=027b1e0000048c360000012a
+method 0600002c flags=1e1 impl=0 rva=24a0 name="System.Collections.Generic.IEnumerable<System.Int32>.GetEnumerator" sig=20 g0 r0 T:0100002b@12<int32>() owner=0200000e
+  params 08000025
+  generic 
+  security 
+  body maxstack=2 init=1 locals=11000008 size=67 il=027b1d0000041ffe3318027b1f000004283d00000a330b02167d1d000004020a2b071673260000060a06027b210000047d20000004062a
+method 0600002d flags=1e1 impl=0 rva=24e3 name="System.Collections.IEnumerable.GetEnumerator" sig=20 g0 r0 T:0100002a@12() owner=0200000e
+  params 08000026
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=8 il=02282c0000062a
+method 0600002e flags=1e1 impl=0 rva=24ec name="MoveNext" sig=20 g0 r0 void() owner=0200000f
+  params 
+  generic 
+  security 
+  body maxstack=3 init=1 locals=11000009 size=184 il=027b230000040a062c3517283f00000a6f4000000a0c1202284100000a2d3c0216250a7d2300000402087d26000004027c24000004120202280600002bde59027b260000040c027c26000004fe15300000010215250a7d230000041202284300000a027b25000004185a0bde170d021ffe7d23000004027c2400000409284400000ade14021ffe7d23000004027c2400000407284500000a2a
+  region 0 try=7+66 handler=6d+17 catch=01000024 filter=ffffffff
+method 0600002f flags=1e1 impl=0 rva=25a4 name="SetStateMachine" sig=20 g0 r1 void(T:0100002f@12) owner=0200000f
+  params 08000027
+  generic 
+  security 
+  body maxstack=8 init=0 locals=nil size=14 il=027c2400000403284600000a2a
+param 08000001 flags=0 seq=1 name="text" const=nil marshal=nil
+param 08000002 flags=0 seq=1 name="number" const=nil marshal=nil
+param 08000003 flags=0 seq=2 name="type" const=nil marshal=nil
+param 08000004 flags=0 seq=3 name="rest" const=nil marshal=nil
+param 08000005 flags=0 seq=1 name="detail" const=nil marshal=nil
+param 08000006 flags=0 seq=1 name="value" const=nil marshal=nil
+param 08000007 flags=0 seq=1 name="value" const=nil marshal=nil
+param 08000008 flags=0 seq=1 name="value" const=nil marshal=nil
+param 08000009 flags=0 seq=1 name="value" const=nil marshal=nil
+param 0800000a flags=0 seq=1 name="radius" const=nil marshal=nil
+param 0800000b flags=0 seq=1 name="value" const=nil marshal=nil
+param 0800000c flags=0 seq=1 name="detail" const=nil marshal=nil
+param 0800000d flags=0 seq=1 name="other" const=nil marshal=nil
+param 0800000e flags=0 seq=1 name="index" const=nil marshal=nil
+param 0800000f flags=0 seq=1 name="a" const=nil marshal=nil
+param 08000010 flags=0 seq=2 name="b" const=nil marshal=nil
+param 08000011 flags=0 seq=1 name="f" const=nil marshal=nil
+param 08000012 flags=0 seq=1 name="hwnd" const=nil marshal=nil
+param 08000013 flags=2000 seq=2 name="text" const=nil marshal=15
+param 08000014 flags=0 seq=3 name="caption" const=nil marshal=nil
+param 08000015 flags=0 seq=4 name="type" const=nil marshal=nil
+param 08000016 flags=0 seq=1 name="n" const=nil marshal=nil
+param 08000017 flags=0 seq=2 name="total" const=nil marshal=nil
+param 08000018 flags=2 seq=3 name="note" const=nil marshal=nil
+param 08000019 flags=1 seq=4 name="limit" const=nil marshal=nil
+param 0800001a flags=0 seq=1 name="o" const=nil marshal=nil
+param 0800001b flags=0 seq=1 name="p" const=nil marshal=nil
+param 0800001c flags=0 seq=2 name="array" const=nil marshal=nil
+param 0800001d flags=0 seq=1 name="x" const=nil marshal=nil
+param 0800001e flags=0 seq=1 name="to" const=nil marshal=nil
+param 0800001f flags=0 seq=1 name="a" const=nil marshal=nil
+param 08000020 flags=0 seq=2 name="b" const=nil marshal=nil
+param 08000021 flags=0 seq=3 name="first" const=nil marshal=nil
+param 08000022 flags=0 seq=1 name="k" const=nil marshal=nil
+param 08000023 flags=0 seq=1 name="x" const=nil marshal=nil
+param 08000024 flags=0 seq=1 name="<>1__state" const=nil marshal=nil
+param 08000025 flags=0 seq=0 name="" const=nil marshal=nil
+param 08000026 flags=0 seq=0 name="" const=nil marshal=nil
+param 08000027 flags=0 seq=1 name="stateMachine" const=nil marshal=nil
+memberref 0a000001 parent=01000001 name=".ctor" kind=0 sig=20 g0 r1 void(int32)
+memberref 0a000002 parent=01000002 name=".ctor" kind=0 sig=20 g0 r0 void()
+memberref 0a000003 parent=01000003 name=".ctor" kind=0 sig=20 g0 r1 void(T:01000004@11)
+memberref 0a000004 parent=01000005 name=".ctor" kind=0 sig=20 g0 r1 void(bool)
+memberref 0a000005 parent=01000006 name=".ctor" kind=0 sig=20 g0 r1 void(string)
+memberref 0a000006 parent=01000007 name=".ctor" kind=0 sig=20 g0 r1 void(string)
+memberref 0a000007 parent=01000008 name=".ctor" kind=0 sig=20 g0 r1 void(string)
+memberref 0a000008 parent=01000009 name=".ctor" kind=0 sig=20 g0 r1 void(string)
+memberref 0a000009 parent=0100000a name=".ctor" kind=0 sig=20 g0 r1 void(string)
+memberref 0a00000a parent=0100000b name=".ctor" kind=0 sig=20 g0 r1 void(string)
+memberref 0a00000b parent=0100000c name=".ctor" kind=0 sig=20 g0 r1 void(string)
+memberref 0a00000c parent=0100000e name=".ctor" kind=0 sig=20 g0 r1 void(T:0100000d@11)
+memberref 0a00000d parent=0100000f name=".ctor" kind=0 sig=20 g0 r0 void()
+memberref 0a00000e parent=01000010 name=".ctor" kind=0 sig=20 g0 r1 void(int32)
+memberref 0a00000f parent=01000012 name=".ctor" kind=0 sig=20 g0 r1 void(T:01000011@11)
+memberref 0a000010 parent=01000014 name=".ctor" kind=0 sig=20 g0 r0 void()
+memberref 0a000011 parent=01000017 name=".ctor" kind=0 sig=20 g0 r0 void()
+memberref 0a000012 parent=01000019 name=".ctor" kind=0 sig=20 g0 r0 void()
+memberref 0a000013 parent=0100001c name=".ctor" kind=0 sig=20 g0 r1 void(string)
+memberref 0a000014 parent=01000023 name=".ctor" kind=0 sig=20 g0 r0 void()
+memberref 0a000015 parent=01000025 name=".ctor" kind=0 sig=20 g0 r1 void(T:01000015@12)
+memberref 0a000016 parent=01000027 name=".ctor" kind=0 sig=20 g0 r1 void(T:01000015@12)
+memberref 0a000017 parent=01000029 name="Dispose" kind=0 sig=20 g0 r0 void()
+memberref 0a000018 parent=0100002a name="MoveNext" kind=0 sig=20 g0 r0 bool()
+memberref 0a000019 parent=1b000002 name="get_Current" kind=0 sig=20 g0 r0 !0()
+memberref 0a00001a parent=0100002a name="Reset" kind=0 sig=20 g0 r0 void()
+memberref 0a00001b parent=0100002a name="get_Current" kind=0 sig=20 g0 r0 object()
+memberref 0a00001c parent=1b000003 name="GetEnumerator" kind=0 sig=20 g0 r0 T:0100002b@12<!0>()
+memberref 0a00001d parent=0100002c name=".ctor" kind=0 sig=20 g0 r1 void(uint8)
+memberref 0a00001e parent=0100002d name="GetEnumerator" kind=0 sig=20 g0 r0 T:0100002a@12()
+memberref 0a00001f parent=0100002e name=".ctor" kind=0 sig=20 g0 r0 void()
+memberref 0a000020 parent=0100002f name="MoveNext" kind=0 sig=20 g0 r0 void()
+memberref 0a000021 parent=0100002f name="SetStateMachine" kind=0 sig=20 g0 r1 void(T:0100002f@12)
+memberref 0a000022 parent=01000013 name=".ctor" kind=0 sig=20 g0 r0 void()
+memberref 0a000023 parent=01000032 name="Combine" kind=0 sig=00 g0 r2 T:01000032@12(T:01000032@12, T:01000032@12)
+memberref 0a000024 parent=01000033 name="CompareExchange" kind=0 sig=10 g1 r3 !!0(!!0&, !!0, !!0)
+memberref 0a000025 parent=01000032 name="Remove" kind=0 sig=00 g0 r2 T:01000032@12(T:01000032@12, T:01000032@12)
+memberref 0a000026 parent=01000016 name=".ctor" kind=0 sig=20 g0 r0 void()
+memberref 0a000027 parent=01000034 name="Empty" kind=1 sig=T:01000034@12
+memberref 0a000028 parent=0100001a name="Invoke" kind=0 sig=20 g0 r2 void(object, T:01000034@12)
+memberref 0a000029 parent=0100001f name=".ctor" kind=0 sig=20 g0 r2 void(int32, int32)
+memberref 0a00002a parent=0100001f name="AppendLiteral" kind=0 sig=20 g0 r1 void(string)
+memberref 0a00002b parent=0100001f name="AppendFormatted" kind=0 sig=30 g1 r1 void(!!0)
+memberref 0a00002c parent=0100001f name="AppendFormatted" kind=0 sig=20 g0 r1 void(string)
+memberref 0a00002d parent=0100001f name="ToStringAndClear" kind=0 sig=20 g0 r0 string()
+memberref 0a00002e parent=01000035 name="CompareTo" kind=0 sig=20 g0 r1 int32(float64)
+memberref 0a00002f parent=01000037 name="InitializeArray" kind=0 sig=00 g0 r2 void(T:01000038@12, T:01000039@11)
+memberref 0a000030 parent=1b000004 name="Item" kind=1 sig=!0
+memberref 0a000031 parent=1b000005 name="Invoke" kind=0 sig=20 g0 r1 !1(!0)
+memberref 0a000032 parent=1b000006 name=".ctor" kind=0 sig=20 g0 r0 void()
+memberref 0a000033 parent=1b000004 name="History" kind=1 sig=T:0100001d@12<T:01000020@11<string,!0[]>>
+memberref 0a000034 parent=01000036 name="ToString" kind=0 sig=20 g0 r0 string()
+memberref 0a000035 parent=0100003a name="Concat" kind=0 sig=00 g0 r2 string(string, string)
+memberref 0a000036 parent=01000024 name="get_Message" kind=0 sig=20 g0 r0 string()
+memberref 0a000037 parent=0100003a name="get_Length" kind=0 sig=20 g0 r0 int32()
+memberref 0a000038 parent=0100003c name="WriteLine" kind=0 sig=00 g0 r1 void(string)
+memberref 0a000039 parent=1b000007 name="Create" kind=0 sig=00 g0 r0 T:01000031@11<!0>()
+memberref 0a00003a parent=1b000007 name="Start" kind=0 sig=30 g1 r1 void(!!0&)
+memberref 0a00003b parent=1b000007 name="get_Task" kind=0 sig=20 g0 r0 T:01000026@12<!0>()
+memberref 0a00003c parent=1b000008 name=".ctor" kind=0 sig=20 g0 r2 void(object, intptr)
+memberref 0a00003d parent=0100003d name="get_CurrentManagedThreadId" kind=0 sig=00 g0 r0 int32()
+memberref 0a00003e parent=0100003e name=".ctor" kind=0 sig=20 g0 r0 void()
+memberref 0a00003f parent=0100003f name="Delay" kind=0 sig=00 g0 r1 T:0100003f@12(int32)
+memberref 0a000040 parent=0100003f name="GetAwaiter" kind=0 sig=20 g0 r0 T:01000030@11()
+memberref 0a000041 parent=01000030 name="get_IsCompleted" kind=0 sig=20 g0 r0 bool()
+memberref 0a000042 parent=1b000007 name="AwaitUnsafeOnCompleted" kind=0 sig=30 g2 r2 void(!!0&, !!1&)
+memberref 0a000043 parent=01000030 name="GetResult" kind=0 sig=20 g0 r0 void()
+memberref 0a000044 parent=1b000007 name="SetException" kind=0 sig=20 g0 r1 void(T:01000024@12)
+memberref 0a000045 parent=1b000007 name="SetResult" kind=0 sig=20 g0 r1 void(!0)
+memberref 0a000046 parent=1b000007 name="SetStateMachine" kind=0 sig=20 g0 r1 void(T:0100002f@12)
+constant 0b000001 type=05 parent=04000007 value=01
+constant 0b000002 type=05 parent=04000008 value=02
+constant 0b000003 type=05 parent=04000009 value=04
+constant 0b000004 type=0a parent=0400000b value=0000000000000000
+constant 0b000005 type=0a parent=0400000c value=0100000000000000
+constant 0b000006 type=0a parent=0400000d value=0200000000000000
+constant 0b000007 type=0a parent=0400000e value=0300000000000000
+constant 0b000008 type=0e parent=04000013 value=63006d00
+constant 0b000009 type=0d parent=04000014 value=112d4454fb210940
+attribute 0c000001 parent=04000001 ctor=0a000010 blob=01000000 value=() {}
+attribute 0c000002 parent=00000001 ctor=0a00000d blob=01000000 value=() {}
+attribute 0c000003 parent=00000001 ctor=0a00000e blob=01000b0000000000 value=(int32:11) {}
+attribute 0c000004 parent=00000001 ctor=06000001 blob=0100066d6f64756c650000 value=(string:"module") {}
+attribute 0c000005 parent=20000001 ctor=0a000001 blob=0100080000000000 value=(int32:8) {}
+attribute 0c000006 parent=20000001 ctor=0a000002 blob=01000100540216577261704e6f6e457863657074696f6e5468726f777301 value=() {P WrapNonExceptionThrows=bool:true}
+attribute 0c000007 parent=20000001 ctor=0a000003 blob=0100020000000000 value=(T:01000004@00:2) {}
+attribute 0c000008 parent=20000001 ctor=0a000004 blob=0100000000 value=(bool:false) {}
+attribute 0c000009 parent=20000001 ctor=0a000005 blob=0100182e4e4554436f72654170702c56657273696f6e3d76392e300100540e144672616d65776f726b446973706c61794e616d65082e4e455420392e30 value=(string:".NETCoreApp,Version=v9.0") {P FrameworkDisplayName=string:".NET 9.0"}
+attribute 0c00000a parent=20000001 ctor=0a000006 blob=01000653616d706c650000 value=(string:"Sample") {}
+attribute 0c00000b parent=20000001 ctor=0a000007 blob=01000752656c656173650000 value=(string:"Release") {}
+attribute 0c00000c parent=20000001 ctor=0a000008 blob=010007312e302e302e300000 value=(string:"1.0.0.0") {}
+attribute 0c00000d parent=20000001 ctor=0a000009 blob=010005312e302e300000 value=(string:"1.0.0") {}
+attribute 0c00000e parent=20000001 ctor=0a00000a blob=01000653616d706c650000 value=(string:"Sample") {}
+attribute 0c00000f parent=20000001 ctor=0a00000b blob=01000653616d706c650000 value=(string:"Sample") {}
+attribute 0c000010 parent=04000002 ctor=0a000010 blob=01000000 value=() {}
+attribute 0c000011 parent=02000002 ctor=0a00000f blob=0100ff7f0000010054020d416c6c6f774d756c7469706c6501 value=(T:01000011@00:32767) {P AllowMultiple=bool:true}
+attribute 0c000012 parent=06000003 ctor=0a000010 blob=01000000 value=() {}
+attribute 0c000013 parent=04000003 ctor=0a000010 blob=01000000 value=() {}
+attribute 0c000014 parent=06000004 ctor=0a000010 blob=01000000 value=() {}
+attribute 0c000015 parent=04000004 ctor=0a000010 blob=01000000 value=() {}
+attribute 0c000016 parent=02000004 ctor=0a000012 blob=01000000 value=() {}
+attribute 0c000017 parent=08000004 ctor=0a000011 blob=01000000 value=() {}
+attribute 0c000018 parent=06000005 ctor=0a000010 blob=01000000 value=() {}
+attribute 0c000019 parent=06000006 ctor=0a000010 blob=01000000 value=() {}
+attribute 0c00001a parent=02000007 ctor=0a000013 blob=0100044974656d0000 value=(string:"Item") {}
+attribute 0c00001b parent=02000007 ctor=06000002 blob=01000700000080db53797374656d2e436f6c6c656374696f6e732e47656e657269632e4c69737460315b5b53797374656d2e496e7433322c2053797374656d2e52756e74696d652c2056657273696f6e3d392e302e302e302c2043756c747572653d6e65757472616c2c205075626c69634b6579546f6b656e3d623033663566376631316435306133615d5d2c2053797374656d2e436f6c6c656374696f6e732c2056657273696f6e3d392e302e302e302c2043756c747572653d6e65757472616c2c205075626c69634b6579546f6b656e3d62303366356637663131643530613361040000000e01610802000000550d53616d706c652e436f6c6f7572020eff0100530d06576569676874000000000000f83f value=(int32:7, T:01000015@00:"ser:\"System.Collections.Generic.List`1[[System.Int32, System.Runtime, Version=9.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a]], System.Collections, Version=9.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a\"", object[]:[string:"a", int32:2, ser:"Sample.Colour":2, string:null]) {F Weight=float64:d3ff8000000000000}
+attribute 0c00001c parent=06000009 ctor=0a000010 blob=01000000 value=() {}
+attribute 0c00001d parent=0600000a ctor=0a000010 blob=01000000 value=() {}
+attribute 0c00001e parent=0600000b ctor=0a000010 blob=01000000 value=() {}
+attribute 0c00001f parent=0200000b ctor=0a000010 blob=01000000 value=() {}
+attribute 0c000020 parent=0600000c ctor=0a000010 blob=01000000 value=() {}
+attribute 0c000021 parent=0200000d ctor=0a000010 blob=01000000 value=() {}
+attribute 0c000022 parent=0200000e ctor=0a000010 blob=01000000 value=() {}
+attribute 0c000023 parent=0200000f ctor=0a000010 blob=01000000 value=() {}
+attribute 0c000024 parent=04000017 ctor=0a000010 blob=01000000 value=() {}
+attribute 0c000025 parent=08000019 ctor=0a000014 blob=01000000 value=() {}
+attribute 0c000026 parent=0600001d ctor=0a000015 blob=01001753616d706c652e436f64652b3c4c617465723e645f5f330000 value=(T:01000015@00:"ser:\"Sample.Code+<Later>d__3\"") {}
+attribute 0c000027 parent=0600001e ctor=0a000016 blob=01001753616d706c652e436f64652b3c436f756e743e645f5f340000 value=(T:01000015@00:"ser:\"Sample.Code+<Count>d__4\"") {}
+attribute 0c000028 parent=08000025 ctor=0a00001d blob=0100010000 value=(uint8:1) {}
+attribute 0c000029 parent=06000026 ctor=0a00001f blob=01000000 value=() {}
+attribute 0c00002a parent=08000026 ctor=0a00001d blob=0100010000 value=(uint8:1) {}
+attribute 0c00002b parent=06000027 ctor=0a00001f blob=01000000 value=() {}
+attribute 0c00002c parent=08000027 ctor=0a00001d blob=0100010000 value=(uint8:1) {}
+attribute 0c00002d parent=06000029 ctor=0a00001f blob=01000000 value=() {}
+attribute 0c00002e parent=0600002a ctor=0a00001f blob=01000000 value=() {}
+attribute 0c00002f parent=0600002b ctor=0a00001f blob=01000000 value=() {}
+attribute 0c000030 parent=0600002c ctor=0a00001f blob=01000000 value=() {}
+attribute 0c000031 parent=0600002d ctor=0a00001f blob=01000000 value=() {}
+attribute 0c000032 parent=0600002f ctor=0a00001f blob=01000000 value=() {}
+security 0e000001 action=8 parent=20000001 blob=2e01808a53797374656d2e53656375726974792e5065726d697373696f6e732e53656375726974795065726d697373696f6e4174747269627574652c2053797374656d2e52756e74696d652c2056657273696f6e3d392e302e302e302c2043756c747572653d6e65757472616c2c205075626c69634b6579546f6b656e3d623033663566376631316435306133611501540210536b6970566572696669636174696f6e01
+standalonesig 11000001 sig=locals(T:0100001a@12, T:0100001a@12, T:0100001a@12)
+standalonesig 11000002 sig=locals(T:0100001f@11)
+standalonesig 11000003 sig=locals(int32, int32, int32)
+standalonesig 11000004 sig=locals(string)
+standalonesig 11000005 sig=locals(int32*, pinned(int32[]))
+standalonesig 11000006 sig=locals(T:0200000f@11)
+standalonesig 11000007 sig=locals(int32, int32)
+standalonesig 11000008 sig=locals(T:0200000e@12)
+standalonesig 11000009 sig=locals(int32, int32, T:01000030@11, T:01000024@12)
+event 14000001 flags=0 name="Changed" type=0100001a add=06000009 remove=0600000a raise=nil others=
+event 14000002 flags=0 name="Changed" type=0100001a add=0600000b remove=0600000c raise=nil others=
+property 17000001 flags=0 name="Text" sig=28 g0 r0 string() const=nil get=06000003 set=nil others=
+property 17000002 flags=0 name="Number" sig=28 g0 r0 int32() const=nil get=06000004 set=nil others=
+property 17000003 flags=0 name="Kind" sig=28 g0 r0 T:01000015@12() const=nil get=06000005 set=nil others=
+property 17000004 flags=0 name="Rest" sig=28 g0 r0 object[]() const=nil get=06000006 set=nil others=
+property 17000005 flags=0 name="Area" sig=28 g0 r0 float64() const=nil get=06000007 set=nil others=
+property 17000006 flags=0 name="Area" sig=28 g0 r0 float64() const=nil get=0600000e set=nil others=
+property 17000007 flags=0 name="Radius" sig=28 g0 r0 float64() const=nil get=0600000f set=06000010 others=
+property 17000008 flags=0 name="Item" sig=28 g0 r1 int32(int32) const=nil get=06000013 set=nil others=
+property 17000009 flags=0 name="System.Collections.Generic.IEnumerator<System.Int32>.Current" sig=28 g0 r0 int32() const=nil get=06000029 set=nil others=
+property 1700000a flags=0 name="System.Collections.IEnumerator.Current" sig=28 g0 r0 object() const=nil get=0600002b set=nil others=
+moduleref 1a000001 name="kernel32.dll"
+moduleref 1a000002 name="user32.dll"
+typespec 1b000001 sig=T:0100001e@12<T:02000007@12>
+typespec 1b000002 sig=T:0100002b@12<int32>
+typespec 1b000003 sig=T:01000028@12<int32>
+typespec 1b000004 sig=T:02000008@12<!0>
+typespec 1b000005 sig=T:01000021@12<!0,!!0>
+typespec 1b000006 sig=T:0100001d@12<T:01000020@11<string,!0[]>>
+typespec 1b000007 sig=T:01000031@11<int32>
+typespec 1b000008 sig=T:01000021@12<int32,int32>
+assembly name="Sample" version=1.0.0.0 culture="" flags=0 hash=8004 key=nil
+assemblyref 23000001 name="System.Runtime" version=9.0.0.0 culture="" flags=0 key=b03f5f7f11d50a3a hash=nil
+assemblyref 23000002 name="System.Collections" version=9.0.0.0 culture="" flags=0 key=b03f5f7f11d50a3a hash=nil
+assemblyref 23000003 name="System.Threading" version=9.0.0.0 culture="" flags=0 key=b03f5f7f11d50a3a hash=nil
+assemblyref 23000004 name="System.Console" version=9.0.0.0 culture="" flags=0 key=b03f5f7f11d50a3a hash=nil
+genericparam 2a000001 index=0 flags=14 name="T" parent=02000008 constraints=2c000001=02000005
+genericparam 2a000002 index=0 flags=14 name="T" parent=0200000c constraints=2c000002=02000005
+genericparam 2a000003 index=1 flags=0 name="U" parent=0200000c constraints=
+genericparam 2a000004 index=0 flags=18 name="TResult" parent=06000016 constraints=2c000003=0100001b
+genericparam 2a000005 index=0 flags=0 name="T" parent=0600001f constraints=
+methodspec 2b000001 method=0a000024 inst=<T:0100001a@12>
+methodspec 2b000002 method=0a00002b inst=<float64>
+methodspec 2b000003 method=0a00003a inst=<T:0200000f@11>
+methodspec 2b000004 method=0600001f inst=<int32>
+methodspec 2b000005 method=0600001f inst=<string>
+methodspec 2b000006 method=0a000042 inst=<T:01000030@11,T:0200000f@11>
+attributes-of 02000001 
+attributes-of 02000002 0c000011
+attributes-of 02000003 
+attributes-of 02000004 0c000016
+attributes-of 02000005 
+attributes-of 02000006 
+attributes-of 02000007 0c00001a 0c00001b
+attributes-of 02000008 
+attributes-of 02000009 
+attributes-of 0200000a 
+attributes-of 0200000b 0c00001f
+attributes-of 0200000c 
+attributes-of 0200000d 0c000021
+attributes-of 0200000e 0c000022
+attributes-of 0200000f 0c000023
+attributes-of 02000010 
+attributes-of 06000001 
+attributes-of 06000002 
+attributes-of 06000003 0c000012
+attributes-of 06000004 0c000014
+attributes-of 06000005 0c000018
+attributes-of 06000006 0c000019
+attributes-of 06000007 
+attributes-of 06000008 
+attributes-of 06000009 0c00001c
+attributes-of 0600000a 0c00001d
+attributes-of 0600000b 0c00001e
+attributes-of 0600000c 0c000020
+attributes-of 0600000d 
+attributes-of 0600000e 
+attributes-of 0600000f 
+attributes-of 06000010 
+attributes-of 06000011 
+attributes-of 06000012 
+attributes-of 06000013 
+attributes-of 06000014 
+attributes-of 06000015 
+attributes-of 06000016 
+attributes-of 06000017 
+attributes-of 06000018 
+attributes-of 06000019 
+attributes-of 0600001a 
+attributes-of 0600001b 
+attributes-of 0600001c 
+attributes-of 0600001d 0c000026
+attributes-of 0600001e 0c000027
+attributes-of 0600001f 
+attributes-of 06000020 
+attributes-of 06000021 
+attributes-of 06000022 
+attributes-of 06000023 
+attributes-of 06000024 
+attributes-of 06000025 
+attributes-of 06000026 0c000029
+attributes-of 06000027 0c00002b
+attributes-of 06000028 
+attributes-of 06000029 0c00002d
+attributes-of 0600002a 0c00002e
+attributes-of 0600002b 0c00002f
+attributes-of 0600002c 0c000030
+attributes-of 0600002d 0c000031
+attributes-of 0600002e 
+attributes-of 0600002f 0c000032
+attributes-of 04000001 0c000001
+attributes-of 04000002 0c000010
+attributes-of 04000003 0c000013
+attributes-of 04000004 0c000015
+attributes-of 04000005 
+attributes-of 04000006 
+attributes-of 04000007 
+attributes-of 04000008 
+attributes-of 04000009 
+attributes-of 0400000a 
+attributes-of 0400000b 
+attributes-of 0400000c 
+attributes-of 0400000d 
+attributes-of 0400000e 
+attributes-of 0400000f 
+attributes-of 04000010 
+attributes-of 04000011 
+attributes-of 04000012 
+attributes-of 04000013 
+attributes-of 04000014 
+attributes-of 04000015 
+attributes-of 04000016 
+attributes-of 04000017 0c000024
+attributes-of 04000018 
+attributes-of 04000019 
+attributes-of 0400001a 
+attributes-of 0400001b 
+attributes-of 0400001c 
+attributes-of 0400001d 
+attributes-of 0400001e 
+attributes-of 0400001f 
+attributes-of 04000020 
+attributes-of 04000021 
+attributes-of 04000022 
+attributes-of 04000023 
+attributes-of 04000024 
+attributes-of 04000025 
+attributes-of 04000026 

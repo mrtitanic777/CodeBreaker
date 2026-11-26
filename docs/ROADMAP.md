@@ -1,6 +1,6 @@
 # Roadmap
 
-Where CodeBreaker goes after 1.0.0. Nine tracks, each worked to its finish line. Each track lists what "done"
+Where CodeBreaker goes after 1.0.0. Ten tracks, each worked to its finish line. Each track lists what "done"
 means and its phases; the status line is updated as phases land.
 
 ## 1. Windows 95 in authored source, all of it
@@ -110,8 +110,21 @@ PS2 and PSP (track 9): done 2026-11-15, see docs/LANES.md (the R5900 and Allegre
 Each lane is proven like the PlayStation's: open-source homebrew for that console rebuilds identical and its functions
 are judged, recorded in docs/TESTED_SOFTWARE.md.
 
+## 10. .NET to C# with a decompiler of its own
+
+A .NET program (any PE with a CLR header, 32- or 64-bit) comes back as C# from CodeBreaker's own decompiler: ILSpy's
+engine (ICSharpCode.Decompiler v11.0, MIT) ported to C++ in `src/dotnet`, with an ECMA-335 metadata reader of its
+own, so no installed `ilspycmd` and no .NET are needed. Plan, stages and sizes: docs/DOTNET_DECOMPILER_PLAN.md.
+
+1. The metadata reader and ILSpy's metadata layer; then the IL disassembler, matching `ilspycmd -il` byte for byte.
+2. The type system, the ILAst, control flow and the IL transforms, each matching ILSpy's own dumps.
+3. The C# syntax tree, resolver, builders and transforms: `ilspycmd`'s C# byte for byte, then its projects.
+4. Finish line: the Convert route `dotnet` and the XNA lane use it; tested programs in docs/TESTED_SOFTWARE.md.
+
 ## Status
 
+- 2026-11-26: track 10 set (the ILSpy port, docs/DOTNET_DECOMPILER_PLAN.md); upstream v11.0 fetched for reference.
+- 2026-11-26: track 10 stage 0: `dotnet/metadata`, CodeBreaker's own ECMA-335 reader (System.Reflection.Metadata's interface: row views, heaps, signatures, custom attribute values, method bodies); its dump matches .NET's own reader line for line on the test assemblies (PE32 and PE32+) and on System.Private.CoreLib 9.0, .NET Framework 2.0's mscorlib and System, WinForms 4 and XNA 3.1's mixed-mode Framework. Not yet tested: a #- (uncompressed) tables stream, which needs a hand-made input.
 - 2026-11-15: PowerPC 750 consoles landed: the GameCube (Gekko), Wii (Broadway) and Wii U (Espresso) as three lanes (registered through engine/machine_lanes) on `decompile/ppc`, `formats/{dol,ppc_elf,ppc_program,gekko_map}`, `source/gekko_writer` and the Xbox 360's PowerPC interpreter with paired singles, GQRs and logged hardware; homebrew DOLs, ELFs and RPXs rebuild identical. Left: the hardware is named and logged, not emulated (graphics, DSP, disc, controllers); interrupts and exceptions are not delivered; many functions stop as unsupported at a privileged or unmodelled instruction; the Wii U's imports (CafeOS libraries) are code stubs, not named; GameCube and Wii discs (.iso, .rvz, .wbfs) and Wii U packages are not read; relocations of RPL libraries are not applied.
 - 2026-11-15: Nintendo 64 (R4300i) landed on the PlayStation's MIPS core: `.z64` / `.v64` / `.n64` loader (header, IPL3 as data, CIC, checksums, the load address), the R4300 variant of the MIPS decoder, assembler and (as `emulate/r4300`) interpreter, the `n64` writer and lane (registered through engine/machine_lanes); 79 open-source ROMs rebuild identical. Left: the RSP (microcode in IMEM, vector unit) and the RDP are not run (what is written to their registers and to DMEM is logged); interrupts and exceptions are not delivered; the boot code (IPL3) is data, not a program in its own right; ROMs larger than the first megabyte are data past it, so a program that loads code from the cartridge by PI DMA has that code as data.
 - 2026-11-14: roadmap set; tracks 1 (audit) and 2 (MIPS/PS1) started.
