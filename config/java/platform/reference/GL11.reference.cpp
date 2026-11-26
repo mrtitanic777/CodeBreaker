@@ -41,6 +41,12 @@ struct GLVert {
 	D3DCOLOR color;     // ARGB
 	float u, v;         // texture unit 0
 	float u2, v2;       // texture unit 1
+	// Flat shading (glShadeModel(GL_FLAT)): a triangle takes the colour lit at its PROVOKING vertex, which GL names per primitive
+	// (the last vertex of a triangle, the fourth of a quad, the first of a polygon). Neither Xenos nor shaders have a flat
+	// interpolator GL's way round, so every vertex carries its primitive's provoking normal and colour, and the vertex shader
+	// lights those instead when the shade model is flat -- one result for all three corners, as GL gives.
+	float fnx, fny, fnz;
+	D3DCOLOR fcolor;
 };
 static const int kUnits = 2;              // texture units (GL13 / ARB_multitexture); GL_MAX_TEXTURE_UNITS
 static const int kMaxStack = 64;          // matrix stack depth (GL's minimum is 32 for MODELVIEW)
@@ -117,6 +123,7 @@ static bool g_depthMask = true;
 static bool g_colorMask[4] = { true, true, true, true };
 static int g_cullFace = GL_BACK, g_frontFace = GL_CCW;
 static int g_alphaFunc = GL_ALWAYS;
+static bool g_flat = false;                               // glShadeModel(GL_FLAT)
 static int g_colorMaterialMode = GL_AMBIENT_AND_DIFFUSE;   // what glColorMaterial lets the colour stand for (GL's initial)
 static float g_alphaRef = 0.0f;
 static float g_clearR = 0, g_clearG = 0, g_clearB = 0, g_clearA = 0, g_clearDepth = 1.0f;
@@ -234,10 +241,14 @@ static const char* kVS =
 	"float4 gMa    : register(c24);\n"   // the material (when the colour material is off)
 	"float4 gMd    : register(c25);\n"
 	"float4 gTint  : register(c26);\n"   // a display list that set no colour: the colour current at glCallList (else white)
+	"float4 gShade : register(c27);\n"   // x: flat shading (light the provoking vertex's normal and colour)
 	"float3 toLight(float4 lp, float3 e) { float3 d = lp.w == 0 ? lp.xyz : lp.xyz - e; float l = dot(d, d); return l > 1e-12 ? d * rsqrt(l) : float3(0, 0, 0); }\n"
-	"void main(float3 p : POSITION, float3 n : NORMAL, float4 c : COLOR0, float2 t0 : TEXCOORD0, float2 t1 : TEXCOORD1,\n"
+	"void main(float3 p : POSITION, float3 vn : NORMAL, float4 vc : COLOR0, float2 t0 : TEXCOORD0, float2 t1 : TEXCOORD1,\n"
+	"          float3 fn : TEXCOORD2, float4 fc : COLOR1,\n"
 	"          out float4 op : POSITION, out float4 oc : COLOR0, out float2 ot0 : TEXCOORD0, out float2 ot1 : TEXCOORD1,\n"
 	"          out float ofz : TEXCOORD2) {\n"
+	"  float3 n = gShade.x > 0.5 ? fn : vn;\n"
+	"  float4 c = gShade.x > 0.5 ? fc : vc;\n"
 	"  float4 P = float4(p, 1);\n"
 	"  op = mul(P, gWVP);\n"
 	"  float4 e = mul(P, gMV);\n"
@@ -313,6 +324,8 @@ static void _buildShaders() {
 		{ 0, 24, D3DDECLTYPE_D3DCOLOR, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_COLOR,    0 },
 		{ 0, 28, D3DDECLTYPE_FLOAT2,   D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD, 0 },
 		{ 0, 36, D3DDECLTYPE_FLOAT2,   D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD, 1 },
+		{ 0, 44, D3DDECLTYPE_FLOAT3,   D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD, 2 },   // the provoking normal
+		{ 0, 56, D3DDECLTYPE_D3DCOLOR, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_COLOR,    1 },   // the provoking colour
 		D3DDECL_END()
 	};
 	g_dev->CreateVertexDeclaration(decl, &g_decl);
@@ -323,7 +336,7 @@ static void _buildShaders() {
 // =========================================================================== the D3D side: what is on the device
 // Shadows of what was last given the device, so a draw only touches what changed (the 360's validation made every redundant call
 // cost). Cleared whenever the device's state is unknown (glInit, glOnDeviceReset).
-static float s_vsc[27 * 4], s_psc[4 * 4];
+static float s_vsc[28 * 4], s_psc[4 * 4];
 static bool s_vscValid = false, s_pscValid = false;
 static IDirect3DBaseTexture9* s_tex[kUnits];
 static DWORD s_samp[kUnits][6];           // ADDRESSU, ADDRESSV, MAGFILTER, MINFILTER, MIPFILTER, (unused)
@@ -535,7 +548,7 @@ static void _prepareDraw(bool bakedEye, const float* tint, int listTex, bool lis
 	}
 	const Mat mv = bakedEye ? _identity() : _top(g_mv);
 	const Mat wvp = mv * _top(g_proj) * _glToD3D();
-	float vc[27 * 4];
+	float vc[28 * 4];
 	_putMat(vc + 0, wvp);
 	_putMat(vc + 16, mv);
 	_putMat(vc + 32, _top(g_texm[0]));
@@ -550,7 +563,8 @@ static void _prepareDraw(bool bakedEye, const float* tint, int listTex, bool lis
 	memcpy(vc + 100, g_matDiffuse, 16);
 	static const float white[4] = { 1, 1, 1, 1 };
 	memcpy(vc + 104, tint ? tint : white, 16);
-	_setVSConst(0, vc, 27);
+	vc[108] = g_flat ? 1.0f : 0.0f; vc[109] = vc[110] = vc[111] = 0.0f;
+	_setVSConst(0, vc, 28);
 	s_vscValid = true;
 
 	const int tex0 = useListTex ? listTex : g_bound[0];
@@ -580,41 +594,52 @@ static void _drawUP(D3DPRIMITIVETYPE prim, const GLVert* v, int verts, bool bake
 // =========================================================================== gathering: GL primitives -> lists of triangles or lines
 // Quads, strips, fans and polygons become triangle lists; line strips and loops become line lists. Points draw nothing (no game
 // in the corpus uses them; one would be a quad pair here).
+static void _put(std::vector<GLVert>& out, const GLVert& v, const GLVert& provoking) {
+	GLVert o = v;
+	o.fnx = provoking.nx; o.fny = provoking.ny; o.fnz = provoking.nz;
+	o.fcolor = provoking.color;
+	out.push_back(o);
+}
+static void _tri(std::vector<GLVert>& out, const GLVert& a, const GLVert& b, const GLVert& c, const GLVert& p) {
+	_put(out, a, p); _put(out, b, p); _put(out, c, p);
+}
 static void _gather(int mode, const GLVert* v, int n, std::vector<GLVert>& tris, std::vector<GLVert>& lines) {
 	int i;
-	switch (mode) {
+	switch (mode) {   // the provoking vertex (the last argument) is GL's for each primitive
 		case GL_TRIANGLES:
-			for (i = 0; i + 2 < n; i += 3) { tris.push_back(v[i]); tris.push_back(v[i + 1]); tris.push_back(v[i + 2]); }
+			for (i = 0; i + 2 < n; i += 3) _tri(tris, v[i], v[i + 1], v[i + 2], v[i + 2]);
 			break;
-		case GL_QUADS:
+		case GL_QUADS:   // both halves of a quad take its fourth vertex
 			for (i = 0; i + 3 < n; i += 4) {
-				tris.push_back(v[i]); tris.push_back(v[i + 1]); tris.push_back(v[i + 2]);
-				tris.push_back(v[i]); tris.push_back(v[i + 2]); tris.push_back(v[i + 3]);
+				_tri(tris, v[i], v[i + 1], v[i + 2], v[i + 3]);
+				_tri(tris, v[i], v[i + 2], v[i + 3], v[i + 3]);
 			}
 			break;
 		case GL_TRIANGLE_STRIP:
 			for (i = 0; i + 2 < n; ++i) {
-				if (i & 1) { tris.push_back(v[i + 1]); tris.push_back(v[i]); tris.push_back(v[i + 2]); }
-				else { tris.push_back(v[i]); tris.push_back(v[i + 1]); tris.push_back(v[i + 2]); }
+				if (i & 1) _tri(tris, v[i + 1], v[i], v[i + 2], v[i + 2]);
+				else _tri(tris, v[i], v[i + 1], v[i + 2], v[i + 2]);
 			}
 			break;
-		case GL_QUAD_STRIP:
+		case GL_QUAD_STRIP:   // quad k takes vertex 2k + 3
 			for (i = 0; i + 3 < n; i += 2) {
-				tris.push_back(v[i]); tris.push_back(v[i + 1]); tris.push_back(v[i + 3]);
-				tris.push_back(v[i]); tris.push_back(v[i + 3]); tris.push_back(v[i + 2]);
+				_tri(tris, v[i], v[i + 1], v[i + 3], v[i + 3]);
+				_tri(tris, v[i], v[i + 3], v[i + 2], v[i + 3]);
 			}
 			break;
 		case GL_TRIANGLE_FAN:
-		case GL_POLYGON:
-			for (i = 1; i + 1 < n; ++i) { tris.push_back(v[0]); tris.push_back(v[i]); tris.push_back(v[i + 1]); }
+			for (i = 1; i + 1 < n; ++i) _tri(tris, v[0], v[i], v[i + 1], v[i + 1]);
+			break;
+		case GL_POLYGON:      // a polygon takes its first vertex
+			for (i = 1; i + 1 < n; ++i) _tri(tris, v[0], v[i], v[i + 1], v[0]);
 			break;
 		case GL_LINES:
-			for (i = 0; i + 1 < n; i += 2) { lines.push_back(v[i]); lines.push_back(v[i + 1]); }
+			for (i = 0; i + 1 < n; i += 2) { _put(lines, v[i], v[i + 1]); _put(lines, v[i + 1], v[i + 1]); }
 			break;
 		case GL_LINE_STRIP:
 		case GL_LINE_LOOP:
-			for (i = 0; i + 1 < n; ++i) { lines.push_back(v[i]); lines.push_back(v[i + 1]); }
-			if (mode == GL_LINE_LOOP && n > 2) { lines.push_back(v[n - 1]); lines.push_back(v[0]); }
+			for (i = 0; i + 1 < n; ++i) { _put(lines, v[i], v[i + 1]); _put(lines, v[i + 1], v[i + 1]); }
+			if (mode == GL_LINE_LOOP && n > 2) { _put(lines, v[n - 1], v[0]); _put(lines, v[0], v[0]); }
 			break;
 		case GL_POINTS:
 			J2X_NOOP("points: no game in the corpus draws them");
@@ -668,6 +693,10 @@ static void _bakeEye(std::vector<GLVert>& v) {
 		const float ny = n.x * mv._12 + n.y * mv._22 + n.z * mv._32;
 		const float nz = n.x * mv._13 + n.y * mv._23 + n.z * mv._33;
 		v[k].nx = nx; v[k].ny = ny; v[k].nz = nz;
+		const float fx = v[k].fnx * mv._11 + v[k].fny * mv._21 + v[k].fnz * mv._31;
+		const float fy = v[k].fnx * mv._12 + v[k].fny * mv._22 + v[k].fnz * mv._32;
+		const float fz = v[k].fnx * mv._13 + v[k].fny * mv._23 + v[k].fnz * mv._33;
+		v[k].fnx = fx; v[k].fny = fy; v[k].fnz = fz;
 	}
 }
 
@@ -690,6 +719,10 @@ static void _record(D3DPRIMITIVETYPE prim, std::vector<GLVert>& verts, bool from
 			const float ny = verts[k].nx * delta._12 + verts[k].ny * delta._22 + verts[k].nz * delta._32;
 			const float nz = verts[k].nx * delta._13 + verts[k].ny * delta._23 + verts[k].nz * delta._33;
 			verts[k].x = o.x; verts[k].y = o.y; verts[k].z = o.z; verts[k].nx = nx; verts[k].ny = ny; verts[k].nz = nz;
+			const float fx = verts[k].fnx * delta._11 + verts[k].fny * delta._21 + verts[k].fnz * delta._31;
+			const float fy = verts[k].fnx * delta._12 + verts[k].fny * delta._22 + verts[k].fnz * delta._32;
+			const float fz = verts[k].fnx * delta._13 + verts[k].fny * delta._23 + verts[k].fnz * delta._33;
+			verts[k].fnx = fx; verts[k].fny = fy; verts[k].fnz = fz;
 		}
 	}
 	GLBatch b;
@@ -890,6 +923,7 @@ static GLVert _current(float x, float y, float z) {
 	v.nx = g_nx; v.ny = g_ny; v.nz = g_nz;
 	v.color = D3DCOLOR_COLORVALUE(g_cr, g_cg, g_cb, g_ca);
 	v.u = g_tu[0]; v.v = g_tv[0]; v.u2 = g_tu[1]; v.v2 = g_tv[1];
+	v.fnx = v.nx; v.fny = v.ny; v.fnz = v.nz; v.fcolor = v.color;   // (set per primitive by _gather)
 	return v;
 }
 void glBegin(int mode) {
@@ -994,7 +1028,13 @@ void glAlphaFunc(int func, float ref) {
 	g_alphaFunc = func;
 	g_alphaRef = _clamp01(ref);
 }
-void glShadeModel(int) { J2X_NOOP("smooth/flat shading: every vertex carries its colour; flat would differ only on hand-coloured faces"); }
+void glShadeModel(int mode) {
+	if (mode != GL_FLAT && mode != GL_SMOOTH) { J2X_UNHANDLED("glShadeModel", mode); return; }
+	const bool flat = (mode == GL_FLAT);
+	if (flat == g_flat) return;
+	_stateChange();
+	g_flat = flat;
+}
 void glClearColor(float r, float g, float b, float a) { g_clearR = _clamp01(r); g_clearG = _clamp01(g); g_clearB = _clamp01(b); g_clearA = _clamp01(a); }
 void glClearDepth(double d) { g_clearDepth = _clamp01((float)d); }
 void glClear(int mask) {
@@ -1464,8 +1504,17 @@ static GLVert _fetch(int idx, bool& colorArray) {
 	}
 	if (g_na.on && g_na.ptr) {
 		const char* p = g_na.ptr + (size_t)idx * g_na.stride;
-		const float k = g_na.type == GL_BYTE ? 1.0f / 127.0f : g_na.type == GL_SHORT ? 1.0f / 32767.0f : 1.0f;   // (signed: normalized)
-		v.nx = _comp(p, g_na.type, 0) * k; v.ny = _comp(p, g_na.type, 1) * k; v.nz = _comp(p, g_na.type, 2) * k;
+		// Signed integers become floats by GL 1.x's rule, (2c + 1) / (2^b - 1): a zero byte is 1/255, not 0. That matters: the Beta
+		// Tessellator's quad-to-triangle copies never write their normal bytes, and GL lights them as the small vector those
+		// zeros make once normalized; read as 0 they lit ambient-only (a dark wedge across every face of the first-person arm).
+		if (g_na.type == GL_BYTE || g_na.type == GL_SHORT) {
+			const float range = g_na.type == GL_BYTE ? 255.0f : 65535.0f;
+			v.nx = (2.0f * _comp(p, g_na.type, 0) + 1.0f) / range;
+			v.ny = (2.0f * _comp(p, g_na.type, 1) + 1.0f) / range;
+			v.nz = (2.0f * _comp(p, g_na.type, 2) + 1.0f) / range;
+		} else {
+			v.nx = _comp(p, g_na.type, 0); v.ny = _comp(p, g_na.type, 1); v.nz = _comp(p, g_na.type, 2);
+		}
 	}
 	for (int u = 0; u < kUnits; ++u) {
 		const Array& a = g_ta[u];
@@ -1486,10 +1535,12 @@ static GLVert _fetch(int idx, bool& colorArray) {
 			const unsigned char* b = (const unsigned char*)p;
 			v.color = D3DCOLOR_ARGB(255, b[0], b[1], b[2]);
 		} else {
-			const float r = _comp(p, g_ca_.type, 0), g = _comp(p, g_ca_.type, 1), b = _comp(p, g_ca_.type, 2);
-			const float a = g_ca_.size >= 4 ? _comp(p, g_ca_.type, 3) : 1.0f;
-			const float k = g_ca_.type == GL_BYTE ? 1.0f / 127.0f : 1.0f;
-			v.color = D3DCOLOR_ARGB(_u8(a * k), _u8(r * k), _u8(g * k), _u8(b * k));
+			float c[4];
+			for (int i = 0; i < 4; ++i) {
+				c[i] = (i < g_ca_.size) ? _comp(p, g_ca_.type, i) : 1.0f;
+				if (i < g_ca_.size && g_ca_.type == GL_BYTE) c[i] = (2.0f * c[i] + 1.0f) / 255.0f;   // (GL 1.x's signed rule)
+			}
+			v.color = D3DCOLOR_ARGB(_u8(c[3]), _u8(c[0]), _u8(c[1]), _u8(c[2]));
 		}
 	}
 	return v;
@@ -1623,7 +1674,7 @@ void glEndList() {
 	// colour current while it was recorded would be multiplied in too (the first-person arm came out dark brown).
 	if (L.inheritColor)
 		for (size_t i = 0; i < L.batches.size(); ++i)
-			for (size_t k = 0; k < L.batches[i].verts.size(); ++k) L.batches[i].verts[k].color = D3DCOLOR_ARGB(255, 255, 255, 255);
+			for (size_t k = 0; k < L.batches[i].verts.size(); ++k) L.batches[i].verts[k].color = L.batches[i].verts[k].fcolor = D3DCOLOR_ARGB(255, 255, 255, 255);
 	bool geometry = false;
 	for (size_t i = 0; i < L.batches.size(); ++i) if (!L.batches[i].verts.empty()) { geometry = true; break; }
 	if (geometry && g_dev) {
