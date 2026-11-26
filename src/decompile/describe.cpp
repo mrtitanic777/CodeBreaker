@@ -15,6 +15,7 @@ namespace cb::decompile::describe {
 
 std::optional<std::string_view> language_of_machine(std::uint16_t machine) {
     if (machine == formats::pe::kMachineI386) return kArchLe;
+    if (machine == formats::pe::kMachineX64) return "x86:LE:64:default:windows";   // (Visual C++'s x64 convention: x86-64-win.cspec)
     if (machine == 0x01F2) return "PowerPC:BE:64:Xenon:homed";   // the Xbox 360's
     return std::nullopt;
 }

@@ -4,7 +4,7 @@
 //   Windows 32-bit (PE, x86), Windows 16-bit (NE), drivers (LE/LX), DOS     Opening, Disassembling (the NASM / MASM-style source that builds back
 //                                                                           into the original: source/pe_writer ...), Decompiling (C)
 //   Windows 64-bit (PE32+, x64)                                             Opening, Disassembling (NASM source that builds back into the
-//                                                                           original: source/pe64_writer); no C yet
+//                                                                           original: source/pe64_writer), Decompiling (C, as the decompiler gives it)
 //   a .NET program (a PE with a CLR header, 32- or 64-bit)                  Opening, Decompiling (its C#: ILSpy, after de4dot when it was
 //                                                                           obfuscated; xna/run)
 //   a console cartridge, disc executable or snapshot of a registered lane   Opening, Disassembling (its machine's assembly source)
@@ -127,7 +127,7 @@ void cv_keep_dos_side_files(const stdfs::path& scratch, const stdfs::path& work)
 // The program the writer assembled from its source to check itself, kept as the conversion's built program: <work>/build/<the input's own
 // name>, with BUILD.txt saying how it was made, whether it is the original byte for byte, and what it still needs to run. Nothing when the
 // assembler built nothing.
-void cv_keep_built(const std::optional<stdfs::path>& image, bool same, const stdfs::path& input, const stdfs::path& work, bool with_c = true) {
+void cv_keep_built(const std::optional<stdfs::path>& image, bool same, const stdfs::path& input, const stdfs::path& work) {
     if (!image || !stdfs::is_regular_file(*image)) return;
     const stdfs::path folder = work / "build";
     stdfs::create_directories(folder);
@@ -141,10 +141,9 @@ void cv_keep_built(const std::optional<stdfs::path>& image, bool same, const std
                  : "It is NOT the original byte for byte: the assembler built it, but some bytes differ, so it may not run as the original does.\n";
     note += std::format("\nTo build it again, in the folder above this one:\n\n    codebreaker nasm -f bin -o build\\{} {}\n\n", name, asm_name);
     note += "To run it, it needs what the original needs beside it: the DLLs it loads and any plugin folders (a Qt program's platforms\\, for\n"
-            "one), copied from where the original is installed.\n";
-    if (with_c)
-        note += "\nThe .c files are a readable reconstruction of the same program. They are not what this program was built from, and they do not\n"
-                "build it yet.\n";
+            "one), copied from where the original is installed.\n\n"
+            "The .c files are a readable reconstruction of the same program. They are not what this program was built from, and they do not\n"
+            "build it yet.\n";
     fs::write_text(folder / "BUILD.txt", note);
 }
 
@@ -253,11 +252,11 @@ Route cv_mz_route(CvMz kind, std::string route_name) {
     return route;
 }
 
-// A 64-bit Windows program: its NASM source (source/pe64_writer), and the program assembled from it to check it.
+// A 64-bit Windows program: its NASM source (source/pe64_writer), the program assembled from it to check it, and its C.
 Route cv_pe64_route() {
     Route route;
     route.name = "pe64";
-    route.stages = {State::Opening, State::Disassembling};
+    route.stages = {State::Opening, State::Disassembling, State::Decompiling};
     route.run = [](Reporter& r, const stdfs::path& input, const stdfs::path& work) {
         r.enter(State::Opening);
         const Bytes bytes = fs::read_file(input);
@@ -271,10 +270,13 @@ Route cv_pe64_route() {
         r.check();
         if (done.source.empty()) throw NotConvertible("No source could be written for this 64-bit program: " + (done.notes.empty() ? std::string("the writer gave no reason") : done.notes.front()));
         cv_keep(done.source, work);
-        cv_keep_built(done.built, done.same, input, work, false);
+        cv_keep_built(done.built, done.same, input, work);
         r.count(done.functions.size(), done.functions.size(), std::format("{} functions", done.functions.size()));
         std::error_code ec;
         stdfs::remove_all(scratch, ec);
+
+        r.enter(State::Decompiling);
+        cv_decompile(r, config::current(), input, work);
     };
     return route;
 }

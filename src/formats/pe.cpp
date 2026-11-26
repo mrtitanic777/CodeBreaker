@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <format>
+#include <set>
 #include <unordered_map>
 
 #include "core/fs.hpp"
@@ -544,6 +545,36 @@ std::optional<Tls> Image::tls() const {
     if (!off) return std::nullopt;
     const std::uint64_t w = header_.is_plus ? 8 : 4;
     return Tls{word_at(*off), word_at(*off + w), word_at(*off + 2 * w), word_at(*off + 3 * w)};
+}
+
+std::vector<RuntimeFunction> Image::runtime_functions() const {
+    std::vector<RuntimeFunction> out;
+    if (!header_.is_plus) return out;
+    const DataDirectory dir = directory(3);
+    const auto off = directory_offset(3);
+    if (!off) return out;
+    for (std::uint64_t e = *off; e + 12 <= *off + dir.size && e + 12 <= data_.size(); e += 12) {
+        RuntimeFunction f{static_cast<std::uint32_t>(u32_at(e)), static_cast<std::uint32_t>(u32_at(e + 4)), static_cast<std::uint32_t>(u32_at(e + 8)), false};
+        if (f.begin == 0 && f.end == 0) continue;
+        if (const auto info = file_offset(f.unwind & ~1u); info && *info < data_.size()) f.chained = ((data_[*info] >> 3) & 0x4) != 0;
+        out.push_back(f);
+    }
+    return out;
+}
+
+std::vector<std::uint32_t> Image::x64_function_starts() const {
+    std::set<std::uint32_t> starts;
+    const auto in_code = [this](std::uint64_t rva) {
+        for (const Section& s : sections_)
+            if (s.is_code() && rva >= s.virtual_address && rva < s.virtual_address + std::max(s.virtual_size, s.raw_size)) return true;
+        return false;
+    };
+    if (optional_.entry_point != 0 && in_code(optional_.entry_point)) starts.insert(static_cast<std::uint32_t>(optional_.entry_point));
+    for (const ExportSymbol& e : export_table().symbols)
+        if (!e.forward && in_code(e.rva)) starts.insert(e.rva);
+    for (const RuntimeFunction& f : runtime_functions())
+        if (!f.chained && in_code(f.begin)) starts.insert(f.begin);
+    return {starts.begin(), starts.end()};
 }
 
 std::vector<DebugEntry> Image::debug_entries() const {

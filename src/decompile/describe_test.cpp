@@ -154,7 +154,7 @@ CB_TEST("decompile.describe.address_spaces", [] {
     CB_CHECK_EQ(dsc::le_address(3, 0), 0x3000000);
     CB_CHECK(dsc::language_of_machine(0x014C) && *dsc::language_of_machine(0x014C) == "x86:LE:32:default:windows");
     CB_CHECK(dsc::language_of_machine(0x01F2) && dsc::language_of_machine(0x01F2)->starts_with("PowerPC"));
-    CB_CHECK(!dsc::language_of_machine(0x8664));
+    CB_CHECK(dsc::language_of_machine(0x8664) && *dsc::language_of_machine(0x8664) == "x86:LE:64:default:windows");
     CB_CHECK(!dsc::language_of_machine(0));
 });
 
@@ -441,7 +441,7 @@ CB_TEST("decompile.describe.pe_with_no_language_is_unsupported", [] {
     Bytes patched = file;
     const std::uint32_t lfanew = patched[0x3C] | (patched[0x3D] << 8);
     patched[lfanew + 4] = 0x64;
-    patched[lfanew + 5] = 0x86;   // x64: parses as PE32 with a PE32+ machine
+    patched[lfanew + 5] = 0xAA;   // ARM64: parses as PE32 with an ARM64 machine
     const auto other = formats::pe::Image::try_parse(patched);
     if (other) {
         dsc::NoKnowledge none;

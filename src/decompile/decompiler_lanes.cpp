@@ -37,6 +37,15 @@ namespace {
 
 constexpr std::uint16_t kMachineX86 = 0x014C;
 constexpr std::uint16_t kMachinePowerPc = 0x01F2;
+constexpr std::uint16_t kMachineX64 = 0x8664;
+
+// The functions an x64 module says it has (formats/pe: the entry, the exports, the .pdata entries), by address.
+std::vector<Va> lanes_x64_functions(const formats::pe::Image& image) {
+    std::vector<Va> out;
+    const Va base = static_cast<Va>(image.header().image_base);
+    for (const std::uint32_t rva : image.x64_function_starts()) out.push_back(base + rva);
+    return out;
+}
 
 // The functions the carve of an x86 module finds, by address.
 std::vector<Va> lanes_carved_functions(const std::filesystem::path& module) {
@@ -44,6 +53,14 @@ std::vector<Va> lanes_carved_functions(const std::filesystem::path& module) {
     std::vector<Va> out;
     for (const auto& kv : carve.functions()) out.push_back(kv.first);
     return out;
+}
+
+// The functions of a PE module that is not 32-bit x86: PowerPC's from its image, x64's from .pdata, anything else's from the carve.
+template <class Env>
+std::vector<Va> lanes_stated_functions(Env& environment, const std::filesystem::path& module, std::uint16_t machine) {
+    if (machine == kMachinePowerPc) return environment.powerpc_functions(module);
+    if (machine == kMachineX64) return lanes_x64_functions(formats::pe::Image::open(module));
+    return lanes_carved_functions(module);
 }
 
 // The 6502 as a function-finder reads it.
@@ -451,7 +468,7 @@ c_text::Decompiled Decompiler::raw(const std::filesystem::path& module, std::spa
     const std::uint16_t machine = formats::pe::Image::open(module).header().machine;
     std::vector<Va> starts(functions.begin(), functions.end());
     if (starts.empty() && machine != kMachineX86)   // (a PowerPC image states its starts)
-        starts = machine == kMachinePowerPc ? context_.environment->powerpc_functions(module) : lanes_carved_functions(module);
+        starts = lanes_stated_functions(*context_.environment, module, machine);
     ModuleRun r = run_module(module, starts, outdir, RunOptions{.l2 = true, .write = false});
     c_text::Decompiled out;
     out.arena = arena_;
@@ -613,10 +630,9 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
         header = made.header();
         total = made.by_va().size();
         pe_places = made.by_va();
-    } else if (kind == Lane::Pe) {   // PowerPC: as the decompiler gives it
+    } else if (kind == Lane::Pe) {   // PowerPC and x64: as the decompiler gives it
         const std::uint16_t machine = formats::pe::Image::open(module).header().machine;
-        const std::vector<Va> starts =
-            machine == kMachinePowerPc ? context_.environment->powerpc_functions(module) : lanes_carved_functions(module);
+        const std::vector<Va> starts = lanes_stated_functions(*context_.environment, module, machine);
         Run r = run_module(module, starts, scratch_for({"decompiler", stem})).run;
         texts = std::move(r.texts);
         order = std::move(r.order);

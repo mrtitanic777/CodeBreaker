@@ -139,6 +139,11 @@ struct Certificate {
     std::uint32_t length = 0;
     std::uint16_t revision = 0, type = 0;
 };
+// An entry of the exception directory (`.pdata`) of an x64 image: the function (or the part of one) it covers and its unwind information.
+struct RuntimeFunction {
+    std::uint32_t begin = 0, end = 0, unwind = 0;   // RVAs
+    bool chained = false;                           // its unwind information continues another entry's (UNW_FLAG_CHAININFO): part of that function, not one of its own
+};
 struct Clr {
     Version runtime;
     std::uint32_t flags = 0, entry_token = 0;
@@ -209,6 +214,10 @@ public:
     std::vector<DebugEntry> debug_entries() const;
     std::vector<Certificate> certificates() const;
     std::optional<Clr> clr() const;
+    // The exception directory of an x64 (or ARM64) image, in table order; empty for a 32-bit image or one without it.
+    std::vector<RuntimeFunction> runtime_functions() const;
+    // The functions an x64 image says it has: the entry point, the exports into code and every .pdata entry that is not a continuation, ascending, each once (RVAs).
+    std::vector<std::uint32_t> x64_function_starts() const;
     std::optional<Rich> rich() const;
     bool is_dotnet() const;  // has a CLR runtime header
 

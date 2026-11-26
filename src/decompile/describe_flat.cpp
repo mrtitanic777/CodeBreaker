@@ -101,10 +101,15 @@ PeDescription describe32(const std::filesystem::path& module, const formats::pe:
     const std::optional<std::string_view> arch = language_of_machine(header.machine);
     if (!arch) throw UnsupportedError(kPe, 0, std::format("{}: no language for machine type {:#x}", module.filename().string(), header.machine));
     const bool x86 = arch->starts_with("x86:");
+    // A 64-bit module has one calling convention (the callee pops nothing; the arguments are in RCX, RDX, R8, R9, then the stack) and the
+    // analyses below read 32-bit code, so it takes none of them: its functions are named by its exports, its imports by their names.
+    const bool x64 = header.machine == formats::pe::kMachineX64;
     PeDescription out;
     out.path = outdir / "description.txt";
-    const std::set<std::string> imported = x86 ? knowledge.imported_names(module) : std::set<std::string>{};
-    if (x86) {
+    const std::set<std::string> imported = x86 && !x64 ? knowledge.imported_names(module) : std::set<std::string>{};
+    if (x64) {
+        out.names = function_names(image, functions, imported);
+    } else if (x86) {
         out.names = function_names(image, functions, imported);
         // A function in a virtual table reads as its class and slot (MainWindow__vf_3), not sub_<address>; only the sub_ defaults
         // are replaced, so an export keeps its own name. Isolated: a module whose class analysis fails keeps the sub_ names.
@@ -153,7 +158,7 @@ PeDescription describe32(const std::filesystem::path& module, const formats::pe:
     // (ECX is used before anything is put in it), and said to the decompiler, which otherwise shows the object as a variable
     // nobody set -- in the function and, worse, not passed at all by its callers.
     Knowledge::Conventions conventions;
-    if (x86) {
+    if (x86 && !x64) {
         try {
             conventions = knowledge.conventions(module);
         } catch (const std::exception& e) {   // isolation boundary: the analysis of one module
@@ -169,7 +174,7 @@ PeDescription describe32(const std::filesystem::path& module, const formats::pe:
         if (conventions.thiscall.contains(va)) out.in_ecx.insert(out.names.at(va));
     for (Va va : functions) {
         std::optional<std::int64_t> pop;
-        if (x86) pop = knowledge.pe_function_pop(module, static_cast<std::uint32_t>(va - static_cast<Va>(header.image_base)));
+        if (x86 && !x64) pop = knowledge.pe_function_pop(module, static_cast<std::uint32_t>(va - static_cast<Va>(header.image_base)));
         const char* convention = conventions.thiscall.contains(va) && pop ? "\t__thiscall" : conventions.fastcall.contains(va) && pop ? "\t__fastcall" : "";
         lines.push_back(std::format("F\t{}\t{}\t{}{}", hx(va), out.names.at(va), pop ? *pop : -1, convention));
     }
@@ -198,14 +203,14 @@ PeDescription describe32(const std::filesystem::path& module, const formats::pe:
                 take = taken[*real] && *taken[*real] == want;
             }
             if (take) {
-                std::optional<std::int64_t> pop = knowledge.declared_argument_bytes(*real);
-                if (!pop) pop = knowledge.win32_argument_bytes(stem, name);
+                std::optional<std::int64_t> pop = x64 ? std::nullopt : knowledge.declared_argument_bytes(*real);
+                if (!pop && !x64) pop = knowledge.win32_argument_bytes(stem, name);
                 lines.push_back(std::format("I\t{}\t{}\t{}", slot, *real, pop ? *pop : -1));
                 out.by_number[*real] = {stem, number, pop};
             } else {
                 // no name for it -- but the module that exports it still says how many bytes of arguments it removes, and without
                 // that the call is recovered with none
-                const std::optional<std::int64_t> pop = !name.empty() ? knowledge.win32_argument_bytes(stem, name) : std::nullopt;
+                const std::optional<std::int64_t> pop = !name.empty() && !x64 ? knowledge.win32_argument_bytes(stem, name) : std::nullopt;
                 const std::string shown = name.empty() ? "0" : name.substr(1);
                 const std::string id = text::sanitize_identifier(stem + "_ord_" + shown);
                 lines.push_back(std::format("I\t{}\t{}\t{}", slot, id, pop ? *pop : -1));
@@ -213,7 +218,7 @@ PeDescription describe32(const std::filesystem::path& module, const formats::pe:
             }
             continue;
         }
-        const std::optional<std::int64_t> pop = x86 ? knowledge.win32_argument_bytes(stem, name) : std::nullopt;
+        const std::optional<std::int64_t> pop = x86 && !x64 ? knowledge.win32_argument_bytes(stem, name) : std::nullopt;
         lines.push_back(std::format("I\t{}\t{}\t{}", slot, text::sanitize_identifier(name), pop ? *pop : -1));
     }
     // (the old CB_POINTER_CALLS=1 experiment -- `O` lines for calls through a pointer -- is not carried over: it was off, and

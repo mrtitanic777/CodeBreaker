@@ -363,22 +363,26 @@ CB_TEST("app.convert.a_32_bit_dll_is_disassembled_and_decompiled", [] {
     CB_CHECK(counted);
 });
 
-CB_TEST("app.convert.a_64_bit_windows_program_becomes_assembly_source_that_builds_it_again", [] {
+CB_TEST("app.convert.a_64_bit_windows_program_becomes_assembly_that_builds_it_again_and_c", [] {
     CvFixture f;
     f.input = f.dir.path() / "demo.exe";
     fs::write_file(f.input, formats::xboxone_test::pe(false));   // (an x64 PE32+ without the app-sandbox flag: an ordinary Windows program)
     const Outcome done = convert(f.request(), standard_planner(), f.listener(), f.cancel);
-    CB_CHECK(done.state == State::Done);
     CB_CHECK_EQ(done.route, "pe64");
-    const std::vector<State> expected = {State::Identifying, State::Opening, State::Disassembling, State::Writing, State::Done};
+    if (done.state == State::Failed) {   // (the decompiler program is not set up)
+        CB_CHECK(done.message.find("decompiler") != std::string::npos);
+        return;
+    }
+    CB_CHECK(done.state == State::Done);
+    const std::vector<State> expected = {State::Identifying, State::Opening, State::Disassembling, State::Decompiling, State::Writing, State::Done};
     CB_CHECK(done.stages == expected);
     CB_CHECK(f.percent_never_goes_down());
     CB_CHECK(stdfs::exists(done.output / "demo.exe.asm"));
     CB_CHECK(fs::read_text(done.output / "demo.exe.asm").find("bits 64") != std::string::npos);
     CB_CHECK(fs::read_file(done.output / "build" / "demo.exe") == fs::read_file(f.input));
-    const std::string note = fs::read_text(done.output / "build" / "BUILD.txt");
-    CB_CHECK(note.find("It is the original program byte for byte") != std::string::npos);
-    CB_CHECK(note.find(".c files") == std::string::npos);   // (no C for a 64-bit program yet)
+    CB_CHECK(fs::read_text(done.output / "build" / "BUILD.txt").find("It is the original program byte for byte") != std::string::npos);
+    CB_CHECK(stdfs::exists(done.output / "demo.c"));   // its C, as the decompiler gives it
+    CB_CHECK(fs::read_text(done.output / "demo.c").find("Sleep") != std::string::npos);
 });
 
 CB_TEST("app.convert.a_windows_program_for_arm64_is_refused_and_names_the_processor", [] {
