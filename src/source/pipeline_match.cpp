@@ -73,8 +73,9 @@ MatchCode match_trimmed(MatchCode code) {
 // The original's functions: {address: bytes and mask}; the mask marks relocated words and the distances of direct calls and jumps, which depend on
 // where things are.
 std::map<std::uint64_t, MatchCode> match_originals(const formats::pe::Image& pe, const std::vector<std::uint64_t>& addresses) {
-    std::map<std::uint64_t, std::uint64_t> stops;   // start -> end
-    for (const formats::pe_functions::Function& f : formats::pe_functions::function_spans(pe)) stops[static_cast<std::uint64_t>(f.start)] = static_cast<std::uint64_t>(f.end);
+    std::map<std::uint64_t, std::uint64_t> spans;   // start -> end
+    for (const formats::pe_functions::Function& f : formats::pe_functions::function_spans(pe)) spans[static_cast<std::uint64_t>(f.start)] = static_cast<std::uint64_t>(f.end);
+    const std::map<std::uint64_t, std::uint64_t> stops = match_clipped_spans(std::move(spans), addresses);
     std::set<std::uint64_t> relocated;
     for (const std::uint64_t rva : pe.base_relocs()) relocated.insert(pe.header().image_base + rva);
     platforms::DecoderSet decoders;
@@ -167,6 +168,7 @@ struct MatchVerdict {
     std::size_t size = 0;    // the compiled function's, padding aside
     std::size_t original = 0;
     std::optional<MatchBytes> bytes;   // kept when asked for: a miss's two sides
+    std::string flags;                 // the switches it was compiled with (the run's, and /Oy- where the original keeps a frame)
 };
 
 // identical / same size / different, and the share of bytes equal outside the masked places.
@@ -210,21 +212,42 @@ std::vector<std::pair<std::string, MatchVerdict>> match_run(World& world, const 
     // (the compiler's math intrinsics are __cdecl: under /Gz an undecorated declaration of one is a redefinition, and every function of the module fails)
     for (const char* const name : {"sqrt", "sin", "cos", "tan", "atan2", "pow", "ldexp", "log", "floor", "fmod"})
         header = text::replace_all(header, std::format("double {}(", name), std::format("double __cdecl {}(", name));
+    // (a function taking its object in ECX, as Microsoft's compiler is told it)
+    std::map<std::string, std::string> texts(m.texts.begin(), m.texts.end());
+    header = period_registers(header, texts);
     fs::write_text(out_dir / "m.h", header);
+
+    const formats::pe::Image pe = formats::pe::Image::open(module);
+    std::vector<std::uint64_t> addresses;
+    for (const auto& [name, va] : m.va) addresses.push_back(static_cast<std::uint64_t>(va));
+    std::sort(addresses.begin(), addresses.end());
+    const std::map<std::uint64_t, MatchCode> originals = match_originals(pe, addresses);
+    const auto original_of = [&](const std::string& name) {
+        const auto va = m.va.find(name);
+        return va == m.va.end() ? originals.end() : originals.find(static_cast<std::uint64_t>(va->second));
+    };
 
     const std::string path_now = fs::get_env("PATH").value_or("");
     const std::map<std::string, std::string> env = {{"PATH", fs::to_text(cl.parent_path()) + ";" + path_now},
                                                     {"INCLUDE", fs::to_text(cl.parent_path().parent_path() / "INCLUDE")}};
     std::vector<std::string> switches;
     for (const std::string_view flag : text::split_ws(flags)) switches.emplace_back(flag);
+    // A function whose original builds a frame was compiled keeping the frame pointer: under switches that leave it out (/O1, /O2, /Ox all
+    // imply /Oy), it is compiled with /Oy- as well.
+    const bool frame_kept = std::any_of(switches.begin(), switches.end(), [](const std::string& s) { return s == "/Oy-" || s == "/Od"; });
     const std::vector<std::string>& names = m.order;
     std::vector<std::optional<Bytes>> objects(names.size());   // each function's object file; nullopt where it did not compile
+    std::vector<std::string> used(names.size(), flags);         // the switches each was compiled with
     parallel::parallel_for(names.size(), [&](std::size_t i) {
         const std::string stem = std::format("f{:04}", i);
-        fs::write_text(out_dir / (stem + ".c"), "#include \"m.h\"\n\n" + m.texts.at(names[i]) + "\n");
+        fs::write_text(out_dir / (stem + ".c"), "#include \"m.h\"\n\n" + texts.at(names[i]) + "\n");
         process::ProcessSpec spec;
         spec.argv = {fs::to_text(cl), "/nologo", "/c", "/W0"};
         spec.argv.insert(spec.argv.end(), switches.begin(), switches.end());
+        if (const auto original = original_of(names[i]); !frame_kept && original != originals.end() && builds_frame(original->second.bytes)) {
+            spec.argv.emplace_back("/Oy-");
+            used[i] = flags + " /Oy-";
+        }
         spec.argv.push_back(stem + ".c");
         spec.cwd = out_dir;
         spec.env = env;
@@ -234,17 +257,9 @@ std::vector<std::pair<std::string, MatchVerdict>> match_run(World& world, const 
         objects[i] = fs::read_file(out_dir / (stem + ".obj"));
     });
 
-    base::Corpus& corpus = world.corpus();
-    (void)corpus;
-    const formats::pe::Image pe = formats::pe::Image::open(module);
-    std::vector<std::uint64_t> addresses;
-    for (const auto& [name, va] : m.va) addresses.push_back(static_cast<std::uint64_t>(va));
-    std::sort(addresses.begin(), addresses.end());
-    const std::map<std::uint64_t, MatchCode> originals = match_originals(pe, addresses);
     std::vector<std::pair<std::string, MatchVerdict>> results;
     for (std::size_t i = 0; i < names.size(); ++i) {
-        const auto va = m.va.find(names[i]);
-        const auto original = va == m.va.end() ? originals.end() : originals.find(static_cast<std::uint64_t>(va->second));
+        const auto original = original_of(names[i]);
         MatchVerdict v;
         if (!objects[i] || original == originals.end()) {
             v.match = !objects[i] ? verify::ByteMatch::NoCompile : verify::ByteMatch::NoExtent;
@@ -259,6 +274,7 @@ std::vector<std::pair<std::string, MatchVerdict>> match_run(World& world, const 
             v.match = verify::ByteMatch::NoCompile;
             v.original = original->second.bytes.size();
         }
+        v.flags = used[i];
         results.emplace_back(names[i], v);
     }
     return results;
@@ -304,7 +320,7 @@ int match_command(World& world, const cli::Args& args) {
             const auto have = best.find(name);
             if (have == best.end()) order.push_back(name);
             if (have == best.end() || rank < have->second.rank || (rank == have->second.rank && v.share > have->second.share))
-                best[name] = Best{v.match, v.share, v.size, v.original, set, rank, std::move(v.bytes)};
+                best[name] = Best{v.match, v.share, v.size, v.original, v.flags, rank, std::move(v.bytes)};
         }
         if (sets.size() > 1) cb::out("  {:<16} {} identical\n", set, identical);
     }
@@ -490,6 +506,143 @@ std::string repair_needed_header(const std::string& header, std::string_view tex
     return text::join(keep, "\n");
 }
 
+std::map<std::uint64_t, std::uint64_t> match_clipped_spans(std::map<std::uint64_t, std::uint64_t> spans, const std::vector<std::uint64_t>& starts) {
+    std::set<std::uint64_t> all(starts.begin(), starts.end());
+    for (const auto& [start, end] : spans) all.insert(start);
+    for (auto& [start, end] : spans)
+        if (const auto next = all.upper_bound(start); next != all.end() && *next < end) end = *next;
+    return spans;
+}
+
+bool builds_frame(std::span<const std::uint8_t> code) {
+    return code.size() >= 3 && code[0] == 0x55 && ((code[1] == 0x8B && code[2] == 0xEC) || (code[1] == 0x89 && code[2] == 0xE5));
+}
+
+namespace {
+
+// A parameter list's parameters, split at the commas outside parentheses (a pointer to a function has a list of its own).
+std::vector<std::string> period_parameters(std::string_view list) {
+    std::vector<std::string> out;
+    int depth = 0;
+    std::string current;
+    for (const char c : list) {
+        if (c == '(') ++depth;
+        if (c == ')') --depth;
+        if (c == ',' && depth == 0) {
+            out.emplace_back(text::trim(current));
+            current.clear();
+        } else {
+            current += c;
+        }
+    }
+    if (!text::trim(current).empty() && text::trim(current) != "void") out.emplace_back(text::trim(current));
+    return out;
+}
+
+// Every call in `text` of a function of `names` with a 0 after its first argument (the unused EDX); a list already holding it -- the function's own
+// head -- is left as it is.
+std::string period_padded_calls(const std::string& text, const std::set<std::string>& names) {
+    static const Regex call(R"(\b(\w+)\s*\()");
+    std::vector<std::size_t> places;   // where a 0 goes (a call inside another's first argument comes after it here: sorted below)
+    call.for_each_match(text, [&](const RegexMatch& m) {
+        if (!names.contains(std::string(m.group(1)))) return true;
+        // the first argument ends at the first comma outside parentheses (or at the call's own close)
+        std::size_t at = m.end();
+        int depth = 0;
+        for (; at < text.size(); ++at) {
+            const char c = text[at];
+            if (c == '(') ++depth;
+            if (c == ')' && depth-- == 0) break;
+            if (c == ',' && depth == 0) break;
+        }
+        if (at >= text.size() || at == m.end()) return true;   // (no argument: not a call this knows)
+        const std::size_t rest = text.find_first_not_of(" \t", at + 1);
+        if (rest != std::string::npos && std::string_view(text).substr(rest).starts_with("int codebreaker_edx")) return true;
+        places.push_back(at);
+        return true;
+    });
+    std::sort(places.begin(), places.end());
+    std::string out;
+    std::size_t copied = 0;
+    for (const std::size_t at : places) {
+        out.append(text, copied, at - copied);
+        out += ",0";
+        copied = at;
+    }
+    out.append(text, copied, std::string::npos);
+    return out;
+}
+
+// The text with the parameter list after `name(` (the first, in what comes before the body) replaced, and `__fastcall` before the name.
+std::optional<std::string> period_fastcall_head(const std::string& text, const std::string& name, const std::optional<std::string>& list) {
+    const Regex at("\\b" + name + "\\s*\\(");
+    const std::size_t brace = text.find('{');
+    const std::optional<RegexMatch> m = at.search(std::string_view(text).substr(0, brace == std::string::npos ? text.size() : brace));
+    if (!m) return std::nullopt;
+    std::size_t close = m->end();
+    for (int depth = 1; close < text.size() && depth > 0; ++close) {
+        if (text[close] == '(') ++depth;
+        if (text[close] == ')') --depth;
+    }
+    if (close > text.size()) return std::nullopt;
+    const std::string params = list ? *list : text.substr(m->end(), close - 1 - m->end());
+    return text.substr(0, m->start()) + "__fastcall " + name + "(" + params + ")" + text.substr(close);
+}
+
+}  // namespace
+
+std::string period_registers(const std::string& header, std::map<std::string, std::string>& texts) {
+    static const Regex pragma(R"(^#pragma aux (\w+) "_\*" parm routine \[ecx\]( \[edx\])? value)");
+    std::vector<std::string> lines;
+    for (const std::string_view line : text::split(header, '\n')) lines.emplace_back(line);
+    std::vector<std::string> out;
+    std::set<std::string> padded;   // the methods given the unused EDX: every call passes it a 0
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        const std::optional<RegexMatch> m = pragma.match(lines[i]);
+        if (!m || out.empty()) {
+            out.push_back(lines[i]);
+            continue;
+        }
+        const std::string name(m->group(1));
+        const bool two = m->has(2);
+        std::string& declaration = out.back();
+        const Regex declared("^(.*?)\\b" + name + "\\((.*)\\);\\s*$");
+        const std::optional<RegexMatch> d = declared.match(declaration);
+        const auto own = texts.find(name);
+        if (!d || own == texts.end()) {
+            out.push_back(lines[i]);   // (not the shape this knows: as it was)
+            continue;
+        }
+        const std::vector<std::string> params = period_parameters(d->group(2));
+        const std::string before(d->group(1));
+        if (two || params.size() <= 1) {
+            // ECX (and EDX) and the rest on the stack: `__fastcall` says exactly that
+            const std::optional<std::string> head = period_fastcall_head(own->second, name, std::nullopt);
+            if (!head) {
+                out.push_back(lines[i]);
+                continue;
+            }
+            own->second = *head;
+            declaration = std::format("{}__fastcall {}({});", before, name, d->group(2));
+            continue;
+        }
+        // the object in ECX, nothing in EDX, the rest on the stack: an unused second argument keeps EDX for nothing
+        std::vector<std::string> list = {params.front(), "int codebreaker_edx"};
+        list.insert(list.end(), params.begin() + 1, params.end());
+        const std::optional<std::string> head = period_fastcall_head(own->second, name, text::join(list, ","));
+        if (!head) {
+            out.push_back(lines[i]);
+            continue;
+        }
+        own->second = *head;
+        declaration = std::format("{}__fastcall {}({});", before, name, text::join(list, ","));
+        padded.insert(name);
+    }
+    if (!padded.empty())
+        for (auto& [name, body] : texts) body = period_padded_calls(body, padded);
+    return text::join(out, "\n");
+}
+
 namespace {
 
 // The period compiler as the search is given it: CL.EXE, in the environment it was made for. A text compiled once is kept for the run (a search tries
@@ -586,7 +739,8 @@ int repair_command(World& world, const cli::Args& args) {
     std::sort(addresses.begin(), addresses.end());
     const std::map<std::uint64_t, MatchCode> originals = match_originals(pe, addresses);
     const std::set<std::string> imports(m.module.imports.begin(), m.module.imports.end());
-    const RepairSource period_source = repair_period_source(m.header, m.order, m.texts, imports, repair_relocation_targets(pe));
+    RepairSource period_source = repair_period_source(m.header, m.order, m.texts, imports, repair_relocation_targets(pe));
+    period_source.header = period_registers(period_source.header, period_source.texts);
 
     const verify::reconstruct::Identity id = world.reconstructor().identity(*path);
     engine::FunctionStore& store = world.store();

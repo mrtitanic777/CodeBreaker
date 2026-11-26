@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <map>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -28,5 +29,21 @@ RepairSource repair_period_source(const std::string& header, const std::vector<s
 
 // The header with only the declarations `text` uses (types and macros are all kept).
 std::string repair_needed_header(const std::string& header, std::string_view text);
+
+// The functions' spans {start: end}, each ended where the next function of either list begins (`starts`: the module's functions): a span that runs
+// on past a start it did not know of holds the next function's bytes too.
+std::map<std::uint64_t, std::uint64_t> match_clipped_spans(std::map<std::uint64_t, std::uint64_t> spans, const std::vector<std::uint64_t>& starts);
+
+// The functions that take their first argument in ECX (a C++ method's object) and those that take two in ECX and EDX, declared for Microsoft's
+// compiler. The reconstruction says it with OpenWatcom's `#pragma aux NAME ... parm routine [ecx] [edx] ...`, which Microsoft's compiler ignores:
+// it passed the object on the stack, and every such function removed four bytes more than the original's `ret N`. Here both are `__fastcall`
+// (ECX, then EDX, the rest on the stack, removed by the function). A method with arguments after its object takes an unused second one in EDX,
+// so the rest stay where the original has them; it is declared with its list open (`int f();`), so its callers' calls still compile. The
+// pragmas are left out. `texts` is changed in place.
+std::string period_registers(const std::string& header, std::map<std::string, std::string>& texts);
+
+// Does the function build a frame (`push ebp; mov ebp, esp` first)? A compiler of the time builds one only when told to keep the frame pointer
+// (/Oy-) or when the function needs it; `match` compiles such a function with /Oy-.
+bool builds_frame(std::span<const std::uint8_t> code);
 
 }  // namespace cb::source::pipeline

@@ -91,3 +91,43 @@ CB_TEST("source.pipeline_period.a_library_routine_is_named_outside_the_linkers_b
     functions[0].original = {padded, Bytes(14, 0)};
     CB_CHECK_EQ(sp::identify_run_time_library({routine, longer}, functions).at("f"), std::string("MDLLCEW.LIB:__longer"));
 });
+
+CB_TEST("source.pipeline_period.a_method_takes_its_object_in_ecx_as_microsofts_compiler_is_told", [] {
+    const std::string header =
+        "typedef int int4;\n"
+        "int4 only(s_self *self);\n#pragma aux only \"_*\" parm routine [ecx] value [eax] modify [eax ecx edx];\n"
+        "int4 method(s_self *self,int4 a1,int4 a2);\n#pragma aux method \"_*\" parm routine [ecx] value [eax] modify [eax ecx edx];\n"
+        "int4 two(int4 a,int4 b,int4 c);\n#pragma aux two \"_*\" parm routine [ecx] [edx] value [eax] modify [eax ecx edx];\n"
+        "int4 narrow(s_self *self,char c);\n#pragma aux narrow \"_*\" parm routine [ecx] value [eax] modify [eax ecx edx];\n"
+        "int4 plain(int4 a1);";
+    std::map<std::string, std::string> texts = {{"only", "int4 only(s_self *self)\n{\n  return self->x;\n}"},
+                                                {"method", "int4 method(s_self *self,int4 a1,int4 a2)\n{\n  return only(self) + method(self,method(self,1,2),a2);\n}"},
+                                                {"two", "int4 two(int4 a,int4 b,int4 c)\n{\n  return a + b + c;\n}"},
+                                                {"narrow", "int4 narrow(s_self *self,char c)\n{\n  return c;\n}"},
+                                                {"plain", "int4 plain(int4 a1)\n{\n  return method((s_self *)a1, 3, 4);\n}"}};
+    const std::string made = sp::period_registers(header, texts);
+    // the object alone, and two in registers: __fastcall as declared
+    CB_CHECK(has(made, "int4 __fastcall only(s_self *self);"));
+    CB_CHECK(has(texts.at("only"), "int4 __fastcall only(s_self *self)\n{"));
+    CB_CHECK(has(made, "int4 __fastcall two(int4 a,int4 b,int4 c);"));
+    CB_CHECK(has(texts.at("two"), "int4 __fastcall two(int4 a,int4 b,int4 c)"));
+    // the object and more on the stack: an unused EDX, which every call -- its own, one inside another's arguments -- passes a 0
+    CB_CHECK(has(made, "int4 __fastcall method(s_self *self,int codebreaker_edx,int4 a1,int4 a2);"));
+    CB_CHECK(has(texts.at("method"), "int4 __fastcall method(s_self *self,int codebreaker_edx,int4 a1,int4 a2)\n{\n  return only(self) + method(self,0,method(self,0,1,2),a2);"));
+    CB_CHECK(has(texts.at("plain"), "return method((s_self *)a1,0, 3, 4);"));
+    CB_CHECK(has(made, "int4 __fastcall narrow(s_self *self,int codebreaker_edx,char c);"));
+    CB_CHECK(!has(made, "#pragma aux") && has(made, "int4 plain(int4 a1);"));
+});
+
+CB_TEST("source.pipeline_period.a_function_ends_where_the_next_begins", [] {
+    // the span of 0x10 ran past 0x18, a function only the module's list knows; 0x30's own end stays
+    const auto spans = sp::match_clipped_spans({{0x10, 0x40}, {0x30, 0x38}, {0x50, 0x60}}, {0x10, 0x18, 0x50});
+    CB_CHECK(spans.at(0x10) == 0x18 && spans.at(0x30) == 0x38 && spans.at(0x50) == 0x60);
+});
+
+CB_TEST("source.pipeline_period.a_frame_is_push_ebp_mov_ebp_esp", [] {
+    CB_CHECK(sp::builds_frame(std::vector<std::uint8_t>{0x55, 0x8B, 0xEC, 0x83}));
+    CB_CHECK(sp::builds_frame(std::vector<std::uint8_t>{0x55, 0x89, 0xE5}));
+    CB_CHECK(!sp::builds_frame(std::vector<std::uint8_t>{0x56, 0x8B, 0xF1}));
+    CB_CHECK(!sp::builds_frame(std::vector<std::uint8_t>{0x55}));
+});
