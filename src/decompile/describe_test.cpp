@@ -21,6 +21,7 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "core/text.hpp"
+#include "formats/xboxone_test_image.hpp"
 
 namespace dsc = cb::decompile::describe;
 namespace formats = cb::formats;
@@ -498,4 +499,34 @@ CB_TEST("decompile.describe.nes_cartridge_is_what_the_original_wrote", [] {
     CB_CHECK_EQ(d.names.at(0x8010), string("irq"));
     CB_CHECK_EQ(d.names.at(0x8020), string("nmi"));
     CB_CHECK_EQ(cb::fs::file_size(dir.path() / "cpu.bin"), 0x8000u);
+});
+
+namespace {
+
+// What describing a 64-bit module asks: only the headers' declarations (the Windows SDK's, for x64).
+struct Declares final : dsc::Knowledge {
+    std::optional<dsc::Declared> declared(std::string_view name) override {
+        if (name != "Sleep") return std::nullopt;
+        return dsc::Declared{"VOID", {{"_In_ DWORD", "dwMilliseconds"}}, false};
+    }
+};
+
+}  // namespace
+
+CB_TEST("decompile.describe.a_64_bit_module_is_x64_and_its_imports_are_typed_from_the_headers", [] {
+    cb::fs::ScopedTempDir dir("describe64");
+    const Bytes file = cb::formats::xboxone_test::pe(false);
+    cb::fs::write_file(dir.path() / "tool.exe", file);
+    const auto image = formats::pe::Image::parse(file, "tool.exe");
+    std::vector<dsc::Va> functions;
+    for (const std::uint32_t rva : image.x64_function_starts()) functions.push_back(cb::formats::xboxone_test::kImageBase + rva);
+    CB_CHECK_EQ(functions.size(), std::size_t{2});   // the entry, and the function only .pdata names
+    Declares knowledge;
+    const dsc::PeDescription d = dsc::describe32(dir.path() / "tool.exe", image, functions, dir.path(), knowledge);
+    const string text = cb::fs::read_text(d.path);
+    CB_CHECK(text.starts_with("arch\tx86:LE:64:default:windows\n"));
+    CB_CHECK(text.find("\tSleep\t-1\n") != string::npos);                       // the import, no `ret N` to count its arguments
+    CB_CHECK(text.find("\tvoid\t4u:dwMilliseconds\n") != string::npos);         // its declaration, the annotation dropped
+    CB_CHECK(text.find("F\t140001000\tsub_001000\t-1\n") != string::npos);    // the callee pops nothing: no count, no model
+    CB_CHECK(text.find("__thiscall") == string::npos && text.find("__fastcall") == string::npos);
 });

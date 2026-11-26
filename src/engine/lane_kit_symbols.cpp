@@ -276,6 +276,7 @@ public:
         return widen(sizes_.stack_bytes(module_stem, api));
     }
     std::optional<std::int64_t> declared_argument_bytes(std::string_view name) override { return widen(sizes_.header_bytes(name)); }
+    std::optional<decompile::describe::Declared> declared(std::string_view name) override { return decompile::describe::declared_of(kb_.prototype("win64", name)); }
     std::optional<std::string> import_name(std::string_view module, std::uint32_t ordinal) override {
         // the export's name as the module's own tables give it (ordinal_names.json: {module: {from, names: {ordinal: name}}})
         const std::string stem = aa::stem(module);

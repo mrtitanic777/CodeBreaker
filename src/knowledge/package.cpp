@@ -31,13 +31,14 @@ std::span<const PlatformInfo> known_platforms() {
 
 std::string platform(std::string_view name) {
     // the lanes' names for a platform
-    static constexpr std::array<std::pair<std::string_view, std::string_view>, 7> kAliases = {{{"ne", "win16"},
+    static constexpr std::array<std::pair<std::string_view, std::string_view>, 8> kAliases = {{{"ne", "win16"},
                                                                                               {"pe", "win32"},
                                                                                               {"le", "vxd"},
                                                                                               {"mz", "dos"},
                                                                                               {"powerpc", "xbox360"},
                                                                                               {"16", "win16"},
-                                                                                              {"32", "win32"}}};
+                                                                                              {"32", "win32"},
+                                                                                              {"64", "win64"}}};
     for (const auto& [alias, base_name] : kAliases)
         if (alias == name) return std::string(base_name);
     return std::string(name);
@@ -395,13 +396,17 @@ const proto::PrototypeTable& Knowledge::prototypes() {
     };
     const Rows w32 = store_.ensure({"win32", "prototype"}, stamp, [&] { return rows_of(headers().w32); }, "the headers", Origin::Derived);
     const Rows w16 = store_.ensure({"win16", "prototype"}, stamp, [&] { return rows_of(headers().w16); }, "the headers", Origin::Derived);
-    impl_->table = std::make_unique<proto::PrototypeTable>(proto::Headers{map_of(w32), map_of(w16)});
+    // (the Windows SDK's declarations, for 64-bit modules, kept apart: read only when the SDK changes, and never with the period headers)
+    const Rows w64 = impl_->folders.w64.empty() ? Rows{}
+                                                : store_.ensure({"win64", "prototype"}, proto::stamp64(impl_->folders),
+                                                                [&] { return rows_of(proto::read_headers64(impl_->folders)); }, "the Windows SDK", Origin::Derived);
+    impl_->table = std::make_unique<proto::PrototypeTable>(proto::Headers{map_of(w32), map_of(w16), map_of(w64)});
     return *impl_->table;
 }
 
 const proto::Prototype* Knowledge::prototype(std::string_view platform_name, std::string_view name) {
-    const bool sixteen = platform(platform_name) == "win16";
-    return prototypes().of(bare_name(name), sixteen ? proto::Bits::W16 : proto::Bits::W32);
+    const std::string p = platform(platform_name);
+    return prototypes().of(bare_name(name), p == "win16" ? proto::Bits::W16 : p == "win64" ? proto::Bits::W64 : proto::Bits::W32);
 }
 
 std::optional<std::string> Knowledge::declaration(std::string_view platform_name, std::string_view name) {

@@ -16,7 +16,7 @@
 //                                             far pointers to such addresses)
 //   reg    <register> <hexValue>              a register's value everywhere, e.g. DS = the data
 //                                             segment of a 16-bit module
-//   P      <hexVA> <result> <args> [noreturn] the prototype of the F or X function at hexVA, for
+//   P      <hexVA> <result> <args> [noreturn] the prototype of the F or X function at hexVA (or of the I import whose slot it is), for
 //                                             code that does not state it (PowerPC). Types are
 //                                             <bytes>[i|u|p|x|f][:name] (signed, unsigned,
 //                                             pointer, unknown, float), comma separated, `...`
@@ -817,6 +817,10 @@ void setUp(Analysis& a, const Description& d) {
     Address ea(code, (uintb)kExternBase + (uintb)i * 0x10);
     Funcdata* fd = glb->addFunction(ea, imports[i].name)->getFunction();
     if (x86_32) applyX86Proto(m, fd, imports[i].name, imports[i].pop);
+    // A prototype the describer states for the import, keyed by its slot (x64: the header's declaration, since no `ret N`
+    // counts the arguments)
+    auto p = d.protos.find(imports[i].va);
+    if (p != d.protos.end()) applyProto(m, fd, imports[i].name, p->second);
   }
   for (const auto& r : d.regs) {                   // a register known to hold one value throughout
     const VarnodeData& vd = m.translate->getRegister(r.first);

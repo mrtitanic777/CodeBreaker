@@ -10,6 +10,7 @@
 #include "core/intmath.hpp"
 #include "decompile/describe_internal.hpp"
 #include "platforms/decoder.hpp"
+#include "symbols/prototypes.hpp"
 
 namespace cb::decompile::describe {
 
@@ -18,6 +19,20 @@ std::optional<std::string_view> language_of_machine(std::uint16_t machine) {
     if (machine == formats::pe::kMachineX64) return "x86:LE:64:default:windows";   // (Visual C++'s x64 convention: x86-64-win.cspec)
     if (machine == 0x01F2) return "PowerPC:BE:64:Xenon:homed";   // the Xbox 360's
     return std::nullopt;
+}
+
+std::optional<Declared> declared_of(const symbols::prototypes::Prototype* prototype) {
+    if (prototype == nullptr) return std::nullopt;
+    Declared out;
+    out.returns = prototype->returns;
+    for (const symbols::prototypes::Parameter& p : prototype->parameters) {
+        if (p.type == "...") {
+            out.varargs = true;
+            break;
+        }
+        out.parameters.emplace_back(p.type, p.name);
+    }
+    return out;
 }
 
 SegOff where(Va va) {

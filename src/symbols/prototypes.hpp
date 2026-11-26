@@ -33,8 +33,10 @@
 
 namespace cb::symbols::prototypes {
 
-// How many bits the headers are for: Win32 (h/nt, MSTOOLS/INCLUDE, INC32) or Win16 (h/win, INC16).
-enum class Bits { W16 = 16, W32 = 32 };
+// How many bits the headers are for: Win32 (h/nt, MSTOOLS/INCLUDE, INC32), Win16 (h/win, INC16) or Win64 (the Windows SDK of
+// this computer: its um and shared folders, where the x64 declarations are -- the period headers declare some functions as
+// the Alpha and MIPS had them, RtlVirtualUnwind with six arguments where x64's has eight).
+enum class Bits { W16 = 16, W32 = 32, W64 = 64 };
 
 struct Parameter {
     std::string type;
@@ -59,9 +61,10 @@ using PrototypeMap = OrderedMap<std::string, Prototype>;
 struct HeaderFolders {
     std::vector<std::filesystem::path> w32;
     std::vector<std::filesystem::path> w16;
+    std::vector<std::filesystem::path> w64;
 
     // The folders of OpenWatcom (`openwatcom_root`, may be empty) and of the period SDK and DDK (`reference_root`)
-    // that exist.
+    // that exist, and the newest Windows SDK's um and shared folders when one is installed (w64).
     static HeaderFolders standard(const std::filesystem::path& openwatcom_root, const std::filesystem::path& reference_root);
 };
 
@@ -69,6 +72,7 @@ struct HeaderFolders {
 struct Headers {
     PrototypeMap w32;
     PrototypeMap w16;
+    PrototypeMap w64;   // only what read_headers64 reads (read_headers leaves it empty: the SDK is large and only the 64-bit lanes ask)
 };
 
 // A change of the reader, to be part of every stamp.
@@ -76,11 +80,19 @@ inline constexpr int kReaderRevision = 7;
 
 // Text that differs whenever the reader or a header folder (its .h count and its modification time) does.
 std::string stamp(const HeaderFolders& folders);
+// The same for the Win64 folders alone.
+std::string stamp64(const HeaderFolders& folders);
 
 // Every header of every folder: `<result> <CONVENTION> name(...);` and COM's `STDAPI_(type) name(...);`. The first
 // folder's declaration is kept; a later folder's declaration names the parameters a first one left unnamed (when it
 // declares as many), and adds the functions only it declares. Unreadable folders and files are skipped.
 Headers read_headers(const HeaderFolders& folders);
+// The Win64 folders' declarations.
+PrototypeMap read_headers64(const HeaderFolders& folders);
+
+// The newest Windows SDK's include folders on this computer (`<kit>/Include/<version>/um` and `shared`): the WindowsSdkDir
+// environment's kit, else the standard place; empty when none is installed.
+std::vector<std::filesystem::path> windows_sdk_include();
 
 // The declarations, found by name.
 class PrototypeTable {
@@ -100,7 +112,7 @@ public:
     std::optional<std::string> declaration(std::string_view name, Bits bits = Bits::W32) const;
 
 private:
-    const PrototypeMap& map(Bits bits) const { return bits == Bits::W16 ? headers_.w16 : headers_.w32; }
+    const PrototypeMap& map(Bits bits) const { return bits == Bits::W16 ? headers_.w16 : bits == Bits::W64 ? headers_.w64 : headers_.w32; }
 
     Headers headers_;
     std::unordered_map<std::string, std::string> spelling_;   // lookup only: {NAME: name}, the 16-bit spelling wins

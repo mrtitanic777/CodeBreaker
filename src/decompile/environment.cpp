@@ -288,6 +288,10 @@ struct CorpusEnvironment::Impl {
             std::lock_guard hold(owner_.args_lock);
             return widen(owner_.s.win32.header_bytes(name));
         }
+        std::optional<dsc::Declared> declared(std::string_view name) override {
+            if (owner_.s.knowledge == nullptr) return std::nullopt;
+            return dsc::declared_of(owner_.s.knowledge->prototype("win64", name));
+        }
         std::optional<std::string> import_name(std::string_view module, std::uint32_t ordinal) override {
             return owner_.s.ordinals.identifier(module, ordinal);
         }
@@ -456,13 +460,15 @@ struct KnowledgeParts {
     std::shared_ptr<CorpusModules> modules;
     symbols::ordinals::Ordinals ordinals;
     symbols::driver_services::Table drivers;
+    knowledge::Knowledge* base;
 
     KnowledgeParts(const base::Corpus& corpus, knowledge::Knowledge& kb)
         : win32(kb.win32_memory()),
           win16(kb.win16_memory(win16_scope(corpus))),
           modules(std::make_shared<CorpusModules>(corpus)),
           ordinals(*modules, shipped_tables(kb), [&kb](std::string_view name) { return kb.spelling(name); }),
-          drivers(driver_table(kb)) {}
+          drivers(driver_table(kb)),
+          base(&kb) {}
 };
 
 struct PartsHolder {
@@ -473,7 +479,7 @@ class KnowledgeEnvironment final : private PartsHolder, public CorpusEnvironment
 public:
     KnowledgeEnvironment(std::unique_ptr<KnowledgeParts> p, const base::Corpus& corpus, const translate::native_l2::Library& library)
         : PartsHolder{std::move(p)},
-          CorpusEnvironment(Sources{corpus, library, *parts->win32, *parts->win16, parts->ordinals, &parts->drivers, parts->modules}) {}
+          CorpusEnvironment(Sources{corpus, library, *parts->win32, *parts->win16, parts->ordinals, &parts->drivers, parts->modules, parts->base}) {}
 };
 
 }  // namespace

@@ -2,6 +2,9 @@
 // (see describe.hpp).
 // cb-unity: alone
 
+#include <algorithm>
+#include <map>
+
 #include "core/fs.hpp"
 #include "core/intmath.hpp"
 #include "core/log.hpp"
@@ -92,6 +95,93 @@ std::map<Va, std::string> decorated_names(const formats::pe::Image& image) {
         if (!text::is_identifier(name)) out.try_emplace(static_cast<Va>(image.header().image_base) + rva, name);
     return out;
 }
+
+// ---- a 64-bit module's imports, typed from the headers ------------------------------------------------------------------
+
+namespace {
+
+// A C type of the Win32 headers as the native program's <type> on x64 (pointers and handles 8 bytes, `long` 4: LLP64); nullopt
+// for one this does not know (a structure passed by value, a TCHAR form), which leaves the whole prototype to the analysis.
+std::optional<std::string> x64_type(std::string_view written) {
+    // The SDK's annotations go first: every parenthesised group (`_Out_writes_bytes_(n)`'s argument), then the words that are
+    // annotations (`_In_`, `_Out_opt_`, `__out_data_source`) or qualifiers -- none of them says anything of the size.
+    std::string plain;
+    int depth = 0;
+    for (const char c : written) {
+        if (c == '(') ++depth;
+        else if (c == ')') depth = std::max(depth - 1, 0);
+        else if (depth == 0) plain += c == '\t' || c == '\n' || c == '\r' ? ' ' : c;
+    }
+    std::vector<std::string> words;
+    for (std::string_view word : text::split(plain, ' ')) {
+        if (word.empty() || word == "const" || word == "CONST" || word == "FAR" || word == "far" || word == "NEAR" || word == "near" ||
+            word == "volatile" || word == "__RPC_FAR" || word == "IN" || word == "OUT" || word == "OPTIONAL" || word == "UNALIGNED" ||
+            word.starts_with("__") || (word.size() > 2 && word.front() == '_' && word.back() == '_'))
+            continue;
+        words.emplace_back(word);
+    }
+    // (the reader leaves a one-letter name such as CreateWindowEx's `int X` on its type: a last word that is not a type is dropped)
+    if (words.size() > 1 && words.back().find('*') == std::string::npos && std::islower(static_cast<unsigned char>(words.front()[0])) != 0 &&
+        words.back().size() == 1)
+        words.pop_back();
+    std::string t;
+    for (const std::string& w : words) t += (t.empty() || w == "*" ? "" : " ") + w;
+    if (const std::size_t star = t.find('*'); star != std::string::npos) {
+        const std::string to(text::trim(std::string_view(t).substr(0, star)));
+        if (to == "char" || to == "CHAR") return "*1i";
+        if (to == "wchar_t" || to == "WCHAR") return "*2u";
+        return "8p";
+    }
+    static const std::map<std::string, std::string, std::less<>> kSized = {
+        {"char", "1i"}, {"CHAR", "1i"}, {"signed char", "1i"}, {"BYTE", "1u"}, {"UCHAR", "1u"}, {"BOOLEAN", "1u"}, {"unsigned char", "1u"},
+        {"short", "2i"}, {"SHORT", "2i"}, {"WORD", "2u"}, {"USHORT", "2u"}, {"WCHAR", "2u"}, {"wchar_t", "2u"}, {"ATOM", "2u"}, {"LANGID", "2u"},
+        {"unsigned short", "2u"},
+        {"int", "4i"}, {"INT", "4i"}, {"long", "4i"}, {"LONG", "4i"}, {"BOOL", "4i"}, {"HRESULT", "4i"}, {"NTSTATUS", "4i"}, {"HFILE", "4i"},
+        {"LSTATUS", "4i"}, {"INT32", "4i"}, {"DWORD", "4u"}, {"UINT", "4u"}, {"ULONG", "4u"}, {"unsigned", "4u"}, {"unsigned int", "4u"},
+        {"unsigned long", "4u"}, {"COLORREF", "4u"}, {"LCID", "4u"}, {"UINT32", "4u"}, {"ACCESS_MASK", "4u"}, {"REGSAM", "4u"}, {"MMRESULT", "4u"},
+        {"LONG_PTR", "8i"}, {"INT_PTR", "8i"}, {"SSIZE_T", "8i"}, {"LPARAM", "8i"}, {"LRESULT", "8i"}, {"LONGLONG", "8i"}, {"INT64", "8i"},
+        {"__int64", "8i"}, {"ULONG_PTR", "8u"}, {"UINT_PTR", "8u"}, {"SIZE_T", "8u"}, {"WPARAM", "8u"}, {"DWORD_PTR", "8u"}, {"ULONGLONG", "8u"},
+        {"UINT64", "8u"}, {"DWORD64", "8u"}, {"ULONG64", "8u"}, {"LONG64", "8i"}, {"ULONG32", "4u"}, {"LONG32", "4i"}, {"DWORDLONG", "8u"}, {"unsigned __int64", "8u"},
+        {"float", "4f"}, {"FLOAT", "4f"}, {"double", "8f"}, {"DOUBLE", "8f"},
+        {"LPSTR", "*1i"}, {"LPCSTR", "*1i"}, {"PSTR", "*1i"}, {"PCSTR", "*1i"}, {"LPWSTR", "*2u"}, {"LPCWSTR", "*2u"}, {"PWSTR", "*2u"}, {"PCWSTR", "*2u"},
+        {"HANDLE", "8p"}, {"FARPROC", "8p"}, {"PROC", "8p"}};
+    if (const auto it = kSized.find(t); it != kSized.end()) return it->second;
+    const auto upper_after = [&t](std::size_t at) { return t.size() > at && std::isupper(static_cast<unsigned char>(t[at])) != 0; };
+    const bool all_name = !t.empty() && std::ranges::all_of(t, [](char c) {
+        return std::isupper(static_cast<unsigned char>(c)) != 0 || std::isdigit(static_cast<unsigned char>(c)) != 0 || c == '_';
+    });
+    if (all_name && t.find("TSTR") == std::string::npos) {
+        if (t.starts_with("LP") && upper_after(2)) return "8p";   // LPVOID, LPRECT, LPSECURITY_ATTRIBUTES
+        if (t.starts_with("P") && upper_after(1)) return "8p";    // PVOID, PHANDLE, PLARGE_INTEGER
+        if (t.starts_with("H") && upper_after(1)) return "8p";    // HWND, HMODULE, HKEY, HGLOBAL (HRESULT and HFILE are above)
+        if (t.ends_with("PROC")) return "8p";                     // WNDPROC, DLGPROC, TIMERPROC
+    }
+    return std::nullopt;
+}
+
+// The `P` line's result and arguments for a declaration, every type known; nullopt otherwise.
+std::optional<std::string> x64_prototype(const std::optional<Declared>& declared) {
+    if (!declared) return std::nullopt;
+    std::string result = "void";
+    const std::string_view returns = text::trim(declared->returns);
+    if (returns != "void" && returns != "VOID") {
+        const auto r = x64_type(returns);
+        if (!r) return std::nullopt;
+        result = *r;
+    }
+    std::string args;
+    for (const auto& [type, name] : declared->parameters) {
+        const auto a = x64_type(type);
+        if (!a) return std::nullopt;
+        if (!args.empty()) args += ',';
+        args += *a;
+        if (text::is_identifier(name)) args += ":" + name;
+    }
+    if (declared->varargs) args += args.empty() ? "..." : ",...";
+    return result + "\t" + (args.empty() ? "void" : args);
+}
+
+}  // namespace
 
 // Write the description of a PE module for the native program: its processor, where its bytes sit in memory, and the facts
 // about `functions` (addresses) and its imports.
@@ -220,6 +310,9 @@ PeDescription describe32(const std::filesystem::path& module, const formats::pe:
         }
         const std::optional<std::int64_t> pop = x86 && !x64 ? knowledge.win32_argument_bytes(stem, name) : std::nullopt;
         lines.push_back(std::format("I\t{}\t{}\t{}", slot, text::sanitize_identifier(name), pop ? *pop : -1));
+        // x64: the arguments are not counted by a `ret N`; the header's declaration gives them, and their types (keyed by the slot)
+        if (x64)
+            if (const auto prototype = x64_prototype(knowledge.declared(name))) lines.push_back(std::format("P\t{}\t{}", slot, *prototype));
     }
     // (the old CB_POINTER_CALLS=1 experiment -- `O` lines for calls through a pointer -- is not carried over: it was off, and
     // on the 32-bit sample it fixed no program and made msjava.dll worse; to be made right before it is on)

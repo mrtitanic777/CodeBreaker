@@ -79,6 +79,7 @@ struct Sources {
     const symbols::driver_services::Table* drivers = nullptr;   // none: a service is `vxd_<device>_<service>`
     // The modules the sizes and names are read from (the ordinals were made over them, too); none: the environment opens its own.
     std::shared_ptr<CorpusModules> modules;
+    knowledge::Knowledge* knowledge = nullptr;   // the headers' prototypes (a 64-bit module's imports are typed from them); none: untyped
 };
 
 class CorpusEnvironment : public decompiler::Environment {

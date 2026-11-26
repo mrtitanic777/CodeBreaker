@@ -45,6 +45,10 @@
 #include "formats/nes.hpp"
 #include "formats/pe.hpp"
 
+namespace cb::symbols::prototypes {
+struct Prototype;
+}
+
 namespace cb::decompile::describe {
 
 using core16::FunctionNotes;
@@ -74,10 +78,23 @@ constexpr Va address(Va seg, Va off) { return (selector(seg) << 16) + off; }
 SegOff where(Va va);
 constexpr Va le_address(Va obj, Va off) { return kLeBase + (obj - 1) * kLeStride + off; }
 
+// How the Windows headers declare an API function: its result type and its parameters (type, name) as written there; `...` ends
+// a function that takes more.
+struct Declared {
+    std::string returns;
+    std::vector<std::pair<std::string, std::string>> parameters;
+    bool varargs = false;
+};
+
+// A header's declaration as a Declared (nullopt for none).
+std::optional<Declared> declared_of(const symbols::prototypes::Prototype* prototype);
+
 // --- what a description asks of the rest of CodeBreaker -------------------------------------------------------------
 class Knowledge {
 public:
     virtual ~Knowledge() = default;
+    // How the Windows SDK's headers declare `name` for 64-bit code; nullopt when none does. (A 64-bit module's imports are typed from it.)
+    virtual std::optional<Declared> declared(std::string_view name) { (void)name; return std::nullopt; }
     // Bytes of arguments a Win16 API removes (read from the module that exports it); nullopt when not known.
     virtual std::optional<std::int64_t> win16_argument_bytes(std::string_view api) { (void)api; return std::nullopt; }
     // The same for a Win32 export (by name, or "#n" for a number) of the module with this stem ("KERNEL32").

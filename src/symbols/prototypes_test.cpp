@@ -202,3 +202,35 @@ CB_TEST("symbols.prototypes.missing_folders_and_stamp", [] {
     CB_CHECK_EQ(standard.w32.size(), std::size_t{0});
     CB_CHECK_EQ(standard.w16.size(), std::size_t{1});
 });
+
+CB_TEST("symbols.prototypes.the_windows_sdk_is_the_64_bit_table_and_apart_from_the_period_one", [] {
+    cb::fs::ScopedTempDir tmp("cb-proto64");
+    put(tmp.path() / "nt", "rtl.h", "VOID WINAPI RtlVirtualUnwind(DWORD, DWORD, DWORD, PVOID, PVOID, PVOID);\n");   // as the Alpha had it
+    put(tmp.path() / "um", "rtlsupportapi.h", R"(NTSYSAPI
+PEXCEPTION_ROUTINE
+NTAPI
+RtlVirtualUnwind(
+    _In_ ULONG HandlerType,
+    _In_ ULONG64 ImageBase,
+    _In_ ULONG64 ControlPc,
+    _In_ PRUNTIME_FUNCTION FunctionEntry,
+    _Inout_ PCONTEXT ContextRecord,
+    _Out_ PVOID* HandlerData,
+    _Out_ PULONG64 EstablisherFrame,
+    _Inout_opt_ PKNONVOLATILE_CONTEXT_POINTERS ContextPointers
+    );
+)");
+    proto::HeaderFolders folders;
+    folders.w32 = {tmp.path() / "nt"};
+    folders.w64 = {tmp.path() / "um"};
+    proto::Headers h = proto::read_headers(folders);
+    CB_CHECK(h.w64.empty());   // (read_headers leaves the SDK alone)
+    h.w64 = proto::read_headers64(folders);
+    const proto::PrototypeTable table(std::move(h));
+    CB_CHECK_EQ(table.of("RtlVirtualUnwind")->parameters.size(), std::size_t{6});
+    const proto::Prototype* x64 = table.of("RtlVirtualUnwind", proto::Bits::W64);
+    CB_CHECK(x64 != nullptr);
+    CB_CHECK_EQ(x64->parameters.size(), std::size_t{8});
+    CB_CHECK_EQ(x64->parameters[2].name, "ControlPc");
+    CB_CHECK(proto::stamp64(folders) != proto::stamp(folders));
+});

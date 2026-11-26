@@ -475,7 +475,35 @@ HeaderFolders HeaderFolders::standard(const std::filesystem::path& openwatcom_ro
                       reference_root / "WIN32SDK" / "MSTOOLS" / "INCLUDE", reference_root / "Microsoft Windows 95 DDK" / "INC32"});
     f.w16 = existing({openwatcom_root.empty() ? std::filesystem::path() : openwatcom_root / "h" / "win",
                       reference_root / "Microsoft Windows 95 DDK" / "INC16"});
+    f.w64 = windows_sdk_include();
     return f;
+}
+
+std::vector<std::filesystem::path> windows_sdk_include() {
+    std::vector<std::filesystem::path> kits;
+    if (const auto dir = fs::get_env("WindowsSdkDir"); dir && !dir->empty()) kits.push_back(fs::from_text(*dir));
+    kits.emplace_back("C:/Program Files (x86)/Windows Kits/10");
+    // (versions compare as numbers, part by part: 10.0.26100.0 after 10.0.9600.0)
+    const auto parts = [](const std::string& v) {
+        std::vector<long> out;
+        for (std::string_view p : text::split(v, '.')) out.push_back(text::parse_int<long>(p).value_or(0));
+        return out;
+    };
+    for (const std::filesystem::path& kit : kits) {
+        std::error_code ec;
+        std::filesystem::path newest;
+        std::string newest_name;
+        for (const auto& entry : std::filesystem::directory_iterator(kit / "Include", ec)) {
+            const std::string name = fs::to_text(entry.path().filename());
+            if (!entry.is_directory(ec) || !name.starts_with("10.") || !std::filesystem::is_regular_file(entry.path() / "um" / "windows.h", ec)) continue;
+            if (newest.empty() || parts(name) > parts(newest_name)) {
+                newest = entry.path();
+                newest_name = name;
+            }
+        }
+        if (!newest.empty()) return {newest / "um", newest / "shared"};
+    }
+    return {};
 }
 
 std::string stamp(const HeaderFolders& folders) {
@@ -497,9 +525,17 @@ std::string stamp(const HeaderFolders& folders) {
     return text::join(parts, "|");
 }
 
-Headers read_headers(const HeaderFolders& folders) {
-    return {read_folders(folders.w32), read_folders(folders.w16)};
+std::string stamp64(const HeaderFolders& folders) {
+    HeaderFolders only;
+    only.w32 = folders.w64;
+    return "w64|" + stamp(only);
 }
+
+Headers read_headers(const HeaderFolders& folders) {
+    return {read_folders(folders.w32), read_folders(folders.w16), {}};
+}
+
+PrototypeMap read_headers64(const HeaderFolders& folders) { return read_folders(folders.w64); }
 
 PrototypeTable::PrototypeTable(Headers headers) : headers_(std::move(headers)) {
     for (const auto& [name, proto] : headers_.w32) spelling_[text::upper(name)] = name;
@@ -507,7 +543,7 @@ PrototypeTable::PrototypeTable(Headers headers) : headers_(std::move(headers)) {
 }
 
 const Prototype* PrototypeTable::of(std::string_view name, Bits bits) const {
-    const string_view platform = bits == Bits::W16 ? "win16" : "win32";
+    const string_view platform = bits == Bits::W16 ? "win16" : bits == Bits::W64 ? "win64" : "win32";
     const PrototypeMap& protos = map(bits);
     const string key(name);
     const Prototype* found = protos.find(key);
