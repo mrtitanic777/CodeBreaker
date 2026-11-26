@@ -108,6 +108,18 @@ Audit audit_references(const std::filesystem::path& reference_dir);
 // reference landed), sorted.
 std::vector<std::string> verify_integrated(const std::filesystem::path& out_dir, const std::set<std::string>& bases);
 
+// A further folder of references laid over the base folder: each X.reference.{h,cpp} in it replaces the base's X -- every one
+// it has, or only the names in `only`. A layer that takes all of its folder also brings that folder's companions (the sibling
+// `companions` folder). The PC's Direct3D 9 build is the PC folder with two layers over it: the shared Direct3D 9 renderer from
+// the Xbox 360's folder (only GL11, GLU, GL13, ARBMultitexture) and pc/d3d9 (its Display, Common.h and the D3DX stand-in).
+struct Layer {
+    std::filesystem::path dir;
+    std::set<std::string> only;
+};
+
+// The folder each reference base comes from: `reference_dir`, then each layer over it in order.
+std::map<std::string, std::filesystem::path> reference_sources(const std::filesystem::path& reference_dir, std::span<const Layer> layers);
+
 struct EmitOptions {
     // Names the CONVERTED game defines itself. A platform reference/companion whose base collides with one of these
     // is SKIPPED: the game's own converted class wins (RubyDung defines Textures/Tesselator/Vertex, so a Beta
@@ -121,6 +133,8 @@ struct EmitOptions {
     const ir::JClass* runnable_game = nullptr;
     std::span<const ir::JClass> classes;   // the program's classes (the PC Runnable entry reads the session class's constructors)
     Platform platform = Platform::Xbox360;
+    std::vector<Layer> layers;   // folders laid over the reference folder (see Layer)
+    std::string label;           // the banner's name for the layer ("PC (SDL2 + Direct3D 9)"); empty: the platform's
 };
 
 struct Emitted {

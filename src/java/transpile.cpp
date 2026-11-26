@@ -155,6 +155,14 @@ void Conversion::write_platform_layer(std::span<const ir::JClass> classes, const
     if (!emit_options.main_class) emit_options.runnable_game = platform_refs::detect_runnable_game_class(classes);
     emit_options.classes = classes;
     emit_options.platform = platform_refs::platform_of(platform);
+    if (platform == "pc_opengl" && options_.graphics == "d3d9") {
+        // The PC on Direct3D 9: the PC's platform files, with the renderer the Xbox 360 uses (one source for both) and the
+        // Direct3D 9 Display over them.
+        emit_options.layers.push_back({data.path({"platform", "reference"}), {"GL11", "GLU", "GL13", "ARBMultitexture"}});
+        emit_options.layers.push_back({data.path({"platform", "pc", "d3d9", "reference"}), {}});
+        emit_options.label = "PC (SDL2 + Direct3D 9)";
+        say("[platform] graphics: Direct3D 9 (the shared Direct3D 9 renderer, on the PC)");
+    }
     const platform_refs::Emitted emitted = platform_refs::emit_references(out_dir_, reference_dir, emit_options);
     say(std::format("[platform] emitted {} platform references (agnostic layer, replacing stubs): {}", emitted.bases.size(), trn_names({emitted.bases.begin(), emitted.bases.end()})));
     if (!emitted.skipped_collisions.empty()) {
@@ -166,7 +174,8 @@ void Conversion::write_platform_layer(std::span<const ir::JClass> classes, const
     // .reference.h). Audit for orphans and VERIFY every reference's stub was really replaced in the output; say any gap LOUDLY.
     const platform_refs::Audit audit = platform_refs::audit_references(reference_dir);
     std::set<std::string> expected;
-    for (const std::string& base : audit.complete) {
+    for (const auto& source : platform_refs::reference_sources(reference_dir, emit_options.layers)) {
+        const std::string& base = source.first;
         if (!platform_refs::reference_skip().contains(base) && !emit_options.game_classes.contains(base)) expected.insert(base);
     }
     const std::vector<std::string> failed = platform_refs::verify_integrated(out_dir_, expected);
@@ -392,7 +401,7 @@ Summary Conversion::run() {
     // The PC build: one CMake executable named after the program's main class.
     if (platform == "pc_opengl") {
         const std::string exe = platform_refs::detect_main_class(classes).value_or("game");
-        say(std::format("[cmake] {} (executable {})", fs::to_text(cmake::write_cmakelists(out_dir_, exe)), exe));
+        say(std::format("[cmake] {} (executable {})", fs::to_text(cmake::write_cmakelists(out_dir_, exe, options_.graphics)), exe));
     }
 
     // VERIFY: the crash-class rules over the emitted output (the acceptance check).

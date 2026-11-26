@@ -14,6 +14,7 @@
 #include "stdafx.h"
 #include "Textures.h"
 #include "Common.h"          // g_pd3dDevice
+#include "GL11.h"            // d3d9::sceneEnd / sceneBegin (the frame's scene is the Direct3D 9 layer's)
 
 // reserve the next free slot (id 0 is reserved = "no texture"); ids index s_textures[].
 int Textures::genId() {
@@ -59,10 +60,11 @@ void Textures::uploadRGBA(int id, int w, int h, const void* rgbaPixels) {
 	IDirect3DTexture9* tex = NULL;
 	// (EndScene/BeginScene bracket: no-op on real XDK; retained for the Nexia360 D3D12 backend, which
 	// disliked CreateTexture mid-scene.)
-	g_pd3dDevice->EndScene();
+	const bool _inScene = d3d9::inScene();
+	if (_inScene) d3d9::sceneEnd();
 	HRESULT _texhr = g_pd3dDevice->CreateTexture(w, h, 1, 0, D3DFMT_LIN_A8R8G8B8,
 	                                             D3DPOOL_MANAGED, &tex, NULL);
-	g_pd3dDevice->BeginScene();
+	if (_inScene) d3d9::sceneBegin();
 	if (FAILED(_texhr) || !tex)
 		return;
 	if (rgbaPixels) {

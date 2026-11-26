@@ -95,13 +95,13 @@ void create() {
 	// controller nav appears dead/misaligned. Match the reported display mode exactly.
 	Input::setDisplaySize(w, h);
 	s_dev->SetRenderState(D3DRS_HALFPIXELOFFSET, TRUE);   // pixel-exact 2D on 360 (HARDWARE-VERIFY)
-	s_dev->BeginScene();
+	d3d9::sceneBegin();              // the layer's scene: it steps out of it to make a texture or buffer
 	s_created = true;
 }
 
 void swapBuffers() {
 	d3d9::glFlush();   // [J2X-PERF] drain the coalesced entity batch before presenting the frame
-	if (s_dev) { s_dev->EndScene(); s_dev->Present(NULL, NULL, NULL, NULL); s_dev->BeginScene(); }
+	if (s_dev) { d3d9::sceneEnd(); s_dev->Present(NULL, NULL, NULL, NULL); d3d9::sceneBegin(); }
 }
 
 void update() {
@@ -118,7 +118,7 @@ void update() {
 }
 
 void destroy() {
-	if (s_dev) { s_dev->EndScene(); s_dev->Release(); s_dev = 0; }
+	if (s_dev) { d3d9::sceneEnd(); s_dev->Release(); s_dev = 0; }
 	if (s_d3d) { s_d3d->Release(); s_d3d = 0; }
 	g_pd3dDevice = 0;
 	s_created = false;

@@ -134,7 +134,7 @@ void __cdecl main() {
     // (game settings, render engine, font, main menu) and owns the tick + render + Present loop.
     g_minecraft = new MinecraftImpl(NULL, NULL, NULL, SCREEN_WIDTH, SCREEN_HEIGHT, false, NULL);   // Frame* var7 = NULL (no AWT frame on console)
     DbgPrintF("[BOOT] 9 MinecraftImpl ctor done\n");
-    g_pd3dDevice->BeginScene();   // open the first scene; Display::swapBuffers/update End+Present+Begin each frame
+    d3d9::sceneBegin();           // open the first scene (the layer's); Display::swapBuffers/update End+Present+Begin each frame
     DbgPrintF("[BOOT] 10 entering run() -- game loop\n");
     g_minecraft->run();
     DbgPrintF("[BOOT] 11 run() returned (game exited)\n");

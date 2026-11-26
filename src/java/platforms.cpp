@@ -22,9 +22,13 @@ constexpr std::string_view kCommonCrt = R"SDX(#include <cstdio>
 #include <algorithm>
 )SDX";
 
+// NOGDI keeps wingdi.h's Polygon(), Rectangle() ... from hiding a game class of that name; a platform file that needs GDI's
+// types (the Direct3D 9 layer: d3d9.h) defines J2X_WITH_GDI before it includes stdafx.h.
 constexpr std::string_view kHostWindows = R"SDX(#if defined(_WIN32)
 #define WIN32_LEAN_AND_MEAN
+#if !defined(J2X_WITH_GDI)
 #define NOGDI
+#endif
 #include <windows.h>
 #endif
 )SDX";

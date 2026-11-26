@@ -106,6 +106,17 @@ std::set<std::string> available_references(const stdfs::path& reference_dir) {
     return out;
 }
 
+std::map<std::string, stdfs::path> reference_sources(const stdfs::path& reference_dir, std::span<const Layer> layers) {
+    std::map<std::string, stdfs::path> out;
+    for (const std::string& base : available_references(reference_dir)) out[base] = reference_dir;
+    for (const Layer& layer : layers) {
+        for (const std::string& base : available_references(layer.dir)) {
+            if (layer.only.empty() || layer.only.contains(base)) out[base] = layer.dir;
+        }
+    }
+    return out;
+}
+
 std::optional<std::string> detect_main_class(std::span<const ir::JClass> classes) {
     for (const ir::JClass& c : classes) {
         for (const ir::Method& m : c.methods) {
@@ -407,11 +418,27 @@ std::vector<std::string> verify_integrated(const stdfs::path& out_dir, const std
 
 namespace {
 
+// Where a reference folder is, as the repository names it: config/java/platform/ and the folder's path below `platform`; none for
+// a folder outside a `platform` folder.
+std::optional<std::string> refs_where(const stdfs::path& dir) {
+    std::vector<std::string> parts;
+    for (const stdfs::path& part : dir) parts.push_back(fs::to_text(part));
+    for (std::size_t i = parts.size(); i-- > 0;) {
+        if (parts[i] != "platform") continue;
+        std::string where = "config/java/platform";
+        for (std::size_t k = i + 1; k < parts.size(); ++k) where += "/" + parts[k];
+        return where;
+    }
+    return std::nullopt;
+}
+
 // The provenance banner above an emitted reference file.
-std::string refs_banner(std::string_view base, std::string_view ext, Platform platform) {
+std::string refs_banner(std::string_view base, std::string_view ext, Platform platform, std::string_view label_override = {},
+                        const std::optional<stdfs::path>& from = std::nullopt) {
     const bool pc = platform == Platform::PcOpenGl;
-    const std::string_view label = pc ? "PC (SDL2 + OpenGL)" : "Xbox 360";
-    const std::string_view where = pc ? "config/java/platform/pc/reference" : "config/java/platform/reference";
+    const std::string_view label = !label_override.empty() ? label_override : pc ? "PC (SDL2 + OpenGL)" : "Xbox 360";
+    const std::string where = (from ? refs_where(*from) : std::nullopt)
+                                  .value_or(pc ? "config/java/platform/pc/reference" : "config/java/platform/reference");
     return std::format(
         "// ============================ PLATFORM REFERENCE ============================\n"
         "// Hand-written {0} platform layer, emitted from\n"
@@ -484,16 +511,24 @@ Emitted emit_references(const stdfs::path& out_dir, const stdfs::path& reference
     }
 
     std::set<std::string> collisions;
-    for (const std::string& base : available_references(reference_dir)) {   // sorted
+    for (const auto& [base, from] : reference_sources(reference_dir, options.layers)) {   // sorted
         if (reference_skip().contains(base)) continue;   // keep the converter stub
         if (refs_collides(game, base)) {                  // the game defines its own: its converted class wins
             collisions.insert(base);
             continue;
         }
         for (const char* ext : {"h", "cpp"}) {
-            const auto content = refs_read(reference_dir / (base + ".reference." + ext));
-            if (!content) continue;
-            refs_write(out_dir, base + "." + ext, refs_banner(base, ext, platform) + *content);
+            const stdfs::path out_file = out_dir / (base + "." + ext);
+            const auto content = refs_read(from / (base + ".reference." + ext));
+            if (!content) {
+                // A layer's header-only reference over a base with a .cpp (GL13 over the PC's OpenGL GL13): no stale .cpp is left.
+                if (refs_is_file(out_file) && refs_head_has(out_file, "PLATFORM REFERENCE")) {
+                    std::error_code ec;
+                    stdfs::remove(out_file, ec);
+                }
+                continue;
+            }
+            refs_write(out_dir, base + "." + ext, refs_banner(base, ext, platform, options.label, from) + *content);
             files_written.push_back(base + "." + ext);
         }
         // Overwrite the per-type stub headers this reference replaces with a shim -> the real implementation, so the
@@ -515,8 +550,12 @@ Emitted emit_references(const stdfs::path& out_dir, const stdfs::path& reference
     // COMPANIONS: game-agnostic platform files a reference .cpp links against but that aren't themselves references
     // (Common.h, Textures.h/.cpp, Tesselator.h/.cpp). Bundled in docs/platform/companions/ and emitted verbatim so the
     // platform layer is SELF-CONTAINED -- no hand-copying from the Alpha tree.
-    const stdfs::path companions = reference_dir.parent_path() / "companions";
-    if (refs_is_dir(companions)) {
+    std::vector<stdfs::path> companion_dirs = {reference_dir.parent_path() / "companions"};
+    for (const Layer& layer : options.layers) {
+        if (layer.only.empty()) companion_dirs.push_back(layer.dir.parent_path() / "companions");
+    }
+    for (const stdfs::path& companions : companion_dirs) {
+        if (!refs_is_dir(companions)) continue;
         std::vector<std::string> names = refs_names_in(companions);
         std::sort(names.begin(), names.end());
         for (const std::string& fn : names) {

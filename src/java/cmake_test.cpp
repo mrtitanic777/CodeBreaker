@@ -26,6 +26,15 @@ CB_TEST("java.cmake.template", [] {
     const stdfs::path written = java::cmake::write_cmakelists(tmp.path(), "Game");
     CB_CHECK_EQ(written.filename().string(), "CMakeLists.txt");
     CB_CHECK_EQ(fs::read_text(written), java::cmake::cmakelists_text("Game"));
+
+    // Direct3D 9: d3d9 in place of OpenGL and GLU, everything else the same
+    const std::string d = java::cmake::cmakelists_text("Game", "d3d9");
+    CB_CHECK(d.find("target_link_libraries(Game PRIVATE d3d9)") != std::string::npos);
+    CB_CHECK(d.find("OpenGL") == std::string::npos && d.find("{graphics}") == std::string::npos && d.find("{name}") == std::string::npos);
+    CB_CHECK(d.find("SDL2::SDL2") != std::string::npos && d.find("vorbisfile") != std::string::npos);
+    CB_CHECK_EQ(java::cmake::cmakelists_text("Game", "opengl"), java::cmake::cmakelists_text("Game"));
+    java::cmake::write_cmakelists(tmp.path(), "Game", "d3d9");
+    CB_CHECK_EQ(fs::read_text(written), d);
 });
 
 }  // namespace

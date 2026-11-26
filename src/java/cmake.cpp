@@ -32,9 +32,7 @@ if(TARGET SDL2::SDL2)
 else()
   target_link_libraries({name} PRIVATE SDL2)
 endif()
-find_package(OpenGL REQUIRED)
-target_link_libraries({name} PRIVATE OpenGL::GL OpenGL::GLU)
-target_link_libraries({name} PRIVATE vorbisfile vorbis ogg)   # the game's .ogg sounds and music
+{graphics}target_link_libraries({name} PRIVATE vorbisfile vorbis ogg)   # the game's .ogg sounds and music
 if(WIN32)
   target_link_libraries({name} PRIVATE ws2_32)
   if(MSVC)
@@ -48,13 +46,23 @@ if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Content")
 endif()
 )CMK";
 
+constexpr std::string_view kOpenGl = R"CMK(find_package(OpenGL REQUIRED)
+target_link_libraries({name} PRIVATE OpenGL::GL OpenGL::GLU)
+)CMK";
+
+constexpr std::string_view kD3d9 = R"CMK(target_link_libraries({name} PRIVATE d3d9)   # Direct3D 9 (the shader compiler is d3dcompiler_47.dll, loaded at run time)
+)CMK";
+
 }  // namespace
 
-std::string cmakelists_text(std::string_view name) { return text::replace_all(kTemplate, "{name}", name); }
+std::string cmakelists_text(std::string_view name, std::string_view graphics) {
+    const std::string text = text::replace_all(kTemplate, "{graphics}", graphics == "d3d9" ? kD3d9 : kOpenGl);
+    return text::replace_all(text, "{name}", name);
+}
 
-std::filesystem::path write_cmakelists(const std::filesystem::path& out_dir, std::string_view name) {
+std::filesystem::path write_cmakelists(const std::filesystem::path& out_dir, std::string_view name, std::string_view graphics) {
     std::filesystem::path path = out_dir / "CMakeLists.txt";
-    fs::write_text(path, cmakelists_text(name));
+    fs::write_text(path, cmakelists_text(name, graphics));
     return path;
 }
 
