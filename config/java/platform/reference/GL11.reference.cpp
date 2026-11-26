@@ -1619,6 +1619,11 @@ void glEndList() {
 	GLList& L = g_lists[g_recording];
 	if (g_recordSetColor) L.inheritColor = false;
 	L.setsColor = g_recordSetColor;
+	// A list that set no colour takes the one current at glCallList (the shader's tint): its vertices are made white, or the
+	// colour current while it was recorded would be multiplied in too (the first-person arm came out dark brown).
+	if (L.inheritColor)
+		for (size_t i = 0; i < L.batches.size(); ++i)
+			for (size_t k = 0; k < L.batches[i].verts.size(); ++k) L.batches[i].verts[k].color = D3DCOLOR_ARGB(255, 255, 255, 255);
 	bool geometry = false;
 	for (size_t i = 0; i < L.batches.size(); ++i) if (!L.batches[i].verts.empty()) { geometry = true; break; }
 	if (geometry && g_dev) {
