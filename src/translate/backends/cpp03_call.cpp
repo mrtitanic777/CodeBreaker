@@ -175,7 +175,8 @@ std::string Writer::library_return(std::string_view owner, std::string_view name
     base.erase(std::min(base.size(), base.find('<')));
     // an NIO buffer's position(int) / limit(int) answers the buffer (Java's return type says which overload): the runtime header's
     // first declaration is the getter's int, and `b.position(0).limit(n)` came out as a call on an int
-    if (class_type(ret_type) != nullptr && ret_type->simple().ends_with("Buffer") && owner.ends_with("Buffer")) return std::string(owner) + "&";
+    if ((name == "position" || name == "limit") && class_type(ret_type) != nullptr && ret_type->simple().ends_with("Buffer") && owner.ends_with("Buffer"))
+        return std::string(owner) + "&";
     if (const auto declared = ctx_.runtime_return(owner, name); declared && !declared->empty()) return *declared;   // what the runtime's own header declares, first
     const auto& stubs = ctx_.runtime.stub_members();
     const std::map<std::string, cb::java::runtime::StubMembers, std::less<>>::const_iterator end = stubs.end();

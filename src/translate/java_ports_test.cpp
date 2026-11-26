@@ -188,6 +188,21 @@ CB_TEST("java.emitted.a_byte_array_element_read_is_a_signed_byte", [] {
     CB_CHECK(!jpo_has(cpp, "((signed char)this->b[i]) = "));   // (never an assignment to the cast)
 });
 
+// `buf.position(0).limit(n)` chains on the buffer (position(int) answers the buffer, not the getter's int), and a hoisted buffer result
+// is held by address; a static factory's pointer result (allocateDirect) stays a pointer.
+CB_TEST("java.emitted.a_buffer_position_chain_is_the_buffer", [] {
+    if (!jpo_ready("emitted-cpp")) return;
+    const JpoConverted done = jpo_convert({{"Buf.java", "import java.nio.*;\npublic class Buf { public IntBuffer b;\n"
+                                                        " public void f() { b.position(0).limit(b.capacity()); }\n"
+                                                        " public static ByteBuffer g(int n) { return ByteBuffer.allocateDirect(n).order(ByteOrder.nativeOrder()); } }"}});
+    const std::string& cpp = done.cpp.at("Buf");
+    CB_CHECK(jpo_has(cpp, "IntBuffer* j2xo1 = NULL;"));
+    CB_CHECK(jpo_has(cpp, "j2xo1 = &(this->b->position(0))"));
+    CB_CHECK(jpo_has(cpp, "j2xo1->limit(j2xo2)"));
+    CB_CHECK(jpo_has(cpp, "= ByteBuffer::allocateDirect(n)"));   // a pointer already: no address taken
+    CB_CHECK(!jpo_has(cpp, "&(ByteBuffer::allocateDirect"));
+});
+
 // a transitive `this((Block)var1, 1)` delegation threads the argument through the X-typed overload.
 CB_TEST("java.emitted.a_transitive_delegation_with_a_cast_argument_threads_blockid", [] {
     if (!jpo_ready("emitted-cpp")) return;

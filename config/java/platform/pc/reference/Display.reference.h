@@ -28,6 +28,7 @@ namespace Display {
 	void setVSyncEnabled(bool on);
 	void setParent(const void* parent);   // a game in a canvas (an applet's): closing the window ends the program, as the applet's frame did
 	inline void setIcon(...) {}
+	inline void setDisplayConfiguration(float, float, float) {}   // gamma, brightness, contrast: the screen keeps its own (Alpha 1.1's Minecraft)
 	void sync(int fps);
 	inline void setResizable(...) {}
 	inline void setLocation(...) {}

@@ -35,6 +35,7 @@ namespace Display {
 	inline void setParent(...) {}
 	inline void setVSyncEnabled(...) {}
 	inline void setIcon(...) {}
+	inline void setDisplayConfiguration(float, float, float) {}   // gamma, brightness, contrast: the screen keeps its own (Alpha 1.1's Minecraft)
 	inline void sync(...) {}
 	inline void setResizable(...) {}
 	inline void setLocation(...) {}
