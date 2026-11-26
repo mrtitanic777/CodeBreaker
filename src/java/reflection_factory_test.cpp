@@ -156,6 +156,9 @@ CB_TEST("java.reflection_factory.reuse_choices", [] {
     CB_CHECK_EQ(reuse("(B*)x->newInstance()", two).first, "(B*)B_createByReflection(x)");
     // receivers: this->field, indexing, chains
     CB_CHECK_EQ(reuse("(TileEntity*)this->a[i]->b->newInstance()", factories).first, "(TileEntity*)T_createByReflection(this->a[i]->b)");
+    // a null-checked receiver (Beta's SpawnerAnimals): the whole checked expression is the receiver
+    CB_CHECK_EQ(reuse("(EntityLiving*)j2xNN<NullPointerException>(var15)->entityClass->getConstructor((JArrayInit<Class* >(), j2xClassOf(typeid(World)))).newInstance((JArrayInit<JObject >(), var0))", factories).first,
+                "(EntityLiving*)E_createByReflection(j2xNN<NullPointerException>(var15)->entityClass, (World*)var0)");
     // an arrow inside an argument does not split it
     CB_CHECK_EQ(reuse("(Entity*)r->getConstructor((JArrayInit<Class* >(), j2xClassOf(typeid(World)))).newInstance((JArrayInit<JObject >(), a->b, c))", factories).first,
                 "(Entity*)E_createByReflection(r, (World*)a->b)");

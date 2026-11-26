@@ -442,7 +442,10 @@ void Runtime::build_stubs() {
     add_ns_stub("ByteOrder.h", {
         .name = "ByteOrder",
         .constants = {{"BIG_ENDIAN", 1}, {"LITTLE_ENDIAN", 0}},
-        .ret_fns = {{"nativeOrder", "int", "1"}}});
+        // the machine's own order, asked of the machine: big-endian on the Xbox 360's PowerPC, little-endian on a PC. A fixed big
+        // answer packed every vertex colour of Beta's Tessellator byte-reversed on PC (red grass, leaves and water).
+        .ret_fns = {{"nativeOrder", "int", "j2xNativeOrder()"}},
+        .prelude = {"inline int j2xNativeOrder() { const unsigned int one = 1; return *(const unsigned char*)&one ? 0 : 1; }   // LITTLE_ENDIAN 0, BIG_ENDIAN 1"}});
     put_file("RandomAccessFile.h", verbatim::kRandomAccessFileHeader);
     add_class_stub("Writer.h", {
         .name = "Writer",

@@ -10,7 +10,8 @@ set(CMAKE_CXX_EXTENSIONS ON)
 
 file(GLOB J2X_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 add_executable(Game WIN32 ${J2X_SOURCES})   # (WIN32: a windowed program, no console beside it; main() is still the entry)
-target_include_directories(Game PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}")
+# (no include directory: the sources include each other with quotes, found beside them; on the include path a class named
+# Locale, Error or Regex would stand in for the system's <locale.h> <error.h> <regex.h>, and <string> stops compiling)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(Game PRIVATE -w -fpermissive)
 endif()

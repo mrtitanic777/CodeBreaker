@@ -1,6 +1,8 @@
 #ifndef JAVART_H
 #define JAVART_H
 // CodeBreaker runtime prelude -- shims for Java stdlib statics. #included by every .cpp.
+#include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <math.h>
@@ -208,6 +210,12 @@ inline const j2xValueOps* _j2xValueOf(const std::type_info* ti) {   // read-only
 	return _j2xValueOfName(ti->name());
 }
 
+// Integer.valueOf(i): an int that remembers it is a boxed Integer. It is an int everywhere an int is wanted (an enum promotes to
+// int: arithmetic, comparisons, int variables and parameters), but it boxes into a JObject as an Integer, 0 included -- a plain int
+// 0 boxes to null (null is spelled NULL, an int 0). FIXED BUG integer-zero-null: Beta's DataWatcher maps Byte.class to
+// Integer.valueOf(0); stored as null, every Byte watcher was "Unknown data type" and the first dropped item ended the game.
+enum J2xBoxedInt { J2X_BOXED_INT_MIN = (-2147483647 - 1), J2X_BOXED_INT_MAX = 2147483647 };
+
 struct JObject {
 	int kind;                         // 0 null, 1 int, 2 char, 4 String, 5 ptr, 6 String[], 7 bool, 8 real
 	long long i;
@@ -217,23 +225,31 @@ struct JObject {
 	void* p;
 	const std::type_info* ti;         // for kind==5: the boxed pointer's static type (for is<T>())
 	JObject() : kind(0), i(0), d(0), p(0), ti(0) {}
-	JObject(int v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(0) {}        // 0 == null (NULL is 0); else boxed int
-	JObject(long long v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(0) {}  // boxed long
-	JObject(long v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(0) {}
-	JObject(unsigned int v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(0) {}
-	JObject(unsigned long v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(0) {}
-	JObject(unsigned long long v) : kind(v ? 1 : 0), i((long long)v), d(0), p(0), ti(0) {}   // size_t on 64-bit
-	JObject(char v) : kind(2), i(v), d(0), p(0), ti(0) {}
-	JObject(unsigned char v) : kind(2), i(v), d(0), p(0), ti(0) {}   // a Java char (boxed Character), not an int
-	JObject(bool v) : kind(7), i(v ? 1 : 0), d(0), p(0), ti(0) {}
-	JObject(float v) : kind(8), i((long long)v), d(v), p(0), ti(0) {}   // boxed Float
-	JObject(double v) : kind(8), i((long long)v), d(v), p(0), ti(0) {}  // boxed Double
-	JObject(const char* v) : kind(v ? 4 : 0), i(0), d(0), s(v), p(0), ti(0) {}
-	JObject(const JavaString& v) : kind(v.isNull() ? 0 : 4), i(0), d(0), s(v), p(0), ti(0) {}   // a null String boxes to null
+	// A boxed primitive or String keeps its Java class in `ti` (the type its `.class` literal names: Byte is signed char, Integer
+	// int, Character char, String JavaString), so `o.getClass()` is Byte.class, Integer.class ... and not null. FIXED BUG
+	// box-getclass-null: Beta's DataWatcher.addObject looks every value's class up in a Byte/Short/Integer/Float/String table; with no
+	// class it threw "Unknown data type" while the player was made and the game shut down. Every other use of `ti` is kind 5's.
+	JObject(int v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(v ? &typeid(int) : 0) {}        // 0 == null (NULL is 0); else boxed int
+	JObject(J2xBoxedInt v) : kind(1), i((int)v), d(0), p(0), ti(&typeid(int)) {}          // Integer.valueOf(v): a boxed Integer, 0 included
+	JObject(long long v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(v ? &typeid(long long) : 0) {}  // boxed long
+	JObject(long v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(v ? &typeid(int) : 0) {}
+	JObject(unsigned int v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(v ? &typeid(int) : 0) {}
+	JObject(unsigned long v) : kind(v ? 1 : 0), i(v), d(0), p(0), ti(v ? &typeid(int) : 0) {}
+	JObject(unsigned long long v) : kind(v ? 1 : 0), i((long long)v), d(0), p(0), ti(v ? &typeid(long long) : 0) {}   // size_t on 64-bit
+	// a boxed Byte / Short: never null, 0 included (NULL is an int 0, never a byte or a short)
+	JObject(signed char v) : kind(1), i(v), d(0), p(0), ti(&typeid(signed char)) {}
+	JObject(short v) : kind(1), i(v), d(0), p(0), ti(&typeid(short)) {}
+	JObject(char v) : kind(2), i(v), d(0), p(0), ti(&typeid(char)) {}
+	JObject(unsigned char v) : kind(2), i(v), d(0), p(0), ti(&typeid(char)) {}   // a Java char (boxed Character), not an int
+	JObject(bool v) : kind(7), i(v ? 1 : 0), d(0), p(0), ti(&typeid(bool)) {}
+	JObject(float v) : kind(8), i((long long)v), d(v), p(0), ti(&typeid(float)) {}   // boxed Float
+	JObject(double v) : kind(8), i((long long)v), d(v), p(0), ti(&typeid(double)) {}  // boxed Double
+	JObject(const char* v) : kind(v ? 4 : 0), i(0), d(0), s(v), p(0), ti(v ? &typeid(JavaString) : 0) {}
+	JObject(const JavaString& v) : kind(v.isNull() ? 0 : 4), i(0), d(0), s(v), p(0), ti(v.isNull() ? 0 : &typeid(JavaString)) {}   // a null String boxes to null
 	// box a string-concat builder as its String (a varargs `Object...` element is often a `"x" + n`
 	// concat -> JCat; without this it needs two user conversions to reach JObject and silently degrades
 	// to the built-in comma operator in the JArrayInit chain -- GuiConnectFailed(..., "..." + host)).
-	JObject(const JCat& v) : kind(4), i(0), d(0), s(v._s), p(0), ti(0) {}   // _s: JCat converts to both JavaString and std::string
+	JObject(const JCat& v) : kind(4), i(0), d(0), s(v._s), p(0), ti(&typeid(JavaString)) {}   // _s: JCat converts to both JavaString and std::string
 	JObject(const JArray<JavaString>& v) : kind(6), i(0), d(0), sa(v), p(0), ti(0) {}
 	// box a primitive/reference array (`Object o = intArray`, `map.put(k, int[])`) as a heap copy,
 	// RTTI-tagged so `(int[])o` unboxes it. Non-String arrays only (String[] uses the kind-6 ctor above).
@@ -390,6 +406,12 @@ template<class M> inline Iterator* j2xKeys(const M& m) {
 // rewrites `this == <Object var>` to this call. (argo's J_JsonArray/J_JsonObject/... equals shortcut.)
 template<class T> inline bool j2xIdentEq(const T* a, const JObject& b) { return b.kind == 5 && b.p == (const void*)a; }
 template<class T> inline bool j2xIdentEq(const T* a, const JObject* b) { return b != 0 && b->kind == 5 && b->p == (const void*)a; }
+// `a == b` of two boxes (an Integer kept boxed because it is compared with null, against a plain int that boxes here): objects by
+// identity, boxed values by value -- the fast path decompiled code puts before equals() (MCHashEntry.equals).
+inline bool j2xIdentEq(const JObject& a, const JObject& b) {
+	if (a.kind == 5 || b.kind == 5) return a.kind == b.kind && a.p == b.p;
+	return a.kind == b.kind && a.i == b.i && a.d == b.d && (a.kind != 4 || a.s == b.s);
+}
 
 // Stream a JObject (Java String-concatenation of an Object calls its toString()). Without this the
 // implicit conversions (operator int / operator T*) make `ostream << JObject` AMBIGUOUS, which breaks
@@ -441,7 +463,7 @@ namespace Integer {
 	const int MIN_VALUE = (-2147483647 - 1);
 	inline int parseInt(const std::string& s) { return _javart_parse<int>(s); }
 	inline int parseInt(const std::string& s, int) { return _javart_parse<int>(s); }
-	inline int valueOf(int v) { return v; }
+	inline J2xBoxedInt valueOf(int v) { return (J2xBoxedInt)v; }   // boxes as an Integer, 0 included (see J2xBoxedInt)
 	inline int valueOf(const std::string& s) { return _javart_parse<int>(s); }
 	inline std::string toString(int v) { std::ostringstream o; o << v; return o.str(); }
 	inline std::string toString(int v, int) { std::ostringstream o; o << v; return o.str(); }  // radix ignored (stub)
@@ -480,9 +502,86 @@ namespace String {
 	inline JavaString valueOf(bool v) { return JavaString(v ? "true" : "false"); }
 	inline JavaString valueOf(const char* v) { return JavaString(v ? v : ""); }
 	inline JavaString valueOf(const std::string& v) { return JavaString(v); }
-	inline JavaString format(const JavaString& fmt) { return fmt; }             // printf-style not ported
-	template<class A> inline JavaString format(const JavaString& fmt, const A&) { return fmt; }
-	template<class A, class B> inline JavaString format(const JavaString& fmt, const A&, const B&) { return fmt; }
+	// java.util.Formatter's common forms: %[index$][flags][width][.precision]conversion with s S d x X o f e E g c b n %, flags - 0 + space
+	// (',' read and ignored). FIXED BUG format-noop: String.format returned the pattern itself -- Beta's achievement hint read
+	// "Press '%1$s' to open your inventory.". C++03, so the Xbox 360 build takes it as well.
+	inline std::string j2xFormatPad(const std::string& body, int width, bool left, bool zero) {
+		if (width <= 0 || (int)body.size() >= width) return body;
+		const std::string fill((std::size_t)(width - (int)body.size()), zero ? '0' : ' ');
+		if (left) return body + std::string(fill.size(), ' ');
+		if (zero && !body.empty() && (body[0] == '-' || body[0] == '+')) return body.substr(0, 1) + fill + body.substr(1);
+		return fill + body;
+	}
+	inline std::string j2xFormatText(const JObject& o) {
+		char buf[64];
+		switch (o.kind) {
+			case 0: return "null";
+			case 1: sprintf(buf, "%lld", o.i); return buf;
+			case 2: return std::string(1, (char)o.i);
+			case 4: return o.s;
+			case 7: return o.i ? "true" : "false";
+			case 8: { std::ostringstream os; os << o.d; return os.str(); }
+			default: return o.p ? "Object" : "null";
+		}
+	}
+	inline JavaString format(const JavaString& fmt, const JArray<JObject>& args) {
+		std::string out;
+		int next = 0;
+		for (std::size_t k = 0; k < fmt.size(); ++k) {
+			if (fmt[k] != '%' || k + 1 >= fmt.size()) { out += fmt[k]; continue; }
+			std::size_t j = k + 1;
+			int index = -1, width = 0, precision = -1;
+			std::size_t digits = j;
+			while (digits < fmt.size() && fmt[digits] >= '0' && fmt[digits] <= '9') ++digits;
+			if (digits > j && digits < fmt.size() && fmt[digits] == '$') { index = atoi(fmt.substr(j, digits - j).c_str()) - 1; j = digits + 1; }
+			bool left = false, zero = false, plus = false, space = false;
+			for (; j < fmt.size(); ++j) {
+				if (fmt[j] == '-') left = true; else if (fmt[j] == '0') zero = true; else if (fmt[j] == '+') plus = true;
+				else if (fmt[j] == ' ') space = true; else if (fmt[j] != ',' && fmt[j] != '#') break;
+			}
+			while (j < fmt.size() && fmt[j] >= '0' && fmt[j] <= '9') width = width * 10 + (fmt[j++] - '0');
+			if (j < fmt.size() && fmt[j] == '.') { precision = 0; ++j; while (j < fmt.size() && fmt[j] >= '0' && fmt[j] <= '9') precision = precision * 10 + (fmt[j++] - '0'); }
+			if (j >= fmt.size()) { out += fmt.substr(k); break; }
+			const char conv = fmt[j];
+			k = j;
+			if (conv == '%') { out += '%'; continue; }
+			if (conv == 'n') { out += '\n'; continue; }
+			const int at = index >= 0 ? index : next++;
+			const JObject arg = at >= 0 && at < args.length ? args[at] : JObject();
+			std::string body;
+			char buf[512];
+			switch (conv) {
+				case 'd': sprintf(buf, plus ? "%+lld" : (space ? "% lld" : "%lld"), (long long)(arg.kind == 8 ? (long long)arg.d : arg.i)); body = buf; break;
+				case 'x': case 'X': case 'o': {
+					const char f[] = {'%', 'l', 'l', conv, 0};
+					sprintf(buf, f, (unsigned long long)(arg.kind == 8 ? (long long)arg.d : arg.i)); body = buf; break;
+				}
+				case 'f': case 'e': case 'E': case 'g': case 'G': {
+					const char f[] = {'%', '.', '*', conv, 0};
+					sprintf(buf, f, precision < 0 ? 6 : precision, arg.kind == 8 ? arg.d : (double)arg.i);
+					body = (plus && buf[0] != '-' ? "+" : "") + std::string(buf); break;
+				}
+				case 'c': body = std::string(1, (char)arg.i); break;
+				case 'b': case 'B': body = arg.kind == 0 ? "false" : (arg.kind == 7 ? (arg.i ? "true" : "false") : "true"); break;
+				case 'S': { body = j2xFormatText(arg); for (std::size_t q = 0; q < body.size(); ++q) body[q] = (char)toupper((unsigned char)body[q]); break; }
+				default: body = j2xFormatText(arg); break;   // s and anything else
+			}
+			if ((conv == 's' || conv == 'S') && precision >= 0 && (int)body.size() > precision) body = body.substr(0, (std::size_t)precision);
+			out += j2xFormatPad(body, width, left, zero && conv != 's' && conv != 'S');
+		}
+		return JavaString(out);
+	}
+	inline JavaString format(const JavaString& fmt, const JArrayInit<JObject>& args) { return format(fmt, (JArray<JObject>)args); }   // format(f, new Object[]{...})
+	inline JavaString format(const JavaString& fmt) { return format(fmt, JArray<JObject>(0)); }
+	template<class A> inline JavaString format(const JavaString& fmt, const A& a) {
+		JArray<JObject> v(1); v[0] = JObject(a); return format(fmt, v);
+	}
+	template<class A, class B> inline JavaString format(const JavaString& fmt, const A& a, const B& b) {
+		JArray<JObject> v(2); v[0] = JObject(a); v[1] = JObject(b); return format(fmt, v);
+	}
+	template<class A, class B, class C> inline JavaString format(const JavaString& fmt, const A& a, const B& b, const C& c) {
+		JArray<JObject> v(3); v[0] = JObject(a); v[1] = JObject(b); v[2] = JObject(c); return format(fmt, v);
+	}
 }
 namespace Float {
 	const float MAX_VALUE = 3.402823466e+38f;   // FLT_MAX (3.4028235e38f rounds ABOVE it -> MSVC C2177)

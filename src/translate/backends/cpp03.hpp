@@ -262,7 +262,8 @@ protected:
     int temps_ = 0;
     int arg_temps_ = 0;                                     // _j2xarg_N owned temporaries hoisted
     bool owning_ = false;
-    bool lvalue_ = false;                                   // the expression being written is assigned to (an Index there stays an lvalue)
+    bool lvalue_ = false;
+    std::set<std::string> nullable_boxed_;                  // boxed locals (Integer, Byte ...) the method compares with null: kept JObject                                   // the expression being written is assigned to (an Index there stays an lvalue)
     std::optional<std::set<std::string, std::less<>>> owned_scalar_;
 
 };

@@ -8,6 +8,8 @@
 
 namespace cb::translate::backends::cpp03 {
 
+namespace typemap = cb::java::typemap;
+
 using cb::java::ledger::Category;
 using cb::java::ledger::Severity;
 using detail::block_stmts;
@@ -28,6 +30,21 @@ bool is_loop(const ir::Node* n) {
 Lines Writer::body() {
     if (m_ == nullptr) throw Decline("no method");
     if (std::holds_alternative<ir::Node*>(m_->body) && std::get<ir::Node*>(m_->body) == nullptr) throw Decline("no body");
+    // A boxed local (Integer, Byte ...) the method compares with null keeps the box (JObject): written as its primitive, `null`
+    // became 0 and a real 0 read as null -- Beta's DataWatcher took Byte's type id 0 for "Unknown data type" and shut the game down.
+    nullable_boxed_.clear();
+    const auto is_null = [](const ir::Node* e) {
+        const auto* lit = ir::get<ir::Lit>(strip_paren(e));
+        return lit != nullptr && std::holds_alternative<std::monostate>(lit->value);
+    };
+    for (ir::Node* n : ir::walk(const_cast<ir::Node*>(single(m_->body)))) {
+        const auto* b = ir::get<ir::Binary>(n);
+        if (b == nullptr || (b->op != "==" && b->op != "!=") || is_null(b->left) == is_null(b->right)) continue;
+        const ir::Node* other = strip_paren(is_null(b->left) ? b->right : b->left);
+        const auto* nm = ir::get<ir::Name>(other);
+        if (nm == nullptr || !nm->sym || !other->type || other->type->kind() != "class") continue;
+        if (typemap::boxed_value_types().contains(other->type->simple())) nullable_boxed_.insert(name(nm->sym->name));
+    }
     Lines out;
     stmts(block_stmts(single(m_->body)), out, "");
     return out;
@@ -212,7 +229,7 @@ void Writer::write_labeled(const ir::Labeled& s, Lines& out, std::string_view in
 void Writer::write_local(const ir::Local& s, Lines& out, std::string_view ind) {
     const std::string nm = name(need_sym(s.sym, "local").name);
     if (vars.contains(nm)) throw Decline("shadowed local " + nm);
-    const std::string ct = ctype(s.type);
+    const std::string ct = nullable_boxed_.contains(nm) ? std::string("JObject") : ctype(s.type);
     vars[nm] = ct;
     if (s.init != nullptr) {
         review(s.init, out, ind);

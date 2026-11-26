@@ -16,8 +16,10 @@ namespace {
 
 namespace stdfs = std::filesystem;
 
-// a receiver lvalue: var, var->field, this->field, var[i], var[i]->field, ...
-constexpr const char* kRecv = R"RX(((?:this\s*->\s*)?[A-Za-z_]\w*(?:\s*->\s*[A-Za-z_]\w*|\s*\[[^\]]*\])*))RX";
+// a receiver lvalue: var, var->field, this->field, var[i], var[i]->field, ..., and any of them null-checked first,
+// j2xNN<NullPointerException>(var15)->entityClass (Beta's SpawnerAnimals: a missed site there spawned every mob as NULL)
+constexpr const char* kRecv =
+    R"RX(((?:j2xNN<\w+>\(\s*(?:this\s*->\s*)?[A-Za-z_]\w*(?:\s*->\s*[A-Za-z_]\w*|\s*\[[^\]]*\])*\s*\)|(?:this\s*->\s*)?[A-Za-z_]\w*)(?:\s*->\s*[A-Za-z_]\w*|\s*\[[^\]]*\])*))RX";
 
 // A reflection instantiation with a ctor arg (EntityList / SpawnerAnimals / MapStorage):
 //   (Entity*)recv->getConstructor((JArrayInit<Class* >(), j2xClassOf(typeid(World)))).newInstance((JArrayInit<JObject >(), var1))
