@@ -137,6 +137,7 @@
   "std::vector": "<void*>"
  },
  "runtime_enum_like": [
+  "ARBMultitexture",
   "ARBOcclusionQuery",
   "ARBVertexBufferObject",
   "Arrays",
@@ -154,6 +155,7 @@
   "Float",
   "GL11",
   "GL12",
+  "GL13",
   "GL15",
   "GLContext",
   "GLU",
@@ -173,6 +175,7 @@
   "System"
  ],
  "runtime_headers": [
+  "ARBMultitexture",
   "ARBOcclusionQuery",
   "ARBVertexBufferObject",
   "AWTException",
@@ -261,6 +264,7 @@
   "Frame",
   "GL11",
   "GL12",
+  "GL13",
   "GL15",
   "GLContext",
   "GLU",
@@ -377,6 +381,7 @@
   "ZipFile"
  ],
  "runtime_static_holders": [
+  "ARBMultitexture",
   "ARBOcclusionQuery",
   "ARBVertexBufferObject",
   "BufferUtils",
@@ -387,6 +392,7 @@
   "Display",
   "GL11",
   "GL12",
+  "GL13",
   "GL15",
   "GLContext",
   "GLU",

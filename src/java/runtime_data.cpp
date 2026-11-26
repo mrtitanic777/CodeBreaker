@@ -35,6 +35,8 @@ const std::map<std::string, std::string, std::less<>>& external_packages() {
     static const std::map<std::string, std::string, std::less<>> table = {
         {"GL11", "org.lwjgl.opengl"},
         {"GL12", "org.lwjgl.opengl"},
+        {"GL13", "org.lwjgl.opengl"},
+        {"ARBMultitexture", "org.lwjgl.opengl"},
         {"GL15", "org.lwjgl.opengl"},
         {"NVFogDistance", "org.lwjgl.opengl"},
         {"GLU", "org.lwjgl.util.glu"},
@@ -371,6 +373,15 @@ void Runtime::build_stubs() {
         .name = "GL12",
         .constants = {{"GL_RESCALE_NORMAL", 32826}, {"GL_CLAMP_TO_EDGE", 33071}, {"GL_SMOOTH_POINT_SIZE_RANGE", 2834},
             {"GL_BGR", 32992}, {"GL_BGRA", 32993}}});   // (Beta 1.2_02's screenshot: glReadPixels in BGR)
+    // multitexture (Beta 1.8's lightmap on the second unit): the PC's GL13.reference makes the calls; elsewhere no-ops
+    add_ns_stub("GL13.h", {
+        .name = "GL13",
+        .constants = {{"GL_TEXTURE0", 33984}, {"GL_TEXTURE1", 33985}, {"GL_TEXTURE2", 33986}, {"GL_TEXTURE3", 33987}},
+        .void_fns = {"glActiveTexture", "glClientActiveTexture", "glMultiTexCoord2f"}});
+    add_ns_stub("ARBMultitexture.h", {
+        .name = "ARBMultitexture",
+        .constants = {{"GL_TEXTURE0_ARB", 33984}, {"GL_TEXTURE1_ARB", 33985}, {"GL_TEXTURE2_ARB", 33986}, {"GL_TEXTURE3_ARB", 33987}},
+        .void_fns = {"glActiveTextureARB", "glClientActiveTextureARB", "glMultiTexCoord2fARB"}});
     add_ns_stub("NVFogDistance.h", {
         .name = "NVFogDistance",
         .constants = {{"GL_FOG_DISTANCE_MODE_NV", 34138}, {"GL_EYE_RADIAL_NV", 34139}, {"GL_EYE_PLANE_ABSOLUTE_NV", 34140}}});

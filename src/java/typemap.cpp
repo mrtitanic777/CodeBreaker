@@ -74,15 +74,15 @@ const NameSet& boxed_value_types() {
 
 const NameSet& runtime_static_holders() {
     static const NameSet kSet = {
-        "ARBOcclusionQuery", "ARBVertexBufferObject", "BufferUtils", "ByteOrder", "Charset", "Collections",
-        "Controllers", "Display", "GL11", "GL12", "GL15", "GLContext", "GLU", "ImageIO", "Keyboard",
+        "ARBMultitexture", "ARBOcclusionQuery", "ARBVertexBufferObject", "BufferUtils", "ByteOrder", "Charset", "Collections",
+        "Controllers", "Display", "GL11", "GL12", "GL13", "GL15", "GLContext", "GLU", "ImageIO", "Keyboard",
         "Mouse", "MouseInfo", "NVFogDistance", "Pattern", "Runtime", "SoundSystemConfig", "Sys"};
     return kSet;
 }
 
 const NameSet& runtime_headers() {
     static const NameSet kSet = {
-        "ARBOcclusionQuery", "ARBVertexBufferObject", "AWTException", "AffineTransform", "Applet",
+        "ARBMultitexture", "ARBOcclusionQuery", "ARBVertexBufferObject", "AWTException", "AffineTransform", "Applet",
         // (early Indev's level dialog and LWJGL context, early Alpha's multiplayer invite cipher)
         "JFileChooser", "JDialog", "Window", "FileNameExtensionFilter", "PixelFormat", "ContextAttribs", "Cipher", "CipherInputStream", "SecretKey",
         "SecretKeyFactory", "PBEKeySpec", "PBEParameterSpec", "GeneralSecurityException",
@@ -99,7 +99,7 @@ const NameSet& runtime_headers() {
         "DocumentBuilderFactory", "EOFException", "Element", "Entry", "Error", "Exception", "File",
         "FileDialog", "FileFilter", "FileInputStream", "FileNotFoundException", "FileOutputStream",
         "FileReader", "FileWriter", "FilenameFilter", "FloatBuffer", "ShortBuffer", "FlowLayout", "FocusEvent",
-        "FocusListener", "Font", "FontMetrics", "Frame", "GL11", "GL12", "GL15", "GLContext", "GLU",
+        "FocusListener", "Font", "FontMetrics", "Frame", "GL11", "GL12", "GL13", "GL15", "GLContext", "GLU",
         "GZIPInputStream", "GZIPOutputStream", "Graphics", "Graphics2D", "GregorianCalendar",
         "GridBagLayout", "GridLayout", "HttpURLConnection", "IOException", "IllegalArgumentException",
         "IllegalStateException", "ImageIO", "ImageObserver", "IndexOutOfBoundsException", "InetAddress",
