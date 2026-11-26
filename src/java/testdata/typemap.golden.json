@@ -280,6 +280,7 @@
   "ImageObserver",
   "IndexOutOfBoundsException",
   "InetAddress",
+  "InetSocketAddress",
   "Inflater",
   "InflaterInputStream",
   "InputEvent",

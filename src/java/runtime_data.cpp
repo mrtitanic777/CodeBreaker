@@ -64,6 +64,7 @@ const std::map<std::string, std::string, std::less<>>& external_packages() {
         {"FileWriter", "java.io"},
         {"PrintWriter", "java.io"},
         {"Socket", "java.net"},
+        {"InetSocketAddress", "java.net"},   // (Beta 1.8's server-list ping: socket.connect(new InetSocketAddress(host, port), 3000))
         {"URL", "java.net"},
         {"URLConnection", "java.net"},
         {"SoundSystem", "paulscode.sound"},
@@ -541,6 +542,7 @@ void Runtime::build_stubs() {
         .ret_methods = {{"getEntry", "ZipEntry*", "0"}, {"getInputStream", "InputStream*", "0"}, {"size", "int", "0"}},
         .forward_decls = {"InputStream", "ZipEntry"}});
     add_class_stub("SocketAddress.h", {.name = "SocketAddress"});
+    add_class_stub("InetSocketAddress.h", {.name = "InetSocketAddress", .bases = {"SocketAddress"}, .includes = {"SocketAddress"}});
     add_class_stub("Socket.h", {
         .name = "Socket",
         .void_methods = {"close", "setSoTimeout", "setTrafficClass", "setTcpNoDelay", "setKeepAlive", "connect"},

@@ -139,6 +139,7 @@ namespace GL11 {
 	void glTexCoordPointer(int size, int type, int stride, long long offset);
 	void glNormalPointer(int type, int stride, long long offset);
 	void glDrawArrays(int mode, int first, int count);
+	void glCopyTexSubImage2D(int target, int level, int xoff, int yoff, int x, int y, int w, int h);   // (Beta 1.8's title panorama)
 	// glInterleavedArrays(format, stride, buffer) and its formats (early Indev's Tessellator draws from one interleaved FloatBuffer)
 	const int GL_V2F = 0x2A20, GL_V3F = 0x2A21, GL_C4UB_V2F = 0x2A22, GL_C4UB_V3F = 0x2A23, GL_C3F_V3F = 0x2A24, GL_N3F_V3F = 0x2A25,
 	          GL_C4F_N3F_V3F = 0x2A26, GL_T2F_V3F = 0x2A27, GL_T4F_V4F = 0x2A28, GL_T2F_C4UB_V3F = 0x2A29, GL_T2F_C3F_V3F = 0x2A2A,

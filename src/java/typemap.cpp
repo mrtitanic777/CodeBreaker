@@ -112,7 +112,7 @@ const NameSet& runtime_headers() {
         "NumberFormat", "NumberFormatException", "OutOfMemoryError", "OutputStream", "Panel", "Pattern",
         "Point", "PointerInfo", "PrintWriter", "Properties", "PushbackReader", "Random",
         "RandomAccessFile", "Raster", "Reader", "Rectangle", "Reference", "RenderingHints", "Robot",
-        "Runnable", "Runtime", "RuntimeException", "SimpleDateFormat", "Socket", "SocketAddress",
+        "Runnable", "Runtime", "RuntimeException", "SimpleDateFormat", "Socket", "SocketAddress", "InetSocketAddress",
         "SocketException", "SoftReference", "SoundSystem", "SoundSystemConfig", "Stack", "StringReader",
         "StringWriter", "Sys", "TextArea", "Thread", "Throwable", "Toolkit", "Transferable", "URI", "URL",
         "URLConnection", "UnknownHostException", "UnsupportedOperationException", "WindowAdapter",
