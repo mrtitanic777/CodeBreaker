@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <format>
 #include <map>
+#include <set>
 
 #include "core/text.hpp"
 #include "java/textutil.hpp"
@@ -61,7 +62,51 @@ std::string drv_constructed_text(const ir::JClass& cls) {
     return text::join(parts, " ");
 }
 
-// The initable classes a class's static initialisation reads (directly, or through the constructors it runs).
+// The bodies of the static methods `text` calls, and of those they call, joined: `name(` is the class's own (`owner`), `Q.name(`
+// class Q's. Java's static initialiser runs them, so what they read is read during the class's initialisation too (Beta 1.4's
+// StatList.<clinit> -> func_25153_a -> func_25150_a reads Block.waterStill: Block must initialise first).
+std::string drv_static_call_text(std::string_view text, const ir::JClass& owner,
+                                 const std::map<std::string, const ir::JClass*, std::less<>>& by_name) {
+    std::string out;
+    std::set<std::string> seen;   // "Class.method" already followed
+    std::vector<std::pair<std::string, const ir::JClass*>> todo = {{std::string(text), &owner}};
+    while (!todo.empty()) {
+        const auto [body, cls] = std::move(todo.back());
+        todo.pop_back();
+        for (std::size_t i = 0; i < body.size();) {
+            if (!drv_is_word(body[i]) || (i > 0 && drv_is_word(body[i - 1]))) { ++i; continue; }
+            std::size_t j = i;
+            while (j < body.size() && drv_is_word(body[j])) ++j;
+            std::size_t k = j;
+            while (k < body.size() && text::is_space(body[k])) ++k;
+            const std::string name(body.substr(i, j - i));
+            const std::size_t start = i;
+            i = j;
+            if (k >= body.size() || body[k] != '(') continue;
+            const ir::JClass* target = cls;
+            if (start > 0 && body[start - 1] == '.') {   // Q.name( -- a capitalised qualifier names a class; anything else is an instance call
+                std::size_t q = start - 1;
+                while (q > 0 && drv_is_word(body[q - 1])) --q;
+                const std::string qual(body.substr(q, start - 1 - q));
+                const auto found = qual.empty() || qual[0] < 'A' || qual[0] > 'Z' ? by_name.end() : by_name.find(qual);
+                if (found == by_name.end()) continue;
+                target = found->second;
+            }
+            if (!seen.insert(target->name + "." + name).second) continue;
+            for (const ir::Method& m : target->methods) {
+                if (!m.is_static || m.name != name) continue;
+                std::string called;
+                for (const ir::SourceLine& line : m.body) called += line.text + " ";
+                out += called;
+                todo.emplace_back(std::move(called), target);
+            }
+        }
+    }
+    return out;
+}
+
+// The initable classes a class's static initialisation reads (directly, through the static methods it calls, or through the
+// constructors it runs).
 NameSet drv_direct_refs(const ir::JClass& c, const std::map<std::string, const ir::JClass*, std::less<>>& by_name, const NameSet& callable_init) {
     std::vector<std::string_view> parts;
     for (const ir::Field& f : c.fields) {
@@ -74,7 +119,8 @@ NameSet drv_direct_refs(const ir::JClass& c, const std::map<std::string, const i
         for (const std::string& arg : ec.args) parts.push_back(arg);
     }
     std::erase_if(parts, [](std::string_view p) { return p.empty(); });
-    const std::string joined = text::join(parts, " ");
+    std::string joined = text::join(parts, " ");
+    joined += " " + drv_static_call_text(joined, c, by_name);
     NameSet refs = drv_capitalised_words(joined);
     // follow `new X` transitively into the constructed classes' constructor, instance and ancestor bodies
     std::vector<std::string> todo = drv_new_targets(joined);

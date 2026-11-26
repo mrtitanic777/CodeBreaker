@@ -100,7 +100,7 @@ std::vector<cb::java::ir::JClass> tp_init_classes() {
 CB_TEST("java.init_driver.order_matches_golden", [] {
     const Json golden = tp_golden("init.golden.json");
     const auto classes = tp_init_classes();
-    CB_CHECK_EQ(golden["orders"].size(), std::size_t{12});
+    CB_CHECK_EQ(golden["orders"].size(), std::size_t{13});
     for (const Json& c : golden["orders"]) {
         const auto callable = c["callable"].get<std::vector<std::string>>();
         const auto got = cb::java::init_driver::compute_static_init_order(classes, {callable.begin(), callable.end()}, c["seed"].get<std::vector<std::string>>());
