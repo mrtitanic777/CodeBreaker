@@ -58,6 +58,9 @@ public:
     virtual std::optional<std::vector<std::vector<std::string>>> static_blocks(const ir::JClass& cls) = 0;
     // The body of a method.
     virtual std::optional<std::vector<std::string>> body(const ir::JClass& cls, const ir::Method& method) = 0;
+    // Why the last answer was nullopt, in the back end's words ("" when it does not say): the ledger's gap names it, so the
+    // work list says what to teach the translator.
+    virtual std::string last_decline() const { return {}; }
 };
 
 struct Options {

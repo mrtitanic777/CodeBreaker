@@ -52,8 +52,10 @@ struct Writer {
 
     // What the back end could not write: said in the code and the ledger, and thrown if it runs -- never a guess.
     Lines gap(const std::string& what, std::uint32_t line = 0) const {
+        const std::string why = bodies() != nullptr ? bodies()->last_decline() : std::string();
         src_note(options.ledger, cls, Category::Stubbed,
-                 "untranslated " + what + ": the back end declined it -- the body throws UnsupportedOperationException (J2X-GAP)",
+                 "untranslated " + what + ": the back end declined it" + (why.empty() ? std::string() : " (" + why + ")") +
+                     " -- the body throws UnsupportedOperationException (J2X-GAP)",
                  Severity::High, "untranslated", line);
         return {"// J2X-GAP: " + what + " was not translated (see the ledger)", "throw new UnsupportedOperationException();"};
     }

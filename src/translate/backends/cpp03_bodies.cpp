@@ -259,8 +259,10 @@ std::optional<std::vector<std::vector<std::string>>> Bodies::static_blocks(const
 std::optional<std::vector<std::string>> Bodies::body(const jir::JClass& cls, const jir::Method& method) {
     const ir::Node* c = find_class(cls.name);
     const ir::Node* m = c != nullptr ? find_method(*c, method) : nullptr;
+    last_decline_.clear();
     if (m == nullptr) {
         count(declined_, "not found");
+        last_decline_ = "the method is not in the lowered units";
         return std::nullopt;
     }
     Lines lines;

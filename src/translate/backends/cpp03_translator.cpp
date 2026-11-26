@@ -38,6 +38,7 @@ public:
     }
     std::optional<std::vector<std::vector<std::string>>> static_blocks(const jir::JClass& cls) override { return bodies_->static_blocks(cls); }
     std::optional<std::vector<std::string>> body(const jir::JClass& cls, const jir::Method& method) override { return bodies_->body(cls, method); }
+    std::string last_decline() const override { return bodies_->last_decline(); }
 
 private:
     Arena arena_;   // (declared before what refers into it)

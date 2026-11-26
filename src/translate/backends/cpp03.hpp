@@ -389,13 +389,17 @@ public:
     // order first met.
     const OrderedMap<std::string, std::size_t>& declined() const { return declined_; }
     const OrderedMap<std::string, std::size_t>& reasons() const { return reasons_; }
+    std::string last_decline() const override { return last_decline_; }
 
 private:
     // (the class, the method) of the IR member matching the converter's parsed one (method null: none)
     const ir::Node* find_class(std::string_view name) const;
     const ir::Node* find_method(const ir::Node& cls, const jir::Method& parsed) const;
     const ir::Node* find_ctor(const ir::Node& cls, const jir::Method* parsed) const;
-    void count(OrderedMap<std::string, std::size_t>& into, const std::string& key) { ++into[key]; }
+    void count(OrderedMap<std::string, std::size_t>& into, const std::string& key) {
+        ++into[key];
+        if (&into == &reasons_) last_decline_ = key;   // (the whole reason of the member just declined)
+    }
 
     Context& ctx_;
     Dialect dialect_;
@@ -405,6 +409,7 @@ private:
     std::size_t written_ctors_ = 0;
     OrderedMap<std::string, std::size_t> declined_;
     OrderedMap<std::string, std::size_t> reasons_;
+    std::string last_decline_;   // the reason of the last member declined
 };
 
 // ---------------------------------------------------------------------------------------------- the converter's translator
