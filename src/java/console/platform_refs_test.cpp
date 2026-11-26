@@ -166,10 +166,24 @@ CB_TEST("java.platform_refs.runnable_entry_constructs_with_default_arguments", [
     session_field.type = refs_type("Session", 0);
     jir::JClass impl = shell;
     impl.inherited_fields = {&session_field};
-    const std::string alpha = pr::generate_pc_runnable_entry_point(impl);
+    jir::JClass session2 = refs_class("Session");   // Alpha's: (username, session id)
+    jir::Method ctor2;
+    ctor2.name = "Session";
+    ctor2.is_ctor = true;
+    ctor2.params = {{"a", refs_type("String")}, {"b", refs_type("String")}};
+    session2.methods.push_back(ctor2);
+    const std::vector<jir::JClass> alpha_classes = {session2};
+    const std::string alpha = pr::generate_pc_runnable_entry_point(impl, alpha_classes);
     CB_CHECK(refs_has(alpha, "if (_game->session == NULL) _game->session = new Session(JavaString(\"Player\"), JavaString(\"-\"));"));
     CB_CHECK(refs_has(alpha, "#include \"Session.h\""));
     CB_CHECK(alpha.find("_game->session = new") < alpha.find("_game->run();"));
+    jir::JClass session1 = refs_class("Session");   // early Indev's: (username)
+    jir::Method ctor1 = ctor2;
+    ctor1.params.pop_back();
+    session1.methods.push_back(ctor1);
+    const std::vector<jir::JClass> indev_classes = {session1};
+    CB_CHECK(refs_has(pr::generate_pc_runnable_entry_point(impl, indev_classes), "_game->session = new Session(JavaString(\"Player\"));"));
+    CB_CHECK(!refs_has(pr::generate_pc_runnable_entry_point(impl), "_game->session"));   // the class unknown: nothing
 });
 
 CB_TEST("java.platform_refs.platform_names", [] {

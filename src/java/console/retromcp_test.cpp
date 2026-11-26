@@ -166,4 +166,44 @@ CB_TEST("java.console.retromcp.the_downloaded_sounds_are_copied_by_their_names",
     CB_CHECK(b && b->asset_index && retromcp::copy_resources(*b, bare.path() / "out").copied == 0);
 });
 
+// Beta 1.6's slip: the mappings name EntityLiving.numTicksToChaseTarget (client aC), the source renamed the references, but the field is
+// Entity's `aC` (the entity id) and is declared under that name. The repair points the references at it; a call of that name, a longer
+// name and a field the source does declare are left alone.
+CB_TEST("java.console.retromcp.field_repairs", [] {
+    fs::ScopedTempDir tmp("cbrmcp");
+    const stdfs::path src = tmp.path() / "src" / "net" / "minecraft" / "src";
+    fs::write_text(tmp.path() / "mappings.tiny",
+                   "tiny\t2\t0\tnamed\tclient\tserver\n"
+                   "c\tnet/minecraft/src/Entity\tpk\tlx\n"
+                   "\tf\tI\tentityLabel\tbX\tbY\n"
+                   "c\tnet/minecraft/src/EntityLiving\tlo\thi\n"
+                   "\tf\tI\tnumTicksToChaseTarget\taC\taF\n"
+                   "\tf\tI\thealth\taZ\tbA\n"
+                   "\tf\tI\tunused\tzz\tzz\n");
+    fs::write_text(src / "Entity.java", "package net.minecraft.src;\n\npublic abstract class Entity {\n\tpublic int aC = nextEntityID++;\n"
+                                        "\tprivate static int nextEntityID = 0;\n\tpublic int entityLabel;\n\n\tpublic int getId() {\n\t\treturn this.aC;\n\t}\n}\n");
+    fs::write_text(src / "EntityLiving.java", "package net.minecraft.src;\n\npublic abstract class EntityLiving extends Entity {\n\tpublic int health;\n"
+                                              "\tpublic int numTicksToChaseTargetX() {\n\t\treturn 0;\n\t}\n}\n");
+    fs::write_text(src / "RenderLiving.java", "package net.minecraft.src;\n\npublic class RenderLiving {\n\tvoid a(EntityLiving var1) {\n"
+                                              "\t\tString s = Integer.toString(var1.numTicksToChaseTarget);\n\t\tvar1.numTicksToChaseTargetX();\n"
+                                              "\t\tvar1.health = var1.entityLabel;\n\t}\n}\n");
+    const auto repairs = retromcp::find_field_repairs(tmp.path() / "mappings.tiny", tmp.path() / "src", "client");
+    CB_CHECK_EQ(repairs.size(), std::size_t{1});   // (health and entityLabel are declared; unused is referenced nowhere)
+    if (repairs.size() == 1) {
+        CB_CHECK_EQ(repairs[0].owner, "EntityLiving");
+        CB_CHECK_EQ(repairs[0].named, "numTicksToChaseTarget");
+        CB_CHECK_EQ(repairs[0].declared, "aC");
+        CB_CHECK_EQ(repairs[0].holder, "Entity");
+    }
+    const auto server = retromcp::find_field_repairs(tmp.path() / "mappings.tiny", tmp.path() / "src", "server");
+    CB_CHECK(server.empty());   // the server's name (aF) is declared nowhere here
+    const stdfs::path out = tmp.path() / "fixed";
+    CB_CHECK_EQ(retromcp::write_repaired_source(tmp.path() / "src", out, repairs), std::size_t{1});
+    const std::string fixed = fs::read_text(out / "net" / "minecraft" / "src" / "RenderLiving.java");
+    CB_CHECK(fixed.find("Integer.toString(var1.aC)") != std::string::npos);
+    CB_CHECK(fixed.find("var1.numTicksToChaseTargetX();") != std::string::npos);
+    CB_CHECK(fs::read_text(out / "net" / "minecraft" / "src" / "Entity.java") == fs::read_text(src / "Entity.java"));   // copied as is
+    CB_CHECK(retromcp::find_field_repairs(tmp.path() / "absent.tiny", tmp.path() / "src", "client").empty());
+});
+
 }  // namespace

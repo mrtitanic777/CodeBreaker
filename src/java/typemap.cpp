@@ -84,7 +84,7 @@ const NameSet& runtime_headers() {
     static const NameSet kSet = {
         "ARBOcclusionQuery", "ARBVertexBufferObject", "AWTException", "AffineTransform", "Applet",
         // (early Indev's level dialog and LWJGL context, early Alpha's multiplayer invite cipher)
-        "JFileChooser", "JDialog", "FileNameExtensionFilter", "PixelFormat", "ContextAttribs", "Cipher", "CipherInputStream", "SecretKey",
+        "JFileChooser", "JDialog", "Window", "FileNameExtensionFilter", "PixelFormat", "ContextAttribs", "Cipher", "CipherInputStream", "SecretKey",
         "SecretKeyFactory", "PBEKeySpec", "PBEParameterSpec", "GeneralSecurityException",
         "ArrayIndexOutOfBoundsException", "BigInteger", "BindException", "BorderLayout", "BufferStrategy",
         "BufferUtils", "BufferedImage", "BufferedInputStream", "BufferedOutputStream", "BufferedReader",

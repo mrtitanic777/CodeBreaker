@@ -810,6 +810,24 @@ int port_tool(const ContextP& ctx, const cli::Args& a) {
         }
     }
 
+    // 1b. RetroMCP's mapping slips: a field mapped on a class that only inherits it leaves references the source does not declare. The
+    // conversion reads a repaired copy (the workspace is left as it is).
+    if (p.kind == port::SourceKind::RetroMcpWorkspace && p.workspace) {
+        const std::vector<console::retromcp::FieldRepair> repairs =
+            console::retromcp::find_field_repairs(*p.workspace / "conf" / "mappings.tiny", java_dir,
+                                                  fs::to_text(java_dir).find("minecraft_server") != std::string::npos ? "server" : "client");
+        if (!repairs.empty()) {
+            for (const auto& r : repairs)
+                jt_out(std::format("  mapping fix: {}.{} is {}.{} (the field is declared there)", r.owner, r.named, r.holder, r.declared));
+            const stdfs::path repaired = p.root / "_source";
+            std::error_code ec;
+            stdfs::remove_all(repaired, ec);
+            const std::size_t files = console::retromcp::write_repaired_source(java_dir, repaired, repairs);
+            jt_out(std::format("  {} file(s) repaired -> {}", files, jt_native(repaired)));
+            java_dir = repaired;
+        }
+    }
+
     // 2. convert
     begin("Converting the Java to C++");
     transpile::Options options;

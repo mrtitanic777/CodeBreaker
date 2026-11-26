@@ -3,7 +3,11 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
+#include <map>
+#include <set>
 #include <system_error>
+#include <tuple>
 
 #include <nlohmann/json.hpp>
 
@@ -243,6 +247,145 @@ std::optional<Workspace> find(const stdfs::path& dropped) {
         if (found.size() == 1) w.asset_index = found.front();
     }
     return w;
+}
+
+namespace {
+
+bool rm_word(char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || c == '_' || c == '$'; }
+
+// The fields a decompiled class declares at its top level (one tab in: RetroMCP's layout), and the class it extends.
+struct RmClass {
+    std::set<std::string> fields;
+    std::string parent;
+};
+
+RmClass rm_scan_class(const std::string& text, const std::string& name) {
+    static const std::set<std::string> kModifiers = {"public", "protected", "private", "static", "final", "transient", "volatile"};
+    RmClass c;
+    for (std::string_view line : text::lines(text)) {
+        if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+        if (c.parent.empty() && !line.starts_with("\t") && !line.starts_with(" ")) {   // the class line: `... class Name extends Parent ...`
+            const std::string head = "class " + name + " extends ";
+            if (const std::size_t at = line.find(head); at != std::string_view::npos) {
+                std::size_t i = at + head.size(), j = i;
+                while (j < line.size() && rm_word(line[j])) ++j;
+                c.parent = std::string(line.substr(i, j - i));
+            }
+            continue;
+        }
+        if (line.size() < 2 || line[0] != '\t' || line[1] == '\t' || line[1] == ' ') continue;   // one tab in: a member of the class
+        const std::size_t end = line.find_first_of("=;");
+        if (end == std::string_view::npos) continue;
+        const std::string_view decl = line.substr(1, end - 1);
+        if (decl.find_first_of("({}") != std::string_view::npos) continue;   // a method, a call, a block
+        std::vector<std::string> words;
+        for (std::size_t i = 0; i < decl.size();) {
+            if (!rm_word(decl[i])) { ++i; continue; }
+            std::size_t j = i;
+            while (j < decl.size() && rm_word(decl[j])) ++j;
+            words.emplace_back(decl.substr(i, j - i));
+            i = j;
+        }
+        std::erase_if(words, [](const std::string& w) { return kModifiers.contains(w); });
+        if (words.size() >= 2 && words.front() != "return") c.fields.insert(words.back());
+    }
+    return c;
+}
+
+// `.named` references in `text` (a member access, not a call) that become `.declared`.
+std::string rm_rewrite(const std::string& text, const std::string& named, const std::string& declared, std::size_t& hits) {
+    std::string out;
+    out.reserve(text.size());
+    std::size_t from = 0;
+    for (std::size_t at = text.find("." + named); at != std::string::npos; at = text.find("." + named, at + 1)) {
+        const std::size_t after = at + 1 + named.size();
+        if (after < text.size() && rm_word(text[after])) continue;   // a longer name
+        std::size_t k = after;
+        while (k < text.size() && (text[k] == ' ' || text[k] == '\t')) ++k;
+        if (k < text.size() && text[k] == '(') continue;   // a method of that name
+        out.append(text, from, at + 1 - from);
+        out += declared;
+        from = after;
+        ++hits;
+    }
+    out.append(text, from, std::string::npos);
+    return out;
+}
+
+}  // namespace
+
+std::vector<FieldRepair> find_field_repairs(const stdfs::path& tiny, const stdfs::path& java_src, const std::string& side) {
+    std::error_code ec;
+    if (!stdfs::is_regular_file(tiny, ec)) return {};
+    std::map<std::string, RmClass> classes;    // by simple name (RetroMCP's classes are one package, net.minecraft.src, but keep the first)
+    std::set<std::string> declared_anywhere;
+    std::string all;                            // every file's text: what the references are looked for in
+    for (const stdfs::path& f : rm_java_files(java_src)) {
+        const std::string text = fs::read_text(f);
+        const std::string name = fs::to_text(f.stem());
+        RmClass c = rm_scan_class(text, name);
+        declared_anywhere.insert(c.fields.begin(), c.fields.end());
+        classes.emplace(name, std::move(c));
+        all += text;
+        all += '\n';
+    }
+    // the tiny file: `tiny 2 0 named client [server]`, `c <named class> <obf>...`, `\tf <desc> <named> <obf>...`
+    const std::string tiny_text = fs::read_text(tiny);
+    std::vector<std::string_view> lines = text::lines(tiny_text);
+    if (lines.empty()) return {};
+    std::size_t column = 0;   // the obfuscated name's column among the namespaces (named is 0)
+    {
+        const std::vector<std::string_view> head = text::split(text::trim(lines[0]), '\t');
+        for (std::size_t i = 3; i < head.size(); ++i)
+            if (head[i] == side) column = i - 3;
+        if (column == 0) return {};
+    }
+    std::map<std::string, std::vector<FieldRepair>> by_name;
+    std::string owner;
+    for (std::size_t n = 1; n < lines.size(); ++n) {
+        std::string_view line = lines[n];
+        if (!line.empty() && line.back() == '\r') line.remove_suffix(1);
+        const std::vector<std::string_view> cols = text::split(line, '\t');
+        if (!cols.empty() && cols[0] == "c" && cols.size() > 1) {
+            owner = std::string(cols[1].substr(cols[1].rfind('/') + 1));
+            continue;
+        }
+        // a field of the class: "", "f", desc, named, obf...
+        if (cols.size() < 5 + column - 1 || cols[0] != "" || cols[1] != "f") continue;
+        const std::string named(cols[3]);
+        if (3 + column >= cols.size()) continue;
+        const std::string obf(cols[3 + column]);
+        if (named == obf || declared_anywhere.contains(named) || !classes.contains(owner)) continue;
+        std::string holder;
+        std::set<std::string> seen;
+        for (std::string c = owner; !c.empty() && classes.contains(c) && seen.insert(c).second; c = classes.at(c).parent) {
+            if (classes.at(c).fields.contains(obf)) { holder = c; break; }
+        }
+        if (holder.empty()) continue;
+        std::size_t hits = 0;
+        (void)rm_rewrite(all, named, obf, hits);
+        if (hits == 0) continue;
+        by_name[named].push_back({owner, named, obf, holder});
+    }
+    std::vector<FieldRepair> out;
+    for (auto& [named, list] : by_name) {
+        const bool agree = std::ranges::all_of(list, [&](const FieldRepair& r) { return r.declared == list.front().declared; });
+        if (agree) out.push_back(list.front());
+    }
+    std::ranges::sort(out, [](const FieldRepair& a, const FieldRepair& b) { return std::tie(a.owner, a.named) < std::tie(b.owner, b.named); });
+    return out;
+}
+
+std::size_t write_repaired_source(const stdfs::path& java_src, const stdfs::path& dest, const std::vector<FieldRepair>& repairs) {
+    std::size_t changed = 0;
+    for (const stdfs::path& f : rm_java_files(java_src)) {
+        std::string text = fs::read_text(f);
+        std::size_t hits = 0;
+        for (const FieldRepair& r : repairs) text = rm_rewrite(text, r.named, r.declared, hits);
+        if (hits != 0) ++changed;
+        fs::write_text(dest / f.lexically_relative(java_src), text);
+    }
+    return changed;
 }
 
 ResourceCopy copy_resources(const Workspace& workspace, const stdfs::path& dest, const Fetch& fetch) {

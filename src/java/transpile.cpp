@@ -153,6 +153,7 @@ void Conversion::write_platform_layer(std::span<const ir::JClass> classes, const
     // No static main? A concrete top-level Runnable game shell (Indev's Minecraft) gets a construct-and-run() entry; Alpha and Beta (an
     // abstract Minecraft plus MinecraftImpl) answer none here and keep the Beta-specific Main.reference.cpp.
     if (!emit_options.main_class) emit_options.runnable_game = platform_refs::detect_runnable_game_class(classes);
+    emit_options.classes = classes;
     emit_options.platform = platform_refs::platform_of(platform);
     const platform_refs::Emitted emitted = platform_refs::emit_references(out_dir_, reference_dir, emit_options);
     say(std::format("[platform] emitted {} platform references (agnostic layer, replacing stubs): {}", emitted.bases.size(), trn_names({emitted.bases.begin(), emitted.bases.end()})));

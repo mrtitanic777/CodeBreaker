@@ -89,6 +89,7 @@ const std::map<std::string, std::string, std::less<>>& external_packages() {
         {"FileDialog", "java.awt"},
         {"JFileChooser", "javax.swing"},
         {"JDialog", "javax.swing"},
+        {"Window", "java.awt"},
         {"Cipher", "javax.crypto"}, {"CipherInputStream", "javax.crypto"}, {"SecretKey", "javax.crypto"}, {"SecretKeyFactory", "javax.crypto"},
         {"PBEKeySpec", "javax.crypto.spec"}, {"PBEParameterSpec", "javax.crypto.spec"}, {"GeneralSecurityException", "java.security"},                         // (early Indev's level load/save dialog)
         {"FileNameExtensionFilter", "javax.swing.filechooser"},
@@ -737,10 +738,13 @@ void Runtime::build_stubs() {
         .forward_decls = {"File"},
         .extra = {"Point* getLocation() { static Point _p; return &_p; }", "static const int APPROVE_OPTION = 0;", "static const int CANCEL_OPTION = 1;"}});
     // the chooser's dialog: never shown (the chooser answers CANCEL), so its window calls do nothing
+    add_class_stub("Window.h", {.name = "Window", .void_methods = {"toFront", "setVisible", "dispose"}});
     add_class_stub("JDialog.h", {
         .name = "JDialog",
         .void_methods = {"setLocationRelativeTo", "setAlwaysOnTop", "addWindowFocusListener", "setVisible", "dispose", "toFront",
-            "setTitle", "setModal", "pack"}});
+            "setTitle", "setModal", "pack"},
+        .bases = {"Window"},
+        .includes = {"Window"}});
     add_class_stub("FileNameExtensionFilter.h", {.name = "FileNameExtensionFilter"});
     add_class_stub("PixelFormat.h", {   // (Beta 1.8: new PixelFormat().withDepthBits(24); the SDL window chooses its own)
         .name = "PixelFormat",

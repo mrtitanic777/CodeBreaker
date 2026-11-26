@@ -314,13 +314,17 @@ void Runtime::build_repeated_stubs() {
     for (const std::string_view name : kListeners) add_class_stub(std::string(name) + ".h", {.name = std::string(name), .void_methods = kListenerMethods});
     // java.awt event objects
     for (const std::string_view name : kEvents) {
-        add_class_stub(std::string(name) + ".h",
-                       {.name = std::string(name),
-                        .void_methods = {"consume"},
-                        .ret_methods = {{"getKeyCode", "int", "0"}, {"getKeyChar", "char", "0"}, {"getX", "int", "0"}, {"getY", "int", "0"},
-                                        {"getButton", "int", "0"}, {"getClickCount", "int", "0"}, {"getWheelRotation", "int", "0"},
-                                        {"getWindow", "void*", "0"}, {"getComponent", "void*", "0"}, {"isShiftDown", "bool", "false"},
-                                        {"isControlDown", "bool", "false"}, {"isAltDown", "bool", "false"}}});
+        ClassStub spec{.name = std::string(name),
+                       .void_methods = {"consume"},
+                       .ret_methods = {{"getKeyCode", "int", "0"}, {"getKeyChar", "char", "0"}, {"getX", "int", "0"}, {"getY", "int", "0"},
+                                       {"getButton", "int", "0"}, {"getClickCount", "int", "0"}, {"getWheelRotation", "int", "0"},
+                                       {"getWindow", "void*", "0"}, {"getComponent", "void*", "0"}, {"isShiftDown", "bool", "false"},
+                                       {"isControlDown", "bool", "false"}, {"isAltDown", "bool", "false"}}};
+        if (name == "WindowEvent") {   // the window focus went to (Indev 20100130's level chooser keeps its dialog in front): none here
+            spec.ret_methods.push_back({"getOppositeWindow", "Window*", "0"});
+            spec.includes.push_back("Window");
+        }
+        add_class_stub(std::string(name) + ".h", spec);
     }
     // layout managers (`new BorderLayout()` passed to setLayout): no-op stubs
     for (const std::string_view name : kLayouts) add_class_stub(std::string(name) + ".h", {.name = std::string(name)});

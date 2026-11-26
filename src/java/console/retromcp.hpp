@@ -74,4 +74,23 @@ std::optional<Workspace> find(const std::filesystem::path& dropped);
 // `extends JApplet` directly; the first in path order. "" when there is neither.
 std::string find_entry_class(const std::filesystem::path& java_src);
 
+// A field the workspace's mappings name on a class whose source does not hold it: RetroMCP renamed the references (`x.named`) but the
+// field is declared on an ancestor, still under its obfuscated name, so the decompiled source does not compile (Beta 1.6's
+// EntityLiving.numTicksToChaseTarget is Entity's `aC`, the entity id).
+struct FieldRepair {
+    std::string owner;      // the class the mapping names it on (EntityLiving)
+    std::string named;      // the mapped name the references use (numTicksToChaseTarget)
+    std::string declared;   // the name the declaration still has (aC)
+    std::string holder;     // the class that declares it (Entity)
+};
+
+// The field mappings of `tiny` (a mappings.tiny v2, the `side` column: "client" / "server") that the source under `java_src` breaks so:
+// the mapped name is declared as a field nowhere in the source and is referenced (`.named`), and the owner or one of its ancestors
+// declares the obfuscated name. A name two repairs disagree on is left alone. Sorted by owner, then name.
+std::vector<FieldRepair> find_field_repairs(const std::filesystem::path& tiny, const std::filesystem::path& java_src, const std::string& side);
+
+// Copies the .java files under `java_src` to `dest` with each repair's references (`.named`, not a call `.named(`) naming the declared
+// field. Returns how many files changed.
+std::size_t write_repaired_source(const std::filesystem::path& java_src, const std::filesystem::path& dest, const std::vector<FieldRepair>& repairs);
+
 }  // namespace cb::java::console::retromcp

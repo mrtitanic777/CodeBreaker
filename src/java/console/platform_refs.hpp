@@ -88,7 +88,8 @@ std::string runnable_ctor_args(const ir::JClass& cls, bool canvas = false);
 std::string generate_runnable_entry_point(const ir::JClass& cls);
 // The PC entry for such a shell: ordered static init, the shell made with NULL AWT args and the window's size (854x480
 // unless Common.h defines SCREEN_WIDTH/HEIGHT), run(), then the wait for its non-daemon threads (as generate_pc_entry_point).
-std::string generate_pc_runnable_entry_point(const ir::JClass& cls);
+// `classes`: the program's classes (the shell's session class is looked up there for its constructor; none: no session is made).
+std::string generate_pc_runnable_entry_point(const ir::JClass& cls, std::span<const ir::JClass> classes = {});
 
 // Classify every reference so NONE can silently fail to integrate (the GLU flat-world bug: a GLU.reference.cpp existed
 // but its GLU.reference.h did NOT, so emit_references -- which keys off .h -- never emitted it and the game kept the
@@ -118,6 +119,7 @@ struct EmitOptions {
     std::optional<std::string> main_class;
     // A concrete Runnable shell with no static main (see detect_runnable_game_class); used when there is no main class.
     const ir::JClass* runnable_game = nullptr;
+    std::span<const ir::JClass> classes;   // the program's classes (the PC Runnable entry reads the session class's constructors)
     Platform platform = Platform::Xbox360;
 };
 

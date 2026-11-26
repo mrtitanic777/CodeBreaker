@@ -367,6 +367,7 @@
   "UnknownHostException",
   "UnsupportedOperationException",
   "WindowAdapter",
+  "Window",
   "WindowEvent",
   "WindowFocusListener",
   "WindowListener",
