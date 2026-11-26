@@ -519,6 +519,7 @@ R"CBJRT(#ifndef CLASS_H
 // ordering are REAL: `X.class` (Class(typeid(X))) and `obj.getClass()` (Class(typeid(*obj)))
 // agree for the same runtime type. newInstance/getConstructor have no reflection equivalent and
 // return 0 -- the class-keyed registries (EntityList/Packet/TileEntity) supply explicit factories.
+#include <map>
 #include <string>
 #include <typeinfo>
 #include <vector>
@@ -535,6 +536,14 @@ InputStream* J2X_getResourceAsStream(const char* name);   // FileIO.cpp: "/x.png
 // Class::getSuperclass). Lets getSuperclass turn a base NAME (from _j2xBases) back into a Class*.
 class Class;
 inline std::vector<Class*>& _j2xClassReg() { static std::vector<Class*> reg; return reg; }
+// The same registry by type, for j2xClassOf: a lookup is a tree search, not a walk of every class. FIXED BUG classof-linear-scan:
+// Beta 1.8's terrain generator calls this.worldObj.getClass() (javac's null check of an inlined constant) once per block column;
+// the walk under the lock made a new world take minutes. (type_info::before orders types; C++03, so the Xbox 360 compiler takes it.)
+struct _J2xTypeLess { bool operator()(const std::type_info* a, const std::type_info* b) const { return a->before(*b) != 0; } };
+inline std::map<const std::type_info*, Class*, _J2xTypeLess>& _j2xClassIndex() {
+	static std::map<const std::type_info*, Class*, _J2xTypeLess> index;
+	return index;
+}
 // FIXED BUG classreg-multithread-race: j2xClassOf/getSuperclass touch this shared registry from the
 // main thread (RTTI on every tick) AND the MP network reader thread (packet reflection). Serialize
 // the lookup+append with one program-wide CS. Uncontended in single-thread SP. (j2xPrepopulateClassReg,
@@ -646,12 +655,14 @@ public:
 // `Class(typeid(X))` dangling bug) and `a.class == b.class` is correct pointer identity.
 inline Class* j2xClassOf(const std::type_info& ti) {
 	CRITICAL_SECTION* _cs = _j2xClassRegCS(); EnterCriticalSection(_cs);
-	std::vector<Class*>& reg = _j2xClassReg();             // shared registry (see getSuperclass); leaked = program-lifetime
-	for (unsigned i = 0; i < reg.size(); ++i) {
-		const std::type_info* rt = reg[i]->rawType();
-		if (rt && *rt == ti) { LeaveCriticalSection(_cs); return reg[i]; }
-	}
-	Class* c = new Class(ti); reg.push_back(c); LeaveCriticalSection(_cs); return c;
+	std::map<const std::type_info*, Class*, _J2xTypeLess>& index = _j2xClassIndex();
+	std::map<const std::type_info*, Class*, _J2xTypeLess>::iterator it = index.find(&ti);
+	if (it != index.end()) { Class* found = it->second; LeaveCriticalSection(_cs); return found; }
+	Class* c = new Class(ti);                              // shared registry (see getSuperclass); leaked = program-lifetime
+	_j2xClassReg().push_back(c);
+	index[&ti] = c;
+	LeaveCriticalSection(_cs);
+	return c;
 }
 // free cross-comparisons so `Foo.class == obj->getClass()` (Class* == Class value) also works
 inline bool operator==(const Class* a, const Class& b) { return a && *a == b; }
