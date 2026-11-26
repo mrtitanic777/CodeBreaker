@@ -3,6 +3,10 @@
 //
 //   Windows 32-bit (PE, x86), Windows 16-bit (NE), drivers (LE/LX), DOS     Opening, Disassembling (the NASM / MASM-style source that builds back
 //                                                                           into the original: source/pe_writer ...), Decompiling (C)
+//   Windows 64-bit (PE32+, x64)                                             Opening, Disassembling (NASM source that builds back into the
+//                                                                           original: source/pe64_writer); no C yet
+//   a .NET program (a PE with a CLR header, 32- or 64-bit)                  Opening, Decompiling (its C#: ILSpy, after de4dot when it was
+//                                                                           obfuscated; xna/run)
 //   a console cartridge, disc executable or snapshot of a registered lane   Opening, Disassembling (its machine's assembly source)
 //   a disc image, floppy or hard-disk image, cabinet                        Unpacking (its programs taken out), Disassembling (each program through
 //                                                                           the route of its own kind)
@@ -39,9 +43,11 @@
 #include "source/dos_writer.hpp"
 #include "source/le_writer.hpp"
 #include "source/ne_writer.hpp"
+#include "source/pe64_writer.hpp"
 #include "source/pe_writer.hpp"
 #include "translate/translate_file.hpp"
 #include "verify/lanes/image_lane.hpp"
+#include "xna/run.hpp"
 
 namespace cb::app::convert {
 
@@ -50,6 +56,7 @@ namespace stdfs = std::filesystem;
 namespace {
 
 constexpr std::uint16_t kCvMachineX86 = 0x014C;
+constexpr std::uint16_t kCvMachineX64 = 0x8664;
 
 // ---- the tools every route finds the same way the commands do ------------------------------------------------------------------
 
@@ -120,7 +127,7 @@ void cv_keep_dos_side_files(const stdfs::path& scratch, const stdfs::path& work)
 // The program the writer assembled from its source to check itself, kept as the conversion's built program: <work>/build/<the input's own
 // name>, with BUILD.txt saying how it was made, whether it is the original byte for byte, and what it still needs to run. Nothing when the
 // assembler built nothing.
-void cv_keep_built(const std::optional<stdfs::path>& image, bool same, const stdfs::path& input, const stdfs::path& work) {
+void cv_keep_built(const std::optional<stdfs::path>& image, bool same, const stdfs::path& input, const stdfs::path& work, bool with_c = true) {
     if (!image || !stdfs::is_regular_file(*image)) return;
     const stdfs::path folder = work / "build";
     stdfs::create_directories(folder);
@@ -134,9 +141,10 @@ void cv_keep_built(const std::optional<stdfs::path>& image, bool same, const std
                  : "It is NOT the original byte for byte: the assembler built it, but some bytes differ, so it may not run as the original does.\n";
     note += std::format("\nTo build it again, in the folder above this one:\n\n    codebreaker nasm -f bin -o build\\{} {}\n\n", name, asm_name);
     note += "To run it, it needs what the original needs beside it: the DLLs it loads and any plugin folders (a Qt program's platforms\\, for\n"
-            "one), copied from where the original is installed.\n\n"
-            "The .c files are a readable reconstruction of the same program. They are not what this program was built from, and they do not\n"
-            "build it yet.\n";
+            "one), copied from where the original is installed.\n";
+    if (with_c)
+        note += "\nThe .c files are a readable reconstruction of the same program. They are not what this program was built from, and they do not\n"
+                "build it yet.\n";
     fs::write_text(folder / "BUILD.txt", note);
 }
 
@@ -189,8 +197,11 @@ Route cv_mz_route(CvMz kind, std::string route_name) {
         r.enter(State::Opening);
         if (kind == CvMz::Pe) {
             const formats::pe::Image image = formats::pe::Image::open(input);
-            if (image.header().machine != kCvMachineX86)
-                throw NotConvertible("This is a Windows program for a processor other than the 32-bit x86. CodeBreaker converts the 32-bit x86 kind.");
+            if (image.header().machine != kCvMachineX86) {
+                const char* label = formats::pe::machine_label(image.header().machine);
+                throw NotConvertible(std::format("This is a Windows program for the {} processor. CodeBreaker converts Windows programs for 32-bit x86 and x64.",
+                                                 label != nullptr ? label : std::format("{:#06x}", image.header().machine)));
+            }
         }
         r.count(1, 1, fs::to_text(input.filename()));
 
@@ -240,6 +251,84 @@ Route cv_mz_route(CvMz kind, std::string route_name) {
         cv_decompile(r, config, input, work);
     };
     return route;
+}
+
+// A 64-bit Windows program: its NASM source (source/pe64_writer), and the program assembled from it to check it.
+Route cv_pe64_route() {
+    Route route;
+    route.name = "pe64";
+    route.stages = {State::Opening, State::Disassembling};
+    route.run = [](Reporter& r, const stdfs::path& input, const stdfs::path& work) {
+        r.enter(State::Opening);
+        const Bytes bytes = fs::read_file(input);
+        r.count(1, 1, fs::to_text(input.filename()));
+
+        r.enter(State::Disassembling);
+        const stdfs::path scratch = cv_scratch(work);
+        source::pe64_writer::Options o;
+        o.name = cv_lower(fs::to_text(input.filename()));
+        const source::image_writer::Written done = source::pe64_writer::write(bytes, fs::to_text(input.filename()), scratch, o);
+        r.check();
+        if (done.source.empty()) throw NotConvertible("No source could be written for this 64-bit program: " + (done.notes.empty() ? std::string("the writer gave no reason") : done.notes.front()));
+        cv_keep(done.source, work);
+        cv_keep_built(done.built, done.same, input, work, false);
+        r.count(done.functions.size(), done.functions.size(), std::format("{} functions", done.functions.size()));
+        std::error_code ec;
+        stdfs::remove_all(scratch, ec);
+    };
+    return route;
+}
+
+// A .NET program: its C#, as ILSpy writes it (a project: .csproj and a .cs file per class), after de4dot when an obfuscator was over it.
+Route cv_dotnet_route() {
+    Route route;
+    route.name = "dotnet";
+    route.stages = {State::Opening, State::Decompiling};
+    route.run = [](Reporter& r, const stdfs::path& input, const stdfs::path& work) {
+        const config::Config& config = config::current();
+        r.enter(State::Opening);
+        xna::run::Tools tools;
+        const auto setting = [&config](std::string_view key) -> std::optional<stdfs::path> {
+            const std::string value = config.text(key);
+            if (value.empty()) return std::nullopt;
+            return fs::from_text(value);
+        };
+        tools.ilspycmd = setting("ilspycmd");
+        tools.de4dot = setting("de4dot");
+        tools.checkout_root = config.checkout_root();
+        tools.state = config.state();
+        try {
+            (void)xna::run::find_ilspycmd(tools);
+        } catch (const NotFoundError&) {
+            throw NotConvertible("This is a .NET program. Turning it back into C# needs ILSpy, which is not set up on this computer: install it with "
+                                 "\"dotnet tool install -g ilspycmd\", or name it in Settings.");
+        }
+        r.count(1, 1, fs::to_text(input.filename()));
+
+        r.enter(State::Decompiling);
+        r.count(0, 1, "ILSpy");
+        const xna::run::Cleaned cleaned = xna::run::deobfuscated(input, tools);
+        r.check();
+        xna::run::decompile(cleaned.path, work, tools);
+        r.check();
+        std::size_t files = 0;
+        std::error_code ec;
+        for (stdfs::recursive_directory_iterator it(work, ec), end; !ec && it != end; it.increment(ec))
+            if (cv_lower(fs::to_text(it->path().extension())) == ".cs") ++files;
+        if (files == 0) throw NotConvertible("ILSpy wrote no C# for this .NET program.");
+        r.count(1, 1, std::format("{} C# files{}", files, cleaned.obfuscator ? " (cleaned of " + *cleaned.obfuscator + " first)" : ""));
+    };
+    return route;
+}
+
+// Is it a PE32+ for x64? (Read from the headers; anything unreadable is not.)
+bool cv_is_pe64(const stdfs::path& input) {
+    try {
+        const formats::pe::Image image = formats::pe::Image::open(input);
+        return image.header().is_plus && image.header().machine == kCvMachineX64;
+    } catch (const std::exception&) {
+        return false;
+    }
 }
 
 // ---- consoles --------------------------------------------------------------------------------------------------------------------
@@ -413,7 +502,10 @@ Plan cv_plan(const stdfs::path& input) {
     if (lane) {
         if (plan.what.empty()) plan.what = std::string("Windows or DOS program (") + formats::detect::lane_name(*lane) + ")";
         switch (*lane) {
-            case formats::detect::Lane::Pe: plan.route = cv_mz_route(CvMz::Pe, "pe"); break;
+            case formats::detect::Lane::Pe:
+                // (.NET first: its code is the CLR's, whatever processor the header names)
+                plan.route = formats::pe::is_dotnet_file(input) ? cv_dotnet_route() : cv_is_pe64(input) ? cv_pe64_route() : cv_mz_route(CvMz::Pe, "pe");
+                break;
             case formats::detect::Lane::Ne: plan.route = cv_mz_route(CvMz::Ne, "ne"); break;
             case formats::detect::Lane::Le: plan.route = cv_mz_route(CvMz::Le, "le"); break;
             case formats::detect::Lane::Dos: plan.route = cv_mz_route(CvMz::Dos, "dos"); break;

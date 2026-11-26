@@ -411,6 +411,21 @@ Open-source homebrew with published source, binaries only (GitHub releases), kep
 
 Only what flow reaches (calls, branches, relocation targets, and stretches that begin with a function prologue) is code; jump tables are not followed. Most sampled runs end at a data abort, because a function is called with made-up pointers.
 
+## Windows x64 (64-bit PE32+, the pe64 writer)
+
+64-bit Windows programs from this machine's own Windows 11 (build 26300) `C:\Windows\System32`, read in place (never copied into the repository),
+written as NASM source by `source/pe64_writer` (over `source/x64_writer`) with `codebreaker pe-source` and assembled again by x86asm
+(2026-11-26). No C yet (phase 2); the functions are the ones flow reaches from the entry, the exports and `.pdata`.
+
+| Program | Functions | Result |
+|---|---|---|
+| notepad.exe | 466 | rebuilds identical (8 s) |
+| calc.exe | 31 | rebuilds identical (1 s) |
+| cmd.exe | 883 | rebuilds identical (9 s) |
+| kernel32.dll | 3,233 | rebuilds identical (26 s) |
+| user32.dll | not counted | rebuilds identical (39 s) |
+| ntdll.dll | 6,313 | rebuilds identical (2 min 13 s) |
+
 ## PlayStation 4, PlayStation 5 and Xbox One / Series homebrew (the ps4, ps5 and xboxone lanes)
 
 Open-source homebrew with published source and a stated licence, binaries only (GitHub releases), kept in `GitHub/homebrew-samples/{ps4,ps5,xboxone}/` (never run on this machine,

@@ -14,6 +14,7 @@
 #include "formats/pe_functions.hpp"
 #include "source/assembly.hpp"
 #include "source/image_writer.hpp"
+#include "source/pe64_writer.hpp"
 
 namespace cb::source::pe_writer {
 namespace {
@@ -143,6 +144,9 @@ std::string_view usage() {
     return R"(pe_writer -- a 32-bit Windows program as assembly source that builds back into it, byte for byte.
 
     pe-source <program> [--out DIR] [--stub SOURCE.ASM] [--keep-stub]
+
+A 64-bit program (an x64 PE32+) is written by source/pe64_writer instead: one NASM source, `bits 64`,
+the same way; its stub is kept as bytes and its relocated places are still numbers.
 
 The whole file is one NASM source assembled flat (-f bin): one section for the headers and one
 for every section of the image, each placed at its file offset (start=) and at its address
@@ -712,6 +716,16 @@ Result reconstruct(const std::filesystem::path& program, const std::filesystem::
     return r;
 }
 
+// Is it a PE32+ for x64 (written by source/pe64_writer)? Anything unreadable is not.
+static bool is_pe64(const std::filesystem::path& program) {
+    try {
+        const formats::pe::Image image = formats::pe::Image::open(program);
+        return image.header().is_plus && image.header().machine == formats::pe::kMachineX64;
+    } catch (const std::exception&) {
+        return false;
+    }
+}
+
 int command(std::span<const std::string> args, const Environment& env, const std::function<void(std::string_view)>& say) {
     std::vector<std::string> programs;
     std::optional<std::string> out, stub;
@@ -733,6 +747,17 @@ int command(std::span<const std::string> args, const Environment& env, const std
     }
     const std::filesystem::path program = fs::from_text(programs.front());
     const std::filesystem::path outdir = out ? fs::from_text(*out) : env.state / "pe_source" / text::lower(fs::to_text(program.stem()));
+    if (is_pe64(program)) {
+        const image_writer::Written r = pe64_writer::reconstruct(program, outdir, {.name = text::lower(fs::to_text(program.filename())), .kind = {}});
+        if (r.source.empty()) {
+            say(std::format("{}: {}", fs::to_text(program.filename()), r.notes.empty() ? "no source written" : r.notes.front()));
+            return 1;
+        }
+        say(std::format("{}: 64-bit (x64) program, {} functions, {} of {} bytes as instructions\nsource  {}\nrebuilt {}", fs::to_text(program.filename()),
+                        r.functions.size(), r.code_bytes, r.image_bytes, fs::to_text(r.source),
+                        r.same ? "the original, byte for byte" : r.linked ? "but NOT the original byte for byte" : "no: the source does not assemble"));
+        return r.same ? 0 : 1;
+    }
     Options options{.stub = SearchStub{}, .find_stub = env.find_stub, .say = say};
     if (keep_stub) options.stub = KeepStub{};
     else if (stub) options.stub = std::filesystem::absolute(fs::from_text(*stub));

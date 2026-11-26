@@ -1,5 +1,6 @@
 // Tests of the conversion pipeline (convert.hpp): the state machine over stand-in routes (stage order, percentages, cancel, failure, the numbered
-// output folder), and the real routes on small inputs the tests build or the repository keeps (a Game Boy cartridge, a 32-bit DLL, random bytes).
+// output folder), and the real routes on small inputs the tests build or the repository keeps (a Game Boy cartridge, a 32-bit DLL, a 64-bit
+// program, random bytes).
 #include "app/convert.hpp"
 
 #include <algorithm>
@@ -8,6 +9,7 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "formats/gb.hpp"
+#include "formats/xboxone_test_image.hpp"
 
 namespace cb::app::convert {
 namespace {
@@ -359,6 +361,49 @@ CB_TEST("app.convert.a_32_bit_dll_is_disassembled_and_decompiled", [] {
     bool counted = false;   // real counts from the decompiler: functions of the total
     for (const Progress& p : f.seen) counted = counted || (p.state == State::Decompiling && p.total > 0 && p.done == p.total);
     CB_CHECK(counted);
+});
+
+CB_TEST("app.convert.a_64_bit_windows_program_becomes_assembly_source_that_builds_it_again", [] {
+    CvFixture f;
+    f.input = f.dir.path() / "demo.exe";
+    fs::write_file(f.input, formats::xboxone_test::pe(false));   // (an x64 PE32+ without the app-sandbox flag: an ordinary Windows program)
+    const Outcome done = convert(f.request(), standard_planner(), f.listener(), f.cancel);
+    CB_CHECK(done.state == State::Done);
+    CB_CHECK_EQ(done.route, "pe64");
+    const std::vector<State> expected = {State::Identifying, State::Opening, State::Disassembling, State::Writing, State::Done};
+    CB_CHECK(done.stages == expected);
+    CB_CHECK(f.percent_never_goes_down());
+    CB_CHECK(stdfs::exists(done.output / "demo.exe.asm"));
+    CB_CHECK(fs::read_text(done.output / "demo.exe.asm").find("bits 64") != std::string::npos);
+    CB_CHECK(fs::read_file(done.output / "build" / "demo.exe") == fs::read_file(f.input));
+    const std::string note = fs::read_text(done.output / "build" / "BUILD.txt");
+    CB_CHECK(note.find("It is the original program byte for byte") != std::string::npos);
+    CB_CHECK(note.find(".c files") == std::string::npos);   // (no C for a 64-bit program yet)
+});
+
+CB_TEST("app.convert.a_windows_program_for_arm64_is_refused_and_names_the_processor", [] {
+    CvFixture f;
+    Bytes pe = formats::xboxone_test::pe(false);
+    const std::uint32_t lfanew = pe[0x3C] | pe[0x3D] << 8;
+    formats::xboxone_test::put16(pe, lfanew + 4, 0xAA64);
+    f.input = f.dir.path() / "arm.exe";
+    fs::write_file(f.input, pe);
+    const Outcome done = convert(f.request(), standard_planner(), f.listener(), f.cancel);
+    CB_CHECK(done.state == State::Unsupported);
+    CB_CHECK(done.message.find("arm64") != std::string::npos);
+});
+
+CB_TEST("app.convert.a_dotnet_program_goes_to_csharp_not_to_assembly", [] {
+    CvFixture f;
+    Bytes pe = formats::xboxone_test::pe(false);
+    formats::xboxone_test::put32(pe, 0x98 + 112 + 14 * 8, 0x2000);   // a CLR header (the bytes there are not one: ILSpy, when it is set up, fails)
+    formats::xboxone_test::put32(pe, 0x98 + 112 + 14 * 8 + 4, 0x48);
+    f.input = f.dir.path() / "app.exe";
+    fs::write_file(f.input, pe);
+    const Outcome done = convert(f.request(), standard_planner(), f.listener(), f.cancel);
+    CB_CHECK_EQ(done.route, "dotnet");
+    CB_CHECK(done.state != State::Done);
+    CB_CHECK(!stdfs::exists(f.root) || !stdfs::exists(done.output / "app.exe.asm"));
 });
 
 // ---- a language other than Original: translating through the hub ---------------------------------------------------------------------------
