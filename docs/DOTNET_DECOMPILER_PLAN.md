@@ -51,6 +51,15 @@ Total: about 83,000 C# lines, about 89,000 C++ lines with the metadata reader.
 Not ported, as nothing CodeBreaker does needs them: PDB writing (`DebugInfo/`), the solution writer (`Solution/`),
 `Instrumentation/`, `DebugSteps/`, single-file bundles (`SingleFileBundle.cs`) and WebCil. Any can follow later.
 
+## Status
+
+- Stage 0 (done 2026-11-26): `dotnet/metadata`; its dump matches System.Reflection.Metadata's line for line on the test assemblies, CoreLib 9,
+  Framework 2.0, WinForms and XNA 3.1.
+- Stages 1 and 2 (done 2026-11-26, except the universal assembly resolver and debug information): `dotnet/decompiler/{metadata,
+  disassembler,il,output,typesystem,util}`, about 3,100 lines (and .NET's Unicode category table); `show_il` is `ilspycmd -il` byte for byte on the test assemblies and seven
+  real ones up to CoreLib's 1.39 million lines, ten times as fast. .NET's own text rules it needs (Unicode categories, the "R" number
+  format) are copied from .NET by `testdata/oracle/NetText` and proved on 16,000 values.
+
 ## How each stage is proved
 
 - **The oracle.** A small C# program, `src/dotnet/testdata/oracle/` (like Java's `GraphDump.java`), built against

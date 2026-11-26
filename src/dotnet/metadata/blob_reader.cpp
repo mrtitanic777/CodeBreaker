@@ -3,11 +3,12 @@
 #include "dotnet/metadata/blob_reader.hpp"
 
 #include <bit>
+#include <stdexcept>
 
 namespace cb::dotnet::metadata {
 
 void BlobReader::need(std::size_t count) const {
-    if (count > bytes_.size() - pos_) throw BadImageFormatError(base_ + pos_, "a read past the end of a blob");
+    if (count > bytes_.size() - pos_) throw BadImageFormatError(base_ + pos_, "Read out of bounds.");
 }
 
 void BlobReader::set_offset(int offset) {
@@ -77,7 +78,7 @@ std::optional<int> BlobReader::try_read_compressed_integer() {
 int BlobReader::read_compressed_integer() {
     const std::size_t at = pos_;
     if (const auto v = try_read_compressed_integer()) return *v;
-    throw BadImageFormatError(base_ + at, "an invalid compressed integer");
+    throw BadImageFormatError(base_ + at, "Invalid compressed integer.");
 }
 
 int BlobReader::read_compressed_signed_integer() {
@@ -118,6 +119,28 @@ std::optional<std::string> BlobReader::read_serialized_string() {
     }
     const int length = read_compressed_integer();
     return read_utf8(length);
+}
+
+ConstantValue BlobReader::read_constant(ConstantTypeCode code) {
+    switch (code) {
+    case ConstantTypeCode::Boolean: return read_boolean();
+    case ConstantTypeCode::Char: return read_char();
+    case ConstantTypeCode::SByte: return read_sbyte();
+    case ConstantTypeCode::Byte: return read_byte();
+    case ConstantTypeCode::Int16: return read_int16();
+    case ConstantTypeCode::UInt16: return read_uint16();
+    case ConstantTypeCode::Int32: return read_int32();
+    case ConstantTypeCode::UInt32: return read_uint32();
+    case ConstantTypeCode::Int64: return read_int64();
+    case ConstantTypeCode::UInt64: return read_uint64();
+    case ConstantTypeCode::Single: return read_single();
+    case ConstantTypeCode::Double: return read_double();
+    case ConstantTypeCode::String: return read_utf16(remaining_bytes());
+    case ConstantTypeCode::NullReference:
+        if (read_uint32() != 0) throw BadImageFormatError(base_ + pos_, "a null reference constant that is not zero");
+        return std::monostate{};
+    default: throw std::out_of_range("typeCode");
+    }
 }
 
 }  // namespace cb::dotnet::metadata

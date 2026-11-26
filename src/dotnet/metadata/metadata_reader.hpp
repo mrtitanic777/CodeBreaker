@@ -512,6 +512,29 @@ private:
     MethodSpecificationHandle h_;
 };
 
+// A namespace of the module (System.Reflection.Metadata's NamespaceDefinition): its last name part, its parent, the namespaces in it and
+// its top-level types and exported types, in table order. The root is the global namespace (name "").
+struct NamespaceDefinitionHandle {
+    std::uint32_t index = 0;   // 1-based; 0 is nil, 1 the root
+    bool is_nil() const { return index == 0; }
+    friend bool operator==(NamespaceDefinitionHandle, NamespaceDefinitionHandle) = default;
+};
+
+class NamespaceDefinition {
+public:
+    NamespaceDefinition(const MetadataReader* md, NamespaceDefinitionHandle h) : md_(md), h_(h) {}
+    std::string_view name() const;        // the last part ("Generic" of System.Collections.Generic)
+    std::string_view full_name() const;   // the whole name
+    NamespaceDefinitionHandle parent() const;
+    const std::vector<NamespaceDefinitionHandle>& namespace_definitions() const;
+    const std::vector<TypeDefinitionHandle>& type_definitions() const;
+    const std::vector<ExportedTypeHandle>& exported_types() const;
+
+private:
+    const MetadataReader* md_;
+    NamespaceDefinitionHandle h_;
+};
+
 // ---- the reader ---------------------------------------------------------------------------------------------------------
 
 class MetadataReader {
@@ -599,6 +622,10 @@ public:
     }
     MethodSpecification get_method_specification(MethodSpecificationHandle h) const { return MethodSpecification(this, h); }
 
+    NamespaceDefinitionHandle get_namespace_definition_root_handle() const { return NamespaceDefinitionHandle{1}; }
+    NamespaceDefinition get_namespace_definition_root() const { return NamespaceDefinition(this, NamespaceDefinitionHandle{1}); }
+    NamespaceDefinition get_namespace_definition(NamespaceDefinitionHandle h) const { return NamespaceDefinition(this, h); }
+
     // The custom attributes of any entity, in table order.
     std::vector<CustomAttributeHandle> get_custom_attributes(EntityHandle parent) const;
 
@@ -623,6 +650,15 @@ public:
     std::uint32_t list_owner(TableIndex parent, int column, TableIndex member, TableIndex ptr, std::uint32_t member_row) const;
     // The nested types of an enclosing type (from NestedClass, in its order).
     const std::vector<TypeDefinitionHandle>& nested_types_of(TypeDefinitionHandle enclosing) const;
+
+    struct NamespaceNode {
+        std::string full_name, name;
+        NamespaceDefinitionHandle parent;
+        std::vector<NamespaceDefinitionHandle> namespaces;
+        std::vector<TypeDefinitionHandle> types;
+        std::vector<ExportedTypeHandle> exported_types;
+    };
+    const NamespaceNode& namespace_node(NamespaceDefinitionHandle h) const;
 
 private:
     struct Table {
@@ -655,6 +691,9 @@ private:
     bool column_in_order(TableIndex t, int column) const;
     mutable std::mutex order_mutex_;
     mutable std::array<std::array<std::int8_t, 10>, kTableCount> order_{};   // per column: 0 not yet known, 1 in order, 2 not
+    NamespaceDefinitionHandle namespace_for(const std::string& full_name) const;
+    mutable std::once_flag namespaces_once_;
+    mutable std::vector<NamespaceNode> namespaces_;
     mutable std::once_flag nested_once_;
     mutable std::unordered_map<std::uint32_t, std::vector<TypeDefinitionHandle>> nested_;
     mutable std::once_flag ptr_once_[5];

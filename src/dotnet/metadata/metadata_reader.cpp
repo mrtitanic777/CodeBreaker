@@ -297,6 +297,58 @@ std::vector<CustomAttributeHandle> MetadataReader::get_custom_attributes(EntityH
     return to_attributes(rows_where(TI::CustomAttribute, 0, *v));
 }
 
+// ---- the namespace tree --------------------------------------------------------------------------------------------------
+
+NamespaceDefinitionHandle MetadataReader::namespace_for(const std::string& full_name) const {
+    NamespaceDefinitionHandle current{1};
+    if (full_name.empty()) return current;
+    std::size_t start = 0;
+    while (true) {
+        const std::size_t dot = full_name.find('.', start);
+        const std::string prefix = full_name.substr(0, dot);
+        NamespaceDefinitionHandle found;
+        for (const NamespaceDefinitionHandle c : namespaces_[current.index - 1].namespaces)
+            if (namespaces_[c.index - 1].full_name == prefix) found = c;
+        if (found.is_nil()) {
+            NamespaceNode n;
+            n.full_name = prefix;
+            n.name = full_name.substr(start, dot == std::string::npos ? std::string::npos : dot - start);
+            n.parent = current;
+            namespaces_.push_back(std::move(n));
+            found = NamespaceDefinitionHandle{static_cast<std::uint32_t>(namespaces_.size())};
+            namespaces_[current.index - 1].namespaces.push_back(found);
+        }
+        current = found;
+        if (dot == std::string::npos) return current;
+        start = dot + 1;
+    }
+}
+
+const MetadataReader::NamespaceNode& MetadataReader::namespace_node(NamespaceDefinitionHandle h) const {
+    std::call_once(namespaces_once_, [&] {
+        namespaces_.push_back(NamespaceNode{});   // the root
+        for (const TypeDefinitionHandle t : type_definitions()) {
+            const TypeDefinition d = get_type_definition(t);
+            if (d.is_nested()) continue;
+            namespaces_[namespace_for(std::string(get_string(d.namespace_()))).index - 1].types.push_back(t);
+        }
+        for (const ExportedTypeHandle e : exported_types()) {
+            const ExportedType d = get_exported_type(e);
+            if (d.implementation().kind() == HandleKind::ExportedType) continue;   // a nested type
+            namespaces_[namespace_for(std::string(get_string(d.namespace_()))).index - 1].exported_types.push_back(e);
+        }
+    });
+    if (h.index == 0 || h.index > namespaces_.size()) throw UsageError("dotnet metadata: a namespace handle of another module");
+    return namespaces_[h.index - 1];
+}
+
+std::string_view NamespaceDefinition::name() const { return md_->namespace_node(h_).name; }
+std::string_view NamespaceDefinition::full_name() const { return md_->namespace_node(h_).full_name; }
+NamespaceDefinitionHandle NamespaceDefinition::parent() const { return md_->namespace_node(h_).parent; }
+const std::vector<NamespaceDefinitionHandle>& NamespaceDefinition::namespace_definitions() const { return md_->namespace_node(h_).namespaces; }
+const std::vector<TypeDefinitionHandle>& NamespaceDefinition::type_definitions() const { return md_->namespace_node(h_).types; }
+const std::vector<ExportedTypeHandle>& NamespaceDefinition::exported_types() const { return md_->namespace_node(h_).exported_types; }
+
 // ---- the heaps ------------------------------------------------------------------------------------------------------------
 
 ByteView MetadataReader::heap(HeapIndex h) const {

@@ -138,6 +138,8 @@ constexpr std::uint32_t get_token(EntityHandle h) { return h.token(); }
 constexpr std::uint32_t get_token(Handle h) {
     return h.kind() == HandleKind::UserString ? 0x70000000u | h.value() : static_cast<std::uint32_t>(h.kind()) << 24 | h.value();
 }
+template <HandleKind K>
+constexpr std::uint32_t get_token(RowHandle<K> h) { return EntityHandle(h).token(); }
 constexpr EntityHandle entity_handle(std::uint32_t token) { return EntityHandle(token); }
 constexpr std::uint32_t get_row_number(EntityHandle h) { return h.row(); }
 template <HandleKind K>

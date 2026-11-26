@@ -12,6 +12,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -33,6 +34,20 @@ struct CorHeader {
     std::uint32_t entry_point_token_or_relative_virtual_address = 0;
     DirectoryEntry resources_directory, strong_name_signature_directory, code_manager_table_directory, vtable_fixups_directory,
         export_address_table_jumps_directory, managed_native_header_directory;
+};
+
+// A section header as System.Reflection.Metadata's SectionHeader gives it.
+struct SectionHeader {
+    std::string name;
+    std::uint32_t virtual_size = 0, virtual_address = 0, size_of_raw_data = 0, pointer_to_raw_data = 0;
+};
+
+// The optional header's fields upstream reads (PEHeader).
+struct PEHeader {
+    std::uint16_t magic = 0;   // 0x10B PE32, 0x20B PE32+
+    std::uint64_t image_base = 0, size_of_stack_reserve = 0;
+    std::uint32_t file_alignment = 0;
+    std::uint16_t subsystem = 0;
 };
 
 enum class ExceptionRegionKind : std::uint16_t { Catch = 0, Filter = 1, Finally = 2, Fault = 4 };
@@ -84,6 +99,10 @@ public:
     // The metadata bytes and their reader (BadImageFormatError for metadata that is not readable; UsageError without any).
     ByteView metadata_block() const;
     const MetadataReader& metadata() const;
+    const std::vector<SectionHeader>& section_headers() const { return sections_; }
+    const PEHeader& pe_header() const { return pe_header_; }
+    // The index of the section whose virtual range holds `rva`, -1 for none (PEHeaders.GetContainingSectionIndex).
+    int get_containing_section_index(std::uint32_t rva) const;
     // The bytes from `rva` to the end of its section's data in the file (System.Reflection.Metadata's GetSectionData): empty
     // when no section holds it.
     ByteView get_section_data(std::uint32_t rva) const;
@@ -95,6 +114,8 @@ private:
 
     std::unique_ptr<formats::pe::Image> image_;
     std::optional<CorHeader> cor_;
+    std::vector<SectionHeader> sections_;
+    PEHeader pe_header_;
     ByteView metadata_;
     std::unique_ptr<MetadataReader> reader_;
 };

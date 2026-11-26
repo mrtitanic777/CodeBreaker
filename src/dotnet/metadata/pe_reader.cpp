@@ -23,23 +23,23 @@ MethodBodyBlock MethodBodyBlock::create(BlobReader reader) {
         b.size_ = 1 + size;
         return b;
     }
-    if ((head & kFormatMask) != kFatFormat) throw BadImageFormatError(0, std::format("an invalid method header {:#04x}", head));
+    if ((head & kFormatMask) != kFatFormat) throw BadImageFormatError(0, std::format("Invalid method header: 0x{:02X}", head));
     const std::uint8_t head2 = reader.read_byte();
-    if ((head2 >> 4) != 3) throw BadImageFormatError(0, std::format("an invalid method header {:#04x} {:#04x}", head, head2));
+    if ((head2 >> 4) != 3) throw BadImageFormatError(0, std::format("Invalid method header: 0x{:02X} 0x{:02X}", head, head2));
     b.init_locals_ = (head & kInitLocals) != 0;
     const bool more = (head & kMoreSects) != 0;
     b.max_stack_ = reader.read_uint16();
     const int il_size = reader.read_int32();
     const std::uint32_t locals = reader.read_uint32();
     if (locals != 0) {
-        if ((locals & 0xFF000000) != 0x11000000) throw BadImageFormatError(0, std::format("an invalid local signature token {:#010x}", locals));
+        if ((locals & 0xFF000000) != 0x11000000) throw BadImageFormatError(0, std::format("Invalid local signature token: 0x{:08X}", locals));
         b.locals_ = StandaloneSignatureHandle(locals & 0xFFFFFF);
     }
     b.il_ = reader.read_bytes(il_size);
     if (more) {
         reader.set_offset((reader.offset() + 3) & ~3);
         const std::uint8_t seh = reader.read_byte();
-        if ((seh & kSectEHTable) != kSectEHTable) throw BadImageFormatError(0, std::format("an invalid exception section header {:#04x}", seh));
+        if ((seh & kSectEHTable) != kSectEHTable) throw BadImageFormatError(0, std::format("Invalid SEH header: 0x{:02X}", seh));
         int data_size = reader.read_byte();
         auto region = [](std::uint32_t kind, int try_offset, int try_length, int handler_offset, int handler_length, std::uint32_t token) {
             ExceptionRegion r;
@@ -73,6 +73,24 @@ MethodBodyBlock MethodBodyBlock::create(BlobReader reader) {
 }
 
 PEReader::PEReader(std::unique_ptr<formats::pe::Image> image) : image_(std::move(image)) {
+    for (const formats::pe::Section& s : image_->sections())
+        sections_.push_back({s.name, s.virtual_size, s.virtual_address, s.raw_size, s.raw_ptr});
+    {
+        const ByteView file = image_->data();
+        const std::uint64_t opt = static_cast<std::uint64_t>(image_->header().e_lfanew) + 24;
+        auto u = [&](std::uint64_t at, int size) -> std::uint64_t {
+            std::uint64_t v = 0;
+            if (at + static_cast<std::uint64_t>(size) > file.size()) return 0;
+            for (int i = size - 1; i >= 0; --i) v = v << 8 | file[static_cast<std::size_t>(at) + static_cast<std::size_t>(i)];
+            return v;
+        };
+        const bool plus = image_->header().is_plus;
+        pe_header_.magic = static_cast<std::uint16_t>(u(opt, 2));
+        pe_header_.image_base = image_->header().image_base;
+        pe_header_.file_alignment = static_cast<std::uint32_t>(u(opt + 36, 4));
+        pe_header_.subsystem = static_cast<std::uint16_t>(u(opt + 68, 2));
+        pe_header_.size_of_stack_reserve = plus ? u(opt + 72, 8) : u(opt + 72, 4);
+    }
     const formats::pe::DataDirectory dir = image_->directory(kClrDirectory);
     if (dir.rva == 0) return;
     const std::optional<ByteView> raw = image_->read_rva(dir.rva, 72);
@@ -125,6 +143,13 @@ const MetadataReader& PEReader::metadata() const {
     return *reader_;
 }
 
+int PEReader::get_containing_section_index(std::uint32_t rva) const {
+    for (std::size_t i = 0; i < sections_.size(); ++i)
+        if (rva >= sections_[i].virtual_address && rva < static_cast<std::uint64_t>(sections_[i].virtual_address) + sections_[i].virtual_size)
+            return static_cast<int>(i);
+    return -1;
+}
+
 ByteView PEReader::get_section_data(std::uint32_t rva) const {
     for (const formats::pe::Section& s : image_->sections()) {
         if (rva < s.virtual_address || rva >= static_cast<std::uint64_t>(s.virtual_address) + s.virtual_size) continue;
@@ -140,9 +165,8 @@ ByteView PEReader::get_section_data(std::uint32_t rva) const {
 }
 
 MethodBodyBlock PEReader::get_method_body(std::uint32_t rva) const {
-    const ByteView data = get_section_data(rva);
-    if (data.empty()) throw BadImageFormatError(rva, "a method body outside every section");
-    return MethodBodyBlock::create(BlobReader(data, rva));
+    // (as upstream: outside every section the body is empty, and its first read fails)
+    return MethodBodyBlock::create(BlobReader(get_section_data(rva), rva));
 }
 
 }  // namespace cb::dotnet::metadata

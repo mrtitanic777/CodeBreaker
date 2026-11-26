@@ -220,6 +220,8 @@ private:
                     std::vector<std::string> items;
                     for (const auto& e : x) items.push_back(value(e));
                     return "[" + text::join(items, ", ") + "]";
+                } else if constexpr (std::is_same_v<X, std::shared_ptr<const CustomAttributeTypedArgument<TypeName>>>) {
+                    return x ? value(*x) : "null";
                 } else {
                     return std::to_string(x);
                 }

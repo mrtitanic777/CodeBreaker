@@ -13,6 +13,7 @@
 #include <cstring>
 #include <optional>
 #include <string>
+#include <variant>
 
 #include "core/bytes.hpp"
 #include "core/error.hpp"
@@ -20,11 +21,16 @@
 
 namespace cb::dotnet::metadata {
 
-// The metadata is malformed (System.BadImageFormatException).
+// The metadata is malformed (System.BadImageFormatException). message() is the text alone, in .NET's words where .NET has words for it
+// (the disassembler writes it into its output, as upstream writes the exception's message).
 class BadImageFormatError : public FormatError {
 public:
-    BadImageFormatError(std::uint64_t offset, const std::string& what) : FormatError("dotnet metadata", offset, what) {}
+    BadImageFormatError(std::uint64_t offset, const std::string& message) : FormatError("dotnet metadata", offset, message), message_(message) {}
+    const std::string& message() const { return message_; }
     CB_ERROR_BOILERPLATE(BadImageFormatError)
+
+private:
+    std::string message_;
 };
 
 // II.23.1.16: the element types of a signature.
@@ -89,6 +95,10 @@ private:
     std::uint8_t raw_ = 0;
 };
 
+// A constant's value (BlobReader::read_constant): null for a null reference, else the value of its type.
+using ConstantValue = std::variant<std::monostate, bool, char16_t, std::int8_t, std::uint8_t, std::int16_t, std::uint16_t, std::int32_t, std::uint32_t,
+                                   std::int64_t, std::uint64_t, float, double, std::u16string>;
+
 class BlobReader {
 public:
     BlobReader() = default;
@@ -134,6 +144,9 @@ public:
     EntityHandle read_type_handle();
     // A SerString of a custom attribute: nullopt for the null string (0xFF).
     std::optional<std::string> read_serialized_string();
+    // A Constant row's value of type `code` (upstream's ReadConstant): a string is the rest of the blob as UTF-16; a null reference
+    // must be four zero bytes. std::out_of_range (upstream's ArgumentOutOfRangeException) for a type code constants cannot have.
+    ConstantValue read_constant(ConstantTypeCode code);
 
 private:
     std::uint64_t read_le(int size);

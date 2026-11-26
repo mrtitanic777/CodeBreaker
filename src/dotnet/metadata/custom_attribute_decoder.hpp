@@ -14,6 +14,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <type_traits>
@@ -30,10 +31,13 @@ struct CustomAttributeTypedArgument;
 
 // A value: null (std::monostate: a null string, a null array, a null object), a primitive, a string (UTF-8 as stored), a
 // type (System.Type arguments, as the provider gives them), or an array of arguments.
+// (The last alternative, a boxed argument, is never made here: ILSpy's own decoder, dotnet/decompiler/metadata, gives an object
+// argument's value with its type that way.)
 template <class T>
 using CustomAttributeArgumentValue = std::variant<std::monostate, bool, std::uint8_t, std::int8_t, char16_t, std::int16_t, std::uint16_t, std::int32_t,
                                                   std::uint32_t, std::int64_t, std::uint64_t, float, double, std::string, T,
-                                                  std::vector<CustomAttributeTypedArgument<T>>>;
+                                                  std::vector<CustomAttributeTypedArgument<T>>,
+                                                  std::shared_ptr<const CustomAttributeTypedArgument<T>>>;
 
 template <class T>
 struct CustomAttributeTypedArgument {
