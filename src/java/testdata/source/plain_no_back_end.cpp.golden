@@ -119,8 +119,12 @@ Plain* Plain::make()
 	throw new UnsupportedOperationException();
 }
 
+bool Plain::j2xInitStarted = false;
+
 void Plain::initStatics()
 {
+	if (j2xInitStarted) return;
+	j2xInitStarted = true;
 	// J2X-GAP: static field Plain.LIMIT was not translated (see the ledger)
 	throw new UnsupportedOperationException();
 	// J2X-GAP: static field Plain.NAME was not translated (see the ledger)

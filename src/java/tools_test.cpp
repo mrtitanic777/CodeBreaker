@@ -101,8 +101,10 @@ void jtt_convert_against_golden(const char* std_label, const char* golden_text, 
     const JttRun r = jtt_run(setup.environment, {"convert", fs::to_text(jtt_fixtures()), fs::to_text(out), "--cpp-std", std_label});
     CB_CHECK_EQ(r.code, 0);
     // (the golden names the folder converted into: out03 / out17 under <out>)
-    CB_CHECK_EQ(jtt_norm(r.out, setup.dir.path()), text::replace_all(jtt_golden(golden_text), "<out>/", "<out>/"));
-    CB_CHECK_EQ(jtt_manifest(out, jtt_fixture_class), jtt_golden(golden_manifest));
+    const std::string said = jtt_norm(r.out, setup.dir.path());
+    CB_CHECK_EQ(said, testing::regold_golden(testing::data_path("java/testdata/tools/" + std::string(golden_text)), said));
+    const std::string manifest = jtt_manifest(out, jtt_fixture_class);
+    CB_CHECK_EQ(manifest, testing::regold_golden(testing::data_path("java/testdata/tools/" + std::string(golden_manifest)), manifest));
 }
 
 }  // namespace

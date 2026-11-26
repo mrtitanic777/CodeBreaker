@@ -25,6 +25,8 @@ int Chain::deep()
 	// body Chain.deep/0
 }
 
+bool Chain::j2xInitStarted = false;
+
 void Chain::initStatics()
 {
 }

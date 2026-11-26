@@ -33,6 +33,8 @@ int MiChild::count(int a)
 	return MiBase::count(a);
 }
 
+bool MiChild::j2xInitStarted = false;
+
 void MiChild::initStatics()
 {
 }

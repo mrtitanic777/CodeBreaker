@@ -18,6 +18,8 @@ GapImplicit::~GapImplicit()
 {
 }
 
+bool GapImplicit::j2xInitStarted = false;
+
 void GapImplicit::initStatics()
 {
 }

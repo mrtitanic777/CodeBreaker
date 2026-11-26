@@ -114,8 +114,12 @@ Plain* Plain::make()
 	// body Plain.make/0
 }
 
+bool Plain::j2xInitStarted = false;
+
 void Plain::initStatics()
 {
+	if (j2xInitStarted) return;
+	j2xInitStarted = true;
 	Plain::s_shared = INIT(new Foo());
 	Plain::s_computed = INIT(compute(2));
 	Plain::s_grid = INIT(new int[][]{{1, 2}, {3}});

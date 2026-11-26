@@ -350,6 +350,24 @@ std::map<std::string, NameSet, std::less<>> build_method_renames(std::span<const
         }
         own[c.name] = std::move(names);
     }
+    // A field that shares its name with an INHERITED method (Alpha 1.0.6's EntityBoat field `d` against Entity's method d(double,
+    // double, double): unmapped names) hides the method in C++. The method is renamed in every class, so its overrides and every call
+    // of it, whatever the receiver's class, keep agreeing.
+    NameSet inherited_clash;
+    for (const ir::JClass& c : classes) {
+        NameSet fields;
+        for (const ir::Field& f : c.fields) fields.insert(f.name);
+        if (fields.empty()) continue;
+        std::set<std::string, std::less<>> seen;
+        auto it = c.parent ? by_name.find(*c.parent) : by_name.end();
+        while (it != by_name.end() && seen.insert(it->second->name).second) {
+            for (const ir::Method& m : it->second->methods)
+                if (!m.is_ctor && fields.contains(m.name)) inherited_clash.insert(m.name);
+            it = it->second->parent ? by_name.find(*it->second->parent) : by_name.end();
+        }
+    }
+    if (!inherited_clash.empty())
+        for (auto& [cls, names] : own) names.insert(inherited_clash.begin(), inherited_clash.end());
     // A STATIC method with the SAME NAME AND SIGNATURE as an inherited INSTANCE method is C4526 (the static cannot override the
     // base virtual): BlockFlowing's private static flow(World,int,int,int) against BlockFluid's instance flow(World,int,int,int).
     // Only the signature matches count (a static helper with another signature legally coexists), and only when the class has no

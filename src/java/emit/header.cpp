@@ -97,6 +97,7 @@ std::string render_typed_enum(const ir::JClass& cls, const types::TypeResolver& 
     out.push_back(std::format("\tstatic JArray<{}* > _j2x_values;", cls.name));   // backing table (defined in the .cpp)
     out.push_back(std::format("\tstatic JArray<{}* >& values();", cls.name));
     out.push_back("\tstatic void initStatics();");
+    out.push_back("\tstatic bool j2xInitStarted;   // initStatics() has begun: Java's class-initialisation state");
     out.push_back("};");
     out.push_back("");
     out.push_back("#endif // " + guard);
@@ -191,6 +192,7 @@ std::string render_class(const ir::JClass& cls, const types::TypeResolver& resol
     if (!cls.is_interface) {
         out.push_back("");
         out.push_back("\tstatic void initStatics();");
+        out.push_back("\tstatic bool j2xInitStarted;   // initStatics() has begun: Java's class-initialisation state");
     }
 
     // the ancestors' other overloads of a name this class declares stay callable on it, as in Java

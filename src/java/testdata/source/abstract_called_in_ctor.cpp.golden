@@ -32,6 +32,8 @@ Foo* AbstractCall::compute(int a)
 	return NULL;
 }
 
+bool AbstractCall::j2xInitStarted = false;
+
 void AbstractCall::initStatics()
 {
 }

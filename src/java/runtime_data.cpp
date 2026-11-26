@@ -667,6 +667,7 @@ void Runtime::build_stubs() {
         .includes = {"Graphics"},
         .forward_decls = {"Graphics"}});
     add_class_stub("LibraryLWJGLOpenAL.h", {.name = "LibraryLWJGLOpenAL"});
+    add_class_stub("LibraryJavaSound.h", {.name = "LibraryJavaSound"});   // (early Indev registers it with SoundSystemConfig.addLibrary)
     add_class_stub("Throwable.h", {.name = "Throwable", .void_methods = {"printStackTrace"}, .ret_methods = kExceptionMethods});
     add_class_stub("URI.h", {
         .name = "URI",

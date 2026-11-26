@@ -139,6 +139,11 @@ namespace GL11 {
 	void glTexCoordPointer(int size, int type, int stride, long long offset);
 	void glNormalPointer(int type, int stride, long long offset);
 	void glDrawArrays(int mode, int first, int count);
+	// glInterleavedArrays(format, stride, buffer) and its formats (early Indev's Tessellator draws from one interleaved FloatBuffer)
+	const int GL_V2F = 0x2A20, GL_V3F = 0x2A21, GL_C4UB_V2F = 0x2A22, GL_C4UB_V3F = 0x2A23, GL_C3F_V3F = 0x2A24, GL_N3F_V3F = 0x2A25,
+	          GL_C4F_N3F_V3F = 0x2A26, GL_T2F_V3F = 0x2A27, GL_T4F_V4F = 0x2A28, GL_T2F_C4UB_V3F = 0x2A29, GL_T2F_C3F_V3F = 0x2A2A,
+	          GL_T2F_N3F_V3F = 0x2A2B, GL_T2F_C4F_N3F_V3F = 0x2A2C, GL_T4F_C4F_N3F_V4F = 0x2A2D;
+	void glInterleavedArrays(int format, int stride, Buffer* pointer);
 	void glDrawElements(int mode, IntBuffer* indices);   // LWJGL's: the indices from position to limit, unsigned ints (early Indev's MD3 models)
 	// display lists
 	int  glGenLists(int n);

@@ -24,6 +24,8 @@ TwoPhImplicit::~TwoPhImplicit()
 {
 }
 
+bool TwoPhImplicit::j2xInitStarted = false;
+
 void TwoPhImplicit::initStatics()
 {
 }

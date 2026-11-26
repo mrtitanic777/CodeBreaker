@@ -40,8 +40,12 @@ int Single::get()
 	// body Single.get/0
 }
 
+bool Single::j2xInitStarted = false;
+
 void Single::initStatics()
 {
+	if (j2xInitStarted) return;
+	j2xInitStarted = true;
 	Single::s_instance = INIT(new Single());
 	Single::s_other = INIT(new Foo());
 }

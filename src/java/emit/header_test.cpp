@@ -78,6 +78,7 @@ public class Widget extends Base implements Tickable {
                 "\tstatic Vec3D* origin();\n"
                 "\n"
                 "\tstatic void initStatics();\n"
+                "\tstatic bool j2xInitStarted;   // initStatics() has begun: Java's class-initialisation state\n"
                 "};\n"
                 "\n"
                 "#endif // WIDGET_H");
@@ -163,6 +164,7 @@ CB_TEST("java.header.typed_enum", [] {
                 "\tstatic JArray<Mat* > _j2x_values;\n"
                 "\tstatic JArray<Mat* >& values();\n"
                 "\tstatic void initStatics();\n"
+                "\tstatic bool j2xInitStarted;   // initStatics() has begun: Java's class-initialisation state\n"
                 "};\n"
                 "\n"
                 "#endif // MAT_H");
@@ -199,6 +201,7 @@ CB_TEST("java.header.two_phase_rule_of_three_and_ledger", [] {
                     "\tsigned char other;\n"
                     "\n"
                     "\tstatic void initStatics();\n"
+                    "\tstatic bool j2xInitStarted;   // initStatics() has begun: Java's class-initialisation state\n"
                     "\n"
                     "private:\n"
                     "\t// owns heap; copying disabled so a copy cannot double-free (Rule of Three)\n"
@@ -228,7 +231,7 @@ CB_TEST("java.header.mi_forwards_are_declared_concretely", [] {
     ir::JClass cls = cb::java::parse::parse_source("public class Both extends Base implements Sized { }");
     cls.mi_forwards.push_back({&iface.methods[0], "Base"});
     const std::string h = hd::render_header(cls, sample_resolver());
-    CB_CHECK(h.find("\n\tstatic void initStatics();\n\n\tvirtual int size(Thing* t);\n};") != std::string::npos);
+    CB_CHECK(h.find("\n\tstatic void initStatics();\n\tstatic bool j2xInitStarted;   // initStatics() has begun: Java's class-initialisation state\n\n\tvirtual int size(Thing* t);\n};") != std::string::npos);
     CB_CHECK(h.find("class Thing;\n") != std::string::npos);   // the forwarded method's types are dependencies too
 });
 

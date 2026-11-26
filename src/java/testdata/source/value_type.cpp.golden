@@ -32,6 +32,8 @@ double ValueV::len()
 	// body ValueV.len/0
 }
 
+bool ValueV::j2xInitStarted = false;
+
 void ValueV::initStatics()
 {
 }

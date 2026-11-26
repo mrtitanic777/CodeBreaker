@@ -155,8 +155,13 @@ public:
             for (Node* m : c->members) {
                 if (auto* method = ir::get<ir::MethodDecl>(m)) {
                     if (method->kind == "dtor" && !has_statements(method->body)) continue;   // (Java has no destructor; an empty one says nothing)
-                    if (method->name == "initStatics" && std::ranges::find(method->mods, "static") != method->mods.end()) method->kind = "static_init";
+                    if (method->name == "initStatics" && std::ranges::find(method->mods, "static") != method->mods.end()) {
+                        method->kind = "static_init";
+                        drop_class_init_machinery(method->body);
+                    }
                 }
+                // the converter's class-initialisation flag: the JVM keeps that state itself
+                if (const auto* f = ir::get<ir::FieldDecl>(m); f != nullptr && f->sym && f->sym->name == "j2xInitStarted") continue;
                 members.push_back(m);
             }
             c->members = std::move(members);
@@ -164,6 +169,36 @@ public:
     }
 
 private:
+    // The name a statement's expression is about: a local / static field (Name, Select), or a call's method.
+    static std::string named(const Node* e) {
+        if (e == nullptr) return {};
+        if (const auto* n = ir::get<ir::Name>(e); n != nullptr && n->sym) return n->sym->name;
+        if (const auto* s = ir::get<ir::Select>(e); s != nullptr && s->sym) return s->sym->name;
+        if (const auto* c = ir::get<ir::Call>(e); c != nullptr && c->sym) return c->sym->name;
+        return {};
+    }
+
+    // initStatics() lifted to a Java `static { }`: the converter's once-guard (`if (j2xInitStarted) return; j2xInitStarted = true;`)
+    // and its on-first-use calls of other classes' initStatics() go -- Java initialises classes itself, and a static initialiser
+    // cannot return.
+    static void drop_class_init_machinery(ir::Suite& body) {
+        const auto drop = [](std::vector<Node*>& stmts) {
+            std::erase_if(stmts, [](const Node* s) {
+                if (const auto* i = ir::get<ir::If>(s)) return named(i->cond) == "j2xInitStarted";
+                if (const auto* x = ir::get<ir::ExprStmt>(s)) {
+                    if (const auto* a = ir::get<ir::Assign>(x->expr)) return named(a->target) == "j2xInitStarted";
+                    return named(x->expr) == "initStatics";
+                }
+                return false;
+            });
+        };
+        if (auto* list = std::get_if<std::vector<Node*>>(&body)) {
+            drop(*list);
+        } else if (auto* one = std::get_if<Node*>(&body); one != nullptr && *one != nullptr) {
+            if (auto* b = ir::get<ir::Block>(*one)) drop(b->stmts);
+        }
+    }
+
     static bool has_statements(const ir::Suite& body) {
         for (const Node* s : ir::statements(body)) {
             if (const auto* b = ir::get<ir::Block>(s)) {

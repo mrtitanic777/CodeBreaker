@@ -26,6 +26,8 @@ int Implicit::a()
 	// body Implicit.a/0
 }
 
+bool Implicit::j2xInitStarted = false;
+
 void Implicit::initStatics()
 {
 }

@@ -94,8 +94,9 @@ CB_TEST("java.source.cases_match_golden", [] {
         }
         const src::Rendered out = src::render_source(target, resolver, options);
         const std::string text = out.text ? *out.text : "<none>\n";
-        CB_CHECK_EQ(text, cb::fs::read_text(srct_dir() / (name + ".cpp.golden")));
-        CB_CHECK_EQ(srct_events(led, out.has_init_statics), cb::fs::read_text(srct_dir() / (name + ".events.golden")));
+        CB_CHECK_EQ(text, cb::testing::regold_golden(srct_dir() / (name + ".cpp.golden"), text));
+        const std::string events = srct_events(led, out.has_init_statics);
+        CB_CHECK_EQ(events, cb::testing::regold_golden(srct_dir() / (name + ".events.golden"), events));
     }
 });
 

@@ -2006,4 +2006,14 @@ members|PBEParameterSpec||
 members|PixelFormat||
 members|SecretKey||
 members|SecretKeyFactory||generateSecret=SecretKey*;getInstance=SecretKeyFactory*
+file|generic-std-98|LibraryJavaSound.h|731|33c36595dfa57f1cec3e5fc2d901b42c7ff076c18d722f2fab1b0c5594200220
+file|nds-11|LibraryJavaSound.h|769|076b3b51b55c480b0d81b1ca04b3479194180beb32dd41f4b1a90580815e1aa7
+file|none|LibraryJavaSound.h|731|33c36595dfa57f1cec3e5fc2d901b42c7ff076c18d722f2fab1b0c5594200220
+file|pc_opengl-17|LibraryJavaSound.h|781|b03ae2bc1730e1e28d3d47a7fb864ce7475f06198425ccb3665b06d6a3fe939f
+file|pc_windows-17|LibraryJavaSound.h|791|023b6a90ffe42b729e05250d8559d9048c16e184f0062374e512c1e2f54b0fa3
+file|ps3-11|LibraryJavaSound.h|773|73dd1a988006ea100badd3c638eb2917df2d89adf2fd5bcb321846814d99ddb1
+file|psp-03|LibraryJavaSound.h|787|0999c3a8b86f70b2235e862611c514798852264e05ced24ec1b92e2c0465815b
+file|wii-14|LibraryJavaSound.h|771|28f0b010fb741742e4ea8d8dac433d6792f31f9a915a73a9b06c39f5b77dc0eb
+file|xbox360-03|LibraryJavaSound.h|763|6f641cf379ce55476bcd9713c3cfca53a8b2b29430964e1b8d9783b64a3e1dd0
+members|LibraryJavaSound||
 unwired|

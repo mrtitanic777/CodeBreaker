@@ -45,8 +45,12 @@ JArray<TypedEn* >& TypedEn::values()
 	return _j2x_values;
 }
 
+bool TypedEn::j2xInitStarted = false;
+
 void TypedEn::initStatics()
 {
+	if (j2xInitStarted) return;   // once: a class that reads this enum's constants may have initialised it first
+	j2xInitStarted = true;
 	A = new TypedEn(1, "A");
 	A->__ordinal = 0;
 	B = new TypedEn(1, "B");

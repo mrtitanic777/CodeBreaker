@@ -114,6 +114,11 @@ std::filesystem::path data_path(std::string_view relative) {
     return std::filesystem::path(CB_SOURCE_DIR) / fs::from_text(relative);
 }
 
+std::string regold_golden(const std::filesystem::path& golden, const std::string& actual) {
+    if (fs::get_env("CB_REGOLD")) fs::write_text(golden, actual);
+    return fs::read_text(golden);
+}
+
 std::filesystem::path local_input(std::string_view relative) {
     const std::filesystem::path checkout = std::filesystem::path(CB_SOURCE_DIR).parent_path();
     return (checkout / "test-inputs" / fs::from_text(relative)).lexically_normal();

@@ -47,6 +47,10 @@ void count_check();
 // `testdata/` folders next to the `_test.cpp` that uses them; `data_path("formats/testdata/x.bin")`.
 std::filesystem::path data_path(std::string_view relative);
 
+// A text golden to compare `actual` with. With the environment variable CB_REGOLD set, `actual` is written to `golden` first (after a
+// deliberate change to what is generated; review the diff), so the comparison that follows passes.
+std::string regold_golden(const std::filesystem::path& golden, const std::string& actual);
+
 // Inputs that are not in the repository (retail binaries, other checkouts): used where they exist, skipped where
 // they do not. `local_input("cab/MINI.CAB")`: <checkout>/test-inputs/cab/MINI.CAB, the git-ignored folder
 // for copyrighted test inputs. `beside_checkout("Windows95")`: a checkout next to this one (<checkout>/../Windows95).

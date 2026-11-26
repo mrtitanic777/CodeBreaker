@@ -154,6 +154,34 @@ CB_TEST("java.corpus.markers_that_are_bases_stay", [] {
     CB_CHECK(cor::drop_synthetic_artifacts(classes).markers.empty());
 });
 
+// A field named like an INHERITED method (Alpha 1.0.6's EntityBoat field d against Entity.d(double, double, double)): the method is
+// renamed in every class, so its override and its calls agree; an unrelated method name is left alone.
+CB_TEST("java.corpus.a_field_named_like_an_inherited_method_renames_the_method", [] {
+    const std::vector<ir::JClass> classes = {
+        cb::java::parse::parse_source("class Entity { void d(double x, double y, double z) { } void e() { } }"),
+        cb::java::parse::parse_source("class Boat extends Entity { boolean d; void tick() { d(1, 2, 3); } }"),
+        cb::java::parse::parse_source("class Pig extends Entity { void d(double x, double y, double z) { } }"),
+    };
+    const auto renames = cor::build_method_renames(classes);
+    for (const char* cls : {"Entity", "Boat", "Pig"}) {
+        CB_CHECK(renames.at(cls).contains("d"));
+        CB_CHECK(!renames.at(cls).contains("e"));
+    }
+});
+
+// Overriding one overload of an inherited name keeps the others callable (Alpha's EntityOtherPlayerMP.setPositionAndRotation).
+CB_TEST("java.corpus.an_override_of_one_overload_unhides_the_others", [] {
+    std::vector<ir::JClass> classes = {
+        cb::java::parse::parse_source("class Entity { void setPos(double x, float y) { } void setPos(double x, float y, int n) { } void other() { } }"),
+        cb::java::parse::parse_source("class Player extends Entity { void setPos(double x, float y, int n) { } void other() { } }"),
+        cb::java::parse::parse_source("class Plain extends Entity { void own() { } }"),
+    };
+    cor::compute_unhidden_overloads(classes);
+    CB_CHECK(classes[1].unhidden_overloads == std::vector<std::string>{"setPos"});   // other() has one form: nothing hidden
+    CB_CHECK(classes[2].unhidden_overloads.empty());
+    CB_CHECK(classes[0].unhidden_overloads.empty());
+});
+
 CB_TEST("java.corpus.stub_member_types", [] {
     const auto runtime = cb::java::runtime::Runtime(cb::java::JavaData(cb::testing::data_path("../config/java")));
     const auto env = cor::build_member_env({}, runtime);

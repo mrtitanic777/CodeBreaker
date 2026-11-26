@@ -55,6 +55,8 @@ void TwoPh::init()
 	// body TwoPh.init/0
 }
 
+bool TwoPh::j2xInitStarted = false;
+
 void TwoPh::initStatics()
 {
 }

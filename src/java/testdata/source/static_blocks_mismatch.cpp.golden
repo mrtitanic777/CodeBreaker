@@ -13,8 +13,12 @@ BadBlocks::~BadBlocks()
 {
 }
 
+bool BadBlocks::j2xInitStarted = false;
+
 void BadBlocks::initStatics()
 {
+	if (j2xInitStarted) return;
+	j2xInitStarted = true;
 	// J2X-GAP: static {} blocks of BadBlocks was not translated (see the ledger)
 	throw new UnsupportedOperationException();
 }

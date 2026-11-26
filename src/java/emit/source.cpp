@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <format>
 #include <map>
+#include <regex>
+#include <set>
 
 #include "core/text.hpp"
 #include "java/emit/naming.hpp"
@@ -512,7 +514,8 @@ Lines Writer::typed_enum_source() const {
     src_append(init, static_block_lines());
     init.push_back(std::format("_j2x_values = JArray<{}* >({});", cls.name, cls.enum_consts.size()));
     for (std::size_t i = 0; i < cls.enum_consts.size(); ++i) init.push_back(std::format("_j2x_values[{}] = {};", i, naming::enum_member(cls.enum_consts[i].name)));
-    src_append(body, {std::format("void {}::initStatics()", cls.name), "{"});
+    src_append(body, {std::format("bool {}::j2xInitStarted = false;", cls.name), "", std::format("void {}::initStatics()", cls.name), "{",
+                      "\tif (j2xInitStarted) return;   // once: a class that reads this enum's constants may have initialised it first", "\tj2xInitStarted = true;"});
     src_append(body, src_indented(init));
     src_append(body, {"}", ""});
 
@@ -635,12 +638,41 @@ Rendered render_source(const ir::JClass& cls, const types::TypeResolver& resolve
     // `void <Class>::initStatics()`, which the generated driver (j2x_init.cpp / j2x_initAll()) calls in dependency order -- NOT by
     // a file-local trigger, whose cross-translation-unit order is undefined (the static-init-order crash class: Block initialising
     // before Material -> a null vtable). The static field DEFINITIONS above are zero-initialised; initStatics() assigns the values.
-    Lines init_body = static_init_lines;           // the deferred static FIELD initialisers first
-    src_append(init_body, w.static_block_lines());   // then the Java static{} block bodies
+    Lines eager_body = static_init_lines;           // the deferred static FIELD initialisers first
+    src_append(eager_body, w.static_block_lines());   // then the Java static{} block bodies
+    // Java initialises a class the first time its statics are read, nested inside whatever initialisation is running; the driver's
+    // one order cannot do that for a cycle (Alpha 1.0.6's Block reads Item.sign while Item's initialisers read Block's -- Block ran
+    // first and read a null Item::s_sign). So a statement that reads another game class's statics initialises that class first, and
+    // initStatics() runs once, marked as started on entry (the JVM's "being initialised"), so a cycle reads what is set so far.
+    Lines init_body;
+    {
+        static const std::regex kStaticRead(R"(\b([A-Z]\w*)::s_\w)");
+        const types::ResolverData& data = resolver.data();
+        std::set<std::string, std::less<>> triggered;
+        bool statement_start = true;
+        for (const std::string& line : eager_body) {
+            if (statement_start) {
+                for (std::sregex_iterator it(line.begin(), line.end(), kStaticRead), end; it != end; ++it) {
+                    const std::string other = (*it)[1].str();
+                    if (other == cls.name || !data.known.contains(other) || data.interfaces.contains(other)) continue;
+                    if (data.enums.contains(other) && !data.typed_enums.contains(other)) continue;   // (a constant-only enum has no initStatics)
+                    if (!triggered.insert(other).second) continue;
+                    init_body.push_back(std::format("{}::initStatics();   // J2X: Java initialises {} on first use", other, other));
+                }
+            }
+            init_body.push_back(line);
+            const std::string_view t = text::trim(line);
+            statement_start = t.empty() || t.ends_with(';') || t.ends_with('{') || t.ends_with('}');
+        }
+    }
     // initStatics() is ALWAYS written (empty when nothing is deferred), so the driver can call it on any class without a
     // header/source mismatch; header.cpp declares it for every concrete class to match.
     result.has_init_statics = !init_body.empty();
-    src_append(body, {std::format("void {}::initStatics()", cls.name), "{"});
+    src_append(body, {std::format("bool {}::j2xInitStarted = false;", cls.name), "", std::format("void {}::initStatics()", cls.name), "{"});
+    if (!init_body.empty()) {   // once, and started on entry: a nested call during a cycle returns, as the JVM's class init does
+        body.push_back("\tif (j2xInitStarted) return;");
+        body.push_back("\tj2xInitStarted = true;");
+    }
     if (singleton_field && !init_body.empty()) {   // idempotent: a lazy getter may have already built the singleton
         body.push_back(std::format("\tif ({} != NULL) return;   // J2X: idempotent (may be lazily inited via a singleton getter)", *singleton_field));
     }
