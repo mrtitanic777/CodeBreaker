@@ -8,6 +8,7 @@
 #include <mutex>
 #include <set>
 
+#include "base/config.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/http.hpp"
@@ -1016,10 +1017,23 @@ int build_percent_of_line(std::string_view line) {
     return value;
 }
 
+namespace {
+
+// CMake: the one the settings name (or the one found on this computer: host_tools), else whichever is on PATH.
+std::string jt_cmake() {
+    if (const std::optional<stdfs::path> named = config::current().path("cmake")) {
+        std::error_code ec;
+        if (stdfs::is_regular_file(*named, ec)) return fs::to_text(*named);
+    }
+    return "cmake";
+}
+
+}  // namespace
+
 PcBuild build_pc_project(const stdfs::path& project, bool quiet, const std::function<void(std::string_view)>& on_line) {
     PcBuild out;
     try {
-        if (process::run({.argv = {"cmake", "--version"}}).exit_code != 0) out.status = PcBuild::Status::NoCMake;
+        if (process::run({.argv = {jt_cmake(), "--version"}}).exit_code != 0) out.status = PcBuild::Status::NoCMake;
     } catch (const std::exception&) {
         out.status = PcBuild::Status::NoCMake;
     }
@@ -1062,9 +1076,9 @@ PcBuild build_pc_project(const stdfs::path& project, bool quiet, const std::func
     };
     const stdfs::path build_dir = project / "build";
     std::optional<stdfs::path> mingw_bin;
-    Ran r = run({.argv = {"cmake", "-S", jt_native(project), "-B", jt_native(build_dir)}});
+    Ran r = run({.argv = {jt_cmake(), "-S", jt_native(project), "-B", jt_native(build_dir)}});
     stdfs::path built_dir = build_dir;
-    process::ProcessSpec build{.argv = {"cmake", "--build", jt_native(build_dir), "--config", "Release"}};
+    process::ProcessSpec build{.argv = {jt_cmake(), "--build", jt_native(build_dir), "--config", "Release"}};
     // The SDL2 CMake found is MinGW's (a MinGW-w64 prefix: msys2's mingw64, ...) while the generator is another compiler's: its headers and
     // libraries are not that compiler's (MSVC stops at MinGW's winnt.h). The build is then made with that prefix's own gcc and make.
     if (r.exit_code == 0) {
@@ -1081,11 +1095,11 @@ PcBuild build_pc_project(const stdfs::path& project, bool quiet, const std::func
                 stdfs::remove_all(built_dir / "CMakeFiles", ec);
             }
             const std::map<std::string, std::string> env{{"PATH", jt_native(bin) + ";" + fs::get_env("PATH").value_or("")}};
-            r = run({.argv = {"cmake", "-S", jt_native(project), "-B", jt_native(built_dir), "-G", "MinGW Makefiles",
+            r = run({.argv = {jt_cmake(), "-S", jt_native(project), "-B", jt_native(built_dir), "-G", "MinGW Makefiles",
                               "-DCMAKE_C_COMPILER=" + jt_native(bin / "gcc.exe"), "-DCMAKE_CXX_COMPILER=" + jt_native(bin / "g++.exe"),
                               "-DCMAKE_MAKE_PROGRAM=" + jt_native(bin / "mingw32-make.exe"), "-DCMAKE_BUILD_TYPE=Release"},
                      .env = env});
-            build = {.argv = {"cmake", "--build", jt_native(built_dir), "--parallel"}, .env = env};
+            build = {.argv = {jt_cmake(), "--build", jt_native(built_dir), "--parallel"}, .env = env};
         }
     }
     if (r.exit_code == 0) r = run(build);

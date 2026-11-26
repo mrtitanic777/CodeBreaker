@@ -30,6 +30,9 @@ std::string plain_hint(const std::string& key);
 std::vector<Row> rows(const config::Config& config);
 // Write one setting into settings.json (a Toggle as a JSON boolean, the rest as text). Returns "" or why not.
 std::string write(const config::Config& config, const std::string& key, const std::string& value, Kind kind);
+// Write what was found on this computer (a JDK, Visual Studio, CMake ...: Config::found_on_host) into settings.json for the settings it does not
+// have yet, so Settings shows them and a person can change them. -> the keys written.
+std::vector<std::string> save_found_on_host(const config::Config& config);
 
 // The settings the Settings page shows to everyone (the output folder, Keep the computer responsive); every other one is under Advanced.
 bool is_everyday(const std::string& key);

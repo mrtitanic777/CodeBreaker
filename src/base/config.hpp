@@ -8,7 +8,8 @@
 //     c.products()                                              // what cb::base::Corpus is built from
 //
 // A setting's value is, first, the environment variable CB_<KEY> (upper case) when it is set and not empty; then
-// settings.json's; then the work folder's; then the default. A path setting that is relative is taken against the
+// settings.json's; then the work folder's; then, for current(), what is installed on this computer (host_tools.hpp: a JDK,
+// Visual Studio, CMake ...; looked for the first time such a setting is asked for and is not set); then the default. A path setting that is relative is taken against the
 // checkout (in the work folder's file, against the work folder). settings.json is optional; one that is not a JSON
 // object is a FormatError naming it.
 //
@@ -21,6 +22,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -81,6 +83,12 @@ public:
     // <main>/.git/worktrees/<name>) the main one.
     std::filesystem::path main_checkout() const;
 
+    // The tools found on this computer for the settings nothing else sets (looked for now if they have not been): {key: value}. Empty for a
+    // configuration that does not look (Config::load; current() looks unless CB_NO_HOST_SCAN is set).
+    std::map<std::string, std::string> found_on_host() const;
+    // Look on this computer for what the settings do not say (current() turns this on).
+    void look_on_host();
+
     // Whether `key` names a path setting.
     static bool is_path_setting(std::string_view key);
 
@@ -105,6 +113,8 @@ private:
     std::map<std::string, std::string, std::less<>> file_objects_;    // the other object settings, as object_text shows them
     std::map<std::string, Value, std::less<>> work_;                  // the work folder's codebreaker.json (path settings made absolute)
     std::map<std::string, std::string, std::less<>> work_corpora_;    // its "corpora", absolute
+    struct Host;                                                      // what this computer has, looked for once when first needed
+    std::shared_ptr<Host> host_;
 };
 
 // The checkout this program belongs to: CB_CHECKOUT_ROOT when set; else the first folder at or above the running

@@ -1,6 +1,8 @@
 // base/config.cpp -- see config.hpp.
 #include "base/config.hpp"
 
+#include "base/host_tools.hpp"
+
 
 #include <algorithm>
 #include <array>
@@ -39,13 +41,13 @@ constexpr std::array kDefaults{
 
 // The settings whose value is a path (relative ones are taken against the checkout): the path keys, plus
 // "reference" (a relative one is taken against the checkout, not the working folder).
-constexpr std::array<std::string_view, 32> kPathSettings{
+constexpr std::array<std::string_view, 33> kPathSettings{
     "corpus",        "openwatcom",   "build_cache",  "decompiler_bin", "tracer_bin",
     "state",         "powerpc_tools", "powerpc_lib", "period_compiler", "msc6",
     "xenix_c",       "masm",         "msvc152",        "java",
     "xbox360_sdk",   "host_cxx",     "msbuild",      "java_overlays",  "java_libs",        "visual_studio",
     "ppc_binutils",  "converted",    "xbox360_keys", "xbox360_crypto_bin", "ilspycmd",     "xna_overlays",
-    "win95_installed_hd", "work_folder", "win95_setup_iso", "win95_boot", "design", "reference"};
+    "win95_installed_hd", "work_folder", "win95_setup_iso", "win95_boot", "design", "reference", "cmake"};
 
 std::string upper(std::string_view s) {
     std::string out(s);
@@ -153,10 +155,42 @@ Config Config::load(const stdfs::path& checkout_root) {
     return c;
 }
 
+struct Config::Host {
+    std::once_flag once;
+    std::map<std::string, std::string, std::less<>> found;
+    const std::map<std::string, std::string, std::less<>>& get() {
+        std::call_once(once, [this] {
+            for (host_tools::Found& f : host_tools::scan()) found.emplace(std::move(f.key), std::move(f.value));
+        });
+        return found;
+    }
+};
+
+void Config::look_on_host() { host_ = std::make_shared<Host>(); }
+
+std::map<std::string, std::string> Config::found_on_host() const {
+    std::map<std::string, std::string> out;
+    if (!host_) return out;
+    for (const auto& [key, value] : host_->get())
+        if (!fs::get_env("CB_" + upper(key)).has_value() && !file_.contains(key) && !work_.contains(key)) out.emplace(key, value);
+    return out;
+}
+
+namespace {
+
+// The settings host_tools looks for.
+bool found_on_host_key(std::string_view key) {
+    return key == "java" || key == "visual_studio" || key == "msbuild" || key == "cmake" || key == "ilspycmd" || key == "xbox360_sdk" || key == "openwatcom";
+}
+
+}  // namespace
+
 Value Config::value(std::string_view key) const {
     if (auto env = fs::get_env("CB_" + upper(key)); env && !env->empty()) return *env;
     if (auto it = file_.find(key); it != file_.end()) return it->second;
     if (auto it = work_.find(key); it != work_.end()) return it->second;
+    if (host_ && found_on_host_key(key))
+        if (const auto& found = host_->get(); found.contains(key)) return found.find(key)->second;
     for (const Default& d : kDefaults)
         if (d.key == key) return std::string(d.value);
     return std::monostate{};
@@ -325,7 +359,10 @@ stdfs::path find_checkout() {
 const Config& current() {
     static std::once_flag once;
     static Config config;
-    std::call_once(once, [] { config = Config::load(find_checkout()); });
+    std::call_once(once, [] {
+        config = Config::load(find_checkout());
+        if (!fs::get_env("CB_NO_HOST_SCAN").has_value()) config.look_on_host();
+    });
     return config;
 }
 

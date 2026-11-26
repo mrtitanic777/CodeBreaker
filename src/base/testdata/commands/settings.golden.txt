@@ -1,6 +1,7 @@
 settings: <ROOT>/settings.json
   -- build_cache      (not set)
      cache_max_gb     3
+  -- cmake            (not set)
   -- converted        (not set)
      corpora          win95=corp95, win98=corp98
   !! corpus           <ROOT>/corp95

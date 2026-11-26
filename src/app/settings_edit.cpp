@@ -31,6 +31,7 @@ constexpr StWords kStWords[] = {
     {"period_compiler", "Period compiler", "Where the period compilers are kept."},
     {"host_cxx", "C++ compiler", "The compiler that builds translated C++ here."},
     {"msbuild", "MSBuild", "Builds Visual Studio projects."},
+    {"cmake", "CMake", "Builds the C++ projects converted programs become."},
     {"visual_studio", "Visual Studio folder", "Where Visual Studio is installed."},
     {"java", "Java (JDK) folder", "The JDK used to run Java programs and the Java translator."},
     {"java_libs", "Java libraries", "Library files Java programs are built against."},
@@ -155,6 +156,30 @@ std::string write(const config::Config& config, const std::string& key, const st
     } catch (const std::exception& e) {
         return e.what();
     }
+}
+
+std::vector<std::string> save_found_on_host(const config::Config& config) {
+    std::vector<std::string> written;
+    try {
+        const std::map<std::string, std::string> found = config.found_on_host();
+        if (found.empty()) return written;
+        const stdfs::path file = config.settings_file();
+        Json doc = Json::object();
+        std::error_code ec;
+        if (stdfs::is_regular_file(file, ec)) {
+            doc = json::load(file);
+            if (!doc.is_object()) return written;
+        }
+        for (const auto& [key, value] : found) {
+            if (doc.contains(key)) continue;
+            doc[key] = value;
+            written.push_back(key);
+        }
+        if (!written.empty()) json::save(file, doc);
+    } catch (const std::exception&) {   // (not being able to save it is not an error: it is still used, found again next time)
+        written.clear();
+    }
+    return written;
 }
 
 namespace {

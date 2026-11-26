@@ -129,3 +129,17 @@ CB_TEST("java.frontend.javac_runs_and_what_it_lowers_matches_the_golden", [] {
     tools.java = dir.path() / "no-such-java.exe";
     CB_CHECK_THROWS_AS(ToolError, fe::lower_program(arena, testing::data_path("java/testdata/frontend/src"), tools));
 });
+
+CB_TEST("java.frontend.a_missing_or_old_jdk_is_said_in_words_a_person_can_act_on", [] {
+    namespace jf = cb::java::frontend;
+    CB_CHECK(!jf::jdk_problem("javac 17.0.2\n").has_value());
+    CB_CHECK(!jf::jdk_problem("javac 11\r\n").has_value());
+    const auto old = jf::jdk_problem("javac 1.8.0_381");
+    CB_CHECK(old.has_value());
+    CB_CHECK(old->find("Java 8") != std::string::npos);
+    CB_CHECK(old->find("adoptium.net") != std::string::npos);
+    const auto none = jf::jdk_problem("'javac' is not recognized as an internal or external command");
+    CB_CHECK(none.has_value());
+    CB_CHECK(none->find("was not found") != std::string::npos);
+    CB_CHECK(jf::jdk_problem("").has_value());
+});

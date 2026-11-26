@@ -646,6 +646,7 @@ int WwApp::run() {
     set_app_identity();   // (this process is "CodeBreaker" to the taskbar and the notification centre)
     taskbar_message_ = RegisterWindowMessageW(L"TaskbarButtonCreated");
     recent_ = recent::load(recent::store_file(convert::settings_file()));
+    settings::save_found_on_host(config::current());   // (a JDK, Visual Studio, CMake ... this computer has, into settings.json the first time)
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);   // (the manifest says it too; this covers a copy without it)
     if (!painter_.ok()) {
         err_text("codebreaker: Direct2D is not available\n");

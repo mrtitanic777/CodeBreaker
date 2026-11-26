@@ -53,6 +53,10 @@ std::vector<std::filesystem::path> java_files(const std::filesystem::path& java_
 
 // javac's typed tree of every compilation unit of `java_dir`, lowered; the units in the order of their paths. ToolError when TreeDump cannot be
 // compiled or run (the first of javac's messages with it).
+// What is wrong with this computer's Java for reading Java source, in words a person can act on, from `javac -version`'s output: no javac at all,
+// or one older than Java 11 (TreeDump needs 11); nothing when it will do.
+std::optional<std::string> jdk_problem(std::string_view version_text);
+
 std::vector<translate::ir::Node*> lower_program(Arena& arena, const std::filesystem::path& java_dir, const DumpTools& tools);
 
 }  // namespace cb::java::frontend

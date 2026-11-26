@@ -903,10 +903,40 @@ std::vector<stdfs::path> java_files(const stdfs::path& java_dir) {
 
 namespace {
 
-// The folder holding the compiled TreeDump, compiled when its source or the JDK changed.
+// What a person is told to do when this computer's Java cannot read Java source.
+constexpr const char* kGetJdk = "Install a Java Development Kit (JDK), version 11 or newer (for example Temurin from adoptium.net), then try again. "
+                                "If one is installed, set its folder as Java (JDK) folder in Settings.";
+
+}  // namespace
+
+std::optional<std::string> jdk_problem(std::string_view version_text) {
+    // `javac -version` says "javac 17.0.2" (or "javac 1.8.0_381" before Java 9)
+    const std::string text(text::trim(version_text));
+    const std::size_t at = text.find("javac ");
+    if (at == std::string::npos)
+        return std::format("Converting Java needs Java's compiler (javac), and it was not found on this computer. {}", kGetJdk);
+    std::string_view number = std::string_view(text).substr(at + 6);
+    if (number.starts_with("1.")) number.remove_prefix(2);
+    const std::optional<int> major = text::parse_int<int>(number.substr(0, number.find_first_not_of("0123456789")), 10);
+    if (!major) return std::nullopt;
+    if (*major < 11)
+        return std::format("Converting Java needs Java 11 or newer, and the Java compiler found here is Java {}. {}", *major, kGetJdk);
+    return std::nullopt;
+}
+
+namespace {
+
+// The folder holding the compiled TreeDump, compiled when its source or the JDK changed. UsageError, in words a person can act on, when this
+// computer has no JDK, one too old, or one that cannot compile it.
 stdfs::path treedump_folder(const DumpTools& tools) {
     const Bytes source = fs::read_file(tools.treedump_source);
-    const process::ProcessResult version = process::run({.argv = {fs::to_text(tools.javac), "-version"}, .err = process::Capture::Merge});
+    process::ProcessResult version;
+    try {
+        version = process::run({.argv = {fs::to_text(tools.javac), "-version"}, .err = process::Capture::Merge});
+    } catch (const Error&) {
+        version = {};   // (not there to start)
+    }
+    if (const std::optional<std::string> problem = jdk_problem(std::string(version.out.begin(), version.out.end()))) throw UsageError(*problem);
     Bytes key_bytes = source;
     key_bytes.insert(key_bytes.end(), version.out.begin(), version.out.end());
     key_bytes.push_back(0);
@@ -924,7 +954,8 @@ stdfs::path treedump_folder(const DumpTools& tools) {
                                                    .timeout = std::chrono::minutes(5)});
     if (r.exit_code != 0) {
         const std::string message(r.out.begin(), r.out.end());
-        throw ToolError("javac", r.exit_code, "TreeDump did not compile: " + message.substr(0, 400));
+        const std::string first = std::string(text::trim(message.substr(0, message.find('\n'))));
+        throw UsageError(std::format("This computer's Java could not prepare CodeBreaker's Java reader (Java said: {}). {}", first.substr(0, 200), kGetJdk));
     }
     const stdfs::path ready = folder.parent_path() / (folder.filename().string() + ".new-" + building.path().filename().string());
     stdfs::copy(building.path(), ready, stdfs::copy_options::recursive | stdfs::copy_options::overwrite_existing);
@@ -1169,7 +1200,8 @@ bool use_class_table(Arena& arena, const std::vector<Node*>& units) {
 }  // namespace
 
 std::vector<Node*> lower_program(Arena& arena, const stdfs::path& java_dir, const DumpTools& tools) {
-    if (tools.javac.empty() || tools.java.empty()) throw ToolError("javac", 0, "the Java front end needs a JDK (settings.json: java)");
+    if (tools.javac.empty() || tools.java.empty())
+        throw UsageError(std::format("Converting Java needs Java, and none was found on this computer. {}", kGetJdk));
     const stdfs::path folder = treedump_folder(tools);
     fs::ScopedTempDir out{"cb-treedump"};
     const stdfs::path listing = out.path() / "_files.txt";
