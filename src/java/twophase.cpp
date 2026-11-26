@@ -129,7 +129,19 @@ NameSet compute(std::span<const ir::JClass> classes, const NameSet& values) {
     NameSet roots;
     for (const ir::JClass& c : classes) {
         if (c.is_interface || c.is_enum || (c.constructors().empty() && c.instance_fields().empty())) continue;
-        const NameSet called = called_names(constructor_text(c));
+        const std::string ctor_text = constructor_text(c);
+        // A constructor that tests its own type (`this instanceof Sub`, `getClass()`) sees the whole object in Java; a C++ base
+        // constructor sees only the base (b1.3-demo's PlayerControllerSP threw "Invalid game mode" for its PlayerControllerDemo).
+        // The hierarchy is built in two phases from its topmost program class, so the test runs on the finished object and the
+        // super(args) calls stay inside the two-phase chain.
+        if (!descendants(c.name).empty() && (ctor_text.find("this instanceof") != std::string::npos ||
+                                             ctor_text.find("getClass()") != std::string::npos)) {
+            const ir::JClass* top = &c;
+            NameSet up;
+            while (top->parent && by_name.contains(*top->parent) && up.insert(top->name).second) top = by_name.at(*top->parent);
+            roots.insert(top->name);
+        }
+        const NameSet called = called_names(ctor_text);
         if (called.empty()) continue;
         NameSet own;   // its own and inherited instance methods
         NameSet visited;

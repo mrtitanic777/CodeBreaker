@@ -128,6 +128,37 @@ CB_TEST("java.twophase.value_types_and_roots_constructed_with_super_args_are_lef
     CB_CHECK(tp::compute(ok) == (tp::NameSet{"Mid", "Leaf"}));
 });
 
+// b1.3-demo: PlayerControllerSP's constructor checks `this instanceof PlayerControllerDemo`, which a C++ base constructor answers
+// false. The hierarchy from its topmost program class (PlayerController) is built in two phases; an unrelated class is not.
+CB_TEST("java.twophase.a_constructor_testing_its_own_type_counts", [] {
+    const tp::NameSet set = tp::compute(classes({R"(public class PlayerController {
+	public PlayerController(Minecraft var1) {
+		this.mc = var1;
+	}
+}
+)", R"(public class PlayerControllerSP extends PlayerController {
+	public PlayerControllerSP(Minecraft var1) {
+		super(var1);
+		if(!(this instanceof PlayerControllerDemo)) {
+			throw new IllegalStateException("Invalid game mode");
+		}
+	}
+}
+)", R"(public class PlayerControllerDemo extends PlayerControllerSP {
+	public PlayerControllerDemo(Minecraft var1) {
+		super(var1);
+	}
+}
+)", R"(public class Other {
+	public Other(int a) {
+		if(this instanceof Other) {
+		}
+	}
+}
+)"}));
+    CB_CHECK(set == (tp::NameSet{"PlayerController", "PlayerControllerDemo", "PlayerControllerSP"}));
+});
+
 CB_TEST("java.twophase.a_parent_cycle_does_not_hang", [] {
     const auto cs = classes({"class A extends B {\n A() {\n f();\n }\n void f() {\n }\n}\n", "class B extends A {\n void f() {\n }\n}\n"});
     CB_CHECK_NOTHROW((void)tp::compute(cs));
