@@ -1,6 +1,7 @@
 // platform_refs: the generic entry points, the detection of the game's main class, and the emission of the real
 // hand-written platform layer from config/java/platform/{reference,companions} (the real files, read in place).
 #include <set>
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -19,6 +20,13 @@ namespace stdfs = std::filesystem;
 stdfs::path refs_real_reference() { return testing::data_path("../config/java/platform/reference"); }
 
 bool refs_has(const std::string& text, std::string_view needle) { return text.find(needle) != std::string::npos; }
+
+// A file's text without carriage returns: an emitted copy and its source compare whatever line endings each was written with.
+std::string refs_lf(const stdfs::path& p) {
+    std::string t = fs::read_text(p);
+    t.erase(std::remove(t.begin(), t.end(), '\r'), t.end());
+    return t;
+}
 
 jir::JClass refs_class(const std::string& name) {
     jir::JClass c;
@@ -208,7 +216,7 @@ CB_TEST("java.platform_refs.real_reference_layer_is_complete", [] {
     const std::set<std::string> bases = pr::available_references(dir);
     CB_CHECK(bases.contains("GL11") && bases.contains("Audio") && bases.contains("Input") && bases.contains("ZipFile"));
     CB_CHECK(!bases.contains("Main"));   // Main.reference.cpp has no header
-    CB_CHECK_EQ(bases.size(), std::size_t{22});
+    CB_CHECK_EQ(bases.size(), std::size_t{25});
     // every reference that has a .cpp has its .h too (the GLU flat-world trap): nothing is orphaned
     const pr::Audit audit = pr::audit_references(dir);
     CB_CHECK(audit.orphans.empty());
@@ -397,17 +405,21 @@ CB_TEST("java.platform_refs.the_pc_direct3d9_layer_is_the_shared_renderer", [] {
     pr::EmitOptions options;
     options.platform = pr::Platform::PcOpenGl;
     options.main_class = "Minecraft";
-    options.layers = {{refs_real_reference(), {"GL11", "GLU", "GL13", "ARBMultitexture"}}, {d3d9, {}}};
+    options.layers = {{refs_real_reference(), {"GL11", "GLU", "GL13", "ARBMultitexture", "Gpu", "GpuShaders", "GpuD3D9"}}, {d3d9, {}}};
     options.label = "PC (SDL2 + Direct3D 9)";
     fs::ScopedTempDir out("cb-refs-pcd3d9");
     pr::emit_references(out.path(), pc, options);
     // the renderer is the Xbox 360's own file, word for word below the banner
     const std::string gl = fs::read_text(out.path() / "GL11.cpp");
-    CB_CHECK(refs_has(gl, fs::read_text(refs_real_reference() / "GL11.reference.cpp")));
-    CB_CHECK(refs_has(fs::read_text(out.path() / "GL11.h"), "namespace GL11 = d3d9;"));
-    CB_CHECK(refs_has(fs::read_text(out.path() / "GLU.h"), "namespace GLU = d3d9;"));
-    CB_CHECK(refs_has(fs::read_text(out.path() / "GL13.h"), "d3d9::glActiveTexture"));
-    CB_CHECK(refs_has(fs::read_text(out.path() / "ARBMultitexture.h"), "d3d9::glActiveTexture"));
+    CB_CHECK(refs_has(refs_lf(out.path() / "GL11.cpp"), refs_lf(refs_real_reference() / "GL11.reference.cpp")));
+    CB_CHECK(refs_has(fs::read_text(out.path() / "GL11.h"), "namespace GL11 = j2xgl;"));
+    CB_CHECK(refs_has(fs::read_text(out.path() / "GLU.h"), "namespace GLU = j2xgl;"));
+    CB_CHECK(refs_has(fs::read_text(out.path() / "GL13.h"), "j2xgl::glActiveTexture"));
+    CB_CHECK(refs_has(fs::read_text(out.path() / "ARBMultitexture.h"), "j2xgl::glActiveTexture"));
+    // the backend is the Xbox 360's Direct3D 9 one, the GL core knows no API
+    CB_CHECK(refs_has(refs_lf(out.path() / "GpuD3D9.cpp"), refs_lf(refs_real_reference() / "GpuD3D9.reference.cpp")));
+    CB_CHECK(!refs_has(gl, "IDirect3D") && !refs_has(gl, "D3DRS_") && refs_has(gl, "gpu::draw("));
+    CB_CHECK(!stdfs::exists(out.path() / "GpuD3D11.cpp"));
     CB_CHECK(!stdfs::exists(out.path() / "GL13.cpp") && stdfs::exists(out.path() / "GLU.cpp"));   // (GL13 is header-only here)
     // the window and device are the PC's Direct3D 9 Display; Direct3D and the D3DX stand-in come with it
     CB_CHECK(refs_has(fs::read_text(out.path() / "Display.cpp"), "Direct3DCreate9"));
@@ -419,6 +431,47 @@ CB_TEST("java.platform_refs.the_pc_direct3d9_layer_is_the_shared_renderer", [] {
     // and no OpenGL anywhere in what the PC's Direct3D 9 build compiles
     for (const char* f : {"GL11.cpp", "GLU.cpp", "Display.cpp", "GL11.h", "GL13.h"})
         CB_CHECK(!refs_has(fs::read_text(out.path() / f), "<GL/gl.h>") && !refs_has(fs::read_text(out.path() / f), "SDL_GL_"));
+});
+
+CB_TEST("java.platform_refs.the_pc_direct3d11_layer_is_the_shared_renderer_on_its_own_backend", [] {
+    const stdfs::path pc = testing::data_path("../config/java/platform/pc/reference");
+    const stdfs::path d3d11 = testing::data_path("../config/java/platform/pc/d3d11/reference");
+    pr::EmitOptions options;
+    options.platform = pr::Platform::PcOpenGl;
+    options.main_class = "Minecraft";
+    options.layers = {{refs_real_reference(), {"GL11", "GLU", "GL13", "ARBMultitexture", "Gpu", "GpuShaders"}}, {d3d11, {}}};
+    options.label = "PC (SDL2 + Direct3D 11)";
+    fs::ScopedTempDir out("cb-refs-pcd3d11");
+    pr::emit_references(out.path(), pc, options);
+    // the GL core is the Xbox 360's file, word for word; the backend and the Display are Direct3D 11's
+    CB_CHECK(refs_has(refs_lf(out.path() / "GL11.cpp"), refs_lf(refs_real_reference() / "GL11.reference.cpp")));
+    CB_CHECK(refs_has(fs::read_text(out.path() / "GL11.h"), "PC (SDL2 + Direct3D 11) platform layer"));
+    CB_CHECK(refs_has(fs::read_text(out.path() / "GpuD3D11.cpp"), "ID3D11Device"));
+    CB_CHECK(refs_has(fs::read_text(out.path() / "GpuD3D11.cpp"), "kGlVertexStage"));   // the shared pipeline, not its own copy
+    CB_CHECK(refs_has(fs::read_text(out.path() / "Display.cpp"), "D3D11CreateDeviceAndSwapChain"));
+    CB_CHECK(refs_has(fs::read_text(out.path() / "Display.cpp"), "D3D_DRIVER_TYPE_WARP"));
+    CB_CHECK(stdfs::exists(out.path() / "Gpu.h") && stdfs::exists(out.path() / "GpuShaders.h"));
+    // nothing of Direct3D 9: no backend, no D3DX stand-in, the PC's own Common.h (with the layer's diagnostics)
+    CB_CHECK(!stdfs::exists(out.path() / "GpuD3D9.cpp") && !stdfs::exists(out.path() / "J2xD3DX9.h"));
+    CB_CHECK(refs_has(fs::read_text(out.path() / "Common.h"), "#define J2X_UNHANDLED"));
+    CB_CHECK(!refs_has(fs::read_text(out.path() / "Common.h"), "d3d9"));
+    for (const char* f : {"GL11.cpp", "GLU.cpp", "Display.cpp", "GpuD3D11.cpp", "GL11.h"})
+        CB_CHECK(!refs_has(fs::read_text(out.path() / f), "<GL/gl.h>") && !refs_has(fs::read_text(out.path() / f), "d3d9.h"));
+});
+
+// One shader pipeline for every backend: the vertex and fragment stages live in GpuShaders.h, the backends only wrap them.
+CB_TEST("java.platform_refs.the_backends_share_one_pipeline", [] {
+    const std::string d3d9 = fs::read_text(refs_real_reference() / "GpuD3D9.reference.cpp");
+    const std::string d3d11 = fs::read_text(testing::data_path("../config/java/platform/pc/d3d11/reference/GpuD3D11.reference.cpp"));
+    const std::string shared = fs::read_text(refs_real_reference() / "GpuShaders.reference.h");
+    CB_CHECK(refs_has(shared, "void glVertex(") && refs_has(shared, "float4 glFragment("));
+    for (const std::string* backend : {&d3d9, &d3d11}) {
+        CB_CHECK(refs_has(*backend, "kGlVertexStage") && refs_has(*backend, "kGlFragmentStage"));
+        CB_CHECK(!refs_has(*backend, "toLight(") && !refs_has(*backend, "env(o,"));   // (no private copy of the maths)
+    }
+    // the core names no API
+    const std::string gl = fs::read_text(refs_real_reference() / "GL11.reference.cpp");
+    for (const char* api : {"IDirect3D", "ID3D11", "D3DRS_", "D3DXMATRIX", "d3d9.h", "d3d11.h"}) CB_CHECK(!refs_has(gl, api));
 });
 
 CB_TEST("java.platform_refs.emit_removes_a_stale_skipped_reference_but_not_a_stub", [] {
@@ -445,7 +498,7 @@ CB_TEST("java.platform_refs.emit_the_real_layer", [] {
     for (const std::string& b : e.bases) {
         if (pr::available_references(refs_real_reference()).contains(b)) references.insert(b);
     }
-    CB_CHECK_EQ(references.size(), std::size_t{21});   // the 22 references less the skipped ZipFile
+    CB_CHECK_EQ(references.size(), std::size_t{24});   // the 25 references less the skipped ZipFile
     CB_CHECK(pr::verify_integrated(out.path(), references).empty());
     CB_CHECK(fs::read_text(out.path() / "SoundSystem.h").find("#include \"Audio.h\"") != std::string::npos);
     CB_CHECK(fs::read_text(out.path() / "Main.cpp").find("Minecraft::main(args);") != std::string::npos);

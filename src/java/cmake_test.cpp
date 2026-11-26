@@ -35,6 +35,11 @@ CB_TEST("java.cmake.template", [] {
     CB_CHECK_EQ(java::cmake::cmakelists_text("Game", "opengl"), java::cmake::cmakelists_text("Game"));
     java::cmake::write_cmakelists(tmp.path(), "Game", "d3d9");
     CB_CHECK_EQ(fs::read_text(written), d);
+
+    // Direct3D 11: d3d11 and dxgi
+    const std::string e = java::cmake::cmakelists_text("Game", "d3d11");
+    CB_CHECK(e.find("target_link_libraries(Game PRIVATE d3d11 dxgi)") != std::string::npos);
+    CB_CHECK(e.find("OpenGL") == std::string::npos && e.find("PRIVATE d3d9)") == std::string::npos);
 });
 
 }  // namespace

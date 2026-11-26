@@ -14,7 +14,7 @@
 #include "stdafx.h"
 #include "Textures.h"
 #include "Common.h"          // g_pd3dDevice
-#include "GL11.h"            // d3d9::sceneEnd / sceneBegin (the frame's scene is the Direct3D 9 layer's)
+#include "GpuD3D9.h"         // d3d9::sceneEnd / sceneBegin (the frame's scene is the Direct3D 9 backend's)
 
 // reserve the next free slot (id 0 is reserved = "no texture"); ids index s_textures[].
 int Textures::genId() {

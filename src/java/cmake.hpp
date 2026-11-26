@@ -12,8 +12,8 @@
 
 namespace cb::java::cmake {
 
-// The CMakeLists.txt text for an executable called `name`. `graphics`: "opengl" links OpenGL and GLU; "d3d9" links Direct3D 9
-// (d3d9.lib; the shader compiler, d3dcompiler_47.dll, is loaded when the program starts, so no import library is needed).
+// The CMakeLists.txt text for an executable called `name`. `graphics`: "opengl" links OpenGL and GLU; "d3d9" links Direct3D 9,
+// "d3d11" Direct3D 11 and DXGI (the shader compiler, d3dcompiler_47.dll, is loaded when the program starts: no import library).
 std::string cmakelists_text(std::string_view name, std::string_view graphics = "opengl");
 
 // Write out_dir/CMakeLists.txt for an executable called `name`; returns its path.

@@ -1,30 +1,31 @@
-// The Direct3D 9 GRAPHICS LAYER -- namespace `d3d9`, aliased as GL11. One layer for every Direct3D 9 target: the Xbox 360 (Xenos,
-// the XDK's d3d9/d3dx9) and the PC (Windows' d3d9.dll; J2xD3DX9.h stands in for D3DX, which Windows doesn't ship). A converted
-// game's LWJGL OpenGL 1.x calls land here unchanged and are carried out on an IDirect3DDevice9 through one built-in shader pair
-// (Xenos has no fixed-function pipeline, so the PC uses the same shaders: what is seen on one is what is seen on the other).
+// The OpenGL 1.x GRAPHICS LAYER -- namespace `j2xgl`, also named GL11 (what the game calls) and d3d9 (what the Xbox 360's platform
+// files call). One layer for every graphics API: GL11.cpp is GL's whole state machine and knows no API; a backend (Gpu.h)
+// draws with one -- GpuD3D9.cpp on Direct3D 9 (the Xbox 360, and the PC with --graphics d3d9), GpuD3D11.cpp on Direct3D 11 (the
+// PC with --graphics d3d11). A converted game's LWJGL OpenGL 1.x calls land here unchanged; the backends share one HLSL
+// description of GL's fixed-function pipeline (GpuShaders.h), so every API draws the same picture.
 //
 // It is the OpenGL 1.x state machine, written down: every call the PC's OpenGL layer (pc/reference/GL11.reference.h) declares is
 // declared here with the same signature, so a game that builds against one builds against the other. What GL keeps, it keeps:
 //   * matrices: MODELVIEW / PROJECTION / one TEXTURE stack per texture unit, held in GL's own convention (depth -1..1, what
-//     glGetFloat(GL_PROJECTION_MATRIX) hands back is what GL would) and turned into Direct3D's (depth 0..1, pixel centres) only
+//     glGetFloat(GL_PROJECTION_MATRIX) hands back is what GL would) and turned into the API's (depth 0..1, pixel centres) only
 //     at draw time;
 //   * fixed-function lighting: GL_LIGHTING with GL_LIGHT0/1 (directional or positional), the light model ambient, GL_COLOR_MATERIAL,
-//     per-vertex normals (glNormal3f, glNormalPointer as floats or bytes) -- done in the vertex shader as GL defines it;
+//     per-vertex normals (glNormal3f, glNormalPointer as floats or bytes), flat or smooth shading -- in the vertex stage, as GL
+//     defines it;
 //   * fog: GL_LINEAR / GL_EXP / GL_EXP2 on the eye-space distance, the colour clamped;
 //   * two texture units (GL13 / ARB_multitexture): each its own binding, enable, texture environment (MODULATE, REPLACE, ADD,
 //     DECAL) and texture matrix; the second unit's coordinates from glMultiTexCoord2f or a GL_SHORT/GL_FLOAT array;
 //   * the alpha test with every comparison, blending, depth test/func/mask, colour mask, face culling (GL_BACK/FRONT), polygon
-//     offset, the clear colour/depth;
+//     offset, the scissor box, the clear colour/depth;
 //   * IMMEDIATE mode (glBegin..glEnd, every primitive incl. lines), VERTEX ARRAYS (glDrawArrays, glDrawElements,
 //     glInterleavedArrays), DISPLAY LISTS (geometry + the texture bound inside them + the net matrix change, replayed with the
 //     colour current at the call when the list set none), SELECTION (glRenderMode(GL_SELECT) with a real pick-volume test);
 //   * textures: GL_RGBA/RGB/BGRA/BGR/ALPHA/LUMINANCE/LUMINANCE_ALPHA in bytes or packed ints, mip levels, sub-images, wrap and
-//     filter state, glCopyTexSubImage2D and glReadPixels from the frame (the PC).
+//     filter state, glCopyTexSubImage2D and glReadPixels from the frame.
 // A call it has no way to honour reports itself once (J2X_UNHANDLED) instead of doing nothing silently.
 //
-// The device comes from the platform's Display (glSetDevice, then glInit); a reset device is told with glOnDeviceReset, which puts
-// every render state back. The frame's scene is the layer's (sceneBegin / sceneEnd), so a texture or buffer made mid-frame can
-// step out of the scene and back (the 360 creates resources only out of a scene).
+// The platform's Display makes the device and hands it to the backend (GpuD3D9.h: d3d9::glSetDevice; GpuD3D11.h:
+// j2xgl::gpu::attachD3D11), then calls glInit; after a device reset it calls glOnDeviceReset.
 //
 // C++03: the Xbox 360's compiler builds this file.
 #ifndef GL11_H
@@ -34,14 +35,7 @@
 #include "JavaRT.h"
 #include "NIOBuffers.h"      // ByteBuffer / ShortBuffer / IntBuffer / FloatBuffer
 
-#if !defined(_XBOX) && !defined(__D3DX9_H__)
-// The PC: Direct3D stays out of the game's own headers (it needs GDI, and wingdi.h's Polygon() or Rectangle() would hide a game
-// class of that name). The layer's .cpp files include it through Common.h.
-struct IDirect3DDevice9;
-struct D3DXMATRIX;
-#endif
-
-namespace d3d9 {
+namespace j2xgl {
 	// ------------------------------------------------------------------ enum tokens (GL 1.1, and what the layer honours beyond it)
 	const int GL_FALSE = 0, GL_TRUE = 1;
 	const int GL_POINTS = 0x0000, GL_LINES = 0x0001, GL_LINE_LOOP = 0x0002, GL_LINE_STRIP = 0x0003;
@@ -102,13 +96,8 @@ namespace d3d9 {
 	const int GL_ACTIVE_TEXTURE = 0x84E0, GL_CLIENT_ACTIVE_TEXTURE = 0x84E1, GL_MAX_TEXTURE_UNITS = 0x84E2;
 
 	// ------------------------------------------------------------------ lifecycle (the platform's Display calls these)
-	void glSetDevice(IDirect3DDevice9* dev);   // after CreateDevice and after every Reset (reads the backbuffer size)
-	IDirect3DDevice9* device();
-	void glInit();                             // once, on a new device: shaders, declaration, GL's initial state
-	void glOnDeviceReset();                    // after Reset: every render state and sampler back as GL has it
-	void sceneBegin();                         // the frame's scene (Display: around each frame)
-	void sceneEnd();
-	bool inScene();
+	void glInit();                             // once, once the backend has its device: GL's initial state
+	void glOnDeviceReset();                    // after a device reset: the backend's caches dropped (every draw sends all state)
 
 	// ------------------------------------------------------------------ matrix stacks
 	void glMatrixMode(int mode);
@@ -129,7 +118,6 @@ namespace d3d9 {
 	void glFrustum(double l, double r, double b, double t, double n, double f);
 	void glViewport(int x, int y, int w, int h);
 	void glScissor(int x, int y, int w, int h);
-	void glLoadProjection(const D3DXMATRIX& m);   // (kept for older callers) the PROJECTION top from a D3D-convention matrix
 	void glGetFloat(int pname, FloatBuffer* buf);
 	void glGetInteger(int pname, IntBuffer* buf);
 	int  glGetInteger(int pname);
@@ -262,6 +250,7 @@ namespace d3d9 {
 	inline void glPolygonMode(int, int) {}
 }
 
-// The game calls GL11::glX; the 360's older generated code and the platform files call d3d9::glX. Both are this layer.
-namespace GL11 = d3d9;
+// The game calls GL11::glX; the Xbox 360's platform files call d3d9::glX. Both are this layer.
+namespace GL11 = j2xgl;
+namespace d3d9 = j2xgl;
 #endif // GL11_H

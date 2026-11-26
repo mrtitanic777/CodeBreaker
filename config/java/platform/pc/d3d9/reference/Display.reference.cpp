@@ -10,6 +10,7 @@
 #include "Display.h"
 #include "Input.h"
 #include "GL11.h"
+#include "GpuD3D9.h"
 #include "Common.h"
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_syswm.h>

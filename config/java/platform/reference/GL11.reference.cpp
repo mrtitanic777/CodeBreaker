@@ -1,94 +1,115 @@
-// GL11.cpp -- the Direct3D 9 graphics layer (see GL11.reference.h for what it covers). One file for the Xbox 360 and the PC.
+// GL11.cpp -- the OpenGL 1.x layer (see GL11.reference.h for what it covers): GL's whole state machine, written once, for every
+// graphics API. It knows no API: every draw ends in one call to the backend (Gpu.h) with the vertices, the render state and the
+// shader constants worked out here; GpuD3D9.cpp carries that out on Direct3D 9 (the Xbox 360 and the PC), GpuD3D11.cpp on
+// Direct3D 11 (the PC). What GL decides is decided here, so every API draws the same picture.
 //
-// The shape: GL's state is mirrored in plain variables (the GL side); every draw turns the part a draw needs into Direct3D state
-// and two shaders' constants (the D3D side), touching the device only where something changed. Geometry from any source
-// (glBegin..glEnd, glDrawArrays, glDrawElements, glInterleavedArrays) is gathered into one vertex format, GLVert, then drawn,
-// recorded into the open display list, or (glBegin..glEnd only) coalesced into one batched draw.
+// The shape: GL's state is mirrored in plain variables; a draw turns the part it needs into a gpu::RenderState, gpu::Constants
+// and gpu::Bindings. Geometry from any source (glBegin..glEnd, glDrawArrays, glDrawElements, glInterleavedArrays) is gathered
+// into one vertex format (gpu::Vertex), then drawn, recorded into the open display list, or (glBegin..glEnd only) coalesced
+// into one batched draw.
 //
-// Lessons the Xbox 360 taught, kept for both targets (each is marked where it lives):
-//   * a resource is made or released only out of a scene, and never while it is still bound (vb-released-while-bound);
-//   * the 360's plain A8R8G8B8 is tiled: textures are made LIN_A8R8G8B8 so a linear copy lands as sampled;
+// Lessons the Xbox 360 taught, kept for every target (each is marked where it lives):
 //   * pixel bytes are read as bytes and packed colours as ints, never one as the other (tex-endian-byte-read,
 //     color-endian-int-read): the 360 is big-endian, the PC little;
-//   * the viewport's Y is flipped (GL's origin is bottom-left, Direct3D's top-left), from the real backbuffer height;
+//   * the viewport's Y is flipped (GL's origin is bottom-left, the APIs' top-left), from the real target height;
 //   * a vertex count past any real batch is a corrupted count, refused rather than allocated (runaway-vertex-count).
+// (What the 360 taught about resources -- made out of a scene, never released while bound, untiled textures -- is GpuD3D9.cpp's.)
 // C++03 throughout: the Xbox 360's compiler builds this file.
 
-#ifndef _XBOX
-#define J2X_WITH_GDI   // (the PC: d3d9.h needs the GDI types stdafx.h keeps out of the game's files)
-#endif
 #include "stdafx.h"     // MUST be first: the Xbox 360 project uses /Yu precompiled headers
 #include "GL11.h"
-#include "Common.h"     // Direct3D 9 + D3DX (the XDK's, or J2xD3DX9.h on the PC); DbgPrintF / J2X_UNHANDLED / J2X_NOOP
+#include "Gpu.h"        // the backend: GpuD3D9.cpp or GpuD3D11.cpp
+#include "Common.h"     // DbgPrintF / J2X_UNHANDLED / J2X_NOOP
 #include <vector>
 #include <string.h>
 #include <math.h>
 
-#ifdef _XBOX
-  #define J2X_TEXPOOL  D3DPOOL_MANAGED       // 360: the pool is ignored (unified memory); MANAGED is a benign token
-  #define J2X_TEXFMT   D3DFMT_LIN_A8R8G8B8   // the UNTILED twin of A8R8G8B8: a linear copy lays out as the GPU samples
-#else
-  #define J2X_TEXPOOL  D3DPOOL_MANAGED       // PC: managed (a system-memory copy, so a device reset keeps it)
-  #define J2X_TEXFMT   D3DFMT_A8R8G8B8
-#endif
-
-namespace d3d9 {
+namespace j2xgl {
 
 // =========================================================================== the vertex every draw goes through
-struct GLVert {
-	float x, y, z;
-	float nx, ny, nz;
-	D3DCOLOR color;     // ARGB
-	float u, v;         // texture unit 0
-	float u2, v2;       // texture unit 1
-	// Flat shading (glShadeModel(GL_FLAT)): a triangle takes the colour lit at its PROVOKING vertex, which GL names per primitive
-	// (the last vertex of a triangle, the fourth of a quad, the first of a polygon). Neither Xenos nor shaders have a flat
-	// interpolator GL's way round, so every vertex carries its primitive's provoking normal and colour, and the vertex shader
-	// lights those instead when the shade model is flat -- one result for all three corners, as GL gives.
-	float fnx, fny, fnz;
-	D3DCOLOR fcolor;
-};
+// gpu::Vertex: position, normal, colour, two texture coordinates, and the flat-shading copies. Flat shading
+// (glShadeModel(GL_FLAT)): a triangle takes the colour lit at its PROVOKING vertex, which GL names per primitive (the last vertex
+// of a triangle, the fourth of a quad, the first of a polygon). Shaders have no flat interpolator GL's way round, so every
+// vertex carries its primitive's provoking normal and colour, and the vertex stage lights those instead when the shade model is
+// flat -- one result for all three corners, as GL gives.
+typedef gpu::Vertex GLVert;
 static const int kUnits = 2;              // texture units (GL13 / ARB_multitexture); GL_MAX_TEXTURE_UNITS
 static const int kMaxStack = 64;          // matrix stack depth (GL's minimum is 32 for MODELVIEW)
 static const int kMaxVerts = 1048576;     // a draw past this is a corrupted count, not geometry (runaway-vertex-count)
 
-// =========================================================================== device and scene
-static IDirect3DDevice9* g_dev = 0;
-static int g_fbW = 1280, g_fbH = 720;     // the backbuffer (viewport Y flip; reads of the frame)
-static bool s_inScene = false;
-
-void sceneBegin() { if (g_dev && !s_inScene && SUCCEEDED(g_dev->BeginScene())) s_inScene = true; }
-void sceneEnd()   { if (g_dev && s_inScene) { g_dev->EndScene(); s_inScene = false; } }
-bool inScene()    { return s_inScene; }
-
-// Steps out of the scene for its lifetime (the 360 makes resources only out of a scene; the PC doesn't mind either way).
-struct OutOfScene {
-	bool was;
-	OutOfScene() : was(s_inScene) { if (was) sceneEnd(); }
-	~OutOfScene() { if (was) sceneBegin(); }
-};
-
-void glSetDevice(IDirect3DDevice9* dev) {
-	g_dev = dev;
-	IDirect3DSurface9* bb = 0;
-	if (dev && SUCCEEDED(dev->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &bb)) && bb) {
-		D3DSURFACE_DESC d;
-		if (SUCCEEDED(bb->GetDesc(&d)) && d.Height > 0) { g_fbW = (int)d.Width; g_fbH = (int)d.Height; }
-		bb->Release();
-	}
-}
-IDirect3DDevice9* device() { return g_dev; }
+static unsigned int _argb(unsigned a, unsigned r, unsigned g, unsigned b) { return ((a & 255u) << 24) | ((r & 255u) << 16) | ((g & 255u) << 8) | (b & 255u); }
+static unsigned _u8(float f) { int i = (int)(f * 255.0f + 0.5f); return (unsigned)(i < 0 ? 0 : i > 255 ? 255 : i); }
+static unsigned int _colorValue(float r, float g, float b, float a) { return _argb(_u8(a), _u8(r), _u8(g), _u8(b)); }
 
 // =========================================================================== GL state: matrices
 // Every matrix is kept in GL's own convention (a GL column-major float[16] read as Direct3D rows is the same matrix for row
 // vectors, so a GL `C = C * X` is `C = X * C` here). glGetFloat hands them back as GL has them.
-typedef D3DXMATRIX Mat;
+// A 4x4 matrix as rows (m[row][col]); a point is a row on the left: p' = p * M.
+struct Mat {
+	float m[4][4];
+	Mat operator*(const Mat& b) const {
+		Mat r;
+		for (int i = 0; i < 4; ++i)
+			for (int j = 0; j < 4; ++j) r.m[i][j] = m[i][0] * b.m[0][j] + m[i][1] * b.m[1][j] + m[i][2] * b.m[2][j] + m[i][3] * b.m[3][j];
+		return r;
+	}
+};
 static int g_matMode = GL_MODELVIEW;
 static std::vector<Mat> g_mv, g_proj, g_texm[kUnits];
 static int g_activeUnit = 0, g_clientUnit = 0;
 
-static Mat _identity() { Mat m; D3DXMatrixIdentity(&m); return m; }
+static Mat _identity() { Mat m; memset(m.m, 0, sizeof(m.m)); m.m[0][0] = m.m[1][1] = m.m[2][2] = m.m[3][3] = 1.0f; return m; }
 static Mat _fromGL(const float* f) { Mat m; memcpy(&m.m[0][0], f, sizeof(float) * 16); return m; }
+static Mat _transpose(const Mat& a) { Mat t; for (int i = 0; i < 4; ++i) for (int j = 0; j < 4; ++j) t.m[i][j] = a.m[j][i]; return t; }
+static bool _isIdentity(const Mat& a) {
+	for (int r = 0; r < 4; ++r)
+		for (int c = 0; c < 4; ++c)
+			if (fabsf(a.m[r][c] - (r == c ? 1.0f : 0.0f)) > 1e-6f) return false;
+	return true;
+}
+// The general inverse (cofactors over the determinant); false, and `o` untouched, when `a` has none.
+static bool _inverse(Mat& o, const Mat& a) {
+	const float* s = &a.m[0][0];
+	float inv[16];
+	inv[0] = s[5] * s[10] * s[15] - s[5] * s[11] * s[14] - s[9] * s[6] * s[15] + s[9] * s[7] * s[14] + s[13] * s[6] * s[11] - s[13] * s[7] * s[10];
+	inv[4] = -s[4] * s[10] * s[15] + s[4] * s[11] * s[14] + s[8] * s[6] * s[15] - s[8] * s[7] * s[14] - s[12] * s[6] * s[11] + s[12] * s[7] * s[10];
+	inv[8] = s[4] * s[9] * s[15] - s[4] * s[11] * s[13] - s[8] * s[5] * s[15] + s[8] * s[7] * s[13] + s[12] * s[5] * s[11] - s[12] * s[7] * s[9];
+	inv[12] = -s[4] * s[9] * s[14] + s[4] * s[10] * s[13] + s[8] * s[5] * s[14] - s[8] * s[6] * s[13] - s[12] * s[5] * s[10] + s[12] * s[6] * s[9];
+	inv[1] = -s[1] * s[10] * s[15] + s[1] * s[11] * s[14] + s[9] * s[2] * s[15] - s[9] * s[3] * s[14] - s[13] * s[2] * s[11] + s[13] * s[3] * s[10];
+	inv[5] = s[0] * s[10] * s[15] - s[0] * s[11] * s[14] - s[8] * s[2] * s[15] + s[8] * s[3] * s[14] + s[12] * s[2] * s[11] - s[12] * s[3] * s[10];
+	inv[9] = -s[0] * s[9] * s[15] + s[0] * s[11] * s[13] + s[8] * s[1] * s[15] - s[8] * s[3] * s[13] - s[12] * s[1] * s[11] + s[12] * s[3] * s[9];
+	inv[13] = s[0] * s[9] * s[14] - s[0] * s[10] * s[13] - s[8] * s[1] * s[14] + s[8] * s[2] * s[13] + s[12] * s[1] * s[10] - s[12] * s[2] * s[9];
+	inv[2] = s[1] * s[6] * s[15] - s[1] * s[7] * s[14] - s[5] * s[2] * s[15] + s[5] * s[3] * s[14] + s[13] * s[2] * s[7] - s[13] * s[3] * s[6];
+	inv[6] = -s[0] * s[6] * s[15] + s[0] * s[7] * s[14] + s[4] * s[2] * s[15] - s[4] * s[3] * s[14] - s[12] * s[2] * s[7] + s[12] * s[3] * s[6];
+	inv[10] = s[0] * s[5] * s[15] - s[0] * s[7] * s[13] - s[4] * s[1] * s[15] + s[4] * s[3] * s[13] + s[12] * s[1] * s[7] - s[12] * s[3] * s[5];
+	inv[14] = -s[0] * s[5] * s[14] + s[0] * s[6] * s[13] + s[4] * s[1] * s[14] - s[4] * s[2] * s[13] - s[12] * s[1] * s[6] + s[12] * s[2] * s[5];
+	inv[3] = -s[1] * s[6] * s[11] + s[1] * s[7] * s[10] + s[5] * s[2] * s[11] - s[5] * s[3] * s[10] - s[9] * s[2] * s[7] + s[9] * s[3] * s[6];
+	inv[7] = s[0] * s[6] * s[11] - s[0] * s[7] * s[10] - s[4] * s[2] * s[11] + s[4] * s[3] * s[10] + s[8] * s[2] * s[7] - s[8] * s[3] * s[6];
+	inv[11] = -s[0] * s[5] * s[11] + s[0] * s[7] * s[9] + s[4] * s[1] * s[11] - s[4] * s[3] * s[9] - s[8] * s[1] * s[7] + s[8] * s[3] * s[5];
+	inv[15] = s[0] * s[5] * s[10] - s[0] * s[6] * s[9] - s[4] * s[1] * s[10] + s[4] * s[2] * s[9] + s[8] * s[1] * s[6] - s[8] * s[2] * s[5];
+	const float det = s[0] * inv[0] + s[1] * inv[4] + s[2] * inv[8] + s[3] * inv[12];
+	if (det == 0.0f) return false;
+	const float r = 1.0f / det;
+	for (int i = 0; i < 16; ++i) (&o.m[0][0])[i] = inv[i] * r;
+	return true;
+}
+// A vertex's position (x, y, z, 1) * M divided through by w, and its normals by M's 3x3: what moving it by M means.
+static void _move(GLVert& v, const Mat& m) {
+	const float x = v.x * m.m[0][0] + v.y * m.m[1][0] + v.z * m.m[2][0] + m.m[3][0];
+	const float y = v.x * m.m[0][1] + v.y * m.m[1][1] + v.z * m.m[2][1] + m.m[3][1];
+	const float z = v.x * m.m[0][2] + v.y * m.m[1][2] + v.z * m.m[2][2] + m.m[3][2];
+	const float w = v.x * m.m[0][3] + v.y * m.m[1][3] + v.z * m.m[2][3] + m.m[3][3];
+	const float iw = w != 0.0f ? 1.0f / w : 1.0f;
+	v.x = x * iw; v.y = y * iw; v.z = z * iw;
+	const float nx = v.nx * m.m[0][0] + v.ny * m.m[1][0] + v.nz * m.m[2][0];
+	const float ny = v.nx * m.m[0][1] + v.ny * m.m[1][1] + v.nz * m.m[2][1];
+	const float nz = v.nx * m.m[0][2] + v.ny * m.m[1][2] + v.nz * m.m[2][2];
+	v.nx = nx; v.ny = ny; v.nz = nz;
+	const float fx = v.fnx * m.m[0][0] + v.fny * m.m[1][0] + v.fnz * m.m[2][0];
+	const float fy = v.fnx * m.m[0][1] + v.fny * m.m[1][1] + v.fnz * m.m[2][1];
+	const float fz = v.fnx * m.m[0][2] + v.fny * m.m[1][2] + v.fnz * m.m[2][2];
+	v.fnx = fx; v.fny = fy; v.fnz = fz;
+}
 static std::vector<Mat>& _stack(int mode) {
 	if (mode == GL_PROJECTION) return g_proj;
 	if (mode == GL_TEXTURE) return g_texm[g_activeUnit];
@@ -136,7 +157,7 @@ static int g_unpackAlign = 4, g_packAlign = 4;
 
 // =========================================================================== textures
 struct GLTex {
-	IDirect3DTexture9* tex;
+	gpu::Texture tex;
 	int w, h, levels;
 	int wrapS, wrapT, minF, magF;
 	bool used;           // glGenTextures handed this name out (or glBindTexture made it)
@@ -172,12 +193,12 @@ static void _setArray(Array& a, int size, int type, int stride, const char* ptr)
 
 // =========================================================================== display lists
 struct GLBatch {
-	D3DPRIMITIVETYPE prim;           // TRIANGLELIST or LINELIST
+	gpu::Prim prim;                  // triangles or lines
 	std::vector<GLVert> verts;       // CPU staging while recording; freed once `vb` holds it
-	IDirect3DVertexBuffer9* vb;
-	int count;                       // primitives
+	gpu::Buffer vb;
+	int count;                       // vertices in vb
 	int tex; bool texOn;             // unit 0's texture as bound inside the list
-	GLBatch() : prim(D3DPT_TRIANGLELIST), vb(0), count(0), tex(0), texOn(false) {}
+	GLBatch() : prim(gpu::kTriangles), vb(0), count(0), tex(0), texOn(false) {}
 };
 struct GLList {
 	std::vector<GLBatch> batches;
@@ -188,7 +209,7 @@ struct GLList {
 	int endTex;                 // unit 0's binding when the list ended (a list that binds leaves it bound, as GL does)
 	float endColor[4];          // the colour when the list ended (a list that sets one leaves it current)
 	bool setsColor;
-	GLList() : used(false), ownsTex(false), inheritColor(false), hasXform(false), endTex(0), setsColor(false) { D3DXMatrixIdentity(&xform); endColor[0] = endColor[1] = endColor[2] = endColor[3] = 1.0f; }
+	GLList() : used(false), ownsTex(false), inheritColor(false), hasXform(false), endTex(0), setsColor(false) { xform = _identity(); endColor[0] = endColor[1] = endColor[2] = endColor[3] = 1.0f; }
 };
 static std::vector<GLList> g_lists;       // index = GL name; 0 reserved
 static int g_recording = 0;               // the list being recorded, or 0
@@ -217,262 +238,72 @@ static std::vector<GLVert> g_imm;
 // each run is baked into eye space (the modelview folded into its positions and normals) and drawn together with a modelview of
 // identity. Any state change draws what is pending first, so the batch is always drawn under the state it was gathered in.
 static std::vector<GLVert> g_batch;
-static D3DPRIMITIVETYPE g_batchPrim = D3DPT_TRIANGLELIST;
+static gpu::Prim g_batchPrim = gpu::kTriangles;
 static void _flushBatch();
 static void _stateChange() { _flushBatch(); }
 
-// =========================================================================== the shaders
-// The vertex shader is GL's fixed-function vertex stage: transform, the texture matrices, and lighting (two lights, the model
-// ambient, the colour material). The pixel shader is its fragment stage: two texture environments, the alpha test, fog.
-// SEPARATE sources, each entry "main" (one combined source with two entry points failed to compile on the 360).
-static const char* kVS =
-	"float4x4 gWVP : register(c0);\n"
-	"float4x4 gMV  : register(c4);\n"
-	"float4x4 gT0  : register(c8);\n"
-	"float4x4 gT1  : register(c12);\n"
-	"float4 gLit   : register(c16);\n"   // x lighting, y light 0 on, z light 1 on, w colour material (0 off, 1 AMBIENT, 2 DIFFUSE, 3 both)
-	"float4 gAmb   : register(c17);\n"   // the light model ambient; w: normalize normals
-	"float4 gL0p   : register(c18);\n"   // eye-space position (w 0: a direction toward the light)
-	"float4 gL0d   : register(c19);\n"
-	"float4 gL0a   : register(c20);\n"
-	"float4 gL1p   : register(c21);\n"
-	"float4 gL1d   : register(c22);\n"
-	"float4 gL1a   : register(c23);\n"
-	"float4 gMa    : register(c24);\n"   // the material (when the colour material is off)
-	"float4 gMd    : register(c25);\n"
-	"float4 gTint  : register(c26);\n"   // a display list that set no colour: the colour current at glCallList (else white)
-	"float4 gShade : register(c27);\n"   // x: flat shading (light the provoking vertex's normal and colour)
-	"float3 toLight(float4 lp, float3 e) { float3 d = lp.w == 0 ? lp.xyz : lp.xyz - e; float l = dot(d, d); return l > 1e-12 ? d * rsqrt(l) : float3(0, 0, 0); }\n"
-	"void main(float3 p : POSITION, float3 vn : NORMAL, float4 vc : COLOR0, float2 t0 : TEXCOORD0, float2 t1 : TEXCOORD1,\n"
-	"          float3 fn : TEXCOORD2, float4 fc : COLOR1,\n"
-	"          out float4 op : POSITION, out float4 oc : COLOR0, out float2 ot0 : TEXCOORD0, out float2 ot1 : TEXCOORD1,\n"
-	"          out float ofz : TEXCOORD2) {\n"
-	"  float3 n = gShade.x > 0.5 ? fn : vn;\n"
-	"  float4 c = gShade.x > 0.5 ? fc : vc;\n"
-	"  float4 P = float4(p, 1);\n"
-	"  op = mul(P, gWVP);\n"
-	"  float4 e = mul(P, gMV);\n"
-	"  ofz = abs(e.z);\n"                // GL's fog coordinate: the eye-plane distance
-	"  float4 a = mul(float4(t0, 0, 1), gT0); ot0 = a.xy / a.w;\n"
-	"  float4 b = mul(float4(t1, 0, 1), gT1); ot1 = b.xy / b.w;\n"
-	"  float4 col = c * gTint;\n"
-	"  if (gLit.x > 0.5) {\n"
-	"    float3 N = mul(float4(n, 0), gMV).xyz;\n"
-	"    if (gAmb.w > 0.5) { float l = dot(N, N); N = l > 1e-12 ? N * rsqrt(l) : float3(0, 0, 0); }\n"
-	"    float4 ma = (gLit.w > 0.5 && gLit.w < 1.5) || gLit.w > 2.5 ? col : gMa;\n"
-	"    float4 md = gLit.w > 1.5 ? col : gMd;\n"
-	"    float3 s = gAmb.rgb * ma.rgb;\n"
-	"    if (gLit.y > 0.5) s += gL0a.rgb * ma.rgb + max(dot(N, toLight(gL0p, e.xyz)), 0) * gL0d.rgb * md.rgb;\n"
-	"    if (gLit.z > 0.5) s += gL1a.rgb * ma.rgb + max(dot(N, toLight(gL1p, e.xyz)), 0) * gL1d.rgb * md.rgb;\n"
-	"    col = float4(s, md.a);\n"
-	"  }\n"
-	"  oc = saturate(col);\n"
-	"}\n";
-static const char* kPS =
-	"float4 gTex   : register(c0);\n"    // x unit 0 on, y unit 1 on, z unit 0's environment, w unit 1's (0 MODULATE 1 REPLACE 2 ADD 3 DECAL)
-	"float4 gAlpha : register(c1);\n"    // x on, y the comparison (0..7 = GL_NEVER..GL_ALWAYS), z the reference
-	"float4 gFog   : register(c2);\n"    // x on, y mode (0 LINEAR, 1 EXP, 2 EXP2), z start, w end
-	"float4 gFogC  : register(c3);\n"    // rgb the colour, a the density
-	"sampler2D s0 : register(s0);\n"
-	"sampler2D s1 : register(s1);\n"
-	"float4 env(float4 o, float4 t, float m) {\n"
-	"  if (m < 0.5) return o * t;\n"
-	"  if (m < 1.5) return t;\n"
-	"  if (m < 2.5) return float4(saturate(o.rgb + t.rgb), o.a * t.a);\n"
-	"  return float4(lerp(o.rgb, t.rgb, t.a), o.a);\n"
-	"}\n"
-	"float4 main(float4 c : COLOR0, float2 t0 : TEXCOORD0, float2 t1 : TEXCOORD1, float fz : TEXCOORD2) : COLOR {\n"
-	"  float4 o = c;\n"
-	"  if (gTex.x > 0.5) o = env(o, tex2D(s0, t0), gTex.z);\n"
-	"  if (gTex.y > 0.5) o = env(o, tex2D(s1, t1), gTex.w);\n"
-	"  if (gAlpha.x > 0.5) {\n"
-	"    float a = o.a, r = gAlpha.z, f = gAlpha.y;\n"
-	"    bool ok = f < 0.5 ? false : f < 1.5 ? a < r : f < 2.5 ? a == r : f < 3.5 ? a <= r : f < 4.5 ? a > r : f < 5.5 ? a != r : f < 6.5 ? a >= r : true;\n"   // (`pass` is reserved in HLSL)
-	"    clip(ok ? 1 : -1);\n"
-	"  }\n"
-	"  if (gFog.x > 0.5) {\n"
-	"    float d = gFogC.a * fz;\n"
-	"    float k = gFog.y < 0.5 ? (gFog.w - fz) / max(gFog.w - gFog.z, 1e-6) : gFog.y < 1.5 ? exp(-d) : exp(-d * d);\n"
-	"    o.rgb = lerp(gFogC.rgb, o.rgb, saturate(k));\n"
-	"  }\n"
-	"  return o;\n"
-	"}\n";
-
-static IDirect3DVertexShader9* g_vs = 0;
-static IDirect3DPixelShader9* g_ps = 0;
-static IDirect3DVertexDeclaration9* g_decl = 0;
-
-static void _buildShaders() {
-	if (!g_dev || g_vs) return;
-	ID3DXBuffer* code = 0;
-	ID3DXBuffer* err = 0;
-	HRESULT hr = D3DXCompileShader(kVS, (UINT)strlen(kVS), 0, 0, "main", "vs_3_0", 0, &code, &err, 0);
-	if (SUCCEEDED(hr) && code) g_dev->CreateVertexShader((const DWORD*)code->GetBufferPointer(), &g_vs);
-	else if (err) DbgPrintF("[J2X] VS compile: %s\n", (const char*)err->GetBufferPointer());
-	else DbgPrintF("[J2X] VS D3DXCompileShader hr=0x%08x\n", (unsigned)hr);
-	if (code) { code->Release(); code = 0; }
-	if (err) { err->Release(); err = 0; }
-	hr = D3DXCompileShader(kPS, (UINT)strlen(kPS), 0, 0, "main", "ps_3_0", 0, &code, &err, 0);
-	if (SUCCEEDED(hr) && code) g_dev->CreatePixelShader((const DWORD*)code->GetBufferPointer(), &g_ps);
-	else if (err) DbgPrintF("[J2X] PS compile: %s\n", (const char*)err->GetBufferPointer());
-	else DbgPrintF("[J2X] PS D3DXCompileShader hr=0x%08x\n", (unsigned)hr);
-	if (code) code->Release();
-	if (err) err->Release();
-	static const D3DVERTEXELEMENT9 decl[] = {   // GLVert
-		{ 0, 0,  D3DDECLTYPE_FLOAT3,   D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_POSITION, 0 },
-		{ 0, 12, D3DDECLTYPE_FLOAT3,   D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_NORMAL,   0 },
-		{ 0, 24, D3DDECLTYPE_D3DCOLOR, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_COLOR,    0 },
-		{ 0, 28, D3DDECLTYPE_FLOAT2,   D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD, 0 },
-		{ 0, 36, D3DDECLTYPE_FLOAT2,   D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD, 1 },
-		{ 0, 44, D3DDECLTYPE_FLOAT3,   D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_TEXCOORD, 2 },   // the provoking normal
-		{ 0, 56, D3DDECLTYPE_D3DCOLOR, D3DDECLMETHOD_DEFAULT, D3DDECLUSAGE_COLOR,    1 },   // the provoking colour
-		D3DDECL_END()
-	};
-	g_dev->CreateVertexDeclaration(decl, &g_decl);
-	DbgPrintF((g_vs && g_ps && g_decl) ? "[J2X] Direct3D 9 layer: shaders + declaration ready\n"
-	                                   : "[J2X] Direct3D 9 layer: shader build FAILED (see above)\n");
-}
-
-// =========================================================================== the D3D side: what is on the device
-// Shadows of what was last given the device, so a draw only touches what changed (the 360's validation made every redundant call
-// cost). Cleared whenever the device's state is unknown (glInit, glOnDeviceReset).
-static float s_vsc[28 * 4], s_psc[4 * 4];
-static bool s_vscValid = false, s_pscValid = false;
-static IDirect3DBaseTexture9* s_tex[kUnits];
-static DWORD s_samp[kUnits][6];           // ADDRESSU, ADDRESSV, MAGFILTER, MINFILTER, MIPFILTER, (unused)
-static IDirect3DVertexBuffer9* s_stream = 0;
-static bool s_streamKnown = false;
-static bool s_shadersSet = false;
-
-static void _forgetDeviceState() {
-	s_vscValid = s_pscValid = false;
-	for (int u = 0; u < kUnits; ++u) { s_tex[u] = (IDirect3DBaseTexture9*)~(size_t)0; for (int k = 0; k < 6; ++k) s_samp[u][k] = 0xFFFFFFFF; }
-	s_streamKnown = false;
-	s_shadersSet = false;
-}
-
-static void _rs(D3DRENDERSTATETYPE s, DWORD v) { if (g_dev) g_dev->SetRenderState(s, v); }
-static DWORD _f2dw(float f) { DWORD d; memcpy(&d, &f, 4); return d; }
-
-// Stream 0: bound only through here, and unbound before any buffer is released or locked (vb-released-while-bound: releasing a
-// buffer still set in the device, or locking one, corrupted the 360's runtime and collapsed the frame rate).
-static void _bindStream(IDirect3DVertexBuffer9* vb) {
-	if (!g_dev || (s_streamKnown && vb == s_stream)) return;
-	g_dev->SetStreamSource(0, vb, 0, vb ? sizeof(GLVert) : 0);
-	s_stream = vb;
-	s_streamKnown = true;
-}
-static void _unbindStream() { _bindStream(0); }
-
-static DWORD _blendArg(int f) {
+// =========================================================================== a draw: GL's state in the backend's terms
+static gpu::Blend _blendArg(int f) {
 	switch (f) {
-		case GL_ZERO: return D3DBLEND_ZERO;
-		case GL_ONE: return D3DBLEND_ONE;
-		case GL_SRC_COLOR: return D3DBLEND_SRCCOLOR;
-		case GL_ONE_MINUS_SRC_COLOR: return D3DBLEND_INVSRCCOLOR;
-		case GL_SRC_ALPHA: return D3DBLEND_SRCALPHA;
-		case GL_ONE_MINUS_SRC_ALPHA: return D3DBLEND_INVSRCALPHA;
-		case GL_DST_ALPHA: return D3DBLEND_DESTALPHA;
-		case GL_ONE_MINUS_DST_ALPHA: return D3DBLEND_INVDESTALPHA;
-		case GL_DST_COLOR: return D3DBLEND_DESTCOLOR;
-		case GL_ONE_MINUS_DST_COLOR: return D3DBLEND_INVDESTCOLOR;
-		case GL_SRC_ALPHA_SATURATE: return D3DBLEND_SRCALPHASAT;
-		default: J2X_UNHANDLED("glBlendFunc", f); return D3DBLEND_ONE;
+		case GL_ZERO: return gpu::kZero;
+		case GL_ONE: return gpu::kOne;
+		case GL_SRC_COLOR: return gpu::kSrcColor;
+		case GL_ONE_MINUS_SRC_COLOR: return gpu::kInvSrcColor;
+		case GL_SRC_ALPHA: return gpu::kSrcAlpha;
+		case GL_ONE_MINUS_SRC_ALPHA: return gpu::kInvSrcAlpha;
+		case GL_DST_ALPHA: return gpu::kDstAlpha;
+		case GL_ONE_MINUS_DST_ALPHA: return gpu::kInvDstAlpha;
+		case GL_DST_COLOR: return gpu::kDstColor;
+		case GL_ONE_MINUS_DST_COLOR: return gpu::kInvDstColor;
+		case GL_SRC_ALPHA_SATURATE: return gpu::kSrcAlphaSat;
+		default: J2X_UNHANDLED("glBlendFunc", f); return gpu::kOne;
 	}
 }
-static DWORD _cmp(int f) {
-	switch (f) {
-		case GL_NEVER: return D3DCMP_NEVER;
-		case GL_LESS: return D3DCMP_LESS;
-		case GL_EQUAL: return D3DCMP_EQUAL;
-		case GL_LEQUAL: return D3DCMP_LESSEQUAL;
-		case GL_GREATER: return D3DCMP_GREATER;
-		case GL_NOTEQUAL: return D3DCMP_NOTEQUAL;
-		case GL_GEQUAL: return D3DCMP_GREATEREQUAL;
-		case GL_ALWAYS: return D3DCMP_ALWAYS;
-		default: J2X_UNHANDLED("glDepthFunc", f); return D3DCMP_LESS;
-	}
+static gpu::Compare _cmp(int f) {
+	if (f < GL_NEVER || f > GL_ALWAYS) { J2X_UNHANDLED("glDepthFunc", f); return gpu::kLess; }
+	return (gpu::Compare)(f - GL_NEVER);   // (GL_NEVER..GL_ALWAYS is the backend's order)
 }
 
-// Face culling: GL's front faces are counter-clockwise in its bottom-up window; the viewport flip mirrors them, so culling GL's
-// BACK faces is D3DCULL_CW here (the Xbox 360 port proved it). Culling FRONT faces, or calling clockwise front, flips it.
-static void _applyCull() {
-	DWORD mode = D3DCULL_NONE;
+// GL's viewport and scissor box (bottom-left origin) in the target's top-left pixels, clipped to it (never a wrapped Y).
+static void _rect(int gx, int gy, int gw, int gh, int& x, int& y, int& w, int& h) {
+	const int fw = gpu::targetWidth(), fh = gpu::targetHeight();
+	x = gx; w = gw; h = gh;
+	y = fh - gy - gh;                                    // GL's bottom-left origin -> the API's top-left
+	if (x < 0) { w += x; x = 0; }
+	if (y < 0) { h += y; y = 0; }
+	if (x + w > fw) w = fw - x;
+	if (y + h > fh) h = fh - y;
+	if (w < 1) w = 1;
+	if (h < 1) h = 1;
+}
+
+// Every fixed-function state a draw runs under, from the GL mirror.
+static gpu::RenderState _renderState() {
+	gpu::RenderState rs;
+	rs.blend = g_caps.blend; rs.srcBlend = _blendArg(g_blendSrc); rs.dstBlend = _blendArg(g_blendDst);
+	rs.depthTest = g_caps.depth; rs.depthFunc = _cmp(g_depthFunc); rs.depthWrite = g_depthMask;
+	rs.colorWrite = (g_colorMask[0] ? 1u : 0u) | (g_colorMask[1] ? 2u : 0u) | (g_colorMask[2] ? 4u : 0u) | (g_colorMask[3] ? 8u : 0u);
+	// Face culling: GL's front faces are counter-clockwise in its bottom-up window; the viewport flip mirrors them, so culling GL's
+	// BACK faces culls the clockwise ones on screen (the Xbox 360 port proved it). Culling FRONT faces, or calling clockwise
+	// front, flips it.
+	rs.cull = gpu::kCullNone;
 	if (g_caps.cull && g_cullFace != GL_FRONT_AND_BACK) {
 		bool cw = (g_cullFace == GL_BACK);
 		if (g_frontFace == GL_CW) cw = !cw;
-		mode = cw ? D3DCULL_CW : D3DCULL_CCW;
+		rs.cull = cw ? gpu::kCullCW : gpu::kCullCCW;
 	}
-	_rs(D3DRS_CULLMODE, mode);
-}
-static void _applyPolyOffset() {   // GL units are depth-buffer steps (D24: 1/2^24 each); the factor is the slope scale
-	const float slope = g_caps.polyOffsetFill ? g_polyFactor : 0.0f;
-	const float bias = g_caps.polyOffsetFill ? g_polyUnits * (1.0f / 16777216.0f) : 0.0f;
-	_rs(D3DRS_SLOPESCALEDEPTHBIAS, _f2dw(slope));
-	_rs(D3DRS_DEPTHBIAS, _f2dw(bias));
-}
-static void _applyColorMask() {
-	_rs(D3DRS_COLORWRITEENABLE, (g_colorMask[0] ? D3DCOLORWRITEENABLE_RED : 0) | (g_colorMask[1] ? D3DCOLORWRITEENABLE_GREEN : 0) |
-	                            (g_colorMask[2] ? D3DCOLORWRITEENABLE_BLUE : 0) | (g_colorMask[3] ? D3DCOLORWRITEENABLE_ALPHA : 0));
-}
-static void _applyViewport() {
-	if (!g_dev) return;
-	D3DVIEWPORT9 vp;
-	int y = g_fbH - g_vpY - g_vpH;                          // GL's bottom-left origin -> Direct3D's top-left
-	int x = g_vpX, w = g_vpW, h = g_vpH;
-	if (x < 0) { w += x; x = 0; }
-	if (y < 0) { h += y; y = 0; }                           // never a wrapped (huge unsigned) Y
-	if (x + w > g_fbW) w = g_fbW - x;
-	if (y + h > g_fbH) h = g_fbH - y;
-	vp.X = (DWORD)x; vp.Y = (DWORD)y; vp.Width = (DWORD)(w > 0 ? w : 1); vp.Height = (DWORD)(h > 0 ? h : 1);
-	vp.MinZ = 0.0f; vp.MaxZ = 1.0f;
-	g_dev->SetViewport(&vp);
-}
-static void _applyScissor() {
-	_rs(D3DRS_SCISSORTESTENABLE, g_caps.scissor ? TRUE : FALSE);
-	if (!g_dev || !g_caps.scissor) return;
-	RECT r;
-	r.left = g_scX; r.right = g_scX + g_scW; r.top = g_fbH - g_scY - g_scH; r.bottom = g_fbH - g_scY;
-	g_dev->SetScissorRect(&r);
+	// glPolygonOffset: GL units are depth-buffer steps (D24: 1/2^24 each); the factor is the slope scale.
+	rs.slopeBias = g_caps.polyOffsetFill ? g_polyFactor : 0.0f;
+	rs.depthBias = g_caps.polyOffsetFill ? g_polyUnits * (1.0f / 16777216.0f) : 0.0f;
+	rs.scissor = g_caps.scissor;
+	_rect(g_scX, g_scY, g_scW, g_scH, rs.scX, rs.scY, rs.scW, rs.scH);
+	_rect(g_vpX, g_vpY, g_vpW, g_vpH, rs.vpX, rs.vpY, rs.vpW, rs.vpH);
+	return rs;
 }
 
-// Every render state from the GL mirror: a fresh or reset device starts from Direct3D's defaults, not from where GL is.
-static void _applyAllState() {
-	if (!g_dev) return;
-	_forgetDeviceState();
-	_rs(D3DRS_ZENABLE, g_caps.depth ? D3DZB_TRUE : D3DZB_FALSE);
-	_rs(D3DRS_ZFUNC, _cmp(g_depthFunc));
-	_rs(D3DRS_ZWRITEENABLE, g_depthMask ? TRUE : FALSE);
-	_rs(D3DRS_ALPHABLENDENABLE, g_caps.blend ? TRUE : FALSE);
-	_rs(D3DRS_SRCBLEND, _blendArg(g_blendSrc));
-	_rs(D3DRS_DESTBLEND, _blendArg(g_blendDst));
-	_applyColorMask();
-	_applyCull();
-	_applyPolyOffset();
-	_applyViewport();
-	_applyScissor();
-	// The alpha test, fog and lighting are the shaders' (Xenos has no fixed-function pipeline); the PC's fixed-function states
-	// stay off so nothing doubles them.
-#ifndef _XBOX
-	_rs(D3DRS_LIGHTING, FALSE);
-	_rs(D3DRS_FOGENABLE, FALSE);
-	_rs(D3DRS_ALPHATESTENABLE, FALSE);
-#endif
-}
-
-// =========================================================================== the D3D side: a draw
-static void _setVSConst(int reg, const float* data, int count) {
-	if (s_vscValid && memcmp(&s_vsc[reg * 4], data, count * 16) == 0) return;
-	memcpy(&s_vsc[reg * 4], data, count * 16);
-	g_dev->SetVertexShaderConstantF(reg, data, count);
-}
-static void _setPSConst(int reg, const float* data, int count) {
-	if (s_pscValid && memcmp(&s_psc[reg * 4], data, count * 16) == 0) return;
-	memcpy(&s_psc[reg * 4], data, count * 16);
-	g_dev->SetPixelShaderConstantF(reg, data, count);
-}
-static void _putMat(float* out, const Mat& m) {   // transposed for HLSL's mul(row vector, matrix) from c-registers
-	Mat t; D3DXMatrixTranspose(&t, &m); memcpy(out, &t.m[0][0], 64);
+static void _putMat(float* out, const Mat& m) {   // transposed for HLSL's mul(row vector, matrix) from its column-major constants
+	const Mat t = _transpose(m);
+	memcpy(out, &t.m[0][0], 64);
 }
 static void _putEyeLight(float* out, const Light& L, bool on) {
 	if (!on) { memset(out, 0, 48); return; }
@@ -480,16 +311,16 @@ static void _putEyeLight(float* out, const Light& L, bool on) {
 	memcpy(out + 4, L.diffuse, 16);
 	memcpy(out + 8, L.ambient, 16);
 }
-// GL's clip space (depth -1..1, pixel centres at .5) -> Direct3D 9's (depth 0..1): z' = (z + w) / 2. The PC's Direct3D 9 puts
-// pixel centres on integers, so its geometry also moves half a pixel left and up, landing a GL pixel-exact draw (the GUI's text)
-// on the same pixels; the Xbox 360's Display turns on D3DRS_HALFPIXELOFFSET, which gives it GL's centres already.
-static Mat _glToD3D() {
+// GL's clip space (depth -1..1) -> the APIs' (depth 0..1): z' = (z + w) / 2. Direct3D 9 on the PC also puts pixel centres on
+// integers, so its geometry moves half a pixel left and up there, landing a GL pixel-exact draw (the GUI's text) on the same
+// pixels; Direct3D 10 and later, and the Xbox 360 (its Display turns its half-pixel offset on), have GL's centres already.
+static Mat _glToApi() {
 	Mat f = _identity();
-	f._33 = 0.5f; f._43 = 0.5f;
-#ifndef _XBOX
-	f._41 = -1.0f / (float)(g_vpW > 0 ? g_vpW : 1);
-	f._42 = 1.0f / (float)(g_vpH > 0 ? g_vpH : 1);
-#endif
+	f.m[2][2] = 0.5f; f.m[3][2] = 0.5f;
+	if (gpu::halfPixelOffset()) {
+		f.m[3][0] = -1.0f / (float)(g_vpW > 0 ? g_vpW : 1);
+		f.m[3][1] = 1.0f / (float)(g_vpH > 0 ? g_vpH : 1);
+	}
 	return f;
 }
 static int _envCode(int env) {
@@ -501,32 +332,6 @@ static int _envCode(int env) {
 		default: return 0;
 	}
 }
-
-// A texture unit's sampler state from its texture's GL parameters.
-static void _setSampler(int u, DWORD kind, int slot, DWORD value) {
-	if (s_samp[u][slot] == value) return;
-	s_samp[u][slot] = value;
-	g_dev->SetSamplerState(u, (D3DSAMPLERSTATETYPE)kind, value);
-}
-static bool _bindUnit(int u, int texId, bool on) {
-	GLTex* t = _tex(texId);
-	IDirect3DBaseTexture9* want = (on && t && t->tex) ? (IDirect3DBaseTexture9*)t->tex : 0;
-	if (want != s_tex[u]) { g_dev->SetTexture(u, want); s_tex[u] = want; }
-	if (!want) return false;
-	_setSampler(u, D3DSAMP_ADDRESSU, 0, t->wrapS == GL_REPEAT ? D3DTADDRESS_WRAP : D3DTADDRESS_CLAMP);
-	_setSampler(u, D3DSAMP_ADDRESSV, 1, t->wrapT == GL_REPEAT ? D3DTADDRESS_WRAP : D3DTADDRESS_CLAMP);
-	_setSampler(u, D3DSAMP_MAGFILTER, 2, t->magF == GL_LINEAR ? D3DTEXF_LINEAR : D3DTEXF_POINT);
-	const bool minLinear = t->minF == GL_LINEAR || t->minF == GL_LINEAR_MIPMAP_NEAREST || t->minF == GL_LINEAR_MIPMAP_LINEAR;
-	_setSampler(u, D3DSAMP_MINFILTER, 3, minLinear ? D3DTEXF_LINEAR : D3DTEXF_POINT);
-	DWORD mip = D3DTEXF_NONE;   // (a mip filter on a texture with one level samples that level, as a lenient driver does)
-	if (t->levels > 1) {
-		if (t->minF == GL_NEAREST_MIPMAP_NEAREST || t->minF == GL_LINEAR_MIPMAP_NEAREST) mip = D3DTEXF_POINT;
-		else if (t->minF == GL_NEAREST_MIPMAP_LINEAR || t->minF == GL_LINEAR_MIPMAP_LINEAR) mip = D3DTEXF_LINEAR;
-	}
-	_setSampler(u, D3DSAMP_MIPFILTER, 4, mip);
-	return true;
-}
-
 static float _colorMaterialCode() {
 	if (!g_caps.colorMaterial) return 0.0f;
 	switch (g_colorMaterialMode) {
@@ -537,18 +342,29 @@ static float _colorMaterialCode() {
 	}
 }
 
-// Everything a draw needs from GL's state: the shaders, the textures, the constants. `bakedEye`: the vertices are already in eye
-// space (the coalesced batch), so the modelview is identity. `tint`: the colour a colourless display list takes at glCallList.
-static void _prepareDraw(bool bakedEye, const float* tint, int listTex, bool listTexOn, bool useListTex) {
-	if (!s_shadersSet) {
-		g_dev->SetVertexShader(g_vs);
-		g_dev->SetPixelShader(g_ps);
-		g_dev->SetVertexDeclaration(g_decl);
-		s_shadersSet = true;
+// How a texture unit samples its texture, from the texture's GL parameters.
+static gpu::Sampler _sampler(const GLTex& t) {
+	gpu::Sampler s;
+	s.wrapU = (t.wrapS == GL_REPEAT);
+	s.wrapV = (t.wrapT == GL_REPEAT);
+	s.mag = (t.magF == GL_LINEAR) ? gpu::kLinear : gpu::kPoint;
+	const bool minLinear = t.minF == GL_LINEAR || t.minF == GL_LINEAR_MIPMAP_NEAREST || t.minF == GL_LINEAR_MIPMAP_LINEAR;
+	s.min = minLinear ? gpu::kLinear : gpu::kPoint;
+	s.mip = -1;   // (a mip filter on a texture with one level samples that level, as a lenient driver does)
+	if (t.levels > 1) {
+		if (t.minF == GL_NEAREST_MIPMAP_NEAREST || t.minF == GL_LINEAR_MIPMAP_NEAREST) s.mip = gpu::kPoint;
+		else if (t.minF == GL_NEAREST_MIPMAP_LINEAR || t.minF == GL_LINEAR_MIPMAP_LINEAR) s.mip = gpu::kLinear;
 	}
+	return s;
+}
+
+// Everything a draw needs from GL's state: the constants and the textures. `bakedEye`: the vertices are already in eye space
+// (the coalesced batch), so the modelview is identity. `tint`: the colour a colourless display list takes at glCallList.
+// `useListTex`: a list that bound its own texture draws with it (`listTex`, `listTexOn`), not the caller's.
+static void _drawInputs(bool bakedEye, const float* tint, int listTex, bool listTexOn, bool useListTex, gpu::Constants& c, gpu::Bindings& b) {
 	const Mat mv = bakedEye ? _identity() : _top(g_mv);
-	const Mat wvp = mv * _top(g_proj) * _glToD3D();
-	float vc[28 * 4];
+	const Mat wvp = mv * _top(g_proj) * _glToApi();
+	float* vc = c.vs;
 	_putMat(vc + 0, wvp);
 	_putMat(vc + 16, mv);
 	_putMat(vc + 32, _top(g_texm[0]));
@@ -564,31 +380,30 @@ static void _prepareDraw(bool bakedEye, const float* tint, int listTex, bool lis
 	static const float white[4] = { 1, 1, 1, 1 };
 	memcpy(vc + 104, tint ? tint : white, 16);
 	vc[108] = g_flat ? 1.0f : 0.0f; vc[109] = vc[110] = vc[111] = 0.0f;
-	_setVSConst(0, vc, 28);
-	s_vscValid = true;
 
-	const int tex0 = useListTex ? listTex : g_bound[0];
-	const bool on0 = useListTex ? listTexOn : g_caps.tex[0];
-	const bool t0 = _bindUnit(0, tex0, on0);
-	const bool t1 = _bindUnit(1, g_bound[1], g_caps.tex[1]);
-	float pc[16];
-	pc[0] = t0 ? 1.0f : 0.0f; pc[1] = t1 ? 1.0f : 0.0f; pc[2] = (float)_envCode(g_texEnv[0]); pc[3] = (float)_envCode(g_texEnv[1]);
+	const int texId[kUnits] = { useListTex ? listTex : g_bound[0], g_bound[1] };
+	const bool texOn[kUnits] = { useListTex ? listTexOn : g_caps.tex[0], g_caps.tex[1] };
+	bool on[kUnits];
+	for (int u = 0; u < kUnits; ++u) {
+		GLTex* t = _tex(texId[u]);
+		on[u] = texOn[u] && t && t->tex;   // (GL: a unit with no image does not texture)
+		b.tex[u] = on[u] ? t->tex : 0;
+		if (on[u]) b.samp[u] = _sampler(*t);
+		else { b.samp[u].wrapU = b.samp[u].wrapV = true; b.samp[u].mag = b.samp[u].min = gpu::kPoint; b.samp[u].mip = -1; }
+	}
+	float* pc = c.ps;
+	pc[0] = on[0] ? 1.0f : 0.0f; pc[1] = on[1] ? 1.0f : 0.0f; pc[2] = (float)_envCode(g_texEnv[0]); pc[3] = (float)_envCode(g_texEnv[1]);
 	pc[4] = g_caps.alphaTest ? 1.0f : 0.0f; pc[5] = (float)(g_alphaFunc - GL_NEVER); pc[6] = g_alphaRef; pc[7] = 0;
 	pc[8] = g_caps.fog ? 1.0f : 0.0f; pc[9] = g_fogMode == GL_LINEAR ? 0.0f : g_fogMode == GL_EXP2 ? 2.0f : 1.0f; pc[10] = g_fogStart; pc[11] = g_fogEnd;
 	pc[12] = g_fogColor[0]; pc[13] = g_fogColor[1]; pc[14] = g_fogColor[2]; pc[15] = g_fogDensity;
-	_setPSConst(0, pc, 4);
-	s_pscValid = true;
 }
 
-static bool _ready() { return g_dev && g_vs && g_ps && g_decl; }
-
-static void _drawUP(D3DPRIMITIVETYPE prim, const GLVert* v, int verts, bool bakedEye) {
-	if (!_ready() || verts <= 0) return;
-	const int count = prim == D3DPT_LINELIST ? verts / 2 : verts / 3;
-	if (count <= 0) return;
-	_prepareDraw(bakedEye, 0, 0, false, false);
-	s_streamKnown = false;   // DrawPrimitiveUP sets stream 0 itself (and leaves it unset)
-	g_dev->DrawPrimitiveUP(prim, (UINT)count, v, sizeof(GLVert));
+static void _drawUP(gpu::Prim prim, const GLVert* v, int verts, bool bakedEye) {
+	if (!gpu::ready() || verts <= 0) return;
+	gpu::Constants c;
+	gpu::Bindings b;
+	_drawInputs(bakedEye, 0, 0, false, false, c, b);
+	gpu::draw(prim, v, verts, _renderState(), c, b);
 }
 
 // =========================================================================== gathering: GL primitives -> lists of triangles or lines
@@ -660,10 +475,10 @@ static void _selectTest(const std::vector<GLVert>& prims, int per) {
 		float zmin = 1, zmax = 0;
 		for (int k = 0; k < per; ++k) {
 			const GLVert& v = prims[i + k];
-			const float x = v.x * m._11 + v.y * m._21 + v.z * m._31 + m._41;
-			const float y = v.x * m._12 + v.y * m._22 + v.z * m._32 + m._42;
-			const float z = v.x * m._13 + v.y * m._23 + v.z * m._33 + m._43;
-			const float w = v.x * m._14 + v.y * m._24 + v.z * m._34 + m._44;
+			const float x = v.x * m.m[0][0] + v.y * m.m[1][0] + v.z * m.m[2][0] + m.m[3][0];
+			const float y = v.x * m.m[0][1] + v.y * m.m[1][1] + v.z * m.m[2][1] + m.m[3][1];
+			const float z = v.x * m.m[0][2] + v.y * m.m[1][2] + v.z * m.m[2][2] + m.m[3][2];
+			const float w = v.x * m.m[0][3] + v.y * m.m[1][3] + v.z * m.m[2][3] + m.m[3][3];
 			int o = 0;
 			if (x < -w) o |= 1; if (x > w) o |= 2; if (y < -w) o |= 4; if (y > w) o |= 8; if (z < -w) o |= 16; if (z > w) o |= 32;
 			outMask &= o;
@@ -680,51 +495,23 @@ static void _selectTest(const std::vector<GLVert>& prims, int per) {
 // --------------------------------------------------------------------------- the coalesced immediate batch
 static void _flushBatch() {
 	if (g_batch.empty()) return;
-	if (_ready()) _drawUP(g_batchPrim, &g_batch[0], (int)g_batch.size(), true);
+	if (gpu::ready()) _drawUP(g_batchPrim, &g_batch[0], (int)g_batch.size(), true);
 	g_batch.clear();
 }
 static void _bakeEye(std::vector<GLVert>& v) {
 	const Mat& mv = _top(g_mv);
-	for (size_t k = 0; k < v.size(); ++k) {
-		D3DXVECTOR3 p(v[k].x, v[k].y, v[k].z), n(v[k].nx, v[k].ny, v[k].nz), o;
-		D3DXVec3TransformCoord(&o, &p, &mv);
-		v[k].x = o.x; v[k].y = o.y; v[k].z = o.z;
-		const float nx = n.x * mv._11 + n.y * mv._21 + n.z * mv._31;
-		const float ny = n.x * mv._12 + n.y * mv._22 + n.z * mv._32;
-		const float nz = n.x * mv._13 + n.y * mv._23 + n.z * mv._33;
-		v[k].nx = nx; v[k].ny = ny; v[k].nz = nz;
-		const float fx = v[k].fnx * mv._11 + v[k].fny * mv._21 + v[k].fnz * mv._31;
-		const float fy = v[k].fnx * mv._12 + v[k].fny * mv._22 + v[k].fnz * mv._32;
-		const float fz = v[k].fnx * mv._13 + v[k].fny * mv._23 + v[k].fnz * mv._33;
-		v[k].fnx = fx; v[k].fny = fy; v[k].fnz = fz;
-	}
+	for (size_t k = 0; k < v.size(); ++k) _move(v[k], mv);
 }
 
 // --------------------------------------------------------------------------- recording into a display list
-static void _record(D3DPRIMITIVETYPE prim, std::vector<GLVert>& verts, bool fromColorArray) {
+static void _record(gpu::Prim prim, std::vector<GLVert>& verts, bool fromColorArray) {
 	GLList& L = g_lists[g_recording];
 	if (fromColorArray) L.inheritColor = false;   // (its colours are its own)
 	// A matrix op made inside the list before this geometry moves it, as GL replays it: the change since glNewList is baked in
 	// (replay applies the caller's modelview on top).
 	const Mat delta = _top(g_mv) * g_recordBaseInv;
-	bool moved = false;
-	for (int r = 0; r < 4 && !moved; ++r)
-		for (int c = 0; c < 4; ++c)
-			if (fabsf(delta.m[r][c] - (r == c ? 1.0f : 0.0f)) > 1e-6f) { moved = true; break; }
-	if (moved) {
-		for (size_t k = 0; k < verts.size(); ++k) {
-			D3DXVECTOR3 p(verts[k].x, verts[k].y, verts[k].z), o;
-			D3DXVec3TransformCoord(&o, &p, &delta);
-			const float nx = verts[k].nx * delta._11 + verts[k].ny * delta._21 + verts[k].nz * delta._31;
-			const float ny = verts[k].nx * delta._12 + verts[k].ny * delta._22 + verts[k].nz * delta._32;
-			const float nz = verts[k].nx * delta._13 + verts[k].ny * delta._23 + verts[k].nz * delta._33;
-			verts[k].x = o.x; verts[k].y = o.y; verts[k].z = o.z; verts[k].nx = nx; verts[k].ny = ny; verts[k].nz = nz;
-			const float fx = verts[k].fnx * delta._11 + verts[k].fny * delta._21 + verts[k].fnz * delta._31;
-			const float fy = verts[k].fnx * delta._12 + verts[k].fny * delta._22 + verts[k].fnz * delta._32;
-			const float fz = verts[k].fnx * delta._13 + verts[k].fny * delta._23 + verts[k].fnz * delta._33;
-			verts[k].fnx = fx; verts[k].fny = fy; verts[k].fnz = fz;
-		}
-	}
+	if (!_isIdentity(delta))
+		for (size_t k = 0; k < verts.size(); ++k) _move(verts[k], delta);
 	GLBatch b;
 	b.prim = prim;
 	b.verts.swap(verts);
@@ -747,30 +534,30 @@ static void _submit(int mode, const GLVert* v, int n, bool batchable, bool color
 	if (g_recording) {
 		std::vector<GLVert> t2, l2;
 		if (g_recordExecute) { t2 = tris; l2 = lines; }
-		if (!tris.empty()) _record(D3DPT_TRIANGLELIST, tris, colorArray);
-		if (!lines.empty()) _record(D3DPT_LINELIST, lines, colorArray);
+		if (!tris.empty()) _record(gpu::kTriangles, tris, colorArray);
+		if (!lines.empty()) _record(gpu::kLines, lines, colorArray);
 		if (!g_recordExecute) return;
 		tris.swap(t2);
 		lines.swap(l2);
 	}
 	if (batchable && g_renderMode == GL_RENDER) {
 		if (!tris.empty()) {
-			if (!g_batch.empty() && g_batchPrim != D3DPT_TRIANGLELIST) _flushBatch();
+			if (!g_batch.empty() && g_batchPrim != gpu::kTriangles) _flushBatch();
 			_bakeEye(tris);
-			g_batchPrim = D3DPT_TRIANGLELIST;
+			g_batchPrim = gpu::kTriangles;
 			g_batch.insert(g_batch.end(), tris.begin(), tris.end());
 		}
 		if (!lines.empty()) {
-			if (!g_batch.empty() && g_batchPrim != D3DPT_LINELIST) _flushBatch();
+			if (!g_batch.empty() && g_batchPrim != gpu::kLines) _flushBatch();
 			_bakeEye(lines);
-			g_batchPrim = D3DPT_LINELIST;
+			g_batchPrim = gpu::kLines;
 			g_batch.insert(g_batch.end(), lines.begin(), lines.end());
 		}
 		return;
 	}
 	_flushBatch();
-	if (!tris.empty()) _drawUP(D3DPT_TRIANGLELIST, &tris[0], (int)tris.size(), false);
-	if (!lines.empty()) _drawUP(D3DPT_LINELIST, &lines[0], (int)lines.size(), false);
+	if (!tris.empty()) _drawUP(gpu::kTriangles, &tris[0], (int)tris.size(), false);
+	if (!lines.empty()) _drawUP(gpu::kLines, &lines[0], (int)lines.size(), false);
 }
 
 // =========================================================================== lifecycle
@@ -796,12 +583,9 @@ void glInit() {
 	g_recording = 0;
 	g_pendingVB.clear();
 	g_batch.clear();
-	_buildShaders();
-	if (g_dev) _applyAllState();
+	gpu::forgetState();
 }
-void glOnDeviceReset() {
-	if (g_dev) _applyAllState();
-}
+void glOnDeviceReset() { gpu::forgetState(); }   // (every draw sends the whole state; the backend has only its caches to drop)
 
 // =========================================================================== matrix ops
 void glMatrixMode(int mode) {
@@ -864,22 +648,13 @@ void glFrustum(double l, double r, double b, double t, double n, double f) {
 	                      0, 0, (float)(-2 * f * n / (f - n)), 0 };
 	glMultMatrixf(m);
 }
-// A Direct3D-convention projection (depth 0..1) into GL's: z_gl = 2 z_d3d - w.
-void glLoadProjection(const D3DXMATRIX& m) {
-	_stateChange();
-	Mat fix = _identity();
-	fix._33 = 2.0f; fix._43 = -1.0f;
-	_top(g_proj) = m * fix;
-}
 void glViewport(int x, int y, int w, int h) {
 	_stateChange();
-	g_vpX = x; g_vpY = y; g_vpW = w; g_vpH = h;
-	_applyViewport();
+	g_vpX = x; g_vpY = y; g_vpW = w; g_vpH = h;   // (in the target's pixels at the next draw: _renderState)
 }
 void glScissor(int x, int y, int w, int h) {
 	_stateChange();
 	g_scX = x; g_scY = y; g_scW = w; g_scH = h;
-	_applyScissor();
 }
 void glGetFloat(int pname, FloatBuffer* buf) {
 	if (!buf) return;
@@ -921,7 +696,7 @@ static GLVert _current(float x, float y, float z) {
 	GLVert v;
 	v.x = x; v.y = y; v.z = z;
 	v.nx = g_nx; v.ny = g_ny; v.nz = g_nz;
-	v.color = D3DCOLOR_COLORVALUE(g_cr, g_cg, g_cb, g_ca);
+	v.color = _colorValue(g_cr, g_cg, g_cb, g_ca);
 	v.u = g_tu[0]; v.v = g_tv[0]; v.u2 = g_tu[1]; v.v2 = g_tv[1];
 	v.fnx = v.nx; v.fny = v.ny; v.fnz = v.nz; v.fcolor = v.color;   // (set per primitive by _gather)
 	return v;
@@ -985,15 +760,7 @@ static void _setCap(int cap, bool on) {
 	}
 	if (*flag == on) return;
 	_stateChange();
-	*flag = on;
-	switch (cap) {
-		case GL_BLEND: _rs(D3DRS_ALPHABLENDENABLE, on ? TRUE : FALSE); break;
-		case GL_DEPTH_TEST: _rs(D3DRS_ZENABLE, on ? D3DZB_TRUE : D3DZB_FALSE); break;
-		case GL_CULL_FACE: _applyCull(); break;
-		case GL_POLYGON_OFFSET_FILL: _applyPolyOffset(); break;
-		case GL_SCISSOR_TEST: _applyScissor(); break;
-		default: break;   // the rest are the shaders' (read at the next draw)
-	}
+	*flag = on;   // (read at the next draw: _renderState / _drawInputs)
 }
 void glEnable(int cap) { _setCap(cap, true); }
 void glDisable(int cap) { _setCap(cap, false); }
@@ -1010,18 +777,15 @@ void glBlendFunc(int s, int d) {
 	if (s == g_blendSrc && d == g_blendDst) return;
 	_stateChange();
 	g_blendSrc = s; g_blendDst = d;
-	_rs(D3DRS_SRCBLEND, _blendArg(s));
-	_rs(D3DRS_DESTBLEND, _blendArg(d));
 }
-void glDepthFunc(int f) { if (f == g_depthFunc) return; _stateChange(); g_depthFunc = f; _rs(D3DRS_ZFUNC, _cmp(f)); }
-void glDepthMask(bool flag) { if (flag == g_depthMask) return; _stateChange(); g_depthMask = flag; _rs(D3DRS_ZWRITEENABLE, flag ? TRUE : FALSE); }
+void glDepthFunc(int f) { if (f == g_depthFunc) return; _stateChange(); g_depthFunc = f; }
+void glDepthMask(bool flag) { if (flag == g_depthMask) return; _stateChange(); g_depthMask = flag; }
 void glColorMask(bool r, bool g, bool b, bool a) {
 	_stateChange();
 	g_colorMask[0] = r; g_colorMask[1] = g; g_colorMask[2] = b; g_colorMask[3] = a;
-	_applyColorMask();
 }
-void glCullFace(int mode) { _stateChange(); g_cullFace = mode; _applyCull(); }
-void glFrontFace(int mode) { _stateChange(); g_frontFace = mode; _applyCull(); }
+void glCullFace(int mode) { _stateChange(); g_cullFace = mode; }
+void glFrontFace(int mode) { _stateChange(); g_frontFace = mode; }
 void glAlphaFunc(int func, float ref) {
 	if (func < GL_NEVER || func > GL_ALWAYS) { J2X_UNHANDLED("glAlphaFunc", func); return; }
 	_stateChange();
@@ -1037,24 +801,22 @@ void glShadeModel(int mode) {
 }
 void glClearColor(float r, float g, float b, float a) { g_clearR = _clamp01(r); g_clearG = _clamp01(g); g_clearB = _clamp01(b); g_clearA = _clamp01(a); }
 void glClearDepth(double d) { g_clearDepth = _clamp01((float)d); }
+// GL clears the whole target (not just the viewport) where the colour and depth masks let it, inside the scissor box when that
+// test is on.
 void glClear(int mask) {
 	_stateChange();
-	if (!g_dev) return;
-	DWORD flags = 0;
-	if (mask & GL_COLOR_BUFFER_BIT) flags |= D3DCLEAR_TARGET;
-	if (mask & GL_DEPTH_BUFFER_BIT) flags |= D3DCLEAR_ZBUFFER;
-	if (mask & GL_STENCIL_BUFFER_BIT) flags |= D3DCLEAR_STENCIL;
-	if (!flags) return;
-	// GL clears what the colour/depth masks let through, inside the scissor box; Direct3D's Clear takes the viewport and scissor
-	// but not the masks: a masked-off part is left out by hand.
-	if (!g_depthMask) flags &= ~(DWORD)D3DCLEAR_ZBUFFER;
-	if (!g_colorMask[0] && !g_colorMask[1] && !g_colorMask[2] && !g_colorMask[3]) flags &= ~(DWORD)D3DCLEAR_TARGET;
-	if (!flags) return;
-	g_dev->Clear(0, 0, flags, D3DCOLOR_COLORVALUE(g_clearR, g_clearG, g_clearB, g_clearA), g_clearDepth, 0);
+	if (!gpu::ready()) return;
+	bool color = (mask & GL_COLOR_BUFFER_BIT) != 0, depth = (mask & GL_DEPTH_BUFFER_BIT) != 0;
+	const bool stencil = (mask & GL_STENCIL_BUFFER_BIT) != 0;
+	if (!g_depthMask) depth = false;
+	if (!g_colorMask[0] && !g_colorMask[1] && !g_colorMask[2] && !g_colorMask[3]) color = false;
+	else if (color && !(g_colorMask[0] && g_colorMask[1] && g_colorMask[2] && g_colorMask[3])) J2X_UNHANDLED("glClear under a partial colour mask (clears every channel)", 0);
+	if (!color && !depth && !stencil) return;
+	gpu::clear(color, depth, stencil, g_clearR, g_clearG, g_clearB, g_clearA, g_clearDepth, _renderState());
 }
 void glHint(int, int) { J2X_NOOP("hints are hints"); }
-void glPolygonOffset(float factor, float units) { _stateChange(); g_polyFactor = factor; g_polyUnits = units; _applyPolyOffset(); }
-void glLineWidth(float) { J2X_NOOP("Direct3D 9 draws one-pixel lines"); }
+void glPolygonOffset(float factor, float units) { _stateChange(); g_polyFactor = factor; g_polyUnits = units; }
+void glLineWidth(float) { J2X_NOOP("Direct3D draws one-pixel lines"); }
 void glPointSize(float) { J2X_NOOP("points are not drawn"); }
 void glColorMaterial(int face, int mode) {
 	(void)face;   // (one material for both faces: two-sided lighting is off)
@@ -1163,8 +925,7 @@ void glGenTextures(IntBuffer* buf) {
 }
 static void _releaseTex(GLTex& t) {
 	if (!t.tex) return;
-	if (g_dev) for (int u = 0; u < kUnits; ++u) if (s_tex[u] == t.tex) { g_dev->SetTexture(u, 0); s_tex[u] = 0; }   // never release a bound texture
-	t.tex->Release();
+	gpu::releaseTexture(t.tex);   // (the backend unbinds it first: never released while bound)
 	t.tex = 0;
 }
 void glDeleteTextures(int id) {
@@ -1223,23 +984,23 @@ static int _bytesPerPixel(int format, int type) {
 		default: return 0;
 	}
 }
-static DWORD _pixel(const unsigned char* p, int format, int type) {
+static unsigned int _pixel(const unsigned char* p, int format, int type) {
 	if (type == GL_UNSIGNED_INT_8_8_8_8_REV || type == GL_UNSIGNED_INT_8_8_8_8) {
 		unsigned int v; memcpy(&v, p, 4);   // a packed int, in this machine's order (as the game's IntBuffer put it)
 		unsigned int c0, c1, c2, c3;        // the components in GL's order (first = R for RGBA, B for BGRA)
 		if (type == GL_UNSIGNED_INT_8_8_8_8_REV) { c0 = v & 255; c1 = (v >> 8) & 255; c2 = (v >> 16) & 255; c3 = v >> 24; }
 		else { c0 = v >> 24; c1 = (v >> 16) & 255; c2 = (v >> 8) & 255; c3 = v & 255; }
-		if (format == GL_BGRA) return D3DCOLOR_ARGB(c3, c2, c1, c0);
-		return D3DCOLOR_ARGB(c3, c0, c1, c2);
+		if (format == GL_BGRA) return _argb(c3, c2, c1, c0);
+		return _argb(c3, c0, c1, c2);
 	}
 	switch (format) {
-		case GL_RGBA: return D3DCOLOR_ARGB(p[3], p[0], p[1], p[2]);
-		case GL_BGRA: return D3DCOLOR_ARGB(p[3], p[2], p[1], p[0]);
-		case GL_RGB: return D3DCOLOR_ARGB(255, p[0], p[1], p[2]);
-		case GL_BGR: return D3DCOLOR_ARGB(255, p[2], p[1], p[0]);
-		case GL_LUMINANCE: return D3DCOLOR_ARGB(255, p[0], p[0], p[0]);
-		case GL_LUMINANCE_ALPHA: return D3DCOLOR_ARGB(p[1], p[0], p[0], p[0]);
-		case GL_ALPHA: return D3DCOLOR_ARGB(p[0], 255, 255, 255);   // (GL: an alpha texture leaves the fragment's colour as it is)
+		case GL_RGBA: return _argb(p[3], p[0], p[1], p[2]);
+		case GL_BGRA: return _argb(p[3], p[2], p[1], p[0]);
+		case GL_RGB: return _argb(255, p[0], p[1], p[2]);
+		case GL_BGR: return _argb(255, p[2], p[1], p[0]);
+		case GL_LUMINANCE: return _argb(255, p[0], p[0], p[0]);
+		case GL_LUMINANCE_ALPHA: return _argb(p[1], p[0], p[0], p[0]);
+		case GL_ALPHA: return _argb(p[0], 255, 255, 255);   // (GL: an alpha texture leaves the fragment's colour as it is)
 		default: return 0;
 	}
 }
@@ -1247,32 +1008,18 @@ static int _rowBytes(int w, int bpp, int align) { const int raw = w * bpp; retur
 
 // Make (or remake) a texture of w x h with `levels` levels, keeping the levels it already had when only adding levels.
 static bool _ensureTexture(GLTex* t, int w, int h, int levels) {
-	if (!g_dev || w <= 0 || h <= 0) return false;
+	if (!gpu::ready() || w <= 0 || h <= 0) return false;
 	if (t->tex && t->w == w && t->h == h && t->levels >= levels) return true;
-	IDirect3DTexture9* old = t->tex;
-	const int oldLevels = t->levels;
-	const bool keep = old && t->w == w && t->h == h;
-	IDirect3DTexture9* made = 0;
-	HRESULT hr;
-	{
-		OutOfScene out;   // (the 360 makes resources only out of a scene)
-		hr = g_dev->CreateTexture((UINT)w, (UINT)h, (UINT)levels, 0, J2X_TEXFMT, J2X_TEXPOOL, &made, 0);
-	}
-	if (FAILED(hr) || !made) { DbgPrintF("[J2X] CreateTexture %dx%d failed: 0x%08x\n", w, h, (unsigned)hr); return t->tex != 0; }
-	if (keep) {   // carry the levels already uploaded over to the deeper texture
-		for (int l = 0; l < oldLevels && l < levels; ++l) {
-			D3DLOCKED_RECT src, dst;
-			D3DSURFACE_DESC d;
-			if (FAILED(old->GetLevelDesc(l, &d))) continue;
-			if (FAILED(old->LockRect(l, &src, 0, D3DLOCK_READONLY))) continue;
-			if (SUCCEEDED(made->LockRect(l, &dst, 0, 0))) {
-				for (UINT y = 0; y < d.Height; ++y) memcpy((char*)dst.pBits + y * dst.Pitch, (const char*)src.pBits + y * src.Pitch, d.Width * 4);
-				made->UnlockRect(l);
-			}
-			old->UnlockRect(l);
+	gpu::Texture made = gpu::createTexture(w, h, levels);
+	if (!made) { DbgPrintF("[J2X] %s: a %dx%d texture could not be made\n", gpu::name(), w, h); return t->tex != 0; }
+	if (t->tex && t->w == w && t->h == h) {   // carry the levels already uploaded over to the deeper texture
+		for (int l = 0; l < t->levels && l < levels; ++l) {
+			std::vector<unsigned int> px;
+			int lw = 0, lh = 0;
+			if (gpu::readTexture(t->tex, l, px, lw, lh) && !px.empty()) gpu::writeTexture(made, l, 0, 0, lw, lh, &px[0]);
 		}
 	}
-	if (old) _releaseTex(*t);
+	_releaseTex(*t);
 	t->tex = made;
 	t->w = w; t->h = h; t->levels = levels;
 	return true;
@@ -1286,17 +1033,13 @@ static void _writePixels(GLTex* t, int level, int xoff, int yoff, int w, int h, 
 	if (!bpp) { J2X_UNHANDLED("glTexImage2D format", format); return; }
 	const int stride = _rowBytes(w, bpp, g_unpackAlign);
 	if (src && avail < stride * (h - 1) + w * bpp) { J2X_UNHANDLED("glTexImage2D: the buffer holds less than the image", avail); return; }
-	for (int u = 0; u < kUnits; ++u) if (s_tex[u] == t->tex) { g_dev->SetTexture(u, 0); s_tex[u] = 0; }   // (the 360: no lock while bound)
-	D3DLOCKED_RECT lr;
-	RECT rc; rc.left = xoff; rc.top = yoff; rc.right = xoff + w; rc.bottom = yoff + h;
-	if (FAILED(t->tex->LockRect(level, &lr, &rc, 0))) return;
-	for (int y = 0; y < h; ++y) {
-		DWORD* dst = (DWORD*)((unsigned char*)lr.pBits + y * lr.Pitch);
-		if (!src) { memset(dst, 0, w * 4); continue; }   // (GL: a null image allocates, contents undefined)
-		const unsigned char* row = src + y * stride;
-		for (int x = 0; x < w; ++x) dst[x] = _pixel(row + x * bpp, format, type);
-	}
-	t->tex->UnlockRect(level);
+	std::vector<unsigned int> px((size_t)w * h, 0u);   // (GL: a null image allocates, contents undefined)
+	if (src)
+		for (int y = 0; y < h; ++y) {
+			const unsigned char* row = src + y * stride;
+			for (int x = 0; x < w; ++x) px[(size_t)y * w + x] = _pixel(row + x * bpp, format, type);
+		}
+	gpu::writeTexture(t->tex, level, xoff, yoff, w, h, &px[0]);
 }
 static void _texImage(int level, int w, int h, int format, int type, const unsigned char* src, int avail) {
 	GLTex* t = _boundTex();
@@ -1337,60 +1080,32 @@ void glTexSubImage2D(int, int level, int x, int y, int w, int h, int format, int
 }
 
 // --------------------------------------------------------------------------- reading the frame
-// The frame as drawn so far, in a system-memory copy (GL's (x, y) is from the bottom-left). The PC reads the backbuffer back;
-// the Xbox 360 would resolve it (not written: no 360 game in the corpus reads the frame).
-static bool _readFrame(std::vector<DWORD>& out, int& fw, int& fh) {
-#ifdef _XBOX
-	J2X_UNHANDLED("reading the frame (glReadPixels / glCopyTexSubImage2D) on the Xbox 360", 0);
-	return false;
-#else
-	if (!g_dev) return false;
+// The frame as drawn so far, ARGB rows top to bottom (GL's (x, y) is from the bottom-left).
+static bool _readFrame(std::vector<unsigned int>& out, int& fw, int& fh) {
+	if (!gpu::ready()) return false;
 	_flushBatch();
-	IDirect3DSurface9* back = 0;
-	IDirect3DSurface9* copy = 0;
-	if (FAILED(g_dev->GetBackBuffer(0, 0, D3DBACKBUFFER_TYPE_MONO, &back)) || !back) return false;
-	D3DSURFACE_DESC d;
-	back->GetDesc(&d);
-	bool ok = false;
-	if (SUCCEEDED(g_dev->CreateOffscreenPlainSurface(d.Width, d.Height, d.Format, D3DPOOL_SYSTEMMEM, &copy, 0)) && copy &&
-	    SUCCEEDED(g_dev->GetRenderTargetData(back, copy))) {
-		D3DLOCKED_RECT lr;
-		if (SUCCEEDED(copy->LockRect(&lr, 0, D3DLOCK_READONLY))) {
-			fw = (int)d.Width; fh = (int)d.Height;
-			out.resize((size_t)fw * fh);
-			for (int y = 0; y < fh; ++y) memcpy(&out[(size_t)y * fw], (const char*)lr.pBits + (size_t)y * lr.Pitch, (size_t)fw * 4);
-			copy->UnlockRect();
-			ok = true;
-		}
-	}
-	if (copy) copy->Release();
-	back->Release();
-	return ok;
-#endif
+	return gpu::readFrame(out, fw, fh);
 }
 void glCopyTexSubImage2D(int, int level, int xoff, int yoff, int x, int y, int w, int h) {
 	GLTex* t = _boundTex();
 	if (!t || !t->tex || w <= 0 || h <= 0) return;
-	std::vector<DWORD> frame;
+	std::vector<unsigned int> frame;
 	int fw = 0, fh = 0;
 	if (!_readFrame(frame, fw, fh)) return;
 	if (level >= t->levels || xoff < 0 || yoff < 0 || xoff + w > _levelSize(t->w, level) || yoff + h > _levelSize(t->h, level)) {
 		J2X_UNHANDLED("glCopyTexSubImage2D: outside the texture", level);
 		return;
 	}
-	for (int u = 0; u < kUnits; ++u) if (s_tex[u] == t->tex) { g_dev->SetTexture(u, 0); s_tex[u] = 0; }
-	D3DLOCKED_RECT lr;
-	RECT rc; rc.left = xoff; rc.top = yoff; rc.right = xoff + w; rc.bottom = yoff + h;
-	if (FAILED(t->tex->LockRect(level, &lr, &rc, 0))) return;
+	std::vector<unsigned int> px((size_t)w * h);
 	for (int r = 0; r < h; ++r) {      // texture row yoff+r is the frame's GL row y+r (counted from the bottom)
-		DWORD* dst = (DWORD*)((unsigned char*)lr.pBits + r * lr.Pitch);
 		const int fy = fh - 1 - (y + r);
 		for (int c = 0; c < w; ++c) {
 			const int fx = x + c;
-			dst[c] = (fx >= 0 && fx < fw && fy >= 0 && fy < fh) ? (frame[(size_t)fy * fw + fx] | 0xFF000000u) : 0xFF000000u;
+			px[(size_t)r * w + c] = (fx >= 0 && fx < fw && fy >= 0 && fy < fh) ? (frame[(size_t)fy * fw + fx] | 0xFF000000u) : 0xFF000000u;
 		}
 	}
-	t->tex->UnlockRect(level);
+	_stateChange();
+	gpu::writeTexture(t->tex, level, xoff, yoff, w, h, &px[0]);
 }
 static void _readPixels(int x, int y, int w, int h, int format, int type, unsigned char* dst, int avail) {
 	if (!dst || w <= 0 || h <= 0) return;
@@ -1401,7 +1116,7 @@ static void _readPixels(int x, int y, int w, int h, int format, int type, unsign
 	}
 	const int stride = _rowBytes(w, bpp, g_packAlign);
 	if (avail < stride * (h - 1) + w * bpp) { J2X_UNHANDLED("glReadPixels: the buffer is smaller than the image", avail); return; }
-	std::vector<DWORD> frame;
+	std::vector<unsigned int> frame;
 	int fw = 0, fh = 0;
 	if (!_readFrame(frame, fw, fh)) return;
 	for (int r = 0; r < h; ++r) {      // GL rows run bottom-up
@@ -1409,7 +1124,7 @@ static void _readPixels(int x, int y, int w, int h, int format, int type, unsign
 		const int fy = fh - 1 - (y + r);
 		for (int c = 0; c < w; ++c) {
 			const int fx = x + c;
-			const DWORD p = (fx >= 0 && fx < fw && fy >= 0 && fy < fh) ? frame[(size_t)fy * fw + fx] : 0;
+			const unsigned int p = (fx >= 0 && fx < fw && fy >= 0 && fy < fh) ? frame[(size_t)fy * fw + fx] : 0;
 			const unsigned char R = (unsigned char)(p >> 16), G = (unsigned char)(p >> 8), B = (unsigned char)p, A = 255;
 			unsigned char* o = row + c * bpp;
 			if (type != GL_UNSIGNED_BYTE) {
@@ -1491,7 +1206,6 @@ static float _comp(const char* p, int type, int i) {
 		default: return 0.0f;
 	}
 }
-static unsigned char _u8(float f) { int i = (int)(f * 255.0f + 0.5f); return (unsigned char)(i < 0 ? 0 : i > 255 ? 255 : i); }
 
 // One vertex from the enabled arrays (what is not enabled comes from the current values, as in GL).
 static GLVert _fetch(int idx, bool& colorArray) {
@@ -1530,17 +1244,17 @@ static GLVert _fetch(int idx, bool& colorArray) {
 			// A packed int in this machine's order (the Tessellator's 0xAABBGGRR through IntBuffer::put): read as an int and taken
 			// apart by shifts, so the 360 and the PC agree (color-endian-int-read; on the PC it is GL's byte order R, G, B, A).
 			unsigned int packed; memcpy(&packed, p, 4);
-			v.color = D3DCOLOR_ARGB((unsigned char)(packed >> 24), (unsigned char)packed, (unsigned char)(packed >> 8), (unsigned char)(packed >> 16));
+			v.color = _argb((unsigned char)(packed >> 24), (unsigned char)packed, (unsigned char)(packed >> 8), (unsigned char)(packed >> 16));
 		} else if (g_ca_.type == GL_UNSIGNED_BYTE) {
 			const unsigned char* b = (const unsigned char*)p;
-			v.color = D3DCOLOR_ARGB(255, b[0], b[1], b[2]);
+			v.color = _argb(255, b[0], b[1], b[2]);
 		} else {
 			float c[4];
 			for (int i = 0; i < 4; ++i) {
 				c[i] = (i < g_ca_.size) ? _comp(p, g_ca_.type, i) : 1.0f;
 				if (i < g_ca_.size && g_ca_.type == GL_BYTE) c[i] = (2.0f * c[i] + 1.0f) / 255.0f;   // (GL 1.x's signed rule)
 			}
-			v.color = D3DCOLOR_ARGB(_u8(c[3]), _u8(c[0]), _u8(c[1]), _u8(c[2]));
+			v.color = _argb(_u8(c[3]), _u8(c[0]), _u8(c[1]), _u8(c[2]));
 		}
 	}
 	return v;
@@ -1616,9 +1330,8 @@ int glGenLists(int n) {
 	return base;
 }
 static void _freeListVBs(GLList& L) {
-	_unbindStream();   // one of these is likely the bound stream (the list was just drawn): unbind before releasing
 	for (size_t i = 0; i < L.batches.size(); ++i)
-		if (L.batches[i].vb) { L.batches[i].vb->Release(); L.batches[i].vb = 0; }
+		if (L.batches[i].vb) { gpu::releaseBuffer(L.batches[i].vb); L.batches[i].vb = 0; }   // (the backend unbinds first)
 	L.batches.clear();
 }
 void glNewList(int list, int mode) {
@@ -1638,28 +1351,21 @@ void glNewList(int list, int mode) {
 	g_recordExecute = (mode == GL_COMPILE_AND_EXECUTE);
 	g_recordSetColor = false;
 	g_recordBaseMV = _top(g_mv);
-	if (!D3DXMatrixInverse(&g_recordBaseInv, 0, &g_recordBaseMV)) g_recordBaseInv = _identity();
+	if (!_inverse(g_recordBaseInv, g_recordBaseMV)) g_recordBaseInv = _identity();
 	Saved& s = g_recordSaved;
 	s.bound0 = g_bound[0]; s.tex0 = g_caps.tex[0];
 	s.color[0] = g_cr; s.color[1] = g_cg; s.color[2] = g_cb; s.color[3] = g_ca;
 	s.normal[0] = g_nx; s.normal[1] = g_ny; s.normal[2] = g_nz;
 	for (int u = 0; u < kUnits; ++u) { s.tu[u] = g_tu[u]; s.tv[u] = g_tv[u]; }
 }
-// Upload a list's recorded geometry into vertex buffers (out of a scene: the caller steps out).
+// Upload a list's recorded geometry into the backend's buffers (inside gpu::beginUploads / endUploads).
 static void _createListVBs(GLList& L) {
-	_unbindStream();   // (no lock while a buffer may be the bound stream)
 	for (size_t i = 0; i < L.batches.size(); ++i) {
 		GLBatch& b = L.batches[i];
 		if (b.vb || b.verts.empty()) continue;
-		const UINT bytes = (UINT)(b.verts.size() * sizeof(GLVert));
-		if (SUCCEEDED(g_dev->CreateVertexBuffer(bytes, D3DUSAGE_WRITEONLY, 0, D3DPOOL_MANAGED, &b.vb, 0)) && b.vb) {
-			void* p = 0;
-			if (SUCCEEDED(b.vb->Lock(0, bytes, &p, 0))) { memcpy(p, &b.verts[0], bytes); b.vb->Unlock(); }
-			b.count = (int)(b.prim == D3DPT_LINELIST ? b.verts.size() / 2 : b.verts.size() / 3);
-		} else {
-			DbgPrintF("[J2X] CreateVertexBuffer(%u) failed\n", bytes);
-			b.vb = 0;
-		}
+		b.vb = gpu::createBuffer(&b.verts[0], (int)b.verts.size());
+		if (b.vb) b.count = (int)b.verts.size();
+		else DbgPrintF("[J2X] %s: a buffer of %d vertices could not be made\n", gpu::name(), (int)b.verts.size());
 		std::vector<GLVert>().swap(b.verts);   // the GPU holds it now
 	}
 }
@@ -1674,21 +1380,17 @@ void glEndList() {
 	// colour current while it was recorded would be multiplied in too (the first-person arm came out dark brown).
 	if (L.inheritColor)
 		for (size_t i = 0; i < L.batches.size(); ++i)
-			for (size_t k = 0; k < L.batches[i].verts.size(); ++k) L.batches[i].verts[k].color = L.batches[i].verts[k].fcolor = D3DCOLOR_ARGB(255, 255, 255, 255);
+			for (size_t k = 0; k < L.batches[i].verts.size(); ++k) L.batches[i].verts[k].color = L.batches[i].verts[k].fcolor = _argb(255, 255, 255, 255);
 	bool geometry = false;
 	for (size_t i = 0; i < L.batches.size(); ++i) if (!L.batches[i].verts.empty()) { geometry = true; break; }
-	if (geometry && g_dev) {
-		if (g_recordHadVB) { OutOfScene out; _createListVBs(L); }
+	if (geometry && gpu::ready()) {
+		if (g_recordHadVB) { gpu::beginUploads(); _createListVBs(L); gpu::endUploads(); }
 		else g_pendingVB.push_back(g_recording);
 	}
 	// The net modelview change made inside the list (end = delta * base): FontRenderer's per-glyph advance, replayed at glCallList.
 	const Mat delta = _top(g_mv) * g_recordBaseInv;
-	bool same = true;
-	for (int r = 0; r < 4 && same; ++r)
-		for (int c = 0; c < 4; ++c)
-			if (fabsf(delta.m[r][c] - (r == c ? 1.0f : 0.0f)) > 1e-6f) { same = false; break; }
 	L.xform = delta;
-	L.hasXform = !same;
+	L.hasXform = !_isIdentity(delta);
 	L.endTex = g_bound[0];
 	L.endColor[0] = g_cr; L.endColor[1] = g_cg; L.endColor[2] = g_cb; L.endColor[3] = g_ca;
 	if (!g_recordExecute) {   // GL_COMPILE: what the list's commands changed is put back (they run again at glCallList)
@@ -1703,12 +1405,13 @@ void glEndList() {
 }
 static void _pumpPendingVBs() {
 	if (g_pendingVB.empty()) return;
-	if (!g_dev) { g_pendingVB.clear(); return; }
-	OutOfScene out;
+	if (!gpu::ready()) { g_pendingVB.clear(); return; }
+	gpu::beginUploads();
 	for (size_t k = 0; k < g_pendingVB.size(); ++k) {
 		const int id = g_pendingVB[k];
 		if (id > 0 && id < (int)g_lists.size()) _createListVBs(g_lists[id]);
 	}
+	gpu::endUploads();
 	g_pendingVB.clear();
 }
 void glCallList(int list) {
@@ -1716,20 +1419,21 @@ void glCallList(int list) {
 	if (g_recording) { J2X_UNHANDLED("glCallList inside glNewList (nested lists)", list); return; }
 	_stateChange();
 	GLList& L = g_lists[list];
-	if (g_renderMode == GL_RENDER && _ready()) {
+	if (g_renderMode == GL_RENDER && gpu::ready()) {
 		// A list built this frame is drawn this frame: its buffers are made now if they are still waiting.
 		bool pending = false;
 		for (size_t i = 0; i < L.batches.size(); ++i) if (!L.batches[i].vb && !L.batches[i].verts.empty()) { pending = true; break; }
-		if (pending) { OutOfScene out; _createListVBs(L); }
+		if (pending) { gpu::beginUploads(); _createListVBs(L); gpu::endUploads(); }
 		float tint[4] = { g_cr, g_cg, g_cb, g_ca };
+		const gpu::RenderState rs = _renderState();
 		for (size_t i = 0; i < L.batches.size(); ++i) {
 			GLBatch& b = L.batches[i];
 			if (!b.vb || b.count <= 0) continue;
-			_prepareDraw(false, L.inheritColor ? tint : 0, b.tex, b.texOn, L.ownsTex);
-			_bindStream(b.vb);
-			g_dev->DrawPrimitive(b.prim, 0, (UINT)b.count);
+			gpu::Constants c;
+			gpu::Bindings bind;
+			_drawInputs(false, L.inheritColor ? tint : 0, b.tex, b.texOn, L.ownsTex, c, bind);
+			gpu::drawBuffer(b.prim, b.vb, b.count, rs, c, bind);
 		}
-		_unbindStream();   // leave stream 0 empty (a later release or lock of this buffer must not find it bound)
 	}
 	// What the list's own commands leave behind, as GL's replay of them would: the matrix change, the binding, the colour.
 	if (L.hasXform) { Mat& m = _top(g_mv); m = L.xform * m; }
@@ -1793,8 +1497,8 @@ int glGetError() { return GL_NO_ERROR; }
 JavaString glGetString(int name) {
 	switch (name) {
 		case GL_VENDOR: return JavaString("CodeBreaker");
-		case GL_RENDERER: return JavaString("Direct3D 9");
-		case GL_VERSION: return JavaString("1.3.0 CodeBreaker Direct3D 9");
+		case GL_RENDERER: return JavaString(gpu::name());
+		case GL_VERSION: return JavaString(std::string("1.3.0 CodeBreaker ") + gpu::name());
 		case GL_EXTENSIONS: return JavaString("GL_ARB_multitexture");
 		default: J2X_UNHANDLED("glGetString", name); return JavaString("");
 	}
@@ -1802,4 +1506,4 @@ JavaString glGetString(int name) {
 void glFlush() { _flushBatch(); _pumpPendingVBs(); }
 void glFinish() { glFlush(); }
 
-} // namespace d3d9
+} // namespace j2xgl

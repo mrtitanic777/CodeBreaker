@@ -53,10 +53,14 @@ target_link_libraries({name} PRIVATE OpenGL::GL OpenGL::GLU)
 constexpr std::string_view kD3d9 = R"CMK(target_link_libraries({name} PRIVATE d3d9)   # Direct3D 9 (the shader compiler is d3dcompiler_47.dll, loaded at run time)
 )CMK";
 
+constexpr std::string_view kD3d11 = R"CMK(target_link_libraries({name} PRIVATE d3d11 dxgi)   # Direct3D 11 (the shader compiler is d3dcompiler_47.dll, loaded at run time)
+)CMK";
+
 }  // namespace
 
 std::string cmakelists_text(std::string_view name, std::string_view graphics) {
-    const std::string text = text::replace_all(kTemplate, "{graphics}", graphics == "d3d9" ? kD3d9 : kOpenGl);
+    const std::string_view link = graphics == "d3d9" ? kD3d9 : graphics == "d3d11" ? kD3d11 : kOpenGl;
+    const std::string text = text::replace_all(kTemplate, "{graphics}", link);
     return text::replace_all(text, "{name}", name);
 }
 

@@ -21,6 +21,7 @@
 #include "Common.h"
 #include "Shaders.h"
 #include "GL11.h"
+#include "GpuD3D9.h"         // d3d9::sceneBegin (the Direct3D 9 backend)
 #include "Tesselator.h"
 #include "Textures.h"
 #include "Mipmaps.h"         // <-- ported from Minecraft.Client: MipmapManager sampler settings

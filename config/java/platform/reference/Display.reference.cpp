@@ -9,7 +9,8 @@
 // pixel-exact 2D (GUI/font). The input pump (Input::poll) is a no-op if the game links no Input layer.
 
 #include "stdafx.h"     // xtl.h / d3d9.h / d3dx9.h
-#include "GL11.h"       // d3d9::glSetDevice / glInit / glViewport
+#include "GL11.h"       // d3d9::glInit / glViewport
+#include "GpuD3D9.h"    // d3d9::glSetDevice / sceneBegin / sceneEnd (the Direct3D 9 backend)
 #include "Common.h"     // DbgPrintF -- boot trace that surfaces on the 360/emulator; g_pd3dDevice extern
 #include "Display.h"
 #include "SysNotify.h"  // system-notification queue: Guide stall, sign-in / controller changes

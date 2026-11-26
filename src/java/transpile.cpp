@@ -155,13 +155,16 @@ void Conversion::write_platform_layer(std::span<const ir::JClass> classes, const
     if (!emit_options.main_class) emit_options.runnable_game = platform_refs::detect_runnable_game_class(classes);
     emit_options.classes = classes;
     emit_options.platform = platform_refs::platform_of(platform);
-    if (platform == "pc_opengl" && options_.graphics == "d3d9") {
-        // The PC on Direct3D 9: the PC's platform files, with the renderer the Xbox 360 uses (one source for both) and the
-        // Direct3D 9 Display over them.
-        emit_options.layers.push_back({data.path({"platform", "reference"}), {"GL11", "GLU", "GL13", "ARBMultitexture"}});
-        emit_options.layers.push_back({data.path({"platform", "pc", "d3d9", "reference"}), {}});
-        emit_options.label = "PC (SDL2 + Direct3D 9)";
-        say("[platform] graphics: Direct3D 9 (the shared Direct3D 9 renderer, on the PC)");
+    if (platform == "pc_opengl" && (options_.graphics == "d3d9" || options_.graphics == "d3d11")) {
+        // The PC on Direct3D: the PC's platform files, with the GL layer the Xbox 360 uses (one source for every API) and the
+        // API's backend and Display over them. Direct3D 9's backend is the 360's own; Direct3D 11's is the PC's.
+        const bool d3d9 = options_.graphics == "d3d9";
+        std::set<std::string> shared = {"GL11", "GLU", "GL13", "ARBMultitexture", "Gpu", "GpuShaders"};
+        if (d3d9) shared.insert("GpuD3D9");
+        emit_options.layers.push_back({data.path({"platform", "reference"}), shared});
+        emit_options.layers.push_back({data.path({"platform", "pc", options_.graphics, "reference"}), {}});
+        emit_options.label = d3d9 ? "PC (SDL2 + Direct3D 9)" : "PC (SDL2 + Direct3D 11)";
+        say(std::format("[platform] graphics: {} (the GL layer the Xbox 360 uses, on the PC)", d3d9 ? "Direct3D 9" : "Direct3D 11"));
     }
     const platform_refs::Emitted emitted = platform_refs::emit_references(out_dir_, reference_dir, emit_options);
     say(std::format("[platform] emitted {} platform references (agnostic layer, replacing stubs): {}", emitted.bases.size(), trn_names({emitted.bases.begin(), emitted.bases.end()})));

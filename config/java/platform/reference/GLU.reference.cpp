@@ -1,8 +1,5 @@
-// GLU on the Direct3D 9 layer (see GLU.reference.h): the matrices exactly as GLU builds them (column-major, GL's depth -1..1;
+// GLU on the GL layer (see GLU.reference.h): the matrices exactly as GLU builds them (column-major, GL's depth -1..1;
 // the layer turns them into Direct3D's at draw time), multiplied into the current matrix.
-#ifndef _XBOX
-#define J2X_WITH_GDI   // (the PC: d3d9.h needs the GDI types)
-#endif
 #include "stdafx.h"
 #include "GL11.h"
 #include "GLU.h"
@@ -11,7 +8,7 @@
 #include <vector>
 #include <math.h>
 
-namespace d3d9 {
+namespace j2xgl {
 
 void gluPerspective(float fovy, float aspect, float zNear, float zFar) {
 	const float rad = fovy * (3.14159265358979f / 360.0f);   // half the field of view
@@ -107,4 +104,4 @@ JavaString gluErrorString(int err) {
 	}
 }
 
-} // namespace d3d9
+} // namespace j2xgl

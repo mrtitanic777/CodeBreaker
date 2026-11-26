@@ -672,11 +672,13 @@ CB_TEST("java.platform.the_viewport_height_comes_from_the_backbuffer_and_y_is_cl
     const std::string text = fs::read_text(jpo_reference() / "GL11.reference.cpp");
     const std::string vp = jpo_func_body(text, "void glViewport(int x, int y, int w, int h)");
     CB_CHECK(!jpo_has(vp, "g_fbH ="));   // no longer captured from an arbitrary (0,0,w,h)
-    CB_CHECK(jpo_has(vp, "_applyViewport();"));
-    const std::string apply = jpo_func_body(text, "static void _applyViewport()");
-    CB_CHECK(jpo_has(apply, "int y = g_fbH - g_vpY - g_vpH;"));   // GL's bottom-left origin flipped by the real backbuffer height
-    CB_CHECK(jpo_has(apply, "if (y < 0) { h += y; y = 0; }"));      // never a wrapped (huge unsigned) Y
-    CB_CHECK(jpo_has(jpo_func_body(text, "void glSetDevice(IDirect3DDevice9* dev)"), "GetBackBuffer"));
+    const std::string rect = jpo_func_body(text, "static void _rect(int gx, int gy, int gw, int gh, int& x, int& y, int& w, int& h)");
+    CB_CHECK(jpo_has(rect, "y = fh - gy - gh;"));                   // GL's bottom-left origin flipped by the real target height
+    CB_CHECK(jpo_has(rect, "if (y < 0) { h += y; y = 0; }"));      // never a wrapped (huge unsigned) Y
+    CB_CHECK(jpo_has(rect, "gpu::targetHeight()"));
+    // the Direct3D 9 backend's target height is the backbuffer's, read when the device is handed over
+    const std::string d3d9 = fs::read_text(jpo_reference() / "GpuD3D9.reference.cpp");
+    CB_CHECK(jpo_has(jpo_func_body(d3d9, "void glSetDevice(IDirect3DDevice9* dev)"), "GetBackBuffer"));
 });
 
 // ================================================================================================================================================
