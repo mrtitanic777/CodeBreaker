@@ -343,6 +343,7 @@
   "RuntimeException",
   "SecretKey",
   "SecretKeyFactory",
+  "ShortBuffer",
   "SimpleDateFormat",
   "Socket",
   "SocketAddress",

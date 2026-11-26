@@ -47,7 +47,7 @@ const std::vector<SubsystemInfo>& table() {
         {Subsystem::Nio, "nio", "NIO Buffers",
          "Java NIO buffer stubs (ByteBuffer, IntBuffer, FloatBuffer) used for vertex data and texture uploads.",
          "Direct memory buffers (malloc/free or D3D vertex buffers)",
-         {"BufferUtils", "ByteBuffer", "FloatBuffer", "IntBuffer"}},
+         {"BufferUtils", "ByteBuffer", "FloatBuffer", "IntBuffer", "ShortBuffer"}},
         {Subsystem::Threading, "threading", "Threading",
          "Java Thread stubs for background tasks (downloads, network, sleep).",
          "Platform threads (CreateThread / _beginthreadex)",

@@ -45,6 +45,7 @@
 
 class IntBuffer;
 class FloatBuffer;
+class ShortBuffer;
 
 // --- refcounted contiguous backing store (the "direct" memory) -----------------
 struct NioBacking {
@@ -151,14 +152,21 @@ public:
 		for (int i = 0; i < src.length && _b && _posB < _b->cap; ++i) _b->bytes[_posB++] = (char)src[i];
 		return *this;
 	}
-	ByteBuffer& get(JArray<unsigned char>& dst) {
-		for (int i = 0; i < dst.length && _b && _posB < _limB; ++i) dst[i] = (unsigned char)_b->bytes[_posB++];
+	ByteBuffer& get(JArray<unsigned char>& dst) { return get(dst, 0, dst.length); }
+	// ...and their (array, offset, length) forms (Beta 1.2_02's screenshot reads rows: get(pixels, row * w * 3, w * 3)).
+	ByteBuffer& get(JArray<unsigned char>& dst, int off, int len) {
+		for (int i = 0; i < len && _b && _posB < _limB; ++i) dst[off + i] = (unsigned char)_b->bytes[_posB++];
+		return *this;
+	}
+	ByteBuffer& put(const JArray<unsigned char>& src, int off, int len) {
+		for (int i = 0; i < len && _b && _posB < _b->cap; ++i) _b->bytes[_posB++] = (char)src[off + i];
 		return *this;
 	}
 
 	// VIEWS over the SAME bytes (share backing; independent position/limit) -- java.nio semantics.
 	IntBuffer*   asIntBuffer();
 	FloatBuffer* asFloatBuffer();
+	ShortBuffer* asShortBuffer();   // (Beta 1.8's Tessellator keeps one)
 
 	operator void*() { return base(); }                        // legacy interop (truthiness / raw ptr)
 private:
@@ -260,6 +268,32 @@ public:
 		int o = idx << 2;
 		return (_b && o + 4 <= _b->cap) ? *(float*)(_b->bytes + o) : 0.0F;
 	}
+	operator void*() { return base(); }
+};
+
+// --- java.nio.ShortBuffer (view over a ByteBuffer's bytes) ---------------------
+class ShortBuffer : public Buffer {
+public:
+	using Buffer::position; using Buffer::limit;   // un-hide the 0-arg getters
+	explicit ShortBuffer(NioBacking* b) : Buffer(b, 1) {}
+	~ShortBuffer() {}
+
+	ShortBuffer& clear()  { _posB = 0; _limB = _b ? _b->cap : 0; return *this; }
+	ShortBuffer& flip()   { _limB = _posB; _posB = 0; return *this; }
+	ShortBuffer& rewind() { _posB = 0; return *this; }
+	ShortBuffer& position(int p) { _posB = p << 1; return *this; }
+	ShortBuffer& limit(int l)    { _limB = l << 1; return *this; }
+	ShortBuffer& put(short v) {
+		if (_b && _posB + 2 <= _b->cap) { memcpy(_b->bytes + _posB, &v, 2); _posB += 2; }
+		return *this;
+	}
+	ShortBuffer& put(int idx, short v) { int o = idx << 1; if (_b && o >= 0 && o + 2 <= _b->cap) memcpy(_b->bytes + o, &v, 2); return *this; }
+	short get() {
+		short v = 0;
+		if (_b && _posB + 2 <= _limB) { memcpy(&v, _b->bytes + _posB, 2); _posB += 2; }
+		return v;
+	}
+	short get(int idx) { short v = 0; int o = idx << 1; if (_b && o >= 0 && o + 2 <= _b->cap) memcpy(&v, _b->bytes + o, 2); return v; }
 	operator void*() { return base(); }
 };
 

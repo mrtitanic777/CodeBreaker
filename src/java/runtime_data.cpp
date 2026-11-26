@@ -107,6 +107,7 @@ const std::map<std::string, std::string, std::less<>>& external_packages() {
         {"FloatBuffer", "java.nio"},
         {"IntBuffer", "java.nio"},
         {"ByteBuffer", "java.nio"},
+        {"ShortBuffer", "java.nio"},
     };
     return table;
 }

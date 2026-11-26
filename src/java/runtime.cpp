@@ -137,7 +137,7 @@ constexpr auto kListeners = std::to_array<std::string_view>({"KeyListener", "Mou
                                                               "WindowFocusListener"});   // (Indev's level-load dialog)
 constexpr auto kEvents = std::to_array<std::string_view>({"KeyEvent", "MouseEvent", "WindowEvent", "ComponentEvent", "FocusEvent", "InputEvent"});
 constexpr auto kLayouts = std::to_array<std::string_view>({"BorderLayout", "GridLayout", "FlowLayout", "CardLayout", "GridBagLayout"});
-constexpr auto kBuffers = std::to_array<std::string_view>({"FloatBuffer", "IntBuffer", "ByteBuffer"});
+constexpr auto kBuffers = std::to_array<std::string_view>({"FloatBuffer", "IntBuffer", "ByteBuffer", "ShortBuffer"});
 
 // Exceptions are off on the console: these are type stubs so `extends Error`, `new IOException(...)` and catch/throws
 // references compile. (exception, its base)
@@ -236,7 +236,7 @@ std::string class_stub(const ClassStub& spec) {
 std::string buffer_stub(std::string_view name) {
     const std::string n(name);
     StrList lines = guarded_banner(name);
-    append(lines, {"class FloatBuffer; class IntBuffer; class ByteBuffer;", "", "class " + n + " {", "public:", "\t" + n + "() {}",
+    append(lines, {"class FloatBuffer; class IntBuffer; class ByteBuffer; class ShortBuffer;", "", "class " + n + " {", "public:", "\t" + n + "() {}",
                    "\tvirtual ~" + n + "() {}"});
     for (const char* m : {"clear", "flip", "rewind", "mark"}) lines.push_back(std::format("\t{}& {}() {{ return *this; }}", n, m));   // no argument, return self
     for (const char* m : {"put", "putInt", "putShort", "putLong", "putFloat", "putDouble", "putChar"}) {
@@ -250,7 +250,7 @@ std::string buffer_stub(std::string_view name) {
         lines.push_back(std::format("\t{}& {}(int) {{ return *this; }}", n, m));
     }
     append(lines, {"\tint remaining() { return 0; }", "\tint capacity() { return 0; }", "\tFloatBuffer* asFloatBuffer() { return 0; }",
-                   "\tIntBuffer* asIntBuffer() { return 0; }",
+                   "\tIntBuffer* asIntBuffer() { return 0; }", "\tShortBuffer* asShortBuffer() { return 0; }",
                    // ByteBuffer.order(ByteOrder) answers itself: a pointer, matching the member types and chaining into a ByteBuffer* local
                    "\t" + n + "* order(...) { return this; }",
                    "\tstatic " + n + "* allocateDirect(...) { return new " + n + "(); }",   // ByteBuffer.allocateDirect(n)

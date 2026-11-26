@@ -26,6 +26,10 @@ FloatBuffer* ByteBuffer::asFloatBuffer() {
 	return new FloatBuffer(_b);
 }
 
+ShortBuffer* ByteBuffer::asShortBuffer() {
+	return new ShortBuffer(_b);
+}
+
 // ------------------------------------------------------------------------------
 // INTEGRATION with the converted GLAllocation.cpp
 // ------------------------------------------------------------------------------

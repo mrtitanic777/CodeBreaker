@@ -79,7 +79,7 @@ const std::map<std::string, std::vector<std::string>, std::less<>>& reference_re
         // NIOBuffers.reference DEFINES ByteBuffer/FloatBuffer/IntBuffer (the real byte-granular NIO buffers the GL
         // emulator + Tessellator use). Without this, its class defs collide with the converter's ByteBuffer.h/
         // FloatBuffer.h/IntBuffer.h stubs -> C2011 redefinition in every TU that pulls both.
-        {"NIOBuffers", {"ByteBuffer", "FloatBuffer", "IntBuffer"}},
+        {"NIOBuffers", {"ByteBuffer", "FloatBuffer", "IntBuffer", "ShortBuffer"}},
         // FileIO does NOT shim the byte streams: the real java.io byte streams (OutputStream/BufferedOutputStream/
         // DataInput/DataOutput/DataInputStream/DataOutputStream) are CANONICAL standalone headers emitted by the
         // runtime (loaded from docs/platform/canonical/), and FileIO.reference.h just #includes them -- one definition

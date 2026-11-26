@@ -186,7 +186,7 @@ CB_TEST("java.platform_refs.tables", [] {
     CB_CHECK_EQ(repl.size(), std::size_t{4});
     CB_CHECK((repl.at("Input") == std::vector<std::string>{"Keyboard", "Mouse", "Controllers"}));
     CB_CHECK((repl.at("Audio") == std::vector<std::string>{"SoundSystem"}));
-    CB_CHECK((repl.at("NIOBuffers") == std::vector<std::string>{"ByteBuffer", "FloatBuffer", "IntBuffer"}));
+    CB_CHECK((repl.at("NIOBuffers") == std::vector<std::string>{"ByteBuffer", "FloatBuffer", "IntBuffer", "ShortBuffer"}));
 });
 
 CB_TEST("java.platform_refs.real_reference_layer_is_complete", [] {

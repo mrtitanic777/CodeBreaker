@@ -98,7 +98,7 @@ const NameSet& runtime_headers() {
         "Dialog", "Dimension", "Display", "DisplayMode", "Document", "DocumentBuilder",
         "DocumentBuilderFactory", "EOFException", "Element", "Entry", "Error", "Exception", "File",
         "FileDialog", "FileFilter", "FileInputStream", "FileNotFoundException", "FileOutputStream",
-        "FileReader", "FileWriter", "FilenameFilter", "FloatBuffer", "FlowLayout", "FocusEvent",
+        "FileReader", "FileWriter", "FilenameFilter", "FloatBuffer", "ShortBuffer", "FlowLayout", "FocusEvent",
         "FocusListener", "Font", "FontMetrics", "Frame", "GL11", "GL12", "GL15", "GLContext", "GLU",
         "GZIPInputStream", "GZIPOutputStream", "Graphics", "Graphics2D", "GregorianCalendar",
         "GridBagLayout", "GridLayout", "HttpURLConnection", "IOException", "IllegalArgumentException",
