@@ -6,6 +6,7 @@
 #pragma once
 
 #include <cstdint>
+#include <map>
 #include <optional>
 #include <string>
 #include <vector>
@@ -19,6 +20,19 @@ struct CallEvidence {
     std::uint64_t target = 0;       // Function: its address, as the namer addresses functions
     int sites = 1;                  // how many places in the function make the call
     friend bool operator==(const CallEvidence&, const CallEvidence&) = default;
+};
+
+// Where a function's address is handed to an import, which keeps it to call back: `EnumWindows(EnumProc, 0)`, `CreateThread(..., ThreadProc,
+// ...)`, a WNDCLASS's `lpfnWndProc` given to `RegisterClassA`. What the API calls that argument is what the function is.
+struct HandedEvidence {
+    std::string import_name;        // "USER32!EnumWindows", as CallEvidence names imports
+    int argument = 0;               // which argument it is, from 1 (as the API's prototype counts them); 0: a field of a structure
+    std::string field;              // a structure's field: "lpfnWndProc"
+    std::uint64_t by = 0;           // the function that hands it over
+    std::map<int, std::int64_t> numbers;   // the call's other arguments that are numbers, by position (`SetWindowsHookExA`'s hook, a dialog's id)
+    std::map<int, std::string> texts;      // ... and those that are strings (a dialog template's name); for a structure, its class name at 0
+    std::string caption;                   // a dialog procedure's: the title of the dialog template the module carries for it
+    friend bool operator==(const HandedEvidence&, const HandedEvidence&) = default;
 };
 
 struct FunctionEvidence {
@@ -36,6 +50,8 @@ struct FunctionEvidence {
     // The shape of a function that only passes its arguments on to one other function of the module (its instructions are the frame's, moves of
     // its arguments, the one call or jump, and the return): where it goes.
     std::optional<std::uint64_t> forwards_to_function;
+    // The imports its address is handed to, to be called back (32-bit modules).
+    std::vector<HandedEvidence> handed_to;
     friend bool operator==(const FunctionEvidence&, const FunctionEvidence&) = default;
 };
 

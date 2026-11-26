@@ -136,6 +136,197 @@ std::optional<store::Proposal> function_forward(const FunctionEvidence& e, std::
     return p;
 }
 
+namespace {
+
+// The import's name as its prototype is written, without the A/W of its character set: "SetWindowLongA" -> "SetWindowLong".
+std::string api_base(std::string_view import_name) {
+    std::string name = undecorated(last_part(import_name));
+    if (name.size() > 2 && (name.back() == 'A' || name.back() == 'W') && std::islower(static_cast<unsigned char>(name[name.size() - 2])) != 0) name.pop_back();
+    return name;
+}
+
+// The callbacks of the Windows API: the import, which of its arguments is the function, and what the SDK calls a function given there.
+struct Callback {
+    std::string_view api;
+    int argument;
+    std::string_view role;
+    std::string_view what;   // for the description
+};
+constexpr Callback kCallbacks[] = {
+    {"CreateThread", 3, "ThreadProc", "the thread procedure CreateThread starts"},
+    {"_beginthreadex", 3, "ThreadProc", "the thread procedure _beginthreadex starts"},
+    {"_beginthread", 1, "ThreadProc", "the thread procedure _beginthread starts"},
+    {"SetTimer", 4, "TimerProc", "the timer procedure SetTimer calls"},
+    {"timeSetEvent", 3, "TimeProc", "the multimedia timer callback timeSetEvent calls"},
+    {"EnumWindows", 1, "EnumWindowsProc", "the callback EnumWindows calls for each top-level window"},
+    {"EnumChildWindows", 2, "EnumChildProc", "the callback EnumChildWindows calls for each child window"},
+    {"EnumThreadWindows", 2, "EnumThreadWndProc", "the callback EnumThreadWindows calls for each window of a thread"},
+    {"EnumDesktopWindows", 2, "EnumDesktopWindowsProc", "the callback EnumDesktopWindows calls for each window"},
+    {"EnumProps", 2, "PropEnumProc", "the callback EnumProps calls for each window property"},
+    {"EnumPropsEx", 2, "PropEnumProcEx", "the callback EnumPropsEx calls for each window property"},
+    {"EnumFonts", 3, "EnumFontsProc", "the callback EnumFonts calls for each font"},
+    {"EnumFontFamilies", 3, "EnumFontFamProc", "the callback EnumFontFamilies calls for each font"},
+    {"EnumFontFamiliesEx", 3, "EnumFontFamExProc", "the callback EnumFontFamiliesEx calls for each font"},
+    {"EnumObjects", 3, "EnumObjectsProc", "the callback EnumObjects calls for each pen or brush"},
+    {"EnumMetaFile", 3, "EnumMetaFileProc", "the callback EnumMetaFile calls for each record"},
+    {"EnumEnhMetaFile", 3, "EnhMetaFileProc", "the callback EnumEnhMetaFile calls for each record"},
+    {"LineDDA", 5, "LineDDAProc", "the callback LineDDA calls for each point of the line"},
+    {"GrayString", 2, "OutputProc", "the drawing callback GrayString calls"},
+    {"DrawState", 3, "DrawStateProc", "the drawing callback DrawState calls"},
+    {"SetAbortProc", 2, "AbortProc", "the abort procedure printing calls"},
+    {"EnumResourceTypes", 2, "EnumResTypeProc", "the callback EnumResourceTypes calls for each resource type"},
+    {"EnumResourceNames", 3, "EnumResNameProc", "the callback EnumResourceNames calls for each resource"},
+    {"EnumResourceLanguages", 4, "EnumResLangProc", "the callback EnumResourceLanguages calls for each language"},
+    {"EnumSystemLocales", 1, "EnumLocalesProc", "the callback EnumSystemLocales calls for each locale"},
+    {"EnumSystemCodePages", 1, "EnumCodePagesProc", "the callback EnumSystemCodePages calls for each code page"},
+    {"EnumDateFormats", 1, "EnumDateFormatsProc", "the callback EnumDateFormats calls for each format"},
+    {"EnumTimeFormats", 1, "EnumTimeFormatsProc", "the callback EnumTimeFormats calls for each format"},
+    {"EnumCalendarInfo", 1, "EnumCalendarInfoProc", "the callback EnumCalendarInfo calls"},
+    {"SetConsoleCtrlHandler", 1, "HandlerRoutine", "the console control handler"},
+    {"SetUnhandledExceptionFilter", 1, "TopLevelExceptionFilter", "the filter for exceptions nothing else handles"},
+    {"mmioInstallIOProc", 2, "IOProc", "the I/O procedure mmioInstallIOProc installs"},
+    {"DdeInitialize", 2, "DdeCallback", "the DDE callback DdeInitialize registers"},
+    {"QueueUserAPC", 1, "APCProc", "the asynchronous procedure QueueUserAPC queues"},
+    {"DirectDrawEnumerate", 1, "DDEnumCallback", "the callback DirectDrawEnumerate calls for each driver"},
+    {"DirectDrawEnumerateEx", 1, "DDEnumCallbackEx", "the callback DirectDrawEnumerateEx calls for each driver"},
+    {"DirectSoundEnumerate", 1, "DSEnumCallback", "the callback DirectSoundEnumerate calls for each device"},
+    {"DirectSoundCaptureEnumerate", 1, "DSEnumCallback", "the callback DirectSoundCaptureEnumerate calls for each device"},
+};
+
+// The hook procedures by WH_* number, as the SDK names them.
+std::string_view hook_role(std::int64_t id) {
+    switch (id) {
+        case -1: return "MessageProc";
+        case 0: return "JournalRecordProc";
+        case 1: return "JournalPlaybackProc";
+        case 2: return "KeyboardProc";
+        case 3: return "GetMsgProc";
+        case 4: return "CallWndProc";
+        case 5: return "CBTProc";
+        case 6: return "SysMsgProc";
+        case 7: return "MouseProc";
+        case 9: return "DebugProc";
+        case 10: return "ShellProc";
+        case 11: return "ForegroundIdleProc";
+        case 12: return "CallWndRetProc";
+        case 13: return "LowLevelKeyboardProc";
+        case 14: return "LowLevelMouseProc";
+        default: return "HookProc";
+    }
+}
+
+// A name made of a text (a window class, a dialog template): its letters, digits and underscores, CamelCased at the gaps.
+std::string from_text(std::string_view text) {
+    std::string out;
+    bool gap = false;
+    for (const char ch : text) {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        if (std::isalnum(c) != 0 || ch == '_') {
+            out += gap && !out.empty() ? static_cast<char>(std::toupper(c)) : ch;
+            gap = false;
+        } else {
+            gap = true;
+        }
+    }
+    if (!out.empty() && std::isdigit(static_cast<unsigned char>(out.front())) != 0) out.insert(out.begin(), '_');
+    return out.size() > 40 ? std::string() : out;
+}
+
+struct Role {
+    std::string name;
+    std::string description;
+    std::string evidence;
+    int confidence = 0;
+};
+
+// What one place that hands the function over says it is, or nothing when the call is not a callback's.
+std::optional<Role> role_of(const HandedEvidence& h) {
+    const std::string api = api_base(h.import_name);
+    const auto number = [&](int k) -> std::optional<std::int64_t> {
+        const auto at = h.numbers.find(k);
+        return at == h.numbers.end() ? std::nullopt : std::optional<std::int64_t>(at->second);
+    };
+    Role r;
+    if (h.argument == 0) {
+        if (h.field != "lpfnWndProc") return std::nullopt;
+        const auto cls = h.texts.find(0);
+        const std::string name = cls == h.texts.end() ? std::string() : from_text(cls->second);
+        if (name.empty()) {
+            r.name = "WndProc";
+            r.confidence = 75;
+            r.description = std::format("The window procedure of a window class {} registers.", api);
+        } else {
+            r.name = name.ends_with("Wnd") || name.ends_with("Window") ? name + "Proc" : name + "WndProc";
+            r.confidence = 85;
+            r.description = std::format("The window procedure of the \"{}\" window class.", cls->second);
+        }
+        r.evidence = std::format("lpfnWndProc of the window class given to {}", h.import_name);
+        return r;
+    }
+    if ((api == "SetWindowLong" || api == "SetWindowLongPtr") && h.argument == 3 && number(2) == -4) {
+        r = {"SubclassWndProc", "The window procedure a window is subclassed with (SetWindowLong GWL_WNDPROC).", "", 75};
+    } else if ((api == "SetClassLong" || api == "SetClassLongPtr") && h.argument == 3 && number(2) == -24) {
+        r = {"ClassWndProc", "The window procedure a window class is given (SetClassLong GCL_WNDPROC).", "", 75};
+    } else if ((api == "SetWindowsHookEx" || api == "SetWindowsHook") && h.argument == 2) {
+        const std::optional<std::int64_t> id = number(1);
+        r.name = std::string(id ? hook_role(*id) : "HookProc");
+        r.confidence = id ? 80 : 70;
+        r.description = id ? std::format("The hook procedure {} installs for hook {}.", api, *id) : std::format("The hook procedure {} installs.", api);
+    } else if ((api == "DialogBoxParam" || api == "CreateDialogParam" || api == "DialogBoxIndirectParam" || api == "CreateDialogIndirectParam") && h.argument == 4) {
+        const bool indirect = api.find("Indirect") != std::string::npos;
+        const auto t = h.texts.find(2);
+        const std::string name = indirect || t == h.texts.end() ? std::string() : from_text(t->second);
+        const std::optional<std::int64_t> id = indirect ? std::nullopt : number(2);
+        std::string titled = from_text(text::replace_all(text::replace_all(h.caption, "%s", " "), "%d", " "));
+        if (!titled.empty() && std::isalpha(static_cast<unsigned char>(titled.front())) != 0) titled.front() = static_cast<char>(std::toupper(static_cast<unsigned char>(titled.front())));
+        if (!titled.empty() && titled.front() != '_') {
+            r.name = titled + "DlgProc";
+            r.confidence = 80;
+            r.description = id ? std::format("The dialog procedure of the \"{}\" dialog ({}).", h.caption, *id) : std::format("The dialog procedure of the \"{}\" dialog.", h.caption);
+        } else if (!name.empty()) {
+            r.name = name + "DlgProc";
+            r.confidence = 85;
+            r.description = std::format("The dialog procedure of the \"{}\" dialog.", t->second);
+        } else if (id && *id > 0 && *id < 0x10000) {
+            r.name = std::format("Dialog{}Proc", *id);
+            r.confidence = 80;
+            r.description = std::format("The dialog procedure of dialog {}.", *id);
+        } else {
+            r.name = "DialogProc";
+            r.confidence = 75;
+            r.description = std::format("The dialog procedure {} runs.", api);
+        }
+    } else {
+        const auto c = std::find_if(std::begin(kCallbacks), std::end(kCallbacks), [&](const Callback& k) { return k.api == api && k.argument == h.argument; });
+        if (c == std::end(kCallbacks)) return std::nullopt;
+        r.name = std::string(c->role);
+        r.confidence = 80;
+        r.description = std::format("{}{}.", static_cast<char>(std::toupper(static_cast<unsigned char>(c->what[0]))), c->what.substr(1));
+    }
+    r.evidence = std::format("argument {} of {}", h.argument, h.import_name);
+    return r;
+}
+
+}  // namespace
+
+std::optional<store::Proposal> callback_role(const FunctionEvidence& e) {
+    std::optional<Role> one;
+    for (const HandedEvidence& h : e.handed_to) {
+        std::optional<Role> r = role_of(h);
+        if (!r) continue;
+        if (one && one->name != r->name) return std::nullopt;   // two roles: say nothing
+        if (!one || r->confidence > one->confidence) one = std::move(r);
+    }
+    if (!one) return std::nullopt;
+    store::Proposal p;
+    p.name = one->name;
+    p.rule = "callback-role";
+    p.confidence = one->confidence;
+    p.evidence = one->evidence;
+    p.description = one->description;
+    return p;
+}
+
 std::optional<store::Proposal> by_rules(const FunctionEvidence& evidence, std::string_view target_name, bool basic) {
     std::optional<store::Proposal> best;
     const auto consider = [&](std::optional<store::Proposal> p) {
@@ -145,6 +336,7 @@ std::optional<store::Proposal> by_rules(const FunctionEvidence& evidence, std::s
     consider(string_reference(evidence));
     if (!basic) {
         consider(function_forward(evidence, target_name));
+        consider(callback_role(evidence));
     }
     return best;
 }
@@ -389,6 +581,23 @@ std::string Proposals::packets(const std::filesystem::path& module, bool with_c,
         for (const std::uint64_t caller : e.callers) callers.push_back(name_of(caller));
         packet["callers"] = std::move(callers);
         packet["strings"] = e.strings;
+        if (!e.handed_to.empty()) {
+            Json handed = Json::array();
+            for (const HandedEvidence& h : e.handed_to) {
+                Json one = Json::object();
+                one["import"] = h.import_name;
+                if (h.argument > 0) one["argument"] = h.argument;
+                else one["field"] = h.field;
+                one["by"] = name_of(h.by);
+                Json numbers = Json::object(), texts = Json::object();
+                for (const auto& [at, v] : h.numbers) numbers[std::to_string(at)] = v;
+                for (const auto& [at, v] : h.texts) texts[std::to_string(at)] = v;
+                if (!numbers.empty()) one["numbers"] = std::move(numbers);
+                if (!texts.empty()) one["texts"] = std::move(texts);
+                handed.push_back(std::move(one));
+            }
+            packet["handed_to"] = std::move(handed);
+        }
         packet["listing"] = e.listing;
         if (with_c) {
             const auto text = c.find(address);
@@ -456,6 +665,27 @@ int Proposals::execute(const cli::Args& a) {
     if (a.flag("--packets")) {
         const std::size_t limit = static_cast<std::size_t>(std::max<std::int64_t>(0, a.integer<std::int64_t>("--limit").value_or(0)));
         cb::out("{}", packets(module, a.flag("--c"), limit));
+        return 0;
+    }
+    if (a.flag("--review")) {
+        const std::vector<store::Proposal> all = list(module);
+        std::size_t sure = 0, waiting = 0;
+        for (const store::Proposal& p : all) {
+            if (p.state != store::ProposalState::Proposed) continue;
+            if (p.confidence >= kReviewBelow) {
+                ++sure;
+                continue;
+            }
+            ++waiting;
+            cb::out("{:<10} {:>3}%  {:<34} {}\n           {}\n           because: {}\n", p.key, p.confidence, p.name, p.rule, p.description, p.evidence);
+        }
+        const std::string stem = text::lower(fs::to_text(module.filename()));
+        cb::out("{}: {} to review (under {}%): `names {} --accept ADDRESS` or `--reject ADDRESS`; {} of {}% and over wait for `names {} --accept-sure`\n", stem,
+                waiting, kReviewBelow, stem, sure, kReviewBelow, stem);
+        return 0;
+    }
+    if (a.flag("--accept-sure")) {
+        cb::out("{} proposals accepted (those of {}% and over)\n", accept_all(module, kReviewBelow), kReviewBelow);
         return 0;
     }
     if (a.flag("--proposals")) {

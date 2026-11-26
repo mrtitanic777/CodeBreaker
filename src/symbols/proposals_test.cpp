@@ -175,3 +175,79 @@ CB_TEST("symbols.proposals.names_compare_without_suffix_decoration_or_case", [] 
     CB_CHECK_EQ(sp::comparable("CloseHandle_thunk"), "closehandle");
     CB_CHECK_EQ(sp::comparable("Sleep_thunk"), "sleep");
 });
+
+namespace {
+
+FunctionEvidence handed(std::string import, int argument, std::map<int, std::int64_t> numbers = {}, std::map<int, std::string> texts = {}) {
+    FunctionEvidence e;
+    e.address = 0x4000;
+    cb::symbols::HandedEvidence h;
+    h.import_name = std::move(import);
+    h.argument = argument;
+    h.by = 0x5000;
+    h.numbers = std::move(numbers);
+    h.texts = std::move(texts);
+    e.handed_to.push_back(std::move(h));
+    return e;
+}
+
+}  // namespace
+
+CB_TEST("symbols.proposals.a_function_the_api_calls_back_is_what_the_api_calls_that_argument", [] {
+    const auto thread = sp::callback_role(handed("KERNEL32!CreateThread", 3));
+    CB_CHECK(thread.has_value());
+    CB_CHECK_EQ(thread->name, "ThreadProc");
+    CB_CHECK_EQ(thread->rule, "callback-role");
+    CB_CHECK_EQ(thread->confidence, 80);
+    CB_CHECK_EQ(thread->evidence, "argument 3 of KERNEL32!CreateThread");
+    CB_CHECK_EQ(sp::callback_role(handed("USER32!EnumChildWindows", 2))->name, "EnumChildProc");
+    CB_CHECK_EQ(sp::callback_role(handed("GDI32!EnumFontFamiliesA", 3))->name, "EnumFontFamProc");
+    // the wrong argument of a callback's API says nothing
+    CB_CHECK(!sp::callback_role(handed("KERNEL32!CreateThread", 4)).has_value());
+    CB_CHECK(!sp::callback_role(handed("KERNEL32!CloseHandle", 1)).has_value());
+    // a hook is named for its WH_* number
+    CB_CHECK_EQ(sp::callback_role(handed("USER32!SetWindowsHookExA", 2, {{1, 2}}))->name, "KeyboardProc");
+    CB_CHECK_EQ(sp::callback_role(handed("USER32!SetWindowsHookExA", 2, {{1, -1}}))->name, "MessageProc");
+    CB_CHECK_EQ(sp::callback_role(handed("USER32!SetWindowsHookExA", 2))->name, "HookProc");
+    // subclassing is SetWindowLong with GWL_WNDPROC only
+    CB_CHECK_EQ(sp::callback_role(handed("USER32!SetWindowLongA", 3, {{2, -4}}))->name, "SubclassWndProc");
+    CB_CHECK(!sp::callback_role(handed("USER32!SetWindowLongA", 3, {{2, -21}})).has_value());
+    // a dialog procedure by its template
+    CB_CHECK_EQ(sp::callback_role(handed("USER32!DialogBoxParamA", 4, {{2, 104}}))->name, "Dialog104Proc");
+    CB_CHECK_EQ(sp::callback_role(handed("USER32!DialogBoxParamW", 4, {}, {{2, "about box"}}))->name, "aboutBoxDlgProc");
+    CB_CHECK_EQ(sp::callback_role(handed("USER32!CreateDialogIndirectParamA", 4))->name, "DialogProc");
+    // ... and by the title of the template the module carries, when it has one
+    FunctionEvidence run = handed("USER32!DialogBoxParamA", 4, {{2, 1003}});
+    run.handed_to[0].caption = "Run";
+    CB_CHECK_EQ(sp::callback_role(run)->name, "RunDlgProc");
+    run.handed_to[0].caption = "&Shut down Windows";
+    CB_CHECK_EQ(sp::callback_role(run)->name, "ShutDownWindowsDlgProc");
+    run.handed_to[0].caption = "%s Properties";
+    CB_CHECK_EQ(sp::callback_role(run)->name, "PropertiesDlgProc");
+    run.handed_to[0].caption = "1";
+    CB_CHECK_EQ(sp::callback_role(run)->name, "Dialog1003Proc");
+});
+
+CB_TEST("symbols.proposals.a_window_procedure_is_named_for_its_class", [] {
+    FunctionEvidence e = handed("USER32!RegisterClassA", 0, {}, {{0, "Shell_TrayWnd"}});
+    e.handed_to[0].field = "lpfnWndProc";
+    const auto p = sp::callback_role(e);
+    CB_CHECK(p.has_value());
+    CB_CHECK_EQ(p->name, "Shell_TrayWndProc");
+    CB_CHECK_EQ(p->confidence, 85);
+    e.handed_to[0].texts = {{0, "Progman"}};
+    CB_CHECK_EQ(sp::callback_role(e)->name, "ProgmanWndProc");
+    e.handed_to[0].texts.clear();
+    CB_CHECK_EQ(sp::callback_role(e)->name, "WndProc");
+    CB_CHECK_EQ(sp::callback_role(e)->confidence, 75);
+    // two places that disagree on what it is say nothing; two that agree are one
+    FunctionEvidence both = e;
+    both.handed_to.push_back(handed("KERNEL32!CreateThread", 3).handed_to[0]);
+    CB_CHECK(!sp::callback_role(both).has_value());
+    both.handed_to[1] = e.handed_to[0];
+    both.handed_to[1].by = 0x6000;
+    CB_CHECK_EQ(sp::callback_role(both)->name, "WndProc");
+    // the phase 1 rule set does not have this rule
+    CB_CHECK(!sp::by_rules(e, "", true).has_value());
+    CB_CHECK_EQ(sp::by_rules(e, "", false)->rule, "callback-role");
+});

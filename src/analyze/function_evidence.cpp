@@ -8,6 +8,11 @@
 #include "analyze/call_graph.hpp"
 #include "analyze/report_internal.hpp"
 #include "analyze/strings.hpp"
+#include "core/error.hpp"
+#include "core/fs.hpp"
+#include "core/text.hpp"
+#include "formats/pe.hpp"
+#include "formats/resources.hpp"
 
 namespace cb::analyze::function_evidence {
 
@@ -36,6 +41,141 @@ bool passes_arguments(const Instruction& ins) {
         return from.kind == Operand::Kind::Memory && frame_register(from.base) && from.index.empty();
     }
     return false;
+}
+
+// An import's name without its module, its stdcall decoration and its A/W ending: "USER32!RegisterClassExA" -> "RegisterClassEx".
+std::string api_stem(std::string_view import_name) {
+    const std::size_t bang = import_name.rfind('!');
+    std::string name(bang == std::string_view::npos ? import_name : import_name.substr(bang + 1));
+    if (const std::size_t at = name.rfind('@'); at != std::string::npos && at > 1) {
+        name.resize(at);
+        if (name.starts_with('_')) name.erase(0, 1);
+    }
+    return name;
+}
+
+// The titles of a 32-bit module's dialog templates, by "#<id>" or by upper-case name; none for a module whose resources cannot be read.
+std::map<std::string, std::string> dialog_titles(const std::filesystem::path& module) {
+    namespace fr = formats::resources;
+    std::map<std::string, std::string> out;
+    try {
+        const Bytes file = fs::read_file(module);
+        const formats::pe::Image pe = formats::pe::Image::parse(ByteView(file), fs::to_text(module));
+        std::vector<fr::PeResourceEntry> entries;
+        for (const formats::pe::ResourceType& t : pe.resource_tree()) {
+            if (t.id != std::optional<std::uint32_t>(fr::kDialog)) continue;
+            for (const formats::pe::ResourceItem& item : t.items) {
+                fr::PeResourceEntry e;
+                e.type = fr::Ident(*t.id);
+                e.name = item.id ? fr::Ident(*item.id) : fr::Ident(item.name.value_or(std::string()));
+                e.language = item.language;
+                e.file_offset = item.file_offset;
+                e.size = item.size;
+                entries.push_back(std::move(e));
+            }
+        }
+        for (const fr::Resource& r : fr::from_pe_entries(file, entries)) {
+            try {
+                const std::string title = fr::dialog(ByteView(r.data), true).title;
+                if (title.empty()) continue;
+                const std::string key = std::holds_alternative<std::uint32_t>(r.name) ? "#" + std::to_string(std::get<std::uint32_t>(r.name))
+                                                                                       : text::upper(std::get<std::string>(r.name));
+                out.emplace(key, title);   // (the first language)
+            } catch (const FormatError&) {
+            }
+        }
+    } catch (const Error&) {
+    }
+    return out;
+}
+
+// Where a module's functions hand their own functions' addresses to imports that keep them to call back (32-bit code): the arguments pushed
+// before a call through an import (`call [slot]`, or `call esi` after `mov esi, [slot]`), and a WNDCLASS filled in before `RegisterClass*`.
+void find_handed(Image& image, std::vector<symbols::FunctionEvidence>& out, const std::map<std::string, std::string>& titles) {
+    std::map<Va, symbols::FunctionEvidence*> by_start;
+    for (symbols::FunctionEvidence& e : out) by_start[static_cast<Va>(e.address)] = &e;
+    const auto text_at = [&](Va va) -> std::optional<std::string> {
+        if (by_start.contains(va)) return std::nullopt;
+        const std::optional<strings::Found> s = strings::string_at(image, va, 2);
+        if (!s) return std::nullopt;
+        return s->text;
+    };
+    for (const Va start : std::vector<Va>(image.functions())) {
+        const Function& fn = image.function(start);
+        std::map<std::string, Va> loaded;   // register -> the import slot it was loaded from
+        for (std::size_t c = 0; c < fn.insns.size(); ++c) {
+            const Instruction& ins = fn.insns[c];
+            if (ins.flow != Flow::Call) {
+                for (const std::string& w : ins.writes) loaded.erase(w);
+                if (ins.mnemonic == "mov" && ins.operands.size() == 2 && ins.operands[0].kind == Operand::Kind::Register && ins.operands[1].kind == Operand::Kind::Memory &&
+                    ins.operands[1].base.empty() && ins.operands[1].index.empty() && image.is_import(ins.operands[1].value))
+                    loaded[ins.operands[0].reg] = ins.operands[1].value;
+                continue;
+            }
+            std::optional<Va> slot = import_slot(image, ins);
+            if (!slot && !ins.operands.empty() && ins.operands[0].kind == Operand::Kind::Register)
+                if (const auto at = loaded.find(ins.operands[0].reg); at != loaded.end()) slot = at->second;
+            loaded.clear();   // (a call may change any register the convention lets it)
+            if (!slot) continue;
+            const std::string import_name = image.import_name(*slot);
+            // the arguments, nearest the call first: argument 1 is the last pushed
+            std::vector<std::optional<Va>> args;
+            for (std::size_t j = c; j-- > 0 && c - j <= 24 && args.size() < 8;) {
+                const Instruction& p = fn.insns[j];
+                if (p.flow != Flow::None) break;
+                if (p.mnemonic != "push") continue;
+                args.push_back(!p.operands.empty() && p.operands[0].kind == Operand::Kind::Immediate ? std::optional<Va>(p.operands[0].value) : std::nullopt);
+            }
+            for (std::size_t i = 0; i < args.size(); ++i) {
+                if (!args[i]) continue;
+                const auto target = by_start.find(*args[i]);
+                if (target == by_start.end() || *args[i] == start) continue;
+                symbols::HandedEvidence h;
+                h.import_name = import_name;
+                h.argument = static_cast<int>(i) + 1;
+                h.by = static_cast<std::uint64_t>(start);
+                for (std::size_t k = 0; k < args.size(); ++k) {
+                    if (k == i || !args[k]) continue;
+                    if (const std::optional<std::string> t = text_at(*args[k])) h.texts[static_cast<int>(k) + 1] = *t;
+                    else if (!by_start.contains(*args[k])) h.numbers[static_cast<int>(k) + 1] = static_cast<std::int32_t>(*args[k]);
+                }
+                const std::string api = api_stem(import_name);
+                if (h.argument == 4 && (api.starts_with("DialogBoxParam") || api.starts_with("CreateDialogParam"))) {
+                    std::string key;
+                    if (const auto t = h.texts.find(2); t != h.texts.end()) key = text::upper(t->second);
+                    else if (const auto n = h.numbers.find(2); n != h.numbers.end() && n->second > 0 && n->second < 0x10000) key = "#" + std::to_string(n->second);
+                    if (const auto title = titles.find(key); !key.empty() && title != titles.end()) h.caption = title->second;
+                }
+                if (std::find(target->second->handed_to.begin(), target->second->handed_to.end(), h) == target->second->handed_to.end())
+                    target->second->handed_to.push_back(std::move(h));
+            }
+            // a window class: `mov [s+4], offset WndProc` ... `mov [s+36], offset "ClassName"` (WNDCLASS; WNDCLASSEX at 8 and 40), then RegisterClass*
+            const std::string stem = api_stem(import_name);
+            const bool registers = stem == "RegisterClass" || stem == "RegisterClassA" || stem == "RegisterClassW" || stem == "RegisterClassEx" ||
+                                   stem == "RegisterClassExA" || stem == "RegisterClassExW";
+            if (!registers) continue;
+            std::map<std::pair<std::string, Va>, Va> stores;   // (base, displacement) -> the immediate stored there
+            for (std::size_t j = c; j-- > 0 && c - j <= 64;) {
+                const Instruction& m = fn.insns[j];
+                if (m.flow == Flow::Call) break;
+                if (m.mnemonic == "mov" && m.operands.size() == 2 && m.operands[0].kind == Operand::Kind::Memory && m.operands[0].index.empty() &&
+                    m.operands[1].kind == Operand::Kind::Immediate)
+                    stores.emplace(std::pair{m.operands[0].base, m.operands[0].value}, m.operands[1].value);
+            }
+            for (const auto& [where, value] : stores) {
+                const auto target = by_start.find(value);
+                if (target == by_start.end()) continue;
+                symbols::HandedEvidence h;
+                h.import_name = import_name;
+                h.field = "lpfnWndProc";
+                h.by = static_cast<std::uint64_t>(start);
+                if (const auto name = stores.find({where.first, where.second + 32}); name != stores.end())
+                    if (const std::optional<std::string> t = text_at(name->second)) h.texts[0] = *t;
+                if (std::find(target->second->handed_to.begin(), target->second->handed_to.end(), h) == target->second->handed_to.end())
+                    target->second->handed_to.push_back(std::move(h));
+            }
+        }
+    }
 }
 
 }  // namespace
@@ -133,6 +273,7 @@ std::vector<symbols::FunctionEvidence> of_module(const std::filesystem::path& mo
         }
         out.push_back(std::move(e));
     }
+    if (image.bits() == 32) find_handed(image, out, loaded.kind == ImageKind::Pe ? dialog_titles(module) : std::map<std::string, std::string>());
     return out;
 }
 

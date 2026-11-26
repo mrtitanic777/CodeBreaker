@@ -57,6 +57,10 @@ std::optional<store::Proposal> string_reference(const FunctionEvidence& evidence
 // A function that only passes its arguments on to one other function of the module, whose name is `target_name`: "<target>_thunk", 70%.
 // (No proposal for a target with no name of its own, or one that is itself a thunk.)
 std::optional<store::Proposal> function_forward(const FunctionEvidence& evidence, std::string_view target_name);
+// A function whose address the module hands to the Windows API to be called back is what the API calls that argument: `EnumWindowsProc`,
+// `ThreadProc`, a hook's `KeyboardProc`, a WNDCLASS's window procedure by its class (`<Class>WndProc`), a dialog's by its template
+// (`<Template>DlgProc`, `Dialog<id>Proc`). 75-85%. (No proposal when the places that hand it over disagree on what it is.)
+std::optional<store::Proposal> callback_role(const FunctionEvidence& evidence);
 // The most confident of the rules' proposals (the first, on a tie). `target_name`: what the function it forwards to is called ("" when unknown).
 // `basic`: only the first two rules (import-wrapper, string-reference), as phase 1 had them (the baseline the measurement compares with).
 std::optional<store::Proposal> by_rules(const FunctionEvidence& evidence, std::string_view target_name = {}, bool basic = false);

@@ -58,8 +58,11 @@ A title goes from disc or package to a PC build that plays, in one command, with
 2. Every rename and comment is checked to change nothing the judge sees; names propagate corpus-wide as today.
 3. Review: names below a confidence are shown for a person to accept.
 
-Status: the store, the commands, the rules and the invariance proof are in ([NAMING.md](NAMING.md)); the assistant that
-reads the evidence packets and proposes names for the other 95% is the next step.
+Status: the store, the commands, the rules and the invariance proof are in ([NAMING.md](NAMING.md)). 2026-11-26 (phase 3):
+the callback-role rule (window, dialog, thread, hook, timer and enum procedures, by window class and dialog title), the
+assistant pass proven end to end on Notepad (every function named, the judge's verdicts and rows identical), and review
+(`names MODULE --review`, `--accept-sure`, the Proposed names tool). Left: parameter and local names, body digests for
+the other lanes, a ground truth with private names.
 
 ## 8. CodeBreaker on Linux
 

@@ -229,3 +229,42 @@ field is read only by the rules).
   measure the rules on internal functions, not only exports.
 * Round trip of accepted names into Converted/ projects and a before-and-after build and verdict check on
   a whole project.
+
+## 6. Phase 3: callbacks, the assistant pass, review (2026-11-26)
+
+### callback-role
+
+A function whose address the module hands to the Windows API to be called back is what the API calls that argument
+(`callback_role`, `symbols/proposals.cpp`). `analyze/function_evidence` reads, for 32-bit modules, the arguments pushed
+before each call through an import (`call [slot]`, or `call esi` after `mov esi, [slot]`) and the `WNDCLASS` filled in
+before `RegisterClass*` (`lpfnWndProc`, with `lpszClassName` 32 bytes on in either layout), and records each place as
+`FunctionEvidence::handed_to` (the import, the argument, the other arguments that are numbers or strings, and for a
+dialog the title of the template the module carries for it). The packets carry it as `handed_to`.
+
+| handed to | name | confidence |
+|---|---|---:|
+| `RegisterClass*` with a class name | `<Class>WndProc` (`<Class>Proc` when the class ends in `Wnd`/`Window`) | 85% |
+| `RegisterClass*`, class name not a constant | `WndProc` | 75% |
+| `DialogBoxParam` / `CreateDialogParam` | `<Title>DlgProc` from the dialog's own title; else `<Template>DlgProc`, `Dialog<id>Proc` | 80-85% |
+| `SetWindowsHookEx` | the SDK's name for the hook number (`KeyboardProc`, `CBTProc`, `MessageProc` ...) | 80% |
+| `SetWindowLong(GWL_WNDPROC)`, `SetClassLong(GCL_WNDPROC)` | `SubclassWndProc`, `ClassWndProc` | 75% |
+| `CreateThread`, `SetTimer`, `EnumWindows`, `EnumFontFamilies`, ... (38 APIs) | `ThreadProc`, `TimerProc`, `EnumWindowsProc`, `EnumFontFamProc`, ... | 80% |
+
+Places that disagree on what a function is give no proposal. On eight Windows 95 programs `--propose` gains 45
+proposals (explorer 8, shell32 19, comctl32 9, sndrec32 3, notepad 1): `RunDlgProc`, `FindFileDlgProc`,
+`EditFileTypeDlgProc`, `NotepadWndProc`, `msctls_hotkey32WndProc`, `SysDateTimePick32WndProc`, `SoundRecorderDlgProc`,
+the threads and enum callbacks of explorer and shell32.
+
+### The assistant pass, end to end
+
+`names notepad.exe --packets --c` (56 packets), an assistant's reading of them written as a `--suggest-file` (49
+functions: `NpSaveFile`, `NpLoadFile`, `NpPrintFile`, `NpInsertTimeDate`, `NpPromptSaveChanges` ..., 40-75%), the
+rules' 7, `--accept all --min-confidence 0`: every one of Notepad's 56 functions has a name, each with its description
+and where it came from. `measure` before and after on fresh state folders: VERIFIED 37, weak 9, UNVERIFIED 10 both
+times, and the program database's rows identical but for their timestamps.
+
+### Review
+
+`names MODULE --review` lists the proposals waiting under 80% one by one, with their description and evidence, and says
+how many of 80% and over `--accept-sure` would take; the Tools page's *Proposed names* (developer tools) runs Propose,
+Review and Accept 80% and over on a module.

@@ -512,6 +512,8 @@ cli::Command declare_command(std::function<int(const cli::Args&)> run) {
          cli::Option{"--rules", "", "with --measure: `basic` for the phase 1 rules", cli::Arg::Value, "SET"},
          cli::Option{"--packets", "", "for each unnamed function, the evidence an assistant needs to propose a name (JSON, a line each); --c adds its C, --limit N stops after N", cli::Arg::Flag},
          cli::Option{"--proposals", "", "the module's proposed, accepted and rejected names", cli::Arg::Flag},
+         cli::Option{"--review", "", "the proposals waiting for a person: those under 80% one by one, with how to accept or reject each, and how many of 80% and over --accept-sure would take", cli::Arg::Flag},
+         cli::Option{"--accept-sure", "", "accept every waiting proposal of 80% and over (--accept all)", cli::Arg::Flag},
          cli::Option{"--suggest", "", "store an assistant's proposal for the function at ADDRESS; the name is the second argument, with --describe and --confidence", cli::Arg::Value, "ADDRESS"},
          cli::Option{"--suggest-file", "", "store an assistant's proposals, one a line: ADDRESS, NAME, CONFIDENCE, DESCRIPTION (tab-separated)", cli::Arg::Value, "FILE"},
          cli::Option{"--describe", "", "the one-line description of a suggested name", cli::Arg::Value, "TEXT"},
@@ -544,7 +546,7 @@ int Namer::execute(const cli::Args& a) {
                 c.in_several, c.copies);
         return 0;
     }
-    for (const char* option : {"--propose", "--measure", "--packets", "--proposals", "--suggest", "--suggest-file", "--accept", "--reject"}) {
+    for (const char* option : {"--propose", "--measure", "--packets", "--proposals", "--review", "--accept-sure", "--suggest", "--suggest-file", "--accept", "--reject"}) {
         if (!a.flag(option)) continue;
         if (!self.s.proposals_command) throw UsageError("proposed names are not available here");
         return self.s.proposals_command(a);

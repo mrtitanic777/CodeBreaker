@@ -47,6 +47,7 @@
     // ---- Look inside, deeper (developer)
     {"inspect", "Inspect", "Inspect", "Says what a file is and what it holds; with a folder, what each program in it is.", "E File or folder", "", "inspect {1}", true},
     {"names", "Function names", "Inspect", "Lists every function and import of a module with the best name known for it and where the name came from.", "M Module", "", "names {1}", true},
+    {"name-proposals", "Proposed names", "Inspect", "Proposes names for a module's unnamed functions from what their code shows, lists the ones waiting for a person, or accepts the sure ones.", "M Module", "Step=Propose:--propose|Review:--review|Accept 80% and over:--accept-sure", "names {1} {choice}", true},
     {"analyze", "Analyze a program", "Inspect", "Maps a program: who calls whom, calling conventions, global data, strings, structures and classes.", "M Module", "", "analyze {1}", true},
     {"origin", "Hand-written code finder", "Inspect", "Says which functions of a 16-bit module were written in assembly rather than C.", "M Module", "", "origin {1}", true},
     {"dos-functions", "DOS functions", "Inspect", "Finds the functions inside a DOS program and says what evidence shows each one.", "F Program: .exe or .com", "", "dos-functions {1}", true},
