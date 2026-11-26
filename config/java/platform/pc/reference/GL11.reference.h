@@ -132,6 +132,7 @@ namespace GL11 {
 	void glColorPointer(int size, int stride, ByteBuffer* buf);
 	void glColorPointer(int size, bool unsignedBytes, int stride, ByteBuffer* buf);
 	void glTexCoordPointer(int size, int stride, FloatBuffer* buf);
+	void glTexCoordPointer(int size, int stride, ShortBuffer* buf);   // GL_SHORT (Beta 1.8's lightmap coordinates)
 	void glNormalPointer(int stride, ByteBuffer* buf);
 	void glNormalPointer(int stride, FloatBuffer* buf);
 	void glVertexPointer(int size, int type, int stride, long long offset);       // bound-buffer offset forms

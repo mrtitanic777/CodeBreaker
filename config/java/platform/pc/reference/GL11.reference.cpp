@@ -102,6 +102,7 @@ void glColorPointer(int size, bool unsignedBytes, int stride, ByteBuffer* b) {
 	::glColorPointer(size, unsignedBytes ? GL_UNSIGNED_BYTE : GL_BYTE, stride, at(b));
 }
 void glTexCoordPointer(int size, int stride, FloatBuffer* b) { ::glTexCoordPointer(size, GL_FLOAT, stride, at(b)); }
+void glTexCoordPointer(int size, int stride, ShortBuffer* b) { ::glTexCoordPointer(size, GL_SHORT, stride, at(b)); }
 void glNormalPointer(int stride, ByteBuffer* b) { ::glNormalPointer(GL_BYTE, stride, at(b)); }
 void glNormalPointer(int stride, FloatBuffer* b) { ::glNormalPointer(GL_FLOAT, stride, at(b)); }
 void glVertexPointer(int size, int type, int stride, long long off) { ::glVertexPointer(size, type, stride, (const void*)(size_t)off); }
