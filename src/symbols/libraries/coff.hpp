@@ -29,6 +29,7 @@ namespace cb::symbols::libraries::coff {
 
 inline constexpr std::uint16_t kI386 = 0x014C;
 inline constexpr std::uint16_t kPowerPc = 0x01F2;
+inline constexpr std::uint16_t kAmd64 = 0x8664;
 
 // IMAGE_REL_PPC_* (the low byte of a PowerPC relocation's type)
 inline constexpr std::uint16_t kRelAddr32 = 0x2, kRelAddr24 = 0x3, kRelAddr16 = 0x4, kRelAddr14 = 0x5;

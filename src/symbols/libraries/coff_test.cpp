@@ -232,8 +232,8 @@ CB_TEST("symbols.libraries.coff.damaged_objects", [] {
     CB_CHECK(coff::functions(ByteView(ppc.data(), ppc.size() / 2)).empty());   // (its symbol table is at the end: gone)
     // another machine: nothing to read, not an error
     Bytes other = obj;
-    other[0] = 0x64;
-    other[1] = 0x86;
+    other[0] = 0x64;   // (ARM64: 0xAA64)
+    other[1] = 0xAA;
     CB_CHECK(coff::functions(other).empty());
     // a symbol table cut short ends where the data does
     const coff::Object o = coff::Object::parse(ByteView(obj.data(), 368));   // five of the fourteen records

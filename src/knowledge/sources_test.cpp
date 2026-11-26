@@ -70,7 +70,7 @@ struct Folders {
 
 CB_TEST("knowledge.sources.catalogue", [] {
     const auto& all = AuthoredSources::catalogue();
-    CB_CHECK_EQ(all.size(), 13u);
+    CB_CHECK_EQ(all.size(), 14u);
     std::set<KindId> seen;
     for (const AuthoredKind& k : all) {
         CB_CHECK(seen.insert(k.id).second);       // every kind once
@@ -94,6 +94,7 @@ CB_TEST("knowledge.sources.real_files_every_kind_loads", [] {
     const std::map<KindId, std::size_t> expected = {
         {{"windows", "ordinal_names"}, 9},        {{"win32", "argument_bytes.header"}, 7279},
         {{"win32", "signature"}, 5233},           {{"win16", "signature"}, 6970},
+        {{"win64", "signature"}, 9990},
         {{"vxd", "device"}, 109},                 {{"vxd", "service_table"}, 38},
         {{"vxd", "driver"}, 25},                  {{"vxd", "message"}, 51},
         {{"vxd", "api_model"}, 6},                {{"dos", "interrupt"}, 27},
@@ -105,7 +106,7 @@ CB_TEST("knowledge.sources.real_files_every_kind_loads", [] {
         const Rows rows = sources.authored(id, store);
         CB_CHECK_EQ(rows.size(), count);
     }
-    CB_CHECK_EQ(store.makes, 13);
+    CB_CHECK_EQ(store.makes, 14);
     CB_CHECK_EQ(store.kinds.at({"vxd", "device"}).source, "config/symbols/driver_services.json");
 });
 

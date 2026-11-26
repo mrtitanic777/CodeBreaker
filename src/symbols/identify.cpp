@@ -31,13 +31,13 @@ struct Identifier::Impl {
     Sources s;
     platforms::DecoderSet decoders;
     pef::CarveCache carves;
-    std::optional<rl::SignatureTable> table32, table16;
+    std::optional<rl::SignatureTable> table32, table16, table64;
 
     explicit Impl(Sources sources) : s(sources) {}
 
     // The signatures of one width, indexed once (the knowledge base's rows of the platform, in the order it holds them).
     const rl::SignatureTable& table(rl::Bits bits) {
-        std::optional<rl::SignatureTable>& slot = bits == rl::Bits::X32 ? table32 : table16;
+        std::optional<rl::SignatureTable>& slot = bits == rl::Bits::X32 ? table32 : bits == rl::Bits::X64 ? table64 : table16;
         if (!slot) {
             const std::vector<rl::SignatureRow> rows = s.knowledge.signatures(knowledge::platform(static_cast<int>(bits)));
             slot = rl::SignatureTable::from_rows(rows);
@@ -46,6 +46,11 @@ struct Identifier::Impl {
     }
 
     static bool is_i386(const std::filesystem::path& module) { return formats::pe::Image::open(module).header().machine == formats::pe::kMachineI386; }
+    static bool is_x64(const std::filesystem::path& module) { return formats::pe::Image::open(module).header().machine == formats::pe::kMachineX64; }
+
+    Found pe64(const std::filesystem::path& module) {
+        return identify_x64(formats::pe::Image::open(module), text::upper(fs::to_text(module.stem())), table(rl::Bits::X64));
+    }
     static bool is_powerpc(const std::filesystem::path& module) {
         return formats::pe::Image::open(module).header().machine == formats::powerpc_image::kMachine;
     }
@@ -61,6 +66,7 @@ struct Identifier::Impl {
 
     Found pe(const std::filesystem::path& module) {
         Found out;
+        if (is_x64(module)) return pe64(module);
         if (!is_i386(module)) return out;
         const std::shared_ptr<const pef::PeCarve> carve = carves.get(module);
         const formats::pe::Image& image = carve->image();
@@ -113,6 +119,19 @@ struct Identifier::Impl {
     }
 };
 
+Found identify_x64(const formats::pe::Image& image, std::string stem, const rl::SignatureTable& table) {
+    rl::Pe32Module m;
+    m.stem = std::move(stem);
+    m.image_base = image.header().image_base;
+    for (const formats::pe::Section& section : image.sections())
+        if (section.is_code()) m.code.push_back({m.image_base + section.virtual_address, image.section_data(section)});
+    for (const std::uint32_t rva : image.x64_function_starts()) m.function_starts.push_back(m.image_base + rva);
+    for (const formats::pe::Export& e : image.exports()) m.exports.push_back({static_cast<std::uint32_t>(e.ordinal), e.name, e.rva});
+    m.vote = true;
+    platforms::DecoderSet decoders;   // (identify_pe asks for them only of a flat-thunk module)
+    return rl::identify_pe(table, m, decoders);
+}
+
 Identifier::Identifier(Sources sources) : impl_(std::make_unique<Impl>(sources)) {}
 Identifier::~Identifier() = default;
 
@@ -133,6 +152,7 @@ std::size_t Identifier::function_count(const std::filesystem::path& module) {
     }
     if (lane == base::Lane::Pe) {
         if (Impl::is_powerpc(module)) return formats::powerpc_image::Image::read(module).functions().size();
+        if (Impl::is_x64(module)) return formats::pe::Image::open(module).x64_function_starts().size();
         return impl_->carves.get(module)->functions().size();
     }
     return 0;
@@ -197,7 +217,7 @@ int learn_command(const Environment& environment, const std::vector<std::string>
     }
     const std::string text = rl::format_signature_file(learned);
     fs::write_file(file, ByteView(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()));
-    cb::out("{} 32-bit and {} 16-bit signatures\n", learned.count(rl::Bits::X32), learned.count(rl::Bits::X16));
+    cb::out("{} 32-bit, {} 16-bit and {} x64 signatures\n", learned.count(rl::Bits::X32), learned.count(rl::Bits::X16), learned.count(rl::Bits::X64));
     return 0;
 }
 

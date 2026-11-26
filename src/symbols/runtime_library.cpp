@@ -218,11 +218,31 @@ std::vector<std::uint64_t> flat_thunk_stubs(std::span<const CodeRegion> code, st
 std::map<std::uint64_t, Identified> identify_pe(const SignatureTable& table, const Pe32Module& module,
                                                 platforms::DecoderSet& decoders) {
     std::map<std::uint64_t, Identified> out;
+    std::map<std::uint64_t, std::vector<Identified>> all;   // (module.vote: every row each function matches)
     for (const std::uint64_t va : module.function_starts) {
         if (const CodeRegion* r = region_of(module.code, va)) {
             const std::size_t from = static_cast<std::size_t>(va - r->va);
             const ByteView code = r->bytes.subspan(from, std::min(kLongest, r->bytes.size() - from));
-            if (auto hit = table.match(code)) out[va] = std::move(*hit);
+            if (!module.vote) {
+                if (auto hit = table.match(code)) out[va] = std::move(*hit);
+            } else if (std::vector<Identified> hits = table.match_all(code); !hits.empty()) {
+                all[va] = std::move(hits);
+            }
+        }
+    }
+    if (module.vote) {
+        auto toolset = [](const Identified& i) { return i.library.substr(0, i.library.find(':')); };
+        std::map<std::string, std::size_t> votes;
+        for (const auto& [va, hits] : all) {
+            std::set<std::string> toolsets;
+            for (const Identified& i : hits) toolsets.insert(toolset(i));
+            for (const std::string& t : toolsets) ++votes[t];
+        }
+        for (const auto& [va, hits] : all) {
+            const Identified* best = &hits.front();
+            for (const Identified& i : hits)
+                if (votes[toolset(i)] > votes[toolset(*best)]) best = &i;
+            out[va] = *best;
         }
     }
     if (module.flat_thunk) {
@@ -515,9 +535,9 @@ bool is_any_of(std::string_view s, std::initializer_list<std::string_view> optio
     return std::find(options.begin(), options.end(), s) != options.end();
 }
 
-// `reg` as the 16-bit register name or its 32-bit one ("bp" or "ebp").
+// `reg` as the 16-bit register name or its 32 or 64-bit one ("bp", "ebp" or "rbp").
 bool is_reg(std::string_view s, std::string_view reg) {
-    return s == reg || (s.size() == reg.size() + 1 && s[0] == 'e' && s.substr(1) == reg);
+    return s == reg || (s.size() == reg.size() + 1 && (s[0] == 'e' || s[0] == 'r') && s.substr(1) == reg);
 }
 
 // "a, b" with each side the named register, in either width.
@@ -542,7 +562,7 @@ bool is_frame_instruction(std::string_view mnemonic, std::string_view operands) 
     }
     if (t.starts_with("sub ") || t.starts_with("add ")) {
         const std::string_view rest = t.substr(4);
-        return rest.starts_with("sp, ") || rest.starts_with("esp, ") || rest.starts_with("bp, ");
+        return rest.starts_with("sp, ") || rest.starts_with("esp, ") || rest.starts_with("rsp, ") || rest.starts_with("bp, ");
     }
     if (t.starts_with("push ") || t.starts_with("pop ")) {
         const std::string_view reg = t.substr(t.find(' ') + 1);
@@ -562,7 +582,7 @@ bool is_frame_instruction(std::string_view mnemonic, std::string_view operands) 
 }
 
 std::size_t substance(platforms::DecoderSet& decoders, Bits bits, ByteView code, std::size_t size) {
-    const platforms::Decoder& cs = decoders.get(platforms::Arch::X86, bits == Bits::X32 ? 32 : 16, false);
+    const platforms::Decoder& cs = decoders.get(platforms::Arch::X86, static_cast<unsigned>(bits), false);
     std::size_t n = 0;
     for (const platforms::Insn& i : cs.disasm(code.first(std::min(size, code.size())), 0)) {
         if (!is_frame_instruction(i.mnemonic, i.op_str)) ++n;
@@ -610,7 +630,9 @@ Learned learn(std::span<const LearnSource> sources, platforms::DecoderSet& decod
             log(std::format("{}: not x86 code", source.file.generic_string()));
             continue;
         }
-        const Bits bits = library.machine == libraries::Machine::X86_16 ? Bits::X16 : Bits::X32;
+        const Bits bits = library.machine == libraries::Machine::X86_16   ? Bits::X16
+                          : library.machine == libraries::Machine::X86_64 ? Bits::X64
+                                                                          : Bits::X32;
         std::size_t added = 0;
         for (const libraries::Function& f : library.functions) {
             const std::optional<Signature> sig = signature(f.code, f.mask);
@@ -618,7 +640,7 @@ Learned learn(std::span<const LearnSource> sources, platforms::DecoderSet& decod
             while (lead < kLead && lead < f.code.size() && !(lead < f.mask.size() && f.mask[lead] != 0)) ++lead;
             if (!sig || lead == 0) continue;
             const LearnKey key{bits, sig->size, sig->mask_text, sig->digest};
-            const std::string name = c_name(f.name);
+            const std::string name = bits == Bits::X64 ? f.name : c_name(f.name);   // (x64 decorates a C name with no underscore)
             names[key].insert(name);
             if (found.contains({key, label}) || substance(decoders, bits, f.code, sig->size) < need) continue;
             auto lib_at = std::find(learned.libraries.begin(), learned.libraries.end(), label);
@@ -651,7 +673,7 @@ Learned read_signature_file(std::string_view text) {
     try {
         const Json doc = Json::parse(std::string(text));
         for (const Json& l : doc.at("libraries")) learned.libraries.push_back(l.get<std::string>());
-        for (const Bits bits : {Bits::X32, Bits::X16}) {
+        for (const Bits bits : {Bits::X32, Bits::X16, Bits::X64}) {
             const std::string key = std::to_string(static_cast<int>(bits));
             if (!doc.contains(key)) continue;
             for (const Json& r : doc.at(key)) {
@@ -699,7 +721,8 @@ std::string format_signature_file(const Learned& learned) {
     }
     out += "],\n";
     bool first_block = true;
-    for (const Bits bits : {Bits::X32, Bits::X16}) {
+    for (const Bits bits : {Bits::X32, Bits::X16, Bits::X64}) {
+        if (bits == Bits::X64 && learned.count(bits) == 0) continue;   // (a file of the period libraries alone keeps its two blocks)
         if (!first_block) out += ",\n";
         first_block = false;
         out += std::format("\"{}\": [\n", static_cast<int>(bits));

@@ -20,6 +20,7 @@ std::optional<Machine> machine_of(std::uint16_t coff_machine) {
     switch (coff_machine) {
         case coff::kI386: return Machine::X86_32;
         case coff::kPowerPc: return Machine::PowerPc;
+        case coff::kAmd64: return Machine::X86_64;
         default: return std::nullopt;
     }
 }
@@ -51,6 +52,11 @@ Library read(ByteView data) {
     }
     if (starts_with(data, std::string_view("\x4c\x01", 2))) {
         lib.machine = Machine::X86_32;
+        lib.functions = coff::functions(data);
+        return lib;
+    }
+    if (starts_with(data, std::string_view("\x64\x86", 2))) {
+        lib.machine = Machine::X86_64;
         lib.functions = coff::functions(data);
         return lib;
     }

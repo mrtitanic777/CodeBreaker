@@ -146,6 +146,9 @@ public:
     // functions are named so where nothing else names them (its library's names come first). None by default.
     // The functions of a 32-bit module that signatures say are the compiler's library.
     virtual std::set<Va> runtime_functions(const std::filesystem::path&) { return {}; }
+    // The functions of an x64 module that are a runtime library's (Visual C++'s start-up code, the Universal CRT), by signature:
+    // {address: what}. Nothing identified by default.
+    virtual std::map<Va, LibraryFunction> pe_library(const std::filesystem::path&) { return {}; }
     virtual std::map<Va, std::string> program_names(const std::filesystem::path& module) {
         (void)module;
         return {};

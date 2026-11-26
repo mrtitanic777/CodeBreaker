@@ -62,7 +62,8 @@ CB_TEST("knowledge.package.platform_names", [] {
     CB_CHECK_EQ(platform("32"), "win32");
     CB_CHECK_EQ(platform(16), "win16");
     CB_CHECK_EQ(platform(32), "win32");
-    CB_CHECK_EQ(platform(64), "64");
+    CB_CHECK_EQ(platform(64), "win64");
+    CB_CHECK_EQ(platform(8), "8");
     CB_CHECK_EQ(platform("win16"), "win16");      // already the base's
     CB_CHECK_EQ(platform("nes"), "nes");          // none of the lanes': as it is
     CB_CHECK_EQ(known_platforms().size(), std::size_t{6});

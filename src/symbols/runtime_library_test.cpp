@@ -633,3 +633,53 @@ CB_TEST("symbols.runtime_library.signature_file_format", [] {
     const std::string empty = rl::format_signature_file({});
     CB_CHECK_EQ(empty, "{\"libraries\": [],\n\"32\": [\n\n],\n\"16\": [\n\n]\n}\n");
 });
+
+// x64 (x64_runtime.obj, built from x64_runtime.c with Visual C++'s x64 compiler): the object is read as x64, a REL32 field is
+// four bytes left out, a C name keeps its underscores (x64 decorates none), and the rows are a block of their own.
+CB_TEST("symbols.runtime_library.learn_from_an_x64_object", [] {
+    const libs::Library lib = libs::read_file(lib_path("x64_runtime.obj"));
+    CB_CHECK(lib.machine == libs::Machine::X86_64);
+    CB_CHECK_EQ(lib.functions.size(), std::size_t{2});
+    CB_CHECK_EQ(lib.functions[0].name, "__cb_scaled_lookup");
+    // lea rax, [rip+cb_table] at 9 (its field at 0xC) and call cb_hook at 0x27 (its field at 0x28)
+    const auto sig = rl::signature(lib.functions[0].code, lib.functions[0].mask);
+    CB_CHECK(sig.has_value());
+    CB_CHECK_EQ(sig->mask_text, "c.4,28.4");
+    cb::platforms::DecoderSet decoders;
+    const std::vector<rl::LearnSource> sources = {{"Test x64 runtime", lib_path("x64_runtime.obj")}};
+    const rl::Learned learned = rl::learn(sources, decoders, [](const std::string&) {});
+    CB_CHECK_EQ(learned.count(rl::Bits::X64), std::size_t{2});
+    CB_CHECK_EQ(learned.count(rl::Bits::X32), std::size_t{0});
+    CB_CHECK_EQ(learned.rows[0].row.name, "__cb_scaled_lookup");
+    CB_CHECK_EQ(learned.rows[1].row.name, "cb_mix");
+    const std::string file = rl::format_signature_file(learned);
+    CB_CHECK(file.find("\n\"64\": [\n[\"4053") != std::string::npos);
+    const rl::Learned back = rl::read_signature_file(file);
+    CB_CHECK_EQ(back.count(rl::Bits::X64), std::size_t{2});
+    CB_CHECK_EQ(back.rows[1].row.digest, learned.rows[1].row.digest);
+});
+
+// The same code in two toolsets' libraries is credited to the toolset most of the module's matches are in, not the first row's.
+CB_TEST("symbols.runtime_library.identify_pe_votes_for_the_toolset", [] {
+    const libs::Library lib = libs::read_file(lib_path("x64_runtime.obj"));
+    const libs::Function& lookup = lib.functions[0];
+    const libs::Function& mix = lib.functions[1];
+    // cb_mix is in both; __cb_scaled_lookup only in the newer one
+    const rl::SignatureTable table = rl::SignatureTable::from_rows(std::vector<rl::SignatureRow>{
+        row_of(mix, "Old 1.0: runtime"), row_of(mix, "New 2.0: runtime"), row_of(lookup, "New 2.0: runtime")});
+    Bytes code(0x100, 0xCC);
+    put(code, 0, lookup.code);
+    put(code, 0x80, mix.code);
+    rl::Pe32Module m;
+    m.stem = "PROGRAM";
+    m.image_base = 0x140000000;
+    m.code = {{0x140001000, code}};
+    m.function_starts = {0x140001000, 0x140001080};
+    cb::platforms::DecoderSet decoders;
+    CB_CHECK_EQ(rl::identify_pe(table, m, decoders).at(0x140001080).library, "Old 1.0: runtime");   // (the first row)
+    m.vote = true;
+    const auto found = rl::identify_pe(table, m, decoders);
+    CB_CHECK_EQ(found.size(), std::size_t{2});
+    CB_CHECK_EQ(found.at(0x140001000).name, rl::c_name(lookup.name));
+    CB_CHECK_EQ(found.at(0x140001080).library, "New 2.0: runtime");
+});

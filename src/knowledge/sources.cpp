@@ -80,6 +80,8 @@ const std::vector<AuthoredKind>& AuthoredSources::catalogue() {
                  "32-bit runtime-library functions: [leading bytes, size, mask, digest, name, library]"),
             kind("win16", "signature", S, "runtime_signatures.json", Layout::Signatures, "16",
                  "16-bit runtime-library functions: [leading bytes, size, mask, digest, name, library]"),
+            kind("win64", "signature", S, "runtime_signatures.json", Layout::Signatures, "64",
+                 "x64 runtime-library functions (Visual C++'s and the Universal CRT's x64 libraries): [leading bytes, size, mask, digest, name, library]"),
             kind("vxd", "device", S, "driver_services.json", Layout::Part, "devices", "device numbers the driver kit names"),
             kind("vxd", "service_table", S, "driver_services.json", Layout::Part, "services",
                  "each device's services in order (service N is the Nth)"),

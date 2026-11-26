@@ -39,7 +39,7 @@
 namespace cb::symbols::runtime_library {
 
 // Which x86 mode a module's code is in.
-enum class Bits : std::uint8_t { X16 = 16, X32 = 32 };
+enum class Bits : std::uint8_t { X16 = 16, X32 = 32, X64 = 64 };
 
 // How many bytes of a function are compared (a longer function is compared by its first kLongest).
 inline constexpr std::size_t kLongest = 1024;
@@ -145,6 +145,9 @@ struct Pe32Module {
     bool flat_thunk = false;
     // For a runtime-library module (runtime_library_of(stem)): the names the tables give to exports that have none.
     std::map<std::uint32_t, std::string> ordinal_names;
+    // Where the same code is in several toolsets' libraries, credit it to the toolset most of the module's matches are in (an x64
+    // module: Visual C++ carried most of its start-up code from one version to the next unchanged). Otherwise the first row wins.
+    bool vote = false;
 };
 
 // {address: what it is} of the functions of a 32-bit module that belong to a runtime library: by signature, the thunk

@@ -47,6 +47,7 @@ std::string platform(std::string_view name) {
 std::string platform(int bits) {
     if (bits == 16) return "win16";
     if (bits == 32) return "win32";
+    if (bits == 64) return "win64";
     return std::to_string(bits);
 }
 

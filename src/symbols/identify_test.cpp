@@ -174,7 +174,7 @@ CB_TEST("symbols.identify.learn_makes_the_signature_file_from_a_library", [] {
     const std::string text = w.run(sy::identify::command(w.environment), {"--learn", "A test object=" + cb::fs::to_text(library), "not a source"}, &code);
     CB_CHECK_EQ(code, 0);
     CB_CHECK(text.find("A test object (ATOF.OBJ)") != std::string::npos);
-    CB_CHECK(text.find(" 32-bit and ") != std::string::npos);
+    CB_CHECK(text.find(" 32-bit, ") != std::string::npos);
     const std::string file = cb::fs::read_text(w.environment.signature_file);
     CB_CHECK(file.starts_with("{\"libraries\": [\"A test object (ATOF.OBJ)\"]"));
     CB_CHECK(file.find("\"32\": [") != std::string::npos);

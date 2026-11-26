@@ -33,7 +33,14 @@ ByteView section_bytes(ByteView data, const Section& s) { return io::checked_ran
 
 // ---- x86 -----------------------------------------------------------------------------------------------------------
 
-// The external functions of a 32-bit x86 object: name, bytes, byte mask, offset in the section.
+// How many bytes a relocation's field covers. i386: DIR16 and REL16 are two, the rest four. AMD64: ADDR64 is eight, SECTION
+// two, ABSOLUTE none, the rest (ADDR32, ADDR32NB, REL32 and its _1.._5, SECREL) four.
+std::uint32_t field_width(std::uint16_t machine, std::uint16_t type) {
+    if (machine == kAmd64) return type == 0x1 ? 8 : type == 0xA ? 2 : type == 0x0 ? 0 : 4;
+    return (type == 1 || type == 2) ? 2 : 4;
+}
+
+// The external functions of an x86 object, 32 or 64-bit: name, bytes, byte mask, offset in the section.
 std::vector<Function> x86_functions(const Object& obj) {
     struct Code {
         ByteView bytes;
@@ -48,7 +55,7 @@ std::vector<Function> x86_functions(const Object& obj) {
         Code code{section_bytes(obj.data(), sec), {}, {}};
         code.masked.assign(code.bytes.size(), 0);
         for (const Relocation& r : obj.relocations(sec)) {
-            const std::uint32_t width = (r.type == 1 || r.type == 2) ? 2 : 4;   // DIR16 / REL16, else a 32-bit field
+            const std::uint32_t width = field_width(obj.machine(), r.type);
             for (std::uint32_t k = 0; k < width; ++k) {
                 if (r.offset + std::uint64_t{k} < code.masked.size()) code.masked[r.offset + k] = 1;
             }
@@ -267,7 +274,7 @@ std::optional<std::uint32_t> field_bits(std::uint16_t relocation_type) {
 std::vector<Function> functions(ByteView data) {
     if (data.size() < 20) return {};
     const Object obj = Object::parse(data);
-    if (obj.machine() == kI386 && obj.symbol_table_offset() != 0) return x86_functions(obj);
+    if ((obj.machine() == kI386 || obj.machine() == kAmd64) && obj.symbol_table_offset() != 0) return x86_functions(obj);
     if (obj.machine() == kPowerPc && !obj.symbols().empty()) return powerpc_functions(obj);
     return {};
 }

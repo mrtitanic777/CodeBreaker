@@ -24,6 +24,7 @@
 #include "formats/omf.hpp"
 #include "formats/pe_functions.hpp"
 #include "platforms/decoder.hpp"
+#include "symbols/identify.hpp"
 #include "symbols/runtime_library.hpp"
 
 namespace cb::engine::kit_detail {
@@ -346,6 +347,7 @@ struct KitEnvironment::Impl {
     std::optional<translate::native_l2::Library> library;
     std::optional<symbols::runtime_library::SignatureTable> signatures;   // the runtime library's functions by their leading bytes, from the knowledge base
     std::optional<symbols::runtime_library::SignatureTable> signatures16;   // the same of a 16-bit module's
+    std::optional<symbols::runtime_library::SignatureTable> signatures64;   // and of an x64 module's
     std::map<stdfs::path, std::unordered_map<std::string, build::watcom::NumberedImport>> numbered;   // by module: what the description said
 
     // PowerPC images read (the last few: the facts, the functions and the names are asked in turn for one), and what names their functions.
@@ -528,6 +530,21 @@ std::set<decompile::decompiler::Va> KitEnvironment::runtime_functions(const stdf
     return out;
 }
 
+std::map<decompile::decompiler::Va, decompile::decompiler::LibraryFunction> KitEnvironment::pe_library(const stdfs::path& module) {
+    std::map<decompile::decompiler::Va, decompile::decompiler::LibraryFunction> out;
+    try {
+        const formats::pe::Image image = formats::pe::Image::open(module);
+        if (image.header().machine != formats::pe::kMachineX64) return out;
+        std::lock_guard hold(impl_->lock);
+        if (!impl_->signatures64) impl_->signatures64 = symbols::runtime_library::SignatureTable::from_rows(impl_->kb.signatures("win64"));
+        for (const auto& [va, found] : symbols::identify::identify_x64(image, aa::stem(fs::to_text(module.filename())), *impl_->signatures64))
+            out[static_cast<decompile::decompiler::Va>(va)] = {found.name, found.library, found.bytes};
+    } catch (const Error&) {   // (a module that does not read as a PE has nothing identified)
+        out.clear();
+    }
+    return out;
+}
+
 std::map<std::string, std::pair<std::string, std::string>> KitEnvironment::identify(const stdfs::path& module) {
     std::map<std::string, std::pair<std::string, std::string>> out;
     const std::optional<base::Lane> lane = impl_->corpus.lane(module);
@@ -563,6 +580,10 @@ std::map<std::string, std::pair<std::string, std::string>> KitEnvironment::ident
     }
     if (!lane || *lane != base::Lane::Pe) return out;
     try {
+        if (formats::pe::Image::open(module).header().machine == formats::pe::kMachineX64) {   // (x64: the functions .pdata states)
+            for (const auto& [va, f] : pe_library(module)) out[std::format("{:x}", va)] = {f.name, f.library};
+            return out;
+        }
         const formats::pe_functions::PeCarve carve = formats::pe_functions::PeCarve::open(module);
         symbols::runtime_library::Pe32Module m;
         m.stem = aa::stem(fs::to_text(module.filename()));

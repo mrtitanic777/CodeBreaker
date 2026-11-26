@@ -230,6 +230,41 @@ DosLibrary lanes_dos_library(Decompiler& decompiler, describe::DosDescription& d
     return out;
 }
 
+// The functions of an x64 module that are a runtime library's are named as the library names them -- so a call reads
+// `__security_check_cookie(x)`, not `sub_1400019F0(x)` -- and left out of what is decompiled: nobody wrote the start-up code for
+// this program. The description is rewritten to say so; what goes at the top of its C lists them, by library.
+std::string lanes_x64_library(describe::PeDescription& d, const std::map<Va, LibraryFunction>& identified) {
+    if (identified.empty()) return {};
+    std::set<std::string> used;
+    for (const auto& [va, name] : d.names)
+        if (!identified.contains(va)) used.insert(name);
+    const std::string described = fs::read_text(d.path);
+    std::vector<std::string> lines;
+    for (const std::string_view l : text::lines(described)) lines.emplace_back(l);
+    std::map<std::string, std::size_t> f_line;   // "F\t<va>\t" -> its line (lookup only)
+    for (std::size_t k = 0; k < lines.size(); ++k)
+        if (lines[k].starts_with("F\t")) f_line.emplace(lines[k].substr(0, lines[k].find('\t', 2) + 1), k);
+    std::map<std::string, std::vector<std::string>> by_library;
+    for (const auto& [va, what] : identified) {
+        const auto named = d.names.find(va);
+        const auto at = f_line.find("F\t" + hex(static_cast<std::int64_t>(va)) + "\t");
+        if (named == d.names.end() || at == f_line.end()) continue;   // (not a function the description has)
+        std::string name = text::sanitize_identifier(what.name);
+        if (name.empty() || used.contains(name)) name = (name.empty() ? "library" : name) + "_" + upper_hex(static_cast<std::int64_t>(va), 1);
+        used.insert(name);
+        std::string& line = lines[at->second];
+        const std::size_t name_end = line.find('\t', at->first.size());
+        line = at->first + name + (name_end == std::string::npos ? std::string() : line.substr(name_end));
+        named->second = name;
+        by_library[what.library].push_back(what.name);
+    }
+    fs::write_text(d.path, text::join(lines, "\n") + "\n");
+    std::string out;
+    for (const auto& [lib, names] : by_library)
+        out += (out.empty() ? "" : "\n") + std::string("/* from ") + lib + ", called by name, not decompiled: " + text::join(names, ", ") + " */";
+    return out;
+}
+
 // The two functions Microsoft C's start-up code calls around the library's own: its CRT0.ASM is
 //     call _cinit / call _setargv / call _setenvp / ... / call main / ... / call exit
 // so in a program whose start-up calls _setargv and _setenvp, the function it calls just before them is _cinit (the library's,
@@ -630,7 +665,21 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
         header = made.header();
         total = made.by_va().size();
         pe_places = made.by_va();
-    } else if (kind == Lane::Pe) {   // PowerPC and x64: as the decompiler gives it
+    } else if (kind == Lane::Pe && formats::pe::Image::open(module).header().machine == kMachineX64) {
+        const formats::pe::Image image = formats::pe::Image::open(module);
+        const std::vector<Va> starts = lanes_x64_functions(image);
+        const std::map<Va, LibraryFunction> identified = context_.environment->pe_library(module);
+        describe::PeDescription d = describe_module(module, image, starts, scratch_for({"decompiler", stem}));
+        header = lanes_x64_library(d, identified);
+        std::vector<Va> own;
+        for (const Va va : starts)
+            if (!identified.contains(va)) own.push_back(va);
+        Run r = run(d.path, own);
+        texts = std::move(r.texts);
+        order = std::move(r.order);
+        total = starts.size();
+        library = identified.size();
+    } else if (kind == Lane::Pe) {   // PowerPC: as the decompiler gives it
         const std::uint16_t machine = formats::pe::Image::open(module).header().machine;
         const std::vector<Va> starts = lanes_stated_functions(*context_.environment, module, machine);
         Run r = run_module(module, starts, scratch_for({"decompiler", stem})).run;

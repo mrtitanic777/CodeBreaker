@@ -26,6 +26,10 @@
 #include "symbols/ordinals.hpp"
 #include "symbols/runtime_library.hpp"
 
+namespace cb::formats::pe {
+class Image;
+}
+
 namespace cb::symbols::identify {
 
 // A function's address: a 32-bit module's as it is, a 16-bit one's as decompile::describe::address lays it out.
@@ -60,6 +64,11 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
+
+// The functions of an x64 module (`stem`: its file name in capitals, without the extension) that belong to a runtime library: the
+// functions it states (its entry, exports and .pdata) matched against the x64 signatures, each credited to the toolset most of the
+// module's matches are in.
+Found identify_x64(const formats::pe::Image& image, std::string stem, const runtime_library::SignatureTable& table);
 
 using Environment = symbols::Environment;
 

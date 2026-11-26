@@ -32,13 +32,13 @@ namespace cb::symbols::libraries {
 
 // What a library's code is for. The mask of a function depends on it: one flag per byte for x86, the bits left out of
 // each word for PowerPC.
-enum class Machine { X86_16, X86_32, PowerPc };
+enum class Machine { X86_16, X86_32, X86_64, PowerPc };
 
 // One function of a library.
 struct Function {
     std::string name;                  // the symbol, as the library spells it
     Bytes code;                        // its bytes (PowerPC: big-endian words)
-    // x86 (16 and 32 bit): one flag per byte of `code`; non-zero leaves the byte out. In 16-bit libraries 1 is a byte
+    // x86 (16, 32 and 64 bit): one flag per byte of `code`; non-zero leaves the byte out. In 16-bit libraries 1 is a byte
     // a fix-up's field covers and 2 the opcode of a far call, which a linker that translates far calls rewrites too.
     Bytes mask;
     // PowerPC: one word per word of `code`, the bits of it left out (a relocation fills a field of the instruction;
