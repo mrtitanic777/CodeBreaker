@@ -11,6 +11,9 @@
     {"neutral": ".long {list}", "dialect": ".long {list}", "separator": ", "}
   ],
   "instructions": [
+    {"neutral": "mov.l @({w},pc),r{n}", "dialect": "mov.l {w},r{n}", "print": false},
+    {"neutral": "mov.w @({w},pc),r{n}", "dialect": "mov.w {w},r{n}", "print": false},
+    {"neutral": "mova @({w},pc),r0", "dialect": "mova {w},r0", "print": false},
     {"neutral": "mov.l @(K_{w},pc),{r}", "dialect": "mov.l K_{w},{r}"},
     {"neutral": "mov.w @(K_{w},pc),{r}", "dialect": "mov.w K_{w},{r}"},
     {"neutral": "add 0x{w},{r}", "dialect": "add #0x{w},{r}", "decimal": true, "read": false},

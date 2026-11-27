@@ -22,7 +22,7 @@
 // machine (`.long SCU_IST`), a variable in RAM (`.long var_0600A010`) or a number. An address the code takes with `mova` is a label too (`D_`).
 //
 // Functions are named by the entries' names or `sub_<address>`, jump targets `L_<address>`, data `D_<address>`. The source builds with
-// CodeBreaker's own assembler (build/sh_asm); the instructions are GNU as's, so a toolchain's `as` takes them; the `.org` that says where each
+// CodeBreaker's one assembler (the SH-2's SLEIGH description under gas-sh's dialect); the instructions are GNU as's, so a toolchain's `as` takes them; the `.org` that says where each
 // part is loaded is CodeBreaker's.
 #pragma once
 

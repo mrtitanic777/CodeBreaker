@@ -7,10 +7,10 @@
 #include <string_view>
 
 #include <algorithm>
-#include "build/sh_asm.hpp"
+#include "source/dialect.hpp"
+#include "source/risc_source.hpp"
 #include "core/bytes.hpp"
 #include "source/dreamcast_writer.hpp"
-#include "source/isa_sh2.hpp"
 
 namespace cb::source::dreamcast_test {
 
@@ -65,7 +65,7 @@ K_sysinfo: .long 0x8C0000B0
 )";
 
 
-inline Bytes assemble(std::string_view source) { return build::sh_asm::Assembler(isa::sh4_encoder(), true).build(source); }
+inline Bytes assemble(std::string_view source) { return risc_source::assemble("sh4", dialect::find("gas-sh4").parse(source), {}); }
 
 inline void put_text(Bytes& b, std::size_t at, std::string_view text, std::size_t width) {
     for (std::size_t i = 0; i < width; ++i) b[at + i] = i < text.size() ? static_cast<std::uint8_t>(text[i]) : ' ';

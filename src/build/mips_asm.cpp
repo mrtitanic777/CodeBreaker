@@ -203,12 +203,12 @@ private:
             pc_ = need(rest);
             return;
         }
-        if (text::iequals(head, ".word") || text::iequals(head, ".long") || text::iequals(head, ".4byte")) return put(items(rest, 4));
-        if (text::iequals(head, ".half") || text::iequals(head, ".short") || text::iequals(head, ".2byte")) return put(items(rest, 2));
+        if (text::iequals(head, ".word") || text::iequals(head, ".long") || text::iequals(head, ".4byte") || text::iequals(head, ".int")) return put(items(rest, 4));
+        if (text::iequals(head, ".half") || text::iequals(head, ".short") || text::iequals(head, ".2byte") || text::iequals(head, ".hword")) return put(items(rest, 2));
         if (text::iequals(head, ".byte")) return put(items(rest, 1));
         if (text::iequals(head, ".dword") || text::iequals(head, ".8byte") || text::iequals(head, ".quad")) return put(items(rest, 8));
         if (text::iequals(head, ".ascii")) return put(strings(rest, false));
-        if (text::iequals(head, ".asciz") || text::iequals(head, ".asciiz")) return put(strings(rest, true));
+        if (text::iequals(head, ".asciz") || text::iequals(head, ".asciiz") || text::iequals(head, ".string")) return put(strings(rest, true));
         if (text::iequals(head, ".space") || text::iequals(head, ".skip")) {
             const std::vector<std::string_view> parts = split_items(rest, true);
             if (parts.empty() || parts.size() > 2) fail("`.space` takes a count and a fill value");
@@ -227,6 +227,11 @@ private:
             Bytes out;
             for (std::int64_t i = 0; i < count; ++i) append_value(out, value, size, order_);
             return put(out);
+        }
+        if (text::iequals(head, ".balign")) {   // up to a multiple of n bytes
+            const std::int64_t unit = need(rest);
+            if (unit < 1 || unit > 65536) fail("an alignment of " + std::to_string(unit));
+            return put(Bytes(static_cast<std::size_t>((unit - (pc_ % unit)) % unit), 0));
         }
         if (text::iequals(head, ".align") || text::iequals(head, ".p2align")) {
             const std::int64_t power = need(rest);

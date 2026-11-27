@@ -9,7 +9,9 @@ namespace cb::build {
 std::string_view strip_comment(std::string_view line) {
     bool quoted = false;
     for (std::size_t i = 0; i < line.size(); ++i) {
-        if (line[i] == '"') {
+        if (quoted && line[i] == '\\' && i + 1 < line.size()) {
+            ++i;   // (an escaped character in a string, `\"` among them)
+        } else if (line[i] == '"') {
             quoted = !quoted;
         } else if (line[i] == ';' && !quoted) {
             return line.substr(0, i);
@@ -25,6 +27,10 @@ std::vector<std::string_view> split_items(std::string_view text, bool track_pare
     std::size_t start = 0;
     for (std::size_t i = 0; i < text.size(); ++i) {
         const char c = text[i];
+        if (quoted && c == '\\' && i + 1 < text.size()) {
+            ++i;   // (an escaped character in a string, `\"` among them)
+            continue;
+        }
         if (c == '"') quoted = !quoted;
         if (!quoted && track_parens) {
             if (c == '(') ++depth;

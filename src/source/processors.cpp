@@ -290,7 +290,7 @@ Image assemble_described(const Processor& processor, std::string_view source, co
     for (const auto& [k, v] : processor.context) context.emplace_back(std::string(k), v);
     const build::Encoder& encoder = isa::sleigh_encoder(languages() / processor.sla, context);
     (void)folder;
-    return bytes_at(build::mips_asm::Assembler(encoder, processor.big_endian ? build::mips_asm::ByteOrder::Big : build::mips_asm::ByteOrder::Little, 1, ';').build(source));
+    return bytes_at(build::mips_asm::Assembler(encoder, processor.big_endian ? build::mips_asm::ByteOrder::Big : build::mips_asm::ByteOrder::Little, (processor.name == "sh2" || processor.name == "sh4") ? 2 : 1, ';').build(source));
 }
 
 std::optional<Bytes> assemble_line(const Processor& processor, std::string_view line, std::uint64_t pc, const decompile::NameLabels& symbols) {

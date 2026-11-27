@@ -8,9 +8,9 @@
 #include <string>
 #include <string_view>
 
-#include "build/sh_asm.hpp"
+#include "source/dialect.hpp"
+#include "source/risc_source.hpp"
 #include "core/bytes.hpp"
-#include "source/isa_sh2.hpp"
 
 namespace cb::source::sh2_test {
 
@@ -99,7 +99,7 @@ leaf:   mov.l   @r4,r0
         .long 0x12345678
 )";
 
-inline Bytes assemble(std::string_view source) { return build::sh_asm::Assembler(isa::sh2_encoder()).build(source); }
+inline Bytes assemble(std::string_view source) { return risc_source::assemble("sh2", dialect::find("gas-sh").parse(source), {}); }
 
 inline void put32(Bytes& b, std::size_t at, std::uint32_t v) {
     for (int i = 0; i < 4; ++i) b[at + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(v >> (24 - 8 * i));

@@ -6,10 +6,10 @@
 #include <cmath>
 #include <string>
 
-#include "build/sh_asm.hpp"
 #include "core/testing.hpp"
 #include "emulate/sh2.hpp"
-#include "source/isa_sh2.hpp"
+#include "source/dialect.hpp"
+#include "source/risc_source.hpp"
 
 namespace sh = cb::emulate::sh2;
 using cb::Bytes;
@@ -25,7 +25,7 @@ sh::Bus make_bus() {
 }
 
 sh::RunResult go(sh::Bus& bus, const std::string& source, sh::RunOptions options = {}) {
-    const Bytes code = cb::build::sh_asm::Assembler(cb::source::isa::sh4_encoder(), true).build(".org 0x0C010000\n" + source);
+    const Bytes code = cb::source::risc_source::assemble("sh4", cb::source::dialect::find("gas-sh4").parse(".org 0x0C010000\n" + source), {});
     bus.load(kCode, code);
     options.sp = 0x8C0F0000;
     return sh::run(bus, kCode, options);

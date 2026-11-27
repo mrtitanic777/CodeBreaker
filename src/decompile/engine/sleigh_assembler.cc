@@ -104,7 +104,18 @@ std::string spaced(std::string_view s) {
         gap = false;
         out += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     }
-    return out;
+    // (a hex number's leading zeros are no part of its value: `0x0c` and `0xc` are one text, as an assembly source writes the first and the translator prints the second)
+    std::string canonical;
+    for (std::size_t k = 0; k < out.size(); ++k) {
+        canonical += out[k];
+        if (out[k] == '0' && k + 1 < out.size() && out[k + 1] == 'x' && (k == 0 || !(std::isalnum(static_cast<unsigned char>(out[k - 1])) != 0 || out[k - 1] == '_'))) {
+            canonical += 'x';
+            k += 2;
+            while (k + 1 < out.size() && out[k] == '0' && std::isxdigit(static_cast<unsigned char>(out[k + 1])) != 0) ++k;
+            --k;
+        }
+    }
+    return canonical;
 }
 
 // ---------------------------------------------------------------- the bits of an instruction being built

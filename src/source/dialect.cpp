@@ -119,7 +119,9 @@ bool match(const Template& t, std::string_view s, Captures& out) {
             }
             skip_blanks();
             if (pos + lit.size() > s.size() || !text::iequals(s.substr(pos, lit.size()), lit)) return false;
-            if (is_word(lit.back()) && lit.back() != '_' && !lit.ends_with("0x") && pos + lit.size() < s.size() && is_word(s[pos + lit.size()])) return false;   // (a literal ending in _ is a prefix:  then the name)
+            // (a register's name with its number after it -- `float fpul,dr{w}` -- is one word: a literal that ends a longer text with no blank before a placeholder attaches to it)
+            const bool attached = i + 1 < t.size() && t[i + 1].placeholder && !is_blank(p.text.back()) && !std::ranges::all_of(lit, is_word);
+            if (!attached && is_word(lit.back()) && lit.back() != '_' && !lit.ends_with("0x") && pos + lit.size() < s.size() && is_word(s[pos + lit.size()])) return false;   // (a literal ending in _ is a prefix:  then the name)
             pos += lit.size();
             skip_blanks();
             continue;
@@ -137,7 +139,7 @@ bool match(const Template& t, std::string_view s, Captures& out) {
         }
         const std::string_view value = text::trim(s.substr(pos, end - pos));
         if (value.empty()) return false;
-        if ((p.text[0] == 'w' || p.text == "m") && !std::ranges::all_of(value, [](char c) { return is_word(c) || c == '.' || c == '$'; })) return false;   // ({w}: a name, a number or a word: no operand syntax)
+        if ((p.text[0] == 'w' || p.text == "m") && !std::ranges::all_of(value.starts_with('-') && value.size() > 1 && p.text[0] == 'w' ? value.substr(1) : value, [](char c) { return is_word(c) || c == '.' || c == '$'; })) return false;   // ({w}: a name, a number or a word: no operand syntax)
         out.emplace_back(p.text, value);
         pos = end;
     }
