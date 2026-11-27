@@ -1,8 +1,10 @@
 #include "verify/reconstruct.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <format>
+#include <mutex>
 #include <unordered_set>
 
 #include "core/bytes.hpp"
@@ -424,6 +426,22 @@ Outcome Reconstructor::run(const std::filesystem::path& module_path) const {
     const std::string name = module_name(module_path);
     const std::filesystem::path work = services_.scratch / "reconstruct" / kind_id / name;
 
+    // How far the run is (Services::progress): one caller at a time, the judging threads too.
+    std::mutex telling;
+    const auto tell = [&](Step step, std::size_t done, std::size_t total) {
+        if (!services_.progress)
+            return;
+        const std::lock_guard hold(telling);
+        services_.progress(step, done, total);
+    };
+    std::atomic<bool> stopped = false;
+    const auto stopping = [&] {
+        if (!stopped && services_.stop && services_.stop())
+            stopped = true;
+        return stopped.load();
+    };
+
+    tell(Step::Preparing, 0, 0);
     const std::unique_ptr<lanes::Prepared> prepared_ptr = kind.prepare(module_path, work);
     const lanes::Prepared& m = *prepared_ptr;
     Outcome out{.sha = sha, .profile = profile.digest, .name = name};
@@ -469,6 +487,9 @@ Outcome Reconstructor::run(const std::filesystem::path& module_path) const {
     double build_done = 0, judge_done = 0;
     std::size_t carried = 0;
     if (!fresh.empty()) {
+        if (stopping())
+            throw Stopped();
+        tell(Step::Building, 0, fresh.size());
         lanes::Built built = kind.build(m, module_path, work);
         build_done = seconds_since(build_started);
         const std::set<std::string_view> in_build(built.items.begin(), built.items.end());
@@ -540,6 +561,9 @@ Outcome Reconstructor::run(const std::filesystem::path& module_path) const {
         for (const std::string& n : fresh)
             if (in_build.contains(n))
                 to_judge.push_back(n);
+        if (stopping())
+            throw Stopped();
+        tell(Step::Judging, 0, to_judge.size());
         std::map<std::string, Judgement> judged;
         std::optional<std::map<std::string, Judgement>> batch;
         if (services_.judge_batch)
@@ -548,13 +572,19 @@ Outcome Reconstructor::run(const std::filesystem::path& module_path) const {
             judged = std::move(*batch);
         } else {
             // One function's judge failing alone is that function's "not run"; the others go on.
+            std::atomic<std::size_t> finished = 0;
             const auto judge_one = [&](const std::string& n) {
+                if (stopping())
+                    return not_run();   // (nothing is recorded: the run leaves by Stopped below)
+                Judgement j;
                 try {
-                    return built.judge(n);
+                    j = built.judge(n);
                 } catch (const std::exception& e) {   // isolation boundary: one function of a batch
                     log::warn(std::format("reconstruct: judging {} in {} failed: {}", n, name, e.what()));
-                    return not_run();
+                    j = not_run();
                 }
+                tell(Step::Judging, ++finished, to_judge.size());
+                return j;
             };
             if (services_.judge_threads <= 1) {
                 for (const std::string& n : to_judge)
@@ -565,6 +595,9 @@ Outcome Reconstructor::run(const std::filesystem::path& module_path) const {
                     judged.emplace(to_judge[i], answers[i]);
             }
         }
+        if (stopped)
+            throw Stopped();
+        tell(Step::Judging, to_judge.size(), to_judge.size());
         for (const std::string& n : to_judge) {
             const auto got = judged.find(n);
             const Judgement j = got == judged.end() ? not_run() : got->second;

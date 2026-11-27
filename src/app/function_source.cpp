@@ -220,10 +220,65 @@ std::vector<convert::FunctionRecord> collect(const stdfs::path& folder, const st
     return list;
 }
 
+std::vector<convert::FunctionRecord> with_judged(std::vector<convert::FunctionRecord> found, const std::vector<Judged>& judged) {
+    std::map<std::string, std::size_t> by_name, by_address;
+    for (std::size_t i = 0; i < judged.size(); ++i) {
+        if (!judged[i].name.empty()) by_name.emplace(judged[i].name, i);
+        by_address.emplace(normal_address(judged[i].key), i);
+    }
+    std::vector<char> used(judged.size(), 0);
+    for (convert::FunctionRecord& r : found) {
+        std::optional<std::size_t> which;
+        if (const auto at = by_name.find(r.name); at != by_name.end()) {
+            which = at->second;
+        } else if (const std::string address = r.address.empty() ? address_of_name(r.name) : r.address; !address.empty()) {
+            if (const auto by = by_address.find(normal_address(address)); by != by_address.end()) which = by->second;
+        }
+        if (!which) continue;
+        const Judged& j = judged[*which];
+        used[*which] = 1;
+        r.judged = j.cls;
+        r.verdict = convert::verdict_of(j.cls);
+        if (r.address.empty()) r.address = "0x" + normal_address(j.key);
+    }
+    for (std::size_t i = 0; i < judged.size(); ++i) {
+        if (used[i]) continue;
+        convert::FunctionRecord r;
+        r.name = judged[i].name.empty() ? "sub_" + normal_address(judged[i].key) : judged[i].name;
+        r.address = "0x" + normal_address(judged[i].key);
+        r.judged = judged[i].cls;
+        r.verdict = convert::verdict_of(judged[i].cls);
+        found.push_back(std::move(r));
+    }
+    return found;
+}
+
+std::string judged_counts(const std::map<verify::Class, std::int64_t>& scores, std::int64_t total, std::string_view lane) {
+    const auto of = [&](verify::Class c) {
+        const auto it = scores.find(c);
+        return it == scores.end() ? std::int64_t{0} : it->second;
+    };
+    std::string out = std::to_string(total) + (total == 1 ? " function" : " functions") + " judged" + (lane.empty() ? "" : " in the " + std::string(lane) + " lane") + ": ";
+    out += std::to_string(of(verify::Class::Verified)) + " verified, " + std::to_string(of(verify::Class::Weak)) + " weak, " + std::to_string(of(verify::Class::Unverified)) +
+           " unverified, ";
+    if (const std::int64_t n = of(verify::Class::NotJudged); n > 0) out += std::to_string(n) + " not run, ";
+    const std::int64_t no_compile = of(verify::Class::NoCompile);
+    out += std::to_string(no_compile) + (no_compile == 1 ? " does" : " do") + " not compile, " + std::to_string(of(verify::Class::NoSource)) + " no source";
+    if (const std::int64_t n = of(verify::Class::Identified); n > 0) out += ", " + std::to_string(n) + " runtime library";
+    return out;
+}
+
+int Counts::classed() const {
+    int n = 0;
+    for (const auto& [_, k] : classes) n += k;
+    return n;
+}
+
 Counts count(const std::vector<convert::FunctionRecord>& list) {
     Counts c;
     c.total = static_cast<int>(list.size());
     for (const convert::FunctionRecord& r : list) {
+        if (r.judged) ++c.classes[*r.judged];
         switch (r.verdict) {
             case convert::FunctionVerdict::Matches: ++c.matches; break;
             case convert::FunctionVerdict::Differs: ++c.differs; break;

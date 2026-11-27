@@ -30,6 +30,7 @@
 #pragma once
 
 #include <cstdint>
+#include <exception>
 #include <filesystem>
 #include <functional>
 #include <map>
@@ -97,6 +98,16 @@ std::map<std::string, std::optional<std::string>> digests_of(const Kinds& kinds)
 
 // ---- what a run is given --------------------------------------------------------------------------------------------------
 
+// The steps of a run, in order: the lane prepares the module (decompiles it and makes the text compilable), builds the functions that have
+// no verdict for their text, and judges them.
+enum class Step { Preparing, Building, Judging };
+
+// What `run` leaves by when `Services::stop` said to stop.
+class Stopped final : public std::exception {
+public:
+    const char* what() const noexcept override { return "the run was stopped"; }
+};
+
 struct Services {
     const Kinds& kinds;
     engine::FunctionStore& store;
@@ -126,6 +137,11 @@ struct Services {
     std::function<std::optional<std::map<std::string, Judgement>>(const JudgeBatch&)> judge_batch = {};
     // Where the one line about a run goes (nullopt: nowhere).
     std::function<void(std::string_view)> log = {};
+    // How far a run is (unset: told nowhere): each step as it begins (done 0), and while judging each function as it is judged (`total` the
+    // functions judged now). Called from the judging threads too, never two at once; it must not throw.
+    std::function<void(Step step, std::size_t done, std::size_t total)> progress = {};
+    // Asked before each function is judged (unset: never): true stops the run, which then leaves by `Stopped` and records nothing.
+    std::function<bool()> stop = {};
 };
 
 // What results for a module are filed under.

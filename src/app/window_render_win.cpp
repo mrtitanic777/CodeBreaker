@@ -1061,6 +1061,33 @@ void rd_board_history(RdDraw& d, const BoardLayout& b, const Model& m) {
     d.text(L"Take a snapshot", l.snapshot, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
     if (m.hot == Control::BoardHistoryClose) d.fill(l.close, 4, pal.subtle);
     d.text(L"×", l.close, 0, 16, DWRITE_FONT_WEIGHT_NORMAL, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+    if (l.chart.h > 0) {   // byte-identical functions at each snapshot and now: a line with a dot and its count at each point
+        const std::vector<board::CTrendPoint>& t = m.board_trend;
+        const Rect& c = l.chart;
+        d.fill(c, 4, rd_alpha(pal.text, pal.dark ? 0.04f : 0.025f));
+        std::uint64_t lo = t.front().identical, hi = lo;
+        for (const board::CTrendPoint& p : t) {
+            lo = std::min(lo, p.identical);
+            hi = std::max(hi, p.identical);
+        }
+        const double span = hi > lo ? static_cast<double>(hi - lo) : 1.0;
+        const float left = c.x + 40, right = c.right() - 40, top = c.y + 26, bottom = c.bottom() - 24;
+        const auto at = [&](std::size_t i) {
+            const float x = t.size() == 1 ? (left + right) / 2 : left + (right - left) * static_cast<float>(i) / static_cast<float>(t.size() - 1);
+            const float y = bottom - (bottom - top) * static_cast<float>(static_cast<double>(t[i].identical - lo) / span);
+            return D2D1::Point2F(x, y);
+        };
+        d.brush->SetColor(pal.accent);
+        for (std::size_t i = 1; i < t.size(); ++i) d.rt->DrawLine(at(i - 1), at(i), d.brush.get(), 2.0f);
+        for (std::size_t i = 0; i < t.size(); ++i) {
+            const D2D1_POINT_2F p = at(i);
+            d.circle(Rect{p.x - 4, p.y - 4, 8, 8}, pal.accent);
+            d.text(widen(board::count_words(t[i].identical)), Rect{p.x - 60, p.y - 22, 120, 16}, 0, 11, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
+            const std::string when = t[i].name == "now" ? std::string("Now") : board::c_snapshot_words(t[i].name);
+            d.text(widen(when), Rect{p.x - 80, c.bottom() - 20, 160, 16}, 0, 10, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
+        }
+        d.text(L"Byte-identical functions", Rect{c.x + 8, c.y + 4, c.w - 16, 16}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+    }
     if (h == nullptr || h->snapshot.empty()) {
         d.text(L"No snapshot yet. Take one to keep today's scores, and this list will show what changes after it.", Rect{l.list.x + 6, l.list.y + 8, l.list.w - 12, 24}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
         return;
@@ -2102,9 +2129,10 @@ ComPtr<ID2D1Layer> rd_push_rounded_clip(RdDraw& d, const Rect& r, float radius) 
 }
 
 // The verdict chip of a function: a pill with its words (a check or a warning mark in front of the two that were judged).
-void rd_chip(RdDraw& d, const Rect& area, convert::FunctionVerdict verdict) {
+void rd_chip(RdDraw& d, const Rect& area, const convert::FunctionRecord& fn) {
     const RdPalette& pal = d.pal;
-    const std::wstring words = widen(verdict_name(verdict));
+    const convert::FunctionVerdict verdict = fn.verdict;
+    const std::wstring words = widen(verdict_name(fn));
     D2D1_COLOR_F fill = rd_alpha(pal.text, 0.06f), ink = pal.text2;
     wchar_t mark = 0;
     if (verdict == convert::FunctionVerdict::Matches) {
@@ -2229,7 +2257,7 @@ void rd_functions(RdDraw& d, const Layout& l) {
         d.glyph(L'\xE943', p.icon, 14, pal.text3);
         d.text(widen(fn.name), p.name, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
         d.text(widen(fn.address), p.address, 3, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
-        rd_chip(d, p.chip, fn.verdict);
+        rd_chip(d, p.chip, fn);
         if (m.focus == Control::FnRow && m.focus_index == index) d.stroke(Rect{r.x + 1, r.y + 1, r.w - 2, r.h - 2}, 4, pal.text, 2.0f);
     }
     d.rt->PopAxisAlignedClip();
@@ -2342,7 +2370,7 @@ void rd_compare(RdDraw& d, const Layout& l) {
     }
     rd_combo(d, c.picker, widen(fn.name), m.cmp_picker_open, m.hot == Control::FnPicker);
     if (m.focus == Control::FnPicker) d.stroke(Rect{c.picker.x - 3, c.picker.y - 3, c.picker.w + 6, c.picker.h + 6}, 6, pal.text, 2.0f);
-    rd_chip(d, c.chip, fn.verdict);
+    rd_chip(d, c.chip, fn);
     d.text(L"Click a line to see its match on the other side.", c.hint, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3, DWRITE_TEXT_ALIGNMENT_TRAILING);
     ID2D1SolidColorBrush* brushes[5] = {};
     ComPtr<ID2D1SolidColorBrush> owned[5];

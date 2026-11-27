@@ -11,6 +11,7 @@
 // are none the views show both whole bodies and only the clicked line.
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <string>
@@ -39,10 +40,28 @@ std::map<std::string, convert::FunctionVerdict> stored_verdicts(const std::files
 std::vector<convert::FunctionRecord> collect(const std::filesystem::path& folder, const std::vector<convert::FunctionRecord>& recorded,
                                              const std::map<std::string, convert::FunctionVerdict>& verdicts = {});
 
+// One function a judge ran (source/pipeline's judge): the lane's key (its address, as hex), the name it built it by, and the class it came out.
+struct Judged {
+    std::string key, name;
+    verify::Class cls = verify::Class::NoSource;
+};
+// The list after a judge ran: each function of `found` (scan_folder of the C written) takes the class of the judged function of the same name, else of
+// the same address (its verdict verdict_of that class, its address the judged one's when it had none); the judged functions none of `found` names are
+// added after them, with no source file. A function of `found` the judge never saw stays NotChecked.
+std::vector<convert::FunctionRecord> with_judged(std::vector<convert::FunctionRecord> found, const std::vector<Judged>& judged);
+
+// The sentence a conversion's judging stage leaves (Outcome::checked) from the module's `total` functions and their counts by class (reconstruct's
+// Outcome::scores): "205 functions judged in the win64 lane: 120 verified, 30 weak, 40 unverified, 10 do not compile, 5 no source" (also "N not run"
+// and "N runtime library" when there are any). The total is the module's functions, as `check` gives it, not the sum of the classes: the runtime
+// library's are filed apart from the classes and may overlap them.
+std::string judged_counts(const std::map<verify::Class, std::int64_t>& scores, std::int64_t total, std::string_view lane);
+
 // How many of each, and the share of all the functions that behave like the original (functions nobody checked count against it: the figure is what is
 // known, not what is hoped).
 struct Counts {
     int total = 0, matches = 0, differs = 0, unchecked = 0;
+    std::map<verify::Class, int> classes;   // the functions a judge gave a class (FunctionRecord::judged), by class
+    int classed() const;                    // how many of them
     int judged() const { return matches + differs; }
     // 0..100 of all the functions; -1 when nothing was judged
     int percent_alike() const { return judged() == 0 || total == 0 ? -1 : (matches * 100 + total / 2) / total; }

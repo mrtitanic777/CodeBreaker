@@ -4,7 +4,9 @@
 //   Windows 32-bit (PE, x86), Windows 16-bit (NE), drivers (LE/LX), DOS     Opening, Disassembling (the NASM / MASM-style source that builds back
 //                                                                           into the original: source/pe_writer ...), Decompiling (C)
 //   Windows 64-bit (PE32+, x64)                                             Opening, Disassembling (NASM source that builds back into the
-//                                                                           original: source/pe64_writer), Decompiling (C, as the decompiler gives it)
+//                                                                           original: source/pe64_writer), Decompiling (C, as the decompiler gives it),
+//                                                                           Checking (the C built with Visual C++ x64 and each function run beside
+//                                                                           the original, as `check` does: convert_judge.hpp, for any route whose lane judges)
 //   a .NET program (a PE with a CLR header, 32- or 64-bit)                  Opening, Decompiling (its C#: ILSpy, after de4dot when it was
 //                                                                           obfuscated; xna/run)
 //   a console cartridge, disc executable or snapshot of a registered lane   Opening, Disassembling (its machine's assembly source)
@@ -24,6 +26,7 @@
 #include <stdexcept>
 
 #include "app/convert.hpp"
+#include "app/convert_judge.hpp"
 #include "base/config.hpp"
 #include "build/watcom.hpp"
 #include "core/error.hpp"
@@ -252,7 +255,7 @@ Route cv_mz_route(CvMz kind, std::string route_name) {
     return route;
 }
 
-// A 64-bit Windows program: its NASM source (source/pe64_writer), the program assembled from it to check it, and its C.
+// A 64-bit Windows program: its NASM source (source/pe64_writer), the program assembled from it to check it, and its C, judged (the win64 lane).
 Route cv_pe64_route() {
     Route route;
     route.name = "pe64";
@@ -278,7 +281,7 @@ Route cv_pe64_route() {
         r.enter(State::Decompiling);
         cv_decompile(r, config::current(), input, work);
     };
-    return route;
+    return judged(std::move(route));   // (the win64 lane judges it: convert_judge.hpp)
 }
 
 // A .NET program: its C#, as ILSpy writes it (a project: .csproj and a .cs file per class), after de4dot when an obfuscator was over it.

@@ -35,12 +35,16 @@ struct FnRowParts {
 FnRowParts fn_row_parts(const Rect& row);
 
 // "38 of 42 behave like the original · 1 differs · 3 not checked"; "42 functions · none checked by running them" when nothing was judged; "No functions
-// were found in the output folder." when there are none.
+// were found in the output folder." when there are none. When a judge gave classes: "120 verified · 30 weak · 40 unverified · 10 do not compile ·
+// 5 no source", then "· N not run" and "· N not checked" when there are any.
 std::string functions_summary(const fnsrc::Counts& counts);
 // "All", "Differs", "Not checked".
 std::string filter_name(int filter);
 // "Behaves like the original", "Differs", "Not checked".
 std::string verdict_name(convert::FunctionVerdict verdict);
+// A function's chip: the judge's class when one ran ("Verified", "Weak match", "Differs", "Not run", "Does not compile", "No source", "Runtime library"),
+// else verdict_name of its verdict.
+std::string verdict_name(const convert::FunctionRecord& function);
 // The sentence under the list when the filter hides everything ("No function differs." ...).
 std::string empty_filter_text(int filter);
 

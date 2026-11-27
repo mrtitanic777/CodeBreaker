@@ -54,6 +54,15 @@ std::string_view state_label(State state) {
     return "";
 }
 
+FunctionVerdict verdict_of(verify::Class cls) {
+    switch (cls) {
+        case verify::Class::Verified:
+        case verify::Class::Weak: return FunctionVerdict::Matches;
+        case verify::Class::Unverified: return FunctionVerdict::Differs;
+        default: return FunctionVerdict::NotChecked;
+    }
+}
+
 bool is_stage(State state) { return state >= State::Identifying && state <= State::Building; }
 bool is_final(State state) { return state >= State::Done; }
 

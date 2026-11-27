@@ -19,12 +19,19 @@
 // opened when the first command that needs them starts, and are that command's own -- two commands share nothing but the files they write.
 #pragma once
 
+#include <cstddef>
+#include <filesystem>
+#include <functional>
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "base/config.hpp"
 #include "base/corpus.hpp"
 #include "core/cli.hpp"
+#include "verify/reconstruct.hpp"
+#include "verify/verdicts.hpp"
 
 namespace cb::source::pipeline {
 
@@ -51,5 +58,37 @@ cli::Command place(const Environment& environment);
 
 // Every command above, in that order.
 std::vector<cli::Command> commands(const Environment& environment);
+
+// ---- judging one program, as `check` (measure) does -------------------------------------------------------------------------------
+//
+//     const Judging j = judge(environment, "notepad.exe", {.progress = ..., .stop = ...});
+//     if (j.judged) ... j.outcome.scores (the module by class), j.functions (each function's candidate and its class)
+//     else          ... j.why_not ("nothing judges this kind of file", "the win64 lane's tools are not set up on this computer")
+//
+// The same path `measure` takes: the lane kit's lanes, the reconstructor over the function store of the state folder (decompile, build, run
+// each function beside the original, record), only what changed since the last run made again. Convert's judging stage calls it.
+
+struct JudgeSteps {
+    std::function<void(verify::reconstruct::Step, std::size_t done, std::size_t total)> progress;   // Services::progress of reconstruct
+    std::function<bool()> stop;                                                                     // Services::stop: true leaves by reconstruct::Stopped
+};
+
+struct JudgedFunction {
+    std::string key, name;     // the lane's key of the function (its address, as hex) and the name it built it by (empty when it built nothing)
+    std::optional<verify::Verdict> verdict;   // the judge's verdict; none when nothing is recorded
+    verify::Classification classification;
+    std::string reason;        // why the judge said so, or the compiler's message
+};
+
+struct Judging {
+    bool judged = false;
+    std::string lane;          // the lane that judged it ("win64"); empty when none
+    std::string why_not;       // not judged: why, in a sentence
+    verify::reconstruct::Outcome outcome;
+    std::vector<JudgedFunction> functions;
+};
+
+// Judge `program` (a path, or a corpus name). Throws what the lane throws, and reconstruct::Stopped when `steps.stop` said to stop.
+Judging judge(const Environment& environment, const std::filesystem::path& program, const JudgeSteps& steps = {});
 
 }  // namespace cb::source::pipeline

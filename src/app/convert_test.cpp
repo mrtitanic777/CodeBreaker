@@ -374,9 +374,11 @@ CB_TEST("app.convert.a_64_bit_windows_program_becomes_assembly_that_builds_it_ag
         return;
     }
     CB_CHECK(done.state == State::Done);
-    const std::vector<State> expected = {State::Identifying, State::Opening, State::Disassembling, State::Decompiling, State::Writing, State::Done};
+    const std::vector<State> expected = {State::Identifying, State::Opening, State::Disassembling, State::Decompiling, State::Checking, State::Writing, State::Done};
     CB_CHECK(done.stages == expected);
     CB_CHECK(f.percent_never_goes_down());
+    // judged as `check` does (the win64 lane), or not judged and why (Visual C++'s x64 compiler is not installed)
+    CB_CHECK(done.checked.find("judged in the win64 lane") != std::string::npos || done.checked.starts_with("Not judged."));
     CB_CHECK(stdfs::exists(done.output / "demo.exe.asm"));
     CB_CHECK(fs::read_text(done.output / "demo.exe.asm").find("bits 64") != std::string::npos);
     CB_CHECK(fs::read_file(done.output / "build" / "demo.exe") == fs::read_file(f.input));

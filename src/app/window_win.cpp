@@ -4272,7 +4272,7 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
         m.hot = Control::OutputBox;
         m.drag_out = true;
         m.drag_ghost = true;
-    } else if (state == "functions" || state == "check" || state == "checknone" || state == "compare") {   // the Source card's tabs (sample functions, no one's own)
+    } else if (state == "functions" || state == "functions-judged" || state == "check" || state == "checknone" || state == "compare") {   // the Source card's tabs (sample functions, no one's own)
         m.view = View::Done;
         m.file_name = "lz32.dll";
         m.done_file_name = "lz32.dll";
@@ -4298,6 +4298,15 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
         }
         if (state == "checknone")
             for (convert::FunctionRecord& f : m.functions) f.verdict = convert::FunctionVerdict::NotChecked;
+        if (state == "functions-judged") {   // after Convert's judging stage: each function's class (convert_judge.hpp)
+            const verify::Class classes[] = {verify::Class::Verified, verify::Class::Weak, verify::Class::Verified, verify::Class::NoCompile, verify::Class::Unverified,
+                                             verify::Class::Verified, verify::Class::NoSource, verify::Class::Weak, verify::Class::NotJudged};
+            for (std::size_t i = 0; i < m.functions.size(); ++i) {
+                m.functions[i].judged = classes[i % std::size(classes)];
+                m.functions[i].verdict = convert::verdict_of(*m.functions[i].judged);
+            }
+            m.done_note = "12 files written. Checked: 42 functions judged in the win64 lane: 15 verified, 9 weak, 5 unverified, 4 not run, 5 do not compile, 4 no source";
+        }
         m.source_tab = state == "check" || state == "checknone" ? SourceTab::Check : SourceTab::Functions;
         if (state == "functions") {
             m.hot = Control::FnRow;

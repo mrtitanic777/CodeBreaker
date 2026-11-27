@@ -14,7 +14,10 @@
 //     Translating    only when a language other than Original is asked for: the source goes through the translator's hub into that language
 //                    (a source file of C# or Python is opened, then translated; counts are functions)
 //     Checking       only after Translating where the translator can prove the result: the translation is built and run beside the original and
-//                    what both print is compared; the run is Done only when they agree (translate/translate_file.hpp)
+//                    what both print is compared; the run is Done only when they agree (translate/translate_file.hpp).
+//                    Or, after Decompiling, for a program whose lane has a judge (Windows x64 first): the C is built and each function run
+//                    beside the original, as `check` does (source/pipeline.hpp judge); the verdicts reach Outcome::functions and the counts
+//                    Outcome::checked, and the run is Done whatever they are (a program no judge can run is Done, "not judged" and why)
 //     Writing        the source is written into the output folder
 //     Building       only for routes that build what they wrote (a Java game's C++): built in the output folder itself, so the build
 //                    folder there stays usable (a build that fails ends Failed; the source stays, and the message says where)
@@ -46,6 +49,7 @@
 #include <vector>
 
 #include "translate/capability.hpp"
+#include "verify/verdicts.hpp"
 
 namespace cb::app::convert {
 
@@ -112,6 +116,10 @@ private:
 // when nothing ran it (most routes today never judge a function; the window then says "Not checked" rather than guess).
 enum class FunctionVerdict { NotChecked, Matches, Differs };
 
+// The verdict a judge's class amounts to: Verified and Weak are Matches, Unverified is Differs, anything else (not run, does not compile, no source,
+// a runtime library's) NotChecked.
+FunctionVerdict verdict_of(verify::Class cls);
+
 // One function of the result: what the Source card's Functions, Check and Compare views list.
 struct FunctionRecord {
     std::string name;                          // "LZRead", "sub_00024"
@@ -119,6 +127,7 @@ struct FunctionRecord {
     FunctionVerdict verdict = FunctionVerdict::NotChecked;
     std::string source_file;                   // the file of the output folder that holds its source ("lz32.c"); empty when unknown
     int source_line = 0;                       // 1-based line of its definition there; 0 when unknown
+    std::optional<verify::Class> judged;       // the judge's class when one ran (verdict is verdict_of it): verified, weak, does not compile ...
     friend bool operator==(const FunctionRecord&, const FunctionRecord&) = default;
 };
 

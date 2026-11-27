@@ -50,6 +50,21 @@ FnRowParts fn_row_parts(const Rect& row) {
 
 std::string functions_summary(const fnsrc::Counts& c) {
     if (c.total == 0) return "No functions were found in the output folder.";
+    if (c.classed() > 0) {
+        const auto of = [&](verify::Class k) {
+            const auto it = c.classes.find(k);
+            return it == c.classes.end() ? 0 : it->second;
+        };
+        const std::string dot = " \xC2\xB7 ";
+        const int no_compile = of(verify::Class::NoCompile);
+        std::string out = std::to_string(of(verify::Class::Verified)) + " verified" + dot + std::to_string(of(verify::Class::Weak)) + " weak" + dot +
+                          std::to_string(of(verify::Class::Unverified)) + " unverified" + dot + std::to_string(no_compile) + (no_compile == 1 ? " does" : " do") +
+                          " not compile" + dot + std::to_string(of(verify::Class::NoSource)) + " no source";
+        if (const int n = of(verify::Class::NotJudged); n > 0) out += dot + std::to_string(n) + " not run";
+        if (const int n = of(verify::Class::Identified); n > 0) out += dot + std::to_string(n) + " runtime library";
+        if (const int n = c.total - c.classed(); n > 0) out += dot + std::to_string(n) + " not checked";
+        return out;
+    }
     if (c.judged() == 0) return std::to_string(c.total) + (c.total == 1 ? " function" : " functions") + " \xC2\xB7 none checked by running them";
     return std::to_string(c.matches) + " of " + std::to_string(c.total) + " behave like the original \xC2\xB7 " + std::to_string(c.differs) + (c.differs == 1 ? " differs" : " differ") +
            " \xC2\xB7 " + std::to_string(c.unchecked) + " not checked";
@@ -64,6 +79,20 @@ std::string verdict_name(convert::FunctionVerdict v) {
         case convert::FunctionVerdict::NotChecked: break;
     }
     return "Not checked";
+}
+
+std::string verdict_name(const convert::FunctionRecord& f) {
+    if (!f.judged) return verdict_name(f.verdict);
+    switch (*f.judged) {
+        case verify::Class::Verified: return "Verified";
+        case verify::Class::Weak: return "Weak match";
+        case verify::Class::Unverified: return "Differs";
+        case verify::Class::NotJudged: return "Not run";
+        case verify::Class::NoCompile: return "Does not compile";
+        case verify::Class::NoSource: return "No source";
+        case verify::Class::Identified: return "Runtime library";
+    }
+    return verdict_name(f.verdict);
 }
 
 std::string empty_filter_text(int filter) {

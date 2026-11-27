@@ -1,6 +1,10 @@
 #include "verify/reconstruct.hpp"
 
+#include <algorithm>
 #include <atomic>
+#include <set>
+#include <tuple>
+#include <vector>
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
@@ -288,6 +292,50 @@ CB_TEST("verify.reconstruct.judging_on_threads_and_through_a_batch", [] {
         (void)declined.run("m.fk");
         CB_CHECK_EQ(f.counters.judged.load(), 3);
     }
+});
+
+CB_TEST("verify.reconstruct.a_run_tells_its_steps_and_counts_each_function_judged", [] {
+    Module m{{"a", "b", "c", "gone"},
+             {{"a", "int a(void) { return 1; }"}, {"b", "int b(void) { return 2; }"}, {"c", "int c(void) { return 3; }"}, {"gone", "int gone(void) { return 4; }"}}};
+    for (const int threads : {1, 3}) {
+        Fixture f(m, {"gone"});
+        Services s = f.rec->services();
+        s.judge_threads = threads;
+        std::vector<std::tuple<Step, std::size_t, std::size_t>> told;
+        s.progress = [&](Step step, std::size_t done, std::size_t total) { told.emplace_back(step, done, total); };
+        (void)Reconstructor(std::move(s)).run("m.fk");
+        CB_CHECK(!told.empty() && told.front() == std::make_tuple(Step::Preparing, std::size_t{0}, std::size_t{0}));
+        CB_CHECK(std::find(told.begin(), told.end(), std::make_tuple(Step::Building, std::size_t{0}, std::size_t{4})) != told.end());   // the four with no verdict
+        std::set<std::size_t> counted;
+        for (const auto& [step, done, total] : told)
+            if (step == Step::Judging && done > 0) {
+                CB_CHECK_EQ(total, 3u);   // ("gone" did not build: it is not judged)
+                counted.insert(done);
+            }
+        CB_CHECK(counted == (std::set<std::size_t>{1, 2, 3}));
+        CB_CHECK(told.back() == std::make_tuple(Step::Judging, std::size_t{3}, std::size_t{3}));
+    }
+});
+
+CB_TEST("verify.reconstruct.a_run_told_to_stop_leaves_by_stopped_and_records_nothing", [] {
+    Module m{{"a", "b", "c"}, {{"a", "int a(void) { return 1; }"}, {"b", "int b(void) { return 2; }"}, {"c", "int c(void) { return 3; }"}}};
+    Fixture f(m);
+    Services s = f.rec->services();
+    int asked = 0;
+    s.stop = [&] { return ++asked > 2; };   // (asked before the build, before judging, then before each function)
+    bool stopped = false;
+    try {
+        (void)Reconstructor(std::move(s)).run("m.fk");
+    } catch (const Stopped&) {
+        stopped = true;
+    }
+    CB_CHECK(stopped);
+    CB_CHECK_EQ(f.counters.judged.load(), 0);
+    const auto best = f.best();
+    CB_CHECK(!best.contains("key:a") || best.at("key:a").cls == Class::NoSource);   // no verdict was recorded
+    const Outcome again = f.rec->run("m.fk");   // a run not stopped judges them all
+    CB_CHECK_EQ(again.judged, 3u);
+    CB_CHECK_EQ(f.counters.judged.load(), 3);
 });
 
 CB_TEST("verify.reconstruct.a_per_function_kind_keeps_the_verdict_when_the_code_is_the_same", [] {

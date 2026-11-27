@@ -1,9 +1,11 @@
 #include "source/pipeline.hpp"
 
 #include <algorithm>
+#include <format>
 #include <set>
 
 #include "build/module.hpp"
+#include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/log.hpp"
 #include "decompile/decompiler.hpp"
@@ -87,6 +89,52 @@ cli::Command place(const Environment& environment) {
     });
 }
 
+// ---- judging one program (measure, and Convert's judging stage) ------------------------------------------------------------------
+
+namespace {
+
+// The lane that judges `program`, the reconstructor's run over it, and each function's candidate as the store now has it.
+Judging judge_in(World& world, const stdfs::path& program, const JudgeSteps& steps) {
+    Judging out;
+    const verify::reconstruct::Reconstructor& reconstructor = world.reconstructor();
+    const std::optional<std::string> kind = reconstructor.services().kind_of_file(program);
+    if (!kind) {
+        out.why_not = "CodeBreaker has no judge for this kind of program yet.";
+        return out;
+    }
+    out.lane = *kind;
+    if (world.kinds().find(*kind) == nullptr) {
+        out.why_not = std::format("The tools of the {} judge are not set up on this computer (Settings, Advanced).", *kind);
+        return out;
+    }
+    if (!steps.progress && !steps.stop) {
+        out.outcome = reconstructor.run(program);
+    } else {   // (a reconstructor for this run, over the same lanes and store, told the steps)
+        verify::reconstruct::Services services = reconstructor.services();
+        services.progress = steps.progress;
+        services.stop = steps.stop;
+        out.outcome = verify::reconstruct::Reconstructor(std::move(services)).run(program);
+    }
+    for (const engine::Candidate& c : world.store().candidates(out.outcome.sha, out.outcome.profile)) {
+        JudgedFunction f;
+        f.key = c.addr;
+        f.name = c.name.value_or(std::string());
+        if (c.verdict) f.verdict = verify::parse_verdict(*c.verdict);
+        f.classification = c.classification();
+        f.reason = c.reason;
+        out.functions.push_back(std::move(f));
+    }
+    out.judged = true;
+    return out;
+}
+
+}  // namespace
+
+Judging judge(const Environment& environment, const stdfs::path& program, const JudgeSteps& steps) {
+    World world(environment);
+    return judge_in(world, program, steps);
+}
+
 // ---- measure <module> ---------------------------------------------------------------------------------------------------------
 
 cli::Command measure(const Environment& environment) {
@@ -98,14 +146,10 @@ cli::Command measure(const Environment& environment) {
         services.find_module = [&world](std::string_view module) { return world.find(module); };
         // The engine is the only way there is: --no-engine and --engine are read and make no difference.
         services.judge = [&world](const stdfs::path& module, verify::measure::Engine) {
-            const verify::reconstruct::Outcome done = world.reconstructor().run(module);
+            const Judging done = judge_in(world, module, {});
+            if (!done.judged) throw UsageError(done.why_not);
             std::vector<verify::measure::Row> rows;
-            for (const engine::Candidate& c : world.store().candidates(done.sha, done.profile)) {
-                verify::measure::Row row;
-                if (c.verdict) row.verdict = verify::parse_verdict(*c.verdict);
-                row.reason = c.reason;
-                rows.push_back(std::move(row));
-            }
+            for (const JudgedFunction& f : done.functions) rows.push_back({.verdict = f.verdict, .reason = f.reason});
             return rows;
         };
         return verify::measure::command(std::move(services)).handler(args);

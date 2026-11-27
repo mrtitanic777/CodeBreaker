@@ -71,6 +71,27 @@ CB_TEST("app.window_functions.the_summary_says_how_many_behave_alike_and_never_i
     CB_CHECK_EQ(verdict_name(convert::FunctionVerdict::NotChecked), "Not checked");
 });
 
+CB_TEST("app.window_functions.after_a_judge_the_summary_and_chips_say_each_class", [] {
+    std::vector<convert::FunctionRecord> list(7);
+    const verify::Class classes[] = {verify::Class::Verified, verify::Class::Verified, verify::Class::Weak, verify::Class::Unverified, verify::Class::NoCompile,
+                                     verify::Class::NoSource};
+    for (std::size_t i = 0; i < 6; ++i) {
+        list[i].judged = classes[i];
+        list[i].verdict = convert::verdict_of(classes[i]);
+    }
+    CB_CHECK_EQ(functions_summary(fnsrc::count(list)),
+                "2 verified \xC2\xB7 1 weak \xC2\xB7 1 unverified \xC2\xB7 1 does not compile \xC2\xB7 1 no source \xC2\xB7 1 not checked");
+    CB_CHECK_EQ(verdict_name(list[0]), "Verified");
+    CB_CHECK_EQ(verdict_name(list[2]), "Weak match");
+    CB_CHECK_EQ(verdict_name(list[3]), "Differs");
+    CB_CHECK_EQ(verdict_name(list[4]), "Does not compile");
+    CB_CHECK_EQ(verdict_name(list[5]), "No source");
+    CB_CHECK_EQ(verdict_name(list[6]), "Not checked");   // (no judge ran it: the verdict's words)
+    convert::FunctionRecord not_run;
+    not_run.judged = verify::Class::NotJudged;
+    CB_CHECK_EQ(verdict_name(not_run), "Not run");
+});
+
 CB_TEST("app.window_functions.the_list_has_a_row_per_function_the_filter_lets_through_and_scrolls", [] {
     Model m = wf_model(SourceTab::Functions);
     Layout l = wf_layout(m);
