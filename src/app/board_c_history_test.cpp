@@ -78,6 +78,10 @@ CB_TEST("app.board_c_history.the_newest_snapshot_is_compared_and_the_panel_shows
     CB_CHECK(b.c_history.w > 0 && b.c_history.right() <= b.c_leaders.x);
     const BoardHistoryLayout panel = layout_board_history(b, m);
     CB_CHECK_EQ(panel.rows.size(), std::size_t{1});
+    // the chart: each snapshot's byte-identical functions, oldest first, then now's; the list starts under it
+    CB_CHECK_EQ(m.board_trend.size(), std::size_t{3});
+    CB_CHECK(m.board_trend[0].identical == 1 && m.board_trend[1].identical == 2 && m.board_trend[2].identical == 6 && m.board_trend[2].name == "now");
+    CB_CHECK(panel.chart.h > 0 && panel.chart.bottom() <= panel.head.y && panel.head.bottom() <= panel.list.y);
     CB_CHECK(hit_test_board(b, m, panel.snapshot.x + 2, panel.snapshot.y + 2).control == Control::BoardHistorySnapshot);
     CB_CHECK(hit_test_board(b, m, panel.close.x + 2, panel.close.y + 2).control == Control::BoardHistoryClose);
     board_toggle_leaders(m);                                    // one list at a time

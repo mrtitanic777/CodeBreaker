@@ -11,6 +11,7 @@ options:
       host H           the address HTTP listens on (default 127.0.0.1)
       allow-host NAME  a Host name besides 127.0.0.1 and localhost to answer to, such as a tunnel's (repeatable)
       public           the reading tools only, and the token also accepted as the URL's first segment (/<token>/mcp)
+      setup            print how to connect Claude Code, Claude Desktop or another MCP client to this copy, its path filled in
   -h, --help           show this help
 --- files
 --- stderr (not compared)

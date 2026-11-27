@@ -22,6 +22,8 @@ Also:
     serve                           the CodeBreaker service: one process the MCP servers and `facts` all ask (started
                                     on demand; exits when idle)
     mcp                             CodeBreaker as an MCP server for an assistant (stdio; or HTTP with a token)
+    report MODULE                   one page about a program, to read or share: what it is, how much came back as
+                                    source, how faithful, what is left
     app                             the CodeBreaker window, what `codebreaker` starts with no command; --screenshot
                                     PNG draws it to a file
     disassemble FILE                CodeBreaker's disassembler: any program or ROM, for any processor (`disassemble

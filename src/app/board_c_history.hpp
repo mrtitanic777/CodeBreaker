@@ -41,6 +41,13 @@ std::string c_snapshot_words(std::string_view name);
 
 // The newest snapshot's name and table. nullopt: none.
 std::optional<std::pair<std::string, std::string>> load_latest_c_snapshot(const std::filesystem::path& root);
+// The scores over time: one point per snapshot, oldest first, then the scores now (name "now"). What the History panel's chart draws.
+struct CTrendPoint {
+    std::string name;                    // the snapshot's file name, or "now"
+    std::uint64_t identical = 0, functions = 0, scored = 0;
+};
+std::vector<CTrendPoint> c_trend(const std::filesystem::path& root, const CScores& now);
+
 // Keep `table` (the text of c_scores.tsv) as root/c_history/<name>. The file written.
 std::filesystem::path save_c_snapshot(const std::filesystem::path& root, std::string_view name, std::string_view table);
 

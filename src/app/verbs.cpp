@@ -20,7 +20,7 @@ namespace {
 namespace stdfs = std::filesystem;
 
 constexpr std::array<std::string_view, 9> kVerbs = {"convert", "inspect", "extract", "build", "check", "compare", "corpus", "lookup", "xbox"};
-constexpr std::array<std::string_view, 10> kKept = {"settings", "cache", "regress", "serve", "mcp", "app", "disassemble", "assemble", "compile", "link"};   // (the last four: the front door of each role, app/role_commands)
+constexpr std::array<std::string_view, 11> kKept = {"settings", "cache", "regress", "serve", "mcp", "report", "app", "disassemble", "assemble", "compile", "link"};   // (the last four: the front door of each role, app/role_commands)
 
 // The modes: verb, flag (or word), the older command, the kind of input that picks it (when rows share a flag).
 // clang-format off

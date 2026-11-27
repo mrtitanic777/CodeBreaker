@@ -139,8 +139,10 @@ void board_toggle_history(Model& model);
 void board_close_history(Model& model);
 void board_history_refresh(Model& model);
 inline constexpr float kHistoryRowHeight = 26;
+inline constexpr float kHistoryChartHeight = 120;
 struct BoardHistoryLayout {
     Rect outline, title, close, snapshot, head, list;
+    Rect chart;                        // the byte-identical functions at each snapshot and now (empty with fewer than one snapshot)
     int first = 0;
     std::vector<Rect> rows;
     float max_scroll = 0;

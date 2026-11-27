@@ -451,6 +451,7 @@ void board_history_refresh(Model& m) {
     const auto latest = board::load_latest_c_snapshot(m.board->root);
     const std::optional<board::CScores> before = latest ? board::parse_c_scores(latest->second) : std::nullopt;
     m.board_history = std::make_shared<const board::CHistory>(before ? board::diff_c_scores(*before, *m.board_scores, latest->first) : board::CHistory{});
+    m.board_trend = board::c_trend(m.board->root, *m.board_scores);
 }
 
 void board_toggle_history(Model& m) {
@@ -468,7 +469,9 @@ BoardHistoryLayout layout_board_history(const BoardLayout& b, const Model& m) {
     l.close = {l.outline.right() - 34, l.outline.y + 4, 28, 26};
     l.snapshot = {l.close.x - 6 - 112, l.outline.y + 5, 112, 24};
     l.title = {l.outline.x + 12, l.outline.y + 4, std::max(0.0f, l.snapshot.x - 8 - l.outline.x - 12), 26};
-    l.head = {l.outline.x + 8, l.outline.y + 32, std::max(0.0f, l.outline.w - 16), 20};
+    // the chart of the scores over time, when there is a snapshot to draw from
+    if (m.board_trend.size() >= 2) l.chart = {l.outline.x + 12, l.outline.y + 36, std::max(0.0f, l.outline.w - 24), kHistoryChartHeight};
+    l.head = {l.outline.x + 8, l.chart.h > 0 ? l.chart.bottom() + 10 : l.outline.y + 32, std::max(0.0f, l.outline.w - 16), 20};
     l.list = {l.head.x, l.head.bottom(), l.head.w, std::max(0.0f, l.outline.bottom() - 6 - l.head.bottom())};
     if (!m.board_history) return l;
     const std::size_t count = m.board_history->changes.size();

@@ -1,6 +1,7 @@
 // ui/mcp_command.hpp -- `codebreaker mcp`: the MCP server as a command (what .mcp.json starts), over the standard services of the settings.
 //
 //     codebreaker mcp                                              stdio (what Claude Code starts)
+//     codebreaker mcp --setup                                      how to connect an assistant to this copy, ready to paste
 //     codebreaker mcp --http PORT [--host H] [--allow-host NAME ...] [--public]
 //         streamable HTTP at http://H:PORT/mcp (H: 127.0.0.1), every request needing the bearer token (CB_MCP_TOKEN, else
 //         <state>/mcp/http_token.txt); --allow-host: a Host name besides 127.0.0.1 and localhost to answer to, such as a tunnel's;
@@ -29,5 +30,8 @@ struct Environment {
 };
 
 cli::Command command(const Environment& environment);
+
+// What `codebreaker mcp --setup` prints: how to connect Claude Code, Claude Desktop or another MCP client to the program at `exe`.
+std::string mcp_setup_text(const std::string& exe);
 
 }  // namespace cb::ui::mcp_command

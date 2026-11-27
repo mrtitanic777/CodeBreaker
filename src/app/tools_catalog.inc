@@ -9,6 +9,7 @@
     // ---- Look inside
     {"info", "What is this file?", "Look inside", "Says what an executable is and what is inside it: headers, imports, exports and resources.", "F File", "", "info {1}", false},
     {"reach", "Which platform is it for?", "Look inside", "Says what any file or folder is, which platform it is for and how far CodeBreaker gets with it.", "E File or folder", "", "reach {1}", false},
+    {"report", "Program report", "Look inside", "Writes one page about a program to read or share: what it is, what made it, how much came back as source and how faithful it is.", "F Program: .exe, .dll and other programs", "", "report {1} --out {dir1}/{stem1}-report.html", false},
     {"identify", "Library code", "Look inside", "Finds the standard-library functions inside a module and says what compiler built it.", "M Module", "", "identify {1}", false},
     {"classes", "C++ classes", "Look inside", "Recovers an Xbox 360 program's C++ classes: their bases, virtual function tables and which class introduces each function.", "F Program: an .xex or a PowerPC image", "", "classes {1}", false},
     {"xex-imports", "Xbox 360 imports", "Look inside", "Lists what an Xbox 360 program imports: library, ordinal, name and kind.", "F Program: an .xex", "", "xex-imports {1}", false},

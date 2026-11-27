@@ -97,6 +97,26 @@ std::optional<std::pair<std::string, std::string>> load_latest_c_snapshot(const 
     }
 }
 
+std::vector<CTrendPoint> c_trend(const std::filesystem::path& root, const CScores& now) {
+    std::vector<std::string> names;
+    std::error_code ec;
+    for (std::filesystem::directory_iterator it(root / "c_history", ec), end; !ec && it != end; it.increment(ec)) {
+        const std::string name = fs::to_text(it->path().filename());
+        if (it->is_regular_file(ec) && name.ends_with(".tsv")) names.push_back(name);
+    }
+    std::sort(names.begin(), names.end());   // (the names sort by time)
+    std::vector<CTrendPoint> out;
+    for (const std::string& name : names) {
+        try {
+            if (const std::optional<CScores> s = parse_c_scores(fs::read_text(root / "c_history" / name)))
+                out.push_back({name, s->total.identical, s->total.functions, s->scored});
+        } catch (const std::exception&) {   // (a snapshot that cannot be read is left out of the chart)
+        }
+    }
+    out.push_back({"now", now.total.identical, now.total.functions, now.scored});
+    return out;
+}
+
 std::filesystem::path save_c_snapshot(const std::filesystem::path& root, std::string_view name, std::string_view table) {
     const std::filesystem::path file = root / "c_history" / std::string(name);
     fs::make_dirs(file.parent_path());

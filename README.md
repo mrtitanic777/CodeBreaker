@@ -322,7 +322,8 @@ Nine verbs, one program. Each works out what to do from what you give it (a file
 | `regress all15\|setup\|install\|slow` | the milestone regression: Windows 95 boot, Setup chain, full install, slow cases |
 | `convert FILE` | one file in, a folder of source code out, with its stages and percentages (the window runs the same pipeline) |
 | `app` | the window (what `codebreaker` with no command starts); `app --screenshot OUT.png` draws it to a file |
-| `mcp` | CodeBreaker as an MCP server, so an AI assistant can drive it ([docs/MCP.md](docs/MCP.md)) |
+| `mcp` | CodeBreaker as an MCP server, so an AI assistant can drive it ([docs/MCP.md](docs/MCP.md); `mcp --setup` prints how to connect one) |
+| `report` | one page about a program to read or share: what it is, what made it, how much came back as source and how faithful |
 
 ---
 

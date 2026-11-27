@@ -365,6 +365,7 @@ struct Model {
     std::vector<board::CLeader> board_leaders_found;            // what it found, as many as are shown
     std::uint64_t board_leaders_matches = 0;
     std::shared_ptr<const board::CHistory> board_history;      // the scores now against the newest snapshot
+    std::vector<board::CTrendPoint> board_trend;                // every snapshot's totals, then now's: the History panel's chart
     bool board_history_open = false;
     float board_history_scroll = 0;
     std::shared_ptr<const board::HoverLinks> board_hover;       // the card under the pointer and what it is linked to

@@ -8,6 +8,18 @@ src/ui/mcp_server_test.cpp and mcp_services_test.cpp.
 
 ## Connecting
 
+**From a release download (anyone).** Unzip CodeBreaker anywhere and run
+
+```
+codebreaker mcp --setup
+```
+
+It prints what to paste, with this copy's own path filled in: the `claude mcp add` line for Claude Code, the
+`claude_desktop_config.json` entry for Claude Desktop (Settings, Developer, Edit Config), and the command and
+argument any other MCP client takes (VS Code, Cursor, ...). Everything runs on your computer: no account, key or
+internet. Without a program collection set up, give the tools a file's path as the module: "Use codebreaker to
+triage C:\Windows\notepad.exe".
+
 **Claude Code on this machine (the usual way).** Nothing to sign in to, no key, no internet: Claude
 Code starts the server itself, over stdio, one copy per session.
 

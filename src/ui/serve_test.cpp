@@ -177,5 +177,14 @@ CB_TEST("ui.serve.the_commands_are_declared", [] {
     CB_CHECK_EQ(m.args.values("allow-host").size(), 2u);
     CB_CHECK(m.args.flag("public"));
     CB_CHECK(!cli.parse({"mcp"}).args.value("http").has_value());
+    CB_CHECK(cli.parse({"mcp", "--setup"}).args.flag("setup"));
     CB_CHECK_THROWS_AS(UsageError, (void)cli.parse({"serve", "--nope"}));
+});
+
+CB_TEST("ui.serve.mcp_setup_says_how_to_connect_this_copy", [] {
+    const std::string text = ui::mcp_command::mcp_setup_text("C:\\Tools\\CodeBreaker\\codebreaker.exe");
+    CB_CHECK(text.find("claude mcp add --scope user codebreaker -- \"C:\\Tools\\CodeBreaker\\codebreaker.exe\" mcp") != std::string::npos);
+    CB_CHECK(text.find("\"command\": \"C:\\\\Tools\\\\CodeBreaker\\\\codebreaker.exe\"") != std::string::npos);   // (JSON: backslashes doubled)
+    const std::string json_line = text.substr(text.find("{\"mcpServers\""), text.find('\n', text.find("{\"mcpServers\"")) - text.find("{\"mcpServers\""));
+    CB_CHECK(Json::parse(json_line)["mcpServers"]["codebreaker"]["args"][0] == "mcp");   // (it pastes as valid JSON)
 });

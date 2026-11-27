@@ -75,6 +75,7 @@
 #include "symbols/identify.hpp"
 #include "symbols/program_commands.hpp"
 #include "ui/mcp_command.hpp"
+#include "ui/report.hpp"
 #include "ui/serve.hpp"
 #include "xna/command.hpp"
 #include "symbols/prototypes.hpp"
@@ -85,7 +86,7 @@ namespace cb::app {
 
 namespace {
 
-constexpr auto kNative = std::to_array<std::string_view>({"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "invert", "mcp", "serve", "cache", "tidy-state", "regress", "xex-imports", "xex-edit", "ppc-calls", "system-ui", "disc", "media", "gfx", "fonts", "build16", "names", "knowledge", "coverage", "progress", "facts", "origin", "driver-services", "boot-floppy", "judge-c-java", "judge-cs-cpp", "judge-py-cpp", "nasm", "dos-run", "convert", "app", "inspect", "extract", "check", "compare", "corpus", "lookup", "xbox", "disassemble", "assemble", "compile", "link"});   // (counted by the compiler)
+constexpr auto kNative = std::to_array<std::string_view>({"info", "flat-thunk", "driver-build", "demangle", "dos-interrupts", "heavyiron", "dos-functions", "cab", "xex", "le-source", "pe-source", "ne-source", "resources", "identify", "settings", "versions", "reach", "vxd", "ne-asm", "driver-source", "dos-source", "dos-build", "driver-judge", "exact", "analyze", "decompile", "place", "recompile", "recompile-project", "xenon-recompile", "classes", "xdk-match", "java", "xna", "build", "score16", "crypto", "xbox-disc", "xex-basic", "xenon-config", "switch-tables", "corpus-executables", "module", "scoreboard", "measure", "teeth", "sweep", "match", "repair", "invert", "mcp", "serve", "report", "cache", "tidy-state", "regress", "xex-imports", "xex-edit", "ppc-calls", "system-ui", "disc", "media", "gfx", "fonts", "build16", "names", "knowledge", "coverage", "progress", "facts", "origin", "driver-services", "boot-floppy", "judge-c-java", "judge-cs-cpp", "judge-py-cpp", "nasm", "dos-run", "convert", "app", "inspect", "extract", "check", "compare", "corpus", "lookup", "xbox", "disassemble", "assemble", "compile", "link"});   // (counted by the compiler)
 
 // The console's ordinal names: the knowledge base's xbox360 ordinals (config/knowledge/xbox360/ordinals.json).
 formats::xex_imports::OrdinalNames console_ordinal_names(const config::Config&) {
@@ -468,6 +469,8 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     // mcp, serve: the MCP server and the local service the terminal UI talks to (the wire protocol the UI client speaks)
     table.set(ui::mcp_command::command(ui::mcp_command::Environment{config, corpus, {}}));
     table.set(ui::serve::command(ui::serve::Environment{config, corpus, {}}));
+    // report: one page about a program to read or share (the triage tool's reading, as HTML)
+    table.set(ui::report::command(ui::report::Environment{config, corpus}));
 
     // invert ...: the inverse models (Microsoft C 6, MSVC 2, early C) and the module pass, with the period compilers
     lazy_runner(table, "invert", [&config, corpus] { return invert::command::runner(invert::command::production(config, corpus)); });

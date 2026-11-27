@@ -75,6 +75,7 @@
     {"coverage", "coverage [--module NAME]", "how much of every corpus module is accounted for, and in what state"},
     {"reach", "reach <file or folder> [--judge]", "anything at all: what each program is, its platform (or the platform there is no lane for yet), and with --judge how far its lane gets; a few of each platform, one at a time"},
     {"mcp", "mcp [--http PORT]", "CodeBreaker as an MCP server for an assistant (stdio; or HTTP with a token)"},
+    {"report", "report MODULE [--out FILE]", "one page about a program, to read or share: what it is, how much came back as source, how faithful, what is left"},
     {"serve", "serve [--status|--stop]", "the CodeBreaker service: one process the MCP servers and `facts` all ask (started on demand; exits when idle)"},
     {"progress", "progress [--once]", "watch a running sweep"},
     {"settings", "settings", "every setting, and whether what it names is there"},
