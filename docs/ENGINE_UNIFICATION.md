@@ -1,0 +1,115 @@
+# One engine per role: the six unification items
+
+Approved by Logan on 2026-11-26 ("Let's do ALL of these!"), under the standing rule of one engine per role: one core plus descriptions,
+and every language through L2. The items are done one at a time, ahead of track 1 of docs/ROADMAP.md. Items 4 and 1 come first,
+because they decide the shape of the ILSpy port while it's still being built. This file says what each item replaces, how it's done,
+and what proves it. Each item's section gets its status as it lands.
+
+## What there is today (2026-11-26)
+
+| Role | Engines today | Lines |
+|---|---|---|
+| Bytecode decompiler | `src/java/decompiler` (the Fernflower port: Java text), `src/dotnet/decompiler` (the ILSpy port, stages 0-7 so far: C# text) | 24,500 + 23,000 |
+| The translator's tree | `translate::ir` (typed nodes, `ir.hpp`; L2's JSON is `l2.hpp`), **and** `cb_l2`'s own tree (`translate/l2/src/l2.hpp`: Python-shaped values, `py::V`), joined by a JSON call protocol (`native_l2`) | |
+| Translator back ends | `cpp03` (Java), `cpp17` (shim) + `cb_l2`'s `cpp17_core` with rules `cpp17_java`, `cpp17_python`, `csharp_cpp17` (C#), `c` + `c_java` (Java) + `cb_l2`'s C back end (binaries), `csharp` + `csharp_java`, `java`, `go_java`, `rust_java`, `asm` | 28,700 + 15,200 |
+| Emulators | `emulate/pcode` (SLEIGH p-code) and 25 hand-written: a64, allegrex, arm, cp1610, ee, f8, huc6280, i8048, m6502, m6809, m68k, mips, powerpc (+fpu, gekko), r4300, rsp (2026-11-26), sh2, sh4, sm83, tlcs900, v810, w65816, z80; Unicorn as the x86 oracle | |
+| Assemblers | `decompile/engine/sleigh_assembler.cc` and seven of their own: a64, arm, cp1610, mips, ppc, sh, sm83 (`src/build/*_asm`), with x86asm (MASM-compatible) | |
+| Static recompilers | `recompile/x360`, `recompile/xenonrecomp`, `recompile/rexglue` | |
+| Compilers | the OpenWatcom fork (wcc/wcc386), x86cc, each with its own middle | |
+
+The finding that shapes item 1: the "pair" back ends already read L2. `translate::ir` is L2's tree in memory, and `l2.hpp` is only
+its JSON form. A back end like `go_java` is called that because Java is the only source with rules for it, not because it reads a
+second IR. So most of item 1 is two things. First, put one tree in place of two: `cb_l2` keeps its own Python-shaped copy of L2 and
+a JSON protocol to reach it. Second, split each back end into its target's emitter plus one rule set per source language, as `cpp17`
+already is (`cpp17_core` + `cpp17_java` + `cpp17_python`).
+
+## 4. One decompiler core (with the ILSpy port session)
+
+JVM and CIL are both stack bytecode. Both decompilers end in L2, and the Java and C# text comes from L2's back ends.
+
+- **The front halves stay**: Fernflower's control flow, variables and expression rebuilding, and ILSpy's ILAst, control flow, the 39
+  transforms and the type system (stages 4-7, ported and matching ILSpy). Each lowers its result into `translate::ir`.
+- **The text halves become back ends**: Fernflower's writer (`class_writer`, the exprents' `to_java`) becomes the Java back end's
+  layout. ILSpy's C# syntax tree, output visitor and C# transforms (stages 7 and 10) become L2's one C# back end (an L2 → C# syntax
+  tree lowering in front of them), and `backends/csharp`'s own emitter retires.
+- **Everything through L2, no trade-offs (Logan, 2026-11-26)**: .NET → C# goes through L2 too. ILSpy's stages 4-6 are the one CIL
+  analysis. After stage 6 the ILAst is lowered to L2, and that lowering loses nothing ILSpy's builders read: stack types,
+  signedness and lifting, the chosen overload and call form, conversions and their kind, the type system's entities, and IL offsets.
+  What L2 has no slot for is added to L2 (`ir.hpp`, the schema), never kept on the side. ILSpy's builders (stage 9), resolver (stage
+  8), C# transforms (stage 10) and output visitor (stage 7) are the C# back end, reading L2. The same back end writes C# for every
+  other front end, taking the plain form where an IL fact is absent. ilspycmd is ported too (its command line and project output,
+  stages 11 and 12), so nothing needs .NET. The installed ilspycmd is only the oracle: its output byte for byte, through L2.
+- **L2 grows what the two need**: properties, events, indexers, operators, attributes, generic constraints, `yield`/`await` (after
+  ILSpy's state-machine transforms), pattern matching, records, local functions, `using`/`lock`/`fixed`, checked arithmetic,
+  `ref` locals and returns, and Java's anonymous classes, lambdas and switch-on-string after Fernflower's passes.
+- **Proof**: `ilspycmd`'s C# byte for byte on the ILSpy port's test assemblies, through L2, the same as the port proves today. And
+  the Java lane's tests: Fernflower's text byte-identical on RetroMCP's jar, and the Minecraft versions still converting and building.
+- **The ILSpy port's stages for it** (agreed 2026-11-26), in this order, so each switch-over is checked against an output that is
+  already exact:
+  - **9a.** ILSpy's builders on the ILAst exactly as upstream, byte for byte against ilspycmd on the 112 Pretty cases and the real
+    assemblies.
+  - **10.** The C# transforms.
+  - **11-12.** ilspycmd itself: its command line, `-p` project output, `-il`, `-t` and `-r`. Convert and the XNA lane then call ours.
+  - **13.** L2 carries the structured ILAst losslessly. Added to `ir.hpp` and the schema, and reviewed against the other front ends so
+    each new slot is general:
+    - stack types and sign, lifted and checked flags;
+    - call forms and conversion kinds;
+    - address and ref semantics;
+    - gotos and labels for what isn't structured;
+    - `using`, `lock`, `yield`, `await` and pinned regions;
+    - entities as type-system references;
+    - variable kinds and IL ranges.
+
+    The proof is a round trip: ILAst → L2 → ILAst gives the same ILAst text on all 122 assemblies.
+  - **14.** The builders read L2, one node kind at a time. The proof is ilspycmd byte for byte through ILAst → L2 → C#, identical
+    to 9a.
+  - **15.** Java → C# through the same back end (Fernflower → L2 → ILSpy's C# back end); `backends/csharp`'s emitter retires.
+- The ILSpy port session plans the C# side (asked 2026-11-26). This session does the Java side.
+
+## 1. The translator hub: N front ends + M back ends
+
+1. **One tree.** Port `cb_l2`'s C back end and the C++17 core with its rule sets from `l2::Node` / `py::V` onto `translate::ir`, and
+   remove the JSON call protocol (`native_l2`'s `l2_call`). Proof: the C back end's and the C++17 goldens unchanged; `judge-py-cpp`
+   and `judge-cs-cpp` agree as before.
+2. **One back end per target language**, each an emitter plus rule sets chosen by `Unit.lang`:
+   - C++: `cpp03`, `cpp17`, `csharp_cpp17` and `cb_l2`'s C++17 become one C++ back end with a standard level (03, 17) and rule sets
+     java, csharp, python.
+   - C: `c`, `c_java` and `cb_l2`'s C back end become one C back end with rule sets java and binary.
+   - C#: `csharp` and `csharp_java` become one C# back end with rule sets java and cil (item 4).
+   - Go and Rust: `go_java` and `rust_java` become the Go and Rust back ends, Java rules first.
+   - Java: the Java back end, with rule sets c, cpp and bytecode (item 4).
+3. **Delete the pair code** once its goldens and judges pass through the new back end: every `*_java` back end file and `csharp_cpp17`.
+
+Proof for each step: the existing goldens (`translate.*`), the judges (`judge-c-java`, `judge-cs-cpp`, `judge-py-cpp`, the Java lane's
+JVM comparisons), and the Minecraft versions converting and building as they do now.
+
+## 2. One emulator
+
+A translated-block cache for `emulate/pcode`: each basic block's p-code compiled once into a sequence of direct operations, with
+constant-folded varnodes and precomputed space offsets, then cached by address and invalidated on a write to its bytes. The target is
+to be at least as fast as the hand-written interpreter on each lane (68000, PS1, N64 and GBA were 1.1 to 2.7 times slower on
+2026-11-21). Then each lane switches over one at a time. Its whole judging corpus must give the same verdicts. Then that lane's
+emulator is deleted. The RSP (added 2026-11-26) is hand-written because there's no SLEIGH description of it: one is written as part
+of this item, and the interpreter goes the same way. Unicorn stays as the x86 oracle unless the p-code emulator matches it.
+
+## 3. One assembler
+
+Each of a64, arm, cp1610, mips (with the RSP's vector unit), ppc, sh and sm83 folds into `sleigh_assembler.cc`. The text forms that
+SLEIGH's syntax doesn't give (each lane's period dialect: GNU as, armips, rgbds) are kept by the dialect layer (`source/dialect`).
+Before an assembler is deleted, all of its own test cases must rebuild byte for byte through SLEIGH. x86asm stays where MASM's
+directives have no SLEIGH form. Its instruction encoding moves.
+
+## 5. One recompiler
+
+`recompile/x360`, `xenonrecomp` and `rexglue` become one static recompiler on the shared p-code / L2 core, with each console's
+runtime beside it. Tetris, Minecraft and Up must still play on the Xbox 360 at every step. After that it takes any CPU with a
+SLEIGH description.
+
+## 6. The compiler middle on L2
+
+One optimizer and code generator under every language, from L2 down: x86cc is the first back end, then OpenWatcom's code generator
+for the 16- and 32-bit targets, and MSVC stays for x64 (the 2026-11-26 exception).
+
+## Status
+
+- 2026-11-26: plan written; the inventory above.
