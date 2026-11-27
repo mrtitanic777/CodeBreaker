@@ -294,14 +294,14 @@ CB_TEST("verify.lanes.win64.a_rebuilt_function_that_does_the_same_is_equivalent_
     item.end = item.va + 4;
     item.rebuilt_va = kRebuilt;
     // lea eax, [rdx + rcx] ; ret            -- the same sum, written the other way round
-    CB_CHECK(Lane::judge_function(context_with({0x8D, 0x04, 0x0A, 0xC3}), item).verdict == store::Verdict::Equivalent);
+    CB_CHECK(Lane::judge_function(context_with({0x8D, 0x04, 0x0A, 0xC3}), item).verdict == Verdict::Equivalent);
     // lea eax, [rcx + rdx + 1] ; ret        -- one more
-    const store::Judgement off = Lane::judge_function(context_with({0x8D, 0x44, 0x11, 0x01, 0xC3}), item);
-    CB_CHECK(off.verdict == store::Verdict::Divergent);
+    const Judgement off = Lane::judge_function(context_with({0x8D, 0x44, 0x11, 0x01, 0xC3}), item);
+    CB_CHECK(off.verdict == Verdict::Divergent);
     CB_CHECK_EQ(off.reason, "ret-differs");
     // mov ebx, ecx ; lea eax, [rbx + rdx] ; ret     -- the right sum, RBX not handed back
-    const store::Judgement saved = Lane::judge_function(context_with({0x8B, 0xD9, 0x8D, 0x04, 0x13, 0xC3}), item);
-    CB_CHECK(saved.verdict == store::Verdict::Divergent);
+    const Judgement saved = Lane::judge_function(context_with({0x8B, 0xD9, 0x8D, 0x04, 0x13, 0xC3}), item);
+    CB_CHECK(saved.verdict == Verdict::Divergent);
     CB_CHECK_EQ(saved.reason, "registers-differ");
 });
 
@@ -318,6 +318,56 @@ CB_TEST("verify.lanes.win64.the_tools_are_found_under_a_visual_studio_folder", [
     CB_CHECK(tools.has_value());
     CB_CHECK(fs::to_text(tools->cl).find("14.51.36231") != std::string::npos);   // the newest
     CB_CHECK_EQ(tools->link.filename().string(), "link.exe");
+});
+
+CB_TEST("verify.lanes.win64.a_system_call_is_recorded_with_its_number_and_arguments_and_answered", [] {
+    // mov r10, rcx ; mov eax, 0x55 ; syscall ; ret      -- a stub: every argument as its caller left them
+    const Lane::Context c = made_of({0x4C, 0x8B, 0xD1, 0xB8, 0x55, 0x00, 0x00, 0x00, 0x0F, 0x05, 0xC3});
+    Lane::Vector v = input({1, 2, 3, 4, 5, 6});
+    v.stub_ret = 0x1234;
+    const compare::Fingerprint fp = Lane::fingerprint(c, kCode, v, false, false);
+    CB_CHECK(fp.ret.has_value() && *fp.ret == 0x1234);
+    CB_CHECK(fp.deps.size() == 1 && fp.deps[0] == "syscall(55,1,2,3,4,5,6)");
+    // called from a function of its own (a caller's frame): its number alone, the arguments' count not known
+    // sub rsp, 0x28 ; call +5 (the stub) ; add rsp, 0x28 ; ret ; <the stub>
+    const Lane::Context caller = made_of({0x48, 0x83, 0xEC, 0x28, 0xE8, 0x05, 0x00, 0x00, 0x00, 0x48, 0x83, 0xC4, 0x28, 0xC3,
+                                          0x4C, 0x8B, 0xD1, 0xB8, 0x55, 0x00, 0x00, 0x00, 0x0F, 0x05, 0xC3});
+    const compare::Fingerprint inner = Lane::fingerprint(caller, kCode, v, false, false);
+    CB_CHECK(inner.deps.size() == 1 && inner.deps[0] == "syscall 55");
+    Lane::Context known = caller;
+    known.syscall_argc[0x55] = 2;   // (its declaration's two arguments)
+    const compare::Fingerprint two = Lane::fingerprint(known, kCode, v, false, false);
+    CB_CHECK(two.deps.size() == 1 && two.deps[0] == "syscall(55,1,2)");
+});
+
+CB_TEST("verify.lanes.win64.gs_is_the_thread_block_and_the_shared_user_data_is_there", [] {
+    // mov rax, gs:[0x30] ; ret       -- the thread block's own address
+    CB_CHECK_EQ(*Lane::fingerprint(made_of({0x65, 0x48, 0x8B, 0x04, 0x25, 0x30, 0x00, 0x00, 0x00, 0xC3}), kCode, input({}), false, false).ret,
+                static_cast<std::int64_t>(Lane::kTebBase));
+    // mov rax, gs:[0x60] ; mov rax, [rax + 0x10] ; ret     -- the process block's image base: the original's
+    const Lane::Context c = made_of({0x65, 0x48, 0x8B, 0x04, 0x25, 0x60, 0x00, 0x00, 0x00, 0x48, 0x8B, 0x40, 0x10, 0xC3});
+    CB_CHECK_EQ(*Lane::fingerprint(c, kCode, input({}), false, false).ret, static_cast<std::int64_t>(c.original.base));
+    // movzx eax, byte ptr [0x7ffe0308] ; ret                -- how a system call is made: 0, `syscall`
+    const compare::Fingerprint shared = Lane::fingerprint(made_of({0x0F, 0xB6, 0x04, 0x25, 0x08, 0x03, 0xFE, 0x7F, 0xC3}), kCode, input({}), false, false);
+    CB_CHECK(shared.exit == compare::kExitReturned && shared.ret == 0);
+});
+
+CB_TEST("verify.lanes.win64.an_import_that_returns_a_pointer_is_given_one", [] {
+    CB_CHECK(Lane::is_pointer_type("LPVOID"));
+    CB_CHECK(Lane::is_pointer_type("HANDLE"));
+    CB_CHECK(Lane::is_pointer_type("const char *"));
+    CB_CHECK(!Lane::is_pointer_type("BOOL"));
+    CB_CHECK(!Lane::is_pointer_type("DWORD"));
+    Lane::Context c = made_of({0xC3});
+    c.pointer_results.insert("Sleep");
+    Lane::Vector v = input({});
+    v.stub_ret = 1;
+    CB_CHECK_EQ(Lane::answer(c, "Sleep", v), Lane::kAnswerBase);
+    CB_CHECK_EQ(Lane::answer(c, "Other", v), 1u);   // (not a pointer: what the input says)
+    v.stub_ret = 0;
+    CB_CHECK_EQ(Lane::answer(c, "Sleep", v), 0u);   // (null stays: the failure)
+    v.stub_ret = static_cast<std::int64_t>(Lane::kScratchBase + 0x40);
+    CB_CHECK_EQ(Lane::answer(c, "Sleep", v), Lane::kScratchBase + 0x40);
 });
 
 }  // namespace cb::verify::lanes

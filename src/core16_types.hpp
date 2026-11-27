@@ -126,6 +126,8 @@ public:
     // Hooks on `in` (port, size -> the value read) and `out` (port, size, value).
     virtual void hook_add_insn_in(std::function<std::uint32_t(Uc&, std::uint32_t port, std::uint32_t size)> callback) = 0;
     virtual void hook_add_insn_out(std::function<void(Uc&, std::uint32_t port, std::uint32_t size, std::uint32_t value)> callback) = 0;
+    // A hook on `syscall` (x64): called in its place, the run going on after it (a no-op where the binding has no such hook).
+    virtual void hook_add_insn_syscall(std::function<void(Uc&)> callback) { (void)callback; }
     // The same reads, for less (a no-op where the binding is not one that can).
     virtual void speed_up() {}
 };

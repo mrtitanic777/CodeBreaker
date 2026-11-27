@@ -24,6 +24,8 @@ namespace cb::decompile::c_text {
 
 namespace {
 
+std::set<std::string> words_of(std::string_view s);
+
 // The heading of a function's text, as a declaration: `void sub_001010(xunknown8 param_1,int4 param_2);`. Empty for a text that has
 // no definition (a function whose decompile failed is a comment).
 std::string declaration_of(std::string_view text) {
@@ -85,12 +87,13 @@ unsigned long long __rdtsc(void);
 unsigned long long __rdtscp(unsigned int *);
 unsigned long long __popcnt64(unsigned long long);
 unsigned int _mm_getcsr(void);
+void _mm_setcsr(unsigned int);
 void _xrstor(void const *, unsigned long long);
 unsigned int _mm_crc32_u8(unsigned int, unsigned char);
 unsigned int _mm_crc32_u16(unsigned int, unsigned short);
 unsigned int _mm_crc32_u32(unsigned int, unsigned int);
 unsigned long long _mm_crc32_u64(unsigned long long, unsigned long long);
-#pragma intrinsic(__rdtsc, __rdtscp, __popcnt64, _mm_getcsr, _xrstor, _mm_crc32_u8, _mm_crc32_u16, _mm_crc32_u32, _mm_crc32_u64)
+#pragma intrinsic(__rdtsc, __rdtscp, __popcnt64, _mm_getcsr, _mm_setcsr, _xrstor, _mm_crc32_u8, _mm_crc32_u16, _mm_crc32_u32, _mm_crc32_u64)
 #define rdtsc() __rdtsc()
 static uint8 __cb_rdtscp(void) { unsigned int aux; return __rdtscp(&aux); }
 #define rdtscp() __cb_rdtscp()
@@ -102,10 +105,145 @@ static uint8 __cb_rdtscp(void) { unsigned int aux; return __rdtscp(&aux); }
 #pragma section(".text", read, execute)
 __declspec(allocate(".text")) static const unsigned char __cb_syscall_code[] = {0x0f, 0x05, 0xc3};
 #define syscall() (((void (*)(void))(void *)__cb_syscall_code)())
+/* a system call stub's call (`mov r10, rcx; mov eax, N; syscall; ret`): the arguments in the registers and on the stack where the
+   caller left them, the number in EAX -- `return system_call(0xf, param_1, param_2, param_3, param_4);` jumps to the stub's code,
+   which the function has (system_call_0xf, in its .text) */
+#define system_call(n, ...) (((uint8 (*)())(void *)system_call_##n)(__VA_ARGS__))
+/* a number the decompiler gives a structure as its value (`s = (S)(x);`): the structure whose first bytes are the number's */
+static void *__cb_bits(uint8 v) { static uint8 b[8]; int i; b[0] = v; for (i = 1; i < 8; ++i) b[i] = 0; return b; }
+/* the thread's environment block: the GS segment's base, which the block holds at 0x30 */
+unsigned long long __readgsqword(unsigned long);
+#pragma intrinsic(__readgsqword)
 #define monitorx() ((void)0)
+#define monitor() ((void)0)
+/* a wait for a store to the monitored line (or a time out): what the function leaves is the same */
+#define mwaitx() ((void)0)
+#define mwait() ((void)0)
 unsigned int _rdpid_u32(void);
 #pragma intrinsic(_rdpid_u32)
 #define readPID() ((uint8)_rdpid_u32())
+/* the instructions Visual C++ has an intrinsic for: a random number and whether one was given, a performance counter, the limit
+   of a segment, the processor's state saved, a breakpoint the bytes the decompiler could not read make */
+int _rdrand64_step(unsigned long long *);
+int _rdseed64_step(unsigned long long *);
+unsigned long long __readpmc(unsigned long);
+unsigned long __segmentlimit(unsigned long);
+void _xsave(void *, unsigned long long);
+void _xsavec(void *, unsigned long long);
+void _xsaveopt(void *, unsigned long long);
+void _xsaves(void *, unsigned long long);
+void _xsave64(void *, unsigned long long);
+void _xsavec64(void *, unsigned long long);
+void _xsaveopt64(void *, unsigned long long);
+void _xsaves64(void *, unsigned long long);
+void _xrstor64(void const *, unsigned long long);
+void __ud2(void);
+void __cpuidex(int *, int, int);
+#pragma intrinsic(_rdrand64_step, _rdseed64_step, __readpmc, __segmentlimit, _xsave, _xsavec, _xsaveopt, _xsaves, _xsave64, _xsavec64, _xsaveopt64, _xsaves64, _xrstor64, __ud2, __cpuidex)
+static int __cb_random_valid;
+static uint8 __cb_rdrand(void) { unsigned long long v = 0; __cb_random_valid = _rdrand64_step(&v); return v; }
+static uint8 __cb_rdseed(void) { unsigned long long v = 0; __cb_random_valid = _rdseed64_step(&v); return v; }
+#define rdrand() __cb_rdrand()
+#define rdrandIsValid() __cb_random_valid
+#define rdseed() __cb_rdseed()
+#define rdseedIsValid() __cb_random_valid
+#define rdpmc(counter) ((uint8)__readpmc((unsigned long)(counter)))
+#define SegmentLimit(selector) ((uint4)__segmentlimit((unsigned long)(selector)))
+#define xsave(p, mask) _xsave((void *)(p), (unsigned long long)(mask))
+#define xsavec(p, mask) _xsavec((void *)(p), (unsigned long long)(mask))
+#define xsaveopt(p, mask) _xsaveopt((void *)(p), (unsigned long long)(mask))
+#define xsaves(p, mask) _xsaves((void *)(p), (unsigned long long)(mask))
+#define xsave64(p, mask) _xsave64((void *)(p), (unsigned long long)(mask))
+#define xsavec64(p, mask) _xsavec64((void *)(p), (unsigned long long)(mask))
+#define xsaveopt64(p, mask) _xsaveopt64((void *)(p), (unsigned long long)(mask))
+#define xsaves64(p, mask) _xsaves64((void *)(p), (unsigned long long)(mask))
+#define xrstor64(p, mask) _xrstor64((void const *)(p), (unsigned long long)(mask))
+#define halt_baddata() __ud2()
+/* SSE operations on 16-byte values (each an array, or a pointer to one followed) whose result the decompiler gives a 16-byte
+   variable: the 16 bytes made, which the variable is given */
+typedef uint1 __cb_x16[16];
+static __cb_x16 *__cb_x16_out(const uint1 *made) { static __cb_x16 out; int i; for (i = 0; i < 16; ++i) out[i] = made[i]; return &out; }
+static __cb_x16 *__cb_shift16(const uint1 *a, int n, int lane, int right, int arith) {
+    uint1 r[16]; int i, k;
+    for (i = 0; i < 16; i += lane) {
+        uint8 v = 0; for (k = 0; k < lane; ++k) v |= (uint8)a[i + k] << (8 * k);
+        if (n >= 8 * lane) { v = arith && (v >> (8 * lane - 1)) ? ~(uint8)0 : 0; }
+        else if (right && arith) { int8 sv = (int8)(v << (64 - 8 * lane)) >> (64 - 8 * lane); v = (uint8)(sv >> n); }
+        else v = right ? v >> n : v << n;
+        for (k = 0; k < lane; ++k) r[i + k] = (uint1)(v >> (8 * k));
+    }
+    return __cb_x16_out(r);
+}
+#define psraw(a, n) (*__cb_shift16((const uint1 *)(a), (int)(n), 2, 1, 1))
+#define psrad(a, n) (*__cb_shift16((const uint1 *)(a), (int)(n), 4, 1, 1))
+#define psrlw(a, n) (*__cb_shift16((const uint1 *)(a), (int)(n), 2, 1, 0))
+#define psrld(a, n) (*__cb_shift16((const uint1 *)(a), (int)(n), 4, 1, 0))
+#define psrlq(a, n) (*__cb_shift16((const uint1 *)(a), (int)(n), 8, 1, 0))
+#define psllw(a, n) (*__cb_shift16((const uint1 *)(a), (int)(n), 2, 0, 0))
+#define pslld(a, n) (*__cb_shift16((const uint1 *)(a), (int)(n), 4, 0, 0))
+#define psllq(a, n) (*__cb_shift16((const uint1 *)(a), (int)(n), 8, 0, 0))
+static __cb_x16 *__cb_pshufb(const uint1 *a, const uint1 *b) { uint1 r[16]; int i; for (i = 0; i < 16; ++i) r[i] = (b[i] & 0x80) ? 0 : a[b[i] & 15]; return __cb_x16_out(r); }
+#define pshufb(a, b) (*__cb_pshufb((const uint1 *)(a), (const uint1 *)(b)))
+static __cb_x16 *__cb_pmaddubsw(const uint1 *a, const uint1 *b) {
+    uint1 r[16]; int i;
+    for (i = 0; i < 8; ++i) {
+        int v = (int)a[2 * i] * (int)(signed char)b[2 * i] + (int)a[2 * i + 1] * (int)(signed char)b[2 * i + 1];
+        if (v > 32767) v = 32767; if (v < -32768) v = -32768;
+        r[2 * i] = (uint1)v; r[2 * i + 1] = (uint1)((unsigned)v >> 8);
+    }
+    return __cb_x16_out(r);
+}
+#define pmaddubsw(a, b) (*__cb_pmaddubsw((const uint1 *)(a), (const uint1 *)(b)))
+static __cb_x16 *__cb_psadbw(const uint1 *a, const uint1 *b) {
+    uint1 r[16]; int i, h;
+    for (i = 0; i < 16; ++i) r[i] = 0;
+    for (h = 0; h < 16; h += 8) { unsigned sum = 0; for (i = h; i < h + 8; ++i) sum += a[i] > b[i] ? a[i] - b[i] : b[i] - a[i]; r[h] = (uint1)sum; r[h + 1] = (uint1)(sum >> 8); }
+    return __cb_x16_out(r);
+}
+#define psadbw(a, b) (*__cb_psadbw((const uint1 *)(a), (const uint1 *)(b)))
+static __cb_x16 *__cb_pmaddwd(const uint1 *a, const uint1 *b) {
+    uint1 r[16]; int i, k;
+    for (i = 0; i < 4; ++i) {
+        int sum = 0;
+        for (k = 0; k < 2; ++k) { const int at = 4 * i + 2 * k; sum += (int)(short)(a[at] | a[at + 1] << 8) * (int)(short)(b[at] | b[at + 1] << 8); }
+        for (k = 0; k < 4; ++k) r[4 * i + k] = (uint1)((unsigned)sum >> (8 * k));
+    }
+    return __cb_x16_out(r);
+}
+#define pmaddwd(a, b) (*__cb_pmaddwd((const uint1 *)(a), (const uint1 *)(b)))
+/* a cache line written back (it changes nothing the function's result shows), and the float constants C99 names */
+void _mm_clflush(void const *);
+void _mm_clflushopt(void const *);
+void _mm_clwb(void const *);
+#pragma intrinsic(_mm_clflush, _mm_clflushopt, _mm_clwb)
+#define clflush(p) _mm_clflush((void const *)(p))
+#define clflushopt(p) _mm_clflushopt((void const *)(p))
+#define clwb(p) _mm_clwb((void const *)(p))
+#ifndef INFINITY
+#define INFINITY ((float)(1e+300 * 1e+300))
+#endif
+#ifndef NAN
+#define NAN ((float)(INFINITY * 0.0F))
+#endif
+/* cpuid, as the decompiler reads it: the leaf's four registers in the order EAX, EBX, EDX, ECX (sub-leaf 0) */
+static uint4 *__cb_cpuid(uint4 leaf) { static uint4 regs[4]; int r[4]; __cpuidex(r, (int)leaf, 0); regs[0] = (uint4)r[0]; regs[1] = (uint4)r[1]; regs[2] = (uint4)r[3]; regs[3] = (uint4)r[2]; return regs; }
+#define cpuid(leaf) __cb_cpuid(leaf)
+#define cpuid_basic_info(leaf) __cb_cpuid(leaf)
+#define cpuid_Version_info(leaf) __cb_cpuid(leaf)
+#define cpuid_cache_tlb_info(leaf) __cb_cpuid(leaf)
+#define cpuid_serial_info(leaf) __cb_cpuid(leaf)
+#define cpuid_Deterministic_Cache_Parameters_info(leaf) __cb_cpuid(leaf)
+#define cpuid_MONITOR_MWAIT_Features_info(leaf) __cb_cpuid(leaf)
+#define cpuid_Thermal_Power_Management_info(leaf) __cb_cpuid(leaf)
+#define cpuid_Extended_Feature_Enumeration_info(leaf) __cb_cpuid(leaf)
+#define cpuid_Direct_Cache_Access_info(leaf) __cb_cpuid(leaf)
+#define cpuid_Architectural_Performance_Monitoring_info(leaf) __cb_cpuid(leaf)
+#define cpuid_Extended_Topology_info(leaf) __cb_cpuid(leaf)
+#define cpuid_Processor_Extended_States_info(leaf) __cb_cpuid(leaf)
+#define cpuid_Quality_of_Service_info(leaf) __cb_cpuid(leaf)
+#define cpuid_brand_part1_info(leaf) __cb_cpuid(leaf)
+#define cpuid_brand_part2_info(leaf) __cb_cpuid(leaf)
+#define cpuid_brand_part3_info(leaf) __cb_cpuid(leaf)
 #define LOCK()
 #define UNLOCK()
 )CBR";
@@ -124,7 +262,7 @@ extern "C" {
 // that is no C type (3, 5, 6, 7 bytes) is read and written by the header's helpers (`__cb_rd6(p)`, `__cb_wr6(p, value)`): the
 // bytes of the variable's own memory in either case. The variable may be an element (`a[0]._1_3_`).
 std::string partial_access(std::string s) {
-    static const std::regex piece(R"(\b([A-Za-z_]\w*(?:\[[^\]\n]*\])*)\._(\d+)_(\d+)_)");
+    static const std::regex piece(R"(\b([A-Za-z_]\w*(?:\[[^\]\n]*\]|(?:\.|->)[A-Za-z_]\w*)*)\._(\d+)_(\d+)_)");
     std::string out;
     std::size_t at = 0;
     for (auto it = std::sregex_iterator(s.begin(), s.end(), piece); it != std::sregex_iterator(); ++it) {
@@ -182,7 +320,7 @@ std::string_view past_notes(std::string_view text) {
 // the bytes between them).
 std::string address_of_unnamed_fields(const std::string& text) {
     // (cast to the structure first: `&((S *)p)->field_0x8`; or read as a character: `p->field_0x20 == 'a'`)
-    static const std::regex cast(R"(&\(\((\w+) \*\)(\w+)\)->field_0x([0-9a-f]+)\b)");
+    static const std::regex cast(R"(&\(\((\w+) \*\)(\w+|\([^()\n]*(?:\([^()\n]*\)[^()\n]*)*\))\)->field_0x([0-9a-f]+)\b)");
     static const std::regex as_char(R"(\b(\w+)->field_0x([0-9a-f]+)( (?:==|!=) '[^']{1,2}'))");
     const std::string s = std::regex_replace(std::regex_replace(text, cast, "((xunknown1 *)((uint1 *)$2 + 0x$3))"), as_char,
                                              "(*(char *)((uint1 *)$1 + 0x$2))$3");
@@ -237,6 +375,7 @@ struct Local {
 // of a type whose size the name says, and pointers.
 std::map<std::string, Local> locals_of(const std::string& s) {
     static const std::regex sized(R"(^\s*((?:xunknown|uint|int|unkbyte|unkint|unkuint)([1-8]))\s+(\w+)\s*(?:\[(\d+)\])?;\s*$)");
+    static const std::regex byte(R"(^\s*(char|bool|byte)\s+(\w+)\s*(?:\[(\d+)\])?;\s*$)");   // (one byte each)
     static const std::regex pointer(R"(^\s*(\w+\s*\*+)\s*(\w+);\s*$)");
     std::map<std::string, Local> out;
     for (const std::string_view line : text::split(s, '\n')) {
@@ -244,6 +383,8 @@ std::map<std::string, Local> locals_of(const std::string& s) {
         if (std::regex_match(line.data(), line.data() + line.size(), m, sized)) {
             const std::int64_t one = std::stoll(m[2].str());
             out[m[3].str()] = m[4].matched ? Local{m[1].str(), one * std::stoll(m[4].str()), false} : Local{m[1].str(), one, true};
+        } else if (std::regex_match(line.data(), line.data() + line.size(), m, byte)) {
+            out[m[2].str()] = m[3].matched ? Local{m[1].str(), std::stoll(m[3].str()), false} : Local{m[1].str(), 1, true};
         } else if (std::regex_match(line.data(), line.data() + line.size(), m, pointer) && m[1].str() != "return" &&
                    !m[1].str().starts_with("goto")) {
             out[m[2].str()] = Local{m[1].str(), 8, true};
@@ -271,6 +412,9 @@ std::optional<std::int64_t> stack_place(std::string_view name) {
     const std::size_t at = name.rfind("Stack");
     if (at == std::string_view::npos) return std::nullopt;
     std::string_view rest = name.substr(at + 5);
+    // (`xStack0000000000000000`: the place as a 64-bit offset from where the stack was at entry -- 0 is the return address's)
+    if (rest.size() == 16 && std::ranges::all_of(rest, [](char c) { return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'); }))
+        return static_cast<std::int64_t>(*text::parse_int<std::uint64_t>(rest, 16));
     const bool above = rest.starts_with("X");
     if (above) rest.remove_prefix(1);
     if (!rest.starts_with("_") || rest.size() < 2) return std::nullopt;
@@ -279,11 +423,163 @@ std::optional<std::int64_t> stack_place(std::string_view name) {
     return above ? *n : -*n;
 }
 
+// Every whole-word occurrence of `word` in s replaced by `with` (a word is letters, digits and `_`).
+std::string replace_word(const std::string& s, const std::string& word, const std::string& with) {
+    std::string out;
+    std::size_t from = 0;
+    for (std::size_t k = s.find(word); k != std::string::npos; k = s.find(word, k + word.size())) {
+        const std::size_t end = k + word.size();
+        if ((k > 0 && is_word(s[k - 1])) || (end < s.size() && is_word(s[end]))) continue;
+        out.append(s, from, k - from);
+        out += with;
+        from = end;
+    }
+    out.append(s, from, std::string::npos);
+    return out;
+}
+
+// The declarations of a function's text: the lines from its body's `{` to the first blank one (the decompiler declares every local
+// there, before any statement), as [begin, end) offsets.
+std::pair<std::size_t, std::size_t> declaration_block(const std::string& s) {
+    const std::size_t at = s.size() - past_notes(s).size();
+    const std::size_t brace = s.find("\n{", at);
+    if (brace == std::string::npos) return {0, 0};
+    const std::size_t begin = s.find('\n', brace + 1);
+    if (begin == std::string::npos) return {0, 0};
+    for (std::size_t k = begin + 1; k < s.size();) {
+        const std::size_t e = std::min(s.find('\n', k), s.size());
+        if (text::trim(std::string_view(s).substr(k, e - k)).empty()) return {begin + 1, k};
+        k = e + 1;
+    }
+    return {begin + 1, s.size()};
+}
+
+// The stack variables a text declares, by where they are (`xunknown2 xStack_48;`, `s_foo xStack_40;`, `uint1 axStack_38 [4];`),
+// whatever their type: a variable whose size locals_of does not know is still a variable there.
+std::map<std::int64_t, std::string> declared_stack(const std::string& s) {
+    static const std::regex decl(R"(^\s*\w[\w ]*\**\s*\b(\w*Stack(?:X?_[0-9a-f]+|[0-9a-f]{16}))\s*(?:\[\d+\])?;\s*$)");
+    std::map<std::int64_t, std::string> out;
+    const auto [begin, end] = declaration_block(s);
+    for (const std::string_view line : text::split(std::string_view(s).substr(begin, end - begin), '\n')) {
+        std::cmatch m;
+        if (std::regex_match(line.data(), line.data() + line.size(), m, decl))
+            if (const auto at = stack_place(m[1].str())) out[*at] = m[1].str();
+    }
+    return out;
+}
+
+// `_xStack_48 = 0;` where xStack_48 is two bytes and nothing the text names lies right after it (a gap, an array, a variable
+// only partly in the value): the variables within the value's bytes are given one storage as wide as the value
+// (`uint8 __cb_frame_xStack_48;`), each read and written as its bytes of it -- so the value written whole reaches each part, and
+// a part's address (`&xStack_48`, handed to a callee) is that of the bytes after it too, as on the original's stack. Nothing when
+// a variable lies partly inside: it cannot be both its own and the storage's.
+std::optional<std::string> frame_storage(const std::string& s, const std::string& name, std::int64_t start, std::int64_t width,
+                                         std::set<std::string>& merged) {
+    const std::map<std::string, Local> locals = locals_of(s);
+    const std::map<std::int64_t, std::string> declared = declared_stack(s);
+    struct Part {
+        std::string name;
+        std::int64_t offset;
+        Local local;
+    };
+    std::vector<Part> parts;
+    for (const auto& [at, n] : declared) {
+        const auto l = locals.find(n);
+        if (at >= start + width) continue;
+        if (l == locals.end()) {
+            if (at < start) continue;   // (one before whose size is not known: taken as ending before)
+            return std::nullopt;
+        }
+        if (at + l->second.size <= start) continue;
+        if (at < start || at + l->second.size > start + width || merged.contains(n)) return std::nullopt;
+        parts.push_back({n, at - start, l->second});
+    }
+    if (parts.empty() || parts.front().offset != 0 || parts.front().name != name) return std::nullopt;
+    const std::string storage = "__cb_frame_" + name;
+    const std::int64_t bytes = width <= 1 ? 1 : width <= 2 ? 2 : width <= 4 ? 4 : 8;
+    static const std::regex decl(R"(^(\s*)\w[\w ]*\**\s*\b(\w+)\s*(?:\[\d+\])?;\s*$)");
+    std::vector<std::string> lines;
+    bool declared_storage = false;
+    const auto [begin, end] = declaration_block(s);
+    std::size_t offset = 0;
+    for (const std::string_view line : text::split(s, '\n')) {
+        const bool in_block = offset >= begin && offset < end;
+        offset += line.size() + 1;
+        std::cmatch m;
+        if (in_block && std::regex_match(line.data(), line.data() + line.size(), m, decl) &&
+            std::ranges::any_of(parts, [&](const Part& p) { return p.name == m[2].str(); })) {
+            if (!declared_storage) lines.push_back(std::format("{}uint{} {};", m[1].str(), bytes, storage));
+            declared_storage = true;
+            continue;
+        }
+        lines.emplace_back(line);
+    }
+    std::string out = replace_word(text::join(lines, "\n"), "_" + name, storage);
+    for (const Part& p : parts) {
+        const Local& l = p.local;
+        std::string place;
+        if (l.scalar) {
+            place = std::format("(*({} *)((uint1 *)&{} + {}))", l.type, storage, p.offset);
+        } else {   // (an array: the array there, which is what its name was)
+            const std::int64_t one = l.type.empty() ? 1 : std::max(l.type.back() - '0', 1);
+            place = std::format("(*({} (*)[{}])((uint1 *)&{} + {}))", l.type, l.size / one, storage, p.offset);
+            const std::regex as_number("\\((u?int[1248]|xunknown[1248])\\)" + p.name + "\\b");
+            out = std::regex_replace(out, as_number, std::format("(*($1 *)((uint1 *)&{} + {}))", storage, p.offset));
+        }
+        out = replace_word(out, p.name, place);
+        merged.insert(p.name);
+    }
+    return out;
+}
+
+// `stack0xffffffffffffff44`, the decompiler's name for bytes of the frame where no one variable is (part of one, part of the
+// next), as a value of a CONCAT: those bytes, put together from the variables they are in.
+std::string frame_reads(const std::string& s) {
+    if (s.find("stack0x") == std::string::npos) return s;
+    const std::map<std::string, Local> locals = locals_of(s);
+    std::map<std::int64_t, std::pair<std::string, Local>> by_place;
+    for (const auto& [n, l] : locals)
+        if (const auto at = stack_place(n)) by_place[*at] = {n, l};
+    std::map<std::string, std::int64_t> widths;   // a stack0x name -> its width, the CONCAT's digit for its side
+    static const std::regex first(R"(CONCAT([1-8])([1-8])\((stack0x[0-9a-f]{16}),)");
+    static const std::regex second(R"(CONCAT([1-8])([1-8])\([^,()]*(?:\([^()]*\))?[^,()]*,(stack0x[0-9a-f]{16})\))");
+    for (auto it = std::sregex_iterator(s.begin(), s.end(), first); it != std::sregex_iterator(); ++it)
+        widths.try_emplace((*it)[3].str(), std::stoll((*it)[1].str()));
+    for (auto it = std::sregex_iterator(s.begin(), s.end(), second); it != std::sregex_iterator(); ++it)
+        widths.try_emplace((*it)[3].str(), std::stoll((*it)[2].str()));
+    std::string out = s;
+    for (const auto& [word, width] : widths) {
+        const std::int64_t at = static_cast<std::int64_t>(*text::parse_int<std::uint64_t>(std::string_view(word).substr(7), 16));
+        std::string value;
+        bool covered = true;
+        for (std::int64_t b = at; b < at + width;) {
+            auto l = by_place.upper_bound(b);
+            if (l == by_place.begin()) {
+                covered = false;
+                break;
+            }
+            --l;
+            const std::int64_t place = l->first, size = l->second.second.size;
+            if (b >= place + size) {
+                covered = false;
+                break;
+            }
+            const std::int64_t take = std::min(place + size, at + width) - b;   // (the bytes of this variable in the value)
+            const std::int64_t n = take >= 8 ? 8 : take >= 4 ? 4 : take >= 2 ? 2 : 1;
+            value += std::format("{}((uint8)*(uint{} *)((uint1 *)&{} + {}) << {})", value.empty() ? "" : " | ", n, l->second.first, b - place,
+                                 8 * (b - at));
+            b += n;
+        }
+        if (covered) out = replace_word(out, word, "(" + value + ")");
+    }
+    return out;
+}
+
 // `_xStack_30`, the decompiler's name for the bytes of stack variables side by side read or written as one (`_xStack_30 =
 // CONCAT44(1,x)` writes xStack_30 and xStack_2c): each variable written its part of the value, or the value read as the parts put
 // together. The width is the one the text gives it (CONCAT24: 6 bytes), else 8; the variables must lie end to end over it.
 std::string stack_pieces(const std::string& s) {
-    static const std::regex piece(R"((^|[^\w])_(\w*StackX?_[0-9a-f]+)\b)");
+    static const std::regex piece(R"((^|[^\w])_(\w*Stack(?:X?_[0-9a-f]+|[0-9a-f]{16}))\b)");
     if (s.find("Stack") == std::string::npos) return s;
     std::set<std::string> names;
     for (auto it = std::sregex_iterator(s.begin(), s.end(), piece); it != std::sregex_iterator(); ++it) names.insert((*it)[2].str());
@@ -293,8 +589,9 @@ std::string stack_pieces(const std::string& s) {
     for (const auto& [n, l] : locals)
         if (const auto at = stack_place(n)) by_place[*at] = n;
     std::string out = s;
+    std::set<std::string> merged_names;   // (the locals frame_storage has put in a storage of their own)
     for (const std::string& name : names) {
-        if (!locals.contains(name)) continue;
+        if (!locals.contains(name) || merged_names.contains(name)) continue;
         const std::int64_t start = *stack_place(name);
         std::int64_t width = 8;
         static const std::regex concat(R"(_(\w+) = (?:\(\w+\))?CONCAT([1-8])([1-8])\()");
@@ -314,7 +611,10 @@ std::string stack_pieces(const std::string& s) {
             parts.emplace_back(p->second, at - start);
             at += locals.at(p->second).size;
         }
-        if (!whole || parts.size() < 2) continue;
+        if (!whole || parts.size() < 2) {
+            if (std::optional<std::string> merged = frame_storage(out, name, start, width, merged_names)) out = std::move(*merged);
+            continue;
+        }
         const std::string word = "_" + name;
         std::string written;
         std::size_t from = 0;
@@ -354,6 +654,9 @@ std::string products_128(const std::string& s) {
     std::set<std::string> wide;   // the 16-byte variables
     for (const auto& [n, l] : locals_of(s))
         if (l.size == 16) wide.insert(n);
+    std::set<std::string> to_16;   // the pointers to 16 bytes the text declares (`xunknown1 (*param_4) [16]`)
+    static const std::regex pointer_16(R"(\(\*(\w+)\) ?\[16\])");
+    for (auto it = std::sregex_iterator(s.begin(), s.end(), pointer_16); it != std::sregex_iterator(); ++it) to_16.insert((*it)[1].str());
     const auto skip = [&](std::size_t i) {
         while (i < s.size() && s[i] == ' ') ++i;
         return i;
@@ -392,11 +695,13 @@ std::string products_128(const std::string& s) {
             if (k < s.size() && s[k] == ')') return std::pair{inner->first, k + 1};
             return std::nullopt;
         }
-        std::size_t e = i;
+        // (a pointer to 16 bytes followed: `*param_4`, the parameter `xunknown1 (*param_4) [16]`)
+        const bool followed = i < s.size() && s[i] == '*';
+        std::size_t e = followed ? i + 1 : i;
         while (e < s.size() && is_word(s[e])) ++e;
-        const std::string name = s.substr(i, e - i);
-        if (!wide.contains(name)) return std::nullopt;
-        return std::pair{std::format("__cb_ld128({})", name), e};
+        const std::string name = s.substr(followed ? i + 1 : i, e - i - (followed ? 1 : 0));
+        if (followed ? !to_16.contains(name) : !wide.contains(name)) return std::nullopt;
+        return std::pair{std::format("__cb_ld128({}{})", followed ? "*" : "", name), e};
     };
     std::string out;
     std::size_t at = 0;
@@ -418,6 +723,16 @@ std::string products_128(const std::string& s) {
             if (!n || !o || *o < 0 || *o > 15) continue;
             out.append(s, at, k - at);
             out += std::format("((uint{})__cb_bytes128(__cb_shr128({}, {}), {}))", width, a->first, *n, *o);
+            at = close + 1;
+            continue;
+        }
+        if (star < s.size() && s[star] == ',') {   // (bytes of a 16-byte value: `SUB161(*param_4,1)`)
+            const std::size_t close = s.find(')', star);
+            if (close == std::string::npos) continue;
+            const auto o = text::parse_int<std::int64_t>(text::trim(std::string_view(s).substr(star + 1, close - star - 1)), 0);
+            if (!o || *o < 0 || *o + (width - '0') > 16) continue;
+            out.append(s, at, k - at);
+            out += std::format("((uint{})__cb_bytes128({}, {}))", width, a->first, *o);
             at = close + 1;
             continue;
         }
@@ -446,13 +761,21 @@ std::string wide_assignments(const std::string& s) {
     for (const auto& [n, l] : locals_of(s))
         if (l.size == 16 && !l.scalar) wide.insert(n);
     if (wide.empty()) return s;
-    static const std::regex assign(R"(^(\s*)(\w+) = ((?:[ZS]EXT\d+16\(|\w+ \* ).* \* .*|[ZS]EXT\d+16\(.*);$)");
+    static const std::regex assign(R"(^(\s*)(\w+) = (.* \* .*);$)");
+    static const std::regex widened(R"(\b[ZS]EXT\d+16\()");
     std::vector<std::string> out;
     for (const std::string_view full : text::split(s, '\n')) {
         std::string line(full);
         std::smatch m;
-        if (std::regex_match(line, m, assign) && wide.contains(m[2].str()) && m[3].str().find(" * ") != std::string::npos)
-            line = std::format("{0}*(uint8 *){1} = SUB168({2},0); *(uint8 *)((uint1 *){1} + 8) = SUB168({2},8);", m[1].str(), m[2].str(), m[3].str());
+        if (std::regex_match(line, m, assign) && wide.contains(m[2].str()) && std::regex_search(m[3].str(), widened)) {
+            const std::string value = m[3].str();
+            if (words_of(value).contains(m[2].str()))   // (`axVar1 = axVar1 * ZEXT416(u)`: both halves of the old value first)
+                line = std::format("{0}{{ uint8 __cb_lo = SUB168({2},0); uint8 __cb_hi = SUB168({2},8); *(uint8 *){1} = __cb_lo; "
+                                   "*(uint8 *)((uint1 *){1} + 8) = __cb_hi; }}",
+                                   m[1].str(), m[2].str(), value);
+            else
+                line = std::format("{0}*(uint8 *){1} = SUB168({2},0); *(uint8 *)((uint1 *){1} + 8) = SUB168({2},8);", m[1].str(), m[2].str(), value);
+        }
         out.push_back(std::move(line));
     }
     return text::join(out, "\n");
@@ -603,7 +926,8 @@ std::string array_assignments(const std::string& s) {
         std::cmatch m;
         if (std::regex_search(line.data(), line.data() + line.size(), m, decl)) arrays[m[2].str()] = std::stoll(m[1].str()) * std::stoll(m[3].str());
     }
-    if (arrays.empty()) return s;
+    static const std::regex cast_array(R"(^\*\((?:xunknown|uint|int)([1248]) \(\*\) ?\[(\d+)\]\))");
+    if (arrays.empty() && s.find("(*) [") == std::string::npos) return s;
     std::vector<std::string> out;
     for (const std::string_view full : lines) {
         std::string line(full);
@@ -630,6 +954,10 @@ std::string array_assignments(const std::string& s) {
             } else if (a != arrays.end())
                 line = std::format("{}__movsb((uint1 *){}, (uint1 *)&({}), {});", line.substr(0, line.find_first_not_of(' ')), a->first,
                                    value, a->second);
+            // (a place cast to an array given whole: `*(xunknown1 (*) [4])(param_3 + 0x16) = <an array>;`)
+            else if (std::smatch c; std::regex_search(place, c, cast_array) && c.position(0) == 0 && place.find_first_of("=;") == std::string::npos)
+                line = std::format("{}__movsb((uint1 *)&({}), (uint1 *)&({}), {});", line.substr(0, line.find_first_not_of(' ')), place, value,
+                                   std::stoll(c[2].str()) * std::max<std::int64_t>(c[1].str().back() - '0', 1));
             // (an array given whole to a place that is one: `*param_2 = axVar2;` with param_2 a pointer to 16 bytes)
             else if (const auto b = arrays.find(value); b != arrays.end() && place.starts_with("*") &&
                                                                     place.find_first_of("=;") == std::string::npos)
@@ -719,6 +1047,133 @@ std::string crc32_widths(const std::string& s) {
     return out;
 }
 
+// `MXCSR = x;`, the SSE control register written (ldmxcsr): the intrinsic that writes it (MXCSR itself reads it).
+std::string mxcsr_writes(const std::string& s) {
+    if (s.find("MXCSR = ") == std::string::npos) return s;
+    static const std::regex write(R"(\bMXCSR = ([^;\n]+);)");
+    return std::regex_replace(s, write, "_mm_setcsr((unsigned int)($1));");
+}
+
+// `int8 unaff_GS_OFFSET;`, the decompiler's name for the GS segment's base (the thread's environment block, which `gs:[0x30]` reads
+// `*(unaff_GS_OFFSET + 0x30)`), declared with no value: given the base, which the block holds at 0x30.
+std::string gs_base(const std::string& s) {
+    if (s.find("_GS_OFFSET") == std::string::npos) return s;
+    static const std::regex decl(R"((^|\n)(\s*)(\w[\w ]*?\s*\**)\s*\b((?:unaff|in)_GS_OFFSET);)");
+    std::string out;
+    std::size_t at = 0;
+    for (auto it = std::sregex_iterator(s.begin(), s.end(), decl); it != std::sregex_iterator(); ++it) {
+        out.append(s, at, static_cast<std::size_t>(it->position()) - at);
+        const std::string type(text::trim((*it)[3].str()));
+        out += std::format("{}{}{}{}{} = ({})__readgsqword(0x30);", (*it)[1].str(), (*it)[2].str(), type, type.ends_with("*") ? "" : " ",
+                           (*it)[4].str(), type);
+        at = static_cast<std::size_t>(it->position() + it->length());
+    }
+    out.append(s, at, std::string::npos);
+    return out;
+}
+
+// The names a text declares as a structure held by value (`s_f_param_1 param_1`, `s_f_sVar2 sStack_80;`), not a pointer to one.
+std::set<std::string> structure_values(const std::string& s) {
+    static const std::regex value(R"((?:^|[\n(,])\s*(s_\w+)\s+(\w+)\s*(?=[;,)]))");
+    std::set<std::string> out;
+    const std::size_t body = s.find('{');
+    for (auto it = std::sregex_iterator(s.begin(), s.end(), value); it != std::sregex_iterator(); ++it) {
+        if (static_cast<std::size_t>(it->position()) > body && s.compare(static_cast<std::size_t>(it->position()), 1, "(") == 0) continue;
+        out.insert((*it)[2].str());
+    }
+    return out;
+}
+
+// A number given a structure as its value (`sStack_80 = (S)((uint8)x << 0x20);`, as C has no such cast): the structure whose bytes
+// are the number's (`*(S *)__cb_bits(..)`, the header's). And a structure the decompiler holds by value but the code uses as the
+// pointer it is (`*(uint8 *)param_1`, param_1 a structure in a register): its bits as that pointer.
+std::string structure_casts(const std::string& s) {
+    if (s.find("(s_") == std::string::npos) return s;
+    std::string out;
+    std::size_t at = 0;
+    for (std::size_t k = s.find("(s_"); k != std::string::npos; k = s.find("(s_", k + 1)) {
+        if (k < at) continue;
+        std::size_t e = k + 1;
+        while (e < s.size() && is_word(s[e])) ++e;
+        if (e >= s.size() || s[e] != ')') continue;   // (a pointer's cast: `(S *)`)
+        std::size_t open = e + 1;
+        while (open < s.size() && (s[open] == ' ' || s[open] == '\n')) ++open;
+        if (open >= s.size() || s[open] != '(') continue;
+        int depth = 0;
+        std::size_t close = open;
+        for (; close < s.size(); ++close) {
+            if (s[close] == '(') ++depth;
+            else if (s[close] == ')' && --depth == 0) break;
+        }
+        if (close >= s.size()) continue;
+        out.append(s, at, k - at);
+        out += std::format("(*({} *)__cb_bits((uint8){}))", s.substr(k + 1, e - k - 1), s.substr(open, close - open + 1));
+        at = close + 1;
+    }
+    out.append(s, at, std::string::npos);
+    const std::set<std::string> values = structure_values(out);
+    for (const std::string& v : values) {
+        const std::regex as_pointer("(\\(\\w+ \\*+\\))" + v + "\\b(?!\\.|->)");
+        out = std::regex_replace(out, as_pointer, "$1*(uint8 *)&" + v);
+    }
+    return out;
+}
+
+// A function pointer moved by a number (`pcVar3 + -1`, which C does not do to a function's address): the address moved by bytes.
+std::string code_pointer_arithmetic(const std::string& s) {
+    if (s.find("code *") == std::string::npos) return s;
+    std::string out = s;
+    for (const auto& [n, l] : locals_of(s)) {
+        if (text::join(text::split_ws(l.type), "") != "code*") continue;
+        const std::regex moved("\\b" + n + " ([+-]) (-?(?:0x[0-9a-f]+|\\d+))\\b");
+        out = std::regex_replace(out, moved, "(code *)((uint1 *)" + n + " $1 $2)");
+    }
+    return out;
+}
+
+// A local the decompiler declares as a number and follows as a pointer with no index or field (`*xStack_50 == uVar6`): followed
+// as a pointer to what it is compared with or given to (a uint2 there: `*(uint2 *)xStack_50`), the local staying the number it is,
+// so that the arithmetic on it (`xStack_50 + 1`) moves it by bytes as before.
+std::string followed_numbers(const std::string& s) {
+    const std::map<std::string, Local> locals = locals_of(s);
+    std::string out = s;
+    for (const auto& [n, l] : locals) {
+        if (!l.scalar || l.size != 8 || l.type.find('*') != std::string::npos) continue;
+        if (out.find("*" + n) == std::string::npos) continue;
+        const std::regex follow("(^|[^\\w])\\*" + n + "\\b(?!\\s*[\\[(])");
+        std::string done;
+        std::size_t at = 0;
+        bool any = false;
+        for (auto it = std::sregex_iterator(out.begin(), out.end(), follow); it != std::sregex_iterator(); ++it) {
+            const std::size_t begin = static_cast<std::size_t>(it->position()) + (*it)[1].length();
+            const std::size_t end = static_cast<std::size_t>(it->position() + it->length());
+            if (begin > 0 && out[begin - 1] == '*') continue;   // (a product: `a * *b` is written `a * *b`, `a**b` is not the decompiler's)
+            // what it meets: `== W`, `!= W`, `= W` after; `W = ` or `W == ` before
+            const std::size_t line_start = out.rfind('\n', begin) == std::string::npos ? 0 : out.rfind('\n', begin) + 1;
+            const std::size_t line_end = std::min(out.find('\n', end), out.size());
+            const std::string left = out.substr(line_start, begin - line_start), right = out.substr(end, line_end - end);
+            static const std::regex after(R"(^\s*(?:==|!=|=)\s*(\w+))");
+            static const std::regex before(R"((\w+)\s*(?:==|!=|=)\s*\(*$)");
+            std::smatch m;
+            std::string type = "xunknown8";
+            const auto typed = [&](const std::string& w) {
+                const auto o = locals.find(w);
+                if (o != locals.end() && o->second.scalar && o->second.size <= 8 && o->second.type.find('*') == std::string::npos) type = o->second.type;
+            };
+            if (std::regex_search(right, m, after)) typed(m[1].str());
+            if (type == "xunknown8" && std::regex_search(left, m, before)) typed(m[1].str());
+            done.append(out, at, begin - at);
+            done += std::format("(*({} *){})", type, n);
+            at = end;
+            any = true;
+        }
+        if (!any) continue;
+        done.append(out, at, std::string::npos);
+        out = std::move(done);
+    }
+    return out;
+}
+
 // A function the decompiler finds to return a pointer to an array writes it as no C declares one (`xunknown1 (*) [16] strrchr(...)`):
 // written to return a pointer to the array's first element, the same address.
 std::string array_pointer_result(std::string s) {
@@ -731,8 +1186,50 @@ std::string array_pointer_result(std::string s) {
 }
 
 std::string x64_function_text(std::string_view text) {
-    return crc32_widths(array_pointer_result(pointer_locals(single_labels(close_labels(array_assignments(products_128(wide_assignments(wide_products(unprototyped_self_calls(address_of_unnamed_fields(
-        stack_pieces(partial_access(std::string(text::trim(text)))))))))))))));
+    return mxcsr_writes(followed_numbers(code_pointer_arithmetic(structure_casts(gs_base(crc32_widths(array_pointer_result(pointer_locals(single_labels(close_labels(
+        array_assignments(products_128(wide_assignments(wide_products(unprototyped_self_calls(address_of_unnamed_fields(
+            frame_reads(stack_pieces(partial_access(std::string(text::trim(text)))))))))))))))))))));
+}
+
+// The number a system call stub puts in EAX (`mov r10, rcx; mov eax, N; ... syscall`): the last `mov eax, imm32` before the
+// first `syscall` of its first 64 bytes.
+std::optional<std::uint32_t> system_call_number(ByteView code) {
+    std::optional<std::uint32_t> number;
+    for (std::size_t k = 0; k + 1 < code.size(); ++k) {
+        if (code[k] == 0x0F && code[k + 1] == 0x05) return number;
+        if (code[k] == 0xB8 && k + 5 <= code.size()) {
+            number = static_cast<std::uint32_t>(code[k + 1] | code[k + 2] << 8 | code[k + 3] << 16) | static_cast<std::uint32_t>(code[k + 4]) << 24;
+            k += 4;   // (past the number: NtCreateLowBoxToken's is 0xb8, whose byte is the instruction's own)
+        }
+    }
+    return std::nullopt;
+}
+
+// A system call stub's text (`xunknown8 NtClose(void)` ... `syscall(); return 0xf;`: the decompiler sees neither the arguments
+// the call passes on nor what it gives back, and takes EAX, the number, for the result) written as what the stub does: it takes the
+// four register arguments and gives back the call's result, the call made by the stub of its number (`system_call(0xf, ...)`).
+// The rest stays: the test of how the system is entered, and the other way in (`int 2Eh`).
+std::string system_call_text(const std::string& s, std::uint32_t number) {
+    const std::string_view head = past_notes(s);
+    const std::size_t at = s.size() - head.size();
+    const std::size_t open = s.find('(', at), brace = s.find('{', at);
+    if (open == std::string::npos || brace == std::string::npos || open > brace) return s;
+    const std::size_t close = s.rfind(')', brace);
+    if (close == std::string::npos || text::trim(std::string_view(s).substr(open + 1, close - open - 1)) != "void") return s;
+    const std::string args = "param_1,param_2,param_3,param_4";
+    std::string out = s.substr(0, open + 1) + "uint8 param_1,uint8 param_2,uint8 param_3,uint8 param_4" + s.substr(close);
+    static const std::regex call_return(R"(syscall\(\);(\s*)return [^;\n]*;)");
+    static const std::regex call(R"(\bsyscall\(\);)");
+    const std::string made = std::format("system_call(0x{:x},{})", number, args);
+    out = std::regex_replace(out, call_return, "return " + made + ";");
+    out = std::regex_replace(out, call, made + ";");
+    // (the stub's code, the function's own: `mov r10, rcx; mov eax, N; syscall; ret`)
+    const std::size_t body = out.find("{\n", open);
+    if (body == std::string::npos) return s;
+    out.insert(body + 2, std::format("  __declspec(allocate(\".text\")) static const unsigned char system_call_0x{:x}[] = "
+                                     "{{0x4c, 0x8b, 0xd1, 0xb8, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x{:02x}, 0x0f, 0x05, 0xc3}};\n",
+                                     number, number & 0xFF, (number >> 8) & 0xFF, (number >> 16) & 0xFF, number >> 24));
+    return out;
 }
 
 ModuleX64 compilable_x64(Services& services, const std::filesystem::path& module, const std::filesystem::path& outdir) {
@@ -744,6 +1241,8 @@ ModuleX64 compilable_x64(Services& services, const std::filesystem::path& module
     std::vector<StructNote> structs;
     std::vector<std::string> decls;
     std::set<std::string> own;
+    std::map<std::string, Va> va_of;
+    for (const auto& [va, name] : got.by_va) va_of.try_emplace(name, va);
     ModuleX64 m;
     for (const std::string& n : got.order) {
         const std::string* text = got.texts.find(n);
@@ -753,6 +1252,12 @@ ModuleX64 compilable_x64(Services& services, const std::filesystem::path& module
             structs.insert(structs.end(), it->second.structs.begin(), it->second.structs.end());
         }
         std::string body = x64_function_text(*text);
+        if (body.find("syscall();") != std::string::npos)
+            if (const auto va = va_of.find(n); va != va_of.end())
+                if (const auto code = image.read_rva(va->second - image.header().image_base, 64))
+                    if (const std::optional<std::uint32_t> number = system_call_number(*code)) {
+                        body = system_call_text(body, *number);
+                    }
         const std::string declared = declaration_of(body);
         // (no C: left to the original -- nor C the decompiler says it could not recover: a jump through a table or an import's slot
         // it did not follow is a call through a pointer nothing sets)
@@ -854,12 +1359,15 @@ ModuleX64 compilable_x64(Services& services, const std::filesystem::path& module
     static const std::regex ram(R"(\b([a-z]*)Ram([0-9a-f]{16})\b)");
     static const std::regex func(R"(\bfunc_0x([0-9a-f]{8,16})\b)");   // (as many digits as the address needs)
     std::set<std::pair<std::string, std::string>> rams;
+    std::set<std::string> indexed;   // the globals the text indexes (`axRam..[1]`)
     std::set<std::string> funcs, called_through, calls;
     bool stack_pointer = false;   // (the C reads the stack pointer, as the decompiler names it)
     for (const std::string& n : order) {
         const std::string& t = out.at(n);
         for (auto it = std::sregex_iterator(t.begin(), t.end(), ram); it != std::sregex_iterator(); ++it) {
             rams.emplace((*it)[1].str(), (*it)[2].str());
+            if (static_cast<std::size_t>(it->position() + it->length()) < t.size() && t[static_cast<std::size_t>(it->position() + it->length())] == '[')
+                indexed.insert(it->str());
             // (a global called through holds a function's address)
             const std::size_t end = static_cast<std::size_t>(it->position() + it->length());
             if (it->position() >= 2 && t.compare(static_cast<std::size_t>(it->position()) - 2, 2, "(*") == 0 && t.compare(end, 1, ")") == 0) {
@@ -887,6 +1395,13 @@ ModuleX64 compilable_x64(Services& services, const std::filesystem::path& module
             if (widest != 0) size = widest;
         }
         const std::string name = prefix + "Ram" + digits;
+        // (an array the text indexes, `axRam00000001801d8a10[1]`: the bytes there, as many as the decompiler says it has)
+        if (prefix == "ax" && indexed.contains(name)) {
+            std::int64_t bytes = 16;
+            if (const auto it = sizes.find(at); it != sizes.end()) bytes = std::max(bytes, *std::ranges::max_element(it->second));
+            macros.push_back(std::format("#define {} (*(xunknown1 (*)[{}])0x{})", name, bytes, digits));
+            continue;
+        }
         macros.push_back(std::format("#define {} (*({} *)0x{})", name, internal::ram_type(prefix, size, called_through.contains(name)), digits));
     }
     for (const std::string& digits : funcs)
@@ -899,7 +1414,9 @@ ModuleX64 compilable_x64(Services& services, const std::filesystem::path& module
     static const std::set<std::string> kIntrinsic = {"memcmp", "memcpy", "memset", "strcat", "strcmp", "strcpy", "strlen", "wcscat",
                                                      "wcscmp", "wcscpy", "wcslen", "_strset", "_wcsset", "abs", "labs", "llabs", "_abs64",
                                                      "_rotl", "_rotr", "_lrotl", "_lrotr", "_rotl64", "_rotr64", "_byteswap_ushort",
-                                                     "_byteswap_ulong", "_byteswap_uint64"};
+                                                     "_byteswap_ulong", "_byteswap_uint64", "strncmp", "strncpy", "strncat", "wcsncmp",
+                                                     "wcsncpy", "wcsncat", "acos", "asin", "atan", "atan2", "ceil", "cos", "cosh", "exp",
+                                                     "fabs", "floor", "fmod", "log", "log10", "pow", "sin", "sinh", "sqrt", "tan", "tanh"};
     std::vector<std::string> not_intrinsic;   // (after the declarations, which the pragma's own would otherwise contradict)
     for (const std::string& n : own)
         if (kIntrinsic.contains(n)) not_intrinsic.push_back(std::format("#pragma function({})", n));

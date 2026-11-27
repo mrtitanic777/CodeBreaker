@@ -26,7 +26,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::driver_lane() {
     }
     Impl& i = *impl_;
     knowledge::Knowledge& kb = i.knowledge();
-    const base::watcom::OpenWatcom ow = i.openwatcom();
+    const build::watcom::OpenWatcom ow = i.openwatcom();
     const config::Config& config = i.config;
     emulate::pcode::LifterSet* lifters = i.lifters();
     base::Corpus& corpus = *i.corpus;
@@ -160,6 +160,12 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::win64_lane() {
         return n;
     };
     services.content_sha = [&corpus](const stdfs::path& p) { return corpus.sha(p); };
+    // what an import returns, as the Windows SDK declares it (a pointer or handle is answered with one)
+    services.import_returns = [&kb](std::string_view name) -> std::optional<std::string> {
+        const symbols::prototypes::Prototype* p = kb.prototype("win64", name);
+        if (p == nullptr) return std::nullopt;
+        return p->returns;
+    };
     auto lane = std::make_shared<verify::lanes::Win64Lane>(std::move(services));
     std::lock_guard hold(impl_->lock);
     return impl_->win64_ = std::move(lane);

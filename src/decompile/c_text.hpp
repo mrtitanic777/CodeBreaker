@@ -356,6 +356,10 @@ ModuleX64 compilable_x64(Services& services, const std::filesystem::path& module
 // One function's text as compilable_x64 writes it, of the rewrites a text needs on its own: the decompiler's names for parts of
 // variables, unnamed fields, 128-bit products, whole-array assignments, labels at a block's end, locals it reaches as pointers.
 std::string x64_function_text(std::string_view text);
+// A system call stub's number (`mov eax, N` before its `syscall`, in its first bytes) and its text written as the stub does it:
+// the four register arguments taken and handed to the call of that number, whose result it gives back.
+std::optional<std::uint32_t> system_call_number(ByteView code);
+std::string system_call_text(const std::string& text, std::uint32_t number);
 
 // {name: number of arguments} for the functions in `names` that every call passes the same number of arguments to.
 std::map<std::string, std::int64_t> call_counts(const std::map<std::string, std::set<std::int64_t>>& calls,

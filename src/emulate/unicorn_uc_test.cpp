@@ -118,6 +118,18 @@ CB_TEST("emulate.unicorn_uc.port_hooks", [] {
     CB_CHECK(written == (std::vector<std::uint32_t>{0x61, 1, 0x2A}));
 });
 
+CB_TEST("emulate.unicorn_uc.a_syscall_hook_is_called_in_its_place", [] {
+    auto uc = open_x86(64);
+    std::vector<std::uint64_t> numbers;
+    uc->hook_add_insn_syscall([&](core16::Uc& m) {
+        numbers.push_back(m.reg_read(reg("RAX")));
+        m.reg_write(reg("RAX"), 0x77);
+    });
+    // mov eax, 0x55 ; syscall ; add rax, 1
+    CB_CHECK_EQ(run(*uc, {0xB8, 0x55, 0x00, 0x00, 0x00, 0x0F, 0x05, 0x48, 0x83, 0xC0, 0x01}, "RAX"), 0x78u);
+    CB_CHECK(numbers == (std::vector<std::uint64_t>{0x55}));
+});
+
 CB_TEST("emulate.unicorn_uc.a_callback_that_throws_stops_the_run", [] {
     auto uc = open_x86(32);
     uc->mem_map(kCode, 0x1000);

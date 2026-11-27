@@ -26,6 +26,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <span>
 #include <string_view>
 #include <string>
@@ -47,8 +48,10 @@ public:
     // Bump when what a verdict depends on changes.
     // 2: a fault is one ending, whichever access faulted. 3: calls to short addresses, undeclared calls refused. 5: inputs aimed at the
     // constants the code compares with; scratch memory of pointers. 6: one function at a time. 7: guided inputs (comparisons turned,
-    // switch cases, pointers put where a run faulted), zeroed scratch memory.
-    static constexpr int kRev = 7;
+    // switch cases, pointers put where a run faulted), zeroed scratch memory. 8: the thread's and the process's environment blocks
+    // (GS) and the shared user data, a system call answered and recorded (its number and arguments), an import that returns a
+    // pointer given one into the scratch memory.
+    static constexpr int kRev = 8;
     static constexpr std::size_t kArguments = 6;                              // RCX, RDX, R8, R9 and two on the stack
     static constexpr std::uint64_t kStackBase = 0x10000000, kStackSize = 0x100000;
     static constexpr std::uint64_t kScratchBase = 0x20000000, kScratchSize = 0x10000;   // where pointer arguments are aimed
@@ -59,6 +62,13 @@ public:
 
     static constexpr std::size_t kMostArguments = 16;                         // an input sets at most this many (the rest of the stack is zeros)
     static constexpr std::uint64_t kRepairBase = kScratchBase + 0x8000;       // where a pointer put in by a repair points (0x800 apart)
+    static constexpr std::uint64_t kAnswerBase = kScratchBase + 0x7000;       // what an import that returns a pointer gives
+    // The thread's environment block (GS's base: itself at 0x30, the process's block at 0x60), the process's, and the page of data the
+    // kernel shares with every process (KUSER_SHARED_DATA, whose byte at 0x308 says how a system call is made: 0, `syscall`).
+    static constexpr std::uint64_t kTebBase = 0x30000000, kTebSize = 0x2000;
+    static constexpr std::uint64_t kPebBase = kTebBase + kTebSize, kPebSize = 0x1000;
+    static constexpr std::uint64_t kSharedUserData = 0x7FFE0000, kSharedUserDataSize = 0x1000;
+    static constexpr std::uint64_t kProcessId = 0x1A4, kThreadId = 0x1A8;
 
     // An input: the arguments and what imports return (compare::Input), what the scratch memory holds, and bytes written over it.
     //   Counting   bytes counting up, so a pointer argument reads something other than zeros
@@ -138,6 +148,9 @@ public:
         Image original;
         std::optional<Image> rebuilt;
         std::map<std::string, int> argc;               // {import: the arguments the Windows SDK declares it with}
+        std::set<std::string> pointer_results;         // the imports the Windows SDK declares to return a pointer (or a handle)
+        // {system call number: the arguments the SDK declares its stub with} for the module's own stubs (ntdll's NtClose: 0xf, 1)
+        std::map<std::uint32_t, int> syscall_argc;
         // {where a rebuilt function starts: where the original's does}: judging one function, every other rebuilt one is a jump to the
         // original's, so the verdict is on the function's own C (a wrong callee does not sink its callers)
         std::map<std::uint64_t, std::uint64_t> originals;
@@ -157,7 +170,7 @@ public:
     static compare::Fingerprint fingerprint(const Context& context, std::uint64_t entry, const Vector& v, bool rebuilt, bool novalue,
                                             std::optional<std::pair<std::uint64_t, std::uint64_t>> own = std::nullopt);
     // The verdict of one function. Safe to call from several threads at once.
-    static store::Judgement judge_function(const Context& context, const Item& item);
+    static Judgement judge_function(const Context& context, const Item& item);
 
     struct Services {
         decompile::c_text::Services& decompiler;
@@ -166,7 +179,13 @@ public:
         std::function<std::optional<int>(std::string_view import)> import_argc;   // none: an import's call is compared by its name
         lane_common::FingerprintStore fingerprints;
         std::function<std::optional<std::string>(const std::filesystem::path&)> content_sha;
+        std::function<std::optional<std::string>(std::string_view import)> import_returns;   // the type an import returns, as the SDK says
     };
+    // A type the Windows SDK returns that is a pointer or a handle (`LPVOID`, `HANDLE`, `HMODULE`, `PVOID`, `char *`).
+    static bool is_pointer_type(std::string_view type);
+    // What an import gives back on input `v` (its `stub_ret`): a pointer into the scratch memory for one that returns a pointer,
+    // unless the input says null or gives a pointer itself.
+    static std::uint64_t answer(const Context& context, const std::string& import, const Vector& v);
 
     // Visual C++'s x64 compiler and linker on this computer: the newest Hostx64/x64 of a Visual Studio under `roots` (default: the
     // standard places); nullopt when none is installed.

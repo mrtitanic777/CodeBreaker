@@ -5,6 +5,7 @@
 #include <cctype>
 #include <cstdio>
 #include <format>
+#include <functional>
 #include <set>
 #include <unordered_map>
 
@@ -85,12 +86,80 @@ Bytes le64(std::uint64_t value) {
 
 constexpr std::uint64_t mask_of(unsigned size) { return size >= 8 ? ~std::uint64_t{0} : (std::uint64_t{1} << (8 * size)) - 1; }
 
+void put_le64(Bytes& b, std::size_t at, std::uint64_t value) {
+    for (int k = 0; k < 8; ++k) b[at + static_cast<std::size_t>(k)] = static_cast<std::uint8_t>(value >> (8 * k));
+}
+
+// The thread's and the process's environment blocks as a process's first thread has them: the block's own address, the stack's
+// extent, the process's and thread's ids; the process's image.
+Bytes teb_bytes() {
+    Bytes b(Win64Lane::kTebSize, 0);
+    put_le64(b, 0x08, Win64Lane::kStackBase + Win64Lane::kStackSize);   // StackBase
+    put_le64(b, 0x10, Win64Lane::kStackBase);                           // StackLimit
+    put_le64(b, 0x30, Win64Lane::kTebBase);                             // Self
+    put_le64(b, 0x40, Win64Lane::kProcessId);                           // ClientId
+    put_le64(b, 0x48, Win64Lane::kThreadId);
+    put_le64(b, 0x60, Win64Lane::kPebBase);                             // ProcessEnvironmentBlock
+    return b;
+}
+Bytes peb_bytes(std::uint64_t image_base) {
+    Bytes b(Win64Lane::kPebSize, 0);
+    put_le64(b, 0x10, image_base);   // ImageBaseAddress
+    return b;
+}
+
 void map_image(core16::Uc& uc, const Win64Lane::Image& image) {
     uc.mem_map(image.base, page_up(image.end) - image.base);
     for (const Win64Lane::Image::Region& r : image.regions) uc.mem_write(r.va, r.bytes);
 }
 
+// "const char *", " LPVOID ": the type without `const`, `CONST` and the spaces round it.
+std::string trimmed_type(std::string_view type) {
+    std::string out;
+    for (std::string_view word : text::split_ws(type))
+        if (word != "const" && word != "CONST" && word != "__restrict" && word != "WINAPI") out += (out.empty() || word == "*" ? "" : " ") + std::string(word);
+    while (out.find(" *") != std::string::npos) out.replace(out.find(" *"), 2, "*");
+    return out;
+}
+
+// An 8-byte word of the stack (nullopt where nothing is mapped).
+std::optional<std::uint64_t> read_stack(core16::Uc& uc, std::uint64_t at) {
+    try {
+        const Bytes b = uc.mem_read(at, 8);
+        std::uint64_t v = 0;
+        for (int k = 0; k < 8; ++k) v |= static_cast<std::uint64_t>(b[static_cast<std::size_t>(k)]) << (8 * k);
+        return v;
+    } catch (const emulate::unicorn_uc::UcFault&) {
+        return std::nullopt;
+    }
+}
+
 }  // namespace
+
+// ---- what imports give back --------------------------------------------------------------------------------------------------
+
+bool Win64Lane::is_pointer_type(std::string_view type) {
+    std::string t(trimmed_type(type));
+    if (t.empty()) return false;
+    if (t.back() == '*') return true;
+    static const std::set<std::string, std::less<>> kPointers = {
+        "HANDLE", "HMODULE", "HINSTANCE", "HLOCAL", "HGLOBAL", "HWND", "HMENU", "HICON", "HCURSOR", "HBRUSH", "HDC", "HFONT", "HBITMAP",
+        "HPEN", "HRGN", "HPALETTE", "HKEY", "HRSRC", "HDESK", "HWINSTA", "HMONITOR", "HACCEL", "HHOOK", "HKL", "HDWP", "FARPROC", "PVOID",
+        "LPVOID", "LPCVOID", "PCVOID", "LPSTR", "LPWSTR", "LPCSTR", "LPCWSTR", "PSTR", "PWSTR", "PCSTR", "PCWSTR", "LPTSTR", "LPCTSTR",
+        "PTSTR", "PCTSTR", "PBYTE", "LPBYTE", "PSLIST_ENTRY", "PSINGLE_LIST_ENTRY", "PRUNTIME_FUNCTION", "PTP_POOL", "PTP_WORK",
+        "PTP_TIMER", "PTP_WAIT", "PTP_IO", "PTP_CLEANUP_GROUP", "LPTOP_LEVEL_EXCEPTION_FILTER", "PVECTORED_EXCEPTION_HANDLER", "HDEVNOTIFY",
+        "HPOWERNOTIFY", "HMETAFILE", "HENHMETAFILE", "HGDIOBJ", "HCOLORSPACE", "HGLRC", "LPWCH", "LPCH", "PWCHAR", "PCHAR", "PUCHAR",
+        "PULONG", "PDWORD", "LPDWORD", "PIMAGE_NT_HEADERS", "PIMAGE_NT_HEADERS64", "PPEB", "PTEB", "PLIST_ENTRY"};
+    return kPointers.contains(t);
+}
+
+std::uint64_t Win64Lane::answer(const Context& context, const std::string& import, const Vector& v) {
+    const std::uint64_t given = static_cast<std::uint64_t>(v.stub_ret.value_or(0));
+    if (given == 0 || !context.pointer_results.contains(import)) return given;
+    // (a pointer the input gives -- into the scratch memory, a repair's -- stays: it is one already)
+    if (given >= kScratchBase && given < kScratchBase + kScratchSize) return given;
+    return kAnswerBase;
+}
 
 // ---- the inputs ----------------------------------------------------------------------------------------------------------------
 
@@ -392,6 +461,12 @@ Ready ready(const Win64Lane::Context& context, std::uint64_t entry, const Win64L
         });
         if ((scratch || global) && end > m.address) uc.mem_write(m.address, m.data);
     }
+    // the thread's and the process's environment blocks (GS's base) and the data the kernel shares
+    uc.mem_map(Win64Lane::kTebBase, Win64Lane::kTebSize + Win64Lane::kPebSize);
+    uc.mem_write(Win64Lane::kTebBase, teb_bytes());
+    uc.mem_write(Win64Lane::kPebBase, peb_bytes(context.original.base));
+    uc.mem_map(Win64Lane::kSharedUserData, Win64Lane::kSharedUserDataSize);
+    uc.reg_write(reg("GS_BASE"), Win64Lane::kTebBase);
     uc.mem_map(Win64Lane::kStackBase, Win64Lane::kStackSize);
     // the stack as a call leaves it: the return address, the 32 bytes kept for the register arguments, the rest above them
     r.rsp = Win64Lane::kStackBase + Win64Lane::kStackSize - 0x10000 - 8;
@@ -430,25 +505,50 @@ compare::Fingerprint Win64Lane::fingerprint(const Context& context, std::uint64_
         };
         constexpr std::size_t kMaxDeps = 64;
         const std::uint64_t result = static_cast<std::uint64_t>(v.stub_ret.value_or(0));
+        const auto record = [&](const std::function<std::string()>& call) {   // (a call past the cap is counted as "...")
+            if (fp.deps.size() < kMaxDeps) fp.deps.push_back(call());
+            else if (fp.deps.size() == kMaxDeps) fp.deps.emplace_back("...");
+        };
         uc->hook_add_code(
             [&](core16::Uc& m, std::uint64_t address, std::uint32_t) {
                 const std::size_t k = static_cast<std::size_t>((address - kLandingBase) / 16);
                 if (k >= landed.size()) return;
-                if (fp.deps.size() < kMaxDeps) {
-                    const std::string& name = landed[k];
+                const std::string& name = landed[k];
+                record([&] {
                     std::string call = name + "(";
                     if (const auto n = context.argc.find(name); n != context.argc.end()) {
                         for (int a = 0; a < std::min(n->second, 4); ++a) call += (a == 0 ? "" : ",") + argument(m.reg_read(reg(kArgRegisters[a])));
                     } else {
                         call += "?";
                     }
-                    fp.deps.push_back(call + ")");
-                } else if (fp.deps.size() == kMaxDeps) {
-                    fp.deps.emplace_back("...");
-                }
-                m.reg_write(reg("RAX"), result);
+                    return call + ")";
+                });
+                m.reg_write(reg("RAX"), answer(context, name, v));
             },
             kLandingBase, kLandingBase + made.landing_size - 1);
+        // a system call: its number (EAX) and, where the stub's declaration says how many there are, its arguments as the kernel reads
+        // them (R10 for RCX, then RDX, R8, R9, and the first two on the stack) -- else the number alone, compared as a call whose
+        // arguments are not known; it gives back what the input says imports give
+        uc->hook_add_insn_syscall([&](core16::Uc& m) {
+            record([&] {
+                const auto number = static_cast<std::uint32_t>(m.reg_read(reg("EAX")));
+                const std::uint64_t sp = m.reg_read(reg("RSP"));
+                // (made by the function judged itself, a stub, with the stack as its caller left it: every argument it can pass on)
+                const bool own = sp == rsp;
+                const auto n = context.syscall_argc.find(number);
+                if (!own && n == context.syscall_argc.end()) return std::format("syscall {:x}", number);
+                const int count = own ? 6 : n->second;
+                std::string call = std::format("syscall({:x}", number);
+                static constexpr const char* kSyscallRegisters[] = {"R10", "RDX", "R8", "R9"};
+                for (int a = 0; a < std::min(count, 4); ++a) call += "," + argument(m.reg_read(reg(kSyscallRegisters[a])));
+                for (int slot = 0; slot < std::min(count - 4, 2); ++slot) {
+                    const std::optional<std::uint64_t> word = read_stack(m, sp + 0x28 + 8 * static_cast<std::uint64_t>(slot));
+                    call += "," + (word ? argument(*word) : std::string("?"));
+                }
+                return call + ")";
+            });
+            m.reg_write(reg("RAX"), result);
+        });
         std::set<std::int64_t> covered;
         if (own) uc->hook_add_code([&](core16::Uc&, std::uint64_t address, std::uint32_t) { covered.insert(static_cast<std::int64_t>(address)); }, own->first, own->second - 1);
         std::string exit;
@@ -474,8 +574,10 @@ compare::Fingerprint Win64Lane::fingerprint(const Context& context, std::uint64_
             for (const Saved& s : kSaved) saved = saved && uc->reg_read(reg(s.name)) == s.sentinel;
             fp.saved = saved;
         }
-        // what it left: the module's writable data and the memory behind the pointer arguments
+        // what it left: the module's writable data, the memory behind the pointer arguments, the environment blocks
         Bytes left = uc->mem_read(kScratchBase, kScratchSize);
+        const Bytes blocks = uc->mem_read(kTebBase, kTebSize + kPebSize);
+        left.insert(left.end(), blocks.begin(), blocks.end());
         for (const Image::Region& r : context.original.regions) {
             if (!r.writable) continue;
             const Bytes now = uc->mem_read(r.va, r.bytes.size());
@@ -591,9 +693,11 @@ std::optional<Win64Lane::Trace> Win64Lane::trace(const Context& context, std::ui
         const std::uint64_t result = static_cast<std::uint64_t>(v.stub_ret.value_or(0));
         uc.hook_add_code(
             [&](core16::Uc& m, std::uint64_t address, std::uint32_t) {
-                if ((address - kLandingBase) / 16 < made.landed.size()) m.reg_write(reg("RAX"), result);
+                const std::size_t k = static_cast<std::size_t>((address - kLandingBase) / 16);
+                if (k < made.landed.size()) m.reg_write(reg("RAX"), answer(context, made.landed[k], v));
             },
             kLandingBase, kLandingBase + made.landing_size - 1);
+        uc.hook_add_insn_syscall([&](core16::Uc& m) { m.reg_write(reg("RAX"), result); });
 
         std::unordered_map<std::uint64_t, Decoded> code;   // the instructions met, by address
         const auto decoded = [&](std::uint64_t address) -> const Decoded* {
@@ -849,8 +953,8 @@ std::vector<Win64Lane::Vector> Win64Lane::guided_inputs(const Context& context, 
     return out;
 }
 
-store::Judgement Win64Lane::judge_function(const Context& context, const Item& item) {
-    const store::Judgement made = lane_common::judged([&]() -> store::Judgement {
+Judgement Win64Lane::judge_function(const Context& context, const Item& item) {
+    const lane_common::Judgement made = lane_common::judged([&]() -> lane_common::Judgement {
         const std::function<compare::Fingerprint(const Vector&)> original = [&](const Vector& v) {
             std::optional<std::string> key;
             if (context.sha) key = compare::cache_key_text(std::format("win64 {} {} {:x} {:x} {} | {}", kRev, *context.sha, item.va, item.end, item.novalue, vector_text(v)));
@@ -877,7 +981,7 @@ store::Judgement Win64Lane::judge_function(const Context& context, const Item& i
                                                                   });
         return {outcome.verdict, outcome.reason, outcome.limit_codes(), outcome.detail};
     });
-    return made;
+    return {made.verdict, made.reason, made.limits, made.detail};
 }
 
 // ---- the tools -----------------------------------------------------------------------------------------------------------------
@@ -968,6 +1072,23 @@ Built Win64Lane::build(const Prepared& prepared, const stdfs::path& module_path,
     if (services_.import_argc)
         for (const auto& [slot, name] : ctx->original.slots)
             if (const std::optional<int> n = services_.import_argc(name)) ctx->argc[name] = *n;
+    // the module's own system call stubs: each one's number, and the arguments its declaration gives it
+    if (services_.import_argc) {
+        const formats::pe::Image pe = formats::pe::Image::open(module_path);
+        for (const formats::pe::Export& e : pe.exports()) {
+            if (!e.name || (!e.name->starts_with("Nt") && !e.name->starts_with("Zw"))) continue;
+            const std::optional<ByteView> code = pe.read_rva(e.rva, 32);
+            if (!code) continue;
+            const std::optional<std::uint32_t> number = decompile::c_text::system_call_number(*code);
+            if (!number || ctx->syscall_argc.contains(*number)) continue;
+            std::optional<int> n = services_.import_argc(*e.name);
+            if (!n) n = services_.import_argc((e.name->starts_with("Nt") ? "Zw" : "Nt") + e.name->substr(2));
+            if (n) ctx->syscall_argc[*number] = *n;
+        }
+    }
+    if (services_.import_returns)
+        for (const auto& [slot, name] : ctx->original.slots)
+            if (const std::optional<std::string> t = services_.import_returns(name); t && is_pointer_type(*t)) ctx->pointer_results.insert(name);
     // where each function ends: at the next function the module states, or its image's end
     const formats::pe::Image image = formats::pe::Image::open(module_path);
     std::set<std::uint64_t> starts;

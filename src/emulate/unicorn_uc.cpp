@@ -143,6 +143,14 @@ public:
               "uc_hook_add");
     }
 
+    void hook_add_insn_syscall(std::function<void(core16::Uc&)> callback) override {
+        syscall_callback_ = std::move(callback);
+        uc_hook hook = 0;
+        check(api_.uc_hook_add(uc_, &hook, UC_HOOK_INSN, reinterpret_cast<void*>(&syscall_hook), this, std::uint64_t{1}, std::uint64_t{0},
+                               static_cast<int>(UC_X86_INS_SYSCALL)),
+              "uc_hook_add");
+    }
+
 private:
     void check(uc_err code, std::string_view what) const {
         if (code != UC_ERR_OK) throw UcFault(static_cast<int>(code), std::format("{}: {}", what, api_.uc_strerror(code)));
@@ -170,6 +178,14 @@ private:
             self->fail(uc);
         }
     }
+    static void syscall_hook(uc_engine* uc, void* user) {
+        UnicornUc* self = static_cast<UnicornUc*>(user);
+        try {
+            self->syscall_callback_(*self);
+        } catch (...) {
+            self->fail(uc);
+        }
+    }
     static void code_hook(uc_engine* uc, std::uint64_t address, std::uint32_t size, void* user) {
         CodeHook* hook = static_cast<CodeHook*>(user);
         try {
@@ -185,6 +201,7 @@ private:
     std::vector<std::unique_ptr<CodeHook>> code_hooks_;
     std::function<std::uint32_t(core16::Uc&, std::uint32_t, std::uint32_t)> in_callback_;
     std::function<void(core16::Uc&, std::uint32_t, std::uint32_t, std::uint32_t)> out_callback_;
+    std::function<void(core16::Uc&)> syscall_callback_;
 };
 
 }  // namespace
