@@ -8,7 +8,7 @@
 //   * the Orbis ELF (OELF, type 0xFE10 / 0xFE18) OpenOrbis's `create-fself` makes of that and wraps in a fake SELF as `eboot.bin`. The system's dynamic linker reads
 //     its dynamic data from a segment of type 0x61000000 (PT_SCE_DYNLIBDATA) whose tags (0x6100xxxx) are the usual ones moved: the symbol, string and relocation
 //     tables are offsets inside that segment, imports are symbols named `<NID>#<library>#<module>`. A NID is the first eight bytes of SHA-1(name + a fixed 16-byte
-//     salt), reversed, as base 64 without padding (`+` and `-`); CodeBreaker names the ones its list of well-known functions (formats/orbis_nids.cpp) hashes to;
+//     salt), reversed, as base 64 without padding (`+` and `-`); CodeBreaker names the ones its list of well-known functions (config/nids/orbis.nids) hashes to;
 //   * the fake SELF (magic 1D 3D 15 4F, key type 0x101, program type "fake"): a 32-byte header, a table of 32-byte segment entries, a copy of the ELF header and
 //     program headers, an extended-info block (program authority, type, versions and a SHA-256 of the ELF), the NPDRM control block, the meta blocks and a zero
 //     signature, then each segment's bytes as they are. The loadable segments are the plain bytes (the blocks are hashed, not compressed or encrypted), so the

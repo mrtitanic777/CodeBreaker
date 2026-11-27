@@ -4,7 +4,7 @@
 // $10000, data at $10000000), and `e_entry` is the address of a function descriptor (the PowerPC64 ELF ABI v1's `.opd` entry: the code's address, then the table of
 // contents (TOC) pointer r2 is set to). Imports of the system's library modules (PRX) are named in the program header of type $60000002: the stubs of each library
 // (its name, its function NIDs and the descriptors a call goes through). A NID is the first four bytes of the SHA-1 of the function's name followed by a 16-byte
-// suffix, so the names PSL1GHT publishes (ppu/sprx/*/exports.h, MIT) name them (formats/ps3_nids.cpp); the same file names the lv2 kernel's system calls by number.
+// suffix, so the names PSL1GHT publishes (ppu/sprx/*/exports.h, MIT) name them (config/nids/ps3.nids); the same file names the lv2 kernel's system calls by number.
 //
 // A SELF (magic "SCE\0", version 2) holds the ELF header, the program headers and, in a table of 32-byte section-info entries (one per program header), each
 // segment's place in the file, its length, whether it is zlib-compressed and whether it is encrypted. Segments that are encrypted are refused (FormatError:

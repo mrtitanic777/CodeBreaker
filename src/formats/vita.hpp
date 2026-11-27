@@ -12,7 +12,7 @@
 // each segment 16-byte aligned; `to_elf()` writes that image back as a plain ELF (the form a rebuilt program is compared in).
 //
 // Imports are a table per library of function NIDs and the stubs the loader fills in; the function NIDs are named from VitaSDK's published database
-// (vitasdk/vita-headers, MIT: formats/vita_nids.cpp).
+// (vitasdk/vita-headers, MIT: config/nids/vita.nids).
 #pragma once
 
 #include <cstdint>
