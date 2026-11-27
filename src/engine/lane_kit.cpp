@@ -240,7 +240,10 @@ verify::reconstruct::Services LaneKit::reconstruct_services(const verify::recons
             return machine;
         }
         switch (*lane) {
-        case base::Lane::Pe: return is_powerpc_image(p) ? "powerpc" : is_x64_image(p) ? "win64" : "pe";
+        case base::Lane::Pe:
+            // a .NET assembly (32- or 64-bit) is IL, not native code: no native lane rebuilds it (the .NET lane decompiles it to C#)
+            if (formats::pe::is_dotnet_file(p)) return std::nullopt;
+            return is_powerpc_image(p) ? "powerpc" : is_x64_image(p) ? "win64" : "pe";
         case base::Lane::Ne: return "ne";
         case base::Lane::Le: return "le";
         case base::Lane::Dos: return "dos";
