@@ -435,15 +435,31 @@ written as NASM source by `source/pe64_writer` (over `source/x64_writer`) with `
 
 The same programs as C (2026-11-26): the Microsoft runtime's functions identified by the x64 signatures (Visual C++ 14.16-14.51,
 the Universal CRT) and left to the original, every other function decompiled, compiled on its own with Visual C++ 14.51's x64 `cl`,
-linked into one DLL beside the original, and run beside the original's in Unicorn's x64 one function at a time (lane revision 6).
-Weak: equivalent with a limit (low coverage, a stand-in callee) or only ever faulting alike. Teeth on notepad: 70% of deliberately
-broken functions it had called verified are caught, 59% of the weak ones.
+linked into one DLL beside the original, and run beside the original's in Unicorn's x64 one function at a time.
+Weak: equivalent with a limit (low coverage, a stand-in callee) or only ever faulting alike. Teeth (`check --teeth`): of the
+functions deliberately broken, the share caught among those it had called verified, among the weak ones, and in all.
 
-| Program | Functions | Runtime library | Verified | Weak | Unverified | Does not compile | No source |
-|---|---|---|---|---|---|---|---|
-| notepad.exe | 386 | 24 (Visual C++ 14.38) | 117 | 136 | 65 | 31 | 13 |
-| cmd.exe | 665 | 23 | 143 | 266 | 148 | 65 | 20 |
-| calc.exe | 22 | 4 | 5 | 5 | 5 | 2 | 1 |
+Lane revision 7 (2026-11-26) adds guided inputs (`Win64Lane::guided_inputs`): each run of the original is traced (every
+conditional jump, setcc and cmovcc of the function with the comparison before it, and where a compared register was loaded
+from), and verify/guided turns each comparison the other way, in an argument, in what imports return, or in the memory the value
+was read from (a field behind a pointer argument, a global). Where a run faults on an address it loaded, the place that address
+came from gets a pointer of its own, until the run gets past. Every case of a switch (a bound compared before an indirect jump) is
+tried. The fixed inputs gain scratch memory of zeros (null pointers, zero counts) and imports that hand back a pointer.
+
+| Program | Functions | Runtime library | Verified | Weak | Unverified | Does not compile | No source | Teeth: verified / weak / all |
+|---|---|---|---|---|---|---|---|---|
+| notepad.exe, revision 6 | 386 | 24 (Visual C++ 14.38) | 117 | 136 | 65 | 31 | 13 | 62 of 88 (70%) / 32 of 54 (59%) / 94 of 142 (66%) |
+| notepad.exe, revision 7 | 386 | 24 | 141 | 90 | 103 | 31 | 13 | 86 of 105 (81%) / 24 of 34 (70%) / 110 of 139 (79%) |
+| cmd.exe, revision 6 | 665 | 23 | 143 | 266 | 148 | 65 | 20 | 54 of 88 (61%) / 22 of 47 (46%) / 76 of 135 (56%) |
+| cmd.exe, revision 7 | 665 | 23 | 143 | 230 | 185 | 65 | 20 | 61 of 86 (71%) / 18 of 32 (56%) / 79 of 118 (67%) |
+| calc.exe, revision 6 | 22 | 4 | 5 | 5 | 5 | 2 | 1 | |
+
+The revision 7 rows were made with a newer decompiler (the tree of 2026-11-26, 11:41 PM), which writes 16 more functions of
+notepad and one more of cmd than revision 6's did (the classes add up to 402 and 666: the decompiler's functions beyond
+the ones the module's unwind table states). The same build with the guided inputs turned off (`CB_NO_GUIDED=1`) gives
+notepad 128 verified, 134 weak, 72 unverified (teeth 78% / 47% / 67%) and cmd 145, 253, 160 (69% / 43% / 61%): the guided inputs
+turn 13 of notepad's weak functions into verified ones, and on both programs they mostly find differences no input reached before
+(31 more unverified on notepad, 25 on cmd).
 
 ## PlayStation 4, PlayStation 5 and Xbox One / Series homebrew (the ps4, ps5 and xboxone lanes)
 

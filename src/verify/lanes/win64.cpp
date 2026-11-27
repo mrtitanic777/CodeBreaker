@@ -2,9 +2,11 @@
 #include "verify/lanes/win64.hpp"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <format>
 #include <set>
+#include <unordered_map>
 
 #include "core/crypto.hpp"
 #include "core/error.hpp"
@@ -44,13 +46,15 @@ std::string vector_text(const Win64Lane::Vector& v) {
     std::string out = "args";
     for (const std::int64_t a : v.args) out += std::format(" {:x}", static_cast<std::uint64_t>(a));
     if (v.stub_ret) out += std::format(" ret {:x}", static_cast<std::uint64_t>(*v.stub_ret));
-    if (v.pointers) out += " pointers";
+    if (v.fill == Win64Lane::Fill::Pointers) out += " pointers";
+    if (v.fill == Win64Lane::Fill::Zeros) out += " zeros";
+    for (const guided::MemInit& m : v.mem) out += std::format(" mem {:x}:{}", m.address, crypto::to_hex(m.data));
     return out;
 }
 
 // The bytes the scratch memory starts with: counting up, so a pointer argument reads something other than zeros; or each 8-byte
 // word the address of the word 0x48 bytes on (round the scratch memory), so a structure's pointer leads somewhere readable.
-const Bytes& scratch_bytes(bool pointers) {
+const Bytes& scratch_bytes(Win64Lane::Fill fill) {
     static const Bytes counting = [] {
         Bytes b(Win64Lane::kScratchSize);
         for (std::size_t i = 0; i < b.size(); ++i) b[i] = static_cast<std::uint8_t>(i * 7 + 1);
@@ -64,8 +68,22 @@ const Bytes& scratch_bytes(bool pointers) {
         }
         return b;
     }();
-    return pointers ? linked : counting;
+    static const Bytes zeros(Win64Lane::kScratchSize, 0);
+    switch (fill) {
+    case Win64Lane::Fill::Pointers: return linked;
+    case Win64Lane::Fill::Zeros: return zeros;
+    case Win64Lane::Fill::Counting: break;
+    }
+    return counting;
 }
+
+Bytes le64(std::uint64_t value) {
+    Bytes out(8);
+    for (int k = 0; k < 8; ++k) out[static_cast<std::size_t>(k)] = static_cast<std::uint8_t>(value >> (8 * k));
+    return out;
+}
+
+constexpr std::uint64_t mask_of(unsigned size) { return size >= 8 ? ~std::uint64_t{0} : (std::uint64_t{1} << (8 * size)) - 1; }
 
 void map_image(core16::Uc& uc, const Win64Lane::Image& image) {
     uc.mem_map(image.base, page_up(image.end) - image.base);
@@ -79,12 +97,12 @@ void map_image(core16::Uc& uc, const Win64Lane::Image& image) {
 std::vector<Win64Lane::Vector> Win64Lane::vectors() {
     const auto s = [](std::uint64_t k) { return static_cast<std::int64_t>(kScratchBase + 0x1000 * k); };
     std::vector<Vector> out;
-    const auto add = [&](std::vector<std::int64_t> args, std::optional<std::int64_t> ret = std::nullopt, bool pointers = false) {
+    const auto add = [&](std::vector<std::int64_t> args, std::optional<std::int64_t> ret = std::nullopt, Fill fill = Fill::Counting) {
         Vector v;
         v.args = std::move(args);
         v.args.resize(kArguments, 0);
         v.stub_ret = ret;
-        v.pointers = pointers;
+        v.fill = fill;
         out.push_back(std::move(v));
     };
     add({0, 0, 0, 0, 0, 0});
@@ -94,8 +112,12 @@ std::vector<Win64Lane::Vector> Win64Lane::vectors() {
     add({-1, 0x7FFFFFFF, 0x80, 0x10, -2, 3});
     add({s(0), 0, 0, 0, 0, 0}, 0x123);
     add({0x100, s(1), 0xFFFF, s(3), 0, 1});
-    add({s(0), s(1), s(2), s(3), s(4), s(5)}, 1, true);
-    add({s(0), 0, s(2), 2, 0, 0}, 0, true);
+    add({s(0), s(1), s(2), s(3), s(4), s(5)}, 1, Fill::Pointers);
+    add({s(0), 0, s(2), 2, 0, 0}, 0, Fill::Pointers);
+    // structures of nulls and zero counts; imports that hand back a pointer to memory of pointers
+    add({s(0), s(1), s(2), s(3), s(4), s(5)}, std::nullopt, Fill::Zeros);
+    add({s(0), 1, s(2), 0, 0, 0}, 1, Fill::Zeros);
+    add({s(0), s(1), s(2), s(3), 0, 0}, s(6), Fill::Pointers);
     return out;
 }
 
@@ -103,10 +125,11 @@ std::vector<Win64Lane::Vector> Win64Lane::directed(ByteView code, std::uint64_t 
     thread_local platforms::DecoderSet decoders;
     std::vector<std::uint64_t> seen;   // the constants, each once, in the order the code first has them
     for (const platforms::Insn& insn : decoders.get(platforms::Arch::X86, 64).disasm(code, va)) {
-        if (insn.mnemonic != "cmp" && insn.mnemonic != "sub") continue;
+        if (insn.mnemonic != "cmp" && insn.mnemonic != "sub" && insn.mnemonic != "test") continue;
         const std::string_view ops = insn.op_str;
         const std::size_t comma = ops.rfind(", ");
         if (comma == std::string_view::npos) continue;
+        if (ops.starts_with("rsp") || ops.starts_with("rbp")) continue;   // (the frame, not a value)
         std::string_view literal = ops.substr(comma + 2);
         const bool negative = literal.starts_with("-");
         if (negative) literal.remove_prefix(1);
@@ -127,6 +150,174 @@ std::vector<Win64Lane::Vector> Win64Lane::directed(ByteView code, std::uint64_t 
         beside.stub_ret = c;
         out.push_back(beside);
     }
+    return out;
+}
+
+guided::Input Win64Lane::to_guided(const Vector& v) {
+    guided::Input g;
+    for (const std::int64_t a : v.args) g.args.push_back(static_cast<std::uint64_t>(a));
+    g.stub_ret = static_cast<std::uint64_t>(v.stub_ret.value_or(0));   // (zero is a value imports return too: a test of it can be turned)
+    g.mem_init = v.mem;
+    g.extra["fill"] = static_cast<std::int64_t>(v.fill);
+    return g;
+}
+
+Win64Lane::Vector Win64Lane::from_guided(const guided::Input& g) {
+    Vector v;
+    for (std::size_t a = 0; a < g.args.size() && a < kMostArguments; ++a) v.args.push_back(static_cast<std::int64_t>(g.args[a]));
+    v.args.resize(std::max(v.args.size(), kArguments), 0);
+    if (g.stub_ret && *g.stub_ret != 0) v.stub_ret = static_cast<std::int64_t>(*g.stub_ret);
+    if (g.mem_init) v.mem = *g.mem_init;
+    if (const auto f = g.extra.find("fill"); f != g.extra.end())
+        if (const std::int64_t* n = std::get_if<std::int64_t>(&f->second); n && *n >= 0 && *n <= static_cast<std::int64_t>(Fill::Zeros)) v.fill = static_cast<Fill>(*n);
+    return v;
+}
+
+std::optional<bool> Win64Lane::condition(std::string_view cc, std::uint64_t rflags, std::uint64_t rcx) {
+    const bool cf = (rflags & 0x1) != 0, pf = (rflags & 0x4) != 0, zf = (rflags & 0x40) != 0, sf = (rflags & 0x80) != 0, of = (rflags & 0x800) != 0;
+    if (cc == "o") return of;
+    if (cc == "no") return !of;
+    if (cc == "b" || cc == "c" || cc == "nae") return cf;
+    if (cc == "ae" || cc == "nb" || cc == "nc") return !cf;
+    if (cc == "e" || cc == "z") return zf;
+    if (cc == "ne" || cc == "nz") return !zf;
+    if (cc == "be" || cc == "na") return cf || zf;
+    if (cc == "a" || cc == "nbe") return !cf && !zf;
+    if (cc == "s") return sf;
+    if (cc == "ns") return !sf;
+    if (cc == "p" || cc == "pe") return pf;
+    if (cc == "np" || cc == "po") return !pf;
+    if (cc == "l" || cc == "nge") return sf != of;
+    if (cc == "ge" || cc == "nl") return sf == of;
+    if (cc == "le" || cc == "ng") return zf || sf != of;
+    if (cc == "g" || cc == "nle") return !zf && sf == of;
+    if (cc == "rcxz") return rcx == 0;
+    if (cc == "ecxz") return (rcx & 0xFFFFFFFF) == 0;
+    if (cc == "cxz") return (rcx & 0xFFFF) == 0;
+    return std::nullopt;
+}
+
+namespace {
+
+// A general register: its size in bytes and the 64-bit register it is part of (`high`: AH, BH, CH, DH -- bits 8 to 15).
+struct Gpr {
+    std::string_view full;
+    unsigned size = 0;
+    bool high = false;
+};
+std::optional<Gpr> gpr(std::string_view name) {
+    static const std::unordered_map<std::string_view, Gpr> table = [] {
+        std::unordered_map<std::string_view, Gpr> t;
+        struct Legacy {
+            std::string_view q, d, w, b, h;
+        };
+        static constexpr Legacy kLegacy[] = {{"RAX", "EAX", "AX", "AL", "AH"}, {"RBX", "EBX", "BX", "BL", "BH"}, {"RCX", "ECX", "CX", "CL", "CH"},
+                                             {"RDX", "EDX", "DX", "DL", "DH"}, {"RSI", "ESI", "SI", "SIL", ""},  {"RDI", "EDI", "DI", "DIL", ""},
+                                             {"RBP", "EBP", "BP", "BPL", ""},  {"RSP", "ESP", "SP", "SPL", ""}};
+        for (const Legacy& l : kLegacy) {
+            t[l.q] = {l.q, 8};
+            t[l.d] = {l.q, 4};
+            t[l.w] = {l.q, 2};
+            t[l.b] = {l.q, 1};
+            if (!l.h.empty()) t[l.h] = {l.q, 1, true};
+        }
+        static constexpr std::string_view kNumbered[][4] = {{"R8", "R8D", "R8W", "R8B"},     {"R9", "R9D", "R9W", "R9B"},     {"R10", "R10D", "R10W", "R10B"},
+                                                            {"R11", "R11D", "R11W", "R11B"}, {"R12", "R12D", "R12W", "R12B"}, {"R13", "R13D", "R13W", "R13B"},
+                                                            {"R14", "R14D", "R14W", "R14B"}, {"R15", "R15D", "R15W", "R15B"}};
+        for (const auto& n : kNumbered) {
+            t[n[0]] = {n[0], 8};
+            t[n[1]] = {n[0], 4};
+            t[n[2]] = {n[0], 2};
+            t[n[3]] = {n[0], 1};
+        }
+        return t;
+    }();
+    const auto it = table.find(name);
+    if (it == table.end()) return std::nullopt;
+    return it->second;
+}
+
+std::string upper(std::string_view s) {
+    std::string out(s);
+    for (char& c : out) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return out;
+}
+
+std::string_view trimmed(std::string_view s) {
+    while (!s.empty() && s.front() == ' ') s.remove_prefix(1);
+    while (!s.empty() && s.back() == ' ') s.remove_suffix(1);
+    return s;
+}
+
+// "0x2a", "42", "-0x10": the number, wrapped to 64 bits.
+std::optional<std::uint64_t> number(std::string_view s) {
+    const bool negative = s.starts_with("-");
+    if (negative) s.remove_prefix(1);
+    if (s.empty() || !std::isdigit(static_cast<unsigned char>(s.front()))) return std::nullopt;
+    const std::optional<std::uint64_t> n = s.starts_with("0x") ? text::parse_int<std::uint64_t>(s.substr(2), 16) : text::parse_int<std::uint64_t>(s);
+    if (!n) return std::nullopt;
+    return negative ? ~*n + 1 : *n;
+}
+
+}  // namespace
+
+std::optional<Win64Lane::Operand> Win64Lane::operand(std::string_view text) {
+    text = trimmed(text);
+    if (text.empty()) return std::nullopt;
+    Operand o;
+    static constexpr std::pair<std::string_view, unsigned> kSizes[] = {{"byte ptr ", 1}, {"word ptr ", 2}, {"dword ptr ", 4}, {"qword ptr ", 8}};
+    for (const auto& [prefix, size] : kSizes)
+        if (text.starts_with(prefix)) {
+            o.size = size;
+            text.remove_prefix(prefix.size());
+            break;
+        }
+    if (const std::size_t open = text.find('['); open != std::string_view::npos) {
+        if (open != 0 || !text.ends_with("]")) return std::nullopt;   // (a segment's address, or a size this does not read)
+        o.kind = Operand::Kind::Mem;
+        std::string_view inner = text.substr(1, text.size() - 2);
+        bool minus = false;
+        while (!inner.empty()) {
+            const std::size_t plus = inner.find(" + "), less = inner.find(" - ");
+            const std::size_t cut = std::min(plus, less);
+            const std::string_view term = trimmed(inner.substr(0, cut));
+            if (const std::size_t star = term.find('*'); star != std::string_view::npos) {
+                const std::string r = upper(term.substr(0, star));
+                const std::optional<std::uint64_t> scale = number(term.substr(star + 1));
+                if (!gpr(r) || !scale || minus) return std::nullopt;
+                o.index = r;
+                o.scale = static_cast<unsigned>(*scale);
+            } else if (const std::optional<std::uint64_t> n = number(term)) {
+                o.imm += minus ? ~*n + 1 : *n;
+            } else {
+                const std::string r = upper(term);
+                if ((r != "RIP" && !gpr(r)) || minus) return std::nullopt;
+                (o.base.empty() ? o.base : o.index) = r;
+            }
+            if (cut == std::string_view::npos) break;
+            minus = cut == less;
+            inner.remove_prefix(cut + 3);
+        }
+        return o;
+    }
+    if (const std::optional<std::uint64_t> n = number(text)) {
+        o.kind = Operand::Kind::Imm;
+        o.imm = *n;
+        return o;
+    }
+    const std::string r = upper(text);
+    const std::optional<Gpr> g = gpr(r);
+    if (!g) return std::nullopt;
+    o.kind = Operand::Kind::Reg;
+    o.reg = r;
+    o.size = g->size;
+    return o;
+}
+
+std::vector<std::optional<Win64Lane::Operand>> Win64Lane::operands(std::string_view op_str) {
+    std::vector<std::optional<Operand>> out;
+    if (trimmed(op_str).empty()) return out;
+    for (std::string_view part : text::split(op_str, ',')) out.push_back(operand(part));
     return out;
 }
 
@@ -152,55 +343,89 @@ Win64Lane::Image Win64Lane::read_image(const stdfs::path& path) {
 
 // ---- one run -------------------------------------------------------------------------------------------------------------------
 
+namespace {
+
+// A machine made ready to run `entry` on input `v`: the images, the import landings, the scratch memory as the input fills it, the
+// stack as a call leaves it and the argument registers.
+struct Ready {
+    std::unique_ptr<core16::Uc> uc;
+    std::vector<std::string> landed;    // the import of each landing, in order
+    std::uint64_t landing_size = 0;
+    std::uint64_t rsp = 0;
+};
+
+Ready ready(const Win64Lane::Context& context, std::uint64_t entry, const Win64Lane::Vector& v, bool rebuilt) {
+    Ready r;
+    r.uc = emulate::unicorn_uc::open_x86(64);
+    core16::Uc& uc = *r.uc;
+    map_image(uc, context.original);
+    if (rebuilt && context.rebuilt) {
+        map_image(uc, *context.rebuilt);
+        // jmp qword ptr [rip+0] ; <the original's address>   -- 14 bytes: Visual C++ starts every x64 function 16 bytes from the last
+        for (const auto& [at, original] : context.originals) {
+            if (at == entry) continue;
+            Bytes jump = {0xFF, 0x25, 0, 0, 0, 0};
+            const Bytes to = le64(original);
+            jump.insert(jump.end(), to.begin(), to.end());
+            uc.mem_write(at, jump);
+        }
+    }
+    // every import slot lands on one `ret` of its own
+    for (const auto& [slot, name] : context.original.slots) {
+        uc.mem_write(slot, le64(Win64Lane::kLandingBase + 16 * r.landed.size()));
+        r.landed.push_back(name);
+    }
+    r.landing_size = page_up(std::max<std::uint64_t>(16 * r.landed.size(), 16));
+    uc.mem_map(Win64Lane::kLandingBase, r.landing_size);
+    uc.mem_write(Win64Lane::kLandingBase, Bytes(r.landing_size, 0xC3));
+    uc.mem_map(Win64Lane::kReturnAddress, kPage);
+    uc.mem_write(Win64Lane::kReturnAddress, Bytes(kPage, 0xC3));
+    uc.mem_map(Win64Lane::kScratchBase, Win64Lane::kScratchSize);
+    uc.mem_write(Win64Lane::kScratchBase, scratch_bytes(v.fill));
+    // the input's own bytes: over the scratch memory, or the original's globals
+    for (const guided::MemInit& m : v.mem) {
+        const std::uint64_t end = m.address + m.data.size();
+        const bool scratch = m.address >= Win64Lane::kScratchBase && end <= Win64Lane::kScratchBase + Win64Lane::kScratchSize;
+        // (only the writable sections: both sides read those at the original's addresses, but the rebuilt DLL keeps its own constants)
+        const bool global = std::ranges::any_of(context.original.regions, [&](const Win64Lane::Image::Region& r) {
+            return r.writable && m.address >= r.va && end <= r.va + r.bytes.size();
+        });
+        if ((scratch || global) && end > m.address) uc.mem_write(m.address, m.data);
+    }
+    uc.mem_map(Win64Lane::kStackBase, Win64Lane::kStackSize);
+    // the stack as a call leaves it: the return address, the 32 bytes kept for the register arguments, the rest above them
+    r.rsp = Win64Lane::kStackBase + Win64Lane::kStackSize - 0x10000 - 8;
+    const std::size_t n = std::min(std::max(v.args.size(), Win64Lane::kArguments), Win64Lane::kMostArguments);
+    Bytes frame(8 + 32 + 8 * (n - 4), 0);
+    for (int k = 0; k < 8; ++k) frame[static_cast<std::size_t>(k)] = static_cast<std::uint8_t>(Win64Lane::kReturnAddress >> (8 * k));
+    for (std::size_t a = 4; a < v.args.size() && a < n; ++a)
+        for (int k = 0; k < 8; ++k) frame[40 + 8 * (a - 4) + static_cast<std::size_t>(k)] = static_cast<std::uint8_t>(static_cast<std::uint64_t>(v.args[a]) >> (8 * k));
+    uc.mem_write(r.rsp, frame);
+    uc.reg_write(reg("RSP"), r.rsp);
+    for (std::size_t a = 0; a < 4 && a < v.args.size(); ++a) uc.reg_write(reg(kArgRegisters[a]), static_cast<std::uint64_t>(v.args[a]));
+    for (const Saved& s : kSaved) uc.reg_write(reg(s.name), s.sentinel);
+    uc.reg_write(reg("RAX"), 0);
+    return r;
+}
+
+}  // namespace
+
 compare::Fingerprint Win64Lane::fingerprint(const Context& context, std::uint64_t entry, const Vector& v, bool rebuilt, bool novalue,
                                             std::optional<std::pair<std::uint64_t, std::uint64_t>> own) {
     compare::Fingerprint fp;
     try {
-        const std::unique_ptr<core16::Uc> uc = emulate::unicorn_uc::open_x86(64);
-        map_image(*uc, context.original);
-        if (rebuilt && context.rebuilt) {
-            map_image(*uc, *context.rebuilt);
-            // jmp qword ptr [rip+0] ; <the original's address>   -- 14 bytes: Visual C++ starts every x64 function 16 bytes from the last
-            for (const auto& [at, original] : context.originals) {
-                if (at == entry) continue;
-                Bytes jump = {0xFF, 0x25, 0, 0, 0, 0};
-                for (int k = 0; k < 8; ++k) jump.push_back(static_cast<std::uint8_t>(original >> (8 * k)));
-                uc->mem_write(at, jump);
-            }
-        }
-        // every import slot lands on one `ret` of its own
-        std::vector<std::string> landed;
-        for (const auto& [slot, name] : context.original.slots) {
-            const std::uint64_t landing = kLandingBase + 16 * landed.size();
-            Bytes value(8);
-            for (int k = 0; k < 8; ++k) value[static_cast<std::size_t>(k)] = static_cast<std::uint8_t>(landing >> (8 * k));
-            uc->mem_write(slot, value);
-            landed.push_back(name);
-        }
-        const std::uint64_t landing_size = page_up(std::max<std::uint64_t>(16 * landed.size(), 16));
-        uc->mem_map(kLandingBase, landing_size);
-        uc->mem_write(kLandingBase, Bytes(landing_size, 0xC3));
-        uc->mem_map(kReturnAddress, kPage);
-        uc->mem_write(kReturnAddress, Bytes(kPage, 0xC3));
-        uc->mem_map(kScratchBase, kScratchSize);
-        uc->mem_write(kScratchBase, scratch_bytes(v.pointers));
-        uc->mem_map(kStackBase, kStackSize);
-        // the stack as a call leaves it: the return address, the 32 bytes kept for the register arguments, the rest above them
-        const std::uint64_t rsp = kStackBase + kStackSize - 0x10000 - 8;
-        Bytes frame(8 + 32 + 8 * (kArguments > 4 ? kArguments - 4 : 0), 0);
-        for (int k = 0; k < 8; ++k) frame[static_cast<std::size_t>(k)] = static_cast<std::uint8_t>(kReturnAddress >> (8 * k));
-        for (std::size_t a = 4; a < v.args.size(); ++a)
-            for (int k = 0; k < 8; ++k) frame[40 + 8 * (a - 4) + static_cast<std::size_t>(k)] = static_cast<std::uint8_t>(static_cast<std::uint64_t>(v.args[a]) >> (8 * k));
-        uc->mem_write(rsp, frame);
-        uc->reg_write(reg("RSP"), rsp);
-        for (std::size_t a = 0; a < 4 && a < v.args.size(); ++a) uc->reg_write(reg(kArgRegisters[a]), static_cast<std::uint64_t>(v.args[a]));
-        for (const Saved& s : kSaved) uc->reg_write(reg(s.name), s.sentinel);
-        uc->reg_write(reg("RAX"), 0);
+        Ready made = ready(context, entry, v, rebuilt);
+        core16::Uc* uc = made.uc.get();
+        const std::vector<std::string>& landed = made.landed;
+        const std::uint64_t rsp = made.rsp;
 
         const std::uint64_t rebuilt_lo = rebuilt && context.rebuilt ? context.rebuilt->base : 0, rebuilt_hi = rebuilt && context.rebuilt ? context.rebuilt->end : 0;
         const auto argument = [&](std::uint64_t value) -> std::string {
             if (value >= kStackBase && value < kStackBase + kStackSize) return "stack";   // (the two frames are laid out differently)
-            if (value >= rebuilt_lo && value < rebuilt_hi) return "rebuilt";
+            if (value >= rebuilt_lo && value < rebuilt_hi) {   // a rebuilt function stands for the original's (a callback handed out)
+                if (const auto o = context.originals.find(value); o != context.originals.end()) return std::format("{:x}", o->second);
+                return "rebuilt";
+            }
             return std::format("{:x}", value);
         };
         constexpr std::size_t kMaxDeps = 64;
@@ -223,7 +448,7 @@ compare::Fingerprint Win64Lane::fingerprint(const Context& context, std::uint64_
                 }
                 m.reg_write(reg("RAX"), result);
             },
-            kLandingBase, kLandingBase + landing_size - 1);
+            kLandingBase, kLandingBase + made.landing_size - 1);
         std::set<std::int64_t> covered;
         if (own) uc->hook_add_code([&](core16::Uc&, std::uint64_t address, std::uint32_t) { covered.insert(static_cast<std::int64_t>(address)); }, own->first, own->second - 1);
         std::string exit;
@@ -263,6 +488,367 @@ compare::Fingerprint Win64Lane::fingerprint(const Context& context, std::uint64_
     return fp;
 }
 
+// ---- guided inputs -------------------------------------------------------------------------------------------------------------
+
+namespace {
+
+constexpr std::uint64_t kRetStub = Win64Lane::kScratchBase + Win64Lane::kScratchSize - 0x10;   // a `ret` a repaired code pointer leads to
+constexpr std::size_t kRepairSlots = 15;          // places a repair points at, 0x800 apart from kRepairBase (below the `ret`)
+constexpr int kRepairSteps = 6;                   // repairs in a row on one input
+constexpr std::size_t kRepairSeeds = 8;           // inputs repaired at most
+constexpr int kSwitchRuns = 40;                   // runs spent on the cases of switches
+constexpr std::uint64_t kMostCases = 64;          // a bound above this is not taken for a switch's
+constexpr std::size_t kMostBranches = 4096;       // decisions a trace keeps (a loop makes one each time round)
+
+// One instruction of the original as the trace reads it.
+struct Decoded {
+    enum class What : std::uint8_t { Other, Compare, Decision, Load, Call, Neutral };
+    What what = What::Other;
+    guided::CompareOp op = guided::CompareOp::Other;
+    std::string cc;                                     // Decision: the condition
+    bool jump = false;                                  // Decision: a conditional jump (not setcc/cmovcc)
+    bool writes = false;                                // Compare: it writes its first operand (all but cmp and test)
+    std::uint32_t size = 0;
+    std::vector<std::optional<Win64Lane::Operand>> ops;
+    bool indirect = false;                              // an indirect jmp
+};
+
+Decoded decode(const platforms::Insn& insn) {
+    Decoded d;
+    d.size = insn.size;
+    const std::string_view m = insn.mnemonic;
+    d.ops = Win64Lane::operands(insn.op_str);
+    const auto first_is = [&](std::string_view full) {
+        if (d.ops.empty() || !d.ops[0] || d.ops[0]->kind != Win64Lane::Operand::Kind::Reg) return false;
+        const std::optional<Gpr> g = gpr(d.ops[0]->reg);
+        return g && g->full == full;
+    };
+    if (m == "jmp") {
+        d.indirect = !d.ops.empty() && d.ops[0] && d.ops[0]->kind != Win64Lane::Operand::Kind::Imm;
+    } else if (m.starts_with("j") || m.starts_with("set") || m.starts_with("cmov")) {
+        const std::string_view cc = m.substr(m.starts_with("j") ? 1 : m.starts_with("set") ? 3 : 4);
+        if (Win64Lane::condition(cc, 0, 0)) {
+            d.what = Decoded::What::Decision;
+            d.cc = std::string(cc);
+            d.jump = m.starts_with("j");
+        }
+    } else if (m == "cmp" || m == "test" || m == "sub" || m == "and" || m == "or" || m == "xor" || m == "add" || m == "dec" || m == "inc") {
+        const bool zeroing = m == "xor" && d.ops.size() == 2 && d.ops[0] && d.ops[1] && d.ops[0]->kind == Win64Lane::Operand::Kind::Reg &&
+                             d.ops[1]->kind == Win64Lane::Operand::Kind::Reg && d.ops[0]->reg == d.ops[1]->reg;
+        if (!first_is("RSP") && !first_is("RBP") && !zeroing) {
+            d.what = Decoded::What::Compare;
+            d.op = m == "cmp" || m == "sub" ? guided::CompareOp::Other : guided::parse_compare_op(m);
+            d.writes = m != "cmp" && m != "test";
+        }
+    } else if ((m == "mov" || m == "movzx" || m == "movsx" || m == "movsxd") && d.ops.size() == 2 && d.ops[0] && d.ops[1] &&
+               d.ops[0]->kind == Win64Lane::Operand::Kind::Reg && d.ops[1]->kind == Win64Lane::Operand::Kind::Mem) {
+        d.what = Decoded::What::Load;
+    } else if (m == "call") {
+        d.what = Decoded::What::Call;
+    } else if (m.starts_with("mov") || m == "lea" || m == "nop" || m == "push" || m == "pop") {
+        d.what = Decoded::What::Neutral;   // (leaves the flags as they were)
+    }
+    return d;
+}
+
+// The register's value as wide as it is (AH: bits 8-15).
+std::uint64_t register_value(core16::Uc& uc, std::string_view name) {
+    const std::optional<Gpr> g = gpr(name);
+    if (!g) return 0;
+    std::uint64_t v = uc.reg_read(reg(g->full));
+    if (g->high) v >>= 8;
+    return v & mask_of(g->size);
+}
+
+std::uint64_t address_of(core16::Uc& uc, const Win64Lane::Operand& o, std::uint64_t next) {
+    std::uint64_t a = o.imm;
+    if (o.base == "RIP") a += next;
+    else if (!o.base.empty()) a += register_value(uc, o.base);
+    if (!o.index.empty()) a += register_value(uc, o.index) * o.scale;
+    return a;
+}
+
+std::optional<std::uint64_t> read_le(core16::Uc& uc, std::uint64_t at, unsigned size) {
+    try {
+        const Bytes b = uc.mem_read(at, size);
+        std::uint64_t v = 0;
+        for (unsigned k = 0; k < size; ++k) v |= static_cast<std::uint64_t>(b[k]) << (8 * k);
+        return v;
+    } catch (const emulate::unicorn_uc::UcFault&) {
+        return std::nullopt;
+    }
+}
+
+}  // namespace
+
+std::optional<Win64Lane::Trace> Win64Lane::trace(const Context& context, std::uint64_t entry, std::pair<std::uint64_t, std::uint64_t> span, const Vector& v) {
+    thread_local platforms::DecoderSet decoders;
+    const platforms::Decoder& decoder = decoders.get(platforms::Arch::X86, 64);
+    Trace t;
+    try {
+        Ready made = ready(context, entry, v, false);
+        core16::Uc& uc = *made.uc;
+        const std::uint64_t result = static_cast<std::uint64_t>(v.stub_ret.value_or(0));
+        uc.hook_add_code(
+            [&](core16::Uc& m, std::uint64_t address, std::uint32_t) {
+                if ((address - kLandingBase) / 16 < made.landed.size()) m.reg_write(reg("RAX"), result);
+            },
+            kLandingBase, kLandingBase + made.landing_size - 1);
+
+        std::unordered_map<std::uint64_t, Decoded> code;   // the instructions met, by address
+        const auto decoded = [&](std::uint64_t address) -> const Decoded* {
+            if (const auto it = code.find(address); it != code.end()) return &it->second;
+            const std::optional<Bytes> bytes = [&]() -> std::optional<Bytes> {
+                try {
+                    return uc.mem_read(address, 16);
+                } catch (const emulate::unicorn_uc::UcFault&) {
+                    return std::nullopt;
+                }
+            }();
+            if (!bytes) return nullptr;
+            const std::vector<platforms::Insn> one = decoder.disasm(*bytes, address, 1);
+            if (one.empty()) return nullptr;
+            return &code.emplace(address, decode(one[0])).first->second;
+        };
+        // where a register's value was loaded from, while it holds it: (address, size)
+        std::unordered_map<std::string_view, std::pair<std::uint64_t, unsigned>> loaded_from;
+        std::unordered_map<std::uint64_t, std::uint64_t> loads;   // an 8-byte value loaded -> where it was last loaded from
+        std::optional<guided::Compare> pending;                   // the comparison the next decision reads
+        guided::Observation& o = t.observation;
+        o.args_at = made.rsp + 8;                                 // the home of argument 0; the others follow, eight bytes apart
+        o.stack_low = kStackBase;
+        o.stack_high = made.rsp + 8;
+
+        const auto value_of = [&](const Operand& op, unsigned size, std::uint64_t next, std::optional<std::uint64_t>& at) -> std::optional<std::uint64_t> {
+            switch (op.kind) {
+            case Operand::Kind::Imm: return op.imm & mask_of(size);
+            case Operand::Kind::Reg: {
+                const std::optional<Gpr> g = gpr(op.reg);
+                if (!g->high)
+                    if (const auto f = loaded_from.find(g->full); f != loaded_from.end() && f->second.second >= size) at = f->second.first;
+                return register_value(uc, op.reg) & mask_of(size);
+            }
+            case Operand::Kind::Mem: {
+                at = address_of(uc, op, next);
+                return read_le(uc, *at, size);
+            }
+            }
+            return std::nullopt;
+        };
+        uc.hook_add_code(
+            [&](core16::Uc& m, std::uint64_t address, std::uint32_t) {
+                o.reach.insert(address);
+                const Decoded* d = decoded(address);
+                if (!d) return;
+                const std::uint64_t next = address + d->size;
+                switch (d->what) {
+                case Decoded::What::Decision: {
+                    const std::optional<bool> taken = condition(d->cc, m.reg_read(reg("RFLAGS")), m.reg_read(reg("RCX")));
+                    if (o.branches.size() < kMostBranches) o.branches.push_back({address, taken.value_or(false), pending});
+                    break;
+                }
+                case Decoded::What::Compare: {
+                    pending.reset();
+                    if (d->ops.empty() || !d->ops[0]) break;
+                    guided::Compare c;
+                    c.op = d->op;
+                    const Operand& a = *d->ops[0];
+                    const std::optional<Operand> b = d->ops.size() > 1 ? d->ops[1] : std::optional<Operand>(Operand{Operand::Kind::Imm, 0, "", 1});
+                    if (!b) break;
+                    c.size = a.size != 0 ? a.size : b->size != 0 ? b->size : 8;
+                    const std::optional<std::uint64_t> av = value_of(a, c.size, next, c.a_at), bv = value_of(*b, c.size, next, c.b_at);
+                    if (!av || !bv) break;
+                    c.a = *av;
+                    c.b = *bv;
+                    pending = c;
+                    if (d->writes && a.kind == Operand::Kind::Reg) loaded_from.erase(gpr(a.reg)->full);   // (all but cmp and test write it)
+                    break;
+                }
+                case Decoded::What::Load: {
+                    const Operand& to = *d->ops[0];
+                    const Operand& from = *d->ops[1];
+                    const unsigned size = from.size != 0 ? from.size : to.size;
+                    const std::uint64_t at = address_of(m, from, next);
+                    const std::optional<Gpr> g = gpr(to.reg);
+                    if (g->high) break;
+                    loaded_from[g->full] = {at, size};
+                    if (size == 8)
+                        if (const std::optional<std::uint64_t> value = read_le(m, at, 8)) loads[*value] = at;
+                    break;
+                }
+                case Decoded::What::Call:
+                    pending.reset();
+                    for (const std::string_view r : {"RAX", "RCX", "RDX", "R8", "R9", "R10", "R11"}) loaded_from.erase(r);
+                    break;
+                case Decoded::What::Neutral:
+                case Decoded::What::Other:
+                    if (d->what == Decoded::What::Other) pending.reset();
+                    if (!d->ops.empty() && d->ops[0] && d->ops[0]->kind == Operand::Kind::Reg)   // (what it writes holds another value now)
+                        if (const std::optional<Gpr> g = gpr(d->ops[0]->reg)) loaded_from.erase(g->full);
+                    break;
+                }
+            },
+            span.first, span.second - 1);
+        try {
+            uc.emu_start(entry, kReturnAddress, 2'000'000, kMaxSteps);
+        } catch (const emulate::unicorn_uc::UcFault&) {
+            t.faulted = true;
+            // where the faulting address came from: the register it was made of, and where that register's value came from
+            const std::uint64_t rip = uc.reg_read(reg("RIP"));
+            std::vector<std::uint64_t> suspects;
+            const Decoded* d = decoded(rip);
+            if (d == nullptr) {
+                suspects.push_back(rip);   // a call or jump to an address that holds nothing: a code pointer
+                t.fetch = true;
+            } else {
+                for (const std::optional<Operand>& op : d->ops)
+                    if (op && op->kind == Operand::Kind::Mem) {
+                        if (!op->base.empty() && op->base != "RIP") suspects.push_back(register_value(uc, op->base));
+                        if (!op->index.empty()) suspects.push_back(register_value(uc, op->index));
+                        break;
+                    }
+            }
+            for (const std::uint64_t x : suspects) {
+                if (const auto l = loads.find(x); l != loads.end()) {
+                    t.fix = guided::Place{guided::PlaceKind::Addr, l->second, 0};
+                } else if (const auto a = std::ranges::find(v.args, static_cast<std::int64_t>(x)); a != v.args.end()) {
+                    t.fix = guided::Place{guided::PlaceKind::Arg, static_cast<std::uint64_t>(a - v.args.begin()), 0};
+                } else if (static_cast<std::uint64_t>(v.stub_ret.value_or(0)) == x && x != 0) {
+                    t.fix = guided::Place{guided::PlaceKind::StubRet, 0, 0};
+                }
+                if (t.fix) break;
+            }
+        }
+    } catch (const emulate::unicorn_uc::UcFault&) {   // (the machine could not be set up)
+        return std::nullopt;
+    }
+    return t;
+}
+
+Win64Lane::Vector Win64Lane::repaired(const Vector& v, const guided::Place& fix, bool code) {
+    Vector w = v;
+    std::uint64_t to = kRepairBase + 0x800 * (v.mem.size() % kRepairSlots);
+    if (code) {
+        to = kRetStub;
+        if (std::ranges::none_of(w.mem, [](const guided::MemInit& m) { return m.address == kRetStub; })) w.mem.push_back({kRetStub, Bytes{0xC3}});
+    }
+    switch (fix.kind) {
+    case guided::PlaceKind::Arg:
+        if (fix.index >= kMostArguments) return w;
+        if (w.args.size() <= fix.index) w.args.resize(static_cast<std::size_t>(fix.index) + 1, 0);
+        w.args[static_cast<std::size_t>(fix.index)] = static_cast<std::int64_t>(to);
+        break;
+    case guided::PlaceKind::StubRet: w.stub_ret = static_cast<std::int64_t>(to); break;
+    case guided::PlaceKind::Addr:
+    case guided::PlaceKind::Mem: w.mem.push_back({fix.index, le64(to)}); break;
+    }
+    return w;
+}
+
+std::vector<Win64Lane::Vector> Win64Lane::guided_inputs(const Context& context, std::pair<std::uint64_t, std::uint64_t> span, std::span<const Vector> seeds) {
+    if (!lane_common::guided_on()) return {};
+    const guided::Machine machine{guided::ByteOrder::Little, 8};
+    std::set<std::pair<std::uint64_t, bool>> edges;
+    std::set<std::uint64_t> reach;
+    const auto fresh = [&](const guided::Observation& o) {
+        bool any = false;
+        for (const guided::Branch& b : o.branches) any |= edges.emplace(b.address, b.taken).second;
+        for (const std::uint64_t a : o.reach) any |= reach.insert(a).second;
+        return any;
+    };
+    std::vector<guided::Seen> seen;
+    std::vector<Vector> out;
+    std::vector<std::pair<Vector, Trace>> faulted;   // seeds whose run faulted on an address the input made
+    for (const Vector& v : seeds) {
+        const std::optional<Trace> t = trace(context, span.first, span, v);
+        if (!t) continue;
+        fresh(t->observation);
+        seen.push_back({to_guided(v), t->observation});
+        if (t->faulted && t->fix && faulted.size() < kRepairSeeds) faulted.emplace_back(v, *t);
+    }
+    if (seen.empty()) return {};
+
+    // 1. pointers where a run faulted: the place the faulting address came from is given a pointer, until the run gets past
+    for (auto& [v, t] : faulted) {
+        Vector w = v;
+        std::set<std::pair<int, std::uint64_t>> fixed;
+        Trace at = t;
+        for (int step = 0; step < kRepairSteps && at.fix; ++step) {
+            if (!fixed.emplace(static_cast<int>(at.fix->kind), at.fix->index).second) break;   // (the same place again: not the cause)
+            w = repaired(w, *at.fix, at.fetch);
+            const std::optional<Trace> next = trace(context, span.first, span, w);
+            if (!next) break;
+            if (fresh(next->observation)) {
+                out.push_back(w);
+                seen.push_back({to_guided(w), next->observation});
+            }
+            if (!next->faulted) break;
+            at = *next;
+        }
+    }
+
+    // 2. each case of a switch: a bound compared before an indirect jump, every value up to it in the place the value compared was
+    const bool has_switch = [&] {
+        thread_local platforms::DecoderSet decoders;
+        ByteView code;
+        for (const Image::Region& r : context.original.regions)
+            if (span.first >= r.va && span.first < r.va + r.bytes.size())
+                code = ByteView(r.bytes).subspan(static_cast<std::size_t>(span.first - r.va),
+                                                 static_cast<std::size_t>(std::min<std::uint64_t>(span.second, r.va + r.bytes.size()) - span.first));
+        for (const platforms::Insn& insn : decoders.get(platforms::Arch::X86, 64).disasm(code, span.first))
+            if (insn.mnemonic == "jmp" && !insn.op_str.starts_with("0x")) return true;
+        return false;
+    }();
+    if (has_switch) {
+        int spent = 0;
+        std::set<std::uint64_t> bounds;
+        const std::size_t observed = seen.size();
+        for (std::size_t s = 0; s < observed && spent < kSwitchRuns; ++s) {
+            const guided::Input from = seen[s].input;
+            const guided::Observation obs = seen[s].observation;
+            for (const guided::Branch& b : obs.branches) {
+                if (!b.compare || b.compare->op != guided::CompareOp::Other || b.compare->b < 2 || b.compare->b > kMostCases) continue;
+                if (!bounds.insert(b.address).second) continue;
+                const guided::Compare& c = *b.compare;
+                std::vector<guided::Place> where = guided::places(from, obs, c, 0, c.a, c.size, machine);
+                std::uint64_t delta = 0;   // (the value compared may be an argument less a constant: `sub ecx, 3 ; cmp ecx, 7`)
+                if (where.empty())
+                    for (std::size_t i = 0; i < from.args.size() && where.empty(); ++i)
+                        if (((from.args[i] - c.a) & mask_of(c.size)) < 0x100) {
+                            where.push_back({guided::PlaceKind::Arg, i, 0});
+                            delta = from.args[i] - c.a;
+                        }
+                if (where.empty()) continue;
+                for (std::uint64_t k = 0; k <= c.b && spent < kSwitchRuns; ++k) {
+                    const guided::Input g = guided::put(from, where[0], k + delta, c.size, machine);
+                    const Vector w = from_guided(g);
+                    ++spent;
+                    const std::optional<Trace> t = trace(context, span.first, span, w);
+                    if (t && fresh(t->observation)) {
+                        out.push_back(w);
+                        seen.push_back({g, t->observation});
+                    }
+                }
+            }
+        }
+    }
+
+    // 3. each comparison before a jump turned the other way (verify/guided)
+    const guided::Run run = [&](const guided::Input& in) -> std::optional<guided::Observation> {
+        const std::optional<Trace> t = trace(context, span.first, span, from_guided(in));
+        if (!t) return std::nullopt;
+        return t->observation;
+    };
+    guided::Options options;
+    options.budget = lane_common::kGuidedBudget;
+    options.keep = lane_common::kMaxGuided;
+    options.seed = span.first & 0xFFFF;
+    options.machine = machine;
+    options.observed = seen;
+    for (const guided::Input& g : guided::guided_inputs(run, {}, options)) out.push_back(from_guided(g));
+    return out;
+}
+
 Judgement Win64Lane::judge_function(const Context& context, const Item& item) {
     const lane_common::Judgement made = lane_common::judged([&]() -> lane_common::Judgement {
         const std::function<compare::Fingerprint(const Vector&)> original = [&](const Vector& v) {
@@ -282,7 +868,13 @@ Judgement Win64Lane::judge_function(const Context& context, const Item& item) {
             if (item.va >= r.va && item.va < r.va + r.bytes.size())
                 code = ByteView(r.bytes).subspan(static_cast<std::size_t>(item.va - r.va), static_cast<std::size_t>(std::min<std::uint64_t>(item.end, r.va + r.bytes.size()) - item.va));
         const compare::Outcome outcome = compare::compare<Vector>(original, rebuilt, fixed, {}, {.insns = insns},
-                                                                  [&](const std::set<std::int64_t>&, const std::set<std::int64_t>&) { return directed(code, item.va); });
+                                                                  [&](const std::set<std::int64_t>&, const std::set<std::int64_t>&) {
+                                                                      std::vector<Vector> extra = directed(code, item.va);
+                                                                      std::vector<Vector> seeds = fixed;
+                                                                      seeds.insert(seeds.end(), extra.begin(), extra.end());
+                                                                      for (Vector& v : guided_inputs(context, {item.va, item.end}, seeds)) extra.push_back(std::move(v));
+                                                                      return extra;
+                                                                  });
         return {outcome.verdict, outcome.reason, outcome.limit_codes(), outcome.detail};
     });
     return {made.verdict, made.reason, made.limits, made.detail};
