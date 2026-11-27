@@ -16,6 +16,7 @@
 #include "core/testing.hpp"
 #include "decompile/m6502.hpp"
 #include "emulate/lynx.hpp"
+#include "engine/lynx_boot.hpp"
 #include "engine/lane_kit.hpp"
 #include "engine/machine_atari.hpp"
 #include "engine/machine_atari2600.hpp"
@@ -324,7 +325,7 @@ CB_TEST("engine.pcode_cpu.the_lynx_lane_judges_homebrew_the_same_on_both_cores",
         const formats::lynx::Program program = formats::lynx::read(file);
         formats::lynx::Program loaded = program;
         if (loaded.kind == formats::lynx::Kind::Cartridge) {
-            const emulate::lynx::Boot boot = emulate::lynx::boot(loaded);
+            const emulate::lynx::Boot boot = engine::lynx_boot::boot(loaded);
             loaded.set_loaded(boot.segments, boot.entries);
         }
         const Offset offset = [&](std::uint32_t address) -> std::optional<std::size_t> {

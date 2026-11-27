@@ -1,3 +1,4 @@
+// cb-unity: alone
 // The Lynx writer over real programs: open-source homebrew with published source (docs/TESTED_SOFTWARE.md), kept outside the repository in
 // GitHub/homebrew-samples/lynx (or where CB_HOMEBREW_SAMPLES says). Each is written as source and built again; what comes out must be the
 // original file, byte for byte. A program that is not on this machine is skipped.
@@ -6,6 +7,7 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "emulate/lynx.hpp"
+#include "engine/lynx_boot.hpp"
 #include "source/lynx_writer.hpp"
 
 namespace cb::source::lynx_writer {
@@ -20,7 +22,7 @@ std::optional<std::filesystem::path> sample(std::string_view relative) {
 }
 
 const Booter kBoot = [](formats::lynx::Program& p) {
-    const emulate::lynx::Boot b = emulate::lynx::boot(p);
+    const emulate::lynx::Boot b = engine::lynx_boot::boot(p);
     p.set_loaded(b.segments, b.entries);
 };
 
@@ -41,12 +43,12 @@ void rebuild(std::string_view relative, std::size_t functions_at_least) {
 }
 
 // BS93 objects: Bastian Schick's BLL demos (Apache-2.0), loaded at their address and started there.
-CB_TEST("source.lynx_writer.homebrew.bs93_demos", [] {
+CB_TEST("engine.lynx_writer.homebrew.bs93_demos", [] {
     for (const char* name : {"brk.o", "demo01.o", "demo02.o", "irq_test.o", "raw.o", "boing.o", "fire.o", "256col.o", "drawtest.o", "mines2.o"}) rebuild(name, 1);
 });
 
 // Cartridges: the loaders are found by playing the boot ROM.
-CB_TEST("source.lynx_writer.homebrew.cartridges", [] {
+CB_TEST("engine.lynx_writer.homebrew.cartridges", [] {
     for (const char* name : {"overlay.lnx", "new_bll.lnx", "loader.lnx"}) rebuild(name, 0);
 });
 

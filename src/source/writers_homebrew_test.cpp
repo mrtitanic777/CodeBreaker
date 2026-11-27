@@ -4,7 +4,6 @@
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
-#include "emulate/lynx.hpp"
 #include "source/atari2600_writer.hpp"
 #include "source/atari5200_writer.hpp"
 #include "source/gb_writer.hpp"
@@ -84,13 +83,9 @@ CB_TEST("source.writers.homebrew.m6502_family", [] {
     rebuild("atari2600-legendary-spear/LegendarySpear_NTSC.bin", 1, a2600);
     rebuild("atari2600-pipes/pipe2600.bin", 2, a2600);
     rebuild("atari5200/culomin5200.a52", 1, [](const std::filesystem::path& f, const std::filesystem::path& d) { return atari5200_writer::reconstruct(f, d); });
-    const auto lynx = [](const std::filesystem::path& f, const std::filesystem::path& d) {
-        return lynx_writer::reconstruct(f, d, [](formats::lynx::Program& p) {
-            const emulate::lynx::Boot b = emulate::lynx::boot(p);
-            p.set_loaded(b.segments, b.entries);
-        });
-    };
-    for (const char* name : {"brk.o", "demo01.o", "boing.o", "mines2.o", "overlay.lnx"}) rebuild(std::string("lynx/") + name, 0, lynx);
+    // (the Lynx's BS93 objects need no boot ROM; its cartridges, which do, are rebuilt by engine/lynx_homebrew_test on the one emulator)
+    const auto lynx = [](const std::filesystem::path& f, const std::filesystem::path& d) { return lynx_writer::reconstruct(f, d); };
+    for (const char* name : {"brk.o", "demo01.o", "boing.o", "mines2.o"}) rebuild(std::string("lynx/") + name, 0, lynx);
     const auto pce = [](const std::filesystem::path& f, const std::filesystem::path& d) { return pce_writer::reconstruct(f, d); };
     rebuild("pce/dshadoff-pce-mouse-test/pce_mouse.pce", 1, pce);
     for (const char* name : {"BALL", "SAMPLE1"}) rebuild(std::string("pce/langel-pce-dev-kit/") + name + ".PCE", 1, pce);

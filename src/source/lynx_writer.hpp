@@ -14,7 +14,7 @@
 //
 // A BS93 object (the homebrew loader format) is its ten header bytes, one segment at the load address and whatever follows the block.
 //
-// Which stretches a `.lnx` loads is found by playing the boot ROM, which is the emulator's business (emulate/lynx.hpp, not linked here):
+// Which stretches a `.lnx` loads is found by playing the boot ROM, which is the emulator's business (engine/lynx_boot.hpp, not linked here):
 // the caller gives the `Booter`, which calls `Program::set_loaded`. Without one a cartridge has no code: it is written as data.
 //
 // It builds with CodeBreaker's own assembler (build/m6502_asm, with the 65SC02 encoder) or with the cc65 suite (`ca65 game.s` and

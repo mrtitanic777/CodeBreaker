@@ -7,6 +7,7 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "emulate/lynx.hpp"
+#include "engine/lynx_boot.hpp"
 #include "engine/machine_lanes.hpp"
 #include "formats/lynx_test_image.hpp"
 
@@ -95,7 +96,7 @@ CB_TEST("engine.machine_lynx.judges_real_homebrew", [] {
             const std::optional<std::uint32_t> offset = [&]() -> std::optional<std::uint32_t> {
                 formats::lynx::Program loaded = program;
                 if (loaded.kind == formats::lynx::Kind::Cartridge) {
-                    const emulate::lynx::Boot boot = emulate::lynx::boot(loaded);
+                    const emulate::lynx::Boot boot = engine::lynx_boot::boot(loaded);
                     loaded.set_loaded(boot.segments, boot.entries);
                 }
                 for (const formats::lynx::Segment& s : loaded.segments) {

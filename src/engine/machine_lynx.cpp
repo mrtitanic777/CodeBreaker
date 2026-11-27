@@ -9,6 +9,7 @@
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "emulate/lynx.hpp"
+#include "engine/lynx_boot.hpp"
 #include "emulate/m6502.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
@@ -39,7 +40,7 @@ std::shared_ptr<const formats::lynx::Program> loaded_program(const stdfs::path& 
         if (const auto it = cache.find(key); it != cache.end() && it->second.first == stamp) return it->second.second;
     }
     auto program = std::make_shared<formats::lynx::Program>(formats::lynx::read(path));
-    const emulate::lynx::Boot boot = emulate::lynx::boot(*program);
+    const emulate::lynx::Boot boot = engine::lynx_boot::boot(*program);
     if (program->kind == formats::lynx::Kind::Cartridge) program->set_loaded(boot.segments, boot.entries);
     std::lock_guard hold(lock);
     cache[key] = {stamp, program};
@@ -97,7 +98,7 @@ vl::Effects lynx_effects(const stdfs::path& path, std::uint32_t entry, const vl:
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
     const source::image_writer::Written w = source::lynx_writer::reconstruct(module, out, [](formats::lynx::Program& p) {
-        const emulate::lynx::Boot boot = emulate::lynx::boot(p);
+        const emulate::lynx::Boot boot = engine::lynx_boot::boot(p);
         p.set_loaded(boot.segments, boot.entries);
     });
     vl::Written r;
