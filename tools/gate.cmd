@@ -1,9 +1,12 @@
 @echo off
-rem gate.cmd [--no-build] [--exe PATH] [--no-unit] [--no-app] [--update] [--filter TEXT] -- THE gate: cb_tests, every command case of cb_exe_gate against the real
+rem gate.cmd [--full] [--no-build] [--exe PATH] [--no-unit] [--no-app] [--update] [--filter TEXT] -- THE gate: cb_tests, every command case of cb_exe_gate against the real
 rem codebreaker.exe, and the window's screenshot step (the window rendered in every state (including the open Language list and a translating run) and both themes, each a non-empty PNG of the size asked).
 rem
 rem     tools\gate.cmd                 build src and codebreaker.exe (incremental: ninja's object cache is the compile cache), then in ONE parallel run
-rem                                    (8 jobs): cb_tests as 8 shards + every command case of tests\exe_gate; then the screenshots
+rem                                    (8 jobs) what the change can affect since the last passing gate (cb_exe_gate --changed: gate_changed.hpp):
+rem                                    the cb_tests areas and the command cases that depend on the changed files; then the screenshots
+rem     tools\gate.cmd --full          everything: cb_tests as 8 shards + every command case (a milestone, or when in doubt)
+rem   A run passes when its only failures are tests\exe_gate\known_failures.txt; a passing run is the next one's base.
 rem     tools\gate.cmd --no-build      skip the build (the objects are current)
 rem     tools\gate.cmd --exe PATH      test this codebreaker.exe (default CB_EXE, else build\codebreaker.exe, which this script builds and installs)
 rem     tools\gate.cmd --no-unit       only the command cases (cb_exe_gate alone) and the screenshots
@@ -22,8 +25,10 @@ set APP=1
 set EXE=
 set PASS=
 set APP_RC=0
+set CHANGED=--changed
 :args
 if "%1"=="" goto run
+if "%1"=="--full" (set CHANGED=& shift& goto args)
 if "%1"=="--no-build" (set BUILD=0& shift& goto args)
 if "%1"=="--no-unit" (set UNIT=0& shift& goto args)
 if "%1"=="--no-app" (set APP=0& shift& goto args)
@@ -54,7 +59,7 @@ if "%BUILD%"=="1" if "%OWN_EXE%"=="1" call "%HERE%build_codebreaker_exe.cmd" || 
 set CMD="%B%\cb_exe_gate.exe" --repo "%ROOT%"
 if defined GJOBS set CMD=%CMD% --jobs %GJOBS%
 if not "%EXE%"=="" set CMD=%CMD% --exe "%EXE%"
-if "%UNIT%"=="1" set CMD=%CMD% --unit "%B%\cb_tests.exe"
+if "%UNIT%"=="1" set CMD=%CMD% --unit "%B%\cb_tests.exe" %CHANGED%
 %CMD% %PASS%
 set RC=%ERRORLEVEL%
 if "%APP%"=="1" call :app

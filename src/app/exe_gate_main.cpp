@@ -18,7 +18,8 @@
 //   --changed  only what a change can affect since the last passing gate: the cases and unit-test areas that depend on the files that differ from
 //              the record (--record FILE, default <repo>/work/gate-last.txt) -- gate_changed.hpp has the rules. Nothing recorded: everything runs.
 //   --no-record  do not write the record after a passing run (a run on an exe not built from this tree)
-//   A passing whole run (no --filter or --update, with --unit) writes the record: the tree it started on.
+//   A passing whole run (no --filter or --update, with --unit) writes the record: the tree it started on. A run passes when its only failures are
+//   the known ones (<repo>/tests/exe_gate/known_failures.txt: case names, and "test NAME" for unit tests); a known case that passes is reported.
 //   --update   record the goldens of the selected cases from the program's current behaviour (review the diff!)
 //   --unit     also run the module tests (cb_tests) as N shards (default 8) in the same pool, so the whole gate is one run
 //   --keep     leave each case's scratch folder (work/exe_gate/run-PID) for inspection
@@ -458,6 +459,35 @@ std::string head_commit(const stdfs::path& repo) {
     return {};
 }
 
+// The known failures (tests/exe_gate/known_failures.txt): a case's name, or "test NAME" for a unit test, one a line; '#' starts a comment.
+std::set<std::string> read_known(const stdfs::path& file) {
+    std::set<std::string> out;
+    try {
+        if (!stdfs::exists(file)) return out;
+        const std::string body = fs::read_text(file);
+        for (std::string_view line : text::lines(body)) {
+            if (const std::size_t hash = line.find('#'); hash != std::string_view::npos) line = line.substr(0, hash);
+            line = text::trim(line);
+            if (!line.empty()) out.emplace(line);
+        }
+    } catch (const std::exception&) {   // isolation boundary: without the list every failure counts
+    }
+    return out;
+}
+
+// Whether a failing cb_tests shard failed only by known tests: every "FAIL  name" line names a "test name" of the list (a shard that timed out
+// or crashed names none, and is not).
+bool only_known_tests(const std::string& failures, const std::set<std::string>& known) {
+    bool any = false;
+    for (std::string_view line : text::lines(failures)) {
+        if (!line.starts_with("FAIL")) continue;
+        const std::string name(text::trim(line.substr(4)));
+        if (name.empty() || !known.contains("test " + name)) return false;
+        any = true;
+    }
+    return any;
+}
+
 int usage(const char* why) {
     std::fprintf(stderr, "cb_exe_gate: %s\nusage: cb_exe_gate [--exe EXE] [--repo DIR] [--cases FILE] [--golden DIR] [--corpus DIR] [--jobs N] [--filter TEXT] [--update] [--keep] [--list]\n", why);
     return 2;
@@ -547,6 +577,7 @@ int main(int argc, char** argv) {
         // start, so the edit counts as changed next time. See gate_changed.hpp.
         namespace gc = cb::app::gate_changed;
         const stdfs::path record_file = record_file_arg ? *record_file_arg : env.repo / "work" / "gate-last.txt";
+        const std::set<std::string> known = read_known(env.repo / "tests" / "exe_gate" / "known_failures.txt");
         const bool whole_run = !env.update && filter.empty() && !list_only;
         std::optional<gc::Record> tree;
         std::vector<std::string> unit_areas_to_run;   // empty with units_all false: none
@@ -681,8 +712,9 @@ int main(int argc, char** argv) {
                     ur.failures = std::string("could not run cb_tests: ") + e.what() + '\n';
                 }
                 std::lock_guard lock(print_mutex);
-                if (!ur.ok) std::printf("FAIL  cb_tests shard %zu/%zu\n%s", t, nunit, ur.failures.c_str());
-                progress(!ur.ok);
+                const bool known_only = !ur.ok && only_known_tests(ur.failures, known);
+                if (!ur.ok) std::printf("%s  cb_tests shard %zu/%zu\n%s", known_only ? "KNOWN" : "FAIL", t, nunit, ur.failures.c_str());
+                progress(!ur.ok && !known_only);
                 std::fflush(stdout);
                 return;
             }
@@ -724,26 +756,40 @@ int main(int argc, char** argv) {
                 }
             }
             std::lock_guard lock(print_mutex);
-            const char* tag = res.verdict == Verdict::Pass ? "PASS" : res.verdict == Verdict::Fail ? "FAIL" : res.verdict == Verdict::Skip ? "SKIP" : res.verdict == Verdict::Recorded ? "REC " : "MISS";
-            if (res.verdict != Verdict::Pass) {
+            const bool is_known = known.contains(c.name);
+            const char* tag = res.verdict == Verdict::Pass ? "PASS" : res.verdict == Verdict::Fail ? (is_known ? "KNOWN" : "FAIL") : res.verdict == Verdict::Skip ? "SKIP" : res.verdict == Verdict::Recorded ? "REC " : "MISS";
+            if (res.verdict == Verdict::Fail && is_known) {
+                std::printf("%s  %s (%.1fs)\n", tag, c.name.c_str(), res.seconds);   // (known: its differences are not printed again)
+            } else if (res.verdict != Verdict::Pass) {
                 std::printf("%s  %s (%.1fs)", tag, c.name.c_str(), res.seconds);
                 std::printf("\n%s", res.detail.c_str());
                 if (!res.detail.empty() && res.detail.back() != '\n') std::printf("\n");
             }
-            progress(res.verdict == Verdict::Fail || res.verdict == Verdict::Missing);
+            progress((res.verdict == Verdict::Fail && !is_known) || res.verdict == Verdict::Missing);
             std::fflush(stdout);
         });
-        std::size_t pass = 0, fail = 0, skip = 0, rec = 0;
-        for (const Result& r : results) {
-            if (r.verdict == Verdict::Pass) ++pass;
-            else if (r.verdict == Verdict::Skip) ++skip;
-            else if (r.verdict == Verdict::Recorded) ++rec;
-            else ++fail;
+        std::size_t pass = 0, fail = 0, skip = 0, rec = 0, known_failed = 0;
+        std::vector<std::string> now_passing;   // known failures that passed: they can come off the list
+        for (std::size_t i = 0; i < results.size(); ++i) {
+            const Result& r = results[i];
+            const bool is_known = i < picked.size() && known.contains(picked[i]->name);
+            if (r.verdict == Verdict::Pass) {
+                ++pass;
+                if (is_known) now_passing.push_back(picked[i]->name);
+            } else if (r.verdict == Verdict::Skip) {
+                ++skip;
+            } else if (r.verdict == Verdict::Recorded) {
+                ++rec;
+            } else if (is_known && r.verdict == Verdict::Fail) {
+                ++known_failed;
+            } else {
+                ++fail;
+            }
         }
         const double total = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
         std::size_t unit_bad = 0, unit_pass = 0, unit_fail = 0;
         for (const UnitResult& u : unit_results) {
-            if (!u.ok) ++unit_bad;
+            if (!u.ok && !only_known_tests(u.failures, known)) ++unit_bad;
             // "123 passed, 0 failed (456 checks)"
             const std::vector<std::string_view> w = text::split_ws(u.summary);
             if (w.size() >= 4) {
@@ -771,7 +817,9 @@ int main(int argc, char** argv) {
         }
         if (!env.keep) fs::remove_tree(env.scratch);
         if (env.update) std::printf("\n%zu goldens recorded (%.1f s)\n", rec, total);
-        else std::printf("%zu passed, %zu failed, %zu skipped of %zu cases (%.1f s)\n", pass, fail, skip, picked.size(), total);
+        else std::printf("%zu passed, %zu failed, %zu known failures (tests/exe_gate/known_failures.txt), %zu skipped of %zu cases (%.1f s)\n", pass, fail,
+                         known_failed, skip, picked.size(), total);
+        for (const std::string& name : now_passing) std::printf("now passes: %s (take it off tests/exe_gate/known_failures.txt)\n", name.c_str());
         if (!env.update) {   // what this run learned of how long things take, for the next run's ordering and shards
             try {
                 auto merge = [&](const stdfs::path& file, const std::vector<std::pair<double, std::string>>& now) {

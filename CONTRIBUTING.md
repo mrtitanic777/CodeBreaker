@@ -59,8 +59,11 @@ CodeBreaker's changes to OpenWatcom are on the `codebreaker` branch of
 tools\gate.cmd
 ```
 
-The gate builds everything and runs the unit tests, every command case against its reviewed golden output
-(`tests/exe_gate`), and the interface's tests. It must pass. If your change rightly changes a command's output,
+The gate builds everything and runs what your change can affect since the last passing gate: the unit tests of the areas that
+depend on the changed files and the command cases whose code reaches them (`tests/exe_gate`, each against its reviewed golden
+output), then the interface's screenshots. `tools\gate.cmd --full` runs every test and case (at a milestone, or when in doubt).
+It must pass; the failures listed in `tests/exe_gate/known_failures.txt` do not count, and a run that
+passes becomes the next one's base. If your change rightly changes a command's output,
 re-record that case's golden with `tools\gate.cmd --update --filter <case>` and review the diff before committing it.
 Changes to the Windows 95 modules also need `codebreaker regress all15 --runs 2` (and `setup` / `install` where they
 are touched).

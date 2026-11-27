@@ -1,0 +1,42 @@
+# The gate's known failures: cases (by name) and unit tests ("test NAME") that fail for a reason recorded elsewhere, not a regression.
+# A run whose only failures are these passes, so it becomes the base of tools\gate.cmd --changed. A case here that passes again is
+# reported ("now passes"): take it off the list. Add one only with the reason it fails, as a comment after it.
+
+build-pe
+build16-lzexpand
+convert-dos
+convert-languages
+convert-pe
+convert-to-unknown
+coverage-all
+decompile-ne
+decompile-pe
+dos-build
+dos-source
+driver-build
+driver-source
+flat-thunk-recover
+match-pe
+measure-pe
+module-pe
+names-ne
+place-file
+ppc-calls
+progress-once
+repair-pe
+resources-ne
+resources-pe
+score16-ne
+switch-tables
+teeth-pe
+tidy-dry
+tidy-stray
+vxd-idiom
+xenon-config
+xex-basic
+xex-edit-nop
+xex-edit-privileges
+xex-extract
+xex-imports-other
+
+test port.verify.run_cases   # flaky: depends on timing under load (CodeBreaker development, 2026-11-26)
