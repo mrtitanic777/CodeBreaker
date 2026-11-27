@@ -110,6 +110,24 @@ SLEIGH description.
 One optimizer and code generator under every language, from L2 down: x86cc is the first back end, then OpenWatcom's code generator
 for the 16- and 32-bit targets, and MSVC stays for x64 (the 2026-11-26 exception).
 
+## Items 7-16 (Logan, 2026-11-27: "Yes, queue all")
+
+These come from the Board session's survey of duplicates (`unification-survey-2026-11-27.md` in the session notes). They run after items 1-6,
+one at a time, in this order. Each is proven by identical output on its existing tests before the old code is deleted, and each
+tests only what it changes.
+
+7. One source writer for every console, plus a description of each platform (~18,000 lines of per-console writers).
+8. File detection from the `.fmt` descriptions.
+9. The remaining hand-written readers onto the format engine: 7 ELF readers, MZ, NES, XEX, XBE, CAB, ISO, OMF and the Xbox
+   containers.
+10. One inverse compiler-model engine, with compiler versions as data (~28,000 lines).
+11. Compiler-habit detectors as data.
+12. The x86 32- and 64-bit pairs merged.
+13. NID tables as data.
+14. Small duplicates: ISO, XACT, ZIP, PNG, zlib, EXEPACK.
+15. The Direct3D reference templates.
+16. The Watcom linker's own loaders onto the shared readers.
+
 ## Status
 
 - 2026-11-26: plan written; the inventory above.
@@ -123,3 +141,7 @@ for the 16- and 32-bit targets, and MSVC stays for x64 (the 2026-11-26 exception
   `cemit`, `cmodule`, `cpasses` and `cpasses2` are 5,600 lines over `py::V`, with `pyre` (Python-exact regex) and `pystr` kept as
   utilities. The C++17 core and its Java and Python rules are another 5,100. The proof is C byte for byte on the decompile corpus
   against today's `cb_l2`, then the C++17 goldens and judges.
+- 2026-11-27: item 1, step 1, the C back end done. `translate/backends/c` runs on `translate::ir` and is the default (`CB_C_TREE=0`
+  goes back to the library). A recording of 75,878 calls into `cb_l2` (15 MINI.CAB module builds and five 32-bit Win95 modules'
+  checks) replays answer for answer, with about 15% less CPU time (144 MB peak against 43 MB: each document's tree is kept for
+  later calls). Commits 8c7e2e3d3, c82c954a1, 60bd5828e. Next: the C++17 core onto the tree (part B), then `cb_l2` deleted.
