@@ -1,4 +1,4 @@
-// translate/native_l2.cpp -- the typed client of the L2 core library (see native_l2.hpp).
+// translate/native_l2.cpp -- the typed client of the back ends' entry points (see native_l2.hpp).
 #include "translate/native_l2.hpp"
 
 #include <algorithm>
@@ -7,16 +7,24 @@
 #include <process.h>
 #include <nlohmann/json.hpp>
 
+#include "core/arena.hpp"
 #include "core/fs.hpp"
 #include "core/json.hpp"
 #include "translate/backends/c/entry.hpp"
 #include "translate/backends/cpp17_tree/entry.hpp"
-#include "translate/l2/include/l2api.h"   // translate/l2/include: the library's entry point
+#include "translate/l2.hpp"
+
+#if defined(_MSC_VER)
+#pragma warning(push, 3)   // (Python's value semantics: compiled under their own flags)
+#endif
+#include "translate/support/l2schema.hpp"
+#include "translate/support/pyjson.hpp"
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
 namespace cb::translate::native_l2 {
 namespace {
-
-constexpr int kLibraryVersion = 1;   // l2_version() of the library this speaks to
 
 [[noreturn]] void bad_answer(std::string_view fn, const std::string& what) {
     throw FormatError("native_l2", 0, std::string(fn) + ": " + what);
@@ -62,7 +70,7 @@ Json strings_json(std::span<const std::string> v) {
     return out;
 }
 
-// The text the library reads: ASCII only (every non-ASCII character escaped), as its own writer's.
+// The text the entries read: ASCII only (every non-ASCII character escaped), as their own writer's.
 std::string wire(const Json& arguments) { return arguments.dump(-1, ' ', true); }
 
 // The arguments [doc] or [doc, text] written straight from the document (building an array of them copied the whole document first).
@@ -77,13 +85,64 @@ std::string wire_doc(const Json& doc, const std::string* extra = nullptr) {
     return text;
 }
 
+// ---- the L2 core's entry points: the round trip and the schema check ------------------------------------------------
+
+// An error as the entry points answer one: {"type", "message", "facts"} (no facts: these entries have none).
+std::string core_error(const std::string& type, const std::string& message) {
+    py::V err = py::V::dict();
+    err.set("type", py::V(type));
+    err.set("message", py::V(message));
+    err.set("facts", py::V::dict());
+    return py::json_tagged(err);
+}
+
+std::mutex schema_lock;
+std::shared_ptr<const l2schema::Schema> told_schema;   // what set_schema was last told
+
+// roundtrip_text: the document read into the typed tree and written back, as text in Python's json.dumps form. set_schema: the schema
+// the next checks are made by. validate: (whether the document is L2, why not). Anything else: no such entry.
+std::pair<int, std::string> core_call(const std::string& fn, std::string_view arguments_json) {
+    try {
+        if (fn == "roundtrip_text") {
+            const Json args = json::parse(arguments_json);
+            Arena arena;
+            const Json back = l2::to_json(*l2::from_json(arena, args.at(0)));
+            return {0, py::json_tagged(py::V(py::json_dump(py::json_parse(back.dump(-1, ' ', true)))))};
+        }
+        if (fn == "set_schema" || fn == "validate") {
+            const py::V args = py::json_parse(std::string(arguments_json), true);
+            const py::V& doc = args.size() > 0 ? args[0] : py::NONE;
+            if (fn == "set_schema") {
+                auto schema = std::make_shared<const l2schema::Schema>(doc);
+                std::lock_guard hold(schema_lock);
+                told_schema = std::move(schema);
+                return {0, py::json_tagged(py::V(true))};
+            }
+            std::shared_ptr<const l2schema::Schema> schema;
+            {
+                std::lock_guard hold(schema_lock);
+                schema = told_schema;
+            }
+            if (!schema) return {1, core_error("RuntimeError", "no schema: call set_schema first")};
+            std::string why;
+            const bool ok = schema->valid(doc, &why);
+            return {0, py::json_tagged(py::V::tuple({py::V(ok), py::V(why)}))};
+        }
+        return {1, core_error("AttributeError", "cbl2 has no entry " + fn)};
+    } catch (const py::PyError& e) {
+        return {1, core_error(e.type, e.what())};
+    } catch (const std::exception& e) {
+        return {1, core_error("RuntimeError", std::string("native: ") + e.what())};
+    }
+}
+
 }  // namespace
 
 struct Library::Impl {
-    CallFn call = nullptr;
+    CallFn call = nullptr;         // a stand-in's (a test's); null: the back ends in this program
     FreeFn release = nullptr;
     std::mutex lock;
-    std::string schema;            // the schema the library was last told
+    std::string schema;            // the schema set_schema was last told
 };
 
 Library::Library(CallFn call, FreeFn release) : impl_(std::make_shared<Impl>()) {
@@ -91,24 +150,16 @@ Library::Library(CallFn call, FreeFn release) : impl_(std::make_shared<Impl>()) 
     impl_->release = release;
 }
 
-Library Library::builtin() {
-    if (l2_version() != kLibraryVersion) throw UnsupportedError("native_l2", 0, "the linked L2 library is another version");
-    return Library(&l2_call, &l2_free);
-}
+Library Library::builtin() { return Library(nullptr, nullptr); }
 
 std::pair<int, std::string> Library::call_raw(std::string_view name, std::string_view arguments_json) const {
     const std::string fn(name);
-    // The C back end's entry points, answered on the typed tree in-process (translate/backends/c), unless CB_C_TREE=0: the same
-    // arguments, the same answers (docs/ENGINE_UNIFICATION.md item 1). The library's own (a test's library is its own).
-    if (impl_->call == &l2_call && ctree::enabled() && ctree::handles(fn)) {
-        std::pair<int, std::string> r = ctree::call(fn, arguments_json);
-        record(fn, arguments_json, r.first, r.second);
-        return r;
-    }
-    // The C++17 back end's (cpp17_unit, cpp17_program), on the typed tree in-process (translate/backends/cpp17_tree) unless
-    // CB_CPP17_TREE=0.
-    if (impl_->call == &l2_call && cpp17tree::enabled() && cpp17tree::handles(fn)) {
-        std::pair<int, std::string> r = cpp17tree::call(fn, arguments_json);
+    if (impl_->call == nullptr) {
+        // The C back end's entry points (translate/backends/c), the C++17 back end's (cpp17_unit, cpp17_program:
+        // translate/backends/cpp17_tree), both on the typed tree, and the L2 core's, all in-process.
+        std::pair<int, std::string> r = ctree::handles(fn)       ? ctree::call(fn, arguments_json)
+                                        : cpp17tree::handles(fn) ? cpp17tree::call(fn, arguments_json)
+                                                                 : core_call(fn, arguments_json);
         record(fn, arguments_json, r.first, r.second);
         return r;
     }
@@ -123,7 +174,7 @@ std::pair<int, std::string> Library::call_raw(std::string_view name, std::string
 }
 
 // With CB_L2_RECORD naming a folder, every call and its answer is kept there as a line of JSON ({"fn", "args", "status", "answer"}, the
-// arguments and the answer as the text that crossed), one file per process: what the library answers on a corpus, for a new back end
+// arguments and the answer as the text that crossed), one file per process: what the entries answer on a corpus, for a new back end
 // to be held to (docs/ENGINE_UNIFICATION.md item 1).
 void Library::record(std::string_view fn, std::string_view arguments, int status, std::string_view answer) {
     static const std::optional<std::string> folder = [] {
@@ -154,7 +205,7 @@ Json Library::call(std::string_view name, const Json& arguments, Json* facts) co
 Json Library::answer_of(std::string_view name, const std::pair<int, std::string>& raw, Json* facts) const {
     const auto& [status, text] = raw;
     Json answer;
-    if (!json::try_parse(text, answer)) bad_answer(name, "the library's answer is not JSON");
+    if (!json::try_parse(text, answer)) bad_answer(name, "the answer is not JSON");
     if (status == 0) return answer;
     if (facts != nullptr && answer.is_object() && answer.contains("facts") && answer["facts"].is_object()) {
         if (!facts->is_object()) *facts = Json::object();

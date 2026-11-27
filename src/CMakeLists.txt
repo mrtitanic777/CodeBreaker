@@ -1,5 +1,5 @@
 # CodeBreaker in C++ (docs/CPP_DESIGN.md section 8): one tree, `src/`, one build. Each area is a static library
-# (cb_core, cb_formats, cb_analyze ...), and each engine inside an area is one too (cb_xex, cb_l2, cb_dosexec,
+# (cb_core, cb_formats, cb_analyze ...), and each engine inside an area is one too (cb_xex, cb_pysupport, cb_dosexec,
 # cb_pyfront, cb_decompiler ...); they link into the one executable `codebreaker` and the test executable `cb_tests`,
 # which runs every module's `_test.cpp`. The decompiler engine's programs (decompiler.exe, pcodecheck.exe) are built
 # beside them. (native/nasm is NASM, built apart with gcc until x86asm, src/build/x86asm, replaces it.)
@@ -206,7 +206,7 @@ set_property(GLOBAL PROPERTY CB_AREAS "")
 # the decompiler, the DOS runner, the Python parser, the XEX tools, the Xbox 360 runtime, XenonRecomp, NASM...). An
 # area's library never takes their sources; each is added below with add_subdirectory or compiled by its own rules.
 set(CB_ENGINE_DIRS
-  decompile/engine exact/emu/dosexec translate/l2 translate/frontends/python/pyfront formats/xex
+  decompile/engine exact/emu/dosexec translate/support translate/frontends/python/pyfront formats/xex
   recompile/x360 recompile/xenonrecomp recompile/rexglue app/memcap third_party build/x86link build/x86cc)
 function(cb_area dir)
   file(GLOB_RECURSE sources CONFIGURE_DEPENDS "${CMAKE_CURRENT_LIST_DIR}/${dir}/*.cpp")
@@ -279,7 +279,7 @@ cb_area(build)
 target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats cb_symbols)
 target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats cb_platforms cb_source cb_symbols)
 target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats)
-target_link_libraries(cb_build PUBLIC cb_decompile)   # (sm83_asm: the Game Boy instruction encoder)
+target_link_libraries(cb_build PUBLIC cb_decompile)   # (the one assembler lives in decompile/engine)
 cb_area(knowledge)
 target_link_libraries(cb_knowledge PUBLIC cb_core cb_base cb_symbols)   # (cb_base: the SQLite wrapper; cb_symbols: the readers Knowledge gives their memories to -- static libraries may be cyclic)
 # The program database (the fact store, over cb::base::sqlite).
@@ -425,11 +425,11 @@ target_link_libraries(cb_dotnet PUBLIC cb_core cb_formats)
 # app/window_*: docs/CPP_DESIGN.md section 9).
 # pyfront: the Python parser the translator's Python front end reads programs with (translate/frontends/python/pyfront).
 include("${CMAKE_CURRENT_LIST_DIR}/translate/frontends/python/pyfront/CMakeLists.txt")
-# l2: the L2 core library (the node model, the C and C++17 back ends) the translator and the decompiler call (translate/l2).
-include("${CMAKE_CURRENT_LIST_DIR}/translate/l2/CMakeLists.txt")
+# pysupport: Python's value semantics (py::V, str, json, re) and the L2 schema check, which the back ends on the typed tree use (translate/support).
+include("${CMAKE_CURRENT_LIST_DIR}/translate/support/CMakeLists.txt")
 
 cb_area(translate)
-target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront cb_l2 cb_java cb_verify)   # (cb_java: the API-mapping registry java_libc and csharp_java read; cb_java links cb_translate back: static libraries may be cyclic)
+target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront cb_pysupport cb_java cb_verify)   # (cb_java: the API-mapping registry java_libc and csharp_java read; cb_java links cb_translate back: static libraries may be cyclic)
 cb_area(ui)
 target_link_libraries(cb_ui PUBLIC cb_core)
 

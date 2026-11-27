@@ -1,6 +1,6 @@
 // translate/backends/cpp17_tree/cpp17tree.hpp -- the translator's C++17 back end on the typed tree (docs/ENGINE_UNIFICATION.md item
-// 1): ONE back end for every front end, reading translate::ir. A port line by line of the L2 core library's C++17 back end
-// (translate/l2/src/cpp17*, itself a port of the Python reference): the same names, the same order of work, the same text. What
+// 1): ONE back end for every front end, reading translate::ir. A port line by line of the former L2 core library's C++17 back end
+// (translate/l2/src/cpp17*, deleted 2026-11-27; itself a port of the Python reference): the same names, the same order of work, the same text. What
 // moved is the tree it reads: the nodes are translate::ir's, read by the names their documents give their slots (l2::slot), the
 // types and symbols ir's structs; the state a writer keeps of a node is keyed on its ir::Node*.
 //
@@ -33,11 +33,11 @@
 #include "translate/ir.hpp"
 
 #if defined(_MSC_VER)
-#pragma warning(push, 3)   // (the L2 core library's headers: compiled under its own flags)
+#pragma warning(push, 3)   // (Python's value semantics, translate/support: compiled under their own flags)
 #endif
-#include "translate/l2/src/pyre.hpp"
-#include "translate/l2/src/pystr.hpp"
-#include "translate/l2/src/value.hpp"
+#include "translate/support/pyre.hpp"
+#include "translate/support/pystr.hpp"
+#include "translate/support/pyvalue.hpp"
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif

@@ -1,4 +1,4 @@
-// pystr.hpp -- Python's str methods on UTF-8 std::strings, as the C back end's Python calls them:
+// translate/support/pystr.hpp -- Python's str methods on UTF-8 std::strings, as the C back end's Python calls them:
 // split() on Python's whitespace, strip, replace, partition, int(s, base), repr of a float and of a
 // str. Positions are byte offsets (the C text is ASCII but for string literals, which these never cut).
 #pragma once

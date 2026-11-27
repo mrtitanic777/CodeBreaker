@@ -15,7 +15,6 @@
 
 #include <nlohmann/json.hpp>
 
-#include "core/fs.hpp"
 #include "core/json.hpp"
 #include "translate/backends/c/ctree.hpp"
 #include "translate/l2.hpp"
@@ -23,7 +22,7 @@
 #if defined(_MSC_VER)
 #pragma warning(push, 3)
 #endif
-#include "translate/l2/src/json.hpp"
+#include "translate/support/pyjson.hpp"
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
@@ -366,14 +365,6 @@ void run_deep(Call* c) { run(c); }
 #endif
 
 }  // namespace
-
-bool enabled() {
-    static const bool on = [] {
-        const std::optional<std::string> v = fs::get_env("CB_C_TREE");
-        return !(v && *v == "0");   // (the default: the library answers only where CB_C_TREE=0)
-    }();
-    return on;
-}
 
 bool handles(std::string_view fn) {
     static const char* const names[] = {"function", "module",        "describe",  "flags",         "signature",       "type_text",

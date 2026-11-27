@@ -1,11 +1,11 @@
-#include "translate/l2/src/value.hpp"
+#include "translate/support/pyvalue.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <string_view>
 
-#include "translate/l2/src/pystr.hpp"
+#include "translate/support/pystr.hpp"
 
 namespace py {
 

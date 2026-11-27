@@ -1,11 +1,11 @@
-// json.hpp -- JSON read and written as Python's json module does (json.loads / json.dumps with its
+// translate/support/pyjson.hpp -- JSON read and written as Python's json module does (json.loads / json.dumps with its
 // defaults: ", " and ": ", ensure_ascii, a float as its repr, NaN and Infinity), and the tagged form
 // the shim hands Python values over in (a tuple {"$t": [...]}, a set {"$s": [...]}, a dict whose keys
 // are not all strings {"$d": [[k, v], ...]}, a float that is not finite {"$f": "nan"}).
 #pragma once
 #include <string>
 
-#include "translate/l2/src/value.hpp"
+#include "translate/support/pyvalue.hpp"
 
 namespace py {
 

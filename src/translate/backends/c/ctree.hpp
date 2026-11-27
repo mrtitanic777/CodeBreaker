@@ -1,6 +1,6 @@
 // translate/backends/c/ctree.hpp -- the C back end on the typed tree: an L2 function, held as translate::ir nodes, written as C in
 // the decompiler's own dialect, laid out as PrintC lays it out, with c_text's passes done on the tree (docs/ENGINE_UNIFICATION.md
-// item 1). A port line by line of the L2 core library's C back end (translate/l2/src/cback*, cpasses*, cmodule), itself a port of
+// item 1). A port line by line of the former L2 core library's C back end (translate/l2/src/cback*, cpasses*, cmodule; deleted 2026-11-27), itself a port of
 // the Python reference: the same names, the same order of work, the same text. What moved is the tree it reads: the nodes are
 // translate::ir's, read by the names their documents give their slots (l2::slot), the types and symbols ir's structs; what the
 // module knows of a function (the facts) stays Python-shaped values (py::V), as the module's planners hand them over.
@@ -32,11 +32,11 @@
 #include "translate/ir.hpp"
 
 #if defined(_MSC_VER)
-#pragma warning(push, 3)   // (the L2 core library's headers: compiled under its own flags)
+#pragma warning(push, 3)   // (Python's value semantics, translate/support: compiled under their own flags)
 #endif
-#include "translate/l2/src/pyre.hpp"
-#include "translate/l2/src/pystr.hpp"
-#include "translate/l2/src/value.hpp"
+#include "translate/support/pyre.hpp"
+#include "translate/support/pystr.hpp"
+#include "translate/support/pyvalue.hpp"
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
@@ -194,7 +194,7 @@ V to_v(const X& x);                              // a scalar of the tree as a va
 
 }  // namespace cb::translate::ctree
 
-// Python's operations on a part of the tree, beside the values' own (translate/l2/src/value.hpp): the port reads as the code it was.
+// Python's operations on a part of the tree, beside the values' own (translate/support/pyvalue.hpp): the port reads as the code it was.
 namespace py {
 bool truthy(const cb::translate::ctree::X& v);
 std::string str_of(const cb::translate::ctree::X& v);

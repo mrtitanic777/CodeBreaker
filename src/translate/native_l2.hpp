@@ -1,25 +1,25 @@
-// translate/native_l2.hpp -- the L2 core library (cb/translate/l2, the library cb_l2) as a typed client: the C back end, the L2 node
-// model's reader and writer, and the schema check, which the library does, asked through its one entry point.
+// translate/native_l2.hpp -- the back ends on the typed tree (the C back end, translate/backends/c; the C++17 back end,
+// translate/backends/cpp17_tree) and the L2 core's round trip and schema check, as one typed client.
 //
-// The library is linked into the program and has one C entry point -- `l2_call(name, arguments, ...)` -- that takes the
-// arguments of an entry point as a JSON array and answers a JSON value. `Library::builtin()` hands over its two functions
-// (a test may hand its own: `Library(call, free)`); this is the one place that knows the protocol. Everything else is typed: each entry point is a method, its arguments are what the
-// library reads, its result a struct, its failure an exception.
+// Each entry point takes its arguments as a JSON array and answers a JSON value, in-process; `Library::builtin()` is the
+// program's own, and a test may stand in its own two functions (`Library(call, free)`). This is the one place that knows the
+// wire form. Everything else is typed: each entry point is a method, its arguments are what the entry reads, its result a
+// struct, its failure an exception.
 //
 //     const Library lib = Library::builtin();
 //     std::string c = lib.function(doc, moved);                   // C text of one L2 function document
 //     ModuleNames names = lib.module_names32(doc);
 //
-// The wire form is the library's own. A document is L2 JSON (cb/translate/l2.hpp writes and reads it as typed nodes; the
-// back end entry points take it as the `Json` it is). What JSON has no word for, the library says tagged: a tuple as
-// {"$t": [...]}, a set as {"$s": [...]}, a dict with keys that are not text as {"$d": [[key, value], ...]}, a float that is
-// not finite as {"$f": "nan"}. The facts a function is written with and the plans the module planners answer are made of
-// those (a record of text, numbers, tuples and dicts of other keys per entry): they are passed and returned as `Json` with
-// the tags as they are; everything with a fixed shape is typed. An integer above the 64-bit range is not kept whole.
+// A document is L2 JSON (cb/translate/l2.hpp writes and reads it as typed nodes; the entry points take it as the `Json` it
+// is). What JSON has no word for, the entries say tagged: a tuple as {"$t": [...]}, a set as {"$s": [...]}, a dict with keys
+// that are not text as {"$d": [[key, value], ...]}, a float that is not finite as {"$f": "nan"}. The facts a function is
+// written with and the plans the module planners answer are made of those (a record of text, numbers, tuples and dicts of
+// other keys per entry): they are passed and returned as `Json` with the tags as they are; everything with a fixed shape is
+// typed. An integer above the 64-bit range is not kept whole.
 //
-// Errors. A failure the library reports is a LibraryError carrying the library's own word for it (`type()`: "KeyError",
-// "ValueError", "TypeError", "IndexError", "AttributeError" or another); a node the C back end does not write is Declined
-// (and Cpp17Declined for the C++17 back end's), so a caller that tries a back end and falls back to another catches those.
+// Errors. A failure an entry reports is a LibraryError carrying its word for it (`type()`: "KeyError", "ValueError",
+// "TypeError", "IndexError", "AttributeError" or another); a node the C back end does not write is Declined (and
+// Cpp17Declined for the C++17 back end's), so a caller that tries a back end and falls back to another catches those.
 #pragma once
 
 #include <cstddef>
@@ -40,7 +40,7 @@
 
 namespace cb::translate::native_l2 {
 
-// An error the library reports. `type()` is its word for the kind ("KeyError", "ValueError", "Decline" ...).
+// An error an entry point reports. `type()` is its word for the kind ("KeyError", "ValueError", "Decline" ...).
 class LibraryError : public Error {
 public:
     LibraryError(std::string type, const std::string& message) : Error(message), type_(std::move(type)) {}
@@ -115,18 +115,18 @@ struct Validation {
     std::string why;
 };
 
-// ---- the library ----------------------------------------------------------------------------------------------------
+// ---- the entry points -----------------------------------------------------------------------------------------------
 
-// l2_call and l2_free of cb/translate/l2/src/api.cc.
+// A stand-in's entry point (a test's): the entry's name, its arguments; the answer in `out` (freed with FreeFn), 0 for success.
 using CallFn = int (*)(const char* name, const char* arguments, std::size_t length, char** out, std::size_t* out_length);
 using FreeFn = void (*)(char* result);
 
-// A handle on the library; copies share it. Calls are serialised (the library keeps state between them).
+// A handle on the entry points; copies share it. A stand-in's calls are serialised.
 class Library {
 public:
     Library(CallFn call, FreeFn release);
 
-    // The library linked into this program (cb_l2): its own l2_call and l2_free.
+    // The program's own: the back ends and the L2 core, in-process.
     static Library builtin();
 
     // One entry point, arguments already a JSON array and its answer as text: (status, text). Status 0 is success; any other
@@ -135,7 +135,7 @@ public:
     // (CB_L2_RECORD: each call kept with its answer; native_l2.cpp)
     static void record(std::string_view fn, std::string_view arguments, int status, std::string_view answer);
     // One entry point with its arguments -> the answer. LibraryError (or its subtypes) for an error status; when `facts` is
-    // given, the keys the library wrote to it (also when it fails) are put in it.
+    // given, the keys the entry wrote to it (also when it fails) are put in it.
     Json call(std::string_view name, const Json& arguments, Json* facts = nullptr) const;
     Json answer_of(std::string_view name, const std::pair<int, std::string>& raw, Json* facts) const;   // (call_raw's answer, read as call reads it)
 
@@ -145,8 +145,8 @@ public:
     // the far pointers, when the decompiler's notes say; `facts`: what the function is written with, changed in place.
     std::string function(const Json& doc, std::span<const std::string> moved = {},
                          const std::optional<std::set<std::string>>& far = std::nullopt, Json* facts = nullptr) const;
-    // The same with the facts already written as the library's JSON text (decompiler's facts_text): nothing is built or copied for them.
-    // `left` (when given) receives what the library answered of them (the keys it wrote), not the facts as given.
+    // The same with the facts already written as the entries' JSON text (decompiler's facts_text): nothing is built or copied for them.
+    // `left` (when given) receives what the entry answered of them (the keys it wrote), not the facts as given.
     std::string function_with_facts_text(const Json& doc, std::span<const std::string> moved, std::string_view facts_text, Json* left) const;
     // A Module document: its functions as C, and what stayed assembly.
     ModuleText module(const Json& doc, std::span<const std::string> moved) const;
@@ -181,7 +181,7 @@ public:
     // {name: a declaration with its parameters}, in `order`. `headings` is {name: the heading of the function's writing}.
     OrderedMap<std::string, std::string> prototypes(const Json& headings, std::span<const std::string> order) const;
     // The module planners. Their arguments and answers are records of mixed shape (text, numbers, tuples, dicts of other
-    // keys), passed as the library's JSON; `code_segments` are the numbers of the code segments, in order.
+    // keys), passed as the entries' JSON; `code_segments` are the numbers of the code segments, in order.
     Json segment_plan(const Json& functions, const Json& near, const Json& where, const Json& sites,
                       std::span<const std::int64_t> code_segments, const Json& data_segment, const Json& other_data,
                       const Json& first_selector) const;
@@ -199,9 +199,9 @@ public:
 
     // ---- the L2 core ----
 
-    // The document the library's reader and writer make of `doc`, as text (what a round trip through the library gives).
+    // The document the typed tree's reader and writer make of `doc` (l2::from_json, l2::to_json), as text in Python's json.dumps form.
     std::string roundtrip_text(const Json& doc) const;
-    // Whether `doc` is L2, by the schema (l2.schema.json's text) -- the library is told the schema once.
+    // Whether `doc` is L2, by the schema (l2.schema.json's text; translate/support/l2schema) -- told the schema once.
     Validation validate(const Json& doc, std::string_view schema_text) const;
 
 private:

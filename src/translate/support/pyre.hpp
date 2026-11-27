@@ -1,4 +1,4 @@
-// pyre.hpp -- regular expressions with Python's `re` semantics: a backtracking matcher over the same
+// translate/support/pyre.hpp -- regular expressions with Python's `re` semantics: a backtracking matcher over the same
 // syntax (groups, (?:), (?P<name>), lookahead and fixed-width lookbehind, lazy quantifiers, \b, the
 // MULTILINE and DOTALL flags, inline (?ms)) and the same match, fullmatch, search, finditer, findall
 // and sub, so the C back end's patterns are carried over as they are written in its Python.

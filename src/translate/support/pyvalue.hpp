@@ -1,4 +1,4 @@
-// value.hpp -- a value with Python's semantics: what an L2 document and the C back end's facts are
+// translate/support/pyvalue.hpp -- a value with Python's semantics: what an L2 document and the C back end's facts are
 // made of (json.loads' dicts, lists, strings, numbers; and the tuples, sets and dicts of any key the
 // facts hold). Containers are shared, so a dict is one object wherever it is held -- Python's `is`
 // and id() are the pointer (py::id). Dicts keep their keys in insertion order, as Python's do.

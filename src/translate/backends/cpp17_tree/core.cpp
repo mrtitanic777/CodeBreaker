@@ -15,7 +15,7 @@
 #if defined(_MSC_VER)
 #pragma warning(push, 3)
 #endif
-#include "translate/l2/src/json.hpp"
+#include "translate/support/pyjson.hpp"
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif

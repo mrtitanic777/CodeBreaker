@@ -10,7 +10,6 @@
 
 #include <nlohmann/json.hpp>
 
-#include "core/fs.hpp"
 #include "core/json.hpp"
 #include "translate/backends/cpp17_tree/cpp17tree.hpp"
 #include "translate/l2.hpp"
@@ -18,7 +17,7 @@
 #if defined(_MSC_VER)
 #pragma warning(push, 3)
 #endif
-#include "translate/l2/src/json.hpp"
+#include "translate/support/pyjson.hpp"
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
@@ -153,14 +152,6 @@ void run_deep(Call* c) { run(c); }
 #endif
 
 }  // namespace
-
-bool enabled() {
-    static const bool on = [] {
-        const std::optional<std::string> v = fs::get_env("CB_CPP17_TREE");
-        return !(v && *v == "0");   // (the default: the library answers only where CB_CPP17_TREE=0)
-    }();
-    return on;
-}
 
 bool handles(std::string_view fn) { return fn == "cpp17_unit" || fn == "cpp17_program"; }
 

@@ -1,10 +1,10 @@
 // Tests of the C++17 back end's client (cpp17), on real programs: the units the Java front end lowers (the cpp03 corpus's and this
 // module's own, as L2) written as a whole program, and a module of the Python front end (the semantics snippet) written as header, source and function spans. The expected text is the checked-in
-// goldens (testdata/cpp17); the back end itself is the L2 core library
-// (translate/l2, linked in), so what these check is what this module adds: the units as documents, the modern forms lowered
-// first, the language a unit without one gets, the folders, the errors.
+// goldens (testdata/cpp17); the back end itself is translate/backends/cpp17_tree (on the typed tree), and what these check is also
+// what this module adds: the units as documents, the modern forms lowered first, the language a unit without one gets, the
+// folders, the errors.
 //
-// The decline is the library's Cpp17Declined (message as the library words it); the
+// The decline is the back end's Cpp17Declined (message as the back end words it); the
 // folders are found from the checkout the program belongs to, not from the source file's place.
 #include "translate/backends/cpp17.hpp"
 
@@ -122,7 +122,7 @@ CB_TEST("translate.cpp17.own.names", [] {
     check_text(c17::program(*lib, arena, units), "cpp17/names.golden.cpp");
 });
 
-// What the library does not write is declined, with its reason.
+// What the back end does not write is declined, with its reason.
 CB_TEST("translate.cpp17.declines.feat", [] { check_declined("feat"); });
 CB_TEST("translate.cpp17.declines.minecraft", [] { check_declined("minecraft"); });
 CB_TEST("translate.cpp17.modernlib_is_written", [] {   // (held to the JVM by translate.capability's Library)
