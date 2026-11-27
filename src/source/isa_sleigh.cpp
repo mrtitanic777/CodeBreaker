@@ -308,11 +308,37 @@ public:
     // ARM's unified syntax says some things the description writes otherwise by the state the code is in: `nop`, `push` and `pop`, and
     // a Thumb instruction's `s` (every Thumb data operation of the 16-bit set sets the flags; the description's own name for it has none).
     Result<Bytes> assemble(std::string_view line, std::int64_t pc, const build::Labels& labels) const override {
+        // AArch64's page forms: `adrp x0, symbol` takes the symbol's page, `:lo12:symbol` its offset in the page
+        if (const std::string_view t = text::trim(line); text::istarts_with(t, "adrp ") || t.find(":lo12:") != std::string_view::npos) {
+            std::string text_out(t);
+            if (const std::size_t at = text_out.find(":lo12:"); at != std::string::npos) {
+                std::size_t end = at + 6;
+                while (end < text_out.size() && text_out[end] != ',' && text_out[end] != ']' && text_out[end] != ' ') ++end;
+                const Result<std::int64_t> v = value(std::string_view(text_out).substr(at + 6, end - at - 6), labels, pc);
+                if (!v.ok()) return Failure(v.error().clone());
+                text_out = text_out.substr(0, at) + std::format("#0x{:x}", static_cast<std::uint64_t>(v.value()) & 0xFFF) + text_out.substr(end);
+            } else {
+                const std::size_t comma = text_out.find(',');
+                if (comma != std::string::npos) {
+                    const Result<std::int64_t> v = value(text::trim(std::string_view(text_out).substr(comma + 1)), labels, pc);
+                    if (!v.ok()) return Failure(v.error().clone());
+                    text_out = text_out.substr(0, comma + 1) + std::format("0x{:x}", static_cast<std::uint64_t>(v.value()) & ~std::uint64_t{0xFFF});
+                }
+            }
+            return assemble_arm(text_out, pc, labels);
+        }
         Result<Bytes> first = assemble_arm(line, pc, labels);
         if (first.ok() || build::is_undefined(first.error())) return first;
         // MIPS names a coprocessor register by number (`mfc0 $s0, $12`, `ctc1 $t1, $31`); the description names it (Status, fcsr)
         if (const std::string named = mips_register_names(line); named != line) {
             Result<Bytes> r = assemble_arm(named, pc, labels);
+            if (r.ok() || build::is_undefined(r.error())) return r;
+        }
+        // an immediate the description writes without its `#` (AArch64's `svc #0x21` is `svc 0x21`)
+        if (const std::string_view hashed = text::trim(line); hashed.find('#') != std::string_view::npos && hashed.find("adr") != 0) {
+            std::string plain(hashed);
+            std::erase(plain, '#');
+            Result<Bytes> r = assemble_arm(plain, pc, labels);
             if (r.ok() || build::is_undefined(r.error())) return r;
         }
         // MIPS's `la rt, address`: the two instructions that load an address (the description has no pseudo-instructions)

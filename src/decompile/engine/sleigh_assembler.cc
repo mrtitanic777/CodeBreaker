@@ -732,6 +732,19 @@ struct Assembler::Impl {
                     if ((ut & ((std::uint64_t{1} << *kr) - 1)) != 0) return;
                     return rec(l, t >> *kr);
                 }
+                if (!kr && !kl) {   // a shift by a field (AArch64's `imm16 << (hw * 16)`): each amount the right side can make, the left side solved for what is left
+                    for (int amount = 0; amount < 64; ++amount) {
+                        if (amount > 0 && (ut & ((std::uint64_t{1} << amount) - 1)) != 0) break;
+                        std::vector<Alt> ra, la;
+                        solve(r, static_cast<intb>(amount), n, curOff, env, st, ra, depth + 1);
+                        if (ra.empty()) continue;
+                        solve(l, static_cast<intb>(ut >> amount), n, curOff, env, st, la, depth + 1);
+                        if (la.empty()) continue;
+                        crossAdd(out, la, ra);
+                        if (out.size() >= kMaxAlts) break;
+                    }
+                    if (!out.empty()) return;
+                }
             } else if (nd.kind == Kind::RightShift) {
                 if (kr && *kr >= 0 && *kr < 62) return rec(l, static_cast<intb>(ut << *kr));
             } else if (nd.kind == Kind::And) {

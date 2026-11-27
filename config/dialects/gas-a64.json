@@ -1,0 +1,16 @@
+{
+  "name": "gas-a64",
+  "description": "GNU as, AArch64 (the Switch as its programs are written): // comments and lines that begin with #, decimal immediates (#16), :lo12: relocations (the one assembler reads them).",
+  "comment": "//",
+  "line_comment": "#",
+  "number": {
+    "prefix": "0x",
+    "suffix": "",
+    "case": "lower",
+    "pad": "none"
+  },
+  "label": "{name}:",
+  "decimal": {
+    "unless": []
+  }
+}

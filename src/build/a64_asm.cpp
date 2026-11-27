@@ -10,12 +10,43 @@
 #include "core/fs.hpp"
 #include "core/parallel.hpp"
 #include "core/text.hpp"
-#include "decompile/a64.hpp"
+#include "decompile/labels.hpp"
+#include "source/dialect.hpp"
+#include "source/processors.hpp"
 
 namespace cb::build::a64_asm {
 
-namespace da = decompile::a64;
 using NameLabels = decompile::NameLabels;
+
+namespace {
+
+// The instruction syntax: the AArch64 description (the one assembler), its encoder.
+const Encoder& isa() { return source::processors::described_encoder(source::processors::find("a64")); }
+
+// The failures an encoder returns, as the layer reports them: a name with no value is the retryable one.
+struct da {
+    static std::int64_t value(std::string_view expr, const NameLabels& labels, bool lenient, std::int64_t pc = 0) {
+        const Result<std::int64_t> r = isa().value(expr, labels, pc);
+        if (r.ok()) return r.value();
+        if (lenient && is_undefined(r.error())) return 0;
+        throw ParseError("", 0, 0, r.error().what());
+    }
+    static Bytes assemble(const std::string& line, std::uint64_t pc, const NameLabels& labels, bool lenient) {
+        NameLabels local = lenient ? labels : NameLabels{};
+        const NameLabels& use = lenient ? local : labels;
+        Result<Bytes> r = isa().assemble(line, static_cast<std::int64_t>(pc), use);
+        while (lenient && !r.ok() && is_undefined(r.error())) {
+            const std::string name = static_cast<const UndefinedSymbolError&>(r.error()).name();
+            if (local.contains(name)) break;
+            local[name] = static_cast<std::int64_t>(pc);
+            r = isa().assemble(line, static_cast<std::int64_t>(pc), local);
+        }
+        if (!r.ok()) throw ParseError("", 0, 0, r.error().what());
+        return r.value();
+    }
+};
+
+}  // namespace
 
 namespace {
 
@@ -176,7 +207,7 @@ std::pair<std::string, std::string> equate(const Line& l) {
 }  // namespace
 
 Image build(std::string_view source, const std::filesystem::path& include_dir) {
-    const std::vector<Line> lines = parse_lines(source);
+    const std::vector<Line> lines = parse_lines(source::dialect::find("gas-a64").parse(source));
     NameLabels labels;
     std::uint64_t pc = 0;
     // pass 1: addresses and constants
