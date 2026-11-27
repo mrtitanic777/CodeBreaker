@@ -977,7 +977,7 @@ struct Emulator::Impl {
             BItem item;
             item.d = d;
             const std::uint64_t start = at;
-            at += d->length / unit;
+            at = mem[static_cast<std::size_t>(codeIndex)].space->wrapOffset(at + d->length / unit);   // (past the top of the space is its bottom: a 16-bit PC wraps)
             item.next = at;
             item.flat = flatten(*d, item);
             if (counterSet) item.amount = counterAmount(start);
@@ -1007,7 +1007,7 @@ struct Emulator::Impl {
     template <bool Wide>
     bool executeOps(const Decoded& d) {
         const std::uint64_t unit = mem[static_cast<std::size_t>(codeIndex)].word;
-        std::uint64_t next = pcValue + d.length / unit;
+        std::uint64_t next = mem[static_cast<std::size_t>(codeIndex)].space->wrapOffset(pcValue + d.length / unit);   // (past the top of the space is its bottom)
         std::size_t i = 0;
         struct RestoreBases {   // (a hook may step the emulator: the instruction it interrupted goes on reading its own operands)
             Impl& o;
