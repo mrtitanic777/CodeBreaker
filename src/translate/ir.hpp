@@ -1368,14 +1368,10 @@ bool present(const Suite& suite);
 // ---- making a tree ----------------------------------------------------------------------------------------------------
 
 // A new node of kind K in the arena, typed as given (an expression's type; leave it empty for a node that is not one).
+// (The kind is made in place: a default node would make the variant's first alternative, a boxed Module, only to throw it away.)
 template <class K>
 Node* make(Arena& arena, K kind, TypeP type = {}, std::uint32_t line = 0, std::uint32_t col = 0) {
-    Node* node = arena.make<Node>();
-    node->line = line;
-    node->col = col;
-    node->type = std::move(type);
-    node->kind = Stored<K>(std::move(kind));
-    return node;
+    return arena.make<Node>(Node{.line = line, .col = col, .type = std::move(type), .kind = Kind(std::in_place_type<Stored<K>>, std::move(kind))});
 }
 
 // A new node of the named kind ("Block", "Binary" ...) with every slot empty; null for a name that is no kind.
