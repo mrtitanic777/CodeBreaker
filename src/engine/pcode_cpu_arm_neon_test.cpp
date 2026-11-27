@@ -9,9 +9,11 @@
 #include <format>
 #include <map>
 #include <memory>
+#include <optional>
 #include <random>
 #include <string>
 
+#include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "decompile/arm.hpp"
 #include "decompile/arm32_neon_dp.hpp"
@@ -35,8 +37,8 @@ using u64 = std::uint64_t;
 constexpr u32 kVitaCode = 0x81000000;
 
 unsigned runs_from_env(const char* name, unsigned fallback) {
-    const char* v = std::getenv(name);
-    return v ? static_cast<unsigned>(std::strtoul(v, nullptr, 10)) : fallback;
+    const std::optional<std::string> v = cb::fs::get_env(name);
+    return v && !v->empty() ? static_cast<unsigned>(std::strtoul(v->c_str(), nullptr, 10)) : fallback;
 }
 
 u32 random_word32(std::mt19937& rng) {

@@ -245,7 +245,7 @@ void compare_random(bool single, const char* title) {
             code.push_back(0xD65F03C0u);
         }
         const Case c = make_case(rng, code);
-        if (std::getenv("CB_A64_TRACE")) { std::fprintf(stderr, "word %08X\n", code[0]); }
+        if (cb::fs::get_env("CB_A64_TRACE")) { std::fprintf(stderr, "word %08X\n", code[0]); }
         const std::uint64_t steps = single ? 1 : 40;
         const Outcome run[2] = {play(c, false, steps), play(c, true, steps)};
         ++runs;
