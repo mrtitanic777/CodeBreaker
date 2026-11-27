@@ -4,6 +4,7 @@
 #include "source/isa_sleigh.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdlib>
 #include <condition_variable>
@@ -227,6 +228,34 @@ std::string compact_operators(const std::string& text) {
     return out;
 }
 
+// `mfc0 s0,12` with its coprocessor register number written as the description's name for it (`mfc0 s0,Status`); the line as it was for any other.
+std::string mips_register_names(std::string_view line) {
+    static const std::array<std::string_view, 32> cop0 = {"Index", "Random", "EntryLo0", "EntryLo1", "Context", "PageMask", "Wired", "HWREna", "BadVAddr", "Count", "EntryHi", "Compare", "Status", "Cause", "EPC", "PRId",
+                                                          "Config", "LLAddr", "WatchLo", "WatchHi", "XContext", "cop0_reg21", "cop0_reg22", "Debug", "DEPC", "PerfCnt", "ErrCtl", "CacheErr", "TagLo", "TagHi", "ErrorEPC", "DESAVE"};
+    const std::string_view t = text::trim(line);
+    const std::size_t blank = t.find_first_of(" \t");
+    if (blank == std::string_view::npos) return std::string(line);
+    const std::string_view head = t.substr(0, blank);
+    const bool control = text::iequals(head, "cfc1") || text::iequals(head, "ctc1");
+    const bool cop0_move = text::iequals(head, "mfc0") || text::iequals(head, "mtc0") || text::iequals(head, "dmfc0") || text::iequals(head, "dmtc0");
+    if (!control && !cop0_move) return std::string(line);
+    const std::size_t comma = t.rfind(',');
+    if (comma == std::string_view::npos) return std::string(line);
+    std::string_view number = text::trim(t.substr(comma + 1));
+    if (!number.empty() && number.front() == '$') number.remove_prefix(1);
+    const std::optional<std::int64_t> n = build::parse_number(number);
+    if (!n || *n < 0 || *n > 31) return std::string(line);
+    std::string_view name;
+    if (cop0_move) name = cop0[static_cast<std::size_t>(*n)];
+    else if (*n == 0) name = "fir";
+    else if (*n == 25) name = "fccr";
+    else if (*n == 26) name = "fexr";
+    else if (*n == 28) name = "fenr";
+    else if (*n == 31) name = "fcsr";
+    else return std::string(line);
+    return std::string(t.substr(0, comma + 1)) + std::string(name);
+}
+
 class SleighSyntax final : public build::Encoder {
 public:
     SleighSyntax(const std::filesystem::path& sla, const std::vector<std::pair<std::string, int>>& context)
@@ -279,6 +308,37 @@ public:
     // ARM's unified syntax says some things the description writes otherwise by the state the code is in: `nop`, `push` and `pop`, and
     // a Thumb instruction's `s` (every Thumb data operation of the 16-bit set sets the flags; the description's own name for it has none).
     Result<Bytes> assemble(std::string_view line, std::int64_t pc, const build::Labels& labels) const override {
+        Result<Bytes> first = assemble_arm(line, pc, labels);
+        if (first.ok() || build::is_undefined(first.error())) return first;
+        // MIPS names a coprocessor register by number (`mfc0 $s0, $12`, `ctc1 $t1, $31`); the description names it (Status, fcsr)
+        if (const std::string named = mips_register_names(line); named != line) {
+            Result<Bytes> r = assemble_arm(named, pc, labels);
+            if (r.ok() || build::is_undefined(r.error())) return r;
+        }
+        // MIPS's `la rt, address`: the two instructions that load an address (the description has no pseudo-instructions)
+        const std::string_view t = text::trim(line);
+        if (text::istarts_with(t, "la ") || text::istarts_with(t, "la\t")) {
+            const std::vector<std::string_view> parts = build::split_items(text::trim(t.substr(3)), true);
+            if (parts.size() == 2) {
+                const Result<std::int64_t> v = value(parts[1], labels, pc);
+                if (!v.ok()) return Failure(v.error().clone());
+                const std::uint32_t address = static_cast<std::uint32_t>(v.value());
+                const std::uint32_t high = (address + 0x8000) >> 16;
+                const std::int32_t low = static_cast<std::int16_t>(address & 0xFFFF);
+                const std::string reg(parts[0]);
+                Result<Bytes> lui = assemble_arm(std::format("lui {},0x{:x}", reg, high & 0xFFFF), pc, labels);
+                if (!lui.ok()) return first;
+                Result<Bytes> add = assemble_arm(std::format("addiu {},{},{}{:#x}", reg, reg, low < 0 ? "-" : "", static_cast<std::uint32_t>(low < 0 ? -low : low)), pc + 4, labels);
+                if (!add.ok()) return first;
+                Bytes both = lui.value();
+                both.insert(both.end(), add.value().begin(), add.value().end());
+                return both;
+            }
+        }
+        return first;
+    }
+
+    Result<Bytes> assemble_arm(std::string_view line, std::int64_t pc, const build::Labels& labels) const {
         int thumb = -1;
         for (const auto& [name, value] : context_)
             if (name == "TMode") thumb = value;
@@ -287,7 +347,7 @@ public:
         if (thumb == 1 && text::istarts_with(t, "swi ")) return assemble_core("svc " + std::string(text::trim(t.substr(4))), pc, labels);   // (Thumb's description calls it svc)
         if (text::iequals(t, "nop")) return assemble_core(thumb != 0 ? "mov r8,r8" : "mov r0,r0", pc, labels);
         if (thumb == 0) {   // (`push {r4,lr}`, `popne {pc}`: the store and load of the stack, under a condition)
-            const std::size_t blank = t.find_first_of(" 	");
+            const std::size_t blank = t.find_first_of(" \t");
             const std::string_view head = blank == std::string_view::npos ? t : t.substr(0, blank);
             for (const auto& [name, real] : {std::pair<std::string_view, std::string_view>{"push", "stmdb"}, {"pop", "ldmia"}})
                 if (blank != std::string_view::npos && head.size() >= name.size() && text::istarts_with(head, name) && (head.size() == name.size() || head.size() == name.size() + 2))

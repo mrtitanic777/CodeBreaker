@@ -8,7 +8,8 @@
 #include <format>
 #include <functional>
 
-#include "build/mips_asm.hpp"
+#include "source/dialect.hpp"
+#include "source/risc_source.hpp"
 #include "core/testing.hpp"
 #include "decompile/mips.hpp"
 #include "source/isa_r4300.hpp"
@@ -22,7 +23,7 @@ namespace {
 constexpr std::uint32_t kEntry = 0x80001000;
 
 Bytes assemble(const string& source) {
-    return cb::build::mips_asm::Assembler(cb::source::isa::r4300_encoder(), cb::build::mips_asm::ByteOrder::Big).build(".org 0x80001000\n" + source);
+    return cb::source::risc_source::assemble("r4300", cb::source::dialect::find("gas-mips").parse(".org 0x80001000\n" + source), {});
 }
 
 // RDRAM holding the program at $1000.

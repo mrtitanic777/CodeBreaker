@@ -9,6 +9,7 @@
 #include <functional>
 #include <iostream>
 
+#include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 #include "source/processors.hpp"
 #include "build/mips_asm.hpp"
@@ -175,8 +176,8 @@ CB_TEST("engine.lane_kit.machines.the_genesis_demo_cartridge_is_judged", [] {
 // $8000F800.)
 CB_TEST("engine.lane_kit.machines.the_ps1_demo_executable_is_judged", [] {
     fs::ScopedTempDir dir("cb-lane-kit-ps1-demo");
-    const build::mips_asm::Assembler assembler(source::isa::mips_encoder());
-    const Bytes exe = assembler.build(fs::read_text(testing::data_path("engine/testdata/lane_kit/ps1_demo.s")));
+
+    const Bytes exe = source::risc_source::assemble("mips", source::dialect::find("gas-mips").parse(fs::read_text(testing::data_path("engine/testdata/lane_kit/ps1_demo.s"))), {});
     const stdfs::path file = dir.path() / "demo.exe";
     fs::write_file(file, exe);
     machine_judges_a_program({"ps1", "demo.exe", 0x8000F800, static_cast<std::uint32_t>(exe.size())}, file);

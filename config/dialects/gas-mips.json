@@ -10,6 +10,10 @@
   "decimal": {"unless": ["lui", "andi", "ori", "xori"]},
   "instructions": [
     {"neutral": "or {w}, {w2}, zero", "dialect": "move {w}, {w2}"},
+    {"neutral": "sub.S S {w}, {w2}, {w3}", "dialect": "sub.s {w}, {w2}, {w3}", "print": false},
+    {"neutral": "sub.D D {w}, {w2}, {w3}", "dialect": "sub.d {w}, {w2}, {w3}", "print": false},
+    {"neutral": "bal {w}", "dialect": "bgezal $zero, {w}", "print": false},
+    {"neutral": "move {w}, {w2}", "dialect": "addu {w}, {w2}, $zero", "print": false},
     {"neutral": "li {w}, {w2}", "dialect": "addiu {w}, $zero, {w2}", "print": false},
     {"neutral": "beq {w}, zero, {w2}", "dialect": "beqz {w}, {w2}"},
     {"neutral": "bne {w}, zero, {w2}", "dialect": "bnez {w}, {w2}"}

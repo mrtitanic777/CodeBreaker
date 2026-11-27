@@ -73,60 +73,6 @@ std::optional<DecodedInsn> decode_arm9(ByteView mem, std::uint32_t pc) { return 
 // The ARM11 (ARMv6K, the 3DS): ARMv5TE and the ARMv6 and VFP rows.
 std::optional<DecodedInsn> decode_arm11(ByteView mem, std::uint32_t pc) { return decode_arm_as(mem, pc, decompile::arm::Arch::V6K); }
 
-// ---- encoders ---------------------------------------------------------------------------------------------------
-
-// The failure the directive layer expects of a name that has no value yet.
-Failure unknown(const dz::UnknownLabel& e) { return Failure(build::UndefinedSymbolError(e.name())); }
-
-class MipsSyntax final : public build::Encoder {
-public:
-    Result<std::int64_t> value(std::string_view expr, const build::Labels& labels, std::int64_t pc) const override {
-        try {
-            return decompile::mips::value(expr, labels, static_cast<std::uint32_t>(pc));
-        } catch (const dz::UnknownLabel& e) {
-            return unknown(e);
-        } catch (const ParseError& e) {
-            return Failure(e.clone());
-        }
-    }
-    Result<Bytes> assemble(std::string_view line, std::int64_t pc, const build::Labels& labels) const override {
-        try {
-            return decompile::mips::assemble(line, static_cast<std::uint32_t>(pc), labels);
-        } catch (const dz::UnknownLabel& e) {
-            return unknown(e);
-        } catch (const ParseError& e) {
-            return Failure(e.clone());
-        }
-    }
-};
-
-// The ARM7TDMI's: the state an instruction is assembled in is the lowest bit of its address (decompile/arm.hpp).
-class ArmSyntax final : public build::Encoder {
-public:
-    explicit ArmSyntax(decompile::arm::Arch arch = decompile::arm::Arch::V4T) : arch_(arch) {}
-    Result<std::int64_t> value(std::string_view expr, const build::Labels& labels, std::int64_t pc) const override {
-        try {
-            return decompile::arm::value(expr, labels, static_cast<std::uint32_t>(pc) & ~1u);
-        } catch (const dz::UnknownLabel& e) {
-            return unknown(e);
-        } catch (const ParseError& e) {
-            return Failure(e.clone());
-        }
-    }
-    Result<Bytes> assemble(std::string_view line, std::int64_t pc, const build::Labels& labels) const override {
-        try {
-            return decompile::arm::assemble(line, static_cast<std::uint32_t>(pc), labels, arch_);
-        } catch (const dz::UnknownLabel& e) {
-            return unknown(e);
-        } catch (const ParseError& e) {
-            return Failure(e.clone());
-        }
-    }
-
-private:
-    decompile::arm::Arch arch_;
-};
-
 }  // namespace
 
 const formats::Decoder& m6502_decoder() {
@@ -167,24 +113,4 @@ const formats::Decoder& m68k_decoder() {
     return decoder;
 }
 
-const build::Encoder& mips_encoder() {
-    static const MipsSyntax syntax;
-    return syntax;
-}
-const build::Encoder& arm_encoder() {
-    static const ArmSyntax syntax;
-    return syntax;
-}
-const build::Encoder& arm9_encoder() {
-    static const ArmSyntax syntax(decompile::arm::Arch::V5TE);
-    return syntax;
-}
-const build::Encoder& arm11_encoder() {
-    static const ArmSyntax syntax(decompile::arm::Arch::V6K);
-    return syntax;
-}
-const build::Encoder& armv7_encoder() {
-    static const ArmSyntax syntax(decompile::arm::Arch::V7A);
-    return syntax;
-}
 }  // namespace cb::source::isa

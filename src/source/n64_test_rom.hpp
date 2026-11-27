@@ -6,7 +6,8 @@
 #include <format>
 #include <string>
 
-#include "build/mips_asm.hpp"
+#include "source/dialect.hpp"
+#include "source/risc_source.hpp"
 #include "core/bytes.hpp"
 #include "formats/n64.hpp"
 #include "source/isa_r4300.hpp"
@@ -92,7 +93,7 @@ inline Bytes test_rom(formats::n64::ByteOrder order = formats::n64::ByteOrder::Z
 )" + boot_code() +
                          std::string(changed_program.empty() ? program() : std::string(changed_program));
     if (extra != 0) source += std::format("\n        .space 0x80101000 - .\n        .space {}\n        .word 0xCAFEBABE\n", extra);
-    Bytes rom = build::mips_asm::Assembler(isa::r4300_encoder(), build::mips_asm::ByteOrder::Big).build(source);
+    Bytes rom = risc_source::assemble("r4300", dialect::find("gas-mips").parse(source), {});
     return formats::n64::Rom::convert(rom, formats::n64::ByteOrder::Z64, order);
 }
 

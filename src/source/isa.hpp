@@ -28,10 +28,5 @@ const formats::Decoder& arm_decoder();        // the ARM7TDMI: an address carrie
 const formats::Decoder& arm11_decoder();       // the ARM11 (ARMv6K, the 3DS): the above, with the ARMv6 and VFP rows (decompile/arm_ext)
 const formats::Decoder& arm9_decoder();       // the ARM946E-S (ARMv5TE): the above, with BLX, CLZ and the other ARMv5TE instructions
 
-const build::Encoder& mips_encoder();
-const build::Encoder& arm_encoder();           // ... and the state an instruction is assembled in is the address's lowest bit
-const build::Encoder& arm11_encoder();         // ... the ARMv6K set (decompile/arm: Arch::V6K)
-const build::Encoder& armv7_encoder();         // ... the ARMv7-A set with Thumb-2's branches and the VFP (decompile/arm: Arch::V7A)
-const build::Encoder& arm9_encoder();          // ... the ARMv5TE set (decompile/arm: Arch::V5TE)
 
 }  // namespace cb::source::isa

@@ -106,19 +106,6 @@ CB_TEST("source.isa.the_r3000a_says_how_control_leaves", [] {
     CB_CHECK(!decode_with(mips_decoder(), pc, little(0xFFFFFFFF)));                                                        // not an instruction
 });
 
-CB_TEST("source.isa.the_r3000a_encoder", [] {
-    const build::Encoder& m = mips_encoder();
-    const build::Labels none;
-    const Result<Bytes> unknown = m.assemble("jal foo", 0x80010000, none);
-    CB_CHECK(!unknown.ok() && build::is_undefined(unknown.error()));
-    const build::Labels foo = {{"foo", 0x80010100}};
-    const Result<Bytes> known = m.assemble("jal foo", 0x80010000, foo);
-    CB_CHECK(known.ok() && known.value() == (Bytes{0x40, 0x40, 0x00, 0x0C}));   // 0x0C004040, little-endian
-    CB_CHECK(!m.assemble("NOT AN INSTRUCTION", 0, none).ok());
-    CB_CHECK(m.value("foo + 4", foo, 0).value() == 0x80010104);
-    CB_CHECK(!m.value("bar", foo, 0).ok() && build::is_undefined(m.value("bar", foo, 0).error()));
-});
-
 CB_TEST("source.isa.pattern_has", [] {
     CB_CHECK(pattern_has("LD (nn),A", "(nn)"));
     CB_CHECK(!pattern_has("LD A,n", "(nn)"));
