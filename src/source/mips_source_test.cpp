@@ -1,3 +1,4 @@
+// cb-unity: alone (file-local names that other files in a batch also use)
 // MIPS source of GNU as's language (the PlayStation's R3000A little-endian, the Nintendo 64's R4300 big-endian) built through the one assembler:
 // gas-mips's dialect over the directive layer over the MIPS descriptions (what build/mips_asm_n64_test's cases said, byte for byte).
 #include <format>

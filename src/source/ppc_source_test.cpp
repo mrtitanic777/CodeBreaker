@@ -1,3 +1,4 @@
+// cb-unity: alone (file-local names that other files in a batch also use)
 // PowerPC source for patching a title's code, built through the one assembler: gas-ppc's dialect over the directive layer over the
 // PowerPC description (what build/ppc_asm's own tests said, word for word).
 #include <format>
