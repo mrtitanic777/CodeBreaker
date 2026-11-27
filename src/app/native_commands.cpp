@@ -17,9 +17,9 @@
 #include "base/config.hpp"
 #include "base/settings.hpp"
 #include "base/corpus.hpp"
-#include "base/converted.hpp"
+#include "store/converted.hpp"
 #include "base/cache_command.hpp"
-#include "base/corpus_executables.hpp"
+#include "app/corpus_executables.hpp"
 #include "base/tidy_state_command.hpp"
 #include "verify/regress.hpp"
 #include "app/state_commands.hpp"
@@ -397,7 +397,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
         env.open_watcom = ft_openwatcom_of(config);
         env.retail = [corpus](std::string_view name) -> std::optional<std::filesystem::path> { return corpus->retail(name); };
         const std::filesystem::path converted = config.converted_root();
-        env.project = [converted](const std::filesystem::path& binary) { return base::converted::Store(converted).project(binary); };
+        env.project = [converted](const std::filesystem::path& binary) { return store::converted::Store(converted).project(binary); };
         return build::resources::command(env);
     });
 
@@ -451,7 +451,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     // xbox-disc, xex-basic, xenon-config, switch-tables, corpus-executables (were the codebreaker_native extension's)
     table.set(formats::xbox::disc_command::command());
     for (cli::Command& c : recompile::xenon_tools::commands(recompile::xenon_tools::Environment{config})) table.set(std::move(c));
-    table.set(base::corpus_executables::command(base::corpus_executables::Environment{corpus}));
+    table.set(app::corpus_executables::command(app::corpus_executables::Environment{corpus}));
 
     // recompile, recompile-project, xenon-recompile: Xbox 360 PowerPC code as C/C++ and the projects around it
     table.set("recompile", recompile::command::recompile_runner(recompile::command::Environment{config}));

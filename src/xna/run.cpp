@@ -131,7 +131,7 @@ std::optional<std::string> obfuscator(const std::filesystem::path& assembly, con
 Cleaned deobfuscated(const std::filesystem::path& assembly, const Tools& tools) {
     const std::optional<std::string> name = obfuscator(assembly, tools);
     if (!name) return {assembly, std::nullopt};
-    const std::string digest = base::converted::sha1_of(assembly).substr(0, 12);
+    const std::string digest = store::converted::sha1_of(assembly).substr(0, 12);
     const stdfs::path cache = tools.state / "xna" / "deobfuscated";
     stdfs::create_directories(cache);
     const stdfs::path out = cache / (assembly.stem().string() + "-" + digest + assembly.extension().string());
@@ -182,7 +182,7 @@ Json jr_record(const std::string& text, const std::string& folder) {
 
 Converted convert(const std::filesystem::path& source_in, const Environment& env, const Options& options, const Hooks& hooks) {
     const stdfs::path source = stdfs::absolute(source_in);
-    std::optional<base::converted::Project> made;
+    std::optional<store::converted::Project> made;
     stdfs::path game_dir;
     if (jr_is_dir(source)) {
         const std::vector<stdfs::path> games = assemblies(source);
@@ -199,7 +199,7 @@ Converted convert(const std::filesystem::path& source_in, const Environment& env
         game_dir = made->assets() / "game";
         if (!jr_is_dir(game_dir) && formats::media::extract(source, game_dir) == 0) throw UsageError(source.string() + ": nothing in it to read");
     }
-    base::converted::Project& p = *made;
+    store::converted::Project& p = *made;
 
     Converted done{p, {}, {}};
     std::vector<stdfs::path> outputs;

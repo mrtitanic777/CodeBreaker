@@ -821,7 +821,7 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
 
 // ---- the command ---------------------------------------------------------------------------------------------------------------
 
-int command(Decompiler& decompiler, const base::Corpus& corpus, const base::converted::Store& converted, std::span<const std::string> args) {
+int command(Decompiler& decompiler, const base::Corpus& corpus, const store::converted::Store& converted, std::span<const std::string> args) {
     if (args.empty()) {
         out_text(
             "codebreaker decompile <module> [--out FILE]\n\n"
@@ -834,7 +834,7 @@ int command(Decompiler& decompiler, const base::Corpus& corpus, const base::conv
     const std::optional<std::filesystem::path> path = corpus.retail(args[0]);
     if (!path) throw UsageError("no module '" + args[0] + "'");
     const AsC c = decompiler.as_c(*path);
-    std::optional<base::converted::Project> project;
+    std::optional<store::converted::Project> project;
     std::filesystem::path out;
     const auto flag = std::find(args.begin(), args.end(), "--out");
     if (flag != args.end()) {

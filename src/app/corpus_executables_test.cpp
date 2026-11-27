@@ -5,7 +5,7 @@
 // when that corpus is not on this machine.
 //
 // A file whose format the detector does not name is listed as "?".
-#include "base/corpus_executables.hpp"
+#include "app/corpus_executables.hpp"
 
 #include <string>
 #include <vector>
@@ -22,7 +22,7 @@ namespace corpus_executables_test {
 
 using namespace cb;
 namespace stdfs = std::filesystem;
-namespace ce = cb::base::corpus_executables;
+namespace ce = cb::app::corpus_executables;
 
 base::FormatProbes detect_probes() {
     base::FormatProbes probes;
@@ -40,7 +40,7 @@ base::FormatProbes detect_probes() {
     return probes;
 }
 
-CB_TEST("base.corpus_executables.lists_the_executables_of_a_corpus_by_file_name", [] {
+CB_TEST("app.corpus_executables.lists_the_executables_of_a_corpus_by_file_name", [] {
     const fs::ScopedTempDir dir{"cb-corpus-exe"};
     const fs::ScopedEnv no_name{"CB_CORPUS_NAME", std::nullopt};
     const stdfs::path root = dir.path() / "corpus";
@@ -76,7 +76,7 @@ CB_TEST("base.corpus_executables.lists_the_executables_of_a_corpus_by_file_name"
     CB_CHECK(out.find("PE\t") != std::string::npos);
 });
 
-CB_TEST("base.corpus_executables.lists_the_windows_95_corpus_as_recorded", [] {
+CB_TEST("app.corpus_executables.lists_the_windows_95_corpus_as_recorded", [] {
     // A proof against the live corpus (CB_CORPUS_EXECUTABLES_PROOF=1): it reads the main checkout's products, which a test build's
     // surroundings do not always reach (it listed nothing there).
     if (!fs::get_env("CB_CORPUS_EXECUTABLES_PROOF")) return;

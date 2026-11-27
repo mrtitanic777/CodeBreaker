@@ -49,7 +49,7 @@
 
 #include "base/cache.hpp"
 #include "base/config.hpp"
-#include "base/converted.hpp"
+#include "store/converted.hpp"
 #include "base/corpus.hpp"
 #include "base/parallel.hpp"
 #include "core/arena.hpp"
@@ -415,6 +415,6 @@ std::string by_their_names(std::string_view text, const std::map<std::string, st
 // module, a virtual device driver, a DOS program, a PowerPC image, a NES cartridge -- and write its functions as C. Nothing is
 // built or judged. Without --out the C goes to the binary's project folder (Converted/<name>/src/). Returns the exit code
 // (0, or 2 for no arguments; a module that is not found is NotFoundError).
-int command(Decompiler& decompiler, const base::Corpus& corpus, const base::converted::Store& converted, std::span<const std::string> args);
+int command(Decompiler& decompiler, const base::Corpus& corpus, const store::converted::Store& converted, std::span<const std::string> args);
 
 }  // namespace cb::decompile::decompiler

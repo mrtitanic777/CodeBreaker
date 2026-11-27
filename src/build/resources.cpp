@@ -1124,7 +1124,7 @@ cli::Command command(const Environment& environment) {
                     ++bad;
                     continue;
                 }
-                std::optional<base::converted::Project> project;
+                std::optional<store::converted::Project> project;
                 stdfs::path where;
                 if (out) {
                     where = fs::from_text(*out);

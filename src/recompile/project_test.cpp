@@ -342,7 +342,7 @@ CB_TEST("recompile.project.the_title_of_a_xex_gets_its_libraries_and_a_copy", []
 CB_TEST("recompile.project.command_usage_and_rexglue", [] {
     cb::fs::ScopedTempDir tmp("cbproject");
     pj::CommandHooks hooks{.env = sample_environment(tmp.path() / "rexglue"), .recompiler = {}, .locate_title = nullptr,
-                           .store = cb::base::converted::Store(tmp.path() / "Converted")};
+                           .store = cb::store::converted::Store(tmp.path() / "Converted")};
     std::vector<std::string> said;
     const auto say = [&](std::string_view line) { said.emplace_back(line); };
 
@@ -377,7 +377,7 @@ CB_TEST("recompile.project.command_x360_without_a_title", [] {
     cb::fs::write_text(tmp.path() / "not_a_title.bin", "nothing");
     pj::CommandHooks hooks{.env = sample_environment(tmp.path() / "rexglue"), .recompiler = {},
                            .locate_title = [](const stdfs::path&) { return std::optional<pj::TitleFiles>(); },
-                           .store = cb::base::converted::Store(tmp.path() / "Converted")};
+                           .store = cb::store::converted::Store(tmp.path() / "Converted")};
     std::vector<std::string> said;
     const std::string path = cb::fs::to_text(tmp.path() / "not_a_title.bin");
     const std::vector<std::string> args = {path};

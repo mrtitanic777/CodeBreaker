@@ -503,7 +503,7 @@ int run_command(const CommandHooks& hooks, std::span<const std::string> args, co
             xex_path = staging / "default.xex";
             fs::write_file(xex_path, found->xex);
         }
-        std::optional<base::converted::Project> proj;
+        std::optional<store::converted::Project> proj;
         if (!out) {
             std::optional<std::string> given;
             if (name && !name->empty()) given = name;

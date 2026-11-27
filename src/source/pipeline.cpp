@@ -48,8 +48,8 @@ const verify::reconstruct::Reconstructor& World::reconstructor() {
     return *reconstructor_;
 }
 
-base::converted::Store World::converted() const {
-    return base::converted::Store(config_.converted_root());
+store::converted::Store World::converted() const {
+    return store::converted::Store(config_.converted_root());
 }
 
 std::optional<stdfs::path> World::find(std::string_view module) {

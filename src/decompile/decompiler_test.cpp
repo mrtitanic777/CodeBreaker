@@ -20,7 +20,7 @@
 #include <fstream>
 #include <nlohmann/json.hpp>
 
-#include "base/converted.hpp"
+#include "store/converted.hpp"
 #include "base/corpus.hpp"
 #include "core/fs.hpp"
 #include "core/json.hpp"
@@ -856,7 +856,7 @@ CB_TEST("decompile.decompiler.command", [] {
     const stdfs::path program = f.dir.path() / "TINY.COM";
     cb::fs::write_file(program, cb::Bytes{0xB4, 0x4C, 0xCD, 0x21});
     cb::base::Corpus corpus(cb::base::Products{});
-    const cb::base::converted::Store store(f.dir.path() / "Converted");
+    const cb::store::converted::Store store(f.dir.path() / "Converted");
 
     cb::testing::CapturedStd captured;
     CB_CHECK_EQ(dc::command(f.decompiler, corpus, store, {}), 2);   // no arguments: the usage
@@ -870,7 +870,7 @@ CB_TEST("decompile.decompiler.command", [] {
 
     // without --out: the binary's project folder, which says what was done
     CB_CHECK_EQ(dc::command(f.decompiler, corpus, store, std::vector<string>{cb::fs::to_text(program)}), 0);
-    const cb::base::converted::Project project = store.project(program);
+    const cb::store::converted::Project project = store.project(program);
     CB_CHECK(stdfs::exists(project.src() / "tiny.c"));
     CB_CHECK(dt_has(cb::fs::read_text(project.manifest_path()), "functions as C (readable; not built or judged)"));
 

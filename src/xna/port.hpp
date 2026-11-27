@@ -55,7 +55,7 @@
 #include <string_view>
 #include <vector>
 
-#include "base/converted.hpp"
+#include "store/converted.hpp"
 #include "core/bytes.hpp"
 #include "core/ordered_map.hpp"
 
@@ -186,7 +186,7 @@ struct Prepared {
 };
 
 // build/port/ written from the project. UsageError when the game has no assemblies yet.
-Prepared prepare(const base::converted::Project& project, const Tools& tools, const Hooks& hooks, const std::optional<std::filesystem::path>& overlay = {});
+Prepared prepare(const store::converted::Project& project, const Tools& tools, const Hooks& hooks, const std::optional<std::filesystem::path>& overlay = {});
 
 struct BuildRound {
     std::size_t errors = 0, fixed = 0;
@@ -204,7 +204,7 @@ struct BuildResult {
 
 // prepare, then build until it compiles or no fix changes anything (at most `rounds` times). The result is also written to
 // reports/port.json.
-BuildResult build(const base::converted::Project& project, const Tools& tools, const Hooks& hooks,
+BuildResult build(const store::converted::Project& project, const Tools& tools, const Hooks& hooks,
                   const std::optional<std::filesystem::path>& overlay = {}, std::size_t rounds = 6);
 
 struct RunResult {
@@ -220,6 +220,6 @@ RunResult run_for(const std::filesystem::path& exe, std::chrono::seconds seconds
 std::optional<std::map<std::string, std::string>> check_content(const std::filesystem::path& exe, std::chrono::seconds seconds = std::chrono::seconds(600));
 
 // `xna port <project> [--overlay DIR] [--run SECONDS] [--check-content]`: 0 when built, 1 when not, 2 for a bad argument.
-int main(std::span<const std::string> args, const base::converted::Store& store, const Tools& tools, const Hooks& hooks);
+int main(std::span<const std::string> args, const store::converted::Store& store, const Tools& tools, const Hooks& hooks);
 
 }  // namespace cb::xna::port

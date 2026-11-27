@@ -1,4 +1,4 @@
-#include "base/corpus_executables.hpp"
+#include "app/corpus_executables.hpp"
 
 #include <algorithm>
 
@@ -8,7 +8,7 @@
 #include "core/text.hpp"
 #include "formats/detect.hpp"
 
-namespace cb::base::corpus_executables {
+namespace cb::app::corpus_executables {
 
 cli::Command command(const Environment& environment) {
     return cli::Command{
@@ -19,7 +19,7 @@ cli::Command command(const Environment& environment) {
             if (!environment.corpus) throw InternalError("corpus-executables: no corpus");
             std::vector<std::string> paths;
             // (the paths as Windows writes them: they sort and print with backslashes)
-            for (const Corpus::Executable& e : environment.corpus->executables()) paths.push_back(std::filesystem::path(e.path).make_preferred().u8string());
+            for (const base::Corpus::Executable& e : environment.corpus->executables()) paths.push_back(std::filesystem::path(e.path).make_preferred().u8string());
             std::sort(paths.begin(), paths.end());
             paths.erase(std::unique(paths.begin(), paths.end()), paths.end());
             const auto name_of = [](const std::string& path) { return text::lower(fs::to_text(fs::from_text(path).filename())); };
@@ -37,4 +37,4 @@ cli::Command command(const Environment& environment) {
         {}, "", ""};
 }
 
-}  // namespace cb::base::corpus_executables
+}  // namespace cb::app::corpus_executables

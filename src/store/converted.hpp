@@ -1,4 +1,4 @@
-// base/converted.hpp -- where CodeBreaker puts what it makes of a binary: one project folder per binary.
+// store/converted.hpp -- where CodeBreaker puts what it makes of a binary: one project folder per binary.
 //
 //     converted::Store store(converted_root);                       // the Converted folder (setting "converted")
 //     converted::Project p = store.project(binary);                  // Converted/<name>/, made (original copied) once
@@ -36,7 +36,7 @@
 #include <utility>
 #include <vector>
 
-namespace cb::base::converted {
+namespace cb::store::converted {
 
 // The folders a project has, in the order they are made.
 inline constexpr std::array<std::string_view, 5> kFolders = {"original", "src", "assets", "build", "reports"};
@@ -128,4 +128,4 @@ private:
     Clock clock_;
 };
 
-}  // namespace cb::base::converted
+}  // namespace cb::store::converted

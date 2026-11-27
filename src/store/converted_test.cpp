@@ -1,4 +1,4 @@
-#include "base/converted.hpp"
+#include "store/converted.hpp"
 
 #include <algorithm>
 #include <format>
@@ -9,7 +9,7 @@
 #include "core/text.hpp"
 
 using namespace cb;
-using namespace cb::base;
+using namespace cb::store;
 namespace stdfs = std::filesystem;
 
 namespace {
@@ -41,7 +41,7 @@ Bytes bytes_of(std::string_view s) { return to_bytes(s); }
 
 }  // namespace
 
-CB_TEST("base.converted.clean_name", [] {
+CB_TEST("store.converted.clean_name", [] {
     // from the cases of the original harness
     CB_CHECK_EQ(converted::clean_name(""), "binary");
     CB_CHECK_EQ(converted::clean_name("x"), "x");
@@ -65,7 +65,7 @@ CB_TEST("base.converted.clean_name", [] {
     CB_CHECK_EQ(converted::clean_name("a\xC3\x9C" "b"), "a_b");
 });
 
-CB_TEST("base.converted.sha1_of_streams_the_file", [] {
+CB_TEST("store.converted.sha1_of_streams_the_file", [] {
     fs::ScopedTempDir dir("cbconv");
     fs::write_file(dir.path() / "empty.bin", {});
     fs::write_file(dir.path() / "abc.bin", bytes_of("abc"));
@@ -78,7 +78,7 @@ CB_TEST("base.converted.sha1_of_streams_the_file", [] {
     CB_CHECK_THROWS_AS(IoError, converted::sha1_of(dir.path() / "missing.bin"));
 });
 
-CB_TEST("base.converted.kind_of_says_what_detection_says", [] {
+CB_TEST("store.converted.kind_of_says_what_detection_says", [] {
     CB_CHECK_EQ(converted::kind_of(testing::data_path("formats/testdata/lz32.dll")), "PE executable");
     CB_CHECK_EQ(converted::kind_of(testing::data_path("formats/testdata/bios.vxd")), "virtual device driver (LE)");
     CB_CHECK_EQ(converted::kind_of(testing::data_path("formats/testdata/setver.exe")), "DOS program (MZ)");
@@ -86,7 +86,7 @@ CB_TEST("base.converted.kind_of_says_what_detection_says", [] {
     CB_CHECK_EQ(converted::kind_of(testing::data_path("formats/testdata/no_such_file.bin")), "");
 });
 
-CB_TEST("base.converted.default_name_is_the_file_name_unless_generic", [] {
+CB_TEST("store.converted.default_name_is_the_file_name_unless_generic", [] {
     fs::ScopedTempDir dir("cbconv");
     const auto put = [&](const char* rel, std::string_view content) {
         const stdfs::path p = dir.path() / rel;
@@ -103,7 +103,7 @@ CB_TEST("base.converted.default_name_is_the_file_name_unless_generic", [] {
     CB_CHECK_EQ(converted::default_name(put("main/main.dat", "x")), "main");
 });
 
-CB_TEST("base.converted.default_name_of_a_generic_xex_is_the_name_its_header_gives", [] {
+CB_TEST("store.converted.default_name_of_a_generic_xex_is_the_name_its_header_gives", [] {
     fs::ScopedTempDir dir("cbconv");
     const Bytes head = fs::read_file(testing::data_path("formats/testdata/pacman_ce.xex.head"));
     fs::write_file(dir.path() / "xexgame" / "default.xex", head);
@@ -119,7 +119,7 @@ CB_TEST("base.converted.default_name_of_a_generic_xex_is_the_name_its_header_giv
     CB_CHECK_EQ(converted::default_name(dir.path() / "cut" / "default.xex"), "cut");
 });
 
-CB_TEST("base.converted.a_project_is_made_once_and_recorded_in_project_json", [] {
+CB_TEST("store.converted.a_project_is_made_once_and_recorded_in_project_json", [] {
     fs::ScopedTempDir temp("cbconv");
     const stdfs::path out = temp.path();
     const stdfs::path in = out / "in";
@@ -155,7 +155,7 @@ CB_TEST("base.converted.a_project_is_made_once_and_recorded_in_project_json", []
     CB_CHECK_EQ(masked(fs::read_text(second.root() / "README.txt"), in, out), golden("game2.README.txt"));
 });
 
-CB_TEST("base.converted.the_manifest_reads_back_typed", [] {
+CB_TEST("store.converted.the_manifest_reads_back_typed", [] {
     fs::ScopedTempDir temp("cbconv");
     const stdfs::path game = temp.path() / "hello.bin";
     fs::write_file(game, bytes_of("hello world"));
@@ -176,7 +176,7 @@ CB_TEST("base.converted.the_manifest_reads_back_typed", [] {
     CB_CHECK_EQ(m.steps[0].notes, "n");
 });
 
-CB_TEST("base.converted.recording_a_command_again_replaces_its_step", [] {
+CB_TEST("store.converted.recording_a_command_again_replaces_its_step", [] {
     fs::ScopedTempDir temp("cbconv");
     const stdfs::path game = temp.path() / "hello.bin";
     fs::write_file(game, bytes_of("hello world"));
@@ -194,7 +194,7 @@ CB_TEST("base.converted.recording_a_command_again_replaces_its_step", [] {
     CB_CHECK_EQ(m.steps[1].when, "2026-01-01T00:00:03");
 });
 
-CB_TEST("base.converted.an_output_beside_the_project_is_not_inside_it", [] {
+CB_TEST("store.converted.an_output_beside_the_project_is_not_inside_it", [] {
     // The folder is tested as a path, not a text prefix: otherwise Converted/foo_2/x counted as inside Converted/foo and was
     // recorded as ..\foo_2\x; it is recorded as the absolute path it is
     fs::ScopedTempDir temp("cbconv");
@@ -211,7 +211,7 @@ CB_TEST("base.converted.an_output_beside_the_project_is_not_inside_it", [] {
     CB_CHECK_EQ(m.steps[0].outputs[2], ".");   // the folder itself
 });
 
-CB_TEST("base.converted.a_named_project_and_another_base_folder", [] {
+CB_TEST("store.converted.a_named_project_and_another_base_folder", [] {
     fs::ScopedTempDir temp("cbconv");
     const stdfs::path game = temp.path() / "hello.bin";
     fs::write_file(game, bytes_of("hello world"));
@@ -229,7 +229,7 @@ CB_TEST("base.converted.a_named_project_and_another_base_folder", [] {
     CB_CHECK(stdfs::is_directory(base / "hello" / "original"));
 });
 
-CB_TEST("base.converted.a_damaged_manifest_is_an_empty_one_and_unknown_keys_survive", [] {
+CB_TEST("store.converted.a_damaged_manifest_is_an_empty_one_and_unknown_keys_survive", [] {
     fs::ScopedTempDir temp("cbconv");
     const stdfs::path folder = temp.path() / "Converted" / "hand";
     converted::Project p(folder, ticking());   // the folders only; no project.json yet
@@ -268,7 +268,7 @@ CB_TEST("base.converted.a_damaged_manifest_is_an_empty_one_and_unknown_keys_surv
     CB_CHECK(readme.find("  Kind:    unknown\r\n  Size:    ? bytes\r\n") != std::string::npos);
 });
 
-CB_TEST("base.converted.text_that_is_not_ascii_is_kept_in_the_manifest", [] {
+CB_TEST("store.converted.text_that_is_not_ascii_is_kept_in_the_manifest", [] {
     fs::ScopedTempDir temp("cbconv");
     const stdfs::path game = temp.path() / "hello.bin";
     fs::write_file(game, bytes_of("x"));
@@ -280,14 +280,14 @@ CB_TEST("base.converted.text_that_is_not_ascii_is_kept_in_the_manifest", [] {
     CB_CHECK(fs::read_text(p.root() / "README.txt").find("    caf\xC3\xA9 \xE2\x82\xAC\r\n") != std::string::npos);
 });
 
-CB_TEST("base.converted.errors", [] {
+CB_TEST("store.converted.errors", [] {
     fs::ScopedTempDir temp("cbconv");
     converted::Store store(temp.path() / "Converted", ticking());
     CB_CHECK_THROWS_AS(IoError, store.project(temp.path() / "missing.bin"));
     CB_CHECK(!stdfs::exists(temp.path() / "Converted" / "missing"));   // nothing is made for a file that is not there
 });
 
-CB_TEST("base.converted.the_clock_is_local_time_to_the_second", [] {
+CB_TEST("store.converted.the_clock_is_local_time_to_the_second", [] {
     const std::string now = converted::local_time_now();
     CB_CHECK_EQ(now.size(), std::size_t{19});
     CB_CHECK_EQ(now[4], '-');

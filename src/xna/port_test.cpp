@@ -428,7 +428,7 @@ CB_TEST("xna.port.prepare_writes_the_project", [] {
     const stdfs::path ov = p.dir.path() / "overlays" / "tetris";
     cfs::write_text(ov / "Port" / "Hand.cs", "// by hand\n");
     cfs::write_text(ov / "overlay.json", "{\"drop\": [\"XnaPort/Runtime.cs\"], \"replace\": [\"src/Tetris/Util.cs\"]}");
-    const cb::base::converted::Project project(p.root());
+    const cb::store::converted::Project project(p.root());
     const port::Prepared prepared = port::prepare(project, p.tools, p.hooks);
     CB_CHECK_EQ(prepared.name, std::string("TetrisGame"));   // the .exe's name without its spaces
     const stdfs::path port_dir = p.root() / "build" / "port";
@@ -456,7 +456,7 @@ CB_TEST("xna.port.prepare_writes_the_project", [] {
     CB_CHECK(has(csproj, "Link=\"%(RecursiveDir)%(Filename)%(Extension)\""));
     // a game with no assemblies yet: said so
     cfs::write_text(p.dir.path() / "Converted" / "empty" / "project.json", "{}");
-    CB_CHECK_THROWS_AS(cb::UsageError, port::prepare(cb::base::converted::Project(p.dir.path() / "Converted" / "empty"), p.tools, p.hooks));
+    CB_CHECK_THROWS_AS(cb::UsageError, port::prepare(cb::store::converted::Project(p.dir.path() / "Converted" / "empty"), p.tools, p.hooks));
 });
 
 // A dotnet that fails the first build with one error the port knows the fix for, and passes the second.
@@ -480,7 +480,7 @@ CB_TEST("xna.port.build_fixes_and_builds_again", [] {
     write_fake_dotnet(bin, util);
     const std::string old_path = cb::fs::get_env("PATH").value_or("");
     cfs::ScopedEnv path("PATH", bin.string() + ";" + old_path);
-    const cb::base::converted::Project project(p.root());
+    const cb::store::converted::Project project(p.root());
     const port::BuildResult r = port::build(project, p.tools, p.hooks);
     CB_CHECK(r.ok);
     CB_CHECK(r.exe.has_value() && r.exe->filename() == "TetrisGame.exe");
@@ -509,7 +509,7 @@ CB_TEST("xna.port.build_that_cannot_be_fixed_lists_the_errors", [] {
                     "echo C:\\p\\B.cs(3,3): error CS0246: The type 'Z' was not found [x.csproj]\r\n"
                     "exit /b 1\r\n");
     cfs::ScopedEnv path("PATH", bin.string() + ";" + cb::fs::get_env("PATH").value_or(""));
-    const cb::base::converted::Project project(p.root());
+    const cb::store::converted::Project project(p.root());
     const port::BuildResult r = port::build(project, p.tools, p.hooks);
     CB_CHECK(!r.ok && !r.exe);
     CB_CHECK_EQ(r.rounds.size(), std::size_t{1});   // nothing was fixed: it stops
@@ -530,7 +530,7 @@ CB_TEST("xna.port.main_prints_what_happened", [] {
     const stdfs::path bin = p.dir.path() / "bin";
     cfs::write_text(bin / "dotnet.cmd", "@echo off\r\necho C:\\p\\A.cs(1,1): error CS0103: The name 'x' does not exist [x.csproj]\r\nexit /b 1\r\n");
     cfs::ScopedEnv path("PATH", bin.string() + ";" + cb::fs::get_env("PATH").value_or(""));
-    const cb::base::converted::Store store(p.dir.path() / "Converted");
+    const cb::store::converted::Store store(p.dir.path() / "Converted");
     {
         cb::testing::CapturedStd cap;
         const std::vector<std::string> args = {"tetris"};
@@ -550,7 +550,7 @@ CB_TEST("xna.port.main_prints_what_happened", [] {
         CB_CHECK_EQ(port::main(std::vector<std::string>{"--help"}, store, p.tools, p.hooks), 0);
     }
     // a build that fails is a step of the project, with its count
-    const cb::base::converted::Project project(p.root());
+    const cb::store::converted::Project project(p.root());
     CB_CHECK(has(cfs::read_text(p.root() / "project.json"), "1 errors left"));
 });
 

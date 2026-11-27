@@ -58,7 +58,7 @@
 #include <string_view>
 #include <vector>
 
-#include "base/converted.hpp"
+#include "store/converted.hpp"
 #include "build/watcom.hpp"
 #include "core/bytes.hpp"
 #include "core/cli.hpp"
@@ -195,7 +195,7 @@ struct Environment {
     // A corpus name or a file -> the module (corpus.retail); nullopt when there is none.
     std::function<std::optional<std::filesystem::path>(std::string_view)> retail;
     // The project folder of a module's binary (Converted/<name>/), where the resources go without --out.
-    std::function<base::converted::Project(const std::filesystem::path&)> project;
+    std::function<store::converted::Project(const std::filesystem::path&)> project;
 };
 // `resources <module> ... [--out DIR]`: prints a line for each module and what was not reproduced. Without --out the
 // resources go into the module's project folder: Converted/<name>/assets/resources/. Exit code 1 when a module's

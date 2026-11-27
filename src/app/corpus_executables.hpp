@@ -1,4 +1,4 @@
-// base/corpus_executables.hpp -- the `corpus-executables` command: every executable of the selected product, its format and its path.
+// app/corpus_executables.hpp -- the `corpus-executables` command: every executable of the selected product, its format and its path.
 //
 //     corpus-executables          one line per executable, <format> <tab> <path>
 //
@@ -12,12 +12,12 @@
 #include "base/corpus.hpp"
 #include "core/cli.hpp"
 
-namespace cb::base::corpus_executables {
+namespace cb::app::corpus_executables {
 
 struct Environment {
-    std::shared_ptr<Corpus> corpus;
+    std::shared_ptr<base::Corpus> corpus;
 };
 
 cli::Command command(const Environment& environment);
 
-}  // namespace cb::base::corpus_executables
+}  // namespace cb::app::corpus_executables

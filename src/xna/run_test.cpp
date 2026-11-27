@@ -24,7 +24,7 @@ namespace {
 
 namespace run = cb::xna::run;
 namespace stdfs = std::filesystem;
-namespace converted = cb::base::converted;
+namespace converted = cb::store::converted;
 
 // A PE32 file with `directories` data directories, the CLR one (index 14) set when `dotnet`.
 cb::Bytes jrt_pe(bool dotnet) {

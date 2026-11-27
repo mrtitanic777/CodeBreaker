@@ -15,7 +15,7 @@
 #include <iostream>
 
 #include "base/config.hpp"
-#include "base/converted.hpp"
+#include "store/converted.hpp"
 #include "build/watcom.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
@@ -309,7 +309,7 @@ CB_TEST("decompile.environment.proof_decompile_as_recorded", [] {
     context.limits = main.budget_limits();
     context.scratch = fs::from_text(where) / "scratch";
     decompiler::Decompiler decompiler(context);
-    base::converted::Store converted(fs::from_text(where) / "Converted");
+    store::converted::Store converted(fs::from_text(where) / "Converted");
     for (const char* module : {"lz32.dll", "version.dll", "lzexpand.dll", "find.exe", "vmouse.vxd"}) {
         const stdfs::path out = fs::from_text(where) / (std::string(module) + ".c");
         const auto started = std::chrono::steady_clock::now();

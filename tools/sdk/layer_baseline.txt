@@ -1,7 +1,4 @@
 # Upward includes still in the tree (app.layers test, docs/SDK_DESIGN.md rule 3). This list only shrinks.
-base/converted.cpp -> formats/detect.hpp
-base/converted.cpp -> formats/xex.hpp
-base/corpus_executables.cpp -> formats/detect.hpp
 decompile/c_text.hpp -> translate/native_l2.hpp
 decompile/c_text_code_data.cpp -> build/data.hpp
 decompile/decompiler.cpp -> build/watcom.hpp

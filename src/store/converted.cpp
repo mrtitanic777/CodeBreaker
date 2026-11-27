@@ -1,4 +1,4 @@
-#include "base/converted.hpp"
+#include "store/converted.hpp"
 #include "core/sys.hpp"
 
 #include <algorithm>
@@ -15,7 +15,7 @@
 #include "formats/detect.hpp"
 #include "formats/xex.hpp"
 
-namespace cb::base::converted {
+namespace cb::store::converted {
 namespace stdfs = std::filesystem;
 
 namespace {
@@ -349,4 +349,4 @@ Project Store::project(const stdfs::path& binary, const std::optional<std::strin
     return p;
 }
 
-}  // namespace cb::base::converted
+}  // namespace cb::store::converted

@@ -11,7 +11,7 @@
 #include <string>
 #include <string_view>
 
-#include "base/converted.hpp"
+#include "store/converted.hpp"
 #include "store/function_store.hpp"
 #include "engine/lane_kit.hpp"
 #include "source/pipeline.hpp"
@@ -38,7 +38,7 @@ public:
     // `reconstructor()`; a sweep, which says its own, leaves it off.
     bool verbose = false;
     // Where a module's project folder goes (setting "converted").
-    base::converted::Store converted() const;
+    store::converted::Store converted() const;
 
     // A corpus name, or a folder that exists, as the path to read; nullopt when it is neither.
     std::optional<std::filesystem::path> find(std::string_view module);

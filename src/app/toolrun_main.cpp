@@ -13,7 +13,7 @@
 
 #include "base/config.hpp"
 #include "base/corpus.hpp"
-#include "base/corpus_executables.hpp"
+#include "app/corpus_executables.hpp"
 #include "core/cli.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
@@ -64,7 +64,7 @@ int main(int argc, char** argv) {
 
     const recompile::xenon_tools::Environment tools_env{config};
     std::vector<cli::Command> commands = {formats::xbox::crypto::command(crypto_env), formats::xbox::disc_command::command(),
-                                          base::corpus_executables::command(base::corpus_executables::Environment{corpus_of(config)})};
+                                          app::corpus_executables::command(app::corpus_executables::Environment{corpus_of(config)})};
     for (cli::Command& c : recompile::xenon_tools::commands(tools_env)) commands.push_back(std::move(c));
     try {
         return cli::Cli("toolrun", std::move(commands)).run(args);

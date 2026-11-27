@@ -36,7 +36,7 @@
 #include <string_view>
 #include <vector>
 
-#include "base/converted.hpp"
+#include "store/converted.hpp"
 #include "xna/fixups.hpp"
 
 namespace cb::xna::run {
@@ -106,7 +106,7 @@ struct Report {
 
 struct Environment {
     Tools tools;
-    base::converted::Store store;
+    store::converted::Store store;
 };
 
 struct Options {
@@ -115,7 +115,7 @@ struct Options {
 };
 
 struct Converted {
-    base::converted::Project project;
+    store::converted::Project project;
     Report report;
     std::map<std::string, std::size_t> kinds;   // content records by kind ("error" for a failed one)
 };

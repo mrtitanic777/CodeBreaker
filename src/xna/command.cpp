@@ -1,7 +1,7 @@
 // xna/command.cpp -- see command.hpp.
 #include "xna/command.hpp"
 
-#include "base/converted.hpp"
+#include "store/converted.hpp"
 #include "core/fs.hpp"
 #include "core/log.hpp"
 #include "xna/xact.hpp"
@@ -54,7 +54,7 @@ run::Environment run_environment(const Environment& environment) {
     tools.de4dot = setting_path(config, "de4dot");
     tools.checkout_root = config.checkout_root();
     tools.state = config.state();
-    return run::Environment{tools, base::converted::Store(converted_root(config))};
+    return run::Environment{tools, store::converted::Store(converted_root(config))};
 }
 
 port::Tools port_tools(const Environment& environment) {
@@ -70,7 +70,7 @@ port::Tools port_tools(const Environment& environment) {
 }
 
 int run(std::span<const std::string> args, const Environment& environment) {
-    const base::converted::Store store(converted_root(environment.config));
+    const store::converted::Store store(converted_root(environment.config));
     const port::Tools tools = port_tools(environment);
     const port::Hooks hooks = port_hooks(environment);
     const auto port_command = [&](std::span<const std::string> rest) { return port::main(rest, store, tools, hooks); };

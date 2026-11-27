@@ -7,7 +7,7 @@
 
 #include <nlohmann/json.hpp>
 
-#include "base/converted.hpp"
+#include "store/converted.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/json.hpp"
@@ -234,14 +234,14 @@ disassemble::VectorDecoder vector_decoder() {
 
 int recompile(std::span<const std::string> args, const Environment& environment) {
     const cb::config::Config& config = environment.config;
-    base::converted::Store store(converted_root(config));
+    store::converted::Store store(converted_root(config));
     powerpc::Hooks hooks;
     hooks.load_image = [&environment](const stdfs::path& file) { return loaded_image(read_image(file, environment)); };
     hooks.vector = vector_decoder();
     hooks.compiler.checkout_root = config.checkout_root();
     if (const std::string gpp = config.text("gpp"); !gpp.empty()) hooks.compiler.gpp = fs::from_text(gpp);
     hooks.project_output = [&store](const stdfs::path& binary) {
-        const base::converted::Project project = store.project(binary);
+        const store::converted::Project project = store.project(binary);
         return project.src() / (text::lower(project.name()) + ".cpp");
     };
     hooks.record = [&store](const stdfs::path& binary, const std::vector<stdfs::path>& written, std::string_view notes) {
@@ -253,7 +253,7 @@ int recompile(std::span<const std::string> args, const Environment& environment)
 int recompile_project(std::span<const std::string> args, const Environment& environment) {
     const cb::config::Config& config = environment.config;
     xenon::Xenon tool(xenon_config(config));
-    project::CommandHooks hooks{.env = {}, .recompiler = {}, .locate_title = {}, .store = base::converted::Store(converted_root(config))};
+    project::CommandHooks hooks{.env = {}, .recompiler = {}, .locate_title = {}, .store = store::converted::Store(converted_root(config))};
     hooks.env.read_title = [&environment](const stdfs::path& file) { return read_title(file, environment); };
     hooks.env.vector = vector_decoder();
     hooks.env.import_names = ordinal_names(config);

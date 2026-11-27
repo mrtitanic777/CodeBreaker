@@ -794,7 +794,7 @@ std::size_t convert_songs(const fs::path& game_dir, const fs::path& converted, c
     return n;
 }
 
-Prepared prepare(const base::converted::Project& project, const Tools& tools, const Hooks& hooks, const std::optional<fs::path>& overlay) {
+Prepared prepare(const store::converted::Project& project, const Tools& tools, const Hooks& hooks, const std::optional<fs::path>& overlay) {
     const fs::path game_dir = project.assets() / "game";
     std::error_code probe;
     const std::vector<fs::path> games = fs::is_directory(game_dir, probe) ? run::assemblies(game_dir) : std::vector<fs::path>{};
@@ -885,7 +885,7 @@ Prepared prepare(const base::converted::Project& project, const Tools& tools, co
     return out;
 }
 
-BuildResult build(const base::converted::Project& project, const Tools& tools, const Hooks& hooks, const std::optional<fs::path>& overlay, std::size_t rounds) {
+BuildResult build(const store::converted::Project& project, const Tools& tools, const Hooks& hooks, const std::optional<fs::path>& overlay, std::size_t rounds) {
     Prepared prepared = prepare(project, tools, hooks, overlay);
     const fs::path& port = prepared.dir;
     BuildResult result;
@@ -960,7 +960,7 @@ std::optional<std::map<std::string, std::string>> check_content(const fs::path& 
     return checked;
 }
 
-int main(std::span<const std::string> args, const base::converted::Store& store, const Tools& tools, const Hooks& hooks) {
+int main(std::span<const std::string> args, const store::converted::Store& store, const Tools& tools, const Hooks& hooks) {
     if (args.empty() || args[0] == "-h" || args[0] == "--help") {
         out("{}\n", "xna port <Converted project or name> [--overlay DIR] [--run SECONDS] [--check-content]");
         return args.empty() ? 2 : 0;
@@ -989,7 +989,7 @@ int main(std::span<const std::string> args, const base::converted::Store& store,
             return 2;
         }
     }
-    const base::converted::Project project(path);
+    const store::converted::Project project(path);
     const auto t0 = std::chrono::steady_clock::now();
     BuildResult result;
     try {

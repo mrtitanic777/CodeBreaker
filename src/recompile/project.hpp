@@ -38,7 +38,7 @@
 #include <string_view>
 #include <vector>
 
-#include "base/converted.hpp"
+#include "store/converted.hpp"
 #include "core/bytes.hpp"
 #include "recompile/disassemble.hpp"
 #include "recompile/powerpc.hpp"
@@ -168,7 +168,7 @@ struct CommandHooks {
     Environment env;                                                     // for `--runtime rexglue`
     x360project::Recompiler recompiler;                                  // for the x360 runtime
     std::function<std::optional<TitleFiles>(const std::filesystem::path&)> locate_title;
-    base::converted::Store store;                                        // the projects' folders
+    store::converted::Store store;                                        // the projects' folders
 };
 
 // `codebreaker recompile-project <title> [-o <folder>] [--name N] [--title-files <dir>] [--build] [--check [seconds]]
