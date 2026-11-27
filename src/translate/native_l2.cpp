@@ -2,9 +2,12 @@
 #include "translate/native_l2.hpp"
 
 #include <algorithm>
+#include <fstream>
 #include <mutex>
+#include <process.h>
 #include <nlohmann/json.hpp>
 
+#include "core/fs.hpp"
 #include "core/json.hpp"
 #include "translate/l2/include/l2api.h"   // translate/l2/include: the library's entry point
 
@@ -99,7 +102,33 @@ std::pair<int, std::string> Library::call_raw(std::string_view name, std::string
     const int status = impl_->call(fn.c_str(), arguments_json.data(), arguments_json.size(), &out, &length);
     std::string answer = out != nullptr ? std::string(out, length) : std::string();
     if (out != nullptr) impl_->release(out);
+    record(fn, arguments_json, status, answer);
     return {status, std::move(answer)};
+}
+
+// With CB_L2_RECORD naming a folder, every call and its answer is kept there as a line of JSON ({"fn", "args", "status", "answer"}, the
+// arguments and the answer as the text that crossed), one file per process: what the library answers on a corpus, for a new back end
+// to be held to (docs/ENGINE_UNIFICATION.md item 1).
+void Library::record(std::string_view fn, std::string_view arguments, int status, std::string_view answer) {
+    static const std::optional<std::string> folder = [] {
+        const std::optional<std::string> v = fs::get_env("CB_L2_RECORD");
+        return v && !v->empty() ? v : std::nullopt;
+    }();
+    if (!folder) return;
+    static std::mutex lock;
+    static std::ofstream file;
+    std::lock_guard hold(lock);
+    if (!file.is_open()) {
+        file.open(fs::from_text(*folder) / ("calls-" + std::to_string(static_cast<unsigned long>(_getpid())) + ".jsonl"), std::ios::binary | std::ios::app);
+        if (!file) return;
+    }
+    Json line = Json::object();
+    line["fn"] = std::string(fn);
+    line["args"] = std::string(arguments);
+    line["status"] = status;
+    line["answer"] = std::string(answer);
+    file << line.dump() << '\n';
+    file.flush();
 }
 
 Json Library::call(std::string_view name, const Json& arguments, Json* facts) const {

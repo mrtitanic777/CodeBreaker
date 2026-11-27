@@ -8,6 +8,9 @@
 #include "translate/native_l2.hpp"
 
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
+#include <map>
 #include <iostream>
 #include <nlohmann/json.hpp>
 
@@ -296,4 +299,41 @@ CB_TEST("translate.native_l2.module_entries", [] {
     // a fragment as the C of its module holds it
     CB_CHECK_EQ(lib->fragment(parse(R"({"node":"MachineFragment","name":"g","syntax":"masm","asm":"mov ax, 1"})")),
                 std::string("/* g: kept as its instructions --  */\n"));
+});
+
+// A recording of the library's calls (CB_L2_RECORD's files, in the folder CB_L2_REPLAY names) asked again: every answer is the one
+// recorded. Run before a back end moves, it says the recording is an oracle (the library answers the same thing twice); run after, it
+// holds the moved back end to it (docs/ENGINE_UNIFICATION.md item 1). Without CB_L2_REPLAY there is nothing to replay.
+CB_TEST("translate.native_l2.a_recording_replays_answer_for_answer", [] {
+    const std::optional<std::string> folder = cb::fs::get_env("CB_L2_REPLAY");
+    if (!folder || folder->empty()) return;
+    const nl::Library* lib = library();
+    CB_CHECK(lib != nullptr);
+    if (lib == nullptr) return;
+    std::size_t calls = 0, same = 0;
+    std::map<std::string, std::size_t> differing;
+    std::string first;
+    for (const auto& entry : std::filesystem::directory_iterator(cb::fs::from_text(*folder))) {
+        if (entry.path().extension() != ".jsonl") continue;
+        std::ifstream in(entry.path(), std::ios::binary);
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.empty()) continue;
+            const Json r = cb::json::parse(line);
+            const std::string fn = r.at("fn").get<std::string>();
+            const auto [status, answer] = lib->call_raw(fn, r.at("args").get<std::string>());
+            ++calls;
+            if (status == r.at("status").get<int>() && answer == r.at("answer").get<std::string>()) {
+                ++same;
+                continue;
+            }
+            ++differing[fn];
+            if (first.empty()) first = fn + ": " + answer.substr(0, 300) + "\n  recorded: " + r.at("answer").get<std::string>().substr(0, 300);
+        }
+    }
+    std::cout << calls << " calls replayed, " << same << " answered as recorded\n";
+    for (const auto& [fn, n] : differing) std::cout << "  " << fn << ": " << n << " differ\n";
+    if (!first.empty()) std::cout << "  first: " << first << "\n";
+    CB_CHECK(calls > 0);
+    CB_CHECK_EQ(same, calls);
 });

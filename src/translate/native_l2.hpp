@@ -132,6 +132,8 @@ public:
     // One entry point, arguments already a JSON array and its answer as text: (status, text). Status 0 is success; any other
     // is an error whose text is the JSON {"type", "message", "facts"?}.
     std::pair<int, std::string> call_raw(std::string_view name, std::string_view arguments_json) const;
+    // (CB_L2_RECORD: each call kept with its answer; native_l2.cpp)
+    static void record(std::string_view fn, std::string_view arguments, int status, std::string_view answer);
     // One entry point with its arguments -> the answer. LibraryError (or its subtypes) for an error status; when `facts` is
     // given, the keys the library wrote to it (also when it fails) are put in it.
     Json call(std::string_view name, const Json& arguments, Json* facts = nullptr) const;
