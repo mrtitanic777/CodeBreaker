@@ -1,14 +1,12 @@
-// emulate/f8.hpp -- the Fairchild F8 as an interpreter, to run functions on (small, deterministic, and it logs what a function does to the devices).
+// emulate/f8.hpp -- the Fairchild F8 machine a function is run on: its bus (64 KB of memory, ports through callbacks, every port access logged), its registers and the record of
+// a run. The instructions run on CodeBreaker's one emulator (engine/pcode_cpu_f8: f8.sla and what the adapter adds); the interpreter that was here was retired when the emulator
+// matched it.
 //
 //     f8::Bus bus;                                    // 64 KB of memory, ports through callbacks, every port access logged
 //     bus.load(0x0800, rom);                          // the cartridge
-//     f8::RunResult r = f8::run(bus, 0x0820, {.a = 1});    // call the function as PI would, run to its POP
+//     f8::RunResult r = engine::pcode_cpu::run(bus, 0x0820, {.a = 1});    // call the function as PI would, run to its POP
 //
-// Every instruction of decompile/f8: the accumulator and the status register W (S sign, set when the result is positive; C carry; Z zero; O overflow; ICB the interrupt bit),
-// the 64-byte scratchpad with its direct registers 0-11 and the indirect S / I / D through ISAR (I and D count its low three bits after the access), the pairs K Q H and J W, the
-// data counters DC0 / DC1 (LM, ST, AM, AMD, NM, OM, XM, CM, DCI, XDC, and ADC, which adds the accumulator to DC0), the program counters PC0 / PC1 (PI, PK, POP, JMP), the shifts, the binary and decimal adds (ASD and AMD adjust as
-// the F8 does: the decimal carry and the low-digit carry are modelled), every branch, and the ports (IN, OUT, INS, OUTS), each access logged. PI and JMP overwrite the accumulator with
-// the high byte of the address, as the F8 does. Interrupts are not modelled. A run starts with PC1 holding an address nothing is at and ends when POP brings it back.
+// A run starts with PC1 holding kReturnAddress and ends when POP brings it back.
 #pragma once
 
 #include <array>
@@ -79,19 +77,6 @@ struct Fault {
     std::string text() const { return reason; }
 };
 
-class Cpu {
-public:
-    explicit Cpu(Bus& bus) : bus_(&bus) {}
-
-    Registers regs;
-    std::uint64_t steps = 0;
-
-    std::optional<Fault> step();
-
-private:
-    Bus* bus_;
-};
-
 struct RunOptions {
     std::uint8_t a = 0;
     std::array<std::uint8_t, 12> r{};         // the starting scratchpad registers 0-11
@@ -109,8 +94,5 @@ struct RunResult {
     std::vector<PortAccess> io;
     std::string exit() const;   // "return" | "stopped: <why>" | "limit"
 };
-
-// Call the function at `entry` as PI would and run it until a POP reaches kReturnAddress, it faults or takes `max_steps` instructions.
-RunResult run(Bus& bus, std::uint16_t entry, const RunOptions& options = {});
 
 }  // namespace cb::emulate::f8

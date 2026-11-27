@@ -164,6 +164,4 @@ f8cpu::RunResult run(f8cpu::Bus& bus, std::uint16_t entry, const f8cpu::RunOptio
     return out;
 }
 
-f8cpu::RunResult call(f8cpu::Bus& bus, std::uint16_t entry, const f8cpu::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : f8cpu::run(bus, entry, options); }
-
 }  // namespace cb::engine::pcode_cpu
