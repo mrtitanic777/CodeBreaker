@@ -113,3 +113,13 @@ for the 16- and 32-bit targets, and MSVC stays for x64 (the 2026-11-26 exception
 ## Status
 
 - 2026-11-26: plan written; the inventory above.
+- 2026-11-26: item 4: the ILSpy port's design for what L2 must carry for .NET (`ILAST_TO_L2.md`, in its work folder) is accepted
+  as stage 13's plan, and its four decisions are answered: the size growth is allowed and measured, `is_signed` applies to every
+  signed binary operator, decimal is the class `System.Decimal` with the literal's exact text, and `Intrinsic` has a binding review
+  rule.
+- 2026-11-26: item 1, step 1 started. The decompiler's own L2 documents lose nothing in `translate::ir`: every function of lz32.dll
+  (93) and of the 16-bit lzexpand.dll (46) reads into the typed tree and writes back the same
+  (`translate.l2.decompiler_documents_lose_nothing`). So `cb_l2`'s C back end can be moved onto the tree. Its size: `cback`,
+  `cemit`, `cmodule`, `cpasses` and `cpasses2` are 5,600 lines over `py::V`, with `pyre` (Python-exact regex) and `pystr` kept as
+  utilities. The C++17 core and its Java and Python rules are another 5,100. The proof is C byte for byte on the decompile corpus
+  against today's `cb_l2`, then the C++17 goldens and judges.
