@@ -5,11 +5,12 @@
 
 #include <chrono>
 #include <cstdlib>
-#include <deque>
+#include <list>
 #include <memory>
 #include <functional>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include <nlohmann/json.hpp>
@@ -99,21 +100,41 @@ Json json_of(const V& v) {
     return Json(nullptr);
 }
 
-// A document's tree, made once from its text and kept while the next calls bring the same text: a function's document goes to flags,
-// then to function, to the module's questions ... The writer only reads the tree (what it makes is its own), so one tree serves them all.
+// A document's tree, made once from its text and kept while later calls bring the same text: a module's functions are written in
+// turn and asked of again (flags, function, the module's questions, the next pass over the module ...). The writer only reads the
+// tree (what it makes is its own), so one tree serves them all. Kept by its text, the least recently used let go past a budget.
 struct Held {
     std::string text;
     std::unique_ptr<Arena> arena;
     ir::Node* tree = nullptr;
 };
-constexpr std::size_t kHeldTrees = 8;
-thread_local std::deque<Held> held_trees;   // newest last
+constexpr std::size_t kHeldBytes = 8u << 20;    // (of documents' text, a thread; their trees are some times that)
+struct HeldTrees {
+    std::list<Held> order;                                                  // the most recently used first
+    std::unordered_map<std::string_view, std::list<Held>::iterator> by_text;   // (the key is the held text's own)
+    std::size_t bytes = 0;
 
-ir::Node* held_tree(std::string_view text) {
-    for (const Held& h : held_trees)
-        if (h.text.size() == text.size() && h.text == text) return h.tree;
-    return nullptr;
-}
+    ir::Node* find(std::string_view text) {
+        const auto it = by_text.find(text);
+        if (it == by_text.end()) return nullptr;
+        order.splice(order.begin(), order, it->second);
+        return it->second->tree;
+    }
+    ir::Node* add(Held h) {
+        bytes += h.text.size();
+        order.push_front(std::move(h));
+        by_text[order.front().text] = order.begin();
+        while (bytes > kHeldBytes && order.size() > 1) {
+            by_text.erase(order.back().text);
+            bytes -= order.back().text.size();
+            order.pop_back();
+        }
+        return order.front().tree;
+    }
+};
+thread_local HeldTrees held_trees;
+
+ir::Node* held_tree(std::string_view text) { return held_trees.find(text); }
 
 // One call's documents: the trees of its arguments, kept while it is answered. The first argument, where it is a document, is the
 // tree its text made (`first`, held for the next call: `keep`), the others' made from the values the arguments were read as.
@@ -130,9 +151,7 @@ struct Docs {
         h.text = std::string(keep);
         h.arena = std::make_unique<Arena>();
         h.tree = l2::from_json(*h.arena, json_of(doc));
-        first = X::node(h.tree);
-        held_trees.push_back(std::move(h));
-        if (held_trees.size() > kHeldTrees) held_trees.pop_front();
+        first = X::node(held_trees.add(std::move(h)));
         return *first;
     }
     const ir::Type* type(const V& doc) {
