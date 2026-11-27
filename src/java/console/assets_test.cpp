@@ -11,6 +11,8 @@ namespace {
 
 using namespace cb;
 using namespace cb::java::console;
+using cb::formats::ZipArchive;
+using cb::formats::ZipWriter;
 namespace stdfs = std::filesystem;
 
 std::string list_text(const std::vector<std::string>& v) {

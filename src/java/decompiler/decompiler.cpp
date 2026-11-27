@@ -10,7 +10,7 @@
 #include <stdexcept>
 
 #include "core/fs.hpp"
-#include "java/console/zip_archive.hpp"
+#include "formats/zip.hpp"
 #include "java/decompiler/classes.hpp"
 #include "java/decompiler/context.hpp"
 #include "java/decompiler/text_buffer.hpp"
@@ -197,8 +197,8 @@ void MemoryResultSaver::copy_entry(const std::string& source, const std::string&
     if (!check_entry(entry, file)) return;
 
     try {
-        const console::ZipArchive src = console::ZipArchive::open(source);
-        const console::ZipArchive::Entry* e = src.find(entry);
+        const formats::ZipArchive src = formats::ZipArchive::open(source);
+        const formats::ZipArchive::Entry* e = src.find(entry);
         if (e != nullptr) {
             OutputFile f;
             f.container = file;

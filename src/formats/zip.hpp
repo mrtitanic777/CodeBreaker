@@ -1,8 +1,10 @@
-// java/console/zip_archive.hpp -- read a .zip/.jar archive: list its entries and extract them.
+// formats/zip.hpp -- read a .zip/.jar/.appx archive: list its entries and extract them; write a stored one.
 //
-// Reads the central directory of a jar (stored and deflated entries; no zip64, no encryption, no other compression
-// methods -- a jar uses neither) and checks every extracted entry against its CRC-32. The archive is read into memory
-// once when it is opened, so listing and extracting do not touch the disk again.
+// Reads the central directory of an archive (stored and deflated entries; no encryption, no other compression methods)
+// and checks every extracted entry against its CRC-32. A jar is read into memory once when it is opened, so listing and
+// extracting do not touch the disk again; a package that is already in memory (`view`) is read where it lies. zip64 is
+// refused unless the reader is asked for it (`Options::zip64`), and a package whose writer left the CRCs out is read with
+// `Options::check_crc` off.
 #pragma once
 
 #include <cstdint>
@@ -15,7 +17,7 @@
 
 #include "core/bytes.hpp"
 
-namespace cb::java::console {
+namespace cb::formats {
 
 class ZipArchive {
 public:
@@ -26,16 +28,23 @@ public:
         std::uint16_t flags = 0;
         std::uint16_t method = 0;         // 0 stored, 8 deflated
         std::uint32_t crc = 0;
-        std::uint32_t compressed_size = 0;
-        std::uint32_t size = 0;
+        std::uint64_t compressed_size = 0;
+        std::uint64_t size = 0;
         std::uint64_t header_offset = 0;
         bool is_directory() const { return !name.empty() && name.back() == '/'; }
+    };
+
+    struct Options {
+        bool zip64 = false;       // read zip64 archives (else UnsupportedError)
+        bool check_crc = true;    // compare every extracted entry with its CRC-32
     };
 
     // FormatError when the file is not a zip (no end-of-central-directory record, a damaged directory);
     // UnsupportedError for zip64.
     static ZipArchive open(const std::filesystem::path& path);
-    static ZipArchive from_bytes(Bytes data, std::string name = "zip");
+    static ZipArchive from_bytes(Bytes data, std::string name = "zip", Options options = {});
+    // The archive in `data`, which must outlive the ZipArchive and everything read through it.
+    static ZipArchive view(ByteView data, std::string name = "zip", Options options = {});
 
     // The entries in directory order (directories included).
     const std::vector<Entry>& entries() const { return entries_; }
@@ -51,7 +60,12 @@ public:
     Bytes read(std::string_view name) const;
 
 private:
-    Bytes data_;
+    static ZipArchive parse(ZipArchive z);
+    ByteView data() const { return owned_.empty() ? borrowed_ : ByteView(owned_); }
+
+    Bytes owned_;
+    ByteView borrowed_;
+    Options options_;
     std::string name_;
     std::vector<Entry> entries_;
     std::map<std::string, std::size_t, std::less<>> by_name_;
@@ -77,4 +91,4 @@ private:
     std::vector<Written> written_;
 };
 
-}  // namespace cb::java::console
+}  // namespace cb::formats

@@ -7,7 +7,7 @@
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
-#include "java/console/zip_archive.hpp"
+#include "formats/zip.hpp"
 
 namespace cb::java::classfile {
 namespace {
@@ -19,8 +19,8 @@ struct CfRound {
 
 CfRound cf_round_trip(const std::filesystem::path& jar) {
     CfRound r;
-    const console::ZipArchive zip = console::ZipArchive::open(jar);
-    for (const console::ZipArchive::Entry& e : zip.entries()) {
+    const formats::ZipArchive zip = formats::ZipArchive::open(jar);
+    for (const formats::ZipArchive::Entry& e : zip.entries()) {
         if (e.is_directory() || !e.name.ends_with(".class")) continue;
         const Bytes bytes = zip.read(e);
         const ClassFile c = parse(bytes, e.name);
@@ -55,9 +55,9 @@ CB_TEST("java.classfile.real_classes_come_back_byte_for_byte", [] {
 });
 
 CB_TEST("java.classfile.the_names_a_class_holds", [] {
-    const console::ZipArchive zip = console::ZipArchive::open(testing::data_path("java/decompiler/testdata/jar/gradle-wrapper.jar"));
+    const formats::ZipArchive zip = formats::ZipArchive::open(testing::data_path("java/decompiler/testdata/jar/gradle-wrapper.jar"));
     bool found = false;
-    for (const console::ZipArchive::Entry& e : zip.entries()) {
+    for (const formats::ZipArchive::Entry& e : zip.entries()) {
         if (e.name != "org/gradle/wrapper/GradleWrapperMain.class") continue;
         const ClassFile c = parse(zip.read(e), e.name);
         CB_CHECK_EQ(c.name(), "org/gradle/wrapper/GradleWrapperMain");

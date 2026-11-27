@@ -9,7 +9,7 @@
 #include "core/text.hpp"
 #include "java/console/project_scan.hpp"
 #include "java/console/retromcp.hpp"
-#include "java/console/zip_archive.hpp"
+#include "formats/zip.hpp"
 
 namespace cb::java::port {
 
@@ -105,8 +105,8 @@ std::string project_name(std::string_view stem) {
 
 JarCounts count_jar(const stdfs::path& jar) {
     JarCounts counts;
-    const console::ZipArchive zip = console::ZipArchive::open(jar);
-    for (const console::ZipArchive::Entry& e : zip.entries()) {
+    const formats::ZipArchive zip = formats::ZipArchive::open(jar);
+    for (const formats::ZipArchive::Entry& e : zip.entries()) {
         if (e.is_directory()) continue;
         if (e.name.ends_with(".java")) ++counts.java;
         else if (e.name.ends_with(".class")) ++counts.classes;
@@ -115,9 +115,9 @@ JarCounts count_jar(const stdfs::path& jar) {
 }
 
 std::size_t extract_java_sources(const stdfs::path& jar, const stdfs::path& dest) {
-    const console::ZipArchive zip = console::ZipArchive::open(jar);
+    const formats::ZipArchive zip = formats::ZipArchive::open(jar);
     std::size_t written = 0;
-    for (const console::ZipArchive::Entry& e : zip.entries()) {
+    for (const formats::ZipArchive::Entry& e : zip.entries()) {
         if (e.is_directory() || !e.name.ends_with(".java")) continue;
         if (e.name.find("..") != std::string::npos || e.name.starts_with('/')) continue;   // never outside dest
         const stdfs::path target = dest / fs::from_text(e.name);

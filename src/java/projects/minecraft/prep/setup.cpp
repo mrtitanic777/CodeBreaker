@@ -8,7 +8,7 @@
 
 #include "core/fs.hpp"
 #include "core/json.hpp"
-#include "java/console/zip_archive.hpp"
+#include "formats/zip.hpp"
 #include "java/projects/minecraft/prep/versions.hpp"
 
 namespace cb::java::minecraft::prep {
@@ -44,10 +44,10 @@ bool cleanup(const stdfs::path& workspace) {
 
 namespace {
 
-void extract_entries(const console::ZipArchive& zip, const stdfs::path& dest, const std::optional<std::string>& extension) {
+void extract_entries(const formats::ZipArchive& zip, const stdfs::path& dest, const std::optional<std::string>& extension) {
     stdfs::create_directories(dest);
     const stdfs::path root = dest.lexically_normal();
-    for (const console::ZipArchive::Entry& entry : zip.entries()) {
+    for (const formats::ZipArchive::Entry& entry : zip.entries()) {
         if (extension && !(entry.name.size() >= extension->size() && entry.name.compare(entry.name.size() - extension->size(), extension->size(), *extension) == 0))
             continue;
         const stdfs::path to = (dest / fs::from_text(entry.name)).lexically_normal();
@@ -67,11 +67,11 @@ void extract_entries(const console::ZipArchive& zip, const stdfs::path& dest, co
 }  // namespace
 
 void extract_zip(const stdfs::path& zip, const stdfs::path& dest, const std::optional<std::string>& extension) {
-    extract_entries(console::ZipArchive::open(zip), dest, extension);
+    extract_entries(formats::ZipArchive::open(zip), dest, extension);
 }
 
 void extract_zip_bytes(ByteView zip, const stdfs::path& dest) {
-    extract_entries(console::ZipArchive::from_bytes(Bytes(zip.begin(), zip.end()), "conf zip"), dest, std::nullopt);
+    extract_entries(formats::ZipArchive::from_bytes(Bytes(zip.begin(), zip.end()), "conf zip"), dest, std::nullopt);
 }
 
 SetupResult setup(const std::string& version_id, const stdfs::path& workspace, const SetupOptions& options) {

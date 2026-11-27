@@ -36,9 +36,9 @@ std::string forward_slashes(const stdfs::path& p) { return fs::to_text(p); }
 
 bool is_asset_name(std::string_view name) { return has_extension(name, kAssetExtensions); }
 
-std::vector<std::string> list_jar_assets(const ZipArchive& jar) {
+std::vector<std::string> list_jar_assets(const formats::ZipArchive& jar) {
     std::set<std::string> names;
-    for (const ZipArchive::Entry& e : jar.entries())
+    for (const formats::ZipArchive::Entry& e : jar.entries())
         if (!e.name.ends_with('/') && is_asset_name(e.name)) names.insert(e.name);
     return {names.begin(), names.end()};
 }
@@ -156,9 +156,9 @@ stdfs::path destination(const stdfs::path& content_dir, const std::string& name)
 
 }  // namespace
 
-Extracted extract(const ZipArchive& jar, const stdfs::path& content_dir, const ExtractOptions& options) {
+Extracted extract(const formats::ZipArchive& jar, const stdfs::path& content_dir, const ExtractOptions& options) {
     Extracted out;
-    for (const ZipArchive::Entry& e : jar.entries()) {
+    for (const formats::ZipArchive::Entry& e : jar.entries()) {
         if (e.name.ends_with('/') || !is_asset_name(e.name)) continue;
         if (options.only && !options.only->contains(e.name)) continue;
         Bytes data = jar.read(e);
@@ -178,7 +178,7 @@ Extracted extract(const ZipArchive& jar, const stdfs::path& content_dir, const E
 
 // ---- auditing -------------------------------------------------------------------------------------------------
 
-Coverage coverage(const ZipArchive& jar, const stdfs::path& code_dir, const stdfs::path& bundle_dir) {
+Coverage coverage(const formats::ZipArchive& jar, const stdfs::path& code_dir, const stdfs::path& bundle_dir) {
     Coverage cov;
     cov.needed = code_resource_refs(code_dir);
     std::set<std::string> supply;   // the jar and the console bundle
@@ -237,7 +237,7 @@ std::string render_coverage(const Coverage& cov, const std::vector<std::string>&
 }
 
 RunResult run(const stdfs::path& jar_path, const stdfs::path& content_dir, const RunOptions& options) {
-    const ZipArchive jar = ZipArchive::open(jar_path);
+    const formats::ZipArchive jar = formats::ZipArchive::open(jar_path);
     RunResult result;
     result.content_dir = content_dir;
     if (options.code_dir) result.coverage = coverage(jar, *options.code_dir, options.bundle_dir);

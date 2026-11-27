@@ -1,4 +1,4 @@
-#include "java/console/zip_archive.hpp"
+#include "formats/zip.hpp"
 
 #include <algorithm>
 #include <array>
@@ -6,15 +6,14 @@
 #include <optional>
 #include <format>
 
-#include <zlib.h>
-
 #include "core/crypto.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/io.hpp"
 #include "core/text.hpp"
+#include "formats/deflate.hpp"
 
-namespace cb::java::console {
+namespace cb::formats {
 
 namespace {
 
@@ -43,11 +42,24 @@ ZipArchive ZipArchive::open(const std::filesystem::path& path) {
     return from_bytes(fs::read_file(path), fs::to_text(path.filename()));
 }
 
-ZipArchive ZipArchive::from_bytes(Bytes data, std::string name) {
+ZipArchive ZipArchive::from_bytes(Bytes data, std::string name, Options options) {
     ZipArchive z;
-    z.data_ = std::move(data);
+    z.owned_ = std::move(data);
     z.name_ = std::move(name);
-    const ByteView d = z.data_;
+    z.options_ = options;
+    return parse(std::move(z));
+}
+
+ZipArchive ZipArchive::view(ByteView data, std::string name, Options options) {
+    ZipArchive z;
+    z.borrowed_ = data;
+    z.name_ = std::move(name);
+    z.options_ = options;
+    return parse(std::move(z));
+}
+
+ZipArchive ZipArchive::parse(ZipArchive z) {
+    const ByteView d = z.data();
 
     // the end-of-central-directory record: in the last 22 bytes, or (a comment follows) found by scanning back
     constexpr std::array<std::uint8_t, 4> kEndSignature = {'P', 'K', 5, 6};
@@ -66,14 +78,32 @@ ZipArchive ZipArchive::from_bytes(Bytes data, std::string name) {
 
     io::ByteReader end(d, kReader);
     end.seek(*pos + 10);
-    const std::uint16_t entry_count = end.u16();
-    const std::uint32_t directory_size = end.u32();
-    const std::uint32_t directory_offset = end.u32();
-    if (directory_offset == kZip64Marker || directory_size == kZip64Marker || entry_count == 0xFFFF)
-        throw UnsupportedError(kReader, 0, z.name_ + ": zip64 archives are not read");
-    // data may precede the archive (a self-extractor): the directory is where the end record says, less the prefix
-    const std::int64_t prefix = static_cast<std::int64_t>(*pos) - directory_size - directory_offset;
-    if (prefix < 0) throw FormatError(kReader, *pos, "bad offset for the central directory");
+    std::uint64_t entry_count = end.u16();
+    std::uint64_t directory_size = end.u32();
+    std::uint64_t directory_offset = end.u32();
+    std::int64_t prefix = 0;
+    if (directory_offset == kZip64Marker || directory_size == kZip64Marker || entry_count == 0xFFFF) {
+        if (!z.options_.zip64) throw UnsupportedError(kReader, 0, z.name_ + ": zip64 archives are not read");
+        // the record the locator before the end record names
+        io::ByteReader locator(d, kReader);
+        if (*pos < 20) throw FormatError(kReader, *pos, "a zip64 archive without its locator");
+        locator.seek(*pos - 20);
+        if (locator.u32() != 0x07064B50) throw FormatError(kReader, *pos, "a zip64 archive without its locator");
+        locator.skip(4);
+        const std::uint64_t record = locator.u64();
+        io::ByteReader big(d, kReader);
+        big.seek(record);
+        if (big.u32() != 0x06064B50) throw FormatError(kReader, record, "the zip64 end record has no signature");
+        big.seek(record + 32);
+        entry_count = big.u64();
+        directory_size = big.u64();
+        directory_offset = big.u64();
+        if (directory_offset > d.size() || entry_count > 100000) throw FormatError(kReader, *pos, "the central directory is outside the file, or lists too many files");
+    } else {
+        // data may precede the archive (a self-extractor): the directory is where the end record says, less the prefix
+        prefix = static_cast<std::int64_t>(*pos) - static_cast<std::int64_t>(directory_size) - static_cast<std::int64_t>(directory_offset);
+        if (prefix < 0) throw FormatError(kReader, *pos, "bad offset for the central directory");
+    }
 
     io::ByteReader dir(d, kReader);
     dir.seek(static_cast<std::uint64_t>(directory_offset) + static_cast<std::uint64_t>(prefix));
@@ -92,11 +122,24 @@ ZipArchive ZipArchive::from_bytes(Bytes data, std::string name) {
         e.size = dir.u32();
         const std::uint16_t name_length = dir.u16(), extra_length = dir.u16(), comment_length = dir.u16();
         dir.skip(8);   // disk number, internal and external attributes
-        const std::uint32_t header_offset = dir.u32();
+        std::uint64_t header_offset = dir.u32();
         const ByteView raw_name = dir.bytes(name_length);
-        dir.skip(static_cast<std::uint64_t>(extra_length) + comment_length);
-        if (e.compressed_size == kZip64Marker || e.size == kZip64Marker || header_offset == kZip64Marker)
-            throw UnsupportedError(kReader, at, z.name_ + ": zip64 entries are not read");
+        const ByteView extra = dir.bytes(extra_length);
+        dir.skip(comment_length);
+        if (e.compressed_size == kZip64Marker || e.size == kZip64Marker || header_offset == kZip64Marker) {
+            if (!z.options_.zip64) throw UnsupportedError(kReader, at, z.name_ + ": zip64 entries are not read");
+            // a field too large for 32 bits is 0xFFFFFFFF and the zip64 extra field (id 1) holds it, in the order size, compressed size, header offset
+            io::ByteReader fields(extra, kReader);
+            while (fields.remaining() >= 4) {
+                const std::uint16_t id = fields.u16(), length = fields.u16();
+                const ByteView body = fields.bytes(std::min<std::size_t>(length, fields.remaining()));
+                if (id != 1) continue;
+                io::ByteReader field(body, kReader);
+                if (e.size == kZip64Marker) e.size = field.u64();
+                if (e.compressed_size == kZip64Marker) e.compressed_size = field.u64();
+                if (header_offset == kZip64Marker) header_offset = field.u64();
+            }
+        }
         e.stored_name = decode_name(raw_name, e.flags);
         e.name = lookup_name(e.stored_name);
         e.header_offset = static_cast<std::uint64_t>(header_offset) + static_cast<std::uint64_t>(prefix);
@@ -117,9 +160,10 @@ Bytes ZipArchive::read(const Entry& e) const {
     if (e.method != 0 && e.method != 8)
         throw UnsupportedError(kReader, e.header_offset, std::format("{}: entry '{}' uses compression method {}", name_, e.name, e.method));
 
-    io::ByteReader local(data_, kReader);
+    const ByteView d = data();
+    io::ByteReader local(d, kReader);
     local.seek(e.header_offset);
-    if (local.remaining() < 30 || std::memcmp(data_.data() + local.pos(), "PK\x03\x04", 4) != 0)
+    if (local.remaining() < 30 || std::memcmp(d.data() + local.pos(), "PK\x03\x04", 4) != 0)
         throw FormatError(kReader, e.header_offset, "bad magic number for an entry header");
     local.skip(6);
     const std::uint16_t local_flags = local.u16();
@@ -136,23 +180,14 @@ Bytes ZipArchive::read(const Entry& e) const {
         out.assign(body.begin(), body.end());
     } else {
         // deflate cannot expand more than about 1032 to 1; a directory that claims more is lying about the size
-        if (e.size > static_cast<std::uint64_t>(e.compressed_size) * 1032 + 1024)
+        if (e.size > e.compressed_size * 1032 + 1024)
             throw FormatError(kReader, e.header_offset, std::format("entry '{}' claims an impossible size", e.name));
-        out.resize(e.size);
-        z_stream zs;
-        std::memset(&zs, 0, sizeof zs);
-        if (inflateInit2(&zs, -MAX_WBITS) != Z_OK) throw InternalError("zlib could not start");   // a raw deflate stream
-        zs.next_in = const_cast<Bytef*>(body.data());
-        zs.avail_in = static_cast<uInt>(body.size());
-        zs.next_out = out.data();
-        zs.avail_out = static_cast<uInt>(out.size());
-        const int rc = out.empty() ? Z_STREAM_END : inflate(&zs, Z_FINISH);
-        const std::size_t produced = out.size() - zs.avail_out;
-        inflateEnd(&zs);
-        if (rc != Z_STREAM_END || produced != out.size())
+        deflate::Inflated r = deflate::inflate_exact(body, e.size, deflate::Wrap::raw);   // a raw deflate stream
+        if (r.status != deflate::Status::end || r.data.size() != e.size)
             throw FormatError(kReader, e.header_offset, std::format("entry '{}' is damaged (the compressed data is bad)", e.name));
+        out = std::move(r.data);
     }
-    if (crypto::crc32(out) != e.crc) throw FormatError(kReader, e.header_offset, std::format("bad CRC-32 for entry '{}'", e.name));
+    if (options_.check_crc && crypto::crc32(out) != e.crc) throw FormatError(kReader, e.header_offset, std::format("bad CRC-32 for entry '{}'", e.name));
     return out;
 }
 
@@ -180,7 +215,7 @@ void ZipWriter::add(const std::string& name, ByteView data) {
     Written w;
     w.name = name;
     w.size = static_cast<std::uint32_t>(data.size());
-    w.crc = static_cast<std::uint32_t>(crc32(0L, data.data(), static_cast<uInt>(data.size())));
+    w.crc = crypto::crc32(data);
     w.offset = static_cast<std::uint32_t>(out_.size());
     zw_u32(out_, 0x04034b50);
     zw_u16(out_, 10);           // version needed
@@ -236,4 +271,4 @@ Bytes ZipWriter::finish() {
     return out;
 }
 
-}  // namespace cb::java::console
+}  // namespace cb::formats

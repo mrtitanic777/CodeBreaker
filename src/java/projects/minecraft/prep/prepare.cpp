@@ -14,7 +14,7 @@
 #include "core/fs.hpp"
 #include "core/json.hpp"
 #include "java/bytecode/tree.hpp"
-#include "java/console/zip_archive.hpp"
+#include "formats/zip.hpp"
 #include "java/decompiler/decompiler.hpp"
 #include "java/projects/minecraft/prep/constants.hpp"
 #include "java/projects/minecraft/prep/fixes.hpp"
@@ -30,7 +30,7 @@ namespace {
 
 // RDI's IOUtil.readJar: every .class entry, in the jar's order.
 ClassStorage pp_read_jar(const stdfs::path& path) {
-    const auto zip = console::ZipArchive::open(path);
+    const auto zip = formats::ZipArchive::open(path);
     std::vector<std::unique_ptr<bc::ClassNode>> nodes;
     for (const auto& e : zip.entries()) {
         if (e.name.ends_with(".class")) nodes.push_back(std::make_unique<bc::ClassNode>(bc::read(zip.read(e), e.name)));
@@ -41,7 +41,7 @@ ClassStorage pp_read_jar(const stdfs::path& path) {
 // RDI's ClassStorageWriter.write(out, resources): each class once, then each resource jar's entries that are not classes (META-INF's files but the
 // manifest left out), each name once.
 void pp_write_jar(const ClassStorage& storage, const std::vector<stdfs::path>& resources, const stdfs::path& out) {
-    console::ZipWriter z;
+    formats::ZipWriter z;
     std::set<std::string> written;
     for (const bc::ClassNode* node : storage) {
         if (!written.insert(node->name).second) continue;
@@ -49,7 +49,7 @@ void pp_write_jar(const ClassStorage& storage, const std::vector<stdfs::path>& r
     }
     std::set<std::string> added;
     for (const stdfs::path& path : resources) {
-        const auto zip = console::ZipArchive::open(path);
+        const auto zip = formats::ZipArchive::open(path);
         for (const auto& e : zip.entries()) {
             if (e.name.starts_with("META-INF/") && e.name != "META-INF/MANIFEST.MF" && !e.is_directory()) continue;
             if (e.name.ends_with(".class")) continue;
@@ -69,7 +69,7 @@ void pp_clean_directory(const stdfs::path& dir) {
 
 // FileUtil.compress: every file under `dir`, by its path relative to it
 void pp_compress(const stdfs::path& dir, const stdfs::path& target) {
-    console::ZipWriter z;
+    formats::ZipWriter z;
     std::vector<stdfs::path> files;
     for (const auto& e : stdfs::recursive_directory_iterator(dir)) {
         if (e.is_regular_file()) files.push_back(e.path());

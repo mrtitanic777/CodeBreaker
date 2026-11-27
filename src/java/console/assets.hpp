@@ -28,7 +28,7 @@
 #include <string_view>
 #include <vector>
 
-#include "java/console/zip_archive.hpp"
+#include "formats/zip.hpp"
 
 namespace cb::java::console::assets {
 
@@ -41,7 +41,7 @@ bool is_asset_name(std::string_view name);
 
 // The asset entries of the jar (png, txt, lang, ...) as the paths they take under Content\: forward slashes, no
 // leading slash; sorted.
-std::vector<std::string> list_jar_assets(const ZipArchive& jar);
+std::vector<std::string> list_jar_assets(const formats::ZipArchive& jar);
 
 // A resource path -> the names of the code files that load it.
 using ResourceRefs = std::map<std::string, std::vector<std::string>>;
@@ -82,7 +82,7 @@ struct Extracted {
 
 // Mirror the jar's asset entries into content_dir, preserving each entry's relative path and name (jar gui/gui.png ->
 // content_dir/gui/gui.png). FormatError for an entry whose path would leave content_dir, or a PNG that cannot be read.
-Extracted extract(const ZipArchive& jar, const std::filesystem::path& content_dir, const ExtractOptions& options = {});
+Extracted extract(const formats::ZipArchive& jar, const std::filesystem::path& content_dir, const ExtractOptions& options = {});
 
 struct Coverage {
     ResourceRefs needed;                   // what the code loads (slash-less) and where
@@ -94,7 +94,7 @@ struct Coverage {
 
 // Audit the code's resource demand against the supply of the jar and the bundle. Names are matched ignoring case: the
 // Windows file system does not tell Foo.png from foo.png.
-Coverage coverage(const ZipArchive& jar, const std::filesystem::path& code_dir, const std::filesystem::path& bundle_dir = {});
+Coverage coverage(const formats::ZipArchive& jar, const std::filesystem::path& code_dir, const std::filesystem::path& bundle_dir = {});
 
 // TEXTURE_COVERAGE.md text. `converted` lists the PNGs that were normalised to RGBA.
 std::string render_coverage(const Coverage& coverage, const std::vector<std::string>& converted = {});

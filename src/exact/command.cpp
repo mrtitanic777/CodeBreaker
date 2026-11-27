@@ -25,7 +25,7 @@
 #include "exact/seed.hpp"
 #include "exact/toolchain.hpp"
 #include "exact/xenix_c.hpp"
-#include "java/console/zip_archive.hpp"
+#include "formats/zip.hpp"
 
 namespace cb::exact::command {
 
@@ -116,8 +116,8 @@ public:
         xenix_c::register_plugin(*toolchains_);
         mspascal::Hooks pascal_hooks;
         pascal_hooks.extract_zip = [](const stdfs::path& zip, const stdfs::path& dest) {
-            const java::console::ZipArchive archive = java::console::ZipArchive::open(zip);
-            for (const java::console::ZipArchive::Entry& entry : archive.entries()) {
+            const formats::ZipArchive archive = formats::ZipArchive::open(zip);
+            for (const formats::ZipArchive::Entry& entry : archive.entries()) {
                 if (entry.is_directory()) continue;
                 fs::write_file(dest / fs::from_text(entry.name), archive.read(entry));
             }

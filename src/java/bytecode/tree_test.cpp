@@ -6,15 +6,15 @@
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
-#include "java/console/zip_archive.hpp"
+#include "formats/zip.hpp"
 #include "java/decompiler/decompiler.hpp"
 
 namespace cb::java::bytecode {
 namespace {
 
 CB_TEST("java.bytecode.tree.a_jar_written_again_decompiles_as_before", [] {
-    const auto jar = java::console::ZipArchive::open(testing::data_path("java/decompiler/testdata/jar/gradle-wrapper.jar"));
-    java::console::ZipWriter z;
+    const auto jar = formats::ZipArchive::open(testing::data_path("java/decompiler/testdata/jar/gradle-wrapper.jar"));
+    formats::ZipWriter z;
     int classes = 0;
     for (const auto& e : jar.entries()) {
         Bytes data = e.is_directory() ? Bytes{} : jar.read(e);

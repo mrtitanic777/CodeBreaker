@@ -1,4 +1,4 @@
-#include "java/console/zip_archive.hpp"
+#include "formats/zip.hpp"
 
 #include <cstring>
 #include <format>
@@ -12,6 +12,8 @@ namespace {
 
 using namespace cb;
 using namespace cb::java::console;
+using cb::formats::ZipArchive;
+using cb::formats::ZipWriter;
 
 std::string text_of(const Bytes& b) { return std::string(as_text(b)); }
 

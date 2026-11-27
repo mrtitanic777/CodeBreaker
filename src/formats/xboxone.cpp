@@ -1,7 +1,7 @@
 // cb-unity: alone
 #include "formats/xboxone.hpp"
 
-#include <zlib.h>
+#include "formats/deflate.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -11,6 +11,7 @@
 #include "core/fs.hpp"
 #include "formats/probe.hpp"
 #include "formats/read.hpp"
+#include "formats/zip.hpp"
 
 namespace cb::formats::xboxone {
 
@@ -31,101 +32,18 @@ bool ends_with_any(const std::string& name, std::initializer_list<std::string_vi
     return std::ranges::any_of(endings, [&](std::string_view e) { return l.ends_with(e); });
 }
 
-// ---- a zip, read from its central directory --------------------------------------------------------------------
+// ---- a zip: formats/zip.hpp, read where it lies (zip64 packages are common; the CRCs are not looked at) -------------------
 
-struct ZipEntry {
-    std::string name;
-    std::uint16_t method = 0;
-    std::uint64_t compressed = 0, size = 0;
-    std::uint64_t header = 0;
-};
+using Zip = ZipArchive;
+using ZipEntry = ZipArchive::Entry;
 
-struct Zip {
-    ByteView data;
-    std::vector<ZipEntry> entries;
+Zip open_zip(ByteView data) { return ZipArchive::view(data, "package", {.zip64 = true, .check_crc = false}); }
 
-    static Zip open(ByteView data) {
-        Zip z;
-        z.data = data;
-        if (data.size() < 22) throw FormatError(kReader, 0, "too short to be a zip");
-        std::optional<std::uint64_t> eocd;
-        const std::uint64_t stop = data.size() > 70000 ? data.size() - 70000 : 0;
-        for (std::uint64_t at = data.size() - 22 + 1; at-- > stop;) {
-            if (data[at] == 'P' && data[at + 1] == 'K' && data[at + 2] == 5 && data[at + 3] == 6) {
-                eocd = at;
-                break;
-            }
-        }
-        if (!eocd) throw FormatError(kReader, 0, "no end-of-central-directory record: not a zip");
-        std::uint64_t count = get<std::uint16_t>(data, *eocd + 10, kReader);
-        std::uint64_t offset = get<std::uint32_t>(data, *eocd + 16, kReader);
-        if (count == 0xFFFF || get<std::uint32_t>(data, *eocd + 12, kReader) == 0xFFFFFFFFu || offset == 0xFFFFFFFFu) {   // zip64: the record the locator before the end record names
-            if (*eocd < 20 || get<std::uint32_t>(data, *eocd - 20, kReader) != 0x07064B50) throw FormatError(kReader, *eocd, "a zip64 archive without its locator");
-            const std::uint64_t record = get<std::uint64_t>(data, *eocd - 20 + 8, kReader);
-            if (get<std::uint32_t>(data, record, kReader) != 0x06064B50) throw FormatError(kReader, record, "the zip64 end record has no signature");
-            count = get<std::uint64_t>(data, record + 32, kReader);
-            offset = get<std::uint64_t>(data, record + 48, kReader);
-        }
-        std::uint64_t at = offset;
-        if (at > data.size() || count > 100000) throw FormatError(kReader, *eocd, "the central directory is outside the file, or lists too many files");
-        for (std::uint64_t k = 0; k < count; ++k) {
-            if (get<std::uint32_t>(data, at, kReader) != 0x02014B50) throw FormatError(kReader, at, "a central directory entry has no signature");
-            ZipEntry e;
-            e.method = get<std::uint16_t>(data, at + 10, kReader);
-            e.compressed = get<std::uint32_t>(data, at + 20, kReader);
-            e.size = get<std::uint32_t>(data, at + 24, kReader);
-            const std::uint16_t name = get<std::uint16_t>(data, at + 28, kReader), extra = get<std::uint16_t>(data, at + 30, kReader), comment = get<std::uint16_t>(data, at + 32, kReader);
-            e.header = get<std::uint32_t>(data, at + 42, kReader);
-            // a field too large for 32 bits is 0xFFFFFFFF and the zip64 extra field (id 1) holds it, in the order size, compressed size, header offset
-            for (std::uint64_t x = at + 46 + name; x + 4 <= at + 46ull + name + extra;) {
-                const std::uint16_t id = get<std::uint16_t>(data, x, kReader), length = get<std::uint16_t>(data, x + 2, kReader);
-                if (id == 1) {
-                    std::uint64_t field = x + 4;
-                    if (e.size == 0xFFFFFFFFull) e.size = get<std::uint64_t>(data, field, kReader), field += 8;
-                    if (e.compressed == 0xFFFFFFFFull) e.compressed = get<std::uint64_t>(data, field, kReader), field += 8;
-                    if (e.header == 0xFFFFFFFFull) e.header = get<std::uint64_t>(data, field, kReader);
-                }
-                x += 4ull + length;
-            }
-            const ByteView n = slice(data, at + 46, name, kReader);
-            e.name.assign(reinterpret_cast<const char*>(n.data()), n.size());
-            std::ranges::replace(e.name, '\\', '/');
-            z.entries.push_back(std::move(e));
-            at += 46ull + name + extra + comment;
-        }
-        return z;
-    }
-
-    const ZipEntry* find(std::string_view name) const {
-        for (const ZipEntry& e : entries) {
-            if (e.name == name) return &e;
-        }
-        return nullptr;
-    }
-
-    Bytes read(const ZipEntry& e) const {
-        if (e.size > kMaxMember) throw FormatError(kReader, e.header, std::format("{} is larger than CodeBreaker reads", e.name));
-        if (get<std::uint32_t>(data, e.header, kReader) != 0x04034B50) throw FormatError(kReader, e.header, "a local file header has no signature");
-        const std::uint16_t name = get<std::uint16_t>(data, e.header + 26, kReader), extra = get<std::uint16_t>(data, e.header + 28, kReader);
-        if (e.compressed > kMaxFile) throw FormatError(kReader, e.header, std::format("{} is larger than CodeBreaker reads", e.name));
-        const ByteView stored = slice(data, e.header + 30ull + name + extra, e.compressed, kReader);
-        if (e.method == 0) return Bytes(stored.begin(), stored.end());
-        if (e.method != 8) throw UnsupportedError(kReader, e.header, std::format("{}: compression method {} is not read", e.name, e.method));
-        Bytes out(e.size);
-        z_stream stream;
-        std::memset(&stream, 0, sizeof stream);
-        if (inflateInit2(&stream, -15) != Z_OK) throw FormatError(kReader, e.header, "the inflater could not start");
-        stream.next_in = const_cast<Bytef*>(stored.data());
-        stream.avail_in = static_cast<uInt>(stored.size());
-        stream.next_out = out.data();
-        stream.avail_out = static_cast<uInt>(out.size());
-        const int r = inflate(&stream, Z_FINISH);
-        const bool whole = (r == Z_STREAM_END || (r == Z_OK && out.empty())) && stream.total_out == e.size;
-        inflateEnd(&stream);
-        if (!whole) throw FormatError(kReader, e.header, std::format("{} does not inflate to its size", e.name));
-        return out;
-    }
-};
+// One member of a package, inflated (no larger than CodeBreaker reads).
+Bytes read_member(const Zip& zip, const ZipEntry& e) {
+    if (e.size > kMaxMember || e.compressed_size > kMaxFile) throw FormatError(kReader, e.header_offset, std::format("{} is larger than CodeBreaker reads", e.name));
+    return zip.read(e);
+}
 
 // ---- the manifest ---------------------------------------------------------------------------------------------
 
@@ -165,7 +83,7 @@ struct Package {
 Program from_package(const Zip& zip, const std::string& container, const std::string& wanted) {
     const ZipEntry* manifest = zip.find("AppxManifest.xml");
     if (!manifest) throw FormatError(kReader, 0, "the package has no AppxManifest.xml");
-    const Bytes manifest_bytes = zip.read(*manifest);
+    const Bytes manifest_bytes = read_member(zip, *manifest);
     const std::string xml(reinterpret_cast<const char*>(manifest_bytes.data()), manifest_bytes.size());
     Program p;
     p.container = container;
@@ -173,7 +91,7 @@ Program from_package(const Zip& zip, const std::string& container, const std::st
     p.publisher = attribute(xml, "Identity", "Publisher");
     p.version = attribute(xml, "Identity", "Version");
     p.architecture = attribute(xml, "Identity", "ProcessorArchitecture");
-    for (const ZipEntry& e : zip.entries) {
+    for (const ZipEntry& e : zip.entries()) {
         if (ends_with_any(e.name, {".exe", ".dll"})) p.members.push_back({e.name, e.size});
         else if (!e.name.empty() && e.name.back() != '/') ++p.other_members;
     }
@@ -183,12 +101,12 @@ Program from_package(const Zip& zip, const std::string& container, const std::st
     const ZipEntry* chosen = executable.empty() ? nullptr : zip.find(executable);
     if (!chosen && !wanted.empty()) throw FormatError(kReader, 0, std::format("the package has no member {}", wanted));
     if (!chosen) {   // no manifest executable that is in the package: the largest .exe
-        for (const ZipEntry& e : zip.entries) {
+        for (const ZipEntry& e : zip.entries()) {
             if (ends_with_any(e.name, {".exe"}) && (!chosen || e.size > chosen->size)) chosen = &e;
         }
     }
     if (!chosen) throw FormatError(kReader, 0, wanted.empty() ? "the package holds no executable" : std::format("the package has no member {}", wanted));
-    p.file = zip.read(*chosen);
+    p.file = read_member(zip, *chosen);
     p.member = chosen->name;
     if (!is_pe64(p.file, &p.app_container)) throw FormatError(kReader, 0, std::format("{} is not an x64 PE32+ image", chosen->name));
     return p;
@@ -207,20 +125,20 @@ Program parse(ByteView data, const std::string& name, const std::string& member)
         return p;
     }
     if (data.size() < 4 || data[0] != 'P' || data[1] != 'K') throw FormatError(kReader, 0, "not a PE32+ image or a package (zip)");
-    const Zip outer = Zip::open(data);
+    const Zip outer = open_zip(data);
     const bool msix = ends_with_any(name, {".msix", ".msixbundle"});
     if (const ZipEntry* bundle = outer.find("AppxMetadata/AppxBundleManifest.xml")) {
         (void)bundle;
         // a bundle: the package that holds the x64 code
         const ZipEntry* inner = nullptr;
-        for (const ZipEntry& e : outer.entries) {
+        for (const ZipEntry& e : outer.entries()) {
             if (!ends_with_any(e.name, {".msix", ".appx"})) continue;
             const bool x64 = lower(e.name).find("x64") != std::string::npos;
             if (!inner || (x64 && lower(inner->name).find("x64") == std::string::npos)) inner = &e;
         }
         if (!inner) throw FormatError(kReader, 0, "the bundle holds no package");
-        const Bytes inner_bytes = outer.read(*inner);
-        Program p = from_package(Zip::open(inner_bytes), msix ? "MSIX bundle" : "APPX bundle", member);
+        const Bytes inner_bytes = read_member(outer, *inner);
+        Program p = from_package(open_zip(inner_bytes), msix ? "MSIX bundle" : "APPX bundle", member);
         return p;
     }
     return from_package(outer, msix ? "MSIX package" : "APPX package", member);

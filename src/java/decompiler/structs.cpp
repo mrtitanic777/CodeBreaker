@@ -8,7 +8,7 @@
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/io.hpp"
-#include "java/console/zip_archive.hpp"
+#include "formats/zip.hpp"
 #include "java/decompiler/code_constants.hpp"
 
 namespace cb::java::decompiler {
@@ -209,9 +209,9 @@ void StructContext::add_archive(const std::string& external_path, const std::fil
         unit.filename = fs::to_text(file.filename());
         unit.own = own;
     }
-    const console::ZipArchive zip = console::ZipArchive::open(file);
+    const formats::ZipArchive zip = formats::ZipArchive::open(file);
     std::set<std::string> dirs;
-    for (const console::ZipArchive::Entry& e : zip.entries()) {
+    for (const formats::ZipArchive::Entry& e : zip.entries()) {
         const std::string& name = e.name;   // ('/' already)
         if (e.is_directory()) {
             dirs.insert(name);
