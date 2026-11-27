@@ -854,7 +854,7 @@ Built Win16Lane::build(const Prepared& prepared, const stdfs::path& module_path,
 // ---- judging one function ----------------------------------------------------------------------------------------------------------------------------
 
 store::Judgement Win16Lane::judge_function(const Context& c, const Item& item) const {
-    using Said = lane_common::Judgement;
+    using Said = store::Judgement;
     const Said made = lane_common::judged([&]() -> Said {
         emulate::native_trace::Governor governor;
         w16::Environment env = spec_.environment ? spec_.environment(governor) : w16::Environment{};
@@ -966,7 +966,7 @@ store::Judgement Win16Lane::judge_function(const Context& c, const Item& item) c
         j.detail = outcome.detail;
         return j;
     });
-    return store::Judgement{made.verdict, made.reason, made.limits, made.detail};
+    return made;
 }
 
 }  // namespace cb::verify::lanes

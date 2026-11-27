@@ -195,7 +195,7 @@ Built Win32Lane::build(const Prepared& prepared, const stdfs::path& module_path,
 
 store::Judgement Win32Lane::judge_function(const Context& context, const Item& item) {
     const StageTimer total("judge.function (total)");
-    const lane_common::Judgement made = lane_common::judged([&]() -> lane_common::Judgement {
+    const store::Judgement made = lane_common::judged([&]() -> store::Judgement {
         const Shape shape = item.regs == 2 ? Shape(&Win32Lane::in_ecx_edx) : item.regs == 1 ? Shape(&Win32Lane::in_ecx) : Shape();
         const auto shaped = [&](const Vector& v) { return shape ? shape(v) : v; };
 
@@ -231,7 +231,7 @@ store::Judgement Win32Lane::judge_function(const Context& context, const Item& i
         }
         return {outcome.verdict, outcome.reason, limits, outcome.detail};
     });
-    return {made.verdict, made.reason, made.limits, made.detail};
+    return made;
 }
 
 }  // namespace cb::verify::lanes

@@ -511,7 +511,7 @@ std::string argc_text(const std::map<std::string, std::int64_t>& argc) {
 }  // namespace
 
 store::Judgement PowerPcLane::judge_function(const Context& context, const Item& item) {
-    const lane_common::Judgement made = lane_common::judged([&]() -> lane_common::Judgement {
+    const store::Judgement made = lane_common::judged([&]() -> store::Judgement {
         const Memory& memory = context.memory;
         epp::ExternTable merged = context.ext_original;
         for (const auto& [address, name] : context.ext_rebuilt) merged[address] = name;
@@ -544,7 +544,7 @@ store::Judgement PowerPcLane::judge_function(const Context& context, const Item&
         }
         return {outcome.verdict, outcome.reason, limits, outcome.detail};
     });
-    return {made.verdict, made.reason, made.limits, made.detail};
+    return made;
 }
 
 // ---- the kind ------------------------------------------------------------------------------------------------------------------------

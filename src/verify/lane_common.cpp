@@ -269,16 +269,16 @@ std::vector<std::string> path_limits(const concolic::Stats* got) {
 
 // ---- the verdict ----------------------------------------------------------------------------------------------------
 
-Judgement judged(const std::function<Judgement()>& compare_one) {
+store::Judgement judged(const std::function<store::Judgement()>& compare_one) {
     // One function must not sink the rest: this is an isolation boundary, the failure becomes the function's verdict.
     try {
         return compare_one();
     } catch (const NotFoundError&) {
         throw;
     } catch (const Error& e) {
-        return Judgement{store::Verdict::Inconclusive, std::format("judge: {}", e.kind()), {}, {}};
+        return store::Judgement{store::Verdict::Inconclusive, std::format("judge: {}", e.kind()), {}, {}};
     } catch (const std::exception&) {
-        return Judgement{store::Verdict::Inconclusive, "judge: Exception", {}, {}};
+        return store::Judgement{store::Verdict::Inconclusive, "judge: Exception", {}, {}};
     }
 }
 

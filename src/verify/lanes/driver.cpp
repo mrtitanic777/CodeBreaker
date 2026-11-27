@@ -633,7 +633,7 @@ Built DriverLane::build(const Prepared& prepared, const stdfs::path& module_path
 
 store::Judgement DriverLane::judge_entry(const stdfs::path& original, const stdfs::path& rebuilt, std::string_view label_view) const {
     const std::string label(label_view);
-    using Said = lane_common::Judgement;
+    using Said = store::Judgement;
     const Said made = lane_common::judged([&]() -> Said {
         std::shared_ptr<const edrv::Image> a, b;
         a = image(original);
@@ -686,7 +686,7 @@ store::Judgement DriverLane::judge_entry(const stdfs::path& original, const stdf
         if (outcome.verdict != store::Verdict::Divergent) j.detail = std::format("{} instructions of the original ran", ran.size());
         return j;
     });
-    return store::Judgement{made.verdict, made.reason, made.limits, made.detail};
+    return made;
 }
 
 std::vector<std::pair<std::string, store::Judgement>> DriverLane::judge_files(const stdfs::path& rebuilt, const stdfs::path& original,

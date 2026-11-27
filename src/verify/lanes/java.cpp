@@ -238,7 +238,7 @@ Built JavaLane::build(const Prepared& prepared, const stdfs::path&, const stdfs:
 }
 
 store::Judgement JavaLane::judge_class(const Context& context, const Item& item) {
-    const lane_common::Judgement judged = lane_common::judged([&]() -> lane_common::Judgement {
+    const store::Judgement judged = lane_common::judged([&]() -> store::Judgement {
         const Check checked = check(context.tools.cxx, context.include_dir, item.unit, context.toolchain.prefix, context.standard);
         if (!checked.ok) {
             const std::string first = checked.errors.empty() ? "the compiler rejected it" : checked.errors.front();
@@ -272,7 +272,7 @@ store::Judgement JavaLane::judge_class(const Context& context, const Item& item)
         if (r.judged < r.total) limits.push_back("methods-partial");
         return {store::Verdict::Equivalent, "", limits, said + ": every result alike"};
     });
-    return {judged.verdict, judged.reason, judged.limits, judged.detail};
+    return judged;
 }
 
 }  // namespace cb::verify::lanes

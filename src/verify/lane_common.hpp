@@ -241,18 +241,12 @@ std::vector<std::string> path_limits(const concolic::Stats* got);
 
 // ---- the verdict ----------------------------------------------------------------------------------------------------
 
-// A function's verdict as the store holds it: the verdict, why, its limits (weak limit codes, and a lane's own such as
-// `paths=N`) and the one line saying what differed.
-struct Judgement {
-    store::Verdict verdict = store::Verdict::Inconclusive;
-    std::string reason;
-    std::vector<std::string> limits;
-    std::string detail;
-};
+// A function's verdict is store::Judgement (store/verdicts.hpp): the verdict, why, its limits (weak limit codes, and a
+// lane's own such as `paths=N`) and the one line saying what differed.
 
 // compare_one() makes the comparison and gives its Judgement. Anything that goes wrong on the way makes this function
 // inconclusive -- one function must not sink the rest -- except a missing module or tool (NotFoundError): a broken
 // setup is not an observation, and propagates.
-Judgement judged(const std::function<Judgement()>& compare_one);
+store::Judgement judged(const std::function<store::Judgement()>& compare_one);
 
 }  // namespace cb::verify::lane_common

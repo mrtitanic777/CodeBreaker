@@ -850,7 +850,7 @@ std::vector<Win64Lane::Vector> Win64Lane::guided_inputs(const Context& context, 
 }
 
 store::Judgement Win64Lane::judge_function(const Context& context, const Item& item) {
-    const lane_common::Judgement made = lane_common::judged([&]() -> lane_common::Judgement {
+    const store::Judgement made = lane_common::judged([&]() -> store::Judgement {
         const std::function<compare::Fingerprint(const Vector&)> original = [&](const Vector& v) {
             std::optional<std::string> key;
             if (context.sha) key = compare::cache_key_text(std::format("win64 {} {} {:x} {:x} {} | {}", kRev, *context.sha, item.va, item.end, item.novalue, vector_text(v)));
@@ -877,7 +877,7 @@ store::Judgement Win64Lane::judge_function(const Context& context, const Item& i
                                                                   });
         return {outcome.verdict, outcome.reason, outcome.limit_codes(), outcome.detail};
     });
-    return {made.verdict, made.reason, made.limits, made.detail};
+    return made;
 }
 
 // ---- the tools -----------------------------------------------------------------------------------------------------------------

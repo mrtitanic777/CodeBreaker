@@ -385,23 +385,23 @@ CB_TEST("verify.lane_common.explored_limits_and_path_limits", [] {
 });
 
 CB_TEST("verify.lane_common.judged_passes_a_verdict_through", [] {
-    const lc::Judgement j = lc::judged([] {
-        return lc::Judgement{Verdict::Divergent, "return value", {"argc-unknown"}, "ret 1 != 2"};
+    const store::Judgement j = lc::judged([] {
+        return store::Judgement{Verdict::Divergent, "return value", {"argc-unknown"}, "ret 1 != 2"};
     });
     CB_CHECK(j.verdict == Verdict::Divergent && j.reason == "return value" && j.detail == "ret 1 != 2");
     CB_CHECK(j.limits == (std::vector<std::string>{"argc-unknown"}));
 });
 
 CB_TEST("verify.lane_common.judged_turns_a_failure_into_inconclusive", [] {
-    const lc::Judgement format = lc::judged([]() -> lc::Judgement { throw FormatError("reader", 4, "truncated header"); });
+    const store::Judgement format = lc::judged([]() -> store::Judgement { throw FormatError("reader", 4, "truncated header"); });
     CB_CHECK(format.verdict == Verdict::Inconclusive);
     CB_CHECK_EQ(format.reason, "judge: FormatError");
     CB_CHECK(format.limits.empty() && format.detail.empty());
-    const lc::Judgement other = lc::judged([]() -> lc::Judgement { throw std::runtime_error("boom"); });
+    const store::Judgement other = lc::judged([]() -> store::Judgement { throw std::runtime_error("boom"); });
     CB_CHECK(other.verdict == Verdict::Inconclusive);
     CB_CHECK_EQ(other.reason, "judge: Exception");
 });
 
 CB_TEST("verify.lane_common.judged_lets_a_missing_tool_through", [] {
-    CB_CHECK_THROWS_AS(NotFoundError, lc::judged([]() -> lc::Judgement { throw NotFoundError("unicorn.dll", 2, "no such library"); }));
+    CB_CHECK_THROWS_AS(NotFoundError, lc::judged([]() -> store::Judgement { throw NotFoundError("unicorn.dll", 2, "no such library"); }));
 });
