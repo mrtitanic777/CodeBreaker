@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cctype>
 #include <cstdlib>
 #include <condition_variable>
@@ -256,6 +257,91 @@ std::string mips_register_names(std::string_view line) {
     return std::string(t.substr(0, comma + 1)) + std::string(name);
 }
 
+// `fmov s0, #1.0`: the description writes the floating-point immediate as the bits of the number (`fmov s0, 0x3f800000`; a double register: 64 bits).
+std::string a64_fmov_immediate(std::string_view line) {
+    const std::string_view t = text::trim(line);
+    if (!text::istarts_with(t, "fmov ")) return std::string(line);
+    const std::size_t comma = t.find(',');
+    if (comma == std::string_view::npos) return std::string(line);
+    const std::string_view reg = text::trim(t.substr(5, comma - 5));
+    std::string_view number = text::trim(t.substr(comma + 1));
+    if (reg.size() < 2 || (reg.front() != 's' && reg.front() != 'd') || !number.starts_with('#')) return std::string(line);
+    number.remove_prefix(1);
+    if (number.find('.') == std::string_view::npos && number.find('e') == std::string_view::npos) return std::string(line);
+    char* end = nullptr;
+    const std::string text_number(number);
+    const double d = std::strtod(text_number.c_str(), &end);
+    if (end == text_number.c_str() || *end != '\0') return std::string(line);
+    if (reg.front() == 's') return std::format("fmov {}, 0x{:x}", reg, std::bit_cast<std::uint32_t>(static_cast<float>(d)));
+    return std::format("fmov {}, 0x{:x}", reg, std::bit_cast<std::uint64_t>(d));
+}
+
+// `text` with each `#0x..` immediate written in decimal (`asr x1, x1, #4`, `lsl #16`: the description writes a shift and a bit-field's numbers so), and a
+// W register's negative immediate as the 32-bit number it is (`mov w0, #-0x16ec` is `mov w0, #0xffffe914`).
+std::string decimal_immediates(const std::string& text) {
+    std::string out;
+    for (std::size_t k = 0; k < text.size(); ++k) {
+        if (text[k] == '#') {
+            std::size_t e = k + 1;
+            const bool negative = e < text.size() && text[e] == '-';
+            if (negative) ++e;
+            if (e + 2 < text.size() && text[e] == '0' && text[e + 1] == 'x') {
+                std::size_t f = e + 2;
+                while (f < text.size() && std::isxdigit(static_cast<unsigned char>(text[f])) != 0) ++f;
+                const std::optional<std::uint64_t> v = text::parse_int<std::uint64_t>(std::string_view(text).substr(e + 2, f - e - 2), 16);
+                if (v && f - e - 2 <= 16) {
+                    out += std::format("#{}{}", negative ? "-" : "", *v);
+                    k = f - 1;
+                    continue;
+                }
+            }
+        }
+        out += text[k];
+    }
+    return out;
+}
+
+// `mov w0,#-0x16ec` as the 32-bit number (the description prints a W register's complement unsigned).
+std::string a64_negative_w_immediate(std::string_view line) {
+    const std::string_view t = text::trim(line);
+    if (!text::istarts_with(t, "mov w")) return std::string(line);
+    const std::size_t at = t.find(",#-0x");
+    if (at == std::string_view::npos) {
+        const std::size_t spaced = t.find(", #-0x");
+        if (spaced == std::string_view::npos) return std::string(line);
+        const std::optional<std::uint64_t> v = text::parse_int<std::uint64_t>(t.substr(spaced + 6), 16);
+        if (!v || *v > 0x80000000ull) return std::string(line);
+        return std::format("{}, #0x{:x}", t.substr(0, spaced), static_cast<std::uint32_t>(0u - static_cast<std::uint32_t>(*v)));
+    }
+    const std::optional<std::uint64_t> v = text::parse_int<std::uint64_t>(t.substr(at + 5), 16);
+    if (!v || *v > 0x80000000ull) return std::string(line);
+    return std::format("{},#0x{:x}", t.substr(0, at), static_cast<std::uint32_t>(0u - static_cast<std::uint32_t>(*v)));
+}
+
+// AArch64's wide immediates written with their shift (`movk x1, #0xbcd4, lsl #16`) as the description writes them: the shifted number
+// (`movk x1,#0xbcd40000`; a movz is its `mov`, a movn the `mov` of the complement). The line as it was for any other.
+std::string a64_wide_immediate(std::string_view line) {
+    std::string flat;
+    for (const char c : text::trim(line))
+        if (c != ' ' && c != '\t') flat += static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    const bool movk = flat.starts_with("movk"), movz = flat.starts_with("movz"), movn = flat.starts_with("movn");
+    if (!movk && !movz && !movn) return std::string(line);
+    const std::size_t comma = flat.find(",#");
+    const std::size_t lsl = flat.find(",lsl#");
+    if (comma == std::string::npos || lsl == std::string::npos || lsl < comma) return std::string(line);
+    const std::string reg = flat.substr(4, comma - 4);
+    const std::optional<std::int64_t> imm = build::parse_number(std::string_view(flat).substr(comma + 2, lsl - comma - 2));
+    const std::optional<std::int64_t> shift = build::parse_number(std::string_view(flat).substr(lsl + 5));
+    if (!imm || !shift || *shift < 0 || *shift > 48 || reg.empty()) return std::string(line);
+    const bool wide = reg.front() == 'x';
+    std::uint64_t v = static_cast<std::uint64_t>(*imm) << *shift;
+    if (!wide) v &= 0xFFFFFFFFull;
+    if (movk) return std::format("movk {},#0x{:x}, lsl #{}", reg, static_cast<std::uint64_t>(*imm), *shift);   // (the description counts the shift in decimal)
+    if (movz) return std::format("mov {},#0x{:x}", reg, v);
+    const std::int64_t complement = wide ? static_cast<std::int64_t>(~v) : static_cast<std::int64_t>(static_cast<std::int32_t>(~static_cast<std::uint32_t>(v)));
+    return std::format("mov {},#{}0x{:x}", reg, complement < 0 ? "-" : "", static_cast<std::uint64_t>(complement < 0 ? -complement : complement));
+}
+
 class SleighSyntax final : public build::Encoder {
 public:
     SleighSyntax(const std::filesystem::path& sla, const std::vector<std::pair<std::string, int>>& context)
@@ -332,6 +418,22 @@ public:
         // MIPS names a coprocessor register by number (`mfc0 $s0, $12`, `ctc1 $t1, $31`); the description names it (Status, fcsr)
         if (const std::string named = mips_register_names(line); named != line) {
             Result<Bytes> r = assemble_arm(named, pc, labels);
+            if (r.ok() || build::is_undefined(r.error())) return r;
+        }
+        if (const std::string w = a64_negative_w_immediate(line); w != line) {
+            Result<Bytes> r = assemble_arm(w, pc, labels);
+            if (r.ok() || build::is_undefined(r.error())) return r;
+        }
+        if (const std::string decimal = decimal_immediates(std::string(text::trim(line))); decimal != text::trim(line)) {
+            Result<Bytes> r = assemble_arm(decimal, pc, labels);
+            if (r.ok() || build::is_undefined(r.error())) return r;
+        }
+        if (const std::string bits = a64_fmov_immediate(line); bits != line) {
+            Result<Bytes> r = assemble_arm(bits, pc, labels);
+            if (r.ok() || build::is_undefined(r.error())) return r;
+        }
+        if (const std::string wide = a64_wide_immediate(line); wide != line) {
+            Result<Bytes> r = assemble_arm(wide, pc, labels);
             if (r.ok() || build::is_undefined(r.error())) return r;
         }
         // an immediate the description writes without its `#` (AArch64's `svc #0x21` is `svc 0x21`)

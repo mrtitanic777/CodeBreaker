@@ -10,6 +10,8 @@
 #include "core/fs.hpp"
 #include "core/parallel.hpp"
 #include "core/text.hpp"
+#include "decompile/a64.hpp"
+#include "decompile/z80.hpp"
 #include "decompile/labels.hpp"
 #include "source/dialect.hpp"
 #include "source/processors.hpp"
@@ -31,15 +33,27 @@ struct da {
         if (lenient && is_undefined(r.error())) return 0;
         throw ParseError("", 0, 0, r.error().what());
     }
+    // The table of decompile/a64 first: it gives the encoding the original has where the description's assembler finds two that read the same
+    // (the alias rows: asr, lsr, ubfx, the bitmask immediates ...; ftpd, NX-Shell and the like rebuild byte for byte). What the table does not
+    // know the description assembles.
     static Bytes assemble(const std::string& line, std::uint64_t pc, const NameLabels& labels, bool lenient) {
+        if (!lenient) {
+            try {
+                return decompile::a64::assemble(line, pc, labels, false);
+            } catch (const decompile::z80::UnknownLabel& e) {
+                throw ParseError("", 0, 0, std::string("undefined symbol '") + e.name() + "'");
+            } catch (const Error&) {
+            }
+        }
         NameLabels local = lenient ? labels : NameLabels{};
         const NameLabels& use = lenient ? local : labels;
-        Result<Bytes> r = isa().assemble(line, static_cast<std::int64_t>(pc), use);
+        const std::string described = std::string(text::trim(source::dialect::find("gas-a64").parse(line)));
+        Result<Bytes> r = isa().assemble(described, static_cast<std::int64_t>(pc), use);
         while (lenient && !r.ok() && is_undefined(r.error())) {
             const std::string name = static_cast<const UndefinedSymbolError&>(r.error()).name();
             if (local.contains(name)) break;
             local[name] = static_cast<std::int64_t>(pc);
-            r = isa().assemble(line, static_cast<std::int64_t>(pc), local);
+            r = isa().assemble(described, static_cast<std::int64_t>(pc), local);
         }
         if (!r.ok()) throw ParseError("", 0, 0, r.error().what());
         return r.value();
@@ -207,7 +221,7 @@ std::pair<std::string, std::string> equate(const Line& l) {
 }  // namespace
 
 Image build(std::string_view source, const std::filesystem::path& include_dir) {
-    const std::vector<Line> lines = parse_lines(source::dialect::find("gas-a64").parse(source));
+    const std::vector<Line> lines = parse_lines(source);
     NameLabels labels;
     std::uint64_t pc = 0;
     // pass 1: addresses and constants

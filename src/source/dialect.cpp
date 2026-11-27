@@ -175,6 +175,7 @@ struct Rule {
     int pad = 0;             // an instruction row: the number {w} is padded to this many hex digits (`($00200000).L`)
     unsigned long decimal_limit = 0xFFFF;   // an instruction row: only numbers up to this are written in decimal (SuperH: an unsigned immediate over 9 is hex)
     std::string neutral_head;   // the first word of the neutral template (when it starts with a literal), for a quick test
+    std::string only_prefix;    // a read row that applies only to a mnemonic that begins with this (ARM: `ldr`/`str` take [rN] as [rN,#0x0]; the NEON and coprocessor loads keep their plain [rN])
 };
 
 }  // namespace
@@ -538,7 +539,7 @@ std::string Dialect::Impl::instruction_in(std::string_view written) const {
     Captures caps;
     bool matched = false, rule_decimal = false, rule_literal = false;
     for (const Rule& r : insn_rules) {
-        if (r.read && match(r.dialect, code, caps)) {
+        if (r.read && (r.only_prefix.empty() || text::istarts_with(code, r.only_prefix)) && match(r.dialect, code, caps)) {
             out = render(r.neutral, caps, false, {}, false);
             matched = true;
             rule_decimal = r.decimal;
@@ -556,7 +557,8 @@ std::string Dialect::Impl::instruction_in(std::string_view written) const {
             if (std::isdigit(static_cast<unsigned char>(s[i])) != 0 && (i == 0 || !(is_word(s[i - 1]) || s[i - 1] == '$' || s[i - 1] == '.'))) {
                 std::size_t e = i;
                 while (e < s.size() && std::isdigit(static_cast<unsigned char>(s[e])) != 0) ++e;
-                if (!(e < s.size() && (is_word(s[e]) || s[e] == '*')) && !shift_by_32(s.substr(0, i), s.substr(i, e - i), s) && !(decimal_keep_zero && e - i == 1 && s[i] == '0')) {
+                const bool fraction = e + 1 < s.size() && s[e] == '.' && std::isdigit(static_cast<unsigned char>(s[e + 1])) != 0;   // (`1.0`: a floating-point immediate is no number to convert)
+                if (!fraction && !(e < s.size() && (is_word(s[e]) || s[e] == '*')) && !shift_by_32(s.substr(0, i), s.substr(i, e - i), s) && !(decimal_keep_zero && e - i == 1 && s[i] == '0')) {
                     hex += std::format("0x{:x}", std::strtoull(std::string(s.substr(i, e - i)).c_str(), nullptr, 10));
                     i = e;
                     continue;
@@ -1097,6 +1099,7 @@ std::unique_ptr<Dialect::Impl> read(std::string_view name) {
             r.pad = row.value("pad", 0);
             r.exact = row.value("exact", false);
             r.decimal_limit = row.value("decimal_limit", 0xFFFFul);
+            r.only_prefix = row.value("only_prefix", std::string());
             d->insn_rules.push_back(std::move(r));
         }
     }
