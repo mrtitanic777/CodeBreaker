@@ -2,7 +2,9 @@
 #include "translate/ir.hpp"
 
 #include <algorithm>
+#include <array>
 #include <functional>
+#include <iterator>
 #include <type_traits>
 
 namespace cb::translate::ir {
@@ -56,6 +58,219 @@ std::string_view to_text(PassMode mode) {
     return names[static_cast<std::size_t>(mode)];
 }
 
+// What a bytecode or a binary states: the names are the document's, and the index of a name is the value of the enumerator.
+namespace {
+
+constexpr string_view kStackNames[] = {"unknown", "i4", "i", "i8", "f4", "f8", "o", "ref", "void"};
+constexpr string_view kLiftNames[] = {"none", "csharp", "three_valued"};
+constexpr string_view kCoalesceNames[] = {"ref", "nullable", "nullable_value"};
+constexpr string_view kConvNames[] = {"invalid",         "nop",          "int_to_float",       "float_to_int", "float_precision", "sign_extend",
+                                      "zero_extend",     "truncate",     "stop_gc_tracking",   "start_gc_tracking", "object_interior", "box",
+                                      "unbox",           "unbox_any",    "ref_cast",           "try_cast",     "expr_tree"};
+constexpr string_view kEvalNames[] = {"old", "new"};
+constexpr string_view kViaNames[] = {"address", "accessor", "dynamic"};
+constexpr string_view kFormNames[] = {"default", "virtual", "direct", "indirect"};
+constexpr string_view kRegionNames[] = {"normal", "loop", "while", "do_while", "for", "switch"};
+constexpr string_view kEmptyNames[] = {"normal", "pop"};
+constexpr string_view kRoleNames[] = {"local",    "param",   "this",     "temp",        "catch_var",  "loop_var", "resource",
+                                      "pinned",   "pattern_binding", "captured", "init_target", "named_arg", "decon_temp"};
+constexpr string_view kEntityKindNames[] = {"type", "method", "field", "property", "event", "parameter", "module"};
+constexpr string_view kFlagNames[] = {"volatile",    "unaligned1", "unaligned2",    "unaligned4",     "read_only",         "tail",
+                                      "stack_empty", "stack_adjust", "delay_exc",   "from_end",       "rvalue_addr",       "if_ref",
+                                      "inline_array", "pinnable_ref", "utf8_literal", "compiler_generated", "has_context"};
+constexpr NodeFlag kFlags[] = {NodeFlag::Volatile,    NodeFlag::Unaligned1,  NodeFlag::Unaligned2,  NodeFlag::Unaligned4,
+                               NodeFlag::ReadOnly,    NodeFlag::Tail,        NodeFlag::StackEmpty,  NodeFlag::StackAdjust,
+                               NodeFlag::DelayExc,    NodeFlag::FromEnd,     NodeFlag::RValueAddr,  NodeFlag::IfRef,
+                               NodeFlag::InlineArray, NodeFlag::PinnableRef, NodeFlag::Utf8Literal, NodeFlag::CompilerGenerated,
+                               NodeFlag::HasContext};
+static_assert(std::size(kFlags) == std::size(kFlagNames));
+
+template <class E, std::size_t N> std::optional<E> by_name(string_view text, const string_view (&names)[N]) {
+    for (std::size_t i = 0; i < N; ++i) {
+        if (names[i] == text) return static_cast<E>(i);
+    }
+    return std::nullopt;
+}
+
+}  // namespace
+
+std::string_view to_text(Stack v) { return kStackNames[static_cast<std::size_t>(v)]; }
+std::string_view to_text(Lift v) { return kLiftNames[static_cast<std::size_t>(v)]; }
+std::string_view to_text(Coalesce v) { return kCoalesceNames[static_cast<std::size_t>(v)]; }
+std::string_view to_text(ConvKind v) { return kConvNames[static_cast<std::size_t>(v)]; }
+std::string_view to_text(Eval v) { return kEvalNames[static_cast<std::size_t>(v)]; }
+std::string_view to_text(Via v) { return kViaNames[static_cast<std::size_t>(v)]; }
+std::string_view to_text(CallForm v) { return kFormNames[static_cast<std::size_t>(v)]; }
+std::string_view to_text(RegionKind v) { return kRegionNames[static_cast<std::size_t>(v)]; }
+std::string_view to_text(EmptyKind v) { return kEmptyNames[static_cast<std::size_t>(v)]; }
+std::string_view to_text(VarRole v) { return kRoleNames[static_cast<std::size_t>(v)]; }
+std::string_view to_text(EntityKind v) { return kEntityKindNames[static_cast<std::size_t>(v)]; }
+std::string_view to_text(NodeFlag flag) {
+    for (std::size_t i = 0; i < std::size(kFlags); ++i) {
+        if (kFlags[i] == flag) return kFlagNames[i];
+    }
+    return "";
+}
+std::span<const NodeFlag> all_node_flags() { return kFlags; }
+
+template <> std::optional<Stack> from_text<Stack>(std::string_view text) { return by_name<Stack>(text, kStackNames); }
+template <> std::optional<Lift> from_text<Lift>(std::string_view text) { return by_name<Lift>(text, kLiftNames); }
+template <> std::optional<Coalesce> from_text<Coalesce>(std::string_view text) { return by_name<Coalesce>(text, kCoalesceNames); }
+template <> std::optional<ConvKind> from_text<ConvKind>(std::string_view text) { return by_name<ConvKind>(text, kConvNames); }
+template <> std::optional<Eval> from_text<Eval>(std::string_view text) { return by_name<Eval>(text, kEvalNames); }
+template <> std::optional<Via> from_text<Via>(std::string_view text) { return by_name<Via>(text, kViaNames); }
+template <> std::optional<CallForm> from_text<CallForm>(std::string_view text) { return by_name<CallForm>(text, kFormNames); }
+template <> std::optional<RegionKind> from_text<RegionKind>(std::string_view text) { return by_name<RegionKind>(text, kRegionNames); }
+template <> std::optional<EmptyKind> from_text<EmptyKind>(std::string_view text) { return by_name<EmptyKind>(text, kEmptyNames); }
+template <> std::optional<VarRole> from_text<VarRole>(std::string_view text) { return by_name<VarRole>(text, kRoleNames); }
+template <> std::optional<NodeFlag> from_text<NodeFlag>(std::string_view text) {
+    for (std::size_t i = 0; i < std::size(kFlags); ++i) {
+        if (kFlagNames[i] == text) return kFlags[i];
+    }
+    return std::nullopt;
+}
+
+// ---- entities and info ---------------------------------------------------------------------------------------------------
+
+bool same_entity(const EntityP& a, const EntityP& b) {
+    if (!a || !b) return false;
+    if (a.get() == b.get()) return true;
+    return a->family() == b->family() && a->kind() == b->kind() && a->key() == b->key();
+}
+
+bool same_entity(const TypeP& a, const TypeP& b) { return a && b && same_entity(a->entity, b->entity); }
+
+const InfoValue* Info::find(std::string_view key) const {
+    const auto it = std::lower_bound(items_.begin(), items_.end(), key, [](const Item& item, std::string_view k) { return item.first < k; });
+    return it != items_.end() && it->first == key ? &it->second : nullptr;
+}
+
+void Info::set(std::string key, InfoValue value) {
+    const auto it = std::lower_bound(items_.begin(), items_.end(), std::string_view(key), [](const Item& item, std::string_view k) { return item.first < k; });
+    if (it != items_.end() && it->first == key) it->second = std::move(value);
+    else items_.insert(it, Item{std::move(key), std::move(value)});
+}
+
+bool Info::erase(std::string_view key) {
+    const auto it = std::lower_bound(items_.begin(), items_.end(), key, [](const Item& item, std::string_view k) { return item.first < k; });
+    if (it == items_.end() || it->first != key) return false;
+    items_.erase(it);
+    return true;
+}
+
+namespace {
+
+bool same_info_value(const InfoValue& a, const InfoValue& b) {
+    if (a.index() != b.index()) return false;
+    return std::visit(
+        [&b](const auto& x) {
+            using X = std::decay_t<decltype(x)>;
+            const X& y = std::get<X>(b);
+            if constexpr (std::is_same_v<X, EntityP>) return x ? same_entity(x, y) : !y;
+            else if constexpr (std::is_same_v<X, SymP>) return x.get() == y.get();   // (a symbol is one object)
+            else return x == y;
+        },
+        a);
+}
+
+}  // namespace
+
+bool operator==(const Info& a, const Info& b) {
+    if (a.items_.size() != b.items_.size()) return false;
+    for (std::size_t i = 0; i < a.items_.size(); ++i) {
+        if (a.items_[i].first != b.items_[i].first || !same_info_value(a.items_[i].second, b.items_[i].second)) return false;
+    }
+    return true;
+}
+
+bool operator==(const InfoP& a, const InfoP& b) {
+    if (!a || !b) return !a && !b;
+    return *a.p_ == *b.p_;
+}
+
+namespace {
+
+constexpr InfoKey kInfoKeys[] = {
+    {"cil.async_catch_offset", InfoOn::Node, InfoValueKind::Int, "MethodDecl Lambda", false,
+     "of an async method: the IL offset of the state machine's catch handler (ILSpy's AsyncDebugInfo.CatchHandlerOffset; present: the info is not the default)"},
+    {"cil.async_debug", InfoOn::Node, InfoValueKind::NodeRefs, "MethodDecl Lambda", false,
+     "the Await nodes of an async method (ILSpy's AsyncDebugInfo), by their place in a walk of the function"},
+    {"cil.async_return_type", InfoOn::Node, InfoValueKind::Type, "MethodDecl Lambda", false, "the type an async method's task gives (ILFunction.AsyncReturnType)"},
+    {"cil.calli_sig", InfoOn::Node, InfoValueKind::Type, "Call", false, "a calli's signature (the FnPtrType of CallIndirect.FunctionPointerType); the target's own type is a native int"},
+    {"cil.capture_scope", InfoOn::Sym, InfoValueKind::String, "", true, "the region (the entry label of a Region) a closure variable is captured in (ILVariable.CaptureScope); other lanes' closures have none yet"},
+    {"cil.class_tparams", InfoOn::Node, InfoValueKind::Types, "MethodDecl Lambda", false,
+     "the class type parameters in scope where they are not the method's own (ILFunction.GenericContext of a lambda, local function or state machine); with cil.method_tparams"},
+    {"cil.code_size", InfoOn::Node, InfoValueKind::Int, "MethodDecl Lambda", false, "the size in bytes of the IL body"},
+    {"cil.constrained", InfoOn::Node, InfoValueKind::Type, "Call", false, "the `constrained.` prefix's type of a call"},
+    {"cil.dynamic", InfoOn::Type, InfoValueKind::Bool, "", false, "an `object` that was annotated `dynamic` (DynamicType is the L2 type: this keeps the object origin)"},
+    {"cil.kind_exact", InfoOn::Sym, InfoValueKind::String, "", false, "the exact ILSpy VariableKind, where VarRole merges two (PinnedLocal vs PinnedRegionLocal, ExceptionStackSlot vs ExceptionLocal)"},
+    {"cil.locals_sig_len", InfoOn::Node, InfoValueKind::Int, "MethodDecl Lambda", false, "the length of the method's local variable signature"},
+    {"cil.method_tparams", InfoOn::Node, InfoValueKind::Types, "MethodDecl Lambda", false,
+     "the method type parameters in scope where they are not the method's own; with cil.class_tparams"},
+    {"cil.mono_state_machine", InfoOn::Node, InfoValueKind::Bool, "MethodDecl Lambda", false, "a state machine the Mono compiler made"},
+    {"cil.move_next", InfoOn::Node, InfoValueKind::Entity, "MethodDecl Lambda", false, "the MoveNext method of the state machine this function was made from"},
+    {"cil.name", InfoOn::Node, InfoValueKind::String, "Lambda", false, "a lambda's name where it is not its method's (ILFunction.Name)"},
+    {"cil.native_int", InfoOn::Type, InfoValueKind::Bool, "", false, "`nint`/`nuint`, not the spelling `IntPtr`/`UIntPtr`"},
+    {"cil.null_key", InfoOn::Node, InfoValueKind::Int, "Intrinsic", false, "of a cil.string_to_int: the index of the key that is null"},
+    {"cil.nullability", InfoOn::Type, InfoValueKind::String, "", true, "oblivious, annotated or not_annotated: C#'s `string?` beyond ClassType.nullable (Kotlin, Swift and TypeScript state it too)"},
+    {"cil.pinned", InfoOn::Type, InfoValueKind::Bool, "", false, "a pinned local's type"},
+    {"cil.reduced_method", InfoOn::Node, InfoValueKind::Entity, "MethodDecl Lambda", false, "the local function's reduced method (ILFunction.ReducedMethod)"},
+    {"cil.ref_kind", InfoOn::Type, InfoValueKind::String, "", false, "ref, in, out or ref_readonly, on a managed PtrType"},
+    {"cil.remove_if_redundant", InfoOn::Sym, InfoValueKind::Bool, "", false, "ILVariable.RemoveIfRedundant"},
+    {"cil.seq_points", InfoOn::Node, InfoValueKind::Ints, "MethodDecl Lambda", false, "the IL offsets that are sequence point candidates"},
+    {"cil.severity", InfoOn::Node, InfoValueKind::String, "Unsupported", false, "of an il.invalid_expression node: the severity of its message, where it is not Error"},
+    {"cil.spec_range", InfoOn::Node, InfoValueKind::Ints, "Catch", false, "the IL range [start, end) of the exception specifier of a catch handler"},
+    {"cil.state_machine_field", InfoOn::Sym, InfoValueKind::Entity, "", false, "the field of the state machine a variable stands for (ILVariable.StateMachineField)"},
+    {"cil.target_r", InfoOn::Node, InfoValueKind::Bool, "Cast", false, "of a conversion to f64: the target was the CIL type R, not R8"},
+    {"cil.tuple_ctor", InfoOn::Type, InfoValueKind::Bool, "", false, "a ValueTuple<...> and its tuple view"},
+    {"cil.unknown_ref", InfoOn::Type, InfoValueKind::String, "", false, "an UnknownType's FullTypeName"},
+    {"cil.vb_state_machine", InfoOn::Node, InfoValueKind::Bool, "MethodDecl Lambda", false, "a state machine the legacy Visual Basic compiler made"},
+};
+
+constexpr IntrinsicName kIntrinsics[] = {
+    {"cil.arglist", "none", "i", "", "the CIL's vararg handle: no general operation names it", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cil.ckfinite", "args[0]: a float", "arg", "", "throws when its operand is NaN or infinite, else gives it back: no general operator", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cil.deconstruct_result", "args[0]: the deconstruct call's value; imms[0]: the result's index", "stated", "", "a piece of a C# deconstruction's call: tied to the Destructure's call shape", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cil.ldtoken_member", "syms[0]: the member", "o", "", "a runtime handle of a field or method: reflection, no general node", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cil.ldtoken_type", "targs[0]: the type", "o", "", "a runtime type handle: reflection, no general node (ClassLit is the language's `T.class`)", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cil.makeref", "args[0]: an address; targs[0]: the type", "o", "", "CIL's typed reference (TypedReference): no other lane has one", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cil.reftype", "args[0]: a typed reference", "o", "", "CIL's typed reference: its type handle", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cil.refvalue", "args[0]: a typed reference; targs[0]: the type", "ref", "", "CIL's typed reference: the address it holds", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cil.string_to_int", "args[0]: a string; strs: the keys; imms: their values; targs[0]: the expected type", "i4", "", "a compiler's string switch lowered to a lookup: C# only", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cs.dynamic.binary", "args: the operands; imms[0]: binder flags; imms[1]: the operation; argmeta: one per operand", "o", "has_context", "a C# `dynamic` binder call site: the C# runtime binder resolves it at run time (DynamicType types the value; this is the site)", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cs.dynamic.compound_assign", "args: the target, then the value; imms[0]: binder flags; imms[1]: the operation; imms[2]: the target kind (address accessor dynamic); imms[3]: the eval mode (old new); argmeta: one per operand", "o", "has_context", "a C# `dynamic` binder call site", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cs.dynamic.convert", "args[0]: the value; targs[0]: the type; imms[0]: binder flags", "stated", "has_context", "a C# `dynamic` binder call site", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cs.dynamic.get_index", "args: the target, then the indices; imms[0]: binder flags; argmeta: one per operand", "o", "has_context", "a C# `dynamic` binder call site", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cs.dynamic.get_member", "args[0]: the target; strs[0]: the name; imms[0]: binder flags; argmeta", "o", "has_context", "a C# `dynamic` binder call site (Python attribute access is the general form: a Select on a dynamic target)", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cs.dynamic.invoke", "args: the target, then the arguments; imms[0]: binder flags; argmeta", "o", "has_context", "a C# `dynamic` binder call site", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cs.dynamic.invoke_constructor", "args: the arguments; targs: the type, then the context; imms[0]: binder flags; argmeta", "o", "has_context", "a C# `dynamic` binder call site", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cs.dynamic.invoke_member", "args: the target, then the arguments; strs[0]: the name; targs: the type arguments; imms[0]: binder flags; argmeta", "o", "has_context", "a C# `dynamic` binder call site", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cs.dynamic.is_event", "args[0]: the target; strs[0]: the name; imms[0]: binder flags", "i4", "has_context", "a C# `dynamic` binder call site", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cs.dynamic.logic", "args: the operands; imms[0]: binder flags; imms[1]: the operation; argmeta", "o", "has_context", "a C# `dynamic` binder call site", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cs.dynamic.set_index", "args: the target, the indices, then the value; imms[0]: binder flags; argmeta", "o", "has_context", "a C# `dynamic` binder call site", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cs.dynamic.set_member", "args: the target, then the value; strs[0]: the name; imms[0]: binder flags; argmeta", "o", "has_context", "a C# `dynamic` binder call site", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"cs.dynamic.unary", "args[0]: the operand; imms[0]: binder flags; imms[1]: the operation; argmeta", "o", "has_context", "a C# `dynamic` binder call site", "cil", "translate.l2.intrinsics.every_name_round_trips"},
+    {"debug.break", "none", "void", "", "a debugger break (`__debugbreak`, int3): no syntax in most languages", "cil native", "translate.l2.intrinsics.every_name_round_trips"},
+    {"mem.copy", "args[0]: the destination; args[1]: the source; args[2]: the size in bytes", "void", "volatile unaligned1 unaligned2 unaligned4", "a block copy (`memcpy`, `rep movs`, CIL cpblk): a call in C and C++, nothing in Java", "cil clang", "translate.l2.intrinsics.every_name_round_trips"},
+    {"mem.fill", "args[0]: the address; args[1]: the byte; args[2]: the size in bytes", "void", "volatile unaligned1 unaligned2 unaligned4", "a block fill (`memset`, `rep stos`, CIL initblk): a call in C and C++, nothing in Java", "cil clang", "translate.l2.intrinsics.every_name_round_trips"},
+};
+
+}  // namespace
+
+std::span<const InfoKey> info_keys() { return kInfoKeys; }
+
+const InfoKey* find_info_key(std::string_view key) {
+    const auto it = std::lower_bound(std::begin(kInfoKeys), std::end(kInfoKeys), key, [](const InfoKey& k, std::string_view s) { return k.key < s; });
+    return it != std::end(kInfoKeys) && it->key == key ? &*it : nullptr;
+}
+
+std::span<const IntrinsicName> intrinsic_names() { return kIntrinsics; }
+
+const IntrinsicName* find_intrinsic(std::string_view name) {
+    const auto it = std::lower_bound(std::begin(kIntrinsics), std::end(kIntrinsics), name, [](const IntrinsicName& n, std::string_view s) { return n.name < s; });
+    return it != std::end(kIntrinsics) && it->name == name ? &*it : nullptr;
+}
+
 // ---- types ---------------------------------------------------------------------------------------------------------------
 
 bool operator==(const TypeP& a, const TypeP& b) {
@@ -86,6 +301,8 @@ std::string_view Type::kind() const {
         string_view operator()(const FnType&) const { return "fn"; }
         string_view operator()(const FnPtrType&) const { return "fnptr"; }
         string_view operator()(const RecordType&) const { return "record"; }
+        string_view operator()(const TupleType&) const { return "tuple"; }
+        string_view operator()(const ModType&) const { return "mod"; }
     };
     return std::visit(Visitor{}, body);
 }
@@ -112,6 +329,10 @@ std::size_t Type::hash() const {
         h = combine(h, a->elem ? a->elem->hash() : 0);
     } else if (const auto* p = std::get_if<PtrType>(&body)) {
         h = combine(h, p->to ? p->to->hash() : 0);
+    } else if (const auto* t = std::get_if<TupleType>(&body)) {
+        for (const TypeP& e : t->elems) h = combine(h, e ? e->hash() : 0);
+    } else if (const auto* m = std::get_if<ModType>(&body)) {
+        h = combine(h, m->inner ? m->inner->hash() : 0);
     }
     return h;
 }
@@ -147,10 +368,54 @@ std::string to_text(const Type& type) {
         if (!w->bound) return "?";
         return string("? ") + (w->bound->mode == BoundMode::Extends ? "extends " : "super ") + (w->bound->type ? to_text(*w->bound->type) : string("?"));
     }
+    if (const auto* t = std::get_if<TupleType>(&type.body)) {
+        string out = "(";
+        for (std::size_t i = 0; i < t->elems.size(); ++i) {
+            if (i > 0) out += ", ";
+            out += t->elems[i] ? to_text(*t->elems[i]) : string("?");
+            if (i < t->names.size() && t->names[i]) out += " " + *t->names[i];
+        }
+        return out + ")";
+    }
+    if (const auto* m = std::get_if<ModType>(&type.body)) return m->inner ? to_text(*m->inner) : string("?");
     return string(type.kind());
 }
 
-TypeP make_type(Type::Body body) { return TypeP(std::make_shared<const Type>(Type{std::move(body)})); }
+TypeP make_type(Type::Body body) { return TypeP(std::make_shared<const Type>(Type{std::move(body), nullptr, InfoP{}})); }
+
+TypeP make_type(Type::Body body, EntityP entity, InfoP info) {
+    return TypeP(std::make_shared<const Type>(Type{std::move(body), std::move(entity), std::move(info)}));
+}
+
+Stack stack_of(const Type& type) {
+    struct Visitor {
+        Stack operator()(const PrimType& t) const {
+            switch (t.prim) {
+                case Prim::Bool: case Prim::I8: case Prim::I16: case Prim::I32: case Prim::U8: case Prim::U16: case Prim::U32: case Prim::Char: return Stack::I4;
+                case Prim::I64: case Prim::U64: return Stack::I8;
+                case Prim::F32: return Stack::F4;
+                case Prim::F64: case Prim::F80: return Stack::F8;
+            }
+            return Stack::Unknown;
+        }
+        Stack operator()(const VoidType&) const { return Stack::Void; }
+        Stack operator()(const PtrType& t) const { return t.managed ? Stack::Ref : Stack::I; }
+        Stack operator()(const FnPtrType&) const { return Stack::I; }
+        Stack operator()(const NullType&) const { return Stack::O; }
+        Stack operator()(const DynamicType&) const { return Stack::O; }
+        Stack operator()(const ClassType&) const { return Stack::O; }
+        Stack operator()(const TypeVarType&) const { return Stack::O; }
+        Stack operator()(const ArrayType&) const { return Stack::O; }
+        Stack operator()(const ModType& t) const { return t.inner ? stack_of(*t.inner) : Stack::Unknown; }
+        Stack operator()(const AnyType&) const { return Stack::Unknown; }
+        Stack operator()(const WildcardType&) const { return Stack::O; }
+        Stack operator()(const SelectorType&) const { return Stack::Unknown; }
+        Stack operator()(const FnType&) const { return Stack::Unknown; }
+        Stack operator()(const RecordType&) const { return Stack::Unknown; }
+        Stack operator()(const TupleType&) const { return Stack::Unknown; }
+    };
+    return std::visit(Visitor{}, type.body);
+}
 
 TypeP prim_type(Prim prim, std::optional<bool> is_signed, std::optional<CharEncoding> encoding) {
     return make_type(PrimType{prim, is_signed, encoding});
@@ -202,6 +467,10 @@ const TypeP& i32_type() {
     static const TypeP t = prim_type(Prim::I32);
     return t;
 }
+const TypeP& decimal_type() {
+    static const TypeP t = class_type("System.Decimal");
+    return t;
+}
 
 // ---- symbols -------------------------------------------------------------------------------------------------------------
 
@@ -235,12 +504,17 @@ Category category(const Node& node) {
                 return Category::Declaration;
             } else if constexpr (kOneOf<K, Block, Local, ExprStmt, If, While, DoWhile, For, ForEach, Switch, Case, Break, Continue, Return,
                                         Throw, Try, Catch, Labeled, Goto, MachineFragment, Sync, Empty, Comment, LocalClass, Assert,
-                                        CtorCall, Yield, YieldReturn, YieldBreak>) {
+                                        CtorCall, Yield, YieldReturn, YieldBreak, Region, Fixed, Destructure>) {
                 return Category::Statement;
             } else {
                 return Category::Expression;
             }
         });
+}
+
+Stack stack_of(const Node& node) {
+    if (node.stack != Stack::Unknown) return node.stack;
+    return node.type ? stack_of(*node.type) : Stack::Unknown;
 }
 
 std::vector<Node*> children(const Node& node) {
@@ -288,7 +562,8 @@ bool present(const Suite& suite) {
     X(Catch) X(Labeled) X(Goto) X(MachineFragment) X(Sync) X(Empty) X(Comment) X(LocalClass) X(Assert) X(CtorCall) X(Yield) X(YieldReturn) X(YieldBreak) X(Await) \
     X(Lit) X(Name) X(Select) X(TypeName) X(This) X(Super) X(Call) X(New) X(NewArray) X(Index) X(Length) X(Unary) X(Binary)    \
     X(Concat) X(Assign) X(Cond) X(Cast) X(InstanceOf) X(ClassLit) X(Lambda) X(MethodRef) X(SwitchExpr) X(AddressOf)           \
-    X(FarAddress) X(Piece) X(Join) X(Paren) X(Unsupported)
+    X(FarAddress) X(Piece) X(Join) X(Paren) X(Unsupported) X(Region) X(BlockExpr) X(Fixed) X(ThrowExpr) X(OptionalChain)            \
+    X(OptionalUnwrap) X(PatternMatch) X(Destructure) X(Default) X(SizeOf) X(StackAlloc) X(Intrinsic)
 
 Node* make_node(Arena& arena, std::string_view name) {
 #define CB_IR_MAKE(K) \
@@ -296,6 +571,13 @@ Node* make_node(Arena& arena, std::string_view name) {
     CB_IR_KINDS(CB_IR_MAKE)
 #undef CB_IR_MAKE
     return nullptr;
+}
+
+Node* make_decimal(Arena& arena, std::string text) {
+    Lit lit;
+    lit.value = text;
+    lit.text = std::move(text);
+    return make(arena, std::move(lit), decimal_type());
 }
 
 Node* clone(Arena& arena, const Node* root) {

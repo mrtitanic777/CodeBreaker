@@ -9,6 +9,8 @@
 // written with `to_text`; integer constants are 64-bit.
 #include "translate/ir.hpp"
 
+#include <iostream>
+#include <set>
 #include <unordered_set>
 
 #include "core/testing.hpp"
@@ -381,7 +383,8 @@ CB_TEST("translate.ir.tree.every_kind_can_be_made_by_name", [] {
         "Catch", "Labeled", "Goto", "MachineFragment", "Sync", "Empty", "Comment", "LocalClass", "Assert", "CtorCall", "Yield", "YieldReturn", "YieldBreak", "Await",
         "Lit", "Name", "Select", "TypeName", "This", "Super", "Call", "New", "NewArray", "Index", "Length", "Unary", "Binary",
         "Concat", "Assign", "Cond", "Cast", "InstanceOf", "ClassLit", "Lambda", "MethodRef", "SwitchExpr", "AddressOf",
-        "FarAddress", "Piece", "Join", "Paren", "Unsupported"};
+        "FarAddress", "Piece", "Join", "Paren", "Unsupported",
+        "Region", "BlockExpr", "Fixed", "ThrowExpr", "OptionalChain", "OptionalUnwrap", "PatternMatch", "Destructure", "Default", "SizeOf", "StackAlloc", "Intrinsic"};
     cb::Arena arena;
     std::unordered_set<std::string_view> seen;
     for (const char* name : kinds) {
@@ -392,7 +395,7 @@ CB_TEST("translate.ir.tree.every_kind_can_be_made_by_name", [] {
         CB_CHECK(ir::children(*n).empty());           // every slot empty
         seen.insert(name);
     }
-    CB_CHECK_EQ(seen.size(), std::size_t{66});
+    CB_CHECK_EQ(seen.size(), std::size_t{78});
     CB_CHECK_EQ(seen.size(), std::variant_size_v<ir::Kind>);   // all of them
     CB_CHECK(ir::make_node(arena, "Nope") == nullptr);
     CB_CHECK(ir::make_node(arena, "") == nullptr);
@@ -508,4 +511,405 @@ CB_TEST("translate.ir.tree.where_a_node_came_from_is_shared_and_optional", [] {
     CB_CHECK(a->origin == b->origin);
     ir::Node* copy = ir::clone(arena, a);
     CB_CHECK(copy->origin != nullptr && *copy->origin == *a->origin);
+});
+
+// ---- what a lowered bytecode states (docs: work/ilspy-port/l2/ILAST_TO_L2.md): stack kinds, prefix flags, entities, info, and the kinds
+// the CIL lane needs. Every one is optional: a tree that states none of it is the tree it was.
+
+namespace {
+
+// Stands for the CLR lane's entity (the real one holds an IType, IMethod ...).
+class IrTestEntity : public ir::Entity {
+public:
+    IrTestEntity(ir::EntityKind kind, std::string key) : kind_(kind), key_(std::move(key)) {}
+    std::string_view family() const override { return "test"; }
+    ir::EntityKind kind() const override { return kind_; }
+    std::string key() const override { return key_; }
+
+private:
+    ir::EntityKind kind_;
+    std::string key_;
+};
+
+ir::EntityP entity(ir::EntityKind kind, std::string key) { return std::make_shared<const IrTestEntity>(kind, std::move(key)); }
+
+template <class E, class Last> void all_enum_values_round_trip(Last last) {
+    for (std::size_t i = 0; i <= static_cast<std::size_t>(last); ++i) {
+        const E value = static_cast<E>(i);
+        const std::string_view text = ir::to_text(value);
+        CB_CHECK(!text.empty());
+        const auto back = ir::from_text<E>(text);
+        CB_CHECK(back.has_value() && *back == value);
+    }
+    CB_CHECK(!ir::from_text<E>("no such name").has_value());
+    CB_CHECK(!ir::from_text<E>("").has_value());
+}
+
+}  // namespace
+
+// A CIL `int` (an entity of the CLR's System.Int32, a fact of its own) and the Java front end's `i32` are the same type: equal, and
+// equal in hash -- `==` compares what a type says, not which type system made it.
+CB_TEST("translate.ir.cil.a_cil_int_and_the_java_i32_are_equal_and_hash_equal", [] {
+    ir::InfoP info;
+    info.set("cil.native_int", false);
+    const ir::TypeP cil_int = ir::make_type(ir::PrimType{ir::Prim::I32, std::nullopt, std::nullopt}, entity(ir::EntityKind::Type, "T:System.Runtime|System.Int32"), info);
+    const ir::TypeP java_i32 = ir::prim_type(ir::Prim::I32);
+    CB_CHECK(cil_int == java_i32);
+    CB_CHECK(*cil_int == *java_i32);
+    CB_CHECK(java_i32 == cil_int);
+    CB_CHECK_EQ(cil_int->hash(), java_i32->hash());
+    CB_CHECK(cil_int.get() != java_i32.get());
+    CB_CHECK(cil_int->entity != nullptr && cil_int->info);
+    CB_CHECK(java_i32->entity == nullptr && !java_i32->info);
+    CB_CHECK(cil_int->info.get_as<bool>("cil.native_int") != nullptr);
+    // the entity is compared by `same_entity`, by what it is (family, kind, key), not by object
+    const ir::TypeP same = ir::make_type(ir::PrimType{ir::Prim::I32, std::nullopt, std::nullopt}, entity(ir::EntityKind::Type, "T:System.Runtime|System.Int32"));
+    CB_CHECK(ir::same_entity(cil_int, same));
+    CB_CHECK(!ir::same_entity(cil_int, java_i32));      // one has none
+    CB_CHECK(!ir::same_entity(java_i32, java_i32));     // none is not "the same"
+    CB_CHECK(!ir::same_entity(cil_int, ir::make_type(ir::PrimType{ir::Prim::I32, std::nullopt, std::nullopt}, entity(ir::EntityKind::Type, "T:Other|X"))));
+    // a class from the CLR and from Java: equal by name; other entities do not make types unequal, other bodies do
+    const ir::TypeP cil_string = ir::make_type(ir::ClassType{.name = "System.String"}, entity(ir::EntityKind::Type, "T:System.Runtime|System.String"));
+    CB_CHECK(cil_string == ir::class_type("System.String"));
+    CB_CHECK(cil_string != ir::class_type("java.lang.String"));
+    CB_CHECK(cil_int != ir::prim_type(ir::Prim::U32));
+    // an array of a CIL int is the array of an i32
+    CB_CHECK(ir::array_of(cil_int) == ir::array_of(java_i32));
+    CB_CHECK_EQ(ir::array_of(cil_int)->hash(), ir::array_of(java_i32)->hash());
+    // decimal is a class type of its own name, not a primitive: System.Decimal
+    CB_CHECK(ir::decimal_type() == ir::class_type("System.Decimal"));
+});
+
+CB_TEST("translate.ir.cil.a_decimal_literal_keeps_its_exact_text", [] {
+    cb::Arena arena;
+    ir::Node* a = ir::make_decimal(arena, "1.50");
+    ir::Node* b = ir::make_decimal(arena, "1.5");
+    CB_CHECK(a->type == ir::decimal_type());
+    CB_CHECK_EQ(*ir::get<ir::Lit>(a)->text, std::string("1.50"));
+    CB_CHECK_EQ(std::get<std::string>(ir::get<ir::Lit>(a)->value), std::string("1.50"));
+    CB_CHECK_NE(*ir::get<ir::Lit>(a)->text, *ir::get<ir::Lit>(b)->text);   // the scale is kept
+    CB_CHECK(a->type == b->type);
+});
+
+// What a node costs: the stack kind, the flags and a null pointer to the info; nothing is allocated for the info until a key is set.
+CB_TEST("translate.ir.cil.a_node_grows_by_16_bytes_and_info_is_free_until_set", [] {
+    std::cout << "sizeof: Node " << sizeof(ir::Node) << ", Type " << sizeof(ir::Type) << ", Sym " << sizeof(ir::Sym) << ", Kind " << sizeof(ir::Kind)
+              << ", InfoP " << sizeof(ir::InfoP) << ", Origin " << sizeof(ir::Origin) << "\n";
+    static_assert(sizeof(ir::InfoP) == sizeof(void*), "info is one pointer");
+    static_assert(sizeof(ir::Kind) <= 96, "the new slots must not grow the largest kind (it sets the size of every node)");
+    static_assert(sizeof(ir::Node) <= 152, "a node: 136 bytes before the lowered-bytecode facts, +8 for stack and flags, +8 for the info pointer");
+    static_assert(sizeof(ir::Sym) <= 232, "a symbol: 200 bytes before, +8 index, +16 entity, +8 info; role, stack and the flags sit in the padding");
+    static_assert(sizeof(ir::Type) <= 176, "a type: 152 bytes before, +16 entity, +8 info");
+    CB_CHECK(sizeof(ir::Node) <= 152);
+    ir::Node n;
+    CB_CHECK(!n.info);
+    CB_CHECK(n.stack == ir::Stack::Unknown && n.flags == 0);
+    // copying a node copies its info: the copy is another
+    n.info.set("cil.code_size", std::int64_t{12});
+    ir::Node copy = n;
+    copy.info.set("cil.code_size", std::int64_t{99});
+    CB_CHECK_EQ(*n.info.get_as<std::int64_t>("cil.code_size"), std::int64_t{12});
+    CB_CHECK_EQ(*copy.info.get_as<std::int64_t>("cil.code_size"), std::int64_t{99});
+    // the largest kinds stay inside the variant's size: Case and Assign are the ones the new slots made bigger
+    static_assert(sizeof(ir::Case) <= 88 && sizeof(ir::Assign) <= 88 && sizeof(ir::Binary) <= 88 && sizeof(ir::Call) <= 88);
+});
+
+CB_TEST("translate.ir.cil.info_is_a_sorted_keyed_bag_that_copies_what_it_holds", [] {
+    ir::InfoP info;
+    CB_CHECK(!info);
+    CB_CHECK(info.find("cil.code_size") == nullptr);
+    info.set("cil.severity", std::int64_t{2});
+    info.set("cil.code_size", std::int64_t{7});
+    info.set("cil.mono_state_machine", true);
+    CB_CHECK(info);
+    std::vector<std::string> keys;
+    for (const auto& item : info.get()->items()) keys.push_back(item.first);
+    CB_CHECK((keys == std::vector<std::string>{"cil.code_size", "cil.mono_state_machine", "cil.severity"}));   // sorted
+    info.set("cil.code_size", std::int64_t{8});                                                              // replaced, not added
+    CB_CHECK_EQ(info.get()->items().size(), std::size_t{3});
+    CB_CHECK_EQ(*info.get_as<std::int64_t>("cil.code_size"), std::int64_t{8});
+    CB_CHECK(info.get_as<std::string>("cil.code_size") == nullptr);   // another kind: none
+    // a copy is its own
+    ir::InfoP other = info;
+    other.erase("cil.severity");
+    CB_CHECK(info.find("cil.severity") != nullptr && other.find("cil.severity") == nullptr);
+    CB_CHECK(info != other);
+    other.set("cil.severity", std::int64_t{2});
+    other.set("cil.code_size", std::int64_t{8});
+    CB_CHECK(info == other);
+    // erasing the last key frees it
+    ir::InfoP one;
+    one.set("cil.pinned", true);
+    one.erase("cil.pinned");
+    CB_CHECK(!one);
+    one.erase("cil.pinned");   // (and erasing what is not there is nothing)
+    // entities in an info are compared by what they are
+    ir::InfoP e1, e2;
+    e1.set("cil.move_next", entity(ir::EntityKind::Method, "M:A|N#06000001"));
+    e2.set("cil.move_next", entity(ir::EntityKind::Method, "M:A|N#06000001"));
+    CB_CHECK(e1 == e2);
+    e2.set("cil.move_next", entity(ir::EntityKind::Method, "M:A|N#06000002"));
+    CB_CHECK(e1 != e2);
+});
+
+// The tables are data: sorted (they are searched), complete, and each row says why.
+CB_TEST("translate.ir.cil.the_info_and_intrinsic_tables_are_well_formed", [] {
+    std::string_view last;
+    for (const ir::InfoKey& k : ir::info_keys()) {
+        CB_CHECK(k.key.starts_with("cil."));
+        CB_CHECK(last < k.key);   // sorted, no duplicates
+        last = k.key;
+        CB_CHECK(!k.doc.empty());
+        CB_CHECK(ir::find_info_key(k.key) == &k);
+        if (k.on == ir::InfoOn::Node) {
+            CB_CHECK(!k.kinds.empty());
+            std::size_t at = 0;
+            cb::Arena arena;
+            while (at < k.kinds.size()) {   // every kind a key may sit on is a kind
+                std::size_t end = k.kinds.find(' ', at);
+                if (end == std::string_view::npos) end = k.kinds.size();
+                CB_CHECK(ir::make_node(arena, k.kinds.substr(at, end - at)) != nullptr);
+                at = end + 1;
+            }
+        } else {
+            CB_CHECK(k.kinds.empty());
+        }
+    }
+    CB_CHECK(ir::find_info_key("cil.nope") == nullptr);
+    CB_CHECK(ir::find_info_key("") == nullptr);
+    CB_CHECK_EQ(ir::info_keys().size(), std::size_t{30});
+
+    last = {};
+    std::set<std::string_view> flag_names;
+    for (ir::NodeFlag f : ir::all_node_flags()) flag_names.insert(ir::to_text(f));
+    for (const ir::IntrinsicName& n : ir::intrinsic_names()) {
+        CB_CHECK(last < n.name);   // sorted, no duplicates
+        last = n.name;
+        CB_CHECK(!n.operands.empty() && !n.result.empty() && !n.why.empty() && !n.lanes.empty() && !n.test.empty());   // the binding rule
+        CB_CHECK(ir::find_intrinsic(n.name) == &n);
+        // every flag it names is a flag; a name with no cil. / cs. prefix is used by two lanes at least
+        std::size_t at = 0;
+        while (at < n.flags.size()) {
+            std::size_t end = n.flags.find(' ', at);
+            if (end == std::string_view::npos) end = n.flags.size();
+            CB_CHECK(flag_names.contains(n.flags.substr(at, end - at)));
+            at = end + 1;
+        }
+        if (!n.name.starts_with("cil.") && !n.name.starts_with("cs.")) CB_CHECK(n.lanes.find(' ') != std::string_view::npos);
+    }
+    CB_CHECK(ir::find_intrinsic("cil.nope") == nullptr);
+    CB_CHECK(ir::find_intrinsic("mem.copy") != nullptr);
+    CB_CHECK_EQ(ir::intrinsic_names().size(), std::size_t{25});
+});
+
+CB_TEST("translate.ir.cil.the_new_enums_and_flags_have_names_that_read_back", [] {
+    all_enum_values_round_trip<ir::Stack>(ir::Stack::Void);
+    all_enum_values_round_trip<ir::Lift>(ir::Lift::ThreeValued);
+    all_enum_values_round_trip<ir::Coalesce>(ir::Coalesce::NullableValue);
+    all_enum_values_round_trip<ir::ConvKind>(ir::ConvKind::ExprTree);
+    all_enum_values_round_trip<ir::Eval>(ir::Eval::New);
+    all_enum_values_round_trip<ir::Via>(ir::Via::Dynamic);
+    all_enum_values_round_trip<ir::CallForm>(ir::CallForm::Indirect);
+    all_enum_values_round_trip<ir::RegionKind>(ir::RegionKind::Switch);
+    all_enum_values_round_trip<ir::EmptyKind>(ir::EmptyKind::Pop);
+    all_enum_values_round_trip<ir::VarRole>(ir::VarRole::DeconTemp);
+    CB_CHECK_EQ(ir::to_text(ir::CallForm::Default), std::string_view("default"));
+    CB_CHECK_EQ(ir::to_text(ir::Stack::I4), std::string_view("i4"));
+    // flags: one bit each, distinct names, the names read back
+    std::uint32_t seen = 0;
+    for (ir::NodeFlag f : ir::all_node_flags()) {
+        CB_CHECK(ir::bit(f) != 0 && (ir::bit(f) & (ir::bit(f) - 1)) == 0);   // a power of two
+        CB_CHECK((seen & ir::bit(f)) == 0);
+        seen |= ir::bit(f);
+        CB_CHECK(ir::from_text<ir::NodeFlag>(ir::to_text(f)) == f);
+    }
+    CB_CHECK_EQ(ir::all_node_flags().size(), std::size_t{17});
+    CB_CHECK(!ir::from_text<ir::NodeFlag>("nope").has_value());
+    cb::Arena arena;
+    ir::Node* n = ir::make(arena, ir::Empty{});
+    CB_CHECK(!ir::has_flag(*n, ir::NodeFlag::Volatile));
+    ir::set_flag(*n, ir::NodeFlag::Volatile);
+    ir::set_flag(*n, ir::NodeFlag::Tail);
+    CB_CHECK(ir::has_flag(*n, ir::NodeFlag::Volatile) && ir::has_flag(*n, ir::NodeFlag::Tail) && !ir::has_flag(*n, ir::NodeFlag::ReadOnly));
+    ir::set_flag(*n, ir::NodeFlag::Volatile, false);
+    CB_CHECK(!ir::has_flag(*n, ir::NodeFlag::Volatile) && ir::has_flag(*n, ir::NodeFlag::Tail));
+});
+
+CB_TEST("translate.ir.cil.the_stack_kind_is_stated_or_derived_from_the_type", [] {
+    cb::Arena arena;
+    auto of = [&](ir::TypeP t, ir::Stack stated = ir::Stack::Unknown) {
+        ir::Node* n = ir::make(arena, ir::Empty{}, std::move(t));
+        n->stack = stated;
+        return ir::stack_of(*n);
+    };
+    CB_CHECK(of(ir::bool_type()) == ir::Stack::I4);
+    CB_CHECK(of(ir::i32_type()) == ir::Stack::I4);
+    CB_CHECK(of(ir::prim_type(ir::Prim::Char)) == ir::Stack::I4);
+    CB_CHECK(of(ir::prim_type(ir::Prim::U64)) == ir::Stack::I8);
+    CB_CHECK(of(ir::prim_type(ir::Prim::F32)) == ir::Stack::F4);
+    CB_CHECK(of(ir::prim_type(ir::Prim::F64)) == ir::Stack::F8);
+    CB_CHECK(of(ir::void_type()) == ir::Stack::Void);
+    CB_CHECK(of(ir::class_type("System.String")) == ir::Stack::O);
+    CB_CHECK(of(ir::array_of(ir::i32_type())) == ir::Stack::O);
+    CB_CHECK(of(ir::null_type()) == ir::Stack::O);
+    CB_CHECK(of(ir::pointer_to(ir::i32_type())) == ir::Stack::I);
+    ir::PtrType managed;
+    managed.to = ir::i32_type();
+    managed.managed = true;
+    CB_CHECK(of(ir::make_type(managed)) == ir::Stack::Ref);
+    CB_CHECK(of(ir::any_type()) == ir::Stack::Unknown);
+    CB_CHECK(of({}) == ir::Stack::Unknown);
+    // what the lane stated wins: a bool that is on the stack as a native int, a string that is a ref
+    CB_CHECK(of(ir::bool_type(), ir::Stack::I) == ir::Stack::I);
+    CB_CHECK(of(ir::class_type("System.String"), ir::Stack::Ref) == ir::Stack::Ref);
+});
+
+CB_TEST("translate.ir.cil.the_new_type_kinds", [] {
+    ir::TupleType tuple;
+    tuple.elems = {ir::i32_type(), ir::class_type("System.String")};
+    tuple.names = {std::string("id"), std::nullopt};
+    const ir::TypeP t = ir::make_type(tuple);
+    CB_CHECK_EQ(t->kind(), std::string_view("tuple"));
+    CB_CHECK_EQ(ir::to_text(*t), std::string("(i32 id, System.String)"));
+    ir::TupleType other = tuple;
+    CB_CHECK(t == ir::make_type(other));
+    other.names[1] = "name";
+    CB_CHECK(t != ir::make_type(other));
+    CB_CHECK_EQ(t->hash(), ir::make_type(tuple)->hash());
+    ir::ModType mod;
+    mod.inner = ir::i32_type();
+    mod.required = true;
+    mod.modifier = ir::class_type("System.Runtime.CompilerServices.IsVolatile");
+    const ir::TypeP m = ir::make_type(mod);
+    CB_CHECK_EQ(m->kind(), std::string_view("mod"));
+    mod.required = false;
+    CB_CHECK(m != ir::make_type(mod));
+    // a type variable now says where it is declared; one that says nothing is as before
+    CB_CHECK(ir::typevar_type("T") == ir::typevar_type("T"));
+    ir::TypeVarType v;
+    v.name = "T";
+    v.index = 0;
+    v.owner = "System.Collections.Generic.List`1";
+    CB_CHECK(ir::make_type(v) != ir::typevar_type("T"));
+    v.of_method = true;
+    CB_CHECK(ir::make_type(v) != ir::make_type(ir::TypeVarType{"T", 0, "System.Collections.Generic.List`1", false}));
+    // managed and plain pointers differ; a member function's type differs from a free one
+    ir::PtrType managed;
+    managed.to = ir::i32_type();
+    ir::PtrType plain = managed;
+    managed.managed = true;
+    CB_CHECK(ir::make_type(managed) != ir::make_type(plain));
+    ir::FnType f;
+    ir::FnType g = f;
+    g.has_this = true;
+    CB_CHECK(ir::make_type(f) != ir::make_type(g));
+    g = f;
+    g.explicit_this = true;
+    CB_CHECK(ir::make_type(f) != ir::make_type(g));
+});
+
+// The new kinds: made by name (the list above), in the categories the writer uses, with their children in the order of the lane's tree.
+CB_TEST("translate.ir.cil.the_new_kinds_and_slots_walk_in_the_order_of_the_ilast", [] {
+    cb::Arena arena;
+    auto leaf = [&](const char* name) { return ir::make(arena, ir::Name{.sym = ir::make_sym(ir::SymKind::Local, name)}); };
+    // categories
+    for (const char* name : {"Region", "Fixed", "Destructure"}) CB_CHECK(ir::category(*ir::make_node(arena, name)) == ir::Category::Statement);
+    for (const char* name : {"BlockExpr", "ThrowExpr", "OptionalChain", "OptionalUnwrap", "PatternMatch", "Default", "SizeOf", "StackAlloc", "Intrinsic"}) {
+        CB_CHECK(ir::category(*ir::make_node(arena, name)) == ir::Category::Expression);
+    }
+    // Try: body, catches, finally, then the fault block; Catch: the filter before the body
+    Node *body = leaf("body"), *handler = leaf("handler"), *fin = leaf("finally"), *fault = leaf("fault"), *filter = leaf("filter"), *catch_body = leaf("catch_body");
+    ir::Catch c;
+    c.body = catch_body;
+    c.filter = filter;
+    Node* catch_node = ir::make(arena, std::move(c));
+    ir::Try t;
+    t.body = body;
+    t.catches = {catch_node};
+    t.finally_body = fin;
+    t.fault_body = fault;
+    Node* try_node = ir::make(arena, std::move(t));
+    CB_CHECK((ir::children(*try_node) == std::vector<Node*>{body, catch_node, fin, fault}));
+    CB_CHECK((ir::children(*catch_node) == std::vector<Node*>{filter, catch_body}));
+    (void)handler;
+    // Break leaves with a value; a method declares nested local functions after its body
+    Node* value = leaf("value");
+    Node* brk = ir::make(arena, ir::Break{.label = "IL_0000", .value = value});
+    CB_CHECK((ir::children(*brk) == std::vector<Node*>{value}));
+    Node *p = leaf("p"), *b = leaf("b"), *local_fn = ir::make(arena, ir::MethodDecl{});
+    ir::MethodDecl md;
+    md.params = {p};
+    md.body = b;
+    md.nested = {local_fn};
+    Node* md_node = ir::make(arena, std::move(md));
+    CB_CHECK((ir::children(*md_node) == std::vector<Node*>{p, b, local_fn}));
+    // Region: its blocks; BlockExpr: statements then the result; PatternMatch: the tested operand then the sub-patterns (the variable is a symbol)
+    Node *b1 = ir::make(arena, ir::Labeled{.label = "IL_0000"}), *b2 = ir::make(arena, ir::Labeled{.label = "IL_0004"});
+    CB_CHECK((ir::children(*ir::make(arena, ir::Region{.kind = ir::RegionKind::Loop, .blocks = {b1, b2}})) == std::vector<Node*>{b1, b2}));
+    Node *s1 = leaf("s1"), *res = leaf("res");
+    CB_CHECK((ir::children(*ir::make(arena, ir::BlockExpr{.role = "array_init", .stmts = {s1}, .result = res})) == std::vector<Node*>{s1, res}));
+    Node *tested = leaf("tested"), *sub1 = leaf("sub1"), *sub2 = leaf("sub2");
+    ir::PatternMatch pm;
+    pm.var = ir::make_sym(ir::SymKind::Local, "x");
+    pm.tested = tested;
+    pm.subs = {sub1, sub2};
+    CB_CHECK((ir::children(*ir::make(arena, std::move(pm))) == std::vector<Node*>{tested, sub1, sub2}));
+    Node *pat = leaf("pat"), *conv = leaf("conv"), *asg = leaf("asg");
+    CB_CHECK((ir::children(*ir::make(arena, ir::Destructure{.pattern = pat, .conversions = conv, .assignments = asg})) == std::vector<Node*>{pat, conv, asg}));
+    Node* count = leaf("count");
+    CB_CHECK((ir::children(*ir::make(arena, ir::StackAlloc{.elem = ir::i32_type(), .count = count, .span = true})) == std::vector<Node*>{count}));
+    Node *a0 = leaf("a0"), *a1 = leaf("a1");
+    ir::Intrinsic in;
+    in.name = "mem.copy";
+    in.args = {a0, a1};
+    CB_CHECK((ir::children(*ir::make(arena, std::move(in))) == std::vector<Node*>{a0, a1}));
+    Node* x = leaf("x");
+    CB_CHECK((ir::children(*ir::make(arena, ir::ThrowExpr{.x = x})) == std::vector<Node*>{x}));
+    CB_CHECK((ir::children(*ir::make(arena, ir::OptionalChain{.x = x})) == std::vector<Node*>{x}));
+    CB_CHECK((ir::children(*ir::make(arena, ir::OptionalUnwrap{.x = x, .ref_in = true})) == std::vector<Node*>{x}));
+    Node *fv = leaf("fv"), *fb = leaf("fb");
+    CB_CHECK((ir::children(*ir::make(arena, ir::Fixed{.var = fv, .body = fb})) == std::vector<Node*>{fv, fb}));
+    CB_CHECK(ir::children(*ir::make(arena, ir::Default{})).empty());
+    CB_CHECK(ir::children(*ir::make(arena, ir::SizeOf{.of = ir::i32_type()})).empty());
+});
+
+// A tree that states none of it is the tree it was: the old slots, designated, still make the same nodes and clone the same.
+CB_TEST("translate.ir.cil.clone_keeps_the_stack_the_flags_the_info_and_the_span", [] {
+    cb::Arena arena;
+    cb::Arena other;
+    ir::SymP v = ir::make_sym(ir::SymKind::Local, "num", std::nullopt, false, ir::i32_type());
+    v->role = ir::VarRole::Temp;
+    v->index = 3;
+    v->stack = ir::Stack::I4;
+    Node* n = ir::make(arena, ir::Name{.sym = v}, ir::i32_type());
+    n->stack = ir::Stack::I4;
+    ir::set_flag(*n, ir::NodeFlag::StackEmpty);
+    n->info.set("cil.code_size", std::int64_t{4});
+    n->origin = std::make_shared<const ir::Origin>(ir::OriginSpan{4, 9});
+    Node* copy = ir::clone(other, n);
+    CB_CHECK(copy->stack == ir::Stack::I4 && ir::has_flag(*copy, ir::NodeFlag::StackEmpty));
+    CB_CHECK(copy->info == n->info);
+    CB_CHECK(std::get<ir::OriginSpan>(*copy->origin) == (ir::OriginSpan{4, 9}));
+    copy->info.set("cil.code_size", std::int64_t{5});   // the copy's info is its own
+    CB_CHECK_EQ(*n->info.get_as<std::int64_t>("cil.code_size"), std::int64_t{4});
+    CB_CHECK(ir::get<ir::Name>(copy)->sym == v);        // the symbol is shared, as before
+});
+
+// Boxed kinds still read and write like any other (Module and Lambda grew, so they are boxed: a tree is made of nodes of the common size).
+CB_TEST("translate.ir.cil.module_lambda_and_the_new_big_kinds_are_boxed", [] {
+    cb::Arena arena;
+    ir::Lambda l;
+    l.scope = "IL_0000";
+    l.locals = {ir::make_sym(ir::SymKind::Local, "a")};
+    Node* lam = ir::make(arena, std::move(l));
+    CB_CHECK_EQ(ir::kind_name(*lam), std::string_view("Lambda"));
+    ir::Node copy = *lam;
+    ir::get<ir::Lambda>(&copy)->scope = "IL_0004";
+    CB_CHECK_EQ(*ir::get<ir::Lambda>(lam)->scope, std::string("IL_0000"));   // a copy of a boxed node owns its own
+    ir::Module m;
+    m.scope_refs = {"System.Private.CoreLib"};
+    Node* mod = ir::make(arena, std::move(m));
+    CB_CHECK(ir::get<ir::Module>(mod)->scope == nullptr);
+    CB_CHECK_EQ(ir::kind_name(*ir::make_node(arena, "PatternMatch")), std::string_view("PatternMatch"));
+    CB_CHECK_EQ(ir::kind_name(*ir::make_node(arena, "Intrinsic")), std::string_view("Intrinsic"));
 });

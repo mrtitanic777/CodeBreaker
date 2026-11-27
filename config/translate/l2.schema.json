@@ -2,7 +2,7 @@
  "$schema": "https://json-schema.org/draft/2020-12/schema",
  "$id": "codebreaker/l2.schema.json",
  "title": "L2: the translator hub IR (docs/TRANSLATOR_DESIGN.md, IR_UNIFICATION.md, L2_BINARY_TYPES.md)",
- "description": "One typed tree for every source language and for decompiled binaries. ir.py implements it in Python; the Rust core implements the same schema (serde). A document is a Node, usually a Module or a Unit.",
+ "description": "One typed tree for every source language and for decompiled binaries. ir.py implements it in Python; the Rust core implements the same schema (serde). A document is a Node, usually a Module or a Unit. A lane that lowers a bytecode or binary also states stk/fl/info on nodes, entities and variables in tables at the root (docs: work/ilspy-port/l2/ILAST_TO_L2.md).",
  "$ref": "#/$defs/Node",
  "$defs": {
   "Prim": {
@@ -40,6 +40,13 @@
       "utf32"
      ],
      "description": "a character in this encoding, not a number (C#'s char beside ushort)"
+    },
+    "e": {
+     "$ref": "#/$defs/EntityRef",
+     "description": "the entity of the lane's type system this type was made from; not part of what the type says (== ignores it)"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnType"
     }
    },
    "additionalProperties": false
@@ -57,6 +64,13 @@
       "any",
       "dynamic"
      ]
+    },
+    "e": {
+     "$ref": "#/$defs/EntityRef",
+     "description": "the entity of the lane's type system this type was made from; not part of what the type says (== ignores it)"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnType"
     }
    }
   },
@@ -96,6 +110,13 @@
     "exception": {
      "type": "boolean",
      "description": "an exception class: made and thrown as a value"
+    },
+    "e": {
+     "$ref": "#/$defs/EntityRef",
+     "description": "the entity of the lane's type system this type was made from; not part of what the type says (== ignores it)"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnType"
     }
    }
   },
@@ -112,6 +133,26 @@
     },
     "name": {
      "type": "string"
+    },
+    "e": {
+     "$ref": "#/$defs/EntityRef",
+     "description": "the entity of the lane's type system this type was made from; not part of what the type says (== ignores it)"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnType"
+    },
+    "index": {
+     "type": "integer",
+     "minimum": 0,
+     "description": "its place in the owner's list of type parameters"
+    },
+    "owner": {
+     "type": "string",
+     "description": "the declaring type or method"
+    },
+    "of_method": {
+     "type": "boolean",
+     "description": "a method's type parameter, not a type's"
     }
    }
   },
@@ -133,6 +174,13 @@
     },
     "type": {
      "$ref": "#/$defs/Type"
+    },
+    "e": {
+     "$ref": "#/$defs/EntityRef",
+     "description": "the entity of the lane's type system this type was made from; not part of what the type says (== ignores it)"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnType"
     }
    }
   },
@@ -212,6 +260,17 @@
     "ref": {
      "type": "boolean",
      "description": "a C++ reference (T&, T&&): a pointer never null nor reseated. Its uses are explicit in the tree as for a pointer (a read is Unary '*', a binding Unary '&'); a C++ back end writes neither"
+    },
+    "e": {
+     "$ref": "#/$defs/EntityRef",
+     "description": "the entity of the lane's type system this type was made from; not part of what the type says (== ignores it)"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnType"
+    },
+    "managed": {
+     "type": "boolean",
+     "description": "a reference the runtime tracks (a CLR managed/interior pointer); `ref` is never-null, `managed` is tracked"
     }
    },
    "additionalProperties": false
@@ -227,6 +286,13 @@
     },
     "of": {
      "$ref": "#/$defs/SegmentRef"
+    },
+    "e": {
+     "$ref": "#/$defs/EntityRef",
+     "description": "the entity of the lane's type system this type was made from; not part of what the type says (== ignores it)"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnType"
     }
    },
    "additionalProperties": false
@@ -251,6 +317,13 @@
     },
     "fn": {
      "$ref": "#/$defs/Fn"
+    },
+    "e": {
+     "$ref": "#/$defs/EntityRef",
+     "description": "the entity of the lane's type system this type was made from; not part of what the type says (== ignores it)"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnType"
     }
    },
    "additionalProperties": false
@@ -315,6 +388,13 @@
      "items": {
       "$ref": "#/$defs/Field"
      }
+    },
+    "e": {
+     "$ref": "#/$defs/EntityRef",
+     "description": "the entity of the lane's type system this type was made from; not part of what the type says (== ignores it)"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnType"
     }
    },
    "additionalProperties": false
@@ -340,6 +420,13 @@
      "type": "integer",
      "minimum": 2,
      "description": "a rectangular array of this many dimensions (C#'s int[,]); absent: one (jagged arrays nest)"
+    },
+    "e": {
+     "$ref": "#/$defs/EntityRef",
+     "description": "the entity of the lane's type system this type was made from; not part of what the type says (== ignores it)"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnType"
     }
    },
    "additionalProperties": false
@@ -492,6 +579,21 @@
     },
     "variadic": {
      "type": "boolean"
+    },
+    "e": {
+     "$ref": "#/$defs/EntityRef",
+     "description": "the entity of the lane's type system this type was made from; not part of what the type says (== ignores it)"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnType"
+    },
+    "has_this": {
+     "type": "boolean",
+     "description": "a member function's type: the first parameter is the object"
+    },
+    "explicit_this": {
+     "type": "boolean",
+     "description": "... which the signature spells out"
     }
    },
    "additionalProperties": false
@@ -550,6 +652,25 @@
       }
      },
      "additionalProperties": false
+    },
+    {
+     "type": "object",
+     "required": [
+      "start",
+      "end"
+     ],
+     "description": "[start, end) bytes of the bytecode of the enclosing method (CIL, JVM)",
+     "properties": {
+      "start": {
+       "type": "integer",
+       "minimum": 0
+      },
+      "end": {
+       "type": "integer",
+       "minimum": 0
+      }
+     },
+     "additionalProperties": false
     }
    ]
   },
@@ -587,101 +708,25 @@
     },
     {
      "$ref": "#/$defs/Record"
+    },
+    {
+     "$ref": "#/$defs/Tuple"
+    },
+    {
+     "$ref": "#/$defs/Mod"
     }
    ]
   },
   "Sym": {
-   "description": "what a name refers to, as the source language resolved it",
-   "type": "object",
-   "required": [
-    "kind",
-    "name"
-   ],
-   "additionalProperties": false,
-   "properties": {
-    "kind": {
-     "enum": [
-      "local",
-      "param",
-      "field",
-      "method",
-      "ctor",
-      "class",
-      "enumconst",
-      "typevar",
-      "package",
-      "global",
-      "function",
-      "label",
-      "property",
-      "event"
-     ]
+   "description": "what a name refers to, as the source language resolved it: whole, or {\"v\": index} for a variable or an entity's symbol",
+   "anyOf": [
+    {
+     "$ref": "#/$defs/SymBody"
     },
-    "name": {
-     "type": "string"
-    },
-    "owner": {
-     "anyOf": [
-      {
-       "type": "string"
-      },
-      {
-       "type": "null"
-      }
-     ]
-    },
-    "static": {
-     "type": "boolean"
-    },
-    "type": {
-     "anyOf": [
-      {
-       "$ref": "#/$defs/Type"
-      },
-      {
-       "type": "null"
-      }
-     ]
-    },
-    "params": {
-     "type": "array",
-     "items": {
-      "$ref": "#/$defs/Type"
-     }
-    },
-    "ret": {
-     "anyOf": [
-      {
-       "$ref": "#/$defs/Type"
-      },
-      {
-       "type": "null"
-      }
-     ]
-    },
-    "varargs": {
-     "type": "boolean"
-    },
-    "refs": {
-     "type": "array",
-     "items": {
-      "enum": [
-       "",
-       "ref",
-       "out",
-       "in"
-      ]
-     },
-     "description": "how each parameter is passed, where any is not by value"
-    },
-    "flags": {
-     "type": "array",
-     "items": {
-      "type": "string"
-     },
-     "description": "extension, indexer, operator, readonly, virtual, abstract, override, ..."
+    {
+     "$ref": "#/$defs/SymRef"
     }
-   }
+   ]
   },
   "AddressOf": {
    "type": "object",
@@ -713,6 +758,27 @@
     },
     "sym": {
      "$ref": "#/$defs/Sym"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -773,6 +839,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -860,6 +947,77 @@
        "type": "null"
       }
      ]
+    },
+    "eval": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Eval"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "via": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Via"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "left_stk": {
+     "$ref": "#/$defs/Stack"
+    },
+    "right_stk": {
+     "$ref": "#/$defs/Stack"
+    },
+    "lift": {
+     "$ref": "#/$defs/Lift"
+    },
+    "sym": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Sym"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "signed": {
+     "description": "the sign the compound operator uses, as for a Binary",
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -949,6 +1107,7 @@
      ]
     },
     "signed": {
+     "description": "the sign the operator uses (a comparison's jl vs jb; a division's, a right shift's, a CIL add.ovf vs add.ovf.un), from the instruction, not from the operand types; absent: the operator's default (a producer that states it only on comparisons leaves it absent elsewhere)",
      "anyOf": [
       {
        "type": "boolean"
@@ -957,6 +1116,56 @@
        "type": "null"
       }
      ]
+    },
+    "left_stk": {
+     "$ref": "#/$defs/Stack"
+    },
+    "right_stk": {
+     "$ref": "#/$defs/Stack"
+    },
+    "lift": {
+     "$ref": "#/$defs/Lift"
+    },
+    "coalesce": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Coalesce"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "sym": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Sym"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -1001,6 +1210,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -1039,6 +1269,43 @@
        "type": "null"
       }
      ]
+    },
+    "value": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -1111,6 +1378,30 @@
      "items": {
       "$ref": "#/$defs/Type"
      }
+    },
+    "form": {
+     "$ref": "#/$defs/CallForm"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -1174,6 +1465,42 @@
        "type": "null"
       }
      ]
+    },
+    "ranges": {
+     "type": "array",
+     "items": {
+      "type": "array",
+      "items": {
+       "type": "integer"
+      },
+      "minItems": 2,
+      "maxItems": 2
+     },
+     "description": "closed intervals [low, high] the case takes"
+    },
+    "null_label": {
+     "type": "boolean"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -1239,6 +1566,53 @@
     "implicit": {
      "type": "boolean",
      "description": "a conversion the source language makes by itself (C's integer promotions, array-to-pointer decay, an upcast): explicit in the tree so every back end sees it, unwritten by a back end of the same language"
+    },
+    "conv": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/ConvKind"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "from_stk": {
+     "$ref": "#/$defs/Stack"
+    },
+    "from_signed": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "lift": {
+     "$ref": "#/$defs/Lift"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -1292,6 +1666,43 @@
        "type": "null"
       }
      ]
+    },
+    "filter": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -1427,6 +1838,27 @@
     "layout": {
      "$ref": "#/$defs/Record",
      "description": "a C or C++ struct/union whose bytes the source can see: each field's offset and the size, as the source's compiler lays them out for its target (Unit.target)"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -1461,6 +1893,27 @@
     },
     "of": {
      "$ref": "#/$defs/Type"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -1493,6 +1946,27 @@
     },
     "text": {
      "type": "string"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false,
@@ -1541,6 +2015,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -1620,6 +2115,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -1658,6 +2174,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -1731,6 +2268,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -1791,6 +2349,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -1819,6 +2398,40 @@
        "type": "null"
       }
      ]
+    },
+    "note": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "kind": {
+     "$ref": "#/$defs/EmptyKind"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -1902,6 +2515,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -1946,6 +2580,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -2009,6 +2664,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -2065,6 +2741,27 @@
      "items": {
       "type": "string"
      }
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -2157,6 +2854,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -2233,6 +2951,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -2271,6 +3010,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -2347,6 +3107,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -2420,6 +3201,37 @@
        "type": "null"
       }
      ]
+    },
+    "elem": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Type"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -2471,7 +3283,28 @@
     "test": {
      "$ref": "#/$defs/Type"
     },
-    "binding": {}
+    "binding": {},
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
+    }
    },
    "additionalProperties": false
   },
@@ -2534,6 +3367,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -2588,6 +3442,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -2651,6 +3526,90 @@
        "type": "null"
       }
      ]
+    },
+    "locals": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Sym"
+     }
+    },
+    "captures": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Sym"
+     }
+    },
+    "scope": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "comments": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "sym": {
+     "$ref": "#/$defs/Sym"
+    },
+    "mods": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "nested": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "ret": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Type"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -2698,6 +3657,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -2734,6 +3714,27 @@
     "text": {
      "type": "string",
      "description": "the literal as the source spelled it (base, suffix, character escape): a back end for the same language prints it so"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -2794,6 +3795,27 @@
     "at": {
      "$ref": "#/$defs/Location",
      "description": "a decompiled function's local: where the original keeps it (its stack place, a register; the decompiler gives it with CB_FRAME16=1, decompile/frame16.py lays a 16-bit function's locals out by it)"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -2838,6 +3860,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -2925,6 +3968,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false,
@@ -3071,6 +4135,65 @@
        "type": "null"
       }
      ]
+    },
+    "locals": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Sym"
+     }
+    },
+    "captures": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Sym"
+     }
+    },
+    "nested": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "scope": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false,
@@ -3125,6 +4248,37 @@
     },
     "mode": {
      "type": "string"
+    },
+    "of": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Type"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -3180,6 +4334,33 @@
        "type": "null"
       }
      ]
+    },
+    "scope_refs": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -3214,6 +4395,27 @@
     },
     "sym": {
      "$ref": "#/$defs/Sym"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -3310,6 +4512,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -3376,6 +4599,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -3416,6 +4660,27 @@
      "items": {
       "type": "string"
      }
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -3463,6 +4728,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -3516,6 +4802,27 @@
     },
     "width": {
      "type": "integer"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -3604,6 +4911,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -3648,6 +4976,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -3698,6 +5047,27 @@
     },
     "sym": {
      "$ref": "#/$defs/Sym"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -3739,6 +5109,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -3799,6 +5190,40 @@
        "type": "null"
       }
      ]
+    },
+    "lifted": {
+     "type": "boolean"
+    },
+    "of": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Type"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -3862,6 +5287,40 @@
        "type": "null"
       }
      ]
+    },
+    "lifted": {
+     "type": "boolean"
+    },
+    "of": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Type"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -3922,6 +5381,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -3963,6 +5443,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -4007,6 +5508,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -4099,6 +5621,43 @@
        "type": "null"
       }
      ]
+    },
+    "fault": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -4130,6 +5689,27 @@
     },
     "type": {
      "$ref": "#/$defs/Type"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -4190,6 +5770,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -4264,6 +5865,33 @@
        "type": "null"
       }
      ]
+    },
+    "left_stk": {
+     "$ref": "#/$defs/Stack"
+    },
+    "lift": {
+     "$ref": "#/$defs/Lift"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -4373,6 +6001,27 @@
       }
      },
      "additionalProperties": false
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -4415,7 +6064,28 @@
       }
      ]
     },
-    "raw": {}
+    "raw": {},
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
+    }
    },
    "additionalProperties": false
   },
@@ -4475,6 +6145,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -4519,6 +6210,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -4538,6 +6250,7 @@
       "Await",
       "Binary",
       "Block",
+      "BlockExpr",
       "Break",
       "Call",
       "Case",
@@ -4550,18 +6263,22 @@
       "Cond",
       "Continue",
       "CtorCall",
+      "Default",
+      "Destructure",
       "DoWhile",
       "Empty",
       "EnumConst",
       "ExprStmt",
       "FarAddress",
       "FieldDecl",
+      "Fixed",
       "For",
       "ForEach",
       "Goto",
       "If",
       "Index",
       "InstanceOf",
+      "Intrinsic",
       "Join",
       "Labeled",
       "Lambda",
@@ -4576,18 +6293,25 @@
       "Name",
       "New",
       "NewArray",
+      "OptionalChain",
+      "OptionalUnwrap",
       "Param",
       "Paren",
+      "PatternMatch",
       "Piece",
       "Property",
+      "Region",
       "Return",
       "Select",
+      "SizeOf",
+      "StackAlloc",
       "Super",
       "Switch",
       "SwitchExpr",
       "Sync",
       "This",
       "Throw",
+      "ThrowExpr",
       "Try",
       "TypeName",
       "TypeParam",
@@ -5393,6 +7117,150 @@
      "then": {
       "$ref": "#/$defs/Await"
      }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Region"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Region"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "BlockExpr"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/BlockExpr"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Fixed"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Fixed"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "ThrowExpr"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/ThrowExpr"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "OptionalChain"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/OptionalChain"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "OptionalUnwrap"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/OptionalUnwrap"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "PatternMatch"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/PatternMatch"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Destructure"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Destructure"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Default"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Default"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "SizeOf"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/SizeOf"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "StackAlloc"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/StackAlloc"
+     }
+    },
+    {
+     "if": {
+      "properties": {
+       "node": {
+        "const": "Intrinsic"
+       }
+      }
+     },
+     "then": {
+      "$ref": "#/$defs/Intrinsic"
+     }
     }
    ]
   },
@@ -5436,6 +7304,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -5464,6 +7353,27 @@
        "type": "null"
       }
      ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false
@@ -5511,6 +7421,2243 @@
        "type": "null"
       }
      ]
+    },
+    "awaiter": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Sym"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "result": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Sym"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
+    }
+   },
+   "additionalProperties": false
+  },
+  "Stack": {
+   "description": "the kind of a value on the evaluation stack or in a register (a bytecode lane states it; absent: derive it from the type)",
+   "enum": [
+    "unknown",
+    "i4",
+    "i",
+    "i8",
+    "f4",
+    "f8",
+    "o",
+    "ref",
+    "void"
+   ]
+  },
+  "Lift": {
+   "description": "a null-propagating (\"lifted\") operator; absent: none",
+   "enum": [
+    "none",
+    "csharp",
+    "three_valued"
+   ]
+  },
+  "Coalesce": {
+   "description": "the flavour of a ?? operator",
+   "enum": [
+    "ref",
+    "nullable",
+    "nullable_value"
+   ]
+  },
+  "ConvKind": {
+   "description": "what a conversion does: nop .. truncate are general; the gc kinds are CIL's; box .. expr_tree are the CLR's",
+   "enum": [
+    "invalid",
+    "nop",
+    "int_to_float",
+    "float_to_int",
+    "float_precision",
+    "sign_extend",
+    "zero_extend",
+    "truncate",
+    "stop_gc_tracking",
+    "start_gc_tracking",
+    "object_interior",
+    "box",
+    "unbox",
+    "unbox_any",
+    "ref_cast",
+    "try_cast",
+    "expr_tree"
+   ]
+  },
+  "Eval": {
+   "description": "a compound assignment gives the old value (x++) or the new one (++x)",
+   "enum": [
+    "old",
+    "new"
+   ]
+  },
+  "Via": {
+   "description": "what a compound assignment's target is: an address expression, an accessor (a getter call), a dynamic member",
+   "enum": [
+    "address",
+    "accessor",
+    "dynamic"
+   ]
+  },
+  "CallForm": {
+   "description": "how a call picks its callee; absent: by the symbol as written. JVM invokevirtual/invokeinterface: virtual, invokespecial: direct, invokestatic: default",
+   "enum": [
+    "default",
+    "virtual",
+    "direct",
+    "indirect"
+   ]
+  },
+  "RegionKind": {
+   "description": "what a Region is; absent: normal",
+   "enum": [
+    "normal",
+    "loop",
+    "while",
+    "do_while",
+    "for",
+    "switch"
+   ]
+  },
+  "EmptyKind": {
+   "description": "a plain Nop or a pop (a discarded value)",
+   "enum": [
+    "normal",
+    "pop"
+   ]
+  },
+  "VarRole": {
+   "description": "what a variable is, in the meaning other languages share",
+   "enum": [
+    "local",
+    "param",
+    "this",
+    "temp",
+    "catch_var",
+    "loop_var",
+    "resource",
+    "pinned",
+    "pattern_binding",
+    "captured",
+    "init_target",
+    "named_arg",
+    "decon_temp"
+   ]
+  },
+  "NodeFlags": {
+   "description": "a node's prefix and property bits, as names (volatile .. tail: general; stack_empty .. has_context: CIL's)",
+   "type": "array",
+   "items": {
+    "enum": [
+     "volatile",
+     "unaligned1",
+     "unaligned2",
+     "unaligned4",
+     "read_only",
+     "tail",
+     "stack_empty",
+     "stack_adjust",
+     "delay_exc",
+     "from_end",
+     "rvalue_addr",
+     "if_ref",
+     "inline_array",
+     "pinnable_ref",
+     "utf8_literal",
+     "compiler_generated",
+     "has_context"
+    ]
+   },
+   "uniqueItems": true
+  },
+  "EntityRef": {
+   "description": "an entity (an object of the lane's own type system), by its place in the root's \"entities\" table",
+   "type": "integer",
+   "minimum": 0
+  },
+  "Entities": {
+   "description": "the document's entities, each once: the lane's family, the kind of object and its canonical key. A document that has them is read with the scope that resolves the keys",
+   "type": "array",
+   "items": {
+    "type": "object",
+    "required": [
+     "family",
+     "kind",
+     "key"
+    ],
+    "properties": {
+     "family": {
+      "type": "string"
+     },
+     "kind": {
+      "enum": [
+       "type",
+       "method",
+       "field",
+       "property",
+       "event",
+       "parameter",
+       "module"
+      ]
+     },
+     "key": {
+      "type": "string"
+     }
+    },
+    "additionalProperties": false
+   }
+  },
+  "InfoOnNode": {
+   "description": "the facts only one lane has, on a node: every key is one of InfoKeys (a reader refuses another)",
+   "type": "object",
+   "properties": {
+    "cil.async_catch_offset": {
+     "description": "of an async method: the IL offset of the state machine's catch handler (ILSpy's AsyncDebugInfo.CatchHandlerOffset; present: the info is not the default) (on: MethodDecl, Lambda)",
+     "type": "integer"
+    },
+    "cil.async_debug": {
+     "description": "the Await nodes of an async method (ILSpy's AsyncDebugInfo), by their place in a walk of the function (on: MethodDecl, Lambda)",
+     "type": "array",
+     "items": {
+      "type": "integer",
+      "minimum": 0
+     }
+    },
+    "cil.async_return_type": {
+     "$ref": "#/$defs/Type",
+     "description": "the type an async method's task gives (ILFunction.AsyncReturnType) (on: MethodDecl, Lambda)"
+    },
+    "cil.calli_sig": {
+     "$ref": "#/$defs/Type",
+     "description": "a calli's signature (the FnPtrType of CallIndirect.FunctionPointerType); the target's own type is a native int (on: Call)"
+    },
+    "cil.class_tparams": {
+     "description": "the class type parameters in scope where they are not the method's own (ILFunction.GenericContext of a lambda, local function or state machine); with cil.method_tparams (on: MethodDecl, Lambda)",
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Type"
+     }
+    },
+    "cil.code_size": {
+     "description": "the size in bytes of the IL body (on: MethodDecl, Lambda)",
+     "type": "integer"
+    },
+    "cil.constrained": {
+     "$ref": "#/$defs/Type",
+     "description": "the `constrained.` prefix's type of a call (on: Call)"
+    },
+    "cil.locals_sig_len": {
+     "description": "the length of the method's local variable signature (on: MethodDecl, Lambda)",
+     "type": "integer"
+    },
+    "cil.method_tparams": {
+     "description": "the method type parameters in scope where they are not the method's own; with cil.class_tparams (on: MethodDecl, Lambda)",
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Type"
+     }
+    },
+    "cil.mono_state_machine": {
+     "description": "a state machine the Mono compiler made (on: MethodDecl, Lambda)",
+     "type": "boolean"
+    },
+    "cil.move_next": {
+     "$ref": "#/$defs/EntityRef",
+     "description": "the MoveNext method of the state machine this function was made from (on: MethodDecl, Lambda)"
+    },
+    "cil.name": {
+     "description": "a lambda's name where it is not its method's (ILFunction.Name) (on: Lambda)",
+     "type": "string"
+    },
+    "cil.null_key": {
+     "description": "of a cil.string_to_int: the index of the key that is null (on: Intrinsic)",
+     "type": "integer"
+    },
+    "cil.reduced_method": {
+     "$ref": "#/$defs/EntityRef",
+     "description": "the local function's reduced method (ILFunction.ReducedMethod) (on: MethodDecl, Lambda)"
+    },
+    "cil.seq_points": {
+     "description": "the IL offsets that are sequence point candidates (on: MethodDecl, Lambda)",
+     "type": "array",
+     "items": {
+      "type": "integer"
+     }
+    },
+    "cil.severity": {
+     "description": "of an il.invalid_expression node: the severity of its message, where it is not Error (on: Unsupported)",
+     "type": "string"
+    },
+    "cil.spec_range": {
+     "description": "the IL range [start, end) of the exception specifier of a catch handler (on: Catch)",
+     "type": "array",
+     "items": {
+      "type": "integer"
+     }
+    },
+    "cil.target_r": {
+     "description": "of a conversion to f64: the target was the CIL type R, not R8 (on: Cast)",
+     "type": "boolean"
+    },
+    "cil.vb_state_machine": {
+     "description": "a state machine the legacy Visual Basic compiler made (on: MethodDecl, Lambda)",
+     "type": "boolean"
+    }
+   },
+   "additionalProperties": false
+  },
+  "InfoOnType": {
+   "description": "the facts only one lane has, on a type: every key is one of InfoKeys (a reader refuses another)",
+   "type": "object",
+   "properties": {
+    "cil.dynamic": {
+     "description": "an `object` that was annotated `dynamic` (DynamicType is the L2 type: this keeps the object origin)",
+     "type": "boolean"
+    },
+    "cil.native_int": {
+     "description": "`nint`/`nuint`, not the spelling `IntPtr`/`UIntPtr`",
+     "type": "boolean"
+    },
+    "cil.nullability": {
+     "description": "oblivious, annotated or not_annotated: C#'s `string?` beyond ClassType.nullable (Kotlin, Swift and TypeScript state it too)",
+     "type": "string"
+    },
+    "cil.pinned": {
+     "description": "a pinned local's type",
+     "type": "boolean"
+    },
+    "cil.ref_kind": {
+     "description": "ref, in, out or ref_readonly, on a managed PtrType",
+     "type": "string"
+    },
+    "cil.tuple_ctor": {
+     "description": "a ValueTuple<...> and its tuple view",
+     "type": "boolean"
+    },
+    "cil.unknown_ref": {
+     "description": "an UnknownType's FullTypeName",
+     "type": "string"
+    }
+   },
+   "additionalProperties": false
+  },
+  "InfoOnSym": {
+   "description": "the facts only one lane has, on a sym: every key is one of InfoKeys (a reader refuses another)",
+   "type": "object",
+   "properties": {
+    "cil.capture_scope": {
+     "description": "the region (the entry label of a Region) a closure variable is captured in (ILVariable.CaptureScope); other lanes' closures have none yet",
+     "type": "string"
+    },
+    "cil.kind_exact": {
+     "description": "the exact ILSpy VariableKind, where VarRole merges two (PinnedLocal vs PinnedRegionLocal, ExceptionStackSlot vs ExceptionLocal)",
+     "type": "string"
+    },
+    "cil.remove_if_redundant": {
+     "description": "ILVariable.RemoveIfRedundant",
+     "type": "boolean"
+    },
+    "cil.state_machine_field": {
+     "$ref": "#/$defs/EntityRef",
+     "description": "the field of the state machine a variable stands for (ILVariable.StateMachineField)"
+    }
+   },
+   "additionalProperties": false
+  },
+  "InfoKeys": {
+   "description": "the table of every Info key: what it holds, what it may sit on and whether another lane could state it too (ir.cpp's info_keys() is this table; a test keeps them equal). A key needs a row here before a producer may write it; one a second lane needs becomes a slot",
+   "x-keys": [
+    {
+     "key": "cil.async_catch_offset",
+     "on": "node",
+     "value": "int",
+     "kinds": [
+      "MethodDecl",
+      "Lambda"
+     ],
+     "general": false,
+     "doc": "of an async method: the IL offset of the state machine's catch handler (ILSpy's AsyncDebugInfo.CatchHandlerOffset; present: the info is not the default)"
+    },
+    {
+     "key": "cil.async_debug",
+     "on": "node",
+     "value": "noderefs",
+     "kinds": [
+      "MethodDecl",
+      "Lambda"
+     ],
+     "general": false,
+     "doc": "the Await nodes of an async method (ILSpy's AsyncDebugInfo), by their place in a walk of the function"
+    },
+    {
+     "key": "cil.async_return_type",
+     "on": "node",
+     "value": "type",
+     "kinds": [
+      "MethodDecl",
+      "Lambda"
+     ],
+     "general": false,
+     "doc": "the type an async method's task gives (ILFunction.AsyncReturnType)"
+    },
+    {
+     "key": "cil.calli_sig",
+     "on": "node",
+     "value": "type",
+     "kinds": [
+      "Call"
+     ],
+     "general": false,
+     "doc": "a calli's signature (the FnPtrType of CallIndirect.FunctionPointerType); the target's own type is a native int"
+    },
+    {
+     "key": "cil.capture_scope",
+     "on": "sym",
+     "value": "string",
+     "kinds": [],
+     "general": true,
+     "doc": "the region (the entry label of a Region) a closure variable is captured in (ILVariable.CaptureScope); other lanes' closures have none yet"
+    },
+    {
+     "key": "cil.class_tparams",
+     "on": "node",
+     "value": "types",
+     "kinds": [
+      "MethodDecl",
+      "Lambda"
+     ],
+     "general": false,
+     "doc": "the class type parameters in scope where they are not the method's own (ILFunction.GenericContext of a lambda, local function or state machine); with cil.method_tparams"
+    },
+    {
+     "key": "cil.code_size",
+     "on": "node",
+     "value": "int",
+     "kinds": [
+      "MethodDecl",
+      "Lambda"
+     ],
+     "general": false,
+     "doc": "the size in bytes of the IL body"
+    },
+    {
+     "key": "cil.constrained",
+     "on": "node",
+     "value": "type",
+     "kinds": [
+      "Call"
+     ],
+     "general": false,
+     "doc": "the `constrained.` prefix's type of a call"
+    },
+    {
+     "key": "cil.dynamic",
+     "on": "type",
+     "value": "bool",
+     "kinds": [],
+     "general": false,
+     "doc": "an `object` that was annotated `dynamic` (DynamicType is the L2 type: this keeps the object origin)"
+    },
+    {
+     "key": "cil.kind_exact",
+     "on": "sym",
+     "value": "string",
+     "kinds": [],
+     "general": false,
+     "doc": "the exact ILSpy VariableKind, where VarRole merges two (PinnedLocal vs PinnedRegionLocal, ExceptionStackSlot vs ExceptionLocal)"
+    },
+    {
+     "key": "cil.locals_sig_len",
+     "on": "node",
+     "value": "int",
+     "kinds": [
+      "MethodDecl",
+      "Lambda"
+     ],
+     "general": false,
+     "doc": "the length of the method's local variable signature"
+    },
+    {
+     "key": "cil.method_tparams",
+     "on": "node",
+     "value": "types",
+     "kinds": [
+      "MethodDecl",
+      "Lambda"
+     ],
+     "general": false,
+     "doc": "the method type parameters in scope where they are not the method's own; with cil.class_tparams"
+    },
+    {
+     "key": "cil.mono_state_machine",
+     "on": "node",
+     "value": "bool",
+     "kinds": [
+      "MethodDecl",
+      "Lambda"
+     ],
+     "general": false,
+     "doc": "a state machine the Mono compiler made"
+    },
+    {
+     "key": "cil.move_next",
+     "on": "node",
+     "value": "entity",
+     "kinds": [
+      "MethodDecl",
+      "Lambda"
+     ],
+     "general": false,
+     "doc": "the MoveNext method of the state machine this function was made from"
+    },
+    {
+     "key": "cil.name",
+     "on": "node",
+     "value": "string",
+     "kinds": [
+      "Lambda"
+     ],
+     "general": false,
+     "doc": "a lambda's name where it is not its method's (ILFunction.Name)"
+    },
+    {
+     "key": "cil.native_int",
+     "on": "type",
+     "value": "bool",
+     "kinds": [],
+     "general": false,
+     "doc": "`nint`/`nuint`, not the spelling `IntPtr`/`UIntPtr`"
+    },
+    {
+     "key": "cil.null_key",
+     "on": "node",
+     "value": "int",
+     "kinds": [
+      "Intrinsic"
+     ],
+     "general": false,
+     "doc": "of a cil.string_to_int: the index of the key that is null"
+    },
+    {
+     "key": "cil.nullability",
+     "on": "type",
+     "value": "string",
+     "kinds": [],
+     "general": true,
+     "doc": "oblivious, annotated or not_annotated: C#'s `string?` beyond ClassType.nullable (Kotlin, Swift and TypeScript state it too)"
+    },
+    {
+     "key": "cil.pinned",
+     "on": "type",
+     "value": "bool",
+     "kinds": [],
+     "general": false,
+     "doc": "a pinned local's type"
+    },
+    {
+     "key": "cil.reduced_method",
+     "on": "node",
+     "value": "entity",
+     "kinds": [
+      "MethodDecl",
+      "Lambda"
+     ],
+     "general": false,
+     "doc": "the local function's reduced method (ILFunction.ReducedMethod)"
+    },
+    {
+     "key": "cil.ref_kind",
+     "on": "type",
+     "value": "string",
+     "kinds": [],
+     "general": false,
+     "doc": "ref, in, out or ref_readonly, on a managed PtrType"
+    },
+    {
+     "key": "cil.remove_if_redundant",
+     "on": "sym",
+     "value": "bool",
+     "kinds": [],
+     "general": false,
+     "doc": "ILVariable.RemoveIfRedundant"
+    },
+    {
+     "key": "cil.seq_points",
+     "on": "node",
+     "value": "ints",
+     "kinds": [
+      "MethodDecl",
+      "Lambda"
+     ],
+     "general": false,
+     "doc": "the IL offsets that are sequence point candidates"
+    },
+    {
+     "key": "cil.severity",
+     "on": "node",
+     "value": "string",
+     "kinds": [
+      "Unsupported"
+     ],
+     "general": false,
+     "doc": "of an il.invalid_expression node: the severity of its message, where it is not Error"
+    },
+    {
+     "key": "cil.spec_range",
+     "on": "node",
+     "value": "ints",
+     "kinds": [
+      "Catch"
+     ],
+     "general": false,
+     "doc": "the IL range [start, end) of the exception specifier of a catch handler"
+    },
+    {
+     "key": "cil.state_machine_field",
+     "on": "sym",
+     "value": "entity",
+     "kinds": [],
+     "general": false,
+     "doc": "the field of the state machine a variable stands for (ILVariable.StateMachineField)"
+    },
+    {
+     "key": "cil.target_r",
+     "on": "node",
+     "value": "bool",
+     "kinds": [
+      "Cast"
+     ],
+     "general": false,
+     "doc": "of a conversion to f64: the target was the CIL type R, not R8"
+    },
+    {
+     "key": "cil.tuple_ctor",
+     "on": "type",
+     "value": "bool",
+     "kinds": [],
+     "general": false,
+     "doc": "a ValueTuple<...> and its tuple view"
+    },
+    {
+     "key": "cil.unknown_ref",
+     "on": "type",
+     "value": "string",
+     "kinds": [],
+     "general": false,
+     "doc": "an UnknownType's FullTypeName"
+    },
+    {
+     "key": "cil.vb_state_machine",
+     "on": "node",
+     "value": "bool",
+     "kinds": [
+      "MethodDecl",
+      "Lambda"
+     ],
+     "general": false,
+     "doc": "a state machine the legacy Visual Basic compiler made"
+    }
+   ]
+  },
+  "IntrinsicNames": {
+   "description": "the table of every Intrinsic name (ir.cpp's intrinsic_names(); a test keeps them equal). The rule: a name needs a row (operands, result stack kind, flags, why it is not a general node, the lanes that use it, its test); a name without the cil. / cs. prefix is allowed only where two lanes use it; stage 14's review lists the cil.* names and any a second lane needs becomes a node",
+   "x-names": [
+    {
+     "name": "cil.arglist",
+     "operands": "none",
+     "result": "i",
+     "flags": [],
+     "why": "the CIL's vararg handle: no general operation names it",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cil.ckfinite",
+     "operands": "args[0]: a float",
+     "result": "arg",
+     "flags": [],
+     "why": "throws when its operand is NaN or infinite, else gives it back: no general operator",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cil.deconstruct_result",
+     "operands": "args[0]: the deconstruct call's value; imms[0]: the result's index",
+     "result": "stated",
+     "flags": [],
+     "why": "a piece of a C# deconstruction's call: tied to the Destructure's call shape",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cil.ldtoken_member",
+     "operands": "syms[0]: the member",
+     "result": "o",
+     "flags": [],
+     "why": "a runtime handle of a field or method: reflection, no general node",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cil.ldtoken_type",
+     "operands": "targs[0]: the type",
+     "result": "o",
+     "flags": [],
+     "why": "a runtime type handle: reflection, no general node (ClassLit is the language's `T.class`)",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cil.makeref",
+     "operands": "args[0]: an address; targs[0]: the type",
+     "result": "o",
+     "flags": [],
+     "why": "CIL's typed reference (TypedReference): no other lane has one",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cil.reftype",
+     "operands": "args[0]: a typed reference",
+     "result": "o",
+     "flags": [],
+     "why": "CIL's typed reference: its type handle",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cil.refvalue",
+     "operands": "args[0]: a typed reference; targs[0]: the type",
+     "result": "ref",
+     "flags": [],
+     "why": "CIL's typed reference: the address it holds",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cil.string_to_int",
+     "operands": "args[0]: a string; strs: the keys; imms: their values; targs[0]: the expected type",
+     "result": "i4",
+     "flags": [],
+     "why": "a compiler's string switch lowered to a lookup: C# only",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cs.dynamic.binary",
+     "operands": "args: the operands; imms[0]: binder flags; imms[1]: the operation; argmeta: one per operand",
+     "result": "o",
+     "flags": [
+      "has_context"
+     ],
+     "why": "a C# `dynamic` binder call site: the C# runtime binder resolves it at run time (DynamicType types the value; this is the site)",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cs.dynamic.compound_assign",
+     "operands": "args: the target, then the value; imms[0]: binder flags; imms[1]: the operation; imms[2]: the target kind (address accessor dynamic); imms[3]: the eval mode (old new); argmeta: one per operand",
+     "result": "o",
+     "flags": [
+      "has_context"
+     ],
+     "why": "a C# `dynamic` binder call site",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cs.dynamic.convert",
+     "operands": "args[0]: the value; targs[0]: the type; imms[0]: binder flags",
+     "result": "stated",
+     "flags": [
+      "has_context"
+     ],
+     "why": "a C# `dynamic` binder call site",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cs.dynamic.get_index",
+     "operands": "args: the target, then the indices; imms[0]: binder flags; argmeta: one per operand",
+     "result": "o",
+     "flags": [
+      "has_context"
+     ],
+     "why": "a C# `dynamic` binder call site",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cs.dynamic.get_member",
+     "operands": "args[0]: the target; strs[0]: the name; imms[0]: binder flags; argmeta",
+     "result": "o",
+     "flags": [
+      "has_context"
+     ],
+     "why": "a C# `dynamic` binder call site (Python attribute access is the general form: a Select on a dynamic target)",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cs.dynamic.invoke",
+     "operands": "args: the target, then the arguments; imms[0]: binder flags; argmeta",
+     "result": "o",
+     "flags": [
+      "has_context"
+     ],
+     "why": "a C# `dynamic` binder call site",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cs.dynamic.invoke_constructor",
+     "operands": "args: the arguments; targs: the type, then the context; imms[0]: binder flags; argmeta",
+     "result": "o",
+     "flags": [
+      "has_context"
+     ],
+     "why": "a C# `dynamic` binder call site",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cs.dynamic.invoke_member",
+     "operands": "args: the target, then the arguments; strs[0]: the name; targs: the type arguments; imms[0]: binder flags; argmeta",
+     "result": "o",
+     "flags": [
+      "has_context"
+     ],
+     "why": "a C# `dynamic` binder call site",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cs.dynamic.is_event",
+     "operands": "args[0]: the target; strs[0]: the name; imms[0]: binder flags",
+     "result": "i4",
+     "flags": [
+      "has_context"
+     ],
+     "why": "a C# `dynamic` binder call site",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cs.dynamic.logic",
+     "operands": "args: the operands; imms[0]: binder flags; imms[1]: the operation; argmeta",
+     "result": "o",
+     "flags": [
+      "has_context"
+     ],
+     "why": "a C# `dynamic` binder call site",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cs.dynamic.set_index",
+     "operands": "args: the target, the indices, then the value; imms[0]: binder flags; argmeta",
+     "result": "o",
+     "flags": [
+      "has_context"
+     ],
+     "why": "a C# `dynamic` binder call site",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cs.dynamic.set_member",
+     "operands": "args: the target, then the value; strs[0]: the name; imms[0]: binder flags; argmeta",
+     "result": "o",
+     "flags": [
+      "has_context"
+     ],
+     "why": "a C# `dynamic` binder call site",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "cs.dynamic.unary",
+     "operands": "args[0]: the operand; imms[0]: binder flags; imms[1]: the operation; argmeta",
+     "result": "o",
+     "flags": [
+      "has_context"
+     ],
+     "why": "a C# `dynamic` binder call site",
+     "lanes": [
+      "cil"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "debug.break",
+     "operands": "none",
+     "result": "void",
+     "flags": [],
+     "why": "a debugger break (`__debugbreak`, int3): no syntax in most languages",
+     "lanes": [
+      "cil",
+      "native"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "mem.copy",
+     "operands": "args[0]: the destination; args[1]: the source; args[2]: the size in bytes",
+     "result": "void",
+     "flags": [
+      "volatile",
+      "unaligned1",
+      "unaligned2",
+      "unaligned4"
+     ],
+     "why": "a block copy (`memcpy`, `rep movs`, CIL cpblk): a call in C and C++, nothing in Java",
+     "lanes": [
+      "cil",
+      "clang"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    },
+    {
+     "name": "mem.fill",
+     "operands": "args[0]: the address; args[1]: the byte; args[2]: the size in bytes",
+     "result": "void",
+     "flags": [
+      "volatile",
+      "unaligned1",
+      "unaligned2",
+      "unaligned4"
+     ],
+     "why": "a block fill (`memset`, `rep stos`, CIL initblk): a call in C and C++, nothing in Java",
+     "lanes": [
+      "cil",
+      "clang"
+     ],
+     "test": "translate.l2.intrinsics.every_name_round_trips"
+    }
+   ]
+  },
+  "Tuple": {
+   "description": "a tuple type: the element types and, where the source names them, the names",
+   "type": "object",
+   "required": [
+    "kind",
+    "elems"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "tuple"
+    },
+    "elems": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Type"
+     }
+    },
+    "names": {
+     "type": "array",
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "e": {
+     "$ref": "#/$defs/EntityRef"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnType"
+    }
+   }
+  },
+  "Mod": {
+   "description": "a type with a custom modifier (the CLR's modreq / modopt)",
+   "type": "object",
+   "required": [
+    "kind",
+    "inner",
+    "modifier"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "const": "mod"
+    },
+    "inner": {
+     "$ref": "#/$defs/Type"
+    },
+    "required": {
+     "type": "boolean"
+    },
+    "modifier": {
+     "$ref": "#/$defs/Type"
+    },
+    "e": {
+     "$ref": "#/$defs/EntityRef"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnType"
+    }
+   }
+  },
+  "SymBody": {
+   "description": "what a name refers to, as the source language resolved it",
+   "type": "object",
+   "required": [
+    "kind",
+    "name"
+   ],
+   "additionalProperties": false,
+   "properties": {
+    "kind": {
+     "enum": [
+      "local",
+      "param",
+      "field",
+      "method",
+      "ctor",
+      "class",
+      "enumconst",
+      "typevar",
+      "package",
+      "global",
+      "function",
+      "label",
+      "property",
+      "event"
+     ]
+    },
+    "name": {
+     "type": "string"
+    },
+    "owner": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "static": {
+     "type": "boolean"
+    },
+    "type": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Type"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "params": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Type"
+     }
+    },
+    "ret": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Type"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "varargs": {
+     "type": "boolean"
+    },
+    "refs": {
+     "type": "array",
+     "items": {
+      "enum": [
+       "",
+       "ref",
+       "out",
+       "in"
+      ]
+     },
+     "description": "how each parameter is passed, where any is not by value"
+    },
+    "flags": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     },
+     "description": "extension, indexer, operator, readonly, virtual, abstract, override, ..."
+    },
+    "role": {
+     "$ref": "#/$defs/VarRole"
+    },
+    "index": {
+     "type": "integer",
+     "description": "a parameter's index (-1 = this), a JVM local slot, a catch's stack index, a frame slot"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind the variable stores"
+    },
+    "generated_name": {
+     "type": "boolean",
+     "description": "the decompiler invented the name"
+    },
+    "ref_readonly": {
+     "type": "boolean"
+    },
+    "entry_initialized": {
+     "type": "boolean"
+    },
+    "entry_used": {
+     "type": "boolean"
+    },
+    "e": {
+     "$ref": "#/$defs/EntityRef",
+     "description": "the entity of the lane's type system (a method, a field)"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnSym"
+    }
+   }
+  },
+  "SymRef": {
+   "description": "a variable or entity symbol of the root's \"vars\" table, by its place there: one object wherever it is used",
+   "type": "object",
+   "required": [
+    "v"
+   ],
+   "properties": {
+    "v": {
+     "type": "integer",
+     "minimum": 0
+    }
+   },
+   "additionalProperties": false
+  },
+  "Region": {
+   "description": "unstructured blocks (Labeled) that jump by Goto and leave by Break",
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Region"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "kind": {
+     "$ref": "#/$defs/RegionKind"
+    },
+    "blocks": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "entry": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
+    }
+   },
+   "additionalProperties": false
+  },
+  "BlockExpr": {
+   "description": "statements with a value",
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "BlockExpr"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "role": {
+     "description": "what the lane made it for; known: array_init, collection_init, object_init, stackalloc_init, call_inline_assign, named_args, decon_conv, decon_assign, with_init, interpolated",
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stmts": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "result": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
+    }
+   },
+   "additionalProperties": false
+  },
+  "Fixed": {
+   "description": "fixed (T* p = e) body; var is a Local",
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Fixed"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "var": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "body": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
+    }
+   },
+   "additionalProperties": false
+  },
+  "ThrowExpr": {
+   "description": "a throw where a value is wanted; x absent: a rethrow",
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "ThrowExpr"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "x": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
+    }
+   },
+   "additionalProperties": false
+  },
+  "OptionalChain": {
+   "description": "the scope of a?.b: null for the whole chain if an OptionalUnwrap inside saw null",
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "OptionalChain"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "x": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
+    }
+   },
+   "additionalProperties": false
+  },
+  "OptionalUnwrap": {
+   "description": "the leaf of an optional chain",
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "OptionalUnwrap"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "x": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "ref_in": {
+     "type": "boolean"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
+    }
+   },
+   "additionalProperties": false
+  },
+  "PatternMatch": {
+   "description": "a pattern: test, bind, deconstruct, match sub-patterns",
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "PatternMatch"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "var": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Sym"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "tested": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "test": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Type"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "check_not_null": {
+     "type": "boolean"
+    },
+    "deconstruct": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Sym"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "is_tuple": {
+     "type": "boolean"
+    },
+    "subs": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
+    }
+   },
+   "additionalProperties": false
+  },
+  "Destructure": {
+   "description": "tuple unpacking with conversions",
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Destructure"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "init": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "pattern": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "conversions": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "assignments": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
+    }
+   },
+   "additionalProperties": false
+  },
+  "Default": {
+   "description": "the default value of the node's type",
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "Default"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
+    }
+   },
+   "additionalProperties": false
+  },
+  "SizeOf": {
+   "description": "the size in bytes of a type",
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "SizeOf"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "of": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Type"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
+    }
+   },
+   "additionalProperties": false
+  },
+  "StackAlloc": {
+   "description": "memory on the stack: count elements of elem (absent: bytes); span: a span, not a pointer",
+   "type": "object",
+   "required": [
+    "node"
+   ],
+   "properties": {
+    "node": {
+     "const": "StackAlloc"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "elem": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Type"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "count": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "span": {
+     "type": "boolean"
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
+    }
+   },
+   "additionalProperties": false
+  },
+  "Intrinsic": {
+   "description": "an operation of one lane with no general node; the name's row says its operands",
+   "type": "object",
+   "required": [
+    "node",
+    "name"
+   ],
+   "properties": {
+    "node": {
+     "const": "Intrinsic"
+    },
+    "line": {
+     "type": "integer"
+    },
+    "col": {
+     "type": "integer"
+    },
+    "origin": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Origin"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "$ref": "#/$defs/Type"
+    },
+    "name": {
+     "enum": [
+      "cil.arglist",
+      "cil.ckfinite",
+      "cil.deconstruct_result",
+      "cil.ldtoken_member",
+      "cil.ldtoken_type",
+      "cil.makeref",
+      "cil.reftype",
+      "cil.refvalue",
+      "cil.string_to_int",
+      "cs.dynamic.binary",
+      "cs.dynamic.compound_assign",
+      "cs.dynamic.convert",
+      "cs.dynamic.get_index",
+      "cs.dynamic.get_member",
+      "cs.dynamic.invoke",
+      "cs.dynamic.invoke_constructor",
+      "cs.dynamic.invoke_member",
+      "cs.dynamic.is_event",
+      "cs.dynamic.logic",
+      "cs.dynamic.set_index",
+      "cs.dynamic.set_member",
+      "cs.dynamic.unary",
+      "debug.break",
+      "mem.copy",
+      "mem.fill"
+     ],
+     "description": "a row of IntrinsicNames"
+    },
+    "args": {
+     "anyOf": [
+      {
+       "type": "array",
+       "items": {
+        "$ref": "#/$defs/Node"
+       }
+      },
+      {
+       "$ref": "#/$defs/Node"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "targs": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Type"
+     }
+    },
+    "syms": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/Sym"
+     }
+    },
+    "strs": {
+     "type": "array",
+     "items": {
+      "type": "string"
+     }
+    },
+    "imms": {
+     "type": "array",
+     "items": {
+      "type": "integer"
+     }
+    },
+    "argmeta": {
+     "type": "array",
+     "items": {
+      "type": "object",
+      "properties": {
+       "name": {
+        "type": "string"
+       },
+       "flags": {
+        "type": "integer",
+        "minimum": 0
+       },
+       "type": {
+        "$ref": "#/$defs/Type"
+       }
+      },
+      "additionalProperties": false
+     }
+    },
+    "stk": {
+     "$ref": "#/$defs/Stack",
+     "description": "the stack kind of the node's value, where the lane states it"
+    },
+    "fl": {
+     "$ref": "#/$defs/NodeFlags"
+    },
+    "info": {
+     "$ref": "#/$defs/InfoOnNode"
+    },
+    "entities": {
+     "$ref": "#/$defs/Entities",
+     "description": "at the root of a document only"
+    },
+    "vars": {
+     "type": "array",
+     "items": {
+      "$ref": "#/$defs/SymBody"
+     },
+     "description": "at the root of a document only: the variables and entity symbols, each once; a use is {\"v\": index}"
     }
    },
    "additionalProperties": false

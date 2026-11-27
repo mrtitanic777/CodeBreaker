@@ -16,6 +16,14 @@
 // document's. A float literal that is not finite (NaN, infinity) is written as its name ("nan", "inf", "-inf"), as JSON
 // has no form for it, and reads back as that text.
 //
+// What a lowered bytecode or binary states beyond a source language's slots has a place in the document too: a node's "stk" (the stack
+// kind of its value), "fl" (its prefix flags as names) and "info" (the facts only that lane has, an object keyed by the schema's
+// InfoKeys), the optional slots the kinds list, and the twelve kinds of ir.hpp's last section. Reading refuses an info key, a flag or
+// an intrinsic name the schema does not list. A document that has entities (the lane's own type-system objects) says each once in a
+// table at its root ("entities") and a type or symbol refers to it; it is read with the EntityScope that resolves them. A variable
+// (a symbol with a role) or an entity's symbol is written once in the root's "vars" and a use says {"v": index}, so it is one object
+// after reading as it was before.
+//
 // The module model (below) is the one tree a module of any lane is made of: its units in order -- a function rebuilt as
 // a tree (a MethodDecl with a body), one whose source is still text (a MethodDecl with `text`), what stays machine code
 // (a MachineFragment: its assembly, or only its name and place), a comment at its place. The decompiler's modules, the
@@ -24,6 +32,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -54,6 +63,9 @@ Json to_json(const ir::Node& node);
 // The tree an L2 document describes, its nodes made in `arena`. FormatError for a document that is not an object with a
 // known "node" kind, or a slot that holds the wrong kind of value.
 ir::Node* from_json(Arena& arena, const Json& doc);
+// The same for a document with entities: `scope` resolves them (FormatError naming the key it cannot) and, when the document is a Module,
+// is kept in it (Module::scope), so the entities live as long as the tree.
+ir::Node* from_json(Arena& arena, const Json& doc, std::shared_ptr<const ir::EntityScope> scope);
 
 // ---- slots by name ------------------------------------------------------------------------------------------------
 //
@@ -66,7 +78,10 @@ ir::Node* from_json(Arena& arena, const Json& doc);
 using SlotPtr = std::variant<std::monostate, ir::Node**, std::vector<ir::Node*>*, ir::Suite*, ir::TypeP*, std::vector<ir::TypeP>*, ir::SymP*,
                              std::optional<std::string>*, std::vector<std::string>*, bool*, std::optional<bool>*, std::optional<std::int64_t>*,
                              std::optional<std::uint64_t>*, std::uint32_t*, std::optional<ir::Overflow>*, std::optional<ir::MemoryModel>*,
-                             ir::LitValue*, std::vector<ir::TypeArg>*, std::optional<ir::CompilerTarget>*, std::string*>;
+                             ir::LitValue*, std::vector<ir::TypeArg>*, std::optional<ir::CompilerTarget>*, std::string*,
+                             ir::Stack*, ir::Lift*, ir::CallForm*, ir::RegionKind*, ir::EmptyKind*, std::optional<ir::Coalesce>*,
+                             std::optional<ir::ConvKind>*, std::optional<ir::Eval>*, std::optional<ir::Via>*, std::vector<ir::SymP>*,
+                             std::vector<std::pair<std::int64_t, std::int64_t>>*, std::vector<std::int64_t>*, std::vector<ir::ArgMeta>*>;
 SlotPtr slot(ir::Node& node, std::string_view key);
 // The node's slot names, in the order its document writes them.
 std::vector<std::string_view> slot_keys(const ir::Node& node);

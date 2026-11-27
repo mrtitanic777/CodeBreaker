@@ -885,6 +885,8 @@ std::string Writer::ctype(const TypeP& t) {
         std::string operator()(const ir::FnType&) const { return other(); }
         std::string operator()(const ir::FnPtrType&) const { return other(); }
         std::string operator()(const ir::RecordType&) const { return other(); }
+        std::string operator()(const ir::TupleType&) const { return other(); }
+        std::string operator()(const ir::ModType&) const { return other(); }
         [[noreturn]] std::string other() const { throw Decline("type", "the type " + ir::to_text(*t)); }
     };
     return std::visit(Visitor{*this, t}, t->body);

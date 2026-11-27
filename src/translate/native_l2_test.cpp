@@ -337,3 +337,54 @@ CB_TEST("translate.native_l2.a_recording_replays_answer_for_answer", [] {
     CB_CHECK(calls > 0);
     CB_CHECK_EQ(same, calls);
 });
+
+// The schema and the typed tree agree on what a lowered bytecode states: documents the writer makes validate, and the schema refuses what
+// the reader refuses (an info key it does not list, an intrinsic with no row, a flag it does not name).
+CB_TEST("translate.native_l2.schema_accepts_what_a_lowered_bytecode_states", [] {
+    const nl::Library* lib = library();
+    if (lib == nullptr) return;
+    const std::string schema = cb::fs::read_text(cb::testing::data_path("../config/translate/l2.schema.json"));
+    cb::Arena arena;
+    namespace ir = cb::translate::ir;
+    ir::SymP v = ir::make_sym(ir::SymKind::Local, "num", std::nullopt, false, ir::i32_type());
+    v->role = ir::VarRole::Temp;
+    v->stack = ir::Stack::I4;
+    v->index = 2;
+    ir::Node* name = ir::make(arena, ir::Name{.sym = v}, ir::i32_type());
+    name->stack = ir::Stack::I4;
+    ir::set_flag(*name, ir::NodeFlag::Volatile);
+    name->origin = std::make_shared<const ir::Origin>(ir::OriginSpan{4, 8});
+    ir::Binary add{.op = "+", .left = name, .right = ir::make(arena, ir::Lit{.value = std::int64_t{1}}, ir::i32_type())};
+    add.left_stk = ir::Stack::I4;
+    add.lift = ir::Lift::CSharp;
+    ir::Node* sum = ir::make(arena, std::move(add), ir::i32_type());
+    ir::Intrinsic in;
+    in.name = "mem.copy";
+    in.args = {sum};
+    in.argmeta = {ir::ArgMeta{.name = "a", .flags = 1, .type = ir::i32_type()}};
+    ir::Node* mem = ir::make(arena, std::move(in), ir::void_type());
+    ir::MethodDecl md;
+    md.name = "M";
+    md.locals = {v};
+    md.body = ir::make(arena, ir::Block{.stmts = {ir::make(arena, ir::ExprStmt{.expr = mem}), ir::make(arena, ir::Region{.kind = ir::RegionKind::Loop})}});
+    ir::Node* root = ir::make(arena, std::move(md));
+    root->info.set("cil.code_size", std::int64_t{9});
+    const Json doc = cb::translate::l2::to_json(*root);
+    const nl::Validation ok = lib->validate(doc, schema);
+    if (!ok.valid) std::cout << "schema refused a document the writer made: " << ok.why << "\n" << doc.dump(1) << "\n";
+    CB_CHECK(ok.valid);
+    // what the reader refuses, the schema refuses
+    CB_CHECK(!lib->validate(parse(R"({"node":"Empty","info":{"cil.invented":1}})"), schema).valid);
+    CB_CHECK(!lib->validate(parse(R"({"node":"Intrinsic","name":"cil.invented"})"), schema).valid);
+    CB_CHECK(lib->validate(parse(R"({"node":"Intrinsic","name":"cil.ckfinite"})"), schema).valid);
+    CB_CHECK(!lib->validate(parse(R"({"node":"Empty","fl":["sticky"]})"), schema).valid);
+    CB_CHECK(!lib->validate(parse(R"({"node":"Empty","stk":"i5"})"), schema).valid);
+    CB_CHECK(!lib->validate(parse(R"({"node":"Call","form":"sideways"})"), schema).valid);
+    CB_CHECK(!lib->validate(parse(R"({"node":"Region","kind":"circle"})"), schema).valid);
+    CB_CHECK(!lib->validate(parse(R"({"node":"MethodDecl","info":{"cil.code_size":"3"}})"), schema).valid);
+    CB_CHECK(lib->validate(parse(R"({"node":"MethodDecl","info":{"cil.code_size":3}})"), schema).valid);
+    CB_CHECK(lib->validate(parse(R"({"node":"Empty","origin":{"start":1,"end":2}})"), schema).valid);
+    CB_CHECK(!lib->validate(parse(R"({"node":"Empty","origin":{"start":1}})"), schema).valid);
+    // the other lanes' documents, unchanged: a Binary that states nothing of it
+    CB_CHECK(lib->validate(parse(R"({"node":"Binary","op":"+","signed":true,"left":{"node":"Name","sym":{"kind":"local","name":"a"}},"right":{"node":"Lit","value":1}})"), schema).valid);
+});
