@@ -1,22 +1,20 @@
 // cb-unity: alone
-// The Intellivision lane's CP1610 on the one emulator (engine/pcode_cpu_cp1610.cpp): the same run as the own core on random programs, and the lane's homebrew the same on both cores.
-#include <algorithm>
+// The Intellivision lane's CP1610 on the one emulator (engine/pcode_cpu_cp1610.cpp). The own core (emulate/cp1610's interpreter) was retired once the emulator matched it on
+// random instructions and programs (24,000 runs) and on the lane's whole homebrew corpus (every function in every state, and the verdicts on edited copies). What the random
+// runs gave on both is kept as a digest (CRC-32 of every run's exit, registers, flags, steps, device accesses and RAM), so a change in what the emulator does shows. The own
+// core's unit tests follow, on the emulator.
 #include <array>
 #include <cstdio>
 #include <format>
-#include <map>
 #include <memory>
 #include <random>
 #include <string>
 
-#include "core/fs.hpp"
+#include "core/crypto.hpp"
 #include "core/testing.hpp"
-#include "decompile/cp1610.hpp"
 #include "emulate/cp1610.hpp"
-#include "engine/pcode_cpu.hpp"
 #include "engine/pcode_cpu_cp1610.hpp"
-#include "engine/pcode_cpu_compare.hpp"
-#include "formats/intv.hpp"
+#include "source/processors.hpp"
 
 using namespace cb;
 namespace c = cb::emulate::cp1610;
@@ -57,17 +55,24 @@ struct Cp1610World {
     }
 };
 
+// A run folded into the digest: everything describe_cp1610 compares (against an empty run), each device access, and the RAM.
+std::uint32_t cp1610_fold(std::uint32_t digest, const c::RunResult& r, c::Bus& bus) {
+    std::string text = describe_cp1610(c::RunResult{}, r);
+    for (const auto& x : r.io) text += std::format("|{}{:X}={:X}", static_cast<int>(x.kind), x.address, x.value);
+    digest = crypto::crc32(ByteView(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()), digest);
+    for (const std::uint16_t lo : std::array<std::uint16_t, 3>{0x0100, 0x0200, 0x3800}) {
+        const std::span<std::uint16_t> words = bus.words(lo);
+        digest = crypto::crc32(ByteView(reinterpret_cast<const std::uint8_t*>(words.data()), words.size() * sizeof(std::uint16_t)), digest);
+    }
+    return digest;
+}
+
 }  // namespace
 
-CB_TEST("engine.pcode_cpu.the_cp1610_runs_random_programs_as_the_own_core_does", [] {
+CB_TEST("engine.pcode_cpu.the_cp1610_runs_random_programs_as_the_own_core_did", [] {
     std::mt19937 rng(20261122);
-    std::map<std::string, unsigned> by_kind;
-    std::map<std::string, std::string> example;
-    unsigned runs = 0, different = 0;
-    const unsigned total = [] {
-        const auto given = fs::get_env("CB_PCODE_EXHAUSTIVE");
-        return given && !given->empty() && *given != "0" ? static_cast<unsigned>(std::strtoul(given->c_str(), nullptr, 10)) : 12000u;
-    }();
+    constexpr unsigned total = 12000;
+    std::uint32_t digest = 0;
     const auto pointer = [&]() -> std::uint16_t {
         switch (rng() % 6) {
             case 0: return static_cast<std::uint16_t>(rng() & 0x7F);
@@ -96,79 +101,194 @@ CB_TEST("engine.pcode_cpu.the_cp1610_runs_random_programs_as_the_own_core_does",
         }
         for (auto& r : options.r) r = (rng() & 1) ? pointer() : static_cast<std::uint16_t>(rng());
         options.sp = (rng() & 3) == 0 ? pointer() : static_cast<std::uint16_t>(0x02F0);
-        c::RunResult rr[2];
-        std::vector<std::uint16_t> mem[2];
-        for (int core = 0; core < 2; ++core) {
-            Cp1610World w(rom, ram, base);
-            rr[core] = core == 1 ? engine::pcode_cpu::run(w.bus, base, options) : c::run(w.bus, base, options);
-            for (const std::uint16_t lo : std::array<std::uint16_t, 3>{0x0100, 0x0200, 0x3800}) {
-                const std::span<std::uint16_t> words = w.bus.words(static_cast<std::uint16_t>(lo));
-                mem[core].insert(mem[core].end(), words.begin(), words.end());
-            }
-        }
-        ++runs;
-        std::string fields = describe_cp1610(rr[0], rr[1]);
-        if (fields.empty() && mem[0] == mem[1]) continue;
-        ++different;
-        for (std::size_t i = 0; i < mem[0].size() && mem[0] != mem[1]; ++i)
-            if (mem[0][i] != mem[1][i]) {
-                fields += std::format("mem@{:X}[own {:X} emu {:X}] ", i, mem[0][i], mem[1][i]);
-                break;
-            }
-        const auto name = [&](std::uint32_t at, bool sdbd) {
-            const std::array<std::uint16_t, 3> words = {rom[at - base], rom[at - base + 1], rom[at - base + 2]};
-            const auto insn = decompile::cp1610::decode(words, 0, at, sdbd);
-            return insn ? decompile::cp1610::mnemonic(*insn) : std::string("?");
-        };
-        std::string key = std::string(single ? "1: " : "N: ") + name(base, false);
-        if (single && options.max_steps == 2) key = "SDBD 1: " + name(base + 1, true);
-        if (!single && (rr[0].steps != 0 || rr[1].steps != 0)) {   // (a program: the instruction after which they differ is what is at fault)
-            unsigned k0 = 0;
-            for (unsigned k = 1; k <= options.max_steps && k0 == 0; ++k) {
-                c::RunOptions o2 = options;
-                o2.max_steps = k;
-                Cp1610World wa(rom, ram, base), wb(rom, ram, base);
-                const c::RunResult ra = c::run(wa.bus, base, o2), rb = engine::pcode_cpu::run(wb.bus, base, o2);
-                bool same = true;
-                for (const std::uint16_t lo : std::array<std::uint16_t, 3>{0x0100, 0x0200, 0x3800}) {
-                    const auto x = wa.bus.words(static_cast<std::uint16_t>(lo)), y = wb.bus.words(static_cast<std::uint16_t>(lo));
-                    same = same && std::equal(x.begin(), x.end(), y.begin());
-                }
-                if (!describe_cp1610(ra, rb).empty() || !same) k0 = k;
-            }
-            if (k0 != 0) {
-                c::RunOptions o2 = options;
-                o2.max_steps = k0 - 1;
-                Cp1610World wa(rom, ram, base);
-                const c::RunResult before = c::run(wa.bus, base, o2);
-                const std::uint32_t at = before.regs.r[7];
-                if (at >= base && at < base + 0xFFDu) key = "N: " + name(at, false);
-                fields += std::format("[first differing step {} at {:04X}] ", k0, at);
-            }
-        }
-        ++by_kind[key];
-        if (!example.count(key))
-            example[key] = std::format("{:03X} {:03X} {:03X} {:03X}: {}", rom[0], rom[1], rom[2], rom[3], fields);
+        Cp1610World w(rom, ram, base);
+        const c::RunResult rr = engine::pcode_cpu::run(w.bus, base, options);
+        digest = cp1610_fold(digest, rr, w.bus);
     }
-    std::printf("pcode_cpu cp1610 instructions: %u runs, %u differ\n", runs, different);
-    unsigned shown = 0;
-    for (const auto& [k, cnt] : by_kind)
-        if (++shown <= 80) std::printf("    %u x %s   e.g. %s\n", cnt, k.c_str(), example[k].c_str());
-    CB_CHECK_EQ(different, 0u);
+    std::printf("pcode_cpu cp1610 instructions: digest %08X\n", digest);
+    CB_CHECK_EQ(digest, 0xFF368DE5u);
 });
 
-// The Intellivision lane's homebrew on both cores. The words are in the file as segments (a 3-byte signature, then per segment two page bytes, the words as 16-bit big-endian values and a
-// 2-byte CRC): a function's address is a word address, found by walking the segments.
-CB_TEST("engine.pcode_cpu.the_intellivision_lane_runs_homebrew_the_same_on_both_cores", [] {
-    engine::pcode_compare::compare_homebrew("intv", "intellivision", ".rom", [](const std::filesystem::path& path, std::uint32_t address) -> std::size_t {
-        const formats::intv::Rom rom = formats::intv::read(path);
-        if (rom.raw) return SIZE_MAX;
-        std::size_t offset = 3;
-        for (const formats::intv::Segment& s : rom.segments) {
-            offset += 2;
-            if (address >= s.start && address < s.end()) return offset + 2 * static_cast<std::size_t>(address - s.start);
-            offset += 2 * s.words.size() + 2;
-        }
-        return SIZE_MAX;
-    });
+namespace cb::emulate::cp1610 {
+namespace {
+
+// A machine with the program at 0x5000 (read-only), 768 words of RAM at 0x0100 and a logged device at 0x0000-0x007F that reads 0xA5.
+struct Rig {
+    Bus bus;
+    RunResult result;
+
+    RunResult run(const std::string& program, RunOptions options = {}) {
+        const Bytes raw = source::processors::assemble_described(source::processors::find("cp1610"), "        .org 0x5000\n" + program + "\n        JR R5\n", ".").data;
+        std::vector<std::uint16_t> words;
+        for (std::size_t i = 0; i + 1 < raw.size(); i += 2) words.push_back(static_cast<std::uint16_t>(raw[i] << 8 | raw[i + 1]));
+        bus.memory(0x5000, 0x50FF, words, false);
+        bus.memory(0x0100, 0x03FF, {}, true);
+        bus.device(0x0000, 0x007F, [](std::uint16_t) -> std::uint16_t { return 0xA5; }, {}, true, 0x3FFF);
+        result = engine::pcode_cpu::run(bus, 0x5000, options);
+        return result;
+    }
+    unsigned r(unsigned n) const { return result.regs.r[n]; }
+    std::uint16_t ram(std::uint16_t address) { return bus.words(0x0100)[address - 0x0100]; }
+};
+
+}  // namespace
+
+CB_TEST("engine.pcode_cpu.cp1610_the_flags_of_the_arithmetic", [] {
+    Rig m;
+    m.run(R"(
+        SDBD
+        .half 0x02b8, 0x00ff, 0x007f   ; MVII #0x7fff,R0 under SDBD (two decles of the immediate)
+        ADDI #0x1,R0
+        GSWD R0
+        MVII #0x5,R1
+        CMPI #0x7,R1
+        GSWD R2
+        MVII #0x7,R4
+        CMPI #0x7,R4
+        GSWD R3
+    )");
+    CB_CHECK_EQ(m.result.exit(), "return");
+    CB_CHECK_EQ(m.r(0), 0xA0A0u);                   // S and OV, in both bytes
+    CB_CHECK_EQ(m.r(1), 5u);                        // (CMP does not write)
+    CB_CHECK_EQ(m.r(2), 0x8080u);                   // 5 - 7: S, and the carry clear for a borrow
+    CB_CHECK_EQ(m.r(3), 0x5050u);                   // 7 - 7: zero, no borrow
 });
+
+CB_TEST("engine.pcode_cpu.cp1610_every_addressing_mode", [] {
+    Rig m;
+    m.run(R"(
+        MVII #0x123,R1
+        MVO R1,0x200
+        MVI 0x200,R2
+        MVII #0x300,R4
+        MVO@ R1,R4
+        MVO@ R1,R4
+        MVII #0x300,R3
+        MVI@ R3,R0
+        MVII #0x300,R4
+        MVI@ R4,R1
+        ADD@ R4,R1
+        SUBI #0x1,R1
+    )");
+    CB_CHECK_EQ(m.result.exit(), "return");
+    CB_CHECK_EQ(m.ram(0x200), 0x123u);
+    CB_CHECK_EQ(m.r(2), 0x123u);
+    CB_CHECK_EQ(m.ram(0x300), 0x123u);
+    CB_CHECK_EQ(m.ram(0x301), 0x123u);
+    CB_CHECK_EQ(m.r(0), 0x123u);
+    CB_CHECK_EQ(m.r(4), 0x0302u);                   // two reads through @R4
+    CB_CHECK_EQ(m.r(1), 0x123u + 0x123u - 1);
+});
+
+CB_TEST("engine.pcode_cpu.cp1610_the_stack_and_double_byte_reads", [] {
+    Rig m;
+    m.run(R"(
+        MVII #0x7,R0
+        PSHR R0
+        MVII #0x0,R0
+        PULR R1
+        MVII #0x34,R0
+        MVO R0,0x300
+        MVII #0x12,R0
+        MVO R0,0x301
+        MVII #0x300,R4
+        SDBD
+        MVI@ R4,R2
+    )");
+    CB_CHECK_EQ(m.r(1), 7u);
+    CB_CHECK_EQ(m.r(6), 0x02F1u);                   // back where the run put it (past the return address)
+    CB_CHECK_EQ(m.r(2), 0x1234u);
+    CB_CHECK_EQ(m.r(4), 0x0302u);
+});
+
+CB_TEST("engine.pcode_cpu.cp1610_branches_calls_and_returns", [] {
+    Rig m;
+    m.run(R"(
+        MVII #0x5,R0
+        CLRR R1
+    loop:
+        ADDR R0,R1
+        DECR R0
+        .half 0x022c, 0x0003   ; BNEQ loop (the description's assembler writes a backward branch to a label wrongly)
+        .half 0x0004, 0x0050, 0x000e   ; JSR R4,fn (a label in a word-addressed space comes out in bytes)
+        MVII #0x3,R3
+        .half 0x0200, 0x0003   ; B done
+    fn:
+        MVII #0x9,R2
+        JR R4
+    done:
+        CMPI #0x4,R3
+        .half 0x0205, 0x0002   ; BLT less
+        MVII #0x1,R0
+    less:
+    )");
+    CB_CHECK_EQ(m.result.exit(), "return");
+    CB_CHECK_EQ(m.r(1), 15u);
+    CB_CHECK_EQ(m.r(2), 9u);
+    CB_CHECK_EQ(m.r(3), 3u);
+    CB_CHECK_EQ(m.r(0), 0u);                        // 3 < 4: the branch skipped `MVII #1,R0`
+});
+
+CB_TEST("engine.pcode_cpu.cp1610_shifts_rotates_and_the_status_word", [] {
+    Rig m;
+    m.run(R"(
+        MVII #0x81,R0
+        SLL R0, 2
+        SDBD
+        .half 0x02b9, 0x0000, 0x0080   ; MVII #0x8000,R1 under SDBD
+        MOVR R1,R3
+        SLR R1, 1
+        SAR R3, 1
+        SETC
+        SDBD
+        .half 0x02ba, 0x0000, 0x0080   ; MVII #0x8000,R2 under SDBD
+        RLC R2, 1
+        MVII #0x12,R1
+        SWAP R1, 1
+        MOVR R1,R4
+        MVII #0xf0,R1
+        RSWD R1
+        GSWD R1
+    )");
+    CB_CHECK_EQ(m.r(0), 0x204u);
+    CB_CHECK_EQ(m.r(3), 0xC000u);
+    CB_CHECK_EQ(m.r(2), 1u);                        // the carry came round
+    CB_CHECK_EQ(m.r(4), 0x1200u);
+    CB_CHECK_EQ(m.r(1), 0xF0F0u);                   // RSWD of 0xF0 set all four flags
+});
+
+CB_TEST("engine.pcode_cpu.cp1610_device_accesses_are_logged", [] {
+    Rig m;
+    m.run(R"(
+        MVII #0x1,R0
+        MVO R0,0x20
+        MVI 0x21,R1
+    )");
+    CB_CHECK_EQ(m.r(1), 0xA5u);
+    CB_CHECK_EQ(m.result.io.size(), 2u);
+    CB_CHECK(m.result.io[0].kind == DeviceAccess::Kind::Write && m.result.io[0].address == 0x20 && m.result.io[0].value == 1);
+    CB_CHECK(m.result.io[1].kind == DeviceAccess::Kind::Read && m.result.io[1].address == 0x21 && m.result.io[1].value == 0xA5);
+});
+
+CB_TEST("engine.pcode_cpu.cp1610_stops_and_limits", [] {
+    {
+        Rig m;
+        m.run("        HLT\n");
+        CB_CHECK_EQ(m.result.exit(), "stopped: halt at 5000");
+    }
+    {
+        Rig m;
+        m.run("        .half 0x278\n");   // MVO@ R0,R7: not an instruction
+        CB_CHECK_EQ(m.result.exit(), "stopped: undefined instruction at 5000");
+    }
+    {
+        Rig m;
+        RunOptions o;
+        o.max_steps = 50;
+        m.run("    spin:\n        .half 0x0220, 0x0001   ; B spin (a backward branch to a label)\n", o);
+        CB_CHECK_EQ(m.result.exit(), "limit");
+        CB_CHECK_EQ(m.result.steps, 50u);
+    }
+});
+
+}  // namespace cb::emulate::cp1610

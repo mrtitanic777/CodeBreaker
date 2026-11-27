@@ -3,7 +3,7 @@
 //
 //     compare_homebrew("saturn", "saturn", ".iso", file_offset);
 //
-// CB_PCODE_FUNCTIONS=<n> runs n functions of each program (20 by default), CB_PCODE_ONLY=<hex address> the one function.
+// CB_PCODE_FUNCTIONS=<n> runs n functions of each program (20 by default), CB_PCODE_FILES=<n> n programs (16 by default), CB_PCODE_ONLY=<hex address> the one function.
 #pragma once
 
 #include <chrono>
@@ -58,10 +58,17 @@ inline void compare_homebrew(const char* kind_name, const char* folder, const ch
     double seconds[2] = {0, 0};
     std::map<std::string, unsigned> reasons;
     std::map<std::string, std::string> reason_example;
+    const unsigned file_limit = [] {
+        const auto given = fs::get_env("CB_PCODE_FILES");
+        return given && !given->empty() ? static_cast<unsigned>(std::strtoul(given->c_str(), nullptr, 10)) : 16u;
+    }();
     std::error_code ec;
     for (const auto& dirent : stdfs::recursive_directory_iterator(samples / folder, ec)) {
         if (dirent.path().extension() != extension) continue;
-        if (++files > 16) break;
+        if (++files > file_limit) {
+            --files;
+            break;
+        }
         const stdfs::path work = dir.path() / std::to_string(files);
         stdfs::create_directories(work);
         std::unique_ptr<verify::lanes::Prepared> prepared;

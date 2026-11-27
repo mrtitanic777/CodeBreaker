@@ -143,6 +143,4 @@ c::RunResult run(c::Bus& bus, std::uint16_t entry, const c::RunOptions& options)
     return out;
 }
 
-c::RunResult call(c::Bus& bus, std::uint16_t entry, const c::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : c::run(bus, entry, options); }
-
 }  // namespace cb::engine::pcode_cpu

@@ -91,7 +91,7 @@ vl::Effects intv_effects(const stdfs::path& path, std::uint32_t entry, const vl:
         if (r.r[7] < 0x1000 || r.r[7] > 0x1FFF || calls.size() >= kIoShown) return;
         calls.push_back(std::format("EXEC_{:04X}", r.r[7]));
     };
-    const emulate::cp1610::RunResult run = pcode_cpu::call(bus, static_cast<std::uint16_t>(entry), options);
+    const emulate::cp1610::RunResult run = pcode_cpu::run(bus, static_cast<std::uint16_t>(entry), options);
     std::vector<std::string> io;
     for (const emulate::cp1610::DeviceAccess& x : run.io) {
         io.push_back(std::format("{} {} {:x}", x.kind == emulate::cp1610::DeviceAccess::Kind::Read ? "r" : "w", place(x.address), x.value));
