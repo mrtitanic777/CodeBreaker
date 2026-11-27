@@ -1,0 +1,4 @@
+exit=64
+--stdout--
+--stderr--
+The --json option is currently only supported together with --dump-table.

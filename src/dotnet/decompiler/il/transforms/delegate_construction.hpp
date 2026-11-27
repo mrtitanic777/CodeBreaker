@@ -9,9 +9,7 @@
 //     DelegateConstruction::match_delegate_construction(inst, &target_method, &target, &delegate_type);
 //
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.Transforms: DelegateConstruction, DelegateConstruction.ReplaceDelegateTargetVisitor, from
-// DelegateConstruction.cs), Copyright AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler). Not yet ported:
-// CSharpDecompiler.GetILTransforms (the transforms that run on the lambda's body before this one; only CombineExitsTransform runs
-// after them, so a lambda body is not yet transformed as upstream's).
+// DelegateConstruction.cs), Copyright AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler)..
 #pragma once
 
 #include <string>

@@ -28,7 +28,9 @@ public:
         LongSet available = LongSet::universe();
         std::vector<std::pair<LongInterval, T>> items;
         for (const auto& [key, val] : entries) {
-            for (const LongInterval& interval : key.intersect_with(available).intervals()) items.emplace_back(interval, val);
+            // a named set: the range-for must not iterate over the intervals of a temporary that is already gone
+            const LongSet claimed = key.intersect_with(available);
+            for (const LongInterval& interval : claimed.intervals()) items.emplace_back(interval, val);
             available = available.except_with(key);
         }
         // Array.Sort with a key comparer: the intervals are disjoint, so no two keys start at the same place

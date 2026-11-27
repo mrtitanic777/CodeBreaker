@@ -16,8 +16,7 @@
 // does not change the block: every rewrite is collected as a delayed action and run once the whole sequence is known to match.
 //
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.Transforms: DeconstructionTransform, from DeconstructionTransform.cs), Copyright
-// AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler). Not yet ported (marked WAITS in the .cxx):
-// CSharpConversions.ImplicitConversion, which decides whether an assignment target accepts the deconstructed element's type.
+// AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler).
 #pragma once
 
 #include <deque>

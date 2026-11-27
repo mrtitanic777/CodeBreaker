@@ -69,10 +69,11 @@ bool has_generated_name(srm::FieldDefinitionHandle handle, const srm::MetadataRe
 // The type whose constructor an attribute calls.
 srm::EntityHandle get_attribute_type(const srm::CustomAttribute& attribute, const srm::MetadataReader& reader);
 
-// A field's initial data (HasFieldRVA): its bytes, as long as the field's type is (`pointer_size` for native ints and pointers: upstream
-// uses its own process's IntPtr.Size, 8 for the 64-bit ilspycmd). Empty for a field without data; BadImageFormatError when the data lies
+// A field's initial data (HasFieldRVA): its bytes, as long as the field's type is (`pointer_size` for native ints and pointers: 0 for the
+// size of the file's own (4 for a PE32 image, else 8), as upstream's overload that is given a type system; 8 is its process's IntPtr.Size, for
+// the callers that give it none). Empty for a field without data; BadImageFormatError when the data lies
 // outside every section or is shorter than the type.
-ByteView get_initial_value(const srm::FieldDefinition& field, const metadata::MetadataFile& file, int pointer_size = 8);
+ByteView get_initial_value(const srm::FieldDefinition& field, const metadata::MetadataFile& file, int pointer_size = 0);
 
 srm::EntityHandle get_base_type_or_nil(const srm::TypeDefinition& definition);
 // "default", "unmanaged cdecl", "vararg" ...

@@ -9,8 +9,7 @@
 //     NullPropagationStatementTransform statement_transform;                        // `if (x != null) x.M();`
 //
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.Transforms: NullPropagationTransform, NullPropagationStatementTransform, from
-// Transforms/NullPropagationTransform.cs), Copyright AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler). Not yet
-// ported: the C# resolver's CanTransformToExtensionMethodCall (an extension method call never takes part in an access chain).
+// Transforms/NullPropagationTransform.cs), Copyright AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler)..
 #pragma once
 
 #include <cstdint>

@@ -9,7 +9,7 @@
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.Transforms: IILTransform, ILTransformContext, IBlockTransform, BlockTransformContext,
 // BlockILTransform, IStatementTransform, StatementTransformContext, StatementTransform; ICSharpCode.Decompiler.DebugInfo's Stepper is
 // not ported (it only records steps for ILSpy's debug view), so the Step* calls do nothing), Copyright AlphaSierraPapa for the ILSpy
-// team, MIT (see NOTICE in dotnet/decompiler). Not yet ported: the context's C# resolver and DecompileRun (with the C# stages).
+// team, MIT (see NOTICE in dotnet/decompiler). Not yet ported: DecompileRun (with the C# stages); the context's using scope stays null until then.
 #pragma once
 
 #include <memory>
@@ -22,6 +22,7 @@
 
 namespace cb::dotnet::decompiler {
 class DecompilerSettings;
+class DecompileRun;
 }
 namespace cb::dotnet::decompiler::typesystem {
 class DecompilerTypeSystem;
@@ -38,6 +39,12 @@ class ControlFlowGraph;
 
 namespace cb::dotnet::decompiler::il {
 class ILReader;
+}
+namespace cb::dotnet::decompiler::csharp::resolver {
+class CSharpResolver;
+}
+namespace cb::dotnet::decompiler::csharp::type_system {
+class UsingScope;
 }
 
 namespace cb::dotnet::decompiler::il::transforms {
@@ -63,6 +70,12 @@ public:
     const typesystem::DecompilerTypeSystem& type_system() const { return *type_system_; }
     const DecompilerSettings& settings() const { return *settings_; }
     const metadata::MetadataFile& pe_file() const;
+    // The run of the C# stage this transform is part of (null while only the ILAst is transformed); upstream's internal DecompileRun.
+    DecompileRun* decompile_run = nullptr;
+    // The using scope of that run (null without one).
+    const csharp::type_system::UsingScope* using_scope() const;
+    // A C# resolver for the main module and the using scope, made on first use.
+    csharp::resolver::CSharpResolver& csharp_resolver() const;
     util::CancellationToken cancellation_token;
 
     // A reader for more method bodies (lambdas, state machines) with the settings' options.
@@ -78,6 +91,7 @@ private:
     ILFunction* function_;
     const typesystem::DecompilerTypeSystem* type_system_;
     const DecompilerSettings* settings_;
+    mutable csharp::resolver::CSharpResolver* csharp_resolver_ = nullptr;
 };
 
 class BlockTransformContext;

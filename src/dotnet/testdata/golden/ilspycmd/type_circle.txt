@@ -1,0 +1,72 @@
+exit=0
+--stdout--
+using System;
+using System.Collections.Generic;
+
+namespace Sample;
+
+[Marker(7, typeof(List<int>), new object[]
+{
+	"a",
+	2,
+	Colour.Green,
+	null
+}, Weight = 1.5)]
+public class Circle : IShape, IComparable<Circle>
+{
+	public const string Unit = "cm";
+
+	public const double Pi = 3.14159265358979;
+
+	public static readonly int[] Primes = new int[10] { 2, 3, 5, 7, 11, 13, 17, 19, 23, 29 };
+
+	private double radius;
+
+	public double Area => 3.14159265358979 * radius * radius;
+
+	public double Radius
+	{
+		get
+		{
+			return radius;
+		}
+		set
+		{
+			radius = value;
+			Changed?.Invoke(this, EventArgs.Empty);
+		}
+	}
+
+	public int this[int index] => Primes[index % Primes.Length];
+
+	public event EventHandler Changed;
+
+	public Circle(double radius)
+	{
+		this.radius = radius;
+	}
+
+	public string Describe(int detail)
+	{
+		if (detail <= 0)
+		{
+			return "circle";
+		}
+		return $"circle r={radius}{"cm"}";
+	}
+
+	public int CompareTo(Circle other)
+	{
+		if (other != null)
+		{
+			return radius.CompareTo(other.radius);
+		}
+		return 1;
+	}
+
+	public static Circle operator +(Circle a, Circle b)
+	{
+		return new Circle(a.radius + b.radius);
+	}
+}
+--stderr--

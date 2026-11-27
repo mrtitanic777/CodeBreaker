@@ -1,0 +1,15 @@
+exit=0
+--stdout--
+RID  Token       Attributes  Name                                                          Signature
+---  ----------  ----------  ------------------------------------------------------------  ----------
+1    0x17000001  None        Text                                                          0x00000381
+2    0x17000002  None        Number                                                        0x00000385
+3    0x17000003  None        Kind                                                          0x00000389
+4    0x17000004  None        Rest                                                          0x0000038E
+5    0x17000005  None        Area                                                          0x00000393
+6    0x17000006  None        Area                                                          0x00000393
+7    0x17000007  None        Radius                                                        0x00000393
+8    0x17000008  None        Item                                                          0x00000397
+9    0x17000009  None        System.Collections.Generic.IEnumerator<System.Int32>.Current  0x00000385
+10   0x1700000A  None        System.Collections.IEnumerator.Current                        0x0000039C
+--stderr--

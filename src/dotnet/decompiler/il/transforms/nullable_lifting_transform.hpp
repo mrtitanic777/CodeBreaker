@@ -12,9 +12,7 @@
 //     bool is_has_value = NullableLiftingTransform::match_has_value_call(inst, &variable);
 //
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.Transforms: NullableLiftingTransform, NullableLiftingStatementTransform, from
-// Transforms/NullableLiftingTransform.cs), Copyright AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler). Not yet
-// ported: the C# resolver's CSharpOperators (LiftUserDefinedOperator, IsComparisonOperator: no user-defined operator is lifted, and none
-// is taken for a comparison operator).
+// Transforms/NullableLiftingTransform.cs), Copyright AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler)..
 #pragma once
 
 #include <optional>

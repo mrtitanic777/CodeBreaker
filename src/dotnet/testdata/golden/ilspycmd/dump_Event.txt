@@ -1,0 +1,7 @@
+exit=0
+--stdout--
+RID  Token       Attributes  Name     Type
+---  ----------  ----------  -------  ----------
+1    0x14000001  None        Changed  0x0100001A
+2    0x14000002  None        Changed  0x0100001A
+--stderr--

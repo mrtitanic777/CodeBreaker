@@ -7,8 +7,7 @@
 //     transform.run(block, pos, statement_context);
 //
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.Transforms: NullCoalescingTransform, from Transforms/NullCoalescingTransform.cs), Copyright
-// AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler). Not yet ported: the part using NullableLiftingTransform
-// (transform_throw_expression_value_types) is compiled in when its header exists (see "WAITS" in the .cxx).
+// AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler)..
 #pragma once
 
 #include <string>

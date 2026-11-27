@@ -1,0 +1,4 @@
+exit=65
+--stdout--
+--stderr--
+Cannot dump assembiles for {INPUT}, because it is not a single file bundle.

@@ -1,0 +1,4 @@
+exit=65
+--stdout--
+--stderr--
+'0xZZ' is not a valid metadata token; expected a hexadecimal value like 0x06000005.

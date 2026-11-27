@@ -4,10 +4,13 @@
 #include "dotnet/metadata/type_name.hpp"
 
 #include <algorithm>
+#include <stdexcept>
+#include <variant>
 #include <utility>
 #include <cctype>
 
 #include "dotnet/decompiler/metadata/assembly_references.hpp"
+#include "dotnet/decompiler/typesystem/attributes.hpp"
 
 namespace cb::dotnet::decompiler::typesystem {
 namespace {
@@ -197,6 +200,32 @@ bool is_array_interface_type(const IType* type) {
         return true;
     default: return false;
     }
+}
+
+bool is_inline_array_type(const IType* type) {
+    if (type->kind() != TypeKind::Struct) return false;
+    const ITypeDefinition* td = type->get_definition();
+    if (td == nullptr) return false;
+    return td->has_attribute(KnownAttribute::InlineArray);
+}
+
+std::optional<int> get_inline_array_length(const IType* type) {
+    if (type->kind() != TypeKind::Struct) return std::nullopt;
+    const ITypeDefinition* td = type->get_definition();
+    if (td == nullptr) return std::nullopt;
+    const IAttribute* attr = td->get_attribute(KnownAttribute::InlineArray);
+    if (attr == nullptr || attr->fixed_arguments().empty()) return std::nullopt;
+    if (const auto* length = std::get_if<std::int32_t>(&attr->fixed_arguments()[0].value)) return *length;
+    return std::nullopt;
+}
+
+const IType* get_inline_array_element_type(const IType* array_type) {
+    if (array_type != nullptr) {
+        auto fields = array_type->get_fields([](const IField* f) { return !f->is_static(); });
+        if (fields.size() > 1) throw std::logic_error("Sequence contains more than one element");
+        if (fields.size() == 1) return fields[0]->type();
+    }
+    return &SpecialType::unknown_type();
 }
 
 bool is_known_type(const IType* type, KnownTypeCode known_type) {

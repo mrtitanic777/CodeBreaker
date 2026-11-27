@@ -1,0 +1,9 @@
+exit=0
+--stdout--
+RID  Token       Version  Flags  PublicKeyOrToken  Name                Culture  HashValue
+---  ----------  -------  -----  ----------------  ------------------  -------  ---------
+1    0x23000001  9.0.0.0  0      0x000001AA        System.Runtime               nil
+2    0x23000002  9.0.0.0  0      0x000001AA        System.Collections           nil
+3    0x23000003  9.0.0.0  0      0x000001AA        System.Threading             nil
+4    0x23000004  9.0.0.0  0      0x000001AA        System.Console               nil
+--stderr--

@@ -135,6 +135,15 @@ const T* MetadataModule::keep(std::unique_ptr<T> object) const {
     return raw;
 }
 
+MetadataModule::ResolveKey MetadataModule::resolve_key(int kind, std::uint32_t token, const GenericContext& context) {
+    auto contents = [](const std::vector<const ITypeParameter*>* list) {
+        std::vector<const void*> result;
+        if (list != nullptr) result.assign(list->begin(), list->end());
+        return result;
+    };
+    return ResolveKey{kind, token, contents(context.class_type_parameters), contents(context.method_type_parameters)};
+}
+
 template <class T, class Make>
 const T* MetadataModule::cached_resolve(ResolveKey key, Make&& make) const {
     {
@@ -316,7 +325,7 @@ const IMethod* MetadataModule::resolve_method(srm::EntityHandle method_reference
     case srm::HandleKind::MethodSpecification: break;
     default: throw srm::BadImageFormatError(0, "Metadata token must be either a methoddef, memberref or methodspec");
     }
-    const ResolveKey key{static_cast<int>(ResolveKind::Method), method_reference.token(), context.class_type_parameters, context.method_type_parameters};
+    const ResolveKey key = resolve_key(static_cast<int>(ResolveKind::Method), method_reference.token(), context);
     return cached_resolve<IMethod>(key, [&]() -> const IMethod* {
         switch (method_reference.kind()) {
         case srm::HandleKind::MethodDefinition: return resolve_method_definition(srm::MethodDefinitionHandle(method_reference), true);
@@ -511,12 +520,11 @@ const IEntity* MetadataModule::resolve_entity(srm::EntityHandle entity_handle, c
         switch (metadata_->get_member_reference(member_reference_handle).get_kind()) {
         case srm::MemberReferenceKind::Method: {
             // as the MethodDefinition case: varargs are never expanded
-            const ResolveKey key{static_cast<int>(ResolveKind::EntityMethodReference), entity_handle.token(), context.class_type_parameters,
-                                 context.method_type_parameters};
+            const ResolveKey key = resolve_key(static_cast<int>(ResolveKind::EntityMethodReference), entity_handle.token(), context);
             return cached_resolve<IMethod>(key, [&] { return resolve_method_reference(member_reference_handle, context, nullptr, false); });
         }
         case srm::MemberReferenceKind::Field: {
-            const ResolveKey key{static_cast<int>(ResolveKind::FieldReference), entity_handle.token(), context.class_type_parameters, context.method_type_parameters};
+            const ResolveKey key = resolve_key(static_cast<int>(ResolveKind::FieldReference), entity_handle.token(), context);
             return cached_resolve<IField>(key, [&] { return resolve_field_reference(member_reference_handle, context); });
         }
         }
@@ -524,8 +532,7 @@ const IEntity* MetadataModule::resolve_entity(srm::EntityHandle entity_handle, c
     }
     case srm::HandleKind::MethodDefinition: return get_definition(srm::MethodDefinitionHandle(entity_handle));
     case srm::HandleKind::MethodSpecification: {
-        const ResolveKey key{static_cast<int>(ResolveKind::EntityMethodSpecification), entity_handle.token(), context.class_type_parameters,
-                             context.method_type_parameters};
+        const ResolveKey key = resolve_key(static_cast<int>(ResolveKind::EntityMethodSpecification), entity_handle.token(), context);
         return cached_resolve<IMethod>(key, [&] { return resolve_method_specification(srm::MethodSpecificationHandle(entity_handle), context, false); });
     }
     case srm::HandleKind::FieldDefinition: return get_definition(srm::FieldDefinitionHandle(entity_handle));

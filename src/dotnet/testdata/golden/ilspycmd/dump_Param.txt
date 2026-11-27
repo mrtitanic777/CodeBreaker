@@ -1,0 +1,44 @@
+exit=0
+--stdout--
+RID  Token       Attributes       SequenceNumber  Name
+---  ----------  ---------------  --------------  ------------
+1    0x08000001  None             1               text
+2    0x08000002  None             1               number
+3    0x08000003  None             2               type
+4    0x08000004  None             3               rest
+5    0x08000005  None             1               detail
+6    0x08000006  None             1               value
+7    0x08000007  None             1               value
+8    0x08000008  None             1               value
+9    0x08000009  None             1               value
+10   0x0800000A  None             1               radius
+11   0x0800000B  None             1               value
+12   0x0800000C  None             1               detail
+13   0x0800000D  None             1               other
+14   0x0800000E  None             1               index
+15   0x0800000F  None             1               a
+16   0x08000010  None             2               b
+17   0x08000011  None             1               f
+18   0x08000012  None             1               hwnd
+19   0x08000013  HasFieldMarshal  2               text
+20   0x08000014  None             3               caption
+21   0x08000015  None             4               type
+22   0x08000016  None             1               n
+23   0x08000017  None             2               total
+24   0x08000018  Out              3               note
+25   0x08000019  In               4               limit
+26   0x0800001A  None             1               o
+27   0x0800001B  None             1               p
+28   0x0800001C  None             2               array
+29   0x0800001D  None             1               x
+30   0x0800001E  None             1               to
+31   0x0800001F  None             1               a
+32   0x08000020  None             2               b
+33   0x08000021  None             3               first
+34   0x08000022  None             1               k
+35   0x08000023  None             1               x
+36   0x08000024  None             1               <>1__state
+37   0x08000025  None             0
+38   0x08000026  None             0
+39   0x08000027  None             1               stateMachine
+--stderr--

@@ -10,9 +10,7 @@
 //     IndexRangeTransform::handle_ld_elema(ldelema, context);      // `array[System.Index]`, from the expression transforms
 //
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.Transforms: IndexRangeTransform, from Transforms/IndexRangeTransform.cs), Copyright
-// AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler). Not yet ported: SyntheticRangeIndexAccessor (the
-// replacement of an indexer or Slice call by a call taking System.Index or System.Range is not made, and a call already replaced is not
-// recognized, so only `array[System.Index]` is transformed).
+// AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler)..
 #pragma once
 
 #include <cstdint>

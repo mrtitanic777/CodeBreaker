@@ -1,0 +1,14 @@
+exit=0
+--stdout--
+Class <Module>
+Class Sample.MarkerAttribute
+Class Sample.Circle
+Class Sample.Box`1
+Class Sample.Native
+Class Sample.Code
+Class <PrivateImplementationDetails>
+Class Sample.Box`1+Nested`1
+Class Sample.Code+<>c__DisplayClass8_0
+Class Sample.Code+<Count>d__4
+--stderr--
+Decompiler setting 'Nope' is unknown.

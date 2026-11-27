@@ -1,0 +1,4 @@
+exit=65
+--stdout--
+--stderr--
+'M:Foo' is not a valid documentation id string: Could not find '.' separating type name from member name

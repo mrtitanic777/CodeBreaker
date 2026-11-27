@@ -14,10 +14,7 @@
 //
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.Transforms: TransformCollectionAndObjectInitializers, AccessPathKind, AccessPathElement,
 // ILInstructionMatchComparer, from TransformCollectionAndObjectInitializers.cs), Copyright AlphaSierraPapa for the ILSpy team, MIT (see
-// NOTICE in dotnet/decompiler). Upstream's CSharpResolver parameter of GetAccessPath is a flag here (`check_applicable`): with it, an
-// Add method must be an instance (or extension) method of an enumerable type, as upstream checks when it has a resolver. Not yet ported
-// (marked WAITS in the .cxx): the resolver's part of that check for extension methods and generic Add methods (CSharpResolver,
-// TypeInference), and MemberLookup's accessibility test of a setter.
+// NOTICE in dotnet/decompiler).
 #pragma once
 
 #include <cstdint>
@@ -29,6 +26,9 @@
 
 namespace cb::dotnet::decompiler {
 class DecompilerSettings;
+}
+namespace cb::dotnet::decompiler::csharp::resolver {
+class CSharpResolver;
 }
 
 namespace cb::dotnet::decompiler::il::transforms {
@@ -56,7 +56,7 @@ struct AccessPathElement {
     };
 
     static AccessPath get_access_path(ILInstruction* instruction, const IType* root_type, const DecompilerSettings* settings = nullptr,
-                                      bool check_applicable = false);
+                                      csharp::resolver::CSharpResolver* resolver = nullptr);
 
     std::string to_string() const;
     bool equals(const AccessPathElement& other) const;

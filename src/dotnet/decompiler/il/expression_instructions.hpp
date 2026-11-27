@@ -17,9 +17,6 @@
 // (see NOTICE in dotnet/decompiler). The generated Match* methods of these classes are written in expression_instructions.cpp.
 // Naming: a C# field named Operator is `op` here (operator is a C++ keyword); CallInstruction.Arguments (a property) is `arguments()`,
 // CallIndirect.Arguments (a public field) is the data member `arguments`.
-// Not yet ported: Call::is_lifted and underlying_result_type need CSharp.Resolver.ILiftedOperator (the C# resolver stage; they answer as
-// for a method that is not a lifted operator), ComparisonKind's ToBinaryOperatorType (needs the C# syntax tree's BinaryOperatorType),
-// NullableRewrap::prepare_extract's flag test (needs transforms::ExtractionContext, stage 6).
 #pragma once
 
 #include <cassert>
@@ -29,6 +26,7 @@
 #include <utility>
 #include <vector>
 
+#include "dotnet/decompiler/csharp/syntax/operator_type.hpp"
 #include "dotnet/decompiler/il/il_type_extensions.hpp"
 #include "dotnet/decompiler/il/il_variable.hpp"
 #include "dotnet/decompiler/il/instructions_base.hpp"
@@ -214,6 +212,8 @@ bool is_equality_or_inequality(ComparisonKind kind);
 ComparisonKind negate(ComparisonKind kind);
 // The C# operator: ==, !=, <, <=, >, >=
 std::string get_token(ComparisonKind kind);
+// The C# binary operator that compares the same way (Equality -> BinaryOperatorType::Equality ...).
+csharp::syntax::BinaryOperatorType to_binary_operator_type(ComparisonKind kind);
 
 enum class ComparisonLiftingKind : std::uint8_t {
     // Not a lifted comparison.

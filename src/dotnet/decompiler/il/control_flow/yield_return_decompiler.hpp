@@ -6,8 +6,7 @@
 //     transform.run(function, context);       // function->is_iterator is set when the body was an iterator's creation
 //
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.ControlFlow: YieldReturnDecompiler, from ControlFlow/YieldReturnDecompiler.cs),
-// Copyright AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler). Not yet ported: CSharpDecompiler's early IL
-// transforms (run at the end, and over each method body read by create_il_ast).
+// Copyright AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler)..
 #pragma once
 
 #include <optional>

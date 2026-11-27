@@ -1,0 +1,10 @@
+exit=0
+--stdout--
+RID  Token       Number  Attributes                                                    Owner       Name
+---  ----------  ------  ------------------------------------------------------------  ----------  -------
+1    0x2A000001  0       ReferenceTypeConstraint, DefaultConstructorConstraint         0x02000008  T
+2    0x2A000002  0       ReferenceTypeConstraint, DefaultConstructorConstraint         0x0200000C  T
+3    0x2A000003  1       None                                                          0x0200000C  U
+4    0x2A000004  0       NotNullableValueTypeConstraint, DefaultConstructorConstraint  0x06000016  TResult
+5    0x2A000005  0       None                                                          0x0600001F  T
+--stderr--

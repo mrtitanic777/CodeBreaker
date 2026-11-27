@@ -1,0 +1,4 @@
+exit=65
+--stdout--
+--stderr--
+Metadata token 0x06ffffff does not reference a type or member of this module.

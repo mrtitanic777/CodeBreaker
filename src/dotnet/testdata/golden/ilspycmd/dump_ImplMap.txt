@@ -1,0 +1,7 @@
+exit=0
+--stdout--
+RID  Token       MappingFlags                             MemberForwarded  ImportName    ImportScope
+---  ----------  ---------------------------------------  ---------------  ------------  -----------
+1    0x1C000001  SetLastError, CallingConventionWinApi    0x06000018       GetTickCount  0x1A000001
+2    0x1C000002  CharSetUnicode, CallingConventionWinApi  0x06000019       MessageBoxW   0x1A000002
+--stderr--

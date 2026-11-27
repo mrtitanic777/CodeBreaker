@@ -1,0 +1,5 @@
+exit=0
+--stdout--
+ilspycmd: 11.0.0.9375
+ICSharpCode.Decompiler: 11.0.0.9375
+--stderr--

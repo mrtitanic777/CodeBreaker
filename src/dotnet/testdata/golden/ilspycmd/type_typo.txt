@@ -1,0 +1,6 @@
+exit=65
+--stdout--
+--stderr--
+Could not find a type named 'Cicle'.
+Did you mean one of the following?
+    Sample.Circle

@@ -8,9 +8,7 @@
 //     transform.run(block, pos, statement_context);                      // as a statement transform
 //
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.Transforms: ExpressionTransforms, from Transforms/ExpressionTransforms.cs), Copyright
-// AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler). Not yet ported: the uses of NullableLiftingTransform,
-// IndexRangeTransform, InlineArrayTransform and TransformArrayInitializers are compiled in when their headers exist (see
-// "WAITS" in expression_transforms.cxx).
+// AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler)..
 #pragma once
 
 #include <string>

@@ -847,7 +847,7 @@ void ReflectionDisassembler::disassemble_field(const metadata::MetadataFile& mod
     }
     ByteView init;
     try {
-        init = get_initial_value(field, module);
+        init = get_initial_value(field, module, 8);
     } catch (const srm::BadImageFormatError& e) {
         init = {};
         output_.write_line(std::format("// .data {}_{:08X} = {}", section_prefix, static_cast<std::uint32_t>(field.get_relative_virtual_address()), e.message()));

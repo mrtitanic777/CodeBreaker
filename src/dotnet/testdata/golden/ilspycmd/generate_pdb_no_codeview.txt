@@ -1,0 +1,4 @@
+exit=65
+--stdout--
+--stderr--
+Cannot create PDB file for {INPUT}, because it does not contain a PE Debug Directory Entry of type 'CodeView'.

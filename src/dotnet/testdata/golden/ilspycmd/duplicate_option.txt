@@ -1,0 +1,5 @@
+exit=-532462766
+--stdout--
+Specify --help for a list of available options and commands.
+--stderr--
+Unhandled exception. McMaster.Extensions.CommandLineUtils.CommandParsingException: Unexpected value 'b' for option 'o'

@@ -12,8 +12,7 @@
 //     FindResult r = NamedArgumentTransform::can_introduce_named_argument(call, child, v, expression_being_moved);   // for ILInlining
 //
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.Transforms: NamedArgumentTransform, from Transforms/NamedArgumentTransform.cs), Copyright
-// AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler). Not yet ported: NRExtensions.IsAnonymousType (an anonymous
-// type's constructor is not recognized, so a named argument may be offered for it).
+// AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler)..
 #pragma once
 
 #include <string>

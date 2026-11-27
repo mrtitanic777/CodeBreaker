@@ -1,0 +1,52 @@
+exit=0
+--stdout--
+RID  Token       RVA         ImplAttributes  Attributes                                                           Name                                                                Signature   ParamList
+---  ----------  ----------  --------------  -------------------------------------------------------------------  ------------------------------------------------------------------  ----------  ---------
+1    0x06000001  0x00002050  IL              Public, HideBySig, SpecialName, RTSpecialName                        .ctor                                                               0x00000015  1
+2    0x06000002  0x0000205F  IL              Public, HideBySig, SpecialName, RTSpecialName                        .ctor                                                               0x000002D8  2
+3    0x06000003  0x0000207C  IL              Public, HideBySig, SpecialName                                       get_Text                                                            0x000000B4  5
+4    0x06000004  0x00002084  IL              Public, HideBySig, SpecialName                                       get_Number                                                          0x00000110  5
+5    0x06000005  0x0000208C  IL              Public, HideBySig, SpecialName                                       get_Kind                                                            0x000002E1  5
+6    0x06000006  0x00002094  IL              Public, HideBySig, SpecialName                                       get_Rest                                                            0x000002E6  5
+7    0x06000007  0x00000000  IL              Public, Virtual, HideBySig, VtableLayoutMask, Abstract, SpecialName  get_Area                                                            0x000002EB  5
+8    0x06000008  0x00000000  IL              Public, Virtual, HideBySig, VtableLayoutMask, Abstract               Describe                                                            0x000002EF  5
+9    0x06000009  0x00000000  IL              Public, Virtual, HideBySig, VtableLayoutMask, Abstract, SpecialName  add_Changed                                                         0x000002F4  6
+10   0x0600000A  0x00000000  IL              Public, Virtual, HideBySig, VtableLayoutMask, Abstract, SpecialName  remove_Changed                                                      0x000002F4  7
+11   0x0600000B  0x0000209C  IL              Public, Final, Virtual, HideBySig, VtableLayoutMask, SpecialName     add_Changed                                                         0x000002F4  8
+12   0x0600000C  0x000020D4  IL              Public, Final, Virtual, HideBySig, VtableLayoutMask, SpecialName     remove_Changed                                                      0x000002F4  9
+13   0x0600000D  0x00002109  IL              Public, HideBySig, SpecialName, RTSpecialName                        .ctor                                                               0x000002FA  10
+14   0x0600000E  0x00002118  IL              Public, Final, Virtual, HideBySig, VtableLayoutMask, SpecialName     get_Area                                                            0x000002EB  11
+15   0x0600000F  0x00002131  IL              Public, HideBySig, SpecialName                                       get_Radius                                                          0x000002EB  11
+16   0x06000010  0x00002139  IL              Public, HideBySig, SpecialName                                       set_Radius                                                          0x000002FA  11
+17   0x06000011  0x00002158  IL              Public, Final, Virtual, HideBySig, VtableLayoutMask                  Describe                                                            0x000002EF  12
+18   0x06000012  0x000021A5  IL              Public, Final, Virtual, HideBySig, VtableLayoutMask                  CompareTo                                                           0x000002FF  13
+19   0x06000013  0x000021BD  IL              Public, HideBySig, SpecialName                                       get_Item                                                            0x00000305  14
+20   0x06000014  0x000021CE  IL              Public, Static, HideBySig, SpecialName                               op_Addition                                                         0x0000030A  15
+21   0x06000015  0x000021E2  IL              Private, Static, HideBySig, SpecialName, RTSpecialName               .cctor                                                              0x00000313  17
+22   0x06000016  0x000021FB  IL              Public, HideBySig                                                    Map                                                                 0x00000317  17
+23   0x06000017  0x00002209  IL              Public, HideBySig, SpecialName, RTSpecialName                        .ctor                                                               0x00000006  18
+24   0x06000018  0x00000000  PreserveSig     Public, Static, HideBySig, PinvokeImpl                               Ticks                                                               0x00000326  18
+25   0x06000019  0x00000000  PreserveSig     Public, Static, HideBySig, PinvokeImpl                               MessageBoxW                                                         0x0000032A  18
+26   0x0600001A  0x0000221C  IL              Public, Static, HideBySig                                            Loops                                                               0x00000332  22
+27   0x0600001B  0x00002290  IL              Public, Static, HideBySig                                            Guarded                                                             0x0000033D  26
+28   0x0600001C  0x00002310  IL              Public, Static, HideBySig                                            Pointer                                                             0x00000342  27
+29   0x0600001D  0x00002344  IL              Public, Static, HideBySig                                            Later                                                               0x0000034A  29
+30   0x0600001E  0x00002387  IL              Public, Static, HideBySig                                            Count                                                               0x00000354  30
+31   0x0600001F  0x00002397  IL              Public, Static, HideBySig                                            Pick                                                                0x0000035E  31
+32   0x06000020  0x0000239F  IL              Public, Static, HideBySig                                            UsePick                                                             0x00000164  34
+33   0x06000021  0x000023BF  IL              Public, Static, HideBySig                                            Big                                                                 0x00000369  34
+34   0x06000022  0x000023CA  IL              Public, Static, HideBySig                                            Closure                                                             0x0000036D  34
+35   0x06000023  0x000023E3  IL              Public, HideBySig, SpecialName, RTSpecialName                        .ctor                                                               0x00000006  35
+36   0x06000024  0x000023EB  IL              Public, HideBySig, SpecialName, RTSpecialName                        .ctor                                                               0x00000006  35
+37   0x06000025  0x000023F3  IL              Assembly, HideBySig                                                  <Closure>b__0                                                       0x00000305  35
+38   0x06000026  0x000023FD  IL              Public, HideBySig, SpecialName, RTSpecialName                        .ctor                                                               0x00000001  36
+39   0x06000027  0x00002417  IL              Private, Final, Virtual, HideBySig, VtableLayoutMask                 System.IDisposable.Dispose                                          0x00000006  37
+40   0x06000028  0x00002424  IL              Private, Final, Virtual, HideBySig, VtableLayoutMask                 MoveNext                                                            0x00000033  37
+41   0x06000029  0x0000248C  IL              Private, Final, Virtual, HideBySig, VtableLayoutMask, SpecialName    System.Collections.Generic.IEnumerator<System.Int32>.get_Current    0x00000110  37
+42   0x0600002A  0x00002494  IL              Private, Final, Virtual, HideBySig, VtableLayoutMask                 System.Collections.IEnumerator.Reset                                0x00000006  37
+43   0x0600002B  0x0000249B  IL              Private, Final, Virtual, HideBySig, VtableLayoutMask, SpecialName    System.Collections.IEnumerator.get_Current                          0x00000043  37
+44   0x0600002C  0x000024A8  IL              Private, Final, Virtual, HideBySig, VtableLayoutMask                 System.Collections.Generic.IEnumerable<System.Int32>.GetEnumerator  0x00000378  37
+45   0x0600002D  0x000024EB  IL              Private, Final, Virtual, HideBySig, VtableLayoutMask                 System.Collections.IEnumerable.GetEnumerator                        0x0000005D  38
+46   0x0600002E  0x000024F4  IL              Private, Final, Virtual, HideBySig, VtableLayoutMask                 MoveNext                                                            0x00000006  39
+47   0x0600002F  0x000025AC  IL              Private, Final, Virtual, HideBySig, VtableLayoutMask                 SetStateMachine                                                     0x00000063  39
+--stderr--

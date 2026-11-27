@@ -1,0 +1,4 @@
+exit=65
+--stdout--
+--stderr--
+Could not find a type named 'Nope'.

@@ -1,0 +1,7 @@
+exit=0
+--stdout--
+RID  Token       PackingSize  ClassSize  Parent
+---  ----------  -----------  ---------  ----------
+1    0x0F000001  4            16         0x02000006
+2    0x0F000002  1            40         0x02000010
+--stderr--

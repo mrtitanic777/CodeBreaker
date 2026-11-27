@@ -6,6 +6,7 @@
 #include <format>
 #include <stdexcept>
 
+#include "dotnet/decompiler/csharp/resolver/csharp_operators.hpp"
 #include "dotnet/decompiler/disassembler/disassembler_helpers.hpp"
 #include "dotnet/decompiler/il/control_flow_instructions.hpp"
 #include "dotnet/decompiler/il/instruction_output_il.hpp"
@@ -384,6 +385,19 @@ ComparisonKind negate(ComparisonKind kind) {
     throw std::out_of_range("ComparisonKind");
 }
 
+csharp::syntax::BinaryOperatorType to_binary_operator_type(ComparisonKind kind) {
+    using csharp::syntax::BinaryOperatorType;
+    switch (kind) {
+        case ComparisonKind::Equality: return BinaryOperatorType::Equality;
+        case ComparisonKind::Inequality: return BinaryOperatorType::InEquality;
+        case ComparisonKind::LessThan: return BinaryOperatorType::LessThan;
+        case ComparisonKind::LessThanOrEqual: return BinaryOperatorType::LessThanOrEqual;
+        case ComparisonKind::GreaterThan: return BinaryOperatorType::GreaterThan;
+        case ComparisonKind::GreaterThanOrEqual: return BinaryOperatorType::GreaterThanOrEqual;
+    }
+    throw std::out_of_range("ComparisonKind");
+}
+
 std::string get_token(ComparisonKind kind) {
     switch (kind) {
         case ComparisonKind::Equality: return "==";
@@ -588,12 +602,12 @@ bool CallInstruction::perform_match(ILInstruction* other, patterns::Match& match
 }
 
 bool Call::is_lifted() const {
-    // WAITS: CSharp.Resolver.ILiftedOperator (the C# resolver stage): `method is ILiftedOperator`
-    return false;
+    return dynamic_cast<const csharp::resolver::ILiftedOperator*>(method) != nullptr;
 }
 
 StackType Call::underlying_result_type() const {
-    // WAITS: CSharp.Resolver.ILiftedOperator: a lifted operator answers its NonLiftedReturnType's stack type
+    if (const auto* lifted_operator = dynamic_cast<const csharp::resolver::ILiftedOperator*>(method))
+        return get_stack_type(*lifted_operator->non_lifted_return_type());
     return get_stack_type(*method->return_type());
 }
 

@@ -6,8 +6,7 @@
 //     transform.run(function, context);
 //
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.Transforms: ProxyCallReplacer, from Transforms/ProxyCallReplacer.cs), Copyright
-// AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler). Not yet ported: CSharpDecompiler's EarlyILTransforms,
-// which upstream runs over the proxy's body before matching it (see "WAITS" in the .cxx).
+// AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler)..
 #pragma once
 
 #include <string>

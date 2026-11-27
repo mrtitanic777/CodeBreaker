@@ -9,7 +9,8 @@
 // Ported from ILSpy (ICSharpCode.Decompiler.TypeSystem.Implementation: MetadataTypeDefinition, MetadataMethod, MetadataParameter,
 // MetadataField, MetadataProperty, MetadataEvent, MetadataTypeParameter, DefaultParameter; TypeSystem: VarArgInstanceMethod;
 // CSharp.Syntax.OperatorDeclaration's operator names), Copyright AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler).
-// Not yet ported: ExtensionInfo (C# 14 extension blocks: extension_info() is nullptr for now).
+// ExtensionInfo (C# 14 extension blocks) is made by the maker that extension_info.cpp registers (set_extension_info_maker); until that file
+// is linked in, extension_info() is nullptr.
 //
 // An entity belongs to its module (made once per row); its attributes are made the first time they are asked for and kept.
 #pragma once
@@ -27,6 +28,13 @@
 #include "dotnet/metadata/signature_decoder.hpp"
 
 namespace cb::dotnet::decompiler::typesystem {
+
+class MetadataModule;
+class MetadataTypeDefinition;
+// Makes the ExtensionInfo of a static class (nullptr: the class has no extension blocks). Registered by extension_info.cpp, so that this
+// header's file keeps building where that one is not.
+using ExtensionInfoMaker = std::shared_ptr<const ExtensionInfo> (*)(const MetadataModule&, const ITypeDefinition*);
+void set_extension_info_maker(ExtensionInfoMaker maker);
 
 class MetadataModule;
 class MetadataTypeParameter;
@@ -95,7 +103,7 @@ public:
     bool is_read_only() const override { return is_read_only_; }
     std::string metadata_name() const override { return metadata_name_; }
     bool has_extensions() const override { return has_extensions_; }
-    const ExtensionInfo* extension_info() const override { return nullptr; }
+    const ExtensionInfo* extension_info() const override;
     Nullability nullable_context() const override { return nullable_context_; }
     bool is_record() const override;
     FullTypeName full_type_name() const override { return full_type_name_; }
@@ -186,6 +194,8 @@ private:
     mutable std::vector<const IType*> direct_base_types_;
     mutable std::optional<std::string> default_member_name_;
     mutable bool is_record_ = false;
+    mutable std::once_flag extension_info_once_;
+    mutable std::shared_ptr<const ExtensionInfo> extension_info_;
     LazyAttributeList attributes_list_;
 };
 

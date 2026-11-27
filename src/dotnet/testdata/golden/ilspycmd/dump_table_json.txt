@@ -1,0 +1,170 @@
+exit=0
+--stdout--
+{
+  "assembly": "{INPUT}",
+  "table": "TypeDef",
+  "rowCount": 16,
+  "rows": [
+    {
+      "RID": 1,
+      "Token": "0x02000001",
+      "Attributes": "NotPublic",
+      "Name": "\u003CModule\u003E",
+      "Namespace": "",
+      "BaseType": "nil",
+      "FieldList": "1",
+      "MethodList": "1"
+    },
+    {
+      "RID": 2,
+      "Token": "0x02000002",
+      "Attributes": "Public, Sealed, BeforeFieldInit",
+      "Name": "MarkerAttribute",
+      "Namespace": "Sample",
+      "BaseType": "0x01000013",
+      "FieldList": "1",
+      "MethodList": "1"
+    },
+    {
+      "RID": 3,
+      "Token": "0x02000003",
+      "Attributes": "Public, Sealed",
+      "Name": "Colour",
+      "Namespace": "Sample",
+      "BaseType": "0x01000018",
+      "FieldList": "6",
+      "MethodList": "7"
+    },
+    {
+      "RID": 4,
+      "Token": "0x02000004",
+      "Attributes": "Public, Sealed",
+      "Name": "Access",
+      "Namespace": "Sample",
+      "BaseType": "0x01000018",
+      "FieldList": "10",
+      "MethodList": "7"
+    },
+    {
+      "RID": 5,
+      "Token": "0x02000005",
+      "Attributes": "Public, ClassSemanticsMask, Abstract, BeforeFieldInit",
+      "Name": "IShape",
+      "Namespace": "Sample",
+      "BaseType": "nil",
+      "FieldList": "15",
+      "MethodList": "7"
+    },
+    {
+      "RID": 6,
+      "Token": "0x02000006",
+      "Attributes": "Public, ExplicitLayout, Sealed, BeforeFieldInit",
+      "Name": "Overlay",
+      "Namespace": "Sample",
+      "BaseType": "0x0100001B",
+      "FieldList": "15",
+      "MethodList": "11"
+    },
+    {
+      "RID": 7,
+      "Token": "0x02000007",
+      "Attributes": "Public, BeforeFieldInit",
+      "Name": "Circle",
+      "Namespace": "Sample",
+      "BaseType": "0x01000016",
+      "FieldList": "19",
+      "MethodList": "11"
+    },
+    {
+      "RID": 8,
+      "Token": "0x02000008",
+      "Attributes": "Public, BeforeFieldInit",
+      "Name": "Box\u00601",
+      "Namespace": "Sample",
+      "BaseType": "0x01000016",
+      "FieldList": "24",
+      "MethodList": "22"
+    },
+    {
+      "RID": 9,
+      "Token": "0x02000009",
+      "Attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "Name": "Native",
+      "Namespace": "Sample",
+      "BaseType": "0x01000016",
+      "FieldList": "26",
+      "MethodList": "24"
+    },
+    {
+      "RID": 10,
+      "Token": "0x0200000A",
+      "Attributes": "Public, Abstract, Sealed, BeforeFieldInit",
+      "Name": "Code",
+      "Namespace": "Sample",
+      "BaseType": "0x01000016",
+      "FieldList": "26",
+      "MethodList": "26"
+    },
+    {
+      "RID": 11,
+      "Token": "0x0200000B",
+      "Attributes": "Sealed",
+      "Name": "\u003CPrivateImplementationDetails\u003E",
+      "Namespace": "",
+      "BaseType": "0x01000016",
+      "FieldList": "26",
+      "MethodList": "35"
+    },
+    {
+      "RID": 12,
+      "Token": "0x0200000C",
+      "Attributes": "NestedPublic, BeforeFieldInit",
+      "Name": "Nested\u00601",
+      "Namespace": "",
+      "BaseType": "0x01000016",
+      "FieldList": "27",
+      "MethodList": "35"
+    },
+    {
+      "RID": 13,
+      "Token": "0x0200000D",
+      "Attributes": "NestedPrivate, Sealed, BeforeFieldInit",
+      "Name": "\u003C\u003Ec__DisplayClass8_0",
+      "Namespace": "",
+      "BaseType": "0x01000016",
+      "FieldList": "28",
+      "MethodList": "36"
+    },
+    {
+      "RID": 14,
+      "Token": "0x0200000E",
+      "Attributes": "NestedPrivate, Sealed, BeforeFieldInit",
+      "Name": "\u003CCount\u003Ed__4",
+      "Namespace": "",
+      "BaseType": "0x01000016",
+      "FieldList": "29",
+      "MethodList": "38"
+    },
+    {
+      "RID": 15,
+      "Token": "0x0200000F",
+      "Attributes": "NestedPrivate, Sealed, BeforeFieldInit",
+      "Name": "\u003CLater\u003Ed__3",
+      "Namespace": "",
+      "BaseType": "0x0100001B",
+      "FieldList": "35",
+      "MethodList": "46"
+    },
+    {
+      "RID": 16,
+      "Token": "0x02000010",
+      "Attributes": "NestedAssembly, ExplicitLayout, Sealed",
+      "Name": "__StaticArrayInitTypeSize=40",
+      "Namespace": "",
+      "BaseType": "0x0100001B",
+      "FieldList": "39",
+      "MethodList": "48"
+    }
+  ]
+}
+--stderr--

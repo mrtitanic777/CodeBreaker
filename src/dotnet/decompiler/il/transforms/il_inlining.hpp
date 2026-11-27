@@ -8,9 +8,7 @@
 //     bool ok = ILInlining::can_move_into(expression, statement, target_load);
 //
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.Transforms: InliningOptions, ILInlining, ExpressionClassification, from
-// Transforms/ILInlining.cs), Copyright AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler). Not yet ported: the
-// uses of NamedArgumentTransform (waits for its header; without it named arguments are never introduced), of
-// NullableLiftingTransform::match_nullable_ctor (a copy of its few lines is used), of SyntheticRangeIndexAccessor and of
+// Transforms/ILInlining.cs), Copyright AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler). Not yet ported:
 // CSharpDecompiler::is_transparent_identifier (a copy is used).
 #pragma once
 

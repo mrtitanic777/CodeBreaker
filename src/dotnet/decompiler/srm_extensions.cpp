@@ -328,6 +328,10 @@ ByteView get_initial_value(const srm::FieldDefinition& field, const metadata::Me
     if ((field.attributes() & 0x0100) == 0) return {};   // HasFieldRVA
     const int rva = field.get_relative_virtual_address();
     if (rva == 0) return {};
+    if (pointer_size == 0) {
+        const auto* pe_file = dynamic_cast<const metadata::PEFile*>(&file);
+        pointer_size = pe_file != nullptr && pe_file->reader().pe_header().magic == 0x10B ? 4 : 8;
+    }
     FieldValueSizeDecoder decoder(pointer_size);
     const int size = field.decode_signature(decoder, 0);
     const ByteView section = file.get_section_data(rva);

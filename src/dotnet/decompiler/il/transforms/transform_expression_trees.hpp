@@ -12,8 +12,7 @@
 // that cannot be converted leaves the ILAst as it was.
 //
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.Transforms: TransformExpressionTrees, from TransformExpressionTrees.cs), Copyright
-// AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler). Not yet ported (marked WAITS in the .cxx): the C# resolver's
-// CSharpConversions, CSharpResolver.ResolveBinaryOperator and CSharpOperators.LiftUserDefinedOperator.
+// AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler)..
 #pragma once
 
 #include <functional>

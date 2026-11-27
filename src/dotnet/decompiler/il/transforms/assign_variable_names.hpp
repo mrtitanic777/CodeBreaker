@@ -5,13 +5,11 @@
 //
 //     AssignVariableNames transform;
 //     transform.run(function, context);          // sets ILVariable::name and ILFunction::name
-//     AssignVariableNames::generate_variable_name(function, type);   // "obj", "list", "item" ...
+//     AssignVariableNames::generate_variable_name(function, type, nullptr);   // "obj", "list", "item" ...
 //
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.Transforms: AssignVariableNames, AssignVariableNames.VariableScope, from
 // AssignVariableNames.cs), Copyright AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler); the singular forms are
-// made by the vendored Humanizer (dotnet/decompiler/humanizer). Not yet ported (it waits for the C# stage): the C# UsingScope of the
-// context (the lower-case type names the file's using declarations bring in, and the `usingScope` parameter of the generate_*
-// functions that hand it on). Copies of three small C# stage helpers sit in the .cxx: CSharpDecompiler.IsTransparentIdentifier,
+// made by the vendored Humanizer (dotnet/decompiler/humanizer). Copies of three small C# stage helpers sit in the .cxx: CSharpDecompiler.IsTransparentIdentifier,
 // CSharpDecompiler.IsWindowsFormsInitializeComponentMethod, TransformFieldAndConstructorInitializers.IsGeneratedPrimaryConstructorBackingField,
 // the C# keywords of CSharpOutputVisitor.IsKeyword and TextWriterTokenWriter.ContainsNonPrintableIdentifierChar.
 #pragma once
@@ -46,10 +44,12 @@ public:
     static bool is_supported_instruction(const ILInstruction* arg);
     // The names for a foreach variable (the singular of the collection's name, "item") and for other generated variables; the number
     // that keeps them apart from the names in the function is appended.
-    static std::string generate_foreach_variable_name(ILFunction* function, ILInstruction* value_context, ILVariable* existing_variable = nullptr,
+    static std::string generate_foreach_variable_name(ILFunction* function, ILInstruction* value_context,
+                                                      const csharp::type_system::UsingScope* using_scope, ILVariable* existing_variable = nullptr,
                                                       bool must_resolve_conflicts = false);
-    static std::string generate_variable_name(ILFunction* function, const IType* type, ILInstruction* value_context = nullptr,
-                                              ILVariable* existing_variable = nullptr, bool must_resolve_conflicts = false);
+    static std::string generate_variable_name(ILFunction* function, const IType* type, const csharp::type_system::UsingScope* using_scope,
+                                              ILInstruction* value_context = nullptr, ILVariable* existing_variable = nullptr,
+                                              bool must_resolve_conflicts = false);
 
     // The names in use in one function (and, through its parent, in the functions that contain it).
     class VariableScope {

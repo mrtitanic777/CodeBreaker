@@ -9,6 +9,7 @@
 #include <unordered_set>
 
 #include "core/error.hpp"
+#include "dotnet/decompiler/decompiler_settings.hpp"
 #include "dotnet/decompiler/il/instruction_output_il.hpp"
 #include "dotnet/decompiler/il/instructions.hpp"
 #include "dotnet/decompiler/il/patterns.hpp"
@@ -19,6 +20,15 @@
 #include "dotnet/decompiler/typesystem/types.hpp"
 
 namespace cb::dotnet::decompiler::il {
+
+namespace {
+ImplicitTruncationCheck& implicit_truncation_check() {
+    static ImplicitTruncationCheck check = nullptr;
+    return check;
+}
+}  // namespace
+
+void set_implicit_truncation_check(ImplicitTruncationCheck check) { implicit_truncation_check() = check; }
 
 namespace {
 
@@ -171,7 +181,7 @@ NumericCompoundAssign::NumericCompoundAssign(const BinaryNumericInstruction* bin
       type_(type),
       is_lifted_(binary->is_lifted()),
       underlying_result_type_(binary->underlying_result_type()) {
-    // upstream asserts is_binary_compatible_with_type(binary, type, nullptr) here (see its WAITS)
+    assert(is_binary_compatible_with_type(binary, type, nullptr));
     add_il_range(*binary);
     assert(eval_mode == CompoundEvalMode::EvaluatesToNewValue || op == BinaryNumericOperator::Add ||
            op == BinaryNumericOperator::Sub);
@@ -182,8 +192,6 @@ StackType NumericCompoundAssign::result_type() const { return get_stack_type(*ty
 
 bool NumericCompoundAssign::is_binary_compatible_with_type(const BinaryNumericInstruction* binary, const IType* type,
                                                            const DecompilerSettings* settings) {
-    // The settings switches read as upstream's defaults (WAITS: DecompilerSettings): NativeIntegers on, UnsignedRightShift on.
-    (void)settings;
     if (binary->is_lifted()) {
         if (!typesystem::nullable_type::is_nullable(type)) return false;
         type = typesystem::nullable_type::get_underlying_type(type);
@@ -211,7 +219,11 @@ bool NumericCompoundAssign::is_binary_compatible_with_type(const BinaryNumericIn
     } else if ((typesystem::is_known_type(type, KnownTypeCode::IntPtr) || typesystem::is_known_type(type, KnownTypeCode::UIntPtr)) &&
                type->kind() != typesystem::TypeKind::NInt && type->kind() != typesystem::TypeKind::NUInt) {
         // If the LHS is C# 9 IntPtr (but not nint or C# 11 IntPtr): "target.intptr *= 2;" is a compiler error, but
-        // "target.intptr *= (nint)2;" works. (Without native integers the settings would say no here.)
+        // "target.intptr *= (nint)2;" works
+        if (settings != nullptr && !settings->native_integers) {
+            // But if native integers are not available, we cannot use compound assignment.
+            return false;
+        }
         // The trick with casting the RHS to n(u)int doesn't work for shifts:
         switch (binary->op) {
             case BinaryNumericOperator::ShiftLeft:
@@ -220,7 +232,8 @@ bool NumericCompoundAssign::is_binary_compatible_with_type(const BinaryNumericIn
         }
     }
     if (binary->sign != Sign::None) {
-        bool sign_mismatch_allowed = binary->sign == Sign::Unsigned && binary->op == BinaryNumericOperator::ShiftRight;
+        bool sign_mismatch_allowed = binary->sign == Sign::Unsigned && binary->op == BinaryNumericOperator::ShiftRight &&
+                                       (settings == nullptr || settings->unsigned_right_shift);
         if (is_csharp_small_integer_type(*type)) {
             // C# will use numeric promotion to int, binary op must be signed
             if (binary->sign != Sign::Signed && !sign_mismatch_allowed) return false;
@@ -230,8 +243,7 @@ bool NumericCompoundAssign::is_binary_compatible_with_type(const BinaryNumericIn
         }
     }
     // Can't transform if the RHS value would be need to be truncated for the LHS type.
-    // WAITS: Transforms::TransformAssignment::is_implicit_truncation(binary->right(), type, nullptr, binary->is_lifted()) (stage 6);
-    // until it exists the value is taken as not truncated.
+    if (implicit_truncation_check() != nullptr && implicit_truncation_check()(binary->right(), type, nullptr, binary->is_lifted())) return false;
     return true;
 }
 
@@ -292,11 +304,10 @@ UserDefinedCompoundAssign::UserDefinedCompoundAssign(const IMethod* method, Comp
 }
 
 bool UserDefinedCompoundAssign::is_increment_or_decrement(const IMethod* method, const DecompilerSettings* settings) {
-    (void)settings;  // WAITS: DecompilerSettings (CheckedOperators reads as its default, on)
     if (!(method->is_operator() && method->is_static())) return false;
     const std::string name = method->name();
     if (name == "op_Increment" || name == "op_Decrement") return true;
-    if (name == "op_CheckedIncrement" || name == "op_CheckedDecrement") return true;
+    if (name == "op_CheckedIncrement" || name == "op_CheckedDecrement") return settings == nullptr || settings->checked_operators;
     return false;
 }
 
@@ -1219,8 +1230,6 @@ void MatchInstruction::check_invariant(ILPhase phase) {
 }
 
 bool MatchInstruction::is_pattern_match(ILInstruction* inst, ILInstruction** tested_operand, const DecompilerSettings* settings) {
-    // WAITS: DecompilerSettings (PatternCombinators and RelationalPatterns read as their default, on)
-    (void)settings;
     if (auto* m = as<MatchInstruction>(inst)) {
         *tested_operand = m->tested_operand_;
         return true;
@@ -1228,9 +1237,15 @@ bool MatchInstruction::is_pattern_match(ILInstruction* inst, ILInstruction** tes
     if (auto* comp = as<Comp>(inst)) {
         ILInstruction* operand = nullptr;
         if (comp->match_logic_not(&operand) && is_pattern_match(operand, tested_operand, settings)) {
-            return true;  // settings?.PatternCombinators ?? true
+            return settings == nullptr || settings->pattern_combinators;
         }
         *tested_operand = comp->left();
+        if (settings != nullptr && !settings->relational_patterns) {
+            if (comp->kind() != ComparisonKind::Equality && comp->kind() != ComparisonKind::Inequality) return false;
+        }
+        if (settings != nullptr && !settings->pattern_combinators) {
+            if (comp->kind() == ComparisonKind::Inequality) return false;
+        }
         return is_constant(comp->right());
     }
     if (auto* call = as<Call>(inst)) {

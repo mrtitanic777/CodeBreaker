@@ -46,6 +46,13 @@ bool is_unbound(const IType* type);   // a generic definition (or unknown type) 
 bool is_unmanaged_type(const IType* type, bool allow_generics);
 bool is_array_interface_type(const IType* type);   // IEnumerable<T>, ICollection<T>, IList<T>, IReadOnlyCollection<T>, IReadOnlyList<T>
 bool is_known_type(const IType* type, KnownTypeCode known_type);
+
+// A struct with [InlineArray].
+bool is_inline_array_type(const IType* type);
+// The length the [InlineArray] attribute gives (nullopt for a type that is none, or an attribute without an int length).
+std::optional<int> get_inline_array_length(const IType* type);
+// The type of the only instance field of an inline array type (UnknownType for none; std::logic_error for several, as SingleOrDefault).
+const IType* get_inline_array_element_type(const IType* array_type);
 const IMethod* get_delegate_invoke_method(const IType* type);
 const IType* skip_modifiers(const IType* type);
 const IType* unwrap_by_ref(const IType* type);

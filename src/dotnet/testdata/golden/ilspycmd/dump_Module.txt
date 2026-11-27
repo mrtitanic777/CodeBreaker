@@ -1,0 +1,6 @@
+exit=0
+--stdout--
+RID  Token       Generation  Name        Mvid                                  GenerationId  BaseGenerationId
+---  ----------  ----------  ----------  ------------------------------------  ------------  ----------------
+1    0x00000001  0           Sample.dll  657157be-9fe1-4c41-a0a9-fdac866bfa27  nil           nil
+--stderr--

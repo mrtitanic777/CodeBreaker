@@ -209,6 +209,26 @@ MetadataTypeDefinition::MetadataTypeDefinition(const MetadataModule& module, srm
 
 MetadataTypeDefinition::~MetadataTypeDefinition() = default;
 
+namespace {
+ExtensionInfoMaker& extension_info_maker() {
+    static ExtensionInfoMaker maker = nullptr;
+    return maker;
+}
+}  // namespace
+
+void set_extension_info_maker(ExtensionInfoMaker maker) { extension_info_maker() = maker; }
+
+// MetadataTypeDefinition.ExtensionInfo: null for a class without [Extension], for a module without the ExtensionMembers option, and for
+// a static class whose extension methods all use the classic "this" parameter (it carries [Extension] but has no extension blocks).
+const ExtensionInfo* MetadataTypeDefinition::extension_info() const {
+    if (!has_extensions_) return nullptr;
+    if (!any(module_->type_system_options(), TypeSystemOptions::ExtensionMembers)) return nullptr;
+    std::call_once(extension_info_once_, [this] {
+        if (extension_info_maker() != nullptr) extension_info_ = extension_info_maker()(*module_, this);
+    });
+    return extension_info_.get();
+}
+
 const IModule* MetadataTypeDefinition::parent_module() const { return module_; }
 const ICompilation& MetadataTypeDefinition::compilation() const { return module_->compilation(); }
 

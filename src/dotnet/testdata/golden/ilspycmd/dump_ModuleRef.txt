@@ -1,0 +1,7 @@
+exit=0
+--stdout--
+RID  Token       Name
+---  ----------  ------------
+1    0x1A000001  kernel32.dll
+2    0x1A000002  user32.dll
+--stderr--

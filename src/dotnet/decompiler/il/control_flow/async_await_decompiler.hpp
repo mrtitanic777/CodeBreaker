@@ -7,8 +7,7 @@
 //     transform.run(function, context);       // function->is_async() is set when the body was an async method's creation
 //
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.ControlFlow: AsyncAwaitDecompiler, from ControlFlow/AsyncAwaitDecompiler.cs), Copyright
-// AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler). Not yet ported: CSharpDecompiler's early IL transforms (run
-// after the translation), and the await entries of the debug information (AsyncDebugInfo.Await is not modeled yet; they are collected
+// AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in dotnet/decompiler). Not yet ported: the await entries of the debug information (AsyncDebugInfo.Await is not modeled yet; they are collected
 // in await_debug_infos_ and the function gets the catch handler offset only).
 #pragma once
 

@@ -1,0 +1,43 @@
+exit=0
+--stdout--
+RID  Token       Attributes                               Name                                                              Signature
+---  ----------  ---------------------------------------  ----------------------------------------------------------------  ----------
+1    0x04000001  Private, InitOnly                        <Text>k__BackingField                                             0x00000295
+2    0x04000002  Private, InitOnly                        <Number>k__BackingField                                           0x00000298
+3    0x04000003  Private, InitOnly                        <Kind>k__BackingField                                             0x0000029B
+4    0x04000004  Private, InitOnly                        <Rest>k__BackingField                                             0x0000029F
+5    0x04000005  Public                                   Weight                                                            0x000002A3
+6    0x04000006  Public, SpecialName, RTSpecialName       value__                                                           0x000002A6
+7    0x04000007  Public, Static, Literal, HasDefault      Red                                                               0x000002A9
+8    0x04000008  Public, Static, Literal, HasDefault      Green                                                             0x000002A9
+9    0x04000009  Public, Static, Literal, HasDefault      Blue                                                              0x000002A9
+10   0x0400000A  Public, SpecialName, RTSpecialName       value__                                                           0x000002AD
+11   0x0400000B  Public, Static, Literal, HasDefault      None                                                              0x000002B0
+12   0x0400000C  Public, Static, Literal, HasDefault      Read                                                              0x000002B0
+13   0x0400000D  Public, Static, Literal, HasDefault      Write                                                             0x000002B0
+14   0x0400000E  Public, Static, Literal, HasDefault      All                                                               0x000002B0
+15   0x0400000F  Public                                   Low                                                               0x00000298
+16   0x04000010  Public                                   High                                                              0x00000298
+17   0x04000011  Public                                   Both                                                              0x000002AD
+18   0x04000012  Public, HasFieldMarshal                  Real                                                              0x000002A3
+19   0x04000013  Public, Static, Literal, HasDefault      Unit                                                              0x00000295
+20   0x04000014  Public, Static, Literal, HasDefault      Pi                                                                0x000002A3
+21   0x04000015  Public, Static, InitOnly                 Primes                                                            0x000002B4
+22   0x04000016  Private                                  radius                                                            0x000002A3
+23   0x04000017  Private                                  Changed                                                           0x000002B8
+24   0x04000018  Public                                   Item                                                              0x000000CE
+25   0x04000019  Public                                   History                                                           0x000000F1
+26   0x0400001A  Assembly, Static, InitOnly, HasFieldRVA  6341DA6106ADABFB52202E479ABE276558D68889931BC59F0F18BAD87C14C2DC  0x000002BC
+27   0x0400001B  Public                                   Table                                                             0x000002C0
+28   0x0400001C  Public                                   k                                                                 0x00000298
+29   0x0400001D  Private                                  <>1__state                                                        0x00000298
+30   0x0400001E  Private                                  <>2__current                                                      0x00000298
+31   0x0400001F  Private                                  <>l__initialThreadId                                              0x00000298
+32   0x04000020  Private                                  to                                                                0x00000298
+33   0x04000021  Public                                   <>3__to                                                           0x00000298
+34   0x04000022  Private                                  <i>5__2                                                           0x00000298
+35   0x04000023  Public                                   <>1__state                                                        0x00000298
+36   0x04000024  Public                                   <>t__builder                                                      0x000002CB
+37   0x04000025  Public                                   x                                                                 0x00000298
+38   0x04000026  Private                                  <>u__1                                                            0x000002D3
+--stderr--

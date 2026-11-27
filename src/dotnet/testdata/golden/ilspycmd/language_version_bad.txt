@@ -1,0 +1,5 @@
+exit=-532462766
+--stdout--
+--stderr--
+Unhandled exception. McMaster.Extensions.CommandLineUtils.CommandParsingException: Invalid value specified for languageversion. Allowed values are: CSharp1, CSharp2, CSharp3, CSharp4, CSharp5, CSharp6, CSharp7, CSharp7_1, CSharp7_2, CSharp7_3, CSharp8_0, CSharp9_0, CSharp10_0, CSharp11_0, CSharp12_0, CSharp13_0, CSharp14_0, CSharp15_0, Preview, Latest.
+ ---> System.FormatException: Invalid value specified for languageversion. Allowed values are: CSharp1, CSharp2, CSharp3, CSharp4, CSharp5, CSharp6, CSharp7, CSharp7_1, CSharp7_2, CSharp7_3, CSharp8_0, CSharp9_0, CSharp10_0, CSharp11_0, CSharp12_0, CSharp13_0, CSharp14_0, CSharp15_0, Preview, Latest.

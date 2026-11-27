@@ -17,8 +17,7 @@
 //
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.Transforms: LocalFunctionDecompiler, from LocalFunctionDecompiler.cs;
 // ICSharpCode.Decompiler.Metadata: FindTypeDecoder, its handle-only form), Copyright AlphaSierraPapa for the ILSpy team, MIT (see NOTICE in
-// dotnet/decompiler). Not yet ported: CSharpDecompiler.GetILTransforms (the transforms that run on a local function's body before this
-// one).
+// dotnet/decompiler)..
 #pragma once
 
 #include <memory>

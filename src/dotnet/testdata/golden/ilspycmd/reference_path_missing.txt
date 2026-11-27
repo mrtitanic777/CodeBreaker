@@ -1,0 +1,5 @@
+exit=1
+--stdout--
+Specify --help for a list of available options and commands.
+--stderr--
+The directory 'nodir' does not exist.

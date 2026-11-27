@@ -12,8 +12,7 @@
 // CSharpArgumentInfo, DynamicInstruction and the Dynamic*Instruction classes, UserDefinedLogicOperator, MatchInstruction,
 // DeconstructInstruction, DeconstructResultInstruction, from Instructions.cs and Instructions/CompoundAssignmentInstruction.cs,
 // DynamicInstructions.cs, MatchInstruction.cs, DeconstructInstruction.cs, DeconstructResultInstruction.cs), Copyright AlphaSierraPapa
-// for the ILSpy team, MIT (see NOTICE in dotnet/decompiler). Not ported yet: the DecompilerSettings switches (settings are passed as
-// a pointer to a type that does not exist yet; every switch reads as upstream's default, on).
+// for the ILSpy team, MIT (see NOTICE in dotnet/decompiler)..
 #pragma once
 
 #include <cstdint>
@@ -167,6 +166,13 @@ private:
     ILInstruction* target_ = nullptr;
     ILInstruction* value_ = nullptr;
 };
+
+// The check NumericCompoundAssign::is_binary_compatible_with_type makes with Transforms.TransformAssignment.IsImplicitTruncation (whether the
+// value would be truncated to the type: such a binary operation is no compound assignment). That transform lives in a file the default build
+// does not have yet (transform_assignment.cpp), which registers it here; without one nothing is taken as truncated.
+using ImplicitTruncationCheck = bool (*)(ILInstruction* value, const typesystem::IType* type, const typesystem::ICompilation* compilation,
+                                         bool allow_nullable_value);
+void set_implicit_truncation_check(ImplicitTruncationCheck check);
 
 class NumericCompoundAssign final : public CompoundAssignmentInstruction, public ILiftableInstruction {
 public:

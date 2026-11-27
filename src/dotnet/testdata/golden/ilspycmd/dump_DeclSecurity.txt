@@ -1,0 +1,6 @@
+exit=0
+--stdout--
+RID  Token       Action          Parent      PermissionSet
+---  ----------  --------------  ----------  -------------
+1    0x0E000001  RequestMinimum  0x20000001  0x000001EB
+--stderr--

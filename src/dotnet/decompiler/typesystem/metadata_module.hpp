@@ -123,8 +123,10 @@ private:
     // A made object, kept by the module for as long as it lives.
     template <class T>
     const T* keep(std::unique_ptr<T> object) const;
-    // The cache of resolves that make objects: (kind, token, the context's two parameter lists) -> what it resolved to.
-    using ResolveKey = std::tuple<int, std::uint32_t, const void*, const void*>;
+    // The cache of resolves that make objects: (kind, token, the contents of the context's two parameter lists) -> what it resolved to.
+    // (The contents, not the addresses of the lists: a list that lives on the stack of a caller has the address of the last one.)
+    using ResolveKey = std::tuple<int, std::uint32_t, std::vector<const void*>, std::vector<const void*>>;
+    static ResolveKey resolve_key(int kind, std::uint32_t token, const GenericContext& context);
     template <class T, class Make>
     const T* cached_resolve(ResolveKey key, Make&& make) const;
 

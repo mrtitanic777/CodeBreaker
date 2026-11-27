@@ -15,6 +15,7 @@
 #include "dotnet/decompiler/il/patterns.hpp"
 #include "dotnet/decompiler/il/semantic_helper.hpp"
 #include "dotnet/decompiler/typesystem/type_system.hpp"
+#include "dotnet/decompiler/typesystem/type_system_extensions.hpp"
 #include "dotnet/decompiler/util/bit_set.hpp"
 
 namespace cb::dotnet::decompiler::il {
@@ -732,7 +733,6 @@ void Block::check_invariant(ILPhase phase) {
             bool condition = instructions[0]->match_st_loc(static_cast<const ILVariable*>(init_var2), &init2);
             assert(condition);
             (void)condition;
-            // WAITS: TransformCollectionAndObjectInitializers (the checks of the initializer's type and AccessPathElement, stage 6)
             for (int i = 1; i < instructions.count(); i++) {
                 if (auto* st = as<StLoc>(instructions[i])) {
                     ILVariable* v = st->variable();
@@ -740,7 +740,11 @@ void Block::check_invariant(ILPhase phase) {
                     for (LdLoca* inst : v->address_instructions()) assert(inst->is_descendant_of(this));
                     for (IStoreInstruction* inst : v->store_instructions()) assert(inst->as_instruction()->is_descendant_of(this));
                 }
+                // WAITS: the initializer's type (NewObj, DefaultValue, CallWithNamedArgs, record Clone, Activator.CreateInstance) and the
+                // assert on AccessPathElement::get_access_path(instructions[i], type) for the other statements: their code is in a .cxx
+                // (work in progress), which the default build lacks.
             }
+
             break;
         }
         case BlockKind::DeconstructionConversions: assert(slot_info() == &DeconstructInstruction::conversions_slot); break;

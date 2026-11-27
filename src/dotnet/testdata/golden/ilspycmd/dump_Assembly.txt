@@ -1,0 +1,6 @@
+exit=0
+--stdout--
+RID  Token       HashAlgorithm  Version  Flags  PublicKey  Name    Culture
+---  ----------  -------------  -------  -----  ---------  ------  -------
+1    0x20000001  Sha1           1.0.0.0  0      nil        Sample
+--stderr--
