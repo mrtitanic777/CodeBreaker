@@ -1,0 +1,172 @@
+{
+  "name": "as1600",
+  "description": "as1600 (the Intellivision assembler): ; comments, $ hex numbers, `NAME EQU value`, DECLE words, MVII #$12,R0, and MOVR Rx,R7 for the description's JR Rx. The Intellicart's SEGMENT, ROMTAIL and FORMAT lines are the cartridge layer's (source/intv_build) and pass through.",
+  "comment": ";",
+  "tight_commas": true,
+  "number": {
+    "prefix": "$",
+    "suffix": "",
+    "case": "upper",
+    "pad": "even"
+  },
+  "label": "{name}:",
+  "decimal": {
+    "unless": []
+  },
+  "instructions": [
+    {
+      "neutral": "JR {w}",
+      "dialect": "MOVR {w},R7",
+      "print": false
+    },
+    {
+      "neutral": "BEXT {w2},{w}",
+      "dialect": "BEXT {w},{w2}",
+      "print": false
+    },
+    {
+      "neutral": "RLC {w}, 1",
+      "dialect": "RLC {w}",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "RLC {w}, 1",
+      "dialect": "RLC {w},1",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "RLC {w}, 2",
+      "dialect": "RLC {w},2",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "RRC {w}, 1",
+      "dialect": "RRC {w}",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "RRC {w}, 1",
+      "dialect": "RRC {w},1",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "RRC {w}, 2",
+      "dialect": "RRC {w},2",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SAR {w}, 1",
+      "dialect": "SAR {w}",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SAR {w}, 1",
+      "dialect": "SAR {w},1",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SAR {w}, 2",
+      "dialect": "SAR {w},2",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SARC {w}, 1",
+      "dialect": "SARC {w}",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SARC {w}, 1",
+      "dialect": "SARC {w},1",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SARC {w}, 2",
+      "dialect": "SARC {w},2",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SLL {w}, 1",
+      "dialect": "SLL {w}",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SLL {w}, 1",
+      "dialect": "SLL {w},1",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SLL {w}, 2",
+      "dialect": "SLL {w},2",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SLLC {w}, 1",
+      "dialect": "SLLC {w}",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SLLC {w}, 1",
+      "dialect": "SLLC {w},1",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SLLC {w}, 2",
+      "dialect": "SLLC {w},2",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SLR {w}, 1",
+      "dialect": "SLR {w}",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SLR {w}, 1",
+      "dialect": "SLR {w},1",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SLR {w}, 2",
+      "dialect": "SLR {w},2",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SWAP {w}, 1",
+      "dialect": "SWAP {w}",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SWAP {w}, 1",
+      "dialect": "SWAP {w},1",
+      "print": false,
+      "exact": true
+    },
+    {
+      "neutral": "SWAP {w}, 2",
+      "dialect": "SWAP {w},2",
+      "print": false,
+      "exact": true
+    }
+  ]
+}

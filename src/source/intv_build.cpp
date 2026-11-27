@@ -1,5 +1,5 @@
 // cb-unity: alone
-#include "build/cp1610_asm.hpp"
+#include "source/intv_build.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -8,13 +8,16 @@
 
 #include "build/asm_text.hpp"
 #include "core/text.hpp"
-#include "decompile/cp1610.hpp"
+#include "source/dialect.hpp"
+#include "source/processors.hpp"
 #include "formats/intv.hpp"
 
-namespace cb::build::cp1610_asm {
+namespace cb::source::intv_build {
 
-namespace dc = decompile::cp1610;
-using NameLabels = decompile::NameLabels;
+using build::AsmError;
+using build::Labels;
+using build::split_items;
+using build::strip_comment;
 
 namespace {
 
@@ -49,6 +52,16 @@ std::vector<Line> parse_lines(std::string_view source) {
             if (!rest.empty() && rest.front() == ':') rest.remove_prefix(1);
         }
         rest = text::trim(rest);
+        if (l.label.empty() && !rest.empty()) {   // (the dialect indents every line: `NAME EQU value` and `NAME = value` are the constants of a line that began in the first column)
+            const std::size_t w_end = rest.find_first_of(" 	");
+            if (w_end != std::string_view::npos) {
+                const std::string_view after = text::ltrim(rest.substr(w_end));
+                if (text::istarts_with(after, "EQU ") || after.starts_with("= ")) {
+                    l.label = std::string(rest.substr(0, w_end));
+                    rest = after;
+                }
+            }
+        }
         if (l.label.empty() && !rest.empty()) {   // an indented label: `name:`
             const std::size_t word_end = rest.find_first_of(" \t");
             const std::string_view word = rest.substr(0, word_end);
@@ -68,10 +81,46 @@ std::vector<Line> parse_lines(std::string_view source) {
     return out;
 }
 
-// The words a directive writes (DECLE, FILL), given the labels known.
-std::vector<std::uint16_t> directive_words(const Line& l, const NameLabels& labels, bool lenient) {
+const build::Encoder& encoder() { return processors::described_encoder(processors::find("cp1610")); }
+
+// A number or label expression; a label not defined yet is 0 on the first pass (`lenient`).
+std::int64_t value(std::string_view expr, const Labels& labels, std::int64_t pc, bool lenient) {
+    const Result<std::int64_t> r = encoder().value(expr, labels, pc);
+    if (r.ok()) return r.value();
+    if (lenient && build::is_undefined(r.error())) return 0;
+    throw Error(r.error().what());
+}
+
+// The decles of one instruction line (an instruction after SDBD is double-byte). On the first pass a label not defined yet stands for a place
+// that is near and a place that is small: whichever the instruction takes.
+std::vector<std::uint16_t> assemble(const std::string& line, std::uint32_t pc, const Labels& labels, bool lenient, bool sdbd) {
+    const std::string context = sdbd ? "doublebyte=1" : "";
+    Labels local = labels;
+    Result<Bytes> r = encoder().assemble_in(context, line, pc, local);
+    for (const std::int64_t guess : {static_cast<std::int64_t>(pc) + 8, std::int64_t{0x10}, std::int64_t{0}}) {
+        if (!lenient) break;
+        while (!r.ok() && build::is_undefined(r.error())) {
+            const std::string name = static_cast<const build::UndefinedSymbolError&>(r.error()).name();
+            if (local.contains(name)) break;
+            local[name] = guess;
+            r = encoder().assemble_in(context, line, pc, local);
+        }
+        if (r.ok()) break;
+        local = labels;
+        r = encoder().assemble_in(context, line, pc, local);
+    }
+    if (!r.ok()) throw Error(r.error().what());
+    const Bytes& b = r.value();
+    if (b.size() % 2 != 0) throw Error("an instruction of an odd number of bytes");
     std::vector<std::uint16_t> out;
-    const auto number = [&](std::string_view e) { return dc::value(e, labels, lenient); };
+    for (std::size_t i = 0; i + 1 < b.size(); i += 2) out.push_back(static_cast<std::uint16_t>(((b[i] << 8) | b[i + 1]) & 0x3FF));
+    return out;
+}
+
+// The words a directive writes (DECLE, FILL), given the labels known.
+std::vector<std::uint16_t> directive_words(const Line& l, const Labels& labels, bool lenient) {
+    std::vector<std::uint16_t> out;
+    const auto number = [&](std::string_view e) { return value(e, labels, 0, lenient); };
     if (l.keyword == "DECLE") {
         for (const std::string_view item : split_items(l.operand, false)) out.push_back(static_cast<std::uint16_t>(number(item)));
     } else if (l.keyword == "FILL") {
@@ -84,9 +133,22 @@ std::vector<std::uint16_t> directive_words(const Line& l, const NameLabels& labe
 
 }  // namespace
 
+// One instruction line's decles. NOP and SIN leave the low bit of their word free (the description says neither has an operand): as1600's
+// `NOP 1` and `SIN 1` are that bit.
+std::vector<std::uint16_t> instruction_words(const Line& l, std::uint32_t pc, const Labels& labels, bool lenient, bool sdbd) {
+    if ((l.keyword == "NOP" || l.keyword == "SIN") && !l.operand.empty()) {
+        const std::int64_t bit = value(l.operand, labels, 0, lenient);
+        if (bit != 0 && bit != 1) throw Error(l.keyword + " takes 0 or 1");
+        std::vector<std::uint16_t> w = assemble(l.keyword, pc, labels, lenient, sdbd);
+        w.at(0) |= static_cast<std::uint16_t>(bit);
+        return w;
+    }
+    return assemble(l.keyword + " " + l.operand, pc, labels, lenient, sdbd);
+}
+
 Bytes build(std::string_view source) {
-    const std::vector<Line> lines = parse_lines(source);
-    NameLabels labels;
+    const std::vector<Line> lines = parse_lines(dialect::find("as1600").parse(source));
+    Labels labels;
     // pass 1: addresses and constants
     std::uint32_t pc = 0;
     bool sdbd = false;
@@ -94,7 +156,7 @@ Bytes build(std::string_view source) {
         for (const Line& l : lines) {
             if (l.keyword == "EQU" || l.keyword == "=") {
                 if (l.label.empty()) throw AsmError(l.number, l.text, "EQU needs a name");
-                labels[l.label] = dc::value(l.operand, labels, true);
+                labels[l.label] = value(l.operand, labels, 0, true);
                 continue;
             }
             if (!l.label.empty()) labels[l.label] = pc;
@@ -102,12 +164,12 @@ Bytes build(std::string_view source) {
             if (l.keyword == "SEGMENT") {
                 const auto parts = split_items(l.operand, false);
                 if (parts.size() != 2) throw AsmError(l.number, l.text, "SEGMENT first, last");
-                pc = static_cast<std::uint32_t>(dc::value(parts[0], labels, true)) << 8;
+                pc = static_cast<std::uint32_t>(value(parts[0], labels, 0, true)) << 8;
             } else if (l.keyword == "ORG") {
-                pc = static_cast<std::uint32_t>(dc::value(l.operand, labels, true));
+                pc = static_cast<std::uint32_t>(value(l.operand, labels, 0, true));
             } else if (l.keyword == "ROMTAIL" || l.keyword == "FORMAT") {
             } else if (l.instruction) {
-                const std::vector<std::uint16_t> w = dc::assemble(l.keyword + " " + l.operand, pc, labels, true, sdbd);
+                const std::vector<std::uint16_t> w = instruction_words(l, pc, labels, true, sdbd);
                 pc += static_cast<std::uint32_t>(w.size());
                 sdbd = l.keyword == "SDBD";
             } else {
@@ -133,12 +195,12 @@ Bytes build(std::string_view source) {
                 continue;
             }
             if (l.keyword == "ROMTAIL") {
-                for (const std::string_view item : split_items(l.operand, false)) rom.tail.push_back(static_cast<std::uint8_t>(dc::value(item, labels, false)));
+                for (const std::string_view item : split_items(l.operand, false)) rom.tail.push_back(static_cast<std::uint8_t>(value(item, labels, 0, false)));
                 continue;
             }
             if (l.keyword == "SEGMENT") {
                 const auto parts = split_items(l.operand, false);
-                const std::int64_t first = dc::value(parts[0], labels, false), last = dc::value(parts[1], labels, false);
+                const std::int64_t first = value(parts[0], labels, 0, false), last = value(parts[1], labels, 0, false);
                 if (first < 0 || last > 0xFF || last < first) throw AsmError(l.number, l.text, "a segment's pages are $00 to $FF, first before last");
                 formats::intv::Segment s;
                 s.start = static_cast<std::uint32_t>(first) << 8;
@@ -149,10 +211,10 @@ Bytes build(std::string_view source) {
                 continue;
             }
             if (l.keyword == "ORG") {
-                pc = static_cast<std::uint32_t>(dc::value(l.operand, labels, false));
+                pc = static_cast<std::uint32_t>(value(l.operand, labels, 0, false));
                 continue;
             }
-            const std::vector<std::uint16_t> w = l.instruction ? dc::assemble(l.keyword + " " + l.operand, pc, labels, false, sdbd) : directive_words(l, labels, false);
+            const std::vector<std::uint16_t> w = l.instruction ? instruction_words(l, pc, labels, false, sdbd) : directive_words(l, labels, false);
             if (l.instruction) sdbd = l.keyword == "SDBD";
             if (segment == nullptr || pc < segment->start || pc + w.size() > segment->end()) throw AsmError(l.number, l.text, "outside the segment");
             // (a vector's data may move when a later SEGMENT is added: `segment` points into the last element, which is stable until then)
@@ -167,4 +229,4 @@ Bytes build(std::string_view source) {
     return rom.serialize(true);
 }
 
-}  // namespace cb::build::cp1610_asm
+}  // namespace cb::source::intv_build

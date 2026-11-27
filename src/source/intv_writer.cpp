@@ -8,7 +8,7 @@
 #include <format>
 #include <set>
 
-#include "build/cp1610_asm.hpp"
+#include "source/intv_build.hpp"
 #include "core/fs.hpp"
 #include "decompile/cp1610.hpp"
 
@@ -193,7 +193,7 @@ iw::Written write(const formats::intv::Rom& rom, std::string_view file_name, con
     std::size_t code_words = 0;
     for (const auto& [at, insn] : code) code_words += insn.size;
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, code_words, rom.word_count());
-    iw::assembled(r, [&] { return build::cp1610_asm::build(source); }, rom.serialize(false), folder / (stem + ".built" + std::filesystem::path(file_name).extension().string()));
+    iw::assembled(r, [&] { return intv_build::build(source); }, rom.serialize(false), folder / (stem + ".built" + std::filesystem::path(file_name).extension().string()));
     return r;
 }
 

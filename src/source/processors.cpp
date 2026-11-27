@@ -347,6 +347,13 @@ std::string source_described(const Processor& processor, ByteView code, std::uin
     return out;
 }
 
+const build::Encoder& described_encoder(const Processor& processor) {
+    if (processor.sla.empty()) throw UsageError(std::format("{} has no SLEIGH description yet", processor.name));
+    std::vector<std::pair<std::string, int>> context;
+    for (const auto& [k, v] : processor.context) context.emplace_back(std::string(k), v);
+    return isa::sleigh_encoder(languages() / processor.sla, context);
+}
+
 formats::Decoder described_decoder(const Processor& processor) {
     if (processor.sla.empty()) throw UsageError(std::format("{} has no SLEIGH description yet", processor.name));
     std::vector<std::pair<std::string, int>> context;

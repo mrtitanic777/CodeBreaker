@@ -1,7 +1,7 @@
 // source/intv_writer.hpp -- an Intellivision cartridge as CP1610 assembly source that builds back into it.
 //
 //     image_writer::Written r = intv_writer::reconstruct("game.rom", "out");
-//     r.source           game.asm (as1600's syntax; CodeBreaker's own build/cp1610_asm reads it too, with the SEGMENT / ROMTAIL / FORMAT directives it adds)
+//     r.source           game.asm (as1600's syntax; source/intv_build reads it, with the SEGMENT / ROMTAIL / FORMAT directives it adds)
 //     r.same             the source, built, is the cartridge file byte for byte
 //     r.functions        {word address: name}
 //

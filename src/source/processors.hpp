@@ -20,6 +20,7 @@
 #include <utility>
 #include <vector>
 
+#include "build/asm_text.hpp"
 #include "core/bytes.hpp"
 #include "decompile/labels.hpp"
 #include "formats/code_scan.hpp"
@@ -92,6 +93,8 @@ std::string source_described(const Processor& processor, ByteView code, std::uin
 // The processor's description as the decoder the cartridge formats follow code by (formats/code_scan: size, how control leaves,
 // where it goes), for any processor: the one decoder in place of source/isa's one per CPU. UsageError for no description.
 formats::Decoder described_decoder(const Processor& processor);
+// The instruction encoder of its description (the one assembler under a directive layer: one instruction's text at an address -> its bytes).
+const build::Encoder& described_encoder(const Processor& processor);
 
 // Every processor, in a fixed order.
 std::span<const Processor> all();

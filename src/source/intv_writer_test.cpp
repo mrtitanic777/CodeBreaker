@@ -3,7 +3,7 @@
 
 #include "source/intv_writer.hpp"
 
-#include "build/cp1610_asm.hpp"
+#include "source/intv_build.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "formats/intv_test_image.hpp"
@@ -35,7 +35,7 @@ CB_TEST("source.intv_writer.an_edited_source_builds_a_different_file", [] {
     s.replace(at, 7, "DECR R0");
     formats::intv::Rom expected = ti::rom();
     expected.segments[0].words[0x30] = 0x10;
-    CB_CHECK(build::cp1610_asm::build(s) == expected.serialize(true));
+    CB_CHECK(intv_build::build(s) == expected.serialize(true));
 });
 
 CB_TEST("source.intv_writer.the_hardware_registers_have_names", [] {

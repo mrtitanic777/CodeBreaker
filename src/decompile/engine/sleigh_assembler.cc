@@ -1408,6 +1408,7 @@ std::vector<std::vector<std::uint8_t>> Assembler::run(std::string_view line, std
     Impl& I = *impl_;
     std::lock_guard hold(I.lock);
     I.diag = {};
+    address *= I.space->getWordSize();   // (the address is in the description's units, a word machine's words: the translator below counts bytes)
     const std::string want = squash(line);
     std::vector<std::vector<std::uint8_t>> results;
     if (want.empty()) return results;
