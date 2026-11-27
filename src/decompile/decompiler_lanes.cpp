@@ -7,7 +7,7 @@
 
 #include <nlohmann/json.hpp>
 
-#include "build/watcom.hpp"
+#include "base/watcom.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/json.hpp"

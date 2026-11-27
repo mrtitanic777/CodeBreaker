@@ -559,9 +559,9 @@ struct OpenWatcomTools {
 };
 
 // nullopt when OpenWatcom is not built.
-std::optional<OpenWatcomTools> openwatcom_tools(const watcom::OpenWatcom& ow) {
+std::optional<OpenWatcomTools> openwatcom_tools(const base::watcom::OpenWatcom& ow) {
     OpenWatcomTools t;
-    t.wcc386 = ow.cc(watcom::Target::Win32);
+    t.wcc386 = ow.cc(base::watcom::Target::Win32);
     t.wlink = ow.tool("wlink");
     if (t.wcc386.empty()) return std::nullopt;
     const stdfs::path root = ow.root();
@@ -592,7 +592,7 @@ std::string veneer_text(const stdfs::path& file) {
 
 }  // namespace
 
-CompileResult compile_openwatcom(const watcom::OpenWatcom& ow, const stdfs::path& srcdir) {
+CompileResult compile_openwatcom(const base::watcom::OpenWatcom& ow, const stdfs::path& srcdir) {
     CompileResult result;
     const auto tools = openwatcom_tools(ow);
     if (!tools) {
@@ -637,7 +637,7 @@ std::vector<VeneerFunction> veneer_functions(std::string_view c_source) {
     return out;
 }
 
-BuildResult build_openwatcom(const watcom::OpenWatcom& ow, const stdfs::path& srcdir_in, const std::optional<stdfs::path>& outdir_in) {
+BuildResult build_openwatcom(const base::watcom::OpenWatcom& ow, const stdfs::path& srcdir_in, const std::optional<stdfs::path>& outdir_in) {
     BuildResult result;
     const auto tools = openwatcom_tools(ow);
     if (!tools) {
@@ -654,7 +654,7 @@ BuildResult build_openwatcom(const watcom::OpenWatcom& ow, const stdfs::path& sr
     }
     const std::string module = fs::to_text(cfiles[0].stem());
     result.module = module;
-    const stdfs::path libdir = ow.lib_dir(watcom::Target::Win32);
+    const stdfs::path libdir = ow.lib_dir(base::watcom::Target::Win32);
 
     // the veneer is copied verbatim (authentic source; the exports come from directives, not __declspec)
     const std::string veneer = veneer_text(cfiles[0]);

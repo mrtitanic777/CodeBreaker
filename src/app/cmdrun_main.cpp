@@ -13,7 +13,7 @@
 #include "analyze/ppc_calls.hpp"
 #include "build/disc_image.hpp"
 #include "build/floppy.hpp"
-#include "build/watcom.hpp"
+#include "base/watcom.hpp"
 #include "build/xex_edit.hpp"
 #include "core/cli.hpp"
 #include "core/fs.hpp"
@@ -86,7 +86,7 @@ int main(int argc, char** argv) {
     floppy_env.design_dir = design;
     floppy_env.state = state;
     if (!openwatcom.empty()) {
-        const build::watcom::OpenWatcom watcom(openwatcom);
+        const base::watcom::OpenWatcom watcom(openwatcom);
         floppy_env.writer = source::dos_writer::options_for(watcom, state / "assembly_probes.json");
     }
 

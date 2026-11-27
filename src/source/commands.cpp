@@ -13,7 +13,7 @@
 #include "build/module.hpp"
 #include "build/msvc152.hpp"
 #include "build/native_dos.hpp"
-#include "build/watcom.hpp"
+#include "base/watcom.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/log.hpp"
@@ -275,7 +275,7 @@ struct Production::Impl {
         if (!kit_) kit_ = std::make_shared<engine::LaneKit>(config, corpus);
         return kit_;
     }
-    build::watcom::OpenWatcom open_watcom() const { return build::watcom::OpenWatcom::from_settings(config.text("openwatcom")); }
+    base::watcom::OpenWatcom open_watcom() const { return base::watcom::OpenWatcom::from_settings(config.text("openwatcom")); }
     stdfs::path probes() const { return config.state() / "assembly_probes.json"; }
 
     // The names of the kit's services, as the driver lane has them: from the knowledge base.

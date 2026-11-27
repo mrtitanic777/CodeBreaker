@@ -680,11 +680,11 @@ private:
 
 std::optional<stdfs::path> ModuleBuilder::build16(Built& b, const stdfs::path& original, const ct::Module16& m, const stdfs::path& folder) const {
     const Services& s = services_;
-    const watcom::OpenWatcom& ow = s.open_watcom;
+    const base::watcom::OpenWatcom& ow = s.open_watcom;
     const stdfs::path wcc = ow.tool("wcc"), wlink = ow.tool("wlink");   // (16-bit Windows: its compiler and packager)
     if (wcc.empty() || wlink.empty()) throw UsageError("OpenWatcom's 16-bit compiler is not set up (settings.json: openwatcom)");
     if (!m.description) throw UsageError("a 16-bit module is built with its description");
-    const Env env = ow.environment(watcom::Target::Win16);
+    const Env env = ow.environment(base::watcom::Target::Win16);
     Ctx16 c{.services = s, .b = b, .path = original, .m = m, .folder = folder, .ne = formats::ne::Module::open_file(original), .cc = {wcc, env}, .wlink = wlink,
             .wasm = ow.tool("wasm"), .env = env};
     c.iface = s.interface_of(original);
@@ -787,7 +787,7 @@ std::optional<stdfs::path> ModuleBuilder::build16(Built& b, const stdfs::path& o
         if (header.flags & 0x0008) lines.push_back("option protmode");
         if (!(header.flags & 0x0300)) lines.push_back("option noapptype");
     }
-    lines.push_back("libpath " + fs::to_text(ow.lib_dir(watcom::Target::Win16)));   // lib286/win: the real library, not the stub above it
+    lines.push_back("libpath " + fs::to_text(ow.lib_dir(base::watcom::Target::Win16)));   // lib286/win: the real library, not the stub above it
     const std::uint32_t cs = header.cs_ip >> 16, ip = header.cs_ip & 0xFFFF;
     const auto entry = cs != 0 ? c.at.find(Place{cs, ip}) : c.at.end();
     const bool entry_rebuilt = entry != c.at.end() && c.publics.contains(entry->second);

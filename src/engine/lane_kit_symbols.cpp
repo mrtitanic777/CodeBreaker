@@ -269,7 +269,7 @@ namespace {
 // What the describer asks of the symbol tables.
 class KitKnowledge final : public decompile::describe::Knowledge {
 public:
-    KitKnowledge(KitSizes& sizes, knowledge::Knowledge& kb, base::Corpus& corpus, build::watcom::ImportMaps& imports, KitEnvironment& env)
+    KitKnowledge(KitSizes& sizes, knowledge::Knowledge& kb, base::Corpus& corpus, base::watcom::ImportMaps& imports, KitEnvironment& env)
         : sizes_(sizes), kb_(kb), corpus_(corpus), imports_(imports), env_(env) {}
 
     std::optional<std::int64_t> win16_argument_bytes(std::string_view api) override { return widen(sizes_.win16_bytes(api)); }
@@ -323,7 +323,7 @@ private:
     KitSizes& sizes_;
     knowledge::Knowledge& kb_;
     base::Corpus& corpus_;
-    build::watcom::ImportMaps& imports_;
+    base::watcom::ImportMaps& imports_;
     KitEnvironment& env_;
 };
 
@@ -332,7 +332,7 @@ private:
 struct KitEnvironment::Impl {
     Impl(const config::Config& c, base::Corpus& k, knowledge::Knowledge& kn)
         : config(c), corpus(k), kb(kn), sizes(k, kn), imports([](const stdfs::path& module) {
-              std::vector<build::watcom::ImportedName> out;
+              std::vector<base::watcom::ImportedName> out;
               for (const formats::pe::Import& i : formats::pe::Image::open(module).imports()) out.push_back({i.dll, i.name});
               return out;
           }) {}
@@ -341,14 +341,14 @@ struct KitEnvironment::Impl {
     base::Corpus& corpus;
     knowledge::Knowledge& kb;
     KitSizes sizes;
-    build::watcom::ImportMaps imports;
+    base::watcom::ImportMaps imports;
     std::unique_ptr<KitKnowledge> describing;
     std::mutex lock;
     std::optional<translate::native_l2::Library> library;
     std::optional<symbols::runtime_library::SignatureTable> signatures;   // the runtime library's functions by their leading bytes, from the knowledge base
     std::optional<symbols::runtime_library::SignatureTable> signatures16;   // the same of a 16-bit module's
     std::optional<symbols::runtime_library::SignatureTable> signatures64;   // and of an x64 module's
-    std::map<stdfs::path, std::unordered_map<std::string, build::watcom::NumberedImport>> numbered;   // by module: what the description said
+    std::map<stdfs::path, std::unordered_map<std::string, base::watcom::NumberedImport>> numbered;   // by module: what the description said
 
     // PowerPC images read (the last few: the facts, the functions and the names are asked in turn for one), and what names their functions.
     std::mutex ppc_lock;
@@ -460,9 +460,9 @@ std::vector<decompile::decompiler::Va> KitEnvironment::powerpc_functions(const s
 
 // what the builders ask of a module that was decompiled: the imports it has by number
 void KitEnvironment::described(const stdfs::path& module, const decompile::describe::PeDescription& d) {
-    std::unordered_map<std::string, build::watcom::NumberedImport> numbered;
+    std::unordered_map<std::string, base::watcom::NumberedImport> numbered;
     for (const auto& [name, imp] : d.by_number) {
-        build::watcom::NumberedImport n;
+        base::watcom::NumberedImport n;
         n.dll = imp.module;
         n.number = static_cast<std::uint32_t>(imp.number);
         if (imp.pop && *imp.pop >= 0) n.argument_bytes = static_cast<std::uint32_t>(*imp.pop);
@@ -505,16 +505,16 @@ std::map<decompile::decompiler::Va, std::string> KitEnvironment::program_names(c
 }
 
 std::function<std::vector<std::string>(ByteView)> KitEnvironment::import_lines(const stdfs::path& module, const std::vector<std::string>& used,
-                                                                                const build::watcom::OpenWatcom&) {
-    const std::shared_ptr<const build::watcom::ImportMap> map = impl_->imports.of(module);
-    std::unordered_map<std::string, build::watcom::NumberedImport> numbered;
+                                                                                const base::watcom::OpenWatcom&) {
+    const std::shared_ptr<const base::watcom::ImportMap> map = impl_->imports.of(module);
+    std::unordered_map<std::string, base::watcom::NumberedImport> numbered;
     {
         std::lock_guard hold(impl_->lock);
         if (const auto it = impl_->numbered.find(module); it != impl_->numbered.end()) numbered = it->second;
     }
     return [this, map, numbered = std::move(numbered), used, module](ByteView object) {
         const std::vector<std::string> externs = formats::omf::externs(object);
-        const std::string text = build::watcom::import_lines(externs, used, *map, impl_->imports, &numbered);
+        const std::string text = base::watcom::import_lines(externs, used, *map, impl_->imports, &numbered);
         std::vector<std::string> lines;
         for (const std::string_view line : text::lines(text::trim(text))) lines.emplace_back(line);
         return lines;

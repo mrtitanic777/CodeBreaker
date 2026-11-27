@@ -10,7 +10,7 @@
 
 #include "base/cache.hpp"
 #include "build/msc6.hpp"
-#include "build/watcom.hpp"
+#include "base/watcom.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/log.hpp"
@@ -330,7 +330,7 @@ struct ProductionState {
     const symbols::prototypes::PrototypeTable& table() {
         std::lock_guard hold(lock);
         if (!prototypes) {
-            const build::watcom::OpenWatcom ow = build::watcom::OpenWatcom::from_settings(config.text("openwatcom"));
+            const base::watcom::OpenWatcom ow = base::watcom::OpenWatcom::from_settings(config.text("openwatcom"));
             const stdfs::path reference = corpus ? corpus->reference() : stdfs::path();
             prototypes = std::make_unique<symbols::prototypes::PrototypeTable>(
                 symbols::prototypes::read_headers(symbols::prototypes::HeaderFolders::standard(ow.root(), reference)));

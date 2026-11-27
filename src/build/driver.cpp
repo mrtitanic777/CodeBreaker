@@ -143,7 +143,7 @@ std::string trimmed_line(std::string_view line) {
 
 // ---- the tools -------------------------------------------------------------------------------------------------
 
-stdfs::path tool(const watcom::OpenWatcom& open_watcom, std::string_view name) {
+stdfs::path tool(const base::watcom::OpenWatcom& open_watcom, std::string_view name) {
     if (!open_watcom.root().empty()) {
         const stdfs::path exe = open_watcom.root() / "binnt" / (std::string(name) + ".exe");
         if (is_file(exe))
@@ -169,12 +169,12 @@ stdfs::path kit_folder(const stdfs::path& kit_source, const stdfs::path& copy_to
     return fs::to_text(copy_to).find(' ') != std::string::npos ? stdfs::path() : copy_to;
 }
 
-Tools find_tools(const watcom::OpenWatcom& open_watcom, const stdfs::path& kit_source, const stdfs::path& state) {
+Tools find_tools(const base::watcom::OpenWatcom& open_watcom, const stdfs::path& kit_source, const stdfs::path& state) {
     Tools tools;
     tools.wasm = tool(open_watcom, "wasm");
     tools.wlink = tool(open_watcom, "wlink");
     tools.kit = kit_folder(kit_source, state / "driver_kit");
-    tools.env = open_watcom.environment(watcom::Target::Win32);
+    tools.env = open_watcom.environment(base::watcom::Target::Win32);
     return tools;
 }
 

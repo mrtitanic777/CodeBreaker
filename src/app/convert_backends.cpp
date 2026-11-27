@@ -28,7 +28,7 @@
 #include "app/convert.hpp"
 #include "app/convert_judge.hpp"
 #include "base/config.hpp"
-#include "build/watcom.hpp"
+#include "base/watcom.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
@@ -67,7 +67,7 @@ struct CvTools {
     config::Config config;
 
     explicit CvTools(const config::Config& c) : config(c) {}
-    build::watcom::OpenWatcom open_watcom() const { return build::watcom::OpenWatcom::from_settings(config.text("openwatcom")); }
+    base::watcom::OpenWatcom open_watcom() const { return base::watcom::OpenWatcom::from_settings(config.text("openwatcom")); }
     source::dos_writer::Options dos_options() const {
         return source::dos_writer::options_for(open_watcom(), config.state() / "assembly_probes.json");
     }

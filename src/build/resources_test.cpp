@@ -661,7 +661,7 @@ CB_TEST("build.resources.the_result_says_what_came_back", [] {
 
 CB_TEST("build.resources.rebuild_of_a_module_without_resources_says_so", [] {
     cb::fs::ScopedTempDir dir("cb-res");
-    const br::Rebuilt r = br::rebuild(cb::build::watcom::OpenWatcom(stdfs::path()), module("find.exe"), dir.path());
+    const br::Rebuilt r = br::rebuild(cb::base::watcom::OpenWatcom(stdfs::path()), module("find.exe"), dir.path());
     CB_CHECK_EQ(r.error, std::string("the module has no resources"));
     CB_CHECK(!r.same());
     CB_CHECK(!r.rc.has_value());
@@ -670,8 +670,8 @@ CB_TEST("build.resources.rebuild_of_a_module_without_resources_says_so", [] {
 CB_TEST("build.resources.without_a_resource_compiler_the_compile_is_a_tool_error", [] {
     cb::fs::ScopedTempDir dir("cb-res");
     cb::fs::write_text(dir.path() / "x.rc", "");
-    CB_CHECK_THROWS_AS(cb::ToolError, (void)br::compile_rc(cb::build::watcom::OpenWatcom(dir.path() / "no-openwatcom"), dir.path() / "x.rc", Text::Wide));
-    CB_CHECK_THROWS_AS(cb::ToolError, (void)br::rebuild(cb::build::watcom::OpenWatcom(dir.path() / "no-openwatcom"), module("charmap.exe"), dir.path() / "out"));
+    CB_CHECK_THROWS_AS(cb::ToolError, (void)br::compile_rc(cb::base::watcom::OpenWatcom(dir.path() / "no-openwatcom"), dir.path() / "x.rc", Text::Wide));
+    CB_CHECK_THROWS_AS(cb::ToolError, (void)br::rebuild(cb::base::watcom::OpenWatcom(dir.path() / "no-openwatcom"), module("charmap.exe"), dir.path() / "out"));
 });
 
 // With CB_OPENWATCOM (the OpenWatcom tree) set, a real module goes through the whole round trip: written, compiled by
@@ -679,7 +679,7 @@ CB_TEST("build.resources.without_a_resource_compiler_the_compile_is_a_tool_error
 CB_TEST("build.resources.a_16_bit_module_survives_the_round_trip_through_wrc", [] {
     const auto root = cb::fs::get_env("CB_OPENWATCOM");
     if (!root) return;   // (not set up: nothing to run)
-    const cb::build::watcom::OpenWatcom ow{cb::fs::from_text(*root)};
+    const cb::base::watcom::OpenWatcom ow{cb::fs::from_text(*root)};
     cb::fs::ScopedTempDir dir("cb-res");
     const br::Rebuilt r = br::rebuild(ow, module("charmap.exe"), dir.path());
     CB_CHECK_EQ(r.error, std::string());
@@ -697,7 +697,7 @@ CB_TEST("build.resources.a_16_bit_module_survives_the_round_trip_through_wrc", [
 CB_TEST("build.resources.a_32_bit_module_survives_the_round_trip_through_wrc", [] {
     const auto root = cb::fs::get_env("CB_OPENWATCOM");
     if (!root) return;
-    const cb::build::watcom::OpenWatcom ow{cb::fs::from_text(*root)};
+    const cb::base::watcom::OpenWatcom ow{cb::fs::from_text(*root)};
     cb::fs::ScopedTempDir dir("cb-res");
     const br::Rebuilt r = br::rebuild(ow, module("xcopy32.exe"), dir.path());
     CB_CHECK_EQ(r.error, std::string());
@@ -711,7 +711,7 @@ CB_TEST("build.resources.a_32_bit_module_survives_the_round_trip_through_wrc", [
 CB_TEST("build.resources.a_resource_the_compiler_rejects_is_carried_as_a_payload", [] {
     const auto root = cb::fs::get_env("CB_OPENWATCOM");
     if (!root) return;
-    const cb::build::watcom::OpenWatcom ow{cb::fs::from_text(*root)};
+    const cb::base::watcom::OpenWatcom ow{cb::fs::from_text(*root)};
     // a 16-bit module's version block is the example the compiler gets wrong; SETUP.EXE has one and an icon group
     cb::fs::ScopedTempDir dir("cb-res");
     const br::Rebuilt r = br::rebuild(ow, module("resources/SETUP.EXE"), dir.path());
@@ -750,7 +750,7 @@ CB_TEST("build.resources.the_command_prints_a_line_and_the_rc_it_wrote", [] {
     if (!root) return;
     cb::fs::ScopedTempDir dir("cb-res");
     br::Environment env;
-    env.open_watcom = cb::build::watcom::OpenWatcom(cb::fs::from_text(*root));
+    env.open_watcom = cb::base::watcom::OpenWatcom(cb::fs::from_text(*root));
     env.retail = [&](std::string_view name) -> std::optional<stdfs::path> {
         return name == "charmap.exe" ? std::optional<stdfs::path>(module("charmap.exe")) : std::nullopt;
     };

@@ -1,4 +1,4 @@
-// build/watcom.hpp -- compiling and linking reconstructed C with OpenWatcom.
+// base/watcom.hpp -- compiling and linking reconstructed C with OpenWatcom.
 //
 // The pieces a whole-module build needs: where the tools are and the environment they run in, the flags a
 // reconstruction is compiled with, and how a module's imports are declared and linked so calls reach the same
@@ -28,7 +28,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace cb::build::watcom {
+namespace cb::base::watcom {
 
 // The kind of module a build targets.
 enum class Target {
@@ -136,4 +136,4 @@ struct NumberedImport {
 std::string import_lines(std::span<const std::string> externs, std::span<const std::string> wanted, const ImportMap& imports,
                          const ImportMaps& names, const std::unordered_map<std::string, NumberedImport>* numbered = nullptr);
 
-}  // namespace cb::build::watcom
+}  // namespace cb::base::watcom

@@ -2,7 +2,7 @@
 //
 // The Microsoft C 8 half is `match <module>`'s (the C as the decompiler wrote it, not folded back: the C the build has); this adds OpenWatcom's half
 // -- every source file compiled again by OpenWatcom -zmsc, with the same switches -- and the rows and the report (verify/gate16/scoreboard16).
-#include "build/watcom.hpp"
+#include "base/watcom.hpp"
 #include "core/fs.hpp"
 #include "core/log.hpp"
 #include "source/pipeline_match16.hpp"
@@ -36,8 +36,8 @@ int s16_command(World& world, const cli::Args& args) {
     const std::optional<std::filesystem::path> path = world.find(parsed->module);
     if (!path) throw UsageError(parsed->module + ": a 16-bit Windows module is needed");
     if (world.corpus().lane(*path) != base::Lane::Ne) throw UsageError(parsed->module + ": a 16-bit Windows module is needed");
-    const build::watcom::OpenWatcom watcom = build::watcom::OpenWatcom::from_settings(world.config().text("openwatcom"));
-    if (watcom.cc(build::watcom::Target::Win16).empty()) throw UsageError("OpenWatcom is not set up (settings.json: openwatcom): its 16-bit compiler is needed");
+    const base::watcom::OpenWatcom watcom = base::watcom::OpenWatcom::from_settings(world.config().text("openwatcom"));
+    if (watcom.cc(base::watcom::Target::Win16).empty()) throw UsageError("OpenWatcom is not set up (settings.json: openwatcom): its 16-bit compiler is needed");
 
     const auto log = [](std::string_view line) { cb::out("{}\n", line); };
     Match16Options options;

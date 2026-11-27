@@ -14,7 +14,7 @@
 
 #include <nlohmann/json.hpp>
 
-#include "build/watcom.hpp"
+#include "base/watcom.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/json.hpp"
@@ -289,7 +289,7 @@ Decompiler::Decompiler(Context context) : context_(std::move(context)) {
 }
 
 std::filesystem::path Decompiler::scratch_for(std::initializer_list<std::string_view> parts) const {
-    if (context_.scratch.empty()) return build::watcom::scratch_dir(std::span<const std::string_view>(parts.begin(), parts.size()));
+    if (context_.scratch.empty()) return base::watcom::scratch_dir(std::span<const std::string_view>(parts.begin(), parts.size()));
     std::filesystem::path p = context_.scratch;
     for (const std::string_view part : parts) p /= std::string(part);
     return p;

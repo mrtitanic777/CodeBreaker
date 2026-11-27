@@ -16,7 +16,7 @@
 
 #include "base/config.hpp"
 #include "store/converted.hpp"
-#include "build/watcom.hpp"
+#include "base/watcom.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "formats/detect.hpp"
@@ -299,7 +299,7 @@ CB_TEST("decompile.environment.proof_decompile_as_recorded", [] {
         }
     }();
     knowledge::Store store(fs::from_text(where) / "knowledge.sqlite", knowledge::DataFolders::under(main.checkout_root()));
-    knowledge::Knowledge kb(store, symbols::prototypes::HeaderFolders::standard(build::watcom::OpenWatcom::from_settings(main.text("openwatcom")).root(), reference));
+    knowledge::Knowledge kb(store, symbols::prototypes::HeaderFolders::standard(base::watcom::OpenWatcom::from_settings(main.text("openwatcom")).root(), reference));
     const translate::native_l2::Library library = translate::native_l2::Library::builtin();
     const std::unique_ptr<CorpusEnvironment> environment = CorpusEnvironment::over_knowledge(corpus, library, kb);
     decompiler::Context context;

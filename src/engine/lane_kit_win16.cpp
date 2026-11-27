@@ -37,7 +37,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::win16_lane() {
     KitSizes& sizes = i.environment().sizes();
     knowledge::Knowledge& kb = i.knowledge();
     emulate::pcode::LifterSet* lifters = i.lifters();
-    const build::watcom::OpenWatcom ow = i.openwatcom();
+    const base::watcom::OpenWatcom ow = i.openwatcom();
 
     verify::lanes::Win16LaneSpec spec;
     // the module decompiled and made compilable
@@ -46,10 +46,10 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::win16_lane() {
     };
     // OpenWatcom's 16-bit tools
     build::functions::Tools16 tools;
-    tools.wcc = {ow.tool("wcc"), ow.environment(build::watcom::Target::Win16)};
+    tools.wcc = {ow.tool("wcc"), ow.environment(base::watcom::Target::Win16)};
     tools.wlink = ow.tool("wlink");
     tools.wasm = ow.tool("wasm");
-    tools.lib_dir = ow.lib_dir(build::watcom::Target::Win16);
+    tools.lib_dir = ow.lib_dir(base::watcom::Target::Win16);
     tools.interrupt_routines = [](const std::set<int>& vectors) {
         const std::set<std::uint32_t> v(vectors.begin(), vectors.end());
         const decompile::c_text::InterruptRoutines r = decompile::c_text::interrupt_routines(v);

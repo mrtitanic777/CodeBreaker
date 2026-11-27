@@ -26,7 +26,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::driver_lane() {
     }
     Impl& i = *impl_;
     knowledge::Knowledge& kb = i.knowledge();
-    const build::watcom::OpenWatcom ow = i.openwatcom();
+    const base::watcom::OpenWatcom ow = i.openwatcom();
     const config::Config& config = i.config;
     emulate::pcode::LifterSet* lifters = i.lifters();
     base::Corpus& corpus = *i.corpus;

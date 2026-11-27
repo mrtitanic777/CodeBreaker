@@ -24,7 +24,7 @@ std::optional<Options> dw_options() {
     try {
         const config::Config main = config::Config::load(config::current().main_checkout());
         const auto root = main.path("openwatcom");
-        const build::watcom::OpenWatcom ow = build::watcom::OpenWatcom::from_settings(root ? fs::to_text(*root) : std::string());
+        const base::watcom::OpenWatcom ow = base::watcom::OpenWatcom::from_settings(root ? fs::to_text(*root) : std::string());
         if (ow.tool("wasm").empty() || ow.tool("wlink").empty()) return std::nullopt;
         return options_for(ow, probes_dir.path() / "assembly_probes.json");
     } catch (const Error&) {   // (no configuration to read: no tools to test with)

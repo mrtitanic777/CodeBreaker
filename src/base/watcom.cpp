@@ -1,4 +1,4 @@
-#include "build/watcom.hpp"
+#include "base/watcom.hpp"
 
 #include <algorithm>
 
@@ -6,7 +6,7 @@
 #include "core/log.hpp"
 #include "core/text.hpp"
 
-namespace cb::build::watcom {
+namespace cb::base::watcom {
 
 namespace stdfs = std::filesystem;
 
@@ -143,4 +143,4 @@ std::string import_lines(std::span<const std::string> externs, std::span<const s
     return out;
 }
 
-}  // namespace cb::build::watcom
+}  // namespace cb::base::watcom

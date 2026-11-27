@@ -9,7 +9,7 @@
 #include "analyze/conventions.hpp"
 #include "analyze/image.hpp"
 #include "analyze/structures.hpp"
-#include "build/watcom.hpp"
+#include "base/watcom.hpp"
 #include "core/crypto.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
@@ -254,8 +254,8 @@ symbols::driver_services::Table driver_table(knowledge::Knowledge& knowledge) {
 
 namespace {
 
-std::vector<build::watcom::ImportedName> read_imports(const std::filesystem::path& module) {
-    std::vector<build::watcom::ImportedName> out;
+std::vector<base::watcom::ImportedName> read_imports(const std::filesystem::path& module) {
+    std::vector<base::watcom::ImportedName> out;
     for (const formats::pe::Import& i : formats::pe::Image::open(module).imports()) out.push_back({i.dll, i.name});
     return out;
 }
@@ -338,7 +338,7 @@ struct CorpusEnvironment::Impl {
 
     Sources s;
     std::shared_ptr<CorpusModules> modules;
-    build::watcom::ImportMaps imports;
+    base::watcom::ImportMaps imports;
     std::mutex args_lock;   // the stack scan and the argument memories: one at a time (the scanner keeps decoders, the memories a base)
     api::StackScanner scanner;
     std::map<std::filesystem::path, std::shared_ptr<const api::ExportingModule>> described_modules;

@@ -186,7 +186,7 @@ struct ModuleRun {
     std::shared_ptr<readable::Sdk> sdk() {
         if (!sdk_) {
             const symbols::prototypes::HeaderFolders folders = symbols::prototypes::HeaderFolders::standard(
-                build::watcom::OpenWatcom::from_settings(world.config().text("openwatcom")).root(), world.corpus().reference());
+                base::watcom::OpenWatcom::from_settings(world.config().text("openwatcom")).root(), world.corpus().reference());
             sdk_ = std::make_shared<readable::Sdk>(readable::Sdk::read(folders, world.kit().knowledge().prototypes()));
         }
         return sdk_;

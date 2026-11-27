@@ -28,7 +28,7 @@
 
 #include "base/config.hpp"
 #include "base/corpus.hpp"
-#include "build/watcom.hpp"
+#include "base/watcom.hpp"
 #include "build/x86cc/x86cc.hpp"
 #include "build/x86link/x86link.hpp"
 #include "core/error.hpp"
@@ -254,8 +254,8 @@ int assemble(std::span<const std::string> args) {
 
 // What OpenWatcom's compilers and linker read from the environment (WATCOM, INCLUDE, WLINK_LNK, LIB), for `target`, over the
 // process's own: the settings' OpenWatcom tree.
-std::map<std::string, std::string> watcom_environment(build::watcom::Target target) {
-    const build::watcom::OpenWatcom ow = build::watcom::OpenWatcom::from_settings(config::current().text("openwatcom"));
+std::map<std::string, std::string> watcom_environment(base::watcom::Target target) {
+    const base::watcom::OpenWatcom ow = base::watcom::OpenWatcom::from_settings(config::current().text("openwatcom"));
     std::map<std::string, std::string> env = ow.environment(target);
     std::string lib;
     for (const stdfs::path& d : {ow.root() / "lib386", ow.root() / "lib386" / "nt", ow.root() / "lib386" / "dos", ow.root() / "lib286", ow.root() / "lib286" / "dos",
@@ -277,7 +277,7 @@ int compile(std::span<const std::string> args) {
     else throw UsageError(std::format("--target is i86 (16-bit) or i386 (32-bit), not '{}'", target));
     if (!build::x86cc::available()) throw UsageError("this build of CodeBreaker has no C compiler in it (x86cc)");
     const build::x86cc::Run run = build::x86cc::compile(t, w.rest, stdfs::current_path(),
-                                                         watcom_environment(t == build::x86cc::Target::i86 ? build::watcom::Target::Win16 : build::watcom::Target::Win32));
+                                                         watcom_environment(t == build::x86cc::Target::i86 ? base::watcom::Target::Win16 : base::watcom::Target::Win32));
     if (!run.out.empty()) out_text(run.out);
     if (!run.err.empty()) err_text(run.err);
     return run.exit_code;
@@ -287,7 +287,7 @@ int link(std::span<const std::string> args) {
     if (args.empty()) throw UsageError("link <linker arguments, as wlink's>   (OpenWatcom's wlink, in this program: `link system dos file a.obj name a.exe`)");
     if (!build::x86link::available()) throw UsageError("this build of CodeBreaker has no linker in it (x86link)");
     const build::x86link::Run run = build::x86link::link(std::vector<std::string>(args.begin(), args.end()), stdfs::current_path(),
-                                                         watcom_environment(build::watcom::Target::Win32));
+                                                         watcom_environment(base::watcom::Target::Win32));
     if (!run.out.empty()) out_text(run.out);
     if (!run.err.empty()) err_text(run.err);
     return run.exit_code;

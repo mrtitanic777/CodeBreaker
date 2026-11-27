@@ -74,7 +74,7 @@
 #include "build/definitions.hpp"
 #include "build/functions.hpp"
 #include "build/resources.hpp"
-#include "build/watcom.hpp"
+#include "base/watcom.hpp"
 #include "core/arena.hpp"
 #include "core/bytes.hpp"
 #include "core/cli.hpp"
@@ -253,7 +253,7 @@ struct Services {
     // ---- the tools
     functions::FunctionBuilder* builder = nullptr;       // compiles, and keeps what compiles made
     functions::BuildCache* cache = nullptr;              // the shared build cache (may be null: nothing is kept)
-    watcom::OpenWatcom open_watcom{std::filesystem::path()};
+    base::watcom::OpenWatcom open_watcom{std::filesystem::path()};
     source::assembly::Prober* prober = nullptr;          // which instruction texts the assembler turns back into the original's bytes
 
     // ---- the corpus and the state

@@ -204,7 +204,7 @@ cli::Command sweep(const Environment& environment) {
                                              return {};
                                          }};
         services.tools_missing = [&world]() -> std::optional<std::string> {
-            if (build::watcom::OpenWatcom::from_settings(world.config().text("openwatcom")).tool("wcc386").empty())
+            if (base::watcom::OpenWatcom::from_settings(world.config().text("openwatcom")).tool("wcc386").empty())
                 return "OpenWatcom is not set up (settings.json: openwatcom): nothing could be built";
             return std::nullopt;
         };
