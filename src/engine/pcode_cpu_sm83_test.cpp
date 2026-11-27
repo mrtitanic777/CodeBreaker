@@ -1,17 +1,17 @@
 // cb-unity: alone
-// The Game Boy lane's SM83 on the one emulator (engine/pcode_cpu_sm83.cpp): the same run as the own core (emulate/sm83) on random instructions and programs, and the lane's
-// homebrew the same on both cores.
+// The Game Boy lane's SM83 on the one emulator (engine/pcode_cpu_sm83.cpp): random instructions and programs as the retired own core (emulate/sm83's interpreter)
+// ran them, kept as digests (the own core's unit tests are engine/pcode_cpu_sm83_unit_test).
 #include <cstdio>
 #include <cstdlib>
 #include <format>
-#include <map>
+#include <functional>
 #include <random>
 #include <string>
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "emulate/sm83.hpp"
-#include "engine/pcode_cpu_compare.hpp"
+#include "core/crypto.hpp"
 #include "engine/pcode_cpu_sm83.hpp"
 
 namespace cb {
@@ -73,15 +73,14 @@ std::uint16_t sm83_pointer(std::mt19937& rng) {   // mostly into work RAM, now a
     }
 }
 
-void sm83_compare_random(bool single, const char* title) {
+using Sm83Runner = std::function<sm83c::RunResult(sm83c::Bus&, std::uint16_t, const sm83c::RunOptions&)>;
+
+// Every opcode of both pages many times over (single), or programs of up to 40 steps, from random registers over random memory with the lane's devices: each
+// run's exit, steps, registers and device accesses, and the memory, folded into a CRC-32.
+std::uint32_t sm83_digest(bool single, const Sm83Runner& run) {
     std::mt19937 rng(single ? 20261122u : 20261123u);
-    std::map<std::string, unsigned> by_kind;
-    std::map<std::string, std::string> example;
-    unsigned runs = 0, different = 0;
-    const unsigned total = [] {
-        const auto given = fs::get_env("CB_PCODE_EXHAUSTIVE");
-        return given && !given->empty() && *given != "0" ? static_cast<unsigned>(std::strtoul(given->c_str(), nullptr, 10)) : 8000u;
-    }();
+    std::uint32_t digest = 0;
+    constexpr unsigned total = 8000;
     for (unsigned n = 0; n < total; ++n) {
         Bytes image(0x10000, 0);
         for (std::size_t i = 0; i < 0x8000; ++i) image[i] = static_cast<std::uint8_t>(rng());
@@ -101,6 +100,8 @@ void sm83_compare_random(bool single, const char* title) {
         } else {
             first = image[kSm83Code];
         }
+        (void)first;
+        (void)second;
         sm83c::RunOptions options;
         options.max_steps = single ? 1 : 40;
         options.sp = (rng() & 3) == 0 ? sm83_pointer(rng) : static_cast<std::uint16_t>(0xDFF0 - (rng() & 0xFE));
@@ -125,79 +126,31 @@ void sm83_compare_random(bool single, const char* title) {
         if ((rng() & 31) == 0) options.regs.ime = true;
         if ((rng() & 63) == 0) options.regs.halted = true;
 
-        Bytes mem[2];
-        sm83c::RunResult rr[2];
-        for (int core = 0; core < 2; ++core) {
-            Sm83Machine machine(image);
-            rr[core] = core == 1 ? engine::pcode_cpu::run(machine.bus, kSm83Code, options) : sm83c::run(machine.bus, kSm83Code, options);
-            mem[core].assign(machine.bus.memory().begin(), machine.bus.memory().end());
-        }
-        ++runs;
-        const std::string what = sm83_describe(rr[0], rr[1]);
-        if (what.empty() && mem[0] == mem[1]) continue;
-        ++different;
-        std::string fields = what;
-        for (std::size_t i = 0; i < mem[0].size() && mem[0] != mem[1]; ++i)
-            if (mem[0][i] != mem[1][i]) {
-                fields += std::format("mem@{:X}[own {:02X} emu {:02X}] ", i, mem[0][i], mem[1][i]);
-                break;
-            }
-        if (!single && (rr[0].steps != 0 || rr[1].steps != 0)) {   // (a program: the instruction after which they differ is what is at fault)
-            unsigned k0 = 0;
-            for (unsigned k = 1; k <= options.max_steps && k0 == 0; ++k) {
-                sm83c::RunOptions o2 = options;
-                o2.max_steps = k;
-                sm83c::RunResult ra, rb;
-                Bytes ma, mb;
-                for (int core = 0; core < 2; ++core) {
-                    Sm83Machine machine(image);
-                    (core == 1 ? rb : ra) = core == 1 ? engine::pcode_cpu::run(machine.bus, kSm83Code, o2) : sm83c::run(machine.bus, kSm83Code, o2);
-                    (core == 1 ? mb : ma).assign(machine.bus.memory().begin(), machine.bus.memory().end());
-                }
-                if (!sm83_describe(ra, rb).empty() || ma != mb) k0 = k;
-            }
-            fields += std::format("[first differing step {}] ", k0);
-            if (k0 > 0 && fs::get_env("CB_PCODE_TRACE")) {   // (the steps up to the first difference, on both cores: pc, A, F, SP)
-                for (unsigned k = k0 > 6 ? k0 - 6 : 1; k <= k0; ++k) {
-                    sm83c::RunOptions o3 = options;
-                    o3.max_steps = k;
-                    Sm83Machine m1(image), m2(image);
-                    const sm83c::RunResult x = sm83c::run(m1.bus, kSm83Code, o3), y = engine::pcode_cpu::run(m2.bus, kSm83Code, o3);
-                    std::printf("      step %u: own pc %04X a %02X f %02X sp %04X | emu pc %04X a %02X f %02X sp %04X\n", k, x.regs.pc, x.regs.a, x.regs.f, x.regs.sp, y.regs.pc, y.regs.a,
-                                y.regs.f, y.regs.sp);
-                }
-            }
-            if (k0 > 0) {   // (what the own core was about to run: where, and the bytes there)
-                sm83c::RunOptions o3 = options;
-                o3.max_steps = k0 - 1;
-                Sm83Machine machine(image);
-                const sm83c::RunResult before = sm83c::run(machine.bus, kSm83Code, o3);
-                const auto m = machine.bus.memory();
-                fields += std::format("[before it: pc {:04X} bytes {:02X} {:02X} {:02X} sp {:04X}] ", before.regs.pc, m[before.regs.pc], m[static_cast<std::uint16_t>(before.regs.pc + 1)],
-                                      m[static_cast<std::uint16_t>(before.regs.pc + 2)], before.regs.sp);
-            }
-        }
-        std::string key = single ? std::format("1: {:02X}{}", first, first == 0xCB ? std::format(" {:02X}", second) : std::string()) : std::string("N: ") + what.substr(0, 24);
-        ++by_kind[key];
-        if (!example.count(key))
-            example[key] = std::format("{:02X} {:02X} {:02X} {:02X} {:02X}: {}", image[kSm83Code], image[kSm83Code + 1], image[kSm83Code + 2], image[kSm83Code + 3], image[kSm83Code + 4], fields);
+        Sm83Machine machine(image);
+        const sm83c::RunResult r = run(machine.bus, kSm83Code, options);
+        std::string text = sm83_describe(sm83c::RunResult{}, r);
+        for (const sm83c::BusAccess& x : r.io) text += std::format("|{}{:X}={:X}", static_cast<int>(x.kind), x.where, x.value);
+        digest = crypto::crc32(ByteView(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()), digest);
+        digest = crypto::crc32(machine.bus.memory(), digest);
     }
-    std::printf("pcode_cpu sm83 %s: %u runs, %u differ\n", title, runs, different);
-    unsigned shown = 0;
-    for (const auto& [k, c] : by_kind)
-        if (++shown <= 40) std::printf("    %u x %s   e.g. %s\n", c, k.c_str(), example[k].c_str());
-    CB_CHECK_EQ(different, 0u);
+    return digest;
 }
+
+sm83c::RunResult on_the_emulator(sm83c::Bus& bus, std::uint16_t entry, const sm83c::RunOptions& options) { return engine::pcode_cpu::run(bus, entry, options); }
 
 }  // namespace
 
-CB_TEST("engine.pcode_cpu.sm83_instructions_run_as_the_own_core_does", [] { sm83_compare_random(true, "instructions"); });
+// What 8,000 runs of each kind gave on the retired core, and on the emulator the same when the core was retired (2026-11-27).
+CB_TEST("engine.pcode_cpu.sm83_instructions_run_as_the_own_core_did", [] {
+    const std::uint32_t digest = sm83_digest(true, on_the_emulator);
+    std::printf("pcode_cpu sm83 instructions: digest %08X\n", digest);
+    CB_CHECK_EQ(digest, 0x4A902DE1u);
+});
 
-CB_TEST("engine.pcode_cpu.sm83_programs_run_as_the_own_core_does", [] { sm83_compare_random(false, "programs"); });
-
-// The Game Boy lane's homebrew on both cores. The ROM is the memory's first bytes as they are in the file (no packing): a function's address is its file offset.
-CB_TEST("engine.pcode_cpu.the_game_boy_lane_runs_homebrew_the_same_on_both_cores", [] {
-    engine::pcode_compare::compare_homebrew("gb", "gb-ucity", ".gbc", [](const std::filesystem::path&, std::uint32_t address) -> std::size_t { return address; });
+CB_TEST("engine.pcode_cpu.sm83_programs_run_as_the_own_core_did", [] {
+    const std::uint32_t digest = sm83_digest(false, on_the_emulator);
+    std::printf("pcode_cpu sm83 programs: digest %08X\n", digest);
+    CB_CHECK_EQ(digest, 0x9EB75208u);
 });
 
 }  // namespace cb

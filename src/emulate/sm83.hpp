@@ -1,29 +1,22 @@
-// emulate/sm83.hpp -- the Game Boy's CPU (Sharp SM83), to run functions on.
+// emulate/sm83.hpp -- the Game Boy's CPU (Sharp SM83): the machine's side of a run (the bus, the registers, the run's options and result, and the run record the
+// judge compares). The CPU itself runs on the one emulator, the p-code interpreter of the SM83's SLEIGH description (engine/pcode_cpu_sm83: run() calls a function,
+// Sm83Cpu steps it).
 //
 //     sm83::Bus bus;                                   // the Z80 module's: 64 KB, device ranges handed to callbacks
-//     sm83::Cpu cpu(bus);
-//     cpu.step();                                      // one instruction
-//     sm83::RunResult r = sm83::run(bus, entry, {.regs = {.a = 3}});   // call a function: run to its RET
+//     sm83::RunResult r = engine::pcode_cpu::run(bus, entry, sm83::RunOptions{.regs = {.a = 3}});   // call a function: run to its RET
 //     cb::emulate::Run record = sm83::record(r);       // the one run record the judge compares
 //
-// Every instruction of cb/decompile/sm83's table, each pattern compiled once into a small program. Flags as the SM83
-// keeps them: Z N H C in bits 7-4 of F, bits 3-0 always zero; 16-bit ADD sets H and C from bits 11 and 15; ADD SP,e and
-// LD HL,SP+e set H and C from the low byte's unsigned add and clear Z; DAA works from N H C as the Z80's does but leaves
-// H clear. The I/O registers at $FF00-$FF7F and $FFFF are the machine's: a Bus hands them to callbacks and logs each
-// access (the SM83 has no I/O ports: IN and OUT do not exist).
-//
-// A Bus, a Cpu and a run belong to one thread; the compiled programs are shared.
+// Flags as the SM83 keeps them: Z N H C in bits 7-4 of F, bits 3-0 always zero. The I/O registers at $FF00-$FF7F and $FFFF are the machine's: a Bus hands them to
+// callbacks and logs each access (the SM83 has no I/O ports: IN and OUT do not exist).
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "core/bytes.hpp"
-#include "decompile/sm83.hpp"
 #include "emulate/run.hpp"
 #include "emulate/z80.hpp"
 
@@ -62,32 +55,6 @@ struct Fault {
     std::string text() const;   // "HALT" | "STOP" | "no instruction at 8000"
 };
 
-struct Program;   // an instruction pattern compiled (sm83.cpp)
-
-class Cpu {
-public:
-    explicit Cpu(Bus& bus);
-    ~Cpu();
-    Cpu(const Cpu&) = delete;
-    Cpu& operator=(const Cpu&) = delete;
-
-    Registers regs;
-    std::uint64_t steps = 0;   // instructions executed
-
-    // Execute the instruction at pc. nullopt: it ran. A Fault: it did not (an earlier HALT ran, the bytes are no
-    // instruction) or it was STOP (pc is already past it and the step is not counted). The instruction is decoded once
-    // per address and decoded again if the bytes under it change.
-    std::optional<Fault> step();
-
-private:
-    struct Decoded {
-        cb::decompile::sm83::Insn insn;
-        const Program* program = nullptr;
-    };
-    Bus* bus_;
-    std::unordered_map<std::uint16_t, Decoded> decoded_;
-};
-
 // The registers run() sets before it starts: a field only when given. F keeps only its high nibble.
 struct RegisterInit {
     std::optional<std::uint8_t> a, f, b, c, d, e, h, l;
@@ -111,15 +78,8 @@ struct RunResult {
     std::string exit() const;                  // "return" | "stopped: <why>" | "limit"
 };
 
-// Call the function at `entry` as CALL would and run it until it returns (RET to kReturnAddress), stops or takes
-// `max_steps` instructions. What the function wrote is in the bus's memory.
-RunResult run(Bus& bus, std::uint16_t entry, const RunOptions& options = {});
-
 // The run as the one run record: the registers A F BC DE HL SP as results, the bus's accesses as io, truncated when it
 // hit the step limit; the RunResult is the record's `raw`.
 cb::emulate::Run record(const RunResult& result);
-
-// run + record: the platform's runner (platforms/gb).
-cb::emulate::Run recorded(Bus& bus, std::uint16_t entry, const RunOptions& options = {});
 
 }  // namespace cb::emulate::sm83

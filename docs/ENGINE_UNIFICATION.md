@@ -170,3 +170,5 @@ tests only what it changes.
   apart from its recorded line numbers. Instructions with a byte in a bus device range are fetched through the bus (the
   emulator's `setFence`). Proof: 400,000 random instructions and the whole Z80 homebrew corpus (2,151 edited copies) the same
   on both cores; the random runs' digest is kept in `engine/pcode_cpu_z80_test`.
+- 2026-11-27: item 2: the SM83 (Game Boy) core retired: `engine/pcode_cpu_sm83` gains `Sm83Cpu` for single steps, the old
+  core's 25 unit tests run on it, and its random runs are kept as digests.
