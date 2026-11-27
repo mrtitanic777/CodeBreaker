@@ -251,7 +251,10 @@ DataItem data_item(ByteView buf, std::size_t off, std::size_t limit, std::uint32
 
 iw::Written write(const formats::psx::Exe& exe, std::string_view file_name, const std::filesystem::path& folder) {
     fs::make_dirs(folder);
-    const std::string stem = std::filesystem::path(file_name).stem().string();
+    // (an executable's extension goes; a disc's SLUS_000.01 keeps its whole name, ".01" is no extension)
+    const std::filesystem::path named(file_name);
+    const bool known = std::ranges::any_of(formats::psx::kExtensions, [&](std::string_view e) { return text::iequals(named.extension().string(), e); });
+    const std::string stem = known || !named.has_extension() ? named.stem().string() : named.filename().string();
     const std::string base_name = std::filesystem::path(file_name).filename().string();
     const ByteView text = exe.text();
     const std::uint32_t base = exe.header.t_addr;
@@ -460,7 +463,10 @@ iw::Written write(const formats::psx::Exe& exe, std::string_view file_name, cons
 }
 
 iw::Written reconstruct(const std::filesystem::path& exe_file, const std::filesystem::path& folder) {
-    return write(formats::psx::read(exe_file), exe_file.filename().string(), folder);
+    const formats::psx::Exe exe = formats::psx::read(exe_file);
+    // a disc's program is named as the disc names it (SLUS_007.55.s), not after the image
+    const std::string name = exe.boot_file.empty() ? exe_file.filename().string() : std::filesystem::path(exe.boot_file).filename().string();
+    return write(exe, name, folder);
 }
 
 }  // namespace cb::source::ps1_writer

@@ -8,6 +8,8 @@
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
+#include "formats/disc_image.hpp"
+#include "formats/iso9660.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::saturn {
@@ -16,18 +18,14 @@ namespace {
 
 constexpr std::string_view kReader = "saturn";
 constexpr std::string_view kHardwareId = "SEGA SEGASATURN ";
-constexpr std::size_t kRawHeader = 16;
-constexpr std::array<std::uint8_t, 12> kSync = {0, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0};
+constexpr std::size_t kRawHeader = disc::kRawHeader;
+using disc::raw_sync;
 constexpr std::uint32_t kDefaultLoad = 0x06004000;
 
 std::uint32_t be32(ByteView b, std::size_t at) {
     return static_cast<std::uint32_t>(b[at]) << 24 | static_cast<std::uint32_t>(b[at + 1]) << 16 | static_cast<std::uint32_t>(b[at + 2]) << 8 | b[at + 3];
 }
-std::uint32_t le32(ByteView b, std::size_t at) {
-    return static_cast<std::uint32_t>(b[at + 3]) << 24 | static_cast<std::uint32_t>(b[at + 2]) << 16 | static_cast<std::uint32_t>(b[at + 1]) << 8 | b[at];
-}
 
-bool raw_sync(ByteView d) { return d.size() >= kSync.size() && std::memcmp(d.data(), kSync.data(), kSync.size()) == 0; }
 bool has_id(ByteView d, std::size_t at) { return d.size() >= at + kHardwareId.size() && std::memcmp(d.data() + at, kHardwareId.data(), kHardwareId.size()) == 0; }
 
 std::string field(ByteView b, std::size_t at, std::size_t n) {
@@ -37,96 +35,16 @@ std::string field(ByteView b, std::size_t at, std::size_t n) {
     return std::string(text::trim(s));
 }
 
-// The image's sectors: where the user data of sector `lba` is. A raw sector's user data follows its 16-byte header (mode 1) or that and the
-// 8 bytes of a mode 2 form 1 sector's subheader.
-struct Sectors {
-    ByteView image;
-    std::size_t stride = kSector;
-    std::size_t skip = 0;
-
-    std::size_t count() const { return image.size() / stride; }
-    bool has(std::size_t lba) const { return (lba + 1) * stride <= image.size(); }
-    ByteView user(std::size_t lba) const { return image.subspan(lba * stride + skip, kSector); }
-    // `length` bytes from sector `lba`, over as many sectors as it takes (cut at the end of the image).
-    Bytes read(std::size_t lba, std::size_t length) const {
-        Bytes out;
-        for (std::size_t s = lba; out.size() < length && has(s); ++s) {
-            const ByteView u = user(s);
-            out.insert(out.end(), u.begin(), u.begin() + std::min(kSector, length - out.size()));
-        }
-        return out;
-    }
-};
-
-Sectors layout_of(ByteView image, std::size_t sector_size) {
-    Sectors s{image, kSector, 0};
-    if (sector_size == kRawSector || (sector_size == 0 && raw_sync(image))) {
-        s.stride = kRawSector;
-        s.skip = image.size() > 15 && image[15] == 2 ? kRawHeader + 8 : kRawHeader;
-    }
-    return s;
-}
-
-// A file in the root directory.
-struct Entry {
-    std::string name;
-    std::uint32_t lba = 0, size = 0;
-};
-
-// The root directory of the ISO 9660 volume at sector 16 (empty when there is none).
-std::vector<Entry> root_directory(const Sectors& sectors) {
-    std::vector<Entry> out;
-    if (!sectors.has(16)) return out;
-    const ByteView pvd = sectors.user(16);
-    if (pvd[0] != 1 || std::memcmp(pvd.data() + 1, "CD001", 5) != 0) return out;
-    const std::uint32_t dir_lba = le32(pvd, 158), dir_size = le32(pvd, 166);
-    const Bytes dir = sectors.read(dir_lba, std::min<std::uint32_t>(dir_size, 1u << 20));
-    std::size_t at = 0;
-    while (at + 34 <= dir.size()) {
-        const std::size_t length = dir[at];
-        if (length == 0) {   // (records do not cross a sector: the rest of this one is padding)
-            at = (at / kSector + 1) * kSector;
-            continue;
-        }
-        if (at + length > dir.size() || length < 34) break;
-        const std::size_t name_length = dir[at + 32];
-        if (33 + name_length <= length && (dir[at + 25] & 2) == 0) {
-            std::string name(reinterpret_cast<const char*>(dir.data()) + at + 33, name_length);
-            if (const std::size_t semi = name.find(';'); semi != std::string::npos) name.resize(semi);
-            out.push_back({std::move(name), le32(dir, at + 2), le32(dir, at + 10)});
-        }
-        at += length;
-    }
-    return out;
-}
-
-// The image a `.cue` sheet names, and the sector size of its first track (0 when the sheet does not say).
-struct Cue {
-    std::filesystem::path file;
-    std::size_t sector_size = 0;
-};
-std::optional<Cue> read_cue(const std::filesystem::path& path) {
-    Cue cue;
-    std::string sheet;
+// The files of the root directory of the ISO 9660 volume at sector 16 (empty when there is none).
+std::vector<iso9660::Entry> root_directory(const disc::Sectors& sectors) {
     try {
-        sheet = fs::read_text(path);
+        std::vector<iso9660::Entry> out;
+        for (iso9660::Entry& e : iso9660::Volume(sectors).list("/"))
+            if (!e.directory) out.push_back(std::move(e));
+        return out;
     } catch (const Error&) {
-        return std::nullopt;
+        return {};
     }
-    for (const std::string_view raw : text::lines(sheet)) {
-        const std::string_view line = text::trim(raw);
-        if (line.size() > 5 && text::iequals(line.substr(0, 5), "FILE ") && cue.file.empty()) {
-            const std::size_t open = line.find('"');
-            const std::size_t close = line.rfind('"');
-            if (open == std::string_view::npos || close <= open) return std::nullopt;
-            cue.file = path.parent_path() / std::string(line.substr(open + 1, close - open - 1));
-        } else if (text::iequals(line.substr(0, std::min<std::size_t>(line.size(), 6)), "TRACK ") && cue.sector_size == 0) {
-            const std::string mode = text::upper(line.substr(line.rfind(' ') + 1));
-            cue.sector_size = mode.ends_with("/2048") ? kSector : mode.ends_with("/2352") ? kRawSector : 0;
-        }
-    }
-    if (cue.file.empty()) return std::nullopt;
-    return cue;
 }
 
 }  // namespace
@@ -177,9 +95,9 @@ std::vector<std::uint32_t> Disc::functions(const Decoder& decode) const {
 }
 
 Disc parse(ByteView image, std::size_t sector_size) {
-    const Sectors sectors = layout_of(image, sector_size);
+    const disc::Sectors sectors = disc::Sectors::of(image, sector_size);
     if (!sectors.has(kSystemSectors - 1) && !sectors.has(0)) throw FormatError(kReader, 0, "no system area");
-    const ByteView first = sectors.has(0) ? sectors.user(0) : ByteView();
+    const Bytes first = sectors.sector(0);
     if (!has_id(first, 0)) throw FormatError(kReader, 0, "not a Saturn disc (no \"SEGA SEGASATURN\" at the start of the first sector)");
     Disc disc;
     disc.sector_size = kSector;
@@ -203,15 +121,15 @@ Disc parse(ByteView image, std::size_t sector_size) {
     x.first_read_size = be32(h, 0xF4);
 
     // the first program: the root directory's file with the lowest sector that is not a licence text
-    const std::vector<Entry> files = root_directory(sectors);
-    const Entry* chosen = nullptr;
-    for (const Entry& e : files) {
+    const std::vector<iso9660::Entry> files = root_directory(sectors);
+    const iso9660::Entry* chosen = nullptr;
+    for (const iso9660::Entry& e : files) {
         if (text::iequals(e.name, "ABS.TXT") || text::iequals(e.name, "BIB.TXT") || text::iequals(e.name, "CPY.TXT") || e.size == 0) continue;
-        if (!chosen || e.lba < chosen->lba) chosen = &e;
+        if (!chosen || e.extent < chosen->extent) chosen = &e;
     }
     if (chosen) {
         disc.first_read_name = chosen->name;
-        disc.first_read = sectors.read(chosen->lba, chosen->size);
+        disc.first_read = sectors.read(chosen->extent, chosen->size);
         if (disc.first_read.size() < chosen->size) disc.first_read.clear();   // (a file cut short by the image is not read)
     }
     return disc;
@@ -221,7 +139,7 @@ Disc read(const std::filesystem::path& path) {
     std::filesystem::path image = path;
     std::size_t sector_size = 0;
     if (has_extension(path, {".cue"})) {
-        const std::optional<Cue> cue = read_cue(path);
+        const std::optional<disc::Cue> cue = disc::read_cue(path);
         if (!cue) throw FormatError(kReader, 0, "a .cue sheet that names no file");
         image = cue->file;
         sector_size = cue->sector_size;
@@ -233,7 +151,7 @@ Disc read(const std::filesystem::path& path) {
 bool probe(const std::filesystem::path& path) {
     std::filesystem::path image = path;
     if (has_extension(path, {".cue"})) {
-        const std::optional<Cue> cue = read_cue(path);
+        const std::optional<disc::Cue> cue = disc::read_cue(path);
         if (!cue) return false;
         image = cue->file;
     }

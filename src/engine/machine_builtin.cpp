@@ -7,7 +7,9 @@
 #include <vector>
 
 #include "engine/lane_registry.hpp"
+#include "core/error.hpp"
 #include "formats/coleco.hpp"
+#include "formats/disc_image.hpp"
 #include "formats/cpc.hpp"
 #include "formats/gb.hpp"
 #include "formats/gba.hpp"
@@ -43,6 +45,17 @@ std::optional<std::vector<Detected>> info_ps1(const DetectInput& in) {
                    std::format("entry 0x{:08X}, program at 0x{:08X}, {} bytes", get<std::uint32_t>(file, 0x10, "detect"),
                                get<std::uint32_t>(file, 0x18, "detect"), size - 0x800),
                    "playstation", "reach");
+    }
+    // a PlayStation disc (raw or cooked sectors): the program its SYSTEM.CNF boots
+    if (size >= 17 * disc::kSector && (disc::raw_sync(head) || disc::is_image_name(std::filesystem::path(name)))) {
+        try {
+            const psx::Exe exe = psx::parse_disc(disc::Sectors::of(file));
+            return one("PlayStation disc", std::format("boots {}{}, entry 0x{:08X}, program at 0x{:08X}, {} bytes", exe.boot_file.substr(1),
+                                                       exe.boot.empty() ? std::string(" (no SYSTEM.CNF)") : std::string(), exe.header.pc0, exe.header.t_addr,
+                                                       exe.data.size() - psx::kHeaderSize),
+                       "playstation", "reach");
+        } catch (const Error&) {   // another console's disc, or no disc
+        }
     }
     return std::nullopt;
 }

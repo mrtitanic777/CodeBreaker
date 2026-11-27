@@ -6,6 +6,7 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "decompile/mips.hpp"
+#include "formats/disc_test_image.hpp"
 
 namespace cb::formats::psx {
 namespace {
@@ -105,6 +106,51 @@ CB_TEST("formats.psx.probe_reads_the_magic", [] {
     CB_CHECK(!probe(dir.path() / "other.exe"));
     CB_CHECK(!probe(dir.path() / "missing.exe"));
     CB_CHECK_EQ(read(dir.path() / "game.exe").header.t_size, 8u);
+});
+
+CB_TEST("formats.psx.system_cnf_names_the_program_a_disc_boots", [] {
+    std::string value;
+    CB_CHECK_EQ(*boot_file("BOOT = cdrom:\\SLUS_007.55;1\r\nTCB = 4\r\n", "BOOT", &value), "/SLUS_007.55");
+    CB_CHECK_EQ(value, "cdrom:\\SLUS_007.55;1");
+    CB_CHECK_EQ(*boot_file("boot=cdrom:\\GAME\\MAIN.EXE;1 arg1\n"), "/GAME/MAIN.EXE");   // (any case, no spaces, an argument after it)
+    CB_CHECK(!boot_file("BOOT2 = cdrom0:\\SLUS_200.62;1\n").has_value());                // a PlayStation 2 disc's line is not a BOOT line
+    CB_CHECK_EQ(*boot_file("BOOT2 = cdrom0:\\SLUS_200.62;1\n", "BOOT2"), "/SLUS_200.62");
+    CB_CHECK(!boot_file("TCB = 4\n").has_value());
+});
+
+CB_TEST("formats.psx.a_disc_is_read_as_the_program_it_boots", [] {
+    namespace dt = disc_test;
+    fs::ScopedTempDir dir("cb_psx");
+    const Bytes exe = image({0x03E00008, 0x12345678});
+    const Bytes cooked = dt::iso({{"SYSTEM.CNF", dt::bytes_of("BOOT = cdrom:\\SLUS_000.01;1\r\nTCB = 4\r\n")}, {"SLUS_000.01", exe}});
+    fs::write_file(dir.path() / "game.bin", dt::raw(cooked, 2));
+    fs::write_text(dir.path() / "game.cue", "FILE \"game.bin\" BINARY\n  TRACK 01 MODE2/2352\n    INDEX 01 00:00:00\n");
+    fs::write_file(dir.path() / "game.iso", cooked);
+    for (const char* name : {"game.bin", "game.cue", "game.iso"}) {
+        CB_CHECK(probe(dir.path() / name));
+        const Exe e = read(dir.path() / name);
+        CB_CHECK(e.data == exe);
+        CB_CHECK_EQ(e.boot_file, "/SLUS_000.01");
+        CB_CHECK_EQ(e.boot, "cdrom:\\SLUS_000.01;1");
+        CB_CHECK_EQ(e.header.pc0, 0x80010000u);
+    }
+    // no SYSTEM.CNF: PSX.EXE
+    fs::write_file(dir.path() / "old.iso", dt::iso({{"PSX.EXE", exe}}));
+    const Exe old = read(dir.path() / "old.iso");
+    CB_CHECK_EQ(old.boot_file, "/PSX.EXE");
+    CB_CHECK(old.boot.empty());
+    // a disc that is not a PlayStation's: no program, a missing one, one that is not a PS-X EXE
+    fs::write_file(dir.path() / "none.iso", dt::iso({{"README.TXT", dt::bytes_of("hi")}}));
+    fs::write_file(dir.path() / "missing.iso", dt::iso({{"SYSTEM.CNF", dt::bytes_of("BOOT = cdrom:\\SLUS_999.99;1\n")}}));
+    fs::write_file(dir.path() / "ps2.iso", dt::iso({{"SYSTEM.CNF", dt::bytes_of("BOOT2 = cdrom0:\\SLUS_200.62;1\n")}, {"SLUS_200.62", exe}}));
+    fs::write_file(dir.path() / "data.iso", dt::iso({{"PSX.EXE", Bytes(0x900, 0x4D)}}));
+    for (const char* name : {"none.iso", "missing.iso", "ps2.iso", "data.iso"}) {
+        CB_CHECK(!probe(dir.path() / name));
+        CB_CHECK_THROWS_AS(cb::FormatError, read(dir.path() / name));
+    }
+    // a PS-X EXE that happens to be named .bin is still the file itself
+    fs::write_file(dir.path() / "prog.bin", exe);
+    CB_CHECK(read(dir.path() / "prog.bin").boot_file.empty());
 });
 
 }  // namespace

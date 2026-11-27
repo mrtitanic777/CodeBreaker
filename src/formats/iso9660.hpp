@@ -25,6 +25,7 @@
 #include <vector>
 
 #include "core/bytes.hpp"
+#include "formats/disc_image.hpp"
 
 namespace cb::formats::iso9660 {
 
@@ -41,12 +42,16 @@ struct Entry {
     std::string name;            // as the volume writes it, without ";1"
     bool directory = false;
     std::uint32_t size = 0;      // bytes (a directory's extent)
+    std::uint32_t extent = 0;    // the first sector of its data
 };
 
 class Volume {
 public:
-    // Opens the image. FormatError if it has no primary volume descriptor.
+    // Opens the image: a cooked one (.iso, 2048 bytes a sector), or, read only, a raw one (.bin, 2352) or a .cue sheet's
+    // (formats/disc_image). FormatError if it has no primary volume descriptor.
     explicit Volume(const std::filesystem::path& path, Access access = Access::Read);
+    // The volume of sectors already open (an image in memory, or a file), read only.
+    explicit Volume(disc::Sectors sectors);
     Volume(Volume&&) noexcept;
     Volume& operator=(Volume&&) noexcept;
     ~Volume();

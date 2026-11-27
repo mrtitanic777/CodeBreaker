@@ -196,7 +196,9 @@ CB_TEST("source.ps1_writer.reconstruct_reads_a_file", [] {
     fs::write_file(dir.path() / "SLUS_000.00", image);
     const image_writer::Written r = reconstruct(dir.path() / "SLUS_000.00", dir.path() / "out");
     CB_CHECK(r.same);
-    CB_CHECK(r.source == dir.path() / "out" / "SLUS_000.s");
+    CB_CHECK(r.source == dir.path() / "out" / "SLUS_000.00.s");   // (a disc's file keeps its whole name: ".00" is not an extension)
+    fs::write_file(dir.path() / "game.exe", image);
+    CB_CHECK(reconstruct(dir.path() / "game.exe", dir.path() / "out3").source == dir.path() / "out3" / "game.s");
     fs::write_file(dir.path() / "notps.exe", Bytes(0x900, 0x4D));
     CB_CHECK_THROWS_AS(cb::FormatError, reconstruct(dir.path() / "notps.exe", dir.path() / "out2"));
 });

@@ -8,6 +8,7 @@
 #include "core/fs.hpp"
 #include "core/random_file.hpp"
 #include "core/text.hpp"
+#include "formats/disc_image.hpp"
 
 namespace cb::formats::iso9660 {
 namespace {
@@ -77,17 +78,27 @@ std::string_view without_version(std::string_view part) {
 struct Volume::Impl {
     std::filesystem::path path;
     Access access;
-    fs::RandomFile file;
+    // A cooked image file is read (and written) directly; a raw one, a .cue sheet's or one in memory through its sectors.
+    std::optional<fs::RandomFile> file;
+    std::optional<disc::Sectors> disc;
     std::vector<Tree> trees;   // the primary tree first, then the Joliet one if there is one
     std::uint32_t sectors = 0;
 
-    Impl(const std::filesystem::path& p, Access a)
-        : path(p), access(a), file(p, a == Access::Read ? fs::FileMode::Read : fs::FileMode::ReadWrite) {}
+    Impl(const std::filesystem::path& p, Access a) : path(p), access(a) {
+        if (a == Access::Read) {
+            disc::Sectors s = disc::Sectors::open(p);
+            if (s.raw() || s.file() != p) disc = std::move(s);
+        }
+        if (!disc) file.emplace(p, a == Access::Read ? fs::FileMode::Read : fs::FileMode::ReadWrite);
+    }
+    explicit Impl(disc::Sectors s) : access(Access::Read), disc(std::move(s)) { path = disc->file(); }
+
+    Bytes bytes_at(std::uint64_t offset, std::size_t count) const { return disc ? disc->read_at(offset, count) : file->read_at(offset, count); }
 
     [[noreturn]] void bad(std::uint64_t offset, const std::string& what) const { throw FormatError(kReader, offset, what); }
 
     Bytes read_at(std::uint64_t offset, std::size_t count) const {
-        Bytes out = file.read_at(offset, count);
+        Bytes out = bytes_at(offset, count);
         if (out.size() != count)
             throw TruncatedError(kReader, offset, count, out.size());
         return out;
@@ -164,7 +175,7 @@ struct Volume::Impl {
     void read_descriptors() {
         for (std::size_t i = 0; i < kMaxDescriptors; ++i) {
             const std::uint64_t at = (kFirstDescriptor + i) * kSectorSize;
-            const Bytes d = file.read_at(at, kSectorSize);
+            const Bytes d = bytes_at(at, kSectorSize);
             if (d.size() < kSectorSize || d[1] != 'C' || d[2] != 'D' || d[3] != '0' || d[4] != '0' || d[5] != '1')
                 break;
             if (d[0] == 255)
@@ -197,6 +208,7 @@ struct Volume::Impl {
 Volume::Volume(const std::filesystem::path& path, Access access) : impl_(std::make_unique<Impl>(path, access)) {
     impl_->read_descriptors();
 }
+Volume::Volume(disc::Sectors sectors) : impl_(std::make_unique<Impl>(std::move(sectors))) { impl_->read_descriptors(); }
 Volume::Volume(Volume&&) noexcept = default;
 Volume& Volume::operator=(Volume&&) noexcept = default;
 Volume::~Volume() = default;
@@ -219,7 +231,7 @@ std::vector<Entry> Volume::list(std::string_view directory, Names tree) const {
     const Tree& t = tree_of(impl_->trees, tree);
     std::vector<Entry> out;
     for (const Record& r : impl_->children(t, impl_->find_or_throw(t, directory)))
-        out.push_back({r.name, r.directory(), r.size});
+        out.push_back({r.name, r.directory(), r.size, r.extent});
     return out;
 }
 
@@ -252,7 +264,7 @@ void Volume::replace(std::string_view file, ByteView data) {
     }
 
     // The data goes after the last sector of the image (the image is padded out to whole sectors first).
-    const std::uint64_t end = v.file.size();
+    const std::uint64_t end = v.file->size();
     const std::uint64_t sectors_now = (end + kSectorSize - 1) / kSectorSize;
     const std::uint64_t data_sectors = (data.size() + kSectorSize - 1) / kSectorSize;
     const std::uint64_t total = sectors_now + data_sectors;
@@ -261,22 +273,22 @@ void Volume::replace(std::string_view file, ByteView data) {
     Bytes padded(data.begin(), data.end());
     padded.resize(static_cast<std::size_t>(data_sectors * kSectorSize), 0);
     if (end != sectors_now * kSectorSize)
-        v.file.write_at(sectors_now * kSectorSize - 1, Bytes{0});   // (grows the file to a whole sector)
-    v.file.write_at(sectors_now * kSectorSize, padded);
+        v.file->write_at(sectors_now * kSectorSize - 1, Bytes{0});   // (grows the file to a whole sector)
+    v.file->write_at(sectors_now * kSectorSize, padded);
 
     // The records and the descriptors, rewritten whole.
     for (const Record& r : records) {
         Bytes rec = v.read_at(r.at, 34);
         put_both32(rec, 2, static_cast<std::uint32_t>(sectors_now));
         put_both32(rec, 10, static_cast<std::uint32_t>(data.size()));
-        v.file.write_at(r.at, rec);
+        v.file->write_at(r.at, rec);
     }
     for (const Tree& t : v.trees) {
         Bytes size(8);
         put_both32(size, 0, static_cast<std::uint32_t>(total));
-        v.file.write_at(t.descriptor_at + kVolumeSizeAt, size);
+        v.file->write_at(t.descriptor_at + kVolumeSizeAt, size);
     }
-    v.file.flush();
+    v.file->flush();
     v.sectors = static_cast<std::uint32_t>(total);
 }
 

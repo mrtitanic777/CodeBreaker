@@ -12,18 +12,14 @@
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
+#include "formats/disc_image.hpp"
 #include "formats/iso9660.hpp"
+#include "formats/psx.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::ps2 {
 
 namespace {
-
-std::string upper(std::string_view s) {
-    std::string out(s);
-    for (char& c : out) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
-    return out;
-}
 
 bool is_r5900_elf(ByteView head) {
     return mips_elf::probe_header(head) && head.size() >= 40 && mips_elf::machine_of(static_cast<std::uint32_t>(head[36]) | static_cast<std::uint32_t>(head[37]) << 8 |
@@ -39,25 +35,7 @@ const std::map<std::uint32_t, std::string>& registers() {
 
 }  // namespace
 
-std::optional<std::string> boot_file(std::string_view system_cnf, std::string* boot_value) {
-    for (const std::string_view line : text::lines(system_cnf)) {
-        const std::string_view t = text::trim(line);
-        if (!upper(t.substr(0, 5)).starts_with("BOOT2")) continue;
-        const std::size_t eq = t.find('=');
-        if (eq == std::string_view::npos) continue;
-        std::string value(text::trim(t.substr(eq + 1)));
-        if (boot_value) *boot_value = value;
-        std::string path = value;
-        if (const std::size_t colon = path.find(':'); colon != std::string::npos) path = path.substr(colon + 1);
-        if (const std::size_t semi = path.find(';'); semi != std::string::npos) path = path.substr(0, semi);
-        for (char& c : path)
-            if (c == '\\') c = '/';
-        if (path.empty()) return std::nullopt;
-        if (path.front() != '/') path.insert(path.begin(), '/');
-        return path;
-    }
-    return std::nullopt;
-}
+std::optional<std::string> boot_file(std::string_view system_cnf, std::string* boot_value) { return psx::boot_file(system_cnf, "BOOT2", boot_value); }
 
 Program parse_elf(ByteView data) {
     if (!is_r5900_elf(data)) throw FormatError("ps2", 0, "not a PlayStation 2 executable (a 32-bit little-endian MIPS ELF with the R5900 flags)");
@@ -73,7 +51,7 @@ std::optional<Program> read(const std::filesystem::path& path) {
         const std::optional<Bytes> head = read_prefix(path, 0, 64);
         if (!head) return std::nullopt;
         if (is_r5900_elf(*head)) return parse_elf(fs::read_file(path));
-        if (ext != ".iso" && ext != ".bin" && ext != ".img") return std::nullopt;
+        if (!disc::is_image_name(path)) return std::nullopt;   // (.iso, .bin, .img or .cue: raw sectors read too, formats/disc_image)
         iso9660::Volume volume(path);
         const Bytes cnf = volume.read("/SYSTEM.CNF");
         std::string boot;

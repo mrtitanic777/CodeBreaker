@@ -6,6 +6,8 @@
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/io.hpp"
+#include "core/text.hpp"
+#include "formats/iso9660.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::psx {
@@ -65,14 +67,68 @@ Exe parse(ByteView data) {
     return exe;
 }
 
+std::optional<std::string> boot_file(std::string_view system_cnf, std::string_view key, std::string* value) {
+    for (const std::string_view line : text::lines(system_cnf)) {
+        const std::string_view t = text::trim(line);
+        if (t.size() <= key.size() || !text::iequals(t.substr(0, key.size()), key)) continue;
+        const std::string_view rest = text::trim(t.substr(key.size()));
+        if (rest.empty() || rest.front() != '=') continue;   // (BOOT2 is not BOOT)
+        const std::string_view v = text::trim(rest.substr(1));
+        if (value) *value = std::string(v);
+        std::string path(v.substr(0, v.find_first_of(" \t")));   // (arguments follow the file, after a space)
+        if (const std::size_t colon = path.find(':'); colon != std::string::npos) path = path.substr(colon + 1);
+        if (const std::size_t semi = path.find(';'); semi != std::string::npos) path = path.substr(0, semi);
+        for (char& c : path)
+            if (c == '\\') c = '/';
+        if (path.empty()) return std::nullopt;
+        if (path.front() != '/') path.insert(path.begin(), '/');
+        return path;
+    }
+    return std::nullopt;
+}
+
+Exe parse_disc(const disc::Sectors& sectors) {
+    const iso9660::Volume volume(sectors);
+    std::string boot;
+    std::string file = "/PSX.EXE";
+    try {
+        const Bytes cnf = volume.read("/SYSTEM.CNF");
+        const std::optional<std::string> named = boot_file(as_text(cnf), "BOOT", &boot);
+        if (!named) throw FormatError(kReader, 0, "SYSTEM.CNF names no program to boot (no BOOT line)");
+        file = *named;
+    } catch (const NotFoundError&) {   // no SYSTEM.CNF: the BIOS boots PSX.EXE
+    }
+    Bytes program;
+    try {
+        program = volume.read(file);
+    } catch (const NotFoundError&) {
+        throw FormatError(kReader, 0, boot.empty() ? "no SYSTEM.CNF and no PSX.EXE: not a PlayStation disc" : file + ", which SYSTEM.CNF boots, is not on the disc");
+    }
+    Exe exe = parse(program);
+    exe.boot_file = file;
+    exe.boot = boot;
+    return exe;
+}
+
 Exe read(const std::filesystem::path& path) {
+    if (disc::is_image_name(path)) {
+        const std::optional<Bytes> head = read_prefix(path, 0, kMagic.size());
+        if (!head || !has_magic(*head)) return parse_disc(disc::Sectors::open(path));
+    }
     const fs::MappedFile file(path);
     return parse(file.view());
 }
 
 bool probe(const std::filesystem::path& path) {
     const std::optional<Bytes> head = read_prefix(path, 0, kMagic.size());
-    return head && has_magic(*head);
+    if (head && has_magic(*head)) return true;
+    if (!disc::is_image_name(path)) return false;
+    try {
+        parse_disc(disc::Sectors::open(path));
+        return true;
+    } catch (const Error&) {
+        return false;
+    }
 }
 
 }  // namespace cb::formats::psx

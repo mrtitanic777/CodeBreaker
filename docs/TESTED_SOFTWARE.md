@@ -135,6 +135,8 @@ function starts found (the entry point, what it calls, what begins after another
 | timer-dump.exe | PlayStation | JaCzekanski/ps1-tests (timer-dump) | MIT | 76 | rebuilds identical, verified |
 | timers.exe | PlayStation | JaCzekanski/ps1-tests (timers) | MIT | 89 | rebuilds identical, verified |
 
+On a disc (2026-11-26): CPUADD.exe put on a PlayStation disc as SLUS_000.01, with a SYSTEM.CNF that boots it (`work/ps1disc/make.py`), as a cooked `.iso`, a raw mode 2 `.bin` and its `.cue`. `inspect` says "PlayStation disc, boots SLUS_000.01". `convert` of the `.cue` writes SLUS_000.01.s, the same source as CPUADD.exe's own. `check` of the `.bin` verifies 50 of 50. No PlayStation disc with published source was found, so the disc was made here around a program that has one.
+
 ## Game Boy Advance homebrew (the GBA lane)
 
 Open-source GBA ROMs with published source, downloaded 2026-11-15 as binaries from the authors' own repositories (kept outside the repository, in

@@ -9,6 +9,7 @@
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
+#include "formats/disc_test_image.hpp"
 #include "formats/command_test_kit.hpp"
 
 using namespace cb;
@@ -238,6 +239,22 @@ CB_TEST("formats.detect.identify_a_playstation_executable", [] {
     CB_CHECK_EQ(d.command, "reach");
     // a header cut short is not one
     CB_CHECK(detect::identify(with_magic("PS-X EXE", 0x100), "game.exe").empty());
+});
+
+CB_TEST("formats.detect.identify_a_playstation_disc", [] {
+    Bytes exe = with_magic("PS-X EXE", 0x800 + 0x40);
+    put(exe, 0x10, 0x80010010, 4);   // pc0
+    put(exe, 0x18, 0x80010000, 4);   // t_addr
+    const Bytes cooked = formats::disc_test::iso({{"SYSTEM.CNF", formats::disc_test::bytes_of("BOOT = cdrom:\\SLUS_000.01;1\r\n")}, {"SLUS_000.01", exe}});
+    for (const Bytes& image : {cooked, formats::disc_test::raw(cooked, 2)}) {
+        const detect::Detected d = only(image, "game.bin");
+        CB_CHECK_EQ(d.format, "PlayStation disc");
+        CB_CHECK_EQ(d.detail, "boots SLUS_000.01, entry 0x80010010, program at 0x80010000, 64 bytes");
+        CB_CHECK_EQ(d.family, "playstation");
+    }
+    // a disc that boots nothing of the PlayStation's is not one of its discs
+    CB_CHECK(detect::identify(formats::disc_test::iso({{"README.TXT", formats::disc_test::bytes_of("hi")}}), "other.iso").empty() ||
+             detect::identify(formats::disc_test::iso({{"README.TXT", formats::disc_test::bytes_of("hi")}}), "other.iso").front().format != "PlayStation disc");
 });
 
 CB_TEST("formats.detect.identify_a_pc_engine_card", [] {
