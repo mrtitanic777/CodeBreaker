@@ -706,6 +706,8 @@ public:
 
     ILInstruction* clone() const override;
     StackType result_type() const override;
+    // The type constructed (may be null).
+    const IType* constructed_type() const { return result_type_; }
     bool perform_match(ILInstruction* other, patterns::Match& match) override;
 
 protected:
