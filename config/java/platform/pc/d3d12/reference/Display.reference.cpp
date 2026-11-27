@@ -1,160 +1,52 @@
-// Display on SDL2 + Direct3D 12 (see Display.reference.h). The window is SDL's (input, focus, the AWT mouse are the same code as
+//@template ../../templates/DisplayDxgi.template.cpp
+//@set V 12
+//@define intro_1
 // the OpenGL and Direct3D 9/10/11 Displays); the drawing surface is a flip-model DXGI swap chain on the window's HWND, made on a
-// Direct3D 12 device's command queue and handed with them to the GL layer's Direct3D 12 backend (GpuD3D12.cpp), which records
+// Direct3D @V@ device's command queue and handed with them to the GL layer's Direct3D @V@ backend (GpuD3D@V@.cpp), which records
 // each frame and presents it when update() is called.
-//
+//@end
+//@define device_notes_1
 // The device is the card's (feature level 11_0 and up), else WARP, Windows' own software rasterizer (a virtual machine or a
-// remote desktop without a Direct3D 12 card still runs the game). J2X_D3D_DEBUG=1 turns on Direct3D 12's debug layer (the
+// remote desktop without a Direct3D @V@ card still runs the game). J2X_D3D_DEBUG=1 turns on Direct3D @V@'s debug layer (the
 // Graphics Tools feature of Windows), whose messages go to the debugger. A resized window resizes the swap chain's buffers and
-// the depth buffer; a removed device (a driver update or crash) is reported, as Direct3D 12 cannot get it back without
+// the depth buffer; a removed device (a driver update or crash) is reported, as Direct3D @V@ cannot get it back without
 // remaking every texture.
-#include "stdafx.h"
-#include "Display.h"
-#include "Input.h"
-#include "GL11.h"
-#include "GpuD3D12.h"
-#include "Common.h"
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_syswm.h>
-#include <d3d12.h>
-#include <dxgi1_4.h>
-#include <vector>
-#include <cstring>
-#include <cstdlib>
-
-namespace {
-	SDL_Window* g_win = 0;
-	HWND g_hwnd = 0;
-	ID3D12Device* g_dev = 0;
-	ID3D12CommandQueue* g_queue = 0;
+//@end
+//@define api_includes_1: #include <dxgi1_4.h>
+//@define device_state_1
+	ID3D@V@CommandQueue* g_queue = 0;
 	IDXGISwapChain3* g_swap = 0;
-	bool g_needResize = false;    // the window changed size: resize the buffers before the next frame
-	bool g_removed = false;
-	DisplayMode g_mode(854, 480);
-	std::string g_title = "Minecraft";
-	bool g_close = false;
-	bool g_active = true;
-	bool g_full = false;
-	bool g_parented = false;
-	bool g_vsync = true;
-
-	template<class T> void release(T*& p) { if (p) { p->Release(); p = 0; } }
-
-	// The device is released before the process ends, however it ends (the game's System.exit, the script's quit, the last thread
-	// returning): the GPU's work finished and every object let go while the process can still run it. A process that exits with
-	// a live device leaves that to the driver as Windows tears the process down, and Direct3D 12's has been seen to hang there.
-	void release_at_exit() { Display::destroy(); }
-
-	// Resize the swap chain's buffers to the window (the backend waits for the GPU and remakes its targets).
-	void resize_targets() {
-		if (!g_swap) return;
-		int w = 0, h = 0;
-		SDL_GetWindowSize(g_win, &w, &h);
-		if (w < 1) w = 1;
-		if (h < 1) h = 1;
-		if (!j2xgl::gpu::resizeD3D12(w, h)) DbgPrintF("[display] the resized targets could not be made\n");
-		Input::setDisplaySize(w, h);
-		g_needResize = false;
-	}
-}
-
-int j2xDisplayWidth() { return Display::getWidth(); }    // AWT components report the window (stdafx.h)
-int j2xDisplayHeight() { return Display::getHeight(); }
-
-// The AWT mouse (stdafx.h): the same as the OpenGL Display's -- the window's place on the screen, the pointer, Robot.mouseMove. A
-// J2X_HIDDEN test run never reads or moves the person's mouse.
-int j2xWindowScreenX() { int x = 0, y = 0; if (g_win) SDL_GetWindowPosition(g_win, &x, &y); return x; }
-int j2xWindowScreenY() { int x = 0, y = 0; if (g_win) SDL_GetWindowPosition(g_win, &x, &y); return y; }
-static int g_robot_x = 0, g_robot_y = 0;
-static bool g_robot_set = false;
-static bool j2xPointerVirtual() { return Input::awtLooking() || std::getenv("J2X_HIDDEN") != 0; }
-static void j2xPointerAt(int* x, int* y) {
-	if (j2xPointerVirtual()) {
-		if (!g_robot_set) {
-			g_robot_x = j2xWindowScreenX() + Display::getWidth() / 2;
-			g_robot_y = j2xWindowScreenY() + Display::getHeight() / 2;
-		}
-		int dx = 0, dy = 0;
-		Input::awtMotion(&dx, &dy);
-		*x = g_robot_x + dx;
-		*y = g_robot_y + dy;
-	} else {
-		SDL_GetGlobalMouseState(x, y);
-	}
-}
-int j2xPointerX() { int x = 0, y = 0; j2xPointerAt(&x, &y); return x; }
-int j2xPointerY() { int x = 0, y = 0; j2xPointerAt(&x, &y); return y; }
-void j2xRobotMouseMove(int x, int y) {
-	g_robot_x = x;
-	g_robot_y = y;
-	g_robot_set = true;
-	Input::awtRecentred();
-	if (!j2xPointerVirtual() && g_win && (SDL_GetWindowFlags(g_win) & SDL_WINDOW_INPUT_FOCUS)) SDL_WarpMouseGlobal(x, y);
-}
-
-namespace Display {
-
-void setDisplayMode(DisplayMode* mode) {
-	if (mode) setDisplayMode(*mode);
-}
-
-void setDisplayMode(const DisplayMode& mode) {
-	g_mode = mode;
-	if (g_win && !g_full && mode.getWidth() > 0 && mode.getHeight() > 0) {
-		SDL_SetWindowSize(g_win, mode.getWidth(), mode.getHeight());
-		g_needResize = true;
-	}
-}
-
-// A window or device that cannot be made ends the program (exit code 3), after saying why: LWJGL's Display.create throws there,
-// and the game has nothing to draw with.
-void create() {
-	if (g_win) return;
-	SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
-	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0) {
-		std::fprintf(stderr, "[display] SDL_Init failed: %s\n", SDL_GetError());
-		std::exit(3);
-	}
-	const int w = g_mode.getWidth() > 0 ? g_mode.getWidth() : 854;
-	const int h = g_mode.getHeight() > 0 ? g_mode.getHeight() : 480;
-	g_win = SDL_CreateWindow(g_title.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, w, h,
-	                         (std::getenv("J2X_HIDDEN") ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN) | SDL_WINDOW_RESIZABLE);   // (J2X_HIDDEN: a test run off-screen)
-	if (!g_win) {
-		std::fprintf(stderr, "[display] SDL_CreateWindow failed: %s\n", SDL_GetError());
-		std::exit(3);
-	}
-	SDL_SysWMinfo info;
-	SDL_VERSION(&info.version);
-	if (!SDL_GetWindowWMInfo(g_win, &info)) {
-		std::fprintf(stderr, "[display] SDL_GetWindowWMInfo failed: %s\n", SDL_GetError());
-		std::exit(3);
-	}
-	g_hwnd = info.info.win.window;
-	if (std::getenv("J2X_D3D_DEBUG")) {   // Direct3D 12's validation (before the device is made)
-		ID3D12Debug* debug = 0;
-		if (SUCCEEDED(D3D12GetDebugInterface(__uuidof(ID3D12Debug), (void**)&debug)) && debug) { debug->EnableDebugLayer(); debug->Release(); }
-	}
+//@end
+//@define device_helpers_1: 	// a live device leaves that to the driver as Windows tears the process down, and Direct3D @V@'s has been seen to hang there.
+//@define device_helpers_2: 	// Resize the swap chain's buffers to the window (the backend waits for the GPU and remakes its targets).
+//@define resize_device_1: 		if (!j2xgl::gpu::resizeD3D@V@(w, h)) DbgPrintF("[display] the resized targets could not be made\n");
+//@define create_device_1_1
+	if (std::getenv("J2X_D3D_DEBUG")) {   // Direct3D @V@'s validation (before the device is made)
+		ID3D@V@Debug* debug = 0;
+		if (SUCCEEDED(D3D@V@GetDebugInterface(__uuidof(ID3D@V@Debug), (void**)&debug)) && debug) { debug->EnableDebugLayer(); debug->Release(); }
+//@end
+//@define create_device_2_1
 	IDXGIFactory4* factory = 0;
 	HRESULT hr = CreateDXGIFactory1(__uuidof(IDXGIFactory4), (void**)&factory);
 	if (FAILED(hr) || !factory) {
-		std::fprintf(stderr, "[display] no DXGI 1.4 factory (0x%08x): Direct3D 12 needs Windows 10 or later\n", (unsigned)hr);
-		std::exit(3);
-	}
-	// The card's device, else WARP (Windows' software rasterizer): the game runs where there is no Direct3D 12 card at all.
-	hr = D3D12CreateDevice(0, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), (void**)&g_dev);
+		std::fprintf(stderr, "[display] no DXGI 1.4 factory (0x%08x): Direct3D @V@ needs Windows 10 or later\n", (unsigned)hr);
+//@end
+//@define create_device_3_1
+	// The card's device, else WARP (Windows' software rasterizer): the game runs where there is no Direct3D @V@ card at all.
+	hr = D3D@V@CreateDevice(0, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D@V@Device), (void**)&g_dev);
 	if (FAILED(hr)) {
-		std::fprintf(stderr, "[display] no Direct3D 12 hardware device (0x%08x); using WARP\n", (unsigned)hr);
+		std::fprintf(stderr, "[display] no Direct3D @V@ hardware device (0x%08x); using WARP\n", (unsigned)hr);
 		IDXGIAdapter* warp = 0;
 		if (SUCCEEDED(factory->EnumWarpAdapter(__uuidof(IDXGIAdapter), (void**)&warp)) && warp) {
-			hr = D3D12CreateDevice(warp, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D12Device), (void**)&g_dev);
+			hr = D3D@V@CreateDevice(warp, D3D_FEATURE_LEVEL_11_0, __uuidof(ID3D@V@Device), (void**)&g_dev);
 			warp->Release();
 		}
 	}
-	D3D12_COMMAND_QUEUE_DESC qd;
+	D3D@V@_COMMAND_QUEUE_DESC qd;
 	std::memset(&qd, 0, sizeof(qd));
-	qd.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
-	if (FAILED(hr) || !g_dev || FAILED(g_dev->CreateCommandQueue(&qd, __uuidof(ID3D12CommandQueue), (void**)&g_queue))) {
-		std::fprintf(stderr, "[display] D3D12CreateDevice failed: 0x%08x\n", (unsigned)hr);
+	qd.Type = D3D@V@_COMMAND_LIST_TYPE_DIRECT;
+	if (FAILED(hr) || !g_dev || FAILED(g_dev->CreateCommandQueue(&qd, __uuidof(ID3D@V@CommandQueue), (void**)&g_queue))) {
+		std::fprintf(stderr, "[display] D3D@V@CreateDevice failed: 0x%08x\n", (unsigned)hr);
 		factory->Release();
 		std::exit(3);
 	}
@@ -166,7 +58,7 @@ void create() {
 	sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	sd.BufferCount = 2;                              // (the backend's frames)
 	sd.Scaling = DXGI_SCALING_STRETCH;
-	sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;   // (Direct3D 12 presents only by flipping)
+	sd.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;   // (Direct3D @V@ presents only by flipping)
 	IDXGISwapChain1* chain = 0;
 	hr = factory->CreateSwapChainForHwnd(g_queue, g_hwnd, &sd, 0, 0, &chain);
 	if (SUCCEEDED(hr) && chain) {
@@ -179,213 +71,10 @@ void create() {
 		std::fprintf(stderr, "[display] CreateSwapChainForHwnd failed: 0x%08x\n", (unsigned)hr);
 		std::exit(3);
 	}
-	if (!j2xgl::gpu::attachD3D12(g_dev, g_queue, g_swap, w, h)) {
-		std::fprintf(stderr, "[display] the Direct3D 12 renderer could not start\n");
-		std::exit(3);
-	}
-	static bool registered = false;
-	if (!registered) { registered = true; std::atexit(release_at_exit); }
-	j2xgl::glInit();
-	j2xgl::glViewport(0, 0, w, h);
-	Input::setDisplaySize(w, h);
-}
-
-void setParent(const void* parent) { g_parented = parent != 0; }
-
-void destroy() {
-	j2xgl::gpu::detachD3D12();
+	if (!j2xgl::gpu::attachD3D@V@(g_dev, g_queue, g_swap, w, h)) {
+//@end
+//@define destroy_device_1
+	j2xgl::gpu::detachD3D@V@();
 	release(g_swap); release(g_queue); release(g_dev);
-	if (g_win) SDL_DestroyWindow(g_win);
-	g_win = 0;
-	g_hwnd = 0;
-}
-
-void processMessages() {
-	SDL_Event e;
-	while (SDL_PollEvent(&e)) {
-		if (e.type == SDL_QUIT) {
-			g_close = true;
-			if (g_parented) std::exit(0);   // a game in a canvas never asks isCloseRequested: closing the window ends it (Display.cpp, OpenGL)
-		} else if (e.type == SDL_WINDOWEVENT) {
-			if (e.window.event == SDL_WINDOWEVENT_FOCUS_GAINED) g_active = true;
-			else if (e.window.event == SDL_WINDOWEVENT_FOCUS_LOST) g_active = false;
-			else if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
-				Input::setDisplaySize(e.window.data1, e.window.data2);
-				g_needResize = true;
-			}
-		}
-		Input::onEvent(&e);
-	}
-}
-
-// Present the frame. A removed device is said once; the game goes on (drawing nothing) rather than dying.
-void swapBuffers() {
-	if (!g_swap) return;
-	j2xgl::glFlush();   // the layer's pending batch and this frame's new display-list buffers
-	const HRESULT hr = (HRESULT)j2xgl::gpu::presentD3D12(g_vsync ? 1 : 0);
-	if ((hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) && !g_removed) {
-		g_removed = true;
-		DbgPrintF("[display] the Direct3D 12 device was removed (0x%08x): reason 0x%08x\n", (unsigned)hr, (unsigned)g_dev->GetDeviceRemovedReason());
-	}
-	if (g_needResize) resize_targets();
-}
-
-// The automation hook -- a look at what the port does without a person at the screen (tests, CI). The same commands as the
-// OpenGL Display: J2X_SHOT_FRAME=N saves frame N as j2x_shot.bmp; J2X_SCRIPT="F:cmd;..." runs `click X Y`, `key NAME`, `hold NAME`,
-// `release NAME`, `move DX DY`, `resize W H`, `shot FILE.bmp`,
-// `quit` at frame F.
-static void save_frame(const char* file) {
-	std::vector<unsigned int> px;
-	int w = 0, h = 0;
-	if (!j2xgl::gpu::readFrame(px, w, h) || px.empty()) return;
-	SDL_Surface* s = SDL_CreateRGBSurfaceWithFormat(0, w, h, 24, SDL_PIXELFORMAT_BGR24);
-	if (!s) return;
-	for (int y = 0; y < h; ++y) {       // ARGB words -> B, G, R bytes
-		unsigned char* dst = (unsigned char*)s->pixels + (size_t)y * s->pitch;
-		for (int x = 0; x < w; ++x) {
-			const unsigned int p = px[(size_t)y * w + x];
-			dst[x * 3] = (unsigned char)p; dst[x * 3 + 1] = (unsigned char)(p >> 8); dst[x * 3 + 2] = (unsigned char)(p >> 16);
-		}
-	}
-	SDL_SaveBMP(s, file);
-	SDL_FreeSurface(s);
-	std::fprintf(stderr, "[display] frame saved to %s\n", file);
-}
-
-static void push_key(const char* name, bool down) {
-	SDL_Event e;
-	std::memset(&e, 0, sizeof(e));
-	e.type = down ? SDL_KEYDOWN : SDL_KEYUP;
-	e.key.state = down ? SDL_PRESSED : SDL_RELEASED;
-	e.key.keysym.sym = SDL_GetKeyFromName(name);
-	e.key.keysym.scancode = SDL_GetScancodeFromKey(e.key.keysym.sym);
-	SDL_PushEvent(&e);
-}
-
-static void run_command(const std::string& cmd) {
-	char a[64] = {0};
-	int x = 0, y = 0;
-	if (std::sscanf(cmd.c_str(), "click %d %d", &x, &y) == 2) {
-		if (!std::getenv("J2X_HIDDEN")) SDL_WarpMouseInWindow(g_win, x, y);
-		SDL_Event e;
-		std::memset(&e, 0, sizeof(e));
-		e.type = SDL_MOUSEMOTION; e.motion.x = x; e.motion.y = y;
-		SDL_PushEvent(&e);
-		std::memset(&e, 0, sizeof(e));
-		e.type = SDL_MOUSEBUTTONDOWN; e.button.button = SDL_BUTTON_LEFT; e.button.state = SDL_PRESSED; e.button.x = x; e.button.y = y;
-		SDL_PushEvent(&e);
-		e.type = SDL_MOUSEBUTTONUP; e.button.state = SDL_RELEASED;
-		SDL_PushEvent(&e);
-	} else if (std::sscanf(cmd.c_str(), "resize %d %d", &x, &y) == 2 && x > 0 && y > 0) {   // (the window, as a person drags it)
-		SDL_SetWindowSize(g_win, x, y);
-		Input::setDisplaySize(x, y);
-		g_needResize = true;
-	} else if (std::sscanf(cmd.c_str(), "move %d %d", &x, &y) == 2) {
-		SDL_Event e;
-		std::memset(&e, 0, sizeof(e));
-		e.type = SDL_MOUSEMOTION; e.motion.xrel = x; e.motion.yrel = y;
-		SDL_PushEvent(&e);
-	} else if (std::sscanf(cmd.c_str(), "key %63s", a) == 1) {
-		push_key(a, true);
-		push_key(a, false);
-	} else if (std::sscanf(cmd.c_str(), "hold %63s", a) == 1) {
-		push_key(a, true);
-	} else if (std::sscanf(cmd.c_str(), "release %63s", a) == 1) {
-		push_key(a, false);
-	} else if (std::sscanf(cmd.c_str(), "shot %63s", a) == 1) {
-		save_frame(a);
-	} else if (cmd == "quit") {
-		std::fprintf(stderr, "[display] script: quit\n");
-		std::exit(0);
-	}
-}
-
-static void automate() {
-	static int frame = 0, shot_at = -2;
-	static std::vector<std::pair<int, std::string> > script;
-	if (shot_at == -2) {
-		const char* s = std::getenv("J2X_SHOT_FRAME");
-		shot_at = s ? std::atoi(s) : -1;
-		const char* sc = std::getenv("J2X_SCRIPT");
-		std::string all = sc ? sc : "";
-		size_t pos = 0;
-		while (pos < all.size()) {
-			size_t end = all.find(';', pos);
-			std::string item = all.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
-			size_t colon = item.find(':');
-			if (colon != std::string::npos)
-				script.push_back(std::make_pair(std::atoi(item.substr(0, colon).c_str()), item.substr(colon + 1)));
-			if (end == std::string::npos) break;
-			pos = end + 1;
-		}
-	}
-	if (!g_win) return;
-	++frame;
-	const bool shoot = frame == shot_at;
-	bool scripted_shot = false;
-	for (size_t i = 0; i < script.size(); ++i)
-		if (script[i].first == frame && script[i].second.compare(0, 5, "shot ") == 0) scripted_shot = true;
-	if (shoot || scripted_shot) j2xgl::glFlush();   // (a shot is the frame as drawn so far, the layer's pending batch in it)
-	if (shoot) save_frame("j2x_shot.bmp");
-	for (size_t i = 0; i < script.size(); ++i)
-		if (script[i].first == frame) run_command(script[i].second);
-}
-
-void update() {
-	automate();
-	swapBuffers();
-	processMessages();
-}
-
-bool isCloseRequested() { return g_close; }
-bool isActive() { return g_active || std::getenv("J2X_SCRIPT") != 0; }   // a scripted run never pauses
-bool isCreated() { return g_win != 0; }
-
-int getWidth() {
-	int w = 0, h = 0;
-	if (g_win) SDL_GetWindowSize(g_win, &w, &h);
-	return g_win ? w : g_mode.getWidth();
-}
-
-int getHeight() {
-	int w = 0, h = 0;
-	if (g_win) SDL_GetWindowSize(g_win, &w, &h);
-	return g_win ? h : g_mode.getHeight();
-}
-
-DisplayMode getDisplayMode() {
-	return g_win ? DisplayMode(getWidth(), getHeight()) : g_mode;
-}
-
-DisplayMode getDesktopDisplayMode() {
-	SDL_DisplayMode m;
-	if (SDL_WasInit(SDL_INIT_VIDEO) && SDL_GetDesktopDisplayMode(0, &m) == 0)
-		return DisplayMode(m.w, m.h, SDL_BITSPERPIXEL(m.format), m.refresh_rate);
-	return DisplayMode(1280, 720);
-}
-
-void setTitle(const std::string& title) {
-	g_title = title;
-	if (g_win) SDL_SetWindowTitle(g_win, title.c_str());
-}
-
-// Full screen is the desktop-sized borderless window (the swap chain stays windowed: no exclusive mode to lose on alt-tab).
-void setFullscreen(bool full) {
-	g_full = full;
-	if (g_win) {
-		SDL_SetWindowFullscreen(g_win, full ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0);
-		g_needResize = true;
-	}
-}
-
-void setVSyncEnabled(bool on) { g_vsync = on; }   // (Present's sync interval, frame by frame)
-
-void sync(int fps) {
-	static Uint32 last = 0;
-	if (fps <= 0) return;
-	Uint32 frame = 1000u / (Uint32)fps, now = SDL_GetTicks();
-	if (last && now - last < frame) SDL_Delay(frame - (now - last));
-	last = SDL_GetTicks();
-}
-
-} // namespace Display
+//@end
+//@define present_body_1: 	const HRESULT hr = (HRESULT)j2xgl::gpu::presentD3D@V@(g_vsync ? 1 : 0);

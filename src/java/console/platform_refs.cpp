@@ -4,6 +4,8 @@
 #include <array>
 #include <cctype>
 #include <format>
+#include <map>
+#include <optional>
 #include <system_error>
 
 #include "core/fs.hpp"
@@ -51,6 +53,94 @@ bool refs_collides(const std::set<std::string>& game_classes, const std::string&
 
 // The text of a file, "\n" line ends, undecodable bytes replaced; nothing when it cannot be read.
 std::optional<std::string> refs_read(const stdfs::path& p) { return textutil::try_read_text(p); }
+
+// A reference written as a template over another (several graphics APIs share most of one file). Directive lines, each alone on a line:
+//   //@template PATH            the file this one fills in (path relative to this file); first line of the file
+//   //@set NAME VALUE           "@NAME@" anywhere in the result becomes VALUE
+//   //@define NAME: TEXT        the lines that replace "//@hole NAME" in the template: one line (TEXT), or
+//   //@define NAME ... //@end   the lines up to //@end
+//   //@hole NAME                (in a template) where a define goes; no define: nothing
+// A template may itself be over another template; the most derived file's defines and sets win. Lines keep their own ends, so a
+// file without directives comes out byte for byte as it was read.
+struct RefTemplateDefs {
+    std::map<std::string, std::vector<std::string>> blocks;
+    std::map<std::string, std::string> sets;
+};
+
+std::string_view refs_line_text(std::string_view line) {
+    while (!line.empty() && (line.back() == '\n' || line.back() == '\r')) line.remove_suffix(1);
+    return line;
+}
+
+// The lines of `text`, each with its end.
+std::vector<std::string> refs_lines(const std::string& text) {
+    std::vector<std::string> out;
+    size_t at = 0;
+    while (at < text.size()) {
+        const size_t end = text.find('\n', at);
+        const size_t stop = end == std::string::npos ? text.size() : end + 1;
+        out.push_back(text.substr(at, stop - at));
+        at = stop;
+    }
+    return out;
+}
+
+std::optional<std::string> refs_expand(const stdfs::path& path, RefTemplateDefs inherited, int depth) {
+    const auto text = refs_read(path);
+    if (!text || depth > 8) return std::nullopt;
+    RefTemplateDefs mine;
+    std::string tmpl;
+    std::vector<std::string> body;
+    const std::vector<std::string> lines = refs_lines(*text);
+    for (size_t i = 0; i < lines.size(); ++i) {
+        const std::string_view ln = refs_line_text(lines[i]);
+        const std::string_view eol = std::string_view(lines[i]).substr(ln.size());
+        if (ln.starts_with("//@template ")) {
+            tmpl = std::string(text::trim(ln.substr(12)));
+        } else if (ln.starts_with("//@set ")) {
+            const std::string_view rest = ln.substr(7);
+            const size_t sp = rest.find(' ');
+            mine.sets[std::string(rest.substr(0, sp))] = sp == std::string_view::npos ? "" : std::string(rest.substr(sp + 1));
+        } else if (ln.starts_with("//@define ")) {
+            const std::string_view rest = ln.substr(10);
+            const size_t colon = rest.find(": ");
+            if (colon != std::string_view::npos && rest.substr(0, colon).find(' ') == std::string_view::npos) {
+                mine.blocks[std::string(rest.substr(0, colon))] = {std::string(rest.substr(colon + 2)) + std::string(eol.empty() ? "\n" : eol)};
+            } else {
+                std::vector<std::string>& block = mine.blocks[std::string(text::trim(rest))];
+                for (++i; i < lines.size() && refs_line_text(lines[i]) != "//@end"; ++i) block.push_back(lines[i]);
+            }
+        } else {
+            body.push_back(lines[i]);
+        }
+    }
+    for (auto& [name, block] : inherited.blocks) mine.blocks[name] = std::move(block);   // the derived file wins
+    for (auto& [name, value] : inherited.sets) mine.sets[name] = std::move(value);
+    if (!tmpl.empty()) return refs_expand(path.parent_path() / fs::from_text(tmpl), std::move(mine), depth + 1);
+    std::string out;
+    // Each hole becomes its define's lines (which may hold holes of their own).
+    const auto fill = [&](auto&& self, const std::vector<std::string>& in, int level) -> void {
+        for (const std::string& line : in) {
+            const std::string_view ln = refs_line_text(line);
+            if (ln.starts_with("//@hole ") && level < 12) {
+                const auto it = mine.blocks.find(std::string(text::trim(ln.substr(8))));
+                if (it != mine.blocks.end()) self(self, it->second, level + 1);
+            } else {
+                out += line;
+            }
+        }
+    };
+    fill(fill, body, 0);
+    for (const auto& [name, value] : mine.sets) out = text::replace_all(out, "@" + name + "@", value);
+    return out;
+}
+
+// A reference file's text, expanded when it is a template over another file (see RefTemplateDefs).
+std::optional<std::string> refs_read_reference(const stdfs::path& p) {
+    const auto text = refs_read(p);
+    if (!text || !text->starts_with("//@template ")) return text;
+    return refs_expand(p, {}, 0);
+}
 
 // True when the first 400 bytes of the file carry `needle`.
 bool refs_head_has(const stdfs::path& p, std::string_view needle) {
@@ -519,7 +609,7 @@ Emitted emit_references(const stdfs::path& out_dir, const stdfs::path& reference
         }
         for (const char* ext : {"h", "cpp"}) {
             const stdfs::path out_file = out_dir / (base + "." + ext);
-            const auto content = refs_read(from / (base + ".reference." + ext));
+            const auto content = refs_read_reference(from / (base + ".reference." + ext));
             if (!content) {
                 // A layer's header-only reference over a base with a .cpp (GL13 over the PC's OpenGL GL13): no stale .cpp is left.
                 if (refs_is_file(out_file) && refs_head_has(out_file, "PLATFORM REFERENCE")) {

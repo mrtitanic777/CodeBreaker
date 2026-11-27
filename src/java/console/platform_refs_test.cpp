@@ -500,7 +500,9 @@ CB_TEST("java.platform_refs.the_pc_direct3d10_and_12_layers_are_the_shared_rende
     // the device is released before the process ends (exit with a live Direct3D 12 device hung in the driver), and a window or
     // device that cannot be made ends the program rather than letting it run without a renderer
     for (const char* api : {"d3d10", "d3d11", "d3d12"}) {
-        const std::string display = fs::read_text(testing::data_path(std::string("../config/java/platform/pc/") + api + "/reference/Display.reference.cpp"));
+        // (the Display is a template over the Direct3D family's: its own file and the templates are searched together)
+        const stdfs::path pc_dir = testing::data_path("../config/java/platform/pc");
+        const std::string display = fs::read_text(pc_dir / api / "reference" / "Display.reference.cpp") + fs::read_text(pc_dir / "templates" / "DisplayDxgi.template.cpp");
         CB_CHECK(refs_has(display, "std::atexit(release_at_exit);") && refs_has(display, "std::exit(3);"));
     }
 });
