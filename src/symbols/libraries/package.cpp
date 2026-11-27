@@ -5,7 +5,7 @@
 #include <iterator>
 #include <optional>
 
-#include "compare/mask.hpp"
+#include "symbols/mask.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "symbols/libraries/coff.hpp"
@@ -77,8 +77,8 @@ bool fits(const Function& function, ByteView code, ByteView code_mask) {
     if (n > code.size()) return false;
     // their mask, as long as the bytes compared: what it does not cover leaves nothing out
     const ByteView theirs = code_mask.subspan(0, std::min(n, code_mask.size()));
-    const compare::mask::ByteMask masks[] = {function.mask, theirs};
-    return compare::mask::same(function.code, code.subspan(0, n), masks);
+    const symbols::mask::ByteMask masks[] = {function.mask, theirs};
+    return symbols::mask::same(function.code, code.subspan(0, n), masks);
 }
 
 Index::Index(std::span<const std::uint32_t> words) : words_(words) {

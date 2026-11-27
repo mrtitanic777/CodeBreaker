@@ -1,4 +1,4 @@
-// compare/mask.hpp -- the parts of a function left out when it is compared with another build of it.
+// symbols/mask.hpp -- the parts of a function left out when it is compared with another build of it.
 //
 // Two builds of the same code differ where a loader or linker filled something in: a relocated address, the
 // distance of a call, a far call the linker rewrote. Every comparison of one function with another -- a library's
@@ -26,7 +26,7 @@
 
 #include "core/bytes.hpp"
 
-namespace cb::compare::mask {
+namespace cb::symbols::mask {
 
 using ByteMask = ByteView;                          // flag per byte, non-zero = left out
 using WordMask = std::span<const std::uint64_t>;    // per word, the bits left out
@@ -84,4 +84,4 @@ DistanceResult distance(ByteView a, ByteView b, ByteMask ma = {}, ByteMask mb = 
 DistanceResult distance_words(ByteView a, ByteView b, std::size_t unit, ByteOrder order, WordMask ma = {},
                               WordMask mb = {});
 
-}  // namespace cb::compare::mask
+}  // namespace cb::symbols::mask

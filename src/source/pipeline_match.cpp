@@ -22,7 +22,7 @@
 #include <unordered_map>
 
 #include <nlohmann/json.hpp>
-#include "compare/mask.hpp"
+#include "symbols/mask.hpp"
 #include "verify/authored/repair.hpp"
 #include "core/fs.hpp"
 #include "core/json.hpp"
@@ -186,7 +186,7 @@ MatchVerdict match_compare(MatchCode built, const MatchCode& original) {
     for (std::size_t i = 0; i < built.bytes.size(); ++i)
         if (!built.mask[i] && !original.mask[i]) ++free;
     const std::vector<ByteView> masks = {built.mask, original.mask};
-    const std::size_t same = free - compare::mask::differing(built.bytes, original.bytes, masks).size();
+    const std::size_t same = free - symbols::mask::differing(built.bytes, original.bytes, masks).size();
     v.match = same == free ? store::ByteMatch::Identical : store::ByteMatch::SameSize;
     v.share = free ? static_cast<double>(same) / static_cast<double>(free) : 1.0;
     return v;
@@ -674,9 +674,9 @@ public:
     verify::authored::search16::ByteVerdict distance(const rp::Code& built, const rp::Code& original) const override {
         MatchCode b{built.bytes, built.mask};
         b = match_trimmed(std::move(b));
-        const compare::mask::DistanceResult d = compare::mask::distance(b.bytes, original.bytes, b.mask, original.mask);
+        const symbols::mask::DistanceResult d = symbols::mask::distance(b.bytes, original.bytes, b.mask, original.mask);
         verify::authored::search16::ByteVerdict v;
-        v.match = d.verdict == compare::mask::Match::Identical ? store::ByteMatch::Identical : d.verdict == compare::mask::Match::SameSize ? store::ByteMatch::SameSize : store::ByteMatch::Different;
+        v.match = d.verdict == symbols::mask::Match::Identical ? store::ByteMatch::Identical : d.verdict == symbols::mask::Match::SameSize ? store::ByteMatch::SameSize : store::ByteMatch::Different;
         v.differing = d.differing;
         v.total = d.compared;
         return v;

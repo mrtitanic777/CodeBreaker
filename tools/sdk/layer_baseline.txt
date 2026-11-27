@@ -23,12 +23,10 @@ symbols/debug_build_estimate.hpp -> source/ne_asm/segment.hpp
 symbols/identify.cpp -> analyze/dos_functions.hpp
 symbols/identify.cpp -> build/flat_thunk.hpp
 symbols/identify.cpp -> decompile/describe.hpp
-symbols/libraries/package.cpp -> compare/mask.hpp
 symbols/names.cpp -> analyze/dos_functions.hpp
 symbols/names.cpp -> decompile/describe.hpp
 symbols/names_bodies.cpp -> decompile/describe.hpp
 symbols/ordinal_collect.hpp -> decompile/environment.hpp
-symbols/runtime_library.cpp -> compare/mask.hpp
 symbols/workbench.cpp -> decompile/environment.hpp
 symbols/workbench.cpp -> source/module_writer.hpp
 verify/lanes/powerpc.cpp -> engine/pcode_cpu_ppc.hpp

@@ -1,12 +1,12 @@
-// compare/mask.cpp -- see mask.hpp.
-#include "compare/mask.hpp"
+// symbols/mask.cpp -- see mask.hpp.
+#include "symbols/mask.hpp"
 
 #include <algorithm>
 #include <format>
 
 #include "core/error.hpp"
 
-namespace cb::compare::mask {
+namespace cb::symbols::mask {
 
 namespace {
 
@@ -104,4 +104,4 @@ DistanceResult distance_words(ByteView a, ByteView b, std::size_t unit, ByteOrde
     return r;
 }
 
-}  // namespace cb::compare::mask
+}  // namespace cb::symbols::mask

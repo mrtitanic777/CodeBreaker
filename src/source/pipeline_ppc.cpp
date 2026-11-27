@@ -13,7 +13,7 @@
 #include <set>
 #include <thread>
 
-#include "compare/mask.hpp"
+#include "symbols/mask.hpp"
 #include "core/fs.hpp"
 #include "core/json.hpp"
 #include "core/log.hpp"
@@ -166,10 +166,10 @@ verify::authored::search16::ByteVerdict ppc_distance(const rp::Code& built, cons
     const rp::Code b = ppc_trimmed(built);
     const auto widen = [](const std::vector<std::uint32_t>& v) { return std::vector<std::uint64_t>(v.begin(), v.end()); };
     const std::vector<std::uint64_t> ma = widen(b.word_mask), mb = widen(original.word_mask);
-    const compare::mask::DistanceResult d = compare::mask::distance_words(b.bytes, original.bytes, 4, compare::mask::ByteOrder::Big, ma, mb);
+    const symbols::mask::DistanceResult d = symbols::mask::distance_words(b.bytes, original.bytes, 4, symbols::mask::ByteOrder::Big, ma, mb);
     verify::authored::search16::ByteVerdict v;
-    v.match = d.verdict == compare::mask::Match::Identical ? store::ByteMatch::Identical
-              : d.verdict == compare::mask::Match::SameSize ? store::ByteMatch::SameSize
+    v.match = d.verdict == symbols::mask::Match::Identical ? store::ByteMatch::Identical
+              : d.verdict == symbols::mask::Match::SameSize ? store::ByteMatch::SameSize
                                                             : store::ByteMatch::Different;
     v.differing = d.differing;
     v.total = d.compared;

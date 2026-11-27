@@ -17,7 +17,7 @@
 #include "base/cache.hpp"
 #include "build/msc6.hpp"
 #include "exact/emu/native_dos_executive.hpp"
-#include "compare/mask.hpp"
+#include "symbols/mask.hpp"
 #include "core/fs.hpp"
 #include "core/json.hpp"
 #include "core/log.hpp"
@@ -130,10 +130,10 @@ public:
 
     am16::Verdict distance(const am16::Masked& built, const am16::Masked& original) const override {
         const am16::Masked b = m16p_trim(built);
-        const compare::mask::DistanceResult d = compare::mask::distance(b.code, original.code, b.mask, original.mask);
+        const symbols::mask::DistanceResult d = symbols::mask::distance(b.code, original.code, b.mask, original.mask);
         am16::Verdict v;
-        v.match = d.verdict == compare::mask::Match::Identical ? store::ByteMatch::Identical
-                  : d.verdict == compare::mask::Match::SameSize ? store::ByteMatch::SameSize
+        v.match = d.verdict == symbols::mask::Match::Identical ? store::ByteMatch::Identical
+                  : d.verdict == symbols::mask::Match::SameSize ? store::ByteMatch::SameSize
                                                                 : store::ByteMatch::Different;
         v.differing = d.differing;
         v.total = d.compared;

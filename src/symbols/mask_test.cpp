@@ -1,12 +1,13 @@
-// compare/mask_test.cpp -- tests of compare::mask and compare::image. Expected values were worked out by hand
+// compare/mask_test.cpp -- tests of symbols::mask and compare::image. Expected values were worked out by hand
 // from what the functions are for (a relocated address is left out, an opcode is not).
 #include "compare/image.hpp"
-#include "compare/mask.hpp"
+#include "symbols/mask.hpp"
 #include "core/error.hpp"
 #include "core/testing.hpp"
 
 using namespace cb;
 using namespace cb::compare;
+using namespace cb::symbols;
 
 namespace {
 // A call: E8 rel32, then a ret. The two builds differ only in the displacement.
@@ -14,7 +15,7 @@ const Bytes kBuildA = {0x55, 0x8B, 0xEC, 0xE8, 0x10, 0x00, 0x00, 0x00, 0x5D, 0xC
 const Bytes kBuildB = {0x55, 0x8B, 0xEC, 0xE8, 0x7C, 0x33, 0x00, 0x00, 0x5D, 0xC3};
 }  // namespace
 
-CB_TEST("compare.mask.of_marks_only_offsets_inside", [] {
+CB_TEST("symbols.mask.of_marks_only_offsets_inside", [] {
     const Bytes m = mask::of(std::vector<int>{4, 5, 6, 7, -1, 10, 99}, 10);
     CB_CHECK_EQ(m.size(), 10u);
     CB_CHECK(m == (Bytes{0, 0, 0, 0, 1, 1, 1, 1, 0, 0}));     // -1, 10 and 99 are outside and ignored
@@ -22,14 +23,14 @@ CB_TEST("compare.mask.of_marks_only_offsets_inside", [] {
     CB_CHECK(mask::of(std::vector<int>{0}, 0).empty());
 });
 
-CB_TEST("compare.mask.blank_zeroes_the_offsets", [] {
+CB_TEST("symbols.mask.blank_zeroes_the_offsets", [] {
     const Bytes out = mask::blank(kBuildA, std::vector<std::size_t>{4, 5, 6, 7, 400});
     CB_CHECK(out == (Bytes{0x55, 0x8B, 0xEC, 0xE8, 0, 0, 0, 0, 0x5D, 0xC3}));
     CB_CHECK(kBuildA[4] == 0x10);                              // the input is not touched
     CB_CHECK(mask::blank(kBuildA, std::vector<int>{-3}) == kBuildA);
 });
 
-CB_TEST("compare.mask.same_leaves_out_the_masked_bytes", [] {
+CB_TEST("symbols.mask.same_leaves_out_the_masked_bytes", [] {
     CB_CHECK(!mask::same(kBuildA, kBuildB));
     const Bytes call_target = mask::of(std::vector<int>{4, 5, 6, 7}, kBuildA.size());
     const mask::ByteMask masks[] = {call_target};
@@ -45,7 +46,7 @@ CB_TEST("compare.mask.same_leaves_out_the_masked_bytes", [] {
     CB_CHECK(mask::same({}, {}));
 });
 
-CB_TEST("compare.mask.same_takes_the_union_of_several_masks", [] {
+CB_TEST("symbols.mask.same_takes_the_union_of_several_masks", [] {
     const Bytes m1 = mask::of(std::vector<int>{4}, 10);
     const Bytes m2 = mask::of(std::vector<int>{5}, 10);
     const mask::ByteMask one[] = {m1};
@@ -58,14 +59,14 @@ CB_TEST("compare.mask.same_takes_the_union_of_several_masks", [] {
 
 // DIVERGES: the Python raised IndexError when a mask was shorter than the code it was applied to; here a short mask
 // covers its prefix and the bytes past its end are compared (the stricter answer).
-CB_TEST("compare.mask.a_short_mask_covers_its_prefix", [] {
+CB_TEST("symbols.mask.a_short_mask_covers_its_prefix", [] {
     const Bytes short_mask = {0, 0, 0, 0, 1};
     const mask::ByteMask masks[] = {short_mask};
     CB_CHECK(!mask::same(kBuildA, kBuildB, masks));            // bytes 5..7 differ and lie past the mask
     CB_CHECK_EQ(mask::differing(kBuildA, kBuildB, masks).size(), 1u);   // only byte 5 (6 and 7 are 0 in both)
 });
 
-CB_TEST("compare.mask.differing_lists_offsets_up_to_the_shorter", [] {
+CB_TEST("symbols.mask.differing_lists_offsets_up_to_the_shorter", [] {
     CB_CHECK(mask::differing(kBuildA, kBuildB) == (std::vector<std::size_t>{4, 5}));
     Bytes longer = kBuildB;
     longer.push_back(0xFF);
@@ -75,7 +76,7 @@ CB_TEST("compare.mask.differing_lists_offsets_up_to_the_shorter", [] {
     CB_CHECK(mask::differing(kBuildA, kBuildB, masks) == (std::vector<std::size_t>{5}));
 });
 
-CB_TEST("compare.mask.same_words_ignores_the_masked_bits", [] {
+CB_TEST("symbols.mask.same_words_ignores_the_masked_bits", [] {
     // PowerPC `bl` instructions: the 24-bit target field is filled in by the linker, opcode and LK are not
     const std::vector<std::uint64_t> a = {0x48000001, 0x38600000};
     const std::vector<std::uint64_t> b = {0x4BFFFF01, 0x38600000};
@@ -90,7 +91,7 @@ CB_TEST("compare.mask.same_words_ignores_the_masked_bits", [] {
     CB_CHECK(mask::same_words(a, c, one));
 });
 
-CB_TEST("compare.mask.distance_bytes", [] {
+CB_TEST("symbols.mask.distance_bytes", [] {
     const Bytes ma = mask::of(std::vector<int>{4, 5, 6, 7}, 10);
     auto r = mask::distance(kBuildA, kBuildB);
     CB_CHECK(r.verdict == mask::Match::SameSize);
@@ -104,7 +105,7 @@ CB_TEST("compare.mask.distance_bytes", [] {
     CB_CHECK(mask::distance(kBuildA, kBuildA).verdict == mask::Match::Identical);
 });
 
-CB_TEST("compare.mask.distance_counts_the_tail_of_a_longer_run", [] {
+CB_TEST("symbols.mask.distance_counts_the_tail_of_a_longer_run", [] {
     Bytes longer = kBuildA;
     longer.insert(longer.end(), {1, 2, 3});
     auto r = mask::distance(kBuildA, longer);
@@ -122,7 +123,7 @@ CB_TEST("compare.mask.distance_counts_the_tail_of_a_longer_run", [] {
     CB_CHECK_EQ(r.compared, 0u);
 });
 
-CB_TEST("compare.mask.distance_words_both_byte_orders", [] {
+CB_TEST("symbols.mask.distance_words_both_byte_orders", [] {
     // two big-endian words, the second differing in its low half only
     const Bytes a = {0x48, 0, 0, 1, 0x38, 0x60, 0x00, 0x05};
     const Bytes b = {0x4B, 0xFF, 0xFF, 0x01, 0x38, 0x60, 0x00, 0x05};
@@ -154,7 +155,7 @@ CB_TEST("compare.mask.distance_words_both_byte_orders", [] {
     CB_CHECK_EQ(r.differing, 0u);
 });
 
-CB_TEST("compare.mask.distance_words_rejects_a_bad_unit", [] {
+CB_TEST("symbols.mask.distance_words_rejects_a_bad_unit", [] {
     const Bytes a = {1, 2, 3};
     CB_CHECK_THROWS_AS(UsageError, mask::distance_words(a, a, 0, mask::ByteOrder::Little));
     CB_CHECK_THROWS_AS(UsageError, mask::distance_words(a, a, 9, mask::ByteOrder::Little));
@@ -165,7 +166,7 @@ CB_TEST("compare.mask.distance_words_rejects_a_bad_unit", [] {
     CB_CHECK_EQ(mask::distance_words(x, y, 8, mask::ByteOrder::Little).differing, 1u);
 });
 
-CB_TEST("compare.mask.match_words", [] {
+CB_TEST("symbols.mask.match_words", [] {
     CB_CHECK_EQ(std::string(mask::to_text(mask::Match::Identical)), "identical");
     CB_CHECK_EQ(std::string(mask::to_text(mask::Match::SameSize)), "same size");
     CB_CHECK_EQ(std::string(mask::to_text(mask::Match::Different)), "different");

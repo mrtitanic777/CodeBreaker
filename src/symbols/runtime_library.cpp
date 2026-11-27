@@ -5,7 +5,7 @@
 #include <format>
 #include <set>
 
-#include "compare/mask.hpp"
+#include "symbols/mask.hpp"
 #include "core/crypto.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
@@ -37,7 +37,7 @@ std::optional<Signature> signature(ByteView code, ByteView mask) {
         if (mask[o] != 0) masked.push_back(static_cast<std::uint32_t>(o));
     }
     if (size - masked.size() < kFewest) return std::nullopt;
-    const Bytes body = compare::mask::blank(code.first(size), masked);
+    const Bytes body = symbols::mask::blank(code.first(size), masked);
     std::array<bool, 256> seen{};
     std::size_t distinct = 0;
     for (const std::uint8_t b : body) {
@@ -102,7 +102,7 @@ std::optional<Identified> SignatureTable::match(ByteView code) const {
         if (hit == by_lead_.end()) continue;
         for (const Entry& e : hit->second) {
             if (e.size > code.size()) continue;
-            if (sha1_prefix(compare::mask::blank(code.first(e.size), e.masked)) == e.digest) {
+            if (sha1_prefix(symbols::mask::blank(code.first(e.size), e.masked)) == e.digest) {
                 Identified what = e.what;
                 what.bytes = e.size;
                 return what;
@@ -118,7 +118,7 @@ std::vector<Identified> SignatureTable::match_all(ByteView code) const {
         const auto hit = by_lead_.find(lead_key(code.first(n)));
         if (hit == by_lead_.end()) continue;
         for (const Entry& e : hit->second) {
-            if (e.size > code.size() || sha1_prefix(compare::mask::blank(code.first(e.size), e.masked)) != e.digest) continue;
+            if (e.size > code.size() || sha1_prefix(symbols::mask::blank(code.first(e.size), e.masked)) != e.digest) continue;
             Identified what = e.what;
             what.bytes = e.size;
             if (std::find(out.begin(), out.end(), what) == out.end()) out.push_back(std::move(what));

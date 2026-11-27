@@ -7,7 +7,7 @@
 #include <unordered_set>
 
 #include "analyze/dos_functions.hpp"
-#include "compare/mask.hpp"
+#include "symbols/mask.hpp"
 #include "compare/versions_internal.hpp"
 #include "core/capstone_api.hpp"
 #include "core/fs.hpp"
@@ -284,7 +284,7 @@ Function make_function(unsigned bits, std::string key, std::string name, bool na
             f.calls.push_back(*called);
             if (called->to == Call::To::Import) f.marks.insert("i" + called->key);
         }
-        raw.emplace_back(as_text(mask::blank(ins.bytes, out)));
+        raw.emplace_back(as_text(symbols::mask::blank(ins.bytes, out)));
         f.rows.push_back({static_cast<std::uint64_t>(addr), std::string(text::trim(mn + " " + ins.op_str))});
         std::string joined = text::join(parts, ",");
         texts.push_back(mn + " " + joined);
