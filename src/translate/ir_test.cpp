@@ -677,7 +677,7 @@ CB_TEST("translate.ir.cil.the_info_and_intrinsic_tables_are_well_formed", [] {
     }
     CB_CHECK(ir::find_info_key("cil.nope") == nullptr);
     CB_CHECK(ir::find_info_key("") == nullptr);
-    CB_CHECK_EQ(ir::info_keys().size(), std::size_t{30});
+    CB_CHECK_EQ(ir::info_keys().size(), std::size_t{31});
 
     last = {};
     std::set<std::string_view> flag_names;

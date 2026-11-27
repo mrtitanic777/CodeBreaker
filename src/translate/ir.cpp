@@ -203,6 +203,8 @@ constexpr InfoKey kInfoKeys[] = {
     {"cil.code_size", InfoOn::Node, InfoValueKind::Int, "MethodDecl Lambda", false, "the size in bytes of the IL body"},
     {"cil.constrained", InfoOn::Node, InfoValueKind::Type, "Call", false, "the `constrained.` prefix's type of a call"},
     {"cil.dynamic", InfoOn::Type, InfoValueKind::Bool, "", false, "an `object` that was annotated `dynamic` (DynamicType is the L2 type: this keeps the object origin)"},
+    {"cil.helper_count", InfoOn::Node, InfoValueKind::Int, "MethodDecl Lambda", false,
+     "how many helper variables the function has named I_0, I_1 ... (ILFunction.RegisterVariable's counter), so a variable made later gets the next name"},
     {"cil.kind_exact", InfoOn::Sym, InfoValueKind::String, "", false, "the exact ILSpy VariableKind, where VarRole merges two (PinnedLocal vs PinnedRegionLocal, ExceptionStackSlot vs ExceptionLocal)"},
     {"cil.locals_sig_len", InfoOn::Node, InfoValueKind::Int, "MethodDecl Lambda", false, "the length of the method's local variable signature"},
     {"cil.method_tparams", InfoOn::Node, InfoValueKind::Types, "MethodDecl Lambda", false,

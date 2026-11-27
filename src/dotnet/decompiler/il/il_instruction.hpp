@@ -20,6 +20,7 @@
 // Not ported: the DEBUG-only enumerator counting and dirty marks.
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -72,27 +73,36 @@ public:
     virtual ~ArenaObject() = default;
 };
 
-// Owns the nodes and variables made while it is the thread's current arena (ILArenaScope); frees them all when destroyed.
+// Owns the nodes and variables made while it is the thread's current arena (ILArenaScope); frees them all when destroyed, in the
+// order they were made. What `make` makes lives in the arena's own blocks (one allocation per 64 KiB, not one per object: a method's
+// ILAst is hundreds of thousands of small objects); what `keep` is given stays the heap object it was.
 class ILArena {
 public:
     ILArena() = default;
     ILArena(const ILArena&) = delete;
     ILArena& operator=(const ILArena&) = delete;
+    ~ILArena();
 
     template <class T, class... Args>
     T* make(Args&&... args) {
-        auto owned = std::make_unique<T>(std::forward<Args>(args)...);
-        T* result = owned.get();
-        owned_.push_back(std::move(owned));
+        static_assert(std::is_base_of_v<ArenaObject, T>);
+        void* storage = allocate(sizeof(T), alignof(T));
+        T* result = ::new (storage) T(std::forward<Args>(args)...);
+        // (after the constructor, which may make objects of its own: they are destroyed first, as when each was a unique_ptr)
+        try {
+            objects_.push_back({result, false});
+        } catch (...) {
+            result->~T();
+            throw;
+        }
         return result;
     }
     template <class T>
     T* keep(std::unique_ptr<T> owned) {
-        T* result = owned.get();
-        owned_.push_back(std::move(owned));
-        return result;
+        objects_.push_back({owned.get(), true});
+        return owned.release();
     }
-    std::size_t size() const { return owned_.size(); }
+    std::size_t size() const { return objects_.size(); }
 
     // The thread's current arena (an error when there is none).
     static ILArena& current();
@@ -100,7 +110,15 @@ public:
 
 private:
     friend class ILArenaScope;
-    std::vector<std::unique_ptr<ArenaObject>> owned_;
+    void* allocate(std::size_t size, std::size_t align);
+    struct Owned {
+        ArenaObject* object;
+        bool on_heap;   // kept: deleted, not destroyed in place
+    };
+    std::vector<Owned> objects_;
+    std::vector<std::unique_ptr<std::byte[]>> blocks_;
+    std::byte* next_ = nullptr;
+    std::byte* end_ = nullptr;
 };
 
 // Makes an arena the thread's current one for its lifetime.

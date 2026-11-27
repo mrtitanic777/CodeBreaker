@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <cassert>
+#include <cstdint>
+#include <memory>
 #include <format>
 #include <stdexcept>
 
@@ -24,6 +26,28 @@ ILArena& ILArena::current() {
     return *current_arena;
 }
 ILArena* ILArena::current_or_null() { return current_arena; }
+
+ILArena::~ILArena() {
+    for (const Owned& o : objects_) {
+        if (o.on_heap) delete o.object;
+        else o.object->~ArenaObject();
+    }
+}
+
+void* ILArena::allocate(std::size_t size, std::size_t align) {
+    constexpr std::size_t kBlock = std::size_t{64} << 10;
+    auto aligned = [align](std::byte* p) { return (reinterpret_cast<std::uintptr_t>(p) + align - 1) & ~(static_cast<std::uintptr_t>(align) - 1); };
+    std::uintptr_t at = aligned(next_);
+    if (next_ == nullptr || at + size > reinterpret_cast<std::uintptr_t>(end_)) {
+        const std::size_t bytes = std::max(kBlock, size + align);
+        blocks_.push_back(std::make_unique_for_overwrite<std::byte[]>(bytes));
+        next_ = blocks_.back().get();
+        end_ = next_ + bytes;
+        at = aligned(next_);
+    }
+    next_ = reinterpret_cast<std::byte*>(at + size);
+    return reinterpret_cast<void*>(at);
+}
 
 ILArenaScope::ILArenaScope(ILArena& arena) : previous_(current_arena) { current_arena = &arena; }
 ILArenaScope::~ILArenaScope() { current_arena = previous_; }

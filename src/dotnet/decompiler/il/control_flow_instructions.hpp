@@ -252,6 +252,12 @@ protected:
     InstructionFlags compute_flags() const override { return InstructionFlags::MayThrow | InstructionFlags::ControlFlow; }
     void write_to_core(ITextOutput& output, const ILAstWritingOptions& options) const override;
 
+public:
+    // How many variables register_variable has named I_<n> (a blank name): the next one is I_<count>. (Not upstream's API: what the CIL
+    // lane carries over when it lifts a function back from L2.)
+    int helper_variable_count() const { return helper_variable_count_; }
+    void set_helper_variable_count(int count) { helper_variable_count_ = count; }
+
 private:
     util::LongSet find_unused_il_ranges() const;
     [[noreturn]] void clone_variables();

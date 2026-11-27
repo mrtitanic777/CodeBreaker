@@ -46,9 +46,15 @@ void write_bytes(ITextOutput& writer, T value) {
 }  // namespace
 
 std::string offset_to_string(long long offset) {
-    // String.Format("IL_{0:x4}"): a negative number is its two's complement (eight digits for an int)
-    if (offset < 0) return std::format("IL_{:x}", static_cast<std::uint32_t>(offset));
-    return std::format("IL_{:04x}", offset);
+    // String.Format("IL_{0:x4}"): a negative number is its two's complement (eight digits for an int). (Written digit by digit: every
+    // block label and branch of an ILAst dump is one.)
+    const unsigned long long v = offset < 0 ? static_cast<std::uint32_t>(offset) : static_cast<unsigned long long>(offset);
+    char digits[16];
+    int n = 0;
+    for (unsigned long long rest = v; rest != 0 || n < 4; rest >>= 4) digits[n++] = "0123456789abcdef"[rest & 0xf];
+    std::string out = "IL_";
+    while (n > 0) out += digits[--n];
+    return out;
 }
 
 void write_offset_reference(ITextOutput& writer, std::optional<int> offset) {

@@ -7680,6 +7680,10 @@
      "$ref": "#/$defs/Type",
      "description": "the `constrained.` prefix's type of a call (on: Call)"
     },
+    "cil.helper_count": {
+     "description": "how many helper variables the function has named I_0, I_1 ... (ILFunction.RegisterVariable's counter), so a variable made later gets the next name (on: MethodDecl, Lambda)",
+     "type": "integer"
+    },
     "cil.locals_sig_len": {
      "description": "the length of the method's local variable signature (on: MethodDecl, Lambda)",
      "type": "integer"
@@ -7891,6 +7895,17 @@
      "kinds": [],
      "general": false,
      "doc": "an `object` that was annotated `dynamic` (DynamicType is the L2 type: this keeps the object origin)"
+    },
+    {
+     "key": "cil.helper_count",
+     "on": "node",
+     "value": "int",
+     "kinds": [
+      "MethodDecl",
+      "Lambda"
+     ],
+     "general": false,
+     "doc": "how many helper variables the function has named I_0, I_1 ... (ILFunction.RegisterVariable's counter), so a variable made later gets the next name"
     },
     {
      "key": "cil.kind_exact",

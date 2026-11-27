@@ -29,10 +29,13 @@
 #include <memory>
 #include <string>
 
+#include "translate/frontends/cil/flat_map.hpp"
 #include "translate/ir.hpp"
 
 namespace cb::dotnet::decompiler::il {
 class ILFunction;
+class ILInstruction;
+class ILVariable;
 }
 namespace cb::dotnet::decompiler::typesystem {
 class IType;
@@ -95,10 +98,55 @@ public:
     ir::Node* function(const dotnet::decompiler::il::ILFunction& function);
     const LoweringStats& stats() const;
 
+    // For a reader that keeps the tree current while it changes the ILAst (the C# builders, stage 14), in the function lowered last: the
+    // type made from an IType; the symbol of a variable made after the lowering; a symbol stated again from its variable after the
+    // variable changed (its kind, type or name: the symbol stays the same object).
+    ir::TypeP type(const dotnet::decompiler::typesystem::IType* type);
+    ir::SymP new_variable(const dotnet::decompiler::il::ILVariable& variable);
+    // The symbol a variable of that function was lowered to; null for one it does not have.
+    ir::SymP symbol_of(const dotnet::decompiler::il::ILVariable& variable) const;
+    void restate(ir::Sym& sym, const dotnet::decompiler::il::ILVariable& variable);
+
     struct State;   // (the lowering's own; lower.cpp)
 
 private:
     std::unique_ptr<State> s_;
+};
+
+// What a Lifting made from what, both ways: each lifted instruction's node (a Labeled for a container's block; the helper nodes a lowering
+// adds, an ExprStmt or the Name a store or an address names, have no instruction of their own) and each variable's symbol. The C#
+// builders read the node of the instruction they translate through it (stage 14), and a rewrite they make on the ILAst is made on the
+// tree through it too. A link to a node or instruction made after the lifting is added with `link`.
+class LiftMap {
+public:
+    const ir::Node* node(const dotnet::decompiler::il::ILInstruction* inst) const {
+        const ir::Node* const* n = nodes_.find(inst);
+        return n != nullptr ? *n : nullptr;
+    }
+    dotnet::decompiler::il::ILInstruction* instruction(const ir::Node* node) const {
+        dotnet::decompiler::il::ILInstruction* const* i = instructions_.find(node);
+        return i != nullptr ? *i : nullptr;
+    }
+    dotnet::decompiler::il::ILVariable* variable(const ir::Sym* sym) const {
+        dotnet::decompiler::il::ILVariable* const* v = variables_.find(sym);
+        return v != nullptr ? *v : nullptr;
+    }
+    const ir::SymP* sym(const dotnet::decompiler::il::ILVariable* v) const { return syms_.find(v); }
+
+    void link(const ir::Node* node, dotnet::decompiler::il::ILInstruction* inst) {
+        nodes_.get(inst).value = node;
+        instructions_.get(node).value = inst;
+    }
+    void link(const ir::SymP& sym, dotnet::decompiler::il::ILVariable* v) {
+        syms_.get(v).value = sym;
+        variables_.get(sym.get()).value = v;
+    }
+
+private:
+    FlatMap<const dotnet::decompiler::il::ILInstruction*, const ir::Node*> nodes_;
+    FlatMap<const ir::Node*, dotnet::decompiler::il::ILInstruction*> instructions_;
+    FlatMap<const ir::Sym*, dotnet::decompiler::il::ILVariable*> variables_;
+    FlatMap<const dotnet::decompiler::il::ILVariable*, ir::SymP> syms_;
 };
 
 // Lifts what a Lowering made back into the ILAst, in the thread's current il::ILArena: the function is connected (its variables' load,
@@ -111,7 +159,8 @@ public:
     Lifting(const Lifting&) = delete;
     Lifting& operator=(const Lifting&) = delete;
 
-    dotnet::decompiler::il::ILFunction* function(const ir::Node* root);
+    // `map`, if given, gets what was made from what.
+    dotnet::decompiler::il::ILFunction* function(const ir::Node* root, LiftMap* map = nullptr);
 
     struct State;   // (the lifting's own; lift.cpp)
 

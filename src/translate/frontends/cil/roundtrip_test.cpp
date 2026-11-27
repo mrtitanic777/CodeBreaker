@@ -23,6 +23,7 @@
 #include "dotnet/decompiler/metadata/universal_assembly_resolver.hpp"
 #include "dotnet/metadata/metadata_reader.hpp"
 #include "translate/frontends/cil/cil.hpp"
+#include "translate/ir_index.hpp"
 
 namespace cb::translate::frontends::cil {
 namespace cil_roundtrip_test {
@@ -82,6 +83,7 @@ private:
             if (!variable(*a.variables()[i], *b.variables()[i])) return false;
         }
         if (a.method != b.method || a.name != b.name || a.code_size != b.code_size || a.local_variable_signature_length != b.local_variable_signature_length ||
+            a.helper_variable_count() != b.helper_variable_count() ||
             a.warnings != b.warnings || a.is_iterator != b.is_iterator || a.state_machine_compiled_with_mono != b.state_machine_compiled_with_mono ||
             a.state_machine_compiled_with_legacy_visual_basic != b.state_machine_compiled_with_legacy_visual_basic ||
             a.async_return_type != b.async_return_type || a.move_next_method != b.move_next_method || a.reduced_method != b.reduced_method ||
@@ -241,8 +243,42 @@ bool Deep::instruction(const il::ILInstruction& a, const il::ILInstruction& b) {
     return true;
 }
 
+// The derived state ir::TreeIndex computes from the lowered tree, against what the lifted ILAst computed for itself: each variable's
+// loads, stores and address-takings, each block's incoming edges, each container's leaves. Empty: all agree; else the first difference.
+std::string index_differs(ir::Node* lowered, const LiftMap& map) {
+    ir::TreeIndex index(lowered);
+    for (ir::Node* n : ir::walk(lowered)) {
+        const auto check_locals = [&](const std::vector<ir::SymP>& locals) -> std::string {
+            for (const ir::SymP& sym : locals) {
+                const il::ILVariable* v = map.variable(sym.get());
+                if (v == nullptr) return "a variable not lifted: " + sym->name;
+                const ir::TreeIndex::Uses& u = index.uses(sym.get());
+                if (static_cast<int>(u.loads.size()) != v->load_count() || static_cast<int>(index.store_count(sym.get())) != v->store_count() ||
+                    static_cast<int>(u.addresses.size()) != v->address_count() || index.is_single_definition(sym.get()) != v->is_single_definition())
+                    return std::format("uses of {}: loads {}/{} stores {}/{} addresses {}/{}", sym->name, u.loads.size(), v->load_count(),
+                                       index.store_count(sym.get()), v->store_count(), u.addresses.size(), v->address_count());
+            }
+            return {};
+        };
+        std::string why;
+        if (const auto* m = ir::get<ir::MethodDecl>(n)) why = check_locals(m->locals);
+        else if (const auto* l = ir::get<ir::Lambda>(n)) why = check_locals(l->locals);
+        else if (const auto* lab = ir::get<ir::Labeled>(n)) {
+            const auto* block = il::as<il::Block>(map.instruction(n));
+            if (block == nullptr) why = "a block not lifted: " + lab->label.value_or("");
+            else if (static_cast<int>(index.incoming(*lab->label)) != block->incoming_edge_count())
+                why = std::format("incoming edges of {}: {}/{}", *lab->label, index.incoming(*lab->label), block->incoming_edge_count());
+            else if (const auto* c = il::as<il::BlockContainer>(block->parent()); c != nullptr && c->blocks[0] == block &&
+                                                                                   static_cast<int>(index.leaving(*lab->label)) != c->leave_count())
+                why = std::format("leaves of {}: {}/{}", *lab->label, index.leaving(*lab->label), c->leave_count());
+        }
+        if (!why.empty()) return why;
+    }
+    return {};
+}
+
 struct Totals {
-    std::size_t methods = 0, errors = 0, round_tripped = 0, text_differs = 0, deep_differs = 0, refused = 0;
+    std::size_t methods = 0, errors = 0, round_tripped = 0, text_differs = 0, deep_differs = 0, refused = 0, index_differs = 0;
     std::size_t arena_bytes = 0, max_arena_bytes = 0, max_nodes = 0;
     double pipeline_ms = 0, lower_ms = 0, lift_ms = 0;   // reading and the transforms; the lowering; the lifting   // the L2 trees' own memory (the nodes; what vectors and boxes hold is outside)
     LoweringStats lowering;
@@ -251,7 +287,8 @@ struct Totals {
 
 // Every method of the main module: read, `steps` transforms, then lowered and lifted. `out` (if given) gets the lifted functions'
 // text as DecompilerDump writes it (`transforms N`), so it compares with the oracle.
-Totals round_trip(const dd::typesystem::DecompilerTypeSystem& ts, int steps, std::string* out, const std::function<void(ir::Node*)>& mutate = {}) {
+Totals round_trip(const dd::typesystem::DecompilerTypeSystem& ts, int steps, std::string* out, const std::function<void(ir::Node*)>& mutate = {},
+                  int repeat = 1) {
     const dd::typesystem::MetadataModule& module = ts.main_metadata_module();
     const dd::metadata::MetadataFile& file = *module.metadata_file();
     const srm::MetadataReader& md = module.metadata();
@@ -283,14 +320,26 @@ Totals round_trip(const dd::typesystem::DecompilerTypeSystem& ts, int steps, std
             totals.pipeline_ms += std::chrono::duration<double, std::milli>(t1 - t0).count();
             il::ILFunction* back = nullptr;
             try {
+                for (int r = 1; r < repeat; ++r) {   // (a profile of the lowering and the lifting alone: the same function again)
+                    l2.reset();
+                    LiftMap map;
+                    Lifting().function(lowering.function(*function), &map);
+                }
                 l2.reset();
                 const std::size_t nodes_before = lowering.stats().nodes;
                 const auto t2 = std::chrono::steady_clock::now();
                 ir::Node* lowered = lowering.function(*function);
                 if (mutate) mutate(lowered);
                 const auto t3 = std::chrono::steady_clock::now();
-                back = Lifting().function(lowered);
+                LiftMap map;   // (as the C# builders lift: with the map)
+                back = Lifting().function(lowered, &map);
                 const auto t4 = std::chrono::steady_clock::now();
+                if (!mutate) {
+                    if (std::string why = index_differs(lowered, map); !why.empty()) {
+                        ++totals.index_differs;
+                        if (totals.first_problem.empty()) totals.first_problem = head + "index: " + why;
+                    }
+                }
                 totals.lower_ms += std::chrono::duration<double, std::milli>(t3 - t2).count();
                 totals.lift_ms += std::chrono::duration<double, std::milli>(t4 - t3).count();
                 totals.arena_bytes += l2.bytes_used();
@@ -337,6 +386,7 @@ void check_assembly(std::string_view name) {
     CB_CHECK_EQ(t.round_tripped + t.errors, t.methods);
     CB_CHECK_EQ(t.text_differs, std::size_t{0});
     CB_CHECK_EQ(t.deep_differs, std::size_t{0});
+    CB_CHECK_EQ(t.index_differs, std::size_t{0});
     if (!t.first_problem.empty()) cb::testing::record_failure(__FILE__, __LINE__, t.first_problem.substr(0, 4000));
 }
 
@@ -381,7 +431,8 @@ CB_TEST("translate.cil.round_trip.notices_a_changed_fact", [] {
 CB_TEST("translate.cil.round_trip.sample64", [] { check_assembly("Sample64.dll"); });
 
 // ad hoc: CB_CIL_RT_IN=<assembly> CB_CIL_RT_OUT=<text> CB_CIL_RT_STEPS=<N> [CB_CIL_RT_STATS=<file>] writes the lifted functions' dump after N
-// transforms (work/ilspy-l2/rtcompare.sh compares it with DecompilerDump's) and the counts of the round trip.
+// transforms (work/ilspy-l2/rtcompare.sh compares it with DecompilerDump's) and the counts of the round trip; CB_CIL_RT_REPEAT=<N> lowers
+// and lifts each function N times (a profile of the lane alone; the counts and times are the last time's).
 CB_TEST("translate.cil.round_trip_wip_dump", [] {
     const auto in = cb::fs::get_env("CB_CIL_RT_IN");
     const auto out = cb::fs::get_env("CB_CIL_RT_OUT");
@@ -391,13 +442,14 @@ CB_TEST("translate.cil.round_trip_wip_dump", [] {
     NoReferences resolver;
     const dd::typesystem::DecompilerTypeSystem ts(module, resolver);
     std::string text;
-    const Totals t = round_trip(ts, std::stoi(*steps), &text);
+    const auto repeat = cb::fs::get_env("CB_CIL_RT_REPEAT");
+    const Totals t = round_trip(ts, std::stoi(*steps), &text, {}, repeat ? std::stoi(*repeat) : 1);
     std::ofstream(std::filesystem::path(*out), std::ios::binary) << text;
     if (const auto stats = cb::fs::get_env("CB_CIL_RT_STATS")) {
         std::ofstream s{std::filesystem::path(*stats), std::ios::binary};
-        s << std::format("methods {} errors {} round_tripped {} refused {} text_differs {} deep_differs {} functions {} instructions {} nodes {} labels_uniquified {}"
+        s << std::format("methods {} errors {} round_tripped {} refused {} text_differs {} deep_differs {} index_differs {} functions {} instructions {} nodes {} labels_uniquified {}"
                          " arena_bytes {} max_arena_bytes {} max_nodes {} sizeof_node {} sizeof_type {} sizeof_sym {} pipeline_ms {:.0f} lower_ms {:.0f} lift_ms {:.0f}\n",
-                         t.methods, t.errors, t.round_tripped, t.refused, t.text_differs, t.deep_differs, t.lowering.functions, t.lowering.instructions,
+                         t.methods, t.errors, t.round_tripped, t.refused, t.text_differs, t.deep_differs, t.index_differs, t.lowering.functions, t.lowering.instructions,
                          t.lowering.nodes, t.lowering.labels_uniquified, t.arena_bytes, t.max_arena_bytes, t.max_nodes, sizeof(ir::Node), sizeof(ir::Type),
                          sizeof(ir::Sym), t.pipeline_ms, t.lower_ms, t.lift_ms);
         s << t.first_problem << '\n';

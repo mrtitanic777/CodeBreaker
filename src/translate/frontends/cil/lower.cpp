@@ -6,7 +6,6 @@
 #include <format>
 #include <stdexcept>
 #include <unordered_map>
-#include <unordered_set>
 
 #include "dotnet/decompiler/il/instructions.hpp"
 #include "dotnet/decompiler/typesystem/tuple_type.hpp"
@@ -14,6 +13,7 @@
 #include "dotnet/decompiler/typesystem/types.hpp"
 #include "translate/frontends/cil/cil.hpp"
 #include "translate/frontends/cil/cil_names.hpp"
+#include "translate/frontends/cil/flat_map.hpp"
 
 namespace cb::translate::frontends::cil {
 
@@ -37,9 +37,9 @@ bool is_plain_nop(const il::ILInstruction* inst) {
 struct Lowering::State {
     Arena& arena;
     LoweringStats stats;
-    std::unordered_map<const void*, ir::EntityP> entities;
-    std::unordered_map<const ts_ns::IType*, ir::TypeP> types;
-    std::unordered_map<const void*, ir::SymP> members;        // IMethod / IField / IMember / IParameter
+    FlatMap<const void*, ir::EntityP> entities;
+    FlatMap<const ts_ns::IType*, ir::TypeP> types;
+    FlatMap<const void*, ir::SymP> members;        // IMethod / IField / IMember / IParameter
     struct MethodFacts {
         ir::TypeP owner;                                       // the declaring type (a constructor call's type)
         std::vector<ir::TypeArg> typeargs;
@@ -47,14 +47,23 @@ struct Lowering::State {
     std::unordered_map<const ts_ns::IMethod*, MethodFacts> method_facts;
     // what lives only as long as the function's ILArena: its variables, and the members a transform made in it (the dynamic awaiter
     // methods of AsyncAwaitDecompiler, declared on `dynamic`); the rest belongs to the type system and is shared by every function
-    std::unordered_map<const void*, ir::SymP> function_members;
-    std::unordered_map<const void*, ir::EntityP> function_entities;
+    FlatMap<const void*, ir::SymP> function_members;
+    FlatMap<const void*, ir::EntityP> function_entities;
     std::unordered_map<const ts_ns::IMethod*, MethodFacts> function_facts;
-    std::unordered_map<const il_ns::ILVariable*, ir::SymP> variables;
-    std::unordered_map<std::uint64_t, std::shared_ptr<const ir::Origin>> origins;
+    FlatMap<const il_ns::ILVariable*, ir::SymP> variables;
+    // The function's spans: one shared block of Origins per function, each node's `origin` an aliasing pointer into it (no allocation
+    // per span), the same span the same Origin ([start, end) as start << 32 | end).
+    struct Spans {
+        std::vector<std::unique_ptr<ir::Origin[]>> chunks;   // of 16, 32, 64 ... (most functions are small)
+        std::size_t used = 0;                                 // of the last chunk
+        std::size_t size = 0;                                 // the last chunk's
+    };
+    std::shared_ptr<Spans> spans;
+    FlatMap<std::uint64_t, const ir::Origin*> origins;
     // per top-level function
-    std::unordered_map<const il_ns::Block*, std::string> labels;
-    std::unordered_set<std::string> used_labels;
+    FlatMap<const il_ns::Block*, std::string> labels;
+    FlatMap<std::uint64_t, int> label_uses;                   // by the block's start offset (+ 1): the blocks labelled from it so far
+    std::vector<il_ns::ILInstruction*> walk_order;
     std::vector<const il_ns::ILFunction*> functions;          // the functions being lowered, innermost last
 
     explicit State(Arena& a) : arena(a) {}
@@ -157,24 +166,34 @@ ir::ArgMeta arg_meta(State& s, const il::CSharpArgumentInfo& info) {
 
 ir::EntityP Lowering::State::entity(ir::EntityKind kind, const void* object, bool shared) {
     if (object == nullptr) return {};
-    auto [it, fresh] = (shared ? entities : function_entities).try_emplace(object);
-    if (fresh) it->second = std::make_shared<ClrEntity>(kind, object);
-    return it->second;
+    auto [e, fresh] = (shared ? entities : function_entities).get(object);
+    if (fresh) e = std::make_shared<ClrEntity>(kind, object);
+    return e;
 }
 
 std::shared_ptr<const ir::Origin> Lowering::State::origin(const il_ns::ILInstruction& inst) {
     const auto start = static_cast<std::uint32_t>(inst.start_il_offset());
     const auto end = static_cast<std::uint32_t>(inst.end_il_offset());
     if (start == 0 && end == 0) return {};
-    auto [it, fresh] = origins.try_emplace((static_cast<std::uint64_t>(start) << 32) | end);
-    if (fresh) it->second = std::make_shared<const ir::Origin>(ir::OriginSpan{start, end});
-    return it->second;
+    auto [o, fresh] = origins.get((static_cast<std::uint64_t>(start) << 32) | end);
+    if (fresh) {
+        if (!spans) spans = std::make_shared<Spans>();
+        if (spans->used == spans->size) {
+            spans->size = spans->size == 0 ? 16 : std::min<std::size_t>(spans->size * 2, 4096);
+            spans->chunks.push_back(std::make_unique<ir::Origin[]>(spans->size));
+            spans->used = 0;
+        }
+        ir::Origin* made = &spans->chunks.back()[spans->used++];
+        *made = ir::OriginSpan{start, end};
+        o = made;
+    }
+    return std::shared_ptr<const ir::Origin>(spans, o);
 }
 
 ir::TypeP Lowering::State::type(const ts_ns::IType* t) {
     namespace ts = ts_ns;
     if (t == nullptr) return {};
-    if (auto it = types.find(t); it != types.end()) return it->second;
+    if (const ir::TypeP* known = types.find(t)) return *known;
     ir::Type::Body body = ir::AnyType{};
     switch (t->kind()) {
         case ts::TypeKind::Void: body = ir::VoidType{}; break;
@@ -249,7 +268,7 @@ ir::TypeP Lowering::State::type(const ts_ns::IType* t) {
         }
     }
     ir::TypeP made = ir::make_type(std::move(body), entity(ir::EntityKind::Type, t));
-    types.emplace(t, made);
+    types.get(t).value = made;
     return made;
 }
 
@@ -284,7 +303,7 @@ ir::SymP Lowering::State::method(const ts_ns::IMethod* m) {
     if (m == nullptr) return {};
     const bool shared = !of_function(m);
     auto& cache = shared ? members : function_members;
-    if (auto it = cache.find(m); it != cache.end()) return it->second;
+    if (const ir::SymP* known = cache.find(m)) return *known;
     auto sym = std::make_shared<ir::Sym>();
     sym->kind = m->is_constructor() ? ir::SymKind::Ctor : ir::SymKind::Method;
     sym->name = m->name();
@@ -311,13 +330,13 @@ ir::SymP Lowering::State::method(const ts_ns::IMethod* m) {
     if (m->is_override()) sym->flags.emplace_back("override");
     if (m->is_accessor()) sym->flags.emplace_back("accessor");
     sym->entity = entity(ir::EntityKind::Method, m, shared);
-    cache.emplace(m, sym);
+    cache.get(m).value = sym;
     return sym;
 }
 
 ir::SymP Lowering::State::field(const ts_ns::IField* f) {
     if (f == nullptr) return {};
-    if (auto it = members.find(f); it != members.end()) return it->second;
+    if (const ir::SymP* known = members.find(f)) return *known;
     auto sym = std::make_shared<ir::Sym>();
     sym->kind = ir::SymKind::Field;
     sym->name = f->name();
@@ -326,7 +345,7 @@ ir::SymP Lowering::State::field(const ts_ns::IField* f) {
     sym->type = type(f->return_type());
     if (f->is_read_only()) sym->flags.emplace_back("readonly");
     sym->entity = entity(ir::EntityKind::Field, f);
-    members.emplace(f, sym);
+    members.get(f).value = sym;
     return sym;
 }
 
@@ -335,7 +354,7 @@ ir::SymP Lowering::State::member(const ts_ns::IMember* m) {
     const ir::EntityKind kind = cil_lowering::member_kind(m);
     if (kind == ir::EntityKind::Method) return method(dynamic_cast<const ts_ns::IMethod*>(m));
     if (kind == ir::EntityKind::Field) return field(dynamic_cast<const ts_ns::IField*>(m));
-    if (auto it = members.find(m); it != members.end()) return it->second;
+    if (const ir::SymP* known = members.find(m)) return *known;
     auto sym = std::make_shared<ir::Sym>();
     sym->kind = kind == ir::EntityKind::Event ? ir::SymKind::Event : ir::SymKind::Property;
     sym->name = m->name();
@@ -343,27 +362,27 @@ ir::SymP Lowering::State::member(const ts_ns::IMember* m) {
     sym->is_static = m->is_static();
     sym->type = type(m->return_type());
     sym->entity = entity(kind, m);
-    members.emplace(m, sym);
+    members.get(m).value = sym;
     return sym;
 }
 
 ir::SymP Lowering::State::parameter(const ts_ns::IParameter* p) {
     if (p == nullptr) return {};
-    if (auto it = members.find(p); it != members.end()) return it->second;
+    if (const ir::SymP* known = members.find(p)) return *known;
     auto sym = std::make_shared<ir::Sym>();
     sym->kind = ir::SymKind::Param;
     sym->name = p->name();
     sym->type = type(p->type());
     sym->entity = entity(ir::EntityKind::Parameter, p);
-    members.emplace(p, sym);
+    members.get(p).value = sym;
     return sym;
 }
 
 ir::SymP Lowering::State::variable(const il_ns::ILVariable* v) {
     if (v == nullptr) return {};
-    if (auto it = variables.find(v); it != variables.end()) return it->second;
+    if (const ir::SymP* known = variables.find(v)) return *known;
     auto sym = std::make_shared<ir::Sym>();
-    variables.emplace(v, sym);
+    variables.get(v).value = sym;
     fill_variable(*sym, *v);
     return sym;
 }
@@ -391,30 +410,25 @@ void Lowering::State::fill_variable(ir::Sym& sym, const il_ns::ILVariable& v) {
 // ---- labels ---------------------------------------------------------------------------------------------------------------------
 
 void Lowering::State::assign_labels(const il_ns::ILFunction& root) {
-    if (labels.bucket_count() > 4096) labels = {};
-    else labels.clear();
-    if (used_labels.bucket_count() > 4096) used_labels = {};
-    else used_labels.clear();
-    auto* mutable_root = const_cast<il_ns::ILFunction*>(&root);
-    std::vector<il_ns::ILInstruction*> order{mutable_root};
-    // preorder: a block gets its label before the blocks inside it
+    labels.clear();
+    label_uses.clear();
+    std::vector<il_ns::ILInstruction*>& order = walk_order;
+    order.assign(1, const_cast<il_ns::ILFunction*>(&root));
+    // preorder: a block gets its label before the blocks inside it. A label is the block's IL_xxxx, which names its start offset; the
+    // second block from one offset gets IL_xxxx_2, the third _3 (a suffixed label never equals an unsuffixed one).
     while (!order.empty()) {
         il_ns::ILInstruction* inst = order.back();
         order.pop_back();
         if (auto* c = il_ns::as<il_ns::BlockContainer>(inst)) {
             for (il_ns::Block* b : c->blocks) {
+                const int uses = ++label_uses.get(static_cast<std::uint64_t>(static_cast<std::uint32_t>(b->start_il_offset())) + 1).value;
                 std::string label = b->label();
-                if (!used_labels.insert(label).second) {
+                if (uses > 1) {
                     ++stats.labels_uniquified;
-                    for (int n = 2;; ++n) {
-                        std::string candidate = std::format("{}_{}", b->label(), n);
-                        if (used_labels.insert(candidate).second) {
-                            label = std::move(candidate);
-                            break;
-                        }
-                    }
+                    label += '_';
+                    label += std::to_string(uses);
                 }
-                labels.emplace(b, std::move(label));
+                labels.get(b).value = std::move(label);
             }
         }
         const int n = inst->get_child_count();
@@ -425,9 +439,10 @@ void Lowering::State::assign_labels(const il_ns::ILFunction& root) {
 }
 
 const std::string& Lowering::State::label_of(const il_ns::Block* block) {
-    auto it = labels.find(block);
-    if (it == labels.end()) throw std::logic_error("cil lowering: a branch to a block that is not in the function");
-    return it->second;
+    // (the table is complete before the first look-up: no insertion moves what this returns)
+    const std::string* label = labels.find(block);
+    if (label == nullptr) throw std::logic_error("cil lowering: a branch to a block that is not in the function");
+    return *label;
 }
 
 std::string Lowering::State::container_label(const il_ns::BlockContainer* c) {
@@ -482,6 +497,7 @@ Node* Lowering::State::function(const il_ns::ILFunction& f) {
     }
     if (f.code_size != 0) n->info.set("cil.code_size", static_cast<std::int64_t>(f.code_size));
     if (f.local_variable_signature_length != 0) n->info.set("cil.locals_sig_len", static_cast<std::int64_t>(f.local_variable_signature_length));
+    if (f.helper_variable_count() != 0) n->info.set("cil.helper_count", static_cast<std::int64_t>(f.helper_variable_count()));
     if (f.state_machine_compiled_with_mono) n->info.set("cil.mono_state_machine", true);
     if (f.state_machine_compiled_with_legacy_visual_basic) n->info.set("cil.vb_state_machine", true);
     if (f.async_return_type != nullptr) n->info.set("cil.async_return_type", type(f.async_return_type));
@@ -881,13 +897,16 @@ Node* Lowering::State::lower(const il_ns::ILInstruction* inst_ptr, cil_lowering:
             return n;
         }
         case OpCode::LdLoc: {
-            const auto& i = static_cast<const il::LdLoc&>(inst);
-            return make(ir::Name{.sym = variable(i.variable())}, inst, variable(i.variable())->type);
+            ir::SymP sym = variable(static_cast<const il::LdLoc&>(inst).variable());
+            ir::TypeP t = sym->type;
+            return make(ir::Name{.sym = std::move(sym)}, inst, std::move(t));
         }
         case OpCode::LdLoca: return make(ir::Unary{.op = "&", .x = name(static_cast<const il::LdLoca&>(inst).variable())}, inst);
         case OpCode::StLoc: {
             const auto& i = static_cast<const il::StLoc&>(inst);
-            Node* n = make(ir::Assign{.target = name(i.variable()), .value = expr(i.value())}, inst, variable(i.variable())->type);
+            Node* target = name(i.variable());
+            ir::TypeP t = target->type;
+            Node* n = make(ir::Assign{.target = target, .value = expr(i.value())}, inst, std::move(t));
             if (i.is_stack_adjustment) ir::set_flag(*n, ir::NodeFlag::StackAdjust);
             if (i.il_stack_was_empty) ir::set_flag(*n, ir::NodeFlag::StackEmpty);
             return n;
@@ -1153,6 +1172,28 @@ Node* Lowering::State::lower(const il_ns::ILInstruction* inst_ptr, cil_lowering:
 Lowering::Lowering(Arena& arena) : s_(std::make_unique<State>(arena)) {}
 Lowering::~Lowering() = default;
 const LoweringStats& Lowering::stats() const { return s_->stats; }
+ir::TypeP Lowering::type(const dotnet::decompiler::typesystem::IType* type) { return s_->type(type); }
+ir::SymP Lowering::new_variable(const dotnet::decompiler::il::ILVariable& variable) {
+    // (a variable made after the transforms is plain: no capture scope or state machine field, which name the original ILAst's objects)
+    if (variable.capture_scope != nullptr || variable.state_machine_field != nullptr)
+        throw std::logic_error("cil lowering: a new variable with a capture scope or a state machine field");
+    return s_->variable(&variable);
+}
+ir::SymP Lowering::symbol_of(const dotnet::decompiler::il::ILVariable& variable) const {
+    const ir::SymP* sym = s_->variables.find(&variable);
+    return sym != nullptr ? *sym : nullptr;
+}
+void Lowering::restate(ir::Sym& sym, const dotnet::decompiler::il::ILVariable& variable) {
+    // what the builders change of a variable: its kind, type and name
+    const VarRoleOf role = var_role(variable.kind(), variable.is_this());
+    sym.kind = role.role == ir::VarRole::Param || role.role == ir::VarRole::This ? ir::SymKind::Param : ir::SymKind::Local;
+    sym.role = role.role;
+    if (role.exact) sym.info.set("cil.kind_exact", std::string(*role.exact));
+    else sym.info.erase("cil.kind_exact");
+    sym.type = s_->type(variable.type());
+    sym.name = variable.name.value_or("");
+    sym.generated_name = variable.has_generated_name;
+}
 
 ir::Node* Lowering::function(const dotnet::decompiler::il::ILFunction& function) {
     s_->functions.clear();
@@ -1160,9 +1201,8 @@ ir::Node* Lowering::function(const dotnet::decompiler::il::ILFunction& function)
     s_->function_members.clear();
     s_->function_entities.clear();
     s_->function_facts.clear();
-    // a function's spans: a small table stays in the cache (and one a big function left large is dropped, not cleared bucket by bucket)
-    if (s_->origins.bucket_count() > 4096) s_->origins = {};
-    else s_->origins.clear();
+    s_->origins.clear();
+    s_->spans.reset();
     s_->assign_labels(function);
     return s_->function(function);
 }

@@ -11,6 +11,7 @@
 #include "dotnet/decompiler/typesystem/type_provider.hpp"
 #include "translate/frontends/cil/cil.hpp"
 #include "translate/frontends/cil/cil_names.hpp"
+#include "translate/frontends/cil/flat_map.hpp"
 
 namespace cb::translate::frontends::cil {
 
@@ -80,12 +81,14 @@ struct Lifting::State {
         il_ns::BlockContainer* container = nullptr;      // ... lifted: what a Return leaves
         ts_ns::GenericContext context;
     };
-    std::unordered_map<const ir::Sym*, il_ns::ILVariable*> variables;
-    std::unordered_map<std::string, il_ns::Block*> blocks;
-    std::unordered_map<std::string, il_ns::BlockContainer*> containers;
+    FlatMap<const ir::Sym*, il_ns::ILVariable*> variables;
+    // by label: the labels are the tree's own strings, which outlive the lifting
+    std::unordered_map<std::string_view, il_ns::Block*> blocks;
+    std::unordered_map<std::string_view, il_ns::BlockContainer*> containers;
     std::vector<Function> functions;
     std::vector<std::pair<il_ns::ILVariable*, std::string>> capture_scopes;
     std::vector<std::pair<il_ns::ILFunction*, std::string>> declaration_scopes;
+    LiftMap* links = nullptr;   // what was made from what, when asked for
 
     il_ns::ILVariable* variable(const ir::SymP& sym);
     il_ns::ILFunction* function(const ir::Node* n);
@@ -114,7 +117,7 @@ using cil_lifting::refuse;
 il_ns::ILVariable* Lifting::State::variable(const ir::SymP& sym) {
     namespace il = il_ns;
     if (!sym) refuse(nullptr, "a variable without a symbol");
-    if (auto it = variables.find(sym.get()); it != variables.end()) return it->second;
+    if (il_ns::ILVariable* const* known = variables.find(sym.get())) return *known;
     if (!sym->role) refuse(nullptr, std::format("a variable without a role: {}", sym->name));
     const std::string* exact = sym->info.get_as<std::string>("cil.kind_exact");
     const il::VariableKind kind = variable_kind(*sym->role, exact);
@@ -129,7 +132,8 @@ il_ns::ILVariable* Lifting::State::variable(const ir::SymP& sym) {
     if (const auto* scope = sym->info.get_as<std::string>("cil.capture_scope")) capture_scopes.emplace_back(v, *scope);
     if (const auto* f = sym->info.get_as<ir::EntityP>("cil.state_machine_field")) v->state_machine_field = clr_field(*f);
     if (const auto* r = sym->info.get_as<bool>("cil.remove_if_redundant")) v->remove_if_redundant = *r;
-    variables.emplace(sym.get(), v);
+    variables.get(sym.get()).value = v;
+    if (links != nullptr) links->link(sym, v);
     return v;
 }
 
@@ -195,6 +199,7 @@ il_ns::ILFunction* Lifting::State::function(const ir::Node* n) {
     f->return_type = return_type;
     f->parameters = std::move(parameters);
     f->local_variable_signature_length = static_cast<int>(cil_lifting::info_int(*n, "cil.locals_sig_len"));
+    f->set_helper_variable_count(static_cast<int>(cil_lifting::info_int(*n, "cil.helper_count")));
     f->is_iterator = has_mod("iterator");
     if (const auto* b = n->info.get_as<bool>("cil.mono_state_machine")) f->state_machine_compiled_with_mono = *b;
     if (const auto* b = n->info.get_as<bool>("cil.vb_state_machine")) f->state_machine_compiled_with_legacy_visual_basic = *b;
@@ -219,6 +224,7 @@ il_ns::ILFunction* Lifting::State::function(const ir::Node* n) {
     for (il::ILFunction* lf : nested) f->local_functions.add(lf);
     const std::optional<std::string>& scope = md != nullptr ? md->scope : lm->scope;
     if (scope) declaration_scopes.emplace_back(f, *scope);
+    if (links != nullptr) links->link(n, f);
     return f;
 }
 
@@ -238,6 +244,7 @@ il_ns::BlockContainer* Lifting::State::region(const ir::Node& n) {
         auto* block = il::make<il::Block>(il::BlockKind::ControlFlow);
         block->set_il_range(cil_lifting::range_of(*b));
         blocks[*lab->label] = block;
+        if (links != nullptr) links->link(b, block);
         made.push_back(block);
         c->blocks.add(block);
     }
@@ -607,6 +614,7 @@ il_ns::ILInstruction* Lifting::State::lift(const ir::Node* node) {
     // a function, a container and a block set their range where they are made; the rest here
     if (!il_ns::is<il_ns::ILFunction>(inst) && !il_ns::is<il_ns::BlockContainer>(inst) && !il_ns::is<il_ns::Block>(inst))
         inst->set_il_range(cil_lifting::range_of(*n));
+    if (links != nullptr) links->link(n, inst);
     return inst;
 }
 
@@ -767,8 +775,9 @@ il_ns::ILInstruction* Lifting::State::lift_core(const ir::Node& n) {
 Lifting::Lifting() : s_(std::make_unique<State>()) {}
 Lifting::~Lifting() = default;
 
-dotnet::decompiler::il::ILFunction* Lifting::function(const ir::Node* root) {
+dotnet::decompiler::il::ILFunction* Lifting::function(const ir::Node* root, LiftMap* map) {
     State& s = *s_;
+    s.links = map;
     s.variables.clear();
     s.blocks.clear();
     s.containers.clear();
