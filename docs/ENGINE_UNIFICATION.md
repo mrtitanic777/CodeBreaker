@@ -150,6 +150,18 @@ tests only what it changes.
   off, with 6% less CPU time on (121.6 s against 128.9 s); 34 converted programs (C# and Python to C++17, each checked by running
   both) are byte-identical either way; the recordings replay answer for answer (223 of 223, and the conversions' own). Next: `cb_l2`
   deleted once its remaining users move: the L2 core entries (roundtrip, validate, ...) and the pyre, pystr and value helpers.
+- 2026-11-27: item 1, step 1 done: `cb_l2` deleted (`src/translate/l2`, 16,600 lines with its two test programs). Its last entries
+  answer in-process from `native_l2`: `roundtrip_text` through the typed tree (`l2::from_json`, `l2::to_json`), `set_schema` and
+  `validate` by the schema check, now `src/translate/support/l2schema`. Python's value semantics the tree back ends use (`py::V`,
+  `pystr`, `pyjson`, `pyre`) moved to `src/translate/support` (the library `cb_pysupport`), unchanged. The C entry point `l2_call`,
+  `l2api.h` and the fallbacks `CB_C_TREE=0` and `CB_CPP17_TREE=0` are gone; `native_l2::Library` keeps its typed API (and a test's
+  stand-in). The library's own test programs (built on request
+  only) went with it: their C++17 goldens were stale (an older header), and what they held is in `translate.cpp17.*` and
+  `translate.native_l2.cases.*`.
+  Proof: the recordings replay answer for answer (75,878 of 75,878 C back end calls; 223 of 223 of the C++17 and core calls,
+  `roundtrip_text`, `validate` and the unknown entry among them); every translate test group passes; the decompile area passes.
+  Left of item 1's step 1: the back ends still take their arguments as JSON text in-process (`ctree::call`, `cpp17tree::call`);
+  typed calls from `native_l2` would remove that last wire.
 - 2026-11-27: items 2, 3, 13, 14 and 15 under way (one agent each): five emulator cores retired (F8, 8048, CP1610, HuC6280, 65C816),
   SuperH and PowerPC on the one assembler, the NID tables as data, one zlib/PNG/ZIP/XACT/EXEPACK/ISO 9660 reader, the Direct3D
   Displays as one template.
