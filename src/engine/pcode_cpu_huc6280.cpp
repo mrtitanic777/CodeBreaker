@@ -368,6 +368,4 @@ h::Run run(h::Machine& machine, std::uint16_t entry, const h::Options& options) 
     return out;
 }
 
-h::Run call(h::Machine& machine, std::uint16_t entry, const h::Options& options) { return enabled() ? pcode_cpu::run(machine, entry, options) : h::run(machine, entry, options); }
-
 }  // namespace cb::engine::pcode_cpu

@@ -1,6 +1,6 @@
-// engine/pcode_cpu_huc6280.hpp -- the PC Engine lane's HuC6280 on the one emulator (decompile/engine/pcode_emulator), on languages/huc6280.sla, in place of the own core (emulate/huc6280).
+// engine/pcode_cpu_huc6280.hpp -- the PC Engine lane's HuC6280 on the one emulator (decompile/engine/pcode_emulator), on languages/huc6280.sla, in place of the own core (emulate/huc6280's interpreter, retired when this matched it).
 //
-//     Run r = engine::pcode_cpu::call(machine, entry, options);   // as emulate::huc6280::run, on the core chosen by CB_PCODE_EMU
+//     Run r = engine::pcode_cpu::run(machine, entry, options);
 //
 // The machine stays the Machine's: the eight mapping registers, the ROM banks, RAM and the hardware page with the log of its accesses (every data access of the program is Machine::read and
 // Machine::write). What the emulator decodes instructions from is the logical address space as the mapping registers show it (the hardware page reads $FF), made again when TAM
@@ -12,10 +12,7 @@
 
 namespace cb::engine::pcode_cpu {
 
-// The run on the emulator, always.
+// The run on the emulator.
 emulate::huc6280::Run run(emulate::huc6280::Machine& machine, std::uint16_t entry, const emulate::huc6280::Options& options = {});
-
-// emulate::huc6280::run or run(), by enabled().
-emulate::huc6280::Run call(emulate::huc6280::Machine& machine, std::uint16_t entry, const emulate::huc6280::Options& options = {});
 
 }  // namespace cb::engine::pcode_cpu

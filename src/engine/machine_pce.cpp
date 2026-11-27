@@ -90,7 +90,7 @@ vl::Effects pce_effects(const stdfs::path& path, std::uint32_t entry, const vl::
     options.x = static_cast<std::uint8_t>(at(state, "x"));
     options.y = static_cast<std::uint8_t>(at(state, "y"));
     options.max_steps = kSteps;
-    const emulate::huc6280::Run run = pcode_cpu::call(machine, logical, options);
+    const emulate::huc6280::Run run = pcode_cpu::run(machine, logical, options);
     std::vector<std::string> io;
     for (const emulate::huc6280::Access& x : run.io) {
         io.push_back(x.text());

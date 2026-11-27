@@ -1,12 +1,10 @@
 // emulate/huc6280.hpp -- a PC Engine / TurboGrafx-16 HuCard machine, to run functions on (Unicorn has no HuC6280).
 //
 //     huc6280::Machine machine(rom.data);          // the card's ROM in 8 KB banks; RAM, the mapping registers and the chips' registers
-//     huc6280::Run r = huc6280::run(machine, 0xE010, {.a = 3});    // call a function: run to its RTS
+//     huc6280::Run r = engine::pcode_cpu::run(machine, 0xE010, {.a = 3});    // call a function: run to its RTS
 //
-// The CPU is the 65C02 of emulate/m6502 (the Cmos variant, decimal mode on) with page zero and the stack moved to $2000 and $2100, and what the
-// HuC6280 adds: the register swaps SXY SAX SAY, CLA CLX CLY, CSL CSH (no effect here), SET (the next ORA, AND, EOR or ADC works on memory at zero
-// page,X), ST0 ST1 ST2 (stores to the VDC, whatever the mapping), TAM and TMA (the mapping registers), TST, BSR, RMBn SMBn BBRn BBSn, the five block
-// transfers (TII TDD TIN TIA TAI, a length of 0 being 65536), and BRK taking its vector at $FFF6. Time is not modelled.
+// The CPU runs on CodeBreaker's one emulator (engine/pcode_cpu_huc6280: huc6280.sla and what the adapter adds); the interpreter that was here was retired when the
+// emulator matched it. Time is not modelled.
 //
 // Memory is the eight mapping registers' view of the physical banks (formats/pce.hpp): ROM banks $00-$7F, RAM $F8 (8 KB; $F9-$FB repeat it, as on
 // the PC Engine), the hardware page $FF. Anywhere else reads $FF and ignores writes. The hardware page's chips answer as an idle console would: the
@@ -88,8 +86,5 @@ struct Run {
     std::vector<Access> io;
     std::string exit() const;   // "return" | "stopped: <why>" | "limit"
 };
-
-// Call the function at `entry` as JSR would and run it until it returns (RTS to kReturnAddress), faults or takes `max_steps` instructions.
-Run run(Machine& machine, std::uint16_t entry, const Options& options = {});
 
 }  // namespace cb::emulate::huc6280
