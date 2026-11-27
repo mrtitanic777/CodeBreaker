@@ -276,4 +276,22 @@ CB_TEST("java.header.banner", [] {
     CB_CHECK_EQ(hd::CppStd::of_year(2003).label, "C++03");
 });
 
+// The ancestors' overloads a class's own methods would hide are declared back as the parent spells them: a method renamed there for a field of the
+// same name (`a` -> `a_`) is `using GuiScreen::a_;`, not `using GuiScreen::a;` (Indev 20100104: GuiScreen has no `a`).
+CB_TEST("java.header.unhidden_overloads_are_spelled_as_the_parent_renames_them", [] {
+    types::ResolverData data;
+    data.known = {"GuiScreen", "GuNewLevel"};
+    data.method_renames["GuiScreen"] = {"a"};
+    data.method_renames["GuNewLevel"] = {"a"};
+    const types::TypeResolver resolver(std::move(data));
+    ir::JClass cls = cb::java::parse::parse_source(R"(public class GuNewLevel extends GuiScreen {
+    public void a() { }
+}
+)");
+    cls.unhidden_overloads = {"a"};
+    const std::string h = hd::render_header(cls, resolver, {});
+    CB_CHECK(h.find("using GuiScreen::a_;") != std::string::npos);
+    CB_CHECK(h.find("using GuiScreen::a;") == std::string::npos);
+});
+
 }  // namespace

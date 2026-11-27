@@ -52,6 +52,15 @@ CB_TEST("java.ownership.nullable_value_params", [] {
     CB_CHECK(own::nullable_value_params(method_named(cls, "compared"), r).empty());
 });
 
+// An Object compared with null stays a JObject (it is null itself), as its overrides take it.
+CB_TEST("java.ownership.an_object_compared_with_null_stays_a_value", [] {
+    const ir::JClass cls = cb::java::parse::parse_source(R"(public class Tag {
+    public boolean equals(Object o) { if (o != null && o instanceof Tag) { return true; } return false; }
+}
+)");
+    CB_CHECK(own::nullable_value_params(method_named(cls, "equals"), sample_resolver()).empty());
+});
+
 CB_TEST("java.ownership.reassigned_params", [] {
     const ir::JClass cls = cb::java::parse::parse_source(kParams);
     CB_CHECK(own::reassigned_params(method_named(cls, "reassigned")) == own::NameSet{"s"});

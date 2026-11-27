@@ -149,7 +149,10 @@ void pp_apply_injector(const stdfs::path& workspace, Side side, const PrepareOpt
     const auto map_with = [&](Side mapped_side) {
         if (std::optional<Mappings> mappings = get_mappings(mappings_path, storage, side_name(mapped_side))) {
             auto shared = std::make_shared<Mappings>(std::move(*mappings));
-            globals.emplace_back([shared](ClassStorage& s) { Remapper().load(s).load(*shared).process(); });
+            globals.emplace_back([shared](ClassStorage& s) {
+                const Mappings completed = completed_for_source(*shared, s);   // (what the source needs to compile: remap.hpp)
+                Remapper().load(s).load(completed).process();
+            });
         }
     };
     const auto run_globals = [&] {

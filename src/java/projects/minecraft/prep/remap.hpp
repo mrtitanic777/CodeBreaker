@@ -105,6 +105,11 @@ std::vector<std::string> read_namespaces(const std::filesystem::path& mappings);
 // nullopt when the file does not exist.
 std::optional<Mappings> get_mappings(const std::filesystem::path& mappings_path, const ClassStorage& storage, const std::string& side_name);
 
+// CodeBreaker's, not RDI's: the mappings completed with what the decompiled source needs to compile -- a method named in a class and not in the
+// class or interface above it that declares it is named there too; and of two methods of one name and the same parameters that differ only in
+// what they return (the bytecode allows it; Java and C++ do not), the later is <name>_<return type> (`a_V`). Run on the storage before the remapper.
+Mappings completed_for_source(const Mappings& given, const ClassStorage& storage);
+
 // RDI's Remapper: the in-memory remapping of a storage's classes (the nodes are changed, the storage's cache is updated).
 class Remapper {
 public:

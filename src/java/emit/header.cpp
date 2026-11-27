@@ -3,6 +3,8 @@
 
 #include <algorithm>
 #include <format>
+#include <set>
+#include <string>
 #include <vector>
 
 #include "core/text.hpp"
@@ -197,7 +199,11 @@ std::string render_class(const ir::JClass& cls, const types::TypeResolver& resol
 
     // the ancestors' other overloads of a name this class declares stay callable on it, as in Java
     if (!cls.unhidden_overloads.empty() && cls.parent) {
-        for (const std::string& name : cls.unhidden_overloads) out.push_back(std::format("\tusing {}::{};", base_type_spelling(*cls.parent), name));
+        // (as the parent spells the name: a method renamed there for a field of the same name, `a` -> `a_`, is declared as `a_`)
+        std::set<std::string> written;
+        for (const std::string& name : cls.unhidden_overloads)
+            if (const std::string spelled = resolver.renamed_method(*cls.parent, name); written.insert(spelled).second)
+                out.push_back(std::format("\tusing {}::{};", base_type_spelling(*cls.parent), spelled));
     }
 
     // MI-diamond unification: forwarding overrides so an interface's pure-virtual that a base class already implements

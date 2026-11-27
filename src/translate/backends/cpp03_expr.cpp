@@ -118,6 +118,8 @@ std::string Writer::sequenced(const ir::Node* e) {
         std::string ct = detail::strip_const_ref(c.ctype);
         if (ct == "char*" || ct == "char *") ct = "JavaString";   // text: held as the String it is
         if (ct == "void" || ct.empty()) return "";
+        // a collection whose elements the types do not say (a raw Set or List: `JList`) cannot be declared: it stays where it is, in order
+        if (ct == "JList" || ct == "JSet" || ct == "JMap") continue;
         const std::string nm = std::format("j2xo{}", ++temps_);
         pending_.push_back(std::format("{} {} = {};", ct, nm, zero_of(ct)));
         parts.push_back(nm + " = " + c.code);

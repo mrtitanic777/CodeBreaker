@@ -122,7 +122,9 @@ NameSet nullable_value_params(const ir::Method& method, const types::TypeResolve
     NameSet out;
     for (const ir::Param& p : method.params) {
         const ir::JType& jt = p.type;
-        if (jt.is_array() || resolver.is_pointer(jt) || typemap::primitives().contains(jt.name) ||
+        // (an Object is a JObject, which is null itself and compares with NULL: it stays as it is, as its overrides have it -- NBTBase.equals
+        // made `JObject*` while NBTTagCompound's override took `JObject`, and `instanceof` on the pointer did not compile, Beta 1.9-pre5)
+        if (jt.is_array() || resolver.is_pointer(jt) || typemap::primitives().contains(jt.name) || jt.name == "Object" ||
             typemap::value_stdlib().contains(jt.name) || typemap::containers().contains(jt.name)) {
             continue;
         }

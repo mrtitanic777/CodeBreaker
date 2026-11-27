@@ -10,6 +10,7 @@
 #include <cctype>
 #include <cstdio>
 #include <functional>
+#include <map>
 #include <stdexcept>
 #include <unordered_set>
 
@@ -1164,6 +1165,108 @@ std::string Remapper::remap_single_desc(const std::string& input) {
     const auto new_internal_name = mapped_class(internal_name);
     if (!new_internal_name) return input;
     return std::string(index_of_l, '[') + "L" + *new_internal_name + ";";
+}
+
+}  // namespace cb::java::minecraft::prep
+
+// ---- CodeBreaker's own: what a version's mappings leave that its decompiled source cannot say --------------------------------------------------
+
+namespace cb::java::minecraft::prep {
+
+namespace {
+
+// The classes of the storage above `name` (its superclass and interfaces, theirs, ...), nearest first; classes outside the storage are left out.
+std::vector<const bc::ClassNode*> ancestors_of(const ClassStorage& storage, const bc::ClassNode& node) {
+    std::vector<const bc::ClassNode*> out;
+    std::unordered_set<std::string> seen;
+    std::vector<std::string> next;
+    if (node.super_name) next.push_back(*node.super_name);
+    next.insert(next.end(), node.interfaces.begin(), node.interfaces.end());
+    for (std::size_t i = 0; i < next.size(); ++i) {
+        if (!seen.insert(next[i]).second) continue;
+        const bc::ClassNode* up = storage.get_class(next[i]);
+        if (up == nullptr) continue;
+        out.push_back(up);
+        if (up->super_name) next.push_back(*up->super_name);
+        next.insert(next.end(), up->interfaces.begin(), up->interfaces.end());
+    }
+    return out;
+}
+
+bool renameable(const bc::MethodNode& m) { return m.name != "<init>" && m.name != "<clinit>" && (m.access & ACC_PRIVATE) == 0; }
+
+// "(LWorld;III)Z" -> "(LWorld;III)" and "Z".
+std::pair<std::string, std::string> split_desc(const std::string& desc) {
+    const std::size_t close = desc.find(')');
+    if (close == std::string::npos) return {desc, ""};
+    return {desc.substr(0, close + 1), desc.substr(close + 1)};
+}
+
+// A word for a return type, for a name: "Z" -> "Z", "Ljava/lang/String;" -> "String", "[I" -> "IArray".
+std::string return_word(std::string_view ret) {
+    std::size_t dims = 0;
+    while (dims < ret.size() && ret[dims] == '[') ++dims;
+    std::string_view base = ret.substr(dims);
+    std::string word;
+    if (base.size() > 2 && base.front() == 'L') {
+        base = base.substr(1, base.size() - 2);
+        if (const std::size_t slash = base.rfind('/'); slash != std::string_view::npos) base = base.substr(slash + 1);
+        for (const char c : base) word += std::isalnum(static_cast<unsigned char>(c)) ? c : '_';
+    } else {
+        word = std::string(base);
+    }
+    for (std::size_t i = 0; i < dims; ++i) word += "Array";
+    return word;
+}
+
+}  // namespace
+
+Mappings completed_for_source(const Mappings& given, const ClassStorage& storage) {
+    Mappings out = given;
+    // 1. a method the mappings name in a class, and not in the class or interface above that declares it, is named there too (and so in every
+    //    class below that, by the remapper's own carrying down): IWorldAccess.a, which RenderGlobal implements as markBlockNeedsUpdate
+    for (const bc::ClassNode* node : storage) {
+        for (const bc::MethodNode& m : node->methods) {
+            if (!renameable(m) || (m.access & ACC_STATIC) != 0) continue;
+            const std::optional<std::string> named = given.methods.get(node->name, m.desc, m.name);
+            if (!named) continue;
+            for (const bc::ClassNode* up : ancestors_of(storage, *node)) {
+                const bool declares = std::any_of(up->methods.begin(), up->methods.end(), [&](const bc::MethodNode& u) { return u.name == m.name && u.desc == m.desc && renameable(u); });
+                if (declares && !out.methods.get(up->name, m.desc, m.name)) out.methods.put(up->name, m.desc, m.name, *named);
+            }
+        }
+    }
+    // 2. two methods of a class (its own, or its own and one above it) with one name and the same parameters, told apart only by what they return:
+    //    the bytecode allows it, Java and C++ source do not. The one met later is named <name>_<return type> -- the same name in every class that
+    //    declares it, so an override keeps overriding
+    std::unordered_map<std::string, std::map<std::string, std::string>> done;   // class -> {final name + parameters: return type}
+    std::function<const std::map<std::string, std::string>&(const bc::ClassNode&)> names_of = [&](const bc::ClassNode& node) -> const std::map<std::string, std::string>& {
+        if (const auto it = done.find(node.name); it != done.end()) return it->second;
+        std::map<std::string, std::string> seen;
+        done[node.name] = {};   // (a cycle in a damaged hierarchy ends here)
+        std::vector<std::string> parents;
+        if (node.super_name) parents.push_back(*node.super_name);
+        parents.insert(parents.end(), node.interfaces.begin(), node.interfaces.end());
+        for (const std::string& p : parents)
+            if (const bc::ClassNode* up = storage.get_class(p)) {
+                const auto& inherited = names_of(*up);
+                seen.insert(inherited.begin(), inherited.end());
+            }
+        for (const bc::MethodNode& m : node.methods) {
+            if (!renameable(m)) continue;
+            const auto [params, ret] = split_desc(m.desc);
+            std::string name = out.methods.get(node.name, m.desc, m.name).value_or(m.name);
+            const auto clash = seen.find(name + params);
+            if (clash != seen.end() && clash->second != ret) {
+                name += "_" + return_word(ret);
+                out.methods.put(node.name, m.desc, m.name, name);
+            }
+            seen.emplace(name + params, ret);
+        }
+        return done[node.name] = std::move(seen);
+    };
+    for (const bc::ClassNode* node : storage) names_of(*node);
+    return out;
 }
 
 }  // namespace cb::java::minecraft::prep
