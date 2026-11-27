@@ -7,12 +7,16 @@
 // Written for the ILSpy port (no upstream counterpart).
 #pragma once
 
+#include <functional>
 #include <string>
 
 #include "dotnet/decompiler/typesystem/decompiler_type_system.hpp"
 
 namespace cb::dotnet::decompiler::il {
 
-std::string dump_il_ast(const typesystem::DecompilerTypeSystem& type_system);
+class ILFunction;
+
+// `after_read` (if given) runs on each function before it is written (the transform tests run part of the pipeline there).
+std::string dump_il_ast(const typesystem::DecompilerTypeSystem& type_system, const std::function<void(ILFunction*)>& after_read = {});
 
 }  // namespace cb::dotnet::decompiler::il

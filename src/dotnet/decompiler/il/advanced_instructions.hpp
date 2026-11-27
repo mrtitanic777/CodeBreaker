@@ -27,13 +27,16 @@
 #include "dotnet/decompiler/il/il_variable.hpp"
 #include "dotnet/decompiler/il/instructions_base.hpp"
 
+namespace cb::dotnet::decompiler {
+class DecompilerSettings;
+}
 namespace cb::dotnet::decompiler::typesystem {
 enum class KnownTypeCode : std::uint8_t;
 }
 
 namespace cb::dotnet::decompiler::il {
 
-class DecompilerSettings;
+using decompiler::DecompilerSettings;
 class BinaryNumericInstruction;
 class CallInstruction;
 class Call;

@@ -20,13 +20,14 @@
 // `function->local_functions`, `switch->sections`, `try_catch->handlers`), its readonly kinds too (`block->kind`, `nop->kind`); a
 // property is a getter and setter (`container->kind()`, `function->kind()`). TryFault passes OpCode::TryFault (upstream's constructor
 // passes TryFinally, which only makes its opcode wrong; the visitors here dispatch on it).
-// Not ported yet: ILFunction.RunTransforms and Block.RunTransforms (they take the stage 6 transform contexts); AsyncDebugInfo
+// RunTransforms of ILFunction and Block are in il/transforms/il_transform.cpp. AsyncDebugInfo
 // is a small stand-in until the debug information is ported (WAITS); ReducedMethod holds the nearest type
 // that exists, an IMethod.
 #pragma once
 
 #include <functional>
 #include <limits>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_set>
@@ -45,6 +46,13 @@ class IParameter;
 namespace cb::dotnet::decompiler::il {
 
 using typesystem::IParameter;
+
+namespace transforms {
+class IILTransform;
+class IBlockTransform;
+class ILTransformContext;
+class BlockTransformContext;
+}  // namespace transforms
 
 class Block;
 class BlockContainer;
@@ -221,6 +229,8 @@ public:
     // The IL offset of the chained constructor call, -1 if this is not a constructor or no chained call was found.
     int chained_constructor_call_il_offset();
 
+    // Runs the transforms in order (il/transforms/il_transform.cpp).
+    void run_transforms(const std::vector<std::unique_ptr<transforms::IILTransform>>& transforms, transforms::ILTransformContext& context);
     // Makes a variable of this function (named I_n when no name is given).
     ILVariable* register_variable(VariableKind kind, const IType* type, const std::string& name = std::string());
     // Recombines split variables by replacing all occurrences of variable2 with variable1.
@@ -389,6 +399,8 @@ public:
     // The name of the block: its IL offset (IL_xxxx).
     std::string label() const;
 
+    // Runs the block transforms in order (il/transforms/il_transform.cpp).
+    void run_transforms(const std::vector<std::unique_ptr<transforms::IBlockTransform>>& transforms, transforms::BlockTransformContext& context);
     // Deletes this block from its container (not the entry point).
     void remove();
     static ILInstruction* get_predecessor(ILInstruction* inst);

@@ -2,11 +2,14 @@
 // 11.0.0.9375) makes of every method body of an assembly, as text. Its output is checked in as goldens (testdata/golden/*.ilast.txt),
 // so the tests never need .NET; build.cmd refreshes them.
 //
-//     DecompilerDump ilast <assembly> [--resolve]   every method read by ILReader (the ILAst before any transform), on stdout
+//     DecompilerDump ilast <assembly> [--resolve]          every method read by ILReader (the ILAst before any transform), on stdout
+//     DecompilerDump transforms <N> <assembly> [--resolve] the same after the first N of CSharpDecompiler.GetILTransforms()
+//                                                         (default DecompilerSettings), as CSharpDecompiler runs them
 //
 // --resolve: references found by ILSpy's UniversalAssemblyResolver, else none. Lines end in "\n".
 using System;
 using System.IO;
+using System.Linq;
 using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Text;
@@ -29,15 +32,19 @@ static class Program
     static int Main(string[] args)
     {
         string mode = args[0];
-        string path = args[1];
-        bool resolve = args.Length > 2 && args[2] == "--resolve";
+        int transformCount = 0;
+        int a = 1;
+        if (mode == "transforms")
+            transformCount = int.Parse(args[a++]);
+        string path = args[a++];
+        bool resolve = args.Length > a && args[a] == "--resolve";
         var file = new PEFile(path);
         IAssemblyResolver resolver = resolve ? new UniversalAssemblyResolver(path, false, file.DetectTargetFrameworkId()) : new NoReferences();
         var ts = new DecompilerTypeSystem(file, resolver, TypeSystemOptions.Default);
         var module = (MetadataModule)ts.MainModule;
         var md = file.Metadata;
         var writer = new StringWriter { NewLine = "\n" };
-        if (mode != "ilast")
+        if (mode != "ilast" && mode != "transforms")
         {
             Console.Error.WriteLine("unknown mode " + mode);
             return 2;
@@ -53,6 +60,12 @@ static class Program
                 var body = file.GetMethodBody(def.RelativeVirtualAddress);
                 var reader = new ILReader(module) { UseDebugSymbols = false, UseRefLocalsForAccurateOrderOfEvaluation = true };
                 var function = reader.ReadIL(h, body, kind: ILFunctionKind.TopLevelFunction);
+                if (mode == "transforms")
+                {
+                    var settings = new DecompilerSettings();
+                    var context = new ICSharpCode.Decompiler.IL.Transforms.ILTransformContext(function, ts, null, settings);
+                    function.RunTransforms(ICSharpCode.Decompiler.CSharp.CSharpDecompiler.GetILTransforms().Take(transformCount), context);
+                }
                 var output = new PlainTextOutput(writer);
                 function.WriteTo(output, new ILAstWritingOptions());
                 writer.Write("\n");

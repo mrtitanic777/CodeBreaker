@@ -7,6 +7,7 @@
 #include <stdexcept>
 
 #include "core/error.hpp"
+#include "dotnet/decompiler/il/il_visitor.hpp"
 #include "dotnet/decompiler/il/instructions.hpp"
 #include "dotnet/decompiler/il/patterns.hpp"
 
@@ -242,6 +243,15 @@ bool ILInstruction::perform_match(patterns::ListMatch& list_match, patterns::Mat
         }
     }
     return false;
+}
+
+void ILInstruction::accept_visitor(ILVisitor& visitor) {
+    switch (op_code) {
+#define CB_IL_VISIT(Class, name)     case OpCode::Class: return visitor.visit_##name(static_cast<Class&>(*this));
+        CB_IL_INSTRUCTIONS(CB_IL_VISIT)
+#undef CB_IL_VISIT
+    }
+    visitor.default_visit(*this);
 }
 
 bool ILInstruction::can_inline_into_slot(int child_index, ILInstruction*) { return get_child_slot(child_index).can_inline_into; }

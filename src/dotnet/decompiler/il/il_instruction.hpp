@@ -61,6 +61,7 @@ struct ListMatch;
 }  // namespace patterns
 namespace transforms {
 class ExtractionContext;
+class ILTransformContext;
 }
 
 // ---- the arena -------------------------------------------------------------------------------------------------------------------
@@ -314,6 +315,9 @@ public:
 
     // --- inlining (ILInlining, ILExtraction; upstream's Extract(ILTransformContext) comes with the transforms, stage 6)
     virtual bool prepare_extract(int child_index, transforms::ExtractionContext& ctx);
+    // Extracts this instruction: it is replaced with a load of a new temporary variable and moved to a store to that variable at block
+    // level. Returns the variable, or nullptr if extraction is not possible (defined in transforms/il_extraction.cpp).
+    ILVariable* extract(transforms::ILTransformContext& context);
     virtual bool can_inline_into_slot(int child_index, ILInstruction* expression_being_moved);
     virtual bool satisfies_slot_restriction_for_inlining(int child_index, ILInstruction* new_child);
 

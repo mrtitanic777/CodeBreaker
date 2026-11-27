@@ -6,16 +6,20 @@
 //     ctx.register_move_if_necessary(predecessor);       // a predecessor that cannot be reordered moves along
 //
 // Ported from ILSpy (ICSharpCode.Decompiler.IL.Transforms: ExtractionContext, from ILExtraction.cs), Copyright AlphaSierraPapa for the
-// ILSpy team, MIT (see NOTICE in dotnet/decompiler). Not ported yet: the static Extract(instruction, ILTransformContext), which waits
-// for stage 6 (ILTransformContext). Its context.TypeSystem.FindType(StackType) is the `find_type` function the context is made with.
+// ILSpy team, MIT (see NOTICE in dotnet/decompiler). The static extract(instruction, ILTransformContext) is ILInstruction::extract.
 #pragma once
 
 #include <functional>
 #include <vector>
 
 #include "dotnet/decompiler/il/il_instruction.hpp"
+#include "dotnet/decompiler/il/transforms/il_transform.hpp"
+#include "dotnet/decompiler/typesystem/type_utils.hpp"
 
 namespace cb::dotnet::decompiler::il::transforms {
+
+// ICompilation.FindType(StackType, Sign): the type of a stack type (unknown for Unknown, a reference to unknown for Ref).
+const IType* find_type_of_stack_type(const typesystem::ICompilation& compilation, StackType stack_type, typesystem::Sign sign = typesystem::Sign::None);
 
 // Context object for the extract operation.
 class ExtractionContext {
@@ -38,6 +42,11 @@ public:
     const std::vector<std::function<ILInstruction*()>>& move_actions() const { return move_actions_; }
     ILFunction* function() const { return function_; }
     const std::function<const IType*(StackType)>& find_type() const { return find_type_; }
+
+    // Extracts the instruction: it is replaced with a load of a new temporary variable and moved to a store to that variable at block
+    // level (with whatever has to move along to keep the evaluation order). Returns the variable, or nullptr if extraction is not
+    // possible.
+    static ILVariable* extract(ILInstruction* inst_to_extract, ILTransformContext& context);
 
 private:
     ILFunction* function_;

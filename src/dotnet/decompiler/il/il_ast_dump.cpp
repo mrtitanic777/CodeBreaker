@@ -11,7 +11,7 @@ namespace cb::dotnet::decompiler::il {
 
 namespace srm = cb::dotnet::metadata;
 
-std::string dump_il_ast(const typesystem::DecompilerTypeSystem& type_system) {
+std::string dump_il_ast(const typesystem::DecompilerTypeSystem& type_system, const std::function<void(ILFunction*)>& after_read) {
     const typesystem::MetadataModule& module = type_system.main_metadata_module();
     const metadata::MetadataFile& file = *module.metadata_file();
     const srm::MetadataReader& md = module.metadata();
@@ -30,6 +30,7 @@ std::string dump_il_ast(const typesystem::DecompilerTypeSystem& type_system) {
             reader.use_debug_symbols = false;
             reader.use_ref_locals_for_accurate_order_of_evaluation = true;
             ILFunction* function = reader.read_il(h, body);
+            if (after_read) after_read(function);
             function->write_to(output, ILAstWritingOptions{});
             text += output.text();
             text += '\n';
