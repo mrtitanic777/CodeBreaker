@@ -26,6 +26,7 @@
 
 #include "core/bytes.hpp"
 #include "core/ordered_map.hpp"
+#include "formats/xwb.hpp"
 
 namespace cb::xna::xact {
 
@@ -33,8 +34,8 @@ inline constexpr std::uint16_t kFormatXma2 = 0x0166;
 
 // ---- wave banks ---------------------------------------------------------------------------------------------------------------
 
-enum class Codec : std::uint8_t { Pcm = 0, Xma = 1, Adpcm = 2, Wma = 3 };
-std::string_view codec_name(Codec codec);   // "PCM" "XMA" "ADPCM" "WMA"
+using Codec = formats::xwb::Codec;
+using formats::xwb::codec_name;   // "PCM" "XMA" "ADPCM" "WMA"
 
 struct WaveEntry {
     std::uint32_t index = 0;

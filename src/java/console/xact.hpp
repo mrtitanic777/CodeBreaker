@@ -33,29 +33,18 @@
 #include <vector>
 
 #include "core/bytes.hpp"
+#include "formats/xwb.hpp"
 
 namespace cb::java::console::xact {
 
 // ---- reading banks ------------------------------------------------------------------------------------------
 
-enum class Codec { Pcm, Xma, Adpcm, Wma };
-
-// "PCM", "XMA", "ADPCM", "WMA".
-std::string_view codec_name(Codec codec);
-
-// What a wave's packed WAVEBANKMINIWAVEFORMAT DWORD says: tag[0:2] channels[2:5] rate[5:23] blockAlign[23:31]
-// bits[31:32] (one bit: 8 or 16).
-struct MiniFormat {
-    Codec codec = Codec::Pcm;
-    std::uint32_t channels = 0;
-    std::uint32_t sample_rate = 0;
-    std::uint32_t block_align = 0;
-    std::uint32_t bits = 8;
-};
-MiniFormat decode_miniformat(std::uint32_t dword);
-
-// The packed DWORD of PCM parameters (tag 0), the inverse of decode_miniformat for PCM.
-std::uint32_t pack_pcm_miniformat(std::uint32_t channels, std::uint32_t rate, std::uint32_t bits);
+// The codec and the packed format dword are formats/xwb.hpp's.
+using Codec = formats::xwb::Codec;
+using MiniFormat = formats::xwb::MiniFormat;
+using formats::xwb::codec_name;
+using formats::xwb::decode_miniformat;
+using formats::xwb::pack_pcm_miniformat;
 
 // A segment of a wave bank file.
 struct Segment {

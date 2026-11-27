@@ -49,31 +49,6 @@ std::string magic_of(ByteView data) { return text::from_latin1(clamped(data, 0, 
 
 // ---- reading banks ----------------------------------------------------------------------------------------------
 
-std::string_view codec_name(Codec codec) {
-    switch (codec) {
-        case Codec::Pcm: return "PCM";
-        case Codec::Xma: return "XMA";
-        case Codec::Adpcm: return "ADPCM";
-        case Codec::Wma: return "WMA";
-    }
-    return "?";
-}
-
-MiniFormat decode_miniformat(std::uint32_t dword) {
-    MiniFormat m;
-    m.codec = static_cast<Codec>(dword & 0x3);
-    m.channels = (dword >> 2) & 0x7;
-    m.sample_rate = (dword >> 5) & 0x3FFFF;
-    m.block_align = (dword >> 23) & 0xFF;
-    m.bits = ((dword >> 31) & 1) != 0 ? 16 : 8;
-    return m;
-}
-
-std::uint32_t pack_pcm_miniformat(std::uint32_t channels, std::uint32_t rate, std::uint32_t bits) {
-    const std::uint32_t block = channels * (bits / 8);
-    return ((channels & 0x7) << 2) | ((rate & 0x3FFFF) << 5) | ((block & 0xFF) << 23) | ((bits == 16 ? 1u : 0u) << 31);
-}
-
 std::string_view segment_name(SegmentId id) {
     switch (id) {
         case SegmentId::BankData: return "BANKDATA";

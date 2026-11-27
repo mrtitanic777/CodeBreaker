@@ -11,6 +11,7 @@
 #include "core/io.hpp"
 #include "core/json.hpp"
 #include "core/process.hpp"
+#include "formats/xwb.hpp"
 
 namespace cb::xna::xact {
 
@@ -48,16 +49,6 @@ private:
 
 }  // namespace
 
-std::string_view codec_name(Codec codec) {
-    switch (codec) {
-    case Codec::Pcm: return "PCM";
-    case Codec::Xma: return "XMA";
-    case Codec::Adpcm: return "ADPCM";
-    case Codec::Wma: return "WMA";
-    }
-    return "?";
-}
-
 ByteView WaveBank::stream(const WaveEntry& entry) const {
     const std::uint64_t start = std::uint64_t{wave_data_offset} + entry.offset;
     if (start >= data.size()) return {};
@@ -65,50 +56,25 @@ ByteView WaveBank::stream(const WaveEntry& entry) const {
 }
 
 WaveBank read_wave_bank(Bytes data) {
-    if (data.size() < 8 || !((data[0] == 'W' && data[1] == 'B' && data[2] == 'N' && data[3] == 'D') || (data[0] == 'D' && data[1] == 'N' && data[2] == 'B' && data[3] == 'W')))
-        throw FormatError(kWaveBank, 0, "not an XWB");
+    if (data.size() < 8) throw FormatError(kWaveBank, 0, "not an XWB");
+    const formats::xwb::Header header = formats::xwb::read_header(data, kWaveBank);
     WaveBank bank;
-    // the version is a small number in the right order
-    const std::uint32_t big = (std::uint32_t{data[4]} << 24) | (std::uint32_t{data[5]} << 16) | (std::uint32_t{data[6]} << 8) | data[7];
-    const std::uint32_t little = (std::uint32_t{data[7]} << 24) | (std::uint32_t{data[6]} << 16) | (std::uint32_t{data[5]} << 8) | data[4];
-    if (big >= 1 && big <= 0x10000) {
-        bank.big_endian = true;
-        bank.version = big;
-    } else if (little >= 1 && little <= 0x10000) {
-        bank.big_endian = false;
-        bank.version = little;
-    } else {
-        throw FormatError(kWaveBank, 4, "cannot tell the byte order");
-    }
+    bank.big_endian = header.big_endian;
+    bank.version = header.version;
+    bank.name = header.name;
+    bank.wave_data_offset = header.wave_data_offset;
     bank.data = std::move(data);
     Cursor r(bank.data, bank.big_endian, kWaveBank);
-    r.seek(8);
-    if (bank.version >= 42) r.skip(4);   // the header version
-    const std::size_t segments = bank.version >= 42 ? 5 : 4;
-    std::vector<std::pair<std::uint32_t, std::uint32_t>> table;
-    for (std::size_t i = 0; i < segments; ++i) {
-        const std::uint32_t off = r.u32(), length = r.u32();
-        table.emplace_back(off, length);
-    }
-    r.seek(table[0].first);
-    r.skip(4);   // the flags
-    const std::uint32_t count = r.u32();
-    const std::size_t name_len = bank.version >= 42 ? 64 : 16;
-    const std::size_t name_at = r.pos();
-    r.skip(name_len);
-    for (std::size_t i = 0; i < name_len && bank.data[name_at + i] != 0; ++i) bank.name.push_back(static_cast<char>(bank.data[name_at + i]));
-    const std::uint32_t meta_size = r.u32();
-    bank.wave_data_offset = table.back().first;
-    const std::uint32_t element = meta_size != 0 ? meta_size : 24;
-    for (std::uint32_t i = 0; i < count; ++i) {
-        r.seek(std::uint64_t{table[1].first} + std::uint64_t{i} * element + 4);
-        const std::uint32_t format = r.u32();
+    const std::uint32_t element = header.meta_element_size != 0 ? header.meta_element_size : 24;
+    for (std::uint32_t i = 0; i < header.entry_count; ++i) {
+        r.seek(std::uint64_t{header.segments[1].offset} + std::uint64_t{i} * element + 4);
+        const formats::xwb::MiniFormat format = formats::xwb::decode_miniformat(r.u32());
         WaveEntry e;
         e.index = i;
-        e.codec = static_cast<Codec>(format & 3);
-        e.channels = (format >> 2) & 7;
-        e.rate = (format >> 5) & 0x3FFFF;
-        e.align = (format >> 23) & 0xFF;
+        e.codec = format.codec;
+        e.channels = format.channels;
+        e.rate = format.sample_rate;
+        e.align = format.block_align;
         e.offset = r.u32();
         e.length = r.u32();
         bank.entries.push_back(e);

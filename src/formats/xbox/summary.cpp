@@ -14,6 +14,7 @@
 #include "formats/xbox/xdbf.hpp"
 #include "formats/xbox/xpr.hpp"
 #include "formats/xbox/xur.hpp"
+#include "formats/xwb.hpp"
 
 namespace cb::formats::xbox {
 
@@ -98,33 +99,10 @@ SummaryFacts summary_xpr(ByteView file) {
     return out;
 }
 
-// An XACT wave bank's header facts. (The full reader is cb/xna/xact.hpp; the summary needs four fields, and the formats area does not link xna.)
+// An XACT wave bank's header facts. (The header is formats/xwb.hpp's; the full reader is cb/xna/xact.hpp.)
 SummaryFacts summary_wave_bank(ByteView file) {
-    constexpr std::uint32_t kLastPlausibleVersion = 0x10000;
-    if (file.size() < 8) throw TruncatedError("xwb", 0, 8, file.size());
-    bool big = true;
-    std::uint32_t version = 0;
-    for (const bool order : {true, false}) {   // the version is a small number in the right byte order
-        io::ByteReader r(file, "xwb");
-        r.skip(4);
-        const std::uint32_t v = order ? r.u32_be() : r.u32();
-        if (v >= 1 && v <= kLastPlausibleVersion) {
-            big = order;
-            version = v;
-            break;
-        }
-    }
-    if (!version) throw FormatError("xwb", 4, "cannot tell the byte order");
-    io::ByteReader r(file, "xwb");
-    r.seek(version >= 42 ? 12 : 8);   // the segment table (after the header version of newer banks)
-    const std::uint32_t data_at = big ? r.u32_be() : r.u32();
-    r.seek(data_at);
-    r.skip(4);   // flags
-    const std::uint32_t entries = big ? r.u32_be() : r.u32();
-    const ByteView name = r.bytes(version >= 42 ? 64 : 16);   // ended by the first zero
-    const auto name_end = std::find(name.begin(), name.end(), std::uint8_t{0});
-    const std::string bank = text::from_latin1(name.first(static_cast<std::size_t>(name_end - name.begin())));
-    return {{"version", std::to_string(version)}, {"byte order", big ? "big" : "little"}, {"entries", std::to_string(entries)}, {"bank_name", bank}};
+    const xwb::Header h = xwb::read_header(file);
+    return {{"version", std::to_string(h.version)}, {"byte order", h.big_endian ? "big" : "little"}, {"entries", std::to_string(h.entry_count)}, {"bank_name", h.name}};
 }
 
 SummaryFacts summary_xur(ByteView file) {
