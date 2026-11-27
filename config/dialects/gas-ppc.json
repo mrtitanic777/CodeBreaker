@@ -2,7 +2,29 @@
   "name": "gas-ppc",
   "description": "GNU as, PowerPC (-mregnames): the GameCube and Wii as their programs are written. # comments, small numbers decimal (stwu r1,-16(r1), li r3,7), hex for the logical and shifted immediates (lis, ori, andi.).",
   "comment": "#",
+  "tight_commas": true,
   "number": {"prefix": "0x", "suffix": "", "case": "upper", "pad": "none"},
   "label": "{name}:",
-  "decimal": {"keep_zero": true, "unless": ["lis", "ori", "oris", "andi.", "andis.", "xori", "xoris", "addis"]}
+  "decimal": {"keep_zero": true, "unless": ["lis", "ori", "oris", "andi.", "andis.", "xori", "xoris", "addis"]},
+  "instructions": [
+    {"neutral": "ori r0,r0,0x0", "dialect": "nop", "print": false},
+    {"neutral": "or {a},{b},{b}", "dialect": "mr {a},{b}", "print": false},
+    {"neutral": "mfspr {a},LR", "dialect": "mflr {a}", "print": false},
+    {"neutral": "mtspr LR,{a}", "dialect": "mtlr {a}", "print": false},
+    {"neutral": "mtspr CTR,{a}", "dialect": "mtctr {a}", "print": false},
+    {"neutral": "nor {a},{b},{b}", "dialect": "not {a},{b}", "print": false},
+    {"neutral": "subf {a},{c},{b}", "dialect": "sub {a},{b},{c}", "print": false},
+    {"neutral": "subi {a},{b},{w}", "dialect": "addi {a},{b},-{w}", "print": false},
+    {"neutral": "cmpwi {a},0x0", "dialect": "cmpwi {a},0", "print": false},
+    {"neutral": "cmplwi {a},0x0", "dialect": "cmplwi {a},0", "print": false},
+    {"neutral": "li {a},0x0", "dialect": "li {a},0", "print": false},
+    {"neutral": "beq {w}", "dialect": "bc 12,2,{w}", "print": false},
+    {"neutral": "bne {w}", "dialect": "bc 4,2,{w}", "print": false},
+    {"neutral": "blt {w}", "dialect": "bc 12,0,{w}", "print": false},
+    {"neutral": "bge {w}", "dialect": "bc 4,0,{w}", "print": false},
+    {"neutral": "bgt {w}", "dialect": "bc 12,1,{w}", "print": false},
+    {"neutral": "ble {w}", "dialect": "bc 4,1,{w}", "print": false},
+    {"neutral": "bdnz {w}", "dialect": "bc 16,0,{w}", "print": false}
+  ],
+  "after_parse": [[",0(", ",0x0("], [" 0(", " 0x0("]]
 }

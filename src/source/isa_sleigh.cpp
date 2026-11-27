@@ -185,6 +185,26 @@ std::string fold_operands(const std::string& text, std::int64_t pc) {
     return out;
 }
 
+// `text` with each hex number of 0x8000 to 0xFFFF written as the 16-bit signed number it stands for (`lis r4,0x8200` is `lis r4,-0x7e00`: the
+// description's field is signed, and an assembly source writes the half as the unsigned number it is).
+std::string signed_halves(const std::string& text) {
+    std::string out;
+    for (std::size_t k = 0; k < text.size();) {
+        if (text[k] == '0' && k + 2 < text.size() && text[k + 1] == 'x' && k > 0 && text[k - 1] == ',') {   // (an operand after a comma: the first operand of `beq 0x9000` is an address, not a signed half)
+            std::size_t e = k + 2;
+            while (e < text.size() && std::isxdigit(static_cast<unsigned char>(text[e]))) ++e;
+            const std::optional<std::uint64_t> n = text::parse_int<std::uint64_t>(std::string_view(text).substr(k + 2, e - k - 2), 16);
+            if (n && *n >= 0x8000 && *n <= 0xFFFF && !(e < text.size() && word_char(text[e]))) {
+                out += std::format("-0x{:x}", 0x10000 - *n);
+                k = e;
+                continue;
+            }
+        }
+        out += text[k++];
+    }
+    return out;
+}
+
 class SleighSyntax final : public build::Encoder {
 public:
     SleighSyntax(const std::filesystem::path& sla, const std::vector<std::pair<std::string, int>>& context)
@@ -321,6 +341,10 @@ public:
         // (an operand written as an expression or a function of an address: assembled as the number it is)
         if (const std::string folded = fold_operands(out, pc); folded != out) {
             const std::vector<std::vector<std::uint8_t>> enc = assembler_.assemble_first(folded, static_cast<std::uint64_t>(pc));
+            if (!enc.empty()) return remember(enc.front());
+        }
+        if (const std::string wrapped = signed_halves(out); wrapped != out) {
+            const std::vector<std::vector<std::uint8_t>> enc = assembler_.assemble_first(wrapped, static_cast<std::uint64_t>(pc));
             if (!enc.empty()) return remember(enc.front());
         }
         // Which unknown word is the label not defined yet? The one that, as a number, makes the line an instruction (in `JR NZ,ahead`

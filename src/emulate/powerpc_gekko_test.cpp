@@ -7,7 +7,6 @@
 #include <string>
 #include <vector>
 
-#include "build/ppc_asm.hpp"
 #include "core/testing.hpp"
 #include "decompile/ppc.hpp"
 #include "emulate/powerpc.hpp"

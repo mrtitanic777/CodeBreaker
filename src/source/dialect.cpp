@@ -203,6 +203,7 @@ struct Dialect::Impl {
     std::string decimals(std::string_view s, unsigned long limit = 0xFFFF) const;
     std::string with_registers(std::string_view s) const;
     std::string without_registers(std::string_view s) const;
+    bool tight_commas = false;       // an instruction read back has no blank after its commas (the rows say `a,b`)
     bool decimal_keep_zero = false;  // a zero stays 0x0 (the description writes some fields as plain 0)
     int mnemonic_pad = 0;           // the mnemonic is padded to this many columns when it has operands (GNU as for SuperH)
     bool mnemonic_upper = false;    // the dialect writes the mnemonic (the first word) in capitals; the description's is lower case
@@ -522,6 +523,15 @@ std::string Dialect::Impl::instruction_in(std::string_view written) const {
             collapsed = std::string(written.substr(0, blank)) + " " + std::string(text::ltrim(written.substr(blank)));
             code = collapsed;
         }
+    }
+    std::string tight;   // (a blank after a comma is no part of an operand list: the rows read `a,b`)
+    if (tight_commas && code.find(", ") != std::string_view::npos) {
+        for (std::size_t k = 0; k < code.size(); ++k) {
+            tight += code[k];
+            if (code[k] == ',')
+                while (k + 1 < code.size() && is_blank(code[k + 1])) ++k;
+        }
+        code = tight;
     }
     std::string out;
     Captures caps;
@@ -1113,6 +1123,7 @@ std::unique_ptr<Dialect::Impl> read(std::string_view name) {
         d->decimal_keep_zero = it->value("keep_zero", false);
         for (const auto& n : it->at("unless")) d->decimal_unless.insert(n.get<std::string>());
     }
+    d->tight_commas = j.value("tight_commas", false);
     if (const auto it = j.find("replace"); it != j.end())   // [from, to] or [from, to, true] (the parser undoes it too)
         for (const auto& row : *it) d->replace.push_back({row.at(0).get<std::string>(), row.at(1).get<std::string>(), row.size() > 2 && row.at(2).get<bool>()});
     d->list_separator = str(j, "list_separator", ",");

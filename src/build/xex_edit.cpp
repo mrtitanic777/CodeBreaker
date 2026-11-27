@@ -1,10 +1,11 @@
 #include "build/xex_edit.hpp"
+#include "source/dialect.hpp"
+#include "source/risc_source.hpp"
 
 #include <algorithm>
 #include <format>
 #include <set>
 
-#include "build/ppc_asm.hpp"
 #include "core/crypto.hpp"
 #include "core/fs.hpp"
 #include "core/io.hpp"
@@ -161,10 +162,15 @@ Bytes word_bytes(std::uint32_t word) {
                  static_cast<std::uint8_t>(word)};
 }
 
+// PowerPC source at `base` through the one assembler (the PowerPC description under GNU as's dialect and the directive layer).
+Bytes assemble_ppc(std::string_view text, std::uint32_t base) {
+    return source::risc_source::assemble("ppc", source::dialect::find("gas-ppc").parse(std::format(".org {:#x}\n", base) + std::string(text)), {});
+}
+
 std::uint32_t branch_word(std::uint32_t target, std::uint32_t from) {
-    const std::optional<std::uint32_t> word = ppc_asm::assemble_one(std::format("b {:#x}", target), from);
-    if (!word) throw UsageError("the assembler produced no branch");
-    return *word;
+    const Bytes word = assemble_ppc(std::format("b {:#x}\n", target), from);
+    if (word.size() != 4) throw UsageError("the assembler produced no branch");
+    return (std::uint32_t{word[0]} << 24) | (std::uint32_t{word[1]} << 16) | (std::uint32_t{word[2]} << 8) | word[3];
 }
 
 }  // namespace
@@ -174,7 +180,7 @@ void hook(Image& image, std::uint32_t address, std::uint32_t cave, std::string_v
     const std::uint32_t word = (std::uint32_t{stolen[0]} << 24) | (std::uint32_t{stolen[1]} << 16) | (std::uint32_t{stolen[2]} << 8) | stolen[3];
     if (relative_branch(word))
         throw UsageError(std::format("the instruction at {:08X} is a relative branch ({:08X}): it cannot be moved to the cave", address, word));
-    Bytes body = ppc_asm::assemble(asm_text, cave);
+    Bytes body = assemble_ppc(asm_text, cave);
     const std::uint32_t back = branch_word(address + 4, cave + static_cast<std::uint32_t>(body.size()) + 4);
     append(body, stolen);
     append(body, word_bytes(back));
@@ -211,7 +217,7 @@ cli::Command command(const Environment& environment) {
             if (op == "asm-only") {
                 need(1);
                 const std::uint32_t address = args.size() > 1 ? parse_number(args[1]) : 0;
-                out("{}\n", crypto::to_hex(ppc_asm::assemble(asm_lines(args[0]), address)));
+                out("{}\n", crypto::to_hex(assemble_ppc(asm_lines(args[0]), address)));
                 return kExitOk;
             }
             if (op == "privileges") {
@@ -244,7 +250,7 @@ cli::Command command(const Environment& environment) {
             } else if (op == "bytes") {
                 image.write(address, parse_hex_bytes(args[2]));
             } else if (op == "asm") {
-                image.write(address, ppc_asm::assemble(asm_lines(args[2]), address));
+                image.write(address, assemble_ppc(asm_lines(args[2]), address));
             } else {
                 hook(image, address, parse_number(args[2]), asm_lines(args[3]));
             }
