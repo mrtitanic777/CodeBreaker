@@ -429,7 +429,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/translate/frontends/python/pyfront/CMakeLists
 include("${CMAKE_CURRENT_LIST_DIR}/translate/support/CMakeLists.txt")
 
 cb_area(translate)
-target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront cb_pysupport cb_java cb_verify)   # (cb_java: the API-mapping registry java_libc and csharp_java read; cb_java links cb_translate back: static libraries may be cyclic)
+target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront cb_pysupport cb_java cb_verify cb_dotnet)   # (cb_dotnet: the CIL lane lowers the .NET decompiler's ILAst, translate/frontends/cil; cb_java: the API-mapping registry java_libc and csharp_java read; cb_java links cb_translate back: static libraries may be cyclic)
 cb_area(ui)
 target_link_libraries(cb_ui PUBLIC cb_core)
 
