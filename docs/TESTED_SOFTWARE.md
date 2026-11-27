@@ -459,7 +459,15 @@ tried. The fixed inputs gain scratch memory of zeros (null pointers, zero counts
 | notepad.exe, revision 7 | 386 | 24 | 141 | 90 | 103 | 31 | 13 | 86 of 105 (81%) / 24 of 34 (70%) / 110 of 139 (79%) |
 | cmd.exe, revision 6 | 665 | 23 | 143 | 266 | 148 | 65 | 20 | 54 of 88 (61%) / 22 of 47 (46%) / 76 of 135 (56%) |
 | cmd.exe, revision 7 | 665 | 23 | 143 | 230 | 185 | 65 | 20 | 61 of 86 (71%) / 18 of 32 (56%) / 79 of 118 (67%) |
+| notepad.exe, revision 7 + the C that compiles (2026-11-27) | 386 | 24 | 164 | 94 | 107 | 0 | 13 | |
+| cmd.exe, revision 7 + the C that compiles (2026-11-27) | 665 | 23 | 249 | 198 | 176 | 0 | 20 | |
 | calc.exe, revision 6 | 22 | 4 | 5 | 5 | 5 | 2 | 1 | |
+
+The "C that compiles" rows (2026-11-27): every decompiled function's C now builds with x64 cl. The C writer (decompile/c_text_x64)
+gives an undeclared field's address as the address it is, a callee whose text starts with warnings its result, imports split over
+lines and functions passed as values their macros, odd-width partial accesses (3, 5, 6, 7 bytes) and 128-bit products their
+helpers, a whole-array assignment as a byte copy, the stack pointer after __chkstk as _AddressOfReturnAddress, a self-call with
+other arguments an unprototyped call; the functions that now compile are judged (most verify).
 
 The revision 7 rows were made with a newer decompiler (the tree of 2026-11-26, 11:41 PM), which writes 16 more functions of
 notepad and one more of cmd than revision 6's did (the classes add up to 402 and 666: the decompiler's functions beyond
