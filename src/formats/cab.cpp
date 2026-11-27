@@ -9,14 +9,13 @@
 #include <map>
 #include <memory>
 
-#include "zlib.h"
-
 #include "core/error.hpp"
 #include "core/sys.hpp"
 #include "core/fs.hpp"
 #include "core/intmath.hpp"
 #include "core/io.hpp"
 #include "core/text.hpp"
+#include "formats/deflate.hpp"
 #include "formats/lzx.hpp"
 
 namespace cb::formats::cab {
@@ -208,32 +207,9 @@ public:
 
 private:
     Bytes inflate(ByteView in) const {
-        z_stream z{};
-        if (inflateInit2(&z, -15) != Z_OK) throw InternalError("zlib: cannot start inflating");
-        struct End { z_stream& z; ~End() { inflateEnd(&z); } } end{z};
-        if (!window_.empty() &&
-            inflateSetDictionary(&z, window_.data(), static_cast<uInt>(window_.size())) != Z_OK) {
-            throw InternalError("zlib: cannot set the MSZIP dictionary");
-        }
-        Bytes out;
-        std::uint8_t chunk[65536];
-        z.next_in = const_cast<Bytef*>(in.data());
-        z.avail_in = static_cast<uInt>(in.size());
-        int rc = Z_OK;
-        do {
-            z.next_out = chunk;
-            z.avail_out = sizeof chunk;
-            rc = ::inflate(&z, Z_SYNC_FLUSH);
-            out.insert(out.end(), chunk, chunk + (sizeof chunk - z.avail_out));
-            if (rc == Z_BUF_ERROR && z.avail_out != 0) {   // the input ran out: what was inflated is what there is
-                rc = Z_OK;
-                z.avail_in = 0;
-            }
-        } while (rc == Z_OK && (z.avail_in > 0 || z.avail_out == 0));
-        if (rc != Z_OK && rc != Z_STREAM_END && rc != Z_BUF_ERROR) {
-            bad(std::format("MSZIP block does not inflate ({}: {})", rc, z.msg ? z.msg : ""));
-        }
-        return out;
+        deflate::Inflated got = deflate::inflate_all(in, deflate::Wrap::raw, window_);
+        if (got.status == deflate::Status::bad) bad(std::format("MSZIP block does not inflate ({})", got.message));
+        return std::move(got.data);
     }
 
     Bytes window_;
@@ -573,20 +549,7 @@ std::vector<Extracted> extract_contained(const std::filesystem::path& cabinet, c
 namespace {
 
 // raw deflate of one block at the strongest setting, primed with the block before it when there is one
-Bytes deflate_raw(ByteView chunk, ByteView dictionary) {
-    z_stream z{};
-    if (deflateInit2(&z, 9, Z_DEFLATED, -15, 8, Z_DEFAULT_STRATEGY) != Z_OK) throw InternalError("zlib: cannot start deflating");
-    struct End { z_stream& z; ~End() { deflateEnd(&z); } } end{z};
-    if (!dictionary.empty()) deflateSetDictionary(&z, dictionary.data(), static_cast<uInt>(dictionary.size()));
-    Bytes out(deflateBound(&z, static_cast<uLong>(chunk.size())) + 64);
-    z.next_in = const_cast<Bytef*>(chunk.data());
-    z.avail_in = static_cast<uInt>(chunk.size());
-    z.next_out = out.data();
-    z.avail_out = static_cast<uInt>(out.size());
-    if (deflate(&z, Z_FINISH) != Z_STREAM_END) throw InternalError("zlib: deflate did not finish");
-    out.resize(out.size() - z.avail_out);
-    return out;
-}
+Bytes deflate_raw(ByteView chunk, ByteView dictionary) { return deflate::compress(chunk, 9, deflate::Wrap::raw, dictionary); }
 
 struct Block {
     Bytes payload;

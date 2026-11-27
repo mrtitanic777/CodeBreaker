@@ -1,6 +1,6 @@
 #include "formats/gfx.hpp"
 
-#include <zlib.h>
+#include "formats/deflate.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -61,27 +61,9 @@ private:
 
 // The bytes of a zlib stream, or nothing when it is damaged or cut short.
 std::optional<Bytes> inflate_all(ByteView in) {
-    z_stream stream;
-    std::memset(&stream, 0, sizeof stream);
-    if (inflateInit(&stream) != Z_OK) return std::nullopt;
-    stream.next_in = const_cast<Bytef*>(in.data());
-    stream.avail_in = static_cast<uInt>(in.size());
-    Bytes out;
-    Bytes chunk(1 << 16);
-    int result;
-    do {
-        stream.next_out = chunk.data();
-        stream.avail_out = static_cast<uInt>(chunk.size());
-        result = inflate(&stream, Z_NO_FLUSH);
-        if (result != Z_OK && result != Z_STREAM_END) {
-            inflateEnd(&stream);
-            return std::nullopt;
-        }
-        out.insert(out.end(), chunk.begin(), chunk.end() - stream.avail_out);
-    } while (result != Z_STREAM_END && (stream.avail_in != 0 || stream.avail_out == 0));
-    inflateEnd(&stream);
-    if (result != Z_STREAM_END) return std::nullopt;
-    return out;
+    deflate::Inflated r = deflate::inflate_all(in);
+    if (r.status != deflate::Status::end) return std::nullopt;
+    return std::move(r.data);
 }
 
 std::string latin1_c_string(ByteView bytes) {

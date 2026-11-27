@@ -1,7 +1,7 @@
 // cb-unity: alone (file-local names that other files in a batch also use)
 #include "formats/ppc_elf.hpp"
 
-#include <zlib.h>
+#include "formats/deflate.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -31,19 +31,9 @@ void put32(Bytes& b, std::size_t at, std::uint32_t v) {
 
 // The zlib stream inflated to exactly `expected` bytes; FormatError otherwise.
 Bytes inflate_exact(ByteView in, std::size_t expected, std::size_t at) {
-    Bytes out(expected);
-    z_stream stream;
-    std::memset(&stream, 0, sizeof stream);
-    if (inflateInit(&stream) != Z_OK) throw FormatError(kReader, at, "the inflater could not start");
-    stream.next_in = const_cast<Bytef*>(in.data());
-    stream.avail_in = static_cast<uInt>(in.size());
-    stream.next_out = out.data();
-    stream.avail_out = static_cast<uInt>(out.size());
-    const int r = inflate(&stream, Z_FINISH);
-    const bool whole = r == Z_STREAM_END && stream.total_out == expected;
-    inflateEnd(&stream);
-    if (!whole) throw FormatError(kReader, at, "a compressed section does not inflate to its size");
-    return out;
+    deflate::Inflated r = deflate::inflate_exact(in, expected);
+    if (r.status != deflate::Status::end || r.data.size() != expected) throw FormatError(kReader, at, "a compressed section does not inflate to its size");
+    return std::move(r.data);
 }
 
 // The headers of the file as it stands (no inflating).

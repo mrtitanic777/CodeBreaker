@@ -5,37 +5,14 @@
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/log.hpp"
-#include "zlib.h"
+#include "formats/deflate.hpp"
 
 namespace cb::formats::xbox::crypto::xell_unpack {
 
-namespace {
-
-constexpr int kGzipWindowBits = 16 + 15;   // zlib's flag for a gzip stream
-
-}  // namespace
-
 Bytes gunzip(ByteView stream) {
-    z_stream z{};
-    if (inflateInit2(&z, kGzipWindowBits) != Z_OK) throw InternalError("zlib: cannot start inflating");
-    struct End {
-        z_stream& z;
-        ~End() { inflateEnd(&z); }
-    } end{z};
-    z.next_in = const_cast<Bytef*>(stream.data());
-    z.avail_in = static_cast<uInt>(stream.size());
-    Bytes out;
-    Bytes chunk(1 << 16);
-    int status = Z_OK;
-    while (status == Z_OK) {
-        z.next_out = chunk.data();
-        z.avail_out = static_cast<uInt>(chunk.size());
-        status = inflate(&z, Z_NO_FLUSH);
-        out.insert(out.end(), chunk.begin(), chunk.begin() + static_cast<std::ptrdiff_t>(chunk.size() - z.avail_out));
-        if (status == Z_BUF_ERROR && z.avail_in == 0) status = Z_DATA_ERROR;   // out of input before the end of the stream
-    }
-    if (status != Z_STREAM_END) throw FormatError("xell", stream.size() - z.avail_in, "the second stage is not a whole gzip stream");
-    return out;
+    deflate::Inflated r = deflate::inflate_all(stream, deflate::Wrap::gzip);
+    if (r.status != deflate::Status::end) throw FormatError("xell", r.consumed, "the second stage is not a whole gzip stream");
+    return std::move(r.data);
 }
 
 Parts split(ByteView image) {

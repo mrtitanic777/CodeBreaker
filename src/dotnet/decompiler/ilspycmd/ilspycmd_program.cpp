@@ -1,7 +1,7 @@
 // dotnet/decompiler/ilspycmd/ilspycmd_program.cpp -- see ilspycmd_program.hpp.
 #include "dotnet/decompiler/ilspycmd/ilspycmd_program.hpp"
 
-#include <zlib.h>
+#include "formats/deflate.hpp"
 
 #include <algorithm>
 #include <filesystem>
@@ -233,25 +233,9 @@ bool try_parse_hex_int(std::string_view text, std::int32_t* value) {
 
 // Raw deflate (System.IO.Compression.DeflateStream, decompressing).
 Bytes inflate_raw(ByteView compressed) {
-    z_stream stream{};
-    if (inflateInit2(&stream, -MAX_WBITS) != Z_OK) throw InvalidDataError("The archive entry was compressed using an unsupported compression method.");
-    stream.next_in = const_cast<Bytef*>(compressed.data());
-    stream.avail_in = static_cast<uInt>(compressed.size());
-    Bytes result;
-    std::vector<Bytef> chunk(1 << 16);
-    int status;
-    do {
-        stream.next_out = chunk.data();
-        stream.avail_out = static_cast<uInt>(chunk.size());
-        status = inflate(&stream, Z_NO_FLUSH);
-        if (status != Z_OK && status != Z_STREAM_END) {
-            inflateEnd(&stream);
-            throw InvalidDataError("The archive entry was compressed using an unsupported compression method.");
-        }
-        result.insert(result.end(), chunk.data(), chunk.data() + (chunk.size() - stream.avail_out));
-    } while (status != Z_STREAM_END && stream.avail_in > 0);
-    inflateEnd(&stream);
-    return result;
+    formats::deflate::Inflated r = formats::deflate::inflate_all(compressed, formats::deflate::Wrap::raw);
+    if (r.status == formats::deflate::Status::bad) throw InvalidDataError("The archive entry was compressed using an unsupported compression method.");
+    return std::move(r.data);
 }
 
 // The settings ILSpy keeps (the browsable ones of the decompiler's settings, by name: ILSpyX.Settings.DecompilerSettings.IsKnownOption).
