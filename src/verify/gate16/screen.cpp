@@ -4,9 +4,8 @@
 #include <cmath>
 #include <vector>
 
-#include "core/crypto.hpp"
 #include "core/error.hpp"
-#include "zlib.h"
+#include "formats/png.hpp"
 
 namespace cb::verify::gate16 {
 namespace {
@@ -103,21 +102,6 @@ Bytes resample_vertical(const Bytes& in, std::uint32_t w, std::uint32_t h, std::
     return out;
 }
 
-// ---- PNG ------------------------------------------------------------------------------------------------------------------
-
-void put_be32(Bytes& out, std::uint32_t v) {
-    for (int shift = 24; shift >= 0; shift -= 8)
-        out.push_back(static_cast<std::uint8_t>(v >> shift));
-}
-
-void put_chunk(Bytes& out, std::string_view type, ByteView data) {
-    put_be32(out, static_cast<std::uint32_t>(data.size()));
-    const std::size_t crc_from = out.size();
-    append(out, as_bytes(type));
-    append(out, data);
-    put_be32(out, crypto::crc32(ByteView(out).subspan(crc_from)));
-}
-
 }  // namespace
 
 Picture::Picture(std::uint32_t width, std::uint32_t height, Bytes rgb)
@@ -190,37 +174,6 @@ Picture Picture::resized(std::uint32_t width, std::uint32_t height) const {
     return Picture(w, h, std::move(pixels));
 }
 
-Bytes Picture::to_png() const {
-    Bytes out = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
-    Bytes header;
-    put_be32(header, width_);
-    put_be32(header, height_);
-    append(header, Bytes{8, 2, 0, 0, 0});   // 8 bits, RGB, deflate, no filter method but 0, no interlace
-    put_chunk(out, "IHDR", header);
-    // each row: filter type 0, then its pixels
-    Bytes raw;
-    raw.reserve(rgb_.size() + height_);
-    for (std::uint32_t y = 0; y < height_; ++y) {
-        raw.push_back(0);
-        const auto row = ByteView(rgb_).subspan(std::size_t{y} * width_ * 3, std::size_t{width_} * 3);
-        append(raw, row);
-    }
-    z_stream zs{};
-    if (deflateInit(&zs, Z_DEFAULT_COMPRESSION) != Z_OK)
-        throw InternalError("zlib: deflateInit failed");
-    Bytes packed(deflateBound(&zs, static_cast<uLong>(raw.size())));
-    zs.next_in = raw.data();
-    zs.avail_in = static_cast<uInt>(raw.size());
-    zs.next_out = packed.data();
-    zs.avail_out = static_cast<uInt>(packed.size());
-    const int rc = deflate(&zs, Z_FINISH);
-    packed.resize(zs.total_out);
-    deflateEnd(&zs);
-    if (rc != Z_STREAM_END)
-        throw InternalError("zlib: deflate did not finish");
-    put_chunk(out, "IDAT", packed);
-    put_chunk(out, "IEND", {});
-    return out;
-}
+Bytes Picture::to_png() const { return formats::png::encode_rgb(width_, height_, rgb_); }
 
 }  // namespace cb::verify::gate16

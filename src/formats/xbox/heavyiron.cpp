@@ -10,7 +10,7 @@
 #include "core/io.hpp"
 #include "core/log.hpp"
 #include "core/text.hpp"
-#include "zlib.h"
+#include "formats/png.hpp"
 
 namespace cb::formats::xbox::heavyiron {
 
@@ -328,55 +328,7 @@ std::vector<VolumeEntry> volume_entries(const Archive& archive) {
 
 // ---- PNG -------------------------------------------------------------------------------------------------------
 
-namespace {
-
-void png_chunk(Bytes& out, std::string_view type, ByteView body) {
-    io::ByteWriter w;
-    w.u32_be(static_cast<std::uint32_t>(body.size()));
-    Bytes tagged = to_bytes(type);
-    append(tagged, body);
-    w.bytes(tagged);
-    w.u32_be(cb::crypto::crc32(tagged));
-    append(out, w.data());
-}
-
-}  // namespace
-
-Bytes png_bytes(const texture::Image& image) {
-    const std::size_t row = std::size_t{image.width} * 4;
-    Bytes raw;
-    raw.reserve((row + 1) * image.height);
-    for (std::uint32_t y = 0; y < image.height; ++y) {
-        raw.push_back(0);   // filter: none
-        const auto first = image.rgba.begin() + static_cast<std::ptrdiff_t>(y * row);
-        raw.insert(raw.end(), first, first + static_cast<std::ptrdiff_t>(row));
-    }
-    z_stream zs;
-    std::memset(&zs, 0, sizeof zs);
-    if (deflateInit(&zs, 6) != Z_OK) throw InternalError("zlib: deflateInit failed");
-    Bytes z(deflateBound(&zs, static_cast<uLong>(raw.size())));
-    zs.next_in = raw.data();
-    zs.avail_in = static_cast<uInt>(raw.size());
-    zs.next_out = z.data();
-    zs.avail_out = static_cast<uInt>(z.size());
-    const int rc = deflate(&zs, Z_FINISH);
-    z.resize(z.size() - zs.avail_out);
-    deflateEnd(&zs);
-    if (rc != Z_STREAM_END) throw InternalError("zlib: deflate did not finish");
-    Bytes out = {0x89, 'P', 'N', 'G', '\r', '\n', 0x1A, '\n'};
-    io::ByteWriter header;
-    header.u32_be(image.width);
-    header.u32_be(image.height);
-    header.u8(8);   // 8 bits a channel
-    header.u8(6);   // RGBA
-    header.u8(0);   // deflate
-    header.u8(0);   // filter method 0
-    header.u8(0);   // not interlaced
-    png_chunk(out, "IHDR", header.data());
-    png_chunk(out, "IDAT", z);
-    png_chunk(out, "IEND", {});
-    return out;
-}
+Bytes png_bytes(const texture::Image& image) { return png::encode_rgba(image.width, image.height, image.rgba); }
 
 // ---- the command -----------------------------------------------------------------------------------------------
 

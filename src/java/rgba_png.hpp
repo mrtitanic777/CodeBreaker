@@ -15,29 +15,20 @@
 #include <cstdint>
 
 #include "core/bytes.hpp"
+#include "formats/png.hpp"
 
 namespace cb::java::rgba_png {
 
-// Straight 8-bit RGBA, row by row, top to bottom; four bytes (R, G, B, A) per pixel.
-struct Image {
-    std::uint32_t width = 0;
-    std::uint32_t height = 0;
-    Bytes rgba;   // width * height * 4 bytes
+// The codec is formats/png.hpp's: straight 8-bit RGBA, row by row, top to bottom; four bytes (R, G, B, A) per pixel.
+using Image = formats::png::Image;
+using formats::png::blank;
+using formats::png::kMaxPixels;
 
-    std::uint8_t* pixel(std::uint32_t x, std::uint32_t y) { return &rgba[(std::size_t{y} * width + x) * 4]; }
-    const std::uint8_t* pixel(std::uint32_t x, std::uint32_t y) const { return &rgba[(std::size_t{y} * width + x) * 4]; }
-};
-
-// A transparent black image of the given size.
-Image blank(std::uint32_t width, std::uint32_t height);
-
-// Read a PNG file's bytes. At most kMaxPixels pixels (a header that promises more is a FormatError, not an
-// allocation).
-inline constexpr std::uint64_t kMaxPixels = std::uint64_t{1} << 28;
-Image decode(ByteView png);
+// Read a PNG file's bytes (standard rules; at most kMaxPixels pixels).
+inline Image decode(ByteView png) { return formats::png::decode(png); }
 
 // The PNG file for an image (8-bit RGBA, every row filter 0, one IDAT chunk, default zlib level).
-Bytes encode(const Image& image);
+using formats::png::encode;
 
 // The part of `image` inside the box [left, right) x [top, bottom). Pixels of the box outside the image come out
 // transparent black (the box may overhang). An empty or inverted box gives a 0-sized image.

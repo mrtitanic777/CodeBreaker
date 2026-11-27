@@ -18,6 +18,7 @@
 #include <optional>
 
 #include "core/bytes.hpp"
+#include "formats/png.hpp"
 
 namespace cb::java::console::png {
 
@@ -28,18 +29,14 @@ std::optional<std::uint8_t> color_type(ByteView png);
 // True if this PNG is not RGBA (colour type 6), i.e. would misrender on the 360.
 bool needs_rgba(ByteView png);
 
-// A decoded picture: width x height pixels, 4 bytes each (R, G, B, A), row by row from the top.
-struct Image {
-    std::uint32_t width = 0;
-    std::uint32_t height = 0;
-    Bytes rgba;
-};
+// A decoded picture: the codec's (formats/png.hpp), width x height pixels, 4 bytes each (R, G, B, A), row by row from the top.
+using Image = formats::png::Image;
 
-// The pixels of a PNG of any colour type (see the rules above). FormatError when it cannot be read.
-Image decode_rgba(ByteView png);
+// The pixels of a PNG of any colour type (see the rules above: the codec's imaging rules). FormatError when it cannot be read.
+inline Image decode_rgba(ByteView png) { return formats::png::decode(png, formats::png::Rules::imaging); }
 
 // An 8-bit RGBA PNG of the picture.
-Bytes encode_rgba(const Image& image);
+inline Bytes encode_rgba(const Image& image) { return formats::png::encode(image); }
 
 struct Converted {
     Bytes png;
