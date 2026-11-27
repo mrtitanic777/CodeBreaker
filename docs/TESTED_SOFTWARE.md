@@ -461,6 +461,12 @@ tried. The fixed inputs gain scratch memory of zeros (null pointers, zero counts
 | cmd.exe, revision 7 | 665 | 23 | 143 | 230 | 185 | 65 | 20 | 61 of 86 (71%) / 18 of 32 (56%) / 79 of 118 (67%) |
 | notepad.exe, revision 7 + the C that compiles (2026-11-27) | 386 | 24 | 164 | 94 | 107 | 0 | 13 | |
 | cmd.exe, revision 7 + the C that compiles (2026-11-27) | 665 | 23 | 249 | 198 | 176 | 0 | 20 | |
+| kernel32.dll (Windows 11 26300), revision 7 (2026-11-27) | 2,414 | 4 | 664 | 479 | 1,229 | 16 | 22 | |
+| kernel32.dll, + the system DLLs' C classes (2026-11-27) | 2,414 | 4 | 674 | 480 | 1,234 | 0 | 22 | |
+| user32.dll (Windows 11 26300), revision 7 (2026-11-27) | 3,033 | 7 | 834 | 1,506 | 562 | 48 | 76 | |
+| user32.dll, + the system DLLs' C classes (2026-11-27) | 3,033 | 7 | 896 | 1,490 | 560 | 4 | 76 | |
+| ntdll.dll (Windows 11 26300), revision 7 (2026-11-27) | 4,355 | 23 | 0 | 0 | 0 | 4,326 | 6 | |
+| ntdll.dll, + the system DLLs' C classes (2026-11-27) | 4,355 | 23 | 637 | 3,134 | 487 | 68 | 6 | |
 | calc.exe, revision 6 | 22 | 4 | 5 | 5 | 5 | 2 | 1 | |
 
 The "C that compiles" rows (2026-11-27): every decompiled function's C now builds with x64 cl. The C writer (decompile/c_text_x64)
@@ -468,6 +474,18 @@ gives an undeclared field's address as the address it is, a callee whose text st
 lines and functions passed as values their macros, odd-width partial accesses (3, 5, 6, 7 bytes) and 128-bit products their
 helpers, a whole-array assignment as a byte copy, the stack pointer after __chkstk as _AddressOfReturnAddress, a self-call with
 other arguments an unprototyped call; the functions that now compile are judged (most verify).
+
+The "system DLLs' C classes" rows (2026-11-27): stack variables the decompiler writes as one (`_xStack_30 = CONCAT44(..)`) are
+each written their part, wider globals and imported variables (`_NlsAnsiCodePage`) read as wide as what they meet, an imported
+variable compared as `(code)` read as its byte, 128-bit products of 16-byte variables and shifted or sign-extended values and
+bytes of a shifted 16-byte value the header's helpers, a 64-bit local reached as a pointer declared as one, unnamed fields read or
+written the byte there, arrays given a cast or widened value or given whole to a pointed-at place, a label written twice renamed, a
+case label at a block's end a statement, a pointer-to-array result a pointer, parts wider than 8 bytes copied, and rdtsc, rdtscp,
+rdpid, POPCOUNT, MXCSR, crc32, xrstor, monitorx and syscall what they do; a module's own wcslen or memset is not Visual C++'s
+intrinsic (`#pragma function`). ntdll's whole module failed before on its header (`xunknown1 (*) [16] strrchr(...)`). notepad and
+cmd stay at 0 not compiling with 164 and 249 verified. Still not compiling: ntdll 68 (mwaitx 9, other instructions without a C
+form, an array given whole to a non-pointer place, a 64-bit local dereferenced with no pointer type stated), user32 4 (an array's
+part written as one, two stack pieces that are not end to end, a `stack0x` name).
 
 The revision 7 rows were made with a newer decompiler (the tree of 2026-11-26, 11:41 PM), which writes 16 more functions of
 notepad and one more of cmd than revision 6's did (the classes add up to 402 and 666: the decompiler's functions beyond

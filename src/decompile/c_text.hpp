@@ -353,6 +353,9 @@ struct ModuleX64 {
     std::map<std::string, std::string> methods;
 };
 ModuleX64 compilable_x64(Services& services, const std::filesystem::path& module, const std::filesystem::path& outdir);
+// One function's text as compilable_x64 writes it, of the rewrites a text needs on its own: the decompiler's names for parts of
+// variables, unnamed fields, 128-bit products, whole-array assignments, labels at a block's end, locals it reaches as pointers.
+std::string x64_function_text(std::string_view text);
 
 // {name: number of arguments} for the functions in `names` that every call passes the same number of arguments to.
 std::map<std::string, std::int64_t> call_counts(const std::map<std::string, std::set<std::int64_t>>& calls,
