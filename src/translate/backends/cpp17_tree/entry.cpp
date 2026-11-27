@@ -157,7 +157,7 @@ void run_deep(Call* c) { run(c); }
 bool enabled() {
     static const bool on = [] {
         const std::optional<std::string> v = fs::get_env("CB_CPP17_TREE");
-        return v && *v == "1";   // (until it is proven: the library answers unless CB_CPP17_TREE=1)
+        return !(v && *v == "0");   // (the default: the library answers only where CB_CPP17_TREE=0)
     }();
     return on;
 }

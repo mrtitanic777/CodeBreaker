@@ -145,3 +145,11 @@ tests only what it changes.
   goes back to the library). A recording of 75,878 calls into `cb_l2` (15 MINI.CAB module builds and five 32-bit Win95 modules'
   checks) replays answer for answer, with about 15% less CPU time (144 MB peak against 43 MB: each document's tree is kept for
   later calls). Commits 8c7e2e3d3, c82c954a1, 60bd5828e. Next: the C++17 core onto the tree (part B), then `cb_l2` deleted.
+- 2026-11-27: item 1, step 1, the C++17 back end done. `translate/backends/cpp17_tree` (be45e7701) is the default; `CB_CPP17_TREE=0`
+  goes back to the library. Proof: every translate test group (40 groups, all passing) gives the same result with the switch on and
+  off, with 6% less CPU time on (121.6 s against 128.9 s); 34 converted programs (C# and Python to C++17, each checked by running
+  both) are byte-identical either way; the recordings replay answer for answer (223 of 223, and the conversions' own). Next: `cb_l2`
+  deleted once its remaining users move: the L2 core entries (roundtrip, validate, ...) and the pyre, pystr and value helpers.
+- 2026-11-27: items 2, 3, 13, 14 and 15 under way (one agent each): five emulator cores retired (F8, 8048, CP1610, HuC6280, 65C816),
+  SuperH and PowerPC on the one assembler, the NID tables as data, one zlib/PNG/ZIP/XACT/EXEPACK/ISO 9660 reader, the Direct3D
+  Displays as one template.

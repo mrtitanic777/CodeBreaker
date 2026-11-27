@@ -105,8 +105,8 @@ std::pair<int, std::string> Library::call_raw(std::string_view name, std::string
         record(fn, arguments_json, r.first, r.second);
         return r;
     }
-    // The C++17 back end's (cpp17_unit, cpp17_program), on the typed tree in-process (translate/backends/cpp17_tree) where
-    // CB_CPP17_TREE=1.
+    // The C++17 back end's (cpp17_unit, cpp17_program), on the typed tree in-process (translate/backends/cpp17_tree) unless
+    // CB_CPP17_TREE=0.
     if (impl_->call == &l2_call && cpp17tree::enabled() && cpp17tree::handles(fn)) {
         std::pair<int, std::string> r = cpp17tree::call(fn, arguments_json);
         record(fn, arguments_json, r.first, r.second);
