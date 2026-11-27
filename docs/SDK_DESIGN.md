@@ -188,3 +188,9 @@ The inventory is [docs/sdk/inventory.md](sdk/inventory.md) (regenerate: `python 
   vocabulary moved from engine and verify down into store (cb::store::FunctionStore, cb::store::Verdict, ...); harness programs
   (*_main.cpp) and test-image helpers (*_test_image.hpp) count as tests. Found on the way: verify/lane_common's Judgement duplicates
   store::Judgement (rule 1; next).
+- 2026-11-27: phase 1, steps 2-5: one Judgement (27a462673); base reaches up no more: converted -> store, corpus-executables ->
+  app (0812be3c3); the OpenWatcom driver -> base (0aee7d903); the comparison mask -> symbols (bdeaecb12). Upward includes 43 -> 32.
+  Found: `symbols` is two areas in one. The symbol data (libraries, ordinals, the mask, names as data) is low and used by decompile,
+  analyze, emulate, knowledge. The identification and naming pipeline (identify, names, names_bodies, workbench, debug_build,
+  debug_build_estimate, ordinal_collect) uses decompile, analyze, build and source, and accounts for 14 of the 32. Next: split the
+  pipeline into its own layer-3 area (`naming`), leaving `symbols` as the data.
