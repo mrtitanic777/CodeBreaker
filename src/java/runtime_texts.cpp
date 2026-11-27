@@ -680,14 +680,14 @@ R"CBJRT(#ifndef INFLATER_H
 // Inflate.cpp (the 360 SDK ships no zlib; XMemDecompress is LZX, a DIFFERENT format). setInput()/inflate()
 // are what Packet51MapChunk feeds SMP terrain through. new Inflater() = zlib-wrapped; new Inflater(true) = raw.
 class Inflater {
+	JArray<unsigned char> _input;   // holds the input array, as Java's Inflater keeps a reference to it
 	const unsigned char* _in; int _inLen; bool _nowrap; int _lastOut; bool _done;
 public:
 	Inflater() : _in(0), _inLen(0), _nowrap(false), _lastOut(0), _done(false) {}
 	Inflater(bool nowrap) : _in(0), _inLen(0), _nowrap(nowrap), _lastOut(0), _done(false) {}
 	virtual ~Inflater() {}
-	// BY-REFERENCE (JArray convention): a by-value JArray could deep-copy -> dangling _in / writes to a throwaway.
-	virtual void setInput(JArray<unsigned char>& b) { _in = b.data(); _inLen = b.length; _done = false; }
-	virtual void setInput(JArray<unsigned char>& b, int off, int len) { _in = b.data() + off; _inLen = len; _done = false; }
+	virtual void setInput(JArray<unsigned char>& b) { _input = b; _in = b.data(); _inLen = b.length; _done = false; }
+	virtual void setInput(JArray<unsigned char>& b, int off, int len) { _input = b; _in = b.data() + off; _inLen = len; _done = false; }
 	virtual int inflate(JArray<unsigned char>& out) {
 		if (!_in || _inLen <= 0 || out.length <= 0) { _lastOut = 0; _done = true; return 0; }
 		int n = _nowrap ? rawInflate(_in, _inLen, out.data(), out.length)
@@ -695,7 +695,7 @@ public:
 		_lastOut = (n < 0) ? 0 : n; _done = true; return _lastOut;
 	}
 	virtual void end() {}
-	virtual void reset() { _in = 0; _inLen = 0; _lastOut = 0; _done = false; }
+	virtual void reset() { _input = JArray<unsigned char>(); _in = 0; _inLen = 0; _lastOut = 0; _done = false; }
 	virtual bool finished() { return _done; }
 	virtual bool needsInput() { return _in == 0; }
 	virtual int getRemaining() { return 0; }

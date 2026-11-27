@@ -174,23 +174,14 @@ public:
 	}
 	JavaString concat(const std::string& s) const { return JavaString(*this + s); }
 	JavaString intern() const { return *this; }
-	// Copy-out buffers for toCharArray/getBytes. JArray is NON-owning (shallow copy, no destructor), so a
-	// fresh `new T[n]` per call leaked every call -- fatal for per-frame callers (FontRenderer). Instead the
-	// copy lands in a bounded ring of owned slots: a slot is freed when the ring wraps, so memory stays
-	// bounded at _RING slots. Java's copy semantics hold (each call gets its own buffer); a result retained
-	// across more than _RING later calls would dangle -- callers iterate locally, so the ring is generous.
-	// Each buffer carries a trailing NUL so a site that still treats the result as a C string stays safe.
-	// Not thread-safe: string-to-array copies run on the game thread only.
-	enum { _RING = 256 };
+	// toCharArray/getBytes: a fresh array holding a copy of the characters (each call its own array, as in Java),
+	// freed when its last reference goes. Its spare element past `length` is 0, so a site that still treats the
+	// result as a C string stays safe.
 	template<class T> static JArray<T> _copyOut(const std::string& s) {
-		static T* ring[_RING];                       // zero-initialized (static storage)
-		static int next = 0;
-		int slot = next; next = (next + 1) % _RING;
-		delete[] ring[slot];
-		int n = (int)s.size();
-		ring[slot] = new T[n + 1]();
-		for (int i = 0; i < n; ++i) ring[slot][i] = (T)s[(size_type)i];
-		return JArray<T>(ring[slot], n);
+		const int n = (int)s.size();
+		JArray<T> r(n);
+		for (int i = 0; i < n; ++i) r[i] = (T)s[(size_type)i];
+		return r;
 	}
 	// java.lang.String.toCharArray() -> char[] (JArray<unsigned char>: Java's char is unsigned), a COPY --
 	// matches Java's return type so `char[] c = s.toCharArray()` (FontRenderer glyph iteration) assigns.

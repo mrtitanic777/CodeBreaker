@@ -20,12 +20,7 @@ public:
 		while (cap < need) cap *= 2;
 		JArray<unsigned char> nb(cap);
 		for (int i = 0; i < count; ++i) nb[i] = buf[i];
-		// FIXED BUG bytearrayoutputstream-grow-leak: JArray has no destructor (shallow-copy value type, never
-		// frees), so the old backing buffer leaked on every grow. Mid-write nothing else aliases `buf`, so
-		// free it here. (Part of the RegionFileChunkBuffer chunk-save leak -- see close() in that class.)
-		unsigned char* _old = (unsigned char*)buf.data();
-		buf = nb;
-		delete[] _old;
+		buf = nb;   // the old backing array is freed with its last reference (JArray counts them)
 	}
 	void write(int b) { _ensure(count + 1); buf[count++] = (unsigned char)(b & 0xFF); }
 	void write(const unsigned char* b, int len) { _ensure(count + len); for (int i = 0; i < len; ++i) buf[count++] = b[i]; }
