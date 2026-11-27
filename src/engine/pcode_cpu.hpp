@@ -13,7 +13,8 @@
 // returning when the pc reaches kReturnAddress), the registers A X Y P S as the run left them, the device accesses of the
 // run in order, an instruction the NMOS 6502 documents nothing for stops the run with the same fault. Differences from the
 // own core: none (ADC and SBC are decimal with D set when `decimal` is, as the 6502 descriptions do it with their BCD switch);
-// `Variant::Cmos` runs 65sc02.sla (the 65C02 without the bit instructions the Lynx's 65SC02 lacks).
+// NMOS runs 6502exact.sla and `Variant::Cmos` 65sc02.sla (the 65C02 without the bit instructions the Lynx's 65SC02 lacks): the descriptions built with
+// EXACT, whose stack, decimal mode and flags are the chip's; 6502.sla and 65c02.sla, built without it, are the decompiler's and the disassembler's, unchanged.
 //
 // call() uses the emulator by default; CB_PCODE_EMU=0 (or force(false)) makes it use the own core (emulate/m6502, emulate/z80). Every 6502-family
 // and Z80-family lane (Atari 2600, 5200, 7800, NES, Lynx, Master System, SG-1000, MSX, ColecoVision, ZX Spectrum, Amstrad CPC) calls it.

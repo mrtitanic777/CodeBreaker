@@ -1,3 +1,5 @@
-# The 65SC02 (the Atari Lynx's VLSI CPU): the 65C02 without the Rockwell and WDC bit instructions (BBR, BBS, RMB, SMB), whose opcodes it does not decode.
+# The 65SC02 (the Atari Lynx's VLSI CPU) as the one emulator runs it: the 65C02 with EXACT (see 6502exact.slaspec), without the Rockwell and WDC bit
+# instructions (BBR, BBS, RMB, SMB), whose opcodes it does not decode.
+@define EXACT "1"
 @define SC02 "1"
 @include "65c02.slaspec"

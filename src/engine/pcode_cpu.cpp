@@ -49,7 +49,8 @@ sl::Emulator& emulator_named(const char* description) {
 bool is_ram(std::string_view space) { return space.size() == 3 && (space[0] | 32) == 'r' && (space[1] | 32) == 'a' && (space[2] | 32) == 'm'; }
 
 namespace {
-sl::Emulator& emulator_for(m::Variant variant) { return emulator_named(variant == m::Variant::Cmos ? "65sc02.sla" : "6502.sla"); }
+// (the exact builds of the descriptions: 6502.sla and 65c02.sla are the decompiler's)
+sl::Emulator& emulator_for(m::Variant variant) { return emulator_named(variant == m::Variant::Cmos ? "65sc02.sla" : "6502exact.sla"); }
 }  // namespace
 
 bool enabled() {

@@ -1,0 +1,5 @@
+# CodeBreaker: the NMOS 6502 as the one emulator runs it (engine/pcode_cpu): 6502.slaspec with EXACT, its stack moves within page 1 a byte at a time,
+# decimal ADC and SBC (the decimalMode switch the host sets: BCD) and the other exact semantics. 6502.slaspec without EXACT is the decompiler's and the
+# disassembler's description, unchanged.
+@define EXACT "1"
+@include "6502.slaspec"

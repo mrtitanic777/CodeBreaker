@@ -20,8 +20,12 @@ define token testopbyte (8)
 ################################################################
 
 # Zero Page Indirect
+@ifdef EXACT
 # CodeBreaker: the pointer is two bytes of page zero, and wraps within it ($FF and $00)
 ZIOP:   (imm8)    is bbb=4; imm8  { local p0:1 = imm8; local p1:1 = p0 + 1; local a0:2 = zext(p0); local a1:2 = zext(p1); local lo:1 = *:1 a0; local hi:1 = *:1 a1; local tmp:2 = (zext(hi) << 8) | zext(lo); export *:1 tmp; }
+@else
+ZIOP:   (imm8)    is bbb=4; imm8  { addr:2 = imm8; tmp:2 = *:2 addr; export *:1 tmp; }
+@endif
 
 OPTB:   imm8      is tbb=1; imm8  { export *:1 imm8; }
 OPTB:   imm16     is tbb=3; imm16 { export *:1 imm16; }
@@ -34,7 +38,16 @@ ADDRIX: (imm16,X) is X; imm16     { addr:2 = imm16 + zext(X); tmp:2 = *:2 addr; 
 :ADC ZIOP                      is (cc=2 & aaa=3) ... & ZIOP
 {
     local op1 = ZIOP;
+@ifdef EXACT
     addWithCarry(op1);	# CodeBreaker: as the 6502's ADC, binary or decimal
+@else
+    local tmpC = C;
+
+    C = carry(A, op1);
+    A = A + op1 + tmpC;
+    resultFlags(A);
+    V = C;
+@endif
 }
 
 :AND ZIOP                      is (cc=2 & aaa=1) ... & ZIOP
@@ -63,8 +76,15 @@ ADDRIX: (imm16,X) is X; imm16     { addr:2 = imm16 + zext(X); tmp:2 = *:2 addr; 
 
 :BIT "#"imm8                   is op=0x89; imm8
 {
+@ifdef EXACT
     # CodeBreaker: the immediate form sets Z only (N and V are the operand's bits in memory forms alone)
     local value:1 = A & imm8;
+@else
+    local value:1 = imm8;
+    N = (value & 0x80) == 0x80;
+    V = (value & 0x40) == 0x40;
+    value = A & value;
+@endif
     Z = (value == 0);
 }
 
@@ -129,12 +149,20 @@ ADDRIX: (imm16,X) is X; imm16     { addr:2 = imm16 + zext(X); tmp:2 = *:2 addr; 
 :PHX                           is op=0xDA
 {
     *:1 (SP) = X;
+@ifdef EXACT
     S = S - 1;
+@else
+    SP = SP - 1;
+@endif
 }
 
 :PLX                           is op=0xFA
 {
+@ifdef EXACT
     S = S + 1;
+@else
+    SP = SP + 1;
+@endif
     X = *:1 (SP);
     resultFlags(X);
 }
@@ -142,12 +170,20 @@ ADDRIX: (imm16,X) is X; imm16     { addr:2 = imm16 + zext(X); tmp:2 = *:2 addr; 
 :PHY                           is op=0x5A
 {
     *:1 (SP) = Y;
+@ifdef EXACT
     S = S - 1;
+@else
+    SP = SP - 1;
+@endif
 }
 
 :PLY                           is op=0x7A
 {
+@ifdef EXACT
     S = S + 1;
+@else
+    SP = SP + 1;
+@endif
     Y = *:1 (SP);
     resultFlags(Y);
 }
@@ -164,7 +200,14 @@ ADDRIX: (imm16,X) is X; imm16     { addr:2 = imm16 + zext(X); tmp:2 = *:2 addr; 
 :SBC ZIOP                      is (cc=2 & aaa=7) ... & ZIOP
 {
     local op1 = ZIOP;
+@ifdef EXACT
     subtractWithBorrow(op1);	# CodeBreaker: as the 6502's SBC, binary or decimal
+@else
+    local result = A - op1 - !C;
+
+    subtraction_flags1(A, op1, result);
+    A = result;
+@endif
 }
 
 @ifndef SC02
@@ -210,7 +253,11 @@ ADDRIX: (imm16,X) is X; imm16     { addr:2 = imm16 + zext(X); tmp:2 = *:2 addr; 
     local op1 = OPTB;
     local result = (~A) & op1;
     OPTB = result;
+@ifdef EXACT
     Z = (A & op1) == 0;
+@else
+    Z = result == 0;
+@endif
 }
 
 :TSB OPTB                      is (tcc=0 & taaa=0 & td=0) ... & OPTB
@@ -218,5 +265,9 @@ ADDRIX: (imm16,X) is X; imm16     { addr:2 = imm16 + zext(X); tmp:2 = *:2 addr; 
     local op1 = OPTB;
     local result = A | op1;
     OPTB = result;
+@ifdef EXACT
     Z = (A & op1) == 0;
+@else
+    Z = result == 0;
+@endif
 }
