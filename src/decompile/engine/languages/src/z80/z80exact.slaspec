@@ -1,0 +1,5 @@
+# CodeBreaker: the Z80 as the one emulator runs it (engine/pcode_cpu): z80.slaspec with EXACT, the chip's undocumented flags (bits 3 and 5 of F), the
+# ports with all sixteen address lines (A or B on the high ones) and the block instructions' flags on every step. z80.slaspec without EXACT is the
+# decompiler's and the disassembler's description.
+@define EXACT "1"
+@include "z80.slaspec"

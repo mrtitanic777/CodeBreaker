@@ -165,3 +165,8 @@ tests only what it changes.
 - 2026-11-27: items 2, 3, 13, 14 and 15 under way (one agent each): five emulator cores retired (F8, 8048, CP1610, HuC6280, 65C816),
   SuperH and PowerPC on the one assembler, the NID tables as data, one zlib/PNG/ZIP/XACT/EXEPACK/ISO 9660 reader, the Direct3D
   Displays as one template.
+- 2026-11-27: item 2: the Z80 core retired. The emulator runs `z80exact.sla` (z80.slaspec built with EXACT: the undocumented
+  flags, the block instructions' flags on every step, the ports' sixteen lines); `z80.sla` stays the decompiler's, unchanged
+  apart from its recorded line numbers. Instructions with a byte in a bus device range are fetched through the bus (the
+  emulator's `setFence`). Proof: 400,000 random instructions and the whole Z80 homebrew corpus (2,151 edited copies) the same
+  on both cores; the random runs' digest is kept in `engine/pcode_cpu_z80_test`.

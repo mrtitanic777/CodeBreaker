@@ -94,14 +94,15 @@ CB_TEST("engine.pcode_cpu.a_write_to_code_decoded_from_an_empty_page_is_seen", [
     emulate::z80::RunOptions options;
     options.max_steps = 20000;
     options.sp = 0xF000;
-    emulate::z80::Bus own_bus{ByteView(image)};
-    const emulate::z80::RunResult own = emulate::z80::run(own_bus, 0x200, options);
+    emulate::z80::RunResult r[2];
     for (const bool blocks : {false, true}) {
         const BlocksMode forced(blocks);
         emulate::z80::Bus bus{ByteView(image)};
-        const emulate::z80::RunResult emulator = engine::pcode_cpu::run(bus, 0x200, options);
-        CB_CHECK(same_z80(own, emulator));
+        r[blocks ? 1 : 0] = engine::pcode_cpu::run(bus, 0x200, options);
     }
+    CB_CHECK_EQ(r[0].exit(), "return");
+    CB_CHECK_EQ(r[0].steps, 0x1000u + 7u);   // CALL; $3000-$3FFF, NOP each, and the RET at $4000; LD A; LD (3000h),A; CALL; the RET now at $3000; RET
+    CB_CHECK(same_z80(r[0], r[1]));
 });
 
 CB_TEST("engine.pcode_cpu.z80_blocks_run_as_single_steps_do", [] {

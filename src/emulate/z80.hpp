@@ -1,35 +1,26 @@
-// emulate/z80.hpp -- a Z80, to run functions on (Unicorn has none).
+// emulate/z80.hpp -- the Z80 machine's side of a run: the bus (64 KB, the ports, device ranges handed to callbacks), the registers, the run's
+// options and result, and the run record the judge compares. The CPU itself runs on the one emulator, the p-code interpreter of the Z80's
+// SLEIGH description (engine/pcode_cpu: run() calls a function, Z80Cpu steps it).
 //
-//     z80::Bus bus;                                    // 64 KB, 64K ports, device ranges handed to callbacks
-//     z80::Cpu cpu(bus);
-//     cpu.step();                                      // one instruction
-//     z80::RunResult r = z80::run(bus, entry, {.regs = {.b = 3}});    // call a function: run to its RET
-//     cb::emulate::Run record = z80::record(r);        // the one run record the judge compares
+//     z80::Bus bus;                                                        // 64 KB, 64K ports, device ranges handed to callbacks
+//     z80::RunResult r = engine::pcode_cpu::run(bus, entry, {.regs = {.b = 3}});   // call a function: run to its RET
+//     cb::emulate::Run record = z80::record(r);                            // the one run record the judge compares
 //
-// Every instruction of the table in cb/decompile/z80, the undocumented ones included (IXH/IXL, SLL, the DDCB forms
-// that copy their result to a register, OUT (C),0), read from that table: each pattern ("LD (IX+d),n", "ADC HL,DE", ...)
-// is compiled once into a small program. Flags as the CPU sets them -- S Z H P/V N C, and the two undocumented bits
-// (5 and 3, copied from the result, or from the operand where the CPU takes them from there: CP, BIT, the block
-// instructions) -- so that a rebuilt program and its original leave the same F. R counts instruction fetches (its low
-// seven bits); interrupts are not raised (a function is run on its own).
-//
-// What a function touches outside memory is the machine's business: the Z80 has its own I/O ports (IN, OUT, and the
-// block forms), which go to the Bus's port callbacks and are logged with the memory ranges a Bus hands to callbacks --
-// the effects the judge compares. A Bus, a Cpu and a run belong to one thread; the compiled programs are shared.
+// What a function touches outside memory is the machine's business: the Z80 has its own I/O ports (IN, OUT, and the block forms), which go to
+// the Bus's port callbacks with all sixteen address lines and are logged (the low byte) with the memory ranges a Bus hands to callbacks -- the
+// effects the judge compares. A Bus and a run belong to one thread.
 #pragma once
 
 #include <cstddef>
 #include <cstdint>
 #include <functional>
-#include <memory>
 #include <optional>
 #include <span>
 #include <string>
-#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "core/bytes.hpp"
-#include "decompile/z80.hpp"
 #include "emulate/run.hpp"
 
 namespace cb::emulate::z80 {
@@ -81,6 +72,9 @@ public:
     std::uint8_t in(std::uint16_t port);
     void out(std::uint16_t port, std::uint8_t value);
 
+    // The ranges map() gave, [lo, hi] each, in order (an instruction fetched from one is read through it, as every access there is).
+    std::vector<std::pair<std::uint16_t, std::uint16_t>> mapped() const;
+
     ByteSpan memory() { return ram_; }
     ByteView memory() const { return ram_; }
     const std::vector<BusAccess>& log() const { return log_; }
@@ -123,31 +117,6 @@ struct Fault {
     std::string text() const;   // "HALT" | "undecodable at 8000"
 };
 
-struct Program;   // an instruction pattern compiled (z80.cpp)
-
-class Cpu {
-public:
-    explicit Cpu(Bus& bus);
-    ~Cpu();
-    Cpu(const Cpu&) = delete;
-    Cpu& operator=(const Cpu&) = delete;
-
-    Registers regs;
-    std::uint64_t steps = 0;   // instructions executed
-
-    // Execute the instruction at pc. nullopt: it ran. A Fault: the CPU is halted (an earlier HALT ran), nothing ran.
-    // The instruction is decoded once per address and decoded again if the bytes under it change.
-    std::optional<Fault> step();
-
-private:
-    struct Decoded {
-        cb::decompile::z80::Insn insn;
-        const Program* program = nullptr;
-    };
-    Bus* bus_;
-    std::unordered_map<std::uint16_t, Decoded> decoded_;
-};
-
 // The registers run() sets before it starts: a field only when given.
 struct RegisterInit {
     std::optional<std::uint8_t> a, f, b, c, d, e, h, l;
@@ -173,15 +142,8 @@ struct RunResult {
     std::string exit() const;                  // "return" | "stopped: <why>" | "limit"
 };
 
-// Call the function at `entry` as CALL would and run it until it returns (RET to kReturnAddress), stops or takes
-// `max_steps` instructions. What the function wrote is in the bus's memory.
-RunResult run(Bus& bus, std::uint16_t entry, const RunOptions& options = {});
-
 // The run as the one run record: the registers A F BC DE HL IX IY SP as results, the bus's accesses as io, truncated
 // when it hit the step limit; the RunResult is the record's `raw`.
 cb::emulate::Run record(const RunResult& result);
-
-// run + record: the platform's runner (platforms/sms, msx, zx).
-cb::emulate::Run recorded(Bus& bus, std::uint16_t entry, const RunOptions& options = {});
 
 }  // namespace cb::emulate::z80

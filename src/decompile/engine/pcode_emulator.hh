@@ -130,6 +130,9 @@ public:
     void clearPin();
     void setCounter(const RegRef& ref, std::uint64_t mask, std::function<std::uint64_t(std::uint64_t pc)> amount);
     void clearCounter();
+    // Addresses runBlocks does not run an instruction at: a run of instructions ends before one (with what ran so far, status Ok), and no translated block holds
+    // one, so the caller makes it (an adapter reading an instruction through a device). The caller must not start runBlocks at a fenced address. {} clears it.
+    void setFence(std::function<bool(std::uint64_t pc)> fenced);
     // Forces blocks on (1) or off (0) for every Emulator, or leaves it to the environment (-1): what the tests compare.
     static void setBlocksOverride(int mode);
     // One p-code operation on values, by the form blocks run (writtenOut) or by the description's behaviour table: what the test compares. False: no such form.

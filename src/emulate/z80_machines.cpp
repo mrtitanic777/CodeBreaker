@@ -81,8 +81,4 @@ z80::RunOptions run_options(const Machine& machine, Trace& trace, z80::RunOption
     return options;
 }
 
-z80::RunResult run(const Machine& machine, z80::Bus& bus, Trace& trace, std::uint16_t entry, z80::RunOptions options) {
-    return z80::run(bus, entry, run_options(machine, trace, std::move(options)));
-}
-
 }  // namespace cb::emulate::z80_machines

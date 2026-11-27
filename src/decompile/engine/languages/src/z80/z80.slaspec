@@ -27,6 +27,9 @@ define register offset=0x50 size=1 [ rCBAR rCBR rBBR ];
 define register offset=0x60 size=1 [
 	DECOMPILE_MODE
 ];
+@if defined(EXACT)
+define register offset=0x62 size=2 [ MEMPTR ];   # the address the last (IX+d) or (IY+d) operand formed (BIT reads bits 3 and 5 of it)
+@endif
 
 # Define context bits
 define register offset=0xf0 size=4   contextreg;
@@ -40,6 +43,8 @@ define register offset=0xf0 size=4   contextreg;
 @define H_flag "F[4,1]"  # H: Half Carry
 @define Z_flag "F[6,1]"  # Z: Zero
 @define S_flag "F[7,1]"  # S: Sign
+@define X_flag "F[3,1]"  # bit 3 (undocumented; set under EXACT)
+@define Y_flag "F[5,1]"  # bit 5 (undocumented; set under EXACT)
 
 define token opbyte (8)
 	op0_8        = (0,7)
@@ -102,6 +107,26 @@ define pcodeop halt;
 macro setResultFlags(result) {
 	$(Z_flag) = (result == 0);
 	$(S_flag) = (result s< 0);
+@if defined(EXACT)
+	$(X_flag) = (result & 0x08) != 0;
+	$(Y_flag) = (result & 0x20) != 0;
+@endif
+}
+
+# CodeBreaker: bits 3 and 5 of F, which the Zilog manual leaves undocumented, copied from a byte (copyXY) or from the high byte of a
+# word (copyXY16), as the chip copies them; under EXACT only (the one emulator's z80exact.sla), nothing in the decompiler's z80.sla.
+macro copyXY(v) {
+@if defined(EXACT)
+	$(X_flag) = (v & 0x08) != 0;
+	$(Y_flag) = (v & 0x20) != 0;
+@endif
+}
+
+macro copyXY16(v) {
+@if defined(EXACT)
+	$(X_flag) = (v & 0x0800) != 0;
+	$(Y_flag) = (v & 0x2000) != 0;
+@endif
 }
 
 macro additionFlags(operand1, operand2) {
@@ -192,6 +217,7 @@ macro ioBlockFlags(count, data) {
    $(H_flag) = 0;
    $(PV_flag) = 0;
    $(N_flag) = (data s< 0);
+   copyXY(count);
 }
 
 macro ioWrite(addr,val) {
@@ -332,11 +358,21 @@ iyMem8: (IY-val)    is IY & simm8 & sign8=1	[ val = -simm8; ] {
 hlMem8: (HL)  is HL      { ptr:$(PTRSIZE) = HL; export *:1 ptr; }
 @endif
 
+@if defined(EXACT)
+ixMem8: (IX+simm8)  is IX & simm8                                 { ptr:$(PTRSIZE) = IX + simm8; MEMPTR = ptr; export *:1 ptr; }
+ixMem8: (IX-val)    is IX & simm8 & sign8=1	[ val = -simm8; ]      { ptr:$(PTRSIZE) = IX + simm8; MEMPTR = ptr; export *:1 ptr; }
+@else
 ixMem8: (IX+simm8)  is IX & simm8                                 { ptr:$(PTRSIZE) = IX + simm8; export *:1 ptr; }
 ixMem8: (IX-val)    is IX & simm8 & sign8=1	[ val = -simm8; ]      { ptr:$(PTRSIZE) = IX + simm8; export *:1 ptr; }
+@endif
 
+@if defined(EXACT)
+iyMem8: (IY+simm8)  is IY & simm8                                 { ptr:$(PTRSIZE) = IY + simm8; MEMPTR = ptr; export *:1 ptr; }
+iyMem8: (IY-val)    is IY & simm8 & sign8=1	[ val = -simm8; ]      { ptr:$(PTRSIZE) = IY + simm8; MEMPTR = ptr; export *:1 ptr; }
+@else
 iyMem8: (IY+simm8)  is IY & simm8                                 { ptr:$(PTRSIZE) = IY + simm8; export *:1 ptr; }
 iyMem8: (IY-val)    is IY & simm8 & sign8=1	[ val = -simm8; ]      { ptr:$(PTRSIZE) = IY + simm8; export *:1 ptr; }
+@endif
 
 @endif # end !Z180_SEGMENTED
 @if defined(Z180)
@@ -371,9 +407,16 @@ IOAddrC: (C)  is assume8bitIOSpace=0 & C       { ptr:2 = (zext(B) << 8) + zext(C
 IOAddrC: (C)  is assume8bitIOSpace=1 & C       { ptr:2 = zext(C); export ptr; }
 @else
 
+@if defined(EXACT)
+# the port as the chip puts it on the address bus: A on the high lines for IN A,(n) and OUT (n),A, B for the (C) forms
+IOAddr8a: (imm8)  is imm8                              { ptr:2 = (zext(A) << 8) + imm8; export ptr; }
+
+IOAddrC: (C)  is C                             { ptr:2 = BC; export ptr; }
+@else
 IOAddr8a: (imm8)  is imm8                              { export *[const]:2 imm8; }
 
 IOAddrC: (C)  is C                             { ptr:2 = zext(C); export ptr; }
+@endif
 @endif
 
 cc: "NZ"  is bits3_3=0x0  { c:1 = ($(Z_flag) == 0); export c; }
@@ -614,10 +657,19 @@ cc2: "C"   is bits3_3=0x7   { c:1 = $(C_flag); export c; }
 	HL = inloc + 1;
 	local test = BC - 1;
 	BC = test;
+@if defined(EXACT)
+	$(H_flag) = 0;
+	$(PV_flag) = (test != 0);
+	$(N_flag) = 0;
+	local n:1 = val + A;
+	$(X_flag) = (n & 0x08) != 0;
+	$(Y_flag) = (n & 0x02) != 0;
+@else
 	
 	$(H_flag) = 0;
 	$(PV_flag) = (test != 0);
 	$(N_flag) = 0;
+@endif
 }
 
 :LDIR               is op0_8=0xed; op0_8=0xb0 {
@@ -631,12 +683,22 @@ cc2: "C"   is bits3_3=0x7   { c:1 = $(C_flag); export c; }
 	HL = inloc + 1;
 	local test = BC - 1;
 	BC = test;
+@if defined(EXACT)
+	$(H_flag) = 0;
+	$(PV_flag) = (test != 0);
+	$(N_flag) = 0;
+	local n:1 = val + A;
+	$(X_flag) = (n & 0x08) != 0;
+	$(Y_flag) = (n & 0x02) != 0;
+	if (test != 0) goto inst_start;
+@else
 	
 	if (test != 0) goto inst_start;
 	
 	$(H_flag) = 0;
 	$(PV_flag) = 0;
 	$(N_flag) = 0;
+@endif
 }
 
 :LDD                is op0_8=0xed; op0_8=0xa8 {
@@ -650,10 +712,19 @@ cc2: "C"   is bits3_3=0x7   { c:1 = $(C_flag); export c; }
 	HL = inloc - 1;
 	local test = BC - 1;
 	BC = test;
+@if defined(EXACT)
+	$(H_flag) = 0;
+	$(PV_flag) = (test != 0);
+	$(N_flag) = 0;
+	local n:1 = val + A;
+	$(X_flag) = (n & 0x08) != 0;
+	$(Y_flag) = (n & 0x02) != 0;
+@else
 	
 	$(H_flag) = 0;
 	$(PV_flag) = (test != 0);
 	$(N_flag) = 0;
+@endif
 }
 
 :LDDR               is op0_8=0xed; op0_8=0xb8 {
@@ -667,12 +738,22 @@ cc2: "C"   is bits3_3=0x7   { c:1 = $(C_flag); export c; }
 	HL = inloc - 1;
 	local test = BC - 1;
 	BC = test;
+@if defined(EXACT)
+	$(H_flag) = 0;
+	$(PV_flag) = (test != 0);
+	$(N_flag) = 0;
+	local n:1 = val + A;
+	$(X_flag) = (n & 0x08) != 0;
+	$(Y_flag) = (n & 0x02) != 0;
+	if (test != 0) goto inst_start;
+@else
 	
 	if (test != 0) goto inst_start;
 	
 	$(H_flag) = 0;
 	$(PV_flag) = 0;
 	$(N_flag) = 0;
+@endif
 }
 
 :CPI                is op0_8=0xed; op0_8=0xa1 {
@@ -686,11 +767,21 @@ cc2: "C"   is bits3_3=0x7   { c:1 = $(C_flag); export c; }
 	HL = loc + 1;
 	local test = BC - 1;
 	BC = test;
+@if defined(EXACT)
+	carries:1 = (~a_temp & val) | (val & cmp) | (cmp & ~a_temp);
+	$(H_flag) = (carries & 0b00001000) != 0;
+	$(PV_flag) = (test != 0);
+	$(N_flag) = 1;
+	local n:1 = cmp - zext($(H_flag));
+	$(X_flag) = (n & 0x08) != 0;
+	$(Y_flag) = (n & 0x02) != 0;
+@else
 
 	carries:1 = (~a_temp & val) | (val & cmp) | (cmp & ~a_temp);
 	$(H_flag) = (carries & 0b00001000) != 0;
 	$(PV_flag) = (test != 0);
 	$(N_flag) = 1;
+@endif
 }
 
 :CPIR               is op0_8=0xed; op0_8=0xb1 {
@@ -704,6 +795,16 @@ cc2: "C"   is bits3_3=0x7   { c:1 = $(C_flag); export c; }
 	HL = loc + 1;
 	local test = BC - 1;
 	BC = test;
+@if defined(EXACT)
+	carries:1 = (~a_temp & val) | (val & cmp) | (cmp & ~a_temp);
+	$(H_flag) = (carries & 0b00001000) != 0;
+	$(PV_flag) = (test != 0);
+	$(N_flag) = 1;
+	local n:1 = cmp - zext($(H_flag));
+	$(X_flag) = (n & 0x08) != 0;
+	$(Y_flag) = (n & 0x02) != 0;
+	if (cmp != 0 && test != 0) goto inst_start;
+@else
 	
 	if (cmp != 0 || test != 0) goto inst_start;
 
@@ -711,6 +812,7 @@ cc2: "C"   is bits3_3=0x7   { c:1 = $(C_flag); export c; }
 	$(H_flag) = (carries & 0b00001000) != 0;
 	$(PV_flag) = (test != 0);
 	$(N_flag) = 1;
+@endif
 }
 
 :CPD                is op0_8=0xed; op0_8=0xa9 {
@@ -724,11 +826,21 @@ cc2: "C"   is bits3_3=0x7   { c:1 = $(C_flag); export c; }
 	HL = loc - 1;
 	local test = BC - 1;
 	BC = test;
+@if defined(EXACT)
+	carries:1 = (~a_temp & val) | (val & cmp) | (cmp & ~a_temp);
+	$(H_flag) = (carries & 0b00001000) != 0;
+	$(PV_flag) = (test != 0);
+	$(N_flag) = 1;
+	local n:1 = cmp - zext($(H_flag));
+	$(X_flag) = (n & 0x08) != 0;
+	$(Y_flag) = (n & 0x02) != 0;
+@else
 
 	carries:1 = (~a_temp & val) | (val & cmp) | (cmp & ~a_temp);
 	$(H_flag) = (carries & 0b00001000) != 0;
 	$(PV_flag) = (test != 0);
 	$(N_flag) = 1;
+@endif
 }
 
 :CPDR               is op0_8=0xed; op0_8=0xb9 {
@@ -742,6 +854,16 @@ cc2: "C"   is bits3_3=0x7   { c:1 = $(C_flag); export c; }
 	HL = loc - 1;
 	local test = BC - 1;
 	BC = test;
+@if defined(EXACT)
+	carries:1 = (~a_temp & val) | (val & cmp) | (cmp & ~a_temp);
+	$(H_flag) = (carries & 0b00001000) != 0;
+	$(PV_flag) = (test != 0);
+	$(N_flag) = 1;
+	local n:1 = cmp - zext($(H_flag));
+	$(X_flag) = (n & 0x08) != 0;
+	$(Y_flag) = (n & 0x02) != 0;
+	if (cmp != 0 && test != 0) goto inst_start;
+@else
 	
 	if (cmp != 0 || test != 0) goto inst_start;
 
@@ -749,6 +871,7 @@ cc2: "C"   is bits3_3=0x7   { c:1 = $(C_flag); export c; }
 	$(H_flag) = (carries & 0b00001000) != 0;
 	$(PV_flag) = (test != 0);
 	$(N_flag) = 1;
+@endif
 }
 
 :ADD A, reg0_3         is op6_2=0x2 & bits3_3=0x0 & reg0_3 & A {
@@ -1124,6 +1247,7 @@ cc2: "C"   is bits3_3=0x7   { c:1 = $(C_flag); export c; }
 	cmp:1 = a_temp - r_temp;
 	subtractionFlags(a_temp, r_temp);
 	setResultFlags(cmp);
+	copyXY(r_temp);
 }
 
 :CP imm8            is op0_8=0xfe; imm8 {
@@ -1131,6 +1255,10 @@ cc2: "C"   is bits3_3=0x7   { c:1 = $(C_flag); export c; }
 	cmp:1 = a_temp - imm8;
 	subtractionFlags(a_temp, imm8);
 	setResultFlags(cmp);
+@if defined(EXACT)
+	local operand:1 = imm8;
+	copyXY(operand);
+@endif
 }
 
 :CP (HL)            is op0_8=0xbe & HL {
@@ -1141,6 +1269,7 @@ cc2: "C"   is bits3_3=0x7   { c:1 = $(C_flag); export c; }
 	cmp:1 = a_temp - val;
 	subtractionFlags(a_temp, val);
 	setResultFlags(cmp);
+	copyXY(val);
 }
 
 :CP ixMem8          is op0_8=0xdd; op0_8=0xbe; ixMem8 {
@@ -1150,6 +1279,7 @@ cc2: "C"   is bits3_3=0x7   { c:1 = $(C_flag); export c; }
 	cmp:1 = a_temp - val;
 	subtractionFlags(a_temp, val);
 	setResultFlags(cmp);
+	copyXY(val);
 }
 
 :CP iyMem8          is op0_8=0xfd; op0_8=0xbe; iyMem8 {
@@ -1159,6 +1289,7 @@ local a_temp = A;
 	cmp:1 = a_temp - val;
 	subtractionFlags(a_temp, val);
 	setResultFlags(cmp);
+	copyXY(val);
 }
 
 :INC reg3_3         is op6_2=0x0 & reg3_3 & bits0_3=0x4 {
@@ -1364,6 +1495,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	A = ~A;	
 	$(H_flag) = 1;
 	$(N_flag) = 1;
+	copyXY(A);
 }
 
 :NEG                is op0_8=0xed; op0_8=0x44 {
@@ -1378,12 +1510,14 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	$(H_flag) = $(C_flag);
 	$(C_flag) = !$(C_flag);
 	$(N_flag) = 0;
+	copyXY(A);
 }
 
 :SCF                is op0_8=0x37 {
 	$(C_flag) = 1;
 	$(H_flag) = 0;
 	$(N_flag) = 0;
+	copyXY(A);
 }
 
 :NOP                is op0_8=0x0 {
@@ -1423,6 +1557,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 
 	additionFlagsNoPV(HL_temp, Reg_temp);
 	HL = HL_temp + Reg_temp;
+	copyXY16(HL);
 }
 
 :ADC HL,sRegPair4_2 is op0_8=0xed & HL; op6_2=0x1 & sRegPair4_2 & bits0_4=0xa {
@@ -1432,6 +1567,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	additionWithCarry(HL_temp, Reg_temp, HL_temp);
 	setResultFlags(HL_temp);
 	HL = HL_temp;
+	copyXY16(HL_temp);
 }
 
 :SBC HL,sRegPair4_2 is op0_8=0xed & HL; op6_2=0x1 & sRegPair4_2 & bits0_4=0x2 {
@@ -1441,6 +1577,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	subtractionWithCarry(HL_temp, sRegPair4_2, HL_temp);
 	setResultFlags(HL_temp);
 	HL = HL_temp;
+	copyXY16(HL_temp);
 }
 
 :ADD IX,pRegPair4_2 is op0_8=0xdd & IX; op6_2=0x0 & pRegPair4_2 & bits0_4=0x9 {
@@ -1449,6 +1586,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 
 	additionFlagsNoPV(IX_temp, Reg_temp);
 	IX = IX_temp + pRegPair4_2;
+	copyXY16(IX);
 }
 
 :ADD IY,rRegPair4_2 is op0_8=0xfd & IY; op6_2=0x0 & rRegPair4_2 & bits0_4=0x9 {
@@ -1457,6 +1595,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 
 	additionFlagsNoPV(IY_temp, Reg_temp);
 	IY = IY_temp + Reg_temp;
+	copyXY16(IY);
 }
 
 :INC sRegPair4_2    is op6_2=0x0 & sRegPair4_2 & bits0_4=0x3 {
@@ -1489,6 +1628,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	A = (a_temp << 1) | $(C_flag);
 	$(H_flag) = 0;
 	$(N_flag) = 0;
+	copyXY(A);
 }
 
 :RLA                is op0_8=0x17 {
@@ -1498,6 +1638,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	$(C_flag) = nextC;
 	$(H_flag) = 0;
 	$(N_flag) = 0;
+	copyXY(A);
 }
 
 :RRCA               is op0_8=0x0f {
@@ -1506,6 +1647,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	A = (a_temp >> 1) | ($(C_flag) << 7);
 	$(H_flag) = 0;
 	$(N_flag) = 0;
+	copyXY(A);
 }
 
 :RRA                is op0_8=0x1f {
@@ -1515,6 +1657,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	$(C_flag) = nextC;
 	$(H_flag) = 0;
 	$(N_flag) = 0;
+	copyXY(A);
 }
 
 :RLC reg0_3         is op0_8=0x0cb; op6_2=0x0 & bits3_3=0x0 & reg0_3 {
@@ -1547,6 +1690,9 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	setResultFlags(val);
 	ixMem8 = val;
 	$(H_flag) = 0;
+@if defined(EXACT)
+	setParity(val);
+@endif
 	$(N_flag) = 0;
 }
 
@@ -1886,6 +2032,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	$(S_flag) = ((reg0_3 & mask & 0x80) != 0);
 	$(H_flag) = 1;
 	$(N_flag) = 0;
+	copyXY(reg0_3);
 }
 
 :BIT bits3_3,(HL)   is op0_8=0xcb & HL; op6_2=0x1 & bits3_3 & bits0_3=0x6 {
@@ -1897,6 +2044,7 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	$(S_flag) = ((val & mask & 0x80) != 0);
 	$(H_flag) = 1;
 	$(N_flag) = 0;
+	copyXY(0:1);
 }
 
 :BIT bits3_3,ixMem8 is op0_8=0xdd; op0_8=0xcb; ixMem8; op6_2=0x1 & bits3_3 & bits0_3=0x6 {
@@ -1907,6 +2055,9 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	$(S_flag) = ((val & mask & 0x80) != 0);
 	$(H_flag) = 1;
 	$(N_flag) = 0;
+@if defined(EXACT)
+	copyXY16(MEMPTR);
+@endif
 }
 
 :BIT bits3_3,iyMem8 is op0_8=0xfd; op0_8=0xcb; iyMem8; op6_2=0x1 & bits3_3 & bits0_3=0x6 {
@@ -1917,6 +2068,9 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	$(S_flag) = ((val & mask & 0x80) != 0);
 	$(H_flag) = 1;
 	$(N_flag) = 0;
+@if defined(EXACT)
+	copyXY16(MEMPTR);
+@endif
 }
 
 :SET bits3_3,reg0_3 is op0_8=0xcb; op6_2=0x3 & bits3_3 & reg0_3 {
@@ -2115,7 +2269,11 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	val:1 = 0;
 	MemRead(val,HL);
 	
+@if defined(EXACT)
+	ioWrite(BC, val);   # (B is decremented before the port goes on the bus)
+@else
 	ioWrite(IOAddrC, val);
+@endif
 	HL = HL + 1;
 	ioBlockFlags(test, val);
 }
@@ -2125,7 +2283,11 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	val:1 = 0;
 	MemRead(val,HL);
 	
+@if defined(EXACT)
+	ioWrite(BC, val);   # (B is decremented before the port goes on the bus)
+@else
 	ioWrite(IOAddrC, val);
+@endif
 	HL = HL + 1;
 	
 	ioBlockFlags(B, val);
@@ -2138,7 +2300,11 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	val:1 = 0;
 	MemRead(val,HL);
 	
+@if defined(EXACT)
+	ioWrite(BC, val);   # (B is decremented before the port goes on the bus)
+@else
 	ioWrite(IOAddrC, val);
+@endif
 	HL = HL - 1;
 	ioBlockFlags(test, val);
 }
@@ -2148,7 +2314,11 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 	val:1 = 0;
 	MemRead(val,HL);
 	
+@if defined(EXACT)
+	ioWrite(BC, val);   # (B is decremented before the port goes on the bus)
+@else
 	ioWrite(IOAddrC, val);
+@endif
 	HL = HL - 1;
 	
 	ioBlockFlags(B, val);
@@ -2313,7 +2483,11 @@ if (DECOMPILE_MODE) goto <forDecompilation>;
 }
 
 :IM 1 is op0_8=0xed; op0_8=0x6e {
+@if defined(EXACT)
+	setInterruptMode(0:1);   # (the chip's mode 0, as ED 4E's)
+@else
 	setInterruptMode(1:1);
+@endif
 }
 
 
@@ -2420,10 +2594,16 @@ macro rotateResultFlags(v) {
 :BIT bits3_3,ixMem8 is op0_8=0xdd; op0_8=0xcb; ixMem8; op6_2=0x1 & bits3_3 & bits0_3!=0x6 {
 	mask:1 = (1 << bits3_3); val:1 = ixMem8;
 	$(Z_flag) = ((val & mask) == 0); $(PV_flag) = $(Z_flag); $(S_flag) = ((val & mask & 0x80) != 0); $(H_flag) = 1; $(N_flag) = 0;
+@if defined(EXACT)
+	copyXY16(MEMPTR);
+@endif
 }
 :BIT bits3_3,iyMem8 is op0_8=0xfd; op0_8=0xcb; iyMem8; op6_2=0x1 & bits3_3 & bits0_3!=0x6 {
 	mask:1 = (1 << bits3_3); val:1 = iyMem8;
 	$(Z_flag) = ((val & mask) == 0); $(PV_flag) = $(Z_flag); $(S_flag) = ((val & mask & 0x80) != 0); $(H_flag) = 1; $(N_flag) = 0;
+@if defined(EXACT)
+	copyXY16(MEMPTR);
+@endif
 }
 
 # The ED page's copies: NEG, RETN, IM 0, 1, 2, IN (C) (flags only) and OUT (C),0.
@@ -2733,6 +2913,7 @@ ixl_iyl: IYL is op0_8=0xfd & IYL { export IYL; }
 	cmp:1 = a_temp - r_temp;
 	subtractionFlags(a_temp, r_temp);
 	setResultFlags(cmp);
+	copyXY(r_temp);
 }
 
 :CP ixl_iyl is ixl_iyl; op0_8=0xbd {
@@ -2742,6 +2923,7 @@ ixl_iyl: IYL is op0_8=0xfd & IYL { export IYL; }
 	cmp:1 = a_temp - r_temp;
 	subtractionFlags(a_temp, r_temp);
 	setResultFlags(cmp);
+	copyXY(r_temp);
 }
 
 @endif

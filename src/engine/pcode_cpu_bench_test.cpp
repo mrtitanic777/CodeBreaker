@@ -30,7 +30,7 @@ double best_of_five(F&& run) {
 
 }  // namespace
 
-CB_TEST("engine.pcode_cpu.bench_6502_and_z80_loops_on_both_cores", [] {
+CB_TEST("engine.pcode_cpu.bench_6502_and_z80_loops", [] {
     constexpr std::uint64_t kSteps = 300000;
     {   // LDX #0; LDY #0; loop: INX; BNE loop; INY; BNE loop; RTS
         const Bytes program = {0xA2, 0x00, 0xA0, 0x00, 0xE8, 0xD0, 0xFD, 0xC8, 0xD0, 0xFA, 0x60};
@@ -49,15 +49,11 @@ CB_TEST("engine.pcode_cpu.bench_6502_and_z80_loops_on_both_cores", [] {
         Bytes image = program;
         emulate::z80::RunOptions options;
         options.max_steps = kSteps;
-        const double own = best_of_five([&] {
-            emulate::z80::Bus bus{ByteView(image)};
-            emulate::z80::run(bus, 0, options);
-        });
         const double emu = best_of_five([&] {
             emulate::z80::Bus bus{ByteView(image)};
             engine::pcode_cpu::run(bus, 0, options);
         });
-        std::printf("bench z80: %llu instructions: own core %.1f ms, emulator %.1f ms (%.2fx)\n", static_cast<unsigned long long>(kSteps), own * 1e3, emu * 1e3, emu / own);
+        std::printf("bench z80: %llu instructions: emulator %.1f ms (the own core was retired)\n", static_cast<unsigned long long>(kSteps), emu * 1e3);
     }
 });
 

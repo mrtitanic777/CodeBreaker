@@ -859,6 +859,7 @@ struct Emulator::Impl {
     Slot counterSlot;
     std::uint64_t counterMask = 0;
     std::function<std::uint64_t(std::uint64_t)> counterAmount;
+    std::function<bool(std::uint64_t)> fence;   // addresses no block runs an instruction at (setFence)
     static std::uint64_t slotGet(const Slot& s) {
         if (s.kind == 1) return s.value;
         const std::uint8_t* b = s.ptr;
@@ -972,6 +973,7 @@ struct Emulator::Impl {
         const std::uint64_t unit = mem[static_cast<std::size_t>(codeIndex)].word;
         std::uint64_t at = pc;
         for (int n = 0; n < 32; ++n) {
+            if (fence && fence(at)) break;   // (the caller makes an instruction there)
             const Decoded* d = decode(at);
             if (!d) break;
             BItem item;
@@ -1575,6 +1577,11 @@ void Emulator::clearCounter() {
     impl_->blocks.clear();
 }
 
+void Emulator::setFence(std::function<bool(std::uint64_t pc)> fenced) {
+    impl_->fence = std::move(fenced);
+    impl_->blocks.clear();   // (the fence decides where blocks end)
+}
+
 Emulator::BlockResult Emulator::runBlocks(std::uint64_t maxSteps, bool useStop, std::uint64_t stopPc) {
     Impl& o = *impl_;
     BlockResult r;
@@ -1599,6 +1606,10 @@ Emulator::BlockResult Emulator::runBlocks(std::uint64_t maxSteps, bool useStop, 
     while (r.executed < maxSteps) {
         if (o.dirty) o.flush();
         else if (!o.stale.empty()) o.dropStale();
+        if (o.fence && r.executed != 0 && o.fence(o.pcValue)) {   // (the caller makes the instruction there)
+            o.syncPcRegister();
+            return r;
+        }
         Impl::Block* block = o.blockAt(o.pcValue);
         if (block->items.empty()) {   // (nothing decodes here: step() says what happens, including a bad-instruction hook)
             single();

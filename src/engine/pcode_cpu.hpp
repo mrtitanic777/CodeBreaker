@@ -16,8 +16,8 @@
 // NMOS runs 6502exact.sla and `Variant::Cmos` 65sc02.sla (the 65C02 without the bit instructions the Lynx's 65SC02 lacks): the descriptions built with
 // EXACT, whose stack, decimal mode and flags are the chip's; 6502.sla and 65c02.sla, built without it, are the decompiler's and the disassembler's, unchanged.
 //
-// call() uses the emulator by default; CB_PCODE_EMU=0 (or force(false)) makes it use the own core (emulate/m6502, emulate/z80). Every 6502-family
-// and Z80-family lane (Atari 2600, 5200, 7800, NES, Lynx, Master System, SG-1000, MSX, ColecoVision, ZX Spectrum, Amstrad CPC) calls it.
+// The 6502 and Z80 lanes (Atari 2600, 5200, 7800, NES, Lynx; Master System, SG-1000, MSX, ColecoVision, ZX Spectrum, Amstrad CPC) run only here; the other
+// families' call() uses the emulator by default and CB_PCODE_EMU=0 (or force(false)) their own cores.
 #pragma once
 
 #include <memory>
@@ -65,16 +65,17 @@ private:
     std::unique_ptr<M6502Session> session_;
 };
 
-// The same for the lanes' Z80 (emulate::z80::Bus), on z80.sla: the Bus is the emulator's read/write hook for the "ram" space and its
+// The same for the lanes' Z80 (emulate::z80::Bus), on z80exact.sla (z80.slaspec built with EXACT: the chip's undocumented flags, bits 5 and 3 of F, the
+// ports' sixteen lines, the block instructions' flags on every step; z80.sla without it is the decompiler's): the Bus is the emulator's read/write hook for the "ram" space and its
 // "io" space (IN and OUT; the port is all sixteen lines, as the description puts A or B on the high ones), the 64 KB of bus memory the
 // page map instructions are decoded from, kept current. The call is made as CALL makes it (return address pushed, kReturnAddress ends the
 // run), HALT stops the run with the Halt fault, an instruction the description lacks with Undecodable (a DD/FD in front of an instruction that
-// takes no index is skipped, most of the ED page is NOP; the description has every opcode, the undocumented ones too). R is counted by the adapter as the own core counts it; the interrupt flip-flops and mode
+// takes no index is skipped, most of the ED page is NOP; the description has every opcode, the undocumented ones too). R counts the fetches (two for a prefixed
+// instruction, bit 7 kept), counted before each instruction as the chip does, so LD A,R reads its own count; the interrupt flip-flops and mode
 // are tracked from the description's user operations (disable/enableMaskableInterrupts, setInterruptMode, getIFF2, halt).
 emulate::z80::RunResult run(emulate::z80::Bus& bus, std::uint16_t entry, const emulate::z80::RunOptions& options = {});
-emulate::z80::RunResult call(emulate::z80::Bus& bus, std::uint16_t entry, const emulate::z80::RunOptions& options = {});
 
-// The Z80 one instruction at a time on the emulator, as emulate::z80::Cpu ran it: `regs` (the interrupt flip-flops, the mode and HALT among them) and
+// The Z80 one instruction at a time on the emulator (the retired emulate::z80::Cpu's shape): `regs` (the interrupt flip-flops, the mode and HALT among them) and
 // `steps` are the processor's; step() runs the instruction at regs.pc (a Fault: halted by an earlier HALT, or no instruction there, and nothing changed).
 // What is put in the bus's memory between steps is seen by the next one. The thread's emulator is shared: a run or another Z80Cpu between steps is allowed.
 class Z80Session;

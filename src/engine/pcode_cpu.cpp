@@ -3,6 +3,7 @@
 #include "engine/pcode_cpu_internal.hpp"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cstring>
 #include <filesystem>
@@ -11,6 +12,8 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "base/config.hpp"
@@ -325,10 +328,12 @@ namespace z = cb::emulate::z80;
 // The Z80's bus on the emulator of this thread: the page map instructions are decoded from, the read and write hooks of "ram" and "io", what the
 // description leaves to the machine (HALT, the interrupt flip-flops and mode), the instructions the CPU runs that the description lacks, and R counted
 // per fetch. run() makes one for a call; Z80Cpu keeps one for its steps. A session that finds another one ran on the thread's emulator since puts its
-// page map and hooks back (`claim`).
+// page map and hooks back (`claim`). An instruction with a byte in a range the bus hands to callbacks is read through the bus (the device answers each
+// byte and the read is logged, as the chip's fetch is): the emulator's fence ends a run of instructions before one, and device_step makes it from the
+// bytes the bus answered.
 class Z80Session {
 public:
-    explicit Z80Session(z::Bus& bus) : emu_(emulator_named("z80.sla")), bus_(bus), memory_(bus.memory()), shadow_(memory_.begin(), memory_.begin() + kSize), r_(emu_.regRef("R")) {
+    explicit Z80Session(z::Bus& bus) : emu_(emulator_named("z80exact.sla")), bus_(bus), memory_(bus.memory()), shadow_(memory_.begin(), memory_.begin() + kSize), r_(emu_.regRef("R")) {
         claim();
     }
     ~Z80Session() {
@@ -338,6 +343,7 @@ public:
             emu_.onUserOp({});
             emu_.onBadInstruction({});
             emu_.clearCounter();
+            emu_.setFence({});
             active() = nullptr;
         }
     }
@@ -353,6 +359,7 @@ public:
         if (active() == this) return;
         active() = this;
         emu_.write(0, shadow_.data(), kSize);
+        devices(true);
         emu_.flushDecoded();
         emu_.clearStops();
         emu_.onRead([this](std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t& value) {
@@ -409,7 +416,7 @@ public:
         });
         // R counts the instruction fetches: its low seven bits, two for a prefixed instruction (the description has no fetch count of its own)
         emu_.setCounter(r_, 0x7F, [this](std::uint64_t at) -> std::uint64_t {
-            const std::uint8_t first = shadow_[at & 0xFFFF];
+            const std::uint8_t first = device_step_ ? fetched_[0] : shadow_[at & 0xFFFF];
             return (first == 0xDD || first == 0xFD || first == 0xCB || first == 0xED) ? 2u : 1u;
         });
     }
@@ -432,6 +439,49 @@ public:
                 emu_.write(at, &shadow_[at], 1);
             }
         }
+    }
+
+    // The ranges the bus hands to callbacks (again when the bus has more since), and the emulator's fence before the instructions that read from them.
+    void devices(bool claiming = false) {
+        std::vector<std::pair<std::uint16_t, std::uint16_t>> now = bus_.mapped();
+        if (now != ranges_) {
+            ranges_ = std::move(now);
+            device_.assign(kSize, 0);
+            for (const auto& [lo, hi] : ranges_)
+                for (std::uint32_t a = lo + kSize - 3; a <= hi + kSize; ++a) device_[a % kSize] = 1;   // (an instruction is up to four bytes)
+            known_.clear();
+        } else if (!claiming) {
+            return;
+        }
+        if (ranges_.empty()) emu_.setFence({});
+        else emu_.setFence([this](std::uint64_t pc) { return device_[pc & 0xFFFF] != 0; });
+    }
+    // Whether the instruction at `at` may have a byte in a device range.
+    bool device(std::uint16_t at) const { return !ranges_.empty() && device_[at] != 0; }
+
+    // The instruction at `pc`, in a device range, as the chip fetches it: every byte read through the bus (the first time at an address four, afterwards the
+    // bytes the instruction had, read again and compared, four again if one changed), then run from those bytes.
+    sl::Emulator::Status device_step(std::uint16_t pc) {
+        Known& known = known_[pc];
+        bool fresh = known.size == 0;
+        if (!fresh)
+            for (unsigned i = 0; i < known.size; ++i)
+                if (bus_.read(static_cast<std::uint16_t>(pc + i)) != known.raw[i]) fresh = true;
+        if (fresh)
+            for (unsigned i = 0; i < 4; ++i) fetched_[i] = bus_.read(static_cast<std::uint16_t>(pc + i));
+        else
+            fetched_ = known.raw;
+        for (unsigned i = 0; i < 4; ++i) emu_.write(static_cast<std::uint16_t>(pc + i), &fetched_[i], 1);
+        const std::size_t size = emu_.length(pc);
+        device_step_ = true;
+        const sl::Emulator::Status status = emu_.runBlocks(1).status;
+        device_step_ = false;
+        for (unsigned i = 0; i < 4; ++i) {   // (the page map as it was)
+            const std::uint16_t at = static_cast<std::uint16_t>(pc + i);
+            emu_.write(at, &shadow_[at], 1);
+        }
+        if (fresh && status == sl::Emulator::Status::Ok) known = Known{static_cast<std::uint8_t>(size), fetched_};
+        return status;
     }
 
     void set_registers(const z::Registers& r) {
@@ -495,6 +545,10 @@ public:
 
 private:
     static constexpr std::uint32_t kSize = 0x10000;
+    struct Known {
+        std::uint8_t size = 0;   // 0: not fetched yet
+        std::array<std::uint8_t, 4> raw{};
+    };
     static Z80Session*& active() {
         thread_local Z80Session* current = nullptr;
         return current;
@@ -504,6 +558,11 @@ private:
     std::span<std::uint8_t> memory_;
     std::vector<std::uint8_t> shadow_;   // the bus's memory as the page map holds it
     sl::Emulator::RegRef r_;
+    std::vector<std::pair<std::uint16_t, std::uint16_t>> ranges_;   // the bus's device ranges
+    std::vector<std::uint8_t> device_;                              // 1 where an instruction may read a byte of one
+    std::unordered_map<std::uint16_t, Known> known_;                // what device_step fetched at an address
+    std::array<std::uint8_t, 4> fetched_{};
+    bool device_step_ = false;
 };
 
 z::RunResult run(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options) {
@@ -547,12 +606,20 @@ z::RunResult run(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options)
         }
         session.touched = false;
         // (a run of instructions at once, R counted for each by the emulator; it ends where a device was touched or a HALT ran, which is where this looks; an instruction at a
-        // time when the caller wants to see every pc)
-        const sl::Emulator::BlockResult ran = emu.runBlocks(options.before_step ? 1 : options.max_steps - steps, true, z::kReturnAddress);
+        // time when the caller wants to see every pc, or when it is fetched from a device)
+        sl::Emulator::BlockResult ran;
+        if (session.device(pc)) {
+            ran.status = session.device_step(pc);
+            ran.executed = ran.status == sl::Emulator::Status::Ok ? 1 : 0;
+            session.touched = true;
+        } else {
+            ran = emu.runBlocks(options.before_step ? 1 : options.max_steps - steps, true, z::kReturnAddress);
+        }
         steps += ran.executed;
         if (ran.status == sl::Emulator::Status::BadInstruction || ran.status == sl::Emulator::Status::Error) {
+            const std::uint16_t at = static_cast<std::uint16_t>(emu.pc());
             out.end = z::End::Stopped;
-            out.fault = z::Fault{z::Fault::Kind::Undecodable, pc};
+            out.fault = z::Fault{z::Fault::Kind::Undecodable, at};
             break;
         }
         if (session.touched) session.sync();
@@ -570,8 +637,9 @@ std::optional<z::Fault> Z80Cpu::step() {
     if (regs.halted) return z::Fault{z::Fault::Kind::Halt, regs.pc};
     session_->claim();
     session_->refresh(regs.pc);   // (what was put in memory since the last step)
+    session_->devices();   // (ranges mapped since the last step)
     session_->set_registers(regs);
-    const sl::Emulator::Status status = session_->emu().step();
+    const sl::Emulator::Status status = session_->device(regs.pc) ? session_->device_step(regs.pc) : session_->emu().runBlocks(1).status;   // (R counted as a run counts it)
     if (status == sl::Emulator::Status::BadInstruction || status == sl::Emulator::Status::Error) {
         session_->set_registers(regs);   // (nothing changed)
         return z::Fault{z::Fault::Kind::Undecodable, regs.pc};
@@ -580,7 +648,5 @@ std::optional<z::Fault> Z80Cpu::step() {
     ++steps;
     return std::nullopt;
 }
-
-z::RunResult call(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : z::run(bus, entry, options); }
 
 }  // namespace cb::engine::pcode_cpu
