@@ -7,6 +7,8 @@
 
 #include "core/error.hpp"
 #include "emulate/r4300.hpp"
+#include "emulate/rdp.hpp"
+#include "emulate/rsp.hpp"
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
 #include "engine/pcode_cpu.hpp"
@@ -46,6 +48,8 @@ namespace vl = verify::lanes;
 namespace n64_lane_detail {
 
 constexpr std::uint64_t kSteps = 20000;   // instructions a function may run in a comparison
+constexpr std::uint64_t kRspSteps = 200000;   // instructions a microcode task the function starts may run
+constexpr std::size_t kListsShown = 4000;     // RDP commands kept of a run
 constexpr std::size_t kShown = 4000;      // register accesses and memory changes kept of a run
 // RDRAM a run may be handed pointers into: seeded from `fill`, above the program (1 MB from the load address) and the stack.
 constexpr std::uint32_t kWork = 0x80600000;
@@ -72,6 +76,33 @@ vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::Stat
         for (std::size_t i = 0; i < kWorkBytes; ++i) ram[work + i] = fill_byte(i, seed);
     }
     emulate::r4300::Bus bus(ram, rom.data);
+    // The RSP and the RDP's command interface: SP_STATUS cleared of its halt bit runs the microcode in IMEM from SP_PC to its BREAK
+    // (emulate/rsp), and every display list handed over by a write to DPC_END (by the microcode, or by the CPU itself) is read as its
+    // commands (emulate/rdp), which are compared.
+    emulate::rsp::Rsp rsp(bus.sp_memory(), bus.rdram());
+    std::uint32_t sp_pc = 0;
+    std::vector<std::string> rdp;
+    std::vector<std::string> rsp_runs;
+    rsp.on_dpc = [&](std::uint32_t start, std::uint32_t end, bool xbus) {
+        const ByteView memory = xbus ? ByteView(bus.sp_memory()).first(emulate::rsp::kMemSize) : ByteView(bus.rdram());
+        for (const emulate::rdp::Command& c : emulate::rdp::commands(memory, xbus ? start & 0xFFF : start, xbus ? end & 0xFFF : end))
+            if (rdp.size() < kListsShown) rdp.push_back(c.text());
+    };
+    bus.map(0x04040000, 0x0404001F, [&](std::uint32_t a, unsigned) -> std::uint64_t { return rsp.cop0((a >> 2) & 7); },
+            [&](std::uint32_t a, unsigned, std::uint64_t v) {
+                const unsigned reg = (a >> 2) & 7;
+                rsp.set_cop0(reg, static_cast<std::uint32_t>(v));
+                if (reg == 4 && !(rsp.status() & emulate::rsp::kHalt)) {   // the CPU started the RSP
+                    const emulate::rsp::RunResult r = rsp.run(sp_pc, kRspSteps);
+                    rsp_runs.push_back(std::format("{:03x} {} {}", sp_pc, r.steps, r.broke ? std::string("break") : r.fault.value_or("")));
+                    sp_pc = rsp.pc();
+                    rsp.set_status(rsp.status() | emulate::rsp::kHalt);
+                }
+            });
+    bus.map(0x04080000, 0x04080007, [&](std::uint32_t, unsigned) -> std::uint64_t { return sp_pc; },
+            [&](std::uint32_t, unsigned, std::uint64_t v) { sp_pc = static_cast<std::uint32_t>(v) & 0xFFC; });
+    bus.map(0x04100000, 0x0410001F, [&](std::uint32_t a, unsigned) -> std::uint64_t { return rsp.cop0(8 + ((a >> 2) & 7)); },
+            [&](std::uint32_t a, unsigned, std::uint64_t v) { rsp.set_cop0(8 + ((a >> 2) & 7), static_cast<std::uint32_t>(v)); });
     const Bytes ram_before = ram;
     const Bytes sp_before(bus.sp_memory().begin(), bus.sp_memory().end());
     emulate::r4300::RunOptions options;
@@ -96,7 +127,7 @@ vl::Effects effects(const stdfs::path& path, std::uint32_t entry, const vl::Stat
     }
     const auto number = [](std::uint64_t v) { return vl::Effect(static_cast<std::int64_t>(v)); };
     return {vl::Effect(run.exit()), number(run.r[2]), number(run.r[3]), vl::Effect(std::move(saved)), number(run.r[29]), number(run.hi), number(run.lo), number(run.fpr[0]),
-            vl::Effect(std::move(changed)), vl::Effect(std::move(io))};
+            vl::Effect(std::move(changed)), vl::Effect(std::move(io)), vl::Effect(std::move(rsp_runs)), vl::Effect(std::move(rdp))};
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
@@ -118,11 +149,11 @@ namespace d = n64_lane_detail;
 vl::ImageLaneSpec n64_lane_spec() {
     vl::ImageLaneSpec spec;
     spec.kind = "n64";
-    spec.rev = 1;
+    spec.rev = 2;   // 2: the RSP run and the RDP's commands
     spec.states = {d::make_state(0, 0, 0, 0, 0, 0), d::make_state(d::kWork, d::kWork + 0x1000, 5, 0x10, 0, 1),
                    d::make_state(d::kWork + 0x2000, 0xFFFFFFFF, 0x7F, 0x80000000, 3, 2), d::make_state(2, 3, d::kWork + 0x100, d::kWork + 0x200, 7, 3)};
     spec.effects = d::effects;
-    spec.what = {"end", "V0", "V1", "S0-S7", "SP", "HI", "LO", "F0", "memory changes", "hardware accesses"};
+    spec.what = {"end", "V0", "V1", "S0-S7", "SP", "HI", "LO", "F0", "memory changes", "hardware accesses", "RSP tasks", "RDP commands"};
     spec.start = [](const vl::State& s) { return std::format("from A0={:08X} A1={:08X} A2={:X}", d::at(s, "a0"), d::at(s, "a1"), d::at(s, "a2")); };
     spec.writer = d::written_by;
     spec.key_digits = 8;

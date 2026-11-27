@@ -276,8 +276,11 @@ taken across its groups) and vrgl117-games/sblobber64 (MIT; a libdragon game in 
 `n64brew-jam-1`). Nothing downloaded was run. Each is written as GNU as source by `source/n64_writer` and built again by CodeBreaker's
 own big-endian MIPS assembler (`reach --judge`: every function of the original verified, which for an identical rebuild is the rebuild
 itself; the unit test `engine.machine_n64.homebrew` also runs every function of the original and of the rebuilt ROM in `emulate/r4300` from
-two states, and runs the whole program from its entry point for three million instructions). The RSP and the RDP are not run: the programs
-that draw with them do so with their registers and display lists as logged writes.
+two states, and runs the whole program from its entry point for three million instructions). Since 2026-11-26 a function that starts the
+RSP has its microcode run to its BREAK in `emulate/rsp`, and every display list handed to the RDP is compared as its commands (`emulate/rdp`;
+the RDP is not run, so there are no pixels). RSP DCT FastDCTBlockDecode: its task runs to its BREAK and the ROM still rebuilds identical.
+RDP AlphaCompare: 3,696 RDP commands read (`engine.machine_n64.rsp_tasks_run_and_rdp_lists_are_read`). The microcode of the three RSP DCT
+ROMs reads back word for word through the RSP decoder (`decompile.mips.rsp.peterlemon_microcode_reads_back`).
 
 | Programs | Platform | Author / source | License | Functions | Result |
 |---|---|---|---|---|---|

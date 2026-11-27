@@ -12,6 +12,7 @@
 
 #include "core/text.hpp"
 #include "decompile/mips_ext.hpp"
+#include "decompile/mips_rsp.hpp"
 
 namespace cb::decompile::mips {
 
@@ -358,6 +359,16 @@ struct Table {
 
 Table make_table(Variant variant) {
     Table t;
+    if (variant == Variant::Rsp) {   // the RSP: MIPS I's integer instructions but multiply and divide, the unaligned loads and stores and SYSCALL
+        static constexpr std::array<std::string_view, 11> kNot = {"syscall", "mfhi", "mthi", "mflo", "mtlo", "mult", "multu", "div", "divu", "lwl", "lwr"};
+        static constexpr std::array<std::string_view, 2> kNotStores = {"swl", "swr"};
+        for (const Def& d : kDefs) {
+            if (!has(d.isa, Variant::R3000A) || d.isa != Isa::Both) continue;   // (the GTE's and RFE are the PlayStation's)
+            if (std::find(kNot.begin(), kNot.end(), d.name) != kNot.end() || std::find(kNotStores.begin(), kNotStores.end(), d.name) != kNotStores.end()) continue;
+            t.defs.push_back(d);
+        }
+        return t;
+    }
     for (const Def& d : kDefs)
         if (has(d.isa, variant)) t.defs.push_back(d);
     if (variant == Variant::R3000A) return t;
@@ -430,11 +441,13 @@ const std::vector<Def>& defs_of(Variant variant) {
     static const Table r4300 = make_table(Variant::R4300);
     static const Table r5900 = make_table(Variant::R5900);
     static const Table allegrex = make_table(Variant::Allegrex);
+    static const Table rsp = make_table(Variant::Rsp);
     switch (variant) {
         case Variant::R3000A: return r3000.defs;
         case Variant::R4300: return r4300.defs;
         case Variant::R5900: return r5900.defs;
         case Variant::Allegrex: return allegrex.defs;
+        case Variant::Rsp: return rsp.defs;
     }
     return r3000.defs;
 }
@@ -580,6 +593,7 @@ std::optional<Insn> decode_word(std::uint32_t word, std::uint32_t pc, Variant va
     }
     // what the table does not say in one line: VU0's macro mode and the VFPU, EXT and INS (mips_ext)
     if ((variant == Variant::R5900 || variant == Variant::Allegrex) && ext::decode(word, pc, variant, insn)) return insn;
+    if (variant == Variant::Rsp && rsp::decode(word, insn)) return insn;
     return std::nullopt;
 }
 
@@ -677,7 +691,7 @@ std::string text(const Insn& insn, const AddressLabels& labels, std::string_view
         case Form::FsFt: return std::format("{} {}, {}", m, fpu_register(insn.rd), fpu_register(insn.rt));
         case Form::RdRt: return std::format("{} {}, {}", m, reg(insn.rd), reg(insn.rt));
         case Form::FdFt: return std::format("{} {}, {}", m, fpu_register(insn.shamt), fpu_register(insn.rt));
-        case Form::Special: return ext::text(insn, labels);
+        case Form::Special: return insn.rsp ? rsp::text(insn) : ext::text(insn, labels);
     }
     return m;
 }
@@ -1002,6 +1016,12 @@ Bytes assemble(std::string_view line, std::uint32_t pc, const NameLabels& labels
     if (!def) {
         if (variant == Variant::R5900 || variant == Variant::Allegrex) {
             if (const std::optional<std::uint32_t> word = ext::assemble(name, ops.list, pc, labels, variant)) {
+                put_word(out, *word);
+                return out;
+            }
+        }
+        if (variant == Variant::Rsp) {
+            if (const std::optional<std::uint32_t> word = rsp::assemble(name, ops.list, pc, labels)) {
                 put_word(out, *word);
                 return out;
             }

@@ -7,8 +7,9 @@
 // over the console's memory: 8 MB of RDRAM holding the program as the boot code leaves it, SP memory, the cartridge, the RCP's registers logged.
 // A function is run with the registers of the state (the argument registers and S0 sign-extended into their 64 bits) and a work area of RDRAM
 // seeded from the state's `fill`; the comparison is of how it ended, V0 V1, S0-S7, SP, HI and LO, the FPU's F0, the RDRAM and SP memory it
-// changed, and every register access in order. The RSP and the RDP are not run: a function that starts a display list or a microcode task
-// is compared on what it wrote to their registers and to memory.
+// changed, and every register access in order. A function that starts the RSP has its microcode run to its BREAK (emulate/rsp: what the task
+// leaves in DMEM and RDRAM is part of the memory compared, and each task's start, length and ending is compared), and every display list
+// handed to the RDP is compared as its commands (emulate/rdp; the RDP is not run: no pixels).
 #pragma once
 
 #include "verify/lanes/image_lane.hpp"

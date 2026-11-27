@@ -103,10 +103,12 @@ enum class Variant : std::uint8_t {
     R5900,       // the PlayStation 2's Emotion Engine: MIPS III + MIPS IV's MOVZ/MOVN/PREF, little-endian, 128-bit registers (LQ, SQ and the multimedia
                  // instructions), a single-precision FPU, VU0 in COP2
     Allegrex,    // the PSP's: MIPS32 (little-endian) with CLZ CLO MADD MSUB MAX MIN, EXT INS SEB SEH WSBH BITREV ROTR, a single-precision FPU and the VFPU
+    Rsp,         // the Nintendo 64's RSP: MIPS I's integer instructions without multiply, divide, LWL/LWR/SWL/SWR and SYSCALL (big-endian), its
+                 // vector unit in COP2 and the vector loads and stores (mips_rsp.hpp)
 };
 
 // Is the processor's code held big-endian (the Nintendo 64's) or little-endian (all the others)?
-constexpr bool big_endian(Variant v) { return v == Variant::R4300; }
+constexpr bool big_endian(Variant v) { return v == Variant::R4300 || v == Variant::Rsp; }
 
 // One decoded instruction.
 struct Insn {
@@ -121,6 +123,7 @@ struct Insn {
     Flow flow = Flow::None;
     bool delay_slot = false;               // the instruction after it runs before the transfer takes effect
     bool likely = false;                   // a branch likely (R4300): the delay slot runs only when the branch is taken
+    bool rsp = false;                      // one of the RSP's own (mips_rsp): its vector unit, loads and stores
 
     std::array<std::uint8_t, 4> raw{};     // the word as the code holds it (big-endian for the R4300, little-endian for the others)
 

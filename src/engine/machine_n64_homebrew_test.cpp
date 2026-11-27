@@ -76,5 +76,33 @@ CB_TEST("engine.machine_n64.homebrew", [] {
     }
 });
 
+// The RSP's and the RDP's programs: in PeterLemon's RSP tests a function starts a microcode task that runs to its BREAK; in his RDP tests a
+// function hands the RDP a display list, read as its commands. (Judged as the others are, too.)
+CB_TEST("engine.machine_n64.rsp_tasks_run_and_rdp_lists_are_read", [] {
+    const std::filesystem::path root = samples();
+    if (!std::filesystem::is_directory(root)) return;   // (not on this machine)
+    const verify::lanes::ImageLaneSpec spec = n64_lane_spec();
+    const auto tasks_and_lists = [&](const std::filesystem::path& file) {
+        fs::ScopedTempDir dir("cb_n64_rsp");
+        const verify::lanes::Written w = spec.writer(file, dir.path());
+        std::size_t broke = 0, commands = 0;
+        for (const auto& [address, name] : w.functions) {
+            const verify::lanes::Effects e = spec.effects(file, address, spec.states[0]);
+            for (const std::string& task : std::get<std::vector<std::string>>(e[10]))
+                if (task.ends_with("break")) ++broke;
+            commands += std::get<std::vector<std::string>>(e[11]).size();
+        }
+        std::cout << file.filename().string() << ": " << broke << " RSP tasks to their BREAK, " << commands << " RDP commands\n";
+        return std::pair{broke, commands};
+    };
+    const std::filesystem::path rsp = root / "peterlemon" / "RSP_DCT_FastDCTBlockDecode_RSPFastDCTBlockDecode.N64";
+    if (std::filesystem::is_regular_file(rsp)) {
+        CB_CHECK(tasks_and_lists(rsp).first > 0);
+        judge(rsp);
+    }
+    const std::filesystem::path rdp = root / "peterlemon" / "RDP_AlphaCompare_AlphaCompare.N64";
+    if (std::filesystem::is_regular_file(rdp)) CB_CHECK(tasks_and_lists(rdp).second > 0);
+});
+
 }  // namespace
 }  // namespace cb::engine

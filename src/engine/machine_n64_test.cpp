@@ -47,7 +47,7 @@ CB_TEST("engine.machine_n64.functions_run_in_the_r4300_interpreter", [] {
     const vl::ImageLaneSpec spec = n64_lane_spec();
     CB_CHECK_EQ(spec.kind, "n64");
     CB_CHECK_EQ(spec.states.size(), std::size_t{4});
-    CB_CHECK_EQ(spec.what.size(), std::size_t{10});
+    CB_CHECK_EQ(spec.what.size(), std::size_t{12});   // (with the RSP tasks and the RDP commands)
     CB_CHECK_EQ(spec.key_digits, 8u);
     // the entry runs to its return: it calls `print`, reads MI_INTR_MASK, writes VI_ORIGIN, polls PI_STATUS, does the FPU compare
     const vl::Effects entry = spec.effects(rom, 0x80001000, spec.states[0]);
