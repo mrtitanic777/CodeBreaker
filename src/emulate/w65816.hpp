@@ -1,11 +1,10 @@
 // emulate/w65816.hpp -- a Super Nintendo cartridge machine, to run functions on (Unicorn has no 65C816).
 //
 //     w65816::Machine machine(rom);                                // the cartridge's ROM, the console's 128 KB of RAM, the chips' registers
-//     w65816::Run r = w65816::run(machine, 0x808123, {.a = 3});    // call a function: run to its RTS or RTL
+//     w65816::Run r = engine::pcode_cpu::run(machine, 0x808123, {.a = 3});    // call a function: run to its RTS or RTL
 //
-// The CPU is the whole 65C816: emulation and native mode (XCE), the accumulator 8 or 16 bits wide (M) and X and Y 8 or 16 (X) by REP and SEP, the direct page
-// register D, the data and program banks DBR and PBR, long addressing, the stack-relative modes, BRK and COP with their vectors, the block moves, binary
-// and decimal ADC and SBC at either width. WAI and STP end a run ("stopped"). Time is not modelled.
+// The CPU runs on CodeBreaker's one emulator (engine/pcode_cpu_w65816: 65816.sla and what the adapter adds); the interpreter that was here was retired when the
+// emulator matched it. WAI and STP end a run ("stopped"). Time is not modelled.
 //
 // Memory is the 5A22's view of the cartridge (formats/snes.hpp): the ROM by the map the header says (LoROM or HiROM, mirrored by size), the 128 KB of RAM at
 // $7E:0000-$7F:FFFF and in the first 8 KB of banks $00-$3F and $80-$BF, no cartridge RAM (reads 0, writes are lost). The chips' registers answer as an idle
@@ -101,8 +100,5 @@ struct Run {
     std::vector<Access> io;
     std::string exit() const;   // "return" | "stopped: <why>" | "limit"
 };
-
-// Call the function at the 24-bit `entry` as JSL would and run it until it returns (RTS or RTL to kReturnAddress), stops or takes `max_steps` instructions.
-Run run(Machine& machine, std::uint32_t entry, const Options& options = {});
 
 }  // namespace cb::emulate::w65816

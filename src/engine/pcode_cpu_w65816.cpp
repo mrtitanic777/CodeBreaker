@@ -362,6 +362,4 @@ w::Run run(w::Machine& machine, std::uint32_t entry, const w::Options& options) 
     return out;
 }
 
-w::Run call(w::Machine& machine, std::uint32_t entry, const w::Options& options) { return enabled() ? pcode_cpu::run(machine, entry, options) : w::run(machine, entry, options); }
-
 }  // namespace cb::engine::pcode_cpu

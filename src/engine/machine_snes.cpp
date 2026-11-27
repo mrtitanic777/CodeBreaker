@@ -92,7 +92,7 @@ vl::Effects snes_effects(const stdfs::path& path, std::uint32_t entry, const vl:
     options.m16 = (entry & source::snes_writer::kStartsWith16BitAccumulator) != 0;
     options.x16 = (entry & source::snes_writer::kStartsWith16BitIndex) != 0;
     options.max_steps = kSteps;
-    const emulate::w65816::Run run = pcode_cpu::call(machine, entry & source::snes_writer::kAddressMask, options);
+    const emulate::w65816::Run run = pcode_cpu::run(machine, entry & source::snes_writer::kAddressMask, options);
     std::vector<std::string> io;
     for (const emulate::w65816::Access& x : run.io) {
         io.push_back(x.text());
