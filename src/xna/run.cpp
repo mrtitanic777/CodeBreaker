@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <array>
 #include <format>
+#include <sstream>
 
 #include <nlohmann/json.hpp>
 
@@ -13,6 +14,7 @@
 #include "core/log.hpp"
 #include "core/process.hpp"
 #include "core/text.hpp"
+#include "dotnet/decompiler/ilspycmd/ilspycmd_program.hpp"
 #include "formats/media.hpp"
 #include "formats/pe.hpp"
 
@@ -80,19 +82,9 @@ void jr_walk(const stdfs::path& dir, const std::function<void(const stdfs::path&
 
 std::span<const std::string_view> framework_prefixes() { return kFramework; }
 
-std::filesystem::path find_ilspycmd(const Tools& tools) {
+std::optional<std::filesystem::path> find_ilspycmd(const Tools& tools) {
     if (tools.ilspycmd && jr_is_file(*tools.ilspycmd)) return *tools.ilspycmd;
-    if (const auto found = jr_which("ilspycmd")) return *found;
-    stdfs::path home;
-    if (tools.home) home = *tools.home;
-    else if (const auto profile = fs::get_env("USERPROFILE")) home = *profile;
-    else if (const auto h = fs::get_env("HOME")) home = *h;
-    if (!home.empty()) {
-        const stdfs::path installed = home / ".dotnet" / "tools" / "ilspycmd.exe";
-        if (jr_is_file(installed)) return installed;
-    }
-    throw NotFoundError("ilspycmd", 2,
-                        "ILSpy's command line is not installed: dotnet tool install -g ilspycmd (or name it in the `ilspycmd` setting)");
+    return std::nullopt;
 }
 
 std::vector<std::filesystem::path> assemblies(const std::filesystem::path& folder) {
@@ -153,8 +145,20 @@ Cleaned deobfuscated(const std::filesystem::path& assembly, const Tools& tools) 
 }
 
 void decompile(const std::filesystem::path& assembly, const std::filesystem::path& out_dir, const Tools& tools) {
-    const process::ProcessResult r =
-        process::run({.argv = {find_ilspycmd(tools).string(), "-p", "-lv", "CSharp11_0", "-o", out_dir.string(), assembly.string()}, .env = jr_dotnet_env()});
+    const std::vector<std::string> args = {"-p", "-lv", "CSharp11_0", "-o", fs::to_text(out_dir), fs::to_text(assembly)};
+    const std::optional<stdfs::path> external = find_ilspycmd(tools);
+    if (!external) {
+        // the built-in decompiler (ILSpy ported: the same project ilspycmd writes)
+        std::ostringstream out, err;
+        const int code = dotnet::decompiler::ilspycmd::run_ilspycmd(args, out, err);
+        if (code != 0)
+            throw ToolError("decompiler", code, jr_last(std::string(text::trim(err.str().empty() ? out.str() : err.str())), 500),
+                            "failed on " + assembly.filename().string());
+        return;
+    }
+    std::vector<std::string> argv = {external->string()};
+    argv.insert(argv.end(), args.begin(), args.end());
+    const process::ProcessResult r = process::run({.argv = argv, .env = jr_dotnet_env()});
     if (r.exit_code != 0) {
         const std::string err = jr_text(r.err);
         throw ToolError("ilspycmd", r.exit_code, jr_last(std::string(text::trim(err.empty() ? jr_text(r.out) : err)), 500),

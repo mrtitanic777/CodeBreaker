@@ -79,6 +79,16 @@ Not ported, as nothing CodeBreaker does needs them: PDB writing (`DebugInfo/`), 
   ten real assemblies: CoreLib 9 (958,000 lines, 37,093 methods, 2.4 s against ILSpy's 4.5 s), System.Linq, System.Text.Json,
   System.Private.Xml, mscorlib 2.0 and 4.0, System.Core, WinForms, Microsoft.VisualBasic and XNA 3.1's Framework.
   Not yet ported: debug information (PDB local names), ILFunction/Block.RunTransforms and ILInstruction.Extract (stage 6).
+- Stages 5 to 12 (done 2026-11-27, ee564055b and the switch): the IL transforms (flow analysis, control flow, every transform of
+  GetILTransforms), the C# syntax tree and output visitor, the semantics and the resolver, ExpressionBuilder, StatementBuilder,
+  CallBuilder and CSharpDecompiler, the C# transforms, project output (WholeProjectDecompiler, documentation, resources) and
+  ilspycmd's command line (dotnet/decompiler/ilspycmd), with .NET's decimal arithmetic and ICU culture order copied exactly.
+  Proved: the ILAst after all 39 IL transforms and the C# on all 112 of ILSpy's Pretty test cases are ilspycmd 11's byte for byte,
+  as is the C# of System.Linq, System.Text.Json, System.Private.Xml, System.Core, Microsoft.VisualBasic, an ARM64 build and two
+  C++/CLI mixed-mode assemblies; ilspycmd's own help, listings, IL, table dumps and errors match the installed tool (87 goldens).
+  Convert's dotnet route and the XNA lane call it in-process (the `ilspycmd` setting, when it names a program, runs that instead);
+  the Arcadecraft golden passes with it. Next (docs/ENGINE_UNIFICATION.md item 4): the ILAst lowered into L2 losslessly (stage 13),
+  ILSpy's builders reading L2 (14), Java to C# through the same back end (15).
 
 ## How each stage is proved
 

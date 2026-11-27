@@ -13,8 +13,9 @@
 // ships (a middleware .dll) are decompiled too, into their own project, since they are what the game was built with. An assembly an
 // obfuscator has been over (de4dot names one: SunBurn's Spices.Net) is cleaned by de4dot first -- names restored, strings decrypted,
 // control flow and field data put back -- and the cleaned copy is decompiled; de4dot's "Unknown Obfuscator" is its word for none
-// found, and such an assembly is decompiled as it is. The decompiler is ILSpy's command line (`ilspycmd`), run with
-// DOTNET_ROLL_FORWARD=LatestMajor so a newer .NET runs it.
+// found, and such an assembly is decompiled as it is. The decompiler is CodeBreaker's own port of ILSpy's command line
+// (dotnet/decompiler/ilspycmd), run in this process; neither ilspycmd nor .NET is needed. The `ilspycmd` setting, when it names a
+// program, runs that one instead (the installed ILSpy, to compare with).
 //
 //     run::Environment env{.tools = {.ilspycmd = settings_path, .checkout_root = root, .state = state},
 //                          .store = converted::Store(converted_root)};
@@ -40,14 +41,14 @@
 
 namespace cb::xna::run {
 
-// The tools run.cpp starts, and where it keeps what it makes: the values of the `ilspycmd` and `de4dot` settings (each empty when
-// not set), the checkout (de4dot is looked for in a build beside it, `../_tools/de4dot`), and the state folder.
+// The tools run.cpp starts, and where it keeps what it makes: the values of the `ilspycmd` setting (an external ILSpy to run instead
+// of the built-in one; empty: the built-in one) and the `de4dot` setting (each empty when not set), the checkout (de4dot is looked for in a build beside it, `../_tools/de4dot`), and the state folder.
 struct Tools {
     std::optional<std::filesystem::path> ilspycmd;
     std::optional<std::filesystem::path> de4dot;
     std::filesystem::path checkout_root;
     std::filesystem::path state;
-    // The user's home folder, where `dotnet tool install -g` puts ilspycmd (`.dotnet/tools`); the environment's by default.
+    // The user's home folder (where `dotnet tool install -g` puts tools such as de4dot); the environment's by default.
     std::optional<std::filesystem::path> home;
 };
 
@@ -63,8 +64,8 @@ struct Hooks {
 // The assemblies whose names say they are the framework's (a lower-case file name starting with one of these).
 std::span<const std::string_view> framework_prefixes();
 
-// ILSpy's command line: the setting, else PATH, else ~/.dotnet/tools. NotFoundError when it is none of those.
-std::filesystem::path find_ilspycmd(const Tools& tools);
+// The external ILSpy the `ilspycmd` setting names, if it names one that exists (else the built-in decompiler is used).
+std::optional<std::filesystem::path> find_ilspycmd(const Tools& tools);
 
 // The game's own assemblies under `folder`, the .exe first (the others by path): .NET files that are not the framework's nor a
 // satellite resource assembly.

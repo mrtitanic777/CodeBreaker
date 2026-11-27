@@ -130,19 +130,17 @@ CB_TEST("xna.run.assemblies_are_the_games_own_the_exe_first", [] {
 
 CB_TEST("xna.run.the_tools_are_found", [] {
     JrtTools t(true);
-    CB_CHECK(run::find_ilspycmd(t.tools) == *t.tools.ilspycmd);   // the setting
+    CB_CHECK(run::find_ilspycmd(t.tools) == *t.tools.ilspycmd);   // the setting: an external ILSpy runs instead of the built-in one
     CB_CHECK(*run::find_de4dot(t.tools) == *t.tools.de4dot);
-    // the setting names a file that is not there: the lookup goes on, and with nothing found says so
+    // the setting names a file that is not there: no external ILSpy (the built-in decompiler is used), no de4dot
     run::Tools none;
     none.ilspycmd = t.dir.path() / "missing.exe";
     none.checkout_root = t.dir.path() / "checkout";
     none.home = t.dir.path() / "home";
     const cb::fs::ScopedEnv no_path("PATH", "");
-    CB_CHECK_THROWS_AS(cb::NotFoundError, (void)run::find_ilspycmd(none));
+    CB_CHECK(!run::find_ilspycmd(none).has_value());
     CB_CHECK(!run::find_de4dot(none).has_value());
-    // ILSpy installed as a dotnet global tool is found in the home folder; de4dot's build beside the checkout
-    jrt_write(t.dir.path() / "home" / ".dotnet" / "tools" / "ilspycmd.exe", "x");
-    CB_CHECK(run::find_ilspycmd(none) == t.dir.path() / "home" / ".dotnet" / "tools" / "ilspycmd.exe");
+    // de4dot's build beside the checkout is found
     jrt_write(t.dir.path() / "_tools" / "de4dot" / "Release" / "net8.0" / "de4dot.exe", "x");
     CB_CHECK(*run::find_de4dot(none) == t.dir.path() / "_tools" / "de4dot" / "Release" / "net8.0" / "de4dot.exe");
 });

@@ -302,12 +302,6 @@ Route cv_dotnet_route() {
         tools.de4dot = setting("de4dot");
         tools.checkout_root = config.checkout_root();
         tools.state = config.state();
-        try {
-            (void)xna::run::find_ilspycmd(tools);
-        } catch (const NotFoundError&) {
-            throw NotConvertible("This is a .NET program. Turning it back into C# needs ILSpy, which is not set up on this computer: install it with "
-                                 "\"dotnet tool install -g ilspycmd\", or name it in Settings.");
-        }
         r.count(1, 1, fs::to_text(input.filename()));
 
         r.enter(State::Decompiling);

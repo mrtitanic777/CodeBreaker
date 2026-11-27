@@ -77,11 +77,6 @@ CB_TEST("xna.command.arcadecraft_matches_the_golden", [] {
     const fs::ScopedEnv state("CB_STATE", fs::to_text(dir.path() / "state")), converted("CB_CONVERTED", fs::to_text(dir.path() / "Converted"));
     xcmd::Environment env;
     env.config = config::Config::load(config::find_checkout());
-    try {
-        xna::run::find_ilspycmd(xcmd::run_environment(env).tools);
-    } catch (const NotFoundError&) {
-        return;   // ILSpy is not installed
-    }
     if (!xna::run::find_de4dot(xcmd::run_environment(env).tools)) return;   // nor de4dot, which cleans SunBurn: the report says so
     testing::CapturedStd cap;
     const int code = xcmd::run(std::vector<std::string>{fs::to_text(*game), "--name", "arcade"}, env);

@@ -412,7 +412,7 @@ cb_area(symbols)
 target_link_libraries(cb_symbols PUBLIC cb_core cb_base cb_formats cb_knowledge cb_compare cb_platforms cb_source cb_store)   # (cb_source: the NE disassembler of debug_build)
 
 cb_area(xna)
-target_link_libraries(cb_xna PUBLIC cb_core cb_base cb_formats cb_java cb_decompile)   # (cb_base: the Converted project; cb_formats: PE and media images; cb_java: the PNG codec of the content converters; cb_decompile: the Xbox effect as HLSL -- static libraries may be cyclic)
+target_link_libraries(cb_xna PUBLIC cb_core cb_base cb_formats cb_java cb_decompile cb_dotnet)   # (cb_base: the Converted project; cb_formats: PE and media images; cb_java: the PNG codec of the content converters; cb_decompile: the Xbox effect as HLSL -- static libraries may be cyclic)
 
 # .NET: the ECMA-335 metadata reader (dotnet/metadata) and the decompiler ported from ILSpy (dotnet/decompiler):
 # docs/DOTNET_DECOMPILER_PLAN.md.
