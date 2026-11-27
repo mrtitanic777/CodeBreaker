@@ -1,8 +1,8 @@
 {
  "id": "cb_dotnet_disassembler",
  "order": 13,
- "name": ".NET IL disassembler",
+ "name": ".NET decompiler",
  "role": "decompiler",
  "built_in": true,
- "description": "Reads .NET programs and writes their IL."
+ "description": "Turns .NET programs back into C# (ILSpy's engine, ported into CodeBreaker), or into their IL."
 }

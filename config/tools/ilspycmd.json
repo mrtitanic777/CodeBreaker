@@ -3,14 +3,14 @@
  "order": 14,
  "name": "ILSpy",
  "role": "decompiler",
+ "developer": true,
  "setting": "ilspycmd",
  "value": "ilspycmd.exe",
  "requires": [
   "ilspycmd.exe"
  ],
- "needed_for": ".NET programs",
  "download": "https://github.com/icsharpcode/ILSpy",
- "description": "Turns .NET programs back into C# (until the built-in one is finished).",
+ "description": "Optional: ILSpy's own command line, to compare CodeBreaker's C# with ILSpy's. CodeBreaker does not need it.",
  "find": [
   {
    "user": ".dotnet/tools"

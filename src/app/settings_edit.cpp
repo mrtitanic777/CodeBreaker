@@ -37,7 +37,7 @@ constexpr StWords kStWords[] = {
     {"java", "Java (JDK) folder", "The JDK used to run Java programs and the Java translator."},
     {"java_libs", "Java libraries", "Library files Java programs are built against."},
     {"java_overlays", "Java overlays", "Replacement files for the Java libraries."},
-    {"ilspycmd", "ILSpy", "Turns .NET programs back into C#."},
+    {"ilspycmd", "ILSpy", "Optional: ILSpy itself, to compare CodeBreaker's C# with ILSpy's."},
     {"xbox360_sdk", "Xbox 360 SDK folder", "The development kit used to build Xbox 360 code."},
     {"xbox360_keys", "Xbox 360 keys", "Key files for reading protected Xbox 360 files."},
     {"xbox360_crypto_bin", "Xbox 360 crypto tool", "The helper program for Xbox 360 cryptography."},
@@ -99,7 +99,6 @@ struct StNeed {
 };
 
 constexpr StNeed kStNeeds[] = {
-    {".NET programs", "ilspycmd", "Needs ILSpy, which turns .NET programs back into C#", false},
     {"Java programs", "java", "Needs a Java JDK", true},
     {"Xbox 360 games", "xbox360_sdk", "Needs the Xbox 360 SDK", true},
 };
@@ -108,7 +107,7 @@ constexpr StNeed kStNeeds[] = {
 
 std::vector<Capability> capabilities(const std::vector<Row>& rows) {
     std::vector<Capability> out;
-    Capability ready{"Ready", "Windows and DOS programs \xC2\xB7 game consoles \xC2\xB7 translating source to another language", true, {}, true};
+    Capability ready{"Ready", "Windows and DOS programs \xC2\xB7 game consoles \xC2\xB7 .NET programs \xC2\xB7 translating source to another language", true, {}, true};
     std::vector<Capability> missing;
     for (const StNeed& need : kStNeeds) {
         bool found = false;
