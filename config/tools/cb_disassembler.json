@@ -1,0 +1,8 @@
+{
+ "id": "cb_disassembler",
+ "order": 11,
+ "name": "CodeBreaker disassembler",
+ "role": "decompiler",
+ "built_in": true,
+ "description": "Turns machine code into assembly, for every CPU CodeBreaker reads."
+}

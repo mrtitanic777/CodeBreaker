@@ -1,0 +1,9 @@
+{
+ "id": "powerpc_lib",
+ "order": 41,
+ "name": "PowerPC libraries",
+ "role": "sdk",
+ "setting": "powerpc_lib",
+ "developer": true,
+ "description": "Libraries for PowerPC code."
+}

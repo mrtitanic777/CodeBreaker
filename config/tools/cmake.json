@@ -1,0 +1,25 @@
+{
+ "id": "cmake",
+ "order": 32,
+ "name": "CMake",
+ "role": "build",
+ "setting": "cmake",
+ "value": "cmake.exe",
+ "requires": [
+  "cmake.exe"
+ ],
+ "download": "https://cmake.org/download/",
+ "description": "Builds the C++ projects converted programs become.",
+ "find": [
+  {
+   "on_path": "cmake.exe"
+  },
+  {
+   "under_tool": "visual_studio",
+   "sub": "Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin"
+  },
+  {
+   "program_files": "CMake/bin"
+  }
+ ]
+}

@@ -1,0 +1,8 @@
+{
+ "id": "cb_c_compiler",
+ "order": 1,
+ "name": "C compiler (OpenWatcom, built in)",
+ "role": "compiler",
+ "built_in": true,
+ "description": "Compiles C back into Windows and DOS programs, with the OpenWatcom headers and libraries."
+}

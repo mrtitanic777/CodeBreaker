@@ -1,0 +1,20 @@
+{
+ "id": "xbox360_sdk",
+ "order": 40,
+ "name": "Xbox 360 SDK",
+ "role": "sdk",
+ "setting": "xbox360_sdk",
+ "requires": [
+  "bin"
+ ],
+ "needed_for": "Xbox 360 games",
+ "description": "The development kit used to build Xbox 360 code.",
+ "find": [
+  {
+   "env": "XEDK"
+  },
+  {
+   "program_files": "Microsoft Xbox 360 SDK"
+  }
+ ]
+}

@@ -235,6 +235,43 @@ CB_TEST("app.tools.a_program_that_cannot_start_says_why", [] {
 });
 #endif
 
+CB_TEST("app.tools.advanced_shows_each_tool_by_its_state_and_attaches_what_a_person_picks", [] {
+    fs::ScopedTempDir dir{"cb_settings_tools"};
+    const std::filesystem::path root = dir.path();
+    fs::make_dirs(root / "config" / "tools");
+    fs::write_text(root / "config" / "tools" / "mine.json", R"({"id": "mine", "name": "Mine", "role": "decompiler", "description": "Ours.", "built_in": true})");
+    fs::write_text(root / "config" / "tools" / "cmake.json",
+                   R"({"id": "cmake", "name": "CMake", "role": "build", "description": "Builds.", "setting": "cmake", "value": "cmake.exe", "requires": ["cmake.exe"]})");
+    fs::write_text(root / "config" / "tools" / "sdk.json",
+                   R"({"id": "sdk", "name": "SDK", "role": "sdk", "description": "A kit.", "setting": "xbox360_sdk", "requires": ["bin"], "needed_for": "games"})");
+    fs::write_text(root / "settings.json", "{\"cmake\": \"C:/old/cmake.exe\"}");
+    fs::make_dirs(root / "kits" / "cmake" / "bin");
+    fs::write_text(root / "kits" / "cmake" / "bin" / "cmake.exe", "");
+    const std::string tools_file = fs::to_text(root / "attached.json");
+    fs::ScopedEnv named("CB_TOOLS_FILE", std::string_view(tools_file));
+    const config::Config config = config::Config::load(root);
+    std::vector<settings::ToolCard> cards = settings::tool_cards(config);
+    CB_CHECK(cards.size() == 3);
+    const auto card = [&](const std::string& id) {
+        for (const settings::ToolCard& c : cards)
+            if (c.id == id) return c;
+        return settings::ToolCard{};
+    };
+    CB_CHECK(card("mine").state == settings::ToolState::BuiltIn);
+    CB_CHECK(card("cmake").state == settings::ToolState::NotWorking && card("cmake").how == "Set in settings.json");   // (named, but not there)
+    CB_CHECK(card("sdk").state == settings::ToolState::Missing && card("sdk").needed_for == "games" && card("sdk").folder);
+    CB_CHECK(!card("cmake").folder);   // (chosen as its program)
+    // a wrong pick says why; the right one is attached, and settings.json's old value goes so it is what is used
+    CB_CHECK(settings::attach(config, "cmake", fs::to_text(root / "kits")).find("cmake.exe is not there") != std::string::npos);
+    CB_CHECK_EQ(settings::attach(config, "cmake", fs::to_text(root / "kits" / "cmake" / "bin" / "cmake.exe")), "");
+    const config::Config again = config::Config::load(root);
+    CB_CHECK(again.source("cmake") == config::Config::Source::Attached);
+    cards = settings::tool_cards(again);
+    CB_CHECK(card("cmake").state == settings::ToolState::Ready && card("cmake").how == "Attached by you");
+    CB_CHECK(settings::is_developer_setting("design", config::tools::catalog_of(root)) && !settings::is_developer_setting("cmake", config::tools::catalog_of(root)));
+    CB_CHECK(!settings::is_developer_setting("workers", {}) && !settings::is_developer_setting("state", {}) && !settings::is_developer_setting("low_load", {}));
+});
+
 CB_TEST("app.tools.settings_are_rows_a_form_can_edit_and_the_theme_is_remembered", [] {
     fs::ScopedTempDir dir{"cb_settings_edit"};
     fs::write_text(dir.path() / "settings.json", "{\"masm\": \"tools/masm\", \"low_load\": true, \"workers\": 3}");

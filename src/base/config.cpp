@@ -2,6 +2,7 @@
 #include "base/config.hpp"
 
 #include "base/host_tools.hpp"
+#include "base/tool_catalog.hpp"
 
 
 #include <algorithm>
@@ -152,44 +153,65 @@ Config Config::load(const stdfs::path& checkout_root) {
     std::error_code ec;
     if (stdfs::exists(file, ec)) read_settings(load_object(file), checkout_root, false, c.file_, c.file_corpora_, &c.file_objects_);
     c.load_work_folder();
+    c.load_attached();
     return c;
+}
+
+// The tools attached on this computer (config/attached_tools.json of the main checkout), by the setting each one fills.
+void Config::load_attached() {
+    const std::map<std::string, tools::Attached> attached = tools::read_attached(tools::attached_file(main_checkout()));
+    if (attached.empty()) return;   // (most loads: the catalog is read only when something is attached)
+    const std::vector<tools::Tool> catalog = tools::catalog_of(root_);
+    for (const auto& [id, a] : attached) {
+        if (a.value.empty()) continue;
+        for (const tools::Tool& t : catalog)
+            if (t.id == id && !t.setting.empty()) attached_.emplace(t.setting, a.value);
+    }
 }
 
 struct Config::Host {
     std::once_flag once;
+    std::filesystem::path root;
     std::map<std::string, std::string, std::less<>> found;
     const std::map<std::string, std::string, std::less<>>& get() {
         std::call_once(once, [this] {
-            for (host_tools::Found& f : host_tools::scan()) found.emplace(std::move(f.key), std::move(f.value));
+            for (host_tools::Found& f : host_tools::scan(root)) found.emplace(std::move(f.key), std::move(f.value));
         });
         return found;
     }
 };
 
-void Config::look_on_host() { host_ = std::make_shared<Host>(); }
+void Config::look_on_host() {
+    host_ = std::make_shared<Host>();
+    host_->root = root_;
+}
 
 std::map<std::string, std::string> Config::found_on_host() const {
     std::map<std::string, std::string> out;
     if (!host_) return out;
     for (const auto& [key, value] : host_->get())
-        if (!fs::get_env("CB_" + upper(key)).has_value() && !file_.contains(key) && !work_.contains(key)) out.emplace(key, value);
+        if (source(key) == Source::Host) out.emplace(key, value);
     return out;
 }
 
-namespace {
-
-// The settings host_tools looks for.
-bool found_on_host_key(std::string_view key) {
-    return key == "java" || key == "visual_studio" || key == "msbuild" || key == "cmake" || key == "ilspycmd" || key == "xbox360_sdk" || key == "openwatcom";
+Config::Source Config::source(std::string_view key) const {
+    if (auto env = fs::get_env("CB_" + upper(key)); env && !env->empty()) return Source::Environment;
+    if (file_.contains(key)) return Source::SettingsFile;
+    if (work_.contains(key)) return Source::WorkFolder;
+    if (attached_.contains(key)) return Source::Attached;
+    if (host_)
+        if (const auto& found = host_->get(); found.contains(key)) return Source::Host;
+    for (const Default& d : kDefaults)
+        if (d.key == key) return Source::Default;
+    return Source::None;
 }
-
-}  // namespace
 
 Value Config::value(std::string_view key) const {
     if (auto env = fs::get_env("CB_" + upper(key)); env && !env->empty()) return *env;
     if (auto it = file_.find(key); it != file_.end()) return it->second;
     if (auto it = work_.find(key); it != work_.end()) return it->second;
-    if (host_ && found_on_host_key(key))
+    if (auto it = attached_.find(key); it != attached_.end()) return it->second;
+    if (host_)
         if (const auto& found = host_->get(); found.contains(key)) return found.find(key)->second;
     for (const Default& d : kDefaults)
         if (d.key == key) return std::string(d.value);

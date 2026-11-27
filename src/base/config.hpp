@@ -8,8 +8,9 @@
 //     c.products()                                              // what cb::base::Corpus is built from
 //
 // A setting's value is, first, the environment variable CB_<KEY> (upper case) when it is set and not empty; then
-// settings.json's; then the work folder's; then, for current(), what is installed on this computer (host_tools.hpp: a JDK,
-// Visual Studio, CMake ...; looked for the first time such a setting is asked for and is not set); then the default. A path setting that is relative is taken against the
+// settings.json's; then the work folder's; then the tool attached on this computer that fills it (config/attached_tools.json of the main
+// checkout: tool_catalog.hpp); then, for current(), what is installed on this computer (host_tools.hpp: a JDK, Visual Studio, CMake ...;
+// looked for the first time such a setting is asked for and is not set); then the default. A path setting that is relative is taken against the
 // checkout (in the work folder's file, against the work folder). settings.json is optional; one that is not a JSON
 // object is a FormatError naming it.
 //
@@ -88,6 +89,10 @@ public:
     std::map<std::string, std::string> found_on_host() const;
     // Look on this computer for what the settings do not say (current() turns this on).
     void look_on_host();
+    // Where a setting's value comes from: CB_<KEY>, settings.json, the work folder, config/attached_tools.json (a tool attached on this
+    // computer: base/tool_catalog.hpp), what was found on this computer, the default, or nowhere.
+    enum class Source { Environment, SettingsFile, WorkFolder, Attached, Host, Default, None };
+    Source source(std::string_view key) const;
 
     // Whether `key` names a path setting.
     static bool is_path_setting(std::string_view key);
@@ -107,12 +112,14 @@ public:
 private:
     Value value(std::string_view key) const;   // the environment, else settings.json, else the work folder's, else the default
     void load_work_folder();                   // the work folder's codebreaker.json into work_ and work_corpora_
+    void load_attached();                      // config/attached_tools.json into attached_
     std::filesystem::path root_;
     std::map<std::string, Value, std::less<>> file_;                  // settings.json's scalar settings
     std::map<std::string, std::string, std::less<>> file_corpora_;    // settings.json's "corpora", as written
     std::map<std::string, std::string, std::less<>> file_objects_;    // the other object settings, as object_text shows them
     std::map<std::string, Value, std::less<>> work_;                  // the work folder's codebreaker.json (path settings made absolute)
     std::map<std::string, std::string, std::less<>> work_corpora_;    // its "corpora", absolute
+    std::map<std::string, std::string, std::less<>> attached_;        // the attached tools' values, by setting
     struct Host;                                                      // what this computer has, looked for once when first needed
     std::shared_ptr<Host> host_;
 };

@@ -1,0 +1,9 @@
+{
+ "id": "msc6",
+ "order": 51,
+ "name": "Microsoft C 6.0",
+ "role": "compiler",
+ "setting": "msc6",
+ "developer": true,
+ "description": "The period compiler for 16-bit Windows code."
+}

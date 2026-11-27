@@ -88,6 +88,9 @@ enum class Control {
     ToolChoice, FieldBrowseFolder, OpenResult, ToolOutputToggle,
     // the Settings page: the Advanced row, Back from Advanced, and Locate... on a row of what this computer cannot convert yet (its index)
     SettingsAdvanced, SettingsBack, Locate,
+    // Advanced: a group of its menu (index), its search box, Scan this computer, a tool tile's Change... or Locate... (the tile), its How to get it
+    // (the tile), Attach... on a row of the tools that can be attached (the row)
+    SettingsNav, SettingsSearch, SettingsScan, ToolTileButton, ToolTileGet, ToolAttach,
     // the Convert page's lists: a recent conversion and its Remove (Model::hot_index is the row), a file of the preview, the code view, the output box
     // that the folder is dragged out of
     RecentRow, RecentRemove, PreviewFile, CodeView, OutputBox,
@@ -150,6 +153,23 @@ struct CapabilityItem {
     bool ready = true;
     std::string key;
     bool folder = true;
+};
+
+// Advanced: one entry of its menu (a heading, or a group: Compilers ... SDKs, Performance, Folders, Developer) with what it counts.
+struct SettingsNavItem {
+    bool heading = false;
+    std::string label;
+    int glyph = 0;            // a Segoe Fluent Icons code point
+    std::string count;        // "4", "1 missing"
+    bool warn = false;        // the count is something missing
+};
+
+// Advanced: a tool as a tile (settings_edit.hpp ToolCard): state 0 built in, 1 ready, 2 not working, 3 missing.
+struct ToolTileItem {
+    std::string id, name, line, foot;   // line: its location or what it does; foot: how it came to be attached, or what it is needed for
+    int state = 3;
+    bool folder = true;
+    std::string download;               // "How to get it" (empty: none)
 };
 
 // One line of the Language drop-down: a language the translator writes, whether it can for the current file, and if not why.
@@ -295,7 +315,15 @@ struct Model {
     std::vector<FieldItem> setting_fields;                      // the main view: Theme, the output folder, Keep responsive; Advanced: every other setting
     std::vector<std::string> setting_keys;                      // the setting each field edits ("" for the theme), one per field
     float setting_scroll = 0;
-    bool settings_advanced = false;                             // Advanced is open: every tool location and limit, as a form
+    bool settings_advanced = false;                             // Advanced is open: its menu on the left, the chosen group on the right
+    std::vector<SettingsNavItem> settings_nav;                  // Advanced: its menu
+    int settings_group = 0;                                     // the chosen entry of settings_nav
+    std::string settings_query;                                 // Advanced: its search (not empty: the right shows every match)
+    std::string settings_pane_title, settings_pane_note;        // the right side's title and the sentence under it
+    std::vector<ToolTileItem> tool_tiles;                       // the right side's tools (a group of tools, or what a search found)
+    std::vector<ToolTileItem> tool_attachable;                  // the group's tools that can be attached (developer tools not attached yet)
+    std::string settings_pane_empty;                            // shown when the right side has nothing ("Nothing matches ...")
+    std::string settings_summary;                               // under the title: "9 tools ready, 1 not found"
     std::vector<CapabilityItem> capabilities;                   // the main view's "What this computer can convert"
     // a drop-down of a form field is open (the Language drop-down has its own flag above)
     int field_popup = -1;

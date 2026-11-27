@@ -138,33 +138,19 @@ SettingsLayout compute_settings_layout(const Layout& shell, const Model& m) {
     const float left = shell.rail.w > 0 ? shell.rail.w + 4 : kOuterPadding;
     s.card = {left, top, std::max(0.0f, shell.width - kOuterPadding - left), std::max(0.0f, shell.status_bar.y - 16 - top)};
     s.title = {s.card.x + kPgCardPadX, s.card.y + kPgCardPadTop, s.card.w - 2 * kPgCardPadX, kPgTitleHeight};
-    if (m.settings_advanced) {   // Back, then the title beside it
+    if (m.settings_advanced) {   // Back, then the title beside it, and Scan this computer at the right
         s.back = {s.title.x, s.title.y - 2, 32, 32};
         s.title.x += 40;
-        s.title.w = std::max(0.0f, s.title.w - 40);
+        s.title.w = std::max(0.0f, s.title.w - 40 - 196);
+        s.scan = {s.card.right() - kPgCardPadX - 184, s.card.y + kPgCardPadTop - 2, 184, 32};
     }
     s.desc = {s.title.x, s.title.bottom() + 4, s.title.w, 19};
-    const float fields_top = s.desc.bottom() + (m.settings_advanced ? 16.0f : 8.0f);
-    s.fields_area = {s.card.x + kPgCardPadX, fields_top, std::min(s.card.w - 2 * kPgCardPadX, m.settings_advanced ? 720.0f : kSettingsMaxWidth),
+    const float fields_top = s.desc.bottom() + (m.settings_advanced ? 20.0f : 8.0f);
+    s.fields_area = {s.card.x + kPgCardPadX, fields_top, std::min(s.card.w - 2 * kPgCardPadX, kSettingsMaxWidth),
                      std::max(0.0f, s.card.bottom() - 12 - fields_top)};
-    if (m.settings_advanced) {
-        Rect form_area = s.fields_area;
-        form_area.w = std::max(0.0f, form_area.w - 14);   // (room for the scroll bar beside Browse)
-        s.form = layout_form(form_area, m.setting_fields, m.setting_scroll);
-        return s;
-    }
-
-    // the main view: rows
-    const Rect& a = s.fields_area;
     const float pad = 16;
-    float y = a.y - m.setting_scroll;
-    const auto heading = [&](Rect& r) {
-        r = {a.x, y + 14, a.w, 20};
-        y += 14 + 20 + 8;
-    };
-    heading(s.general_heading);
-    for (const FieldItem& f : m.setting_fields) {
-        const Rect row{a.x, y, a.w, kSettingRowHeight};
+    // a setting row: its label and note on the left, its control on the right (the main view's rows; Advanced's too)
+    const auto setting_row = [&](const FieldItem& f, const Rect& row) {
         FieldRects r;
         float control_w = 0;
         if (f.kind == 3) {
@@ -185,6 +171,70 @@ SettingsLayout compute_settings_layout(const Layout& shell, const Model& m) {
         r.note = {row.x + pad, row.y + 31, text_w, 17};
         s.form.fields.push_back(r);
         s.field_rows.push_back(row);
+    };
+    if (m.settings_advanced) {
+        const Rect& a = s.fields_area;
+        // the menu: the search box, then its entries
+        s.nav_search = {a.x, a.y, kAdvancedNavWidth, 32};
+        float ny = s.nav_search.bottom() + 8;
+        for (const SettingsNavItem& item : m.settings_nav) {
+            const float h = item.heading ? 28.0f : 36.0f;
+            s.nav_rows.push_back({a.x, ny, kAdvancedNavWidth, h});
+            ny += h;
+        }
+        // the chosen group, at the right of the menu: it scrolls
+        s.pane = {a.x + kAdvancedNavWidth + 20, a.y, std::max(0.0f, a.w - kAdvancedNavWidth - 20 - 14), a.h};
+        s.fields_area = s.pane;
+        const Rect& p = s.pane;
+        float y = p.y - m.setting_scroll;
+        s.pane_title = {p.x, y, p.w, 22};
+        s.pane_note = {p.x, y + 24, p.w, 18};
+        y += 24 + 18 + 12;
+        const int columns = p.w >= 560 ? 2 : 1;
+        const float tile_w = (p.w - 8.0f * static_cast<float>(columns - 1)) / static_cast<float>(columns);
+        for (std::size_t i = 0; i < m.tool_tiles.size(); ++i) {
+            const int col = static_cast<int>(i) % columns;
+            const Rect tile{p.x + static_cast<float>(col) * (tile_w + 8), y, tile_w, kToolTileHeight};
+            s.tiles.push_back(tile);
+            const ToolTileItem& t = m.tool_tiles[i];
+            s.tile_button.push_back(t.state == 0 ? Rect{} : Rect{tile.right() - 14 - 104, tile.bottom() - 12 - 28, 104, 28});
+            s.tile_get.push_back(t.state == 3 && !t.download.empty() ? Rect{tile.right() - 14 - 104 - 12 - 92, tile.bottom() - 12 - 28, 92, 28} : Rect{});
+            if (col == columns - 1 || i + 1 == m.tool_tiles.size()) y += kToolTileHeight + 8;
+        }
+        if (!m.tool_attachable.empty()) {
+            s.attach_heading = {p.x, y + 10, p.w, 20};
+            y += 10 + 20 + 8;
+            for (std::size_t i = 0; i < m.tool_attachable.size(); ++i) {
+                const Rect row{p.x, y, p.w, kAttachRowHeight};
+                s.attach_rows.push_back(row);
+                s.attach_buttons.push_back({row.right() - pad - 104, row.y + 12, 104, 28});
+                y += kAttachRowHeight + 4;
+            }
+        }
+        if (!m.setting_fields.empty() && (!m.tool_tiles.empty() || !m.tool_attachable.empty())) y += 12;
+        for (const FieldItem& f : m.setting_fields) {
+            setting_row(f, Rect{p.x, y, p.w, kSettingRowHeight});
+            y += kSettingRowHeight + 4;
+        }
+        if (m.tool_tiles.empty() && m.tool_attachable.empty() && m.setting_fields.empty()) {
+            s.pane_empty = {p.x, y, p.w, 20};
+            y += 20;
+        }
+        s.form.content_height = y + m.setting_scroll - p.y;
+        return s;
+    }
+
+    // the main view: rows
+    const Rect& a = s.fields_area;
+    float y = a.y - m.setting_scroll;
+    const auto heading = [&](Rect& r) {
+        r = {a.x, y + 14, a.w, 20};
+        y += 14 + 20 + 8;
+    };
+    heading(s.general_heading);
+    for (const FieldItem& f : m.setting_fields) {
+        const Rect row{a.x, y, a.w, kSettingRowHeight};
+        setting_row(f, row);
         y += kSettingRowHeight + 4;
     }
     heading(s.can_heading);
@@ -246,7 +296,18 @@ PageHit hit_test_tools(const ToolsLayout& t, const Model& m, float x, float y) {
 PageHit hit_test_settings(const SettingsLayout& s, const Model& m, float x, float y) {
     if (m.settings_advanced) {
         if (s.back.contains(x, y)) return {Control::SettingsBack, -1};
-        return pg_hit_form(s.form, m.setting_fields, s.fields_area, x, y);
+        if (s.scan.contains(x, y)) return {Control::SettingsScan, -1};
+        if (s.nav_search.contains(x, y)) return {Control::SettingsSearch, -1};
+        for (std::size_t i = 0; i < s.nav_rows.size() && i < m.settings_nav.size(); ++i)
+            if (!m.settings_nav[i].heading && s.nav_rows[i].contains(x, y)) return {Control::SettingsNav, static_cast<int>(i)};
+        if (!s.pane.contains(x, y)) return {};
+        for (std::size_t i = 0; i < s.tiles.size(); ++i) {
+            if (s.tile_button[i].w > 0 && s.tile_button[i].contains(x, y)) return {Control::ToolTileButton, static_cast<int>(i)};
+            if (s.tile_get[i].w > 0 && s.tile_get[i].contains(x, y)) return {Control::ToolTileGet, static_cast<int>(i)};
+        }
+        for (std::size_t i = 0; i < s.attach_buttons.size(); ++i)
+            if (s.attach_buttons[i].contains(x, y)) return {Control::ToolAttach, static_cast<int>(i)};
+        return pg_hit_form(s.form, m.setting_fields, s.pane, x, y);
     }
     if (!s.fields_area.contains(x, y)) return {};
     if (const PageHit hit = pg_hit_form(s.form, m.setting_fields, s.fields_area, x, y); hit.control != Control::None) return hit;
@@ -291,7 +352,19 @@ std::vector<PageHit> focus_order_settings(const Model& m) {
     std::vector<PageHit> order;
     if (m.settings_advanced) {
         order.push_back({Control::SettingsBack, -1});
-        pg_add_fields(order, m.setting_fields);
+        order.push_back({Control::SettingsScan, -1});
+        order.push_back({Control::SettingsSearch, -1});
+        for (std::size_t i = 0; i < m.settings_nav.size(); ++i)
+            if (!m.settings_nav[i].heading) order.push_back({Control::SettingsNav, static_cast<int>(i)});
+        for (std::size_t i = 0; i < m.tool_tiles.size(); ++i) {
+            if (m.tool_tiles[i].state == 3 && !m.tool_tiles[i].download.empty()) order.push_back({Control::ToolTileGet, static_cast<int>(i)});
+            if (m.tool_tiles[i].state != 0) order.push_back({Control::ToolTileButton, static_cast<int>(i)});
+        }
+        for (std::size_t i = 0; i < m.tool_attachable.size(); ++i) order.push_back({Control::ToolAttach, static_cast<int>(i)});
+        for (std::size_t i = 0; i < m.setting_fields.size(); ++i) {   // (a path is a row with Change..., as in the main view)
+            const bool path = m.setting_fields[i].kind == 0 || m.setting_fields[i].kind == 1;
+            order.push_back({path ? Control::FieldBrowse : Control::Field, static_cast<int>(i)});
+        }
     } else {   // a path is a row with Change..., not a text box
         for (std::size_t i = 0; i < m.setting_fields.size(); ++i) {
             const bool path = m.setting_fields[i].kind == 0 || m.setting_fields[i].kind == 1;

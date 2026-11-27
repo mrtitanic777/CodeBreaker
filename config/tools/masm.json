@@ -1,0 +1,9 @@
+{
+ "id": "masm",
+ "order": 21,
+ "name": "MASM",
+ "role": "assembler",
+ "setting": "masm",
+ "developer": true,
+ "description": "Microsoft's assembler, for source that needs it."
+}

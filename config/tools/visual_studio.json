@@ -1,0 +1,15 @@
+{
+ "id": "visual_studio",
+ "order": 3,
+ "name": "Visual C++ (Visual Studio)",
+ "role": "compiler",
+ "setting": "visual_studio",
+ "needed_for": "building converted programs into PC programs",
+ "download": "https://visualstudio.microsoft.com/downloads/",
+ "description": "Builds converted C and C++ projects for the PC.",
+ "find": [
+  {
+   "vswhere": "Microsoft.VisualStudio.Component.VC.Tools.x86.x64"
+  }
+ ]
+}

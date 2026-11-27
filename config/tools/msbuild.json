@@ -1,0 +1,18 @@
+{
+ "id": "msbuild",
+ "order": 31,
+ "name": "MSBuild",
+ "role": "build",
+ "setting": "msbuild",
+ "value": "MSBuild.exe",
+ "requires": [
+  "MSBuild.exe"
+ ],
+ "description": "Builds Visual Studio projects.",
+ "find": [
+  {
+   "under_tool": "visual_studio",
+   "sub": "MSBuild/Current/Bin"
+  }
+ ]
+}

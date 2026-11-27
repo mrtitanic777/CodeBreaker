@@ -144,18 +144,18 @@ CB_TEST("app.window_pages.tab_visits_the_page_and_ends_at_the_rail", [] {
     CB_CHECK(focus_order_settings(m).size() == 2 + 1 + 4);
 });
 
-CB_TEST("app.window_pages.advanced_settings_scroll_a_long_form", [] {
+CB_TEST("app.window_pages.advanced_settings_scroll_a_long_group", [] {
     const Layout shell = compute_layout(View::Idle, 1180, 700, kRailWidth);
     Model m;
     m.settings_advanced = true;
-    for (int i = 0; i < 40; ++i) m.setting_fields.push_back({"key" + std::to_string(i), i % 3 == 0 ? 0 : 2, "", {}, false, ""});
+    for (int i = 0; i < 40; ++i) m.setting_fields.push_back({"key" + std::to_string(i), 2, "", {}, false, ""});
     const SettingsLayout s = compute_settings_layout(shell, m);
-    CB_CHECK(s.form.content_height > s.fields_area.h);
+    CB_CHECK(s.form.content_height > s.pane.h);
     CB_CHECK(hit_test_settings(s, m, s.form.fields[0].input.x + 3, s.form.fields[0].input.y + 3) == PageHit({Control::Field, 0}));
     CB_CHECK(hit_test_settings(s, m, s.form.fields[39].input.x + 3, s.form.fields[39].input.y + 3).control == Control::None);   // below the card: scrolled out
-    m.setting_scroll = s.form.fields[39].input.y - s.fields_area.y - 20;
+    m.setting_scroll = s.form.fields[39].input.y - s.pane.y - 20;
     const SettingsLayout moved = compute_settings_layout(shell, m);
-    CB_CHECK(moved.fields_area.contains(moved.form.fields[39].input.x + 3, moved.form.fields[39].input.y + 3));
+    CB_CHECK(moved.pane.contains(moved.form.fields[39].input.x + 3, moved.form.fields[39].input.y + 3));
 });
 
 Model wp_settings_model() {
@@ -199,19 +199,39 @@ CB_TEST("app.window_pages.settings_are_rows_with_the_control_on_the_right", [] {
     CB_CHECK(order[4].control == Control::SettingsAdvanced);
 });
 
-CB_TEST("app.window_pages.advanced_has_back_beside_its_title", [] {
+CB_TEST("app.window_pages.advanced_is_a_menu_beside_the_chosen_group", [] {
     const Layout shell = compute_layout(View::Idle, 1180, 700, kRailWidth);
     Model m = wp_settings_model();
     m.settings_advanced = true;
-    m.setting_fields = {{"MASM assembler", 0, "", {}, false, ""}, {"Jobs at once", 2, "4", {}, false, ""}};
-    m.setting_keys = {"masm", "workers"};
+    m.settings_nav = {{true, "TOOLS"}, {false, "Compilers", 0xE943, "3"}, {false, "SDKs", 0xE74C, "1 missing", true}, {true, "OPTIONS"}, {false, "Performance", 0xE9D9}};
+    m.settings_group = 1;
+    m.tool_tiles = {{"cb_c_compiler", "C compiler", "Compiles C", "Part of CodeBreaker", 0, true, ""},
+                    {"java", "Java (JDK)", "C:/jdk", "Found automatically", 1, true, "https://adoptium.net"},
+                    {"xbox360_sdk", "Xbox 360 SDK", "The kit", "Needed for Xbox 360 games", 3, true, "https://example.com"}};
+    m.tool_attachable = {{"msc6", "Microsoft C 6.0", "A period compiler", "", 3, true, ""}};
+    m.setting_fields = {{"Jobs at once", 2, "", {}, false, "Automatic"}};
+    m.setting_keys = {"workers"};
     const SettingsLayout s = compute_settings_layout(shell, m);
-    CB_CHECK(s.back.w > 0 && s.back.right() < s.title.x);
+    CB_CHECK(s.back.w > 0 && s.back.right() < s.title.x && s.title.right() <= s.scan.x);
+    CB_CHECK(s.scan.right() <= s.card.right() && s.nav_rows.size() == 5);
+    CB_CHECK(s.nav_search.bottom() <= s.nav_rows[0].y && s.nav_rows[0].right() < s.pane.x);
+    // two tiles to a row, then the third under them; a built-in tool has no button, a missing one says how to get it
+    CB_CHECK(s.tiles.size() == 3 && s.tiles[1].x > s.tiles[0].right() && s.tiles[1].y == s.tiles[0].y && s.tiles[2].y > s.tiles[0].bottom());
+    CB_CHECK(s.tile_button[0].w == 0 && s.tile_button[1].w > 0 && s.tile_get[1].w == 0 && s.tile_get[2].w > 0);
+    CB_CHECK(s.tile_get[2].right() <= s.tile_button[2].x);
+    CB_CHECK(s.attach_heading.y >= s.tiles[2].bottom() && s.attach_rows.size() == 1 && s.field_rows.size() == 1 && s.field_rows[0].y >= s.attach_rows[0].bottom());
     CB_CHECK(hit_test_settings(s, m, s.back.x + 5, s.back.y + 5).control == Control::SettingsBack);
-    CB_CHECK(s.form.fields.size() == 2 && s.form.fields[0].input.w > 0 && s.form.fields[0].browse.w > 0);
+    CB_CHECK(hit_test_settings(s, m, s.scan.x + 5, s.scan.y + 5).control == Control::SettingsScan);
+    CB_CHECK(hit_test_settings(s, m, s.nav_search.x + 5, s.nav_search.y + 5).control == Control::SettingsSearch);
+    CB_CHECK(hit_test_settings(s, m, s.nav_rows[2].x + 5, s.nav_rows[2].y + 5) == PageHit({Control::SettingsNav, 2}));
+    CB_CHECK(hit_test_settings(s, m, s.nav_rows[0].x + 5, s.nav_rows[0].y + 5).control == Control::None);   // (a heading)
+    CB_CHECK(hit_test_settings(s, m, s.tile_button[1].x + 3, s.tile_button[1].y + 3) == PageHit({Control::ToolTileButton, 1}));
+    CB_CHECK(hit_test_settings(s, m, s.tile_get[2].x + 3, s.tile_get[2].y + 3) == PageHit({Control::ToolTileGet, 2}));
+    CB_CHECK(hit_test_settings(s, m, s.attach_buttons[0].x + 3, s.attach_buttons[0].y + 3) == PageHit({Control::ToolAttach, 0}));
+    CB_CHECK(hit_test_settings(s, m, s.form.fields[0].input.x + 3, s.form.fields[0].input.y + 3) == PageHit({Control::Field, 0}));
     const std::vector<PageHit> order = focus_order_settings(m);
     CB_CHECK(order.front().control == Control::SettingsBack);
-    CB_CHECK(order.size() == 1 + 3 + 4);   // Back, the file field and its Browse, the text field, the rail
+    CB_CHECK(order.size() == 3 + 3 + (1 + 2) + 1 + 1 + 4);   // Back, Scan, search; the three groups; the tiles' buttons and link; Attach; the field; the rail
 });
 
 }  // namespace

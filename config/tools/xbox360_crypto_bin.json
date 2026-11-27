@@ -1,0 +1,9 @@
+{
+ "id": "xbox360_crypto_bin",
+ "order": 42,
+ "name": "Xbox 360 crypto tool",
+ "role": "sdk",
+ "setting": "xbox360_crypto_bin",
+ "developer": true,
+ "description": "The helper program for Xbox 360 cryptography."
+}

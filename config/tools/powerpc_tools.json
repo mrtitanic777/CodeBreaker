@@ -1,0 +1,9 @@
+{
+ "id": "powerpc_tools",
+ "order": 55,
+ "name": "PowerPC compiler",
+ "role": "compiler",
+ "setting": "powerpc_tools",
+ "developer": true,
+ "description": "The compiler for PowerPC code."
+}

@@ -1,0 +1,22 @@
+{
+ "id": "ilspycmd",
+ "order": 14,
+ "name": "ILSpy",
+ "role": "decompiler",
+ "setting": "ilspycmd",
+ "value": "ilspycmd.exe",
+ "requires": [
+  "ilspycmd.exe"
+ ],
+ "needed_for": ".NET programs",
+ "download": "https://github.com/icsharpcode/ILSpy",
+ "description": "Turns .NET programs back into C# (until the built-in one is finished).",
+ "find": [
+  {
+   "user": ".dotnet/tools"
+  },
+  {
+   "on_path": "ilspycmd.exe"
+  }
+ ]
+}

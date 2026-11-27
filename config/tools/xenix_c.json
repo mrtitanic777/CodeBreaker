@@ -1,0 +1,9 @@
+{
+ "id": "xenix_c",
+ "order": 53,
+ "name": "Xenix C",
+ "role": "compiler",
+ "setting": "xenix_c",
+ "developer": true,
+ "description": "A period compiler used to check old code."
+}

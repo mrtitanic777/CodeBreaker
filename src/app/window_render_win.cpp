@@ -1420,28 +1420,10 @@ void rd_plain_button(RdDraw& d, const Rect& r, wchar_t glyph, const std::wstring
     if (focused) d.stroke(Rect{r.x - 3, r.y - 3, r.w + 6, r.h + 6}, 6, pal.text, 2.0f);
 }
 
-void rd_settings(RdDraw& d, const Layout& l, const Model& m) {
+// The settings as rows: the label and its note on the left, the control on the right (the Settings page's main view, and Advanced's groups).
+void rd_setting_rows(RdDraw& d, const SettingsLayout& s, const Model& m) {
     const RdPalette& pal = d.pal;
-    const SettingsLayout s = compute_settings_layout(l, m);
-    d.fill(s.card, kCardRadius, pal.card);
-    d.stroke(s.card, kCardRadius, pal.card_stroke);
-    if (m.settings_advanced) {
-        const bool hot = m.hot == Control::SettingsBack;
-        if (hot) d.fill(s.back, 4, rd_alpha(pal.text, pal.dark ? 0.06f : 0.04f));
-        d.glyph(L'\xE72B', s.back, 16, pal.text);
-        if (m.focus == Control::SettingsBack) d.stroke(s.back, 4, pal.text, 2.0f);
-        d.text(L"Advanced", s.title, 1, 20, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
-        d.text(L"Tool locations, limits and options for developers. A change is saved when you make it.", s.desc, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
-        rd_form(d, s.form, m.setting_fields, s.fields_area, m);
-        rd_scrollbar(d, s.fields_area, s.form.content_height, m.setting_scroll);
-        return;
-    }
-    d.text(L"Settings", s.title, 1, 20, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
-    d.text(L"Changes are saved as you make them.", s.desc, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
-
     const D2D1_COLOR_F row_fill = rd_alpha(pal.text, pal.dark ? 0.06f : 0.0373f);
-    d.rt->PushAxisAlignedClip(rd_rect(s.fields_area), D2D1_ANTIALIAS_MODE_ALIASED);
-    d.text(L"General", s.general_heading, 0, 12, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text2);
     for (std::size_t i = 0; i < m.setting_fields.size() && i < s.form.fields.size() && i < s.field_rows.size(); ++i) {
         const FieldItem& f = m.setting_fields[i];
         const FieldRects& r = s.form.fields[i];
@@ -1464,6 +1446,114 @@ void rd_settings(RdDraw& d, const Layout& l, const Model& m) {
             rd_text_box(d, r.input, widen(f.text), widen(f.hint), focused, focused ? static_cast<int>(widen(f.text.substr(0, static_cast<std::size_t>(std::max(0, m.caret)))).size()) : 0);
         }
     }
+}
+
+// Advanced: Back, the title and Scan this computer; the menu on the left; the chosen group's tiles, attachable tools and rows on the right.
+void rd_advanced(RdDraw& d, const SettingsLayout& s, const Model& m) {
+    const RdPalette& pal = d.pal;
+    const D2D1_COLOR_F row_fill = rd_alpha(pal.text, pal.dark ? 0.06f : 0.0373f);
+    const D2D1_COLOR_F hover = rd_alpha(pal.text, pal.dark ? 0.06f : 0.04f);
+    if (m.hot == Control::SettingsBack) d.fill(s.back, 4, hover);
+    d.glyph(L'\xE72B', s.back, 16, pal.text);
+    if (m.focus == Control::SettingsBack) d.stroke(s.back, 4, pal.text, 2.0f);
+    d.text(L"Advanced", s.title, 1, 20, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+    d.text(widen(m.settings_summary), s.desc, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+    rd_plain_button(d, s.scan, L'\xE72C', L"Scan this computer", m.hot == Control::SettingsScan, m.focus == Control::SettingsScan);
+
+    // the menu
+    {
+        const bool focused = m.focus == Control::SettingsSearch;
+        const std::wstring q = widen(m.settings_query);
+        Rect box = s.nav_search;
+        rd_text_box(d, box, q, L"      Find a tool or setting", focused, focused ? static_cast<int>(widen(m.settings_query.substr(0, static_cast<std::size_t>(std::max(0, m.caret)))).size()) : 0);
+        if (q.empty()) d.glyph(L'\xE721', Rect{box.x + 8, box.y, 16, box.h}, 13, pal.text2);
+    }
+    for (std::size_t i = 0; i < m.settings_nav.size() && i < s.nav_rows.size(); ++i) {
+        const SettingsNavItem& item = m.settings_nav[i];
+        const Rect& r = s.nav_rows[i];
+        if (item.heading) {
+            d.text(widen(item.label), Rect{r.x + 12, r.y + 6, r.w - 24, r.h - 6}, 0, 11, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text2);
+            continue;
+        }
+        const int idx = static_cast<int>(i);
+        const bool on = m.settings_query.empty() && m.settings_group == idx;
+        if (on) d.fill(r, 6, rd_alpha(pal.text, pal.dark ? 0.08f : 0.06f));
+        else if (m.hot == Control::SettingsNav && m.hot_index == idx) d.fill(r, 6, hover);
+        if (on) d.fill(Rect{r.x, r.y + 10, 3, r.h - 20}, 1.5f, pal.accent);
+        if (item.glyph != 0) d.glyph(static_cast<wchar_t>(item.glyph), Rect{r.x + 12, r.y, 16, r.h}, 14, pal.text);
+        d.text(widen(item.label), Rect{r.x + 40, r.y, r.w - 40 - 80, r.h}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+        d.text(widen(item.count), Rect{r.right() - 92, r.y, 80, r.h}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, item.warn ? pal.warn : pal.text2, DWRITE_TEXT_ALIGNMENT_TRAILING);
+        if (m.focus == Control::SettingsNav && m.focus_index == idx) d.stroke(r, 6, pal.text, 2.0f);
+    }
+
+    // the chosen group
+    d.rt->PushAxisAlignedClip(rd_rect(s.pane), D2D1_ANTIALIAS_MODE_ALIASED);
+    d.text(widen(m.settings_pane_title), s.pane_title, 0, 16, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+    d.text(widen(m.settings_pane_note), s.pane_note, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+    for (std::size_t i = 0; i < m.tool_tiles.size() && i < s.tiles.size(); ++i) {
+        const ToolTileItem& t = m.tool_tiles[i];
+        const Rect& r = s.tiles[i];
+        const int idx = static_cast<int>(i);
+        d.fill(r, 8, row_fill);
+        if (t.state == 3) d.stroke(r, 8, rd_alpha(pal.warn, 0.55f), 1.0f);
+        const wchar_t glyph = t.state == 0 ? L'\xE945' : t.state == 1 ? L'\xE73E' : L'\xE7BA';
+        const D2D1_COLOR_F tone = t.state == 0 ? pal.accent : t.state == 1 ? pal.ok : pal.warn;
+        d.glyph(glyph, Rect{r.x + 14, r.y + 12, 18, 22}, 15, tone);
+        const std::wstring pill = t.state == 0 ? L"Built in" : t.state == 1 ? L"Ready" : t.state == 2 ? L"Not working" : L"Not found";
+        const float pill_w = d.painter.measure(pill, 12, false) + 18;
+        const Rect pill_r{r.right() - 14 - pill_w, r.y + 12, pill_w, 22};
+        d.fill(pill_r, 11, rd_alpha(tone, 0.16f));
+        d.text(pill, pill_r, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, tone, DWRITE_TEXT_ALIGNMENT_CENTER);
+        d.text(widen(t.name), Rect{r.x + 42, r.y + 12, std::max(0.0f, pill_r.x - 8 - (r.x + 42)), 22}, 0, 14, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+        d.text(widen(t.line), Rect{r.x + 14, r.y + 40, r.w - 28, 18}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+        const Rect& button = s.tile_button[i];
+        const Rect& get = s.tile_get[i];
+        const float foot_right = get.w > 0 ? get.x - 8 : button.w > 0 ? button.x - 8 : r.right() - 14;
+        d.text(widen(t.foot), Rect{r.x + 14, r.bottom() - 12 - 28, std::max(0.0f, foot_right - (r.x + 14)), 28}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
+        if (get.w > 0) {
+            d.text(L"How to get it", get, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.accent, DWRITE_TEXT_ALIGNMENT_TRAILING);
+            if (m.focus == Control::ToolTileGet && m.focus_index == idx) d.stroke(get, 4, pal.text, 2.0f);
+        }
+        if (button.w > 0)
+            rd_plain_button(d, button, 0, t.state == 3 ? L"Locate\x2026" : L"Change\x2026", m.hot == Control::ToolTileButton && m.hot_index == idx,
+                            m.focus == Control::ToolTileButton && m.focus_index == idx);
+    }
+    if (!m.tool_attachable.empty()) {
+        d.text(L"More you can attach", s.attach_heading, 0, 12, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text2);
+        for (std::size_t i = 0; i < m.tool_attachable.size() && i < s.attach_rows.size(); ++i) {
+            const ToolTileItem& t = m.tool_attachable[i];
+            const Rect& r = s.attach_rows[i];
+            const int idx = static_cast<int>(i);
+            d.fill(r, 6, row_fill);
+            d.glyph(L'\xE710', Rect{r.x + 14, r.y, 16, r.h}, 12, pal.text2);
+            d.text(widen(t.name), Rect{r.x + 40, r.y + 7, r.w - 40 - 140, 20}, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text);
+            d.text(widen(t.line), Rect{r.x + 40, r.y + 27, r.w - 40 - 140, 17}, 0, 12, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+            rd_plain_button(d, s.attach_buttons[i], 0, L"Attach\x2026", m.hot == Control::ToolAttach && m.hot_index == idx,
+                            m.focus == Control::ToolAttach && m.focus_index == idx);
+        }
+    }
+    rd_setting_rows(d, s, m);
+    d.text(widen(m.settings_pane_empty), s.pane_empty, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+    d.rt->PopAxisAlignedClip();
+    rd_scrollbar(d, s.pane, s.form.content_height, m.setting_scroll);
+}
+
+void rd_settings(RdDraw& d, const Layout& l, const Model& m) {
+    const RdPalette& pal = d.pal;
+    const SettingsLayout s = compute_settings_layout(l, m);
+    d.fill(s.card, kCardRadius, pal.card);
+    d.stroke(s.card, kCardRadius, pal.card_stroke);
+    if (m.settings_advanced) {
+        rd_advanced(d, s, m);
+        return;
+    }
+    d.text(L"Settings", s.title, 1, 20, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text);
+    d.text(L"Changes are saved as you make them.", s.desc, 0, 14, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
+
+    const D2D1_COLOR_F row_fill = rd_alpha(pal.text, pal.dark ? 0.06f : 0.0373f);
+    d.rt->PushAxisAlignedClip(rd_rect(s.fields_area), D2D1_ANTIALIAS_MODE_ALIASED);
+    d.text(L"General", s.general_heading, 0, 12, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text2);
+    rd_setting_rows(d, s, m);
     d.text(L"What this computer can convert", s.can_heading, 0, 12, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text2);
     const auto icon_row = [&](const Rect& row, wchar_t glyph, D2D1_COLOR_F tone, const std::string& label, const std::string& note, float right_w) {
         d.fill(row, 6, row_fill);

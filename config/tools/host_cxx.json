@@ -1,0 +1,9 @@
+{
+ "id": "host_cxx",
+ "order": 54,
+ "name": "C++ compiler for translations",
+ "role": "compiler",
+ "setting": "host_cxx",
+ "developer": true,
+ "description": "The compiler that builds translated C++ here."
+}

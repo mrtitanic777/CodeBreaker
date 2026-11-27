@@ -220,35 +220,181 @@ void ww_load_tool(Model& m, int tool, const tools::Values& values) {
 // The key the Settings page's "Show developer tools" row is known by (a preference of this window, kept per user beside the theme: no settings.json key).
 constexpr std::string_view kWwDeveloperKey = "#developer_tools";
 
+FieldItem ww_field_of(const settings::Row& r) {
+    FieldItem f;
+    f.label = r.label.empty() ? r.key : r.label;
+    f.note = r.hint;
+    f.text = r.value;
+    if (r.kind == settings::Kind::Path) {
+        f.kind = 0;
+        f.hint = r.set ? "Not found" : "Not set";
+    } else if (r.kind == settings::Kind::Toggle) {
+        f.kind = 4;
+        f.text = text::lower(r.value) == "true" ? "1" : "";
+    } else {
+        f.kind = 2;
+        f.hint = "Not set";
+    }
+    return f;
+}
+
+bool ww_matches(const std::string& query, std::initializer_list<std::string_view> texts) {
+    const std::string q = text::lower(text::trim(query));
+    for (std::string_view t : texts)
+        if (text::lower(t).find(q) != std::string::npos) return true;
+    return false;
+}
+
+ToolTileItem ww_tile_of(const settings::ToolCard& c) {
+    ToolTileItem t;
+    t.id = c.id;
+    t.name = c.name;
+    t.folder = c.folder;
+    t.download = c.download;
+    switch (c.state) {
+        case settings::ToolState::BuiltIn:
+            t.state = 0;
+            t.line = c.description;
+            t.foot = "Part of CodeBreaker";
+            break;
+        case settings::ToolState::Ready:
+            t.state = 1;
+            t.line = c.location;
+            t.foot = c.how + (c.version.empty() ? std::string() : " \xC2\xB7 version " + c.version);
+            break;
+        case settings::ToolState::NotWorking:
+            t.state = 2;
+            t.line = c.location;
+            t.foot = c.problem.empty() ? std::string("It does not work from there") : c.problem;
+            if (!t.foot.empty()) t.foot[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(t.foot[0])));
+            break;
+        case settings::ToolState::Missing:
+            t.state = 3;
+            t.line = c.description;
+            t.foot = c.needed_for.empty() ? std::string("Optional") : "Needed for " + c.needed_for;
+            break;
+    }
+    return t;
+}
+
+// Advanced: its menu, and the chosen group (or what the search finds) from the tool cards and the settings.
+void ww_fill_advanced(Model& m, const std::vector<settings::Row>& rows, const std::vector<settings::ToolCard>& cards,
+                      const std::vector<config::tools::Tool>& catalog) {
+    m.settings_nav.clear();
+    m.tool_tiles.clear();
+    m.tool_attachable.clear();
+    m.settings_pane_empty.clear();
+    const auto shown = [](const settings::ToolCard& c) { return !c.developer || c.state != settings::ToolState::Missing; };
+    const auto in_group = [](const settings::ToolCard& c, const settings::ToolGroup& g) {
+        return std::find(g.roles.begin(), g.roles.end(), c.role) != g.roles.end();
+    };
+    std::size_t ready = 0, missing = 0;
+    for (const settings::ToolCard& c : cards) {
+        if (!shown(c)) continue;
+        if (c.state == settings::ToolState::BuiltIn || c.state == settings::ToolState::Ready) ++ready;
+        else ++missing;
+    }
+    m.settings_summary = std::to_string(ready) + " tools ready" + (missing == 0 ? std::string() : ", " + std::to_string(missing) + " not found or not working") +
+                         ". A change is saved when you make it.";
+
+    // the menu
+    static constexpr int kGlyphs[] = {0xE943, 0xE756, 0xE7C3, 0xE90F, 0xE74C};
+    m.settings_nav.push_back({true, "TOOLS"});
+    const std::vector<settings::ToolGroup>& groups = settings::tool_groups();
+    for (std::size_t g = 0; g < groups.size(); ++g) {
+        std::size_t count = 0, gone = 0;
+        for (const settings::ToolCard& c : cards) {
+            if (!in_group(c, groups[g]) || !shown(c)) continue;
+            ++count;
+            if (c.state == settings::ToolState::Missing || c.state == settings::ToolState::NotWorking) ++gone;
+        }
+        m.settings_nav.push_back({false, groups[g].label, g < std::size(kGlyphs) ? kGlyphs[g] : 0,
+                                  gone > 0 ? std::to_string(gone) + " missing" : std::to_string(count), gone > 0});
+    }
+    m.settings_nav.push_back({true, "OPTIONS"});
+    const int performance = static_cast<int>(m.settings_nav.size());
+    m.settings_nav.push_back({false, "Performance", 0xE9D9, "", false});
+    const int folders = static_cast<int>(m.settings_nav.size());
+    m.settings_nav.push_back({false, "Folders", 0xE8B7, "", false});
+    const int developer = static_cast<int>(m.settings_nav.size());
+    std::size_t developer_count = 0;
+    for (const settings::Row& r : rows)
+        if (settings::is_developer_setting(r.key, catalog)) ++developer_count;
+    m.settings_nav.push_back({false, "Developer", 0xEC7A, std::to_string(developer_count), false});
+    if (m.settings_group < 1 || m.settings_group >= static_cast<int>(m.settings_nav.size()) || m.settings_nav[static_cast<std::size_t>(m.settings_group)].heading)
+        m.settings_group = 1;
+
+    const auto add_row = [&](const settings::Row& r) {
+        FieldItem f = ww_field_of(r);
+        if (r.kind == settings::Kind::Text && !r.set) f.hint = "Automatic";
+        if (r.kind == settings::Kind::Path && !r.set) f.hint = "Not set: " + (r.hint.empty() ? std::string("optional") : r.hint);
+        m.setting_fields.push_back(std::move(f));
+        m.setting_keys.push_back(r.key);
+    };
+    const auto row_of = [&](const std::string& key) -> std::optional<settings::Row> {
+        for (const settings::Row& r : rows)
+            if (r.key == key) return r;
+        settings::Row r;   // (a limit settings.json does not name yet: empty, the automatic value)
+        r.key = key;
+        r.value = "";
+        r.kind = settings::Kind::Text;
+        r.set = false;
+        r.label = settings::plain_label(key);
+        r.hint = settings::plain_hint(key);
+        return r;
+    };
+
+    if (!text::trim(m.settings_query).empty()) {   // the search: every tool and setting that matches, whatever its group
+        m.settings_pane_title = "Results for \xE2\x80\x9C" + std::string(text::trim(m.settings_query)) + "\xE2\x80\x9D";
+        m.settings_pane_note = "Tools and settings whose name or description has it.";
+        for (const settings::ToolCard& c : cards)
+            if (ww_matches(m.settings_query, {c.name, c.description, c.role, c.id})) (shown(c) ? m.tool_tiles : m.tool_attachable).push_back(ww_tile_of(c));
+        for (const settings::Row& r : rows) {
+            bool tool_setting = false;
+            for (const config::tools::Tool& t : catalog) tool_setting = tool_setting || t.setting == r.key;
+            if (settings::is_everyday(r.key) || tool_setting) continue;
+            if (ww_matches(m.settings_query, {r.label, r.hint, r.key})) add_row(r);
+        }
+        if (m.tool_tiles.empty() && m.tool_attachable.empty() && m.setting_fields.empty()) m.settings_pane_empty = "Nothing matches.";
+        return;
+    }
+    const int group = m.settings_group;
+    if (group == performance) {
+        m.settings_pane_title = "Performance";
+        m.settings_pane_note = "How hard CodeBreaker works. Empty means it chooses for this computer.";
+        for (const std::string& key : settings::performance_keys()) add_row(*row_of(key));
+    } else if (group == folders) {
+        m.settings_pane_title = "Folders";
+        m.settings_pane_note = "Where CodeBreaker keeps its working files. Not set means its own folder.";
+        for (const std::string& key : settings::folder_keys()) add_row(*row_of(key));
+    } else if (group == developer) {
+        m.settings_pane_title = "Developer";
+        m.settings_pane_note = "For working on CodeBreaker itself and the Windows 95 project. Most people never need these.";
+        for (const settings::Row& r : rows)
+            if (settings::is_developer_setting(r.key, catalog)) add_row(r);
+    } else {
+        const std::size_t g = static_cast<std::size_t>(group - 1);   // (the groups of tools follow the TOOLS heading)
+        if (g < groups.size()) {
+            m.settings_pane_title = groups[g].label;
+            m.settings_pane_note = "Found on this computer, or attached by you. Only tools that work are used.";
+            for (const settings::ToolCard& c : cards) {
+                if (!in_group(c, groups[g])) continue;
+                (shown(c) ? m.tool_tiles : m.tool_attachable).push_back(ww_tile_of(c));
+            }
+        }
+    }
+}
+
 // The Settings page from the settings: the main view is Theme, the output folder and Keep the computer responsive, and what this computer can
-// convert; Advanced (m.settings_advanced) is every other setting as a path (Browse), a switch or text.
-void ww_fill_settings(Model& m, const std::vector<settings::Row>& rows, settings::Theme theme) {
+// convert; Advanced (m.settings_advanced) is the tools attached to this computer by group, then Performance, Folders and Developer.
+void ww_fill_settings(Model& m, const std::vector<settings::Row>& rows, settings::Theme theme, const std::vector<settings::ToolCard>& cards = {},
+                      const std::vector<config::tools::Tool>& catalog = {}) {
     m.setting_fields.clear();
     m.setting_keys.clear();
     m.capabilities.clear();
-    const auto field_of = [](const settings::Row& r) {
-        FieldItem f;
-        f.label = r.label.empty() ? r.key : r.label;
-        f.note = r.hint;
-        f.text = r.value;
-        if (r.kind == settings::Kind::Path) {
-            f.kind = 0;
-            f.hint = r.set ? "Not found" : "Not set";
-        } else if (r.kind == settings::Kind::Toggle) {
-            f.kind = 4;
-            f.text = text::lower(r.value) == "true" ? "1" : "";
-        } else {
-            f.kind = 2;
-            f.hint = "Not set";
-        }
-        return f;
-    };
+    const auto& field_of = ww_field_of;
     if (m.settings_advanced) {
-        for (const settings::Row& r : rows) {
-            if (settings::is_everyday(r.key)) continue;
-            m.setting_fields.push_back(field_of(r));
-            m.setting_keys.push_back(r.key);
-        }
+        ww_fill_advanced(m, rows, cards, catalog);
         return;
     }
     m.setting_fields.push_back({"Theme", 3, settings::theme_name(theme), {"System", "Light", "Dark"}, false, "", "Follow Windows, or always light or dark."});
@@ -381,9 +527,10 @@ private:
     void set_focus(Control c, int index);
     void edited();
     void commit_setting(int field);
-    void fill_settings();
+    void fill_settings(bool keep_scroll = false);
     void open_advanced(bool open);
     void locate_tool(int index);
+    void attach_tool(const ToolTileItem& tile);
     void blur();
     void insert_text(const std::string& utf8);
     bool edit_key(WPARAM key, bool ctrl);
@@ -646,7 +793,7 @@ int WwApp::run() {
     set_app_identity();   // (this process is "CodeBreaker" to the taskbar and the notification centre)
     taskbar_message_ = RegisterWindowMessageW(L"TaskbarButtonCreated");
     recent_ = recent::load(recent::store_file(convert::settings_file()));
-    settings::save_found_on_host(config::current());   // (a JDK, Visual Studio, CMake ... this computer has, into settings.json the first time)
+    settings::attach_found(config::current());   // (a JDK, Visual Studio, CMake ... this computer has: config/attached_tools.json, which Advanced shows)
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);   // (the manifest says it too; this covers a copy without it)
     if (!painter_.ok()) {
         err_text("codebreaker: Direct2D is not available\n");
@@ -764,9 +911,11 @@ void WwApp::move_focus(bool backwards) {
     if (model_.page == Page::Settings && order[next].control != Control::NavConvert && order[next].index >= 0) {   // keep the field in view
         const SettingsLayout sl = compute_settings_layout(layout_, model_);
         const std::size_t f = static_cast<std::size_t>(order[next].index);
-        const std::vector<Rect>& rows = order[next].control == Control::Locate ? sl.capability_rows : sl.field_rows;
-        if (model_.settings_advanced ? f < sl.form.fields.size() : f < rows.size()) {
-            const Rect& r = model_.settings_advanced ? sl.form.fields[f].input : rows[f];
+        const Control c = order[next].control;
+        const std::vector<Rect>& rows = c == Control::Locate ? sl.capability_rows : c == Control::ToolTileButton || c == Control::ToolTileGet ? sl.tiles
+                                        : c == Control::ToolAttach ? sl.attach_rows : sl.field_rows;
+        if (c != Control::SettingsNav && f < rows.size()) {
+            const Rect& r = rows[f];
             if (r.y < sl.fields_area.y) model_.setting_scroll = std::max(0.0f, model_.setting_scroll - (sl.fields_area.y - r.y) - 24);
             else if (r.bottom() > sl.fields_area.bottom()) model_.setting_scroll += r.bottom() - sl.fields_area.bottom() + 24;
         }
@@ -954,6 +1103,7 @@ void WwApp::set_page(Page page) {
 
 std::string* WwApp::edit_target() {
     if (model_.focus == Control::ToolSearch) return &model_.tool_query;
+    if (model_.focus == Control::SettingsSearch) return &model_.settings_query;
     if (model_.focus == Control::BoardSearch) return &model_.board_query;
     if (model_.focus == Control::BoardLeadersSearch) return &model_.board_leaders_query;
     if (model_.focus != Control::Field || model_.focus_index < 0) return nullptr;
@@ -980,6 +1130,11 @@ void WwApp::edited() {
     }
     if (model_.page == Page::Board) {
         refresh_board();
+        return;
+    }
+    if (model_.page == Page::Settings && model_.focus == Control::SettingsSearch) {   // Advanced: the right side shows what matches
+        fill_settings();
+        invalidate();
         return;
     }
     if (model_.page == Page::Tools) {
@@ -1035,16 +1190,34 @@ void WwApp::commit_setting(int field) {
 }
 
 // The Settings page read again from settings.json (after Locate..., or moving between the main view and Advanced).
-void WwApp::fill_settings() {
+void WwApp::fill_settings(bool keep_scroll) {
     settings_config_ = config::Config::load(config::current().checkout_root());
-    ww_fill_settings(model_, settings::rows(settings_config_), theme_);
-    model_.setting_scroll = 0;
+    if (model_.settings_advanced) {
+        settings_config_.look_on_host();   // (what a tool's value is when nothing names it: found on this computer)
+        ww_fill_settings(model_, settings::rows(settings_config_), theme_, settings::tool_cards(settings_config_),
+                         config::tools::catalog_of(settings_config_.checkout_root()));
+    } else {
+        ww_fill_settings(model_, settings::rows(settings_config_), theme_);
+    }
+    if (!keep_scroll) model_.setting_scroll = 0;
+}
+
+// Change... or Locate... on a tool's tile, Attach... on a row of the tools that can be attached: the person picks its folder (or its program),
+// and it is attached when it is that tool.
+void WwApp::attach_tool(const ToolTileItem& tile) {
+    const std::string chosen = ww_choose_path(hwnd_, tile.folder);
+    if (chosen.empty()) return;
+    const std::string error = settings::attach(settings_config_, tile.id, chosen);
+    fill_settings(true);
+    model_.status_text = error.empty() ? "Attached: " + tile.name : "Not attached: " + error;
+    invalidate();
 }
 
 void WwApp::open_advanced(bool open) {
     blur();
     model_.field_popup = -1;
     model_.settings_advanced = open;
+    model_.settings_query.clear();
     fill_settings();
     model_.focus = open ? Control::SettingsBack : Control::SettingsAdvanced;
     model_.focus_index = -1;
@@ -2049,6 +2222,38 @@ void WwApp::activate_page(Control c, int index) {
             break;
         case Control::SettingsAdvanced: open_advanced(true); break;
         case Control::SettingsBack: open_advanced(false); break;
+        case Control::SettingsNav:
+            if (index >= 0 && static_cast<std::size_t>(index) < model_.settings_nav.size() && !model_.settings_nav[static_cast<std::size_t>(index)].heading) {
+                model_.settings_group = index;
+                model_.settings_query.clear();
+                model_.field_popup = -1;
+                fill_settings();
+                set_focus(Control::SettingsNav, index);
+            }
+            break;
+        case Control::SettingsSearch: set_focus(Control::SettingsSearch, -1); break;
+        case Control::SettingsScan: {
+            model_.status_text = "Looking on this computer...";
+            invalidate();
+            UpdateWindow(hwnd_);
+            const std::vector<std::string> found = settings::attach_found(settings_config_);
+            fill_settings(true);
+            model_.status_text = found.empty() ? "Scanned: nothing new found" : "Found and attached: " + text::join(found, ", ");
+            invalidate();
+            break;
+        }
+        case Control::ToolTileButton:
+            if (index >= 0 && static_cast<std::size_t>(index) < model_.tool_tiles.size()) attach_tool(model_.tool_tiles[static_cast<std::size_t>(index)]);
+            break;
+        case Control::ToolAttach:
+            if (index >= 0 && static_cast<std::size_t>(index) < model_.tool_attachable.size()) attach_tool(model_.tool_attachable[static_cast<std::size_t>(index)]);
+            break;
+        case Control::ToolTileGet:
+            if (index >= 0 && static_cast<std::size_t>(index) < model_.tool_tiles.size() && !model_.tool_tiles[static_cast<std::size_t>(index)].download.empty()) {
+                const std::string& url = model_.tool_tiles[static_cast<std::size_t>(index)].download;
+                if (url.starts_with("https://")) ShellExecuteW(hwnd_, L"open", widen(url).c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+            }
+            break;
         case Control::Locate: locate_tool(index); break;
         case Control::Field: {
             std::vector<FieldItem>& fields = model_.page == Page::Settings ? model_.setting_fields : model_.tool_fields;
@@ -3480,6 +3685,7 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                 // a text box takes the keyboard at once (a switch or a drop-down acts when the click is released)
                 const std::vector<FieldItem>& fields = model_.page == Page::Settings ? model_.setting_fields : model_.tool_fields;
                 const bool text_field = h.control == Control::ToolSearch || h.control == Control::BoardSearch || h.control == Control::BoardLeadersSearch ||
+                                        h.control == Control::SettingsSearch ||
                                         (h.control == Control::Field && h.index >= 0 && static_cast<std::size_t>(h.index) < fields.size() && fields[static_cast<std::size_t>(h.index)].kind <= 2);
                 if (text_field) set_focus(h.control, h.index);
                 else set_focus(Control::None, -1);
@@ -3521,7 +3727,8 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
             invalidate();
             if (pressed != Control::None && pressed == h.control && pressed_index == h.index) {
                 if (pressed >= Control::NavConvert) {
-                    if (pressed != Control::ToolSearch && pressed != Control::BoardSearch && pressed != Control::BoardLeadersSearch) activate_page(pressed, pressed_index);
+                    if (pressed != Control::ToolSearch && pressed != Control::BoardSearch && pressed != Control::BoardLeadersSearch && pressed != Control::SettingsSearch)
+                        activate_page(pressed, pressed_index);
                     sync_board_title();
                 } else {
                     activate(pressed);
@@ -3620,6 +3827,7 @@ LRESULT WwApp::handle(UINT msg, WPARAM wp, LPARAM lp) {
                     return 0;
                 }
                 if ((wp == VK_RETURN || wp == VK_SPACE) && (lp & (1 << 30)) == 0 && model_.focus != Control::None && model_.focus != Control::ToolSearch &&
+                    model_.focus != Control::SettingsSearch &&
                     !(model_.focus == Control::Field && edit_target() != nullptr)) {
                     activate_page(model_.focus, model_.focus_index);
                     return 0;
@@ -3895,9 +4103,16 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
             " 57%  Making the XACT audio banks\n 71%  Mapping the achievements\n 85%  Building the solution\n  built\n100%  Done\nOutput: C:\\Games\\Minecraft\\a1.2.6-converted\n";
         return m;
     }
-    if (state == "settings" || state == "advanced") {
+    if (state == "settings" || state.starts_with("advanced")) {   // advanced[-assemblers|-decompilers|-build|-sdks|-performance|-folders|-developer|-search]
         m.page = Page::Settings;
-        m.settings_advanced = state == "advanced";
+        m.settings_advanced = state.starts_with("advanced");
+        int shot_group = 1;
+        std::string shot_query;
+        const std::string part = state.size() > 9 ? state.substr(9) : std::string();
+        static const std::pair<const char*, int> kParts[] = {{"assemblers", 2}, {"decompilers", 3}, {"build", 4}, {"sdks", 5}, {"performance", 7}, {"folders", 8}, {"developer", 9}};
+        for (const auto& [name, group] : kParts)
+            if (part == name) shot_group = group;
+        if (part == "search") shot_query = "java";
         m.status_text = "Saved: " + settings::plain_label("low_load");
         const auto row = [](const char* key, const char* value, settings::Kind kind, bool present) {
             return settings::Row{key, value, kind, present, *value != 0, settings::plain_label(key), settings::plain_hint(key)};
@@ -3911,6 +4126,22 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
             {"workers", "4", settings::Kind::Text, true, true, settings::plain_label("workers"), settings::plain_hint("workers")},
             {"low_load", "true", settings::Kind::Toggle, true, true, settings::plain_label("low_load"), settings::plain_hint("low_load")},
         };
+        if (m.settings_advanced) {   // the tools of a computer with the JDK, Visual Studio, ILSpy and OpenWatcom, and no Xbox 360 SDK
+            const std::vector<config::tools::Tool> catalog = config::tools::catalog_of(config::find_checkout());
+            using S = config::Config::Source;
+            const std::map<std::string, settings::ToolSource> sources = {
+                {"java", {"C:/Program Files/Eclipse Adoptium/jdk-21.0.2.13-hotspot/bin/java.exe", S::Attached, "found", true, "21"}},
+                {"visual_studio", {"C:/Program Files/Microsoft Visual Studio/18/Community", S::Attached, "found", true, ""}},
+                {"openwatcom", {"C:/WATCOM", S::Attached, "found", true, ""}},
+                {"ilspycmd", {"C:/Users/you/.dotnet/tools/ilspycmd.exe", S::Attached, "found", true, ""}},
+                {"msbuild", {"C:/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/MSBuild.exe", S::Attached, "found", true, ""}},
+                {"cmake", {"C:/Program Files/CMake/bin/cmake.exe", S::Attached, "found", true, ""}},
+                {"msc6", {"C:/CodeBreaker/period/msc6", S::Attached, "you", true, ""}}};
+            m.settings_group = shot_group;
+            m.settings_query = shot_query;
+            ww_fill_settings(m, rows, dark ? settings::Theme::Dark : settings::Theme::Light, settings::tool_cards(catalog, sources), catalog);
+            return m;
+        }
         ww_fill_settings(m, rows, dark ? settings::Theme::Dark : settings::Theme::Light);
         return m;
     }

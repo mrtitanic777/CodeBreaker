@@ -1,0 +1,28 @@
+{
+ "id": "openwatcom",
+ "order": 4,
+ "name": "OpenWatcom",
+ "role": "compiler",
+ "setting": "openwatcom",
+ "requires_any": [
+  "binnt/wcc386.exe",
+  "binnt64/wcc386.exe"
+ ],
+ "needed_for": "rebuilding Windows and DOS programs from their C",
+ "download": "https://github.com/open-watcom/open-watcom-v2/releases",
+ "description": "The headers, libraries and tools the built-in C compiler uses.",
+ "find": [
+  {
+   "env": "WATCOM"
+  },
+  {
+   "dir": "C:/WATCOM"
+  },
+  {
+   "dir": "C:/OpenWatcom"
+  },
+  {
+   "dir": "C:/OW"
+  }
+ ]
+}

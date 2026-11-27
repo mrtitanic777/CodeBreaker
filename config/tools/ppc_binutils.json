@@ -1,0 +1,9 @@
+{
+ "id": "ppc_binutils",
+ "order": 22,
+ "name": "PowerPC binutils",
+ "role": "assembler",
+ "setting": "ppc_binutils",
+ "developer": true,
+ "description": "Assembler and linker for PowerPC code."
+}

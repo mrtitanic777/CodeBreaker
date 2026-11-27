@@ -1,0 +1,9 @@
+{
+ "id": "msvc152",
+ "order": 52,
+ "name": "Visual C++ 1.52",
+ "role": "compiler",
+ "setting": "msvc152",
+ "developer": true,
+ "description": "The period compiler for 16-bit Windows 95 code."
+}

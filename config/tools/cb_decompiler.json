@@ -1,0 +1,8 @@
+{
+ "id": "cb_decompiler",
+ "order": 10,
+ "name": "CodeBreaker decompiler",
+ "role": "decompiler",
+ "built_in": true,
+ "description": "Turns machine code into C, for every CPU CodeBreaker reads."
+}

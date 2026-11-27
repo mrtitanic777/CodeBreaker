@@ -281,6 +281,12 @@ bool control_exists(Control control, View view) {
         case Control::CmpCLine:
         case Control::SettingsAdvanced:   // (the Settings page: window_pages.hpp)
         case Control::SettingsBack:
+        case Control::SettingsNav:
+        case Control::SettingsSearch:
+        case Control::SettingsScan:
+        case Control::ToolTileButton:
+        case Control::ToolTileGet:
+        case Control::ToolAttach:
         case Control::Locate: return false;
     }
     return false;
@@ -334,6 +340,12 @@ Rect control_rect(const Layout& l, Control control) {
         case Control::CmpCLine:
         case Control::SettingsAdvanced:
         case Control::SettingsBack:
+        case Control::SettingsNav:
+        case Control::SettingsSearch:
+        case Control::SettingsScan:
+        case Control::ToolTileButton:
+        case Control::ToolTileGet:
+        case Control::ToolAttach:
         case Control::Locate:
         case Control::None: break;
     }

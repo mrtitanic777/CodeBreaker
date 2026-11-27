@@ -35,7 +35,7 @@ bool skipped_folder(const std::string& name, const std::string& rel) {
 // What the program and its tools write under config/ on this machine (git-ignored): the window's settings, its list of
 // recent files, the shader checker's build output. Using the program changes them; no test depends on them.
 bool machine_local(const std::string& rel) {
-    return rel == "config/app.json" || rel == "config/app.recent.json" || starts(rel, "config/xna/shadercheck/obj/");
+    return rel == "config/app.json" || rel == "config/app.recent.json" || rel == "config/attached_tools.json" || starts(rel, "config/xna/shadercheck/obj/");
 }
 
 void walk(const stdfs::path& repo, const stdfs::path& root, bool recurse, const Record* previous, Record& out,

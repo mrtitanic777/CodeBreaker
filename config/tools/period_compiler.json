@@ -1,0 +1,12 @@
+{
+ "id": "period_compiler",
+ "order": 50,
+ "name": "Period Visual C++ (CL.EXE)",
+ "role": "compiler",
+ "setting": "period_compiler",
+ "requires": [
+  "CL.EXE"
+ ],
+ "developer": true,
+ "description": "The period compiler byte matching compares against."
+}

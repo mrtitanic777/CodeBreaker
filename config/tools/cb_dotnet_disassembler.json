@@ -1,0 +1,8 @@
+{
+ "id": "cb_dotnet_disassembler",
+ "order": 13,
+ "name": ".NET IL disassembler",
+ "role": "decompiler",
+ "built_in": true,
+ "description": "Reads .NET programs and writes their IL."
+}

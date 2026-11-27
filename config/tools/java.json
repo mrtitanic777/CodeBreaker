@@ -1,0 +1,70 @@
+{
+ "id": "java",
+ "order": 2,
+ "name": "Java (JDK)",
+ "role": "compiler",
+ "setting": "java",
+ "value": "bin/java.exe",
+ "requires": [
+  "bin/java.exe",
+  "bin/javac.exe"
+ ],
+ "version": {
+  "file": "release",
+  "key": "JAVA_VERSION",
+  "least": 11
+ },
+ "pick": "newest",
+ "needed_for": "Java programs",
+ "download": "https://adoptium.net",
+ "description": "Compiles and runs Java programs and the Java translator.",
+ "find": [
+  {
+   "env": "JAVA_HOME"
+  },
+  {
+   "program_files": "Java",
+   "children": true
+  },
+  {
+   "program_files": "Eclipse Adoptium",
+   "children": true
+  },
+  {
+   "program_files": "Microsoft",
+   "children": true
+  },
+  {
+   "program_files": "Zulu",
+   "children": true
+  },
+  {
+   "program_files": "BellSoft",
+   "children": true
+  },
+  {
+   "program_files": "Amazon Corretto",
+   "children": true
+  },
+  {
+   "program_files": "Semeru",
+   "children": true
+  },
+  {
+   "program_files": "OpenJDK",
+   "children": true
+  },
+  {
+   "program_files": "AdoptOpenJDK",
+   "children": true
+  },
+  {
+   "user": ".jdks",
+   "children": true
+  },
+  {
+   "on_path": "javac.exe",
+   "up": 1
+  }
+ ]
+}

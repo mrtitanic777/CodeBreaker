@@ -6,6 +6,7 @@ __pycache__/
 /settings.json
 /config/app.json
 /config/app.recent.json
+/config/attached_tools.json
 # native build output (src/build is source: the build area). The engines inside src that are built by
 # their own tools keep their output beside them: XenonRecomp's (built on demand), the Xbox 360 runtime's tests.
 src/*/build/

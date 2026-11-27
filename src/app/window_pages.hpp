@@ -58,17 +58,29 @@ ToolsLayout compute_tools_layout(const Layout& shell, const Model& model);
 
 // The Settings page has two views. The main one is rows (work/ui-mockup/feat-settings-*.png): "General" (Theme, where converted source goes,
 // Keep the computer responsive: each a row with its label on the left and its control on the right), "What this computer can convert" (one row
-// per Model::capabilities, Locate... on a missing one) and the Advanced row. Advanced is Back, a title, and every other setting as a form.
+// per Model::capabilities, Locate... on a missing one) and the Advanced row. Advanced (work/ui-settings/mockups/d-combined.png) is Back, a title
+// and Scan this computer, then two sides: a menu (a search box, the groups of tools, Performance, Folders, Developer) and the chosen group: its
+// tools as tiles (two to a row), the tools that can be attached as rows, and its settings as rows like the main view's.
 struct SettingsLayout {
     Rect card, title, desc, fields_area;
-    FormLayout form;                   // the main view: a row per field (field_rows), the control on its right; Advanced: the stacked form
+    FormLayout form;                   // the main view and Advanced: a row per field (field_rows), the control on its right
     Rect back;                         // Advanced only
     Rect general_heading, can_heading; // the main view only
-    std::vector<Rect> field_rows;      // the main view: the row behind each field
+    std::vector<Rect> field_rows;      // the row behind each field
     std::vector<Rect> capability_rows, locate;   // one per Model::capabilities; locate is empty for a ready row
     Rect advanced_row;
+    // Advanced
+    Rect scan, nav_search;
+    std::vector<Rect> nav_rows;                         // one per Model::settings_nav
+    Rect pane, pane_title, pane_note, pane_empty;       // pane: the right side (it clips and scrolls; fields_area is the same)
+    std::vector<Rect> tiles, tile_button, tile_get;     // one per Model::tool_tiles; tile_get is empty without a download
+    Rect attach_heading;
+    std::vector<Rect> attach_rows, attach_buttons;      // one per Model::tool_attachable
 };
 inline constexpr float kSettingRowHeight = 60;
+inline constexpr float kAdvancedNavWidth = 236;
+inline constexpr float kToolTileHeight = 104;
+inline constexpr float kAttachRowHeight = 52;
 inline constexpr float kSettingsMaxWidth = 1100;   // the rows fill the card (the scroll bar at its edge); only a very wide window stops them
 SettingsLayout compute_settings_layout(const Layout& shell, const Model& model);
 
