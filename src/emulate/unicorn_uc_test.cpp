@@ -8,6 +8,11 @@
 //  - reg_read_float is the first word of the register as a double, the answer for ST0 being one integer: kept so that judged runs stay the same.
 #include "emulate/unicorn_uc.hpp"
 
+#include <atomic>
+#include <stdexcept>
+#include <thread>
+#include <vector>
+
 #include "core/error.hpp"
 #include "core/testing.hpp"
 #include "core/unicorn_api.hpp"
@@ -179,4 +184,37 @@ CB_TEST("emulate.unicorn_uc.float_register_is_the_first_word", [] {
     auto uc = open_x86(32);
     uc->reg_write(reg("EAX"), 12);
     CB_CHECK_EQ(uc->reg_read_float(reg("EAX")), 12.0);
+});
+
+// Unicorn registers a vectored exception handler per machine (a stub on a page of its own) and frees it when the machine is closed; every
+// exception on any thread calls every such handler, so a machine closed while another thread throws once killed the process (an access
+// violation running the freed page). Machines are opened, run and closed on four threads while four others throw and catch.
+CB_TEST("emulate.unicorn_uc.machines_close_while_other_threads_throw", [] {
+    std::atomic<bool> done = false;
+    std::atomic<int> thrown = 0;
+    std::vector<std::thread> throwers;
+    for (int t = 0; t < 4; ++t)
+        throwers.emplace_back([&] {
+            while (!done) {
+                try {
+                    throw std::runtime_error("every vectored handler sees this");
+                } catch (const std::runtime_error&) {
+                    ++thrown;
+                }
+            }
+        });
+    std::atomic<int> ran = 0;
+    std::vector<std::thread> machines;
+    for (int t = 0; t < 4; ++t)
+        machines.emplace_back([&] {
+            for (int i = 0; i < 400; ++i) {
+                auto uc = open_x86(64);
+                if (run(*uc, {0x48, 0xC7, 0xC0, 0x07, 0x00, 0x00, 0x00}, "RAX") == 7u) ++ran;   // mov rax, 7
+            }
+        });
+    for (std::thread& m : machines) m.join();
+    done = true;
+    for (std::thread& t : throwers) t.join();
+    CB_CHECK_EQ(ran.load(), 1600);
+    CB_CHECK(thrown.load() > 0);
 });

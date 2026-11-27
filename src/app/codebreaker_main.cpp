@@ -7,6 +7,7 @@
 //
 // One program, console subsystem: with arguments it is the command line (output, errors and exit codes as ever, so it pipes); with none it is
 // the Windows app, which hides the console it was started with (window_win.cpp).
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -23,9 +24,65 @@
 #include "build/x86link/x86link.hpp"
 #include "core/fs.hpp"
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
+
 extern "C" int cb_host_main_hook(int argc, char** argv);
 
 namespace {
+
+#ifdef _WIN32
+// A crash says what it was and where, on stderr, before the process ends: without it a crash ends a long run with no output at
+// all (a `check` of kernel32 once ended so after 14 minutes). Each frame is a module and an offset into it, which the linker's map
+// of that module names.
+void say_where(const void* address) {
+    HMODULE module = nullptr;
+    char name[MAX_PATH] = "?";
+    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, static_cast<LPCSTR>(address), &module) &&
+        module != nullptr) {
+        char path[MAX_PATH];
+        if (const DWORD n = GetModuleFileNameA(module, path, MAX_PATH); n > 0 && n < MAX_PATH) {
+            const char* base = path;
+            for (const char* c = path; *c; ++c)
+                if (*c == '\\' || *c == '/') base = c + 1;
+            lstrcpynA(name, base, MAX_PATH);
+        }
+    }
+    const auto offset = reinterpret_cast<std::uintptr_t>(address) - reinterpret_cast<std::uintptr_t>(module);
+    std::fprintf(stderr, "  %s+0x%llx\n", name, static_cast<unsigned long long>(module != nullptr ? offset : reinterpret_cast<std::uintptr_t>(address)));
+}
+
+LONG WINAPI report_crash(EXCEPTION_POINTERS* e) {
+    const EXCEPTION_RECORD& r = *e->ExceptionRecord;
+    std::fprintf(stderr, "codebreaker: crashed: exception 0x%08lX at\n", static_cast<unsigned long>(r.ExceptionCode));
+    say_where(r.ExceptionAddress);
+    if (r.ExceptionCode == EXCEPTION_ACCESS_VIOLATION && r.NumberParameters >= 2)
+        std::fprintf(stderr, "  (%s address 0x%llx)\n", r.ExceptionInformation[0] == 0 ? "reading" : r.ExceptionInformation[0] == 1 ? "writing" : "running",
+                     static_cast<unsigned long long>(r.ExceptionInformation[1]));
+    // the faulting thread's stack, from the exception's context
+    CONTEXT context = *e->ContextRecord;
+    std::fprintf(stderr, "called from\n");
+    for (int depth = 0; depth < 32 && context.Rip != 0; ++depth) {
+        DWORD64 image_base = 0;
+        PRUNTIME_FUNCTION f = RtlLookupFunctionEntry(context.Rip, &image_base, nullptr);
+        if (f == nullptr) {   // (a leaf: its return address is on top of the stack)
+            context.Rip = *reinterpret_cast<DWORD64*>(context.Rsp);
+            context.Rsp += 8;
+        } else {
+            void* handler_data = nullptr;
+            DWORD64 frame = 0;
+            RtlVirtualUnwind(UNW_FLAG_NHANDLER, image_base, context.Rip, f, &context, &handler_data, &frame, nullptr);
+        }
+        if (context.Rip != 0) say_where(reinterpret_cast<const void*>(context.Rip));
+    }
+    std::fflush(stderr);
+    return EXCEPTION_CONTINUE_SEARCH;
+}
+#endif
 
 bool is_help(std::string_view w) { return w == "-h" || w == "--help" || w == "help"; }
 
@@ -52,6 +109,9 @@ void state_beside_input(const std::vector<std::string>& args) {
 }  // namespace
 
 int main(int argc, char** argv) {
+#ifdef _WIN32
+    SetUnhandledExceptionFilter(&report_crash);
+#endif
     cb::build::pklite::install();    // PKLITE programs are read from their streams
     cb::build::x86link::install();   // wlink runs in this program (x86link), not as wlink.exe
     cb::build::x86cc::install();     // and wcc / wcc386 (x86cc), not as wcc.exe / wcc386.exe
