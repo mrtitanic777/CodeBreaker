@@ -276,9 +276,9 @@ Judgement judged(const std::function<Judgement()>& compare_one) {
     } catch (const NotFoundError&) {
         throw;
     } catch (const Error& e) {
-        return Judgement{Verdict::Inconclusive, std::format("judge: {}", e.kind()), {}, {}};
+        return Judgement{store::Verdict::Inconclusive, std::format("judge: {}", e.kind()), {}, {}};
     } catch (const std::exception&) {
-        return Judgement{Verdict::Inconclusive, "judge: Exception", {}, {}};
+        return Judgement{store::Verdict::Inconclusive, "judge: Exception", {}, {}};
     }
 }
 

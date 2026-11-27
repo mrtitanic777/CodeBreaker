@@ -10,7 +10,7 @@
 namespace {
 namespace rp = cb::verify::authored::repair;
 using cb::Bytes;
-using cb::verify::ByteMatch;
+using cb::store::ByteMatch;
 
 std::string hex_of(const std::string& bytes) {
     std::string out;

@@ -33,18 +33,18 @@ CB_TEST("engine.machine_o2.a_cartridge_comes_back_identical_and_an_edit_diverges
     CB_CHECK(image.written.linked && image.written.same);
     CB_CHECK_EQ(image.written.functions.size(), 2u);
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     Bytes edited = ti::cartridge();
     edited[0x21] = 0x07;   // DEC A instead of INC A in the subroutine
     fs::write_file(dir.path() / "edited.o2", edited);
-    CB_CHECK(lane.judge_function(false, original, original, 0x420).verdict == verify::Verdict::Equivalent);
-    const verify::Judgement j = lane.judge_function(false, original, dir.path() / "edited.o2", 0x420);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, 0x420).verdict == store::Verdict::Equivalent);
+    const store::Judgement j = lane.judge_function(false, original, dir.path() / "edited.o2", 0x420);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     CB_CHECK(!j.reason.empty());
     Bytes data = ti::cartridge();
     data[4] = 0x91;   // MOVX @R1,A instead of @R0: another data-space address written in the start function
     fs::write_file(dir.path() / "data.o2", data);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "data.o2", 0x400).verdict == verify::Verdict::Divergent);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "data.o2", 0x420).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "data.o2", 0x400).verdict == store::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "data.o2", 0x420).verdict == store::Verdict::Equivalent);
 });

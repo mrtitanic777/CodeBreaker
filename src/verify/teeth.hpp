@@ -35,7 +35,7 @@
 #include <vector>
 
 #include "core/cli.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::verify::teeth {
 
@@ -112,12 +112,12 @@ void plant(const std::function<std::optional<Round>()>& next_round,
 struct Function {
     std::string name;
     std::string text;            // the C it is built from
-    std::optional<Class> passed; // Verified or Weak: what the judge had called it; empty if it had not passed
+    std::optional<store::Class> passed; // Verified or Weak: what the judge had called it; empty if it had not passed
 };
 
 // What the judge said of one rebuilt function.
 struct Said {
-    std::optional<Verdict> verdict; // nullopt: the function was not built (`reason` says why)
+    std::optional<store::Verdict> verdict; // nullopt: the function was not built (`reason` says why)
     std::string reason;
     std::vector<std::string> limits;
 };
@@ -147,7 +147,7 @@ std::string_view word(Fate f); // "caught", "survived", "not judged", "does not 
 
 struct Result {
     std::string name;
-    Class was = Class::Verified; // Verified or Weak: what the judge had called it
+    store::Class was = store::Class::Verified; // Verified or Weak: what the judge had called it
     std::string made;            // the kind of break
     std::string reason;
     Fate now = Fate::NotJudged;

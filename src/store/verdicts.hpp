@@ -45,7 +45,7 @@
 #include <utility>
 #include <vector>
 
-namespace cb::verify {
+namespace cb::store {
 
 // ---- 1. what a judge says -------------------------------------------------------------------------------
 
@@ -280,4 +280,4 @@ private:
     std::unordered_map<std::string, StoreRow> rows_;
 };
 
-} // namespace cb::verify
+}  // namespace cb::store

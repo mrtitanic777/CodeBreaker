@@ -115,7 +115,7 @@ service::Environment standard_environment(const config::Config& config, const ba
     env.root = config.checkout_root();
     env.ledger = coverage::ledger::services_over(corpus, env.state, wiring::verifier_profiles(config));
     env.retail = [&corpus](std::string_view name) { return corpus.retail(name); };
-    env.describe_best = [](const engine::Best& best) { return source::module_writer::describe(best); };   // (the words the module writer's status gives)
+    env.describe_best = [](const store::Best& best) { return source::module_writer::describe(best); };   // (the words the module writer's status gives)
     return env;
 }
 

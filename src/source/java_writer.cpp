@@ -21,11 +21,11 @@ std::string first_line(std::string_view reason) {
     return lines.empty() ? std::string() : std::string(text::utf8_prefix(lines[0], kSaidColumns));
 }
 
-std::string counts_text(const engine::ClassCount& counts) {
+std::string counts_text(const store::ClassCount& counts) {
     std::vector<std::string> parts;
-    for (const verify::Class c : verify::kClassOrder) {
+    for (const store::Class c : store::kClassOrder) {
         const auto n = counts.find(c);
-        if (n != counts.end() && n->second != 0) parts.push_back(std::format("{} {}", verify::title(c), n->second));
+        if (n != counts.end() && n->second != 0) parts.push_back(std::format("{} {}", store::title(c), n->second));
     }
     return text::join(parts, ", ");
 }
@@ -43,15 +43,15 @@ bool holds_files_written_by_hand(const std::filesystem::path& dir) {
 
 }  // namespace
 
-std::string banner(std::string_view file, verify::Class status, std::string_view said) {
-    return std::format("// {} -- transpiled from Java by CodeBreaker (codebreaker/java).\n// [{}] {}\n", file, verify::title(status), said);
+std::string banner(std::string_view file, store::Class status, std::string_view said) {
+    return std::format("// {} -- transpiled from Java by CodeBreaker (codebreaker/java).\n// [{}] {}\n", file, store::title(status), said);
 }
 
-std::vector<ClassRow> class_rows(engine::FunctionStore& store, std::string_view module, std::string_view profile) {
-    const std::map<std::string, engine::Best> best = store.best(module, profile);
+std::vector<ClassRow> class_rows(store::FunctionStore& store, std::string_view module, std::string_view profile) {
+    const std::map<std::string, store::Best> best = store.best(module, profile);
     std::vector<ClassRow> rows;
     for (const std::string& name : store.addresses(module)) {   // (sorted)
-        ClassRow row{name, verify::Class::NoSource, ""};
+        ClassRow row{name, store::Class::NoSource, ""};
         const auto found = best.find(name);
         std::string why = "not judged on the current verifier";
         std::string detail;
@@ -60,23 +60,23 @@ std::vector<ClassRow> class_rows(engine::FunctionStore& store, std::string_view 
             why = found->second.candidate.reason;
             detail = found->second.candidate.detail;
         }
-        row.said = first_line(row.status == verify::Class::NoCompile ? why : (detail.empty() ? why : detail));
+        row.said = first_line(row.status == store::Class::NoCompile ? why : (detail.empty() ? why : detail));
         rows.push_back(std::move(row));
     }
     return rows;
 }
 
-std::string status_report(std::string_view name, const std::vector<ClassRow>& rows, const engine::ClassCount& counts) {
+std::string status_report(std::string_view name, const std::vector<ClassRow>& rows, const store::ClassCount& counts) {
     std::vector<std::string> lines = {std::format("# {} -- C++03 transpiled from Java", name), "",
                                       std::format("{} classes: {}", rows.size(), counts_text(counts)), "", "| class | status | why |", "|---|---|---|"};
     for (const ClassRow& r : rows) {
         const std::string why = text::replace_all(text::utf8_prefix(r.said, kReportColumns), "|", "\\|");
-        lines.push_back(std::format("| {} | {} | {} |", r.name, verify::title(r.status), why));
+        lines.push_back(std::format("| {} | {} | {} |", r.name, store::title(r.status), why));
     }
     return text::join(lines, "\n") + "\n";
 }
 
-Written write_java(std::string_view name, engine::FunctionStore& store, std::string_view module, std::string_view profile,
+Written write_java(std::string_view name, store::FunctionStore& store, std::string_view module, std::string_view profile,
                    const std::filesystem::path& out_dir, const std::filesystem::path& state_dir, const Conversion& convert, const Log& log) {
     const auto say = [&](const std::string& line) {
         if (log) log(line);
@@ -89,7 +89,7 @@ Written write_java(std::string_view name, engine::FunctionStore& store, std::str
     }
     convert(out.folder);
     out.rows = class_rows(store, module, profile);
-    for (const verify::Class c : verify::kClassOrder) out.counts[c] = 0;
+    for (const store::Class c : store::kClassOrder) out.counts[c] = 0;
     for (const ClassRow& r : out.rows) {
         ++out.counts[r.status];
         for (const char* ext : {".cpp", ".h"}) {   // (a class's .cpp, or its .h when it has none)

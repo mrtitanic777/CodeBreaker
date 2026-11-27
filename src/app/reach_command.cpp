@@ -1,9 +1,9 @@
-#include "coverage/reach_command.hpp"
+#include "app/reach_command.hpp"
 
 #include <memory>
 #include <optional>
 
-#include "engine/function_store.hpp"
+#include "store/function_store.hpp"
 #include "engine/lane_kit.hpp"
 #include "engine/lane_registry.hpp"
 #include "formats/detect.hpp"
@@ -15,9 +15,9 @@
 #include "platforms/win16.hpp"
 #include "verify/lanes/java.hpp"
 #include "verify/reconstruct.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
-namespace cb::coverage::reach_command {
+namespace cb::app::reach_command {
 
 namespace {
 
@@ -42,17 +42,17 @@ public:
         reconstructor_.emplace(kit_.reconstruct_services(kinds_, store_));
     }
 
-    reach::Tally tally(const std::filesystem::path& program) {
+    coverage::reach::Tally tally(const std::filesystem::path& program) {
         const verify::reconstruct::Identity id = reconstructor_->identity(program);
-        reach::Tally out;
-        for (const auto& [cls, n] : store_.tally(id.profile, id.sha)) out[std::string(verify::word(cls))] = n;
+        coverage::reach::Tally out;
+        for (const auto& [cls, n] : store_.tally(id.profile, id.sha)) out[std::string(store::word(cls))] = n;
         return out;
     }
 
 private:
     engine::LaneKit kit_;
     verify::reconstruct::Kinds kinds_;
-    engine::FunctionStore store_;
+    store::FunctionStore store_;
     std::optional<verify::reconstruct::Reconstructor> reconstructor_;
 };
 
@@ -87,12 +87,12 @@ std::unique_ptr<platforms::Registry> standard_registry() {
     return registry;
 }
 
-reach::Services services(const Environment& environment) {
+coverage::reach::Services services(const Environment& environment) {
     const std::shared_ptr<platforms::Registry> registry = standard_registry();
     const auto desk = std::make_shared<std::optional<TallyDesk>>();   // made by the first tally
-    reach::Services s;
+    coverage::reach::Services s;
     // keep the registry alive as long as the function that reads it
-    s.identify_platform = [registry, identify = reach::identify_with(*registry)](const std::filesystem::path& p) { return identify(p); };
+    s.identify_platform = [registry, identify = coverage::reach::identify_with(*registry)](const std::filesystem::path& p) { return identify(p); };
     s.tally = [environment, desk](const std::filesystem::path& p) {
         if (!desk->has_value()) desk->emplace(environment);
         return (*desk)->tally(p);
@@ -103,6 +103,6 @@ reach::Services services(const Environment& environment) {
     return s;
 }
 
-cli::Command command(const Environment& environment) { return reach::command(services(environment)); }
+cli::Command command(const Environment& environment) { return coverage::reach::command(services(environment)); }
 
-}  // namespace cb::coverage::reach_command
+}  // namespace cb::app::reach_command

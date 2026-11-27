@@ -9,6 +9,7 @@
 namespace {
 
 using namespace cb;
+using namespace cb::store;
 using namespace cb::verify;
 namespace lc = cb::verify::lane_common;
 

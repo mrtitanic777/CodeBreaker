@@ -242,18 +242,18 @@ M68Tally m68_judge(const verify::lanes::ImageLane& lane, const verify::lanes::Im
             Bytes changed = bytes;
             changed[*at + k] ^= 0xFF;
             fs::write_file(edited, changed);
-            verify::Judgement j[2];
+            store::Judgement j[2];
             for (int core = 0; core < 2; ++core) {
                 M68Forced forced(core == 1);
                 const double start = cb::thread_cpu_seconds();
                 j[core] = lane.judge_function(false, file, edited, entry);
                 t.seconds[core] += (cb::thread_cpu_seconds() - start);
-                ++t.verdicts[core][j[core].verdict == verify::Verdict::Equivalent ? 0 : 1];
+                ++t.verdicts[core][j[core].verdict == store::Verdict::Equivalent ? 0 : 1];
             }
             ++t.judged;
             if (j[0].verdict != j[1].verdict && ++t.disagree <= 6)
-                std::printf("  %s: function %x byte +%zu: own core %s (%s), emulator %s (%s)\n", label, entry, k, std::string(verify::word(j[0].verdict)).c_str(), j[0].reason.c_str(),
-                            std::string(verify::word(j[1].verdict)).c_str(), j[1].reason.c_str());
+                std::printf("  %s: function %x byte +%zu: own core %s (%s), emulator %s (%s)\n", label, entry, k, std::string(store::word(j[0].verdict)).c_str(), j[0].reason.c_str(),
+                            std::string(store::word(j[1].verdict)).c_str(), j[1].reason.c_str());
         }
     }
     return t;

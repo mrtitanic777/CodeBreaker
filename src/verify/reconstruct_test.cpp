@@ -17,6 +17,7 @@
 //   * a run reports what it did in an `Outcome` (its `line()` is the one line printed).
 
 using namespace cb;
+using namespace cb::store;
 using namespace cb::verify;
 using namespace cb::verify::reconstruct;
 
@@ -66,14 +67,14 @@ public:
         }
         b.judge = [this](const std::string& n) {
             ++counters_.judged;
-            Judgement j;
+            store::Judgement j;
             if (n == "bad") {
-                j.verdict = Verdict::Divergent;
+                j.verdict = store::Verdict::Divergent;
                 j.reason = "ret-differs";
             } else if (n == "boom") {
                 throw std::runtime_error("the emulator fell over");
             } else {
-                j.verdict = Verdict::Equivalent;
+                j.verdict = store::Verdict::Equivalent;
                 j.reason = "every compared result alike";
             }
             return j;
@@ -90,7 +91,7 @@ private:
 
 struct Fixture {
     fs::ScopedTempDir tmp{"cb-reconstruct"};
-    engine::FunctionStore store{tmp.path() / "functions.sqlite", tmp.path() / "db"};
+    store::FunctionStore store{tmp.path() / "functions.sqlite", tmp.path() / "db"};
     Kinds kinds;
     Module module;
     Counters counters;
@@ -112,7 +113,7 @@ struct Fixture {
         s.log = [this](std::string_view line) { log.emplace_back(line); };
         rec.emplace(std::move(s));
     }
-    std::map<std::string, engine::Best> best() { return store.best("sha-of-the-module", "d1"); }
+    std::map<std::string, store::Best> best() { return store.best("sha-of-the-module", "d1"); }
 };
 
 }  // namespace
@@ -340,7 +341,7 @@ CB_TEST("verify.reconstruct.a_run_told_to_stop_leaves_by_stopped_and_records_not
 
 CB_TEST("verify.reconstruct.a_per_function_kind_keeps_the_verdict_when_the_code_is_the_same", [] {
     fs::ScopedTempDir tmp("cb-reconstruct");
-    engine::FunctionStore store(tmp.path() / "functions.sqlite", tmp.path() / "db");
+    store::FunctionStore store(tmp.path() / "functions.sqlite", tmp.path() / "db");
     Module module{{"a", "b"}, {{"a", "int a(void) { return 1; }"}, {"b", "int b(void) { return 2; }"}}};
     Counters counters;
     Kinds kinds;
@@ -405,7 +406,7 @@ CB_TEST("verify.reconstruct.a_lane_whose_tools_are_missing_has_no_digest", [] {
         lanes::Built build(const lanes::Prepared&, const std::filesystem::path&, const std::filesystem::path&) const override { return {}; }
     };
     fs::ScopedTempDir tmp("cb-reconstruct");
-    engine::FunctionStore store(tmp.path() / "functions.sqlite", tmp.path() / "db");
+    store::FunctionStore store(tmp.path() / "functions.sqlite", tmp.path() / "db");
     Kinds kinds;
     kinds.add(std::make_shared<NoTools>());
     Services s{.kinds = kinds, .store = store};

@@ -12,7 +12,7 @@
 #include <string_view>
 
 #include "base/converted.hpp"
-#include "engine/function_store.hpp"
+#include "store/function_store.hpp"
 #include "engine/lane_kit.hpp"
 #include "source/pipeline.hpp"
 #include "verify/reconstruct.hpp"
@@ -30,7 +30,7 @@ public:
     engine::LaneKit& kit() { return kit_; }
     base::Corpus& corpus() { return kit_.corpus(); }
     // The function store of the state folder, opened for writing.
-    engine::FunctionStore& store();
+    store::FunctionStore& store();
     // The lanes the kit can make, and the reconstructor over them and the store.
     const verify::reconstruct::Kinds& kinds();
     const verify::reconstruct::Reconstructor& reconstructor();
@@ -46,7 +46,7 @@ public:
 private:
     config::Config config_;
     engine::LaneKit kit_;
-    std::unique_ptr<engine::FunctionStore> store_;
+    std::unique_ptr<store::FunctionStore> store_;
     std::optional<verify::reconstruct::Kinds> kinds_;
     std::unique_ptr<verify::reconstruct::Reconstructor> reconstructor_;
 };

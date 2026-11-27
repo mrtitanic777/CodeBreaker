@@ -46,9 +46,9 @@ std::string_view prefix_bytes(std::string_view s, std::size_t n) {
 Summary summarise(std::span<const Row> rows) {
     Tally why, bad;
     for (const Row& r : rows) {
-        if (r.verdict == Verdict::Divergent)
+        if (r.verdict == store::Verdict::Divergent)
             why.add(r.reason.empty() ? "(no reason given)" : r.reason);
-        if (r.verdict == Verdict::NoCompile)
+        if (r.verdict == store::Verdict::NoCompile)
             bad.add(std::string(prefix_bytes(r.reason, kCauseKeyLength)));
     }
     return {why.most_common(), bad.most_common(kCompileCausesShown)};

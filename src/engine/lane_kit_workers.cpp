@@ -58,7 +58,7 @@ int kit_judge_share(const jobs::Args& args) {
         }
         mine.push_back(name);
         jobs::TokenWriter& out = body;
-        verify::Judgement j = verify::not_run();
+        store::Judgement j = store::not_run();
         if (have.contains(name)) {
             try {
                 j = built.judge(name);
@@ -66,8 +66,8 @@ int kit_judge_share(const jobs::Args& args) {
                 log::warn(std::format("worker: judging {} failed: {}", name, e.what()));
             }
         }
-        if (trace) std::fprintf(stderr, "judge share: %s %s at %.2f s\n", name.c_str(), std::string(verify::word(j.verdict)).c_str(), since());
-        out.text(name).text(verify::word(j.verdict)).text(j.reason).integer(static_cast<std::int64_t>(j.limits.size()));
+        if (trace) std::fprintf(stderr, "judge share: %s %s at %.2f s\n", name.c_str(), std::string(store::word(j.verdict)).c_str(), since());
+        out.text(name).text(store::word(j.verdict)).text(j.reason).integer(static_cast<std::int64_t>(j.limits.size()));
         for (const std::string& limit : j.limits) out.text(limit);
         out.text(j.detail);
     }
@@ -130,7 +130,7 @@ void LaneKit::register_worker_kinds(jobs::WorkerKinds& kinds) {
 
 void LaneKit::set_worker_launcher(jobs::WorkerLauncher launcher) { impl_->launcher = std::move(launcher); }
 
-std::optional<std::map<std::string, verify::Judgement>> LaneKit::judge_apart(const verify::reconstruct::Services::JudgeBatch& batch) {
+std::optional<std::map<std::string, store::Judgement>> LaneKit::judge_apart(const verify::reconstruct::Services::JudgeBatch& batch) {
     if (!impl_->launcher || !impl_->launcher->enabled()) return std::nullopt;
     // Only the lanes that run Unicorn have a lock to get round; the real-mode and cartridge lanes compare images or run CodeBreaker's own interpreters
     // (cheap, and a worker would assemble the whole program again for nothing).
@@ -162,7 +162,7 @@ std::optional<std::map<std::string, verify::Judgement>> LaneKit::judge_apart(con
         });
     }
     // The parent judges too, from the build it already has (the workers are still making theirs), taking names from the same claims.
-    std::map<std::string, verify::Judgement> out;
+    std::map<std::string, store::Judgement> out;
     for (std::size_t i = 0; i < batch.names.size(); ++i) {
         std::error_code ec;
         if (!stdfs::create_directory(claims / std::to_string(i), ec)) continue;
@@ -170,7 +170,7 @@ std::optional<std::map<std::string, verify::Judgement>> LaneKit::judge_apart(con
             out.emplace(batch.names[i], batch.built.judge(batch.names[i]));
         } catch (const std::exception& e) {   // isolation boundary: one function
             log::warn(std::format("reconstruct: judging {} failed: {}", batch.names[i], e.what()));
-            out.emplace(batch.names[i], verify::not_run());
+            out.emplace(batch.names[i], store::not_run());
         }
     }
     for (std::thread& t : running) t.join();
@@ -180,8 +180,8 @@ std::optional<std::map<std::string, verify::Judgement>> LaneKit::judge_apart(con
             jobs::TokenReader answer(hand.read("out" + std::to_string(s) + ".txt"));
             for (std::int64_t n = answer.integer(); n > 0; --n) {
                 const std::string name = answer.text();
-                verify::Judgement j;
-                j.verdict = verify::parse_verdict(answer.text()).value_or(verify::Verdict::Inconclusive);
+                store::Judgement j;
+                j.verdict = store::parse_verdict(answer.text()).value_or(store::Verdict::Inconclusive);
                 j.reason = answer.text();
                 for (std::int64_t k = answer.integer(); k > 0; --k) j.limits.push_back(answer.text());
                 j.detail = answer.text();

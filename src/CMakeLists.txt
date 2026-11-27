@@ -582,7 +582,7 @@ add_executable(cb_regress EXCLUDE_FROM_ALL verify/regress_main.cpp)
 cb_apply_flags(cb_regress)
 target_link_libraries(cb_regress PRIVATE cb_verify cb_engine cb_core)
 cb_copy_prebuilt_dlls(cb_regress)
-# analyze_run: `analyze` of store/analyze_command on a command line, to compare its report with the Python's (store/analyze_main.cpp). Not built by default.
+# analyze_run: `analyze` of app/analyze_command on a command line, to compare its report with the Python's (store/analyze_main.cpp). Not built by default.
 add_executable(cb_analyze_run EXCLUDE_FROM_ALL store/analyze_main.cpp)
 cb_apply_flags(cb_analyze_run)
 target_link_libraries(cb_analyze_run PRIVATE cb_store cb_engine cb_analyze cb_core)

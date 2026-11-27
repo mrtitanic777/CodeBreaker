@@ -12,7 +12,7 @@
 #include "core/json.hpp"
 #include "core/text.hpp"
 #include "symbols/demangle.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 #include "ui/mcp_impl.hpp"
 
 namespace cb::ui::mcp {
@@ -571,8 +571,8 @@ Json Server::Impl::function(const Json& a) {
                         for (const char* k : {"profile", "verdict", "reason", "limits"}) v[k] = member(verdicts[i], k);
                         // what the earlier verdict amounts to, in the one vocabulary (a client shows it, it does not work it out)
                         const Json word = member(verdicts[i], "verdict"), limits = member(verdicts[i], "limits");
-                        v["class"] = std::string(verify::word(verify::classify(
-                            word.is_string() ? verify::parse_verdict(word.get<std::string>()) : std::nullopt,
+                        v["class"] = std::string(store::word(store::classify(
+                            word.is_string() ? store::parse_verdict(word.get<std::string>()) : std::nullopt,
                             limits.is_string() ? limits.get<std::string>() : std::string()).cls));
                         older.push_back(std::move(v));
                     }

@@ -104,11 +104,11 @@ struct DriverBreak {
 
 // What self_check found.
 struct DriverSelfCheck {
-    std::vector<std::pair<Verdict, std::size_t>> self;            // verdict -> count, in the order first met
+    std::vector<std::pair<store::Verdict, std::size_t>> self;            // verdict -> count, in the order first met
     std::size_t broken = 0, caught = 0;
     struct Missed {
         std::string label, instruction;
-        Verdict verdict = Verdict::Inconclusive;
+        store::Verdict verdict = store::Verdict::Inconclusive;
     };
     std::vector<Missed> missed;
 };
@@ -191,9 +191,9 @@ public:
     bool concolic_ready() const;
 
     // Judge one entry point of `original` in `rebuilt`.
-    Judgement judge_entry(const std::filesystem::path& original, const std::filesystem::path& rebuilt, std::string_view label) const;
+    store::Judgement judge_entry(const std::filesystem::path& original, const std::filesystem::path& rebuilt, std::string_view label) const;
     // Judge every entry point of `original` (or those in `labels`) in `rebuilt`, in entry order.
-    std::vector<std::pair<std::string, Judgement>> judge_files(const std::filesystem::path& rebuilt, const std::filesystem::path& original,
+    std::vector<std::pair<std::string, store::Judgement>> judge_files(const std::filesystem::path& rebuilt, const std::filesystem::path& original,
                                                                const std::vector<std::string>& labels = {}) const;
 
     // Where the assembly source of a corpus driver is: <sources>/<name>/, with <sources> from CB_DRIVER_SOURCES, else the lane's source

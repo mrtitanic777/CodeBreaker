@@ -97,9 +97,9 @@ CB_TEST("engine.machine_ps3.an_elf_comes_back_identical_and_an_edit_diverges", [
     CB_CHECK(image.written.linked && image.written.same);
     CB_CHECK_EQ(image.written.functions.size(), 2u);
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     fs::write_file(dir.path() / "edited.elf", elf(0xF8640010));   // std r3,16(r4)
-    CB_CHECK(lane.judge_function(false, original, original, 0x20).verdict == verify::Verdict::Equivalent);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.elf", 0x20).verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, 0x20).verdict == store::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.elf", 0x20).verdict == store::Verdict::Divergent);
 });

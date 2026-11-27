@@ -136,7 +136,7 @@ public:
     static std::pair<std::vector<Vector>, std::shared_ptr<concolic::Stats>> explore(const Context& context, std::uint32_t va, Span span,
                                                                                     std::span<const Vector> seeds);
     // The verdict of one function. Safe to call from several threads at once.
-    static Judgement judge_function(const Context& context, const Item& item);
+    static store::Judgement judge_function(const Context& context, const Item& item);
 
     // ---- the kind ----------------------------------------------------------------------------------------------------------
 

@@ -21,7 +21,7 @@ AnsweringFor::AnsweringFor(std::string_view owner) : before_(std::move(t_answeri
 AnsweringFor::~AnsweringFor() { t_answering_for = std::move(before_); }
 const std::string& AnsweringFor::current() { return t_answering_for; }
 
-using verify::Class;
+using store::Class;
 
 namespace {
 
@@ -42,7 +42,7 @@ std::optional<int> coverage_of(std::string_view limits) {
     return std::nullopt;
 }
 
-FunctionRow row_of(const std::optional<engine::Best>& best, const std::string& addr, const std::function<std::string(const engine::Best&)>& describe_best) {
+FunctionRow row_of(const std::optional<store::Best>& best, const std::string& addr, const std::function<std::string(const store::Best&)>& describe_best) {
     FunctionRow r;
     r.addr = addr;
     if (!best) {
@@ -62,8 +62,8 @@ Json row_json(const FunctionRow& r) {
     Json o = Json::object();
     o["addr"] = r.addr;
     o["name"] = r.name;
-    o["class"] = std::string(verify::word(r.cls));
-    o["title"] = std::string(verify::title(r.cls));
+    o["class"] = std::string(store::word(r.cls));
+    o["title"] = std::string(store::title(r.cls));
     o["why"] = r.why;
     o["engine"] = r.engine;
     o["has_source"] = r.has_source;
@@ -76,8 +76,8 @@ Json row_json(const FunctionRow& r) {
         o["rev"] = r.rev.value_or("");
         o["problem"] = r.problem.value_or("");
         Json weak = Json::array();
-        for (const verify::WeakLimit l : r.weak)
-            weak.push_back(Json{{"code", std::string(verify::word(l))}, {"text", std::string(verify::explanation(l))}});
+        for (const store::WeakLimit l : r.weak)
+            weak.push_back(Json{{"code", std::string(store::word(l))}, {"text", std::string(store::explanation(l))}});
         o["weak"] = std::move(weak);
     }
     return o;
@@ -143,18 +143,18 @@ std::optional<std::string> optional_text(const Json& args, std::string_view key)
 
 }  // namespace
 
-std::string describe(const engine::Best& best) {
-    const engine::Candidate& c = best.candidate;
+std::string describe(const store::Best& best) {
+    const store::Candidate& c = best.candidate;
     const std::optional<int> cov = coverage_of(c.limits);
     switch (best.cls) {
     case Class::Verified:
         return cov ? std::format("{}% of it exercised", *cov) : std::string();
     case Class::Weak: {
         std::string out;
-        for (const verify::WeakLimit l : best.weak) {
+        for (const store::WeakLimit l : best.weak) {
             if (!out.empty())
                 out += "; ";
-            out += verify::explanation(l);
+            out += store::explanation(l);
         }
         if (cov)
             out += std::format(" ({}% ran)", *cov);
@@ -211,7 +211,7 @@ Json to_json(const FunctionsAnswer& a) {
         Json rows = Json::array();
         for (const auto& [text_of, n] : why)
             rows.push_back(Json::array({text_of, n}));
-        reasons[std::string(verify::word(cls))] = std::move(rows);
+        reasons[std::string(store::word(cls))] = std::move(rows);
     }
     o["reasons"] = std::move(reasons);
     if (a.function)
@@ -231,22 +231,22 @@ Service::Service(Environment environment) : env_(std::move(environment)) {
         return a ? to_json(*a) : Json(nullptr);
     });
     add_call("store.overview", [this](const Json&, std::string_view) {
-        engine::FunctionStore store(env_.ledger.store_index, env_.ledger.store_folder, true);
+        store::FunctionStore store(env_.ledger.store_index, env_.ledger.store_folder, true);
         Json out = Json::array();
-        for (const engine::Overview& o : store.overview()) {
+        for (const store::Overview& o : store.overview()) {
             Json latest = Json::object();
             for (const auto& [cls, n] : o.latest)
-                latest[std::string(verify::word(cls))] = n;
+                latest[std::string(store::word(cls))] = n;
             out.push_back(Json{{"sha", o.sha}, {"name", o.name}, {"kind", o.kind}, {"path", o.path},
                                {"functions", o.functions}, {"identified", o.identified}, {"latest", std::move(latest)}});
         }
         return out;
     });
     add_call("store.latest", [this](const Json& args, std::string_view) {
-        engine::FunctionStore store(env_.ledger.store_index, env_.ledger.store_folder, true);
+        store::FunctionStore store(env_.ledger.store_index, env_.ledger.store_folder, true);
         Json out = Json::object();
         for (const auto& [addr, cls] : store.latest(required_text(args, "module_sha")))
-            out[addr] = std::string(verify::word(cls));
+            out[addr] = std::string(store::word(cls));
         return out;
     });
     add_call("cli", [this](const Json& args, std::string_view) {
@@ -300,7 +300,7 @@ Json Service::answer_call(const Json& body) {
 }
 
 std::optional<std::filesystem::path> Service::stored_path(std::string_view name) const {
-    engine::FunctionStore store(env_.ledger.store_index, env_.ledger.store_folder, true);
+    store::FunctionStore store(env_.ledger.store_index, env_.ledger.store_folder, true);
     const std::optional<std::string> p = store.module_path(name);
     if (!p || p->empty())
         return std::nullopt;
@@ -340,7 +340,7 @@ JobView Service::start(std::string_view action, std::string_view module, std::st
 }
 
 std::optional<FunctionsAnswer> Service::functions(std::string_view module, const std::optional<std::string>& addr) {
-    engine::FunctionStore store(env_.ledger.store_index, env_.ledger.store_folder, true);
+    store::FunctionStore store(env_.ledger.store_index, env_.ledger.store_folder, true);
     coverage::ledger::Ledger ledger(env_.ledger, &store);
     const coverage::ledger::Report report = ledger.measure(module);
     if (report.modules.empty())
@@ -356,27 +356,27 @@ std::optional<FunctionsAnswer> Service::functions(std::string_view module, const
     out.in_store = m.in_store;
     out.measured = m.measured;
     out.counts = {{"functions", m.functions}, {"decompiled", m.decompiled}, {"compiled", m.compiled}};
-    for (const Class c : verify::kClassOrder) {
+    for (const Class c : store::kClassOrder) {
         const auto n = m.classes.find(c);
-        out.counts.emplace_back(std::string(verify::word(c)), n == m.classes.end() ? 0 : n->second);
+        out.counts.emplace_back(std::string(store::word(c)), n == m.classes.end() ? 0 : n->second);
     }
     out.counts.insert(out.counts.end(),
                       {{"code_bytes", m.code_bytes}, {"bytes_known", m.bytes_known}, {"bytes_verified", m.bytes_verified}, {"bytes_weak", m.bytes_weak}});
     if (!m.in_store)
         return out;
 
-    std::map<std::string, engine::Best> best;
+    std::map<std::string, store::Best> best;
     if (out.profile && !out.profile->empty())
         best = store.best(out.sha, *out.profile);
-    const auto best_of = [&](const std::string& a) -> std::optional<engine::Best> {
+    const auto best_of = [&](const std::string& a) -> std::optional<store::Best> {
         const auto it = best.find(a);
-        return it == best.end() ? std::nullopt : std::optional<engine::Best>(it->second);
+        return it == best.end() ? std::nullopt : std::optional<store::Best>(it->second);
     };
     if (addr) {
-        const std::optional<engine::Best> b = best_of(*addr);
+        const std::optional<store::Best> b = best_of(*addr);
         FunctionRow one = row_of(b, *addr, env_.describe_best);
         if (b) {
-            const engine::Candidate& c = b->candidate;
+            const store::Candidate& c = b->candidate;
             one.detailed = true;
             one.source = c.source.value_or("");
             one.verdict = c.verdict;
@@ -385,7 +385,7 @@ std::optional<FunctionsAnswer> Service::functions(std::string_view module, const
             one.detail = c.detail;
             one.rev = c.rev.value_or("");
             one.problem = c.problem.value_or("");
-            for (const verify::WeakLimit l : b->weak)
+            for (const store::WeakLimit l : b->weak)
                 one.weak.push_back(l);
         }
         out.function = std::move(one);

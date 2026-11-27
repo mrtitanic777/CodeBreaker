@@ -26,8 +26,8 @@ World::World(const Environment& environment) : config_(environment.config), kit_
 
 World::~World() = default;
 
-engine::FunctionStore& World::store() {
-    if (!store_) store_ = std::make_unique<engine::FunctionStore>(config_.state("functions.sqlite"), config_.state("db"));
+store::FunctionStore& World::store() {
+    if (!store_) store_ = std::make_unique<store::FunctionStore>(config_.state("functions.sqlite"), config_.state("db"));
     return *store_;
 }
 
@@ -115,11 +115,11 @@ Judging judge_in(World& world, const stdfs::path& program, const JudgeSteps& ste
         services.stop = steps.stop;
         out.outcome = verify::reconstruct::Reconstructor(std::move(services)).run(program);
     }
-    for (const engine::Candidate& c : world.store().candidates(out.outcome.sha, out.outcome.profile)) {
+    for (const store::Candidate& c : world.store().candidates(out.outcome.sha, out.outcome.profile)) {
         JudgedFunction f;
         f.key = c.addr;
         f.name = c.name.value_or(std::string());
-        if (c.verdict) f.verdict = verify::parse_verdict(*c.verdict);
+        if (c.verdict) f.verdict = store::parse_verdict(*c.verdict);
         f.classification = c.classification();
         f.reason = c.reason;
         out.functions.push_back(std::move(f));

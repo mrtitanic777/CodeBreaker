@@ -5,15 +5,15 @@
 #include "core/fs.hpp"
 #include "core/log.hpp"
 #include "core/testing.hpp"
-#include "engine/function_store.hpp"
+#include "store/function_store.hpp"
 
 // A module the size of a big program: 20,000 functions recorded in one call, then read back. The time is printed so a
 // slowdown shows up in a run; the check only guards against a store that takes minutes.
-CB_TEST("engine.function_store.a_big_module_is_recorded_and_read_in_seconds", [] {
+CB_TEST("store.function_store.a_big_module_is_recorded_and_read_in_seconds", [] {
     using namespace cb;
-    using cb::engine::Record;
+    using cb::store::Record;
     fs::ScopedTempDir tmp("function-store-scale");
-    engine::FunctionStore store(tmp.path() / "functions.sqlite", tmp.path() / "db");
+    store::FunctionStore store(tmp.path() / "functions.sqlite", tmp.path() / "db");
     store.add_module("big", "big.dll", "", "pe");
     std::vector<Record> rows;
     for (int i = 0; i < 20000; ++i) {
@@ -32,8 +32,8 @@ CB_TEST("engine.function_store.a_big_module_is_recorded_and_read_in_seconds", []
     const auto tally = store.tally("p", "big");
     const auto t2 = std::chrono::steady_clock::now();
     CB_CHECK_EQ(best.size(), 20000u);
-    CB_CHECK_EQ(tally.at(verify::Class::Verified), 16000);
-    CB_CHECK_EQ(tally.at(verify::Class::Unverified), 4000);
+    CB_CHECK_EQ(tally.at(store::Class::Verified), 16000);
+    CB_CHECK_EQ(tally.at(store::Class::Unverified), 4000);
     CB_CHECK_EQ(store.summaries().at("big").judged, 20000);
     const double write_s = std::chrono::duration<double>(t1 - t0).count(), read_s = std::chrono::duration<double>(t2 - t1).count();
     err("function store, 20,000 functions: record_many {:.2f} s, best + tally {:.2f} s\n", write_s, read_s);

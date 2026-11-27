@@ -4299,8 +4299,8 @@ Model ww_model_for(const std::string& state, bool dark, const std::string& board
         if (state == "checknone")
             for (convert::FunctionRecord& f : m.functions) f.verdict = convert::FunctionVerdict::NotChecked;
         if (state == "functions-judged") {   // after Convert's judging stage: each function's class (convert_judge.hpp)
-            const verify::Class classes[] = {verify::Class::Verified, verify::Class::Weak, verify::Class::Verified, verify::Class::NoCompile, verify::Class::Unverified,
-                                             verify::Class::Verified, verify::Class::NoSource, verify::Class::Weak, verify::Class::NotJudged};
+            const store::Class classes[] = {store::Class::Verified, store::Class::Weak, store::Class::Verified, store::Class::NoCompile, store::Class::Unverified,
+                                             store::Class::Verified, store::Class::NoSource, store::Class::Weak, store::Class::NotJudged};
             for (std::size_t i = 0; i < m.functions.size(); ++i) {
                 m.functions[i].judged = classes[i % std::size(classes)];
                 m.functions[i].verdict = convert::verdict_of(*m.functions[i].judged);

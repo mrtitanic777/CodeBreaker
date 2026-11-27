@@ -8,7 +8,7 @@
 namespace {
 namespace sb = cb::verify::gate16::scoreboard16;
 namespace m16 = cb::verify::authored::match16;
-using cb::verify::ByteMatch;
+using cb::store::ByteMatch;
 
 sb::Masked masked(std::initializer_list<std::uint8_t> code, std::initializer_list<std::uint8_t> mask = {}) {
     sb::Masked m;

@@ -24,7 +24,7 @@
 #include <string_view>
 #include <vector>
 
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::verify::authored::search16 {
 
@@ -32,7 +32,7 @@ using Rng = std::mt19937_64;
 
 // How near a rewritten function's bytes are to the original's.
 struct ByteVerdict {
-    ByteMatch match = ByteMatch::NoCompile;
+    store::ByteMatch match = store::ByteMatch::NoCompile;
     std::size_t differing = 0;   // bytes that differ
     std::size_t total = 0;       // bytes compared
 };

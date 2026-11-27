@@ -82,7 +82,7 @@ struct Row {
     std::optional<std::uint32_t> segment;
     std::size_t original = 0;                                     // the original's length, padding aside
     std::optional<std::size_t> msc8;                              // Microsoft C 8's, nullopt where it did not compile
-    ByteMatch msc8_vs_original = ByteMatch::NoCompile;
+    store::ByteMatch msc8_vs_original = store::ByteMatch::NoCompile;
     std::size_t msc8_bytes_off = 0;
     std::optional<std::size_t> watcom;
     Agreement watcom_vs_msc8 = Agreement::NotApplicable;

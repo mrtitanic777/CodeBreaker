@@ -48,18 +48,18 @@ CB_TEST("engine.machine_atari5200.a_cartridge_comes_back_identical_and_an_edit_d
     CB_CHECK(image.written.linked && image.written.same);
     CB_CHECK_EQ(image.written.functions.size(), 2u);
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     Bytes edited = a5200_program();
     edited[0x27] = 0x81;   // STA $81 instead of $80: another RAM byte changes
     fs::write_file(dir.path() / "edited.a52", edited);
-    CB_CHECK(lane.judge_function(false, original, original, 0x8020).verdict == verify::Verdict::Equivalent);
-    const verify::Judgement j = lane.judge_function(false, original, dir.path() / "edited.a52", 0x8020);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, 0x8020).verdict == store::Verdict::Equivalent);
+    const store::Judgement j = lane.judge_function(false, original, dir.path() / "edited.a52", 0x8020);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     CB_CHECK(!j.reason.empty());
 
     Bytes colour = a5200_program();
     colour[3] = 0x0F;   // another background colour written to COLBK
     fs::write_file(dir.path() / "colour.a52", colour);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "colour.a52", 0x8020).verdict == verify::Verdict::Equivalent);   // (the subroutine is as it was)
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "colour.a52", 0x8020).verdict == store::Verdict::Equivalent);   // (the subroutine is as it was)
 });

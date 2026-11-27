@@ -27,7 +27,7 @@
 #include <vector>
 
 #include "core/cli.hpp"
-#include "engine/function_store.hpp"
+#include "store/function_store.hpp"
 #include "verify/reconstruct.hpp"
 
 namespace cb::verify::sweep {
@@ -48,7 +48,7 @@ std::set<std::string> wanted_names(std::string_view only);
 
 struct Services {
     const reconstruct::Reconstructor& reconstruct;
-    engine::FunctionStore& store;
+    store::FunctionStore& store;
     // The modules of a kind, in the order to sweep them (smallest first): "pe", "ne", "le" (drivers), "dos" (programs).
     std::function<std::vector<std::filesystem::path>(std::string_view kind)> modules;
     // Why nothing could be built here (OpenWatcom is not set up), or nullopt when the tools are there.

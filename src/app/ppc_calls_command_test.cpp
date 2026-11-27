@@ -13,7 +13,7 @@
 
 using namespace cb;
 
-CB_TEST("analyze.ppc_calls_command.a_module_is_analysed_as_recorded", [] {
+CB_TEST("app.ppc_calls_command.a_module_is_analysed_as_recorded", [] {
     const fs::ScopedTempDir dir{"cb-ppc-calls"};
     const auto module = testing::game_file("LoganMinecraftTest/LoganMinecraftTest.xex");
     const formats::xex::Tools tools{dir.path() / "unpacked"};
@@ -39,7 +39,7 @@ CB_TEST("analyze.ppc_calls_command.a_module_is_analysed_as_recorded", [] {
     }
 });
 
-CB_TEST("analyze.ppc_calls_command.a_file_that_is_not_an_image_is_an_error", [] {
+CB_TEST("app.ppc_calls_command.a_file_that_is_not_an_image_is_an_error", [] {
     const fs::ScopedTempDir dir{"cb-ppc-calls"};
     const std::filesystem::path junk = dir.path() / "junk.bin";
     fs::write_file(junk, Bytes(64, 0x41));

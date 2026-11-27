@@ -19,8 +19,8 @@ std::string render_text(std::int64_t n) { return std::to_string(n); }
 // The cells every counted row shows: the three counts, each class, and the share verified.
 std::vector<std::string> render_count_cells(const Counts& r) {
     std::vector<std::string> out = {render_text(r.functions), render_text(r.decompiled), render_text(r.compiled)};
-    for (verify::Class c : verify::kClassOrder) out.push_back(render_text(r.classes.at(c)));
-    out.push_back(percent(r.classes.at(verify::Class::Verified), r.functions));
+    for (store::Class c : store::kClassOrder) out.push_back(render_text(r.classes.at(c)));
+    out.push_back(percent(r.classes.at(store::Class::Verified), r.functions));
     return out;
 }
 
@@ -31,7 +31,7 @@ std::vector<std::string> render_joined(std::vector<std::string> a, const std::ve
 
 std::vector<std::string> render_class_titles() {
     std::vector<std::string> out = {"functions", "decompiled", "compiled"};
-    for (verify::Class c : verify::kClassOrder) out.emplace_back(verify::title(c));
+    for (store::Class c : store::kClassOrder) out.emplace_back(store::title(c));
     out.emplace_back("verified %");
     return out;
 }
@@ -39,7 +39,7 @@ std::vector<std::string> render_class_titles() {
 // The counts of a row under the names the CSV and JSON give them, in the order the ledger lists them.
 std::vector<std::pair<std::string, std::int64_t>> render_named_counts(const Counts& c) {
     std::vector<std::pair<std::string, std::int64_t>> out = {{"functions", c.functions}, {"decompiled", c.decompiled}, {"compiled", c.compiled}};
-    for (verify::Class cls : verify::kClassOrder) out.emplace_back(std::string(verify::word(cls)), c.classes.at(cls));
+    for (store::Class cls : store::kClassOrder) out.emplace_back(std::string(store::word(cls)), c.classes.at(cls));
     out.emplace_back("code_bytes", c.code_bytes);
     out.emplace_back("bytes_known", c.bytes_known);
     out.emplace_back("bytes_verified", c.bytes_verified);
@@ -211,7 +211,7 @@ std::vector<std::string> describe_row(const Row& r, const Report& report, const 
     add("functions", r.functions);
     add("decompiled", r.decompiled);
     add("compiled", r.compiled);
-    for (verify::Class c : verify::kClassOrder) add(std::string(verify::title(c)), r.classes.at(c));
+    for (store::Class c : store::kClassOrder) add(std::string(store::title(c)), r.classes.at(c));
     for (std::string& l : table({"", "functions", "share"}, rows)) out.push_back(std::move(l));
     const auto share = [&](std::int64_t n) { return std::string(text::trim(percent(n, r.code_bytes))); };
     out.push_back(std::format("code bytes {}; in known functions {} ({}); in VERIFIED {} ({}); in VERIFIED (weak) {} ({})", r.code_bytes,
@@ -220,7 +220,7 @@ std::vector<std::string> describe_row(const Row& r, const Report& report, const 
     const auto profile = report.profiles.find(r.kind);
     if (r.in_store && r.sha && profile != report.profiles.end() && profile->second && !profile->second->empty()) {
         for (const auto& [cls, found] : ledger.reasons(*r.sha, *profile->second)) {
-            out.push_back(std::format("{}, by cause:", verify::title(cls)));
+            out.push_back(std::format("{}, by cause:", store::title(cls)));
             for (const auto& [why, n] : found) out.push_back(std::format("  {:>5}  {}", n, why));
         }
     }
@@ -240,9 +240,9 @@ cli::Command command(const Services& services) {
     };
     c.handler = [services](const cli::Args& a) {
         std::error_code ec;
-        std::unique_ptr<engine::FunctionStore> store;
+        std::unique_ptr<store::FunctionStore> store;
         if (std::filesystem::exists(services.store_index, ec)) {
-            store = std::make_unique<engine::FunctionStore>(services.store_index, services.store_folder, /*readonly*/ true);
+            store = std::make_unique<store::FunctionStore>(services.store_index, services.store_folder, /*readonly*/ true);
         } else {
             out("there is no function store yet ({}): nothing has been reconstructed; the corpus is listed alone\n",
                 fs::to_text(services.store_index));

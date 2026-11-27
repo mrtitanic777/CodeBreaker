@@ -631,7 +631,7 @@ Built DriverLane::build(const Prepared& prepared, const stdfs::path& module_path
 
 // ---- judging an entry point ----------------------------------------------------------------------------------------------------------
 
-Judgement DriverLane::judge_entry(const stdfs::path& original, const stdfs::path& rebuilt, std::string_view label_view) const {
+store::Judgement DriverLane::judge_entry(const stdfs::path& original, const stdfs::path& rebuilt, std::string_view label_view) const {
     const std::string label(label_view);
     using Said = lane_common::Judgement;
     const Said made = lane_common::judged([&]() -> Said {
@@ -639,9 +639,9 @@ Judgement DriverLane::judge_entry(const stdfs::path& original, const stdfs::path
         a = image(original);
         b = image(rebuilt);
         const auto entry_a = a->entries.find(label);
-        if (entry_a == nullptr) return Said{Verdict::Inconclusive, "the original has no such entry point", {}, {}};
+        if (entry_a == nullptr) return Said{store::Verdict::Inconclusive, "the original has no such entry point", {}, {}};
         const auto entry_b = b->entries.find(label);
-        if (entry_b == nullptr) return Said{Verdict::Divergent, "entry-missing", {}, std::format("the rebuilt driver has no {}", label)};
+        if (entry_b == nullptr) return Said{store::Verdict::Divergent, "entry-missing", {}, std::format("the rebuilt driver has no {}", label)};
         const bool aligned = a->shape == b->shape;
         const DriverInputs in = inputs(label);
         std::set<std::int64_t> ran;                       // the original's instructions that ran
@@ -670,37 +670,37 @@ Judgement DriverLane::judge_entry(const stdfs::path& original, const stdfs::path
         j.verdict = outcome.verdict;
         j.reason = outcome.reason;
         j.limits = outcome.limit_codes();
-        if (outcome.verdict != Verdict::Divergent) {
+        if (outcome.verdict != store::Verdict::Divergent) {
             const std::vector<std::string> paths = lane_common::path_limits(found.get());
             j.limits.insert(j.limits.end(), paths.begin(), paths.end());
         }
         if (!aligned) j.limits.push_back("layout-differs");
         j.detail = outcome.detail;
-        if (outcome.verdict == Verdict::Divergent && outcome.reason == "writes-differ" && last_b) {
+        if (outcome.verdict == store::Verdict::Divergent && outcome.reason == "writes-differ" && last_b) {
             const auto [fa, da] = run_detailed(*a, *entry_a, *last_b, aligned);
             const auto [fb, db] = run_detailed(*b, *entry_b, *last_b, aligned);
             const std::string said = explain(fa, da, fb, db);
             const std::size_t at = outcome.detail.find("  [input");
             j.detail = at == std::string::npos ? said : said + outcome.detail.substr(at);
         }
-        if (outcome.verdict != Verdict::Divergent) j.detail = std::format("{} instructions of the original ran", ran.size());
+        if (outcome.verdict != store::Verdict::Divergent) j.detail = std::format("{} instructions of the original ran", ran.size());
         return j;
     });
-    return Judgement{made.verdict, made.reason, made.limits, made.detail};
+    return store::Judgement{made.verdict, made.reason, made.limits, made.detail};
 }
 
-std::vector<std::pair<std::string, Judgement>> DriverLane::judge_files(const stdfs::path& rebuilt, const stdfs::path& original,
+std::vector<std::pair<std::string, store::Judgement>> DriverLane::judge_files(const stdfs::path& rebuilt, const stdfs::path& original,
                                                                        const std::vector<std::string>& labels) const {
     const std::shared_ptr<const edrv::Image> a = image(original);
     std::vector<std::string> order;
     for (const auto& [label, at] : a->entries)
         if (labels.empty() || std::find(labels.begin(), labels.end(), label) != labels.end()) order.push_back(label);
     std::stable_sort(order.begin(), order.end(), [](const std::string& x, const std::string& y) { return driver_entry_before(x, y); });
-    jobs::RunOptions<std::string, Judgement> options;
-    options.crashed = [](const std::string&) { return Judgement{Verdict::Inconclusive, "judge: the emulator crashed on this entry point", {}, {}}; };
+    jobs::RunOptions<std::string, store::Judgement> options;
+    options.crashed = [](const std::string&) { return store::Judgement{store::Verdict::Inconclusive, "judge: the emulator crashed on this entry point", {}, {}}; };
     const auto got = jobs::run(
         order, [&](const std::string& label) { return judge_entry(original, rebuilt, label); }, [](const std::string& label) { return label; }, options);
-    std::vector<std::pair<std::string, Judgement>> out;
+    std::vector<std::pair<std::string, store::Judgement>> out;
     for (const std::string& label : order) out.emplace_back(label, got.at(label));
     return out;
 }
@@ -777,7 +777,7 @@ DriverSelfCheck DriverLane::self_check(const stdfs::path& original, const std::o
     }
     std::vector<std::string> good;
     for (const auto& [label, judgement] : own)
-        if (judgement.verdict == Verdict::Equivalent && static_cast<int>(good.size()) < entries) good.push_back(label);
+        if (judgement.verdict == store::Verdict::Equivalent && static_cast<int>(good.size()) < entries) good.push_back(label);
     const std::string ext = fs::to_text(original.extension());
     // (a round each: one entry point, one break)
     std::size_t label_at = 0;
@@ -803,22 +803,22 @@ DriverSelfCheck DriverLane::self_check(const stdfs::path& original, const std::o
         }
         return std::nullopt;
     };
-    const std::function<std::vector<Verdict>(const teeth::Round&)> judge = [&](const teeth::Round& round) {
-        std::vector<Verdict> said;
+    const std::function<std::vector<store::Verdict>(const teeth::Round&)> judge = [&](const teeth::Round& round) {
+        std::vector<store::Verdict> said;
         for (const teeth::Attempt& a : round) said.push_back(judge_entry(original, fs::from_text(a.made), a.name).verdict);
         return said;
     };
-    const std::function<teeth::Outcome(const Verdict&)> outcome = [](const Verdict& v) {
-        return v == Verdict::Divergent ? teeth::Outcome::Caught : teeth::Outcome::Missed;
+    const std::function<teeth::Outcome(const store::Verdict&)> outcome = [](const store::Verdict& v) {
+        return v == store::Verdict::Divergent ? teeth::Outcome::Caught : teeth::Outcome::Missed;
     };
-    const std::function<void(std::span<const teeth::Planted<Verdict>>)> each = [&](std::span<const teeth::Planted<Verdict>> planted) {
-        for (const teeth::Planted<Verdict>& p : planted) {
+    const std::function<void(std::span<const teeth::Planted<store::Verdict>>)> each = [&](std::span<const teeth::Planted<store::Verdict>> planted) {
+        for (const teeth::Planted<store::Verdict>& p : planted) {
             ++out.broken;
             if (p.outcome == teeth::Outcome::Caught) ++out.caught;
             else out.missed.push_back({p.attempt->name, p.attempt->what, p.said});
         }
     };
-    teeth::plant<Verdict>(next_round, judge, outcome, each);
+    teeth::plant<store::Verdict>(next_round, judge, outcome, each);
     return out;
 }
 
@@ -851,7 +851,7 @@ cli::Command DriverLane::command() const {
                 std::vector<std::pair<std::string, std::size_t>> words;
                 for (const auto& [verdict, n] : r.self) {
                     words.emplace_back(std::string(word(verdict)), n);
-                    bad |= verdict == Verdict::Divergent || verdict == Verdict::Inconclusive;
+                    bad |= verdict == store::Verdict::Divergent || verdict == store::Verdict::Inconclusive;
                 }
                 std::sort(words.begin(), words.end());
                 for (const auto& [w, n] : words) counts.push_back(std::format("{} {}", w, n));

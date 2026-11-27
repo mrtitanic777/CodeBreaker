@@ -12,15 +12,15 @@ namespace cb::verify::sweep {
 
 namespace {
 
-std::string totals_text(const std::map<Class, std::int64_t>& totals) {
+std::string totals_text(const std::map<store::Class, std::int64_t>& totals) {
     std::string parts;
-    for (const Class c : kClassScored) {
+    for (const store::Class c : store::kClassScored) {
         const auto it = totals.find(c);
         if (it == totals.end() || it->second == 0)
             continue;
         if (!parts.empty())
             parts += ", ";
-        parts += std::format("{} {}", title(c), it->second);
+        parts += std::format("{} {}", store::title(c), it->second);
     }
     return parts;
 }
@@ -88,10 +88,10 @@ std::vector<std::pair<std::filesystem::path, std::string>> status(const Services
     std::unordered_map<std::string, std::string> stored;   // module hash -> the digest it has results under; lookup only
     for (const auto& [kind, digest] : digests)
         if (digest)
-            for (const engine::ModuleRow& m : services.store.modules(*digest))
+            for (const store::ModuleRow& m : services.store.modules(*digest))
                 stored[m.sha] = *digest;
     std::vector<std::pair<std::filesystem::path, std::string>> done;
-    std::map<Class, std::int64_t> totals;
+    std::map<store::Class, std::int64_t> totals;
     for (const std::filesystem::path& path : paths) {
         const std::string sha = rec.services().content_sha ? rec.services().content_sha(path).value_or("") : std::string();
         const auto has = stored.find(sha);

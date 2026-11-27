@@ -37,13 +37,13 @@ void judge_vectrex(std::string_view relative) {
     for (const auto& [address, name] : image.written.functions) {
         if (judged == 12) break;
         if (address >= bytes.size()) continue;
-        CB_CHECK(lane.judge_function(false, file, file, address).verdict == verify::Verdict::Equivalent);
+        CB_CHECK(lane.judge_function(false, file, file, address).verdict == store::Verdict::Equivalent);
         Bytes edited = bytes;
         edited[address] = static_cast<std::uint8_t>(edited[address] ^ 0xFF);
         const stdfs::path changed = dir.path() / "edited.vec";
         fs::write_file(changed, edited);
         ++judged;
-        if (lane.judge_function(false, file, changed, address).verdict == verify::Verdict::Divergent) ++diverged;
+        if (lane.judge_function(false, file, changed, address).verdict == store::Verdict::Divergent) ++diverged;
     }
     std::cout << "  judged " << judged << ", " << diverged << " diverged when their first byte was turned over\n";
     CB_CHECK(judged != 0);

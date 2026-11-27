@@ -220,14 +220,14 @@ CB_TEST("verify.lanes.powerpc.a_function_and_its_twin_are_equivalent_and_one_tha
     const epp::Region original = branching(kOriginal);
     {
         const auto c = context_of(original, branching(kRebuilt));
-        const Judgement j = Lane::judge_function(*c, item_of(original, kRebuilt));
-        CB_CHECK(j.verdict == Verdict::Equivalent);
+        const store::Judgement j = Lane::judge_function(*c, item_of(original, kRebuilt));
+        CB_CHECK(j.verdict == store::Verdict::Equivalent);
         CB_CHECK(j.reason.empty());
     }
     {
         const auto c = context_of(original, branching(kRebuilt, 0x38600007));   // li r3, 7 where the original has li r3, 1
-        const Judgement j = Lane::judge_function(*c, item_of(original, kRebuilt));
-        CB_CHECK(j.verdict == Verdict::Divergent);
+        const store::Judgement j = Lane::judge_function(*c, item_of(original, kRebuilt));
+        CB_CHECK(j.verdict == store::Verdict::Divergent);
         CB_CHECK_EQ(j.reason, "ret-differs");
         CB_CHECK(!j.detail.empty());
     }
@@ -235,7 +235,7 @@ CB_TEST("verify.lanes.powerpc.a_function_and_its_twin_are_equivalent_and_one_tha
         // a twin that differs only on the branch the fixed inputs do not take (r3 == 5) is found by the inputs aimed at its constants
         const epp::Region twin = code(kRebuilt, {0x2C030005, 0x4182000C, 0x38600001, kBlr, 0x38600009, kBlr});   // li r3, 9 on that side
         const auto c = context_of(original, twin);
-        CB_CHECK(Lane::judge_function(*c, item_of(original, kRebuilt)).verdict == Verdict::Divergent);
+        CB_CHECK(Lane::judge_function(*c, item_of(original, kRebuilt)).verdict == store::Verdict::Divergent);
     }
 });
 
@@ -300,11 +300,11 @@ CB_TEST("verify.lanes.powerpc.the_paths_of_the_original_are_found_by_following_t
     // so a twin that differs only on that path is found different
     const auto twin = context_of(original, needs_a_relation(kRebuilt, 0x38600009));
     twin->lifter = lifter;
-    const Judgement j = Lane::judge_function(*twin, item_of(original, kRebuilt));
-    CB_CHECK(j.verdict == Verdict::Divergent);
+    const store::Judgement j = Lane::judge_function(*twin, item_of(original, kRebuilt));
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     // and the same twin is judged equivalent, with the paths said, when the function really is the same
-    const Judgement same = Lane::judge_function(*c, item_of(original, kRebuilt));
-    CB_CHECK(same.verdict == Verdict::Equivalent);
+    const store::Judgement same = Lane::judge_function(*c, item_of(original, kRebuilt));
+    CB_CHECK(same.verdict == store::Verdict::Equivalent);
     CB_CHECK(std::ranges::any_of(same.limits, [](const std::string& l) { return l.starts_with("paths"); }));
 });
 

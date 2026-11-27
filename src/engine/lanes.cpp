@@ -93,7 +93,7 @@ std::string lane_sha1(std::string_view text) {
 
 // The weak limits a good verdict gets when a function it calls was a stand-in: its own, and "stub-callee", sorted.
 std::string lane_with_stub_callee(std::vector<std::string> limits) {
-    limits.push_back(std::string(word(verify::WeakLimit::StubCallee)));
+    limits.push_back(std::string(word(store::WeakLimit::StubCallee)));
     std::sort(limits.begin(), limits.end());
     limits.erase(std::unique(limits.begin(), limits.end()), limits.end());
     return text::join(limits, ",");
@@ -435,7 +435,7 @@ private:
                 ctx->need(L + "profile");
                 const Value::List& what = *b.list();
                 if (lane_text(what.at(0)) == "dropped") {
-                    out[ctx->key()] = facts::Value(Value(Value::List{Value(std::string(verify::word(verify::Verdict::NoCompile))), what.at(1), Value(""), Value("")}));
+                    out[ctx->key()] = facts::Value(Value(Value::List{Value(std::string(store::word(store::Verdict::NoCompile))), what.at(1), Value(""), Value("")}));
                 } else {
                     const std::string& name = hint->names.at(ctx->key());
                     todo_names.push_back(name);
@@ -444,24 +444,24 @@ private:
             }
             if (!todo_names.empty()) {
                 const std::shared_ptr<const Built> built = hint->ready();
-                jobs::RunOptions<std::string, verify::Judgement> options;
+                jobs::RunOptions<std::string, store::Judgement> options;
                 options.jobs = static_cast<int>(this_->state_->engine.jobs());
-                options.crashed = [](const std::string&) { return verify::not_run(); };
+                options.crashed = [](const std::string&) { return store::not_run(); };
                 // One function's judge failing alone is that function's "not run"; the others go on.
                 const auto judge_one = [&built](const std::string& n) {
                     try {
                         return built->judge(n);
                     } catch (const std::exception& e) {   // isolation boundary: one function of a batch
                         log::warn(std::format("lane judge: {} failed: {}", n, e.what()));
-                        return verify::not_run();
+                        return store::not_run();
                     }
                 };
                 const auto judged = jobs::run(todo_names, judge_one, [](const std::string& n) { return n; }, options);
                 for (const std::string& n : todo_names) {
-                    const verify::Judgement* j = judged.find(n);
-                    const verify::Judgement got = j ? *j : verify::not_run();
-                    const std::string limits = hint->tainted.contains(n) && verify::is_good(got.verdict) ? lane_with_stub_callee(got.limits) : got.limits_joined();
-                    out[key_of.at(n)] = facts::Value(Value(Value::List{Value(std::string(verify::word(got.verdict))), Value(got.reason), Value(limits), Value(got.detail)}));
+                    const store::Judgement* j = judged.find(n);
+                    const store::Judgement got = j ? *j : store::not_run();
+                    const std::string limits = hint->tainted.contains(n) && store::is_good(got.verdict) ? lane_with_stub_callee(got.limits) : got.limits_joined();
+                    out[key_of.at(n)] = facts::Value(Value(Value::List{Value(std::string(store::word(got.verdict))), Value(got.reason), Value(limits), Value(got.detail)}));
                 }
             }
             return out;
@@ -482,7 +482,7 @@ private:
                           for (const std::string& k : all_keys) {
                               if (fns.find(k) != nullptr) continue;
                               rows.push_back(Value(Value::Map{{"addr", Value(k)}, {"sig", Value("-")}, {"name", Value("")}, {"source", Value()},
-                                                              {"verdict", Value(std::string(verify::word(verify::Verdict::NoSource)))},
+                                                              {"verdict", Value(std::string(store::word(store::Verdict::NoSource)))},
                                                               {"reason", Value("the decompiler produced nothing for this function")}, {"problem", Value("none")}}));
                           }
                           Value::Map out_built;
@@ -526,7 +526,7 @@ private:
                               const Value::List& v = *lane_doc(verdicts.at(k), L + "verdict").list();
                               Value::Map row{{"addr", Value(k)}, {"sig", fn[1]}, {"name", fn[0]}, {"source", fn[2]}, {"verdict", v[0]},
                                              {"reason", v[1]}, {"limits", v[2]}, {"detail", v[3]}};
-                              if (lane_text(v[0]) == verify::word(verify::Verdict::NoCompile)) row.insert_or_assign("problem", Value("compile"));
+                              if (lane_text(v[0]) == store::word(store::Verdict::NoCompile)) row.insert_or_assign("problem", Value("compile"));
                               rows.push_back(Value(std::move(row)));
                           }
                           Value::Map built_now;
@@ -599,7 +599,7 @@ Judged lane_judged_of(const Value& doc) {
         row.sig = lane_text(lane_member(r, "sig"));
         row.name = lane_text(lane_member(r, "name"));
         if (const std::string* t = lane_member(r, "source").text()) row.source = *t;
-        const std::optional<verify::Verdict> verdict = verify::parse_verdict(lane_text(lane_member(r, "verdict")));
+        const std::optional<store::Verdict> verdict = store::parse_verdict(lane_text(lane_member(r, "verdict")));
         if (!verdict) throw FormatError("engine fact", 0, "a row has a verdict word that is none: " + lane_text(lane_member(r, "verdict")));
         row.verdict = *verdict;
         row.reason = lane_text(lane_member(r, "reason"));

@@ -55,15 +55,15 @@ CB_TEST("engine.machine_switch.a_nro_comes_back_identical_and_an_edit_diverges",
     CB_CHECK_EQ(image.written.functions.size(), 3u);
     CB_CHECK(fs::read_text(image.written.source).find("svcSendSyncRequest") != std::string::npos);
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     Bytes edited = formats::nro::test_image::nro_bytes();
     const Bytes patch = source::processors::assemble_line(source::processors::find("a64"), "add x9, x9, #0x2", 0x94, {}).value();   // (the counter goes up by two)
     std::copy(patch.begin(), patch.end(), edited.begin() + 0x94);
     fs::write_file(dir.path() / "edited.nro", edited);
-    CB_CHECK(lane.judge_function(false, original, original, 0x80).verdict == verify::Verdict::Equivalent);
-    const verify::Judgement j = lane.judge_function(false, original, dir.path() / "edited.nro", 0x80);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, 0x80).verdict == store::Verdict::Equivalent);
+    const store::Judgement j = lane.judge_function(false, original, dir.path() / "edited.nro", 0x80);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     // a function the edit does not touch is the same in both
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.nro", 0xB0).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.nro", 0xB0).verdict == store::Verdict::Equivalent);
 });

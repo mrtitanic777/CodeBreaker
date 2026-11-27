@@ -849,7 +849,7 @@ std::vector<Win64Lane::Vector> Win64Lane::guided_inputs(const Context& context, 
     return out;
 }
 
-Judgement Win64Lane::judge_function(const Context& context, const Item& item) {
+store::Judgement Win64Lane::judge_function(const Context& context, const Item& item) {
     const lane_common::Judgement made = lane_common::judged([&]() -> lane_common::Judgement {
         const std::function<compare::Fingerprint(const Vector&)> original = [&](const Vector& v) {
             std::optional<std::string> key;

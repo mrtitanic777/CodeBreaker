@@ -28,25 +28,25 @@ bool is_identifier(std::string_view s) {
     return !s.empty() && !(s[0] >= '0' && s[0] <= '9') && std::ranges::all_of(s, is_word_char);
 }
 
-std::string status_title(verify::Class c) { return std::string(verify::title(c)); }
+std::string status_title(store::Class c) { return std::string(store::title(c)); }
 
-engine::ClassCount zero_counts() {
-    engine::ClassCount counts;
-    for (const verify::Class c : verify::kClassScored) counts[c] = 0;
+store::ClassCount zero_counts() {
+    store::ClassCount counts;
+    for (const store::Class c : store::kClassScored) counts[c] = 0;
     return counts;
 }
 
-std::string counts_text(const engine::ClassCount& counts) {
+std::string counts_text(const store::ClassCount& counts) {
     std::vector<std::string> parts;
-    for (const verify::Class c : verify::kClassScored) {
-        if (counts.at(c) != 0) parts.push_back(std::format("{} {}", verify::title(c), counts.at(c)));
+    for (const store::Class c : store::kClassScored) {
+        if (counts.at(c) != 0) parts.push_back(std::format("{} {}", store::title(c), counts.at(c)));
     }
     return text::join(parts, ", ");
 }
 
-std::vector<mf::Status> statuses(const engine::ClassCount& counts) {
+std::vector<mf::Status> statuses(const store::ClassCount& counts) {
     std::vector<mf::Status> out;
-    for (const verify::Class c : verify::kClassScored) out.push_back({status_title(c), static_cast<std::size_t>(counts.at(c))});
+    for (const store::Class c : store::kClassScored) out.push_back({status_title(c), static_cast<std::size_t>(counts.at(c))});
     return out;
 }
 
@@ -55,7 +55,7 @@ std::string cut(std::string_view s, std::size_t columns) { return std::string(te
 // What the functions of the module are called in the file, for the classes' comments.
 class FileNames final : public classes_writer::FunctionNotes {
 public:
-    FileNames(const Prepared& m, const std::map<std::string, engine::Best>& best, const std::map<std::string, std::pair<std::optional<std::string>, std::optional<std::string>>>& known,
+    FileNames(const Prepared& m, const std::map<std::string, store::Best>& best, const std::map<std::string, std::pair<std::optional<std::string>, std::optional<std::string>>>& known,
               const Names& names)
         : m_(m), best_(best), known_(known), names_(names) {}
 
@@ -80,7 +80,7 @@ public:
 
 private:
     const Prepared& m_;
-    const std::map<std::string, engine::Best>& best_;
+    const std::map<std::string, store::Best>& best_;
     const std::map<std::string, std::pair<std::optional<std::string>, std::optional<std::string>>>& known_;
     const Names& names_;
 };
@@ -100,8 +100,8 @@ std::string_view why(std::string_view reason) {
     return found != kWhy.end() ? std::string_view(found->second) : reason;
 }
 
-std::string describe(const engine::Best& best) {
-    const engine::Candidate& c = best.candidate;
+std::string describe(const store::Best& best) {
+    const store::Candidate& c = best.candidate;
     std::optional<std::int64_t> coverage;   // "coverage=NN" among the stored limits
     for (const std::string_view limit : text::split(c.limits, ',')) {
         if (limit.starts_with("coverage=")) {
@@ -110,15 +110,15 @@ std::string describe(const engine::Best& best) {
         }
     }
     switch (best.cls) {
-        case verify::Class::Verified: return coverage ? std::format("{}% of it exercised", *coverage) : std::string();
-        case verify::Class::Weak: {
+        case store::Class::Verified: return coverage ? std::format("{}% of it exercised", *coverage) : std::string();
+        case store::Class::Weak: {
             std::vector<std::string> words;
-            for (const verify::WeakLimit l : best.weak) words.emplace_back(verify::explanation(l));
+            for (const store::WeakLimit l : best.weak) words.emplace_back(store::explanation(l));
             return text::join(words, "; ") + (coverage ? std::format(" ({}% ran)", *coverage) : std::string());
         }
-        case verify::Class::Unverified:
-        case verify::Class::NotJudged: return std::string(why(c.reason));
-        case verify::Class::NoCompile: return cut(c.reason, 90);
+        case store::Class::Unverified:
+        case store::Class::NotJudged: return std::string(why(c.reason));
+        case store::Class::NoCompile: return cut(c.reason, 90);
         default: return cut(c.reason, 80);
     }
 }
@@ -210,9 +210,9 @@ Names plan_names(std::span<const std::string> addresses, const std::function<std
     return out;
 }
 
-Written write_module(const Prepared& m, engine::FunctionStore& store, const std::filesystem::path& out_dir, std::size_t split, const Log& log) {
+Written write_module(const Prepared& m, store::FunctionStore& store, const std::filesystem::path& out_dir, std::size_t split, const Log& log) {
     fs::make_dirs(out_dir);
-    const std::map<std::string, engine::Best> best = store.best(m.module, m.profile);
+    const std::map<std::string, store::Best> best = store.best(m.module, m.profile);
     const std::vector<std::string> addrs = store.addresses(m.module);   // every function the module is known to have
     const auto known = store.identified(m.module);                      // the runtime library's among them
     std::set<std::string> used;                                          // the names its functions have
@@ -240,7 +240,7 @@ Written write_module(const Prepared& m, engine::FunctionStore& store, const std:
     }
     const std::unique_ptr<ReadablePass> words = m.readable(stored);
 
-    engine::ClassCount counts = zero_counts();
+    store::ClassCount counts = zero_counts();
     std::vector<mf::Part> parts;
     for (const std::string& va : addrs) {
         const auto row = best.find(va);
@@ -248,24 +248,24 @@ Written write_module(const Prepared& m, engine::FunctionStore& store, const std:
         std::vector<std::string> said;
         if (const auto ex = m.exported.find(va); ex != m.exported.end()) said.push_back(std::format("exported as {}: {}", ex->second, symbols::demangle::readable(ex->second)));
         if (row == best.end()) {
-            const verify::Class shown = id != known.end() ? verify::Class::Identified : verify::Class::NoSource;
+            const store::Class shown = id != known.end() ? store::Class::Identified : store::Class::NoSource;
             ++counts[shown];
             std::vector<std::string> facts;
             if (id != known.end()) facts.push_back(id->second.second.value_or("?"));
             facts.insert(facts.end(), said.begin(), said.end());
             facts.push_back("not measured on the current verifier");
-            parts.push_back({std::format("[{}] {}@ {} -- {}", verify::title(shown), id != known.end() ? id->second.first.value_or("?") + "  " : std::string(), va,
+            parts.push_back({std::format("[{}] {}@ {} -- {}", store::title(shown), id != known.end() ? id->second.first.value_or("?") + "  " : std::string(), va,
                                          text::join(facts, "; ")),
                              std::nullopt});
             continue;
         }
-        const engine::Best& b = row->second;
+        const store::Best& b = row->second;
         const std::string detail = describe(b);
-        const verify::Class shown = id != known.end() && b.cls != verify::Class::Verified && b.cls != verify::Class::Weak ? verify::Class::Identified : b.cls;
+        const store::Class shown = id != known.end() && b.cls != store::Class::Verified && b.cls != store::Class::Weak ? store::Class::Identified : b.cls;
         ++counts[shown];
-        if (shown == verify::Class::Identified) {
+        if (shown == store::Class::Identified) {
             said.insert(said.begin(), std::format("{} of {}; reconstructed below: {}{}", id->second.first.value_or("?"), id->second.second.value_or("?"),
-                                                  verify::title(b.cls), detail.empty() ? std::string() : ", " + detail));
+                                                  store::title(b.cls), detail.empty() ? std::string() : ", " + detail));
         } else {
             if (!detail.empty()) said.insert(said.begin(), detail);
             if (id != known.end()) said.push_back(std::format("this is {} of {}", id->second.first.value_or("?"), id->second.second.value_or("?")));
@@ -280,7 +280,7 @@ Written write_module(const Prepared& m, engine::FunctionStore& store, const std:
             if (const std::string hint = words->calls_hint(texts.at(va)); !hint.empty()) said.push_back(hint);
         }
         if (!m.exported.contains(va) && b.candidate.name && words->results_unused(*b.candidate.name)) said.push_back("no caller here uses what it returns");
-        parts.push_back({std::format("[{}] {}  @ {}{}", verify::title(shown), shown_name, va, said.empty() ? std::string() : " -- " + text::join(said, "; ")), source});
+        parts.push_back({std::format("[{}] {}  @ {}{}", store::title(shown), shown_name, va, said.empty() ? std::string() : " -- " + text::join(said, "; ")), source});
     }
 
     mf::Facts facts;
@@ -341,14 +341,14 @@ Written write_module(const Prepared& m, engine::FunctionStore& store, const std:
     return out;
 }
 
-Written write_assembly(const Prepared& m, engine::FunctionStore& store, const std::filesystem::path& out_dir, const Log& log) {
+Written write_assembly(const Prepared& m, store::FunctionStore& store, const std::filesystem::path& out_dir, const Log& log) {
     fs::make_dirs(out_dir);
     Written out;
     out.counts = store.scores(m.profile, m.module);
-    for (const verify::Class c : verify::kClassScored) out.counts.try_emplace(c, 0);
+    for (const store::Class c : store::kClassScored) out.counts.try_emplace(c, 0);
     for (const auto& [c, n] : out.counts) out.total += static_cast<std::size_t>(n);
     const std::string source = store.get_text(m.module, m.source_engine, "header");
-    const std::map<std::string, engine::Best> best = store.best(m.module, m.profile);
+    const std::map<std::string, store::Best> best = store.best(m.module, m.profile);
     mf::Facts facts;
     facts.name = m.name;
     facts.date = m.date;
@@ -364,7 +364,7 @@ Written write_assembly(const Prepared& m, engine::FunctionStore& store, const st
     }
     for (const std::string& va : store.addresses(m.module)) {
         const auto row = best.find(va);
-        if (row == best.end() || row->second.cls == verify::Class::Verified) continue;
+        if (row == best.end() || row->second.cls == store::Class::Verified) continue;
         facts.rows.push_back({va, row->second.candidate.name.value_or(""), status_title(row->second.cls), describe(row->second)});
     }
     std::vector<translate::backends::assembly::Unit> units;
@@ -391,26 +391,26 @@ std::string scoreboard(const ScoreboardInput& in) {
         "| Module | Kind | Functions | Verified | Verified (weak) | Identified (runtime library) | Unverified | Not judged | Does not compile | No "
         "source | Builds whole | Runs in place |",
         "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---|"};
-    engine::ClassCount total = zero_counts();
+    store::ClassCount total = zero_counts();
     std::size_t all = 0;
     const auto percent = [](std::int64_t n, std::size_t of) { return 100.0 * static_cast<double>(n) / static_cast<double>(std::max<std::size_t>(1, of)); };
-    const auto cells = [](const engine::ClassCount& c) {
-        return std::format("{} | {} | {} | {} | {} | {}", c.at(verify::Class::Weak), c.at(verify::Class::Identified), c.at(verify::Class::Unverified),
-                           c.at(verify::Class::NotJudged), c.at(verify::Class::NoCompile), c.at(verify::Class::NoSource));
+    const auto cells = [](const store::ClassCount& c) {
+        return std::format("{} | {} | {} | {} | {} | {}", c.at(store::Class::Weak), c.at(store::Class::Identified), c.at(store::Class::Unverified),
+                           c.at(store::Class::NotJudged), c.at(store::Class::NoCompile), c.at(store::Class::NoSource));
     };
     for (const ScoreRow& r : in.modules) {
         std::size_t n = 0;
-        for (const verify::Class c : verify::kClassScored) {
+        for (const store::Class c : store::kClassScored) {
             n += static_cast<std::size_t>(r.counts.at(c));
             total[c] += r.counts.at(c);
         }
         all += n;
-        lines.push_back(std::format("| {} | {} | {} | {} ({:.0f}%) | {} | not tested | not tested |", r.name, r.kind, n, r.counts.at(verify::Class::Verified),
-                                    percent(r.counts.at(verify::Class::Verified), n), cells(r.counts)));
+        lines.push_back(std::format("| {} | {} | {} | {} ({:.0f}%) | {} | not tested | not tested |", r.name, r.kind, n, r.counts.at(store::Class::Verified),
+                                    percent(r.counts.at(store::Class::Verified), n), cells(r.counts)));
     }
     if (all != 0) {
-        lines.push_back(std::format("| **all measured** | | {} | {} ({:.0f}%) | {} | | |", all, total.at(verify::Class::Verified),
-                                    percent(total.at(verify::Class::Verified), all), cells(total)));
+        lines.push_back(std::format("| **all measured** | | {} | {} ({:.0f}%) | {} | | |", all, total.at(store::Class::Verified),
+                                    percent(total.at(store::Class::Verified), all), cells(total)));
     }
     lines.push_back("");
     lines.push_back(std::format("{} modules measured so far (the corpus has {} 32-bit, {} 16-bit).", in.modules.size(), in.corpus_32, in.corpus_16));

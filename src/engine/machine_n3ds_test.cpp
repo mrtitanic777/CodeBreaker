@@ -66,12 +66,12 @@ CB_TEST("engine.machine_n3ds.a_3dsx_comes_back_identical_and_an_edit_diverges", 
     CB_CHECK_EQ(image.written.functions.size(), 2u);
     CB_CHECK(fs::read_text(image.written.source).find("svcSendSyncRequest") != std::string::npos);
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     Bytes edited = x3dsx();
     put(edited, 0x54, 0xE5C20002);   // strb r0, [r2, #2]
     fs::write_file(dir.path() / "edited.3dsx", edited);
-    CB_CHECK(lane.judge_function(false, original, original, 0x4C).verdict == verify::Verdict::Equivalent);
-    const verify::Judgement j = lane.judge_function(false, original, dir.path() / "edited.3dsx", 0x4C);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, 0x4C).verdict == store::Verdict::Equivalent);
+    const store::Judgement j = lane.judge_function(false, original, dir.path() / "edited.3dsx", 0x4C);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
 });

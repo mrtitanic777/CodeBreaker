@@ -80,17 +80,17 @@ CB_TEST("engine.machine_x64.an_elf_comes_back_identical_and_an_edit_diverges", [
     CB_CHECK(image.written.linked && image.written.same);
     CB_CHECK_EQ(image.written.functions.size(), 3u);
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     Bytes edited = ot::elf();
     edited[0x1024 + 1] = 0xC8;   // helper: mov edi, 200
     fs::write_file(dir.path() / "edited.elf", edited);
     for (const std::uint32_t entry : {0x1020u, 0x1000u}) {
-        CB_CHECK(lane.judge_function(false, original, original, entry).verdict == verify::Verdict::Equivalent);
-        CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.elf", entry).verdict == verify::Verdict::Divergent);
+        CB_CHECK(lane.judge_function(false, original, original, entry).verdict == store::Verdict::Equivalent);
+        CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.elf", entry).verdict == store::Verdict::Divergent);
     }
     // a function the edit does not touch still agrees
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.elf", 0x1040).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.elf", 0x1040).verdict == store::Verdict::Equivalent);
 });
 
 CB_TEST("engine.machine_x64.the_xbox_lane_is_registered_and_takes_uwp_executables_and_packages", [] {
@@ -137,7 +137,7 @@ CB_TEST("engine.machine_x64.a_pe_comes_back_identical_and_an_edit_diverges", [] 
     edited[0x200 + 5] = 0xC8;   // entry: mov ecx, 200
     edited[0x220 + 2] = 0x01;   // add: lea eax, [rcx + rax]
     fs::write_file(dir.path() / "edited.exe", edited);
-    CB_CHECK(lane.judge_function(false, original, original, xt::kEntry).verdict == verify::Verdict::Equivalent);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.exe", xt::kEntry).verdict == verify::Verdict::Divergent);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.exe", xt::kAdd).verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, xt::kEntry).verdict == store::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.exe", xt::kEntry).verdict == store::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.exe", xt::kAdd).verdict == store::Verdict::Divergent);
 });

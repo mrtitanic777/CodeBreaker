@@ -20,6 +20,7 @@
 #include "knowledge/package.hpp"
 
 using namespace cb;
+using namespace cb::store;
 using namespace cb::verify;
 using namespace cb::verify::gate16;
 namespace sfs = std::filesystem;

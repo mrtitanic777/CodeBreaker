@@ -89,11 +89,11 @@ std::pair<std::filesystem::path, std::filesystem::path> ImageLane::subjects_of(c
     return {module_path, written.built};
 }
 
-Judgement ImageLane::judge_function(bool same, const std::filesystem::path& original,
+store::Judgement ImageLane::judge_function(bool same, const std::filesystem::path& original,
                                     const std::filesystem::path& rebuilt, std::uint32_t entry) const {
-    Judgement j;
+    store::Judgement j;
     if (same) {
-        j.verdict = Verdict::Equivalent;
+        j.verdict = store::Verdict::Equivalent;
         j.detail = spec_.same;
         return j;
     }
@@ -111,12 +111,12 @@ Judgement ImageLane::judge_function(bool same, const std::filesystem::path& orig
                 place = spec_.what[i];
                 break;
             }
-        j.verdict = Verdict::Divergent;
+        j.verdict = store::Verdict::Divergent;
         j.reason = place + "-differs";
         j.detail = spec_.start(state);
         return j;
     }
-    j.verdict = Verdict::Equivalent;
+    j.verdict = store::Verdict::Equivalent;
     j.detail = std::format("the same effects from {} register states", spec_.states.size());
     return j;
 }

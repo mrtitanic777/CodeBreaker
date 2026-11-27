@@ -1,11 +1,11 @@
-// Tests of `codebreaker versions` as a complete command (store/versions_command): the comparison over the production ledger, made from the settings
+// Tests of `codebreaker versions` as a complete command (app/versions_command): the comparison over the production ledger, made from the settings
 // alone, on the real Windows 95 and 98 builds of compare/testdata/versions.
 //
 // The state folder is a temporary one (CB_STATE), so nothing of the checkout's state is read or written. The documents the command writes are the ones
 // recorded for the same pairs (compare/testdata/versions/golden), compared as documents.
 //
 // CB_VERSIONS_PROOF="<old file>;<new file>[;<json out>]" runs one pair and prints what the command says and how long it took.
-#include "store/versions_command.hpp"
+#include "app/versions_command.hpp"
 
 #include <chrono>
 #include <iostream>
@@ -27,12 +27,12 @@ struct Surrounding {
     fs::ScopedTempDir state{"versions-command-state"};
     fs::ScopedEnv state_env{"CB_STATE", fs::to_text(state.path())};
     config::Config config = config::Config::load(config::current().main_checkout());
-    cli::Cli cli{"codebreaker", {store::versions_command::command({.config = config, .corpus = nullptr})}};
+    cli::Cli cli{"codebreaker", {app::versions_command::command({.config = config, .corpus = nullptr})}};
 };
 
 }  // namespace
 
-CB_TEST("store.versions_command.two_files_as_recorded", [] {
+CB_TEST("app.versions_command.two_files_as_recorded", [] {
     Surrounding s;
     fs::ScopedTempDir out("versions-command-out");
     for (const char* module : {"thinkjet.drv", "tracert.exe"}) {
@@ -58,7 +58,7 @@ CB_TEST("store.versions_command.two_files_as_recorded", [] {
     }
 });
 
-CB_TEST("store.versions_command.carry_needs_an_identity_and_a_store", [] {
+CB_TEST("app.versions_command.carry_needs_an_identity_and_a_store", [] {
     Surrounding s;
     testing::CapturedStd cap;
     // The files are not in the corpus, so nothing is known of the old one and nothing is filed: the command says so and succeeds.
@@ -66,14 +66,14 @@ CB_TEST("store.versions_command.carry_needs_an_identity_and_a_store", [] {
     CB_CHECK(cap.out().find("filed 0 reconstructions") != std::string::npos);   // (nothing is known of an old build outside the corpus)
 });
 
-CB_TEST("store.versions_command.a_usage_error_is_an_exit_code", [] {
+CB_TEST("app.versions_command.a_usage_error_is_an_exit_code", [] {
     Surrounding s;
     testing::CapturedStd cap;
     CB_CHECK_EQ(s.cli.run({"versions"}), 2);
     CB_CHECK_EQ(s.cli.run({"versions", "--help"}), 0);
 });
 
-CB_TEST("store.versions_command.proof", [] {
+CB_TEST("app.versions_command.proof", [] {
     const std::optional<std::string> proof = fs::get_env("CB_VERSIONS_PROOF");
     if (!proof || proof->empty()) return;
     std::vector<std::string> parts;

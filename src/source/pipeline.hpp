@@ -31,7 +31,7 @@
 #include "base/corpus.hpp"
 #include "core/cli.hpp"
 #include "verify/reconstruct.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::source::pipeline {
 
@@ -75,8 +75,8 @@ struct JudgeSteps {
 
 struct JudgedFunction {
     std::string key, name;     // the lane's key of the function (its address, as hex) and the name it built it by (empty when it built nothing)
-    std::optional<verify::Verdict> verdict;   // the judge's verdict; none when nothing is recorded
-    verify::Classification classification;
+    std::optional<store::Verdict> verdict;   // the judge's verdict; none when nothing is recorded
+    store::Classification classification;
     std::string reason;        // why the judge said so, or the compiler's message
 };
 

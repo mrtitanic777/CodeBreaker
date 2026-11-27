@@ -35,30 +35,30 @@ CB_TEST("engine.machine_pce.a_card_comes_back_identical_and_an_edit_diverges", [
     CB_CHECK_EQ(image.written.functions.size(), 6u);   // reset, the subroutine, bank 1's function and the three handlers
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
     CB_CHECK_EQ(built.items.size(), 6u);
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     Bytes edited = formats::pce_test_image::cartridge();
     edited[0x2000 + 1] = 0x3D;   // bank 1: LDA #$3D, so the VDC data port gets another byte
     const stdfs::path changed = dir.path() / "edited.pce";
     fs::write_file(changed, edited);
-    CB_CHECK(lane.judge_function(false, original, original, 0x014000).verdict == verify::Verdict::Equivalent);   // run twice: agree
-    const verify::Judgement j = lane.judge_function(false, original, changed, 0x014000);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, 0x014000).verdict == store::Verdict::Equivalent);   // run twice: agree
+    const store::Judgement j = lane.judge_function(false, original, changed, 0x014000);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     CB_CHECK(!j.reason.empty());
-    CB_CHECK(lane.judge_function(false, original, changed, 0x00E020).verdict == verify::Verdict::Equivalent);   // the subroutine, which nothing edited touches
+    CB_CHECK(lane.judge_function(false, original, changed, 0x00E020).verdict == store::Verdict::Equivalent);   // the subroutine, which nothing edited touches
 
     Bytes written = formats::pce_test_image::cartridge();
     written[0x31] = 0x08;   // the subroutine's LDA #$08: a different value reaches VDC_SELECT
     fs::write_file(dir.path() / "written.pce", written);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "written.pce", 0x00E020).verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "written.pce", 0x00E020).verdict == store::Verdict::Divergent);
 
     Bytes copied = formats::pce_test_image::cartridge();
     copied[0x100] = 0x09;   // the data the block transfer copies: the RAM it leaves differs
     fs::write_file(dir.path() / "copied.pce", copied);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "copied.pce", 0x00E020).verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "copied.pce", 0x00E020).verdict == store::Verdict::Divergent);
 
     Bytes mapped = formats::pce_test_image::cartridge();
     mapped[0x0B + 1] = 0x00;   // reset maps another bank at $4000: the mapping registers differ afterwards
     fs::write_file(dir.path() / "mapped.pce", mapped);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "mapped.pce", 0x00E000).verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "mapped.pce", 0x00E000).verdict == store::Verdict::Divergent);
 });

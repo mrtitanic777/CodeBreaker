@@ -1,15 +1,16 @@
 // Tests of the verdict vocabulary: the words, the older spellings read as the words now, classification with
 // limits, and the provenance index.
 
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 #include <set>
 
 #include "core/testing.hpp"
 
-using namespace cb::verify;
+using namespace cb::store;
 
-CB_TEST("verify.verdicts.judge_words", [] {
+
+CB_TEST("store.verdicts.judge_words", [] {
     const char* expected[] = {"equivalent", "consistent", "divergent", "inconclusive", "no-compile", "no-source"};
     int i = 0;
     for (Verdict v : kVerdicts) {
@@ -25,7 +26,7 @@ CB_TEST("verify.verdicts.judge_words", [] {
     CB_CHECK_EQ(std::string(said(Verdict::NoSource)), "no source");
 });
 
-CB_TEST("verify.verdicts.older_spellings", [] {
+CB_TEST("store.verdicts.older_spellings", [] {
     CB_CHECK(parse_verdict("no-synth") == Verdict::NoSource);
     CB_CHECK(parse_verdict("same") == Verdict::Equivalent);
     CB_CHECK(parse_verdict("alike") == Verdict::Equivalent);
@@ -42,7 +43,7 @@ CB_TEST("verify.verdicts.older_spellings", [] {
     CB_CHECK(!parse_verdict(""));
 });
 
-CB_TEST("verify.verdicts.good_and_pair", [] {
+CB_TEST("store.verdicts.good_and_pair", [] {
     CB_CHECK(is_good(Verdict::Equivalent));
     CB_CHECK(is_good(Verdict::Consistent));
     CB_CHECK(!is_good(Verdict::Divergent));
@@ -56,7 +57,7 @@ CB_TEST("verify.verdicts.good_and_pair", [] {
     CB_CHECK(pair_verdict(true, false, false) == Verdict::NoCompile);
 });
 
-CB_TEST("verify.verdicts.class_words_and_order", [] {
+CB_TEST("store.verdicts.class_words_and_order", [] {
     CB_CHECK_EQ(std::string(word(Class::NotJudged)), "not-judged");
     CB_CHECK_EQ(std::string(title(Class::Weak)), "VERIFIED (weak)");
     CB_CHECK_EQ(std::string(title(Class::Identified)), "IDENTIFIED (runtime library)");
@@ -85,7 +86,7 @@ CB_TEST("verify.verdicts.class_words_and_order", [] {
     CB_CHECK(class_of(Verdict::Inconclusive) == Class::NotJudged);
 });
 
-CB_TEST("verify.verdicts.parse_class", [] {
+CB_TEST("store.verdicts.parse_class", [] {
     for (Class c : kClassScored) {
         CB_CHECK(parse_class(word(c)) == c);
         CB_CHECK(parse_class(title(c)) == c); // the title reads back (case folded)
@@ -99,7 +100,7 @@ CB_TEST("verify.verdicts.parse_class", [] {
     CB_CHECK(!parse_class(""));
 });
 
-CB_TEST("verify.verdicts.weak_limits", [] {
+CB_TEST("store.verdicts.weak_limits", [] {
     CB_CHECK_EQ(std::string(word(WeakLimit::LowCoverage)), "low-coverage");
     CB_CHECK_EQ(std::string(explanation(WeakLimit::Truncated)), "a run was cut off at the step limit");
     CB_CHECK_EQ(std::string(explanation(WeakLimit::MethodsPartial)),
@@ -130,7 +131,7 @@ CB_TEST("verify.verdicts.weak_limits", [] {
     CB_CHECK(WeakLimits{WeakLimit::FaultOnly, WeakLimit::MethodsPartial}.contains(WeakLimit::MethodsPartial));
 });
 
-CB_TEST("verify.verdicts.classify", [] {
+CB_TEST("store.verdicts.classify", [] {
     // an equivalent verdict is verified unless a weak limit says otherwise
     CB_CHECK(classify(Verdict::Equivalent, "") == (Classification{Class::Verified, {}}));
     CB_CHECK(classify(Verdict::Equivalent, "layout-differs") == (Classification{Class::Verified, {}}));
@@ -154,7 +155,7 @@ CB_TEST("verify.verdicts.classify", [] {
     CB_CHECK(classify(parse_verdict("same"), "") == (Classification{Class::Verified, {}}));
 });
 
-CB_TEST("verify.verdicts.byte_match", [] {
+CB_TEST("store.verdicts.byte_match", [] {
     const char* words[] = {"identical", "same size", "different", "no original extent", "no-compile"};
     int i = 0;
     for (ByteMatch m : kByteMatches) {
@@ -172,7 +173,7 @@ CB_TEST("verify.verdicts.byte_match", [] {
     CB_CHECK(!parse_byte_match("equivalent"));
 });
 
-CB_TEST("verify.verdicts.judgement", [] {
+CB_TEST("store.verdicts.judgement", [] {
     Judgement j = not_run();
     CB_CHECK(j.verdict == Verdict::Inconclusive);
     CB_CHECK_EQ(j.reason, "judge: the emulator crashed on this function");
@@ -186,7 +187,7 @@ CB_TEST("verify.verdicts.judgement", [] {
     CB_CHECK(k.classify() == (Classification{Class::Weak, WeakLimits{WeakLimit::Truncated}}));
 });
 
-CB_TEST("verify.verdicts.of_row_and_index", [] {
+CB_TEST("store.verdicts.of_row_and_index", [] {
     StoreRow row;
     row.addr = "0x401000";
     row.verdict = "same"; // written by an older store

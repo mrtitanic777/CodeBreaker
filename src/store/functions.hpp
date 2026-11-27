@@ -28,8 +28,8 @@
 #include <string_view>
 #include <vector>
 
-#include "engine/function_store.hpp"
-#include "verify/verdicts.hpp"
+#include "store/function_store.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::store::functions {
 
@@ -44,16 +44,16 @@ std::filesystem::path databases_folder(const std::filesystem::path& state, const
 
 // The function store at `path` (the state folder's when none is given). Opened for writing, its files and folders are made; read-only, nullptr when
 // there is no store yet.
-std::unique_ptr<engine::FunctionStore> open(const std::filesystem::path& state, const std::optional<std::filesystem::path>& path = std::nullopt,
+std::unique_ptr<store::FunctionStore> open(const std::filesystem::path& state, const std::optional<std::filesystem::path>& path = std::nullopt,
                                             bool readonly = false);
 
 // The store at a glance, quickly (the index's summaries only): per module its sha, name, kind and path, how many functions, how many are a
 // runtime library's, and how many are of each class by each function's LATEST verdict under any judge -- what it last came to, not what the judge in
 // force says (a change to the judge leaves every module unjudged until it is measured again). Empty when there is no store.
-std::vector<engine::Overview> overview(const std::filesystem::path& state, const std::optional<std::filesystem::path>& path = std::nullopt);
+std::vector<store::Overview> overview(const std::filesystem::path& state, const std::optional<std::filesystem::path>& path = std::nullopt);
 
 // {address: class} by each function's latest verdict under any judge (see overview). Empty when there is no store.
-std::map<std::string, verify::Class> latest(const std::filesystem::path& state, std::string_view module_sha,
+std::map<std::string, store::Class> latest(const std::filesystem::path& state, std::string_view module_sha,
                                             const std::optional<std::filesystem::path>& path = std::nullopt);
 
 }  // namespace cb::store::functions

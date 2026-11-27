@@ -174,7 +174,7 @@ struct World16 {
             CB_CHECK(std::filesystem::is_directory(folder));
             CB_CHECK(tables.get("wide") != nullptr);
             std::vector<GateAnswer> out;
-            for (const std::string& n : names) out.push_back({n, divergent.contains(n) ? verify::Verdict::Divergent : verify::Verdict::Equivalent, divergent.contains(n) ? "it returns 1, the original 0" : ""});
+            for (const std::string& n : names) out.push_back({n, divergent.contains(n) ? store::Verdict::Divergent : store::Verdict::Equivalent, divergent.contains(n) ? "it returns 1, the original 0" : ""});
             return out;
         };
         config.stages.contract = [this](const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path& image, const std::vector<std::string>&) {

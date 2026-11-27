@@ -195,12 +195,12 @@ CB_TEST("verify.lanes.java.a_class_that_does_not_compile_is_no_compile_and_one_t
     context.tools.cxx = "g++";                       // (no JDK: javac is empty)
     context.include_dir = dir.path() / "inc";
     context.work = dir.path() / "work";
-    const Judgement bad = JavaLane::judge_class(context, {"Bad", dir.path() / "inc" / "Bad.cpp", {}});
-    CB_CHECK(bad.verdict == Verdict::NoCompile);
+    const store::Judgement bad = JavaLane::judge_class(context, {"Bad", dir.path() / "inc" / "Bad.cpp", {}});
+    CB_CHECK(bad.verdict == store::Verdict::NoCompile);
     CB_CHECK(bad.reason.find("error") != std::string::npos && bad.reason.size() <= 200);
     CB_CHECK(!bad.detail.empty());
-    const Judgement good = JavaLane::judge_class(context, {"Good", dir.path() / "inc" / "Good.cpp", {}});
-    CB_CHECK(good.verdict == Verdict::Inconclusive);
+    const store::Judgement good = JavaLane::judge_class(context, {"Good", dir.path() / "inc" / "Good.cpp", {}});
+    CB_CHECK(good.verdict == store::Verdict::Inconclusive);
     CB_CHECK_EQ(good.reason, "not-run");
     CB_CHECK_EQ(good.detail, "compiles (g++ -std=c++03 -fsyntax-only -w); not run: no JDK (settings: java)");
 });
@@ -225,10 +225,10 @@ CB_TEST("verify.lanes.java.the_dialect_is_an_option_of_the_lane", [] {
     context.tools.cxx = "g++";
     context.include_dir = dir.path() / "inc";
     context.work = dir.path() / "work";
-    CB_CHECK(JavaLane::judge_class(context, {"Auto", dir.path() / "inc" / "Auto.cpp", {}}).verdict == Verdict::NoCompile);
+    CB_CHECK(JavaLane::judge_class(context, {"Auto", dir.path() / "inc" / "Auto.cpp", {}}).verdict == store::Verdict::NoCompile);
     context.standard = "c++17";
-    const Judgement as17 = JavaLane::judge_class(context, {"Auto", dir.path() / "inc" / "Auto.cpp", {}});
-    CB_CHECK(as17.verdict == Verdict::Inconclusive);
+    const store::Judgement as17 = JavaLane::judge_class(context, {"Auto", dir.path() / "inc" / "Auto.cpp", {}});
+    CB_CHECK(as17.verdict == store::Verdict::Inconclusive);
     CB_CHECK_EQ(as17.detail, "compiles (g++ -std=c++17 -fsyntax-only -w); not run: no JDK (settings: java)");
 });
 

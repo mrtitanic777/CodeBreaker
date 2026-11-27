@@ -7,6 +7,7 @@
 
 namespace {
 
+using namespace cb::store;
 using namespace cb::verify;
 using compare::Difference;
 using compare::Fingerprint;

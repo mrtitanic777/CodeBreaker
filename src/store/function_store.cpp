@@ -1,4 +1,4 @@
-#include "engine/function_store.hpp"
+#include "store/function_store.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -14,7 +14,7 @@
 #include "core/json.hpp"
 #include "core/text.hpp"
 
-namespace cb::engine {
+namespace cb::store {
 
 namespace sql = cb::base::sqlite;
 namespace stdfs = std::filesystem;
@@ -90,19 +90,19 @@ std::optional<double> as_real(const sql::Value& v) {
 // A judge's word as it is stored now; a word the vocabulary does not know is kept as it is.
 std::optional<std::string> verdict_word(const std::optional<std::string>& stored) {
     if (!stored) return std::nullopt;
-    if (const auto v = verify::parse_verdict(*stored)) return std::string(verify::word(*v));
+    if (const auto v = store::parse_verdict(*stored)) return std::string(store::word(*v));
     return stored;
 }
 std::optional<std::string> match_word(const std::optional<std::string>& stored) {
     if (!stored) return std::nullopt;
-    if (const auto m = verify::parse_byte_match(*stored)) return std::string(verify::word(*m));
+    if (const auto m = store::parse_byte_match(*stored)) return std::string(store::word(*m));
     return stored;
 }
 
-verify::Classification classify_row(const std::optional<std::string>& verdict, std::string_view limits) {
-    std::optional<verify::Verdict> v;
-    if (verdict) v = verify::parse_verdict(*verdict);
-    return verify::classify(v, limits);
+store::Classification classify_row(const std::optional<std::string>& verdict, std::string_view limits) {
+    std::optional<store::Verdict> v;
+    if (verdict) v = store::parse_verdict(*verdict);
+    return store::classify(v, limits);
 }
 
 // The comparison "the sig it was judged at is the sig it has": two absent ones are the same.
@@ -110,7 +110,7 @@ bool same_sig(const std::optional<std::string>& a, const std::optional<std::stri
 
 }  // namespace
 
-verify::Classification Candidate::classification() const { return classify_row(verdict, limits); }
+store::Classification Candidate::classification() const { return classify_row(verdict, limits); }
 
 // One module's open database, and the lock that keeps one statement run at a time through a write of several.
 struct FunctionStoreModule {
@@ -205,7 +205,7 @@ std::vector<sql::Row> index_rows(Impl& impl, std::string_view statement, const s
 
 Json to_json(const ClassCount& counts) {
     Json j = Json::object();
-    for (const auto& [cls, n] : counts) j[std::string(verify::word(cls))] = n;
+    for (const auto& [cls, n] : counts) j[std::string(store::word(cls))] = n;
     return j;
 }
 
@@ -214,7 +214,7 @@ ClassCount class_count_from(const std::string& json_text) {
     Json j;
     if (json_text.empty() || !json::try_parse(json_text, j) || !j.is_object()) return out;
     for (const auto& [k, v] : j.items()) {
-        if (const auto cls = verify::parse_class(k); cls && v.is_number_integer()) out[*cls] = v.get<std::int64_t>();
+        if (const auto cls = store::parse_class(k); cls && v.is_number_integer()) out[*cls] = v.get<std::int64_t>();
     }
     return out;
 }
@@ -497,14 +497,14 @@ std::map<std::string, Best> FunctionStore::best(std::string_view module, std::st
     std::map<std::string, std::pair<Key, Best>> chosen;
     for (Candidate& c : candidates(module, profile)) {
         if (!c.verdict) continue;   // not judged under this profile
-        const verify::Classification k = c.classification();
+        const store::Classification k = c.classification();
         Best b;
         b.cls = k.cls;
         b.weak = k.reasons;
-        if (b.cls != verify::Class::NoSource && (!c.source || c.source->empty())) b.cls = verify::Class::NoSource;   // no source to speak of
-        const auto order = std::find(verify::kClassOrder.begin(), verify::kClassOrder.end(), b.cls);
+        if (b.cls != store::Class::NoSource && (!c.source || c.source->empty())) b.cls = store::Class::NoSource;   // no source to speak of
+        const auto order = std::find(store::kClassOrder.begin(), store::kClassOrder.end(), b.cls);
         const auto at = rank.find(c.engine);
-        const Key key{static_cast<std::size_t>(order - verify::kClassOrder.begin()), at == rank.end() ? rank.size() : at->second};
+        const Key key{static_cast<std::size_t>(order - store::kClassOrder.begin()), at == rank.end() ? rank.size() : at->second};
         const auto have = chosen.find(c.addr);
         if (have == chosen.end() || key < have->second.first) {
             b.candidate = std::move(c);
@@ -517,8 +517,8 @@ std::map<std::string, Best> FunctionStore::best(std::string_view module, std::st
     return out;
 }
 
-std::map<std::string, verify::Class> FunctionStore::latest(std::string_view module) {
-    std::map<std::string, verify::Class> out;
+std::map<std::string, store::Class> FunctionStore::latest(std::string_view module) {
+    std::map<std::string, store::Class> out;
     for (const sql::Row& r : module_rows_of(*impl_, module, kLatestSql, {txt(module)})) {
         out[as_string(r[0])] = classify_row(verdict_word(as_text(r[1])), as_string(r[2])).cls;
     }
@@ -543,25 +543,25 @@ std::map<std::string, std::pair<std::optional<std::string>, std::optional<std::s
 
 ClassCount FunctionStore::tally(std::string_view profile, std::string_view module, std::span<const std::string> prefer) {
     ClassCount counts;
-    for (const verify::Class c : verify::kClassOrder) counts[c] = 0;
+    for (const store::Class c : store::kClassOrder) counts[c] = 0;
     const std::map<std::string, Best> best_of = best(module, profile, prefer);
     for (const std::string& addr : addresses(module)) {
         const auto it = best_of.find(addr);
-        counts[it != best_of.end() ? it->second.cls : verify::Class::NoSource]++;
+        counts[it != best_of.end() ? it->second.cls : store::Class::NoSource]++;
     }
     return counts;
 }
 
 ClassCount FunctionStore::scores(std::string_view profile, std::string_view module, std::span<const std::string> prefer) {
     ClassCount counts;
-    for (const verify::Class c : verify::kClassScored) counts[c] = 0;
+    for (const store::Class c : store::kClassScored) counts[c] = 0;
     const std::map<std::string, Best> best_of = best(module, profile, prefer);
     const auto known = identified(module);
     for (const std::string& addr : addresses(module)) {
         const auto it = best_of.find(addr);
-        verify::Class c = it != best_of.end() ? it->second.cls : verify::Class::NoSource;
+        store::Class c = it != best_of.end() ? it->second.cls : store::Class::NoSource;
         // a function recognised as a runtime library's is counted on its own, unless it was also verified (the stronger statement)
-        if (known.contains(addr) && c != verify::Class::Verified && c != verify::Class::Weak) c = verify::Class::Identified;
+        if (known.contains(addr) && c != store::Class::Verified && c != store::Class::Weak) c = store::Class::Identified;
         counts[c]++;
     }
     return counts;
@@ -602,8 +602,8 @@ FunctionStore::MatchTally FunctionStore::match_tally(std::string_view module, st
     MatchTally t;
     for (const auto& [addr, v] : best_variant(module, compiler)) {
         ++t.functions;
-        if (v.match == std::string(verify::word(verify::ByteMatch::Identical))) ++t.identical;
-        if (v.match == std::string(verify::word(verify::ByteMatch::SameSize))) ++t.same_size;
+        if (v.match == std::string(store::word(store::ByteMatch::Identical))) ++t.identical;
+        if (v.match == std::string(store::word(store::ByteMatch::SameSize))) ++t.same_size;
     }
     t.other = t.functions - t.identical - t.same_size;
     return t;
@@ -697,7 +697,7 @@ std::vector<Overview> FunctionStore::overview() {
         o.name = m.name;
         o.kind = m.kind;
         o.path = m.path;
-        for (const verify::Class c : verify::kClassOrder) o.latest[c] = 0;
+        for (const store::Class c : store::kClassOrder) o.latest[c] = 0;
         if (const auto it = sums.find(m.sha); it != sums.end()) {
             o.functions = it->second.functions;
             o.identified = it->second.identified;
@@ -705,7 +705,7 @@ std::vector<Overview> FunctionStore::overview() {
         }
         std::int64_t sum = 0;
         for (const auto& [cls, n] : o.latest) sum += n;
-        o.latest[verify::Class::NoSource] += std::max<std::int64_t>(0, o.functions - sum);   // (functions with no verdict at all)
+        o.latest[store::Class::NoSource] += std::max<std::int64_t>(0, o.functions - sum);   // (functions with no verdict at all)
         out.push_back(std::move(o));
     }
     return out;
@@ -721,4 +721,4 @@ void FunctionStore::set_about(std::string_view name, std::string_view value) {
     write_index(*impl_, "INSERT OR REPLACE INTO store_about(name, value) VALUES(?,?)", {txt(name), txt(value)});
 }
 
-}  // namespace cb::engine
+}  // namespace cb::store

@@ -182,3 +182,9 @@ The inventory is [docs/sdk/inventory.md](sdk/inventory.md) (regenerate: `python 
 - 2026-11-27: design written (Logan: "use it as a library", "a really easy to understand code base that is not scattered all over
   the place and internal all over the place"; "cleanliness, structure, and efficiency"). Phase 0 started.
 - 2026-11-27: phase 0 done: the inventory (docs/sdk/inventory.md, tools/sdk), its findings above. Next: phase 1, starting with the include checker and the four causes of the cycle.
+- 2026-11-27: phase 1, step 1. The layering check is a test (app.layers.includes_point_down_except_the_listed_ones, every gate):
+  upward includes are listed in tools/sdk/layer_baseline.txt, a new one fails, a fixed one must come off. Upward includes 116 -> 43:
+  the commands analyze, versions, reach and ppc-calls moved into app (namespaces cb::app::...); the function store and the verdict
+  vocabulary moved from engine and verify down into store (cb::store::FunctionStore, cb::store::Verdict, ...); harness programs
+  (*_main.cpp) and test-image helpers (*_test_image.hpp) count as tests. Found on the way: verify/lane_common's Judgement duplicates
+  store::Judgement (rule 1; next).

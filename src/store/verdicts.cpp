@@ -1,11 +1,11 @@
 // verify/verdicts.cpp -- the verdict vocabulary (see verdicts.hpp). The words themselves, and the older
 // spellings read as the words now.
 
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 #include "core/text.hpp"
 
-namespace cb::verify {
+namespace cb::store {
 
 namespace {
 
@@ -199,7 +199,7 @@ Classification Judgement::classify() const {
     for (const std::string& code : limits)
         if (auto l = parse_weak_limit(code))
             weak.insert(*l);
-    return verify::classify(verdict, weak);
+    return store::classify(verdict, weak);
 }
 
 std::string Judgement::limits_joined() const {
@@ -232,4 +232,4 @@ const StoreRow* Index::at(const Origin& origin) const {
     return it == rows_.end() ? nullptr : &it->second;
 }
 
-} // namespace cb::verify
+}  // namespace cb::store

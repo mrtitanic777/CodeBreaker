@@ -25,20 +25,20 @@ std::filesystem::path databases_folder(const std::filesystem::path& state, const
     return index.parent_path() / (index.stem().string() + ".db");
 }
 
-std::unique_ptr<engine::FunctionStore> open(const std::filesystem::path& state, const std::optional<std::filesystem::path>& path, bool readonly) {
+std::unique_ptr<store::FunctionStore> open(const std::filesystem::path& state, const std::optional<std::filesystem::path>& path, bool readonly) {
     const std::filesystem::path index = is_set(path) ? *path : default_path(state);
     if (readonly && !std::filesystem::is_regular_file(index)) return nullptr;
-    return std::make_unique<engine::FunctionStore>(index, databases_folder(state, path), readonly);
+    return std::make_unique<store::FunctionStore>(index, databases_folder(state, path), readonly);
 }
 
-std::vector<engine::Overview> overview(const std::filesystem::path& state, const std::optional<std::filesystem::path>& path) {
+std::vector<store::Overview> overview(const std::filesystem::path& state, const std::optional<std::filesystem::path>& path) {
     const auto store = open(state, path, /*readonly=*/true);
-    return store ? store->overview() : std::vector<engine::Overview>{};
+    return store ? store->overview() : std::vector<store::Overview>{};
 }
 
-std::map<std::string, verify::Class> latest(const std::filesystem::path& state, std::string_view module_sha, const std::optional<std::filesystem::path>& path) {
+std::map<std::string, store::Class> latest(const std::filesystem::path& state, std::string_view module_sha, const std::optional<std::filesystem::path>& path) {
     const auto store = open(state, path, /*readonly=*/true);
-    return store ? store->latest(module_sha) : std::map<std::string, verify::Class>{};
+    return store ? store->latest(module_sha) : std::map<std::string, store::Class>{};
 }
 
 }  // namespace cb::store::functions

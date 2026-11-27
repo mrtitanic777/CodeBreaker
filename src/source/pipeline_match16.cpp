@@ -31,7 +31,7 @@
 #include "symbols/workbench.hpp"
 #include "verify/lanes/win16.hpp"
 #include "source/match_bytes.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::source::pipeline {
 
@@ -132,9 +132,9 @@ public:
         const am16::Masked b = m16p_trim(built);
         const compare::mask::DistanceResult d = compare::mask::distance(b.code, original.code, b.mask, original.mask);
         am16::Verdict v;
-        v.match = d.verdict == compare::mask::Match::Identical ? verify::ByteMatch::Identical
-                  : d.verdict == compare::mask::Match::SameSize ? verify::ByteMatch::SameSize
-                                                                : verify::ByteMatch::Different;
+        v.match = d.verdict == compare::mask::Match::Identical ? store::ByteMatch::Identical
+                  : d.verdict == compare::mask::Match::SameSize ? store::ByteMatch::SameSize
+                                                                : store::ByteMatch::Different;
         v.differing = d.differing;
         v.total = d.compared;
         return v;
@@ -435,7 +435,7 @@ int match16_command(World& world, const stdfs::path& module, const cli::Args& ar
         for (const auto& [name, v] : run.result.verdicts) {
             const auto used = run.result.setting.find(name);
             const auto segment = run.result.segment.find(name);
-            j[name] = Json{{"verdict", std::string(verify::word(v.match))},
+            j[name] = Json{{"verdict", std::string(store::word(v.match))},
                            {"differing", v.differing},
                            {"total", v.total},
                            {"segment", segment == run.result.segment.end() ? 0U : segment->second},
@@ -450,7 +450,7 @@ int match16_command(World& world, const stdfs::path& module, const cli::Args& ar
             const auto verdict = run.result.verdicts.find(f.name);
             const auto code = run.result.code.find(f.name);
             if (verdict == run.result.verdicts.end() || code == run.result.code.end() || !code->second) continue;
-            if (verdict->second.match != verify::ByteMatch::SameSize && verdict->second.match != verify::ByteMatch::Different) continue;
+            if (verdict->second.match != store::ByteMatch::SameSize && verdict->second.match != store::ByteMatch::Different) continue;
             const am16::Masked built = m16p_trim(*code->second);
             kept.emplace(f.name, MatchBytes{built.code, built.mask, f.original.code, f.original.mask});
         }

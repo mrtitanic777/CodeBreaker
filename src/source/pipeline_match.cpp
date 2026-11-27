@@ -163,7 +163,7 @@ double sequence_ratio(ByteView a, ByteView b) {
 namespace {
 
 struct MatchVerdict {
-    verify::ByteMatch match = verify::ByteMatch::NoCompile;
+    store::ByteMatch match = store::ByteMatch::NoCompile;
     double share = 0.0;      // of the bytes outside the masked places, the share that are the original's
     std::size_t size = 0;    // the compiled function's, padding aside
     std::size_t original = 0;
@@ -178,7 +178,7 @@ MatchVerdict match_compare(MatchCode built, const MatchCode& original) {
     v.size = built.bytes.size();
     v.original = original.bytes.size();
     if (built.bytes.size() != original.bytes.size()) {
-        v.match = verify::ByteMatch::Different;
+        v.match = store::ByteMatch::Different;
         v.share = sequence_ratio(built.bytes, original.bytes);
         return v;
     }
@@ -187,7 +187,7 @@ MatchVerdict match_compare(MatchCode built, const MatchCode& original) {
         if (!built.mask[i] && !original.mask[i]) ++free;
     const std::vector<ByteView> masks = {built.mask, original.mask};
     const std::size_t same = free - compare::mask::differing(built.bytes, original.bytes, masks).size();
-    v.match = same == free ? verify::ByteMatch::Identical : verify::ByteMatch::SameSize;
+    v.match = same == free ? store::ByteMatch::Identical : store::ByteMatch::SameSize;
     v.share = free ? static_cast<double>(same) / static_cast<double>(free) : 1.0;
     return v;
 }
@@ -278,16 +278,16 @@ std::vector<std::pair<std::string, MatchVerdict>> match_run(World& world, const 
         const auto original = original_of(names[i]);
         MatchVerdict v;
         if (!objects[i] || original == originals.end()) {
-            v.match = !objects[i] ? verify::ByteMatch::NoCompile : verify::ByteMatch::NoExtent;
+            v.match = !objects[i] ? store::ByteMatch::NoCompile : store::ByteMatch::NoExtent;
             v.original = original == originals.end() ? 0 : original->second.bytes.size();
         } else if (const std::optional<MatchCode> mine = match_object_function(*objects[i], names[i])) {
             v = match_compare(*mine, original->second);
-            if (keep_bytes && (v.match == verify::ByteMatch::SameSize || v.match == verify::ByteMatch::Different)) {
+            if (keep_bytes && (v.match == store::ByteMatch::SameSize || v.match == store::ByteMatch::Different)) {
                 MatchCode trimmed = match_trimmed(*mine);
                 v.bytes = MatchBytes{std::move(trimmed.bytes), std::move(trimmed.mask), original->second.bytes, original->second.mask};
             }
         } else {
-            v.match = verify::ByteMatch::NoCompile;
+            v.match = store::ByteMatch::NoCompile;
             v.original = original->second.bytes.size();
         }
         v.flags = used[i];
@@ -317,7 +317,7 @@ int match_command(World& world, const cli::Args& args) {
     else sets.push_back(flags);
 
     struct Best {
-        verify::ByteMatch match = verify::ByteMatch::NoCompile;
+        store::ByteMatch match = store::ByteMatch::NoCompile;
         double share = 0.0;
         std::size_t size = 0, original = 0;
         std::string flags;
@@ -326,12 +326,12 @@ int match_command(World& world, const cli::Args& args) {
     };
     std::vector<std::string> order;   // the functions, in the module's order
     std::map<std::string, Best> best;
-    const auto rank_of = [](verify::ByteMatch m) { return static_cast<std::size_t>(std::find(verify::kByteMatches.begin(), verify::kByteMatches.end(), m) - verify::kByteMatches.begin()); };
+    const auto rank_of = [](store::ByteMatch m) { return static_cast<std::size_t>(std::find(store::kByteMatches.begin(), store::kByteMatches.end(), m) - store::kByteMatches.begin()); };
     for (const std::string& set : sets) {
         auto results = match_run(world, *path, cl, set, work, args.value("bytes").has_value());
         std::size_t identical = 0;
         for (auto& [name, v] : results) {
-            if (v.match == verify::ByteMatch::Identical) ++identical;
+            if (v.match == store::ByteMatch::Identical) ++identical;
             const std::size_t rank = rank_of(v.match);
             const auto have = best.find(name);
             if (have == best.end()) order.push_back(name);
@@ -340,19 +340,19 @@ int match_command(World& world, const cli::Args& args) {
         }
         if (sets.size() > 1) cb::out("  {:<16} {} identical\n", set, identical);
     }
-    std::map<verify::ByteMatch, std::size_t> counts;
+    std::map<store::ByteMatch, std::size_t> counts;
     for (const auto& [name, b] : best) ++counts[b.match];
     std::vector<std::string> parts;
-    for (const verify::ByteMatch k : verify::kByteMatches)
-        if (counts[k] != 0) parts.push_back(std::format("{} {}", verify::label(k), counts[k]));
+    for (const store::ByteMatch k : store::kByteMatches)
+        if (counts[k] != 0) parts.push_back(std::format("{} {}", store::label(k), counts[k]));
     cb::out("{}: {} functions compiled with the period compiler: {}\n", fs::to_text(path->filename()), best.size(), text::join(parts, ", "));
     std::vector<std::pair<double, std::string>> close;   // the nearest that are not identical, nearest first
     for (const auto& [name, b] : best)
-        if (b.match != verify::ByteMatch::Identical) close.emplace_back(b.share, name);
+        if (b.match != store::ByteMatch::Identical) close.emplace_back(b.share, name);
     std::sort(close.begin(), close.end(), [](const auto& a, const auto& b) { return a > b; });
     for (std::size_t i = 0; i < close.size() && i < 8; ++i) {
         const Best& b = best.at(close[i].second);
-        cb::out("  {:<28} {:<9} {:>3}% of bytes equal  ({} bytes, original {})\n", close[i].second, verify::label(b.match), static_cast<int>(100 * b.share), b.size, b.original);
+        cb::out("  {:<28} {:<9} {:>3}% of bytes equal  ({} bytes, original {})\n", close[i].second, store::label(b.match), static_cast<int>(100 * b.share), b.size, b.original);
     }
     if (const auto json_file = args.value("json")) {
         Json j = Json::object();
@@ -360,7 +360,7 @@ int match_command(World& world, const cli::Args& args) {
         std::sort(sorted.begin(), sorted.end());
         for (const std::string& name : sorted) {
             const Best& b = best.at(name);
-            j[name] = Json{{"verdict", std::string(verify::word(b.match))}, {"share", b.share}, {"size", b.size}, {"original", b.original}, {"flags", b.flags}};
+            j[name] = Json{{"verdict", std::string(store::word(b.match))}, {"share", b.share}, {"size", b.size}, {"original", b.original}, {"flags", b.flags}};
         }
         fs::write_text(fs::from_text(*json_file), json::dump(j, json::Style::Pretty));
     }
@@ -676,7 +676,7 @@ public:
         b = match_trimmed(std::move(b));
         const compare::mask::DistanceResult d = compare::mask::distance(b.bytes, original.bytes, b.mask, original.mask);
         verify::authored::search16::ByteVerdict v;
-        v.match = d.verdict == compare::mask::Match::Identical ? verify::ByteMatch::Identical : d.verdict == compare::mask::Match::SameSize ? verify::ByteMatch::SameSize : verify::ByteMatch::Different;
+        v.match = d.verdict == compare::mask::Match::Identical ? store::ByteMatch::Identical : d.verdict == compare::mask::Match::SameSize ? store::ByteMatch::SameSize : store::ByteMatch::Different;
         v.differing = d.differing;
         v.total = d.compared;
         return v;
@@ -747,9 +747,9 @@ int repair_command(World& world, const cli::Args& args) {
     period_source.header = period_registers(period_source.header, period_source.texts);
 
     const verify::reconstruct::Identity id = world.reconstructor().identity(*path);
-    engine::FunctionStore& store = world.store();
+    store::FunctionStore& store = world.store();
     std::map<std::string, std::string> behaves;   // what the judge said of each function (by its key)
-    for (const engine::Candidate& c : store.candidates(id.sha, id.profile))
+    for (const store::Candidate& c : store.candidates(id.sha, id.profile))
         if (c.verdict) behaves[c.addr] = *c.verdict;
     store.add_module(id.sha, file_name, fs::to_text(*path), "pe");
     store.add_functions(id.sha, m.all_keys);
@@ -773,7 +773,7 @@ int repair_command(World& world, const cli::Args& args) {
     options.record = [&](const rp::Target& target, const rp::Repaired& r, const std::string& setting) {
         const auto b = behaves.find(target.key);
         store.record_variant(id.sha, target.key, setting, r.source, static_cast<std::int64_t>(r.verdict.differing), static_cast<std::int64_t>(r.verdict.total),
-                             verify::word(r.verdict.match), r.knobs, std::nullopt, b == behaves.end() ? std::string_view() : std::string_view(b->second));
+                             store::word(r.verdict.match), r.knobs, std::nullopt, b == behaves.end() ? std::string_view() : std::string_view(b->second));
     };
     const rp::Counts counts = rp::run(module, compiler, options);
     cb::out("{}\n", rp::summary_line(fs::to_text(path->filename()), counts));

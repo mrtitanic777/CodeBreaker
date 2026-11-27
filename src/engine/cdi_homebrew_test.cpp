@@ -36,13 +36,13 @@ CB_TEST("engine.cdi.homebrew.superquartet", [] {
         if (judged == 12) break;
         const std::optional<std::uint32_t> offset = program.offset(address);
         if (!offset) continue;
-        CB_CHECK(lane.judge_function(false, file, file, address).verdict == verify::Verdict::Equivalent);
+        CB_CHECK(lane.judge_function(false, file, file, address).verdict == store::Verdict::Equivalent);
         Bytes edited = program.file;
         edited[*offset] = static_cast<std::uint8_t>(edited[*offset] ^ 0xFF);
         const stdfs::path changed = dir.path() / "CDI_EDIT";
         fs::write_file(changed, edited);
         ++judged;
-        if (lane.judge_function(false, file, changed, address).verdict == verify::Verdict::Divergent) ++diverged;
+        if (lane.judge_function(false, file, changed, address).verdict == store::Verdict::Divergent) ++diverged;
     }
     std::cout << "  judged " << judged << ", " << diverged << " diverged when their first byte was turned over\n";
     CB_CHECK(judged != 0);

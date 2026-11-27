@@ -20,6 +20,7 @@
 #include "knowledge/package.hpp"
 
 using namespace cb;
+using namespace cb::store;
 using namespace cb::verify;
 using namespace cb::verify::lanes;
 namespace sfs = std::filesystem;
@@ -67,10 +68,10 @@ struct DriverWorld {
 
 std::string drv_limits(const std::vector<std::string>& limits) { return text::join(limits, ","); }
 
-void drv_check_judgement(const std::string& what, const Judgement& got, const ordered_json& want_verdict, const ordered_json& want_reason,
+void drv_check_judgement(const std::string& what, const store::Judgement& got, const ordered_json& want_verdict, const ordered_json& want_reason,
                          const ordered_json& want_limits, const ordered_json& want_detail) {
     testing::count_check();
-    const std::string verdict(word(got.verdict));
+    const std::string verdict(store::word(got.verdict));
     if (verdict != want_verdict.get<std::string>() || got.reason != want_reason.get<std::string>() ||
         drv_limits(got.limits) != drv_limits(want_limits.get<std::vector<std::string>>()) || got.detail != want_detail.get<std::string>()) {
         testing::record_failure(__FILE__, __LINE__,

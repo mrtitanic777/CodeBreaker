@@ -97,22 +97,22 @@ CB_TEST("engine.machine_atari2600.a_cartridge_comes_back_identical_and_an_edit_d
     CB_CHECK_EQ(image.written.functions.size(), 2u);   // reset and the subroutine
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
     CB_CHECK_EQ(built.items.size(), 2u);
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     Bytes edited = a2600_program();
     edited[1] = 0x1E;   // LDA #$1E: COLUBK gets another colour
     const stdfs::path changed = dir.path() / "edited.a26";
     fs::write_file(changed, edited);
-    CB_CHECK(lane.judge_function(false, original, original, 0xF000).verdict == verify::Verdict::Equivalent);   // run twice: agree
-    const verify::Judgement j = lane.judge_function(false, original, changed, 0xF000);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, 0xF000).verdict == store::Verdict::Equivalent);   // run twice: agree
+    const store::Judgement j = lane.judge_function(false, original, changed, 0xF000);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     CB_CHECK(!j.reason.empty());
-    CB_CHECK(lane.judge_function(false, original, changed, 0xF010).verdict == verify::Verdict::Equivalent);   // the subroutine nobody edited
+    CB_CHECK(lane.judge_function(false, original, changed, 0xF010).verdict == store::Verdict::Equivalent);   // the subroutine nobody edited
     // the same edit in the subroutine's RAM store: another zero-page address changes the RAM compared
     Bytes ram_edit = a2600_program();
     ram_edit[0x14] = 0x81;
     fs::write_file(dir.path() / "ram.a26", ram_edit);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "ram.a26", 0xF010).verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "ram.a26", 0xF010).verdict == store::Verdict::Divergent);
 });
 
 CB_TEST("engine.machine_atari2600.a_bank_switch_is_an_effect", [] {
@@ -127,9 +127,9 @@ CB_TEST("engine.machine_atari2600.a_bank_switch_is_an_effect", [] {
     Bytes edited = a2600_f8_program();
     edited[1] = 0xF8;   // bank 0 touches $1FF8 (its own bank) instead of $1FF9
     fs::write_file(dir.path() / "edited.a26", edited);
-    CB_CHECK(lane.judge_function(false, original, original, 0x0F000).verdict == verify::Verdict::Equivalent);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.a26", 0x0F000).verdict == verify::Verdict::Divergent);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.a26", 0x1F000).verdict == verify::Verdict::Equivalent);   // bank 1 is as it was
+    CB_CHECK(lane.judge_function(false, original, original, 0x0F000).verdict == store::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.a26", 0x0F000).verdict == store::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.a26", 0x1F000).verdict == store::Verdict::Equivalent);   // bank 1 is as it was
 });
 
 CB_TEST("engine.machine_atari7800.a_cartridge_comes_back_identical_and_an_edit_diverges", [] {
@@ -142,14 +142,14 @@ CB_TEST("engine.machine_atari7800.a_cartridge_comes_back_identical_and_an_edit_d
     CB_CHECK(image.written.linked && image.written.same);
     CB_CHECK_EQ(image.written.functions.size(), 3u);   // reset, the subroutine, the interrupt handler
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     Bytes edited = a7800_program();
     edited[128 + 0x25] = 0x25;   // STA $0025 (P1C1) instead of WSYNC
     fs::write_file(dir.path() / "edited.a78", edited);
-    CB_CHECK(lane.judge_function(false, original, original, 0xC020).verdict == verify::Verdict::Equivalent);
-    const verify::Judgement j = lane.judge_function(false, original, dir.path() / "edited.a78", 0xC020);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, 0xC020).verdict == store::Verdict::Equivalent);
+    const store::Judgement j = lane.judge_function(false, original, dir.path() / "edited.a78", 0xC020);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     CB_CHECK(!j.reason.empty());
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.a78", 0xC030).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.a78", 0xC030).verdict == store::Verdict::Equivalent);
 });

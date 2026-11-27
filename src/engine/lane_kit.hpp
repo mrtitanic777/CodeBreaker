@@ -41,7 +41,7 @@
 #include "build/module.hpp"
 #include "decompile/decompiler.hpp"
 #include "emulate/pcode.hpp"
-#include "engine/function_store.hpp"
+#include "store/function_store.hpp"
 #include "jobs/workers.hpp"
 #include "knowledge/package.hpp"
 #include "verify/gate16/isolated16.hpp"
@@ -88,7 +88,7 @@ public:
 
     // ---- what the path is given -----------------------------------------------------------------------------------------
     // reconstruct's services over the corpus and `store`. Judging runs on threads (the budget of the machine).
-    verify::reconstruct::Services reconstruct_services(const verify::reconstruct::Kinds& kinds, FunctionStore& store);
+    verify::reconstruct::Services reconstruct_services(const verify::reconstruct::Kinds& kinds, store::FunctionStore& store);
     // Services of the module builder (build/module): the same decompiler, function builder, emulators and gate.
     build::module::Services module_services();
     // The 16-bit gate's spec (verify/gate16/isolated16).
@@ -105,7 +105,7 @@ public:
     // The lane filed under `name` ("pe", "ne", "le", "powerpc", "dos", "java", the machines); null when there is none or its tools are not set up.
     std::shared_ptr<const verify::lanes::Kind> lane_named(std::string_view name);
     // `Services::judge_batch` of reconstruct: nullopt (threads judge) without a launcher or for a share too small to be worth a process.
-    std::optional<std::map<std::string, verify::Judgement>> judge_apart(const verify::reconstruct::Services::JudgeBatch& batch);
+    std::optional<std::map<std::string, store::Judgement>> judge_apart(const verify::reconstruct::Services::JudgeBatch& batch);
     // `Services::build_apart` of the module builder.
     std::optional<build::module::Built> build_apart(const std::string& module, const std::optional<std::filesystem::path>& outdir, bool call);
 

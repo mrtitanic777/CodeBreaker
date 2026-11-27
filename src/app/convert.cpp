@@ -54,11 +54,11 @@ std::string_view state_label(State state) {
     return "";
 }
 
-FunctionVerdict verdict_of(verify::Class cls) {
+FunctionVerdict verdict_of(store::Class cls) {
     switch (cls) {
-        case verify::Class::Verified:
-        case verify::Class::Weak: return FunctionVerdict::Matches;
-        case verify::Class::Unverified: return FunctionVerdict::Differs;
+        case store::Class::Verified:
+        case store::Class::Weak: return FunctionVerdict::Matches;
+        case store::Class::Unverified: return FunctionVerdict::Differs;
         default: return FunctionVerdict::NotChecked;
     }
 }

@@ -188,7 +188,7 @@ public:
     static reconstruct::KindTraits traits();
 
     // The verdict of one function. Safe to call from several threads at once.
-    static Judgement judge_function(const Context& context, const Item& item);
+    static store::Judgement judge_function(const Context& context, const Item& item);
 
 private:
     Services services_;

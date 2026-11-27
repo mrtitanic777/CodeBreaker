@@ -22,8 +22,8 @@
 #include "core/text.hpp"
 #include "coverage/ledger.hpp"
 #include "coverage/reach.hpp"
-#include "coverage/reach_command.hpp"
-#include "engine/function_store.hpp"
+#include "app/reach_command.hpp"
+#include "store/function_store.hpp"
 #include "java/corpus.hpp"
 #include "platforms/package.hpp"
 #include "source/placement.hpp"
@@ -40,10 +40,10 @@ namespace sym = cb::symbols;
 
 // ---- the store and the ledger -------------------------------------------------------------------------------------------------
 
-std::unique_ptr<engine::FunctionStore> sy_open_store(const config::Config& config) { return store::functions::open(config.state(), std::nullopt, true); }
+std::unique_ptr<store::FunctionStore> sy_open_store(const config::Config& config) { return store::functions::open(config.state(), std::nullopt, true); }
 
 Json sy_ledger_json(const config::Config& config, const base::Corpus& corpus, const std::function<std::map<std::string, std::optional<std::string>>()>& profiles, bool refresh) {
-    const std::unique_ptr<engine::FunctionStore> store = sy_open_store(config);
+    const std::unique_ptr<store::FunctionStore> store = sy_open_store(config);
     coverage::ledger::Ledger ledger(coverage::ledger::services_over(corpus, config.state(), profiles), store.get());
     return coverage::ledger::to_json(ledger.measure(std::nullopt, refresh));
 }
@@ -51,7 +51,7 @@ Json sy_ledger_json(const config::Config& config, const base::Corpus& corpus, co
 // What a running sweep is doing: the store and the ledger as the progress reading wants them.
 progress::StoreReading sy_read_store(const config::Config& config, const base::Corpus& corpus, const std::function<std::map<std::string, std::optional<std::string>>()>& profiles, progress::Clock::time_point now) {
     progress::StoreReading out;
-    const std::unique_ptr<engine::FunctionStore> store = sy_open_store(config);
+    const std::unique_ptr<store::FunctionStore> store = sy_open_store(config);
     coverage::ledger::Ledger ledger(coverage::ledger::services_over(corpus, config.state(), profiles), store.get());
     const coverage::ledger::Report report = ledger.measure();
     out.store_path = store::functions::default_path(config.state()).make_preferred().string();   // (as the system writes it)
@@ -65,15 +65,15 @@ progress::StoreReading sy_read_store(const config::Config& config, const base::C
         r.modules = static_cast<std::uint64_t>(k.modules);
         r.measured = static_cast<std::uint64_t>(k.measured);
         r.functions = static_cast<std::uint64_t>(k.functions);
-        for (const verify::Class c : verify::kClassOrder) {
+        for (const store::Class c : store::kClassOrder) {
             const auto n = k.classes.find(c);
-            r.classes.push_back({std::string(verify::word(c)), std::string(verify::title(c)), n == k.classes.end() ? 0 : static_cast<std::uint64_t>(n->second)});
+            r.classes.push_back({std::string(store::word(c)), std::string(store::title(c)), n == k.classes.end() ? 0 : static_cast<std::uint64_t>(n->second)});
         }
         out.kinds.push_back(std::move(r));
     }
     if (!store) return out;
     const double seconds = std::chrono::duration<double>(now.time_since_epoch()).count();
-    for (const engine::RecentModule& m : store->recent(8))
+    for (const store::RecentModule& m : store->recent(8))
         out.recent.push_back({m.name, std::string(coverage::ledger::kind_title(m.kind).empty() ? std::string_view(m.kind) : coverage::ledger::kind_title(m.kind)), static_cast<std::uint64_t>(m.judged),
                               progress::Clock::time_point(std::chrono::duration_cast<progress::Clock::duration>(std::chrono::duration<double>(m.last)))});
     out.fresh = static_cast<std::uint64_t>(store->verdicts_since(seconds - static_cast<double>(progress::kWindow.count())));
@@ -184,12 +184,12 @@ void fill_symbols(Services& services, const std::shared_ptr<Context>& context) {
     };
     // the stored reconstructions of a function
     services.stored_candidates = [context](std::string_view module_sha, std::string_view addr) -> Json {
-        const std::unique_ptr<engine::FunctionStore> store = sy_open_store(context->config());
+        const std::unique_ptr<store::FunctionStore> store = sy_open_store(context->config());
         Json out = Json::array();
         if (!store) return out;
-        for (const engine::Stored& c : store->stored(module_sha, addr)) {
+        for (const store::Stored& c : store->stored(module_sha, addr)) {
             Json verdicts = Json::array();
-            for (const engine::StoredVerdict& v : c.verdicts)
+            for (const store::StoredVerdict& v : c.verdicts)
                 verdicts.push_back(Json{{"profile", v.profile}, {"verdict", v.verdict ? Json(*v.verdict) : Json(nullptr)}, {"reason", v.reason}, {"limits", v.limits}, {"carried", v.carried}});
             out.push_back(Json{{"engine", c.engine}, {"rev", c.rev ? Json(*c.rev) : Json(nullptr)}, {"name", c.name ? Json(*c.name) : Json(nullptr)}, {"source", c.source}, {"problem", c.problem},
                                {"verdicts", std::move(verdicts)}});
@@ -225,7 +225,7 @@ void fill_symbols(Services& services, const std::shared_ptr<Context>& context) {
         return {d.folder, std::string(source::placement::how_name(d.how))};
     };
     // what a file is
-    auto registry = std::shared_ptr<platforms::Registry>(coverage::reach_command::standard_registry());
+    auto registry = std::shared_ptr<platforms::Registry>(app::reach_command::standard_registry());
     services.reach_describe = [registry](const std::filesystem::path& p) -> Json {
         coverage::reach::Services reach;
         reach.identify_platform = coverage::reach::identify_with(*registry);

@@ -33,18 +33,18 @@ CB_TEST("engine.machine_chf.a_cartridge_comes_back_identical_and_an_edit_diverge
     CB_CHECK(image.written.linked && image.written.same);
     CB_CHECK_EQ(image.written.functions.size(), 2u);
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     Bytes edited = ti::cartridge();
     edited[0x22] = 0x04;   // AI $04 instead of AI $03 in the subroutine
     fs::write_file(dir.path() / "edited.chf", edited);
-    CB_CHECK(lane.judge_function(false, original, original, 0x820).verdict == verify::Verdict::Equivalent);
-    const verify::Judgement j = lane.judge_function(false, original, dir.path() / "edited.chf", 0x820);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, 0x820).verdict == store::Verdict::Equivalent);
+    const store::Judgement j = lane.judge_function(false, original, dir.path() / "edited.chf", 0x820);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     CB_CHECK(!j.reason.empty());
     Bytes data = ti::cartridge();
     data[6] = 0x02;   // OUT $02 instead of OUT $01: another port written in the start function
     fs::write_file(dir.path() / "data.chf", data);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "data.chf", 0x800).verdict == verify::Verdict::Divergent);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "data.chf", 0x820).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "data.chf", 0x800).verdict == store::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "data.chf", 0x820).verdict == store::Verdict::Equivalent);
 });

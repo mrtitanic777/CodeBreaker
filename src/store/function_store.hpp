@@ -30,9 +30,9 @@
 #include <string_view>
 #include <vector>
 
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
-namespace cb::engine {
+namespace cb::store {
 
 // One engine's candidate for a function, with its verdict under one profile (none when it has not been judged under it).
 struct Candidate {
@@ -43,14 +43,14 @@ struct Candidate {
     std::optional<std::string> judged_sig;           // the sig of the candidate when it was judged
 
     // What the verdict amounts to (no source when there is none).
-    verify::Classification classification() const;
+    store::Classification classification() const;
 };
 
 // A function's best candidate under a profile, with the class it counts as.
 struct Best {
     Candidate candidate;
-    verify::Class cls = verify::Class::NoSource;
-    verify::WeakLimits weak;                         // why a weak match is weak
+    store::Class cls = store::Class::NoSource;
+    store::WeakLimits weak;                         // why a weak match is weak
 };
 
 // One candidate of a function with each verdict it has (stored()).
@@ -77,7 +77,7 @@ struct Record {
 };
 
 // A module's tally of its functions by class.
-using ClassCount = std::map<verify::Class, std::int64_t>;
+using ClassCount = std::map<store::Class, std::int64_t>;
 
 // A byte-match variant of a function.
 struct Variant {
@@ -168,14 +168,14 @@ public:
     // The best candidate of each judged function: the best class first, then the engine named earliest in `prefer`.
     std::map<std::string, Best> best(std::string_view module, std::string_view profile, std::span<const std::string> prefer = {});
     // {address: class} by each function's latest verdict under any profile.
-    std::map<std::string, verify::Class> latest(std::string_view module);
+    std::map<std::string, store::Class> latest(std::string_view module);
     // Every function's address, sorted.
     std::vector<std::string> addresses(std::string_view module);
     // How many functions are of each class under `profile` (best candidate of each, no source for the rest): every class of
-    // verify::kClassOrder is a key.
+    // store::kClassOrder is a key.
     ClassCount tally(std::string_view profile, std::string_view module, std::span<const std::string> prefer = {});
     // The same with the runtime library's functions counted on their own (a verified or weak one stays that): every class of
-    // verify::kClassScored is a key.
+    // store::kClassScored is a key.
     ClassCount scores(std::string_view profile, std::string_view module, std::span<const std::string> prefer = {});
     // {address: {name, library}} of the functions recognised as a runtime library's.
     std::map<std::string, std::pair<std::optional<std::string>, std::optional<std::string>>> identified(std::string_view module);
@@ -211,4 +211,4 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace cb::engine
+}  // namespace cb::store

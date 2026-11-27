@@ -397,7 +397,7 @@ void write_one(World& world, const std::string& module, bool verify, std::option
 // SCOREBOARD.md from the store: modules judged under the CURRENT verifier settings of their kind (32-bit, 16-bit, PowerPC, driver).
 stdfs::path write_scoreboard(World& world, const std::optional<stdfs::path>& out_dir, const mw::Log& log) {
     base::Corpus& corpus = world.corpus();
-    engine::FunctionStore& store = world.store();
+    store::FunctionStore& store = world.store();
     std::map<std::string, std::string> current;   // digest -> kind
     for (const auto& [kind, digest] : world.reconstructor().digests())
         if (digest && !digest->empty()) current[*digest] = kind;
@@ -408,13 +408,13 @@ stdfs::path write_scoreboard(World& world, const std::optional<stdfs::path>& out
     for (const auto& [kind, digest] : by_kind) settings.push_back(kind + " " + digest);
 
     std::map<std::string, std::string> where;   // module hash -> path
-    for (const engine::ModuleRow& row : store.module_rows()) where[row.sha] = row.path;
+    for (const store::ModuleRow& row : store.module_rows()) where[row.sha] = row.path;
     struct Row {
         std::string name, kind, sha, digest;
     };
     std::vector<Row> rows;
     for (const auto& [digest, kind] : current)
-        for (const engine::ModuleRow& m : store.modules(digest)) {
+        for (const store::ModuleRow& m : store.modules(digest)) {
             const auto path = where.find(m.sha);
             if (in_corpus(corpus, path == where.end() ? stdfs::path() : fs::from_text(path->second))) rows.push_back({m.name, kind, m.sha, digest});
         }

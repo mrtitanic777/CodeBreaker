@@ -33,19 +33,19 @@ CB_TEST("engine.machine_ngp.a_cartridge_comes_back_identical_and_an_edit_diverge
     CB_CHECK(image.written.linked && image.written.same);
     CB_CHECK_EQ(image.written.functions.size(), 3u);
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     // sub ($200080): `add WA,BC` ($D9 $80) as `sub WA,BC` ($D9 $A0): another value in WA
     Bytes edited = ti::cartridge();
     CB_CHECK_EQ(edited[0x80 + 3], 0xD9);   // (ld WA,(XSP+4) is $9F $04 $20; the add follows)
     edited[0x80 + 4] = 0xA0;
     fs::write_file(dir.path() / "edited.ngp", edited);
-    CB_CHECK(lane.judge_function(false, original, original, 0x200080).verdict == verify::Verdict::Equivalent);
-    const verify::Judgement j = lane.judge_function(false, original, dir.path() / "edited.ngp", 0x200080);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, 0x200080).verdict == store::Verdict::Equivalent);
+    const store::Judgement j = lane.judge_function(false, original, dir.path() / "edited.ngp", 0x200080);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     CB_CHECK(!j.reason.empty());
     // start calls the edited sub: it differs too
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.ngp", 0x200040).verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.ngp", 0x200040).verdict == store::Verdict::Divergent);
     // the function that only kicks the watchdog agrees
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.ngp", 0x2000A0).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited.ngp", 0x2000A0).verdict == store::Verdict::Equivalent);
 });

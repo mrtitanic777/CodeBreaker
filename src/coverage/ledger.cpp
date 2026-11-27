@@ -77,7 +77,7 @@ std::string_view kind_title(std::string_view kind) {
 }
 
 Counts::Counts() {
-    for (verify::Class c : verify::kClassOrder) classes[c] = 0;
+    for (store::Class c : store::kClassOrder) classes[c] = 0;
 }
 
 // ---- the extents ---------------------------------------------------------------------------------------------------
@@ -149,7 +149,7 @@ Summary total_of(const std::vector<Row>& rows) {
         out.functions += r.functions;
         out.decompiled += r.decompiled;
         out.compiled += r.compiled;
-        for (verify::Class c : verify::kClassOrder) out.classes[c] += r.classes.at(c);
+        for (store::Class c : store::kClassOrder) out.classes[c] += r.classes.at(c);
         out.code_bytes += r.code_bytes;
         out.bytes_known += r.bytes_known;
         out.bytes_verified += r.bytes_verified;
@@ -164,7 +164,7 @@ Summary total_of(const std::vector<Row>& rows) {
 
 // ---- the ledger ----------------------------------------------------------------------------------------------------
 
-Ledger::Ledger(Services services, engine::FunctionStore* store) : services_(std::move(services)), store_(store) {
+Ledger::Ledger(Services services, store::FunctionStore* store) : services_(std::move(services)), store_(store) {
     CB_ASSERT(services_.corpus != nullptr, "the ledger needs the corpus");
 }
 
@@ -236,32 +236,32 @@ Counts Ledger::counts(const std::string& sha, const std::optional<std::string>& 
         if (const auto kept = kept_.find(key); kept != kept_.end() && kept->second.first == stamp) return kept->second.second;
     }
     // every known function and its class: the best candidate's, and no-source for one nothing has been judged for
-    std::map<std::string, engine::Best> best;
+    std::map<std::string, store::Best> best;
     if (digest && !digest->empty()) best = store_->best(sha, *digest);
     std::vector<std::string> addrs = store_->addresses(sha);
     // (a driver's functions are object:offset; a bundle judged as a DOS program before it had the driver lane left plain addresses behind)
     if (kind == "le") std::erase_if(addrs, [](const std::string& a) { return a.find(':') == std::string::npos; });
-    std::map<std::string, verify::Class> classes;
+    std::map<std::string, store::Class> classes;
     Counts c;
     for (const std::string& a : addrs) {
         const auto it = best.find(a);
-        const verify::Class cls = it == best.end() ? verify::Class::NoSource : it->second.cls;
+        const store::Class cls = it == best.end() ? store::Class::NoSource : it->second.cls;
         classes[a] = cls;
         if (it != best.end()) ++c.judged;
         ++c.classes[cls];
     }
     c.functions = static_cast<std::int64_t>(addrs.size());
-    for (verify::Class built : verify::kClassBuilt) c.compiled += c.classes.at(built);
+    for (store::Class built : store::kClassBuilt) c.compiled += c.classes.at(built);
     std::set<std::string> decompiled;
-    for (const engine::Candidate& cand : store_->candidates(sha, digest.value_or("")))
+    for (const store::Candidate& cand : store_->candidates(sha, digest.value_or("")))
         if (ledger_has_text(cand.source) && classes.contains(cand.addr)) decompiled.insert(cand.addr);
     c.decompiled = static_cast<std::int64_t>(decompiled.size());
     std::error_code ec;
     if (!path.empty() && stdfs::is_regular_file(path, ec)) {
         for (const auto& [addr, bytes] : extents(path, kind, addrs)) {
             c.bytes_known += bytes;
-            if (classes.at(addr) == verify::Class::Verified) c.bytes_verified += bytes;
-            if (classes.at(addr) == verify::Class::Weak) c.bytes_weak += bytes;
+            if (classes.at(addr) == store::Class::Verified) c.bytes_verified += bytes;
+            if (classes.at(addr) == store::Class::Weak) c.bytes_weak += bytes;
         }
     }
     if (stamped) kept_[key] = {stamp, c};
@@ -273,10 +273,10 @@ Report Ledger::measure(std::optional<std::string_view> module, bool refresh) {
     report.profiles = profiles();
     stamps_.clear();
     // name -> every module of the store by that name
-    std::map<std::string, std::vector<engine::ModuleRow>> stored;
+    std::map<std::string, std::vector<store::ModuleRow>> stored;
     if (store_) {
         for (const auto& [sha, s] : store_->summaries()) stamps_[sha] = Stamp{s.functions, s.judged, s.last};
-        for (engine::ModuleRow& row : store_->module_rows()) stored[row.name].push_back(std::move(row));
+        for (store::ModuleRow& row : store_->module_rows()) stored[row.name].push_back(std::move(row));
     }
     std::vector<CorpusModule> mods = corpus_modules(refresh);
     std::set<std::string> have;
@@ -285,7 +285,7 @@ Report Ledger::measure(std::optional<std::string_view> module, bool refresh) {
     if (module && !module->empty()) want = text::lower(fs::to_text(fs::from_text(*module).filename()));
     for (const auto& [name, versions] : stored) {   // in the store but not a corpus module
         if (have.contains(name) || (want && *want != name && *want != ledger_stem(name))) continue;
-        const engine::ModuleRow& first = versions.front();
+        const store::ModuleRow& first = versions.front();
         std::error_code ec;
         const stdfs::path file = fs::from_text(first.path);
         const bool there = !first.path.empty() && stdfs::is_regular_file(file, ec);
@@ -310,12 +310,12 @@ Report Ledger::measure(std::optional<std::string_view> module, bool refresh) {
         row.kind = m.kind;
         row.size = m.size;
         row.code_bytes = m.code_bytes;
-        std::vector<engine::ModuleRow> versions;
+        std::vector<store::ModuleRow> versions;
         if (const auto it = stored.find(m.name); it != stored.end()) versions = it->second;
         if (versions.size() > 1) {   // several files have had this name: the corpus file's own
             const auto mine = services_.corpus->sha(fs::from_text(m.path));
-            std::vector<engine::ModuleRow> same;
-            for (const engine::ModuleRow& v : versions)
+            std::vector<store::ModuleRow> same;
+            for (const store::ModuleRow& v : versions)
                 if (mine && v.sha == *mine) same.push_back(v);
             if (same.empty()) same.push_back(versions.front());
             versions = std::move(same);
@@ -351,8 +351,8 @@ Report Ledger::measure(std::optional<std::string_view> module, bool refresh) {
 
 Ledger::Reasons Ledger::reasons(const std::string& sha, const std::string& digest, std::size_t most) const {
     // per class, the reasons in the order met with their counts
-    std::map<verify::Class, std::vector<std::pair<std::string, std::int64_t>>> why;
-    const auto bump = [&](verify::Class cls, const std::string& reason) {
+    std::map<store::Class, std::vector<std::pair<std::string, std::int64_t>>> why;
+    const auto bump = [&](store::Class cls, const std::string& reason) {
         auto& counter = why[cls];
         for (auto& [r, n] : counter)
             if (r == reason) {
@@ -362,15 +362,15 @@ Ledger::Reasons Ledger::reasons(const std::string& sha, const std::string& diges
         counter.emplace_back(reason, 1);
     };
     for (const auto& [addr, best] : store_->best(sha, digest)) {
-        if (best.cls == verify::Class::Weak) {
-            for (verify::WeakLimit limit : best.weak) bump(verify::Class::Weak, std::string(verify::explanation(limit)));
-        } else if (best.cls != verify::Class::Verified) {
+        if (best.cls == store::Class::Weak) {
+            for (store::WeakLimit limit : best.weak) bump(store::Class::Weak, std::string(store::explanation(limit)));
+        } else if (best.cls != store::Class::Verified) {
             std::string reason = best.candidate.reason.empty() ? "(no reason recorded)" : best.candidate.reason;
             bump(best.cls, reason.substr(0, 70));
         }
     }
     Reasons out;
-    for (verify::Class cls : verify::kClassOrder) {
+    for (store::Class cls : store::kClassOrder) {
         const auto it = why.find(cls);
         if (it == why.end()) continue;
         auto counter = it->second;

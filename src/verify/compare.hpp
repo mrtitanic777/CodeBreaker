@@ -37,7 +37,7 @@
 
 #include "base/cache.hpp"
 #include "core/bytes.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::verify::compare {
 
@@ -98,9 +98,9 @@ std::string difference_detail(const Fingerprint& a, const Fingerprint& b, const 
 
 // What compare() tells its caller besides the verdict.
 struct Outcome {
-    Verdict verdict = Verdict::Inconclusive;
+    store::Verdict verdict = store::Verdict::Inconclusive;
     std::string reason;                  // Divergent: the difference; Inconclusive: why nothing was observed
-    WeakLimits limits;
+    store::WeakLimits limits;
     std::optional<int> coverage;         // percent of the original's instructions some input ran (with Options::insns)
     std::optional<int> ret_bits;         // 16 or 8: the part of the return value that is a leftover (0: not a known part)
     std::string detail;                  // Divergent: one line saying what differed
@@ -128,7 +128,7 @@ public:
     Outcome diverged(Difference d) &&;
 
 private:
-    WeakLimits limits_;
+    store::WeakLimits limits_;
     std::set<std::int64_t> covered_, reached_;
     std::set<std::string> errors_;
     int seen_ = 0, clean_ = 0;

@@ -6,12 +6,12 @@
 #include "base/config.hpp"
 #include "engine/lane_kit.hpp"
 #include "jobs/workers.hpp"
-#include "store/analyze_command.hpp"
+#include "app/analyze_command.hpp"
 
 extern "C" int cb_host_main_hook(int argc, char** argv) {
     cb::jobs::WorkerKinds kinds;
     cb::engine::LaneKit::register_worker_kinds(kinds);
-    cb::store::analyze_command::register_worker_kinds(kinds, cb::store::analyze_command::Environment{cb::config::current(), nullptr});
+    cb::app::analyze_command::register_worker_kinds(kinds, cb::app::analyze_command::Environment{cb::config::current(), nullptr});
     if (const std::optional<int> code = cb::jobs::run_as_worker(kinds, argc, argv)) return *code;   // a worker: its share, then exit
     return cb::engine::host_main_hook(argc, argv);   // not a worker (-1): marks this process the host of the kit's workers
 }

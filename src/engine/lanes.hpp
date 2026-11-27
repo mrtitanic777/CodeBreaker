@@ -59,7 +59,7 @@
 #include "engine/engine.hpp"
 #include "verify/lanes/kind.hpp"
 #include "verify/reconstruct.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::engine::lanes {
 
@@ -99,7 +99,7 @@ struct JudgedRow {
     std::string sig;                                // "-" for a function the decompiler produced nothing for
     std::string name;
     std::optional<std::string> source;              // the C (none: nothing produced)
-    verify::Verdict verdict = verify::Verdict::NoSource;
+    store::Verdict verdict = store::Verdict::NoSource;
     std::string reason, limits, detail;             // limits: the codes joined by ","
     std::optional<std::string> problem;             // "none" (no source), "compile"
 };

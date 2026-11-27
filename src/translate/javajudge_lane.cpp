@@ -3,7 +3,7 @@
 #include <utility>
 
 #include "core/error.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::translate::javajudge {
 
@@ -22,13 +22,13 @@ std::vector<std::string> JavaTreeLane::prepare(const std::filesystem::path& src,
 
 LaneResult JavaTreeLane::judge(const std::string& cls) {
     if (!built_.judge) throw UsageError("javajudge: judge() before prepare()");
-    const verify::Judgement judged = built_.judge(cls);
+    const store::Judgement judged = built_.judge(cls);
     LaneResult out;
     out.reason = judged.reason;
     out.detail = judged.detail;
-    if (judged.verdict == verify::Verdict::NoCompile) out.verdict = LaneVerdict::NoCompile;
-    else if (judged.verdict == verify::Verdict::Divergent) out.verdict = LaneVerdict::Divergent;
-    else if (verify::is_good(judged.verdict)) out.verdict = LaneVerdict::Good;
+    if (judged.verdict == store::Verdict::NoCompile) out.verdict = LaneVerdict::NoCompile;
+    else if (judged.verdict == store::Verdict::Divergent) out.verdict = LaneVerdict::Divergent;
+    else if (store::is_good(judged.verdict)) out.verdict = LaneVerdict::Good;
     return out;
 }
 

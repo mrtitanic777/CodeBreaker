@@ -136,27 +136,27 @@ CB_TEST("app.function_source.a_judge_s_classes_reach_the_functions_by_name_then_
     found[1].name = "sub_140001020";
     found[1].address = address_of_name(found[1].name);
     found[2].name = "untouched";
-    const std::vector<Judged> judged = {{"140001000", "WinMain", verify::Class::Weak},
-                                        {"140001020", "", verify::Class::Unverified},
-                                        {"140001040", "lost", verify::Class::NoCompile}};
+    const std::vector<Judged> judged = {{"140001000", "WinMain", store::Class::Weak},
+                                        {"140001020", "", store::Class::Unverified},
+                                        {"140001040", "lost", store::Class::NoCompile}};
     const std::vector<convert::FunctionRecord> out = with_judged(found, judged);
     CB_CHECK_EQ(out.size(), 4u);
-    CB_CHECK(out[0].judged == verify::Class::Weak && out[0].verdict == convert::FunctionVerdict::Matches && out[0].address == "0x140001000");
-    CB_CHECK(out[1].judged == verify::Class::Unverified && out[1].verdict == convert::FunctionVerdict::Differs);
+    CB_CHECK(out[0].judged == store::Class::Weak && out[0].verdict == convert::FunctionVerdict::Matches && out[0].address == "0x140001000");
+    CB_CHECK(out[1].judged == store::Class::Unverified && out[1].verdict == convert::FunctionVerdict::Differs);
     CB_CHECK(!out[2].judged && out[2].verdict == convert::FunctionVerdict::NotChecked);   // the judge never saw it
-    CB_CHECK(out[3].name == "lost" && out[3].judged == verify::Class::NoCompile && out[3].address == "0x140001040");
+    CB_CHECK(out[3].name == "lost" && out[3].judged == store::Class::NoCompile && out[3].address == "0x140001040");
     const Counts c = count(out);
     CB_CHECK_EQ(c.classed(), 3);
-    CB_CHECK_EQ(c.classes.at(verify::Class::NoCompile), 1);
+    CB_CHECK_EQ(c.classes.at(store::Class::NoCompile), 1);
 });
 
 CB_TEST("app.function_source.the_judged_counts_name_every_class_asked_for", [] {
-    CB_CHECK_EQ(judged_counts({{verify::Class::Verified, 120}, {verify::Class::Weak, 30}, {verify::Class::Unverified, 40}, {verify::Class::NoCompile, 10},
-                               {verify::Class::NoSource, 5}},
+    CB_CHECK_EQ(judged_counts({{store::Class::Verified, 120}, {store::Class::Weak, 30}, {store::Class::Unverified, 40}, {store::Class::NoCompile, 10},
+                               {store::Class::NoSource, 5}},
                               205, "win64"),
                 "205 functions judged in the win64 lane: 120 verified, 30 weak, 40 unverified, 10 do not compile, 5 no source");
     // (the total is the module's functions, not the sum of the classes)
-    CB_CHECK_EQ(judged_counts({{verify::Class::Verified, 1}, {verify::Class::NotJudged, 2}, {verify::Class::Identified, 3}}, 3, ""),
+    CB_CHECK_EQ(judged_counts({{store::Class::Verified, 1}, {store::Class::NotJudged, 2}, {store::Class::Identified, 3}}, 3, ""),
                 "3 functions judged: 1 verified, 0 weak, 0 unverified, 2 not run, 0 do not compile, 0 no source, 3 runtime library");
 });
 

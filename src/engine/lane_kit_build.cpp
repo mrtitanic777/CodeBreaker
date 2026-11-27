@@ -281,8 +281,8 @@ build::module::Services LaneKit::module_services() {
         for (const verify::gate16::Isolated16Answer& c : gate->check(file, folder, names, options)) {
             build::module::GateResult r;
             r.name = c.name;
-            r.verdict = c.verdict == verify::Verdict::Inconclusive ? build::module::GateResult::Verdict::Inconclusive
-                        : c.verdict == verify::Verdict::Divergent  ? build::module::GateResult::Verdict::Divergent
+            r.verdict = c.verdict == store::Verdict::Inconclusive ? build::module::GateResult::Verdict::Inconclusive
+                        : c.verdict == store::Verdict::Divergent  ? build::module::GateResult::Verdict::Divergent
                                                                     : build::module::GateResult::Verdict::Same;
             r.why = c.why;
             out.push_back(std::move(r));

@@ -11,8 +11,8 @@
 namespace cb::source::module_writer {
 namespace {
 
-engine::Best best_of(verify::Class cls, std::string reason = "", std::string limits = "", verify::WeakLimits weak = {}) {
-    engine::Best b;
+store::Best best_of(store::Class cls, std::string reason = "", std::string limits = "", store::WeakLimits weak = {}) {
+    store::Best b;
     b.cls = cls;
     b.candidate.reason = std::move(reason);
     b.candidate.limits = std::move(limits);
@@ -21,16 +21,16 @@ engine::Best best_of(verify::Class cls, std::string reason = "", std::string lim
 }
 
 CB_TEST("source.module_writer.a_status_says_how_much_was_exercised_why_it_is_weak_and_what_differed", [] {
-    CB_CHECK_EQ(describe(best_of(verify::Class::Verified, "", "coverage=100,runs=4")), "100% of it exercised");
-    CB_CHECK_EQ(describe(best_of(verify::Class::Verified)), "");
-    CB_CHECK_EQ(describe(best_of(verify::Class::Weak, "", "coverage=40", {verify::WeakLimit::LowCoverage, verify::WeakLimit::Truncated})),
-                std::string(verify::explanation(verify::WeakLimit::LowCoverage)) + "; " + std::string(verify::explanation(verify::WeakLimit::Truncated)) + " (40% ran)");
-    CB_CHECK_EQ(describe(best_of(verify::Class::Weak, "", "", {verify::WeakLimit::FaultOnly})), std::string(verify::explanation(verify::WeakLimit::FaultOnly)));
-    CB_CHECK_EQ(describe(best_of(verify::Class::Unverified, "ret-differs")), "returns a different value");
-    CB_CHECK_EQ(describe(best_of(verify::Class::NotJudged, "a reason nobody has words for")), "a reason nobody has words for");
-    CB_CHECK_EQ(describe(best_of(verify::Class::NoCompile, std::string(200, 'e'))).size(), 90u);
-    CB_CHECK_EQ(describe(best_of(verify::Class::NoSource, std::string(200, 'e'))).size(), 80u);
-    CB_CHECK_EQ(describe(best_of(verify::Class::Verified, "", "coverage=oops")), "");   // a limit that is not a number says nothing
+    CB_CHECK_EQ(describe(best_of(store::Class::Verified, "", "coverage=100,runs=4")), "100% of it exercised");
+    CB_CHECK_EQ(describe(best_of(store::Class::Verified)), "");
+    CB_CHECK_EQ(describe(best_of(store::Class::Weak, "", "coverage=40", {store::WeakLimit::LowCoverage, store::WeakLimit::Truncated})),
+                std::string(store::explanation(store::WeakLimit::LowCoverage)) + "; " + std::string(store::explanation(store::WeakLimit::Truncated)) + " (40% ran)");
+    CB_CHECK_EQ(describe(best_of(store::Class::Weak, "", "", {store::WeakLimit::FaultOnly})), std::string(store::explanation(store::WeakLimit::FaultOnly)));
+    CB_CHECK_EQ(describe(best_of(store::Class::Unverified, "ret-differs")), "returns a different value");
+    CB_CHECK_EQ(describe(best_of(store::Class::NotJudged, "a reason nobody has words for")), "a reason nobody has words for");
+    CB_CHECK_EQ(describe(best_of(store::Class::NoCompile, std::string(200, 'e'))).size(), 90u);
+    CB_CHECK_EQ(describe(best_of(store::Class::NoSource, std::string(200, 'e'))).size(), 80u);
+    CB_CHECK_EQ(describe(best_of(store::Class::Verified, "", "coverage=oops")), "");   // a limit that is not a number says nothing
     CB_CHECK_EQ(std::string(why("stack-differs")), "removes a different number of bytes from the stack (convention or argument count)");
     CB_CHECK_EQ(std::string(why("retail: call-into-nothing")), "the original calls through a pointer the loader fills in (a thunk entry)");
     CB_CHECK_EQ(std::string(why("anything else")), "anything else");
@@ -97,12 +97,12 @@ private:
     OrderedMap<std::string, std::string> texts_;
 };
 
-void fill(engine::FunctionStore& store) {
+void fill(store::FunctionStore& store) {
     store.add_module(kModule, "demo.dll", "C:/demo.dll", "pe");
     store.add_profile(kProfile, "settings");
     const std::vector<std::string> addrs = {"00401000", "00401010", "00401020", "00401030", "00401040", "00401050", "00401060"};
     store.add_functions(kModule, addrs);
-    std::vector<engine::Record> rows;
+    std::vector<store::Record> rows;
     rows.push_back({.addr = "00401000", .name = "DllMain", .source = "int DllMain(void) { return USER_91(1); }", .verdict = "equivalent", .limits = "coverage=100"});
     rows.push_back({.addr = "00401010", .name = "sub_00401010", .source = "void sub_00401010(void) { sub_00401020(); }", .verdict = "divergent", .reason = "ret-differs"});
     rows.push_back({.addr = "00401020", .name = "sub_00401020", .source = "this is not C: sub_00401010();", .verdict = "no-compile", .reason = "error C2143: syntax error"});
@@ -143,7 +143,7 @@ void check_golden(std::string_view name, const std::string& actual) {
 
 CB_TEST("source.module_writer.a_module_is_written_as_c_with_every_function_under_its_status", [] {
     fs::ScopedTempDir dir("cb_modw");
-    engine::FunctionStore store(dir.path() / "functions.sqlite", dir.path() / "db");
+    store::FunctionStore store(dir.path() / "functions.sqlite", dir.path() / "db");
     fill(store);
     std::vector<std::string> log;
     const Written w = write_module(prepared(), store, dir.path() / "out", 0, [&](std::string_view l) { log.emplace_back(l); });
@@ -151,12 +151,12 @@ CB_TEST("source.module_writer.a_module_is_written_as_c_with_every_function_under
     CB_CHECK_EQ(w.total, 7u);
     // counted by status: 00401000 verified; 00401010 unverified; 00401020 does not compile; 00401030 identified (no row);
     // 00401040 no source (a row, but nothing written); 00401050 identified AND verified, which is counted as verified; 00401060 no row
-    CB_CHECK_EQ(w.counts.at(verify::Class::Verified), 2);
-    CB_CHECK_EQ(w.counts.at(verify::Class::Unverified), 1);
-    CB_CHECK_EQ(w.counts.at(verify::Class::NoCompile), 1);
-    CB_CHECK_EQ(w.counts.at(verify::Class::Identified), 1);
-    CB_CHECK_EQ(w.counts.at(verify::Class::NoSource), 2);
-    CB_CHECK_EQ(w.counts.at(verify::Class::Weak), 0);
+    CB_CHECK_EQ(w.counts.at(store::Class::Verified), 2);
+    CB_CHECK_EQ(w.counts.at(store::Class::Unverified), 1);
+    CB_CHECK_EQ(w.counts.at(store::Class::NoCompile), 1);
+    CB_CHECK_EQ(w.counts.at(store::Class::Identified), 1);
+    CB_CHECK_EQ(w.counts.at(store::Class::NoSource), 2);
+    CB_CHECK_EQ(w.counts.at(store::Class::Weak), 0);
     check_golden("module.golden.c", fs::read_text(w.file));
     check_golden("module.golden.h", fs::read_text(dir.path() / "out" / "demo.h"));
     CB_CHECK(!std::filesystem::exists(dir.path() / "out" / "demo_classes.hpp"));   // no class, no file
@@ -185,7 +185,7 @@ CB_TEST("source.module_writer.the_golden_names_what_it_should", [] {
 
 CB_TEST("source.module_writer.the_classes_are_written_beside_the_c_with_each_function_under_its_name", [] {
     fs::ScopedTempDir dir("cb_modw");
-    engine::FunctionStore store(dir.path() / "functions.sqlite", dir.path() / "db");
+    store::FunctionStore store(dir.path() / "functions.sqlite", dir.path() / "db");
     fill(store);
     Prepared p = prepared();
     core16::ClassRecord c;
@@ -211,7 +211,7 @@ CB_TEST("source.module_writer.the_classes_are_written_beside_the_c_with_each_fun
 
 CB_TEST("source.module_writer.a_long_module_is_split_into_files", [] {
     fs::ScopedTempDir dir("cb_modw");
-    engine::FunctionStore store(dir.path() / "functions.sqlite", dir.path() / "db");
+    store::FunctionStore store(dir.path() / "functions.sqlite", dir.path() / "db");
     fill(store);
     const Written w = write_module(prepared(), store, dir.path() / "out", 4);   // seven functions, four to a file
     CB_CHECK(w.file == dir.path() / "out" / "demo_1.c");
@@ -221,7 +221,7 @@ CB_TEST("source.module_writer.a_long_module_is_split_into_files", [] {
 
 CB_TEST("source.module_writer.a_module_with_no_header_text_has_no_header_file", [] {
     fs::ScopedTempDir dir("cb_modw");
-    engine::FunctionStore store(dir.path() / "functions.sqlite", dir.path() / "db");
+    store::FunctionStore store(dir.path() / "functions.sqlite", dir.path() / "db");
     store.add_module(kModule, "demo.dll", "", "pe");
     store.add_functions(kModule, std::vector<std::string>{"00401000"});
     const Written w = write_module(prepared(), store, dir.path() / "out");
@@ -232,12 +232,12 @@ CB_TEST("source.module_writer.a_module_with_no_header_text_has_no_header_file", 
 
 CB_TEST("source.module_writer.a_drivers_assembly_is_one_file_with_the_status_at_its_head", [] {
     fs::ScopedTempDir dir("cb_modw");
-    engine::FunctionStore store(dir.path() / "functions.sqlite", dir.path() / "db");
+    store::FunctionStore store(dir.path() / "functions.sqlite", dir.path() / "db");
     store.add_module(kModule, "drv.vxd", "", "le");
     store.add_profile(kProfile, "settings");
     store.add_functions(kModule, std::vector<std::string>{"00000010", "00000020"});
     store.record_many(kModule, "core", "r1", kProfile,
-                      std::vector<engine::Record>{{.addr = "00000010", .name = "Handler", .source = "x", .verdict = "equivalent", .limits = "coverage=100", .detail = "ran the control messages"},
+                      std::vector<store::Record>{{.addr = "00000010", .name = "Handler", .source = "x", .verdict = "equivalent", .limits = "coverage=100", .detail = "ran the control messages"},
                                                   {.addr = "00000020", .name = "Other", .source = "y", .verdict = "divergent", .reason = "ret-differs"}});
     store.put_text(kModule, "core", "header", "        .386p\n        mov eax, 1\n");
     Prepared p = prepared();
@@ -262,12 +262,12 @@ CB_TEST("source.module_writer.the_scoreboard_lists_what_was_measured", [] {
     ScoreboardInput in;
     in.generated = "2026-11-12 09:30";
     in.settings = "pe abc, ne def";
-    engine::ClassCount a, b;
-    for (const verify::Class c : verify::kClassScored) a[c] = b[c] = 0;
-    a[verify::Class::Verified] = 3;
-    a[verify::Class::Unverified] = 1;
-    b[verify::Class::Weak] = 2;
-    b[verify::Class::NoSource] = 2;
+    store::ClassCount a, b;
+    for (const store::Class c : store::kClassScored) a[c] = b[c] = 0;
+    a[store::Class::Verified] = 3;
+    a[store::Class::Unverified] = 1;
+    b[store::Class::Weak] = 2;
+    b[store::Class::NoSource] = 2;
     in.modules = {{"a.dll", "pe", a}, {"b.exe", "ne", b}};
     in.corpus_32 = 10;
     in.corpus_16 = 4;

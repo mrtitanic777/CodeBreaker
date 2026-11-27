@@ -81,7 +81,7 @@ public:
 
     // One function: Equivalent when the whole program is the original; else the first state from which the two
     // programs' runs differ says Divergent, and the reason names the first place that differs ("RAM-differs").
-    Judgement judge_function(bool same, const std::filesystem::path& original, const std::filesystem::path& rebuilt,
+    store::Judgement judge_function(bool same, const std::filesystem::path& original, const std::filesystem::path& rebuilt,
                              std::uint32_t entry) const;
 
     const ImageLaneSpec& spec() const { return spec_; }

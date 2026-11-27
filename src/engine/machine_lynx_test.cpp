@@ -61,18 +61,18 @@ CB_TEST("engine.machine_lynx.a_cartridge_and_an_object_come_back_identical_and_a
         CB_CHECK_EQ(image.written.functions.size(), 2u);
         const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / (std::string(c.name) + ".work"));
         CB_CHECK_EQ(built.items.size(), 2u);
-        CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);   // identical: every function is the original's
+        CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);   // identical: every function is the original's
 
         Bytes edited = c.file;
         edited[c.operand_at] = 0x7E;   // LDA #$7E: SPRCTL0 gets another value
         const stdfs::path changed = dir.path() / (std::string("edited_") + c.name);
         fs::write_file(changed, edited);
-        CB_CHECK(lane.judge_function(false, original, original, 0x0400).verdict == verify::Verdict::Equivalent);   // run twice: agree
-        const verify::Judgement j = lane.judge_function(false, original, changed, 0x0400);
-        CB_CHECK(j.verdict == verify::Verdict::Divergent);
+        CB_CHECK(lane.judge_function(false, original, original, 0x0400).verdict == store::Verdict::Equivalent);   // run twice: agree
+        const store::Judgement j = lane.judge_function(false, original, changed, 0x0400);
+        CB_CHECK(j.verdict == store::Verdict::Divergent);
         CB_CHECK(!j.reason.empty());
         // the function nobody edited still agrees
-        CB_CHECK(lane.judge_function(false, original, changed, 0x040C).verdict == verify::Verdict::Equivalent);
+        CB_CHECK(lane.judge_function(false, original, changed, 0x040C).verdict == store::Verdict::Equivalent);
     }
 });
 
@@ -105,13 +105,13 @@ CB_TEST("engine.machine_lynx.judges_real_homebrew", [] {
                 return std::nullopt;
             }();
             if (!offset) continue;
-            CB_CHECK(lane.judge_function(false, original, original, address).verdict == verify::Verdict::Equivalent);
+            CB_CHECK(lane.judge_function(false, original, original, address).verdict == store::Verdict::Equivalent);
             Bytes edited = fs::read_file(original);
             edited[*offset] = static_cast<std::uint8_t>(edited[*offset] ^ 0xFF);
             const stdfs::path changed = dir.path() / (std::string("edited_") + name);
             fs::write_file(changed, edited);
             ++judged;
-            if (lane.judge_function(false, original, changed, address).verdict == verify::Verdict::Divergent) ++diverged;
+            if (lane.judge_function(false, original, changed, address).verdict == store::Verdict::Divergent) ++diverged;
         }
         CB_CHECK(judged != 0);
         CB_CHECK(diverged != 0);

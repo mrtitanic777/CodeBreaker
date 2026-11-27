@@ -51,17 +51,17 @@ FnRowParts fn_row_parts(const Rect& row) {
 std::string functions_summary(const fnsrc::Counts& c) {
     if (c.total == 0) return "No functions were found in the output folder.";
     if (c.classed() > 0) {
-        const auto of = [&](verify::Class k) {
+        const auto of = [&](store::Class k) {
             const auto it = c.classes.find(k);
             return it == c.classes.end() ? 0 : it->second;
         };
         const std::string dot = " \xC2\xB7 ";
-        const int no_compile = of(verify::Class::NoCompile);
-        std::string out = std::to_string(of(verify::Class::Verified)) + " verified" + dot + std::to_string(of(verify::Class::Weak)) + " weak" + dot +
-                          std::to_string(of(verify::Class::Unverified)) + " unverified" + dot + std::to_string(no_compile) + (no_compile == 1 ? " does" : " do") +
-                          " not compile" + dot + std::to_string(of(verify::Class::NoSource)) + " no source";
-        if (const int n = of(verify::Class::NotJudged); n > 0) out += dot + std::to_string(n) + " not run";
-        if (const int n = of(verify::Class::Identified); n > 0) out += dot + std::to_string(n) + " runtime library";
+        const int no_compile = of(store::Class::NoCompile);
+        std::string out = std::to_string(of(store::Class::Verified)) + " verified" + dot + std::to_string(of(store::Class::Weak)) + " weak" + dot +
+                          std::to_string(of(store::Class::Unverified)) + " unverified" + dot + std::to_string(no_compile) + (no_compile == 1 ? " does" : " do") +
+                          " not compile" + dot + std::to_string(of(store::Class::NoSource)) + " no source";
+        if (const int n = of(store::Class::NotJudged); n > 0) out += dot + std::to_string(n) + " not run";
+        if (const int n = of(store::Class::Identified); n > 0) out += dot + std::to_string(n) + " runtime library";
         if (const int n = c.total - c.classed(); n > 0) out += dot + std::to_string(n) + " not checked";
         return out;
     }
@@ -84,13 +84,13 @@ std::string verdict_name(convert::FunctionVerdict v) {
 std::string verdict_name(const convert::FunctionRecord& f) {
     if (!f.judged) return verdict_name(f.verdict);
     switch (*f.judged) {
-        case verify::Class::Verified: return "Verified";
-        case verify::Class::Weak: return "Weak match";
-        case verify::Class::Unverified: return "Differs";
-        case verify::Class::NotJudged: return "Not run";
-        case verify::Class::NoCompile: return "Does not compile";
-        case verify::Class::NoSource: return "No source";
-        case verify::Class::Identified: return "Runtime library";
+        case store::Class::Verified: return "Verified";
+        case store::Class::Weak: return "Weak match";
+        case store::Class::Unverified: return "Differs";
+        case store::Class::NotJudged: return "Not run";
+        case store::Class::NoCompile: return "Does not compile";
+        case store::Class::NoSource: return "No source";
+        case store::Class::Identified: return "Runtime library";
     }
     return verdict_name(f.verdict);
 }

@@ -158,8 +158,8 @@ public:
                 judged.push_back(k);
             }
             if (n == crash_on) throw FormatError("engine fact", 0, "the judge fell over");
-            verify::Judgement j;
-            j.verdict = std::stoi(k, nullptr, 16) % 2 == 0 ? verify::Verdict::Equivalent : verify::Verdict::Divergent;
+            store::Judgement j;
+            j.verdict = std::stoi(k, nullptr, 16) % 2 == 0 ? store::Verdict::Equivalent : store::Verdict::Divergent;
             j.limits = {"coverage=100"};
             return j;
         };
@@ -289,14 +289,14 @@ CB_TEST("engine.lanes.judged_is_the_rows_as_records", [] {
     CB_CHECK_EQ(j.header, "typedef int int4;");
     CB_CHECK_EQ(j.rows.size(), std::size_t{5});
     CB_CHECK_EQ(j.rows[0].addr, "ffff");
-    CB_CHECK(j.rows[0].verdict == verify::Verdict::NoSource);
+    CB_CHECK(j.rows[0].verdict == store::Verdict::NoSource);
     CB_CHECK(!j.rows[0].source.has_value());
     CB_CHECK_EQ(j.rows[0].problem.value_or(""), "none");
-    CB_CHECK(j.rows[1].verdict == verify::Verdict::Equivalent);
+    CB_CHECK(j.rows[1].verdict == store::Verdict::Equivalent);
     CB_CHECK_EQ(j.rows[1].name, "f0");
     CB_CHECK_EQ(j.rows[1].source.value_or(""), "int f0(void) { return 2; }");
     CB_CHECK_EQ(j.rows[1].limits, "coverage=100");
-    CB_CHECK(j.rows[2].verdict == verify::Verdict::Divergent);
+    CB_CHECK(j.rows[2].verdict == store::Verdict::Divergent);
     CB_CHECK_EQ(j.built.size(), std::size_t{4});
     CB_CHECK(!j.made.empty());
     CB_CHECK(w.ls.kinds() == (std::vector<std::string>{"tfake"}));
@@ -331,7 +331,7 @@ CB_TEST("engine.lanes.a_new_process_asks_again_and_nothing_is_prepared_built_or_
         CB_CHECK_EQ(kind2->prepares, 1);   // (the module was not live in this object: prepared again)
         CB_CHECK_EQ(kind2->builds, 1);
         CB_CHECK(kind2->take_judged() == (std::vector<std::string>{"0000", "0001", "0002", "0003"}));
-        CB_CHECK(third.rows[1].verdict == verify::Verdict::Equivalent);
+        CB_CHECK(third.rows[1].verdict == store::Verdict::Equivalent);
     }
 });
 
@@ -342,7 +342,7 @@ CB_TEST("engine.lanes.a_good_function_that_reaches_a_stand_in_gets_stub_callee",
     const Judged j = w.ls.judged(w.binary);
     std::map<std::string, JudgedRow> by;
     for (const JudgedRow& r : j.rows) by[r.addr] = r;
-    CB_CHECK(by.at("0002").verdict == verify::Verdict::Equivalent);
+    CB_CHECK(by.at("0002").verdict == store::Verdict::Equivalent);
     CB_CHECK_EQ(by.at("0002").limits, "coverage=100,stub-callee");
     CB_CHECK_EQ(by.at("0000").limits, "coverage=100");
 });
@@ -354,9 +354,9 @@ CB_TEST("engine.lanes.a_judge_that_falls_over_is_not_run_and_the_others_go_on", 
     const Judged j = w.ls.judged(w.binary);
     std::map<std::string, JudgedRow> by;
     for (const JudgedRow& r : j.rows) by[r.addr] = r;
-    CB_CHECK(by.at("0001").verdict == verify::not_run().verdict);
-    CB_CHECK(by.at("0000").verdict == verify::Verdict::Equivalent);
-    CB_CHECK(by.at("0003").verdict == verify::Verdict::Divergent);
+    CB_CHECK(by.at("0001").verdict == store::not_run().verdict);
+    CB_CHECK(by.at("0000").verdict == store::Verdict::Equivalent);
+    CB_CHECK(by.at("0003").verdict == store::Verdict::Divergent);
 });
 
 CB_TEST("engine.lanes.a_lane_that_does_not_build_per_function_files_every_function_under_the_modules_signature", [] {

@@ -157,7 +157,7 @@ public:
     static compare::Fingerprint fingerprint(const Context& context, std::uint64_t entry, const Vector& v, bool rebuilt, bool novalue,
                                             std::optional<std::pair<std::uint64_t, std::uint64_t>> own = std::nullopt);
     // The verdict of one function. Safe to call from several threads at once.
-    static Judgement judge_function(const Context& context, const Item& item);
+    static store::Judgement judge_function(const Context& context, const Item& item);
 
     struct Services {
         decompile::c_text::Services& decompiler;

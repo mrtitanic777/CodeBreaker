@@ -9,7 +9,7 @@
 // store), and the names its bodies carry (the body store). This is the implementation over the pieces that exist in this tree:
 //
 //   * sha, owner:      base::Corpus.
-//   * best, file_carried: engine::FunctionStore. A candidate is reported with the class its verdict makes it (verify/verdicts); a carried
+//   * best, file_carried: store::FunctionStore. A candidate is reported with the class its verdict makes it (verify/verdicts); a carried
 //                      reconstruction is filed under the engine "carried" with the old build's hash as its revision, its signature the SHA-1 of its
 //                      source, its verdict `inconclusive` and the reason it was carried: it is a candidate to judge in the new build, not a result.
 //   * identity:        what results for a module are filed under -- the content hash and the digest of the verifier's settings for that kind of
@@ -27,7 +27,7 @@
 
 #include "base/corpus.hpp"
 #include "compare/versions.hpp"
-#include "engine/function_store.hpp"
+#include "store/function_store.hpp"
 #include "store/bodies.hpp"
 
 namespace cb::store {
@@ -36,7 +36,7 @@ class VersionsLedger final : public compare::versions::Ledger {
 public:
     struct Services {
         const base::Corpus& corpus;
-        engine::FunctionStore& store;
+        store::FunctionStore& store;
         // What results for a module are filed under: (content hash, verifier profile digest); nullopt when nothing reconstructs that kind of file.
         std::function<std::optional<Identity>(const std::filesystem::path&)> identity = {};
         BodyStore* bodies = nullptr;   // not owned; null: no bodies are known

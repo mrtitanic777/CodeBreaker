@@ -1,9 +1,9 @@
-// Tests of `codebreaker reach` as a complete command (coverage/reach_command): the services made from the settings alone, on real programs of the
+// Tests of `codebreaker reach` as a complete command (app/reach_command): the services made from the settings alone, on real programs of the
 // compare/testdata/versions folder (a PE, two NE drivers and a DOS driver), in a temporary state folder (CB_STATE).
 //
 // CB_REACH_PROOF="<name>;<file or folder>[;<file or folder>...]" runs reach over those inputs (a run named <name>) and prints what the command says and
 // how long it took, for comparing runs of `reach` on the same inputs (its results file is <state>/reach/<name>.json).
-#include "coverage/reach_command.hpp"
+#include "app/reach_command.hpp"
 
 #include <chrono>
 #include <iostream>
@@ -26,12 +26,12 @@ struct Surrounding {
     fs::ScopedTempDir state{"reach-command-state"};
     fs::ScopedEnv state_env{"CB_STATE", fs::to_text(state.path())};
     config::Config config = config::Config::load(config::current().main_checkout());
-    cli::Cli cli{"codebreaker", {coverage::reach_command::command({.config = config, .corpus = nullptr})}};
+    cli::Cli cli{"codebreaker", {app::reach_command::command({.config = config, .corpus = nullptr})}};
 };
 
 }  // namespace
 
-CB_TEST("coverage.reach_command.what_a_folder_of_programs_comes_to", [] {
+CB_TEST("app.reach_command.what_a_folder_of_programs_comes_to", [] {
     Surrounding s;
     testing::CapturedStd cap;
     CB_CHECK_EQ(s.cli.run({"reach", fs::to_text(data("win98")), "--name", "t"}), 0);
@@ -45,7 +45,7 @@ CB_TEST("coverage.reach_command.what_a_folder_of_programs_comes_to", [] {
     CB_CHECK_EQ(results.at("programs").size(), std::size_t{3});
 });
 
-CB_TEST("coverage.reach_command.the_last_report_again", [] {
+CB_TEST("app.reach_command.the_last_report_again", [] {
     Surrounding s;
     {
         testing::CapturedStd cap;
@@ -57,7 +57,7 @@ CB_TEST("coverage.reach_command.the_last_report_again", [] {
     CB_CHECK_THROWS_AS(UsageError, (void)s.cli.run({"reach"}));
 });
 
-CB_TEST("coverage.reach_command.proof", [] {
+CB_TEST("app.reach_command.proof", [] {
     const std::optional<std::string> proof = fs::get_env("CB_REACH_PROOF");
     if (!proof || proof->empty()) return;
     std::vector<std::string> parts;

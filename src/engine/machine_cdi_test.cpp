@@ -33,20 +33,20 @@ CB_TEST("engine.machine_cdi.a_disc_comes_back_identical_and_an_edit_diverges", [
     CB_CHECK(image.written.linked && image.written.same);
     CB_CHECK_EQ(image.written.functions.size(), 2u);
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     // the subroutine asks the system for I_Write; the edit asks for I_Read ($89) instead: the logged call differs
     Bytes edited = ti::disc();
     edited[4096 + 0x53] = 0x89;
     fs::write_file(dir.path() / "edited.iso", edited);
-    CB_CHECK(lane.judge_function(false, original, original, 0x10050).verdict == verify::Verdict::Equivalent);
-    const verify::Judgement j = lane.judge_function(false, original, dir.path() / "edited.iso", 0x10050);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, 0x10050).verdict == store::Verdict::Equivalent);
+    const store::Judgement j = lane.judge_function(false, original, dir.path() / "edited.iso", 0x10050);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     CB_CHECK(!j.reason.empty());
     // the colour written to the video chip in the entry function
     Bytes colour = ti::disc();
     colour[4096 + 0x43] = 0x35;
     fs::write_file(dir.path() / "colour.iso", colour);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "colour.iso", 0x10040).verdict == verify::Verdict::Divergent);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "colour.iso", 0x10050).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "colour.iso", 0x10040).verdict == store::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "colour.iso", 0x10050).verdict == store::Verdict::Equivalent);
 });

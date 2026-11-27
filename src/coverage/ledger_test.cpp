@@ -14,8 +14,8 @@ namespace {
 
 using namespace cb;
 using namespace cb::coverage::ledger;
-using engine::Record;
-using verify::Class;
+using store::Record;
+using store::Class;
 namespace stdfs = std::filesystem;
 
 // Three real Windows 95 modules (copied from compare/testdata): a 32-bit program and two 16-bit drivers.
@@ -42,7 +42,7 @@ struct World {
     stdfs::path corpus_dir, state, index, folder;
     base::Products products;
     std::unique_ptr<base::Corpus> corpus;
-    std::unique_ptr<engine::FunctionStore> store;
+    std::unique_ptr<store::FunctionStore> store;
     std::string sha_pe, sha_a, sha_b;
     CodeFacts pe, ne_a, ne_b;
 
@@ -80,7 +80,7 @@ struct World {
         products.checkout_root = dir.path();
         products.state = state;
         corpus = std::make_unique<base::Corpus>(products, probes());
-        store = std::make_unique<engine::FunctionStore>(index, folder);
+        store = std::make_unique<store::FunctionStore>(index, folder);
         sha_pe = corpus->sha(corpus_dir / kPe).value();
         sha_a = corpus->sha(corpus_dir / kNeA).value();
         sha_b = corpus->sha(corpus_dir / kNeB).value();

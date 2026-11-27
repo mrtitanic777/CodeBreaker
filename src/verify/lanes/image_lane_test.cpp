@@ -14,6 +14,7 @@
 //   * the header and the signature are over the source file's bytes as they are.
 
 using namespace cb;
+using namespace cb::store;
 using namespace cb::verify;
 using namespace cb::verify::lanes;
 

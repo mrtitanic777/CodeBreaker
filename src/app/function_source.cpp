@@ -10,7 +10,7 @@
 #include "core/crypto.hpp"
 #include "core/fs.hpp"
 #include "store/functions.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::app::fnsrc {
 namespace stdfs = std::filesystem;
@@ -185,8 +185,8 @@ std::map<std::string, convert::FunctionVerdict> stored_verdicts(const stdfs::pat
         const Bytes bytes = fs::read_file(input);
         const std::string sha = crypto::to_hex(crypto::sha256(bytes));
         for (const auto& [address, cls] : store::functions::latest(state, sha)) {
-            if (cls == verify::Class::Verified || cls == verify::Class::Weak) out[normal_address(address)] = convert::FunctionVerdict::Matches;
-            else if (cls == verify::Class::Unverified) out[normal_address(address)] = convert::FunctionVerdict::Differs;
+            if (cls == store::Class::Verified || cls == store::Class::Weak) out[normal_address(address)] = convert::FunctionVerdict::Matches;
+            else if (cls == store::Class::Unverified) out[normal_address(address)] = convert::FunctionVerdict::Differs;
         }
     } catch (const std::exception&) {
         out.clear();
@@ -253,18 +253,18 @@ std::vector<convert::FunctionRecord> with_judged(std::vector<convert::FunctionRe
     return found;
 }
 
-std::string judged_counts(const std::map<verify::Class, std::int64_t>& scores, std::int64_t total, std::string_view lane) {
-    const auto of = [&](verify::Class c) {
+std::string judged_counts(const std::map<store::Class, std::int64_t>& scores, std::int64_t total, std::string_view lane) {
+    const auto of = [&](store::Class c) {
         const auto it = scores.find(c);
         return it == scores.end() ? std::int64_t{0} : it->second;
     };
     std::string out = std::to_string(total) + (total == 1 ? " function" : " functions") + " judged" + (lane.empty() ? "" : " in the " + std::string(lane) + " lane") + ": ";
-    out += std::to_string(of(verify::Class::Verified)) + " verified, " + std::to_string(of(verify::Class::Weak)) + " weak, " + std::to_string(of(verify::Class::Unverified)) +
+    out += std::to_string(of(store::Class::Verified)) + " verified, " + std::to_string(of(store::Class::Weak)) + " weak, " + std::to_string(of(store::Class::Unverified)) +
            " unverified, ";
-    if (const std::int64_t n = of(verify::Class::NotJudged); n > 0) out += std::to_string(n) + " not run, ";
-    const std::int64_t no_compile = of(verify::Class::NoCompile);
-    out += std::to_string(no_compile) + (no_compile == 1 ? " does" : " do") + " not compile, " + std::to_string(of(verify::Class::NoSource)) + " no source";
-    if (const std::int64_t n = of(verify::Class::Identified); n > 0) out += ", " + std::to_string(n) + " runtime library";
+    if (const std::int64_t n = of(store::Class::NotJudged); n > 0) out += std::to_string(n) + " not run, ";
+    const std::int64_t no_compile = of(store::Class::NoCompile);
+    out += std::to_string(no_compile) + (no_compile == 1 ? " does" : " do") + " not compile, " + std::to_string(of(store::Class::NoSource)) + " no source";
+    if (const std::int64_t n = of(store::Class::Identified); n > 0) out += ", " + std::to_string(n) + " runtime library";
     return out;
 }
 

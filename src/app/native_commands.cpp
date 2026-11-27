@@ -40,7 +40,7 @@
 #include "formats/xex_imports.hpp"
 #include "build/driver.hpp"
 #include "build/resources.hpp"
-#include "coverage/reach_command.hpp"
+#include "app/reach_command.hpp"
 #include "build/flat_thunk.hpp"
 #include "build/watcom.hpp"
 #include "core/error.hpp"
@@ -70,8 +70,8 @@
 #include "symbols/demangle.hpp"
 #include "symbols/dos_interrupts.hpp"
 #include "symbols/driver_services.hpp"
-#include "store/analyze_command.hpp"
-#include "store/versions_command.hpp"
+#include "app/analyze_command.hpp"
+#include "app/versions_command.hpp"
 #include "symbols/identify.hpp"
 #include "symbols/program_commands.hpp"
 #include "ui/mcp_command.hpp"
@@ -406,10 +406,10 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     table.set(symbols::identify::command(symbols::Environment{corpus.get(), &config}));
 
     // versions <old> <new> ...: two builds compared function by function, work carried from the old build's results
-    table.set(store::versions_command::command(store::versions_command::Environment{config, corpus}));
+    table.set(app::versions_command::command(app::versions_command::Environment{config, corpus}));
 
     // reach ...: how far CodeBreaker gets with every program of the corpora
-    table.set(coverage::reach_command::command(coverage::reach_command::Environment{config, corpus}));
+    table.set(app::reach_command::command(app::reach_command::Environment{config, corpus}));
 
     // vxd, ne-asm, driver-source, dos-source, dos-build, driver-judge: the source lanes' commands (source::commands::Production
     // finds its tools when a command runs)
@@ -432,7 +432,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
     {   // observe's runs go out to worker processes when this program hosts them
         std::optional<jobs::WorkerLauncher> workers;
         if (engine::hosting_workers()) workers = jobs::WorkerLauncher::for_this_program();
-        table.set(store::analyze_command::command(store::analyze_command::Environment{config, corpus, std::move(workers)}));
+        table.set(app::analyze_command::command(app::analyze_command::Environment{config, corpus, std::move(workers)}));
     }
 
     // decompile, build, place: the pipeline commands that are native now (module, scoreboard, measure, teeth, sweep wait for the

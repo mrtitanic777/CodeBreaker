@@ -247,7 +247,7 @@ public:
     };
 
     // Judge one function of a build: the original and the rebuilt DLL run on the same inputs, and compared.
-    Judgement judge_function(const Context& context, const Item& item) const;
+    store::Judgement judge_function(const Context& context, const Item& item) const;
 
     // The key of a function: "seg:off" (segment in decimal, offset as four hex digits).
     static std::string key(std::uint32_t segment, std::uint32_t offset);

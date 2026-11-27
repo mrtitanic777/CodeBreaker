@@ -12,6 +12,7 @@
 #include "core/text.hpp"
 
 using namespace cb;
+using namespace cb::store;
 using namespace cb::verify;
 using namespace cb::verify::teeth;
 
@@ -206,10 +207,10 @@ class FakeLane : public Lane {
 public:
     FakeLane() {
         functions_ = {
-            {"f1", "int f1()\n{\n    x = f2() + 4;\n}\n", Class::Verified}, // reaches f2
-            {"f2", "int f2()\n{\n    return 8 + 2;\n}\n", Class::Verified},
-            {"f3", "int f3()\n{\n    y = 1;\n}\n", Class::Weak},
-            {"f4", "int f4()\n{\n    return z;\n}\n", Class::Verified}, // nothing to break
+            {"f1", "int f1()\n{\n    x = f2() + 4;\n}\n", store::Class::Verified}, // reaches f2
+            {"f2", "int f2()\n{\n    return 8 + 2;\n}\n", store::Class::Verified},
+            {"f3", "int f3()\n{\n    y = 1;\n}\n", store::Class::Weak},
+            {"f4", "int f4()\n{\n    return z;\n}\n", store::Class::Verified}, // nothing to break
             {"f5", "int f5()\n{\n    y = 7;\n}\n", std::nullopt},       // had not passed
         };
     }
@@ -223,9 +224,9 @@ public:
             names.push_back(functions_[r.function].name);
             texts.push_back(r.text);
             if (r.function == 0)
-                out.push_back({Verdict::Divergent, "ret-differs", {}});
+                out.push_back({store::Verdict::Divergent, "ret-differs", {}});
             else if (r.function == 2)
-                out.push_back({Verdict::Equivalent, "", {"truncated", "layout-differs"}});
+                out.push_back({store::Verdict::Equivalent, "", {"truncated", "layout-differs"}});
             else
                 out.push_back({std::nullopt, "C2065", {}});
         }

@@ -223,7 +223,7 @@ public:
     cb::decompile::describe::PowerPcFacts powerpc_facts(const stdfs::path&) override { no(); }
 };
 
-std::string word_of(cb::verify::Verdict v) { return std::string(cb::verify::word(v)); }
+std::string word_of(cb::store::Verdict v) { return std::string(cb::store::word(v)); }
 
 // One module: every function recorded as judged, judged again here.
 void check_module(const std::string& folder, const stdfs::path& original) {
@@ -270,7 +270,7 @@ void check_module(const std::string& folder, const stdfs::path& original) {
         item.dll = data(folder + "/rebuilt.dll");
         item.entry = want["entry"].get<std::uint64_t>();
         item.regs = want["regs"].get<int>();
-        const cb::verify::Judgement got = Win32Lane::judge_function(context, item);
+        const cb::store::Judgement got = Win32Lane::judge_function(context, item);
         ++judged;
         const std::vector<std::string> want_limits = want["limits"].get<std::vector<std::string>>();
         const bool same = word_of(got.verdict) == want["verdict"].get<std::string>() && got.reason == want["reason"].get<std::string>() &&

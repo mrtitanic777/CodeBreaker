@@ -120,13 +120,13 @@ std::string difference_detail(const Fingerprint& a, const Fingerprint& b, const 
 // ---- the evidence -----------------------------------------------------------------------------------------------
 
 void Tally::original_failed(const Fingerprint& a) {
-    limits_.insert(WeakLimit::Unobserved);
+    limits_.insert(store::WeakLimit::Unobserved);
     errors_.insert("retail: " + *a.err);
 }
 
 Difference Tally::observe(const Fingerprint& a, const Fingerprint& b, const Input& input, const std::function<std::uint32_t()>& leftover) {
     if (a.err || b.err) {
-        limits_.insert(WeakLimit::Unobserved);
+        limits_.insert(store::WeakLimit::Unobserved);
         if (a.err) errors_.insert("retail: " + *a.err);
         if (b.err) errors_.insert("rebuilt: " + *b.err);
         return Difference::None;
@@ -147,22 +147,22 @@ Difference Tally::observe(const Fingerprint& a, const Fingerprint& b, const Inpu
     }
     covered_.insert(a.cov.begin(), a.cov.end());
     reached_.insert(a.reach.begin(), a.reach.end());
-    if (!a.writes || !b.writes) limits_.insert(WeakLimit::WritesCapped);
+    if (!a.writes || !b.writes) limits_.insert(store::WeakLimit::WritesCapped);
     if (a.truncated || b.truncated) {
-        limits_.insert(WeakLimit::Truncated);
+        limits_.insert(store::WeakLimit::Truncated);
     } else if (a.exit == kExitReturned) {
         ++clean_;
     }
     for (const std::string& dep : a.deps) {
-        if (dep == "...") limits_.insert(WeakLimit::CallsCapped);
-        else if (dep.find('(') == std::string::npos) limits_.insert(WeakLimit::ArgcUnknown);
+        if (dep == "...") limits_.insert(store::WeakLimit::CallsCapped);
+        else if (dep.find('(') == std::string::npos) limits_.insert(store::WeakLimit::ArgcUnknown);
     }
     return Difference::None;
 }
 
 Outcome Tally::diverged(Difference d) && {
     Outcome o;
-    o.verdict = Verdict::Divergent;
+    o.verdict = store::Verdict::Divergent;
     o.reason = std::string(reason(d));
     o.ret_bits = ret_bits_;
     o.detail = std::move(detail_);
@@ -173,29 +173,29 @@ Outcome Tally::finish(Options options) && {
     Outcome o;
     o.ret_bits = ret_bits_;
     if (seen_ == 0) {
-        o.verdict = Verdict::Inconclusive;
+        o.verdict = store::Verdict::Inconclusive;
         o.reason = text::join(errors_, "; ");   // (a std::set: sorted)
         o.limits = limits_;
         return o;
     }
     if (options.insns != 0) {
         const std::int64_t pct = std::min<std::int64_t>(100, 100 * static_cast<std::int64_t>(covered_.size()) / options.insns);
-        if (pct < 50) limits_.insert(WeakLimit::LowCoverage);
+        if (pct < 50) limits_.insert(store::WeakLimit::LowCoverage);
         o.coverage = static_cast<int>(pct);
     }
     o.limits = limits_;
     if (clean_ == 0) {
-        o.limits.insert(WeakLimit::FaultOnly);
-        o.verdict = Verdict::Consistent;
+        o.limits.insert(store::WeakLimit::FaultOnly);
+        o.verdict = store::Verdict::Consistent;
     } else {
-        o.verdict = Verdict::Equivalent;
+        o.verdict = store::Verdict::Equivalent;
     }
     return o;
 }
 
 std::vector<std::string> Outcome::limit_codes() const {
     std::vector<std::string> codes;
-    for (WeakLimit l : limits) codes.emplace_back(word(l));
+    for (store::WeakLimit l : limits) codes.emplace_back(word(l));
     if (coverage) codes.push_back(std::format("coverage={}", *coverage));
     std::sort(codes.begin(), codes.end());
     return codes;

@@ -62,13 +62,13 @@ CB_TEST("engine.machine_threedo.an_aif_comes_back_identical_and_an_edit_diverges
     CB_CHECK(image.written.linked && image.written.same);
     CB_CHECK_EQ(image.written.functions.size(), 2u);
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     Bytes edited = aif();
     put_be(edited, 0x60, 0xE5C20002);   // strb r0, [r2, #2]: the byte goes to another place (a big-endian byte lane, not a word)
     fs::write_file(dir.path() / "edited.aif", edited);
-    CB_CHECK(lane.judge_function(false, original, original, 0x5C).verdict == verify::Verdict::Equivalent);
-    const verify::Judgement j = lane.judge_function(false, original, dir.path() / "edited.aif", 0x5C);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, 0x5C).verdict == store::Verdict::Equivalent);
+    const store::Judgement j = lane.judge_function(false, original, dir.path() / "edited.aif", 0x5C);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     CB_CHECK(!j.reason.empty());
 });

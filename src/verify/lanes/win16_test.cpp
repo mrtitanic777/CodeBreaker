@@ -24,6 +24,7 @@
 #include "knowledge/package.hpp"
 
 using namespace cb;
+using namespace cb::store;
 using namespace cb::verify;
 using namespace cb::verify::lanes;
 namespace sfs = std::filesystem;

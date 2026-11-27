@@ -137,13 +137,13 @@ CB_TEST("engine.machine_sh2.an_edited_function_is_judged_divergent", [] {
         const auto [a, b] = lane.subjects_of(file, w);
         const std::uint32_t entry = address_of(written, "master_entry");
         CB_CHECK(entry != 0);
-        const verify::Judgement same = lane.judge_function(false, a, a, entry);
-        CB_CHECK(same.verdict == verify::Verdict::Equivalent);
-        const verify::Judgement diverged = lane.judge_function(false, a, b, entry);
-        CB_CHECK(diverged.verdict == verify::Verdict::Divergent);
+        const store::Judgement same = lane.judge_function(false, a, a, entry);
+        CB_CHECK(same.verdict == store::Verdict::Equivalent);
+        const store::Judgement diverged = lane.judge_function(false, a, b, entry);
+        CB_CHECK(diverged.verdict == store::Verdict::Divergent);
         CB_CHECK(!diverged.reason.empty());
         // an identical rebuild is the original, whatever the function does
-        CB_CHECK(lane.judge_function(true, a, b, entry).verdict == verify::Verdict::Equivalent);
+        CB_CHECK(lane.judge_function(true, a, b, entry).verdict == store::Verdict::Equivalent);
     }
     // the Saturn: `leaf` adds 1, the copy adds 2
     {
@@ -169,8 +169,8 @@ CB_TEST("engine.machine_sh2.an_edited_function_is_judged_divergent", [] {
         w.built = changed;
         const auto [a, b] = lane.subjects_of(file, w);
         const std::uint32_t entry = address_of(written, "first_read");
-        const verify::Judgement diverged = lane.judge_function(false, a, b, entry);
-        CB_CHECK(diverged.verdict == verify::Verdict::Divergent);
-        CB_CHECK(lane.judge_function(false, a, a, entry).verdict == verify::Verdict::Equivalent);
+        const store::Judgement diverged = lane.judge_function(false, a, b, entry);
+        CB_CHECK(diverged.verdict == store::Verdict::Divergent);
+        CB_CHECK(lane.judge_function(false, a, a, entry).verdict == store::Verdict::Equivalent);
     }
 });

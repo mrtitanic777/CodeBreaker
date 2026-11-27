@@ -52,13 +52,13 @@ void judge_2600(std::string_view relative, std::size_t banks) {
         if (!folded) continue;
         const std::uint32_t offset = rom.offset(address >> 16, *folded);
         if (offset >= bytes.size()) continue;
-        CB_CHECK(lane.judge_function(false, *file, *file, address).verdict == verify::Verdict::Equivalent);
+        CB_CHECK(lane.judge_function(false, *file, *file, address).verdict == store::Verdict::Equivalent);
         Bytes edited = bytes;
         edited[offset] = static_cast<std::uint8_t>(edited[offset] ^ 0xFF);
         const stdfs::path changed = dir.path() / "edited.a26";
         fs::write_file(changed, edited);
         ++judged;
-        if (lane.judge_function(false, *file, changed, address).verdict == verify::Verdict::Divergent) ++diverged;
+        if (lane.judge_function(false, *file, changed, address).verdict == store::Verdict::Divergent) ++diverged;
     }
     std::cout << "  judged " << judged << ", " << diverged << " diverged when their first byte was turned over\n";
     CB_CHECK(judged != 0);

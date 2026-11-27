@@ -45,15 +45,15 @@ CB_TEST("engine.machine_wonderswan.an_edit_diverges_and_a_function_agrees_with_i
     edited[0x10] = 0xA2;
     edited[0x11] = 0x01;   // mov [0x801], al instead of [0x800]: another byte of RAM
     fs::write_file(dir.path() / "edited.ws", edited);
-    CB_CHECK(lane.judge_function(false, original, original, 0xF000E).verdict == verify::Verdict::Equivalent);
-    const verify::Judgement j = lane.judge_function(false, original, dir.path() / "edited.ws", 0xF000E);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, 0xF000E).verdict == store::Verdict::Equivalent);
+    const store::Judgement j = lane.judge_function(false, original, dir.path() / "edited.ws", 0xF000E);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     CB_CHECK(!j.reason.empty());
     Bytes port = program();
     port[0x4] = 0x01;   // out BACK_COLOR instead of DISPLAY_CTRL in the start function
     fs::write_file(dir.path() / "port.ws", port);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "port.ws", 0xF0000).verdict == verify::Verdict::Divergent);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "port.ws", 0xF000E).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "port.ws", 0xF0000).verdict == store::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "port.ws", 0xF000E).verdict == store::Verdict::Equivalent);
 });
 
 CB_TEST("engine.machine_wonderswan.a_cartridge_comes_back_identical", [] {
@@ -66,5 +66,5 @@ CB_TEST("engine.machine_wonderswan.a_cartridge_comes_back_identical", [] {
     CB_CHECK(image.written.linked && image.written.same);
     CB_CHECK_EQ(image.written.functions.size(), 2u);
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 });

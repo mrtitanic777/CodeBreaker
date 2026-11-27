@@ -33,18 +33,18 @@ CB_TEST("engine.machine_intv.a_cartridge_comes_back_identical_and_an_edit_diverg
     CB_CHECK(image.written.linked && image.written.same);
     CB_CHECK_EQ(image.written.functions.size(), 2u);
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     Bytes edited = ti::file();
     edited[5 + 2 * 0x30 + 1] = 0x10;   // DECR R0 instead of INCR R0 in the subroutine: another value in R0
     fs::write_file(dir.path() / "edited.rom", edited);
-    CB_CHECK(lane.judge_function(false, original, original, 0x5030).verdict == verify::Verdict::Equivalent);
-    const verify::Judgement j = lane.judge_function(false, original, dir.path() / "edited.rom", 0x5030);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, 0x5030).verdict == store::Verdict::Equivalent);
+    const store::Judgement j = lane.judge_function(false, original, dir.path() / "edited.rom", 0x5030);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     CB_CHECK(!j.reason.empty());
     Bytes stic = ti::file();
     stic[5 + 2 * 0x25 + 1] = 0x21;   // another STIC register written in the start function: the access log differs
     fs::write_file(dir.path() / "stic.rom", stic);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "stic.rom", 0x5020).verdict == verify::Verdict::Divergent);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "stic.rom", 0x5030).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "stic.rom", 0x5020).verdict == store::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "stic.rom", 0x5030).verdict == store::Verdict::Equivalent);
 });

@@ -29,7 +29,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::verify::lanes {
 
@@ -61,7 +61,7 @@ struct Prepared {
 // What a build gives: the functions the judge can be asked about, the judge, and the functions that were not built.
 struct Built {
     std::vector<std::string> items;                         // the names that can be judged, in build order
-    std::function<Judgement(const std::string& name)> judge; // thread-safe; valid while the Kind and this Built live
+    std::function<store::Judgement(const std::string& name)> judge; // thread-safe; valid while the Kind and this Built live
     std::map<std::string, std::string> missing;             // name -> why it is not in the build (sorted: reports)
 };
 

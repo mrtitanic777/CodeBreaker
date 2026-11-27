@@ -370,7 +370,7 @@ std::vector<Isolated16Answer> iso_run_share(const IsoShare& s, const std::vector
         const auto place = s.tables.place.find(name);
         const auto built = s.ours.find(name);
         if (place == s.tables.place.end() || built == s.ours.end() || fn == nullptr) {
-            answers.push_back({name, Verdict::Inconclusive, "not found on both sides"});
+            answers.push_back({name, store::Verdict::Inconclusive, "not found on both sides"});
             continue;
         }
         const bool far = fn->far;
@@ -458,11 +458,11 @@ std::vector<Isolated16Answer> iso_run_share(const IsoShare& s, const std::vector
                 if (!std::equal(x.begin(), x.end(), y.begin(), y.begin() + static_cast<std::ptrdiff_t>(std::min(x.size(), y.size()))) || y.size() < x.size()) {
                     std::vector<std::string> x2(x.begin(), x.begin() + static_cast<std::ptrdiff_t>(std::min<std::size_t>(2, x.size())));
                     std::vector<std::string> y2(y.begin(), y.begin() + static_cast<std::ptrdiff_t>(std::min<std::size_t>(2, y.size())));
-                    return Isolated16Answer{name, Verdict::Divergent, std::format("{}: calls: original {}, ours {}", gate_input_text(v), iso_list(x2, 0), iso_list(y2, 0))};
+                    return Isolated16Answer{name, store::Verdict::Divergent, std::format("{}: calls: original {}, ours {}", gate_input_text(v), iso_list(x2, 0), iso_list(y2, 0))};
                 }
                 return std::nullopt;
             }
-            if (const std::optional<std::string> d = gate_difference(fa.print, fb)) return Isolated16Answer{name, Verdict::Divergent, gate_input_text(v) + ": " + *d};
+            if (const std::optional<std::string> d = gate_difference(fa.print, fb)) return Isolated16Answer{name, store::Verdict::Divergent, gate_input_text(v) + ": " + *d};
             return std::nullopt;
         };
 
@@ -553,10 +553,10 @@ std::vector<Isolated16Answer> iso_run_share(const IsoShare& s, const std::vector
                         if (seq_mode.find("trace") != std::string::npos &&(po.exit != "ret" || pu.exit != "ret" || sent.size() == 5))
                             std::fprintf(stderr, "seq %s: %s original %s ours %s\n", name.c_str(), where.c_str(), po.exit.c_str(), pu.exit.c_str());
                         if (po.exit != "ret" || pu.exit != "ret") {
-                            if (po.exit != pu.exit && po.exit != "fault") return Isolated16Answer{name, Verdict::Divergent, where + std::format(": ends: original {}, ours {}", po.exit, pu.exit)};
+                            if (po.exit != pu.exit && po.exit != "fault") return Isolated16Answer{name, store::Verdict::Divergent, where + std::format(": ends: original {}, ours {}", po.exit, pu.exit)};
                             return std::nullopt;   // (a step that did not return leaves no state to go on from)
                         }
-                        if (const std::optional<std::string> d = gate_difference(po, pu)) return Isolated16Answer{name, Verdict::Divergent, where + ": " + *d};
+                        if (const std::optional<std::string> d = gate_difference(po, pu)) return Isolated16Answer{name, store::Verdict::Divergent, where + ": " + *d};
                         // (what each left in the data segment, in all: a byte written the value it held shows nothing in a step, and one that differs shows here)
                         std::vector<std::string> differ;
                         for (std::int64_t o = 0; o < static_cast<std::int64_t>(data.size()) && differ.size() < 4; ++o) {
@@ -566,7 +566,7 @@ std::vector<Isolated16Answer> iso_run_share(const IsoShare& s, const std::vector
                             const std::optional<std::uint8_t> y = b != carry_u.end() ? std::optional<std::uint8_t>(b->second) : std::nullopt;
                             if (x != y) differ.push_back(std::format("{:04x}={} vs {}", o, x ? std::to_string(*x) : "unwritten", y ? std::to_string(*y) : "unwritten"));
                         }
-                        if (!differ.empty()) return Isolated16Answer{name, Verdict::Divergent, where + ": data segment (original vs ours): " + text::join(differ, ", ")};
+                        if (!differ.empty()) return Isolated16Answer{name, store::Verdict::Divergent, where + ": data segment (original vs ours): " + text::join(differ, ", ")};
                         sent.push_back(std::format("{:x}", msg));
                     }
                 }
@@ -607,7 +607,7 @@ std::vector<Isolated16Answer> iso_run_share(const IsoShare& s, const std::vector
         // (and, when it passes, how much of the original that was: the paths of its own jumps the runs took -- all there are, when the explorer found no more)
         std::string seen;
         if (exploration && !s.given) seen = std::format("paths {}{}", exploration->paths, exploration->complete ? " (all)" : "");
-        answers.push_back({name, why.empty() ? Verdict::Equivalent : Verdict::Inconclusive, why.empty() ? seen : why});
+        answers.push_back({name, why.empty() ? store::Verdict::Equivalent : store::Verdict::Inconclusive, why.empty() ? seen : why});
     }
     return answers;
 }

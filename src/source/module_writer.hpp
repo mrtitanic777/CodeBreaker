@@ -45,11 +45,11 @@
 #include <vector>
 
 #include "core16_types.hpp"
-#include "engine/function_store.hpp"
+#include "store/function_store.hpp"
 #include "source/authorship.hpp"
 #include "translate/backends/module_file.hpp"
 #include "translate/l2.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::source::module_writer {
 
@@ -62,7 +62,7 @@ std::string_view why(std::string_view reason);
 
 // The words after the status for one function's best candidate: how much of a verified function was exercised, why a match is weak, what
 // differed.
-std::string describe(const engine::Best& best);
+std::string describe(const store::Best& best);
 
 // ---- names --------------------------------------------------------------------------------------------------------
 
@@ -151,23 +151,23 @@ struct Prepared {
 
 struct Written {
     std::filesystem::path file;           // the first file written
-    engine::ClassCount counts;            // by status, every class of verify::kClassScored a key
+    store::ClassCount counts;            // by status, every class of store::kClassScored a key
     std::size_t total = 0;                // the functions the module is known to have
 };
 
 // The module's C (<stem>.c, or parts when `split` functions at most go to a file), its header <stem>.h and its C++ classes
 // (<stem>_classes.hpp), into `out_dir`.
-Written write_module(const Prepared& module, engine::FunctionStore& store, const std::filesystem::path& out_dir, std::size_t split = 0, const Log& log = nullptr);
+Written write_module(const Prepared& module, store::FunctionStore& store, const std::filesystem::path& out_dir, std::size_t split = 0, const Log& log = nullptr);
 
 // A driver's or a real-mode program's source: its one assembly file <stem>.asm (CRLF, Latin-1), the status at its head.
-Written write_assembly(const Prepared& module, engine::FunctionStore& store, const std::filesystem::path& out_dir, const Log& log = nullptr);
+Written write_assembly(const Prepared& module, store::FunctionStore& store, const std::filesystem::path& out_dir, const Log& log = nullptr);
 
 // ---- the scoreboard --------------------------------------------------------------------------------------------------
 
 struct ScoreRow {
     std::string name;
     std::string kind;
-    engine::ClassCount counts;   // every class of verify::kClassScored a key
+    store::ClassCount counts;   // every class of store::kClassScored a key
 };
 struct ScoreboardInput {
     std::string generated;                 // "2026-11-12 09:30"

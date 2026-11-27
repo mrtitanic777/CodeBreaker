@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <memory>
 
-#include "engine/function_store.hpp"
+#include "store/function_store.hpp"
 
 namespace cb::ui::progress {
 
@@ -13,9 +13,9 @@ ReadFn store_reader(const coverage::ledger::Services& services) {
         StoreReading reading;
         reading.store_path = services.store_index.generic_string();
         std::error_code ec;
-        std::unique_ptr<engine::FunctionStore> store;
+        std::unique_ptr<store::FunctionStore> store;
         if (std::filesystem::exists(services.store_index, ec))
-            store = std::make_unique<engine::FunctionStore>(services.store_index, services.store_folder, /*readonly*/ true);
+            store = std::make_unique<store::FunctionStore>(services.store_index, services.store_folder, /*readonly*/ true);
         coverage::ledger::Ledger ledger(services, store.get());
         const coverage::ledger::Report report = ledger.measure();
         for (const coverage::ledger::Summary& s : report.kinds) {
@@ -27,14 +27,14 @@ ReadFn store_reader(const coverage::ledger::Services& services) {
             k.modules = static_cast<std::uint64_t>(s.modules);
             k.measured = static_cast<std::uint64_t>(s.measured);
             k.functions = static_cast<std::uint64_t>(s.functions);
-            for (const verify::Class c : verify::kClassOrder)
-                k.classes.push_back({std::string(verify::word(c)), std::string(verify::title(c)),
+            for (const store::Class c : store::kClassOrder)
+                k.classes.push_back({std::string(store::word(c)), std::string(store::title(c)),
                                      static_cast<std::uint64_t>(s.classes.at(c))});
             reading.kinds.push_back(std::move(k));
         }
         if (!store) return reading;
         reading.opened = true;
-        for (const engine::RecentModule& m : store->recent(kRecentModules)) {
+        for (const store::RecentModule& m : store->recent(kRecentModules)) {
             RecentResult r;
             r.module = m.name;
             r.kind = std::string(coverage::ledger::kind_title(m.kind).empty() ? std::string_view(m.kind) : coverage::ledger::kind_title(m.kind));

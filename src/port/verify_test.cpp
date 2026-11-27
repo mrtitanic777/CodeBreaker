@@ -304,9 +304,9 @@ CB_TEST("port.verify.compare_same_console_and_files", [] {
     });
     const v::Report report = compare(f, config, original);
     CB_CHECK_EQ(report.rows.size(), std::size_t{3});
-    CB_CHECK(report.rows[0].verdict == cb::verify::Verdict::Equivalent);
+    CB_CHECK(report.rows[0].verdict == cb::store::Verdict::Equivalent);
     CB_CHECK_EQ(report.rows[0].what, "same: console");
-    CB_CHECK(report.rows[1].verdict == cb::verify::Verdict::Equivalent);
+    CB_CHECK(report.rows[1].verdict == cb::store::Verdict::Equivalent);
     CB_CHECK_EQ(report.rows[1].what, "same: console, OUT.TXT");   // (what the original made is named)
     CB_CHECK(report.details.size() <= 1);
     CB_CHECK_EQ(report.original_name, "orig.exe");
@@ -346,7 +346,7 @@ CB_TEST("port.verify.compare_names_every_kind_of_difference", [] {
     });
     const v::Report report = compare(f, config, original);
     CB_CHECK_EQ(report.rows.size(), std::size_t{7});
-    for (const v::CaseRow& r : report.rows) CB_CHECK(r.name == "ignored" ? r.verdict == cb::verify::Verdict::Equivalent : r.verdict == cb::verify::Verdict::Divergent);
+    for (const v::CaseRow& r : report.rows) CB_CHECK(r.name == "ignored" ? r.verdict == cb::store::Verdict::Equivalent : r.verdict == cb::store::Verdict::Divergent);
     CB_CHECK_EQ(report.rows[0].what, "console");
     CB_CHECK_EQ(report.rows[1].what, "exit 0 / 3");
     CB_CHECK_EQ(report.rows[2].what, "OUT.TXT differs (4 / 4 bytes, first at 1)");
@@ -391,7 +391,7 @@ CB_TEST("port.verify.compare_runs_a_case_and_what_follows_in_the_same_folders", 
     CB_CHECK_EQ(report.rows[2].what, "same: console, OUT.TXT");   // IN.TXT is given by the case, not made
     CB_CHECK_EQ(report.rows[3].what, "same: console, IN.TXT, OUT.TXT");   // (DATA.BIN is given; IN.TXT was made by the case before: the original's folder has it)
     // the port of `alone` says what cmd.exe says of a missing file; the original's fake says it the same way
-    CB_CHECK(report.rows[4].verdict == cb::verify::Verdict::Divergent || report.rows[4].verdict == cb::verify::Verdict::Equivalent);
+    CB_CHECK(report.rows[4].verdict == cb::store::Verdict::Divergent || report.rows[4].verdict == cb::store::Verdict::Equivalent);
 });
 
 CB_TEST("port.verify.compare_masks_what_depends_on_the_machine", [] {
@@ -410,7 +410,7 @@ CB_TEST("port.verify.compare_masks_what_depends_on_the_machine", [] {
     });
     const v::Report report = compare(f, config, original);
     CB_CHECK_EQ(report.rows[0].what, "same: console, T.TXT");   // (the console, and a file that ends .TXT)
-    CB_CHECK(report.rows[1].verdict == cb::verify::Verdict::Divergent);   // (not a file that ends .DAT)
+    CB_CHECK(report.rows[1].verdict == cb::store::Verdict::Divergent);   // (not a file that ends .DAT)
     CB_CHECK_EQ(report.rows[1].what, "U.DAT differs (9 / 9 bytes, first at 5)");
 });
 
@@ -422,7 +422,7 @@ CB_TEST("port.verify.compare_a_port_that_does_not_end", [] {
     v::Services services;
     services.port_timeout = std::chrono::milliseconds(1500);
     const v::Report report = compare(f, config, original, services);
-    CB_CHECK(report.rows[0].verdict == cb::verify::Verdict::Divergent);
+    CB_CHECK(report.rows[0].verdict == cb::store::Verdict::Divergent);
     CB_CHECK_EQ(report.rows[0].what, "console, exit 0 / did not end");
     CB_CHECK(report.details[0].find("+(did not end)") != std::string::npos);
 });
@@ -647,8 +647,8 @@ CB_TEST("port.verify.cbdos_original_against_a_port_in_cases", [] {
     v::Services services;
     services.original = dos.get();
     const v::Report report = v::compare(config, dir.path(), dir.path() / "hello.exe", cmd_exe(), services);
-    CB_CHECK(report.rows[0].verdict == cb::verify::Verdict::Equivalent);
-    CB_CHECK(report.rows[1].verdict == cb::verify::Verdict::Divergent);
+    CB_CHECK(report.rows[0].verdict == cb::store::Verdict::Equivalent);
+    CB_CHECK(report.rows[1].verdict == cb::store::Verdict::Divergent);
 });
 
 CB_TEST("port.verify.cbdos_missing_files", [] {

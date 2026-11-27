@@ -45,7 +45,7 @@
 #include "base/parallel.hpp"
 #include "core/bytes.hpp"
 #include "core/cli.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::port::verify {
 
@@ -177,7 +177,7 @@ Run run_original(const OriginalRunner& runner, base::cache::Cache* cache, const 
 struct CaseRow {
     std::string name;
     std::string cmd;
-    ::cb::verify::Verdict verdict = ::cb::verify::Verdict::Equivalent;
+    ::cb::store::Verdict verdict = ::cb::store::Verdict::Equivalent;
     std::string what;
 };
 

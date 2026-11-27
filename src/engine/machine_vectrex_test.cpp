@@ -33,22 +33,22 @@ CB_TEST("engine.machine_vectrex.a_cartridge_comes_back_identical_and_an_edit_div
     CB_CHECK(image.written.linked && image.written.same);
     CB_CHECK_EQ(image.written.functions.size(), 2u);
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     Bytes edited = ti::cartridge();
     edited[0x28] = 0x4A;   // DECA instead of INCA in the subroutine: another value in RAM
     fs::write_file(dir.path() / "edited.vec", edited);
-    CB_CHECK(lane.judge_function(false, original, original, 0x25).verdict == verify::Verdict::Equivalent);
-    const verify::Judgement j = lane.judge_function(false, original, dir.path() / "edited.vec", 0x25);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, 0x25).verdict == store::Verdict::Equivalent);
+    const store::Judgement j = lane.judge_function(false, original, dir.path() / "edited.vec", 0x25);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     CB_CHECK(!j.reason.empty());
     Bytes via = ti::cartridge();
     via[0x1B] = 0x7E;   // another value written to the VIA in the start function; the subroutine is as it was
     fs::write_file(dir.path() / "via.vec", via);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "via.vec", 0x17).verdict == verify::Verdict::Divergent);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "via.vec", 0x25).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "via.vec", 0x17).verdict == store::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "via.vec", 0x25).verdict == store::Verdict::Equivalent);
     Bytes bios = ti::cartridge();
     bios[0x19] = 0xA2;   // JSR Intensity_a-ish ($F1A2: Set_Refresh) instead of Wait_Recal: the BIOS call differs
     fs::write_file(dir.path() / "bios.vec", bios);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "bios.vec", 0x17).verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "bios.vec", 0x17).verdict == store::Verdict::Divergent);
 });

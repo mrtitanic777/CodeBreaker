@@ -226,7 +226,7 @@ void LaneKit::add_lanes(verify::reconstruct::Kinds& kinds) {
 }
 
 
-verify::reconstruct::Services LaneKit::reconstruct_services(const verify::reconstruct::Kinds& kinds, FunctionStore& store) {
+verify::reconstruct::Services LaneKit::reconstruct_services(const verify::reconstruct::Kinds& kinds, cb::store::FunctionStore& store) {
     Impl& i = *impl_;
     base::Corpus& corpus = *i.corpus;
     verify::reconstruct::Services s{.kinds = kinds, .store = store};

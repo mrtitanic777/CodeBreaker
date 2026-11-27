@@ -10,13 +10,13 @@
 #include "core/fs.hpp"
 #include "core/json.hpp"
 #include "core/text.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::verify::authored::match16 {
 
 double score(const Verdict& v) {
-    if (v.match == ByteMatch::NoCompile) return 0.0;
-    return v.match == ByteMatch::Identical ? 2.0 : 1.0 - static_cast<double>(v.differing) / static_cast<double>(std::max<std::size_t>(v.total, 1));
+    if (v.match == store::ByteMatch::NoCompile) return 0.0;
+    return v.match == store::ByteMatch::Identical ? 2.0 : 1.0 - static_cast<double>(v.differing) / static_cast<double>(std::max<std::size_t>(v.total, 1));
 }
 
 double score(std::span<const Verdict> verdicts) {
@@ -179,7 +179,7 @@ Result run(const Inputs& in) {
             for (const std::string& fn : names) {
                 const auto it = built.find(fn);
                 const std::optional<Masked>* code = it != built.end() && it->second ? &it->second : nullptr;
-                const Verdict got = code != nullptr ? chain.distance(**code, by_name.at(fn)->original) : Verdict{ByteMatch::NoCompile, 0, 0};
+                const Verdict got = code != nullptr ? chain.distance(**code, by_name.at(fn)->original) : Verdict{store::ByteMatch::NoCompile, 0, 0};
                 if (!best.contains(fn) || score(got) > score(best.at(fn))) {
                     best[fn] = got;
                     r.winner[fn] = way;
@@ -311,15 +311,15 @@ Result run(const Inputs& in) {
         r.library = in.identify(todo);
         for (const auto& [fn, name] : r.library) {
             const auto it = r.verdicts.find(fn);
-            if (it == r.verdicts.end() || it->second.match != ByteMatch::Identical) {
-                r.verdicts[fn] = {ByteMatch::Identified, 0, by_name.at(fn)->original.code.size()};
+            if (it == r.verdicts.end() || it->second.match != store::ByteMatch::Identical) {
+                r.verdicts[fn] = {store::ByteMatch::Identified, 0, by_name.at(fn)->original.code.size()};
             }
         }
     }
     if (in.search_rounds > 0) {   // the last bytes of the near misses (verify/authored/search16)
         std::vector<search16::NearMiss> near;
         for (const auto& [fn, v] : r.verdicts) {
-            if ((v.match == ByteMatch::SameSize || v.match == ByteMatch::Different) && static_cast<double>(v.differing) <= 0.4 * static_cast<double>(v.total)) {
+            if ((v.match == store::ByteMatch::SameSize || v.match == store::ByteMatch::Different) && static_cast<double>(v.differing) <= 0.4 * static_cast<double>(v.total)) {
                 const Setting& s = r.setting.at(fn);
                 near.push_back({fn, text_of(fn, r.winner.at(fn)), v, {s.compiler, s.switches, r.winner.at(fn)}});
             }
@@ -343,7 +343,7 @@ Result run(const Inputs& in) {
             std::map<std::string, search16::ByteVerdict> out;
             for (const auto& [fn, text] : sources) {
                 const auto it = built.find(fn);
-                out[fn] = it != built.end() && it->second ? chain.distance(*it->second, by_name.at(fn)->original) : Verdict{ByteMatch::NoCompile, 0, 0};
+                out[fn] = it != built.end() && it->second ? chain.distance(*it->second, by_name.at(fn)->original) : Verdict{store::ByteMatch::NoCompile, 0, 0};
             }
             return out;
         };
@@ -398,7 +398,7 @@ Result replay(const Inputs& in, const std::map<std::string, Known>& known) {
         for (const std::string& fn : names) {
             const auto it = built.find(fn);
             const std::optional<Masked>* code = it != built.end() && it->second ? &it->second : nullptr;
-            r.verdicts[fn] = code != nullptr ? chain.distance(**code, by_name.at(fn)->original) : Verdict{ByteMatch::NoCompile, 0, 0};
+            r.verdicts[fn] = code != nullptr ? chain.distance(**code, by_name.at(fn)->original) : Verdict{store::ByteMatch::NoCompile, 0, 0};
             r.code[fn] = code != nullptr ? *code : std::nullopt;
         }
     }
@@ -406,7 +406,7 @@ Result replay(const Inputs& in, const std::map<std::string, Known>& known) {
         r.library = in.identify(in.functions);
         for (const auto& [fn, name] : r.library) {
             const auto it = r.verdicts.find(fn);
-            if (it == r.verdicts.end() || it->second.match != ByteMatch::Identical) r.verdicts[fn] = {ByteMatch::Identified, 0, by_name.at(fn)->original.code.size()};
+            if (it == r.verdicts.end() || it->second.match != store::ByteMatch::Identical) r.verdicts[fn] = {store::ByteMatch::Identified, 0, by_name.at(fn)->original.code.size()};
         }
     }
     std::map<std::uint32_t, std::vector<Setting>> by_segment;
@@ -422,7 +422,7 @@ Result replay(const Inputs& in, const std::map<std::string, Known>& known) {
 
 std::vector<std::string> report_lines(std::string_view module_name, const Result& result) {
     std::vector<std::string> lines;
-    std::map<ByteMatch, std::size_t> counts;
+    std::map<store::ByteMatch, std::size_t> counts;
     for (const auto& [fn, v] : result.verdicts) ++counts[v.match];
     // the settings the functions were judged under (the segments' where none were), each once, in order
     std::set<Setting> used = result.settings;
@@ -434,14 +434,14 @@ std::vector<std::string> report_lines(std::string_view module_name, const Result
     std::string settings;
     for (const std::string& t : texts) settings += (settings.empty() ? "" : "; ") + t;
     std::string by_verdict;
-    for (const ByteMatch k : {ByteMatch::Identical, ByteMatch::Identified, ByteMatch::SameSize, ByteMatch::Different, ByteMatch::NoCompile}) {
+    for (const store::ByteMatch k : {store::ByteMatch::Identical, store::ByteMatch::Identified, store::ByteMatch::SameSize, store::ByteMatch::Different, store::ByteMatch::NoCompile}) {
         if (counts[k] != 0) by_verdict += (by_verdict.empty() ? "" : ", ") + std::string(label(k)) + " " + std::to_string(counts[k]);
     }
     lines.push_back(std::format("{}: {} functions compiled with Microsoft C ({}): {}", module_name, result.verdicts.size(), settings, by_verdict));
     std::map<std::string, std::size_t> won;   // by way of saying, in name order
     for (const auto& [fn, way] : result.winner) {
         const auto v = result.verdicts.find(fn);
-        if (v != result.verdicts.end() && v->second.match == ByteMatch::Identical) ++won[way];
+        if (v != result.verdicts.end() && v->second.match == store::ByteMatch::Identical) ++won[way];
     }
     if (!won.empty()) {
         std::string parts;
@@ -455,13 +455,13 @@ std::vector<std::string> report_lines(std::string_view module_name, const Result
     };
     std::vector<Miss> near;
     for (const auto& [fn, v] : result.verdicts) {
-        if (v.match == ByteMatch::SameSize || v.match == ByteMatch::Different) {
+        if (v.match == store::ByteMatch::SameSize || v.match == store::ByteMatch::Different) {
             near.push_back({static_cast<double>(v.differing) / static_cast<double>(std::max<std::size_t>(v.total, 1)), fn, v});
         }
     }
     std::sort(near.begin(), near.end(), [](const Miss& a, const Miss& b) { return std::tie(a.share, a.name) < std::tie(b.share, b.name); });
     for (std::size_t i = 0; i < std::min<std::size_t>(8, near.size()); ++i) {
-        lines.push_back(std::format("  {:<28} {:<10} {} of {} bytes differ", near[i].name, label(near[i].v.match), near[i].v.differing, near[i].v.total));
+        lines.push_back(std::format("  {:<28} {:<10} {} of {} bytes differ", near[i].name, store::label(near[i].v.match), near[i].v.differing, near[i].v.total));
     }
     return lines;
 }

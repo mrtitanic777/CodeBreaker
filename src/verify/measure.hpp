@@ -22,13 +22,13 @@
 #include <vector>
 
 #include "core/cli.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::verify::measure {
 
 // One function's row of the store, as measure reads it.
 struct Row {
-    std::optional<Verdict> verdict;
+    std::optional<store::Verdict> verdict;
     std::string reason; // why the judge said so, or the compiler's message for NoCompile; empty if none
 };
 

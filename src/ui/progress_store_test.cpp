@@ -12,7 +12,7 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "core/text.hpp"
-#include "engine/function_store.hpp"
+#include "store/function_store.hpp"
 #include "formats/ne.hpp"
 #include "store/functions.hpp"
 #include "ui/progress_store.hpp"
@@ -88,7 +88,7 @@ CB_TEST("ui.progress_store.no_store_yet_reads_as_recorded", [] {
 CB_TEST("ui.progress_store.results_in_the_store_are_the_progress", [] {
     ProgressStoreWorld w;
     {
-        cb::engine::FunctionStore store(cb::store::functions::default_path(w.state), cb::store::functions::databases_folder(w.state));
+        cb::store::FunctionStore store(cb::store::functions::default_path(w.state), cb::store::functions::databases_folder(w.state));
         const stdfs::path file = w.corpus_dir / "thinkjet.drv";
         const std::string sha = w.corpus->sha(file).value();
         store.add_profile("p1", "{}");
@@ -101,13 +101,13 @@ CB_TEST("ui.progress_store.results_in_the_store_are_the_progress", [] {
                 break;
             }
         store.add_functions(sha, std::vector<std::string>{address});
-        cb::engine::Record r;
+        cb::store::Record r;
         r.addr = address;
         r.name = "f";
         r.source = "int f(void){return 1;}";
         r.sig = "sig";
         r.verdict = "equivalent";
-        store.record_many(sha, "decompile", "r1", "p1", std::vector<cb::engine::Record>{r});
+        store.record_many(sha, "decompile", "r1", "p1", std::vector<cb::store::Record>{r});
     }
     const pg::Snapshot s = pg::snapshot(w.reader());
     CB_CHECK(s.store.ends_with("functions.sqlite"));

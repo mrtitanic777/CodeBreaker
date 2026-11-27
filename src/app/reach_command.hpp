@@ -1,6 +1,6 @@
-// coverage/reach_command.hpp -- `codebreaker reach`, complete: the command of coverage/reach with its Services made from the settings.
+// app/reach_command.hpp -- `codebreaker reach`, complete: the command of coverage/reach with its Services made from the settings.
 //
-//     cli::Cli cli("codebreaker", {coverage::reach_command::command({.config = config, .corpus = corpus})});
+//     cli::Cli cli("codebreaker", {app::reach_command::command({.config = config, .corpus = corpus})});
 //
 // reach asks the platform registry what a file is, the function store for the tally of what `measure` made of a program (filed under the
 // program's identity, which the verifier's lanes say), and this executable to measure; the settings give the state folder (results under
@@ -16,7 +16,7 @@
 #include "coverage/reach.hpp"
 #include "platforms/package.hpp"
 
-namespace cb::coverage::reach_command {
+namespace cb::app::reach_command {
 
 struct Environment {
     config::Config config;
@@ -27,8 +27,8 @@ struct Environment {
 std::unique_ptr<platforms::Registry> standard_registry();
 
 // reach's Services over the settings.
-reach::Services services(const Environment& environment);
+coverage::reach::Services services(const Environment& environment);
 
 cli::Command command(const Environment& environment);
 
-}  // namespace cb::coverage::reach_command
+}  // namespace cb::app::reach_command

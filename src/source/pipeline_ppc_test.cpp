@@ -136,7 +136,7 @@ CB_TEST("source.pipeline_ppc.distance_masks_places_and_counts_registers", [] {
     fs::ScopedTempDir work("ppc-match");
     const auto built = ppct_built(work);
     if (!built) return;
-    using verify::ByteMatch;
+    using store::ByteMatch;
     verify::authored::repair::Code other = *built;
     other.word_mask.assign(built->word_mask.size(), 0);
     auto d = ppcm::ppc_compare(*built, other);

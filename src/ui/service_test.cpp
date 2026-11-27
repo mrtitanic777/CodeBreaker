@@ -137,8 +137,8 @@ void write_record(const std::filesystem::path& state, int port, const std::strin
     fs::write_text(state / "service" / "token", token + "\n");
 }
 
-engine::Best best_of(verify::Class cls, std::string limits, std::string reason, verify::WeakLimits weak = {}) {
-    engine::Best b;
+store::Best best_of(store::Class cls, std::string limits, std::string reason, store::WeakLimits weak = {}) {
+    store::Best b;
     b.cls = cls;
     b.candidate.limits = std::move(limits);
     b.candidate.reason = std::move(reason);
@@ -149,12 +149,12 @@ engine::Best best_of(verify::Class cls, std::string limits, std::string reason, 
 }  // namespace
 
 CB_TEST("ui.service.describe_says_what_the_page_shows_after_the_status", [] {
-    using verify::Class;
+    using store::Class;
     CB_CHECK_EQ(describe(best_of(Class::Verified, "coverage=87", "")), "87% of it exercised");
     CB_CHECK_EQ(describe(best_of(Class::Verified, "", "")), "");
-    const engine::Best weak = best_of(Class::Weak, "coverage=40,stub-callee,low-coverage", "", {verify::WeakLimit::LowCoverage, verify::WeakLimit::StubCallee});
+    const store::Best weak = best_of(Class::Weak, "coverage=40,stub-callee,low-coverage", "", {store::WeakLimit::LowCoverage, store::WeakLimit::StubCallee});
     const std::string said = describe(weak);
-    CB_CHECK(said.find(verify::explanation(verify::WeakLimit::LowCoverage)) != std::string::npos);
+    CB_CHECK(said.find(store::explanation(store::WeakLimit::LowCoverage)) != std::string::npos);
     CB_CHECK(said.find("; ") != std::string::npos);
     CB_CHECK(said.ends_with(" (40% ran)"));
     CB_CHECK_EQ(describe(best_of(Class::Unverified, "", "ret-differs")), "ret-differs");
@@ -178,18 +178,18 @@ CB_TEST("ui.service.a_functions_answer_is_the_page_document", [] {
     FunctionRow ok;
     ok.addr = "1000";
     ok.name = "f";
-    ok.cls = verify::Class::Verified;
+    ok.cls = store::Class::Verified;
     ok.why = "87% of it exercised";
     ok.engine = "decompiler";
     ok.has_source = true;
     a.functions = {ok};
-    a.reasons = {{verify::Class::Unverified, {{"ret-differs", 3}}}};
+    a.reasons = {{store::Class::Unverified, {{"ret-differs", 3}}}};
     const Json j = to_json(a);
     CB_CHECK_EQ(j.at("module").get<std::string>(), "lz32.dll");
     CB_CHECK_EQ(j.at("kind_title").get<std::string>(), "32-bit");
     CB_CHECK_EQ(j.at("counts").at("verified").get<int>(), 1);
     CB_CHECK_EQ(j.at("functions").at(0).at("class").get<std::string>(), "verified");
-    CB_CHECK_EQ(j.at("functions").at(0).at("title").get<std::string>(), std::string(verify::title(verify::Class::Verified)));
+    CB_CHECK_EQ(j.at("functions").at(0).at("title").get<std::string>(), std::string(store::title(store::Class::Verified)));
     CB_CHECK(!j.at("functions").at(0).contains("source"));   // only a function asked for by address carries its source
     CB_CHECK_EQ(j.at("reasons").at("unverified").at(0).at(0).get<std::string>(), "ret-differs");
     CB_CHECK_EQ(j.at("reasons").at("unverified").at(0).at(1).get<int>(), 3);
@@ -200,7 +200,7 @@ CB_TEST("ui.service.a_functions_answer_is_the_page_document", [] {
     a.function->detailed = true;
     a.function->source = "int f(void) { return 1; }";
     a.function->verdict = "equivalent";
-    a.function->weak = {verify::WeakLimit::StubCallee};
+    a.function->weak = {store::WeakLimit::StubCallee};
     const Json one = to_json(a);
     CB_CHECK_EQ(one.at("function").at("source").get<std::string>(), "int f(void) { return 1; }");
     CB_CHECK_EQ(one.at("function").at("weak").at(0).at("code").get<std::string>(), "stub-callee");

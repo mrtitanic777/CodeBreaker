@@ -14,7 +14,7 @@
 #include "core/regex.hpp"
 #include "core/text.hpp"
 #include "platforms/decoder.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::verify::gate16::scoreboard16 {
 
@@ -240,7 +240,7 @@ Rows run(const Inputs& in) {
         if (ms) ms_trim = trim_padding(*ms);
         if (o) o_trim = trim_padding(*o);
         if (ms_trim) r.msc8 = ms_trim->code.size();
-        r.msc8_vs_original = ms ? msv.match : ByteMatch::NoCompile;
+        r.msc8_vs_original = ms ? msv.match : store::ByteMatch::NoCompile;
         r.msc8_bytes_off = ms ? msv.differing : 0;
         if (o_trim) r.watcom = o_trim->code.size();
         r.watcom_vs_msc8 = ms_trim && o_trim ? (same_code(*o_trim, *ms_trim) ? Agreement::Same : Agreement::Differs) : Agreement::NotApplicable;
@@ -249,7 +249,7 @@ Rows run(const Inputs& in) {
         r.c = text == in.texts->end() ? std::string() : text->second;
         r.patterns = count_patterns(r.c);
         const auto verdict = result.verdicts.find(n);
-        r.library = verdict != result.verdicts.end() && verdict->second.match == ByteMatch::Identified;
+        r.library = verdict != result.verdicts.end() && verdict->second.match == store::ByteMatch::Identified;
         r.hex.original = hex_text(f->original.code);
         r.hex.msc8 = ms ? hex_text(ms->code) : "";
         r.hex.watcom = o ? hex_text(o->code) : "";
@@ -265,7 +265,7 @@ std::vector<std::string> report_lines(const Rows& rows) {
     const std::size_t n = c.size();
     std::size_t ident = 0, same_ow = 0, fits = 0, off = 0;
     for (const Row* r : c) {
-        ident += r->msc8_vs_original == ByteMatch::Identical;
+        ident += r->msc8_vs_original == store::ByteMatch::Identical;
         same_ow += r->watcom_vs_msc8 == Agreement::Same;
         fits += r->fits;
         off += r->watcom.value_or(0) > r->original ? *r->watcom - r->original : 0;
@@ -282,7 +282,7 @@ std::vector<std::string> report_lines(const Rows& rows) {
     };
     std::vector<Tally> tally;   // in the order the patterns were first met; the largest are listed first
     for (const Row* r : c) {
-        if (r->msc8_vs_original == ByteMatch::Identical) continue;
+        if (r->msc8_vs_original == store::ByteMatch::Identical) continue;
         for (const auto& p : r->patterns) {
             auto it = std::find_if(tally.begin(), tally.end(), [&](const Tally& t) { return t.pattern == p.first; });
             if (it == tally.end()) {
@@ -329,7 +329,7 @@ std::string rows_to_json(const Rows& rows) {
         row["segment"] = r.segment ? Json(*r.segment) : Json(nullptr);
         row["original"] = r.original;
         row["msc8"] = r.msc8 ? Json(*r.msc8) : Json(nullptr);
-        row["msc8_vs_original"] = std::string(verify::word(r.msc8_vs_original));
+        row["msc8_vs_original"] = std::string(store::word(r.msc8_vs_original));
         row["msc8_bytes_off"] = r.msc8_bytes_off;
         row["watcom"] = r.watcom ? Json(*r.watcom) : Json(nullptr);
         row["watcom_vs_msc8"] = std::string(word(r.watcom_vs_msc8));
@@ -353,7 +353,7 @@ Rows rows_from_json(std::string_view json) {
             if (!v.at("segment").is_null()) r.segment = v.at("segment").get<std::uint32_t>();
             r.original = v.at("original").get<std::size_t>();
             if (!v.at("msc8").is_null()) r.msc8 = v.at("msc8").get<std::size_t>();
-            r.msc8_vs_original = verify::parse_byte_match(v.at("msc8_vs_original").get<std::string>()).value_or(ByteMatch::NoCompile);
+            r.msc8_vs_original = store::parse_byte_match(v.at("msc8_vs_original").get<std::string>()).value_or(store::ByteMatch::NoCompile);
             r.msc8_bytes_off = v.at("msc8_bytes_off").get<std::size_t>();
             if (!v.at("watcom").is_null()) r.watcom = v.at("watcom").get<std::size_t>();
             const std::string agree = v.at("watcom_vs_msc8").get<std::string>();

@@ -50,13 +50,13 @@ void judge_intv(std::string_view relative) {
         if (judged == 12) break;
         const std::optional<std::size_t> offset = offset_of(rom, address);
         if (!offset) continue;
-        CB_CHECK(lane.judge_function(false, file, file, address).verdict == verify::Verdict::Equivalent);
+        CB_CHECK(lane.judge_function(false, file, file, address).verdict == store::Verdict::Equivalent);
         Bytes edited = bytes;
         edited[*offset] = static_cast<std::uint8_t>(edited[*offset] ^ 0x07);
         const stdfs::path changed = dir.path() / "edited.rom";
         fs::write_file(changed, edited);
         ++judged;
-        if (lane.judge_function(false, file, changed, address).verdict == verify::Verdict::Divergent) ++diverged;
+        if (lane.judge_function(false, file, changed, address).verdict == store::Verdict::Divergent) ++diverged;
     }
     std::cout << "  judged " << judged << ", " << diverged << " diverged when their first word was changed\n";
     CB_CHECK(judged != 0);

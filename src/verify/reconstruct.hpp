@@ -43,9 +43,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "engine/function_store.hpp"
+#include "store/function_store.hpp"
 #include "verify/lanes/kind.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::platforms {
 class Registry;
@@ -110,7 +110,7 @@ public:
 
 struct Services {
     const Kinds& kinds;
-    engine::FunctionStore& store;
+    store::FunctionStore& store;
     // Which kind a file is ("pe", "ne", "dos" ...): nullopt when nothing reconstructs it. `platform_kind` makes it from a
     // platform registry.
     std::function<std::optional<std::string>(const std::filesystem::path&)> kind_of_file;
@@ -134,7 +134,7 @@ struct Services {
         const std::filesystem::path& module;
         const std::filesystem::path& work;
     };
-    std::function<std::optional<std::map<std::string, Judgement>>(const JudgeBatch&)> judge_batch = {};
+    std::function<std::optional<std::map<std::string, store::Judgement>>(const JudgeBatch&)> judge_batch = {};
     // Where the one line about a run goes (nullopt: nowhere).
     std::function<void(std::string_view)> log = {};
     // How far a run is (unset: told nowhere): each step as it begins (done 0), and while judging each function as it is judged (`total` the
@@ -155,7 +155,7 @@ struct Outcome {
     std::size_t functions = 0;                    // every function of the module
     std::size_t judged = 0;                       // judged now (the others had a verdict for their text)
     std::size_t kept = 0;                         // verdict kept: the code built is the code that was judged
-    std::map<Class, std::int64_t> scores;         // the module's functions by class, runtime library on its own
+    std::map<store::Class, std::int64_t> scores;         // the module's functions by class, runtime library on its own
     double seconds = 0, decompile_seconds = 0, build_seconds = 0, judge_seconds = 0;
 
     // The line `run` logs: "lz32.dll: 63 functions, 5 judged now, 3 kept (same code): Verified 40 ...  (12s: decompile 1, build 6, judge 5)".

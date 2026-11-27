@@ -193,7 +193,7 @@ Built Win32Lane::build(const Prepared& prepared, const stdfs::path& module_path,
 
 // ---- one function ----------------------------------------------------------------------------------------------------------------
 
-Judgement Win32Lane::judge_function(const Context& context, const Item& item) {
+store::Judgement Win32Lane::judge_function(const Context& context, const Item& item) {
     const StageTimer total("judge.function (total)");
     const lane_common::Judgement made = lane_common::judged([&]() -> lane_common::Judgement {
         const Shape shape = item.regs == 2 ? Shape(&Win32Lane::in_ecx_edx) : item.regs == 1 ? Shape(&Win32Lane::in_ecx) : Shape();
@@ -225,7 +225,7 @@ Judgement Win32Lane::judge_function(const Context& context, const Item& item) {
             [&](const std::set<std::int64_t>&, const std::set<std::int64_t>& reached) { return win32::directed_and_guided(context, item.va, reached, shape, &found); },
             [](const RunOriginal& retail, const Vector& v, const compare::Fingerprint& a) { return undefined_ret_bits(retail, v, a); });
         std::vector<std::string> limits = outcome.limit_codes();
-        if (outcome.verdict != Verdict::Divergent) {
+        if (outcome.verdict != store::Verdict::Divergent) {
             const std::vector<std::string> paths = lane_common::path_limits(found.get());
             limits.insert(limits.end(), paths.begin(), paths.end());
         }

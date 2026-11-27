@@ -65,10 +65,10 @@ void rebuilds_and_is_judged(std::string_view relative, std::size_t functions_at_
         vl::Written copy = w;
         copy.built = changed;
         const auto [a, b] = lane.subjects_of(disc, copy);
-        CB_CHECK(lane.judge_function(false, a, a, address).verdict == verify::Verdict::Equivalent);
-        const verify::Judgement j = lane.judge_function(false, a, b, address);
+        CB_CHECK(lane.judge_function(false, a, a, address).verdict == store::Verdict::Equivalent);
+        const store::Judgement j = lane.judge_function(false, a, b, address);
         ++judged;
-        if (j.verdict == verify::Verdict::Divergent) {
+        if (j.verdict == store::Verdict::Divergent) {
             ++diverged;
             CB_CHECK(!j.reason.empty());
         }

@@ -23,7 +23,7 @@
 namespace {
 
 namespace m16 = cb::verify::authored::match16;
-using cb::verify::ByteMatch;
+using cb::store::ByteMatch;
 using m16::Function;
 using m16::Setting;
 using m16::Verdict;

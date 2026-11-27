@@ -127,7 +127,7 @@ public:
     };
     // The verdict of one class: it compiles, and where it can be run beside the original, it does the same. Safe to call from several
     // threads at once.
-    static Judgement judge_class(const Context& context, const Item& item);
+    static store::Judgement judge_class(const Context& context, const Item& item);
 
 private:
     ToolsFn tools_;

@@ -7,12 +7,13 @@
 #include "core/text.hpp"
 
 using namespace cb;
+using namespace cb::store;
 using namespace cb::verify;
 using namespace cb::verify::measure;
 
 namespace {
 
-Row row(Verdict v, std::string reason) {
+Row row(store::Verdict v, std::string reason) {
     return Row{v, std::move(reason)};
 }
 

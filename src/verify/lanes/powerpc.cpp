@@ -510,7 +510,7 @@ std::string argc_text(const std::map<std::string, std::int64_t>& argc) {
 
 }  // namespace
 
-Judgement PowerPcLane::judge_function(const Context& context, const Item& item) {
+store::Judgement PowerPcLane::judge_function(const Context& context, const Item& item) {
     const lane_common::Judgement made = lane_common::judged([&]() -> lane_common::Judgement {
         const Memory& memory = context.memory;
         epp::ExternTable merged = context.ext_original;
@@ -538,7 +538,7 @@ Judgement PowerPcLane::judge_function(const Context& context, const Item& item) 
             original, rebuilt, fixed, {}, {.insns = item.insns},
             [&](const std::set<std::int64_t>&, const std::set<std::int64_t>&) { return directed_and_guided(context, item.va, item.span, &explored); });
         std::vector<std::string> limits = outcome.limit_codes();
-        if (outcome.verdict != Verdict::Divergent) {
+        if (outcome.verdict != store::Verdict::Divergent) {
             const std::vector<std::string> paths = lane_common::path_limits(explored.get());
             limits.insert(limits.end(), paths.begin(), paths.end());
         }

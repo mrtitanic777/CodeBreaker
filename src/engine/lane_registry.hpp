@@ -18,7 +18,7 @@
 // dropped by the linker, so lanes do not register themselves from static initialisers). `register_all_lanes()` runs that list; the places that
 // used to list lanes iterate the registry instead:
 //
-//   * the platform registry (`coverage/reach_command.cpp` standard_registry): `lane_platform(lane)` for each, in the order of the list;
+//   * the platform registry (`app/reach_command.cpp` standard_registry): `lane_platform(lane)` for each, in the order of the list;
 //   * `formats::detect::identify` (`info`, `reach`): the lane's detectors (formats/detect.hpp), in the order of their priorities;
 //   * the machine lane table (engine/machine_lanes.hpp): `make_spec`, so `measure` and the worker processes have the lane;
 //   * `reach`'s list of program file extensions: `lane_program_extensions()`.

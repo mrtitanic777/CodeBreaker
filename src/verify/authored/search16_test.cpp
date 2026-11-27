@@ -7,7 +7,7 @@
 
 namespace {
 namespace s16 = cb::verify::authored::search16;
-using cb::verify::ByteMatch;
+using cb::store::ByteMatch;
 
 std::vector<std::string> lines_of(std::string_view text) {
     std::vector<std::string> out;

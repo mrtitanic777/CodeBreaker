@@ -80,14 +80,14 @@ std::string DosLane::why_differs(const Written& written) {
     return written.notes.empty() ? "the built program differs from the original" : clip_note(written.notes.back());
 }
 
-Judgement DosLane::judge_function(bool same, const std::string& why) {
-    Judgement j;
+store::Judgement DosLane::judge_function(bool same, const std::string& why) {
+    store::Judgement j;
     if (same) {
-        j.verdict = Verdict::Equivalent;
+        j.verdict = store::Verdict::Equivalent;
         j.detail = std::string(kSameProgram);
         return j;
     }
-    j.verdict = Verdict::Divergent;
+    j.verdict = store::Verdict::Divergent;
     j.reason = "image-differs";
     j.detail = why;
     return j;

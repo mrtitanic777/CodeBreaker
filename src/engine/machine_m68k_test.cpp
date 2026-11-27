@@ -79,23 +79,23 @@ CB_TEST("engine.machine_m68k.neogeo_a_prom_comes_back_identical_and_an_edit_dive
     CB_CHECK_EQ(image.written.functions.size(), 3u);   // user ($400), player_start ($600), demo_end ($420: it calls $400)
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
     CB_CHECK_EQ(built.items.size(), 3u);
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
-    CB_CHECK(lane.judge_function(false, original, original, 0x400).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, original, 0x400).verdict == store::Verdict::Equivalent);
     // an LSPC write of another value
     Bytes edited = neogeo_program();
     edited[0x409] = 0x08;   // MOVE.W #8,(REG_VRAMADDR).L
     fs::write_file(dir.path() / "edited-p1.p1", edited);
-    const verify::Judgement j = lane.judge_function(false, original, dir.path() / "edited-p1.p1", 0x400);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    const store::Judgement j = lane.judge_function(false, original, dir.path() / "edited-p1.p1", 0x400);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     CB_CHECK(!j.reason.empty());
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited-p1.p1", 0x420).verdict == verify::Verdict::Divergent);   // (it calls $400)
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited-p1.p1", 0x600).verdict == verify::Verdict::Equivalent);   // the one nobody edited
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited-p1.p1", 0x420).verdict == store::Verdict::Divergent);   // (it calls $400)
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "edited-p1.p1", 0x600).verdict == store::Verdict::Equivalent);   // the one nobody edited
     // another BIOS call: CREDIT_DOWN instead of CREDIT_CHECK
     Bytes other_call = neogeo_program();
     other_call[0x405] = 0x56;
     fs::write_file(dir.path() / "call-p1.p1", other_call);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "call-p1.p1", 0x400).verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "call-p1.p1", 0x400).verdict == store::Verdict::Divergent);
 });
 
 CB_TEST("engine.machine_m68k.neogeo_a_bios_call_is_a_logged_write_and_the_lspc_has_a_video_ram", [] {
@@ -134,25 +134,25 @@ CB_TEST("engine.machine_m68k.segacd_a_disc_comes_back_identical_and_edits_of_eit
     CB_CHECK_EQ(image.written.functions.size(), 6u);
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
     CB_CHECK_EQ(built.items.size(), 6u);
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
-    CB_CHECK(lane.judge_function(false, original, original, 0xFF0600).verdict == verify::Verdict::Equivalent);
-    CB_CHECK(lane.judge_function(false, original, original, 0x6028).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, original, 0xFF0600).verdict == store::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, original, 0x6028).verdict == store::Verdict::Equivalent);
     // the main CPU's IP gives word RAM to the sub CPU another way
     Bytes ip = img::system_area();
     ip[0x803] = 0x02;   // MOVE.B #2,(GA_MEMMODE_LO).L
     fs::write_file(dir.path() / "ip.iso", ip);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "ip.iso", 0xFF0600).verdict == verify::Verdict::Divergent);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "ip.iso", 0xFF0000).verdict == verify::Verdict::Divergent);   // (the security code jumps to it)
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "ip.iso", 0x6028).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "ip.iso", 0xFF0600).verdict == store::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "ip.iso", 0xFF0000).verdict == store::Verdict::Divergent);   // (the security code jumps to it)
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "ip.iso", 0x6028).verdict == store::Verdict::Equivalent);
     // the sub CPU's init asks the CD BIOS for another function
     Bytes sp = img::system_area();
     sp[0x1029] = 0x02;   // MOVEQ #2,D0
     fs::write_file(dir.path() / "sp.iso", sp);
-    const verify::Judgement j = lane.judge_function(false, original, dir.path() / "sp.iso", 0x6028);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    const store::Judgement j = lane.judge_function(false, original, dir.path() / "sp.iso", 0x6028);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     CB_CHECK(!j.reason.empty());
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "sp.iso", 0x6034).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "sp.iso", 0x6034).verdict == store::Verdict::Equivalent);
 });
 
 CB_TEST("engine.machine_m68k.segacd_the_cd_bios_calls_of_the_sub_cpu_are_logged_and_the_gate_array_answers", [] {

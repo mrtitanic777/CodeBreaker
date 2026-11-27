@@ -294,14 +294,14 @@ CB_TEST("verify.lanes.win64.a_rebuilt_function_that_does_the_same_is_equivalent_
     item.end = item.va + 4;
     item.rebuilt_va = kRebuilt;
     // lea eax, [rdx + rcx] ; ret            -- the same sum, written the other way round
-    CB_CHECK(Lane::judge_function(context_with({0x8D, 0x04, 0x0A, 0xC3}), item).verdict == Verdict::Equivalent);
+    CB_CHECK(Lane::judge_function(context_with({0x8D, 0x04, 0x0A, 0xC3}), item).verdict == store::Verdict::Equivalent);
     // lea eax, [rcx + rdx + 1] ; ret        -- one more
-    const Judgement off = Lane::judge_function(context_with({0x8D, 0x44, 0x11, 0x01, 0xC3}), item);
-    CB_CHECK(off.verdict == Verdict::Divergent);
+    const store::Judgement off = Lane::judge_function(context_with({0x8D, 0x44, 0x11, 0x01, 0xC3}), item);
+    CB_CHECK(off.verdict == store::Verdict::Divergent);
     CB_CHECK_EQ(off.reason, "ret-differs");
     // mov ebx, ecx ; lea eax, [rbx + rdx] ; ret     -- the right sum, RBX not handed back
-    const Judgement saved = Lane::judge_function(context_with({0x8B, 0xD9, 0x8D, 0x04, 0x13, 0xC3}), item);
-    CB_CHECK(saved.verdict == Verdict::Divergent);
+    const store::Judgement saved = Lane::judge_function(context_with({0x8B, 0xD9, 0x8D, 0x04, 0x13, 0xC3}), item);
+    CB_CHECK(saved.verdict == store::Verdict::Divergent);
     CB_CHECK_EQ(saved.reason, "registers-differ");
 });
 

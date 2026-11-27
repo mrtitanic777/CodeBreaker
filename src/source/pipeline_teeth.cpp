@@ -15,7 +15,7 @@ namespace {
 // One kind of module as teeth breaks it: the C of each function as the kind prepared it, built with some replaced and judged.
 class TeethLane final : public verify::teeth::Lane {
 public:
-    TeethLane(const verify::lanes::Kind& kind, stdfs::path module, stdfs::path work, const std::map<std::string, verify::Class>& passed)
+    TeethLane(const verify::lanes::Kind& kind, stdfs::path module, stdfs::path work, const std::map<std::string, store::Class>& passed)
         : kind_(kind), module_(std::move(module)), work_(std::move(work)), prepared_(kind.prepare(module_, work_)) {
         for (const std::string& name : prepared_->order) {
             verify::teeth::Function f;
@@ -48,7 +48,7 @@ public:
                 said[i].reason = why == built.missing.end() ? "" : why->second;
                 return;
             }
-            const verify::Judgement j = built.judge(name);
+            const store::Judgement j = built.judge(name);
             said[i].verdict = j.verdict;
             said[i].reason = j.reason;
             said[i].limits = j.limits;
@@ -81,9 +81,9 @@ cli::Command teeth(const Environment& environment) {
                 throw UsageError(fs::to_text(module.filename()) + ": this kind of module is rebuilt whole and compared byte for byte; there is no judge "
                                                                    "of behaviour to test");
             const verify::reconstruct::Outcome done = rec.run(module);   // make sure it has been judged
-            std::map<std::string, verify::Class> passed;
+            std::map<std::string, store::Class> passed;
             for (const auto& [address, best] : world.store().best(done.sha, done.profile))
-                if (best.cls == verify::Class::Verified || best.cls == verify::Class::Weak) passed.emplace(address, best.cls);
+                if (best.cls == store::Class::Verified || best.cls == store::Class::Weak) passed.emplace(address, best.cls);
             const stdfs::path work = world.kit().scratch() / "teeth" / kind.name() / text::lower(fs::to_text(module.filename()));
             return std::make_unique<TeethLane>(kind, module, work, passed);
         };

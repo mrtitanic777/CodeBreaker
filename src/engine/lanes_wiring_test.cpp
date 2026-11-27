@@ -32,7 +32,7 @@ public:
     Built build(const Prepared& p, const std::filesystem::path&, const std::filesystem::path&) const override {
         Built b;
         b.items = p.order;
-        b.judge = [](const std::string&) { return verify::Judgement{verify::Verdict::Equivalent, "", {}, ""}; };
+        b.judge = [](const std::string&) { return store::Judgement{store::Verdict::Equivalent, "", {}, ""}; };
         return b;
     }
 

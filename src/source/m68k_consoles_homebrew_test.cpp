@@ -70,10 +70,10 @@ void judge(std::string_view relative, Spec&& spec, Patch&& patch) {
     CB_CHECK(image.written.same);
     std::size_t returned = 0, diverged = 0;
     for (const auto& [entry, name] : image.written.functions) {
-        CB_CHECK(lane.judge_function(false, *file, *file, entry).verdict == verify::Verdict::Equivalent);
+        CB_CHECK(lane.judge_function(false, *file, *file, entry).verdict == store::Verdict::Equivalent);
         const std::filesystem::path edited = dir.path() / "edited.bin";
         patch(*file, entry, edited);
-        if (lane.judge_function(false, *file, edited, entry).verdict == verify::Verdict::Divergent) ++diverged;
+        if (lane.judge_function(false, *file, edited, entry).verdict == store::Verdict::Divergent) ++diverged;
         const verify::lanes::Effects shown = spec().effects(*file, entry, spec().states[1]);
         if (std::get<std::string>(shown[0]) == "return") ++returned;
     }

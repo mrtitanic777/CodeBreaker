@@ -457,14 +457,14 @@ struct Win16::Impl : std::enable_shared_from_this<Win16::Impl> {
                 for (const GateAnswer& a : self->config.stages.gate(binary, hint->folder, names, hint->tables)) {
                     const auto k = by_name.find(a.name);
                     if (k == by_name.end()) continue;
-                    auto verdict = [&](verify::Verdict v, const std::string& why) { return Value(Value::List{Value(std::string(verify::word(v))), Value(why)}); };
-                    if (a.verdict == verify::Verdict::Equivalent) out[k->second] = w16_fact(verdict(verify::Verdict::Equivalent, ""));
-                    else if (a.verdict == verify::Verdict::Divergent) out[k->second] = w16_fact(verdict(verify::Verdict::Divergent, a.why));
-                    else out[k->second] = Unkept{w16_fact(verdict(verify::Verdict::Inconclusive, a.why))};   // (it could not be run: not kept)
+                    auto verdict = [&](store::Verdict v, const std::string& why) { return Value(Value::List{Value(std::string(store::word(v))), Value(why)}); };
+                    if (a.verdict == store::Verdict::Equivalent) out[k->second] = w16_fact(verdict(store::Verdict::Equivalent, ""));
+                    else if (a.verdict == store::Verdict::Divergent) out[k->second] = w16_fact(verdict(store::Verdict::Divergent, a.why));
+                    else out[k->second] = Unkept{w16_fact(verdict(store::Verdict::Inconclusive, a.why))};   // (it could not be run: not kept)
                 }
                 for (Context* c : ctxs)
                     if (!out.contains(c->key()))
-                        out[c->key()] = Unkept{w16_fact(Value(Value::List{Value(std::string(verify::word(verify::Verdict::Inconclusive))), Value("the checker gave no answer")}))};
+                        out[c->key()] = Unkept{w16_fact(Value(Value::List{Value(std::string(store::word(store::Verdict::Inconclusive))), Value("the checker gave no answer")}))};
                 return out;
             };
             s.stamp = config.stages.gate_stamp;
@@ -535,7 +535,7 @@ struct Win16::Impl : std::enable_shared_from_this<Win16::Impl> {
                         const auto v = ctx.peek("function.gate", k->second);
                         if (!v) continue;
                         const Value::List& pair = w16_list(w16_doc(*v, "function.gate"));
-                        if (verify::parse_verdict(w16_text(pair.at(0))) == verify::Verdict::Divergent) gated[name] = w16_text(pair.at(1));
+                        if (store::parse_verdict(w16_text(pair.at(0))) == store::Verdict::Divergent) gated[name] = w16_text(pair.at(1));
                     }
         }
         bool gate_now = config.gate;
@@ -587,10 +587,10 @@ struct Win16::Impl : std::enable_shared_from_this<Win16::Impl> {
                 const auto k = key_of.find(n);
                 if (k == key_of.end()) continue;
                 const Value::List& v = w16_list(w16_doc(verdicts.at(k->second), "function.gate"));
-                const std::optional<verify::Verdict> verdict = verify::parse_verdict(w16_text(v.at(0)));
+                const std::optional<store::Verdict> verdict = store::parse_verdict(w16_text(v.at(0)));
                 const std::string why = w16_text(v.at(1));
-                if (verdict == verify::Verdict::Divergent) differ[n] = why;
-                if (verdict == verify::Verdict::Inconclusive && why.starts_with("the checker failed")) failed.emplace_back(n, why);
+                if (verdict == store::Verdict::Divergent) differ[n] = why;
+                if (verdict == store::Verdict::Inconclusive && why.starts_with("the checker failed")) failed.emplace_back(n, why);
             }
             if (!failed.empty()) b.gate_error = std::format("{} functions ({})", failed.size(), failed.front().second.substr(0, 120));
             try {

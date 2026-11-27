@@ -57,7 +57,7 @@ public:
     static std::string why_differs(const Written& written);
 
     // The verdict of a function of a program that did (`same`) or did not (`why` says how) come back identical.
-    static Judgement judge_function(bool same, const std::string& why);
+    static store::Judgement judge_function(bool same, const std::string& why);
 
 private:
     Writer writer_;

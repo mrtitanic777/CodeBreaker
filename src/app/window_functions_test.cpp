@@ -73,8 +73,8 @@ CB_TEST("app.window_functions.the_summary_says_how_many_behave_alike_and_never_i
 
 CB_TEST("app.window_functions.after_a_judge_the_summary_and_chips_say_each_class", [] {
     std::vector<convert::FunctionRecord> list(7);
-    const verify::Class classes[] = {verify::Class::Verified, verify::Class::Verified, verify::Class::Weak, verify::Class::Unverified, verify::Class::NoCompile,
-                                     verify::Class::NoSource};
+    const store::Class classes[] = {store::Class::Verified, store::Class::Verified, store::Class::Weak, store::Class::Unverified, store::Class::NoCompile,
+                                     store::Class::NoSource};
     for (std::size_t i = 0; i < 6; ++i) {
         list[i].judged = classes[i];
         list[i].verdict = convert::verdict_of(classes[i]);
@@ -88,7 +88,7 @@ CB_TEST("app.window_functions.after_a_judge_the_summary_and_chips_say_each_class
     CB_CHECK_EQ(verdict_name(list[5]), "No source");
     CB_CHECK_EQ(verdict_name(list[6]), "Not checked");   // (no judge ran it: the verdict's words)
     convert::FunctionRecord not_run;
-    not_run.judged = verify::Class::NotJudged;
+    not_run.judged = store::Class::NotJudged;
     CB_CHECK_EQ(verdict_name(not_run), "Not run");
 });
 

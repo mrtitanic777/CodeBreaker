@@ -37,13 +37,13 @@ CB_TEST("engine.atari5200.homebrew.curse_of_the_lost_miner", [] {
         if (judged == 12) break;
         const std::optional<std::uint32_t> offset = rom.offset(address);
         if (!offset) continue;
-        CB_CHECK(lane.judge_function(false, file, file, address).verdict == verify::Verdict::Equivalent);
+        CB_CHECK(lane.judge_function(false, file, file, address).verdict == store::Verdict::Equivalent);
         Bytes edited = bytes;
         edited[*offset] = static_cast<std::uint8_t>(edited[*offset] ^ 0xFF);
         const stdfs::path changed = dir.path() / "edited.a52";
         fs::write_file(changed, edited);
         ++judged;
-        if (lane.judge_function(false, file, changed, address).verdict == verify::Verdict::Divergent) ++diverged;
+        if (lane.judge_function(false, file, changed, address).verdict == store::Verdict::Divergent) ++diverged;
     }
     std::cout << "  judged " << judged << ", " << diverged << " diverged when their first byte was turned over\n";
     CB_CHECK(judged != 0);

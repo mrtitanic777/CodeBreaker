@@ -1,16 +1,16 @@
-#include "store/versions_command.hpp"
+#include "app/versions_command.hpp"
 
 #include <optional>
 
 #include "compare/versions.hpp"
-#include "engine/function_store.hpp"
+#include "store/function_store.hpp"
 #include "engine/lane_kit.hpp"
 #include "knowledge/package.hpp"
 #include "store/knowledge_bodies.hpp"
 #include "store/versions_ledger.hpp"
 #include "verify/reconstruct.hpp"
 
-namespace cb::store::versions_command {
+namespace cb::app::versions_command {
 
 namespace {
 
@@ -27,8 +27,8 @@ public:
 
     base::Corpus& corpus() { return kit_.corpus(); }
 
-    VersionsLedger ledger() {
-        return VersionsLedger({.corpus = kit_.corpus(),
+    store::VersionsLedger ledger() {
+        return store::VersionsLedger({.corpus = kit_.corpus(),
                                .store = store_,
                                .identity = verify::reconstruct::identity_hook<compare::versions::Ledger::Identity>(*reconstructor_),
                                .bodies = &*bodies_});
@@ -37,9 +37,9 @@ public:
 private:
     engine::LaneKit kit_;
     verify::reconstruct::Kinds kinds_;
-    engine::FunctionStore store_;
+    store::FunctionStore store_;
     std::optional<verify::reconstruct::Reconstructor> reconstructor_;
-    std::optional<KnowledgeBodies> bodies_;
+    std::optional<store::KnowledgeBodies> bodies_;
 };
 
 }  // namespace
@@ -48,10 +48,10 @@ cli::Command command(const Environment& environment) {
     cli::Command declared = compare::versions::declaration();
     declared.handler = [environment](const cli::Args& args) {
         Surroundings world(environment, args.flag("carry"));
-        VersionsLedger ledger = world.ledger();
+        store::VersionsLedger ledger = world.ledger();
         return compare::versions::run(args, world.corpus(), ledger);
     };
     return declared;
 }
 
-}  // namespace cb::store::versions_command
+}  // namespace cb::app::versions_command

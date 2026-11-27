@@ -60,18 +60,18 @@ CB_TEST("engine.machine_jaguar.a_cartridge_comes_back_identical_and_an_edit_dive
     CB_CHECK(image.written.linked && image.written.same);
     CB_CHECK_EQ(image.written.functions.size(), 2u);
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     Bytes edited = cartridge();
     edited[0x2020] = 0x22;   // MOVE.L VC,D1 instead of D0
     fs::write_file(dir.path() / "edited.j64", edited);
-    CB_CHECK(lane.judge_function(false, original, original, 0x802020).verdict == verify::Verdict::Equivalent);
-    const verify::Judgement j = lane.judge_function(false, original, dir.path() / "edited.j64", 0x802020);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, 0x802020).verdict == store::Verdict::Equivalent);
+    const store::Judgement j = lane.judge_function(false, original, dir.path() / "edited.j64", 0x802020);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     CB_CHECK(!j.reason.empty());
 
     Bytes colour = cartridge();
     colour[0x2003] = 0x35;   // another value written to BG: the start function diverges, the subroutine does not
     fs::write_file(dir.path() / "colour.j64", colour);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "colour.j64", 0x802020).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "colour.j64", 0x802020).verdict == store::Verdict::Equivalent);
 });

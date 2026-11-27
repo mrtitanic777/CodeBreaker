@@ -39,7 +39,7 @@
 #include "verify/compare.hpp"
 #include "verify/concolic.hpp"
 #include "verify/guided.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::verify::lane_common {
 
@@ -244,7 +244,7 @@ std::vector<std::string> path_limits(const concolic::Stats* got);
 // A function's verdict as the store holds it: the verdict, why, its limits (weak limit codes, and a lane's own such as
 // `paths=N`) and the one line saying what differed.
 struct Judgement {
-    Verdict verdict = Verdict::Inconclusive;
+    store::Verdict verdict = store::Verdict::Inconclusive;
     std::string reason;
     std::vector<std::string> limits;
     std::string detail;

@@ -77,7 +77,7 @@ void machine_judges_a_program(const Sample& sample, const stdfs::path& original)
     CB_CHECK(!image.order.empty());
     const verify::lanes::Built built = kind->build(*prepared, original, dir.path() / "work");
     CB_CHECK_EQ(built.items.size(), image.order.size());
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     // the same program run twice agrees with itself
     std::vector<std::uint32_t> entries;
@@ -101,15 +101,15 @@ void machine_judges_a_program(const Sample& sample, const stdfs::path& original)
             const auto [a, b] = lane->subjects_of(original, w);
             return lane->judge_function(false, a, b, entry);
         };
-        const verify::Judgement same = compared(original);
-        CB_CHECK(same.verdict == verify::Verdict::Equivalent);
+        const store::Judgement same = compared(original);
+        CB_CHECK(same.verdict == store::Verdict::Equivalent);
         Bytes edited = bytes;
         edited[at] = static_cast<std::uint8_t>(edited[at] ^ 0xFF);
         const stdfs::path changed = dir.path() / (std::string(sample.machine) + ".edited");
         fs::write_file(changed, edited);
-        const verify::Judgement j = compared(changed);
+        const store::Judgement j = compared(changed);
         ++judged;
-        if (j.verdict == verify::Verdict::Divergent) {
+        if (j.verdict == store::Verdict::Divergent) {
             ++diverged;
             CB_CHECK(!j.reason.empty());
         }

@@ -12,7 +12,7 @@ namespace cb::app::convert {
 namespace {
 
 namespace stdfs = std::filesystem;
-using verify::Class;
+using store::Class;
 using verify::reconstruct::Step;
 
 // A route that decompiles: writes prog.c with three functions, as a decompiler names them.

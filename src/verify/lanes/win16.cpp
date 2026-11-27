@@ -853,7 +853,7 @@ Built Win16Lane::build(const Prepared& prepared, const stdfs::path& module_path,
 
 // ---- judging one function ----------------------------------------------------------------------------------------------------------------------------
 
-Judgement Win16Lane::judge_function(const Context& c, const Item& item) const {
+store::Judgement Win16Lane::judge_function(const Context& c, const Item& item) const {
     using Said = lane_common::Judgement;
     const Said made = lane_common::judged([&]() -> Said {
         emulate::native_trace::Governor governor;
@@ -959,14 +959,14 @@ Judgement Win16Lane::judge_function(const Context& c, const Item& item) const {
         j.verdict = outcome.verdict;
         j.reason = outcome.reason;
         j.limits = outcome.limit_codes();
-        if (outcome.verdict != Verdict::Divergent) {
+        if (outcome.verdict != store::Verdict::Divergent) {
             const std::vector<std::string> paths = lane_common::path_limits(found.get());
             j.limits.insert(j.limits.end(), paths.begin(), paths.end());
         }
         j.detail = outcome.detail;
         return j;
     });
-    return Judgement{made.verdict, made.reason, made.limits, made.detail};
+    return store::Judgement{made.verdict, made.reason, made.limits, made.detail};
 }
 
 }  // namespace cb::verify::lanes

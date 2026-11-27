@@ -44,29 +44,29 @@ CB_TEST("engine.machine_snes.a_cartridge_comes_back_identical_and_an_edit_diverg
     CB_CHECK_EQ(image.written.functions.size(), 7u);   // reset, two subroutines and the four handlers
     const verify::lanes::Built built = lane.build(*prepared, original, dir.path() / "work");
     CB_CHECK_EQ(built.items.size(), 7u);
-    CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(built.judge(built.items.front()).verdict == store::Verdict::Equivalent);
 
     Bytes ram = img::cartridge();
     ram[0x53] = 0xCE;   // sub_008050: LDA #$ABCE, so the RAM it leaves differs
     fs::write_file(dir.path() / "ram.sfc", ram);
-    CB_CHECK(lane.judge_function(false, original, original, kSub8050).verdict == verify::Verdict::Equivalent);   // run twice: agree
-    const verify::Judgement j = lane.judge_function(false, original, dir.path() / "ram.sfc", kSub8050);
-    CB_CHECK(j.verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, original, kSub8050).verdict == store::Verdict::Equivalent);   // run twice: agree
+    const store::Judgement j = lane.judge_function(false, original, dir.path() / "ram.sfc", kSub8050);
+    CB_CHECK(j.verdict == store::Verdict::Divergent);
     CB_CHECK(!j.reason.empty());
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "ram.sfc", kSub8040).verdict == verify::Verdict::Equivalent);   // the one nobody edited
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "ram.sfc", kSub8040).verdict == store::Verdict::Equivalent);   // the one nobody edited
 
     Bytes data = img::cartridge();
     data[0x1010] = 0x77;   // the byte sub_008040 reads with LDA $009000,X (X = $10) and writes to VMDATAL
     fs::write_file(dir.path() / "data.sfc", data);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "data.sfc", kSub8040).verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "data.sfc", kSub8040).verdict == store::Verdict::Divergent);
 
     Bytes screen = img::cartridge();
     screen[0x0F] = 0x80;   // reset: LDA #$80, so INIDISP gets another byte (the function then loops: both runs end at the step limit)
     fs::write_file(dir.path() / "screen.sfc", screen);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "screen.sfc", 0x008000).verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "screen.sfc", 0x008000).verdict == store::Verdict::Divergent);
 
     Bytes port = img::cartridge();
     port[0x4A] = 0x19;   // sub_008040: STA $2119 (VMDATAH) instead of $2118
     fs::write_file(dir.path() / "port.sfc", port);
-    CB_CHECK(lane.judge_function(false, original, dir.path() / "port.sfc", kSub8040).verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, original, dir.path() / "port.sfc", kSub8040).verdict == store::Verdict::Divergent);
 });

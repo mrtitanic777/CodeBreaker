@@ -6,7 +6,7 @@
 //     codebreaker coverage --csv FILE       one row per corpus module, for a spreadsheet
 //     codebreaker coverage --json           the whole ledger as JSON
 //
-//     engine::FunctionStore store(index, folder, /*readonly*/ true);
+//     store::FunctionStore store(index, folder, /*readonly*/ true);
 //     ledger::Ledger ledger(services, &store);
 //     ledger::Report report = ledger.measure();             // {profiles, kinds, total, modules}
 //     for (const std::string& line : ledger::render(report)) out("{}", line);
@@ -44,8 +44,8 @@
 #include "base/corpus.hpp"
 #include "core/cli.hpp"
 #include "core/json_fwd.hpp"
-#include "engine/function_store.hpp"
-#include "verify/verdicts.hpp"
+#include "store/function_store.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::coverage::ledger {
 
@@ -60,7 +60,7 @@ std::string_view kind_title(std::string_view kind);
 // The numbers of a row.
 struct Counts {
     std::int64_t functions = 0, decompiled = 0, compiled = 0;
-    engine::ClassCount classes;                     // {class: functions} for every class of verify::kClassOrder
+    store::ClassCount classes;                     // {class: functions} for every class of store::kClassOrder
     std::int64_t code_bytes = 0, bytes_known = 0, bytes_verified = 0, bytes_weak = 0;
     std::int64_t judged = 0;                        // functions with a result under the settings in force
     Counts();
@@ -110,7 +110,7 @@ struct Services {
 class Ledger {
 public:
     // `store` is not owned and may be null (no store: the corpus is listed alone); it should be read-only.
-    Ledger(Services services, engine::FunctionStore* store);
+    Ledger(Services services, store::FunctionStore* store);
 
     // {kind: digest} -- the verifier settings in force now.
     std::map<std::string, std::optional<std::string>> profiles() const;
@@ -127,11 +127,11 @@ public:
     Report measure(std::optional<std::string_view> module = std::nullopt, bool refresh = false);
 
     // {class: [(reason, functions)]} -- why the functions of a module that are not verified are not, commonest first, at
-    // most `most` each; classes in the order of verify::kClassOrder.
-    using Reasons = std::vector<std::pair<verify::Class, std::vector<std::pair<std::string, std::int64_t>>>>;
+    // most `most` each; classes in the order of store::kClassOrder.
+    using Reasons = std::vector<std::pair<store::Class, std::vector<std::pair<std::string, std::int64_t>>>>;
     Reasons reasons(const std::string& sha, const std::string& digest, std::size_t most = 8) const;
 
-    engine::FunctionStore* store() const { return store_; }
+    store::FunctionStore* store() const { return store_; }
 
 private:
     struct Stamp {
@@ -141,7 +141,7 @@ private:
     };
 
     Services services_;
-    engine::FunctionStore* store_;
+    store::FunctionStore* store_;
     // (sha, digest) -> (the summary it was counted at, the counts): looked up
     std::map<std::pair<std::string, std::string>, std::pair<Stamp, Counts>> kept_;
     std::map<std::string, Stamp> stamps_;   // the summaries of the last measure

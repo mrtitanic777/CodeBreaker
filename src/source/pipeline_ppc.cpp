@@ -25,7 +25,7 @@
 #include "formats/xex.hpp"
 #include "symbols/libraries/coff.hpp"
 #include "verify/lanes/powerpc.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::source::pipeline {
 
@@ -168,9 +168,9 @@ verify::authored::search16::ByteVerdict ppc_distance(const rp::Code& built, cons
     const std::vector<std::uint64_t> ma = widen(b.word_mask), mb = widen(original.word_mask);
     const compare::mask::DistanceResult d = compare::mask::distance_words(b.bytes, original.bytes, 4, compare::mask::ByteOrder::Big, ma, mb);
     verify::authored::search16::ByteVerdict v;
-    v.match = d.verdict == compare::mask::Match::Identical ? verify::ByteMatch::Identical
-              : d.verdict == compare::mask::Match::SameSize ? verify::ByteMatch::SameSize
-                                                            : verify::ByteMatch::Different;
+    v.match = d.verdict == compare::mask::Match::Identical ? store::ByteMatch::Identical
+              : d.verdict == compare::mask::Match::SameSize ? store::ByteMatch::SameSize
+                                                            : store::ByteMatch::Different;
     v.differing = d.differing;
     v.total = d.compared;
     return v;
@@ -261,7 +261,7 @@ PpcModule ppc_prepare(World& world, const stdfs::path& image_path, const stdfs::
 }
 
 struct PpcResult {
-    verify::ByteMatch match = verify::ByteMatch::NoCompile;
+    store::ByteMatch match = store::ByteMatch::NoCompile;
     std::size_t differing = 0, words = 0, original_words = 0;
 };
 
@@ -283,7 +283,7 @@ std::vector<std::pair<std::string, PpcResult>> ppc_run(const PpcModule& m, const
         PpcResult r;
         r.original_words = original == m.originals.end() ? 0 : original->second.bytes.size() / 4;
         if (!built[i] || original == m.originals.end()) {
-            r.match = !built[i] ? verify::ByteMatch::NoCompile : verify::ByteMatch::NoExtent;
+            r.match = !built[i] ? store::ByteMatch::NoCompile : store::ByteMatch::NoExtent;
         } else {
             const auto d = ppc_distance(*built[i], original->second);
             r.match = d.match;
@@ -327,14 +327,14 @@ int match_powerpc_command(World& world, const stdfs::path& path, const std::stri
     };
     std::vector<std::string> order;
     std::map<std::string, Best> best;
-    const auto rank_of = [](verify::ByteMatch m) { return static_cast<std::size_t>(std::find(verify::kByteMatches.begin(), verify::kByteMatches.end(), m) - verify::kByteMatches.begin()); };
+    const auto rank_of = [](store::ByteMatch m) { return static_cast<std::size_t>(std::find(store::kByteMatches.begin(), store::kByteMatches.end(), m) - store::kByteMatches.begin()); };
     for (const std::string& set : sets) {
         std::string folder;
         for (const char c : set) folder += std::isalnum(static_cast<unsigned char>(c)) ? c : '_';
         const auto results = ppc_run(module, cl, set, work / (folder.empty() ? "default" : folder));
         std::size_t identical = 0;
         for (const auto& [name, r] : results) {
-            if (r.match == verify::ByteMatch::Identical) ++identical;
+            if (r.match == store::ByteMatch::Identical) ++identical;
             const std::pair<std::size_t, std::size_t> rank{rank_of(r.match), r.differing};
             const auto have = best.find(name);
             if (have == best.end()) order.push_back(name);
@@ -342,18 +342,18 @@ int match_powerpc_command(World& world, const stdfs::path& path, const std::stri
         }
         if (sets.size() > 1) cb::out("  {:<12} {} identical\n", set, identical);
     }
-    std::map<verify::ByteMatch, std::size_t> counts;
+    std::map<store::ByteMatch, std::size_t> counts;
     for (const auto& [name, b] : best) ++counts[b.result.match];
     cb::out("{}: {} functions\n", fs::to_text(fs::from_text(given).filename()), best.size());
-    for (const verify::ByteMatch k : verify::kByteMatches)
-        if (counts[k] != 0) cb::out("  {:<20} {}\n", verify::label(k), counts[k]);
+    for (const store::ByteMatch k : store::kByteMatches)
+        if (counts[k] != 0) cb::out("  {:<20} {}\n", store::label(k), counts[k]);
     if (const auto json_file = args.value("json")) {
         Json j = Json::object();
         std::vector<std::string> sorted(order);
         std::sort(sorted.begin(), sorted.end());
         for (const std::string& name : sorted) {
             const Best& b = best.at(name);
-            j[name] = Json{{"verdict", std::string(verify::word(b.result.match))},
+            j[name] = Json{{"verdict", std::string(store::word(b.result.match))},
                            {"words differing", b.result.differing},
                            {"words", b.result.words},
                            {"original words", b.result.original_words},
@@ -371,7 +371,7 @@ int repair_powerpc_command(World& world, const stdfs::path& path, const rp::Argu
     const stdfs::path work = world.config().state(stdfs::path("repair") / file_name);
     const PpcModule m = ppc_prepare(world, image, work);
     const verify::reconstruct::Identity id = world.reconstructor().identity(image);
-    engine::FunctionStore& store = world.store();
+    store::FunctionStore& store = world.store();
     store.add_module(id.sha, file_name, fs::to_text(image), "powerpc");
     std::vector<std::string> keys;
     for (const auto& [name, key] : m.lane().key) keys.push_back(key);
@@ -395,7 +395,7 @@ int repair_powerpc_command(World& world, const stdfs::path& path, const rp::Argu
     options.log = [](std::string_view line) { cb::out("{}\n", line); };
     options.record = [&](const rp::Target& target, const rp::Repaired& r, const std::string& setting) {
         store.record_variant(id.sha, target.key, setting, r.source, static_cast<std::int64_t>(r.verdict.differing), static_cast<std::int64_t>(r.verdict.total),
-                             verify::word(r.verdict.match), r.knobs, std::nullopt, std::string_view());
+                             store::word(r.verdict.match), r.knobs, std::nullopt, std::string_view());
     };
     const rp::Counts counts = rp::run(module, cl, options);
     cb::out("{}\n", rp::summary_line(fs::to_text(path.filename()), counts));

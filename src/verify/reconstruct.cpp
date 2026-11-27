@@ -373,7 +373,7 @@ std::map<std::string, std::string> signatures(const lanes::Prepared& prepared, s
 
 std::string Outcome::line() const {
     std::string parts;
-    for (const Class c : kClassScored) {
+    for (const store::Class c : store::kClassScored) {
         const auto it = scores.find(c);
         if (it == scores.end() || it->second == 0)
             continue;
@@ -389,9 +389,9 @@ std::string Outcome::line() const {
 namespace {
 
 // One function's row as record_many takes it.
-engine::Record row(std::string addr, std::string sig, std::string name, std::optional<std::string> source, Verdict verdict, std::string reason,
+store::Record row(std::string addr, std::string sig, std::string name, std::optional<std::string> source, store::Verdict verdict, std::string reason,
                    std::string limits = {}, std::string detail = {}, std::optional<std::string> problem = std::nullopt) {
-    engine::Record r;
+    store::Record r;
     r.addr = std::move(addr);
     r.sig = std::move(sig);
     r.name = std::move(name);
@@ -406,7 +406,7 @@ engine::Record row(std::string addr, std::string sig, std::string name, std::opt
 
 // The weak limits a good verdict gets when a function it calls was a stand-in: its own, and "stub-callee", sorted.
 std::string with_stub_callee(std::vector<std::string> limits) {
-    limits.push_back(std::string(word(WeakLimit::StubCallee)));
+    limits.push_back(std::string(store::word(store::WeakLimit::StubCallee)));
     std::sort(limits.begin(), limits.end());
     limits.erase(std::unique(limits.begin(), limits.end()), limits.end());
     return text::join(limits, ",");
@@ -419,7 +419,7 @@ Outcome Reconstructor::run(const std::filesystem::path& module_path) const {
     const lanes::Kind& kind = kind_of(module_path);
     const std::string& kind_id = kind.name();
     const KindTraits& traits = services_.kinds.traits(kind_id);
-    engine::FunctionStore& store = services_.store;
+    store::FunctionStore& store = services_.store;
 
     const std::string sha = module_sha(kind_id, module_path);
     const lanes::Profile profile = kind.profile(module_path);
@@ -462,7 +462,7 @@ Outcome Reconstructor::run(const std::filesystem::path& module_path) const {
     if (traits.identifies_library && services_.identify)
         store.set_identified(sha, services_.identify(module_path));
 
-    const std::map<std::string, engine::Candidate> known = store.judged(sha, profile.digest, kSource);
+    const std::map<std::string, store::Candidate> known = store.judged(sha, profile.digest, kSource);
     std::vector<std::string> fresh;   // the functions with no verdict for the text they have now
     for (const std::string& n : m.order) {
         const auto key = m.key.find(n);
@@ -473,14 +473,14 @@ Outcome Reconstructor::run(const std::filesystem::path& module_path) const {
             fresh.push_back(n);
     }
 
-    std::vector<engine::Record> rows;
+    std::vector<store::Record> rows;
     {
         std::set<std::string_view> have;
         for (const auto& [_, k] : m.key)
             have.insert(k);
         for (const std::string& k : m.all_keys)
             if (!have.contains(k))
-                rows.push_back(row(k, "-", "", std::nullopt, Verdict::NoSource, "the decompiler produced nothing for this function", {}, {}, "none"));
+                rows.push_back(row(k, "-", "", std::nullopt, store::Verdict::NoSource, "the decompiler produced nothing for this function", {}, {}, "none"));
     }
 
     auto build_started = Clock::now();
@@ -503,8 +503,8 @@ Outcome Reconstructor::run(const std::filesystem::path& module_path) const {
                 const std::map<std::string, std::string> built_now = signatures(m, {}, &objects);
                 if (!built_now.empty()) {
                     const auto before = store.built(sha, profile.digest);
-                    std::map<std::string, engine::Candidate> had;
-                    for (engine::Candidate& c : store.candidates(sha, profile.digest, kSource))
+                    std::map<std::string, store::Candidate> had;
+                    for (store::Candidate& c : store.candidates(sha, profile.digest, kSource))
                         if (c.verdict)
                             had[c.addr] = std::move(c);
                     std::set<std::string> keep;
@@ -518,10 +518,10 @@ Outcome Reconstructor::run(const std::filesystem::path& module_path) const {
                         const auto c = had.find(k);
                         if (c == had.end())
                             continue;
-                        const std::optional<Verdict> v = parse_verdict(*c->second.verdict);
-                        if (v == Verdict::NoCompile || v == Verdict::NoSource)
+                        const std::optional<store::Verdict> v = store::parse_verdict(*c->second.verdict);
+                        if (v == store::Verdict::NoCompile || v == store::Verdict::NoSource)
                             continue;
-                        engine::Record r;
+                        store::Record r;
                         r.addr = k;
                         r.sig = sig.at(n);
                         r.name = n;
@@ -553,7 +553,7 @@ Outcome Reconstructor::run(const std::filesystem::path& module_path) const {
             if (in_build.contains(n))
                 continue;
             const auto why = built.missing.find(n);
-            rows.push_back(row(m.key.at(n), sig.at(n), n, m.texts.at(n), Verdict::NoCompile,
+            rows.push_back(row(m.key.at(n), sig.at(n), n, m.texts.at(n), store::Verdict::NoCompile,
                                why == built.missing.end() || why->second.empty() ? "not in the build" : why->second, {}, {}, "compile"));
         }
 
@@ -564,8 +564,8 @@ Outcome Reconstructor::run(const std::filesystem::path& module_path) const {
         if (stopping())
             throw Stopped();
         tell(Step::Judging, 0, to_judge.size());
-        std::map<std::string, Judgement> judged;
-        std::optional<std::map<std::string, Judgement>> batch;
+        std::map<std::string, store::Judgement> judged;
+        std::optional<std::map<std::string, store::Judgement>> batch;
         if (services_.judge_batch)
             batch = services_.judge_batch({kind, built, to_judge, module_path, work});
         if (batch) {
@@ -575,13 +575,13 @@ Outcome Reconstructor::run(const std::filesystem::path& module_path) const {
             std::atomic<std::size_t> finished = 0;
             const auto judge_one = [&](const std::string& n) {
                 if (stopping())
-                    return not_run();   // (nothing is recorded: the run leaves by Stopped below)
-                Judgement j;
+                    return store::not_run();   // (nothing is recorded: the run leaves by Stopped below)
+                store::Judgement j;
                 try {
                     j = built.judge(n);
                 } catch (const std::exception& e) {   // isolation boundary: one function of a batch
                     log::warn(std::format("reconstruct: judging {} in {} failed: {}", n, name, e.what()));
-                    j = not_run();
+                    j = store::not_run();
                 }
                 tell(Step::Judging, ++finished, to_judge.size());
                 return j;
@@ -590,7 +590,7 @@ Outcome Reconstructor::run(const std::filesystem::path& module_path) const {
                 for (const std::string& n : to_judge)
                     judged.emplace(n, judge_one(n));
             } else {
-                const std::vector<Judgement> answers = jobs::threads(to_judge, judge_one, services_.judge_threads);
+                const std::vector<store::Judgement> answers = jobs::threads(to_judge, judge_one, services_.judge_threads);
                 for (std::size_t i = 0; i < to_judge.size(); ++i)
                     judged.emplace(to_judge[i], answers[i]);
             }
@@ -600,8 +600,8 @@ Outcome Reconstructor::run(const std::filesystem::path& module_path) const {
         tell(Step::Judging, to_judge.size(), to_judge.size());
         for (const std::string& n : to_judge) {
             const auto got = judged.find(n);
-            const Judgement j = got == judged.end() ? not_run() : got->second;
-            const std::string limits = tainted.contains(n) && is_good(j.verdict) ? with_stub_callee(j.limits) : j.limits_joined();
+            const store::Judgement j = got == judged.end() ? store::not_run() : got->second;
+            const std::string limits = tainted.contains(n) && store::is_good(j.verdict) ? with_stub_callee(j.limits) : j.limits_joined();
             rows.push_back(row(m.key.at(n), sig.at(n), n, m.texts.at(n), j.verdict, j.reason, limits, j.detail));
         }
         judge_done = seconds_since(build_started) - build_done;

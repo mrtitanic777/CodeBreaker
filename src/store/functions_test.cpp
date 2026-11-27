@@ -16,9 +16,9 @@
 
 namespace fn = cb::store::functions;
 namespace ve = cb::compare::versions;
-using cb::engine::FunctionStore;
-using cb::engine::Record;
-using cb::verify::Class;
+using cb::store::FunctionStore;
+using cb::store::Record;
+using cb::store::Class;
 namespace stdfs = std::filesystem;
 
 namespace {

@@ -61,7 +61,7 @@
 #include "engine/engine.hpp"
 #include "knowledge/value.hpp"
 #include "verify/lanes/kind.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::engine::win16 {
 
@@ -121,7 +121,7 @@ struct LinkRequest {
 // One answer of the gate.
 struct GateAnswer {
     std::string name;
-    verify::Verdict verdict = verify::Verdict::Inconclusive;
+    store::Verdict verdict = store::Verdict::Inconclusive;
     std::string why;
 };
 

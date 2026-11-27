@@ -42,8 +42,8 @@
 #include "core/error.hpp"
 #include "core/json_fwd.hpp"
 #include "coverage/ledger.hpp"
-#include "engine/function_store.hpp"
-#include "verify/verdicts.hpp"
+#include "store/function_store.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::ui::service {
 
@@ -150,13 +150,13 @@ private:
 // One function for the page: the store's best row for it, in words.
 struct FunctionRow {
     std::string addr, name;
-    verify::Class cls = verify::Class::NoSource;
+    store::Class cls = store::Class::NoSource;
     std::string why;                          // the words after the status (the module writer's describe)
     std::string engine;
     bool has_source = false;
     // Only for one function asked for by address:
     std::optional<std::string> source, verdict, reason, limits, detail, rev, problem;
-    std::vector<verify::WeakLimit> weak;      // why a weak match is weak, spelled out in the document
+    std::vector<store::WeakLimit> weak;      // why a weak match is weak, spelled out in the document
     bool detailed = false;
 };
 
@@ -173,7 +173,7 @@ Json to_json(const FunctionsAnswer& answer);
 
 // The words after a function's status: how much of it ran (verified), the limits that make a match weak, the reason a
 // verdict is none or a failure. A caller with the module writer's own table of reasons gives its describe instead.
-std::string describe(const engine::Best& best);
+std::string describe(const store::Best& best);
 
 // ---- the service: the answers --------------------------------------------------------------------------------------------------
 
@@ -185,7 +185,7 @@ struct Environment {
     // The corpus's retail binary of a module name (jobs are started on paths).
     std::function<std::optional<std::filesystem::path>(std::string_view)> retail;
     // describe() with the module writer's table of reasons; unset: this module's.
-    std::function<std::string(const engine::Best&)> describe_best;
+    std::function<std::string(const store::Best&)> describe_best;
     // Runs a query command of the command table, printing as it would at the command line; its exit code.
     std::function<int(std::string_view command, std::span<const std::string> argv)> run_command;
 };

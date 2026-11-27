@@ -106,7 +106,7 @@ CB_TEST("engine.lane_kit.proof", [] {
         kit.set_worker_launcher(jobs::WorkerLauncher(jobs::WorkerLauncher::for_this_program().exe().parent_path() / "cb_lane_worker.exe"));
     verify::reconstruct::Kinds kinds;
     kit.add_lanes(kinds);
-    engine::FunctionStore store(config.state("functions.sqlite"), config.state("db"));
+    store::FunctionStore store(config.state("functions.sqlite"), config.state("db"));
     verify::reconstruct::Services services = kit.reconstruct_services(kinds, store);
     services.log = [](std::string_view line) { std::cout << line << "\n"; };
     const verify::reconstruct::Reconstructor reconstructor(std::move(services));

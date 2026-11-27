@@ -695,7 +695,7 @@ private:
             for (const auto& kv : a)
                 if (!given.contains(kv.first)) what += ", " + kv.first;
         }
-        out.rows.push_back({c.name, c.cmd, ::cb::verify::pair_verdict(bad.empty()), what});
+        out.rows.push_back({c.name, c.cmd, ::cb::store::pair_verdict(bad.empty()), what});
         for (const Case& next : c.then) run_case(next, fa, fb, out);
     }
 
@@ -710,7 +710,7 @@ private:
 }  // namespace
 
 std::size_t Report::same() const {
-    return static_cast<std::size_t>(std::ranges::count_if(rows, [](const CaseRow& r) { return r.verdict == ::cb::verify::Verdict::Equivalent; }));
+    return static_cast<std::size_t>(std::ranges::count_if(rows, [](const CaseRow& r) { return r.verdict == ::cb::store::Verdict::Equivalent; }));
 }
 
 std::string Report::markdown() const {
@@ -723,8 +723,8 @@ std::string Report::markdown() const {
     lines.emplace_back("| case | command | | what |");
     lines.emplace_back("|---|---|---|---|");
     for (const CaseRow& r : rows) {
-        const std::string said(::cb::verify::said(r.verdict));
-        const std::string mark = r.verdict == ::cb::verify::Verdict::Equivalent ? said : "**" + text::upper(said) + "**";
+        const std::string said(::cb::store::said(r.verdict));
+        const std::string mark = r.verdict == ::cb::store::Verdict::Equivalent ? said : "**" + text::upper(said) + "**";
         lines.push_back(std::format("| {} | `{}` | {} | {} |", r.name, r.cmd.empty() ? "(none)" : r.cmd, mark, r.what));
     }
     if (!details.empty()) {

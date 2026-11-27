@@ -96,16 +96,16 @@ inline void compare_homebrew(const char* kind_name, const char* folder, const ch
                 changed[at + k] ^= 0xFF;
                 const stdfs::path edited = work / ("edited" + std::string(extension));
                 fs::write_file(edited, changed);
-                verify::Judgement j[2];
+                store::Judgement j[2];
                 for (int core = 0; core < 2; ++core) {
                     ForcedCore forced(core == 1);
                     j[core] = lane->judge_function(false, dirent.path(), edited, address);
-                    ++verdicts[core][j[core].verdict == verify::Verdict::Equivalent ? 0 : 1];
+                    ++verdicts[core][j[core].verdict == store::Verdict::Equivalent ? 0 : 1];
                 }
                 ++judged;
                 if (j[0].verdict != j[1].verdict && ++disagree <= 4)
                     std::printf("  %s: function %x byte +%zu: own core %s (%s), emulator %s (%s)\n", dirent.path().filename().string().c_str(), address, k,
-                                std::string(verify::word(j[0].verdict)).c_str(), j[0].reason.c_str(), std::string(verify::word(j[1].verdict)).c_str(), j[1].reason.c_str());
+                                std::string(store::word(j[0].verdict)).c_str(), j[0].reason.c_str(), std::string(store::word(j[1].verdict)).c_str(), j[1].reason.c_str());
             }
             for (const verify::lanes::State& state : spec.states) {
                 verify::lanes::Effects e[2];

@@ -352,7 +352,7 @@ std::vector<Best> search(const std::vector<NearMiss>& near, const CompileGroup& 
     for (int round = 0; round < options.rounds; ++round) {
         std::map<std::string, std::string> tries;   // function -> its rewritten text
         for (const Best& b : best) {
-            if (b.verdict.match == ByteMatch::Identical) continue;
+            if (b.verdict.match == store::ByteMatch::Identical) continue;
             if (auto changed = rewrite(b.text, rng); changed && *changed != b.text) tries[b.function] = std::move(*changed);
         }
         if (tries.empty()) break;
@@ -376,7 +376,7 @@ std::vector<Best> search(const std::vector<NearMiss>& near, const CompileGroup& 
             }
         }
         if (options.log) {
-            const auto identical = std::ranges::count_if(best, [](const Best& b) { return b.verdict.match == ByteMatch::Identical; });
+            const auto identical = std::ranges::count_if(best, [](const Best& b) { return b.verdict.match == store::ByteMatch::Identical; });
             options.log(std::format("  round {}: {} rewrites, {} nearer, {} identical", round + 1, tries.size(), gained, identical));
         }
     }

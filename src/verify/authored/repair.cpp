@@ -546,7 +546,7 @@ std::string best_flags(const Compiler& cc, const Module& module, const std::file
             const auto built = cc.compile(module.header, t->text, t->name, flags, work);
             if (!built) continue;
             const ByteVerdict v = cc.distance(*built, t->original);
-            got += v.match == verify::ByteMatch::Identical ? 3 : v.match == verify::ByteMatch::SameSize ? 1 : 0;
+            got += v.match == store::ByteMatch::Identical ? 3 : v.match == store::ByteMatch::SameSize ? 1 : 0;
         }
         if (!any || got > best_score) {
             best_score = got;
@@ -584,9 +584,9 @@ Counts run(const Module& module, const Compiler& cc, const RunOptions& options) 
         if (!r) continue;
         if (options.record) options.record(*todo[i], *r, module.compiler_name + " " + flags);
         ++counts.functions;
-        (r->verdict.match == verify::ByteMatch::Identical ? counts.identical : r->verdict.match == verify::ByteMatch::SameSize ? counts.same_size : counts.different) += 1;
+        (r->verdict.match == store::ByteMatch::Identical ? counts.identical : r->verdict.match == store::ByteMatch::SameSize ? counts.same_size : counts.different) += 1;
         if (options.log && !r->knobs.empty())
-            options.log(std::format("  {:<28} {:<9} distance {}/{}  via {}", todo[i]->name, verify::word(r->verdict.match), r->verdict.differing,
+            options.log(std::format("  {:<28} {:<9} distance {}/{}  via {}", todo[i]->name, store::word(r->verdict.match), r->verdict.differing,
                                     r->verdict.total, r->knobs));
     }
     return counts;
@@ -603,7 +603,7 @@ TruthCounts truth(const Profile& profile, const std::filesystem::path& work, std
         const Unit& u = units[ui];
         ++counts.units;
         const auto built = compile(u.source);
-        if (!built || profile.distance(*built, u.original).match != verify::ByteMatch::Identical) continue;
+        if (!built || profile.distance(*built, u.original).match != store::ByteMatch::Identical) continue;
         ++counts.identical;
         const std::vector<Knob> one = knobs(u.source, 0, std::nullopt);
         std::vector<Knob> two;

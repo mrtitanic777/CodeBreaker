@@ -1,6 +1,6 @@
-// store/versions_command.hpp -- `codebreaker versions`, complete: the comparison of compare/versions with the production ledger.
+// app/versions_command.hpp -- `codebreaker versions`, complete: the comparison of compare/versions with the production ledger.
 //
-//     cli::Cli cli("codebreaker", {store::versions_command::command({.config = config, .corpus = corpus})});
+//     cli::Cli cli("codebreaker", {app::versions_command::command({.config = config, .corpus = corpus})});
 //
 // The command matches the functions of two builds; what is already known of the old build (its reconstructions, the names of its bodies) comes from
 // the function store of the state folder, the knowledge base's body tables, and the verifier's identity of a module (the lanes of engine/lane_kit).
@@ -13,7 +13,7 @@
 #include "base/corpus.hpp"
 #include "core/cli.hpp"
 
-namespace cb::store::versions_command {
+namespace cb::app::versions_command {
 
 struct Environment {
     config::Config config;                  // the settings and the state folder
@@ -22,4 +22,4 @@ struct Environment {
 
 cli::Command command(const Environment& environment);
 
-}  // namespace cb::store::versions_command
+}  // namespace cb::app::versions_command

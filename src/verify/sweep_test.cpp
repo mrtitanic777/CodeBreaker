@@ -38,8 +38,8 @@ public:
         lanes::Built b;
         b.items = p.order;
         b.judge = [](const std::string&) {
-            Judgement j;
-            j.verdict = Verdict::Equivalent;
+            store::Judgement j;
+            j.verdict = store::Verdict::Equivalent;
             return j;
         };
         return b;
@@ -48,7 +48,7 @@ public:
 
 struct Sweeping {
     fs::ScopedTempDir tmp{"cb-sweep"};
-    engine::FunctionStore store{tmp.path() / "functions.sqlite", tmp.path() / "db"};
+    store::FunctionStore store{tmp.path() / "functions.sqlite", tmp.path() / "db"};
     reconstruct::Kinds kinds;
     std::optional<reconstruct::Reconstructor> rec;
     std::vector<std::string> out, err;
@@ -113,7 +113,7 @@ CB_TEST("verify.sweep.a_sweep_measures_what_is_not_measured_and_goes_past_a_fail
     CB_CHECK(s.out[3].starts_with("[3/4] b.fk: "));
     CB_CHECK(s.out[4].starts_with("[4/4] c.txt FAILED: "));   // nothing reconstructs it
     CB_CHECK(s.out.back().starts_with("2 of 4 modules measured under the current verifier settings; 2 functions: "));
-    CB_CHECK_EQ(s.store.best("sha-a.fk", "d1").at("key:a.fk").cls, verify::Class::Verified);
+    CB_CHECK_EQ(s.store.best("sha-a.fk", "d1").at("key:a.fk").cls, store::Class::Verified);
 });
 
 CB_TEST("verify.sweep.a_second_sweep_picks_up_where_the_first_stopped", [] {

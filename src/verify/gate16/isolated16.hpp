@@ -36,7 +36,7 @@
 #include "emulate/windows16.hpp"
 #include "knowledge/value.hpp"
 #include "verify/lanes/win16.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::verify::gate16 {
 
@@ -63,7 +63,7 @@ std::map<std::string, core16::SegOff> built_places(const std::filesystem::path& 
 
 struct Isolated16Answer {
     std::string name;
-    Verdict verdict = Verdict::Inconclusive;
+    store::Verdict verdict = store::Verdict::Inconclusive;
     std::string why;
 };
 

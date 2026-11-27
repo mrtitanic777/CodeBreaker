@@ -1,4 +1,4 @@
-#include "engine/function_store.hpp"
+#include "store/function_store.hpp"
 
 #include "base/sqlite.hpp"
 #include "core/error.hpp"
@@ -8,10 +8,10 @@
 namespace {
 
 using namespace cb;
-using cb::engine::Candidate;
-using cb::engine::FunctionStore;
-using cb::engine::Record;
-using cb::verify::Class;
+using cb::store::Candidate;
+using cb::store::FunctionStore;
+using cb::store::Record;
+using cb::store::Class;
 namespace sql = cb::base::sqlite;
 namespace stdfs = std::filesystem;
 
@@ -35,7 +35,7 @@ Record rec(std::string addr, std::string name, std::string source, std::string s
 
 }  // namespace
 
-CB_TEST("engine.function_store.record_and_read_candidates", [] {
+CB_TEST("store.function_store.record_and_read_candidates", [] {
     Fixture fx;
     FunctionStore store = fx.open();
     store.add_module("m1", "kernel32.dll", "C:/k32.dll", "pe");
@@ -73,7 +73,7 @@ CB_TEST("engine.function_store.record_and_read_candidates", [] {
     CB_CHECK(store.addresses("zz").empty());
 });
 
-CB_TEST("engine.function_store.best_goes_by_class_then_by_the_engine_named_first", [] {
+CB_TEST("store.function_store.best_goes_by_class_then_by_the_engine_named_first", [] {
     Fixture fx;
     FunctionStore store = fx.open();
     store.add_module("m1", "a.dll", "", "pe");
@@ -108,7 +108,7 @@ CB_TEST("engine.function_store.best_goes_by_class_then_by_the_engine_named_first
     CB_CHECK(!tally.contains(Class::Identified));
 });
 
-CB_TEST("engine.function_store.consistent_verdicts_are_weak_and_say_why", [] {
+CB_TEST("store.function_store.consistent_verdicts_are_weak_and_say_why", [] {
     Fixture fx;
     FunctionStore store = fx.open();
     store.add_module("m", "a.dll", "", "pe");
@@ -116,15 +116,15 @@ CB_TEST("engine.function_store.consistent_verdicts_are_weak_and_say_why", [] {
                                                               rec("1:3", "h", "x", "s", "equivalent", "stub-callee")});
     const auto best = store.best("m", "p");
     CB_CHECK(best.at("1:1").cls == Class::Weak);
-    CB_CHECK(best.at("1:1").weak.contains(verify::WeakLimit::LowCoverage));
-    CB_CHECK(best.at("1:1").weak.contains(verify::WeakLimit::Truncated));
+    CB_CHECK(best.at("1:1").weak.contains(store::WeakLimit::LowCoverage));
+    CB_CHECK(best.at("1:1").weak.contains(store::WeakLimit::Truncated));
     CB_CHECK_EQ(best.at("1:1").weak.size(), 2u);
-    CB_CHECK(best.at("1:2").weak.contains(verify::WeakLimit::FaultOnly));   // a consistent verdict with no limit: both sides only fail alike
+    CB_CHECK(best.at("1:2").weak.contains(store::WeakLimit::FaultOnly));   // a consistent verdict with no limit: both sides only fail alike
     CB_CHECK(best.at("1:3").cls == Class::Weak);                           // an equivalent one with a limit is weak too
-    CB_CHECK(best.at("1:3").weak.contains(verify::WeakLimit::StubCallee));
+    CB_CHECK(best.at("1:3").weak.contains(store::WeakLimit::StubCallee));
 });
 
-CB_TEST("engine.function_store.older_spellings_read_as_the_words_now", [] {
+CB_TEST("store.function_store.older_spellings_read_as_the_words_now", [] {
     Fixture fx;
     FunctionStore store = fx.open();
     store.add_module("m", "a.dll", "", "pe");
@@ -147,7 +147,7 @@ CB_TEST("engine.function_store.older_spellings_read_as_the_words_now", [] {
     CB_CHECK(store.best("m", "p").at("1:2").cls == Class::NoCompile);
 });
 
-CB_TEST("engine.function_store.a_changed_sig_drops_the_verdicts_under_other_profiles", [] {
+CB_TEST("store.function_store.a_changed_sig_drops_the_verdicts_under_other_profiles", [] {
     Fixture fx;
     FunctionStore store = fx.open();
     store.add_module("m", "a.dll", "", "pe");
@@ -178,7 +178,7 @@ CB_TEST("engine.function_store.a_changed_sig_drops_the_verdicts_under_other_prof
     CB_CHECK(store.stored("m", "9:9").empty());
 });
 
-CB_TEST("engine.function_store.the_summary_follows_every_write", [] {
+CB_TEST("store.function_store.the_summary_follows_every_write", [] {
     Fixture fx;
     FunctionStore store = fx.open();
     store.add_module("m1", "b.dll", "C:/b.dll", "ne");
@@ -243,7 +243,7 @@ CB_TEST("engine.function_store.the_summary_follows_every_write", [] {
     CB_CHECK(latest.at("1:2") == Class::Unverified);
 });
 
-CB_TEST("engine.function_store.scores_count_runtime_library_functions_on_their_own", [] {
+CB_TEST("store.function_store.scores_count_runtime_library_functions_on_their_own", [] {
     Fixture fx;
     FunctionStore store = fx.open();
     store.add_module("m", "a.dll", "", "pe");
@@ -263,7 +263,7 @@ CB_TEST("engine.function_store.scores_count_runtime_library_functions_on_their_o
     CB_CHECK_EQ(store.scores("p", "m").at(Class::Identified), 0);
 });
 
-CB_TEST("engine.function_store.texts_built_and_the_about_note", [] {
+CB_TEST("store.function_store.texts_built_and_the_about_note", [] {
     Fixture fx;
     FunctionStore store = fx.open();
     store.add_module("m", "a.dll", "", "pe");
@@ -288,7 +288,7 @@ CB_TEST("engine.function_store.texts_built_and_the_about_note", [] {
     CB_CHECK_EQ(store.about("note").value(), "again");
 });
 
-CB_TEST("engine.function_store.variants_are_compared_by_their_bytes", [] {
+CB_TEST("store.function_store.variants_are_compared_by_their_bytes", [] {
     Fixture fx;
     FunctionStore store = fx.open();
     store.add_module("m", "a.dll", "", "pe");
@@ -330,7 +330,7 @@ CB_TEST("engine.function_store.variants_are_compared_by_their_bytes", [] {
     CB_CHECK_EQ(tally.other, 1);
 });
 
-CB_TEST("engine.function_store.a_store_written_by_the_c_engine_reads_the_same", [] {
+CB_TEST("store.function_store.a_store_written_by_the_c_engine_reads_the_same", [] {
     // rows as the old C engine (cbengine.dll) wrote them: the same tables, the weak limits and a carried verdict among them
     Fixture fx;
     {
@@ -350,7 +350,7 @@ CB_TEST("engine.function_store.a_store_written_by_the_c_engine_reads_the_same", 
     CB_CHECK_EQ(cands[0].rev.value(), "42");   // a number in a text column reads as its digits
     CB_CHECK_EQ(cands[0].verdict.value(), "consistent");
     CB_CHECK_EQ(cands[0].limits, "truncated");
-    CB_CHECK(store.best("legacy", "p").at("1:1").weak.contains(verify::WeakLimit::Truncated));
+    CB_CHECK(store.best("legacy", "p").at("1:1").weak.contains(store::WeakLimit::Truncated));
     const auto stored = store.stored("legacy", "1:1");
     CB_CHECK(stored[0].verdicts[0].carried);
     CB_CHECK_EQ(store.get_text("legacy", "decompile", "c"), "body");
@@ -365,7 +365,7 @@ CB_TEST("engine.function_store.a_store_written_by_the_c_engine_reads_the_same", 
     CB_CHECK_EQ(store.candidates("ancient", "p").size(), 1u);
 });
 
-CB_TEST("engine.function_store.read_only_stores_read_and_never_write", [] {
+CB_TEST("store.function_store.read_only_stores_read_and_never_write", [] {
     Fixture fx;
     {
         // nothing there: reads are empty, nothing is made

@@ -467,7 +467,7 @@ Report run(Lane& lane, int rounds, const Log& log) {
     auto outcome = [](const Said& said) {
         if (is_good(said.verdict))
             return Outcome::Missed;
-        return said.verdict == Verdict::Divergent ? Outcome::Caught : Outcome::Other;
+        return said.verdict == store::Verdict::Divergent ? Outcome::Caught : Outcome::Other;
     };
 
     Report report;
@@ -589,7 +589,7 @@ int run_command(const Services& services, std::string_view module, int rounds,
                              report.results.size() - counted));
     std::size_t shown = 0;
     for (const Result& x : report.results) {
-        if (x.now != Fate::Survived || x.was != Class::Verified)
+        if (x.now != Fate::Survived || x.was != store::Class::Verified)
             continue;
         if (shown++ >= kSurvivorsShown)
             break;

@@ -18,8 +18,8 @@ std::optional<versions::Ledger::Identity> VersionsLedger::identity(const std::fi
 std::map<std::string, versions::Ledger::Known> VersionsLedger::best(const Identity& identity) {
     std::map<std::string, Known> out;
     for (const auto& [address, best] : services_.store.best(identity.sha, identity.profile)) {
-        const engine::Candidate& c = best.candidate;
-        out[address] = {std::string(verify::word(best.cls)), c.engine.empty() ? std::nullopt : std::optional<std::string>(c.engine), c.name,
+        const store::Candidate& c = best.candidate;
+        out[address] = {std::string(store::word(best.cls)), c.engine.empty() ? std::nullopt : std::optional<std::string>(c.engine), c.name,
                         c.source.value_or("")};
     }
     return out;
@@ -38,18 +38,18 @@ void VersionsLedger::name_body(const std::string& digest, const std::string& nam
 
 void VersionsLedger::file_carried(const Identity& identity, const std::string& module_name, const std::filesystem::path& path,
                                   versions::Kind kind, std::span<const std::string> addresses, const std::string& rev, std::span<const Carried> rows) {
-    engine::FunctionStore& store = services_.store;
+    store::FunctionStore& store = services_.store;
     store.add_module(identity.sha, module_name, fs::to_text(path), versions::kind_name(kind));
     store.add_functions(identity.sha, addresses);
-    std::vector<engine::Record> records;
+    std::vector<store::Record> records;
     records.reserve(rows.size());
     for (const Carried& row : rows) {
-        engine::Record r;
+        store::Record r;
         r.addr = row.address;
         r.name = row.name;
         r.source = row.source;
         r.sig = crypto::to_hex(crypto::sha1(as_bytes(row.source)));   // the sig is what a judge's verdict is kept against
-        r.verdict = std::string(verify::word(verify::Verdict::Inconclusive));
+        r.verdict = std::string(store::word(store::Verdict::Inconclusive));
         r.reason = row.reason;
         records.push_back(std::move(r));
     }

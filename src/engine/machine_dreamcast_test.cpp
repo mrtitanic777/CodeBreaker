@@ -118,10 +118,10 @@ CB_TEST("engine.machine_dreamcast.an_edited_function_is_judged_divergent", [] {
     vl::Written w = written;
     w.built = changed;
     const auto [a, b] = lane.subjects_of(file, w);
-    CB_CHECK(lane.judge_function(false, a, a, 0x0C010000).verdict == verify::Verdict::Equivalent);
-    const verify::Judgement diverged = lane.judge_function(false, a, b, 0x0C010000);
-    CB_CHECK(diverged.verdict == verify::Verdict::Divergent);
+    CB_CHECK(lane.judge_function(false, a, a, 0x0C010000).verdict == store::Verdict::Equivalent);
+    const store::Judgement diverged = lane.judge_function(false, a, b, 0x0C010000);
+    CB_CHECK(diverged.verdict == store::Verdict::Divergent);
     CB_CHECK(!diverged.reason.empty());
     // an identical rebuild is the original, whatever the function does
-    CB_CHECK(lane.judge_function(true, a, b, 0x0C010000).verdict == verify::Verdict::Equivalent);
+    CB_CHECK(lane.judge_function(true, a, b, 0x0C010000).verdict == store::Verdict::Equivalent);
 });

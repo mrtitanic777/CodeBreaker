@@ -19,8 +19,8 @@
 #include <string_view>
 #include <vector>
 
-#include "engine/function_store.hpp"
-#include "verify/verdicts.hpp"
+#include "store/function_store.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::source::java_writer {
 
@@ -32,28 +32,28 @@ using Log = std::function<void(std::string_view)>;
 // What the store says of one class.
 struct ClassRow {
     std::string name;
-    verify::Class status = verify::Class::NoSource;
+    store::Class status = store::Class::NoSource;
     std::string said;   // its first line of why, at most 200 bytes
 };
 
 struct Written {
     std::filesystem::path folder;           // where the C++ went
     std::vector<ClassRow> rows;             // every class the store knows, by name
-    engine::ClassCount counts;              // by status; every class of verify::kClassOrder is a key
+    store::ClassCount counts;              // by status; every class of store::kClassOrder is a key
 };
 
 // The two lines stamped at the head of a class's file: `// Block.cpp -- transpiled from Java by CodeBreaker.` and its status.
-std::string banner(std::string_view file, verify::Class status, std::string_view said);
+std::string banner(std::string_view file, store::Class status, std::string_view said);
 
 // What the store says of each class of `module` under `profile`, by name: the status of its best candidate (no source for a class it
 // has none for) and the first line of why -- the reason where it did not compile, else the detail, else the reason.
-std::vector<ClassRow> class_rows(engine::FunctionStore& store, std::string_view module, std::string_view profile);
+std::vector<ClassRow> class_rows(store::FunctionStore& store, std::string_view module, std::string_view profile);
 
 // STATUS.md: the classes with their status and the reason.
-std::string status_report(std::string_view name, const std::vector<ClassRow>& rows, const engine::ClassCount& counts);
+std::string status_report(std::string_view name, const std::vector<ClassRow>& rows, const store::ClassCount& counts);
 
 // Transpile into `out_dir` (`state_dir` when it holds .h or .cpp files nobody here wrote), stamp each class's file and write STATUS.md.
-Written write_java(std::string_view name, engine::FunctionStore& store, std::string_view module, std::string_view profile,
+Written write_java(std::string_view name, store::FunctionStore& store, std::string_view module, std::string_view profile,
                    const std::filesystem::path& out_dir, const std::filesystem::path& state_dir, const Conversion& convert, const Log& log = nullptr);
 
 }  // namespace cb::source::java_writer

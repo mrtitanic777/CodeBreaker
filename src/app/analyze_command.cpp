@@ -1,4 +1,4 @@
-#include "store/analyze_command.hpp"
+#include "app/analyze_command.hpp"
 
 #include <memory>
 #include <optional>
@@ -8,12 +8,12 @@
 #include "analyze/report.hpp"
 #include "decompile/decompiler.hpp"
 #include "decompile/environment.hpp"
-#include "engine/function_store.hpp"
+#include "store/function_store.hpp"
 #include "engine/lane_kit.hpp"
 #include "engine/lane_kit_internal.hpp"
 #include "symbols/driver_services.hpp"
 
-namespace cb::store::analyze_command {
+namespace cb::app::analyze_command {
 
 namespace {
 
@@ -74,7 +74,7 @@ private:
     config::Config config_;
     engine::LaneKit kit_;
     decompile::environment::CorpusModules modules_;
-    engine::FunctionStore store_;
+    store::FunctionStore store_;
     engine::kit_detail::KitSizes sizes_;
     std::unique_ptr<DriverNames> names_;
 };
@@ -100,4 +100,4 @@ cli::Command command(const Environment& environment) {
     return declared;
 }
 
-}  // namespace cb::store::analyze_command
+}  // namespace cb::app::analyze_command

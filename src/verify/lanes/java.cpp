@@ -237,28 +237,28 @@ Built JavaLane::build(const Prepared& prepared, const stdfs::path&, const stdfs:
     return built;
 }
 
-Judgement JavaLane::judge_class(const Context& context, const Item& item) {
+store::Judgement JavaLane::judge_class(const Context& context, const Item& item) {
     const lane_common::Judgement judged = lane_common::judged([&]() -> lane_common::Judgement {
         const Check checked = check(context.tools.cxx, context.include_dir, item.unit, context.toolchain.prefix, context.standard);
         if (!checked.ok) {
             const std::string first = checked.errors.empty() ? "the compiler rejected it" : checked.errors.front();
             const std::size_t shown = std::min<std::size_t>(checked.errors.size(), 20);
-            return {Verdict::NoCompile, first.substr(0, 200), {}, joined(std::span(checked.errors).first(shown), "\n")};
+            return {store::Verdict::NoCompile, first.substr(0, 200), {}, joined(std::span(checked.errors).first(shown), "\n")};
         }
         const auto compiles = [&](const std::string& why) {
             return std::format("compiles ({} {}); not run: {}", fs::to_text(context.tools.cxx.filename()), joined(flags(context.standard), " "), why);
         };
         if (context.tools.javac.empty() || item.source.empty() || !context.tree) {
-            return {Verdict::Inconclusive, "not-run", {}, compiles("no JDK (settings: java)")};
+            return {store::Verdict::Inconclusive, "not-run", {}, compiles("no JDK (settings: java)")};
         }
         java::ir::JClass cls;
         try {
             cls = java::parse::parse_file(item.source);
         } catch (const Error& e) {   // the transpiler parsed it; say so if this did not
-            return {Verdict::Inconclusive, "not-run", {}, compiles(std::format("could not read {}: {}", fs::to_text(item.source), e.what()))};
+            return {store::Verdict::Inconclusive, "not-run", {}, compiles(std::format("could not read {}: {}", fs::to_text(item.source), e.what()))};
         }
         const java::probe::RunResult r = java::probe::run(*context.tree, context.include_dir, cls, context.work, context.toolchain, &context.compiled);
-        if (r.judged == 0) return {Verdict::Inconclusive, "not-run", {}, compiles(r.why)};
+        if (r.judged == 0) return {store::Verdict::Inconclusive, "not-run", {}, compiles(r.why)};
         const std::string said = std::format("{} of {} methods run beside the JVM on {} inputs", r.judged, r.total, r.cases);
         if (!r.differs.empty()) {
             std::vector<std::string> lines;
@@ -266,11 +266,11 @@ Judgement JavaLane::judge_class(const Context& context, const Item& item) {
                 const java::probe::Difference& d = r.differs[i];
                 lines.push_back(std::format("{}({}): Java {}, C++ {}", d.method, text::join(d.inputs, ", "), d.java, d.native));
             }
-            return {Verdict::Divergent, "result-differs", {}, said + std::format("; {} differ:\n", r.differs.size()) + joined(lines, "\n")};
+            return {store::Verdict::Divergent, "result-differs", {}, said + std::format("; {} differ:\n", r.differs.size()) + joined(lines, "\n")};
         }
         std::vector<std::string> limits;
         if (r.judged < r.total) limits.push_back("methods-partial");
-        return {Verdict::Equivalent, "", limits, said + ": every result alike"};
+        return {store::Verdict::Equivalent, "", limits, said + ": every result alike"};
     });
     return {judged.verdict, judged.reason, judged.limits, judged.detail};
 }

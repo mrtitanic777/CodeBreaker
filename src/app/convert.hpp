@@ -49,7 +49,7 @@
 #include <vector>
 
 #include "translate/capability.hpp"
-#include "verify/verdicts.hpp"
+#include "store/verdicts.hpp"
 
 namespace cb::app::convert {
 
@@ -118,7 +118,7 @@ enum class FunctionVerdict { NotChecked, Matches, Differs };
 
 // The verdict a judge's class amounts to: Verified and Weak are Matches, Unverified is Differs, anything else (not run, does not compile, no source,
 // a runtime library's) NotChecked.
-FunctionVerdict verdict_of(verify::Class cls);
+FunctionVerdict verdict_of(store::Class cls);
 
 // One function of the result: what the Source card's Functions, Check and Compare views list.
 struct FunctionRecord {
@@ -127,7 +127,7 @@ struct FunctionRecord {
     FunctionVerdict verdict = FunctionVerdict::NotChecked;
     std::string source_file;                   // the file of the output folder that holds its source ("lz32.c"); empty when unknown
     int source_line = 0;                       // 1-based line of its definition there; 0 when unknown
-    std::optional<verify::Class> judged;       // the judge's class when one ran (verdict is verdict_of it): verified, weak, does not compile ...
+    std::optional<store::Class> judged;       // the judge's class when one ran (verdict is verdict_of it): verified, weak, does not compile ...
     friend bool operator==(const FunctionRecord&, const FunctionRecord&) = default;
 };
 
