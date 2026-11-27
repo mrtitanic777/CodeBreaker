@@ -1,5 +1,5 @@
 // cb-unity: alone
-// engine/pcode_cpu_m6809.cpp -- the Vectrex lane's 6809 on the one p-code emulator: emulate::m6809::run's call, on the description languages/6809.sla.
+// engine/pcode_cpu_m6809.cpp -- the Vectrex lane's 6809 on the one p-code emulator: the call as JSR makes it, on the description languages/6809.sla.
 #include <array>
 #include <iterator>
 #include <cstring>
@@ -165,7 +165,5 @@ m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options)
     out.io.assign(bus.log().begin() + static_cast<std::ptrdiff_t>(log_start), bus.log().end());
     return out;
 }
-
-m::RunResult call(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : m::run(bus, entry, options); }
 
 }  // namespace cb::engine::pcode_cpu

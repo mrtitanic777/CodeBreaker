@@ -1,13 +1,12 @@
-// emulate/m6809.hpp -- the Motorola 6809 as an interpreter, to run functions on (small, deterministic, and it logs what a function does to the devices).
+// emulate/m6809.hpp -- the Motorola 6809 machine a function is run on: its bus (64 KB; map(lo, hi, read, write) hands a range to callbacks, every access to it logged), its
+// registers and the record of a run. The instructions run on CodeBreaker's one emulator (engine/pcode_cpu_m6809: 6809.sla); the interpreter that was here was retired when
+// the emulator matched it.
 //
-//     m6809::Bus bus(image);                          // 64 KB; map(lo, hi, read, write) hands a range to callbacks, every access to it logged
-//     m6809::RunResult r = m6809::run(bus, 0x0030, {.a = 1});   // call the function as JSR would, run to its RTS
+//     m6809::Bus bus(image);
+//     m6809::RunResult r = engine::pcode_cpu::run(bus, 0x0030, {.a = 1});   // call the function as JSR would, run to its RTS
 //
-// Every instruction of decompile/m6809 (the table's 6809 set): the flags of the arithmetic (E F H I N Z V C), the shifts and rotates, MUL, DAA, SEX, ABX, EXG and TFR
-// between the registers of one size, the 16-bit loads, stores and compares on D X Y U S, LEA, PSHS / PULS / PSHU / PULU, every indexed form (5-, 8- and 16-bit
-// offsets, the accumulator offsets, the auto-increments and decrements, PC-relative, and the indirect of each), the branches, JSR / BSR / RTS / RTI. Timing is not modelled.
-// SWI, SWI2, SWI3, CWAI and SYNC wait for an interrupt the model does not raise: a run reaching one stops with that reason. A run starts with the
-// registers it is given and the stack pointer at `RunOptions::s`; a return address is pushed that nothing is at, and reaching it is the end.
+// SWI, SWI2, SWI3, CWAI and SYNC wait for an interrupt the model does not raise: a run reaching one stops with that reason. A run starts with the registers it is given and
+// the stack pointer at `RunOptions::s`; a return address is pushed that nothing is at, and reaching it is the end.
 #pragma once
 
 #include <cstdint>
@@ -85,20 +84,6 @@ struct Fault {
     std::string text() const { return reason; }
 };
 
-class Cpu {
-public:
-    explicit Cpu(Bus& bus) : bus_(&bus) {}
-
-    Registers regs;
-    std::uint64_t steps = 0;
-
-    // Execute the instruction at pc. nullopt: it ran. A Fault: it did not (nothing changed).
-    std::optional<Fault> step();
-
-private:
-    Bus* bus_;
-};
-
 struct RunOptions {
     std::uint8_t a = 0, b = 0, dp = 0;
     std::uint16_t x = 0, y = 0, u = 0;
@@ -118,8 +103,5 @@ struct RunResult {
     std::vector<DeviceAccess> io;          // the device accesses of this run, in order
     std::string exit() const;              // "return" | "stopped: <why>" | "limit"
 };
-
-// Call the function at `entry` as JSR would and run it until it returns (RTS to kReturnAddress), faults or takes `max_steps` instructions.
-RunResult run(Bus& bus, std::uint16_t entry, const RunOptions& options = {});
 
 }  // namespace cb::emulate::m6809

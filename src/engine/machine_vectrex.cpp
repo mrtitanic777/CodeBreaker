@@ -100,7 +100,7 @@ vl::Effects vectrex_effects(const stdfs::path& path, std::uint32_t entry, const 
         const auto named = source::vectrex_writer::bios().find(r.pc);
         calls.push_back(named != source::vectrex_writer::bios().end() ? named->second : std::format("BIOS_{:04X}", r.pc));
     };
-    const emulate::m6809::RunResult run = pcode_cpu::call(bus, static_cast<std::uint16_t>(entry), options);
+    const emulate::m6809::RunResult run = pcode_cpu::run(bus, static_cast<std::uint16_t>(entry), options);
     std::vector<std::string> io;
     for (const emulate::m6809::DeviceAccess& x : run.io) {
         io.push_back(std::format("{} {:x} {:x}", x.kind == emulate::m6809::DeviceAccess::Kind::Read ? "r" : "w", x.address, x.value));
