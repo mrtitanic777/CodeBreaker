@@ -1,0 +1,153 @@
+# The CodeBreaker SDK
+
+CodeBreaker as a library: a small, stable, documented public API over its engines, plus the samples, docs and tools that make it
+easy to learn and hard to misuse. Modelled on what the Xbox 360 XDK gets right: headers that are a promise, libraries you link
+and go, a sample for every feature, a reference entry for every API, and tools that check your code against it.
+
+Two goals, equally weighted (Logan, 2026-11-27):
+
+1. **People use CodeBreaker as a library.** A program of their own opens a binary, decompiles, emulates, translates or judges,
+   through `#include <cb/...>` and one library, without knowing how the source tree is laid out.
+2. **The code base is easy to understand.** Clean, structured and efficient: every area has one job, one public header set and
+   one owner of each concept; nothing internal leaks; a newcomer finds anything in two steps (the area, then the header).
+
+The SDK is the forcing function for goal 2. A public API can only be small if the engines behind it are single: the unification
+work (docs/ENGINE_UNIFICATION.md) is the prerequisite, and this document is where that work is heading.
+
+## What there is today (2026-11-27)
+
+- About 1.7 million lines in 28 areas under `src/`. Each area is one static library (`cb_<area>`) built from every `.cpp` in it.
+- Every header is internal. Any area may include any other area's headers. The `codebreaker` program, the window, the MCP server and
+  the tests are the only clients, and they reach into the areas directly.
+- Largest areas: build (310k lines), recompile (294k), decompile (247k), dotnet (155k), translate (101k), java (90k), formats (77k),
+  source (61k), engine (59k), exact (55k), emulate (42k).
+- What already acts like an SDK: the `codebreaker` command line and its MCP server (32 tools), the `.fmt` file-format descriptions,
+  the SLEIGH processor descriptions, `config/` as data, and the converted programs' runtime (`config/java/platform`, JArray, Gpu).
+
+## The shape
+
+```
+include/cb/            the public headers: the only ones a client sees
+  cb.h                 version, init, errors, the handle types
+  binary.h             open any file: format, sections, symbols, functions, imports, resources
+  disasm.h             instructions of any CPU that has a description
+  decompile.h          a function or a module to C (or the lane's language), with its verdict
+  l2.h                 the IR: read, build, walk, write L2 documents
+  translate.h          any front end to any back end through L2
+  emulate.h            a CPU from its description: memory, registers, hooks, run, trace
+  judge.h              original against rebuilt: run both, compare, verdict
+  build.h              compile and link authored source with the lane's toolchain
+  format.h             describe a new file format (.fmt) and register it
+  lane.h               describe a new platform: CPU, loader, machine, writer
+  cb.hpp               C++ wrappers: RAII handles, std::string_view, std::span, ranges
+lib/                   cbsdk.dll + cbsdk.lib (Release, Debug), one version
+samples/               one small program per feature, all on samples/framework
+docs/sdk/              the reference (generated from include/cb) and the concept guides
+```
+
+- **A C ABI underneath, C++ on top.** `cb.h` and friends are plain C: opaque handles (`cb_binary*`, `cb_function*`, `cb_l2_doc*`),
+  `cb_status` results, caller-owned buffers or `cb_string` values with one free function. Any language binds to it (Python, C#,
+  Rust). `cb.hpp` gives C++ users RAII and modern types with no extra cost.
+- **One DLL, one version.** `cbsdk.dll` exports only the `cb_*` functions. Its version (`CB_SDK_VERSION`, `cb_version()`) follows
+  semantic versioning: a minor release only adds; a major release may remove, and the docs list what moved.
+- **Everything else is internal.** The areas under `src/` stay as they are, but their headers stop being reachable from outside;
+  `include/cb` is implemented in `src/sdk/`, a thin layer over the engines.
+
+## The rules (for the SDK and for the code base)
+
+1. **One concept, one owner.** Each idea (a binary, a function, an L2 node, a CPU, a verdict) has exactly one type and one area. A
+   second copy is a bug (see ENGINE_UNIFICATION.md).
+2. **Areas have a public face.** Each area keeps its outward headers in one place (`src/<area>/api/` or a single `<area>.hpp`)
+   and everything else is private to it. Other areas include only the public face. A checker enforces it (phase 1).
+3. **Layers point one way.** core, base -> formats -> decompile, emulate -> translate, verify -> engine, lanes -> app, ui, sdk. An
+   include that points up is a build error.
+4. **Data, not code, where it's data.** Tables (NIDs, opcodes, formats, compiler versions, platform descriptions) live in `config/`
+   as text and are embedded at build time.
+5. **Every public function has**: a reference entry (what, parameters, ownership, errors, thread safety, availability), a sample or
+   a test that calls it, and a stable name in one style (`cb_<noun>_<verb>`: `cb_binary_open`, `cb_function_decompile`).
+6. **Fast by default.** No API forces a copy, a JSON hop or a re-parse; handles point into the engine's own structures; long work
+   reports progress and can be cancelled.
+7. **Errors say what to do.** Each `cb_status` has a plain-words message naming the input and the next step.
+
+## The API, first cut
+
+| Header | Core calls | Backed by |
+|---|---|---|
+| `cb.h` | `cb_version`, `cb_init(options)`, `cb_last_error`, `cb_string_free`, `cb_cancel` | base, core |
+| `binary.h` | `cb_binary_open(path|bytes)`, `_format`, `_arch`, `_sections`, `_symbols`, `_imports`, `_exports`, `_functions`, `_resources` | formats (the .fmt engine and its readers) |
+| `disasm.h` | `cb_disasm(arch, bytes, address)` -> instructions with text, length, operands, branch targets | decompile/engine (SLEIGH) |
+| `decompile.h` | `cb_function_decompile(fn, options)` -> source text, language, warnings; `cb_module_decompile`; `cb_function_verdict` | decompile, the lanes |
+| `l2.h` | `cb_l2_read/write`, `cb_l2_root`, node kind, children, types, symbols, `cb_l2_build_*` | translate/ir |
+| `translate.h` | `cb_translate(input, from, to, options)` -> files; `cb_languages()` | translate front and back ends |
+| `emulate.h` | `cb_cpu_create(arch)`, `_map`, `_reg_get/set`, `_step`, `_run(until)`, `_hook`, `_trace` | the one p-code emulator |
+| `judge.h` | `cb_judge(original, rebuilt, options)` -> verdict, first difference | verify, engine |
+| `build.h` | `cb_build(project, toolchain)` -> output, diagnostics | build |
+| `format.h`, `lane.h` | register a `.fmt` description or a lane description at run time | formats, engine |
+
+The first cut is deliberately small. A call goes in when a sample needs it, not before.
+
+## Samples (`samples/`)
+
+Each is one folder, one `main.c` or `main.cpp`, a CMakeLists that finds the installed SDK (`find_package(CodeBreaker)`), and a
+README that says what it shows. They share `samples/framework` (argument parsing, printing, timing) the way the ATG samples share
+theirs.
+
+1. `HelloBinary`: open a file, print its format, sections and imports.
+2. `HelloDecompile`: decompile one function to C.
+3. `DisasmAnyCpu`: disassemble bytes for any described CPU.
+4. `Emulate`: load a small ROM and step it, printing registers.
+5. `WalkL2`: decompile to L2 and walk the tree.
+6. `Translate`: Python to C++17 through L2, then build and run both.
+7. `JudgeTwoBuilds`: run an original and a rebuilt program and print the verdicts.
+8. `NewFileFormat`: a `.fmt` description that `HelloBinary` then reads.
+9. `NewCpu`: a toy CPU from a `.sinc`: disassemble, emulate and decompile it.
+10. `FromPython`: the C ABI from Python (ctypes), to show the ABI is language-neutral.
+
+Every sample builds and runs in the gate, so a sample that rots is a failing test.
+
+## Docs and tools
+
+- **Reference:** generated from `include/cb` comments (one page per header and per function: prototype, parameters, ownership,
+  errors, thread safety, since-version, the samples that call it). Concept guides: binaries, L2, lanes, verdicts, the emulator,
+  translation.
+- **`cb` MCP doc tools**, like the `xdk_*` tools: `cb_lookup` (any SDK function: prototype, doc, header, since), `cb_examples` (which
+  samples call it), `cb_verify` (compile a snippet against the SDK headers and report misuse).
+- **Trace viewer:** the behavior engine's flight recorder rendered as a timeline: CB's PIX.
+
+## The runtime SDK (second track)
+
+Converted programs (Java games and others) target a runtime: JArray, the object model, `GL11` / `Gpu` / the per-API graphics layers
+in `config/java/platform`, audio, input. Documented and versioned as its own small SDK (`runtime/include`, samples such as "a
+converted game on a new graphics back end"), it is what lets someone else port converted programs to a new platform, the way the
+XDK defines the Xbox 360 for games. It follows the same rules: one owner per concept, public headers only, a sample per feature.
+
+## Phases
+
+Each phase ends in something that builds, passes the gate and is useful on its own.
+
+0. **Inventory.** For every area: what other areas, the app, the window and the MCP server actually use from it (the de facto
+   public surface), measured from the includes and calls. Output: `docs/sdk/inventory.md`, a table per area, and the upward
+   includes that break rule 3.
+1. **Public faces.** Each area gets its public header set (rule 2), callers move to it, and a checker in the gate fails on an
+   include of another area's private header or an upward include. This is the cleanliness work; it pays off even before the SDK.
+2. **`include/cb` + `src/sdk` + `cbsdk.dll`, first cut:** `cb.h`, `binary.h`, `disasm.h`, `decompile.h`, with samples 1-3, the
+   reference generator, and the install layout (`find_package(CodeBreaker)`).
+3. **L2, translate, emulate, judge** headers with samples 4-7, and the C ABI proven from Python (sample 10).
+4. **Extending:** `format.h`, `lane.h`, samples 8-9.
+5. **Tools:** the `cb` MCP doc tools, the trace viewer.
+6. **The runtime SDK** for converted programs.
+7. **Release:** SDK 1.0, with its version promise, and the `codebreaker` program itself rebuilt as a client of the SDK where that is
+   no slower. The program becomes the first and biggest sample.
+
+## Proof
+
+- The gate builds every sample against the installed SDK (not the source tree) and runs it.
+- An ABI check compares the exported `cb_*` symbols and the public headers to the last release; a removal outside a major version
+  fails.
+- The include checker (phase 1) runs in the gate.
+- Speed: each SDK call is timed against the internal call it wraps; the SDK may not add measurable cost.
+
+## Status
+
+- 2026-11-27: design written (Logan: "use it as a library", "a really easy to understand code base that is not scattered all over
+  the place and internal all over the place"; "cleanliness, structure, and efficiency"). Phase 0 started.
