@@ -455,7 +455,7 @@ macro rotateRightWithCarry(op)
 {
         local carryOut = $(C) << 7;
         $(C) = op & 1;
-        op = (op s>> 1) | carryOut;
+        op = (op >> 1) | carryOut;
         setNZFlags(op);
 }
 
@@ -894,15 +894,15 @@ macro PushEntireState()
        goto <exitDAA>;
 
        <case1>
-           $(C) = carry(A, 0x66);
+           $(C) = $(C) | carry(A, 0x66);
            A = A + 0x66;
            goto <exitDAA>;
        <case2>
-           $(C) = carry(A, 0x60);
+           $(C) = $(C) | carry(A, 0x60);
            A = A + 0x60;
            goto <exitDAA>;
        <case3>
-           $(C) = carry(A, 0x06);
+           $(C) = $(C) | carry(A, 0x06);
            A = A + 0x06;
            goto <exitDAA>;
 
@@ -923,6 +923,7 @@ macro PushEntireState()
 :SEX    is op=0x1D
 {
     D = sext(B);
+    setNZFlags(D);
 }
 
 ################################################################
@@ -1001,13 +1002,12 @@ macro PushEntireState()
 
 :BLT REL    is op=0x2D; REL
 {
-        local tmp = $(C) ^ $(Z);
-        if (tmp) goto REL;
+        if ($(N) != $(V)) goto REL;
 }
 
 :BGT REL    is op=0x2E; REL
 {
-        if (($(N) == $(V)) & $(C)) goto REL;
+        if (($(N) == $(V)) & ($(Z) == 0)) goto REL;
 }
 
 :BLE REL     is op=0x2F; REL
@@ -1340,13 +1340,12 @@ macro PushEntireState()
 
 :LBLT REL2    is PAGE2; op=0x2D; REL2
 {
-        local tmp = $(C) ^ $(Z);
-        if (tmp) goto REL2;
+        if ($(N) != $(V)) goto REL2;
 }
 
 :LBGT REL2    is PAGE2; op=0x2E; REL2
 {
-        if (($(N) == $(V)) & $(C)) goto REL2;
+        if (($(N) == $(V)) & ($(Z) == 0)) goto REL2;
 }
 
 :LBLE REL2     is PAGE2; op=0x2F; REL2

@@ -1,6 +1,5 @@
 // cb-unity: alone
 // engine/pcode_cpu_m6809.cpp -- the Vectrex lane's 6809 on the one p-code emulator: emulate::m6809::run's call, on the description languages/6809.sla.
-#include <algorithm>
 #include <array>
 #include <iterator>
 #include <cstring>
@@ -24,18 +23,12 @@ namespace dm = cb::decompile::m6809;
 namespace {
 
 // What an instruction address holds, found once and kept until a byte near it changes.
-enum Kind : std::uint8_t { kUnknown = 0, kRun, kPush, kCarried, kUndefined, kWaits };
+enum Kind : std::uint8_t { kUnknown = 0, kRun, kPush, kUndefined, kWaits };
 
 bool waits_for_interrupt(std::string_view mnemonic) { return mnemonic == "SYNC" || mnemonic == "CWAI" || mnemonic == "SWI" || mnemonic == "SWI2" || mnemonic == "SWI3"; }
 
 // The instructions that push: the own core writes the low byte of a word first (the stack grows down), the description writes the word as one access.
 bool pushes(std::string_view mnemonic) { return mnemonic == "BSR" || mnemonic == "LBSR" || mnemonic == "JSR" || mnemonic == "PSHS" || mnemonic == "PSHU"; }
-
-// The instructions the description does not do as the CPU does (its branch conditions, rotates and flags: the stock description's), which run as the own core runs them.
-bool carried(std::string_view mnemonic) {
-    static constexpr std::string_view names[] = {"BGT", "LBGT", "BLT", "LBLT", "ROR", "RORA", "RORB", "SEX", "DAA"};
-    return std::find(std::begin(names), std::end(names), mnemonic) != std::end(names);
-}
 
 }  // namespace
 
@@ -147,7 +140,7 @@ m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options)
         std::uint8_t& kind = kinds[pc];
         if (kind == kUnknown) {
             const std::optional<dm::Insn> found = dm::decode(memory, pc, pc);
-            kind = !found ? kUndefined : waits_for_interrupt(found->mnemonic) ? kWaits : carried(found->mnemonic) ? kCarried : pushes(found->mnemonic) ? kPush : kRun;
+            kind = !found ? kUndefined : waits_for_interrupt(found->mnemonic) ? kWaits : pushes(found->mnemonic) ? kPush : kRun;
         }
         if (kind == kUndefined || kind == kWaits) {
             out.end = m::End::Stopped;
@@ -155,22 +148,6 @@ m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options)
             out.fault = m::Fault{pc, kind == kUndefined ? std::format("undefined opcode {:02X} at {:04X}", memory[pc], pc)
                                                         : std::format("waits for an interrupt ({}) at {:04X}", found->mnemonic, pc)};
             break;
-        }
-        if (kind == kCarried) {   // as the own core runs it, on the registers as they stand
-            m::Cpu cpu(bus);
-            cpu.regs = registers();
-            cpu.step();
-            emu.setReg(refs[kA], cpu.regs.a);
-            emu.setReg(refs[kB], cpu.regs.b);
-            emu.setReg(refs[kDP], cpu.regs.dp);
-            emu.setReg(refs[kCC], cpu.regs.cc);
-            emu.setReg(refs[kX], cpu.regs.x);
-            emu.setReg(refs[kY], cpu.regs.y);
-            emu.setReg(refs[kU], cpu.regs.u);
-            emu.setReg(refs[kS], cpu.regs.s);
-            emu.setPc(cpu.regs.pc);
-            ++steps;
-            continue;
         }
         descending = kind == kPush;
         seen_count = 0;
