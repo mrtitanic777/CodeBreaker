@@ -192,7 +192,21 @@ MatchVerdict match_compare(MatchCode built, const MatchCode& original) {
     return v;
 }
 
-// Every function of the module compiled with CL.EXE under `flags` and compared: {function: verdict}, in the module's order.
+// The addresses the module's own relocations point at: every place in it that a word of code or data names by address.
+std::set<std::uint64_t> repair_relocation_targets(const formats::pe::Image& pe) {
+    std::set<std::uint64_t> out;
+    for (const std::uint64_t rva : pe.base_relocs()) {
+        const std::optional<std::uint64_t> at = pe.file_offset(rva);
+        if (!at || *at + 4 > pe.data().size()) continue;
+        const std::uint8_t* p = pe.data().data() + *at;
+        out.insert(static_cast<std::uint64_t>(p[0]) | static_cast<std::uint64_t>(p[1]) << 8 | static_cast<std::uint64_t>(p[2]) << 16 | static_cast<std::uint64_t>(p[3]) << 24);
+    }
+    return out;
+}
+
+// Every function of the module compiled with CL.EXE under `flags` and compared: {function: verdict}, in the module's order. The source is given
+// to the compiler as `repair` gives it (repair_period_source): imports `__declspec(dllimport)`, so a call is `call [slot]` as the original's; the
+// globals the relocations name variables; addresses taken as numbers the addresses of variables.
 std::vector<std::pair<std::string, MatchVerdict>> match_run(World& world, const stdfs::path& module, const stdfs::path& cl, const std::string& flags, const stdfs::path& work, bool keep_bytes) {
     const std::shared_ptr<const verify::lanes::Kind> lane = world.kit().win32_lane();
     if (!lane) throw UsageError("the 32-bit lane is not set up here (OpenWatcom and the native decompiler)");
@@ -212,12 +226,14 @@ std::vector<std::pair<std::string, MatchVerdict>> match_run(World& world, const 
     // (the compiler's math intrinsics are __cdecl: under /Gz an undecorated declaration of one is a redefinition, and every function of the module fails)
     for (const char* const name : {"sqrt", "sin", "cos", "tan", "atan2", "pow", "ldexp", "log", "floor", "fmod"})
         header = text::replace_all(header, std::format("double {}(", name), std::format("double __cdecl {}(", name));
+    const formats::pe::Image pe = formats::pe::Image::open(module);
+    const std::set<std::string> imports(m.module.imports.begin(), m.module.imports.end());
+    RepairSource given = repair_period_source(header, m.order, m.texts, imports, repair_relocation_targets(pe));
     // (a function taking its object in ECX, as Microsoft's compiler is told it)
-    std::map<std::string, std::string> texts(m.texts.begin(), m.texts.end());
-    header = period_registers(header, texts);
+    std::map<std::string, std::string> texts = std::move(given.texts);
+    header = period_registers(given.header, texts);
     fs::write_text(out_dir / "m.h", header);
 
-    const formats::pe::Image pe = formats::pe::Image::open(module);
     std::vector<std::uint64_t> addresses;
     for (const auto& [name, va] : m.va) addresses.push_back(static_cast<std::uint64_t>(va));
     std::sort(addresses.begin(), addresses.end());
@@ -370,18 +386,6 @@ int match_command(World& world, const cli::Args& args) {
 namespace {
 
 namespace rp = verify::authored::repair;
-
-// The addresses the module's own relocations point at: every place in it that a word of code or data names by address.
-std::set<std::uint64_t> repair_relocation_targets(const formats::pe::Image& pe) {
-    std::set<std::uint64_t> out;
-    for (const std::uint64_t rva : pe.base_relocs()) {
-        const std::optional<std::uint64_t> at = pe.file_offset(rva);
-        if (!at || *at + 4 > pe.data().size()) continue;
-        const std::uint8_t* p = pe.data().data() + *at;
-        out.insert(static_cast<std::uint64_t>(p[0]) | static_cast<std::uint64_t>(p[1]) << 8 | static_cast<std::uint64_t>(p[2]) << 16 | static_cast<std::uint64_t>(p[3]) << 24);
-    }
-    return out;
-}
 
 std::string repair_rstrip(std::string_view s) {
     while (!s.empty() && std::isspace(static_cast<unsigned char>(s.back()))) s.remove_suffix(1);
