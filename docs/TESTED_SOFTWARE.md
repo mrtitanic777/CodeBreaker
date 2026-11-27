@@ -461,6 +461,27 @@ notepad 128 verified, 134 weak, 72 unverified (teeth 78% / 47% / 67%) and cmd 14
 turn 13 of notepad's weak functions into verified ones, and on both programs they mostly find differences no input reached before
 (31 more unverified on notepad, 25 on cmd).
 
+### As C++, its classes from the run-time type information (2026-11-26)
+
+A C++ program comes back as C++: `symbols/cpp_classes_x64` reads Visual C++'s x64 RTTI (complete object locators, type descriptors,
+hierarchy descriptors, base class arrays) and the virtual function tables after them, and `decompile/cpp_text_x64` declares each of
+the program's own classes (not the C++ library's, WRL's, WIL's, ATL's or a template instance's) with its virtual functions in table
+order, its data members where its methods read them through `this`, and writes as members the functions of its own table and its
+constructors and destructors (a function that stores the class's table into its first argument). The methods are compiled as C++
+by the x64 `cl` (/TP), the other functions stay C, and the win64 lane judges both (as in the tree of 2026-11-26, 11:45 PM).
+`decompile` writes such a program as one `.cpp` file. The functions the tables hold are decompiled too (a leaf function has no
+unwind entry): the 16 more of notepad above.
+
+| Program | Functions | Classes | Methods | Methods verified | Verified | Weak | Unverified | Does not compile | No source |
+|---|---|---|---|---|---|---|---|---|---|
+| shapes.exe (the test program, `src/symbols/testdata/x64_classes`) | 46 | 5 | 20 | 18 | 14 | 21 | 4 | 0 | 2 |
+| SecurityHealthHost.exe (130 KB) | 295 | 6 | 13 | 10 (8, 2 weak) | 131 | 75 | 60 | 24 | 7 |
+
+SecurityHealthHost's classes: CClassFactory and CSurrogate (each on WRL's RuntimeClass, which is not declared), IRefCounted and
+ILockable (interfaces of pure virtual functions), CommonUtil::CHResultException, and CError : CHResultException. Of its 13 methods
+one diverges (deps-differ) and two do not compile (one a decompiler error its C has too, one a pointer conversion C allows and C++
+does not).
+
 ## PlayStation 4, PlayStation 5 and Xbox One / Series homebrew (the ps4, ps5 and xboxone lanes)
 
 Open-source homebrew with published source and a stated licence, binaries only (GitHub releases), kept in `GitHub/homebrew-samples/{ps4,ps5,xboxone}/` (never run on this machine,

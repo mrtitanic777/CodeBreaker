@@ -2,6 +2,8 @@
 // module, a virtual device driver, a DOS program, a NES cartridge; any executable as the text of one .c file; and the command.
 #include <algorithm>
 #include <cctype>
+#include <format>
+#include <set>
 
 #include <nlohmann/json.hpp>
 
@@ -23,7 +25,9 @@
 #include "formats/nes.hpp"
 #include "formats/pe.hpp"
 #include "formats/pe_functions.hpp"
+#include "decompile/cpp_text_x64.hpp"
 #include "symbols/c_library.hpp"
+#include "symbols/cpp_classes_x64.hpp"
 #include "symbols/dos_interrupts.hpp"
 #include "translate/l2.hpp"
 
@@ -39,12 +43,14 @@ constexpr std::uint16_t kMachineX86 = 0x014C;
 constexpr std::uint16_t kMachinePowerPc = 0x01F2;
 constexpr std::uint16_t kMachineX64 = 0x8664;
 
-// The functions an x64 module says it has (formats/pe: the entry, the exports, the .pdata entries), by address.
+// The functions an x64 module says it has (formats/pe: the entry, the exports, the .pdata entries), and those its virtual function
+// tables hold (a leaf function, `mov eax, 4 / ret`, has no .pdata entry), by address.
 std::vector<Va> lanes_x64_functions(const formats::pe::Image& image) {
-    std::vector<Va> out;
+    std::set<Va> out;
     const Va base = static_cast<Va>(image.header().image_base);
-    for (const std::uint32_t rva : image.x64_function_starts()) out.push_back(base + rva);
-    return out;
+    for (const std::uint32_t rva : image.x64_function_starts()) out.insert(base + rva);
+    for (const std::uint64_t va : symbols::cpp_classes_x64::find_classes(image).slot_functions) out.insert(static_cast<Va>(va));
+    return {out.begin(), out.end()};
 }
 
 // The functions the carve of an x86 module finds, by address.
@@ -662,6 +668,7 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
     bool dos = false;   // a real-mode program: its C made compilable as a whole (c_text_dos)
     c_text_dos::Layout dos_layout;   // and its source files, where it names them
     OrderedMap<std::uint64_t, std::string> pe_places;   // a 32-bit x86 module: each function's address (pe_split)
+    std::string cpp_file;                               // an x64 C++ program: the one .cpp file its source is
     const std::string stem = text::lower(fs::to_text(module.filename()));
     std::optional<formats::detect::Lane> kind;
     const bool nes = formats::nes::probe(module);
@@ -697,6 +704,19 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
         order = std::move(r.order);
         total = starts.size();
         library = identified.size();
+        // a C++ program: its classes declared, its methods written as their members, the whole a .cpp file
+        const symbols::cpp_classes_x64::Classes classes = symbols::cpp_classes_x64::find_classes(image);
+        if (!classes.classes.empty()) {
+            std::vector<core16::StructNote> structs;
+            for (const auto& [n, notes] : r.notes) structs.insert(structs.end(), notes.structs.begin(), notes.structs.end());
+            const cpp_text_x64::Recovered cpp = cpp_text_x64::recover({&classes, &d.names, &r.by_va, &texts, structs});
+            if (!cpp.methods.empty()) {
+                for (const auto& [n, t] : cpp.texts) texts.insert_or_assign(n, t);
+                header += (header.empty() ? "" : "\n\n") + std::format("/* {} classes from the run-time type information, {} methods */\n", cpp.classes,
+                                                                        cpp.methods.size()) + cpp.declarations;
+                cpp_file = stem.substr(0, stem.rfind('.')) + ".cpp";
+            }
+        }
     } else if (kind == Lane::Pe) {   // PowerPC: as the decompiler gives it
         const std::uint16_t machine = formats::pe::Image::open(module).header().machine;
         const std::vector<Va> starts = lanes_stated_functions(*context_.environment, module, machine);
@@ -774,7 +794,9 @@ AsC Decompiler::as_c(const std::filesystem::path& module) {
     }
     text += "\n";
     std::vector<std::pair<std::string, std::string>> files;
-    if (dos) {
+    if (!cpp_file.empty()) {
+        files.emplace_back(cpp_file, text);
+    } else if (dos) {
         dos_layout.stem = stem.substr(0, stem.rfind('.'));
         c_text_dos::Result r = c_text_dos::compilable(text, c_text::header16(), dos_layout);
         text = std::move(r.text);
@@ -821,6 +843,7 @@ int command(Decompiler& decompiler, const base::Corpus& corpus, const base::conv
     } else {   // the binary's project folder: Converted/<name>/src/
         project = converted.project(*path);
         out = project->src() / (text::lower(fs::to_text(path->stem())) + ".c");
+        if (c.files.size() == 1 && c.files.front().first.ends_with(".cpp")) out.replace_extension(".cpp");   // (a C++ program)
     }
     fs::write_text(out, c.text);
     if (project)

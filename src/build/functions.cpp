@@ -241,6 +241,33 @@ std::string stand_in(std::string_view text) {
     return std::string(whole) + (is_void ? "\n{\n}\n" : "\n{\n  return 0;\n}\n");
 }
 
+bool is_member_name(std::string_view name) { return name.find("::") != std::string_view::npos; }
+
+std::string member_symbol_prefix(std::string_view qualified) {
+    std::vector<std::string> parts;
+    for (std::size_t from = 0;;) {
+        const std::size_t at = qualified.find("::", from);
+        parts.emplace_back(qualified.substr(from, at == std::string_view::npos ? std::string_view::npos : at - from));
+        if (at == std::string_view::npos) break;
+        from = at + 2;
+    }
+    if (parts.size() < 2) return {};
+    std::string out = "?" + parts.back() + "@";
+    for (std::size_t k = parts.size() - 1; k-- > 0;) out += parts[k] + "@";
+    return out + "@";
+}
+
+std::string stand_in_member(std::string_view text) {
+    // (the method's alternate name kept: C that calls it by its C name still links)
+    std::string out = stand_in(text);
+    const std::size_t pragma = text.find("#pragma comment(linker, \"/ALTERNATENAME:");
+    if (pragma == std::string_view::npos) return out;
+    const std::size_t brace = out.find("\n{\n");
+    if (brace == std::string::npos) return out;
+    const std::string_view line = text.substr(pragma, text.find('\n', pragma) - pragma);
+    return out.insert(brace + 3, std::string(line) + "\n");
+}
+
 std::string plain_symbol(std::string_view symbol) {
     const std::string_view before_at = symbol.substr(0, symbol.find('@'));
     return std::string(text::trim(before_at, "_"));
@@ -1083,13 +1110,18 @@ BuiltPowerPc FunctionBuilder::build_msvc(const MsvcBuild& tools, std::string_vie
     for (const char* name : {"INCLUDE", "CL"})
         if (const auto v = fs::get_env(name)) ppc.env[name] = *v;
     const std::string folder_key = folder_fingerprint(tools.cl.parent_path());
-    const auto compile_ppc = [&](std::string_view stem, std::string_view text) -> std::string {
+    // (a C++ method -- its name is `Class::member` -- is compiled as C++: the same options with /TP for /TC, a .cpp file)
+    std::vector<std::string> cppflags = tools.cflags;
+    for (std::string& f : cppflags)
+        if (f == "/TC") f = "/TP";
+    const auto compile_ppc = [&](std::string_view stem, std::string_view text, bool cpp = false) -> std::string {
+        const std::vector<std::string>& cflags = cpp ? cppflags : tools.cflags;
         // (the key, every input of the object: the compiler by its bytes and its folder, the INCLUDE headers and CL
         // variable it reads, the options, the header, the stem the object and an error name, and the text)
         std::optional<std::string> key;
         if (cache) {
             if (const auto h = header_key(outdir))
-                key = KeyBuilder().add(tools.key).add(tool_inputs(ppc, "CL")).add(folder_key).add(tools.cflags).add(*h).add(stem).add(text).finish();
+                key = KeyBuilder().add(tools.key).add(tool_inputs(ppc, "CL")).add(folder_key).add(cflags).add(*h).add(stem).add(text).finish();
         }
         const stdfs::path object = outdir / (std::string(stem) + ".obj");
         if (key) {
@@ -1099,11 +1131,12 @@ BuiltPowerPc FunctionBuilder::build_msvc(const MsvcBuild& tools, std::string_vie
                 return "";
             }
         }
-        write_source(outdir / (std::string(stem) + ".c"), std::string(text) + "\n");
+        const std::string source = std::string(stem) + (cpp ? ".cpp" : ".c");
+        write_source(outdir / source, std::string(text) + "\n");
         remove_quietly(object);
-        std::vector<std::string> args = tools.cflags;
+        std::vector<std::string> args = cflags;
         args.push_back("/Fo" + std::string(stem) + ".obj");
-        args.push_back(std::string(stem) + ".c");
+        args.push_back(source);
         const process::ProcessResult r = run_tool(tools.cl, args, outdir, {}, std::chrono::minutes(10));
         std::error_code ec;
         if (r.exit_code == 0 && !r.timed_out && stdfs::is_regular_file(object, ec)) {
@@ -1142,14 +1175,17 @@ BuiltPowerPc FunctionBuilder::build_msvc(const MsvcBuild& tools, std::string_vie
     std::vector<std::string> errors(order.size());
     {
         parallel::ThreadPool pool(static_cast<std::size_t>(impl_->jobs_for(jobs)));
-        parallel::parallel_for(pool, order.size(), [&](std::size_t i) { errors[i] = compile_ppc(stems.at(order[i]), texts.at(order[i])); });
+        parallel::parallel_for(pool, order.size(), [&](std::size_t i) {
+            errors[i] = compile_ppc(stems.at(order[i]), texts.at(order[i]), is_member_name(order[i]));
+        });
     }
     Reasons dropped;
     for (std::size_t i = 0; i < order.size(); ++i)
         if (!errors[i].empty()) dropped.insert_or_assign(order[i], errors[i]);
     for (const auto& [name, why] : dropped) {
         (void)why;
-        if (!compile_ppc(stems.at(name), stand_in(texts.at(name))).empty()) stems.erase(name);
+        const bool cpp = is_member_name(name);
+        if (!compile_ppc(stems.at(name), cpp ? stand_in_member(texts.at(name)) : stand_in(texts.at(name)), cpp).empty()) stems.erase(name);
     }
     // every extern is a function of its own that does nothing; running stops at its address
     const std::set<std::string> extern_names(externs.begin(), externs.end());
@@ -1195,11 +1231,20 @@ BuiltPowerPc FunctionBuilder::build_msvc(const MsvcBuild& tools, std::string_vie
     static const Regex map_symbol(R"((?m)^ [0-9A-Fa-f]{4}:[0-9A-Fa-f]{8}\s+(\S+)\s+([0-9A-Fa-f]{8}(?:[0-9A-Fa-f]{8})?) )");
     std::set<std::string> want(order.begin(), order.end());
     want.insert(extern_names.begin(), extern_names.end());
+    std::map<std::string, std::string> members;   // a method's decorated-name prefix -> its name
+    for (const std::string& n : order)
+        if (is_member_name(n)) members.emplace(member_symbol_prefix(n), n);
     map_symbol.for_each_match(map_text, [&](const RegexMatch& m) {
         const std::string name(m.group(1));
+        std::string wanted;
         if (want.contains(name)) {
-            if (const auto address = text::parse_int<std::uint64_t>(m.group(2), 16)) built.where.try_emplace(name, *address);
+            wanted = name;
+        } else if (!members.empty() && name.starts_with("?")) {
+            const std::size_t end = name.find("@@");
+            if (const auto it = members.find(name.substr(0, end == std::string::npos ? 0 : end + 2)); it != members.end()) wanted = it->second;
         }
+        if (!wanted.empty())
+            if (const auto address = text::parse_int<std::uint64_t>(m.group(2), 16)) built.where.try_emplace(wanted, *address);
         return true;
     });
     return built;

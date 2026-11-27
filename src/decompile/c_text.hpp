@@ -347,6 +347,10 @@ struct ModuleX64 {
     std::map<std::string, std::uint64_t> outside;     // {name the C calls: where in the original} of what it reaches that is not rebuilt
     std::set<std::string> novalue;                    // the functions the decompiler found to return nothing (written to return uint8)
     std::uint64_t image_base = 0;
+    // A C++ program's: the classes its run-time type information names, declared in the header (decompile/cpp_text_x64), and
+    // {the function's C name: the member it is written as} for its methods, whose texts are C++ (by the member's name).
+    std::size_t classes = 0;
+    std::map<std::string, std::string> methods;
 };
 ModuleX64 compilable_x64(Services& services, const std::filesystem::path& module, const std::filesystem::path& outdir);
 

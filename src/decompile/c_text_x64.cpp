@@ -13,7 +13,9 @@
 #include "core/text.hpp"
 #include "decompile/c_text.hpp"
 #include "decompile/c_text_internal.hpp"
+#include "decompile/cpp_text_x64.hpp"
 #include "formats/pe.hpp"
+#include "symbols/cpp_classes_x64.hpp"
 
 namespace cb::decompile::c_text {
 
@@ -54,6 +56,16 @@ static uint8 __cb_int3() { __debugbreak(); return 0; }
 #define swi(n) ((n) == 0x29 ? (code *)__cb_int29 : (code *)__cb_int3)
 #define LOCK()
 #define UNLOCK()
+)CBR";
+
+// What a C++ program's header adds around the C one: compiled as C++ (a method's file), the C declarations are C's (a function
+// declared without its parameters takes any arguments, as in C), and the classes follow them.
+constexpr std::string_view kCppOpen = R"CBR(#ifdef __cplusplus
+extern "C" {
+#define CB_ARGS ...
+#else
+#define CB_ARGS
+#endif
 )CBR";
 
 // `v._4_4_`, the decompiler's name for bytes of a variable (4 bytes at offset 4 of v), as C: `(*(uint4 *)((uint1 *)&v + 4))`. Sizes
@@ -181,13 +193,44 @@ ModuleX64 compilable_x64(Services& services, const std::filesystem::path& module
             m.outside.emplace(w, static_cast<std::uint64_t>(e->second));
         }
     }
-    const std::string types = text::replace_all(internal::types_text(), "typedef int code();", "typedef uint8 code();") +
-                              std::string(internal::helpers_text()) + internal::x86_helpers() + std::string(kX64Text);
-    const std::string header = types + internal::lines_of(internal::struct_decls(structs, types)) + text::join(macros, "\n") + "\n" +
-                               text::join(decls, "\n") + "\n";
+    // A C++ program (run-time type information names its classes): the functions the evidence makes methods are written as the
+    // classes' members, compiled as C++; the rest stay C.
+    const symbols::cpp_classes_x64::Classes classes = symbols::cpp_classes_x64::find_classes(image);
+    cpp_text_x64::Recovered cpp;
+    if (!classes.classes.empty()) cpp = cpp_text_x64::recover({&classes, &got.described, &got.by_va, &out, structs});
+    const bool cplusplus = !cpp.methods.empty();
+    std::map<std::string, std::string> renamed;   // C name -> the member's qualified name
+    if (cplusplus) {
+        OrderedMap<std::string, std::string> written;
+        for (std::string& n : order) {
+            std::string text = out.at(n);
+            if (const auto method = cpp.methods.find(n); method != cpp.methods.end()) {
+                renamed[n] = method->second.qualified;
+                text = cpp.texts.at(n);
+            }
+            const std::string key = renamed.contains(n) ? renamed.at(n) : n;
+            written.insert_or_assign(key, std::move(text));
+            n = key;
+        }
+        out = std::move(written);
+        std::set<std::string> novalue;
+        for (const std::string& n : m.novalue) novalue.insert(renamed.contains(n) ? renamed.at(n) : n);
+        m.novalue = std::move(novalue);
+        for (std::string& d : decls) d = d.substr(0, d.size() - 3) + "(CB_ARGS);";
+        m.classes = cpp.classes;
+        m.methods = renamed;
+    }
+    std::string c_types = text::replace_all(internal::types_text(), "typedef int code();",
+                                            cplusplus ? "#ifdef __cplusplus\ntypedef uint8 code(...);\n#else\ntypedef uint8 code();\n#endif" : "typedef uint8 code();");
+    // (C++ has its own bool, one byte as C's typedef is)
+    if (cplusplus) c_types = text::replace_all(c_types, "typedef unsigned char bool;", "\n#ifndef __cplusplus\ntypedef unsigned char bool;\n#endif\n");
+    const std::string types = c_types + std::string(internal::helpers_text()) + internal::x86_helpers() + std::string(kX64Text);
+    std::string header = types + internal::lines_of(internal::struct_decls(structs, types)) + text::join(macros, "\n") + "\n" +
+                         text::join(decls, "\n") + "\n";
+    if (cplusplus) header = std::string(kCppOpen) + header + "#ifdef __cplusplus\n}\n" + cpp.declarations + "#endif\n";
     OrderedMap<std::uint64_t, std::string> by_address;
     for (const auto& [va, n] : got.by_va)
-        if (own.contains(n)) by_address.insert_or_assign(static_cast<std::uint64_t>(va), n);
+        if (own.contains(n)) by_address.insert_or_assign(static_cast<std::uint64_t>(va), renamed.contains(n) ? renamed.at(n) : n);
     m.made = translate::l2::Made::of(text::lower(module.filename().string()), header, out, order, by_address);
     m.image_base = image.header().image_base;
     return m;

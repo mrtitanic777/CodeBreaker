@@ -227,6 +227,17 @@ void set_utc_time(const stdfs::path& p, int y, unsigned m, unsigned d, int h, in
 
 // ---- texts ------------------------------------------------------------------------------------------------------------
 
+CB_TEST("build.functions.a_method_is_found_by_its_decorated_name_and_keeps_its_c_name", [] {
+    CB_CHECK(is_member_name("Shape::vf2"));
+    CB_CHECK(!is_member_name("sub_001080"));
+    CB_CHECK_EQ(member_symbol_prefix("Shape::vf2"), std::string("?vf2@Shape@@"));
+    CB_CHECK_EQ(member_symbol_prefix("ns::Inner::ctor_001080"), std::string("?ctor_001080@Inner@ns@@"));
+    CB_CHECK_EQ(member_symbol_prefix("sub_001080"), std::string());
+    const std::string text = "uint8 Shape::vf2(uint8 arg2)\n{\n#pragma comment(linker, \"/ALTERNATENAME:sub_001390=\" __FUNCDNAME__)\n  return arg2;\n}";
+    CB_CHECK_EQ(stand_in_member(text),
+                std::string("uint8 Shape::vf2(uint8 arg2)\n{\n#pragma comment(linker, \"/ALTERNATENAME:sub_001390=\" __FUNCDNAME__)\n  return 0;\n}\n"));
+});
+
 CB_TEST("build.functions.prototype_and_stand_in", [] {
     CB_CHECK_EQ(prototype("int f(int a, char *b)\n{ return a; }"), "int f(int a, char *b);");
     CB_CHECK_EQ(prototype("static   unsigned long\n g ( void )  {"), "static unsigned long g ( void );");

@@ -68,6 +68,13 @@ const std::vector<std::string>& cflags_x64();
 std::string prototype(std::string_view text);
 // A definition with the same signature that does nothing.
 std::string stand_in(std::string_view text);
+// A C++ method's text is named `Class::member` (build_msvc compiles it as C++, and finds it in the link map by its decorated
+// name, which starts with member_symbol_prefix: `ns::Shape::vf2` is `?vf2@Shape@ns@@`).
+bool is_member_name(std::string_view name);
+std::string member_symbol_prefix(std::string_view qualified);
+// A method's stand-in: stand_in's, with the linker's alternate name of the method kept (`#pragma comment(linker,
+// "/ALTERNATENAME:...")`), so C that calls it by its C name still links.
+std::string stand_in_member(std::string_view text);
 // The C name behind a linker symbol (`_NAME@8`, `NAME_`, `_NAME`).
 std::string plain_symbol(std::string_view symbol);
 // The options one function's text asks for on top of the module's: the Windows prologue for an export, the frame kept
