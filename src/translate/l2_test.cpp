@@ -14,7 +14,12 @@
 
 #include <nlohmann/json.hpp>
 
+#include <iostream>
+#include <map>
+
+#include "core/fs.hpp"
 #include "core/json.hpp"
+#include "core/text.hpp"
 #include "core/testing.hpp"
 
 namespace {
@@ -409,4 +414,69 @@ CB_TEST("translate.l2.assembly", [] {
     // nothing written: no units
     Arena empty_arena;
     CB_CHECK(l2::units(l2::Assembly{}.document(empty_arena)).empty());
+});
+
+// ---- the decompiler's documents ---------------------------------------------------------------------------------------
+
+namespace {
+// The first place two documents differ, as a path ("body.stmts[3].type.kind: 5 against 6"); empty when they are the same.
+std::string first_difference(const Json& a, const Json& b, const std::string& at = "") {
+    if (a.is_number_integer() && b.is_number_integer()) {   // (a number written signed or unsigned is the same number)
+        const bool same = a.is_number_unsigned() || b.is_number_unsigned() ? (a.dump() == b.dump()) : a.get<std::int64_t>() == b.get<std::int64_t>();
+        return same ? "" : at + ": " + a.dump() + " against " + b.dump();
+    }
+    if (a.type() != b.type()) return at + ": " + a.dump().substr(0, 80) + " against " + b.dump().substr(0, 80);
+    if (a.is_object()) {
+        for (const auto& [k, v] : a.items()) {
+            if (!b.contains(k)) return at + "." + k + ": lost";
+            if (std::string d = first_difference(v, b.at(k), at + "." + k); !d.empty()) return d;
+        }
+        for (const auto& [k, v] : b.items())
+            if (!a.contains(k)) return at + "." + k + ": added";
+        return "";
+    }
+    if (a.is_array()) {
+        if (a.size() != b.size()) return at + ": " + std::to_string(a.size()) + " items against " + std::to_string(b.size());
+        for (std::size_t i = 0; i < a.size(); ++i)
+            if (std::string d = first_difference(a[i], b[i], at + "[" + std::to_string(i) + "]"); !d.empty()) return d;
+        return "";
+    }
+    return a == b ? "" : at + ": " + a.dump().substr(0, 80) + " against " + b.dump().substr(0, 80);
+}
+}  // namespace
+
+// The decompiler's own documents (lz32.dll's 93 functions and the 16-bit lzexpand.dll's 46, as the engine writes them with CB_L2=1) read into the typed tree and
+// written back lose nothing: the typed tree can stand for the document wherever the document is used (docs/ENGINE_UNIFICATION.md
+// item 1, step 1).
+CB_TEST("translate.l2.decompiler_documents_lose_nothing", [] {
+    const std::string all = cb::fs::read_text(cb::testing::data_path("translate/testdata/l2_decompiler_lz32.jsonl")) +
+                            cb::fs::read_text(cb::testing::data_path("translate/testdata/l2_decompiler_lzexpand.jsonl"));
+    std::size_t docs = 0, same = 0;
+    std::map<std::string, std::size_t> where;   // {the first difference's path, without its indexes: how many}
+    for (const std::string_view line : cb::text::lines(all)) {
+        if (cb::text::trim(line).empty()) continue;
+        ++docs;
+        const Json doc = cb::json::parse(line);
+        Arena arena;
+        const Json back = l2::to_json(*l2::from_json(arena, doc));
+        const std::string d = first_difference(bare(doc), bare(back));
+        if (d.empty()) {
+            ++same;
+            continue;
+        }
+        std::string key;   // (the path with its indexes left out: "body.stmts[].x")
+        bool in_index = false;
+        for (const char c : d.substr(0, d.find(':'))) {
+            if (c == '[') in_index = true;
+            if (!in_index) key += c;
+            if (c == ']') {
+                in_index = false;
+                key += "[]";
+            }
+        }
+        ++where[key + d.substr(d.find(':'), 60)];
+    }
+    for (const auto& [k, n] : where) std::cout << "  " << n << " x " << k << "\n";
+    CB_CHECK_EQ(docs, 93u + 46u);
+    CB_CHECK_EQ(same, docs);
 });
