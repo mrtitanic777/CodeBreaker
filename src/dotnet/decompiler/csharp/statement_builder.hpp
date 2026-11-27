@@ -37,15 +37,20 @@ namespace cb::dotnet::decompiler::typesystem {
 class DecompilerTypeSystem;
 }
 
+namespace cb::translate::ir {
+struct Node;
+}
+
 namespace cb::dotnet::decompiler::csharp {
 
 class ExpressionBuilder;
+class L2Body;
 
 class StatementBuilder final : public il::ILVisitorT<TranslatedStatement> {
 public:
     StatementBuilder(const typesystem::DecompilerTypeSystem& type_system, const typesystem::ITypeResolveContext& decompilation_context,
                      il::ILFunction* current_function, const DecompilerSettings& settings, DecompileRun& decompile_run,
-                     const util::CancellationToken& cancellation_token);
+                     const util::CancellationToken& cancellation_token, L2Body* l2 = nullptr);
     ~StatementBuilder() override;
     StatementBuilder(const StatementBuilder&) = delete;
     StatementBuilder& operator=(const StatementBuilder&) = delete;
@@ -70,7 +75,8 @@ public:
         std::int64_t i, const typesystem::IType* type, const std::vector<std::pair<std::optional<std::string>, int>>* map = nullptr);
 
     // The designation of a deconstruction's pattern: `(a, (b, _))`; the variables of a foreach's get the kind ForeachLocal.
-    static syntax::VariableDesignation* translate_deconstruction_designation(il::DeconstructInstruction* inst, bool is_foreach);
+    // (`l2`: the body as L2, told of a foreach variable's new kind)
+    static syntax::VariableDesignation* translate_deconstruction_designation(il::DeconstructInstruction* inst, bool is_foreach, L2Body* l2 = nullptr);
 
     // ---- the visitor ----
 
@@ -148,6 +154,9 @@ private:
     syntax::LocalFunctionDeclarationStatement* translate_function(il::ILFunction* function);
 
     std::string ensure_unique_label(il::Block* block);
+    // Stage 14: the statement kinds read from the instruction's L2 node (Empty, Throw, If); null for another kind, which the ILAst
+    // visitor converts.
+    Statement* convert_from_l2(const translate::ir::Node& node, il::ILInstruction& inst);
     static bool is_final_leave(il::Leave* leave);
 
     std::unique_ptr<ExpressionBuilder> expr_builder_;

@@ -419,7 +419,7 @@ target_link_libraries(cb_xna PUBLIC cb_core cb_base cb_formats cb_java cb_decomp
 # .NET: the ECMA-335 metadata reader (dotnet/metadata) and the decompiler ported from ILSpy (dotnet/decompiler):
 # docs/DOTNET_DECOMPILER_PLAN.md.
 cb_area(dotnet)
-target_link_libraries(cb_dotnet PUBLIC cb_core cb_formats)
+target_link_libraries(cb_dotnet PUBLIC cb_core cb_formats cb_translate)   # (cb_translate: the C# builders read a method body as L2, csharp/l2_body, through the CIL lane translate/frontends/cil, which links cb_dotnet back: static libraries may be cyclic)
 
 # The translator's back ends, front ends and the whole-program judge; the interface's helpers (the window is
 # app/window_*: docs/CPP_DESIGN.md section 9).

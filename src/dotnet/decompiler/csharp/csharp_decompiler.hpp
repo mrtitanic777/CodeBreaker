@@ -84,6 +84,8 @@ namespace srm = cb::dotnet::metadata;
 
 class RecordDecompiler;
 
+class L2Lane;
+
 class CSharpDecompiler {
 public:
     // The decompiler of a file: opens it, loads its references through a UniversalAssemblyResolver, and sets settings.load_in_memory.
@@ -111,6 +113,8 @@ public:
 
     // The type system created from the main module and referenced modules.
     const typesystem::DecompilerTypeSystem& type_system() const { return *type_system_; }
+    // The method bodies as L2 (stage 14; not upstream's API): null until the first body.
+    const L2Lane* l2_lane() const { return l2_lane_.get(); }
     // IL transforms and C# AST transforms: the built-in ones, which can be changed.
     std::vector<std::unique_ptr<il::transforms::IILTransform>>& il_transforms() { return il_transforms_; }
     std::vector<std::unique_ptr<transforms::IAstTransform>>& ast_transforms() { return ast_transforms_; }
@@ -269,6 +273,8 @@ private:
     std::shared_ptr<const metadata::MetadataFile> owned_file_;
     std::unique_ptr<metadata::IAssemblyResolver> owned_resolver_;
     std::unique_ptr<typesystem::DecompilerTypeSystem> owned_type_system_;
+    // the method bodies as L2 (stage 14, l2_body.hpp): made at the first body, after the type system, so it goes first
+    std::unique_ptr<L2Lane> l2_lane_;
     // The syntax trees, ILAst and everything else made in the thread's current arena belong to this one.
     il::ILArena arena_;
 };

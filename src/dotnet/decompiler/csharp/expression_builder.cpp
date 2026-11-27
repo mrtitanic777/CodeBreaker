@@ -1,7 +1,10 @@
 // dotnet/decompiler/csharp/expression_builder.cpp -- see expression_builder.hpp.
 #include "dotnet/decompiler/csharp/expression_builder.hpp"
+#include "dotnet/decompiler/csharp/l2_body.hpp"
+#include "translate/frontends/cil/cil_names.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <cassert>
 #include <functional>
 #include <stdexcept>
@@ -154,7 +157,7 @@ TranslatedExpression with_rr(ExpressionWithILInstruction expr, ResolveResult* re
 ExpressionBuilder::ExpressionBuilder(StatementBuilder* statement_builder_, const DecompilerTypeSystem& type_system,
                                      const ITypeResolveContext& decompilation_context_, ILFunction* current_function_,
                                      const DecompilerSettings& settings_, DecompileRun& decompile_run,
-                                     const util::CancellationToken& cancellation_token)
+                                     const util::CancellationToken& cancellation_token, L2Body* l2_body)
     : statement_builder(statement_builder_),
       decompilation_context(&decompilation_context_),
       current_function(current_function_),
@@ -165,7 +168,8 @@ ExpressionBuilder::ExpressionBuilder(StatementBuilder* statement_builder_, const
       type_inference(*compilation),
       settings(&settings_),
       type_system_(&type_system),
-      cancellation_token_(cancellation_token) {
+      cancellation_token_(cancellation_token),
+      l2(l2_body) {
     ast_builder.always_use_short_type_names = true;
     ast_builder.add_resolve_result_annotations = true;
     ast_builder.show_attributes = true;
@@ -216,7 +220,12 @@ TranslatedExpression ExpressionBuilder::translate(ILInstruction* inst, const ITy
     cancellation_token_.throw_if_cancellation_requested();
     TranslationContext context;
     context.type_hint = type_hint != nullptr ? type_hint : &SpecialType::unknown_type();
-    TranslatedExpression cexpr = accept_visitor<TranslationContext, TranslatedExpression>(*inst, *this, context);
+    std::optional<TranslatedExpression> from_l2;
+    if (l2 != nullptr) {
+        if (const translate::ir::Node* node = l2->node(inst)) from_l2 = translate_from_l2(*node, *inst, context);
+        l2->count(from_l2.has_value());
+    }
+    TranslatedExpression cexpr = from_l2 ? *std::move(from_l2) : accept_visitor<TranslationContext, TranslatedExpression>(*inst, *this, context);
 #ifndef NDEBUG
     if (inst->result_type() != StackType::Void && cexpr.type()->kind() != TypeKind::Unknown && inst->result_type() != StackType::Unknown &&
         cexpr.type()->kind() != TypeKind::None) {
@@ -717,8 +726,10 @@ TranslatedExpression ExpressionBuilder::visit_st_loc(StLoc& inst, TranslationCon
         if (can_use_type_for_stack_slot(inst.variable(), translated_value.type()) &&
             inst.variable()->stack_type == get_stack_type(*translated_value.type()) && translated_value.type()->kind() != TypeKind::Null) {
             inst.variable()->set_type(translated_value.type());
+            if (l2 != nullptr) l2->variable_changed(inst.variable());
         } else if (inst.value()->match_default_value(&type) && is_other_value_type(type)) {
             inst.variable()->set_type(type);
+            if (l2 != nullptr) l2->variable_changed(inst.variable());
         }
     }
     TranslatedExpression lhs = convert_variable(inst.variable()).without_il_instruction();
@@ -1947,7 +1958,7 @@ ExpressionWithResolveResult ExpressionBuilder::translate_function(const IType* d
     auto* ame = make<AnonymousMethodExpression>();
     ame->set_is_async(function->is_async());
     for (ParameterDeclaration* pd : make_parameters(function->parameters, function)) ame->parameters().add(pd);
-    StatementBuilder builder(*type_system_, *decompilation_context, function, *settings, statement_builder->decompile_run, cancellation_token_);
+    StatementBuilder builder(*type_system_, *decompilation_context, function, *settings, statement_builder->decompile_run, cancellation_token_, l2);
     BlockStatement* body = builder.convert_as_block(function->body());
 
     Statement* warning_anchor = body->statements().first_or_null();
@@ -4082,6 +4093,158 @@ TranslatedExpression ExpressionBuilder::error_expression(const std::string& mess
     auto* e = make<ErrorExpression>();
     e->add_trailing_trivia(make<Comment>(message, CommentType::MultiLine));
     return without_il_instruction(e).with_rr(ErrorResolveResult::unknown_error());
+}
+
+// ---- stage 14: the kinds read from L2 ----------------------------------------------------------------------------------------------
+//
+// Each is the visitor above it reads the ILAst with, reading the same facts from the instruction's L2 node (ILAST_TO_L2.md section 1):
+//   Lit      ldc.i4 ldc.i8 (an integer of stack I4, I8), ldc.r4 ldc.r8 (a double of stack F4, F8; a NaN's and a negative zero's bits in
+//            the text), ldc.decimal (the text of a System.Decimal), ldstr (a string; Utf8Literal: ldstr.utf8), ldnull (no value)
+//   Default  default.value (the node's type)
+//   SizeOf   sizeof (`of`)
+//   Length   ldlen (the array; the node's stack kind: I4 Length, else LongLength)
+//   Name     ldloc (its symbol: a stack slot is role Temp; its single definition from the tree's uses, ir::TreeIndex)
+//   Unary    ldloca (`&` of a Name that is no instruction of its own; not RValueAddr), bit.not (`~`: the operand's stack kind in left_stk,
+//            lifted unless lift is None)
+// The instruction is what the ILAst annotation names (the C# transforms read it); the node is annotated beside it.
+std::optional<TranslatedExpression> ExpressionBuilder::translate_from_l2(const translate::ir::Node& n, ILInstruction& inst, TranslationContext context) {
+    namespace ir = translate::ir;
+    namespace cil = translate::frontends::cil;
+    const auto from = [&](TranslatedExpression e, Expression* annotated = nullptr) {
+        (annotated != nullptr ? annotated : e.expression)->add_annotation(make<L2NodeAnnotation>(&n));
+        return e;
+    };
+    const auto variable_of = [&](const ir::Node* name_node) -> ILVariable* {
+        const auto* name = ir::get<ir::Name>(name_node);
+        return name != nullptr && name->sym ? l2->variable(name->sym.get()) : nullptr;
+    };
+
+    if (const auto* lit = ir::get<ir::Lit>(&n)) {
+        const auto bits = [&]() -> std::optional<std::uint64_t> {
+            if (!lit->text || lit->text->size() < 3) return std::nullopt;
+            return std::stoull(lit->text->substr(2), nullptr, 16);
+        };
+        switch (n.stack) {
+            case ir::Stack::I4: {
+                const auto value = static_cast<std::int32_t>(std::get<std::int64_t>(lit->value));
+                ResolveResult* rr = get_sign(*context.type_hint) == Sign::Unsigned
+                                        ? make<ConstantResolveResult>(known(KnownTypeCode::UInt32), ConstantValue(static_cast<std::uint32_t>(value)))
+                                        : make<ConstantResolveResult>(known(KnownTypeCode::Int32), ConstantValue(value));
+                rr = adjust_constant_to_type(rr, context.type_hint);
+                return from(convert_constant_value(rr, true).with_il_instruction(&inst));
+            }
+            case ir::Stack::I8: {
+                const std::int64_t value = std::get<std::int64_t>(lit->value);
+                ResolveResult* rr = get_sign(*context.type_hint) == Sign::Unsigned
+                                        ? make<ConstantResolveResult>(known(KnownTypeCode::UInt64), ConstantValue(static_cast<std::uint64_t>(value)))
+                                        : make<ConstantResolveResult>(known(KnownTypeCode::Int64), ConstantValue(value));
+                rr = adjust_constant_to_type(rr, context.type_hint);
+                return from(convert_constant_value(rr, true).with_il_instruction(&inst));
+            }
+            case ir::Stack::F4: {
+                const auto b = bits();
+                const float value = b ? std::bit_cast<float>(static_cast<std::uint32_t>(*b)) : static_cast<float>(std::get<double>(lit->value));
+                Expression* expr = ast_builder.convert_constant_value(known(KnownTypeCode::Single), ConstantValue(value));
+                return from(TranslatedExpression(with_il_instruction(expr, &inst).expression));
+            }
+            case ir::Stack::F8: {
+                const auto b = bits();
+                const double value = b ? std::bit_cast<double>(*b) : std::get<double>(lit->value);
+                Expression* expr = ast_builder.convert_constant_value(known(KnownTypeCode::Double), ConstantValue(value));
+                return from(TranslatedExpression(with_il_instruction(expr, &inst).expression));
+            }
+            case ir::Stack::O: {
+                if (std::holds_alternative<std::monostate>(lit->value))
+                    return from(get_default_value_expression(&SpecialType::null_type()).with_il_instruction(&inst));
+                const auto* text = std::get_if<std::string>(&lit->value);
+                if (text == nullptr) return std::nullopt;
+                if (n.type && n.type == translate::ir::decimal_type()) {
+                    const std::optional<util::Decimal> d = cil::decimal_from(*text);
+                    if (!d) return std::nullopt;
+                    Expression* expr = ast_builder.convert_constant_value(known(KnownTypeCode::Decimal), ConstantValue(*d));
+                    return from(TranslatedExpression(with_il_instruction(expr, &inst).expression));
+                }
+                if (ir::has_flag(n, ir::NodeFlag::Utf8Literal)) {
+                    const IType* type = make_parameterized_type(known(KnownTypeCode::ReadOnlySpanOfT), {known(KnownTypeCode::Byte)});
+                    return from(with_rr(with_il_instruction(make<PrimitiveExpression>(ConstantValue(to_u16(*text)), LiteralFormat::Utf8Literal), &inst),
+                                        make<ConstantResolveResult>(type, ConstantValue(to_u16(*text)))));
+                }
+                return from(with_rr(with_il_instruction(make<PrimitiveExpression>(ConstantValue(to_u16(*text))), &inst),
+                                    make<ConstantResolveResult>(known(KnownTypeCode::String), ConstantValue(to_u16(*text)))));
+            }
+            default: return std::nullopt;
+        }
+    }
+    if (ir::is<ir::Default>(&n)) {
+        const IType* type = cil::clr_type(n.type);
+        if (type == nullptr) return std::nullopt;
+        return from(get_default_value_expression(type).with_il_instruction(&inst));
+    }
+    if (const auto* size_of = ir::get<ir::SizeOf>(&n)) {
+        const IType* type = cil::clr_type(size_of->of);
+        if (type == nullptr) return std::nullopt;
+        if (is_unmanaged_type(type, settings->introduce_unmanaged_constraint)) {
+            return from(with_rr(with_il_instruction(make<SizeOfExpression>(convert_type(type)), &inst),
+                                make<SizeOfResolveResult>(known(KnownTypeCode::Int32), type, std::nullopt)));
+        }
+        return from(call_unsafe_intrinsic("SizeOf", {}, known(KnownTypeCode::Int32), &inst, {type}));
+    }
+    if (const auto* length = ir::get<ir::Length>(&n)) {
+        ILInstruction* array = l2->instruction(length->arr);
+        if (array == nullptr) return std::nullopt;
+        const IType* array_type = known(KnownTypeCode::Array);
+        TranslatedExpression array_expr = translate(array, array_type);
+        if (array_expr.type()->kind() != TypeKind::Array) array_expr = array_expr.convert_to(array_type, *this);
+        array_expr = ensure_target_not_nullable(array_expr, array);
+        const bool int32 = n.stack == ir::Stack::I4;
+        const std::string member_name = int32 ? "Length" : "LongLength";
+        const KnownTypeCode code = int32 ? KnownTypeCode::Int32 : KnownTypeCode::Int64;
+        std::vector<const IProperty*> properties = array_type->get_properties([&](const IProperty* p) { return p->name() == member_name; });
+        const IProperty* member = properties.empty() ? nullptr : properties.front();
+        ResolveResult* rr = member == nullptr ? static_cast<ResolveResult*>(make<ResolveResult>(known(code)))
+                                              : static_cast<ResolveResult*>(make<MemberResolveResult>(array_expr.resolve_result, member));
+        return from(with_rr(with_il_instruction(make<MemberReferenceExpression>(array_expr.expression, member_name), &inst), rr));
+    }
+    if (const auto* name = ir::get<ir::Name>(&n)) {
+        ILVariable* v = variable_of(&n);
+        if (v == nullptr) return std::nullopt;
+        if (name->sym->role == ir::VarRole::Temp && l2->index().is_single_definition(name->sym.get())) loaded_variables_set_.insert(v);
+        return from(convert_variable(v).with_il_instruction(&inst));
+    }
+    if (const auto* unary = ir::get<ir::Unary>(&n)) {
+        if (unary->op == "&" && !ir::has_flag(n, ir::NodeFlag::RValueAddr) && l2->instruction(unary->x) == nullptr) {
+            ILVariable* v = variable_of(unary->x);
+            if (v == nullptr) return std::nullopt;
+            TranslatedExpression expr = convert_variable(v).with_il_instruction(&inst);
+            // (the instruction, and the node beside it, on the IdentifierExpression: see visit_ld_loca)
+            expr.expression->add_annotation(make<L2NodeAnnotation>(&n));
+            return without_il_instruction(make<DirectionExpression>(FieldDirection::Ref, expr.expression))
+                .with_rr(make<ByReferenceResolveResult>(expr.resolve_result, ReferenceKind::Ref));
+        }
+        if (unary->op == "~") {
+            ILInstruction* operand = l2->instruction(unary->x);
+            if (operand == nullptr) return std::nullopt;
+            const auto underlying_result_type = static_cast<StackType>(unary->left_stk);
+            const bool is_lifted = unary->lift != ir::Lift::None;
+            TranslatedExpression argument = translate(operand);
+            const IType* arg_utype = nullable_type::get_underlying_type(argument.type());
+            if (get_size(get_stack_type(*arg_utype)) < get_size(underlying_result_type) ||
+                (arg_utype->kind() == TypeKind::Enum && is_small_integer_type(*arg_utype)) ||
+                (get_stack_type(*arg_utype) == StackType::I && !is_csharp_native_integer_type(*arg_utype)) ||
+                is_known_type(arg_utype, KnownTypeCode::Boolean) || is_known_type(arg_utype, KnownTypeCode::Char)) {
+                // see visit_bit_not: an undersized argument, a small enum, IntPtr, bool and char are extended first
+                Sign sign = get_sign(*context.type_hint);
+                if (sign == Sign::None) sign = get_sign(*arg_utype);
+                const IType* target_type = find_arithmetic_type(underlying_result_type, sign);
+                if (is_lifted) target_type = nullable_type::create(*compilation, target_type);
+                argument = argument.convert_to(target_type, *this);
+            }
+            ExpressionWithResolveResult result = with_rr(make<UnaryOperatorExpression>(UnaryOperatorType::BitNot, argument.expression),
+                                                         resolver->resolve_unary_operator(UnaryOperatorType::BitNot, argument.resolve_result));
+            return from(result.with_il_instruction(&inst));
+        }
+    }
+    return std::nullopt;
 }
 
 }  // namespace cb::dotnet::decompiler::csharp

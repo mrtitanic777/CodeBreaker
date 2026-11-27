@@ -60,6 +60,13 @@ public:
         return nullptr;
     }
 
+    // Puts `now` in each place `old` has (not upstream's: the C# builders' L2 route, which swaps the function a declaration names for the
+    // one lifted from L2, keeps the annotations' order).
+    void replace_annotation(const ArenaObject* old, ArenaObject* now) {
+        for (ArenaObject*& a : annotations_)
+            if (a == old) a = now;
+    }
+
     // Removes every annotation that is a T (upstream's RemoveAnnotations<T>()).
     template <class T>
     void remove_annotations() {

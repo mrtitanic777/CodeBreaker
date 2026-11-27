@@ -1,5 +1,6 @@
 // Tests of dotnet/decompiler's C# stage (stages 7-10 of docs/DOTNET_DECOMPILER_PLAN.md): the whole-module C# text against ILSpy's own
 // (`ilspycmd <assembly>` with no options; work/ilspy-port/scripts/cscompare.sh).
+#include <format>
 #include <fstream>
 #include <cstdint>
 #include <cstdio>
@@ -12,6 +13,7 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "dotnet/decompiler/csharp/csharp_decompiler.hpp"
+#include "dotnet/decompiler/csharp/l2_body.hpp"
 #include "dotnet/decompiler/decompiler_settings.hpp"
 #include "dotnet/decompiler/metadata/universal_assembly_resolver.hpp"
 #include "dotnet/decompiler/typesystem/metadata_module.hpp"
@@ -63,6 +65,8 @@ void install_crash_filter() {
 // decompiled with the settings of the command line tool when no option is given (language version Latest, unresolved references
 // tolerated), the references found by a UniversalAssemblyResolver of the assembly's target framework. Errors that did not stop the
 // decompilation go to standard error as ilspycmd's ReportDecompilationErrors writes them.
+// CB_DN_CS_L2=<file> also writes what the builders read from L2 (stage 14): the bodies, the ones refused, the instructions read from
+// their node and those read from the ILAst.
 CB_TEST("dotnet.decompiler.csharp.wip_dump", [] {
     const auto in = fs::get_env("CB_DN_CS_IN");
     const auto out = fs::get_env("CB_DN_CS_OUT");
@@ -90,6 +94,13 @@ CB_TEST("dotnet.decompiler.csharp.wip_dump", [] {
     }
     const std::string text = decompiler.decompile_whole_module_as_string();
     std::ofstream(std::filesystem::path(*out), std::ios::binary) << encode_like_console(text);
+    if (const auto stats = fs::get_env("CB_DN_CS_L2")) {
+        // stage 14: what the builders read from L2
+        const L2Lane* lane = decompiler.l2_lane();
+        std::ofstream(std::filesystem::path(*stats), std::ios::binary)
+            << std::format("bodies {} refused {} from_l2 {} from_ilast {}\n", lane ? lane->bodies : 0, lane ? lane->refused : 0,
+                           lane ? lane->from_l2 : 0, lane ? lane->from_ilast : 0);
+    }
     if (!decompiler.errors().empty()) {
         std::cerr << "While decompiling " << *in << ":\n";
         for (const DecompilerError& error : decompiler.errors()) std::cerr << "  " << CSharpDecompiler::get_error_headline(error) << "\n";

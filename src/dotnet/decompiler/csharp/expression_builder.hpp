@@ -42,6 +42,9 @@
 #include "dotnet/decompiler/typesystem/decompiler_type_system.hpp"
 #include "dotnet/decompiler/util/cancellation.hpp"
 
+namespace cb::translate::ir {
+struct Node;
+}
 namespace cb::dotnet::decompiler {
 class DecompilerSettings;
 class DecompileRun;
@@ -50,6 +53,7 @@ class DecompileRun;
 namespace cb::dotnet::decompiler::csharp {
 
 class StatementBuilder;
+class L2Body;
 
 using typesystem::IEvent;
 using typesystem::IField;
@@ -79,7 +83,7 @@ public:
 
     ExpressionBuilder(StatementBuilder* statement_builder, const typesystem::DecompilerTypeSystem& type_system,
                       const typesystem::ITypeResolveContext& decompilation_context, il::ILFunction* current_function, const DecompilerSettings& settings,
-                      DecompileRun& decompile_run, const util::CancellationToken& cancellation_token);
+                      DecompileRun& decompile_run, const util::CancellationToken& cancellation_token, L2Body* l2 = nullptr);
     ExpressionBuilder(const ExpressionBuilder&) = delete;
     ExpressionBuilder& operator=(const ExpressionBuilder&) = delete;
 
@@ -283,9 +287,17 @@ private:
     ExpressionWithILInstruction translate_pattern(il::ILInstruction* pattern, const IType* left_hand_type);
     static TranslatedExpression error_expression(const std::string& message);
 
+    // Stage 14: the kinds the builder reads from the instruction's L2 node (expression_builder_l2.cpp); nothing for another kind, which
+    // the ILAst visitor translates.
+    std::optional<TranslatedExpression> translate_from_l2(const translate::ir::Node& node, ILInstruction& inst, TranslationContext context);
+
     const typesystem::DecompilerTypeSystem* type_system_;
     util::CancellationToken cancellation_token_;
     std::set<il::ILVariable*> loaded_variables_set_;
+
+public:
+    // The body as L2 (stage 14), or null where the builders read the ILAst alone.
+    L2Body* const l2;
 };
 
 }  // namespace cb::dotnet::decompiler::csharp

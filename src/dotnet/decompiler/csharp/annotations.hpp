@@ -26,6 +26,10 @@
 #include "dotnet/decompiler/il/instructions.hpp"
 #include "dotnet/decompiler/semantics/conversion_resolve_result.hpp"
 
+namespace cb::translate::ir {
+struct Node;
+}
+
 namespace cb::dotnet::decompiler::csharp {
 
 using il::ILFunction;
@@ -39,6 +43,14 @@ using syntax::VariableInitializer;
 
 // Currently unused; the LdToken ILInstruction will probably be the annotation when LdToken support is reimplemented.
 class LdTokenAnnotation final : public il::ArenaObject {};
+
+// The L2 node an expression was translated from (stage 14: the kinds the ExpressionBuilder reads from L2), beside the instruction it was
+// lifted to, which stays the annotation the C# transforms read until they read L2 too. The node lives in the method's L2Body.
+class L2NodeAnnotation final : public il::ArenaObject {
+public:
+    explicit L2NodeAnnotation(const translate::ir::Node* n) : node(n) {}
+    const translate::ir::Node* node;
+};
 
 // A reference to a local variable.
 class ILVariableResolveResult final : public ResolveResult {

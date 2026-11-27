@@ -1,5 +1,6 @@
 // dotnet/decompiler/csharp/statement_builder.cpp -- see statement_builder.hpp.
 #include "dotnet/decompiler/csharp/statement_builder.hpp"
+#include "dotnet/decompiler/csharp/l2_body.hpp"
 
 #include <algorithm>
 #include <cassert>
@@ -124,14 +125,14 @@ ConstantValue string_key_value(const std::optional<std::string>& key) {
 
 StatementBuilder::StatementBuilder(const typesystem::DecompilerTypeSystem& type_system, const typesystem::ITypeResolveContext& decompilation_context,
                                    il::ILFunction* current_function, const DecompilerSettings& settings, DecompileRun& run,
-                                   const util::CancellationToken& cancellation_token)
+                                   const util::CancellationToken& cancellation_token, L2Body* l2)
     : decompile_run(run),
       current_function_(current_function),
       type_system_(&type_system),
       decompilation_context_(&decompilation_context),
       settings_(&settings),
       cancellation_token_(cancellation_token) {
-    expr_builder_ = std::make_unique<ExpressionBuilder>(this, type_system, decompilation_context, current_function, settings, run, cancellation_token);
+    expr_builder_ = std::make_unique<ExpressionBuilder>(this, type_system, decompilation_context, current_function, settings, run, cancellation_token, l2);
     current_return_container = cast_inst<il::BlockContainer>(current_function->body());
     current_is_iterator = current_function->is_iterator;
     current_result_type = current_function->is_async() ? current_function->async_return_type : current_function->return_type;
@@ -141,7 +142,55 @@ StatementBuilder::~StatementBuilder() = default;
 
 Statement* StatementBuilder::convert(il::ILInstruction* inst) {
     cancellation_token_.throw_if_cancellation_requested();
+    if (L2Body* l2 = expr_builder().l2) {
+        Statement* from_l2 = nullptr;
+        if (const translate::ir::Node* node = l2->node(inst)) from_l2 = convert_from_l2(*node, *inst);
+        l2->count(from_l2 != nullptr);
+        if (from_l2 != nullptr) return from_l2;
+    }
     return il::accept_visitor(*inst, *this);
+}
+
+// Each is the visitor below reading the same facts from the node (ILAST_TO_L2.md section 1.2): Empty (nop: its comment is the note), Throw
+// (throw: the operand; rethrow: none), If in a statement place (if: the condition, then the branches; an absent or empty else branch is
+// a nop). An operand is translated through its own instruction (which reads its node in turn).
+Statement* StatementBuilder::convert_from_l2(const translate::ir::Node& n, il::ILInstruction& inst) {
+    namespace ir = translate::ir;
+    L2Body& l2 = *expr_builder().l2;
+    const auto instruction_of = [&](const ir::Node* child) -> il::ILInstruction* {
+        while (const auto* e = ir::get<ir::ExprStmt>(child)) child = e->expr;
+        return child != nullptr ? l2.instruction(child) : nullptr;
+    };
+    const auto from = [&](Statement* s) {
+        s->add_annotation(make<L2NodeAnnotation>(&n));
+        return s;
+    };
+    if (const auto* empty = ir::get<ir::Empty>(&n)) {
+        auto* stmt = make<syntax::EmptyStatement>();
+        if (empty->note && !empty->note->empty()) stmt->add_trailing_trivia(make<syntax::Comment>(*empty->note));
+        return from(with_il_instruction(stmt, &inst));
+    }
+    if (const auto* thrown = ir::get<ir::Throw>(&n)) {
+        if (thrown->expr == nullptr) return from(with_il_instruction(make<syntax::ThrowStatement>(), &inst));
+        il::ILInstruction* operand = instruction_of(thrown->expr);
+        if (operand == nullptr) return nullptr;
+        TranslatedExpression argument = expr_builder().translate(operand);
+        return from(with_il_instruction(make<syntax::ThrowStatement>(argument), &inst));
+    }
+    if (const auto* branch = ir::get<ir::If>(&n)) {
+        il::ILInstruction* condition_inst = instruction_of(branch->cond);
+        const auto* then_node = std::get_if<ir::Node*>(&branch->then);
+        il::ILInstruction* then_inst = then_node != nullptr ? instruction_of(*then_node) : nullptr;
+        const auto* else_node = std::get_if<ir::Node*>(&branch->orelse);
+        const bool no_else = else_node == nullptr || *else_node == nullptr || ir::is<ir::Empty>(*else_node);
+        il::ILInstruction* else_inst = no_else ? nullptr : instruction_of(*else_node);
+        if (condition_inst == nullptr || then_inst == nullptr || (!no_else && else_inst == nullptr)) return nullptr;
+        TranslatedExpression condition = expr_builder().translate_condition(condition_inst);
+        Statement* true_statement = convert(then_inst);
+        Statement* false_statement = no_else ? nullptr : convert(else_inst);
+        return from(with_il_instruction(make<syntax::IfElseStatement>(condition, true_statement, false_statement), &inst));
+    }
+    return nullptr;
 }
 
 syntax::BlockStatement* StatementBuilder::convert_as_block(il::ILInstruction* inst) {
@@ -540,6 +589,10 @@ TranslatedStatement StatementBuilder::visit_using_instruction(il::UsingInstructi
         il::ILVariable* dispose_variable = current_function_->register_variable(
             il::VariableKind::Local, dispose_type,
             il::transforms::AssignVariableNames::generate_variable_name(current_function_, dispose_type, decompile_run.using_scope));
+        if (L2Body* l2 = expr_builder().l2) {
+            l2->variable_changed(var);
+            l2->variable_registered(current_function_, dispose_variable);
+        }
         Expression* dispose_invocation = make<syntax::InvocationExpression>(
             make<syntax::MemberReferenceExpression>(expr_builder().convert_variable(dispose_variable).expression, dispose_type_method_name));
         if (inst.is_async()) {
@@ -759,14 +812,21 @@ Statement* StatementBuilder::transform_to_foreach(il::BlockContainer* container,
             foreach_variable->set_kind(il::VariableKind::ForeachLocal);
             foreach_variable->name = il::transforms::AssignVariableNames::generate_foreach_variable_name(
                 current_function_, collection_expr->annotation<il::ILInstruction>(), using_scope, foreach_variable);
+            if (L2Body* l2 = expr_builder().l2) l2->variable_changed(foreach_variable);
             break;
         case RequiredGetCurrentTransformation::IntroduceNewVariable:
             foreach_variable = current_function_->register_variable(
                 il::VariableKind::ForeachLocal, type,
                 il::transforms::AssignVariableNames::generate_foreach_variable_name(current_function_, collection_expr->annotation<il::ILInstruction>(),
                                                                                     using_scope));
-            inst_to_replace->replace_with(make<il::LdLoc>(foreach_variable));
+            if (L2Body* l2 = expr_builder().l2) l2->variable_registered(current_function_, foreach_variable);
+            {
+                auto* load = make<il::LdLoc>(foreach_variable);
+                inst_to_replace->replace_with(load);
+                if (L2Body* l2 = expr_builder().l2) l2->replaced(inst_to_replace, load);
+            }
             body->instructions.insert(0, make<il::StLoc>(foreach_variable, inst_to_replace));
+            if (L2Body* l2 = expr_builder().l2) l2->inserted(body, 0);
             break;
         case RequiredGetCurrentTransformation::IntroduceNewVariableAndLocalCopy: {
             foreach_variable = current_function_->register_variable(
@@ -776,14 +836,26 @@ Statement* StatementBuilder::transform_to_foreach(il::BlockContainer* container,
             il::ILVariable* local_copy_variable = current_function_->register_variable(
                 il::VariableKind::Local, type,
                 il::transforms::AssignVariableNames::generate_variable_name(current_function_, type, using_scope));
-            inst_to_replace->parent()->replace_with(make<il::LdLoca>(local_copy_variable));
+            L2Body* l2 = expr_builder().l2;
+            if (l2 != nullptr) {
+                l2->variable_registered(current_function_, foreach_variable);
+                l2->variable_registered(current_function_, local_copy_variable);
+            }
+            {
+                il::ILInstruction* parent = inst_to_replace->parent();
+                auto* address = make<il::LdLoca>(local_copy_variable);
+                parent->replace_with(address);
+                if (l2 != nullptr) l2->replaced(parent, address);
+            }
             body->instructions.insert(0, make<il::StLoc>(local_copy_variable, make<il::LdLoc>(foreach_variable)));
+            if (l2 != nullptr) l2->inserted(body, 0);
             body->instructions.insert(0, make<il::StLoc>(foreach_variable, inst_to_replace));
+            if (l2 != nullptr) l2->inserted(body, 0);
             break;
         }
         case RequiredGetCurrentTransformation::Deconstruction:
             use_var = true;
-            designation = translate_deconstruction_designation(cast_inst<il::DeconstructInstruction>(body->instructions[0]), true);
+            designation = translate_deconstruction_designation(cast_inst<il::DeconstructInstruction>(body->instructions[0]), true, expr_builder().l2);
             break;
         case RequiredGetCurrentTransformation::NoForeach: break;
     }
@@ -845,7 +917,7 @@ Statement* StatementBuilder::transform_to_foreach(il::BlockContainer* container,
     return foreach_stmt;
 }
 
-syntax::VariableDesignation* StatementBuilder::translate_deconstruction_designation(il::DeconstructInstruction* inst, bool is_foreach) {
+syntax::VariableDesignation* StatementBuilder::translate_deconstruction_designation(il::DeconstructInstruction* inst, bool is_foreach, L2Body* l2) {
     il::Block* assignments = inst->assignments();
     int assignment_pos = 0;
 
@@ -857,7 +929,10 @@ syntax::VariableDesignation* StatementBuilder::translate_deconstruction_designat
                 auto* designation = make<syntax::SingleVariableDesignation>();
                 if (sub_pattern->has_designator()) {
                     il::ILVariable* v = cast_inst<il::StLoc>(assignments->instructions[assignment_pos])->variable();
-                    if (is_foreach) v->set_kind(il::VariableKind::ForeachLocal);
+                    if (is_foreach) {
+                        v->set_kind(il::VariableKind::ForeachLocal);
+                        if (l2 != nullptr) l2->variable_changed(v);
+                    }
                     designation->set_identifier(v->name.value_or(std::string()));
                     designation->add_annotation(make<ILVariableResolveResult>(v));
                     assignment_pos++;

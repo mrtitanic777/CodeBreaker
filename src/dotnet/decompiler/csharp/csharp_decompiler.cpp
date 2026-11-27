@@ -19,6 +19,7 @@
 #include "dotnet/decompiler/csharp/sequence_point_builder.hpp"
 #include "dotnet/decompiler/csharp/resolver/member_lookup.hpp"
 #include "dotnet/decompiler/csharp/statement_builder.hpp"
+#include "dotnet/decompiler/csharp/l2_body.hpp"
 #include "dotnet/decompiler/csharp/syntax/syntax.hpp"
 #include "dotnet/decompiler/csharp/syntax/syntax_extensions.hpp"
 #include "dotnet/decompiler/csharp/syntax/type_system_ast_builder.hpp"
@@ -2166,8 +2167,25 @@ void CSharpDecompiler::decompile_body(const IMethod* method, EntityDeclaration* 
 
         // Generate C# AST only if bodies should be displayed.
         if (local_settings.decompile_member_bodies) {
+            // Stage 14: the builders read the body as L2 (the ILAst lowered and lifted back, l2_body.hpp), and the lifted ILAst where they
+            // do not read a kind from L2 yet. The declaration's annotations then name the lifted function, and each parameter's the lifted
+            // variable where the function still has it (they were made before the transforms, as upstream makes them).
+            if (l2_lane_ == nullptr) l2_lane_ = std::make_unique<L2Lane>();
+            std::unique_ptr<L2Body> l2 = L2Body::make(*function, *l2_lane_);
+            if (l2 != nullptr) {
+                il::ILFunction* original = function;
+                function = l2->function();
+                entity_decl->replace_annotation(original, function);
+                for (ParameterDeclaration* parameter : entity_decl->get_children(Slots::parameter)) {
+                    for (il::ArenaObject* a : parameter->annotations()) {
+                        auto* rr = dynamic_cast<ILVariableResolveResult*>(a);
+                        if (rr == nullptr) continue;
+                        if (il::ILVariable* now = l2->lifted(rr->variable)) rr->variable = now;
+                    }
+                }
+            }
             add_defines_for_conditional_attributes(function, decompile_run);
-            StatementBuilder statement_builder(*type_system_, decompilation_context, function, local_settings, decompile_run, cancellation_token);
+            StatementBuilder statement_builder(*type_system_, decompilation_context, function, local_settings, decompile_run, cancellation_token, l2.get());
             body = statement_builder.convert_as_block(function->body());
 
             Statement* warning_anchor = body->statements().first_or_null();
