@@ -14,6 +14,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <iostream>
 #include <map>
 
@@ -479,4 +480,43 @@ CB_TEST("translate.l2.decompiler_documents_lose_nothing", [] {
     for (const auto& [k, n] : where) std::cout << "  " << n << " x " << k << "\n";
     CB_CHECK_EQ(docs, 93u + 46u);
     CB_CHECK_EQ(same, docs);
+});
+
+// A node's slots by their document names: found and typed, changed through the pointer (the document then says the change), the
+// expression's type among them, the names in the document's order, and nothing for a name the kind does not have.
+CB_TEST("translate.l2.slots_by_name", [] {
+    Arena arena;
+    ir::Node* n = l2::from_json(arena, parse(R"({"node":"Binary","op":"+","type":{"kind":"i32"},"left":{"node":"Name","sym":{"kind":"local","name":"a"},"type":{"kind":"i32"}},"right":{"node":"Lit","value":2,"type":{"kind":"i32"}}})"));
+    const l2::SlotPtr left_slot = l2::slot(*n, "left");
+    ir::Node** const* left = std::get_if<ir::Node**>(&left_slot);
+    CB_CHECK(left != nullptr && **left != nullptr);
+    CB_CHECK(ir::is<ir::Name>(**left));
+    CB_CHECK(!std::holds_alternative<std::monostate>(l2::slot(*n, "op")));
+    const l2::SlotPtr type = l2::slot(*n, "type");
+    CB_CHECK(std::holds_alternative<ir::TypeP*>(type));
+    CB_CHECK(std::holds_alternative<std::monostate>(l2::slot(*n, "nothing")));
+    // a change through the slot is the tree's own: the document says it
+    const l2::SlotPtr right = l2::slot(*n, "right");
+    *std::get<ir::Node**>(right) = **left;
+    CB_CHECK_EQ(l2::to_json(*n).at("right").at("node").get<std::string>(), std::string("Name"));
+    const std::vector<std::string_view> keys = l2::slot_keys(*n);
+    CB_CHECK(!keys.empty() && keys.front() == "type");
+    CB_CHECK(std::find(keys.begin(), keys.end(), std::string_view("left")) != keys.end());
+    // every slot a document of the decompiler's writes is found by its name
+    const std::string all = cb::fs::read_text(cb::testing::data_path("translate/testdata/l2_decompiler_lz32.jsonl"));
+    std::size_t looked = 0;
+    for (const std::string_view line : cb::text::lines(all)) {
+        if (cb::text::trim(line).empty()) continue;
+        Arena a;
+        for (ir::Node* x : ir::walk(l2::from_json(a, cb::json::parse(line)))) {
+            const Json written = l2::to_json(*x);   // (held: items() views it)
+            for (const auto& [k, v] : written.items()) {
+                if (k == "node" || k == "line" || k == "col" || k == "origin") continue;
+                ++looked;
+                CB_CHECK(!std::holds_alternative<std::monostate>(l2::slot(*x, k)));
+            }
+        }
+        if (looked > 5000) break;   // (enough documents to cover the kinds and slots they use)
+    }
+    CB_CHECK(looked > 50);
 });

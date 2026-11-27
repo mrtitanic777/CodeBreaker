@@ -881,6 +881,44 @@ template <class V> void describe(ir::Binary& k, V& v) {
     v.maybe("signed", k.is_signed);
 }
 
+// Finds a slot by its document name (or lists the names), as the Writer and Reader walk them: the one description of each kind.
+class Finder {
+public:
+    Finder(std::string_view want, std::vector<std::string_view>* keys) : want_(want), keys_(keys) {}
+    SlotPtr found;
+
+    void child(const char* key, Node*& v) { hit(key, v); }
+    void children(const char* key, std::vector<Node*>& v) { hit(key, v); }
+    void nodes(const char* key, std::vector<Node*>& v) { hit(key, v); }
+    void children_unless_absent(const char* key, std::vector<Node*>& v, bool) { hit(key, v); }
+    void suite(const char* key, ir::Suite& v) { hit(key, v); }
+    void type(const char* key, ir::TypeP& v) { hit(key, v); }
+    void types(const char* key, std::vector<ir::TypeP>& v) { hit(key, v); }
+    void sym(const char* key, ir::SymP& v) { hit(key, v); }
+    void text(const char* key, std::optional<std::string>& v) { hit(key, v); }
+    void texts(const char* key, std::vector<std::string>& v) { hit(key, v); }
+    void flag(const char* key, bool& v) { hit(key, v); }
+    void maybe(const char* key, std::optional<bool>& v) { hit(key, v); }
+    void integer(const char* key, std::optional<std::int64_t>& v) { hit(key, v); }
+    void unsigned_integer(const char* key, std::optional<std::uint64_t>& v) { hit(key, v); }
+    void count(const char* key, std::uint32_t& v) { hit(key, v); }
+    void overflow(const char* key, std::optional<ir::Overflow>& v) { hit(key, v); }
+    void memory(const char* key, std::optional<ir::MemoryModel>& v) { hit(key, v); }
+    void value(const char* key, ir::LitValue& v) { hit(key, v); }
+    void typeargs(const char* key, std::vector<ir::TypeArg>& v) { hit(key, v); }
+    void target(const char* key, std::optional<ir::CompilerTarget>& v) { hit(key, v); }
+    void plain(const char* key, std::string& v) { hit(key, v); }   // (an operator: always there)
+
+private:
+    template <class T> void hit(const char* key, T& v) {
+        if (keys_ != nullptr) keys_->push_back(key);
+        if (std::holds_alternative<std::monostate>(found) && want_ == key) found = &v;
+    }
+    std::string_view want_;
+    std::vector<std::string_view>* keys_;
+};
+void describe_op(const char* key, std::string& op, Finder& v) { v.plain(key, op); }
+
 Json node_json(const Node& node) {
     Json j = Json::object();
     j["node"] = std::string(ir::kind_name(node));
@@ -912,6 +950,21 @@ Node* node_from(Arena& arena, const Json& j) {
 }  // namespace
 
 Json to_json(const ir::Node& node) { return node_json(node); }
+
+SlotPtr slot(ir::Node& node, std::string_view key) {
+    if (key == "type" && ir::category(node) == ir::Category::Expression) return &node.type;
+    Finder f(key, nullptr);
+    ir::visit(node, [&](auto& k) { describe(k, f); });
+    return f.found;
+}
+
+std::vector<std::string_view> slot_keys(const ir::Node& node) {
+    std::vector<std::string_view> keys;
+    if (ir::category(node) == ir::Category::Expression) keys.push_back("type");
+    Finder f("", &keys);
+    ir::visit(const_cast<ir::Node&>(node), [&](auto& k) { describe(k, f); });
+    return keys;
+}
 
 ir::Node* from_json(Arena& arena, const Json& doc) { return node_from(arena, doc); }
 

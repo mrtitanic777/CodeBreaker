@@ -28,6 +28,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <variant>
 #include <vector>
 
 #include "core/arena.hpp"
@@ -53,6 +54,22 @@ Json to_json(const ir::Node& node);
 // The tree an L2 document describes, its nodes made in `arena`. FormatError for a document that is not an object with a
 // known "node" kind, or a slot that holds the wrong kind of value.
 ir::Node* from_json(Arena& arena, const Json& doc);
+
+// ---- slots by name ------------------------------------------------------------------------------------------------
+//
+// A node's members by the names its document gives them, for code that walks the tree as the document names its parts (the C back
+// end's passes, written over documents first): `slot(node, "cond")` points at the member, typed; nothing when the kind has no such
+// slot. The node's "type" is an expression's own type. The names and the members are those the document reader and writer use (one
+// description per kind, l2.cpp), so a slot found here is one `to_json` writes.
+//
+//     if (auto* c = std::get_if<ir::Node**>(&l2::slot(*n, "cond"))) ... **c ...
+using SlotPtr = std::variant<std::monostate, ir::Node**, std::vector<ir::Node*>*, ir::Suite*, ir::TypeP*, std::vector<ir::TypeP>*, ir::SymP*,
+                             std::optional<std::string>*, std::vector<std::string>*, bool*, std::optional<bool>*, std::optional<std::int64_t>*,
+                             std::optional<std::uint64_t>*, std::uint32_t*, std::optional<ir::Overflow>*, std::optional<ir::MemoryModel>*,
+                             ir::LitValue*, std::vector<ir::TypeArg>*, std::optional<ir::CompilerTarget>*, std::string*>;
+SlotPtr slot(ir::Node& node, std::string_view key);
+// The node's slot names, in the order its document writes them.
+std::vector<std::string_view> slot_keys(const ir::Node& node);
 
 // ---- the module model -----------------------------------------------------------------------------------------------
 
