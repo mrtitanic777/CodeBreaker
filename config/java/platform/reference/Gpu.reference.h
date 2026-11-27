@@ -1,6 +1,7 @@
 // Gpu.h -- what the OpenGL 1.x layer (GL11.cpp) asks of a graphics API. GL11.cpp is the whole GL state machine and knows no
-// graphics API; one backend file carries this out on one API: GpuD3D9.cpp (Direct3D 9: the Xbox 360 and the PC) or GpuD3D11.cpp
-// (Direct3D 11, the PC). A port to another API is one more file of these functions; the GL side is not touched.
+// graphics API; one backend file carries this out on one API: GpuD3D9.cpp (Direct3D 9: the Xbox 360 and the PC), GpuD3D10.cpp,
+// GpuD3D11.cpp or GpuD3D12.cpp (Direct3D 10, 11, 12: the PC). A port to another API is one more file of these functions; the GL
+// side is not touched.
 //
 // The layer hands over finished work: vertices already in one format, render state already decided (blend, depth, cull, bias,
 // scissor, viewport in the API's top-left pixels), the two shader stages' constants already computed, textures already in ARGB.
@@ -19,7 +20,7 @@ namespace gpu {
 struct Vertex {
 	float x, y, z;
 	float nx, ny, nz;
-	unsigned int color;   // ARGB (0xAARRGGBB): Direct3D 9's D3DCOLOR, Direct3D 11's B8G8R8A8_UNORM
+	unsigned int color;   // ARGB (0xAARRGGBB): Direct3D 9's D3DCOLOR, Direct3D 11's and 12's B8G8R8A8_UNORM
 	float u, v;           // texture unit 0
 	float u2, v2;         // texture unit 1
 	float fnx, fny, fnz;  // the primitive's provoking normal and colour (flat shading)
@@ -51,7 +52,7 @@ struct Sampler {
 };
 
 // The constants both shader stages read, laid out as the shaders declare them (GL11.cpp's shader comments name each register).
-const int kVSConsts = 28, kPSConsts = 4;   // float4s
+const int kVSConsts = 37, kPSConsts = 4;   // float4s
 struct Constants {
 	float vs[kVSConsts * 4];
 	float ps[kPSConsts * 4];
@@ -68,7 +69,7 @@ struct Bindings {
 
 // ---------------------------------------------------------------- the device
 bool ready();                 // a device to draw with, shaders built (GL calls before it are kept as state only)
-const char* name();           // "Direct3D 9", "Direct3D 11"
+const char* name();           // "Direct3D 9" .. "Direct3D 12"
 int  targetWidth();           // the frame being drawn
 int  targetHeight();
 void forgetState();           // the device's state is unknown (new or reset device): the next draw sets everything

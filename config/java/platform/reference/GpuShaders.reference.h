@@ -1,7 +1,7 @@
 // GpuShaders.h -- GL's fixed-function pipeline as HLSL, the part every Direct3D backend shares: the vertex stage (transform, the
 // texture matrices, two-light lighting with the colour material, flat shading's provoking values) and the fragment stage (two
 // texture environments, the alpha test, fog). A backend wraps these in its own entry points -- Direct3D 9's shader model 3
-// registers and semantics, Direct3D 11's constant buffers and SV_ semantics -- so the maths is written once.
+// registers and semantics, Direct3D 10's, 11's and 12's constant buffers and SV_ semantics -- so the maths is written once.
 //
 // The constants are named as GL11.cpp fills them (gpu::Constants): the vertex stage's 28 float4s, the fragment stage's 4.
 #ifndef GPU_SHADERS_H
@@ -10,29 +10,38 @@
 namespace j2xgl {
 namespace gpu {
 
-// The constants (gpu::Constants), as each backend declares them -- Direct3D 9 as c-registers, Direct3D 11 as a constant buffer,
-// both in this order (a float4x4 is four float4s):
+// The constants (gpu::Constants), as each backend declares them -- Direct3D 9 as c-registers, Direct3D 10 to 12 as constant
+// buffers, all in this order (a float4x4 is four float4s):
 //   vertex stage   c0 gWVP (model-view-projection, GL's clip space mapped to the API's)  c4 gMV (the modelview)
 //                  c8 gT0, c12 gT1 (texture matrices)  c16 gLit (x lighting, y/z lights 0/1 on, w colour material: 0 off
 //                  1 AMBIENT 2 DIFFUSE 3 both)  c17 gAmb (the model ambient; w normalize)  c18-20 gL0p/gL0d/gL0a (light 0:
 //                  eye position, w 0 a direction; diffuse; ambient)  c21-23 gL1p/gL1d/gL1a  c24 gMa, c25 gMd (the material)
 //                  c26 gTint (a colourless list: the colour at glCallList)  c27 gShade (x flat shading)
+//                  c28 gGen (unit 0's texture coordinate generation for S T R Q: 0 off, 1 object linear, 2 eye linear)
+//                  c29-32 gGenO (the object planes), c33-36 gGenE (the eye planes, already in eye space)
 //   fragment stage c0 gTex (x/y units on, z/w environments: 0 MODULATE 1 REPLACE 2 ADD 3 DECAL)  c1 gAlpha (x on, y the
 //                  comparison 0..7 = GL_NEVER..GL_ALWAYS, z the reference)  c2 gFog (x on, y 0 LINEAR 1 EXP 2 EXP2, z start,
 //                  w end)  c3 gFogC (rgb the colour, a the density)
 
-// The vertex stage. glVertex fills the clip position, the lit colour, both texture coordinates and the fog distance.
+// The vertex stage. glVertex fills the clip position, the lit colour, both texture coordinates and the fog distance. Unit 0's
+// coordinate is all four of s t r q after its matrix: the fragment stage's entry point samples at s/q, t/q, per pixel, as GL's
+// projective texturing does (generated coordinates and texture matrices with a perspective in them: Beta 1.9's end portal).
 static const char* const kGlVertexStage =
 	"float3 toLight(float4 lp, float3 e) { float3 d = lp.w == 0 ? lp.xyz : lp.xyz - e; float l = dot(d, d); return l > 1e-12 ? d * rsqrt(l) : float3(0, 0, 0); }\n"
 	"void glVertex(float3 p, float3 vn, float4 vc, float2 t0, float2 t1, float3 fn, float4 fc,\n"
-	"              out float4 op, out float4 oc, out float2 ot0, out float2 ot1, out float ofz) {\n"
+	"              out float4 op, out float4 oc, out float4 ot0, out float2 ot1, out float ofz) {\n"
 	"  float3 n = gShade.x > 0.5 ? fn : vn;\n"
 	"  float4 c = gShade.x > 0.5 ? fc : vc;\n"
 	"  float4 P = float4(p, 1);\n"
 	"  op = mul(P, gWVP);\n"
 	"  float4 e = mul(P, gMV);\n"
 	"  ofz = abs(e.z);\n"                 // GL's fog coordinate: the eye-plane distance
-	"  float4 a = mul(float4(t0, 0, 1), gT0); ot0 = a.xy / a.w;\n"
+	"  float4 g = float4(t0, 0, 1);\n"
+	"  if (gGen.x > 0.5) g.x = gGen.x < 1.5 ? dot(P, gGenO[0]) : dot(e, gGenE[0]);\n"
+	"  if (gGen.y > 0.5) g.y = gGen.y < 1.5 ? dot(P, gGenO[1]) : dot(e, gGenE[1]);\n"
+	"  if (gGen.z > 0.5) g.z = gGen.z < 1.5 ? dot(P, gGenO[2]) : dot(e, gGenE[2]);\n"
+	"  if (gGen.w > 0.5) g.w = gGen.w < 1.5 ? dot(P, gGenO[3]) : dot(e, gGenE[3]);\n"
+	"  ot0 = mul(g, gT0);\n"
 	"  float4 b = mul(float4(t1, 0, 1), gT1); ot1 = b.xy / b.w;\n"
 	"  float4 col = c * gTint;\n"
 	"  if (gLit.x > 0.5) {\n"

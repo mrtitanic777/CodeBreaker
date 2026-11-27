@@ -15,6 +15,8 @@ CB_TEST("java.cmake.template", [] {
     CB_CHECK(t.find("project(MinecraftBeta CXX)") != std::string::npos);
     CB_CHECK(t.find("add_executable(MinecraftBeta WIN32 ${J2X_SOURCES})") != std::string::npos);   // (a windowed program: no console)
     CB_CHECK(t.find("/ENTRY:mainCRTStartup") != std::string::npos);
+    // every thread a 16 MB stack on Windows, either compiler (Alpha's world generation overflows MinGW's 2 MB, MSVC's 1 MB)
+    CB_CHECK(t.find("/STACK:16777216") != std::string::npos && t.find("-Wl,--stack,16777216") != std::string::npos);
     CB_CHECK(t.find("{name}") == std::string::npos);                       // every placeholder filled
     CB_CHECK(t.find("${CMAKE_CURRENT_SOURCE_DIR}/*.cpp") != std::string::npos);   // CMake's own variables untouched
     CB_CHECK(t.find("$<TARGET_FILE_DIR:MinecraftBeta>/Content") != std::string::npos);
@@ -40,6 +42,12 @@ CB_TEST("java.cmake.template", [] {
     const std::string e = java::cmake::cmakelists_text("Game", "d3d11");
     CB_CHECK(e.find("target_link_libraries(Game PRIVATE d3d11 dxgi)") != std::string::npos);
     CB_CHECK(e.find("OpenGL") == std::string::npos && e.find("PRIVATE d3d9)") == std::string::npos);
+
+    // Direct3D 10 and 12: theirs and dxgi
+    CB_CHECK(java::cmake::cmakelists_text("Game", "d3d10").find("target_link_libraries(Game PRIVATE d3d10 dxgi)") != std::string::npos);
+    const std::string twelve = java::cmake::cmakelists_text("Game", "d3d12");
+    CB_CHECK(twelve.find("target_link_libraries(Game PRIVATE d3d12 dxgi)") != std::string::npos);
+    CB_CHECK(twelve.find("OpenGL") == std::string::npos && twelve.find("PRIVATE d3d11") == std::string::npos);
 });
 
 }  // namespace

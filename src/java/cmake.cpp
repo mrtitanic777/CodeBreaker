@@ -35,8 +35,13 @@ endif()
 {graphics}target_link_libraries({name} PRIVATE vorbisfile vorbis ogg)   # the game's .ogg sounds and music
 if(WIN32)
   target_link_libraries({name} PRIVATE ws2_32)
+  # A 16 MB stack for every thread (Windows gives each thread the size the program asks for; MSVC's default is 1 MB, MinGW's 2): the
+  # converted methods' frames are larger than the JVM's, and Alpha's world generation recurses deep enough to overflow 2 MB at times
+  # and 1 MB always (Linux threads already get 8 MB). Reserved address space only: what a thread never touches costs nothing.
   if(MSVC)
-    target_link_options({name} PRIVATE /ENTRY:mainCRTStartup)   # (a windowed program whose entry is main, not WinMain)
+    target_link_options({name} PRIVATE /ENTRY:mainCRTStartup /STACK:16777216)   # (a windowed program whose entry is main, not WinMain)
+  else()
+    target_link_options({name} PRIVATE -Wl,--stack,16777216)
   endif()
 endif()
 
@@ -53,13 +58,19 @@ target_link_libraries({name} PRIVATE OpenGL::GL OpenGL::GLU)
 constexpr std::string_view kD3d9 = R"CMK(target_link_libraries({name} PRIVATE d3d9)   # Direct3D 9 (the shader compiler is d3dcompiler_47.dll, loaded at run time)
 )CMK";
 
+constexpr std::string_view kD3d10 = R"CMK(target_link_libraries({name} PRIVATE d3d10 dxgi)   # Direct3D 10 (the shader compiler is d3dcompiler_47.dll, loaded at run time)
+)CMK";
+
 constexpr std::string_view kD3d11 = R"CMK(target_link_libraries({name} PRIVATE d3d11 dxgi)   # Direct3D 11 (the shader compiler is d3dcompiler_47.dll, loaded at run time)
+)CMK";
+
+constexpr std::string_view kD3d12 = R"CMK(target_link_libraries({name} PRIVATE d3d12 dxgi)   # Direct3D 12 (the shader compiler is d3dcompiler_47.dll, loaded at run time)
 )CMK";
 
 }  // namespace
 
 std::string cmakelists_text(std::string_view name, std::string_view graphics) {
-    const std::string_view link = graphics == "d3d9" ? kD3d9 : graphics == "d3d11" ? kD3d11 : kOpenGl;
+    const std::string_view link = graphics == "d3d9" ? kD3d9 : graphics == "d3d10" ? kD3d10 : graphics == "d3d11" ? kD3d11 : graphics == "d3d12" ? kD3d12 : kOpenGl;
     const std::string text = text::replace_all(kTemplate, "{graphics}", link);
     return text::replace_all(text, "{name}", name);
 }

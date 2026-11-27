@@ -836,7 +836,7 @@ int port_tool(const ContextP& ctx, const cli::Args& a) {
     options.platform_refs = true;
     options.graphics = a.value_or("graphics", "opengl");
     if (xbox && options.graphics != "opengl") jt_out("  (--graphics is the PC's: the Xbox 360 draws with its own Direct3D 9)");
-    if (!xbox) jt_out(std::format("  graphics: {}", options.graphics == "d3d9" ? "Direct3D 9" : options.graphics == "d3d11" ? "Direct3D 11" : "OpenGL"));
+    if (!xbox) jt_out(std::format("  graphics: {}", transpile::graphics_api_name(options.graphics)));
     if (const std::string configured = ctx->config().text("xbox360_sdk"); !configured.empty()) options.sdk_configured = fs::from_text(configured);
     if (const auto overlays = ctx->config().path("java_overlays")) options.overlays_root = *overlays;
     options.mc_version = p.mc_version;

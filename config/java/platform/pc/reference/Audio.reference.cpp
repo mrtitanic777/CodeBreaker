@@ -224,6 +224,16 @@ void mix(void*, Uint8* bytes, int len) {
 	}
 }
 
+// The device is closed before the program's statics are destroyed: SDL's audio thread runs mix() until the device closes, and the
+// game's exit (System.exit, a script's quit) destroys g_sources and the clips under it otherwise -- a use-after-free on the
+// audio thread as the process ends. (Registered after g_sources is made, so it runs before g_sources is destroyed.)
+void closeDevice() {
+	if (!g_dev) return;
+	SDL_CloseAudioDevice(g_dev);   // (returns once the callback has stopped)
+	g_dev = 0;
+	if (g_dump) { std::fclose(g_dump); g_dump = 0; }
+}
+
 void openDevice() {
 	if (g_dev) return;
 	if (!SDL_WasInit(SDL_INIT_AUDIO) && SDL_InitSubSystem(SDL_INIT_AUDIO) != 0) {
@@ -245,6 +255,8 @@ void openDevice() {
 	const char* dump = std::getenv("J2X_AUDIO_DUMP");
 	if (dump && *dump && (g_dump = std::fopen(dump, "wb")) != 0) dumpHeader(0);
 	g_log = std::getenv("J2X_AUDIO_LOG") != 0;
+	static bool registered = false;
+	if (!registered) { registered = true; std::atexit(closeDevice); }
 	SDL_PauseAudioDevice(g_dev, 0);
 }
 

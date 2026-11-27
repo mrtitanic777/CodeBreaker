@@ -68,6 +68,9 @@ void glLightf(int light, int p, float v) { ::glLightf(light, p, v); }
 void glLightModel(int p, FloatBuffer* v) { ::glLightModelfv(p, (const GLfloat*)at(v)); }
 void glLightModelf(int p, float v) { ::glLightModelf(p, v); }
 void glTexEnvi(int t, int p, int v) { ::glTexEnvi(t, p, v); }
+void glTexGeni(int c, int p, int v) { ::glTexGeni(c, p, v); }
+void glTexGenf(int c, int p, float v) { ::glTexGenf(c, p, v); }
+void glTexGen(int c, int p, FloatBuffer* v) { ::glTexGenfv(c, p, (const GLfloat*)at(v)); }
 
 int glGenTextures() { GLuint id = 0; ::glGenTextures(1, &id); return (int)id; }
 void glGenTextures(IntBuffer* buf) { ::glGenTextures(remainingInts(buf), (GLuint*)at(buf)); }

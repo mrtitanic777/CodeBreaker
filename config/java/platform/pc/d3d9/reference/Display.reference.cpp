@@ -223,7 +223,8 @@ void swapBuffers() {
 
 // The automation hook -- a look at what the port does without a person at the screen (tests, CI). The same commands as the
 // OpenGL Display: J2X_SHOT_FRAME=N saves frame N as j2x_shot.bmp; J2X_SCRIPT="F:cmd;..." runs `click X Y`, `key NAME`, `hold NAME`,
-// `release NAME`, `move DX DY`, `shot FILE.bmp`, `quit` at frame F.
+// `release NAME`, `move DX DY`, `resize W H`, `shot FILE.bmp`,
+// `quit` at frame F.
 static void save_frame(const char* file) {
 	if (!g_pd3dDevice) return;
 	IDirect3DSurface9* back = 0;
@@ -277,6 +278,10 @@ static void run_command(const std::string& cmd) {
 		SDL_PushEvent(&e);
 		e.type = SDL_MOUSEBUTTONUP; e.button.state = SDL_RELEASED;
 		SDL_PushEvent(&e);
+	} else if (std::sscanf(cmd.c_str(), "resize %d %d", &x, &y) == 2 && x > 0 && y > 0) {   // (the window, as a person drags it)
+		SDL_SetWindowSize(g_win, x, y);
+		Input::setDisplaySize(x, y);
+		g_needReset = true;
 	} else if (std::sscanf(cmd.c_str(), "move %d %d", &x, &y) == 2) {
 		SDL_Event e;
 		std::memset(&e, 0, sizeof(e));

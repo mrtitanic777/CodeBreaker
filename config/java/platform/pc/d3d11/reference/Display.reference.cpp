@@ -3,7 +3,8 @@
 // handed to the GL layer's Direct3D 11 backend (GpuD3D11.cpp). A frame is drawn, then update() presents it.
 //
 // The device is the card's (feature level 11_0 down to 10_0), else WARP, Windows' own software rasterizer (a virtual machine or
-// a remote desktop without a Direct3D 10 card still runs the game). A resized window resizes the swap chain's buffers and the
+// a remote desktop without a Direct3D 10 card still runs the game; J2X_D3D_DEBUG=1 makes it with the debug layer, whose
+// errors and warnings the backend prints). A resized window resizes the swap chain's buffers and the
 // depth buffer; a removed device (a driver update or crash) is reported, as Direct3D 11 cannot get it back without remaking
 // every texture.
 #include "stdafx.h"
@@ -42,6 +43,11 @@ namespace {
 	bool g_vsync = true;
 
 	template<class T> void release(T*& p) { if (p) { p->Release(); p = 0; } }
+
+	// The device is released before the process ends, however it ends (the game's System.exit, the script's quit, the last thread
+	// returning): the GPU's work finished and every object let go while the process can still run it. A process that exits with
+	// a live device leaves that to the driver as Windows tears the process down, and Direct3D 12's has been seen to hang there.
+	void release_at_exit() { Display::destroy(); }
 
 	// The views on the swap chain's buffer and a depth buffer of its size, handed to the backend.
 	bool make_targets(int w, int h) {
@@ -125,12 +131,14 @@ void setDisplayMode(const DisplayMode& mode) {
 	}
 }
 
+// A window or device that cannot be made ends the program (exit code 3), after saying why: LWJGL's Display.create throws there,
+// and the game has nothing to draw with.
 void create() {
 	if (g_win) return;
 	SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
 	if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_EVENTS | SDL_INIT_GAMECONTROLLER) != 0) {
 		std::fprintf(stderr, "[display] SDL_Init failed: %s\n", SDL_GetError());
-		return;
+		std::exit(3);
 	}
 	const int w = g_mode.getWidth() > 0 ? g_mode.getWidth() : 854;
 	const int h = g_mode.getHeight() > 0 ? g_mode.getHeight() : 480;
@@ -138,13 +146,13 @@ void create() {
 	                         (std::getenv("J2X_HIDDEN") ? SDL_WINDOW_HIDDEN : SDL_WINDOW_SHOWN) | SDL_WINDOW_RESIZABLE);   // (J2X_HIDDEN: a test run off-screen)
 	if (!g_win) {
 		std::fprintf(stderr, "[display] SDL_CreateWindow failed: %s\n", SDL_GetError());
-		return;
+		std::exit(3);
 	}
 	SDL_SysWMinfo info;
 	SDL_VERSION(&info.version);
 	if (!SDL_GetWindowWMInfo(g_win, &info)) {
 		std::fprintf(stderr, "[display] SDL_GetWindowWMInfo failed: %s\n", SDL_GetError());
-		return;
+		std::exit(3);
 	}
 	g_hwnd = info.info.win.window;
 	DXGI_SWAP_CHAIN_DESC sd;
@@ -159,15 +167,16 @@ void create() {
 	sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 	static const D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_0, D3D_FEATURE_LEVEL_10_1, D3D_FEATURE_LEVEL_10_0 };
 	D3D_FEATURE_LEVEL got = D3D_FEATURE_LEVEL_10_0;
+	const UINT flags = std::getenv("J2X_D3D_DEBUG") ? D3D11_CREATE_DEVICE_DEBUG : 0;   // (Direct3D's validation, the Graphics Tools feature)
 	// The card's device, else WARP (Windows' software rasterizer): the game runs where there is no Direct3D 10 card at all.
-	HRESULT hr = D3D11CreateDeviceAndSwapChain(0, D3D_DRIVER_TYPE_HARDWARE, 0, 0, levels, 3, D3D11_SDK_VERSION, &sd, &g_swap, &g_dev, &got, &g_ctx);
+	HRESULT hr = D3D11CreateDeviceAndSwapChain(0, D3D_DRIVER_TYPE_HARDWARE, 0, flags, levels, 3, D3D11_SDK_VERSION, &sd, &g_swap, &g_dev, &got, &g_ctx);
 	if (FAILED(hr)) {
 		std::fprintf(stderr, "[display] no Direct3D 11 hardware device (0x%08x); using WARP\n", (unsigned)hr);
-		hr = D3D11CreateDeviceAndSwapChain(0, D3D_DRIVER_TYPE_WARP, 0, 0, levels, 3, D3D11_SDK_VERSION, &sd, &g_swap, &g_dev, &got, &g_ctx);
+		hr = D3D11CreateDeviceAndSwapChain(0, D3D_DRIVER_TYPE_WARP, 0, flags, levels, 3, D3D11_SDK_VERSION, &sd, &g_swap, &g_dev, &got, &g_ctx);
 	}
 	if (FAILED(hr) || !g_dev || !g_swap) {
 		std::fprintf(stderr, "[display] D3D11CreateDeviceAndSwapChain failed: 0x%08x\n", (unsigned)hr);
-		return;
+		std::exit(3);
 	}
 	IDXGIFactory* factory = 0;   // (Alt+Enter is the game's own F11, not DXGI's exclusive full screen)
 	if (SUCCEEDED(g_swap->GetParent(__uuidof(IDXGIFactory), (void**)&factory)) && factory) {
@@ -176,8 +185,10 @@ void create() {
 	}
 	if (!j2xgl::gpu::attachD3D11(g_dev, g_ctx) || !make_targets(w, h)) {
 		std::fprintf(stderr, "[display] the Direct3D 11 renderer could not start\n");
-		return;
+		std::exit(3);
 	}
+	static bool registered = false;
+	if (!registered) { registered = true; std::atexit(release_at_exit); }
 	j2xgl::glInit();
 	j2xgl::glViewport(0, 0, w, h);
 	Input::setDisplaySize(w, h);
@@ -217,6 +228,7 @@ void swapBuffers() {
 	if (!g_swap) return;
 	j2xgl::glFlush();   // the layer's pending batch and this frame's new display-list buffers
 	const HRESULT hr = g_swap->Present(g_vsync ? 1 : 0, 0);
+	j2xgl::gpu::frameDoneD3D11();
 	if ((hr == DXGI_ERROR_DEVICE_REMOVED || hr == DXGI_ERROR_DEVICE_RESET) && !g_removed) {
 		g_removed = true;
 		DbgPrintF("[display] the Direct3D 11 device was removed (0x%08x): reason 0x%08x\n", (unsigned)hr, (unsigned)g_dev->GetDeviceRemovedReason());
@@ -226,7 +238,8 @@ void swapBuffers() {
 
 // The automation hook -- a look at what the port does without a person at the screen (tests, CI). The same commands as the
 // OpenGL Display: J2X_SHOT_FRAME=N saves frame N as j2x_shot.bmp; J2X_SCRIPT="F:cmd;..." runs `click X Y`, `key NAME`, `hold NAME`,
-// `release NAME`, `move DX DY`, `shot FILE.bmp`, `quit` at frame F.
+// `release NAME`, `move DX DY`, `resize W H`, `shot FILE.bmp`,
+// `quit` at frame F.
 static void save_frame(const char* file) {
 	std::vector<unsigned int> px;
 	int w = 0, h = 0;
@@ -269,6 +282,10 @@ static void run_command(const std::string& cmd) {
 		SDL_PushEvent(&e);
 		e.type = SDL_MOUSEBUTTONUP; e.button.state = SDL_RELEASED;
 		SDL_PushEvent(&e);
+	} else if (std::sscanf(cmd.c_str(), "resize %d %d", &x, &y) == 2 && x > 0 && y > 0) {   // (the window, as a person drags it)
+		SDL_SetWindowSize(g_win, x, y);
+		Input::setDisplaySize(x, y);
+		g_needResize = true;
 	} else if (std::sscanf(cmd.c_str(), "move %d %d", &x, &y) == 2) {
 		SDL_Event e;
 		std::memset(&e, 0, sizeof(e));

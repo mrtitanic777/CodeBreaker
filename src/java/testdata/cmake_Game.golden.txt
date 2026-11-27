@@ -27,8 +27,13 @@ target_link_libraries(Game PRIVATE OpenGL::GL OpenGL::GLU)
 target_link_libraries(Game PRIVATE vorbisfile vorbis ogg)   # the game's .ogg sounds and music
 if(WIN32)
   target_link_libraries(Game PRIVATE ws2_32)
+  # A 16 MB stack for every thread (Windows gives each thread the size the program asks for; MSVC's default is 1 MB, MinGW's 2): the
+  # converted methods' frames are larger than the JVM's, and Alpha's world generation recurses deep enough to overflow 2 MB at times
+  # and 1 MB always (Linux threads already get 8 MB). Reserved address space only: what a thread never touches costs nothing.
   if(MSVC)
-    target_link_options(Game PRIVATE /ENTRY:mainCRTStartup)   # (a windowed program whose entry is main, not WinMain)
+    target_link_options(Game PRIVATE /ENTRY:mainCRTStartup /STACK:16777216)   # (a windowed program whose entry is main, not WinMain)
+  else()
+    target_link_options(Game PRIVATE -Wl,--stack,16777216)
   endif()
 endif()
 

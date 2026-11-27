@@ -47,6 +47,9 @@ using Progress = projects::Progress;   // per-class and per-stage progress lines
 // The C++ standard named by a label (`C++98`, `C++03`, `C++11`, `C++14`, `C++17`, `C++20`, `C++23`). UsageError for another label.
 emit::header::CppStd parse_standard(std::string_view label);
 
+// The API a --graphics value names: "OpenGL" for opengl, "Direct3D 11" for d3d11.
+std::string graphics_api_name(std::string_view graphics);
+
 // ---------------------------------------------------------------------------------------------- the translator
 
 // What the translator is asked to lower.
@@ -93,8 +96,8 @@ struct Options {
     // The target platform key ("xbox360", "pc_opengl", "pc_windows", "ps3" ...); empty for none. A console platform with no SDK
     // located is REFUSED (console::sdk::SdkNotFoundError): the converter ships no SDK headers.
     std::string platform;
-    // The PC's graphics API: "opengl" (the game's own OpenGL through SDL), "d3d9" or "d3d11" (the GL layer the Xbox 360 uses, on a
-    // Direct3D 9 device or a Direct3D 11 swap chain in the SDL window). Only the PC reads it.
+    // The PC's graphics API: "opengl" (the game's own OpenGL through SDL), "d3d9", "d3d10", "d3d11" or "d3d12" (the GL layer the
+    // Xbox 360 uses, on that Direct3D in the SDL window). Only the PC reads it.
     std::string graphics = "opengl";
     // The class names to treat as C++ value types; none: the target profile's.
     std::optional<typemap::NameSet> value_types;

@@ -89,11 +89,14 @@ static const char* const kVSHead =
 	"float4 gMa    : register(c24);\n"
 	"float4 gMd    : register(c25);\n"
 	"float4 gTint  : register(c26);\n"
-	"float4 gShade : register(c27);\n";
+	"float4 gShade : register(c27);\n"
+	"float4 gGen   : register(c28);\n"
+	"float4 gGenO[4] : register(c29);\n"
+	"float4 gGenE[4] : register(c33);\n";
 static const char* const kVSMain =
 	"void main(float3 p : POSITION, float3 vn : NORMAL, float4 vc : COLOR0, float2 t0 : TEXCOORD0, float2 t1 : TEXCOORD1,\n"
 	"          float3 fn : TEXCOORD2, float4 fc : COLOR1,\n"
-	"          out float4 op : POSITION, out float4 oc : COLOR0, out float2 ot0 : TEXCOORD0, out float2 ot1 : TEXCOORD1,\n"
+	"          out float4 op : POSITION, out float4 oc : COLOR0, out float4 ot0 : TEXCOORD0, out float2 ot1 : TEXCOORD1,\n"
 	"          out float ofz : TEXCOORD2) {\n"
 	"  glVertex(p, vn, vc, t0, t1, fn, fc, op, oc, ot0, ot1, ofz);\n"
 	"}\n";
@@ -105,9 +108,9 @@ static const char* const kPSHead =
 	"sampler2D s0 : register(s0);\n"
 	"sampler2D s1 : register(s1);\n";
 static const char* const kPSMain =
-	"float4 main(float4 c : COLOR0, float2 t0 : TEXCOORD0, float2 t1 : TEXCOORD1, float fz : TEXCOORD2) : COLOR {\n"
+	"float4 main(float4 c : COLOR0, float4 t0 : TEXCOORD0, float2 t1 : TEXCOORD1, float fz : TEXCOORD2) : COLOR {\n"
 	"  bool keep;\n"
-	"  float4 o = glFragment(c, tex2D(s0, t0), tex2D(s1, t1), fz, keep);\n"
+	"  float4 o = glFragment(c, tex2D(s0, t0.xy / t0.w), tex2D(s1, t1), fz, keep);\n"
 	"  clip(keep ? 1 : -1);\n"
 	"  return o;\n"
 	"}\n";

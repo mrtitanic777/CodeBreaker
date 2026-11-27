@@ -50,7 +50,7 @@
  "pc_windows/networking": "// TODO [PC (Windows / DirectX)]: Implement with Winsock2 (ws2_32.lib) -- WSAStartup, socket, connect, send, recv",
  "pc_windows/nio": "// TODO [PC (Windows / DirectX)]: Implement with D3D9/D3D11 (d3d9.lib) -- vertex buffers, malloc/free, VirtualAlloc",
  "pc_windows/reflection": "// TODO [PC (Windows / DirectX)]: Implement with RTTI ((built-in)) -- typeid, dynamic_cast, manual factory registry",
- "pc_windows/rendering": "// TODO [PC (Windows / DirectX)]: Implement with D3D9/D3D11 (d3d9.lib or d3d11.lib, d3dx9.lib) -- IDirect3DDevice9 or ID3D11Device, DXGI, HLSL shaders",
+ "pc_windows/rendering": "// TODO [PC (Windows / DirectX)]: Implement with D3D9/D3D10/D3D11/D3D12 (d3d9.lib, d3d10.lib, d3d11.lib or d3d12.lib) -- IDirect3DDevice9, ID3D10Device, ID3D11Device or ID3D12Device, DXGI, HLSL shaders",
  "pc_windows/system": "// TODO [PC (Windows / DirectX)]: Implement with Win32 (kernel32.lib) -- QueryPerformanceCounter, GetTickCount64, timeGetTime",
  "pc_windows/text": "// TODO [PC (Windows / DirectX)]: Implement with CRT ((built-in)) -- strftime, sprintf_s, std::locale",
  "pc_windows/threading": "// TODO [PC (Windows / DirectX)]: Implement with Win32 (kernel32.lib) -- CreateThread, _beginthreadex, InitializeCriticalSection",

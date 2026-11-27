@@ -13,6 +13,7 @@
 #include <d3d11.h>
 #include <d3dcompiler.h>
 #include <map>
+#include <set>
 #include <string>
 #include <vector>
 #include <string.h>
@@ -48,6 +49,25 @@ static UINT g_streamAt = 0;
 
 template<class T> static void _release(T*& p) { if (p) { p->Release(); p = 0; } }
 
+// J2X_D3D_DEBUG=1 (the Display made the device with the debug layer): the layer's errors and warnings on stderr, each kind once,
+// as frames are presented.
+static ID3D11InfoQueue* g_info = 0;
+static void _debugMessages() {
+	if (!g_info) return;
+	static std::set<int> said;
+	const UINT64 n = g_info->GetNumStoredMessages();
+	for (UINT64 i = 0; i < n; ++i) {
+		SIZE_T len = 0;
+		if (FAILED(g_info->GetMessage(i, 0, &len)) || !len) continue;
+		std::vector<char> buf(len);
+		D3D11_MESSAGE* m = (D3D11_MESSAGE*)&buf[0];
+		if (FAILED(g_info->GetMessage(i, m, &len))) continue;
+		if (m->Severity > D3D11_MESSAGE_SEVERITY_WARNING || !said.insert((int)m->ID).second) continue;
+		DbgPrintF("[J2X] Direct3D 11 debug layer (%s): %s\n", m->Severity <= D3D11_MESSAGE_SEVERITY_ERROR ? "error" : "warning", m->pDescription);
+	}
+	g_info->ClearStoredMessages();
+}
+
 // =========================================================================== the shaders
 // GL's pipeline (GpuShaders.h) in shader model 4: the constants as two constant buffers laid out in GL11.cpp's order (a float4x4
 // is four float4s, column-major as Direct3D 9's registers), the entry points with Direct3D 11's semantics.
@@ -56,11 +76,12 @@ static const char* const kVSHead =
 	"  float4x4 gWVP; float4x4 gMV; float4x4 gT0; float4x4 gT1;\n"
 	"  float4 gLit; float4 gAmb; float4 gL0p; float4 gL0d; float4 gL0a; float4 gL1p; float4 gL1d; float4 gL1a;\n"
 	"  float4 gMa; float4 gMd; float4 gTint; float4 gShade;\n"
+	"  float4 gGen; float4 gGenO[4]; float4 gGenE[4];\n"
 	"};\n";
 static const char* const kVSMain =
 	"void main(float3 p : POSITION, float3 vn : NORMAL, float4 vc : COLOR0, float2 t0 : TEXCOORD0, float2 t1 : TEXCOORD1,\n"
 	"          float3 fn : TEXCOORD2, float4 fc : COLOR1,\n"
-	"          out float4 op : SV_Position, out float4 oc : COLOR0, out float2 ot0 : TEXCOORD0, out float2 ot1 : TEXCOORD1,\n"
+	"          out float4 op : SV_Position, out float4 oc : COLOR0, out float4 ot0 : TEXCOORD0, out float2 ot1 : TEXCOORD1,\n"
 	"          out float ofz : TEXCOORD2) {\n"
 	"  glVertex(p, vn, vc, t0, t1, fn, fc, op, oc, ot0, ot1, ofz);\n"
 	"}\n";
@@ -71,9 +92,9 @@ static const char* const kPSHead =
 	"SamplerState samp0 : register(s0);\n"
 	"SamplerState samp1 : register(s1);\n";
 static const char* const kPSMain =
-	"float4 main(float4 pos : SV_Position, float4 c : COLOR0, float2 t0 : TEXCOORD0, float2 t1 : TEXCOORD1, float fz : TEXCOORD2) : SV_Target {\n"
+	"float4 main(float4 pos : SV_Position, float4 c : COLOR0, float4 t0 : TEXCOORD0, float2 t1 : TEXCOORD1, float fz : TEXCOORD2) : SV_Target {\n"
 	"  bool keep;\n"
-	"  float4 o = glFragment(c, tex0.Sample(samp0, t0), tex1.Sample(samp1, t1), fz, keep);\n"
+	"  float4 o = glFragment(c, tex0.Sample(samp0, t0.xy / t0.w), tex1.Sample(samp1, t1), fz, keep);\n"
 	"  clip(keep ? 1 : -1);\n"
 	"  return o;\n"
 	"}\n";
@@ -130,6 +151,8 @@ bool attachD3D11(ID3D11Device* device, ID3D11DeviceContext* context) {
 	if (vs) g_dev->CreateInputLayout(layout, 7, vs->GetBufferPointer(), vs->GetBufferSize(), &g_layout);
 	_release(vs);
 	_release(ps);
+	if (FAILED(g_dev->QueryInterface(__uuidof(ID3D11InfoQueue), (void**)&g_info))) g_info = 0;   // (there with the debug layer only)
+	if (g_info) DbgPrintF("[J2X] Direct3D 11: the debug layer is on\n");
 	g_vsCB = _makeBuffer(kVSConsts * 16, D3D11_USAGE_DYNAMIC, D3D11_BIND_CONSTANT_BUFFER, D3D11_CPU_ACCESS_WRITE, 0);
 	g_psCB = _makeBuffer(kPSConsts * 16, D3D11_USAGE_DYNAMIC, D3D11_BIND_CONSTANT_BUFFER, D3D11_CPU_ACCESS_WRITE, 0);
 	g_stream = _makeBuffer(kStreamBytes, D3D11_USAGE_DYNAMIC, D3D11_BIND_VERTEX_BUFFER, D3D11_CPU_ACCESS_WRITE, 0);
@@ -167,6 +190,8 @@ void detachD3D11() {
 	s_blends.clear(); s_depths.clear(); s_rasters.clear(); s_samplers.clear();
 	_release(g_vs); _release(g_ps); _release(g_layout); _release(g_vsCB); _release(g_psCB); _release(g_stream);
 	_release(g_rtv); _release(g_dsv); _release(g_back);
+	_debugMessages();
+	_release(g_info);
 	_release(g_ctx); _release(g_dev);
 }
 
@@ -461,6 +486,9 @@ bool readTexture(Texture t, int level, std::vector<unsigned int>& argb, int& w, 
 }
 
 // =========================================================================== the frame
+// The Display calls this after presenting a frame.
+void frameDoneD3D11() { _debugMessages(); }
+
 bool readFrame(std::vector<unsigned int>& argb, int& w, int& h) {
 	if (!g_back || !g_ctx) return false;
 	w = g_w; h = g_h;

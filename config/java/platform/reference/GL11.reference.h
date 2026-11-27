@@ -1,7 +1,8 @@
 // The OpenGL 1.x GRAPHICS LAYER -- namespace `j2xgl`, also named GL11 (what the game calls) and d3d9 (what the Xbox 360's platform
 // files call). One layer for every graphics API: GL11.cpp is GL's whole state machine and knows no API; a backend (Gpu.h)
-// draws with one -- GpuD3D9.cpp on Direct3D 9 (the Xbox 360, and the PC with --graphics d3d9), GpuD3D11.cpp on Direct3D 11 (the
-// PC with --graphics d3d11). A converted game's LWJGL OpenGL 1.x calls land here unchanged; the backends share one HLSL
+// draws with one -- GpuD3D9.cpp on Direct3D 9 (the Xbox 360, and the PC with --graphics d3d9), GpuD3D10.cpp, GpuD3D11.cpp and
+// GpuD3D12.cpp on Direct3D 10, 11 and 12 (the PC with --graphics d3d10, d3d11, d3d12). A converted game's LWJGL OpenGL 1.x calls
+// land here unchanged; the backends share one HLSL
 // description of GL's fixed-function pipeline (GpuShaders.h), so every API draws the same picture.
 //
 // It is the OpenGL 1.x state machine, written down: every call the PC's OpenGL layer (pc/reference/GL11.reference.h) declares is
@@ -24,8 +25,8 @@
 //     filter state, glCopyTexSubImage2D and glReadPixels from the frame.
 // A call it has no way to honour reports itself once (J2X_UNHANDLED) instead of doing nothing silently.
 //
-// The platform's Display makes the device and hands it to the backend (GpuD3D9.h: d3d9::glSetDevice; GpuD3D11.h:
-// j2xgl::gpu::attachD3D11), then calls glInit; after a device reset it calls glOnDeviceReset.
+// The platform's Display makes the device and hands it to the backend (GpuD3D9.h: d3d9::glSetDevice; GpuD3D10.h, GpuD3D11.h,
+// GpuD3D12.h: j2xgl::gpu::attachD3D10/11/12), then calls glInit; after a device reset it calls glOnDeviceReset.
 //
 // C++03: the Xbox 360's compiler builds this file.
 #ifndef GL11_H
@@ -83,6 +84,11 @@ namespace j2xgl {
 	const int GL_PERSPECTIVE_CORRECTION_HINT = 0x0C50, GL_FASTEST = 0x1101, GL_NICEST = 0x1102, GL_DONT_CARE = 0x1100;
 	const int GL_TEXTURE_ENV = 0x2300, GL_TEXTURE_ENV_MODE = 0x2200, GL_MODULATE = 0x2100, GL_REPLACE = 0x1E01,
 	          GL_DECAL = 0x2101, GL_ADD = 0x0104;
+	// texture coordinate generation
+	const int GL_S = 0x2000, GL_T = 0x2001, GL_R = 0x2002, GL_Q = 0x2003;
+	const int GL_TEXTURE_GEN_MODE = 0x2500, GL_OBJECT_PLANE = 0x2501, GL_EYE_PLANE = 0x2502;
+	const int GL_EYE_LINEAR = 0x2400, GL_OBJECT_LINEAR = 0x2401, GL_SPHERE_MAP = 0x2402;
+	const int GL_TEXTURE_GEN_S = 0x0C60, GL_TEXTURE_GEN_T = 0x0C61, GL_TEXTURE_GEN_R = 0x0C62, GL_TEXTURE_GEN_Q = 0x0C63;
 	const int GL_NO_ERROR = 0;
 	// glInterleavedArrays formats (early Indev's Tessellator draws from one interleaved FloatBuffer)
 	const int GL_V2F = 0x2A20, GL_V3F = 0x2A21, GL_C4UB_V2F = 0x2A22, GL_C4UB_V3F = 0x2A23, GL_C3F_V3F = 0x2A24, GL_N3F_V3F = 0x2A25,
@@ -172,6 +178,11 @@ namespace j2xgl {
 	void glLightModelf(int pname, float param);
 	void glLightModeli(int pname, int param);
 	void glTexEnvi(int target, int pname, int param);
+	// Texture coordinate generation: GL_OBJECT_LINEAR and GL_EYE_LINEAR for S, T, R and Q on unit 0 (GL_SPHERE_MAP, and unit 1,
+	// report themselves). An eye plane is taken through the inverse of the modelview at the call, as GL does.
+	void glTexGeni(int coord, int pname, int param);
+	inline void glTexGenf(int coord, int pname, float param) { glTexGeni(coord, pname, (int)param); }
+	void glTexGen(int coord, int pname, FloatBuffer* params);
 	inline void glTexEnvf(int target, int pname, float param) { glTexEnvi(target, pname, (int)param); }
 
 	// ------------------------------------------------------------------ textures

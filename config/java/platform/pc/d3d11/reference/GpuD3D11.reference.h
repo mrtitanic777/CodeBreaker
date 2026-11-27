@@ -19,6 +19,7 @@ namespace gpu {
 	// The frame's colour target (and its texture, for reading the frame back) and depth target, w x h. Display calls it after the
 	// swap chain is made and after every resize; null views detach (before ResizeBuffers, which needs them released).
 	void setTargetsD3D11(ID3D11RenderTargetView* rtv, ID3D11DepthStencilView* dsv, ID3D11Texture2D* backbuffer, int w, int h);
+	void frameDoneD3D11();   // a frame was presented (J2X_D3D_DEBUG: the debug layer's messages so far)
 	void detachD3D11();   // releases everything the backend made (Display's destroy)
 }
 }

@@ -48,6 +48,11 @@ namespace GL11 {
 	const int GL_PERSPECTIVE_CORRECTION_HINT = 0x0C50, GL_FASTEST = 0x1101, GL_NICEST = 0x1102,
 	          GL_DONT_CARE = 0x1100;
 	const int GL_TEXTURE_ENV = 0x2300, GL_TEXTURE_ENV_MODE = 0x2200, GL_MODULATE = 0x2100, GL_REPLACE = 0x1E01;
+	// texture coordinate generation
+	const int GL_S = 0x2000, GL_T = 0x2001, GL_R = 0x2002, GL_Q = 0x2003;
+	const int GL_TEXTURE_GEN_MODE = 0x2500, GL_OBJECT_PLANE = 0x2501, GL_EYE_PLANE = 0x2502;
+	const int GL_EYE_LINEAR = 0x2400, GL_OBJECT_LINEAR = 0x2401, GL_SPHERE_MAP = 0x2402;
+	const int GL_TEXTURE_GEN_S = 0x0C60, GL_TEXTURE_GEN_T = 0x0C61, GL_TEXTURE_GEN_R = 0x0C62, GL_TEXTURE_GEN_Q = 0x0C63;
 
 	// matrix stack
 	void glMatrixMode(int mode);
@@ -106,6 +111,9 @@ namespace GL11 {
 	void glLightModel(int pname, FloatBuffer* params);
 	void glLightModelf(int pname, float param);   // (early Indev's RenderHelper)
 	void glTexEnvi(int target, int pname, int param);
+	void glTexGeni(int coord, int pname, int param);
+	void glTexGenf(int coord, int pname, float param);
+	void glTexGen(int coord, int pname, FloatBuffer* params);
 	// textures
 	int  glGenTextures();
 	void glGenTextures(IntBuffer* buf);

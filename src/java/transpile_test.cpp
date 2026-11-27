@@ -139,6 +139,14 @@ CB_TEST("java.transpile.standards", [] {
     CB_CHECK_THROWS_AS(cb::UsageError, (void)trn::parse_standard("c++11"));
 });
 
+CB_TEST("java.transpile.graphics_api_names", [] {
+    CB_CHECK_EQ(trn::graphics_api_name("opengl"), "OpenGL");
+    CB_CHECK_EQ(trn::graphics_api_name("d3d9"), "Direct3D 9");
+    CB_CHECK_EQ(trn::graphics_api_name("d3d10"), "Direct3D 10");
+    CB_CHECK_EQ(trn::graphics_api_name("d3d11"), "Direct3D 11");
+    CB_CHECK_EQ(trn::graphics_api_name("d3d12"), "Direct3D 12");
+});
+
 CB_TEST("java.transpile.registrars_of_a_project", [] {
     cb::java::projects::Project generic;
     const auto r = trn::registrars_of(generic);

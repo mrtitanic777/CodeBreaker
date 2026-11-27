@@ -459,19 +459,88 @@ CB_TEST("java.platform_refs.the_pc_direct3d11_layer_is_the_shared_renderer_on_it
         CB_CHECK(!refs_has(fs::read_text(out.path() / f), "<GL/gl.h>") && !refs_has(fs::read_text(out.path() / f), "d3d9.h"));
 });
 
+// Direct3D 10 and 12: the same shared renderer, each on its own backend and Display.
+CB_TEST("java.platform_refs.the_pc_direct3d10_and_12_layers_are_the_shared_renderer_on_their_own_backends", [] {
+    const stdfs::path pc = testing::data_path("../config/java/platform/pc/reference");
+    struct Api { const char* dir; const char* backend; const char* device; const char* create; const char* label; };
+    const Api apis[] = {{"d3d10", "GpuD3D10.cpp", "ID3D10Device", "D3D10CreateDeviceAndSwapChain", "PC (SDL2 + Direct3D 10)"},
+                        {"d3d12", "GpuD3D12.cpp", "ID3D12GraphicsCommandList", "D3D12CreateDevice", "PC (SDL2 + Direct3D 12)"}};
+    for (const Api& api : apis) {
+        pr::EmitOptions options;
+        options.platform = pr::Platform::PcOpenGl;
+        options.main_class = "Minecraft";
+        options.layers = {{refs_real_reference(), {"GL11", "GLU", "GL13", "ARBMultitexture", "Gpu", "GpuShaders"}},
+                          {testing::data_path(std::string("../config/java/platform/pc/") + api.dir + "/reference"), {}}};
+        options.label = api.label;
+        fs::ScopedTempDir out(std::string("cb-refs-pc") + api.dir);
+        pr::emit_references(out.path(), pc, options);
+        CB_CHECK(refs_has(refs_lf(out.path() / "GL11.cpp"), refs_lf(refs_real_reference() / "GL11.reference.cpp")));
+        CB_CHECK(refs_has(fs::read_text(out.path() / "GL11.h"), std::string(api.label) + " platform layer"));
+        CB_CHECK(refs_has(fs::read_text(out.path() / api.backend), api.device));
+        CB_CHECK(refs_has(fs::read_text(out.path() / api.backend), "kGlVertexStage"));   // the shared pipeline, not its own copy
+        CB_CHECK(refs_has(fs::read_text(out.path() / "Display.cpp"), api.create));
+        CB_CHECK(refs_has(fs::read_text(out.path() / "Display.cpp"), "WARP"));         // a computer without the card still runs it
+        CB_CHECK(stdfs::exists(out.path() / "Gpu.h") && stdfs::exists(out.path() / "GpuShaders.h"));
+        // no other API's backend, no D3DX stand-in, the PC's own Common.h
+        for (const char* other : {"GpuD3D9.cpp", "GpuD3D10.cpp", "GpuD3D11.cpp", "GpuD3D12.cpp"})
+            CB_CHECK(std::string(other) == api.backend || !stdfs::exists(out.path() / other));
+        CB_CHECK(!stdfs::exists(out.path() / "J2xD3DX9.h"));
+        CB_CHECK(refs_has(fs::read_text(out.path() / "Common.h"), "#define J2X_UNHANDLED"));
+        for (const char* f : {"GL11.cpp", "GLU.cpp", "Display.cpp", "GL11.h"})
+            CB_CHECK(!refs_has(fs::read_text(out.path() / f), "<GL/gl.h>") && !refs_has(fs::read_text(out.path() / f), "d3d9.h"));
+    }
+    // Direct3D 10 has no B8G8R8A8 (10.1 added it): its resources are R8G8B8A8 and the shaders swap red and blue
+    const std::string d3d10 = fs::read_text(testing::data_path("../config/java/platform/pc/d3d10/reference/GpuD3D10.reference.cpp"));
+    CB_CHECK(!refs_has(d3d10, "B8G8R8A8_UNORM") && refs_has(d3d10, "vc.bgra") && refs_has(d3d10, "Sample(samp0, t0.xy / t0.w).bgra"));
+    // Direct3D 12 waits for the GPU before reusing a frame's allocator, and frees what the game lets go of only after it
+    const std::string d3d12 = fs::read_text(testing::data_path("../config/java/platform/pc/d3d12/reference/GpuD3D12.reference.cpp"));
+    CB_CHECK(refs_has(d3d12, "_wait(g_allocFence[g_frame]);") && refs_has(d3d12, "_retire(t->res, t->slot);"));
+    // display lists share pages (a committed resource per list blocked in CreateCommittedResource under memory pressure)
+    CB_CHECK(refs_has(d3d12, "_pageAlloc(size, pg, offset)") && !refs_has(d3d12, "CreateCommittedResource(&heap, D3D12_HEAP_FLAG_NONE, &d, D3D12_RESOURCE_STATE_COMMON, 0, __uuidof(ID3D12Resource), (void**)&res)) || !res) return 0;"));
+    // the device is released before the process ends (exit with a live Direct3D 12 device hung in the driver), and a window or
+    // device that cannot be made ends the program rather than letting it run without a renderer
+    for (const char* api : {"d3d10", "d3d11", "d3d12"}) {
+        const std::string display = fs::read_text(testing::data_path(std::string("../config/java/platform/pc/") + api + "/reference/Display.reference.cpp"));
+        CB_CHECK(refs_has(display, "std::atexit(release_at_exit);") && refs_has(display, "std::exit(3);"));
+    }
+});
+
+// The PC's sound closes its device before the statics go: SDL's audio thread mixed from freed sources as the program ended.
+CB_TEST("java.platform_refs.the_pc_audio_device_closes_before_exit", [] {
+    const std::string audio = fs::read_text(testing::data_path("../config/java/platform/pc/reference/Audio.reference.cpp"));
+    CB_CHECK(refs_has(audio, "std::atexit(closeDevice);") && refs_has(audio, "SDL_CloseAudioDevice(g_dev);"));
+});
+
+// glTexGen: the layer generates unit 0's coordinates in the shared vertex stage (object and eye planes) and samples them
+// projectively; the PC's OpenGL layer forwards the calls.
+CB_TEST("java.platform_refs.texture_coordinate_generation_is_in_both_gl_layers", [] {
+    const std::string h = fs::read_text(refs_real_reference() / "GL11.reference.h");
+    const std::string gl = fs::read_text(refs_real_reference() / "GL11.reference.cpp");
+    const std::string shaders = fs::read_text(refs_real_reference() / "GpuShaders.reference.h");
+    CB_CHECK(refs_has(h, "void glTexGeni(int coord, int pname, int param);") && refs_has(h, "GL_OBJECT_LINEAR = 0x2401"));
+    CB_CHECK(refs_has(gl, "case GL_TEXTURE_GEN_Q:") && refs_has(gl, "!_texGenObject()"));   // (object coordinates: no eye-space batch)
+    CB_CHECK(refs_has(shaders, "dot(P, gGenO[0])") && refs_has(shaders, "dot(e, gGenE[0])") && refs_has(shaders, "out float4 ot0"));
+    const std::string pc = fs::read_text(testing::data_path("../config/java/platform/pc/reference/GL11.reference.h"));
+    CB_CHECK(refs_has(pc, "void glTexGen(int coord, int pname, FloatBuffer* params);") && refs_has(pc, "GL_TEXTURE_GEN_S = 0x0C60"));
+});
+
 // One shader pipeline for every backend: the vertex and fragment stages live in GpuShaders.h, the backends only wrap them.
 CB_TEST("java.platform_refs.the_backends_share_one_pipeline", [] {
-    const std::string d3d9 = fs::read_text(refs_real_reference() / "GpuD3D9.reference.cpp");
-    const std::string d3d11 = fs::read_text(testing::data_path("../config/java/platform/pc/d3d11/reference/GpuD3D11.reference.cpp"));
     const std::string shared = fs::read_text(refs_real_reference() / "GpuShaders.reference.h");
     CB_CHECK(refs_has(shared, "void glVertex(") && refs_has(shared, "float4 glFragment("));
-    for (const std::string* backend : {&d3d9, &d3d11}) {
-        CB_CHECK(refs_has(*backend, "kGlVertexStage") && refs_has(*backend, "kGlFragmentStage"));
-        CB_CHECK(!refs_has(*backend, "toLight(") && !refs_has(*backend, "env(o,"));   // (no private copy of the maths)
+    std::vector<std::string> backends = {fs::read_text(refs_real_reference() / "GpuD3D9.reference.cpp")};
+    for (const char* api : {"d3d10", "d3d11", "d3d12"})
+        backends.push_back(fs::read_text(testing::data_path(std::string("../config/java/platform/pc/") + api + "/reference/Gpu" +
+                                                            (std::string("D3D") + (api + 3)) + ".reference.cpp")));
+    for (const std::string& backend : backends) {
+        CB_CHECK(refs_has(backend, "kGlVertexStage") && refs_has(backend, "kGlFragmentStage"));
+        CB_CHECK(!refs_has(backend, "toLight(") && !refs_has(backend, "env(o,"));   // (no private copy of the maths)
+        CB_CHECK(refs_has(backend, "gGenO") && refs_has(backend, "t0.xy / t0.w"));    // (texgen's constants, the projective sample)
     }
     // the core names no API
     const std::string gl = fs::read_text(refs_real_reference() / "GL11.reference.cpp");
-    for (const char* api : {"IDirect3D", "ID3D11", "D3DRS_", "D3DXMATRIX", "d3d9.h", "d3d11.h"}) CB_CHECK(!refs_has(gl, api));
+    for (const char* api : {"IDirect3D", "ID3D10", "ID3D11", "ID3D12", "D3DRS_", "D3DXMATRIX", "d3d9.h", "d3d10.h", "d3d11.h", "d3d12.h"})
+        CB_CHECK(!refs_has(gl, api));
 });
 
 CB_TEST("java.platform_refs.emit_removes_a_stale_skipped_reference_but_not_a_stub", [] {

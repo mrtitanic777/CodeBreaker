@@ -138,6 +138,25 @@ struct Caps {
 };
 static Caps g_caps;
 static int g_texEnv[kUnits] = { GL_MODULATE, GL_MODULATE };
+// Texture coordinate generation, per unit: for S, T, R, Q whether it is on, the mode, the object plane and the eye plane (the eye
+// plane already through the inverse modelview of its glTexGen call).
+struct TexGen {
+	bool on[4];
+	int mode[4];
+	float object[4][4], eye[4][4];
+};
+static TexGen g_texGen[kUnits];
+static void _resetTexGen(TexGen& g) {
+	memset(&g, 0, sizeof(g));
+	for (int i = 0; i < 4; ++i) g.mode[i] = GL_EYE_LINEAR;   // (GL's defaults: S on x, T on y, R and Q zero)
+	g.object[0][0] = g.eye[0][0] = 1.0f;
+	g.object[1][1] = g.eye[1][1] = 1.0f;
+}
+static bool _texGenObject() {   // unit 0 generates from object coordinates (its draws keep the modelview: no eye-space batching)
+	for (int i = 0; i < 4; ++i)
+		if (g_texGen[0].on[i] && g_texGen[0].mode[i] == GL_OBJECT_LINEAR) return true;
+	return false;
+}
 static int g_blendSrc = GL_ONE, g_blendDst = GL_ZERO;
 static int g_depthFunc = GL_LESS;
 static bool g_depthMask = true;
@@ -380,6 +399,13 @@ static void _drawInputs(bool bakedEye, const float* tint, int listTex, bool list
 	static const float white[4] = { 1, 1, 1, 1 };
 	memcpy(vc + 104, tint ? tint : white, 16);
 	vc[108] = g_flat ? 1.0f : 0.0f; vc[109] = vc[110] = vc[111] = 0.0f;
+	// c28 gGen (S T R Q: 0 off, 1 object linear, 2 eye linear), c29-32 the object planes, c33-36 the eye planes -- unit 0's
+	const TexGen& g = g_texGen[0];
+	for (int i = 0; i < 4; ++i) vc[112 + i] = !g.on[i] ? 0.0f : g.mode[i] == GL_OBJECT_LINEAR ? 1.0f : 2.0f;
+	memcpy(vc + 116, g.object, 64);
+	memcpy(vc + 132, g.eye, 64);
+	if (g_texGen[1].on[0] || g_texGen[1].on[1] || g_texGen[1].on[2] || g_texGen[1].on[3])
+		J2X_UNHANDLED("texture coordinate generation on unit 1 (unit 0 only)", 1);
 
 	const int texId[kUnits] = { useListTex ? listTex : g_bound[0], g_bound[1] };
 	const bool texOn[kUnits] = { useListTex ? listTexOn : g_caps.tex[0], g_caps.tex[1] };
@@ -540,7 +566,7 @@ static void _submit(int mode, const GLVert* v, int n, bool batchable, bool color
 		tris.swap(t2);
 		lines.swap(l2);
 	}
-	if (batchable && g_renderMode == GL_RENDER) {
+	if (batchable && g_renderMode == GL_RENDER && !_texGenObject()) {
 		if (!tris.empty()) {
 			if (!g_batch.empty() && g_batchPrim != gpu::kTriangles) _flushBatch();
 			_bakeEye(tris);
@@ -564,7 +590,7 @@ static void _submit(int mode, const GLVert* v, int n, bool batchable, bool color
 static void _resetGLState() {
 	g_mv.clear(); g_mv.push_back(_identity());
 	g_proj.clear(); g_proj.push_back(_identity());
-	for (int u = 0; u < kUnits; ++u) { g_texm[u].clear(); g_texm[u].push_back(_identity()); }
+	for (int u = 0; u < kUnits; ++u) { g_texm[u].clear(); g_texm[u].push_back(_identity()); _resetTexGen(g_texGen[u]); }
 	memset(&g_caps, 0, sizeof(g_caps));
 	g_caps.normalize = false;
 	for (int i = 0; i < 2; ++i) {
@@ -747,6 +773,10 @@ static bool* _capFlag(int cap) {
 		case GL_SCISSOR_TEST: return &g_caps.scissor;
 		case GL_LIGHT0: return &g_light[0].on;
 		case GL_LIGHT1: return &g_light[1].on;
+		case GL_TEXTURE_GEN_S: return &g_texGen[g_activeUnit].on[0];
+		case GL_TEXTURE_GEN_T: return &g_texGen[g_activeUnit].on[1];
+		case GL_TEXTURE_GEN_R: return &g_texGen[g_activeUnit].on[2];
+		case GL_TEXTURE_GEN_Q: return &g_texGen[g_activeUnit].on[3];
 		default: return 0;
 	}
 }
@@ -898,13 +928,41 @@ void glLightModel(int pname, FloatBuffer* p) {
 	glLightModelf(pname, p->get(p->position()));
 }
 void glLightModelf(int pname, float param) {
-	if (pname == GL_LIGHT_MODEL_LOCAL_VIEWER || pname == GL_LIGHT_MODEL_TWO_SIDE) {
-		if (param != 0.0f) J2X_UNHANDLED("glLightModel: local viewer / two-sided", pname);
+	// The local viewer moves only the specular highlight, and the material's specular is GL's default black (no glMaterial here):
+	// it changes no pixel, either way. Indev turns it on.
+	if (pname == GL_LIGHT_MODEL_LOCAL_VIEWER) return;
+	if (pname == GL_LIGHT_MODEL_TWO_SIDE) {
+		if (param != 0.0f) J2X_UNHANDLED("glLightModel: two-sided lighting", pname);
 		return;
 	}
 	J2X_UNHANDLED("glLightModelf", pname);
 }
 void glLightModeli(int pname, int param) { glLightModelf(pname, (float)param); }
+// =========================================================================== texture coordinate generation
+static int _texGenCoord(int coord) { return coord == GL_S ? 0 : coord == GL_T ? 1 : coord == GL_R ? 2 : coord == GL_Q ? 3 : -1; }
+void glTexGeni(int coord, int pname, int param) {
+	const int i = _texGenCoord(coord);
+	if (i < 0 || pname != GL_TEXTURE_GEN_MODE) { J2X_UNHANDLED("glTexGeni", pname); return; }
+	if (param != GL_OBJECT_LINEAR && param != GL_EYE_LINEAR) { J2X_UNHANDLED("glTexGeni mode (sphere map)", param); return; }
+	_stateChange();
+	g_texGen[g_activeUnit].mode[i] = param;
+}
+void glTexGen(int coord, int pname, FloatBuffer* params) {
+	const int i = _texGenCoord(coord);
+	if (i < 0 || !params || (pname != GL_OBJECT_PLANE && pname != GL_EYE_PLANE)) { J2X_UNHANDLED("glTexGen", pname); return; }
+	_stateChange();
+	const int at = params->position();
+	float p[4];
+	for (int k = 0; k < 4; ++k) p[k] = params->get(at + k);
+	TexGen& g = g_texGen[g_activeUnit];
+	if (pname == GL_OBJECT_PLANE) { memcpy(g.object[i], p, 16); return; }
+	// GL: the eye plane is (p1 p2 p3 p4) times the inverse of the modelview now -- in this file's row convention, the inverse
+	// times the plane as a column -- so a point's eye coordinates dotted with it give the plane of its object coordinates.
+	Mat inv;
+	if (!_inverse(inv, _top(g_mv))) inv = _identity();
+	for (int r = 0; r < 4; ++r) g.eye[i][r] = inv.m[r][0] * p[0] + inv.m[r][1] * p[1] + inv.m[r][2] * p[2] + inv.m[r][3] * p[3];
+}
+
 void glTexEnvi(int target, int pname, int param) {
 	if (target != GL_TEXTURE_ENV || pname != GL_TEXTURE_ENV_MODE) { J2X_UNHANDLED("glTexEnvi", pname); return; }
 	if (param != GL_MODULATE && param != GL_REPLACE && param != GL_ADD && param != GL_DECAL) { J2X_UNHANDLED("glTexEnvi mode", param); return; }

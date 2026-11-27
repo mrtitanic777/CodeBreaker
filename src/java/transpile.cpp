@@ -34,6 +34,11 @@ namespace platform_refs = console::platform_refs;
 using ledger::Category;
 using ledger::Severity;
 
+std::string graphics_api_name(std::string_view graphics) {
+    if (graphics.starts_with("d3d")) return std::format("Direct3D {}", graphics.substr(3));
+    return "OpenGL";
+}
+
 emit::header::CppStd parse_standard(std::string_view label) {
     static const std::map<std::string, int, std::less<>> years = {{"C++98", 1998}, {"C++03", 2003}, {"C++11", 2011}, {"C++14", 2014},
                                                                   {"C++17", 2017}, {"C++20", 2020}, {"C++23", 2023}};
@@ -155,16 +160,16 @@ void Conversion::write_platform_layer(std::span<const ir::JClass> classes, const
     if (!emit_options.main_class) emit_options.runnable_game = platform_refs::detect_runnable_game_class(classes);
     emit_options.classes = classes;
     emit_options.platform = platform_refs::platform_of(platform);
-    if (platform == "pc_opengl" && (options_.graphics == "d3d9" || options_.graphics == "d3d11")) {
+    if (platform == "pc_opengl" && options_.graphics != "opengl") {
         // The PC on Direct3D: the PC's platform files, with the GL layer the Xbox 360 uses (one source for every API) and the
-        // API's backend and Display over them. Direct3D 9's backend is the 360's own; Direct3D 11's is the PC's.
-        const bool d3d9 = options_.graphics == "d3d9";
+        // API's backend and Display over them. Direct3D 9's backend is the 360's own; Direct3D 10, 11 and 12 have the PC's.
+        const std::string api = graphics_api_name(options_.graphics);
         std::set<std::string> shared = {"GL11", "GLU", "GL13", "ARBMultitexture", "Gpu", "GpuShaders"};
-        if (d3d9) shared.insert("GpuD3D9");
+        if (options_.graphics == "d3d9") shared.insert("GpuD3D9");
         emit_options.layers.push_back({data.path({"platform", "reference"}), shared});
         emit_options.layers.push_back({data.path({"platform", "pc", options_.graphics, "reference"}), {}});
-        emit_options.label = d3d9 ? "PC (SDL2 + Direct3D 9)" : "PC (SDL2 + Direct3D 11)";
-        say(std::format("[platform] graphics: {} (the GL layer the Xbox 360 uses, on the PC)", d3d9 ? "Direct3D 9" : "Direct3D 11"));
+        emit_options.label = std::format("PC (SDL2 + {})", api);
+        say(std::format("[platform] graphics: {} (the GL layer the Xbox 360 uses, on the PC)", api));
     }
     const platform_refs::Emitted emitted = platform_refs::emit_references(out_dir_, reference_dir, emit_options);
     say(std::format("[platform] emitted {} platform references (agnostic layer, replacing stubs): {}", emitted.bases.size(), trn_names({emitted.bases.begin(), emitted.bases.end()})));
