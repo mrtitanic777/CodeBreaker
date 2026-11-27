@@ -8,7 +8,7 @@
 #include <format>
 #include <set>
 
-#include "build/arm_asm.hpp"
+#include "source/risc_source.hpp"
 #include "core/fs.hpp"
 #include "decompile/arm.hpp"
 #include "source/isa.hpp"
@@ -210,8 +210,7 @@ iw::Written write(const formats::threedo::Program& program, std::string_view fil
 
     const std::string source = iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), program.image_size);
-    const build::arm_asm::Assembler assembler(isa::arm_encoder());
-    iw::assembled(r, [&] { return rebuilt_file(program, assembler.build(source)); }, program.file, folder / (stem + (disc ? ".built.iso" : ".built.aif")));
+    iw::assembled(r, [&] { return rebuilt_file(program, risc_source::gnu_arm(source)); }, program.file, folder / (stem + (disc ? ".built.iso" : ".built.aif")));
     return r;
 }
 

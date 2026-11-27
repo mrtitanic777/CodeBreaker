@@ -10,7 +10,7 @@
 // the ROM is one image whose header, tables and files name the two programs by their file offset, RAM address and size, and the source says so
 // with labels (`arm9_rom`, `arm9`, `arm9_end`; the header's words are `arm9_end - arm9`), so the one file shows how the pieces fit and rebuilds
 // the one ROM. Each program has its own `.cpu` line (`.cpu arm946e-s`, `.cpu arm7tdmi`), which selects the instruction set the assembler reads
-// (build/arm_asm), and its own names: `arm9_arm_<address>` and `arm9_thumb_<address>` for functions, `L9_<address>` for jump targets,
+// (the one assembler), and its own names: `arm9_arm_<address>` and `arm9_thumb_<address>` for functions, `L9_<address>` for jump targets,
 // `D9_<address>` for data (`arm7_...`, `L7_`, `D7_` for the other), `arm9_entry` and `arm7_entry` for where each starts.
 //
 // The programs are written as the GBA lane writes a cartridge (source/gba_writer.hpp): every function in the order it lies, `.arm` or `.thumb`

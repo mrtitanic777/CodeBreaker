@@ -13,7 +13,7 @@
 // between the loaded address and the file offset, so the source says what the pointer points at; an instruction whose text would not assemble back to its
 // bits stays a `.word` with the text as a comment. A software interrupt is followed by a comment naming the Horizon kernel's call (`@ svcSendSyncRequest`).
 //
-// It builds with CodeBreaker's own assembler (build/arm_asm, ARMv6K). The rebuilt file is kept beside the source as <stem>.built.3dsx or .built.elf.
+// It builds with CodeBreaker's own assembler (the one assembler, ARMv6K). The rebuilt file is kept beside the source as <stem>.built.3dsx or .built.elf.
 #pragma once
 
 #include <cstdint>

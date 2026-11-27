@@ -1,6 +1,7 @@
 // source/risc_source.cpp -- see risc_source.hpp.
 
 #include "source/risc_source.hpp"
+#include "source/dialect.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -192,6 +193,11 @@ std::string equ(const std::string& name, std::uint32_t value, unsigned digits) {
 
 Bytes assemble(std::string_view cpu_name, std::string_view source, const std::filesystem::path& folder) {
     return processors::assemble_described(processors::find(cpu_name), source, folder).data;
+}
+
+Bytes gnu_arm(std::string_view source) {
+    const bool v5 = source.find(".cpu arm946e-s") != std::string_view::npos || source.find(".arch armv5te") != std::string_view::npos;
+    return assemble(v5 ? "arm9" : "arm", dialect::find("gas-arm").parse(source), {});
 }
 
 }  // namespace cb::source::risc_source

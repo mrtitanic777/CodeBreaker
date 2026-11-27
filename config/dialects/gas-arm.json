@@ -2,6 +2,7 @@
   "name": "gas-arm",
   "description": "GNU as, ARM and Thumb: the Game Boy Advance, DS, 3DS and Vita as their programs are written. @ comments, .thumb / .arm, .syntax unified and .cpu ahead of the code, spaces after commas, small numbers decimal (#8), ldr r0, D_label for a literal-pool word, c7 for a coprocessor register, .hword.",
   "comment": "@",
+  "line_comment": "#",
   "number": {"prefix": "0x", "suffix": "", "case": "upper", "pad": "none"},
   "label": "{name}:",
   "decimal": {"unless": []},
@@ -14,7 +15,10 @@
     {"neutral": ".word {list}", "dialect": ".word {list}", "separator": ", "},
     {"neutral": ".byte {list}", "dialect": ".byte {list}", "bytes": true, "separator": ", "},
     {"neutral": "", "dialect": ".syntax {s}", "print": false},
-    {"neutral": "", "dialect": ".cpu {s}", "print": false}
+    {"neutral": "", "dialect": ".cpu {s}", "print": false},
+    {"neutral": "", "dialect": ".arch {s}", "print": false},
+    {"neutral": ".context TMode=1", "dialect": ".code 16", "print": false},
+    {"neutral": ".context TMode=0", "dialect": ".code 32", "print": false}
   ],
   "instructions": [
     {"neutral": "vcmp.f32 {w},#0", "dialect": "vcmp.f32 {w}, #0", "exact": true},
@@ -22,7 +26,12 @@
     {"neutral": "vcmp.f64 {w},#0", "dialect": "vcmp.f64 {w}, #0", "exact": true},
     {"neutral": "vcmpe.f64 {w},#0", "dialect": "vcmpe.f64 {w}, #0", "exact": true},
 
-    {"neutral": "ldr {w},[D_{w2}]", "dialect": "ldr {w}, D_{w2}"}
+    {"neutral": "ldr {w},[D_{w2}]", "dialect": "ldr {w}, D_{w2}"},
+    {"neutral": "ldr {r},[{w}]", "dialect": "ldr {r}, {w}", "print": false},
+    {"neutral": "swp {a},{b},r{w1}", "dialect": "swp {a}, {b}, [r{w1}]"},
+    {"neutral": "swpb {a},{b},r{w1}", "dialect": "swpb {a}, {b}, [r{w1}]"},
+    {"neutral": "{m} {a},[r{w1},#0x0]", "dialect": "{m} {a}, [r{w1}]", "print": false},
+    {"neutral": "{m} {a},[sp,#0x0]", "dialect": "{m} {a}, [sp]", "print": false}
   ],
   "blocks": {
     "prologue": ["        .syntax unified", "        .cpu {cpu}", ""]

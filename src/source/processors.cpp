@@ -284,13 +284,20 @@ std::vector<Line> read_described(const Processor& processor, ByteView code, std:
     return out;
 }
 
+// What an instruction's address is a multiple of, for the processors whose instructions are all of one width.
+unsigned instruction_alignment(std::string_view name) {
+    if (name == "sh2" || name == "sh4" || name == "thumb" || name == "thumb9" || name == "armv7t") return 2;
+    if (name == "arm" || name == "arm9" || name == "arm11" || name == "armv7") return 4;
+    return 1;
+}
+
 Image assemble_described(const Processor& processor, std::string_view source, const std::filesystem::path& folder) {
     if (processor.sla.empty()) throw UsageError(std::format("{} has no SLEIGH description yet", processor.name));
     std::vector<std::pair<std::string, int>> context;
     for (const auto& [k, v] : processor.context) context.emplace_back(std::string(k), v);
     const build::Encoder& encoder = isa::sleigh_encoder(languages() / processor.sla, context);
     (void)folder;
-    return bytes_at(build::mips_asm::Assembler(encoder, processor.big_endian ? build::mips_asm::ByteOrder::Big : build::mips_asm::ByteOrder::Little, (processor.name == "sh2" || processor.name == "sh4") ? 2 : 1, ';').build(source));
+    return bytes_at(build::mips_asm::Assembler(encoder, processor.big_endian ? build::mips_asm::ByteOrder::Big : build::mips_asm::ByteOrder::Little, instruction_alignment(processor.name), ';').build(source));
 }
 
 std::optional<Bytes> assemble_line(const Processor& processor, std::string_view line, std::uint64_t pc, const decompile::NameLabels& symbols) {

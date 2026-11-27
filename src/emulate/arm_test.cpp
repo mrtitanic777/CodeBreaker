@@ -8,7 +8,7 @@
 #include <memory>
 #include <string>
 
-#include "build/arm_asm.hpp"
+#include "source/risc_source.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "source/isa.hpp"
@@ -22,7 +22,7 @@ constexpr std::uint32_t kCode = 0x02000000;
 struct Rig {
     Bus bus;
     void load(const std::string& source) {
-        const Bytes image = build::arm_asm::Assembler(source::isa::arm_encoder()).build(".org 0x02000000\n" + source);
+        const Bytes image = source::risc_source::gnu_arm(".org 0x02000000\n" + source);
         for (std::size_t i = 0; i < image.size(); ++i) bus.ewram()[i] = image[i];
     }
     RunResult go(std::uint32_t entry = kCode, RunOptions options = {}) { return run(bus, entry, options); }
@@ -475,7 +475,7 @@ struct DsRig {
     explicit DsRig(System system = System::Nds9) : bus(system) {}
     void load(const std::string& source) {
         const std::string cpu = bus.system() == System::Nds9 ? ".cpu arm946e-s\n" : ".cpu arm7tdmi\n";
-        const Bytes image = build::arm_asm::Assembler(source::isa::arm_encoder(), &source::isa::arm9_encoder()).build(".org 0x02000000\n" + cpu + source);
+        const Bytes image = source::risc_source::gnu_arm(".org 0x02000000\n" + cpu + source);
         bus.load(kCode, image);
     }
     RunResult go(std::uint32_t entry = kCode, RunOptions options = {}) {

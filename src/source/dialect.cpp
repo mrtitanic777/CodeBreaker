@@ -203,6 +203,7 @@ struct Dialect::Impl {
     std::string decimals(std::string_view s, unsigned long limit = 0xFFFF) const;
     std::string with_registers(std::string_view s) const;
     std::string without_registers(std::string_view s) const;
+    char line_comment = 0;           // a line beginning with this character is a comment too (`#`: GNU as for ARM, where `@` follows an instruction)
     bool tight_commas = false;       // an instruction read back has no blank after its commas (the rows say `a,b`)
     bool decimal_keep_zero = false;  // a zero stays 0x0 (the description writes some fields as plain 0)
     int mnemonic_pad = 0;           // the mnemonic is padded to this many columns when it has operands (GNU as for SuperH)
@@ -849,7 +850,7 @@ std::string Dialect::parse(std::string_view source, const Aux& aux) const {
         std::string_view code = raw;
         if (const std::size_t c = comment_at(raw, comment); c != std::string_view::npos) code = raw.substr(0, c);
         code = text::trim(code);
-        if (code.empty()) {
+        if (code.empty() || (d.line_comment != 0 && code.front() == d.line_comment)) {   // (and a line that begins with the dialect's other comment character: GNU as's `#` for ARM)
             out += '\n';
             continue;
         }
@@ -1124,6 +1125,7 @@ std::unique_ptr<Dialect::Impl> read(std::string_view name) {
         for (const auto& n : it->at("unless")) d->decimal_unless.insert(n.get<std::string>());
     }
     d->tight_commas = j.value("tight_commas", false);
+    if (const std::string lc = j.value("line_comment", std::string()); !lc.empty()) d->line_comment = lc.front();
     if (const auto it = j.find("replace"); it != j.end())   // [from, to] or [from, to, true] (the parser undoes it too)
         for (const auto& row : *it) d->replace.push_back({row.at(0).get<std::string>(), row.at(1).get<std::string>(), row.size() > 2 && row.at(2).get<bool>()});
     d->list_separator = str(j, "list_separator", ",");

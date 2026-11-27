@@ -9,7 +9,7 @@
 #include <functional>
 #include <iostream>
 
-#include "build/arm_asm.hpp"
+#include "source/risc_source.hpp"
 #include "source/processors.hpp"
 #include "build/mips_asm.hpp"
 #include "core/error.hpp"
@@ -186,8 +186,7 @@ CB_TEST("engine.lane_kit.machines.the_ps1_demo_executable_is_judged", [] {
 // function through a literal pool, written back as source, rebuilt as the original, and judged beside an edited copy.
 CB_TEST("engine.lane_kit.machines.the_gba_demo_cartridge_is_judged", [] {
     fs::ScopedTempDir dir("cb-lane-kit-gba-demo");
-    const build::arm_asm::Assembler assembler(source::isa::arm_encoder());
-    const Bytes rom = assembler.build(fs::read_text(testing::data_path("engine/testdata/lane_kit/gba_demo.s")));
+    const Bytes rom = source::risc_source::gnu_arm(fs::read_text(testing::data_path("engine/testdata/lane_kit/gba_demo.s")));
     const stdfs::path file = dir.path() / "demo.gba";
     fs::write_file(file, rom);
     machine_judges_a_program({"gba", "demo.gba", 0x08000000, static_cast<std::uint32_t>(rom.size())}, file);

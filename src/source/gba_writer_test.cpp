@@ -5,7 +5,7 @@
 
 #include "source/gba_writer.hpp"
 
-#include "build/arm_asm.hpp"
+#include "source/risc_source.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "core/text.hpp"
@@ -15,7 +15,7 @@ namespace cb::source::gba_writer {
 namespace {
 
 Bytes cartridge() {
-    return build::arm_asm::Assembler(isa::arm_encoder()).build(fs::read_text(testing::data_path("engine/testdata/lane_kit/gba_demo.s")));
+    return risc_source::gnu_arm(fs::read_text(testing::data_path("engine/testdata/lane_kit/gba_demo.s")));
 }
 
 CB_TEST("source.gba_writer.the_cartridge_comes_back_as_source_that_builds_the_same_file", [] {

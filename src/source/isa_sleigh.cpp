@@ -205,6 +205,28 @@ std::string signed_halves(const std::string& text) {
     return out;
 }
 
+// `text` with the blanks around an operator of a constant expression taken out (`#IO >> 24` is `#IO>>24`: the folding below reads a run of number and operator characters).
+std::string compact_operators(const std::string& text) {
+    std::string out;
+    for (std::size_t k = 0; k < text.size(); ++k) {
+        const char c = text[k];
+        if (c == ' ' || c == '\t') {
+            std::size_t e = k;
+            while (e < text.size() && (text[e] == ' ' || text[e] == '\t')) ++e;
+            const char before = out.empty() ? '\0' : out.back();
+            const char after = e < text.size() ? text[e] : '\0';
+            const auto op = [](char x) { return x != '\0' && std::string_view("<>+*/&|^").find(x) != std::string_view::npos; };
+            const auto joins = [](char x) { return std::isalnum(static_cast<unsigned char>(x)) != 0 || x == ')' || x == '('; };
+            if (op(before) || op(after) || (after == '-' && joins(before))) {
+                k = e - 1;
+                continue;
+            }
+        }
+        out += c;
+    }
+    return out;
+}
+
 class SleighSyntax final : public build::Encoder {
 public:
     SleighSyntax(const std::filesystem::path& sla, const std::vector<std::pair<std::string, int>>& context)
@@ -254,7 +276,45 @@ public:
     // The line with each label it names replaced by the label's value (the description knows numbers and its own names, not the
     // program's labels); the instruction's shortest encoding. A line that encodes to nothing while it names a word that is no label
     // is taken to name a label not defined yet (the first pass meets labels defined further on).
+    // ARM's unified syntax says some things the description writes otherwise by the state the code is in: `nop`, `push` and `pop`, and
+    // a Thumb instruction's `s` (every Thumb data operation of the 16-bit set sets the flags; the description's own name for it has none).
     Result<Bytes> assemble(std::string_view line, std::int64_t pc, const build::Labels& labels) const override {
+        int thumb = -1;
+        for (const auto& [name, value] : context_)
+            if (name == "TMode") thumb = value;
+        if (thumb < 0) return assemble_core(line, pc, labels);
+        const std::string_view t = text::trim(line);
+        if (thumb == 1 && text::istarts_with(t, "swi ")) return assemble_core("svc " + std::string(text::trim(t.substr(4))), pc, labels);   // (Thumb's description calls it svc)
+        if (text::iequals(t, "nop")) return assemble_core(thumb != 0 ? "mov r8,r8" : "mov r0,r0", pc, labels);
+        if (thumb == 0) {   // (`push {r4,lr}`, `popne {pc}`: the store and load of the stack, under a condition)
+            const std::size_t blank = t.find_first_of(" 	");
+            const std::string_view head = blank == std::string_view::npos ? t : t.substr(0, blank);
+            for (const auto& [name, real] : {std::pair<std::string_view, std::string_view>{"push", "stmdb"}, {"pop", "ldmia"}})
+                if (blank != std::string_view::npos && head.size() >= name.size() && text::istarts_with(head, name) && (head.size() == name.size() || head.size() == name.size() + 2))
+                    return assemble_core(std::string(real) + std::string(head.substr(name.size())) + " sp!," + std::string(text::trim(t.substr(blank))), pc, labels);
+        }
+        Result<Bytes> r = assemble_core(line, pc, labels);
+        if (r.ok() || build::is_undefined(r.error())) return r;
+        if (thumb == 0) {   // `add r1, pc, #1`: the description's `adr` of the address the sum is (the pc of an ARM instruction reads eight ahead)
+            std::string flat(t);
+            std::erase_if(flat, [](char c) { return c == ' ' || c == '\t'; });
+            const bool add = text::istarts_with(flat, "add"), sub = text::istarts_with(flat, "sub");
+            const std::size_t comma = flat.find(',');
+            if ((add || sub) && flat.size() > 3 && comma != std::string::npos && text::istarts_with(std::string_view(flat).substr(comma + 1), "pc,#")) {
+                const std::optional<std::int64_t> imm = build::parse_number(std::string_view(flat).substr(comma + 5));
+                if (imm) return assemble_core(std::format("adr {},0x{:x}", flat.substr(3, comma - 3), static_cast<std::uint64_t>(pc + 8 + (add ? *imm : -*imm))), pc, labels);
+            }
+            return r;
+        }
+        const std::size_t end = std::min(t.find_first_of(" \t"), t.size());
+        if (end > 2 && (t[end - 1] == 's' || t[end - 1] == 'S')) {
+            Result<Bytes> plain = assemble_core(std::string(t.substr(0, end - 1)) + std::string(t.substr(end)), pc, labels);
+            if (plain.ok() || build::is_undefined(plain.error())) return plain;
+        }
+        return r;
+    }
+
+    Result<Bytes> assemble_core(std::string_view line, std::int64_t pc, const build::Labels& labels) const {
         const std::string_view text = text::trim(line);
         const std::size_t mnemonic_end = std::min(text.find_first_of(" \t"), text.size());
         std::string out(text.substr(0, mnemonic_end));
@@ -339,7 +399,7 @@ public:
         const std::vector<std::vector<std::uint8_t>> encodings = assembler_.assemble_first(out, static_cast<std::uint64_t>(pc));
         if (!encodings.empty()) return remember(encodings.front());
         // (an operand written as an expression or a function of an address: assembled as the number it is)
-        if (const std::string folded = fold_operands(out, pc); folded != out) {
+        if (const std::string folded = fold_operands(compact_operators(out), pc); folded != out) {
             const std::vector<std::vector<std::uint8_t>> enc = assembler_.assemble_first(folded, static_cast<std::uint64_t>(pc));
             if (!enc.empty()) return remember(enc.front());
         }

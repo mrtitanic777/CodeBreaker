@@ -28,8 +28,8 @@
 // the table in `hardware()`), other addresses outside the ROM are `var_<address>` equates. The first 192 bytes are the cartridge header,
 // written field by field (the logo, the title, the game and maker codes, the fixed byte, the checksum).
 //
-// It builds with CodeBreaker's own assembler (build/arm_asm). The instructions are GNU as's, so a toolchain's `as` takes them; the `.org`
-// that says where the ROM is mapped is CodeBreaker's (build/arm_asm.hpp).
+// It builds with CodeBreaker's own assembler (the one assembler). The instructions are GNU as's, so a toolchain's `as` takes them; the `.org`
+// that says where the ROM is mapped is CodeBreaker's (the one assembler).
 #pragma once
 
 #include <cstdint>

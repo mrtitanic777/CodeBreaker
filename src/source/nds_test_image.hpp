@@ -8,7 +8,7 @@
 #include <cstring>
 #include <string>
 
-#include "build/arm_asm.hpp"
+#include "source/risc_source.hpp"
 #include "core/bytes.hpp"
 #include "formats/gba.hpp"
 #include "formats/nds.hpp"
@@ -78,9 +78,8 @@ inline void put32(Bytes& b, std::size_t at, std::uint32_t v) {
 inline std::uint32_t align_up(std::uint32_t v, std::uint32_t a) { return (v + a - 1) / a * a; }
 
 inline Bytes test_rom() {
-    const build::arm_asm::Assembler assembler(isa::arm_encoder(), &isa::arm9_encoder());
-    const Bytes arm9 = assembler.build(arm9_source());
-    const Bytes arm7 = assembler.build(arm7_source());
+    const Bytes arm9 = risc_source::gnu_arm(arm9_source());
+    const Bytes arm7 = risc_source::gnu_arm(arm7_source());
     const std::uint32_t arm9_at = 0x4000, arm7_at = align_up(arm9_at + static_cast<std::uint32_t>(arm9.size()) + 12, 0x200);
     const std::uint32_t fnt_at = align_up(arm7_at + static_cast<std::uint32_t>(arm7.size()), 0x200);
     Bytes fnt = {8, 0, 0, 0, 0, 0, 1, 0};   // the root directory: its names at 8, the first file 0, one directory

@@ -13,7 +13,7 @@
 // a comment. Functions are `entry` and `sub_<address>`, jump targets `L_<address>`, the words PC-relative loads read `D_<address>`. A literal-pool word
 // that is the address of one of the Madam or Clio registers is written by the register's name (MADAM_MCTL, CLIO_IRQ0 ...). The image is at address 0.
 //
-// It builds with CodeBreaker's own assembler (build/arm_asm). A disc's rebuilt program is kept beside the source as <stem>.built.iso (the disc with
+// It builds with CodeBreaker's own assembler (the one assembler). A disc's rebuilt program is kept beside the source as <stem>.built.iso (the disc with
 // the new image put where LaunchMe was), a bare AIF as <stem>.built.aif.
 #pragma once
 

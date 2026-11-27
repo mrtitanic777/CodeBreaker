@@ -59,4 +59,8 @@ std::string equ(const std::string& name, std::uint32_t value, unsigned digits);
 // The image `source` builds to, through the processor's description. AsmError (a ParseError) for source that does not assemble.
 Bytes assemble(std::string_view cpu, std::string_view source, const std::filesystem::path& folder);
 
+// GNU as's ARM and Thumb source (`.arm`, `.thumb`, `.cpu`, `@` comments) built through the one assembler: the ARMv5TE description when the source
+// names it (`.cpu arm946e-s`, `.arch armv5te`), the ARM7TDMI's otherwise.
+Bytes gnu_arm(std::string_view source);
+
 }  // namespace cb::source::risc_source

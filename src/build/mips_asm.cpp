@@ -289,7 +289,8 @@ private:
     }
 
     void instruction(std::string_view text) {
-        if (pc_ % alignment_ != 0) fail(std::format("an instruction at ${:X}, which is not a multiple of {}", pc_, alignment_));
+        const std::int64_t need_multiple = context_.find("TMode=1") != std::string::npos ? std::min<std::int64_t>(alignment_, 2) : alignment_;   // (Thumb's instructions are halfwords)
+        if (pc_ % need_multiple != 0) fail(std::format("an instruction at ${:X}, which is not a multiple of {}", pc_, need_multiple));
         const InContext isa{isa_, context_};
         Result<Bytes> r = isa.assemble(text, pc_, labels_);
         if (!r.ok() && is_undefined(r.error()) && !final_) r = assemble_with_guesses(isa, text, pc_, labels_, (pc_ & ~std::int64_t{3}) + kGuessDistance);   // (size_guess's answer, without a copy of the labels)
