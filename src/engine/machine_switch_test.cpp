@@ -2,6 +2,7 @@
 // The Nintendo Switch lane: registered, a small NRO comes back identical, its kernel call is named, and an edited program's functions are run beside the original's in the
 // AArch64 interpreter over the process's memory.
 #include "build/a64_asm.hpp"
+#include "source/processors.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "decompile/a64.hpp"
@@ -57,7 +58,7 @@ CB_TEST("engine.machine_switch.a_nro_comes_back_identical_and_an_edit_diverges",
     CB_CHECK(built.judge(built.items.front()).verdict == verify::Verdict::Equivalent);
 
     Bytes edited = formats::nro::test_image::nro_bytes();
-    const Bytes patch = decompile::a64::assemble("add x9, x9, #2", 0x94);   // (the counter goes up by two)
+    const Bytes patch = source::processors::assemble_line(source::processors::find("a64"), "add x9, x9, #0x2", 0x94, {}).value();   // (the counter goes up by two)
     std::copy(patch.begin(), patch.end(), edited.begin() + 0x94);
     fs::write_file(dir.path() / "edited.nro", edited);
     CB_CHECK(lane.judge_function(false, original, original, 0x80).verdict == verify::Verdict::Equivalent);

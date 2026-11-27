@@ -105,7 +105,7 @@ iw::Written write(const formats::intv::Rom& rom, std::string_view file_name, con
         std::string t = dc::text(insn, address_labels, label_immediate);
         bool same = false;
         try {
-            const std::vector<std::uint16_t> built = dc::assemble(t, at, name_values, false, insn.sdbd);
+            const std::vector<std::uint16_t> built = intv_build::assemble_line(t, at, std::unordered_map<std::string, std::int64_t>(name_values.begin(), name_values.end()), insn.sdbd);
             same = built.size() == insn.size && std::equal(built.begin(), built.end(), insn.words.begin());
         } catch (const Error&) {
         }

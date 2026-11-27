@@ -9,6 +9,7 @@
 #include "core/bytes.hpp"
 #include "decompile/cp1610.hpp"
 #include "formats/intv.hpp"
+#include "source/intv_build.hpp"
 
 namespace cb::formats::intv::test_image {
 
@@ -21,7 +22,7 @@ inline Rom rom() {
     s.start = 0x5000;
     s.words.assign(256, 0);
     const auto put = [&](std::uint32_t at, const std::string& line, bool sdbd = false) {
-        const std::vector<std::uint16_t> w = decompile::cp1610::assemble(line, at, {}, false, sdbd);
+        const std::vector<std::uint16_t> w = source::intv_build::assemble_line(line, at, {}, sdbd);
         std::copy(w.begin(), w.end(), s.words.begin() + (at - 0x5000));
     };
     const std::uint16_t header[] = {0x0D, 0x50, 0x0D, 0x50, 0x20, 0x50, 0x0D, 0x50, 0x0D, 0x50, 0x12, 0x50, 0x03C0};

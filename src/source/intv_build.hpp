@@ -18,7 +18,11 @@
 // and each label its address.
 #pragma once
 
+#include <cstdint>
+#include <string>
 #include <string_view>
+#include <unordered_map>
+#include <vector>
 
 #include "core/bytes.hpp"
 
@@ -26,5 +30,8 @@ namespace cb::source::intv_build {
 
 // AsmError (a ParseError), with the line, for anything that does not assemble.
 Bytes build(std::string_view source);
+
+// The decles of one instruction line at `pc` (as1600's text; `labels`: name -> value; `sdbd`: it follows an SDBD). ParseError when it does not assemble.
+std::vector<std::uint16_t> assemble_line(std::string_view line, std::uint32_t pc, const std::unordered_map<std::string, std::int64_t>& labels = {}, bool sdbd = false);
 
 }  // namespace cb::source::intv_build

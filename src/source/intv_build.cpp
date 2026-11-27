@@ -229,4 +229,18 @@ Bytes build(std::string_view source) {
     return rom.serialize(true);
 }
 
+std::vector<std::uint16_t> assemble_line(std::string_view line, std::uint32_t pc, const std::unordered_map<std::string, std::int64_t>& labels, bool sdbd) {
+    const std::vector<Line> lines = parse_lines(dialect::find("as1600").parse(line));
+    if (lines.size() != 1 || !lines.front().instruction) throw AsmError(0, line, "one instruction");
+    Labels known;
+    for (const auto& [name, v] : labels) known[name] = v;
+    try {
+        return instruction_words(lines.front(), pc, known, false, sdbd);
+    } catch (const AsmError&) {
+        throw;
+    } catch (const Error& e) {
+        throw AsmError(0, line, e.what());
+    }
+}
+
 }  // namespace cb::source::intv_build
