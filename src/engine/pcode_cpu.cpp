@@ -316,126 +316,218 @@ std::optional<m::Fault> M6502Cpu::step() {
     return std::nullopt;
 }
 
-m::RunResult call(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : m::run(bus, entry, options); }
 
 // ---- the Z80 ----------------------------------------------------------------------------------------------------------------------
 
 namespace z = cb::emulate::z80;
 
-z::RunResult run(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options) {
-    sl::Emulator& emu = emulator_named("z80.sla");
-    const std::size_t log_start = bus.log().size();
-    const std::span<std::uint8_t> memory = bus.memory();
-    constexpr std::uint32_t kSize = 0x10000;
+// The Z80's bus on the emulator of this thread: the page map instructions are decoded from, the read and write hooks of "ram" and "io", what the
+// description leaves to the machine (HALT, the interrupt flip-flops and mode), the instructions the CPU runs that the description lacks, and R counted
+// per fetch. run() makes one for a call; Z80Cpu keeps one for its steps. A session that finds another one ran on the thread's emulator since puts its
+// page map and hooks back (`claim`).
+class Z80Session {
+public:
+    explicit Z80Session(z::Bus& bus) : emu_(emulator_named("z80.sla")), bus_(bus), memory_(bus.memory()), shadow_(memory_.begin(), memory_.begin() + kSize), r_(emu_.regRef("R")) {
+        claim();
+    }
+    ~Z80Session() {
+        if (active() == this) {
+            emu_.onRead({});
+            emu_.onWrite({});
+            emu_.onUserOp({});
+            emu_.onBadInstruction({});
+            emu_.clearCounter();
+            active() = nullptr;
+        }
+    }
+    Z80Session(const Z80Session&) = delete;
+    Z80Session& operator=(const Z80Session&) = delete;
 
-    std::vector<std::uint8_t> shadow(memory.begin(), memory.begin() + kSize);
-    emu.write(0, shadow.data(), kSize);
-    emu.flushDecoded();
-    emu.clearStops();
-
-    bool touched = false;
-    emu.onRead([&](std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t& value) {
-        value = 0;
-        if (is_ram(space)) {
-            touched = true;
-            for (unsigned i = 0; i < size; ++i) value |= static_cast<std::uint64_t>(bus.read(static_cast<std::uint16_t>(addr + i))) << (8 * i);
-            return true;
-        }
-        if (space == "io") {   // the port as the CPU puts it on the bus: all sixteen lines (the description's IN A,(n) puts A on the high ones)
-            touched = true;
-            value = bus.in(static_cast<std::uint16_t>(addr));
-            return true;
-        }
-        return false;
-    });
-    emu.onWrite([&](std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t value) {
-        if (is_ram(space)) {
-            touched = true;
-            for (unsigned i = 0; i < size; ++i) bus.write(static_cast<std::uint16_t>(addr + i), static_cast<std::uint8_t>(value >> (8 * i)));
-            return true;
-        }
-        if (space == "io") {
-            touched = true;
-            bus.out(static_cast<std::uint16_t>(addr), static_cast<std::uint8_t>(value));
-            return true;
-        }
-        return false;
-    });
-    // what the description leaves to the machine: HALT, the interrupt flip-flops and the mode (the p-code has no register for them)
+    sl::Emulator& emu() { return emu_; }
     bool halted = false, iff1 = false, iff2 = false;
     std::uint8_t im = 0;
-    emu.onUserOp([&](sl::Emulator&, const std::string& name, const std::vector<std::uint64_t>& args, std::uint64_t& result) {
-        if (name == "getIFF2") result = iff2 ? 1 : 0;
-        else if (name == "halt") halted = true;
-        else if (name == "disableMaskableInterrupts") iff1 = iff2 = false;
-        else if (name == "enableMaskableInterrupts") iff1 = iff2 = true;
-        else if (name == "setInterruptMode" && !args.empty()) im = static_cast<std::uint8_t>(args[0]);
-        else return false;
-        return true;
-    });
-    // what the description has no instruction for but the CPU executes: a DD or FD in front of an instruction that does not use IX or IY is
-    // ignored (the instruction follows), and most of the ED page is two-byte NOPs
-    emu.onBadInstruction([&](sl::Emulator& self, std::uint64_t at) {
-        const std::uint8_t first = shadow[at & 0xFFFF], second = shadow[(at + 1) & 0xFFFF];
-        if ((first == 0xDD || first == 0xFD) && second != 0xCB) {   // (DD CB d op with no description: the undocumented copies into a register)
-            self.setPc((at + 1) & 0xFFFF);
-            return true;
-        }
-        const bool block_gap = second >= 0xA0 && second < 0xC0 && (second & 4) != 0;   // A4-A7 AC-AF B4-B7 BC-BF
-        if (first == 0xED && (second < 0x40 || (second >= 0x80 && second < 0xA0) || block_gap || second >= 0xC0 || second == 0x77 || second == 0x7F)) {
-            self.setPc((at + 2) & 0xFFFF);
-            return true;
-        }
-        return false;
-    });
-    struct Unhook {
-        sl::Emulator& e;
-        ~Unhook() {
-            e.onRead({});
-            e.onWrite({});
-            e.onUserOp({});
-            e.onBadInstruction({});
-        }
-    } unhook{emu};
+    bool touched = false;   // the bus was read or written since this was last cleared
 
-    const z::RegisterInit& init = options.regs;
-    const auto byte = [](const std::optional<std::uint8_t>& v) -> std::uint64_t { return v.value_or(0); };
-    emu.setReg("A", byte(init.a));
-    emu.setReg("F", byte(init.f));
-    emu.setReg("B", byte(init.b));
-    emu.setReg("C", byte(init.c));
-    emu.setReg("D", byte(init.d));
-    emu.setReg("E", byte(init.e));
-    emu.setReg("H", byte(init.h));
-    emu.setReg("L", byte(init.l));
-    for (const char* name : {"A_", "F_", "B_", "C_", "D_", "E_", "H_", "L_", "I", "R"}) emu.setReg(name, 0);
-    emu.setReg("IX", init.ix.value_or(0xFFFF));
-    emu.setReg("IY", init.iy.value_or(0xFFFF));
-    // the call as CALL makes it: the return address pushed through the bus like any write
-    const std::uint16_t sp = static_cast<std::uint16_t>(options.sp - 2);
-    bus.write(sp, static_cast<std::uint8_t>(z::kReturnAddress));
-    bus.write(static_cast<std::uint16_t>(sp + 1), static_cast<std::uint8_t>(z::kReturnAddress >> 8));
-    emu.setReg("SP", sp);
-    emu.setPc(entry);
+    void claim() {
+        if (active() == this) return;
+        active() = this;
+        emu_.write(0, shadow_.data(), kSize);
+        emu_.flushDecoded();
+        emu_.clearStops();
+        emu_.onRead([this](std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t& value) {
+            value = 0;
+            if (is_ram(space)) {
+                touched = true;
+                for (unsigned i = 0; i < size; ++i) value |= static_cast<std::uint64_t>(bus_.read(static_cast<std::uint16_t>(addr + i))) << (8 * i);
+                return true;
+            }
+            if (space == "io") {   // the port as the CPU puts it on the bus: all sixteen lines (the description's IN A,(n) puts A on the high ones)
+                touched = true;
+                value = bus_.in(static_cast<std::uint16_t>(addr));
+                return true;
+            }
+            return false;
+        });
+        emu_.onWrite([this](std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t value) {
+            if (is_ram(space)) {
+                touched = true;
+                for (unsigned i = 0; i < size; ++i) bus_.write(static_cast<std::uint16_t>(addr + i), static_cast<std::uint8_t>(value >> (8 * i)));
+                return true;
+            }
+            if (space == "io") {
+                touched = true;
+                bus_.out(static_cast<std::uint16_t>(addr), static_cast<std::uint8_t>(value));
+                return true;
+            }
+            return false;
+        });
+        // what the description leaves to the machine: HALT, the interrupt flip-flops and the mode (the p-code has no register for them)
+        emu_.onUserOp([this](sl::Emulator&, const std::string& name, const std::vector<std::uint64_t>& args, std::uint64_t& result) {
+            if (name == "getIFF2") result = iff2 ? 1 : 0;
+            else if (name == "halt") halted = true;
+            else if (name == "disableMaskableInterrupts") iff1 = iff2 = false;
+            else if (name == "enableMaskableInterrupts") iff1 = iff2 = true;
+            else if (name == "setInterruptMode" && !args.empty()) im = static_cast<std::uint8_t>(args[0]);
+            else return false;
+            return true;
+        });
+        // what the description has no instruction for but the CPU executes: a DD or FD in front of an instruction that does not use IX or IY is
+        // ignored (the instruction follows), and most of the ED page is two-byte NOPs
+        emu_.onBadInstruction([this](sl::Emulator& self, std::uint64_t at) {
+            const std::uint8_t first = shadow_[at & 0xFFFF], second = shadow_[(at + 1) & 0xFFFF];
+            if ((first == 0xDD || first == 0xFD) && second != 0xCB) {   // (DD CB d op with no description: the undocumented copies into a register)
+                self.setPc((at + 1) & 0xFFFF);
+                return true;
+            }
+            const bool block_gap = second >= 0xA0 && second < 0xC0 && (second & 4) != 0;   // A4-A7 AC-AF B4-B7 BC-BF
+            if (first == 0xED && (second < 0x40 || (second >= 0x80 && second < 0xA0) || block_gap || second >= 0xC0 || second == 0x77 || second == 0x7F)) {
+                self.setPc((at + 2) & 0xFFFF);
+                return true;
+            }
+            return false;
+        });
+        // R counts the instruction fetches: its low seven bits, two for a prefixed instruction (the description has no fetch count of its own)
+        emu_.setCounter(r_, 0x7F, [this](std::uint64_t at) -> std::uint64_t {
+            const std::uint8_t first = shadow_[at & 0xFFFF];
+            return (first == 0xDD || first == 0xFD || first == 0xCB || first == 0xED) ? 2u : 1u;
+        });
+    }
 
-    const auto sync = [&] {
-        if (std::memcmp(shadow.data(), memory.data(), kSize) == 0) return;
+    // What the program, a device or the caller did to the bus's memory, to the page map.
+    void sync() {
+        if (std::memcmp(shadow_.data(), memory_.data(), kSize) == 0) return;
         std::uint32_t first = 0, last = kSize - 1;
-        while (shadow[first] == memory[first]) ++first;
-        while (shadow[last] == memory[last]) --last;
-        std::memcpy(shadow.data() + first, memory.data() + first, last - first + 1);
-        emu.write(first, shadow.data() + first, last - first + 1);
-    };
+        while (shadow_[first] == memory_[first]) ++first;
+        while (shadow_[last] == memory_[last]) --last;
+        std::memcpy(shadow_.data() + first, memory_.data() + first, last - first + 1);
+        emu_.write(first, shadow_.data() + first, last - first + 1);
+    }
+    // The bytes of the instruction at `pc` as they are now (the longest instruction is four bytes); the rest of memory is read through the bus.
+    void refresh(std::uint16_t pc) {
+        for (unsigned i = 0; i < 4; ++i) {
+            const std::uint16_t at = static_cast<std::uint16_t>(pc + i);
+            if (memory_[at] != shadow_[at]) {
+                shadow_[at] = memory_[at];
+                emu_.write(at, &shadow_[at], 1);
+            }
+        }
+    }
 
-    // R counts the instruction fetches: its low seven bits, two for a prefixed instruction (the description has no fetch count of its own)
-    emu.setCounter(emu.regRef("R"), 0x7F, [&shadow](std::uint64_t at) -> std::uint64_t {
-        const std::uint8_t first = shadow[at & 0xFFFF];
-        return (first == 0xDD || first == 0xFD || first == 0xCB || first == 0xED) ? 2u : 1u;
-    });
-    struct Uncount {
-        sl::Emulator& e;
-        ~Uncount() { e.clearCounter(); }
-    } uncount{emu};
+    void set_registers(const z::Registers& r) {
+        emu_.setReg("A", r.a);
+        emu_.setReg("F", r.f);
+        emu_.setReg("B", r.b);
+        emu_.setReg("C", r.c);
+        emu_.setReg("D", r.d);
+        emu_.setReg("E", r.e);
+        emu_.setReg("H", r.h);
+        emu_.setReg("L", r.l);
+        emu_.setReg("A_", r.a2);
+        emu_.setReg("F_", r.f2);
+        emu_.setReg("B_", r.b2);
+        emu_.setReg("C_", r.c2);
+        emu_.setReg("D_", r.d2);
+        emu_.setReg("E_", r.e2);
+        emu_.setReg("H_", r.h2);
+        emu_.setReg("L_", r.l2);
+        emu_.setReg("IX", r.ix);
+        emu_.setReg("IY", r.iy);
+        emu_.setReg("SP", r.sp);
+        emu_.setReg("I", r.i);
+        emu_.setReg(r_, r.r);
+        emu_.setPc(r.pc);
+        iff1 = r.iff1;
+        iff2 = r.iff2;
+        im = r.im;
+        halted = r.halted;
+    }
+    z::Registers registers() const {
+        z::Registers r;
+        r.a = static_cast<std::uint8_t>(emu_.reg("A"));
+        r.f = static_cast<std::uint8_t>(emu_.reg("F"));
+        r.b = static_cast<std::uint8_t>(emu_.reg("B"));
+        r.c = static_cast<std::uint8_t>(emu_.reg("C"));
+        r.d = static_cast<std::uint8_t>(emu_.reg("D"));
+        r.e = static_cast<std::uint8_t>(emu_.reg("E"));
+        r.h = static_cast<std::uint8_t>(emu_.reg("H"));
+        r.l = static_cast<std::uint8_t>(emu_.reg("L"));
+        r.a2 = static_cast<std::uint8_t>(emu_.reg("A_"));
+        r.f2 = static_cast<std::uint8_t>(emu_.reg("F_"));
+        r.b2 = static_cast<std::uint8_t>(emu_.reg("B_"));
+        r.c2 = static_cast<std::uint8_t>(emu_.reg("C_"));
+        r.d2 = static_cast<std::uint8_t>(emu_.reg("D_"));
+        r.e2 = static_cast<std::uint8_t>(emu_.reg("E_"));
+        r.h2 = static_cast<std::uint8_t>(emu_.reg("H_"));
+        r.l2 = static_cast<std::uint8_t>(emu_.reg("L_"));
+        r.ix = static_cast<std::uint16_t>(emu_.reg("IX"));
+        r.iy = static_cast<std::uint16_t>(emu_.reg("IY"));
+        r.sp = static_cast<std::uint16_t>(emu_.reg("SP"));
+        r.pc = static_cast<std::uint16_t>(emu_.pc());
+        r.i = static_cast<std::uint8_t>(emu_.reg("I"));
+        r.r = static_cast<std::uint8_t>(emu_.reg(r_));
+        r.iff1 = iff1;
+        r.iff2 = iff2;
+        r.im = im;
+        r.halted = halted;
+        return r;
+    }
+
+private:
+    static constexpr std::uint32_t kSize = 0x10000;
+    static Z80Session*& active() {
+        thread_local Z80Session* current = nullptr;
+        return current;
+    }
+    sl::Emulator& emu_;
+    z::Bus& bus_;
+    std::span<std::uint8_t> memory_;
+    std::vector<std::uint8_t> shadow_;   // the bus's memory as the page map holds it
+    sl::Emulator::RegRef r_;
+};
+
+z::RunResult run(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options) {
+    const std::size_t log_start = bus.log().size();
+    Z80Session session(bus);
+    sl::Emulator& emu = session.emu();
+    const z::RegisterInit& init = options.regs;
+    z::Registers start;
+    start.a = init.a.value_or(0);
+    start.f = init.f.value_or(0);
+    start.b = init.b.value_or(0);
+    start.c = init.c.value_or(0);
+    start.d = init.d.value_or(0);
+    start.e = init.e.value_or(0);
+    start.h = init.h.value_or(0);
+    start.l = init.l.value_or(0);
+    start.ix = init.ix.value_or(0xFFFF);
+    start.iy = init.iy.value_or(0xFFFF);
+    // the call as CALL makes it: the return address pushed through the bus like any write
+    start.sp = static_cast<std::uint16_t>(options.sp - 2);
+    bus.write(start.sp, static_cast<std::uint8_t>(z::kReturnAddress));
+    bus.write(static_cast<std::uint16_t>(start.sp + 1), static_cast<std::uint8_t>(z::kReturnAddress >> 8));
+    start.pc = entry;
+    session.set_registers(start);
+    session.sync();   // (the return address just pushed)
 
     z::RunResult out;
     out.end = z::End::Limit;
@@ -447,12 +539,12 @@ z::RunResult run(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options)
         }
         const std::uint16_t pc = static_cast<std::uint16_t>(emu.pc());
         if (options.before_step) options.before_step(pc);
-        if (halted) {   // an earlier HALT ran: nothing runs any more
+        if (session.halted) {   // an earlier HALT ran: nothing runs any more
             out.end = z::End::Stopped;
             out.fault = z::Fault{z::Fault::Kind::Halt, pc};
             break;
         }
-        touched = false;
+        session.touched = false;
         // (a run of instructions at once, R counted for each by the emulator; it ends where a device was touched or a HALT ran, which is where this looks; an instruction at a
         // time when the caller wants to see every pc)
         const sl::Emulator::BlockResult ran = emu.runBlocks(options.before_step ? 1 : options.max_steps - steps, true, z::kReturnAddress);
@@ -462,38 +554,30 @@ z::RunResult run(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options)
             out.fault = z::Fault{z::Fault::Kind::Undecodable, pc};
             break;
         }
-        if (touched) sync();
+        if (session.touched) session.sync();
     }
-    z::Registers& r = out.regs;
-    r.a = static_cast<std::uint8_t>(emu.reg("A"));
-    r.f = static_cast<std::uint8_t>(emu.reg("F"));
-    r.b = static_cast<std::uint8_t>(emu.reg("B"));
-    r.c = static_cast<std::uint8_t>(emu.reg("C"));
-    r.d = static_cast<std::uint8_t>(emu.reg("D"));
-    r.e = static_cast<std::uint8_t>(emu.reg("E"));
-    r.h = static_cast<std::uint8_t>(emu.reg("H"));
-    r.l = static_cast<std::uint8_t>(emu.reg("L"));
-    r.a2 = static_cast<std::uint8_t>(emu.reg("A_"));
-    r.f2 = static_cast<std::uint8_t>(emu.reg("F_"));
-    r.b2 = static_cast<std::uint8_t>(emu.reg("B_"));
-    r.c2 = static_cast<std::uint8_t>(emu.reg("C_"));
-    r.d2 = static_cast<std::uint8_t>(emu.reg("D_"));
-    r.e2 = static_cast<std::uint8_t>(emu.reg("E_"));
-    r.h2 = static_cast<std::uint8_t>(emu.reg("H_"));
-    r.l2 = static_cast<std::uint8_t>(emu.reg("L_"));
-    r.ix = static_cast<std::uint16_t>(emu.reg("IX"));
-    r.iy = static_cast<std::uint16_t>(emu.reg("IY"));
-    r.sp = static_cast<std::uint16_t>(emu.reg("SP"));
-    r.pc = static_cast<std::uint16_t>(emu.pc());
-    r.i = static_cast<std::uint8_t>(emu.reg("I"));
-    r.r = static_cast<std::uint8_t>(emu.reg("R"));
-    r.iff1 = iff1;
-    r.iff2 = iff2;
-    r.im = im;
-    r.halted = halted;
+    out.regs = session.registers();
     out.steps = steps;
     out.io.assign(bus.log().begin() + static_cast<std::ptrdiff_t>(log_start), bus.log().end());
     return out;
+}
+
+Z80Cpu::Z80Cpu(z::Bus& bus) : session_(std::make_unique<Z80Session>(bus)) {}
+Z80Cpu::~Z80Cpu() = default;
+
+std::optional<z::Fault> Z80Cpu::step() {
+    if (regs.halted) return z::Fault{z::Fault::Kind::Halt, regs.pc};
+    session_->claim();
+    session_->refresh(regs.pc);   // (what was put in memory since the last step)
+    session_->set_registers(regs);
+    const sl::Emulator::Status status = session_->emu().step();
+    if (status == sl::Emulator::Status::BadInstruction || status == sl::Emulator::Status::Error) {
+        session_->set_registers(regs);   // (nothing changed)
+        return z::Fault{z::Fault::Kind::Undecodable, regs.pc};
+    }
+    regs = session_->registers();
+    ++steps;
+    return std::nullopt;
 }
 
 z::RunResult call(z::Bus& bus, std::uint16_t entry, const z::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : z::run(bus, entry, options); }

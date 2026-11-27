@@ -38,15 +38,11 @@ CB_TEST("engine.pcode_cpu.bench_6502_and_z80_loops_on_both_cores", [] {
         image.insert(image.end(), program.begin(), program.end());
         emulate::m6502::RunOptions options;
         options.max_steps = kSteps;
-        const double own = best_of_five([&] {
-            emulate::m6502::Bus bus{ByteView(image)};
-            emulate::m6502::run(bus, 0x1000, options);
-        });
         const double emu = best_of_five([&] {
             emulate::m6502::Bus bus{ByteView(image)};
             engine::pcode_cpu::run(bus, 0x1000, options);
         });
-        std::printf("bench 6502: %llu instructions: own core %.1f ms, emulator %.1f ms (%.2fx)\n", static_cast<unsigned long long>(kSteps), own * 1e3, emu * 1e3, emu / own);
+        std::printf("bench 6502: %llu instructions: emulator %.1f ms (the own core was retired)\n", static_cast<unsigned long long>(kSteps), emu * 1e3);
     }
     {   // LD B,0; LD C,0; loop: DJNZ loop; DEC C; JR NZ,loop; RET
         const Bytes program = {0x06, 0x00, 0x0E, 0x00, 0x10, 0xFE, 0x0D, 0x20, 0xFB, 0xC9};

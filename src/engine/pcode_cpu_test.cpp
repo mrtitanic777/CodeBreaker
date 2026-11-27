@@ -1,5 +1,5 @@
-// The lanes' 6502 on the one emulator (engine/pcode_cpu): the same run as the own core on random programs, and the Atari 2600 lane's verdicts on real
-// homebrew the same with either core.
+// The lanes' 6502 and Z80 on the one emulator (engine/pcode_cpu): the 6502's random programs as its retired core ran them (a digest), and the Z80
+// lanes' verdicts on real homebrew the same with either core.
 #include "engine/pcode_cpu.hpp"
 
 #include <algorithm>
@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "source/processors.hpp"
+#include "core/crypto.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
@@ -46,24 +47,18 @@ std::string describe(const m::RunResult& r) {
                        r.regs.pc, r.steps, r.io.size());
 }
 
-bool same_run(const m::RunResult& a, const m::RunResult& b) {
-    if (a.exit() != b.exit() || a.regs.a != b.regs.a || a.regs.x != b.regs.x || a.regs.y != b.regs.y || a.regs.s != b.regs.s || a.regs.p != b.regs.p || a.steps != b.steps) return false;
-    if (a.io.size() != b.io.size()) return false;
-    for (std::size_t i = 0; i < a.io.size(); ++i)
-        if (a.io[i].kind != b.io[i].kind || a.io[i].address != b.io[i].address || a.io[i].value != b.io[i].value) return false;
-    return true;
-}
-
 }  // namespace
 
-// A random program of documented opcodes at $8000, with random bytes after it, a device range at $4000-$40FF and RAM elsewhere.
-CB_TEST("engine.pcode_cpu.runs_random_programs_as_the_own_core_does", [] {
+// A random program of documented opcodes at $8000, with random bytes after it, a device range at $4000-$40FF and RAM elsewhere. What 1,500 such runs gave
+// on the old core (emulate/m6502's interpreter) and on the emulator, the same when the core was retired, is kept as a digest (CRC-32 of every run's exit,
+// registers, steps, device accesses and memory).
+CB_TEST("engine.pcode_cpu.runs_random_programs_as_the_own_core_did", [] {
     std::vector<std::uint8_t> documented;
     const auto& table = decompile::m6502::opcode_table(decompile::m6502::Variant::Nmos);
     for (unsigned op = 0; op < 256; ++op)
         if (table[op]) documented.push_back(static_cast<std::uint8_t>(op));
     std::mt19937 rng(20261120);
-    unsigned different = 0, runs = 0, stopped = 0, returned = 0;
+    std::uint32_t digest = 0;
     for (int n = 0; n < 1500; ++n) {
         Bytes image(0x10000, 0);
         for (std::size_t i = 0; i < 0x10000; ++i) image[i] = static_cast<std::uint8_t>(rng());
@@ -74,82 +69,16 @@ CB_TEST("engine.pcode_cpu.runs_random_programs_as_the_own_core_does", [] {
         options.y = static_cast<std::uint8_t>(rng());
         options.p = static_cast<std::uint8_t>(m::status::U | (rng() & 0xCF));
         options.max_steps = 200;
-        const auto go = [&](bool pcode, Bytes& memory) {
-            m::Bus bus(memory);
-            bus.map(0x4000, 0x40FF, [](std::uint16_t a) -> std::uint8_t { return static_cast<std::uint8_t>(a * 7 + 3); }, [](std::uint16_t, std::uint8_t) {});
-            const m::RunResult r = pcode ? engine::pcode_cpu::run(bus, 0x8000, options) : m::run(bus, 0x8000, options);
-            memory.assign(bus.memory().begin(), bus.memory().end());
-            return r;
-        };
-        Bytes ma = image, mb = image;
-        const m::RunResult own = go(false, ma);
-        const m::RunResult emu = go(true, mb);
-        ++runs;
-        (own.end == m::End::Stopped ? stopped : returned) += 1;
-        const bool memory_same = ma == mb;
-        if (!same_run(own, emu) || !memory_same) {
-            if (++different <= 8) std::printf("  run %d differs\n    own: %s\n    emu: %s\n    memory %s\n", n, describe(own).c_str(), describe(emu).c_str(), memory_same ? "same" : "DIFFERS");
-        }
+        m::Bus bus(image);
+        bus.map(0x4000, 0x40FF, [](std::uint16_t a) -> std::uint8_t { return static_cast<std::uint8_t>(a * 7 + 3); }, [](std::uint16_t, std::uint8_t) {});
+        const m::RunResult r = engine::pcode_cpu::run(bus, 0x8000, options);
+        std::string text = describe(r);
+        for (const m::DeviceAccess& x : r.io) text += std::format("|{}{:X}={:X}", static_cast<int>(x.kind), x.address, x.value);
+        digest = crypto::crc32(ByteView(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()), digest);
+        digest = crypto::crc32(ByteView(bus.memory().data(), bus.memory().size()), digest);
     }
-    std::printf("pcode_cpu random programs: %u runs (%u ended stopped), %u differ\n", runs, stopped, different);
-    // The stack's page wrap (a push at S=0, a pull at S=$FF) and code fetched from a device range are carried by the adapter now. What is left (3 of 1500, 0.2%) has not been
-    // traced to its instruction: all three have the decimal flag set and end with the flags apart (the own core runs ADC and SBC in binary unless RunOptions::decimal, the
-    // description by the D flag); that is a guess, not a finding.
-    CB_CHECK(different * 100 <= runs);
-});
-
-// The judged functions of real homebrew: each function of each cartridge judged against itself and against a copy with its first byte turned over,
-// once on each core; the counts are printed and the verdicts, reasons and the effects of every run must agree.
-CB_TEST("engine.pcode_cpu.the_atari2600_lane_judges_homebrew_the_same_on_both_cores", [] {
-    const stdfs::path root = "C:/Users/mrtit/Documents/GitHub/homebrew-samples";
-    if (!stdfs::exists(root)) return;
-    const std::vector<stdfs::path> files = {root / "atari2600-pipes/pipe2600.bin", root / "atari2600-kibalchish/kibalchish_NTSC.a26", root / "atari2600-kibalchish/kibalchish_PAL.a26",
-                                            root / "atari2600-kibalchish/kibalchish_PAL60.a26", root / "atari2600-flappyboot/boot.bin", root / "atari2600-legendary-spear/LegendarySpear_NTSC.bin"};
-    const verify::lanes::ImageLaneSpec spec = engine::atari2600_lane_spec();
-    const verify::lanes::ImageLane lane(spec);
-    fs::ScopedTempDir dir("cb_pcode_cpu");
-    unsigned functions = 0, disagree = 0, effects_differ = 0;
-    unsigned verdicts[2][2] = {};   // [core][equivalent, divergent]
-    unsigned file_no = 0;
-    for (const stdfs::path& file : files) {
-        if (!stdfs::exists(file)) continue;
-        const stdfs::path work = dir.path() / std::to_string(file_no++);
-        stdfs::create_directories(work);
-        const verify::lanes::Written written = spec.writer(file, work);
-        const formats::atari2600::Rom rom = formats::atari2600::read(file);
-        for (const auto& [entry, name] : written.functions) {
-            ++functions;
-            Bytes changed = fs::read_file(file);
-            const std::size_t offset = (entry >> 16) * rom.bank_size + ((entry & 0xFFFF) & 0xFFF) % rom.bank_size;
-            if (offset >= changed.size()) continue;
-            changed[offset] ^= 0xFF;
-            const stdfs::path edited = work / "edited.bin";
-            fs::write_file(edited, changed);
-            verify::Judgement judged[2][2];
-            for (int core = 0; core < 2; ++core) {
-                Forced forced(core == 1);
-                judged[core][0] = lane.judge_function(false, file, file, entry);
-                judged[core][1] = lane.judge_function(false, file, edited, entry);
-                for (int k = 0; k < 2; ++k) ++verdicts[core][judged[core][k].verdict == verify::Verdict::Equivalent ? 0 : 1];
-            }
-            for (int k = 0; k < 2; ++k)
-                if (judged[0][k].verdict != judged[1][k].verdict || judged[0][k].reason != judged[1][k].reason) ++disagree;
-            for (const verify::lanes::State& state : spec.states) {
-                verify::lanes::Effects e[2];
-                for (int core = 0; core < 2; ++core) {
-                    Forced forced(core == 1);
-                    e[core] = spec.effects(file, entry, state);
-                }
-                if (e[0] != e[1]) {
-                    if (++effects_differ <= 5) std::printf("  effects differ: %s entry %x\n", file.filename().string().c_str(), entry);
-                }
-            }
-        }
-    }
-    std::printf("pcode_cpu atari2600 homebrew: %u functions; own core equivalent %u divergent %u; emulator equivalent %u divergent %u; verdicts disagreeing %u; runs with other effects %u\n",
-                functions, verdicts[0][0], verdicts[0][1], verdicts[1][0], verdicts[1][1], disagree, effects_differ);
-    CB_CHECK_EQ(disagree, 0u);
-    CB_CHECK_EQ(effects_differ, 0u);
+    std::printf("pcode_cpu random programs: digest %08X\n", digest);
+    CB_CHECK_EQ(digest, 0x15018420u);
 });
 
 // ---- the other 6502 and the Z80 lanes ---------------------------------------------------------------------------------------------------
@@ -248,7 +177,11 @@ struct Kit {
     }
 };
 
-constexpr std::size_t kCap = 80;   // functions judged per program
+// Functions judged per program: 80, or CB_PCODE_FUNCTIONS (the whole corpus with a large number).
+const std::size_t kCap = [] {
+    const auto given = fs::get_env("CB_PCODE_FUNCTIONS");
+    return given && !given->empty() ? static_cast<std::size_t>(std::strtoull(given->c_str(), nullptr, 10)) : std::size_t{80};
+}();
 
 void judge_files(const char* label, const char* lane_name, const std::vector<std::string>& files, bool flat, std::uint32_t origin = 0) {
     const Kit kit;
@@ -273,90 +206,6 @@ void judge_files(const char* label, const char* lane_name, const std::vector<std
 }
 
 }  // namespace
-
-CB_TEST("engine.pcode_cpu.the_atari5200_lane_judges_homebrew_the_same_on_both_cores", [] {
-    const stdfs::path file = samples_root() / "atari5200" / "culomin5200.a52";
-    if (!stdfs::is_regular_file(file)) return;
-    engine::register_atari_lanes();
-    fs::ScopedTempDir dir("cb_pcode_cpu_5200");
-    const verify::lanes::ImageLane lane(engine::atari5200_lane_spec());
-    const formats::atari5200::Rom rom = formats::atari5200::read(file);
-    const Tally t = judge_on_both_cores(lane, file, [&](std::uint32_t entry) -> std::optional<std::size_t> { return rom.offset(entry); }, kCap, dir.path(), "culomin5200");
-    report("atari5200", t);
-    CB_CHECK(t.judged != 0);
-    CB_CHECK_EQ(t.disagree, 0u);
-});
-
-// (no 7800 homebrew on this machine: the lane's own test cartridge, a reset, a subroutine and an interrupt handler)
-CB_TEST("engine.pcode_cpu.the_atari7800_lane_judges_its_cartridge_the_same_on_both_cores", [] {
-    engine::register_atari_lanes();
-    fs::ScopedTempDir dir("cb_pcode_cpu_7800");
-    Bytes file(128, 0);
-    file[0] = 1;
-    const std::string magic = "ATARI7800";
-    std::copy(magic.begin(), magic.end(), file.begin() + 1);
-    file[51] = 0x40;
-    Bytes rom(0x4000, 0xFF);
-    const Bytes code = {0x78, 0xD8, 0xA9, 0x40, 0x85, 0x3C, 0x20, 0x20, 0xC0, 0x4C, 0x06, 0xC0};
-    std::copy(code.begin(), code.end(), rom.begin());
-    const Bytes sub = {0xA5, 0x28, 0x10, 0xFC, 0x8D, 0x24, 0x00, 0x60};
-    std::copy(sub.begin(), sub.end(), rom.begin() + 0x20);
-    rom[0x30] = 0x40;
-    const Bytes vectors = {0x30, 0xC0, 0x00, 0xC0, 0x30, 0xC0};
-    std::copy(vectors.begin(), vectors.end(), rom.begin() + 0x3FFA);
-    file.insert(file.end(), rom.begin(), rom.end());
-    const stdfs::path path = dir.path() / "game.a78";
-    fs::write_file(path, file);
-    const verify::lanes::ImageLane lane(engine::atari7800_lane_spec());
-    const Tally t = judge_on_both_cores(lane, path, [](std::uint32_t entry) -> std::optional<std::size_t> { return entry >= 0xC000 ? std::optional<std::size_t>(128 + entry - 0xC000) : std::nullopt; }, kCap, dir.path(), "a78");
-    report("atari7800 (own cartridge)", t);
-    CB_CHECK(t.judged != 0);
-    CB_CHECK_EQ(t.disagree, 0u);
-});
-
-CB_TEST("engine.pcode_cpu.the_lynx_lane_judges_homebrew_the_same_on_both_cores", [] {
-    const verify::lanes::ImageLane lane(engine::lynx_lane_spec());
-    fs::ScopedTempDir dir("cb_pcode_cpu_lynx");
-    Tally total;
-    unsigned n = 0;
-    for (const char* name : {"loader.lnx", "new_bll.lnx", "overlay.lnx", "boing.o", "fire.o"}) {
-        const stdfs::path file = samples_root() / "lynx" / name;
-        if (!stdfs::is_regular_file(file)) continue;
-        const formats::lynx::Program program = formats::lynx::read(file);
-        formats::lynx::Program loaded = program;
-        if (loaded.kind == formats::lynx::Kind::Cartridge) {
-            const emulate::lynx::Boot boot = engine::lynx_boot::boot(loaded);
-            loaded.set_loaded(boot.segments, boot.entries);
-        }
-        const Offset offset = [&](std::uint32_t address) -> std::optional<std::size_t> {
-            for (const formats::lynx::Segment& s : loaded.segments)
-                if (address >= s.address && address < s.address + s.size) return s.offset + (address - s.address);
-            return std::nullopt;
-        };
-        const stdfs::path work = dir.path() / std::to_string(n++);
-        stdfs::create_directories(work);
-        total.add(judge_on_both_cores(lane, file, offset, kCap, work, name));
-    }
-    if (n == 0) return;
-    report("lynx", total);
-    CB_CHECK(total.judged != 0);
-    CB_CHECK_EQ(total.disagree, 0u);
-});
-
-// (no NES homebrew on this machine: the lane kit's demo cartridge, built with CodeBreaker's own assembler)
-CB_TEST("engine.pcode_cpu.the_nes_lane_judges_its_demo_cartridge_the_same_on_both_cores", [] {
-    fs::ScopedTempDir dir("cb_pcode_cpu_nes");
-    const Bytes rom = source::processors::assemble_described(source::processors::find("6502"), fs::read_text(testing::data_path("engine/testdata/lane_kit/nes_demo.asm")), dir.path()).data;
-    const stdfs::path cartridge = dir.path() / "demo.nes";
-    fs::write_file(cartridge, rom);
-    const Kit kit;
-    const verify::lanes::ImageLane* lane = kit.lane("nes");
-    if (lane == nullptr) return;
-    const Tally t = judge_on_both_cores(*lane, cartridge, [&](std::uint32_t entry) -> std::optional<std::size_t> { return entry >= 0xBFF0 && entry - 0xBFF0 < rom.size() ? std::optional<std::size_t>(entry - 0xBFF0) : std::nullopt; }, kCap, dir.path(), "demo.nes");
-    report("nes (demo cartridge)", t);
-    CB_CHECK(t.judged != 0);
-    CB_CHECK_EQ(t.disagree, 0u);
-});
 
 CB_TEST("engine.pcode_cpu.the_master_system_and_sg1000_lanes_judge_homebrew_the_same_on_both_cores", [] {
     judge_files("master system / sg-1000", "sms", {"sms-peterlemon/HelloWorld.sms", "sms-peterlemon/SMSAudio.sms", "sms-peterlemon/Sprite.sms", "sg1000-240p/suitesg.sg"}, false);

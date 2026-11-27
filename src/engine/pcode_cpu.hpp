@@ -43,8 +43,6 @@ void force(std::optional<bool> on);
 // The run on the emulator, always.
 emulate::m6502::RunResult run(emulate::m6502::Bus& bus, std::uint16_t entry, const emulate::m6502::RunOptions& options = {});
 
-// emulate::m6502::run or run(), by enabled().
-emulate::m6502::RunResult call(emulate::m6502::Bus& bus, std::uint16_t entry, const emulate::m6502::RunOptions& options = {});
 
 // The 6502 one instruction at a time on the emulator, as emulate::m6502::Cpu ran it: `regs` and `steps` are the processor's, step() runs the instruction at
 // regs.pc (a Fault: an undocumented opcode, and nothing changed). The bus is the emulator's as run() makes it, and what is put in its memory between steps is
@@ -74,6 +72,26 @@ private:
 // are tracked from the description's user operations (disable/enableMaskableInterrupts, setInterruptMode, getIFF2, halt).
 emulate::z80::RunResult run(emulate::z80::Bus& bus, std::uint16_t entry, const emulate::z80::RunOptions& options = {});
 emulate::z80::RunResult call(emulate::z80::Bus& bus, std::uint16_t entry, const emulate::z80::RunOptions& options = {});
+
+// The Z80 one instruction at a time on the emulator, as emulate::z80::Cpu ran it: `regs` (the interrupt flip-flops, the mode and HALT among them) and
+// `steps` are the processor's; step() runs the instruction at regs.pc (a Fault: halted by an earlier HALT, or no instruction there, and nothing changed).
+// What is put in the bus's memory between steps is seen by the next one. The thread's emulator is shared: a run or another Z80Cpu between steps is allowed.
+class Z80Session;
+class Z80Cpu {
+public:
+    explicit Z80Cpu(emulate::z80::Bus& bus);
+    ~Z80Cpu();
+    Z80Cpu(const Z80Cpu&) = delete;
+    Z80Cpu& operator=(const Z80Cpu&) = delete;
+
+    emulate::z80::Registers regs;
+    std::uint64_t steps = 0;
+
+    std::optional<emulate::z80::Fault> step();
+
+private:
+    std::unique_ptr<Z80Session> session_;
+};
 
 // The same for the 68000 lanes (emulate::m68k::Bus), on 68020.sla (a superset of the 68000). Every data access goes through the Bus's read/write (the
 // device ranges and their log are the bus's), the 16 MB of bus memory is what instructions are decoded from, a page at a time current from the last run.

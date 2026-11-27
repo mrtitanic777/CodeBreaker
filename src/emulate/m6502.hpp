@@ -1,23 +1,14 @@
-// emulate/m6502.hpp -- a 6502, to run functions on (Unicorn has none).
+// emulate/m6502.hpp -- the 6502 machine a function is run on: its bus (64 KB, device ranges handed to callbacks and logged), its registers, the
+// options and record of a run. The instructions run on CodeBreaker's one emulator (engine/pcode_cpu: run() a call at a time, M6502Cpu a step at a time,
+// on 6502.sla and 65sc02.sla); the interpreter that was here was retired when the emulator matched it.
 //
 //     m6502::Bus bus;                                  // 64 KB, with device ranges handed to callbacks
-//     m6502::Cpu cpu(bus);
-//     cpu.step();                                      // one instruction
-//     m6502::RunResult r = m6502::run(bus, entry, {.a = 3});    // call a function: run to its RTS
+//     m6502::RunResult r = engine::pcode_cpu::run(bus, entry, {.a = 3});    // call a function: run to its RTS
 //     cb::emulate::Run record = m6502::record(r);      // the one run record the judge compares
 //
-// The NMOS 6502 as documented, every one of its 151 instructions (the table is cb/decompile/m6502): the flags each
-// sets (N V Z C, with V from signed overflow), the carry as "no borrow" in subtraction, JSR pushing the address of its
-// own last byte and RTS adding one to what it pops, BRK pushing the address two past itself with B set, PHP pushing B
-// and bit 5 set, PLP and RTI ignoring both, the indirect JMP that fetches the high byte from the start of the same page
-// when the pointer ends a page ($xxFF), and zero-page indexing and pointers that wrap within page zero. `decimal`
-// (default off: the NES's 2A03 has no decimal mode) makes ADC and SBC follow D as a stock 6502 does. An opcode the
-// NMOS 6502 documents nothing for stops the run ("stopped: ...").
-//
-// What a function touches outside its own RAM is the machine's business: a Bus routes reads and writes of chosen
-// ranges (the NES's PPU and APU registers) to callbacks, and logs them in order -- the effects the judge compares.
-//
-// A Bus, a Cpu and a run belong to one thread.
+// `decimal` (default off: the NES's 2A03 has no decimal mode) makes ADC and SBC follow D as a stock 6502 does. An opcode the NMOS 6502 documents nothing
+// for stops the run ("stopped: ..."). What a function touches outside its own RAM is the machine's business: a Bus routes reads and writes of chosen
+// ranges (the NES's PPU and APU registers) to callbacks, and logs them in order -- the effects the judge compares. A Bus and a run belong to one thread.
 #pragma once
 
 #include <cstddef>
@@ -123,47 +114,6 @@ struct Fault {
     std::string text() const;   // "undocumented opcode 02 at 8002"
 };
 
-class Cpu {
-public:
-    explicit Cpu(Bus& bus, bool decimal = false, Variant variant = Variant::Nmos) : bus_(&bus), decimal_(decimal), variant_(variant) {}
-
-    Registers regs;
-    std::uint64_t steps = 0;   // instructions executed
-
-    // Where page zero and the stack are in the address space: $0000 and $0100 on the 6502; the HuC6280's are at $2000 and $2100.
-    void set_pages(std::uint16_t zero_page, std::uint16_t stack) {
-        zero_page_ = zero_page;
-        stack_ = stack;
-    }
-
-    // Execute the instruction at pc. nullopt: it ran. A Fault: the opcode is undocumented (nothing changed).
-    std::optional<Fault> step();
-
-    // The status as the letters of "NVBDIZC", each 0 or 1 (B is whatever bit 4 of P holds).
-    struct Flags {
-        std::uint8_t n, v, b, d, i, z, c;
-    };
-    Flags flags() const;
-
-private:
-    std::uint8_t rd(std::uint16_t a) { return bus_->read(a); }
-    void wr(std::uint16_t a, std::uint8_t v) { bus_->write(a, v); }
-    std::uint16_t rd16(std::uint16_t a);
-    std::uint16_t rd16_zp(std::uint8_t a);   // a pointer in page zero wraps within it
-    void push(std::uint8_t v);
-    std::uint8_t pull();
-    void set_flag(std::uint8_t f, bool on);
-    std::uint8_t set_nz(unsigned v);
-    void adc(std::uint8_t v);
-    void sbc(std::uint8_t v);
-    void compare(std::uint8_t reg, std::uint8_t v);
-
-    Bus* bus_;
-    bool decimal_;
-    Variant variant_;
-    std::uint16_t zero_page_ = 0x0000;
-    std::uint16_t stack_ = 0x0100;
-};
 
 struct RunOptions {
     std::uint8_t a = 0, x = 0, y = 0;
@@ -184,15 +134,8 @@ struct RunResult {
     std::string exit() const;                  // "return" | "stopped: <why>" | "limit"
 };
 
-// Call the function at `entry` as JSR would and run it until it returns (RTS to kReturnAddress), faults or takes
-// `max_steps` instructions. What the function wrote is in the bus's memory.
-RunResult run(Bus& bus, std::uint16_t entry, const RunOptions& options = {});
-
 // The run as the one run record: the registers A X Y P S as results, the bus's device accesses as io, truncated when
 // it hit the step limit; the RunResult is the record's `raw`.
 cb::emulate::Run record(const RunResult& result);
-
-// run + record: the platform's runner (platforms/nes).
-cb::emulate::Run recorded(Bus& bus, std::uint16_t entry, const RunOptions& options = {});
 
 }  // namespace cb::emulate::m6502
