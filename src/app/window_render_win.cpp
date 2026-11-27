@@ -1061,33 +1061,6 @@ void rd_board_history(RdDraw& d, const BoardLayout& b, const Model& m) {
     d.text(L"Take a snapshot", l.snapshot, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
     if (m.hot == Control::BoardHistoryClose) d.fill(l.close, 4, pal.subtle);
     d.text(L"×", l.close, 0, 16, DWRITE_FONT_WEIGHT_NORMAL, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
-    if (l.chart.h > 0) {   // byte-identical functions at each snapshot and now: a line with a dot and its count at each point
-        const std::vector<board::CTrendPoint>& t = m.board_trend;
-        const Rect& c = l.chart;
-        d.fill(c, 4, rd_alpha(pal.text, pal.dark ? 0.04f : 0.025f));
-        std::uint64_t lo = t.front().identical, hi = lo;
-        for (const board::CTrendPoint& p : t) {
-            lo = std::min(lo, p.identical);
-            hi = std::max(hi, p.identical);
-        }
-        const double span = hi > lo ? static_cast<double>(hi - lo) : 1.0;
-        const float left = c.x + 40, right = c.right() - 40, top = c.y + 26, bottom = c.bottom() - 24;
-        const auto at = [&](std::size_t i) {
-            const float x = t.size() == 1 ? (left + right) / 2 : left + (right - left) * static_cast<float>(i) / static_cast<float>(t.size() - 1);
-            const float y = bottom - (bottom - top) * static_cast<float>(static_cast<double>(t[i].identical - lo) / span);
-            return D2D1::Point2F(x, y);
-        };
-        d.brush->SetColor(pal.accent);
-        for (std::size_t i = 1; i < t.size(); ++i) d.rt->DrawLine(at(i - 1), at(i), d.brush.get(), 2.0f);
-        for (std::size_t i = 0; i < t.size(); ++i) {
-            const D2D1_POINT_2F p = at(i);
-            d.circle(Rect{p.x - 4, p.y - 4, 8, 8}, pal.accent);
-            d.text(widen(board::count_words(t[i].identical)), Rect{p.x - 60, p.y - 22, 120, 16}, 0, 11, DWRITE_FONT_WEIGHT_SEMI_BOLD, pal.text, DWRITE_TEXT_ALIGNMENT_CENTER);
-            const std::string when = t[i].name == "now" ? std::string("Now") : board::c_snapshot_words(t[i].name);
-            d.text(widen(when), Rect{p.x - 80, c.bottom() - 20, 160, 16}, 0, 10, DWRITE_FONT_WEIGHT_NORMAL, pal.text2, DWRITE_TEXT_ALIGNMENT_CENTER);
-        }
-        d.text(L"Byte-identical functions", Rect{c.x + 8, c.y + 4, c.w - 16, 16}, 0, 11, DWRITE_FONT_WEIGHT_NORMAL, pal.text3);
-    }
     if (h == nullptr || h->snapshot.empty()) {
         d.text(L"No snapshot yet. Take one to keep today's scores, and this list will show what changes after it.", Rect{l.list.x + 6, l.list.y + 8, l.list.w - 12, 24}, 0, 13, DWRITE_FONT_WEIGHT_NORMAL, pal.text2);
         return;
