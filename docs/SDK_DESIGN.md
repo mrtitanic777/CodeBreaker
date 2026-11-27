@@ -147,7 +147,38 @@ Each phase ends in something that builds, passes the gate and is useful on its o
 - The include checker (phase 1) runs in the gate.
 - Speed: each SDK call is timed against the internal call it wraps; the SDK may not add measurable cost.
 
+## Phase 0 findings (2026-11-27)
+
+The inventory is [docs/sdk/inventory.md](sdk/inventory.md) (regenerate: `python tools/sdk/inventory.py src work/sdk-inventory/facts.json
+&& python tools/sdk/report.py`). 27 areas, 7,716 files; 4,965 includes cross an area boundary in product code.
+
+- **The layering is nearly right already.** Only 116 of those 4,965 includes point upward (34 area pairs). But they tie 22 of the 27
+  areas into one cycle, so today no area can be built, tested or understood without the others. Fixing about a hundred includes
+  breaks the cycle.
+- **The upward includes have four causes:**
+  1. **Commands live in low areas.** `store/analyze_command.cpp`, `store/versions_command.cpp`, `coverage/reach_command.cpp`,
+     `symbols/cmds_main.cpp`, `verify/regress_main.cpp` and about a dozen more are command-line verbs. They reach up into engine,
+     verify, java, recompile and xna because that is what a command does. They belong with the other commands in `app` (or a
+     `commands` area at the top). Moving 18 files removes about half of the upward includes.
+  2. **The L2 hub sits too high.** `decompile` includes `translate/l2.hpp`, `ir.hpp`, `native_l2.hpp` and `backends/c.hpp` (13
+     includes): the decompiler emits L2, so L2 is below it, not above. `translate/ir` + `l2` become their own low area (`l2`,
+     layer 1). The C back end the decompiler calls is the one real upward call and goes behind an interface `decompile` owns.
+  3. **`platforms` is data, not a top layer.** It is 123 small files of console descriptions (memory maps, decoders) used by invert,
+     coverage, symbols, analyze, compare, decompile and emulate. It belongs at layer 1, beside `formats`.
+  4. **Test helpers in product folders.** `formats/*_test_image.hpp` build test ROMs with `source` and `build`; they move next to
+     the tests that use them.
+- **The messiest public faces** (headers used from outside): `formats` 98 headers from 20 areas, `source` 69, `platforms` 50,
+  `emulate` 36, `decompile` 33, `core` 30 (used by every area: 3,277 includes, which is right for core), `build` 28, `java` 25.
+- **The corrected layering**, lowest first:
+  0. core, base
+  1. formats, platforms, l2 (translate/ir + translate/l2), symbols, store, knowledge, jobs
+  2. decompile, emulate, analyze, invert, exact, coverage, compare
+  3. translate, source, build, dotnet, java, xna, recompile, port, verify
+  4. engine
+  5. app (with every command), ui, sdk
+
 ## Status
 
 - 2026-11-27: design written (Logan: "use it as a library", "a really easy to understand code base that is not scattered all over
   the place and internal all over the place"; "cleanliness, structure, and efficiency"). Phase 0 started.
+- 2026-11-27: phase 0 done: the inventory (docs/sdk/inventory.md, tools/sdk), its findings above. Next: phase 1, starting with the include checker and the four causes of the cycle.

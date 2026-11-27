@@ -1,0 +1,750 @@
+kind	from	to	count	detail
+area	analyze	base	2	
+area	analyze	core	58	
+area	analyze	decompile	4	
+area	analyze	emulate	2	
+area	analyze	formats	15	
+area	analyze	jobs	4	
+area	analyze	knowledge	6	
+area	analyze	platforms	1	up
+area	analyze	recompile	2	up
+area	analyze	symbols	3	
+area	app	analyze	6	
+area	app	base	27	
+area	app	build	19	
+area	app	core	106	
+area	app	coverage	3	
+area	app	decompile	3	
+area	app	engine	19	
+area	app	exact	2	
+area	app	formats	45	
+area	app	invert	1	
+area	app	java	3	
+area	app	jobs	2	
+area	app	knowledge	5	
+area	app	platforms	1	
+area	app	recompile	3	
+area	app	source	15	
+area	app	store	6	
+area	app	symbols	12	
+area	app	translate	5	
+area	app	ui	11	
+area	app	verify	5	
+area	app	xna	2	
+area	base	core	68	
+area	base	formats	3	up
+area	build	analyze	1	
+area	build	base	11	
+area	build	core	191	
+area	build	decompile	8	
+area	build	exact	1	
+area	build	formats	23	
+area	build	platforms	2	
+area	build	source	7	
+area	build	symbols	2	
+area	build	translate	3	
+area	compare	analyze	1	
+area	compare	base	1	
+area	compare	core	13	
+area	compare	decompile	1	
+area	compare	formats	5	
+area	compare	jobs	1	
+area	compare	platforms	1	up
+area	coverage	base	3	
+area	coverage	core	23	
+area	coverage	engine	4	up
+area	coverage	formats	9	
+area	coverage	platforms	6	up
+area	coverage	store	1	
+area	coverage	verify	4	up
+area	decompile	analyze	6	
+area	decompile	base	7	
+area	decompile	build	6	up
+area	decompile	core	163	
+area	decompile	formats	21	
+area	decompile	java	1	up
+area	decompile	knowledge	1	
+area	decompile	platforms	1	up
+area	decompile	symbols	11	
+area	decompile	translate	13	up
+area	dotnet	core	74	
+area	dotnet	formats	2	
+area	dotnet	translate	3	
+area	emulate	core	84	
+area	emulate	decompile	24	
+area	emulate	formats	10	
+area	emulate	knowledge	2	
+area	emulate	platforms	1	up
+area	emulate	symbols	1	
+area	engine	analyze	11	
+area	engine	base	11	
+area	engine	build	8	
+area	engine	core	109	
+area	engine	decompile	48	
+area	engine	emulate	78	
+area	engine	formats	101	
+area	engine	java	2	
+area	engine	jobs	4	
+area	engine	knowledge	6	
+area	engine	platforms	47	
+area	engine	source	46	
+area	engine	store	1	
+area	engine	symbols	9	
+area	engine	translate	1	
+area	engine	verify	61	
+area	exact	base	12	
+area	exact	build	3	up
+area	exact	core	279	
+area	exact	formats	17	
+area	exact	invert	1	
+area	formats	build	1	up
+area	formats	core	646	
+area	formats	decompile	1	up
+area	formats	knowledge	12	
+area	formats	source	5	up
+area	invert	base	3	
+area	invert	build	2	up
+area	invert	core	50	
+area	invert	decompile	1	
+area	invert	exact	3	
+area	invert	formats	7	
+area	invert	platforms	7	up
+area	invert	symbols	2	
+area	java	base	4	
+area	java	core	225	
+area	java	decompile	2	
+area	java	formats	10	
+area	java	translate	10	
+area	jobs	core	16	
+area	jobs	knowledge	2	
+area	knowledge	base	2	
+area	knowledge	core	29	
+area	knowledge	symbols	3	
+area	platforms	core	9	
+area	platforms	formats	2	
+area	port	base	35	
+area	port	core	128	
+area	port	exact	1	
+area	port	translate	1	
+area	port	verify	1	
+area	recompile	base	3	
+area	recompile	core	72	
+area	recompile	decompile	1	
+area	recompile	formats	7	
+area	recompile	knowledge	2	
+area	recompile	platforms	1	
+area	source	analyze	9	
+area	source	base	32	
+area	source	build	42	
+area	source	compare	6	
+area	source	core	374	
+area	source	decompile	57	
+area	source	emulate	1	
+area	source	engine	8	up
+area	source	exact	4	
+area	source	formats	101	
+area	source	java	1	
+area	source	jobs	4	
+area	source	knowledge	28	
+area	source	platforms	15	
+area	source	symbols	19	
+area	source	translate	9	
+area	source	verify	24	
+area	store	analyze	3	up
+area	store	base	5	
+area	store	compare	2	up
+area	store	core	8	
+area	store	decompile	2	up
+area	store	engine	8	up
+area	store	jobs	2	
+area	store	knowledge	3	
+area	store	symbols	1	
+area	store	verify	2	up
+area	symbols	analyze	2	up
+area	symbols	base	11	
+area	symbols	build	2	up
+area	symbols	compare	2	up
+area	symbols	core	118	
+area	symbols	decompile	5	up
+area	symbols	formats	21	
+area	symbols	java	1	up
+area	symbols	knowledge	10	
+area	symbols	platforms	5	up
+area	symbols	recompile	1	up
+area	symbols	source	5	up
+area	symbols	store	5	
+area	symbols	xna	1	up
+area	translate	base	3	
+area	translate	core	188	
+area	translate	decompile	2	
+area	translate	dotnet	9	
+area	translate	java	27	
+area	translate	verify	2	
+area	ui	analyze	2	
+area	ui	app	2	
+area	ui	base	12	
+area	ui	compare	2	
+area	ui	core	67	
+area	ui	coverage	6	
+area	ui	decompile	4	
+area	ui	engine	9	
+area	ui	formats	6	
+area	ui	java	1	
+area	ui	platforms	1	
+area	ui	source	2	
+area	ui	store	3	
+area	ui	symbols	4	
+area	ui	verify	3	
+area	verify	base	9	
+area	verify	build	7	
+area	verify	core	136	
+area	verify	decompile	5	
+area	verify	emulate	17	
+area	verify	engine	5	up
+area	verify	formats	10	
+area	verify	java	5	
+area	verify	jobs	3	
+area	verify	knowledge	1	
+area	verify	platforms	11	
+area	verify	symbols	1	
+area	verify	translate	1	
+area	xna	base	4	
+area	xna	core	43	
+area	xna	decompile	1	
+area	xna	dotnet	1	
+area	xna	formats	7	
+area	xna	java	1	
+header	app,compare,decompile,source,symbols	analyze/dos_functions.hpp	7	Analysis discover report Function Interrupt Distance
+header	decompile,engine,source,ui	analyze/call_graph.hpp	5	build Graph Report analyse Access Call Reference Taken name_of
+header	decompile,engine,ui	analyze/image.hpp	5	load_pe NeLayout NeSegment auto_name load ne_spec pe_spec
+header	app,build,engine	analyze/origin.hpp	4	Environment command report Module Origin judge Result to_text
+header	decompile,engine,source	analyze/conventions.hpp	4	functions summary signature Facts Report analyse
+header	decompile,engine,source	analyze/structures.hpp	4	Kind Structure describe recover Root Report analyse
+header	decompile,engine,source	analyze/classes.hpp	3	module_method_names Analysis Class Inputs Model analyse build_model hierarchy
+header	app,symbols	analyze/function_evidence.hpp	2	of_module
+header	app	analyze/ppc_calls.hpp	2	Environment command
+header	store	analyze/facts.hpp	2	default_path to_text FactStore Tally
+header	source	analyze/globals.hpp	1	Initial Kind Report Variable analyse variables
+header	source	analyze/report_internal.hpp	1	
+header	source	analyze/strings.hpp	1	Report Table analyse build_table string_at
+header	store	analyze/observe.hpp	1	Setting describe register_worker_kinds
+header	store	analyze/report.hpp	1	Environment command names
+header	ui	app/commands.hpp	1	CommandDoc CommandTable command_docs find_command_doc
+header	ui	app/verbs.hpp	1	CommandTable help is_verb
+header	analyze,app,build,coverage,decompile,engine,exact,invert,java,knowledge,recompile,source,store,symbols,translate,ui,verify,xna	base/config.hpp	89	Config current value Source Value find_checkout Host
+header	app,compare,coverage,decompile,engine,invert,source,store,symbols,ui	base/corpus.hpp	60	Corpus Lane FormatProbes Products Index Selected lane_name
+header	build,decompile,engine,exact,invert,port,source,verify	base/cache.hpp	36	key Cache Config Kind describe Scope Impl tool_id KeyPart
+header	app,build,decompile,recompile,source,xna	base/converted.hpp	11	Store Project clean_name
+header	analyze,engine,knowledge	base/sqlite.hpp	7	Database Value Row Transaction Impl
+header	port,verify	base/ctext.hpp	32	blank sub_code Mode
+header	exact,port	base/cache_codec.hpp	3	Codec
+header	source,verify	base/runs.hpp	3	remove start results Folder
+header	decompile,port	base/parallel.hpp	2	Limits Impl
+header	source	base/commands.hpp	3	ToolTable dispatch
+header	app	base/corpus_executables.hpp	2	Environment command
+header	app	base/settings.hpp	1	Environment command
+header	app	base/cache_command.hpp	1	CommandEnvironment command settings_of
+header	app	base/tidy_state_command.hpp	1	CommandEnvironment command environment_of
+header	app	base/tool_catalog.hpp	1	Attached Tool
+header	app,decompile,engine,invert,source,symbols,verify	build/watcom.hpp	18	OpenWatcom Target ImportMaps ImportedName import_lines
+header	app,engine,source	build/driver.hpp	5	build Tools Environment command tool assemble compare find_tools report BuildResult Comparison Object
+header	engine,source,verify	build/module.hpp	4	ModuleBuilder Built Services BuildOptions RanExport Verdict
+header	engine,formats,source	build/a64_asm.hpp	4	Image
+header	app,engine,symbols	build/flat_thunk.hpp	3	Services command discover Subtype classify open sdk_prototypes toolchain Classification recover
+header	invert,source,verify	build/msc6.hpp	3	Code CompileOptions Compiler Context Source Tools available compile_many refused object_code DsGlobals ExportLookup OrdinalName Prototypes WineTyped cdecl_imports dialect ds_globals flag_sets fold_temporaries
+header	engine,verify	build/functions.hpp	7	FunctionBuilder Impl BuildCache Built16 Compiler PowerPcTools SegmentOffset Tools32 X64Tools
+header	engine,source	build/mips_asm.hpp	4	Assembler ByteOrder
+header	app,source	build/pklite.hpp	3	read Choice parse install Code Kind PackDetails Packed Relocated Relocation Stored Token choices_of stream_start
+header	app,source	build/floppy.hpp	2	Environment Error command
+header	exact,source	build/dos_run.hpp	2	DosRunner
+header	exact,source	build/native_dos.hpp	2	DosExecutive Exit MemoryResult MemoryRun SessionExit SessionRun Product assemble
+header	source	build/asm_text.hpp	15	name Encoder AsmError Labels UndefinedSymbolError is_undefined split_items strip_comment parse_number
+header	source	build/x86asm/x86asm.hpp	5	Request Result assemble
+header	app	build/disc_image.hpp	2	Environment Error
+header	app	build/xex_edit.hpp	2	Environment command
+header	app	build/x86cc/x86cc.hpp	2	available install Run Target
+header	app	build/x86link/x86link.hpp	2	available install Run
+header	decompile	build/data.hpp	2	RelocationPlace places
+header	exact	build/native_dos_runner.hpp	2	NativeDosRunner
+header	source	build/vxdfile.hpp	2	definitions
+header	app	build/x86asm/command.hpp	1	run_nasm_command
+header	app	build/period16.hpp	1	Environment Tools build command compare
+header	app	build/resources.hpp	1	Environment command compare
+header	source	build/masm.hpp	1	Assembler Context Tools command native_dos selftest
+header	source	build/msvc152.hpp	1	Compiled Tools compile_c kSelfTestSource report
+header	source	build/mzfile.hpp	1	Relocation compose make_template
+header	source	build/stubjoin.hpp	1	join
+header	source,symbols	compare/mask.hpp	5	DistanceResult Match to_text ByteOrder ByteMask
+header	store,ui	compare/versions.hpp	3	compare Corpus Identity Ledger run command declaration Carried Kind Known Comparison Function Pair Side level_name match
+header	source	compare/image.hpp	3	first_difference
+header	ui	compare/versions_internal.hpp	1	Interner SeqMatcher Tag
+header	analyze,app,base,build,compare,coverage,decompile,dotnet,emulate,engine,exact,formats,invert,java,jobs,knowledge,platforms,port,recompile,source,store,symbols,translate,ui,verify,xna	core/fs.hpp	1144	ScopedTempDir to_text read_text stdfs read_file write_file from_text write_text make_dirs get_env file_size close ScopedEnv MappedFile last_write_time same_path remove_tree set_last_write_time copy_tree executable_path
+header	analyze,app,base,build,compare,coverage,decompile,dotnet,emulate,engine,exact,formats,invert,java,jobs,knowledge,platforms,port,recompile,source,store,symbols,translate,ui,verify,xna	core/error.hpp	865	FormatError UsageError Error NotFoundError hex ParseError TruncatedError IoError UnsupportedError kExitOk ToolError kExitUsage InternalError kExitFailed EmulationError location kExitNotFound Failure path_text TimeoutError
+header	analyze,app,base,build,compare,coverage,decompile,dotnet,emulate,engine,exact,formats,invert,java,jobs,knowledge,platforms,port,recompile,source,store,symbols,translate,ui,verify,xna	core/testing.hpp	846	data_path CapturedStd record_failure beside_checkout count_check regold_golden local_input rooted work_corpus Registrar Failure
+header	analyze,app,base,build,compare,coverage,decompile,dotnet,emulate,engine,exact,formats,invert,java,jobs,knowledge,platforms,port,recompile,source,store,symbols,translate,ui,verify,xna	core/text.hpp	797	lines trim lower split replace_all upper from_latin1 is_space split_ws ltrim rtrim iequals iends_with replace_first sanitize_utf8 to_latin1 is_identifier utf8_prefix sanitize_identifier istarts_with
+header	analyze,app,base,build,compare,coverage,decompile,dotnet,emulate,engine,exact,formats,invert,java,jobs,knowledge,platforms,port,recompile,source,symbols,translate,ui,verify,xna	core/bytes.hpp	396	ByteView Bytes ByteSpan Far16
+header	analyze,app,base,build,compare,coverage,decompile,emulate,engine,exact,formats,invert,java,jobs,knowledge,port,recompile,source,store,symbols,translate,ui,verify,xna	core/log.hpp	218	write out_text flush_out err_text level enabled Level
+header	analyze,app,base,build,compare,coverage,decompile,dotnet,emulate,engine,exact,formats,invert,java,jobs,knowledge,port,recompile,source,symbols,translate,ui,verify,xna	core/json.hpp	194	load dump parse Style save try_parse
+header	analyze,app,base,build,coverage,decompile,dotnet,emulate,engine,exact,formats,invert,java,jobs,knowledge,port,recompile,source,store,symbols,translate,ui,verify,xna	core/crypto.hpp	186	to_hex sha1 crc32 from_hex sha256 Sha1Digest Impl Algorithm Hasher md5 Sha256Digest random_bytes rsa_sign_sha1 rsa_verify_sha1 Cipher RsaNumbers rsa_generate
+header	analyze,app,base,build,compare,coverage,engine,exact,formats,java,knowledge,port,recompile,source,store,symbols,translate,ui,verify	core/cli.hpp	130	Command Cli Args Option Positional Arg Handler Param
+header	analyze,build,compare,decompile,emulate,exact,formats,invert,java,jobs,knowledge,platforms,port,recompile,source,symbols,translate,verify,xna	core/ordered_map.hpp	101	OrderedMap pos
+header	app,base,build,coverage,decompile,emulate,engine,formats,invert,java,jobs,port,recompile,source,translate,ui,verify,xna	core/process.hpp	88	run ProcessResult ProcessSpec start Capture Process Priority Impl Mode Stream add_in_process command_line run_checked Detached start_detached
+header	analyze,base,build,decompile,exact,formats,invert,java,knowledge,port,recompile,source,symbols,verify,xna	core/io.hpp	158	ByteReader ByteWriter take checked_range shift try_range
+header	app,base,build,decompile,engine,exact,formats,invert,java,port,recompile,source,translate,verify,xna	core/regex.hpp	124	Regex RegexMatch RegexFlags Program
+header	analyze,app,build,compare,decompile,emulate,exact,formats,invert,platforms,recompile,source,symbols,verify	core/capstone_api.hpp	32	check api Api library
+header	app,base,build,decompile,dotnet,engine,java,jobs,port,recompile,source,translate,verify	core/parallel.hpp	32	run ThreadPool helpers WorkerPolicy State available_gb throttle
+header	coverage,decompile,exact,formats,java,port,translate,ui,xna	core/json_fwd.hpp	24	Json json ordered_map nlohmann
+header	app,base,coverage,engine,formats,jobs,knowledge,source,ui	core/sys.hpp	20	local_tm Impl Stream is_terminal cpu_times total_memory_gb lower_thread_priority local_time last_error StreamRedirect
+header	build,decompile,dotnet,emulate,java,recompile,source,translate	core/arena.hpp	55	Arena Block
+header	analyze,decompile,formats,invert,port,verify	core/intmath.hpp	11	
+header	emulate,engine,exact,formats	core/unicorn_api.hpp	16	check api library Api commit_code_buffer_to_its_end
+header	build,formats,recompile,source	core/random_file.hpp	14	RandomFile FileMode close
+header	base,emulate,formats,translate	core/dynlib.hpp	5	DynLib
+header	app,base,exact,jobs	core/win.hpp	4	use_utf8_console from_wide to_wide
+header	ui,verify	core/socket.hpp	7	Socket Listener connect Impl
+header	base,verify	core/file_lock.hpp	3	FileLock try_acquire Impl
+header	emulate,verify	core/z3_api.hpp	3	api
+header	engine	core/cpu_time.hpp	7	thread_cpu_seconds
+header	build	core/working_folder.hpp	2	WorkingFolder
+header	java	core/http.hpp	2	Options
+header	base	core/json_struct.hpp	1	
+header	app,ui	coverage/ledger.hpp	6	command table Services to_json Ledger kind_title Kind Report Summary Reasons
+header	app,ui	coverage/reach_command.hpp	2	command services Environment standard_registry
+header	ui	coverage/reach.hpp	1	Described Found Registry Services command describe report
+header	analyze,build,compare,emulate,engine,invert,symbols,ui	decompile/describe.hpp	15	where core16 Kind returns Insn Span find_functions Knowledge Impl NeDescription Code16 NoKnowledge Conventions decode16 Operand Return Policy hidden_functions windows_far_prologue kGroupJump
+header	app,engine,source,store,ui,verify	decompile/decompiler.hpp	13	Decompiler Environment calls Context command languages AsC Settings engine_bin kRevision Run Policy LibraryFunction Texts
+header	build,emulate,engine,formats,source	decompile/mips.hpp	19	value text Variant Insn decode decode_word Flow Form
+header	emulate,engine,formats,source	decompile/arm.hpp	11	Insn value decode Arch Flow Shift decode_arm decode_thumb encode condition_suffix
+header	build,emulate,engine,source	decompile/a64.hpp	9	decompile Insn value decode_word system_register_name decode decode_bitmask expand_fp_imm8 Flow
+header	engine,store,symbols,ui	decompile/environment.hpp	5	CorpusModules shipped_tables Impl Sources
+header	emulate,engine,formats,source	decompile/cp1610.hpp	4	decompile value Insn decode Access Flow
+header	emulate,engine,source	decompile/m6502.hpp	12	decompile Insn decode Mode Variant ends_flow opcode_table mode_name
+header	emulate,engine,source	decompile/m68k.hpp	10	value decode Insn Flow OpKind Size
+header	emulate,engine,source	decompile/arm_ext.hpp	8	Kind text mnemonic it_condition kIt neon_transfer kNeon kOrn semantics NeonTransfer neon_modified_immediate conditional decode Sem row_count vfp_move_immediate assemble
+header	emulate,engine,source	decompile/ppc.hpp	8	value text decode_word Flow Insn decode has_immediate
+header	build,engine,verify	decompile/c_text.hpp	6	Services Module16 Compilable32 core16 Interrupt InterruptRoutines Policy interrupt_routines ModulePPC ModuleX64
+header	emulate,engine,source	decompile/sh2.hpp	6	Variant Flow value decode_word Insn decode Operand
+header	emulate,engine,source	decompile/sm83.hpp	5	decode Insn Flow flow_of
+header	emulate,engine,source	decompile/tlcs900.hpp	5	Insn decode Ctx MemKind Row Tok rcode_name Mem op_name Flow
+header	emulate,engine,source	decompile/v810.hpp	5	Insn decode kBitStringBase Flow Mode kCmpfS kMovea
+header	analyze,recompile,source	decompile/vmx128.hpp	3	decode Row text rows
+header	emulate,engine,source	decompile/m6809.hpp	3	Kind Insn decode Flow Mode
+header	build,source	decompile/labels.hpp	7	NameLabels AddressLabels
+header	java,translate	decompile/jar.hpp	7	decompile find_java Error Settings DecompileError DecompileOptions
+header	build,source	decompile/z80.hpp	5	Insn value Flow decode UnknownLabel flow_of
+header	emulate,engine	decompile/arm32_neon_dp.hpp	4	NeonDp NeonOp neon_dp
+header	emulate,source	decompile/f8.hpp	2	Kind Flow Insn decode
+header	emulate,source	decompile/i8048.hpp	2	Kind Flow Insn decode
+header	engine,source	decompile/w65816.hpp	2	decompile OpcodeEntry opcode_table Insn Mode decode ends_flow
+header	engine,source	decompile/engine/sleigh_reader.hh	2	Instruction Reader Flow
+header	engine	decompile/engine/pcode_emulator.hh	29	Emulator Status RunResult RegRef BlockResult UserOpCall UserOpHandler
+header	engine	decompile/engine/core/cpp/opcodes.hh	2	ghidra
+header	xna	decompile/xbox_effect.hpp	2	to_fx
+header	analyze	decompile/conventions.hpp	1	Convention Distance name_of
+header	engine	decompile/decompiler_internal.hpp	1	
+header	source	decompile/engine/sleigh_assembler.hh	1	Assembler run
+header	source	decompile/huc6280.hpp	1	Insn Mode decode decompile ends_flow
+header	translate	dotnet/decompiler/il/instructions.hpp	4	
+header	translate	dotnet/decompiler/typesystem/tuple_type.hpp	2	FunctionPointerType TupleType
+header	translate	dotnet/decompiler/typesystem/type_provider.hpp	2	GenericContext
+header	translate	dotnet/decompiler/typesystem/type_system.hpp	1	IField IMember IMethod IParameter IType
+header	translate	dotnet/decompiler/typesystem/types.hpp	1	ArrayType ByReferenceType FunctionPointerType ModifiedType PointerType TupleType
+header	translate	dotnet/decompiler/decompiler_settings.hpp	1	DecompilerSettings
+header	translate	dotnet/decompiler/il/il_reader.hpp	1	ILReader srm typesystem
+header	translate	dotnet/decompiler/typesystem/decompiler_type_system.hpp	1	DecompilerTypeSystem
+header	translate	dotnet/decompiler/il/transforms/il_transform_pipeline.hpp	1	get_il_transforms
+header	translate	dotnet/decompiler/metadata/metadata_file.hpp	1	MetadataFile PEFile srm
+header	translate	dotnet/decompiler/metadata/universal_assembly_resolver.hpp	1	
+header	translate	dotnet/metadata/metadata_reader.hpp	1	MetadataReader MethodDefinition count
+header	xna	dotnet/decompiler/ilspycmd/ilspycmd_program.hpp	1	run_ilspycmd
+header	analyze,engine,verify	emulate/emulator.hpp	4	Environment ImportArgc Tracer Knowledge Exit MemoryInit Trace FuncSelector Impl TraceOptions kMaxInsns kStackBase
+header	engine,verify	emulate/powerpc.hpp	9	Region RunOptions Machine RunResult Fill PageImage kArgsBase ByteWrite step record Loaded Fault mask AddressRange ExternTable IoAccess filled to_text kReturnAddress BranchEvent
+header	engine,verify	emulate/unicorn_uc.hpp	8	UcFault x86_register open_x86 Api api describe_error x86_registers
+header	engine,verify	emulate/pcode.hpp	7	LifterSet Input Lifter Mode PcodeConfig
+header	engine,source	emulate/a64.hpp	6	Memory Region Cpu End Registers Regions RunOptions RunResult SvcCall svc_name kReturnAddress
+header	engine,verify	emulate/windows16.hpp	5	Environment Impl Knowledge Runner Function ProbeOptions Ordinal TraceOptions models_of descriptor EntryRegisters MemoryInit OffsetRange RecordedCall record
+header	engine,verify	emulate/driver.hpp	2	Image Region resolver_of MemoryInit kVm record
+header	engine	emulate/m6502.hpp	10	Bus RunOptions RunResult DeviceAccess Kind Registers Variant status End Fault kReturnAddress Range kMemorySize record
+header	engine	emulate/arm.hpp	9	Bus RunOptions System RunResult BiosCall BusAccess Kind Cpu Fault kEwramBase kReturnAddress End Range kIwramBase kOamBase kPaletteBase kSramBase kVramBase ReadFn WriteFn
+header	engine	emulate/m68k.hpp	7	Bus RunOptions RunResult BusAccess Kind flag kMemorySize Cpu kReturnAddress Range Fault kMaxSteps
+header	engine	emulate/z80.hpp	5	Bus RunOptions RunResult Registers BusAccess Kind flag kMemorySize Fault kReturnAddress Range to_text End PortIn record
+header	engine	emulate/lynx.hpp	5	Boot make_bus
+header	engine	emulate/sm83.hpp	4	Bus RunOptions RunResult Registers flag BusAccess Kind Fault Program Cpu kReturnAddress End record
+header	engine	emulate/sh2.hpp	4	Bus RunOptions RunResult Variant BusAccess fpscr kMaskSh4 kPhysicalMask kMask Kind Cpu Fault Region kReturnAddress
+header	engine	emulate/r4300.hpp	4	Bus RunOptions RunResult Fault Kind BusAccess kDmem End Cpu kReturnAddress
+header	engine	emulate/tlcs900.hpp	4	Bus RunOptions RunResult Registers SoftwareInterrupt DeviceAccess Kind Fault
+header	engine	emulate/v810.hpp	4	Bus RunOptions RunResult psw DeviceAccess Kind Fault Registers
+header	engine	emulate/mips.hpp	3	Bus RunOptions RunResult Kind Cpu kReturnAddress BiosCall BusAccess Range Fault gte_control_register gte_register gte_run_command gte_set_register
+header	engine	emulate/f8.hpp	3	Bus RunOptions RunResult Kind PortAccess Registers kReturnAddress
+header	engine	emulate/cp1610.hpp	3	Bus RunOptions RunResult DeviceAccess Kind Registers
+header	engine	emulate/i8048.hpp	3	Bus RunOptions RunResult DeviceAccess Kind Place Registers
+header	engine	emulate/huc6280.hpp	3	Machine Options Run Access End kBankSize
+header	engine	emulate/ee.hpp	3	Bus RunOptions RunResult BusAccess Syscall kReturnAddress
+header	engine	emulate/allegrex.hpp	3	Bus RunOptions RunResult BusOptions BusAccess Call kReturnAddress
+header	engine	emulate/w65816.hpp	3	Machine Options Run Access End status
+header	engine	emulate/m6809.hpp	3	Bus RunOptions RunResult DeviceAccess Kind Registers
+header	verify	emulate/native_shadow.hpp	3	Kind PathEntry PathKind Place Run Setup Shadow Step VarKind Lifter
+header	engine	emulate/z80_machines.hpp	2	Trace bus_for coleco cpc in_firmware stub_firmware Machine Range
+header	engine	emulate/mips_le.hpp	2	Cpu Fault Port Kind
+header	engine	emulate/powerpc_fpu.hpp	2	Result compare execute move_from move_to_cr_from_field move_to_field_immediate move_to_fields set_bit Pair execute_paired
+header	engine	emulate/rdp.hpp	1	Command commands
+header	engine	emulate/rsp.hpp	1	Rsp RunResult kHalt kMemSize
+header	engine	emulate/paged_memory.hpp	1	Region
+header	verify	emulate/symbolic.hpp	1	Expr inputs
+header	verify	emulate/run.hpp	1	Run ended
+header	verify	emulate/shadow.hpp	1	PowerPcShadow
+header	app,coverage,source,store,ui,verify	engine/lane_kit.hpp	18	LaneKit host_main_hook hosting_workers Impl
+header	coverage,source,store,ui,verify	engine/function_store.hpp	16	FunctionStore ClassCount Summary Best RecentModule Record Overview Stored StoredVerdict Impl
+header	app,coverage,source,ui	engine/lane_registry.hpp	7	register_all_lanes registered_lanes lane_program_extensions lane_platform
+header	app,source,ui	engine/machine_lanes.hpp	4	machine_lanes
+header	app,store	engine/lane_kit_internal.hpp	3	LaneKit machine_of_file KitSizes
+header	app	engine/engine.hpp	2	Engine Steps
+header	app	engine/facts.hpp	2	Config Databases kGiB
+header	app	engine/show.hpp	2	Environment command
+header	source	engine/machine_dreamcast.hpp	1	dreamcast_lane_spec
+header	source	engine/machine_m68k.hpp	1	neogeo_lane_spec segacd_lane_spec
+header	source	engine/machine_sh2.hpp	1	saturn_lane_spec sega32x_lane_spec
+header	verify	engine/pcode_cpu_ppc.hpp	1	call run
+header	build,invert,source	exact/emu/native_dos_executive.hpp	4	NativeDosExecutive dos_runner executive
+header	invert,source	exact/emu/native_dosexec.hpp	2	Opened limits_from_environment locate switched_off
+header	app	exact/emu/dos_run_command.hpp	1	command
+header	app	exact/command.hpp	1	Environment int run
+header	invert	exact/toolchain.hpp	1	Context ExecutiveRunner Locations PassRunner Toolchain Toolchains kCacheKind parse_profile
+header	port	exact/emu/dosexec/cbdos.h	1	cbd_free cbd_init cbd_run
+header	source	exact/emu/dos.hpp	1	Impl coalesce
+header	analyze,app,build,compare,coverage,decompile,dotnet,engine,java,source,symbols,ui,verify,xna	formats/pe.hpp	50	Image Kind Section Import Export ImportModule kMachineI386 kMachineX64 is_dotnet_file ResourceItem ResourceType ImportSymbol ExportSymbol OptionalHeader CodeView DataDirectory subsystem_label machine_label Version ExportTable
+header	analyze,app,build,compare,coverage,decompile,emulate,engine,invert,platforms,source,symbols,ui,verify	formats/ne.hpp	40	Module Segment Kind Entry Relocation ImportOrdinalRef ImportNameRef Name InternalRef Resource OsFixupRef embedded
+header	analyze,app,base,build,compare,coverage,decompile,engine,invert,platforms,source,symbols,ui	formats/detect.hpp	35	one Lane lane kind identify Detected lane_name holds_drivers format_of DosHeader dos_header lane_of Relocation new_header Detector
+header	analyze,app,build,decompile,emulate,platforms,source,symbols,verify	formats/le.hpp	24	Module open_modules Place Kind Object modules container Descriptor ServiceCall Ddb Reference Export NameTable Fixup InternalFixup ImportFixup EntryPoint FixupRecord Container expand
+header	compare,decompile,emulate,engine,source,symbols,ui,verify	formats/pe_functions.hpp	13	get Function PeCarve function_spans ImportName CodeSection Operand CarveCache Instruction
+header	analyze,app,base,build,coverage,recompile,source,symbols	formats/xex.hpp	12	Tools run basefile probe Header read_header write_basic import_libraries unpack
+header	analyze,app,build,compare,decompile,source,symbols	formats/dos.hpp	14	Program Entry read_program Kind kind_of chain Call mz_header packer_name Unpack Span data_segment read_load_module packer_of set_pklite_unpacker kind_name MzHeader Packer Unpacked dos_and_windows
+header	app,build,coverage,recompile,source,verify,xna	formats/media.hpp	13	volumes Entry Environment Volume put NewFile safe_relative_path Source listing_text VolumeKind
+header	analyze,decompile,engine,recompile,source,symbols	formats/powerpc_image.hpp	12	Image Section VirtualMethod virtual_methods Address Span kMachine Region
+header	analyze,base,build,recompile,symbols,xna	formats/command_test_kit.hpp	11	path code data
+header	build,engine,exact,invert,source	formats/omf.hpp	39	name read functions record publics Object library Kind records code_segments listing FunctionSpan externs Fixup holes Target walk Public FunctionBytes names_of
+header	app,decompile,engine,source,verify	formats/xboxone_test_image.hpp	6	kImageBase kEntry kPeSize section offset
+header	app,coverage,ui	formats/inspect.hpp	6	Description Kind ResourceBody StringOptions hexdump resource_body to_json InfoEnvironment Facts Style Summary
+header	decompile,engine,source	formats/nes.hpp	6	Rom read probe to_string kHeaderSize Mirroring parse
+header	emulate,engine,source	formats/psp.hpp	6	imports read Program encrypted probe Kind Import hardware_name kRamBase kRamSize kScratchpad kScratchpadSize kVram kVramSize nid_of exports
+header	emulate,engine,source	formats/ps2.hpp	6	read Program probe Kind hardware_name kRamSize kScratchpad kScratchpadSize syscall_name
+header	emulate,engine,source	formats/pce.hpp	5	read kBankSize Rom kHardwareBank register_name vdc_register_name parse probe kStack kZeroPage
+header	emulate,engine,source	formats/cpc.hpp	5	read Program Kind probe firmware_names Registers kMemorySize DiskFile disk_files parse
+header	app,engine,source	formats/gb.hpp	4	read Rom probe
+header	emulate,engine,source	formats/lynx.hpp	4	read Program Segment registers Kind kRamEnd kStage1Address probe
+header	emulate,engine,source	formats/snes.hpp	4	Rom read registers kWramSize parse probe to_string
+header	emulate,engine,source	formats/coleco.hpp	4	read Program probe bios_names kOrigin
+header	exact,java	formats/zip.hpp	10	ZipArchive Entry parse add ZipWriter Options
+header	app,source	formats/code_scan.hpp	8	Decoder find_functions CodeSpace
+header	engine,source	formats/genesis.hpp	6	read Rom probe
+header	app,verify	formats/cab.hpp	5	extract read Cabinet Extracted FileEntry kFromPrev kPrevAndNext SourceFile WriteOptions SetLink extract_contained Compression FolderEntry kToNext
+header	engine,source	formats/intv.hpp	5	Rom Segment parse read probe
+header	engine,source	formats/zx.hpp	5	read Program Kind probe Registers kMemorySize Format parse Entry
+header	engine,source	formats/n64.hpp	5	Rom read ByteOrder kBootSize kHeaderSize order_of order_text probe parse
+header	engine,source	formats/saturn.hpp	5	Disc read parse kHighRam is_disc_start kHighRamSize probe
+header	engine,source	formats/cdi.hpp	4	Program read Module kHeader kSector module_at parse probe kMemorySize
+header	engine,source	formats/jaguar.hpp	4	Program read Kind parse probe kMemorySize
+header	engine,source	formats/gba.hpp	4	read Rom probe kHeaderSize
+header	engine,source	formats/psx.hpp	4	read Exe kRamMask probe kHeaderSize boot_file parse_disc parse
+header	engine,source	formats/ppc_program.hpp	4	read Program Region probe Console console_text Piece cpu_text kind_text lane_name parse
+header	engine,source	formats/nds.hpp	4	Cpu Rom read Region probe Binary Kind crc16
+header	engine,source	formats/ngp.hpp	4	Rom hardware read parse probe kRomBase
+header	engine,source	formats/sega32x.hpp	4	Rom read kSdram parse is_rom_start kCartWindow kCartWindowSize kFrameBuffer kFrameBufferSize kSdramSize probe
+header	engine,source	formats/vb.hpp	4	kBase Rom parse probe read
+header	engine,source	formats/orbis.hpp	4	Program read Segment Console Import Kind Relocation console_of is_playstation kind_of parse probe syscall_name
+header	analyze,app	formats/xex_imports.hpp	3	Environment OrdinalNames command imports
+header	engine,source	formats/atari5200.hpp	3	Rom read parse probe
+header	engine,source	formats/atari2600.hpp	3	Rom read Scheme probe
+header	engine,source	formats/msx.hpp	3	read Program probe
+header	engine,source	formats/sms.hpp	3	read Rom System probe to_string
+header	engine,source	formats/dreamcast.hpp	3	Disc read kFirstReadBase Container is_disc_start kCachedView kIpBase kRamBase kRamSize kSystemBytes parse probe descramble looks_scrambled
+header	engine,source	formats/neogeo.hpp	3	Neo Rom read kBankSelect probe
+header	engine,source	formats/segacd.hpp	3	Disc read kSubBase is_disc_start parse probe kMainBase
+header	engine,source	formats/n3ds.hpp	3	Program read Kind Segment kBase probe encrypted_container
+header	engine,source	formats/ps3.hpp	3	Program read Segment probe function_name syscall_name
+header	engine,source	formats/snes_test_image.hpp	3	word
+header	engine,source	formats/vectrex.hpp	3	Rom parse probe read
+header	engine,source	formats/vita.hpp	3	Program read Import Segment probe
+header	engine,source	formats/xboxone.hpp	3	Program image_of read parse probe
+header	java,verify	formats/png.hpp	3	Image decode blank kMaxPixels Rules encode_rgba encode_rgb
+header	java,xna	formats/xwb.hpp	3	Codec codec_name MiniFormat decode_miniformat Segment pack_pcm_miniformat Header read_header
+header	analyze,build	formats/resources.hpp	2	Resource strings Ident PeResourceEntry dialog from_pe_entries ResourceKey group menu version
+header	decompile,xna	formats/xbox/effect.hpp	2	Effect Parameter read ObjectId Pass State Technique
+header	engine,source	formats/atari7800.hpp	2	Rom read kBankSize probe
+header	engine,source	formats/cdi_test_image.hpp	2	
+header	engine,source	formats/chf.hpp	2	Rom bios kBase kMaxSize parse probe read
+header	engine,source	formats/chf_test_image.hpp	2	
+header	engine,source	formats/gekko_map.hpp	2	Range devices hardware_name
+header	engine,source	formats/intv_test_image.hpp	2	
+header	engine,source	formats/segacd_test_image.hpp	2	
+header	engine,source	formats/ngp_test_image.hpp	2	
+header	engine,source	formats/o2.hpp	2	Rom kBase kMaxSize parse probe read vdc
+header	engine,source	formats/o2_test_image.hpp	2	
+header	engine,source	formats/pce_test_image.hpp	2	
+header	engine,source	formats/nro.hpp	2	Program Relocation Segment kRelativeReloc probe read
+header	engine,source	formats/nro_test_image.hpp	2	image
+header	engine,source	formats/threedo.hpp	2	Program read Kind parse probe
+header	engine,source	formats/vb_test_image.hpp	2	jal
+header	engine,source	formats/vectrex_test_image.hpp	2	
+header	engine,source	formats/wonderswan.hpp	2	Rom kEnd parse probe read
+header	engine,source	formats/orbis_test_image.hpp	2	kStart entries kElfSize
+header	exact,source	formats/exepack.hpp	2	Original Fill Layout Packed StartRegisters layout pack unpack
+header	engine	formats/read.hpp	27	end
+header	app	formats/xbox/crypto/tools.hpp	3	Environment command
+header	engine	formats/lynx_test_image.hpp	3	namespace count block
+header	app	formats/fonts.hpp	2	Environment command
+header	app	formats/gfx.hpp	2	Environment fonts
+header	app	formats/xbox/system_ui.hpp	2	Environment command extract
+header	app	formats/xbox/disc_command.hpp	2	command
+header	recompile	formats/xex/src/xex_file.h	2	Resource XexFile xex ImportLibrary OptionalHeader
+header	verify	formats/iso9660.hpp	2	Volume Access Entry Impl Names
+header	app	formats/xbox/heavyiron.hpp	1	command replace
+header	decompile	formats/xbox/d3dx.hpp	1	ParamClass ParamType class_name is_sampler_type is_texture_type type_name
+header	decompile	formats/xbox/shader.hpp	1	Constant Interpolator RegisterSet Shader Stage VertexInput read
+header	dotnet	formats/deflate.hpp	1	Inflated Status Wrap
+header	engine	formats/disc_image.hpp	1	Sectors is_image_name kSector raw_sync
+header	recompile	formats/xbox/volumes.hpp	1	Volumes open
+header	recompile	formats/xbox/ciso.hpp	1	write_cso
+header	recompile	formats/xbox/gdf.hpp	1	Entry SourceFile build
+header	recompile	formats/xex/src/basefile.h	1	reconstruct_basefile xex
+header	source	formats/mips_elf.hpp	1	Elf
+header	xna	formats/lzx.hpp	1	
+header	xna	formats/xbox/texture.hpp	1	Format Image
+header	app	invert/production.hpp	1	production
+header	exact	invert/early_c.hpp	1	Options Recovered fold_ladders
+header	engine,source,translate	java/production.hpp	5	find_java
+header	engine,translate,verify	java/probe.hpp	3	run Kind list_libraries SourceTree Toolchain library same Difference RunResult Slot cases compile_shims stage_sources Compiled
+header	translate,ui,verify	java/corpus.hpp	3	discover build_method_renames compute_collection_out_params resolve_inheritance
+header	app,symbols	java/tools.hpp	3	Environment int main command PcBuild Status build_percent_of_line
+header	translate,verify	java/parse.hpp	3	parse_file parse_source
+header	translate,verify	java/transpile.hpp	3	Options Summary convert BodyTranslator TranslateRequest TranslatedBodies
+header	translate	java/apimap.hpp	5	Registry name Kind Mapping TargetMap
+header	translate	java/paths.hpp	5	JavaData
+header	translate	java/emit/ownership.hpp	4	params_str return_cpp_type owned_pointers
+header	translate	java/assembly.hpp	3	Assembly FrontEnd
+header	translate	java/frontend.hpp	3	DumpTools lower_program
+header	xna	java/rgba_png.hpp	2	Image formats
+header	app	java/port.hpp	1	Plan Platform SourceKind plan
+header	decompile	java/projects/minecraft/prep/prepare.hpp	1	PrepareOptions PrepareResult
+header	translate	java/init_driver.hpp	1	compute_static_init_order
+header	translate	java/projects/minecraft/profiles/minecraft_xbox360.hpp	1	nullable profile static_init_order
+header	translate	java/emit/source.hpp	1	BodySource CtorBody Options
+header	translate	java/ir.hpp	1	EnumConst Field JClass JType Method
+header	translate	java/ledger.hpp	1	Category Ledger Severity name
+header	translate	java/runtime.hpp	1	Runtime
+header	translate	java/typemap.hpp	1	TypeProfile
+header	translate	java/types.hpp	1	Ownership TypeResolver Use
+header	translate	java/emit/naming.hpp	1	enum_member static_field_name
+header	translate	java/emit/std_transforms.hpp	1	map_outside_literals
+header	verify	java/textutil.hpp	1	Decode read_text write_text
+header	analyze,app,engine,source,store,verify	jobs/workers.hpp	14	WorkerLauncher WorkerKinds run_as_worker TokenReader TokenWriter next integer Args Handover WorkerResult
+header	analyze,compare,engine,source,verify	jobs/pool.hpp	8	jobs alone RunOptions workers default_jobs total AsDoneOptions ran
+header	analyze,app,decompile,emulate,engine,formats,recompile,source,store,symbols,verify	knowledge/package.hpp	61	standard Knowledge Impl HardwareRegion platform HardwareRegister
+header	analyze,app,engine,jobs,recompile,symbols	knowledge/reads.hpp	12	record add Recording record_kind ReadDigests AdoptRecording Reads current_recording
+header	analyze,engine,jobs,symbols,verify	knowledge/value.hpp	10	Value List Kind Map
+header	app,decompile,emulate,store,symbols	knowledge/store.hpp	9	Store environment
+header	symbols	knowledge/sources.hpp	1	Rows
+header	analyze,app,build,compare,decompile,emulate,engine,invert,recompile,source,symbols,verify	platforms/decoder.hpp	45	DecoderSet Insn Arch Decoder cs_insn RegisterAccess
+header	coverage,engine,ui,verify	platforms/package.hpp	7	Registry Platform machine xbe Endian MachineSpec OwnDecoder
+header	coverage,verify	platforms/vxd.hpp	2	vxd vxd_entry_points
+header	coverage,verify	platforms/win16.hpp	2	win16 kWin16ArgumentWords
+header	coverage	platforms/dos.hpp	1	dos
+header	coverage	platforms/java.hpp	1	java
+header	engine	platforms/atari2600.hpp	1	atari2600
+header	engine	platforms/atari5200.hpp	1	atari5200
+header	engine	platforms/atari7800.hpp	1	atari7800
+header	engine	platforms/coleco.hpp	1	coleco
+header	engine	platforms/cpc.hpp	1	cpc
+header	engine	platforms/gb.hpp	1	
+header	engine	platforms/gba.hpp	1	gba
+header	engine	platforms/genesis.hpp	1	genesis
+header	engine	platforms/msx.hpp	1	msx
+header	engine	platforms/nes.hpp	1	nes
+header	engine	platforms/ps1.hpp	1	ps1
+header	engine	platforms/sms.hpp	1	sms
+header	engine	platforms/cdi.hpp	1	cdi
+header	engine	platforms/chf.hpp	1	chf
+header	engine	platforms/dreamcast.hpp	1	dreamcast
+header	engine	platforms/gamecube.hpp	1	gamecube
+header	engine	platforms/wii.hpp	1	wii
+header	engine	platforms/wiiu.hpp	1	wiiu
+header	engine	platforms/intv.hpp	1	intv
+header	engine	platforms/jaguar.hpp	1	jaguar
+header	engine	platforms/lynx.hpp	1	lynx
+header	engine	platforms/neogeo.hpp	1	neogeo
+header	engine	platforms/segacd.hpp	1	segacd
+header	engine	platforms/n3ds.hpp	1	n3ds
+header	engine	platforms/n64.hpp	1	n64
+header	engine	platforms/nds.hpp	1	nds
+header	engine	platforms/ngp.hpp	1	ngp
+header	engine	platforms/o2.hpp	1	
+header	engine	platforms/pce.hpp	1	pce
+header	engine	platforms/ps2.hpp	1	ps2
+header	engine	platforms/ps3.hpp	1	ps3
+header	engine	platforms/psp.hpp	1	psp
+header	engine	platforms/sega32x.hpp	1	sega32x
+header	engine	platforms/saturn.hpp	1	saturn
+header	engine	platforms/snes.hpp	1	snes
+header	engine	platforms/nswitch.hpp	1	nswitch
+header	engine	platforms/threedo.hpp	1	threedo
+header	engine	platforms/vb.hpp	1	
+header	engine	platforms/vectrex.hpp	1	vectrex
+header	engine	platforms/vita.hpp	1	vita
+header	engine	platforms/wonderswan.hpp	1	wonderswan
+header	engine	platforms/ps4.hpp	1	ps4
+header	engine	platforms/ps5.hpp	1	ps5
+header	engine	platforms/xboxone.hpp	1	xboxone
+header	analyze,source	recompile/disassemble.hpp	2	Disassembler Row Section main
+header	app,symbols	recompile/command.hpp	2	Environment recompile recompile_project_runner recompile_runner xenon_recompile_runner recompile_project xenon_recompile
+header	app	recompile/xenon_tools.hpp	2	Environment commands
+header	analyze	recompile/discover.hpp	1	Discovery Image Section disassemble
+header	source	recompile/powerpc.hpp	1	CompilerEnv FunctionBounds Recompiled find_compiler kernel_includes main recompile_function runtime_header
+header	app,build,emulate,engine,formats	source/processors.hpp	16	find assemble_described Image Line all Processor described_decoder lookup source_described described_encoder assemble_line
+header	app,emulate,engine,formats	source/isa.hpp	7	m68k_decoder arm9_decoder arm_decoder
+header	build,emulate,engine	source/dialect.hpp	6	find
+header	app,build,engine	source/dos_writer.hpp	5	Environment options_for command Options Result reconstruct stub_finder usage WindowsBuild
+header	build,emulate,engine	source/risc_source.hpp	5	assemble gnu_arm read_text
+header	emulate,engine,formats	source/sh2_test_programs.hpp	4	first sh2 entry init area kSaturnProgram kSdramProgram length
+header	engine,formats,platforms	source/nds_test_image.hpp	3	name title arm7 arm9
+header	build,engine	source/assembly.hpp	4	from Prober same link Candidate mnemonic operands assemble Tools
+header	app,engine	source/le_writer.hpp	3	bytes Environment Image Result reconstruct Options command usage
+header	engine,formats	source/dreamcast_test_programs.hpp	3	boot kProgram
+header	engine,formats	source/gekko_test_images.hpp	3	kHelper kText names kData kCallback text
+header	emulate,formats	source/isa_r4300.hpp	2	r4300_decoder
+header	engine,formats	source/n64_test_rom.hpp	2	
+header	symbols,ui	source/module_writer.hpp	2	console_import_names spell describe
+header	engine	source/lynx_writer.hpp	3	Booter write
+header	engine	source/snes_writer.hpp	3	kAddressMask kStartsNative kStartsWith16BitIndex reconstruct kStartsWith16BitAccumulator
+header	formats	source/isa_sh2.hpp	3	sh2_decoder sh4_decoder
+header	app	source/ne_writer.hpp	2	Environment Image Options Result reconstruct command usage
+header	app	source/pe_writer.hpp	2	Environment Image Options Result reconstruct command usage
+header	app	source/pipeline.hpp	2	build module JudgeSteps Judging Environment commands decompile match measure place repair score16 scoreboard sweep teeth
+header	engine	source/atari2600_writer.hpp	2	reconstruct tia_read write
+header	engine	source/nes_writer.hpp	2	reconstruct hardware write
+header	engine	source/n3ds_writer.hpp	2	hardware reconstruct svc_name write
+header	engine	source/ps2_writer.hpp	2	reconstruct write
+header	engine	source/psp_writer.hpp	2	reconstruct write
+header	engine	source/wonderswan_writer.hpp	2	reconstruct
+header	engine	source/x64_writer.hpp	2	write Image
+header	symbols	source/ne_asm/fixups.hpp	2	Objdump main run_objdump
+header	symbols	source/ne_asm/segment.hpp	2	Seg SharedOrdinals main skeleton NameOverrides
+header	app	source/pe64_writer.hpp	1	Options
+header	app	source/commands.hpp	1	Production
+header	engine	source/gb_writer.hpp	1	reconstruct registers write
+header	engine	source/gba_writer.hpp	1	hardware reconstruct write
+header	engine	source/genesis_writer.hpp	1	hardware reconstruct write
+header	engine	source/coleco_writer.hpp	1	machine reconstruct write
+header	engine	source/cpc_writer.hpp	1	machine reconstruct write
+header	engine	source/msx_writer.hpp	1	machine reconstruct write
+header	engine	source/ps1_writer.hpp	1	hardware reconstruct write
+header	engine	source/sms_writer.hpp	1	ports reconstruct write
+header	engine	source/zx_writer.hpp	1	machine reconstruct write
+header	engine	source/m6502_source.hpp	1	Cpu assemble
+header	engine	source/atari5200_writer.hpp	1	gtia_read reconstruct
+header	engine	source/atari7800_writer.hpp	1	reconstruct tia_read write
+header	engine	source/cdi_writer.hpp	1	reconstruct system_calls
+header	engine	source/chf_writer.hpp	1	reconstruct
+header	engine	source/dreamcast_writer.hpp	1	hardware reconstruct
+header	engine	source/gekko_writer.hpp	1	reconstruct write
+header	engine	source/intv_writer.hpp	1	hardware reconstruct
+header	engine	source/jaguar_writer.hpp	1	reconstruct
+header	engine	source/neogeo_writer.hpp	1	hardware reconstruct write
+header	engine	source/segacd_writer.hpp	1	hardware reconstruct write
+header	engine	source/n64_writer.hpp	1	hardware reconstruct write
+header	engine	source/nds_writer.hpp	1	hardware reconstruct
+header	engine	source/ngp_writer.hpp	1	reconstruct
+header	engine	source/o2_writer.hpp	1	reconstruct
+header	engine	source/pce_writer.hpp	1	reconstruct
+header	engine	source/isa_mips_le.hpp	1	allegrex_encoder r5900_encoder
+header	engine	source/ps3_writer.hpp	1	reconstruct
+header	engine	source/saturn_writer.hpp	1	hardware reconstruct
+header	engine	source/sega32x_writer.hpp	1	hardware reconstruct
+header	engine	source/switch_writer.hpp	1	reconstruct write
+header	engine	source/threedo_writer.hpp	1	reconstruct
+header	engine	source/vb_writer.hpp	1	hardware reconstruct
+header	engine	source/vectrex_writer.hpp	1	bios reconstruct
+header	engine	source/vita_writer.hpp	1	reconstruct write
+header	engine	source/orbis_writer.hpp	1	reconstruct
+header	engine	source/xboxone_writer.hpp	1	reconstruct
+header	formats	source/intv_build.hpp	1	
+header	ui	source/placement.hpp	1	Decision Placement how_name load_table
+header	app,coverage,ui	store/functions.hpp	8	default_path open databases_folder latest
+header	engine,symbols	store/knowledge_proposals.hpp	4	KnowledgeProposals
+header	symbols,ui	store/proposals.hpp	3	ProposalStore Proposal state_name
+header	app	store/analyze_command.hpp	2	Environment register_worker_kinds command
+header	symbols	store/knowledge_bodies.hpp	2	KnowledgeBodies
+header	app	store/versions_command.hpp	1	Environment command
+header	symbols	store/bodies.hpp	1	BodyStore
+header	app,build,decompile,emulate,engine,invert,knowledge,source,verify	symbols/prototypes.hpp	9	Prototype PrototypeTable HeaderFolders read_headers Bits Parameter stamp
+header	app,decompile,emulate,engine,source,store,verify	symbols/driver_services.hpp	11	Environment Table command coverage find_include_dir table_of ServiceCall
+header	analyze,app,decompile,source	symbols/dos_interrupts.hpp	6	ServiceTable run Interrupt Entry
+header	decompile,engine,source,ui	symbols/ordinals.hpp	4	Ordinals ModuleExports ShippedTables Table module_stem documented
+header	app,decompile,engine	symbols/names.hpp	4	symbols Services command Impl Namer PowerPcNames VirtualMethod function_key
+header	decompile,engine,knowledge	symbols/api_arguments.hpp	4	Win16Memory Win32Memory ExportingModule Found ModuleSource Win16Exports stem
+header	app,source,ui	symbols/demangle.hpp	3	readable run parse Kind declaration plain stack_bytes
+header	build,decompile,source	symbols/wine16.hpp	3	Export Specs width Convention spelling load
+header	engine,knowledge	symbols/runtime_library.hpp	3	Kind flat_thunk_stubs signature CodeRegion DosImage Entry Ne16Module Ne16Segment Pe32Module SignatureTable identify_dos identify_ne identify_pe Identified SignatureRow learn
+header	invert,source	symbols/libraries/coff.hpp	3	functions Object Relocation Section kPowerPc kSectionCode
+header	source,ui	symbols/workbench.hpp	3	Workbench
+header	app,engine	symbols/identify.hpp	2	Environment command Found Image Impl identify_x64
+header	decompile	symbols/cpp_classes_x64.hpp	3	Classes find_classes
+header	source	symbols/debug_build.hpp	3	Environment main parse_overrides
+header	app	symbols/environment.hpp	2	Environment
+header	source	symbols/libraries/package.hpp	2	Function Library read_file
+header	analyze	symbols/evidence.hpp	1	FunctionEvidence
+header	app	symbols/program_commands.hpp	1	Environment classes_command int
+header	decompile	symbols/c_library.hpp	1	CLibrary Prototype
+header	source	symbols/debug_build_estimate.hpp	1	Environment main
+header	source	symbols/libraries/omf.hpp	1	fields_only functions
+header	source	symbols/sdk_structs.hpp	1	StructTable
+header	ui	symbols/proposals.hpp	1	Address Services
+header	build,decompile,java,source	translate/l2.hpp	21	texts to_json Assembly Made units from_json function_node slot fragment_node type_to_json
+header	decompile,java	translate/ir.hpp	10	Node This Unit Block MethodDecl Name Select TypeP CallingConvention Module For ClassLit CtorCall Kind Length TypeName Unsupported children Assign Binary
+header	decompile,engine	translate/native_l2.hpp	4	Library Impl
+header	decompile,verify	translate/backends/c.hpp	3	moved_passes param_name scalar_size
+header	app	translate/capability.hpp	1	Target languages targets
+header	app	translate/translate_file.hpp	1	Result Verdict run
+header	app	translate/judge_c_java_command.hpp	1	Environment command main
+header	app	translate/judge_cs_cpp_command.hpp	1	Environment command main table
+header	app	translate/judge_py_cpp_command.hpp	1	Environment command
+header	dotnet	translate/frontends/cil/cil_names.hpp	1	decimal_from
+header	dotnet	translate/frontends/cil/cil.hpp	1	ILFunction ILInstruction ILVariable LiftMap Lowering
+header	dotnet	translate/ir_index.hpp	1	TreeIndex
+header	java	translate/backends/cpp03.hpp	1	Translator
+header	java	translate/registry.hpp	1	FrontEnd Registry register_java_front_end
+header	java	translate/rewrite.hpp	1	
+header	port	translate/backends/asm.hpp	1	Document Error
+header	source	translate/backends/module_file.hpp	1	Lane Whole parts
+header	app	ui/mcp_server.hpp	3	Config Corpus Services standard_corpus token
+header	app	ui/mcp_wiring.hpp	3	Context fill_code
+header	app	ui/progress_store.hpp	2	store_reader
+header	app	ui/mcp_command.hpp	1	Environment command
+header	app	ui/report.hpp	1	Environment command
+header	app	ui/serve.hpp	1	Environment command
+header	app,coverage,engine,port,source,store,translate,ui	verify/verdicts.hpp	17	said Class word Verdict label FunctionVerdict Classification ByteMatch title WeakLimits Judgement classify parse_verdict WeakLimit
+header	app,coverage,engine,source,store,ui	verify/reconstruct.hpp	9	Kinds Reconstructor Services Identity KindTraits Outcome Registry reaches signatures JudgeBatch Step Stopped digests_of
+header	coverage,engine,source,translate	verify/lanes/java.hpp	7	JavaLane Convert Context Tools ToolsFn Check Options
+header	app,engine,source	verify/lanes/image_lane.hpp	77	ImageLaneSpec ImageLane PreparedImage Effects State Effect
+header	engine,source	verify/lanes/win16.hpp	4	Win16Lane Context PreparedWin16 Rebuilt Win16LaneSpec CodeSpan
+header	engine,source	verify/lanes/driver.hpp	3	DriverLane DriverLaneSpec Rebuilt
+header	engine,source	verify/lanes/powerpc.hpp	3	Image PowerPcLane Services Context Region PreparedPowerPc
+header	engine,source	verify/lanes/win32.hpp	3	Win32Lane Services PreparedModule Context
+header	engine	verify/lanes/kind.hpp	3	Kind Prepared Built
+header	source	verify/stage_timer.hpp	3	StageTimer stage_timer add reset
+header	engine	verify/lane_common.hpp	2	store_of judged
+header	engine	verify/lanes/win64.hpp	2	Image Kind Services Win64Lane Context Region
+header	source	verify/authored/repair.hpp	2	Arguments ByteVerdict Code Compiler Counts Isa Module Repaired RunOptions Target kUsage knobs parse_arguments run split summary_line
+header	source	verify/gate16/scoreboard16.hpp	2	Row Rows rows_to_json run Arguments Inputs kUsage parse_arguments report_lines rows_from_json show_lines word
+header	app	verify/regress.hpp	1	Services command run word
+header	engine	verify/gate16/isolated16.hpp	1	Isolated16 Isolated16Spec IsolatedTables
+header	engine	verify/lanes/dos.hpp	1	DosLane Tools
+header	engine	verify/lanes/msx.hpp	1	kKind kRev kRomHigh kRomLow
+header	engine	verify/lanes/zx.hpp	1	kKind kRev kRomHigh kRomLow
+header	source	verify/measure.hpp	1	Engine Row Services command run
+header	source	verify/sweep.hpp	1	Options Services options_of params run status
+header	source	verify/authored/match16.hpp	1	Function Log Result Toolchain replay run
+header	source	verify/teeth.hpp	1	Function Lane Outcome Replacement Said Services breaks command
+header	source	verify/gate16/setup16.hpp	1	Monitor Options Outcome free_port
+header	source	verify/gate16/screen.hpp	1	Picture
+header	app,symbols	xna/command.hpp	2	Environment int run
+header	app	xna/run.hpp	1	Cleaned Converted Environment Options Tools decompile deobfuscated obfuscator
