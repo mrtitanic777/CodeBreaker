@@ -12,13 +12,14 @@
 // The same run and the same result as emulate::m6502::run: a function is called as JSR calls it (return address pushed,
 // returning when the pc reaches kReturnAddress), the registers A X Y P S as the run left them, the device accesses of the
 // run in order, an instruction the NMOS 6502 documents nothing for stops the run with the same fault. Differences from the
-// own core, which the description decides: ADC and SBC honour the D flag (the own core's `decimal` is off by default);
-// `Variant::Cmos` runs 65c02.sla.
+// own core: none (ADC and SBC are decimal with D set when `decimal` is, as the 6502 descriptions do it with their BCD switch);
+// `Variant::Cmos` runs 65sc02.sla (the 65C02 without the bit instructions the Lynx's 65SC02 lacks).
 //
 // call() uses the emulator by default; CB_PCODE_EMU=0 (or force(false)) makes it use the own core (emulate/m6502, emulate/z80). Every 6502-family
 // and Z80-family lane (Atari 2600, 5200, 7800, NES, Lynx, Master System, SG-1000, MSX, ColecoVision, ZX Spectrum, Amstrad CPC) calls it.
 #pragma once
 
+#include <memory>
 #include <optional>
 
 #include "emulate/m6502.hpp"
@@ -44,6 +45,26 @@ emulate::m6502::RunResult run(emulate::m6502::Bus& bus, std::uint16_t entry, con
 
 // emulate::m6502::run or run(), by enabled().
 emulate::m6502::RunResult call(emulate::m6502::Bus& bus, std::uint16_t entry, const emulate::m6502::RunOptions& options = {});
+
+// The 6502 one instruction at a time on the emulator, as emulate::m6502::Cpu ran it: `regs` and `steps` are the processor's, step() runs the instruction at
+// regs.pc (a Fault: an undocumented opcode, and nothing changed). The bus is the emulator's as run() makes it, and what is put in its memory between steps is
+// seen by the next one. `decimal`: ADC and SBC are decimal when D is set (the description's BCD switch), as RunOptions::decimal is for run(). The thread's emulator is shared: a run or another M6502Cpu between steps is allowed.
+class M6502Session;
+class M6502Cpu {
+public:
+    explicit M6502Cpu(emulate::m6502::Bus& bus, bool decimal = false, emulate::m6502::Variant variant = emulate::m6502::Variant::Nmos);
+    ~M6502Cpu();
+    M6502Cpu(const M6502Cpu&) = delete;
+    M6502Cpu& operator=(const M6502Cpu&) = delete;
+
+    emulate::m6502::Registers regs;
+    std::uint64_t steps = 0;
+
+    std::optional<emulate::m6502::Fault> step();
+
+private:
+    std::unique_ptr<M6502Session> session_;
+};
 
 // The same for the lanes' Z80 (emulate::z80::Bus), on z80.sla: the Bus is the emulator's read/write hook for the "ram" space and its
 // "io" space (IN and OUT; the port is all sixteen lines, as the description puts A or B on the high ones), the 64 KB of bus memory the

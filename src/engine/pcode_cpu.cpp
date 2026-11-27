@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <map>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -48,7 +49,7 @@ sl::Emulator& emulator_named(const char* description) {
 bool is_ram(std::string_view space) { return space.size() == 3 && (space[0] | 32) == 'r' && (space[1] | 32) == 'a' && (space[2] | 32) == 'm'; }
 
 namespace {
-sl::Emulator& emulator_for(m::Variant variant) { return emulator_named(variant == m::Variant::Cmos ? "65c02.sla" : "6502.sla"); }
+sl::Emulator& emulator_for(m::Variant variant) { return emulator_named(variant == m::Variant::Cmos ? "65sc02.sla" : "6502.sla"); }
 }  // namespace
 
 bool enabled() {
@@ -65,117 +66,212 @@ bool enabled_when_asked() {
 
 void force(std::optional<bool> on) { g_force = on ? (*on ? 1 : 0) : -1; }
 
-m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options) {
-    sl::Emulator& emu = emulator_for(options.variant);
-    const std::size_t log_start = bus.log().size();
-    const std::uint32_t window = static_cast<std::uint32_t>(bus.address_mask()) + 1;   // the bytes the chip's address lines reach
-    const std::span<std::uint8_t> memory = bus.memory();
+// ---- the 6502 -----------------------------------------------------------------------------------------------------------------------
 
-    // The page map the emulator decodes from: what the processor finds in memory (the bus's memory, and the quiet RAM a machine keeps behind
-    // callbacks: Bus::peek), mirrors included. `plain` is the bus's own memory as it was last looked at.
-    std::vector<std::uint8_t> plain(memory.begin(), memory.begin() + window);
-    std::vector<std::uint8_t> shadow(window);
-    for (std::uint32_t a = 0; a < window; ++a) shadow[a] = bus.peek(static_cast<std::uint16_t>(a));
-    for (std::uint32_t base = 0; base < 0x10000; base += window) emu.write(base, shadow.data(), std::min<std::uint32_t>(window, 0x10000 - base));
-    emu.flushDecoded();
-    emu.clearStops();
-
-    // Code fetched from a device range: the own core reads every byte of the instruction through the bus (the device answers, the read is logged, and what the device
-    // answers is what runs). The page map the emulator decodes from shows such a range as an opcode the description has no instruction for, so the run stops before
-    // an instruction there and the adapter makes the instruction as the own core does (device_step below).
-    const std::vector<std::pair<std::uint16_t, std::uint16_t>> logged = bus.logged_reads();
-    std::uint8_t poison = 0;
-    bool poisoned = false;
-    if (!logged.empty() && options.variant == m::Variant::Nmos) {   // (the CMOS description may run what its table calls undocumented)
-        const auto& table = decompile::m6502::opcode_table(options.variant);
-        for (unsigned op = 0; op < 256 && !poisoned; ++op)
-            if (!table[op]) {
-                poison = static_cast<std::uint8_t>(op);
-                poisoned = true;
-            }
+// The 6502 family's bus on the emulator of this thread: the page map instructions are decoded from, the read and write hooks, the stack as the chip
+// keeps it, code fetched from a device range. run() makes one for a call; M6502Cpu keeps one for its steps. The emulator is the thread's: a session
+// that finds another one was there since it last ran puts its page map and hooks back (`claim`).
+class M6502Session {
+public:
+    M6502Session(m::Bus& bus, m::Variant variant, bool decimal)
+        : emu_(emulator_for(variant)), bus_(bus), variant_(variant), decimal_(decimal), window_(static_cast<std::uint32_t>(bus.address_mask()) + 1), memory_(bus.memory()),
+          plain_(memory_.begin(), memory_.begin() + window_), shadow_(window_), logged_(bus.logged_reads()), sh_(emu_.regRef("SH")) {
+        for (std::uint32_t a = 0; a < window_; ++a) shadow_[a] = bus.peek(static_cast<std::uint16_t>(a));
+        // Code fetched from a device range: the own core read every byte of the instruction through the bus (the device answers, the read is logged, and what the
+        // device answers is what runs). The page map shows such a range as an opcode the description has no instruction for, so a run stops before an instruction
+        // there and the session makes the instruction as the chip does (device_step).
+        if (!logged_.empty() && variant == m::Variant::Nmos) {   // (the CMOS description may run what its table calls undocumented)
+            const auto& table = decompile::m6502::opcode_table(variant);
+            for (unsigned op = 0; op < 256 && !poisoned_; ++op)
+                if (!table[op]) {
+                    poison_ = static_cast<std::uint8_t>(op);
+                    poisoned_ = true;
+                }
+        }
+        claim();
+        seen_ = bus.log().size();
     }
-    const auto is_logged = [&](std::uint32_t index) {
-        for (const auto& [lo, hi] : logged)
+    ~M6502Session() {
+        if (active() == this) {
+            emu_.onRead({});
+            emu_.onWrite({});
+            emu_.clearPin();
+            active() = nullptr;
+        }
+    }
+    M6502Session(const M6502Session&) = delete;
+    M6502Session& operator=(const M6502Session&) = delete;
+
+    sl::Emulator& emu() { return emu_; }
+
+    // This session's page map and hooks on the thread's emulator (again, when another session ran since).
+    void claim() {
+        if (active() == this) return;
+        active() = this;
+        for (std::uint32_t base = 0; base < 0x10000; base += window_) emu_.write(base, shadow_.data(), std::min<std::uint32_t>(window_, 0x10000 - base));
+        if (poisoned_)
+            for (const auto& [lo, hi] : logged_)
+                for (std::uint32_t a = lo; a <= hi && a < window_; ++a) put(a, shadow_[a]);
+        emu_.flushDecoded();
+        emu_.clearStops();
+        emu_.onRead([this](std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t& value) {
+            if (!is_ram(space)) return false;
+            value = 0;
+            for (unsigned i = 0; i < size; ++i) value |= static_cast<std::uint64_t>(bus_.read(stack_address(static_cast<std::uint16_t>(addr + i), false))) << (8 * i);
+            return true;
+        });
+        emu_.onWrite([this](std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t value) {
+            if (!is_ram(space)) return false;
+            for (unsigned i = 0; i < size; ++i) {
+                const std::uint16_t at = stack_address(static_cast<std::uint16_t>(addr + i), true);
+                bus_.write(at, static_cast<std::uint8_t>(value >> (8 * i)));
+                const std::uint32_t index = at & bus_.address_mask();
+                if (const std::uint8_t now = bus_.peek(at); now != shadow_[index]) put(index, now);   // (a store into RAM that code runs from)
+            }
+            return true;
+        });
+        emu_.setReg("BCD", decimal_ ? 1 : 0);   // (whether ADC and SBC are decimal with D set: the description's switch)
+        emu_.setPin(sh_, 1);   // (the description's SP is 16 bits wide: the chip's S wraps within page 1: kept so after every instruction)
+    }
+
+    // What a device or the caller did to the bus's memory (a bank switch, bytes put there between steps), to every mirror the emulator decodes from.
+    void sync() {
+        if (std::memcmp(plain_.data(), memory_.data(), window_) == 0) return;
+        std::uint32_t first = 0, last = window_ - 1;
+        while (plain_[first] == memory_[first]) ++first;
+        while (plain_[last] == memory_[last]) --last;
+        for (std::uint32_t i = first; i <= last; ++i) {
+            plain_[i] = memory_[i];
+            if (const std::uint8_t now = bus_.peek(static_cast<std::uint16_t>(i)); now != shadow_[i]) put(i, now);
+        }
+        // (a write to a page code was decoded from drops the decoded instructions by itself)
+    }
+    // The bytes of the instruction at `pc` as the processor finds them now (what the caller or a device put there since the last step); the rest of
+    // memory is read through the bus as the instruction runs.
+    void refresh(std::uint16_t pc) {
+        for (unsigned i = 0; i < 3; ++i) {
+            const std::uint16_t at = static_cast<std::uint16_t>(pc + i);
+            const std::uint32_t index = at & bus_.address_mask();
+            if (const std::uint8_t now = bus_.peek(at); now != shadow_[index]) put(index, now);
+        }
+    }
+    // After instructions ran: when a device was touched it may have changed the memory under the code.
+    void after_devices() {
+        if (bus_.log().size() == seen_) return;
+        sync();
+        seen_ = bus_.log().size();
+    }
+
+    // The registers: the flags are one byte each in the description, P is made of them. (B is no flag of the chip: the description sets it as PHP and BRK
+    // push it; P keeps the bit it was given.)
+    void set_registers(const m::Registers& r) {
+        emu_.setReg("A", r.a);
+        emu_.setReg("X", r.x);
+        emu_.setReg("Y", r.y);
+        for (const auto& [name, bit] : kFlags) emu_.setReg(name, (r.p & bit) != 0 ? 1 : 0);
+        emu_.setReg(sh_, 1);
+        emu_.setReg("S", r.s);
+        emu_.setPc(r.pc);
+    }
+    m::Registers registers(std::uint8_t given_p) const {
+        m::Registers r;
+        r.a = static_cast<std::uint8_t>(emu_.reg("A"));
+        r.x = static_cast<std::uint8_t>(emu_.reg("X"));
+        r.y = static_cast<std::uint8_t>(emu_.reg("Y"));
+        r.s = static_cast<std::uint8_t>(emu_.reg("S"));
+        r.pc = static_cast<std::uint16_t>(emu_.pc());
+        std::uint8_t p = static_cast<std::uint8_t>(m::status::U | (given_p & m::status::B));
+        for (const auto& [name, bit] : kFlags)
+            if (bit != m::status::B && emu_.reg(name) != 0) p |= bit;
+        r.p = p;
+        return r;
+    }
+
+    // The instruction at the pc when the emulator stopped on it as bad: one fetched from a device range is made as the chip makes it (nullopt: it ran),
+    // anything else is the fault of an undocumented opcode.
+    std::optional<m::Fault> bad_instruction() {
+        const std::uint16_t pc = static_cast<std::uint16_t>(emu_.pc());
+        if (!(poisoned_ && is_logged(pc & bus_.address_mask()))) return m::Fault{static_cast<std::uint8_t>(emu_.readValue(pc, 1)), pc};
+        const auto& table = decompile::m6502::opcode_table(variant_);
+        const std::uint8_t opcode = bus_.read(pc);
+        if (!table[opcode]) return m::Fault{opcode, pc};
+        const unsigned size = decompile::m6502::instruction_size(table[opcode]->mode);
+        std::uint8_t bytes[3] = {opcode, 0, 0};
+        for (unsigned i = 1; i < size; ++i) bytes[i] = bus_.read(static_cast<std::uint16_t>(pc + i));
+        emu_.write(pc, bytes, size);
+        const sl::Emulator::Status status = emu_.step();
+        for (unsigned i = 0; i < size; ++i) {   // (the page map as it was)
+            const std::uint32_t index = static_cast<std::uint16_t>(pc + i) & bus_.address_mask();
+            const std::uint8_t shown = is_logged(index) ? poison_ : shadow_[index];
+            emu_.write(static_cast<std::uint16_t>(pc + i), &shown, 1);
+        }
+        emu_.setReg(sh_, 1);
+        if (status != sl::Emulator::Status::Ok) return m::Fault{opcode, pc};
+        after_devices();
+        return std::nullopt;
+    }
+
+private:
+    static M6502Session*& active() {
+        thread_local M6502Session* current = nullptr;
+        return current;
+    }
+    bool is_logged(std::uint32_t index) const {
+        for (const auto& [lo, hi] : logged_)
             if (index >= lo && index <= hi) return true;
         return false;
-    };
-    const auto put = [&](std::uint32_t index, std::uint8_t value) {   // one byte of the page map, to every mirror
-        shadow[index] = value;
-        const std::uint8_t shown = poisoned && is_logged(index) ? poison : value;
-        for (std::uint32_t base = 0; base < 0x10000; base += window)
-            if (base + index < 0x10000) emu.write(base + index, &shown, 1);
-    };
-    if (poisoned)
-        for (const auto& [lo, hi] : logged)
-            for (std::uint32_t a = lo; a <= hi && a < window; ++a) put(a, shadow[a]);
-    const sl::Emulator::RegRef sh_ref = emu.regRef("SH");
-    // The stack as the chip keeps it: S wraps within page 1. The description's pointer is 16 bits, so a push that goes below page 1 (S=0, a JSR's second byte) or a pull that
-    // goes above it (S=$FF) would touch page 0 or 2; the pointer's high byte is 0 or 2 then, and no other instruction runs with it so (it is set back to 1 after each one).
-    const auto stack_address = [&](std::uint16_t at, bool write) -> std::uint16_t {
-        const std::uint64_t high = emu.reg(sh_ref);
+    }
+    void put(std::uint32_t index, std::uint8_t value) {   // one byte of the page map, to every mirror
+        shadow_[index] = value;
+        const std::uint8_t shown = poisoned_ && is_logged(index) ? poison_ : value;
+        for (std::uint32_t base = 0; base < 0x10000; base += window_)
+            if (base + index < 0x10000) emu_.write(base + index, &shown, 1);
+    }
+    // The stack as the chip keeps it: S wraps within page 1. The description's pointer is 16 bits, so a push that goes below page 1 (S=0, a JSR's second byte)
+    // or a pull that goes above it (S=$FF) would touch page 0 or 2; the pointer's high byte is 0 or 2 then, and no other instruction runs with it so (it is set
+    // back to 1 after each one).
+    std::uint16_t stack_address(std::uint16_t at, bool write) const {
+        const std::uint64_t high = emu_.reg(sh_);
         if (write ? (high == 0 && (at >> 8) == 0) : (high == 2 && (at >> 8) == 2)) return static_cast<std::uint16_t>(write ? at + 0x100 : at - 0x100);
         return at;
-    };
-    emu.onRead([&](std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t& value) {
-        if (!is_ram(space)) return false;
-        value = 0;
-        for (unsigned i = 0; i < size; ++i) value |= static_cast<std::uint64_t>(bus.read(stack_address(static_cast<std::uint16_t>(addr + i), false))) << (8 * i);
-        return true;
-    });
-    emu.onWrite([&](std::string_view space, std::uint64_t addr, unsigned size, std::uint64_t value) {
-        if (!is_ram(space)) return false;
-        for (unsigned i = 0; i < size; ++i) {
-            const std::uint16_t at = stack_address(static_cast<std::uint16_t>(addr + i), true);
-            bus.write(at, static_cast<std::uint8_t>(value >> (8 * i)));
-            const std::uint32_t index = at & bus.address_mask();
-            if (const std::uint8_t now = bus.peek(at); now != shadow[index]) put(index, now);   // (a store into RAM that code runs from)
-        }
-        return true;
-    });
-    struct Unhook {
-        sl::Emulator& e;
-        ~Unhook() {
-            e.onRead({});
-            e.onWrite({});
-        }
-    } unhook{emu};
+    }
 
-    // the registers: the flags are one byte each in the description, P is made of them
-    emu.setReg("A", options.a);
-    emu.setReg("X", options.x);
-    emu.setReg("Y", options.y);
-    for (const auto& [name, bit] : kFlags) emu.setReg(name, (options.p & bit) != 0 ? 1 : 0);
-    emu.setReg("SH", 1);
-    emu.setReg("S", 0xFD);
+    sl::Emulator& emu_;
+    m::Bus& bus_;
+    m::Variant variant_;
+    bool decimal_;
+    std::uint32_t window_;   // the bytes the chip's address lines reach
+    std::span<std::uint8_t> memory_;
+    std::vector<std::uint8_t> plain_;    // the bus's own memory as it was last looked at
+    std::vector<std::uint8_t> shadow_;   // what the processor finds in memory (the bus's memory and the quiet RAM a machine keeps behind callbacks: Bus::peek)
+    std::vector<std::pair<std::uint16_t, std::uint16_t>> logged_;
+    std::uint8_t poison_ = 0;
+    bool poisoned_ = false;
+    sl::Emulator::RegRef sh_;
+    std::size_t seen_ = 0;
+};
+
+m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options) {
+    const std::size_t log_start = bus.log().size();
+    M6502Session session(bus, options.variant, options.decimal);
+    sl::Emulator& emu = session.emu();
     // the call as JSR makes it: the return address less one pushed (through the bus like any write), RTS adds one
     const std::uint16_t ret = m::kReturnAddress - 1;
     bus.write(0x1FD, static_cast<std::uint8_t>(ret >> 8));
     bus.write(0x1FC, static_cast<std::uint8_t>(ret));
-    emu.setReg("S", 0xFB);
-    emu.setPc(entry);
-
-    const auto sync = [&] {   // what a device did to the bus's memory (a bank switch), to every mirror the emulator decodes from
-        if (std::memcmp(plain.data(), memory.data(), window) == 0) return;
-        std::uint32_t first = 0, last = window - 1;
-        while (plain[first] == memory[first]) ++first;
-        while (plain[last] == memory[last]) --last;
-        for (std::uint32_t i = first; i <= last; ++i) {
-            plain[i] = memory[i];
-            if (const std::uint8_t now = bus.peek(static_cast<std::uint16_t>(i)); now != shadow[i]) put(i, now);
-        }
-        // (a write to a page code was decoded from drops the decoded instructions by itself)
-    };
-    sync();   // (the return address just pushed)
-    std::size_t seen = bus.log().size();
+    m::Registers start;
+    start.a = options.a;
+    start.x = options.x;
+    start.y = options.y;
+    start.p = options.p;
+    start.s = 0xFB;
+    start.pc = entry;
+    session.set_registers(start);
+    session.sync();   // (the return address just pushed)
 
     m::RunResult out;
     out.end = m::End::Limit;
     std::uint64_t steps = 0;
-    emu.setPin(emu.regRef("SH"), 1);   // (the description's SP is 16 bits wide: the chip's S wraps within page 1: kept so after every instruction)
-    struct Unpin {
-        sl::Emulator& e;
-        ~Unpin() { e.clearPin(); }
-    } unpin{emu};
     while (steps < options.max_steps) {
         if (emu.pc() == m::kReturnAddress) {
             out.end = m::End::Return;
@@ -185,60 +281,39 @@ m::RunResult run(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options)
         const sl::Emulator::BlockResult ran = emu.runBlocks(options.max_steps - steps, true, m::kReturnAddress);
         steps += ran.executed;
         if (ran.status == sl::Emulator::Status::BadInstruction || ran.status == sl::Emulator::Status::Error) {
-            const std::uint16_t pc = static_cast<std::uint16_t>(emu.pc());
-            if (poisoned && is_logged(pc & bus.address_mask())) {   // (an instruction fetched from a device range)
-                const auto& table = decompile::m6502::opcode_table(options.variant);
-                const std::uint8_t opcode = bus.read(pc);
-                if (!table[opcode]) {
-                    out.end = m::End::Stopped;
-                    out.fault = m::Fault{opcode, pc};
-                    break;
-                }
-                const unsigned size = decompile::m6502::instruction_size(table[opcode]->mode);
-                std::uint8_t bytes[3] = {opcode, 0, 0};
-                for (unsigned i = 1; i < size; ++i) bytes[i] = bus.read(static_cast<std::uint16_t>(pc + i));
-                emu.write(pc, bytes, size);
-                const sl::Emulator::Status status = emu.step();
-                for (unsigned i = 0; i < size; ++i) {   // (the page map as it was)
-                    const std::uint32_t index = static_cast<std::uint16_t>(pc + i) & bus.address_mask();
-                    const std::uint8_t shown = is_logged(index) ? poison : shadow[index];
-                    emu.write(static_cast<std::uint16_t>(pc + i), &shown, 1);
-                }
-                emu.setReg(sh_ref, 1);
-                if (status != sl::Emulator::Status::Ok) {
-                    out.end = m::End::Stopped;
-                    out.fault = m::Fault{opcode, pc};
-                    break;
-                }
-                ++steps;
-                if (bus.log().size() != seen) {
-                    sync();
-                    seen = bus.log().size();
-                }
-                continue;
+            if (std::optional<m::Fault> fault = session.bad_instruction()) {
+                out.end = m::End::Stopped;
+                out.fault = fault;
+                break;
             }
-            out.end = m::End::Stopped;
-            out.fault = m::Fault{static_cast<std::uint8_t>(emu.readValue(pc, 1)), pc};
-            break;
+            ++steps;
+            continue;
         }
-        if (bus.log().size() != seen) {   // a device was touched: it may have changed the memory under the code
-            sync();
-            seen = bus.log().size();
-        }
+        session.after_devices();
     }
-    out.regs.a = static_cast<std::uint8_t>(emu.reg("A"));
-    out.regs.x = static_cast<std::uint8_t>(emu.reg("X"));
-    out.regs.y = static_cast<std::uint8_t>(emu.reg("Y"));
-    out.regs.s = static_cast<std::uint8_t>(emu.reg("S"));
-    out.regs.pc = static_cast<std::uint16_t>(emu.pc());
-    // (B is no flag of the chip: the description sets it as PHP and BRK push it; the own core's P keeps the bit it was given)
-    std::uint8_t p = static_cast<std::uint8_t>(m::status::U | (options.p & m::status::B));
-    for (const auto& [name, bit] : kFlags)
-        if (bit != m::status::B && emu.reg(name) != 0) p |= bit;
-    out.regs.p = p;
+    out.regs = session.registers(options.p);
     out.steps = steps;
     out.io.assign(bus.log().begin() + static_cast<std::ptrdiff_t>(log_start), bus.log().end());
     return out;
+}
+
+M6502Cpu::M6502Cpu(m::Bus& bus, bool decimal, m::Variant variant) : session_(std::make_unique<M6502Session>(bus, variant, decimal)) {}
+M6502Cpu::~M6502Cpu() = default;
+
+std::optional<m::Fault> M6502Cpu::step() {
+    session_->claim();
+    session_->refresh(regs.pc);   // (what was put in memory since the last step)
+    session_->set_registers(regs);
+    const sl::Emulator::Status status = session_->emu().step();
+    if (status == sl::Emulator::Status::BadInstruction || status == sl::Emulator::Status::Error) {
+        if (std::optional<m::Fault> fault = session_->bad_instruction()) {
+            session_->set_registers(regs);   // (nothing changed)
+            return fault;
+        }
+    }
+    regs = session_->registers(regs.p);
+    ++steps;
+    return std::nullopt;
 }
 
 m::RunResult call(m::Bus& bus, std::uint16_t entry, const m::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : m::run(bus, entry, options); }

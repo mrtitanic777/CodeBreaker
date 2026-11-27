@@ -10,6 +10,7 @@ define register offset=0x00  size=1 [ A X Y P ];
 define register offset=0x20 size=2  [ PC      SP   ];
 define register offset=0x20 size=1  [ PCL PCH S SH ];
 define register offset=0x30 size=1 [ N V B D I Z C ];	# status bits
+define register offset=0x38 size=1 [ BCD ];	# CodeBreaker: 1 when the chip does decimal arithmetic with D set (the NES's 2A03 does not; the host sets it)
 
 #TOKENS
 
@@ -30,8 +31,27 @@ define token data (16)
 	imm16 = (0,15)
 ;
 
+# CodeBreaker: the stack is page 1 and S wraps within it (S is the low byte of SP; SH stays 1): every push and pull moves S, one byte at a time,
+# the high byte of an address pushed first.
+macro push16(value) {
+	local hi:1 = value(1);
+	local lo:1 = value:1;
+	*:1 (SP) = hi;
+	S = S - 1;
+	*:1 (SP) = lo;
+	S = S - 1;
+}
+
+macro pull16(value) {
+	S = S + 1;
+	local lo:1 = *:1 (SP);
+	S = S + 1;
+	local hi:1 = *:1 (SP);
+	value = (zext(hi) << 8) | zext(lo);
+}
+
 macro popSR() {
-	SP = SP + 1;
+	S = S + 1;
 	local ccr = *:1 SP;
 	N = ccr[7,1];
 	V = ccr[6,1];
@@ -52,7 +72,7 @@ macro pushSR() {
 	ccr[1,1] = Z;
 	ccr[0,1] = C;
 	*:1 (SP) = ccr;
-	SP = SP -1;
+	S = S - 1;
 }
 
 macro resultFlags(value) {
@@ -67,6 +87,55 @@ macro subtraction_flags1(register, operand, result) {
 	N = (result s< 0);
 	Z = (result == 0);
 	C = ( ((complement_register & operand) | (operand & result) | (result & complement_register)) & 0b10000000 ) != 0;
+}
+
+# CodeBreaker: ADC and SBC, binary, and decimal when D is set on a chip that has decimal mode (BCD): the low digit, then the high one with the low
+# digit's carry or borrow, each adjusted by 6. On the NMOS 6502 the flags of a decimal add are those of the binary sum (Z) and of the high digit before
+# its adjustment (N, V); a decimal subtraction's flags are the binary subtraction's. The CMOS parts set N and Z from the decimal result.
+macro addWithCarry(op1) {
+	local tmpC = C;
+	local isDec:1 = D & BCD;
+	local result:1 = A + op1 + tmpC;
+	local binC:1 = carry(A, op1) || carry(A + op1, tmpC);
+	local binV:1 = ((A ^ result) & (op1 ^ result) & 0x80) != 0;
+	local lo:1 = (A & 0x0F) + (op1 & 0x0F) + tmpC;
+	local hi:1 = (A >> 4) + (op1 >> 4) + (lo > 9);
+	local decV:1 = ((~(A ^ op1)) & (A ^ (hi << 4)) & 0x80) != 0;
+	local decN:1 = (hi & 0x08) != 0;
+	lo = lo + 6 * (lo > 9);
+	hi = hi + 6 * (hi > 9);
+	local decC:1 = hi > 15;
+	local decA:1 = (hi << 4) | (lo & 0x0F);
+	local mask:1 = 0 - isDec;
+	C = (decC & isDec) | (binC & !isDec);
+	V = (decV & isDec) | (binV & !isDec);
+	N = (decN & isDec) | ((result s< 0) & !isDec);
+	Z = (result == 0);
+	A = (decA & mask) | (result & ~mask);
+@ifdef CMOS
+	N = (N & !isDec) | ((A s< 0) & isDec);
+	Z = (Z & !isDec) | ((A == 0) & isDec);
+@endif
+}
+
+macro subtractWithBorrow(op1) {
+	local takeBorrow:1 = !C;
+	local isDec:1 = D & BCD;
+	local result:1 = A - op1 - takeBorrow;
+	local wide:2 = zext(A) - zext(op1) - zext(takeBorrow);
+	subtraction_flags1(A, op1, result);
+	C = wide s>= 0;	# (the carry is "no borrow": the macro's is the borrow)
+	local lo:1 = (A & 0x0F) - (op1 & 0x0F) - takeBorrow;
+	local hi:1 = (A >> 4) - (op1 >> 4) - (lo s< 0);
+	lo = lo - 6 * (lo s< 0);
+	hi = hi - 6 * (hi s< 0);
+	local decA:1 = (hi << 4) | (lo & 0x0F);
+	local mask:1 = 0 - isDec;
+	A = (decA & mask) | (result & ~mask);
+@ifdef CMOS
+	N = (N & !isDec) | ((A s< 0) & isDec);
+	Z = (Z & !isDec) | ((A == 0) & isDec);
+@endif
 }
 
 
@@ -133,14 +202,7 @@ ADDRI:  (imm16)   is imm16    { lo:2 = imm16; hi:2 = (lo & 0xff00) | ((lo + 1) &
 :ADC OP1     is (cc=1 & aaa=3) ... & OP1
 {
 	local op1 = OP1;
-	local tmpC = C;
-	# CodeBreaker: the carry in counts toward the carry out; V is signed overflow
-	local result = A + op1 + tmpC;
-	C = carry(A, op1) || carry(A + op1, tmpC);
-	V = ((A ^ result) & (op1 ^ result) & 0x80) != 0;
-	A = result;
-
-	resultFlags(A);
+	addWithCarry(op1);	# CodeBreaker: binary or decimal (the macro above)
 }
 
 :AND OP1     is (cc=1 & aaa=1) ... & OP1
@@ -199,11 +261,14 @@ ADDRI:  (imm16)   is imm16    { lo:2 = imm16; hi:2 = (lo & 0xff00) | ((lo + 1) &
 
 :BRK   is op=0x00
 {
-	*:2 (SP - 1) = inst_next + 1;	# CodeBreaker: the address two past BRK
-	SP = SP - 2;
+	local ret:2 = inst_next + 1;	# CodeBreaker: the address two past BRK
+	push16(ret);
 	B = 1;
 	pushSR();
 	I = 1;
+@ifdef CMOS
+	D = 0;	# CodeBreaker: the CMOS parts clear D on BRK
+@endif
 	local target:2 = 0xFFFE;
 	goto [*:2 target];
 }
@@ -320,8 +385,8 @@ ADDRI:  (imm16)   is imm16    { lo:2 = imm16; hi:2 = (lo & 0xff00) | ((lo + 1) &
 
 :JSR   ADDR16    is op=0x20; ADDR16
 {
-	*:2 (SP-1) = inst_next - 1;	# CodeBreaker: the address of its own last byte (RTS adds one)
-	SP=SP-2; 
+	local ret:2 = inst_next - 1;	# CodeBreaker: the address of its own last byte (RTS adds one)
+	push16(ret);
 	call ADDR16;
 }
 
@@ -376,12 +441,12 @@ ADDRI:  (imm16)   is imm16    { lo:2 = imm16; hi:2 = (lo & 0xff00) | ((lo + 1) &
 :PHA     is op=0x48
 {
 	*:1 (SP) = A;
-	SP = SP - 1;
+	S = S - 1;
 }
 
 :PLA     is op=0x68
 {
-	SP = SP + 1;
+	S = S + 1;
 	A = *:1 (SP);
 	resultFlags(A);
 }
@@ -412,18 +477,16 @@ ADDRI:  (imm16)   is imm16    { lo:2 = imm16; hi:2 = (lo & 0xff00) | ((lo + 1) &
 {
 	popSR();
 
-    SP = SP+1;
-	tmp:2 = *:2 SP;
-	SP = SP+1;
+	local tmp:2 = 0;
+	pull16(tmp);
 
 	return [tmp];
 }
 
 :RTS      is op=0x60
 {
-	SP = SP+1;
-	tmp:2 = *:2 SP;
-	SP = SP+1;
+	local tmp:2 = 0;
+	pull16(tmp);
 
 	return [tmp + 1];	# CodeBreaker: JSR pushed the address of its last byte
 }
@@ -431,13 +494,7 @@ ADDRI:  (imm16)   is imm16    { lo:2 = imm16; hi:2 = (lo & 0xff00) | ((lo + 1) &
 :SBC OP1     is (cc=1 & aaa=7) ... & OP1
 {
 	local op1 = OP1;
-	local result = A - op1 - !C;
-
-	local wide:2 = zext(A) - zext(op1) - zext(!C);	# CodeBreaker: (before the macro sets C)
-	subtraction_flags1(A, op1, result);
-	# CodeBreaker: the carry is "no borrow" (the macro's is the borrow)
-	C = wide s>= 0;
-	A = result;	
+	subtractWithBorrow(op1);	# CodeBreaker: binary or decimal (the macro above)
 
 	# resultFlags(tmp);
 	# C = ((A <= op1) * C) | (A < op1);

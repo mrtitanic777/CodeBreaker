@@ -1,0 +1,3 @@
+# The 65SC02 (the Atari Lynx's VLSI CPU): the 65C02 without the Rockwell and WDC bit instructions (BBR, BBS, RMB, SMB), whose opcodes it does not decode.
+@define SC02 "1"
+@include "65c02.slaspec"
