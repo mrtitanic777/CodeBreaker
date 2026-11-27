@@ -97,7 +97,7 @@ Library Library::builtin() {
 
 std::pair<int, std::string> Library::call_raw(std::string_view name, std::string_view arguments_json) const {
     const std::string fn(name);
-    // The C back end's entry points, answered on the typed tree in-process (translate/backends/c) where CB_C_TREE says so: the same
+    // The C back end's entry points, answered on the typed tree in-process (translate/backends/c), unless CB_C_TREE=0: the same
     // arguments, the same answers (docs/ENGINE_UNIFICATION.md item 1). The library's own (a test's library is its own).
     if (impl_->call == &l2_call && ctree::enabled() && ctree::handles(fn)) {
         std::pair<int, std::string> r = ctree::call(fn, arguments_json);
