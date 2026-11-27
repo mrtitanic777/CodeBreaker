@@ -36,6 +36,7 @@
 #include "core/bytes.hpp"
 #include "core/cli.hpp"
 #include "core/random_file.hpp"
+#include "formats/iso9660.hpp"
 #include "formats/ne.hpp"
 
 namespace cb::formats::media {
@@ -195,6 +196,8 @@ private:
     explicit IsoVolume(Source source) : source_(std::move(source)) {}
     Source source_;
     IsoLayout layout_;
+    std::optional<iso9660::Volume> iso_;   // the volume, read through the image's sectors (formats/iso9660)
+    iso9660::Names names_ = iso9660::Names::Primary;
     std::optional<std::vector<Entry>> entries_;
 };
 

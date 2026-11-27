@@ -17,8 +17,10 @@
 // extents is an UnsupportedError.
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -37,12 +39,31 @@ enum class Access { Read, ReadWrite };
 // A path is found in a tree by its names; both trees point at the same data.
 enum class Names { Primary, Joliet };
 
+// A run of a file's data: `size` bytes from the start of sector `sector`.
+struct Extent {
+    std::uint32_t sector = 0;
+    std::uint32_t size = 0;
+};
+
 // What a directory holds.
 struct Entry {
     std::string name;            // as the volume writes it, without ";1"
     bool directory = false;
-    std::uint32_t size = 0;      // bytes (a directory's extent)
-    std::uint32_t extent = 0;    // the first sector of its data
+    std::uint32_t size = 0;      // bytes (a directory's extent; all of a file's extents)
+    std::uint32_t extent = 0;    // the first sector of its data (past the extended attribute record)
+    std::array<std::uint8_t, 7> recorded{};   // the recording date: years since 1900, month, day, hour, minute, second, zone
+    std::vector<Extent> extents; // a file in several extents (consecutive records of one name) lists each
+};
+
+// What the volume descriptors say.
+struct Info {
+    std::string system, label, created;   // the primary descriptor's system and volume identifiers and creation date (blank-trimmed)
+    std::string tree_label;               // the volume identifier of the tree asked for (Joliet's is UCS-2)
+    std::uint32_t blocks = 0;             // the volume's size in logical blocks
+    std::uint32_t block_size = 2048;
+    bool has_joliet = false;
+    std::uint32_t root_sector = 0, root_size = 0;   // the root directory of the tree asked for
+    std::optional<std::uint32_t> boot_catalog;      // the El Torito boot catalog's sector
 };
 
 class Volume {
@@ -63,8 +84,18 @@ public:
 
     // What is in a directory, in the order the directory holds it ("/" is the root). `tree`: whose names to read.
     std::vector<Entry> list(std::string_view directory, Names tree = Names::Primary) const;
-    // The contents of a file.
+    // What is in the directory an Entry of `list` (or `root`) names: the same, read where the directory is, without walking a path.
+    std::vector<Entry> list(const Entry& directory, Names tree = Names::Primary) const;
+    // The root directory as an entry.
+    Entry root(Names tree = Names::Primary) const;
+    // The contents of a file (all of its extents).
     Bytes read(std::string_view file, Names tree = Names::Primary) const;
+    // The contents of a file an Entry of `list` names.
+    Bytes read(const Entry& entry) const;
+    // What the descriptors say of the volume, with the root and label of `tree`.
+    Info info(Names tree = Names::Primary) const;
+    // `count` sectors of data from sector `first` on (fewer when the image ends first).
+    Bytes read_sectors(std::uint64_t first, std::uint64_t count) const;
     // Replace a file's contents (the volume must be open ReadWrite; UsageError otherwise). See the top of this file.
     void replace(std::string_view file, ByteView data);
 

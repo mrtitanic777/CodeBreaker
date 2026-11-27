@@ -39,6 +39,7 @@ struct Record {
     std::uint32_t extent = 0;    // first sector of its data
     std::uint32_t size = 0;
     std::uint8_t flags = 0;
+    std::array<std::uint8_t, 7> recorded{};
     std::string name;            // decoded, without ";1" and without a trailing "."
     bool directory() const { return (flags & kFlagDirectory) != 0; }
 };
@@ -47,6 +48,7 @@ struct Record {
 struct Tree {
     bool joliet = false;
     std::uint64_t descriptor_at = 0;   // where its volume descriptor is
+    Bytes descriptor;
     Record root;
 };
 
@@ -83,6 +85,7 @@ struct Volume::Impl {
     std::optional<disc::Sectors> disc;
     std::vector<Tree> trees;   // the primary tree first, then the Joliet one if there is one
     std::uint32_t sectors = 0;
+    std::optional<std::uint32_t> boot_catalog;   // the El Torito boot catalog's sector
 
     Impl(const std::filesystem::path& p, Access a) : path(p), access(a) {
         if (a == Access::Read) {
@@ -113,9 +116,10 @@ struct Volume::Impl {
             bad(dir_at + at, "a directory record that does not fit");
         Record r;
         r.at = dir_at + at;
-        r.extent = le32(dir, at + 2);
+        r.extent = le32(dir, at + 2) + dir[at + 1];   // past the extended attribute record
         r.size = le32(dir, at + 10);
         r.flags = dir[at + 25];
+        std::copy_n(dir.begin() + static_cast<std::ptrdiff_t>(at + 18), r.recorded.size(), r.recorded.begin());
         const ByteView raw = dir.subspan(at + 33, dir[at + 32]);
         if (raw.size() == 1 && raw[0] <= 1) {   // "." and ".."
             r.name = raw[0] == 0 ? "." : "..";
@@ -180,6 +184,7 @@ struct Volume::Impl {
                 break;
             if (d[0] == 255)
                 break;   // the terminator
+            if (d[0] == 0 && as_text(ByteView(d).subspan(7, 23)) == "EL TORITO SPECIFICATION") boot_catalog = le32(d, 71);
             const bool primary = d[0] == 1;
             // a supplementary descriptor is Joliet's when its escape sequence is one of UCS-2's three levels
             const bool joliet = d[0] == 2 && d[88] == '%' && d[89] == '/' && (d[90] == '@' || d[90] == 'C' || d[90] == 'E');
@@ -188,6 +193,7 @@ struct Volume::Impl {
             Tree t;
             t.joliet = joliet;
             t.descriptor_at = at;
+            t.descriptor = d;
             const std::optional<Record> root = record_in(d, kRootRecordAt, at, joliet);
             if (!root || !root->directory())
                 bad(at + kRootRecordAt, "no root directory");
@@ -227,21 +233,100 @@ const Tree& tree_of(const std::vector<Tree>& trees, Names which) {
 }
 }  // namespace
 
+namespace {
+// The entries of a directory's records: a file in several extents (consecutive records of one name) is one entry listing each.
+std::vector<Entry> entries_of(const std::vector<Record>& records) {
+    std::vector<Entry> out;
+    for (const Record& r : records) {
+        if (!out.empty() && out.back().name == r.name && !r.directory() && !out.back().directory) {   // a further extent of the same file
+            out.back().extents.push_back({r.extent, r.size});
+            out.back().size += r.size;
+            continue;
+        }
+        out.push_back({r.name, r.directory(), r.size, r.extent, r.recorded, {Extent{r.extent, r.size}}});
+    }
+    return out;
+}
+}  // namespace
+
 std::vector<Entry> Volume::list(std::string_view directory, Names tree) const {
     const Tree& t = tree_of(impl_->trees, tree);
-    std::vector<Entry> out;
-    for (const Record& r : impl_->children(t, impl_->find_or_throw(t, directory)))
-        out.push_back({r.name, r.directory(), r.size, r.extent});
+    return entries_of(impl_->children(t, impl_->find_or_throw(t, directory)));
+}
+
+std::vector<Entry> Volume::list(const Entry& directory, Names tree) const {
+    Record r;
+    r.name = directory.name;
+    r.extent = directory.extent;
+    r.size = directory.size;
+    r.flags = kFlagDirectory;
+    return entries_of(impl_->children(tree_of(impl_->trees, tree), r));
+}
+
+Entry Volume::root(Names tree) const {
+    const Record& r = tree_of(impl_->trees, tree).root;
+    return {"/", true, r.size, r.extent, r.recorded, {}};
+}
+
+Bytes Volume::read(const Entry& entry) const {
+    Bytes out;
+    if (entry.directory) return out;
+    for (const Extent& x : entry.extents) {
+        const Bytes part = impl_->bytes_at(std::uint64_t{x.sector} * kSectorSize, x.size);
+        if (part.size() != x.size) throw TruncatedError(kReader, std::uint64_t{x.sector} * kSectorSize, x.size, part.size());
+        append(out, part);
+    }
     return out;
 }
 
 Bytes Volume::read(std::string_view file, Names tree) const {
-    const Record r = impl_->find_or_throw(tree_of(impl_->trees, tree), file);
-    if (r.directory())
-        throw UsageError(std::format("{} is a directory", file));
-    if (r.flags & kFlagMultiExtent)
-        throw UnsupportedError(kReader, r.at, "a file in several extents");
-    return impl_->read_at(std::uint64_t{r.extent} * kSectorSize, r.size);
+    const Tree& t = tree_of(impl_->trees, tree);
+    const std::string_view trimmed = file.size() > 1 && file.back() == '/' ? file.substr(0, file.size() - 1) : file;
+    const std::size_t slash = trimmed.rfind('/');
+    const std::string_view parent = slash == std::string_view::npos ? std::string_view("/") : trimmed.substr(0, slash == 0 ? 1 : slash);
+    const std::string_view leaf = without_version(slash == std::string_view::npos ? trimmed : trimmed.substr(slash + 1));
+    impl_->find_or_throw(t, file);   // NotFoundError for a path that is not there
+    for (const Entry& e : list(parent, tree)) {
+        if (!text::iequals(e.name, leaf)) continue;
+        if (e.directory) throw UsageError(std::format("{} is a directory", file));
+        return read(e);
+    }
+    throw NotFoundError(impl_->path, 2, std::format("{} is not in the volume", file));
+}
+
+Info Volume::info(Names tree) const {
+    const Impl& v = *impl_;
+    const Tree& t = tree_of(v.trees, tree);
+    const Bytes& p = v.trees.front().descriptor;
+    const auto text_of = [](ByteView field) {
+        std::string s(as_text(field));
+        while (!s.empty() && (s.back() == ' ' || s.back() == 0)) s.pop_back();
+        return s;
+    };
+    Info i;
+    i.system = text_of(ByteView(p).subspan(8, 32));
+    i.label = text_of(ByteView(p).subspan(40, 32));
+    i.created = text_of(ByteView(p).subspan(813, 16));
+    if (t.joliet) {
+        const ByteView raw = ByteView(t.descriptor).subspan(40, 32);
+        std::string label = decode_name(raw, true);
+        while (!label.empty() && label.back() == ' ') label.pop_back();
+        i.tree_label = label;
+    } else {
+        i.tree_label = i.label;
+    }
+    i.blocks = v.sectors;
+    const std::uint32_t block = static_cast<std::uint32_t>(p[128] | p[129] << 8);
+    i.block_size = block != 0 ? block : 2048;
+    i.has_joliet = v.trees.size() > 1;
+    i.root_sector = t.root.extent;
+    i.root_size = t.root.size;
+    i.boot_catalog = v.boot_catalog;
+    return i;
+}
+
+Bytes Volume::read_sectors(std::uint64_t first, std::uint64_t count) const {
+    return impl_->bytes_at(first * kSectorSize, static_cast<std::size_t>(count * kSectorSize));
 }
 
 void Volume::replace(std::string_view file, ByteView data) {
@@ -279,6 +364,7 @@ void Volume::replace(std::string_view file, ByteView data) {
     // The records and the descriptors, rewritten whole.
     for (const Record& r : records) {
         Bytes rec = v.read_at(r.at, 34);
+        rec[1] = 0;   // (the new data has no extended attribute record)
         put_both32(rec, 2, static_cast<std::uint32_t>(sectors_now));
         put_both32(rec, 10, static_cast<std::uint32_t>(data.size()));
         v.file->write_at(r.at, rec);

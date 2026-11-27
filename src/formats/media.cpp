@@ -1,4 +1,6 @@
 #include "formats/media.hpp"
+#include "formats/disc_image.hpp"
+#include "formats/iso9660.hpp"
 #include "core/sys.hpp"
 
 #include <algorithm>
@@ -327,55 +329,28 @@ Bytes FatVolume::read(const Entry& entry) {
 
 // ---- ISO 9660 ------------------------------------------------------------------------------------------------------------------
 
-namespace {
-
-// Sector `n` of an ISO image in the image file's own layout (raw sectors carry `skip` bytes of header before the 2048).
-Bytes iso_sectors(const Source& src, const IsoLayout& l, std::uint64_t n, std::uint64_t count) {
-    if (l.sector == kIsoSector) return src.read(n * kIsoSector, count * kIsoSector);
-    Bytes out;
-    for (std::uint64_t i = 0; i < count; ++i) append(out, src.read((n + i) * l.sector + l.skip, kIsoSector));
-    return out;
-}
-
-Bytes iso_extent(const Source& src, const IsoLayout& l, std::uint64_t block, std::uint64_t size) {
-    Bytes data = iso_sectors(src, l, block, (size + kIsoSector - 1) / kIsoSector);
-    if (data.size() > size) data.resize(static_cast<std::size_t>(size));
-    return data;
-}
-
-}  // namespace
-
 IsoVolume IsoVolume::open(Source source, std::uint32_t sector, std::uint32_t skip, bool long_names) {
     IsoVolume v(std::move(source));
     IsoLayout& l = v.layout_;
     l.sector = sector;
     l.skip = skip;
-    Bytes primary, joliet;
-    for (std::uint64_t n = 16; n < 48; ++n) {   // the volume descriptors, up to the terminator
-        Bytes d = iso_sectors(v.source_, l, n, 1);
-        if (d.size() < kIsoSector || !bytes_are(d, 1, "CD001") || d[0] == 255) break;
-        if (d[0] == 1 && primary.empty()) {
-            primary = std::move(d);
-        } else if (d[0] == 2 && (bytes_are(d, 88, "%/@") || bytes_are(d, 88, "%/C") || bytes_are(d, 88, "%/E"))) {   // Joliet levels 1-3
-            joliet = std::move(d);
-        } else if (d[0] == 0 && bytes_are(d, 7, "EL TORITO SPECIFICATION")) {
-            l.boot_catalog = u32_at(d, 71);
-        }
-    }
-    if (primary.empty()) throw FormatError(kReader, 16 * kIsoSector, "not an ISO 9660 volume");
-    l.has_joliet = !joliet.empty();
+    // the volume descriptors and directories are formats/iso9660's, read through the image's sectors as laid out
+    v.iso_.emplace(iso9660::Volume(disc::Sectors::open_laid_out(v.source_.path(), sector, skip)));
+    const iso9660::Info primary = v.iso_->info();
+    l.has_joliet = primary.has_joliet;
     l.long_names = l.has_joliet && long_names;
-    const Bytes& d = l.long_names ? joliet : primary;
-    l.block = u16_at(primary, 128) != 0 ? u16_at(primary, 128) : 2048;
-    const ByteView label_field = slice(d, 40, 72);
-    v.label_ = std::string(text::trim(l.long_names ? utf16be_text(label_field) : name_text(label_field)));
-    l.root_block = u32_at(d, 158);
-    l.root_size = u32_at(d, 166);
-    v.boot_ = {text_field("system", name_text(slice(primary, 8, 40))),
-               text_field("label", name_text(slice(primary, 40, 72))),
-               number_field("blocks", u32_at(primary, 80)),
+    v.names_ = l.long_names ? iso9660::Names::Joliet : iso9660::Names::Primary;
+    const iso9660::Info chosen = v.iso_->info(v.names_);
+    l.block = primary.block_size;
+    l.root_block = chosen.root_sector;
+    l.root_size = chosen.root_size;
+    l.boot_catalog = primary.boot_catalog;
+    v.label_ = std::string(text::trim(chosen.tree_label));
+    v.boot_ = {text_field("system", primary.system),
+               text_field("label", primary.label),
+               number_field("blocks", primary.blocks),
                number_field("block size", l.block),
-               text_field("created", name_text(slice(primary, 813, 829))),
+               text_field("created", primary.created),
                text_field("long names", l.has_joliet ? "yes" : "no"),
                text_field("bootable", l.boot_catalog && *l.boot_catalog != 0 ? "yes" : "no")};
     return v;
@@ -383,7 +358,7 @@ IsoVolume IsoVolume::open(Source source, std::uint32_t sector, std::uint32_t ski
 
 std::optional<BootImage> IsoVolume::boot_image() const {
     if (!layout_.boot_catalog || *layout_.boot_catalog == 0) return std::nullopt;
-    const Bytes c = iso_sectors(source_, layout_, *layout_.boot_catalog, 1);
+    const Bytes c = iso_->read_sectors(*layout_.boot_catalog, 1);
     // a validation entry (header id 1, key bytes 55 AA) then the default entry (bootable, 0x88)
     if (c.size() < 64 || c[0] != 1 || c[30] != 0x55 || c[31] != 0xAA || c[32] != 0x88) return std::nullopt;
     BootImage b;
@@ -397,78 +372,38 @@ std::optional<BootImage> IsoVolume::boot_image() const {
 const std::vector<Entry>& IsoVolume::files() {
     if (entries_) return *entries_;
     constexpr std::size_t kMaxFolders = 50000;   // a directory cycle (or a corrupt tree) must end
-    struct Folder {
-        std::uint64_t block, size;
+    // Folders before what is in them: each folder's children follow it, in the order its own records gave.
+    struct Level {
+        std::vector<iso9660::Entry> list;
+        std::size_t next = 0;
         std::string prefix;
     };
-    std::vector<Folder> work{{layout_.root_block, layout_.root_size, ""}};
-    std::vector<Entry> found_all;
-    std::unordered_set<std::uint64_t> seen;
-    for (std::size_t head = 0; head < work.size(); ++head) {
-        const Folder w = work[head];
-        if (seen.contains(w.block) || seen.size() > kMaxFolders) continue;
-        seen.insert(w.block);
-        const Bytes d = iso_extent(source_, layout_, w.block, w.size);
-        std::vector<Entry> found;
-        std::size_t i = 0;
-        while (i < d.size()) {
-            const std::size_t n = d[i];
-            if (n == 0) {   // records do not cross a sector: the rest of this one is padding
-                i = (i / kIsoSector + 1) * kIsoSector;
-                continue;
-            }
-            const ByteView r = slice(d, i, i + n);
-            i += n;
-            if (r.size() < 34) continue;
-            const ByteView raw = slice(r, 33, 33 + r[32]);
-            if (raw.size() == 1 && raw[0] <= 1) continue;   // "." and ".."
-            std::string name = layout_.long_names ? utf16be_text(raw) : text::from_latin1(raw);
-            if (const std::size_t semi = name.find(';'); semi != std::string::npos) name.resize(semi);   // ";1": the version
-            if (!name.empty() && name.back() == '.') name.pop_back();
-            Entry e;
-            e.path = w.prefix + name;
-            e.size = u32_at(r, 10);
-            e.is_dir = (r[25] & 2) != 0;
-            e.start = static_cast<std::uint64_t>(u32_at(r, 2)) + r[1];   // the block, past the extended attribute record
-            e.when = when_text(1900u + r[18], r[19], r[20], r[21], r[22]);
-            e.short_name = e.path;
-            if (!found.empty() && found.back().path == e.path && !e.is_dir) {   // a further extent of the same file
-                found.back().extents.push_back({e.start, e.size});
-                found.back().size += e.size;
-                continue;
-            }
-            e.extents.push_back({e.start, e.size});
-            found.push_back(std::move(e));
-        }
-        for (Entry& e : found) {
-            if (e.is_dir) work.push_back({e.start, e.size, e.path + "/"});
-            found_all.push_back(std::move(e));
-        }
-    }
-    // Folders before what is in them: each folder's children follow it, in the order its own records gave.
-    std::unordered_map<std::string, std::vector<std::size_t>> children;   // parent path -> entries; looked up only
-    for (std::size_t k = 0; k < found_all.size(); ++k) {
-        const std::string& p = found_all[k].path;
-        const std::size_t slash = p.rfind('/');
-        children[slash == std::string::npos ? std::string() : p.substr(0, slash)].push_back(k);
-    }
     std::vector<Entry> out;
-    struct Level {
-        const std::vector<std::size_t>* list;
-        std::size_t next;
-    };
+    std::unordered_set<std::uint64_t> seen;
     std::vector<Level> stack;
-    if (auto root = children.find(""); root != children.end()) stack.push_back({&root->second, 0});
+    stack.push_back({iso_->list(iso_->root(names_), names_), 0, ""});
+    seen.insert(iso_->root(names_).extent);
     while (!stack.empty()) {
         Level& top = stack.back();
-        if (top.next >= top.list->size()) {
+        if (top.next >= top.list.size()) {
             stack.pop_back();
             continue;
         }
-        const Entry& e = found_all[(*top.list)[top.next++]];
-        out.push_back(e);
-        if (e.is_dir)
-            if (auto kids = children.find(e.path); kids != children.end()) stack.push_back({&kids->second, 0});   // (`top` may dangle)
+        const iso9660::Entry e = top.list[top.next++];
+        const std::string path = top.prefix + e.name;
+        Entry x;
+        x.path = path;
+        x.short_name = path;
+        x.size = e.size;
+        x.is_dir = e.directory;
+        x.start = e.extent;
+        x.when = when_text(1900u + e.recorded[0], e.recorded[1], e.recorded[2], e.recorded[3], e.recorded[4]);
+        for (const iso9660::Extent& extent : e.extents) x.extents.push_back({extent.sector, extent.size});
+        out.push_back(std::move(x));
+        if (e.directory && !seen.contains(e.extent) && seen.size() <= kMaxFolders) {
+            seen.insert(e.extent);
+            stack.push_back({iso_->list(e, names_), 0, path + "/"});   // (`top` may dangle)
+        }
     }
     entries_ = std::move(out);
     return *entries_;
@@ -477,7 +412,11 @@ const std::vector<Entry>& IsoVolume::files() {
 Bytes IsoVolume::read(const Entry& entry) {
     Bytes out;
     if (entry.is_dir) return out;
-    for (const Extent& x : entry.extents) append(out, iso_extent(source_, layout_, x.block, x.size));
+    for (const Extent& x : entry.extents) {
+        Bytes data = iso_->read_sectors(x.block, (x.size + kIsoSector - 1) / kIsoSector);
+        if (data.size() > x.size) data.resize(static_cast<std::size_t>(x.size));
+        append(out, data);
+    }
     return out;
 }
 

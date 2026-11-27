@@ -55,6 +55,7 @@ struct Sectors::Impl {
     std::optional<fs::RandomFile> file;
     std::filesystem::path path;
     std::size_t stride = kSector;
+    std::optional<std::size_t> data_skip;   // where a raw sector's data starts, when the caller said (else its header does)
     std::uint64_t count = 0;
 
     Bytes bytes_at(std::uint64_t offset, std::size_t n) const {
@@ -69,7 +70,7 @@ struct Sectors::Impl {
         if (stride == kSector) return bytes_at(lba * kSector, kSector);
         Bytes raw = bytes_at(lba * kRawSector, kRawSector);
         if (raw.size() < kRawSector) return {};
-        const std::size_t at = data_offset(raw);
+        const std::size_t at = data_skip ? std::min(*data_skip, kRawSector - kSector) : data_offset(raw);
         return Bytes(raw.begin() + static_cast<std::ptrdiff_t>(at), raw.begin() + static_cast<std::ptrdiff_t>(at + kSector));
     }
 
@@ -107,6 +108,15 @@ Sectors Sectors::open(const std::filesystem::path& path) {
     impl->file.emplace(image, fs::FileMode::Read);
     impl->path = image;
     impl->lay_out(sector_size, impl->file->size());
+    return Sectors(std::move(impl));
+}
+
+Sectors Sectors::open_laid_out(const std::filesystem::path& path, std::size_t sector_size, std::size_t data_skip) {
+    auto impl = std::make_shared<Impl>();
+    impl->file.emplace(path, fs::FileMode::Read);
+    impl->path = path;
+    if (sector_size == kRawSector) impl->data_skip = data_skip;
+    impl->lay_out(sector_size == kRawSector ? kRawSector : kSector, impl->file->size());
     return Sectors(std::move(impl));
 }
 

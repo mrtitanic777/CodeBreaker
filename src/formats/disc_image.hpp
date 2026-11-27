@@ -58,6 +58,9 @@ public:
     // An image file, read as it is asked for (a disc is hundreds of megabytes: nothing is read whole): `.iso`, `.bin`, `.img`, or a
     // `.cue` sheet's image. FormatError for a sheet that names no file; NotFoundError when the image is not there.
     static Sectors open(const std::filesystem::path& path);
+    // An image file whose layout the caller knows: `sector_size` 2048 (cooked) or 2352 (raw) with the data starting `data_skip` bytes into a raw
+    // sector (16 or 24), whatever the sector headers say (an image that has no sync patterns is read too).
+    static Sectors open_laid_out(const std::filesystem::path& path, std::size_t sector_size, std::size_t data_skip = kRawHeader);
 
     Sectors(const Sectors&);
     Sectors& operator=(const Sectors&);
