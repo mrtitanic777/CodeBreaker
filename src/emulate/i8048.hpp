@@ -1,15 +1,12 @@
-// emulate/i8048.hpp -- the Intel 8048 as an interpreter, to run functions on (small, deterministic, and it logs what a function does to the devices).
+// emulate/i8048.hpp -- the Intel 8048 machine a function is run on: its bus (4 KB of program memory, ports and external data through callbacks, every access logged), its
+// registers and the record of a run. The instructions run on CodeBreaker's one emulator (engine/pcode_cpu_i8048: 8048.sla and what the adapter adds); the interpreter that
+// was here was retired when the emulator matched it.
 //
 //     i8048::Bus bus;                                  // 4 KB of program memory, ports and external data through callbacks, every access logged
 //     bus.load(0x400, rom);                            // the cartridge at $0400
-//     i8048::RunResult r = i8048::run(bus, 0x0420, {.a = 1});     // call the function as CALL would, run to its RET
+//     i8048::RunResult r = engine::pcode_cpu::run(bus, 0x0420, {.a = 1});     // call the function as CALL would, run to its RET
 //
-// Every instruction of decompile/i8048: the accumulator operations with carry and auxiliary carry (ADD, ADDC, DA, the rotates, SWAP, CPL ...), the 64 bytes of internal RAM with
-// register bank 0 at 0-7, the stack at 8-23 (two bytes a level, the return address and the upper nibble of the PSW) and bank 1 at 24-31, @R0 / @R1, XCH and XCHD, MOVP and MOVP3
-// from the program memory, JMP and CALL in the memory bank SEL MB0 / SEL MB1 chose, every conditional jump (the test pins T0 and T1 and INT read through the bus), DJNZ, and the
-// port and expander instructions (IN, OUTL, INS, MOVD, ORL, ANL, ORLD, ANLD, MOVX), each of which is one logged access. Interrupts, the timer and the counter are not modelled: STRT,
-// STOP and EN / DIS only set flags, `MOV A,T` reads the timer register as it was set, and JTF is taken when the timer flag has been set by `MOV T,A` with a value of 0xFF. Reaching
-// the return address a run was given is its end; an undefined opcode stops it.
+// Interrupts, the timer and the counter are not modelled. Reaching the return address a run was given is its end; an undefined opcode stops it.
 #pragma once
 
 #include <array>
@@ -81,19 +78,6 @@ struct Fault {
     std::string text() const { return reason; }
 };
 
-class Cpu {
-public:
-    explicit Cpu(Bus& bus) : bus_(&bus) {}
-
-    Registers regs;
-    std::uint64_t steps = 0;
-
-    std::optional<Fault> step();
-
-private:
-    Bus* bus_;
-};
-
 struct RunOptions {
     std::uint8_t a = 0;
     std::array<std::uint8_t, 8> r{};          // the starting R0..R7 of bank 0
@@ -111,8 +95,5 @@ struct RunResult {
     std::vector<DeviceAccess> io;
     std::string exit() const;   // "return" | "stopped: <why>" | "limit"
 };
-
-// Call the function at `entry` as CALL would and run it until its RET reaches kReturnAddress, it faults or takes `max_steps` instructions.
-RunResult run(Bus& bus, std::uint16_t entry, const RunOptions& options = {});
 
 }  // namespace cb::emulate::i8048

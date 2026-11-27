@@ -1,7 +1,8 @@
 // cb-unity: alone
-// The Odyssey 2 lane's Intel 8048 on the one emulator (engine/pcode_cpu_i8048.cpp): the same run as the own core (emulate/i8048) on random instructions and programs. The lane has no
-// homebrew folder in the samples (an Odyssey 2 cartridge is not among them), so the random runs and the lane's own tests (machine_o2_test: a cartridge comes back identical and an
-// edit diverges, now on the emulator) are the proof. The devices answer with a count of the accesses made, so a read the emulator made more or fewer than the own core shows.
+// The Odyssey 2 lane's Intel 8048 on the one emulator (engine/pcode_cpu_i8048.cpp). The own core (emulate/i8048's interpreter) was retired once the emulator matched it on
+// every opcode and on random programs (12,000 runs each), on every operand of ADD/DA, ADDC and XCHD (196,608 runs), and on the lane's tests (machine_o2_test); the lane has
+// no homebrew folder in the samples. What those runs gave on both is kept as a digest (CRC-32 of every run's exit, steps, registers, accesses and data space), so a change in
+// what the emulator does shows. The devices answer with a count of the accesses made, so a read made more or fewer times shows. The own core's unit tests follow, on the emulator.
 #include <array>
 #include <cstdio>
 #include <cstdlib>
@@ -11,10 +12,12 @@
 #include <random>
 #include <string>
 
+#include "core/crypto.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "emulate/i8048.hpp"
 #include "engine/pcode_cpu_i8048.hpp"
+#include "source/processors.hpp"
 
 namespace cb {
 
@@ -83,16 +86,18 @@ struct I8048Machine {
     }
 };
 
-void i8048_compare_random(bool single, const char* title) {
+// A run folded into the digest: everything i8048_describe compares (against an empty run), each access, and the data space.
+std::uint32_t i8048_fold(std::uint32_t digest, const e48t::RunResult& r, ByteView data) {
+    std::string text = i8048_describe(e48t::RunResult{}, r);
+    for (const auto& x : r.io) text += std::format("|{}{}{:X}={:X}", static_cast<int>(x.kind), static_cast<int>(x.place), x.address, x.value);
+    digest = crypto::crc32(ByteView(reinterpret_cast<const std::uint8_t*>(text.data()), text.size()), digest);
+    return crypto::crc32(data, digest);
+}
+
+std::uint32_t i8048_random_digest(bool single) {
     std::mt19937 rng(single ? 20261126u : 20261127u);
-    std::map<std::string, unsigned> by_kind;
-    std::map<std::string, std::string> example;
-    unsigned runs = 0, different = 0;
-    const unsigned total = [] {
-        const auto given = fs::get_env("CB_PCODE_EXHAUSTIVE");
-        return given && !given->empty() && *given != "0" ? static_cast<unsigned>(std::strtoul(given->c_str(), nullptr, 10)) : 12000u;
-    }();
-    for (unsigned n = 0; n < total; ++n) {
+    std::uint32_t digest = 0;
+    for (unsigned n = 0; n < 12000; ++n) {
         Bytes image(4096, 0);
         for (std::size_t i = 0x400; i < 0x1000; ++i) image[i] = static_cast<std::uint8_t>(rng());
         // where the run starts: mostly inside a page, now and then in the last bytes of one (a jump or a table read there leaves the page)
@@ -100,67 +105,35 @@ void i8048_compare_random(bool single, const char* title) {
         if (const unsigned where = rng() % 8; where == 0) entry = static_cast<std::uint16_t>((entry & 0xF00) | 0xFE);
         else if (where == 1) entry = static_cast<std::uint16_t>((entry & 0xF00) | 0xFF);
         if (entry > 0xFF8) entry = 0xFF0;
-        std::uint8_t first = 0;
-        if (single) {   // every opcode, each many times with other registers and operands
-            first = static_cast<std::uint8_t>(n % 256);
-            image[entry] = first;
-        } else {
-            first = image[entry];
-        }
+        if (single) image[entry] = static_cast<std::uint8_t>(n % 256);   // every opcode, each many times with other registers and operands
         e48t::RunOptions options;
         options.max_steps = single ? 1 : 40;
         options.a = static_cast<std::uint8_t>((rng() & 3) == 0 ? rng() & 0x0F : rng());
         for (std::uint8_t& r : options.r) r = static_cast<std::uint8_t>((rng() & 1) ? rng() & 0x3F : rng());
-
-        Bytes data[2];
-        e48t::RunResult rr[2];
-        for (int core = 0; core < 2; ++core) {
-            I8048Machine machine(image);
-            rr[core] = core == 1 ? engine::pcode_cpu::run(machine.bus, entry, options) : e48t::run(machine.bus, entry, options);
-            data[core].assign(machine.data->begin(), machine.data->end());
-        }
-        ++runs;
-        const std::string what = i8048_describe(rr[0], rr[1]);
-        if (what.empty() && data[0] == data[1]) continue;
-        ++different;
-        std::string fields = what;
-        if (!single && rr[0].exit() == rr[1].exit() && rr[0].steps != 0) {   // (a program: the instruction after which they differ is what is at fault)
-            unsigned k0 = 0;
-            for (unsigned k = 1; k <= options.max_steps && k0 == 0; ++k) {
-                e48t::RunOptions o2 = options;
-                o2.max_steps = k;
-                e48t::RunResult ra, rb;
-                Bytes da, db;
-                for (int core = 0; core < 2; ++core) {
-                    I8048Machine machine(image);
-                    (core == 1 ? rb : ra) = core == 1 ? engine::pcode_cpu::run(machine.bus, entry, o2) : e48t::run(machine.bus, entry, o2);
-                    (core == 1 ? db : da).assign(machine.data->begin(), machine.data->end());
-                }
-                if (!i8048_describe(ra, rb).empty() || da != db) k0 = k;
-            }
-            fields += std::format("[first differing step {} at {:03X}] ", k0, entry);
-        }
-        std::string key = single ? std::format("1: {:02X}", first) : std::string("N: ") + what.substr(0, 24);
-        ++by_kind[key];
-        if (!example.count(key))
-            example[key] = std::format("at {:03X}: {:02X} {:02X} {:02X}: {}", entry, image[entry], image[entry + 1], image[entry + 2], fields);
+        I8048Machine machine(image);
+        const e48t::RunResult rr = engine::pcode_cpu::run(machine.bus, entry, options);
+        digest = i8048_fold(digest, rr, ByteView(machine.data->data(), machine.data->size()));
     }
-    std::printf("pcode_cpu i8048 %s: %u runs, %u differ\n", title, runs, different);
-    unsigned shown = 0;
-    for (const auto& [k, c] : by_kind)
-        if (++shown <= 40) std::printf("    %u x %s   e.g. %s\n", c, k.c_str(), example[k].c_str());
-    CB_CHECK_EQ(different, 0u);
+    return digest;
 }
 
 }  // namespace
 
-CB_TEST("engine.pcode_cpu.i8048_instructions_run_as_the_own_core_does", [] { i8048_compare_random(true, "instructions"); });
+CB_TEST("engine.pcode_cpu.i8048_instructions_run_as_the_own_core_did", [] {
+    const std::uint32_t digest = i8048_random_digest(true);
+    std::printf("pcode_cpu i8048 instructions: digest %08X\n", digest);
+    CB_CHECK_EQ(digest, 0x80BFA05Du);
+});
 
-CB_TEST("engine.pcode_cpu.i8048_programs_run_as_the_own_core_does", [] { i8048_compare_random(false, "programs"); });
+CB_TEST("engine.pcode_cpu.i8048_programs_run_as_the_own_core_did", [] {
+    const std::uint32_t digest = i8048_random_digest(false);
+    std::printf("pcode_cpu i8048 programs: digest %08X\n", digest);
+    CB_CHECK_EQ(digest, 0x648A0AE4u);
+});
 
 // Every accumulator and operand through ADD and then DA (the carries DA reads are those the add left), ADDC, and the register exchange XCHD at every pair of low digits.
-CB_TEST("engine.pcode_cpu.i8048_decimal_adjust_and_exchange_run_as_the_own_core_does_on_every_pair_of_operands", [] {
-    unsigned runs = 0, different = 0;
+CB_TEST("engine.pcode_cpu.i8048_decimal_adjust_and_exchange_run_as_the_own_core_did_on_every_pair_of_operands", [] {
+    std::uint32_t digest = 0;
     for (unsigned program = 0; program < 3; ++program) {
         for (unsigned a = 0; a < 256; ++a) {
             for (unsigned x = 0; x < 256; ++x) {
@@ -178,18 +151,145 @@ CB_TEST("engine.pcode_cpu.i8048_decimal_adjust_and_exchange_run_as_the_own_core_
                 options.a = static_cast<std::uint8_t>(a);
                 options.r[0] = program == 2 ? 1 : 0;
                 options.r[1] = static_cast<std::uint8_t>(x);
-                e48t::RunResult rr[2];
-                for (int core = 0; core < 2; ++core) {
-                    I8048Machine machine(image);
-                    rr[core] = core == 1 ? engine::pcode_cpu::run(machine.bus, at, options) : e48t::run(machine.bus, at, options);
-                }
-                ++runs;
-                if (const std::string what = i8048_describe(rr[0], rr[1]); !what.empty() && ++different <= 6) std::printf("  program %u a %02X x %02X: %s\n", program, a, x, what.c_str());
+                I8048Machine machine(image);
+                digest = i8048_fold(digest, engine::pcode_cpu::run(machine.bus, at, options), {});
             }
         }
     }
-    std::printf("pcode_cpu i8048 arithmetic: %u runs, %u differ\n", runs, different);
-    CB_CHECK_EQ(different, 0u);
+    std::printf("pcode_cpu i8048 arithmetic: digest %08X\n", digest);
+    CB_CHECK_EQ(digest, 0x0EDD200Au);
 });
 
 }  // namespace cb
+
+namespace cb::emulate::i8048 {
+namespace {
+
+struct Rig {
+    Bus bus;
+    RunResult result;
+
+    RunResult run(const std::string& program, RunOptions options = {}) {
+        const source::processors::Image image = source::processors::assemble_described(source::processors::find("i8048"), ".org 0x0400\n" + program + "\n        RET\n", ".");
+        bus.load(0x400, image.data);
+        bus.set_read([](Place place, std::uint8_t address) -> std::uint8_t { return place == Place::Data ? (address == 0xA1 ? 0 : 0x5A) : 0xFF; });
+        result = engine::pcode_cpu::run(bus, 0x400, options);
+        return result;
+    }
+    unsigned r(unsigned n) const { return result.regs.ram[n]; }
+};
+
+}  // namespace
+
+CB_TEST("engine.pcode_cpu.i8048_the_accumulator_and_its_flags", [] {
+    Rig m;
+    m.run(R"(
+        MOV A,#0xf0
+        ADD A,#0x20
+        MOV R2,A
+        MOV A,PSW
+        MOV R3,A
+        MOV A,#0x9
+        ADD A,#0x1
+        DA A
+        MOV R4,A
+        MOV A,#0x81
+        RL A
+        MOV R5,A
+        MOV A,#0x12
+        SWAP A
+        MOV R6,A
+    )");
+    CB_CHECK_EQ(m.result.exit(), "return");
+    CB_CHECK_EQ(m.r(2), 0x10u);                      // 0xF0 + 0x20: the carry is set
+    CB_CHECK_EQ(m.r(3), 0x89u);                      // the PSW: C, bit 3, and the stack pointer (the return address is on the stack)
+    CB_CHECK_EQ(m.r(4), 0x10u);                      // 9 + 1 adjusted to BCD
+    CB_CHECK_EQ(m.r(5), 0x03u);
+    CB_CHECK_EQ(m.r(6), 0x21u);
+});
+
+CB_TEST("engine.pcode_cpu.i8048_registers_banks_and_indirect_addressing", [] {
+    Rig m;
+    m.run(R"(
+        MOV R0,#0x20
+        MOV A,#0xab
+        MOV @R0,A
+        MOV R1,#0x20
+        MOV A,@R1
+        MOV R2,A
+        SEL RB1
+        MOV R0,#0x7
+        SEL RB0
+        MOV R3,#0x5c
+        MOV @R1,#0x3c
+        XCHD A,@R1
+    )");
+    CB_CHECK_EQ(m.r(2), 0xABu);
+    CB_CHECK_EQ(m.result.regs.ram[24], 7);           // bank 1's R0
+    CB_CHECK_EQ(m.result.regs.ram[0x20], 0x3B);      // @R1 was 0x3C, A was 0xAB: the low nibbles swapped
+    CB_CHECK_EQ(m.result.regs.a, 0xACu);
+});
+
+CB_TEST("engine.pcode_cpu.i8048_loops_calls_and_the_stack", [] {
+    Rig m;
+    m.run(R"(
+        MOV R1,#0x5
+        MOV A,#0x0
+    loop:
+        ADD A,#0x2
+        DJNZ R1,loop
+        MOV R4,A
+        CALL sub
+        MOV R5,A
+        JMP end
+    sub:
+        MOV A,#0x77
+        RET
+    end:
+    )");
+    CB_CHECK_EQ(m.result.exit(), "return");
+    CB_CHECK_EQ(m.r(4), 10u);
+    CB_CHECK_EQ(m.r(1), 0u);
+    CB_CHECK_EQ(m.r(5), 0x77u);
+});
+
+CB_TEST("engine.pcode_cpu.i8048_ports_and_the_data_space_are_logged_accesses", [] {
+    Rig m;
+    m.run(R"(
+        MOV A,#0xf
+        OUTL P1,A
+        ORL P1,#0xf0
+        IN A,P2
+        MOV R0,#0xa1
+        MOVX A,@R0
+        MOV R3,A
+        MOV A,#0x33
+        MOVX @R0,A
+    )");
+    CB_CHECK_EQ(m.result.io.size(), 5u);
+    CB_CHECK(m.result.io[0].kind == DeviceAccess::Kind::Write && m.result.io[0].place == Place::P1 && m.result.io[0].value == 0x0F);
+    CB_CHECK(m.result.io[1].place == Place::P1 && m.result.io[1].value == 0xFF);
+    CB_CHECK(m.result.io[2].kind == DeviceAccess::Kind::Read && m.result.io[2].place == Place::P2);
+    CB_CHECK(m.result.io[3].place == Place::Data && m.result.io[3].address == 0xA1);
+    CB_CHECK(m.result.io[4].kind == DeviceAccess::Kind::Write && m.result.io[4].value == 0x33);
+    CB_CHECK_EQ(m.r(3), 0u);
+    CB_CHECK_EQ(m.result.regs.p1, 0xFF);
+});
+
+CB_TEST("engine.pcode_cpu.i8048_stops_and_limits", [] {
+    {
+        Rig m;
+        m.run("        .byte 0x1\n");
+        CB_CHECK_EQ(m.result.exit(), "stopped: undefined opcode 01 at 0400");
+    }
+    {
+        Rig m;
+        RunOptions o;
+        o.max_steps = 50;
+        m.run("    spin:\n        JMP spin\n", o);
+        CB_CHECK_EQ(m.result.exit(), "limit");
+        CB_CHECK_EQ(m.result.steps, 50u);
+    }
+});
+
+}  // namespace cb::emulate::i8048

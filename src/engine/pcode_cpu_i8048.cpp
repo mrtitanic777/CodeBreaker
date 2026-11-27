@@ -298,6 +298,4 @@ i8048cpu::RunResult run(i8048cpu::Bus& bus, std::uint16_t entry, const i8048cpu:
     return out;
 }
 
-i8048cpu::RunResult call(i8048cpu::Bus& bus, std::uint16_t entry, const i8048cpu::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : i8048cpu::run(bus, entry, options); }
-
 }  // namespace cb::engine::pcode_cpu
