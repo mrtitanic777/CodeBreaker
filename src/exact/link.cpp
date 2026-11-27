@@ -489,7 +489,7 @@ std::vector<std::string> diagnose(project::Project& project, const std::optional
     std::vector<std::uint64_t> ra, rb = ours.relocations;
     std::optional<std::array<std::uint16_t, 14>> ha;
     if (!reference) {   // (the original packed: ours, linked unpacked, against the unpacked image -- its segment words as loaded at loadseg -- and the relocations EXEPACK kept, in their order)
-        const exepack::Packed& packed = *project.packed();
+        const formats::exepack::Original& packed = *project.packed();
         const ByteView unpacked = lk_slice(project.image(), 0, static_cast<std::int64_t>(packed.dest) * 16);
         ia.assign(unpacked.begin(), unpacked.end());
         ra.assign(packed.relocs.begin(), packed.relocs.end());

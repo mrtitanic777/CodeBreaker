@@ -90,7 +90,7 @@ struct Program {
     bool has_segment(std::uint32_t address) const { return segments.contains(address); }
 };
 
-// What `unpack_exepack` / the emulated unpacker give: the unpacked load module and where it starts.
+// What `exepack::unpack` (formats/exepack.hpp) / the emulated unpacker give: the unpacked load module and where it starts.
 struct Unpack {
     Bytes module;
     std::vector<std::uint32_t> relocations;  // offsets into `module` of segment words
@@ -114,8 +114,6 @@ std::vector<std::pair<std::uint64_t, std::uint64_t>> chain(ByteView data);
 std::optional<std::pair<std::uint64_t, std::uint64_t>> driver_and_vxd(ByteView data);
 std::optional<std::pair<MzHeader, std::uint64_t>> dos_and_windows(ByteView data);
 std::optional<Packer> packer_of(ByteView data, const MzHeader& h);
-// EXEPACK undone by reading the packed data. FormatError when it is not EXEPACK or the data is damaged.
-Unpack unpack_exepack(ByteView module, std::uint32_t cs, std::uint32_t ip);
 // A packed load module unpacked by running its unpacker to the real entry point (two runs, at two load segments,
 // tell relocations apart). EmulationError when no entry point is reached or the runs disagree.
 Unpack unpack_emulated(ByteView module, const std::vector<std::uint32_t>& relocations, std::uint32_t cs, std::uint32_t ip,

@@ -6,6 +6,7 @@
 #include <map>
 #include <set>
 
+#include "formats/exepack.hpp"
 #include "formats/read.hpp"
 
 namespace cb::formats::dos {
@@ -229,80 +230,6 @@ std::optional<Packer> packer_of(ByteView data, const MzHeader& h) {
     return std::nullopt;
 }
 
-// ---- EXEPACK, read statically ----------------------------------------------------------------------------
-
-Unpack unpack_exepack(ByteView module, std::uint32_t cs, std::uint32_t ip) {
-    const std::uint64_t at = std::uint64_t{cs} * 16;
-    const auto w = words(module, at, ip / 2);
-    if (w.empty()) throw FormatError(kReader, at, "not EXEPACK: the header is empty");
-    if (w.back() != 0x4252) throw FormatError(kReader, at, "not EXEPACK: no RB before the entry point");
-    const std::uint32_t real_ip = w[0], real_cs = w[1], own_size = w[3];
-    std::uint32_t real_sp, real_ss, out_paras, skip;
-    if (ip == 0x10) {
-        if (w.size() < 7) throw FormatError(kReader, at, "not EXEPACK: the header is too short");
-        real_sp = w[4], real_ss = w[5], out_paras = w[6], skip = 1;
-    } else {
-        if (w.size() < 5) throw FormatError(kReader, at, "not EXEPACK: the header is too short");
-        const std::size_t n = w.size();
-        // the four words before the signature: sp, ss, the unpacked size in paragraphs, the skip length
-        const std::size_t first = n - 5;
-        real_sp = w[first], real_ss = w[first + 1], out_paras = w[first + 2], skip = w[first + 3];
-    }
-    Bytes buf(module.begin(), module.begin() + static_cast<std::ptrdiff_t>(std::min<std::uint64_t>(at, module.size())));
-    buf.resize(std::max<std::uint64_t>(buf.size(), std::uint64_t{out_paras} * 16), 0);
-    auto byte_at = [&](std::int64_t i) -> std::uint8_t {
-        if (i < 0 || static_cast<std::uint64_t>(i) >= buf.size()) throw FormatError(kReader, at, "EXEPACK data runs out");
-        return buf[static_cast<std::size_t>(i)];
-    };
-    std::int64_t src = static_cast<std::int64_t>(at) - (static_cast<std::int64_t>(skip) - 1) * 16;
-    std::int64_t dst = static_cast<std::int64_t>(out_paras) * 16;
-    while (src > 0 && byte_at(src - 1) == 0xFF) --src;
-    for (;;) {
-        if (src < 3) throw FormatError(kReader, at, "EXEPACK data runs out");
-        const int command = byte_at(src - 1);
-        const std::int64_t length = byte_at(src - 3) | (byte_at(src - 2) << 8);
-        src -= 3;
-        if ((command & 0xFE) == 0xB0) {  // fill: `length` bytes of the byte before
-            src -= 1;
-            dst -= length;
-            if (dst < 0 || src < 0) throw FormatError(kReader, at, "EXEPACK data runs out");
-            const Bytes fill(static_cast<std::size_t>(length), byte_at(src));
-            assign(buf, static_cast<std::uint64_t>(dst), fill);
-        } else if ((command & 0xFE) == 0xB2) {  // copy `length` bytes
-            src -= length;
-            dst -= length;
-            if (dst < 0 || src < 0) throw FormatError(kReader, at, "EXEPACK data runs out");
-            const std::uint64_t a = std::min<std::uint64_t>(static_cast<std::uint64_t>(src), buf.size());
-            const std::uint64_t b = std::min<std::uint64_t>(static_cast<std::uint64_t>(src + length), buf.size());
-            const Bytes piece(buf.begin() + static_cast<std::ptrdiff_t>(a), buf.begin() + static_cast<std::ptrdiff_t>(b));  // a copy: the ranges may overlap
-            assign(buf, static_cast<std::uint64_t>(dst), piece);
-        } else {
-            throw FormatError(kReader, at, std::format("EXEPACK command {:#x}", command));
-        }
-        if (command & 1) break;
-    }
-    Unpack r;
-    // the relocation table follows the message the unpacker prints
-    static constexpr std::string_view kMessage = "Packed file is corrupt";
-    const ByteView stub_area = clamped(module, at, own_size);
-    auto found = find(stub_area, kMessage);
-    if (!found) throw FormatError(kReader, at, "EXEPACK relocation table not found");
-    std::uint64_t table = at + *found + kMessage.size();
-    for (std::uint64_t seg = 0; seg < 16; ++seg) {
-        const std::uint64_t count = get<std::uint16_t>(module, table, kReader);
-        table += 2;
-        for (std::uint16_t off : words(module, table, count)) r.relocations.push_back(static_cast<std::uint32_t>(seg * 0x10000 + off));
-        table += 2 * count;
-    }
-    buf.resize(std::min<std::uint64_t>(buf.size(), std::uint64_t{out_paras} * 16));
-    r.module = std::move(buf);
-    r.cs = real_cs;
-    r.ip = real_ip;
-    r.ss = real_ss;
-    r.sp = real_sp;
-    return r;
-}
-
 std::optional<std::uint32_t> data_segment(ByteView image, std::uint32_t base, std::uint32_t ip, Kind kind,
                                           const std::vector<std::uint32_t>& relocations, std::uint32_t entry) {
     if (entry < base) return std::nullopt;
@@ -369,7 +296,7 @@ Loaded load_module(ByteView data, const MzHeader& h, Program& p, std::uint32_t s
     };
     if (p.packer == Packer::ExePack) {
         try {
-            Unpack u = unpack_exepack(L.image, L.cs, L.ip);
+            Unpack u = exepack::unpack(L.image, L.cs, L.ip);
             adopt(u, Unpacked::Static);
         } catch (const FormatError& e) {  // a program EXEPACK could not undo statically is then tried in the emulator
             p.notes.push_back(std::string("EXEPACK not undone statically (") + e.what() + ")");

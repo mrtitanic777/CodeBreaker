@@ -1,9 +1,10 @@
-// build/exepack.hpp -- store a real-mode program the way LINK /EXEPACK did, and read how a stored one was.
+// formats/exepack.hpp -- EXEPACK, the packer of LINK /EXEPACK: undo it, read how a program was packed with it, and pack one.
 //
+//     dos::Unpack u = exepack::unpack(stored_module, cs, ip);   // the program it holds, its relocations and its registers
 //     Layout l = exepack::layout(stored_module, cs, ip);        // how the original was packed: l.fills, l.stub_code
 //     Packed p = exepack::pack(image, relocs, entry, stack, fills, stub_code);
 //
-// The format (formats/dos unpack_exepack undoes it): the stored load module is the program's bytes with
+// The format: the stored load module is the program's bytes with
 // stretches of one repeated byte ("fills") taken out, followed by a paragraph-aligned segment the file's entry
 // point names. That segment starts with eight words -- the program's IP, CS, a scratch word, the segment's own
 // size, SP, SS, the program's size in paragraphs, "RB" -- then the unpacker's code and its message ("Packed file
@@ -22,13 +23,15 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string_view>
 #include <vector>
 
 #include "core/bytes.hpp"
+#include "formats/dos.hpp"
 
-namespace cb::build::exepack {
+namespace cb::formats::exepack {
 
 // The unpacker's message, which ends its code.
 inline constexpr std::string_view kMessage = "Packed file is corrupt";
@@ -63,6 +66,25 @@ struct Packed {
     StartRegisters registers;   // for the file's header
 };
 
+// The program a stored load module (entry `cs`:`ip` of the file's header; `ip` 0x10 for the header of eight words, 0x12
+// for nine) holds, undone by reading the packed data: the unpacked load module, its relocations (linear offsets, in the
+// table's order) and the registers it starts with. FormatError when it is not EXEPACK or the data is damaged.
+dos::Unpack unpack(ByteView module, std::uint32_t cs, std::uint32_t ip);
+
+// What a file packed by EXEPACK keeps of the program it packed: the header's words and the relocation table.
+struct Original {
+    std::uint16_t ip = 0, cs = 0;        // the program's entry (paragraphs from the image's start)
+    std::uint16_t mem = 0;               // EXEPACK's own field: the memory the unpacker wants
+    std::uint16_t size = 0;              // the packed image's size field
+    std::uint16_t sp = 0, ss = 0;        // the program's stack
+    std::uint16_t dest = 0;              // the unpacked length in paragraphs
+    std::vector<std::uint32_t> relocs;   // [image address] of each relocation, in the table's order
+};
+
+// The packed program's header and relocations from a whole .exe, or nullopt when the file is not EXEPACK-packed. Throws
+// TruncatedError when the relocation table runs off the end of the file.
+std::optional<Original> read_original(ByteView file);
+
 // Read how `module` (a stored load module; entry `cs`:`ip` of the file's header) was packed. FormatError when it
 // is not the EXEPACK this writes (a header of eight or nine words ending in RB, a stream that does not end where
 // the program begins), TruncatedError when it is too short for what it claims.
@@ -76,4 +98,4 @@ Layout layout(ByteView module, std::uint16_t cs, std::uint16_t ip);
 Packed pack(ByteView image, std::span<const std::uint32_t> relocs, Far16 entry, Far16 stack,
             std::span<const Fill> fills, ByteView stub_code, unsigned words = 8);
 
-}  // namespace cb::build::exepack
+}  // namespace cb::formats::exepack

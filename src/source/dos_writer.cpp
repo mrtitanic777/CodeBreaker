@@ -9,7 +9,7 @@
 #include <nlohmann/json.hpp>
 
 #include "build/driver.hpp"
-#include "build/exepack.hpp"
+#include "formats/exepack.hpp"
 #include "build/mzfile.hpp"
 #include "build/pklite.hpp"
 #include "build/stubjoin.hpp"
@@ -27,7 +27,7 @@ namespace cb::source::dos_writer {
 namespace {
 
 namespace dos = formats::dos;
-namespace epk = build::exepack;
+namespace epk = formats::exepack;
 namespace mzf = build::mzfile;
 namespace pkl = build::pklite;
 using Json = nlohmann::ordered_json;
@@ -399,7 +399,7 @@ Facts make_facts(Context& cx, const Subject& s, const std::filesystem::path& out
             if (!r.same) throw UnsupportedError(kReader, 0, "the EXEPACK unpacker does not build back");
         }
         facts.words = layout.words;
-        facts.offsets = dos::unpack_exepack(stored, oh.cs, oh.ip).relocations;
+        facts.offsets = epk::unpack(stored, oh.cs, oh.ip).relocations;
     } else {
         for (std::size_t i = 0; i < oh.relocation_count; ++i) {
             const std::size_t at = oh.relocation_offset + 4 * i;
@@ -628,7 +628,7 @@ Result kernel(Context& cx, const std::filesystem::path& path, const Bytes& data,
     for (const mzf::Relocation& r : sysinit.relocations) sites.push_back(linear_of(r));
     const dos::MzHeader oh = need_header(data);
     try {   // (the table in the order the original's lists it)
-        const std::vector<std::uint32_t> theirs = dos::unpack_exepack(part_of(data, oh.header_size, oh.size), oh.cs, oh.ip).relocations;
+        const std::vector<std::uint32_t> theirs = epk::unpack(part_of(data, oh.header_size, oh.size), oh.cs, oh.ip).relocations;
         if (same_places(theirs, sites)) sites = theirs;
     } catch (const FormatError&) {   // (not a table that reads: the build's order stands)
     }
@@ -666,8 +666,8 @@ Result kernel(Context& cx, const std::filesystem::path& path, const Bytes& data,
                                            data.size()));
         // what the difference is: the same programs, relocation table in another order?
         if (std::ranges::equal(ByteView(whole).first(oh.header_size), ByteView(data).first(oh.header_size)) && whole.size() == data.size()) {
-            const dos::Unpack mine = dos::unpack_exepack(packed.module, packed.registers.cs, packed.registers.ip);
-            const dos::Unpack theirs = dos::unpack_exepack(part_of(data, oh.header_size, oh.size), oh.cs, oh.ip);
+            const dos::Unpack mine = epk::unpack(packed.module, packed.registers.cs, packed.registers.ip);
+            const dos::Unpack theirs = epk::unpack(part_of(data, oh.header_size, oh.size), oh.cs, oh.ip);
             if (mine.module == theirs.module && mine.cs == theirs.cs && mine.ip == theirs.ip && mine.ss == theirs.ss && mine.sp == theirs.sp &&
                 same_places(mine.relocations, theirs.relocations)) {
                 result.notes.emplace_back("loader, kernel and SYSINIT are the original's, byte for byte, unpacked; only the order of SYSINIT's relocation table "

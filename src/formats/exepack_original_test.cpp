@@ -1,10 +1,10 @@
-#include "exact/exepack.hpp"
+#include "formats/exepack.hpp"
 
 #include "core/io.hpp"
 #include "core/testing.hpp"
 
 using namespace cb;
-using namespace cb::exact;
+using namespace cb::formats;
 
 namespace {
 
@@ -37,8 +37,8 @@ Bytes packed(const std::vector<std::vector<std::uint16_t>>& groups, bool truncat
 
 }  // namespace
 
-CB_TEST("exact.exepack.reads_the_program_it_packed", [] {
-    const auto p = exepack::read(packed({{0x0010, 0x0020}, {0x0004}}));
+CB_TEST("formats.exepack_original.reads_the_program_it_packed", [] {
+    const auto p = exepack::read_original(packed({{0x0010, 0x0020}, {0x0004}}));
     CB_CHECK(p.has_value());
     CB_CHECK_EQ(p->ip, 0x10);
     CB_CHECK_EQ(p->cs, 0x20);
@@ -51,42 +51,42 @@ CB_TEST("exact.exepack.reads_the_program_it_packed", [] {
     CB_CHECK((p->relocs == (std::vector<std::uint32_t>{0x10, 0x20, 0x10004})));
 });
 
-CB_TEST("exact.exepack.groups_up_to_the_last", [] {
+CB_TEST("formats.exepack_original.groups_up_to_the_last", [] {
     std::vector<std::vector<std::uint16_t>> groups(16);
     groups[15] = {0xFFFE};
-    const auto p = exepack::read(packed(groups));
+    const auto p = exepack::read_original(packed(groups));
     CB_CHECK(p.has_value());
     CB_CHECK((p->relocs == (std::vector<std::uint32_t>{15 * 0x10000 + 0xFFFE})));
-    CB_CHECK(exepack::read(packed({}))->relocs.empty());
+    CB_CHECK(exepack::read_original(packed({}))->relocs.empty());
 });
 
-CB_TEST("exact.exepack.not_packed", [] {
-    CB_CHECK(!exepack::read(Bytes{}).has_value());
-    CB_CHECK(!exepack::read(as_bytes("MZ")).has_value());   // shorter than the header
+CB_TEST("formats.exepack_original.not_packed", [] {
+    CB_CHECK(!exepack::read_original(Bytes{}).has_value());
+    CB_CHECK(!exepack::read_original(as_bytes("MZ")).has_value());   // shorter than the header
     Bytes not_mz = packed({});
     not_mz[0] = 'X';
-    CB_CHECK(!exepack::read(not_mz).has_value());
+    CB_CHECK(!exepack::read_original(not_mz).has_value());
     Bytes no_signature = packed({});
     no_signature[32 + 14] = 'X';
     no_signature[32 + 16] = 'X';
-    CB_CHECK(!exepack::read(no_signature).has_value());
+    CB_CHECK(!exepack::read_original(no_signature).has_value());
     // a header that points past the end of the file
     Bytes past_end = packed({});
     past_end.resize(40);
-    CB_CHECK(!exepack::read(past_end).has_value());
+    CB_CHECK(!exepack::read_original(past_end).has_value());
     // "ZM" is an MZ too
     Bytes zm = packed({});
     zm[0] = 'Z';
     zm[1] = 'M';
-    CB_CHECK(exepack::read(zm).has_value());
+    CB_CHECK(exepack::read_original(zm).has_value());
 });
 
-CB_TEST("exact.exepack.damaged_relocation_table", [] {
-    CB_CHECK_THROWS_AS(TruncatedError, (void)exepack::read(packed({{1, 2, 3}}, true)));
+CB_TEST("formats.exepack_original.damaged_relocation_table", [] {
+    CB_CHECK_THROWS_AS(TruncatedError, (void)exepack::read_original(packed({{1, 2, 3}}, true)));
     // without the message there is no table: the program's header alone
     Bytes no_message = packed({{1}});
     no_message.resize(32 + 18 + 4);
-    const auto p = exepack::read(no_message);
+    const auto p = exepack::read_original(no_message);
     CB_CHECK(p.has_value());
     CB_CHECK(p->relocs.empty());
 });

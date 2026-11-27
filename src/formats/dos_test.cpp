@@ -6,12 +6,14 @@
 // start of the buffer) is a FormatError; a relocation below the image in
 // `unpacked_file` is a FormatError.
 #include "formats/dos.hpp"
+#include "formats/exepack.hpp"
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 
 using namespace cb;
 namespace dos = cb::formats::dos;
+namespace exepack = cb::formats::exepack;
 
 namespace {
 
@@ -68,7 +70,7 @@ CB_TEST("formats.dos.exepack_is_undone_statically", [] {
     CB_CHECK(p.inside(0x10000));
     CB_CHECK(!p.inside(0x10000 + 12016));
     // the unpacker's own record, read directly
-    const auto u = dos::unpack_exepack(ByteView(d).subspan(h.header_size), h.cs, h.ip);
+    const auto u = exepack::unpack(ByteView(d).subspan(h.header_size), h.cs, h.ip);
     CB_CHECK_EQ(u.module.size(), std::size_t{12016});
     CB_CHECK_EQ(u.ip, 0x18DAu);
     CB_CHECK(u.module == p.image);
@@ -192,14 +194,14 @@ CB_TEST("formats.dos.errors", [] {
     CB_CHECK_THROWS_AS(FormatError, dos::read_driver_part(testdata("find.exe")));
     CB_CHECK_THROWS_AS(FormatError, dos::read_pklite_head(Bytes{1, 2, 3}, 4));
     // not EXEPACK: no RB before the entry point
-    CB_CHECK_THROWS_AS(FormatError, dos::unpack_exepack(testdata("choice.com"), 0, 0x10));
+    CB_CHECK_THROWS_AS(FormatError, exepack::unpack(testdata("choice.com"), 0, 0x10));
     // damaged EXEPACK data runs out instead of reading outside the buffer
     const Bytes d = testdata("find.exe");
     const auto h = *dos::mz_header(d);
     Bytes module(d.begin() + h.header_size, d.end());
     for (std::size_t k = 0; k < 64 && k < module.size(); ++k) module[k] = 0xB0;
     try {
-        (void)dos::unpack_exepack(module, h.cs, h.ip);
+        (void)exepack::unpack(module, h.cs, h.ip);
     } catch (const FormatError&) {
     }
     // every truncation of a packed program reads without crashing

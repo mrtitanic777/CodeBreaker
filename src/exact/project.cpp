@@ -363,7 +363,7 @@ Project::Project(stdfs::path folder, std::shared_ptr<const Services> services, s
     code_end_ = config_.code_end;
     switches_ = config_.switches;
     read_program();
-    if (config_.packed) packed_ = exepack::read(fs::read_file((dir_ / fs::from_text(*config_.packed)).lexically_normal()));
+    if (config_.packed) packed_ = formats::exepack::read_original(fs::read_file((dir_ / fs::from_text(*config_.packed)).lexically_normal()));
     derive_code_segments();
 }
 

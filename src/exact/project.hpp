@@ -60,7 +60,7 @@
 #include "exact/compare.hpp"
 #include "exact/data.hpp"
 #include "exact/draft/package.hpp"
-#include "exact/exepack.hpp"
+#include "formats/exepack.hpp"
 #include "exact/identify.hpp"
 #include "exact/ledger.hpp"
 #include "exact/library.hpp"
@@ -266,7 +266,7 @@ public:
     ByteView file() const { return file_; }                            // the program's file
     ByteView image() const { return image_; }                          // the load image
     const std::optional<MzHeader>& header() const { return header_; }  // none: not an MZ program
-    const std::optional<exepack::Packed>& packed() const { return packed_; }   // the original as EXEPACK left it
+    const std::optional<formats::exepack::Original>& packed() const { return packed_; }   // the original as EXEPACK left it
     // The places in the load image where the loader adds the load segment.
     const std::unordered_set<std::uint32_t>& relocs() const { return relocs_; }
     // The image offset of the code segment `a` is in.
@@ -343,7 +343,7 @@ private:
     Bytes file_;
     ByteView image_;
     std::optional<MzHeader> header_;
-    std::optional<exepack::Packed> packed_;
+    std::optional<formats::exepack::Original> packed_;
     std::unordered_set<std::uint32_t> relocs_;
     std::optional<std::uint32_t> own_end_;
     mutable std::mutex parts_mutex_;

@@ -1,6 +1,6 @@
 // Tests of the EXEPACK writer and reader. The packed stream is checked by an independent unpacker written here
 // from the format's description (the reverse of what the packer wrote), not by the packer's own reader alone.
-#include "build/exepack.hpp"
+#include "formats/exepack.hpp"
 
 #include "core/error.hpp"
 #include "core/testing.hpp"
@@ -8,7 +8,7 @@
 namespace {
 
 using namespace cb;
-using namespace cb::build;
+using namespace cb::formats;
 
 Bytes stub_code() {
     Bytes code(20, 0x90);
@@ -79,7 +79,7 @@ const std::vector<exepack::Fill> kSampleFills{{1024, 300, 0}, {1324, 40, 0x41}, 
 
 }  // namespace
 
-CB_TEST("build.exepack.pack_roundtrip_both_headers", [] {
+CB_TEST("formats.exepack.pack_roundtrip_both_headers", [] {
     // a program with runs of 0, 'A' and FF written as iterated data
     const Bytes image = sample_image();
     const std::vector<std::uint32_t> relocs{0x10, 0x20, 0x1F0, 0x10005, 0x3FFFF};
@@ -112,7 +112,7 @@ CB_TEST("build.exepack.pack_roundtrip_both_headers", [] {
     }
 });
 
-CB_TEST("build.exepack.stream_layout_is_exact", [] {
+CB_TEST("formats.exepack.stream_layout_is_exact", [] {
     // 16 bytes: 1 literal byte, then a 15-byte fill. The stream is [literal][fill byte][len=15][B0|last], padded
     // with FF to the paragraph; the unpacker segment follows.
     Bytes image(16, 0x77);
@@ -133,7 +133,7 @@ CB_TEST("build.exepack.stream_layout_is_exact", [] {
     CB_CHECK_EQ(unpack(q.module, q.registers.cs, 8).program == image, true);
 });
 
-CB_TEST("build.exepack.long_runs_and_copies_split_at_64k", [] {
+CB_TEST("formats.exepack.long_runs_and_copies_split_at_64k", [] {
     Bytes image(0x20004, 0x07);
     for (std::size_t i = 0; i < 100; ++i) image[i] = static_cast<std::uint8_t>(i + 1);
     for (std::size_t i = 0x20000; i < 0x20004; ++i) image[i] = static_cast<std::uint8_t>(i);
@@ -154,7 +154,7 @@ CB_TEST("build.exepack.long_runs_and_copies_split_at_64k", [] {
     CB_CHECK(exepack::layout(q.module, q.registers.cs, q.registers.ip).fills.empty());
 });
 
-CB_TEST("build.exepack.pack_rejects_what_is_not_a_fill", [] {
+CB_TEST("formats.exepack.pack_rejects_what_is_not_a_fill", [] {
     const Bytes image = sample_image();
     auto pack = [&](std::vector<exepack::Fill> fills, unsigned words = 8) {
         return exepack::pack(image, {}, {1, 2}, {3, 4}, fills, stub_code(), words);
@@ -174,7 +174,7 @@ CB_TEST("build.exepack.pack_rejects_what_is_not_a_fill", [] {
     CB_CHECK_THROWS_AS(FormatError, (void)exepack::pack(image, {}, {1, 2}, {3, 4}, {}, Bytes(70000, 0)));
 });
 
-CB_TEST("build.exepack.layout_rejects_what_is_not_exepack", [] {
+CB_TEST("formats.exepack.layout_rejects_what_is_not_exepack", [] {
     const Bytes image = sample_image();
     const exepack::Packed p = exepack::pack(image, {}, {3, 0x44}, {0x50, 0x200}, kSampleFills, stub_code());
     CB_CHECK_THROWS_AS(FormatError, (void)exepack::layout(p.module, p.registers.cs, 0x14));          // no such header
