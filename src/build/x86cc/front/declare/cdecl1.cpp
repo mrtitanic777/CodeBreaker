@@ -67,7 +67,9 @@ void ParsePgm( FrontRun& front )
             front.cvars.SymLevel = 0;
             if( front.cvars.CurToken == T_LEFT_BRACE ) {
                 BeginFunc(front);
-                Statement(front);
+                if( !L2Statement(front) ) {
+                    Statement(front);
+                }
                 CMemFree( front, front.cvars.CurFunc->name );
                 front.cvars.CurFunc->name = NULL;
                 SymReplace( front, front.cvars.CurFunc, front.cvars.CurFuncHandle );

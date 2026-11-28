@@ -52,7 +52,7 @@ corpus. The candidates, in the order they are likely to be needed: constant fold
 **Seam 1, the front end's semantic actions (now).** L2 is lowered into the front end's tree by calling the same semantic
 actions the parser calls, in the same order, from the typed tree instead of from tokens. The interface is
 `x86cc::BodyBuilder` (build/x86cc/l2body.hpp), which knows neither OpenWatcom's types nor translate::ir's: `name`, `integer`,
-`binary`, `return_value` ... ; the front end implements it (front/stmt/cl2body.cpp) and the L2 side drives it (build/l2cc). A
+`binary`, `return_value` ... ; the front end implements it (front/stmt/cstmt.cpp, beside `Statement`, whose beginning and end of a body it shares) and the L2 side drives it (build/l2cc). A
 compile on this seam is a normal compile of a C unit whose function bodies are empty (`int add(int a, int b) {}`): the
 declarations, types, prototypes and pragmas go through the front end's declaration parser as text (the text L2 already
 carries for a C unit: `Module::header`, the prototypes the C back end writes), and when the parser reaches a body that L2 gives,
@@ -89,11 +89,11 @@ proves the other, and the L2 path saves writing and re-scanning the bodies.
    C text by translate/backends/c, then x86cc) and the L2 path (declarations as text, the body from the tree). Report, per
    corpus, functions the same, declined (a construct not lowered yet: today's path is used) and different (a bug; never
    accepted). The corpora: the decompiler's L2 documents of lz32.dll (93 functions) and the 16-bit lzexpand.dll (46)
-   (`translate.l2.decompiler_documents_lose_nothing`), then the captured compiles of test-inputs/x86cc/gate (177), then the
+   (`translate.l2.decompiler_documents_lose_nothing`), then the captured compiles of test-inputs/x86cc/gate (176), then the
    Win95 module builds.
 2. **Identical behaviour**, where objects differ on purpose (a pass moved to L2 with a different result, seam 2, languages other
    than C): the per-function equivalence judge on the Unicorn oracle, and at milestones the MINI.CAB boot to Setup.
-3. **Nothing else moves.** x86cc.replay (every captured compile the same in-process) stays 177 of 177: with no L2 bodies given the
+3. **Nothing else moves.** x86cc.replay (every captured compile the same in-process) stays 176 of 176: with no L2 bodies given the
    front end runs exactly as before.
 4. **Never slower.** Compile time both ways over each corpus, in the report of each step.
 
@@ -116,3 +116,13 @@ proves the other, and the L2 path saves writing and re-scanning the bodies.
 ## Status
 
 - 2026-11-28: this plan.
+- 2026-11-28: step 2, the first vertical slice. `x86cc::BodyBuilder` and `BodySource` (build/x86cc/l2body.hpp); the front end's
+  `L2Statement` (front/stmt/cstmt.cpp: `Statement`'s beginning and end of a body are now `BeginFuncBody` and `EndFuncBody`, shared),
+  `NameLeaf` and `IntConstLeaf` (front/expr/cexpr.cpp: what `SymLeaf` and `ConstLeaf` make, without tokens); `x86cc::compile` takes
+  the bodies; `l2cc::compile`, `declines` and `head` (build/l2cc). Lowered: parameters, integer literals, the sixteen binary
+  arithmetic, shift, bitwise and comparison operators, `return` with and without a value. The same object both ways, byte for
+  byte, on wcc386 (`add`; `a - b * 3`, `(x << 2) ^ y` on unsigned, `a / b + a % b`, `a < b`, a 64-bit multiply and a void
+  return in one unit, with the default switches and with `-ox -s`) and on wcc (a 16-bit `a + (b & 255)`, large model), and a
+  different body gives a different object (`build.l2cc.*`, 4 tests). x86cc.replay unchanged: 176 of 176 captured compiles the same.
+  Not yet: locals, the other statements, calls, casts, pointers; line numbers (`-d1` and up: the stub's lines are not the
+  text's); the corpus harness (step 5).

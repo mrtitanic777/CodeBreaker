@@ -30,6 +30,8 @@
 ****************************************************************************/
 
 
+#include "../../l2body.hpp"
+
 #include "cvars.h"
 #include "i64.h"
 #include "cfeinfo.h"
@@ -1150,25 +1152,29 @@ static void FixupC99MainReturn( FrontRun& front, SYM_HANDLE func_result_handle, 
 }
 
 
-void Statement( FrontRun& front )
-{
-    LABEL_INDEX         end_of_func_label;
-    SYM_HANDLE          func_result_handle;
-    TREEPTR             tree;
-    bool                return_at_outer_level;
-    bool                skip_to_next_token;
-    bool                declaration_allowed;
+/*
+ * What a function's body keeps from its `{` to its `}`: Statement reads the statements from the text between them,
+ * L2Statement takes them from its caller's builder (l2body.hpp); both begin and end a body as these two do.
+ */
+struct FuncBody {
+    LABEL_INDEX         end_of_func_label = 0;
+    SYM_HANDLE          func_result_handle = SYM_NULL;
+    TREEPTR             tree = NULL;            /* the OPR_LABELCOUNT node */
+    bool                return_at_outer_level = false;
     struct return_info  return_info;
+};
+
+static void BeginFuncBody( FrontRun& front, FuncBody& body )
+{
     SYM_ENTRY           sym;
 
     ++front.cvars.FuncCount;
-    return_info.with = RETURN_WITH_NONE; /* indicate no return statements */
-    return_info.with_expr = false;
+    body.return_info.with = RETURN_WITH_NONE; /* indicate no return statements */
+    body.return_info.with_expr = false;
     front.cvars.CompFlags.label_dropped = false;
     front.cvars.CompFlags.addr_of_auto_taken = false;
-    end_of_func_label = 0;
-    return_at_outer_level = false;
-    declaration_allowed = false;
+    body.end_of_func_label = 0;
+    body.return_at_outer_level = false;
     front.cvars.DeadCode = 0;
     front.cvars.LoopDepth = 0;
     front.cvars.LabelIndex = 0;
@@ -1182,14 +1188,26 @@ void Statement( FrontRun& front )
     StartNewBlock(front);
     NextToken(front);                        // skip over {
     ++front.cvars.SymLevel;
-    tree = LeafNode( front, OPR_LABELCOUNT );
-    AddStmt( front, tree );
+    body.tree = LeafNode( front, OPR_LABELCOUNT );
+    AddStmt( front, body.tree );
     if( GrabLabels(front) == 0 ) {
         GetLocalVarDecls(front);
     }
-    func_result_handle = MakeNewDotSym( front, &sym, 'R', front.cvars.CurFunc->sym_type->object, SC_AUTO );
+    body.func_result_handle = MakeNewDotSym( front, &sym, 'R', front.cvars.CurFunc->sym_type->object, SC_AUTO );
     sym.flags |= SYM_FUNC_RETURN_VAR;
-    SymReplace( front, &sym, func_result_handle );
+    SymReplace( front, &sym, body.func_result_handle );
+}
+
+static void EndFuncBody( FrontRun& front, FuncBody& body, bool skip_to_next_token );
+
+void Statement( FrontRun& front )
+{
+    FuncBody            body;
+    bool                skip_to_next_token;
+    bool                declaration_allowed;
+
+    declaration_allowed = false;
+    BeginFuncBody( front, body );
     for( ;; ) {
         front.cvars.CompFlags.pending_dead_code = false;
         if( GrabLabels(front) == 0
@@ -1289,18 +1307,18 @@ void Statement( FrontRun& front )
             continue;
 #endif
         case T_RETURN:
-            ReturnStmt( front, func_result_handle, &return_info );
+            ReturnStmt( front, body.func_result_handle, &body.return_info );
             if( front.cstmt.BlockStack->prev_block == NULL ) {
-                return_at_outer_level = true;
+                body.return_at_outer_level = true;
             }
             MustRecog( front, T_SEMI_COLON );
             if( front.cvars.SymLevel != 1
               || front.cvars.CurToken != T_RIGHT_BRACE
               || front.cstmt.BlockStack->block_type != T_LEFT_BRACE ) {
-                if( end_of_func_label == 0 ) {
-                    end_of_func_label = NextLabel(front);
+                if( body.end_of_func_label == 0 ) {
+                    body.end_of_func_label = NextLabel(front);
                 }
-                Jump( front, end_of_func_label );
+                Jump( front, body.end_of_func_label );
             }
             if( front.cstmt.BlockStack->block_type != T_LEFT_BRACE )
                 break;
@@ -1379,36 +1397,43 @@ void Statement( FrontRun& front )
             NextToken(front);
         }
     }
+    EndFuncBody( front, body, skip_to_next_token );
+}
+
+static void EndFuncBody( FrontRun& front, FuncBody& body, bool skip_to_next_token )
+{
+    TREEPTR             tree;
+
     /* C99 has special semantics for return value of main() */
     if( ( front.cvars.CompVars.cstd > STD_C89 )
       && strcmp( front.cvars.CurFunc->name, "main" ) == 0 ) {
-        if( !return_at_outer_level ) {
-            FixupC99MainReturn( front, func_result_handle, &return_info );
-            return_at_outer_level = true;
+        if( !body.return_at_outer_level ) {
+            FixupC99MainReturn( front, body.func_result_handle, &body.return_info );
+            body.return_at_outer_level = true;
         }
     }
-    if( !return_info.with_expr ) {   /* no return values present */
+    if( !body.return_info.with_expr ) {   /* no return values present */
         if( front.cvars.DeadCode == 0
           && !front.cvars.CurFunc->attribs.naked ) {
             CheckRetValue(front);
         }
-    } else if( !return_at_outer_level ) {
+    } else if( !body.return_at_outer_level ) {
         if( front.cvars.DeadCode == 0
           && !front.cvars.CurFunc->attribs.naked ) {
             CWarn2p( front, ERR_MISSING_RETURN_VALUE, front.cvars.CurFunc->name );
         }
     }
-    if( end_of_func_label != 0 ) {
-        DropLabel( front, end_of_func_label );
+    if( body.end_of_func_label != 0 ) {
+        DropLabel( front, body.end_of_func_label );
     }
     front.cvars.DeadCode = 0;
-    tree->op.u2.label_count = front.cvars.LabelIndex;
+    body.tree->op.u2.label_count = front.cvars.LabelIndex;
     tree = LeafNode( front, OPR_FUNCEND );
-    if( !return_info.with_expr ) {
+    if( !body.return_info.with_expr ) {
         tree->u.expr_type = NULL;
         tree->op.u2.sym_handle = SYM_NULL;
     } else {
-        tree->op.u2.sym_handle = func_result_handle;
+        tree->op.u2.sym_handle = body.func_result_handle;
         SetFuncReturnNode( front, tree );
     }
     AddStmt( front, tree );
@@ -1441,4 +1466,206 @@ void Statement( FrontRun& front )
     if( front.cvars.CompFlags.addr_of_auto_taken ) {
         front.cvars.CurFunc->flags &= ~ SYM_OK_TO_RECURSE;
     }
+}
+
+
+/*
+ * A function body given by the host (build/x86cc/l2body.hpp) rather than read from the text: the text's body is `{}`, and
+ * the statements between the braces are the builder's calls. Each call does what the parser does for the same C
+ * (ReturnStmt, CheckStmtExpr, SymLeaf, the reductions of GetExpr) without the tokens, so the trees are the ones the text
+ * would give.
+ */
+namespace {
+
+namespace x86cc = cb::build::x86cc;
+
+class FrontBodyBuilder final : public x86cc::BodyBuilder {
+public:
+    FrontBodyBuilder( FrontRun& front, FuncBody& body ) : front_( front ), body_( body ) {}
+
+    Value name( std::string_view id ) override
+    {
+        std::string text( id );
+        TREEPTR     t;
+
+        t = NameLeaf( front_, text.c_str() );
+        if( t == NULL ) {
+            fail( "no symbol named " + text );
+            t = IntLeaf( front_, 0 );
+        }
+        return( wrap( t ) );
+    }
+
+    Value integer( std::uint64_t bits, x86cc::IntType type ) override
+    {
+        DATA_TYPE   dt;
+
+        switch( type ) {
+        case x86cc::IntType::UInt:      dt = TYP_UINT; break;
+        case x86cc::IntType::Long:      dt = TYP_LONG; break;
+        case x86cc::IntType::ULong:     dt = TYP_ULONG; break;
+        case x86cc::IntType::LongLong:  dt = TYP_LONG64; break;
+        case x86cc::IntType::ULongLong: dt = TYP_ULONG64; break;
+        default:                        dt = TYP_INT; break;
+        }
+        return( wrap( IntConstLeaf( front_, dt, bits ) ) );
+    }
+
+    Value binary( x86cc::BinaryOp op, Value left, Value right ) override
+    {
+        TREEPTR     l = tree( left );
+        TREEPTR     r = tree( right );
+
+        /* as GetExpr reduces each class of operator */
+        switch( op ) {
+        case x86cc::BinaryOp::Add: return( wrap( AddOp( front_, l, T_PLUS, r ) ) );
+        case x86cc::BinaryOp::Sub: return( wrap( AddOp( front_, l, T_MINUS, r ) ) );
+        case x86cc::BinaryOp::Mul: return( wrap( BinOp( front_, RValue( front_, l ), T_TIMES, r ) ) );
+        case x86cc::BinaryOp::Div: return( wrap( BinOp( front_, RValue( front_, l ), T_DIV, r ) ) );
+        case x86cc::BinaryOp::Rem: return( wrap( BinOp( front_, RValue( front_, l ), T_PERCENT, r ) ) );
+        case x86cc::BinaryOp::Shl: return( wrap( ShiftOp( front_, l, T_LSHIFT, r ) ) );
+        case x86cc::BinaryOp::Shr: return( wrap( ShiftOp( front_, l, T_RSHIFT, r ) ) );
+        case x86cc::BinaryOp::And: return( wrap( IntOp( front_, l, T_AND, r ) ) );
+        case x86cc::BinaryOp::Or:  return( wrap( IntOp( front_, l, T_OR, r ) ) );
+        case x86cc::BinaryOp::Xor: return( wrap( IntOp( front_, l, T_XOR, r ) ) );
+        case x86cc::BinaryOp::Eq:  return( wrap( RelOp( front_, l, T_EQ, r ) ) );
+        case x86cc::BinaryOp::Ne:  return( wrap( RelOp( front_, l, T_NE, r ) ) );
+        case x86cc::BinaryOp::Lt:  return( wrap( RelOp( front_, l, T_LT, r ) ) );
+        case x86cc::BinaryOp::Le:  return( wrap( RelOp( front_, l, T_LE, r ) ) );
+        case x86cc::BinaryOp::Gt:  return( wrap( RelOp( front_, l, T_GT, r ) ) );
+        case x86cc::BinaryOp::Ge:  return( wrap( RelOp( front_, l, T_GE, r ) ) );
+        }
+        fail( "an operator the front end has no action for" );
+        return( left );
+    }
+
+    void expression( Value value ) override
+    {
+        /* as CheckStmtExpr, with the expression made */
+        if( front_.cvars.DeadCode == 1 ) {
+            DeadMsg( front_ );
+        }
+        AddStmt( front_, tree( value ) );
+        if( front_.cvars.CompFlags.pending_dead_code ) {
+            front_.cvars.DeadCode = 1;
+        }
+        next();
+    }
+
+    void return_value( Value value, bool last ) override
+    {
+        TYPEPTR     func_type;
+        TREEPTR     t;
+
+        /* as ReturnStmt */
+        func_type = front_.cvars.CurFunc->sym_type->object;
+        SkipTypedefs( func_type );
+        t = RValue( front_, tree( value ) );
+        CheckRetType( front_, t );
+        t = FixupAss( front_, t, func_type );
+        t = ExprNode( front_, NULL, OPR_RETURN, t );
+        t->u.expr_type = func_type;
+        t->op.u2.sym_handle = body_.func_result_handle;
+        AddStmt( front_, t );
+        body_.return_info.with_expr = true;
+        returned( RETURN_WITH_EXPR, last );
+    }
+
+    void return_void( bool last ) override
+    {
+        returned( RETURN_WITH_NO_EXPR, last );
+    }
+
+    bool failed() const override { return( !why_.empty() ); }
+    const std::string& why() const override { return( why_ ); }
+
+private:
+    static Value wrap( TREEPTR t ) { return( Value{ t } ); }
+    static TREEPTR tree( Value value ) { return( static_cast<TREEPTR>( value.tree ) ); }
+
+    void fail( std::string why )
+    {
+        if( why_.empty() ) {
+            why_ = std::move( why );
+        }
+    }
+
+    /* what Statement's loop does before the next statement */
+    void next()
+    {
+        front_.cvars.CompFlags.pending_dead_code = false;
+    }
+
+    /* the rest of ReturnStmt and what Statement does after it; `last` stands for the text's `; }` at the outer block */
+    void returned( enum return_with with, bool last )
+    {
+        BLOCKPTR    block;
+
+        if( body_.return_info.with == RETURN_WITH_NONE ) {
+            body_.return_info.with = with;
+        }
+        if( body_.return_info.with != with ) {
+            CErr1( front_, ERR_INCONSISTENT_USE_OF_RETURN );
+        }
+        for( block = front_.cstmt.BlockStack; block != NULL; block = block->prev_block ) {
+            if( (block->block_type == T__TRY)
+              || (block->block_type == T___TRY) ) {
+                UnWindTry( front_, TRYSCOPE_NONE );
+                break;
+            }
+        }
+        if( front_.cstmt.BlockStack->prev_block == NULL ) {
+            body_.return_at_outer_level = true;
+        }
+        if( front_.cvars.SymLevel != 1
+          || !last
+          || front_.cstmt.BlockStack->block_type != T_LEFT_BRACE ) {
+            if( body_.end_of_func_label == 0 ) {
+                body_.end_of_func_label = NextLabel( front_ );
+            }
+            Jump( front_, body_.end_of_func_label );
+        }
+        next();
+    }
+
+    FrontRun&   front_;
+    FuncBody&   body_;
+    std::string why_;
+};
+
+x86cc::BodySource *HostBodies = NULL;   /* the host's, for the compile running now (compiles run one at a time: x86cc.cpp) */
+
+}  // namespace
+
+/* the host's bodies for the next compiles (null: none), each target's entry named for it as its IDE entries are */
+#if _CPU == 386
+extern "C" void wcc386_L2SetBodies( x86cc::BodySource *bodies )
+#else
+extern "C" void wcci86_L2SetBodies( x86cc::BodySource *bodies )
+#endif
+{
+    HostBodies = bodies;
+}
+
+bool L2Statement( FrontRun& front )
+{
+    if( HostBodies == NULL
+      || !HostBodies->gives( front.cvars.CurFunc->name ) ) {
+        return( false );
+    }
+    FuncBody body;
+    BeginFuncBody( front, body );
+    {
+        FrontBodyBuilder builder( front, body );
+        HostBodies->build( front.cvars.CurFunc->name, builder );
+    }
+    /* the text's `}`, as Statement's loop takes it */
+    front.cvars.CompFlags.pending_dead_code = false;
+    GrabLabels(front);
+    if( front.cvars.CurToken != T_RIGHT_BRACE ) {
+        CErr1( front, ERR_MISSING_RIGHT_BRACE );
+    }
+    EndOfStmt(front);
+    EndFuncBody( front, body, true );
+    return( true );
 }

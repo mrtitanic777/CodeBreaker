@@ -198,3 +198,6 @@ tests only what it changes.
 - 2026-11-28: item 7: the Virtual Boy on `vectored`'s V810 processor, byte-identical on its 4 homebrew programs. Next: the `executable` shape.
 - 2026-11-28: item 7: the `executable` shape, PS2 and PSP on it (container `mips-elf`), byte-identical on their 15 homebrew programs.
   Next: PS3, Vita, 3DS, DS, Switch, GameCube/Wii, Saturn, Dreamcast.
+- 2026-11-28: item 6 started (docs/L2_COMPILER.md): seam 1, L2 lowered through x86cc's front end by its own semantic actions
+  (build/x86cc/l2body.hpp, build/l2cc); first slice: parameters, integer literals, the binary operators and return give the same
+  object byte for byte as their C on wcc386 and wcc. Next: locals and the other statements, then the lz32/lzexpand corpus.
