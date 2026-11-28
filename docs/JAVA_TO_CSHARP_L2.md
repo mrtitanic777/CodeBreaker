@@ -121,3 +121,19 @@ same class: the same tree, apart from source positions. Then the C# from both is
 ## Status
 
 - 2026-11-27: this note.
+- 2026-11-27: step 2, the plain lowering (`dotnet/decompiler/csharp/l2_syntax_builder`), for units of lang "csharp". It writes the
+  ten C# corpus programs, and each one builds with Roslyn and prints the same as its original (work/stage15/judge_cs.sh). Its
+  goldens are `dotnet/testdata/l2_csharp/*.cs.txt` (`dotnet.l2_csharp.corpus.*`). The diff against the old writer's goldens was
+  reviewed and is layout only:
+  - a blank line between fields;
+  - a constructor's `: base(...)` on its own line;
+  - `where` on the declaration's line;
+  - array, object and collection initialisers with complex items, and switch expressions, one item per line;
+  - a long call chain broken before its last call;
+  - a block lambda indented with its statement;
+  - `record R;` for an empty record;
+  - no parentheses around `??` in an interpolation, and `(int)-d` for `(int)(-d)`;
+  - `quantity` where the old writer wrote `this.quantity` without a local to hide it.
+
+  Expression bodies (`=> expr;`) are kept. They come from one non-upstream flag on `EntityDeclaration`, which the output visitor
+  reads and ILSpy's builders never set. Nothing calls the plain lowering yet: the old writer stays the one in use until step 5.
