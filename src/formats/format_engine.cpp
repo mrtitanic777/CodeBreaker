@@ -1349,7 +1349,8 @@ private:
             if (!ptr && f.arr == Arr::None) {
                 std::uint64_t width = 0;
                 try {
-                    if (f.type.k == TypeRef::K::Int) width = f.type.width;
+                    if (windowed) width = window_size;   // a field of a given size(n) takes its n bytes, read or not
+                    else if (f.type.k == TypeRef::K::Int) width = f.type.width;
                     else if ((f.type.k == TypeRef::K::Str || f.type.k == TypeRef::K::Bytes) && f.type.len) width = length(f.type.len, cx);
                 } catch (const FormatError&) {
                 }

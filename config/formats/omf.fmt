@@ -1,0 +1,190 @@
+# omf.fmt -- an Intel/Microsoft OMF-86 object module (formats/omf): its records, up to and including the MODEND, and the
+# payloads of the records the reader reads (names, segments, groups, externals and communals, publics, data, iterated
+# data, fix-ups, back patches, the start address). A record of an odd type is the 32-bit form of the one before it: its
+# offsets and lengths are 4 bytes (`w`).
+#
+# A record is its type, its length (the payload and the checksum) and the payload; the last one is what the data holds
+# when the file ends inside it. A payload that cannot be read (a field runs past the record) is not in the tree, nor is
+# an entry of a list that runs past it: the reader says the record is cut short when it comes to it, after what came
+# before (an index out of range, a segment that is not there, data too large are the reader's errors).
+
+format omf
+endian le
+
+# An object module as a probe tells it: it starts with a THEADR (the reader reads any records through Module).
+struct File {
+    magic  @ 0 : u8 == 0x80
+    module @ 0 : Module
+}
+
+struct Module {
+    records : Record[while $pos + 3 <= $size until _.type == 0x8A || _.type == 0x8B]
+}
+
+struct Record {
+    type   : u8
+    length : u16
+    let w        = type & 1 ? 4 : 2
+    let communal = type == 0xB0 || type == 0xB8
+    payload  @ $start + 3 : bytes(min(length != 0 ? length - 1 : 0, $remaining))   # (the payload as stored, read or not)
+    body     : Body size(min(length != 0 ? length - 1 : 0, $remaining)) try
+    checksum : bytes(min(length != 0 ? 1 : 0, $remaining))
+}
+
+struct Body {
+    if type == 0x96 {
+        names : Name[while $pos < $end]
+    } else if type == 0x98 || type == 0x99 {
+        segdef : Segdef
+    } else if (type == 0x8A || type == 0x8B) && $end > $pos {
+        modend : Modend
+    } else if type == 0x9A {
+        group   : Index
+        members : GroupMember[while $pos < $end] try
+    } else if type == 0x8C || type == 0xB0 || type == 0xB4 || type == 0xB5 || type == 0xB8 {
+        externals : External[while $pos < $end] try
+    } else if type == 0xBC {
+        externals : NamedExternal[while $pos < $end] try
+    } else if type == 0x90 || type == 0x91 {
+        group   : Index
+        segment : Index
+        frame   : bytes(min(2, $remaining)) if segment.value == 0
+        publics : Public[while $pos < $end] try
+    } else if type == 0xA0 || type == 0xA1 {
+        segment : Index
+        offset  : Offset
+        data    : bytes($remaining)
+    } else if type == 0xA2 || type == 0xA3 {
+        let depth = -1
+        segment : Index
+        offset  : Offset
+        blocks  : Block[while $pos < $end] try
+    } else if type == 0x9C || type == 0x9D {
+        subrecords : FixupSubrecord[while $pos < $end] try
+    } else if type == 0xB2 || type == 0xB3 {
+        segment   : Index
+        size_code : u8
+        patches   : Patch[while $pos + 2 * w <= $end]
+    }
+}
+
+# An index: one byte, or two when the first has its top bit set.
+struct Index {
+    b0 : u8
+    b1 : u8 if b0 & 0x80
+    let value = b0 & 0x80 ? (b0 & 0x7F) << 8 | b1 : b0
+}
+
+# A length-prefixed name (cut at the record's end).
+struct Name {
+    length : u8
+    text   : bytes(min(length, $remaining))
+}
+
+struct Offset {
+    if w == 4 {
+        value : u32
+    } else {
+        value : u16
+    }
+}
+
+# A segment: its attributes (the alignment in the top three bits; 0: an absolute segment, whose frame and offset follow),
+# its length, and its name and class as name indexes.
+struct Segdef {
+    attr       : u8
+    frame      : bytes(3) if attr >> 5 == 0
+    length     : Offset
+    name       : Index
+    class_name : Index
+}
+
+# MODEND: the module type (0x40: a start address follows), the fix-up data byte, the frame and target indexes and the
+# displacement (16-bit in both forms) as the fix-up data byte says.
+struct Modend {
+    mtype : u8
+    if mtype & 0x40 {
+        fd     : u8
+        frame  : Index if !(fd & 0x80) && ((fd >> 4) & 7) < 3
+        target : Index if !(fd & 8)
+        disp   : u16 if !(fd & 8) && !(fd & 4)
+    }
+}
+
+struct GroupMember {
+    kind    : u8
+    segment : Index
+}
+
+# An external (EXTDEF, LEXTDEF) or a communal (COMDEF, LCOMDEF: its kind, 0x61 for a far one with two counts, and its size).
+struct External {
+    name       : Name
+    type_index : Index
+    if communal {
+        kind   : u8
+        first  : CommunalValue
+        second : CommunalValue if kind == 0x61
+    }
+}
+
+# A communal's count: a byte below 0x80, or 0x81, 0x84, 0x88 and a value of 2, 3 or 4 bytes.
+struct CommunalValue {
+    c : u8
+    if c == 0x81 {
+        v : u16
+    } else if c == 0x84 {
+        v : u24
+    } else if c == 0x88 {
+        v : u32
+    }
+}
+
+# CEXTDEF: an external named by a name index.
+struct NamedExternal {
+    name       : Index
+    type_index : Index
+}
+
+struct Public {
+    name       : Name
+    offset     : Offset
+    type_index : Index
+}
+
+# An iterated-data block: a repeat count, a block count, then the data (a length-prefixed piece, cut at the record's
+# end) or the nested blocks.
+struct Block {
+    let depth = depth + 1
+    assert depth <= 64 : "iterated data is nested too deeply"
+    repeat : Offset
+    count  : u16
+    if count == 0 {
+        length : u8
+        data   : bytes(min(length, $remaining))
+    } else {
+        blocks : Block[count] try
+    }
+}
+
+# A FIXUPP subrecord: a thread (top bit clear: its method and, unless it is a frame thread of method 4 or more, an
+# index), or a fix-up (the location and offset, the fix-up data byte, then the frame and target indexes and the
+# displacement as it says).
+struct FixupSubrecord {
+    c : u8
+    if c < 0x80 {
+        let d    = (c >> 6) & 1
+        let meth = (c >> 2) & 7
+        index : Index if !(d && meth >= 4)
+    } else {
+        low    : u8
+        fd     : u8
+        frame  : Index if !(fd & 0x80) && ((fd >> 4) & 7) < 3
+        target : Index if !(fd & 8)
+        disp   : Offset if !(fd & 4)
+    }
+}
+
+struct Patch {
+    place : Offset
+    value : Offset
+}

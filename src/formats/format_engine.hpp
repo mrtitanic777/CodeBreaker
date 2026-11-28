@@ -35,7 +35,8 @@
 //     bytes; it also ends where the data does).
 //   * `T[while cond]`, `T[while cond until cond]`: cond is tested before each element, with $pos the cursor.
 //   * a field may end with `try`: when it cannot be read (it runs past the data, its pointer is negative, its magic
-//     differs) it is simply not in the tree (a fixed-size one is skipped); an array keeps the elements read before.
+//     differs) it is simply not in the tree (a fixed-size one, or one of a given size(n), is skipped); an array keeps the
+//     elements read before.
 //   * a field may end with `part NAME`: it is only read when the read asks for that part (ReadOptions): a table a
 //     caller wants is read behind the headers every caller wants.
 //   * `$name` in an expression is a variable the caller gave (ReadOptions::vars), 0 when it did not.
