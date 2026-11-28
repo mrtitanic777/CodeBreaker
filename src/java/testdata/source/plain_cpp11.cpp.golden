@@ -19,8 +19,7 @@ static int _Plain_s_table_data[] = { 1, 2, 3 };
 JArray<int > Plain::s_table(_Plain_s_table_data, 3);
 static unsigned char _Plain_s_raw_data[] = { 1, 2 };
 JArray<unsigned char > Plain::s_raw(_Plain_s_raw_data, 2);
-static Foo* _Plain_s_made_data[2];
-JArray<Foo* > Plain::s_made(_Plain_s_made_data, 2);
+JArray<Foo* > Plain::s_made(2);
 JArray<JArray<int > > Plain::s_grid;
 JArray<Foo* > Plain::s_gapItems;
 int Plain::s_gapInit;
@@ -124,8 +123,8 @@ void Plain::initStatics()
 	j2xInitStarted = true;
 	Plain::s_shared = INIT(new Foo());
 	Plain::s_computed = INIT(compute(2));
-	_Plain_s_made_data[0] = new Foo();
-	_Plain_s_made_data[1] = null;
+	Plain::s_made[0] = new Foo();
+	Plain::s_made[1] = null;
 	Plain::s_grid = INIT(new int[][]{{1, 2}, {3}});
 	// J2X-GAP: static field Plain.gapItems was not translated (see the ledger)
 	throw new UnsupportedOperationException();

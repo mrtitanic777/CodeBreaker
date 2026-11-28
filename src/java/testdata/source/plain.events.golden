@@ -1,7 +1,7 @@
 has_init_statics=true
 Plain.cpp|RISK|LOW|emit|static-aggregate-array|9|static array new T[]{...} -> JArray over a file-static data array (C++03 has no braced new[]; length tracked)
 Plain.cpp|RISK|LOW|emit|static-aggregate-array|10|static array new T[]{...} -> JArray over a file-static data array (C++03 has no braced new[]; length tracked)
-Plain.cpp|RISK|LOW|emit|static-aggregate-array-deferred|11|static array new T[]{...} of objects or other classes' statics -> a file-static data array filled in initStatics()
+Plain.cpp|RISK|LOW|emit|static-aggregate-array-deferred|11|static array new T[]{...} of objects or other classes' statics -> the array made at load, filled in initStatics()
 Plain.cpp|RISK|LOW|emit|static-aggregate-array-nd|12|multi-dim static array new T[][]{...} -> nested JArrayInit (C++03 has no braced new[][]; each level length-tracked)
 Plain.cpp|STUBBED|HIGH|emit|untranslated|13|untranslated static field Plain.gapItems: the back end declined it -- the body throws UnsupportedOperationException (J2X-GAP)
 Plain.cpp|STUBBED|HIGH|emit|untranslated|14|untranslated static field Plain.gapInit: the back end declined it -- the body throws UnsupportedOperationException (J2X-GAP)

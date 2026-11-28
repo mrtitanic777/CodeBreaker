@@ -336,12 +336,14 @@ std::pair<Lines, Lines> Writer::statics() const {
             // An element that allocates or reads another class's statics is filled in the ordered initStatics(): as a file-scope
             // initialiser it ran before every initStatics() (Beta 1.8's mineshaft loot, new StructurePieceTreasure(Item.ingotIron.
             // shiftedIndex, ...), read the null Item and the game died before its window opened). FIXED BUG static-array-items-eager.
+            // The array itself is made now (null elements) and filled through the field: a JArray owns its elements, so one made
+            // over a separate buffer would hold a copy of the nulls (Beta 1.8's mineshaft loot read null forever). J2X-BUGFIX
+            // static-array-items-copied.
             if (!items->empty() && std::ranges::any_of(*items, [&](const std::string& it) { return is_deferrable_static_init(it, elem); })) {
-                defs.push_back(std::format("static {} {}[{}];", elem, data, items->size()));   // zero now (order-safe)
-                for (std::size_t i = 0; i < items->size(); ++i) inits.push_back(std::format("{}[{}] = {};", data, i, (*items)[i]));
-                defs.push_back(std::format("{} {}::{}({}, {});", ft, cls.name, name, data, items->size()));
+                defs.push_back(std::format("{} {}::{}({});", ft, cls.name, name, items->size()));   // the array, its elements zero now
+                for (std::size_t i = 0; i < items->size(); ++i) inits.push_back(std::format("{}::{}[{}] = {};", cls.name, name, i, (*items)[i]));
                 src_note(options.ledger, cls, Category::Risk,
-                         "static array new T[]{...} of objects or other classes' statics -> a file-static data array filled in initStatics()",
+                         "static array new T[]{...} of objects or other classes' statics -> the array made at load, filled in initStatics()",
                          Severity::Low, "static-aggregate-array-deferred", f->line);
                 continue;
             }
