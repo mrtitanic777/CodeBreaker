@@ -1,4 +1,4 @@
-#include "base/watcom.hpp"
+#include "toolchain/watcom.hpp"
 
 #include <atomic>
 #include <thread>
@@ -9,7 +9,7 @@
 namespace {
 
 using namespace cb;
-using namespace cb::base::watcom;
+using namespace cb::toolchain::watcom;
 
 std::vector<ImportedName> sample_imports() {
     return {{"KERNEL32.dll", "HeapAlloc"},
@@ -23,7 +23,7 @@ std::vector<ImportedName> sample_imports() {
 
 }  // namespace
 
-CB_TEST("base.watcom.tools_and_environment", [] {
+CB_TEST("toolchain.watcom.tools_and_environment", [] {
     fs::ScopedTempDir dir("watcom");
     fs::make_dirs(dir.path() / "binnt64");
     fs::write_file(dir.path() / "binnt64" / "wcc386.exe", Bytes{1});
@@ -52,7 +52,7 @@ CB_TEST("base.watcom.tools_and_environment", [] {
     CB_CHECK(env.contains("NoDefaultCurrentDirectoryInExePath"));
 });
 
-CB_TEST("base.watcom.root_from_settings_or_environment", [] {
+CB_TEST("toolchain.watcom.root_from_settings_or_environment", [] {
     {
         const fs::ScopedEnv unset("CB_OPENWATCOM", std::nullopt);
         CB_CHECK(fs::same_path(OpenWatcom::from_settings("C:/ow/rel").root(), "C:/ow/rel"));
@@ -67,7 +67,7 @@ CB_TEST("base.watcom.root_from_settings_or_environment", [] {
     }
 });
 
-CB_TEST("base.watcom.scratch_lives_in_temp", [] {
+CB_TEST("toolchain.watcom.scratch_lives_in_temp", [] {
     const std::string_view parts[] = {"lz32", "run1"};
     const auto p = scratch_dir(parts);
     CB_CHECK(p.string().find("bodyverify") != std::string::npos);
@@ -76,7 +76,7 @@ CB_TEST("base.watcom.scratch_lives_in_temp", [] {
     CB_CHECK_EQ(scratch_dir().filename().string(), "bodyverify");
 });
 
-CB_TEST("base.watcom.import_maps", [] {
+CB_TEST("toolchain.watcom.import_maps", [] {
     int reads = 0;
     ImportMaps maps([&](const std::filesystem::path& module) -> std::vector<ImportedName> {
         ++reads;
@@ -101,7 +101,7 @@ CB_TEST("base.watcom.import_maps", [] {
     CB_CHECK_EQ(maps.of("retail.dll")->size(), 4u);
 });
 
-CB_TEST("base.watcom.import_maps_from_many_threads", [] {
+CB_TEST("toolchain.watcom.import_maps_from_many_threads", [] {
     std::atomic<int> reads{0};
     ImportMaps maps([&](const std::filesystem::path&) {
         ++reads;
@@ -121,7 +121,7 @@ CB_TEST("base.watcom.import_maps_from_many_threads", [] {
     CB_CHECK_EQ(reads.load(), 1);
 });
 
-CB_TEST("base.watcom.import_lines", [] {
+CB_TEST("toolchain.watcom.import_lines", [] {
     ImportMaps maps([](const std::filesystem::path&) { return sample_imports(); });
     const auto imports = maps.of("retail.dll");
     // the compiled object's external symbols: cdecl `_name`, stdcall `_name@N`
@@ -140,7 +140,7 @@ CB_TEST("base.watcom.import_lines", [] {
                 "import '__AtqReadFile_16@16' 'INFOCOMM'.'_AtqReadFile@16'\n");
 });
 
-CB_TEST("base.watcom.import_lines_by_number", [] {
+CB_TEST("toolchain.watcom.import_lines_by_number", [] {
     ImportMaps maps([](const std::filesystem::path&) { return sample_imports(); });
     const auto imports = maps.of("retail.dll");
     const std::vector<std::string> externs{"_GetStuff@8", "_HeapAlloc@12"};

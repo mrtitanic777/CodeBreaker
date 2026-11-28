@@ -183,8 +183,8 @@ CB_TEST("verify.scoreboard16.arguments", [] {
 CB_TEST("verify.scoreboard16.openwatcom_for_real", [] {
     const auto root = cb::fs::get_env("CB_OPENWATCOM");
     if (!root) return;   // (not set up: nothing to run)
-    const cb::base::watcom::OpenWatcom ow{cb::fs::from_text(*root)};
-    if (ow.cc(cb::base::watcom::Target::Win16).empty()) return;
+    const cb::toolchain::watcom::OpenWatcom ow{cb::fs::from_text(*root)};
+    if (ow.cc(cb::toolchain::watcom::Target::Win16).empty()) return;
     const std::map<std::string, std::string> texts = {
         {"add1", "int add1(int a) { return a + 1; }"},
         {"twice", "int twice(int a) { return a + a; }"},

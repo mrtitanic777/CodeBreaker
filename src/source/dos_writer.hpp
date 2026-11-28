@@ -36,7 +36,7 @@
 
 #include "build/pklite.hpp"
 #include "analyze/dos_functions.hpp"
-#include "base/watcom.hpp"
+#include "toolchain/watcom.hpp"
 #include "source/assembly.hpp"
 #include "source/dos_program.hpp"
 #include "source/stub.hpp"
@@ -77,7 +77,7 @@ struct Options {
 };
 
 // The tools of an OpenWatcom tree, as the DOS programs are assembled and linked.
-Options options_for(const base::watcom::OpenWatcom& open_watcom, const std::filesystem::path& probes);
+Options options_for(const toolchain::watcom::OpenWatcom& open_watcom, const std::filesystem::path& probes);
 
 // What laying the file out takes from the original (kept in <stem>.build.json).
 struct Facts {

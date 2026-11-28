@@ -3,7 +3,7 @@
 // executive was proven against it) -- skipped where the compiler is not set up.
 #include "exact/emu/native_dos_executive.hpp"
 
-#include "build/native_dos_runner.hpp"
+#include "toolchain/native_dos_runner.hpp"
 #include "core/crypto.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
@@ -19,14 +19,14 @@ CB_TEST("exact.emu.native_dos_executive.a_session_runs_a_program_from_its_drive_
     if (!dos.available()) return;
     fs::ScopedTempDir tools("nde_tools"), work("nde_work");
     fs::write_file(tools.path() / "HELLO.EXE", fs::read_file(testing::data_path("port/testdata/verify/hello.exe")));
-    const build::NativeDosRunner runner(dos);
-    build::DosRunSpec spec;
+    const toolchain::NativeDosRunner runner(dos);
+    toolchain::DosRunSpec spec;
     spec.mounts = {{"c", tools.path()}, {"d", work.path()}};
     spec.variables = {{"PATH", "C:\\"}};
     spec.commands = {"hello > OUT.TXT"};
     spec.artifacts = {"OUT.TXT"};
     spec.work = work.path();
-    const build::DosRunResult r = runner.run(spec);
+    const toolchain::DosRunResult r = runner.run(spec);
     CB_CHECK(r.ok);
     CB_CHECK_EQ(as_text(r.made.at("OUT.TXT")), "Hello from DOS\r\n");
 });
@@ -43,14 +43,14 @@ CB_TEST("exact.emu.native_dos_executive.microsoft_c_6_makes_the_object_dosbox_ma
     const exact::emu::NativeDosExecutive dos(config);
     if (!dos.available()) return;
     fs::ScopedTempDir work("nde_native");
-    build::DosRunSpec spec;
+    toolchain::DosRunSpec spec;
     spec.mounts = {{"c", *msc6}, {"d", work.path()}};
     spec.variables = {{"PATH", "C:\\BIN"}, {"INCLUDE", "C:\\INCLUDE"}, {"LIB", "C:\\LIB"}};
     spec.files["T.C"] = std::string("int twice(int a) { return a + a; }\nint far *pick(int far *p, int i) { return p + i; }\n");
     spec.commands = {"cl /nologo /c /W0 /AL /Gs /FoT.OBJ T.C > T.TXT"};
     spec.artifacts = {"T.OBJ", "T.TXT"};
     spec.work = work.path();
-    const build::DosRunResult native = build::NativeDosRunner(dos).run(spec);
+    const toolchain::DosRunResult native = toolchain::NativeDosRunner(dos).run(spec);
     CB_CHECK(native.ok);
     if (!native.ok) return;
     CB_CHECK_EQ(native.made.at("T.OBJ").size(), std::size_t{254});
@@ -70,14 +70,14 @@ CB_TEST("exact.emu.native_dos_executive.visual_cpp_1_52_makes_the_object_dosbox_
     const exact::emu::NativeDosExecutive dos(config);
     if (!dos.available()) return;
     fs::ScopedTempDir work("nde_vc_native");
-    build::DosRunSpec spec;
+    toolchain::DosRunSpec spec;
     spec.mounts = {{"c", *msvc}, {"d", work.path()}};
     spec.variables = {{"PATH", "C:\\BIN"}, {"INCLUDE", "C:\\INCLUDE"}, {"LIB", "C:\\LIB"}};
     spec.files["T.C"] = std::string("int twice(int a) { return a + a; }\n");
     spec.commands = {"CL /AM /c /FcT.COD /FoT.OBJ T.C > T.LOG 2>&1"};
     spec.artifacts = {"T.OBJ", "T.COD"};
     spec.work = work.path();
-    const build::DosRunResult native = build::NativeDosRunner(dos).run(spec);
+    const toolchain::DosRunResult native = toolchain::NativeDosRunner(dos).run(spec);
     CB_CHECK(native.ok);
     if (!native.ok) return;
     CB_CHECK_EQ(native.made.at("T.OBJ").size(), std::size_t{357});

@@ -63,7 +63,7 @@ std::string response_file(const stdfs::path& folder) {
     return *std::min_element(found.begin(), found.end());   // UTF-8 order is code point order
 }
 
-std::optional<stdfs::path> build(const DosRunner& runner, const Tools& tools, const stdfs::path& folder,
+std::optional<stdfs::path> build(const toolchain::DosRunner& runner, const Tools& tools, const stdfs::path& folder,
                                  const std::optional<stdfs::path>& work_in, std::string_view flags) {
     require_tool(tools.msc6, "msc6");
     require_tool(tools.msvc152, "msvc152");
@@ -109,7 +109,7 @@ std::optional<stdfs::path> build(const DosRunner& runner, const Tools& tools, co
     for (const std::string& m : objs) {
         if (stdfs::exists(work / (m + ".c"), ec)) modules.push_back(m);
     }
-    DosRunSpec spec;
+    toolchain::DosRunSpec spec;
     for (const std::string& m : modules) spec.commands.push_back("del " + m + ".obj");
     spec.commands.push_back("del " + out_name);
     spec.commands.push_back("del done.txt");
@@ -123,7 +123,7 @@ std::optional<stdfs::path> build(const DosRunner& runner, const Tools& tools, co
     spec.mounts = {{"c", tools.msc6}, {"e", tools.msvc152}, {"d", work}};
     spec.artifacts = {out_name};
     spec.work = work;
-    const DosRunResult ran = runner.run(spec);
+    const toolchain::DosRunResult ran = runner.run(spec);
     if (!ran.why.empty()) throw ToolError("dos", 0, "", "the DOS executive could not complete the build: " + ran.why);
     const stdfs::path dll = work / out_name;
     return stdfs::exists(dll, ec) ? std::optional(dll) : std::nullopt;

@@ -5,7 +5,7 @@
 
 #include <format>
 
-#include "build/msc6.hpp"
+#include "toolchain/msc6.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "core/text.hpp"

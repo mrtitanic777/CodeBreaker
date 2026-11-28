@@ -1,7 +1,7 @@
 // Tests of cb/build/msc6.hpp. The text passes are checked on the decompiler-shaped samples with the recorded outputs (read over by hand: the argument order, the far pointers, the folded temporaries).
 // compile_many runs against a runner that stands in for the DOS executive: it reads the C files the compile wrote and answers with
 // object files (or the compiler's complaint), so what is tested is the batching, the bisecting of a refused file and the cache.
-#include "build/msc6.hpp"
+#include "toolchain/msc6.hpp"
 
 #include <set>
 
@@ -14,7 +14,7 @@
 namespace {
 
 using namespace cb;
-namespace msc6 = cb::build::msc6;
+namespace msc6 = cb::toolchain::msc6;
 namespace wine16 = cb::symbols::wine16;
 
 Bytes record(std::uint8_t kind, ByteView body) {
@@ -70,7 +70,7 @@ std::string lf(std::string s) { return text::replace_all(s, "\r\n", "\n"); }
 
 // ---- object files ---------------------------------------------------------------------------------------------------
 
-CB_TEST("build.msc6.object_code_marks_what_the_linker_fills_in", [] {
+CB_TEST("toolchain.msc6.object_code_marks_what_the_linker_fills_in", [] {
     const msc6::Code one = msc6::object_code(obj1());
     CB_CHECK_EQ(hex(one.code), "559a000000005dcb");
     CB_CHECK_EQ(hex(one.mask), "0001010101000000");   // the far call's four bytes: a FIXUPP names them
@@ -83,7 +83,7 @@ CB_TEST("build.msc6.object_code_marks_what_the_linker_fills_in", [] {
 // A record that holds
 // data (LEDATA, FIXUPP) and does not fit the file is a TruncatedError; any other record that does not fit ends the scan, and a
 // record of no length is passed over.
-CB_TEST("build.msc6.object_code_of_a_damaged_object_is_an_error", [] {
+CB_TEST("toolchain.msc6.object_code_of_a_damaged_object_is_an_error", [] {
     CB_CHECK_THROWS_AS(FormatError, msc6::object_code(to_bytes(std::string("\xA0\x05\x00\x01", 4))));   // a record longer than the file
     Bytes bad = obj1();
     bad.resize(15);   // inside the first LEDATA
@@ -97,7 +97,7 @@ CB_TEST("build.msc6.object_code_of_a_damaged_object_is_an_error", [] {
     CB_CHECK_EQ(hex(msc6::object_code(cut).code), "559a000000005dcb");
 });
 
-CB_TEST("build.msc6.function_code_cuts_a_public_out_of_the_segment", [] {
+CB_TEST("toolchain.msc6.function_code_cuts_a_public_out_of_the_segment", [] {
     const Bytes obj = obj2();
     const auto judged = msc6::function_code(obj, "_judged");
     CB_CHECK(judged.has_value());
@@ -112,7 +112,7 @@ CB_TEST("build.msc6.function_code_cuts_a_public_out_of_the_segment", [] {
 
 // ---- the text of the reconstruction ------------------------------------------------------------------------------------
 
-CB_TEST("build.msc6.dialect_says_the_header_the_way_msc6_takes_it", [] {
+CB_TEST("toolchain.msc6.dialect_says_the_header_the_way_msc6_takes_it", [] {
     const std::string h = msc6::dialect(
         "typedef unsigned long long uint8;\nuint2 codebreaker_ss(void);\n"
         "#pragma aux codebreaker_ss = \"mov ax,ss\" value [ax] modify exact [ax];\n"
@@ -127,7 +127,7 @@ CB_TEST("build.msc6.dialect_says_the_header_the_way_msc6_takes_it", [] {
     CB_CHECK(msc6::dialect("").ends_with(">> 16))\n\n"));
 });
 
-CB_TEST("build.msc6.pascal_names_and_order", [] {
+CB_TEST("toolchain.msc6.pascal_names_and_order", [] {
     const std::string text =
         "int2 __stdcall16near f(param_1,param_2)\n{\n  USER_33((int2)&aiStack_c[0],unaff_SS,param_1);\n"
         "  return GDI_22(aiStack_c[3],aiStack_c[2],g(a, b),aiStack_c[0],param_2);\n  x = USER_25(\"a,(b\",0);\n}";
@@ -152,7 +152,7 @@ CB_TEST("build.msc6.pascal_names_and_order", [] {
     CB_CHECK_EQ(msc6::pascal_order("K()", k), "K()");
 });
 
-CB_TEST("build.msc6.cdecl_imports_swaps_the_convention_of_c_exports", [] {
+CB_TEST("toolchain.msc6.cdecl_imports_swaps_the_convention_of_c_exports", [] {
     const std::string header =
         "extern uint4 __far __stdcall SETUPX_132();\nextern uint4 __far __stdcall USER_33();\nextern uint4 __far __stdcall KERNEL_88();\n";
     const msc6::OrdinalName names = [](std::string_view module, std::uint32_t ordinal) -> std::optional<std::string> {
@@ -170,7 +170,7 @@ CB_TEST("build.msc6.cdecl_imports_swaps_the_convention_of_c_exports", [] {
     CB_CHECK(has(sdk, "__cdecl KERNEL_88"));
 });
 
-CB_TEST("build.msc6.windows_h_and_the_sdk_header", [] {
+CB_TEST("toolchain.msc6.windows_h_and_the_sdk_header", [] {
     CB_CHECK_EQ(msc6::sdk_header("HDR", std::string("SDK")), "SDK\nHDR");
     CB_CHECK_EQ(msc6::sdk_header("HDR", std::string()), "HDR");
     CB_CHECK_EQ(msc6::sdk_header("HDR", std::nullopt), "HDR");
@@ -184,7 +184,7 @@ CB_TEST("build.msc6.windows_h_and_the_sdk_header", [] {
     CB_CHECK_EQ(*h, "#define A 1\nint \xC3\xA9;\n");   // Latin-1 read, CRs gone
 });
 
-CB_TEST("build.msc6.sdk_prototypes_and_calls", [] {
+CB_TEST("toolchain.msc6.sdk_prototypes_and_calls", [] {
     const std::string sdk =
         "LRESULT WINAPI DefWindowProc(HWND, UINT, WPARAM, LPARAM);\nvoid    WINAPI MessageBeep(UINT);\n"
         "LPSTR   WINAPI lstrcpy(LPSTR, LPCSTR);\nint WINAPI  wsprintf(LPSTR, LPCSTR, ...);\nvoid WINAPI Nothing(void);\n"
@@ -214,7 +214,7 @@ CB_TEST("build.msc6.sdk_prototypes_and_calls", [] {
                 "{ GetClientRect(a, MAKELP(b, c)); GetClientRect(a, (void __far *)&rc);\n  if (z) USER_104(1);\n  q = USER_104(1) + USER_33(1,2,3,4); }\n");
 });
 
-CB_TEST("build.msc6.fold_temporaries_puts_the_expression_back", [] {
+CB_TEST("toolchain.msc6.fold_temporaries_puts_the_expression_back", [] {
     const std::string text =
         "int2 __stdcall16far f(a1,a2)\nint2 a1;\nint2 a2;\n{\n  int2 iVar1;\n  int2 unaff_DS = codebreaker_ds();\n"
         "  int2 a2_00;\n  int2 n;\n  int2 w;\n  \n  a2_00 = 0x40;\n  iVar1 = KERNEL_90(a1,a2);\n"
@@ -230,7 +230,7 @@ CB_TEST("build.msc6.fold_temporaries_puts_the_expression_back", [] {
     CB_CHECK_EQ(msc6::fold_temporaries("int f()\n  x = 1;\n  return x;"), "int f()\n  x = 1;\n  return x;");   // no body: nothing is a temporary
 });
 
-CB_TEST("build.msc6.join_far_parameters_makes_a_pair_one_pointer", [] {
+CB_TEST("toolchain.msc6.join_far_parameters_makes_a_pair_one_pointer", [] {
     const std::string text = "int2 __stdcall16far f(a1,a2)\nint2 a1;\nint2 a2;\n{\n  x = KERNEL_90(a1,a2);\n  KERNEL_88(b, a1, a2);\n}";
     CB_CHECK_EQ(msc6::join_far_parameters(text),
                 "int2 __stdcall16far f(a1)\nvoid __far * a1;\n{\n  x = KERNEL_90(a1);\n  KERNEL_88(b, a1);\n}");
@@ -241,7 +241,7 @@ CB_TEST("build.msc6.join_far_parameters_makes_a_pair_one_pointer", [] {
     CB_CHECK_EQ(msc6::join_far_parameters("nothing here"), "nothing here");
 });
 
-CB_TEST("build.msc6.split_frame_takes_the_frame_structure_apart", [] {
+CB_TEST("toolchain.msc6.split_frame_takes_the_frame_structure_apart", [] {
     const std::string text =
         "int2 f()\n{\n  _Packed struct {\n  xunknown1 axStack_200 [250];\n  xunknown1 axStack_106 [260];\n"
         "  } codebreaker_frame;\n  int2 iVar1;\n\n  g((int2)codebreaker_frame.axStack_106);\n"
@@ -257,7 +257,7 @@ CB_TEST("build.msc6.split_frame_takes_the_frame_structure_apart", [] {
     CB_CHECK_EQ(msc6::split_frame("int f(){return 0;}"), "int f(){return 0;}");
 });
 
-CB_TEST("build.msc6.ds_globals_makes_a_constant_address_a_variable", [] {
+CB_TEST("toolchain.msc6.ds_globals_makes_a_constant_address_a_variable", [] {
     const msc6::DsGlobals g = msc6::ds_globals(
         "  *(xunknown1 *)0x34ee = 1;\n  x = *(int2 *)0x63b2 + *(int2 *)0x63b2;\n  y = *(uint2 __far *)p;\n  z = *(void *)0x1234 + *(unsigned int *)0x0f;\n");
     CB_CHECK_EQ(g.declarations, "extern char codebreaker_d34ee[];\nextern char codebreaker_d63b2[];\n");
@@ -267,7 +267,7 @@ CB_TEST("build.msc6.ds_globals_makes_a_constant_address_a_variable", [] {
     CB_CHECK_EQ(msc6::ds_globals("nothing").declarations, "");
 });
 
-CB_TEST("build.msc6.wine_typing_and_definition", [] {
+CB_TEST("toolchain.msc6.wine_typing_and_definition", [] {
     const auto make = [](std::string name, wine16::Convention c, std::vector<wine16::ArgKind> args, bool ret16) {
         wine16::Export e;
         e.name = std::move(name);
@@ -322,7 +322,7 @@ CB_TEST("build.msc6.wine_typing_and_definition", [] {
     CB_CHECK_EQ(msc6::wine_definition("nothing", &ip), "nothing");
 });
 
-CB_TEST("build.msc6.batch_files_and_refusals", [] {
+CB_TEST("toolchain.msc6.batch_files_and_refusals", [] {
     const std::map<std::size_t, std::string> todo{{0, "int f()\n{\n}"}, {1, "int g()\n{\n}"}, {7, "t"}};
     const std::vector<std::vector<std::size_t>> groups{{0, 1}, {7}};
     const msc6::BatchFiles b = msc6::batch_files(groups, todo, "B");
@@ -348,9 +348,9 @@ namespace {
 
 // A runner for what the DOS executive would do with the compiler: it reads the C files, and "compiles" them. A function whose text
 // holds "#error" is refused (the file is refused with the line of the error, as CL says it).
-class FakeCompiler : public cb::build::DosRunner {
+class FakeCompiler : public cb::toolchain::DosRunner {
 public:
-    cb::build::DosRunResult run(const cb::build::DosRunSpec& spec) const override {
+    cb::toolchain::DosRunResult run(const cb::toolchain::DosRunSpec& spec) const override {
         ++sessions;
         files_per_session.push_back(spec.commands.size());
         const std::filesystem::path work = *spec.work;
@@ -430,7 +430,7 @@ std::string code_hex(const std::optional<msc6::Code>& c) { return c ? hex(c->cod
 
 }  // namespace
 
-CB_TEST("build.msc6.compile_many_one_source_a_file", [] {
+CB_TEST("toolchain.msc6.compile_many_one_source_a_file", [] {
     Rig rig;
     std::vector<msc6::Source> sources{{.text = "int2 f1(int2 a)\n{\n}"}, {.text = "int2 f2(int2 a)\n{\n}"}, {.text = "#error\nint2 bad(int2 a)\n{\n}"}};
     const auto built = msc6::compile_many(rig.ctx, sources, "typedef short int2;\n", "/AM /Gcsw /Os", rig.options);
@@ -445,7 +445,7 @@ CB_TEST("build.msc6.compile_many_one_source_a_file", [] {
     CB_CHECK(lf(fs::read_text(rig.options.work / "F0.C")).starts_with("#include \"m.h\"\n\nint2 f1"));
 });
 
-CB_TEST("build.msc6.compile_many_named_functions_share_files_and_a_refused_one_is_found", [] {
+CB_TEST("toolchain.msc6.compile_many_named_functions_share_files_and_a_refused_one_is_found", [] {
     Rig rig;
     std::vector<msc6::Source> sources;
     for (const char* n : {"f1", "f2", "f3"}) sources.push_back(named(n, 1));
@@ -462,7 +462,7 @@ CB_TEST("build.msc6.compile_many_named_functions_share_files_and_a_refused_one_i
     CB_CHECK_EQ(built[4]->code[3], 'g');
 });
 
-CB_TEST("build.msc6.compile_many_together_batch_and_sessions_cut_off", [] {
+CB_TEST("toolchain.msc6.compile_many_together_batch_and_sessions_cut_off", [] {
     {
         Rig rig;
         std::vector<msc6::Source> sources{named("a"), named("b"), named("c"), named("d"), named("e")};
@@ -496,7 +496,7 @@ CB_TEST("build.msc6.compile_many_together_batch_and_sessions_cut_off", [] {
     }
 });
 
-CB_TEST("build.msc6.compile_many_keeps_what_it_compiled", [] {
+CB_TEST("toolchain.msc6.compile_many_keeps_what_it_compiled", [] {
     Rig rig(true);
     std::vector<msc6::Source> sources{named("f1"), named("f2"), {"#error\nint2 bad(int2 a)\n{\n}", "bad"}};
     const auto first = msc6::compile_many(rig.ctx, sources, "H", "/AM", rig.options);
@@ -519,7 +519,7 @@ CB_TEST("build.msc6.compile_many_keeps_what_it_compiled", [] {
     CB_CHECK(third[0] && third[1] && third[2]);
 });
 
-CB_TEST("build.msc6.a_file_the_compiler_never_finishes_costs_only_itself", [] {
+CB_TEST("toolchain.msc6.a_file_the_compiler_never_finishes_costs_only_itself", [] {
     Rig rig;
     std::vector<msc6::Source> sources{{.text = "int2 a(int2 a)\n{\n}"}, {.text = "#stuck\n"}, {.text = "int2 c(int2 a)\n{\n}"}};
     const auto built = msc6::compile_many(rig.ctx, sources, "", "/AM", rig.options);
@@ -528,7 +528,7 @@ CB_TEST("build.msc6.a_file_the_compiler_never_finishes_costs_only_itself", [] {
     CB_CHECK(built[2].has_value());
 });
 
-CB_TEST("build.msc6.compile_many_needs_the_tools", [] {
+CB_TEST("toolchain.msc6.compile_many_needs_the_tools", [] {
     Rig rig;
     rig.ctx.tools.msc6 = rig.dir.path() / "nowhere";
     CB_CHECK_THROWS_AS(NotFoundError, msc6::compile_many(rig.ctx, std::vector<msc6::Source>{named("a")}, "", "/AM", rig.options));
@@ -543,7 +543,7 @@ CB_TEST("build.msc6.compile_many_needs_the_tools", [] {
     CB_CHECK_EQ(msc6::flag_sets()[0], "/AM /Gcsw /Os");
 });
 
-CB_TEST("build.msc6.native_paths_use_a_short_folder_when_there_is_one", [] {
+CB_TEST("toolchain.msc6.native_paths_use_a_short_folder_when_there_is_one", [] {
     fs::ScopedTempDir dir("msc6");
     msc6::Tools tools;
     tools.msvc152 = dir.path() / "msvc";

@@ -2,9 +2,9 @@
 // the interface the assemblers and compilers take (build/native_dos), and the DosRunner every DOS toolchain is given.
 //
 //     const NativeDosExecutive dos(config);
-//     std::unique_ptr<build::DosRunner> runner = dos_runner(config, dos);
+//     std::unique_ptr<toolchain::DosRunner> runner = dos_runner(config, dos);
 //
-// The runner is build::NativeDosRunner on this executive: a run the executive cannot complete has `ok` false and says why.
+// The runner is toolchain::NativeDosRunner on this executive: a run the executive cannot complete has `ok` false and says why.
 #pragma once
 
 #include <filesystem>
@@ -12,19 +12,19 @@
 #include <mutex>
 
 #include "base/config.hpp"
-#include "build/dos_run.hpp"
-#include "build/native_dos.hpp"
+#include "toolchain/dos_run.hpp"
+#include "toolchain/native_dos.hpp"
 #include "exact/emu/native_dosexec.hpp"
 
 namespace cb::exact::emu {
 
-class NativeDosExecutive final : public build::native_dos::DosExecutive {
+class NativeDosExecutive final : public toolchain::native_dos::DosExecutive {
 public:
     explicit NativeDosExecutive(const config::Config& config);
     bool available() const override { return opened_.usable(); }
-    build::native_dos::Exit run(const std::filesystem::path& exe, const std::filesystem::path& work, std::string_view cmdline) const override;
-    build::native_dos::MemoryResult run_dpmi(const build::native_dos::MemoryRun& run) const override;
-    build::native_dos::SessionExit run_session(const build::native_dos::SessionRun& run) const override;
+    toolchain::native_dos::Exit run(const std::filesystem::path& exe, const std::filesystem::path& work, std::string_view cmdline) const override;
+    toolchain::native_dos::MemoryResult run_dpmi(const toolchain::native_dos::MemoryRun& run) const override;
+    toolchain::native_dos::SessionExit run_session(const toolchain::native_dos::SessionRun& run) const override;
 
 private:
     const dos::Executive& executive() const;
@@ -34,6 +34,6 @@ private:
 };
 
 // The DosRunner for the DOS toolchains: the executive. `dos` must outlive the runner.
-std::unique_ptr<build::DosRunner> dos_runner(const config::Config& config, const build::native_dos::DosExecutive& dos);
+std::unique_ptr<toolchain::DosRunner> dos_runner(const config::Config& config, const toolchain::native_dos::DosExecutive& dos);
 
 }  // namespace cb::exact::emu

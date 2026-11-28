@@ -5,11 +5,11 @@
 #include <functional>
 #include <limits>
 
-#include "build/msc6.hpp"
+#include "toolchain/msc6.hpp"
 #include "core/regex.hpp"
 #include "core/text.hpp"
 
-namespace cb::build::msc6 {
+namespace cb::toolchain::msc6 {
 
 namespace wine16 = cb::symbols::wine16;
 
@@ -1054,4 +1054,4 @@ DsGlobals ds_globals(std::string_view text_in) {
     return out;
 }
 
-}  // namespace cb::build::msc6
+}  // namespace cb::toolchain::msc6

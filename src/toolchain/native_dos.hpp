@@ -1,4 +1,4 @@
-// build/native_dos.hpp -- run the period real-mode DOS tools on CodeBreaker's OWN emulator, in-process.
+// toolchain/native_dos.hpp -- run the period real-mode DOS tools on CodeBreaker's OWN emulator, in-process.
 //
 // CodeBreaker has a real-mode DOS executive on Unicorn (exact/emu/dos: a PSP, the MCB memory chain, program load and
 // INT 20h/21h over a filesystem that maps a working directory, and a DPMI host), all in-process. This module is what the
@@ -28,11 +28,11 @@
 #include <utility>
 #include <vector>
 
-#include "build/dos_run.hpp"
+#include "toolchain/dos_run.hpp"
 #include "core/bytes.hpp"
 #include "core/error.hpp"
 
-namespace cb::build::native_dos {
+namespace cb::toolchain::native_dos {
 
 // The executive could not complete a run (a service it lacks, a CPU fault, a limit). A clean run that merely reports errors
 // of the tool is NOT this.
@@ -154,4 +154,4 @@ struct MlResult {
 MlResult ml(const DosExecutive& dos, const MlToolchain& toolchain, std::string_view args,
             const std::map<std::string, DosFile>& files, std::span<const std::string> artifacts);
 
-} // namespace cb::build::native_dos
+} // namespace cb::toolchain::native_dos

@@ -817,7 +817,7 @@ RcFiles write_rc(const Module& module, const stdfs::path& outdir, const std::set
 
 // ---- compiling, and reading what the compiler wrote --------------------------------------------------------------------
 
-Compiled compile_rc(const base::watcom::OpenWatcom& open_watcom, const stdfs::path& rc, Text text, bool microsoft) {
+Compiled compile_rc(const toolchain::watcom::OpenWatcom& open_watcom, const stdfs::path& rc, Text text, bool microsoft) {
     const bool wide = text != Text::Narrow;   // (the resource compiler and the environment of the class it is for)
     const stdfs::path wrc = open_watcom.tool("wrc");
     if (wrc.empty()) throw ToolError("wrc", 0, "", "OpenWatcom's resource compiler is not set up (settings.json: openwatcom)");
@@ -833,7 +833,7 @@ Compiled compile_rc(const base::watcom::OpenWatcom& open_watcom, const stdfs::pa
     spec.argv.push_back("-fo=" + res.filename().string());
     spec.argv.push_back(rc.filename().string());
     spec.cwd = rc.parent_path();
-    spec.env = open_watcom.environment(wide ? base::watcom::Target::Win32 : base::watcom::Target::Win16);
+    spec.env = open_watcom.environment(wide ? toolchain::watcom::Target::Win32 : toolchain::watcom::Target::Win16);
     spec.timeout = kCompilerTimeout;
     const process::ProcessResult ran = process::run(spec);
     Compiled out;
@@ -1051,7 +1051,7 @@ void compare(std::span<const fr::Resource> original, std::span<const fr::Resourc
             for (std::size_t i : indexes) into.extra.push_back(rebuilt[i].key());
 }
 
-Rebuilt rebuild(const base::watcom::OpenWatcom& open_watcom, const stdfs::path& path, const stdfs::path& outdir, int rounds) {
+Rebuilt rebuild(const toolchain::watcom::OpenWatcom& open_watcom, const stdfs::path& path, const stdfs::path& outdir, int rounds) {
     const Module module = read_module(path);
     Rebuilt result;
     if (module.resources.empty()) {

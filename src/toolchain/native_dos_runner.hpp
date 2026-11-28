@@ -1,4 +1,4 @@
-// build/native_dos_runner.hpp -- DosRunner (build/dos_run.hpp) on CodeBreaker's own DOS executive: what the toolchain drivers
+// toolchain/native_dos_runner.hpp -- DosRunner (build/dos_run.hpp) on CodeBreaker's own DOS executive: what the toolchain drivers
 // ask for -- folders as drives, BLD.BAT's lines, the files read back -- run in-process.
 //
 //     NativeDosRunner runner(executive);
@@ -17,10 +17,10 @@
 #include <string_view>
 #include <vector>
 
-#include "build/dos_run.hpp"
-#include "build/native_dos.hpp"
+#include "toolchain/dos_run.hpp"
+#include "toolchain/native_dos.hpp"
 
-namespace cb::build {
+namespace cb::toolchain {
 
 // One BLD.BAT line as COMMAND.COM reads it.
 struct DosCommandLine {
@@ -45,4 +45,4 @@ private:
     const native_dos::DosExecutive& dos_;
 };
 
-}  // namespace cb::build
+}  // namespace cb::toolchain

@@ -6,7 +6,7 @@
 
 #include <nlohmann/json.hpp>
 
-#include "build/msc6.hpp"
+#include "toolchain/msc6.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/json.hpp"
@@ -132,12 +132,12 @@ std::string_view word(Agreement a) {
     return "n/a";
 }
 
-WatcomCode compile_watcom(const base::watcom::OpenWatcom& watcom, const std::vector<std::vector<std::string>>& files,
+WatcomCode compile_watcom(const toolchain::watcom::OpenWatcom& watcom, const std::vector<std::vector<std::string>>& files,
                           const std::map<std::string, std::string>& texts, std::string_view header,
                           const std::function<std::string(const std::string&)>& switches_of, const Log& log) {
     namespace fs = std::filesystem;
-    const fs::path wcc = watcom.cc(base::watcom::Target::Win16);
-    const auto env = watcom.environment(base::watcom::Target::Win16);
+    const fs::path wcc = watcom.cc(toolchain::watcom::Target::Win16);
+    const auto env = watcom.environment(toolchain::watcom::Target::Win16);
     const cb::fs::ScopedTempDir work("score16");
     cb::fs::write_text(work.path() / "m.h", header);
 
@@ -169,7 +169,7 @@ WatcomCode compile_watcom(const base::watcom::OpenWatcom& watcom, const std::vec
         return {std::nullopt, std::string(tail.substr(tail.size() > 200 ? tail.size() - 200 : 0))};
     };
     const auto code_of = [](const Bytes& object, const std::string& name) -> std::optional<Masked> {
-        const auto c = build::msc6::function_code(object, name);
+        const auto c = toolchain::msc6::function_code(object, name);
         if (!c) return std::nullopt;
         return Masked{c->code, c->mask};
     };

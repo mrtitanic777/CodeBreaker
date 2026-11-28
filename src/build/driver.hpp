@@ -40,7 +40,7 @@
 #include <string_view>
 #include <vector>
 
-#include "base/watcom.hpp"
+#include "toolchain/watcom.hpp"
 #include "core/cli.hpp"
 #include "formats/le.hpp"
 
@@ -68,7 +68,7 @@ inline constexpr std::chrono::seconds kToolTimeout{300};
 // The assembler or linker to use. Drivers need the builds of wasm and wlink that understand the kit's macros and write
 // the driver flavour of LE; in the OpenWatcom tree those are the ones in binnt. Absolute path, or empty when there is
 // none.
-std::filesystem::path tool(const base::watcom::OpenWatcom& open_watcom, std::string_view name);
+std::filesystem::path tool(const toolchain::watcom::OpenWatcom& open_watcom, std::string_view name);
 
 // The kit's include files in a folder whose path has no spaces (the assembler cannot be given one that has):
 // `kit_source` itself if it has none, else a copy of its .INC files in `copy_to` (made once). Empty when there is no
@@ -83,7 +83,7 @@ struct Tools {
 };
 // The tools of `open_watcom`, run for Win32 targets. `kit_source` is the Windows 95 DDK's include folder; its copy (if
 // it has spaces in its path) goes to `<state>/driver_kit`.
-Tools find_tools(const base::watcom::OpenWatcom& open_watcom, const std::filesystem::path& kit_source,
+Tools find_tools(const toolchain::watcom::OpenWatcom& open_watcom, const std::filesystem::path& kit_source,
                  const std::filesystem::path& state);
 
 // The .asm to build: `path` itself, or in a folder the file named after the folder. UsageError when the folder has

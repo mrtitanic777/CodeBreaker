@@ -6,7 +6,7 @@
 //   * a stem with an empty, `.` or `..` part is a UsageError (it could write outside the work folder);
 //   * the work folder is deleted when the call returns (the products are already read into the result);
 //   * a .LST / .LOG keeps the CRLF line ends the tool wrote.
-#include "build/native_dos.hpp"
+#include "toolchain/native_dos.hpp"
 
 #include <functional>
 
@@ -20,8 +20,8 @@
 namespace {
 
 using namespace cb;
-using namespace cb::build;
-namespace nd = cb::build::native_dos;
+using namespace cb::toolchain;
+namespace nd = cb::toolchain::native_dos;
 namespace stdfs = std::filesystem;
 
 // Stands in for MASM: for the command line `A.ASM,A.OBJ,A.LST,NUL;` it reads A.ASM from the work folder and writes
@@ -77,7 +77,7 @@ std::string text_of(const std::optional<Bytes>& b) {
 
 } // namespace
 
-CB_TEST("build.native_dos.assemble_reads_back_the_products", [] {
+CB_TEST("toolchain.native_dos.assemble_reads_back_the_products", [] {
     fs::ScopedTempDir dir("nd");
     FakeDos dos;
     const nd::Product p = nd::assemble(dos, "mov ax,1\r\nint 21h\n", "t", fake_masm_root(dir));
@@ -93,7 +93,7 @@ CB_TEST("build.native_dos.assemble_reads_back_the_products", [] {
     CB_CHECK(!stdfs::exists(dos.work_folders.at(0)));
 });
 
-CB_TEST("build.native_dos.missing_parts_and_console_log", [] {
+CB_TEST("toolchain.native_dos.missing_parts_and_console_log", [] {
     fs::ScopedTempDir dir("nd");
     FakeDos dos;
     const nd::Product p = nd::assemble(dos, "SILENT NOLOG", "x", fake_masm_root(dir));
@@ -102,7 +102,7 @@ CB_TEST("build.native_dos.missing_parts_and_console_log", [] {
     CB_CHECK_EQ(p.log.value_or("<none>"), "console"); // no .LOG: what MASM printed
 });
 
-CB_TEST("build.native_dos.stem_with_folders", [] {
+CB_TEST("toolchain.native_dos.stem_with_folders", [] {
     fs::ScopedTempDir dir("nd");
     FakeDos dos;
     const nd::Product p = nd::assemble(dos, "abc", "asm/lead00", fake_masm_root(dir));
@@ -114,7 +114,7 @@ CB_TEST("build.native_dos.stem_with_folders", [] {
     CB_CHECK_THROWS_AS(UsageError, (void)nd::assemble(dos, "abc", "", fake_masm_root(dir)));
 });
 
-CB_TEST("build.native_dos.assemble_many_in_order", [] {
+CB_TEST("toolchain.native_dos.assemble_many_in_order", [] {
     fs::ScopedTempDir dir("nd");
     FakeDos dos;
     const std::vector<nd::Source> items{{"one", "111"}, {"two", "22 NOLOG"}, {"three", "3"}};
@@ -133,7 +133,7 @@ CB_TEST("build.native_dos.assemble_many_in_order", [] {
     CB_CHECK(done.work.empty());
 });
 
-CB_TEST("build.native_dos.a_refusal_becomes_native_dos_error", [] {
+CB_TEST("toolchain.native_dos.a_refusal_becomes_native_dos_error", [] {
     fs::ScopedTempDir dir("nd");
     FakeDos dos;
     dos.refuse = "unimplemented INT 21h AH=5Fh";
@@ -151,13 +151,13 @@ CB_TEST("build.native_dos.a_refusal_becomes_native_dos_error", [] {
     CB_CHECK_THROWS_AS(nd::NativeDosError, (void)nd::run_extended(dos, {}, "ML.EXE", "", {}, {}));
 });
 
-CB_TEST("build.native_dos.missing_masm_is_native_dos_error", [] {
+CB_TEST("toolchain.native_dos.missing_masm_is_native_dos_error", [] {
     fs::ScopedTempDir dir("nd");
     FakeDos dos;
     CB_CHECK_THROWS_AS(nd::NativeDosError, (void)nd::assemble(dos, "x", "t", dir.path() / "no-masm-here"));
 });
 
-CB_TEST("build.native_dos.run_extended_files_in_memory", [] {
+CB_TEST("toolchain.native_dos.run_extended_files_in_memory", [] {
     fs::ScopedTempDir dir("nd");
     fs::write_file(dir.path() / "tool.exe", Bytes{1, 2, 3});
     FakeDos dos;
@@ -184,14 +184,14 @@ CB_TEST("build.native_dos.run_extended_files_in_memory", [] {
     CB_CHECK_EQ(std::string(as_text(r.console)), "ok");
 });
 
-CB_TEST("build.native_dos.text_files_are_latin1", [] {
+CB_TEST("toolchain.native_dos.text_files_are_latin1", [] {
     FakeDos dos;
     const std::map<std::string, DosFile> inputs{{"m.asm", std::string("; caf\xC3\xA9")}}; // "café" in UTF-8
     (void)nd::run_extended(dos, {}, "ML.EXE", "", inputs, {});
     CHECK_SAME(dos.last_memory_run.files.at("M.ASM"), (Bytes{';', ' ', 'c', 'a', 'f', 0xE9})); // the Latin-1 byte
 });
 
-CB_TEST("build.native_dos.ml_toolchain", [] {
+CB_TEST("toolchain.native_dos.ml_toolchain", [] {
     fs::ScopedTempDir dir("nd");
     const nd::MlToolchain tc{dir.path() / "ddk", dir.path() / "msvc"};
     try {

@@ -1,8 +1,4 @@
 # Upward includes still in the tree (app.layers test, docs/SDK_DESIGN.md rule 3). This list only shrinks.
-exact/emu/native_dos_executive.cpp -> build/native_dos_runner.hpp
-exact/emu/native_dos_executive.hpp -> build/dos_run.hpp
-exact/emu/native_dos_executive.hpp -> build/native_dos.hpp
-invert/production.cpp -> build/msc6.hpp
 source/commands.cpp -> engine/lane_kit.hpp
 source/pipeline_module.cpp -> engine/lane_registry.hpp
 source/pipeline_module.cpp -> engine/machine_lanes.hpp

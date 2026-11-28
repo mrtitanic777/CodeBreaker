@@ -25,7 +25,7 @@ namespace {
 using namespace cb;
 using namespace cb::build;
 namespace stdfs = std::filesystem;
-namespace nd = cb::build::native_dos;
+namespace nd = cb::toolchain::native_dos;
 
 // What a source turns into: a reversed copy of its bytes, unless it says SILENT (no object); NOLOG leaves no log.
 Bytes object_of(std::string_view source) { return Bytes(source.rbegin(), source.rend()); }

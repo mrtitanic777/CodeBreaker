@@ -52,11 +52,11 @@ sg::Seg id_segment(sg::NameOverrides overrides = {}) {
 bool id_has(std::string_view text, std::string_view part) { return text.find(part) != std::string_view::npos; }
 
 // A runner of DOS programs that makes what ML would, and keeps what it was asked.
-class IdFakeRunner final : public cb::build::DosRunner {
+class IdFakeRunner final : public cb::toolchain::DosRunner {
 public:
-    mutable std::vector<cb::build::DosRunSpec> specs;
-    mutable cb::build::DosRunResult answer;
-    cb::build::DosRunResult run(const cb::build::DosRunSpec& spec) const override {
+    mutable std::vector<cb::toolchain::DosRunSpec> specs;
+    mutable cb::toolchain::DosRunResult answer;
+    cb::toolchain::DosRunResult run(const cb::toolchain::DosRunSpec& spec) const override {
         specs.push_back(spec);
         return answer;
     }
@@ -191,7 +191,7 @@ CB_TEST("source.ne_asm.idiom.ml_is_run_as_a_dos_program_over_a_staged_folder", [
     CB_CHECK_EQ(made.listing, "lst");
     CB_CHECK_EQ(made.log, "log");
     CB_CHECK_EQ(runner.specs.size(), std::size_t{1});
-    const cb::build::DosRunSpec& spec = runner.specs.front();
+    const cb::toolchain::DosRunSpec& spec = runner.specs.front();
     CB_CHECK_EQ(spec.mounts.size(), std::size_t{1});
     CB_CHECK_EQ(spec.mounts.front().drive, "c");
     CB_CHECK(spec.mounts.front().folder == dir.path() / "stage");

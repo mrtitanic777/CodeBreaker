@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <format>
 
-#include "build/msc6.hpp"
+#include "toolchain/msc6.hpp"
 #include "core/capstone_api.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
@@ -1038,7 +1038,7 @@ std::vector<std::uint32_t> differences(ByteView code, ByteView mask, const Funct
 }
 
 std::optional<std::string> check_piece(ByteView object, const Function& f, std::uint32_t lo, std::uint32_t hi) {
-    const msc6::Code code = msc6::object_code(object);
+    const toolchain::msc6::Code code = toolchain::msc6::object_code(object);
     if (code.code.size() != hi - lo) return std::format("{} bytes, the original {}", code.code.size(), hi - lo);
     // the places the loader sets are those of the piece: the function's own table, with the range narrowed
     const std::vector<std::uint32_t> bad = differences_in(code.code, code.mask, f, lo, hi);
@@ -1047,7 +1047,7 @@ std::optional<std::string> check_piece(ByteView object, const Function& f, std::
 }
 
 std::optional<std::string> check(ByteView object, const Function& f) {
-    const msc6::Code code = msc6::object_code(object);
+    const toolchain::msc6::Code code = toolchain::msc6::object_code(object);
     const std::size_t want = f.end() - f.start();
     if (code.code.size() != want) return std::format("{} bytes, the original {}", code.code.size(), want);
     const std::vector<std::uint32_t> bad = differences(code.code, code.mask, f);

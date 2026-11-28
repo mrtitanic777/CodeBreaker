@@ -29,7 +29,7 @@ namespace stdfs = std::filesystem;
 const std::vector<std::vector<std::string_view>>& layers() {
     static const std::vector<std::vector<std::string_view>> l = {
         {"core", "base"},
-        {"formats", "platforms", "l2", "symbols", "store", "knowledge", "jobs"},
+        {"formats", "platforms", "l2", "toolchain", "symbols", "store", "knowledge", "jobs"},
         {"decompile", "emulate", "analyze", "invert", "exact", "coverage", "compare"},
         {"translate", "source", "build", "naming", "dotnet", "java", "xna", "recompile", "port", "verify"},
         {"engine"},

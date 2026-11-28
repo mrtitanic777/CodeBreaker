@@ -27,7 +27,7 @@ using namespace cb::build::driver;
 namespace stdfs = std::filesystem;
 namespace le = cb::formats::le;
 namespace drv = cb::build::driver;
-using cb::base::watcom::OpenWatcom;
+using cb::toolchain::watcom::OpenWatcom;
 
 le::Module vxd(const std::string& name) {
     return le::Module::open(testing::data_path("formats/testdata/" + name));

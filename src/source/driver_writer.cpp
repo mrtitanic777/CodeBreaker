@@ -87,11 +87,11 @@ std::string placeholder_label(std::uint32_t device, std::uint32_t service) {
     return device == 1 ? std::format("VMM_{:04X}", n) : std::format("VxD_{:04X}_{:04X}", device, n);
 }
 
-Options options_for(const base::watcom::OpenWatcom& open_watcom, const std::filesystem::path& probes, ServiceLabel service_label) {
+Options options_for(const toolchain::watcom::OpenWatcom& open_watcom, const std::filesystem::path& probes, ServiceLabel service_label) {
     Options o;
     o.tools.wasm = build::driver::tool(open_watcom, "wasm");
     o.tools.wlink = build::driver::tool(open_watcom, "wlink");
-    o.tools.env = open_watcom.environment(base::watcom::Target::Win32);
+    o.tools.env = open_watcom.environment(toolchain::watcom::Target::Win32);
     o.probes = probes;
     o.service_label = std::move(service_label);
     return o;

@@ -1,6 +1,6 @@
 // Tests of build/native_dos_runner.hpp: BLD.BAT's lines as COMMAND.COM reads them, and a session run over a stand-in executive
 // (what it was asked to run, with which drives, and where its output went).
-#include "build/native_dos_runner.hpp"
+#include "toolchain/native_dos_runner.hpp"
 
 #include <vector>
 
@@ -11,10 +11,10 @@
 namespace {
 
 using namespace cb;
-using namespace cb::build;
+using namespace cb::toolchain;
 namespace stdfs = std::filesystem;
 
-CB_TEST("build.native_dos_runner.a_batch_line_is_read_as_command_com_reads_it", [] {
+CB_TEST("toolchain.native_dos_runner.a_batch_line_is_read_as_command_com_reads_it", [] {
     DosCommandLine c = parse_dos_command("cl /nologo /c /W0 /AL /FoF1.OBJ F1.C > F1.TXT");
     CB_CHECK(c.kind == DosCommandLine::Kind::Program);
     CB_CHECK_EQ(c.program, "cl");
@@ -62,7 +62,7 @@ public:
     }
 };
 
-CB_TEST("build.native_dos_runner.a_session_runs_each_program_from_its_drive_and_path_with_its_output_redirected", [] {
+CB_TEST("toolchain.native_dos_runner.a_session_runs_each_program_from_its_drive_and_path_with_its_output_redirected", [] {
     fs::ScopedTempDir tools("ndr_tools"), work("ndr_work");
     fs::make_dirs(tools.path() / "BIN");
     fs::write_file(tools.path() / "BIN" / "CL.EXE", Bytes{'M', 'Z'});
@@ -90,7 +90,7 @@ CB_TEST("build.native_dos_runner.a_session_runs_each_program_from_its_drive_and_
     CB_CHECK(stdfs::exists(work.path() / "done.txt"));   // (the end of the batch)
 });
 
-CB_TEST("build.native_dos_runner.a_program_the_executive_cannot_run_ends_the_run_and_says_why", [] {
+CB_TEST("toolchain.native_dos_runner.a_program_the_executive_cannot_run_ends_the_run_and_says_why", [] {
     fs::ScopedTempDir tools("ndr_tools"), work("ndr_work");
     fs::write_file(tools.path() / "X.EXE", Bytes{'M', 'Z'});
     FakeSessions dos;

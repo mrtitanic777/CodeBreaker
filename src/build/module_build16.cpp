@@ -12,7 +12,7 @@
 
 #include "base/cache.hpp"
 #include "build/module_internal.hpp"
-#include "build/msc6.hpp"
+#include "toolchain/msc6.hpp"
 #include "core/fs.hpp"
 #include <nlohmann/json.hpp>
 
@@ -520,7 +520,7 @@ bool refit_without_prologue(Ctx16& c, std::int64_t seg, std::uint32_t at, const 
     const std::string leaf = stem.substr(slash + 1);
     const auto code_size = [&]() -> std::optional<std::uint32_t> {
         try {
-            return static_cast<std::uint32_t>(msc6::object_code(fs::read_file(c.folder / (stem + ".obj"))).code.size());
+            return static_cast<std::uint32_t>(toolchain::msc6::object_code(fs::read_file(c.folder / (stem + ".obj"))).code.size());
         } catch (const IoError&) {
             return std::nullopt;
         }
@@ -587,7 +587,7 @@ void decide_resident(Ctx16& c, bool self_loading) {
         for (const auto& [off, nm] : ord) {
             if (c.forced.contains(nm) || !c.stems.contains(nm) || c.stems.at(nm).starts_with("asm/")) continue;
             try {
-                size.insert_or_assign(nm, static_cast<std::uint32_t>(msc6::object_code(fs::read_file(c.folder / (c.stems.at(nm) + ".obj"))).code.size()));
+                size.insert_or_assign(nm, static_cast<std::uint32_t>(toolchain::msc6::object_code(fs::read_file(c.folder / (c.stems.at(nm) + ".obj"))).code.size()));
             } catch (const IoError&) {
                 // (no object for it: it has no size, and takes no part in the packing)
             }
@@ -680,11 +680,11 @@ private:
 
 std::optional<stdfs::path> ModuleBuilder::build16(Built& b, const stdfs::path& original, const ct::Module16& m, const stdfs::path& folder) const {
     const Services& s = services_;
-    const base::watcom::OpenWatcom& ow = s.open_watcom;
+    const toolchain::watcom::OpenWatcom& ow = s.open_watcom;
     const stdfs::path wcc = ow.tool("wcc"), wlink = ow.tool("wlink");   // (16-bit Windows: its compiler and packager)
     if (wcc.empty() || wlink.empty()) throw UsageError("OpenWatcom's 16-bit compiler is not set up (settings.json: openwatcom)");
     if (!m.description) throw UsageError("a 16-bit module is built with its description");
-    const Env env = ow.environment(base::watcom::Target::Win16);
+    const Env env = ow.environment(toolchain::watcom::Target::Win16);
     Ctx16 c{.services = s, .b = b, .path = original, .m = m, .folder = folder, .ne = formats::ne::Module::open_file(original), .cc = {wcc, env}, .wlink = wlink,
             .wasm = ow.tool("wasm"), .env = env};
     c.iface = s.interface_of(original);
@@ -787,7 +787,7 @@ std::optional<stdfs::path> ModuleBuilder::build16(Built& b, const stdfs::path& o
         if (header.flags & 0x0008) lines.push_back("option protmode");
         if (!(header.flags & 0x0300)) lines.push_back("option noapptype");
     }
-    lines.push_back("libpath " + fs::to_text(ow.lib_dir(base::watcom::Target::Win16)));   // lib286/win: the real library, not the stub above it
+    lines.push_back("libpath " + fs::to_text(ow.lib_dir(toolchain::watcom::Target::Win16)));   // lib286/win: the real library, not the stub above it
     const std::uint32_t cs = header.cs_ip >> 16, ip = header.cs_ip & 0xFFFF;
     const auto entry = cs != 0 ? c.at.find(Place{cs, ip}) : c.at.end();
     const bool entry_rebuilt = entry != c.at.end() && c.publics.contains(entry->second);

@@ -59,7 +59,7 @@
 #include <vector>
 
 #include "store/converted.hpp"
-#include "base/watcom.hpp"
+#include "toolchain/watcom.hpp"
 #include "core/bytes.hpp"
 #include "core/cli.hpp"
 #include "core/error.hpp"
@@ -170,7 +170,7 @@ struct Compiled {
 // Run the resource compiler on `rc`. `microsoft` chooses the layout of the .res: the Microsoft one, which read_res
 // reads, or the compiler's own (`<name>_link.res`), which is the one to hand the linker -- from a Microsoft-layout
 // file the linker binds every resource with language 0. ToolError when OpenWatcom has no resource compiler.
-Compiled compile_rc(const base::watcom::OpenWatcom& open_watcom, const std::filesystem::path& rc, Text text,
+Compiled compile_rc(const toolchain::watcom::OpenWatcom& open_watcom, const std::filesystem::path& rc, Text text,
                     bool microsoft = true);
 
 // The resources in a compiled `.res` file (Microsoft layout). FormatError for a file the layout does not fit.
@@ -184,14 +184,14 @@ void compare(std::span<const fr::Resource> original, std::span<const fr::Resourc
 // survive is carried as a payload of its original bytes and the build repeated (at most `rounds` times), so the `.res`
 // this returns is complete whenever the compiler accepts it at all. A module with no resources, or a compiler that
 // rejects the file whatever is done, is `error` in the answer.
-Rebuilt rebuild(const base::watcom::OpenWatcom& open_watcom, const std::filesystem::path& module,
+Rebuilt rebuild(const toolchain::watcom::OpenWatcom& open_watcom, const std::filesystem::path& module,
                 const std::filesystem::path& outdir, int rounds = 12);
 
 // ---- the command ----------------------------------------------------------------------------------------------------
 
 // What the command needs of the rest of the program.
 struct Environment {
-    base::watcom::OpenWatcom open_watcom{std::filesystem::path()};   // (an empty root: no tools)
+    toolchain::watcom::OpenWatcom open_watcom{std::filesystem::path()};   // (an empty root: no tools)
     // A corpus name or a file -> the module (corpus.retail); nullopt when there is none.
     std::function<std::optional<std::filesystem::path>(std::string_view)> retail;
     // The project folder of a module's binary (Converted/<name>/), where the resources go without --out.

@@ -273,10 +273,14 @@ target_compile_definitions(cb_sqlite3 PRIVATE SQLITE_THREADSAFE=1 _CRT_SECURE_NO
 target_compile_options(cb_sqlite3 PRIVATE ${CB_FLAGS_QUIET})
 set_target_properties(cb_sqlite3 PROPERTIES MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
+# The toolchain drivers (docs/SDK_DESIGN.md, layer 1): where each compiler and assembler is and how it runs (OpenWatcom,
+# Microsoft C 6), and the DOS hosting that runs the period tools (the native DOS runner).
+cb_area(toolchain)
+target_link_libraries(cb_toolchain PUBLIC cb_core cb_base cb_formats cb_symbols)
 cb_area(base)
 target_link_libraries(cb_base PUBLIC cb_core cb_formats PRIVATE cb_sqlite3)
 cb_area(build)
-target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats cb_symbols)
+target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats cb_symbols cb_toolchain)
 target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats cb_platforms cb_source cb_symbols)
 target_link_libraries(cb_build PUBLIC cb_core cb_base cb_formats)
 target_link_libraries(cb_build PUBLIC cb_decompile)   # (the one assembler lives in decompile/engine)
@@ -284,7 +288,7 @@ cb_area(knowledge)
 target_link_libraries(cb_knowledge PUBLIC cb_core cb_base cb_symbols)   # (cb_base: the SQLite wrapper; cb_symbols: the readers Knowledge gives their memories to -- static libraries may be cyclic)
 # The program database (the fact store, over cb::base::sqlite).
 cb_area(engine)
-target_link_libraries(cb_engine PUBLIC cb_core cb_base cb_knowledge cb_verify cb_jobs cb_decompile cb_build cb_emulate cb_symbols cb_analyze cb_formats cb_platforms cb_translate cb_source cb_java cb_naming)   # (the lane kit builds every lane's surroundings from these -- static libraries may be cyclic)   # (cb_verify: the verdict and class vocabulary)
+target_link_libraries(cb_engine PUBLIC cb_core cb_base cb_knowledge cb_verify cb_jobs cb_decompile cb_build cb_emulate cb_symbols cb_analyze cb_formats cb_platforms cb_translate cb_source cb_java cb_naming cb_toolchain)   # (the lane kit builds every lane's surroundings from these -- static libraries may be cyclic)   # (cb_verify: the verdict and class vocabulary)
 cb_area(jobs)
 target_link_libraries(cb_jobs PUBLIC cb_core cb_knowledge)
 cb_area(platforms)
@@ -309,7 +313,7 @@ target_link_libraries(cb_worker_probe PRIVATE cb_jobs cb_core)
 cb_area(verify)
 
 cb_area(app)
-target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats cb_build cb_symbols cb_analyze cb_source cb_store cb_coverage cb_exact cb_recompile cb_java cb_xna cb_engine cb_jobs cb_ui cb_invert cb_knowledge cb_verify cb_translate cb_naming)
+target_link_libraries(cb_app PUBLIC cb_core cb_base cb_formats cb_build cb_symbols cb_analyze cb_source cb_store cb_coverage cb_exact cb_recompile cb_java cb_xna cb_engine cb_jobs cb_ui cb_invert cb_knowledge cb_verify cb_translate cb_naming cb_toolchain)
 if(WIN32)
   target_compile_definitions(cb_app PRIVATE _WIN32_WINNT=0x0A00 WINVER=0x0A00)   # (Windows 10: the per-monitor DPI functions; MinGW's headers default lower)
   target_link_libraries(cb_app PUBLIC d2d1 dwrite dwmapi windowscodecs ole32 oleaut32 shell32 uuid user32 advapi32)   # (the window: Direct2D, DirectWrite, DWM, WIC, the file dialog, drag and drop)
@@ -327,7 +331,7 @@ target_link_libraries(cb_java PUBLIC cb_core cb_base cb_translate cb_decompile c
 # cb::emulate::pcode start (they are built beside the program and its tests).
 include("${CMAKE_CURRENT_LIST_DIR}/decompile/engine/CMakeLists.txt")
 cb_area(decompile)
-target_link_libraries(cb_decompile PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_build cb_translate cb_symbols cb_knowledge)   # (cb_symbols, cb_knowledge, cb_base: environment.cpp reads the argument sizes, ordinal and driver tables the base keeps; cb_platforms: the Capstone decoder; cb_analyze: the DOS functions; cb_build: the relocation places of a data segment; cb_translate: the L2 library client and the module model c_text writes)
+target_link_libraries(cb_decompile PUBLIC cb_core cb_base cb_formats cb_platforms cb_analyze cb_build cb_translate cb_symbols cb_knowledge cb_toolchain)   # (cb_symbols, cb_knowledge, cb_base: environment.cpp reads the argument sizes, ordinal and driver tables the base keeps; cb_platforms: the Capstone decoder; cb_analyze: the DOS functions; cb_build: the relocation places of a data segment; cb_translate: the L2 library client and the module model c_text writes)
 
 cb_area(analyze)
 target_link_libraries(cb_analyze PUBLIC cb_core cb_base cb_formats cb_knowledge cb_symbols cb_decompile cb_jobs cb_emulate cb_recompile)   # (cb_recompile: function discovery and the disassembler of the ppc-calls command; cb_formats: the PE reader image.hpp takes; cb_base, cb_knowledge: the fact table; cb_symbols: the convention facts)
@@ -336,7 +340,7 @@ target_link_libraries(cb_analyze PUBLIC cb_core cb_base cb_formats cb_knowledge 
 include("${CMAKE_CURRENT_LIST_DIR}/exact/emu/dosexec/CMakeLists.txt")
 cb_area(exact)
 if(TARGET cb_dosexec)
-  target_link_libraries(cb_exact PUBLIC cb_dosexec)
+  target_link_libraries(cb_exact PUBLIC cb_dosexec cb_toolchain)
   target_compile_definitions(cb_exact PRIVATE CB_DOSEXEC)
 endif()
 target_link_libraries(cb_exact PUBLIC cb_core cb_base cb_formats cb_java cb_invert)   # (cb_invert: the early-C model the draft stage reads the code with, draft/early_c_model)   # (omf_object: an OMF module as the lanes' object record; cb_java: the zip reader of the pre-release Pascal kit, command.cpp -- static libraries may be cyclic)
@@ -398,10 +402,10 @@ target_link_libraries(cb_recompile PUBLIC cb_core cb_base cb_platforms cb_format
 # The recompiler's own pieces (builders, disassembler, the title project) and the source writers (placement, assembly,
 # the NE assembly tools).
 cb_area(source)
-target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_decompiler cb_naming)   # (cb_decompiler: the SLEIGH reader of source/processors)
+target_link_libraries(cb_source PUBLIC cb_core cb_base cb_formats cb_decompiler cb_naming cb_toolchain)   # (cb_decompiler: the SLEIGH reader of source/processors)
 
 cb_area(invert)
-target_link_libraries(cb_invert PUBLIC cb_core cb_base cb_formats cb_platforms cb_build cb_decompile cb_symbols cb_exact)   # (cb_platforms: the 16-bit decoder the models decode with)
+target_link_libraries(cb_invert PUBLIC cb_core cb_base cb_formats cb_platforms cb_build cb_decompile cb_symbols cb_exact cb_toolchain)   # (cb_platforms: the 16-bit decoder the models decode with)
 
 cb_area(port)
 target_link_libraries(cb_port PUBLIC cb_core cb_base cb_verify cb_translate)
@@ -416,7 +420,7 @@ target_link_libraries(cb_symbols PUBLIC cb_core cb_base cb_formats cb_knowledge 
 # The naming pipeline (docs/SDK_DESIGN.md, layer 3): the namer that puts a function's names together, identify, the workbench,
 # the debug build and its estimate, the proposals. The names as data stay in symbols (symbols/name_data.hpp).
 cb_area(naming)
-target_link_libraries(cb_naming PUBLIC cb_core cb_base cb_formats cb_platforms cb_knowledge cb_store cb_symbols cb_compare cb_decompile cb_analyze cb_build cb_source)
+target_link_libraries(cb_naming PUBLIC cb_core cb_base cb_formats cb_platforms cb_knowledge cb_store cb_symbols cb_compare cb_decompile cb_analyze cb_build cb_source cb_toolchain)
 
 cb_area(xna)
 target_link_libraries(cb_xna PUBLIC cb_core cb_base cb_formats cb_java cb_decompile cb_dotnet)   # (cb_base: the Converted project; cb_formats: PE and media images; cb_java: the PNG codec of the content converters; cb_decompile: the Xbox effect as HLSL -- static libraries may be cyclic)
@@ -438,7 +442,7 @@ target_link_libraries(cb_translate PUBLIC cb_core cb_pyfront cb_pysupport cb_jav
 cb_area(ui)
 target_link_libraries(cb_ui PUBLIC cb_core cb_naming)
 
-target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile PRIVATE cb_zlib ${CB_SOCKET_LIBS})
+target_link_libraries(cb_verify PUBLIC cb_core cb_base cb_formats cb_platforms cb_emulate cb_jobs cb_decompile PRIVATE cb_zlib ${CB_SOCKET_LIBS} cb_toolchain)
 
 # The native program the decompiler's tests start in place of decompiler.exe (decompile/fake_decompiler_main.cpp), built beside cb_tests.
 add_executable(cb_fake_decompiler decompile/fake_decompiler_main.cpp)

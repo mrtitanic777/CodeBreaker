@@ -11,9 +11,9 @@
 #include "build/floppy.hpp"
 #include "build/masm.hpp"
 #include "build/module.hpp"
-#include "build/msvc152.hpp"
-#include "build/native_dos.hpp"
-#include "base/watcom.hpp"
+#include "toolchain/msvc152.hpp"
+#include "toolchain/native_dos.hpp"
+#include "toolchain/watcom.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/log.hpp"
@@ -66,7 +66,7 @@ bool commands_is_dir(const stdfs::path& p) {
 
 // The period ML.EXE (a Phar Lap TNT program) under DOS, in as few sessions as it can: the texts are grouped so that each session stays under
 // `budget` characters and `max_files` files (a text over the budget runs alone); the cold start of the emulator is what a batch saves.
-vxd::masm::PeriodAssembler commands_period_assembler(const build::DosRunner& runner, stdfs::path ml_folder, stdfs::path extender, stdfs::path stage) {
+vxd::masm::PeriodAssembler commands_period_assembler(const toolchain::DosRunner& runner, stdfs::path ml_folder, stdfs::path extender, stdfs::path stage) {
     return [&runner, ml_folder = std::move(ml_folder), extender = std::move(extender), stage = std::move(stage)](std::span<const std::string> texts) {
         constexpr std::size_t kBudget = 300000, kMaxFiles = 32;
         fs::make_dirs(stage);
@@ -96,7 +96,7 @@ vxd::masm::PeriodAssembler commands_period_assembler(const build::DosRunner& run
         }
         if (!current.empty()) batches.push_back(std::move(current));
         for (const std::vector<std::size_t>& batch : batches) {
-            build::DosRunSpec spec;
+            toolchain::DosRunSpec spec;
             spec.mounts = {{"c", stage}};
             std::size_t total = 0;
             for (std::size_t j = 0; j < batch.size(); ++j) {
@@ -108,7 +108,7 @@ vxd::masm::PeriodAssembler commands_period_assembler(const build::DosRunner& run
                 total += texts[batch[j]].size();
             }
             spec.timeout = std::chrono::seconds(std::min<std::size_t>(600, 90 + total / 400));
-            const build::DosRunResult ran = runner.run(spec);
+            const toolchain::DosRunResult ran = runner.run(spec);
             for (std::size_t j = 0; j < batch.size(); ++j) {
                 const std::string stem = std::format("m{}", j);
                 if (const auto object = ran.made.find(stem + ".obj"); object != ran.made.end()) results[batch[j]].object = object->second;
@@ -163,8 +163,8 @@ struct Production::Impl {
     // (the period tools run on the executive)
     struct Dos {
         CommandsNativeDos executive;
-        std::unique_ptr<build::DosRunner> runs;
-        const build::DosRunner& runner;
+        std::unique_ptr<toolchain::DosRunner> runs;
+        const toolchain::DosRunner& runner;
         explicit Dos(const config::Config& config) : executive(config), runs(exact::emu::dos_runner(config, executive)), runner(*runs) {}
     };
     std::unique_ptr<Dos> dos_;
@@ -223,7 +223,7 @@ struct Production::Impl {
     // ---- the 16-bit assembly tools ----
     struct NeAsm {
         build::masm::Assembler masm4;
-        build::msvc152::Tools msvc;
+        toolchain::msvc152::Tools msvc;
         ne_asm::idiom::Environment idiom;
         ne_asm::sweep::Environment sweep;
         ne_asm::recon::Environment recon;
@@ -253,7 +253,7 @@ struct Production::Impl {
                     }},
               segdiff{*impl.corpus,
                       [this, &dos](std::string_view c_source, std::string_view flags) -> Bytes {
-                          const build::msvc152::Compiled compiled = build::msvc152::compile_c(dos.runner, msvc, c_source, flags);
+                          const toolchain::msvc152::Compiled compiled = toolchain::msvc152::compile_c(dos.runner, msvc, c_source, flags);
                           if (!compiled.obj) throw ToolError("msvc152", 1, compiled.log.value_or("no object made"));
                           return *compiled.obj;
                       }},
@@ -275,7 +275,7 @@ struct Production::Impl {
         if (!kit_) kit_ = std::make_shared<engine::LaneKit>(config, corpus);
         return kit_;
     }
-    base::watcom::OpenWatcom open_watcom() const { return base::watcom::OpenWatcom::from_settings(config.text("openwatcom")); }
+    toolchain::watcom::OpenWatcom open_watcom() const { return toolchain::watcom::OpenWatcom::from_settings(config.text("openwatcom")); }
     stdfs::path probes() const { return config.state() / "assembly_probes.json"; }
 
     // The names of the kit's services, as the driver lane has them: from the knowledge base.
@@ -376,12 +376,12 @@ base::commands::ToolTable Production::ne_asm_tools() const {
              cli::Option{"--selftest", "", "compile two small functions", cli::Arg::Flag}},
             [&](const cli::Args& args) -> int {
                 std::string source;
-                if (args.flag("--selftest")) source = std::string(build::msvc152::kSelfTestSource);
+                if (args.flag("--selftest")) source = std::string(toolchain::msvc152::kSelfTestSource);
                 else if (const auto file = args.value("csrc")) source = fs::read_text(fs::from_text(*file));
                 else throw UsageError("give a C file or --selftest");
                 Impl::NeAsm& world = i->ne_asm_world();
-                const build::msvc152::Compiled compiled = build::msvc152::compile_c(i->dos().runner, world.msvc, source, args.value_or("flags", "/AM /c"));
-                out("{}\n", build::msvc152::report(compiled));
+                const toolchain::msvc152::Compiled compiled = toolchain::msvc152::compile_c(i->dos().runner, world.msvc, source, args.value_or("flags", "/AM /c"));
+                out("{}\n", toolchain::msvc152::report(compiled));
                 return kExitOk;
             },
             {}, {}, {}};

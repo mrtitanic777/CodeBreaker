@@ -1,4 +1,4 @@
-#include "build/native_dos.hpp"
+#include "toolchain/native_dos.hpp"
 
 #include <algorithm>
 #include <format>
@@ -7,7 +7,7 @@
 #include "core/fs.hpp"
 #include "core/text.hpp"
 
-namespace cb::build::native_dos {
+namespace cb::toolchain::native_dos {
 
 namespace {
 
@@ -164,4 +164,4 @@ MlResult ml(const DosExecutive& dos, const MlToolchain& toolchain, std::string_v
     return {std::move(r.made), text::from_latin1(r.console)};
 }
 
-} // namespace cb::build::native_dos
+} // namespace cb::toolchain::native_dos

@@ -42,7 +42,7 @@
 #include <vector>
 
 #include "build/driver.hpp"
-#include "base/watcom.hpp"
+#include "toolchain/watcom.hpp"
 #include "core/bytes.hpp"
 #include "formats/le.hpp"
 #include "platforms/decoder.hpp"
@@ -69,7 +69,7 @@ struct Options {
 };
 
 // The tools of an OpenWatcom tree, as drivers are assembled and linked.
-Options options_for(const base::watcom::OpenWatcom& open_watcom, const std::filesystem::path& probes, ServiceLabel service_label = {});
+Options options_for(const toolchain::watcom::OpenWatcom& open_watcom, const std::filesystem::path& probes, ServiceLabel service_label = {});
 
 // A place in a driver: object (1-based) and offset.
 using Place = formats::le::Place;

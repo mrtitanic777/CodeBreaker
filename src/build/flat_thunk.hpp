@@ -35,7 +35,7 @@
 #include <variant>
 #include <vector>
 
-#include "base/watcom.hpp"
+#include "toolchain/watcom.hpp"
 #include "core/bytes.hpp"
 #include "core/cli.hpp"
 #include "core/error.hpp"
@@ -171,7 +171,7 @@ std::string format_diff(const BinDiff& diff);
 struct Locations {
     std::vector<std::filesystem::path> reference_roots;   // the reference folder: Win95 DDK, WIN32SDK, the thunk compiler 1.01
     std::filesystem::path period_compiler;                // the BIN folder of Visual C++ 2.0 (or its root)
-    base::watcom::OpenWatcom openwatcom{std::filesystem::path()};
+    toolchain::watcom::OpenWatcom openwatcom{std::filesystem::path()};
 };
 
 // The period tools. thunk and ml are empty when the reference folder lacks them; the Visual C++ 2.0 paths are where
@@ -223,7 +223,7 @@ BuildResult build_period(const Locations& where, const std::filesystem::path& sr
 // object's PUBDEF records (so by-value structs get the right stdcall byte count, not a guessed one) and link
 // `system nt_dll` against OpenWatcom's own KERNEL32/USER32/GDI32 import libraries. The DLL's export table matches the retail
 // module's function exports. `outdir` defaults to <srcdir>/_ow.
-BuildResult build_openwatcom(const base::watcom::OpenWatcom& ow, const std::filesystem::path& srcdir,
+BuildResult build_openwatcom(const toolchain::watcom::OpenWatcom& ow, const std::filesystem::path& srcdir,
                              const std::optional<std::filesystem::path>& outdir = std::nullopt);
 
 struct CompiledFile {
@@ -239,7 +239,7 @@ struct CompileResult {
 
 // Compile every recovered veneer .c in `srcdir` with wcc386 against OpenWatcom's own Win32 headers: verifies the recovered
 // source is compilable as authored.
-CompileResult compile_openwatcom(const base::watcom::OpenWatcom& ow, const std::filesystem::path& srcdir);
+CompileResult compile_openwatcom(const toolchain::watcom::OpenWatcom& ow, const std::filesystem::path& srcdir);
 
 // ---- the stub reader ----------------------------------------------------------------------------------------------
 

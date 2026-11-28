@@ -1,4 +1,4 @@
-// build/dos_run.hpp -- the contract for running DOS programs (the assemblers, compilers and linkers of the
+// toolchain/dos_run.hpp -- the contract for running DOS programs (the assemblers, compilers and linkers of the
 // 1980s and 90s) on CodeBreaker's own DOS executive: what to mount, what to run, which files to bring back.
 //
 //     DosRunSpec spec;
@@ -27,7 +27,7 @@
 #include "core/bytes.hpp"
 #include "core/ordered_map.hpp"
 
-namespace cb::build {
+namespace cb::toolchain {
 
 // A host folder shown to DOS as a drive.
 struct DosMount {
@@ -66,4 +66,4 @@ public:
     virtual DosRunResult run(const DosRunSpec& spec) const = 0;
 };
 
-}  // namespace cb::build
+}  // namespace cb::toolchain

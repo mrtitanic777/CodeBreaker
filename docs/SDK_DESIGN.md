@@ -199,3 +199,6 @@ The inventory is [docs/sdk/inventory.md](sdk/inventory.md) (regenerate: `python 
   cb::naming::...). symbols no longer includes anything above it. Upward includes 31 -> 19: what is left is decompile reaching
   translate's C back end (6) and build's data and Watcom helpers (2), exact's DOS runner (3), source and verify reaching the lane
   kit (7), store's versions ledger (1).
+- 2026-11-27: phase 1: the L2 hub counts as the l2 layer, decompile/jar -> java, build/data -> decompile (d77067f32); the
+  toolchain area (layer 1): the OpenWatcom, Microsoft C 6 and Visual C++ 1.52 drivers and the native DOS runner (cb::toolchain).
+  Upward includes 11 -> 7, all of them source and verify reaching engine's lane kit (6) and store's versions ledger (1).

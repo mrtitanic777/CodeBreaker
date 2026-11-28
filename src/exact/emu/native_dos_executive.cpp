@@ -1,7 +1,7 @@
 // CodeBreaker's own DOS executive behind build/native_dos, and the toolchains' DosRunner (native_dos_executive.hpp).
 #include "exact/emu/native_dos_executive.hpp"
 
-#include "build/native_dos_runner.hpp"
+#include "toolchain/native_dos_runner.hpp"
 #include "core/error.hpp"
 #include "core/text.hpp"
 #include "exact/emu/dos.hpp"
@@ -16,11 +16,11 @@ NativeDosExecutive::NativeDosExecutive(const config::Config& config)
       work_(config.state() / "native-dos-mem") {}
 
 const dos::Executive& NativeDosExecutive::executive() const {   // (callers hold one_at_a_time_)
-    if (!opened_.usable()) throw build::native_dos::NativeDosError("the DOS executive is not available here");
+    if (!opened_.usable()) throw toolchain::native_dos::NativeDosError("the DOS executive is not available here");
     return *opened_.executive;
 }
 
-build::native_dos::Exit NativeDosExecutive::run(const stdfs::path& exe, const stdfs::path& work, std::string_view cmdline) const {
+toolchain::native_dos::Exit NativeDosExecutive::run(const stdfs::path& exe, const stdfs::path& work, std::string_view cmdline) const {
     dos::RunSpec spec;
     spec.exe = exe;
     spec.workdir = work;
@@ -29,13 +29,13 @@ build::native_dos::Exit NativeDosExecutive::run(const stdfs::path& exe, const st
     spec.fast = true;
     const std::lock_guard hold(one_at_a_time_);
     const dos::Result r = executive().run(spec);
-    build::native_dos::Exit out;
+    toolchain::native_dos::Exit out;
     if (r.exit) out.code = static_cast<std::int32_t>(*r.exit);
     out.console = r.console;
     return out;
 }
 
-build::native_dos::MemoryResult NativeDosExecutive::run_dpmi(const build::native_dos::MemoryRun& run) const {
+toolchain::native_dos::MemoryResult NativeDosExecutive::run_dpmi(const toolchain::native_dos::MemoryRun& run) const {
     dos::MemFS files;   // a name only: nothing is written there
     for (const auto& [name, data] : run.files) files.put(work_ / name, data);
     dos::RunSpec spec;
@@ -48,7 +48,7 @@ build::native_dos::MemoryResult NativeDosExecutive::run_dpmi(const build::native
     spec.files = &files;
     const std::lock_guard hold(one_at_a_time_);
     const dos::Result r = executive().run(spec);
-    build::native_dos::MemoryResult out;
+    toolchain::native_dos::MemoryResult out;
     for (const std::string& name : run.artifacts) {
         const stdfs::path at = work_ / text::upper(name);
         if (files.is_file(at) && files.files().contains(dos::MemFS::key(at))) out.made[name] = files.read(at);
@@ -57,7 +57,7 @@ build::native_dos::MemoryResult NativeDosExecutive::run_dpmi(const build::native
     return out;
 }
 
-build::native_dos::SessionExit NativeDosExecutive::run_session(const build::native_dos::SessionRun& run) const {
+toolchain::native_dos::SessionExit NativeDosExecutive::run_session(const toolchain::native_dos::SessionRun& run) const {
     dos::RunSpec spec;
     spec.exe = run.exe;
     const auto current = run.drives.find(run.drive);
@@ -71,21 +71,21 @@ build::native_dos::SessionExit NativeDosExecutive::run_session(const build::nati
     try {
         const std::lock_guard hold(one_at_a_time_);
     const dos::Result r = executive().run(spec);
-        build::native_dos::SessionExit out;
+        toolchain::native_dos::SessionExit out;
         if (r.exit) out.code = static_cast<std::int32_t>(*r.exit);
-        else throw build::native_dos::NativeDosError(run.exe.filename().string() + ": the program did not end");
+        else throw toolchain::native_dos::NativeDosError(run.exe.filename().string() + ": the program did not end");
         out.console = r.console;
         out.standard_out = r.standard_out;
         return out;
-    } catch (const build::native_dos::NativeDosError&) {
+    } catch (const toolchain::native_dos::NativeDosError&) {
         throw;
     } catch (const Error& e) {   // (a service the executive lacks, a CPU fault, a limit: not this program's answer)
-        throw build::native_dos::NativeDosError(run.exe.filename().string() + ": " + e.what());
+        throw toolchain::native_dos::NativeDosError(run.exe.filename().string() + ": " + e.what());
     }
 }
 
-std::unique_ptr<build::DosRunner> dos_runner(const config::Config&, const build::native_dos::DosExecutive& dos) {
-    return std::make_unique<build::NativeDosRunner>(dos);
+std::unique_ptr<toolchain::DosRunner> dos_runner(const config::Config&, const toolchain::native_dos::DosExecutive& dos) {
+    return std::make_unique<toolchain::NativeDosRunner>(dos);
 }
 
 }  // namespace cb::exact::emu

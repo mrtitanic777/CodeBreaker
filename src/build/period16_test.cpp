@@ -10,6 +10,7 @@ namespace {
 
 using namespace cb;
 using namespace cb::build;
+using namespace cb::toolchain;
 namespace stdfs = std::filesystem;
 
 void put16(Bytes& b, std::size_t at, unsigned v) {

@@ -48,8 +48,8 @@ cli::Command command(const Environment& environment) {
         const Tools tools = tools_from(environment.config, *corpus);
         // (CodeBreaker's own DOS executive runs the period tools)
         const exact::emu::NativeDosExecutive dos(environment.config);
-        const std::unique_ptr<DosRunner> dos_runner = exact::emu::dos_runner(environment.config, dos);
-        const DosRunner& runner = *dos_runner;
+        const std::unique_ptr<toolchain::DosRunner> dos_runner = exact::emu::dos_runner(environment.config, dos);
+        const toolchain::DosRunner& runner = *dos_runner;
         std::optional<stdfs::path> donor;   // found before the build, which takes minutes
         if (const auto d = a.value("stub")) donor = p16_resolve(*corpus, *d);
         std::optional<stdfs::path> work;

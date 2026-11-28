@@ -67,7 +67,7 @@ decompile::decompiler::Decompiler& LaneKit::decompiler() { return impl_->decompi
 build::functions::FunctionBuilder& LaneKit::builder() { return impl_->builder(); }
 emulate::pcode::LifterSet* LaneKit::lifters() { return impl_->lifters(); }
 
-stdfs::path LaneKit::scratch() const { return base::watcom::scratch_dir(); }
+stdfs::path LaneKit::scratch() const { return toolchain::watcom::scratch_dir(); }
 
 LaneKit::Impl::Impl(config::Config c, std::shared_ptr<base::Corpus> k) : config(std::move(c)), corpus(std::move(k)) {
     if (!corpus) corpus = corpus_of(config);
@@ -90,14 +90,14 @@ knowledge::Knowledge& LaneKit::Impl::knowledge() {
     if (!knowledge_) {
         store_ = std::make_unique<knowledge::Store>(knowledge::Store::default_path(knowledge::DataFolders::under(config.checkout_root())),
                                                     knowledge::DataFolders::under(config.checkout_root()));
-        const base::watcom::OpenWatcom ow = openwatcom();
+        const toolchain::watcom::OpenWatcom ow = openwatcom();
         symbols::prototypes::HeaderFolders folders = symbols::prototypes::HeaderFolders::standard(ow.root(), corpus->reference());
         knowledge_ = std::make_unique<knowledge::Knowledge>(*store_, std::move(folders));
     }
     return *knowledge_;
 }
 
-base::watcom::OpenWatcom LaneKit::Impl::openwatcom() const { return base::watcom::OpenWatcom::from_settings(config.text("openwatcom")); }
+toolchain::watcom::OpenWatcom LaneKit::Impl::openwatcom() const { return toolchain::watcom::OpenWatcom::from_settings(config.text("openwatcom")); }
 
 emulate::pcode::LifterSet* LaneKit::Impl::lifters() {
     std::lock_guard hold(lock);
@@ -160,16 +160,16 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::win32_lane() {
     emulate::pcode::LifterSet* lifters = i.lifters();
     base::cache::Cache& cache = i.cache();
     knowledge::Knowledge& kb = i.knowledge();
-    const base::watcom::OpenWatcom ow = i.openwatcom();
+    const toolchain::watcom::OpenWatcom ow = i.openwatcom();
 
     verify::lanes::Win32Lane::Services services{decompiler, builder, {}, {}, nullptr, nullptr, lifters, {}, nullptr, {}};
     // OpenWatcom's 32-bit tools: the compiler and the linker, the base address and the C runtime the link lines carry
     build::functions::Tools32& tools = services.tools;
-    tools.wcc = {ow.tool("wcc386"), ow.environment(base::watcom::Target::Win32)};
+    tools.wcc = {ow.tool("wcc386"), ow.environment(toolchain::watcom::Target::Win32)};
     tools.wlink = ow.tool("wlink");
     tools.wasm = ow.tool("wasm");
-    tools.link_head = {std::string(text::trim(base::watcom::kBaseOption))};
-    for (const std::string_view line : text::lines(text::trim(base::watcom::kRuntimeLibrary))) tools.runtime_lines.emplace_back(line);
+    tools.link_head = {std::string(text::trim(toolchain::watcom::kBaseOption))};
+    for (const std::string_view line : text::lines(text::trim(toolchain::watcom::kRuntimeLibrary))) tools.runtime_lines.emplace_back(line);
     tools.publics = [](ByteView object) {
         std::set<std::string> names;
         for (const std::string& s : formats::omf::publics(object)) names.insert(s);   // (sorted: the first match is always the same one)

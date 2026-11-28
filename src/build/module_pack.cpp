@@ -6,7 +6,7 @@
 #include <set>
 
 #include "build/module_internal.hpp"
-#include "build/msc6.hpp"
+#include "toolchain/msc6.hpp"
 #include "core/fs.hpp"
 
 namespace cb::build::module::internal {
@@ -105,7 +105,7 @@ std::optional<std::vector<std::string>> frame_pieces(Built& b, Piece& piece, std
         const auto st = stems.find(*name);
         if (st == stems.end() || st->second.empty() || st->second.starts_with("asm/")) continue;
         try {
-            const msc6::Code code = msc6::object_code(fs::read_file(folder / (st->second + ".obj")));
+            const toolchain::msc6::Code code = toolchain::msc6::object_code(fs::read_file(folder / (st->second + ".obj")));
             size.insert_or_assign(*name, static_cast<std::uint32_t>(code.code.size()));
             cstem[*name] = st->second;
         } catch (const IoError&) {

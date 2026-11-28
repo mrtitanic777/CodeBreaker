@@ -42,7 +42,7 @@
 #include "build/resources.hpp"
 #include "app/reach_command.hpp"
 #include "build/flat_thunk.hpp"
-#include "base/watcom.hpp"
+#include "toolchain/watcom.hpp"
 #include "core/error.hpp"
 #include "engine/lane_kit.hpp"
 #include "exact/command.hpp"
@@ -124,8 +124,8 @@ std::string_view command_of(std::span<const std::string> args) {
     return {};
 }
 
-base::watcom::OpenWatcom ft_openwatcom_of(const config::Config& config) {
-    return base::watcom::OpenWatcom::from_settings(config.text("openwatcom"));
+toolchain::watcom::OpenWatcom ft_openwatcom_of(const config::Config& config) {
+    return toolchain::watcom::OpenWatcom::from_settings(config.text("openwatcom"));
 }
 
 std::string lower(std::string_view s) {
@@ -295,7 +295,7 @@ void register_native_commands(CommandTable& table, std::shared_ptr<base::Corpus>
         }
         if (!reference.empty()) ft.locations.reference_roots.push_back(reference);
         ft.locations.period_compiler = config.path("period_compiler").value_or(std::filesystem::path{});
-        ft.locations.openwatcom = base::watcom::OpenWatcom::from_settings(config.text("openwatcom"));
+        ft.locations.openwatcom = toolchain::watcom::OpenWatcom::from_settings(config.text("openwatcom"));
         ft.retail = [corpus](std::string_view name) -> std::optional<std::filesystem::path> { return corpus->retail(name); };
         const std::filesystem::path ow_root = ft.locations.openwatcom.root();
         ft.sdk = [ow_root, reference] {

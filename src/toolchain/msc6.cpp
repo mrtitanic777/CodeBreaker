@@ -1,4 +1,4 @@
-#include "build/msc6.hpp"
+#include "toolchain/msc6.hpp"
 
 #include <algorithm>
 #include <array>
@@ -14,7 +14,7 @@
 #include "core/text.hpp"
 #include "formats/omf.hpp"
 
-namespace cb::build::msc6 {
+namespace cb::toolchain::msc6 {
 
 namespace stdfs = std::filesystem;
 
@@ -521,4 +521,4 @@ std::vector<std::optional<Code>> compile_many(const Context& ctx, std::span<cons
     return out;
 }
 
-}  // namespace cb::build::msc6
+}  // namespace cb::toolchain::msc6

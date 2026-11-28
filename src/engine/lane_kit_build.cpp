@@ -161,7 +161,7 @@ build::module::Services LaneKit::module_services() {
     base::Corpus& corpus = *i.corpus;
     const config::Config& config = i.config;
     knowledge::Knowledge& kb = i.knowledge();
-    const base::watcom::OpenWatcom ow = i.openwatcom();
+    const toolchain::watcom::OpenWatcom ow = i.openwatcom();
     const std::shared_ptr<const verify::lanes::Kind> win16 = win16_lane();
     const std::shared_ptr<const verify::lanes::Kind> win32 = win32_lane();
     const std::shared_ptr<verify::gate16::Isolated16> gate = std::make_shared<verify::gate16::Isolated16>(isolated16_spec());
@@ -171,7 +171,7 @@ build::module::Services LaneKit::module_services() {
             source::assembly::Tools t;
             t.wasm = ow.tool("wasm");
             t.wlink = ow.tool("wlink");
-            t.env = ow.environment(base::watcom::Target::Win32);
+            t.env = ow.environment(toolchain::watcom::Target::Win32);
             i.prober_ = std::make_unique<source::assembly::Prober>(t, config.state() / "assembly_probes.json");
         }
     }

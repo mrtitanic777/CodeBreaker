@@ -27,10 +27,10 @@ namespace ct = decompile::c_text;
 
 std::optional<stdfs::path> ModuleBuilder::build32(Built& b, const stdfs::path& original, const ct::Compilable32& m, const stdfs::path& folder) const {
     const Services& s = services_;
-    const base::watcom::OpenWatcom& ow = s.open_watcom;
-    const stdfs::path wcc = ow.cc(base::watcom::Target::Win32), wlink = ow.tool("wlink");
+    const toolchain::watcom::OpenWatcom& ow = s.open_watcom;
+    const stdfs::path wcc = ow.cc(toolchain::watcom::Target::Win32), wlink = ow.tool("wlink");
     if (wcc.empty()) throw UsageError("OpenWatcom's 32-bit compiler is not set up (settings.json: openwatcom)");
-    const Env env = ow.environment(base::watcom::Target::Win32);
+    const Env env = ow.environment(toolchain::watcom::Target::Win32);
     const functions::Compiler cc{wcc, env};
     functions::FunctionBuilder& builder = *s.builder;
     std::vector<std::string> cflags;
@@ -144,7 +144,7 @@ std::optional<stdfs::path> ModuleBuilder::build32(Built& b, const stdfs::path& o
                                       "option quiet, map, caseexact",
                                       std::format("option modname='{}'", iface.name),
                                       std::format("option offset=0x{:X}", image_base),
-                                      "libpath " + fs::to_text(ow.lib_dir(base::watcom::Target::Win32))};
+                                      "libpath " + fs::to_text(ow.lib_dir(toolchain::watcom::Target::Win32))};
     if (start && !start->empty()) lines.push_back("option start=" + quote_symbol(*start));
     for (const std::string& o : objects) lines.push_back("file " + o);
     if (!resources::read_module(original).resources.empty()) {
@@ -203,7 +203,7 @@ std::optional<stdfs::path> ModuleBuilder::build32(Built& b, const stdfs::path& o
         lines.insert(lines.end(), directives.lines.begin(), directives.lines.end());
         b.exports_missing = std::move(directives.missing);
     }
-    for (std::string_view x : text::split(base::watcom::kRuntimeLibrary, '\n')) {
+    for (std::string_view x : text::split(toolchain::watcom::kRuntimeLibrary, '\n')) {
         if (!text::trim(x).empty()) lines.emplace_back(text::trim(x));
     }
     const std::optional<stdfs::path> image = link_resolving(

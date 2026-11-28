@@ -1,4 +1,4 @@
-// build/msc6.hpp -- Microsoft C 6.0a, the compiler of the 16-bit Windows modules, run for comparison.
+// toolchain/msc6.hpp -- Microsoft C 6.0a, the compiler of the 16-bit Windows modules, run for comparison.
 //
 //     msc6::Context ctx{tools, runner, &cache};
 //     if (msc6::available(ctx.tools, msc6::Compiler::Msc6)) {
@@ -34,12 +34,12 @@
 #include <vector>
 
 #include "base/cache.hpp"
-#include "build/dos_run.hpp"
+#include "toolchain/dos_run.hpp"
 #include "core/bytes.hpp"
 #include "core/ordered_map.hpp"
 #include "symbols/wine16.hpp"
 
-namespace cb::build::msc6 {
+namespace cb::toolchain::msc6 {
 
 // ---- the tools ------------------------------------------------------------------------------------------------------
 
@@ -252,4 +252,4 @@ BatchFiles batch_files(std::span<const std::vector<std::size_t>> groups, const s
 // line -- empty when an error is not in the file itself (the header's: then none can be told from another).
 std::vector<std::size_t> refused(std::string_view compiler_text, std::span<const std::pair<std::size_t, std::size_t>> starts);
 
-}  // namespace cb::build::msc6
+}  // namespace cb::toolchain::msc6

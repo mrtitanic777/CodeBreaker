@@ -63,7 +63,7 @@ std::optional<Options> drw_options() {
     try {
         const config::Config main = config::Config::load(config::current().main_checkout());
         const auto root = main.path("openwatcom");
-        const base::watcom::OpenWatcom ow = base::watcom::OpenWatcom::from_settings(root ? fs::to_text(*root) : std::string());
+        const toolchain::watcom::OpenWatcom ow = toolchain::watcom::OpenWatcom::from_settings(root ? fs::to_text(*root) : std::string());
         if (ow.tool("wasm").empty() || ow.tool("wlink").empty()) return std::nullopt;
         return options_for(ow, probes_dir.path() / "assembly_probes.json", drw_label());
     } catch (const Error&) {   // (no configuration to read: no tools to test with)
@@ -249,7 +249,7 @@ CB_TEST("source.driver_writer.the_vxd_behind_a_real_mode_driver_is_written_as_th
     CB_CHECK(said.empty());   // (nothing came back different: no round to report)
 
     // and wired into the DOS writer, DRVSPACE.BIN is laid out as the original is
-    dos_writer::Options dos = dos_writer::options_for(base::watcom::OpenWatcom::from_settings(fs::to_text(*config::Config::load(config::current().main_checkout()).path("openwatcom"))),
+    dos_writer::Options dos = dos_writer::options_for(toolchain::watcom::OpenWatcom::from_settings(fs::to_text(*config::Config::load(config::current().main_checkout()).path("openwatcom"))),
                                                       dir.path() / "dos_probes.json");
     dos.write_vxd = hook;
     const dos_writer::Result file = dos_writer::reconstruct(drw_data("drvspace.bin"), dir.path() / "file", dos);

@@ -1,4 +1,4 @@
-#include "build/msvc152.hpp"
+#include "toolchain/msvc152.hpp"
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
@@ -6,7 +6,7 @@
 namespace {
 
 using namespace cb;
-using namespace cb::build;
+using namespace cb::toolchain;
 
 class FakeRunner : public DosRunner {
 public:
@@ -32,7 +32,7 @@ struct Fixture {
 
 }  // namespace
 
-CB_TEST("build.msvc152.compile_asks_the_executive_for_the_right_run", [] {
+CB_TEST("toolchain.msvc152.compile_asks_the_executive_for_the_right_run", [] {
     Fixture f;
     FakeRunner runner;
     runner.result.ok = true;
@@ -65,7 +65,7 @@ CB_TEST("build.msvc152.compile_asks_the_executive_for_the_right_run", [] {
     CB_CHECK(c.work.has_value());
 });
 
-CB_TEST("build.msvc152.parts_that_were_not_made_are_absent", [] {
+CB_TEST("toolchain.msvc152.parts_that_were_not_made_are_absent", [] {
     Fixture f;
     FakeRunner runner;   // the executive ran and made nothing
     runner.result.work = f.dir.path() / "work";
@@ -78,7 +78,7 @@ CB_TEST("build.msvc152.parts_that_were_not_made_are_absent", [] {
     CB_CHECK(report.find("(no log)") != std::string::npos);
 });
 
-CB_TEST("build.msvc152.refuses_what_would_become_a_command", [] {
+CB_TEST("toolchain.msvc152.refuses_what_would_become_a_command", [] {
     Fixture f;
     FakeRunner runner;
     for (const char* flags : {"/c & del *.*", "/c > x", "/c | y", "/c %PATH%", "/c\nformat"}) {
@@ -94,7 +94,7 @@ CB_TEST("build.msvc152.refuses_what_would_become_a_command", [] {
     CB_CHECK_THROWS_AS(NotFoundError, (void)msvc152::compile_c(runner, missing, "x"));
 });
 
-CB_TEST("build.msvc152.report_shows_listing_size_and_work_folder", [] {
+CB_TEST("toolchain.msvc152.report_shows_listing_size_and_work_folder", [] {
     msvc152::Compiled c;
     c.cod = std::string(5000, 'x');
     c.obj = Bytes(77);

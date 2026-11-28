@@ -7,7 +7,7 @@
 
 #include "base/config.hpp"
 #include "base/corpus.hpp"
-#include "base/watcom.hpp"
+#include "toolchain/watcom.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "core/text.hpp"
@@ -59,7 +59,7 @@ struct Machine {
     std::unique_ptr<source::readable::Sdk> sdk;
     Machine() {
         const symbols::prototypes::HeaderFolders folders = symbols::prototypes::HeaderFolders::standard(
-            base::watcom::OpenWatcom::from_settings(config.text("openwatcom")).root(), corpus->reference());
+            toolchain::watcom::OpenWatcom::from_settings(config.text("openwatcom")).root(), corpus->reference());
         if (folders.w32.empty()) return;
         prototypes = std::make_unique<symbols::prototypes::PrototypeTable>(symbols::prototypes::read_headers(folders));
         sdk = std::make_unique<source::readable::Sdk>(source::readable::Sdk::read(folders, *prototypes));

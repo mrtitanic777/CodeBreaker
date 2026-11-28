@@ -15,7 +15,7 @@
 #include <set>
 
 #include "base/cache.hpp"
-#include "build/msc6.hpp"
+#include "toolchain/msc6.hpp"
 #include "exact/emu/native_dos_executive.hpp"
 #include "symbols/mask.hpp"
 #include "core/fs.hpp"
@@ -40,7 +40,7 @@ namespace stdfs = std::filesystem;
 namespace {
 
 namespace am16 = verify::authored::match16;
-namespace m6 = build::msc6;
+namespace m6 = toolchain::msc6;
 
 // The switches tried for Microsoft C 8.00c (match.ARCH["x86-16"].flag_sets).
 constexpr std::string_view kMsc8FlagSets[] = {"/AM /Gs /Od",  "/AM /G2s /Ox", "/AM /G2s /Oxs", "/AM /G2s /Os", "/AM /Gs /Ox",
@@ -143,7 +143,7 @@ public:
 private:
     m6::Tools tools_;
     exact::emu::NativeDosExecutive dos_;
-    std::unique_ptr<build::DosRunner> runner_;
+    std::unique_ptr<toolchain::DosRunner> runner_;
     m6::Context context_;
     stdfs::path work_;
 };

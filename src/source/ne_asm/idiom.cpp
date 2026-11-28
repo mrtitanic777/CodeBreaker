@@ -88,7 +88,7 @@ recon::Assemble nasm_assembler() {
     };
 }
 
-recon::Assemble ml_assembler(const build::DosRunner& runner, MlTools tools) {
+recon::Assemble ml_assembler(const toolchain::DosRunner& runner, MlTools tools) {
     return [&runner, tools = std::move(tools)](std::string_view source) {
         // the programs and the include files in a folder with no space in its path
         fs::make_dirs(tools.stage / "inc");
@@ -99,13 +99,13 @@ recon::Assemble ml_assembler(const build::DosRunner& runner, MlTools tools) {
         for (const auto& entry : stdfs::directory_iterator(tools.includes, ec))
             if (text::iequals(fs::to_text(entry.path().extension()), ".inc") && !stdfs::exists(tools.stage / "inc" / entry.path().filename(), ec))
                 stdfs::copy_file(entry.path(), tools.stage / "inc" / entry.path().filename(), ec);
-        build::DosRunSpec spec;
+        toolchain::DosRunSpec spec;
         spec.mounts = {{"c", tools.stage}};
         spec.commands = {"c:\\ml.exe /c /Ic:\\inc /Fom.obj /Flm.lst m.asm > a.txt"};
         spec.artifacts = {"m.obj", "m.lst", "a.txt"};
         spec.files["m.asm"] = std::string(source);
         spec.timeout = std::chrono::seconds(300);
-        const build::DosRunResult ran = runner.run(spec);
+        const toolchain::DosRunResult ran = runner.run(spec);
         recon::Assembled made;
         const auto text_of = [&](const char* name) {
             const auto at = ran.made.find(name);

@@ -34,7 +34,7 @@
 #include <vector>
 
 #include "base/corpus.hpp"
-#include "build/dos_run.hpp"
+#include "toolchain/dos_run.hpp"
 #include "source/ne_asm/fixups.hpp"
 #include "source/ne_asm/recon.hpp"
 #include "source/ne_asm/segdiff.hpp"
@@ -63,7 +63,7 @@ struct MlTools {
     std::filesystem::path ml_folder, extender, includes, stage;
 };
 // ML under a DOS emulator on a source: `ml /c /Ic:\inc /Fom.obj /Flm.lst m.asm`. `runner` must outlive the assembler.
-recon::Assemble ml_assembler(const build::DosRunner& runner, MlTools tools);
+recon::Assemble ml_assembler(const toolchain::DosRunner& runner, MlTools tools);
 
 // ---- the source -------------------------------------------------------------------------------------------------------------
 

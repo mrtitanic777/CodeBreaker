@@ -11,7 +11,7 @@
 
 #include "base/cache.hpp"
 #include "build/module_internal.hpp"
-#include "build/msc6.hpp"
+#include "toolchain/msc6.hpp"
 #include "core/fs.hpp"
 #include "core/parallel.hpp"
 #include "core/regex.hpp"
@@ -191,7 +191,7 @@ std::map<std::string, asm16::Import> assemble16(AssemblyJob& job) {
                 for (std::uint32_t a : drop) good.erase(a);
                 continue;
             }
-            const msc6::Code made = msc6::object_code(fs::read_file(obj));
+            const toolchain::msc6::Code made = toolchain::msc6::object_code(fs::read_file(obj));
             std::vector<std::uint32_t> hit;
             if (made.code.size() == f.end() - f.start()) {
                 const std::vector<std::uint32_t> diff = asm16::differences(made.code, made.mask, f);
@@ -241,7 +241,7 @@ std::map<std::string, asm16::Import> assemble16(AssemblyJob& job) {
                 const stdfs::path obj = folder / (stem + ".obj");
                 std::error_code ec;
                 if (r.code == 0 && stdfs::is_regular_file(obj, ec)) {   // (checked again: the original's bytes)
-                    const msc6::Code made = msc6::object_code(fs::read_file(obj));
+                    const toolchain::msc6::Code made = toolchain::msc6::object_code(fs::read_file(obj));
                     if (made.code.size() == f.end() - f.start() && asm16::differences(made.code, made.mask, f).empty()) return "";
                 }
             }

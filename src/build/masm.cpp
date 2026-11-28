@@ -14,9 +14,9 @@ namespace cb::build::masm {
 namespace {
 
 namespace stdfs = std::filesystem;
-using native_dos::Finished;
-using native_dos::Product;
-using native_dos::Source;
+using toolchain::native_dos::Finished;
+using toolchain::native_dos::Product;
+using toolchain::native_dos::Source;
 
 // The cache's layout number for a kept assembly: 4 bytes of the object's length, the object, the listing's text.
 // (The listing is Latin-1 text held as UTF-8; a log is not kept -- a kept assembly made an object, and its log said nothing.)
@@ -73,7 +73,7 @@ Product Assembler::assemble(std::string_view source, std::string_view stem, cons
     const stdfs::path root = root_override && !root_override->empty() ? *root_override : context_.tools.masm;
     if (!has_masm(root)) throw NotFoundError(root / "BIN" / "MASM.EXE", 2, "MASM.EXE not found (set it: CodeBreaker config masm <path>)");
     require_executive();
-    return native_dos::assemble(context_.dos, source, stem, root);
+    return toolchain::native_dos::assemble(context_.dos, source, stem, root);
 }
 
 Finished Assembler::assemble_many(std::span<const Source> items, const std::optional<stdfs::path>& root_override) {
@@ -113,7 +113,7 @@ Finished Assembler::assemble_many(std::span<const Source> items, const std::opti
     if (!misses.empty()) {
         if (!has_masm(root)) throw NotFoundError(root / "BIN" / "MASM.EXE", 2, "MASM.EXE not found (set it: CodeBreaker config masm <path>)");
         require_executive();
-        Finished fresh = native_dos::assemble_many(context_.dos, misses, root);
+        Finished fresh = toolchain::native_dos::assemble_many(context_.dos, misses, root);
         for (std::size_t m = 0; m < miss_at.size(); ++m) {
             Product& p = fresh.results.at(m).second;
             if (cache != nullptr && p.obj && !p.obj->empty()) cache->put(kCacheKind, keys[miss_at[m]], kept(p), kCacheSchema);   // never a failed assembly
@@ -126,7 +126,7 @@ Finished Assembler::assemble_many(std::span<const Source> items, const std::opti
 }
 
 void Assembler::require_executive() const {
-    if (!context_.dos.available()) throw native_dos::NativeDosError("the DOS executive is not available here (no emulator engine could be opened)");
+    if (!context_.dos.available()) throw toolchain::native_dos::NativeDosError("the DOS executive is not available here (no emulator engine could be opened)");
 }
 
 OrderedMap<std::string, formats::omf::FunctionBytes> Assembler::functions(std::string_view source) {

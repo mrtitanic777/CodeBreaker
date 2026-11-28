@@ -37,7 +37,7 @@
 #include <vector>
 
 #include "base/config.hpp"
-#include "build/dos_run.hpp"
+#include "toolchain/dos_run.hpp"
 #include "core/cli.hpp"
 
 namespace cb::build::period16 {
@@ -64,7 +64,7 @@ std::string response_file(const std::filesystem::path& folder);
 // Compile and link the DLL a source folder describes. -> the path of the built DLL, or none (the work folder
 // keeps CL.TXT, LINK.TXT and RC.TXT). NotFoundError when a tool is not set up. `work` is the folder to build
 // in (default: a new one under the temp folder, kept).
-std::optional<std::filesystem::path> build(const DosRunner& runner, const Tools& tools, const std::filesystem::path& folder,
+std::optional<std::filesystem::path> build(const toolchain::DosRunner& runner, const Tools& tools, const std::filesystem::path& folder,
                                            const std::optional<std::filesystem::path>& work = std::nullopt,
                                            std::string_view flags = "/AM /G2 /Gsw /Ox");
 

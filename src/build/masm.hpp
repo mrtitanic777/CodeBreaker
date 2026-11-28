@@ -34,16 +34,16 @@
 
 #include "base/cache.hpp"
 #include "base/config.hpp"
-#include "build/native_dos.hpp"
+#include "toolchain/native_dos.hpp"
 #include "core/cli.hpp"
 #include "core/ordered_map.hpp"
 #include "formats/omf.hpp"
 
 namespace cb::build::masm {
 
-using native_dos::Finished;
-using native_dos::Product;
-using native_dos::Source;
+using toolchain::native_dos::Finished;
+using toolchain::native_dos::Product;
+using toolchain::native_dos::Source;
 
 // Where the assembler is (settings.json: masm).
 struct Tools {
@@ -55,7 +55,7 @@ struct Tools {
 // What an Assembler needs: the tools, the DOS executive that runs MASM, and (optional) the cache.
 struct Context {
     Tools tools;
-    const native_dos::DosExecutive& dos;
+    const toolchain::native_dos::DosExecutive& dos;
     base::cache::Cache* cache = nullptr;
 };
 

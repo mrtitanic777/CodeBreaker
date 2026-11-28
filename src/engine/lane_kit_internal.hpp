@@ -15,7 +15,7 @@
 #include "base/config.hpp"
 #include "base/corpus.hpp"
 #include "build/functions.hpp"
-#include "base/watcom.hpp"
+#include "toolchain/watcom.hpp"
 #include "decompile/decompiler.hpp"
 #include "engine/lane_kit.hpp"
 #include "formats/pe.hpp"
@@ -94,7 +94,7 @@ public:
     // The link lines an object file of `module` needs for the imports its code calls (`used`: the imports its C calls).
     std::function<std::vector<std::string>(ByteView object)> import_lines(const std::filesystem::path& module,
                                                                           const std::vector<std::string>& used,
-                                                                          const base::watcom::OpenWatcom& openwatcom);
+                                                                          const toolchain::watcom::OpenWatcom& openwatcom);
     // {function key: {name, library}} of a module's functions that belong to a runtime library.
     std::map<std::string, std::pair<std::string, std::string>> identify(const std::filesystem::path& module);
 
@@ -123,7 +123,7 @@ struct LaneKit::Impl {
     build::functions::FunctionBuilder& builder();
     emulate::pcode::LifterSet* lifters();
     kit_detail::KitEnvironment& environment();
-    base::watcom::OpenWatcom openwatcom() const;
+    toolchain::watcom::OpenWatcom openwatcom() const;
 
     std::unique_ptr<base::cache::Cache> cache_;
     std::unique_ptr<knowledge::Store> store_;

@@ -1,4 +1,4 @@
-// build/msvc152.hpp -- compile 16-bit C with the PERIOD compiler (Microsoft Visual C++ 1.52c) on the DOS executive.
+// toolchain/msvc152.hpp -- compile 16-bit C with the PERIOD compiler (Microsoft Visual C++ 1.52c) on the DOS executive.
 //
 // The foundation of byte-exact C matching (matching decompilation): to prove a reconstructed C function is
 // right, compile it with the SAME compiler and flags that built retail Win98 and check the emitted bytes against
@@ -22,9 +22,9 @@
 #include <string>
 #include <string_view>
 
-#include "build/dos_run.hpp"
+#include "toolchain/dos_run.hpp"
 
-namespace cb::build::msvc152 {
+namespace cb::toolchain::msvc152 {
 
 // Where the compiler is (settings.json: msvc152).
 struct Tools {
@@ -46,11 +46,11 @@ inline constexpr std::string_view kSelfTestSource =
 // Compile `source` with MSVC 1.52c on the DOS executive. `stem` names the DOS files (1-8 letters, digits or
 // underscores); `flags` are CL's switches and may hold none of the characters DOS reads as redirection or a
 // command separator (UsageError). NotFoundError when CL.EXE is missing; ToolError when the executive cannot complete the run.
-Compiled compile_c(const DosRunner& runner, const Tools& tools, std::string_view source,
+Compiled compile_c(const toolchain::DosRunner& runner, const Tools& tools, std::string_view source,
                    std::string_view flags = "/AM /c", std::string_view stem = "t");
 
 // What the `cc16` command prints for a compile: the first 3000 bytes of the listing, the object's size, or the
 // compiler log when no object was made, and the work folder.
 std::string report(const Compiled& compiled);
 
-}  // namespace cb::build::msvc152
+}  // namespace cb::toolchain::msvc152

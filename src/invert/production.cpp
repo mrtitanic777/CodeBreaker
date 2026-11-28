@@ -9,8 +9,8 @@
 #include <set>
 
 #include "base/cache.hpp"
-#include "build/msc6.hpp"
-#include "base/watcom.hpp"
+#include "toolchain/msc6.hpp"
+#include "toolchain/watcom.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/log.hpp"
@@ -30,7 +30,7 @@ namespace cb::invert::command {
 namespace {
 
 namespace stdfs = std::filesystem;
-namespace msc6b = cb::build::msc6;
+namespace msc6b = cb::toolchain::msc6;
 
 // A switch setting that says "no".
 bool setting_off(std::string_view value) {
@@ -112,7 +112,7 @@ struct ProductionState {
     std::mutex lock;
     std::unique_ptr<base::cache::Cache> cache;
     std::unique_ptr<exact::emu::NativeDosExecutive> dos_executive;   // (declared before the runner, which uses it)
-    std::unique_ptr<build::DosRunner> runner;
+    std::unique_ptr<toolchain::DosRunner> runner;
     msc6b::Tools tools;
     // MC 2.03
     std::unique_ptr<exact::emu::dos::Executive> executive;
@@ -330,7 +330,7 @@ struct ProductionState {
     const symbols::prototypes::PrototypeTable& table() {
         std::lock_guard hold(lock);
         if (!prototypes) {
-            const base::watcom::OpenWatcom ow = base::watcom::OpenWatcom::from_settings(config.text("openwatcom"));
+            const toolchain::watcom::OpenWatcom ow = toolchain::watcom::OpenWatcom::from_settings(config.text("openwatcom"));
             const stdfs::path reference = corpus ? corpus->reference() : stdfs::path();
             prototypes = std::make_unique<symbols::prototypes::PrototypeTable>(
                 symbols::prototypes::read_headers(symbols::prototypes::HeaderFolders::standard(ow.root(), reference)));

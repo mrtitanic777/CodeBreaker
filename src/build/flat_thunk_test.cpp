@@ -489,7 +489,7 @@ CB_TEST("build.flat_thunk.a_build_without_its_tools_or_sources_fails_with_a_reas
     CB_CHECK(!r.ok);
     CB_CHECK(r.error.starts_with("no .thk in "));
     // OpenWatcom that is not built
-    const auto ow = base::watcom::OpenWatcom(dir.path() / "no-watcom");
+    const auto ow = toolchain::watcom::OpenWatcom(dir.path() / "no-watcom");
     r = ft::build_openwatcom(ow, dir.path() / "src");
     CB_CHECK(!r.ok);
     CB_CHECK_EQ(r.error, "OpenWatcom not built");

@@ -1,5 +1,5 @@
 // DosRunner on CodeBreaker's own DOS executive (native_dos_runner.hpp).
-#include "build/native_dos_runner.hpp"
+#include "toolchain/native_dos_runner.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -10,7 +10,7 @@
 #include "core/fs.hpp"
 #include "core/text.hpp"
 
-namespace cb::build {
+namespace cb::toolchain {
 
 namespace {
 
@@ -246,4 +246,4 @@ DosRunResult NativeDosRunner::run_here(const DosRunSpec& spec) const {
     return result;
 }
 
-}  // namespace cb::build
+}  // namespace cb::toolchain

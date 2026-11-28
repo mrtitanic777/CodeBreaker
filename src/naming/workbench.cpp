@@ -3,7 +3,7 @@
 
 #include <set>
 
-#include "base/watcom.hpp"
+#include "toolchain/watcom.hpp"
 #include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/log.hpp"
@@ -52,7 +52,7 @@ knowledge::Knowledge& Workbench::knowledge() {
             reference = environment_.corpus->reference();
         } catch (const Error&) {   // (no reference folder: the headers of the compiler alone spell the names)
         }
-        const std::filesystem::path openwatcom = base::watcom::OpenWatcom::from_settings(environment_.config->text("openwatcom")).root();
+        const std::filesystem::path openwatcom = toolchain::watcom::OpenWatcom::from_settings(environment_.config->text("openwatcom")).root();
         parts_->knowledge = std::make_unique<knowledge::Knowledge>(store(), symbols::prototypes::HeaderFolders::standard(openwatcom, reference));
     }
     return *parts_->knowledge;

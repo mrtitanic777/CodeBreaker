@@ -1,4 +1,4 @@
-#include "build/msvc152.hpp"
+#include "toolchain/msvc152.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -8,7 +8,7 @@
 #include "core/fs.hpp"
 #include "core/text.hpp"
 
-namespace cb::build::msvc152 {
+namespace cb::toolchain::msvc152 {
 
 namespace {
 
@@ -24,7 +24,7 @@ bool is_plain_switch_text(std::string_view s) {
 
 }  // namespace
 
-Compiled compile_c(const DosRunner& runner, const Tools& tools, std::string_view source, std::string_view flags,
+Compiled compile_c(const toolchain::DosRunner& runner, const Tools& tools, std::string_view source, std::string_view flags,
                    std::string_view stem_in) {
     if (!is_dos_stem(stem_in)) throw UsageError(std::format("'{}' is not a DOS file stem (1-8 letters, digits, underscores)", stem_in));
     if (!is_plain_switch_text(flags)) throw UsageError(std::format("compiler flags '{}' hold a character DOS reads as a command", flags));
@@ -33,7 +33,7 @@ Compiled compile_c(const DosRunner& runner, const Tools& tools, std::string_view
     if (!std::filesystem::exists(cl, ec)) throw NotFoundError(cl, 2, "MSVC 1.52c CL.EXE not found");
 
     const std::string stem(stem_in);
-    DosRunSpec spec;
+    toolchain::DosRunSpec spec;
     spec.mounts = {{"c", tools.msvc_root}};
     // /Fc emits a mixed source+machine-code listing; /Fo the obj.
     spec.commands = {std::format("CL {} /Fc{}.COD /Fo{}.OBJ {}.C > {}.LOG 2>&1", flags, stem, stem, stem, stem)};
@@ -44,7 +44,7 @@ Compiled compile_c(const DosRunner& runner, const Tools& tools, std::string_view
     spec.variables.insert_or_assign("LIB", "C:\\LIB");
     spec.variables.insert_or_assign("TMP", "D:\\");
 
-    const DosRunResult ran = runner.run(spec);
+    const toolchain::DosRunResult ran = runner.run(spec);
     if (!ran.why.empty()) throw ToolError("dos", 0, "", "the DOS executive could not complete the compile: " + ran.why);
     Compiled out;
     out.work = ran.work;
@@ -70,4 +70,4 @@ std::string report(const Compiled& c) {
     return out;
 }
 
-}  // namespace cb::build::msvc152
+}  // namespace cb::toolchain::msvc152

@@ -116,7 +116,7 @@ struct Services {
     std::function<std::optional<std::string>(const std::filesystem::path&)> kind_of_file;
     // The content hash a module's results are filed under unless its kind says another (the corpus's SHA-256).
     std::function<std::optional<std::string>(const std::filesystem::path&)> content_sha;
-    // Where a run keeps its work: <scratch>/reconstruct/<kind>/<module> (base::watcom::scratch_dir()).
+    // Where a run keeps its work: <scratch>/reconstruct/<kind>/<module> (toolchain::watcom::scratch_dir()).
     std::filesystem::path scratch;
     // {function key: {name, library}} of the functions of a module that are a runtime library's. Unset: none are known.
     std::function<std::map<std::string, std::pair<std::string, std::string>>(const std::filesystem::path&)> identify = {};

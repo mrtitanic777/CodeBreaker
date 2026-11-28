@@ -40,7 +40,7 @@
 #include <string_view>
 #include <vector>
 
-#include "base/watcom.hpp"
+#include "toolchain/watcom.hpp"
 #include "core/ordered_map.hpp"
 #include "verify/authored/match16.hpp"
 
@@ -71,7 +71,7 @@ struct WatcomCode {
 // Each source file compiled by OpenWatcom -zmsc as Microsoft C compiled it (the same functions together, the same switches --
 // `switches_of` is the Microsoft switches of a function). A file that does not compile is tried a function at a time, so one
 // function's error does not sink its file. `files` lists function names; those with no text are left out.
-WatcomCode compile_watcom(const base::watcom::OpenWatcom& watcom, const std::vector<std::vector<std::string>>& files,
+WatcomCode compile_watcom(const toolchain::watcom::OpenWatcom& watcom, const std::vector<std::vector<std::string>>& files,
                           const std::map<std::string, std::string>& texts, std::string_view header,
                           const std::function<std::string(const std::string& function)>& switches_of, const Log& log);
 
@@ -103,7 +103,7 @@ struct Inputs {
     const authored::match16::Result* result = nullptr;        // what match16::run made of them (Microsoft C 8's half)
     const std::map<std::string, std::string>* texts = nullptr;   // each function's C
     std::string header;
-    const base::watcom::OpenWatcom* watcom = nullptr;
+    const toolchain::watcom::OpenWatcom* watcom = nullptr;
     const authored::match16::Toolchain* toolchain = nullptr;  // the comparison of bytes
     std::optional<std::uint32_t> segment;                     // only the functions of this segment
     Log log;
