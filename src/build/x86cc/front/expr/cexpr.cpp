@@ -298,6 +298,24 @@ static TREEPTR ConstLeaf( FrontRun& front )
     return( leaf );
 }
 
+/*
+ * An integer constant of this type, as ConstLeaf makes the scanner's (l2body.hpp: a body built by calls has no tokens)
+ */
+TREEPTR IntConstLeaf( FrontRun& front, DATA_TYPE type, unsigned long long bits )
+{
+    DATA_TYPE   const_type = front.cvars.ConstType;
+    uint64      constant = front.cvars.Constant64;
+    TREEPTR     leaf;
+
+    front.cvars.ConstType = type;
+    U64Low( front.cvars.Constant64 ) = static_cast<unsigned int>( bits );
+    U64High( front.cvars.Constant64 ) = static_cast<unsigned int>( bits >> 32 );
+    leaf = ConstLeaf( front );
+    front.cvars.ConstType = const_type;
+    front.cvars.Constant64 = constant;
+    return( leaf );
+}
+
 TREEPTR IntLeaf( FrontRun& front, target_int value )
 {
     TREEPTR     leaf;
@@ -461,6 +479,29 @@ static TREEPTR SymLeaf( FrontRun& front )
                 sym.sym_type = GetType( front, TYP_INT );
             }
         }
+        IncSymWeight( front, &sym );
+        tree = VarLeaf( front, &sym, sym_handle );
+        SymReplace( front, &sym, sym_handle );
+    }
+    return( tree );
+}
+
+
+/*
+ * A name the unit declares, as SymLeaf makes it when it finds the name (l2body.hpp: a body built by calls has no tokens);
+ * NULL when nothing is declared by that name
+ */
+TREEPTR NameLeaf( FrontRun& front, const char *id )
+{
+    SYM_HANDLE  sym_handle;
+    TREEPTR     tree;
+    SYM_ENTRY   sym;
+
+    tree = CheckSym( front, CalcHashID( id ), id, &sym, &sym_handle );
+    if( tree == NULL ) {
+        if( sym_handle == SYM_NULL )
+            return( NULL );
+        sym.flags |= SYM_REFERENCED;
         IncSymWeight( front, &sym );
         tree = VarLeaf( front, &sym, sym_handle );
         SymReplace( front, &sym, sym_handle );

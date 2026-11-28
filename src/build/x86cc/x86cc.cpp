@@ -29,6 +29,9 @@ extern "C" {
 CB_WCC_ENTRIES(wcci86_)
 CB_WCC_ENTRIES(wcc386_)
 }
+// the bodies the next compiles take from their caller (front/stmt/cstmt.cpp: L2Statement)
+extern "C" void wcci86_L2SetBodies(cb::build::x86cc::BodySource* bodies);
+extern "C" void wcc386_L2SetBodies(cb::build::x86cc::BodySource* bodies);
 #endif
 
 namespace cb::build::x86cc {
@@ -51,14 +54,15 @@ struct Entries {
     int(IDEAPI* run)(IDEDllHdl, const char*, IDEBool*);
     void (*format)(IDECBHdl, const IDEMsgInfo*, char*, size_t, IDEMsgInfoFn);
     void(IDEAPI* free_run)(IDEDllHdl);   // frees the run the compiler gave back at the end of a compile
+    void (*set_bodies)(BodySource*);     // the bodies the caller gives for the next compiles (null: none)
     mutable IDEDllHdl spare = nullptr;   // the run of the last compile: new again, for the next (IDEInitDLL takes it)
 };
 
 const Entries& entries(Target t) {
     static const Entries i86{&wcci86_IDEInitDLL, &wcci86_IDEPassInitInfo, &wcci86_IDEFiniDLL, &wcci86_IDERunYourSelf,
-                             &wcci86_IdeMsgFormat, &wcci86_IDEFreeRun};
+                             &wcci86_IdeMsgFormat, &wcci86_IDEFreeRun, &wcci86_L2SetBodies};
     static const Entries i386{&wcc386_IDEInitDLL, &wcc386_IDEPassInitInfo, &wcc386_IDEFiniDLL, &wcc386_IDERunYourSelf,
-                              &wcc386_IdeMsgFormat, &wcc386_IDEFreeRun};
+                              &wcc386_IdeMsgFormat, &wcc386_IDEFreeRun, &wcc386_L2SetBodies};
     // (the runs kept go with the program)
     static const struct Free {
         const Entries& a;
@@ -144,7 +148,7 @@ void clear_stack() {
 bool available() { return true; }
 
 Run compile(Target target, const std::vector<std::string>& args, const stdfs::path& folder,
-            const std::map<std::string, std::string>& environment) {
+            const std::map<std::string, std::string>& environment, BodySource* bodies) {
     std::lock_guard lock(the_lock());
     Host host;
     host.environment = environment;
@@ -180,6 +184,11 @@ Run compile(Target target, const std::vector<std::string>& args, const stdfs::pa
     info.console_output = 0;
     if (host.entries->pass_info(dll, &info)) throw Error("x86cc: the compiler refused its settings");
     IDEBool fatal = 0;
+    struct Given {   // the caller's bodies, for this compile only
+        void (*set)(BodySource*);
+        Given(void (*s)(BodySource*), BodySource* b) : set(s) { set(b); }
+        ~Given() { set(nullptr); }
+    } given{host.entries->set_bodies, bodies};
     const int runcode = host.entries->run(dll, command.c_str(), &fatal);
     host.entries->fini(dll);
     fini.hdl = nullptr;
@@ -218,7 +227,7 @@ bool available() { return false; }
 
 void install() {}
 
-Run compile(Target, const std::vector<std::string>&, const stdfs::path&, const std::map<std::string, std::string>&) {
+Run compile(Target, const std::vector<std::string>&, const stdfs::path&, const std::map<std::string, std::string>&, BodySource*) {
     throw Error("x86cc: the in-process compilers are built on Windows only");
 }
 

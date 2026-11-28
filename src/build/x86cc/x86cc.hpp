@@ -19,6 +19,8 @@
 #include <string>
 #include <vector>
 
+#include "build/x86cc/l2body.hpp"
+
 namespace cb::build::x86cc {
 
 enum class Target { i86, i386 };
@@ -35,8 +37,9 @@ bool available();
 // unless CB_WCC=exe. The program calls it at startup (app/codebreaker_main.cpp), after x86link::install().
 void install();
 
-// One compile: the compiler's arguments (what follows its name on the command line), run in `folder`.
+// One compile: the compiler's arguments (what follows its name on the command line), run in `folder`. `bodies`: the function
+// bodies the caller gives as calls rather than as text (l2body.hpp), for this compile.
 Run compile(Target target, const std::vector<std::string>& args, const std::filesystem::path& folder,
-            const std::map<std::string, std::string>& environment = {});
+            const std::map<std::string, std::string>& environment = {}, BodySource* bodies = nullptr);
 
 }  // namespace cb::build::x86cc

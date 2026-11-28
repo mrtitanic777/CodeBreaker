@@ -543,6 +543,8 @@ extern TREEPTR      RValue( FrontRun& front, TREEPTR );
 extern TREEPTR      LongLeaf( FrontRun& front, target_long );
 extern TREEPTR      UIntLeaf( FrontRun& front, target_uint );
 extern TREEPTR      VarLeaf( FrontRun& front, SYMPTR, SYM_HANDLE );
+extern TREEPTR      NameLeaf( FrontRun& front, const char *id );     /* a declared name as SymLeaf makes it; NULL: none */
+extern TREEPTR      IntConstLeaf( FrontRun& front, DATA_TYPE type, unsigned long long bits );   /* a constant as ConstLeaf makes it */
 extern TREEPTR      BasedPtrNode( FrontRun& front, TYPEPTR, TREEPTR );
 extern bool         IsLValue( TREEPTR );
 extern op_flags     OpFlags( type_modifiers  flags );
@@ -752,6 +754,7 @@ extern void         PrintStats( FrontRun& front );
 /* cstmt */
 extern void         LookAhead( FrontRun& front );
 extern void         Statement( FrontRun& front );
+extern bool         L2Statement( FrontRun& front );   /* the body from the host, if it gives one (build/x86cc/l2body.hpp) */
 extern void         AddStmt( FrontRun& front, TREEPTR );
 extern void         GenFunctionNode( FrontRun& front, SYM_HANDLE );
 extern LABEL_INDEX  NextLabel( FrontRun& front );

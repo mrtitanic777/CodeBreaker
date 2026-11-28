@@ -209,3 +209,6 @@ tests only what it changes.
 - 2026-11-28: item 7 done: the last twelve -- 32X, Sega CD, 3DO, CD-i, PS4/PS5 and Xbox One on `executable`; Odyssey 2, Channel F
   (one 8-bit engine), Neo Geo Pocket, Vectrex, Intellivision and WonderSwan on the new `flat` shape -- byte-identical on their
   homebrew programs and synthetic test images (48 dumps, old against new).
+- 2026-11-28: item 6 started (docs/L2_COMPILER.md): seam 1, L2 lowered through x86cc's front end by its own semantic actions
+  (build/x86cc/l2body.hpp, build/l2cc); first slice: parameters, integer literals, the binary operators and return give the same
+  object byte for byte as their C on wcc386 and wcc. Next: locals and the other statements, then the lz32/lzexpand corpus.
