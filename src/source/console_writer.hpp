@@ -143,11 +143,13 @@ struct VectorField {
     std::string what;                 // its name, said beside it
     std::string as = "text";          // "text" (an `.ascii` line when it is plain text, else rows), "rows", "long" (`.long 0x...`), "pointer" (`.long` the label);
                                       // (MIPS) "ascii", "zeros" (`.space` or bytes), "word", "address" (a word, by its label), "bytes" (`.space`, `.ascii` or bytes),
-                                      // "byte" (a byte row), "items" (data rows) -- each but the first two with `what` (a template) as its comment
+                                      // "byte" (a byte row), "items" (data rows) -- each but the first two with `what` (a template) as its comment;
+                                      // (ARM) "comment" (`what` as a line), "byte_rows" (rows of `row` bytes), "padded" (a text and its zeros, or bytes)
     std::string when;                 // a loader value that must be set for the field to stand ("" always)
+    unsigned row = 12;                // ("rows") the bytes in a row
 };
 struct Vectored {
-    std::string cpu;                  // "m68k"; "mips" (the R3000A), "r4300" (console_mips.cpp)
+    std::string cpu;                  // "m68k"; "mips" (the R3000A), "r4300" (console_mips.cpp); "arm" (the ARM7TDMI: console_arm.cpp)
     std::string assembler;            // the L2 assembly's syntax ("asm68k", "gas")
     std::string source = "asm";       // the source's extension
     std::string built;                // the rebuilt file's name, a template
@@ -169,6 +171,8 @@ struct Vectored {
     std::uint32_t ram_size = 0;       // a KSEG0/KSEG1 address below this (physical) is a variable
     std::vector<Range> variables;     // other physical ranges whose addresses are variables
     std::string built_what = "image"; // what the rebuilt file is called in a note
+    std::string block;                // (ARM) the dialect block ahead of the names ("prologue"), given `block_cpu` as {cpu}
+    std::string block_cpu;
 };
 
 // A platform's description (config/platforms/<name>.json).

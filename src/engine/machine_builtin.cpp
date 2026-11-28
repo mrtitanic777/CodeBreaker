@@ -20,7 +20,6 @@
 #include "formats/read.hpp"
 #include "formats/sms.hpp"
 #include "formats/zx.hpp"
-#include "platforms/gba.hpp"
 #include "platforms/package.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
@@ -110,7 +109,7 @@ void register_ps1_lane() {
 void register_gba_lane() {
     register_lane({
         .name = "gba",
-        .platform = platforms::gba,
+        .platform = [] { return platforms::described("gba"); },
         .probe = [](const std::filesystem::path& p) { return formats::gba::probe(p); },
         .program_extensions = {".gba"},
     });

@@ -10,6 +10,7 @@
 // `%lo(name)` over a label, an `.equ var_<address>` for a variable outside the program, or the hardware register's name. Functions are `entry`
 // or `sub_<address>`, jump targets `L_<address>`, data `D_<address>`. The header is written field by field, as the description lists them.
 
+#include "source/console_risc.hpp"
 #include "source/console_shapes.hpp"
 
 #include <algorithm>
@@ -38,9 +39,6 @@ constexpr iw::Spelling kSub{"sub_", 8};
 constexpr iw::Spelling kLocal{"L_", 8};
 constexpr iw::Spelling kData{"D_", 8};
 constexpr unsigned kLookAhead = 8;           // instructions after a `lui` that may use what it loaded
-constexpr unsigned kStringMin = 4;           // a run of printable bytes this long is a string
-constexpr unsigned kStringMax = 96;
-constexpr std::size_t kFillMin = 16;         // a run of one value this long is `.space` / `.fill`
 constexpr unsigned kRounds = 4;              // how many times what the code points at may add functions
 constexpr unsigned kFunctionReach = 400;     // how many instructions a function is looked at for before it is called data
 
@@ -52,14 +50,7 @@ struct Cpu {
     std::optional<dm::Insn> decode(ByteView text, std::size_t off, std::uint32_t pc) const {
         return r4300 ? dm::decode(text, off, pc, dm::Variant::R4300) : dm::decode(text, off, pc);
     }
-    std::uint32_t word_at(ByteView text, std::size_t off) const {
-        if (big) {
-            return static_cast<std::uint32_t>(text[off]) << 24 | static_cast<std::uint32_t>(text[off + 1]) << 16 | static_cast<std::uint32_t>(text[off + 2]) << 8 |
-                   static_cast<std::uint32_t>(text[off + 3]);
-        }
-        return static_cast<std::uint32_t>(text[off]) | static_cast<std::uint32_t>(text[off + 1]) << 8 | static_cast<std::uint32_t>(text[off + 2]) << 16 |
-               static_cast<std::uint32_t>(text[off + 3]) << 24;
-    }
+    std::uint32_t word_at(ByteView text, std::size_t off) const { return risc::word_at(text, off, big); }
     // `addiu $sp, $sp, -N` (or the R4300's `daddiu`): how GCC opens a function that calls others or keeps a frame.
     bool is_prologue(std::uint32_t word) const {
         return ((word >> 16) == 0x27BD || (r4300 && (word >> 16) == 0x67BD)) && (word & 0x8000) != 0 && (word & 3) == 0;
@@ -193,76 +184,8 @@ enum class Kind { None, Text, Hardware, Variable };
 
 std::uint32_t physical(std::uint32_t a) { return a >= 0xC0000000u ? a : a & 0x1FFFFFFFu; }
 
-bool printable(std::uint8_t b) { return b >= 32 && b < 127 && b != '"' && b != '\\'; }
-
-std::string hex8(std::uint32_t v) { return std::format("0x{:08X}", v); }
-
-std::string byte_row(ByteView bytes) {
-    std::vector<std::string> items;
-    for (const std::uint8_t b : bytes) items.push_back(std::format("0x{:02X}", b));
-    return "        .byte " + text::join(items, ", ");
-}
-
-std::size_t printable_run(ByteView buf, std::size_t off, std::size_t limit) {
-    std::size_t run = 0;
-    while (off + run < limit && run < kStringMax && printable(buf[off + run])) ++run;
-    return run;
-}
-
-std::size_t same_run(ByteView buf, std::size_t off, std::size_t limit) {
-    std::size_t run = 1;
-    while (off + run < limit && buf[off + run] == buf[off]) ++run;
-    return run;
-}
-
-// Where a string starts inside the word at buf[at] (1 to 3 bytes in), or 0.
-std::size_t string_inside_word(ByteView buf, std::size_t at, std::size_t limit) {
-    for (std::size_t k = 1; k < 4 && at + k < limit; ++k)
-        if (printable_run(buf, at + k, limit) >= kStringMin) return k;
-    return 0;
-}
-
-// One line of data from buf[off], which is at `addr`, to before `limit`: a string, a run of one value, up to four words (a word that
-// `pointer_at` names is written as the name), or a few bytes. How many bytes it took, and the line.
-struct DataItem {
-    std::string line;
-    std::size_t took = 0;
-};
-DataItem data_item(const Cpu& cpu, ByteView buf, std::size_t off, std::size_t limit, std::uint32_t addr,
-                   const std::function<std::optional<std::string>(std::uint32_t)>& pointer_at) {
-    if (const std::size_t run = printable_run(buf, off, limit); run >= kStringMin) {
-        const bool terminated = off + run < limit && buf[off + run] == 0;
-        return {std::format("        {} \"{}\"", terminated ? ".asciz" : ".ascii", as_text(buf.subspan(off, run))), run + (terminated ? 1u : 0u)};
-    }
-    if (const std::size_t same = same_run(buf, off, limit); same >= kFillMin)
-        return {buf[off] == 0 ? std::format("        .space {}", same) : std::format("        .fill {}, 1, 0x{:02X}", same, buf[off]), same};
-    if (addr % 4 == 0 && off + 4 <= limit) {
-        if (const std::size_t lead = string_inside_word(buf, off, limit); lead != 0) return {byte_row(buf.subspan(off, lead)), lead};   // (the bytes before a string)
-        std::vector<std::string> items;
-        std::size_t took = 0;
-        while (items.size() < 4 && off + took + 4 <= limit) {
-            const std::size_t at = off + took;
-            if (took != 0 && (printable_run(buf, at, limit) >= kStringMin || same_run(buf, at, limit) >= kFillMin || string_inside_word(buf, at, limit) != 0)) break;
-            const std::uint32_t v = cpu.word_at(buf, at);
-            const std::optional<std::string> name = pointer_at(addr + static_cast<std::uint32_t>(took));
-            items.push_back(name ? *name : hex8(v));
-            took += 4;
-        }
-        return {"        .word " + text::join(items, ", "), took};
-    }
-    const std::size_t room = addr % 4 != 0 ? 4 - addr % 4 : limit - off;
-    const std::size_t count = std::min<std::size_t>({room, limit - off, 16});
-    return {byte_row(buf.subspan(off, count)), count};
-}
-
-// Data rows from `from` to `to` of `buf`, each at its own address (`at` + offset), naming no pointer.
-void items(std::vector<std::string>& out, const Cpu& cpu, ByteView buf, std::size_t from, std::size_t to, std::uint32_t at) {
-    for (std::size_t k = from; k < to;) {
-        const DataItem item = data_item(cpu, buf, k, to, at + static_cast<std::uint32_t>(k - from), [](std::uint32_t) { return std::nullopt; });
-        out.push_back(item.line);
-        k += item.took;
-    }
-}
+using risc::byte_row;
+using risc::hex8;
 
 const std::string& text_value(const Values& values, const char* name) {
     static const std::string none;
@@ -431,28 +354,9 @@ image_writer::Written write(const Description& d, const Loaded& program, Values 
             out.append(std::format("        .org {}", hex8(piece.address)));
         }
         if (piece.role == "header") {   // the header, field by field
-            for (const VectorField& f : shape.fields) {
-                const ByteView part = file.subspan(f.at, f.size);
-                const std::string what = fill(f.what, values);
-                if (f.as == "ascii") {
-                    out.append("        .ascii \"" + std::string(as_text(part)) + "\"");
-                } else if (f.as == "zeros") {
-                    out.append(std::ranges::all_of(part, [](std::uint8_t b) { return b == 0; }) ? std::format("        .space {}", f.size) : byte_row(part));
-                } else if (f.as == "word" || f.as == "address") {
-                    const std::uint32_t v = cpu.word_at(file, f.at);
-                    out.append(std::format("        .word {}    ; {}", f.as == "address" ? word_name(v) : hex8(v), what));
-                } else if (f.as == "bytes") {
-                    if (std::ranges::all_of(part, [](std::uint8_t b) { return b == 0; })) out.append(std::format("        .space {}    ; {}", f.size, what));
-                    else if (std::ranges::all_of(part, printable)) out.append(std::format("        .ascii \"{}\"    ; {}", as_text(part), what));
-                    else out.append(byte_row(part) + "    ; " + what);
-                } else if (f.as == "byte") {
-                    out.append(byte_row(part) + "    ; " + what);
-                } else {   // "items": data rows
-                    std::vector<std::string> lines;
-                    items(lines, cpu, file, f.at, f.at + f.size, f.at);
-                    out.extend(lines);
-                }
-            }
+            std::vector<std::string> lines;
+            risc::header_fields(lines, shape, file, values, word_name);
+            out.extend(lines);
         } else if (piece.code) {
             std::set<std::uint32_t> boundaries = {static_cast<std::uint32_t>(text.size())};
             for (const auto& entry : code) boundaries.insert(entry.first - base);
@@ -482,7 +386,7 @@ image_writer::Written write(const Description& d, const Loaded& program, Values 
                     continue;
                 }
                 const std::size_t limit = *boundaries.upper_bound(static_cast<std::uint32_t>(off));
-                const DataItem item = data_item(cpu, text, off, limit, addr, [&](std::uint32_t a) -> std::optional<std::string> {
+                const risc::DataItem item = risc::data_item(text, off, limit, addr, cpu.big, [&](std::uint32_t a) -> std::optional<std::string> {
                     if (!pointer_words.contains(a)) return std::nullopt;
                     return word_name(cpu.word_at(text, a - base));
                 });
@@ -491,7 +395,7 @@ image_writer::Written write(const Description& d, const Loaded& program, Values 
             }
         } else {   // data the program reads (a cartridge's past the first megabyte), each row at its own address
             std::vector<std::string> lines;
-            items(lines, cpu, file, piece.offset, piece.offset + piece.size, piece.address);
+            risc::items(lines, file, piece.offset, piece.offset + piece.size, piece.address, cpu.big);
             out.extend(lines);
         }
     }

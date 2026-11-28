@@ -18,6 +18,8 @@ src/source/console_segmented.cpp              the segmented shape (ca65 segments
 src/source/console_pce.cpp, console_snes.cpp  the flow the segmented shape cannot do alone (a SegmentCode: bank mapping, register widths)
 src/source/console_vectored.cpp               the vectored shape (a 68000 image from its vectors or header, each piece at an `.org`)
 src/source/console_mips.cpp                   the vectored shape's MIPS processor (the R3000A and the R4300: delay slots, %hi/%lo pairs)
+src/source/console_arm.cpp                    the vectored shape's ARM7TDMI processor (ARM and Thumb states, literal pools)
+src/source/console_risc.hpp                   what the RISC processors write alike: data rows, a header's fields
 src/source/console_platforms.cpp              per-platform code where it is truly needed: the loader (file -> image + values)
 ```
 
@@ -31,7 +33,7 @@ one way a program sits in memory, shared by every platform that sits that way:
 | `banked` | fixed-size banks, the first N mapped at power-on, a header range that is data, vectors at fixed places | Game Boy, Master System / Game Gear / SG-1000 |
 | `cart6502` | a 6502 cartridge's banks, each seen in a window; its last bytes data; the chips' read and write names | Atari 2600, 5200, 7800 |
 | `segmented` | the file cut into pieces, each a ca65 segment in an ld65 memory area: code linked where it is seen, the rest bytes by role | NES, Atari Lynx, PC Engine, SNES |
-| `vectored` | a 68000 image with a vector table or entry header, its pieces each at an `.org` | Genesis (and the 32X's 68000 side), Jaguar, PlayStation, Nintendo 64; next GBA, Neo Geo, Virtual Boy |
+| `vectored` | a 68000 image with a vector table or entry header, its pieces each at an `.org` | Genesis (and the 32X's 68000 side), Jaguar, PlayStation, Nintendo 64, Game Boy Advance; next Neo Geo, Virtual Boy |
 | `executable` (later) | a loader-format executable (ELF, 3DSX, NSO, SELF, XBE, DOL) with sections | PS2, PSP, PS3, Vita, 3DS, DS, Switch, GameCube/Wii/Wii U, Dreamcast, Saturn |
 
 The CPU is not the shape: a shape is written once over `image_writer`'s `CodeModel` / `Listing` and given the processor through its
@@ -128,3 +130,6 @@ engine.
   Genesis, Jaguar, 32X and Sega CD homebrew programs and the Genesis golden.
 - 2026-11-28: the vectored shape's MIPS processor (console_mips.cpp): the PlayStation and the Nintendo 64, their two near-duplicate
   writers one; byte-identical on all 58 PlayStation and 79 Nintendo 64 homebrew programs.
+- 2026-11-28: the vectored shape's ARM processor (console_arm.cpp): the Game Boy Advance, its header as fields (`comment`, `byte_rows`,
+  `padded`, `byte`, `zeros`); the data rows and header fields the RISC processors share (console_risc.hpp). Byte-identical on all 41 GBA
+  homebrew programs, and the PlayStation's and Nintendo 64's 137 again.

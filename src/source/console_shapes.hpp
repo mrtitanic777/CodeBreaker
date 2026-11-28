@@ -30,6 +30,11 @@ namespace mips_code {
 image_writer::Written write(const Description& d, const Loaded& program, Values values, const std::filesystem::path& folder);
 }
 
+// The `vectored` shape for an ARM7TDMI program (console_arm.cpp): the same, the head may name `functions` and `base`.
+namespace arm_code {
+image_writer::Written write(const Description& d, const Loaded& program, Values values, const std::filesystem::path& folder);
+}
+
 // The `vectored` shape (console_vectored.cpp).
 image_writer::Written write_vectored(const Description& d, const Loaded& program, const std::vector<std::string>& head, const Values& values,
                                      std::string_view file_name, const std::filesystem::path& folder);

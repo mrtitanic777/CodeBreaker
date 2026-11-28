@@ -36,7 +36,6 @@
 #include "formats/zx.hpp"
 #include "source/console_writer.hpp"
 #include "source/dos_writer.hpp"
-#include "source/gba_writer.hpp"
 #include "verify/lanes/dos.hpp"
 #include "verify/lanes/image_lane.hpp"
 #include "verify/lanes/msx.hpp"
@@ -584,7 +583,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::machine_lane(std::string_vie
         spec.effects = gba_effects;
         spec.what = {"end", "R0", "R1", "R4-R11", "SP", "RAM changes", "hardware accesses", "BIOS calls"};
         spec.start = [](const lanes::State& s) { return std::format("from R0={:08X} R1={:08X} R2={:X}", at(s, "a0"), at(s, "a1"), at(s, "a2")); };
-        spec.writer = [](const stdfs::path& m, const stdfs::path& out) { return written_of(source::gba_writer::reconstruct(m, out)); };
+        spec.writer = [](const stdfs::path& m, const stdfs::path& out) { return written_of(source::console_writer::reconstruct("gba", m, out)); };
         spec.key_digits = 8;
     } else if (name == "zx") {
         spec = flat_spec(FlatMachine{

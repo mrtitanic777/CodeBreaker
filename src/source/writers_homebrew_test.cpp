@@ -5,7 +5,6 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "source/console_writer.hpp"
-#include "source/gba_writer.hpp"
 #include "source/gekko_writer.hpp"
 #include "source/n3ds_writer.hpp"
 #include "source/nds_writer.hpp"
@@ -123,11 +122,11 @@ CB_TEST("source.writers.homebrew.playstation", [] {
 
 // (the Game Boy Advance's: hand-written ARM and Thumb tests, and devkitARM's C, each rebuilt from its source)
 CB_TEST("source.writers.homebrew.game_boy_advance", [] {
-    rebuild("gba/jsmolka-gba-tests/arm-arm.gba", 3, gba_writer::reconstruct);
-    rebuild("gba/jsmolka-gba-tests/thumb-thumb.gba", 3, gba_writer::reconstruct);
-    rebuild("gba/jsmolka-gba-tests/memory-memory.gba", 3, gba_writer::reconstruct);
-    rebuild("gba/zerodayarcade-pong/Pong-Homebrew-GBA.gba", 5, gba_writer::reconstruct);
-    rebuild("gba/nba-hw-test/timer-reload-reload.gba", 5, gba_writer::reconstruct);
+    rebuild("gba/jsmolka-gba-tests/arm-arm.gba", 3, console("gba"));
+    rebuild("gba/jsmolka-gba-tests/thumb-thumb.gba", 3, console("gba"));
+    rebuild("gba/jsmolka-gba-tests/memory-memory.gba", 3, console("gba"));
+    rebuild("gba/zerodayarcade-pong/Pong-Homebrew-GBA.gba", 5, console("gba"));
+    rebuild("gba/nba-hw-test/timer-reload-reload.gba", 5, console("gba"));
 });
 
 // (the SuperH consoles': the 32X's two SH-2s and the Saturn's disc, each from its source)

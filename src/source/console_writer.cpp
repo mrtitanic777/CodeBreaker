@@ -117,7 +117,7 @@ Vectored vectored_of(const nlohmann::ordered_json& j) {
     v.blank_after_piece = j.value("blank_after_piece", false);
     if (const auto fields = j.find("fields"); fields != j.end()) {
         for (const auto& f : *fields) {
-            v.fields.push_back({number_of(f.at("at")), number_of(f.at("size")), text_of(f, "what"), f.value("as", std::string("text")), text_of(f, "when")});
+            v.fields.push_back({number_of(f.at("at")), number_of(f.at("size")), text_of(f, "what"), f.value("as", std::string("text")), text_of(f, "when"), number_of(f, "row", 12)});
         }
     }
     v.vector_names = text_of(j, "vector_names");
@@ -131,6 +131,8 @@ Vectored vectored_of(const nlohmann::ordered_json& j) {
         for (const auto& r : *vars) v.variables.push_back({number_of(r.at(0)), number_of(r.at(1))});
     }
     if (j.contains("built_what")) v.built_what = text_of(j, "built_what");
+    v.block = text_of(j, "block");
+    v.block_cpu = text_of(j, "block_cpu");
     return v;
 }
 
@@ -324,7 +326,8 @@ image_writer::Written write(const Description& description, const Loaded& progra
     values.insert_or_assign("origin", static_cast<std::int64_t>(program.origin));
     const std::string stem = std::filesystem::path(file_name).stem().string();
     values.try_emplace("stem", stem);
-    if (description.shape == "vectored" && description.vectored.cpu != "m68k") return mips_code::write(description, program, values, folder);   // (its head names what flow found)
+    if (description.shape == "vectored" && description.vectored.cpu == "arm") return arm_code::write(description, program, values, folder);   // (their heads name what flow found)
+    if (description.shape == "vectored" && description.vectored.cpu != "m68k") return mips_code::write(description, program, values, folder);
     const std::vector<std::string> head = head_lines(description, values);
     if (description.shape == "z80-block") return write_z80_block(description, program, head, stem, folder);
     std::vector<std::string> comment;   // (the shapes below write the head as comment lines, an empty template an empty line)

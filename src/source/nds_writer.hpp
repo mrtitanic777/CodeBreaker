@@ -13,7 +13,7 @@
 // (the one assembler), and its own names: `arm9_arm_<address>` and `arm9_thumb_<address>` for functions, `L9_<address>` for jump targets,
 // `D9_<address>` for data (`arm7_...`, `L7_`, `D7_` for the other), `arm9_entry` and `arm7_entry` for where each starts.
 //
-// The programs are written as the GBA lane writes a cartridge (source/gba_writer.hpp): every function in the order it lies, `.arm` or `.thumb`
+// The programs are written as the GBA lane writes a cartridge (source/console_arm.cpp): every function in the order it lies, `.arm` or `.thumb`
 // before the instructions of the state it runs in, literal pools as `.word` lines, jump tables and pointer tables as labels, and each
 // instruction as text only when the text assembles back to the instruction's bits (otherwise `.hword`/`.word` with the instruction as a
 // comment). What differs is the instruction set (BLX with a label or a register is followed as a call that changes state; CLZ, the saturating

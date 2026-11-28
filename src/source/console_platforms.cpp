@@ -20,6 +20,7 @@
 #include "formats/coleco.hpp"
 #include "formats/cpc.hpp"
 #include "formats/gb.hpp"
+#include "formats/gba.hpp"
 #include "formats/genesis.hpp"
 #include "formats/jaguar.hpp"
 #include "formats/lynx.hpp"
@@ -346,6 +347,18 @@ Loaded load_n64(const std::filesystem::path& path) {
     return l;
 }
 
+// The Game Boy Advance: the ROM at $08000000, its header field by field; flow from the entry branch and what the code calls or points at.
+Loaded load_gba(const std::filesystem::path& path) {
+    const formats::gba::Rom rom = formats::gba::read(path);
+    Loaded l;
+    l.image = rom.data;
+    l.starts = rom.functions(isa::arm_decoder());
+    l.segments.pieces.push_back({"rom", "rom", "", 0, static_cast<std::uint32_t>(rom.data.size()), formats::gba::kRomBase, true});
+    l.segments.measured = rom.data.size();
+    l.values = {{"title", rom.header.title}, {"game_code", rom.header.game_code}};
+    return l;
+}
+
 Loaded load_lynx_file(const std::filesystem::path& file) { return load_lynx(formats::lynx::read(file)); }
 
 using Loader = Loaded (*)(const std::filesystem::path&);
@@ -357,6 +370,7 @@ constexpr std::pair<std::string_view, Loader> kLoaders[] = {
     {"coleco", load_coleco},
     {"cpc", load_cpc},
     {"gb", load_gb},
+    {"gba", load_gba},
     {"genesis", load_genesis_file},
     {"jaguar", load_jaguar},
     {"lynx", load_lynx_file},

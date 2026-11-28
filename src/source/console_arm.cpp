@@ -1,8 +1,23 @@
 // cb-unity: alone (file-local names that other files in a batch also use)
-// source/gba_writer.cpp -- a Game Boy Advance cartridge as assembly source that builds back into it (gba_writer.hpp).
+// source/console_arm.cpp -- the console writer's `vectored` shape for an ARM7TDMI program (console_writer.hpp): the Game Boy Advance, written as
+// GNU as's source (`.syntax unified`): every function in the order it lies in the ROM, with the state it runs in (`.arm` / `.thumb`) said before
+// its instructions, and the literal pools that follow a function's code as `.word` lines under a label of their own.
+//
+// Code is what the program's own flow reaches from the entry branch and from the functions it calls -- the processor's state is part of an
+// address (its lowest bit), a branch stays in its state, and the state changes only through `bx`, so a `bx r0` is followed to where it goes when
+// the register was just loaded from a literal pool or made from the pc (`ldr r0, =func+1`; `add r0, pc, #1`; `mov lr, pc` before it makes the
+// call come back). A function only called through a pointer is found where one begins after another's end (after a return and its literal
+// pool, when the bytes read as a function), or where a pointer to it is -- a word of a literal pool, or in a table -- and its bytes read as a
+// function. Every other byte is data: strings, words (a word holding an address in the ROM is its label), runs of one value, bytes.
+//
+// An instruction is written as text only when the text assembles back to its own bytes (the assembler's round trip); the few encodings the
+// assembler would write differently stay as `.hword`/`.word` with the instruction as a comment, so the source always builds the ROM it came
+// from. Functions are `arm_<address>` and `thumb_<address>` (`entry` for the header's branch), jump targets `L_<address>`, data `D_<address>`;
+// the hardware's registers have their names, other addresses outside the ROM are `var_<address>` equates. The header is written field by
+// field, as the description lists them.
 
-#include "source/gba_writer.hpp"
-#include "knowledge/package.hpp"
+#include "source/console_risc.hpp"
+#include "source/console_shapes.hpp"
 
 #include <algorithm>
 #include <format>
@@ -11,26 +26,23 @@
 #include <unordered_map>
 #include <vector>
 
+#include "core/error.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/arm.hpp"
-#include "source/isa.hpp"
+#include "knowledge/package.hpp"
 #include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 
-namespace cb::source::gba_writer {
+namespace cb::source::console_writer::arm_code {
 
 namespace da = decompile::arm;
 namespace iw = image_writer;
-namespace gba = formats::gba;
 
 namespace {
 
 constexpr iw::Spelling kLocal{"L_", 8};
 constexpr iw::Spelling kData{"D_", 8};
-constexpr unsigned kStringMin = 4;           // a run of printable bytes this long is a string
-constexpr unsigned kStringMax = 96;
-constexpr std::size_t kFillMin = 16;         // a run of one value this long is `.space` / `.fill`
 constexpr unsigned kRounds = 6;              // how many times what the code points at may add functions
 constexpr unsigned kFunctionReach = 200;     // how many instructions a function is looked at for before it is called data
 constexpr std::uint32_t kPoolReach = 160;    // how far past a function's end the next one is looked for (its literal pool lies between)
@@ -46,10 +58,7 @@ struct GInsn {
 
 bool ends_flow(const da::Insn& insn) { return insn.flow == da::Flow::Jump || insn.flow == da::Flow::Return || insn.flow == da::Flow::Indirect; }
 
-std::uint32_t word_at(ByteView b, std::size_t off) {
-    return static_cast<std::uint32_t>(b[off]) | static_cast<std::uint32_t>(b[off + 1]) << 8 | static_cast<std::uint32_t>(b[off + 2]) << 16 |
-           static_cast<std::uint32_t>(b[off + 3]) << 24;
-}
+std::uint32_t word_at(ByteView b, std::size_t off) { return risc::word_at(b, off, false); }
 
 std::uint32_t tagged(std::uint32_t real, bool thumb) { return real | (thumb ? 1u : 0u); }
 
@@ -186,127 +195,31 @@ bool reads_as_function(ByteView rom, std::uint32_t base, std::uint32_t key) {
 // How an address is named: part of the ROM, a hardware register, or a variable in RAM.
 enum class Kind { None, Text, Hardware, Variable };
 
-}  // namespace
-
-const std::map<std::uint32_t, std::string>& hardware() {
-    // config/knowledge/gba/registers.json
-    static const std::map<std::uint32_t, std::string> table = knowledge::standard().hardware_names("gba", "hardware");
-    return table;
-}
-
-namespace {
-
-std::string hex8(std::uint32_t v) { return std::format("0x{:08X}", v); }
-
-bool printable(std::uint8_t b) { return b >= 32 && b < 127 && b != '"' && b != '\\'; }
-
-std::string byte_row(ByteView bytes) {
-    std::vector<std::string> items;
-    for (const std::uint8_t b : bytes) items.push_back(std::format("0x{:02X}", b));
-    return "        .byte " + text::join(items, ", ");
-}
-
-std::size_t printable_run(ByteView buf, std::size_t off, std::size_t limit) {
-    std::size_t run = 0;
-    while (off + run < limit && run < kStringMax && printable(buf[off + run])) ++run;
-    return run;
-}
-
-std::size_t same_run(ByteView buf, std::size_t off, std::size_t limit) {
-    std::size_t run = 1;
-    while (off + run < limit && buf[off + run] == buf[off]) ++run;
-    return run;
-}
-
-// Where a string starts inside the word at buf[at] (1 to 3 bytes in), or 0.
-std::size_t string_inside_word(ByteView buf, std::size_t at, std::size_t limit) {
-    for (std::size_t k = 1; k < 4 && at + k < limit; ++k)
-        if (printable_run(buf, at + k, limit) >= kStringMin) return k;
-    return 0;
-}
-
-// One line of data from buf[off], which is at `addr`, to before `limit`: a string, a run of one value, up to four words (a word that
-// `word_at` names is written as the name), or a few bytes. How many bytes it took, and the line.
-struct DataItem {
-    std::string line;
-    std::size_t took = 0;
-};
-DataItem data_item(ByteView buf, std::size_t off, std::size_t limit, std::uint32_t addr,
-                   const std::function<std::optional<std::string>(std::uint32_t)>& named) {
-    if (const std::size_t run = printable_run(buf, off, limit); run >= kStringMin) {
-        const bool terminated = off + run < limit && buf[off + run] == 0;
-        return {std::format("        {} \"{}\"", terminated ? ".asciz" : ".ascii", as_text(buf.subspan(off, run))), run + (terminated ? 1u : 0u)};
-    }
-    if (const std::size_t same = same_run(buf, off, limit); same >= kFillMin)
-        return {buf[off] == 0 ? std::format("        .space {}", same) : std::format("        .fill {}, 1, 0x{:02X}", same, buf[off]), same};
-    if (addr % 4 == 0 && off + 4 <= limit) {
-        if (const std::size_t lead = string_inside_word(buf, off, limit); lead != 0) return {byte_row(buf.subspan(off, lead)), lead};   // (the bytes before a string)
-        std::vector<std::string> items;
-        std::size_t took = 0;
-        while (items.size() < 4 && off + took + 4 <= limit) {
-            const std::size_t at = off + took;
-            const std::optional<std::string> name = named(addr + static_cast<std::uint32_t>(took));
-            if (took != 0 && (printable_run(buf, at, limit) >= kStringMin || same_run(buf, at, limit) >= kFillMin ||
-                              string_inside_word(buf, at, limit) != 0))
-                break;
-            items.push_back(name ? *name : hex8(word_at(buf, at)));
-            took += 4;
-        }
-        return {"        .word " + text::join(items, ", "), took};
-    }
-    const std::size_t room = addr % 4 != 0 ? 4 - addr % 4 : limit - off;
-    const std::size_t count = std::min<std::size_t>({room, limit - off, 16});
-    return {byte_row(buf.subspan(off, count)), count};
-}
-
-// A text field of the header written as a string and the zeros after it, or bytes.
-void header_field(translate::l2::Assembly& out, ByteView rom, std::size_t at, std::size_t length) {
-    std::size_t text_length = 0;
-    while (text_length < length && printable(rom[at + text_length])) ++text_length;
-    const bool zero_tail = std::ranges::all_of(rom.subspan(at + text_length, length - text_length), [](std::uint8_t b) { return b == 0; });
-    if (!zero_tail) {
-        out.append(byte_row(rom.subspan(at, length)));
-        return;
-    }
-    if (text_length != 0) out.append(std::format("        .ascii \"{}\"", as_text(rom.subspan(at, text_length))));
-    if (text_length < length) out.append(std::format("        .space {}", length - text_length));
-}
-
-// The header from $04 to $BF, field by field.
-void header_lines(translate::l2::Assembly& out, const gba::Rom& rom) {
-    const ByteView b = rom.data;
-    out.append("        ; the Nintendo logo");
-    for (std::size_t at = 4; at < 0xA0; at += 12) out.append(byte_row(b.subspan(at, 12)));
-    out.append("        ; the title");
-    header_field(out, b, 0xA0, 12);
-    out.append("        ; the game code and the maker code");
-    header_field(out, b, 0xAC, 4);
-    header_field(out, b, 0xB0, 2);
-    out.append(std::format("        .byte 0x{:02X}    ; the fixed value", b[0xB2]));
-    out.append(std::format("        .byte 0x{:02X}    ; the main unit code", b[0xB3]));
-    out.append(std::format("        .byte 0x{:02X}    ; the device type", b[0xB4]));
-    if (std::ranges::all_of(b.subspan(0xB5, 7), [](std::uint8_t v) { return v == 0; })) out.append("        .space 7");
-    else out.append(byte_row(b.subspan(0xB5, 7)));
-    out.append(std::format("        .byte 0x{:02X}    ; the software version", b[0xBC]));
-    out.append(std::format("        .byte 0x{:02X}    ; the header checksum", b[0xBD]));
-    if (std::ranges::all_of(b.subspan(0xBE, 2), [](std::uint8_t v) { return v == 0; })) out.append("        .space 2");
-    else out.append(byte_row(b.subspan(0xBE, 2)));
-}
+using risc::hex8;
 
 }  // namespace
 
-iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::filesystem::path& folder) {
+image_writer::Written write(const Description& d, const Loaded& program, Values values, const std::filesystem::path& folder) {
+    const Vectored& shape = d.vectored;
     fs::make_dirs(folder);
-    const std::string stem = std::filesystem::path(file_name).stem().string();
-    const std::string base_name = std::filesystem::path(file_name).filename().string();
-    const ByteView image = rom.data;
-    const std::uint32_t base = gba::kRomBase;
+    const std::string stem = std::get<std::string>(values.at("stem"));
+    const std::string file_name = std::get<std::string>(values.at("file"));
+    const ByteView image = program.image;
+    if (program.segments.pieces.empty()) throw UsageError(std::format("console platform {}: the loader gives no program piece", d.name));
+    const std::uint32_t base = program.segments.pieces.front().address;
+    // the header: from the first field to the end of the last (written as its fields when no code or label lies in it)
+    std::uint32_t header_from = static_cast<std::uint32_t>(image.size()), header_size = 0;
+    for (const VectorField& f : shape.fields) {
+        header_from = std::min(header_from, f.at);
+        header_size = std::max(header_size, f.at + f.size);
+    }
+    const iw::Names hardware = knowledge::standard().hardware_names(d.platform, shape.registers);
     const std::uint32_t end = base + static_cast<std::uint32_t>(image.size());
     const GbaFlow flow(image, base);
 
     // function starts: what the entry point calls, and what the code points at or leaves behind
     std::set<std::uint32_t> entries;
-    for (const std::uint32_t a : rom.functions(isa::arm_decoder())) entries.insert(a);
+    for (const std::uint32_t a : program.starts) entries.insert(a);
     entries.insert(base);
 
     iw::Walked<GInsn> walked;
@@ -320,7 +233,7 @@ iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::fi
         bool added = false;
         const auto candidate = [&](std::uint32_t key, bool prologue_needed) {
             const std::uint32_t real = key & ~1u;
-            if (real < base + gba::kHeaderSize || real >= end || real % ((key & 1) ? 2 : 4) != 0 || covered[real - base] || entries.contains(key)) return;   // (the header is not code)
+            if (real < base + header_size || real >= end || real % ((key & 1) ? 2 : 4) != 0 || covered[real - base] || entries.contains(key)) return;   // (the header is not code)
             if ((!prologue_needed || is_prologue(image, base, key)) && reads_as_function(image, base, key)) added |= entries.insert(key).second;
         };
         // what follows a function's end: its literal pool, then the next function
@@ -366,10 +279,10 @@ iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::fi
     const auto line_start = [&](std::uint32_t a) { return a >= base && a < end && (!covered[a - base] || is_code(a)); };
     const auto physical_kind = [&](std::uint32_t a) {
         const auto within = [&](std::uint32_t lo, std::uint32_t size) { return a >= lo && a - lo < size; };
-        if (hardware().contains(a)) return Kind::Hardware;
-        if (within(0x02000000, 0x40000) || within(0x03000000, 0x8000) || within(0x05000000, 0x400) || within(0x06000000, 0x18000) || within(0x07000000, 0x400) ||
-            within(0x0E000000, 0x10000))
-            return Kind::Variable;
+        if (hardware.contains(a)) return Kind::Hardware;
+        for (const Range& r : shape.variables) {
+            if (within(r.from, r.to - r.from)) return Kind::Variable;
+        }
         return Kind::None;
     };
 
@@ -412,7 +325,7 @@ iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::fi
         }
         switch (physical_kind(v)) {
             case Kind::Hardware: {
-                const std::string n = hardware().at(v);
+                const std::string n = hardware.at(v);
                 equates[n] = v;
                 return n;
             }
@@ -470,15 +383,14 @@ iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::fi
         }
 
     // the source ----------------------------------------------------------------------------------------------------------------
-    const gba::Header& h = rom.header;
-    std::vector<std::string> head = {
-        std::format("; {}.s -- written by CodeBreaker from {}", stem, base_name),
-        std::format("; Game Boy Advance cartridge \"{}\" ({}): entry 0x{:08X}, {} bytes, {} functions", h.title, h.game_code, base, image.size(), functions.size()), ""};
-    translate::l2::Assembly out(head, "gas", std::string(file_name));
-    out.extend(dialect::find("gas-arm").block("prologue", {{"cpu", "arm7tdmi"}}));
+    values.insert_or_assign("functions", static_cast<std::int64_t>(functions.size()));
+    values.insert_or_assign("base", static_cast<std::int64_t>(base));
+    const dialect::Dialect& said = dialect::find(d.dialect);
+    translate::l2::Assembly out(head_comment(d, values), shape.assembler.empty() ? d.dialect : shape.assembler, file_name);
+    if (!shape.block.empty()) out.extend(said.block(shape.block, {{"cpu", shape.block_cpu}}));
     for (const auto& [name, value] : equates) out.append(std::format("        .equ {}, {}", name, hex8(value)));
     if (!equates.empty()) out.append("");
-    out.part("rom", "cartridge", std::nullopt);
+    out.part(program.segments.pieces.front().segment, "cartridge", std::nullopt);
     out.append(std::format("        .org {}", hex8(base)));
 
     std::set<std::uint32_t> boundaries = {static_cast<std::uint32_t>(image.size())};
@@ -487,7 +399,7 @@ iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::fi
         if (line_start(entry.first)) boundaries.insert(entry.first - base);
 
     const bool header_free = [&] {
-        for (std::uint32_t k = 4; k < gba::kHeaderSize; ++k)
+        for (std::uint32_t k = header_from; k < header_size; ++k)
             if (covered[k] || labels.contains(base + k)) return false;
         return true;
     }();
@@ -495,9 +407,11 @@ iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::fi
     std::size_t off = 0;
     while (off < image.size()) {
         const std::uint32_t addr = base + static_cast<std::uint32_t>(off);
-        if (off == 4 && header_free) {
-            header_lines(out, rom);
-            off = gba::kHeaderSize;
+        if (off == header_from && header_free && header_size > header_from) {
+            std::vector<std::string> lines;
+            risc::header_fields(lines, shape, image, values, [](std::uint32_t v) { return risc::hex8(v); });
+            out.extend(lines);
+            off = header_size;
             continue;
         }
         const auto label = labels.find(addr);
@@ -519,7 +433,7 @@ iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::fi
             const int wanted = insn.thumb() ? 1 : 0;
             if (as_data.contains(key)) {
                 // the bits, in pieces small enough to put a label between (an instruction another path of the code overlaps)
-                const std::string comment = "  ; " + dialect::find("gas-arm").instruction(instruction_text.at(key));
+                const std::string comment = "  ; " + said.instruction(instruction_text.at(key));
                 unsigned step = insn.length;
                 for (unsigned k = 1; k < insn.length; ++k)
                     if (labels.contains(addr + k)) step = std::min(step, k % 2 ? 1u : 2u);
@@ -546,7 +460,7 @@ iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::fi
             continue;
         }
         const std::size_t limit = *boundaries.upper_bound(static_cast<std::uint32_t>(off));
-        const DataItem item = data_item(image, off, limit, addr, [&](std::uint32_t a) -> std::optional<std::string> {
+        const risc::DataItem item = risc::data_item(image, off, limit, addr, false, [&](std::uint32_t a) -> std::optional<std::string> {
             const auto it = word_names.find(a);
             if (it == word_names.end()) return std::nullopt;
             return it->second;
@@ -555,14 +469,10 @@ iw::Written write(const gba::Rom& rom, std::string_view file_name, const std::fi
         off += item.took;
     }
 
-    const std::string source = dialect::find("gas-arm").print(iw::text(out) + "\n");   // (said in GNU as's: config/dialects/gas-arm.json)
-    iw::Written r = iw::finish(folder, stem + ".s", source, functions, iw::code_bytes(code, flow), image.size());
-    iw::assembled(r, [&] { return risc_source::assemble("arm", dialect::find("gas-arm").parse(source), folder); }, image, folder / (stem + ".built.gba"), "ROM");
+    const std::string source = said.print(iw::text(out) + "\n");   // (said in GNU as's: config/dialects/gas-arm.json)
+    iw::Written r = iw::finish(folder, stem + "." + shape.source, source, functions, iw::code_bytes(code, flow), program.segments.measured);
+    iw::assembled(r, [&] { return risc_source::assemble(shape.cpu, said.parse(source), folder); }, image, folder / fill(shape.built, values), shape.built_what);
     return r;
 }
 
-iw::Written reconstruct(const std::filesystem::path& rom_file, const std::filesystem::path& folder) {
-    return write(gba::read(rom_file), rom_file.filename().string(), folder);
-}
-
-}  // namespace cb::source::gba_writer
+}  // namespace cb::source::console_writer::arm_code

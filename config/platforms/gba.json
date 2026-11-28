@@ -1,0 +1,48 @@
+{
+  "platform": "gba",
+  "title": "Game Boy Advance",
+  "description": "A cartridge ROM at $08000000: every function in the order it lies, in the state it runs in (ARM or Thumb, followed through bx), literal pools as words under labels of their own, the 192-byte header field by field, in GNU as's syntax. The hardware's registers by the names libgba and libtonc give them, RAM, VRAM, palette, OAM and save RAM as var_ equates.",
+  "machine": {
+    "family": "arm",
+    "container": "cartridge ROM (.gba)",
+    "cpu": {"language": "ARM:LE:32:v4t", "bits": 32, "endian": "little", "decoder": "arm",
+            "registers": ["R0", "R1", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "SP"], "stack": "SP"},
+    "results": ["R0", "R1", "R4", "R5", "R6", "R7", "R8", "R9", "R10", "R11", "SP"],
+    "toolchain": "CodeBreaker's own assembler, or GNU as"
+  },
+  "shape": "vectored",
+  "dialect": "gas-arm",
+  "head": [
+    "{stem}.s -- written by CodeBreaker from {file}",
+    "Game Boy Advance cartridge \"{title}\" ({game_code}): entry 0x{base:08X}, {size} bytes, {functions} functions",
+    ""
+  ],
+  "vectored": {
+    "cpu": "arm",
+    "assembler": "gas",
+    "source": "s",
+    "built": "{stem}.built.gba",
+    "built_what": "ROM",
+    "block": "prologue",
+    "block_cpu": "arm7tdmi",
+    "registers": "hardware",
+    "variables": [["0x02000000", "0x02040000"], ["0x03000000", "0x03008000"], ["0x05000000", "0x05000400"], ["0x06000000", "0x06018000"],
+                  ["0x07000000", "0x07000400"], ["0x0E000000", "0x0E010000"]],
+    "fields": [
+      {"at": 4, "size": 0, "as": "comment", "what": "the Nintendo logo"},
+      {"at": 4, "size": 156, "as": "byte_rows", "row": 12},
+      {"at": "0xA0", "size": 0, "as": "comment", "what": "the title"},
+      {"at": "0xA0", "size": 12, "as": "padded"},
+      {"at": "0xAC", "size": 0, "as": "comment", "what": "the game code and the maker code"},
+      {"at": "0xAC", "size": 4, "as": "padded"},
+      {"at": "0xB0", "size": 2, "as": "padded"},
+      {"at": "0xB2", "size": 1, "as": "byte", "what": "the fixed value"},
+      {"at": "0xB3", "size": 1, "as": "byte", "what": "the main unit code"},
+      {"at": "0xB4", "size": 1, "as": "byte", "what": "the device type"},
+      {"at": "0xB5", "size": 7, "as": "zeros"},
+      {"at": "0xBC", "size": 1, "as": "byte", "what": "the software version"},
+      {"at": "0xBD", "size": 1, "as": "byte", "what": "the header checksum"},
+      {"at": "0xBE", "size": 2, "as": "zeros"}
+    ]
+  }
+}
