@@ -9,11 +9,20 @@
 #include <unordered_map>
 
 #include "core/error.hpp"
+#include "formats/cab.hpp"
 #include "core/text.hpp"
+#include "formats/detect.hpp"
+#include "formats/dos.hpp"
 #include "formats/format_compare_kit.hpp"
 #include "formats/le.hpp"
+#include "formats/mips_elf.hpp"
 #include "formats/ne.hpp"
+#include "formats/nes.hpp"
 #include "formats/pe.hpp"
+#include "formats/ppc_elf.hpp"
+#include "formats/xbox/pck.hpp"
+#include "formats/xbox/xbe.hpp"
+#include "formats/xbox/xdbf.hpp"
 
 namespace cb::formats::engine {
 
@@ -861,13 +870,132 @@ void digest_le(Digest& g, ByteView data) {
     });
 }
 
+void digest_mz_header(Digest& g, std::string_view what, const std::optional<dos::MzHeader>& h) {
+    if (!h) return g.line("{} none", what);
+    g.line("{} {} {} {} {} {} {} {} {} {} {}", what, h->relocation_count, h->header_size, h->min_alloc, h->max_alloc, h->ss, h->sp, h->ip, h->cs,
+           h->relocation_offset, h->size);
+}
+
+void digest_dos(Digest& g, ByteView data) {
+    digest_mz_header(g, "mz", dos::mz_header(data));
+    digest_mz_header(g, "mz_stub", dos::mz_header(data, true));
+    if (const auto d = detect::dos_header(data)) {
+        g.line("dos_header {} {} {} {} {} {} {} {} {} {} {} {} {} {} {} {}", d->bytes_in_last_page, d->pages, d->relocations, d->header_paragraphs, d->header_size,
+               d->min_alloc, d->max_alloc, d->ss, d->sp, d->checksum, d->ip, d->cs, d->relocation_table, d->overlay, d->new_header, d->load_size);
+        for (const auto& r : d->relocation_entries) g.line("  r {} {}", r.segment, r.offset);
+    }
+    if (const auto k = dos::kind_of(data, "file.exe")) g.line("kind {}", dos::kind_name(*k));
+    for (const auto& [at, size] : dos::chain(data)) g.line("chain {} {}", at, size);
+    if (const auto dv = dos::driver_and_vxd(data)) g.line("driver_and_vxd {} {}", dv->first, dv->second);
+    if (const auto dw = dos::dos_and_windows(data)) g.line("dos_and_windows {} {}", dw->first.size, dw->second);
+    if (const auto h = dos::mz_header(data, true))
+        if (const auto pk = dos::packer_of(data, *h)) g.line("packer {}", dos::packer_name(*pk));
+    g.guard("program", [&] {
+        const dos::Program p = dos::read_program(data, "file.exe", false);
+        g.line("program {} {} {} {} {} {} {} {} {:x} {} {}", dos::kind_name(p.kind), p.packer ? dos::packer_name(*p.packer) : "-", p.base, p.cs, p.ip, p.ss, p.sp,
+               dig_opt(p.ds), dig_hash(p.image), p.image.size(), p.overlay.size());
+        for (std::uint32_t r : p.relocations) g.line("  reloc {}", r);
+        for (const dos::Span& s : p.spans) g.line("  span {} {} {}", s.address, s.length, s.label);
+        for (const dos::Entry& e : p.entries) g.line("  entry {} {}", e.address, e.name);
+        for (const dos::Device& d : p.devices) g.line("  device {} {} {}", d.offset, d.attributes, d.name);
+    });
+}
+
+template <class E>
+void digest_elf_tables(Digest& g, const E& elf) {
+    g.line("elf {} {} {} {} {} {} {} {} {} {} {} {} {} {:x}", elf.type, elf.machine, elf.version, elf.entry, elf.phoff, elf.shoff, elf.flags, elf.ehsize, elf.phentsize,
+           elf.phnum, elf.shentsize, elf.shnum, elf.shstrndx, dig_hash(elf.data));
+    for (const auto& p : elf.program_headers) g.line("  ph {} {} {} {} {} {} {} {}", p.type, p.offset, p.vaddr, p.paddr, p.filesz, p.memsz, p.flags, p.align);
+    for (const auto& s : elf.sections)
+        g.line("  sh {} {} {} {} {} {} {} {} {} {} {}", s.name_offset, s.type, s.flags, s.address, s.offset, s.size, s.link, s.info, s.align, s.entsize, s.name);
+}
+
+void digest_elf(Digest& g, ByteView data) {
+    for (const std::uint16_t machine : {std::uint16_t{8}, std::uint16_t{40}})
+        if (mips_elf::probe_header(data, machine)) g.guard("mips_elf", [&] {
+            const mips_elf::Elf elf = mips_elf::parse(data, machine);
+            digest_elf_tables(g, elf);
+            for (const mips_elf::Symbol& s : elf.symbols()) g.line("  sym {} {} {} {} {} {}", s.name, s.value, s.size, s.type, s.bind, s.section);
+        });
+    if (ppc_elf::is_ppc_elf(data)) g.guard("ppc_elf", [&] {
+        const ppc_elf::Elf elf = ppc_elf::parse(data);
+        g.line("ppc {} {} {} {} {}", elf.wiiu, elf.os_abi, elf.abi_version, elf.inflated_sections, static_cast<int>(elf.console()));
+        digest_elf_tables(g, elf);
+    });
+}
+
+void digest_xbe(Digest& g, ByteView data) {
+    namespace xbe = xbox::xbe;
+    const xbe::Xbe x = xbe::Xbe::parse(data);
+    g.line("xbe {} {} {} {} {} {} {} {} {}", x.base, x.size_of_image, x.size_of_headers, x.cert_addr, x.section_count, x.section_header_addr, x.init_flags, x.entry_raw,
+           x.thunk_raw);
+    g.line("  cert {} {} {} {} {} {} {} {}", x.cert_size, x.title_id, x.allowed_media, x.region, x.ratings, x.disk_number, x.version, x.title_name);
+    g.line("  entry {} {} thunk {} {}", x.entry_point().address, xbe::key_set_name(x.entry_point().keys), x.kernel_thunk().address, xbe::key_set_name(x.kernel_thunk().keys));
+    g.line("  text {} {} {}", x.title_id_text(), x.region_text(), x.media_text());
+    g.guard("sections", [&] {
+        for (const xbe::Section& s : x.sections()) g.line("  section {} {} {} {} {} {}", s.name, s.flags, s.vaddr, s.vsize, s.raw_addr, s.raw_size);
+    });
+    g.guard("pe_image", [&] {
+        const Bytes pe = x.pe_image();
+        g.line("  pe {} {:x}", pe.size(), dig_hash(pe));
+    });
+}
+
+void digest_cab(Digest& g, ByteView data, const std::filesystem::path& file) {
+    const cab::Cabinet c = cab::parse(data, file);
+    g.line("cab {} {} {} {} {} {} {} {}", c.size, c.set_id, c.index, c.flags, c.version_major, c.version_minor, c.block_reserve, c.folders.size());
+    if (c.prev) g.line("  prev {} {}", c.prev->cabinet, c.prev->disk);
+    if (c.next) g.line("  next {} {}", c.next->cabinet, c.next->disk);
+    for (const cab::FolderEntry& f : c.folders) g.line("  folder {} {} {}", f.data_offset, f.block_count, f.type);
+    for (const cab::FileEntry& e : c.files) g.line("  file {} {} {} {} {} {} {}", e.name, e.size, e.offset, e.folder, e.date, e.time, e.attributes);
+    if (file.empty()) return;
+    for (std::size_t k = 0; k < c.folders.size(); ++k)
+        g.guard("folder", [&] {
+            const Bytes stream = cab::folder_stream(c, k);
+            g.line("  stream {} {} {:x}", k, stream.size(), dig_hash(stream));
+        });
+}
+
+void digest_xdbf(Digest& g, ByteView data) {
+    namespace xdbf = xbox::xdbf;
+    const xdbf::Database db = xdbf::Database::parse(data);
+    g.line("xdbf {} {} {} {} {} {}", db.version, db.entry_table_len, db.free_table_len, db.free_count, db.entries.size(), db.data_start());
+    for (const xdbf::Entry& e : db.entries) g.line("  entry {} {} {} {:x}", e.ns, e.id, e.payload.size(), dig_hash(e.payload));
+    for (const xdbf::Achievement& a : db.achievements()) g.line("  ach {} {} {} {} {} {}", a.id, a.image, a.score, a.flags, a.name, a.locked_desc);
+}
+
+void digest_pck(Digest& g, ByteView data) {
+    namespace pck = xbox::pck;
+    const pck::Archive a = pck::parse(data);
+    g.line("pck {} {} {} {}", a.version, a.properties.size(), a.entries.size(), a.table_end);
+    for (const auto& [id, name] : a.properties) g.line("  prop {} {}", id, name);
+    for (const pck::Entry& e : a.entries) g.line("  entry {} {} {}", e.size, e.type, e.name);
+    const pck::Payloads p = pck::payloads(data);
+    g.line("  payloads {} {}", p.end, p.file_size);
+    for (const pck::Payload& f : p.found) g.line("  payload {} {} {}", f.name, f.offset, f.size);
+}
+
+void digest_nes(Digest& g, ByteView data) {
+    const nes::Rom rom = nes::parse(data);
+    g.line("nes {} {} {} {} {} {:x} {} {:x} {:x} {:x} {} {} {}", rom.nes2, rom.mapper, rom.submapper, static_cast<int>(rom.mirroring), rom.battery, dig_hash(rom.header),
+           rom.trainer.size(), dig_hash(rom.prg), dig_hash(rom.chr), dig_hash(rom.extra), rom.vectors.nmi, rom.vectors.reset, rom.vectors.irq);
+    g.line("  sizes {} {} {} code_at {}", rom.prg.size(), rom.chr.size(), rom.extra.size(), rom.code_at);
+}
+
 }  // namespace
 
-std::string reader_digest(ByteView data) {
+std::string reader_digest(ByteView data, const std::filesystem::path& file) {
     Digest g;
     g.guard("pe", [&] { digest_pe(g, data); });
     g.guard("ne", [&] { digest_ne(g, data); });
     g.guard("le", [&] { digest_le(g, data); });
+    g.guard("dos", [&] { digest_dos(g, data); });
+    if (data.size() >= 4 && data[0] == 0x7F && data[1] == 0x45) g.guard("elf", [&] { digest_elf(g, data); });
+    if (file.extension() == ".pck" || file.extension() == ".PCK") g.guard("pck", [&] { digest_pck(g, data); });
+    if (data.size() >= 4 && data[0] == 0x58 && data[1] == 0x44 && data[2] == 0x42 && data[3] == 0x46) g.guard("xdbf", [&] { digest_xdbf(g, data); });
+    if (data.size() >= 4 && data[0] == 0x4D && data[1] == 0x53 && data[2] == 0x43 && data[3] == 0x46) g.guard("cab", [&] { digest_cab(g, data, file); });
+    if (data.size() >= 4 && data[0] == 0x58 && data[1] == 0x42 && data[2] == 0x45 && data[3] == 0x48) g.guard("xbe", [&] { digest_xbe(g, data); });
+    if (data.size() >= 4 && data[0] == 0x4E && data[1] == 0x45 && data[2] == 0x53) g.guard("nes", [&] { digest_nes(g, data); });
     std::uint64_t hash = 1469598103934665603ull;
     for (char c : g.text) hash = (hash ^ static_cast<std::uint8_t>(c)) * 1099511628211ull;
     return std::format("{:016x} {} bytes", hash, g.text.size());

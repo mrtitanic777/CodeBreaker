@@ -92,7 +92,7 @@ int main(int argc, char** argv) {
                 continue;
             }
             if (readers) {   // the digest of what the readers answer: the same before and after they moved onto the engine
-                std::printf("%s %s\n", fs::to_text(file).c_str(), eng::reader_digest(data).c_str());
+                std::printf("%s %s\n", fs::to_text(file).c_str(), eng::reader_digest(data, file).c_str());
                 continue;
             }
             if (!quiet || tree) std::printf("%s (%zu bytes): ", fs::to_text(file).c_str(), data.size());
