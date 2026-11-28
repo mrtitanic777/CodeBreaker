@@ -1,7 +1,54 @@
-# ps3.fmt -- how the PlayStation 3's files are told (formats/detect): a 64-bit big-endian PowerPC ELF (PSL1GHT's
-# output) and a SELF, whose segment table (the 64-bit offset at $48) says whether the segments are encrypted.
+# ps3.fmt -- the PlayStation 3's programs (formats/ps3): a 64-bit big-endian PowerPC ELF (PSL1GHT's output) and the SELF
+# (version 2) that wraps one: the ELF header and program headers at the offsets the SELF gives, and a table of 32-byte
+# segment entries (one per program header: where the segment's bytes are, how many, whether they are zlib-compressed
+# and whether they are encrypted). The structures of the ELF itself are elf.fmt's, read in big-endian order.
+# How the files are told (formats/detect) is at the end.
+#
+# What a table outside the file, a segment that is not there or an encrypted one means is the reader's: the tables are
+# read tolerantly (`try`) and the reader checks them.
 
 format ps3
+endian be
+use elf
+
+struct File {
+    if peek32be(0) == 0x53434500 {
+        self : Self
+    } else {
+        elf : PlainElf
+    }
+}
+
+# A plain ELF: the identification, the file header and the program headers (56 bytes each, whatever phentsize says).
+struct PlainElf {
+    let is64 = 1
+    ident    : Ident
+    header   : Header
+    segments @ header.phoff : Segment[header.phnum] try
+}
+
+# A SELF: "SCE\0", version 2, then (at $30, $38 and $48) the offsets of the ELF header, the program headers and the
+# segment entries.
+struct Self {
+    magic       : bytes(4) == "SCE\0"
+    version     : u32 == 2
+    elf_offset  @ 0x30 : u64
+    phdr_offset @ 0x38 : u64
+    info_offset @ 0x48 : u64
+    let is64 = 1
+    ident    @ elf_offset : Ident try
+    header   @ elf_offset + 16 : Header try
+    segments @ phdr_offset : Segment[header.phnum] try
+    infos    @ info_offset : SegmentInfo[header.phnum] try
+}
+
+struct SegmentInfo {
+    offset      : u64
+    length      : u64
+    compression : u32        # 1 plain, 2 zlib
+    unknown     : bytes(8)
+    encryption  : u32        # 1 encrypted, 2 not
+}
 
 # the ELF's 64-bit entry point (the address of its descriptor), printed without leading zeros
 detect 100 ps3 "PlayStation 3 executable (ELF)" command reach
