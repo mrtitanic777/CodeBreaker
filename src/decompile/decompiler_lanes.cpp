@@ -565,8 +565,8 @@ std::vector<LeMember> Decompiler::decompile_le(const std::filesystem::path& modu
         auto d = std::make_shared<describe::LeDescription>(
             describe::describe_le(image, name, outdir / text::sanitize_identifier(name), context_.environment->knowledge()));
         const auto line = [](Va va) -> std::pair<std::string, std::string> {
-            const std::int64_t object = (va - describe::kLeBase) / describe::kLeStride + 1;
-            const std::int64_t offset = (va - describe::kLeBase) % describe::kLeStride;
+            const std::int64_t object = (va - core16::kLeBase) / core16::kLeStride + 1;
+            const std::int64_t offset = (va - core16::kLeBase) % core16::kLeStride;
             const std::string n = "sub_" + std::to_string(object) + "_" + upper_hex(offset, 5);
             return {n, "F\t" + hex(va) + "\t" + n + "\t-1"};
         };

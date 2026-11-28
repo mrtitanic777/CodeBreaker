@@ -81,13 +81,13 @@ Loaded load_ne_module(const stdfs::path& path, const Environment& environment) {
     for (const formats::ne::Entry& e : module.entries()) {
         if (e.kind == formats::ne::Entry::Kind::Unused) continue;
         by_ordinal[e.ordinal] = e;
-        const Va va = decompile::describe::address(e.segment, e.offset);
+        const Va va = core16::address(e.segment, e.offset);
         const auto name = d.names.find(va);
         if (name == d.names.end() || !d.where_map.contains(va)) continue;
         layout.entry_points.emplace_back(static_cast<int>(e.segment), static_cast<std::uint32_t>(e.offset));
     }
     const std::uint32_t cs = module.header().cs_ip >> 16, ip = module.header().cs_ip & 0xFFFF;
-    if (cs != 0 && d.names.contains(decompile::describe::address(cs, ip))) layout.entry_points.emplace_back(static_cast<int>(cs), ip);
+    if (cs != 0 && d.names.contains(core16::address(cs, ip))) layout.entry_points.emplace_back(static_cast<int>(cs), ip);
     layout.data_segment = static_cast<int>(d.data_segment);
 
     // where the loader writes an address: every place a relocation record (and its chain) names
@@ -101,9 +101,9 @@ Loaded load_ne_module(const stdfs::path& path, const Environment& environment) {
             if (const auto* internal = std::get_if<formats::ne::InternalRef>(&r.target)) {
                 if (internal->segment == 0xFF) {
                     const auto e = by_ordinal.find(internal->entry);
-                    if (e != by_ordinal.end()) target = decompile::describe::address(e->second.segment, e->second.offset);
+                    if (e != by_ordinal.end()) target = core16::address(e->second.segment, e->second.offset);
                 } else {
-                    target = decompile::describe::address(internal->segment, internal->entry);
+                    target = core16::address(internal->segment, internal->entry);
                 }
             } else if (const auto* ordinal = std::get_if<formats::ne::ImportOrdinalRef>(&r.target)) {
                 const std::string mod = ordinal->module >= 1 && ordinal->module <= refs.size() ? refs[ordinal->module - 1u] : "?";

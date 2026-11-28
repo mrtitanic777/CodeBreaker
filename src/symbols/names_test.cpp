@@ -207,8 +207,8 @@ struct World {
 CB_TEST("symbols.names.a_function_is_keyed_as_the_store_keys_it", [] {
     CB_CHECK_EQ(nm::function_key(cb::base::Lane::Pe, 0x7FE0183A), "7fe0183a");
     CB_CHECK_EQ(nm::function_key(cb::base::Lane::Pe, 0x10A3C), "10a3c");
-    CB_CHECK_EQ(nm::function_key(cb::base::Lane::Ne, static_cast<nm::Address>(cb::decompile::describe::address(1, 0x4A2))), "1:04a2");
-    CB_CHECK_EQ(nm::function_key(cb::base::Lane::Ne, static_cast<nm::Address>(cb::decompile::describe::address(12, 0x10))), "12:0010");
+    CB_CHECK_EQ(nm::function_key(cb::base::Lane::Ne, static_cast<nm::Address>(cb::core16::address(1, 0x4A2))), "1:04a2");
+    CB_CHECK_EQ(nm::function_key(cb::base::Lane::Ne, static_cast<nm::Address>(cb::core16::address(12, 0x10))), "12:0010");
     CB_CHECK_EQ(nm::function_key(cb::base::Lane::Le, 0x400), "400");
 });
 
@@ -318,7 +318,7 @@ CB_TEST("symbols.names.the_bodies_of_a_16_bit_module", [] {
     const auto bodies = namer.bodies(w.lz16);
     CB_CHECK(!bodies.empty());
     for (const auto& [address, digest] : bodies) {
-        const cb::core16::SegOff place = cb::decompile::describe::where(static_cast<cb::decompile::describe::Va>(address));
+        const cb::core16::SegOff place = cb::core16::where(static_cast<cb::core16::Va>(address));
         CB_CHECK(place.seg >= 1 && place.seg <= 12);
         CB_CHECK_EQ(digest.size(), 16U);
     }
@@ -356,7 +356,7 @@ CB_TEST("symbols.names.a_16_bit_module_names_what_it_exports", [] {
     World w;
     nm::Namer namer(w.services());
     const auto own = namer.own_names(w.lz16);
-    const auto at = [](unsigned seg, unsigned off) { return static_cast<nm::Address>(cb::decompile::describe::address(seg, off)); };
+    const auto at = [](unsigned seg, unsigned off) { return static_cast<nm::Address>(cb::core16::address(seg, off)); };
     CB_CHECK_EQ(own.size(), 12U);   // the twelve exports that have names (the other eighteen are by number only)
     CB_CHECK(own.at(at(2, 0)) == (nm::NameSource{"LZINIT", "export"}));
     CB_CHECK(own.at(at(2, 0x2EE)) == (nm::NameSource{"LZSEEK", "export"}));
@@ -371,7 +371,7 @@ CB_TEST("symbols.names.an_export_the_module_leaves_unnamed_is_named_by_the_ordin
     World w(shipped);
     nm::Namer namer(w.services());
     const auto own = namer.own_names(w.lz16);
-    const auto at = [](unsigned seg, unsigned off) { return static_cast<nm::Address>(cb::decompile::describe::address(seg, off)); };
+    const auto at = [](unsigned seg, unsigned off) { return static_cast<nm::Address>(cb::core16::address(seg, off)); };
     CB_CHECK_EQ(own.size(), 14U);
     CB_CHECK(own.at(at(10, 0x124)) == (nm::NameSource{"Thirteen", "ordinal table (lzexpand.def)"}));   // @13
     CB_CHECK(own.at(at(10, 0x1B6)) == (nm::NameSource{"Fourteen", "ordinal table (lzexpand.def)"}));   // @14
@@ -380,7 +380,7 @@ CB_TEST("symbols.names.an_export_the_module_leaves_unnamed_is_named_by_the_ordin
 
 CB_TEST("symbols.names.debug_symbols_are_used_only_for_the_build_they_are_of", [] {
     World w;
-    const auto at = [](unsigned seg, unsigned off) { return static_cast<nm::Address>(cb::decompile::describe::address(seg, off)); };
+    const auto at = [](unsigned seg, unsigned off) { return static_cast<nm::Address>(cb::core16::address(seg, off)); };
     // LZEXPAND.SYM, as the linker would have written it for this build: its exports sit where the module's own table puts them (LZINIT 2:0000, LZSEEK
     // 2:02ee, LZREAD 2:03d6), and the build's internal functions are named too
     w.put_reference("LZEXPAND.SYM", sym_file({{2, "_LZCODE", {{0x0, "LZINIT"}, {0x2EE, "LZSEEK"}, {0x3D6, "LZREAD"}, {0x100, "_Helper"}, {0x180, "_Other"}}, false},
@@ -404,7 +404,7 @@ CB_TEST("symbols.names.debug_symbols_are_used_only_for_the_build_they_are_of", [
 
 CB_TEST("symbols.names.symbols_of_another_build_name_nothing", [] {
     World w;
-    const auto at = [](unsigned seg, unsigned off) { return static_cast<nm::Address>(cb::decompile::describe::address(seg, off)); };
+    const auto at = [](unsigned seg, unsigned off) { return static_cast<nm::Address>(cb::core16::address(seg, off)); };
     // the same exports at other places: another build of the module (offsets move between builds)
     w.put_reference("LZEXPAND.SYM", sym_file({{2, "_LZCODE", {{0x10, "LZINIT"}, {0x300, "LZSEEK"}, {0x3E0, "LZREAD"}, {0x100, "_Helper"}}, false}}));
     nm::Namer namer(w.services());
@@ -488,7 +488,7 @@ CB_TEST("symbols.names.every_function_has_a_name_from_the_best_source_that_has_o
     ord::ShippedTables shipped;
     shipped["LZEXPAND"] = {"lzexpand.def", 2, 0, {{13, "Thirteen"}}};
     World w(shipped);
-    const auto at = [](unsigned seg, unsigned off) { return static_cast<nm::Address>(cb::decompile::describe::address(seg, off)); };
+    const auto at = [](unsigned seg, unsigned off) { return static_cast<nm::Address>(cb::core16::address(seg, off)); };
     const auto key = [&](unsigned seg, unsigned off) { return nm::function_key(cb::base::Lane::Ne, at(seg, off)); };
     // the body store knows a name for the function at 2:0000 (an export: the module's name wins), at 4:0000 (a name given by hand beats the export of
     // another... no: the export is the module's own, so it wins too), and for two functions the module names no other way
@@ -714,7 +714,7 @@ CB_TEST("symbols.names.the_command_names_a_body_and_counts_the_shared_ones", [] 
     CB_CHECK_EQ(out.out(), "7 bodies recorded, 5 distinct; 2 bodies are in two or more modules (4 functions are such copies)\n");
     const auto bodies = namer.bodies(w.lz16);
     const auto& [address, digest] = *bodies.begin();
-    const cb::core16::SegOff place = cb::decompile::describe::where(static_cast<cb::decompile::describe::Va>(address));
+    const cb::core16::SegOff place = cb::core16::where(static_cast<cb::core16::Va>(address));
     const std::string spelled = std::format("{}:{:x}", place.seg, place.off);
     cb::testing::CapturedStd named;
     CB_CHECK_EQ(namer.run(std::vector<std::string>{"lzexpand.dll", "--set", spelled, "Renamed"}), 0);
@@ -879,7 +879,7 @@ CB_TEST("symbols.names.an_assistants_suggestion_is_stored_apart_and_checked", []
     nm::Namer namer(p.services());
     cb::symbols::proposals::Proposals proposing(p.proposing(namer));
     // a function nothing names (LZEXPAND's 1:0000)
-    const auto address = static_cast<nm::Address>(cb::decompile::describe::address(1, 0));
+    const auto address = static_cast<nm::Address>(cb::core16::address(1, 0));
     const auto stored = proposing.suggest(p.w.lz16, address, "InitHeader", "Reads the file header.", 70);
     CB_CHECK_EQ(stored.rule, "assistant");
     CB_CHECK_EQ(stored.confidence, 70);
@@ -887,10 +887,10 @@ CB_TEST("symbols.names.an_assistants_suggestion_is_stored_apart_and_checked", []
     CB_CHECK_THROWS_AS(cb::UsageError, (void)proposing.suggest(p.w.lz16, address, "bad name", "", 70));
     CB_CHECK_THROWS_AS(cb::UsageError, (void)proposing.suggest(p.w.lz16, address, "Fine", "", 101));
     // an exported function has its name already
-    const auto exported = static_cast<nm::Address>(cb::decompile::describe::address(2, 0));
+    const auto exported = static_cast<nm::Address>(cb::core16::address(2, 0));
     CB_CHECK_THROWS_AS(cb::UsageError, (void)proposing.suggest(p.w.lz16, exported, "Other", "", 50));
     // a name another function has
-    const auto second = static_cast<nm::Address>(cb::decompile::describe::address(1, 0xb2));
+    const auto second = static_cast<nm::Address>(cb::core16::address(1, 0xb2));
     CB_CHECK_THROWS_AS(cb::UsageError, (void)proposing.suggest(p.w.lz16, second, "InitHeader", "", 50));
     // the rules leave an assistant's proposal alone
     (void)proposing.propose(p.w.lz16);

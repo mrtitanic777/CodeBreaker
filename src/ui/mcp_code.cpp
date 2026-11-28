@@ -176,14 +176,14 @@ std::unique_ptr<CodeImage> code_read_ne(Context& context, const std::filesystem:
     for (const formats::ne::Entry& e : entries) {
         if (e.kind == formats::ne::Entry::Kind::Unused) continue;
         by_ordinal[e.ordinal] = e;
-        const CodeVa va = decompile::describe::address(e.segment, e.offset);
+        const CodeVa va = core16::address(e.segment, e.offset);
         const auto name = d.names.find(va);
         if (name == d.names.end() || !d.where_map.contains(va)) continue;
         layout.entry_points.emplace_back(static_cast<int>(e.segment), static_cast<std::uint32_t>(e.offset));
         if (!name->second.starts_with("sub_")) out->exports[va] = name->second;
     }
     const std::uint32_t cs = module.header().cs_ip >> 16, ip = module.header().cs_ip & 0xFFFF;
-    if (cs != 0 && d.names.contains(decompile::describe::address(cs, ip))) layout.entry_points.emplace_back(static_cast<int>(cs), ip);
+    if (cs != 0 && d.names.contains(core16::address(cs, ip))) layout.entry_points.emplace_back(static_cast<int>(cs), ip);
     layout.data_segment = static_cast<int>(d.data_segment);
 
     // where the loader writes an address: every place a relocation record (and its chain) names
@@ -197,9 +197,9 @@ std::unique_ptr<CodeImage> code_read_ne(Context& context, const std::filesystem:
             if (const auto* internal = std::get_if<formats::ne::InternalRef>(&r.target)) {
                 if (internal->segment == 0xFF) {
                     const auto e = by_ordinal.find(internal->entry);
-                    if (e != by_ordinal.end()) target = decompile::describe::address(e->second.segment, e->second.offset);
+                    if (e != by_ordinal.end()) target = core16::address(e->second.segment, e->second.offset);
                 } else {
-                    target = decompile::describe::address(internal->segment, internal->entry);
+                    target = core16::address(internal->segment, internal->entry);
                 }
             } else if (const auto* ordinal = std::get_if<formats::ne::ImportOrdinalRef>(&r.target)) {
                 const std::string mod = ordinal->module >= 1 && ordinal->module <= refs.size() ? refs[ordinal->module - 1u] : "?";
@@ -310,7 +310,7 @@ std::string CodeReader::import_name(std::string_view text_in) {
 CodeVa CodeReader::place(CodeImage& ci, std::string_view text_in) {
     const std::string a = code_address_text(text_in);
     if (const std::size_t colon = a.find(':'); colon != std::string::npos && ci.image->bits() == 16 && code_all_hex(a.substr(0, colon)) && code_all_hex(a.substr(colon + 1)))
-        return decompile::describe::address(static_cast<CodeVa>(std::stoull(a.substr(0, colon), nullptr, 16)), static_cast<CodeVa>(std::stoull(a.substr(colon + 1), nullptr, 16)));
+        return core16::address(static_cast<CodeVa>(std::stoull(a.substr(0, colon), nullptr, 16)), static_cast<CodeVa>(std::stoull(a.substr(colon + 1), nullptr, 16)));
     if (code_all_hex(a) && a.size() <= 16) {
         const CodeVa va = static_cast<CodeVa>(std::stoull(a, nullptr, 16));
         return ci.image->flat() && va < ci.base ? va + ci.base : va;

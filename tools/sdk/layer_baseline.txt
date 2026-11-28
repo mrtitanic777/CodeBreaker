@@ -25,7 +25,6 @@ symbols/identify.cpp -> build/flat_thunk.hpp
 symbols/identify.cpp -> decompile/describe.hpp
 symbols/names.cpp -> analyze/dos_functions.hpp
 symbols/names.cpp -> decompile/describe.hpp
-symbols/names_bodies.cpp -> decompile/describe.hpp
 symbols/ordinal_collect.hpp -> decompile/environment.hpp
 symbols/workbench.cpp -> decompile/environment.hpp
 symbols/workbench.cpp -> source/module_writer.hpp

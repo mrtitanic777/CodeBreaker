@@ -348,7 +348,7 @@ c_text::SegmentImages images_in_description(const std::filesystem::path& descrip
         const std::int64_t offset = hex_field(p[3], "bytes offset"), length = hex_field(p[4], "bytes length");
         const std::size_t from = std::min<std::size_t>(static_cast<std::size_t>(std::max<std::int64_t>(offset, 0)), file.size());
         const std::size_t to = std::min<std::size_t>(from + static_cast<std::size_t>(std::max<std::int64_t>(length, 0)), file.size());
-        images[describe::where(hex_field(p[1], "bytes address")).seg] = Bytes(file.begin() + static_cast<std::ptrdiff_t>(from), file.begin() + static_cast<std::ptrdiff_t>(to));
+        images[core16::where(hex_field(p[1], "bytes address")).seg] = Bytes(file.begin() + static_cast<std::ptrdiff_t>(from), file.begin() + static_cast<std::ptrdiff_t>(to));
     }
     return images;
 }

@@ -37,6 +37,27 @@ struct SegOff {
     friend constexpr auto operator<=>(const SegOff&, const SegOff&) = default;
 };
 
+// ---- the address spaces of a 16-bit (and LE) module, as the decompiler lays them out -----------------------------------
+// Segment n stands at selector kFirstSelector + 8*(n-1); an address is (selector << 16) + offset. Imported functions stand at
+// kExternSelector:16*n, an import used as a selector at kImportSelector + n; an LE object n at kLeBase + (n-1)*kLeStride.
+using Va = std::int64_t;
+inline constexpr Va kFirstSelector = 0x1000;
+inline constexpr Va kExternSelector = 0xE000;
+inline constexpr Va kImportSelector = 0xD000;
+inline constexpr Va kLeBase = 0x1000000;
+inline constexpr Va kLeStride = 0x1000000;
+inline constexpr Va kLeSlots = 0x0F000000;     // one pointer per service called, read as that service
+
+constexpr Va selector(Va seg) { return kFirstSelector + 8 * (seg - 1); }
+constexpr Va address(Va seg, Va off) { return (selector(seg) << 16) + off; }
+constexpr Va le_address(Va obj, Va off) { return kLeBase + (obj - 1) * kLeStride + off; }
+// (segment, offset) of an address inside the module's segments.
+constexpr SegOff where(Va va) {
+    const Va s = (va >> 16) - kFirstSelector;
+    const Va q = s / 8 - ((s % 8 != 0 && s < 0) ? 1 : 0);   // floor division
+    return SegOff{static_cast<std::uint32_t>(q + 1), static_cast<std::uint32_t>(va & 0xFFFF)};
+}
+
 // ==== analyze: classes, structures ===================================================================================
 
 // A C++ class found in a module: one row of analyze::classes::hierarchy(image), also what source::classes_writer makes

@@ -22,7 +22,7 @@ namespace {
 // The 32-bit address of a place of an LE image under the address plan every reader of this program shares (one object per 16M).
 std::uint32_t driver_le_place(std::uint32_t object, std::int64_t offset) {
     if (object < 1 || object > 255) throw FormatError("driver image", 0, std::format("object {} is outside the address plan", object));
-    return static_cast<std::uint32_t>(decompile::describe::le_address(object, offset));
+    return static_cast<std::uint32_t>(core16::le_address(object, offset));
 }
 
 void driver_put_u32(std::uint8_t* at, std::uint32_t v) {

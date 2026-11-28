@@ -63,7 +63,7 @@ bool is_digits(std::string_view s) { return !s.empty() && std::all_of(s.begin(),
 
 std::string function_key(base::Lane lane, Address address) {
     if (lane == base::Lane::Ne) {
-        const core16::SegOff place = describe::where(static_cast<describe::Va>(address));
+        const core16::SegOff place = core16::where(static_cast<core16::Va>(address));
         return std::format("{}:{:04x}", place.seg, place.off);
     }
     return std::format("{:x}", address);
@@ -165,7 +165,7 @@ struct Namer::Impl {
             return out;
         }
         const auto place = [&](std::uint32_t segment, std::uint32_t offset) -> std::optional<Address> {
-            if (is_ne) return static_cast<Address>(describe::address(segment, offset));
+            if (is_ne) return static_cast<Address>(core16::address(segment, offset));
             if (0 < segment && segment <= sections.size()) return image_base + sections[segment - 1] + offset;
             return std::nullopt;
         };
@@ -238,7 +238,7 @@ struct Namer::Impl {
         if (l == base::Lane::Ne) {
             std::vector<Address> out;
             for (const auto& [place, distance] : describe::find_functions(ne::Module::open_file(module)))
-                out.push_back(static_cast<Address>(describe::address(place.seg, place.off)));
+                out.push_back(static_cast<Address>(core16::address(place.seg, place.off)));
             std::sort(out.begin(), out.end());
             return out;
         }
@@ -274,7 +274,7 @@ struct Namer::Impl {
             const ne::Module m = ne::Module::open_file(module);
             std::map<std::uint32_t, Address> entries;
             for (const ne::Entry& e : m.entries())
-                if (e.kind != ne::Entry::Kind::Unused) entries[e.ordinal] = static_cast<Address>(describe::address(e.segment, e.offset));
+                if (e.kind != ne::Entry::Kind::Unused) entries[e.ordinal] = static_cast<Address>(core16::address(e.segment, e.offset));
             const std::vector<ne::Name> nonresident = m.nonresident_names(), resident = m.resident_names();
             for (const auto* names : {&nonresident, &resident})   // (the module's own name, the first of each, is not an export)
                 for (std::size_t i = 1; i < names->size(); ++i)
@@ -477,7 +477,7 @@ std::optional<Address> parse_address(std::string_view text_in) {
     const auto segment = text::parse_int<std::uint32_t>(text_in.substr(0, colon), 10);
     const auto offset = text::parse_int<std::uint32_t>(text_in.substr(colon + 1), 16);
     if (!segment || !offset) return std::nullopt;
-    return static_cast<Address>(describe::address(*segment, *offset));
+    return static_cast<Address>(core16::address(*segment, *offset));
 }
 
 namespace {

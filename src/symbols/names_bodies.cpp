@@ -7,7 +7,7 @@
 #include "core/crypto.hpp"
 #include "core/io.hpp"
 #include "core/text.hpp"
-#include "decompile/describe.hpp"
+#include "core16_types.hpp"
 #include "symbols/names.hpp"
 #include "symbols/x86.hpp"
 
@@ -157,7 +157,7 @@ std::map<Address, std::string> bodies16(const formats::ne::Module& module, std::
             }
             if (own < 6) continue;
             const std::vector<std::uint32_t> mask(masked.begin(), masked.end());
-            if (auto digest = body_digest(function, mask, last)) out[static_cast<Address>(decompile::describe::address(number, start))] = std::move(*digest);
+            if (auto digest = body_digest(function, mask, last)) out[static_cast<Address>(core16::address(number, start))] = std::move(*digest);
         }
     }
     return out;

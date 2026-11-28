@@ -238,7 +238,7 @@ ModuleFacts module_facts16(std::optional<ByteView> code, std::int64_t off, std::
     f.distance = distance;
     f.model = model;
     f.far_return = far_return;
-    if (seg) f.selector = describe::selector(*seg);
+    if (seg) f.selector = core16::selector(*seg);
     if (code) {
         f.widths_far = w16_far_argument_widths(*code, off, end, true);
         f.widths_near = w16_far_argument_widths(*code, off, end, false);
@@ -292,7 +292,7 @@ Module16 compilable16(Services& services, const std::filesystem::path& module, c
         if (conventions::mentions(parts[4], conventions::Convention::Stdcall) || conventions::mentions(parts[4], conventions::Convention::Cdecl)) model_of[parts[2]] = parts[4];
     }
     std::optional<Va> dgroup;
-    if (d.data_segment != 0) dgroup = describe::selector(d.data_segment);
+    if (d.data_segment != 0) dgroup = core16::selector(d.data_segment);
     const SegmentImages images = d.images;
     // Each function's C written from its L2 document by the C back end, with what the module says of it (the back end's passes on the
     // tree, its heading as the description and its instructions give it)
@@ -437,7 +437,7 @@ Module16 compilable16(Services& services, const std::filesystem::path& module, c
         for (const auto& [seg, bytes] : d.images)
             if (!d.code.contains(seg) && seg != d.data_segment) other.push_back(seg);
         const Json extras = library.segment_plan(function_list, Json{{"$s", near_names}}, Json{{"$d", where_pairs}}, Json{{"$d", site_pairs}}, code_segments,
-                                                 d.data_segment, w16_set(other), describe::kFirstSelector);
+                                                 d.data_segment, w16_set(other), core16::kFirstSelector);
         for (const auto& [name, extra] : extras.items()) plan_update(name, extra);
     }
     // ... and the data a function reads through CS from beside its code: by name, in its own code segment (backends/c._code_segment_reads
@@ -552,7 +552,7 @@ Module16 compilable16(Services& services, const std::filesystem::path& module, c
     const OrderedMap<std::uint64_t, std::string> made_by_va = m.made.by_va();
     for (const auto& [prefix, addr] : globals_used) {
         const Va va = *text::parse_int<Va>(addr, 16);
-        const SegOff place = describe::where(va);
+        const SegOff place = core16::where(va);
         const std::int64_t size = sizes.contains(va) ? sizes[va] : 2;
         std::string ty = internal::global_type16(prefix, size, elems.contains(va) ? std::optional<std::int64_t>(elems[va]) : std::nullopt);
         const std::string key = prefix + "Ram" + addr;

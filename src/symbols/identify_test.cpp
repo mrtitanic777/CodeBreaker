@@ -150,7 +150,7 @@ CB_TEST("symbols.identify.the_identifier_answers_in_the_addresses_the_decompiler
     CB_CHECK_EQ(identifier.function_count(w.dir.path() / "corpus" / "lz32.dll"), 39U);
     const sy::identify::Found lzexpand = identifier.identify(w.dir.path() / "corpus" / "lzexpand.dll");
     CB_CHECK_EQ(lzexpand.size(), 4U);
-    const sy::identify::Address first = static_cast<sy::identify::Address>(cb::decompile::describe::address(11, 0x10));
+    const sy::identify::Address first = static_cast<sy::identify::Address>(cb::core16::address(11, 0x10));
     CB_CHECK(lzexpand.contains(first));
     CB_CHECK_EQ(lzexpand.at(first).name, "_dos_getftime");
     const cb::symbols::runtime_library::CompilerInfo info = identifier.compiler(w.dir.path() / "corpus" / "lz32.dll", lz32);

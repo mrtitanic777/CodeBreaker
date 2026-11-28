@@ -114,7 +114,7 @@ struct Identifier::Impl {
             if (e.kind != formats::ne::Entry::Kind::Unused) m.entries.push_back({static_cast<std::uint16_t>(e.ordinal), e.segment, e.offset});
         if (rl::runtime_library_of(text::upper(m.module_name)) != nullptr) m.ordinal_names = s.ordinals.table(text::upper(m.module_name));
         Found out;
-        for (auto& [place, what] : rl::identify_ne(table(rl::Bits::X16), m)) out.emplace(static_cast<Address>(describe::address(place.segment, place.offset)), std::move(what));
+        for (auto& [place, what] : rl::identify_ne(table(rl::Bits::X16), m)) out.emplace(static_cast<Address>(core16::address(place.segment, place.offset)), std::move(what));
         return out;
     }
 };
@@ -245,7 +245,7 @@ cli::Command command(const Environment& environment) {
             for (const auto& [address, what] : found) {
                 std::string where;
                 if (is_ne) {
-                    const core16::SegOff place = describe::where(static_cast<describe::Va>(address));
+                    const core16::SegOff place = core16::where(static_cast<core16::Va>(address));
                     where = std::format("{}:{:04x}", place.seg, place.off);
                 } else {
                     where = std::format("{:08x}", address);

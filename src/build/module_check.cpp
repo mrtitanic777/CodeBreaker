@@ -117,7 +117,7 @@ std::vector<Dispute> ModuleBuilder::disputes(const decompile::describe::NeDescri
             const auto address = text::parse_int<std::int64_t>(p[1], 16);
             const auto pops = text::parse_int<std::int64_t>(p[3]);
             if (!address || !pops) continue;
-            const auto who = say.find(decompile::describe::where(*address));
+            const auto who = say.find(core16::where(*address));
             if (who == say.end()) continue;
             const std::string said = who->second == decompile::describe::Remover::Callee ? "callee" : "caller";
             if (said != (*pops > 0 ? "callee" : "caller")) out.push_back({std::string(p[2]), said});

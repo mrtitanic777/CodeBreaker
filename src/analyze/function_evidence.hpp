@@ -3,7 +3,7 @@
 //     const std::vector<symbols::FunctionEvidence> all = function_evidence::of_module(path, environment);
 //
 // One entry per function the analyses find, in address order, addressed as the namer addresses them (a 32-bit module's virtual address; a 16-bit
-// module's (selector << 16) + offset, which is what decompile::describe::address lays out). The facts are read from the module as the `analyze`
+// module's (selector << 16) + offset, which is what core16::address lays out). The facts are read from the module as the `analyze`
 // command reads it (call graph, string table); nothing is decompiled.
 #pragma once
 

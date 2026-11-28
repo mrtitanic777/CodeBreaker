@@ -53,15 +53,10 @@ namespace cb::decompile::describe {
 
 using core16::FunctionNotes;
 using core16::SegOff;
-using Va = std::int64_t;
-
-// --- the address spaces ---------------------------------------------------------------------------------------------
-inline constexpr Va kFirstSelector = 0x1000;
-inline constexpr Va kExternSelector = 0xE000;  // imported functions stand at kExternSelector:16*n
-inline constexpr Va kImportSelector = 0xD000;  // an import used as a selector (KERNEL's __0040H ...): kImportSelector + n
-inline constexpr Va kLeBase = 0x1000000;       // LE: object n at kLeBase + (n-1) * kLeStride
-inline constexpr Va kLeStride = 0x1000000;
-inline constexpr Va kLeSlots = 0x0F000000;     // one pointer per service called, read as that service
+// The address spaces (selectors, imports, LE objects) are core16's (core16_types.hpp); the decompiler lays modules out by them.
+using core16::Va;
+using core16::kFirstSelector, core16::kExternSelector, core16::kImportSelector, core16::kLeBase, core16::kLeStride, core16::kLeSlots;
+using core16::selector, core16::address, core16::le_address, core16::where;
 
 // the decompiler's language id of each kind (what the platform table calls its cpu)
 inline constexpr std::string_view kArchNe = "x86:LE:16:Protected Mode:default";
@@ -72,11 +67,6 @@ inline constexpr std::string_view kArchNes = "6502:LE:16:NES:default";
 // The decompiler's language for a PE image of this machine type, or nullopt.
 std::optional<std::string_view> language_of_machine(std::uint16_t machine);
 
-constexpr Va selector(Va seg) { return kFirstSelector + 8 * (seg - 1); }
-constexpr Va address(Va seg, Va off) { return (selector(seg) << 16) + off; }
-// (segment, offset) of an address inside the module's segments.
-SegOff where(Va va);
-constexpr Va le_address(Va obj, Va off) { return kLeBase + (obj - 1) * kLeStride + off; }
 
 // How the Windows headers declare an API function: its result type and its parameters (type, name) as written there; `...` ends
 // a function that takes more.

@@ -239,11 +239,11 @@ Own win16_own_if_read(const translate::native_l2::Library& library, const Ordere
     const auto facts = notes.find(name);
     const Own own = own_arguments(library, text, name, doc, facts != notes.end() ? &facts->second.pointers : nullptr);
     if (!own || own->sizes.empty()) return std::nullopt;
-    const describe::SegOff place = describe::where(va);
+    const describe::SegOff place = core16::where(va);
     const auto bytes = d.segment_bytes.find(place.seg);
     std::optional<std::int64_t> later;
     for (const auto& kv : d.names) {
-        const describe::SegOff other = describe::where(kv.first);
+        const describe::SegOff other = core16::where(kv.first);
         if (other.seg == place.seg && other.off > place.off) later = later ? std::min<std::int64_t>(*later, other.off) : other.off;
     }
     const std::int64_t length = bytes != d.segment_bytes.end() ? static_cast<std::int64_t>(bytes->second.size()) : 0;
@@ -341,7 +341,7 @@ c_text::Decompiled16 Decompiler::decompile16(const std::filesystem::path& module
         }
         if (news.empty()) break;
         for (const Va va : news) {
-            const describe::SegOff place = describe::where(va);
+            const describe::SegOff place = core16::where(va);
             const std::string name = "sub_" + std::to_string(place.seg) + "_" + upper_hex(place.off, 4);
             d->names[va] = name;
             d->where_map[va] = place;

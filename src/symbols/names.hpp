@@ -68,7 +68,7 @@ namespace cb::symbols::names {
 
 using symbols::Environment;
 
-// A function's address: a 32-bit one as it is, a 16-bit module's as decompile::describe::address lays it out ((selector << 16) + offset).
+// A function's address: a 32-bit one as it is, a 16-bit module's as core16::address lays it out ((selector << 16) + offset).
 using Address = std::uint64_t;
 
 // A name and where it comes from ("export", "debug symbols (KERNEL32.SYM)", "ordinal table (user.exe)").

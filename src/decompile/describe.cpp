@@ -35,10 +35,6 @@ std::optional<Declared> declared_of(const symbols::prototypes::Prototype* protot
     return out;
 }
 
-SegOff where(Va va) {
-    return SegOff{static_cast<std::uint32_t>(floor_div<Va>((va >> 16) - kFirstSelector, 8) + 1), static_cast<std::uint32_t>(va & 0xFFFF)};
-}
-
 Policy Policy::from_environment() {
     auto is = [](const char* name, std::string_view value) {
         auto v = fs::get_env(name);

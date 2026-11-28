@@ -339,7 +339,7 @@ struct ProductionState {
     }
 
     std::vector<module_pass::Function> functions(const stdfs::path& file) {
-        using decompile::describe::Va;
+        using core16::Va;
         const formats::ne::Module ne = formats::ne::Module::open_file(file);
         const std::string stem = text::lower(fs::to_text(file.filename()));
         const stdfs::path work = config.state("invert/describe/" + stem);

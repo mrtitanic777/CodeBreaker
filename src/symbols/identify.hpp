@@ -4,7 +4,7 @@
 //     codebreaker identify --learn "Visual C++ 2.0 C runtime=C:\msvc20\lib\libc.lib" ...    make the signatures from libraries
 //
 //     Identifier identifier({corpus, knowledge, ordinals});
-//     identifier.identify(path)            {address: {name, library}}   (a 16-bit module's address as decompile::describe::address lays it out)
+//     identifier.identify(path)            {address: {name, library}}   (a 16-bit module's address as core16::address lays it out)
 //     identifier.compiler(path, found)     {linker, compiler, evidence}
 //
 // runtime_library.hpp does the work over a module as plain data (what the format readers found); this is the part that reads the
@@ -32,7 +32,7 @@ class Image;
 
 namespace cb::symbols::identify {
 
-// A function's address: a 32-bit module's as it is, a 16-bit one's as decompile::describe::address lays it out.
+// A function's address: a 32-bit module's as it is, a 16-bit one's as core16::address lays it out.
 using Address = std::uint64_t;
 using Found = std::map<Address, runtime_library::Identified>;
 
