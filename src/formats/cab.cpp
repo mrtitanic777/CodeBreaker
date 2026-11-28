@@ -16,12 +16,9 @@
 #include "core/io.hpp"
 #include "core/text.hpp"
 #include "formats/deflate.hpp"
-#include "formats/format_builtin.hpp"
 #include "formats/lzx.hpp"
 
 namespace cb::formats::cab {
-
-namespace eng = cb::formats::engine;
 
 namespace {
 
@@ -34,6 +31,11 @@ constexpr std::uint16_t kAttrUtf8Name = 0x80;
 constexpr std::uint16_t kAttrArchive = 0x20;
 
 [[noreturn]] void bad(std::string what, std::uint64_t offset = 0) { throw FormatError(kReader, offset, std::move(what)); }
+
+std::string text_at(io::ByteReader& r, bool utf8 = false) {
+    const ByteView s = r.cstr();
+    return utf8 ? text::sanitize_utf8(as_text(s)) : text::from_latin1(s);
+}
 
 }  // namespace
 
@@ -58,60 +60,64 @@ std::string Cabinet::compression_of(const FileEntry& file) const {
     return k < folders.size() ? folders[k].compression() : "?";
 }
 
-namespace {
-
-// A read through cab.fmt, its errors naming `reader` (the file, when there is one).
-eng::Tree cab_tree(ByteView data, const std::string& reader, const eng::ReadOptions& options) {
-    try {
-        return eng::builtin().read("cab", data, options);
-    } catch (const TruncatedError& e) {
-        throw TruncatedError(reader, e.offset(), e.wanted(), e.available());
-    } catch (const FormatError& e) {
-        throw FormatError(reader, e.offset(), e.what());
-    }
-}
-
-// A zero-terminated string of the tree; one the file cuts off is damage.
-std::string cab_text(const eng::Node& n, const std::string& reader, bool utf8 = false) {
-    if (n.text.empty() || n.text.back() != '\0') throw TruncatedError(reader, n.offset, n.size + 1, n.size);
-    const std::string_view s = std::string_view(n.text).substr(0, n.text.size() - 1);
-    return utf8 ? text::sanitize_utf8(s) : text::from_latin1(as_bytes(s));
-}
-
-}  // namespace
-
 Cabinet parse(ByteView data, const std::filesystem::path& path) {
-    // The layout is cab.fmt's. Errors name the file when there is one.
+    // Errors name the file when there is one.
     const std::string reader = path.empty() ? std::string(kReader) : path_text(path);
     if (data.size() < kHeaderSize || std::string_view(reinterpret_cast<const char*>(data.data()), 4) != "MSCF") {
         throw FormatError(reader, 0, "not a cabinet (no MSCF signature)");
     }
-    eng::ReadOptions options;
-    options.keep_source = false;   // only read from
-    const eng::Tree tree = cab_tree(data, reader, options);
-    const eng::Node& h = tree.root;
+    io::ByteReader r(data, reader);
     Cabinet c;
     c.path = path;
-    c.size = static_cast<std::uint32_t>(h.u("size"));
-    c.version_minor = static_cast<std::uint8_t>(h.u("version_minor"));
-    c.version_major = static_cast<std::uint8_t>(h.u("version_major"));
-    c.flags = static_cast<std::uint16_t>(h.u("flags"));
-    c.set_id = static_cast<std::uint16_t>(h.u("set_id"));
-    c.index = static_cast<std::uint16_t>(h.u("index"));
-    if (const eng::Node* reserve = h.child("block_reserve")) c.block_reserve = static_cast<std::uint8_t>(reserve->value);
-    if (const eng::Node* cabinet = h.child("prev_cabinet")) c.prev = SetLink{cab_text(*cabinet, reader), cab_text(h.get("prev_disk"), reader)};
-    if (const eng::Node* cabinet = h.child("next_cabinet")) c.next = SetLink{cab_text(*cabinet, reader), cab_text(h.get("next_disk"), reader)};
-    for (const eng::Node& f : h.get("folders").children)
-        c.folders.push_back({static_cast<std::uint32_t>(f.u("data_offset")), static_cast<std::uint16_t>(f.u("block_count")), static_cast<std::uint16_t>(f.u("type"))});
-    for (const eng::Node& f : h.get("files").children) {
+    r.seek(8);
+    c.size = r.u32();
+    r.seek(16);
+    const std::uint32_t files_at = r.u32();
+    r.seek(24);
+    c.version_minor = r.u8();
+    c.version_major = r.u8();
+    const std::uint16_t folder_count = r.u16();
+    const std::uint16_t file_count = r.u16();
+    c.flags = r.u16();
+    c.set_id = r.u16();
+    c.index = r.u16();
+    std::uint8_t folder_reserve = 0;
+    if (c.flags & kFlagReserve) {
+        const std::uint16_t header_reserve = r.u16();
+        folder_reserve = r.u8();
+        c.block_reserve = r.u8();
+        r.skip(header_reserve);
+    }
+    if (c.flags & kFlagPrev) {
+        SetLink link;
+        link.cabinet = text_at(r);
+        link.disk = text_at(r);
+        c.prev = std::move(link);
+    }
+    if (c.flags & kFlagNext) {
+        SetLink link;
+        link.cabinet = text_at(r);
+        link.disk = text_at(r);
+        c.next = std::move(link);
+    }
+    for (std::uint16_t k = 0; k < folder_count; ++k) {
+        FolderEntry f;
+        f.data_offset = r.u32();
+        f.block_count = r.u16();
+        f.type = r.u16();
+        c.folders.push_back(f);
+        r.skip(folder_reserve);
+    }
+    r.seek(files_at);
+    for (std::uint16_t k = 0; k < file_count; ++k) {
         FileEntry e;
-        e.size = static_cast<std::uint32_t>(f.u("size"));
-        e.offset = static_cast<std::uint32_t>(f.u("offset"));
-        e.folder = static_cast<std::uint16_t>(f.u("folder"));
-        e.date = static_cast<std::uint16_t>(f.u("date"));
-        e.time = static_cast<std::uint16_t>(f.u("time"));
-        e.attributes = static_cast<std::uint16_t>(f.u("attributes"));
-        e.name = cab_text(f.get("name"), reader, (e.attributes & kAttrUtf8Name) != 0);
+        e.size = r.u32();
+        e.offset = r.u32();
+        e.folder = r.u16();
+        e.date = r.u16();
+        e.time = r.u16();
+        e.attributes = r.u16();
+        e.name = text_at(r, (e.attributes & kAttrUtf8Name) != 0);
         c.files.push_back(std::move(e));
     }
     return c;
@@ -412,28 +418,16 @@ Bytes folder_stream(const Cabinet& start, std::size_t k, std::optional<std::uint
     while (true) {
         const FolderEntry& f = cab.folders[k];
         const fs::MappedFile file(cab.path);
-        // The folder's data blocks through cab.fmt (root Blocks); the list ends early where the file cuts a block short.
-        eng::ReadOptions options;
-        options.keep_source = false;
-        options.root = "Blocks";
-        options.at = f.data_offset;
-        options.vars = {{"count", f.block_count}, {"reserve", cab.block_reserve}};
-        const eng::Tree tree = cab_tree(file.view(), std::string(kReader), options);
-        const std::vector<eng::Node>& blocks = tree.root.get("blocks").children;
+        io::ByteReader r(file.view(), kReader);
+        r.seek(f.data_offset);
         for (std::uint16_t i = 0; i < f.block_count; ++i) {
-            if (i >= blocks.size()) {   // the block the file cuts short
-                const std::uint64_t at = i == 0 ? f.data_offset : blocks.back().offset + blocks.back().size;
-                const std::uint64_t have = file.view().size() > at ? file.view().size() - at : 0;
-                throw TruncatedError(kReader, at, std::max<std::uint64_t>(have + 1, 8 + std::uint64_t{cab.block_reserve}), have);
-            }
-            const eng::Node& block = blocks[i];
-            const std::uint32_t stored_checksum = static_cast<std::uint32_t>(block.u("checksum"));
-            const std::uint16_t compressed = static_cast<std::uint16_t>(block.u("compressed"));
-            const std::uint16_t uncompressed = static_cast<std::uint16_t>(block.u("uncompressed"));
-            const eng::Node& data = block.get("payload");
-            const ByteView payload = file.view().subspan(data.offset, data.size);
+            const std::uint32_t stored_checksum = r.u32();
+            const std::uint16_t compressed = r.u16();
+            const std::uint16_t uncompressed = r.u16();
+            r.skip(cab.block_reserve);
+            const ByteView payload = r.bytes(compressed);
             if (stored_checksum != 0 && stored_checksum != checksum(payload, uncompressed)) {
-                bad(path_text(cab.path) + ": data block checksum mismatch", block.offset + block.size);
+                bad(path_text(cab.path) + ": data block checksum mismatch", r.pos());
             }
             if (uncompressed == 0 && compressed != 0) {   // the first part of a block continued in the next cabinet
                 append(held, payload);
