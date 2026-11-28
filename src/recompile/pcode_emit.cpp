@@ -1,11 +1,14 @@
 // cb-unity: alone (file-local helpers named for what they do here)
 // recompile/pcode_emit.cpp -- see pcode_emit.hpp.
 #include "recompile/pcode_emit.hpp"
+#include "recompile/pcode_emit_vmx.hpp"
 
 #include <algorithm>
+#include <cstring>
 #include <format>
 #include <set>
 #include <stdexcept>
+#include <string_view>
 
 namespace cb::recompile::pcode_emit {
 
@@ -77,6 +80,10 @@ public:
         const std::vector<bool> live = liveness(ops);
         std::set<std::size_t> labels;
         for (std::size_t i = 0; i < ops.size(); ++i) {
+            if ((ops[i].op == Op::Branch || ops[i].op == Op::CBranch) && to_next(ops[i].inputs[0])) {
+                labels.insert(ops.size());
+                continue;
+            }
             if ((ops[i].op == Op::Branch || ops[i].op == Op::CBranch) && ops[i].inputs[0].kind == sl::Space::Constant) {
                 const std::int64_t to = static_cast<std::int64_t>(i) + static_cast<std::int64_t>(ops[i].inputs[0].offset);
                 if (to < 0 || to > static_cast<std::int64_t>(ops.size())) throw Decline{"a branch inside the instruction out of its operations"};
@@ -84,19 +91,26 @@ public:
             }
         }
         fold_ = labels.empty();
+        ops_count_ = ops.size();
         std::string body;
         for (std::size_t i = 0; i < ops.size(); ++i) {
             if (labels.count(i)) body += std::format("\t\tpcode_{:X}_{}:;\n", address_, i);
             if (!live[i]) continue;
             const std::string s = statement(ops[i], i);
-            if (!s.empty()) body += "\t\t" + s + "\n";
+            for (std::size_t at = 0; at < s.size();) {
+                const std::size_t end = std::min(s.find('\n', at), s.size());
+                body += "\t\t" + s.substr(at, end - at) + "\n";
+                at = end + 1;
+            }
         }
         if (labels.count(ops.size())) body += std::format("\t\tpcode_{:X}_{}:;\n", address_, ops.size());
 
         Statements out;
         out.fpu = fpu_;
+        out.vmx = vmx_;
         std::string decls;
         for (const auto& [offset, size] : uniques_) decls += std::format("\t\t{} t_{:x};\n", utype(size), offset);
+        for (const auto& [offset, size] : dropped_) decls += std::format("\t\t{} d_{:x};\n", utype(size), offset);
         for (const auto& [n, loaded] : cr_loaded_) {
             const std::string c = names_.cr(n);
             decls += loaded ? std::format("\t\tuint8_t cr_{0} = uint8_t(({1}.lt << 3) | ({1}.gt << 2) | ({1}.eq << 1) | {1}.so);\n", n, c)
@@ -128,13 +142,31 @@ private:
             switch (op.op) {
                 case Op::Branch:
                 case Op::CBranch:
-                    if (op.inputs[0].kind != sl::Space::Constant) throw Decline{"a branch"};
+                    if (op.inputs[0].kind != sl::Space::Constant && !to_next(op.inputs[0])) {
+                        if (!names_.jump) throw Decline{"a branch"};
+                        flow_ = true;
+                    }
                     break;
-                case Op::BranchInd: throw Decline{"an indirect branch"};
-                case Op::Call: throw Decline{"a call"};
-                case Op::CallInd: throw Decline{"an indirect call"};
-                case Op::Return: throw Decline{"a return"};
-                case Op::CallOther: throw Decline{"the user operation " + reader_.user_op_name(op.inputs[0].offset)};
+                case Op::BranchInd:
+                    if (!names_.jump_indirect) throw Decline{"an indirect branch"};
+                    flow_ = true;
+                    break;
+                case Op::Call:
+                    if (!names_.call) throw Decline{"a call"};
+                    flow_ = true;
+                    break;
+                case Op::CallInd:
+                    if (!names_.call_indirect) throw Decline{"an indirect call"};
+                    flow_ = true;
+                    break;
+                case Op::Return:
+                    if (!names_.jump) throw Decline{"a return"};
+                    flow_ = true;
+                    break;
+                case Op::CallOther:
+                    if (!served(reader_.user_op_name(op.inputs[0].offset))) throw Decline{"the user operation " + reader_.user_op_name(op.inputs[0].offset)};
+                    if (reader_.user_op_name(op.inputs[0].offset).starts_with("fused")) floating = true;
+                    break;
                 case Op::Store: store = true; break;
                 default: break;
             }
@@ -155,8 +187,17 @@ private:
             for (const sl::Varnode& v : op.inputs) vector = vector || is_vector(v);
         }
         if (vector && floating) throw Decline{"floating point on a vector register"};
-        if (store && next_word == kEieio) throw Decline{"a store to memory-mapped I/O (eieio follows)"};
+        mmio_ = store && next_word == kEieio;   // (a store an eieio follows is to memory-mapped I/O: PPC_MM_STORE_*)
         fpu_ = floating;
+        // a condition field is a local of the block, stored back at its end: a way out before the end would lose it
+        if (flow_) {
+            for (const sl::PcodeOp& op : ops) {
+                if (op.output && op.output->kind == sl::Space::Register) {
+                    const Translator::Cell* c = cell_at_(op.output->offset);
+                    if (c != nullptr && c->kind == Kind::Cr) throw Decline{"a condition field written with a way out"};
+                }
+            }
+        }
     }
 
     // A register varnode's place: the cell holding it, or nullptr.
@@ -183,8 +224,17 @@ private:
     std::vector<bool> liveness(const std::vector<sl::PcodeOp>& ops) const {
         std::vector<bool> live(ops.size(), false);
         std::vector<std::pair<std::uint64_t, std::uint64_t>> needed;   // [begin, end) of the temporaries read
+        std::vector<std::pair<std::uint64_t, std::uint64_t>> needed_dropped;   // ... and of the dropped registers read
         const auto overlaps = [&](const sl::Varnode& v) {
             return std::any_of(needed.begin(), needed.end(), [&](const auto& r) { return v.offset < r.second && r.first < v.offset + v.size; });
+        };
+        const auto dropped_read = [&](const sl::Varnode& v) {
+            return std::any_of(needed_dropped.begin(), needed_dropped.end(), [&](const auto& r) { return v.offset < r.second && r.first < v.offset + v.size; });
+        };
+        const auto is_dropped = [&](const sl::Varnode& v) {
+            if (v.kind != sl::Space::Register) return false;
+            const Translator::Cell* c = holder(v);
+            return c != nullptr && c->kind == Kind::Dropped;
         };
         for (bool changed = true; changed;) {
             changed = false;
@@ -192,13 +242,18 @@ private:
                 if (live[k]) continue;
                 const sl::PcodeOp& op = ops[k];
                 bool l = false;
-                if (op.op == Op::Store || op.op == Op::Branch || op.op == Op::CBranch) l = true;
-                else if (op.output) l = op.output->kind == sl::Space::Unique ? overlaps(*op.output) : kept(*op.output);
+                if (op.op == Op::Store || op.op == Op::Branch || op.op == Op::CBranch || op.op == Op::BranchInd || op.op == Op::Call ||
+                    op.op == Op::CallInd || op.op == Op::Return || (op.op == Op::CallOther && (!op.output || effects(op)))) {
+                    l = true;
+                } else if (op.output) {
+                    l = op.output->kind == sl::Space::Unique ? overlaps(*op.output) : is_dropped(*op.output) ? dropped_read(*op.output) : kept(*op.output);
+                }
                 if (!l) continue;
                 live[k] = true;
                 changed = true;
                 for (const sl::Varnode& v : op.inputs) {
                     if (v.kind == sl::Space::Unique) needed.emplace_back(v.offset, v.offset + v.size);
+                    if (is_dropped(v)) needed_dropped.emplace_back(v.offset, v.offset + v.size);
                 }
             }
         }
@@ -217,6 +272,9 @@ private:
                 cr_loaded_.emplace(c.index, true);   // (read before it is written: loaded at the start of the block)
                 return std::format("cr_{}", c.index);
             case Kind::XerBit: return names_.xer() + "." + c.member;
+            // (a context without MSR reads the value it starts with, as ctx.msr does: the title's code only puts it back)
+            case Kind::Msr: return names_.msr && !names_.msr().empty() ? "uint64_t(" + names_.msr() + ")" : std::string("UINT64_C(0x200A000)");
+            case Kind::TimeBase: return c.index == 0 ? std::string("uint64_t(PPC_QUERY_TIMEBASE())") : std::string("uint64_t(PPC_QUERY_TIMEBASE() >> 32)");
             case Kind::Dropped: break;
         }
         throw Decline{"a read of " + c.member + ", which the context keeps no value of"};
@@ -241,6 +299,11 @@ private:
                     throw Decline{"the register " + (name.empty() ? std::format("at {:#x}", v.offset) : name)};
                 }
                 if (c->kind == Kind::Lr && names_.lr().empty()) throw Decline{"a read of LR, which the context does not keep"};
+                if (c->kind == Kind::Dropped) {
+                    const auto it = dropped_.find(v.offset);
+                    if (it == dropped_.end() || it->second != v.size) throw Decline{"a read of " + c->member + ", which the context keeps no value of"};
+                    return std::format("d_{:x}", v.offset);
+                }
                 const std::string full = cell_value(*c);
                 const unsigned shift = static_cast<unsigned>(8 * ((c->offset + c->size) - (v.offset + v.size)));
                 if (shift == 0 && v.size == c->size) return full;
@@ -266,6 +329,11 @@ private:
             return std::format("t_{:x} = {};", v.offset, value);
         }
         if (v.kind != sl::Space::Register) throw Decline{"an output that is no register or temporary"};
+        if (const Translator::Cell* c = holder(v); c != nullptr && c->kind == Kind::Dropped) {
+            const auto [it, added] = dropped_.emplace(v.offset, v.size);
+            if (!added && it->second != v.size) throw Decline{"a dropped register written at two sizes"};
+            return std::format("d_{:x} = {};", v.offset, value);
+        }
         if (!kept(v)) return {};
         const Translator::Cell& c = *holder(v);
         const unsigned shift = static_cast<unsigned>(8 * ((c.offset + c.size) - (v.offset + v.size)));
@@ -291,6 +359,11 @@ private:
                 cr_written_.insert(c.index);
                 return std::format("cr_{} = {};", c.index, value);
             case Kind::XerBit: return std::format("{}.{} = {};", names_.xer(), c.member, value);
+            case Kind::Msr:
+                if (!whole) throw Decline{"a write of part of MSR"};
+                if (!names_.msr || names_.msr().empty()) return {};   // (the context keeps no MSR)
+                return std::format("{} = uint32_t({});", names_.msr(), value);
+            case Kind::TimeBase: throw Decline{"a write of the time base"};
             case Kind::Dropped: break;
         }
         return {};
@@ -308,18 +381,83 @@ private:
         const auto label = [&]() {
             return std::format("pcode_{:X}_{}", address_, static_cast<std::int64_t>(index) + static_cast<std::int64_t>(op.inputs[0].offset));
         };
-        if (op.op == Op::Branch) return "goto " + label() + ";";
-        if (op.op == Op::CBranch) return std::format("if ({}) goto {};", in(1), label());
+        if ((op.op == Op::Branch || op.op == Op::CBranch) && to_next(op.inputs[0])) {
+            const std::string end = std::format("pcode_{:X}_{}", address_, ops_count_);
+            return op.op == Op::Branch ? "goto " + end + ";" : std::format("if ({}) goto {};", in(1), end);
+        }
+        const bool to_address = (op.op == Op::Branch || op.op == Op::CBranch) && op.inputs[0].kind != sl::Space::Constant;
+        if (op.op == Op::Branch && !to_address) return "goto " + label() + ";";
+        if (op.op == Op::CBranch && !to_address) return std::format("if ({}) goto {};", in(1), label());
+        if (op.op == Op::Branch) return recompiler_text(names_.jump(target(op.inputs[0])));
+        if (op.op == Op::CBranch) return std::format("if ({}) {{\n{}}}", in(1), recompiler_text(names_.jump(target(op.inputs[0])), 1));
+        if (op.op == Op::Call) return recompiler_text(names_.call(target(op.inputs[0])));
+        if (op.op == Op::CallInd) return recompiler_text(names_.call_indirect(std::format("uint32_t({})", in(0))));
+        if (op.op == Op::BranchInd) {
+            // a branch through LR is a return (the description's bclr forms other than blr branch through it, as the processor does);
+            // in the recompiled program the caller's code follows the call, so the branch is `return`
+            if (const sl::Varnode& v = op.inputs.at(0); v.kind == sl::Space::Register) {
+                if (const Translator::Cell* c = holder(v); c != nullptr && c->kind == Kind::Lr) return "return;";
+            }
+            return recompiler_text(names_.jump_indirect(std::format("uint32_t({})", in(0))));
+        }
+        if (op.op == Op::Return) return "return;";
         if (op.op == Op::Store) {
             if (const std::string space = reader_.space_name(static_cast<unsigned>(op.inputs.at(0).offset)); space != "ram") throw Decline{"a store to the space " + space};
             const std::string address = in(1);
             const sl::Varnode& v = op.inputs.at(2);
             const std::string value = in(2);
             switch (v.size) {
-                case 1: case 2: case 4: case 8: return std::format("PPC_STORE_U{}({}, {});", 8 * v.size, address, value);
-                case 16: return std::format("{{ const __uint128_t q = {1}; PPC_STORE_U64({0}, uint64_t(q >> 64)); PPC_STORE_U64({0} + 8, uint64_t(q)); }}", address, value);
+                case 1: case 2: case 4: case 8: return std::format("PPC_{}STORE_U{}({}, {});", mmio_ ? "MM_" : "", 8 * v.size, address, value);
+                case 16:
+                    if (mmio_) throw Decline{"a 16-byte store to memory-mapped I/O"};
+                    return std::format("{{ const __uint128_t q = {1}; PPC_STORE_U64({0}, uint64_t(q >> 64)); PPC_STORE_U64({0} + 8, uint64_t(q)); }}", address, value);
             }
             throw Decline{std::format("a store of {} bytes", v.size)};
+        }
+        if (op.op == Op::CallOther) {
+            const std::string name = reader_.user_op_name(op.inputs[0].offset);
+            if (vmx::known(name)) {
+                std::vector<vmx::Arg> args;
+                for (std::size_t k = 1; k < op.inputs.size(); ++k) args.push_back(vmx::Arg{read(op.inputs[k]), known(op.inputs[k]), op.inputs[k].size});
+                const std::string current = op.output && op.output->kind == sl::Space::Register ? read(*op.output) : std::string();
+                std::string why;
+                const std::optional<vmx::Written> w = vmx::emit(name, args, current, &why);
+                if (!w) throw Decline{why};
+                vmx_ = vmx_ || w->vmx;
+                if (w->statement) return w->text;
+                if (!op.output) throw Decline{"the user operation " + name + " with no output"};
+                return write(*op.output, w->text);
+            }
+            const auto arg = [&](std::size_t k) { return in(k + 1); };
+            const auto fp = [&](std::size_t k) { return fvalue(arg(k), isz(k + 1)); };
+            const auto fused = [&](const char* helper, bool negate) {
+                return write(*op.output, fbits(std::format("{}({}, {}, {}{})", helper, fp(0), fp(1), fp(2), negate ? ", true" : ""), op.output->size));
+            };
+            if (name == "fusedMultiplyAdd") return fused("ppc_fmadd", false);
+            if (name == "fusedMultiplySubtract") return fused("ppc_fmsub", false);
+            if (name == "fusedNegativeMultiplyAdd") return fused("ppc_fmadd", true);
+            if (name == "fusedNegativeMultiplySubtract") return fused("ppc_fmsub", true);
+            if (name == "fusedMultiplyAddSingle") return fused("ppc_fmadds", false);
+            if (name == "fusedMultiplySubtractSingle") return fused("ppc_fmsubs", false);
+            if (name == "fusedNegativeMultiplyAddSingle") return fused("ppc_fmadds", true);
+            if (name == "fusedNegativeMultiplySubtractSingle") return fused("ppc_fmsubs", true);
+            // the reservation: the value lwarx loaded, and a compare and exchange against it
+            const std::string reserved = names_.reserved ? names_.reserved() : std::string();
+            if (reserved.empty() && name.find("Reserve") != std::string::npos) throw Decline{"no reservation"};
+            if (name == "loadWordAndReserve") {
+                return write(*op.output, std::format("({0}.u32 = *(uint32_t*)PPC_HOST({1}), __builtin_bswap32({0}.u32))", reserved, arg(0)));
+            }
+            if (name == "loadDoublewordAndReserve") {
+                return write(*op.output, std::format("({0}.u64 = *(uint64_t*)PPC_HOST({1}), __builtin_bswap64({0}.u64))", reserved, arg(0)));
+            }
+            if (name == "storeWordConditional" || name == "storeDoublewordConditional") {
+                if (names_.reserved == nullptr || names_.reserved().empty()) throw Decline{"no reservation"};
+                const bool word = name == "storeWordConditional";
+                return write(*op.output, std::format("uint8_t(__sync_bool_compare_and_swap(reinterpret_cast<uint{0}_t*>(PPC_HOST({1})), {2}.{3}, __builtin_bswap{0}({4})))",
+                                                     word ? 32 : 64, arg(0), names_.reserved(), word ? "s32" : "s64", word ? "uint32_t(" + arg(1) + ")" : arg(1)));
+            }
+            if (name == "dataCacheBlockClearToZero") return std::format("memset(PPC_HOST(uint32_t({}) & ~31u), 0, 32);", arg(0));
+            return {};   // (an operation that changes nothing a title sees: a cache hint, a barrier, a trap XenonRecomp's titles never take)
         }
         if (!op.output) throw Decline{std::string("an operation with no output: ") + sl::op_name(op.op)};
         if (fold_ && op.output->kind == sl::Space::Unique) {
@@ -462,6 +600,57 @@ private:
     std::uint32_t address_;
     bool fpu_ = false;
     std::map<std::uint64_t, unsigned> uniques_;   // the temporaries written: offset -> size
+    std::map<std::uint64_t, unsigned> dropped_;   // the dropped registers written and read again in the instruction: offset -> size
+    bool flow_ = false;                            // it has a way out (a branch, call or return to an address)
+    std::size_t ops_count_ = 0;
+
+    // A branch to the instruction after this one: no way out, only the end of this instruction.
+    bool to_next(const sl::Varnode& v) const { return v.kind == sl::Space::Memory && v.offset == static_cast<std::uint64_t>(address_) + 4; }
+    bool mmio_ = false;                            // its store is to memory-mapped I/O
+    bool vmx_ = false;                             // it computes with the vector unit's floating point
+
+    // The user operations the writer serves.
+    static bool served(const std::string& name) {
+        static const std::set<std::string, std::less<>> names = {
+            "fusedMultiplyAdd", "fusedMultiplySubtract", "fusedNegativeMultiplyAdd", "fusedNegativeMultiplySubtract", "fusedMultiplyAddSingle",
+            "fusedMultiplySubtractSingle", "fusedNegativeMultiplyAddSingle", "fusedNegativeMultiplySubtractSingle", "loadWordAndReserve",
+            "loadDoublewordAndReserve", "storeWordConditional", "storeDoublewordConditional", "dataCacheBlockClearToZero",
+            // no effect a title sees (XenonRecomp writes them as nothing too)
+            "sync", "enforceInOrderExecutionIO", "dataCacheBlockTouch", "dataCacheBlockTouchForStore", "dataCacheBlockFlush", "dataCacheBlockStore",
+            "instructionCacheBlockInvalidate", "trapWord", "trapDoubleWord", "trapDoubleWordImmediate", "dataStreamStop", "dataStreamStopAll",
+            "dataStreamTouch", "dataStreamTouchSoon", "dataStreamTouchForStore", "dataStreamTouchForStoreTransient"};
+        return names.contains(name) || vmx::known(name);
+    }
+    // Whether a user operation with an output also changes memory (a conditional store).
+    bool effects(const sl::PcodeOp& op) const {
+        const std::string name = reader_.user_op_name(op.inputs[0].offset);
+        return name.starts_with("store") || name.find("Reserve") != std::string::npos;
+    }
+
+    // A branch's or call's target address.
+    static std::uint32_t target(const sl::Varnode& v) {
+        if (v.kind != sl::Space::Memory) throw Decline{"a way out to a place that is no address"};
+        return static_cast<std::uint32_t>(v.offset);
+    }
+
+    // The recompiler's lines (each starting with a tab, ending with a newline) as statements of this writer, `extra` tabs in.
+    static std::string recompiler_text(const std::string& text, unsigned extra = 0) {
+        std::string out;
+        for (std::size_t at = 0; at < text.size();) {
+            std::size_t end = text.find('\n', at);
+            if (end == std::string::npos) end = text.size();
+            std::string_view line(text.data() + at, end - at);
+            if (!line.empty() && line.front() == '\t') line.remove_prefix(1);
+            if (!line.empty()) {
+                out.append(extra, '\t');
+                out.append(line);
+                out += '\n';
+            }
+            at = end + 1;
+        }
+        if (!out.empty() && extra == 0) out.pop_back();   // (the last line's newline is the writer's)
+        return out;
+    }
     std::map<std::uint64_t, std::pair<std::uint64_t, unsigned>> consts_;   // the temporaries whose value is known: offset -> (value, size)
     bool fold_ = false;                                // straight-line p-code: constants are folded as they are written
     std::map<unsigned, bool> cr_loaded_;               // the condition fields used: number -> read before written (loaded first)
@@ -555,6 +744,9 @@ Translator::Translator(const std::filesystem::path& sla) : reader_(sla, {}) {
     add("xer_so", Kind::XerBit, 0, "so");
     add("xer_ov", Kind::XerBit, 0, "ov");
     add("xer_ca", Kind::XerBit, 0, "ca");
+    add("MSR", Kind::Msr, 0);
+    add("TBLr", Kind::TimeBase, 0);
+    add("TBUr", Kind::TimeBase, 1);
     // written by the description, kept by no context: their writes are dropped, a read declines the instruction. (The FPSCR's
     // controls -- the enables, NI and the rounding mode, fp_ve to fp_drn -- are not among them: the context keeps them in ctx.fpscr, so
     // an instruction that writes them, mtfsf, mtfsfi, mtfsb0/1, is XenonRecomp's.)
@@ -580,10 +772,7 @@ const Translator::Cell* Translator::cell_at(std::uint64_t offset) const {
 }
 
 std::optional<Statements> Translator::instruction(std::uint32_t address, std::uint32_t word, std::uint32_t next_word, const Names& names, std::string* why) const {
-    if (word == kDb16cyc) {
-        if (why) *why = "db16cyc";
-        return std::nullopt;
-    }
+    if (word == kDb16cyc) return Statements{"\tPPC_SPIN_HINT();\n", false};   // (or r31,r31,r31 changes nothing; the hint lets the runtime yield)
     const std::uint8_t bytes[4] = {static_cast<std::uint8_t>(word >> 24), static_cast<std::uint8_t>(word >> 16), static_cast<std::uint8_t>(word >> 8),
                                    static_cast<std::uint8_t>(word)};
     const sl::Lifted lifted = reader_.pcode(bytes, sizeof bytes, address, address);
@@ -593,6 +782,19 @@ std::optional<Statements> Translator::instruction(std::uint32_t address, std::ui
     }
     const std::function<const Cell*(std::uint64_t)> cells = [this](std::uint64_t offset) { return cell_at(offset); };
     try {
+        const bool flow = std::any_of(lifted.ops.begin(), lifted.ops.end(), [address](const sl::PcodeOp& op) {
+            return op.op == Op::Call || op.op == Op::CallInd || op.op == Op::BranchInd || op.op == Op::Return ||
+                   ((op.op == Op::Branch || op.op == Op::CBranch) && op.inputs[0].kind != sl::Space::Constant &&
+                    op.inputs[0].offset != static_cast<std::uint64_t>(address) + 4);
+        });
+        if (flow && names.jump) {
+            // (the recompiler's ways out change its state -- a switch table taken, the flush mode forgotten -- so they are asked only
+            // once the instruction is known to be written)
+            Names dry = names;
+            dry.jump = dry.call = [](std::uint32_t) { return std::string("\t;\n"); };
+            dry.call_indirect = dry.jump_indirect = [](const std::string&) { return std::string("\t;\n"); };
+            Writer(reader_, cells, dry, address).write(lifted, next_word);
+        }
         Writer writer(reader_, cells, names, address);
         return writer.write(lifted, next_word);
     } catch (const Decline& d) {

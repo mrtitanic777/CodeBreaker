@@ -845,14 +845,93 @@ bool Recompiler::Recompile(
     bool translatedByCaller = false;
     if (const xenon_translate::Translator& translate = xenon_translate::current(); translate && !config.relocatableCode)
     {
+        // what a printing helper writes, taken out of `out` as text
+        auto capture = [&](auto&& print_it)
+            {
+                const size_t at = out.size();
+                print_it();
+                std::string text = out.substr(at);
+                out.resize(at);
+                return text;
+            };
         const xenon_translate::Names names{ r, f, v, cr,
             [&] { return std::string(ctr()); },
             [&] { return std::string(xer()); },
-            [&] { return config.skipLr ? std::string() : std::string("ctx.lr"); } };
+            [&] { return config.skipLr ? std::string() : std::string("ctx.lr"); },
+            [&] { return config.skipMsr ? std::string() : std::string("ctx.msr"); },
+            [&] { return std::string(reserved()); },
+            [&](uint32_t target)
+            {
+                return capture([&]
+                    {
+                        if (target < fn.base || target >= fn.base + fn.size)
+                        {
+                            printFunctionCall(target);
+                            println("\treturn;");
+                        }
+                        else
+                        {
+                            println("\tgoto {};", Label(fn, target));
+                        }
+                    });
+            },
+            [&](uint32_t target)
+            {
+                std::string text = capture([&] { printFunctionCall(target); });
+                csrState = CSRState::Unknown; // the call could change it
+                return text;
+            },
+            [&](const std::string& value)
+            {
+                csrState = CSRState::Unknown; // the call could change it
+                return fmt::format("\tPPC_CALL_INDIRECT_FUNC({});\n", value);
+            },
+            [&](const std::string& value)
+            {
+                return capture([&]
+                    {
+                        if (switchTable != config.switchTables.end())
+                        {
+                            println("\tswitch ({}.u32) {{", r(switchTable->second.r));
+                            for (size_t i = 0; i < switchTable->second.labels.size(); i++)
+                            {
+                                println("\tcase {}:", i);
+                                auto label = switchTable->second.labels[i];
+                                if (label == fn.base + fn.size)
+                                {
+                                    println("\t\tPPC_CALL_INDIRECT_FUNC({});", value);
+                                    println("\t\treturn;");
+                                }
+                                else if (label < fn.base || label > fn.base + fn.size)
+                                {
+                                    println("\t\t// ERROR: 0x{:X}", label);
+                                    xenon_log::println("ERROR: Switch case at {:X} is trying to jump outside function: {:X}", base, label);
+                                    println("\t\treturn;");
+                                }
+                                else
+                                {
+                                    println("\t\tgoto {};", Label(fn, label));
+                                }
+                            }
+                            println("\tdefault:");
+                            println("\t\tPPC_CALL_INDIRECT_FUNC({});", value);
+                            println("\t\treturn;");
+                            println("\t}}");
+                            switchTable = config.switchTables.end();
+                        }
+                        else
+                        {
+                            println("\tPPC_CALL_INDIRECT_FUNC({});", value);
+                            println("\treturn;");
+                        }
+                    });
+            } };
         if (std::optional<xenon_translate::Translated> t = translate(base, ByteSwap(*data), ByteSwap(*(data + 1)), names))
         {
             if (t->fpu)
                 printSetFlushMode(false);
+            else if (t->vmx)
+                printSetFlushMode(true);
             out += t->text;
             translatedByCaller = true;
             ++xenon_translate::counts().translated;

@@ -66,6 +66,7 @@ struct Translation {
     std::size_t declined = 0;                        // instructions XenonRecomp wrote
     std::map<std::string, std::size_t> why;          // the reasons it declined, counted
     std::map<std::string, std::size_t> written;      // the mnemonics it wrote, counted
+    std::map<std::string, std::size_t> declined_by;  // "mnemonic: reason" of what it declined, counted
 };
 
 // `inner` (XenonRecomp) with the p-code translator on the description `sla` asked first for every instruction; what it did goes

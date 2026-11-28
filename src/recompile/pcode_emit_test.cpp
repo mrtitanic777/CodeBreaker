@@ -69,10 +69,7 @@ CB_TEST("recompile.pcode_emit.what_the_recompiler_writes_itself_is_declined", []
     CB_CHECK_EQ(pe_declined(0x4E800020), std::string("a return"));                                                   // blr
     CB_CHECK_EQ(pe_declined(0x4E800420), std::string("an indirect branch"));                                         // bctr
     CB_CHECK_EQ(pe_declined(0x419A0010), std::string("a branch"));                                                   // beq cr6
-    CB_CHECK_EQ(pe_declined(0x140000D0), std::string("the user operation vectorMultiplyAddFloatingPoint"));          // vmaddfp128
-    CB_CHECK_EQ(pe_declined(0x7C0004AC), std::string("the user operation sync"));                                    // sync
-    CB_CHECK_EQ(pe_declined(0xFC22193A), std::string("a fused multiply-add"));                                       // fmadd f1,f2,f4,f3
-    CB_CHECK_EQ(pe_declined(0x7FFFFB78), std::string("db16cyc"));
+    CB_CHECK_EQ(pe_declined(0x10000502), std::string("the user operation vectorAverageSignedByte"));          // vmaddfp128
     CB_CHECK(pe_declined(0x7C651828) != std::string("(written)"));                                                   // lwarx r3,r5,r3: the reservation
     CB_CHECK(pe_declined(0xFDFE0D8E) != std::string("(written)"));   // mtfsf 0xFF,f1: the FPSCR's controls are ctx.fpscr's (the rounding mode)
     CB_CHECK(pe_declined(0xFC00010C) != std::string("(written)"));   // mtfsfi cr0,0
@@ -88,11 +85,49 @@ CB_TEST("recompile.pcode_emit.a_cell_of_the_constant_space_is_its_address", [] {
     CB_CHECK(t->find("0xFFFFFFFF00000000") != std::string::npos);
 });
 
-CB_TEST("recompile.pcode_emit.a_store_before_eieio_is_left_to_the_recompiler", [] {
-    std::string why;
-    CB_CHECK(!pe_translator().instruction(0x82000000, 0x90640000, 0x7C0006AC, pe_ctx_names(), &why).has_value());   // stw r3,0(r4); eieio
-    CB_CHECK_EQ(why, std::string("a store to memory-mapped I/O (eieio follows)"));
-    CB_CHECK(pe_translator().instruction(0x82000000, 0x90640000, 0x60000000, pe_ctx_names()).has_value());
+// With the recompiler's ways out, a branch, call or return is written: the condition from the p-code, the target as the recompiler names it.
+CB_TEST("recompile.pcode_emit.the_ways_out_are_the_recompilers", [] {
+    pe::Names n = pe_ctx_names();
+    n.jump = [](std::uint32_t t) { return std::format("\tgoto loc_{:X};\n", t); };
+    n.call = [](std::uint32_t t) { return std::format("\tsub_{:X}(ctx, base);\n", t); };
+    n.call_indirect = [](const std::string& v) { return std::format("\tPPC_CALL_INDIRECT_FUNC({});\n", v); };
+    n.jump_indirect = [](const std::string& v) { return std::format("\tPPC_CALL_INDIRECT_FUNC({});\n\treturn;\n", v); };
+    const auto text = [&](std::uint32_t w) { return pe_translator().instruction(0x82000000, w, 0x60000000, n).value_or(pe::Statements{"(declined)"}).text; };
+    CB_CHECK(text(0x48000101).find("sub_82000100(ctx, base);") != std::string::npos);   // bl
+    CB_CHECK(text(0x48000101).find("ctx.lr = ") != std::string::npos);
+    CB_CHECK(text(0x4E800020).find("return;") != std::string::npos);                    // blr
+    CB_CHECK(text(0x4E400020).find("return;") != std::string::npos);                    // bdzlr: a branch through LR is a return
+    CB_CHECK(text(0x4E400020).find("PPC_CALL_INDIRECT_FUNC") == std::string::npos);
+    CB_CHECK(text(0x4E800420).find("PPC_CALL_INDIRECT_FUNC(uint32_t(ctx.ctr.u64))") != std::string::npos);   // bctr
+    CB_CHECK(text(0x419A0010).find("goto loc_82000010;") != std::string::npos);         // beq cr6
+    CB_CHECK(text(0x4200FFF8).find("goto loc_81FFFFF8;") != std::string::npos);         // bdnz -8
+    CB_CHECK(text(0x4200FFF8).find("uint32_t") != std::string::npos);                   // (the low word of CTR is tested)
+});
+
+// The user operations of the Xenon's description (ppc_64_xenonexact_be): the fused multiply-adds round once (XenonRecomp's helpers, the
+// console's results), the reservation is a compare and exchange, the barriers and hints are nothing, db16cyc the runtime's spin hint.
+CB_TEST("recompile.pcode_emit.the_user_operations_are_the_runtimes", [] {
+    pe::Names n = pe_ctx_names();
+    n.reserved = [] { return std::string("ctx.reserved"); };
+    const auto text = [&](std::uint32_t w) { return pe_translator().instruction(0x82000000, w, 0x60000000, n).value_or(pe::Statements{"(declined)"}).text; };
+    CB_CHECK(text(0xFC22193A).find("ppc_fmadd(") != std::string::npos);                     // fmadd f1,f2,f4,f3
+    CB_CHECK(text(0xEC22193E).find("ppc_fmadds(") != std::string::npos);                    // fnmadds f1,f2,f4,f3
+    CB_CHECK(text(0xEC22193E).find(", true)") != std::string::npos);
+    CB_CHECK(text(0x7C651828).find("ctx.reserved.u32 = *(uint32_t*)PPC_HOST(") != std::string::npos);   // lwarx r3,r5,r3
+    CB_CHECK(text(0x7C65192D).find("__sync_bool_compare_and_swap(") != std::string::npos);  // stwcx. r3,r5,r3
+    CB_CHECK(text(0x7C0004AC).find("(declined)") == std::string::npos);                     // sync: nothing to do
+    CB_CHECK_EQ(text(0x7FFFFB78), std::string("\tPPC_SPIN_HINT();\n"));                     // db16cyc
+    CB_CHECK(text(0x7C6C42E6).find("PPC_QUERY_TIMEBASE()") != std::string::npos);           // mftb r3
+    // a vector operation: XenonRecomp's SIMDe form on the context's vectors, flagged for the VMX flush mode
+    const std::optional<pe::Statements> v = pe_translator().instruction(0x82000000, 0x140000D0, 0x60000000, n);   // vmaddfp128 v0,v0,v0,v0
+    CB_CHECK(v.has_value() && v->vmx && v->text.find("simde_mm_add_ps(simde_mm_mul_ps(") != std::string::npos);
+});
+
+CB_TEST("recompile.pcode_emit.a_store_before_eieio_goes_to_memory_mapped_io", [] {
+    const std::optional<pe::Statements> mm = pe_translator().instruction(0x82000000, 0x90640000, 0x7C0006AC, pe_ctx_names());   // stw r3,0(r4); eieio
+    CB_CHECK(mm.has_value() && mm->text.find("PPC_MM_STORE_U32(") != std::string::npos);
+    const std::optional<pe::Statements> plain = pe_translator().instruction(0x82000000, 0x90640000, 0x60000000, pe_ctx_names());
+    CB_CHECK(plain.has_value() && plain->text.find("PPC_STORE_U32(") != std::string::npos && plain->text.find("MM_") == std::string::npos);
 });
 
 CB_TEST("recompile.pcode_emit.floating_point_says_so_and_drops_the_fpscr_bits", [] {

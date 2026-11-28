@@ -84,3 +84,6 @@ CodeBreaker links XenonRecomp and XenonAnalyse into `codebreaker.exe` (MSVC, cla
   translator (`src/recompile/pcode_emit`) is the one it is given (docs/RECOMPILER.md).
 - The instruction tests' harness printed its mismatches with `xenon_log::println`, which the generated `main.cpp` does not
   have (a rename of fmt's `println` had reached the text it writes), so the tests no longer built: it is `fmt::println` again.
+- The translator's names carry the ways out of an instruction as the recompiler writes them (`jump`, `call`, `call_indirect`,
+  `jump_indirect`: the goto or tail call, the function call with its special cases, the indirect-call table, a `bctr`'s switch
+  table), MSR and the reservation, and a translated instruction can ask for the VMX flush mode (`vmx`).

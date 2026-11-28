@@ -35,11 +35,17 @@ namespace cb::recompile::pcode_emit {
 struct Names {
     std::function<std::string(std::size_t)> r, f, v, cr;
     std::function<std::string()> ctr, xer, lr;   // lr: empty when the context keeps no LR
+    std::function<std::string()> msr, reserved;  // msr: empty when the context keeps no MSR; reserved: lwarx's reservation
+    // The ways out of an instruction, as the recompiler writes them (lines that start with a tab): a branch to an address, a call, a
+    // call and a branch through a register's value. Unset: an instruction with a way out is declined.
+    std::function<std::string(std::uint32_t)> jump, call;
+    std::function<std::string(const std::string&)> call_indirect, jump_indirect;
 };
 
 struct Statements {
     std::string text;    // each line starts with a tab and ends with a newline
     bool fpu = false;    // it computes with the floating-point unit
+    bool vmx = false;    // it computes with the vector unit's floating point (the VMX flush mode)
 };
 
 class Translator {
@@ -55,7 +61,7 @@ public:
 
     // A place of the register space the context has (or knows to drop).
     struct Cell {
-        enum class Kind : std::uint8_t { Gpr, Fpr, Vector, Cr, Ctr, Lr, XerBit, Dropped };
+        enum class Kind : std::uint8_t { Gpr, Fpr, Vector, Cr, Ctr, Lr, XerBit, Msr, TimeBase, Dropped };
         Kind kind = Kind::Dropped;
         std::uint64_t offset = 0;
         unsigned size = 0;

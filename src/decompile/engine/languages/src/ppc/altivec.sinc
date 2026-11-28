@@ -461,6 +461,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {   # TODO definition
 	# TODO change CR6
 	vrD = vectorCompareBoundsFloatingPoint(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpeqfp vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=198
@@ -472,6 +475,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 :vcmpeqfp. vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=1 & XOP_0_9=198
 {   # TODO definition
 	vrD = vectorCompareEqualToFloatingPoint(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpequb vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=6
@@ -484,6 +490,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareEqualToUnsignedByte(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpequh vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=70
@@ -496,6 +505,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareEqualToUnsignedHalfWord(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpequw vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=134
@@ -508,6 +520,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareEqualToUnsignedWord(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpgefp vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=454
@@ -520,6 +535,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareGreaterThanOrEqualToFloatingPoint(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpgtfp vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=710
@@ -532,6 +550,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareGreaterThanFloatingPoint(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpgtsb vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=774
@@ -544,6 +565,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareGreaterThanSignedByte(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpgtsh vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=838
@@ -556,6 +580,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareGreaterThanConditionRegisterSignedHalfWord(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpgtsw vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=902
@@ -568,6 +595,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareGreaterThanSignedWord(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpgtub vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=518
@@ -580,6 +610,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareGreaterThanUnsignedByte(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpgtuh vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=582
@@ -592,6 +625,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareGreaterThanUnsignedHalfWord(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vcmpgtuw vrD,vrA,vrB	is OP=4 & vrD & vrA & vrB & BIT_10=0 & XOP_0_9=646
@@ -604,6 +640,9 @@ vaddubm_part2: is  vrA_8_8 & vrA_8_9 & vrA_8_10 & vrA_8_11 & vrA_8_12 & vrA_8_13
 {	# TODO definition
 	# TODO change CR6
 	vrD = vectorCompareGreaterThanUnsignedWord(vrA,vrB);
+@ifdef XENON_EXACT
+	cr6 = vectorRecordCR6(vrD);
+@endif
 }
 
 :vctsxs vrD,vrB,A_BITS	is OP=4 & vrD & A_BITS & vrB & XOP_0_10=970

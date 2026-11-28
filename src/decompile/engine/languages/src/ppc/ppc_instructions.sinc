@@ -1469,8 +1469,12 @@
 	local tmpfA = fA;
 	local tmpfB = fB;
 	local tmpfC = fC;
+@ifdef XENON_EXACT
+	fD = fusedMultiplyAdd(fA, fC, fB);
+@else
 	tmp:8 = fA f* fC;
 	fD = tmp f+ fB;
+@endif
 	setFPRF(fD);
 #	fp_fr = floatMaddRoundedUp(tmpfA, tmpfC, tmpfB);
 #	fp_fi = floatMaddInexact(tmpfA,tmpfC,tmpfB);
@@ -1489,8 +1493,12 @@
 	local tmpfA = fA;
 	local tmpfB = fB;
 	local tmpfC = fC;
+@ifdef XENON_EXACT
+	fD = fusedMultiplyAdd(fA, fC, fB);
+@else
 	tmp:8 = fA f* fC;
 	fD = tmp f+ fB;
+@endif
 	setFPRF(fD);
 #	fp_fr = floatMaddRoundedUp(tmpfA, tmpfC, tmpfB);
 #	fp_fi = floatMaddInexact(tmpfA,tmpfC,tmpfB);
@@ -1510,9 +1518,13 @@
 	local tmpfA = fA;
 	local tmpfB = fB;
 	local tmpfC = fC;
+@ifdef XENON_EXACT
+	fD = fusedMultiplyAddSingle(fA, fC, fB);
+@else
 	tmp:8 = fA f* fC;
 	tmp2:4 = float2float(tmp f+ fB);
 	fD = float2float(tmp2);
+@endif
 	setFPRF(fD);
 #	fp_fr = floatMaddRoundedUp(tmpfA, tmpfC, tmpfB);
 #	fp_fi = floatMaddInexact(tmpfA,tmpfC,tmpfB);
@@ -1531,9 +1543,13 @@
 	local tmpfA = fA;
 	local tmpfB = fB;
 	local tmpfC = fC;
+@ifdef XENON_EXACT
+	fD = fusedMultiplyAddSingle(fA, fC, fB);
+@else
 	tmp:8 = fA f* fC;
 	tmp2:4 = float2float(tmp f+ fB);
 	fD = float2float(tmp2);
+@endif
 	setFPRF(fD);
 #	fp_fr = floatMaddRoundedUp(tmpfA, tmpfC, tmpfB);
 #	fp_fi = floatMaddInexact(tmpfA,tmpfC,tmpfB);
@@ -1564,8 +1580,12 @@
 	local tmpfA = fA;
 	local tmpfB = fB;
 	local tmpfC = fC;
+@ifdef XENON_EXACT
+	fD = fusedMultiplySubtract(fA, fC, fB);
+@else
 	tmp:8 = fA f* fC;
 	fD = tmp f- fB;
+@endif
 	setFPRF(fD);
 #	fp_fr = floatMsubRoundedUp(tmpfA, tmpfC, tmpfB);
 #	fp_fi = floatMsubInexact(tmpfA,tmpfC,tmpfB);
@@ -1584,9 +1604,13 @@
 	local tmpfA = fA;
 	local tmpfB = fB;
 	local tmpfC = fC;
+@ifdef XENON_EXACT
+	fD = fusedMultiplySubtract(fA, fC, fB);
+@else
 	tmp:8 = fA f* fC;
 	tmp2:4 = float2float(tmp f- fB);
 	fD = float2float(tmp2);
+@endif
 	setFPRF(fD);
 #	fp_fr = floatMsubRoundedUp(tmpfA, tmpfC, tmpfB);
 #	fp_fi = floatMsubInexact(tmpfA,tmpfC,tmpfB);
@@ -1606,9 +1630,13 @@
 	local tmpfA = fA;
 	local tmpfB = fB;
 	local tmpfC = fC;
+@ifdef XENON_EXACT
+	fD = fusedMultiplySubtractSingle(fA, fC, fB);
+@else
 	tmp:8 = fA f* fC;
 	tmp2:4 = float2float(tmp f- fB);
 	fD = float2float(tmp2);
+@endif
 	setFPRF(fD);
 #	fp_fr = floatMsubRoundedUp(tmpfA, tmpfC, tmpfB);
 #	fp_fi = floatMsubInexact(tmpfA,tmpfC,tmpfB);
@@ -1627,9 +1655,13 @@
 	local tmpfA = fA;
 	local tmpfB = fB;
 	local tmpfC = fC;
+@ifdef XENON_EXACT
+	fD = fusedMultiplySubtractSingle(fA, fC, fB);
+@else
 	tmp:8 = fA f* fC;
 	tmp2:4 = float2float(tmp f- fB);
 	fD = float2float(tmp2);
+@endif
 	setFPRF(fD);
 #	fp_fr = floatMsubRoundedUp(tmpfA, tmpfC, tmpfB);
 #	fp_fi = floatMsubInexact(tmpfA,tmpfC,tmpfB);
@@ -1714,8 +1746,12 @@
 	local tmpfA = fA;
 	local tmpfB = fB;
 	local tmpfC = fC;
+@ifdef XENON_EXACT
+	fD = fusedNegativeMultiplyAdd(fA, fC, fB);
+@else
 	tmp:8 = fA f* fC;
 	fD = f- (tmp f+ fB);
+@endif
 	setFPRF(fD);
 #	fp_fr = floatMaddRoundedUp(tmpfA, tmpfC, tmpfB);
 #	fp_fi = floatMaddInexact(tmpfA,tmpfC,tmpfB);
@@ -1734,8 +1770,12 @@
 	local tmpfA = fA;
 	local tmpfB = fB;
 	local tmpfC = fC;
+@ifdef XENON_EXACT
+	fD = fusedNegativeMultiplyAdd(fA, fC, fB);
+@else
 	tmp:8 = fA f* fC;
 	fD = f- (tmp f+ fB);
+@endif
 	setFPRF(fD);
 #	fp_fr = floatMaddRoundedUp(tmpfA, tmpfC, tmpfB);
 #	fp_fi = floatMaddInexact(tmpfA,tmpfC,tmpfB);
@@ -1755,9 +1795,13 @@
 	local tmpfA = fA;
 	local tmpfB = fB;
 	local tmpfC = fC;
+@ifdef XENON_EXACT
+	fD = fusedNegativeMultiplyAddSingle(fA, fC, fB);
+@else
 	tmp:8 = fA f* fC;
 	tmp2:4 = float2float(tmp f+ fB);
 	fD = f- float2float(tmp2);
+@endif
 	setFPRF(fD);
 #	fp_fr = floatMaddRoundedUp(tmpfA, tmpfC, tmpfB);
 #	fp_fi = floatMaddInexact(tmpfA,tmpfC,tmpfB);
@@ -1776,9 +1820,13 @@
 	local tmpfA = fA;
 	local tmpfB = fB;
 	local tmpfC = fC;
+@ifdef XENON_EXACT
+	fD = fusedNegativeMultiplyAddSingle(fA, fC, fB);
+@else
 	tmp:8 = fA f* fC;
 	tmp2:4 = float2float(tmp f+ fB);
 	fD = f- float2float(tmp2);
+@endif
 	setFPRF(fD);
 #	fp_fr = floatMaddRoundedUp(tmpfA, tmpfC, tmpfB);
 #	fp_fi = floatMaddInexact(tmpfA,tmpfC,tmpfB);
@@ -1798,8 +1846,12 @@
 	local tmpfA = fA;
 	local tmpfB = fB;
 	local tmpfC = fC;
+@ifdef XENON_EXACT
+	fD = fusedNegativeMultiplySubtract(fA, fC, fB);
+@else
 	tmp:8 = fA f* fC;
 	fD = f- (tmp f- fB);
+@endif
 	setFPRF(fD);
 #	fp_fr = floatMsubRoundedUp(tmpfA, tmpfC, tmpfB);
 #	fp_fi = floatMsubInexact(tmpfA,tmpfC,tmpfB);
@@ -1818,9 +1870,13 @@
 	local tmpfA = fA;
 	local tmpfB = fB;
 	local tmpfC = fC;
+@ifdef XENON_EXACT
+	fD = fusedNegativeMultiplySubtract(fA, fC, fB);
+@else
 	tmp:8 = fA f* fC;
 	tmp2:4 = float2float(tmp f- fB);
 	fD = f- float2float(tmp2);
+@endif
 	setFPRF(fD);
 #	fp_fr = floatMsubRoundedUp(tmpfA, tmpfC, tmpfB);
 #	fp_fi = floatMsubInexact(tmpfA,tmpfC,tmpfB);
@@ -1840,9 +1896,13 @@
 	local tmpfA = fA;
 	local tmpfB = fB;
 	local tmpfC = fC;
+@ifdef XENON_EXACT
+	fD = fusedNegativeMultiplySubtractSingle(fA, fC, fB);
+@else
 	tmp:8 = fA f* fC;
 	tmp2:4 = float2float(tmp f- fB);
 	fD = f- float2float(tmp2);
+@endif
 	setFPRF(fD);
 #	fp_fr = floatMsubRoundedUp(tmpfA, tmpfC, tmpfB);
 #	fp_fi = floatMsubInexact(tmpfA,tmpfC,tmpfB);
@@ -1861,9 +1921,13 @@
 	local tmpfA = fA;
 	local tmpfB = fB;
 	local tmpfC = fC;
+@ifdef XENON_EXACT
+	fD = fusedNegativeMultiplySubtractSingle(fA, fC, fB);
+@else
 	tmp:8 = fA f* fC;
 	tmp2:4 = float2float(tmp f- fB);
 	fD = f- float2float(tmp2);
+@endif
 	setFPRF(fD);
 #	fp_fr = floatMsubRoundedUp(tmpfA, tmpfC, tmpfB);
 #	fp_fi = floatMsubInexact(tmpfA,tmpfC,tmpfB);
@@ -2191,12 +2255,17 @@
 #ldarx r0,r2,r0	 0x7c 02 00 2a
 :ldarx D,RA_OR_ZERO,B	is OP=31 & D & RA_OR_ZERO & B & XOP_1_10=21 & BIT_0=0
 {
+@ifdef XENON_EXACT
+	ea:$(REGISTER_SIZE) = RA_OR_ZERO+B;
+	D = loadDoublewordAndReserve(ea);
+@else
 	ea:$(REGISTER_SIZE) = RA_OR_ZERO+B;
 	# CodeBreaker: the reservation is taken, as lwarx (stdcx. stores only while it is set)
 	RESERVE = 1;
 	RESERVE_ADDRESS = ea;
 	RESERVE_LENGTH = 8;
 	D = *:8(ea);
+@endif
 }
 @endif
 @endif
@@ -2339,6 +2408,11 @@ define pcodeop lswxOp;
 #lwarx r0,r0,r0	 0x7c 00 00 28
 :lwarx D,RA_OR_ZERO,B	is OP=31 & D & RA_OR_ZERO & B & XOP_1_10=20 & BIT_0=0
 {
+@ifdef XENON_EXACT
+	ea:$(REGISTER_SIZE) = RA_OR_ZERO+B;
+	local word:4 = loadWordAndReserve(ea);
+	D = zext(word);
+@else
 	ea:$(REGISTER_SIZE) = RA_OR_ZERO+B;
 	# CodeBreaker: the reservation is taken (upstream left it commented out). stwcx. (L6) stores
 	# only while RESERVE is set and clears it: without this, after a function's first
@@ -2351,6 +2425,7 @@ define pcodeop lswxOp;
 	D = zext(*:4(ea));
 @else
 	D = *:4(ea);
+@endif
 @endif
 }
 
@@ -3520,6 +3595,11 @@ CRM_val: crmval is CRM [crmval = CRM+0;] {export *[const]:1 crmval;}
 # reservation is gone either way
 :stdcx. S,RA_OR_ZERO,B 	is OP=31 & S & RA_OR_ZERO & B & XOP_1_10=214 & BIT_0=1
 {
+@ifdef XENON_EXACT
+	EA:$(REGISTER_SIZE) = RA_OR_ZERO + B;
+	local stored:1 = storeDoublewordConditional(EA, S);
+	cr0 = (stored << 1) | (xer_so & 1);
+@else
 	EA:$(REGISTER_SIZE) = RA_OR_ZERO + B;
 	cr0 = xer_so & 1;
 	if (RESERVE == 0) goto <lost>;
@@ -3528,6 +3608,7 @@ CRM_val: crmval is CRM [crmval = CRM+0;] {export *[const]:1 crmval;}
 	cr0flags(0:$(REGISTER_SIZE));
 <lost>
 	RESERVE = 0;
+@endif
 }
 
 #stdu r0,8(0)	0xf8 00 00 01	
@@ -3716,6 +3797,11 @@ define pcodeop stswxOp;
 # reservation is gone either way
 :stwcx. S,RA_OR_ZERO,B 	is OP=31 & S & RA_OR_ZERO & B & XOP_1_10=150 & BIT_0=1
 {
+@ifdef XENON_EXACT
+	EA:$(REGISTER_SIZE) = RA_OR_ZERO + B;
+	local stored:1 = storeWordConditional(EA, S:4);
+	cr0 = (stored << 1) | (xer_so & 1);
+@else
 	EA:$(REGISTER_SIZE) = RA_OR_ZERO + B;
 	cr0 = xer_so & 1;
 	if (RESERVE == 0) goto <lost>;
@@ -3728,6 +3814,7 @@ define pcodeop stswxOp;
 	cr0flags(0:$(REGISTER_SIZE));
 <lost>
 	RESERVE = 0;
+@endif
 }
 
 #stwu r0,r0			0x94 00 00 00
