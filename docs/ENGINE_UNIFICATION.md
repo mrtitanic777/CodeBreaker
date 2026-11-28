@@ -105,6 +105,8 @@ directives have no SLEIGH form. Its instruction encoding moves.
 runtime beside it. Tetris, Minecraft and Up must still play on the Xbox 360 at every step. After that it takes any CPU with a
 SLEIGH description.
 
+The design and its steps, each with its proof: docs/RECOMPILER.md.
+
 ## 6. The compiler middle on L2
 
 One optimizer and code generator under every language, from L2 down: x86cc is the first back end, then OpenWatcom's code generator
@@ -198,3 +200,5 @@ tests only what it changes.
 - 2026-11-28: item 7: the Virtual Boy on `vectored`'s V810 processor, byte-identical on its 4 homebrew programs. Next: the `executable` shape.
 - 2026-11-28: item 7: the `executable` shape, PS2 and PSP on it (container `mips-elf`), byte-identical on their 15 homebrew programs.
   Next: PS3, Vita, 3DS, DS, Switch, GameCube/Wii, Saturn, Dreamcast.
+- 2026-11-28: item 5 (docs/RECOMPILER.md): the design written; step 0, the baseline (Minecraft and Up checked from the branch;
+  Tetris's package is not on this machine), and step 1, an instruction's p-code as data (`sleigh::Reader::pcode`).

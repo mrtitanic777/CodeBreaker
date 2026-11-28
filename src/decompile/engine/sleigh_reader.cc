@@ -10,6 +10,7 @@
 #include <stdexcept>
 
 #include "decompile/engine/core/cpp/loadimage.hh"
+#include "decompile/engine/core/cpp/opcodes.hh"
 #include "decompile/engine/core/cpp/sleigh.hh"
 
 namespace cb::decompile::sleigh {
@@ -100,6 +101,50 @@ private:
     bool pending_ = false;
 };
 
+// The operations' numbers are the core's.
+static_assert(static_cast<unsigned>(Op::Copy) == ghidra::CPUI_COPY && static_cast<unsigned>(Op::Return) == ghidra::CPUI_RETURN);
+static_assert(static_cast<unsigned>(Op::IntSRem) == ghidra::CPUI_INT_SREM && static_cast<unsigned>(Op::BoolOr) == ghidra::CPUI_BOOL_OR);
+static_assert(static_cast<unsigned>(Op::FloatLessEqual) == ghidra::CPUI_FLOAT_LESSEQUAL && static_cast<unsigned>(Op::FloatNan) == ghidra::CPUI_FLOAT_NAN);
+static_assert(static_cast<unsigned>(Op::FloatRound) == ghidra::CPUI_FLOAT_ROUND && static_cast<unsigned>(Op::Piece) == ghidra::CPUI_PIECE);
+static_assert(static_cast<unsigned>(Op::Subpiece) == ghidra::CPUI_SUBPIECE && static_cast<unsigned>(Op::Insert) == ghidra::CPUI_INSERT);
+static_assert(static_cast<unsigned>(Op::SPull) == ghidra::CPUI_SPULL);
+
+// An instruction's operations as data.
+class Collect : public ghidra::PcodeEmit {
+public:
+    Collect(const ghidra::AddrSpace* registers, const ghidra::AddrSpace* unique) : registers_(registers), unique_(unique) {}
+    void dump(const ghidra::Address&, ghidra::OpCode opc, ghidra::VarnodeData* out, ghidra::VarnodeData* vars, ghidra::int4 isize) override {
+        PcodeOp op;
+        op.op = static_cast<Op>(opc);
+        if (out != nullptr) op.output = place(*out);
+        op.inputs.reserve(static_cast<std::size_t>(isize));
+        for (ghidra::int4 i = 0; i < isize; ++i) {
+            // (LOAD's and STORE's first input holds the space itself; it is given as the space's index)
+            if (i == 0 && (opc == ghidra::CPUI_LOAD || opc == ghidra::CPUI_STORE)) {
+                op.inputs.push_back(Varnode{Space::Constant, static_cast<std::uint64_t>(vars[0].getSpaceFromConst()->getIndex()), vars[0].size, 0});
+            } else {
+                op.inputs.push_back(place(vars[i]));
+            }
+        }
+        ops.push_back(std::move(op));
+    }
+    std::vector<PcodeOp> ops;
+
+private:
+    Varnode place(const ghidra::VarnodeData& v) const {
+        Varnode n;
+        n.offset = v.offset;
+        n.size = static_cast<unsigned>(v.size);
+        if (v.space->getType() == ghidra::IPTR_CONSTANT) n.kind = Space::Constant;
+        else if (v.space == registers_) n.kind = Space::Register;
+        else if (v.space == unique_) n.kind = Space::Unique;
+        else n.kind = Space::Memory, n.space = static_cast<unsigned>(v.space->getIndex());
+        return n;
+    }
+    const ghidra::AddrSpace* registers_;
+    const ghidra::AddrSpace* unique_;
+};
+
 void initialize_once() {
     static std::once_flag once;
     std::call_once(once, [] {
@@ -180,6 +225,55 @@ Instruction Reader::at(const std::uint8_t* code, std::size_t size, std::uint64_t
 }
 
 std::size_t Reader::alignment() const { return static_cast<std::size_t>(impl_->trans->getAlignment()); }
+
+const char* op_name(Op op) { return ghidra::get_opname(static_cast<ghidra::OpCode>(op)); }
+
+Lifted Reader::pcode(const std::uint8_t* code, std::size_t size, std::uint64_t base, std::uint64_t address) const {
+    Lifted lifted;
+    lifted.address = address;
+    const Instruction ins = at(code, size, base, address);   // (the bytes made current, the parse kept)
+    if (ins.length == 0) return lifted;
+    std::lock_guard hold(impl_->lock);
+    ghidra::AddrSpace* space = impl_->trans->getDefaultCodeSpace();
+    const std::uint64_t unit = static_cast<std::uint64_t>(space->getWordSize());
+    impl_->window.set(code, size, base * unit);
+    Collect collect(impl_->trans->getSpaceByName("register"), impl_->trans->getUniqueSpace());
+    try {
+        lifted.length = static_cast<std::size_t>(impl_->trans->oneInstruction(collect, ghidra::Address(space, address * unit)));
+    } catch (const ghidra::LowlevelError&) {
+        return Lifted{address};
+    }
+    lifted.ops = std::move(collect.ops);
+    return lifted;
+}
+
+std::string Reader::register_name(std::uint64_t offset, unsigned size) const {
+    std::lock_guard hold(impl_->lock);
+    return impl_->trans->getRegisterName(impl_->trans->getSpaceByName("register"), offset, static_cast<ghidra::int4>(size));
+}
+
+std::optional<Varnode> Reader::register_named(const std::string& name) const {
+    std::lock_guard hold(impl_->lock);
+    try {
+        const ghidra::VarnodeData& v = impl_->trans->getRegister(name);
+        return Varnode{Space::Register, v.offset, static_cast<unsigned>(v.size), 0};
+    } catch (const ghidra::LowlevelError&) {
+        return std::nullopt;
+    }
+}
+
+std::string Reader::user_op_name(std::uint64_t index) const {
+    std::lock_guard hold(impl_->lock);
+    std::vector<std::string> names;
+    impl_->trans->getUserOpNames(names);
+    return index < names.size() ? names[static_cast<std::size_t>(index)] : std::string();
+}
+
+std::string Reader::space_name(unsigned index) const {
+    std::lock_guard hold(impl_->lock);
+    const ghidra::AddrSpace* s = static_cast<ghidra::int4>(index) < impl_->trans->numSpaces() ? impl_->trans->getSpace(static_cast<ghidra::int4>(index)) : nullptr;
+    return s != nullptr ? s->getName() : std::string();
+}
 
 std::vector<Instruction> Reader::read(const std::uint8_t* code, std::size_t size, std::uint64_t base, std::size_t count) const {
     return read(code, size, base, count, {});
