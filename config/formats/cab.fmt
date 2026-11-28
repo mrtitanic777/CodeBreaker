@@ -1,0 +1,73 @@
+# cab.fmt -- a Microsoft cabinet (.CAB): the CFHEADER, its optional reserve and set links, the CFFOLDER entries and the
+# CFFILE entries (formats/cab). The data blocks (CFDATA) a folder's stream is made of are read from the folder's own
+# offset (root `Blocks`, the count and the reserve given as $count and $reserve).
+# Strings are zero-terminated; one the file cuts off is the reader's error.
+
+format cab
+endian le
+
+struct File {
+    magic         : bytes(4) == "MSCF"
+    reserved1     : u32
+    size          : u32          # of the whole cabinet, as the header says
+    reserved2     : u32
+    files_at      : u32          # where the first CFFILE entry is
+    reserved3     : u32
+    version_minor : u8
+    version_major : u8
+    folder_count  : u16
+    file_count    : u16
+    flags         : u16 as Flags
+    set_id        : u16
+    index         : u16          # this cabinet's number in its set
+    if flags & 4 {
+        header_reserve : u16
+        folder_reserve : u8
+        block_reserve  : u8      # bytes reserved in every CFDATA block
+        reserve        : bytes(header_reserve)
+    }
+    let folder_extra = flags & 4 ? folder_reserve : 0
+    if flags & 1 {
+        prev_cabinet : cstr
+        prev_disk    : cstr
+    }
+    if flags & 2 {
+        next_cabinet : cstr
+        next_disk    : cstr
+    }
+    folders : Folder[folder_count]
+    files @ files_at : FileEntry[file_count]
+}
+
+flags Flags { prev_cabinet = 0x1, next_cabinet = 0x2, reserve_present = 0x4 }
+
+struct Folder {
+    data_offset : u32            # of the folder's first CFDATA block
+    block_count : u16
+    type        : u16            # low nibble: 0 none, 1 MSZIP, 2 Quantum, 3 LZX
+    reserve     : bytes(folder_extra)
+}
+
+struct FileEntry {
+    size       : u32
+    offset     : u32             # inside the folder's uncompressed stream
+    folder     : u16             # a folder number, or 0xFFFD / 0xFFFE / 0xFFFF (continued from / into a neighbour)
+    date       : u16
+    time       : u16
+    attributes : u16             # 0x80: the name is UTF-8
+    name       : cstr
+}
+
+# A folder's CFDATA blocks: $count of them, each with $reserve reserved bytes. Tolerant: a block the file cuts short ends
+# the list (the reader says so when it gets there).
+struct Blocks {
+    blocks : DataBlock[$count] try
+}
+
+struct DataBlock {
+    checksum     : u32
+    compressed   : u16
+    uncompressed : u16           # 0: the block's data runs on into the next cabinet's first block
+    reserve      : bytes($reserve)
+    payload      : bytes(compressed)
+}
