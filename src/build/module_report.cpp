@@ -90,6 +90,13 @@ std::string Built::report() const {
         out.push_back(std::format("  runs        {} exported functions called with zero arguments: {} returned, {} did what the original does (same end, same result)",
                                   ran.size(), returned, same_end));
     }
+    if (source_form) {
+        std::string line = std::format("  source      {}: {} imports, {} functions and {} parameters named", fs::to_text(*source_form),
+                                       source_renamed_imports, source_renamed_functions, source_named_parameters);
+        if (!source_missing.empty()) line += std::format("; {} objects NOT in it (their making was not noted: {})", source_missing.size(), first_of(source_missing, 4));
+        if (source_check) line += source_check->empty() ? "; wmake makes the same image" : "; wmake: " + *source_check;
+        out.push_back(line);
+    }
     return text::join(out, "\n");
 }
 

@@ -104,6 +104,8 @@ public:
     std::string tool_inputs() const;
 
 private:
+    // (how the object was made, for the recipe of the module's source form)
+    void note(const std::string& stem, std::string_view text, const std::vector<std::string>& flags) const;
     const Services& services_;
     stdfs::path exe_;
     Env env_;

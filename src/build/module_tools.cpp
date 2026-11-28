@@ -217,6 +217,7 @@ Assembler::Result Assembler::assemble(const std::string& stem, std::string_view 
                 // (as wasm writes it in this folder, now)
                 if (const std::optional<Bytes> here = functions::omf_here(rest, obj.parent_path())) {
                     fs::write_file(obj, *here);
+                    note(stem, text, flags);
                     return {0, ""};
                 }
             } else {
@@ -235,6 +236,7 @@ Assembler::Result Assembler::assemble(const std::string& stem, std::string_view 
     const std::string message = r.said();
     std::error_code ec;
     if (r.code == 0 && stdfs::is_regular_file(obj, ec)) {
+        note(stem, text, flags);
         if (services_.cache != nullptr) {
             Bytes kept = {'O', 'K'};
             const Bytes object = fs::read_file(obj);
@@ -252,6 +254,11 @@ Assembler::Result Assembler::assemble(const std::string& stem, std::string_view 
         services_.cache->put("wasm16", key, kept);
     }
     return {r.code != 0 ? r.code : 1, message};
+}
+
+void Assembler::note(const std::string& stem, std::string_view text, const std::vector<std::string>& flags) const {
+    if (services_.builder != nullptr)
+        services_.builder->note_made(folder_ / (stem + ".obj"), {fs::to_text(exe_.stem()), flags, stem + ".asm", std::string(text), folder_});
 }
 
 std::string write_filler(const Assembler& assembler, std::uint32_t seg, std::string_view stem, std::uint32_t n) {

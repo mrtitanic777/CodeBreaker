@@ -454,6 +454,9 @@ struct FunctionBuilder::Impl {
     std::mutex links_mutex;
     std::map<stdfs::path, std::string> link_logs;   // what the linker said last, by folder
 
+    mutable std::mutex made_mutex;
+    std::map<stdfs::path, MadeObject> made;   // how each object was made last, by its path
+
     int jobs_for(std::optional<int> jobs) const { return jobs && *jobs > 0 ? *jobs : parallel::workers(options.workers); }
 
     // Link: <outdir>/m.dll from the lines of m.lnk. Returns the DLL's path, or nullopt and the reason.
@@ -646,13 +649,34 @@ std::string FunctionBuilder::compile(const Compiler& cc, std::span<const std::st
                     if (!it->second.error.empty()) return it->second.error;
                     write_source(outdir / (std::string(stem) + ".c"), std::string(kHeaderInclude) + std::string(text) + "\n");
                     fs::write_file(outdir / (std::string(stem) + ".obj"), it->second.object);
+                    note_compiled(cc, adjust_flags(cflags, text), outdir, stem, text);
                     return "";
                 }
             }
             ++impl_->counts.compiled;
         }
     }
-    return compile_kept(cc, adjust_flags(cflags, text), outdir, stem, text, header).why;
+    const std::vector<std::string> flags = adjust_flags(cflags, text);
+    std::string why = compile_kept(cc, flags, outdir, stem, text, header).why;
+    if (why.empty()) note_compiled(cc, flags, outdir, stem, text);
+    return why;
+}
+
+void FunctionBuilder::note_compiled(const Compiler& cc, std::span<const std::string> flags, const stdfs::path& outdir, std::string_view stem,
+                                    std::string_view text) {
+    note_made(outdir / (std::string(stem) + ".obj"), {fs::to_text(cc.exe.stem()), std::vector<std::string>(flags.begin(), flags.end()),
+                                                     std::string(stem) + ".c", std::string(kHeaderInclude) + std::string(text) + "\n", outdir});
+}
+
+void FunctionBuilder::note_made(const stdfs::path& object, MadeObject made) {
+    std::lock_guard lock(impl_->made_mutex);
+    impl_->made.insert_or_assign(object.lexically_normal(), std::move(made));
+}
+
+std::optional<MadeObject> FunctionBuilder::made(const stdfs::path& object) const {
+    std::lock_guard lock(impl_->made_mutex);
+    const auto it = impl_->made.find(object.lexically_normal());
+    return it == impl_->made.end() ? std::nullopt : std::optional<MadeObject>(it->second);
 }
 
 std::vector<std::string> FunctionBuilder::never_set_kept(const Compiler& cc, std::span<const std::string> cflags,
