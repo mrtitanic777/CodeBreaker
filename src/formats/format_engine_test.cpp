@@ -304,8 +304,12 @@ CB_TEST("formats.format_engine.mz", [] {
     W w = dos_stub(0, 2);   // two relocations at 0x40
     w.pad_to(0x40).u16(0x10).u16(0x0).u16(0x22).u16(0x1);
     w.pad_to(0x200);
-    const eng::Tree t = reg.read("mz", w.b);
+    CB_CHECK(!reg.read("mz", w.b).root.find("header.relocs"));   // the relocation table is a part: only a loader asks for it
+    eng::ReadOptions with_relocs;
+    with_relocs.parts.insert("dos_relocs");
+    const eng::Tree t = reg.read("mz", w.b, with_relocs);
     CB_CHECK_EQ(t.root.u("header.reloc_count"), 2u);
+    CB_CHECK_EQ(t.root.u("header.new_header"), 0u);   // (e_lfanew: the stub's word at 0x3C)
     CB_CHECK_EQ(t.root.u("header.header_size"), 0x40u);
     CB_CHECK_EQ(t.root.u("header.relocs[1].segment"), 1u);
     CB_CHECK_EQ(t.root.u("header.relocs[1].offset"), 0x22u);
