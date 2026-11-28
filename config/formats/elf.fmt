@@ -1,0 +1,153 @@
+# elf.fmt -- an ELF file, 32- or 64-bit: the identification, the file header, the program headers (segments), the section
+# headers and the sections' names. The structures are those of the ELF format itself, for any machine; a console's
+# reader (PlayStation 2, PSP, 3DS, Vita, Wii, Wii U, PlayStation 3 and 4 ...) adds what its own loader means.
+#
+# The byte order is the reading format's: this description reads a little-endian file (`elf`), elfbe.fmt a big-endian
+# one with the same structures. Each asserts the order the file says it has.
+#
+# The tables are read tolerantly (`try`): one that runs past the file is not in the tree (or holds the entries read
+# before the damage); the entries are read at the format's own sizes (32 and 56 bytes a program header, 40 and 64 a
+# section header) whatever the header's entry sizes say. What either means is the reader's to decide.
+
+format elf
+endian le
+
+# the string table at index i holds bytes, all of them in the file
+fn names_fit(i) = sections[i].type != 8 && sections[i].offset + sections[i].size <= $size
+
+struct File {
+    assert peek8(5) == 1 : "not a little-endian ELF file"
+    elf : Elf
+}
+
+struct Elf {
+    ident  : Ident
+    let is64 = ident.class == 2
+    header : Header
+
+    segments @ header.phoff : Segment[header.phnum] if header.phnum != 0 try
+    sections @ header.shoff : Section[header.shnum] if header.shnum != 0 try
+
+    # the section names: the string table section shstrndx names, when it holds bytes that are in the file
+    let has_names = header.shnum != 0 && header.shstrndx < count(sections) && names_fit(header.shstrndx)
+    let names_at   = has_names ? sections[header.shstrndx].offset : 0
+    let names_size = has_names ? sections[header.shstrndx].size : 0
+    names : SectionName[count(sections)] if has_names
+
+    # the symbol tables (part `symbols`): one element per section, holding the symbols when the section is a symbol table
+    symbols : SymbolTable[count(sections)] if header.shnum != 0 part symbols
+}
+
+struct Ident {
+    magic       : bytes(4) == "\x7fELF"
+    class       : u8 == 1 | 2        # 1: 32-bit, 2: 64-bit
+    data        : u8                 # 1: little-endian, 2: big-endian
+    version     : u8
+    os_abi      : u8
+    abi_version : u8
+    pad         : bytes(7)
+}
+
+struct Header {
+    type    : u16
+    machine : u16
+    version : u32
+    if is64 {
+        entry : u64
+        phoff : u64
+        shoff : u64
+    } else {
+        entry : u32
+        phoff : u32
+        shoff : u32
+    }
+    flags     : u32
+    ehsize    : u16
+    phentsize : u16
+    phnum     : u16
+    shentsize : u16
+    shnum     : u16
+    shstrndx  : u16
+}
+
+struct Segment {
+    type : u32
+    if is64 {
+        flags  : u32
+        offset : u64
+        vaddr  : u64
+        paddr  : u64
+        filesz : u64
+        memsz  : u64
+        align  : u64
+    } else {
+        offset : u32
+        vaddr  : u32
+        paddr  : u32
+        filesz : u32
+        memsz  : u32
+        flags  : u32
+        align  : u32
+    }
+}
+
+struct Section {
+    name_offset : u32
+    type        : u32
+    if is64 {
+        flags   : u64
+        address : u64
+        offset  : u64
+        size    : u64
+        link    : u32
+        info    : u32
+        align   : u64
+        entsize : u64
+    } else {
+        flags   : u32
+        address : u32
+        offset  : u32
+        size    : u32
+        link    : u32
+        info    : u32
+        align   : u32
+        entsize : u32
+    }
+}
+
+# A section's name: the zero-terminated string at its offset in the string table, cut at the table's end.
+struct SectionName {
+    let at = sections[_index].name_offset
+    text @ names_at + at : cstr(names_size - at) if at < names_size
+}
+
+# The symbols of section _index, when it is a symbol table (SHT_SYMTAB, entries of the format's size) whose string table
+# (its link) holds bytes in the file, and which lies in the file itself.
+struct SymbolTable {
+    let entry    = is64 ? 24 : 16
+    let link     = sections[_index].link
+    let is_table = sections[_index].type == 2 && sections[_index].entsize == entry && link < count(sections) && names_fit(link) && sections[_index].offset + sections[_index].size <= $size
+    let str_at   = is_table ? sections[link].offset : 0
+    let str_size = is_table ? sections[link].size : 0
+    entries @ sections[_index].offset : Symbol[sections[_index].size / entry] if is_table
+}
+
+struct Symbol {
+    name_offset : u32
+    if is64 {
+        info    : u8
+        other   : u8
+        section : u16
+        value   : u64
+        size    : u64
+    } else {
+        value   : u32
+        size    : u32
+        info    : u8
+        other   : u8
+        section : u16
+    }
+    let type = info & 15     # 0 none, 1 object, 2 function, 3 section, 4 file
+    let bind = info >> 4     # 0 local, 1 global, 2 weak
+    name @ str_at + name_offset : cstr(str_size - name_offset) if name_offset != 0 && name_offset < str_size
+}

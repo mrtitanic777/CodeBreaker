@@ -9,9 +9,12 @@
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
+#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::ppc_elf {
+
+namespace eng = cb::formats::engine;
 
 namespace {
 
@@ -36,66 +39,60 @@ Bytes inflate_exact(ByteView in, std::size_t expected, std::size_t at) {
     return std::move(r.data);
 }
 
-// The headers of the file as it stands (no inflating).
+std::uint32_t u32_of(const eng::Node& n, std::string_view field) { return static_cast<std::uint32_t>(n.u(field)); }
+
+// The headers of the file as it stands (no inflating). The layout is elf.fmt's (read big-endian: elfbe.fmt); that the
+// tables and the sections lie in the file is this reader's rule.
 Elf parse_headers(ByteView data) {
     if (!is_ppc_elf(data)) throw FormatError(kReader, 0, "not a 32-bit big-endian PowerPC ELF executable");
+    eng::ReadOptions options;
+    options.keep_source = false;   // only read from
+    const eng::Tree tree = eng::builtin().read("elfbe", data, options);
+    const eng::Node& e = tree.root.get("elf");
+    const eng::Node& id = e.get("ident");
+    const eng::Node& h = e.get("header");
     Elf elf;
     elf.data.assign(data.begin(), data.end());
-    elf.os_abi = data[7];
-    elf.abi_version = data[8];
-    elf.type = be16(data, 16);
-    elf.machine = be16(data, 18);
-    elf.version = be32(data, 20);
-    elf.entry = be32(data, 24);
-    elf.phoff = be32(data, 28);
-    elf.shoff = be32(data, 32);
-    elf.flags = be32(data, 36);
-    elf.ehsize = be16(data, 40);
-    elf.phentsize = be16(data, 42);
-    elf.phnum = be16(data, 44);
-    elf.shentsize = be16(data, 46);
-    elf.shnum = be16(data, 48);
-    elf.shstrndx = be16(data, 50);
+    elf.os_abi = static_cast<std::uint8_t>(id.u("os_abi"));
+    elf.abi_version = static_cast<std::uint8_t>(id.u("abi_version"));
+    elf.type = static_cast<std::uint16_t>(h.u("type"));
+    elf.machine = static_cast<std::uint16_t>(h.u("machine"));
+    elf.version = u32_of(h, "version");
+    elf.entry = u32_of(h, "entry");
+    elf.phoff = u32_of(h, "phoff");
+    elf.shoff = u32_of(h, "shoff");
+    elf.flags = u32_of(h, "flags");
+    elf.ehsize = static_cast<std::uint16_t>(h.u("ehsize"));
+    elf.phentsize = static_cast<std::uint16_t>(h.u("phentsize"));
+    elf.phnum = static_cast<std::uint16_t>(h.u("phnum"));
+    elf.shentsize = static_cast<std::uint16_t>(h.u("shentsize"));
+    elf.shnum = static_cast<std::uint16_t>(h.u("shnum"));
+    elf.shstrndx = static_cast<std::uint16_t>(h.u("shstrndx"));
     elf.wiiu = elf.os_abi == kOsAbiCafe || elf.type == kTypeRpl;
     if (elf.phnum != 0) {
         if (elf.phentsize != kProgramHeaderSize || static_cast<std::uint64_t>(elf.phoff) + std::uint64_t{elf.phnum} * kProgramHeaderSize > data.size())
             throw FormatError(kReader, 28, "the program header table is outside the file");
-        for (unsigned i = 0; i < elf.phnum; ++i) {
-            const std::size_t at = elf.phoff + i * kProgramHeaderSize;
-            elf.program_headers.push_back({be32(data, at), be32(data, at + 4), be32(data, at + 8), be32(data, at + 12), be32(data, at + 16), be32(data, at + 20), be32(data, at + 24), be32(data, at + 28)});
-        }
+        for (const eng::Node& p : e.get("segments").children)
+            elf.program_headers.push_back({u32_of(p, "type"), u32_of(p, "offset"), u32_of(p, "vaddr"), u32_of(p, "paddr"), u32_of(p, "filesz"), u32_of(p, "memsz"),
+                                           u32_of(p, "flags"), u32_of(p, "align")});
     }
     if (elf.shnum != 0) {
         if (elf.shentsize != kSectionHeaderSize || static_cast<std::uint64_t>(elf.shoff) + std::uint64_t{elf.shnum} * kSectionHeaderSize > data.size())
             throw FormatError(kReader, 32, "the section header table is outside the file");
-        for (unsigned i = 0; i < elf.shnum; ++i) {
-            const std::size_t at = elf.shoff + i * kSectionHeaderSize;
-            SectionHeader s;
-            s.name_offset = be32(data, at);
-            s.type = be32(data, at + 4);
-            s.flags = be32(data, at + 8);
-            s.address = be32(data, at + 12);
-            s.offset = be32(data, at + 16);
-            s.size = be32(data, at + 20);
-            s.link = be32(data, at + 24);
-            s.info = be32(data, at + 28);
-            s.align = be32(data, at + 32);
-            s.entsize = be32(data, at + 36);
+        const eng::Node& sections = e.get("sections");
+        for (std::size_t i = 0; i < sections.children.size(); ++i) {
+            const eng::Node& n = sections.children[i];
+            SectionHeader s{u32_of(n, "name_offset"), u32_of(n, "type"), u32_of(n, "flags"), u32_of(n, "address"), u32_of(n, "offset"), u32_of(n, "size"),
+                            u32_of(n, "link"), u32_of(n, "info"), u32_of(n, "align"), u32_of(n, "entsize"), {}};
             if (s.type != kTypeNobits && s.type != 0 && static_cast<std::uint64_t>(s.offset) + s.size > data.size())
-                throw FormatError(kReader, at, std::format("section {} lies outside the file", i));
+                throw FormatError(kReader, n.offset, std::format("section {} lies outside the file", i));
             elf.sections.push_back(std::move(s));
         }
-        if (elf.shstrndx < elf.sections.size()) {
-            const SectionHeader& strings = elf.sections[elf.shstrndx];
-            if (strings.type != kTypeNobits && !(strings.flags & kFlagDeflated)) {
-                const ByteView table = ByteView(elf.data).subspan(strings.offset, strings.size);
-                for (SectionHeader& s : elf.sections) {
-                    if (s.name_offset >= table.size()) continue;
-                    const auto end = std::find(table.begin() + s.name_offset, table.end(), std::uint8_t{0});
-                    s.name.assign(reinterpret_cast<const char*>(table.data() + s.name_offset), static_cast<std::size_t>(end - (table.begin() + s.name_offset)));
-                }
-            }
-        }
+        // the names, unless the string table is itself stored compressed (they are read again once it is inflated)
+        const eng::Node* names = e.find("names");
+        if (names && !(elf.sections[elf.shstrndx].flags & kFlagDeflated))
+            for (std::size_t i = 0; i < elf.sections.size(); ++i)
+                if (const eng::Node* t = names->children[i].child("text")) elf.sections[i].name = t->text.substr(0, t->text.find('\0'));
     }
     return elf;
 }

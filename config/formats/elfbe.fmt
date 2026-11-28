@@ -1,0 +1,10 @@
+# elfbe.fmt -- a big-endian ELF file (PowerPC, big-endian MIPS ...): the structures of elf.fmt, read in big-endian order.
+
+format elfbe
+endian be
+use elf
+
+struct File {
+    assert peek8(5) == 2 : "not a big-endian ELF file"
+    elf : Elf
+}
