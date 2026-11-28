@@ -518,7 +518,8 @@ CB_TEST("java.platform_refs.the_pc_direct3d7_and_8_layers_are_the_shared_rendere
         pr::EmitOptions options;
         options.platform = pr::Platform::PcOpenGl;
         options.main_class = "Minecraft";
-        options.layers = {{refs_real_reference(), {"GL11", "GLU", "GL13", "ARBMultitexture", "Gpu", "GpuShaders", "GpuFixed"}},
+        options.layers = {{refs_real_reference(), {"GL11", "GLU", "GL13", "ARBMultitexture", "Gpu", "GpuShaders"}},
+                          {testing::data_path("../config/java/platform/pc/fixed/reference"), {}},
                           {testing::data_path(std::string("../config/java/platform/pc/") + api.dir + "/reference"), {}}};
         options.label = api.label;
         fs::ScopedTempDir out(std::string("cb-refs-pc") + api.dir);
@@ -539,7 +540,7 @@ CB_TEST("java.platform_refs.the_pc_direct3d7_and_8_layers_are_the_shared_rendere
     CB_CHECK(stdfs::exists(testing::data_path("../config/java/platform/pc/d3d8/reference/Direct3D8.reference.h")));
     // the plan: GL's eye space mirrored into Direct3D's camera space (fog is the camera-space z), the viewport and scissor box as
     // one viewport, glCallList's colour as a factor stage, glTexGen through the camera-space position
-    const std::string plan = fs::read_text(refs_real_reference() / "GpuFixed.reference.h");
+    const std::string plan = fs::read_text(testing::data_path("../config/java/platform/pc/fixed/reference/GpuFixed.reference.h"));
     CB_CHECK(refs_has(plan, "p.world = mul(mv, s);") && refs_has(plan, "p.proj = mul(mul(s, inv), wvp);"));
     CB_CHECK(refs_has(plan, "inline bool fitViewport(") && refs_has(plan, "kTaFactor") && refs_has(plan, "kCoordEyePosition"));
 });
