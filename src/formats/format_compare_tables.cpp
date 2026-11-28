@@ -30,6 +30,9 @@
 #include "formats/xbox/pck.hpp"
 #include "formats/xbox/xbe.hpp"
 #include "formats/xbox/xdbf.hpp"
+#include "formats/xbox/xpr.hpp"
+#include "formats/xbox/xur.hpp"
+#include "formats/xbox/xzp.hpp"
 
 namespace cb::formats::engine {
 
@@ -1123,6 +1126,31 @@ void digest_iso(Digest& g, ByteView data) {
     });
 }
 
+void digest_xzp(Digest& g, ByteView data) {
+    namespace xzp = xbox::xzp;
+    const xzp::Pack p = xzp::parse(data);
+    g.line("xzp {} {} {} {} {}", p.version, p.file_size, p.base, p.table_end, p.entries.size());
+    for (const xzp::Entry& e : p.entries) g.line("  entry {} {} {}", e.size, e.offset, e.name);
+    for (const xzp::Payload& f : xzp::payloads(data)) g.line("  payload {} {} {}", f.path, f.offset, f.size);
+}
+
+void digest_xpr(Digest& g, ByteView data) {
+    namespace xpr = xbox::xpr;
+    const xpr::Bundle b = xpr::parse(data);
+    g.line("xpr {} {} {} {} {} {} {} {} {} {} {} {} {} {:x}", static_cast<int>(b.container), b.xfmt, b.format_name, b.dds_format ? static_cast<int>(*b.dds_format) : -1,
+           b.width, b.height, b.mipmaps, b.cubemap, b.total, b.header_size, b.data_size, b.data_offset, b.pixels.size(), dig_hash(b.pixels));
+}
+
+void digest_xur(Digest& g, ByteView data) {
+    namespace xur = xbox::xur;
+    const xur::Scene s = xur::Scene::parse(data);
+    g.line("xur {} {} {} {} {}", s.version, s.flags, s.tool_version, s.file_size, s.table_end());
+    for (const xur::Section& sec : s.sections) g.line("  section {} {} {}", sec.tag, sec.offset, sec.length);
+    g.guard("strings", [&] {
+        for (const std::string& t : s.strings()) g.line("  string {}", t);
+    });
+}
+
 }  // namespace
 
 std::string reader_digest(ByteView data, const std::filesystem::path& file, bool text) {
@@ -1149,6 +1177,10 @@ std::string reader_digest(ByteView data, const std::filesystem::path& file, bool
     const bool cd001 = (data.size() >= 0x8006 && data[0x8001] == 0x43 && data[0x8002] == 0x44 && data[0x8003] == 0x30) ||
                        (data.size() >= 16 * 2352 + 32 && disc::raw_sync(data.subspan(16 * 2352)));
     if (cd001) g.guard("iso", [&] { digest_iso(g, data); });
+    const auto magic = [&](std::string_view m) { return data.size() >= m.size() && as_text(data.first(m.size())) == m; };
+    if (magic("XUIZ")) g.guard("xzp", [&] { digest_xzp(g, data); });
+    if (magic("XPR0") || magic("XPR2")) g.guard("xpr", [&] { digest_xpr(g, data); });
+    if (magic("XUIB")) g.guard("xur", [&] { digest_xur(g, data); });
     if (text) return g.text;
     std::uint64_t hash = 1469598103934665603ull;
     for (char c : g.text) hash = (hash ^ static_cast<std::uint8_t>(c)) * 1099511628211ull;
