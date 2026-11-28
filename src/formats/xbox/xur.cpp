@@ -8,6 +8,7 @@
 #include "core/fs.hpp"
 #include "core/io.hpp"
 #include "core/log.hpp"
+#include "formats/gen/xur.hpp"
 #include "formats/xbox/utf16.hpp"
 
 namespace cb::formats::xbox::xur {
@@ -35,22 +36,16 @@ std::string tag_text(std::uint32_t tag) {
     return text::from_latin1(four);
 }
 
+// The layout is xur.fmt's (its generated reader, formats/gen/xur); whether a section lies in the file is this reader's.
 Scene Scene::parse(ByteView file) {
-    io::ByteReader r(file, kXurReader);
-    if (r.u32_be() != kMagic) throw FormatError(kXurReader, 0, "not a XUR (bad magic)");
+    const gen::xur::File h = gen::xur::read(file);
     Scene s;
-    s.version = r.u32_be();
-    s.flags = r.u32_be();
-    s.tool_version = r.u16_be();
-    s.file_size = r.u32_be();
-    const std::uint16_t count = r.u16_be();
-    for (std::uint16_t i = 0; i < count; ++i) {
-        Section sec;
-        sec.tag = r.u32_be();
-        sec.offset = r.u32_be();
-        sec.length = r.u32_be();
-        s.sections.push_back(sec);
-    }
+    s.version = h.version;
+    s.flags = h.flags;
+    s.tool_version = h.tool_version;
+    s.file_size = h.file_size;
+    s.sections.reserve(h.sections.size());
+    for (const gen::xur::Section& n : h.sections) s.sections.push_back({n.tag, n.offset, n.length});
     s.file_.assign(file.begin(), file.end());
     return s;
 }
@@ -66,11 +61,7 @@ std::vector<std::string> Scene::strings() const {
     std::vector<std::string> out;
     const std::optional<ByteView> blob = section_data(kStrn);
     if (!blob) return out;
-    io::ByteReader r(*blob, "xur strings");
-    while (r.remaining() >= 2) {
-        const std::uint16_t units = r.u16_be();
-        out.push_back(from_utf16be(r.bytes(std::uint64_t{units} * 2)));
-    }
+    for (const gen::xur::String16& n : gen::xur::read_Strings(*blob).strings) out.push_back(from_utf16be(n.text));
     return out;
 }
 
