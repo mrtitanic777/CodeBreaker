@@ -6,12 +6,9 @@
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
-#include "formats/format_builtin.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::nro {
-
-namespace eng = cb::formats::engine;
 
 namespace {
 
@@ -103,88 +100,69 @@ void read_dynamic(Program& p) {
     }
 }
 
-// The tree of the file (switch.fmt) from the struct `root` (Nro, Nso or Aarch64Elf).
-eng::Tree nro_tree(ByteView d, std::string_view root) {
-    eng::ReadOptions options;
-    options.root = std::string(root);
-    options.keep_source = false;   // only read from
-    if (root == "Aarch64Elf") options.parts.insert("symbols");
-    return eng::builtin().read("switch", d, options);
-}
-
-std::string nro_build_id(ByteView d, const eng::Node& root) {
-    const eng::Node& id = root.get("build_id");
-    return hex(d.subspan(id.offset, id.size));
-}
-
-// The layout is switch.fmt's; that the segments lie in the file, and where the asset section and the MOD0 block are, are this reader's rules.
 Program parse_nro(ByteView d) {
-    const eng::Tree tree = nro_tree(d, "Nro");
-    const eng::Node& h = tree.root;
     Program p;
     p.kind = Kind::Nro;
     p.file.assign(d.begin(), d.end());
     p.flat = p.file;
-    const std::uint64_t size = h.u("size");
+    const std::uint32_t size = le32(d, 0x18);
     if (size < 0x80 || size > d.size()) throw FormatError(kReader, 0x18, "the NRO's size is not inside the file");
     const char* const names[3] = {"text", "rodata", "data"};
-    const eng::Node& segments = h.get("segments");
     for (unsigned i = 0; i < 3; ++i) {
         Segment s;
-        s.address = s.file_offset = segments.children[i].u("offset");
-        s.size = segments.children[i].u("size");
+        s.address = s.file_offset = le32(d, 0x20 + 8 * i);
+        s.size = le32(d, 0x24 + 8 * i);
         s.memory_size = s.size;
         s.name = names[i];
         s.code = i == 0;
         s.writable = i == 2;
-        if (s.address + s.size > size) throw FormatError(kReader, segments.children[i].offset, std::format("the {} segment is not inside the NRO", names[i]));
+        if (s.address + s.size > size) throw FormatError(kReader, 0x20 + 8 * i, std::format("the {} segment is not inside the NRO", names[i]));
         p.segments.push_back(s);
     }
-    p.segments[2].memory_size += h.u("bss");
+    p.segments[2].memory_size += le32(d, 0x38);
     p.image_size = p.segments[2].address + p.segments[2].memory_size;
     p.entry = 0;
-    p.mod_offset = h.u("mod_offset");
-    p.build_id = nro_build_id(d, h);
+    p.mod_offset = le32(d, 4);
+    p.build_id = hex(d.subspan(0x40, 0x20));
     // the assets
     p.asset_offset = size;
-    if (const eng::Node* assets = h.child("assets")) {
-        const auto part = [&](std::string_view name) {
-            const eng::Node& n = assets->get(name);
+    if (has(d, size, 0x38) && d[size] == 'A' && d[size + 1] == 'S' && d[size + 2] == 'E' && d[size + 3] == 'T') {
+        const auto part = [&](std::size_t at) {
             Program::AssetPart a;
-            a.offset = size + n.u("offset");
-            a.size = n.u("size");
+            a.offset = size + le64(d, at);
+            a.size = le64(d, at + 8);
             return a;
         };
-        p.icon = part("icon");
-        p.nacp = part("nacp");
-        p.romfs = part("romfs");
+        p.icon = part(size + 0x08);
+        p.nacp = part(size + 0x18);
+        p.romfs = part(size + 0x28);
     }
     // MOD0 and the dynamic section
-    if (const eng::Node* mod0 = h.child("mod0")) p.dynamic = p.mod_offset + static_cast<std::int32_t>(mod0->i("dynamic"));
-    else p.mod_offset = 0;
+    if (has(d, p.mod_offset, 28) && d[p.mod_offset] == 'M' && d[p.mod_offset + 1] == 'O' && d[p.mod_offset + 2] == 'D' && d[p.mod_offset + 3] == '0') {
+        p.dynamic = p.mod_offset + static_cast<std::int32_t>(le32(d, p.mod_offset + 4));
+    } else {
+        p.mod_offset = 0;
+    }
     read_dynamic(p);
     return p;
 }
 
 Program parse_nso(ByteView d) {
-    const eng::Tree tree = nro_tree(d, "Nso");
-    const eng::Node& h = tree.root;
-    const eng::Node& headers = h.get("segments");
-    const eng::Node& compressed = h.get("compressed");
     Program p;
     p.kind = Kind::Nso;
     p.file.assign(d.begin(), d.end());
     p.flat_is_file = false;
-    const std::uint64_t flags = h.u("flags");
+    const std::uint32_t flags = le32(d, 0x0C);
     const char* const names[3] = {"text", "rodata", "data"};
     std::uint64_t top = 0;
     for (unsigned i = 0; i < 3; ++i) {
-        const eng::Node& n = headers.children[i];
-        const std::uint64_t file_offset = n.u("file_offset"), memory_offset = n.u("memory_offset"), size = n.u("size");
+        const std::size_t h = 0x10 + 0x10 * i;
+        const std::uint32_t file_offset = le32(d, h), memory_offset = le32(d, h + 4), size = le32(d, h + 8);
+        const std::uint32_t compressed = le32(d, 0x60 + 4 * i);
         const bool is_compressed = (flags >> i) & 1;
-        const std::uint64_t stored = is_compressed ? compressed.children[i].value : size;
-        if (!has(d, file_offset, stored)) throw FormatError(kReader, n.offset, std::format("the {} segment is not inside the file", names[i]));
-        if (memory_offset + size > kMaxImage) throw FormatError(kReader, n.offset, "the NSO is too large");
+        const std::uint32_t stored = is_compressed ? compressed : size;
+        if (!has(d, file_offset, stored)) throw FormatError(kReader, h, std::format("the {} segment is not inside the file", names[i]));
+        if (static_cast<std::uint64_t>(memory_offset) + size > kMaxImage) throw FormatError(kReader, h, "the NSO is too large");
         Segment s;
         s.address = memory_offset;
         s.size = size;
@@ -194,23 +172,22 @@ Program parse_nso(ByteView d) {
         s.code = i == 0;
         s.writable = i == 2;
         p.segments.push_back(s);
-        top = std::max(top, memory_offset + size);
+        top = std::max<std::uint64_t>(top, static_cast<std::uint64_t>(memory_offset) + size);
         if (is_compressed) p.note = "compressed segments inflated";
     }
-    p.segments[2].memory_size += headers.children[2].u("extra");   // the bss size
+    p.segments[2].memory_size += le32(d, 0x3C);
     p.image_size = p.segments[2].address + p.segments[2].memory_size;
     p.flat.assign(static_cast<std::size_t>(top), 0);
     for (unsigned i = 0; i < 3; ++i) {
         const Segment& s = p.segments[i];
-        const bool is_compressed = (flags >> i) & 1;
-        const std::size_t stored_size = is_compressed ? static_cast<std::size_t>(compressed.children[i].value) : static_cast<std::size_t>(s.size);
-        const ByteView stored = d.subspan(static_cast<std::size_t>(s.file_offset), stored_size);
-        const Bytes data = is_compressed ? lz4_decompress(stored, static_cast<std::size_t>(s.size)) : Bytes(stored.begin(), stored.end());
+        const std::uint32_t compressed = le32(d, 0x60 + 4 * i);
+        const ByteView stored = d.subspan(static_cast<std::size_t>(s.file_offset), (flags >> i) & 1 ? compressed : static_cast<std::size_t>(s.size));
+        const Bytes data = (flags >> i) & 1 ? lz4_decompress(stored, static_cast<std::size_t>(s.size)) : Bytes(stored.begin(), stored.end());
         std::copy(data.begin(), data.end(), p.flat.begin() + static_cast<std::ptrdiff_t>(s.address));
     }
     p.entry = p.segments[0].address;
-    p.build_id = nro_build_id(d, h);
-    // the same MOD0 as a NRO, in the loaded image: the text begins with `b entry` and the offset of the block
+    p.build_id = hex(d.subspan(0x40, 0x20));
+    // the same MOD0 as a NRO: the text begins with `b entry` and the offset of the block
     if (has(p.flat, p.segments[0].address + 4, 4)) {
         const std::uint64_t mod = p.segments[0].address + le32(p.flat, static_cast<std::size_t>(p.segments[0].address) + 4);
         if (has(p.flat, mod, 28) && p.flat[mod] == 'M' && p.flat[mod + 1] == 'O' && p.flat[mod + 2] == 'D' && p.flat[mod + 3] == '0') {
@@ -223,16 +200,14 @@ Program parse_nso(ByteView d) {
 }
 
 Program parse_elf(ByteView d) {
-    const eng::Tree tree = nro_tree(d, "Aarch64Elf");
-    const eng::Node& elf = tree.root;
-    const eng::Node& header = elf.get("header");
-    if (header.u("machine") != kMachineAarch64) throw FormatError(kReader, 18, "not an AArch64 ELF");
+    if (le16(d, 18) != kMachineAarch64) throw FormatError(kReader, 18, "not an AArch64 ELF");
     Program p;
     p.kind = Kind::Elf;
     p.file.assign(d.begin(), d.end());
     p.flat_is_file = false;
-    p.entry = header.u("entry");
-    const std::uint64_t phoff = header.u("phoff");
+    p.entry = le64(d, 24);
+    const std::uint64_t phoff = le64(d, 32), shoff = le64(d, 40);
+    const unsigned phentsize = le16(d, 54), phnum = le16(d, 56), shentsize = le16(d, 58), shnum = le16(d, 60), shstrndx = le16(d, 62);
     std::uint64_t top = 0;
     struct Load {
         std::uint64_t vaddr, offset, filesz, memsz;
@@ -240,15 +215,14 @@ Program parse_elf(ByteView d) {
     };
     std::vector<Load> loads;
     std::uint64_t dynamic = 0;
-    for (const eng::Node& at : elf.get("segments").children) {
-        const eng::Node* ph = at.child("entry");
-        if (!ph) break;   // the first program header not wholly in the file ends the table
-        const std::uint64_t type = ph->u("type");
-        const unsigned flags = static_cast<unsigned>(ph->u("flags"));
-        if (type == 2) dynamic = ph->u("vaddr");
+    for (unsigned i = 0; i < phnum; ++i) {
+        const std::uint64_t at = phoff + static_cast<std::uint64_t>(phentsize) * i;
+        if (!has(d, at, 56)) break;
+        const std::uint32_t type = le32(d, at), flags = le32(d, at + 4);
+        if (type == 2) dynamic = le64(d, at + 16);
         if (type != 1) continue;
-        const Load l{ph->u("vaddr"), ph->u("offset"), ph->u("filesz"), ph->u("memsz"), flags};
-        if (l.offset + l.filesz > d.size() || l.vaddr + l.memsz > kMaxImage) throw FormatError(kReader, ph->offset, "a segment is not inside the file or is too large");
+        const Load l{le64(d, at + 16), le64(d, at + 8), le64(d, at + 32), le64(d, at + 40), flags};
+        if (l.offset + l.filesz > d.size() || l.vaddr + l.memsz > kMaxImage) throw FormatError(kReader, at, "a segment is not inside the file or is too large");
         loads.push_back(l);
         top = std::max(top, l.vaddr + l.filesz);
         p.image_size = std::max(p.image_size, l.vaddr + l.memsz);
@@ -267,22 +241,27 @@ Program parse_elf(ByteView d) {
         s.name = s.code ? "text" : s.writable ? "data" : "rodata";
         p.segments.push_back(s);
     }
-    // symbols: the objects and functions of each symbol table whose string table (its link) is a section header in the file
-    const std::vector<eng::Node>& sections = elf.get("sections").children;
-    for (const eng::Node& at : sections) {
-        const eng::Node* sh = at.child("entry");
-        if (!sh || sh->u("type") != 2) continue;   // SHT_SYMTAB
-        const std::uint64_t link = sh->u("link");
-        const eng::Node* strings = link < sections.size() ? sections[link].child("entry") : nullptr;
-        const eng::Node* symbols = sh->child("symbols");
-        if (!strings || !symbols) continue;
-        const std::uint64_t stroff = strings->u("offset");
-        for (const eng::Node& e : symbols->children) {
-            const std::uint64_t name = e.u("name_offset"), type = e.u("info") & 15, value = e.u("value");
-            if (name == 0 || (type != 1 && type != 2) || value == 0) continue;
-            p.names.try_emplace(value, cstring(d, stroff + name));
+    // symbols
+    if (shoff && shentsize >= 64) {
+        for (unsigned i = 0; i < shnum; ++i) {
+            const std::uint64_t at = shoff + static_cast<std::uint64_t>(shentsize) * i;
+            if (!has(d, at, 64) || le32(d, at + 4) != 2) continue;   // SHT_SYMTAB
+            const std::uint64_t off = le64(d, at + 24), size = le64(d, at + 32);
+            const unsigned link = le32(d, at + 40);
+            const std::uint64_t strat = shoff + static_cast<std::uint64_t>(shentsize) * link;
+            if (!has(d, strat, 64) || link >= shnum) continue;
+            const std::uint64_t stroff = le64(d, strat + 24);
+            for (std::uint64_t e = off; has(d, e, 24) && e + 24 <= off + size; e += 24) {
+                const std::uint32_t name = le32(d, e);
+                const unsigned info = d[e + 4];
+                const unsigned type = info & 15;
+                const std::uint64_t value = le64(d, e + 8);
+                if (name == 0 || (type != 1 && type != 2) || value == 0) continue;
+                p.names.try_emplace(value, cstring(d, stroff + name));
+            }
         }
     }
+    (void)shstrndx;
     p.dynamic = dynamic;
     read_dynamic(p);
     return p;

@@ -6,14 +6,13 @@
 #include "core/error.hpp"
 #include "core/io.hpp"
 #include "core/text.hpp"
-#include "formats/format_builtin.hpp"
 
 namespace cb::formats::xbox::pck {
 
-namespace eng = cb::formats::engine;
-
 namespace {
 
+constexpr std::string_view kReader = "pck";
+constexpr std::uint32_t kMaxNameLength = 8192;   // in UTF-16 units
 constexpr std::size_t kFirstPayloadGap = 12;     // bytes between the table and the first payload
 constexpr std::size_t kMaxPadding = 512;         // zero padding skipped before a payload
 constexpr std::uint8_t kPng[] = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
@@ -30,17 +29,28 @@ bool ends_with_png(const std::string& name) { return text::lower(name).ends_with
 }  // namespace
 
 Archive parse(ByteView file) {
-    // The layout is pck.fmt's.
-    eng::ReadOptions options;
-    options.keep_source = false;   // only read from
-    const eng::Tree tree = eng::builtin().read("pck", file, options);
-    auto text_of = [&](const eng::Node& n) { return utf16be(file.subspan(n.offset, n.size)); };
+    io::ByteReader r(file, kReader);
     Archive a;
-    a.version = static_cast<std::uint32_t>(tree.root.u("version"));
-    for (const eng::Node& p : tree.root.get("properties").children) a.properties.emplace_back(static_cast<std::uint32_t>(p.u("id")), text_of(p.get("name")));
-    for (const eng::Node& n : tree.root.get("entries").children)
-        a.entries.push_back({static_cast<std::uint32_t>(n.u("size")), static_cast<std::uint32_t>(n.u("type")), text_of(n.get("name"))});
-    a.table_end = static_cast<std::size_t>(tree.root.u("table_end"));
+    a.version = r.u32_be();
+    const std::uint32_t property_count = r.u32_be();
+    for (std::uint32_t i = 0; i < property_count; ++i) {
+        const std::uint32_t id = r.u32_be(), length = r.u32_be();
+        if (length > kMaxNameLength) throw FormatError(kReader, r.pos(), std::format("bad name length {}", length));
+        const std::string name = utf16be(r.bytes(std::uint64_t{length} * 2));
+        r.skip(4);
+        a.properties.emplace_back(id, name);
+    }
+    const std::uint32_t count = r.u32_be();
+    for (std::uint32_t i = 0; i < count; ++i) {
+        Entry e;
+        e.size = r.u32_be();
+        e.type = r.u32_be();
+        const std::uint32_t length = r.u32_be();
+        e.name = utf16be(r.bytes(std::uint64_t{length} * 2));
+        r.skip(4);
+        a.entries.push_back(std::move(e));
+    }
+    a.table_end = r.pos();
     return a;
 }
 
