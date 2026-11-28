@@ -18,8 +18,12 @@
 #include "formats/mips_elf.hpp"
 #include "formats/ne.hpp"
 #include "formats/nes.hpp"
+#include "formats/nro.hpp"
+#include "formats/orbis.hpp"
 #include "formats/pe.hpp"
 #include "formats/ppc_elf.hpp"
+#include "formats/ps3.hpp"
+#include "formats/vita.hpp"
 #include "formats/xbox/pck.hpp"
 #include "formats/xbox/xbe.hpp"
 #include "formats/xbox/xdbf.hpp"
@@ -982,9 +986,54 @@ void digest_nes(Digest& g, ByteView data) {
     g.line("  sizes {} {} {} code_at {}", rom.prg.size(), rom.chr.size(), rom.extra.size(), rom.code_at);
 }
 
+void digest_ps3(Digest& g, ByteView data) {
+    const ps3::Program p = ps3::parse(data);
+    g.line("ps3 {} {} {} {} {} {} {} {} {} {} {} {:x}", p.self, p.elf_type, p.os_abi, p.abi_version, p.entry, p.entry_code, p.toc, p.elf_flags, p.prx_param,
+           p.prx_param_size, p.image.size(), dig_hash(p.image));
+    for (const ps3::Segment& s : p.segments) g.line("  segment {} {} {} {} {}", s.image_offset, s.size, s.address, s.memory_size, s.flags);
+    for (const ps3::Import& i : p.imports) g.line("  import {} {} {} {}", i.library, i.nid, i.name, i.descriptor);
+    const Bytes elf = p.to_elf(p.image);
+    g.line("  to_elf {} {:x}", elf.size(), dig_hash(elf));
+}
+
+void digest_vita(Digest& g, ByteView data) {
+    const vita::Program p = vita::parse(data);
+    g.line("vita {} {} {} {} {} {} {:x}", p.self, p.elf_type, p.elf_entry, p.elf_flags, p.module_name, p.image.size(), dig_hash(p.image));
+    for (const vita::Segment& s : p.segments) g.line("  segment {} {} {} {} {}", s.image_offset, s.size, s.address, s.memory_size, s.flags);
+    for (const vita::Import& i : p.imports) g.line("  import {} {} {} {} {}", i.library, i.library_nid, i.nid, i.name, i.stub);
+    for (std::uint32_t e : p.entries) g.line("  entry {}", e);
+    const Bytes elf = p.to_elf(p.image);
+    g.line("  to_elf {} {:x}", elf.size(), dig_hash(elf));
+}
+
+void digest_orbis(Digest& g, ByteView data) {
+    const orbis::Program p = orbis::parse(data);
+    g.line("orbis {} {} {} {} {} {} {} {} {:x} {}", p.self, p.orbis, p.container, p.type, p.entry, p.program_type, p.paid, p.file.size(), dig_hash(p.file), p.image_end());
+    for (const orbis::Segment& s : p.segments) g.line("  segment {} {} {} {} {} {} {}", s.type, s.flags, s.offset, s.address, s.file_size, s.memory_size, s.align);
+    for (const std::string& n : p.needed) g.line("  needed {}", n);
+    for (const orbis::Symbol& s : p.symbols) g.line("  sym {} {} {} {} {}", s.name, s.value, s.size, s.info, s.section);
+    for (const orbis::Symbol& s : p.functions) g.line("  fn {} {} {}", s.name, s.value, s.size);
+    for (const orbis::Relocation& r : p.relocations) g.line("  rel {} {} {} {}", r.offset, r.type, r.symbol, r.addend);
+    for (const orbis::Import& i : p.imports) g.line("  import {} {} {} {}", i.name, i.nid, i.library, i.slot);
+    for (std::uint64_t i : p.initializers) g.line("  init {}", i);
+}
+
+void digest_nro(Digest& g, ByteView data) {
+    const nro::Program p = nro::parse(data);
+    g.line("nro {} {} {:x} {} {} {} {} {} {} {}", static_cast<int>(p.kind), p.flat.size(), dig_hash(p.flat), p.flat_is_file, p.entry, p.image_size, p.mod_offset,
+           p.dynamic, p.asset_offset, p.build_id);
+    g.line("  assets {} {} {} {} {} {} note {}", p.icon.offset, p.icon.size, p.nacp.offset, p.nacp.size, p.romfs.offset, p.romfs.size, p.note);
+    for (const nro::Segment& s : p.segments)
+        g.line("  segment {} {} {} {} {} {} {}", s.address, s.size, s.memory_size, s.file_offset, s.code, s.writable, s.name);
+    for (const nro::Relocation& r : p.relocations) g.line("  rel {} {} {} {}", r.offset, r.type, r.symbol, r.addend);
+    for (const auto& [at, size] : p.relocation_tables) g.line("  table {} {}", at, size);
+    for (const auto& [at, name] : p.names) g.line("  name {} {}", at, name);
+    for (const nro::Symbol& s : p.imports) g.line("  import {} {} {} {} {}", s.name, s.value, s.size, s.info, s.section);
+}
+
 }  // namespace
 
-std::string reader_digest(ByteView data, const std::filesystem::path& file) {
+std::string reader_digest(ByteView data, const std::filesystem::path& file, bool text) {
     Digest g;
     g.guard("pe", [&] { digest_pe(g, data); });
     g.guard("ne", [&] { digest_ne(g, data); });
@@ -996,6 +1045,14 @@ std::string reader_digest(ByteView data, const std::filesystem::path& file) {
     if (data.size() >= 4 && data[0] == 0x4D && data[1] == 0x53 && data[2] == 0x43 && data[3] == 0x46) g.guard("cab", [&] { digest_cab(g, data, file); });
     if (data.size() >= 4 && data[0] == 0x58 && data[1] == 0x42 && data[2] == 0x45 && data[3] == 0x48) g.guard("xbe", [&] { digest_xbe(g, data); });
     if (data.size() >= 4 && data[0] == 0x4E && data[1] == 0x45 && data[2] == 0x53) g.guard("nes", [&] { digest_nes(g, data); });
+    const bool elf_or_sce = data.size() >= 4 && ((data[0] == 0x7F && data[1] == 0x45) || (data[0] == 0x53 && data[1] == 0x43 && data[2] == 0x45 && data[3] == 0));
+    if (elf_or_sce) g.guard("ps3", [&] { digest_ps3(g, data); });
+    if (elf_or_sce) g.guard("vita", [&] { digest_vita(g, data); });
+    if (orbis::kind_of(data.first(std::min<std::size_t>(data.size(), 64))) != orbis::Kind::None) g.guard("orbis", [&] { digest_orbis(g, data); });
+    const bool switch_file = (data.size() >= 0x14 && data[0x10] == 0x4E && data[0x11] == 0x52 && data[0x12] == 0x4F && data[0x13] == 0x30) ||
+                             (data.size() >= 4 && ((data[0] == 0x4E && data[1] == 0x53 && data[2] == 0x4F && data[3] == 0x30) || (data[0] == 0x7F && data[1] == 0x45)));
+    if (switch_file) g.guard("nro", [&] { digest_nro(g, data); });
+    if (text) return g.text;
     std::uint64_t hash = 1469598103934665603ull;
     for (char c : g.text) hash = (hash ^ static_cast<std::uint8_t>(c)) * 1099511628211ull;
     return std::format("{:016x} {} bytes", hash, g.text.size());

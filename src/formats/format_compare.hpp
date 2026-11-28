@@ -33,9 +33,10 @@ struct Comparison {
     bool agree() const { return reader_accepts == engine_accepts && mismatch_count == 0; }
 };
 
-// A digest of everything the readers of pe, ne, le, dos (MZ), nes, xbe, xdbf, pck, cab and the 32-bit ELF readers (mips_elf, ppc_elf) answer about the file (format_check --readers).
-// `file` (when given) is where the data came from: a cabinet's folders are read from it.
-std::string reader_digest(ByteView data, const std::filesystem::path& file = {});
+// A digest of everything the readers of pe, ne, le, dos (MZ), nes, xbe, xdbf, pck, cab, the 32-bit ELF readers (mips_elf, ppc_elf) and the
+// console programs' (ps3, vita, orbis, nro) answer about the file (format_check --readers). `file` (when given) is where the data came from: a
+// cabinet's folders are read from it. With `text`, the digest's own lines (format_check --readers-text: what differs).
+std::string reader_digest(ByteView data, const std::filesystem::path& file = {}, bool text = false);
 
 // Every format compare() knows, in the order format_check goes through them.
 const std::vector<std::string>& compared_formats();
