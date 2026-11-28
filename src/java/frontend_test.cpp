@@ -17,7 +17,7 @@
 #include "core/json.hpp"
 #include "core/process.hpp"
 #include "core/testing.hpp"
-#include "decompile/jar.hpp"
+#include "java/jar.hpp"
 #include "translate/l2.hpp"
 
 using namespace cb;
@@ -107,7 +107,7 @@ CB_TEST("java.frontend.a_dump_that_is_not_a_tree_is_a_parse_error", [] {
 
 CB_TEST("java.frontend.javac_runs_and_what_it_lowers_matches_the_golden", [] {
     // the JDK: the java the decompiler finds, and javac beside it
-    const std::optional<std::filesystem::path> java = decompile::jar::find_java({});
+    const std::optional<std::filesystem::path> java = java::jar::find_java({});
     if (!java) return;
     std::filesystem::path javac = java->parent_path() / "javac.exe";
     std::error_code ec;

@@ -15,7 +15,7 @@
 #include "core/log.hpp"
 #include "core/process.hpp"
 #include "core/text.hpp"
-#include "decompile/jar.hpp"
+#include "java/jar.hpp"
 #include "java/analyze.hpp"
 #include "java/assembly.hpp"
 #include "java/console/assets.hpp"
@@ -91,8 +91,8 @@ public:
     profiles::ProfileSet& profiles() { return assembly().services().profiles; }
 
     // The settings as the decompiler and the console tools take them.
-    decompile::jar::Settings jar_settings() const {
-        decompile::jar::Settings s;
+    java::jar::Settings jar_settings() const {
+        java::jar::Settings s;
         s.gl_constants = data().path({"projects", "minecraft", "gl_constants.json"});
         s.java = config().path("java").value_or(stdfs::path{});
         return s;
@@ -600,14 +600,14 @@ int fernflower_tool(const cli::Args& a) {
 }
 
 int decompile_tool(const ContextP& ctx, const cli::Args& a) {
-    decompile::jar::DecompileOptions options;
+    java::jar::DecompileOptions options;
     options.settings = ctx->jar_settings();
     options.on_output = [](std::string_view line) { jt_out("  " + std::string(line)); };
     try {
-        const stdfs::path src = decompile::jar::decompile(a.required("version"), fs::from_text(a.required("workspace")), options);
+        const stdfs::path src = java::jar::decompile(a.required("version"), fs::from_text(a.required("workspace")), options);
         jt_out(std::format("Decompiled Minecraft {} -> {}", a.required("version"), jt_native(src)));
         jt_out(std::format("  feed it to: codebreaker java convert \"{}\" <out_dir>", jt_native(src)));
-    } catch (const decompile::jar::DecompileError& e) {
+    } catch (const java::jar::DecompileError& e) {
         jt_err(std::format("ERROR: {}", e.what()));
         return kDecompile;
     }
@@ -671,12 +671,12 @@ int convert_tool(const ContextP& ctx, const cli::Args& a) {
         }
         const stdfs::path workspace = opt_value(a, "mc-workspace") ? fs::from_text(*opt_value(a, "mc-workspace")) : out_dir / "_decompiled";
         jt_out(std::format("Decompiling Minecraft {} (CodeBreaker's own preparation and Fernflower)...", *mc_version));
-        decompile::jar::DecompileOptions options;
+        java::jar::DecompileOptions options;
         options.settings = ctx->jar_settings();
         options.on_output = [](std::string_view line) { jt_out("  " + std::string(line)); };
         try {
-            java_dir = decompile::jar::decompile(*mc_version, workspace, options);
-        } catch (const decompile::jar::DecompileError& e) {
+            java_dir = java::jar::decompile(*mc_version, workspace, options);
+        } catch (const java::jar::DecompileError& e) {
             jt_err(std::format("ERROR (decompile): {}", e.what()));
             return kDecompile;
         }
@@ -825,12 +825,12 @@ int port_tool(const ContextP& ctx, const cli::Args& a) {
         jt_out(std::format("  {} .java file(s) -> {}", port::extract_java_sources(p.input, java_dir), jt_native(java_dir)));
     } else if (java_dir.empty()) {
         begin("Decompiling Minecraft " + p.mc_version);
-        decompile::jar::DecompileOptions options;
+        java::jar::DecompileOptions options;
         options.settings = ctx->jar_settings();
         options.on_output = [](std::string_view line) { jt_out("  " + std::string(line)); };
         try {
-            java_dir = decompile::jar::decompile(p.mc_version, p.root / "_decompiled", options);
-        } catch (const decompile::jar::DecompileError& e) {
+            java_dir = java::jar::decompile(p.mc_version, p.root / "_decompiled", options);
+        } catch (const java::jar::DecompileError& e) {
             jt_err(std::format("ERROR (decompile): {}", e.what()));
             return kDecompile;
         }

@@ -11,7 +11,7 @@
 #include <format>
 #include <nlohmann/json.hpp>
 
-#include "build/data.hpp"
+#include "decompile/data.hpp"
 #include "core/error.hpp"
 #include "core/io.hpp"
 #include "core/json.hpp"
@@ -177,7 +177,7 @@ CodeData code_segment_data(const std::vector<std::pair<std::string, std::optiona
         const auto s = segs.find(sg);
         if (s != segs.end() && s->second.file_offset != 0) {
             const ByteView blob = io::checked_range(ne.data(), s->second.file_offset, s->second.length);
-            for (const build::data::RelocationPlace& p : build::data::places(ne.relocations(s->second), blob)) rel.push_back(p.offset);
+            for (const decompile::data::RelocationPlace& p : decompile::data::places(ne.relocations(s->second), blob)) rel.push_back(p.offset);
             std::sort(rel.begin(), rel.end());
         }
         relocated[sg] = std::move(rel);

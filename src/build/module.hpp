@@ -70,7 +70,7 @@
 #include <vector>
 
 #include "analyze/origin.hpp"
-#include "build/data.hpp"
+#include "decompile/data.hpp"
 #include "build/definitions.hpp"
 #include "build/functions.hpp"
 #include "build/resources.hpp"
@@ -137,7 +137,7 @@ struct Built {
     OrderedMap<std::string, std::string> assembled;    // 16-bit: {function: why} rejected C, written as its own instructions
     OrderedMap<std::string, std::string> assembly_refused;   // 16-bit: why a rejected function could not be
     std::vector<std::string> undefined;                // left unresolved in the image
-    std::shared_ptr<const data::Data> data;
+    std::shared_ptr<const decompile::data::Data> data;
     std::string data_error;
     std::size_t lost_addresses = 0;                    // address constants in functions that could not be placed
     std::optional<resources::Rebuilt> resources;       // of writing and compiling them

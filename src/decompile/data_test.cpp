@@ -7,7 +7,7 @@
 //   * a far-pointer relocation in the last two bytes of a segment cannot be written past the segment's end: the bytes there are
 //     cleared and no more.
 //   * layout_holds is false for an object file that cannot be read.
-#include "build/data.hpp"
+#include "decompile/data.hpp"
 
 #include <format>
 
@@ -21,7 +21,7 @@
 namespace {
 
 using namespace cb;
-using namespace cb::build::data;
+using namespace cb::decompile::data;
 namespace pe = cb::formats::pe;
 namespace ne = cb::formats::ne;
 
@@ -106,7 +106,7 @@ void check_data(const Data& d, const std::string& stem, bool with_declarations) 
 
 // ---- the text of an object ---------------------------------------------------------------------------------------
 
-CB_TEST("build.data.object_text", [] {
+CB_TEST("decompile.data.object_text", [] {
     const std::vector<Piece> pieces{ByteRun{0, {0x41, 0x2A, 0x2F, 0x5C, 0x7F, 0x20}},
                                     PointerCell{6, "void *", "(void *)f", ""},
                                     PointerCell{10, "uint2", "(uint2)X", "a note"}, ZeroRun{14, 100}};
@@ -129,7 +129,7 @@ CB_TEST("build.data.object_text", [] {
                                 // initialiser)
 });
 
-CB_TEST("build.data.object_placement", [] {
+CB_TEST("decompile.data.object_placement", [] {
     const std::vector<Piece> just_zeros{ZeroRun{0, 70}};
     const std::string z = object("s", "n", just_zeros, true);
     CB_CHECK(z.find("struct s __far n = {\n    { 0 },\n};\n") != std::string::npos); // alone, it keeps its initialiser
@@ -138,7 +138,7 @@ CB_TEST("build.data.object_placement", [] {
                  .find("struct s __based(__segname(\"CODEBREAKER_SEGMENT_3\")) n = {") != std::string::npos);
 });
 
-CB_TEST("build.data.rows_are_sixteen_bytes", [] {
+CB_TEST("decompile.data.rows_are_sixteen_bytes", [] {
     Bytes b(40);
     for (std::size_t i = 0; i < b.size(); ++i)
         b[i] = static_cast<std::uint8_t>('a' + i);
@@ -152,7 +152,7 @@ CB_TEST("build.data.rows_are_sixteen_bytes", [] {
 
 // ---- cutting an object into pieces --------------------------------------------------------------------------------
 
-CB_TEST("build.data.pieces_long_zero_runs_and_pointers", [] {
+CB_TEST("decompile.data.pieces_long_zero_runs_and_pointers", [] {
     Bytes blob(300, 0);
     blob[0] = 7;
     blob[10] = 8;
@@ -170,7 +170,7 @@ CB_TEST("build.data.pieces_long_zero_runs_and_pointers", [] {
     CB_CHECK(std::get<ZeroRun>(out[4]).offset == 201 && std::get<ZeroRun>(out[4]).count == 99);
 });
 
-CB_TEST("build.data.pieces_pad_a_short_blob_and_skip_overlaps", [] {
+CB_TEST("decompile.data.pieces_pad_a_short_blob_and_skip_overlaps", [] {
     // the blob is shorter than the object: the rest is zeros, as long runs
     const std::vector<Piece> padded = cut_pieces(Bytes{1, 2, 3}, 200, {});
     CB_CHECK_EQ(padded.size(), 2u);
@@ -192,19 +192,19 @@ CB_TEST("build.data.pieces_pad_a_short_blob_and_skip_overlaps", [] {
 
 // ---- 32-bit modules ------------------------------------------------------------------------------------------------
 
-CB_TEST("build.data.data32_lz32", [] {
+CB_TEST("decompile.data.data32_lz32", [] {
     const pe::Image img = image("lz32.dll");
     check_data(data32(img, "LZ32.DLL", functions_in_text(img)), "data_lz32_dll", true);
 });
 
-CB_TEST("build.data.data32_desk_cpl", [] {
+CB_TEST("decompile.data.data32_desk_cpl", [] {
     const pe::Image img = image("desk.cpl");
     check_data(data32(img, "desk.cpl", functions_in_text(img)), "data_desk_cpl", true);
 });
 
 // comcat.dll has a .rdata of tables of pointers (66 of them) and a .data: two carried sections, and pointers that point
 // into the other one
-CB_TEST("build.data.data32_comcat", [] {
+CB_TEST("decompile.data.data32_comcat", [] {
     const pe::Image img = image("comcat.dll");
     const Data d = data32(img, "comcat.dll", functions_in_text(img));
     check_data(d, "data_comcat_dll", true);
@@ -213,7 +213,7 @@ CB_TEST("build.data.data32_comcat", [] {
     CB_CHECK(d.unresolved.empty());
 });
 
-CB_TEST("build.data.data32_exported_names_cut_a_section", [] {
+CB_TEST("decompile.data.data32_exported_names_cut_a_section", [] {
     const pe::Image img = image("lz32.dll");
     const std::uint64_t base = img.header().image_base;
     const Data d =
@@ -227,7 +227,7 @@ CB_TEST("build.data.data32_exported_names_cut_a_section", [] {
     CB_CHECK_EQ(e.parts[0].symbol, "g_first");
 });
 
-CB_TEST("build.data.data32_without_function_names", [] {
+CB_TEST("decompile.data.data32_without_function_names", [] {
     // no function_at: every pointer into the code is unresolved
     const pe::Image img = image("lz32.dll");
     const Data d = data32(img, "lz32.dll", nullptr);
@@ -239,7 +239,7 @@ CB_TEST("build.data.data32_without_function_names", [] {
     CB_CHECK_EQ(e.unresolved.size(), 2u);
 });
 
-CB_TEST("build.data.relocated_words_and_address_constants", [] {
+CB_TEST("decompile.data.relocated_words_and_address_constants", [] {
     const pe::Image img = image("lz32.dll");
     const RelocatedWords words = relocated_words(img);
     std::string text;
@@ -261,7 +261,7 @@ CB_TEST("build.data.relocated_words_and_address_constants", [] {
 
 // ---- rewriting the header and the functions ---------------------------------------------------------------------
 
-CB_TEST("build.data.relocate_header_and_text_of_lz32", [] {
+CB_TEST("decompile.data.relocate_header_and_text_of_lz32", [] {
     const pe::Image img = image("lz32.dll");
     const std::uint64_t base = img.header().image_base;
     const FunctionAt32 functions = functions_in_text(img);
@@ -292,7 +292,7 @@ CB_TEST("build.data.relocate_header_and_text_of_lz32", [] {
     CB_CHECK_EQ(both + "\n", golden("data_lz32_text.golden.txt"));
 });
 
-CB_TEST("build.data.relocate_text_rules", [] {
+CB_TEST("decompile.data.relocate_text_rules", [] {
     Data d;
     d.parts = {{"codebreaker_data_2", 0x1000, 0x100, 2}};
     const FunctionAt32 fn = [](std::uint64_t va) -> std::optional<std::string> {
@@ -326,7 +326,7 @@ CB_TEST("build.data.relocate_text_rules", [] {
     CB_CHECK_EQ(relocate_text("{ 0x1010 }", {}, d, fn).text, "{ 0x1010 }");
 });
 
-CB_TEST("build.data.relocate_header_rules", [] {
+CB_TEST("decompile.data.relocate_header_rules", [] {
     Data d;
     d.parts = {{"codebreaker_data_2", 0x1000, 0x100, 2}};
     d.declarations = "DECL\n";
@@ -415,7 +415,7 @@ Data parts_of(std::initializer_list<Part> parts) {
 
 } // namespace
 
-CB_TEST("build.data.layout_holds", [] {
+CB_TEST("decompile.data.layout_holds", [] {
     const Data d = parts_of({{"a", 0x1000, 16, 2}, {"b", 0x1010, 48, 2}, {"c", 0x1040, 8, 2}, {"x", 0x9000, 4, 3}});
     // each part where the original has it, relative to the first part of its section
     CB_CHECK(layout_holds(omf_object({{"_a", 0x20, 1}, {"_b", 0x30, 1}, {"_c", 0x60, 1}, {"_x", 0x4, 2}}), d));
@@ -434,7 +434,7 @@ CB_TEST("build.data.layout_holds", [] {
     CB_CHECK(layout_holds(omf_object({{"_a", 0x20, 0}, {"_b", 0x30, 0}, {"_c", 0x60, 0}, {"_x", 1, 1}}), d));
 });
 
-CB_TEST("build.data.layout_holds_damaged_object", [] {
+CB_TEST("decompile.data.layout_holds_damaged_object", [] {
     const Data d = parts_of({{"a", 0x1000, 16, 2}});
     const Bytes good = omf_object({{"_a", 0x20, 1}});
     CB_CHECK(layout_holds(good, d));
@@ -447,18 +447,18 @@ CB_TEST("build.data.layout_holds_damaged_object", [] {
 
 // ---- 16-bit modules ------------------------------------------------------------------------------------------------
 
-CB_TEST("build.data.data16_lzexpand", [] {
+CB_TEST("decompile.data.data16_lzexpand", [] {
     const ne::Module m = module("lzexpand.dll");
     check_data(data16(m, names_of(m)), "data_lzexpand_dll", false);
 });
 
-CB_TEST("build.data.data16_charmap_with_and_without_carried_segments", [] {
+CB_TEST("decompile.data.data16_charmap_with_and_without_carried_segments", [] {
     const ne::Module m = module("charmap.exe");
     check_data(data16(m, names_of(m)), "data_charmap_exe", false);
     check_data(data16(m, names_of(m), {1}), "data_charmap_exe_far", false);
 });
 
-CB_TEST("build.data.far_segments_import_everything", [] {
+CB_TEST("decompile.data.far_segments_import_everything", [] {
     const ne::Module m = module("lzexpand.dll");
     std::map<std::uint16_t, Bytes> segs;
     for (const ne::Segment& s : m.segments()) {
@@ -471,7 +471,7 @@ CB_TEST("build.data.far_segments_import_everything", [] {
     CB_CHECK(far_segments({}).empty());
 });
 
-CB_TEST("build.data.far_segments_of_code_with_internal_fixups", [] {
+CB_TEST("decompile.data.far_segments_of_code_with_internal_fixups", [] {
     const ne::Module m = module("charmap.exe");
     std::map<std::uint16_t, Bytes> segs;
     for (const ne::Segment& s : m.segments())
@@ -479,7 +479,7 @@ CB_TEST("build.data.far_segments_of_code_with_internal_fixups", [] {
     CB_CHECK_EQ(far_segments(segs, &m, names_of(m)), golden("data_charmap_exe_segments.golden.c"));
 });
 
-CB_TEST("build.data.places_follow_chains", [] {
+CB_TEST("decompile.data.places_follow_chains", [] {
     auto reloc = [](std::uint16_t offset, std::uint8_t source, bool additive) {
         ne::Relocation r;
         r.source = source;
@@ -504,7 +504,7 @@ CB_TEST("build.data.places_follow_chains", [] {
     // (the record at 0xFFFF is empty; the one at 31 has no second byte in the segment)
 });
 
-CB_TEST("build.data.places_survive_a_cyclic_chain", [] {
+CB_TEST("decompile.data.places_survive_a_cyclic_chain", [] {
     ne::Relocation r;
     r.offset = 0;
     r.target = ne::InternalRef{1, 0};
@@ -516,7 +516,7 @@ CB_TEST("build.data.places_survive_a_cyclic_chain", [] {
 
 // ---- no data -----------------------------------------------------------------------------------------------------
 
-CB_TEST("build.data.data16_without_an_automatic_data_segment", [] {
+CB_TEST("decompile.data.data16_without_an_automatic_data_segment", [] {
     // a PE-like module has none: charmap's second segment is data; here use a module whose autodata is 0 by clearing it
     // in a copy of the file
     Bytes file = fs::read_file(testing::data_path("formats/testdata/lzexpand.dll"));
@@ -534,7 +534,7 @@ CB_TEST("build.data.data16_without_an_automatic_data_segment", [] {
 
 // ---- cut-off modules ---------------------------------------------------------------------------------------------
 
-CB_TEST("build.data.data32_of_a_module_cut_in_its_data", [] {
+CB_TEST("decompile.data.data32_of_a_module_cut_in_its_data", [] {
     // the file ends inside .data
     const Bytes file = fs::read_file(testing::data_path("formats/testdata/lz32.dll"));
     const pe::Image whole = pe::Image::parse(file);
@@ -549,7 +549,7 @@ CB_TEST("build.data.data32_of_a_module_cut_in_its_data", [] {
     CB_CHECK_THROWS_AS(FormatError, (void)data32(img, "lz32.dll", functions_in_text(img)));
 });
 
-CB_TEST("build.data.data16_of_a_module_cut_in_its_data", [] {
+CB_TEST("decompile.data.data16_of_a_module_cut_in_its_data", [] {
     Bytes file = fs::read_file(testing::data_path("formats/testdata/lzexpand.dll"));
     const ne::Module whole = ne::Module::open(file);
     // cut the file in the middle of the automatic data segment (the last segment)

@@ -3,7 +3,7 @@
 #include <algorithm>
 
 #include "core/fs.hpp"
-#include "decompile/jar.hpp"
+#include "java/jar.hpp"
 #include "java/probe.hpp"
 
 namespace cb::java::production {
@@ -11,9 +11,9 @@ namespace cb::java::production {
 namespace stdfs = std::filesystem;
 
 std::optional<stdfs::path> find_java(const cb::config::Config& config) {
-    decompile::jar::Settings s;
+    java::jar::Settings s;
     s.java = config.path("java").value_or(stdfs::path{});
-    return decompile::jar::find_java(s);
+    return java::jar::find_java(s);
 }
 
 frontend::DumpTools dump_tools(const cb::config::Config& config, const JavaData& data, const std::vector<stdfs::path>& libraries) {

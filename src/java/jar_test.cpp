@@ -1,4 +1,4 @@
-#include "decompile/jar.hpp"
+#include "java/jar.hpp"
 
 #include <algorithm>
 #include <string>
@@ -9,7 +9,7 @@
 #include "core/testing.hpp"
 #include "core/text.hpp"
 
-namespace jar = cb::decompile::jar;
+namespace jar = cb::java::jar;
 namespace fs = cb::fs;
 using std::filesystem::path;
 
@@ -55,7 +55,7 @@ std::vector<std::string> split(const std::string& s, char sep) {
 
 }  // namespace
 
-CB_TEST("decompile.jar.find_src", [] {
+CB_TEST("java.jar.find_src", [] {
     fs::ScopedTempDir tmp("cb_jar_test");
     const path& w = tmp.path();
     // the src with the most .java files wins; a directory that is not named src does not count
@@ -95,7 +95,7 @@ CB_TEST("decompile.jar.find_src", [] {
     CB_CHECK(!jar::find_src(w / "case"));
 });
 
-CB_TEST("decompile.jar.repair_text", [] {
+CB_TEST("java.jar.repair_text", [] {
     std::size_t n = 0;
     CB_CHECK_EQ(jar::repair_array_params_text(kMangled, n), kRepaired);
     CB_CHECK_EQ(n, 5u);
@@ -122,7 +122,7 @@ CB_TEST("decompile.jar.repair_text", [] {
     CB_CHECK_EQ(jar::repair_array_params_text("a(Foo[] b;1) /* $VF was: x ", n), "a(Foo[] var1) /* $VF was: x ");
 });
 
-CB_TEST("decompile.jar.repair_tree", [] {
+CB_TEST("java.jar.repair_tree", [] {
     fs::ScopedTempDir tmp("cb_jar_test");
     const path& w = tmp.path();
     put(w, "A.java", kMangled);
@@ -140,7 +140,7 @@ CB_TEST("decompile.jar.repair_tree", [] {
     CB_CHECK_EQ(jar::repair_array_params(w / "missing"), 0u);
 });
 
-CB_TEST("decompile.jar.find_java", [] {
+CB_TEST("java.jar.find_java", [] {
     CB_WINDOWS_ONLY("it runs java.exe stand-ins written as .cmd files");
     fs::ScopedTempDir tmp("cb_jar_test");
     const path& d = tmp.path();
@@ -187,7 +187,7 @@ CB_TEST("decompile.jar.find_java", [] {
     }
 });
 
-CB_TEST("decompile.jar.decompile_without_a_version_set_up", [] {
+CB_TEST("java.jar.decompile_without_a_version_set_up", [] {
     // no setup asked for, nothing in the workspace: no sides to decompile, so no source (the native preparation itself is proven against RetroMCP's
     // workspaces of six versions, which need the network: work/retire-retromcp)
     fs::ScopedTempDir tmp("cb_jar_test");

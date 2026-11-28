@@ -19,7 +19,7 @@
 #include "core/log.hpp"
 #include "core/testing.hpp"
 #include "core/text.hpp"
-#include "decompile/jar.hpp"
+#include "java/jar.hpp"
 
 using namespace cb;
 namespace jt = cb::java::tools;
@@ -84,7 +84,7 @@ std::string jtt_manifest(const stdfs::path& folder, const std::function<bool(con
 }
 
 bool jtt_have_jdk() {
-    const std::optional<stdfs::path> java = decompile::jar::find_java({});
+    const std::optional<stdfs::path> java = java::jar::find_java({});
     std::error_code ec;
     return java && stdfs::is_regular_file(java->parent_path() / "javac.exe", ec);
 }

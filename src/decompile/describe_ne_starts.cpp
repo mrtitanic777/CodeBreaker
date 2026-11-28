@@ -4,7 +4,7 @@
 
 #include <deque>
 
-#include "build/data.hpp"
+#include "decompile/data.hpp"
 #include "decompile/describe_internal.hpp"
 
 namespace cb::decompile::describe {
@@ -108,7 +108,7 @@ std::set<SegOff> far_pointer_targets(const formats::ne::Module& m, const Segment
     const std::vector<formats::ne::Relocation> relocations = m.relocations(s);
     auto u16 = [&](std::int64_t at) { return word_at(code, at); };
     auto b = [&](std::int64_t at) -> int { return code[static_cast<std::size_t>(at)]; };
-    for (const build::data::RelocationPlace& place : build::data::places(relocations, code)) {
+    for (const decompile::data::RelocationPlace& place : decompile::data::places(relocations, code)) {
         const std::int64_t o = place.offset;
         const formats::ne::Relocation& r = relocations[place.record];
         const auto* internal = std::get_if<formats::ne::InternalRef>(&r.target);

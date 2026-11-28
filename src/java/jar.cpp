@@ -1,4 +1,4 @@
-#include "decompile/jar.hpp"
+#include "java/jar.hpp"
 
 #include <algorithm>
 #include <format>
@@ -11,7 +11,7 @@
 #include "core/text.hpp"
 #include "java/projects/minecraft/prep/prepare.hpp"
 
-namespace cb::decompile::jar {
+namespace cb::java::jar {
 
 namespace stdfs = std::filesystem;
 
@@ -183,4 +183,4 @@ std::size_t repair_array_params(const stdfs::path& src) {
     return count;
 }
 
-}  // namespace cb::decompile::jar
+}  // namespace cb::java::jar

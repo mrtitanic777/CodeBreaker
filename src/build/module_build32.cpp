@@ -50,7 +50,7 @@ std::optional<stdfs::path> ModuleBuilder::build32(Built& b, const stdfs::path& o
     std::map<std::uint64_t, std::string> at;
     for (const std::string& n : placed) at[va.at(n)] = n;
     const auto extra = [&](const std::string& stem, const std::string& text) { return builder.compile(cc, cflags, folder, stem, text); };
-    const data::FunctionAt32 at_get = [&](std::uint64_t address) -> std::optional<std::string> {
+    const decompile::data::FunctionAt32 at_get = [&](std::uint64_t address) -> std::optional<std::string> {
         const auto it = at.find(address);
         return it == at.end() ? std::nullopt : std::optional<std::string>(it->second);
     };
@@ -70,23 +70,23 @@ std::optional<stdfs::path> ModuleBuilder::build32(Built& b, const stdfs::path& o
     std::vector<std::map<std::uint64_t, std::string>> attempts;
     if (!exported.empty()) attempts.push_back(exported);
     attempts.emplace_back();
-    std::shared_ptr<data::Data> d;
+    std::shared_ptr<decompile::data::Data> d;
     for (const auto& named : attempts) {
-        d = std::make_shared<data::Data>(data::data32(pe, file_name, at_get, named));
+        d = std::make_shared<decompile::data::Data>(decompile::data::data32(pe, file_name, at_get, named));
         b.data = d;
         if (!d->movable) {
             b.data_error = "the module has no relocation table, so nothing says which numbers are addresses";
             exported.clear();
             break;
         }
-        const data::Relocated relocated = data::relocate_header(m.preamble, *d);
+        const decompile::data::Relocated relocated = decompile::data::relocate_header(m.preamble, *d);
         header = relocated.text;
         b.lost_addresses = relocated.lost.size();   // globals that are in no carried section
         fs::write_text(folder / "m.h", header);
         const std::string why = extra("data", d->source);
         if (!why.empty()) {
             b.data_error = "the data does not compile: " + why;
-        } else if (data::layout_holds(fs::read_file(folder / "data.obj"), *d)) {
+        } else if (decompile::data::layout_holds(fs::read_file(folder / "data.obj"), *d)) {
             data_object = "data.obj";
             exported = named;
             break;
@@ -97,11 +97,11 @@ std::optional<stdfs::path> ModuleBuilder::build32(Built& b, const stdfs::path& o
     if (data_object) {
         b.data_error.clear();
         const std::vector<std::uint64_t> starts = s.functions32 ? s.functions32(original) : std::vector<std::uint64_t>();   // every function the lane carves
-        const auto constants = data::address_constants(pe, starts);
+        const auto constants = decompile::data::address_constants(pe, starts);
         texts.clear();
         for (const std::string& n : placed) {
             const auto addresses = constants.find(va.at(n));
-            const data::Relocated relocated = data::relocate_text(m.texts.at(n), addresses != constants.end() ? addresses->second : std::set<std::uint64_t>(), *d, at_get);
+            const decompile::data::Relocated relocated = decompile::data::relocate_text(m.texts.at(n), addresses != constants.end() ? addresses->second : std::set<std::uint64_t>(), *d, at_get);
             texts[n] = relocated.text;
             b.lost_addresses += relocated.lost.size();
         }

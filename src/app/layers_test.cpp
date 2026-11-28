@@ -45,8 +45,12 @@ int layer_of(std::string_view area) {
 }
 
 // The area a file belongs to: its first folder, except translate's typed tree and documents, which are the L2 hub everything emits into.
+// The L2 hub lives in translate/ until it is its own folder: the typed tree and its documents, the library facade every caller writes
+// C and C++17 through (native_l2), the two back ends on the tree, and their helpers. Together they include nothing above core.
 std::string area_of(std::string_view rel) {
-    for (std::string_view l2 : {"translate/ir/", "translate/ir.hpp", "translate/ir.cpp", "translate/l2.hpp", "translate/l2.cpp"})
+    for (std::string_view l2 : {"translate/ir/", "translate/ir.hpp", "translate/ir.cpp", "translate/l2.hpp", "translate/l2.cpp", "translate/native_l2.",
+                                "translate/support/", "translate/backends/c/", "translate/backends/c.hpp", "translate/backends/c.cpp",
+                                "translate/backends/cpp17_tree/"})
         if (rel.starts_with(l2)) return "l2";
     return std::string(rel.substr(0, rel.find('/')));
 }

@@ -266,7 +266,7 @@ void compile_functions(Ctx16& c) {
 }
 
 // The module's data as C, linked first so that it starts at offset 0 of the automatic data segment.
-std::shared_ptr<const data::Data> make_data(Ctx16& c) {
+std::shared_ptr<const decompile::data::Data> make_data(Ctx16& c) {
     // every data segment besides the automatic one is carried, whether or not the C reads it: it is part of the module (and code written as
     // its own instructions refers to it)
     for (const auto& [n, sg] : c.segs) {
@@ -283,8 +283,8 @@ std::shared_ptr<const data::Data> make_data(Ctx16& c) {
     }
     std::map<std::uint32_t, std::string> in_segment;   // a code segment -> a function in it (its selector)
     for (const auto& [place, name] : c.at) in_segment.emplace(place.seg, name);
-    data::Names16 names;
-    names.function_at = [&](data::Address16 a) -> std::optional<std::string> {
+    decompile::data::Names16 names;
+    names.function_at = [&](decompile::data::Address16 a) -> std::optional<std::string> {
         const auto it = c.at.find(Place{a.segment, a.offset});
         return it == c.at.end() ? std::nullopt : std::optional<std::string>(it->second);
     };
@@ -298,8 +298,8 @@ std::shared_ptr<const data::Data> make_data(Ctx16& c) {
         carried_keys.insert(static_cast<std::uint16_t>(n));
         carried_bytes[static_cast<std::uint16_t>(n)] = bytes;
     }
-    auto d = std::make_shared<data::Data>(data::data16(c.ne, names, carried_keys));
-    const std::string far = data::far_segments(carried_bytes, &c.ne, names);
+    auto d = std::make_shared<decompile::data::Data>(decompile::data::data16(c.ne, names, carried_keys));
+    const std::string far = decompile::data::far_segments(carried_bytes, &c.ne, names);
     if (const std::string why = c.extra("data", d->source + far); !why.empty()) {   // the code still needs a data segment to exist
         c.b.data_error = "the data does not compile: " + why;
         c.extra("data", "char codebreaker_data = 1;\n" + far);
@@ -715,7 +715,7 @@ std::optional<stdfs::path> ModuleBuilder::build16(Built& b, const stdfs::path& o
     b.byte_aligned_code = true;   // (-os: the code segment of each object is byte-aligned)
 
     compile_functions(c);
-    const std::shared_ptr<const data::Data> d = make_data(c);
+    const std::shared_ptr<const decompile::data::Data> d = make_data(c);
     b.data = d;
     c.publics = publics_of(s, folder, c.stems);
     decide_forced(c);

@@ -24,7 +24,7 @@
 #include "core/process.hpp"
 #include "core/testing.hpp"
 #include "core/text.hpp"
-#include "decompile/jar.hpp"
+#include "java/jar.hpp"
 #include "java/assembly.hpp"
 #include "java/corpus.hpp"
 #include "java/emit/ownership.hpp"
@@ -57,7 +57,7 @@ struct JpoFront {
 JpoFront& jpo_front() {
     static JpoFront front = [] {
         JpoFront f;
-        const std::optional<stdfs::path> java = decompile::jar::find_java({});
+        const std::optional<stdfs::path> java = java::jar::find_java({});
         if (!java) return f;
         stdfs::path javac = java->parent_path() / "javac.exe";
         std::error_code ec;

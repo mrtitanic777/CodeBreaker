@@ -1,4 +1,4 @@
-// decompile/jar.hpp -- a Minecraft version decompiled to Java source, natively.
+// java/jar.hpp -- a Minecraft version decompiled to Java source, natively.
 //
 // The preparation RetroMCP used to do (download the version, remap its classes with its mappings, fix them up, patch the source) is CodeBreaker's
 // own (java/projects/minecraft/prep), and the decompiler is CodeBreaker's Fernflower (java/decompiler): no Java and no RetroMCP. The workspace is
@@ -18,7 +18,7 @@
 #include "core/bytes.hpp"
 #include "core/error.hpp"
 
-namespace cb::decompile::jar {
+namespace cb::java::jar {
 
 // Why a decompile could not be done: a version the list does not know, a download or a step that failed, or a run that produced no source. The
 // message says which and is meant to be shown to the user.
@@ -67,4 +67,4 @@ std::size_t repair_array_params(const std::filesystem::path& src);
 // The same repair over one source text; `renamed` receives the count.
 std::string repair_array_params_text(std::string_view source, std::size_t& renamed);
 
-}  // namespace cb::decompile::jar
+}  // namespace cb::java::jar

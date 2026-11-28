@@ -1,4 +1,4 @@
-#include "build/data.hpp"
+#include "decompile/data.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -11,7 +11,7 @@
 #include "core/text.hpp"
 #include "formats/omf.hpp"
 
-namespace cb::build::data {
+namespace cb::decompile::data {
 
 namespace {
 
@@ -866,4 +866,4 @@ std::string far_segments(const std::map<std::uint16_t, Bytes>& segments, const n
     return join_lines(all) + (out.empty() ? "" : "\n");
 }
 
-} // namespace cb::build::data
+} // namespace cb::decompile::data

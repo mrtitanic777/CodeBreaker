@@ -12,7 +12,7 @@
 #include "core/fs.hpp"
 #include "core/process.hpp"
 #include "core/text.hpp"
-#include "decompile/jar.hpp"
+#include "java/jar.hpp"
 #include "java/apimap.hpp"
 #include "java/frontend.hpp"
 #include "translate/backends/c_java.hpp"
@@ -334,7 +334,7 @@ dj::Run tf_java_run(process::ProcessSpec spec) {
 
 // Java as C, C++17 or C#: the program and its translation are both run, and only a translation that does what the program does is handed over.
 Result tf_java(const std::string& to, const stdfs::path& input, const stdfs::path& out, const stdfs::path& work, const judge_cs_cpp::Environment& environment) {
-    const auto java = decompile::jar::find_java({});
+    const auto java = java::jar::find_java({});
     if (!java) throw Error("translating Java needs a JDK (java and javac): none found");
     const stdfs::path javac = java->parent_path() / (java->extension() == ".exe" ? "javac.exe" : "javac");
     if (!stdfs::is_regular_file(javac)) throw Error("translating Java needs a JDK: no javac beside " + fs::to_text(*java));

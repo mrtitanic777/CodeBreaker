@@ -1,4 +1,4 @@
-// build/data.hpp -- a module's initialised data as C, so a rebuilt module carries its own.
+// decompile/data.hpp -- a module's initialised data as C, so a rebuilt module carries its own.
 //
 // The per-function builds borrow the original's data: a 32-bit function's globals are bound to the original's
 // addresses, a 16-bit one's to offsets in the original's data segment. A whole module has to bring that data along.
@@ -46,7 +46,7 @@
 #include "formats/ne.hpp"
 #include "formats/pe.hpp"
 
-namespace cb::build::data {
+namespace cb::decompile::data {
 
 // ---- the callbacks ------------------------------------------------------------------------------------------------
 
@@ -214,4 +214,4 @@ Data data16(const formats::ne::Module& module, const Names16& names, const std::
 std::string far_segments(const std::map<std::uint16_t, Bytes>& segments, const formats::ne::Module* module = nullptr,
                          const Names16& names = {});
 
-} // namespace cb::build::data
+} // namespace cb::decompile::data

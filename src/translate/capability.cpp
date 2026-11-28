@@ -8,7 +8,7 @@
 #include "base/config.hpp"
 #include "core/fs.hpp"
 #include "core/text.hpp"
-#include "decompile/jar.hpp"
+#include "java/jar.hpp"
 #include "translate/backends/c_java.hpp"
 #include "translate/backends/go_java.hpp"
 #include "translate/backends/rust_java.hpp"
@@ -96,7 +96,7 @@ bool cap_on_path(std::string_view name) {
 
 // A JDK: a java with its javac beside it.
 bool cap_has_jdk() {
-    const auto java = decompile::jar::find_java({});
+    const auto java = java::jar::find_java({});
     return java && cap_is_file(java->parent_path() / (java->extension() == ".exe" ? "javac.exe" : "javac"));
 }
 
