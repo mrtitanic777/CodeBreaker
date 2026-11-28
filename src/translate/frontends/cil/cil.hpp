@@ -107,6 +107,9 @@ public:
     // variable changed (its kind, type or name: the symbol stays the same object).
     ir::TypeP type(const dotnet::decompiler::typesystem::IType* type);
     ir::SymP new_variable(const dotnet::decompiler::il::ILVariable& variable);
+    // An instruction made after the lowering (by such a reader: a default value, a constant, a call it builds), not part of the
+    // function, lowered as an expression of the function lowered last; `map`, if given, gets what it lowered from what.
+    ir::Node* expression(const dotnet::decompiler::il::ILInstruction& inst, LiftMap* map = nullptr);
     // The symbol a variable of that function was lowered to; null for one it does not have.
     ir::SymP symbol_of(const dotnet::decompiler::il::ILVariable& variable) const;
     void restate(ir::Sym& sym, const dotnet::decompiler::il::ILVariable& variable);

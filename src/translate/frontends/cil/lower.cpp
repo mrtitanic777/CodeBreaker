@@ -1183,6 +1183,16 @@ ir::SymP Lowering::new_variable(const dotnet::decompiler::il::ILVariable& variab
         throw std::logic_error("cil lowering: a new variable with a capture scope or a state machine field");
     return s_->variable(&variable);
 }
+ir::Node* Lowering::expression(const dotnet::decompiler::il::ILInstruction& inst, LiftMap* map) {
+    LiftMap* const was = s_->links;
+    s_->links = map;
+    struct Restore {
+        LiftMap*& links;
+        LiftMap* was;
+        ~Restore() { links = was; }
+    } restore{s_->links, was};
+    return s_->expr(&inst);
+}
 ir::SymP Lowering::symbol_of(const dotnet::decompiler::il::ILVariable& variable) const {
     const ir::SymP* sym = s_->variables.find(&variable);
     return sym != nullptr ? *sym : nullptr;
