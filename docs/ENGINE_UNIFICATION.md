@@ -172,3 +172,14 @@ tests only what it changes.
   on both cores; the random runs' digest is kept in `engine/pcode_cpu_z80_test`.
 - 2026-11-27: item 2: the SM83 (Game Boy) core retired: `engine/pcode_cpu_sm83` gains `Sm83Cpu` for single steps, the old
   core's 25 unit tests run on it, and its random runs are kept as digests.
+- 2026-11-27: item 2: the TLCS-900/H (Neo Geo Pocket) and V810 (Virtual Boy) cores retired, the last of the hybrids among the
+  console lanes. The adapters handed about 90 TLCS-900 operations and the V810's floating point, bit strings, system registers,
+  caxi, traps and divisions to copies of the old semantics (`engine/pcode_ops_tlcs900`, `pcode_ops_v810`, deleted); the
+  descriptions now carry them under EXACT (`tlcs900exact.sla`: the four register banks switched by incf, decf, ldf and SR, every
+  bit of SR and F', the DMA control registers, the flags as the processor sets them, the rotates, div, and daa, mirr, mula,
+  bs1f/bs1b, minc/mdec, rld/rrd in p-code; `v810exact.sla`: the floating-point flags and conversions, the ten bit strings, the
+  read-only system registers, jmp's low bit, the overflowing division). What ends a run (swi's BIOS stub, halt, trap, reti, a
+  divide by zero) is a user operation the machine answers. The decompiler's `tlcs900.sla` and `v810.sla` are unchanged apart
+  from two bugs (ldc's directions; caxi compared r30). Proof: 200,000 and 300,000 random instructions and programs per core and
+  300,000 focused V810 runs, 0 differing; the NGP and Virtual Boy homebrew judged on both cores with no cap (1,746 edited
+  copies, 0 verdicts disagreeing); the runs' digests are kept in `engine/pcode_cpu_tlcs900_test` and `pcode_cpu_v810_test`.

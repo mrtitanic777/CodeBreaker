@@ -1,17 +1,14 @@
-// emulate/v810.hpp -- the NEC V810 as an interpreter, to run functions on (small, deterministic, and it logs what a function does to the devices).
+// emulate/v810.hpp -- the NEC V810's machine as the Virtual Boy lane runs functions on it: the Bus (memory and device ranges, every device access logged), the
+// registers (r0-r31, the status word, the system registers), the options of a run and its result. The processor is CodeBreaker's one emulator on v810exact.sla
+// (engine/pcode_cpu_v810: pcode_cpu::run(bus, entry, options)); the interpreter that was here is retired.
 //
 //     v810::Bus bus(0x07FFFFFF);                                  // the address lines the machine has (the Virtual Boy: 27)
 //     bus.memory(0x05000000, 0x05FFFFFF, {}, true, false, 0x10000);   // 64 KB of RAM seen again and again over 16 MB
 //     bus.device(0x02000000, 0x02FFFFFF, read, write);            // a device range: every access logged
-//     v810::RunResult r = v810::run(bus, entry, {.r6 = 1});       // call the function as `jal` would, run to its `jmp [lp]`
+//     v810::RunResult r = engine::pcode_cpu::run(bus, entry, {.r6 = 1});   // call the function as `jal` would, run to its `jmp [lp]`
 //
-// Every instruction of decompile/v810: the flags Z S OV CY of the arithmetic, the shifts, the 64-bit result of mul / mulu and the remainder of div / divu in r30, the loads
-// and stores of 8, 16 and 32 bits (a halfword or word access ignores the low address bits), caxi, the branches with all sixteen conditions, jr / jal / jmp, ldsr / stsr on the
-// system registers, setf, the single-precision floating-point instructions (a NaN or denormal operand sets the reserved-operand flag and leaves the result alone, a division by
-// zero sets the zero-divide flag; the result's sign goes to S and CY), xb xh rev mpyhw, and the ten bit-string instructions on r26-r30 (as the V810 manual describes: r30 and
-// r29 are the source and destination word addresses, r28 the length in bits, r27 and r26 the bit offsets in those words; a search leaves Z set when nothing matched).
-// Timing is not modelled. trap, reti and halt, a divide by zero and an undefined bit pattern stop a run with that reason. A run starts with the registers it is given and
-// lp pointing at an address nothing is at; reaching it is the end.
+// Timing is not modelled. trap, reti and halt, a divide by zero, a bit string over a megabit and an undefined bit pattern stop a run with that reason. A run starts with the
+// registers it is given and lp pointing at an address nothing is at; reaching it is the end.
 #pragma once
 
 #include <array>
@@ -23,7 +20,6 @@
 #include <vector>
 
 #include "core/bytes.hpp"
-#include "decompile/v810.hpp"
 
 namespace cb::emulate::v810 {
 
@@ -101,20 +97,6 @@ struct Fault {
     std::string text() const { return reason; }
 };
 
-class Cpu {
-public:
-    explicit Cpu(Bus& bus) : bus_(&bus) {}
-
-    Registers regs;
-    std::uint64_t steps = 0;
-
-    // Execute the instruction at pc. nullopt: it ran. A Fault: it did not (nothing changed).
-    std::optional<Fault> step();
-
-private:
-    Bus* bus_;
-};
-
 struct RunOptions {
     std::array<std::uint32_t, 32> r{};     // the starting registers (r0 is ignored, lp is set to the return address)
     std::uint32_t sp = 0x0500FFF0;
@@ -133,8 +115,5 @@ struct RunResult {
     std::vector<DeviceAccess> io;          // the device accesses of this run, in order
     std::string exit() const;              // "return" | "stopped: <why>" | "limit"
 };
-
-// Call the function at `entry` as jal would and run it until it returns (jmp [lp] to kReturnAddress), faults or takes `max_steps` instructions.
-RunResult run(Bus& bus, std::uint32_t entry, const RunOptions& options = {});
 
 }  // namespace cb::emulate::v810

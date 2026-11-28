@@ -1,5 +1,5 @@
 // cb-unity: alone (file-local names that other files in a batch also use)
-// engine/pcode_cpu_v810.cpp -- the Virtual Boy lane's NEC V810 on the one p-code emulator: emulate::v810::run's call, on languages/v810exact.sla.
+// engine/pcode_cpu_v810.cpp -- the Virtual Boy lane's NEC V810 on the one p-code emulator, on languages/v810exact.sla.
 //
 // The description runs every instruction (v810exact.sla: v810.slaspec with EXACT, the floating point's flags, the bit strings, the system registers as the processor
 // keeps them). The adapter carries what it leaves to the machine: the instruction is fetched through the bus (a range the bus does not log is peeked, a fetch from a
@@ -145,7 +145,5 @@ v8::RunResult run(v8::Bus& bus, std::uint32_t entry, const v8::RunOptions& optio
     out.io.assign(bus.log().begin() + static_cast<std::ptrdiff_t>(log_start), bus.log().end());
     return out;
 }
-
-v8::RunResult call(v8::Bus& bus, std::uint32_t entry, const v8::RunOptions& options) { return enabled() ? pcode_cpu::run(bus, entry, options) : v8::run(bus, entry, options); }
 
 }  // namespace cb::engine::pcode_cpu

@@ -98,7 +98,7 @@ vl::Effects vb_effects(const stdfs::path& path, std::uint32_t entry, const vl::S
     options.r[9] = static_cast<std::uint32_t>(at(state, "d"));
     options.sp = kWorkRam + kWorkRamSize - 0x10;
     options.max_steps = kSteps;
-    const emulate::v810::RunResult run = pcode_cpu::call(bus, entry, options);
+    const emulate::v810::RunResult run = pcode_cpu::run(bus, entry, options);
     std::vector<std::string> io;
     for (const emulate::v810::DeviceAccess& x : run.io) {
         io.push_back(std::format("{} {} {} {:x}", x.kind == emulate::v810::DeviceAccess::Kind::Read ? "r" : "w", place(x.address), x.size, x.value));
