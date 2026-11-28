@@ -450,7 +450,7 @@ namespace System {
 		long long s = c.QuadPart / f.QuadPart, r = c.QuadPart % f.QuadPart;   // overflow-safe ns
 		return s * 1000000000LL + (r * 1000000000LL) / f.QuadPart;
 	}
-	inline void gc() {}
+	inline void gc() { j2xCollect(); }                 // a collection now, where the platform has a collector (JArray.h)
 	inline void exit(int) {}
 	inline JavaString getProperty(const std::string&) { return JavaString(); }
 	inline JavaString getProperty(const std::string&, const std::string& def) { return JavaString(def); }

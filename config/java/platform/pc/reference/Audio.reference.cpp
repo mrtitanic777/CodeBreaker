@@ -1,6 +1,7 @@
 // SoundSystem on SDL2 + libvorbisfile (see Audio.reference.h).
 #include "stdafx.h"
 #include "Audio.h"
+#include "JArray.h"          // the heap hooks and the atomic allocator (the collector never scans samples)
 #include <SDL2/SDL.h>
 #include <vorbis/vorbisfile.h>
 #include <cmath>
@@ -17,8 +18,10 @@ namespace {
 const int RATE = 44100;
 
 // a decoded sound: interleaved stereo float samples at its own rate
+typedef std::vector<float, J2xAtomicAllocator<float> > Samples;   // decoded stereo samples
+
 struct Clip {
-	std::vector<float> data;
+	Samples data;
 	int rate;
 	Clip() : rate(RATE) {}
 };
@@ -28,7 +31,7 @@ struct Stream {
 	OggVorbis_File vf;
 	bool open;
 	int rate, channels;
-	std::vector<float> buf;                       // decoded, not yet consumed (stereo)
+	Samples buf;                                  // decoded, not yet consumed (stereo)
 	size_t at;
 	bool ended;
 	Stream() : open(false), rate(RATE), channels(2), at(0), ended(false) {}
@@ -170,6 +173,7 @@ void spatial(const Source& s, float* gl, float* gr) {
 }
 
 void mix(void*, Uint8* bytes, int len) {
+	j2xAttachThread();                                       // SDL's audio thread reads the clips: the collector scans its stack
 	float* out = (float*)bytes;
 	int frames = len / (int)(2 * sizeof(float));
 	std::memset(bytes, 0, (size_t)len);
@@ -179,7 +183,7 @@ void mix(void*, Uint8* bytes, int len) {
 		float gl, gr;
 		spatial(s, &gl, &gr);
 		if (s.clip) {
-			const std::vector<float>& d = s.clip->data;
+			const Samples& d = s.clip->data;
 			size_t n = d.size() / 2;
 			double step = s.pitch * (double)s.clip->rate / RATE;
 			for (int f = 0; f < frames && s.playing; ++f) {

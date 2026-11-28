@@ -41,6 +41,53 @@
 #define J2X_ARRAY_MOVES 1
 #endif
 
+// The runtime's heap hooks. A platform with a garbage collector (the PC's J2xGc.cpp, which replaces operator new) fills them in
+// when its heap starts; while they are null (the Xbox 360, the converter's syntax gate) the heap is plain operator new and
+// nothing collects. docs/java/RUNTIME_MEMORY.md.
+struct J2xHeapHooks {
+	void* (*allocAtomic)(std::size_t n);         // a block that holds no pointers: the collector never scans it
+	void (*collect)();                           // System.gc()
+	void (*attachThread)();                      // the calling thread may hold references: scan its stack from now on
+	void (*threadStarting)(int delta);           // +1 before a thread is created, -1 once it has attached (no collection between)
+};
+inline J2xHeapHooks& j2xHeapHooks() { static J2xHeapHooks h = { 0, 0, 0, 0 }; return h; }
+inline void* j2xAllocAtomic(std::size_t n) {
+	J2xHeapHooks& h = j2xHeapHooks();
+	return h.allocAtomic ? h.allocAtomic(n) : ::operator new(n);
+}
+inline void j2xAttachThread() { J2xHeapHooks& h = j2xHeapHooks(); if (h.attachThread) h.attachThread(); }
+inline void j2xThreadStarting(int delta) { J2xHeapHooks& h = j2xHeapHooks(); if (h.threadStarting) h.threadStarting(delta); }
+inline void j2xCollect() { J2xHeapHooks& h = j2xHeapHooks(); if (h.collect) h.collect(); }
+
+// A type whose values hold no pointers: an array of it is allocated atomic (chunk data, light maps, pixels, vertices are never
+// scanned, so their numbers are never taken for pointers).
+template<class T> struct J2xNoPointers { enum { value = 0 }; };
+#define J2X_NO_POINTERS(T) template<> struct J2xNoPointers<T> { enum { value = 1 }; };
+J2X_NO_POINTERS(bool) J2X_NO_POINTERS(char) J2X_NO_POINTERS(signed char) J2X_NO_POINTERS(unsigned char)
+J2X_NO_POINTERS(short) J2X_NO_POINTERS(unsigned short) J2X_NO_POINTERS(int) J2X_NO_POINTERS(unsigned int)
+J2X_NO_POINTERS(long) J2X_NO_POINTERS(unsigned long) J2X_NO_POINTERS(long long) J2X_NO_POINTERS(unsigned long long)
+J2X_NO_POINTERS(float) J2X_NO_POINTERS(double)
+#undef J2X_NO_POINTERS
+
+// An STL allocator for containers of pointer-free values (decoded audio samples, pixel and vertex buffers): atomic blocks.
+template<class T> struct J2xAtomicAllocator {
+	typedef T value_type; typedef T* pointer; typedef const T* const_pointer;
+	typedef T& reference; typedef const T& const_reference;
+	typedef std::size_t size_type; typedef std::ptrdiff_t difference_type;
+	template<class U> struct rebind { typedef J2xAtomicAllocator<U> other; };
+	J2xAtomicAllocator() {}
+	template<class U> J2xAtomicAllocator(const J2xAtomicAllocator<U>&) {}
+	pointer address(reference x) const { return &x; }
+	const_pointer address(const_reference x) const { return &x; }
+	pointer allocate(size_type n, const void* = 0) { return (pointer)j2xAllocAtomic(n * sizeof(T)); }
+	void deallocate(pointer p, size_type) { ::operator delete((void*)p); }
+	void construct(pointer p, const T& v) { new ((void*)p) T(v); }
+	void destroy(pointer p) { p->~T(); }
+	size_type max_size() const { return (size_type)-1 / sizeof(T); }
+	template<class U> bool operator==(const J2xAtomicAllocator<U>&) const { return true; }
+	template<class U> bool operator!=(const J2xAtomicAllocator<U>&) const { return false; }
+};
+
 struct JObject;                                  // (int[])o unboxes through the ctor below (JavaRT.h)
 
 // The block's header. Its size is a multiple of 8, so the elements after it are aligned for any Java type.
@@ -56,7 +103,8 @@ class JArray {
 	static JArrayBlock* _block(T* buf) { return (JArrayBlock*)buf - 1; }
 	static T* _alloc(int n) {                    // a block of n value-initialized elements, plus the spare one
 		const int cap = n + 1;
-		JArrayBlock* b = (JArrayBlock*)::operator new(sizeof(JArrayBlock) + sizeof(T) * (std::size_t)cap);
+		const std::size_t bytes = sizeof(JArrayBlock) + sizeof(T) * (std::size_t)cap;
+		JArrayBlock* b = (JArrayBlock*)(J2xNoPointers<T>::value ? j2xAllocAtomic(bytes) : ::operator new(bytes));
 		b->refs = 1;
 		b->cap = cap;
 		T* buf = (T*)(b + 1);

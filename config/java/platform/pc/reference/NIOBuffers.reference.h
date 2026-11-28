@@ -54,9 +54,12 @@ struct NioBacking {
 	int   ref;
 	// J2X-BUGFIX uninit-array: `new char[n]()` value-initializes to zero -- Java's ByteBuffer.allocateDirect
 	// guarantees a zeroed buffer, and code that reads before writing would otherwise see indeterminate bytes.
-	explicit NioBacking(int nbytes) : bytes(nbytes > 0 ? new char[nbytes]() : 0), cap(nbytes > 0 ? nbytes : 0), ref(1) {}
+	// The bytes are an atomic block (vertices, pixels: the collector never scans them, JArray.h).
+	explicit NioBacking(int nbytes) : bytes(nbytes > 0 ? (char*)j2xAllocAtomic((std::size_t)nbytes) : 0), cap(nbytes > 0 ? nbytes : 0), ref(1) {
+		if (bytes) std::memset(bytes, 0, (std::size_t)nbytes);
+	}
 	void addRef() { ++ref; }
-	void release() { if (--ref <= 0) { delete[] bytes; delete this; } }
+	void release() { if (--ref <= 0) { ::operator delete(bytes); delete this; } }
 private:
 	~NioBacking() {}
 	NioBacking(const NioBacking&); NioBacking& operator=(const NioBacking&);

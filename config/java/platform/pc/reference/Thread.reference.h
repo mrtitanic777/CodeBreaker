@@ -10,6 +10,7 @@
 #include <condition_variable>
 #include <chrono>
 #include "Runnable.h"
+#include "JArray.h"          // the heap hooks: a started thread attaches to the collector
 
 namespace j2xthreads {
 	inline std::mutex& lock() { static std::mutex m; return m; }
@@ -25,6 +26,8 @@ protected:
 	std::thread _t;
 	std::string _name;
 	static void _entry(Thread* t) {
+		j2xAttachThread();                       // the collector scans this thread's stack from here on,
+		j2xThreadStarting(-1);                   // so collections need not wait for it any more
 		t->run();
 		t->_alive = false;
 		if (!t->_daemon) {
@@ -47,7 +50,15 @@ public:
 			std::lock_guard<std::mutex> g(j2xthreads::lock());
 			++j2xthreads::live();
 		}
-		_t = std::thread(_entry, this);
+		// Until the new thread runs, this object and std::thread's state are reachable only through the OS thread's start
+		// argument, which the collector does not see: collections wait for _entry.
+		j2xThreadStarting(1);
+		try {
+			_t = std::thread(_entry, this);
+		} catch (...) {
+			j2xThreadStarting(-1);
+			throw;
+		}
 	}
 	void setDaemon(bool d) { _daemon = d; }
 	bool isDaemon() const { return _daemon; }

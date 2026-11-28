@@ -43,6 +43,11 @@ if(WIN32)
   else()
     target_link_options({name} PRIVATE -Wl,--stack,16777216)
   endif()
+  # The garbage collector (J2xGc.cpp) replaces operator new, and the C++ library must allocate through it: a DLL libstdc++
+  # allocates strings with its own (docs/java/RUNTIME_MEMORY.md). Static, it links against the program's.
+  if(MINGW)
+    target_link_options({name} PRIVATE -static-libstdc++ -static-libgcc)
+  endif()
 endif()
 
 if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/Content")
