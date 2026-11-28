@@ -9,6 +9,7 @@
 
 #include "core/error.hpp"
 #include "core/fs.hpp"
+#include "formats/gen/vita.hpp"
 #include "formats/probe.hpp"
 
 namespace cb::formats::vita {
@@ -22,7 +23,6 @@ std::uint16_t le16(ByteView d, std::size_t at) { return static_cast<std::uint16_
 std::uint32_t le32(ByteView d, std::size_t at) {
     return static_cast<std::uint32_t>(d[at]) | static_cast<std::uint32_t>(d[at + 1]) << 8 | static_cast<std::uint32_t>(d[at + 2]) << 16 | static_cast<std::uint32_t>(d[at + 3]) << 24;
 }
-std::uint64_t le64(ByteView d, std::size_t at) { return le32(d, at) | static_cast<std::uint64_t>(le32(d, at + 4)) << 32; }
 void put32(Bytes& b, std::size_t at, std::uint32_t v) {
     for (int i = 0; i < 4; ++i) b[at + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(v >> (8 * i));
 }
@@ -99,12 +99,21 @@ void read_module_info(Program& p, std::uint32_t entry_field) {
     }
 }
 
-Program build(ByteView elf_header, const std::vector<Phdr>& phdrs, const std::vector<Bytes>& data, bool self) {
+Phdr vita_phdr(const gen::vita::Segment& n) {
+    return {n.type, static_cast<std::uint32_t>(n.offset), static_cast<std::uint32_t>(n.vaddr), static_cast<std::uint32_t>(n.filesz), static_cast<std::uint32_t>(n.memsz), n.flags};
+}
+
+bool vita_sony_arm(const gen::vita::Ident& ident, const gen::vita::Header& header) {
+    return ident.class_ == 1 && ident.data_ == 1 && header.machine == kMachineArm && header.type >= 0xFE00 && header.type <= 0xFE04;
+}
+
+// The program from the ELF header's fields, its program headers and the segments' bytes.
+Program build(const gen::vita::Header& header, const std::vector<Phdr>& phdrs, const std::vector<Bytes>& data, bool self) {
     Program p;
     p.self = self;
-    p.elf_type = le16(elf_header, 16);
-    p.elf_entry = le32(elf_header, 24);
-    p.elf_flags = le32(elf_header, 36);
+    p.elf_type = header.type;
+    p.elf_entry = static_cast<std::uint32_t>(header.entry);
+    p.elf_flags = header.flags;
     for (std::size_t k = 0; k < phdrs.size(); ++k) {
         if (phdrs[k].type != kPtLoad) continue;
         Segment s;
@@ -122,49 +131,50 @@ Program build(ByteView elf_header, const std::vector<Phdr>& phdrs, const std::ve
     return p;
 }
 
+// The layout is vita.fmt's (its generated reader, formats/gen/vita); that the headers, the tables and the segments lie in
+// the file, and what an encrypted segment means, are this reader's rules.
 Program parse_self(ByteView d) {
-    const std::uint64_t elf_at = le64(d, 0x40), phdr_at = le64(d, 0x48), info_at = le64(d, 0x58);
+    const gen::vita::Self self = gen::vita::read_Self(d);
+    const std::uint64_t elf_at = self.elf_offset, phdr_at = self.phdr_offset, info_at = self.info_offset;
     if (elf_at + 52 > d.size() || phdr_at > d.size()) throw FormatError(kReader, 0x40, "the SELF's ELF header is outside the file");
-    const ByteView elf = d.subspan(elf_at);
-    if (!is_sony_arm_elf(elf)) throw FormatError(kReader, elf_at, "the SELF does not hold a Vita ELF");
-    const unsigned count = le16(elf, 44);
+    if (!self.ident || !self.header || !vita_sony_arm(*self.ident, *self.header)) throw FormatError(kReader, elf_at, "the SELF does not hold a Vita ELF");
+    const unsigned count = self.header->phnum;
     if (phdr_at + 32ull * count > d.size() || info_at + 32ull * count > d.size()) throw FormatError(kReader, phdr_at, "the SELF's tables are outside the file");
     std::vector<Phdr> phdrs;
     std::vector<Bytes> data;
     for (unsigned k = 0; k < count; ++k) {
-        const std::size_t at = phdr_at + 32ull * k;
-        phdrs.push_back({le32(d, at), le32(d, at + 4), le32(d, at + 8), le32(d, at + 16), le32(d, at + 20), le32(d, at + 24)});
-        const std::size_t info = info_at + 32ull * k;
-        const std::uint64_t offset = le64(d, info), length = le64(d, info + 8), compression = le64(d, info + 16), encrypted = le64(d, info + 24);
+        phdrs.push_back(vita_phdr((*self.segments)[k]));
+        const gen::vita::SegmentInfo& info = (*self.infos)[k];
         if (phdrs.back().type != kPtLoad) {
             data.emplace_back();
             continue;
         }
-        if (encrypted == 1) throw FormatError(kReader, info, "the SELF's segments are encrypted: not handled (CodeBreaker does not decrypt)");
-        if (offset + length > d.size()) throw FormatError(kReader, info, "a segment is outside the file");
-        const ByteView raw = d.subspan(offset, length);
-        data.push_back(compression == 2 ? inflate_exact(raw, phdrs.back().filesz, offset) : Bytes(raw.begin(), raw.end()));
+        if (info.encryption == 1) throw FormatError(kReader, info._offset, "the SELF's segments are encrypted: not handled (CodeBreaker does not decrypt)");
+        if (info.offset + info.length > d.size()) throw FormatError(kReader, info._offset, "a segment is outside the file");
+        const ByteView raw = d.subspan(info.offset, info.length);
+        data.push_back(info.compression == 2 ? inflate_exact(raw, phdrs.back().filesz, info.offset) : Bytes(raw.begin(), raw.end()));
     }
-    return build(elf, phdrs, data, true);
+    return build(*self.header, phdrs, data, true);
 }
 
 Program parse_elf(ByteView d) {
-    const unsigned count = le16(d, 44);
-    const std::uint32_t phoff = le32(d, 28);
+    const gen::vita::PlainElf elf = gen::vita::read_PlainElf(d);
+    const unsigned count = elf.header.phnum;
+    const std::uint64_t phoff = elf.header.phoff;
     if (phoff + 32ull * count > d.size()) throw FormatError(kReader, phoff, "the program header table is outside the file");
     std::vector<Phdr> phdrs;
     std::vector<Bytes> data;
     for (unsigned k = 0; k < count; ++k) {
-        const std::size_t at = phoff + 32ull * k;
-        phdrs.push_back({le32(d, at), le32(d, at + 4), le32(d, at + 8), le32(d, at + 16), le32(d, at + 20), le32(d, at + 24)});
+        const gen::vita::Segment& n = (*elf.segments)[k];
+        phdrs.push_back(vita_phdr(n));
         if (phdrs.back().type != kPtLoad) {
             data.emplace_back();
             continue;
         }
-        if (static_cast<std::uint64_t>(phdrs.back().offset) + phdrs.back().filesz > d.size()) throw FormatError(kReader, at, "a segment is outside the file");
+        if (static_cast<std::uint64_t>(phdrs.back().offset) + phdrs.back().filesz > d.size()) throw FormatError(kReader, n._offset, "a segment is outside the file");
         data.emplace_back(d.begin() + phdrs.back().offset, d.begin() + phdrs.back().offset + phdrs.back().filesz);
     }
-    return build(d, phdrs, data, false);
+    return build(elf.header, phdrs, data, false);
 }
 
 }  // namespace
