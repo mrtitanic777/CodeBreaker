@@ -6,12 +6,9 @@
 #include <map>
 #include <tuple>
 
-#include "formats/format_builtin.hpp"
 #include "formats/read.hpp"
 
 namespace cb::formats::omf {
-
-namespace eng = cb::formats::engine;
 
 namespace {
 
@@ -58,28 +55,6 @@ void lay(Bytes& b, std::uint64_t off, ByteView d) {
     std::copy(d.begin(), d.end(), b.begin() + static_cast<std::ptrdiff_t>(off));
 }
 
-// The module's records as omf.fmt reads them (up to and including the MODEND).
-eng::Tree omf_tree(ByteView data) {
-    eng::ReadOptions options;
-    options.root = "Module";
-    options.keep_source = false;   // only read from
-    return eng::builtin().read("omf", data, options);
-}
-
-// The bytes a node of the tree covers.
-ByteView omf_bytes(ByteView data, const eng::Node& n) { return data.subspan(n.offset, n.size); }
-
-// A length-prefixed name of the tree, latin1 decoded.
-std::string omf_name(ByteView data, const eng::Node& n) { return text::from_latin1(omf_bytes(data, n.get("text"))); }
-
-std::int64_t omf_index(const eng::Node& n, std::string_view field) { return static_cast<std::int64_t>(n.get(field).u("value")); }
-
-// A list of a record's body that stops before the body's end: the entry there runs past the record.
-void omf_whole(const eng::Node& list, const eng::Node& body) {
-    const std::uint64_t end = list.children.empty() ? list.offset : list.children.back().offset + list.children.back().size;
-    if (end < body.offset + body.size) throw TruncatedError(kReader, end, 1, body.offset + body.size - end);
-}
-
 }  // namespace
 
 bool is_aout(ByteView data) {
@@ -90,9 +65,14 @@ bool is_aout(ByteView data) {
 
 std::vector<Record> records(ByteView data) {
     std::vector<Record> out;
-    const eng::Tree tree = omf_tree(data);
-    for (const eng::Node& rec : tree.root.get("records").children)
-        out.push_back({static_cast<std::uint8_t>(rec.u("type")), omf_bytes(data, rec.get("payload"))});   // a record cut short by the end of the file is what is there
+    std::uint64_t p = 0;
+    while (p + 3 <= data.size()) {
+        const std::uint8_t t = data[p];
+        const std::uint64_t n = data[p + 1] | (data[p + 2] << 8);
+        out.push_back({t, clamped(data, p + 3, n ? n - 1 : 0)});  // a record cut short by the end of the file is what is there
+        p += 3 + n;
+        if (t == kModend || t == kModend32) break;
+    }
     return out;
 }
 
@@ -116,11 +96,8 @@ Bytes name(std::string_view latin1_bytes) {
 
 // ---- read ---------------------------------------------------------------------------------------------------
 
-// The layout of the records is omf.fmt's; the order things are checked in, and what an index out of range, data for a
-// segment that is not there or too much data mean, are this reader's.
 Object read(ByteView data) {
     if (is_aout(data)) throw UnsupportedError(kReader, 0, "a Version 7 a.out object, not OMF");
-    const eng::Tree tree = omf_tree(data);
     Object o;
     std::vector<std::string> names, segs;
     std::vector<Bytes> bufs;  // each segment's bytes, indexed by segment number - 1
@@ -139,139 +116,166 @@ Object read(ByteView data) {
         if (si < 1 || static_cast<std::uint64_t>(si) > bufs.size()) throw FormatError(kReader, 0, "data for an undefined segment");
         return bufs[static_cast<std::size_t>(si - 1)];
     };
-    for (const eng::Node& rec : tree.root.get("records").children) {
-        const std::uint8_t t = static_cast<std::uint8_t>(rec.u("type"));
-        const eng::Node* body = rec.child("body");
-        const ByteView r = omf_bytes(data, rec.get("payload"));
-        const bool handled = t == kLnames || t == kSegdef || t == kSegdef32 || ((t == kModend || t == kModend32) && !r.empty()) || t == kGrpdef || t == kExtdef ||
-                             t == kComdef || t == kLextdef || t == kLextdef2 || t == kLcomdef || t == kCextdef || t == kPubdef || t == kPubdef32 || t == kLedata ||
-                             t == kLedata32 || t == kLidata || t == kLidata32 || t == kFixupp || t == kFixupp32 || t == kBakpat || t == kBakpat32;
-        if (!handled) continue;
-        if (!body) throw TruncatedError(kReader, rec.offset + 3, r.size() + 1, r.size());   // a field runs past the record
+    for (const Record& rec : records(data)) {
+        const std::uint8_t t = rec.type;
+        const ByteView r = rec.payload;
         if (t == kLnames) {
-            for (const eng::Node& n : body->get("names").children) names.push_back(omf_name(data, n));
+            for (std::uint64_t q = 0; q < r.size(); q += 1 + u8(r, q)) names.push_back(name_at(r, q));
         } else if (t == kSegdef || t == kSegdef32) {
-            const eng::Node& s = body->get("segdef");
-            const std::uint8_t attr = static_cast<std::uint8_t>(s.u("attr"));
+            const std::uint8_t attr = u8(r, 0);
             const std::uint8_t align = attr >> 5;
-            std::int64_t ln = static_cast<std::int64_t>(s.get("length").u("value"));
+            const std::uint64_t q = align ? 1 : 4;
+            const std::size_t w = t == kSegdef32 ? 4 : 2;
+            std::int64_t ln = static_cast<std::int64_t>(le(r, q, w));
             if (attr & 2) ln = t == kSegdef ? 0x10000 : 0;  // (a 4 GB 32-bit segment: its data say how much)
-            const std::int64_t ni = omf_index(s, "name"), ci = omf_index(s, "class_name");
+            const auto [ni, q2] = idx(r, q + w);
+            const auto [ci, q3] = idx(r, q2);
+            (void)q3;
             const std::string& nm = indexed(names, ni, "segment name");
             segs.push_back(nm);
             o.segdefs.push_back({nm, ci ? indexed(names, ci, "class name") : std::string(), ln, align});
             o.combine.insert_or_assign(nm, static_cast<std::uint8_t>((attr >> 2) & 7));  // (5: a stack segment)
             bufs.emplace_back(static_cast<std::size_t>(std::clamp<std::int64_t>(ln, 0, std::int64_t{1} << 24)), std::uint8_t{0});
-        } else if (t == kModend || t == kModend32) {  // MODEND with the start address
-            const eng::Node& m = body->get("modend");
-            if (!(m.u("mtype") & 0x40)) continue;
-            const std::uint64_t fd = m.u("fd");
+        } else if ((t == kModend || t == kModend32) && !r.empty() && (u8(r, 0) & 0x40)) {  // MODEND with the start address
+            const std::uint8_t fd = u8(r, 1);
+            std::uint64_t q = 2;
+            if (!(fd & 0x80) && ((fd >> 4) & 7) < 3) q = idx(r, q).second;
             if (!(fd & 8)) {
-                const std::int64_t ti = omf_index(m, "target");
-                const std::int64_t disp = !(fd & 4) ? static_cast<std::int64_t>(m.u("disp")) : 0;
+                const auto [ti, q2] = idx(r, q);
+                q = q2;
+                const std::int64_t disp = !(fd & 4) ? (u8(r, q) | (u8(r, q + 1) << 8)) : 0;
                 if ((fd & 3) == 0 && ti) o.start = StartAddress{indexed(segs, ti, "segment"), disp};
             }
         } else if (t == kGrpdef) {
-            const eng::Node& members_node = body->get("members");
+            auto [gi, q] = idx(r, 0);
             std::vector<std::string> members;
-            for (const eng::Node& m : members_node.children) members.push_back(indexed(segs, omf_index(m, "segment"), "segment"));
-            omf_whole(members_node, *body);
-            o.groups.insert_or_assign(indexed(names, omf_index(*body, "group"), "group name"), std::move(members));
+            while (q < r.size()) {
+                const auto [si, q2] = idx(r, q + 1);
+                q = q2;
+                members.push_back(indexed(segs, si, "segment"));
+            }
+            o.groups.insert_or_assign(indexed(names, gi, "group name"), std::move(members));
         } else if (t == kExtdef || t == kComdef || t == kLextdef || t == kLextdef2 || t == kLcomdef) {
-            const eng::Node& list = body->get("externals");
-            omf_whole(list, *body);
-            for (const eng::Node& e : list.children) {
-                const std::string nm = omf_name(data, e.get("name"));
+            std::uint64_t q = 0;
+            while (q < r.size()) {
+                const std::string nm = name_at(r, q);
                 o.externals.push_back(nm);
+                q += 1 + u8(r, q);
+                q = idx(r, q).second;
                 if (t == kComdef || t == kLcomdef) {  // a communal variable: its kind and size follow
-                    const bool is_far = e.u("kind") == 0x61;
+                    const bool is_far = u8(r, q) == 0x61;
+                    q += 1;
                     std::vector<std::uint64_t> vals;
-                    for (const std::string_view part : {std::string_view("first"), std::string_view("second")}) {
-                        const eng::Node* v = e.child(part);
-                        if (!v) break;
-                        const eng::Node* wide = v->child("v");
-                        vals.push_back(wide ? wide->value : v->u("c"));
+                    for (int k = 0; k < (is_far ? 2 : 1); ++k) {
+                        const std::uint8_t c = u8(r, q);
+                        const std::size_t n = c == 0x81 ? 2 : c == 0x84 ? 3 : c == 0x88 ? 4 : 0;
+                        vals.push_back(n ? le(r, q + 1, n) : c);
+                        q += 1 + n;
                     }
                     o.communals.insert_or_assign(nm, Communal{is_far ? vals[0] * vals[1] : vals[0], is_far});
                 }
             }
         } else if (t == kCextdef) {  // named by a name index
-            const eng::Node& list = body->get("externals");
-            omf_whole(list, *body);
-            for (const eng::Node& e : list.children) {
-                const std::int64_t ni = omf_index(e, "name");
+            std::uint64_t q = 0;
+            while (q < r.size()) {
+                const auto [ni, q2] = idx(r, q);
+                q = idx(r, q2).second;
                 o.externals.push_back(0 < ni && static_cast<std::uint64_t>(ni) <= names.size() ? names[static_cast<std::size_t>(ni - 1)] : "?");
             }
         } else if (t == kPubdef || t == kPubdef32) {
-            const std::int64_t si = omf_index(*body, "segment");
-            const eng::Node& list = body->get("publics");
-            for (const eng::Node& p : list.children)
-                o.publics.push_back({omf_name(data, p.get("name")), si ? std::optional<std::string>(indexed(segs, si, "segment")) : std::nullopt,
-                                     static_cast<std::int64_t>(p.get("offset").u("value"))});
-            omf_whole(list, *body);
+            const std::size_t w = t == kPubdef32 ? 4 : 2;
+            const auto [gi, q1] = idx(r, 0);
+            (void)gi;
+            auto [si, q] = idx(r, q1);
+            if (si == 0) q += 2;
+            while (q < r.size()) {
+                std::string nm = name_at(r, q);
+                q += 1 + u8(r, q);
+                const std::int64_t off = static_cast<std::int64_t>(le(r, q, w));
+                q = idx(r, q + w).second;
+                o.publics.push_back({std::move(nm), si ? std::optional<std::string>(indexed(segs, si, "segment")) : std::nullopt, off});
+            }
         } else if (t == kLedata || t == kLedata32) {
-            const std::int64_t si = omf_index(*body, "segment");
-            const std::uint64_t off = body->get("offset").u("value");
-            const ByteView d = omf_bytes(data, body->get("data"));
+            const std::size_t w = t == kLedata32 ? 4 : 2;
+            const auto [si, q] = idx(r, 0);
+            const std::uint64_t off = le(r, q, w);
+            const ByteView d = r.subspan(q + w);
             lay(buffer(si), off, d);
             last = {static_cast<std::size_t>(si), off};
             note_filled(static_cast<std::size_t>(si), off + d.size());
         } else if (t == kLidata || t == kLidata32) {  // repeated blocks
-            const std::int64_t si = omf_index(*body, "segment");
-            const std::uint64_t off = body->get("offset").u("value");
+            const std::size_t w = t == kLidata32 ? 4 : 2;
+            auto [si, q] = idx(r, 0);
+            const std::uint64_t off = le(r, q, w);
+            q += w;
             // one iterated-data block: repeat count, block count, then nested blocks or the data
-            std::function<Bytes(const eng::Node&, int)> block = [&](const eng::Node& b, int depth) -> Bytes {
-                const std::uint64_t rep = b.get("repeat").u("value");
-                const std::uint64_t count = b.u("count");
+            std::function<Bytes(std::uint64_t&, int)> block = [&](std::uint64_t& at, int depth) -> Bytes {
+                if (depth > 64) throw FormatError(kReader, at, "iterated data is nested too deeply");
+                const std::uint64_t rep = le(r, at, w);
+                const std::uint64_t count = u16(r, at + w);
+                at += w + 2;
                 Bytes s;
                 if (count == 0) {
-                    const ByteView piece = omf_bytes(data, b.get("data"));
+                    const std::uint8_t len = u8(r, at);
+                    const ByteView piece = clamped(r, at + 1, len);
                     s.assign(piece.begin(), piece.end());
+                    at += 1 + len;
                 } else {
-                    const std::vector<eng::Node>& children = b.get("blocks").children;
-                    for (const eng::Node& child : children) append(s, block(child, depth + 1));
-                    if (children.size() < count) {   // the next block could not be read: nested too deeply, or past the record
-                        if (depth + 1 > 64) throw FormatError(kReader, b.offset, "iterated data is nested too deeply");
-                        throw TruncatedError(kReader, b.offset + b.size, 1, 0);
-                    }
+                    for (std::uint64_t k = 0; k < count; ++k) append(s, block(at, depth + 1));
                 }
-                if (rep > 0 && s.size() * rep > kMaxExpansion) throw UnsupportedError(kReader, b.offset + b.size, "iterated data is too large");
+                if (rep > 0 && s.size() * rep > kMaxExpansion) throw UnsupportedError(kReader, at, "iterated data is too large");
                 Bytes out;
                 for (std::uint64_t k = 0; k < rep; ++k) append(out, s);
                 return out;
             };
-            const eng::Node& blocks = body->get("blocks");
             Bytes out;
-            for (const eng::Node& b : blocks.children) append(out, block(b, 0));
-            omf_whole(blocks, *body);
+            while (q < r.size()) append(out, block(q, 0));
             lay(buffer(si), off, out);
             last = {static_cast<std::size_t>(si), off};
             note_filled(static_cast<std::size_t>(si), off + out.size());
         } else if (t == kFixupp || t == kFixupp32) {
-            const eng::Node& list = body->get("subrecords");
-            for (const eng::Node& sub : list.children) {
-                const std::uint64_t c = sub.u("c");
+            const std::size_t w = t == kFixupp32 ? 4 : 2;
+            std::uint64_t q = 0;
+            while (q < r.size()) {
+                const std::uint8_t c = u8(r, q);
                 if (!(c & 0x80)) {  // a thread
-                    const int d = static_cast<int>((c >> 6) & 1), meth = static_cast<int>((c >> 2) & 7);
+                    q += 1;
+                    const int d = (c >> 6) & 1, meth = (c >> 2) & 7;
                     std::optional<std::int64_t> ix;
-                    if (const eng::Node* i = sub.child("index")) ix = static_cast<std::int64_t>(i->u("value"));
-                    threads[{d, static_cast<int>(c & 3)}] = {meth, ix};
+                    if (!(d && meth >= 4)) {
+                        const auto [v, q2] = idx(r, q);
+                        ix = v;
+                        q = q2;
+                    }
+                    threads[{d, c & 3}] = {meth, ix};
                     continue;
                 }
-                const int segment_relative = static_cast<int>((c >> 6) & 1), loc = static_cast<int>((c >> 2) & 7);
-                const std::int64_t off = static_cast<std::int64_t>(((c & 3) << 8) | sub.u("low"));
-                const std::uint64_t fd = sub.u("fd");
+                const int segment_relative = (c >> 6) & 1, loc = (c >> 2) & 7;
+                const std::int64_t off = ((c & 3) << 8) | u8(r, q + 1);
+                const std::uint8_t fd = u8(r, q + 2);
+                q += 3;
+                if (fd & 0x80) {
+                    // the frame comes from a thread: not kept
+                } else if (((fd >> 4) & 7) < 3) {
+                    q = idx(r, q).second;
+                }
                 std::optional<std::int64_t> tm, ti;
                 if (fd & 8) {
-                    if (auto it = threads.find({0, static_cast<int>(fd & 3)}); it != threads.end()) tm = it->second.first, ti = it->second.second;
+                    if (auto it = threads.find({0, fd & 3}); it != threads.end()) tm = it->second.first, ti = it->second.second;
                 } else {
-                    tm = static_cast<std::int64_t>(fd & 3);
-                    ti = omf_index(sub, "target");
+                    tm = fd & 3;
+                    const auto [v, q2] = idx(r, q);
+                    ti = v;
+                    q = q2;
                 }
-                const std::int64_t disp = !(fd & 4) ? static_cast<std::int64_t>(sub.get("disp").u("value")) : 0;
+                std::int64_t disp = 0;
+                if (!(fd & 4)) {
+                    disp = static_cast<std::int64_t>(le(r, q, w));
+                    q += w;
+                }
                 Target tgt;
                 if (tm) {
-                    if (!ti) throw FormatError(kReader, sub.offset + sub.size, "fix-up target thread has no index");
+                    if (!ti) throw FormatError(kReader, q, "fix-up target thread has no index");
                     if (*ti == 0) {
                         // index 0 names nothing; the target stays Unknown (it is not read as the last
                         // segment / group / external defined)
@@ -297,13 +301,16 @@ Object read(ByteView data) {
                 o.fixups.push_back({segs[last->first - 1], static_cast<std::int64_t>(last->second) + off, kind, std::move(tgt), disp,
                                     static_cast<std::uint8_t>((c >> 2) & 0x0F)});
             }
-            omf_whole(list, *body);
         } else if (t == kBakpat || t == kBakpat32) {  // values added in once the segment is written
-            const std::uint64_t sz = body->u("size_code");
+            const std::size_t w = t == kBakpat32 ? 4 : 2;
+            auto [si, q] = idx(r, 0);
+            const std::uint8_t sz = u8(r, q);
             const std::size_t size = sz == 0 ? 1 : sz == 1 ? 2 : sz == 2 ? 4 : 2;
-            Bytes& b = buffer(omf_index(*body, "segment"));
-            for (const eng::Node& patch : body->get("patches").children) {
-                const std::uint64_t at = patch.get("place").u("value"), val = patch.get("value").u("value");
+            q += 1;
+            Bytes& b = buffer(si);
+            while (q + 2 * w <= r.size()) {
+                const std::uint64_t at = le(r, q, w), val = le(r, q + w, w);
+                q += 2 * w;
                 if (at + size <= b.size()) {
                     std::uint64_t cur = 0;
                     for (std::size_t k = size; k-- > 0;) cur = (cur << 8) | b[at + k];
