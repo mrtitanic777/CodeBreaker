@@ -247,3 +247,31 @@ buttons.
 
   Without the switch, both titles' generated files are byte-identical to the step 0 digests and present 6,600 frames. The
   instruction tests show 0 mismatches through p-code and through XenonRecomp.
+- 2026-11-28: step 4, third part: the translator declines nothing. Up's one word with primary opcode 0 is written as nothing, as
+  XenonRecomp writes it. The vector table gains the AltiVec operations only the instruction tests use (the signed halfword
+  max/min, packs and saturating subtracts, vsl, vsro, vrlh, vspltish, vandc, vavguh, vaddsws), 92 in all. Proof:
+
+  | Title | p-code wrote | XenonRecomp wrote | Frames in 120 s |
+  |---|---|---|---|
+  | Minecraft | 2,055,017 | 0 | 6,600, no stop |
+  | Up | 2,084,861 | 0 | 6,600, no stop |
+  | Instruction tests | 5,087 | 0 | 0 mismatches |
+
+  Without the switch, both titles' generated files are byte-identical to the step 0 digests and present 6,600 frames.
+
+  Costs measured:
+  - The generated C++ is 3.4 times the size: Minecraft 465 MB against 137 MB, Up 496 MB against 141 MB. The p-code's
+    temporaries are left for the compiler to fold.
+  - The programs are 5% larger: 57.6 MB against 55.0 MB, and 60.7 MB against 58.1 MB.
+  - Both run at the check's 60-frames-a-second cap. Minecraft's GPU time is 4.4 ms a frame against 4.8 ms on the default path,
+    and Up's is 6.4 ms.
+
+  Not measured: the CPU time a frame takes (the cap hides it) and the time a clean build takes. Both are needed before the
+  p-code translator becomes the default, under the never-slower rule.
+
+  Left for step 4:
+  - Make `--translator pcode` the default.
+  - Move what XenonRecomp still keeps into the one translator: the function loop, labels, switch tables, the configuration
+    and the files it writes.
+  - Retire XenonAnalyse and binutils' decoder.
+  - Retire XenonRecomp, which waits for Logan to build and run the Dashboard on the new recompiler.

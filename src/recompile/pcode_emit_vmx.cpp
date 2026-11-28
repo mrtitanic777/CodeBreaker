@@ -143,6 +143,49 @@ const std::map<std::string, Form, std::less<>>& forms() {
         t["vectorAddSignedHalfWordSaturate"] = ibin("simde_mm_adds_epi16");
         t["vectorAddUnsignedByteSaturate"] = ibin("simde_mm_adds_epu8");
         t["vectorAddUnsignedWordSaturate"] = ibin("simde_mm_adds_epu32");
+        // (the AltiVec forms the instruction tests use and these titles do not: XenonRecomp's forms likewise)
+        t["vectorAverageUnsignedHalfWord"] = ibin("simde_mm_avg_epu16");
+        t["vectorLogicalAndWithComplement"] = ibin("simde_mm_andnot_si128", true);   // vA & ~vB
+        t["vectorMaximumSignedHalfWord"] = ibin("simde_mm_max_epi16");
+        t["vectorMinimumSignedHalfWord"] = ibin("simde_mm_min_epi16");
+        t["vectorPackSignedHalfWordSignedSaturate"] = ibin("simde_mm_packs_epi16", true);
+        t["vectorPackSignedHalfWordUnsignedSaturate"] = ibin("simde_mm_packus_epi16", true);
+        t["vectorPackSignedWordUnsignedSaturate"] = ibin("simde_mm_packus_epi32", true);
+        t["vectorSubtractSignedByteSaturate"] = ibin("simde_mm_subs_epi8");
+        t["vectorSubtractSignedHalfWordSaturate"] = ibin("simde_mm_subs_epi16");
+        t["vectorShiftRightHalfWord"] = ishift(2, "uint16_t", ">>");
+        t["vectorShiftRightAlgebraicHalfWord"] = ishift(2, "int16_t", ">>");
+        t["vectorAddSignedWordSaturate"] = Form{2, false, [](const Args& a, const std::string&) {
+            return std::optional<std::string>("[&] { PPCVRegister x = " + P(a[0].value) + ", y = " + P(a[1].value) +
+                                              ", d; for (int i = 0; i < 4; i++) { const int64_t t = int64_t(x.s32[i]) + int64_t(y.s32[i]); "
+                                              "d.s32[i] = t > INT_MAX ? INT_MAX : t < INT_MIN ? INT_MIN : int32_t(t); } return __builtin_bit_cast(__uint128_t, d); }()");
+        }};
+        t["vectorPackUnsignedHalfWordUnsignedModulo"] = Form{2, false, [](const Args& a, const std::string&) {
+            return std::optional<std::string>("[&] { PPCVRegister x = " + P(a[0].value) + ", y = " + P(a[1].value) +
+                                              ", d; for (int i = 0; i < 8; i++) { d.u8[i] = uint8_t(y.u16[i]); d.u8[8 + i] = uint8_t(x.u16[i]); } "
+                                              "return __builtin_bit_cast(__uint128_t, d); }()");
+        }};
+        t["vectorRotateLeftIntegerHalfWord"] = Form{2, false, [](const Args& a, const std::string&) {
+            return std::optional<std::string>("[&] { PPCVRegister x = " + P(a[0].value) + ", y = " + P(a[1].value) +
+                                              ", d; for (int i = 0; i < 8; i++) d.u16[i] = uint16_t((x.u16[i] << (y.u16[i] & 0xF)) | (x.u16[i] >> ((16 - (y.u16[i] & 0xF)) & 0xF))); "
+                                              "return __builtin_bit_cast(__uint128_t, d); }()");
+        }};
+        t["vectorShiftLeft"] = Form{2, false, [](const Args& a, const std::string&) {   // vsl: the whole vector by vB's low 3 bits
+            return std::optional<std::string>("[&] { PPCVRegister x = " + P(a[0].value) + ", y = " + P(a[1].value) +
+                                              ", d; const uint32_t sh = y.u8[0] & 0x7; const uint64_t lo = x.u64[0], hi = x.u64[1]; "
+                                              "d.u64[1] = sh ? (hi << sh) | (lo >> (64 - sh)) : hi; d.u64[0] = lo << sh; return __builtin_bit_cast(__uint128_t, d); }()");
+        }};
+        t["vectorShiftRightByOctet"] = Form{2, false, [](const Args& a, const std::string&) {
+            return std::optional<std::string>("[&] { PPCVRegister x = " + P(a[0].value) + ", y = " + P(a[1].value) +
+                                              ", d; const uint32_t sh = (y.u8[0] >> 3) & 0xF; for (uint32_t h = 0; h < 16; h++) d.u8[h] = h + sh < 16 ? x.u8[h + sh] : 0; "
+                                              "return __builtin_bit_cast(__uint128_t, d); }()");
+        }};
+        t["vectorSplatImmediateSignedHalfWord"] = Form{1, false, [](const Args& a, const std::string&) -> std::optional<std::string> {
+            const std::optional<std::uint64_t> u = k(a, 0);
+            if (!u) return std::nullopt;
+            const std::int64_t v = a[0].size == 1 ? static_cast<std::int8_t>(*u) : static_cast<std::int16_t>(*u);
+            return R("simde_mm_set1_epi16(short(" + std::to_string(v) + "))");
+        }};
         t["vectorMaximumSignedWord"] = ibin("simde_mm_max_epi32");
         t["vectorAverageSignedByte"] = ibin("simde_mm_avg_epi8");
         t["vectorAverageSignedHalfWord"] = ibin("simde_mm_avg_epi16");

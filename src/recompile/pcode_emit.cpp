@@ -785,6 +785,9 @@ std::optional<Statements> Translator::instruction(std::uint32_t address, std::ui
                                    static_cast<std::uint8_t>(word)};
     const sl::Lifted lifted = reader_.pcode(bytes, sizeof bytes, address, address);
     if (lifted.length == 0) {
+        // primary opcode 0 is no PowerPC instruction (a word of data the function's bounds take in, or POWER's attn): nothing to do,
+        // as XenonRecomp writes it
+        if ((word >> 26) == 0) return Statements{"\t// (no instruction: primary opcode 0)\n", false, false};
         if (why) *why = std::format("no instruction of the description ({:08X})", word);
         return std::nullopt;
     }
