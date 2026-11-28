@@ -1,0 +1,1 @@
+InnerOuter	class	an inner class that reaches its outer instance (Counter)

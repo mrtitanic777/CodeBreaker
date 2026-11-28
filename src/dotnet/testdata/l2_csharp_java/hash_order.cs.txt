@@ -1,0 +1,34 @@
+// ==== HashOrder.cs ====
+// Translated by CodeBreaker from HashOrder (java).
+using System.Collections.Generic;
+
+public class HashOrder
+{
+    public HashOrder()
+    {
+    }
+
+    internal static int walk()
+    {
+        IDictionary<string, int> m = new JHashMap<string, int>();
+        m["a"] = 1;
+        int t = 0;
+        foreach (int v in m.Values)
+        {
+            t += v;
+        }
+        return t;
+    }
+
+    internal static int sorted()
+    {
+        IDictionary<string, int> m = new SortedDictionary<string, int>(JLib.Order<string>());
+        m["a"] = 1;
+        int t = 0;
+        foreach (int v in m.Values)
+        {
+            t += v;
+        }
+        return t;
+    }
+}

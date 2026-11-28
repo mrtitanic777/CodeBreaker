@@ -1,0 +1,16 @@
+// ==== InnerOuter.cs ====
+// Translated by CodeBreaker from InnerOuter (java).
+public class InnerOuter
+{
+    public InnerOuter()
+    {
+    }
+
+    internal int count = 3;
+
+    // CB-GAP: an inner class that reaches its outer instance (Counter)
+    internal static int plain(int x)
+    {
+        return x + 1;
+    }
+}

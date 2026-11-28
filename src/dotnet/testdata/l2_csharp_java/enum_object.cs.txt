@@ -1,0 +1,22 @@
+// ==== EnumObject.cs ====
+// Translated by CodeBreaker from EnumObject (java).
+using System;
+
+public class EnumObject
+{
+    public EnumObject()
+    {
+    }
+
+    // CB-GAP: a Java enum with fields, methods or constructor arguments (an enum of objects) (Planet)
+    internal enum Color
+    {
+        RED,
+        GREEN
+    }
+
+    internal static int ok()
+    {
+        return Enum.GetValues<Color>().Length;
+    }
+}
