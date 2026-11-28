@@ -48,7 +48,8 @@ static Bytes make_xbe() {
     put(0x11C, 2);
     put(0x120, kBase + 0x400);
     put(0x128, kText ^ 0xA8FC57AB);
-    put(0x148, kData ^ 0x5B6D40B6);
+    put(0x148, 0x3BEE0E40);                 // the PE time stamp (2001-10-23): not the thunk
+    put(0x158, kData ^ 0x5B6D40B6);
     put(0x200 + 0x08, 0x4D530001);
     const Bytes title = text::to_utf16le("Demo");
     std::memcpy(hdr.data() + 0x20C, title.data(), title.size());
@@ -217,6 +218,29 @@ CB_TEST("formats.xbox.xbe.the_command_prints_the_header_and_sections", [] {
         CB_CHECK(cap.out().find("  .text        va=0x00011000 vsize=4096     raw=0x001000 size=17       flags=0x6") != std::string::npos);
         CB_CHECK(cap.out().find("total: 2 sections") != std::string::npos);
     }
+});
+
+// The XBE image header (xboxdevwiki.net/Xbe): 0x148 is the PE TimeDate, 0x158 the kernel image thunk address. A header made by hand
+// with a time stamp at 0x148 that the retail thunk key would also land inside the image: the thunk is read from 0x158 only.
+CB_TEST("formats.xbox.xbe.the_kernel_thunk_is_at_0x158_not_the_time_stamp_at_0x148", [] {
+    Bytes hdr(0x400, 0);
+    auto put = [&](std::size_t at, std::uint32_t v) {
+        for (std::size_t i = 0; i < 4; ++i) hdr[at + i] = static_cast<std::uint8_t>(v >> (8 * i));
+    };
+    std::memcpy(hdr.data(), "XBEH", 4);
+    put(0x104, kBase);
+    put(0x108, 0x400);
+    put(0x10C, 0x3000);
+    put(0x118, kBase + 0x200);
+    put(0x120, kBase + 0x300);
+    put(0x128, kText ^ 0xA8FC57AB);
+    put(0x148, (kBase + 0x2F00) ^ 0x5B6D40B6);   // a "time stamp" that unscrambles into the image too
+    put(0x158, (kData + 0x40) ^ 0xEFB1F152);     // the thunk, with the debug key
+    const xbe::Xbe x = xbe::Xbe::parse(hdr);
+    CB_CHECK_EQ(x.kernel_thunk().address, kData + 0x40);
+    CB_CHECK(x.kernel_thunk().keys == xbe::KeySet::Debug);
+    CB_CHECK_EQ(x.thunk_raw, (kData + 0x40) ^ 0xEFB1F152);
+    CB_CHECK_EQ(x.entry_point().address, kText);
 });
 
 }  // namespace xbe_test

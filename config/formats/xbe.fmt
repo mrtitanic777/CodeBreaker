@@ -16,7 +16,9 @@ struct File {
     section_header_addr @ 0x120 : u32
     init_flags          @ 0x124 : u32
     entry_raw           @ 0x128 : u32
-    thunk_raw           @ 0x148 : u32
+    timestamp           @ 0x114 : u32
+    pe_timestamp        @ 0x148 : u32        # the PE image's TimeDateStamp (not the thunk)
+    thunk_raw           @ 0x158 : u32        # the kernel image thunk address, scrambled
 
     assert cert_addr >= base : "the certificate lies below the image base"
     certificate @ cert_addr - base : Certificate

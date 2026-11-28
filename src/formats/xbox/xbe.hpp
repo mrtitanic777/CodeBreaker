@@ -6,7 +6,7 @@
 //     std::filesystem::path p = xbe::to_pe(file, folder);   that image written once per distinct file, named by its contents
 //
 // XBE header (little-endian): 0x104 base address, 0x10C size of image, 0x118 certificate address (a virtual address), 0x11C section count,
-// 0x120 section headers (VA), 0x128 entry point and 0x148 kernel thunk (both XORed with a key). The certificate holds the title id (0x08), the
+// 0x120 section headers (VA), 0x128 entry point and 0x158 kernel image thunk (both XORed with a key; 0x148 is the PE time stamp). The certificate holds the title id (0x08), the
 // title name (0x0C, 40 UTF-16LE units), the allowed media (0x9C), region (0xA0), ratings (0xA4), disc number (0xA8) and version (0xAC). A
 // section header is 0x38 bytes: flags, virtual address, virtual size, file offset, file size, the VA of its name.
 //
