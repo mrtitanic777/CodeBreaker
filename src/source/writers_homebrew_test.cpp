@@ -5,10 +5,8 @@
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "source/console_writer.hpp"
-#include "source/genesis_writer.hpp"
 #include "source/gba_writer.hpp"
 #include "source/gekko_writer.hpp"
-#include "source/jaguar_writer.hpp"
 #include "source/n64_writer.hpp"
 #include "source/n3ds_writer.hpp"
 #include "source/nds_writer.hpp"
@@ -97,14 +95,14 @@ CB_TEST("source.writers.homebrew.zx_spectrum", [] { rebuild("zx-icarus/Icarus.ta
 
 // (the 68000 and MIPS consoles' source is the processor's SLEIGH description's text, built again through its assembler: each program must come back byte for byte)
 CB_TEST("source.writers.homebrew.genesis", [] {
-    rebuild("genesis-2048/rom.bin", 38, genesis_writer::reconstruct);
-    rebuild("genesis-retailclerk89/RetailClerk89_2020-09-01.bin", 10, genesis_writer::reconstruct);
+    rebuild("genesis-2048/rom.bin", 38, console("genesis"));
+    rebuild("genesis-retailclerk89/RetailClerk89_2020-09-01.bin", 10, console("genesis"));
 });
 
 CB_TEST("source.writers.homebrew.jaguar", [] {
-    rebuild("jaguar/jag_ball.j64", 1, jaguar_writer::reconstruct);
-    rebuild("jaguar/jag_ball.cof", 1, jaguar_writer::reconstruct);
-    rebuild("jaguar/yarc.j64", 1, jaguar_writer::reconstruct);
+    rebuild("jaguar/jag_ball.j64", 1, console("jaguar"));
+    rebuild("jaguar/jag_ball.cof", 1, console("jaguar"));
+    rebuild("jaguar/yarc.j64", 1, console("jaguar"));
 });
 
 CB_TEST("source.writers.homebrew.nintendo_64", [] {

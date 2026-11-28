@@ -21,7 +21,6 @@
 #include "formats/sms.hpp"
 #include "formats/zx.hpp"
 #include "platforms/gba.hpp"
-#include "platforms/genesis.hpp"
 #include "platforms/package.hpp"
 #include "platforms/ps1.hpp"
 
@@ -94,7 +93,7 @@ void register_gb_lane() {
 void register_genesis_lane() {
     register_lane({
         .name = "genesis",
-        .platform = platforms::genesis,
+        .platform = [] { return platforms::described("genesis"); },
         .probe = [](const std::filesystem::path& p) { return formats::genesis::probe(p); },
         .program_extensions = {".md", ".gen", ".smd"},
     });

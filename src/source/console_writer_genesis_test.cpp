@@ -3,14 +3,25 @@
 // code written out byte by byte; the writer is held to what it is for -- the source it writes, built again, is the cartridge it came
 // from -- and to the text it writes, a golden file that was read through for correctness (testdata/writers/genesis.golden.asm).
 
-#include "source/genesis_writer.hpp"
+#include "formats/genesis.hpp"
+#include "knowledge/package.hpp"
+#include "source/console_writer.hpp"
 
 #include "core/fs.hpp"
 #include "core/testing.hpp"
 #include "core/text.hpp"
 
-namespace cb::source::genesis_writer {
+namespace cb::source::console_writer::genesis_test {
 namespace {
+
+image_writer::Written write(const formats::genesis::Rom& rom, std::string_view name, const std::filesystem::path& folder) {
+    return console_writer::write(describe("genesis"), load_genesis(rom), name, folder);
+}
+image_writer::Written reconstruct(const std::filesystem::path& file, const std::filesystem::path& folder) { return console_writer::reconstruct("genesis", file, folder); }
+const image_writer::Names& hardware() {   // (config/knowledge/genesis/registers.json)
+    static const image_writer::Names table = knowledge::standard().hardware_names("genesis", describe("genesis").vectored.registers);
+    return table;
+}
 
 void put32(Bytes& rom, std::size_t at, std::uint32_t v) {
     for (int i = 0; i < 4; ++i) rom[at + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(v >> (24 - 8 * i));
@@ -84,7 +95,7 @@ void check_golden(std::string_view name, const std::string& actual) {
     CB_CHECK_EQ(actual, golden(name));
 }
 
-CB_TEST("source.genesis_writer.the_cartridge_comes_back_as_source_that_builds_the_same_rom", [] {
+CB_TEST("source.console_writer.genesis.the_cartridge_comes_back_as_source_that_builds_the_same_rom", [] {
     fs::ScopedTempDir dir("cb_md");
     const Bytes image = cartridge();
     const image_writer::Written r = write(formats::genesis::parse(image), "demo.md", dir.path());
@@ -98,7 +109,7 @@ CB_TEST("source.genesis_writer.the_cartridge_comes_back_as_source_that_builds_th
     check_golden("genesis.golden.asm", fs::read_text(r.source));
 });
 
-CB_TEST("source.genesis_writer.the_golden_names_what_the_code_touches", [] {
+CB_TEST("source.console_writer.genesis.the_golden_names_what_the_code_touches", [] {
     // Read for what it says: the VDP's port by name, the vector table naming its handlers, the header's fields as data with their names,
     // a long immediate that is the start of a line is a data label, a loop to itself a local label.
     const std::string text = golden("genesis.golden.asm");
@@ -115,7 +126,7 @@ CB_TEST("source.genesis_writer.the_golden_names_what_the_code_touches", [] {
     CB_CHECK_EQ(longs, 64u);
 });
 
-CB_TEST("source.genesis_writer.a_handler_many_vectors_share_is_the_catch_all", [] {
+CB_TEST("source.console_writer.genesis.a_handler_many_vectors_share_is_the_catch_all", [] {
     Bytes rom = cartridge();
     put32(rom, 4 * 2, 0x300);   // bus error, address error and illegal instruction all go where vblank goes
     put32(rom, 4 * 3, 0x300);
@@ -129,7 +140,7 @@ CB_TEST("source.genesis_writer.a_handler_many_vectors_share_is_the_catch_all", [
     CB_CHECK(source.find("        dc.l exception  ; vblank") != std::string::npos);
 });
 
-CB_TEST("source.genesis_writer.a_handler_one_vector_names_takes_its_name_and_the_reset_wins_a_shared_one", [] {
+CB_TEST("source.console_writer.genesis.a_handler_one_vector_names_takes_its_name_and_the_reset_wins_a_shared_one", [] {
     Bytes rom = cartridge();
     put32(rom, 4 * 30, 0);        // no vertical blank
     put32(rom, 4 * 6, 0x300);     // the CHK handler is what is at $300
@@ -141,7 +152,7 @@ CB_TEST("source.genesis_writer.a_handler_one_vector_names_takes_its_name_and_the
     CB_CHECK_EQ(r.functions.at(0x200), "reset");
 });
 
-CB_TEST("source.genesis_writer.a_copiers_dump_is_written_from_the_plain_image", [] {
+CB_TEST("source.console_writer.genesis.a_copiers_dump_is_written_from_the_plain_image", [] {
     const Bytes plain = cartridge(0x4000);
     fs::ScopedTempDir dir("cb_md");
     const image_writer::Written r = write(formats::genesis::parse(smd_dump(plain), ".smd"), "dump.smd", dir.path());
@@ -151,14 +162,14 @@ CB_TEST("source.genesis_writer.a_copiers_dump_is_written_from_the_plain_image", 
     CB_CHECK_EQ(r.functions.size(), 3u);
 });
 
-CB_TEST("source.genesis_writer.a_file_too_short_is_refused", [] {
+CB_TEST("source.console_writer.genesis.a_file_too_short_is_refused", [] {
     fs::ScopedTempDir dir("cb_md");
     fs::write_file(dir.path() / "short.md", Bytes(0x100, 0));
     CB_CHECK_THROWS_AS(FormatError, reconstruct(dir.path() / "short.md", dir.path() / "out"));
     CB_CHECK_THROWS_AS(IoError, reconstruct(dir.path() / "none.md", dir.path() / "out"));
 });
 
-CB_TEST("source.genesis_writer.reconstruct_reads_the_file", [] {
+CB_TEST("source.console_writer.genesis.reconstruct_reads_the_file", [] {
     fs::ScopedTempDir dir("cb_md");
     fs::write_file(dir.path() / "game.md", cartridge());
     const image_writer::Written r = reconstruct(dir.path() / "game.md", dir.path() / "out");
@@ -166,11 +177,11 @@ CB_TEST("source.genesis_writer.reconstruct_reads_the_file", [] {
     CB_CHECK(r.source == dir.path() / "out" / "game.asm");
 });
 
-CB_TEST("source.genesis_writer.the_ports_are_the_documented_ones", [] {
+CB_TEST("source.console_writer.genesis.the_ports_are_the_documented_ones", [] {
     CB_CHECK_EQ(hardware().size(), 17u);
     CB_CHECK_EQ(hardware().at(0xC00000), "VDP_DATA");
     CB_CHECK_EQ(hardware().at(0xA11100), "Z80_BUSREQ");
 });
 
 }  // namespace
-}  // namespace cb::source::genesis_writer
+}  // namespace cb::source::console_writer::genesis_test

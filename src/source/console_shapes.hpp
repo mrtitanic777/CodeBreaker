@@ -22,6 +22,10 @@ image_writer::Written write_cart6502(const Description& d, const Loaded& program
 image_writer::Written write_segmented(const Description& d, const Loaded& program, const std::vector<std::string>& head, const Values& values,
                                       std::string_view file_name, const std::filesystem::path& folder);
 
+// The `vectored` shape (console_vectored.cpp).
+image_writer::Written write_vectored(const Description& d, const Loaded& program, const std::vector<std::string>& head, const Values& values,
+                                     std::string_view file_name, const std::filesystem::path& folder);
+
 // The loaders whose code keeps a state flow follows (console_pce.cpp, console_snes.cpp).
 namespace pce_code {
 Loaded load_pce_file(const std::filesystem::path& file);

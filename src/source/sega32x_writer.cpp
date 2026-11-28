@@ -8,7 +8,7 @@
 
 #include "core/fs.hpp"
 #include "formats/genesis.hpp"
-#include "source/genesis_writer.hpp"
+#include "source/console_writer.hpp"
 #include "source/isa_sh2.hpp"
 #include "source/sh2_writer.hpp"
 
@@ -32,9 +32,9 @@ iw::Written write(const f32::Rom& rom, std::string_view file_name, const std::fi
     const std::string stem = std::filesystem::path(file_name).stem().string();
     const std::string base_name = std::filesystem::path(file_name).filename().string();
 
-    // the 68000 side: the Genesis writer's, over the whole ROM (the SH-2 program is data in it)
+    // the 68000 side: the Genesis's (the console writer), over the whole ROM (the SH-2 program is data in it)
     formats::genesis::Rom genesis = formats::genesis::parse(rom.data, ".32x");
-    iw::Written gen = genesis_writer::write(genesis, file_name, folder);
+    iw::Written gen = console_writer::write(console_writer::describe("genesis"), console_writer::load_genesis(genesis), file_name, folder);
 
     iw::Written r;
     r.source = gen.source;

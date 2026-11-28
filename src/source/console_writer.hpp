@@ -31,6 +31,9 @@
 namespace cb::formats::lynx {
 struct Program;
 }
+namespace cb::formats::genesis {
+struct Rom;
+}
 
 namespace cb::source::console_writer {
 
@@ -134,6 +137,30 @@ struct Segmented {
     unsigned address_digits = 4;      // the hex digits of a memory area's start in the ld65 configuration
 };
 
+// ---- the vectored shape's part of a description: a 68000 image with a vector table or a header, its pieces each at an `.org` ----
+struct VectorField {
+    std::uint32_t at = 0, size = 0;   // the image offset of a field of the header, and its length
+    std::string what;                 // its name, said beside it
+    std::string as = "text";          // "text" (an `.ascii` line when it is plain text, else rows), "rows", "long" (`.long 0x...`), "pointer" (`.long` the label)
+    std::string when;                 // a loader value that must be set for the field to stand ("" always)
+};
+struct Vectored {
+    std::string cpu;                  // "m68k"
+    std::string assembler;            // the L2 assembly's syntax ("asm68k")
+    std::string source = "asm";       // the source's extension
+    std::string built;                // the rebuilt file's name, a template
+    bool whole = false;               // the source is written in the neutral text and said in the dialect at the end (else line by line)
+    bool neutral_rows = false;        // data rows in the neutral text (else the dialect's)
+    std::string registers;            // the knowledge hardware section of the registers the code names
+    std::uint32_t immediate_floor = 0;   // a long immediate below this names data only when it is code
+    bool calls_start_functions = false;  // every JSR and BSR target is a function (else the loader's starts are)
+    unsigned org_digits = 6;          // the hex digits of a piece's `.org`
+    bool blank_after_piece = false;   // an empty line after each piece
+    std::vector<VectorField> fields;
+    std::string vector_names;         // (a "vectors" piece) the loader's list of what each long of the table is
+    unsigned vectors_plain = 0;       // ... the first longs of it that are numbers, never labels (the initial stack pointer)
+};
+
 // A platform's description (config/platforms/<name>.json).
 struct Description {
     std::string name;        // the file's name: what reconstruct() is asked for
@@ -147,6 +174,7 @@ struct Description {
     Banked banked;           // (the banked shape's)
     CartShape cart;          // (the cart6502 shape's)
     Segmented segmented;     // (the segmented shape's)
+    Vectored vectored;       // (the vectored shape's)
 };
 
 // The description of `name`. UsageError when there is none.
@@ -176,6 +204,7 @@ struct Piece {
     std::uint32_t offset = 0, size = 0;   // in the image
     std::uint32_t address = 0;            // the start of its memory area: where code is linked
     bool code = false;
+    bool org = false;                     // (vectored) an `.org` of its address opens it
 };
 // (segmented) The code of a program whose flow keeps a state the plain one does not -- the PC Engine's bank mapping, the SNES's register widths --
 // as its loader gives it (console_pce.cpp, console_snes.cpp): it follows the code and writes the code pieces; the shape writes the rest. A
@@ -200,6 +229,8 @@ struct Segments {
     std::shared_ptr<SegmentCode> code;    // the loader's own flow ("" the shape's)
     std::function<std::optional<std::uint32_t>(std::uint32_t address)> offset_of;   // the image offset the processor sees at an address, if any
     std::size_t measured = 0;             // the bytes the result says the program is (the PRG, the file)
+    std::vector<Range> code_ranges;       // (vectored) the address ranges code may stand in
+    std::function<Bytes(const Bytes&)> rebuilt;   // (vectored) the file the assembled image makes ("" the image itself)
 };
 
 // What a loader read from a file: the program's bytes, the address of the first, its entry points (address -> name) and the header's values.
@@ -220,6 +251,9 @@ Loaded load(std::string_view platform, const std::filesystem::path& file);
 // The Lynx's loader for a program read already: a cartridge's loaded segments are set by the caller, who can play its boot ROM
 // (engine/lynx_boot, which the writer does not link). load("lynx", file) reads one without them: a cartridge is then all data.
 Loaded load_lynx(const formats::lynx::Program& program);
+
+// The Genesis's loader for a cartridge read already (the 32X's 68000 side is one: source/sega32x_writer).
+Loaded load_genesis(const formats::genesis::Rom& rom);
 
 // `text` with each {name} (a value), {name:spec} (a number in std::format's spec: 04X) and {name?yes|no} (the branch for whether the value is
 // set: non-zero, non-empty; the branches are templates too) put in. UsageError for a name `values` does not have.

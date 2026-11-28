@@ -5,7 +5,10 @@
 #include "source/console_shapes.hpp"
 
 #include <format>
+#include <algorithm>
+#include <map>
 #include <memory>
+#include <set>
 
 #include "core/error.hpp"
 #include "source/isa.hpp"
@@ -15,6 +18,8 @@
 #include "formats/coleco.hpp"
 #include "formats/cpc.hpp"
 #include "formats/gb.hpp"
+#include "formats/genesis.hpp"
+#include "formats/jaguar.hpp"
 #include "formats/lynx.hpp"
 #include "formats/msx.hpp"
 #include "formats/nes.hpp"
@@ -243,6 +248,41 @@ Loaded load_nes(const std::filesystem::path& file) {
     return l;
 }
 
+// The Jaguar: a cartridge (its boot signature and header ahead of the ROM) or a COFF executable, its segments written in address order and
+// put back where the file has them.
+Loaded load_jaguar(const std::filesystem::path& file) {
+    namespace jag = formats::jaguar;
+    const auto program = std::make_shared<const jag::Program>(jag::read(file));
+    const bool cartridge = program->kind == jag::Kind::Cartridge;
+    Loaded l;
+    l.image = program->file;
+    l.memory = program->memory();
+    l.starts = {program->entry};
+    l.entries = {{program->entry, "start"}};
+    std::vector<jag::Segment> order = program->segments;
+    std::sort(order.begin(), order.end(), [](const jag::Segment& a, const jag::Segment& b) { return a.address < b.address; });
+    Segments& s = l.segments;
+    for (const jag::Segment& seg : order) {
+        Piece piece{seg.name.empty() ? "segment" : seg.name, "", "", seg.offset, seg.size, seg.address, true};
+        piece.org = true;
+        s.pieces.push_back(std::move(piece));
+        s.code_ranges.push_back({seg.address, seg.address + seg.size});
+    }
+    s.measured = program->file.size();
+    s.rebuilt = [program, order](const Bytes& image) {   // (the segments' bytes follow one another in address order; a COFF is the file with each section's replaced)
+        Bytes out = program->file;
+        std::size_t at = 0;
+        for (const jag::Segment& seg : order) {
+            for (std::uint32_t i = 0; i < seg.size; ++i, ++at) out[seg.offset + i] = at < image.size() ? image[at] : 0;
+        }
+        return out;
+    };
+    l.values = {{"cartridge", Num{cartridge}}, {"ext", std::string(cartridge ? "j64" : "cof")}, {"entry", Num{program->entry}}};
+    return l;
+}
+
+Loaded load_genesis_file(const std::filesystem::path& file) { return load_genesis(formats::genesis::read(file)); }
+
 Loaded load_lynx_file(const std::filesystem::path& file) { return load_lynx(formats::lynx::read(file)); }
 
 using Loader = Loaded (*)(const std::filesystem::path&);
@@ -254,6 +294,8 @@ constexpr std::pair<std::string_view, Loader> kLoaders[] = {
     {"coleco", load_coleco},
     {"cpc", load_cpc},
     {"gb", load_gb},
+    {"genesis", load_genesis_file},
+    {"jaguar", load_jaguar},
     {"lynx", load_lynx_file},
     {"msx", load_msx},
     {"nes", load_nes},
@@ -319,6 +361,45 @@ Loaded load_lynx(const formats::lynx::Program& program) {
                 {"load_address", Num{program.load_address}},
                 {"block_length", Num{program.block_length}},
                 {"body", Num{program.block_length} - Num{lynx::kBs93Header}}};
+    return l;
+}
+
+// The Genesis: the 64-long vector table, then from $100 the header (its fields) and the program; code from $200 on. A handler is named for its
+// vector when one vector names it (or it is the reset, vblank or hblank handler); one many vectors share is the program's catch-all.
+Loaded load_genesis(const formats::genesis::Rom& rom) {
+    constexpr std::uint32_t kFirstCode = 0x200, kHeaderFrom = 0x100;
+    Loaded l;
+    l.image = rom.data;
+    l.memory = rom.data;
+    l.starts = rom.functions(isa::m68k_decoder());
+    const std::set<std::uint32_t> starts(l.starts.begin(), l.starts.end());
+    std::vector<std::pair<std::string, std::uint32_t>> vector_list = {{"ssp", rom.initial_ssp}, {"reset", rom.reset}};
+    for (const formats::genesis::Vector& v : rom.vectors) vector_list.emplace_back(v.name, v.address);
+    std::map<std::uint32_t, std::vector<std::string>> sharing;
+    for (const auto& [name, at] : vector_list) sharing[at].push_back(name);
+    for (const auto& [at, vecs] : sharing) {
+        if (!starts.contains(at) || (vecs.size() == 1 && vecs[0] == "ssp")) continue;
+        std::string main_name;
+        for (const std::string& v : vecs) {
+            if (v == "reset" || v == "vblank" || v == "hblank" || v == "external") {
+                main_name = v;
+                break;
+            }
+        }
+        l.entries[at] = vecs.size() > 2 ? "exception" : !main_name.empty() ? main_name : vecs[0];
+    }
+    const std::uint32_t size = static_cast<std::uint32_t>(rom.data.size());
+    Segments& s = l.segments;
+    Piece vectors{"vectors", "vectors", "vectors", 0, kHeaderFrom, 0, false};
+    vectors.org = true;
+    s.pieces.push_back(std::move(vectors));
+    s.pieces.push_back({"rom", "rom", "", kHeaderFrom, size - kHeaderFrom, kHeaderFrom, true});
+    s.code_ranges.push_back({kFirstCode, size});
+    s.measured = rom.data.size();
+    std::vector<std::string> what = {"initial stack pointer", "reset"};
+    for (unsigned i = 2; i < 64; ++i) what.push_back(formats::genesis::vector_name(i));
+    const formats::genesis::Header& h = rom.header;
+    l.values = {{"domestic", h.domestic_name}, {"overseas", h.overseas_name}, {"serial", h.serial}, {"smd", Num{rom.smd}}, {"vector_names", what}};
     return l;
 }
 

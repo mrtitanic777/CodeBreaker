@@ -5,7 +5,7 @@
 //     r.same                    both sources, built, put the cartridge back byte for byte
 //     r.functions               {address: name}: the SH-2s' at $06000000 and up, the 68000's below $400000
 //
-// A 32X cartridge is two programs in one ROM (formats/sega32x): the Genesis's 68000 code, which source/genesis_writer writes as Motorola
+// A 32X cartridge is two programs in one ROM (formats/sega32x): the Genesis's 68000 code, which source/console_writer writes as Motorola
 // syntax (`<stem>.asm`, the whole ROM: the SH-2 program is data in it), and the SH-2 program the add-on's two processors run, which
 // source/sh2_writer writes as GNU as source (`<stem>.sh2.s`): the vector tables, then code and data at $06000000, where the 32X copies it.
 // Each is assembled by CodeBreaker's own assemblers and compared with its bytes; the ROM is put back together from the two (the 68000

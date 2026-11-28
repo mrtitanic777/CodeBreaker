@@ -1,0 +1,36 @@
+{
+  "platform": "jaguar",
+  "title": "Atari Jaguar",
+  "description": "A cartridge (its boot signature and the header's flags and start address ahead of the ROM) or a COFF executable (its sections), each segment at its address in address order, put back where the file has it; flow from the start address, every JSR and BSR target a function. Tom's and Jerry's registers by name, in vasm's Motorola syntax.",
+  "machine": {
+    "family": "68000",
+    "container": "cartridge (.j64, .jag, .rom) or COFF executable (.cof, .abs)",
+    "cpu": {"language": "68000:BE:32:default", "bits": 32, "endian": "big", "decoder": "m68k",
+            "registers": ["D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7", "SR"], "stack": "A7"},
+    "results": ["D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "A0", "A1", "A2", "A3", "A4", "A5", "A6"],
+    "toolchain": "CodeBreaker's own assembler (Motorola syntax)"
+  },
+  "shape": "vectored",
+  "dialect": "vasm-m68k",
+  "head": [
+    "{stem}.asm -- written by CodeBreaker from {file}",
+    "Atari Jaguar {cartridge?cartridge|COFF executable}, {size} bytes, start ${entry:06X}",
+    ""
+  ],
+  "vectored": {
+    "cpu": "m68k",
+    "assembler": "asm68k",
+    "built": "{stem}.built.{ext}",
+    "whole": true,
+    "neutral_rows": true,
+    "registers": "hardware",
+    "immediate_floor": "0x4000",
+    "calls_start_functions": true,
+    "blank_after_piece": true,
+    "fields": [
+      {"at": 0, "size": "0x400", "what": "the boot signature", "as": "rows", "when": "cartridge"},
+      {"at": "0x400", "size": 4, "what": "header flags", "as": "long", "when": "cartridge"},
+      {"at": "0x404", "size": 4, "what": "start address", "as": "pointer", "when": "cartridge"}
+    ]
+  }
+}

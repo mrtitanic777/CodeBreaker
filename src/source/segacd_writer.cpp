@@ -10,7 +10,6 @@
 #include "core/fs.hpp"
 #include "core/text.hpp"
 #include "decompile/m68k.hpp"
-#include "source/genesis_writer.hpp"
 #include "source/dialect.hpp"
 #include "source/isa.hpp"
 #include "source/risc_source.hpp"
@@ -160,7 +159,7 @@ std::vector<Reference> references(const m68k::Insn& insn) {
 const std::map<std::uint32_t, std::string>& hardware() {
     // the Genesis's registers, and the ones the Mega-CD adds (config/knowledge/segacd/registers.json); the Genesis's name stands where both have one
     static const std::map<std::uint32_t, std::string> table = [] {
-        std::map<std::uint32_t, std::string> t = genesis_writer::hardware();
+        std::map<std::uint32_t, std::string> t = knowledge::standard().hardware_names("genesis", "hardware");
         const std::map<std::uint32_t, std::string> more = knowledge::standard().hardware_names("segacd", "hardware");
         t.insert(more.begin(), more.end());
         return t;

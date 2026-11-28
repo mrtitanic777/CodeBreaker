@@ -102,6 +102,29 @@ Segmented segmented_of(const nlohmann::ordered_json& j) {
     return s;
 }
 
+Vectored vectored_of(const nlohmann::ordered_json& j) {
+    Vectored v;
+    v.cpu = text_of(j, "cpu");
+    v.assembler = text_of(j, "assembler");
+    if (j.contains("source")) v.source = text_of(j, "source");
+    v.built = text_of(j, "built");
+    v.whole = j.value("whole", false);
+    v.neutral_rows = j.value("neutral_rows", false);
+    v.registers = text_of(j, "registers");
+    v.immediate_floor = number_of(j, "immediate_floor", 0);
+    v.calls_start_functions = j.value("calls_start_functions", false);
+    v.org_digits = number_of(j, "org_digits", 6);
+    v.blank_after_piece = j.value("blank_after_piece", false);
+    if (const auto fields = j.find("fields"); fields != j.end()) {
+        for (const auto& f : *fields) {
+            v.fields.push_back({number_of(f.at("at")), number_of(f.at("size")), text_of(f, "what"), f.value("as", std::string("text")), text_of(f, "when")});
+        }
+    }
+    v.vector_names = text_of(j, "vector_names");
+    v.vectors_plain = number_of(j, "vectors_plain", 0);
+    return v;
+}
+
 Banked banked_of(const nlohmann::ordered_json& j) {
     Banked b;
     b.cpu = text_of(j, "cpu");
@@ -170,6 +193,7 @@ Description read_description(std::string_view name) {
     if (const auto banked = j.find("banked"); banked != j.end()) d.banked = banked_of(*banked);
     if (const auto cart = j.find("cart"); cart != j.end()) d.cart = cart_of(*cart);
     if (const auto segmented = j.find("segmented"); segmented != j.end()) d.segmented = segmented_of(*segmented);
+    if (const auto vectored = j.find("vectored"); vectored != j.end()) d.vectored = vectored_of(*vectored);
     return d;
 }
 
@@ -292,6 +316,7 @@ image_writer::Written write(const Description& description, const Loaded& progra
     if (description.shape == "banked") return write_banked(description, program, comment, values, file_name, folder);
     if (description.shape == "cart6502") return write_cart6502(description, program, comment, file_name, folder);
     if (description.shape == "segmented") return write_segmented(description, program, comment, values, file_name, folder);
+    if (description.shape == "vectored") return write_vectored(description, program, comment, values, file_name, folder);
     throw UsageError(std::format("console platform {} names the shape {}, which the writer does not have", description.name, description.shape));
 }
 

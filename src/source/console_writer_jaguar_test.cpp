@@ -1,7 +1,7 @@
 // cb-unity: alone
 // The Jaguar writer over small programs written byte by byte: the source it writes, built again by CodeBreaker's assembler, is the program.
 
-#include "source/jaguar_writer.hpp"
+#include "source/console_writer.hpp"
 
 #include <iostream>
 
@@ -11,8 +11,15 @@
 #include "source/dialect.hpp"
 #include "source/risc_source.hpp"
 
-namespace cb::source::jaguar_writer {
+namespace cb::source::console_writer::jaguar_test {
 namespace {
+
+// The program written to `folder` as `name` and its source written beside it.
+image_writer::Written write(const Bytes& file, std::string_view name, const std::filesystem::path& folder) {
+    fs::make_dirs(folder);
+    fs::write_file(folder / std::string(name), file);
+    return console_writer::reconstruct("jaguar", folder / std::string(name), folder);
+}
 
 void put32(Bytes& b, std::size_t at, std::uint32_t v) {
     for (int i = 0; i < 4; ++i) b[at + static_cast<std::size_t>(i)] = static_cast<std::uint8_t>(v >> (24 - 8 * i));
@@ -62,9 +69,9 @@ Bytes coff() {
 
 }  // namespace
 
-CB_TEST("source.jaguar_writer.a_cartridge_comes_back_as_source_that_builds_the_same_file", [] {
+CB_TEST("source.console_writer.jaguar.a_cartridge_comes_back_as_source_that_builds_the_same_file", [] {
     fs::ScopedTempDir dir("cb_jag_cart");
-    const image_writer::Written r = write(formats::jaguar::parse(cartridge()), "demo.j64", dir.path());
+    const image_writer::Written r = write(cartridge(), "demo.j64", dir.path());
     CB_CHECK(r.linked && r.same);
     CB_CHECK(r.notes.empty());
     CB_CHECK((r.functions == image_writer::Functions{{0x802000, "start"}, {0x802020, "sub_802020"}}));
@@ -75,17 +82,17 @@ CB_TEST("source.jaguar_writer.a_cartridge_comes_back_as_source_that_builds_the_s
     }
 });
 
-CB_TEST("source.jaguar_writer.a_coff_comes_back_as_source_that_builds_the_same_sections", [] {
+CB_TEST("source.console_writer.jaguar.a_coff_comes_back_as_source_that_builds_the_same_sections", [] {
     fs::ScopedTempDir dir("cb_jag_coff");
-    const image_writer::Written r = write(formats::jaguar::parse(coff()), "demo.cof", dir.path());
+    const image_writer::Written r = write(coff(), "demo.cof", dir.path());
     CB_CHECK(r.linked && r.same);
     CB_CHECK((r.functions == image_writer::Functions{{0x4000, "start"}, {0x4020, "sub_004020"}}));
     CB_CHECK(fs::read_text(r.source).find("org $004000") != std::string::npos);
 });
 
-CB_TEST("source.jaguar_writer.an_edited_source_builds_a_different_file", [] {
+CB_TEST("source.console_writer.jaguar.an_edited_source_builds_a_different_file", [] {
     fs::ScopedTempDir dir("cb_jag_edit");
-    const image_writer::Written r = write(formats::jaguar::parse(coff()), "demo.cof", dir.path());
+    const image_writer::Written r = write(coff(), "demo.cof", dir.path());
     std::string s = fs::read_text(r.source);
     const std::size_t at = s.find("#$1234");
     CB_CHECK(at != std::string::npos);
@@ -94,4 +101,4 @@ CB_TEST("source.jaguar_writer.an_edited_source_builds_a_different_file", [] {
     CB_CHECK_EQ(image[3], 0x35);   // (the image holds the sections' bytes one after another: the first section's fourth byte)
 });
 
-}  // namespace cb::source::jaguar_writer
+}  // namespace cb::source::console_writer::jaguar_test

@@ -1,6 +1,5 @@
 // Tests of the console descriptors built with `machine()`: nes, sms, gb, genesis, ps1. Each is checked against the values below.
 #include "platforms/gba.hpp"
-#include "platforms/genesis.hpp"
 #include "platforms/neogeo.hpp"
 #include "platforms/segacd.hpp"
 #include "platforms/ps1.hpp"
@@ -75,7 +74,7 @@ CB_TEST("platforms.gb.descriptor", [] {
 });
 
 CB_TEST("platforms.genesis.descriptor", [] {
-    const Platform p = genesis();
+    const Platform p = described("genesis");
     check_machine(p, Id::Machine, "genesis", "Genesis / Mega Drive", "68000", "cartridge image (.md, .bin, .gen, .smd)");
     CB_CHECK_EQ(p.cpu.language, "68000:BE:32:default");
     CB_CHECK_EQ(*p.cpu.bits, 32u);
@@ -119,7 +118,7 @@ CB_TEST("platforms.consoles.registry_identifies_each_by_its_probe", [] {
     registry.add(taking(described("nes"), ".nes"));
     registry.add(taking(described("sms"), ".sms"));
     registry.add(taking(described("gb"), ".gb"));
-    registry.add(taking(genesis(), ".md"));
+    registry.add(taking(described("genesis"), ".md"));
     registry.add(taking(ps1(), ".psx"));
     registry.add(taking(gba(), ".gba"));
     CB_CHECK_EQ(registry.identify("g.nes")->name, "nes");   // (the registered machines are tried in the order they were added)

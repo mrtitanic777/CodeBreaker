@@ -12,9 +12,9 @@
 #include "emulate/cpu/pcode_cpu.hpp"
 #include "engine/machine_lanes.hpp"
 #include "formats/read.hpp"
-#include "platforms/jaguar.hpp"
 #include "formats/jaguar.hpp"
-#include "source/jaguar_writer.hpp"
+#include "platforms/package.hpp"
+#include "source/console_writer.hpp"
 
 // What `info` says of the lane's files (formats/detect.hpp), as it was written in formats/detect.cpp.
 namespace cb::formats::detect {
@@ -131,7 +131,7 @@ vl::Effects jaguar_effects(const stdfs::path& path, std::uint32_t entry, const v
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::jaguar_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("jaguar", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -163,7 +163,7 @@ vl::ImageLaneSpec jaguar_lane_spec() {
 void register_jaguar_lane() {
     register_lane({
         .name = "jaguar",
-        .platform = platforms::jaguar,
+        .platform = [] { return platforms::described("jaguar"); },
         .probe = [](const stdfs::path& p) { return formats::jaguar::probe(p); },
         .make_spec = jaguar_lane_spec,
         .detectors = {{.priority = 250, .detect = formats::detect::info_jaguar}},

@@ -1,0 +1,39 @@
+{
+  "platform": "genesis",
+  "title": "Genesis / Mega Drive",
+  "description": "A cartridge image (an .smd dump de-interleaved): the 64-long vector table naming the handlers, the header at $100 field by field, the program from $200 in vasm's Motorola syntax; flow from the reset vector and the handlers the vectors name. The VDP, I/O, Z80 bus and TMSS ports by name.",
+  "machine": {
+    "family": "68000",
+    "container": "cartridge image (.md, .bin, .gen, .smd)",
+    "cpu": {"language": "68000:BE:32:default", "bits": 32, "endian": "big", "decoder": "m68k",
+            "registers": ["D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "A0", "A1", "A2", "A3", "A4", "A5", "A6", "A7", "SR"], "stack": "A7"},
+    "results": ["D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7", "A0", "A1", "A2", "A3", "A4", "A5", "A6"],
+    "toolchain": "CodeBreaker's own assembler"
+  },
+  "shape": "vectored",
+  "dialect": "vasm-m68k",
+  "head": [
+    "{stem}.asm -- written by CodeBreaker from {file}",
+    "\"{domestic}\" / \"{overseas}\", {serial}, {kb} KB ROM{smd?, from an .smd dump|}",
+    ""
+  ],
+  "vectored": {
+    "cpu": "m68k",
+    "assembler": "asm68k",
+    "built": "{stem}.built.md",
+    "registers": "hardware",
+    "immediate_floor": "0x400",
+    "org_digits": 1,
+    "vector_names": "vector_names",
+    "vectors_plain": 1,
+    "fields": [
+      {"at": "0x100", "size": 16, "what": "system"}, {"at": "0x110", "size": 16, "what": "copyright"},
+      {"at": "0x120", "size": 48, "what": "domestic name"}, {"at": "0x150", "size": 48, "what": "overseas name"},
+      {"at": "0x180", "size": 14, "what": "serial and version"}, {"at": "0x18E", "size": 2, "what": "checksum"},
+      {"at": "0x190", "size": 16, "what": "devices"}, {"at": "0x1A0", "size": 8, "what": "ROM start and end"},
+      {"at": "0x1A8", "size": 8, "what": "RAM start and end"}, {"at": "0x1B0", "size": 12, "what": "backup RAM"},
+      {"at": "0x1BC", "size": 12, "what": "modem"}, {"at": "0x1C8", "size": 40, "what": "notes"},
+      {"at": "0x1F0", "size": 16, "what": "regions"}
+    ]
+  }
+}

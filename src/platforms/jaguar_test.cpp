@@ -1,11 +1,11 @@
 // cb-unity: alone
 #include "core/testing.hpp"
-#include "platforms/jaguar.hpp"
+#include "platforms/package.hpp"
 
 using namespace cb::platforms;
 
 CB_TEST("platforms.jaguar.descriptor", [] {
-    const Platform p = jaguar();
+    const Platform p = described("jaguar");
     CB_CHECK(p.id == Id::Machine);
     CB_CHECK_EQ(p.name, "jaguar");
     CB_CHECK_EQ(p.title, "Atari Jaguar");

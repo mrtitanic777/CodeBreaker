@@ -16,7 +16,7 @@
 // the interrupt levels the 32X raises: V-blank, H-blank, the command interrupt, PWM), then code and data. The two SH-2s run the one program;
 // the master's start is usually the C runtime's and the slave's waits on a flag the master sets.
 //
-// The 68000 side is a Genesis program (formats/genesis reads it, source/genesis_writer writes it); this reads what is the SH-2s'.
+// The 68000 side is a Genesis program (formats/genesis reads it, source/console_writer writes it); this reads what is the SH-2s'.
 #pragma once
 
 #include <array>

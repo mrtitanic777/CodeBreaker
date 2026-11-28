@@ -37,7 +37,6 @@
 #include "source/console_writer.hpp"
 #include "source/dos_writer.hpp"
 #include "source/gba_writer.hpp"
-#include "source/genesis_writer.hpp"
 #include "source/ps1_writer.hpp"
 #include "verify/lanes/dos.hpp"
 #include "verify/lanes/image_lane.hpp"
@@ -566,7 +565,7 @@ std::shared_ptr<const verify::lanes::Kind> LaneKit::machine_lane(std::string_vie
         spec.effects = genesis_effects;
         spec.what = {"end", "D registers", "A registers", "condition codes", "RAM", "hardware accesses"};
         spec.start = [](const lanes::State& s) { return std::format("from D0={:08X} A0={:06X}", at(s, "d0"), at(s, "a0")); };
-        spec.writer = [](const stdfs::path& m, const stdfs::path& out) { return written_of(source::genesis_writer::reconstruct(m, out)); };
+        spec.writer = [](const stdfs::path& m, const stdfs::path& out) { return written_of(source::console_writer::reconstruct("genesis", m, out)); };
         spec.key_digits = 6;
     } else if (name == "ps1") {
         spec.kind = "ps1";

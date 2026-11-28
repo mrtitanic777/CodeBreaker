@@ -190,3 +190,5 @@ tests only what it changes.
   configuration byte-identical to the old writers' on every Lynx sample and the NES test programs. Next: the PC Engine and the SNES.
 - 2026-11-28: item 7: the PC Engine and the SNES on `segmented`, the bank mapping and the register widths as the loader's flow (SegmentCode);
   byte-identical on 72 homebrew programs. Next: the `vectored` shape (Genesis first).
+- 2026-11-28: item 7: the `vectored` shape (68000): Genesis and Jaguar, byte-identical on their 10 homebrew programs (32X and Sega CD
+  among them) and the Genesis golden. Next: the MIPS pair (PS1 and N64, near-duplicate writers), then GBA, then `executable`.
