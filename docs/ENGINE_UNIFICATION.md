@@ -185,5 +185,4 @@ tests only what it changes.
   copies, 0 verdicts disagreeing); the runs' digests are kept in `engine/pcode_cpu_tlcs900_test` and `pcode_cpu_v810_test`.
 - 2026-11-27: item 7 started (docs/SOURCE_WRITER.md): one console writer (source/console_writer) and one file per platform
   (config/platforms/<name>.json). On it: ZX Spectrum, MSX, ColecoVision, Amstrad CPC (`z80-block`), Game Boy, Master System (`banked`),
-  Atari 2600 and 5200 (`cart6502`); written source byte-identical on their tests, goldens and homebrew samples. Next: the Atari 7800
-  and the Lynx, the NES, the PC Engine and the SNES, then `vectored`, then `executable`.
+  Atari 2600, 5200 and 7800 (`cart6502`); written source byte-identical on their tests, goldens and homebrew samples. Next: the Lynx, the NES, the PC Engine and the SNES, then `vectored`, then `executable`.

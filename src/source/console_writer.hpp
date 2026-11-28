@@ -93,7 +93,11 @@ struct CartShape {
     std::string prologue;             // the dialect block ahead of the code ({stem}, {ext})
     std::string bank_block;           // the dialect block that opens a bank ({offset}, {window}); "" an `.org` of the window
     std::string part = "BANK{bank}";  // the L2 part a bank is
+    std::string part_single;          // ... when there is one bank ("" the same)
+    std::string header_part;          // the L2 part of the file header, and what its data rows are called
+    std::string header_what;
     std::uint32_t tail = 0;           // the bytes at the end of each bank that are data
+    bool tail_last_only = false;      // ... of the last bank only
     std::vector<std::string> tail_lines;   // how they are said: {wN} the word at N (by its label), {bN} the byte at N
     unsigned equ_digits = 0;          // the digits of an `.equ` (0: 2 for a zero-page address, else 4)
     std::uint32_t data_floor = 0;     // an operand below this is never a data label
@@ -128,8 +132,10 @@ struct Cart {
     std::vector<CartBank> banks;
     std::function<bool(std::size_t bank, std::uint32_t address)> inside;                      // an address the bank shows
     std::function<bool(std::size_t bank, std::uint32_t address, std::uint32_t size)> fits;    // an instruction there lies in the bank
-    std::function<std::optional<std::uint32_t>(std::uint32_t address)> fold;                  // a target in the window (a mirror folded in)
+    std::function<std::optional<std::uint32_t>(std::size_t bank, std::uint32_t address)> target;    // the flow address a branch or call from the bank goes to
+    std::function<std::optional<std::uint32_t>(std::size_t bank, std::uint32_t address)> data_at;   // the flow address an absolute operand names, if it is one
     std::function<std::uint32_t(std::size_t bank, std::uint32_t address)> offset;             // the image offset of an address
+    Bytes header;                         // a file header ahead of the image (the A78's), written as data ahead of the banks
 };
 
 // What a loader read from a file: the program's bytes, the address of the first, its entry points (address -> name) and the header's values.

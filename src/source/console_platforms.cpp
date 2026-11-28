@@ -11,6 +11,7 @@
 #include "source/isa.hpp"
 #include "formats/atari2600.hpp"
 #include "formats/atari5200.hpp"
+#include "formats/atari7800.hpp"
 #include "formats/coleco.hpp"
 #include "formats/cpc.hpp"
 #include "formats/gb.hpp"
@@ -127,7 +128,15 @@ Loaded load_atari2600(const std::filesystem::path& file) {
     }
     l.cart.inside = [rom](std::size_t, std::uint32_t a) { return a >= rom->window && a < rom->window + rom->bank_size; };
     l.cart.fits = [rom](std::size_t, std::uint32_t a, std::uint32_t size) { return a + size <= rom->window + rom->bank_size; };
-    l.cart.fold = [rom](std::uint32_t a) { return rom->fold(a); };
+    l.cart.target = [rom](std::size_t b, std::uint32_t a) -> std::optional<std::uint32_t> {   // (a mirror folded in)
+        const auto folded = rom->fold(a);
+        if (!folded) return std::nullopt;
+        return static_cast<std::uint32_t>(b) << 16 | *folded;
+    };
+    l.cart.data_at = [rom](std::size_t b, std::uint32_t a) -> std::optional<std::uint32_t> {   // (exactly: a mirror's address is left as it is)
+        if (rom->fold(a) != std::optional<std::uint32_t>(a)) return std::nullopt;
+        return static_cast<std::uint32_t>(b) << 16 | a;
+    };
     l.cart.offset = [rom](std::size_t b, std::uint32_t a) { return rom->offset(b, a); };
     l.values = {{"scheme", std::string(formats::atari2600::to_string(rom->scheme))}, {"banks", Num(rom->bank_count())}, {"banked", Num{banked}}};
     return l;
@@ -142,9 +151,50 @@ Loaded load_atari5200(const std::filesystem::path& file) {
     l.entries = {{rom->start, "start"}};
     l.cart.inside = [rom](std::size_t, std::uint32_t a) { return rom->offset(a).has_value(); };
     l.cart.fits = [rom](std::size_t, std::uint32_t a, std::uint32_t size) { return rom->offset(a) && rom->offset(a + size - 1); };
-    l.cart.fold = [rom](std::uint32_t a) { return rom->offset(a) ? std::optional<std::uint32_t>(a) : std::nullopt; };
+    l.cart.target = [rom](std::size_t, std::uint32_t a) { return rom->offset(a) ? std::optional<std::uint32_t>(a) : std::nullopt; };
+    l.cart.data_at = [](std::size_t, std::uint32_t a) { return std::optional<std::uint32_t>(a); };
     l.cart.offset = [rom](std::size_t, std::uint32_t a) { return *rom->offset(a); };
     l.values = {{"base", Num{rom->base}}, {"flag_a", Num{rom->flag_a}}, {"flag_b", Num{rom->flag_b}}, {"start", Num{rom->start}}};
+    return l;
+}
+
+Loaded load_atari7800(const std::filesystem::path& file) {
+    const auto rom = std::make_shared<const formats::atari7800::Rom>(formats::atari7800::read(file));
+    Loaded l;
+    l.image = rom->data;
+    l.cart.header = rom->header;
+    if (!rom->supergame) {
+        l.cart.banks.push_back({0, static_cast<std::uint32_t>(rom->data.size()), rom->base, rom->memory(0)});
+    } else {   // (16 KB banks: the last fixed at $C000, the others switched in at $8000)
+        for (std::size_t b = 0; b < rom->bank_count(); ++b) {
+            l.cart.banks.push_back({static_cast<std::uint32_t>(b * formats::atari7800::kBankSize), static_cast<std::uint32_t>(formats::atari7800::kBankSize),
+                                    b == rom->fixed_bank() ? 0xC000u : 0x8000u, rom->memory(b)});
+        }
+    }
+    const auto flow = [](std::size_t b, std::uint32_t a) { return static_cast<std::uint32_t>(b) << 16 | a; };
+    // the vectors: where each stands, and the bank its code is in
+    for (const auto& [vector, label] : {std::pair{rom->vectors.reset, "reset"}, std::pair{rom->vectors.nmi, "nmi"}, std::pair{rom->vectors.irq, "irq"}}) {
+        const std::uint32_t at = flow(rom->supergame && vector >= 0xC000 ? rom->fixed_bank() : 0, vector);
+        if (!rom->offset(at >> 16, vector)) continue;
+        l.starts.push_back(at);
+        l.entries.try_emplace(at, label);
+    }
+    l.cart.inside = [rom](std::size_t b, std::uint32_t a) { return rom->offset(b, a).has_value(); };
+    l.cart.fits = [rom](std::size_t b, std::uint32_t a, std::uint32_t size) {
+        const auto first = rom->offset(b, a);
+        const auto last = rom->offset(b, a + size - 1);
+        return first && last && *last == *first + size - 1;
+    };
+    l.cart.target = [rom, flow](std::size_t b, std::uint32_t a) -> std::optional<std::uint32_t> {
+        if (!rom->supergame) return rom->offset(0, a) ? std::optional<std::uint32_t>(a) : std::nullopt;
+        if (a >= 0xC000) return flow(rom->fixed_bank(), a);
+        if (a < 0x8000 || b == rom->fixed_bank()) return std::nullopt;   // (which bank the fixed bank's code selected is a run-time fact)
+        return flow(b, a);
+    };
+    l.cart.data_at = [rom, flow](std::size_t b, std::uint32_t a) { return std::optional<std::uint32_t>(flow(rom->supergame && a >= 0xC000 ? rom->fixed_bank() : b, a)); };
+    l.cart.offset = [rom](std::size_t b, std::uint32_t a) { return *rom->offset(b, a); };
+    l.values = {{"version", Num{rom->version}}, {"title", rom->title}, {"declared", Num{rom->declared_size}}, {"cart_type", Num{rom->cart_type}},
+                {"controller1", Num{rom->controller1}}, {"controller2", Num{rom->controller2}}, {"tv", Num{rom->tv}}, {"save", Num{rom->save}}};
     return l;
 }
 
@@ -153,6 +203,7 @@ using Loader = Loaded (*)(const std::filesystem::path&);
 constexpr std::pair<std::string_view, Loader> kLoaders[] = {
     {"atari2600", load_atari2600},
     {"atari5200", load_atari5200},
+    {"atari7800", load_atari7800},
     {"coleco", load_coleco},
     {"cpc", load_cpc},
     {"gb", load_gb},

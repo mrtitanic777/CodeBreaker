@@ -1,16 +1,25 @@
 // Tests of the Atari 7800 writer over a small program of its own, written out byte by byte: the source it writes, built again by CodeBreaker's dasm-syntax
 // assembler, is the cartridge file it came from (the header included).
 
-#include "source/atari7800_writer.hpp"
+#include "source/console_writer.hpp"
 
 #include "source/dialect.hpp"
 #include "core/fs.hpp"
 #include "core/testing.hpp"
+#include "formats/atari7800.hpp"
 #include "core/text.hpp"
 #include "source/m6502_source.hpp"
 
-namespace cb::source::atari7800_writer {
+namespace cb::source::console_writer::atari7800_test {
 namespace {
+
+// `data` kept in `folder` as `name` and written beside it by the platform's writer (config/platforms/atari7800.json).
+image_writer::Written write(const Bytes& data, std::string_view name, const std::filesystem::path& folder) {
+    fs::make_dirs(folder);
+    fs::write_file(folder / std::string(name), data);
+    return console_writer::reconstruct("atari7800", folder / std::string(name), folder);
+}
+
 
 // reset $C000: SEI CLD LDA #$40 STA CTRL JSR $C020 JMP $C006; sub $C020: LDA MSTAT, BPL, STA.w WSYNC, RTS; the interrupt handler $C030: RTI.
 Bytes program(std::uint16_t type = 0, std::size_t size = 0x4000) {
@@ -39,9 +48,9 @@ Bytes program(std::uint16_t type = 0, std::size_t size = 0x4000) {
     return file;
 }
 
-CB_TEST("source.atari7800_writer.the_program_comes_back_as_source_that_builds_the_same_file", [] {
+CB_TEST("source.console_writer.atari7800.the_program_comes_back_as_source_that_builds_the_same_file", [] {
     fs::ScopedTempDir dir("cb_a7800");
-    const image_writer::Written r = write(formats::atari7800::parse(program()), "demo.a78", dir.path());
+    const image_writer::Written r = write(program(), "demo.a78", dir.path());
     CB_CHECK(r.linked && r.same);
     CB_CHECK(r.notes.empty());
     CB_CHECK((r.functions == image_writer::Functions{{0xC000, "reset"}, {0xC020, "sub_C020"}, {0xC030, "nmi"}}));
@@ -56,9 +65,9 @@ CB_TEST("source.atari7800_writer.the_program_comes_back_as_source_that_builds_th
     }
 });
 
-CB_TEST("source.atari7800_writer.an_edited_source_builds_a_different_file", [] {
+CB_TEST("source.console_writer.atari7800.an_edited_source_builds_a_different_file", [] {
     fs::ScopedTempDir dir("cb_a7800_edit");
-    const image_writer::Written r = write(formats::atari7800::parse(program()), "demo.a78", dir.path());
+    const image_writer::Written r = write(program(), "demo.a78", dir.path());
     std::string s = fs::read_text(r.source);
     const std::size_t at = s.find("LDA #$40");
     CB_CHECK(at != std::string::npos);
@@ -69,9 +78,9 @@ CB_TEST("source.atari7800_writer.an_edited_source_builds_a_different_file", [] {
     CB_CHECK(edited == expected);
 });
 
-CB_TEST("source.atari7800_writer.a_supergame_board_writes_each_bank_and_does_not_guess_the_selected_one", [] {
+CB_TEST("source.console_writer.atari7800.a_supergame_board_writes_each_bank_and_does_not_guess_the_selected_one", [] {
     fs::ScopedTempDir dir("cb_a7800_sg");
-    const image_writer::Written r = write(formats::atari7800::parse(program(formats::atari7800::kTypeSuperGame, 0x20000)), "sg.a78", dir.path());
+    const image_writer::Written r = write(program(formats::atari7800::kTypeSuperGame, 0x20000), "sg.a78", dir.path());
     CB_CHECK(r.linked && r.same);
     CB_CHECK_EQ(r.image_bytes, 0x20000u);
     CB_CHECK_EQ(r.functions.at(0x7C000), "reset");   // in the fixed bank (7)
@@ -82,4 +91,4 @@ CB_TEST("source.atari7800_writer.a_supergame_board_writes_each_bank_and_does_not
 });
 
 }  // namespace
-}  // namespace cb::source::atari7800_writer
+}  // namespace cb::source::console_writer::atari7800_test

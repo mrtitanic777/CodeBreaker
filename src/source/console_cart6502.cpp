@@ -1,9 +1,9 @@
 // source/console_cart6502.cpp -- the console writer's `cart6502` shape (console_writer.hpp): a 6502 cartridge of one or more banks, each seen in
-// a window of the address space, its last bytes data (the vectors, a header), its hardware named by the chips' read and write names (a store
-// names the write register, a load the read one: the chips have a different register at the same address). The Atari 2600 and 5200.
+// a window of the address space (an A78's header ahead of them), its last bytes data (the vectors, a header), its hardware named by the chips' read and write names (a store
+// names the write register, a load the read one: the chips have a different register at the same address). The Atari 2600, 5200 and 7800.
 //
-// Flow addresses are `bank << 16 | address in the window`; the loader says (Cart) which addresses a bank shows, where a target folds to and
-// which file offset an address is.
+// Flow addresses are `bank << 16 | address in the window`; the loader says (Cart) which addresses a bank shows, where a branch goes, which
+// operand is an address of the program and which file offset an address is.
 
 #include "source/console_shapes.hpp"
 
@@ -94,9 +94,7 @@ public:
     std::uint32_t size(const m6502::Insn& insn) const override { return insn.size; }
     std::optional<std::uint32_t> target(const m6502::Insn& insn) const override {
         if (!insn.target) return std::nullopt;
-        const auto folded = cart_.fold(*insn.target);
-        if (!folded) return std::nullopt;
-        return flow_address(insn.at >> 16, *folded);
+        return cart_.target(insn.at >> 16, *insn.target);
     }
     bool inside(std::uint32_t pc) const override { return (pc >> 16) < cart_.banks.size() && cart_.inside(pc >> 16, pc & 0xFFFF); }
     bool fits(std::uint32_t pc, const m6502::Insn& insn) const override { return cart_.fits(pc >> 16, pc & 0xFFFF, insn.size); }
@@ -123,7 +121,7 @@ public:
     const m6502::Insn* code_at(std::uint32_t offset, std::uint32_t address) const override {
         const auto it = code_.find(offset);
         if (it == code_.end()) return nullptr;
-        if (offset + it->second.size > b_.offset + b_.size - shape_.tail) return nullptr;   // (the tail is data)
+        if (offset + it->second.size > b_.offset + b_.size - tail()) return nullptr;   // (the tail is data)
         at_offset_ = offset, at_address_ = address & 0xFFFF;   // (text() of this instruction follows)
         return &it->second;
     }
@@ -138,7 +136,7 @@ public:
 
     // The bank's last bytes: the vectors or the header, as the description's tail lines say them ({wN}: the word at N, by its label; {bN}: the byte).
     std::uint32_t special(std::uint32_t offset, std::uint32_t, const iw::Flush& flush) override {
-        if (shape_.tail == 0 || offset != b_.offset + b_.size - shape_.tail) return 0;
+        if (tail() == 0 || offset != b_.offset + b_.size - tail()) return 0;
         flush();
         Values v;
         for (std::uint32_t i = 0; i < shape_.tail; ++i) {
@@ -155,6 +153,8 @@ public:
     }
 
 private:
+    std::uint32_t tail() const { return shape_.tail_last_only && bank_ + 1 != program_.cart.banks.size() ? 0 : shape_.tail; }
+
     mutable std::uint32_t at_offset_ = 0, at_address_ = 0;   // (the file offset of the instruction code_at() last gave, and the window address it is shown at)
     translate::l2::Assembly& out_;
     const CartShape& shape_;
@@ -199,9 +199,9 @@ image_writer::Written write_cart6502(const Description& d, const Loaded& program
     iw::Names labels = iw::make_labels(walked.targets, names, [&](std::uint32_t a) { return line_at.contains(a); }, local);
     for (const auto& entry : code) {   // absolute operands that name a line's start (exactly: a mirror's address is left as it is)
         const m6502::Insn& insn = entry.second;
-        if (!absolute_mode(insn.mode) || !insn.operand || *insn.operand < shape.data_floor || cart.fold(*insn.operand) != std::optional<std::uint32_t>(*insn.operand)) continue;
-        const std::uint32_t at = flow_address(insn.at >> 16, *insn.operand);
-        if (line_at.contains(at)) labels.try_emplace(at, std::format("D_{:0{}X}", banked ? at : *insn.operand, banked ? 6 : 4));
+        if (!absolute_mode(insn.mode) || !insn.operand || *insn.operand < shape.data_floor) continue;
+        const std::optional<std::uint32_t> at = cart.data_at(insn.at >> 16, *insn.operand);
+        if (at && line_at.contains(*at)) labels.try_emplace(*at, std::format("D_{:0{}X}", banked ? *at : *insn.operand, banked ? 6 : 4));
     }
     const Registers registers = registers_of(d);
     std::map<std::uint32_t, std::set<std::string>> equates;   // the register names the code uses, by address
@@ -219,6 +219,12 @@ image_writer::Written write_cart6502(const Description& d, const Loaded& program
     }
     if (!equates.empty()) lines.push_back("");
     translate::l2::Assembly out(lines, d.banked.assembler.empty() ? d.dialect : d.banked.assembler, std::string(file_name));
+    if (!cart.header.empty()) {   // (the file's header: data ahead of the banks)
+        out.part(shape.header_part, "segment", std::nullopt, cart.header.size());
+        out.extend(said.block(shape.bank_block, {{"offset", said.number(0, 4)}, {"window", said.number(0, 4)}}));
+        out.extend(iw::commented(shape.whole ? m6502_source::data_lines(cart.header) : said.data_lines(cart.header), shape.header_what));
+        out.append("");
+    }
 
     for (std::size_t b = 0; b < cart.banks.size(); ++b) {
         const CartBank& bank = cart.banks[b];
@@ -235,11 +241,11 @@ image_writer::Written write_cart6502(const Description& d, const Loaded& program
             read_names[static_cast<std::uint16_t>(at & 0xFFFF)] = label;
             write_names[static_cast<std::uint16_t>(at & 0xFFFF)] = label;
         }
-        out.part(fill(shape.part, {{"bank", static_cast<std::int64_t>(b)}}), "segment", std::nullopt, bank.size);
+        out.part(fill(!banked && !shape.part_single.empty() ? shape.part_single : shape.part, {{"bank", static_cast<std::int64_t>(b)}}), "segment", std::nullopt, bank.size);
         if (shape.bank_block.empty()) {
             out.append(std::format("        .org 0x{:04x}", bank.window));
         } else {
-            out.extend(said.block(shape.bank_block, {{"offset", said.number(bank.offset, 4)}, {"window", said.number(bank.window, 4)}}));
+            out.extend(said.block(shape.bank_block, {{"offset", said.number(cart.header.size() + bank.offset, 4)}, {"window", said.number(bank.window, 4)}}));
         }
         CartListing listing(out, shape, program, b, code, labels, read_names, write_names, said);
         iw::emit<m6502::Insn>(out, bank.offset, bank.offset + bank.size, labels, functions, listing);
@@ -247,7 +253,9 @@ image_writer::Written write_cart6502(const Description& d, const Loaded& program
     }
     const std::string source = shape.whole ? said.print(iw::text(out) + "\n") : iw::text(out) + "\n";
     iw::Written r = iw::finish(folder, stem + ".asm", source, functions, iw::code_bytes(code, flow), program.image.size());
-    iw::assembled(r, [&] { return m6502_source::assemble(m6502_source::Cpu::M6502, said.parse(source), folder); }, program.image,
+    Bytes original = cart.header;
+    original.insert(original.end(), program.image.begin(), program.image.end());
+    iw::assembled(r, [&] { return m6502_source::assemble(m6502_source::Cpu::M6502, said.parse(source), folder); }, original,
                   folder / (stem + ".built." + shape.ext));
     return r;
 }

@@ -11,9 +11,8 @@
 #include "engine/lane_registry.hpp"
 #include "engine/machine_lanes.hpp"
 #include "engine/pcode_cpu.hpp"
-#include "platforms/atari7800.hpp"
 #include "formats/atari7800.hpp"
-#include "source/atari7800_writer.hpp"
+#include "source/console_writer.hpp"
 
 namespace cb::engine {
 
@@ -98,7 +97,7 @@ vl::Effects a7800_effects(const stdfs::path& path, std::uint32_t entry, const vl
 }
 
 vl::Written written_by(const stdfs::path& module, const stdfs::path& out) {
-    const source::image_writer::Written w = source::atari7800_writer::reconstruct(module, out);
+    const source::image_writer::Written w = source::console_writer::reconstruct("atari7800", module, out);
     vl::Written r;
     r.source = w.source;
     r.functions = w.functions;
@@ -128,7 +127,7 @@ vl::ImageLaneSpec atari7800_lane_spec() {
 void register_atari7800_lane() {
     register_lane({
         .name = "atari7800",
-        .platform = platforms::atari7800,
+        .platform = [] { return platforms::described("atari7800"); },
         .probe = [](const stdfs::path& p) { return formats::atari7800::probe(p); },
         .make_spec = atari7800_lane_spec,
     });

@@ -62,6 +62,10 @@ CartShape cart_of(const nlohmann::ordered_json& j) {
     c.prologue = text_of(j, "prologue");
     c.bank_block = text_of(j, "bank_block");
     if (j.contains("part")) c.part = text_of(j, "part");
+    c.part_single = text_of(j, "part_single");
+    c.header_part = text_of(j, "header_part");
+    c.header_what = text_of(j, "header_what");
+    c.tail_last_only = j.value("tail_last_only", false);
     c.tail = number_of(j, "tail", 0);
     c.tail_lines = texts_of(j, "tail_lines");
     c.equ_digits = number_of(j, "equ_digits", 0);

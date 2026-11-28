@@ -1,0 +1,33 @@
+{
+  "platform": "atari7800",
+  "title": "Atari 7800",
+  "description": "An A78 file: the 128-byte header, then a linear ROM ending at $FFFF or a SuperGame board's 16 KB banks (the last fixed at $C000, the others switched in at $8000); flow from the reset, NMI and IRQ vectors in the last six bytes. The TIA by its read and write names, MARIA and the RIOT, written in DASM.",
+  "machine": {
+    "family": "6502",
+    "container": "A78 cartridge (.a78)",
+    "cpu": {"language": "6502:LE:16:Sally:default", "bits": 8, "endian": "little", "decoder": "m6502", "registers": ["A", "X", "Y", "P", "S"], "stack": "S"},
+    "results": ["A", "X", "Y", "P"],
+    "toolchain": "CodeBreaker's own assembler (dasm syntax), or dasm"
+  },
+  "shape": "cart6502",
+  "dialect": "dasm",
+  "head": [
+    "{stem}.asm -- written by CodeBreaker from {file}",
+    "header: version {version}, \"{title}\", {declared} bytes of ROM, cartridge type ${cart_type:04X}, controllers {controller1}/{controller2}, TV {tv}, save device {save}"
+  ],
+  "cart": {
+    "ext": "a78",
+    "prologue": "prologue",
+    "bank_block": "bank",
+    "part": "BANK{bank}",
+    "part_single": "ROM",
+    "header_part": "HEADER",
+    "header_what": "the A78 header",
+    "tail": 6,
+    "tail_last_only": true,
+    "tail_lines": ["        .half {w0},{w2},{w4}"],
+    "data_floor": "0x0100",
+    "whole": true,
+    "chips": [{"read": "tia_read", "write": "tia_write"}, {"read": "maria", "write": "maria"}, {"read": "riot", "write": "riot"}]
+  }
+}
