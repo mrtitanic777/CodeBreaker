@@ -106,3 +106,4 @@ CB_TEST("dotnet.l2_csharp.java.enum_object", [] { l2cs_check_java("enum_object")
 CB_TEST("dotnet.l2_csharp.java.exception_cause", [] { l2cs_check_java("exception_cause"); });
 CB_TEST("dotnet.l2_csharp.java.hash_order", [] { l2cs_check_java("hash_order"); });
 CB_TEST("dotnet.l2_csharp.java.inner_outer", [] { l2cs_check_java("inner_outer"); });
+CB_TEST("dotnet.l2_csharp.java.boxed_null", [] { l2cs_check_java("boxed_null"); });

@@ -1,0 +1,20 @@
+// ==== BoxedNull.cs ====
+// Translated by CodeBreaker from BoxedNull (java).
+public class BoxedNull
+{
+    public BoxedNull()
+    {
+    }
+
+    internal static int? absent()
+    {
+        int? x = null;
+        return x;
+    }
+
+    internal static int present()
+    {
+        int x = 5;
+        return x + 1;
+    }
+}
